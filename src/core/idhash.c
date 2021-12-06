@@ -342,21 +342,6 @@ nni_id_show_cb(nni_msg* msg)
 	debug_msg("message has an address: %p", msg);
 }
 
-// this function iterates through the the idhash table, and store the entries in a linked list
-// the implementation of the linked list used the structure of the idhash entry 
-void
-nni_id_iterate(nni_id_map *m, void (func_cb)(nni_msg*))
-{
-	//int count = 0;
-	for (int i = 0; i < (int) m->id_cap; i++) {
-		if ((m->id_entries[i].val) != NULL) {
-			//count++;
-			func_cb(m->id_entries[i].val);
-		}
-	}
-	//debug_msg("This id_map has %d entries.\n", count);
-}
-
 void*
 nni_id_get_one(nni_id_map *m, uint32_t *key)
 {
