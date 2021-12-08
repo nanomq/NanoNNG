@@ -63,7 +63,6 @@ extern void  nni_id_map_sys_fini(void);
 void *       nni_id_get_any(nni_id_map *m, uint16_t *pid);
 extern void  nni_id_msgfree_cb(nni_msg *msg);
 extern void  nni_id_show_cb(nni_msg *msg);
-extern void  nni_id_iterate(nni_id_map *m, void(func_cb)(nni_msg *));
 // TODO duplicate with the last one API ^^
 extern void  nni_id_map_foreach(nni_id_map *, nni_cb);
 extern void *nni_id_get_one(nni_id_map *m, uint32_t *key);
