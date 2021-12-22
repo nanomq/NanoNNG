@@ -412,6 +412,13 @@ nni_mqtt_msg_set_connect_will_retain(nni_msg *msg, bool will_retain)
 }
 
 void
+nni_mqtt_msg_set_connect_will_qos(nni_msg *msg, uint8_t will_qos)
+{
+	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
+	proto_data->var_header.connect.conn_flags.will_qos = will_qos;
+}
+
+void
 nni_mqtt_msg_set_connect_proto_version(nni_msg *msg, uint8_t version)
 {
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
@@ -437,6 +444,13 @@ nni_mqtt_msg_get_connect_will_retain(nni_msg *msg)
 {
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
 	return proto_data->var_header.connect.conn_flags.will_retain;
+}
+
+uint8_t
+nni_mqtt_msg_get_connect_will_qos(nni_msg *msg)
+{
+	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
+	return proto_data->var_header.connect.conn_flags.will_qos;
 }
 
 uint8_t
