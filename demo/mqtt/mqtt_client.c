@@ -61,11 +61,19 @@ print80(const char *prefix, const char *str, size_t len, bool quote)
 	char * q       = quote ? "'" : "";
 	if (len <= max_len) {
 		// case the output fit in a line
-		printf("%s%s%.*s%s\n", prefix, q, len, str, q);
+		printf("%s%s%.*s%s\n", prefix, q, (int) len, str, q);
 	} else {
 		// case we truncate the payload with ellipses
-		printf("%s%s%.*s%s...\n", prefix, q, max_len - 3, str, q);
+		printf(
+		    "%s%s%.*s%s...\n", prefix, q, (int) (max_len - 3), str, q);
 	}
+}
+
+static void
+disconnect_cb(void *disconn_arg, nng_msg *msg)
+{
+	(void) disconn_arg;
+	printf("%s\n", __FUNCTION__);
 }
 
 static void
@@ -81,6 +89,14 @@ connect_cb(void *arg, nng_msg *ackmsg)
 	// Free ConnAck msg
 	nng_msg_free(ackmsg);
 }
+
+nng_mqtt_cb user_cb = {
+	.name            = "user_cb",
+	.on_connected    = connect_cb,
+	.on_disconnected = disconnect_cb,
+	.connect_arg     = "Args",
+	.disconn_arg     = "Args",
+};
 
 // Connect to the given address.
 int
@@ -120,7 +136,7 @@ client_connect(nng_socket *sock, const char *url, bool verbose)
 
 	printf("Connecting to server ...");
 	nng_dialer_set_ptr(dialer, NNG_OPT_MQTT_CONNMSG, connmsg);
-	nng_dialer_set_cb(dialer, connect_cb, "Yeap");
+	nng_dialer_set_cb(dialer, &user_cb);
 	nng_dialer_start(dialer, NNG_FLAG_NONBLOCK);
 
 	printf("connected\n");
@@ -189,8 +205,8 @@ client_subscribe(nng_socket sock, nng_mqtt_topic_qos *subscriptions, int count,
 
 // Publish a message to the given topic and with the given QoS.
 int
-client_publish(nng_socket sock, const char *topic, const char *payload,
-    uint8_t qos, bool verbose)
+client_publish(nng_socket sock, const char *topic, uint8_t *payload,
+    uint32_t payload_len, uint8_t qos, bool verbose)
 {
 	int rv;
 
@@ -202,25 +218,47 @@ client_publish(nng_socket sock, const char *topic, const char *payload,
 	nng_mqtt_msg_set_publish_qos(pubmsg, qos);
 	nng_mqtt_msg_set_publish_retain(pubmsg, 0);
 	nng_mqtt_msg_set_publish_payload(
-	    pubmsg, (uint8_t *) payload, strlen(payload));
+	    pubmsg, (uint8_t *) payload, payload_len);
 	nng_mqtt_msg_set_publish_topic(pubmsg, topic);
 
-	uint8_t print[1024] = { 0 };
-
 	if (verbose) {
+		uint8_t print[1024] = { 0 };
 		nng_mqtt_msg_dump(pubmsg, print, 1024, true);
 		printf("%s\n", print);
 	}
 
-	printf("Publishing to '%s' ...", topic);
-	if ((rv = nng_sendmsg(sock, pubmsg, 0)) != 0) {
+	printf("Publishing to '%s' ...\n", topic);
+	if ((rv = nng_sendmsg(sock, pubmsg, NNG_FLAG_NONBLOCK)) != 0) {
 		fatal("nng_sendmsg", rv);
 	}
-	printf(" done\n");
 
-	nng_msg_free(pubmsg);
 	return rv;
 }
+
+struct pub_params {
+	nng_socket *sock;
+	const char *topic;
+	uint8_t *   data;
+	uint32_t    data_len;
+	uint8_t     qos;
+	bool        verbose;
+	uint32_t    interval;
+};
+
+void
+publish_cb(void *args)
+{
+	int                rv;
+	struct pub_params *params = args;
+	do {
+		rv = client_publish(*params->sock, params->topic, params->data,
+		    params->data_len, params->qos, params->verbose);
+		nng_msleep(params->interval);
+	} while (params->interval > 0 && rv == 0);
+	printf("thread_exit\n");
+}
+
+struct pub_params params;
 
 int
 main(const int argc, const char **argv)
@@ -233,7 +271,7 @@ main(const int argc, const char **argv)
 
 	if (5 == argc && 0 == strcmp(argv[1], SUBSCRIBE)) {
 		cmd = SUBSCRIBE;
-	} else if (6 == argc && 0 == strcmp(argv[1], PUBLISH)) {
+	} else if (6 <= argc && 0 == strcmp(argv[1], PUBLISH)) {
 		cmd = PUBLISH;
 	} else {
 		goto error;
@@ -247,17 +285,44 @@ main(const int argc, const char **argv)
 	bool        verbose     = verbose_env && strlen(verbose_env) > 0;
 
 	client_connect(&sock, url, verbose);
+	nng_msleep(1000);
 
-	if (PUBLISH == cmd) {
-		const char *data = argv[5];
-		rv = client_publish(sock, topic, data, qos, verbose);
-	} else if (SUBSCRIBE == cmd) {
+	if (strcmp(PUBLISH, cmd) == 0) {
+		const char *data     = argv[5];
+		uint32_t    interval = 0;
+		uint32_t    nthread  = 1;
+
+		if (argc >= 7) {
+			interval = atoi(argv[6]);
+		}
+		if (argc >= 8) {
+			nthread = atoi(argv[7]);
+		}
+		nng_thread *threads[nthread];
+
+		params.sock = &sock, params.topic = topic;
+		params.data     = (uint8_t *) data;
+		params.data_len = strlen(data);
+		params.qos      = qos;
+		params.interval = interval;
+		params.verbose  = verbose;
+
+		char thread_name[20];
+
+		size_t i = 0;
+		for (i = 0; i < nthread; i++) {
+			nng_thread_create(&threads[i], publish_cb, &params);
+		}
+
+		for (i = 0; i < nthread; i++) {
+			nng_thread_destroy(threads[i]);
+		}
+	} else if (strcmp(SUBSCRIBE, cmd) == 0) {
 		nng_mqtt_topic_qos subscriptions[] = {
 			{ .qos     = qos,
 			    .topic = { .buf = (uint8_t *) topic,
 			        .length     = strlen(topic) } },
 		};
-
 		rv = client_subscribe(sock, subscriptions, 1, verbose);
 	}
 
@@ -268,7 +333,7 @@ main(const int argc, const char **argv)
 
 error:
 	fprintf(stderr,
-	    "Usage: %s %s <URL> <QOS> <TOPIC> <data>\n"
+	    "Usage: %s %s <URL> <QOS> <TOPIC> <data> <interval> <parallel>\n"
 	    "       %s %s <URL> <QOS> <TOPIC>\n",
 	    exe, PUBLISH, exe, SUBSCRIBE);
 	return 1;
