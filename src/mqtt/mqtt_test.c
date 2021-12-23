@@ -124,7 +124,7 @@ test_encode_connect(void)
 	nng_mqtt_msg_set_connect_will_topic(msg, will_topic);
 
 	char will_msg[] = "Bye-bye";
-	nng_mqtt_msg_set_connect_will_msg(msg, will_msg);
+	nng_mqtt_msg_set_connect_will_msg(msg, (uint8_t *)will_msg, strlen(will_msg));
 
 	char user[]   = "nanomq";
 	char passwd[] = "nanomq";

@@ -2366,9 +2366,10 @@ nng_mqtt_msg_set_connect_will_topic(nng_msg *msg, const char *will_topic)
 }
 
 void
-nng_mqtt_msg_set_connect_will_msg(nng_msg *msg, const char *will_msg)
+nng_mqtt_msg_set_connect_will_msg(
+    nng_msg *msg, uint8_t *will_msg, uint32_t len)
 {
-	nni_mqtt_msg_set_connect_will_msg(msg, will_msg);
+	nni_mqtt_msg_set_connect_will_msg(msg, will_msg, len);
 }
 
 void
@@ -2406,10 +2407,10 @@ nng_mqtt_msg_get_connect_will_topic(nng_msg *msg)
 	return nni_mqtt_msg_get_connect_will_topic(msg);
 }
 
-const char *
-nng_mqtt_msg_get_connect_will_msg(nng_msg *msg)
+uint8_t *
+nng_mqtt_msg_get_connect_will_msg(nng_msg *msg, uint32_t *len)
 {
-	return nni_mqtt_msg_get_connect_will_msg(msg);
+	return nni_mqtt_msg_get_connect_will_msg(msg, len);
 }
 
 const char *

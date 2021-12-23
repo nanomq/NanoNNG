@@ -271,25 +271,25 @@ extern void     nni_mqtt_msg_set_packet_id(nni_msg *, uint16_t);
 extern uint16_t nni_mqtt_msg_get_packet_id(nni_msg *);
 
 // mqtt connect
-extern void     nni_mqtt_msg_set_connect_clean_session(nni_msg *, bool);
-extern void     nni_mqtt_msg_set_connect_proto_version(nni_msg *, uint8_t);
-extern void     nni_mqtt_msg_set_connect_keep_alive(nni_msg *, uint16_t);
-extern void     nni_mqtt_msg_set_connect_client_id(nni_msg *, const char *);
-extern void     nni_mqtt_msg_set_connect_user_name(nni_msg *, const char *);
-extern void     nni_mqtt_msg_set_connect_password(nni_msg *, const char *);
-extern void     nni_mqtt_msg_set_connect_will_retain(nni_msg *, bool);
-extern void     nni_mqtt_msg_set_connect_will_topic(nni_msg *, const char *);
-extern void     nni_mqtt_msg_set_connect_will_msg(nni_msg *, const char *);
-extern void     nni_mqtt_msg_set_connect_will_qos(nni_msg *, uint8_t);
-extern bool     nni_mqtt_msg_get_connect_clean_session(nni_msg *);
-extern uint8_t  nni_mqtt_msg_get_connect_proto_version(nni_msg *);
-extern uint16_t nni_mqtt_msg_get_connect_keep_alive(nni_msg *);
+extern void nni_mqtt_msg_set_connect_clean_session(nni_msg *, bool);
+extern void nni_mqtt_msg_set_connect_proto_version(nni_msg *, uint8_t);
+extern void nni_mqtt_msg_set_connect_keep_alive(nni_msg *, uint16_t);
+extern void nni_mqtt_msg_set_connect_client_id(nni_msg *, const char *);
+extern void nni_mqtt_msg_set_connect_user_name(nni_msg *, const char *);
+extern void nni_mqtt_msg_set_connect_password(nni_msg *, const char *);
+extern void nni_mqtt_msg_set_connect_will_retain(nni_msg *, bool);
+extern void nni_mqtt_msg_set_connect_will_topic(nni_msg *, const char *);
+extern void nni_mqtt_msg_set_connect_will_msg(nni_msg *, uint8_t *, uint32_t);
+extern void nni_mqtt_msg_set_connect_will_qos(nni_msg *, uint8_t);
+extern bool nni_mqtt_msg_get_connect_clean_session(nni_msg *);
+extern uint8_t     nni_mqtt_msg_get_connect_proto_version(nni_msg *);
+extern uint16_t    nni_mqtt_msg_get_connect_keep_alive(nni_msg *);
 extern const char *nni_mqtt_msg_get_connect_user_name(nni_msg *);
 extern const char *nni_mqtt_msg_get_connect_password(nni_msg *);
 extern const char *nni_mqtt_msg_get_connect_client_id(nni_msg *);
 extern const char *nni_mqtt_msg_get_connect_will_topic(nni_msg *);
 extern bool        nni_mqtt_msg_get_connect_will_retain(nni_msg *);
-extern const char *nni_mqtt_msg_get_connect_will_msg(nni_msg *);
+extern uint8_t *   nni_mqtt_msg_get_connect_will_msg(nni_msg *, uint32_t *);
 extern uint8_t     nni_mqtt_msg_get_connect_will_qos(nni_msg *);
 
 // mqtt conack
