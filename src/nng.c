@@ -680,6 +680,7 @@ nng_dialer_set_cb(nng_dialer did, void *cb)
 	}
 
 	nni_dialer_setcb(d, cb);
+	nni_dialer_rele(d);
 	return (0);
 }
 
