@@ -444,6 +444,11 @@ mqtts_tcptran_pipe_recv_cb(void *arg)
 	p->gotrxhead += n;
 
 	nni_aio_iov_advance(rxaio, n);
+	if (nni_aio_iov_count(rxaio) > 0) {
+		nng_stream_recv(p->conn, rxaio);
+		nni_mtx_unlock(&p->mtx);
+		return;
+	}
 
 	rv = mqtt_get_remaining_length(p->rxlen, p->gotrxhead, &len, &pos);
 	p->wantrxhead = len + 1 + pos;
