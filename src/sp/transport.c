@@ -71,12 +71,17 @@ extern void nni_sp_tls_register(void);
 #endif
 #ifdef NNG_TRANSPORT_WS
 extern void nni_sp_ws_register(void);
+#ifdef NNG_TRANSPORT_MQTT_BROKER_WS
 extern void nni_nmq_ws_register(void);
+#endif
 #endif
 #ifdef NNG_TRANSPORT_WSS
 extern void nni_sp_wss_register(void);
+#ifdef NNG_TRANSPORT_MQTT_BROKER_WSS
 extern void nni_nmq_wss_register(void);
 #endif
+#endif
+
 #ifdef NNG_TRANSPORT_ZEROTIER
 extern void nni_sp_zt_register(void);
 #endif
@@ -110,11 +115,15 @@ nni_sp_tran_sys_init(void)
 #endif
 #ifdef NNG_TRANSPORT_WS
 	nni_sp_ws_register();
-    nni_nmq_ws_register();
+#ifdef NNG_TRANSPORT_MQTT_BROKER_WS
+	nni_nmq_ws_register();
+#endif
 #endif
 #ifdef NNG_TRANSPORT_WSS
 	nni_sp_wss_register();
-    nni_nmq_wss_register();
+#ifdef NNG_TRANSPORT_MQTT_BROKER_WSS
+	nni_nmq_wss_register();
+#endif
 #endif
 #ifdef NNG_TRANSPORT_ZEROTIER
 	nni_sp_zt_register();

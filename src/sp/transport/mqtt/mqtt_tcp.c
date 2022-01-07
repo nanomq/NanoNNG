@@ -16,7 +16,6 @@
 #include "core/nng_impl.h"
 #include "mqtt/mqtt.h"
 #include "nng/mqtt/mqtt_client.h"
-#include "nng/protocol/mqtt/mqtt_parser.h"
 
 // TCP transport.   Platform specific TCP operations must be
 // supplied as well.

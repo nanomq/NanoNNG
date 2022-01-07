@@ -18,7 +18,7 @@
 #include "supplemental/websocket/websocket.h"
 
 #include <nng/supplemental/tls/tls.h>
-#include <nng/transport/ws/nmq_websocket.h>
+#include <nng/transport/mqttws/nmq_websocket.h>
 
 #include "nng/nng_debug.h"
 #include "nng/protocol/mqtt/mqtt.h"

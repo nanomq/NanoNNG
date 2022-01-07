@@ -12,7 +12,6 @@
 
 #include "core/nng_impl.h"
 #include "nng/nng_debug.h"
-#include "nng/protocol/mqtt/mqtt_parser.h"
 
 // Message API.
 

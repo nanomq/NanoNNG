@@ -11,6 +11,10 @@
 nng_sources(nng.c nng_legacy.c)
 nng_headers(nng/nng.h)
 
+if(NNG_PROTO_MQTT_BROKER)
+    include_directories(${CMAKE_SOURCE_DIR}/nanolib/include)
+endif()
+
 target_include_directories(nng PRIVATE ${PROJECT_SOURCE_DIR}/src)
 target_include_directories(nng_testing PRIVATE ${PROJECT_SOURCE_DIR}/src)
 

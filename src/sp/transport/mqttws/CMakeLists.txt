@@ -9,17 +9,14 @@
 #
 
 # WebSocket transport
-nng_directory(ws)
+nng_directory(mqttws)
 
-if (NNG_TRANSPORT_WS OR NNG_TRANSPORT_WSS)
-    set(WS_ON ON)
+if (NNG_TRANSPORT_MQTT_BROKER_WS OR NNG_TRANSPORT_MQTT_BROKER_WSS)
+    nng_defines_if(NNG_TRANSPORT_MQTT_BROKER_WS NNG_TRANSPORT_MQTT_BROKER_WS)
+    nng_defines_if(NNG_TRANSPORT_MQTT_BROKER_WSS NNG_TRANSPORT_MQTT_BROKER_WSS)
+    nng_sources(nmq_websocket.c)
+    nng_headers(nng/transport/mqttws/nmq_websocket.h)
 endif()
 
-nng_defines_if(NNG_TRANSPORT_WS NNG_TRANSPORT_WS)
-nng_defines_if(NNG_TRANSPORT_WSS NNG_TRANSPORT_WSS)
-nng_sources_if(WS_ON websocket.c)
-nng_headers_if(WS_ON nng/transport/ws/websocket.h)
-
-nng_test_if(WS_ON ws_test)
 
 

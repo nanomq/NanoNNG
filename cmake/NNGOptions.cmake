@@ -79,7 +79,7 @@ mark_as_advanced(NNG_PROTO_SURVEYOR0)
 option (NNG_PROTO_MQTT_CLIENT "Enable MQTT Client protocol." ON)
 mark_as_advanced(NNG_PROTO_MQTT_CLIENT)
 
-option (NNG_PROTO_MQTT_BROKER "Enable MQTT Broker protocol." ON)
+option (NNG_PROTO_MQTT_BROKER "Enable MQTT Broker protocol." OFF)
 mark_as_advanced(NNG_PROTO_MQTT_BROKER)
 
 # TLS support.
@@ -141,11 +141,17 @@ mark_as_advanced(NNG_TRANSPORT_WS)
 option (NNG_TRANSPORT_MQTT_TCP "Enable MQTT TCP transport." ON)
 mark_as_advanced(NNG_TRANSPORT_MQTT_TCP)
 
-#MQTT Broker
-option (NNG_TRANSPORT_MQTT_BROKER_TCP "Enable MQTT BROKER TCP transport." ON)
+#MQTT Broker TCP
+option (NNG_TRANSPORT_MQTT_BROKER_TCP "Enable MQTT BROKER TCP transport." OFF)
 mark_as_advanced(NNG_TRANSPORT_MQTT_BROKER_TCP)
 
+#MQTT Broker Websocket
+option (NNG_TRANSPORT_MQTT_BROKER_WS "Enable MQTT BROKER WS transport." OFF)
+mark_as_advanced(NNG_TRANSPORT_MQTT_BROKER_WS)
 
+#MQTT Broker Websocket TLS
+option (NNG_TRANSPORT_MQTT_BROKER_WSS "Enable MQTT BROKER WSS transport." OFF)
+mark_as_advanced(NNG_TRANSPORT_MQTT_BROKER_WSS)
 
 CMAKE_DEPENDENT_OPTION(NNG_TRANSPORT_WSS "Enable WSS transport." ON
         "NNG_ENABLE_TLS" OFF)
