@@ -2,9 +2,9 @@
 #ifndef NNG_MQTT_H
 #define NNG_MQTT_H
 
-#include <conf.h>
+// #include <conf.h>
 #include <nng/nng.h>
-#include <packet.h>
+#include <nng/mqtt/packet.h>
 #include <stdlib.h>
 
 // Do not change to %lu! just supress the warning of compiler!

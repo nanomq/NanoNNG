@@ -13,7 +13,7 @@
 #include "nng/protocol/mqtt/mqtt.h"
 
 #include <conf.h>
-#include <packet.h>
+#include "nng/mqtt/packet.h"
 #include <stdio.h>
 #include <string.h>
 

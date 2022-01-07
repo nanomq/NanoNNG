@@ -11,7 +11,7 @@
 #ifndef CORE_MESSAGE_H
 #define CORE_MESSAGE_H
 
-#include <packet.h>
+#include "nng/mqtt/packet.h"
 
 // Internally used message API.  Again, this is not part of our public API.
 // "trim" operations work from the front, and "chop" work from the end.
