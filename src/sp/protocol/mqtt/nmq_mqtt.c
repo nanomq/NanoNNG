@@ -9,7 +9,7 @@
 
 #include <conf.h>
 #include <file.h>
-#include <hash.h>
+#include <hash_table.h>
 #include <mqtt_db.h>
 #include <string.h>
 
@@ -557,7 +557,7 @@ nano_pipe_start(void *arg)
 	clientid = (char *) conn_param_get_clientid(p->conn_param);
 	if (clientid)
 		clientid_key = DJBHashn(clientid, strlen(clientid));
-	if (clientid && cached_check_id(clientid_key)) {
+	if (clientid && dbhash_cached_check_id(clientid_key)) {
 		msgq = (nni_msg **)dbtree_restore_session_msg(p->tree, clientid_key);
 		for(int i=0; i< (int) cvector_size(msgq); i++) {
 			pid = nni_pipe_inc_packetid(npipe);
