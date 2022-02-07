@@ -390,6 +390,7 @@ auto_id_prefix_len)
 */
 
 /**
+ * @brief handle and decode CONNECT packet
  * only use in nego_cb !!!
  * TODO CONNECT packet validation
  */
@@ -450,9 +451,9 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 					pos += 4;
 					break;
 				case RECEIVE_MAXIMUM:
-					debug_msg("RECEIVE_MAXIMUM");
 					NNI_GET16(
 					    packet + pos, cparam->rx_max);
+					debug_msg("RECEIVE_MAXIMUM %d %x %x", cparam->rx_max, *(packet + pos), *(packet + pos+1));
 					pos += 2;
 					break;
 				case MAXIMUM_PACKET_SIZE:
@@ -687,6 +688,53 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 	return rv;
 }
 
+/**
+ * @brief handle and encode CONNACK packet
+ */
+void
+nmq_connack_encode(nng_msg *msg, conn_param *cparam, uint8_t reason)
+{
+	uint8_t buf1[7]; //Fixed header
+	uint8_t buf2[4]; //Session Present + Reason Code + Varlength
+
+	uint8_t pos = 0, vlen = 0, flen, tmp;
+	// remaining_len = 2 in this case
+	uint32_t remaining_len = 0;
+	// get_var_integer(nni_msg_header(msg) + 1, &len);
+	// we put Property Length in header for CONNACK
+	// set session in broker app layer.
+	uint8_t *header = nni_msg_header(msg);
+	buf1[0] = CMD_CONNACK;
+	if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
+		if (cparam->session_expiry_interval > 0) {
+			debug_msg("SESSION_EXPIRY_INTERVAL %d", cparam->session_expiry_interval);
+			tmp = SESSION_EXPIRY_INTERVAL;
+			nni_msg_append(msg, &tmp, 1);
+			nni_msg_append(msg, cparam->session_expiry_interval, 4);
+			remaining_len += 5;
+		}
+		if (cparam->rx_max != 65535) {
+			debug_msg("RECEIVE_MAXIMUM %d", cparam->rx_max);
+			tmp = RECEIVE_MAXIMUM;
+			nni_msg_append(msg, &tmp, 1);
+			nni_msg_append(msg, &(cparam->rx_max), 2);
+			remaining_len += 3;
+		}
+		//Variable length
+		vlen = put_var_integer(buf2, remaining_len);
+		// nni_msg_header_append(msg, &tmp, len);
+		// (*(header + 1))++;
+	}
+	//Remaining length
+	flen = put_var_integer(buf1+1, remaining_len+vlen+2);
+	buf1[flen+1] = 0x00;
+	buf1[flen+2] = reason;
+	nni_msg_header_append(msg, buf1, flen+3);
+	if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
+		nni_msg_header_append(msg, buf2, vlen);
+	}
+}
+
 static void
 conn_param_init(conn_param *cparam)
 {
@@ -720,6 +768,8 @@ conn_param_init(conn_param *cparam)
 	cparam->payload_user_property.len_key = 0;
 	cparam->payload_user_property.val     = NULL;
 	cparam->payload_user_property.len_val = 0;
+	cparam->rx_max			      = 65535;
+	cparam->session_expiry_interval       = 0;
 }
 
 int
