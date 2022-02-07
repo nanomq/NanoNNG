@@ -297,6 +297,7 @@ tcptran_pipe_nego_cb(void *arg)
 		}
 	}
 
+	// we have finished the fixed header
 	if (p->gotrxhead < p->wantrxhead) {
 		nni_iov iov;
 		iov.iov_len = p->wantrxhead - p->gotrxhead;
@@ -405,7 +406,7 @@ tcptran_pipe_send_cb(void *arg)
 	if (cmd == CMD_CONNACK) {
 		header = nni_msg_header(msg);
 		// parse result code TODO verify bug
-		flag   = header[3];
+		flag = header[3];
 	}
 	// nni_pipe_bump_tx(p->npipe, n);
 	// free qos buffer
@@ -682,7 +683,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		return;
 	}
 	qos = NANO_NNI_LMQ_GET_QOS_BITS(msg);
-	//qos default to 0 if the msg is not PUBLISH
+	// qos default to 0 if the msg is not PUBLISH
 	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
 	nni_aio_set_msg(aio, msg);
 	// never modify msg
@@ -722,8 +723,8 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 				// set qos to 0
 				fixheader[0] = fixheader[0] & 0xF9;
 				uint32_t pos = 1;
-				rlen = put_var_integer(
-				    tmp, get_var_integer(header, &pos) - 2);
+				rlen         = put_var_integer(
+                                    tmp, get_var_integer(header, &pos) - 2);
 				memcpy(fixheader + 1, tmp, rlen);
 			}
 		} else {
@@ -743,20 +744,23 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 			nni_msg *old;
 			pid = nni_aio_get_packetid(aio);
 			if (pid == 0) {
-				//first time send this msg
+				// first time send this msg
 				pid = nni_pipe_inc_packetid(pipe);
 				// store msg for qos retrying
-				debug_msg("* processing QoS pubmsg with pipe: %p *", p);
+				debug_msg(
+				    "* processing QoS pubmsg with pipe: %p *",
+				    p);
 				nni_msg_clone(msg);
 				if ((old = nni_id_get(
 				         pipe->nano_qos_db, pid)) != NULL) {
 					// TODO packetid already exists.
-					// do we need to replace old with new one ?
-					// print warning to users
+					// do we need to replace old with new
+					// one ? print warning to users
 					nni_println(
 					    "ERROR: packet id duplicates in "
 					    "nano_qos_db");
-					old = NANO_NNI_LMQ_GET_MSG_POINTER(old);
+					old =
+					    NANO_NNI_LMQ_GET_MSG_POINTER(old);
 					nni_msg_free(old);
 					// nni_id_remove(&pipe->nano_qos_db,
 					// pid);
@@ -833,7 +837,7 @@ tcptran_pipe_send(void *arg, nni_aio *aio)
 	}
 	nni_list_append(&p->sendq, aio);
 	if (nni_list_first(&p->sendq) == aio) {
-		//send publish msg or send others
+		// send publish msg or send others
 		tcptran_pipe_send_start(p);
 	}
 	nni_mtx_unlock(&p->mtx);

@@ -522,7 +522,7 @@ nano_pipe_start(void *arg)
 	nano_pipe *p = arg;
 	nano_sock *s = p->rep;
 	nni_msg *  msg;
-	uint8_t    rv, *reason; // reason code of CONNACK
+	uint8_t    rv, reason; // reason code of CONNACK
 	uint8_t    buf[4] = { 0x20, 0x02, 0x00, 0x00 };
 	nni_pipe * npipe = p->pipe;
 	char *     clientid = NULL;
@@ -539,17 +539,16 @@ nano_pipe_start(void *arg)
 	}
 	*/
 	nni_msg_alloc(&msg, 0);
-	nni_msg_header_append(msg, buf, 4);
-	reason = nni_msg_header(msg) + 2;
 	nni_mtx_lock(&s->lk);
 	// TODO replace pipe_id with hash key of client_id
 	// pipe_id is just random value of id_dyn_val with self-increment.
 	nni_id_set(&s->pipes, nni_pipe_id(p->pipe), p);
 	rv = verify_connect(p->conn_param, s->conf);
+	nmq_connack_encode(msg, p->conn_param, rv);
 	if (rv != 0) {
 		// TODO disconnect client && send connack with reason code 0x05
 		debug_syslog("Invalid auth info.");
-		*(reason + 1) = rv; // set return code
+		reason = rv; // set return code
 	}
 	nni_mtx_unlock(&s->lk);
 
@@ -567,7 +566,7 @@ nano_pipe_start(void *arg)
 	}
 
 	// TODO MQTT V5 check return code
-	if (*(reason + 1) == 0) {
+	if (reason == 0) {
 		nni_sleep_aio(s->conf->qos_duration * 1500, &p->aio_timer);
 	}
 	nni_msg_set_cmd_type(msg, CMD_CONNACK);
