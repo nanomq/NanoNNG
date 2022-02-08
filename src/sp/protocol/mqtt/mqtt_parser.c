@@ -12,10 +12,11 @@
 #include "nng/nng_debug.h"
 #include "nng/protocol/mqtt/mqtt.h"
 
-#include <conf.h>
 #include "nng/mqtt/packet.h"
+#include <conf.h>
 #include <stdio.h>
 #include <string.h>
+#include <iconv.h>
 
 struct pub_extra {
 	uint8_t  qos;
@@ -453,7 +454,9 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 				case RECEIVE_MAXIMUM:
 					NNI_GET16(
 					    packet + pos, cparam->rx_max);
-					debug_msg("RECEIVE_MAXIMUM %d %x %x", cparam->rx_max, *(packet + pos), *(packet + pos+1));
+					debug_msg("RECEIVE_MAXIMUM %d %x %x",
+					    cparam->rx_max, *(packet + pos),
+					    *(packet + pos + 1));
 					pos += 2;
 					break;
 				case MAXIMUM_PACKET_SIZE:
@@ -532,11 +535,12 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 	cparam->clientid.len = len_of_str;
 
 	if (len_of_str == 0) {
-		char * clientid_r = nng_alloc(20);
+		char *clientid_r = nng_alloc(20);
 		snprintf(clientid_r, 20, "nanomq-%08x", nni_random());
-		clientid_r[19] = '\0';
+		clientid_r[19]        = '\0';
 		cparam->clientid.body = clientid_r;
-		cparam->clientid.len = 20;
+		cparam->clientid.len  = 20;
+		cparam->assignedid    = true;
 	} else if (len_of_str < 0) {
 		return (1);
 	}
@@ -694,23 +698,24 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 void
 nmq_connack_encode(nng_msg *msg, conn_param *cparam, uint8_t reason)
 {
-	uint8_t buf1[7]; //Fixed header
-	uint8_t buf2[4]; //Session Present + Reason Code + Varlength
-
+	uint8_t buf1[7]; // Fixed header
+	uint8_t buf2[4]; // Session Present + Reason Code + Varlength
 	uint8_t pos = 0, vlen = 0, flen, tmp;
+
 	// remaining_len = 2 in this case
 	uint32_t remaining_len = 0;
-	// get_var_integer(nni_msg_header(msg) + 1, &len);
 	// we put Property Length in header for CONNACK
 	// set session in broker app layer.
 	uint8_t *header = nni_msg_header(msg);
-	buf1[0] = CMD_CONNACK;
+	buf1[0]         = CMD_CONNACK;
 	if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
 		if (cparam->session_expiry_interval > 0) {
-			debug_msg("SESSION_EXPIRY_INTERVAL %d", cparam->session_expiry_interval);
+			debug_msg("SESSION_EXPIRY_INTERVAL %d",
+			    cparam->session_expiry_interval);
 			tmp = SESSION_EXPIRY_INTERVAL;
 			nni_msg_append(msg, &tmp, 1);
-			nni_msg_append(msg, cparam->session_expiry_interval, 4);
+			nni_msg_append(
+			    msg, cparam->session_expiry_interval, 4);
 			remaining_len += 5;
 		}
 		if (cparam->rx_max != 65535) {
@@ -720,18 +725,39 @@ nmq_connack_encode(nng_msg *msg, conn_param *cparam, uint8_t reason)
 			nni_msg_append(msg, &(cparam->rx_max), 2);
 			remaining_len += 3;
 		}
-		//Variable length
+		if (cparam->assignedid = true) {
+		}
+		// Variable length
 		vlen = put_var_integer(buf2, remaining_len);
-		// nni_msg_header_append(msg, &tmp, len);
-		// (*(header + 1))++;
 	}
-	//Remaining length
-	flen = put_var_integer(buf1+1, remaining_len+vlen+2);
-	buf1[flen+1] = 0x00;
-	buf1[flen+2] = reason;
-	nni_msg_header_append(msg, buf1, flen+3);
+	// Remaining length
+	flen           = put_var_integer(buf1 + 1, remaining_len + vlen + 2);
+	buf1[flen + 1] = 0x00;
+	buf1[flen + 2] = reason;
+	nni_msg_header_append(msg, buf1, flen + 3);
 	if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
 		nni_msg_header_append(msg, buf2, vlen);
+	}
+}
+
+/**
+ * @brief set session present byte alone
+ * session true - session restored set to 1
+ * session false - new start set to 0
+ */
+void
+nmq_connack_session(nng_msg *msg, bool session)
+{
+	uint8_t *header;
+	uint8_t  len;
+	size_t   pos = 1;
+	header       = nni_msg_header(msg);
+	len          = get_var_integer(header + 1, &pos);
+	header       = header + pos;
+	if (session) {
+		*header = 0x01;
+	} else {
+		*header = 0x00;
 	}
 }
 
@@ -768,14 +794,15 @@ conn_param_init(conn_param *cparam)
 	cparam->payload_user_property.len_key = 0;
 	cparam->payload_user_property.val     = NULL;
 	cparam->payload_user_property.len_val = 0;
-	cparam->rx_max			      = 65535;
+	cparam->rx_max                        = 65535;
 	cparam->session_expiry_interval       = 0;
+	cparam->assignedid		      = false;
 }
 
 int
 conn_param_alloc(conn_param **cparamp)
 {
-	conn_param * new_cp;
+	conn_param *new_cp;
 	if ((new_cp = nng_alloc(sizeof(conn_param))) == NULL) {
 		return (NNG_ENOMEM);
 	}
@@ -818,7 +845,7 @@ conn_param_free(conn_param *cparam)
 }
 
 void
-conn_param_clone(conn_param * cparam)
+conn_param_clone(conn_param *cparam)
 {
 	if (cparam == NULL) {
 		return;
@@ -873,8 +900,8 @@ nano_msg_set_dup(nng_msg *msg)
 
 // alloc a publish msg according to the need
 nng_msg *
-nano_msg_composer(
-    nng_msg ** msgp, uint8_t retain, uint8_t qos, mqtt_string *payload, mqtt_string *topic)
+nano_msg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
+    mqtt_string *payload, mqtt_string *topic)
 {
 	size_t   rlen;
 	uint8_t *ptr, buf[5] = { '\0' };
@@ -885,9 +912,9 @@ nano_msg_composer(
 
 	msg = *msgp;
 	if (msg == NULL) {
-		nni_msg_alloc(&msg, len + (qos>0?2:0));
+		nni_msg_alloc(&msg, len + (qos > 0 ? 2 : 0));
 	} else {
-		nni_msg_realloc(msg, len + (qos>0?2:0));
+		nni_msg_realloc(msg, len + (qos > 0 ? 2 : 0));
 	}
 
 	if (qos > 0) {

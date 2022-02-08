@@ -110,6 +110,7 @@ struct conn_param {
 	uint8_t            will_retain;
 	uint8_t            will_qos;
 	nni_id_map *       nano_qos_db;
+	bool               assignedid;
 	struct mqtt_string pro_name;
 	struct mqtt_string clientid;
 	struct mqtt_string will_topic;
