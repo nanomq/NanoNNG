@@ -50,8 +50,9 @@ struct tcptran_pipe {
 	tcptran_ep *    ep;
 	nni_atomic_flag reaped;
 	nni_reap_node   reap;
-	// uint8_t       sli_win[5];	//use aio multiple times instead of
-	// seperating 2 packets manually
+	//MQTT V5
+	uint16_t	qrecv_quota;
+	uint16_t	qsend_quota;
 };
 
 struct tcptran_ep {
@@ -322,9 +323,10 @@ tcptran_pipe_nego_cb(void *arg)
 		if (conn_handler(p->conn_buf, p->tcp_cparam) == 0) {
 			nng_free(p->conn_buf, p->wantrxhead);
 			p->conn_buf = NULL;
-			// we don't need to alloc a new msg, just use pipe.
-			// We are all ready now.  We put this in the wait list,
-			// and then try to run the matcher.
+			// Connection is accepted.
+			if (p->tcp_cparam->pro_ver == 5) {
+				p->qsend_quota = p->tcp_cparam->rx_max;
+			}
 			nni_list_remove(&ep->negopipes, p);
 			nni_list_append(&ep->waitpipes, p);
 			tcptran_ep_match(ep);
@@ -559,6 +561,10 @@ tcptran_pipe_recv_cb(void *arg)
 
 		qos_pac = nni_msg_get_pub_qos(msg);
 		if (qos_pac > 0) {
+			//flow control, check rx_max
+			if (p->tcp_cparam->pro_ver == 5 && p->qrecv_quota > 0) {
+				p->qrecv_quota--;
+			}
 			nng_aio_wait(p->rsaio);
 			if (qos_pac == 1) {
 				p->txlen[0] = CMD_PUBACK;
@@ -594,6 +600,11 @@ tcptran_pipe_recv_cb(void *arg)
 		// send it down...
 		nni_aio_set_iov(p->qsaio, 1, &iov);
 		nng_stream_send(p->conn, p->qsaio);
+	} else if (type == CMD_PUBACK || type == CMD_PUBCOMP) {
+		// MQTT V5 flow control
+		if (p->tcp_cparam->pro_ver == 5) {
+			p->qsend_quota++;
+		}
 	}
 
 	// keep connection & Schedule next receive
@@ -713,6 +724,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		memcpy(fixheader, header, nni_msg_header_len(msg));
 		qos = qos_pac > qos ? qos : qos_pac;
 
+		// alter qos according to sub qos
 		if (qos_pac > qos) {
 			if (qos == 1) {
 				// set qos to 1
@@ -762,8 +774,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 					old =
 					    NANO_NNI_LMQ_GET_MSG_POINTER(old);
 					nni_msg_free(old);
-					// nni_id_remove(&pipe->nano_qos_db,
-					// pid);
+					// nni_id_remove(&pipe->nano_qos_db, pid);
 				}
 				old = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
 				nni_id_set(pipe->nano_qos_db, pid, old);
@@ -771,6 +782,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 			NNI_PUT16(varheader, pid);
 			p->qlength += 2;
 		}
+		// use qos_buf to keep zero-copy
 		if (p->qlength > 16 + NNI_NANO_MAX_PACKET_SIZE) {
 			nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
 			p->qos_buf = nng_alloc(sizeof(uint8_t) * (p->qlength));
@@ -796,7 +808,17 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 			iov[niov].iov_len = nni_msg_len(msg) - 2 - tlen;
 			niov++;
 		}
-
+		// MQTT V5 flow control
+		if (p->tcp_cparam->pro_ver == 5 && qos > 0) {
+			if (p->qsend_quota > 0) {
+				p->qsend_quota--;
+			} else {
+				// msg lost, make it look like a normal send.
+				// qos msg will be resend afterwards
+				nni_aio_finish(aio, 0, 0);
+				return;
+			}
+		}
 		nni_aio_set_iov(txaio, niov, iov);
 		nng_stream_send(p->conn, txaio);
 		return;
@@ -954,6 +976,7 @@ tcptran_pipe_start(tcptran_pipe *p, nng_stream *conn, tcptran_ep *ep)
 	// p->proto = ep->proto;
 
 	debug_msg("tcptran_pipe_start!");
+	p->qrecv_quota = NANO_MAX_QOS_PACKET;
 	p->gotrxhead  = 0;
 	p->wantrxhead = NANO_CONNECT_PACKET_LEN; // packet type 1 + remaining
 	                                         // length 1 + protocal name 7

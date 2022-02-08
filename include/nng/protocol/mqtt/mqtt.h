@@ -186,4 +186,9 @@ typedef enum {
 	AUTH        = 15
 } mqtt_control_packet_types;
 
+//MQTTV5
+
+//flow control
+#define NANO_MAX_QOS_PACKET 1024	//TODO set in conf
+
 #endif

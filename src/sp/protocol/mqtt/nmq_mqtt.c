@@ -196,7 +196,6 @@ nano_pipe_timer_cb(void *arg)
 	if (!p->busy) {
 		msg = nni_id_get_any(npipe->nano_qos_db, &pid);
 		if (msg != NULL) {
-			// uint8_t qos = NANO_NNI_LMQ_GET_QOS_BITS(msg);
 			rmsg        = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
 			time        = nni_msg_get_timestamp(msg);
 			if ((nni_clock() - time) >=
@@ -210,6 +209,8 @@ nano_pipe_timer_cb(void *arg)
 				debug_msg(
 				    "resending qos msg packetid: %d", pid);
 				nni_pipe_send(p->pipe, &p->aio_send);
+				//TODO use dup field to check if msg is being resend
+				// only remove msg from qos_db when get ack
 				nni_id_remove(npipe->nano_qos_db, pid);
 			}
 		}
