@@ -693,6 +693,27 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 }
 
 /**
+ * @brief convert string from @format to utf-8 format
+ * caller is responsible to free the memory returned
+ */
+char *
+convert_to_utf8(char *src, char *format, size_t *len)
+{
+	size_t  ascii_len = 10, utf8_len;
+	iconv_t iconv_obj     = iconv_open("utf-8", format);
+	char *  out_str       = calloc(strlen(src) * 2, sizeof(char));
+	char *  out_str_start = out_str;
+
+	size_t in_str_bytes_left  = strlen(src);
+	size_t out_str_bytes_left = strlen(src) * 2;
+	int iconv_return = iconv(iconv_obj, &src, &in_str_bytes_left, &out_str,
+	    &out_str_bytes_left);
+	iconv_close(iconv_obj);
+	*len = out_str_bytes_left;
+	return out_str_start;
+}
+
+/**
  * @brief handle and encode CONNACK packet
  */
 void
@@ -726,6 +747,13 @@ nmq_connack_encode(nng_msg *msg, conn_param *cparam, uint8_t reason)
 			remaining_len += 3;
 		}
 		if (cparam->assignedid = true) {
+			// nanomq use fixed length for generated client id
+			uint8_t bin_len[2] = {0x00, 0x0F};
+			tmp = ASSIGNED_CLIENT_IDENTIFIER;
+			nni_msg_append(msg, &tmp, 1);
+			nni_msg_append(msg, bin_len, 2);
+			nni_msg_append(msg, cparam->clientid.body, 15);
+			remaining_len += 18;
 		}
 		// Variable length
 		vlen = put_var_integer(buf2, remaining_len);
