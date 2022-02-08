@@ -746,7 +746,7 @@ nmq_connack_encode(nng_msg *msg, conn_param *cparam, uint8_t reason)
 			nni_msg_append(msg, &(cparam->rx_max), 2);
 			remaining_len += 3;
 		}
-		if (cparam->assignedid = true) {
+		if (cparam->assignedid == true) {
 			// nanomq use fixed length for generated client id
 			uint8_t bin_len[2] = {0x00, 0x0F};
 			tmp = ASSIGNED_CLIENT_IDENTIFIER;
@@ -824,7 +824,7 @@ conn_param_init(conn_param *cparam)
 	cparam->payload_user_property.len_val = 0;
 	cparam->rx_max                        = 65535;
 	cparam->session_expiry_interval       = 0;
-	cparam->assignedid		      = false;
+	cparam->assignedid                    = false;
 }
 
 int
