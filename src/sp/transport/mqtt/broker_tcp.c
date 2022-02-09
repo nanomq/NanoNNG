@@ -510,11 +510,11 @@ tcptran_pipe_recv_cb(void *arg)
 		    p->rxlen[4], p->wantrxhead);
 		// Make sure the message payload is not too big.  If it is
 		// the caller will shut down the pipe.
-		if ((len > p->rcvmax) && (p->rcvmax > 0)) {
-			debug_msg("size error\n");
-			rv = NNG_EMSGSIZE;
-			goto recv_error;
-		}
+		// if ((len > p->rcvmax) && (p->rcvmax > 0)) {
+		// 	debug_msg("size error\n");
+		// 	rv = NNG_EMSGSIZE;
+		// 	goto recv_error;
+		// }
 
 		if ((rv = nni_msg_alloc(&p->rxmsg, (size_t) len)) != 0) {
 			debug_syslog("mem error %ld\n", (size_t) len);
@@ -669,7 +669,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 	nni_aio *txaio;
 	nni_msg *msg;
 	int      niov;
-	nni_iov  iov[4];
+	nni_iov  iov[2];
 	uint8_t  qos;
 
 	debug_msg("########### tcptran_pipe_send_start ###########");
@@ -692,6 +692,16 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		// TODO error handler
 		nni_println("ERROR: sending NULL msg!");
 		return;
+	}
+	// check max packet size
+	if (p->tcp_cparam != NULL && p->tcp_cparam->pro_ver == 5) {
+		uint32_t tlen = nni_msg_len(msg) + nni_msg_header_len(msg);
+		if (tlen > p->tcp_cparam->max_packet_size) {
+			// drop msg and finish aio
+			nni_msg_free(msg);
+			nni_aio_set_msg(aio, NULL);
+			nni_aio_finish(aio, 0, 0);
+		}
 	}
 	qos = NANO_NNI_LMQ_GET_QOS_BITS(msg);
 	// qos default to 0 if the msg is not PUBLISH
@@ -815,6 +825,8 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 			} else {
 				// msg lost, make it look like a normal send.
 				// qos msg will be resend afterwards
+				nni_msg_free(msg);
+				nni_aio_set_msg(aio, NULL);
 				nni_aio_finish(aio, 0, 0);
 				return;
 			}
