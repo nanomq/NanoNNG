@@ -1161,7 +1161,7 @@ tlstran_ep_init(tlstran_ep **epp, nng_url *url, nni_sock *sock)
 }
 
 static int
-tlstran_listener_init(void **lp, nng_url *url, nni_listener *nlistener)
+tlstran_ep_init_listener(void **lp, nng_url *url, nni_listener *nlistener)
 {
 	tlstran_ep *ep;
 	uint16_t    af;
@@ -1170,11 +1170,11 @@ tlstran_listener_init(void **lp, nng_url *url, nni_listener *nlistener)
 	int         rv;
 	nni_sock *  sock = nni_listener_sock(nlistener);
 
-	if (strcmp(url->u_scheme, "tls+tcp") == 0) {
+	if (strcmp(url->u_scheme, "nmq-tls") == 0) {
 		af = NNG_AF_UNSPEC;
-	} else if (strcmp(url->u_scheme, "tls+tcp4") == 0) {
+	} else if (strcmp(url->u_scheme, "nmq-tls-tcp4") == 0) {
 		af = NNG_AF_INET;
-	} else if (strcmp(url->u_scheme, "tls+tcp6") == 0) {
+	} else if (strcmp(url->u_scheme, "nmq-tls-tcp6") == 0) {
 		af = NNG_AF_INET6;
 	} else {
 		return (NNG_EADDRINVAL);
@@ -1216,7 +1216,8 @@ tlstran_listener_init(void **lp, nng_url *url, nni_listener *nlistener)
 	rv = nni_aio_result(aio);
 	nni_aio_free(aio);
 
-	if (((rv = nng_stream_listener_alloc_url(&ep->listener, url)) != 0) ||
+	if ((rv != 0) ||
+	    ((rv = nng_stream_listener_alloc_url(&ep->listener, url)) != 0) ||
 	    ((rv = nni_stream_listener_set(ep->listener, NNG_OPT_TLS_AUTH_MODE,
 	          &ep->authmode, sizeof(ep->authmode), NNI_TYPE_INT32)) !=
 	        0)) {
@@ -1407,7 +1408,7 @@ tlstran_listener_setopt(
 }
 
 static nni_sp_listener_ops tlstran_listener_ops = {
-	.l_init   = tlstran_listener_init,
+	.l_init   = tlstran_ep_init_listener,
 	.l_fini   = tlstran_ep_fini,
 	.l_bind   = tlstran_ep_bind,
 	.l_accept = tlstran_ep_accept,

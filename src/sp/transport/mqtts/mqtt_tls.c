@@ -86,13 +86,13 @@ struct mqtts_tcptran_ep {
 #endif
 };
 
-static void     mqtts_tcptran_pipe_send_start(mqtts_tcptran_pipe *);
-static void     mqtts_tcptran_pipe_recv_start(mqtts_tcptran_pipe *);
-static void     mqtts_tcptran_pipe_send_cb(void *);
-static void     mqtts_tcptran_pipe_recv_cb(void *);
-static void     mqtts_tcptran_pipe_nego_cb(void *);
-static void     mqtts_tcptran_ep_fini(void *);
-static void     mqtts_tcptran_pipe_fini(void *);
+static void mqtts_tcptran_pipe_send_start(mqtts_tcptran_pipe *);
+static void mqtts_tcptran_pipe_recv_start(mqtts_tcptran_pipe *);
+static void mqtts_tcptran_pipe_send_cb(void *);
+static void mqtts_tcptran_pipe_recv_cb(void *);
+static void mqtts_tcptran_pipe_nego_cb(void *);
+static void mqtts_tcptran_ep_fini(void *);
+static void mqtts_tcptran_pipe_fini(void *);
 
 static nni_reap_list tcptran_ep_reap_list = {
 	.rl_offset = offsetof(mqtts_tcptran_ep, reap),
@@ -1139,7 +1139,8 @@ mqtts_tcptran_listener_init(void **lp, nng_url *url, nni_listener *nlistener)
 	rv = nni_aio_result(aio);
 	nni_aio_free(aio);
 
-	if (((rv = nng_stream_listener_alloc_url(&ep->listener, url)) != 0) ||
+	if ((rv != 0) ||
+	    ((rv = nng_stream_listener_alloc_url(&ep->listener, url)) != 0) ||
 	    ((rv = nni_stream_listener_set(ep->listener, NNG_OPT_TLS_AUTH_MODE,
 	          &ep->authmode, sizeof(ep->authmode), NNI_TYPE_INT32)) !=
 	        0)) {
@@ -1273,7 +1274,7 @@ mqtts_tcptran_ep_get_connmsg(void *arg, void *v, size_t *szp, nni_opt_type t)
 }
 
 static int
-mqtts_tcptran_dialer_setcb(void *arg, void * cb)
+mqtts_tcptran_dialer_setcb(void *arg, void *cb)
 {
 	mqtts_tcptran_ep *ep = arg;
 	int               rv;

@@ -27,7 +27,11 @@ static struct {
 	    .upper = "ws",
 	    .lower = "tcp",
 	},
-    	{
+	{
+	    .upper = "nmq-ws",
+	    .lower = "tcp",
+	},
+	{
 	    .upper = "nmq+ws",
 	    .lower = "tcp",
 	},
@@ -37,6 +41,10 @@ static struct {
 	},
 	{
 	    .upper = "wss",
+	    .lower = "tls+tcp",
+	},
+	{
+	    .upper = "nmq-wss",
 	    .lower = "tls+tcp",
 	},
 	{
@@ -52,6 +60,10 @@ static struct {
 	    .lower = "tcp4",
 	},
 	{
+	    .upper = "nmq-ws4",
+	    .lower = "tcp4",
+	},
+	{
 	    .upper = "nmq+ws4",
 	    .lower = "tcp4",
 	},
@@ -63,7 +75,11 @@ static struct {
 	    .upper = "ws6",
 	    .lower = "tcp6",
 	},
-       {
+	{
+	    .upper = "nmq-ws6",
+	    .lower = "tcp6",
+	},
+	{
 	    .upper = "nmq+ws6",
 	    .lower = "tcp6",
 	},

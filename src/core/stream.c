@@ -136,18 +136,18 @@ static struct {
 	},
 	{
 	    .scheme         = "nmq-tls",
-	    .dialer_alloc   = nni_tcp_dialer_alloc,
-	    .listener_alloc = nni_tcp_listener_alloc,
+	    .dialer_alloc   = nni_tls_dialer_alloc,
+	    .listener_alloc = nni_tls_listener_alloc,
 	},
 	{
 	    .scheme         = "nmq-tls-tcp4",
-	    .dialer_alloc   = nni_tcp_dialer_alloc,
-	    .listener_alloc = nni_tcp_listener_alloc,
+	    .dialer_alloc   = nni_tls_dialer_alloc,
+	    .listener_alloc = nni_tls_listener_alloc,
 	},
 	{
 	    .scheme         = "nmq-tls-tcp6",
-	    .dialer_alloc   = nni_tcp_dialer_alloc,
-	    .listener_alloc = nni_tcp_listener_alloc,
+	    .dialer_alloc   = nni_tls_dialer_alloc,
+	    .listener_alloc = nni_tls_listener_alloc,
 	},
 	{
 	    .scheme         = "ws",
