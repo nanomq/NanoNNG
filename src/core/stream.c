@@ -89,7 +89,22 @@ static struct {
 	    .dialer_alloc   = nni_tcp_dialer_alloc,
 	    .listener_alloc = nni_tcp_listener_alloc,
 	},
-{
+	{
+	    .scheme         = "nmq-tcp",
+	    .dialer_alloc   = nni_tcp_dialer_alloc,
+	    .listener_alloc = nni_tcp_listener_alloc,
+	},
+	{
+	    .scheme         = "nmq-tcp4",
+	    .dialer_alloc   = nni_tcp_dialer_alloc,
+	    .listener_alloc = nni_tcp_listener_alloc,
+	},
+	{
+	    .scheme         = "nmq-tcp6",
+	    .dialer_alloc   = nni_tcp_dialer_alloc,
+	    .listener_alloc = nni_tcp_listener_alloc,
+	},
+	{
 	    .scheme         = "broker+tcp",
 	    .dialer_alloc   = nni_tcp_dialer_alloc,
 	    .listener_alloc = nni_tcp_listener_alloc,
@@ -118,6 +133,21 @@ static struct {
 	    .scheme         = "tls+tcp6",
 	    .dialer_alloc   = nni_tls_dialer_alloc,
 	    .listener_alloc = nni_tls_listener_alloc,
+	},
+	{
+	    .scheme         = "nmq-tls",
+	    .dialer_alloc   = nni_tcp_dialer_alloc,
+	    .listener_alloc = nni_tcp_listener_alloc,
+	},
+	{
+	    .scheme         = "nmq-tls-tcp4",
+	    .dialer_alloc   = nni_tcp_dialer_alloc,
+	    .listener_alloc = nni_tcp_listener_alloc,
+	},
+	{
+	    .scheme         = "nmq-tls-tcp6",
+	    .dialer_alloc   = nni_tcp_dialer_alloc,
+	    .listener_alloc = nni_tcp_listener_alloc,
 	},
 	{
 	    .scheme         = "ws",
@@ -156,6 +186,26 @@ static struct {
 	},
 	{
 	    .scheme         = "nmq+wss",
+	    .dialer_alloc   = nni_ws_dialer_alloc,
+	    .listener_alloc = nni_ws_listener_alloc,
+	},
+	{
+	    .scheme         = "nmq-ws",
+	    .dialer_alloc   = nni_ws_dialer_alloc,
+	    .listener_alloc = nni_ws_listener_alloc,
+	},
+	{
+	    .scheme         = "nmq-ws4",
+	    .dialer_alloc   = nni_ws_dialer_alloc,
+	    .listener_alloc = nni_ws_listener_alloc,
+	},
+	{
+	    .scheme         = "nmq-ws6",
+	    .dialer_alloc   = nni_ws_dialer_alloc,
+	    .listener_alloc = nni_ws_listener_alloc,
+	},
+	{
+	    .scheme         = "nmq-wss",
 	    .dialer_alloc   = nni_ws_dialer_alloc,
 	    .listener_alloc = nni_ws_listener_alloc,
 	},
@@ -231,7 +281,7 @@ nng_stream_dialer_alloc_url(nng_stream_dialer **dp, const nng_url *url)
 	if ((rv = nni_init()) != 0) {
 		return (rv);
 	}
-// check this part
+	// check this part
 	for (int i = 0; stream_drivers[i].scheme != NULL; i++) {
 		if (strcmp(stream_drivers[i].scheme, url->u_scheme) == 0) {
 			return (stream_drivers[i].dialer_alloc(dp, url));

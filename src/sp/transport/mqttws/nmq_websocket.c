@@ -128,7 +128,7 @@ wstran_pipe_recv_cb(void *arg)
 			goto recv;
 		}
 		len = get_var_integer(ptr, &pos);
-		if (*(ptr + pos - 1) >0x7f) {
+		if (*(ptr + pos - 1) > 0x7f) {
 			// continue to next byte of remaining length
 			if (p->gotrxhead >= NNI_NANO_MAX_HEADER_SIZE) {
 				// length error
@@ -171,7 +171,8 @@ done:
 			p->tmp_msg = NULL;
 			nni_aio_set_msg(uaio, smsg);
 			nni_aio_set_output(uaio, 0, p);
-			// let pipe_start_cb in protocol layer deal with CONNACK
+			// let pipe_start_cb in protocol layer deal with
+			// CONNACK
 			nni_aio_finish(uaio, 0, 0);
 			nni_mtx_unlock(&p->mtx);
 			return;
@@ -179,7 +180,7 @@ done:
 			if (nni_msg_alloc(&smsg, 0) != 0) {
 				goto reset;
 			}
-			//parse fixed header
+			// parse fixed header
 			ws_fixed_header_adaptor(ptr, smsg);
 			nni_msg_free(p->tmp_msg);
 			p->tmp_msg = NULL;
@@ -307,8 +308,8 @@ wstran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 }
 
 static inline void
-wstran_mqtt_publish(){
-
+wstran_mqtt_publish()
+{
 }
 
 static void
@@ -316,7 +317,7 @@ wstran_pipe_send(void *arg, nni_aio *aio)
 {
 	ws_pipe *p = arg;
 	nni_msg *msg, *smsg;
-	uint8_t qos;
+	uint8_t  qos;
 	int      rv;
 
 	if (nni_aio_begin(aio) != 0) {
@@ -329,10 +330,10 @@ wstran_pipe_send(void *arg, nni_aio *aio)
 		return;
 	}
 	p->user_txaio = aio;
-	msg = nni_aio_get_msg(aio);
-	qos = NANO_NNI_LMQ_GET_QOS_BITS(msg);
-	//qos default to 0 if the msg is not PUBLISH
-	msg  = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
+	msg           = nni_aio_get_msg(aio);
+	qos           = NANO_NNI_LMQ_GET_QOS_BITS(msg);
+	// qos default to 0 if the msg is not PUBLISH
+	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
 	if (nni_msg_cmd_type(msg) == CMD_PUBLISH) {
 		uint8_t *body, *header, qos_pac;
 		uint8_t  varheader[2],
@@ -343,15 +344,15 @@ wstran_pipe_send(void *arg, nni_aio *aio)
 		size_t    tlen, rlen;
 
 		qos_pac = nni_msg_get_pub_qos(msg);
-		qos = qos_pac > qos ? qos : qos_pac;
+		qos     = qos_pac > qos ? qos : qos_pac;
 		if (qos_pac == 0) {
 			// save time & space for QoS 0 publish
 			goto send;
 		}
 
-		pipe       = p->npipe;
-		body       = nni_msg_body(msg);
-		header     = nni_msg_header(msg);
+		pipe   = p->npipe;
+		body   = nni_msg_body(msg);
+		header = nni_msg_header(msg);
 		NNI_GET16(body, tlen);
 		memcpy(fixheader, header, nni_msg_header_len(msg));
 		if (qos_pac > qos) {
@@ -365,13 +366,13 @@ wstran_pipe_send(void *arg, nni_aio *aio)
 				// set qos to 0 (send qos 2/1 to 0)
 				fixheader[0] = fixheader[0] & 0xF9;
 				uint32_t pos = 1;
-				rlen = put_var_integer(
-				    tmp, get_var_integer(header, &pos) - 2);
+				rlen         = put_var_integer(
+                                    tmp, get_var_integer(header, &pos) - 2);
 				memcpy(fixheader + 1, tmp, rlen);
 			}
 		} else {
 			// send msg as it is (qos_pac)
-			rlen         = nni_msg_header_len(msg) - 1;
+			rlen = nni_msg_header_len(msg) - 1;
 		}
 		if (qos > 0) {
 			nni_msg *old;
@@ -407,12 +408,14 @@ wstran_pipe_send(void *arg, nni_aio *aio)
 		nni_msg_header_append(smsg, fixheader, rlen + 1);
 		nni_msg_append(smsg, body, tlen + 2);
 		if (qos > 0) {
-			//packetid
+			// packetid
 			nni_msg_append(smsg, varheader, 2);
 		}
-		//payload
-		nni_msg_append(smsg, body + 4 + tlen, nni_msg_len(msg) - 4 - tlen);
-		//duplicated msg is gonna be freed by http. so we free old one here
+		// payload
+		nni_msg_append(
+		    smsg, body + 4 + tlen, nni_msg_len(msg) - 4 - tlen);
+		// duplicated msg is gonna be freed by http. so we free old one
+		// here
 		nni_msg_free(msg);
 		msg = smsg;
 	}
@@ -422,11 +425,11 @@ send:
 	nni_aio_set_msg(p->txaio, msg);
 	nni_aio_set_msg(aio, NULL);
 	// verify connect
-    if (nni_msg_cmd_type(msg) == CMD_CONNACK) {
+	if (nni_msg_cmd_type(msg) == CMD_CONNACK) {
 		uint8_t *header = nni_msg_header(msg);
-		if (*(header+3) != 0x00) {
+		if (*(header + 3) != 0x00) {
 			nni_pipe_close(p->npipe);
-	    }
+		}
 	}
 	nng_stream_send(p->ws, p->txaio);
 	nni_mtx_unlock(&p->mtx);
@@ -452,7 +455,7 @@ wstran_pipe_init(void *arg, nni_pipe *pipe)
 	p->npipe      = pipe;
 	p->gotrxhead  = 0;
 	p->wantrxhead = 0;
-	p->ep_aio = NULL;
+	p->ep_aio     = NULL;
 	return (0);
 }
 
@@ -918,7 +921,7 @@ static nni_sp_listener_ops ws_listener_ops = {
 	.l_getopt = wstran_listener_get,
 };
 
-static nni_sp_tran ws_tran = {
+static nni_sp_tran ws__tran = {
 	.tran_scheme   = "nmq+ws",
 	.tran_dialer   = &ws_dialer_ops,
 	.tran_listener = &ws_listener_ops,
@@ -927,7 +930,7 @@ static nni_sp_tran ws_tran = {
 	.tran_fini     = wstran_fini,
 };
 
-static nni_sp_tran ws4_tran = {
+static nni_sp_tran ws4__tran = {
 	.tran_scheme   = "nmq+ws4",
 	.tran_dialer   = &ws_dialer_ops,
 	.tran_listener = &ws_listener_ops,
@@ -936,8 +939,35 @@ static nni_sp_tran ws4_tran = {
 	.tran_fini     = wstran_fini,
 };
 
-static nni_sp_tran ws6_tran = {
+static nni_sp_tran ws6__tran = {
 	.tran_scheme   = "nmq+ws6",
+	.tran_dialer   = &ws_dialer_ops,
+	.tran_listener = &ws_listener_ops,
+	.tran_pipe     = &ws_pipe_ops,
+	.tran_init     = wstran_init,
+	.tran_fini     = wstran_fini,
+};
+
+static nni_sp_tran ws_tran = {
+	.tran_scheme   = "nmq-ws",
+	.tran_dialer   = &ws_dialer_ops,
+	.tran_listener = &ws_listener_ops,
+	.tran_pipe     = &ws_pipe_ops,
+	.tran_init     = wstran_init,
+	.tran_fini     = wstran_fini,
+};
+
+static nni_sp_tran ws4_tran = {
+	.tran_scheme   = "nmq-ws4",
+	.tran_dialer   = &ws_dialer_ops,
+	.tran_listener = &ws_listener_ops,
+	.tran_pipe     = &ws_pipe_ops,
+	.tran_init     = wstran_init,
+	.tran_fini     = wstran_fini,
+};
+
+static nni_sp_tran ws6_tran = {
+	.tran_scheme   = "nmq-ws6",
 	.tran_dialer   = &ws_dialer_ops,
 	.tran_listener = &ws_listener_ops,
 	.tran_pipe     = &ws_pipe_ops,
@@ -965,11 +995,14 @@ nni_nmq_ws_register(void)
 	nni_sp_tran_register(&ws_tran);
 	nni_sp_tran_register(&ws4_tran);
 	nni_sp_tran_register(&ws6_tran);
+	nni_sp_tran_register(&ws__tran);
+	nni_sp_tran_register(&ws4__tran);
+	nni_sp_tran_register(&ws6__tran);
 }
 
 #ifdef NNG_TRANSPORT_WSS
 
-static nni_sp_tran wss_tran = {
+static nni_sp_tran wss__tran = {
 	.tran_scheme   = "nmq+wss",
 	.tran_dialer   = &ws_dialer_ops,
 	.tran_listener = &ws_listener_ops,
@@ -978,7 +1011,7 @@ static nni_sp_tran wss_tran = {
 	.tran_fini     = wstran_fini,
 };
 
-static nni_sp_tran wss4_tran = {
+static nni_sp_tran wss4__tran = {
 	.tran_scheme   = "nmq+wss4",
 	.tran_dialer   = &ws_dialer_ops,
 	.tran_listener = &ws_listener_ops,
@@ -987,8 +1020,35 @@ static nni_sp_tran wss4_tran = {
 	.tran_fini     = wstran_fini,
 };
 
-static nni_sp_tran wss6_tran = {
+static nni_sp_tran wss6__tran = {
 	.tran_scheme   = "nmq+wss6",
+	.tran_dialer   = &ws_dialer_ops,
+	.tran_listener = &ws_listener_ops,
+	.tran_pipe     = &ws_pipe_ops,
+	.tran_init     = wstran_init,
+	.tran_fini     = wstran_fini,
+};
+
+static nni_sp_tran wss_tran = {
+	.tran_scheme   = "nmq-wss",
+	.tran_dialer   = &ws_dialer_ops,
+	.tran_listener = &ws_listener_ops,
+	.tran_pipe     = &ws_pipe_ops,
+	.tran_init     = wstran_init,
+	.tran_fini     = wstran_fini,
+};
+
+static nni_sp_tran wss4_tran = {
+	.tran_scheme   = "nmq-wss4",
+	.tran_dialer   = &ws_dialer_ops,
+	.tran_listener = &ws_listener_ops,
+	.tran_pipe     = &ws_pipe_ops,
+	.tran_init     = wstran_init,
+	.tran_fini     = wstran_fini,
+};
+
+static nni_sp_tran wss6_tran = {
+	.tran_scheme   = "nmq-wss6",
 	.tran_dialer   = &ws_dialer_ops,
 	.tran_listener = &ws_listener_ops,
 	.tran_pipe     = &ws_pipe_ops,
@@ -1002,6 +1062,9 @@ nni_nmq_wss_register(void)
 	nni_sp_tran_register(&wss_tran);
 	nni_sp_tran_register(&wss4_tran);
 	nni_sp_tran_register(&wss6_tran);
+	nni_sp_tran_register(&wss__tran);
+	nni_sp_tran_register(&wss4__tran);
+	nni_sp_tran_register(&wss6__tran);
 }
 
 #endif // NNG_TRANSPORT_WSS

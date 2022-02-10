@@ -145,6 +145,10 @@ mark_as_advanced(NNG_TRANSPORT_MQTT_TCP)
 option (NNG_TRANSPORT_MQTT_BROKER_TCP "Enable MQTT BROKER TCP transport." OFF)
 mark_as_advanced(NNG_TRANSPORT_MQTT_BROKER_TCP)
 
+#MQTT Broker TLS
+option (NNG_TRANSPORT_MQTT_BROKER_TLS "Enable MQTT BROKER TLS transport." OFF)
+mark_as_advanced(NNG_TRANSPORT_MQTT_BROKER_TLS)
+
 #MQTT Broker Websocket
 option (NNG_TRANSPORT_MQTT_BROKER_WS "Enable MQTT BROKER WS transport." OFF)
 mark_as_advanced(NNG_TRANSPORT_MQTT_BROKER_WS)
