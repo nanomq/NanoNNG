@@ -563,6 +563,7 @@ tcptran_pipe_recv_cb(void *arg)
 		qos_pac = nni_msg_get_pub_qos(msg);
 		if (qos_pac > 0) {
 			//flow control, check rx_max
+			// recv_quota as length of lmq
 			if (p->tcp_cparam->pro_ver == 5 && p->qrecv_quota > 0) {
 				p->qrecv_quota--;
 			}

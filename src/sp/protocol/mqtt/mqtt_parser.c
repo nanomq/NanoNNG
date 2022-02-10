@@ -719,6 +719,7 @@ convert_to_utf8(char *src, char *format, size_t *len)
 void
 nmq_connack_encode(nng_msg *msg, conn_param *cparam, uint8_t reason)
 {
+	size_t  max_len;
 	uint8_t buf1[7]; // Fixed header
 	uint8_t buf2[4]; // Session Present + Reason Code + Varlength
 	uint8_t pos = 0, vlen = 0, flen, tmp;
@@ -739,6 +740,7 @@ nmq_connack_encode(nng_msg *msg, conn_param *cparam, uint8_t reason)
 			    msg, cparam->session_expiry_interval, 4);
 			remaining_len += 5;
 		}
+		// Receive Maximum
 		if (cparam->rx_max != 65535) {
 			debug_msg("RECEIVE_MAXIMUM %d", cparam->rx_max);
 			tmp = RECEIVE_MAXIMUM;
@@ -755,6 +757,13 @@ nmq_connack_encode(nng_msg *msg, conn_param *cparam, uint8_t reason)
 			nni_msg_append(msg, cparam->clientid.body, 15);
 			remaining_len += 18;
 		}
+		//Subscription Identifier Available
+		//Maximum Packet Size
+		tmp = MAXIMUM_PACKET_SIZE;
+		nni_msg_append(msg, &tmp, 1);
+		max_len = NANO_MAX_RECV_PACKET_SIZE;
+		nni_msg_append(msg, &max_len, 4);
+		remaining_len += 5;
 		// Variable length
 		vlen = put_var_integer(buf2, remaining_len);
 	}
