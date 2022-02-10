@@ -360,8 +360,7 @@ error:
 	}
 	nni_mtx_unlock(&ep->mtx);
 	tlstran_pipe_reap(p);
-	debug_msg("connect nego error rv: %d!", rv);
-	return;
+	debug_msg("connect nego error rv: %s(%d)", nng_strerror(rv), rv);
 }
 
 static void
@@ -391,8 +390,8 @@ tlstran_pipe_send_cb(void *arg)
 
 	n = nni_aio_count(txaio);
 	nni_aio_iov_advance(txaio, n);
-	debug_msg(
-	    "tcp socket sent %ld bytes iov %ld", n, nni_aio_iov_count(txaio));
+	debug_msg("tls over tcp socket sent %ld bytes iov %ld", n,
+	    nni_aio_iov_count(txaio));
 
 	if (nni_aio_iov_count(txaio) > 0) {
 		nng_stream_send(p->conn, txaio);
@@ -603,6 +602,7 @@ tlstran_pipe_recv_cb(void *arg)
 	if (!nni_list_empty(&p->recvq)) {
 		tlstran_pipe_recv_start(p);
 	}
+	nni_pipe_bump_rx(p->npipe, n);
 	nni_mtx_unlock(&p->mtx);
 
 	nni_aio_set_msg(aio, msg);
@@ -879,9 +879,9 @@ tlstran_pipe_recv(void *arg, nni_aio *aio)
 		return;
 	}
 
-	if (nni_aio_list_active(aio) == 0) {
-		nni_list_append(&p->recvq, aio);
-	}
+	// if (nni_aio_list_active(aio) == 0) {
+	nni_list_append(&p->recvq, aio);
+	// }
 
 	if (nni_list_first(&p->recvq) == aio) {
 		tlstran_pipe_recv_start(p);
@@ -1073,7 +1073,7 @@ tlstran_timer_cb(void *arg)
 	}
 }
 
-// TCP accpet trigger
+// TLS accpet trigger
 static void
 tlstran_accept_cb(void *arg)
 {
@@ -1170,11 +1170,11 @@ tlstran_ep_init_listener(void **lp, nng_url *url, nni_listener *nlistener)
 	int         rv;
 	nni_sock *  sock = nni_listener_sock(nlistener);
 
-	if (strcmp(url->u_scheme, "nmq-tls") == 0) {
+	if (strcmp(url->u_scheme, "tls+nmq-tcp") == 0) {
 		af = NNG_AF_UNSPEC;
-	} else if (strcmp(url->u_scheme, "nmq-tls-tcp4") == 0) {
+	} else if (strcmp(url->u_scheme, "tls+nmq-tcp4") == 0) {
 		af = NNG_AF_INET;
-	} else if (strcmp(url->u_scheme, "nmq-tls-tcp6") == 0) {
+	} else if (strcmp(url->u_scheme, "tls+nmq-tcp6") == 0) {
 		af = NNG_AF_INET6;
 	} else {
 		return (NNG_EADDRINVAL);
@@ -1277,6 +1277,41 @@ tlstran_ep_get_recvmaxsz(void *arg, void *v, size_t *szp, nni_opt_type t)
 	return (rv);
 }
 
+static void
+tlstran_ep_accept(void *arg, nni_aio *aio)
+{
+	tlstran_ep *ep = arg;
+	int         rv;
+
+	if (nni_aio_begin(aio) != 0) {
+		return;
+	}
+	nni_mtx_lock(&ep->mtx);
+	if (ep->closed) {
+		nni_mtx_unlock(&ep->mtx);
+		nni_aio_finish_error(aio, NNG_ECLOSED);
+		return;
+	}
+	if (ep->useraio != NULL) {
+		nni_mtx_unlock(&ep->mtx);
+		nni_aio_finish_error(aio, NNG_EBUSY);
+		return;
+	}
+	if ((rv = nni_aio_schedule(aio, tlstran_ep_cancel, ep)) != 0) {
+		nni_mtx_unlock(&ep->mtx);
+		nni_aio_finish_error(aio, rv);
+		return;
+	}
+	ep->useraio = aio;
+	if (!ep->started) {
+		ep->started = true;
+		nng_stream_listener_accept(ep->listener, ep->connaio);
+	} else {
+		tlstran_ep_match(ep);
+	}
+	nni_mtx_unlock(&ep->mtx);
+}
+
 static int
 tlstran_ep_set_recvmaxsz(void *arg, const void *v, size_t sz, nni_opt_type t)
 {
@@ -1317,41 +1352,6 @@ tlstran_ep_bind(void *arg)
 	return (rv);
 }
 
-static void
-tlstran_ep_accept(void *arg, nni_aio *aio)
-{
-	tlstran_ep *ep = arg;
-	int         rv;
-
-	if (nni_aio_begin(aio) != 0) {
-		return;
-	}
-	nni_mtx_lock(&ep->mtx);
-	if (ep->closed) {
-		nni_mtx_unlock(&ep->mtx);
-		nni_aio_finish_error(aio, NNG_ECLOSED);
-		return;
-	}
-	if (ep->useraio != NULL) {
-		nni_mtx_unlock(&ep->mtx);
-		nni_aio_finish_error(aio, NNG_EBUSY);
-		return;
-	}
-	if ((rv = nni_aio_schedule(aio, tlstran_ep_cancel, ep)) != 0) {
-		nni_mtx_unlock(&ep->mtx);
-		nni_aio_finish_error(aio, rv);
-		return;
-	}
-	ep->useraio = aio;
-	if (!ep->started) {
-		ep->started = true;
-		nng_stream_listener_accept(ep->listener, ep->connaio);
-	} else {
-		tlstran_ep_match(ep);
-	}
-	nni_mtx_unlock(&ep->mtx);
-}
-
 static nni_sp_pipe_ops tlstran_pipe_ops = {
 	.p_init  = tlstran_pipe_init,
 	.p_fini  = tlstran_pipe_fini,
@@ -1380,7 +1380,7 @@ static const nni_option tlstran_ep_opts[] = {
 };
 
 static int
-tlstran_listener_getopt(
+tlstran_listener_get(
     void *arg, const char *name, void *buf, size_t *szp, nni_type t)
 {
 	tlstran_ep *ep = arg;
@@ -1394,13 +1394,14 @@ tlstran_listener_getopt(
 }
 
 static int
-tlstran_listener_setopt(
+tlstran_listener_set(
     void *arg, const char *name, const void *buf, size_t sz, nni_type t)
 {
 	tlstran_ep *ep = arg;
 	int         rv;
 
-	rv = nni_stream_listener_set(ep->listener, name, buf, sz, t);
+	rv = nni_stream_listener_set(
+	    ep != NULL ? ep->listener : NULL, name, buf, sz, t);
 	if (rv == NNG_ENOTSUP) {
 		rv = nni_setopt(tlstran_ep_opts, name, ep, buf, sz, t);
 	}
@@ -1413,12 +1414,12 @@ static nni_sp_listener_ops tlstran_listener_ops = {
 	.l_bind   = tlstran_ep_bind,
 	.l_accept = tlstran_ep_accept,
 	.l_close  = tlstran_ep_close,
-	.l_getopt = tlstran_listener_getopt,
-	.l_setopt = tlstran_listener_setopt,
+	.l_getopt = tlstran_listener_get,
+	.l_setopt = tlstran_listener_set,
 };
 
 static nni_sp_tran tlstran_mqtt = {
-	.tran_scheme   = "nmq-tls",
+	.tran_scheme   = "tls+nmq-tcp",
 	.tran_listener = &tlstran_listener_ops,
 	.tran_pipe     = &tlstran_pipe_ops,
 	.tran_init     = tlstran_init,
@@ -1426,7 +1427,7 @@ static nni_sp_tran tlstran_mqtt = {
 };
 
 static nni_sp_tran tls_tcp4_tran_mqtt = {
-	.tran_scheme   = "nmq-tls-tcp4",
+	.tran_scheme   = "tls+nmq-tcp4",
 	.tran_listener = &tlstran_listener_ops,
 	.tran_pipe     = &tlstran_pipe_ops,
 	.tran_init     = tlstran_init,
@@ -1434,7 +1435,7 @@ static nni_sp_tran tls_tcp4_tran_mqtt = {
 };
 
 static nni_sp_tran tls_tcp6_tran_mqtt = {
-	.tran_scheme   = "nmq-tls-tcp6",
+	.tran_scheme   = "tls+nmq-tcp6",
 	.tran_listener = &tlstran_listener_ops,
 	.tran_pipe     = &tlstran_pipe_ops,
 	.tran_init     = tlstran_init,

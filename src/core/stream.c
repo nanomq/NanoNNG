@@ -135,17 +135,17 @@ static struct {
 	    .listener_alloc = nni_tls_listener_alloc,
 	},
 	{
-	    .scheme         = "nmq-tls",
+	    .scheme         = "tls+nmq-tcp",
 	    .dialer_alloc   = nni_tls_dialer_alloc,
 	    .listener_alloc = nni_tls_listener_alloc,
 	},
 	{
-	    .scheme         = "nmq-tls-tcp4",
+	    .scheme         = "tls+nmq-tcp4",
 	    .dialer_alloc   = nni_tls_dialer_alloc,
 	    .listener_alloc = nni_tls_listener_alloc,
 	},
 	{
-	    .scheme         = "nmq-tls-tcp6",
+	    .scheme         = "tls+nmq-tcp6",
 	    .dialer_alloc   = nni_tls_dialer_alloc,
 	    .listener_alloc = nni_tls_listener_alloc,
 	},
