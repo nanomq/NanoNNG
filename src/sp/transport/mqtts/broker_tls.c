@@ -624,7 +624,7 @@ recv_error:
 notify:
 	// nni_pipe_bump_rx(p->npipe, n);
 	nni_aio_list_remove(aio);
-	tlstran_pipe_recv_start(p);
+	// tlstran_pipe_recv_start(p);
 	nni_mtx_unlock(&p->mtx);
 	nni_aio_set_msg(aio, NULL);
 	nni_aio_finish(aio, 0, 0);
