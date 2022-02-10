@@ -510,14 +510,15 @@ tcptran_pipe_recv_cb(void *arg)
 		    p->rxlen[4], p->wantrxhead);
 		// Make sure the message payload is not too big.  If it is
 		// the caller will shut down the pipe.
-		// if ((len > p->rcvmax) && (p->rcvmax > 0)) {
-		// 	debug_msg("size error\n");
-		// 	rv = NNG_EMSGSIZE;
-		// 	goto recv_error;
-		// }
+		if (len > NANO_MAX_RECV_PACKET_SIZE) {
+			debug_msg("size error 0x95\n");
+			rv = NMQ_PACKET_TOO_LARGE;
+			goto recv_error;
+		}
 
 		if ((rv = nni_msg_alloc(&p->rxmsg, (size_t) len)) != 0) {
 			debug_syslog("mem error %ld\n", (size_t) len);
+			rv = NMQ_SERVER_UNAVAILABLE;
 			goto recv_error;
 		}
 
@@ -694,7 +695,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		nni_println("ERROR: sending NULL msg!");
 		return;
 	}
-	// check max packet size
+	// check max packet size config for this client
 	if (p->tcp_cparam != NULL && p->tcp_cparam->pro_ver == 5) {
 		uint32_t tlen = nni_msg_len(msg) + nni_msg_header_len(msg);
 		if (tlen > p->tcp_cparam->max_packet_size) {

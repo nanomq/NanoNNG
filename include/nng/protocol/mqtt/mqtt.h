@@ -87,6 +87,7 @@ enum err_t {
 	ERR_OCSP               = 26,
 };
 
+//ERROR! Enum is not fit here
 typedef enum {
 	SUCCESS                                = 0,
 	NORMAL_DISCONNECTION                   = 0,
@@ -135,6 +136,11 @@ typedef enum {
 	WILDCARD_SUBSCRIPTIONS_NOT_SUPPORTED   = 162
 
 } reason_code;
+
+// mqtt5 macro
+#define NMQ_PACKET_TOO_LARGE 0x95;
+#define NMQ_SERVER_UNAVAILABLE 0x88;
+#define NMQ_KEEP_ALIVE_TIMEOUT 0x8D;
 
 typedef enum {
 	PAYLOAD_FORMAT_INDICATOR          = 1,
@@ -190,5 +196,8 @@ typedef enum {
 
 //flow control
 #define NANO_MAX_QOS_PACKET 1024	//TODO set in conf
+
+// Maximum Packet Size of broker
+#define NANO_MAX_RECV_PACKET_SIZE 2048  // TODO set in conf
 
 #endif
