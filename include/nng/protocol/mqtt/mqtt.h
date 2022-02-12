@@ -138,8 +138,10 @@ typedef enum {
 } reason_code;
 
 // mqtt5 macro
+#define NMQ_RECEIVE_MAXIMUM_EXCEEDED 0X93;
 #define NMQ_PACKET_TOO_LARGE 0x95;
 #define NMQ_SERVER_UNAVAILABLE 0x88;
+#define NMQ_SERVER_BUSY 0x89;
 #define NMQ_KEEP_ALIVE_TIMEOUT 0x8D;
 
 typedef enum {
@@ -194,7 +196,7 @@ typedef enum {
 
 //MQTTV5
 
-//flow control
+//flow control:how many QoS packet broker willing to process at same time.
 #define NANO_MAX_QOS_PACKET 1024	//TODO set in conf
 
 // Maximum Packet Size of broker

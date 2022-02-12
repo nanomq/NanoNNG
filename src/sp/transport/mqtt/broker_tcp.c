@@ -31,6 +31,7 @@ struct tcptran_pipe {
 	size_t          wantrxhead;
 	size_t          qlength; // length of qos_buf
 	bool            closed;
+	bool		busy; // indicator for qos ack & aio
 	uint8_t         txlen[NANO_MIN_PACKET_LEN];
 	uint8_t         rxlen[NNI_NANO_MAX_HEADER_SIZE];
 	uint8_t *       conn_buf;
@@ -41,6 +42,7 @@ struct tcptran_pipe {
 	nni_aio *       rsaio;
 	nni_aio *       rpaio;
 	nni_aio *       negoaio;
+	nni_lmq          rslmq;
 	nni_msg *       rxmsg, *cnmsg;
 	nni_mtx         mtx;
 	conn_param *    tcp_cparam;
@@ -80,7 +82,8 @@ struct tcptran_ep {
 
 static void tcptran_pipe_send_start(tcptran_pipe *);
 static void tcptran_pipe_recv_start(tcptran_pipe *);
-static void tcptran_pipe_send_cb(void *);
+static void nmq_tcptran_pipe_send_cb(void *);
+static void nmq_tcptran_pipe_qos_send_cb(void *);
 static void tcptran_pipe_recv_cb(void *);
 static void tcptran_pipe_nego_cb(void *);
 static void tcptran_ep_fini(void *);
@@ -114,6 +117,7 @@ tcptran_pipe_close(void *arg)
 
 	nni_mtx_lock(&p->mtx);
 	p->closed = true;
+	nni_lmq_flush(&p->rslmq);
 	nni_mtx_unlock(&p->mtx);
 
 	nni_aio_close(p->rxaio);
@@ -149,6 +153,8 @@ tcptran_pipe_init(void *arg, nni_pipe *npipe)
 	nni_pipe_set_conn_param(npipe, p->tcp_cparam);
 	p->npipe    = npipe;
 	p->conn_buf = NULL;
+	p->busy     = false;
+	nni_lmq_init(&p->rslmq, 16);
 	p->qos_buf  = nng_alloc(16 + NNI_NANO_MAX_PACKET_SIZE);
 	return (0);
 }
@@ -179,6 +185,7 @@ tcptran_pipe_fini(void *arg)
 	nni_aio_free(p->negoaio);
 	nng_stream_free(p->conn);
 	nni_msg_free(p->rxmsg);
+	nni_lmq_fini(&p->rslmq);
 	nni_mtx_fini(&p->mtx);
 	NNI_FREE_STRUCT(p);
 }
@@ -204,8 +211,8 @@ tcptran_pipe_alloc(tcptran_pipe **pipep)
 		return (NNG_ENOMEM);
 	}
 	nni_mtx_init(&p->mtx);
-	if (((rv = nni_aio_alloc(&p->txaio, tcptran_pipe_send_cb, p)) != 0) ||
-	    ((rv = nni_aio_alloc(&p->qsaio, NULL, p)) != 0) ||
+	if (((rv = nni_aio_alloc(&p->txaio, nmq_tcptran_pipe_send_cb, p)) != 0) ||
+	    ((rv = nni_aio_alloc(&p->qsaio, nmq_tcptran_pipe_qos_send_cb, p)) != 0) ||
 	    ((rv = nni_aio_alloc(&p->rpaio, NULL, p)) != 0) ||
 	    ((rv = nni_aio_alloc(&p->rsaio, NULL, p)) != 0) ||
 	    ((rv = nni_aio_alloc(&p->rxaio, tcptran_pipe_recv_cb, p)) != 0) ||
@@ -365,7 +372,48 @@ error:
 }
 
 static void
-tcptran_pipe_send_cb(void *arg)
+nmq_tcptran_pipe_qos_send_cb(void *arg)
+{
+	tcptran_pipe *p = arg;
+	nni_msg *          msg;
+	nni_aio *          qsaio = p->qsaio;
+	uint8_t		   type;
+
+	nni_mtx_lock(&p->mtx);
+	if (nni_aio_result(qsaio) != 0) {
+		nni_msg_free(nni_aio_get_msg(qsaio));
+		nni_aio_set_msg(qsaio, NULL);
+		tcptran_pipe_close(p);
+		return;
+	}
+
+	msg = nni_aio_get_msg(p->qsaio);
+	type = nni_msg_cmd_type(msg) ;
+
+	if (p->tcp_cparam->pro_ver == 5) {
+		(type == CMD_PUBCOMP || type == PUBACK)? p->qrecv_quota++:p->qrecv_quota;
+	}
+	nni_msg_free(msg);
+	if (nni_lmq_getq(&p->rslmq, &msg) == 0) {
+		nni_iov iov;
+		iov.iov_len = 4;
+		iov.iov_buf = nni_msg_header(msg);
+		nni_aio_set_msg(p->qsaio, msg);
+		// send it down...
+		nni_aio_set_iov(p->qsaio, 1, &iov);
+		nng_stream_send(p->conn, p->qsaio);
+		p->busy = true;
+		nni_mtx_unlock(&p->mtx);
+		return;
+	}
+	p->busy = false;
+	nni_aio_set_msg(qsaio, NULL);
+	nni_mtx_unlock(&p->mtx);
+	return;
+}
+
+static void
+nmq_tcptran_pipe_send_cb(void *arg)
 {
 	tcptran_pipe *p = arg;
 	int           rv;
@@ -379,7 +427,7 @@ tcptran_pipe_send_cb(void *arg)
 	nni_mtx_lock(&p->mtx);
 	aio = nni_list_first(&p->sendq);
 
-	debug_msg("############### tcptran_pipe_send_cb ################");
+	debug_msg("############### nmq_tcptran_pipe_send_cb ################");
 
 	if ((rv = nni_aio_result(txaio)) != 0) {
 		nni_pipe_bump_error(p->npipe, rv);
@@ -439,10 +487,12 @@ tcptran_pipe_recv_cb(void *arg)
 	uint8_t       type;
 	uint32_t      len = 0, rv, pos = 1;
 	size_t        n;
-	nni_msg *     msg;
+	nni_msg *     msg, *qmsg;
 	tcptran_pipe *p     = arg;
 	nni_aio *     rxaio = p->rxaio;
 	conn_param *  cparam;
+	bool               ack   = false;
+
 
 	debug_msg("tcptran_pipe_recv_cb %p\n", p);
 	nni_mtx_lock(&p->mtx);
@@ -451,6 +501,7 @@ tcptran_pipe_recv_cb(void *arg)
 
 	if ((rv = nni_aio_result(rxaio)) != 0) {
 		debug_msg("nni aio error!! %d\n", rv);
+		rv = NMQ_SERVER_BUSY;
 		goto recv_error;
 	}
 
@@ -564,10 +615,15 @@ tcptran_pipe_recv_cb(void *arg)
 		if (qos_pac > 0) {
 			//flow control, check rx_max
 			// recv_quota as length of lmq
-			if (p->tcp_cparam->pro_ver == 5 && p->qrecv_quota > 0) {
-				p->qrecv_quota--;
+			if (p->tcp_cparam->pro_ver == 5) {
+				if (p->qrecv_quota > 0) {
+					p->qrecv_quota--;
+				} else {
+					rv = NMQ_RECEIVE_MAXIMUM_EXCEEDED;
+					goto recv_error;
+				}
 			}
-			nng_aio_wait(p->rsaio);
+			// nng_aio_wait(p->rsaio);
 			if (qos_pac == 1) {
 				p->txlen[0] = CMD_PUBACK;
 			} else if (qos_pac == 2) {
@@ -576,42 +632,90 @@ tcptran_pipe_recv_cb(void *arg)
 			p->txlen[1] = 0x02;
 			pid         = nni_msg_get_pub_pid(msg);
 			NNI_PUT16(p->txlen + 2, pid);
-			iov.iov_len = 4;
-			iov.iov_buf = &p->txlen;
-			// send it down...
-			nni_aio_set_iov(p->rsaio, 1, &iov);
-			nng_stream_send(p->conn, p->rsaio);
+			ack = true;
+			// iov.iov_len = 4;
+			// iov.iov_buf = &p->txlen;
+			// // send it down...
+			// nni_aio_set_iov(p->rsaio, 1, &iov);
+			// nng_stream_send(p->conn, p->rsaio);
 		}
 	} else if (type == CMD_PUBREC) {
-		nng_aio_wait(p->rpaio);
+		// nng_aio_wait(p->rpaio);
 		p->txlen[0] = 0X62;
 		p->txlen[1] = 0x02;
 		memcpy(p->txlen + 2, nni_msg_body(msg), 2);
-		iov.iov_len = 4;
-		iov.iov_buf = &p->txlen;
-		// send it down...
-		nni_aio_set_iov(p->rpaio, 1, &iov);
-		nng_stream_send(p->conn, p->rpaio);
+		ack = true;
+		// iov.iov_len = 4;
+		// iov.iov_buf = &p->txlen;
+		// // send it down...
+		// nni_aio_set_iov(p->rpaio, 1, &iov);
+		// nng_stream_send(p->conn, p->rpaio);
 	} else if (type == CMD_PUBREL) {
-		nng_aio_wait(p->qsaio);
+		// nng_aio_wait(p->qsaio);
 		p->txlen[0] = CMD_PUBCOMP;
 		p->txlen[1] = 0x02;
 		memcpy(p->txlen + 2, nni_msg_body(msg), 2);
-		iov.iov_len = 4;
-		iov.iov_buf = &p->txlen;
-		// send it down...
-		nni_aio_set_iov(p->qsaio, 1, &iov);
-		nng_stream_send(p->conn, p->qsaio);
+		ack = true;
+		// iov.iov_len = 4;
+		// iov.iov_buf = &p->txlen;
+		// // send it down...
+		// nni_aio_set_iov(p->qsaio, 1, &iov);
+		// nng_stream_send(p->conn, p->qsaio);
 	} else if (type == CMD_PUBACK || type == CMD_PUBCOMP) {
 		// MQTT V5 flow control
 		if (p->tcp_cparam->pro_ver == 5) {
 			p->qsend_quota++;
 		}
 	}
-
+	if (ack == true) {
+		// alloc a msg here costs memory. However we must do it for the sake of compatibility with nng.
+		if ((rv = nni_msg_alloc(&qmsg, 0)) != 0) {
+			ack = false;
+			rv = NMQ_SERVER_BUSY;
+			goto recv_error;
+		}
+		nni_msg_set_cmd_type(qmsg, p->txlen[0]);
+		nni_msg_header_append(qmsg, p->txlen, 4);
+		// aio_begin?
+		if (p->busy == false) {
+			iov.iov_len = 4;
+			iov.iov_buf = nni_msg_header(qmsg);
+			p->busy     = true;
+			nni_aio_set_msg(p->qsaio, qmsg);
+			// send ACK down...
+			nni_aio_set_iov(p->qsaio, 1, &iov);
+			nng_stream_send(p->conn, p->qsaio);
+		} else {
+			if (nni_lmq_full(&p->rslmq)) {
+				// Make space for the new message. TODO add max
+				// limit of msgq len in conf
+				if (nni_lmq_cap(&p->rslmq) <=
+				    NANO_MAX_QOS_PACKET) {
+					if ((rv = nni_lmq_resize(&p->rslmq,
+					         nni_lmq_cap(&p->rslmq) *
+					             2)) == 0) {
+						nni_lmq_putq(&p->rslmq, qmsg);
+					} else {
+						// memory error.
+						nni_msg_free(qmsg);
+					}
+				} else {
+					nni_msg *old;
+					(void) nni_lmq_getq(&p->rslmq, &old);
+					nni_msg_free(old);
+					nni_lmq_putq(&p->rslmq, qmsg);
+				}
+			} else {
+				nni_lmq_putq(&p->rslmq, qmsg);
+			}
+		}
+		ack = false;
+	}
 	// keep connection & Schedule next receive
 	// nni_pipe_bump_rx(p->npipe, n);
-	tcptran_pipe_recv_start(p);
+	if (!nni_list_empty(&p->recvq)) {
+		tcptran_pipe_recv_start(p);
+	}
 	nni_mtx_unlock(&p->mtx);
 
 	nni_aio_set_msg(aio, msg);
@@ -826,6 +930,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 			if (p->qsend_quota > 0) {
 				p->qsend_quota--;
 			} else {
+				// what should broker does when exceed max_recv? 
 				// msg lost, make it look like a normal send.
 				// qos msg will be resend afterwards
 				nni_msg_free(msg);
