@@ -1,5 +1,11 @@
-// rewrite by Jaylin EMQ X for MQTT usage
-
+//
+// Copyright 2021 NanoMQ Team, Inc. <jaylin@emqx.io>
+//
+// This software is supplied under the terms of the MIT License, a
+// copy of which should be located in the distribution where this
+// file was obtained (LICENSE.txt).  A copy of the license may also be
+// found online at https://opensource.org/licenses/MIT.
+//
 #include <conf.h>
 #include <mqtt_db.h>
 #include <poll.h>
@@ -39,10 +45,9 @@ struct tcptran_pipe {
 	nni_aio *       txaio;
 	nni_aio *       rxaio;
 	nni_aio *       qsaio;
-	nni_aio *       rsaio;
 	nni_aio *       rpaio;
 	nni_aio *       negoaio;
-	nni_lmq          rslmq;
+	nni_lmq         rslmq;
 	nni_msg *       rxmsg, *cnmsg;
 	nni_mtx         mtx;
 	conn_param *    tcp_cparam;
@@ -123,7 +128,6 @@ tcptran_pipe_close(void *arg)
 	nni_aio_close(p->rxaio);
 	nni_aio_close(p->rpaio);
 	nni_aio_close(p->txaio);
-	nni_aio_close(p->rsaio);
 	nni_aio_close(p->qsaio);
 	nni_aio_close(p->negoaio);
 
@@ -137,7 +141,6 @@ tcptran_pipe_stop(void *arg)
 	tcptran_pipe *p = arg;
 
 	nni_aio_stop(p->qsaio);
-	nni_aio_stop(p->rsaio);
 	nni_aio_stop(p->rpaio);
 	nni_aio_stop(p->rxaio);
 	nni_aio_stop(p->txaio);
@@ -179,7 +182,6 @@ tcptran_pipe_fini(void *arg)
 	nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
 	nni_aio_free(p->qsaio);
 	nni_aio_free(p->rpaio);
-	nni_aio_free(p->rsaio);
 	nni_aio_free(p->rxaio);
 	nni_aio_free(p->txaio);
 	nni_aio_free(p->negoaio);
@@ -214,7 +216,6 @@ tcptran_pipe_alloc(tcptran_pipe **pipep)
 	if (((rv = nni_aio_alloc(&p->txaio, nmq_tcptran_pipe_send_cb, p)) != 0) ||
 	    ((rv = nni_aio_alloc(&p->qsaio, nmq_tcptran_pipe_qos_send_cb, p)) != 0) ||
 	    ((rv = nni_aio_alloc(&p->rpaio, NULL, p)) != 0) ||
-	    ((rv = nni_aio_alloc(&p->rsaio, NULL, p)) != 0) ||
 	    ((rv = nni_aio_alloc(&p->rxaio, tcptran_pipe_recv_cb, p)) != 0) ||
 	    ((rv = nni_aio_alloc(&p->negoaio, tcptran_pipe_nego_cb, p)) !=
 	        0)) {
@@ -537,14 +538,15 @@ tcptran_pipe_recv_cb(void *arg)
 		return;
 	} else if (len == 0 && n == 2) {
 		if ((p->rxlen[0] & 0XFF) == CMD_PINGREQ) {
-			nng_aio_wait(p->qsaio);
+			// TODO set timeout in case it never finish
+			nng_aio_wait(p->rpaio);
 			p->txlen[0] = CMD_PINGRESP;
 			p->txlen[1] = 0x00;
 			iov.iov_len = 2;
 			iov.iov_buf = &p->txlen;
-			// send it down...
+			// send CMD_PINGRESP down...
 			nni_aio_set_iov(p->qsaio, 1, &iov);
-			nng_stream_send(p->conn, p->qsaio);
+			nng_stream_send(p->conn, p->rpaio);
 			goto notify;
 		}
 	}
@@ -623,7 +625,6 @@ tcptran_pipe_recv_cb(void *arg)
 					goto recv_error;
 				}
 			}
-			// nng_aio_wait(p->rsaio);
 			if (qos_pac == 1) {
 				p->txlen[0] = CMD_PUBACK;
 			} else if (qos_pac == 2) {
@@ -633,34 +634,17 @@ tcptran_pipe_recv_cb(void *arg)
 			pid         = nni_msg_get_pub_pid(msg);
 			NNI_PUT16(p->txlen + 2, pid);
 			ack = true;
-			// iov.iov_len = 4;
-			// iov.iov_buf = &p->txlen;
-			// // send it down...
-			// nni_aio_set_iov(p->rsaio, 1, &iov);
-			// nng_stream_send(p->conn, p->rsaio);
 		}
 	} else if (type == CMD_PUBREC) {
-		// nng_aio_wait(p->rpaio);
 		p->txlen[0] = 0X62;
 		p->txlen[1] = 0x02;
 		memcpy(p->txlen + 2, nni_msg_body(msg), 2);
 		ack = true;
-		// iov.iov_len = 4;
-		// iov.iov_buf = &p->txlen;
-		// // send it down...
-		// nni_aio_set_iov(p->rpaio, 1, &iov);
-		// nng_stream_send(p->conn, p->rpaio);
 	} else if (type == CMD_PUBREL) {
-		// nng_aio_wait(p->qsaio);
 		p->txlen[0] = CMD_PUBCOMP;
 		p->txlen[1] = 0x02;
 		memcpy(p->txlen + 2, nni_msg_body(msg), 2);
 		ack = true;
-		// iov.iov_len = 4;
-		// iov.iov_buf = &p->txlen;
-		// // send it down...
-		// nni_aio_set_iov(p->qsaio, 1, &iov);
-		// nng_stream_send(p->conn, p->qsaio);
 	} else if (type == CMD_PUBACK || type == CMD_PUBCOMP) {
 		// MQTT V5 flow control
 		if (p->tcp_cparam->pro_ver == 5) {
