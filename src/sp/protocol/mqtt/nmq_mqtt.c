@@ -1,5 +1,5 @@
 //
-// Copyright 2020 NanoMQ Team, Inc. <jaylin@emqx.io>
+// Copyright 2022 NanoMQ Team, Inc. <jaylin@emqx.io>
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -187,7 +187,7 @@ nano_pipe_timer_cb(void *arg)
 		nni_println("Warning: close pipe & kick client due to KeepAlive "
 		       "timeout!");
 		// TODO check keepalived timer interval
-		p->reason_code = 0x8D;
+		p->reason_code = NMQ_KEEP_ALIVE_TIMEOUT;
 		nni_aio_finish_error(&p->aio_recv, NNG_ECONNREFUSED);
 		nni_mtx_unlock(&p->lk);
 		return;
@@ -627,6 +627,8 @@ nano_pipe_close(void *arg)
 		}
 	}
 
+	// TODO send disconnect msg to client if needed.
+	// depends on MQTT V5 reason code
 	// create disconnect event msg
 	msg = nano_msg_notify_disconnect(p->conn_param, p->reason_code);
 	if (msg == NULL) {
@@ -784,10 +786,12 @@ nano_pipe_recv_cb(void *arg)
 	nni_aio *        aio;
 	nni_pipe *       npipe = p->pipe;
 	uint8_t *        ptr;
+	int          rv;
 	uint16_t         ackid;
 
-	if (nni_aio_result(&p->aio_recv) != 0) {
+	if ((rv = nni_aio_result(&p->aio_recv)) != 0) {
 		// unexpected disconnect
+		p->reason_code = rv;
 		nni_pipe_close(p->pipe);
 		return;
 	}
