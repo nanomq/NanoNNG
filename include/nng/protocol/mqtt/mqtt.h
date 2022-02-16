@@ -200,6 +200,6 @@ typedef enum {
 #define NANO_MAX_QOS_PACKET 1024	//TODO set in conf
 
 // Maximum Packet Size of broker
-#define NANO_MAX_RECV_PACKET_SIZE 2048  // TODO set in conf
+#define NANO_MAX_RECV_PACKET_SIZE (2*1024*1024)  // TODO set in conf
 
 #endif

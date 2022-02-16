@@ -452,6 +452,12 @@ nmq_tcptran_pipe_send_cb(void *arg)
 	tcptran_pipe_send_start(p);
 
 	msg = nni_aio_get_msg(aio);
+	if (msg == NULL) {
+		nni_mtx_unlock(&p->mtx);
+		nni_aio_finish_error(aio, NNG_ECLOSED);
+		return;
+	}
+
 	n   = nni_msg_len(msg);
 	cmd = nni_msg_cmd_type(msg);
 	if (cmd == CMD_CONNACK) {
@@ -784,6 +790,11 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		nni_println("ERROR: sending NULL msg!");
 		return;
 	}
+	qos = NANO_NNI_LMQ_GET_QOS_BITS(msg);
+	// qos default to 0 if the msg is not PUBLISH
+	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
+	nni_aio_set_msg(aio, msg);
+
 	// check max packet size config for this client
 	if (p->tcp_cparam != NULL && p->tcp_cparam->pro_ver == 5) {
 		uint32_t tlen = nni_msg_len(msg) + nni_msg_header_len(msg);
@@ -794,10 +805,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 			nni_aio_finish(aio, 0, 0);
 		}
 	}
-	qos = NANO_NNI_LMQ_GET_QOS_BITS(msg);
-	// qos default to 0 if the msg is not PUBLISH
-	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
-	nni_aio_set_msg(aio, msg);
+
 	// never modify msg
 	if (nni_msg_header_len(msg) > 0 &&
 	    nni_msg_cmd_type(msg) == CMD_PUBLISH) {
