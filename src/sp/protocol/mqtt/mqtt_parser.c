@@ -837,6 +837,9 @@ conn_param_init(conn_param *cparam)
 	cparam->rx_max                        = 65535;
 	cparam->session_expiry_interval       = 0;
 	cparam->assignedid                    = false;
+
+	// MQTT_v5
+	cparam->max_packet_size               = 65535; // TODO
 }
 
 int
