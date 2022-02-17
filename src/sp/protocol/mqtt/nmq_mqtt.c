@@ -47,7 +47,6 @@ struct nano_ctx {
 	nano_pipe *spipe, *qos_pipe; // send pipe
 	nni_aio *  saio;             // send aio
 	nni_aio *  raio;             // recv aio
-	// uint32_t*     rspipes;// pub resend pipe queue Qos 1/2
 	// nni_list      send_queue; // contexts waiting to send.
 	nni_list_node sqnode;
 	nni_list_node rqnode;
