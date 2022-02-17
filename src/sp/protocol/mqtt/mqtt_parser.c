@@ -1216,3 +1216,20 @@ nano_msg_ubsub_free(nano_pipe_db *db)
 	nng_free(db, sizeof(nano_pipe_db));
 	return;
 }
+
+/**
+ * @brief get property length from msg if any
+ * 
+ * @return uint32_t 
+ */
+uint32_t
+nni_mqtt_get_property_len(nni_msg *m)
+{
+	uint8_t *pos;
+
+	if (nni_msg_get_type(m) == CMD_PUBLISH) {
+
+	}
+	nni_msg_remaining_len(m);
+	pos = nni_msg_body(m);
+}
