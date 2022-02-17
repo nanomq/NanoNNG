@@ -454,7 +454,8 @@ nmq_tcptran_pipe_send_cb(void *arg)
 	msg = nni_aio_get_msg(aio);
 	if (msg == NULL) {
 		nni_mtx_unlock(&p->mtx);
-		nni_aio_finish_error(aio, NNG_ECLOSED);
+		//msg is lost due to flow control
+		nni_aio_finish(aio, 0, 0);
 		return;
 	}
 
@@ -805,7 +806,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 	if (p->tcp_cparam != NULL && p->tcp_cparam->pro_ver == 5) {
 		uint32_t tlen = nni_msg_len(msg) + nni_msg_header_len(msg);
 		if (tlen > p->tcp_cparam->max_packet_size) {
-			// drop msg and finish aio
+			// drop msg and finish aio pretend it has been sent
 			nni_msg_free(msg);
 			nni_aio_set_msg(aio, NULL);
 			nni_aio_finish(aio, 0, 0);
