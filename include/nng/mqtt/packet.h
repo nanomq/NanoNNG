@@ -91,8 +91,8 @@ typedef struct property property;
 struct topic_with_option {
 	uint8_t     qos : 2;
 	uint8_t     no_local : 1;
-	uint8_t     retain_as_publish : 1;
-	uint8_t     retain_handling : 4; // !!!!!TODO actually 2 bits
+	uint8_t     rap : 1;
+	uint8_t     retain_handling : 2;
 	mqtt_string topic_filter;
 	uint8_t     reason_code;
 };
@@ -108,14 +108,14 @@ struct packet_subscribe {
 	uint16_t            packet_id;
 	union Property_type sub_id;
 	union Property_type user_property;
-	topic_node *        node; // storage topic_with_option
+	topic_node *        node; // stored topic and option
 };
 typedef struct packet_subscribe packet_subscribe;
 
 struct packet_unsubscribe {
 	uint16_t            packet_id;
 	union Property_type user_property;
-	topic_node *        node; // storage topic_with_option
+	topic_node *        node; // stored topic and option
 };
 typedef struct packet_unsubscribe packet_unsubscribe;
 
