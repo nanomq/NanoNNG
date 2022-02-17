@@ -2022,6 +2022,7 @@ nng_version(void)
 // NANOMQ MQTT APIs
 /**
  * @brief CMD specifically for app layer acting
+ *        get cmd/flag from msg->CMD_TYPE
  *
  *
  * @param msg

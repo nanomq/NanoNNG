@@ -38,7 +38,7 @@ struct nng_msg {
 	uint8_t          CMD_TYPE;
 	uint8_t *        payload_ptr; // payload
 	nni_time         times;
-	nano_conn_param *cparam;
+	nano_conn_param *cparam;      // indicates where it originated
 };
 
 #if 0
@@ -716,6 +716,12 @@ nni_msg_set_cmd_type(nni_msg *m, uint8_t cmd)
 	m->CMD_TYPE = cmd;
 }
 
+/**
+ * @brief get MQTT packet flag from CMD_TYPE
+ * 
+ * @param m 
+ * @return uint8_t 
+ */
 uint8_t
 nni_msg_cmd_type(nni_msg *m)
 {
@@ -741,7 +747,7 @@ nni_msg_get_proto_data(nng_msg *m)
 /**
  * @brief get MQTT packet Type from msg header
  * 
- * @param m 
+ * @param nni_msg *m 
  * @return uint8_t 
  */
 uint8_t

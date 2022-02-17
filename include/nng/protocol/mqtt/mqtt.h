@@ -36,6 +36,7 @@
 #define CMD_CONNECT 0x10
 #define CMD_CONNACK 0x20
 #define CMD_PUBLISH 0x30
+#define CMD_PUBLISH_V5 0x31 // this is the flag for differing MQTTV5 from V4 V3
 #define CMD_PUBACK 0x40
 #define CMD_PUBREC 0x50
 #define CMD_PUBREL 0x60
@@ -48,7 +49,6 @@
 #define CMD_PINGRESP 0xD0
 #define CMD_DISCONNECT 0xE0
 #define CMD_AUTH_V5 0xF0
-#define CMD_PUBLISH_V5 0x31
 #define CMD_DISCONNECT_EV 0xE2
 #define CMD_LASTWILL 0XE3
 
