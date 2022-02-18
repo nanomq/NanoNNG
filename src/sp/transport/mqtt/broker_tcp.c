@@ -767,7 +767,8 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 	nni_msg *msg;
 	int      niov;
 	nni_iov  iov[2];
-	uint8_t  qos;
+	uint8_t  qos, retain;
+	uint32_t sub_id;
 
 	debug_msg("########### tcptran_pipe_send_start ###########");
 	if (p->closed) {
@@ -794,6 +795,11 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 	// qos default to 0 if the msg is not PUBLISH
 	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
 	nni_aio_set_msg(aio, msg);
+
+	// Ready for composing
+	retain = (uint8_t) nni_aio_get_prov_extra(aio, 0);
+	sub_id = (uint32_t) nni_aio_get_prov_extra(aio, 1);
+	debug_msg("retain %d sub_id %d", retain, sub_id);
 
 	// check max packet size config for this client
 	if (p->tcp_cparam != NULL && p->tcp_cparam->pro_ver == 5) {
