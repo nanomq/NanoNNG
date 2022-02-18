@@ -87,6 +87,14 @@ struct property {
 };
 typedef struct property property;
 
+struct mqtt_msg_info {
+	uint8_t  qos;
+	uint32_t pipe;
+	uint8_t  retain;
+	uint32_t sub_id;
+};
+typedef struct mqtt_msg_info mqtt_msg_info;
+
 // variable header in mqtt_packet_subscribe
 struct topic_with_option {
 	uint8_t     qos : 2;
