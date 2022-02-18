@@ -41,7 +41,7 @@ struct tcptran_pipe {
 	uint8_t         txlen[NANO_MIN_PACKET_LEN];
 	uint8_t         rxlen[NNI_NANO_MAX_HEADER_SIZE];
 	uint8_t *       conn_buf;
-	uint8_t *       qos_buf;
+	uint8_t *       qos_buf;	// msg trunk for qos & V4/V5 conversion
 	nni_aio *       txaio;
 	nni_aio *       rxaio;
 	nni_aio *       qsaio;
@@ -556,7 +556,7 @@ tcptran_pipe_recv_cb(void *arg)
 			iov.iov_len = 2;
 			iov.iov_buf = &p->txlen;
 			// send CMD_PINGRESP down...
-			nni_aio_set_iov(p->qsaio, 1, &iov);
+			nni_aio_set_iov(p->rpaio, 1, &iov);
 			nng_stream_send(p->conn, p->rpaio);
 			goto notify;
 		}
@@ -864,7 +864,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		NNI_GET16(body, tlen);
 
 		qos_pac = nni_msg_get_pub_qos(msg);
-		if (qos_pac == 0) {
+		if (qos_pac == 0 && prover == 0) {
 			// save time & space for QoS 0 publish
 			goto send;
 		}
@@ -931,8 +931,6 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 			NNI_PUT16(var_extra, pid);
 			qlength += 2;
 		}
-		// V4 - V5
-
 		// use qos_buf to keep zero-copy
 		if (qlength > 16 + NNI_NANO_MAX_PACKET_SIZE) {
 			nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
