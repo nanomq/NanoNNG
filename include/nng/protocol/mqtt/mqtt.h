@@ -35,7 +35,7 @@
 #define CMD_UNKNOWN 0x00
 #define CMD_CONNECT 0x10
 #define CMD_CONNACK 0x20
-#define CMD_PUBLISH 0x30
+#define CMD_PUBLISH 0x30	// indicates PUBLISH packet & MQTTV4 pub packet
 #define CMD_PUBLISH_V5 0x31 // this is the flag for differing MQTTV5 from V4 V3
 #define CMD_PUBACK 0x40
 #define CMD_PUBREC 0x50
