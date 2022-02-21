@@ -815,7 +815,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 	sub_id = (uint32_t) nni_aio_get_prov_extra(aio, 1);
 	debug_msg("retain %d sub_id %d", retain, sub_id);
 
-	// never modify msg
+	// never modify the original msg
 	if (nni_msg_header_len(msg) > 0 &&
 	    nni_msg_get_type(msg) == CMD_PUBLISH) {
 		uint8_t *body, *header, qos_pac;
@@ -826,17 +826,19 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		uint32_t  pos                           = 1;
 		nni_pipe *pipe;
 		uint16_t  pid;
-		size_t    tlen, rlen, qlength;
+		size_t    tlen, rlen, mlen, hlen, qlength, plength;
 
 		pipe    = p->npipe;
 		body    = nni_msg_body(msg);
 		header  = nni_msg_header(msg);
 		qlength = 0;
+		plength = 0;
+		mlen = nni_msg_len(msg);
+		hlen = nni_msg_header_len(msg);
 
 		// check max packet size config for this client
 		if (p->tcp_cparam != NULL && p->tcp_cparam->pro_ver == 5) {
-			uint32_t tlen =
-			    nni_msg_len(msg) + nni_msg_header_len(msg);
+			uint32_t tlen = mlen+hlen;
 			if (tlen > p->tcp_cparam->max_packet_size) {
 				// drop msg and finish aio pretend it has been
 				// sent
@@ -887,8 +889,14 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 				len_offset   = len_offset - 2;
 			}
 		}
+		if (prover == 4) {
+			//caculate property length
+			uint32_t bytes = 0;
+			plength = get_var_integer(body + 2 + tlen + len_offset, &bytes);
+			plength+=bytes;
+		}
 		rlen = put_var_integer(
-		    tmp, get_var_integer(header, &pos) + len_offset);
+		    tmp, get_var_integer(header, &pos) + len_offset - plength);
 		memcpy(fixheader + 1, tmp, rlen);
 
 		txaio = p->txaio;
@@ -898,9 +906,11 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		// 1st part of variable header: topic
 
 		qlength += tlen + 2; // get topic length
+		len_offset = 0;	//now use it to indicates the pid length
 		// packet id
 		if (qos > 0) {
 			// set pid
+			len_offset = 2;
 			nni_msg *old;
 			pid = nni_aio_get_packetid(aio);
 			if (pid == 0) {
@@ -942,22 +952,22 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 			memcpy(p->qos_buf + rlen + tlen + 3, var_extra, 2);
 		}
 		if (prover == 5) {
+			//add property length
 			*(p->qos_buf + qlength - 1) = 0x00;
 			// memcpy(p->qos_buf + rlen + tlen + 3, , 1);
-		} else if (prover == 4) {
 		}
 		iov[niov].iov_buf = p->qos_buf;
 		iov[niov].iov_len = qlength;
 		niov++;
-		// payload
-		if (nni_msg_len(msg) > 0 && qos_pac > 0) {
+		// variable header + payload
+		if (mlen > 0 && qos_pac > 0) {
 			// determine if it needs to skip packet id field
-			iov[niov].iov_buf = body + 2 + tlen + 2;
-			iov[niov].iov_len = nni_msg_len(msg) - 4 - tlen;
+			iov[niov].iov_buf = body + 2 + tlen + 2 + plength;
+			iov[niov].iov_len = mlen - 4 - tlen - plength;
 			niov++;
-		} else if (nni_msg_len(msg) > 0) {
-			iov[niov].iov_buf = body + 2 + tlen;
-			iov[niov].iov_len = nni_msg_len(msg) - 2 - tlen;
+		} else if (mlen > 0) {
+			iov[niov].iov_buf = body + 2 + tlen + plength;
+			iov[niov].iov_len = mlen - 2 - tlen - plength;
 			niov++;
 		}
 		// MQTT V5 flow control
