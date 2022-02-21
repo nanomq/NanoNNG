@@ -1973,21 +1973,15 @@ nng_aio_get_output(nng_aio *aio, unsigned index)
 }
 
 void *
-nng_aio_get_prov_extra(nng_aio *aio, unsigned index)
+nng_aio_get_prov_data(nng_aio *aio)
 {
-	if (index < 2) {
-		return nni_aio_get_prov_extra(aio, index);
-	} else {
-		return NULL;
-	}
+	return nni_aio_get_prov_data(aio);
 }
 
 void
-nng_aio_set_prov_extra(nng_aio *aio, unsigned index, void *data)
+nng_aio_set_prov_data(nng_aio *aio, void *data)
 {
-	if (index < 2) {
-		nni_aio_set_prov_extra(aio, index, data);
-	}
+	nni_aio_set_prov_data(aio, data);
 }
 
 void

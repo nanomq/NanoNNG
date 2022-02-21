@@ -424,7 +424,7 @@ mqtt_pipe_get_next_packet_id(mqtt_pipe_t *p)
 static inline void
 mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
 {
-	if (0 != nni_lmq_putq(&p->recv_messages, msg)) {
+	if (0 != nni_lmq_put(&p->recv_messages, msg)) {
 		// resize to ensure we do not lost messages
 		// TODO: add option to drop messages
 		if (0 !=
@@ -434,7 +434,7 @@ mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
 			nni_msg_free(msg);
 			return;
 		}
-		nni_lmq_putq(&p->recv_messages, msg);
+		nni_lmq_put(&p->recv_messages, msg);
 	}
 }
 
@@ -893,7 +893,7 @@ mqtt_run_recv_queue(mqtt_sock_t *s)
 	nni_msg *    msg;
 
 	while (NULL != work) {
-		if (0 != nni_lmq_getq(&p->recv_messages, &msg)) {
+		if (0 != nni_lmq_get(&p->recv_messages, &msg)) {
 			break;
 		}
 		nni_list_remove(&s->recv_queue, work);

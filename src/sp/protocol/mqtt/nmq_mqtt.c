@@ -91,7 +91,7 @@ struct nano_pipe {
 static inline int
 nano_nni_lmq_getq(nni_lmq *lmq, nng_msg **msg, uint8_t *qos)
 {
-	int rv = nni_lmq_getq(lmq, msg);
+	int rv = nni_lmq_get(lmq, msg);
 	if (rv == 0) {
 		if (qos) {
 			*qos = NANO_NNI_LMQ_GET_QOS_BITS(*msg);
@@ -131,7 +131,7 @@ nano_nni_lmq_resize(nni_lmq *lmq, size_t cap)
 	}
 
 	len = 0;
-	while ((len < cap) && (nni_lmq_getq(lmq, &msg) == 0)) {
+	while ((len < cap) && (nni_lmq_get(lmq, &msg) == 0)) {
 		newq[len++] = msg;
 	}
 
@@ -356,7 +356,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	nni_mtx_lock(&p->lk);
 
 	// mqtt_msg_info * msg_info = NULL;
-	// msg_info = nni_aio_get_prov_extra(aio, 0);
+	// msg_info = nni_aio_get_prov_extra(aio);
 	// if (msg_info)
 	// 	qos = msg_info->qos;
 
@@ -394,7 +394,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		}
 	}
 
-	nni_lmq_putq(&p->rlmq, msg);
+	nni_lmq_put(&p->rlmq, msg);
 
 	nni_mtx_unlock(&p->lk);
 	nni_aio_set_msg(aio, NULL);
@@ -665,7 +665,7 @@ nano_pipe_close(void *arg)
 				debug_msg("wait lmq resize failed.");
 			}
 		}
-		nni_lmq_putq(&s->waitlmq, msg);
+		nni_lmq_put(&s->waitlmq, msg);
 	}
 	nni_mtx_unlock(&s->lk);
 }
@@ -687,7 +687,7 @@ nano_pipe_send_cb(void *arg)
 	nni_mtx_lock(&p->lk);
 
 	nni_aio_set_packetid(&p->aio_send, 0);
-	if (nni_lmq_getq(&p->rlmq, &msg) == 0) {
+	if (nni_lmq_get(&p->rlmq, &msg) == 0) {
 		// msg = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
 		nni_aio_set_msg(&p->aio_send, msg);
 		debug_msg("rlmq msg resending! %ld msgs left\n", nni_lmq_len(&p->rlmq));
@@ -733,7 +733,7 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 	debug_msg("nano_ctx_recv start %p", ctx);
 	nni_mtx_lock(&s->lk);
 
-	if (nni_lmq_getq(&s->waitlmq, &msg) == 0) {
+	if (nni_lmq_get(&s->waitlmq, &msg) == 0) {
 		nni_mtx_unlock(&s->lk);
 		debug_msg("handle msg in waitlmq.");
 		nni_aio_set_msg(aio, msg);
