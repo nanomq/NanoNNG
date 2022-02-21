@@ -400,7 +400,7 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 		                                        : p->qrecv_quota;
 	}
 	nni_msg_free(msg);
-	if (nni_lmq_getq(&p->rslmq, &msg) == 0) {
+	if (nni_lmq_get(&p->rslmq, &msg) == 0) {
 		nni_iov iov;
 		iov.iov_len = 4;
 		iov.iov_buf = nni_msg_header(msg);
@@ -690,19 +690,19 @@ tcptran_pipe_recv_cb(void *arg)
 					if ((rv = nni_lmq_resize(&p->rslmq,
 					         nni_lmq_cap(&p->rslmq) *
 					             2)) == 0) {
-						nni_lmq_putq(&p->rslmq, qmsg);
+						nni_lmq_put(&p->rslmq, qmsg);
 					} else {
 						// memory error.
 						nni_msg_free(qmsg);
 					}
 				} else {
 					nni_msg *old;
-					(void) nni_lmq_getq(&p->rslmq, &old);
+					(void) nni_lmq_get(&p->rslmq, &old);
 					nni_msg_free(old);
-					nni_lmq_putq(&p->rslmq, qmsg);
+					nni_lmq_put(&p->rslmq, qmsg);
 				}
 			} else {
-				nni_lmq_putq(&p->rslmq, qmsg);
+				nni_lmq_put(&p->rslmq, qmsg);
 			}
 		}
 		ack = false;
@@ -811,9 +811,9 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 	nni_aio_set_msg(aio, msg);
 
 	// Ready for composing
-	retain = (uint8_t) nni_aio_get_prov_extra(aio, 0);
-	sub_id = (uint32_t) nni_aio_get_prov_extra(aio, 1);
-	debug_msg("retain %d sub_id %d", retain, sub_id);
+	// retain = (uint8_t) nni_aio_get_prov_extra(aio, 0);
+	// sub_id = (uint32_t) nni_aio_get_prov_extra(aio, 1);
+	// debug_msg("retain %d sub_id %d", retain, sub_id);
 
 	// never modify the original msg
 	if (nni_msg_header_len(msg) > 0 &&
