@@ -251,10 +251,10 @@ extern void mqtt_buf_free(mqtt_buf *);
 extern nni_aio *nni_mqtt_msg_get_aio(nni_msg *);
 extern void     nni_mqtt_msg_set_aio(nni_msg *, nni_aio *);
 
-extern int mqtt_keyvalue_create(
-    mqtt_keyvalue *, const char *, size_t, const char *, size_t);
-extern int  mqtt_keyvalue_dup(mqtt_keyvalue *, const mqtt_keyvalue *);
-extern void mqtt_keyvalue_free(mqtt_keyvalue *);
+extern int mqtt_kv_create(
+    mqtt_kv *, const char *, size_t, const char *, size_t);
+extern int  mqtt_kv_dup(mqtt_kv *, const mqtt_kv *);
+extern void mqtt_kv_free(mqtt_kv *);
 
 extern mqtt_msg *mqtt_msg_create(nni_mqtt_packet_type);
 

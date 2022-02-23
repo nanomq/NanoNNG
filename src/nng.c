@@ -259,7 +259,7 @@ int
 nng_ctx_open(nng_ctx *cp, nng_socket s)
 {
 	nni_sock *sock;
-	nni_ctx * ctx;
+	nni_ctx  *ctx;
 	int       rv;
 	nng_ctx   c;
 
@@ -557,7 +557,7 @@ nng_dial(nng_socket sid, const char *addr, nng_dialer *dp, int flags)
 {
 	nni_dialer *d;
 	int         rv;
-	nni_sock *  s;
+	nni_sock   *s;
 
 	if ((rv = nni_sock_find(&s, sid.id)) != 0) {
 		return (rv);
@@ -583,7 +583,7 @@ int
 nng_listen(nng_socket sid, const char *addr, nng_listener *lp, int flags)
 {
 	int           rv;
-	nni_sock *    s;
+	nni_sock     *s;
 	nni_listener *l;
 
 	if ((rv = nni_sock_find(&s, sid.id)) != 0) {
@@ -610,7 +610,7 @@ nng_listen(nng_socket sid, const char *addr, nng_listener *lp, int flags)
 int
 nng_listener_create(nng_listener *lp, nng_socket sid, const char *addr)
 {
-	nni_sock *    s;
+	nni_sock     *s;
 	int           rv;
 	nni_listener *l;
 	nng_listener  lid;
@@ -651,7 +651,7 @@ nng_listener_id(nng_listener l)
 int
 nng_dialer_create(nng_dialer *dp, nng_socket sid, const char *addr)
 {
-	nni_sock *  s;
+	nni_sock   *s;
 	nni_dialer *d;
 	int         rv;
 	nng_dialer  did;
@@ -1359,7 +1359,7 @@ nng_socket
 nng_pipe_socket(nng_pipe p)
 {
 	nng_socket s = NNG_SOCKET_INITIALIZER;
-	nni_pipe * pipe;
+	nni_pipe  *pipe;
 
 	if ((nni_init() == 0) && (nni_pipe_find(&pipe, p.id) == 0)) {
 		s.id = nni_pipe_sock_id(pipe);
@@ -1372,7 +1372,7 @@ nng_dialer
 nng_pipe_dialer(nng_pipe p)
 {
 	nng_dialer d = NNG_DIALER_INITIALIZER;
-	nni_pipe * pipe;
+	nni_pipe  *pipe;
 	if ((nni_init() == 0) && (nni_pipe_find(&pipe, p.id) == 0)) {
 		d.id = nni_pipe_dialer_id(pipe);
 		nni_pipe_rele(pipe);
@@ -1384,7 +1384,7 @@ nng_listener
 nng_pipe_listener(nng_pipe p)
 {
 	nng_listener l = NNG_LISTENER_INITIALIZER;
-	nni_pipe *   pipe;
+	nni_pipe  *pipe;
 	if ((nni_init() == 0) && (nni_pipe_find(&pipe, p.id) == 0)) {
 		l.id = nni_pipe_listener_id(pipe);
 		nni_pipe_rele(pipe);

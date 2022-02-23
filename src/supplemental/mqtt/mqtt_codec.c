@@ -1568,8 +1568,8 @@ mqtt_buf_free(mqtt_buf *buf)
 }
 
 int
-mqtt_keyvalue_create(mqtt_keyvalue *kv, const char *key, size_t key_len,
-    const char *value, size_t value_len)
+mqtt_kv_create(mqtt_kv *kv, const char *key, size_t key_len, const char *value,
+    size_t value_len)
 {
 	int rv;
 	if (((rv = mqtt_buf_create(&kv->key, (uint8_t *) key, key_len)) !=
@@ -1582,7 +1582,7 @@ mqtt_keyvalue_create(mqtt_keyvalue *kv, const char *key, size_t key_len,
 }
 
 int
-mqtt_keyvalue_dup(mqtt_keyvalue *dest, const mqtt_keyvalue *src)
+mqtt_kv_dup(mqtt_kv *dest, const mqtt_kv *src)
 {
 	int rv;
 	if (((rv = mqtt_buf_dup(&dest->key, &src->key)) != 0) ||
@@ -1593,7 +1593,7 @@ mqtt_keyvalue_dup(mqtt_keyvalue *dest, const mqtt_keyvalue *src)
 }
 
 void
-mqtt_keyvalue_free(mqtt_keyvalue *kv)
+mqtt_kv_free(mqtt_kv *kv)
 {
 	mqtt_buf_free(&kv->key);
 	mqtt_buf_free(&kv->value);
@@ -2028,7 +2028,7 @@ property_free(property *prop)
 		// 	mqtt_buf_free(&p->data.p_value.binary);
 		// 	break;
 		// case STR_PAIR:
-		// 	mqtt_keyvalue_free(&p->data.p_value.strpair);
+		// 	mqtt_kv_free(&p->data.p_value.strpair);
 		// 	break;
 
 		// default:
