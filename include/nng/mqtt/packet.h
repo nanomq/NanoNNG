@@ -72,13 +72,13 @@ struct mqtt_str_pair {
 typedef struct mqtt_str_pair mqtt_str_pair;
 
 union Property_type {
-	uint8_t       u8;
-	uint16_t      u16;
-	uint32_t      u32;
-	uint32_t      varint;
-	mqtt_buf      binary;
-	mqtt_buf      str;
-	mqtt_keyvalue strpair;
+	uint8_t  u8;
+	uint16_t u16;
+	uint32_t u32;
+	uint32_t varint;
+	mqtt_buf binary;
+	mqtt_buf str;
+	mqtt_kv  strpair;
 };
 
 typedef enum {
