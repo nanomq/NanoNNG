@@ -1937,11 +1937,9 @@ property_set(struct pos_buf *buf, property *prop, uint8_t prop_id,
 	if (prop == NULL) {
 		prop = property_alloc();
 	}
-	prop->next         = NULL;
-	prop->data.p_type  = type;
-	prop->id           = prop_id;
-	mqtt_buf key_buf   = { 0 };
-	mqtt_buf value_buf = { 0 };
+	prop->next        = NULL;
+	prop->data.p_type = type;
+	prop->id          = prop_id;
 	switch (type) {
 	case U8:
 		read_byte(buf, &prop->data.p_value.u8);
@@ -1964,26 +1962,19 @@ property_set(struct pos_buf *buf, property *prop, uint8_t prop_id,
 		    prop->data.p_value.varint);
 		break;
 	case BINARY:
-		read_utf8_str(buf, &value_buf);
-		mqtt_buf_dup(&prop->data.p_value.binary, &value_buf);
+		read_utf8_str(buf, &prop->data.p_value.binary);
 		debug_msg("id: %d, value pointer: %p (BINARY)", prop_id,
 		    prop->data.p_value.binary.buf);
-		memset(&value_buf, 0, sizeof(mqtt_buf));
 		break;
 	case STR:
-		read_utf8_str(buf, &value_buf);
-		mqtt_buf_dup(&prop->data.p_value.str, &value_buf);
+		read_utf8_str(buf, &prop->data.p_value.str);
 		debug_msg("id: %d, value: %.*s (STR)", prop_id,
 		    prop->data.p_value.str.length,
 		    (const char *) prop->data.p_value.str.buf);
-		memset(&value_buf, 0, sizeof(mqtt_buf));
 		break;
 	case STR_PAIR:
-		read_utf8_str(buf, &key_buf);
-		read_utf8_str(buf, &value_buf);
-		mqtt_keyvalue_create(&prop->data.p_value.strpair,
-		    (const char *) key_buf.buf, key_buf.length,
-		    (const char *) value_buf.buf, value_buf.length);
+		read_utf8_str(buf, &prop->data.p_value.strpair.key);
+		read_utf8_str(buf, &prop->data.p_value.strpair.value);
 		debug_msg("id: %d, value: '%.*s -> %.*s' (STR_PAIR)", prop_id,
 		    prop->data.p_value.strpair.key.length,
 		    prop->data.p_value.strpair.key.buf,
@@ -2019,7 +2010,7 @@ property_foreach(property *prop, void (*cb)(property *))
 	}
 }
 
-void
+int
 property_free(property *prop)
 {
 	property *head = prop;
@@ -2029,23 +2020,25 @@ property_free(property *prop)
 		p    = head;
 		head = head->next;
 
-		switch (p->data.p_type) {
-		case STR:
-			mqtt_buf_free(&p->data.p_value.str);
-			break;
-		case BINARY:
-			mqtt_buf_free(&p->data.p_value.binary);
-			break;
-		case STR_PAIR:
-			mqtt_keyvalue_free(&p->data.p_value.strpair);
-			break;
+		// switch (p->data.p_type) {
+		// case STR:
+		// 	mqtt_buf_free(&p->data.p_value.str);
+		// 	break;
+		// case BINARY:
+		// 	mqtt_buf_free(&p->data.p_value.binary);
+		// 	break;
+		// case STR_PAIR:
+		// 	mqtt_keyvalue_free(&p->data.p_value.strpair);
+		// 	break;
 
-		default:
-			break;
-		}
+		// default:
+		// 	break;
+		// }
 
 		free(p);
+		p = NULL;
 	}
+	return 0;
 }
 
 property *
@@ -2097,7 +2090,6 @@ decode_properties(nng_msg *msg, uint32_t *pos, uint32_t *len)
 		case RECEIVE_MAXIMUM:
 		case TOPIC_ALIAS_MAXIMUM:
 		case TOPIC_ALIAS:
-
 			cur_prop = property_set(&buf, cur_prop, prop_id, U16);
 			property_insert(list, cur_prop);
 			break;
@@ -2146,16 +2138,56 @@ out:
 	return list;
 }
 
+uint32_t
+get_properties_len(property *prop)
+{
+	uint32_t prop_len = 0;
+	for (property *p = prop->next; p != NULL; p = p->next) {
+		switch (p->data.p_type) {
+		case U8:
+			prop_len += (1 * 2);
+			break;
+		case U16:
+			prop_len += (2 * 2);
+			break;
+		case U32:
+			prop_len += (4 * 2);
+			break;
+		case VARINT:
+			prop_len += (p->data.p_value.varint +
+			    byte_number_for_variable_length(
+			        p->data.p_value.varint));
+			break;
+		case BINARY:
+			prop_len += p->data.p_value.binary.length + 2;
+			break;
+		case STR:
+			prop_len += p->data.p_value.str.length + 2;
+			break;
+		case STR_PAIR:
+			prop_len += p->data.p_value.strpair.key.length + 2 +
+			    p->data.p_value.strpair.value.length + 2;
+			break;
+
+		default:
+			break;
+		}
+	}
+
+	return prop_len;
+}
+
 int
-encode_properties(nni_msg *msg, property *prop, uint32_t prop_len)
+encode_properties(nni_msg *msg, property *prop)
 {
 	uint8_t        rlen[4] = { 0 };
 	struct pos_buf buf     = { .curpos = &rlen[0],
                 .endpos                = &rlen[sizeof(rlen)] };
-	int            len     = write_variable_length_value(prop_len, &buf);
 
+	uint32_t prop_len = get_properties_len(prop);
+
+	int len = write_variable_length_value(prop_len, &buf);
 	nni_msg_append(msg, rlen, len);
-
 	if (prop_len == 0) {
 		return 0;
 	}
@@ -2221,7 +2253,7 @@ encode_properties(nni_msg *msg, property *prop, uint32_t prop_len)
 }
 
 property_data *
-property_get_value(property *prop, properties_type prop_id)
+property_get_value(property *prop, uint8_t prop_id)
 {
 	for (property *p = prop->next; p != NULL; p = p->next) {
 		if (p->id == prop_id) {
@@ -2229,4 +2261,25 @@ property_get_value(property *prop, properties_type prop_id)
 		}
 	}
 	return NULL;
+}
+
+static nni_proto_msg_ops proto_ops = {
+
+	.msg_free = (void *) (void *) property_free,
+
+	.msg_dup = NULL
+};
+
+// TODO incompatible with client sdk
+void
+nni_msg_proto_set_property(nni_msg *msg, property *prop)
+{
+	nni_msg_set_proto_data(msg, &proto_ops, prop);
+}
+
+// TODO incompatible with client sdk
+property *
+nni_msg_proto_get_property(nni_msg *msg)
+{
+	return (property *) nni_msg_get_proto_data(msg);
 }
