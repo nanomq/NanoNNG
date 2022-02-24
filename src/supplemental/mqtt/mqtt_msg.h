@@ -256,6 +256,8 @@ extern int mqtt_kv_create(
 extern int  mqtt_kv_dup(mqtt_kv *, const mqtt_kv *);
 extern void mqtt_kv_free(mqtt_kv *);
 
+extern const char *get_packet_type_str(nni_mqtt_packet_type packtype);
+
 extern mqtt_msg *mqtt_msg_create(nni_mqtt_packet_type);
 
 extern int mqtt_msg_dump(mqtt_msg *, mqtt_buf *, mqtt_buf *, bool);

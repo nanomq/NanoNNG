@@ -156,7 +156,7 @@ get_var_integer(const uint8_t *buf, uint32_t *pos)
 
 	do {
 		temp   = *(buf + p);
-		result = result + (uint32_t) (temp & 0x7f) * (power(0x80, i));
+		result = result + (uint32_t)(temp & 0x7f) * (power(0x80, i));
 		p++;
 	} while ((temp & 0x80) > 0 && i++ < 4);
 	*pos = p;
@@ -1195,16 +1195,101 @@ nano_msg_ubsub_free(nano_pipe_db *db)
 }
 
 /**
- * @brief get property length from msg if any
+ * @brief decode puback/pubrec/pubrel/pubcomp
  *
- * @return uint32_t
+ * @param msg
+ * @param packet_id
+ * @param reason_code
+ * @param proto_ver
+ * @return int
  */
-uint32_t
-nni_mqtt_get_property_len(nni_msg *m)
+int
+nmq_pubres_decode(nng_msg *msg, uint16_t *packet_id, uint8_t *reason_code,
+    property **prop, uint8_t proto_ver)
 {
-	uint8_t *pos;
+	int      rv;
+	uint8_t *body   = nni_msg_body(msg);
+	size_t   length = nni_msg_len(msg);
 
-	if (nni_msg_get_type(m) == CMD_PUBLISH) { }
-	nni_msg_remaining_len(m);
-	pos = nni_msg_body(m);
+	struct pos_buf buf = { .curpos = &body[0], .endpos = &body[length] };
+
+	if ((rv = read_uint16(&buf, packet_id)) != MQTT_SUCCESS) {
+		return rv;
+	}
+
+	if (length == 2 || proto_ver != PROTOCOL_VERSION_v5) {
+		return MQTT_SUCCESS;
+	}
+
+	if ((rv = read_byte(&buf, reason_code)) != MQTT_SUCCESS) {
+		return rv;
+	}
+
+	if ((buf.endpos - buf.curpos) <= 0) {
+		*prop = NULL;
+		return MQTT_SUCCESS;
+	}
+
+	uint32_t pos      = (uint32_t)(buf.curpos - body);
+	uint32_t prop_len = 0;
+
+	*prop = decode_properties(msg, &pos, &prop_len);
+
+	return MQTT_SUCCESS;
+}
+
+/**
+ * @brief encode header of puback/pubrec/pubrel/pubcomp
+ *
+ * @param msg
+ * @param cmd
+ * @return int
+ */
+int
+nmq_pubres_header_encode(nng_msg *msg, uint8_t cmd)
+{
+	size_t         msg_len    = nng_msg_len(msg);
+	uint8_t        var_len[4] = { 0 };
+	struct pos_buf buf = { .curpos = &var_len[0], .endpos = &var_len[4] };
+
+	int bytes = write_variable_length_value(msg_len, &buf);
+
+	if (cmd == CMD_PUBREL) {
+		cmd |= 0x02;
+	}
+
+	nng_msg_header_append(msg, &cmd, 1);
+	nng_msg_header_append(msg, var_len, bytes);
+
+	return 0;
+}
+
+/**
+ * @brief encode puback/pubrec/pubrel/pubcomp
+ *
+ * @param msg
+ * @param packet_id
+ * @param reason_code
+ * @param prop
+ * @param proto_ver
+ * @return int
+ */
+int
+nmq_pubres_encode(nng_msg *msg, uint16_t packet_id, uint8_t reason_code,
+    property *prop, uint8_t proto_ver)
+{
+	uint8_t rbuf[2] = { 0 };
+	NNI_PUT16(rbuf, packet_id);
+	nni_msg_clear(msg);
+	nni_msg_append(msg, rbuf, 2);
+
+	if (proto_ver == PROTOCOL_VERSION_v5) {
+		if (reason_code == 0 && prop == NULL) {
+			return MQTT_SUCCESS;
+		}
+		nni_msg_append(msg, &reason_code, 1);
+		encode_properties(msg, prop);
+	}
+
+	return MQTT_SUCCESS;
 }
