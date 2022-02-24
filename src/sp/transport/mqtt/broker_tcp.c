@@ -498,7 +498,7 @@ static void
 tcptran_pipe_recv_cb(void *arg)
 {
 	nni_aio *     aio;
-	nni_iov       iov;
+	nni_iov       iov[2];
 	uint8_t       type;
 	uint32_t      len = 0, rv, pos = 1;
 	size_t        n;
@@ -543,8 +543,8 @@ tcptran_pipe_recv_cb(void *arg)
 			goto recv_error;
 		}
 		// same packet, continue receving next byte of remaining length
-		iov.iov_buf = &p->rxlen[p->gotrxhead];
-		iov.iov_len = 1;
+		iov[0].iov_buf = &p->rxlen[p->gotrxhead];
+		iov[0].iov_len = 1;
 		nni_aio_set_iov(rxaio, 1, &iov);
 		nng_stream_recv(p->conn, rxaio);
 		nni_mtx_unlock(&p->mtx);
@@ -555,8 +555,8 @@ tcptran_pipe_recv_cb(void *arg)
 			nng_aio_wait(p->rpaio);
 			p->txlen[0] = CMD_PINGRESP;
 			p->txlen[1] = 0x00;
-			iov.iov_len = 2;
-			iov.iov_buf = &p->txlen;
+			iov[0].iov_len = 2;
+			iov[0].iov_buf = &p->txlen;
 			// send CMD_PINGRESP down...
 			nni_aio_set_iov(p->rpaio, 1, &iov);
 			nng_stream_send(p->conn, p->rpaio);
@@ -592,8 +592,8 @@ tcptran_pipe_recv_cb(void *arg)
 		// header with variable header and so on
 		//  we want to read the entire message now.
 		if (len != 0) {
-			iov.iov_buf = nni_msg_body(p->rxmsg);
-			iov.iov_len = (size_t) len;
+			iov[0].iov_buf = nni_msg_body(p->rxmsg);
+			iov[0].iov_len = (size_t) len;
 
 			nni_aio_set_iov(rxaio, 1, &iov);
 			// second recv action
@@ -622,6 +622,10 @@ tcptran_pipe_recv_cb(void *arg)
 
 	// set the payload pointer of msg according to packet_type
 	debug_msg("The type of msg is %x", type);
+	uint16_t  packet_id   = 0;
+	uint8_t   reason_code = 0;
+	property *prop        = NULL;
+	uint8_t   ack_cmd     = 0;
 	if (type == CMD_PUBLISH) {
 		uint8_t  qos_pac;
 		uint16_t pid;
@@ -639,28 +643,38 @@ tcptran_pipe_recv_cb(void *arg)
 				}
 			}
 			if (qos_pac == 1) {
-				p->txlen[0] = CMD_PUBACK;
+				ack_cmd = CMD_PUBACK;
 			} else if (qos_pac == 2) {
-				p->txlen[0] = CMD_PUBREC;
+				ack_cmd = CMD_PUBREC;
 			}
-			p->txlen[1] = 0x02;
-			pid         = nni_msg_get_pub_pid(msg);
-			NNI_PUT16(p->txlen + 2, pid);
+			packet_id         = nni_msg_get_pub_pid(msg);
 			ack = true;
 		}
 	} else if (type == CMD_PUBREC) {
-		p->txlen[0] = 0X62;
-		p->txlen[1] = 0x02;
-		memcpy(p->txlen + 2, nni_msg_body(msg), 2);
+		if (nmq_pubres_decode(msg, &packet_id, &reason_code, &prop,
+		        cparam->pro_ver) != 0) {
+			debug_msg("decode %s variable header failed!",
+			    get_packet_type_str((type >> 4) & 0x0f));
+		}
+		ack_cmd = CMD_PUBREL;
 		ack = true;
 	} else if (type == CMD_PUBREL) {
-		p->txlen[0] = CMD_PUBCOMP;
-		p->txlen[1] = 0x02;
-		memcpy(p->txlen + 2, nni_msg_body(msg), 2);
+		if (nmq_pubres_decode(msg, &packet_id, &reason_code, &prop,
+		        cparam->pro_ver) != 0) {
+			debug_msg("decode %s variable header failed!",
+			    get_packet_type_str((type >> 4) & 0x0f));
+		}
+		ack_cmd = CMD_PUBCOMP;
 		ack = true;
 	} else if (type == CMD_PUBACK || type == CMD_PUBCOMP) {
+		if (nmq_pubres_decode(msg, &packet_id, &reason_code, &prop,
+		        cparam->pro_ver) != 0) {
+			debug_msg("decode %s variable header failed!",
+			    get_packet_type_str((type >> 4) & 0x0f));
+		}
 		// MQTT V5 flow control
 		if (p->tcp_cparam->pro_ver == 5) {
+			property_free(prop);
 			p->qsend_quota++;
 		}
 	}
@@ -672,16 +686,23 @@ tcptran_pipe_recv_cb(void *arg)
 			rv  = NMQ_SERVER_BUSY;
 			goto recv_error;
 		}
-		nni_msg_set_cmd_type(qmsg, p->txlen[0]);
-		nni_msg_header_append(qmsg, p->txlen, 4);
+		//TODO set reason code or property here if necessary
+
+		nni_msg_set_cmd_type(qmsg, ack_cmd);
+		nmq_pubres_encode(
+		    qmsg, packet_id, reason_code, prop, cparam->pro_ver);
+		nmq_pubres_header_encode(qmsg, ack_cmd);
+		nni_msg_proto_set_property(qmsg, prop);
 		// aio_begin?
 		if (p->busy == false) {
-			iov.iov_len = 4;
-			iov.iov_buf = nni_msg_header(qmsg);
+			iov[0].iov_len = nni_msg_header_len(qmsg);
+			iov[0].iov_buf = nni_msg_header(qmsg);
+			iov[1].iov_len = nni_msg_len(qmsg);
+			iov[1].iov_buf = nni_msg_body(qmsg);
 			p->busy     = true;
 			nni_aio_set_msg(p->qsaio, qmsg);
 			// send ACK down...
-			nni_aio_set_iov(p->qsaio, 1, &iov);
+			nni_aio_set_iov(p->qsaio, 2, iov);
 			nng_stream_send(p->conn, p->qsaio);
 		} else {
 			if (nni_lmq_full(&p->rslmq)) {

@@ -95,4 +95,9 @@ NNG_DECL int      property_free(property *prop);
 NNG_DECL property_data *property_get_value(property *prop, uint8_t prop_id);
 NNG_DECL void property_foreach(property *prop, void (*cb)(property *));
 
+NNG_DECL int nmq_pubres_decode(nng_msg *msg, uint16_t *packet_id,
+    uint8_t *reason_code, property **prop, uint8_t proto_ver);
+NNG_DECL int nmq_pubres_encode(nng_msg *msg, uint16_t packet_id,
+    uint8_t reason_code, property *prop, uint8_t proto_ver);
+NNG_DECL int nmq_pubres_header_encode(nng_msg *msg, uint8_t cmd);
 #endif // NNG_MQTT_H

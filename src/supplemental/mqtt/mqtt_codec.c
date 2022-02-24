@@ -2142,35 +2142,38 @@ uint32_t
 get_properties_len(property *prop)
 {
 	uint32_t prop_len = 0;
-	for (property *p = prop->next; p != NULL; p = p->next) {
-		switch (p->data.p_type) {
-		case U8:
-			prop_len += (1 * 2);
-			break;
-		case U16:
-			prop_len += (2 * 2);
-			break;
-		case U32:
-			prop_len += (4 * 2);
-			break;
-		case VARINT:
-			prop_len += (p->data.p_value.varint +
-			    byte_number_for_variable_length(
-			        p->data.p_value.varint));
-			break;
-		case BINARY:
-			prop_len += p->data.p_value.binary.length + 2;
-			break;
-		case STR:
-			prop_len += p->data.p_value.str.length + 2;
-			break;
-		case STR_PAIR:
-			prop_len += p->data.p_value.strpair.key.length + 2 +
-			    p->data.p_value.strpair.value.length + 2;
-			break;
+	if (prop != NULL) {
+		for (property *p = prop->next; p != NULL; p = p->next) {
+			switch (p->data.p_type) {
+			case U8:
+				prop_len += (1 * 2);
+				break;
+			case U16:
+				prop_len += (2 * 2);
+				break;
+			case U32:
+				prop_len += (4 * 2);
+				break;
+			case VARINT:
+				prop_len += (p->data.p_value.varint +
+				    byte_number_for_variable_length(
+				        p->data.p_value.varint));
+				break;
+			case BINARY:
+				prop_len += p->data.p_value.binary.length + 2;
+				break;
+			case STR:
+				prop_len += p->data.p_value.str.length + 2;
+				break;
+			case STR_PAIR:
+				prop_len +=
+				    p->data.p_value.strpair.key.length + 2 +
+				    p->data.p_value.strpair.value.length + 2;
+				break;
 
-		default:
-			break;
+			default:
+				break;
+			}
 		}
 	}
 
