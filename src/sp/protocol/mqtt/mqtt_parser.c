@@ -921,7 +921,7 @@ nano_msg_set_dup(nng_msg *msg)
 // alloc a publish msg according to the need
 nng_msg *
 nano_msg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
-    mqtt_string *payload, mqtt_string *topic)
+    mqtt_string *payload, mqtt_string *topic, uint8_t proto_ver)
 {
 	size_t   rlen;
 	uint8_t *ptr, buf[5] = { '\0' };
@@ -929,6 +929,7 @@ nano_msg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
 	nni_msg *msg;
 
 	len = payload->len + topic->len + 2;
+	len += proto_ver == PROTOCOL_VERSION_v5 ? 1 : 0;
 
 	msg = *msgp;
 	if (msg == NULL) {
@@ -969,6 +970,13 @@ nano_msg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
 		NNI_PUT16(ptr, 0x10);
 		ptr = ptr + 2;
 	}
+
+	if(proto_ver == PROTOCOL_VERSION_v5) {
+		uint8_t property_len = 0;
+		memcpy(ptr, &property_len, 1);
+		++ptr;
+	}
+	
 	memcpy(ptr, payload->body, payload->len);
 	nni_msg_set_payload_ptr(msg, ptr);
 
@@ -1021,7 +1029,7 @@ nano_msg_notify_disconnect(conn_param *cparam, uint8_t code)
 	string.len  = strlen(string.body);
 	topic.body  = DISCONNECT_TOPIC;
 	topic.len   = strlen(DISCONNECT_TOPIC);
-	msg         = nano_msg_composer(&msg, 0, 0, &string, &topic);
+	msg = nano_msg_composer(&msg, 0, 0, &string, &topic, cparam->pro_ver);
 	return msg;
 }
 
@@ -1038,7 +1046,7 @@ nano_msg_notify_connect(conn_param *cparam, uint8_t code)
 	string.len  = strlen(string.body);
 	topic.body  = CONNECT_TOPIC;
 	topic.len   = strlen(CONNECT_TOPIC);
-	msg         = nano_msg_composer(&msg, 0, 0, &string, &topic);
+	msg = nano_msg_composer(&msg, 0, 0, &string, &topic, cparam->pro_ver);
 	return msg;
 }
 
