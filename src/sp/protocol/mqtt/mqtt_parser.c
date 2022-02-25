@@ -14,14 +14,14 @@
 
 #include "nng/mqtt/packet.h"
 #include <conf.h>
+#include <iconv.h>
 #include <stdio.h>
 #include <string.h>
-#include <iconv.h>
 
 struct pub_extra {
 	uint8_t  qos;
 	uint16_t packet_id;
-	void *   msg;
+	void    *msg;
 };
 
 static uint8_t  get_value_size(uint64_t value);
@@ -551,92 +551,114 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 
 	// will topic
 	if (cparam->will_flag != 0) {
-if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
-		len_of_properties   = get_var_integer(packet, &pos);
-		uint32_t target_pos = pos + len_of_properties;
-		debug_msg("propertyLen in payload [%d]", len_of_properties);
+		if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
+			len_of_properties   = get_var_integer(packet, &pos);
+			uint32_t target_pos = pos + len_of_properties;
+			debug_msg(
+			    "propertyLen in payload [%d]", len_of_properties);
 
-		// parse property in variable header
-		if (len_of_properties > 0) {
-			while (1) {
-				property_id = packet[pos++];
-				switch (property_id) {
-				case WILL_DELAY_INTERVAL:
-					debug_msg("WILL_DELAY_INTERVAL");
-					NNI_GET32(packet + pos,
-					    cparam->will_delay_interval);
-					pos += 4;
-					break;
-				case PAYLOAD_FORMAT_INDICATOR:
-					debug_msg("PAYLOAD_FORMAT_INDICATOR");
-					cparam->payload_format_indicator =
-					    packet[pos++];
-					break;
-				case MESSAGE_EXPIRY_INTERVAL:
-					debug_msg("MESSAGE_EXPIRY_INTERVAL");
-					NNI_GET32(packet + pos,
-					    cparam->msg_expiry_interval);
-					pos += 4;
-					break;
-				case CONTENT_TYPE:
-					debug_msg("CONTENT_TYPE");
-					cparam->content_type.body =
-					    (char *) copy_utf8_str(
-					        packet, &pos, &len_of_str);
-					cparam->content_type.len = len_of_str;
-					rv = len_of_str < 0 ? 1 : 0;
-					debug_msg("content type: %s %d",
-					    cparam->content_type.body, rv);
-					break;
-				case RESPONSE_TOPIC:
-					debug_msg("RESPONSE_TOPIC");
-					cparam->resp_topic.body =
-					    (char *) copy_utf8_str(
-					        packet, &pos, &len_of_str);
-					cparam->resp_topic.len = len_of_str;
-					rv = len_of_str < 0 ? 1 : 0;
-					debug_msg("resp topic: %s %d",
-					    cparam->resp_topic.body, rv);
-					break;
-				case CORRELATION_DATA:
-					debug_msg("CORRELATION_DATA");
-					cparam->corr_data.body = copy_utf8_str(
-					    packet, &pos, &len_of_str);
-					cparam->corr_data.len = len_of_str;
-					rv = len_of_str < 0 ? 1 : 0;
-					debug_msg("corr_data: %s %d",
-					    cparam->corr_data.body, rv);
-					break;
-				case USER_PROPERTY:
-					debug_msg("USER_PROPERTY");
-					// key
-					cparam->payload_user_property.key =
-					    (char *) copy_utf8_str(
-					        packet, &pos, &len_of_str);
-					cparam->payload_user_property.len_key =
-					    len_of_str;
-					rv = rv | len_of_str;
-					// value
-					cparam->payload_user_property.val =
-					    (char *) copy_utf8_str(
-					        packet, &pos, &len_of_str);
-					cparam->payload_user_property.len_val =
-					    len_of_str;
-					rv = len_of_str < 0 ? 1 : 0;
-					break;
-				default:
-					break;
-				}
-				if (pos == target_pos) {
-					break;
-				} else if (pos > target_pos) {
-					debug_msg("ERROR: protocol error");
-					return PROTOCOL_ERROR;
+			// parse property in variable header
+			if (len_of_properties > 0) {
+				while (1) {
+					property_id = packet[pos++];
+					switch (property_id) {
+					case WILL_DELAY_INTERVAL:
+						debug_msg(
+						    "WILL_DELAY_INTERVAL");
+						NNI_GET32(packet + pos,
+						    cparam
+						        ->will_delay_interval);
+						pos += 4;
+						break;
+					case PAYLOAD_FORMAT_INDICATOR:
+						debug_msg("PAYLOAD_FORMAT_"
+						          "INDICATOR");
+						cparam
+						    ->payload_format_indicator =
+						    packet[pos++];
+						break;
+					case MESSAGE_EXPIRY_INTERVAL:
+						debug_msg(
+						    "MESSAGE_EXPIRY_INTERVAL");
+						NNI_GET32(packet + pos,
+						    cparam
+						        ->msg_expiry_interval);
+						pos += 4;
+						break;
+					case CONTENT_TYPE:
+						debug_msg("CONTENT_TYPE");
+						cparam->content_type.body =
+						    (char *) copy_utf8_str(
+						        packet, &pos,
+						        &len_of_str);
+						cparam->content_type.len =
+						    len_of_str;
+						rv = len_of_str < 0 ? 1 : 0;
+						debug_msg(
+						    "content type: %s %d",
+						    cparam->content_type.body,
+						    rv);
+						break;
+					case RESPONSE_TOPIC:
+						debug_msg("RESPONSE_TOPIC");
+						cparam->resp_topic.body =
+						    (char *) copy_utf8_str(
+						        packet, &pos,
+						        &len_of_str);
+						cparam->resp_topic.len =
+						    len_of_str;
+						rv = len_of_str < 0 ? 1 : 0;
+						debug_msg("resp topic: %s %d",
+						    cparam->resp_topic.body,
+						    rv);
+						break;
+					case CORRELATION_DATA:
+						debug_msg("CORRELATION_DATA");
+						cparam->corr_data.body =
+						    copy_utf8_str(packet, &pos,
+						        &len_of_str);
+						cparam->corr_data.len =
+						    len_of_str;
+						rv = len_of_str < 0 ? 1 : 0;
+						debug_msg("corr_data: %s %d",
+						    cparam->corr_data.body,
+						    rv);
+						break;
+					case USER_PROPERTY:
+						debug_msg("USER_PROPERTY");
+						// key
+						cparam->payload_user_property
+						    .key =
+						    (char *) copy_utf8_str(
+						        packet, &pos,
+						        &len_of_str);
+						cparam->payload_user_property
+						    .len_key = len_of_str;
+						rv           = rv | len_of_str;
+						// value
+						cparam->payload_user_property
+						    .val =
+						    (char *) copy_utf8_str(
+						        packet, &pos,
+						        &len_of_str);
+						cparam->payload_user_property
+						    .len_val = len_of_str;
+						rv = len_of_str < 0 ? 1 : 0;
+						break;
+					default:
+						break;
+					}
+					if (pos == target_pos) {
+						break;
+					} else if (pos > target_pos) {
+						debug_msg(
+						    "ERROR: protocol error");
+						return PROTOCOL_ERROR;
+					}
 				}
 			}
 		}
-	}
-			cparam->will_topic.body =
+		cparam->will_topic.body =
 		    (char *) copy_utf8_str(packet, &pos, &len_of_str);
 		cparam->will_topic.len = len_of_str;
 		rv                     = len_of_str < 0 ? 1 : 0;
@@ -648,9 +670,7 @@ if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
 		rv                   = len_of_str < 0 ? 1 : 0;
 		debug_msg("will_msg: %s %d", cparam->will_msg.body, rv);
 	}
-	
 
-	
 	// username
 	if ((cparam->con_flag & 0x80) > 0) {
 		cparam->username.body =
@@ -683,10 +703,10 @@ if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
 char *
 convert_to_utf8(char *src, char *format, size_t *len)
 {
-	size_t  ascii_len = 10, utf8_len;
+	size_t  ascii_len     = 10, utf8_len;
 	iconv_t iconv_obj     = iconv_open("utf-8", format);
-	char *  out_str       = calloc(strlen(src) * 2, sizeof(char));
-	char *  out_str_start = out_str;
+	char   *out_str       = calloc(strlen(src) * 2, sizeof(char));
+	char   *out_str_start = out_str;
 
 	size_t in_str_bytes_left  = strlen(src);
 	size_t out_str_bytes_left = strlen(src) * 2;
@@ -734,15 +754,15 @@ nmq_connack_encode(nng_msg *msg, conn_param *cparam, uint8_t reason)
 		}
 		if (cparam->assignedid == true) {
 			// nanomq use fixed length for generated client id
-			uint8_t bin_len[2] = {0x00, 0x0F};
-			tmp = ASSIGNED_CLIENT_IDENTIFIER;
+			uint8_t bin_len[2] = { 0x00, 0x0F };
+			tmp                = ASSIGNED_CLIENT_IDENTIFIER;
 			nni_msg_append(msg, &tmp, 1);
 			nni_msg_append(msg, bin_len, 2);
 			nni_msg_append(msg, cparam->clientid.body, 15);
 			remaining_len += 18;
 		}
-		//Subscription Identifier Available
-		//Maximum Packet Size
+		// Subscription Identifier Available
+		// Maximum Packet Size
 		tmp = MAXIMUM_PACKET_SIZE;
 		nni_msg_append(msg, &tmp, 1);
 		max_len = NANO_MAX_RECV_PACKET_SIZE;
@@ -1025,7 +1045,7 @@ verify_connect(conn_param *cparam, conf *conf)
 nng_msg *
 nano_msg_notify_disconnect(conn_param *cparam, uint8_t code)
 {
-	nni_msg *   msg = NULL;
+	nni_msg    *msg = NULL;
 	mqtt_string string, topic;
 	char        buff[256];
 	snprintf(buff, 256, DISCONNECT_MSG, (char *) cparam->username.body,
@@ -1041,7 +1061,7 @@ nano_msg_notify_disconnect(conn_param *cparam, uint8_t code)
 nng_msg *
 nano_msg_notify_connect(conn_param *cparam, uint8_t code)
 {
-	nni_msg *   msg = NULL;
+	nni_msg    *msg = NULL;
 	mqtt_string string, topic;
 	char        buff[256];
 	snprintf(buff, 256, CONNECT_MSG, cparam->username.body, nni_clock(),
@@ -1066,7 +1086,7 @@ nano_msg_notify_connect(conn_param *cparam, uint8_t code)
 nano_pipe_db *
 nano_msg_get_subtopic(nni_msg *msg, nano_pipe_db *root, conn_param *cparam)
 {
-	char *        topic;
+	char         *topic;
 	nano_pipe_db *db = NULL, *tmp = NULL, *iter = NULL;
 	uint8_t       len_of_topic = 0, *payload_ptr;
 	uint32_t      len, len_of_varint = 0;
@@ -1209,17 +1229,15 @@ nano_msg_ubsub_free(nano_pipe_db *db)
 
 /**
  * @brief get property length from msg if any
- * 
- * @return uint32_t 
+ *
+ * @return uint32_t
  */
 uint32_t
 nni_mqtt_get_property_len(nni_msg *m)
 {
 	uint8_t *pos;
 
-	if (nni_msg_get_type(m) == CMD_PUBLISH) {
-
-	}
+	if (nni_msg_get_type(m) == CMD_PUBLISH) { }
 	nni_msg_remaining_len(m);
 	pos = nni_msg_body(m);
 }
