@@ -319,6 +319,8 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	size_t     qos = 0;
 
 	msg = nni_aio_get_msg(aio);
+	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
+	qos = NANO_NNI_LMQ_GET_QOS_BITS(msg);
 
 	if (nni_aio_begin(aio) != 0) {
 		return;
@@ -355,21 +357,10 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	nni_mtx_unlock(&s->lk);
 	nni_mtx_lock(&p->lk);
 
-	// mqtt_msg_info * msg_info = NULL;
-	// msg_info = nni_aio_get_prov_extra(aio);
-	// if (msg_info)
-	// 	qos = msg_info->qos;
-
-	msg = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
 	if (!p->busy) {
 		p->busy = true;
+		msg = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
 		nni_aio_set_msg(&p->aio_send, msg);
-		// if (msg_info) {
-		// 	nni_aio_set_prov_extra(
-		// 	    &p->aio_send, 0, (void *) msg_info->retain);
-		// 	nni_aio_set_prov_extra(
-		// 	    &p->aio_send, 1, (void *) msg_info->sub_id);
-		// }
 		nni_pipe_send(p->pipe, &p->aio_send);
 		nni_mtx_unlock(&p->lk);
 		nni_aio_set_msg(aio, NULL);
@@ -394,6 +385,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		}
 	}
 
+	msg = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
 	nni_lmq_put(&p->rlmq, msg);
 
 	nni_mtx_unlock(&p->lk);
