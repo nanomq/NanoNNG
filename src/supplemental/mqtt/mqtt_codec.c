@@ -399,6 +399,15 @@ nni_mqtt_msg_append_u32(nni_msg *msg, uint32_t val)
 }
 
 static void
+nni_mqtt_msg_append_varint(nni_msg *msg, uint32_t val)
+{
+	uint8_t        buf[4] = { 0 };
+	struct pos_buf pbuf   = { .curpos = &buf[0], .endpos = &buf[4] };
+	int            bytes  = write_variable_length_value(val, &pbuf);
+	nni_msg_append(msg, buf, bytes);
+}
+
+static void
 nni_mqtt_msg_append_byte_str(nni_msg *msg, nni_mqtt_buffer *str)
 {
 	nni_mqtt_msg_append_u16(msg, (uint16_t) str->length);
@@ -1927,11 +1936,140 @@ mqtt_msg_dump(mqtt_msg *msg, mqtt_buf *buf, mqtt_buf *packet, bool print_bytes)
 property *
 property_alloc(void)
 {
-	return nng_zalloc(sizeof(property));
+	property *p = nng_zalloc(sizeof(property));
+	p->next     = NULL;
+	return p;
+}
+
+property_type_enum
+property_get_value_type(uint8_t prop_id)
+{
+	property_type_enum value_type;
+	switch (prop_id) {
+	case PAYLOAD_FORMAT_INDICATOR:
+	case REQUEST_PROBLEM_INFORMATION:
+	case REQUEST_RESPONSE_INFORMATION:
+	case PUBLISH_MAXIMUM_QOS:
+	case RETAIN_AVAILABLE:
+	case WILDCARD_SUBSCRIPTION_AVAILABLE:
+	case SUBSCRIPTION_IDENTIFIER_AVAILABLE:
+	case SHARED_SUBSCRIPTION_AVAILABLE:
+		value_type = U8;
+		break;
+
+	case SERVER_KEEP_ALIVE:
+	case RECEIVE_MAXIMUM:
+	case TOPIC_ALIAS_MAXIMUM:
+	case TOPIC_ALIAS:
+		value_type = U16;
+		break;
+	case MESSAGE_EXPIRY_INTERVAL:
+	case SESSION_EXPIRY_INTERVAL:
+	case WILL_DELAY_INTERVAL:
+	case MAXIMUM_PACKET_SIZE:
+		value_type = U32;
+		break;
+	case SUBSCRIPTION_IDENTIFIER:
+		value_type = VARINT;
+		break;
+	case CONTENT_TYPE:
+	case RESPONSE_TOPIC:
+	case ASSIGNED_CLIENT_IDENTIFIER:
+	case AUTHENTICATION_METHOD:
+	case RESPONSE_INFORMATION:
+	case SERVER_REFERENCE:
+	case REASON_STRING:
+		value_type = STR;
+		break;
+	case CORRELATION_DATA:
+	case AUTHENTICATION_DATA:
+		value_type = BINARY;
+		break;
+	case USER_PROPERTY:
+		value_type = STR_PAIR;
+		break;
+	}
+	return value_type;
 }
 
 property *
-property_set(struct pos_buf *buf, property *prop, uint8_t prop_id,
+property_set_value_u8(uint8_t prop_id, uint8_t value)
+{
+	property *prop        = property_alloc();
+	prop->id              = prop_id;
+	prop->data.p_value.u8 = value;
+	prop->data.p_type     = U8;
+	return prop;
+}
+
+property *
+property_set_value_u16(uint8_t prop_id, uint16_t value)
+{
+	property *prop         = property_alloc();
+	prop->id               = prop_id;
+	prop->data.p_value.u16 = value;
+	prop->data.p_type      = U16;
+	return prop;
+}
+
+property *
+property_set_value_u32(uint8_t prop_id, uint32_t value)
+{
+	property *prop         = property_alloc();
+	prop->id               = prop_id;
+	prop->data.p_value.u32 = value;
+	prop->data.p_type      = U32;
+	return prop;
+}
+
+property *
+property_set_value_varint(uint8_t prop_id, uint32_t value)
+{
+	property *prop            = property_alloc();
+	prop->id                  = prop_id;
+	prop->data.p_value.varint = value;
+	prop->data.p_type         = VARINT;
+	return prop;
+}
+
+property *
+property_set_value_binary(uint8_t prop_id, uint8_t *value, uint32_t len)
+{
+	property *prop                   = property_alloc();
+	prop->id                         = prop_id;
+	prop->data.p_value.binary.buf    = value;
+	prop->data.p_value.binary.length = len;
+	prop->data.p_type                = BINARY;
+	return prop;
+}
+
+property *
+property_set_value_str(uint8_t prop_id, const char *value, uint32_t len)
+{
+	property *prop                = property_alloc();
+	prop->id                      = prop_id;
+	prop->data.p_value.str.buf    = (uint8_t *) value;
+	prop->data.p_value.str.length = len;
+	prop->data.p_type             = BINARY;
+	return prop;
+}
+
+property *
+property_set_value_strpair(uint8_t prop_id, const char *key, uint32_t key_len,
+    const char *value, uint32_t value_len)
+{
+	property *prop                          = property_alloc();
+	prop->id                                = prop_id;
+	prop->data.p_value.strpair.key.buf      = (uint8_t *) key;
+	prop->data.p_value.strpair.key.length   = key_len;
+	prop->data.p_value.strpair.value.buf    = (uint8_t *) value;
+	prop->data.p_value.strpair.value.length = value_len;
+	prop->data.p_type                       = STR_PAIR;
+	return prop;
+}
+
+property *
+property_parse(struct pos_buf *buf, property *prop, uint8_t prop_id,
     property_type_enum type)
 {
 	if (prop == NULL) {
@@ -1990,12 +2128,13 @@ property_set(struct pos_buf *buf, property *prop, uint8_t prop_id,
 }
 
 void
-property_insert(property *prop_list, property *last)
+property_append(property *prop_list, property *last)
 {
 	property *p = prop_list;
 	while (p) {
 		if (p->next == NULL) {
-			p->next = last;
+			p->next    = last;
+			last->next = NULL;
 			break;
 		}
 		p = p->next;
@@ -2019,22 +2158,6 @@ property_free(property *prop)
 	while (head) {
 		p    = head;
 		head = head->next;
-
-		// switch (p->data.p_type) {
-		// case STR:
-		// 	mqtt_buf_free(&p->data.p_value.str);
-		// 	break;
-		// case BINARY:
-		// 	mqtt_buf_free(&p->data.p_value.binary);
-		// 	break;
-		// case STR_PAIR:
-		// 	mqtt_kv_free(&p->data.p_value.strpair);
-		// 	break;
-
-		// default:
-		// 	break;
-		// }
-
 		free(p);
 		p = NULL;
 	}
@@ -2072,63 +2195,11 @@ decode_properties(nng_msg *msg, uint32_t *pos, uint32_t *len)
 
 	while (buf.curpos < buf.endpos) {
 		read_byte(&buf, &prop_id);
-		property *cur_prop = NULL;
-		switch (prop_id) {
-		case PAYLOAD_FORMAT_INDICATOR:
-		case REQUEST_PROBLEM_INFORMATION:
-		case REQUEST_RESPONSE_INFORMATION:
-		case PUBLISH_MAXIMUM_QOS:
-		case RETAIN_AVAILABLE:
-		case WILDCARD_SUBSCRIPTION_AVAILABLE:
-		case SUBSCRIPTION_IDENTIFIER_AVAILABLE:
-		case SHARED_SUBSCRIPTION_AVAILABLE:
-			cur_prop = property_set(&buf, cur_prop, prop_id, U8);
-			property_insert(list, cur_prop);
-			break;
-
-		case SERVER_KEEP_ALIVE:
-		case RECEIVE_MAXIMUM:
-		case TOPIC_ALIAS_MAXIMUM:
-		case TOPIC_ALIAS:
-			cur_prop = property_set(&buf, cur_prop, prop_id, U16);
-			property_insert(list, cur_prop);
-			break;
-
-		case MESSAGE_EXPIRY_INTERVAL:
-		case SESSION_EXPIRY_INTERVAL:
-		case WILL_DELAY_INTERVAL:
-		case MAXIMUM_PACKET_SIZE:
-			cur_prop = property_set(&buf, cur_prop, prop_id, U32);
-			property_insert(list, cur_prop);
-			break;
-
-		case CONTENT_TYPE:
-		case RESPONSE_TOPIC:
-		case ASSIGNED_CLIENT_IDENTIFIER:
-		case AUTHENTICATION_METHOD:
-		case RESPONSE_INFORMATION:
-		case SERVER_REFERENCE:
-		case REASON_STRING:
-			cur_prop = property_set(&buf, cur_prop, prop_id, STR);
-			property_insert(list, cur_prop);
-			break;
-
-		case CORRELATION_DATA:
-		case AUTHENTICATION_DATA:
-			cur_prop =
-			    property_set(&buf, cur_prop, prop_id, BINARY);
-			property_insert(list, cur_prop);
-			break;
-
-		case USER_PROPERTY:
-			cur_prop =
-			    property_set(&buf, cur_prop, prop_id, STR_PAIR);
-			property_insert(list, cur_prop);
-			break;
-
-		default:
-			break;
-		}
+		property *         cur_prop = NULL;
+		property_type_enum type     = property_get_value_type(prop_id);
+		cur_prop = property_parse(&buf, cur_prop, prop_id, type);
+		property_append(list, cur_prop);
+		cur_prop = NULL;
 	}
 
 out:
@@ -2197,50 +2268,30 @@ encode_properties(nni_msg *msg, property *prop)
 
 	for (property *p = prop->next; p != NULL; p = p->next) {
 		nni_mqtt_msg_append_u8(msg, p->id);
-		switch (p->id) {
-		case PAYLOAD_FORMAT_INDICATOR:
-		case REQUEST_PROBLEM_INFORMATION:
-		case REQUEST_RESPONSE_INFORMATION:
-		case PUBLISH_MAXIMUM_QOS:
-		case RETAIN_AVAILABLE:
-		case WILDCARD_SUBSCRIPTION_AVAILABLE:
-		case SUBSCRIPTION_IDENTIFIER_AVAILABLE:
-		case SHARED_SUBSCRIPTION_AVAILABLE:
+		property_type_enum type = property_get_value_type(p->id);
+		switch (type) {
+		case U8:
 			nni_mqtt_msg_append_u8(msg, p->data.p_value.u8);
 			break;
-
-		case SERVER_KEEP_ALIVE:
-		case RECEIVE_MAXIMUM:
-		case TOPIC_ALIAS_MAXIMUM:
-		case TOPIC_ALIAS:
+		case U16:
 			nni_mqtt_msg_append_u16(msg, p->data.p_value.u16);
 			break;
-
-		case MESSAGE_EXPIRY_INTERVAL:
-		case SESSION_EXPIRY_INTERVAL:
-		case WILL_DELAY_INTERVAL:
-		case MAXIMUM_PACKET_SIZE:
+		case U32:
 			nni_mqtt_msg_append_u32(msg, p->data.p_value.u32);
 			break;
-
-		case CONTENT_TYPE:
-		case RESPONSE_TOPIC:
-		case ASSIGNED_CLIENT_IDENTIFIER:
-		case AUTHENTICATION_METHOD:
-		case RESPONSE_INFORMATION:
-		case SERVER_REFERENCE:
-		case REASON_STRING:
-			nni_mqtt_msg_append_byte_str(
-			    msg, &p->data.p_value.str);
+		case VARINT:
+			nni_mqtt_msg_append_varint(
+			    msg, p->data.p_value.varint);
 			break;
-
-		case CORRELATION_DATA:
-		case AUTHENTICATION_DATA:
+		case BINARY:
 			nni_mqtt_msg_append_byte_str(
 			    msg, &p->data.p_value.binary);
 			break;
-
-		case USER_PROPERTY:
+		case STR:
+			nni_mqtt_msg_append_byte_str(
+			    msg, &p->data.p_value.str);
+			break;
+		case STR_PAIR:
 			nni_mqtt_msg_append_byte_str(
 			    msg, &p->data.p_value.strpair.key);
 			nni_mqtt_msg_append_byte_str(
@@ -2277,7 +2328,9 @@ static nni_proto_msg_ops proto_ops = {
 void
 nni_msg_proto_set_property(nni_msg *msg, property *prop)
 {
-	nni_msg_set_proto_data(msg, &proto_ops, prop);
+	if (prop != NULL) {
+		nni_msg_set_proto_data(msg, &proto_ops, prop);
+	}
 }
 
 // TODO incompatible with client sdk
