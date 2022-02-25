@@ -550,7 +550,8 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 	debug_msg("clientid: [%s] [%d]", cparam->clientid.body, len_of_str);
 
 	// will topic
-	if (cparam->will_flag != 0 && cparam->pro_ver == PROTOCOL_VERSION_v5) {
+	if (cparam->will_flag != 0) {
+if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
 		len_of_properties   = get_var_integer(packet, &pos);
 		uint32_t target_pos = pos + len_of_properties;
 		debug_msg("propertyLen in payload [%d]", len_of_properties);
@@ -634,7 +635,8 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 				}
 			}
 		}
-		cparam->will_topic.body =
+	}
+			cparam->will_topic.body =
 		    (char *) copy_utf8_str(packet, &pos, &len_of_str);
 		cparam->will_topic.len = len_of_str;
 		rv                     = len_of_str < 0 ? 1 : 0;
@@ -646,6 +648,9 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 		rv                   = len_of_str < 0 ? 1 : 0;
 		debug_msg("will_msg: %s %d", cparam->will_msg.body, rv);
 	}
+	
+
+	
 	// username
 	if ((cparam->con_flag & 0x80) > 0) {
 		cparam->username.body =
