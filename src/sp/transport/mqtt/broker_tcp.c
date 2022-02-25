@@ -811,10 +811,6 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 	nni_aio_set_msg(aio, msg);
 
 	// Ready for composing
-	// retain = (uint8_t) nni_aio_get_prov_extra(aio, 0);
-	// sub_id = (uint32_t) nni_aio_get_prov_extra(aio, 1);
-	// debug_msg("retain %d sub_id %d", retain, sub_id);
-
 	// never modify the original msg
 	if (nni_msg_header_len(msg) > 0 &&
 	    nni_msg_get_type(msg) == CMD_PUBLISH) {
