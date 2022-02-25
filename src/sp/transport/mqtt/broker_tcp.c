@@ -545,7 +545,7 @@ tcptran_pipe_recv_cb(void *arg)
 		// same packet, continue receving next byte of remaining length
 		iov[0].iov_buf = &p->rxlen[p->gotrxhead];
 		iov[0].iov_len = 1;
-		nni_aio_set_iov(rxaio, 1, &iov);
+		nni_aio_set_iov(rxaio, 1, iov);
 		nng_stream_recv(p->conn, rxaio);
 		nni_mtx_unlock(&p->mtx);
 		return;
@@ -558,7 +558,7 @@ tcptran_pipe_recv_cb(void *arg)
 			iov[0].iov_len = 2;
 			iov[0].iov_buf = &p->txlen;
 			// send CMD_PINGRESP down...
-			nni_aio_set_iov(p->rpaio, 1, &iov);
+			nni_aio_set_iov(p->rpaio, 1, iov);
 			nng_stream_send(p->conn, p->rpaio);
 			goto notify;
 		}
@@ -595,7 +595,7 @@ tcptran_pipe_recv_cb(void *arg)
 			iov[0].iov_buf = nni_msg_body(p->rxmsg);
 			iov[0].iov_len = (size_t) len;
 
-			nni_aio_set_iov(rxaio, 1, &iov);
+			nni_aio_set_iov(rxaio, 1, iov);
 			// second recv action
 			nng_stream_recv(p->conn, rxaio);
 			nni_mtx_unlock(&p->mtx);
@@ -627,10 +627,7 @@ tcptran_pipe_recv_cb(void *arg)
 	property *prop        = NULL;
 	uint8_t   ack_cmd     = 0;
 	if (type == CMD_PUBLISH) {
-		uint8_t  qos_pac;
-		uint16_t pid;
-
-		qos_pac = nni_msg_get_pub_qos(msg);
+		uint8_t qos_pac = nni_msg_get_pub_qos(msg);
 		if (qos_pac > 0) {
 			// flow control, check rx_max
 			// recv_quota as length of lmq
@@ -692,7 +689,9 @@ tcptran_pipe_recv_cb(void *arg)
 		nmq_pubres_encode(
 		    qmsg, packet_id, reason_code, prop, cparam->pro_ver);
 		nmq_pubres_header_encode(qmsg, ack_cmd);
-		nni_msg_proto_set_property(qmsg, prop);
+		if (prop != NULL) {
+			nni_msg_proto_set_property(qmsg, prop);
+		}
 		// aio_begin?
 		if (p->busy == false) {
 			iov[0].iov_len = nni_msg_header_len(qmsg);
