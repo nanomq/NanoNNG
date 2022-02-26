@@ -19,6 +19,8 @@ find_package(Threads)
 
 find_package(Threads)
 
+find_package(Threads)
+
 add_executable(server server.c)
 target_link_libraries(server nng::nng)
 target_compile_definitions(server PRIVATE NNG_ELIDE_DEPRECATED PARALLEL=${PARALLEL})
@@ -26,3 +28,4 @@ target_compile_definitions(server PRIVATE NNG_ELIDE_DEPRECATED PARALLEL=${PARALL
 add_executable(client client.c)
 target_compile_definitions(client PRIVATE NNG_ELIDE_DEPRECATED)
 target_link_libraries(client nng::nng)
+target_compile_definitions(client PRIVATE NNG_ELIDE_DEPRECATED)

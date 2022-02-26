@@ -4,7 +4,7 @@
 # file was obtained (LICENSE.txt).  A copy of the license may also be
 # found online at https://opensource.org/licenses/MIT.
 
-cmake_minimum_required (VERSION 2.8.7)
+cmake_minimum_required (VERSION 2.8.12)
 
 project(mqtt_async)
 
@@ -21,3 +21,4 @@ if(NNG_ENABLE_TLS)
     add_definitions(-DNNG_SUPP_TLS)
 endif()
 
+target_compile_definitions(mqtt_async PRIVATE NNG_ELIDE_DEPRECATED)

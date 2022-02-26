@@ -7,12 +7,19 @@
 # found online at https://opensource.org/licenses/MIT.
 #
 
-nng_directory(mqtt)
+#  Mqtt.
+nng_directory(core)
 
-add_subdirectory(protocol)
-add_subdirectory(transport)
+nng_check_sym(strlcpy string.h NNG_HAVE_STRLCPY)
+nng_check_sym(strnlen string.h NNG_HAVE_STRNLEN)
+nng_check_sym(strcasecmp string.h NNG_HAVE_STRCASECMP)
+nng_check_sym(strncasecmp string.h NNG_HAVE_STRNCASECMP)
 
 nng_sources(
-        transport.c
-        transport.h
+   mqtt_public.c
+   mqtt_codec.c
+   mqtt_msg.c
+   mqtt_msg.h
 )
+
+nng_test(mqtt_test)

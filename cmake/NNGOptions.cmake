@@ -79,7 +79,7 @@ mark_as_advanced(NNG_PROTO_SURVEYOR0)
 option (NNG_PROTO_MQTT_CLIENT "Enable MQTT Client protocol." ON)
 mark_as_advanced(NNG_PROTO_MQTT_CLIENT)
 
-option (NNG_PROTO_MQTT_BROKER "Enable MQTT Broker protocol." OFF)
+option (NNG_PROTO_MQTT_BROKER "Enable MQTT Broker protocol." ON)
 mark_as_advanced(NNG_PROTO_MQTT_BROKER)
 
 # TLS support.

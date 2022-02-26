@@ -9,10 +9,8 @@
 #
 
 # TCP protocol
-nng_directory(mqtt)
+nng_directory(mqtts)
 
-if(NNG_TRANSPORT_MQTT_BROKER_TCP)
-    nng_sources_if(NNG_TRANSPORT_MQTT_BROKER_TCP broker_tcp.c)
-    nng_headers_if(NNG_TRANSPORT_MQTT_BROKER_TCP nng/transport/mqtt/broker_tcp.h)
-    nng_defines_if(NNG_TRANSPORT_MQTT_BROKER_TCP NNG_TRANSPORT_MQTT_BROKER_TCP)
-endif()
+nng_sources_if(NNG_TRANSPORT_MQTT_TLS mqtt_tls.c)
+nng_headers_if(NNG_TRANSPORT_MQTT_TLS nng/mqtt/transport/tls/mqtt_tls.h)
+nng_defines_if(NNG_TRANSPORT_MQTT_TLS NNG_TRANSPORT_MQTT_TLS)

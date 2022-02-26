@@ -108,12 +108,6 @@ nni_sp_tran_sys_init(void)
 #ifdef NNG_TRANSPORT_MQTT_BROKER_TLS
 	nni_nmq_broker_tls_register();
 #endif
-#ifdef NNG_TRANSPORT_MQTT_TCP
-	nni_mqtt_tcp_register();
-#endif
-#ifdef NNG_TRANSPORT_MQTT_TLS
-	nni_mqtts_tcp_register();
-#endif
 #ifdef NNG_TRANSPORT_TLS
 	nni_sp_tls_register();
 #endif

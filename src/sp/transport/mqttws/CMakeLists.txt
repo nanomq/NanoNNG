@@ -17,6 +17,3 @@ if (NNG_TRANSPORT_MQTT_BROKER_WS OR NNG_TRANSPORT_MQTT_BROKER_WSS)
     nng_sources(nmq_websocket.c)
     nng_headers(nng/transport/mqttws/nmq_websocket.h)
 endif()
-
-
-
