@@ -2165,14 +2165,16 @@ property_free(property *prop)
 }
 
 property *
-decode_properties(nng_msg *msg, uint32_t *pos, uint32_t *len)
+decode_buf_properties(
+    uint8_t *packet, uint32_t packet_len, uint32_t *pos, uint32_t *len)
 {
-	int      rv;
-	uint8_t *msg_body    = nng_msg_body(msg);
-	size_t   msg_len     = nng_msg_len(msg);
-	uint32_t prop_len    = 0;
-	uint8_t  bytes       = 0;
-	uint32_t current_pos = *pos;
+	int       rv;
+	uint8_t * msg_body    = packet;
+	size_t    msg_len     = packet_len;
+	uint32_t  prop_len    = 0;
+	uint8_t   bytes       = 0;
+	uint32_t  current_pos = *pos;
+	property *list        = NULL;
 
 	if (current_pos >= msg_len) {
 		return 0;
@@ -2190,8 +2192,8 @@ decode_properties(nng_msg *msg, uint32_t *pos, uint32_t *len)
 		goto out;
 	}
 
-	uint8_t   prop_id = 0;
-	property *list    = property_alloc();
+	uint8_t prop_id = 0;
+	list            = property_alloc();
 
 	while (buf.curpos < buf.endpos) {
 		read_byte(&buf, &prop_id);
@@ -2199,7 +2201,6 @@ decode_properties(nng_msg *msg, uint32_t *pos, uint32_t *len)
 		property_type_enum type     = property_get_value_type(prop_id);
 		cur_prop = property_parse(&buf, cur_prop, prop_id, type);
 		property_append(list, cur_prop);
-		cur_prop = NULL;
 	}
 
 out:
@@ -2207,6 +2208,14 @@ out:
 	*pos = current_pos;
 	*len = prop_len;
 	return list;
+}
+
+property *
+decode_properties(nng_msg *msg, uint32_t *pos, uint32_t *len)
+{
+	uint8_t *msg_body = nng_msg_body(msg);
+	size_t   msg_len  = nng_msg_len(msg);
+	return decode_buf_properties(msg_body, msg_len, pos, len);
 }
 
 uint32_t

@@ -87,6 +87,8 @@ NNG_DECL void nmq_connack_encode(
     nng_msg *msg, conn_param *cparam, uint8_t reason);
 NNG_DECL void nmq_connack_session(nng_msg *msg, bool session);
 
+NNG_DECL property *decode_buf_properties(
+    uint8_t *packet, uint32_t packet_len, uint32_t *pos, uint32_t *len);
 NNG_DECL property *decode_properties(
     nng_msg *msg, uint32_t *pos, uint32_t *len);
 NNG_DECL int      encode_properties(nng_msg *msg, property *prop);

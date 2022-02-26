@@ -137,6 +137,11 @@ struct conn_param {
 	struct mqtt_string   resp_topic;
 	struct mqtt_binary   corr_data;
 	struct mqtt_str_pair payload_user_property;
+
+	uint32_t  prop_len;
+	property *properties;
+	uint32_t  will_prop_len;
+	property *will_properties;
 };
 // Message protocol private data.  This is specific for protocol use,
 // and not exposed to library users.

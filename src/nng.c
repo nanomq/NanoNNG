@@ -2197,6 +2197,18 @@ conn_param_get_protover(conn_param *cparam)
 }
 
 void *
+conn_param_get_property(conn_param *cparam)
+{
+	return cparam->properties;
+}
+
+void *
+conn_param_get_will_property(conn_param *cparam)
+{
+	return cparam->will_properties;
+}
+
+void *
 conn_param_get_qos_db(conn_param *cparam)
 {
 	return (void *) (cparam->nano_qos_db);
