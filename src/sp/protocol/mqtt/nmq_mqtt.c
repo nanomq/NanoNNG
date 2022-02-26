@@ -319,8 +319,8 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	size_t     qos = 0;
 
 	msg = nni_aio_get_msg(aio);
-	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
 	qos = NANO_NNI_LMQ_GET_QOS_BITS(msg);
+	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
 
 	if (nni_aio_begin(aio) != 0) {
 		return;
