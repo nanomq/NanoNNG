@@ -530,64 +530,22 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 void
 nmq_connack_encode(nng_msg *msg, conn_param *cparam, uint8_t reason)
 {
-	size_t  max_len;
-	uint8_t buf1[7]; // Fixed header
-	uint8_t buf2[4]; // Session Present + Reason Code + Varlength
-	uint8_t pos = 0, vlen = 0, flen, tmp;
+	uint8_t ack_flag = 0x00;
+	nni_msg_append(msg, &ack_flag, 1);
+	nni_msg_append(msg, &reason, 1);
 
-	// remaining_len = 2 in this case
-	uint32_t remaining_len = 0;
-	// we put Property Length in header for CONNACK
-	// set session in broker app layer.
-	uint8_t *header = nni_msg_header(msg);
-	buf1[0]         = CMD_CONNACK;
 	if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
-		if (cparam->session_expiry_interval > 0) {
-			debug_msg("SESSION_EXPIRY_INTERVAL %d",
-			    cparam->session_expiry_interval);
-			tmp = SESSION_EXPIRY_INTERVAL;
-			// uint8_t stmp[4];
-			// NNI_PUT32(stmp,cparam->session_expiry_interval);
-			nni_msg_append(msg, &tmp, 1);
-			nni_msg_append(
-			    msg, &cparam->session_expiry_interval, 4);
-			remaining_len += 5;
-		}
-		// Receive Maximum
-		if (cparam->rx_max != 65535) {
-			debug_msg("RECEIVE_MAXIMUM %d", cparam->rx_max);
-			tmp = RECEIVE_MAXIMUM;
-			nni_msg_append(msg, &tmp, 1);
-			nni_msg_append(msg, &(cparam->rx_max), 2);
-			remaining_len += 3;
-		}
-		if (cparam->assignedid == true) {
-			// nanomq use fixed length for generated client id
-			uint8_t bin_len[2] = { 0x00, 0x0F };
-			tmp                = ASSIGNED_CLIENT_IDENTIFIER;
-			nni_msg_append(msg, &tmp, 1);
-			nni_msg_append(msg, bin_len, 2);
-			nni_msg_append(msg, cparam->clientid.body, 15);
-			remaining_len += 18;
-		}
-		// Subscription Identifier Available
-		// Maximum Packet Size
-		tmp = MAXIMUM_PACKET_SIZE;
-		nni_msg_append(msg, &tmp, 1);
-		max_len = NANO_MAX_RECV_PACKET_SIZE;
-		nni_msg_append(msg, &max_len, 4);
-		remaining_len += 5;
-		// Variable length
-		vlen = put_var_integer(buf2, remaining_len);
+		encode_properties(msg, cparam->properties);
 	}
-	// Remaining length
-	flen           = put_var_integer(buf1 + 1, remaining_len + vlen + 2);
-	buf1[flen + 1] = 0x00;
-	buf1[flen + 2] = reason;
-	nni_msg_header_append(msg, buf1, flen + 3);
-	if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
-		nni_msg_header_append(msg, buf2, vlen);
-	}
+
+	size_t         msg_len    = nng_msg_len(msg);
+	uint8_t        var_len[4] = { 0 };
+	struct pos_buf buf = { .curpos = &var_len[0], .endpos = &var_len[4] };
+
+	int     bytes = write_variable_length_value(msg_len, &buf);
+	uint8_t cmd   = CMD_CONNACK;
+	nng_msg_header_append(msg, &cmd, 1);
+	nng_msg_header_append(msg, var_len, bytes);
 }
 
 /**
@@ -598,16 +556,16 @@ nmq_connack_encode(nng_msg *msg, conn_param *cparam, uint8_t reason)
 void
 nmq_connack_session(nng_msg *msg, bool session)
 {
-	uint8_t *header;
+	uint8_t *body;
 	uint8_t  len;
-	size_t   pos = 1;
-	header       = nni_msg_header(msg);
-	len          = get_var_integer(header + 1, &pos);
-	header       = header + pos;
+	size_t   pos = 0;
+	body       = nni_msg_body(msg);
+	// len          = get_var_integer(body + 1, &pos);
+	body       = body + pos;
 	if (session) {
-		*header = 0x01;
+		*body = 0x01;
 	} else {
-		*header = 0x00;
+		*body = 0x00;
 	}
 }
 
