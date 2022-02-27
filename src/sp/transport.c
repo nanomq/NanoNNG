@@ -58,17 +58,11 @@ extern void nni_sp_ipc_register(void);
 #ifdef NNG_TRANSPORT_TCP
 extern void nni_sp_tcp_register(void);
 #endif
-#ifdef NNG_TRANSPORT_MQTT_TCP
-extern void nni_mqtt_tcp_register();
-#endif
 #ifdef NNG_TRANSPORT_MQTT_BROKER_TCP
 extern void nni_nmq_broker_tcp_register();
 #endif
 #ifdef NNG_TRANSPORT_MQTT_BROKER_TLS
 extern void nni_nmq_broker_tls_register();
-#endif
-#ifdef NNG_TRANSPORT_MQTT_TLS
-extern void nni_mqtts_tcp_register();
 #endif
 #ifdef NNG_TRANSPORT_TLS
 extern void nni_sp_tls_register(void);
