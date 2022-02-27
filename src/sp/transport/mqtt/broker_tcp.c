@@ -888,7 +888,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		if (prover == 4) {
 			//caculate property length
 			uint32_t bytes = 0;
-			plength = get_var_integer(body + 2 + tlen + len_offset, &bytes);
+			plength = get_var_integer(body + 2 + tlen - len_offset, &bytes);
 			plength+=bytes;
 		}
 		rlen = put_var_integer(
