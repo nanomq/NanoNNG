@@ -192,6 +192,7 @@ nano_pipe_timer_cb(void *arg)
 		return;
 	}
 	p->ka_refresh++;
+
 	if (!p->busy) {
 		msg = nni_id_get_any(npipe->nano_qos_db, &pid);
 		if (msg != NULL) {
@@ -204,7 +205,8 @@ nano_pipe_timer_cb(void *arg)
 				nni_msg_clone(rmsg);
 				nano_msg_set_dup(rmsg);
 				nni_aio_set_packetid(&p->aio_send, pid);
-				nni_aio_set_msg(&p->aio_send, rmsg);
+				//put original msg into sending
+				nni_aio_set_msg(&p->aio_send, msg);
 				debug_msg(
 				    "resending qos msg packetid: %d", pid);
 				nni_pipe_send(p->pipe, &p->aio_send);
@@ -525,7 +527,7 @@ nano_pipe_start(void *arg)
 	nano_pipe *p = arg;
 	nano_sock *s = p->rep;
 	nni_msg *  msg;
-	uint8_t    rv, reason; // reason code of CONNACK
+	uint8_t    rv; // reason code of CONNACK
 	uint8_t    buf[4] = { 0x20, 0x02, 0x00, 0x00 };
 	nni_pipe * npipe = p->pipe;
 	char *     clientid = NULL;
@@ -551,7 +553,6 @@ nano_pipe_start(void *arg)
 	if (rv != 0) {
 		// TODO disconnect client && send connack with reason code 0x05
 		debug_syslog("Invalid auth info.");
-		reason = rv; // set return code
 	}
 	nni_mtx_unlock(&s->lk);
 
@@ -569,7 +570,7 @@ nano_pipe_start(void *arg)
 	}
 
 	// TODO MQTT V5 check return code
-	if (reason == 0) {
+	if (rv == 0) {
 		nni_sleep_aio(s->conf->qos_duration * 1500, &p->aio_timer);
 	}
 	nni_msg_set_cmd_type(msg, CMD_CONNACK);
