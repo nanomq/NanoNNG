@@ -2,7 +2,7 @@
 
 #include "nng/nng.h"
 
-#include "mqtt.h"
+#include "mqtt_msg.h"
 #include "nuts.h"
 
 #define MQTT_MSG_DUMP 0
@@ -133,10 +133,6 @@ test_encode_connect(void)
 	nng_mqtt_msg_set_connect_password(msg, passwd);
 	nng_mqtt_msg_set_connect_clean_session(msg, true);
 	nng_mqtt_msg_set_connect_keep_alive(msg, 60);
-	
-	nng_mqtt_msg_set_conn_param(msg);
-	
-	NUTS_ASSERT(nng_mqtt_msg_get_conn_param(msg) != NULL);
 
 	NUTS_PASS(nng_mqtt_msg_encode(msg));
 	print_mqtt_msg(msg);

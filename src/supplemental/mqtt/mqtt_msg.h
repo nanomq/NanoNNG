@@ -1,5 +1,5 @@
-#ifndef MQTT_MQTT_H
-#define MQTT_MQTT_H
+#ifndef NNG_SUPPLEMENTAL_MQTT_MQTT_MSG_H
+#define NNG_SUPPLEMENTAL_MQTT_MQTT_MSG_H
 
 // #include "mqtt_codec.h"
 #ifdef __cplusplus
@@ -13,7 +13,7 @@ extern "C" {
 #endif
 
 #include "core/nng_impl.h"
-
+#include "nng/mqtt/mqtt_client.h"
 #include "nng/nng.h"
 
 #define MQTT_VERSION_3_1 3
@@ -212,6 +212,7 @@ typedef struct mqtt_fixed_hdr_t {
 
 typedef struct mqtt_msg_t {
 	/* Fixed header part */
+	nni_aio * aio;  //QoS AIO
 	mqtt_fixed_hdr             fixed_header;
 	union mqtt_variable_header var_header;
 	union mqtt_payload         payload;
@@ -223,8 +224,6 @@ typedef struct mqtt_msg_t {
 	bool is_decoded : 1; /* message is obtained from decoded or encoded */
 	bool is_copied : 1;  /* indicates string or array members are copied */
 	uint8_t _unused : 2;
-
-	conn_param *conn_ctx;
 
 } mqtt_msg;
 
@@ -245,6 +244,8 @@ extern int read_packet_length(struct pos_buf *, uint32_t *);
 extern int  mqtt_buf_create(mqtt_buf *, const uint8_t *, uint32_t);
 extern int  mqtt_buf_dup(mqtt_buf *, const mqtt_buf *);
 extern void mqtt_buf_free(mqtt_buf *);
+extern nni_aio *nni_mqtt_msg_get_aio(nni_msg *);
+extern void     nni_mqtt_msg_set_aio(nni_msg *, nni_aio *);
 
 extern mqtt_msg *mqtt_msg_create(nni_mqtt_packet_type);
 
@@ -367,9 +368,6 @@ extern void                nni_mqtt_topic_qos_array_set(
                    nni_mqtt_topic_qos *, size_t, const char *, uint8_t);
 extern void nni_mqtt_topic_qos_array_free(nni_mqtt_topic_qos *, size_t);
 
-// broker usage
-extern conn_param *nni_mqtt_msg_set_conn_param(nni_msg *);
-extern conn_param *nni_mqtt_msg_get_conn_param(nni_msg *);
 #ifdef __cplusplus
 }
 #endif

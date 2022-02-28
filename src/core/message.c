@@ -122,7 +122,7 @@ nni_chunk_grow(nni_chunk *ch, size_t newsz, size_t headwanted)
 
 	if ((ch->ch_ptr >= ch->ch_buf) && (ch->ch_ptr != NULL) &&
 	    (ch->ch_ptr < (ch->ch_buf + ch->ch_cap))) {
-		size_t headroom = (size_t)(ch->ch_ptr - ch->ch_buf);
+		size_t headroom = (size_t) (ch->ch_ptr - ch->ch_buf);
 		if (headwanted < headroom) {
 			headwanted = headroom; // Never shrink this.
 		}
@@ -278,7 +278,7 @@ nni_chunk_insert(nni_chunk *ch, const void *data, size_t len)
 
 	if ((ch->ch_ptr >= ch->ch_buf) &&
 	    (ch->ch_ptr < (ch->ch_buf + ch->ch_cap)) &&
-	    (len <= (size_t)(ch->ch_ptr - ch->ch_buf))) {
+	    (len <= (size_t) (ch->ch_ptr - ch->ch_buf))) {
 		// There is already enough room at the beginning.
 		ch->ch_ptr -= len;
 	} else if ((ch->ch_len + len) <= ch->ch_cap) {
