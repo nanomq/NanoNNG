@@ -403,7 +403,7 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 {
 	uint32_t len, tmp, pos = 0, len_of_properties = 0, len_of_var = 0;
 	int      len_of_str = 0;
-	int32_t  rv         = 0;
+	int32_t  rv         = 0, target_pos;
 	uint8_t  property_id;
 
 	if (packet[pos] != CMD_CONNECT) {
@@ -439,95 +439,85 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 	// properties
 	if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
 		debug_msg("MQTT 5 Properties");
-		len_of_properties   = (uint32_t) get_var_integer(packet, &pos);
-		uint32_t target_pos = pos + len_of_properties;
+		len_of_properties = (uint32_t) get_var_integer(packet, &pos);
+		target_pos        = pos + len_of_properties;
 		debug_msg("propertyLen in variable [%d]", len_of_properties);
 
 		// parse property in variable header
-		if (len_of_properties > 0) {
-			while (1) {
-				property_id = packet[pos++];
-				switch (property_id) {
-				case SESSION_EXPIRY_INTERVAL:
-					debug_msg("SESSION_EXPIRY_INTERVAL");
-					NNI_GET32(packet + pos,
-					    cparam->session_expiry_interval);
-					pos += 4;
-					break;
-				case RECEIVE_MAXIMUM:
-					NNI_GET16(
-					    packet + pos, cparam->rx_max);
-					debug_msg("RECEIVE_MAXIMUM %d %x %x",
-					    cparam->rx_max, *(packet + pos),
-					    *(packet + pos + 1));
-					pos += 2;
-					break;
-				case MAXIMUM_PACKET_SIZE:
-					debug_msg("MAXIMUM_PACKET_SIZE");
-					NNI_GET32(packet + pos,
-					    cparam->max_packet_size);
-					pos += 4;
-					break;
-				case TOPIC_ALIAS_MAXIMUM:
-					debug_msg("TOPIC_ALIAS_MAXIMUM");
-					NNI_GET16(packet + pos,
-					    cparam->topic_alias_max);
-					pos += 2;
-					break;
-				case REQUEST_RESPONSE_INFORMATION:
-					debug_msg(
-					    "REQUEST_RESPONSE_INFORMATION");
-					cparam->req_resp_info = packet[pos++];
-					break;
-				case REQUEST_PROBLEM_INFORMATION:
-					debug_msg(
-					    "REQUEST_PROBLEM_INFORMATION");
-					cparam->req_problem_info =
-					    packet[pos++];
-					break;
-				case USER_PROPERTY:
-					debug_msg("USER_PROPERTY");
-					// key
-					cparam->user_property.key =
-					    (char *) copy_utf8_str(
-					        packet, &pos, &len_of_str);
-					cparam->user_property.len_key =
-					    len_of_str;
-					rv = len_of_str < 0 ? 1 : 0;
-					// value
-					cparam->user_property.val =
-					    (char *) copy_utf8_str(
-					        packet, &pos, &len_of_str);
-					cparam->user_property.len_val =
-					    len_of_str;
-					rv = len_of_str < 0 ? 1 : 0;
-					break;
-				case AUTHENTICATION_METHOD:
-					debug_msg("AUTHENTICATION_METHOD");
-					cparam->auth_method.body =
-					    (char *) copy_utf8_str(
-					        packet, &pos, &len_of_str);
-					rv = len_of_str < 0 ? 1 : 0;
-					cparam->auth_method.len = len_of_str;
-					len_of_str              = 0;
-					break;
-				case AUTHENTICATION_DATA:
-					debug_msg("AUTHENTICATION_DATA");
-					cparam->auth_data.body = copy_utf8_str(
-					    packet, &pos, &len_of_str);
-					rv = len_of_str < 0 ? 1 : 0;
-					cparam->auth_data.len = len_of_str;
-					break;
-				default:
-					break;
-				}
-				if (pos == target_pos) {
-					break;
-				} else if (pos > target_pos) {
-					debug_msg("ERROR: protocol error");
-					return PROTOCOL_ERROR;
-				}
+		while (pos < target_pos) {
+			property_id = packet[pos++];
+			switch (property_id) {
+			case SESSION_EXPIRY_INTERVAL:
+				debug_msg("SESSION_EXPIRY_INTERVAL");
+				NNI_GET32(packet + pos,
+				    cparam->session_expiry_interval);
+				pos += 4;
+				break;
+			case RECEIVE_MAXIMUM:
+				NNI_GET16(packet + pos, cparam->rx_max);
+				debug_msg("RECEIVE_MAXIMUM %d %x %x",
+				    cparam->rx_max, *(packet + pos),
+				    *(packet + pos + 1));
+				pos += 2;
+				break;
+			case MAXIMUM_PACKET_SIZE:
+				debug_msg("MAXIMUM_PACKET_SIZE");
+				NNI_GET32(
+				    packet + pos, cparam->max_packet_size);
+				pos += 4;
+				break;
+			case TOPIC_ALIAS_MAXIMUM:
+				debug_msg("TOPIC_ALIAS_MAXIMUM");
+				NNI_GET16(
+				    packet + pos, cparam->topic_alias_max);
+				pos += 2;
+				break;
+			case REQUEST_RESPONSE_INFORMATION:
+				debug_msg("REQUEST_RESPONSE_INFORMATION");
+				cparam->req_resp_info = packet[pos++];
+				break;
+			case REQUEST_PROBLEM_INFORMATION:
+				debug_msg("REQUEST_PROBLEM_INFORMATION");
+				cparam->req_problem_info = packet[pos++];
+				break;
+			case USER_PROPERTY:
+				debug_msg("USER_PROPERTY");
+				// key
+				cparam->user_property.key =
+				    (char *) copy_utf8_str(
+				        packet, &pos, &len_of_str);
+				cparam->user_property.len_key = len_of_str;
+				rv = len_of_str < 0 ? 1 : 0;
+				// value
+				cparam->user_property.val =
+				    (char *) copy_utf8_str(
+				        packet, &pos, &len_of_str);
+				cparam->user_property.len_val = len_of_str;
+				rv = len_of_str < 0 ? 1 : 0;
+				break;
+			case AUTHENTICATION_METHOD:
+				debug_msg("AUTHENTICATION_METHOD");
+				cparam->auth_method.body =
+				    (char *) copy_utf8_str(
+				        packet, &pos, &len_of_str);
+				rv = len_of_str < 0 ? 1 : 0;
+				cparam->auth_method.len = len_of_str;
+				len_of_str              = 0;
+				break;
+			case AUTHENTICATION_DATA:
+				debug_msg("AUTHENTICATION_DATA");
+				cparam->auth_data.body =
+				    copy_utf8_str(packet, &pos, &len_of_str);
+				rv                    = len_of_str < 0 ? 1 : 0;
+				cparam->auth_data.len = len_of_str;
+				break;
+			default:
+				break;
 			}
+		}
+		if (pos > target_pos) {
+			debug_msg("ERROR: protocol error");
+			return PROTOCOL_ERROR;
 		}
 	}
 	debug_msg("pos after property: [%d]", pos);
@@ -552,110 +542,85 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 	// will topic
 	if (cparam->will_flag != 0) {
 		if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
-			len_of_properties   = get_var_integer(packet, &pos);
-			uint32_t target_pos = pos + len_of_properties;
-			debug_msg(
-			    "propertyLen in payload [%d]", len_of_properties);
+			len_of_properties = get_var_integer(packet, &pos);
+			target_pos        = pos + len_of_properties;
+			debug_msg("propertylen payload %d", len_of_properties);
 
 			// parse property in variable header
-			if (len_of_properties > 0) {
-				while (1) {
-					property_id = packet[pos++];
-					switch (property_id) {
-					case WILL_DELAY_INTERVAL:
-						debug_msg(
-						    "WILL_DELAY_INTERVAL");
-						NNI_GET32(packet + pos,
-						    cparam
-						        ->will_delay_interval);
-						pos += 4;
-						break;
-					case PAYLOAD_FORMAT_INDICATOR:
-						debug_msg("PAYLOAD_FORMAT_"
-						          "INDICATOR");
-						cparam
-						    ->payload_format_indicator =
-						    packet[pos++];
-						break;
-					case MESSAGE_EXPIRY_INTERVAL:
-						debug_msg(
-						    "MESSAGE_EXPIRY_INTERVAL");
-						NNI_GET32(packet + pos,
-						    cparam
-						        ->msg_expiry_interval);
-						pos += 4;
-						break;
-					case CONTENT_TYPE:
-						debug_msg("CONTENT_TYPE");
-						cparam->content_type.body =
-						    (char *) copy_utf8_str(
-						        packet, &pos,
-						        &len_of_str);
-						cparam->content_type.len =
-						    len_of_str;
-						rv = len_of_str < 0 ? 1 : 0;
-						debug_msg(
-						    "content type: %s %d",
-						    cparam->content_type.body,
-						    rv);
-						break;
-					case RESPONSE_TOPIC:
-						debug_msg("RESPONSE_TOPIC");
-						cparam->resp_topic.body =
-						    (char *) copy_utf8_str(
-						        packet, &pos,
-						        &len_of_str);
-						cparam->resp_topic.len =
-						    len_of_str;
-						rv = len_of_str < 0 ? 1 : 0;
-						debug_msg("resp topic: %s %d",
-						    cparam->resp_topic.body,
-						    rv);
-						break;
-					case CORRELATION_DATA:
-						debug_msg("CORRELATION_DATA");
-						cparam->corr_data.body =
-						    copy_utf8_str(packet, &pos,
-						        &len_of_str);
-						cparam->corr_data.len =
-						    len_of_str;
-						rv = len_of_str < 0 ? 1 : 0;
-						debug_msg("corr_data: %s %d",
-						    cparam->corr_data.body,
-						    rv);
-						break;
-					case USER_PROPERTY:
-						debug_msg("USER_PROPERTY");
-						// key
-						cparam->payload_user_property
-						    .key =
-						    (char *) copy_utf8_str(
-						        packet, &pos,
-						        &len_of_str);
-						cparam->payload_user_property
-						    .len_key = len_of_str;
-						rv           = rv | len_of_str;
-						// value
-						cparam->payload_user_property
-						    .val =
-						    (char *) copy_utf8_str(
-						        packet, &pos,
-						        &len_of_str);
-						cparam->payload_user_property
-						    .len_val = len_of_str;
-						rv = len_of_str < 0 ? 1 : 0;
-						break;
-					default:
-						break;
-					}
-					if (pos == target_pos) {
-						break;
-					} else if (pos > target_pos) {
-						debug_msg(
-						    "ERROR: protocol error");
-						return PROTOCOL_ERROR;
-					}
+			while (pos < target_pos) {
+				property_id = packet[pos++];
+				switch (property_id) {
+				case WILL_DELAY_INTERVAL:
+					debug_msg("WILL_DELAY_INTERVAL");
+					NNI_GET32(packet + pos,
+					    cparam->will_delay_interval);
+					pos += 4;
+					break;
+				case PAYLOAD_FORMAT_INDICATOR:
+					debug_msg("PAYLOAD_FORMAT_"
+					          "INDICATOR");
+					cparam->payload_format_indicator =
+					    packet[pos++];
+					break;
+				case MESSAGE_EXPIRY_INTERVAL:
+					debug_msg("MESSAGE_EXPIRY_INTERVAL");
+					NNI_GET32(packet + pos,
+					    cparam->msg_expiry_interval);
+					pos += 4;
+					break;
+				case CONTENT_TYPE:
+					debug_msg("CONTENT_TYPE");
+					cparam->content_type.body =
+					    (char *) copy_utf8_str(
+					        packet, &pos, &len_of_str);
+					cparam->content_type.len = len_of_str;
+					rv = len_of_str < 0 ? 1 : 0;
+					debug_msg("content type: %s %d",
+					    cparam->content_type.body, rv);
+					break;
+				case RESPONSE_TOPIC:
+					debug_msg("RESPONSE_TOPIC");
+					cparam->resp_topic.body =
+					    (char *) copy_utf8_str(
+					        packet, &pos, &len_of_str);
+					cparam->resp_topic.len = len_of_str;
+					rv = len_of_str < 0 ? 1 : 0;
+					debug_msg("resp topic: %s %d",
+					    cparam->resp_topic.body, rv);
+					break;
+				case CORRELATION_DATA:
+					debug_msg("CORRELATION_DATA");
+					cparam->corr_data.body = copy_utf8_str(
+					    packet, &pos, &len_of_str);
+					cparam->corr_data.len = len_of_str;
+					rv = len_of_str < 0 ? 1 : 0;
+					debug_msg("corr_data: %s %d",
+					    cparam->corr_data.body, rv);
+					break;
+				case USER_PROPERTY:
+					debug_msg("USER_PROPERTY");
+					// key
+					cparam->payload_user_property.key =
+					    (char *) copy_utf8_str(
+					        packet, &pos, &len_of_str);
+					cparam->payload_user_property.len_key =
+					    len_of_str;
+					rv = rv | len_of_str;
+					// value
+					cparam->payload_user_property.val =
+					    (char *) copy_utf8_str(
+					        packet, &pos, &len_of_str);
+					cparam->payload_user_property.len_val =
+					    len_of_str;
+					rv = len_of_str < 0 ? 1 : 0;
+					break;
+				default:
+					break;
 				}
+			}
+			if (pos > target_pos) {
+				debug_msg("ERROR: protocol error");
+				return PROTOCOL_ERROR;
 			}
 		}
 		cparam->will_topic.body =
