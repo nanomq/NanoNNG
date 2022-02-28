@@ -475,7 +475,7 @@ nano_pipe_fini(void *arg)
 
 	if ((msg = nni_aio_get_msg(&p->aio_send)) != NULL) {
 		nni_aio_set_msg(&p->aio_recv, NULL);
-		nni_msg_free(msg);
+		nni_msg_free(NANO_NNI_LMQ_GET_MSG_POINTER(msg));
 	}
 
 	nni_id_map * nano_qos_db = p->pipe->nano_qos_db;
@@ -671,7 +671,8 @@ nano_pipe_send_cb(void *arg)
 	debug_msg("******** nano_pipe_send_cb %d ****", p->id);
 	// retry here
 	if (nni_aio_result(&p->aio_send) != 0) {
-		nni_msg_free(nni_aio_get_msg(&p->aio_send));
+		msg = nni_aio_get_msg(&p->aio_send);
+		nni_msg_free(NANO_NNI_LMQ_GET_MSG_POINTER(msg));
 		nni_aio_set_msg(&p->aio_send, NULL);
 		nni_pipe_close(p->pipe);
 		return;
