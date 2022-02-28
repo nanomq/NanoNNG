@@ -1,5 +1,5 @@
 
-#include "mqtt.h"
+#include "mqtt_msg.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -254,10 +254,6 @@ nni_mqtt_msg_dup(void **dest, const void *src)
 static void
 dup_connect(nni_mqtt_proto_data *dest, nni_mqtt_proto_data *src)
 {
-	if (src->conn_ctx != NULL) {
-		dest->conn_ctx = nni_zalloc(sizeof(conn_param));
-		memcpy(dest->conn_ctx, src->conn_ctx, sizeof(conn_param));
-	}
 	mqtt_buf_dup(&dest->var_header.connect.protocol_name,
 	    &src->var_header.connect.protocol_name);
 	mqtt_buf_dup(
@@ -328,9 +324,6 @@ dup_unsubscribe(nni_mqtt_proto_data *dest, nni_mqtt_proto_data *src)
 static void
 destory_connect(nni_mqtt_proto_data *mqtt)
 {
-	if (mqtt->conn_ctx) {
-		nng_free(mqtt->conn_ctx, sizeof(conn_param));
-	}
 	mqtt_buf_free(&mqtt->var_header.connect.protocol_name);
 	mqtt_buf_free(&mqtt->payload.connect.client_id);
 	mqtt_buf_free(&mqtt->payload.connect.user_name);
@@ -435,7 +428,7 @@ nni_mqtt_msg_encode_connect(nni_msg *msg)
 	}
 
 	if (mqtt->payload.connect.client_id.length == 0) {
-		snprintf(client_id, 20, "nanomq-%08x", nni_random());
+		snprintf(client_id, 20, "nanomq-%04x", nni_random());
 		mqtt_buf_create(&mqtt->payload.connect.client_id,
 		    (const uint8_t *) client_id, (uint32_t) strlen(client_id));
 	}
@@ -1410,7 +1403,7 @@ read_packet_length(struct pos_buf *buf, uint32_t *length)
 
 int
 mqtt_get_remaining_length(uint8_t *packet, uint32_t len,
-    uint32_t *remaining_length, uint8_t *used_bytes)
+    uint32_t *remainning_length, uint8_t *used_bytes)
 {
 	int      multiplier = 1;
 	int32_t  lword      = 0;
@@ -1431,7 +1424,7 @@ mqtt_get_remaining_length(uint8_t *packet, uint32_t len,
 			if (lbytes > 1 && byte == 0) {
 				return MQTT_ERR_INVAL;
 			} else {
-				*remaining_length = lword;
+				*remainning_length = lword;
 				if (used_bytes) {
 					*used_bytes = lbytes;
 				}

@@ -16,7 +16,3 @@ if (NNG_TRANSPORT_MQTT_BROKER_TLS)
     nng_headers_if(NNG_TRANSPORT_MQTT_BROKER_TLS nng/transport/mqtts/broker_tls.h)
     nng_defines_if(NNG_TRANSPORT_MQTT_BROKER_TLS NNG_TRANSPORT_MQTT_BROKER_TLS)
 endif()
-
-nng_sources_if(NNG_TRANSPORT_MQTT_TLS mqtt_tls.c)
-nng_headers_if(NNG_TRANSPORT_MQTT_TLS nng/transport/mqtts/mqtt_tls.h)
-nng_defines_if(NNG_TRANSPORT_MQTT_TLS NNG_TRANSPORT_MQTT_TLS)

@@ -32,6 +32,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 #include <time.h>
 
 #include <nng/mqtt/mqtt_client.h>
@@ -46,7 +47,16 @@ void
 fatal(const char *msg, int rv)
 {
 	fprintf(stderr, "%s: %s\n", msg, nng_strerror(rv));
-	exit(1);
+}
+
+int keepRunning = 1;
+void
+intHandler(int dummy)
+{
+	keepRunning = 0;
+	fprintf(stderr, "\nclient exit(0).\n");
+	nng_closeall();
+	exit(0);
 }
 
 // Print the given string limited to 80 columns.
@@ -70,33 +80,18 @@ print80(const char *prefix, const char *str, size_t len, bool quote)
 }
 
 static void
-disconnect_cb(void *disconn_arg, nng_msg *msg)
+disconnect_cb(nng_pipe p, nng_pipe_ev ev, void *arg)
 {
-	(void) disconn_arg;
-	printf("%s\n", __FUNCTION__);
+	nng_msg * msg = arg;
+	nng_msg_free(msg);
+	printf("%s: disconnected!\n", __FUNCTION__);
 }
 
 static void
-connect_cb(void *arg, nng_msg *ackmsg)
+connect_cb(nng_pipe p, nng_pipe_ev ev, void *arg)
 {
-	char *  userarg = (char *) arg;
-	uint8_t status  = nng_mqtt_msg_get_connack_return_code(ackmsg);
-	printf("Connected cb. \n"
-	       "  -> Status  [%d]\n"
-	       "  -> Userarg [%s].\n",
-	    status, userarg);
-
-	// Free ConnAck msg
-	nng_msg_free(ackmsg);
+	printf("%s: connected!\n", __FUNCTION__);
 }
-
-nng_mqtt_cb user_cb = {
-	.name            = "user_cb",
-	.on_connected    = connect_cb,
-	.on_disconnected = disconnect_cb,
-	.connect_arg     = "Args",
-	.disconn_arg     = "Args",
-};
 
 // Connect to the given address.
 int
@@ -122,10 +117,13 @@ client_connect(nng_socket *sock, const char *url, bool verbose)
 	nng_mqtt_msg_set_connect_keep_alive(connmsg, 60);
 	nng_mqtt_msg_set_connect_user_name(connmsg, "nng_mqtt_client");
 	nng_mqtt_msg_set_connect_password(connmsg, "secrets");
-	nng_mqtt_msg_set_connect_will_msg(connmsg, "bye-bye");
+	nng_mqtt_msg_set_connect_will_msg(
+	    connmsg, (uint8_t *) "bye-bye", strlen("bye-bye"));
 	nng_mqtt_msg_set_connect_will_topic(connmsg, "will_topic");
-	nng_mqtt_msg_set_connect_client_id(connmsg, "nng_mqtt_client");
 	nng_mqtt_msg_set_connect_clean_session(connmsg, true);
+
+	nng_mqtt_set_connect_cb(*sock, connect_cb, &sock);
+	nng_mqtt_set_disconnect_cb(*sock, disconnect_cb, connmsg);
 
 	uint8_t buff[1024] = { 0 };
 
@@ -134,14 +132,10 @@ client_connect(nng_socket *sock, const char *url, bool verbose)
 		printf("%s\n", buff);
 	}
 
-	printf("Connecting to server ...");
+	printf("Connecting to server ...\n");
 	nng_dialer_set_ptr(dialer, NNG_OPT_MQTT_CONNMSG, connmsg);
-	nng_dialer_set_cb(dialer, &user_cb);
 	nng_dialer_start(dialer, NNG_FLAG_NONBLOCK);
 
-	printf("connected\n");
-
-	// TODO Connmsg would be free when client disconnected
 	return (0);
 }
 
@@ -168,20 +162,19 @@ client_subscribe(nng_socket sock, nng_mqtt_topic_qos *subscriptions, int count,
 
 	printf("Subscribing ...");
 	if ((rv = nng_sendmsg(sock, submsg, 0)) != 0) {
+		nng_msg_free(submsg);
 		fatal("nng_sendmsg", rv);
 	}
 	printf("done.\n");
-
-	nng_msg_free(submsg);
 
 	printf("Start receiving loop:\n");
 	while (true) {
 		nng_msg *msg;
 		uint8_t *payload;
 		uint32_t payload_len;
-
 		if ((rv = nng_recvmsg(sock, &msg, 0)) != 0) {
 			fatal("nng_recvmsg", rv);
+			continue;
 		}
 
 		// we should only receive publish messages
@@ -285,7 +278,8 @@ main(const int argc, const char **argv)
 	bool        verbose     = verbose_env && strlen(verbose_env) > 0;
 
 	client_connect(&sock, url, verbose);
-	nng_msleep(1000);
+
+	signal(SIGINT, intHandler);
 
 	if (strcmp(PUBLISH, cmd) == 0) {
 		const char *data     = argv[5];
