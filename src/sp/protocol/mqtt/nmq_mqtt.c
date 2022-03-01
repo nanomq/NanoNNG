@@ -623,6 +623,24 @@ nano_pipe_start(void *arg)
 	}
 	nni_mtx_unlock(&s->lk);
 
+	// restore cached subscription of session
+	clientid = (char *) conn_param_get_clientid(p->conn_param);
+	if (clientid) {
+		clientid_key = DJBHashn(clientid, strlen(clientid));
+		restore_session(clientid_key, p->conn_param, p->id, p->tree);
+	}
+
+	// restore cached qos msg
+	if (clientid && dbhash_cached_check_id(clientid_key)) {
+		msgq = (nni_msg **) dbtree_restore_session_msg(
+		    p->tree, clientid_key);
+		for (int i = 0; i < (int) cvector_size(msgq); i++) {
+			pid = nni_pipe_inc_packetid(npipe);
+			nni_id_set(npipe->nano_qos_db, pid, msgq[i]);
+		}
+		cvector_free(msgq);
+	}
+
 	// TODO MQTT V5 check return code
 	if (rv == 0) {
 		nni_sleep_aio(s->conf->qos_duration * 1500, &p->aio_timer);
@@ -675,10 +693,23 @@ nano_pipe_close(void *arg)
 		return;
 	}
 	nni_mtx_lock(&s->lk);
+<<<<<<< HEAD
 	if (p->conn_param->clean_start == 0) {
 		// cache this pipe
 		clientid = (char *)conn_param_get_clientid(p->conn_param);
+	}
+	if (clientid) {
 		clientid_key = DJBHashn(clientid, strlen(clientid));
+		// cache subscription of session
+		cache_session(clientid_key, p->conn_param, p->id, p->tree);
+		// cache qos msg TODO optimization in processing
+		while ((msg = nni_id_get_any(npipe->nano_qos_db, &packetid))) {
+			while (nni_msg_shared(msg))
+				nni_msg_free(msg);
+			dbtree_cache_session_msg(p->tree, msg, clientid_key);
+			nni_id_remove(npipe->nano_qos_db, packetid);
+		}
+
 		nni_id_set(&s->cached_sessions, clientid_key, p);
 		// set event to false avoid of the disconnecting event
 		p->event   = false;
