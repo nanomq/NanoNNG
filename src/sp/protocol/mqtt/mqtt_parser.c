@@ -77,6 +77,45 @@ pub_extra_set_msg(pub_extra *pub_extra, void *msg)
 	pub_extra->msg = msg;
 }
 
+/**
+ * byte array to hex string
+ *
+ * @param src
+ * @param dest
+ * @param src_len
+ * @return
+ */
+static char *
+bytes_to_str(const unsigned char *src, char *dest, int src_len)
+{
+	int  i;
+	char szTmp[4] = { 0 };
+
+	for (i = 0; i < src_len; i++) {
+		sprintf(szTmp, "%02X ", src[i]);
+		memcpy(dest + (i * 3), szTmp, 3);
+	}
+	return dest;
+}
+
+static void
+print_hex(const char *prefix, const unsigned char *src, int src_len)
+{
+	if (src_len > 0) {
+		char *dest = (char *) nng_zalloc(src_len * 3 + 1);
+
+		if (dest == NULL) {
+			debug_msg("alloc fail!");
+			return;
+		}
+		dest = bytes_to_str(src, dest, src_len);
+
+		debug_msg("%s%s", prefix, dest);
+
+		nng_free(dest, src_len * 3 + 1);
+	}
+}
+
 static uint64_t
 power(uint64_t x, uint32_t n)
 {
@@ -439,7 +478,7 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 	if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
 		debug_msg("MQTT 5 Properties");
 		cparam->properties = decode_buf_properties(
-		    packet, len, &pos, &cparam->prop_len);
+		    packet, len, &pos, &cparam->prop_len, false);
 	}
 	debug_msg("pos after property: [%d]", pos);
 
@@ -463,7 +502,7 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 	// will topic
 	if (cparam->will_flag != 0 && cparam->pro_ver == PROTOCOL_VERSION_v5) {
 		cparam->will_properties = decode_buf_properties(
-		    packet, len, &pos, &cparam->will_prop_len);
+		    packet, len, &pos, &cparam->will_prop_len, false);
 		cparam->will_topic.body =
 		    (char *) copy_utf8_str(packet, &pos, &len_of_str);
 		cparam->will_topic.len = len_of_str;
@@ -545,6 +584,9 @@ nmq_connack_encode(nng_msg *msg, conn_param *cparam, uint8_t reason)
 	uint8_t cmd   = CMD_CONNACK;
 	nng_msg_header_append(msg, &cmd, 1);
 	nng_msg_header_append(msg, var_len, bytes);
+
+	print_hex("Header: ", nni_msg_header(msg), nni_msg_header_len(msg));
+	print_hex("Body: ", nni_msg_body(msg), nni_msg_len(msg));
 }
 
 /**
@@ -1042,7 +1084,7 @@ nmq_pubres_decode(nng_msg *msg, uint16_t *packet_id, uint8_t *reason_code,
 	uint32_t pos      = (uint32_t) (buf.curpos - body);
 	uint32_t prop_len = 0;
 
-	*prop = decode_properties(msg, &pos, &prop_len);
+	*prop = decode_properties(msg, &pos, &prop_len, false);
 
 	return MQTT_SUCCESS;
 }

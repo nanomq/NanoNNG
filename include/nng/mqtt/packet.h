@@ -95,6 +95,7 @@ typedef enum {
 struct property_data {
 	property_type_enum  p_type;
 	union Property_type p_value;
+	bool                is_copy;
 };
 
 typedef struct property_data property_data;
@@ -132,17 +133,18 @@ struct topic_node {
 typedef struct topic_node topic_node;
 
 struct packet_subscribe {
-	uint16_t            packet_id;
-	union Property_type sub_id;
-	union Property_type user_property;
-	topic_node *        node; // stored topic and option
+	uint16_t packet_id;
+	uint32_t    prop_len;
+	property *  properties;
+	topic_node *node; // stored topic and option
 };
 typedef struct packet_subscribe packet_subscribe;
 
 struct packet_unsubscribe {
-	uint16_t            packet_id;
-	union Property_type user_property;
-	topic_node *        node; // stored topic and option
+	uint16_t packet_id;
+	uint32_t    prop_len;
+	property *  properties;
+	topic_node *node; // stored topic and option
 };
 typedef struct packet_unsubscribe packet_unsubscribe;
 

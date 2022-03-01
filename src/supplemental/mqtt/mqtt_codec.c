@@ -411,7 +411,9 @@ static void
 nni_mqtt_msg_append_byte_str(nni_msg *msg, nni_mqtt_buffer *str)
 {
 	nni_mqtt_msg_append_u16(msg, (uint16_t) str->length);
-	nni_msg_append(msg, &str->buf, str->length);
+	for (size_t i = 0; i < str->length; i++) {
+		nni_mqtt_msg_append_u8(msg, &str->buf[i]);
+	}
 }
 
 static void
@@ -2070,14 +2072,15 @@ property_set_value_strpair(uint8_t prop_id, const char *key, uint32_t key_len,
 
 property *
 property_parse(struct pos_buf *buf, property *prop, uint8_t prop_id,
-    property_type_enum type)
+    property_type_enum type, bool copy_value)
 {
 	if (prop == NULL) {
 		prop = property_alloc();
 	}
-	prop->next        = NULL;
-	prop->data.p_type = type;
-	prop->id          = prop_id;
+	prop->next         = NULL;
+	prop->data.p_type  = type;
+	prop->data.is_copy = copy_value;
+	prop->id           = prop_id;
 	switch (type) {
 	case U8:
 		read_byte(buf, &prop->data.p_value.u8);
@@ -2100,19 +2103,38 @@ property_parse(struct pos_buf *buf, property *prop, uint8_t prop_id,
 		    prop->data.p_value.varint);
 		break;
 	case BINARY:
-		read_utf8_str(buf, &prop->data.p_value.binary);
+		if (copy_value) {
+			mqtt_buf binary = { 0 };
+			read_utf8_str(buf, &binary);
+			mqtt_buf_dup(&prop->data.p_value.binary, &binary);
+		} else {
+			read_utf8_str(buf, &prop->data.p_value.binary);
+		}
 		debug_msg("id: %d, value pointer: %p (BINARY)", prop_id,
 		    prop->data.p_value.binary.buf);
 		break;
 	case STR:
-		read_utf8_str(buf, &prop->data.p_value.str);
+		if (copy_value) {
+			mqtt_buf str = { 0 };
+			read_utf8_str(buf, &str);
+			mqtt_buf_dup(&prop->data.p_value.binary, &str);
+		} else {
+			read_utf8_str(buf, &prop->data.p_value.str);
+		}
 		debug_msg("id: %d, value: %.*s (STR)", prop_id,
 		    prop->data.p_value.str.length,
 		    (const char *) prop->data.p_value.str.buf);
 		break;
 	case STR_PAIR:
-		read_utf8_str(buf, &prop->data.p_value.strpair.key);
-		read_utf8_str(buf, &prop->data.p_value.strpair.value);
+		if (copy_value) {
+			mqtt_kv kv = { 0 };
+			read_utf8_str(buf, &kv.key);
+			read_utf8_str(buf, &kv.value);
+			mqtt_kv_dup(&prop->data.p_value.strpair, &kv);
+		} else {
+			read_utf8_str(buf, &prop->data.p_value.strpair.key);
+			read_utf8_str(buf, &prop->data.p_value.strpair.value);
+		}
 		debug_msg("id: %d, value: '%.*s -> %.*s' (STR_PAIR)", prop_id,
 		    prop->data.p_value.strpair.key.length,
 		    prop->data.p_value.strpair.key.buf,
@@ -2158,6 +2180,21 @@ property_free(property *prop)
 	while (head) {
 		p    = head;
 		head = head->next;
+		if(p->data.is_copy) {
+			switch (p->data.p_type) {
+			case STR:
+				mqtt_buf_free(&p->data.p_value.str);
+				break;
+			case BINARY:
+				mqtt_buf_free(&p->data.p_value.binary);
+				break;
+			case STR_PAIR:
+				mqtt_kv_free(&p->data.p_value.strpair);
+				break;
+			default:
+				break;
+			}
+		}
 		free(p);
 		p = NULL;
 	}
@@ -2165,8 +2202,8 @@ property_free(property *prop)
 }
 
 property *
-decode_buf_properties(
-    uint8_t *packet, uint32_t packet_len, uint32_t *pos, uint32_t *len)
+decode_buf_properties(uint8_t *packet, uint32_t packet_len, uint32_t *pos,
+    uint32_t *len, bool copy_value)
 {
 	int       rv;
 	uint8_t * msg_body    = packet;
@@ -2199,7 +2236,7 @@ decode_buf_properties(
 		read_byte(&buf, &prop_id);
 		property *         cur_prop = NULL;
 		property_type_enum type     = property_get_value_type(prop_id);
-		cur_prop = property_parse(&buf, cur_prop, prop_id, type);
+		cur_prop = property_parse(&buf, cur_prop, prop_id, type, copy_value);
 		property_append(list, cur_prop);
 	}
 
@@ -2211,11 +2248,11 @@ out:
 }
 
 property *
-decode_properties(nng_msg *msg, uint32_t *pos, uint32_t *len)
+decode_properties(nng_msg *msg, uint32_t *pos, uint32_t *len, bool copy_value)
 {
 	uint8_t *msg_body = nng_msg_body(msg);
 	size_t   msg_len  = nng_msg_len(msg);
-	return decode_buf_properties(msg_body, msg_len, pos, len);
+	return decode_buf_properties(msg_body, msg_len, pos, len, copy_value);
 }
 
 uint32_t
@@ -2325,9 +2362,11 @@ encode_properties(nni_msg *msg, property *prop)
 property_data *
 property_get_value(property *prop, uint8_t prop_id)
 {
-	for (property *p = prop->next; p != NULL; p = p->next) {
-		if (p->id == prop_id) {
-			return &p->data;
+	if (prop) {
+		for (property *p = prop->next; p != NULL; p = p->next) {
+			if (p->id == prop_id) {
+				return &p->data;
+			}
 		}
 	}
 	return NULL;
