@@ -11,6 +11,7 @@
 #include "core/nng_impl.h"
 #include "nng/nng_debug.h"
 #include "nng/protocol/mqtt/mqtt.h"
+#include "supplemental/mqtt/mqtt_msg.h"
 
 #include "nng/mqtt/packet.h"
 #include <conf.h>
@@ -573,7 +574,9 @@ nmq_connack_encode(nng_msg *msg, conn_param *cparam, uint8_t reason)
 	nni_msg_append(msg, &reason, 1);
 
 	if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
-		encode_properties(msg, cparam->properties);
+		// TODO set properties if necessary
+		// encode_properties(msg, cparam->properties);
+		encode_properties(msg, NULL);
 	}
 
 	size_t         msg_len    = nng_msg_len(msg);

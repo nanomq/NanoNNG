@@ -2220,17 +2220,17 @@ conn_param_set_qos_db(conn_param *cparam, void *qos)
 	cparam->nano_qos_db = qos;
 }
 
-void
-nng_msg_proto_set_property(nng_msg *m, void *p)
-{
-	nni_msg_proto_set_property(m, p);
-}
+// void
+// nng_msg_proto_set_property(nng_msg *m, void *p)
+// {
+// 	nni_msg_proto_set_property(m, p);
+// }
 
-void *
-nng_msg_proto_get_property(nng_msg *m)
-{
-	return nni_msg_proto_get_property(m);
-}
+// void *
+// nng_msg_proto_get_property(nng_msg *m)
+// {
+// 	return nni_msg_proto_get_property(m);
+// }
 
 void
 nng_msg_set_timestamp(nni_msg *m, uint64_t time)
