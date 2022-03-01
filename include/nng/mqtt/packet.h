@@ -10,6 +10,7 @@
 #define NNG_MQTT_PACKET_H
 
 #include "nng/nng.h"
+#include "nng/mqtt/mqtt_client.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>

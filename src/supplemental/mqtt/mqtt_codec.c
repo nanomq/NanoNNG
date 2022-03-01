@@ -411,9 +411,7 @@ static void
 nni_mqtt_msg_append_byte_str(nni_msg *msg, nni_mqtt_buffer *str)
 {
 	nni_mqtt_msg_append_u16(msg, (uint16_t) str->length);
-	for (size_t i = 0; i < str->length; i++) {
-		nni_mqtt_msg_append_u8(msg, &str->buf[i]);
-	}
+	nni_msg_append(msg, &str->buf, str->length);
 }
 
 static void
@@ -2344,11 +2342,10 @@ encode_properties(nni_msg *msg, property *prop)
 			    msg, &p->data.p_value.str);
 			break;
 		case STR_PAIR:
-			nni_mqtt_msg_append_byte_str(msg,
-			    (nni_mqtt_buffer *) &p->data.p_value.strpair.key);
-			nni_mqtt_msg_append_byte_str(msg,
-			    (nni_mqtt_buffer *) &p->data.p_value.strpair
-			        .value);
+			nni_mqtt_msg_append_byte_str(
+			    msg, &p->data.p_value.strpair.key);
+			nni_mqtt_msg_append_byte_str(
+			    msg, &p->data.p_value.strpair.value);
 			break;
 
 		default:
