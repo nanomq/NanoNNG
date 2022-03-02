@@ -34,7 +34,7 @@ static void
 pipe_destroy(void *arg)
 {
 	nni_pipe *p = arg;
-	if (p == NULL) {
+	if (p == NULL || p->cache) {
 		return;
 	}
 
@@ -136,7 +136,10 @@ nni_pipe_close(nni_pipe *p)
 	if (p->p_proto_data != NULL) {
 		p->p_proto_ops.pipe_close(p->p_proto_data);
 	}
-
+	//MQTT Session reserved
+	if (p->cache) {
+		return;
+	}
 	// Close the underlying transport.
 	if (p->p_tran_data != NULL) {
 		p->p_tran_ops.p_close(p->p_tran_data);
@@ -254,6 +257,7 @@ pipe_create(nni_pipe **pp, nni_sock *sock, nni_sp_tran *tran, void *tran_data)
 	p->p_ref        = 0;
 	// NanoMQ
 	p->packet_id = 0;
+	p->cache     = false;
 
 	nni_atomic_init_bool(&p->p_closed);
 	nni_atomic_flag_reset(&p->p_stop);
@@ -436,6 +440,23 @@ nni_pipe_inc_packetid(nni_pipe *p)
 {
 	p->packet_id++;
 	return p->packet_id;
+}
+
+/**
+ * @brief swap pipe_id of 2 pipes
+ * 
+ * @param old_id 
+ * @param new_id 
+ */
+void
+nni_pipe_id_swap(uint32_t old_id, uint32_t new_id)
+{
+	nni_pipe *p, *q;
+	if ((p = nni_id_get(&pipes, old_id)) != NULL &&
+	    (q = nni_id_get(&pipes, new_id)) != NULL) {
+		nni_id_set(&pipes, new_id, p);
+		nni_id_set(&pipes, old_id, q);
+	}
 }
 
 /*
