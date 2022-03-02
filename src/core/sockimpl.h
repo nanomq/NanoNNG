@@ -124,8 +124,8 @@ struct nni_pipe {
 
 	// NanoMQ
 	void *      conn_param;
+	bool        cache;
 	uint16_t    packet_id;
-	// TODO turn map to msgqueue
 	nni_id_map *nano_qos_db; // storing qos backup msgs
 };
 
