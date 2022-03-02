@@ -58,6 +58,7 @@ struct nano_sock {
 	nni_mtx        lk;
 	nni_atomic_int ttl;
 	nni_id_map     pipes;
+	nni_id_map     cached_sessions;
 	nni_lmq        waitlmq;
 	nni_list       recvpipes; // list of pipes with data to receive
 	nni_list       recvq;
@@ -81,11 +82,12 @@ struct nano_pipe {
 	nni_list_node    rnode; // receivable list linkage
 	bool             busy;
 	bool             closed;
-	bool             kicked;
+	bool 			 event;	// indicates if exposure disconnect event is valid
 	uint8_t          reason_code;
-	uint8_t          ka_refresh;
+	uint8_t          ka_refresh;	//count how many times the keepalive timer has been triggered
 	nano_conn_param *conn_param;
 	nni_lmq          rlmq;
+	nni_id_map 		*nano_qos_db;
 };
 
 static inline int
@@ -181,6 +183,13 @@ nano_pipe_timer_cb(void *arg)
 	if (nng_aio_result(&p->aio_timer) != 0) {
 		return;
 	}
+	// if (npipe->cache) {
+	// 	// nni_sleep_aio(5000, &p->aio_timer);
+	// 	// return;
+	// 	npipe->cache = false;
+	// 	nni_pipe_close(p->pipe);
+	// 	return;
+	// }
 	nni_mtx_lock(&p->lk);
 	if (p->ka_refresh * (qos_duration) > p->conn_param->keepalive_mqtt) {
 		nni_println("Warning: close pipe & kick client due to KeepAlive "
@@ -218,7 +227,7 @@ nano_pipe_timer_cb(void *arg)
 	}
 
 	nni_mtx_unlock(&p->lk);
-	nni_sleep_aio(qos_duration * 1000, &p->aio_timer);
+	nni_sleep_aio(4000, &p->aio_timer);
 	return;
 }
 
@@ -318,7 +327,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	nni_msg *  msg;
 	int        rv;
 	uint32_t   pipe;
-	size_t     qos = 0;
+	uint8_t    qos = 0, qos_pac;
 
 	msg = nni_aio_get_msg(aio);
 	qos = NANO_NNI_LMQ_GET_QOS_BITS(msg);
@@ -350,14 +359,34 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		// lost interest in our reply.
 		nni_mtx_unlock(&s->lk);
 		nni_aio_set_msg(aio, NULL);
-		// TODO lastwill/SYS topic will trigger this (sub to the topic
-		// that publish to by itself)
-		debug_syslog("ERROR: pipe is gone, pub failed");
+		debug_syslog("Warning: pipe is gone, pub failed");
 		nni_msg_free(msg);
 		return;
 	}
 	nni_mtx_unlock(&s->lk);
 	nni_mtx_lock(&p->lk);
+
+	if (nni_msg_get_type(msg) == CMD_PUBLISH) {
+		qos_pac = nni_msg_get_pub_qos(msg);
+	}
+	if (p->pipe->cache) {
+		if (qos > 0 && qos_pac > 0) {
+			char       *cid     = NULL;
+			uint32_t    ckey = 0;
+			cid = (char *) conn_param_get_clientid(p->conn_param);
+			ckey = DJBHashn(cid, strlen(cid));
+			// cached qos msg and return as published
+		// 	if ((db = nni_id_get(&s->pipes, ckey)) != NULL) {
+		// 		p->packetid++;
+		// 		nni_id_set(db, p->packetid, msg);
+		// 	}
+		}
+		nni_mtx_unlock(&p->lk);
+		nni_aio_set_msg(aio, NULL);
+		debug_syslog("msg cached for session");
+		nni_msg_free(msg);
+		return;
+	}
 
 	if (!p->busy) {
 		p->busy = true;
@@ -401,6 +430,7 @@ nano_sock_fini(void *arg)
 	nano_sock *s = arg;
 
 	nni_id_map_fini(&s->pipes);
+	nni_id_map_fini(&s->cached_sessions);
 	nni_lmq_fini(&s->waitlmq);
 	nano_ctx_fini(&s->ctx);
 	nni_pollable_fini(&s->writable);
@@ -420,6 +450,7 @@ nano_sock_init(void *arg, nni_sock *sock)
 	nni_mtx_init(&s->lk);
 
 	nni_id_map_init(&s->pipes, 0, 0, false);
+	nni_id_map_init(&s->cached_sessions, 0, 0, false);
 	nni_lmq_init(&s->waitlmq, 256);
 	NNI_LIST_INIT(&s->recvq, nano_ctx, rqnode);
 	NNI_LIST_INIT(&s->recvpipes, nano_pipe, rnode);
@@ -456,8 +487,10 @@ static void
 nano_pipe_stop(void *arg)
 {
 	nano_pipe *p = arg;
+	if(p->pipe->cache)
+		return;//your time is yet to come
 
-	debug_msg("##########nano_pipe_stop###############");
+	debug_msg(" ########## nano_pipe_stop ########## ");
 	nni_aio_stop(&p->aio_send);
 	nni_aio_stop(&p->aio_timer);
 	nni_aio_stop(&p->aio_recv);
@@ -469,7 +502,10 @@ nano_pipe_fini(void *arg)
 	nano_pipe *         p = arg;
 	nng_msg *           msg;
 
-	debug_msg("########## nano_pipe_fini ###############");
+	debug_msg(" ########## nano_pipe_fini ########## ");
+	if(p->pipe->cache)
+		return; //your time is yet to come
+
 	if ((msg = nni_aio_get_msg(&p->aio_recv)) != NULL) {
 		nni_aio_set_msg(&p->aio_recv, NULL);
 		nni_msg_free(msg);
@@ -484,8 +520,10 @@ nano_pipe_fini(void *arg)
 
 	//TODO safely free the msgs in qos_db
 	// nni_id_iterate(nano_qos_db, nni_id_msgfree_cb);
-	nni_id_map_fini(nano_qos_db);
-	nng_free(nano_qos_db, sizeof(struct nni_id_map));
+	if (p->event == true) {
+		nni_id_map_fini(nano_qos_db);
+		nng_free(nano_qos_db, sizeof(struct nni_id_map));
+	}
 
 	nni_mtx_fini(&p->lk);
 	nni_aio_fini(&p->aio_send);
@@ -499,6 +537,8 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 {
 	nano_pipe *p    = arg;
 	nano_sock *sock = s;
+	char      *clientid     = NULL;
+	uint32_t   clientid_key = 0;
 
 	debug_msg("##########nano_pipe_init###############");
 
@@ -508,15 +548,50 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	nni_aio_init(&p->aio_timer, nano_pipe_timer_cb, p);
 	nni_aio_init(&p->aio_recv, nano_pipe_recv_cb, p);
 
-	p->reason_code             = 0x00;
-	p->id                      = nni_pipe_id(pipe);
+	p->conn_param = nni_pipe_get_conn_param(pipe);
+	p->id = nni_pipe_id(pipe);
 	p->pipe                    = pipe;
+	clientid      = (char *) conn_param_get_clientid(p->conn_param);
+	// restore session according to clientid
+	if (clientid && (p->conn_param->clean_start == 0)) {
+		nano_pipe *old;
+		clientid_key = DJBHashn(clientid, strlen(clientid));
+		old = nni_id_get(&sock->cached_sessions, clientid_key);
+		if (old != NULL) {
+			// replace nano_qos_db and pid with old one.
+			p->pipe->packet_id = old->pipe->packet_id;
+			nni_id_map_fini(p->pipe->nano_qos_db);
+			nng_free(p->pipe->nano_qos_db, sizeof(struct nni_id_map));
+			p->pipe->nano_qos_db = old->nano_qos_db;
+			nni_pipe_id_swap(pipe->p_id, old->pipe->p_id);
+			p->id = old->pipe->p_id;
+			pipe->p_id = old->pipe->p_id;
+			old->pipe->cache = false;
+			nni_id_remove(&sock->cached_sessions, clientid_key);
+			// close old one (bool to prevent disconnect_ev)
+			// check if pointer is different later
+			nni_pipe_close(old->pipe);
+		}
+	} else {
+		// clean previous session
+		nano_pipe *old;
+		clientid_key = DJBHashn(clientid, strlen(clientid));
+		old = nni_id_get(&sock->cached_sessions, clientid_key);
+		if (old != NULL) {
+			old->event = true;
+			old->pipe->cache = false;
+			nni_id_remove(&sock->cached_sessions, clientid_key);
+			nni_pipe_close(old->pipe);
+		}
+	}
+	nni_id_set(&sock->pipes, p->id, p);
+	p->reason_code             = 0x00;
 	p->rep                     = s;
 	p->ka_refresh              = 0;
-	p->kicked                  = false;
-	p->conn_param              = nni_pipe_get_conn_param(pipe);
+	p->event				   = true;
 	p->tree                    = sock->db;
 	p->conn_param->nano_qos_db = p->pipe->nano_qos_db;
+	p->nano_qos_db			   = p->pipe->nano_qos_db;
 
 	return (0);
 }
@@ -526,48 +601,27 @@ nano_pipe_start(void *arg)
 {
 	nano_pipe *p = arg;
 	nano_sock *s = p->rep;
-	nni_msg *  msg;
+	nni_msg   *msg;
 	uint8_t    rv; // reason code of CONNACK
-	uint8_t    buf[4] = { 0x20, 0x02, 0x00, 0x00 };
-	nni_pipe * npipe = p->pipe;
-	char *     clientid = NULL;
-	uint32_t   clientid_key = 0;
-	nni_msg ** msgq = NULL;
-	uint16_t   pid = 0;
+	uint8_t    buf[4]       = { 0x20, 0x02, 0x00, 0x00 };
+	nni_pipe  *npipe        = p->pipe;
+	nni_msg  **msgq         = NULL;
+	uint16_t   pid          = 0;
 
-	debug_msg("##########nano_pipe_start################");
-	/*
-	// TODO check peer protocol ver (websocket or tcp or quic??)
-	if (nni_pipe_peer(p->pipe) != NNG_NANO_TCP_PEER) {
-	        // Peer protocol mismatch.
-	        return (NNG_EPROTO);
-	}
-	*/
+	debug_msg(" ########## nano_pipe_start ########## ");
 	nni_msg_alloc(&msg, 0);
 	nni_mtx_lock(&s->lk);
-	// TODO replace pipe_id with hash key of client_id
+
 	// pipe_id is just random value of id_dyn_val with self-increment.
-	nni_id_set(&s->pipes, nni_pipe_id(p->pipe), p);
+	// nni_id_set(&s->pipes, nni_pipe_id(p->pipe), p);
 	rv = verify_connect(p->conn_param, s->conf);
 	nmq_connack_encode(msg, p->conn_param, rv);
+	p->nano_qos_db = npipe->nano_qos_db;
 	if (rv != 0) {
 		// TODO disconnect client && send connack with reason code 0x05
 		debug_syslog("Invalid auth info.");
 	}
 	nni_mtx_unlock(&s->lk);
-
-	// restore cached qos msg
-	clientid = (char *) conn_param_get_clientid(p->conn_param);
-	if (clientid)
-		clientid_key = DJBHashn(clientid, strlen(clientid));
-	if (clientid && dbhash_cached_check_id(clientid_key)) {
-		msgq = (nni_msg **)dbtree_restore_session_msg(p->tree, clientid_key);
-		for(int i=0; i< (int) cvector_size(msgq); i++) {
-			pid = nni_pipe_inc_packetid(npipe);
-			nni_id_set(npipe->nano_qos_db, pid, msgq[i]);
-		}
-		cvector_free(msgq);
-	}
 
 	// TODO MQTT V5 check return code
 	if (rv == 0) {
@@ -614,21 +668,31 @@ nano_pipe_close(void *arg)
 	char *     clientid = NULL;
 	uint32_t   clientid_key = 0;
 
-	debug_msg("################# nano_pipe_close ##############");
+	debug_msg(" ############## nano_pipe_close ############## ");
+	if(npipe->cache == true) {
+		// not first time we trying to close stored session pipe
+		nni_atomic_swap_bool(&npipe->p_closed, false);
+		return;
+	}
 	nni_mtx_lock(&s->lk);
-	close_pipe(p);
-
-	// cache qos msg TODO optimization in processing
 	if (p->conn_param->clean_start == 0) {
+		// cache this pipe
 		clientid = (char *)conn_param_get_clientid(p->conn_param);
 		clientid_key = DJBHashn(clientid, strlen(clientid));
-		while((msg = nni_id_get_any(npipe->nano_qos_db, &packetid)) != NULL) {
-			while(nni_msg_shared(msg))
-				nni_msg_free(msg);
-			dbtree_cache_session_msg(p->tree, msg, clientid_key);
-			nni_id_remove(npipe->nano_qos_db, packetid);
+		nni_id_set(&s->cached_sessions, clientid_key, p);
+		// set event to false avoid of the disconnecting event
+		p->event   = false;
+		npipe->cache = true;
+		p->conn_param->clean_start = 1;
+		nni_atomic_swap_bool(&npipe->p_closed, false);
+		if (nni_list_active(&s->recvpipes, p)) {
+			nni_list_remove(&s->recvpipes, p);
 		}
+		nano_nni_lmq_flush(&p->rlmq);
+		nni_mtx_unlock(&s->lk);
+		return;
 	}
+	close_pipe(p);
 
 	// TODO send disconnect msg to client if needed.
 	// depends on MQTT V5 reason code
@@ -785,12 +849,12 @@ nano_pipe_recv_cb(void *arg)
 	nano_sock *      s      = p->rep;
 	nano_conn_param *cparam = NULL;
 	uint32_t         len, len_of_varint = 0;
-	nano_ctx *       ctx;
-	nni_msg *        msg, *qos_msg = NULL;
-	nni_aio *        aio;
-	nni_pipe *       npipe = p->pipe;
-	uint8_t *        ptr;
-	int          rv;
+	nano_ctx        *ctx;
+	nni_msg         *msg, *qos_msg = NULL;
+	nni_aio         *aio;
+	nni_pipe        *npipe = p->pipe;
+	uint8_t         *ptr;
+	int              rv;
 	uint16_t         ackid;
 
 	if ((rv = nni_aio_result(&p->aio_recv)) != 0) {
@@ -824,6 +888,10 @@ nano_pipe_recv_cb(void *arg)
 		}
 		break;
 	case CMD_DISCONNECT:
+		// cparam = p->conn_param;
+		// if (cparam->clean_start == 0) {
+		// 	p->pipe->cache = true;
+		// }
 		nni_pipe_close(p->pipe);
 	case CMD_CONNACK:
 	case CMD_PUBLISH:
