@@ -225,6 +225,7 @@ typedef struct mqtt_msg_t {
 	bool is_copied : 1;  /* indicates string or array members are copied */
 	uint8_t _unused : 2;
 
+	conn_param *conn_ctx;
 } mqtt_msg;
 
 extern int mqtt_get_remaining_length(
@@ -368,6 +369,9 @@ extern void                nni_mqtt_topic_qos_array_set(
                    nni_mqtt_topic_qos *, size_t, const char *, uint8_t);
 extern void nni_mqtt_topic_qos_array_free(nni_mqtt_topic_qos *, size_t);
 
+// for bridging msg from nanosdk to nanomq usage
+extern conn_param *nni_mqtt_msg_set_conn_param(nni_msg *);
+extern conn_param *nni_mqtt_msg_get_conn_param(nni_msg *);
 #ifdef __cplusplus
 }
 #endif

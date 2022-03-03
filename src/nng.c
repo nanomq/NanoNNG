@@ -2263,3 +2263,15 @@ nng_taskq_setter(int num_taskq_threads, int max_taskq_threads)
 {
 	nni_taskq_setter(num_taskq_threads, max_taskq_threads);
 }
+
+void
+nng_mqtt_msg_set_conn_param(nng_msg *msg)
+{
+	nni_mqtt_msg_set_conn_param(msg);
+}
+
+conn_param *
+nng_mqtt_msg_get_conn_param(nng_msg *msg)
+{
+	return nni_mqtt_msg_get_conn_param(msg);
+}

@@ -25,8 +25,8 @@ typedef struct mqtt_tcptran_ep   mqtt_tcptran_ep;
 
 // tcp_pipe is one end of a TCP connection.
 struct mqtt_tcptran_pipe {
-	nng_stream *     conn;
-	nni_pipe *       npipe;
+	nng_stream      *conn;
+	nni_pipe        *npipe;
 	uint16_t         peer;
 	uint16_t         proto;
 	uint16_t         keepalive;
@@ -46,14 +46,15 @@ struct mqtt_tcptran_pipe {
 	nni_list         recvq;
 	nni_list         sendq;
 	nni_aio          tmaio;
-	nni_aio *        txaio;
-	nni_aio *        rxaio;
-	nni_aio *        qsaio; // aio for qos/pingreq
+	nni_aio         *txaio;
+	nni_aio         *rxaio;
+	nni_aio         *qsaio; // aio for qos/pingreq
 	nni_lmq          rslmq;
-	nni_aio *        negoaio;
-	nni_msg *        rxmsg;
-	nni_msg *        smsg;
+	nni_aio         *negoaio;
+	nni_msg         *rxmsg;
+	nni_msg         *smsg;
 	nni_mtx          mtx;
+	conn_param      *cparam;
 };
 
 struct mqtt_tcptran_ep {
@@ -174,8 +175,9 @@ static int
 mqtt_tcptran_pipe_init(void *arg, nni_pipe *npipe)
 {
 	mqtt_tcptran_pipe *p = arg;
-	p->npipe             = npipe;
 
+	nni_pipe_set_conn_param(npipe, p->cparam);
+	p->npipe             = npipe;
 	nni_lmq_init(&p->rslmq, 16);
 	p->busy = false;
 	nni_sleep_aio(p->keepalive, &p->tmaio);
@@ -646,7 +648,7 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 	if (!nni_list_empty(&p->recvq)) {
 		mqtt_tcptran_pipe_recv_start(p);
 	}
-
+	nni_msg_set_conn_param(msg, nni_pipe_get_conn_param(p->npipe));
 	nni_aio_set_msg(aio, msg);
 	nni_mtx_unlock(&p->mtx);
 
@@ -893,6 +895,7 @@ mqtt_tcptran_pipe_start(
 	}
 	nni_aio_set_iov(p->negoaio, niov, iov);
 	nni_list_append(&ep->negopipes, p);
+	p->cparam = nni_mqtt_msg_set_conn_param(connmsg);
 
 	nni_aio_set_timeout(p->negoaio, 10000); // 10 sec timeout to negotiate
 	nng_stream_send(p->conn, p->negoaio);
