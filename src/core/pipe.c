@@ -261,8 +261,6 @@ pipe_create(nni_pipe **pp, nni_sock *sock, nni_sp_tran *tran, void *tran_data)
 	NNI_LIST_NODE_INIT(&p->p_ep_node);
 
 	nni_cv_init(&p->p_cv, &pipes_lk);
-	p->nano_qos_db = nng_alloc(sizeof(struct nni_id_map));
-	nni_id_map_init(p->nano_qos_db, 0, 0, false);
 
 	nni_mtx_lock(&pipes_lk);
 	if ((rv = nni_id_alloc(&pipes, &p->p_id, p)) == 0) {
