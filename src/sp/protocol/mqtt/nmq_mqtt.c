@@ -373,6 +373,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	if (p->pipe->cache) {
 		if (qos > 0 && qos_pac > 0) {
 			msg = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
+			packetid = nni_pipe_inc_packetid(p->pipe);
 			nni_id_set(p->pipe->nano_qos_db, packetid, msg);
 		//	char       *cid     = NULL;
 		//	uint32_t    ckey = 0;
@@ -541,6 +542,7 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	nano_sock *sock = s;
 	char      *clientid     = NULL;
 	uint32_t   clientid_key = 0;
+	nano_pipe *old;
 
 	debug_msg("##########nano_pipe_init###############");
 
@@ -551,36 +553,37 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	nni_aio_init(&p->aio_recv, nano_pipe_recv_cb, p);
 
 	p->conn_param = nni_pipe_get_conn_param(pipe);
-	p->id = nni_pipe_id(pipe);
-	p->pipe                    = pipe;
+	p->id         = nni_pipe_id(pipe);
+	p->pipe       = pipe;
 	clientid      = (char *) conn_param_get_clientid(p->conn_param);
+
+	if (clientid)
+		clientid_key = DJBHashn(clientid, strlen(clientid));
+
 	// restore session according to clientid
 	if (clientid && (p->conn_param->clean_start == 0)) {
-		nano_pipe *old;
-		clientid_key = DJBHashn(clientid, strlen(clientid));
 		old = nni_id_get(&sock->cached_sessions, clientid_key);
 		if (old != NULL) {
 			// replace nano_qos_db and pid with old one.
 			p->pipe->packet_id = old->pipe->packet_id;
 			nni_id_map_fini(p->pipe->nano_qos_db);
-			nng_free(p->pipe->nano_qos_db, sizeof(struct nni_id_map));
+			nng_free(
+			    p->pipe->nano_qos_db, sizeof(struct nni_id_map));
 			p->pipe->nano_qos_db = old->nano_qos_db;
 			nni_pipe_id_swap(pipe->p_id, old->pipe->p_id);
-			p->id = old->pipe->p_id;
-			pipe->p_id = old->pipe->p_id;
+			p->id            = old->pipe->p_id;
+			pipe->p_id       = old->pipe->p_id;
 			old->pipe->cache = false;
 			nni_id_remove(&sock->cached_sessions, clientid_key);
 			// close old one (bool to prevent disconnect_ev)
 			// check if pointer is different later
 			nni_pipe_close(old->pipe);
 		}
-	} else {
+	} else if (clientid) {
 		// clean previous session
-		nano_pipe *old;
-		clientid_key = DJBHashn(clientid, strlen(clientid));
 		old = nni_id_get(&sock->cached_sessions, clientid_key);
 		if (old != NULL) {
-			old->event = true;
+			old->event       = true;
 			old->pipe->cache = false;
 			nni_id_remove(&sock->cached_sessions, clientid_key);
 			nni_pipe_close(old->pipe);
@@ -590,10 +593,10 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	p->reason_code             = 0x00;
 	p->rep                     = s;
 	p->ka_refresh              = 0;
-	p->event				   = true;
+	p->event                   = true;
 	p->tree                    = sock->db;
 	p->conn_param->nano_qos_db = p->pipe->nano_qos_db;
-	p->nano_qos_db			   = p->pipe->nano_qos_db;
+	p->nano_qos_db             = p->pipe->nano_qos_db;
 
 	return (0);
 }
@@ -609,6 +612,8 @@ nano_pipe_start(void *arg)
 	nni_pipe  *npipe        = p->pipe;
 	nni_msg  **msgq         = NULL;
 	uint16_t   pid          = 0;
+	char      *clientid;
+	uint32_t   clientid_key;
 
 	debug_msg(" ########## nano_pipe_start ########## ");
 	nni_msg_alloc(&msg, 0);
@@ -624,13 +629,6 @@ nano_pipe_start(void *arg)
 		debug_syslog("Invalid auth info.");
 	}
 	nni_mtx_unlock(&s->lk);
-
-	// restore cached subscription of session
-	clientid = (char *) conn_param_get_clientid(p->conn_param);
-	if (clientid) {
-		clientid_key = DJBHashn(clientid, strlen(clientid));
-		restore_session(clientid_key, p->conn_param, p->id, p->tree);
-	}
 
 	// TODO MQTT V5 check return code
 	if (rv == 0) {
@@ -690,9 +688,6 @@ nano_pipe_close(void *arg)
 	}
 	if (clientid) {
 		clientid_key = DJBHashn(clientid, strlen(clientid));
-		// cache subscription of session
-		cache_session(clientid_key, p->conn_param, p->id, p->tree);
-
 		nni_id_set(&s->cached_sessions, clientid_key, p);
 		// set event to false avoid of the disconnecting event
 		p->event   = false;
