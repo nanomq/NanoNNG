@@ -411,7 +411,7 @@ static void
 nni_mqtt_msg_append_byte_str(nni_msg *msg, nni_mqtt_buffer *str)
 {
 	nni_mqtt_msg_append_u16(msg, (uint16_t) str->length);
-	nni_msg_append(msg, &str->buf, str->length);
+	nni_msg_append(msg, str->buf, str->length);
 }
 
 static void
