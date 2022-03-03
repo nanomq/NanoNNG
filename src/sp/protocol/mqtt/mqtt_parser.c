@@ -479,7 +479,7 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 	if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
 		debug_msg("MQTT 5 Properties");
 		cparam->properties = decode_buf_properties(
-		    packet, len, &pos, &cparam->prop_len, false);
+		    packet, len, &pos, &cparam->prop_len, true);
 	}
 	debug_msg("pos after property: [%d]", pos);
 
@@ -575,8 +575,8 @@ nmq_connack_encode(nng_msg *msg, conn_param *cparam, uint8_t reason)
 
 	if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
 		// TODO set properties if necessary
-		// encode_properties(msg, cparam->properties);
-		encode_properties(msg, NULL);
+		encode_properties(msg, cparam->properties);
+		// encode_properties(msg, NULL);
 	}
 
 	size_t         msg_len    = nng_msg_len(msg);
