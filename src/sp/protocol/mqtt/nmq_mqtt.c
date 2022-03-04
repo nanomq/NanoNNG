@@ -73,7 +73,7 @@ struct nano_sock {
 struct nano_pipe {
 	nni_mtx          lk;
 	nni_pipe *       pipe;
-	nano_sock *      rep;
+	nano_sock *      broker;
 	uint32_t         id;
 	void *           tree; // root node of db tree
 	nni_aio          aio_send;
@@ -174,7 +174,7 @@ static void
 nano_pipe_timer_cb(void *arg)
 {
 	nano_pipe *p = arg;
-	int        qos_duration = p->rep->conf->qos_duration;
+	int        qos_duration = p->broker->conf->qos_duration;
 	nni_msg *  msg, *rmsg;
 	nni_time   time;
 	nni_pipe * npipe = p->pipe;
@@ -591,7 +591,7 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	}
 	nni_id_set(&sock->pipes, p->id, p);
 	p->reason_code             = 0x00;
-	p->rep                     = s;
+	p->broker                     = s;
 	p->ka_refresh              = 0;
 	p->event                   = true;
 	p->tree                    = sock->db;
@@ -605,7 +605,7 @@ static int
 nano_pipe_start(void *arg)
 {
 	nano_pipe *p = arg;
-	nano_sock *s = p->rep;
+	nano_sock *s = p->broker;
 	nni_msg   *msg;
 	uint8_t    rv; // reason code of CONNACK
 	uint8_t    buf[4]       = { 0x20, 0x02, 0x00, 0x00 };
@@ -646,7 +646,7 @@ nano_pipe_start(void *arg)
 static inline void
 close_pipe(nano_pipe *p)
 {
-	nano_sock *s = p->rep;
+	nano_sock *s = p->broker;
 
 	nni_aio_close(&p->aio_send);
 	nni_aio_close(&p->aio_recv);
@@ -666,7 +666,7 @@ static void
 nano_pipe_close(void *arg)
 {
 	nano_pipe *p = arg;
-	nano_sock *s = p->rep;
+	nano_sock *s = p->broker;
 	nano_ctx * ctx;
 	nni_aio *  aio = NULL;
 	nni_msg *  msg;
@@ -855,7 +855,7 @@ static void
 nano_pipe_recv_cb(void *arg)
 {
 	nano_pipe *      p      = arg;
-	nano_sock *      s      = p->rep;
+	nano_sock *      s      = p->broker;
 	nano_conn_param *cparam = NULL;
 	uint32_t         len, len_of_varint = 0;
 	nano_ctx        *ctx;
