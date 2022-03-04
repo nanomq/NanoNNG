@@ -183,13 +183,13 @@ nano_pipe_timer_cb(void *arg)
 	if (nng_aio_result(&p->aio_timer) != 0) {
 		return;
 	}
-	// if (npipe->cache) {
-	// 	// nni_sleep_aio(5000, &p->aio_timer);
-	// 	// return;
-	// 	npipe->cache = false;
-	// 	nni_pipe_close(p->pipe);
-	// 	return;
-	// }
+	if (npipe->cache) {
+		nni_sleep_aio(qos_duration * 1000, &p->aio_timer);
+		// check session expiry interval
+		// npipe->cache = false;
+		// nni_pipe_close(p->pipe);
+		return;
+	}
 	nni_mtx_lock(&p->lk);
 	if (p->ka_refresh * (qos_duration) > p->conn_param->keepalive_mqtt) {
 		nni_println("Warning: close pipe & kick client due to KeepAlive "
@@ -227,7 +227,7 @@ nano_pipe_timer_cb(void *arg)
 	}
 
 	nni_mtx_unlock(&p->lk);
-	nni_sleep_aio(4000, &p->aio_timer);
+	nni_sleep_aio(qos_duration * 1000, &p->aio_timer);
 	return;
 }
 
@@ -367,28 +367,18 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	nni_mtx_unlock(&s->lk);
 	nni_mtx_lock(&p->lk);
 
-	if (nni_msg_get_type(msg) == CMD_PUBLISH) {
-		qos_pac = nni_msg_get_pub_qos(msg);
-	}
 	if (p->pipe->cache) {
+		if (nni_msg_get_type(msg) == CMD_PUBLISH) {
+			qos_pac = nni_msg_get_pub_qos(msg);
+		}
 		if (qos > 0 && qos_pac > 0) {
 			msg = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
 			packetid = nni_pipe_inc_packetid(p->pipe);
 			nni_id_set(p->pipe->nano_qos_db, packetid, msg);
-		//	char       *cid     = NULL;
-		//	uint32_t    ckey = 0;
-		//	cid = (char *) conn_param_get_clientid(p->conn_param);
-		//	ckey = DJBHashn(cid, strlen(cid));
-			//  cached qos msg and return as published
-		// 	if ((db = nni_id_get(&s->pipes, ckey)) != NULL) {
-		// 		p->packetid++;
-		// 		nni_id_set(db, p->packetid, msg);
-		// 	}
 		}
 		nni_mtx_unlock(&p->lk);
 		nni_aio_set_msg(aio, NULL);
 		debug_syslog("msg cached for session");
-		nni_msg_free(msg);
 		return;
 	}
 
@@ -542,7 +532,6 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	nano_sock *sock = s;
 	char      *clientid     = NULL;
 	uint32_t   clientid_key = 0;
-	nano_pipe *old;
 
 	debug_msg("##########nano_pipe_init###############");
 
@@ -552,51 +541,14 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	nni_aio_init(&p->aio_timer, nano_pipe_timer_cb, p);
 	nni_aio_init(&p->aio_recv, nano_pipe_recv_cb, p);
 
-	p->conn_param = nni_pipe_get_conn_param(pipe);
-	p->id         = nni_pipe_id(pipe);
-	p->pipe       = pipe;
-	clientid      = (char *) conn_param_get_clientid(p->conn_param);
-
-	if (clientid)
-		clientid_key = DJBHashn(clientid, strlen(clientid));
-
-	// restore session according to clientid
-	if (clientid && (p->conn_param->clean_start == 0)) {
-		old = nni_id_get(&sock->cached_sessions, clientid_key);
-		if (old != NULL) {
-			// replace nano_qos_db and pid with old one.
-			p->pipe->packet_id = old->pipe->packet_id;
-			nni_id_map_fini(p->pipe->nano_qos_db);
-			nng_free(
-			    p->pipe->nano_qos_db, sizeof(struct nni_id_map));
-			p->pipe->nano_qos_db = old->nano_qos_db;
-			nni_pipe_id_swap(pipe->p_id, old->pipe->p_id);
-			p->id            = old->pipe->p_id;
-			pipe->p_id       = old->pipe->p_id;
-			old->pipe->cache = false;
-			nni_id_remove(&sock->cached_sessions, clientid_key);
-			// close old one (bool to prevent disconnect_ev)
-			// check if pointer is different later
-			nni_pipe_close(old->pipe);
-		}
-	} else if (clientid) {
-		// clean previous session
-		old = nni_id_get(&sock->cached_sessions, clientid_key);
-		if (old != NULL) {
-			old->event       = true;
-			old->pipe->cache = false;
-			nni_id_remove(&sock->cached_sessions, clientid_key);
-			nni_pipe_close(old->pipe);
-		}
-	}
-	nni_id_set(&sock->pipes, p->id, p);
+	p->conn_param              = nni_pipe_get_conn_param(pipe);
+	p->id                      = nni_pipe_id(pipe);
+	p->pipe                    = pipe;
 	p->reason_code             = 0x00;
-	p->broker                     = s;
+	p->broker                  = s;
 	p->ka_refresh              = 0;
 	p->event                   = true;
 	p->tree                    = sock->db;
-	p->conn_param->nano_qos_db = p->pipe->nano_qos_db;
-	p->nano_qos_db             = p->pipe->nano_qos_db;
 
 	return (0);
 }
@@ -614,10 +566,45 @@ nano_pipe_start(void *arg)
 	uint16_t   pid          = 0;
 	char      *clientid;
 	uint32_t   clientid_key;
+	nano_pipe *old = NULL;
 
 	debug_msg(" ########## nano_pipe_start ########## ");
 	nni_msg_alloc(&msg, 0);
 	nni_mtx_lock(&s->lk);
+
+	clientid = (char *) conn_param_get_clientid(p->conn_param);
+
+	if (clientid)
+		clientid_key = DJBHashn(clientid, strlen(clientid));
+
+	// restore session according to clientid
+	if (clientid && (p->conn_param->clean_start == 0)) {
+		old = nni_id_get(&s->cached_sessions, clientid_key);
+		if (old != NULL) {
+			// replace nano_qos_db and pid with old one.
+			p->pipe->packet_id = old->pipe->packet_id;
+			nni_id_map_fini(p->pipe->nano_qos_db);
+			nng_free(
+			    p->pipe->nano_qos_db, sizeof(struct nni_id_map));
+			p->pipe->nano_qos_db = old->nano_qos_db;
+			nni_pipe_id_swap(npipe->p_id, old->pipe->p_id);
+			p->id            = nni_pipe_id(npipe);
+			// npipe->p_id      = old->pipe->p_id;
+			old->pipe->cache = false;
+			nni_id_remove(&s->cached_sessions, clientid_key);
+		}
+	} else if (clientid) {
+		// clean previous session
+		old = nni_id_get(&s->cached_sessions, clientid_key);
+		if (old != NULL) {
+			old->event       = true;
+			old->pipe->cache = false;
+			nni_id_remove(&s->cached_sessions, clientid_key);
+		}
+	}
+	nni_id_set(&s->pipes, p->id, p);
+	p->conn_param->nano_qos_db = p->pipe->nano_qos_db;
+	p->nano_qos_db             = p->pipe->nano_qos_db;
 
 	// pipe_id is just random value of id_dyn_val with self-increment.
 	// nni_id_set(&s->pipes, nni_pipe_id(p->pipe), p);
@@ -633,6 +620,12 @@ nano_pipe_start(void *arg)
 	// TODO MQTT V5 check return code
 	if (rv == 0) {
 		nni_sleep_aio(s->conf->qos_duration * 1500, &p->aio_timer);
+	}
+	// close old one (bool to prevent disconnect_ev)
+	// check if pointer is different later
+	if (old) {
+		old->event       = false;
+		nni_pipe_close(old->pipe);
 	}
 	nni_msg_set_cmd_type(msg, CMD_CONNACK);
 	nni_msg_set_conn_param(msg, p->conn_param);

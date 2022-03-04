@@ -454,6 +454,8 @@ nni_pipe_id_swap(uint32_t old_id, uint32_t new_id)
 	    (q = nni_id_get(&pipes, new_id)) != NULL) {
 		nni_id_set(&pipes, new_id, p);
 		nni_id_set(&pipes, old_id, q);
+		p->p_id = new_id;
+		q->p_id = old_id;
 	}
 }
 
