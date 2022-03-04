@@ -90,6 +90,16 @@ struct nano_pipe {
 	nni_id_map 		*nano_qos_db;
 };
 
+void
+nmq_close_unack_msg_cb(void *key, void *val)
+{
+	NNI_ARG_UNUSED(key);
+
+	nni_msg * msg = val;
+	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
+	nni_msg_free(msg);
+}
+
 static inline int
 nano_nni_lmq_getq(nni_lmq *lmq, nng_msg **msg, uint8_t *qos)
 {
@@ -375,6 +385,8 @@ nano_ctx_send(void *arg, nni_aio *aio)
 			msg = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
 			packetid = nni_pipe_inc_packetid(p->pipe);
 			nni_id_set(p->pipe->nano_qos_db, packetid, msg);
+		} else {
+			nni_msg_free(msg);
 		}
 		nni_mtx_unlock(&p->lk);
 		nni_aio_set_msg(aio, NULL);
@@ -583,13 +595,14 @@ nano_pipe_start(void *arg)
 		if (old != NULL) {
 			// replace nano_qos_db and pid with old one.
 			p->pipe->packet_id = old->pipe->packet_id;
+			// there should be no msg in this map
 			nni_id_map_fini(p->pipe->nano_qos_db);
 			nng_free(
 			    p->pipe->nano_qos_db, sizeof(struct nni_id_map));
 			p->pipe->nano_qos_db = old->nano_qos_db;
 			nni_pipe_id_swap(npipe->p_id, old->pipe->p_id);
 			p->id            = nni_pipe_id(npipe);
-			// npipe->p_id      = old->pipe->p_id;
+			old->event       = false;
 			old->pipe->cache = false;
 			nni_id_remove(&s->cached_sessions, clientid_key);
 		}
@@ -599,6 +612,7 @@ nano_pipe_start(void *arg)
 		if (old != NULL) {
 			old->event       = true;
 			old->pipe->cache = false;
+			nni_id_map_foreach(old->nano_qos_db, nmq_close_unack_msg_cb);
 			nni_id_remove(&s->cached_sessions, clientid_key);
 		}
 	}
@@ -624,7 +638,6 @@ nano_pipe_start(void *arg)
 	// close old one (bool to prevent disconnect_ev)
 	// check if pointer is different later
 	if (old) {
-		old->event       = false;
 		nni_pipe_close(old->pipe);
 	}
 	nni_msg_set_cmd_type(msg, CMD_CONNACK);
