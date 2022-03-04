@@ -53,6 +53,7 @@ struct mqtts_tcptran_pipe {
 	nni_msg *         smsg;
 	nni_mtx           mtx;
 	bool              busy;
+	conn_param *     cparam;
 };
 
 struct mqtts_tcptran_ep {
@@ -174,6 +175,8 @@ static int
 mqtts_tcptran_pipe_init(void *arg, nni_pipe *npipe)
 {
 	mqtts_tcptran_pipe *p = arg;
+	nni_pipe_set_conn_param(npipe, p->cparam);
+
 	p->npipe              = npipe;
 
 	nni_lmq_init(&p->rslmq, 16);
@@ -640,7 +643,7 @@ mqtts_tcptran_pipe_recv_cb(void *arg)
 	if (!nni_list_empty(&p->recvq)) {
 		mqtts_tcptran_pipe_recv_start(p);
 	}
-
+	nni_msg_set_conn_param(msg, nni_pipe_get_conn_param(p->npipe));
 	nni_aio_set_msg(aio, msg);
 	nni_mtx_unlock(&p->mtx);
 	nni_aio_finish_sync(aio, 0, n);
@@ -856,6 +859,8 @@ mqtts_tcptran_pipe_start(
 	    NULL, NNI_TYPE_POINTER);
 	if (!connmsg) {
 		nni_list_append(&ep->waitpipes, p);
+		// 60s as the default keepalive timeout.
+		p->keepalive = 60 * 1000;
 		mqtts_tcptran_ep_match(ep);
 		return;
 	}
@@ -882,6 +887,7 @@ mqtts_tcptran_pipe_start(
 	}
 	nni_aio_set_iov(p->negoaio, niov, iov);
 	nni_list_append(&ep->negopipes, p);
+	p->cparam = nni_mqtt_msg_set_conn_param(connmsg);
 
 	nni_aio_set_timeout(p->negoaio, 10000); // 10 sec timeout to negotiate
 	nng_stream_send(p->conn, p->negoaio);
