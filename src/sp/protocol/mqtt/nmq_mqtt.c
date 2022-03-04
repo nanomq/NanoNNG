@@ -221,7 +221,6 @@ nano_pipe_timer_cb(void *arg)
 			    (long unsigned) qos_duration * 1250) {
 				p->busy = true;
 				// TODO set max retrying times in nanomq.conf
-				nni_msg_clone(rmsg);
 				nano_msg_set_dup(rmsg);
 				nni_aio_set_packetid(&p->aio_send, pid);
 				//put original msg into sending
