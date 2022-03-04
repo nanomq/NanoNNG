@@ -317,6 +317,9 @@ NNG_DECL int  nng_mqtt_set_connect_cb(nng_socket, nng_pipe_cb, void *);
 NNG_DECL int  nng_mqtt_set_disconnect_cb(nng_socket, nng_pipe_cb, void *);
 NNG_DECL void nng_mqtt_msg_dump(nng_msg *, uint8_t *, uint32_t, bool);
 
+NNG_DECL void nng_mqtt_msg_set_conn_param(nng_msg *);
+NNG_DECL conn_param *nng_mqtt_msg_get_conn_param(nng_msg *);
+
 #ifdef __cplusplus
 }
 #endif

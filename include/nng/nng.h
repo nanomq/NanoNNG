@@ -1357,8 +1357,6 @@ NNG_DECL void *         conn_param_get_qos_db(conn_param *cparam);
 NNG_DECL void           conn_param_set_qos_db(conn_param *cparam, void *);
 
 NNG_DECL void nng_taskq_setter(int num_taskq_threads, int max_taskq_threads);
-NNG_DECL void        nng_mqtt_msg_set_conn_param(nng_msg *);
-NNG_DECL conn_param *nng_mqtt_msg_get_conn_param(nng_msg *);
 #ifdef __cplusplus
 }
 #endif

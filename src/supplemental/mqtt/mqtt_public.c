@@ -452,3 +452,15 @@ nng_mqtt_msg_dump(
 {
 	nni_mqtt_msg_dump(msg, buffer, len, print_bytes);
 }
+
+void
+nng_mqtt_msg_set_conn_param(nng_msg *msg)
+{
+	nni_mqtt_msg_set_conn_param(msg);
+}
+
+conn_param *
+nng_mqtt_msg_get_conn_param(nng_msg *msg)
+{
+	return nni_mqtt_msg_get_conn_param(msg);
+}
