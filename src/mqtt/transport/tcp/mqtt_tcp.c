@@ -21,12 +21,10 @@
 typedef struct mqtt_tcptran_pipe mqtt_tcptran_pipe;
 typedef struct mqtt_tcptran_ep   mqtt_tcptran_ep;
 
-#define NNI_NANO_MAX_HEADER_SIZE 5
-
 // tcp_pipe is one end of a TCP connection.
 struct mqtt_tcptran_pipe {
-	nng_stream      *conn;
-	nni_pipe        *npipe;
+	nng_stream *     conn;
+	nni_pipe *       npipe;
 	uint16_t         peer;
 	uint16_t         proto;
 	uint16_t         keepalive;
@@ -46,15 +44,15 @@ struct mqtt_tcptran_pipe {
 	nni_list         recvq;
 	nni_list         sendq;
 	nni_aio          tmaio;
-	nni_aio         *txaio;
-	nni_aio         *rxaio;
-	nni_aio         *qsaio; // aio for qos/pingreq
+	nni_aio *        txaio;
+	nni_aio *        rxaio;
+	nni_aio *        qsaio; // aio for qos/pingreq
 	nni_lmq          rslmq;
-	nni_aio         *negoaio;
-	nni_msg         *rxmsg;
-	nni_msg         *smsg;
+	nni_aio *        negoaio;
+	nni_msg *        rxmsg;
+	nni_msg *        smsg;
 	nni_mtx          mtx;
-	conn_param      *cparam;
+	conn_param *     cparam;
 };
 
 struct mqtt_tcptran_ep {
@@ -64,21 +62,21 @@ struct mqtt_tcptran_ep {
 	bool                 fini;
 	bool                 started;
 	bool                 closed;
-	nng_url             *url;
-	const char          *host; // for dialers
+	nng_url *            url;
+	const char *         host; // for dialers
 	nng_sockaddr         src;
 	int                  refcnt; // active pipes
-	nni_aio             *useraio;
-	nni_aio             *connaio;
-	nni_aio             *timeaio;
+	nni_aio *            useraio;
+	nni_aio *            connaio;
+	nni_aio *            timeaio;
 	nni_list             busypipes; // busy pipes -- ones passed to socket
 	nni_list             waitpipes; // pipes waiting to match to socket
 	nni_list             negopipes; // pipes busy negotiating
 	nni_reap_node        reap;
-	nng_stream_dialer   *dialer;
+	nng_stream_dialer *  dialer;
 	nng_stream_listener *listener;
-	nni_dialer          *ndialer;
-	void                *connmsg;
+	nni_dialer *         ndialer;
+	void *               connmsg;
 
 #ifdef NNG_ENABLE_STATS
 	nni_stat_item st_rcv_max;
@@ -188,7 +186,7 @@ static void
 mqtt_tcptran_pipe_fini(void *arg)
 {
 	mqtt_tcptran_pipe *p = arg;
-	mqtt_tcptran_ep   *ep;
+	mqtt_tcptran_ep *  ep;
 
 	mqtt_tcptran_pipe_stop(p);
 	if ((ep = p->ep) != NULL) {
@@ -259,7 +257,7 @@ mqtt_tcptran_pipe_alloc(mqtt_tcptran_pipe **pipep)
 static void
 mqtt_tcptran_ep_match(mqtt_tcptran_ep *ep)
 {
-	nni_aio           *aio;
+	nni_aio *          aio;
 	mqtt_tcptran_pipe *p;
 
 	if (((aio = ep->useraio) == NULL) ||
@@ -278,9 +276,9 @@ static void
 mqtt_tcptran_pipe_nego_cb(void *arg)
 {
 	mqtt_tcptran_pipe *p   = arg;
-	mqtt_tcptran_ep   *ep  = p->ep;
-	nni_aio           *aio = p->negoaio;
-	nni_aio           *uaio;
+	mqtt_tcptran_ep *  ep  = p->ep;
+	nni_aio *          aio = p->negoaio;
+	nni_aio *          uaio;
 	int                rv;
 	int                var_int;
 	uint8_t            pos = 0;
@@ -407,8 +405,8 @@ static void
 mqtt_tcptran_pipe_qos_send_cb(void *arg)
 {
 	mqtt_tcptran_pipe *p = arg;
-	nni_msg           *msg;
-	nni_aio           *qsaio = p->qsaio;
+	nni_msg *          msg;
+	nni_aio *          qsaio = p->qsaio;
 
 	nni_mtx_lock(&p->mtx);
 	if (nni_aio_result(qsaio) != 0) {
@@ -443,10 +441,10 @@ mqtt_tcptran_pipe_send_cb(void *arg)
 {
 	mqtt_tcptran_pipe *p = arg;
 	int                rv;
-	nni_aio           *aio;
+	nni_aio *          aio;
 	size_t             n;
-	nni_msg           *msg;
-	nni_aio           *txaio = p->txaio;
+	nni_msg *          msg;
+	nni_aio *          txaio = p->txaio;
 
 	nni_mtx_lock(&p->mtx);
 	aio = nni_list_first(&p->sendq);
@@ -489,14 +487,14 @@ mqtt_tcptran_pipe_send_cb(void *arg)
 static void
 mqtt_tcptran_pipe_recv_cb(void *arg)
 {
-	nni_aio           *aio;
+	nni_aio *          aio;
 	nni_iov            iov;
 	uint8_t            type, pos, flags;
 	uint32_t           len = 0, rv;
 	size_t             n;
-	nni_msg           *msg, *qmsg;
+	nni_msg *          msg, *qmsg;
 	mqtt_tcptran_pipe *p     = arg;
-	nni_aio           *rxaio = p->rxaio;
+	nni_aio *          rxaio = p->rxaio;
 	bool               ack   = false;
 
 	nni_mtx_lock(&p->mtx);
@@ -929,7 +927,7 @@ mqtt_tcptran_ep_fini(void *arg)
 static void
 mqtt_tcptran_ep_close(void *arg)
 {
-	mqtt_tcptran_ep   *ep = arg;
+	mqtt_tcptran_ep *  ep = arg;
 	mqtt_tcptran_pipe *p;
 
 	nni_mtx_lock(&ep->mtx);
@@ -967,8 +965,8 @@ mqtt_tcptran_url_parse_source(
     nng_url *url, nng_sockaddr *sa, const nng_url *surl)
 {
 	int      af;
-	char    *semi;
-	char    *src;
+	char *   semi;
+	char *   src;
 	size_t   len;
 	int      rv;
 	nni_aio *aio;
@@ -985,7 +983,7 @@ mqtt_tcptran_url_parse_source(
 		return (0);
 	}
 
-	len             = (size_t) (semi - url->u_hostname);
+	len             = (size_t)(semi - url->u_hostname);
 	url->u_hostname = semi + 1;
 
 	if (strcmp(surl->u_scheme, "tcp") == 0) {
@@ -1029,11 +1027,11 @@ mqtt_tcptran_timer_cb(void *arg)
 static void
 mqtt_tcptran_accept_cb(void *arg)
 {
-	mqtt_tcptran_ep   *ep  = arg;
-	nni_aio           *aio = ep->connaio;
+	mqtt_tcptran_ep *  ep  = arg;
+	nni_aio *          aio = ep->connaio;
 	mqtt_tcptran_pipe *p;
 	int                rv;
-	nng_stream        *conn;
+	nng_stream *       conn;
 
 	nni_mtx_lock(&ep->mtx);
 
@@ -1084,11 +1082,11 @@ error:
 static void
 mqtt_tcptran_dial_cb(void *arg)
 {
-	mqtt_tcptran_ep   *ep  = arg;
-	nni_aio           *aio = ep->connaio;
+	mqtt_tcptran_ep *  ep  = arg;
+	nni_aio *          aio = ep->connaio;
 	mqtt_tcptran_pipe *p;
 	int                rv;
-	nng_stream        *conn;
+	nng_stream *       conn;
 
 	if ((rv = nni_aio_result(aio)) != 0) {
 		goto error;
@@ -1160,7 +1158,7 @@ mqtt_tcptran_dialer_init(void **dp, nng_url *url, nni_dialer *ndialer)
 	mqtt_tcptran_ep *ep;
 	int              rv;
 	nng_sockaddr     srcsa;
-	nni_sock        *sock = nni_dialer_sock(ndialer);
+	nni_sock *       sock = nni_dialer_sock(ndialer);
 	nng_url          myurl;
 
 	// Check for invalid URL components. only one dialer is allowed
@@ -1206,7 +1204,7 @@ mqtt_tcptran_listener_init(void **lp, nng_url *url, nni_listener *nlistener)
 {
 	mqtt_tcptran_ep *ep;
 	int              rv;
-	nni_sock        *sock = nni_listener_sock(nlistener);
+	nni_sock *       sock = nni_listener_sock(nlistener);
 
 	// Check for invalid URL components.
 	if ((strlen(url->u_path) != 0) && (strcmp(url->u_path, "/") != 0)) {
@@ -1284,7 +1282,7 @@ static int
 mqtt_tcptran_ep_get_url(void *arg, void *v, size_t *szp, nni_opt_type t)
 {
 	mqtt_tcptran_ep *ep = arg;
-	char            *s;
+	char *           s;
 	int              rv;
 	int              port = 0;
 
