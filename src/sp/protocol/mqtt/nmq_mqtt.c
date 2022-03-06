@@ -193,14 +193,42 @@ nano_pipe_timer_cb(void *arg)
 	if (nng_aio_result(&p->aio_timer) != 0) {
 		return;
 	}
+	nni_mtx_lock(&p->lk);
+	// TODO pipe lock or sock lock?
 	if (npipe->cache) {
-		nni_sleep_aio(qos_duration * 1000, &p->aio_timer);
+		p->ka_refresh++;
 		// check session expiry interval
-		// npipe->cache = false;
-		// nni_pipe_close(p->pipe);
+		if (p->conn_param->session_expiry_interval > 0) {
+			if (p->ka_refresh * (qos_duration) >
+			    p->conn_param->session_expiry_interval) {
+				// close pipe
+				//  clean previous session
+				nano_pipe *old;
+				nano_sock *s = p->broker;
+				char      *clientid;
+				uint32_t   clientid_key;
+				clientid = (char *) conn_param_get_clientid(
+				    p->conn_param);
+
+				if (clientid)
+					clientid_key = DJBHashn(
+					    clientid, strlen(clientid));
+				old = nni_id_get(
+				    &s->cached_sessions, clientid_key);
+				if (old != NULL) {
+					old->event       = true;
+					old->pipe->cache = false;
+					nni_id_map_foreach(old->nano_qos_db,
+					    nmq_close_unack_msg_cb);
+					nni_id_remove(
+					    &s->cached_sessions, clientid_key);
+				}
+				nni_pipe_close(p->pipe);
+			}
+		}
+		nni_sleep_aio(qos_duration * 1000, &p->aio_timer);
 		return;
 	}
-	nni_mtx_lock(&p->lk);
 	if (p->ka_refresh * (qos_duration) > p->conn_param->keepalive_mqtt) {
 		nni_println("Warning: close pipe & kick client due to KeepAlive "
 		       "timeout!");
