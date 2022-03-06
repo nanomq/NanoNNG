@@ -704,9 +704,11 @@ nmq_connack_encode(nng_msg *msg, conn_param *cparam, uint8_t reason)
 			debug_msg("SESSION_EXPIRY_INTERVAL %d",
 			    cparam->session_expiry_interval);
 			tmp = SESSION_EXPIRY_INTERVAL;
+			// uint8_t stmp[4];
+			// NNI_PUT32(stmp,cparam->session_expiry_interval);
 			nni_msg_append(msg, &tmp, 1);
 			nni_msg_append(
-			    msg, cparam->session_expiry_interval, 4);
+			    msg, &cparam->session_expiry_interval, 4);
 			remaining_len += 5;
 		}
 		// Receive Maximum
