@@ -14,7 +14,7 @@
 
 #include "nng/mqtt/packet.h"
 #include <conf.h>
-#include <iconv.h>
+// #include <iconv.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -661,26 +661,26 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 	return rv;
 }
 
-/**
- * @brief convert string from @format to utf-8 format
- * caller is responsible to free the memory returned
- */
-char *
-convert_to_utf8(char *src, char *format, size_t *len)
-{
-	size_t  ascii_len     = 10, utf8_len;
-	iconv_t iconv_obj     = iconv_open("utf-8", format);
-	char   *out_str       = calloc(strlen(src) * 2, sizeof(char));
-	char   *out_str_start = out_str;
+// /**
+//  * @brief convert string from @format to utf-8 format
+//  * caller is responsible to free the memory returned
+//  */
+// char *
+// convert_to_utf8(char *src, char *format, size_t *len)
+// {
+// 	size_t  ascii_len     = 10, utf8_len;
+// 	iconv_t iconv_obj     = iconv_open("utf-8", format);
+// 	char   *out_str       = calloc(strlen(src) * 2, sizeof(char));
+// 	char   *out_str_start = out_str;
 
-	size_t in_str_bytes_left  = strlen(src);
-	size_t out_str_bytes_left = strlen(src) * 2;
-	int iconv_return = iconv(iconv_obj, &src, &in_str_bytes_left, &out_str,
-	    &out_str_bytes_left);
-	iconv_close(iconv_obj);
-	*len = out_str_bytes_left;
-	return out_str_start;
-}
+// 	size_t in_str_bytes_left  = strlen(src);
+// 	size_t out_str_bytes_left = strlen(src) * 2;
+// 	int iconv_return = iconv(iconv_obj, &src, &in_str_bytes_left, &out_str,
+// 	    &out_str_bytes_left);
+// 	iconv_close(iconv_obj);
+// 	*len = out_str_bytes_left;
+// 	return out_str_start;
+// }
 
 /**
  * @brief handle and encode CONNACK packet
