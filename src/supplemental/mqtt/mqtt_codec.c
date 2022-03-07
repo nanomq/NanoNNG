@@ -1802,3 +1802,137 @@ mqtt_msg_dump(mqtt_msg *msg, mqtt_buf *buf, mqtt_buf *packet, bool print_bytes)
 	}
 	return 0;
 }
+
+// property *
+// property_new(property *prop)
+// {
+// }
+
+// void
+// property_append_u8(uint8_t id, uint8_t value)
+// {
+// }
+
+uint32_t
+decode_properties(nng_msg *msg, uint32_t *pos, property *properties)
+{
+	int      rv;
+	uint8_t *msg_body = nng_msg_body(msg);
+	size_t   len      = nng_msg_len(msg);
+	void *   data;
+	size_t   data_len;
+
+	uint32_t var_int = 0;
+
+	uint32_t current_pos = *pos;
+
+	if (current_pos >= len) {
+		return 0;
+	}
+
+	struct pos_buf buf = { .curpos = &msg_body[current_pos],
+		.endpos                = &msg_body[len] };
+
+	uint32_t prop_len = 0;
+	// read_packet_length(&buf, &prop_len);
+	uint8_t bytes = 0;
+	if ((rv = mqtt_get_remaining_length(msg_body + current_pos,
+	         len - current_pos, &prop_len, &bytes)) != 0) {
+		return 0;
+	}
+
+	current_pos += (bytes + prop_len);
+
+	// uint32_t read_bytes = 0;
+
+	// uint8_t prop_id = 0;
+
+	// while (read_bytes < prop_len) {
+	// 	current_pos++;
+	// 	prop_id = *(uint8_t *) msg_body + current_pos;
+	// 	read_bytes++;
+
+	// 	switch (prop_id) {
+	// 	case PAYLOAD_FORMAT_INDICATOR:
+	// 		read_bytes += 1;
+	// 		break;
+	// 	case MESSAGE_EXPIRY_INTERVAL:
+	// 		read_bytes += 4;
+	// 		break;
+	// 	case CONTENT_TYPE:
+	// 		data =
+	// 		    copy_utf8_str(msg_body, &current_pos, &data_len);
+	// 		read_bytes += data_len;
+	// 		// TODO set str value to property
+	// 		break;
+	// 	case RESPONSE_TOPIC:
+	// 		data =
+	// 		    copy_utf8_str(msg_body, &current_pos, &data_len);
+	// 		read_bytes += data_len;
+	// 		// TODO set data value to property
+	// 		break;
+	// 	case CORRELATION_DATA:
+	// 		// FIXME use
+	// 		// get_variable_binary(msg_body)
+	// 		// data = copy_utf8_str(msg_body, &current_pos,
+	// 		// &data_len);
+	// 		NNI_GET16(msg_body + current_pos, data_len);
+	// 		current_pos += data_len + 2;
+	// 		read_bytes += data_len + 2;
+	// 		break;
+	// 	case SUBSCRIPTION_IDENTIFIER:
+	//         mqtt_get_remaining_length()
+	//         var_int = get_var_integer(msg_body, &current_pos);
+
+	// 		break;
+	// 	case SESSION_EXPIRY_INTERVAL:
+
+	// 		break;
+	// 	case ASSIGNED_CLIENT_IDENTIFIER:
+	// 		break;
+	// 	case SERVER_KEEP_ALIVE:
+	// 		break;
+	// 	case AUTHENTICATION_METHOD:
+	// 		break;
+	// 	case AUTHENTICATION_DATA:
+	// 		break;
+	// 	case REQUEST_PROBLEM_INFORMATION:
+	// 		break;
+	// 	case WILL_DELAY_INTERVAL:
+	// 		break;
+	// 	case REQUEST_RESPONSE_INFORMATION:
+	// 		break;
+	// 	case RESPONSE_INFORMATION:
+	// 		break;
+	// 	case SERVER_REFERENCE:
+	// 		break;
+	// 	case REASON_STRING:
+	// 		break;
+	// 	case RECEIVE_MAXIMUM:
+	// 		break;
+	// 	case TOPIC_ALIAS_MAXIMUM:
+	// 		break;
+	// 	case TOPIC_ALIAS:
+	// 		break;
+	// 	case PUBLISH_MAXIMUM_QOS:
+	// 		break;
+	// 	case RETAIN_AVAILABLE:
+	// 		break;
+	// 	case USER_PROPERTY:
+	// 		break;
+	// 	case MAXIMUM_PACKET_SIZE:
+	// 		break;
+	// 	case WILDCARD_SUBSCRIPTION_AVAILABLE:
+	// 		break;
+	// 	case SUBSCRIPTION_IDENTIFIER_AVAILABLE:
+	// 		break;
+	// 	case SHARED_SUBSCRIPTION_AVAILABLE:
+	// 		break;
+	// 	default:
+	// 		break;
+	// 	}
+	// }
+
+	*pos = current_pos;
+	return prop_len;
+}
