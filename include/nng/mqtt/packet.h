@@ -9,6 +9,7 @@
 #ifndef NNG_MQTT_PACKET_H
 #define NNG_MQTT_PACKET_H
 
+#include "nng/nng.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -75,15 +76,33 @@ union Property_type {
 	uint16_t      u16;
 	uint32_t      u32;
 	uint32_t      varint;
-	mqtt_binary   binary;
-	mqtt_string   str;
-	mqtt_str_pair strpair;
+	mqtt_buf      binary;
+	mqtt_buf      str;
+	mqtt_keyvalue strpair;
 };
 
+typedef enum {
+	U8,
+	U16,
+	U32,
+	VARINT,
+	BINARY,
+	STR,
+	STR_PAIR,
+	UNKNOWN
+} property_type_enum;
+
+struct property_data {
+	property_type_enum  p_type;
+	union Property_type p_value;
+};
+
+typedef struct property_data property_data;
+
 struct property {
-	uint8_t             id;
-	union Property_type value;
-	struct property *   next;
+	uint8_t          id;
+	property_data    data;
+	struct property *next;
 };
 typedef struct property property;
 
