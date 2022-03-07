@@ -228,6 +228,7 @@ nano_pipe_timer_cb(void *arg)
 			}
 		}
 		nni_sleep_aio(qos_duration * 1000, &p->aio_timer);
+		nni_mtx_unlock(&p->lk);
 		return;
 	}
 	if (p->ka_refresh * (qos_duration) > p->conn_param->keepalive_mqtt) {
