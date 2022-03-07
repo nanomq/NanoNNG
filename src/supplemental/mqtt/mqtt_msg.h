@@ -236,6 +236,8 @@ extern int write_byte(uint8_t, struct pos_buf *);
 extern int write_uint16(uint16_t, struct pos_buf *);
 extern int write_byte_string(mqtt_buf *, struct pos_buf *);
 
+extern int read_variable_int(
+    uint8_t *ptr, uint32_t length, uint32_t *value, uint8_t *pos);
 extern int read_byte(struct pos_buf *, uint8_t *);
 extern int read_uint16(struct pos_buf *, uint16_t *);
 extern int read_utf8_str(struct pos_buf *, mqtt_buf *);
