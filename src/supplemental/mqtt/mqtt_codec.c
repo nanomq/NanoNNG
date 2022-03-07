@@ -2219,3 +2219,14 @@ encode_properties(nni_msg *msg, property *prop, uint32_t prop_len)
 
 	return 0;
 }
+
+property_data *
+property_get_value(property *prop, properties_type prop_id)
+{
+	for (property *p = prop->next; p != NULL; p = p->next) {
+		if (p->id == prop_id) {
+			return &p->data;
+		}
+	}
+	return NULL;
+}

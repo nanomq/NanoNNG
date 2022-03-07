@@ -3,8 +3,8 @@
 #define NNG_MQTT_H
 
 #include <conf.h>
-#include <nng/nng.h>
 #include <nng/mqtt/packet.h>
+#include <nng/nng.h>
 #include <stdlib.h>
 
 // Do not change to %lu! just supress the warning of compiler!
@@ -12,8 +12,8 @@
 	"{\"username\":\"%s\"," \
 	"\"ts\":%llu,\"reason_code\":\"%x\",\"client_id\":\"%s\"}"
 
-#define CONNECT_MSG                                                          \
-	"{\"username\":\"%s\", "                                             \
+#define CONNECT_MSG                                                           \
+	"{\"username\":\"%s\", "                                              \
 	"\"ts\":%llu,\"proto_name\":\"%s\",\"keepalive\":%d,\"return_code\":" \
 	"\"%x\",\"proto_ver\":%d,\"client_id\":\"%s\", \"clean_start\":%d}"
 
@@ -92,5 +92,8 @@ NNG_DECL property *decode_properties(
 NNG_DECL int encode_properties(
     nng_msg *msg, property *prop, uint32_t prop_len);
 NNG_DECL void property_free(property *prop);
+NNG_DECL property_data *property_get_value(
+    property *prop, properties_type prop_id);
+NNG_DECL void property_foreach(property *prop, void (*cb)(property *));
 
 #endif // NNG_MQTT_H
