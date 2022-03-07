@@ -1834,6 +1834,12 @@ decode_properties(nng_msg *msg, uint32_t *pos, property *properties)
 		.endpos                = &msg_body[len] };
 
 	uint32_t prop_len = 0;
+
+	if (*(msg_body + current_pos) == 0) {
+		current_pos ++;
+		*pos = current_pos;
+		return 0;
+	}
 	// read_packet_length(&buf, &prop_len);
 	uint8_t bytes = 0;
 	if ((rv = mqtt_get_remaining_length(msg_body + current_pos,
