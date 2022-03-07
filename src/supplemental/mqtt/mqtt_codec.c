@@ -1,5 +1,6 @@
 
 #include "mqtt_msg.h"
+#include "nng/protocol/mqtt/mqtt.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,6 +8,8 @@
 
 static void nni_mqtt_msg_append_u8(nni_msg *, uint8_t);
 static void nni_mqtt_msg_append_u16(nni_msg *, uint16_t);
+static void nni_mqtt_msg_append_u32(nni_msg *, uint32_t);
+
 static void nni_mqtt_msg_append_byte_str(nni_msg *, nni_mqtt_buffer *);
 
 static void nni_mqtt_msg_encode_fixed_header(nni_msg *, nni_mqtt_proto_data *);
@@ -385,6 +388,14 @@ nni_mqtt_msg_append_u16(nni_msg *msg, uint16_t val)
 	uint8_t buf[2] = { 0 };
 	NNI_PUT16(buf, val);
 	nni_msg_append(msg, buf, 2);
+}
+
+static void
+nni_mqtt_msg_append_u32(nni_msg *msg, uint32_t val)
+{
+	uint8_t buf[4] = { 0 };
+	NNI_PUT32(buf, val);
+	nni_msg_append(msg, buf, 4);
 }
 
 static void
@@ -1286,8 +1297,21 @@ write_uint16(uint16_t value, struct pos_buf *buf)
 		return MQTT_ERR_NOMEM;
 	}
 
-	*(buf->curpos++) = (value >> 8) & 0xFF;
-	*(buf->curpos++) = value & 0xFF;
+	NNI_PUT16(buf->curpos, value);
+	buf->curpos += 2;
+
+	return 0;
+}
+
+int
+write_uint32(uint32_t value, struct pos_buf *buf)
+{
+	if ((buf->endpos - buf->curpos) < 4) {
+		return MQTT_ERR_NOMEM;
+	}
+
+	NNI_PUT32(buf->curpos, value);
+	buf->curpos += 4;
 
 	return 0;
 }
@@ -1327,8 +1351,21 @@ read_uint16(struct pos_buf *buf, uint16_t *val)
 		return MQTT_ERR_INVAL;
 	}
 
-	*val = *(buf->curpos++) << 8; /* MSB */
-	*val |= *(buf->curpos++);     /* LSB */
+	NNI_GET16(buf->curpos, *val);
+	buf->curpos += 2;
+
+	return 0;
+}
+
+int
+read_uint32(struct pos_buf *buf, uint32_t *val)
+{
+	if ((size_t)(buf->endpos - buf->curpos) < sizeof(uint32_t)) {
+		return MQTT_ERR_INVAL;
+	}
+
+	NNI_GET32(buf->curpos, *val);
+	buf->curpos += 4;
 
 	return 0;
 }
@@ -1378,7 +1415,7 @@ read_str_data(struct pos_buf *buf, mqtt_buf *val)
 	return 0;
 }
 
-int
+static int
 read_variable_int(
     uint8_t *ptr, uint32_t length, uint32_t *value, uint8_t *used_bytes)
 {
@@ -1415,6 +1452,19 @@ read_variable_int(
 		}
 	}
 	return MQTT_ERR_INVAL;
+}
+
+int
+read_variable_integer(struct pos_buf *buf, uint32_t *integer)
+{
+	int     rv;
+	uint8_t bytes = 0;
+	if ((rv = read_variable_int(buf->curpos, buf->endpos - buf->curpos,
+	              integer, &bytes) != MQTT_SUCCESS)) {
+		return rv;
+	}
+	buf->curpos += bytes;
+	return MQTT_SUCCESS;
 }
 
 int
@@ -1515,6 +1565,38 @@ mqtt_buf_free(mqtt_buf *buf)
 		buf->length = 0;
 		buf->buf    = NULL;
 	}
+}
+
+int
+mqtt_keyvalue_create(mqtt_keyvalue *kv, const char *key, size_t key_len,
+    const char *value, size_t value_len)
+{
+	int rv;
+	if (((rv = mqtt_buf_create(&kv->key, (uint8_t *) key, key_len)) !=
+	        0) ||
+	    ((rv = mqtt_buf_create(
+	          &kv->value, (uint8_t *) value, value_len)) != 0)) {
+		return rv;
+	}
+	return 0;
+}
+
+int
+mqtt_keyvalue_dup(mqtt_keyvalue *dest, const mqtt_keyvalue *src)
+{
+	int rv;
+	if (((rv = mqtt_buf_dup(&dest->key, &src->key)) != 0) ||
+	    ((rv = mqtt_buf_dup(&dest->value, &src->value)) != 0)) {
+		return rv;
+	}
+	return 0;
+}
+
+void
+mqtt_keyvalue_free(mqtt_keyvalue *kv)
+{
+	mqtt_buf_free(&kv->key);
+	mqtt_buf_free(&kv->value);
 }
 
 static mqtt_msg *
@@ -1842,136 +1924,298 @@ mqtt_msg_dump(mqtt_msg *msg, mqtt_buf *buf, mqtt_buf *packet, bool print_bytes)
 	return 0;
 }
 
-// property *
-// property_new(property *prop)
-// {
-// }
+property *
+property_alloc(void)
+{
+	return nng_zalloc(sizeof(property));
+}
 
-// void
-// property_append_u8(uint8_t id, uint8_t value)
-// {
-// }
+property *
+property_set(struct pos_buf *buf, property *prop, uint8_t prop_id,
+    property_type_enum type)
+{
+	if (prop == NULL) {
+		prop = property_alloc();
+	}
+	prop->next         = NULL;
+	prop->data.p_type  = type;
+	prop->id           = prop_id;
+	mqtt_buf key_buf   = { 0 };
+	mqtt_buf value_buf = { 0 };
+	switch (type) {
+	case U8:
+		read_byte(buf, &prop->data.p_value.u8);
+		debug_msg(
+		    "id: %d, value: %d (U8)", prop_id, prop->data.p_value.u8);
+		break;
+	case U16:
+		read_uint16(buf, &prop->data.p_value.u16);
+		debug_msg("id: %d, value: %d (U16)", prop_id,
+		    prop->data.p_value.u16);
+		break;
+	case U32:
+		read_uint32(buf, &prop->data.p_value.u32);
+		debug_msg("id: %d, value: %u (U32)", prop_id,
+		    prop->data.p_value.u32);
+		break;
+	case VARINT:
+		read_variable_integer(buf, &prop->data.p_value.varint);
+		debug_msg("id: %d, value: %d (VARINT)", prop_id,
+		    prop->data.p_value.varint);
+		break;
+	case BINARY:
+		read_utf8_str(buf, &value_buf);
+		mqtt_buf_dup(&prop->data.p_value.binary, &value_buf);
+		debug_msg("id: %d, value pointer: %p (BINARY)", prop_id,
+		    prop->data.p_value.binary.buf);
+		memset(&value_buf, 0, sizeof(mqtt_buf));
+		break;
+	case STR:
+		read_utf8_str(buf, &value_buf);
+		mqtt_buf_dup(&prop->data.p_value.str, &value_buf);
+		debug_msg("id: %d, value: %.*s (STR)", prop_id,
+		    prop->data.p_value.str.length,
+		    (const char *) prop->data.p_value.str.buf);
+		memset(&value_buf, 0, sizeof(mqtt_buf));
+		break;
+	case STR_PAIR:
+		read_utf8_str(buf, &key_buf);
+		read_utf8_str(buf, &value_buf);
+		mqtt_keyvalue_create(&prop->data.p_value.strpair,
+		    (const char *) key_buf.buf, key_buf.length,
+		    (const char *) value_buf.buf, value_buf.length);
+		debug_msg("id: %d, value: '%.*s -> %.*s' (STR_PAIR)", prop_id,
+		    prop->data.p_value.strpair.key.length,
+		    prop->data.p_value.strpair.key.buf,
+		    prop->data.p_value.strpair.value.length,
+		    prop->data.p_value.strpair.value.buf);
+		break;
 
-uint32_t
-decode_properties(nng_msg *msg, uint32_t *pos, property *properties)
+	default:
+		break;
+	}
+
+	return prop;
+}
+
+void
+property_insert(property *prop_list, property *last)
+{
+	property *p = prop_list;
+	while (p) {
+		if (p->next == NULL) {
+			p->next = last;
+			break;
+		}
+		p = p->next;
+	}
+}
+
+void
+property_foreach(property *prop, void (*cb)(property *))
+{
+	for (property *p = prop->next; p != NULL; p = p->next) {
+		cb(p);
+	}
+}
+
+void
+property_free(property *prop)
+{
+	property *head = prop;
+	property *p;
+
+	while (head) {
+		p    = head;
+		head = head->next;
+
+		switch (p->data.p_type) {
+		case STR:
+			mqtt_buf_free(&p->data.p_value.str);
+			break;
+		case BINARY:
+			mqtt_buf_free(&p->data.p_value.binary);
+			break;
+		case STR_PAIR:
+			mqtt_keyvalue_free(&p->data.p_value.strpair);
+			break;
+
+		default:
+			break;
+		}
+
+		free(p);
+	}
+}
+
+property *
+decode_properties(nng_msg *msg, uint32_t *pos, uint32_t *len)
 {
 	int      rv;
-	uint8_t *msg_body = nng_msg_body(msg);
-	size_t   len      = nng_msg_len(msg);
-	void *   data;
-	size_t   data_len;
-
-	uint32_t var_int = 0;
-
+	uint8_t *msg_body    = nng_msg_body(msg);
+	size_t   msg_len     = nng_msg_len(msg);
+	uint32_t prop_len    = 0;
+	uint8_t  bytes       = 0;
 	uint32_t current_pos = *pos;
 
-	if (current_pos >= len) {
+	if (current_pos >= msg_len) {
 		return 0;
 	}
 
+	if ((rv = read_variable_int(msg_body + current_pos,
+	         msg_len - current_pos, &prop_len, &bytes)) != 0) {
+		return 0;
+	}
+	current_pos += bytes;
 	struct pos_buf buf = { .curpos = &msg_body[current_pos],
-		.endpos                = &msg_body[len] };
+		.endpos                = &msg_body[current_pos + prop_len] };
 
-	uint32_t prop_len = 0;
+	if (prop_len == 0) {
+		goto out;
+	}
 
-	uint8_t bytes = 0;
-	if ((rv = read_variable_int(msg_body + current_pos, len - current_pos,
-	         &prop_len, &bytes)) != 0) {
+	uint8_t   prop_id = 0;
+	property *list    = property_alloc();
+
+	while (buf.curpos < buf.endpos) {
+		read_byte(&buf, &prop_id);
+		property *cur_prop = NULL;
+		switch (prop_id) {
+		case PAYLOAD_FORMAT_INDICATOR:
+		case REQUEST_PROBLEM_INFORMATION:
+		case REQUEST_RESPONSE_INFORMATION:
+		case PUBLISH_MAXIMUM_QOS:
+		case RETAIN_AVAILABLE:
+		case WILDCARD_SUBSCRIPTION_AVAILABLE:
+		case SUBSCRIPTION_IDENTIFIER_AVAILABLE:
+		case SHARED_SUBSCRIPTION_AVAILABLE:
+			cur_prop = property_set(&buf, cur_prop, prop_id, U8);
+			property_insert(list, cur_prop);
+			break;
+
+		case SERVER_KEEP_ALIVE:
+		case RECEIVE_MAXIMUM:
+		case TOPIC_ALIAS_MAXIMUM:
+		case TOPIC_ALIAS:
+
+			cur_prop = property_set(&buf, cur_prop, prop_id, U16);
+			property_insert(list, cur_prop);
+			break;
+
+		case MESSAGE_EXPIRY_INTERVAL:
+		case SESSION_EXPIRY_INTERVAL:
+		case WILL_DELAY_INTERVAL:
+		case MAXIMUM_PACKET_SIZE:
+			cur_prop = property_set(&buf, cur_prop, prop_id, U32);
+			property_insert(list, cur_prop);
+			break;
+
+		case CONTENT_TYPE:
+		case RESPONSE_TOPIC:
+		case ASSIGNED_CLIENT_IDENTIFIER:
+		case AUTHENTICATION_METHOD:
+		case RESPONSE_INFORMATION:
+		case SERVER_REFERENCE:
+		case REASON_STRING:
+			cur_prop = property_set(&buf, cur_prop, prop_id, STR);
+			property_insert(list, cur_prop);
+			break;
+
+		case CORRELATION_DATA:
+		case AUTHENTICATION_DATA:
+			cur_prop =
+			    property_set(&buf, cur_prop, prop_id, BINARY);
+			property_insert(list, cur_prop);
+			break;
+
+		case USER_PROPERTY:
+			cur_prop =
+			    property_set(&buf, cur_prop, prop_id, STR_PAIR);
+			property_insert(list, cur_prop);
+			break;
+
+		default:
+			break;
+		}
+	}
+
+out:
+	current_pos += (prop_len);
+	*pos = current_pos;
+	*len = prop_len;
+	return list;
+}
+
+int
+encode_properties(nni_msg *msg, property *prop, uint32_t prop_len)
+{
+	uint8_t        rlen[4] = { 0 };
+	struct pos_buf buf     = { .curpos = &rlen[0],
+                .endpos                = &rlen[sizeof(rlen)] };
+	int            len     = write_variable_length_value(prop_len, &buf);
+
+	nni_msg_append(msg, rlen, len);
+
+	if (prop_len == 0) {
 		return 0;
 	}
 
-	current_pos += (bytes + prop_len);
+	for (property *p = prop->next; p != NULL; p = p->next) {
+		nni_mqtt_msg_append_u8(msg, p->id);
+		switch (p->id) {
+		case PAYLOAD_FORMAT_INDICATOR:
+		case REQUEST_PROBLEM_INFORMATION:
+		case REQUEST_RESPONSE_INFORMATION:
+		case PUBLISH_MAXIMUM_QOS:
+		case RETAIN_AVAILABLE:
+		case WILDCARD_SUBSCRIPTION_AVAILABLE:
+		case SUBSCRIPTION_IDENTIFIER_AVAILABLE:
+		case SHARED_SUBSCRIPTION_AVAILABLE:
+			nni_mqtt_msg_append_u8(msg, p->data.p_value.u8);
+			break;
 
-	// uint32_t read_bytes = 0;
+		case SERVER_KEEP_ALIVE:
+		case RECEIVE_MAXIMUM:
+		case TOPIC_ALIAS_MAXIMUM:
+		case TOPIC_ALIAS:
+			nni_mqtt_msg_append_u16(msg, p->data.p_value.u16);
+			break;
 
-	// uint8_t prop_id = 0;
+		case MESSAGE_EXPIRY_INTERVAL:
+		case SESSION_EXPIRY_INTERVAL:
+		case WILL_DELAY_INTERVAL:
+		case MAXIMUM_PACKET_SIZE:
+			nni_mqtt_msg_append_u32(msg, p->data.p_value.u32);
+			break;
 
-	// while (read_bytes < prop_len) {
-	// 	current_pos++;
-	// 	prop_id = *(uint8_t *) msg_body + current_pos;
-	// 	read_bytes++;
+		case CONTENT_TYPE:
+		case RESPONSE_TOPIC:
+		case ASSIGNED_CLIENT_IDENTIFIER:
+		case AUTHENTICATION_METHOD:
+		case RESPONSE_INFORMATION:
+		case SERVER_REFERENCE:
+		case REASON_STRING:
+			nni_mqtt_msg_append_byte_str(
+			    msg, &p->data.p_value.str);
+			break;
 
-	// 	switch (prop_id) {
-	// 	case PAYLOAD_FORMAT_INDICATOR:
-	// 		read_bytes += 1;
-	// 		break;
-	// 	case MESSAGE_EXPIRY_INTERVAL:
-	// 		read_bytes += 4;
-	// 		break;
-	// 	case CONTENT_TYPE:
-	// 		data =
-	// 		    copy_utf8_str(msg_body, &current_pos, &data_len);
-	// 		read_bytes += data_len;
-	// 		// TODO set str value to property
-	// 		break;
-	// 	case RESPONSE_TOPIC:
-	// 		data =
-	// 		    copy_utf8_str(msg_body, &current_pos, &data_len);
-	// 		read_bytes += data_len;
-	// 		// TODO set data value to property
-	// 		break;
-	// 	case CORRELATION_DATA:
-	// 		// FIXME use
-	// 		// get_variable_binary(msg_body)
-	// 		// data = copy_utf8_str(msg_body, &current_pos,
-	// 		// &data_len);
-	// 		NNI_GET16(msg_body + current_pos, data_len);
-	// 		current_pos += data_len + 2;
-	// 		read_bytes += data_len + 2;
-	// 		break;
-	// 	case SUBSCRIPTION_IDENTIFIER:
-	//         mqtt_get_remaining_length()
-	//         var_int = get_var_integer(msg_body, &current_pos);
+		case CORRELATION_DATA:
+		case AUTHENTICATION_DATA:
+			nni_mqtt_msg_append_byte_str(
+			    msg, &p->data.p_value.binary);
+			break;
 
-	// 		break;
-	// 	case SESSION_EXPIRY_INTERVAL:
+		case USER_PROPERTY:
+			nni_mqtt_msg_append_byte_str(
+			    msg, &p->data.p_value.strpair.key);
+			nni_mqtt_msg_append_byte_str(
+			    msg, &p->data.p_value.strpair.value);
+			break;
 
-	// 		break;
-	// 	case ASSIGNED_CLIENT_IDENTIFIER:
-	// 		break;
-	// 	case SERVER_KEEP_ALIVE:
-	// 		break;
-	// 	case AUTHENTICATION_METHOD:
-	// 		break;
-	// 	case AUTHENTICATION_DATA:
-	// 		break;
-	// 	case REQUEST_PROBLEM_INFORMATION:
-	// 		break;
-	// 	case WILL_DELAY_INTERVAL:
-	// 		break;
-	// 	case REQUEST_RESPONSE_INFORMATION:
-	// 		break;
-	// 	case RESPONSE_INFORMATION:
-	// 		break;
-	// 	case SERVER_REFERENCE:
-	// 		break;
-	// 	case REASON_STRING:
-	// 		break;
-	// 	case RECEIVE_MAXIMUM:
-	// 		break;
-	// 	case TOPIC_ALIAS_MAXIMUM:
-	// 		break;
-	// 	case TOPIC_ALIAS:
-	// 		break;
-	// 	case PUBLISH_MAXIMUM_QOS:
-	// 		break;
-	// 	case RETAIN_AVAILABLE:
-	// 		break;
-	// 	case USER_PROPERTY:
-	// 		break;
-	// 	case MAXIMUM_PACKET_SIZE:
-	// 		break;
-	// 	case WILDCARD_SUBSCRIPTION_AVAILABLE:
-	// 		break;
-	// 	case SUBSCRIPTION_IDENTIFIER_AVAILABLE:
-	// 		break;
-	// 	case SHARED_SUBSCRIPTION_AVAILABLE:
-	// 		break;
-	// 	default:
-	// 		break;
-	// 	}
-	// }
+		default:
+			break;
+		}
+	}
 
-	*pos = current_pos;
-	return prop_len;
+	return 0;
 }

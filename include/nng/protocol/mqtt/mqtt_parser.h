@@ -75,18 +75,22 @@ NNG_DECL uint8_t  verify_connect(conn_param *cparam, conf *conf);
 
 // repack
 NNG_DECL void nano_msg_set_dup(nng_msg *msg);
-NNG_DECL nng_msg *nano_msg_composer(
-    nng_msg **, uint8_t retain, uint8_t qos, mqtt_string *payload, mqtt_string *topic);
+NNG_DECL nng_msg *nano_msg_composer(nng_msg **, uint8_t retain, uint8_t qos,
+    mqtt_string *payload, mqtt_string *topic);
 NNG_DECL nng_msg *nano_msg_notify_disconnect(conn_param *cparam, uint8_t code);
 NNG_DECL nng_msg *nano_msg_notify_connect(conn_param *cparam, uint8_t code);
 NNG_DECL nano_pipe_db *nano_msg_get_subtopic(
     nng_msg *msg, nano_pipe_db *root, conn_param *cparam);
 NNG_DECL void nano_msg_free_pipedb(nano_pipe_db *db);
 NNG_DECL void nano_msg_ubsub_free(nano_pipe_db *db);
-NNG_DECL void nmq_connack_encode(nng_msg *msg, conn_param *cparam, uint8_t reason);
+NNG_DECL void nmq_connack_encode(
+    nng_msg *msg, conn_param *cparam, uint8_t reason);
 NNG_DECL void nmq_connack_session(nng_msg *msg, bool session);
 
-NNG_DECL uint32_t decode_properties(
-    nng_msg *msg, uint32_t *pos, property *properties);
+NNG_DECL property *decode_properties(
+    nng_msg *msg, uint32_t *pos, uint32_t *len);
+NNG_DECL int encode_properties(
+    nng_msg *msg, property *prop, uint32_t prop_len);
+NNG_DECL void property_free(property *prop);
 
 #endif // NNG_MQTT_H
