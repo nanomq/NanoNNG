@@ -85,4 +85,8 @@ NNG_DECL void nano_msg_free_pipedb(nano_pipe_db *db);
 NNG_DECL void nano_msg_ubsub_free(nano_pipe_db *db);
 NNG_DECL void nmq_connack_encode(nng_msg *msg, conn_param *cparam, uint8_t reason);
 NNG_DECL void nmq_connack_session(nng_msg *msg, bool session);
+
+NNG_DECL uint32_t decode_properties(
+    nng_msg *msg, uint32_t *pos, property *properties);
+
 #endif // NNG_MQTT_H
