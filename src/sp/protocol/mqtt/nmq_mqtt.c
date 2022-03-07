@@ -223,6 +223,7 @@ nano_pipe_timer_cb(void *arg)
 					nni_id_remove(
 					    &s->cached_sessions, clientid_key);
 				}
+				p->reason_code = 0x8E;
 				nni_pipe_close(p->pipe);
 			}
 		}
@@ -555,6 +556,8 @@ nano_pipe_fini(void *arg)
 	if (p->event == true) {
 		nni_id_map_fini(nano_qos_db);
 		nng_free(nano_qos_db, sizeof(struct nni_id_map));
+	} else {
+		conn_param_free(p->conn_param);
 	}
 
 	nni_mtx_fini(&p->lk);
@@ -629,6 +632,9 @@ nano_pipe_start(void *arg)
 			p->pipe->nano_qos_db = old->nano_qos_db;
 			nni_pipe_id_swap(npipe->p_id, old->pipe->p_id);
 			p->id            = nni_pipe_id(npipe);
+			// set event to false so that no notification will be sent
+			p->event         = false;
+			// set event of old pipe to false and discard it.
 			old->event       = false;
 			old->pipe->cache = false;
 			nni_id_remove(&s->cached_sessions, clientid_key);
@@ -668,10 +674,15 @@ nano_pipe_start(void *arg)
 		nni_pipe_close(old->pipe);
 	}
 	nni_msg_set_cmd_type(msg, CMD_CONNACK);
+	if (p->event == false) {
+		// set session present in connack
+		nmq_connack_session(msg, true);
+	}
 	nni_msg_set_conn_param(msg, p->conn_param);
 	// There is no need to check the  state of aio_recv
 	// Since pipe_start is definetly the first cb to be excuted of pipe.
 	nni_aio_set_msg(&p->aio_recv, msg);
+	// connection rate is not fast enough in this way.
 	nni_aio_finish(&p->aio_recv, 0, nni_msg_len(msg));
 	return (rv);
 }
@@ -715,14 +726,18 @@ nano_pipe_close(void *arg)
 		return;
 	}
 	nni_mtx_lock(&s->lk);
-	if (p->conn_param->clean_start == 0) {
-		// cache this pipe
-		clientid = (char *)conn_param_get_clientid(p->conn_param);
-	}
+	// we freed the conn_param when restoring pipe
+	// so check status of conn_param. just let it close silently
+	if (p->conn_param != NULL)
+		if (p->conn_param->clean_start == 0) {
+			// cache this pipe
+			clientid =
+			    (char *) conn_param_get_clientid(p->conn_param);
+		}
 	if (clientid) {
 		clientid_key = DJBHashn(clientid, strlen(clientid));
 		nni_id_set(&s->cached_sessions, clientid_key, p);
-		// set event to false avoid of the disconnecting event
+		// set event to false avoid of sending the disconnecting msg
 		p->event   = false;
 		npipe->cache = true;
 		p->conn_param->clean_start = 1;
@@ -739,32 +754,36 @@ nano_pipe_close(void *arg)
 	// TODO send disconnect msg to client if needed.
 	// depends on MQTT V5 reason code
 	// create disconnect event msg
-	msg = nano_msg_notify_disconnect(p->conn_param, p->reason_code);
-	if (msg == NULL) {
-		nni_mtx_unlock(&s->lk);
-		return;
-	}
-	nni_msg_set_conn_param(msg, p->conn_param);
-	nni_msg_set_cmd_type(msg, CMD_DISCONNECT_EV);
-	nni_msg_set_pipe(msg, p->id);
-
-	// expose disconnect event
-	if ((ctx = nni_list_first(&s->recvq)) != NULL) {
-		aio       = ctx->raio;
-		ctx->raio = NULL;
-		nni_list_remove(&s->recvq, ctx);
-		nni_mtx_unlock(&s->lk);
-		nni_aio_set_msg(aio, msg);
-		nni_aio_finish_sync(aio, 0, nni_msg_len(msg));
-		return;
-	} else {
-		// no enough ctx, so cache to waitlmq
-		if (nni_lmq_full(&s->waitlmq)) {
-			if (nni_lmq_resize(&s->waitlmq, nni_lmq_cap(&s->waitlmq) * 2) != 0) {
-				debug_msg("wait lmq resize failed.");
-			}
+	if (p->event) {
+		msg =
+		    nano_msg_notify_disconnect(p->conn_param, p->reason_code);
+		if (msg == NULL) {
+			nni_mtx_unlock(&s->lk);
+			return;
 		}
-		nni_lmq_put(&s->waitlmq, msg);
+		nni_msg_set_conn_param(msg, p->conn_param);
+		nni_msg_set_cmd_type(msg, CMD_DISCONNECT_EV);
+		nni_msg_set_pipe(msg, p->id);
+
+		// expose disconnect event
+		if ((ctx = nni_list_first(&s->recvq)) != NULL) {
+			aio       = ctx->raio;
+			ctx->raio = NULL;
+			nni_list_remove(&s->recvq, ctx);
+			nni_mtx_unlock(&s->lk);
+			nni_aio_set_msg(aio, msg);
+			nni_aio_finish_sync(aio, 0, nni_msg_len(msg));
+			return;
+		} else {
+			// no enough ctx, so cache to waitlmq
+			if (nni_lmq_full(&s->waitlmq)) {
+				if (nni_lmq_resize(&s->waitlmq,
+				        nni_lmq_cap(&s->waitlmq) * 2) != 0) {
+					debug_msg("wait lmq resize failed.");
+				}
+			}
+			nni_lmq_put(&s->waitlmq, msg);
+		}
 	}
 	nni_mtx_unlock(&s->lk);
 }
