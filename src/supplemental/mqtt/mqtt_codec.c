@@ -1379,6 +1379,45 @@ read_str_data(struct pos_buf *buf, mqtt_buf *val)
 }
 
 int
+read_variable_int(
+    uint8_t *ptr, uint32_t length, uint32_t *value, uint8_t *used_bytes)
+{
+	int      i;
+	uint8_t  byte;
+	int      multiplier = 1;
+	int32_t  lword      = 0;
+	uint8_t  lbytes     = 0;
+	uint8_t *start      = ptr;
+
+	if (!ptr) {
+		return 0;
+	}
+	for (i = 0; i < 4; i++) {
+		if ((ptr - start + 1) > length) {
+			return MQTT_ERR_PAYLOAD_SIZE;
+		}
+		lbytes++;
+		byte = ptr[0];
+		lword += (byte & 127) * multiplier;
+		multiplier *= 128;
+		ptr++;
+		if ((byte & 128) == 0) {
+			if (lbytes > 1 && byte == 0) {
+				/* Catch overlong encodings */
+				return MQTT_ERR_INVAL;
+			} else {
+				*value = lword;
+				if (used_bytes) {
+					*used_bytes = lbytes;
+				}
+				return MQTT_SUCCESS;
+			}
+		}
+	}
+	return MQTT_ERR_INVAL;
+}
+
+int
 read_packet_length(struct pos_buf *buf, uint32_t *length)
 {
 	uint8_t  shift = 0;
@@ -1835,15 +1874,9 @@ decode_properties(nng_msg *msg, uint32_t *pos, property *properties)
 
 	uint32_t prop_len = 0;
 
-	if (*(msg_body + current_pos) == 0) {
-		current_pos ++;
-		*pos = current_pos;
-		return 0;
-	}
-	// read_packet_length(&buf, &prop_len);
 	uint8_t bytes = 0;
-	if ((rv = mqtt_get_remaining_length(msg_body + current_pos,
-	         len - current_pos, &prop_len, &bytes)) != 0) {
+	if ((rv = read_variable_int(msg_body + current_pos, len - current_pos,
+	         &prop_len, &bytes)) != 0) {
 		return 0;
 	}
 
