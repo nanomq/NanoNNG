@@ -690,7 +690,7 @@ tcptran_pipe_recv_cb(void *arg)
 		    qmsg, packet_id, reason_code, prop, cparam->pro_ver);
 		nmq_pubres_header_encode(qmsg, ack_cmd);
 		if (prop != NULL) {
-			nni_msg_proto_set_property(qmsg, prop);
+			// nni_msg_proto_set_property(qmsg, prop);
 		}
 		// aio_begin?
 		if (p->busy == false) {
