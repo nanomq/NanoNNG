@@ -650,24 +650,22 @@ tcptran_pipe_recv_cb(void *arg)
 	} else if (type == CMD_PUBREC) {
 		if (nmq_pubres_decode(msg, &packet_id, &reason_code, &prop,
 		        cparam->pro_ver) != 0) {
-			debug_msg("decode %s variable header failed!",
-			    get_packet_type_str((type >> 4) & 0x0f));
+			debug_msg("decode PUBREC variable header failed!");
 		}
 		ack_cmd = CMD_PUBREL;
-		ack = true;
+		ack     = true;
 	} else if (type == CMD_PUBREL) {
 		if (nmq_pubres_decode(msg, &packet_id, &reason_code, &prop,
 		        cparam->pro_ver) != 0) {
-			debug_msg("decode %s variable header failed!",
-			    get_packet_type_str((type >> 4) & 0x0f));
+			debug_msg("decode PUBREL variable header failed!");
 		}
 		ack_cmd = CMD_PUBCOMP;
-		ack = true;
+		ack     = true;
 	} else if (type == CMD_PUBACK || type == CMD_PUBCOMP) {
 		if (nmq_pubres_decode(msg, &packet_id, &reason_code, &prop,
 		        cparam->pro_ver) != 0) {
-			debug_msg("decode %s variable header failed!",
-			    get_packet_type_str((type >> 4) & 0x0f));
+			debug_msg("decode PUBACK or PUBCOMP variable header "
+			          "failed!");
 		}
 		// MQTT V5 flow control
 		if (p->tcp_cparam->pro_ver == 5) {
