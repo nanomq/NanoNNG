@@ -433,6 +433,94 @@ auto_id_prefix_len)
 }
 */
 
+void
+conn_param_set_property(conn_param *cparam, property *prop)
+{
+	property_data *prop_data =
+	    property_get_value(cparam->properties, SESSION_EXPIRY_INTERVAL);
+	if (prop_data) {
+		cparam->session_expiry_interval = prop_data->p_value.u32;
+	}
+	prop_data = property_get_value(cparam->properties, RECEIVE_MAXIMUM);
+	if (prop_data) {
+		cparam->rx_max = prop_data->p_value.u16;
+	}
+	prop_data =
+	    property_get_value(cparam->properties, MAXIMUM_PACKET_SIZE);
+	if (prop_data) {
+		cparam->max_packet_size = prop_data->p_value.u32;
+	}
+	prop_data =
+	    property_get_value(cparam->properties, TOPIC_ALIAS_MAXIMUM);
+	if (prop_data) {
+		cparam->topic_alias_max = prop_data->p_value.u16;
+	}
+	prop_data = property_get_value(
+	    cparam->properties, REQUEST_RESPONSE_INFORMATION);
+	if (prop_data) {
+		cparam->req_resp_info = prop_data->p_value.u8;
+	}
+	prop_data = property_get_value(
+	    cparam->properties, REQUEST_PROBLEM_INFORMATION);
+	if (prop_data) {
+		cparam->req_problem_info = prop_data->p_value.u8;
+	}
+
+	prop_data =
+	    property_get_value(cparam->properties, AUTHENTICATION_METHOD);
+	if (prop_data) {
+		cparam->auth_method = &prop_data->p_value.str;
+	}
+
+	prop_data =
+	    property_get_value(cparam->properties, AUTHENTICATION_DATA);
+	if (prop_data) {
+		cparam->auth_method = &prop_data->p_value.binary;
+	}
+
+	prop_data = property_get_value(cparam->properties, USER_PROPERTY);
+	if (prop_data) {
+		cparam->user_property = &prop_data->p_value.strpair;
+	}
+}
+
+void
+conn_param_set_will_property(conn_param *cparam, property *prop)
+{
+	property_data *prop_data;
+	prop_data =
+	    property_get_value(cparam->properties, WILL_DELAY_INTERVAL);
+	if (prop_data) {
+		cparam->will_delay_interval = &prop_data->p_value.u32;
+	}
+	prop_data =
+	    property_get_value(cparam->properties, PAYLOAD_FORMAT_INDICATOR);
+	if (prop_data) {
+		cparam->payload_format_indicator = &prop_data->p_value.u8;
+	}
+	prop_data =
+	    property_get_value(cparam->properties, MESSAGE_EXPIRY_INTERVAL);
+	if (prop_data) {
+		cparam->msg_expiry_interval = &prop_data->p_value.u32;
+	}
+	prop_data = property_get_value(cparam->properties, CONTENT_TYPE);
+	if (prop_data) {
+		cparam->content_type = &prop_data->p_value.str;
+	}
+	prop_data = property_get_value(cparam->properties, RESPONSE_TOPIC);
+	if (prop_data) {
+		cparam->resp_topic = &prop_data->p_value.str;
+	}
+	prop_data = property_get_value(cparam->properties, CORRELATION_DATA);
+	if (prop_data) {
+		cparam->corr_data = &prop_data->p_value.binary;
+	}
+	prop_data = property_get_value(cparam->properties, USER_PROPERTY);
+	if (prop_data) {
+		cparam->payload_user_property = &prop_data->p_value.strpair;
+	}
+}
+
 /**
  * @brief handle and decode CONNECT packet
  * only use in nego_cb !!!
@@ -480,6 +568,9 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 		debug_msg("MQTT 5 Properties");
 		cparam->properties = decode_buf_properties(
 		    packet, len, &pos, &cparam->prop_len, true);
+		if (cparam->properties) {
+			conn_param_set_property(cparam, cparam->properties);
+		}
 	}
 	debug_msg("pos after property: [%d]", pos);
 
@@ -504,6 +595,10 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 	if (cparam->will_flag != 0 && cparam->pro_ver == PROTOCOL_VERSION_v5) {
 		cparam->will_properties = decode_buf_properties(
 		    packet, len, &pos, &cparam->will_prop_len, false);
+		if (cparam->will_properties) {
+			conn_param_set_will_property(
+			    cparam, cparam->will_properties);
+		}
 		cparam->will_topic.body =
 		    (char *) copy_utf8_str(packet, &pos, &len_of_str);
 		cparam->will_topic.len = len_of_str;
@@ -623,12 +718,7 @@ conn_param_init(conn_param *cparam)
 	cparam->username.len     = 0;
 	cparam->password.body    = NULL;
 	cparam->password.len     = 0;
-	cparam->auth_method.body = NULL;
-	cparam->auth_method.len  = 0;
-	cparam->auth_data.body   = NULL;
-	cparam->auth_data.len    = 0;
-
-	cparam->assignedid = false;
+	cparam->assignedid       = false;
 
 	// MQTT_v5 Variable header
 	cparam->session_expiry_interval = 0;
@@ -637,29 +727,23 @@ conn_param_init(conn_param *cparam)
 	cparam->topic_alias_max         = 0;
 	cparam->req_resp_info           = 0;
 	cparam->req_problem_info        = 1;
-	cparam->user_property.key       = NULL;
-	cparam->user_property.len_key   = 0;
-	cparam->user_property.val       = NULL;
-	cparam->user_property.len_val   = 0;
+	cparam->auth_method             = NULL;
+	cparam->auth_data               = NULL;
+	cparam->user_property           = NULL;
 
 	// MQTT_v5 Will property ralation
-	cparam->will_delay_interval           = 0;
-	cparam->payload_format_indicator      = 0;
-	cparam->msg_expiry_interval           = 0;
-	cparam->content_type.len              = 0;
-	cparam->content_type.body             = NULL;
-	cparam->resp_topic.len                = 0;
-	cparam->resp_topic.body               = NULL;
-	cparam->corr_data.body                = NULL;
-	cparam->corr_data.len                 = 0;
-	cparam->payload_user_property.key     = NULL;
-	cparam->payload_user_property.len_key = 0;
-	cparam->payload_user_property.val     = NULL;
-	cparam->payload_user_property.len_val = 0;
-	cparam->prop_len                      = 0;
-	cparam->properties                    = NULL;
-	cparam->will_prop_len                 = 0;
-	cparam->will_properties               = NULL;
+	cparam->will_delay_interval      = 0;
+	cparam->payload_format_indicator = 0;
+	cparam->msg_expiry_interval      = 0;
+	cparam->content_type             = NULL;
+	cparam->resp_topic               = NULL;
+	cparam->corr_data                = NULL;
+	cparam->payload_user_property    = NULL;
+
+	cparam->prop_len              = 0;
+	cparam->properties            = NULL;
+	cparam->will_prop_len         = 0;
+	cparam->will_properties       = NULL;
 }
 
 int
@@ -692,17 +776,7 @@ conn_param_free(conn_param *cparam)
 	nng_free(cparam->will_msg.body, cparam->will_msg.len);
 	nng_free(cparam->username.body, cparam->username.len);
 	nng_free(cparam->password.body, cparam->password.len);
-	nng_free(cparam->auth_method.body, cparam->auth_method.len);
-	nng_free(cparam->auth_data.body, cparam->auth_data.len);
-	nng_free(cparam->user_property.key, cparam->user_property.len_key);
-	nng_free(cparam->user_property.val, cparam->user_property.len_val);
-	nng_free(cparam->content_type.body, cparam->content_type.len);
-	nng_free(cparam->resp_topic.body, cparam->resp_topic.len);
-	nng_free(cparam->corr_data.body, cparam->corr_data.len);
-	nng_free(cparam->payload_user_property.key,
-	    cparam->payload_user_property.len_key);
-	nng_free(cparam->payload_user_property.val,
-	    cparam->payload_user_property.len_val);
+
 	property_free(cparam->properties);
 	property_free(cparam->will_properties);
 

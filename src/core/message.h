@@ -126,17 +126,17 @@ struct conn_param {
 	uint16_t             topic_alias_max;
 	uint8_t              req_resp_info;
 	uint8_t              req_problem_info;
-	struct mqtt_string   auth_method;
-	struct mqtt_binary   auth_data;
-	struct mqtt_str_pair user_property;
-	// payload
-	uint32_t             will_delay_interval;
-	uint8_t              payload_format_indicator;
-	uint32_t             msg_expiry_interval;
-	struct mqtt_string   content_type;
-	struct mqtt_string   resp_topic;
-	struct mqtt_binary   corr_data;
-	struct mqtt_str_pair payload_user_property;
+	mqtt_buf *           auth_method;
+	mqtt_buf *           auth_data;
+	mqtt_kv *            user_property;
+
+	uint32_t  will_delay_interval;
+	uint8_t   payload_format_indicator;
+	uint32_t  msg_expiry_interval;
+	mqtt_buf *content_type;
+	mqtt_buf *resp_topic;
+	mqtt_buf *corr_data;
+	mqtt_kv * payload_user_property;
 
 	uint32_t  prop_len;
 	property *properties;
