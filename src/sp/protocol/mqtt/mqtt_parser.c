@@ -683,8 +683,8 @@ nmq_connack_encode(nng_msg *msg, conn_param *cparam, uint8_t reason)
 	nng_msg_header_append(msg, &cmd, 1);
 	nng_msg_header_append(msg, var_len, bytes);
 
-	print_hex("Header: ", nni_msg_header(msg), nni_msg_header_len(msg));
-	print_hex("Body: ", nni_msg_body(msg), nni_msg_len(msg));
+	// print_hex("Header: ", nni_msg_header(msg), nni_msg_header_len(msg));
+	// print_hex("Body: ", nni_msg_body(msg), nni_msg_len(msg));
 }
 
 /**
@@ -949,7 +949,8 @@ nano_msg_notify_disconnect(conn_param *cparam, uint8_t code)
 	string.len  = strlen(string.body);
 	topic.body  = DISCONNECT_TOPIC;
 	topic.len   = strlen(DISCONNECT_TOPIC);
-	msg = nano_msg_composer(&msg, 0, 0, &string, &topic, cparam->pro_ver);
+	// V4 notification msg as default
+	msg = nano_msg_composer(&msg, 0, 0, &string, &topic, PROTOCOL_VERSION_v311);
 	return msg;
 }
 
@@ -966,7 +967,7 @@ nano_msg_notify_connect(conn_param *cparam, uint8_t code)
 	string.len  = strlen(string.body);
 	topic.body  = CONNECT_TOPIC;
 	topic.len   = strlen(CONNECT_TOPIC);
-	msg = nano_msg_composer(&msg, 0, 0, &string, &topic, cparam->pro_ver);
+	msg = nano_msg_composer(&msg, 0, 0, &string, &topic, PROTOCOL_VERSION_v311);
 	return msg;
 }
 

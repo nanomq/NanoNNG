@@ -756,8 +756,7 @@ nano_pipe_close(void *arg)
 	// depends on MQTT V5 reason code
 	// create disconnect event msg
 	if (p->event) {
-		msg =
-		    nano_msg_notify_disconnect(p->conn_param, p->reason_code);
+		msg = nano_msg_notify_disconnect(p->conn_param, p->reason_code);
 		if (msg == NULL) {
 			nni_mtx_unlock(&s->lk);
 			return;
@@ -773,6 +772,7 @@ nano_pipe_close(void *arg)
 			nni_list_remove(&s->recvq, ctx);
 			nni_mtx_unlock(&s->lk);
 			nni_aio_set_msg(aio, msg);
+			// must be sync due to conn_param racing.
 			nni_aio_finish_sync(aio, 0, nni_msg_len(msg));
 			return;
 		} else {
