@@ -22,7 +22,7 @@
 struct pub_extra {
 	uint8_t  qos;
 	uint16_t packet_id;
-	void    *msg;
+	void *   msg;
 };
 
 static uint8_t  get_value_size(uint64_t value);
@@ -196,7 +196,7 @@ get_var_integer(const uint8_t *buf, uint32_t *pos)
 
 	do {
 		temp   = *(buf + p);
-		result = result + (uint32_t) (temp & 0x7f) * (power(0x80, i));
+		result = result + (uint32_t)(temp & 0x7f) * (power(0x80, i));
 		p++;
 	} while ((temp & 0x80) > 0 && i++ < 4);
 	*pos = p;
@@ -437,48 +437,42 @@ void
 conn_param_set_property(conn_param *cparam, property *prop)
 {
 	property_data *prop_data =
-	    property_get_value(cparam->properties, SESSION_EXPIRY_INTERVAL);
+	    property_get_value(prop, SESSION_EXPIRY_INTERVAL);
 	if (prop_data) {
 		cparam->session_expiry_interval = prop_data->p_value.u32;
 	}
-	prop_data = property_get_value(cparam->properties, RECEIVE_MAXIMUM);
+	prop_data = property_get_value(prop, RECEIVE_MAXIMUM);
 	if (prop_data) {
 		cparam->rx_max = prop_data->p_value.u16;
 	}
-	prop_data =
-	    property_get_value(cparam->properties, MAXIMUM_PACKET_SIZE);
+	prop_data = property_get_value(prop, MAXIMUM_PACKET_SIZE);
 	if (prop_data) {
 		cparam->max_packet_size = prop_data->p_value.u32;
 	}
-	prop_data =
-	    property_get_value(cparam->properties, TOPIC_ALIAS_MAXIMUM);
+	prop_data = property_get_value(prop, TOPIC_ALIAS_MAXIMUM);
 	if (prop_data) {
 		cparam->topic_alias_max = prop_data->p_value.u16;
 	}
-	prop_data = property_get_value(
-	    cparam->properties, REQUEST_RESPONSE_INFORMATION);
+	prop_data = property_get_value(prop, REQUEST_RESPONSE_INFORMATION);
 	if (prop_data) {
 		cparam->req_resp_info = prop_data->p_value.u8;
 	}
-	prop_data = property_get_value(
-	    cparam->properties, REQUEST_PROBLEM_INFORMATION);
+	prop_data = property_get_value(prop, REQUEST_PROBLEM_INFORMATION);
 	if (prop_data) {
 		cparam->req_problem_info = prop_data->p_value.u8;
 	}
 
-	prop_data =
-	    property_get_value(cparam->properties, AUTHENTICATION_METHOD);
+	prop_data = property_get_value(prop, AUTHENTICATION_METHOD);
 	if (prop_data) {
 		cparam->auth_method = &prop_data->p_value.str;
 	}
 
-	prop_data =
-	    property_get_value(cparam->properties, AUTHENTICATION_DATA);
+	prop_data = property_get_value(prop, AUTHENTICATION_DATA);
 	if (prop_data) {
 		cparam->auth_method = &prop_data->p_value.binary;
 	}
 
-	prop_data = property_get_value(cparam->properties, USER_PROPERTY);
+	prop_data = property_get_value(prop, USER_PROPERTY);
 	if (prop_data) {
 		cparam->user_property = &prop_data->p_value.strpair;
 	}
@@ -488,34 +482,31 @@ void
 conn_param_set_will_property(conn_param *cparam, property *prop)
 {
 	property_data *prop_data;
-	prop_data =
-	    property_get_value(cparam->properties, WILL_DELAY_INTERVAL);
+	prop_data = property_get_value(prop, WILL_DELAY_INTERVAL);
 	if (prop_data) {
-		cparam->will_delay_interval = &prop_data->p_value.u32;
+		cparam->will_delay_interval = prop_data->p_value.u32;
 	}
-	prop_data =
-	    property_get_value(cparam->properties, PAYLOAD_FORMAT_INDICATOR);
+	prop_data = property_get_value(prop, PAYLOAD_FORMAT_INDICATOR);
 	if (prop_data) {
-		cparam->payload_format_indicator = &prop_data->p_value.u8;
+		cparam->payload_format_indicator = prop_data->p_value.u8;
 	}
-	prop_data =
-	    property_get_value(cparam->properties, MESSAGE_EXPIRY_INTERVAL);
+	prop_data = property_get_value(prop, MESSAGE_EXPIRY_INTERVAL);
 	if (prop_data) {
-		cparam->msg_expiry_interval = &prop_data->p_value.u32;
+		cparam->msg_expiry_interval = prop_data->p_value.u32;
 	}
-	prop_data = property_get_value(cparam->properties, CONTENT_TYPE);
+	prop_data = property_get_value(prop, CONTENT_TYPE);
 	if (prop_data) {
 		cparam->content_type = &prop_data->p_value.str;
 	}
-	prop_data = property_get_value(cparam->properties, RESPONSE_TOPIC);
+	prop_data = property_get_value(prop, RESPONSE_TOPIC);
 	if (prop_data) {
 		cparam->resp_topic = &prop_data->p_value.str;
 	}
-	prop_data = property_get_value(cparam->properties, CORRELATION_DATA);
+	prop_data = property_get_value(prop, CORRELATION_DATA);
 	if (prop_data) {
 		cparam->corr_data = &prop_data->p_value.binary;
 	}
-	prop_data = property_get_value(cparam->properties, USER_PROPERTY);
+	prop_data = property_get_value(prop, USER_PROPERTY);
 	if (prop_data) {
 		cparam->payload_user_property = &prop_data->p_value.strpair;
 	}
@@ -706,19 +697,19 @@ nmq_connack_session(nng_msg *msg, bool session)
 static void
 conn_param_init(conn_param *cparam)
 {
-	cparam->pro_name.len     = 0;
-	cparam->pro_name.body    = NULL;
-	cparam->clientid.len     = 0;
-	cparam->clientid.body    = NULL;
-	cparam->will_topic.body  = NULL;
-	cparam->will_topic.len   = 0;
-	cparam->will_msg.body    = NULL;
-	cparam->will_msg.len     = 0;
-	cparam->username.body    = NULL;
-	cparam->username.len     = 0;
-	cparam->password.body    = NULL;
-	cparam->password.len     = 0;
-	cparam->assignedid       = false;
+	cparam->pro_name.len    = 0;
+	cparam->pro_name.body   = NULL;
+	cparam->clientid.len    = 0;
+	cparam->clientid.body   = NULL;
+	cparam->will_topic.body = NULL;
+	cparam->will_topic.len  = 0;
+	cparam->will_msg.body   = NULL;
+	cparam->will_msg.len    = 0;
+	cparam->username.body   = NULL;
+	cparam->username.len    = 0;
+	cparam->password.body   = NULL;
+	cparam->password.len    = 0;
+	cparam->assignedid      = false;
 
 	// MQTT_v5 Variable header
 	cparam->session_expiry_interval = 0;
@@ -740,10 +731,10 @@ conn_param_init(conn_param *cparam)
 	cparam->corr_data                = NULL;
 	cparam->payload_user_property    = NULL;
 
-	cparam->prop_len              = 0;
-	cparam->properties            = NULL;
-	cparam->will_prop_len         = 0;
-	cparam->will_properties       = NULL;
+	cparam->prop_len        = 0;
+	cparam->properties      = NULL;
+	cparam->will_prop_len   = 0;
+	cparam->will_properties = NULL;
 }
 
 int
@@ -940,7 +931,7 @@ verify_connect(conn_param *cparam, conf *conf)
 nng_msg *
 nano_msg_notify_disconnect(conn_param *cparam, uint8_t code)
 {
-	nni_msg    *msg = NULL;
+	nni_msg *   msg = NULL;
 	mqtt_string string, topic;
 	char        buff[256];
 	snprintf(buff, 256, DISCONNECT_MSG, (char *) cparam->username.body,
@@ -950,14 +941,15 @@ nano_msg_notify_disconnect(conn_param *cparam, uint8_t code)
 	topic.body  = DISCONNECT_TOPIC;
 	topic.len   = strlen(DISCONNECT_TOPIC);
 	// V4 notification msg as default
-	msg = nano_msg_composer(&msg, 0, 0, &string, &topic, PROTOCOL_VERSION_v311);
+	msg = nano_msg_composer(
+	    &msg, 0, 0, &string, &topic, PROTOCOL_VERSION_v311);
 	return msg;
 }
 
 nng_msg *
 nano_msg_notify_connect(conn_param *cparam, uint8_t code)
 {
-	nni_msg    *msg = NULL;
+	nni_msg *   msg = NULL;
 	mqtt_string string, topic;
 	char        buff[256];
 	snprintf(buff, 256, CONNECT_MSG, cparam->username.body, nni_clock(),
@@ -967,7 +959,8 @@ nano_msg_notify_connect(conn_param *cparam, uint8_t code)
 	string.len  = strlen(string.body);
 	topic.body  = CONNECT_TOPIC;
 	topic.len   = strlen(CONNECT_TOPIC);
-	msg = nano_msg_composer(&msg, 0, 0, &string, &topic, PROTOCOL_VERSION_v311);
+	msg         = nano_msg_composer(
+            &msg, 0, 0, &string, &topic, PROTOCOL_VERSION_v311);
 	return msg;
 }
 
@@ -982,7 +975,7 @@ nano_msg_notify_connect(conn_param *cparam, uint8_t code)
 nano_pipe_db *
 nano_msg_get_subtopic(nni_msg *msg, nano_pipe_db *root, conn_param *cparam)
 {
-	char         *topic;
+	char *        topic;
 	nano_pipe_db *db = NULL, *tmp = NULL, *iter = NULL;
 	uint8_t       len_of_topic = 0, *payload_ptr;
 	uint32_t      len, len_of_varint = 0;
@@ -1159,7 +1152,7 @@ nmq_pubres_decode(nng_msg *msg, uint16_t *packet_id, uint8_t *reason_code,
 		return MQTT_SUCCESS;
 	}
 
-	uint32_t pos      = (uint32_t) (buf.curpos - body);
+	uint32_t pos      = (uint32_t)(buf.curpos - body);
 	uint32_t prop_len = 0;
 
 	*prop = decode_properties(msg, &pos, &prop_len, false);
