@@ -571,17 +571,23 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 	cparam->clientid.len = len_of_str;
 
 	if (len_of_str == 0) {
-		char *clientid_r = nng_alloc(20);
+		char clientid_r[20] = {0};
 		snprintf(clientid_r, 20, "nanomq-%08x", nni_random());
 		clientid_r[19]        = '\0';
-		cparam->clientid.body = clientid_r;
-		cparam->clientid.len  = 20;
+		cparam->clientid.body = nng_strdup(clientid_r);
+		cparam->clientid.len  = strlen(clientid_r);
 		cparam->assignedid    = true;
 	} else if (len_of_str < 0) {
 		return (1);
 	}
 	debug_msg("clientid: [%s] [%d]", cparam->clientid.body, len_of_str);
 
+	if (cparam->pro_ver == PROTOCOL_VERSION_v5 && cparam->assignedid) {
+		property *assigned_cid =
+		    property_set_value_str(ASSIGNED_CLIENT_IDENTIFIER,
+		        cparam->clientid.body, cparam->clientid.len, false);
+		property_append(cparam->properties, assigned_cid);
+	}
 	// will topic
 	if (cparam->will_flag != 0 && cparam->pro_ver == PROTOCOL_VERSION_v5) {
 		cparam->will_properties = decode_buf_properties(
