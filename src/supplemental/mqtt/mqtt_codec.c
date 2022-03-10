@@ -1356,7 +1356,7 @@ read_byte(struct pos_buf *buf, uint8_t *val)
 int
 read_uint16(struct pos_buf *buf, uint16_t *val)
 {
-	if ((size_t) (buf->endpos - buf->curpos) < sizeof(uint16_t)) {
+	if ((size_t)(buf->endpos - buf->curpos) < sizeof(uint16_t)) {
 		return MQTT_ERR_INVAL;
 	}
 
@@ -1369,7 +1369,7 @@ read_uint16(struct pos_buf *buf, uint16_t *val)
 int
 read_uint32(struct pos_buf *buf, uint32_t *val)
 {
-	if ((size_t) (buf->endpos - buf->curpos) < sizeof(uint32_t)) {
+	if ((size_t)(buf->endpos - buf->curpos) < sizeof(uint32_t)) {
 		return MQTT_ERR_INVAL;
 	}
 
@@ -1517,7 +1517,7 @@ mqtt_get_remaining_length(uint8_t *packet, uint32_t len,
 	uint8_t *start      = ptr;
 
 	for (size_t i = 0; i < 4; i++) {
-		if ((size_t) (ptr - start + 1) > len) {
+		if ((size_t)(ptr - start + 1) > len) {
 			return MQTT_ERR_PAYLOAD_SIZE;
 		}
 		lbytes++;
@@ -1918,7 +1918,7 @@ mqtt_msg_dump(mqtt_msg *msg, mqtt_buf *buf, mqtt_buf *packet, bool print_bytes)
 		pos += ret;
 		for (i = 0; i < packet->length; i++) {
 			ret = sprintf((char *) &buf->buf[pos], "%02x ",
-			    ((uint8_t) (packet->buf[i] & 0xff)));
+			    ((uint8_t)(packet->buf[i] & 0xff)));
 			if ((ret < 0) || ((pos + ret) > buf->length)) {
 				return 1;
 			}
@@ -2033,38 +2033,57 @@ property_set_value_varint(uint8_t prop_id, uint32_t value)
 }
 
 property *
-property_set_value_binary(uint8_t prop_id, uint8_t *value, uint32_t len)
+property_set_value_binary(
+    uint8_t prop_id, uint8_t *value, uint32_t len, bool copy_value)
 {
-	property *prop                   = property_alloc();
-	prop->id                         = prop_id;
-	prop->data.p_value.binary.buf    = value;
-	prop->data.p_value.binary.length = len;
-	prop->data.p_type                = BINARY;
+	property *prop     = property_alloc();
+	prop->id           = prop_id;
+	prop->data.is_copy = copy_value;
+	if (copy_value) {
+		mqtt_buf_create(&prop->data.p_value.binary, value, len);
+	} else {
+		prop->data.p_value.binary.buf    = (uint8_t *) value;
+		prop->data.p_value.binary.length = len;
+	}
+	prop->data.p_type = BINARY;
 	return prop;
 }
 
 property *
-property_set_value_str(uint8_t prop_id, const char *value, uint32_t len)
+property_set_value_str(
+    uint8_t prop_id, const char *value, uint32_t len, bool copy_value)
 {
-	property *prop                = property_alloc();
-	prop->id                      = prop_id;
-	prop->data.p_value.str.buf    = (uint8_t *) value;
-	prop->data.p_value.str.length = len;
-	prop->data.p_type             = BINARY;
+	property *prop     = property_alloc();
+	prop->id           = prop_id;
+	prop->data.is_copy = copy_value;
+	if (copy_value) {
+		mqtt_buf_create(
+		    &prop->data.p_value.str, (uint8_t *) value, len);
+	} else {
+		prop->data.p_value.str.buf    = (uint8_t *) value;
+		prop->data.p_value.str.length = len;
+	}
+	prop->data.p_type = STR;
 	return prop;
 }
 
 property *
 property_set_value_strpair(uint8_t prop_id, const char *key, uint32_t key_len,
-    const char *value, uint32_t value_len)
+    const char *value, uint32_t value_len, bool copy_value)
 {
-	property *prop                          = property_alloc();
-	prop->id                                = prop_id;
-	prop->data.p_value.strpair.key.buf      = (uint8_t *) key;
-	prop->data.p_value.strpair.key.length   = key_len;
-	prop->data.p_value.strpair.value.buf    = (uint8_t *) value;
-	prop->data.p_value.strpair.value.length = value_len;
-	prop->data.p_type                       = STR_PAIR;
+	property *prop     = property_alloc();
+	prop->id           = prop_id;
+	prop->data.is_copy = copy_value;
+	if (copy_value) {
+		mqtt_kv_create(&prop->data.p_value.strpair, key, key_len,
+		    value, value_len);
+	} else {
+		prop->data.p_value.strpair.key.buf      = (uint8_t *) key;
+		prop->data.p_value.strpair.key.length   = key_len;
+		prop->data.p_value.strpair.value.buf    = (uint8_t *) value;
+		prop->data.p_value.strpair.value.length = value_len;
+	}
+	prop->data.p_type = STR_PAIR;
 	return prop;
 }
 
@@ -2178,7 +2197,7 @@ property_free(property *prop)
 	while (head) {
 		p    = head;
 		head = head->next;
-		if(p->data.is_copy) {
+		if (p->data.is_copy) {
 			switch (p->data.p_type) {
 			case STR:
 				mqtt_buf_free(&p->data.p_value.str);
@@ -2234,7 +2253,8 @@ decode_buf_properties(uint8_t *packet, uint32_t packet_len, uint32_t *pos,
 		read_byte(&buf, &prop_id);
 		property *         cur_prop = NULL;
 		property_type_enum type     = property_get_value_type(prop_id);
-		cur_prop = property_parse(&buf, cur_prop, prop_id, type, copy_value);
+		cur_prop =
+		    property_parse(&buf, cur_prop, prop_id, type, copy_value);
 		property_append(list, cur_prop);
 	}
 

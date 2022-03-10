@@ -105,11 +105,11 @@ NNG_DECL property *property_set_value_u16(uint8_t prop_id, uint16_t value);
 NNG_DECL property *property_set_value_u32(uint8_t prop_id, uint32_t value);
 NNG_DECL property *property_set_value_varint(uint8_t prop_id, uint32_t value);
 NNG_DECL property *property_set_value_binary(
-    uint8_t prop_id, uint8_t *value, uint32_t len);
+    uint8_t prop_id, uint8_t *value, uint32_t len, bool copy_value);
 NNG_DECL property *property_set_value_str(
-    uint8_t prop_id, const char *value, uint32_t len);
+    uint8_t prop_id, const char *value, uint32_t len, bool copy_value);
 NNG_DECL property *property_set_value_strpair(uint8_t prop_id, const char *key,
-    uint32_t key_len, const char *value, uint32_t value_len);
+    uint32_t key_len, const char *value, uint32_t value_len, bool copy_value);
 NNG_DECL void      property_append(property *prop_list, property *last);
 
 NNG_DECL int nmq_pubres_decode(nng_msg *msg, uint16_t *packet_id,
