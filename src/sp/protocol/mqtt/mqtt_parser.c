@@ -586,6 +586,9 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 		property *assigned_cid =
 		    property_set_value_str(ASSIGNED_CLIENT_IDENTIFIER,
 		        cparam->clientid.body, cparam->clientid.len, false);
+		if (cparam->properties == NULL) {
+			cparam->properties = property_alloc();
+		}
 		property_append(cparam->properties, assigned_cid);
 	}
 	// will topic
