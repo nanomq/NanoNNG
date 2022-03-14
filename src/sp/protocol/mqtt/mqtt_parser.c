@@ -596,18 +596,18 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 			conn_param_set_will_property(
 			    cparam, cparam->will_properties);
 		}
-		cparam->will_topic.body =
-		    (char *) copy_utf8_str(packet, &pos, &len_of_str);
-		cparam->will_topic.len = len_of_str;
-		rv                     = len_of_str < 0 ? 1 : 0;
-		debug_msg("will_topic: %s %d", cparam->will_topic.body, rv);
-		// will msg
-		cparam->will_msg.body =
-		    (char *) copy_utf8_str(packet, &pos, &len_of_str);
-		cparam->will_msg.len = len_of_str;
-		rv                   = len_of_str < 0 ? 1 : 0;
-		debug_msg("will_msg: %s %d", cparam->will_msg.body, rv);
 	}
+	cparam->will_topic.body =
+	    (char *) copy_utf8_str(packet, &pos, &len_of_str);
+	cparam->will_topic.len = len_of_str;
+	rv                     = len_of_str < 0 ? 1 : 0;
+	debug_msg("will_topic: %s %d", cparam->will_topic.body, rv);
+	// will msg
+	cparam->will_msg.body =
+	    (char *) copy_utf8_str(packet, &pos, &len_of_str);
+	cparam->will_msg.len = len_of_str;
+	rv                   = len_of_str < 0 ? 1 : 0;
+	debug_msg("will_msg: %s %d", cparam->will_msg.body, rv);
 
 	// username
 	if ((cparam->con_flag & 0x80) > 0) {
