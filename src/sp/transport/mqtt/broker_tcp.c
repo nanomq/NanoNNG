@@ -830,6 +830,12 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
 	nni_aio_set_msg(aio, msg);
 
+	void * retain_val = nni_aio_get_prov_data(aio);
+	retain = (uint8_t) retain_val;
+	nni_aio_set_prov_data(aio, NULL);
+	debug_msg("retain value is %d (unused)", retain);
+	// TODO retain composed
+
 	// Ready for composing
 	// never modify the original msg
 	if (nni_msg_header_len(msg) > 0 &&
