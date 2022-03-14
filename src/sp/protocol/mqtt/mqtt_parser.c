@@ -586,28 +586,33 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 		property *assigned_cid =
 		    property_set_value_str(ASSIGNED_CLIENT_IDENTIFIER,
 		        cparam->clientid.body, cparam->clientid.len, false);
+		if (cparam->properties == NULL) {
+			cparam->properties = property_alloc();
+		}
 		property_append(cparam->properties, assigned_cid);
 	}
 	// will topic
-	if (cparam->will_flag != 0 && cparam->pro_ver == PROTOCOL_VERSION_v5) {
-		cparam->will_properties = decode_buf_properties(
-		    packet, len, &pos, &cparam->will_prop_len, false);
-		if (cparam->will_properties) {
-			conn_param_set_will_property(
-			    cparam, cparam->will_properties);
+	if (cparam->will_flag != 0) {
+		if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
+			cparam->will_properties = decode_buf_properties(
+			    packet, len, &pos, &cparam->will_prop_len, false);
+			if (cparam->will_properties) {
+				conn_param_set_will_property(
+				    cparam, cparam->will_properties);
+			}
 		}
+		cparam->will_topic.body =
+		    (char *) copy_utf8_str(packet, &pos, &len_of_str);
+		cparam->will_topic.len = len_of_str;
+		rv                     = len_of_str < 0 ? 1 : 0;
+		debug_msg("will_topic: %s %d", cparam->will_topic.body, rv);
+		// will msg
+		cparam->will_msg.body =
+		    (char *) copy_utf8_str(packet, &pos, &len_of_str);
+		cparam->will_msg.len = len_of_str;
+		rv                   = len_of_str < 0 ? 1 : 0;
+		debug_msg("will_msg: %s %d", cparam->will_msg.body, rv);
 	}
-	cparam->will_topic.body =
-	    (char *) copy_utf8_str(packet, &pos, &len_of_str);
-	cparam->will_topic.len = len_of_str;
-	rv                     = len_of_str < 0 ? 1 : 0;
-	debug_msg("will_topic: %s %d", cparam->will_topic.body, rv);
-	// will msg
-	cparam->will_msg.body =
-	    (char *) copy_utf8_str(packet, &pos, &len_of_str);
-	cparam->will_msg.len = len_of_str;
-	rv                   = len_of_str < 0 ? 1 : 0;
-	debug_msg("will_msg: %s %d", cparam->will_msg.body, rv);
 
 	// username
 	if ((cparam->con_flag & 0x80) > 0) {
