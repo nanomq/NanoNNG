@@ -35,6 +35,7 @@ test_sqlite_write(void)
 		sqlite3_step(stmt);
 	}
 	sqlite3_finalize(stmt);
+	
 	TEST_CHECK(sqlite3_exec(db, "commit;", 0, 0, 0) == 0);
 	clock_t t2 = clock();
 

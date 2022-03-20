@@ -7,10 +7,7 @@
 # found online at https://opensource.org/licenses/MIT.
 #
 
-nng_sources_if(NNG_SUPP_SQLITE sqlite3.c)
-nng_headers_if(NNG_SUPP_SQLITE nng/supplemental/sqlite/sqlite3.h)
-nng_headers_if(NNG_SUPP_SQLITE nng/supplemental/sqlite/sqlite3ext.h)
+nng_sources_if(NNG_SUPP_SQLITE sqlite3.c sqlite3.h)
 nng_link_libraries_if(NNG_SUPP_SQLITE dl)
 
 nng_test_if(NNG_SUPP_SQLITE sqlite3_test)
-
