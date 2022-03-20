@@ -235,12 +235,14 @@ extern int write_variable_length_value(uint32_t, struct pos_buf *);
 extern int write_byte(uint8_t, struct pos_buf *);
 extern int write_uint16(uint16_t, struct pos_buf *);
 extern int write_uint32(uint32_t, struct pos_buf *);
+extern int write_bytes(uint8_t *, size_t, struct pos_buf *);
 extern int write_byte_string(mqtt_buf *, struct pos_buf *);
 
 extern int read_variable_integer(struct pos_buf *, uint32_t *);
 extern int read_byte(struct pos_buf *, uint8_t *);
 extern int read_uint16(struct pos_buf *, uint16_t *);
 extern int read_uint32(struct pos_buf *, uint32_t *);
+extern int read_bytes(struct pos_buf *, uint8_t **, size_t);
 extern int read_utf8_str(struct pos_buf *, mqtt_buf *);
 extern int read_str_data(struct pos_buf *, mqtt_buf *);
 extern int read_packet_length(struct pos_buf *, uint32_t *);

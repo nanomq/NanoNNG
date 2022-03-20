@@ -1326,6 +1326,19 @@ write_uint32(uint32_t value, struct pos_buf *buf)
 }
 
 int
+write_bytes(uint8_t *bytes, size_t len, struct pos_buf *buf)
+{
+	if ((buf->endpos - buf->curpos) < (long) len) {
+		return MQTT_ERR_NOMEM;
+	}
+
+	memcpy(buf->curpos, bytes, len);
+	buf->curpos += len;
+
+	return 0;
+}
+
+int
 write_byte_string(mqtt_buf *str, struct pos_buf *buf)
 {
 	if ((buf->endpos - buf->curpos) < (str->length + 2)) {
@@ -1369,13 +1382,25 @@ read_uint16(struct pos_buf *buf, uint16_t *val)
 int
 read_uint32(struct pos_buf *buf, uint32_t *val)
 {
-	if ((size_t)(buf->endpos - buf->curpos) < sizeof(uint32_t)) {
+	if ((size_t) (buf->endpos - buf->curpos) < sizeof(uint32_t)) {
 		return MQTT_ERR_INVAL;
 	}
 
 	NNI_GET32(buf->curpos, *val);
 	buf->curpos += 4;
 
+	return 0;
+}
+
+int
+read_bytes(struct pos_buf *buf, uint8_t **bytes, size_t len)
+{
+	if ((size_t) (buf->endpos - buf->curpos) < len) {
+		return MQTT_ERR_INVAL;
+	}
+
+	*bytes = buf->curpos;
+	buf->curpos += len;
 	return 0;
 }
 

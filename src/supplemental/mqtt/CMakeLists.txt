@@ -23,3 +23,6 @@ nng_sources(
 )
 
 nng_test(mqtt_test)
+
+nng_sources_if(NNG_ENABLE_SQLITE  mqtt_qos_db.c mqtt_qos_db.h)
+nng_test_if(NNG_ENABLE_SQLITE mqtt_qos_db_test)
