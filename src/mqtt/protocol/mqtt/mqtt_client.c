@@ -296,7 +296,6 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 		    nni_msg_header_len(msg) + nni_msg_len(msg));
 		nni_pipe_send(p->pipe, &p->send_aio);
 		nni_mtx_unlock(&s->mtx);
-		nni_aio_set_msg(aio, NULL);
 		return;
 	}
 	if (nni_lmq_full(&p->send_messages)) {
@@ -305,7 +304,7 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 	}
 
 	if (0 != nni_lmq_put(&p->send_messages, msg)) {
-		// nni_println("Warning! msg lost due to busy socket");
+		nni_println("Warning! msg lost due to busy socket");
 	}
 	nni_mtx_unlock(&s->mtx);
 	return;
@@ -432,8 +431,8 @@ mqtt_timer_cb(void *arg)
 			nni_mqtt_msg_encode(msg);
 			nni_aio_set_msg(&p->send_aio, msg);
 			nni_pipe_send(p->pipe, &p->send_aio);
-			nni_mtx_unlock(&s->mtx);
 			nni_aio_set_msg(aio, NULL);
+			nni_mtx_unlock(&s->mtx);
 			nni_sleep_aio(s->retry, &p->time_aio);
 			return;
 		} else {
@@ -712,6 +711,7 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 		nni_mtx_unlock(&s->mtx);
 		nni_aio_set_msg(aio, NULL);
 		nni_aio_finish_error(aio, NNG_EPROTO);
+		return;
 	}
 	if (p == NULL) {
 		// connection is not established yet
@@ -730,7 +730,6 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 		return;
 	}
 	mqtt_send_msg(aio, ctx);
-	nni_aio_set_msg(aio, NULL);
 	return;
 }
 
