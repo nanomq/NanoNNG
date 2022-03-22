@@ -179,7 +179,6 @@ get_id_by_pipe(sqlite3 *db, uint32_t pipe_id)
 	int64_t       id = 0;
 	sqlite3_stmt *stmt;
 	char sql[] = "SELECT id FROM " table_pipe_client " WHERE pipe_id = ?";
-	printf("sql: %s\n", sql);
 
 	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
 	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);

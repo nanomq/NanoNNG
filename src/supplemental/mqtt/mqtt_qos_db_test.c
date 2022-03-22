@@ -5,14 +5,12 @@
 #include "nuts.h"
 
 #define DB_NAME "qos_db.db"
-#define TABLE_NAME "qos_table"
 
 void
 test_db_init(void)
 {
 	sqlite3 *db = NULL;
-	TEST_CHECK(
-	    nni_mqtt_qos_db_init(&db, DB_NAME, TABLE_NAME) == SQLITE_OK);
+	TEST_CHECK(nni_mqtt_qos_db_init(&db, DB_NAME) == SQLITE_OK);
 	TEST_CHECK(nni_mqtt_qos_db_close(db) == SQLITE_OK);
 }
 
@@ -20,10 +18,10 @@ void
 test_qos_db_set(void)
 {
 	sqlite3 *db = NULL;
-	nni_mqtt_qos_db_init(&db, DB_NAME, TABLE_NAME);
+	nni_mqtt_qos_db_init(&db, DB_NAME);
 
-	char *header = "header001";
-	char *body   = "data001";
+	char *header = "header002";
+	char *body   = "data002";
 
 	nni_msg *msg;
 	nni_msg_alloc(&msg, 0);
@@ -32,7 +30,7 @@ test_qos_db_set(void)
 
 	uint32_t pipe_id = 1000;
 
-	TEST_CHECK(nni_mqtt_qos_db_set(db, pipe_id, msg) == SQLITE_OK);
+	TEST_CHECK(nni_mqtt_qos_db_set(db, pipe_id, 0, msg) == SQLITE_OK);
 	nni_msg_free(msg);
 	nni_mqtt_qos_db_close(db);
 }
@@ -41,10 +39,10 @@ void
 test_qos_db_get(void)
 {
 	sqlite3 *db = NULL;
-	nni_mqtt_qos_db_init(&db, DB_NAME, TABLE_NAME);
+	nni_mqtt_qos_db_init(&db, DB_NAME);
 
-	char *header = "header001";
-	char *body   = "data001";
+	char *header = "header002";
+	char *body   = "data002";
 
 	uint32_t pipe_id = 1000;
 
@@ -62,17 +60,46 @@ void
 test_qos_db_remove(void)
 {
 	sqlite3 *db = NULL;
-	nni_mqtt_qos_db_init(&db, DB_NAME, TABLE_NAME);
+	nni_mqtt_qos_db_init(&db, DB_NAME);
 
-	TEST_CHECK(nni_mqtt_qos_db_remove(db, 1000));
+	TEST_CHECK(nni_mqtt_qos_db_remove(db, 1000) == SQLITE_OK);
 
+	nni_mqtt_qos_db_close(db);
+}
+
+void
+test_pipe_set(void)
+{
+	sqlite3 *db = NULL;
+	nni_mqtt_qos_db_init(&db, DB_NAME);
+	nni_mqtt_qos_db_set_pipe(db, 1000, "nanomq-client-999");
+	nni_mqtt_qos_db_close(db);
+}
+
+void
+test_pipe_remove(void)
+{
+	sqlite3 *db = NULL;
+	nni_mqtt_qos_db_init(&db, DB_NAME);
+	nni_mqtt_qos_db_remove_pipe(db, 1000);
+	nni_mqtt_qos_db_close(db);
+}
+
+void
+test_pipe_update_all(void)
+{
+	sqlite3 *db = NULL;
+	nni_mqtt_qos_db_init(&db, DB_NAME);
+	nni_mqtt_qos_db_update_all_pipe(db, 0);
 	nni_mqtt_qos_db_close(db);
 }
 
 TEST_LIST = {
 	{ "db_init", test_db_init },
+	{ "pipe_set", test_pipe_set },
 	{ "qos_db_set", test_qos_db_set },
 	{ "qos_db_get", test_qos_db_get },
 	{ "qos_db_remove", test_qos_db_remove },
+	{ "pipe_remove", test_pipe_remove },
 	{ NULL, NULL },
 };
