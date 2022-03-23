@@ -24,6 +24,13 @@ static nni_id_map **id_reg_map = NULL;
 static nni_mtx      id_reg_mtx = NNI_MTX_INITIALIZER;
 
 void
+nni_id_map_create(nni_id_map **m)
+{
+	*m = nni_zalloc(sizeof(nni_id_map));
+	nni_id_map_init(*m, 0, 0, false);
+}
+
+void
 nni_id_map_init(nni_id_map *m, uint32_t lo, uint32_t hi, bool randomize)
 {
 	if (lo == 0) {
