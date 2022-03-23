@@ -460,12 +460,13 @@ static uint8_t *
 nni_msg_serialize(nni_msg *msg, size_t *out_len)
 {
 	size_t len = nni_msg_header_len(msg) + nni_msg_len(msg) +
-	    (sizeof(uint32_t) * 2);
+	    (sizeof(uint32_t) * 2) + sizeof(nni_time);
 	*out_len = len;
 
 	// bytes:
 	// header:  header_len(uint32) + header(header_len)
 	// body:	body_len(uint32) + body(body_len)
+	// time:	nni_time(uint64)
 	uint8_t *bytes = nng_zalloc(len);
 
 	struct pos_buf buf = { .curpos = &bytes[0], .endpos = &bytes[len] };
@@ -481,6 +482,9 @@ nni_msg_serialize(nni_msg *msg, size_t *out_len)
 		goto out;
 	}
 	if (write_bytes(nni_msg_body(msg), nni_msg_len(msg), &buf) != 0) {
+		goto out;
+	}
+	if (write_uint64(nni_msg_get_timestamp(msg), &buf) != 0) {
 		goto out;
 	}
 
@@ -504,7 +508,7 @@ nni_msg_deserialize(uint8_t *bytes, size_t len)
 	// bytes:
 	// header:  header_len(uint32) + header(header_len)
 	// body:	body_len(uint32) + body(body_len)
-
+	// time:	nni_time(uint64)
 	uint32_t header_len;
 	if (read_uint32(&buf, &header_len) != 0) {
 		goto out;
@@ -517,6 +521,13 @@ nni_msg_deserialize(uint8_t *bytes, size_t len)
 		goto out;
 	}
 	nni_msg_append(msg, buf.curpos, body_len);
+	buf.curpos += body_len;
+
+	nni_time ts = 0;
+	if(read_uint64(&buf, &ts) != 0) {
+		goto out;
+	}
+	nni_msg_set_timestamp(msg, ts);
 
 	return msg;
 
