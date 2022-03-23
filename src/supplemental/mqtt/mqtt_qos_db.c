@@ -371,7 +371,7 @@ nni_mqtt_qos_db_check_remove_msg(sqlite3 *db, nni_msg *msg)
 	sqlite3_bind_blob64(stmt, 2, blob, len, SQLITE_TRANSIENT);
 	sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
-
+	nng_free(blob, len);
 	return sqlite3_exec(db, "COMMIT;", 0, 0, 0);
 }
 
@@ -524,7 +524,7 @@ nni_msg_deserialize(uint8_t *bytes, size_t len)
 	buf.curpos += body_len;
 
 	nni_time ts = 0;
-	if(read_uint64(&buf, &ts) != 0) {
+	if (read_uint64(&buf, &ts) != 0) {
 		goto out;
 	}
 	nni_msg_set_timestamp(msg, ts);
