@@ -33,8 +33,9 @@ test_qos_db_set(void)
 	uint32_t pipe_id = 1000;
 	uint8_t qos = 2;
 	msg = MQTT_DB_PACKED_MSG_QOS(msg, qos);
-
 	nni_mqtt_qos_db_set(db, pipe_id, msg);
+	msg = MQTT_DB_GET_MSG_POINTER(msg);
+
 	nni_msg_free(msg);
 	nni_mqtt_qos_db_close(db);
 }
