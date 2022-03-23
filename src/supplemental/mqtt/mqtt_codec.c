@@ -1302,12 +1302,12 @@ write_byte(uint8_t val, struct pos_buf *buf)
 int
 write_uint16(uint16_t value, struct pos_buf *buf)
 {
-	if ((buf->endpos - buf->curpos) < 2) {
+	if ((buf->endpos - buf->curpos) < (long) sizeof(uint16_t)) {
 		return MQTT_ERR_NOMEM;
 	}
 
 	NNI_PUT16(buf->curpos, value);
-	buf->curpos += 2;
+	buf->curpos += sizeof(uint16_t);
 
 	return 0;
 }
@@ -1315,12 +1315,25 @@ write_uint16(uint16_t value, struct pos_buf *buf)
 int
 write_uint32(uint32_t value, struct pos_buf *buf)
 {
-	if ((buf->endpos - buf->curpos) < 4) {
+	if ((buf->endpos - buf->curpos) < (long) sizeof(uint32_t)) {
 		return MQTT_ERR_NOMEM;
 	}
 
 	NNI_PUT32(buf->curpos, value);
-	buf->curpos += 4;
+	buf->curpos += sizeof(uint32_t);
+
+	return 0;
+}
+
+int
+write_uint64(uint64_t value, struct pos_buf *buf)
+{
+	if ((buf->endpos - buf->curpos) < (long) sizeof(uint64_t)) {
+		return MQTT_ERR_NOMEM;
+	}
+
+	NNI_PUT64(buf->curpos, value);
+	buf->curpos += sizeof(uint64_t);
 
 	return 0;
 }
@@ -1369,7 +1382,7 @@ read_byte(struct pos_buf *buf, uint8_t *val)
 int
 read_uint16(struct pos_buf *buf, uint16_t *val)
 {
-	if ((size_t)(buf->endpos - buf->curpos) < sizeof(uint16_t)) {
+	if ((buf->endpos - buf->curpos) < (long) sizeof(uint16_t)) {
 		return MQTT_ERR_INVAL;
 	}
 
@@ -1382,12 +1395,25 @@ read_uint16(struct pos_buf *buf, uint16_t *val)
 int
 read_uint32(struct pos_buf *buf, uint32_t *val)
 {
-	if ((size_t) (buf->endpos - buf->curpos) < sizeof(uint32_t)) {
+	if ((buf->endpos - buf->curpos) < (long) sizeof(uint32_t)) {
 		return MQTT_ERR_INVAL;
 	}
 
 	NNI_GET32(buf->curpos, *val);
-	buf->curpos += 4;
+	buf->curpos += sizeof(uint32_t);
+
+	return 0;
+}
+
+int
+read_uint64(struct pos_buf *buf, uint64_t *val)
+{
+	if ((buf->endpos - buf->curpos) < (long) sizeof(uint64_t)) {
+		return MQTT_ERR_INVAL;
+	}
+
+	NNI_GET64(buf->curpos, *val);
+	buf->curpos += sizeof(uint64_t);
 
 	return 0;
 }
@@ -1542,7 +1568,7 @@ mqtt_get_remaining_length(uint8_t *packet, uint32_t len,
 	uint8_t *start      = ptr;
 
 	for (size_t i = 0; i < 4; i++) {
-		if ((size_t)(ptr - start + 1) > len) {
+		if ((size_t) (ptr - start + 1) > len) {
 			return MQTT_ERR_PAYLOAD_SIZE;
 		}
 		lbytes++;
@@ -1943,7 +1969,7 @@ mqtt_msg_dump(mqtt_msg *msg, mqtt_buf *buf, mqtt_buf *packet, bool print_bytes)
 		pos += ret;
 		for (i = 0; i < packet->length; i++) {
 			ret = sprintf((char *) &buf->buf[pos], "%02x ",
-			    ((uint8_t)(packet->buf[i] & 0xff)));
+			    ((uint8_t) (packet->buf[i] & 0xff)));
 			if ((ret < 0) || ((pos + ret) > buf->length)) {
 				return 1;
 			}
