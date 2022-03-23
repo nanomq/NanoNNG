@@ -1208,7 +1208,7 @@ nmq_pubres_header_encode(nng_msg *msg, uint8_t cmd)
  * @return int
  */
 int
-nmq_pubres_encode(nng_msg *msg, uint16_t packet_id, uint8_t reason_code,
+nmq_msgack_encode(nng_msg *msg, uint16_t packet_id, uint8_t reason_code,
     property *prop, uint8_t proto_ver)
 {
 	uint8_t rbuf[2] = { 0 };

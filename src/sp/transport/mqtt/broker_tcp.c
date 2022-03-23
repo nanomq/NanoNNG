@@ -403,12 +403,14 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 	}
 	nni_msg_free(msg);
 	if (nni_lmq_get(&p->rslmq, &msg) == 0) {
-		nni_iov iov;
-		iov.iov_len = 4;
-		iov.iov_buf = nni_msg_header(msg);
+		nni_iov iov[2];
+		iov[0].iov_len = nni_msg_header_len(msg);
+		iov[0].iov_buf = nni_msg_header(msg);
+		iov[1].iov_len = nni_msg_len(msg);
+		iov[1].iov_buf = nni_msg_body(msg);
 		nni_aio_set_msg(p->qsaio, msg);
 		// send it down...
-		nni_aio_set_iov(p->qsaio, 1, &iov);
+		nni_aio_set_iov(p->qsaio, 2, iov);
 		nng_stream_send(p->conn, p->qsaio);
 		p->busy = true;
 		nni_mtx_unlock(&p->mtx);
@@ -684,7 +686,7 @@ tcptran_pipe_recv_cb(void *arg)
 		//TODO set reason code or property here if necessary
 
 		nni_msg_set_cmd_type(qmsg, ack_cmd);
-		nmq_pubres_encode(
+		nmq_msgack_encode(
 		    qmsg, packet_id, reason_code, prop, cparam->pro_ver);
 		nmq_pubres_header_encode(qmsg, ack_cmd);
 		if (prop != NULL) {
