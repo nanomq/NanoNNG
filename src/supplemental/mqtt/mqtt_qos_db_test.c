@@ -68,6 +68,27 @@ test_qos_db_remove(void)
 }
 
 void
+test_qos_db_check_remove_msg(void)
+{
+	sqlite3 *db = NULL;
+	nni_mqtt_qos_db_init(&db, DB_NAME);
+
+	char *header = "header002";
+	char *body   = "data002";
+
+	nni_msg *msg;
+	nni_msg_alloc(&msg, 0);
+	nni_msg_header_append(msg, header, strlen(header));
+	nni_msg_append(msg, body, strlen(body));
+	
+	TEST_CHECK(
+	    nni_mqtt_qos_db_check_remove_msg(db, msg) == SQLITE_OK);
+
+	nni_msg_free(msg);
+	nni_mqtt_qos_db_close(db);
+}
+
+void
 test_pipe_set(void)
 {
 	sqlite3 *db = NULL;
@@ -96,10 +117,11 @@ test_pipe_update_all(void)
 
 TEST_LIST = {
 	{ "db_init", test_db_init },
-	{ "pipe_set", test_pipe_set },
-	{ "qos_db_set", test_qos_db_set },
-	{ "qos_db_get", test_qos_db_get },
-	{ "qos_db_remove", test_qos_db_remove },
-	{ "pipe_remove", test_pipe_remove },
+	{ "db_pipe_set", test_pipe_set },
+	{ "db_set", test_qos_db_set },
+	{ "db_get", test_qos_db_get },
+	{ "db_remove", test_qos_db_remove },
+	{ "db_check_remove_msg", test_qos_db_check_remove_msg },
+	{ "db_pipe_remove", test_pipe_remove },
 	{ NULL, NULL },
 };
