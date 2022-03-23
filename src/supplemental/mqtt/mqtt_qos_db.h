@@ -45,6 +45,6 @@ int nni_mqtt_qos_db_remove_pipe(sqlite3 *, uint32_t);
 NNG_DECL
 int nni_mqtt_qos_db_update_pipe_by_clientid(sqlite3 *, uint32_t, const char *);
 NNG_DECL int nni_mqtt_qos_db_update_all_pipe(sqlite3 *, uint32_t);
-NNG_DECL int nni_mqtt_qos_db_check_remove_msg(sqlite3 *);
+NNG_DECL int nni_mqtt_qos_db_check_remove_msg(sqlite3 *, nni_msg *);
 
 #endif

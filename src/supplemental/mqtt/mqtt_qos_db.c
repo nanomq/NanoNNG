@@ -10,9 +10,9 @@ static nni_msg *nni_msg_deserialize(uint8_t *bytes, size_t len);
 #define table_msg "t_msg"
 #define table_pipe_client "t_pipe_client"
 
-static int     create_msg_table(sqlite3 *db);
-static int     create_pipe_client_table(sqlite3 *db);
-static int     create_main_table(sqlite3 *db);
+static int create_msg_table(sqlite3 *db);
+static int create_pipe_client_table(sqlite3 *db);
+static int create_main_table(sqlite3 *db);
 
 static int64_t get_id_by_msg(sqlite3 *db, nni_msg *msg);
 static int64_t insert_msg(sqlite3 *db, nni_msg *msg);
@@ -29,7 +29,7 @@ static int
 create_msg_table(sqlite3 *db)
 {
 	char sql[] = "CREATE TABLE IF NOT EXISTS " table_msg ""
-	             " (id INTEGER PRIMARY KEY  AUTOINCREMENT, "
+	             " (id INTEGER PRIMARY KEY AUTOINCREMENT, "
 	             "  data BLOB)";
 
 	return sqlite3_exec(db, sql, 0, 0, 0);
@@ -352,9 +352,27 @@ nni_mqtt_qos_db_update_all_pipe(sqlite3 *db, uint32_t pipe_id)
 	return sqlite3_exec(db, "COMMIT;", 0, 0, 0);
 }
 
-int nni_mqtt_qos_db_check_remove_msg(sqlite3 *db) 
+int
+nni_mqtt_qos_db_check_remove_msg(sqlite3 *db, nni_msg *msg)
 {
-	return 0;
+	sqlite3_stmt *stmt;
+	// remove the msg if it was not referenced by table `t_main`
+	char sql[] = "DELETE FROM " table_msg " AS msg WHERE "
+	             "( SELECT COUNT(main.id) FROM " table_main " AS main  "
+	             "WHERE  m_id = "
+	             "( SELECT msg.id FROM t_msg "
+	             "AS msg WHERE data = ? )) = 0 AND msg.data = ?";
+	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
+	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
+	sqlite3_reset(stmt);
+	size_t   len  = 0;
+	uint8_t *blob = nni_msg_serialize(msg, &len);
+	sqlite3_bind_blob64(stmt, 1, blob, len, SQLITE_TRANSIENT);
+	sqlite3_bind_blob64(stmt, 2, blob, len, SQLITE_TRANSIENT);
+	sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
+
+	return sqlite3_exec(db, "COMMIT;", 0, 0, 0);
 }
 
 int
@@ -417,7 +435,6 @@ nni_mqtt_qos_db_get(sqlite3 *db, uint32_t pipe_id)
 int
 nni_mqtt_qos_db_remove(sqlite3 *db, uint32_t pipe_id)
 {
-	int           rv;
 	sqlite3_stmt *stmt;
 	char *sql = "DELETE FROM " table_main " AS main WHERE main.p_id = "
 	            "(SELECT pipe.id FROM " table_pipe_client ""
