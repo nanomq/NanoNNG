@@ -17,4 +17,11 @@ struct nni_db_ops {
 
 typedef struct nni_db_ops nni_db_ops;
 
+extern void  nni_db_init(nni_db_ops *);
+extern void  nni_db_fini(nni_db_ops *);
+extern void  nni_db_set(nni_db_ops *, uint32_t, void *);
+extern void *nni_db_get(nni_db_ops *, uint32_t);
+extern void  nni_db_remove(nni_db_ops *, uint32_t);
+extern void  nni_db_check_remove_msg(nni_db_ops *, void *);
+
 #endif
