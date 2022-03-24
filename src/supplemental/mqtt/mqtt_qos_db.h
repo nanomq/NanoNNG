@@ -25,12 +25,18 @@
 
 /**
  main_table
------------------------
-| p_id | msg_id | qos |
------------------------
-|      |        |     |
------------------------
+----------------------------
+| id | p_id | msg_id | qos |
+----------------------------
+|    |      |        |     |
+----------------------------
 **/
+
+// select pipe.pipe_id, msg.data from t_main AS main join t_msg AS msg on
+// main.m_id = msg.id join t_pipe_client AS pipe ON main.p_id = pipe.id  where
+// pipe.pipe_id = 1000;
+
+// select
 
 #define MQTT_DB_GET_QOS_BITS(msg) ((size_t) (msg) &0x03)
 #define MQTT_DB_PACKED_MSG_QOS(msg, qos) \
@@ -43,8 +49,8 @@ NNG_DECL void nni_mqtt_qos_db_close(sqlite3 *);
 NNG_DECL void nni_mqtt_qos_db_set(sqlite3 *, uint32_t, nni_msg *);
 NNG_DECL nni_msg *nni_mqtt_qos_db_get(sqlite3 *, uint32_t);
 NNG_DECL void     nni_mqtt_qos_db_remove(sqlite3 *, uint32_t);
-NNG_DECL void nni_mqtt_qos_db_foreach(sqlite3 *db, void (*cb)(void *, void *));
-NNG_DECL void nni_mqtt_qos_db_set_pipe(sqlite3 *, uint32_t, const char *);
+NNG_DECL void     nni_mqtt_qos_db_foreach(sqlite3 *, nni_idhash_cb);
+NNG_DECL void     nni_mqtt_qos_db_set_pipe(sqlite3 *, uint32_t, const char *);
 NNG_DECL void nni_mqtt_qos_db_insert_pipe(sqlite3 *, uint32_t, const char *);
 NNG_DECL
 void nni_mqtt_qos_db_remove_pipe(sqlite3 *, uint32_t);

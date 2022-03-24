@@ -31,8 +31,8 @@ test_qos_db_set(void)
 	nni_msg_set_timestamp(msg, ts);
 
 	uint32_t pipe_id = 1000;
-	uint8_t qos = 2;
-	msg = MQTT_DB_PACKED_MSG_QOS(msg, qos);
+	uint8_t  qos     = 1;
+	msg              = MQTT_DB_PACKED_MSG_QOS(msg, qos);
 	nni_mqtt_qos_db_set(db, pipe_id, msg);
 	msg = MQTT_DB_GET_MSG_POINTER(msg);
 
@@ -53,8 +53,8 @@ test_qos_db_get(void)
 	uint32_t pipe_id = 1000;
 
 	nni_msg *msg = nni_mqtt_qos_db_get(db, pipe_id);
-	TEST_CHECK(MQTT_DB_GET_QOS_BITS(msg) == 2);
-	//be careful nni_msg had been changed before executing nni_mqtt_qos_db_get();
+	TEST_CHECK(MQTT_DB_GET_QOS_BITS(msg) == 1);
+	// be careful nni_msg had been changed in nni_mqtt_qos_db_get();
 	msg = MQTT_DB_GET_MSG_POINTER(msg);
 	TEST_CHECK(strncmp(header, nni_msg_header(msg),
 	               nni_msg_header_len(msg)) == 0);
@@ -95,11 +95,27 @@ test_qos_db_check_remove_msg(void)
 }
 
 void
+handle_cb(void *pipe_id, void *msg)
+{
+	TEST_CHECK(pipe_id != NULL);
+	TEST_CHECK(msg != NULL);
+}
+
+void
+test_qos_db_foreach(void)
+{
+	sqlite3 *db = NULL;
+	nni_mqtt_qos_db_init(&db);
+	nni_mqtt_qos_db_foreach(db, handle_cb);
+	nni_mqtt_qos_db_close(db);
+}
+
+void
 test_pipe_set(void)
 {
 	sqlite3 *db = NULL;
 	nni_mqtt_qos_db_init(&db);
-	nni_mqtt_qos_db_set_pipe(db, 1000, "nanomq-client-999");
+	nni_mqtt_qos_db_set_pipe(db, 1000, "nanomq-client-1001");
 	nni_mqtt_qos_db_close(db);
 }
 
@@ -126,6 +142,7 @@ TEST_LIST = {
 	{ "db_pipe_set", test_pipe_set },
 	{ "db_set", test_qos_db_set },
 	{ "db_get", test_qos_db_get },
+	{ "db_foreach", test_qos_db_foreach },
 	{ "db_remove", test_qos_db_remove },
 	{ "db_check_remove_msg", test_qos_db_check_remove_msg },
 	{ "db_pipe_remove", test_pipe_remove },
