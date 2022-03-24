@@ -198,9 +198,11 @@ nano_pipe_timer_cb(void *arg)
 	if (npipe->cache) {
 		p->ka_refresh++;
 		// check session expiry interval
-		if (p->conn_param->session_expiry_interval > 0) {
+		if (p->conn_param->session_expiry_interval > 0 ||
+		    p->conn_param->will_delay_interval > 0) {
 			if (p->ka_refresh * (qos_duration) >
-			    p->conn_param->session_expiry_interval) {
+			    p->conn_param->session_expiry_interval ||
+				nng_clock() > p->conn_param->will_delay_interval) {
 				// close pipe
 				//  clean previous session
 				nano_pipe *old;
@@ -674,6 +676,11 @@ nano_pipe_start(void *arg)
 	// close old one (bool to prevent disconnect_ev)
 	// check if pointer is different later
 	if (old) {
+		// check will msg delay interval
+		if (conn_param_get_will_delay_timestamp(old->conn_param) > nng_clock()) {
+			// it is not your time yet
+			old->conn_param->will_flag = 0;
+		}
 		nni_pipe_close(old->pipe);
 	}
 	nni_msg_set_cmd_type(msg, CMD_CONNACK);

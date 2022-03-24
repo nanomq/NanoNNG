@@ -484,7 +484,8 @@ conn_param_set_will_property(conn_param *cparam, property *prop)
 	property_data *prop_data;
 	prop_data = property_get_value(prop, WILL_DELAY_INTERVAL);
 	if (prop_data) {
-		cparam->will_delay_interval = prop_data->p_value.u32;
+		// set expiried timestamp
+		cparam->will_delay_interval = nng_clock() + prop_data->p_value.u32 * 1000;
 	}
 	prop_data = property_get_value(prop, PAYLOAD_FORMAT_INDICATOR);
 	if (prop_data) {
@@ -492,7 +493,8 @@ conn_param_set_will_property(conn_param *cparam, property *prop)
 	}
 	prop_data = property_get_value(prop, MESSAGE_EXPIRY_INTERVAL);
 	if (prop_data) {
-		cparam->msg_expiry_interval = prop_data->p_value.u32;
+		// set expiried timestamp
+		cparam->msg_expiry_interval = nng_clock() + prop_data->p_value.u32 * 1000;
 	}
 	prop_data = property_get_value(prop, CONTENT_TYPE);
 	if (prop_data) {
