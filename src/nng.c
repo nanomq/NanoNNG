@@ -2208,6 +2208,18 @@ conn_param_get_will_property(conn_param *cparam)
 	return cparam->will_properties;
 }
 
+nng_time
+conn_param_get_will_delay_timestamp(conn_param *cparam)
+{
+	return cparam->will_delay_interval;
+}
+
+nng_time
+conn_param_get_will_msg_expiry_timestamp(conn_param *cparam)
+{
+	return cparam->msg_expiry_interval;
+}
+
 void *
 conn_param_get_qos_db(conn_param *cparam)
 {
@@ -2237,20 +2249,6 @@ nng_msg_set_timestamp(nni_msg *m, uint64_t time)
 {
 	nni_msg_set_timestamp(m, (nni_time) time);
 }
-
-/*
-void
-nng_aio_set_pipelength(nng_aio *aio, uint32_t len)
-{
-    nni_aio_set_pipelength(aio, len);
-}
-
-void
-nng_aio_set_pipes(nng_aio *aio, uint32_t *pipes)
-{
-    nni_aio_set_pipes(aio, pipes);
-}
-*/
 
 void
 nng_aio_finish_error(nng_aio *aio, int rv)
