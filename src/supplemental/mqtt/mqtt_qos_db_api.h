@@ -12,7 +12,7 @@ struct nni_db_ops {
 	void (*db_set)(void *db, uint32_t, void *);
 	void (*db_remove)(void *db, uint32_t);
 	void (*db_check_remove_msg)(void *db, void *);
-	void (*db_foreach)(void *db, void (*cb)(void *, void *));
+	void (*db_foreach)(void *db, nni_idhash_cb);
 };
 
 typedef struct nni_db_ops nni_db_ops;

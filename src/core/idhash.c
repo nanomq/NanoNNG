@@ -23,7 +23,7 @@ static int          id_reg_num = 0;
 static nni_id_map **id_reg_map = NULL;
 static nni_mtx      id_reg_mtx = NNI_MTX_INITIALIZER;
 
-void
+inline void
 nni_id_map_create(nni_id_map **m)
 {
 	*m = nni_zalloc(sizeof(nni_id_map));

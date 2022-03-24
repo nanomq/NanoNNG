@@ -459,9 +459,33 @@ nni_mqtt_qos_db_remove(sqlite3 *db, uint32_t pipe_id)
 }
 
 void
-nni_mqtt_qos_db_foreach(sqlite3 *db ,void (*cb)(void* , void *))
+nni_mqtt_qos_db_foreach(sqlite3 *db, nni_idhash_cb cb)
 {
-	
+	sqlite3_stmt *stmt;
+	char sql[] = "SELECT pipe.pipe_id, msg.data FROM t_main AS main JOIN "
+	             "t_msg AS msg ON main.m_id = msg.id JOIN t_pipe_client "
+	             "AS pipe ON main.p_id = pipe.id";
+
+	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
+	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
+	sqlite3_reset(stmt);
+
+	while (SQLITE_ROW == sqlite3_step(stmt)) {
+		uint32_t pipe_id = sqlite3_column_int64(stmt, 0);
+		size_t   nbyte   = (size_t) sqlite3_column_bytes16(stmt, 1);
+		uint8_t *bytes   = sqlite3_malloc(nbyte);
+		memcpy(bytes, sqlite3_column_blob(stmt, 1), nbyte);
+		// deserialize blob data to nni_msg
+		nni_msg *msg = nni_msg_deserialize(bytes, nbyte);
+		cb(&pipe_id, msg);
+		if (msg) {
+			nni_msg_free(msg);
+		}
+		sqlite3_free(bytes);
+	}
+
+	sqlite3_finalize(stmt);
+	sqlite3_exec(db, "COMMIT;", 0, 0, 0);
 }
 
 static uint8_t *
