@@ -1357,6 +1357,8 @@ NNG_DECL void *         conn_param_get_qos_db(conn_param *cparam);
 NNG_DECL void *         conn_param_get_property(conn_param *cparam);
 NNG_DECL void *         conn_param_get_will_property(conn_param *cparam);
 NNG_DECL void           conn_param_set_qos_db(conn_param *cparam, void *);
+NNG_DECL uint64_t conn_param_get_will_delay_timestamp(conn_param *cparam);
+NNG_DECL uint64_t conn_param_get_will_msg_expiry_timestamp(conn_param *cparam);
 
 NNG_DECL void nng_taskq_setter(int num_taskq_threads, int max_taskq_threads);
 

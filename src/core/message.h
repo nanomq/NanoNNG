@@ -12,6 +12,7 @@
 #define CORE_MESSAGE_H
 
 #include "nng/mqtt/packet.h"
+#include "nng/supplemental/util/platform.h"
 
 // Internally used message API.  Again, this is not part of our public API.
 // "trim" operations work from the front, and "chop" work from the end.
@@ -119,6 +120,7 @@ struct conn_param {
 	struct mqtt_binary password;
 	// conn_propt    ppt;
 	// mqtt_v5
+	//nni_time ntime;	// reserve for will msg expiry/delay interval
 	// variable header
 	uint32_t             session_expiry_interval;
 	uint16_t             rx_max;
@@ -130,9 +132,9 @@ struct conn_param {
 	mqtt_buf *           auth_data;
 	mqtt_kv *            user_property;
 
-	uint32_t  will_delay_interval;
+	nng_time  will_delay_interval;
 	uint8_t   payload_format_indicator;
-	uint32_t  msg_expiry_interval;
+	nng_time  msg_expiry_interval;
 	mqtt_buf *content_type;
 	mqtt_buf *resp_topic;
 	mqtt_buf *corr_data;
