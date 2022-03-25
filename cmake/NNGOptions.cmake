@@ -45,7 +45,7 @@ mark_as_advanced(NNG_ENABLE_STATS)
 # SQLITE API support.
 option (NNG_ENABLE_SQLITE "Enable SQLITE API." ON)
 if (NNG_ENABLE_SQLITE)
-    set(NNG_SUPPSQLITE ON)
+    set(NNG_SUPP_SQLITE ON)
 endif()
 mark_as_advanced(NNG_ENABLE_SQLITE)
 
