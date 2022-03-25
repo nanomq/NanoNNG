@@ -45,7 +45,6 @@ struct nni_id_map {
 #define NNI_ID_FLAG_RANDOM 2   // start at a random value
 #define NNI_ID_FLAG_REGISTER 4 // map is registered for finalization
 
-extern void  nni_id_map_create(nni_id_map **);
 extern void  nni_id_map_init(nni_id_map *, uint32_t, uint32_t, bool);
 extern void  nni_id_map_fini(nni_id_map *);
 extern void  nni_id_map_foreach(nni_id_map *, nni_idhash_cb);
