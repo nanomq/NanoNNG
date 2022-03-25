@@ -257,7 +257,7 @@ typedef enum {
 	NNG_PIPE_EV_NUM,      // Used internally, must be last.
 } nng_pipe_ev;
 
-typedef void (*nng_pipe_cb)(nng_pipe, nng_pipe_ev, void *);
+typedef void (*nng_pipe_cb)(nng_pipe, nng_pipe_ev, void *, void *);
 
 // nng_pipe_notify registers a callback to be executed when the
 // given event is triggered.  To watch for different events, register

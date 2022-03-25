@@ -1692,7 +1692,7 @@ nni_pipe_run_cb(nni_pipe *p, nng_pipe_ev ev)
 	if (cb != NULL) {
 		nng_pipe pid;
 		pid.id = p->p_id;
-		cb(pid, ev, arg);
+		cb(pid, ev, p->conn, arg);
 	}
 }
 

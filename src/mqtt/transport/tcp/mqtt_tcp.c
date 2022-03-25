@@ -12,6 +12,7 @@
 #include <string.h>
 
 #include "core/nng_impl.h"
+#include "core/sockimpl.h"
 #include "nng/mqtt/mqtt_client.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 
@@ -176,6 +177,7 @@ mqtt_tcptran_pipe_init(void *arg, nni_pipe *npipe)
 
 	nni_pipe_set_conn_param(npipe, p->cparam);
 	p->npipe = npipe;
+	p->npipe->conn = p->conn;
 	nni_lmq_init(&p->rslmq, 16);
 	p->busy = false;
 	nni_sleep_aio(p->keepalive, &p->tmaio);
