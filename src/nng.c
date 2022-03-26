@@ -2215,7 +2215,7 @@ conn_param_get_will_delay_timestamp(conn_param *cparam)
 }
 
 nng_time
-conn_param_get_will_msg_expiry_timestamp(conn_param *cparam)
+conn_param_get_will_mexp(conn_param *cparam)
 {
 	return cparam->msg_expiry_interval;
 }
