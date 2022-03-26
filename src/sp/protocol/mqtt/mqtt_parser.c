@@ -493,8 +493,7 @@ conn_param_set_will_property(conn_param *cparam, property *prop)
 	}
 	prop_data = property_get_value(prop, MESSAGE_EXPIRY_INTERVAL);
 	if (prop_data) {
-		// set expiried timestamp
-		cparam->msg_expiry_interval = nng_clock() + prop_data->p_value.u32 * 1000;
+		cparam->msg_expiry_interval = prop_data->p_value.u32;
 	}
 	prop_data = property_get_value(prop, CONTENT_TYPE);
 	if (prop_data) {
@@ -845,7 +844,7 @@ nano_msg_set_dup(nng_msg *msg)
 // alloc a publish msg according to the need
 nng_msg *
 nano_msg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
-    mqtt_string *payload, mqtt_string *topic, uint8_t proto_ver)
+    mqtt_string *payload, mqtt_string *topic, uint8_t proto_ver, nng_time time)
 {
 	size_t   rlen;
 	uint8_t *ptr, buf[5] = { '\0' };
@@ -862,6 +861,7 @@ nano_msg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
 		nni_msg_realloc(msg, len + (qos > 0 ? 2 : 0));
 	}
 
+	nni_msg_set_timestamp(msg, time);
 	if (qos > 0) {
 		rlen = put_var_integer(buf + 1, len + 2);
 		nni_msg_set_remaining_len(msg, len + 2);
@@ -955,7 +955,7 @@ nano_msg_notify_disconnect(conn_param *cparam, uint8_t code)
 	topic.len   = strlen(DISCONNECT_TOPIC);
 	// V4 notification msg as default
 	msg = nano_msg_composer(
-	    &msg, 0, 0, &string, &topic, PROTOCOL_VERSION_v311);
+	    &msg, 0, 0, &string, &topic, PROTOCOL_VERSION_v311, nng_clock());
 	return msg;
 }
 
@@ -973,7 +973,7 @@ nano_msg_notify_connect(conn_param *cparam, uint8_t code)
 	topic.body  = CONNECT_TOPIC;
 	topic.len   = strlen(CONNECT_TOPIC);
 	msg         = nano_msg_composer(
-            &msg, 0, 0, &string, &topic, PROTOCOL_VERSION_v311);
+            &msg, 0, 0, &string, &topic, PROTOCOL_VERSION_v311, nng_clock());
 	return msg;
 }
 
