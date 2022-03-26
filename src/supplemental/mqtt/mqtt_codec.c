@@ -2231,6 +2231,56 @@ property_append(property *prop_list, property *last)
 	}
 }
 
+
+
+property *
+property_copy(property *prop)
+{
+	property *list;
+	list            = property_alloc();
+
+	// while (buf.curpos < buf.endpos) {
+	// 	read_byte(&buf, &prop_id);
+	// 	property *         cur_prop = NULL;
+	// 	property_type_enum type     = property_get_value_type(prop_id);
+	// 	cur_prop =
+	// 	    property_parse(&buf, cur_prop, prop_id, type, copy_value);
+	// 	property_append(list, cur_prop);
+	// }
+
+	for (property *p = prop->next; p != NULL; p = p->next) {
+		property *         cur_prop = property_alloc();
+		property_type_enum type = property_get_value_type(p->id);
+			cur_prop->next         = NULL;
+	cur_prop->data.p_type  = type;
+	cur_prop->data.is_copy = true;
+	cur_prop->id           = p->id;
+		switch (type) {
+		case U8:
+			cur_prop->data.p_value.u8 = p->data.p_value.u8;
+			break;
+		case U16:
+			break;
+		case U32:
+			cur_prop->data.p_value.u32 = p->data.p_value.u32;
+			break;
+		case VARINT:
+			break;
+		case BINARY:
+			break;
+		case STR:
+			break;
+		case STR_PAIR:
+			break;
+		default:
+			break;
+		}
+		property_append(list, cur_prop);
+	}
+	return list;
+}
+
+
 void
 property_foreach(property *prop, void (*cb)(property *))
 {
@@ -2373,8 +2423,21 @@ get_properties_len(property *prop)
 	return prop_len;
 }
 
+property_data *
+property_get_value(property *prop, uint8_t prop_id)
+{
+	if (prop) {
+		for (property *p = prop->next; p != NULL; p = p->next) {
+			if (p->id == prop_id) {
+				return &p->data;
+			}
+		}
+	}
+	return NULL;
+}
+
 int
-encode_properties(nni_msg *msg, property *prop)
+encode_properties(nni_msg *msg, property *prop, uint8_t cmd)
 {
 	uint8_t        rlen[4] = { 0 };
 	struct pos_buf buf     = { .curpos = &rlen[0],
@@ -2385,6 +2448,18 @@ encode_properties(nni_msg *msg, property *prop)
 	nni_msg_append(msg, rlen, bytes);
 	if (prop_len == 0) {
 		return 0;
+	}
+	if (cmd == CMD_PUBLISH) {
+		nng_time       rtime = nni_msg_get_timestamp(msg);
+		nng_time       ntime = nng_clock();
+		property_data *data =
+		    property_get_value(prop, MESSAGE_EXPIRY_INTERVAL);
+		if (data && ntime > rtime + data->p_value.u32 * 1000) {
+			return -1;
+		} else if (data) {
+			data->p_value.u32 =
+			    data->p_value.u32 - (ntime - rtime) / 1000;
+		}
 	}
 
 	for (property *p = prop->next; p != NULL; p = p->next) {
@@ -2425,19 +2500,6 @@ encode_properties(nni_msg *msg, property *prop)
 	}
 
 	return 0;
-}
-
-property_data *
-property_get_value(property *prop, uint8_t prop_id)
-{
-	if (prop) {
-		for (property *p = prop->next; p != NULL; p = p->next) {
-			if (p->id == prop_id) {
-				return &p->data;
-			}
-		}
-	}
-	return NULL;
 }
 
 static nni_proto_msg_ops proto_ops = {
