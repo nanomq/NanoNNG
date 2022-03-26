@@ -673,8 +673,7 @@ nmq_connack_encode(nng_msg *msg, conn_param *cparam, uint8_t reason)
 
 	if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
 		// TODO set properties if necessary
-		encode_properties(msg, cparam->properties);
-		// encode_properties(msg, NULL);
+		encode_properties(msg, cparam->properties, CMD_CONNACK);
 	}
 
 	size_t         msg_len    = nng_msg_len(msg);
@@ -1223,7 +1222,8 @@ nmq_msgack_encode(nng_msg *msg, uint16_t packet_id, uint8_t reason_code,
 			return MQTT_SUCCESS;
 		}
 		nni_msg_append(msg, &reason_code, 1);
-		encode_properties(msg, prop);
+		//All ack msgs are same
+		encode_properties(msg, prop, 0);
 	}
 
 	return MQTT_SUCCESS;

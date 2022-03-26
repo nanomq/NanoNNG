@@ -93,11 +93,12 @@ NNG_DECL property *decode_buf_properties(uint8_t *packet, uint32_t packet_len,
     uint32_t *pos, uint32_t *len, bool copy_value);
 NNG_DECL property *decode_properties(
     nng_msg *msg, uint32_t *pos, uint32_t *len, bool copy_value);
-NNG_DECL int      encode_properties(nng_msg *msg, property *prop);
+NNG_DECL int      encode_properties(nng_msg *msg, property *prop, uint8_t cmd);
 NNG_DECL uint32_t get_properties_len(property *prop);
 NNG_DECL int      property_free(property *prop);
 NNG_DECL property_data *property_get_value(property *prop, uint8_t prop_id);
 NNG_DECL void property_foreach(property *prop, void (*cb)(property *));
+NNG_DECL property *property_copy(property *prop);
 
 NNG_DECL property *property_alloc(void);
 NNG_DECL property_type_enum property_get_value_type(uint8_t prop_id);
