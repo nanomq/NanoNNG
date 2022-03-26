@@ -629,6 +629,7 @@ tcptran_pipe_recv_cb(void *arg)
 	property *prop        = NULL;
 	uint8_t   ack_cmd     = 0;
 	if (type == CMD_PUBLISH) {
+		nni_msg_set_timestamp(msg, nng_clock());
 		uint8_t qos_pac = nni_msg_get_pub_qos(msg);
 		if (qos_pac > 0) {
 			// flow control, check rx_max
@@ -689,9 +690,9 @@ tcptran_pipe_recv_cb(void *arg)
 		nmq_msgack_encode(
 		    qmsg, packet_id, reason_code, prop, cparam->pro_ver);
 		nmq_pubres_header_encode(qmsg, ack_cmd);
-		if (prop != NULL) {
+		// if (prop != NULL) {
 			// nni_msg_proto_set_property(qmsg, prop);
-		}
+		// }
 		// aio_begin?
 		if (p->busy == false) {
 			iov[0].iov_len = nni_msg_header_len(qmsg);
@@ -789,7 +790,8 @@ tcptran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 
 /**
  * @brief this is the func that responsible for sending msg while
- *        keep zero-copy feature
+ *        keeping zero-copy feature, doing all the jobs neccesary
+ *        for each unique client (it means ugly)
  *
  * @param p tcptran_pipe
  */
@@ -860,9 +862,10 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		mlen = nni_msg_len(msg);
 		hlen = nni_msg_header_len(msg);
 
-		// check max packet size config for this client
+		// check max packet size/msg expiry interval for this client/msg
 		if (p->tcp_cparam != NULL && p->tcp_cparam->pro_ver == 5) {
 			uint32_t tlen = mlen+hlen;
+
 			if (tlen > p->tcp_cparam->max_packet_size) {
 				// drop msg and finish aio pretend it has been
 				// sent
