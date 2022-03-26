@@ -37,7 +37,7 @@ struct nng_msg {
 	size_t           remaining_len;
 	uint8_t          CMD_TYPE;
 	uint8_t *        payload_ptr; // payload
-	nni_time         times;
+	nni_time         times;		  // the time msg arrives
 	nano_conn_param *cparam;      // indicates where it originated
 };
 
