@@ -2231,62 +2231,58 @@ property_append(property *prop_list, property *last)
 	}
 }
 
-/**
- * @brief property adapter for converting will_property to publish property of
- * will msg
- *
- * @param prop
- * @return property*
- */
-property *
-will_property_copy(property *prop)
+int
+property_dup(property **dup, const property *src)
 {
-	property *list;
-	list            = property_alloc();
-
-	// while (buf.curpos < buf.endpos) {
-	// 	read_byte(&buf, &prop_id);
-	// 	property *         cur_prop = NULL;
-	// 	property_type_enum type     = property_get_value_type(prop_id);
-	// 	cur_prop =
-	// 	    property_parse(&buf, cur_prop, prop_id, type, copy_value);
-	// 	property_append(list, cur_prop);
-	// }
-
-	for (property *p = prop->next; p != NULL; p = p->next) {
-		if (p->id == 0x18)
-			continue;
-		property_type_enum type     = property_get_value_type(p->id);
-		property          *cur_prop = property_alloc();
-		cur_prop->next              = NULL;
-		cur_prop->data.p_type       = type;
-		cur_prop->data.is_copy      = true;
-		cur_prop->id                = p->id;
+	property *list = property_alloc();
+	property *item = NULL;
+	for (property *p = src->next; p != NULL; p = p->next) {
+		property_type_enum type = property_get_value_type(p->id);
 		switch (type) {
 		case U8:
-			cur_prop->data.p_value.u8 = p->data.p_value.u8;
+			item =
+			    property_set_value_u8(p->id, p->data.p_value.u8);
 			break;
 		case U16:
+			item =
+			    property_set_value_u16(p->id, p->data.p_value.u16);
 			break;
 		case U32:
-			cur_prop->data.p_value.u32 = p->data.p_value.u32;
+			item =
+			    property_set_value_u32(p->id, p->data.p_value.u32);
 			break;
 		case VARINT:
+			item = property_set_value_varint(
+			    p->id, p->data.p_value.varint);
 			break;
 		case BINARY:
+			item = property_set_value_binary(p->id,
+			    p->data.p_value.binary.buf,
+			    p->data.p_value.binary.length, true);
 			break;
 		case STR:
+			item = property_set_value_str(p->id,
+			    p->data.p_value.str.buf,
+			    p->data.p_value.str.length, true);
 			break;
 		case STR_PAIR:
+			item = property_set_value_strpair(p->id,
+			    p->data.p_value.strpair.key.buf,
+			    p->data.p_value.strpair.key.length,
+			    p->data.p_value.strpair.value.buf,
+			    p->data.p_value.strpair.value.length, true);
 			break;
 		default:
 			break;
 		}
-		property_append(list, cur_prop);
+		if (item) {
+			property_append(list, item);
+		}
+		item = NULL;
 	}
-	return list;
+	*dup = list;
+	return 0;
 }
-
 
 void
 property_foreach(property *prop, void (*cb)(property *))
@@ -2513,7 +2509,7 @@ static nni_proto_msg_ops proto_ops = {
 
 	.msg_free = (void *) (void *) property_free,
 
-	.msg_dup = NULL
+	.msg_dup = property_dup
 };
 
 // TODO incompatible with client sdk
