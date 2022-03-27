@@ -2231,10 +2231,15 @@ property_append(property *prop_list, property *last)
 	}
 }
 
-
-
+/**
+ * @brief property adapter for converting will_property to publish property of
+ * will msg
+ *
+ * @param prop
+ * @return property*
+ */
 property *
-property_copy(property *prop)
+will_property_copy(property *prop)
 {
 	property *list;
 	list            = property_alloc();
@@ -2249,12 +2254,14 @@ property_copy(property *prop)
 	// }
 
 	for (property *p = prop->next; p != NULL; p = p->next) {
-		property *         cur_prop = property_alloc();
-		property_type_enum type = property_get_value_type(p->id);
-			cur_prop->next         = NULL;
-	cur_prop->data.p_type  = type;
-	cur_prop->data.is_copy = true;
-	cur_prop->id           = p->id;
+		if (p->id == 0x18)
+			continue;
+		property_type_enum type     = property_get_value_type(p->id);
+		property          *cur_prop = property_alloc();
+		cur_prop->next              = NULL;
+		cur_prop->data.p_type       = type;
+		cur_prop->data.is_copy      = true;
+		cur_prop->id                = p->id;
 		switch (type) {
 		case U8:
 			cur_prop->data.p_value.u8 = p->data.p_value.u8;
