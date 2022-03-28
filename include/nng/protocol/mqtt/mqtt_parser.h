@@ -99,6 +99,7 @@ NNG_DECL int      property_free(property *prop);
 NNG_DECL property_data *property_get_value(property *prop, uint8_t prop_id);
 NNG_DECL void property_foreach(property *prop, void (*cb)(property *));
 NNG_DECL int  property_dup(property **dup, const property *src);
+NNG_DECL property *property_pub_by_will(property *will_prop);
 
 NNG_DECL property *property_alloc(void);
 NNG_DECL property_type_enum property_get_value_type(uint8_t prop_id);

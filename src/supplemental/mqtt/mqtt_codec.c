@@ -2231,6 +2231,41 @@ property_append(property *prop_list, property *last)
 	}
 }
 
+void
+property_remove(property *prop_list, uint8_t prop_id)
+{
+	for (property *p = prop_list; p != NULL; p = p->next) {
+		if (p->next != NULL) {
+			property *p_temp = p->next;
+			if (prop_id == p_temp->id) {
+				switch (p_temp->data.p_type) {
+				case STR:
+					mqtt_buf_free(
+					    &p_temp->data.p_value.str);
+					break;
+				case BINARY:
+					mqtt_buf_free(
+					    &p_temp->data.p_value.binary);
+					break;
+				case STR_PAIR:
+					mqtt_kv_free(
+					    &p_temp->data.p_value.strpair);
+					break;
+				default:
+					break;
+				}
+				if (p_temp->next != NULL) {
+					p->next = p_temp->next;
+				} else {
+					p->next = NULL;
+				}
+				free(p_temp);
+				break;
+			}
+		}
+	}
+}
+
 int
 property_dup(property **dup, const property *src)
 {
@@ -2262,14 +2297,14 @@ property_dup(property **dup, const property *src)
 			break;
 		case STR:
 			item = property_set_value_str(p->id,
-			    p->data.p_value.str.buf,
+			    (const char *) p->data.p_value.str.buf,
 			    p->data.p_value.str.length, true);
 			break;
 		case STR_PAIR:
 			item = property_set_value_strpair(p->id,
-			    p->data.p_value.strpair.key.buf,
+			    (const char *) p->data.p_value.strpair.key.buf,
 			    p->data.p_value.strpair.key.length,
-			    p->data.p_value.strpair.value.buf,
+			    (const char *) p->data.p_value.strpair.value.buf,
 			    p->data.p_value.strpair.value.length, true);
 			break;
 		default:
@@ -2439,6 +2474,25 @@ property_get_value(property *prop, uint8_t prop_id)
 	return NULL;
 }
 
+property *
+property_pub_by_will(property *will_prop)
+{
+	property *list = NULL;
+
+	if (will_prop == NULL) {
+		goto out;
+	}
+
+	property_dup(&list, will_prop);
+	property_remove(list, WILL_DELAY_INTERVAL);
+
+	return list;
+
+out:
+	property_free(list);
+	return NULL;
+}
+
 int
 encode_properties(nni_msg *msg, property *prop, uint8_t cmd)
 {
@@ -2507,9 +2561,9 @@ encode_properties(nni_msg *msg, property *prop, uint8_t cmd)
 
 static nni_proto_msg_ops proto_ops = {
 
-	.msg_free = (void *) (void *) property_free,
+	.msg_free = (int (*)(void *)) property_free,
 
-	.msg_dup = property_dup
+	.msg_dup = (int (*)(void **, const void *)) property_dup
 };
 
 // TODO incompatible with client sdk
