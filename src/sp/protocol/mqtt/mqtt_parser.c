@@ -596,7 +596,7 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 	if (cparam->will_flag != 0) {
 		if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
 			cparam->will_properties = decode_buf_properties(
-			    packet, len, &pos, &cparam->will_prop_len, false);
+			    packet, len, &pos, &cparam->will_prop_len, true);
 			if (cparam->will_properties) {
 				conn_param_set_will_property(
 				    cparam, cparam->will_properties);
