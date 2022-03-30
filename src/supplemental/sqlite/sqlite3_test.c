@@ -19,7 +19,6 @@ test_sqlite_write(void)
 	    sqlite3_exec(db,
 	        "create table t1(id integer,x integer,y integer ,weight real)",
 	        0, 0, 0) == 0);
-	clock_t t1 = clock();
 
 	sqlite3_exec(db, "begin;", 0, 0, 0);
 	sqlite3_stmt *stmt;
@@ -37,12 +36,8 @@ test_sqlite_write(void)
 	sqlite3_finalize(stmt);
 	
 	TEST_CHECK(sqlite3_exec(db, "commit;", 0, 0, 0) == 0);
-	clock_t t2 = clock();
 
 	TEST_CHECK(sqlite3_close(db) == 0);
-
-	printf(
-	    "\nwrite %d data, cost time: %ld ms\n", nCount, (t2 - t1) / 1000);
 }
 
 TEST_LIST = {
