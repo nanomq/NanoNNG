@@ -10,9 +10,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <sys/types.h>
-#include <syslog.h>
 #include <time.h>
-#include <unistd.h>
 
 // later expose on makefile
 
@@ -24,6 +22,15 @@
 #define DEBUG_CONSOLE
 #define DEBUG_FILE
 #define DEBUG_SYSLOG
+#endif
+
+#if defined(NNG_PLATFORM_WINDOWS)
+#ifdef DEBUG_SYSLOG
+#undef DEBUG_SYSLOG
+#endif
+#else
+#include <syslog.h>
+#include <unistd.h>
 #endif
 
 #undef DASH_DEBUG
