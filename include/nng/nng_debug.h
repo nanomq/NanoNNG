@@ -40,7 +40,7 @@
 static inline char *
 nanomq_time_str()
 {
-	char * buffer;
+	char  *buffer;
 	time_t now;
 
 	now    = time(NULL);
@@ -57,55 +57,56 @@ nanomq_time_str()
 #endif
 
 #if defined(DEBUG_CONSOLE)
-#define debug_console(fmt, arg...)                                            \
-	do {                                                                  \
-		char *_t = nanomq_time_str();                                 \
-		fprintf(stderr, "%s %s: " fmt "\n", _t, __FUNCTION__, ##arg); \
+#define debug_console(fmt, ...)                                       \
+	do {                                                          \
+		char *_t = nanomq_time_str();                         \
+		fprintf(stderr, "%s %s: " fmt "\n", _t, __FUNCTION__, \
+		    ##__VA_ARGS__);                                   \
 	} while (0)
 #else
-#define debug_console(fmt, arg...) \
-	do {                       \
-	} while (0)
-#endif
-
-#if defined(DEBUG_FILE)
-#define debug_file(fmt, arg...)                                      \
-	do {                                                         \
-		char *_t   = nanomq_time_str();                      \
-		FILE *file = fopen(DEBUG_FILE_PATH, "a");            \
-		fprintf(file, "%s [%i] %s: " fmt "\n", _t, getpid(), \
-		    __FUNCTION__, ##arg);                            \
-		fclose(file);                                        \
-	} while (0)
-#else
-#define debug_file(fmt, arg...) \
+#define debug_console(fmt, ...) \
 	do {                    \
 	} while (0)
 #endif
 
+#if defined(DEBUG_FILE)
+#define debug_file(fmt, ...)                                         \
+	do {                                                         \
+		char *_t   = nanomq_time_str();                      \
+		FILE *file = fopen(DEBUG_FILE_PATH, "a");            \
+		fprintf(file, "%s [%i] %s: " fmt "\n", _t, getpid(), \
+		    __FUNCTION__, ##__VA_ARGS__);                    \
+		fclose(file);                                        \
+	} while (0)
+#else
+#define debug_file(fmt, ...) \
+	do {                 \
+	} while (0)
+#endif
+
 #if defined(DEBUG_SYSLOG)
-#define debug_syslog(fmt, arg...)                                       \
+#define debug_syslog(fmt, ...)                                          \
 	do {                                                            \
 		openlog("nng-nanomq", LOG_PID, LOG_DAEMON | LOG_EMERG); \
-		syslog(0, "%s: " fmt, __FUNCTION__, ##arg);             \
+		syslog(0, "%s: " fmt, __FUNCTION__, ##__VA_ARGS__);     \
 		closelog();                                             \
 	} while (0)
 #else
-#define debug_syslog(fmt, arg...) \
-	do {                      \
+#define debug_syslog(fmt, ...) \
+	do {                   \
 	} while (0)
 #endif
 
 #if defined(DASH_DEBUG)
-#define debug_msg(fmt, arg...)             \
-	do {                               \
-		debug_console(fmt, ##arg); \
-		debug_file(fmt, ##arg);    \
-		debug_syslog(fmt, ##arg);  \
+#define debug_msg(fmt, ...)                        \
+	do {                                       \
+		debug_console(fmt, ##__VA_ARGS__); \
+		debug_file(fmt, ##__VA_ARGS__);    \
+		debug_syslog(fmt, ##__VA_ARGS__);  \
 	} while (0)
 #else
-#define debug_msg(fmt, arg...) \
-	do {                   \
+#define debug_msg(fmt, ...) \
+	do {                \
 	} while (0)
 #endif
 
