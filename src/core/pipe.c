@@ -12,8 +12,6 @@
 #include "core/nng_impl.h"
 #include "sockimpl.h"
 
-#include <stdio.h>
-
 // This file contains functions related to pipe objects.
 //
 // Operations on pipes (to the transport) are generally blocking operations,
@@ -59,6 +57,7 @@ pipe_destroy(void *arg)
 	if ((p->p_tran_data != NULL) && (p->p_tran_ops.p_stop != NULL)) {
 		p->p_tran_ops.p_stop(p->p_tran_data);
 	}
+	NNI_ASSERT(nni_list_empty(&p->minfos)); // TODO maybe need to free
 
 #ifdef NNG_ENABLE_STATS
 	nni_stat_unregister(&p->st_root);
@@ -258,6 +257,7 @@ pipe_create(nni_pipe **pp, nni_sock *sock, nni_sp_tran *tran, void *tran_data)
 	// NanoMQ
 	p->packet_id = 0;
 	p->cache     = false;
+	NNI_LIST_INIT(&p->minfos, struct minfo, node);
 
 	nni_atomic_init_bool(&p->p_closed);
 	nni_atomic_flag_reset(&p->p_stop);
