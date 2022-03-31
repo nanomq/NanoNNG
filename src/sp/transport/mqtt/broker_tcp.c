@@ -118,7 +118,6 @@ static void
 tcptran_pipe_close(void *arg)
 {
 	tcptran_pipe *p = arg;
-	// nni_pipe *    npipe = p->npipe;
 
 	nni_mtx_lock(&p->mtx);
 	p->closed = true;
@@ -155,7 +154,7 @@ tcptran_pipe_init(void *arg, nni_pipe *npipe)
 
 	nni_pipe_set_conn_param(npipe, p->tcp_cparam);
 	p->npipe    = npipe;
-		npipe->nano_qos_db = nng_alloc(sizeof(struct nni_id_map));
+	npipe->nano_qos_db = nng_alloc(sizeof(struct nni_id_map));
 	nni_id_map_init(npipe->nano_qos_db, 0, 0, false);
 	p->conn_buf = NULL;
 	p->busy     = false;
