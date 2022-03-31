@@ -8,8 +8,14 @@
 #
 if (NNG_ENABLE_SQLITE)
   nng_sources(sqlite3.c sqlite3.h)
-  nng_link_libraries(dl)
-  nng_test_if(sqlite3_test)
+
+  if (NNG_PLATFORM_POSIX)
+    nng_link_libraries(dl)
+  elseif (NNG_PLATFORM_WINDOWS)
+    nng_link_libraries(ws2_32)
+  endif()
+
+  nng_test(sqlite3_test)
 endif (NNG_ENABLE_SQLITE)
 
 
