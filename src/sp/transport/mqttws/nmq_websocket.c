@@ -250,9 +250,6 @@ reset:
 		nni_msg_free(smsg);
 		p->tmp_msg = NULL;
 	}
-	if (p->ws_param != NULL) {
-		conn_param_free(p->ws_param);
-	}
 	nni_mtx_unlock(&p->mtx);
 	return;
 }
@@ -453,6 +450,8 @@ wstran_pipe_init(void *arg, nni_pipe *pipe)
 
 	nni_pipe_set_conn_param(pipe, p->ws_param);
 	p->npipe      = pipe;
+	pipe->nano_qos_db = nng_alloc(sizeof(struct nni_id_map));
+	nni_id_map_init(pipe->nano_qos_db, 0, 0, false);
 	p->gotrxhead  = 0;
 	p->wantrxhead = 0;
 	p->ep_aio     = NULL;
