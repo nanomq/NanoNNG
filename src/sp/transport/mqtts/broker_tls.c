@@ -8,7 +8,6 @@
 //
 #include <conf.h>
 #include <mqtt_db.h>
-#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
