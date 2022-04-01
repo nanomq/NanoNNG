@@ -154,10 +154,12 @@ tcptran_pipe_init(void *arg, nni_pipe *npipe)
 
 	nni_pipe_set_conn_param(npipe, p->tcp_cparam);
 	p->npipe    = npipe;
-		npipe->nano_qos_db = nng_alloc(sizeof(struct nni_id_map));
-	nni_id_map_init(npipe->nano_qos_db, 0, 0, false);
 	p->conn_buf = NULL;
 	p->busy     = false;
+
+	npipe->nano_qos_db = nng_alloc(sizeof(struct nni_id_map));
+	nni_id_map_init(npipe->nano_qos_db, 0, 0, false);
+
 	nni_lmq_init(&p->rslmq, 16);
 	p->qos_buf = nng_alloc(16 + NNI_NANO_MAX_PACKET_SIZE);
 	// the size limit of qos_buf reserve 1 byte for property length
@@ -508,6 +510,7 @@ tcptran_pipe_recv_cb(void *arg)
 	nni_aio *     rxaio = p->rxaio;
 	conn_param *  cparam;
 	bool          ack = false;
+	nni_pipe *    npipe = p->npipe;
 
 	debug_msg("tcptran_pipe_recv_cb %p\n", p);
 	nni_mtx_lock(&p->mtx);
@@ -729,6 +732,12 @@ tcptran_pipe_recv_cb(void *arg)
 		}
 		ack = false;
 	}
+
+	// Store Subid RAP Topic for sub
+	if (type == CMD_SUBSCRIBE) {
+		nmq_subinfo_decode(msg, &npipe->subinfol, cparam->pro_ver);
+	}
+
 	// keep connection & Schedule next receive
 	// nni_pipe_bump_rx(p->npipe, n);
 	if (!nni_list_empty(&p->recvq)) {

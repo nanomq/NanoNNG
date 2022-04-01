@@ -9,6 +9,7 @@
 
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "core/nng_impl.h"
+#include "core/sockimpl.h"
 #include "nng/nng_debug.h"
 #include "nng/protocol/mqtt/mqtt.h"
 #include "supplemental/mqtt/mqtt_msg.h"
@@ -1224,6 +1225,94 @@ nmq_msgack_encode(nng_msg *msg, uint16_t packet_id, uint8_t reason_code,
 		nni_msg_append(msg, &reason_code, 1);
 		//All ack msgs are same
 		encode_properties(msg, prop, 0);
+	}
+
+	return MQTT_SUCCESS;
+}
+
+/**
+ * @brief decode sub for subid, topics and RAP to subinfol
+ *
+ * @param msg
+ * @param ptr to subinfol
+ * @param mqtt version
+ * @return int
+ */
+int
+nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t version)
+{
+	char *        topic;
+	uint8_t       len_of_topic = 0, *payload_ptr, *var_ptr;
+	uint32_t      len, len_of_varint = 0, len_of_str = 0, subid = 0;
+	size_t        bpos = 0, remain = 0;
+	struct subinfo *sn = NULL;
+	nni_list *ll = l;
+
+	if (!l || !msg)
+		return (-1);
+	if (version != PROTOCOL_VERSION_v5)
+		return (-1);
+
+	len         = get_var_integer(nni_msg_body(msg) + 2, &len_of_varint);
+	var_ptr     = nni_msg_body(msg);
+	payload_ptr = nni_msg_body(msg) + 2 + len + len_of_varint;
+	int pos = 2 + len_of_varint, target_pos = 2 + len_of_varint + len;
+	while (pos < target_pos) {
+		switch (*(var_ptr + pos)) {
+		case USER_PROPERTY:
+			// key
+			NNI_GET16(var_ptr + pos, len_of_str);
+			pos += len_of_str;
+			len_of_str = 0;
+			// value
+			NNI_GET16(var_ptr + pos, len_of_str);
+			pos += len_of_str;
+			len_of_str = 0;
+			break;
+		case SUBSCRIPTION_IDENTIFIER:
+			subid = get_var_integer(var_ptr + pos, &len_of_varint);
+			if (subid == 0)
+				return (-1);
+			pos += len_of_varint;
+			break;
+		default:
+			debug_msg("Error: Invalid property id");
+			return (-2);
+		}
+	}
+	if (pos > target_pos)
+		return (-2);
+
+	remain = nni_msg_remaining_len(msg) - target_pos;
+
+	while (bpos < remain) {
+		NNI_GET16(payload_ptr + bpos, len_of_topic);
+
+		if (len_of_topic == 0)
+			continue;
+
+		debug_msg(
+		    "The current process topic is %s", payload_ptr + bpos + 2);
+		if ((sn = nng_alloc(sizeof(struct subinfo))) == NULL)
+			return (-2);
+
+		topic = nng_alloc(len_of_topic + 1);
+		strncpy(topic, (char *) payload_ptr + bpos, len_of_topic);
+		topic[len_of_topic] = 0x00;
+
+		sn->topic = topic;
+		bpos += len_of_topic;
+		bpos += 2;
+
+		sn->subid = subid;
+		sn->rap   = (int) ((0x08 & *(payload_ptr + bpos)) > 0);
+		NNI_LIST_NODE_INIT(&sn->node);
+
+		nni_list_append(ll, sn);
+
+		debug_msg("sub topic: %s subid: %d rap: %d \n", sn->topic,
+		    sn->subid, sn->rap);
+		bpos += 1;
 	}
 
 	return MQTT_SUCCESS;
