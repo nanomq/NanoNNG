@@ -195,6 +195,13 @@ typedef enum {
 } mqtt_control_packet_types;
 
 //MQTTV5
+typedef enum {
+	// 0 : V4 1: V5 5: V4 to V5  4: V5 to V4
+	MQTTV4 = 0,
+	MQTTV5 = 1,
+	MQTTV4_V5 = 2,
+	MQTTV5_V4 = 3,
+} target_prover;
 
 //flow control:how many QoS packet broker willing to process at same time.
 #define NANO_MAX_QOS_PACKET 1024	//TODO set in conf
