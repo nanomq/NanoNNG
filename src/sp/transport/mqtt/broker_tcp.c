@@ -850,7 +850,8 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		// uint8_t  tar_prover = 0;	// 0 : V4 1: V5 5: V4 to V5  4: V5 to V4
 		uint8_t  var_extra[2],
 		    fixheader[NNI_NANO_MAX_HEADER_SIZE] = { 0 },
-		    tmp[4]                              = { 0 };
+		    tmp[4]                              = { 0 },
+			subid[3] 							= {0};
 		int       len_offset                    = 0;
 		uint32_t  pos                           = 1;
 		nni_pipe *pipe;
@@ -880,7 +881,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		}
 		// check max packet size for this client/msg
 		if (p->tcp_cparam->pro_ver == 5) {
-			uint32_t tlen = mlen + hlen;
+			uint32_t total_len = mlen + hlen;
 			// get retain as published indicator
 			void    *retain_val = nni_aio_get_prov_data(aio);
 			retain              = (uint8_t) retain_val;
@@ -892,7 +893,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 			// NNI_LIST_FOREACH() {}
 			sub_id = 0X14;
 
-			if (tlen > p->tcp_cparam->max_packet_size) {
+			if (total_len > p->tcp_cparam->max_packet_size) {
 				// drop msg and finish aio
 				// pretend it has been sent
 				nni_msg_free(msg);
@@ -992,6 +993,9 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 			NNI_PUT16(var_extra, pid);
 			qlength += 2;
 		}
+		if (target_prover == MQTTV5) {
+			// qlength+=2;
+		}
 		// use qos_buf to keep zero-copy
 		if (qlength > 16 + NNI_NANO_MAX_PACKET_SIZE) {
 			nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
@@ -1010,20 +1014,17 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 			//add property length 0
 			*(p->qos_buf + qlength - 1) = 0x00;
 			// TODO should we support sub id in V4 to V5?
-		} else if (target_prover == MQTTV5) {
+		}
+		if (target_prover == MQTTV5) {
 		}
 		iov[niov].iov_buf = p->qos_buf;
 		iov[niov].iov_len = qlength;
 		niov++;
 		// variable header + payload
-		if (mlen > 0 && qos_pac > 0) {
+		if (mlen > 0) {
 			// determine if it needs to skip packet id field
-			iov[niov].iov_buf = body + 2 + tlen + 2 + plength;
-			iov[niov].iov_len = mlen - 4 - tlen - plength;
-			niov++;
-		} else if (mlen > 0) {
-			iov[niov].iov_buf = body + 2 + tlen + plength;
-			iov[niov].iov_len = mlen - 2 - tlen - plength;
+			iov[niov].iov_buf = body + 2 + tlen + len_offset + plength;
+			iov[niov].iov_len = mlen - 2 - len_offset - tlen - plength;
 			niov++;
 		}
 		// MQTT V5 flow control
