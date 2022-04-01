@@ -92,10 +92,10 @@ struct nni_listener {
 #endif
 };
 
-struct minfo {
-	char * topic;
-	int subid;
-	int qos;
+struct subinfo {
+	char *        topic;
+	int           subid;
+	int           rap; // Retain As Publish
 	nni_list_node node;
 };
 
@@ -134,7 +134,7 @@ struct nni_pipe {
 	bool        cache;
 	uint16_t    packet_id;
 	nni_id_map *nano_qos_db; // storing qos backup msgs
-	nni_list    minfos; // addition info for sub
+	nni_list    subinfol; // additional info for sub
 };
 
 extern int nni_sock_add_dialer(nni_sock *, nni_dialer *);
