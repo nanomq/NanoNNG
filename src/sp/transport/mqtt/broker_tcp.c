@@ -814,8 +814,6 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 	int      niov;
 	nni_iov  iov[2];
 	uint8_t  qos, retain = 1;
-	uint32_t sub_id;
-	uint8_t  prover = 0;	// 0 : as it is 5: V4 to V5  4: V5 to V4
 
 	debug_msg("########### tcptran_pipe_send_start ###########");
 	if (p->closed) {
@@ -842,13 +840,14 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 	qos = NANO_NNI_LMQ_GET_QOS_BITS(msg);
 	// qos default to 0 if the msg is not PUBLISH
 	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
-	nni_aio_set_msg(aio, msg);
 
 	// Ready for composing
 	// never modify the original msg
 	if (nni_msg_header_len(msg) > 0 &&
 	    nni_msg_get_type(msg) == CMD_PUBLISH) {
 		uint8_t *body, *header, qos_pac;
+		target_prover target_prover ;
+		// uint8_t  tar_prover = 0;	// 0 : V4 1: V5 5: V4 to V5  4: V5 to V4
 		uint8_t  var_extra[2],
 		    fixheader[NNI_NANO_MAX_HEADER_SIZE] = { 0 },
 		    tmp[4]                              = { 0 };
@@ -856,6 +855,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		uint32_t  pos                           = 1;
 		nni_pipe *pipe;
 		uint16_t  pid;
+		uint32_t sub_id = 0;
 		size_t    tlen, rlen, mlen, hlen, qlength, plength;
 
 		pipe    = p->npipe;
@@ -866,7 +866,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		mlen = nni_msg_len(msg);
 		hlen = nni_msg_header_len(msg);
 
-		// check max packet size/msg expiry interval for this client/msg
+		// check max packet size for this client/msg
 		if (p->tcp_cparam != NULL && p->tcp_cparam->pro_ver == 5) {
 			uint32_t tlen       = mlen + hlen;
 			// get retain as published indicator
@@ -876,35 +876,40 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 			if (retain == 0) {
 				*header = *header & 0xFE;
 			}
+			//get sub id
+			// NNI_LIST_FOREACH() {}
+			sub_id = 0X14;
 
 			if (tlen > p->tcp_cparam->max_packet_size) {
-				// drop msg and finish aio pretend it has been
-				// sent
+				// drop msg and finish aio
+				// pretend it has been sent
 				nni_msg_free(msg);
 				nni_aio_set_msg(aio, NULL);
 				nni_aio_finish(aio, 0, 0);
 			}
 			if (nni_msg_cmd_type(msg) == CMD_PUBLISH) {
 				// V4 to V5 add 0 property length
-				prover     = 5;
+				target_prover     = MQTTV4_V5;
 				len_offset = 1;
 				qlength++;
 			}
+			target_prover = MQTTV5;
 		}
 		if (nni_msg_cmd_type(msg) == CMD_PUBLISH_V5 &&
 		    p->tcp_cparam->pro_ver != 5) {
 			// V5 to V4 shrink msg, remove property length
 			// APP layer must give topic name even if topic alias
 			// is set
-			// TODO replace it with len_offset = 0 -
-			// nni_mqtt_get_property_len();
-			prover = 4;
+			// TODO replace it with len_offset = 0
+			target_prover = MQTTV5_V4;
+		} else {
+			target_prover = MQTTV4;
 		}
 
 		NNI_GET16(body, tlen);
 
 		qos_pac = nni_msg_get_pub_qos(msg);
-		if (qos_pac == 0 && prover == 0) {
+		if (qos_pac == 0 && target_prover <= 2 ) {
 			// save time & space for QoS 0 publish
 			goto send;
 		}
@@ -927,8 +932,9 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 				len_offset   = len_offset - 2;
 			}
 		}
-		if (prover == 4) {
-			//caculate property length
+		if (target_prover == MQTTV5_V4) {
+			// V5 msg sent to V4 client
+			//caculate property length and delete it
 			uint32_t bytes = 0;
 			plength = get_var_integer(body + 2 + tlen - len_offset, &bytes);
 			plength+=bytes;
@@ -985,12 +991,16 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 			nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
 			p->qos_buf = nng_alloc(sizeof(uint8_t) * (qlength));
 		}
+		//copy fixheader to qos_buf
 		memcpy(p->qos_buf, fixheader, rlen + 1);
+		//copy topic + topic length to qos_buf
 		memcpy(p->qos_buf + rlen + 1, body, tlen + 2);
 		if (qos > 0) {
+			//copy packet id
 			memcpy(p->qos_buf + rlen + tlen + 3, var_extra, 2);
 		}
-		if (prover == 5) {
+		if (target_prover == MQTTV4_V5) {
+			//V4 msg sent to V5 client
 			//add property length
 			*(p->qos_buf + qlength - 1) = 0x00;
 			// memcpy(p->qos_buf + rlen + tlen + 3, , 1);
