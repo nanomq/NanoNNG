@@ -1290,19 +1290,20 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t version)
 
 		if (len_of_topic == 0)
 			continue;
+		bpos += 2;
 
 		debug_msg(
-		    "The current process topic is %s", payload_ptr + bpos + 2);
+		    "The current process topic is %s", payload_ptr + bpos);
 		if ((sn = nng_alloc(sizeof(struct subinfo))) == NULL)
 			return (-2);
+		if ((topic = nng_alloc(len_of_topic + 1)) == NULL)
+			return (-2);
 
-		topic = nng_alloc(len_of_topic + 1);
 		strncpy(topic, (char *) payload_ptr + bpos, len_of_topic);
 		topic[len_of_topic] = 0x00;
 
 		sn->topic = topic;
 		bpos += len_of_topic;
-		bpos += 2;
 
 		sn->subid = subid;
 		sn->rap   = (int) ((0x08 & *(payload_ptr + bpos)) > 0);
