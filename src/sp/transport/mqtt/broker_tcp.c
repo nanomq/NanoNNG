@@ -857,6 +857,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		nni_pipe *pipe;
 		uint16_t  pid;
 		uint32_t sub_id = 0;
+		uint32_t property_bytes = 0, property_len = 0;
 		size_t    tlen, rlen, mlen, hlen, qlength, plength;
 
 		pipe    = p->npipe;
@@ -864,12 +865,23 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		header  = nni_msg_header(msg);
 		qlength = 0;
 		plength = 0;
-		mlen = nni_msg_len(msg);
-		hlen = nni_msg_header_len(msg);
+		mlen    = nni_msg_len(msg);
+		hlen    = nni_msg_header_len(msg);
+		qos_pac = nni_msg_get_pub_qos(msg);
+		NNI_GET16(body, tlen);
 
+		if (nni_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
+			if (qos_pac > 0) {
+				property_len = get_var_integer(
+				    body + 4 + tlen, &property_bytes);
+			} else {
+				property_len = get_var_integer(
+				    body + 2 + tlen, &property_bytes);
+			}
+		}
 		// check max packet size for this client/msg
-		if (p->tcp_cparam != NULL && p->tcp_cparam->pro_ver == 5) {
-			uint32_t tlen       = mlen + hlen;
+		if (p->tcp_cparam->pro_ver == 5) {
+			uint32_t tlen = mlen + hlen;
 			// get retain as published indicator
 			void    *retain_val = nni_aio_get_prov_data(aio);
 			retain              = (uint8_t) retain_val;
@@ -893,23 +905,19 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 				target_prover     = MQTTV4_V5;
 				len_offset = 1;
 				qlength++;
+			}else {
+				target_prover = MQTTV5;
 			}
-			target_prover = MQTTV5;
-		}
-		if (nni_msg_cmd_type(msg) == CMD_PUBLISH_V5 &&
-		    p->tcp_cparam->pro_ver != 5) {
-			// V5 to V4 shrink msg, remove property length
-			// APP layer must give topic name even if topic alias
-			// is set
-			target_prover = MQTTV5_V4;
-		} else {
+		} else if (p->tcp_cparam->pro_ver != 5) {
+			if (nni_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
+				// V5 to V4 shrink msg, remove property length
+				// APP layer must give topic name even if topic
+				// alias is set
+				target_prover = MQTTV5_V4;
+			}
 			target_prover = MQTTV4;
 		}
-
-		NNI_GET16(body, tlen);
-
-		qos_pac = nni_msg_get_pub_qos(msg);
-		if (qos_pac == 0 && target_prover <= 2 ) {
+		if (qos_pac == 0 && target_prover < 2 ) {
 			// save time & space for QoS 0 publish
 			goto send;
 		}
@@ -935,14 +943,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		if (target_prover == MQTTV5_V4) {
 			// V5 msg sent to V4 client
 			//caculate property length and delete it
-			uint32_t bytes = 0;
-			printf("!!!%x %x \n", *(body + 2 + tlen - len_offset), *(body + 2 + tlen - len_offset +1));
-			if (qos_pac > 0) {
-				plength = get_var_integer(body + 4 + tlen, &bytes);
-			} else {
-				plength = get_var_integer(body + 2 + tlen, &bytes);
-			}
-			plength+=bytes;
+			plength = property_len + property_bytes;
 		}
 		rlen = put_var_integer(
 		    tmp, get_var_integer(header, &pos) + len_offset - plength);
@@ -961,6 +962,8 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 			// set pid
 			len_offset = 2;
 			nni_msg *old;
+			// packetid in aio to differ resend msg
+			// TODO replace it with set prov data 
 			pid = nni_aio_get_packetid(aio);
 			if (pid == 0) {
 				// first time send this msg
@@ -1008,12 +1011,8 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 			//V4 msg sent to V5 client
 			//add property length 0
 			*(p->qos_buf + qlength - 1) = 0x00;
-			// memcpy(p->qos_buf + rlen + tlen + 3, , 1);
+			// TODO should we support sub id in V4 to V5?
 		} else if (target_prover == MQTTV5) {
-			//append sub id
-
-			// plength+=4;
-
 		}
 		iov[niov].iov_buf = p->qos_buf;
 		iov[niov].iov_len = qlength;
