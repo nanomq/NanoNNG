@@ -442,9 +442,9 @@ nano_ctx_send(void *arg, nni_aio *aio)
 
 	if (!p->busy) {
 		p->busy = true;
-		msg = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
-		nni_aio_set_prov_data(&p->aio_send,
-		    nni_aio_get_prov_data(aio));
+		msg     = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
+		nni_aio_set_prov_data(
+		    &p->aio_send, nni_aio_get_prov_data(aio));
 		nni_aio_set_msg(&p->aio_send, msg);
 		nni_pipe_send(p->pipe, &p->aio_send);
 		nni_mtx_unlock(&p->lk);
@@ -985,10 +985,11 @@ nano_pipe_recv_cb(void *arg)
 
 	// TODO HOOK
 	switch (nng_msg_cmd_type(msg)) {
-	case CMD_UNSUBSCRIBE:
 	case CMD_SUBSCRIBE:
+	case CMD_UNSUBSCRIBE:
 		cparam = p->conn_param;
 		if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
+			// extract sub id
 			len = get_var_integer(ptr + 2, &len_of_varint);
 			nni_msg_set_payload_ptr(
 			    msg, ptr + 2 + len + len_of_varint);

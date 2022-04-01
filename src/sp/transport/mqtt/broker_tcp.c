@@ -53,6 +53,7 @@ struct tcptran_pipe {
 	conn_param *    tcp_cparam;
 	nni_list        recvq;
 	nni_list        sendq;
+	// nni_id_map		subinfo;
 	nni_list_node   node;
 	tcptran_ep *    ep;
 	nni_atomic_flag reaped;
@@ -812,7 +813,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 	nni_msg *msg;
 	int      niov;
 	nni_iov  iov[2];
-	uint8_t  qos, retain;
+	uint8_t  qos, retain = 1;
 	uint32_t sub_id;
 	uint8_t  prover = 0;	// 0 : as it is 5: V4 to V5  4: V5 to V4
 
@@ -843,12 +844,6 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
 	nni_aio_set_msg(aio, msg);
 
-	void * retain_val = nni_aio_get_prov_data(aio);
-	retain = (uint8_t) retain_val;
-	nni_aio_set_prov_data(aio, NULL);
-	debug_msg("retain value is %d (unused)", retain);
-	// TODO retain composed
-
 	// Ready for composing
 	// never modify the original msg
 	if (nni_msg_header_len(msg) > 0 &&
@@ -873,7 +868,14 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 
 		// check max packet size/msg expiry interval for this client/msg
 		if (p->tcp_cparam != NULL && p->tcp_cparam->pro_ver == 5) {
-			uint32_t tlen = mlen+hlen;
+			uint32_t tlen       = mlen + hlen;
+			// get retain as published indicator
+			void    *retain_val = nni_aio_get_prov_data(aio);
+			retain              = (uint8_t) retain_val;
+			nni_aio_set_prov_data(aio, NULL);
+			if (retain == 0) {
+				*header = *header & 0xFE;
+			}
 
 			if (tlen > p->tcp_cparam->max_packet_size) {
 				// drop msg and finish aio pretend it has been
