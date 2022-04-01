@@ -2433,9 +2433,8 @@ get_properties_len(property *prop)
 				break;
 			case VARINT:
 				prop_len++;
-				prop_len += (p->data.p_value.varint +
-				    byte_number_for_variable_length(
-				        p->data.p_value.varint));
+				prop_len += (byte_number_for_variable_length(
+				    p->data.p_value.varint));
 				break;
 			case BINARY:
 				prop_len++;
