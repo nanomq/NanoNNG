@@ -839,6 +839,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 	qos = NANO_NNI_LMQ_GET_QOS_BITS(msg);
 	// qos default to 0 if the msg is not PUBLISH
 	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
+	nni_aio_set_msg(aio, msg);
 
 	// Ready for composing
 	// never modify the original msg
@@ -899,7 +900,6 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 			// V5 to V4 shrink msg, remove property length
 			// APP layer must give topic name even if topic alias
 			// is set
-			// TODO replace it with len_offset = 0
 			target_prover = MQTTV5_V4;
 		} else {
 			target_prover = MQTTV4;
@@ -935,7 +935,12 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 			// V5 msg sent to V4 client
 			//caculate property length and delete it
 			uint32_t bytes = 0;
-			plength = get_var_integer(body + 2 + tlen - len_offset, &bytes);
+			printf("!!!%x %x \n", *(body + 2 + tlen - len_offset), *(body + 2 + tlen - len_offset +1));
+			if (qos_pac > 0) {
+				plength = get_var_integer(body + 4 + tlen, &bytes);
+			} else {
+				plength = get_var_integer(body + 2 + tlen, &bytes);
+			}
 			plength+=bytes;
 		}
 		rlen = put_var_integer(
@@ -987,7 +992,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		// use qos_buf to keep zero-copy
 		if (qlength > 16 + NNI_NANO_MAX_PACKET_SIZE) {
 			nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
-			p->qos_buf = nng_alloc(sizeof(uint8_t) * (qlength));
+			p->qos_buf = nng_zalloc(sizeof(uint8_t) * (qlength));
 		}
 		//copy fixheader to qos_buf
 		memcpy(p->qos_buf, fixheader, rlen + 1);
@@ -999,9 +1004,14 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		}
 		if (target_prover == MQTTV4_V5) {
 			//V4 msg sent to V5 client
-			//add property length
+			//add property length 0
 			*(p->qos_buf + qlength - 1) = 0x00;
 			// memcpy(p->qos_buf + rlen + tlen + 3, , 1);
+		} else if (target_prover == MQTTV5) {
+			//append sub id
+
+			// plength+=4;
+
 		}
 		iov[niov].iov_buf = p->qos_buf;
 		iov[niov].iov_len = qlength;
