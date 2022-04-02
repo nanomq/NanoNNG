@@ -1,5 +1,5 @@
 //
-// Copyright 2020 NanoMQ Team, Inc. <jaylin@emqx.io>
+// Copyright 2022 NanoMQ Team, Inc. <jaylin@emqx.io>
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -11,11 +11,11 @@
 #include "core/nng_impl.h"
 #include "core/sockimpl.h"
 #include "nng/nng_debug.h"
+#include "core/zmalloc.h"
 #include "nng/protocol/mqtt/mqtt.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 
 #include "nng/mqtt/packet.h"
-#include <conf.h>
 // #include <iconv.h>
 #include <stdio.h>
 #include <string.h>
@@ -1317,4 +1317,135 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t version)
 	}
 
 	return MQTT_SUCCESS;
+}
+
+
+static int
+topic_count(const char *topic)
+{
+	int         cnt = 0;
+	const char *t   = topic;
+
+	while (t) {
+		// log_info("%s", t);
+		t = strchr(t, '/');
+		cnt++;
+		if (t == NULL) {
+			break;
+		}
+		t++;
+	}
+
+	return cnt;
+}
+
+static void
+topic_queue_free(char **topic_queue)
+{
+	char * t  = NULL;
+	char **tq = topic_queue;
+
+	while (*topic_queue) {
+		t = *topic_queue;
+		topic_queue++;
+		zfree(t);
+		t = NULL;
+	}
+
+	if (tq) {
+		zfree(tq);
+	}
+}
+
+static char **
+topic_parse(const char *topic)
+{
+	if (topic == NULL) {
+		// log_err("topic is NULL");
+		return NULL;
+	}
+
+	int         row   = 0;
+	int         len   = 2;
+	const char *b_pos = topic;
+	char *      pos   = NULL;
+
+	int cnt = topic_count(topic);
+
+	// Here we will get (cnt + 1) memory, one for NULL end
+	char **topic_queue = (char **) zmalloc(sizeof(char *) * (cnt + 1));
+
+	while ((pos = strchr(b_pos, '/')) != NULL) {
+
+		len              = pos - b_pos + 1;
+		topic_queue[row] = (char *) zmalloc(sizeof(char) * len);
+		memcpy(topic_queue[row], b_pos, (len - 1));
+		topic_queue[row][len - 1] = '\0';
+		b_pos                     = pos + 1;
+		row++;
+	}
+
+	len = strlen(b_pos);
+
+	topic_queue[row] = (char *) zmalloc(sizeof(char) * (len + 1));
+	memcpy(topic_queue[row], b_pos, (len));
+	topic_queue[row][len] = '\0';
+	topic_queue[++row]    = NULL;
+
+	return topic_queue;
+}
+
+
+bool
+check_ifwildcard(const char *w, const char *n)
+{
+	char **w_q    = topic_parse(w);
+	char **n_q    = topic_parse(n);
+	char **wq_free = w_q;
+	char **nq_free = n_q;
+	bool   result = true;
+	bool   flag   = false;
+
+	while (*w_q != NULL && *n_q != NULL) {
+		// printf("w: %s, n: %s\n", *w_q, *n_q);
+		if (strcmp(*w_q, *n_q) != 0) {
+			if (strcmp(*w_q, "#") == 0) {
+				flag = true;
+				break;
+			} else if (strcmp(*w_q, "+") != 0) {
+				result = false;
+				break;
+			}
+		}
+		w_q++;
+		n_q++;
+	}
+
+	if (*w_q && strcmp(*w_q, "#") == 0) {
+		flag = true;
+	}
+	if (*w_q && strcmp(*w_q, "+") == 0) {
+		flag = true;
+	}
+
+	if (!flag) {
+		if (*w_q || *n_q) {
+			result = false;
+		}
+	}
+
+	topic_queue_free(wq_free);
+	topic_queue_free(nq_free);
+
+	// printf("value: %d\n", result);
+	return result;
+}
+
+bool
+topic_filter(const char *origin, const char *input)
+{
+	if (strcmp(origin, input) == 0) {
+		return true;
+	}
+	return check_ifwildcard(origin, input);
 }
