@@ -60,7 +60,7 @@ nni_panic(const char *fmt, ...)
 
 	nni_println(buf);
 	nni_println("This message is indicative of a BUG.");
-	nni_println("Report this at https://github.com/nanomq/nanomq");
+	nni_println("Report this at https://github.com/emqx/nanomq");
 
 	nni_show_backtrace();
 	nni_plat_abort();
