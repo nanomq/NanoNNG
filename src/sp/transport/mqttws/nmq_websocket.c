@@ -454,6 +454,9 @@ wstran_pipe_init(void *arg, nni_pipe *pipe)
 
 	nni_pipe_set_conn_param(pipe, p->ws_param);
 	p->npipe      = pipe;
+#ifndef NNG_SUPP_SQLITE
+	nni_qos_db_init_id_hash(npipe->nano_qos_db);
+#endif
 	p->gotrxhead  = 0;
 	p->wantrxhead = 0;
 	p->ep_aio     = NULL;
