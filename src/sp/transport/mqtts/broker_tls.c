@@ -19,6 +19,7 @@
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "nng/supplemental/tls/tls.h"
+#include "supplemental/mqtt/mqtt_qos_db_api.h"
 
 // TLS over TCP transport.   Platform specific TLS Over TCP operations must be
 // supplied as well.
@@ -753,7 +754,7 @@ tlstran_pipe_send_start(tlstran_pipe *p)
 				    "* processing QoS pubmsg with pipe: %p *",
 				    p);
 				nni_msg_clone(msg);
-				if ((old = nni_id_get(
+				if ((old = nni_qos_db_get(
 				         pipe->nano_qos_db, pid)) != NULL) {
 					// TODO packetid already exists.
 					// do we need to replace old with new
@@ -763,12 +764,13 @@ tlstran_pipe_send_start(tlstran_pipe *p)
 					    "nano_qos_db");
 					old =
 					    NANO_NNI_LMQ_GET_MSG_POINTER(old);
-					nni_msg_free(old);
+					nni_qos_db_remove_msg(
+					    pipe->nano_qos_db, old);
 					// nni_id_remove(&pipe->nano_qos_db,
 					// pid);
 				}
 				old = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
-				nni_id_set(pipe->nano_qos_db, pid, old);
+				nni_qos_db_set(pipe->nano_qos_db, pid, old);
 			}
 			NNI_PUT16(varheader, pid);
 			p->qlength += 2;

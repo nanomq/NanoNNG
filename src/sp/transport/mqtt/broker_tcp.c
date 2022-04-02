@@ -18,6 +18,7 @@
 
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
+#include "supplemental/mqtt/mqtt_qos_db_api.h"
 
 // TCP transport.   Platform specific TCP operations must be
 // supplied as well.
@@ -154,12 +155,12 @@ tcptran_pipe_init(void *arg, nni_pipe *npipe)
 
 	nni_pipe_set_conn_param(npipe, p->tcp_cparam);
 	p->npipe    = npipe;
+#ifndef NNG_SUPP_SQLITE
+	nni_qos_db_init_id_hash(npipe->nano_qos_db);
+#endif
 	p->conn_buf = NULL;
 	p->busy     = false;
-
-	npipe->nano_qos_db = nng_alloc(sizeof(struct nni_id_map));
-	nni_id_map_init(npipe->nano_qos_db, 0, 0, false);
-
+	
 	nni_lmq_init(&p->rslmq, 16);
 	p->qos_buf = nng_alloc(16 + NNI_NANO_MAX_PACKET_SIZE);
 	// the size limit of qos_buf reserve 1 byte for property length
@@ -956,7 +957,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 				    "* processing QoS pubmsg with pipe: %p *",
 				    p);
 				nni_msg_clone(msg);
-				if ((old = nni_id_get(
+				if ((old = nni_qos_db_get(
 				         pipe->nano_qos_db, pid)) != NULL) {
 					// TODO packetid already exists.
 					// do we need to replace old with new
@@ -966,12 +967,12 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 					    "nano_qos_db");
 					old =
 					    NANO_NNI_LMQ_GET_MSG_POINTER(old);
-					nni_msg_free(old);
-					// nni_id_remove(&pipe->nano_qos_db,
-					// pid);
+					
+					nni_qos_db_remove_msg(
+					    pipe->nano_qos_db, old);
 				}
 				old = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
-				nni_id_set(pipe->nano_qos_db, pid, old);
+				nni_qos_db_set(pipe->nano_qos_db, pid, old);
 			}
 			NNI_PUT16(var_extra, pid);
 			qlength += 2;
@@ -1190,6 +1191,9 @@ tcptran_pipe_start(tcptran_pipe *p, nng_stream *conn, tcptran_ep *ep)
 
 	nni_aio_set_timeout(p->negoaio,
 	    15 * 1000); // 15 sec timeout to negotiate abide with emqx
+
+	//nni_qos_db_set_pipe(p->npipe->nano_qos_db, p->npipe->p_id,
+	    //(const char *) conn_param_get_clientid(p->npipe->conn_param));
 	nng_stream_recv(p->conn, p->negoaio);
 }
 

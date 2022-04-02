@@ -110,7 +110,7 @@ struct conn_param {
 	uint8_t            will_flag;
 	uint8_t            will_retain;
 	uint8_t            will_qos;
-	nni_id_map *       nano_qos_db;
+	void *             nano_qos_db; // 'sqlite' or 'nni_id_hash_map'
 	bool               assignedid;
 	struct mqtt_string pro_name;
 	struct mqtt_string clientid;
