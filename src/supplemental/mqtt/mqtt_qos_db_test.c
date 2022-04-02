@@ -4,8 +4,6 @@
 #include "nng/nng.h"
 #include "nuts.h"
 
-#define DB_NAME "qos_db.db"
-
 void
 test_db_init(void)
 {
@@ -31,9 +29,10 @@ test_qos_db_set(void)
 	nni_msg_set_timestamp(msg, ts);
 
 	uint32_t pipe_id = 1001;
+	uint16_t packet_id = 999;
 	uint8_t  qos     = 1;
 	msg              = MQTT_DB_PACKED_MSG_QOS(msg, qos);
-	nni_mqtt_qos_db_set(db, pipe_id, msg);
+	nni_mqtt_qos_db_set(db, pipe_id, packet_id, msg);
 	msg = MQTT_DB_GET_MSG_POINTER(msg);
 
 	nni_msg_free(msg);
@@ -51,8 +50,9 @@ test_qos_db_get(void)
 	nni_time ts     = 1648004331;
 
 	uint32_t pipe_id = 1001;
+	uint16_t packet_id = 999;
 
-	nni_msg *msg = nni_mqtt_qos_db_get(db, pipe_id);
+	nni_msg *msg = nni_mqtt_qos_db_get(db, pipe_id, packet_id);
 	TEST_CHECK(MQTT_DB_GET_QOS_BITS(msg) == 1);
 	// be careful nni_msg had been changed in nni_mqtt_qos_db_get();
 	msg = MQTT_DB_GET_MSG_POINTER(msg);
@@ -70,12 +70,13 @@ test_qos_db_get_one(void)
 {
 	sqlite3 *db = NULL;
 	nni_mqtt_qos_db_init(&db);
-	uint32_t pipe_id = 0;
-	nni_msg *msg     = nni_mqtt_qos_db_get_one(db, &pipe_id);
+	uint32_t pipe_id   = 1001;
+	uint16_t packet_id = 999;
+	nni_msg *msg       = nni_mqtt_qos_db_get_one(db, pipe_id, &packet_id);
 	// be careful nni_msg had been changed in nni_mqtt_qos_db_get();
 	msg = MQTT_DB_GET_MSG_POINTER(msg);
 	TEST_CHECK(msg != NULL);
-	TEST_CHECK(pipe_id == 1001);
+	TEST_CHECK(packet_id == 999);
 	nni_msg_free(msg);
 	nni_mqtt_qos_db_close(db);
 }
@@ -85,7 +86,8 @@ test_qos_db_remove(void)
 {
 	sqlite3 *db = NULL;
 	nni_mqtt_qos_db_init(&db);
-	nni_mqtt_qos_db_remove(db, 1001);
+
+	nni_mqtt_qos_db_remove(db, 1001, 999);
 	nni_mqtt_qos_db_close(db);
 }
 
