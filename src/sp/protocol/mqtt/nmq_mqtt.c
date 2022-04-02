@@ -443,8 +443,6 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	if (!p->busy) {
 		p->busy = true;
 		msg     = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
-		nni_aio_set_prov_data(
-		    &p->aio_send, nni_aio_get_prov_data(aio));
 		nni_aio_set_msg(&p->aio_send, msg);
 		nni_pipe_send(p->pipe, &p->aio_send);
 		nni_mtx_unlock(&p->lk);

@@ -881,10 +881,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		// check max packet size for this client/msg
 		if (p->tcp_cparam->pro_ver == 5) {
 			uint32_t total_len = mlen + hlen;
-			// get retain as published indicator
-			void    *retain_val = nni_aio_get_prov_data(aio);
-			retain              = (uint8_t) retain_val;
-			nni_aio_set_prov_data(aio, NULL);
+			// & 0xFE ?????
 			if (retain == 0) {
 				*header = *header & 0xFE;
 			}
