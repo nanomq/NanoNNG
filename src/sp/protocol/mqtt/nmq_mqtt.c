@@ -995,7 +995,7 @@ nano_pipe_recv_cb(void *arg)
 	case CMD_PUBCOMP:
 		nni_mtx_lock(&p->lk);
 		NNI_GET16(ptr, ackid);
-		if ((qos_msg = nni_id_get(npipe->nano_qos_db, ackid)) !=
+		if ((qos_msg = nni_qos_db_get(npipe->nano_qos_db, ackid)) !=
 		    NULL) {
 			qos_msg = NANO_NNI_LMQ_GET_MSG_POINTER(qos_msg);
 			nni_qos_db_remove_msg(npipe->nano_qos_db, qos_msg);
