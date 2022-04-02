@@ -163,7 +163,7 @@ tcptran_pipe_init(void *arg, nni_pipe *npipe)
 	p->busy     = false;
 	
 	nni_lmq_init(&p->rslmq, 16);
-	p->qos_buf = nng_alloc(16 + NNI_NANO_MAX_PACKET_SIZE);
+	p->qos_buf = nng_zalloc(16 + NNI_NANO_MAX_PACKET_SIZE);
 	// the size limit of qos_buf reserve 1 byte for property length
 	p->qlength = 1;
 	return (0);
@@ -851,13 +851,11 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		// uint8_t  tar_prover = 0;	// 0 : V4 1: V5 5: V4 to V5  4: V5 to V4
 		uint8_t  var_extra[2],
 		    fixheader[NNI_NANO_MAX_HEADER_SIZE] = { 0 },
-		    tmp[4]                              = { 0 },
-			subid[3] 							= {0};
-		int       len_offset                    = 0;
-		uint32_t  pos                           = 1;
+		    tmp[4]                              = { 0 };
+		int       len_offset = 0, sub_id = 0;
+		uint32_t  pos = 1;
 		nni_pipe *pipe;
 		uint16_t  pid;
-		uint32_t sub_id = 0;
 		uint32_t property_bytes = 0, property_len = 0;
 		size_t    tlen, rlen, mlen, hlen, qlength, plength;
 
@@ -890,9 +888,6 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 			if (retain == 0) {
 				*header = *header & 0xFE;
 			}
-			//get sub id
-			// NNI_LIST_FOREACH() {}
-			sub_id = 0X14;
 
 			if (total_len > p->tcp_cparam->max_packet_size) {
 				// drop msg and finish aio
@@ -906,8 +901,20 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 				target_prover     = MQTTV4_V5;
 				len_offset = 1;
 				qlength++;
-			}else {
+			} else {
 				target_prover = MQTTV5;
+				// subid
+				subinfo *info;
+				NNI_LIST_FOREACH (&p->npipe->subinfol, info) {
+					if (strncmp(info->topic, body + 2,
+					        tlen) == 0) {
+						sub_id = info->subid;
+						len_offset += 2;
+						// TODO how to check sub
+						// when multiple msg mathed
+						break;
+					}
+				}
 			}
 		} else if (p->tcp_cparam->pro_ver != 5) {
 			if (nni_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
@@ -920,6 +927,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		}
 		if (qos_pac == 0 && target_prover < 2 ) {
 			// save time & space for QoS 0 publish
+			// FIXME SUB ID
 			goto send;
 		}
 
@@ -938,7 +946,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 			} else {
 				// set qos to 0
 				fixheader[0] = fixheader[0] & 0xF9;
-				len_offset   = len_offset - 2;
+				len_offset = len_offset - 2;
 			}
 		}
 		if (target_prover == MQTTV5_V4) {
@@ -946,6 +954,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 			//caculate property length and delete it
 			plength = property_len + property_bytes;
 		}
+		//copy remaining length
 		rlen = put_var_integer(
 		    tmp, get_var_integer(header, &pos) + len_offset - plength);
 		memcpy(fixheader + 1, tmp, rlen);
@@ -953,7 +962,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		txaio = p->txaio;
 		niov  = 0;
 		// fixed header
-		qlength += rlen + 1; // strlen(fixheader)
+		qlength += rlen + 1;
 		// 1st part of variable header: topic
 
 		qlength += tlen + 2; // get topic length
@@ -970,9 +979,6 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 				// first time send this msg
 				pid = nni_pipe_inc_packetid(pipe);
 				// store msg for qos retrying
-				debug_msg(
-				    "* processing QoS pubmsg with pipe: %p *",
-				    p);
 				nni_msg_clone(msg);
 				if ((old = nni_qos_db_get(pipe->nano_qos_db,
 				         pipe->p_id, pid)) != NULL) {
@@ -994,30 +1000,46 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 			}
 			NNI_PUT16(var_extra, pid);
 			qlength += 2;
+		} else if (qos_pac > 0) {
+			len_offset += 2;
 		}
-		if (target_prover == MQTTV5) {
-			// qlength+=2;
+		if (target_prover == MQTTV5 && sub_id != 0) {
+			// qlength+=3;
 		}
 		// use qos_buf to keep zero-copy
 		if (qlength > 16 + NNI_NANO_MAX_PACKET_SIZE) {
 			nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
 			p->qos_buf = nng_zalloc(sizeof(uint8_t) * (qlength));
 		}
+
 		//copy fixheader to qos_buf
 		memcpy(p->qos_buf, fixheader, rlen + 1);
+		pos = rlen + 1;
 		//copy topic + topic length to qos_buf
 		memcpy(p->qos_buf + rlen + 1, body, tlen + 2);
+		pos += tlen + 2;
+		printf("%x %x %x\n", *body, *(p->qos_buf + rlen + 1),*(p->qos_buf + rlen + 2));
 		if (qos > 0) {
 			//copy packet id
 			memcpy(p->qos_buf + rlen + tlen + 3, var_extra, 2);
+			pos += 2;
 		}
 		if (target_prover == MQTTV4_V5) {
 			//V4 msg sent to V5 client
 			//add property length 0
 			*(p->qos_buf + qlength - 1) = 0x00;
+			pos += 1;
 			// TODO should we support sub id in V4 to V5?
 		}
 		if (target_prover == MQTTV5) {
+			// //append sub id
+			// uint32_t tmp_len;
+			// uint8_t t[3] = {0x07, 0x0B, 0x05};
+			// // tmp_len = put_var_integer(tmp, property_len+2);
+			// plength += property_bytes;
+			// // strncat(p->qos_buf, tmp, tmp_len);
+			// // property_bytes = tmp_len;
+			// memcpy(p->qos_buf + pos, t, 3);
 		}
 		iov[niov].iov_buf = p->qos_buf;
 		iov[niov].iov_len = qlength;
