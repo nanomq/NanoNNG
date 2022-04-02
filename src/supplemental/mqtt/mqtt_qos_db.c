@@ -20,11 +20,14 @@ static int64_t insert_msg(sqlite3 *db, nni_msg *msg);
 static int64_t get_id_by_pipe(sqlite3 *db, uint32_t pipe_id);
 static int64_t get_id_by_pipe_client(
     sqlite3 *db, uint32_t pipe_id, const char *client_id);
-static int get_id_by_p_id(
-    sqlite3 *db, int64_t p_id, uint8_t *out_qos, int64_t *out_m_id);
-static int  insert_main(sqlite3 *db, int64_t p_id, uint8_t qos, int64_t m_id);
-static int  update_main(sqlite3 *db, int64_t p_id, uint8_t qos, int64_t m_id);
-static void set_main(sqlite3 *db, uint32_t pipe_id, uint8_t qos, nni_msg *msg);
+static int get_id_by_p_id(sqlite3 *db, int64_t p_id, uint16_t packet_id,
+    uint8_t *out_qos, int64_t *out_m_id);
+static int insert_main(
+    sqlite3 *db, int64_t p_id, uint16_t packet_id, uint8_t qos, int64_t m_id);
+static int update_main(
+    sqlite3 *db, int64_t p_id, uint16_t packet_id, uint8_t qos, int64_t m_id);
+static void set_main(sqlite3 *db, uint32_t pipe_id, uint16_t packet_id,
+    uint8_t qos, nni_msg *msg);
 
 static int
 create_msg_table(sqlite3 *db)
@@ -52,6 +55,7 @@ create_main_table(sqlite3 *db)
 	char sql[] = "CREATE TABLE IF NOT EXISTS " table_main ""
 	             "(id INTEGER PRIMARY KEY  AUTOINCREMENT,"
 	             " p_id INTEGER NOT NULL, "
+	             " packet_id INTEGER NOT NULL, "
 	             " qos  TINYINT NOT NULL , "
 	             " m_id INTEGER NOT NULL )";
 
@@ -61,17 +65,21 @@ create_main_table(sqlite3 *db)
 void
 nni_mqtt_qos_db_init(sqlite3 **db)
 {
-	if (sqlite3_open(db_name, db) != 0) {
-		return;
-	}
-	if (create_msg_table(*db) != 0) {
-		return;
-	}
-	if (create_pipe_client_table(*db) != 0) {
-		return;
-	}
-	if (create_main_table(*db) != 0) {
-		return;
+	char path[1024] = { 0 };
+	if (getcwd(path, 1024) != NULL) {
+		sprintf(path, "%s/%s", path, db_name);
+		if (sqlite3_open(db_name, db) != 0) {
+			return;
+		}
+		if (create_msg_table(*db) != 0) {
+			return;
+		}
+		if (create_pipe_client_table(*db) != 0) {
+			return;
+		}
+		if (create_main_table(*db) != 0) {
+			return;
+		}
 	}
 }
 
@@ -181,17 +189,18 @@ get_id_by_pipe_client(sqlite3 *db, uint32_t pipe_id, const char *client_id)
 }
 
 static int
-get_id_by_p_id(sqlite3 *db, int64_t p_id, uint8_t *out_qos, int64_t *out_m_id)
+get_id_by_p_id(sqlite3 *db, int64_t p_id, uint16_t packet_id, uint8_t *out_qos, int64_t *out_m_id)
 {
 	int64_t       id = 0;
 	sqlite3_stmt *stmt;
 	char          sql[] =
-	    "SELECT id, qos, m_id FROM " table_main " WHERE p_id = ? ";
+	    "SELECT id, qos, m_id FROM " table_main " WHERE p_id = ? AND packet_id = ?";
 	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
 	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
 	sqlite3_reset(stmt);
 
 	sqlite3_bind_int64(stmt, 1, p_id);
+	sqlite3_bind_int(stmt, 2, packet_id);
 	if (SQLITE_ROW == sqlite3_step(stmt)) {
 		id        = sqlite3_column_int64(stmt, 0);
 		*out_qos  = sqlite3_column_int(stmt, 1);
@@ -204,34 +213,37 @@ get_id_by_p_id(sqlite3 *db, int64_t p_id, uint8_t *out_qos, int64_t *out_m_id)
 }
 
 static int
-insert_main(sqlite3 *db, int64_t p_id, uint8_t qos, int64_t m_id)
+insert_main(sqlite3 *db, int64_t p_id, uint16_t packet_id, uint8_t qos, int64_t m_id)
 {
 	sqlite3_stmt *stmt;
 	char *        sql = "INSERT INTO " table_main ""
-	            " (p_id, qos, m_id) VALUES (?, ?, ?)";
+	            " (p_id, packet_id, qos, m_id) VALUES (?, ?, ?, ?)";
 	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
 	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
 	sqlite3_reset(stmt);
 	sqlite3_bind_int64(stmt, 1, p_id);
-	sqlite3_bind_int(stmt, 2, qos);
-	sqlite3_bind_int64(stmt, 3, m_id);
+	sqlite3_bind_int(stmt, 2, packet_id);
+	sqlite3_bind_int(stmt, 3, qos);
+	sqlite3_bind_int64(stmt, 4, m_id);
 	sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
 	return sqlite3_exec(db, "COMMIT;", 0, 0, 0);
 }
 
 static int
-update_main(sqlite3 *db, int64_t p_id, uint8_t qos, int64_t m_id)
+update_main(
+    sqlite3 *db, int64_t p_id, uint16_t packet_id, uint8_t qos, int64_t m_id)
 {
 	sqlite3_stmt *stmt;
 	char *        sql = "UPDATE " table_main ""
-	            " SET qos = ?, m_id = ? WHERE p_id = ?";
+	            " SET qos = ?, m_id = ? WHERE p_id = ? AND packet_id = ?";
 	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
 	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
 	sqlite3_reset(stmt);
 	sqlite3_bind_int(stmt, 1, qos);
 	sqlite3_bind_int64(stmt, 2, m_id);
 	sqlite3_bind_int64(stmt, 3, p_id);
+	sqlite3_bind_int(stmt, 4, packet_id);
 	sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
 	return sqlite3_exec(db, "COMMIT;", 0, 0, 0);
@@ -366,15 +378,30 @@ nni_mqtt_qos_db_check_remove_msg(sqlite3 *db, nni_msg *msg)
 }
 
 void
-nni_mqtt_qos_db_set(sqlite3 *db, uint32_t pipe_id, nni_msg *msg)
+nni_mqtt_qos_db_remove_unused_msg(sqlite3 *db)
+{
+	sqlite3_stmt *stmt;
+	// remove the msg if it was not referenced by table `t_main`
+	char sql[] = "DELETE FROM " table_msg
+	             " WHERE id NOT IN (SELECT m_id FROM t_main)";
+	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
+	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
+	sqlite3_reset(stmt);
+	sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
+	sqlite3_exec(db, "COMMIT;", 0, 0, 0);
+}
+
+void
+nni_mqtt_qos_db_set(sqlite3 *db, uint32_t pipe_id, uint16_t packet_id, nni_msg *msg)
 {
 	uint8_t  qos = MQTT_DB_GET_QOS_BITS(msg);
 	nni_msg *m   = MQTT_DB_GET_MSG_POINTER(msg);
-	set_main(db, pipe_id, qos, m);
+	set_main(db, pipe_id, packet_id, qos, m);
 }
 
 static void
-set_main(sqlite3 *db, uint32_t pipe_id, uint8_t qos, nni_msg *msg)
+set_main(sqlite3 *db, uint32_t pipe_id,uint16_t packet_id,  uint8_t qos, nni_msg *msg)
 {
 	int64_t p_id = get_id_by_pipe(db, pipe_id);
 	if (p_id == 0) {
@@ -387,18 +414,19 @@ set_main(sqlite3 *db, uint32_t pipe_id, uint8_t qos, nni_msg *msg)
 	}
 	uint8_t main_qos  = 0;
 	int64_t main_m_id = 0;
-	int64_t main_id   = get_id_by_p_id(db, p_id, &main_qos, &main_m_id);
+	int64_t main_id =
+	    get_id_by_p_id(db, p_id, packet_id, &main_qos, &main_m_id);
 	if (main_id == 0) {
-		insert_main(db, p_id, qos, msg_id);
+		insert_main(db, p_id, packet_id, qos, msg_id);
 	} else {
 		if (main_qos != qos || main_m_id != msg_id) {
-			update_main(db, p_id, qos, msg_id);
+			update_main(db, p_id, packet_id, qos, msg_id);
 		}
 	}
 }
 
 nni_msg *
-nni_mqtt_qos_db_get(sqlite3 *db, uint32_t pipe_id)
+nni_mqtt_qos_db_get(sqlite3 *db, uint32_t pipe_id, uint16_t packet_id)
 {
 	nni_msg *     msg = NULL;
 	uint8_t       qos = 0;
@@ -408,14 +436,15 @@ nni_mqtt_qos_db_get(sqlite3 *db, uint32_t pipe_id)
 	    "SELECT main.qos, msg.data FROM " table_pipe_client ""
 	    " AS pipe JOIN "
 	    "" table_main " AS main ON  main.p_id = pipe.id JOIN " table_msg ""
-	    " AS msg ON "
-	    " main.m_id = msg.id WHERE pipe.pipe_id = ?";
+	    " AS msg ON  main.m_id = msg.id "
+	    "WHERE pipe.pipe_id = ? AND main.packet_id = ?";
 
 	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
 	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
 	sqlite3_reset(stmt);
 
 	sqlite3_bind_int64(stmt, 1, pipe_id);
+	sqlite3_bind_int64(stmt, 2, packet_id);
 	if (SQLITE_ROW == sqlite3_step(stmt)) {
 		qos            = sqlite3_column_int(stmt, 0);
 		size_t   nbyte = (size_t) sqlite3_column_bytes16(stmt, 1);
@@ -434,25 +463,26 @@ nni_mqtt_qos_db_get(sqlite3 *db, uint32_t pipe_id)
 }
 
 nni_msg *
-nni_mqtt_qos_db_get_one(sqlite3 *db, uint32_t *pipe_id)
+nni_mqtt_qos_db_get_one(sqlite3 *db, uint32_t pipe_id, uint16_t *packet_id)
 {
 	nni_msg *     msg = NULL;
 	uint8_t       qos = 0;
 	sqlite3_stmt *stmt;
 
 	char sql[] =
-	    "SELECT pipe.pipe_id, main.qos, msg.data FROM " table_pipe_client
+	    "SELECT main.packet_id, main.qos, msg.data FROM " table_pipe_client
 	    " AS pipe JOIN "
 	    "" table_main " AS main ON  main.p_id = pipe.id JOIN " table_msg ""
 	    " AS msg ON "
-	    " main.m_id = msg.id WHERE main.m_id > 0 LIMIT 1";
+	    " main.m_id = msg.id WHERE pipe.pipe_id = ? AND main.m_id > 0 LIMIT 1";
 
 	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
 	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
 	sqlite3_reset(stmt);
+	sqlite3_bind_int(stmt, 1, pipe_id);
 
 	if (SQLITE_ROW == sqlite3_step(stmt)) {
-		*pipe_id       = sqlite3_column_int64(stmt, 0);
+		*packet_id       = sqlite3_column_int64(stmt, 0);
 		qos            = sqlite3_column_int(stmt, 1);
 		size_t   nbyte = (size_t) sqlite3_column_bytes16(stmt, 2);
 		uint8_t *bytes = sqlite3_malloc(nbyte);
@@ -469,12 +499,31 @@ nni_mqtt_qos_db_get_one(sqlite3 *db, uint32_t *pipe_id)
 }
 
 void
-nni_mqtt_qos_db_remove(sqlite3 *db, uint32_t pipe_id)
+nni_mqtt_qos_db_remove(sqlite3 *db, uint32_t pipe_id, uint16_t packet_id)
 {
 	sqlite3_stmt *stmt;
 	char *sql = "DELETE FROM " table_main " AS main WHERE main.p_id = "
 	            "(SELECT pipe.id FROM " table_pipe_client ""
-	            " AS pipe where  pipe.pipe_id = ? )";
+	            " AS pipe where  pipe.pipe_id = ? AND packet_id = ?)";
+	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
+	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
+	sqlite3_reset(stmt);
+
+	sqlite3_bind_int(stmt, 1, pipe_id);
+	sqlite3_bind_int(stmt, 2, packet_id);
+	sqlite3_step(stmt);
+
+	sqlite3_finalize(stmt);
+	sqlite3_exec(db, "COMMIT;", 0, 0, 0);
+}
+
+void
+nni_mqtt_qos_db_remove_by_pipe(sqlite3 *db, uint32_t pipe_id)
+{
+	sqlite3_stmt *stmt;
+	char *sql = "DELETE FROM " table_main " AS main WHERE main.p_id = "
+	            "(SELECT pipe.id FROM " table_pipe_client ""
+	            " AS pipe where  pipe.pipe_id = ?)";
 	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
 	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
 	sqlite3_reset(stmt);
