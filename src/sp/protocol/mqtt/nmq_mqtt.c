@@ -19,6 +19,7 @@
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "nng/protocol/mqtt/nmq_mqtt.h"
+#include "supplemental/mqtt/mqtt_qos_db_api.h"
 
 #include <sub_handler.h>
 
@@ -67,6 +68,9 @@ struct nano_sock {
 	nni_pollable   writable;
 	conf *         conf;
 	void *         db;
+#ifdef NNG_SUPP_SQLITE
+	sqlite3 *sqlite_db;
+#endif
 };
 
 // nano_pipe is our per-pipe protocol private structure.
@@ -87,7 +91,7 @@ struct nano_pipe {
 	uint8_t          ka_refresh;	//count how many times the keepalive timer has been triggered
 	nano_conn_param *conn_param;
 	nni_lmq          rlmq;
-	nni_id_map 		*nano_qos_db;
+	void *           nano_qos_db; // 'sqlite' or 'nni_id_hash_map'
 };
 
 void
@@ -208,7 +212,7 @@ nano_pipe_timer_cb(void *arg)
 				nano_pipe *old;
 				nano_sock *s = p->broker;
 				char      *clientid;
-				uint32_t   clientid_key;
+				uint32_t   clientid_key = 0;
 				clientid = (char *) conn_param_get_clientid(
 				    p->conn_param);
 
@@ -220,7 +224,8 @@ nano_pipe_timer_cb(void *arg)
 				if (old != NULL) {
 					old->event       = true;
 					old->pipe->cache = false;
-					nni_id_map_foreach(old->nano_qos_db,
+					nni_qos_db_remove_all_msg(
+					    old->nano_qos_db,
 					    nmq_close_unack_msg_cb);
 					nni_id_remove(
 					    &s->cached_sessions, clientid_key);
@@ -245,7 +250,7 @@ nano_pipe_timer_cb(void *arg)
 	p->ka_refresh++;
 
 	if (!p->busy) {
-		msg = nni_id_get_any(npipe->nano_qos_db, &pid);
+		msg = nni_qos_db_get_one(npipe->nano_qos_db, pid);
 		if (msg != NULL) {
 			rmsg        = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
 			time        = nni_msg_get_timestamp(msg);
@@ -262,7 +267,7 @@ nano_pipe_timer_cb(void *arg)
 				nni_pipe_send(p->pipe, &p->aio_send);
 				//TODO use dup field to check if msg is being resend
 				// only remove msg from qos_db when get ack
-				nni_id_remove(npipe->nano_qos_db, pid);
+				nni_qos_db_remove(npipe->nano_qos_db, pid);
 			}
 		}
 	}
@@ -323,7 +328,7 @@ nano_ctx_fini(void *arg)
 	// nni_timer_fini(&ctx->qos_timer);
 }
 
-static int
+static void
 nano_ctx_init(void *carg, void *sarg)
 {
 	nano_sock *s   = sarg;
@@ -335,8 +340,6 @@ nano_ctx_init(void *carg, void *sarg)
 
 	ctx->sock    = s;
 	ctx->pipe_id = 0;
-
-	return (0);
 }
 
 static void
@@ -415,7 +418,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		if (qos > 0 && qos_pac > 0) {
 			msg = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
 			packetid = nni_pipe_inc_packetid(p->pipe);
-			nni_id_set(p->pipe->nano_qos_db, packetid, msg);
+			nni_qos_db_set(p->pipe->nano_qos_db, packetid, msg);
 		} else {
 			nni_msg_free(msg);
 		}
@@ -467,7 +470,9 @@ static void
 nano_sock_fini(void *arg)
 {
 	nano_sock *s = arg;
-
+#ifdef NNG_SUPP_SQLITE
+	nni_qos_db_fini_sqlite(s->sqlite_db);
+#endif
 	nni_id_map_fini(&s->pipes);
 	nni_id_map_fini(&s->cached_sessions);
 	nni_lmq_fini(&s->waitlmq);
@@ -479,7 +484,7 @@ nano_sock_fini(void *arg)
 	conf_fini(s->conf);
 }
 
-static int
+static void
 nano_sock_init(void *arg, nni_sock *sock)
 {
 	nano_sock *s = arg;
@@ -499,13 +504,14 @@ nano_sock_init(void *arg, nni_sock *sock)
 
 	(void) nano_ctx_init(&s->ctx, s);
 
+#ifdef NNG_SUPP_SQLITE
+	nni_qos_db_init_sqlite(s->sqlite_db);
+#endif
 	debug_msg("************* nano_sock_init %p *************", s);
 	// We start off without being either readable or writable.
 	// Readability comes when there is something on the socket.
 	nni_pollable_init(&s->writable);
 	nni_pollable_init(&s->readable);
-
-	return (0);
 }
 
 static void
@@ -555,12 +561,15 @@ nano_pipe_fini(void *arg)
 		nni_msg_free(NANO_NNI_LMQ_GET_MSG_POINTER(msg));
 	}
 
-	nni_id_map * nano_qos_db = p->pipe->nano_qos_db;
+	void * nano_qos_db = p->pipe->nano_qos_db;
 
 	//TODO safely free the msgs in qos_db
 	if (p->event == true) {
-		nni_id_map_fini(nano_qos_db);
-		nng_free(nano_qos_db, sizeof(struct nni_id_map));
+#ifndef NNG_SUPP_SQLITE
+		nni_qos_db_fini_id_hash(nano_qos_db);
+#else
+		NNI_ARG_UNUSED(nano_qos_db);
+#endif
 	} else {
 		conn_param_free(p->conn_param);
 	}
@@ -620,7 +629,10 @@ nano_pipe_start(void *arg)
 	nni_mtx_lock(&s->lk);
 
 	clientid = (char *) conn_param_get_clientid(p->conn_param);
-
+#ifdef NNG_SUPP_SQLITE
+	npipe->nano_qos_db = s->sqlite_db;
+	p->nano_qos_db     = s->sqlite_db;
+#endif
 	if (clientid)
 		clientid_key = DJBHashn(clientid, strlen(clientid));
 
@@ -631,9 +643,10 @@ nano_pipe_start(void *arg)
 			// replace nano_qos_db and pid with old one.
 			p->pipe->packet_id = old->pipe->packet_id;
 			// there should be no msg in this map
-			nni_id_map_fini(p->pipe->nano_qos_db);
-			nng_free(
-			    p->pipe->nano_qos_db, sizeof(struct nni_id_map));
+			//TODO adapt SQLITE
+#ifndef NNG_SUPP_SQLITE
+			nni_qos_db_fini_id_hash(p->pipe->nano_qos_db);
+#endif
 			p->pipe->nano_qos_db = old->nano_qos_db;
 			nni_pipe_id_swap(npipe->p_id, old->pipe->p_id);
 			p->id            = nni_pipe_id(npipe);
@@ -643,6 +656,10 @@ nano_pipe_start(void *arg)
 			old->event       = false;
 			old->pipe->cache = false;
 			nni_id_remove(&s->cached_sessions, clientid_key);
+#ifdef NNG_SUPP_SQLITE
+			nni_qos_db_set_pipe(
+			    p->pipe->nano_qos_db, p->id, clientid);
+#endif
 		}
 	} else if (clientid) {
 		// clean previous session
@@ -650,7 +667,12 @@ nano_pipe_start(void *arg)
 		if (old != NULL) {
 			old->event       = true;
 			old->pipe->cache = false;
-			nni_id_map_foreach(old->nano_qos_db, nmq_close_unack_msg_cb);
+#ifdef NNG_SUPP_SQLITE
+			nni_qos_db_remove(old->nano_qos_db, old->pipe->p_id);
+			nni_qos_db_remove_pipe(
+			    old->nano_qos_db, old->pipe->p_id);
+#endif
+			nni_qos_db_remove_all_msg(old->nano_qos_db, nmq_close_unack_msg_cb);
 			nni_id_remove(&s->cached_sessions, clientid_key);
 		}
 	}
@@ -975,9 +997,9 @@ nano_pipe_recv_cb(void *arg)
 		NNI_GET16(ptr, ackid);
 		if ((qos_msg = nni_id_get(npipe->nano_qos_db, ackid)) !=
 		    NULL) {
-		        qos_msg = NANO_NNI_LMQ_GET_MSG_POINTER(qos_msg);
-			nni_msg_free(qos_msg);
-			nni_id_remove(npipe->nano_qos_db, ackid);
+			qos_msg = NANO_NNI_LMQ_GET_MSG_POINTER(qos_msg);
+			nni_qos_db_remove_msg(npipe->nano_qos_db, qos_msg);
+			nni_qos_db_remove(npipe->nano_qos_db, ackid);
 		} else {
 			// shouldn't get here BUG TODO
 			debug_syslog("qos msg not found!");

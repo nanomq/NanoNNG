@@ -23,6 +23,7 @@
 #include "nng/nng_debug.h"
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
+#include "supplemental/mqtt/mqtt_qos_db_api.h"
 
 typedef struct ws_dialer   ws_dialer;
 typedef struct ws_listener ws_listener;
@@ -385,7 +386,7 @@ wstran_pipe_send(void *arg, nni_aio *aio)
 				    "* processing QoS pubmsg with pipe: %p *",
 				    p);
 				nni_msg_clone(msg);
-				if ((old = nni_id_get(
+				if ((old = nni_qos_db_get(
 				         pipe->nano_qos_db, pid)) != NULL) {
 					// TODO packetid already exists.
 					// do we need to replace old with new
@@ -395,12 +396,12 @@ wstran_pipe_send(void *arg, nni_aio *aio)
 					    "nano_qos_db");
 					old =
 					    NANO_NNI_LMQ_GET_MSG_POINTER(old);
-					nni_msg_free(old);
+					nni_qos_db_remove_msg(pipe->nano_qos_db, old);
 					// nni_id_remove(&pipe->nano_qos_db,
 					// pid);
 				}
 				old = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
-				nni_id_set(pipe->nano_qos_db, pid, old);
+				nni_qos_db_set(pipe->nano_qos_db, pid, old);
 			}
 			NNI_PUT16(varheader, pid);
 		}
