@@ -10,6 +10,7 @@
 
 #include "nng/nng.h"
 #include "core/nng_impl.h"
+#include "core/zmalloc.h"
 
 // This file provides the "public" API.  This is a thin wrapper around
 // internal API functions.  We use the public prefix instead of internal,
@@ -64,6 +65,11 @@ nng_zalloc(size_t sz)
 	return (nni_zalloc(sz));
 }
 
+void *
+nng_zfree(void *ptr)
+{
+	zfree(ptr);
+}
 void
 nng_free(void *buf, size_t sz)
 {

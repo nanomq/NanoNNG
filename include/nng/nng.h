@@ -476,6 +476,7 @@ NNG_DECL void *nng_alloc(size_t);
 // is probably less convenient for general uses than the C library malloc and
 // calloc.
 NNG_DECL void *nng_zalloc(size_t sz);
+NNG_DECL void *nng_zfree(void *ptr);
 NNG_DECL void  nng_free(void *, size_t);
 
 // nng_strdup duplicates the source string, using nng_alloc. The result

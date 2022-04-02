@@ -72,6 +72,8 @@ nng_sources(
         timer.h
         url.c
         url.h
+        zmalloc.c
+        zmalloc.h
 )
 
 nng_test(aio_test)
