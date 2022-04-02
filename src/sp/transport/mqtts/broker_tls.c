@@ -754,8 +754,8 @@ tlstran_pipe_send_start(tlstran_pipe *p)
 				    "* processing QoS pubmsg with pipe: %p *",
 				    p);
 				nni_msg_clone(msg);
-				if ((old = nni_qos_db_get(
-				         pipe->nano_qos_db, pid)) != NULL) {
+				if ((old = nni_qos_db_get(pipe->nano_qos_db,
+				         pipe->p_id, pid)) != NULL) {
 					// TODO packetid already exists.
 					// do we need to replace old with new
 					// one ? print warning to users
@@ -770,7 +770,8 @@ tlstran_pipe_send_start(tlstran_pipe *p)
 					// pid);
 				}
 				old = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
-				nni_qos_db_set(pipe->nano_qos_db, pid, old);
+				nni_qos_db_set(
+				    pipe->nano_qos_db, pipe->p_id, pid, old);
 			}
 			NNI_PUT16(varheader, pid);
 			p->qlength += 2;

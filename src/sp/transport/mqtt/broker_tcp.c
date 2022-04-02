@@ -958,8 +958,8 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 				    "* processing QoS pubmsg with pipe: %p *",
 				    p);
 				nni_msg_clone(msg);
-				if ((old = nni_qos_db_get(
-				         pipe->nano_qos_db, pid)) != NULL) {
+				if ((old = nni_qos_db_get(pipe->nano_qos_db,
+				         pipe->p_id, pid)) != NULL) {
 					// TODO packetid already exists.
 					// do we need to replace old with new
 					// one ? print warning to users
@@ -973,7 +973,8 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 					    pipe->nano_qos_db, old);
 				}
 				old = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
-				nni_qos_db_set(pipe->nano_qos_db, pid, old);
+				nni_qos_db_set(
+				    pipe->nano_qos_db, pipe->p_id, pid, old);
 			}
 			NNI_PUT16(var_extra, pid);
 			qlength += 2;
@@ -1193,8 +1194,6 @@ tcptran_pipe_start(tcptran_pipe *p, nng_stream *conn, tcptran_ep *ep)
 	nni_aio_set_timeout(p->negoaio,
 	    15 * 1000); // 15 sec timeout to negotiate abide with emqx
 
-	//nni_qos_db_set_pipe(p->npipe->nano_qos_db, p->npipe->p_id,
-	    //(const char *) conn_param_get_clientid(p->npipe->conn_param));
 	nng_stream_recv(p->conn, p->negoaio);
 }
 
