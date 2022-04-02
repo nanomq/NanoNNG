@@ -65,6 +65,7 @@
 #define nni_qos_db_foreach(db, cb) nni_id_map_foreach((nni_id_map *) (db), cb)
 #define nni_qos_db_remove_msg(db, msg) nni_msg_free(msg)
 #define nni_qos_db_check_remove_msg(db, msg) nni_msg_free(msg)
+#define nni_qos_db_remove_unused_msg(db) 
 #define nni_qos_db_reset_pipe(db)
 #define nni_qos_db_set_pipe(db, pipe_id, client_id)
 #define nni_qos_db_remove_pipe(db, pipe_id) 
