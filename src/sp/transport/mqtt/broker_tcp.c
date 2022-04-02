@@ -736,6 +736,7 @@ tcptran_pipe_recv_cb(void *arg)
 	}
 
 	// Store Subid RAP Topic for sub
+	// TODO move to protocol layer
 	if (type == CMD_SUBSCRIBE) {
 		nmq_subinfo_decode(msg, &npipe->subinfol, cparam->pro_ver);
 	}
@@ -798,10 +799,23 @@ tcptran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 	nni_aio_finish_error(aio, rv);
 }
 
+static void
+tcptran_pipe_send_start_v4()
+{
+
+}
+
+static void
+tcptran_pipe_send_start_v5()
+{
+
+}
+
 /**
  * @brief this is the func that responsible for sending msg while
  *        keeping zero-copy feature, doing all the jobs neccesary
  *        for each unique client (it means ugly)
+ * //TODO break it into 2 pieces V4 / V5
  *
  * @param p tcptran_pipe
  */
@@ -812,7 +826,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 	nni_aio *txaio;
 	nni_msg *msg;
 	int      niov;
-	nni_iov  iov[2];
+	nni_iov  iov[4];
 	uint8_t  qos, retain = 1;
 
 	debug_msg("########### tcptran_pipe_send_start ###########");
@@ -852,7 +866,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		uint8_t  var_extra[2],
 		    fixheader[NNI_NANO_MAX_HEADER_SIZE] = { 0 },
 		    tmp[4]                              = { 0 };
-		int       len_offset = 0, sub_id = 0;
+		int       len_offset = 0, sub_id = 0, send_times = 0;
 		uint32_t  pos = 1;
 		nni_pipe *pipe;
 		uint16_t  pid;
@@ -881,9 +895,21 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		// check max packet size for this client/msg
 		if (p->tcp_cparam->pro_ver == 5) {
 			uint32_t total_len = mlen + hlen;
-			// & 0xFE ?????
-			if (retain == 0) {
-				*header = *header & 0xFE;
+			// get retain as published indicator
+
+			// subid
+			subinfo *info;
+			NNI_LIST_FOREACH (&p->npipe->subinfol, info) {
+				if (topic_filtern(
+				        info->topic, body + 2, tlen)) {
+					sub_id = info->subid;
+					if (info->rap == 0) {
+						*header = *header & 0xFE;
+					}
+					// TODO how to check sub
+					// when multiple msg mathed
+					break;
+				}
 			}
 
 			if (total_len > p->tcp_cparam->max_packet_size) {
@@ -900,17 +926,8 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 				qlength++;
 			} else {
 				target_prover = MQTTV5;
-				// subid
-				subinfo *info;
-				NNI_LIST_FOREACH (&p->npipe->subinfol, info) {
-					if (strncmp(info->topic, body + 2,
-					        tlen) == 0) {
-						sub_id = info->subid;
-						len_offset += 2;
-						// TODO how to check sub
-						// when multiple msg mathed
-						break;
-					}
+				if (sub_id !=0) {
+					len_offset+=2;
 				}
 			}
 		} else if (p->tcp_cparam->pro_ver != 5) {
@@ -919,8 +936,9 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 				// APP layer must give topic name even if topic
 				// alias is set
 				target_prover = MQTTV5_V4;
+			} else if (nni_msg_cmd_type(msg) == CMD_PUBLISH){
+				target_prover = MQTTV4;
 			}
-			target_prover = MQTTV4;
 		}
 		if (qos_pac == 0 && target_prover < 2 ) {
 			// save time & space for QoS 0 publish
@@ -1001,7 +1019,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 			len_offset += 2;
 		}
 		if (target_prover == MQTTV5 && sub_id != 0) {
-			// qlength+=3;
+			qlength+=3;
 		}
 		// use qos_buf to keep zero-copy
 		if (qlength > 16 + NNI_NANO_MAX_PACKET_SIZE) {
@@ -1015,7 +1033,6 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		//copy topic + topic length to qos_buf
 		memcpy(p->qos_buf + rlen + 1, body, tlen + 2);
 		pos += tlen + 2;
-		printf("%x %x %x\n", *body, *(p->qos_buf + rlen + 1),*(p->qos_buf + rlen + 2));
 		if (qos > 0) {
 			//copy packet id
 			memcpy(p->qos_buf + rlen + tlen + 3, var_extra, 2);
@@ -1028,15 +1045,16 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 			pos += 1;
 			// TODO should we support sub id in V4 to V5?
 		}
-		if (target_prover == MQTTV5) {
-			// //append sub id
-			// uint32_t tmp_len;
-			// uint8_t t[3] = {0x07, 0x0B, 0x05};
-			// // tmp_len = put_var_integer(tmp, property_len+2);
-			// plength += property_bytes;
-			// // strncat(p->qos_buf, tmp, tmp_len);
-			// // property_bytes = tmp_len;
-			// memcpy(p->qos_buf + pos, t, 3);
+		if (target_prover == MQTTV5 && sub_id != 0) {
+			//append sub id
+			uint32_t tmp_len;
+			uint8_t t[2] = {0x0B, 0x00};
+			t[1] = sub_id;
+			tmp_len = put_var_integer(tmp, property_len+2);
+			plength += property_bytes;
+			memcpy(p->qos_buf + pos, tmp, tmp_len);
+			property_bytes = tmp_len;
+			memcpy(p->qos_buf + pos+property_bytes, t, 2);
 		}
 		iov[niov].iov_buf = p->qos_buf;
 		iov[niov].iov_len = qlength;
