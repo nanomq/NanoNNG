@@ -224,9 +224,18 @@ nano_pipe_timer_cb(void *arg)
 				if (old != NULL) {
 					old->event       = true;
 					old->pipe->cache = false;
+#ifdef NNG_SUPP_SQLITE
+					nni_qos_db_remove_by_pipe(
+					    old->nano_qos_db, old->pipe->p_id);
+					nni_qos_db_remove_pipe(
+					    old->nano_qos_db, old->pipe->p_id);
+					nni_qos_db_remove_unused_msg(
+					    old->nano_qos_db);
+#else
 					nni_qos_db_remove_all_msg(
 					    old->nano_qos_db,
 					    nmq_close_unack_msg_cb);
+#endif
 					nni_id_remove(
 					    &s->cached_sessions, clientid_key);
 				}
@@ -250,7 +259,7 @@ nano_pipe_timer_cb(void *arg)
 	p->ka_refresh++;
 
 	if (!p->busy) {
-		msg = nni_qos_db_get_one(npipe->nano_qos_db, pid);
+		msg = nni_qos_db_get_one(npipe->nano_qos_db, npipe->p_id, pid);
 		if (msg != NULL) {
 			rmsg        = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
 			time        = nni_msg_get_timestamp(msg);
@@ -267,7 +276,9 @@ nano_pipe_timer_cb(void *arg)
 				nni_pipe_send(p->pipe, &p->aio_send);
 				//TODO use dup field to check if msg is being resend
 				// only remove msg from qos_db when get ack
-				nni_qos_db_remove(npipe->nano_qos_db, pid);
+				nni_qos_db_remove(
+				    npipe->nano_qos_db, npipe->p_id, pid);
+				nni_qos_db_remove_unused_msg(npipe->nano_qos_db);
 			}
 		}
 	}
@@ -418,7 +429,8 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		if (qos > 0 && qos_pac > 0) {
 			msg = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
 			packetid = nni_pipe_inc_packetid(p->pipe);
-			nni_qos_db_set(p->pipe->nano_qos_db, packetid, msg);
+			nni_qos_db_set(p->pipe->nano_qos_db, p->pipe->p_id,
+			    packetid, msg);
 		} else {
 			nni_msg_free(msg);
 		}
@@ -506,6 +518,7 @@ nano_sock_init(void *arg, nni_sock *sock)
 
 #ifdef NNG_SUPP_SQLITE
 	nni_qos_db_init_sqlite(s->sqlite_db);
+	nni_qos_db_reset_pipe(s->sqlite_db);
 #endif
 	debug_msg("************* nano_sock_init %p *************", s);
 	// We start off without being either readable or writable.
@@ -656,11 +669,10 @@ nano_pipe_start(void *arg)
 			old->event       = false;
 			old->pipe->cache = false;
 			nni_id_remove(&s->cached_sessions, clientid_key);
-#ifdef NNG_SUPP_SQLITE
-			nni_qos_db_set_pipe(
-			    p->pipe->nano_qos_db, p->id, clientid);
-#endif
 		}
+#ifdef NNG_SUPP_SQLITE
+		nni_qos_db_set_pipe(p->pipe->nano_qos_db, p->id, clientid);
+#endif
 	} else if (clientid) {
 		// clean previous session
 		old = nni_id_get(&s->cached_sessions, clientid_key);
@@ -668,11 +680,15 @@ nano_pipe_start(void *arg)
 			old->event       = true;
 			old->pipe->cache = false;
 #ifdef NNG_SUPP_SQLITE
-			nni_qos_db_remove(old->nano_qos_db, old->pipe->p_id);
+			nni_qos_db_remove_by_pipe(
+			    old->nano_qos_db, old->pipe->p_id);
 			nni_qos_db_remove_pipe(
 			    old->nano_qos_db, old->pipe->p_id);
+			nni_qos_db_remove_unused_msg(old->nano_qos_db);
+#else
+			nni_qos_db_remove_all_msg(
+			    old->nano_qos_db, nmq_close_unack_msg_cb);
 #endif
-			nni_qos_db_remove_all_msg(old->nano_qos_db, nmq_close_unack_msg_cb);
 			nni_id_remove(&s->cached_sessions, clientid_key);
 		}
 	}
@@ -995,11 +1011,12 @@ nano_pipe_recv_cb(void *arg)
 	case CMD_PUBCOMP:
 		nni_mtx_lock(&p->lk);
 		NNI_GET16(ptr, ackid);
-		if ((qos_msg = nni_qos_db_get(npipe->nano_qos_db, ackid)) !=
+		if ((qos_msg = nni_qos_db_get(npipe->nano_qos_db,npipe->p_id, ackid)) !=
 		    NULL) {
 			qos_msg = NANO_NNI_LMQ_GET_MSG_POINTER(qos_msg);
 			nni_qos_db_remove_msg(npipe->nano_qos_db, qos_msg);
-			nni_qos_db_remove(npipe->nano_qos_db, ackid);
+			nni_qos_db_remove(
+			    npipe->nano_qos_db, npipe->p_id, ackid);
 		} else {
 			// shouldn't get here BUG TODO
 			debug_syslog("qos msg not found!");

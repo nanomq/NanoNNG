@@ -18,8 +18,7 @@ static int      create_main_table(sqlite3 *db);
 static int64_t get_id_by_msg(sqlite3 *db, nni_msg *msg);
 static int64_t insert_msg(sqlite3 *db, nni_msg *msg);
 static int64_t get_id_by_pipe(sqlite3 *db, uint32_t pipe_id);
-static int64_t get_id_by_pipe_client(
-    sqlite3 *db, uint32_t pipe_id, const char *client_id);
+static int64_t get_id_by_client_id(sqlite3 *db, const char *client_id);
 static int get_id_by_p_id(sqlite3 *db, int64_t p_id, uint16_t packet_id,
     uint8_t *out_qos, int64_t *out_m_id);
 static int insert_main(
@@ -166,19 +165,18 @@ get_id_by_pipe(sqlite3 *db, uint32_t pipe_id)
 }
 
 static int64_t
-get_id_by_pipe_client(sqlite3 *db, uint32_t pipe_id, const char *client_id)
+get_id_by_client_id(sqlite3 *db, const char *client_id)
 {
 	int64_t       id = 0;
 	sqlite3_stmt *stmt;
-	char          sql[] = "SELECT id FROM " table_pipe_client
-	             " WHERE pipe_id = ? AND client_id = ?";
+	char          sql[] =
+	    "SELECT id FROM " table_pipe_client " WHERE client_id = ?";
 	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
 	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
 	sqlite3_reset(stmt);
 
-	sqlite3_bind_int64(stmt, 1, pipe_id);
 	sqlite3_bind_text(
-	    stmt, 2, client_id, strlen(client_id), SQLITE_TRANSIENT);
+	    stmt, 1, client_id, strlen(client_id), SQLITE_TRANSIENT);
 	if (SQLITE_ROW == sqlite3_step(stmt)) {
 		id = sqlite3_column_int64(stmt, 0);
 	}
@@ -303,7 +301,7 @@ nni_mqtt_qos_db_update_pipe_by_clientid(
 void
 nni_mqtt_qos_db_set_pipe(sqlite3 *db, uint32_t pipe_id, const char *client_id)
 {
-	int64_t id = get_id_by_pipe_client(db, pipe_id, client_id);
+	int64_t id = get_id_by_client_id(db, client_id);
 	if (id == 0) {
 		nni_mqtt_qos_db_insert_pipe(db, pipe_id, client_id);
 	} else {
