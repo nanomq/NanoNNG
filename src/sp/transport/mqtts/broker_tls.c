@@ -156,6 +156,9 @@ tlstran_pipe_init(void *arg, nni_pipe *npipe)
 
 	nni_pipe_set_conn_param(npipe, p->tcp_cparam);
 	p->npipe    = npipe;
+#ifndef NNG_SUPP_SQLITE
+	nni_qos_db_init_id_hash(npipe->nano_qos_db);
+#endif
 	p->conn_buf = NULL;
 	p->qos_buf  = nng_alloc(16 + NNI_NANO_MAX_PACKET_SIZE);
 	return (0);

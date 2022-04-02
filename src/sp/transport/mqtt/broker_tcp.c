@@ -153,7 +153,6 @@ tcptran_pipe_init(void *arg, nni_pipe *npipe)
 	debug_msg("************tcptran_pipe_init************");
 	tcptran_pipe *p = arg;
 
-	p->npipe = npipe;
 	nni_pipe_set_conn_param(npipe, p->tcp_cparam);
 	p->npipe    = npipe;
 #ifndef NNG_SUPP_SQLITE
