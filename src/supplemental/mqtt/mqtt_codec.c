@@ -2392,6 +2392,9 @@ decode_buf_properties(uint8_t *packet, uint32_t packet_len, uint32_t *pos,
 		read_byte(&buf, &prop_id);
 		property *         cur_prop = NULL;
 		property_type_enum type     = property_get_value_type(prop_id);
+		if (prop_id == SUBSCRIPTION_IDENTIFIER) {
+			continue;
+		}
 		cur_prop =
 		    property_parse(&buf, cur_prop, prop_id, type, copy_value);
 		property_append(list, cur_prop);
