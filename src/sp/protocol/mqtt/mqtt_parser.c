@@ -1441,6 +1441,15 @@ check_ifwildcard(const char *w, const char *n)
 	return result;
 }
 
+/**
+ * @brief check if there is any topic mathed with
+ * 		  *origin
+ * 
+ * @param origin topic with wildcard 
+ * @param input  topic in pub packet
+ * @return true 
+ * @return false 
+ */
 bool
 topic_filter(const char *origin, const char *input)
 {
@@ -1448,4 +1457,16 @@ topic_filter(const char *origin, const char *input)
 		return true;
 	}
 	return check_ifwildcard(origin, input);
+}
+
+bool
+topic_filtern(const char *origin, const char *input, size_t n)
+{
+	char buff[n+1];
+	memset(buff, '\0', n+1);
+	strncpy(buff, input, n);
+	if (strncmp(origin, input, n) == 0) {
+		return true;
+	}
+	return check_ifwildcard(origin, buff);
 }
