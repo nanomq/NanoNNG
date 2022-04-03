@@ -20,8 +20,11 @@
 
 #ifdef NNG_SUPP_SQLITE
 
-#define nni_qos_db_set(db, pipe_id, packet_id, msg) \
-	nni_mqtt_qos_db_set((sqlite3 *) (db), pipe_id, packet_id, msg)
+#define nni_qos_db_set(db, pipe_id, packet_id, msg)              \
+	{                                                        \
+		nni_mqtt_qos_db_set((sqlite3 *) (db), pipe_id, packet_id, msg);  \
+		nni_msg_free(NANO_NNI_LMQ_GET_MSG_POINTER(msg)); \
+	}
 #define nni_qos_db_get(db, pipe_id, packet_id) \
 	nni_mqtt_qos_db_get((sqlite3 *) (db), pipe_id, packet_id)
 #define nni_qos_db_get_one(db, pipe_id, packet_id) \
