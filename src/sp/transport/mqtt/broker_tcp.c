@@ -759,7 +759,6 @@ recv_error:
 	p->rxmsg = NULL;
 	nni_pipe_bump_error(p->npipe, rv);
 	nni_mtx_unlock(&p->mtx);
-
 	nni_msg_free(msg);
 	nni_aio_finish_error(aio, rv);
 	debug_msg("tcptran_pipe_recv_cb: recv error rv: %d\n", rv);

@@ -668,9 +668,6 @@ nano_pipe_start(void *arg)
 			old->pipe->cache = false;
 			nni_id_remove(&s->cached_sessions, clientid_key);
 		}
-#ifdef NNG_SUPP_SQLITE
-		nni_qos_db_set_pipe(p->pipe->nano_qos_db, p->id, clientid);
-#endif
 	} else if (clientid) {
 		// clean previous session
 		old = nni_id_get(&s->cached_sessions, clientid_key);
@@ -690,6 +687,9 @@ nano_pipe_start(void *arg)
 			nni_id_remove(&s->cached_sessions, clientid_key);
 		}
 	}
+#ifdef NNG_SUPP_SQLITE
+		nni_qos_db_set_pipe(p->pipe->nano_qos_db, p->id, clientid);
+#endif
 	nni_id_set(&s->pipes, p->id, p);
 	p->conn_param->nano_qos_db = p->pipe->nano_qos_db;
 	p->nano_qos_db             = p->pipe->nano_qos_db;
