@@ -79,45 +79,6 @@ pub_extra_set_msg(pub_extra *pub_extra, void *msg)
 	pub_extra->msg = msg;
 }
 
-/**
- * byte array to hex string
- *
- * @param src
- * @param dest
- * @param src_len
- * @return
- */
-static char *
-bytes_to_str(const unsigned char *src, char *dest, int src_len)
-{
-	int  i;
-	char szTmp[4] = { 0 };
-
-	for (i = 0; i < src_len; i++) {
-		sprintf(szTmp, "%02X ", src[i]);
-		memcpy(dest + (i * 3), szTmp, 3);
-	}
-	return dest;
-}
-
-static void
-print_hex(const char *prefix, const unsigned char *src, int src_len)
-{
-	if (src_len > 0) {
-		char *dest = (char *) nng_zalloc(src_len * 3 + 1);
-
-		if (dest == NULL) {
-			debug_msg("alloc fail!");
-			return;
-		}
-		dest = bytes_to_str(src, dest, src_len);
-
-		debug_msg("%s%s", prefix, dest);
-
-		nng_free(dest, src_len * 3 + 1);
-	}
-}
-
 static uint64_t
 power(uint64_t x, uint32_t n)
 {
@@ -685,9 +646,6 @@ nmq_connack_encode(nng_msg *msg, conn_param *cparam, uint8_t reason)
 	uint8_t cmd   = CMD_CONNACK;
 	nng_msg_header_append(msg, &cmd, 1);
 	nng_msg_header_append(msg, var_len, bytes);
-
-	// print_hex("Header: ", nni_msg_header(msg), nni_msg_header_len(msg));
-	// print_hex("Body: ", nni_msg_body(msg), nni_msg_len(msg));
 }
 
 /**
