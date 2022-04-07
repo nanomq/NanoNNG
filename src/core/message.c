@@ -419,9 +419,6 @@ int
 nni_msg_dup(nni_msg **dup, const nni_msg *src)
 {
 	nni_msg *            m;
-	struct nni_msg_opt * os;
-	struct nni_msg_opt * od;
-	struct nni_msg_opt **opp;
 	int                  rv;
 
 	if ((m = NNI_ALLOC_STRUCT(m)) == NULL) {
@@ -459,7 +456,6 @@ void
 nni_msg_free(nni_msg *m)
 {
 	if ((m != NULL) && (nni_atomic_dec_nv(&m->m_refcnt) == 0)) {
-		struct nni_msg_opt *mo;
 		nni_chunk_free(&m->m_body);
 
 		if (m->m_proto_ops != NULL &&
