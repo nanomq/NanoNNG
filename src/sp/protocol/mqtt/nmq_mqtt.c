@@ -205,7 +205,7 @@ nano_pipe_timer_cb(void *arg)
 		if (p->conn_param->session_expiry_interval > 0 ||
 		    p->conn_param->will_delay_interval > 0) {
 			if (p->ka_refresh * (qos_duration) >
-			    p->conn_param->session_expiry_interval ||
+			    (int) p->conn_param->session_expiry_interval ||
 				nng_clock() > p->conn_param->will_delay_interval) {
 				// close pipe
 				//  clean previous session
@@ -597,8 +597,6 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 {
 	nano_pipe *p    = arg;
 	nano_sock *sock = s;
-	char      *clientid     = NULL;
-	uint32_t   clientid_key = 0;
 
 	debug_msg("##########nano_pipe_init###############");
 
@@ -627,10 +625,7 @@ nano_pipe_start(void *arg)
 	nano_sock *s = p->broker;
 	nni_msg   *msg;
 	uint8_t    rv; // reason code of CONNACK
-	uint8_t    buf[4]       = { 0x20, 0x02, 0x00, 0x00 };
 	nni_pipe  *npipe        = p->pipe;
-	nni_msg  **msgq         = NULL;
-	uint16_t   pid          = 0;
 	char      *clientid;
 	uint32_t   clientid_key;
 	nano_pipe *old = NULL;
@@ -761,7 +756,6 @@ nano_pipe_close(void *arg)
 	nni_aio *  aio = NULL;
 	nni_msg *  msg;
 	nni_pipe * npipe = p->pipe;
-	uint16_t   packetid = 0;
 	char *     clientid = NULL;
 	uint32_t   clientid_key = 0;
 
