@@ -798,16 +798,6 @@ tcptran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 	nni_aio_finish_error(aio, rv);
 }
 
-static void
-tcptran_pipe_send_start_v4()
-{
-}
-
-static void
-tcptran_pipe_send_start_v5()
-{
-}
-
 /**
  * @brief this is the func that responsible for sending msg while
  *        keeping zero-copy feature, doing all the jobs neccesary
@@ -824,7 +814,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 	nni_msg *msg;
 	int      niov;
 	nni_iov  iov[4];
-	uint8_t  qos, retain = 1;
+	uint8_t  qos;
 
 	debug_msg("########### tcptran_pipe_send_start ###########");
 	if (p->closed) {
@@ -864,7 +854,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		uint8_t var_extra[2],
 		    fixheader[NNI_NANO_MAX_HEADER_SIZE] = { 0 },
 		    tmp[4]                              = { 0 };
-		int       len_offset = 0, sub_id = 0, send_times = 0;
+		int       len_offset = 0, sub_id = 0;
 		uint32_t  pos = 1;
 		nni_pipe *pipe;
 		uint16_t  pid;
@@ -899,7 +889,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 			subinfo *info;
 			NNI_LIST_FOREACH (&p->npipe->subinfol, info) {
 				if (topic_filtern(
-				        info->topic, body + 2, tlen)) {
+				        info->topic, (char*) body + 2, tlen)) {
 					sub_id = info->subid;
 					if (info->rap == 0) {
 						*header = *header & 0xFE;
