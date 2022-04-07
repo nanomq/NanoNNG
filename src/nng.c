@@ -65,7 +65,7 @@ nng_zalloc(size_t sz)
 	return (nni_zalloc(sz));
 }
 
-void *
+void
 nng_zfree(void *ptr)
 {
 	zfree(ptr);
