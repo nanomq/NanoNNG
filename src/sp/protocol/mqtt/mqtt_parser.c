@@ -1304,7 +1304,8 @@ nmq_subinfo_decode(nng_msg *msg, void *l)
 		bpos += len_of_topic;
 
 		sn->subid = subid;
-		sn->rap   = (int) ((0x08 & *(payload_ptr + bpos)) > 0);
+		sn->rap   = (uint8_t) ((0x08 & *(payload_ptr + bpos)) > 0);
+		sn->qos   = (uint8_t) ((0x03 & *(payload_ptr + bpos)) > 0);
 		NNI_LIST_NODE_INIT(&sn->node);
 
 		nni_list_append(ll, sn);

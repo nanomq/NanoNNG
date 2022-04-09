@@ -95,7 +95,8 @@ struct nni_listener {
 struct subinfo {
 	char *        topic;
 	int           subid;
-	int           rap; // Retain As Publish
+	uint8_t       rap; // Retain As Publish
+	uint8_t       qos;
 	nni_list_node node;
 };
 
