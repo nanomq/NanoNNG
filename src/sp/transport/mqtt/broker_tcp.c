@@ -737,8 +737,8 @@ tcptran_pipe_recv_cb(void *arg)
 
 	// Store Subid RAP Topic for sub
 	// TODO move to protocol layer
-	if (type == CMD_SUBSCRIBE) {
-		nmq_subinfo_decode(msg, &npipe->subinfol, cparam->pro_ver);
+	if (type == CMD_SUBSCRIBE && cparam->pro_ver == MQTT_VERSION_V5) {
+		nmq_subinfo_decode(msg, &npipe->subinfol);
 	}
 
 	// keep connection & Schedule next receive
