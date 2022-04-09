@@ -264,6 +264,7 @@ pipe_create(nni_pipe **pp, nni_sock *sock, nni_sp_tran *tran, void *tran_data)
 	p->p_ref        = 0;
 	// NanoMQ
 	p->packet_id = 0;
+	p->ntopics   = 0;
 	p->cache     = false;
 	NNI_LIST_INIT(&p->subinfol, struct subinfo, node);
 

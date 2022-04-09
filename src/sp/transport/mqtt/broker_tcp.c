@@ -736,9 +736,11 @@ tcptran_pipe_recv_cb(void *arg)
 	}
 
 	// Store Subid RAP Topic for sub
-	// TODO move to protocol layer
+	// TODO move to protocol layer and disconnect logic
 	if (type == CMD_SUBSCRIBE && cparam->pro_ver == MQTT_VERSION_V5) {
-		nmq_subinfo_decode(msg, &npipe->subinfol);
+		rv = nmq_subinfo_decode(msg, &npipe->subinfol);
+		if (rv > 0)
+			npipe->ntopics = rv;
 	}
 
 	// keep connection & Schedule next receive
