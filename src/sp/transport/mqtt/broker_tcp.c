@@ -60,7 +60,7 @@ struct tcptran_pipe {
 	nni_reap_node   reap;
 	// MQTT V5
 	uint16_t qrecv_quota;
-	uint16_t qsend_quota;
+	uint32_t qsend_quota;
 };
 
 struct tcptran_ep {
@@ -1039,6 +1039,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		nni_msg_free(msg);
 		nni_aio_set_msg(aio, NULL);
 		nni_aio_finish(aio, 0, 0);
+		return;
 	}
 	if (nni_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
 		if (qos_pac > 0) {
@@ -1049,9 +1050,16 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			    get_var_integer(body + 2 + tlen, &prop_bytes);
 		}
 		target_prover = MQTTV5;
+		tprop_bytes = prop_bytes;
 	}
 	// subid
 	subinfo *info;
+	// use qos_buf to keep zero-copy
+	if (pipe->ntopics * 16 > p->qlength) {
+		nng_free(p->qos_buf, p->qlength);
+		p->qos_buf = nng_alloc(pipe->ntopics * 16);
+		p->qlength = pipe->ntopics * 16;
+	}
 	NNI_LIST_FOREACH (&p->npipe->subinfol, info) {
 		len_offset=0;
 		if (topic_filtern(info->topic, body + 2, tlen)) {
@@ -1163,37 +1171,35 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				    id_bytes + 1);
 				qlength += id_bytes + 1;
 				plength += id_bytes + 1;
+				if (target_prover == MQTTV5)
+					len_offset += prop_bytes;
+			} else {
+				//need to add 0 len for V4 msg
+				if (target_prover == MQTTV4_V5) {
+					// add proplen even 0
+					memcpy(p->qos_buf + qlength, proplen,
+					    tprop_bytes);
+					qlength += tprop_bytes;
+					plength += tprop_bytes;
+				} else {
+				//simply add old prop
+				}
 			}
 			// 2nd part of variable header: pid + proplen+0x0B+subid
 			iov[niov].iov_buf = p->qos_buf+qlength-plength;
 			iov[niov].iov_len = plength;
 			niov++;
 			// prop + body
-			if (target_prover == MQTTV4_V5) {
-				iov[niov].iov_buf =
-				    body + 2 + tlen + len_offset;
-				iov[niov].iov_len =
-				    mlen - 2 - len_offset - tlen;
-			} else {
-				iov[niov].iov_buf = body + 2 + tlen +
-				    len_offset + prop_bytes;
-				iov[niov].iov_len = mlen - 2 - len_offset -
-				    tlen - prop_bytes;
-			}
+			iov[niov].iov_buf = body + 2 + tlen + len_offset;
+			iov[niov].iov_len = mlen - 2 - len_offset - tlen;
 			niov++;
 		}
 		// use qos_buf to keep zero-copy
-		if (qlength > p->qlength) {
-			realloc(p->qos_buf, sizeof(uint8_t) * (qlength + NNI_NANO_MAX_PACKET_SIZE));
-			p->qlength = qlength+NNI_NANO_MAX_PACKET_SIZE;
-		}
+		// if (qlength + NNI_NANO_MAX_PACKET_SIZE > p->qlength) {
+		// 	realloc(p->qos_buf, sizeof(uint8_t) * (qlength + NNI_NANO_MAX_PACKET_SIZE));
+		// 	p->qlength = qlength+NNI_NANO_MAX_PACKET_SIZE;
+		// }
 	}
-
-	// if (qos_pac == 0 && target_prover < 2) {
-	// 	// save time & space for QoS 0 publish
-	// 	// FIXME SUB ID
-	// 	goto send;
-	// }
 
 	// MQTT V5 flow control
 	if (qos > 0) {
