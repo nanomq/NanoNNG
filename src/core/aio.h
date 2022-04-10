@@ -195,7 +195,7 @@ struct nng_aio {
 	nni_task     a_task;
 
 	// Read/write operations.
-	nni_iov  a_iov[8];
+	nni_iov  a_iov[32];
 	unsigned a_nio;
 
 	// Message operations.
