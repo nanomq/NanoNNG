@@ -262,7 +262,7 @@ nano_pipe_timer_cb(void *arg)
 		msg = nni_qos_db_get_one(npipe->nano_qos_db, npipe->p_id, pid);
 		if (msg != NULL) {
 			rmsg        = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
-			time        = nni_msg_get_timestamp(msg);
+			time        = nni_msg_get_timestamp(rmsg);
 			if ((nni_clock() - time) >=
 			    (long unsigned) qos_duration * 1250) {
 				p->busy = true;

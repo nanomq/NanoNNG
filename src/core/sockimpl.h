@@ -95,7 +95,8 @@ struct nni_listener {
 struct subinfo {
 	char *        topic;
 	int           subid;
-	int           rap; // Retain As Publish
+	uint8_t       rap; // Retain As Publish
+	uint8_t       qos;
 	nni_list_node node;
 };
 
@@ -130,12 +131,13 @@ struct nni_pipe {
 #endif
 
 	// NanoMQ
-	void *      conn_param;
-	bool        cache;
-	uint16_t    packet_id;
-	nni_list    subinfol; // additional info for sub
-	void *nano_qos_db; // 'sqlite' or 'nni_id_hash_map', storing qos backup
-	                   // msgs
+	void    *conn_param;
+	bool     cache;
+	uint16_t packet_id;
+	nni_list subinfol;    // additional info for sub
+	void    *nano_qos_db; // qos msgs, 'sqlite' or 'nni_id_hash_map'
+	// NanoMQ MQTT V5
+	uint16_t ntopics;	// how many topics this client sub to
 };
 
 extern int nni_sock_add_dialer(nni_sock *, nni_dialer *);

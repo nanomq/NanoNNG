@@ -28,7 +28,7 @@
 #ifdef NANO_PACKET_SIZE
 #define NNI_NANO_MAX_PACKET_SIZE sizeof(uint8_t) * NANO_PACKET_SIZE
 #else
-#define NNI_NANO_MAX_PACKET_SIZE sizeof(uint8_t) * 12
+#define NNI_NANO_MAX_PACKET_SIZE sizeof(uint8_t) * 16
 #endif
 
 /* Message types & flags */

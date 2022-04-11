@@ -1190,25 +1190,23 @@ nmq_msgack_encode(nng_msg *msg, uint16_t packet_id, uint8_t reason_code,
 
 /**
  * @brief decode sub for subid, topics and RAP to subinfol
+ * 	  warning only use with sub msg & V5 client
  *
  * @param msg
  * @param ptr to subinfol
- * @param mqtt version
- * @return int
+ * @return int -1: protocol error; -2: unknown error; num:numbers of topics
  */
 int
-nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t version)
+nmq_subinfo_decode(nng_msg *msg, void *l)
 {
-	char *        topic;
-	uint8_t       len_of_topic = 0, *payload_ptr, *var_ptr;
-	uint32_t      len, len_of_varint = 0, len_of_str = 0, subid = 0;
-	size_t        bpos = 0, remain = 0;
+	char           *topic;
+	uint8_t         len_of_topic = 0, *payload_ptr, *var_ptr;
+	uint32_t        num = 0, len, len_of_varint = 0, len_of_str = 0, subid = 0;
+	size_t          bpos = 0, remain = 0;
 	struct subinfo *sn = NULL;
-	nni_list *ll = l;
+	nni_list       *ll = l;
 
 	if (!l || !msg)
-		return (-1);
-	if (version != PROTOCOL_VERSION_v5)
 		return (-1);
 
 	len         = get_var_integer(nni_msg_body(msg) + 2, &len_of_varint);
@@ -1264,7 +1262,8 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t version)
 		bpos += len_of_topic;
 
 		sn->subid = subid;
-		sn->rap   = (int) ((0x08 & *(payload_ptr + bpos)) > 0);
+		sn->rap   = (uint8_t) ((0x08 & *(payload_ptr + bpos)) > 0);
+		sn->qos   = (uint8_t) ((0x03 & *(payload_ptr + bpos)));
 		NNI_LIST_NODE_INIT(&sn->node);
 
 		nni_list_append(ll, sn);
@@ -1272,9 +1271,10 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t version)
 		debug_msg("sub topic: %s subid: %d rap: %d \n", sn->topic,
 		    sn->subid, sn->rap);
 		bpos += 1;
+		num++;
 	}
 
-	return MQTT_SUCCESS;
+	return num;
 }
 
 
