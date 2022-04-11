@@ -1020,13 +1020,10 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 
 	uint8_t      *body, *header, qos_pac;
 	target_prover target_prover;
-	uint8_t var_extra[2], fixheader[NNI_NANO_MAX_HEADER_SIZE] = { 0 },
-	        tmp[4] = {0};
-	int       len_offset = 0, sub_id = 0, qos;
-	uint32_t  pos = 1;
-	uint16_t  pid;
-	uint32_t  tprop_bytes, prop_bytes = 0, id_bytes = 0, property_len = 0;
-	size_t    tlen, rlen, mlen, hlen, qlength, plength;
+	int           len_offset = 0, sub_id = 0, qos;
+	uint16_t      pid;
+	uint32_t tprop_bytes, prop_bytes = 0, id_bytes = 0, property_len = 0;
+	size_t   tlen, rlen, mlen, hlen, qlength, plength;
 
 	txaio   = p->txaio;
 	body    = nni_msg_body(msg);
@@ -1065,14 +1062,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	subinfo *info, *tinfo;
 	tinfo = nni_aio_get_prov_data(txaio);
 	nni_aio_set_prov_data(txaio, NULL);
-	// use qos_buf to keep zero-copy
-	// if (pipe->ntopics * 16 > p->qlength) {
-	// 	nng_free(p->qos_buf, p->qlength);
-	// 	p->qos_buf = nng_alloc(pipe->ntopics * 16);
-	// 	p->qlength = pipe->ntopics * 16;
-	// }
 	NNI_LIST_FOREACH (&p->npipe->subinfol, info) {
-		printf("topic : %s \n", info->topic);
 		if (tinfo != NULL && info != tinfo ) {
 			continue;
 		}
@@ -1084,9 +1074,11 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				nni_aio_set_prov_data(txaio, info);
 				break;
 			}
-			uint8_t proplen[4] = { 0 }, var_subid[5] = { 0 };
-			sub_id = info->subid;
-			qos    = info->qos;
+			uint8_t  var_extra[2], fixheader, tmp[4] = { 0 };
+			uint8_t  proplen[4] = { 0 }, var_subid[5] = { 0 };
+			uint32_t pos = 1;
+			sub_id       = info->subid;
+			qos          = info->qos;
 			if (nni_msg_cmd_type(msg) == CMD_PUBLISH) {
 				// V4 to V5 add 0 property length
 				target_prover = MQTTV4_V5;
@@ -1104,7 +1096,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				len_offset += (tprop_bytes - prop_bytes + 1 + id_bytes);
 			}
 			//else use original var payload & pid
-			memcpy(fixheader, header, 1);
+			fixheader = *header;
 			// get final qos
 			qos = qos_pac > qos ? qos : qos_pac;
 
@@ -1112,11 +1104,11 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			if (qos_pac > qos) {
 				if (qos == 1) {
 					// set qos to 1
-					fixheader[0] = fixheader[0] & 0xF9;
-					fixheader[0] = fixheader[0] | 0x02;
+					fixheader = fixheader & 0xF9;
+					fixheader = fixheader | 0x02;
 				} else {
 					// set qos to 0
-					fixheader[0] = fixheader[0] & 0xF9;
+					fixheader = fixheader & 0xF9;
 					len_offset   = len_offset - 2;
 				}
 			}
@@ -1124,11 +1116,11 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			pos=1;
 			rlen = put_var_integer(
 			    tmp, get_var_integer(header, &pos) + len_offset);
-			memcpy(fixheader + 1, tmp, rlen);
 			// or just copy to qosbuf directly?
-			memcpy(p->qos_buf + qlength, fixheader, 1 + rlen);
-			iov[niov].iov_buf = p->qos_buf+qlength;
-			iov[niov].iov_len = rlen+1;
+			*(p->qos_buf + qlength) = fixheader;
+			memcpy(p->qos_buf + qlength + 1, tmp, rlen);
+			iov[niov].iov_buf = p->qos_buf + qlength;
+			iov[niov].iov_len = rlen + 1;
 			niov++;
 			qlength += rlen + 1;
 			// 1st part of variable header: topic + topic len
@@ -1201,8 +1193,6 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 					    tprop_bytes);
 					qlength += tprop_bytes;
 					plength += tprop_bytes;
-				} else {
-				//simply add old prop
 				}
 			}
 			// 2nd part of variable header: pid + proplen+0x0B+subid
@@ -1226,6 +1216,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			// normal send. qos msg will be resend
 			// afterwards
 			nni_msg_free(msg);
+			nni_aio_set_prov_data(txaio, NULL);
 			nni_aio_set_msg(aio, NULL);
 			nni_aio_finish(aio, 0, 0);
 			return;
