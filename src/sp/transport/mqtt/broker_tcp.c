@@ -164,12 +164,11 @@ tcptran_pipe_init(void *arg, nni_pipe *npipe)
 #endif
 	p->conn_buf = NULL;
 	p->busy     = false;
-	p->subinfo  = NULL;
 
 	nni_lmq_init(&p->rslmq, 16);
 	p->qos_buf = nng_zalloc(16 + NNI_NANO_MAX_PACKET_SIZE);
 	// the size limit of qos_buf reserve 1 byte for property length
-	p->qlength = 16+NNI_NANO_MAX_PACKET_SIZE;
+	p->qlength = 16 + NNI_NANO_MAX_PACKET_SIZE;
 	return (0);
 }
 
@@ -459,7 +458,7 @@ nmq_tcptran_pipe_send_cb(void *arg)
 	debug_msg(
 	    "tcp socket sent %ld bytes iov %ld", n, nni_aio_iov_count(txaio));
 
-	// more duplicated msgs or bytes to send
+	// more bytes to send
 	if (nni_aio_iov_count(txaio) > 0) {
 		nng_stream_send(p->conn, txaio);
 		nni_mtx_unlock(&p->mtx);
@@ -467,7 +466,8 @@ nmq_tcptran_pipe_send_cb(void *arg)
 	}
 
 	msg = nni_aio_get_msg(aio);
-	if (p->subinfo != NULL) {
+	if (nni_aio_get_prov_data(txaio) != NULL) {
+		// msgs left behind due to multiple topics matched
 		nmq_pipe_send_start_v5(p, msg, aio);
 		nni_mtx_unlock(&p->mtx);
 		return;
@@ -1009,8 +1009,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	nni_aio  *txaio;
 	nni_pipe *pipe = p->npipe;
 	int       niov;
-	nni_iov   iov2[2];
-	nni_iov   iov[pipe->ntopics*4];
+	nni_iov   iov[8];
 
 	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
 	nni_aio_set_msg(aio, msg);
@@ -1021,8 +1020,6 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 
 	uint8_t      *body, *header, qos_pac;
 	target_prover target_prover;
-	// uint8_t  tar_prover = 0;	// 0 : V4 1: V5 5: V4 to V5  4:
-	// V5 to V4
 	uint8_t var_extra[2], fixheader[NNI_NANO_MAX_HEADER_SIZE] = { 0 },
 	        tmp[4] = {0};
 	int       len_offset = 0, sub_id = 0, qos;
@@ -1032,9 +1029,9 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	size_t    tlen, rlen, mlen, hlen, qlength, plength;
 
 	txaio   = p->txaio;
-	niov    = 0;
 	body    = nni_msg_body(msg);
 	header  = nni_msg_header(msg);
+	niov    = 0;
 	qlength = 0;
 	plength = 0;
 	mlen    = nni_msg_len(msg);
@@ -1047,6 +1044,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	if (total_len > p->tcp_cparam->max_packet_size) {
 		// drop msg and finish aio
 		// pretend it has been sent
+		debug_syslog("Warning:msg dropped due to overceed max packet size!");
 		nni_msg_free(msg);
 		nni_aio_set_msg(aio, NULL);
 		nni_aio_finish(aio, 0, 0);
@@ -1064,7 +1062,9 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		tprop_bytes = prop_bytes;
 	}
 	// subid
-	subinfo *info;
+	subinfo *info, *tinfo;
+	tinfo = nni_aio_get_prov_data(txaio);
+	nni_aio_set_prov_data(txaio, NULL);
 	// use qos_buf to keep zero-copy
 	// if (pipe->ntopics * 16 > p->qlength) {
 	// 	nng_free(p->qos_buf, p->qlength);
@@ -1073,14 +1073,15 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	// }
 	NNI_LIST_FOREACH (&p->npipe->subinfol, info) {
 		printf("topic : %s \n", info->topic);
-		if (p->subinfo != NULL && info != p->subinfo ) {
+		if (tinfo != NULL && info != tinfo ) {
 			continue;
 		}
-		p->subinfo = NULL;
+		tinfo = NULL;
 		len_offset=0;
 		if (topic_filtern(info->topic, body + 2, tlen)) {
-			if (niov >= 4) {
-				p->subinfo = info;
+			if (niov >= 8) {
+				// nng aio only allow 2 msgs at a time
+				nni_aio_set_prov_data(txaio, info);
 				break;
 			}
 			uint8_t proplen[4] = { 0 }, var_subid[5] = { 0 };
@@ -1213,14 +1214,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			iov[niov].iov_len = mlen - 2 - len_offset - tlen;
 			niov++;
 		}
-		// use qos_buf to keep zero-copy
-		// if (qlength + NNI_NANO_MAX_PACKET_SIZE > p->qlength) {
-		// 	realloc(p->qos_buf, sizeof(uint8_t) * (qlength + NNI_NANO_MAX_PACKET_SIZE));
-		// 	p->qlength = qlength+NNI_NANO_MAX_PACKET_SIZE;
-		// }
 	}
-	if (info == NULL)
-		p->subinfo = NULL;
 
 	// MQTT V5 flow control
 	if (qos > 0) {
@@ -1246,16 +1240,16 @@ send:
 	niov  = 0;
 
 	if (nni_msg_header_len(msg) > 0) {
-		iov2[niov].iov_buf = nni_msg_header(msg);
-		iov2[niov].iov_len = nni_msg_header_len(msg);
+		iov[niov].iov_buf = nni_msg_header(msg);
+		iov[niov].iov_len = nni_msg_header_len(msg);
 		niov++;
 	}
 	if (nni_msg_len(msg) > 0) {
-		iov2[niov].iov_buf = nni_msg_body(msg);
-		iov2[niov].iov_len = nni_msg_len(msg);
+		iov[niov].iov_buf = nni_msg_body(msg);
+		iov[niov].iov_len = nni_msg_len(msg);
 		niov++;
 	}
-	nni_aio_set_iov(txaio, niov, iov2);
+	nni_aio_set_iov(txaio, niov, iov);
 	nng_stream_send(p->conn, txaio);
 }
 
@@ -1290,7 +1284,6 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		debug_msg("aio not functioning");
 		return;
 	}
-	p->subinfo = NULL;
 
 	// This runs to send the message.
 	msg = nni_aio_get_msg(aio);
@@ -1307,260 +1300,6 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		nmq_pipe_send_start_v5(p, msg, aio);
 		return;
 	}
-
-// 	qos = NANO_NNI_LMQ_GET_QOS_BITS(msg);
-// 	// qos default to 0 if the msg is not PUBLISH
-// 	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
-// 	nni_aio_set_msg(aio, msg);
-
-// 	// Ready for composing
-// 	// never modify the original msg
-// 	if (nni_msg_header_len(msg) > 0 &&
-// 	    nni_msg_get_type(msg) == CMD_PUBLISH) {
-// 		uint8_t      *body, *header, qos_pac;
-// 		target_prover target_prover;
-// 		// uint8_t  tar_prover = 0;	// 0 : V4 1: V5 5: V4 to V5  4:
-// 		// V5 to V4
-// 		uint8_t var_extra[2],
-// 		    fixheader[NNI_NANO_MAX_HEADER_SIZE] = { 0 },
-// 		    tmp[4]                              = { 0 };
-// 		int       len_offset = 0, sub_id = 0, send_times = 0;
-// 		uint32_t  pos = 1;
-// 		nni_pipe *pipe;
-// 		uint16_t  pid;
-// 		uint32_t  property_bytes = 0, property_len = 0;
-// 		size_t    tlen, rlen, mlen, hlen, qlength, plength;
-
-// 		pipe    = p->npipe;
-// 		body    = nni_msg_body(msg);
-// 		header  = nni_msg_header(msg);
-// 		qlength = 0;
-// 		plength = 0;
-// 		mlen    = nni_msg_len(msg);
-// 		hlen    = nni_msg_header_len(msg);
-// 		qos_pac = nni_msg_get_pub_qos(msg);
-// 		NNI_GET16(body, tlen);
-
-// 		if (nni_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
-// 			if (qos_pac > 0) {
-// 				property_len = get_var_integer(
-// 				    body + 4 + tlen, &property_bytes);
-// 			} else {
-// 				property_len = get_var_integer(
-// 				    body + 2 + tlen, &property_bytes);
-// 			}
-// 		}
-// 		// check max packet size for this client/msg
-// 		if (p->tcp_cparam->pro_ver == 5) {
-// 			uint32_t total_len = mlen + hlen;
-// 			// get retain as published indicator
-
-// 			// subid
-// 			subinfo *info;
-// 			NNI_LIST_FOREACH (&p->npipe->subinfol, info) {
-// 				if (topic_filtern(
-// 				        info->topic, body + 2, tlen)) {
-// 					sub_id = info->subid;
-// 					if (info->rap == 0) {
-// 						*header = *header & 0xFE;
-// 					}
-// 					// TODO how to check sub
-// 					// when multiple msg mathed
-// 					break;
-// 				}
-// 			}
-
-// 			if (total_len > p->tcp_cparam->max_packet_size) {
-// 				// drop msg and finish aio
-// 				// pretend it has been sent
-// 				nni_msg_free(msg);
-// 				nni_aio_set_msg(aio, NULL);
-// 				nni_aio_finish(aio, 0, 0);
-// 			}
-// 			if (nni_msg_cmd_type(msg) == CMD_PUBLISH) {
-// 				// V4 to V5 add 0 property length
-// 				target_prover = MQTTV4_V5;
-// 				len_offset    = 1;
-// 				qlength++;
-// 			} else {
-// 				target_prover = MQTTV5;
-// 				if (sub_id != 0) {
-// 					len_offset += 2;
-// 				}
-// 			}
-// 		} else if (p->tcp_cparam->pro_ver != 5) {
-// 			if (nni_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
-// 				// V5 to V4 shrink msg, remove property length
-// 				// APP layer must give topic name even if topic
-// 				// alias is set
-// 				target_prover = MQTTV5_V4;
-// 			} else if (nni_msg_cmd_type(msg) == CMD_PUBLISH) {
-// 				target_prover = MQTTV4;
-// 			}
-// 		}
-// 		if (qos_pac == 0 && target_prover < 2) {
-// 			// save time & space for QoS 0 publish
-// 			// FIXME SUB ID
-// 			goto send;
-// 		}
-
-// 		// TODO make this part inline;
-// 		debug_msg("qos_pac %d sub %d\n", qos_pac, qos);
-// 		memcpy(fixheader, header, nni_msg_header_len(msg));
-// 		// get final qos
-// 		qos = qos_pac > qos ? qos : qos_pac;
-
-// 		// alter qos according to sub qos
-// 		if (qos_pac > qos) {
-// 			if (qos == 1) {
-// 				// set qos to 1
-// 				fixheader[0] = fixheader[0] & 0xF9;
-// 				fixheader[0] = fixheader[0] | 0x02;
-// 			} else {
-// 				// set qos to 0
-// 				fixheader[0] = fixheader[0] & 0xF9;
-// 				len_offset   = len_offset - 2;
-// 			}
-// 		}
-// 		if (target_prover == MQTTV5_V4) {
-// 			// V5 msg sent to V4 client
-// 			// caculate property length and delete it
-// 			plength = property_len + property_bytes;
-// 		}
-// 		// copy remaining length
-// 		rlen = put_var_integer(
-// 		    tmp, get_var_integer(header, &pos) + len_offset - plength);
-// 		memcpy(fixheader + 1, tmp, rlen);
-
-// 		txaio = p->txaio;
-// 		niov  = 0;
-// 		// fixed header
-// 		qlength += rlen + 1;
-// 		// 1st part of variable header: topic
-
-// 		qlength += tlen + 2; // get topic length
-// 		len_offset = 0;      // now use it to indicates the pid length
-// 		// packet id
-// 		if (qos > 0) {
-// 			// set pid
-// 			len_offset = 2;
-// 			nni_msg *old;
-// 			// packetid in aio to differ resend msg
-// 			// TODO replace it with set prov data
-// 			pid = nni_aio_get_packetid(aio);
-// 			if (pid == 0) {
-// 				// first time send this msg
-// 				pid = nni_pipe_inc_packetid(pipe);
-// 				// store msg for qos retrying
-// 				nni_msg_clone(msg);
-// 				if ((old = nni_qos_db_get(pipe->nano_qos_db,
-// 				         pipe->p_id, pid)) != NULL) {
-// 					// TODO packetid already exists.
-// 					// do we need to replace old with new
-// 					// one ? print warning to users
-// 					nni_println(
-// 					    "ERROR: packet id duplicates in "
-// 					    "nano_qos_db");
-// 					old =
-// 					    NANO_NNI_LMQ_GET_MSG_POINTER(old);
-
-// 					nni_qos_db_remove_msg(
-// 					    pipe->nano_qos_db, old);
-// 				}
-// 				old = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
-// 				nni_qos_db_set(
-// 				    pipe->nano_qos_db, pipe->p_id, pid, old);
-// 			}
-// 			NNI_PUT16(var_extra, pid);
-// 			qlength += 2;
-// 		} else if (qos_pac > 0) {
-// 			len_offset += 2;
-// 		}
-// 		if (target_prover == MQTTV5 && sub_id != 0) {
-// 			qlength += 3;
-// 		}
-// 		// use qos_buf to keep zero-copy
-// 		if (qlength > 16 + NNI_NANO_MAX_PACKET_SIZE) {
-// 			nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
-// 			p->qos_buf = nng_zalloc(sizeof(uint8_t) * (qlength));
-// 		}
-
-// 		// copy fixheader to qos_buf
-// 		memcpy(p->qos_buf, fixheader, rlen + 1);
-// 		pos = rlen + 1;
-// 		// copy topic + topic length to qos_buf
-// 		memcpy(p->qos_buf + rlen + 1, body, tlen + 2);
-// 		pos += tlen + 2;
-// 		if (qos > 0) {
-// 			// copy packet id
-// 			memcpy(p->qos_buf + rlen + tlen + 3, var_extra, 2);
-// 			pos += 2;
-// 		}
-// 		if (target_prover == MQTTV4_V5) {
-// 			// V4 msg sent to V5 client
-// 			// add property length 0
-// 			*(p->qos_buf + qlength - 1) = 0x00;
-// 			pos += 1;
-// 			// TODO should we support sub id in V4 to V5?
-// 		}
-// 		if (target_prover == MQTTV5 && sub_id != 0) {
-// 			// append sub id
-// 			uint32_t tmp_len;
-// 			uint8_t  t[2] = { 0x0B, 0x00 };
-// 			t[1]          = sub_id;
-// 			tmp_len       = put_var_integer(tmp, property_len + 2);
-// 			plength += property_bytes;
-// 			memcpy(p->qos_buf + pos, tmp, tmp_len);
-// 			property_bytes = tmp_len;
-// 			memcpy(p->qos_buf + pos + property_bytes, t, 2);
-// 		}
-// 		iov[niov].iov_buf = p->qos_buf;
-// 		iov[niov].iov_len = qlength;
-// 		niov++;
-// 		// variable header + payload
-// 		if (mlen > 0) {
-// 			// determine if it needs to skip packet id field
-// 			iov[niov].iov_buf =
-// 			    body + 2 + tlen + len_offset + plength;
-// 			iov[niov].iov_len =
-// 			    mlen - 2 - len_offset - tlen - plength;
-// 			niov++;
-// 		}
-// 		// MQTT V5 flow control
-// 		if (p->tcp_cparam->pro_ver == 5 && qos > 0) {
-// 			if (p->qsend_quota > 0) {
-// 				p->qsend_quota--;
-// 			} else {
-// 				// what should broker does when exceed
-// 				// max_recv? msg lost, make it look like a
-// 				// normal send. qos msg will be resend
-// 				// afterwards
-// 				nni_msg_free(msg);
-// 				nni_aio_set_msg(aio, NULL);
-// 				nni_aio_finish(aio, 0, 0);
-// 				return;
-// 			}
-// 		}
-// 		nni_aio_set_iov(txaio, niov, iov);
-// 		nng_stream_send(p->conn, txaio);
-// 		return;
-// 	}
-// send:
-// 	txaio = p->txaio;
-// 	niov  = 0;
-
-// 	if (nni_msg_header_len(msg) > 0) {
-// 		iov[niov].iov_buf = nni_msg_header(msg);
-// 		iov[niov].iov_len = nni_msg_header_len(msg);
-// 		niov++;
-// 	}
-// 	if (nni_msg_len(msg) > 0) {
-// 		iov[niov].iov_buf = nni_msg_body(msg);
-// 		iov[niov].iov_len = nni_msg_len(msg);
-// 		niov++;
-// 	}
-// 	nni_aio_set_iov(txaio, niov, iov);
-// 	nng_stream_send(p->conn, txaio);
 }
 
 static void
