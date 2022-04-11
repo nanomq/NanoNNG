@@ -95,6 +95,9 @@ static void tcptran_pipe_nego_cb(void *);
 static void tcptran_ep_fini(void *);
 static void tcptran_pipe_fini(void *);
 
+static inline void
+nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio);
+
 static nni_reap_list tcptran_ep_reap_list = {
 	.rl_offset = offsetof(tcptran_ep, reap),
 	.rl_func   = tcptran_ep_fini,
@@ -161,6 +164,7 @@ tcptran_pipe_init(void *arg, nni_pipe *npipe)
 #endif
 	p->conn_buf = NULL;
 	p->busy     = false;
+	p->subinfo  = NULL;
 
 	nni_lmq_init(&p->rslmq, 16);
 	p->qos_buf = nng_zalloc(16 + NNI_NANO_MAX_PACKET_SIZE);
@@ -461,10 +465,16 @@ nmq_tcptran_pipe_send_cb(void *arg)
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
+
+	msg = nni_aio_get_msg(aio);
+	if (p->subinfo != NULL) {
+		nmq_pipe_send_start_v5(p, msg, aio);
+		nni_mtx_unlock(&p->mtx);
+		return;
+	}
 	nni_aio_list_remove(aio);
 	tcptran_pipe_send_start(p);
 
-	msg = nni_aio_get_msg(aio);
 	if (msg == NULL) {
 		nni_mtx_unlock(&p->mtx);
 		// msg is lost due to flow control
@@ -1056,17 +1066,25 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	// subid
 	subinfo *info;
 	// use qos_buf to keep zero-copy
-	if (pipe->ntopics * 16 > p->qlength) {
-		nng_free(p->qos_buf, p->qlength);
-		p->qos_buf = nng_alloc(pipe->ntopics * 16);
-		p->qlength = pipe->ntopics * 16;
-	}
+	// if (pipe->ntopics * 16 > p->qlength) {
+	// 	nng_free(p->qos_buf, p->qlength);
+	// 	p->qos_buf = nng_alloc(pipe->ntopics * 16);
+	// 	p->qlength = pipe->ntopics * 16;
+	// }
 	NNI_LIST_FOREACH (&p->npipe->subinfol, info) {
+		printf("topic : %s \n", info->topic);
+		if (p->subinfo != NULL && info != p->subinfo ) {
+			continue;
+		}
+		p->subinfo = NULL;
 		len_offset=0;
 		if (topic_filtern(info->topic, body + 2, tlen)) {
+			if (niov >= 4) {
+				p->subinfo = info;
+				break;
+			}
 			uint8_t proplen[4] = { 0 }, var_subid[5] = { 0 };
 			sub_id = info->subid;
-			printf("topic : %s \n", info->topic);
 			qos    = info->qos;
 			if (nni_msg_cmd_type(msg) == CMD_PUBLISH) {
 				// V4 to V5 add 0 property length
@@ -1201,6 +1219,8 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		// 	p->qlength = qlength+NNI_NANO_MAX_PACKET_SIZE;
 		// }
 	}
+	if (info == NULL)
+		p->subinfo = NULL;
 
 	// MQTT V5 flow control
 	if (qos > 0) {
@@ -1270,6 +1290,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		debug_msg("aio not functioning");
 		return;
 	}
+	p->subinfo = NULL;
 
 	// This runs to send the message.
 	msg = nni_aio_get_msg(aio);
