@@ -64,10 +64,11 @@ create_main_table(sqlite3 *db)
 void
 nni_mqtt_qos_db_init(sqlite3 **db)
 {
+	char pwd[512] = { 0 };
 	char path[1024] = { 0 };
-	if (getcwd(path, 1024) != NULL) {
-		sprintf(path, "%s/%s", path, db_name);
-		if (sqlite3_open(db_name, db) != 0) {
+	if (getcwd(pwd, sizeof(pwd)) != NULL) {
+		sprintf(path, "%s/%s", pwd, db_name);
+		if (sqlite3_open(path, db) != 0) {
 			return;
 		}
 		if (create_msg_table(*db) != 0) {
