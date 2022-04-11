@@ -32,33 +32,33 @@ struct tcptran_pipe {
 	nni_pipe   *npipe; // for statitical
 	// uint16_t        peer;		//reserved for MQTT sdk version
 	// uint16_t        proto;
-	size_t      rcvmax;
-	size_t      gotrxhead;
-	size_t      wantrxhead;
-	size_t      qlength; // length of qos_buf
-	bool        closed;
-	bool        busy; // indicator for qos ack & aio
-	uint8_t     txlen[NANO_MIN_PACKET_LEN];
-	uint8_t     rxlen[NNI_NANO_MAX_HEADER_SIZE];
-	uint8_t    *conn_buf;
-	uint8_t    *qos_buf; // msg trunk for qos & V4/V5 conversion
-	nni_aio    *txaio;
-	nni_aio    *rxaio;
-	nni_aio    *qsaio;
-	nni_aio    *rpaio;
-	nni_aio    *negoaio;
-	nni_lmq     rslmq;
-	nni_msg    *rxmsg, *cnmsg;
-	nni_mtx     mtx;
-	conn_param *tcp_cparam;
-	nni_list    recvq;
-	nni_list    sendq;
-	// nni_id_map		subinfo;
+	size_t          rcvmax;
+	size_t          gotrxhead;
+	size_t          wantrxhead;
+	size_t          qlength; // length of qos_buf
+	bool            closed;
+	bool            busy; // indicator for qos ack & aio
+	uint8_t         txlen[NANO_MIN_PACKET_LEN];
+	uint8_t         rxlen[NNI_NANO_MAX_HEADER_SIZE];
+	uint8_t        *conn_buf;
+	uint8_t        *qos_buf; // msg trunk for qos & V4/V5 conversion
+	nni_aio        *txaio;
+	nni_aio        *rxaio;
+	nni_aio        *qsaio;
+	nni_aio        *rpaio;
+	nni_aio        *negoaio;
+	nni_lmq         rslmq;
+	nni_msg        *rxmsg, *cnmsg;
+	nni_mtx         mtx;
+	conn_param     *tcp_cparam;
+	nni_list        recvq;
+	nni_list        sendq;
 	nni_list_node   node;
 	tcptran_ep     *ep;
 	nni_atomic_flag reaped;
 	nni_reap_node   reap;
 	// MQTT V5
+	subinfo *subinfo;
 	uint16_t qrecv_quota;
 	uint32_t qsend_quota;
 };
@@ -455,6 +455,7 @@ nmq_tcptran_pipe_send_cb(void *arg)
 	debug_msg(
 	    "tcp socket sent %ld bytes iov %ld", n, nni_aio_iov_count(txaio));
 
+	// more duplicated msgs or bytes to send
 	if (nni_aio_iov_count(txaio) > 0) {
 		nng_stream_send(p->conn, txaio);
 		nni_mtx_unlock(&p->mtx);
@@ -806,7 +807,7 @@ tcptran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
  * @param p 
  * @param msg 
  */
-static void
+static inline void
 nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 {
 	nni_aio *txaio;
@@ -992,7 +993,7 @@ send:
  * @param msg 
  * @param aio 
  */
-static void
+static inline void
 nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 {
 	nni_aio  *txaio;
@@ -1063,15 +1064,15 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	NNI_LIST_FOREACH (&p->npipe->subinfol, info) {
 		len_offset=0;
 		if (topic_filtern(info->topic, body + 2, tlen)) {
-			uint8_t fix_len, var_len;
 			uint8_t proplen[4] = { 0 }, var_subid[5] = { 0 };
 			sub_id = info->subid;
+			printf("topic : %s \n", info->topic);
 			qos    = info->qos;
 			if (nni_msg_cmd_type(msg) == CMD_PUBLISH) {
 				// V4 to V5 add 0 property length
 				target_prover = MQTTV4_V5;
-				prop_bytes = 1;
-				tprop_bytes = 1;
+				prop_bytes    = 1;
+				tprop_bytes   = 1;
 				len_offset    = 1;
 			}
 			if (info->rap == 0) {
