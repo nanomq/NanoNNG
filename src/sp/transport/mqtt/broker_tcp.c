@@ -599,7 +599,7 @@ tcptran_pipe_recv_cb(void *arg)
 			goto recv_error;
 		}
 
-		if ((rv = nni_msg_alloc(&p->rxmsg, (size_t) len)) != 0) {
+		if ((rv = nni_mqtt_msg_alloc(&p->rxmsg, (size_t) len)) != 0) {
 			debug_syslog("mem error %ld\n", (size_t) len);
 			rv = NMQ_SERVER_UNAVAILABLE;
 			goto recv_error;
@@ -694,7 +694,7 @@ tcptran_pipe_recv_cb(void *arg)
 	if (ack == true) {
 		// alloc a msg here costs memory. However we must do it for the
 		// sake of compatibility with nng.
-		if ((rv = nni_msg_alloc(&qmsg, 0)) != 0) {
+		if ((rv = nni_mqtt_msg_alloc(&qmsg, 0)) != 0) {
 			ack = false;
 			rv  = NMQ_SERVER_BUSY;
 			goto recv_error;

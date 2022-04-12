@@ -23,7 +23,7 @@ test_qos_db_set(void)
 	nni_time ts     = 1648004331;
 
 	nni_msg *msg;
-	nni_msg_alloc(&msg, 0);
+	nni_mqtt_msg_alloc(&msg, 0);
 	nni_msg_header_append(msg, header, strlen(header));
 	nni_msg_append(msg, body, strlen(body));
 	nni_msg_set_timestamp(msg, ts);
@@ -101,7 +101,7 @@ test_qos_db_check_remove_msg(void)
 	char *body   = "abcdefg";
 
 	nni_msg *msg;
-	nni_msg_alloc(&msg, 0);
+	nni_mqtt_msg_alloc(&msg, 0);
 	nni_msg_header_append(msg, header, strlen(header));
 	nni_msg_append(msg, body, strlen(body));
 

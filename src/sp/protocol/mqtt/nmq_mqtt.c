@@ -631,7 +631,7 @@ nano_pipe_start(void *arg)
 	nano_pipe *old = NULL;
 
 	debug_msg(" ########## nano_pipe_start ########## ");
-	nni_msg_alloc(&msg, 0);
+	nni_mqtt_msg_alloc(&msg, 0);
 	nni_mtx_lock(&s->lk);
 
 	clientid = (char *) conn_param_get_clientid(p->conn_param);

@@ -115,7 +115,7 @@ wstran_pipe_recv_cb(void *arg)
 	    p->gotrxhead, ptr, *ptr, nni_msg_len(msg));
 	// first we collect complete Fixheader
 	if (p->tmp_msg == NULL && p->gotrxhead > 0) {
-		if ((rv = nni_msg_alloc(&p->tmp_msg, 0)) != 0) {
+		if ((rv = nni_mqtt_msg_alloc(&p->tmp_msg, 0)) != 0) {
 			debug_syslog("mem error %ld\n", (size_t) len);
 			goto reset;
 		}
@@ -178,7 +178,7 @@ done:
 			nni_mtx_unlock(&p->mtx);
 			return;
 		} else {
-			if (nni_msg_alloc(&smsg, 0) != 0) {
+			if (nni_mqtt_msg_alloc(&smsg, 0) != 0) {
 				goto reset;
 			}
 			// parse fixed header
@@ -203,7 +203,7 @@ done:
 				p->txlen[1] = 0x02;
 				pid         = nni_msg_get_pub_pid(smsg);
 				NNI_PUT16(p->txlen + 2, pid);
-				nni_msg_alloc(&qos_msg, 0);
+				nni_mqtt_msg_alloc(&qos_msg, 0);
 				nni_msg_header_append(qos_msg, p->txlen, 4);
 				nni_aio_set_msg(p->qsaio, qos_msg);
 				nng_stream_send(p->ws, p->qsaio);
@@ -213,7 +213,7 @@ done:
 			p->txlen[0] = 0X62;
 			p->txlen[1] = 0x02;
 			memcpy(p->txlen + 2, nni_msg_body(smsg), 2);
-			nni_msg_alloc(&qos_msg, 0);
+			nni_mqtt_msg_alloc(&qos_msg, 0);
 			nni_msg_header_append(qos_msg, p->txlen, 4);
 			nni_aio_set_msg(p->qsaio, qos_msg);
 			nng_stream_send(p->ws, p->qsaio);
@@ -222,7 +222,7 @@ done:
 			p->txlen[0] = CMD_PUBCOMP;
 			p->txlen[1] = 0x02;
 			memcpy(p->txlen + 2, nni_msg_body(smsg), 2);
-			nni_msg_alloc(&qos_msg, 0);
+			nni_mqtt_msg_alloc(&qos_msg, 0);
 			nni_msg_header_append(qos_msg, p->txlen, 4);
 			nni_aio_set_msg(p->qsaio, qos_msg);
 			nng_stream_send(p->ws, p->qsaio);
@@ -405,7 +405,7 @@ wstran_pipe_send(void *arg, nni_aio *aio)
 			}
 			NNI_PUT16(varheader, pid);
 		}
-		nni_msg_alloc(&smsg, 0);
+		nni_mqtt_msg_alloc(&smsg, 0);
 		nni_msg_header_append(smsg, fixheader, rlen + 1);
 		nni_msg_append(smsg, body, tlen + 2);
 		if (qos > 0) {

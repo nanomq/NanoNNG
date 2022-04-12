@@ -540,7 +540,7 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 		// 	goto recv_error;
 		// }
 
-		if ((rv = nni_msg_alloc(&p->rxmsg, (size_t) len)) != 0) {
+		if ((rv = nni_mqtt_msg_alloc(&p->rxmsg, (size_t) len)) != 0) {
 			goto recv_error;
 		}
 		// set remaining length for bridging
@@ -602,7 +602,7 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 	}
 
 	if (ack == true) {
-		if ((rv = nni_msg_alloc(&qmsg, 0)) != 0) {
+		if ((rv = nni_mqtt_msg_alloc(&qmsg, 0)) != 0) {
 			ack = false;
 			goto recv_error;
 		}
