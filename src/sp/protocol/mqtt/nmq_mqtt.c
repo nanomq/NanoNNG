@@ -578,8 +578,6 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 {
 	nano_pipe *p    = arg;
 	nano_sock *sock = s;
-	char      *clientid     = NULL;
-	uint32_t   clientid_key = 0;
 
 	debug_msg("##########nano_pipe_init###############");
 
@@ -608,10 +606,7 @@ nano_pipe_start(void *arg)
 	nano_sock *s = p->broker;
 	nni_msg   *msg;
 	uint8_t    rv; // reason code of CONNACK
-	uint8_t    buf[4]       = { 0x20, 0x02, 0x00, 0x00 };
 	nni_pipe  *npipe        = p->pipe;
-	nni_msg  **msgq         = NULL;
-	uint16_t   pid          = 0;
 	char      *clientid;
 	uint32_t   clientid_key;
 	nano_pipe *old = NULL;
@@ -678,8 +673,8 @@ nano_pipe_start(void *arg)
 	// check if pointer is different later
 	if (old) {
 		// check will msg delay interval
-		if (conn_param_get_will_delay_timestamp(old->conn_param) >
-		    p->ka_refresh * (s->conf->qos_duration)) {
+		if (conn_param_get_will_delay_interval(old->conn_param) >
+		    old->ka_refresh * (s->conf->qos_duration)) {
 			// it is not your time yet
 			old->conn_param->will_flag = 0;
 		}
@@ -727,7 +722,6 @@ nano_pipe_close(void *arg)
 	nni_aio *  aio = NULL;
 	nni_msg *  msg;
 	nni_pipe * npipe = p->pipe;
-	uint16_t   packetid = 0;
 	char *     clientid = NULL;
 	uint32_t   clientid_key = 0;
 
