@@ -7,6 +7,8 @@
 #include <nng/mqtt/packet.h>
 #include <stdlib.h>
 
+#include "nng/supplemental/util/platform.h"
+
 // Do not change to %lu! just supress the warning of compiler!
 #define DISCONNECT_MSG          \
 	"{\"username\":\"%s\"," \
