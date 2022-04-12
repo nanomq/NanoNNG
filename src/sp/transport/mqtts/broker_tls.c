@@ -94,7 +94,6 @@ struct tlstran_ep {
 
 static void tlstran_pipe_send_start(tlstran_pipe *);
 static void tlstran_pipe_recv_start(tlstran_pipe *);
-static void nmq_tcptran_pipe_send_cb(void *);
 static void tlstran_pipe_qos_send_cb(void *);
 static void tlstran_pipe_send_cb(void *);
 static void tlstran_pipe_recv_cb(void *);
@@ -1075,8 +1074,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	}
 	NNI_LIST_FOREACH (&p->npipe->subinfol, info) {
 		len_offset=0;
-		if (topic_filtern(info->topic, body + 2, tlen)) {
-			uint8_t fix_len, var_len;
+		if (topic_filtern(info->topic, (char*) (body + 2), tlen)) {
 			uint8_t proplen[4] = { 0 }, var_subid[5] = { 0 };
 			sub_id = info->subid;
 			qos    = info->qos;
@@ -1263,11 +1261,7 @@ static void
 tlstran_pipe_send_start(tlstran_pipe *p)
 {
 	nni_aio *aio;
-	nni_aio *txaio;
 	nni_msg *msg;
-	int      niov;
-	nni_iov  iov[4];
-	uint8_t  qos, retain = 1;
 
 	debug_msg("########### tcptran_pipe_send_start ###########");
 	if (p->closed) {
