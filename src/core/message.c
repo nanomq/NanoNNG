@@ -12,6 +12,7 @@
 
 #include "core/nng_impl.h"
 #include "nng/nng_debug.h"
+#include "mqtt/mqtt.h"
 
 // Message API.
 
@@ -33,12 +34,6 @@ struct nng_msg {
 	void *             m_proto_data;
 	uint32_t           m_pipe; // set on receive
 	nni_atomic_int     m_refcnt;
-	// FOR NANOMQ
-	size_t           remaining_len;
-	uint8_t          CMD_TYPE;
-	uint8_t *        payload_ptr; // payload
-	nni_time         times;		  // the time msg arrives
-	nano_conn_param *cparam;      // indicates where it originated
 };
 
 #if 0
@@ -411,6 +406,9 @@ nni_msg_alloc(nni_msg **mp, size_t sz)
 	// We always start with a single valid reference count.
 	nni_atomic_init(&m->m_refcnt);
 	nni_atomic_set(&m->m_refcnt, 1);
+
+	nng_mqtt_msg_proto_data_alloc(m);
+
 	*mp = m;
 	return (0);
 }
@@ -673,43 +671,60 @@ nni_msg_header_ptr(const nni_msg *m)
 uint8_t *
 nni_msg_payload_ptr(const nni_msg *m)
 {
-	return (m->payload_ptr);
+	mqtt_msg * mm = m->m_proto_data;
+	if (mm)
+		return (mm->payload_ptr);
+	return NULL;
 }
 
 size_t
 nni_msg_remaining_len(const nni_msg *m)
 {
-	return (m->remaining_len);
+	mqtt_msg * mm = m->m_proto_data;
+	if (mm)
+		return (mm->remaining_len);
+	return 0;
 }
 
 void
 nni_msg_set_payload_ptr(nni_msg *m, uint8_t *ptr)
 {
-	m->payload_ptr = ptr;
+	mqtt_msg * mm = m->m_proto_data;
+	if (mm)
+		mm->payload_ptr = ptr;
 }
 
 void
 nni_msg_set_conn_param(nni_msg *m, void *ptr)
 {
-	m->cparam = ptr;
+	mqtt_msg * mm = m->m_proto_data;
+	if (mm)
+		mm->cparam = ptr;
 }
 
 conn_param *
 nni_msg_get_conn_param(nni_msg *m)
 {
-	return m->cparam;
+	mqtt_msg * mm = m->m_proto_data;
+	if (mm)
+		return (mm->cparam);
+	return NULL;
 }
 
 void
 nni_msg_set_remaining_len(nni_msg *m, size_t len)
 {
-	m->remaining_len = len;
+	mqtt_msg * mm = m->m_proto_data;
+	if (mm)
+		mm->remaining_len = len;
 }
 
 void
 nni_msg_set_cmd_type(nni_msg *m, uint8_t cmd)
 {
-	m->CMD_TYPE = cmd;
+	mqtt_msg * mm = m->m_proto_data;
+	if (mm)
+		mm->CMD_TYPE = cmd;
 }
 
 /**
@@ -721,7 +736,10 @@ nni_msg_set_cmd_type(nni_msg *m, uint8_t cmd)
 uint8_t
 nni_msg_cmd_type(nni_msg *m)
 {
-	return (m->CMD_TYPE);
+	mqtt_msg * mm = m->m_proto_data;
+	if (mm)
+		return (mm->CMD_TYPE);
+	return 0;
 }
 
 void
@@ -752,6 +770,23 @@ nni_msg_get_type(nni_msg *m)
 	return ((uint8_t) m->m_header_buf[0] & 0xF0);
 }
 
+void
+nni_msg_set_timestamp(nni_msg *m, nni_time time)
+{
+	mqtt_msg * mm = m->m_proto_data;
+	if (mm)
+		mm->times = time;
+}
+
+nni_time
+nni_msg_get_timestamp(nni_msg *m)
+{
+	mqtt_msg * mm = m->m_proto_data;
+	if (mm)
+		return (mm->times);
+	return 0;
+}
+
 uint8_t
 nni_msg_get_pub_qos(nni_msg *m)
 {
@@ -774,16 +809,4 @@ nni_msg_get_pub_pid(nni_msg *m)
 	NNI_GET16(pos, len);
 	NNI_GET16(pos + len + 2, pid);
 	return pid;
-}
-
-void
-nni_msg_set_timestamp(nni_msg *m, nni_time time)
-{
-	m->times = time;
-}
-
-nni_time
-nni_msg_get_timestamp(nni_msg *m)
-{
-	return m->times;
 }
