@@ -2251,13 +2251,13 @@ nng_taskq_setter(int num_taskq_threads, int max_taskq_threads)
 }
 
 nng_time
-conn_param_get_will_delay_timestamp(conn_param *cparam)
+conn_param_get_will_delay_interval(conn_param *cparam)
 {
        return cparam->will_delay_interval;
 }
 
 nng_time
-conn_param_get_will_msg_expiry_timestamp(conn_param *cparam)
+conn_param_get_will_msg_expiry_interval(conn_param *cparam)
 {
        return cparam->msg_expiry_interval;
 }
