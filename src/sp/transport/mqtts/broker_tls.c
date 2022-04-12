@@ -95,7 +95,7 @@ struct tlstran_ep {
 static void tlstran_pipe_send_start(tlstran_pipe *);
 static void tlstran_pipe_recv_start(tlstran_pipe *);
 static void nmq_tcptran_pipe_send_cb(void *);
-static void nmq_tcptran_pipe_qos_send_cb(void *);
+static void tlstran_pipe_qos_send_cb(void *);
 static void tlstran_pipe_send_cb(void *);
 static void tlstran_pipe_recv_cb(void *);
 static void tlstran_pipe_nego_cb(void *);
@@ -175,7 +175,7 @@ tlstran_pipe_init(void *arg, nni_pipe *npipe)
 	nni_lmq_init(&p->rslmq, 16);
 	p->qos_buf  = nng_alloc(16 + NNI_NANO_MAX_PACKET_SIZE);
 	// the size limit of qos_buf reserve 1 byte for property length
-	p->qlength = 1;
+	p->qlength = 16+NNI_NANO_MAX_PACKET_SIZE;
 	return (0);
 }
 
@@ -405,7 +405,7 @@ tlstran_pipe_qos_send_cb(void *arg)
 	if (nni_aio_result(qsaio) != 0) {
 		nni_msg_free(nni_aio_get_msg(qsaio));
 		nni_aio_set_msg(qsaio, NULL);
-		tcptran_pipe_close(p);
+		tlstran_pipe_close(p);
 		return;
 	}
 	nni_mtx_lock(&p->mtx);
@@ -820,7 +820,7 @@ tlstran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
  * @param msg 
  */
 static void
-tlstran_pipe_send_start_V4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
+tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 {
 	nni_aio *txaio;
 	int      niov;
@@ -1292,10 +1292,10 @@ tlstran_pipe_send_start(tlstran_pipe *p)
 		return;
 	}
 	if (p->tcp_cparam->pro_ver == 4) {
-		nmq_pipe_send_start_v4(p, msg, aio);
+		tlstran_pipe_send_start_v4(p, msg, aio);
 		return;
 	} else if (p->tcp_cparam->pro_ver == 5) {
-		nmq_pipe_send_start_v5(p, msg, aio);
+		tlstran_pipe_send_start_v5(p, msg, aio);
 		return;
 	}
 
