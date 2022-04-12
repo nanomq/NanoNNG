@@ -12,7 +12,7 @@
 
 #include "core/nng_impl.h"
 #include "nng/nng_debug.h"
-#include "mqtt/mqtt.h"
+#include "supplemental/mqtt/mqtt_msg.h"
 
 // Message API.
 
@@ -406,9 +406,6 @@ nni_msg_alloc(nni_msg **mp, size_t sz)
 	// We always start with a single valid reference count.
 	nni_atomic_init(&m->m_refcnt);
 	nni_atomic_set(&m->m_refcnt, 1);
-
-	nng_mqtt_msg_proto_data_alloc(m);
-
 	*mp = m;
 	return (0);
 }
