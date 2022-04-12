@@ -780,8 +780,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 	nni_msg *msg;
 	int      niov;
 	nni_iov  iov[2];
-	uint8_t  qos, retain;
-	uint32_t sub_id;
+	uint8_t  qos;
 	uint8_t  prover = 0;	// 0 : as it is 5: V4 to V5  4: V5 to V4
 
 	debug_msg("########### tcptran_pipe_send_start ###########");
@@ -810,11 +809,6 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 	// qos default to 0 if the msg is not PUBLISH
 	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
 	nni_aio_set_msg(aio, msg);
-
-	void * retain_val = nni_aio_get_prov_data(aio);
-	retain = (uint8_t) retain_val;
-	nni_aio_set_prov_data(aio, NULL);
-	debug_msg("retain value is %d (unused)", retain);
 	// TODO retain composed
 
 	// Ready for composing
