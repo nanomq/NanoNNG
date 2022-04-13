@@ -1068,7 +1068,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		}
 		tinfo = NULL;
 		len_offset=0;
-		if (topic_filtern(info->topic, body + 2, tlen)) {
+		if (topic_filtern(info->topic, (char*)(body + 2), tlen)) {
 			if (niov >= 8) {
 				// nng aio only allow 2 msgs at a time
 				nni_aio_set_prov_data(txaio, info);
@@ -1256,11 +1256,7 @@ static void
 tcptran_pipe_send_start(tcptran_pipe *p)
 {
 	nni_aio *aio;
-	nni_aio *txaio;
 	nni_msg *msg;
-	int      niov;
-	nni_iov  iov[4];
-	uint8_t  qos, retain = 1;
 
 	debug_msg("########### tcptran_pipe_send_start ###########");
 	if (p->closed) {
