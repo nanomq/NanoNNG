@@ -25,18 +25,8 @@
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "supplemental/mqtt/mqtt_qos_db_api.h"
 
-typedef struct ws_dialer   ws_dialer;
 typedef struct ws_listener ws_listener;
 typedef struct ws_pipe     ws_pipe;
-
-struct ws_dialer {
-	uint16_t           peer; // remote protocol
-	nni_list           aios;
-	nni_mtx            mtx;
-	nni_aio *          connaio;
-	nng_stream_dialer *dialer;
-	bool               started;
-};
 
 struct ws_listener {
 	uint16_t             peer; // remote protocol
@@ -574,42 +564,6 @@ wstran_listener_accept(void *arg, nni_aio *aio)
 	nni_mtx_unlock(&l->mtx);
 }
 
-static void
-wstran_dialer_cancel(nni_aio *aio, void *arg, int rv)
-{
-	ws_dialer *d = arg;
-
-	nni_mtx_lock(&d->mtx);
-	if (nni_aio_list_active(aio)) {
-		nni_aio_list_remove(aio);
-		nni_aio_finish_error(aio, rv);
-	}
-	nni_mtx_unlock(&d->mtx);
-}
-
-static void
-wstran_dialer_connect(void *arg, nni_aio *aio)
-{
-	ws_dialer *d = arg;
-	int        rv;
-
-	if (nni_aio_begin(aio) != 0) {
-		return;
-	}
-
-	nni_mtx_lock(&d->mtx);
-	if ((rv = nni_aio_schedule(aio, wstran_dialer_cancel, d)) != 0) {
-		nni_mtx_unlock(&d->mtx);
-		nni_aio_finish_error(aio, rv);
-		return;
-	}
-	NNI_ASSERT(nni_list_empty(&d->aios));
-	d->started = true;
-	nni_list_append(&d->aios, aio);
-	nng_stream_dialer_dial(d->dialer, d->connaio);
-	nni_mtx_unlock(&d->mtx);
-}
-
 static const nni_option ws_pipe_options[] = {
 	// terminate list
 	{
@@ -642,18 +596,6 @@ static nni_sp_pipe_ops ws_pipe_ops = {
 };
 
 static void
-wstran_dialer_fini(void *arg)
-{
-	ws_dialer *d = arg;
-
-	nni_aio_stop(d->connaio);
-	nng_stream_dialer_free(d->dialer);
-	nni_aio_free(d->connaio);
-	nni_mtx_fini(&d->mtx);
-	NNI_FREE_STRUCT(d);
-}
-
-static void
 wstran_listener_fini(void *arg)
 {
 	ws_listener *l = arg;
@@ -663,51 +605,6 @@ wstran_listener_fini(void *arg)
 	nni_aio_free(l->accaio);
 	nni_mtx_fini(&l->mtx);
 	NNI_FREE_STRUCT(l);
-}
-
-static void
-wstran_connect_cb(void *arg)
-{
-	ws_dialer * d = arg;
-	ws_pipe *   p;
-	nni_aio *   caio = d->connaio;
-	nni_aio *   uaio;
-	int         rv;
-	nng_stream *ws = NULL;
-
-	nni_mtx_lock(&d->mtx);
-	if (nni_aio_result(caio) == 0) {
-		ws = nni_aio_get_output(caio, 0);
-	}
-	if ((uaio = nni_list_first(&d->aios)) == NULL) {
-		// The client stopped caring about this!
-		nng_stream_free(ws);
-		nni_mtx_unlock(&d->mtx);
-		return;
-	}
-	nni_aio_list_remove(uaio);
-	NNI_ASSERT(nni_list_empty(&d->aios));
-	if ((rv = nni_aio_result(caio)) != 0) {
-		nni_aio_finish_error(uaio, rv);
-	} else if ((rv = wstran_pipe_alloc(&p, ws)) != 0) {
-		nng_stream_free(ws);
-		nni_aio_finish_error(uaio, rv);
-	} else {
-		p->peer = d->peer;
-
-		nni_aio_set_output(uaio, 0, p);
-		nni_aio_finish(uaio, 0, 0);
-	}
-	nni_mtx_unlock(&d->mtx);
-}
-
-static void
-wstran_dialer_close(void *arg)
-{
-	ws_dialer *d = arg;
-
-	nni_aio_close(d->connaio);
-	nng_stream_dialer_close(d->dialer);
 }
 
 static void
@@ -767,38 +664,6 @@ wstran_accept_cb(void *arg)
 	nni_mtx_unlock(&l->mtx);
 }
 
-static int
-wstran_dialer_init(void **dp, nng_url *url, nni_dialer *ndialer)
-{
-	ws_dialer *d;
-	nni_sock * s = nni_dialer_sock(ndialer);
-	int        rv;
-	char       name[64];
-
-	if ((d = NNI_ALLOC_STRUCT(d)) == NULL) {
-		return (NNG_ENOMEM);
-	}
-	nni_mtx_init(&d->mtx);
-
-	nni_aio_list_init(&d->aios);
-
-	d->peer = nni_sock_peer_id(s);
-
-	snprintf(name, sizeof(name), "mqtt");
-
-	if (((rv = nni_ws_dialer_alloc(&d->dialer, url)) != 0) ||
-	    ((rv = nni_aio_alloc(&d->connaio, wstran_connect_cb, d)) != 0) ||
-	    ((rv = nng_stream_dialer_set_bool(
-	          d->dialer, NNI_OPT_WS_MSGMODE, true)) != 0) ||
-	    ((rv = nng_stream_dialer_set_string(
-	          d->dialer, NNG_OPT_WS_PROTOCOL, name)) != 0)) {
-		wstran_dialer_fini(d);
-		return (rv);
-	}
-
-	*dp = d;
-	return (0);
-}
 
 // TODO proto name modify
 static int
@@ -850,33 +715,6 @@ static const nni_option wstran_ep_opts[] = {
 	},
 };
 
-static int
-wstran_dialer_getopt(
-    void *arg, const char *name, void *buf, size_t *szp, nni_type t)
-{
-	ws_dialer *d = arg;
-	int        rv;
-
-	rv = nni_stream_dialer_get(d->dialer, name, buf, szp, t);
-	if (rv == NNG_ENOTSUP) {
-		rv = nni_getopt(wstran_ep_opts, name, d, buf, szp, t);
-	}
-	return (rv);
-}
-
-static int
-wstran_dialer_setopt(
-    void *arg, const char *name, const void *buf, size_t sz, nni_type t)
-{
-	ws_dialer *d = arg;
-	int        rv;
-
-	rv = nni_stream_dialer_set(d->dialer, name, buf, sz, t);
-	if (rv == NNG_ENOTSUP) {
-		rv = nni_setopt(wstran_ep_opts, name, d, buf, sz, t);
-	}
-	return (rv);
-}
 
 static int
 wstran_listener_get(
@@ -906,15 +744,6 @@ wstran_listener_set(
 	return (rv);
 }
 
-static nni_sp_dialer_ops ws_dialer_ops = {
-	.d_init    = wstran_dialer_init,
-	.d_fini    = wstran_dialer_fini,
-	.d_connect = wstran_dialer_connect,
-	.d_close   = wstran_dialer_close,
-	.d_setopt  = wstran_dialer_setopt,
-	.d_getopt  = wstran_dialer_getopt,
-};
-
 static nni_sp_listener_ops ws_listener_ops = {
 	.l_init   = wstran_listener_init,
 	.l_fini   = wstran_listener_fini,
@@ -927,7 +756,7 @@ static nni_sp_listener_ops ws_listener_ops = {
 
 static nni_sp_tran ws__tran = {
 	.tran_scheme   = "nmq+ws",
-	.tran_dialer   = &ws_dialer_ops,
+	.tran_dialer   = NULL,
 	.tran_listener = &ws_listener_ops,
 	.tran_pipe     = &ws_pipe_ops,
 	.tran_init     = wstran_init,
@@ -936,7 +765,7 @@ static nni_sp_tran ws__tran = {
 
 static nni_sp_tran ws4__tran = {
 	.tran_scheme   = "nmq+ws4",
-	.tran_dialer   = &ws_dialer_ops,
+	.tran_dialer   = NULL,
 	.tran_listener = &ws_listener_ops,
 	.tran_pipe     = &ws_pipe_ops,
 	.tran_init     = wstran_init,
@@ -945,7 +774,7 @@ static nni_sp_tran ws4__tran = {
 
 static nni_sp_tran ws6__tran = {
 	.tran_scheme   = "nmq+ws6",
-	.tran_dialer   = &ws_dialer_ops,
+	.tran_dialer   = NULL,
 	.tran_listener = &ws_listener_ops,
 	.tran_pipe     = &ws_pipe_ops,
 	.tran_init     = wstran_init,
@@ -954,7 +783,7 @@ static nni_sp_tran ws6__tran = {
 
 static nni_sp_tran ws_tran = {
 	.tran_scheme   = "nmq-ws",
-	.tran_dialer   = &ws_dialer_ops,
+	.tran_dialer   = NULL,
 	.tran_listener = &ws_listener_ops,
 	.tran_pipe     = &ws_pipe_ops,
 	.tran_init     = wstran_init,
@@ -963,7 +792,7 @@ static nni_sp_tran ws_tran = {
 
 static nni_sp_tran ws4_tran = {
 	.tran_scheme   = "nmq-ws4",
-	.tran_dialer   = &ws_dialer_ops,
+	.tran_dialer   = NULL,
 	.tran_listener = &ws_listener_ops,
 	.tran_pipe     = &ws_pipe_ops,
 	.tran_init     = wstran_init,
@@ -972,7 +801,7 @@ static nni_sp_tran ws4_tran = {
 
 static nni_sp_tran ws6_tran = {
 	.tran_scheme   = "nmq-ws6",
-	.tran_dialer   = &ws_dialer_ops,
+	.tran_dialer   = NULL,
 	.tran_listener = &ws_listener_ops,
 	.tran_pipe     = &ws_pipe_ops,
 	.tran_init     = wstran_init,
@@ -1008,7 +837,7 @@ nni_nmq_ws_register(void)
 
 static nni_sp_tran wss__tran = {
 	.tran_scheme   = "nmq+wss",
-	.tran_dialer   = &ws_dialer_ops,
+	.tran_dialer   = NULL,
 	.tran_listener = &ws_listener_ops,
 	.tran_pipe     = &ws_pipe_ops,
 	.tran_init     = wstran_init,
@@ -1017,7 +846,7 @@ static nni_sp_tran wss__tran = {
 
 static nni_sp_tran wss4__tran = {
 	.tran_scheme   = "nmq+wss4",
-	.tran_dialer   = &ws_dialer_ops,
+	.tran_dialer   = NULL,
 	.tran_listener = &ws_listener_ops,
 	.tran_pipe     = &ws_pipe_ops,
 	.tran_init     = wstran_init,
@@ -1026,7 +855,7 @@ static nni_sp_tran wss4__tran = {
 
 static nni_sp_tran wss6__tran = {
 	.tran_scheme   = "nmq+wss6",
-	.tran_dialer   = &ws_dialer_ops,
+	.tran_dialer   = NULL,
 	.tran_listener = &ws_listener_ops,
 	.tran_pipe     = &ws_pipe_ops,
 	.tran_init     = wstran_init,
@@ -1035,7 +864,7 @@ static nni_sp_tran wss6__tran = {
 
 static nni_sp_tran wss_tran = {
 	.tran_scheme   = "nmq-wss",
-	.tran_dialer   = &ws_dialer_ops,
+	.tran_dialer   = NULL,
 	.tran_listener = &ws_listener_ops,
 	.tran_pipe     = &ws_pipe_ops,
 	.tran_init     = wstran_init,
@@ -1044,7 +873,7 @@ static nni_sp_tran wss_tran = {
 
 static nni_sp_tran wss4_tran = {
 	.tran_scheme   = "nmq-wss4",
-	.tran_dialer   = &ws_dialer_ops,
+	.tran_dialer   = NULL,
 	.tran_listener = &ws_listener_ops,
 	.tran_pipe     = &ws_pipe_ops,
 	.tran_init     = wstran_init,
@@ -1053,7 +882,7 @@ static nni_sp_tran wss4_tran = {
 
 static nni_sp_tran wss6_tran = {
 	.tran_scheme   = "nmq-wss6",
-	.tran_dialer   = &ws_dialer_ops,
+	.tran_dialer   = NULL,
 	.tran_listener = &ws_listener_ops,
 	.tran_pipe     = &ws_pipe_ops,
 	.tran_init     = wstran_init,
