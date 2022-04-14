@@ -61,9 +61,7 @@ struct tlstran_pipe {
 	nni_reap_node   reap;
 	// uint8_t       sli_win[5];	//use aio multiple times instead of
 	// seperating 2 packets manually
-
 	// MQTT V5
-	subinfo *subinfo;	
 	uint16_t qrecv_quota;
 	uint16_t qsend_quota;
 };
@@ -763,8 +761,6 @@ tlstran_pipe_recv_cb(void *arg)
 	// TODO move to protocol layer
 	if (type == CMD_SUBSCRIBE && cparam->pro_ver == MQTT_VERSION_V5) {
 		rv = nmq_subinfo_decode(msg, &npipe->subinfol);
-		if (rv > 0)
-			npipe->ntopics += rv;
 	}
 
 	// keep connection & Schedule next receive
