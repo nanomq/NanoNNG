@@ -58,7 +58,6 @@ struct tcptran_pipe {
 	nni_atomic_flag reaped;
 	nni_reap_node   reap;
 	// MQTT V5
-	subinfo *subinfo;
 	uint16_t qrecv_quota;
 	uint32_t qsend_quota;
 };
@@ -750,8 +749,6 @@ tcptran_pipe_recv_cb(void *arg)
 	// TODO move to protocol layer and disconnect logic
 	if (type == CMD_SUBSCRIBE && cparam->pro_ver == MQTT_VERSION_V5) {
 		rv = nmq_subinfo_decode(msg, &npipe->subinfol);
-		if (rv > 0)
-			npipe->ntopics += rv;
 	}
 
 	// keep connection & Schedule next receive
