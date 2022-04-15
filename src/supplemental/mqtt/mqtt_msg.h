@@ -225,7 +225,14 @@ typedef struct mqtt_msg_t {
 	bool is_copied : 1;  /* indicates string or array members are copied */
 	uint8_t _unused : 2;
 
-	conn_param *conn_ctx;
+	conn_param *conn_ctx; // TODO remove due to exists of cparam
+
+	// FOR NANOMQ
+	size_t           remaining_len;
+	uint8_t          CMD_TYPE;
+	uint8_t *        payload_ptr; // payload
+	nni_time         times;
+	nano_conn_param *cparam;
 } mqtt_msg;
 
 extern int mqtt_get_remaining_length(

@@ -607,7 +607,7 @@ static nni_msg *
 nni_msg_deserialize(uint8_t *bytes, size_t len)
 {
 	nni_msg *msg;
-	if (nni_msg_alloc(&msg, 0) != 0) {
+	if (nni_mqtt_msg_alloc(&msg, 0) != 0) {
 		return NULL;
 	}
 

@@ -814,7 +814,7 @@ nano_msg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
 
 	msg = *msgp;
 	if (msg == NULL) {
-		nni_msg_alloc(&msg, len + (qos > 0 ? 2 : 0));
+		nni_mqtt_msg_alloc(&msg, len + (qos > 0 ? 2 : 0));
 	} else {
 		nni_msg_realloc(msg, len + (qos > 0 ? 2 : 0));
 	}
