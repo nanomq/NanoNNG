@@ -121,6 +121,7 @@ NNG_DECL int nmq_msgack_encode(nng_msg *msg, uint16_t packet_id,
     uint8_t reason_code, property *prop, uint8_t proto_ver);
 NNG_DECL int nmq_pubres_header_encode(nng_msg *msg, uint8_t cmd);
 NNG_DECL int nmq_subinfo_decode(nng_msg *msg, void *l);
+NNG_DECL int nmq_unsubinfo_decode(nng_msg *msg, void *l);
 NNG_DECL bool topic_filter(const char *origin, const char *input);
 NNG_DECL bool topic_filtern(const char *origin, const char *input, size_t n);
 #endif // NNG_MQTT_H
