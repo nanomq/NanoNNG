@@ -1277,6 +1277,90 @@ nmq_subinfo_decode(nng_msg *msg, void *l)
 	return num;
 }
 
+/**
+ * @brief decode unsub and remove subid, topics and RAP from subinfol
+ * 	  warning only use with unsub msg & V5 client
+ *
+ * @param msg
+ * @param ptr to subinfol
+ * @return int -1: protocol error; -2: unknown error; num:numbers of topics
+ */
+int
+nmq_unsubinfo_decode(nng_msg *msg, void *l)
+{
+	char           *topic;
+	uint8_t         len_of_topic = 0, *payload_ptr, *var_ptr;
+	uint32_t        num = 0, len, len_of_varint = 0, len_of_str = 0;
+	size_t          bpos = 0, remain = 0;
+	struct subinfo *sn = NULL;
+	nni_list       *ll = l;
+
+	if (!l || !msg)
+		return (-1);
+
+	len         = get_var_integer(nni_msg_body(msg) + 2, &len_of_varint);
+	var_ptr     = nni_msg_body(msg);
+	payload_ptr = nni_msg_body(msg) + 2 + len + len_of_varint;
+	int pos = 2 + len_of_varint, target_pos = 2 + len_of_varint + len;
+	while (pos < target_pos) {
+		switch (*(var_ptr + pos)) {
+		case USER_PROPERTY:
+			// key
+			NNI_GET16(var_ptr + pos, len_of_str);
+			pos += len_of_str;
+			len_of_str = 0;
+			// value
+			NNI_GET16(var_ptr + pos, len_of_str);
+			pos += len_of_str;
+			len_of_str = 0;
+			break;
+		default:
+			debug_msg("Error: Invalid property id");
+			return (-2);
+		}
+	}
+	if (pos > target_pos)
+		return (-2);
+
+	remain = nni_msg_remaining_len(msg) - target_pos;
+
+	while (bpos < remain) {
+		NNI_GET16(payload_ptr + bpos, len_of_topic);
+
+		if (len_of_topic == 0)
+			continue;
+		bpos += 2;
+
+		debug_msg(
+		    "The current process topic is %s", payload_ptr + bpos);
+		if ((topic = nng_alloc(len_of_topic + 1)) == NULL)
+			return (-2);
+
+		strncpy(topic, (char *) payload_ptr + bpos, len_of_topic);
+		topic[len_of_topic] = 0x00;
+
+		bpos += len_of_topic;
+
+		sn = NULL;
+		NNI_LIST_FOREACH(ll, sn) {
+			if (0 == strcmp(topic, sn->topic)) {
+				nni_list_remove(ll, sn);
+				break;
+			}
+		}
+		if (sn) {
+			debug_msg("Topic %s free from subinfol", sn->topic);
+			nng_free(sn->topic, strlen(sn->topic));
+			nng_free(sn, sizeof(*sn));
+		}
+		nng_free(topic, len_of_topic+1);
+
+		num++;
+	}
+
+	return num;
+}
+
 
 static int
 topic_count(const char *topic)
