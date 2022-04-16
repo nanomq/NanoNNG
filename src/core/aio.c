@@ -108,7 +108,6 @@ nni_aio_init(nni_aio *aio, nni_cb cb, void *arg)
 	nni_task_init(&aio->a_task, NULL, cb, arg);
 	aio->a_expire  = NNI_TIME_NEVER;
 	aio->a_timeout = NNG_DURATION_INFINITE;
-	aio->packet_id = 0;
 	aio->a_expire_q =
 	    nni_aio_expire_q_list[nni_random() % nni_aio_expire_q_cnt];
 }
