@@ -271,17 +271,6 @@ done:
 			nng_stream_send(p->ws, p->qsaio);
 		}
 
-		// Store Subid RAP Topic for sub
-		// TODO move to protocol layer and disconnect logic
-		if (nni_msg_cmd_type(smsg) == CMD_SUBSCRIBE && p->ws_param->pro_ver == MQTT_VERSION_V5) {
-			rv = nmq_subinfo_decode(smsg, &npipe->subinfol);
-		}
-
-		// Remove Subid RAP Topic stored
-		if (nni_msg_cmd_type(smsg) == CMD_UNSUBSCRIBE && p->ws_param->pro_ver == MQTT_VERSION_V5) {
-			rv = nmq_unsubinfo_decode(smsg, &npipe->subinfol);
-		}
-
 		nni_aio_set_msg(uaio, smsg);
 		nni_aio_set_output(uaio, 0, p);
 		nni_aio_finish(uaio, 0, nni_msg_len(smsg));
@@ -306,9 +295,6 @@ reset:
 		nni_msg_free(smsg);
 		p->tmp_msg = NULL;
 	}
-	// if (p->ws_param != NULL) {
-		// conn_param_free(p->ws_param);
-	// }
 	nni_mtx_unlock(&p->mtx);
 	return;
 
@@ -468,7 +454,7 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			nni_msg *old;
 			// packetid in aio to differ resend msg
 			// TODO replace it with set prov data
-			pid = nni_aio_get_packetid(aio);
+			pid = (uint8_t)nni_aio_get_packetid(aio);
 			if (pid == 0) {
 				// first time send this msg
 				pid = nni_pipe_inc_packetid(pipe);
@@ -685,7 +671,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 				nni_msg *old;
 				// packetid in aio to differ resend msg
 				// TODO replace it with set prov data
-				pid = nni_aio_get_packetid(aio);
+				pid = (uint8_t)nni_aio_get_packetid(aio);
 				if (pid == 0) {
 					// first time send this msg
 					pid = nni_pipe_inc_packetid(pipe);
