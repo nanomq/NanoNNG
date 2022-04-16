@@ -837,6 +837,8 @@ nano_pipe_send_cb(void *arg)
 		msg = nni_aio_get_msg(&p->aio_send);
 		nni_msg_free(NANO_NNI_LMQ_GET_MSG_POINTER(msg));
 		nni_aio_set_msg(&p->aio_send, NULL);
+		// possibily due to frequent msg overflow
+		p->reason_code = 0x96;
 		nni_pipe_close(p->pipe);
 		return;
 	}
@@ -999,6 +1001,7 @@ nano_pipe_recv_cb(void *arg)
 		break;
 	case CMD_DISCONNECT:
 		// TODO get & set reasoncode for app layer
+		p->reason_code = 0x00;
 		nni_pipe_close(p->pipe);
 	case CMD_CONNACK:
 	case CMD_PUBLISH:

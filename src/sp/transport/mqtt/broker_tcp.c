@@ -904,8 +904,7 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			// set pid
 			len_offset = 2;
 			nni_msg *old;
-			// packetid in aio to differ resend msg
-			// TODO replace it with set prov data
+			// to differ resend msg
 			pid = (uint8_t)nni_aio_get_prov_data(aio);
 			if (pid == 0) {
 				// first time send this msg
@@ -1238,7 +1237,7 @@ send:
  * @brief this is the func that responsible for sending msg while
  *        keeping zero-copy feature, doing all the jobs neccesary
  *        for each unique client (it means ugly)
- * //TODO break it into 2 pieces V4 / V5
+ *
  *
  * @param p tcptran_pipe
  */
