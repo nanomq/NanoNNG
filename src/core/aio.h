@@ -215,8 +215,6 @@ struct nng_aio {
 	nni_aio_expire_q *a_expire_q;
 	nni_list_node     a_expire_node; // Expiration node
 	nni_reap_node     a_reap_node;
-	// NanoMQ var
-	uint16_t packet_id;           //indicates message id + qos?
 };
 
 #endif // CORE_AIO_H
