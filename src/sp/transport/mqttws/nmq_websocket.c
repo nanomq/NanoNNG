@@ -215,7 +215,7 @@ done:
 				} else if (qos_pac == 2) {
 					ack_cmd = CMD_PUBREC;
 				}
-				packet_id = nni_msg_get_pub_pid(msg);
+				packet_id = nni_msg_get_pub_pid(smsg);
 				ack       = true;
 			}
 		} else if (nni_msg_cmd_type(smsg) == CMD_PUBREC) {
@@ -791,8 +791,6 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			return;
 		}
 	}
-
-
 
 // normal sending if it is not PUBLISH
 send:
