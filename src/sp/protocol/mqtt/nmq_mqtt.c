@@ -974,14 +974,26 @@ nano_pipe_recv_cb(void *arg)
 	// ttl = nni_atomic_get(&s->ttl);
 	nni_msg_set_pipe(msg, p->id);
 	ptr = nni_msg_body(msg);
-
+	cparam = p->conn_param;
 	// TODO HOOK
 	switch (nng_msg_cmd_type(msg)) {
 	case CMD_SUBSCRIBE:
-	case CMD_UNSUBSCRIBE:
-		cparam = p->conn_param;
 		if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
 			// extract sub id
+			// Store Subid RAP Topic for sub
+			nmq_subinfo_decode(msg, &npipe->subinfol);
+			len = get_var_integer(ptr + 2, &len_of_varint);
+			nni_msg_set_payload_ptr(
+			    msg, ptr + 2 + len + len_of_varint);
+		} else {
+			nni_msg_set_payload_ptr(msg, ptr + 2);
+		}
+		break;
+	case CMD_UNSUBSCRIBE:
+		if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
+			// extract sub id
+			// Remove Subid RAP Topic stored
+			nmq_unsubinfo_decode(msg, &npipe->subinfol);
 			len = get_var_integer(ptr + 2, &len_of_varint);
 			nni_msg_set_payload_ptr(
 			    msg, ptr + 2 + len + len_of_varint);
@@ -990,10 +1002,7 @@ nano_pipe_recv_cb(void *arg)
 		}
 		break;
 	case CMD_DISCONNECT:
-		// cparam = p->conn_param;
-		// if (cparam->clean_start == 0) {
-		// 	p->pipe->cache = true;
-		// }
+		// TODO get & set reasoncode for app layer
 		nni_pipe_close(p->pipe);
 	case CMD_CONNACK:
 	case CMD_PUBLISH:
