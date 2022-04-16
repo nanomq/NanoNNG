@@ -757,12 +757,6 @@ tlstran_pipe_recv_cb(void *arg)
 		ack = false;
 	}
 
-	// Store Subid RAP Topic for sub
-	// TODO move to protocol layer
-	if (type == CMD_SUBSCRIBE && cparam->pro_ver == MQTT_VERSION_V5) {
-		rv = nmq_subinfo_decode(msg, &npipe->subinfol);
-	}
-
 	// keep connection & Schedule next receive
 	// nni_pipe_bump_rx(p->npipe, n);
 	if (!nni_list_empty(&p->recvq)) {
