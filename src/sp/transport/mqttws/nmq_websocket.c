@@ -517,10 +517,6 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			// nni_msg_append(smsg, body + 2 + tlen + len_offset + plength, mlen - 2 - len_offset - tlen - plength);
 		}
 
-
-
-
-
 		// duplicated msg is gonna be freed by http. so we free old one
 		// here
 		nni_msg_free(msg);
@@ -571,9 +567,11 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	txaio   = p->txaio;
 	body    = nni_msg_body(msg);
 	header  = nni_msg_header(msg);
+	niov 	= 0;
 	qlength = 0;
 	plength = 0;
 	mlen    = nni_msg_len(msg);
+	hlen    = nni_msg_header_len(msg);
 	qos_pac = nni_msg_get_pub_qos(msg);
 	NNI_GET16(body, tlen);
 
