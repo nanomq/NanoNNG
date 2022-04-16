@@ -23,8 +23,6 @@
 
 #include <sub_handler.h>
 
-// TODO rewrite as nano_mq protocol with RPC support
-
 typedef struct nano_pipe          nano_pipe;
 typedef struct nano_sock          nano_sock;
 typedef struct nano_ctx           nano_ctx;
@@ -250,7 +248,6 @@ nano_pipe_timer_cb(void *arg)
 	if (p->ka_refresh * (qos_duration) > p->conn_param->keepalive_mqtt) {
 		nni_println("Warning: close pipe & kick client due to KeepAlive "
 		       "timeout!");
-		// TODO check keepalived timer interval
 		p->reason_code = NMQ_KEEP_ALIVE_TIMEOUT;
 		nni_aio_finish_error(&p->aio_recv, NNG_ECONNREFUSED);
 		nni_mtx_unlock(&p->lk);
@@ -457,8 +454,8 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	}
 	debug_msg("WARNING: pipe %d occupied! resending in cb!", pipe);
 	if (nni_lmq_full(&p->rlmq)) {
-		// Make space for the new message. TODO add max limit of msgq
-		// len in conf
+		// Make space for the new message.
+		if (nni_lmq_cap(&p->rlmq) <= NANO_MAX_QOS_PACKET)
 		if ((rv = nano_nni_lmq_resize(
 		         &p->rlmq, nni_lmq_cap(&p->rlmq) * 2)) != 0) {
 			debug_syslog("warning msg dropped!");
@@ -975,7 +972,6 @@ nano_pipe_recv_cb(void *arg)
 	nni_msg_set_pipe(msg, p->id);
 	ptr = nni_msg_body(msg);
 	cparam = p->conn_param;
-	// TODO HOOK
 	switch (nng_msg_cmd_type(msg)) {
 	case CMD_SUBSCRIBE:
 		if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
@@ -1020,7 +1016,6 @@ nano_pipe_recv_cb(void *arg)
 			nni_qos_db_remove(
 			    npipe->nano_qos_db, npipe->p_id, ackid);
 		} else {
-			// shouldn't get here BUG TODO
 			debug_syslog("qos msg not found!");
 		}
 		nni_mtx_unlock(&p->lk);
@@ -1219,6 +1214,5 @@ static nni_proto nano_tcp_proto = {
 int
 nng_nmq_tcp0_open(nng_socket *sidp)
 {
-	// TODO Global binary tree init here
 	return (nni_proto_mqtt_open(sidp, &nano_tcp_proto, nano_sock_setdb));
 }
