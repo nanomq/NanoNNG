@@ -92,11 +92,9 @@ wstran_pipe_recv_cb(void *arg)
 	nni_iov       iov[2];
 	uint32_t len = 0, rv, pos = 1;
 	uint8_t *ptr;
-	uint8_t       type;
 	nni_msg *smsg = NULL, *msg = NULL;
 	nni_aio *raio = p->rxaio;
 	nni_aio *uaio = NULL;
-	nni_aio      *rxaio = p->rxaio;
 	bool          ack   = false;
 	nni_pipe     *npipe = p->npipe;
 
@@ -277,8 +275,11 @@ done:
 		// TODO move to protocol layer and disconnect logic
 		if (nni_msg_cmd_type(smsg) == CMD_SUBSCRIBE && p->ws_param->pro_ver == MQTT_VERSION_V5) {
 			rv = nmq_subinfo_decode(smsg, &npipe->subinfol);
-			if (rv > 0)
-				npipe->ntopics += rv;
+		}
+
+		// Remove Subid RAP Topic stored
+		if (nni_msg_cmd_type(smsg) == CMD_UNSUBSCRIBE && p->ws_param->pro_ver == MQTT_VERSION_V5) {
+			rv = nmq_unsubinfo_decode(smsg, &npipe->subinfol);
 		}
 
 		nni_aio_set_msg(uaio, smsg);
@@ -305,9 +306,9 @@ reset:
 		nni_msg_free(smsg);
 		p->tmp_msg = NULL;
 	}
-	if (p->ws_param != NULL) {
-		conn_param_free(p->ws_param);
-	}
+	// if (p->ws_param != NULL) {
+		// conn_param_free(p->ws_param);
+	// }
 	nni_mtx_unlock(&p->mtx);
 	return;
 
@@ -543,7 +544,6 @@ send:
 static inline void
 wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 {
-	nni_aio *txaio;
 	nni_msg *smsg;
 	int       niov;
 	nni_iov   iov[8];
@@ -565,7 +565,6 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	uint32_t tprop_bytes, prop_bytes = 0, id_bytes = 0, property_len = 0;
 	size_t   tlen, rlen, mlen, hlen, qlength, plength;
 
-	txaio   = p->txaio;
 	body    = nni_msg_body(msg);
 	header  = nni_msg_header(msg);
 	niov 	= 0;
