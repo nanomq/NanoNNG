@@ -720,8 +720,7 @@ tcptran_pipe_recv_cb(void *arg)
 			nng_stream_send(p->conn, p->qsaio);
 		} else {
 			if (nni_lmq_full(&p->rslmq)) {
-				// Make space for the new message. TODO add max
-				// limit of msgq len in conf
+				// Make space for the new message.
 				if (nni_lmq_cap(&p->rslmq) <=
 				    NANO_MAX_QOS_PACKET) {
 					if ((rv = nni_lmq_resize(&p->rslmq,
@@ -743,16 +742,6 @@ tcptran_pipe_recv_cb(void *arg)
 			}
 		}
 		ack = false;
-	}
-
-	// Store Subid RAP Topic for sub
-	// TODO move to protocol layer and disconnect logic
-	if (type == CMD_SUBSCRIBE && cparam->pro_ver == MQTT_VERSION_V5) {
-		rv = nmq_subinfo_decode(msg, &npipe->subinfol);
-	}
-	// Remove Subid RAP Topic stored
-	if (type == CMD_UNSUBSCRIBE && cparam->pro_ver == MQTT_VERSION_V5) {
-		rv = nmq_unsubinfo_decode(msg, &npipe->subinfol);
 	}
 
 	// keep connection & Schedule next receive
