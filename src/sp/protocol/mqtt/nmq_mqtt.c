@@ -268,7 +268,7 @@ nano_pipe_timer_cb(void *arg)
 				p->busy = true;
 				// TODO set max retrying times in nanomq.conf
 				nano_msg_set_dup(rmsg);
-				nni_aio_set_packetid(&p->aio_send, pid);
+				nni_aio_set_prov_data(&p->aio_send, (void *)pid);
 				//put original msg into sending
 				nni_aio_set_msg(&p->aio_send, msg);
 				debug_msg(
@@ -845,7 +845,7 @@ nano_pipe_send_cb(void *arg)
 	}
 	nni_mtx_lock(&p->lk);
 
-	nni_aio_set_packetid(&p->aio_send, 0);
+	nni_aio_set_prov_data(&p->aio_send, 0);
 	if (nni_lmq_get(&p->rlmq, &msg) == 0) {
 		// msg = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
 		nni_aio_set_msg(&p->aio_send, msg);
