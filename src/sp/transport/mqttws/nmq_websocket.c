@@ -169,7 +169,7 @@ done:
 			        nni_msg_body(p->tmp_msg), p->ws_param) != 0) {
 				goto reset;
 			}
-			// nni_msg_free(p->tmp_msg);
+			nni_msg_free(p->tmp_msg);
 			p->tmp_msg = NULL;
 			nni_aio_set_msg(uaio, smsg);
 			nni_aio_set_output(uaio, 0, p);
@@ -177,6 +177,7 @@ done:
 			// CONNACK
 			nni_aio_finish(uaio, 0, 0);
 			nni_mtx_unlock(&p->mtx);
+
 			return;
 		} else {
 			if (nni_msg_alloc(&smsg, 0) != 0) {
@@ -184,7 +185,8 @@ done:
 			}
 			// parse fixed header
 			ws_fixed_header_adaptor(ptr, smsg);
-			msg = p->tmp_msg;
+			// msg = p->tmp_msg;
+			nni_msg_free(p->tmp_msg);
 			p->tmp_msg = NULL;
 			nni_msg_set_conn_param(smsg, p->ws_param);
 		}
@@ -283,7 +285,6 @@ done:
 		nni_aio_set_output(uaio, 0, p);
 		nni_aio_finish(uaio, 0, nni_msg_len(smsg));
 		p->tmp_msg = NULL;
-		nni_msg_free(msg);
 
 	} else {
 		goto reset;
