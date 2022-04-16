@@ -454,7 +454,7 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			nni_msg *old;
 			// packetid in aio to differ resend msg
 			// TODO replace it with set prov data
-			pid = (uint8_t)nni_aio_get_packetid(aio);
+			pid = (uint8_t)nni_aio_get_prov_data(aio);
 			if (pid == 0) {
 				// first time send this msg
 				pid = nni_pipe_inc_packetid(pipe);
@@ -671,7 +671,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 				nni_msg *old;
 				// packetid in aio to differ resend msg
 				// TODO replace it with set prov data
-				pid = (uint8_t)nni_aio_get_packetid(aio);
+				pid = (uint8_t)nni_aio_get_prov_data(aio);
 				if (pid == 0) {
 					// first time send this msg
 					pid = nni_pipe_inc_packetid(pipe);
