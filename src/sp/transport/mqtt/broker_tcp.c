@@ -817,14 +817,13 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	    nni_msg_get_type(msg) == CMD_PUBLISH) {
 		uint8_t      *body, *header, qos_pac;
 		target_prover target_prover;
-		uint8_t var_extra[2],
-		    fixheader, tmp[4] = {0};
-		int       len_offset = 0;
-		uint32_t  pos = 1;
-		nni_pipe *pipe;
-		uint16_t  pid;
+		uint8_t       var_extra[2], fixheader, tmp[4] = { 0 };
+		int           len_offset = 0;
+		uint32_t      pos        = 1;
+		nni_pipe     *pipe;
+		uint16_t      pid;
 		uint32_t  property_bytes = 0, property_len = 0;
-		size_t    tlen, rlen, mlen, qlength, plength;
+		size_t    tlen, rlen, mlen, plength;
 
 		pipe    = p->npipe;
 		body    = nni_msg_body(msg);
