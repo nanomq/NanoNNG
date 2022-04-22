@@ -35,7 +35,6 @@ struct tcptran_pipe {
 	size_t          rcvmax;
 	size_t          gotrxhead;
 	size_t          wantrxhead;
-	size_t          qlength; // length of qos_buf
 	bool            closed;
 	bool            busy; // indicator for qos ack & aio
 	uint8_t         txlen[NANO_MIN_PACKET_LEN];
@@ -166,8 +165,6 @@ tcptran_pipe_init(void *arg, nni_pipe *npipe)
 
 	nni_lmq_init(&p->rslmq, 16);
 	p->qos_buf = nng_zalloc(16 + NNI_NANO_MAX_PACKET_SIZE);
-	// the size limit of qos_buf reserve 1 byte for property length
-	p->qlength = 16 + NNI_NANO_MAX_PACKET_SIZE;
 	return (0);
 }
 
@@ -489,11 +486,6 @@ nmq_tcptran_pipe_send_cb(void *arg)
 		flag = header[3];
 	}
 	// nni_pipe_bump_tx(p->npipe, n);
-	// free qos buffer
-	if (p->qlength > 16 + NNI_NANO_MAX_PACKET_SIZE) {
-		nng_free(p->qos_buf, p->qlength);
-		p->qos_buf = nng_alloc(16 + NNI_NANO_MAX_PACKET_SIZE);
-	}
 	nni_mtx_unlock(&p->mtx);
 
 	nni_aio_set_msg(aio, NULL);
@@ -837,7 +829,7 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		pipe    = p->npipe;
 		body    = nni_msg_body(msg);
 		header  = nni_msg_header(msg);
-		qlength = 0;
+
 		plength = 0;
 		mlen    = nni_msg_len(msg);
 		qos_pac = nni_msg_get_pub_qos(msg);
@@ -893,11 +885,7 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 
 		txaio = p->txaio;
 		niov  = 0;
-		// fixed header
-		qlength += rlen + 1;
 		// 1st part of variable header: topic
-
-		qlength += tlen + 2; // get topic length
 		len_offset = 0;      // now use it to indicates the pid length
 		// packet id
 		if (qos > 0) {
@@ -930,7 +918,6 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				    pipe->nano_qos_db, pipe->p_id, pid, old);
 			}
 			NNI_PUT16(var_extra, pid);
-			qlength += 2;
 		} else if (qos_pac > 0) {
 			len_offset += 2;
 		}
@@ -962,7 +949,6 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 
 		nni_aio_set_iov(txaio, niov, iov);
 		nng_stream_send(p->conn, txaio);
-		p->qlength = qlength;
 		return;
 	}
 send:
