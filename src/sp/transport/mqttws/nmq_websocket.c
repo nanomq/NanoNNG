@@ -384,12 +384,11 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 		nni_pipe *pipe;
 		uint16_t  pid;
 		uint32_t  property_bytes = 0, property_len = 0;
-		size_t    tlen, rlen, mlen, qlength, plength;
+		size_t    tlen, rlen, mlen, plength;
 
 		pipe    = p->npipe;
 		body    = nni_msg_body(msg);
 		header  = nni_msg_header(msg);
-		qlength = 0;
 		plength = 0;
 		mlen    = nni_msg_len(msg);
 		qos_pac = nni_msg_get_pub_qos(msg);
@@ -413,10 +412,10 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			plength = property_len + property_bytes;
 		} else if (nni_msg_cmd_type(msg) == CMD_PUBLISH) {
 			target_prover = MQTTV4;
-		}
-		if (qos_pac == 0 && target_prover == MQTTV4) {
-			// save time & space for QoS 0 publish
-			goto send;
+			if (qos_pac == 0) {
+				// save time & space for QoS 0 publish
+				goto send;
+			}
 		}
 
 		debug_msg("qos_pac %d sub %d\n", qos_pac, qos);
@@ -441,11 +440,8 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 		    tmp, get_var_integer(header, &pos) + len_offset - plength);
 		memcpy(fixheader + 1, tmp, rlen);
 
-		// fixed header
-		qlength += rlen + 1;
 		// 1st part of variable header: topic
 
-		qlength += tlen + 2; // get topic length
 		len_offset = 0;      // now use it to indicates the pid length
 		// packet id
 		if (qos > 0) {
@@ -479,7 +475,6 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 				    pipe->nano_qos_db, pipe->p_id, pid, old);
 			}
 			NNI_PUT16(var_extra, pid);
-			qlength += 2;
 		} else if (qos_pac > 0) {
 			len_offset += 2;
 		}
