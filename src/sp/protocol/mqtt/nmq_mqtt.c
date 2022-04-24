@@ -564,11 +564,6 @@ nano_pipe_fini(void *arg)
 		nni_msg_free(msg);
 	}
 
-	if ((msg = nni_aio_get_msg(&p->aio_send)) != NULL) {
-		nni_aio_set_msg(&p->aio_recv, NULL);
-		nni_msg_free(NANO_NNI_LMQ_GET_MSG_POINTER(msg));
-	}
-
 	void * nano_qos_db = p->pipe->nano_qos_db;
 
 	//TODO safely free the msgs in qos_db
