@@ -998,8 +998,11 @@ nano_pipe_recv_cb(void *arg)
 		// TODO get & set reasoncode for app layer
 		p->reason_code = 0x00;
 		nni_pipe_close(p->pipe);
+		break;
 	case CMD_CONNACK:
 	case CMD_PUBLISH:
+		// clone for application layer
+		conn_param_clone(cparam);
 	case CMD_PINGREQ:
 		// Websocket need to reply PINGREQ in application layer
 		break;
