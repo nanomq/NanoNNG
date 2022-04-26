@@ -1059,8 +1059,9 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				tprop_bytes   = 1;
 				len_offset    = 1;
 			}
+			fixheader = *header;
 			if (info->rap == 0) {
-				*header = *header & 0xFE;
+				fixheader = fixheader & 0xFE;
 			}
 			if (sub_id != 0) {
 				var_subid[0] = 0x0B;
@@ -1069,7 +1070,6 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				len_offset += (tprop_bytes - prop_bytes + 1 + id_bytes);
 			}
 			//else use original var payload & pid
-			fixheader = *header;
 			// get final qos
 			qos = qos_pac > qos ? qos : qos_pac;
 
