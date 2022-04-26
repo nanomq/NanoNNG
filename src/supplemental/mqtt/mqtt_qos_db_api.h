@@ -55,7 +55,7 @@
 #define nni_qos_db_remove_pipe(db, pipe_id) \
 	nni_mqtt_qos_db_remove_pipe((sqlite3 *) db, pipe_id)
 #define nni_qos_db_set_client_msg(db, msg) \
-	nni_mqtt_qos_db_set_client_msg(((sqlite3 *) db, msg)
+	nni_mqtt_qos_db_set_client_msg((sqlite3 *) db, msg)
 #define nni_qos_db_get_client_msg(db, msg)                       \
 	{                                                        \
 		msg = nni_mqtt_qos_db_get_remove_client_msg(db); \
