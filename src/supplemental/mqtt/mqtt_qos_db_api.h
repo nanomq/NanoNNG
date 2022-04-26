@@ -4,7 +4,8 @@
 #include "core/nng_impl.h"
 #include "mqtt_qos_db.h"
 
-#define nni_qos_db_init_sqlite(db) nni_mqtt_qos_db_init((sqlite3 **) &(db))
+#define nni_qos_db_init_sqlite(db, db_name) \
+	nni_mqtt_qos_db_init((sqlite3 **) &(db), db_name)
 #define nni_qos_db_fini_sqlite(db) nni_mqtt_qos_db_close((sqlite3 *) (db))
 
 #define nni_qos_db_init_id_hash(db)                              \
@@ -53,6 +54,12 @@
 	nni_mqtt_qos_db_set_pipe((sqlite3 *) db, pipe_id, client_id)
 #define nni_qos_db_remove_pipe(db, pipe_id) \
 	nni_mqtt_qos_db_remove_pipe((sqlite3 *) db, pipe_id)
+#define nni_qos_db_set_client_msg(db, msg) \
+	nni_mqtt_qos_db_set_client_msg(((sqlite3 *) db, msg)
+#define nni_qos_db_get_client_msg(db, msg)                       \
+	{                                                        \
+		msg = nni_mqtt_qos_db_get_remove_client_msg(db); \
+	}
 #else
 
 #define nni_qos_db_set(db, pipe_id, packet_id, msg) \
@@ -71,7 +78,9 @@
 #define nni_qos_db_remove_unused_msg(db) 
 #define nni_qos_db_reset_pipe(db)
 #define nni_qos_db_set_pipe(db, pipe_id, client_id)
-#define nni_qos_db_remove_pipe(db, pipe_id) 
+#define nni_qos_db_remove_pipe(db, pipe_id)
+#define nni_qos_db_set_client_msg(lmq, msg) nni_lmq_put((nni_lmq *) &lmq, msg)
+#define nni_qos_db_get_client_msg(lmq, msg) nni_lmq_get((nni_lmq *) &lmq, &msg)
 #endif
 
 #endif

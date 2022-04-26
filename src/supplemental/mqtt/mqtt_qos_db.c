@@ -4,7 +4,6 @@
 #include "supplemental/mqtt/mqtt_msg.h"
 #include "supplemental/sqlite/sqlite3.h"
 
-#define db_name "nano_qos_db.db"
 #define table_main "t_main"
 #define table_msg "t_msg"
 #define table_pipe_client "t_pipe_client"
@@ -62,9 +61,9 @@ create_main_table(sqlite3 *db)
 }
 
 void
-nni_mqtt_qos_db_init(sqlite3 **db)
+nni_mqtt_qos_db_init(sqlite3 **db, const char *db_name)
 {
-	char pwd[512] = { 0 };
+	char pwd[512]   = { 0 };
 	char path[1024] = { 0 };
 	if (getcwd(pwd, sizeof(pwd)) != NULL) {
 		sprintf(path, "%s/%s", pwd, db_name);
@@ -562,6 +561,51 @@ nni_mqtt_qos_db_foreach(sqlite3 *db, nni_idhash_cb cb)
 
 	sqlite3_finalize(stmt);
 	sqlite3_exec(db, "COMMIT;", 0, 0, 0);
+}
+
+void
+nni_mqtt_qos_db_set_client_msg(sqlite3 *db, nni_msg *msg)
+{
+	insert_msg(db, msg);
+}
+
+nni_msg * 
+nni_mqtt_qos_db_get_remove_client_msg(sqlite3 *db)
+{
+	nni_msg *     msg = NULL;
+	int64_t       id = 0;
+	sqlite3_stmt *stmt;
+	bool got_data = false;
+
+	char sql1[] = "SELECT id, data FROM " table_msg " ORDER BY id LIMIT 1";
+	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
+	sqlite3_prepare_v2(db, sql1, strlen(sql1), &stmt, 0);
+	sqlite3_reset(stmt);
+
+	if (SQLITE_ROW == sqlite3_step(stmt)) {
+		id             = sqlite3_column_int64(stmt, 0);
+		size_t   nbyte = (size_t) sqlite3_column_bytes16(stmt, 1);
+		uint8_t *bytes = sqlite3_malloc(nbyte);
+		memcpy(bytes, sqlite3_column_blob(stmt, 1), nbyte);
+		// deserialize blob data to nni_msg
+		msg = nni_msg_deserialize(bytes, nbyte);
+		sqlite3_free(bytes);
+		got_data = true;
+	}
+	sqlite3_finalize(stmt);
+
+	if (got_data) {
+		char sql2[] = "DELETE FROM " table_msg " WHERE id = ?";
+		sqlite3_prepare_v2(db, sql2, strlen(sql2), &stmt, 0);
+		sqlite3_reset(stmt);
+		sqlite3_bind_int64(stmt, 1, id);
+		sqlite3_step(stmt);
+		sqlite3_finalize(stmt);
+	}
+
+	sqlite3_exec(db, "COMMIT;", 0, 0, 0);
+
+	return msg;
 }
 
 static uint8_t *

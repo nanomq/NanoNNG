@@ -38,7 +38,7 @@
 
 #define MQTT_DB_GET_MSG_POINTER(msg) ((nni_msg *) ((size_t) (msg) & (~0x03)))
 
-extern void     nni_mqtt_qos_db_init(sqlite3 **);
+extern void     nni_mqtt_qos_db_init(sqlite3 **, const char *);
 extern void     nni_mqtt_qos_db_close(sqlite3 *);
 extern void     nni_mqtt_qos_db_set(sqlite3 *, uint32_t, uint16_t, nni_msg *);
 extern nni_msg *nni_mqtt_qos_db_get(sqlite3 *, uint32_t, uint16_t);
@@ -56,5 +56,9 @@ extern void     nni_mqtt_qos_db_update_pipe_by_clientid(
         sqlite3 *, uint32_t, const char *);
 extern void nni_mqtt_qos_db_update_all_pipe(sqlite3 *, uint32_t);
 extern void nni_mqtt_qos_db_check_remove_msg(sqlite3 *, nni_msg *);
+
+// Only work for client
+extern void     nni_mqtt_qos_db_set_client_msg(sqlite3 *, nni_msg *);
+extern nni_msg *nni_mqtt_qos_db_get_remove_client_msg(sqlite3 *);
 
 #endif
