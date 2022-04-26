@@ -90,7 +90,9 @@ wstran_pipe_recv_cb(void *arg)
 {
 	ws_pipe *p   = arg;
 	nni_iov       iov[2];
-	uint32_t len = 0, rv, pos = 1;
+	uint8_t  rv;
+	uint32_t pos = 1;
+	uint64_t len = 0;
 	uint8_t *ptr;
 	nni_msg *smsg = NULL, *msg = NULL;
 	nni_aio *raio = p->rxaio;
@@ -609,6 +611,9 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			uint32_t pos = 1;
 			sub_id       = info->subid;
 			qos          = info->qos;
+
+			//else use original var payload & pid
+			fixheader = *header;
 			if (nni_msg_cmd_type(msg) == CMD_PUBLISH) {
 				// V4 to V5 add 0 property length
 				target_prover = MQTTV4_V5;
@@ -617,7 +622,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 				len_offset    = 1;
 			}
 			if (info->rap == 0) {
-				*header = *header & 0xFE;
+				fixheader = fixheader & 0xFE;
 			}
 			if (sub_id != 0) {
 				var_subid[0] = 0x0B;
@@ -625,8 +630,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 				tprop_bytes = put_var_integer(proplen, property_len+1+id_bytes);
 				len_offset += (tprop_bytes - prop_bytes + 1 + id_bytes);
 			}
-			//else use original var payload & pid
-			fixheader = *header;
+
 			// get final qos
 			qos = qos_pac > qos ? qos : qos_pac;
 
@@ -736,8 +740,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 		}
 	}
 
-	// FIXME 
-
+	// TODO append to msg directly instead of using iov
 	nni_msg_alloc(&smsg, 0);
 	nni_msg_header_append(smsg, iov[0].iov_buf, iov[0].iov_len);
 
