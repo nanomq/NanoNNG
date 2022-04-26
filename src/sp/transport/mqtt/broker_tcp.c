@@ -506,8 +506,9 @@ tcptran_pipe_recv_cb(void *arg)
 {
 	nni_aio      *aio;
 	nni_iov       iov[2];
-	uint8_t       type;
-	uint32_t      len = 0, rv, pos = 1;
+	uint8_t       type, rv;
+	uint32_t      pos = 1;
+	uint64_t      len = 0;
 	size_t        n;
 	nni_msg      *msg, *qmsg;
 	tcptran_pipe *p     = arg;
@@ -1052,6 +1053,8 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			uint32_t pos = 1;
 			sub_id       = info->subid;
 			qos          = info->qos;
+
+			fixheader = *header;
 			if (nni_msg_cmd_type(msg) == CMD_PUBLISH) {
 				// V4 to V5 add 0 property length
 				target_prover = MQTTV4_V5;
@@ -1059,7 +1062,6 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				tprop_bytes   = 1;
 				len_offset    = 1;
 			}
-			fixheader = *header;
 			if (info->rap == 0) {
 				fixheader = fixheader & 0xFE;
 			}
@@ -1069,7 +1071,6 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				tprop_bytes = put_var_integer(proplen, property_len+1+id_bytes);
 				len_offset += (tprop_bytes - prop_bytes + 1 + id_bytes);
 			}
-			//else use original var payload & pid
 			// get final qos
 			qos = qos_pac > qos ? qos : qos_pac;
 
