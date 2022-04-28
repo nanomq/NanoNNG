@@ -23,6 +23,8 @@
 
 #include <sub_handler.h>
 
+#define DB_NAME "nano_qos_db.db"
+
 typedef struct nano_pipe          nano_pipe;
 typedef struct nano_sock          nano_sock;
 typedef struct nano_ctx           nano_ctx;
@@ -512,7 +514,7 @@ nano_sock_init(void *arg, nni_sock *sock)
 	(void) nano_ctx_init(&s->ctx, s);
 
 #ifdef NNG_SUPP_SQLITE
-	nni_qos_db_init_sqlite(s->sqlite_db);
+	nni_qos_db_init_sqlite(s->sqlite_db, DB_NAME, true);
 	nni_qos_db_reset_pipe(s->sqlite_db);
 #endif
 	debug_msg("************* nano_sock_init %p *************", s);
