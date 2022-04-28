@@ -530,7 +530,7 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 	cparam->pro_name.body =
 	    (char *) copy_utf8_str(packet, &pos, &len_of_str);
 	cparam->pro_name.len = len_of_str;
-	rv                   = len_of_str < 0 ? 1 : 0;
+	rv                   = len_of_str < 0 ? PROTOCOL_ERROR : 0;
 	debug_msg("pro_name: %s", cparam->pro_name.body);
 	// protocol ver
 	cparam->pro_ver = packet[pos];
@@ -571,7 +571,7 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 		cparam->clientid.len  = strlen(clientid_r);
 		cparam->assignedid    = true;
 	} else if (len_of_str < 0) {
-		return (1);
+		return (PROTOCOL_ERROR);
 	}
 	debug_msg("clientid: [%s] [%d]", cparam->clientid.body, len_of_str);
 
@@ -585,7 +585,7 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 		property_append(cparam->properties, assigned_cid);
 	}
 	// will topic
-	if (cparam->will_flag != 0) {
+	if (rv == 0 && cparam->will_flag != 0) {
 		if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
 			cparam->will_properties = decode_buf_properties(
 			    packet, len, &pos, &cparam->will_prop_len, true);
@@ -608,12 +608,12 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 		    (char *) copy_utf8_str(packet, &pos, &len_of_str);
 		}
 		cparam->will_msg.len = len_of_str;
-		rv                   = len_of_str < 0 ? 0x99 : 0;
+		rv                   = len_of_str < 0 ? PAYLOAD_FORMAT_INVALID : 0;
 		debug_msg("will_msg: %s %d", cparam->will_msg.body, rv);
 	}
 
 	// username
-	if ((cparam->con_flag & 0x80) > 0) {
+	if (rv == 0 && (cparam->con_flag & 0x80) > 0) {
 		cparam->username.body =
 		    (char *) copy_utf8_str(packet, &pos, &len_of_str);
 		cparam->username.len = len_of_str;
@@ -622,7 +622,7 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 		    "username: %s %d", cparam->username.body, len_of_str);
 	}
 	// password
-	if ((cparam->con_flag & 0x40) > 0) {
+	if (rv == 0 && (cparam->con_flag & 0x40) > 0) {
 		cparam->password.body =
 		    copy_utf8_str(packet, &pos, &len_of_str);
 		cparam->password.len = len_of_str;
