@@ -230,6 +230,36 @@ copy_utf8_str(const uint8_t *src, uint32_t *pos, int *str_len)
 	return dest;
 }
 
+/**
+ * copy utf-8 string to dst without utf8_check
+ *
+ * @param dest output string
+ * @param src input bytes
+ * @param pos
+ * @return string length 0: empty string, >0 : normal utf-8
+ * string
+ */
+uint8_t *
+copy_utf8_str2(const uint8_t *src, uint32_t *pos, int *str_len)
+{
+	*str_len      = 0;
+	uint8_t *dest = NULL;
+
+	NNI_GET16(src + (*pos), *str_len);
+
+	*pos = (*pos) + 2;
+	if (*str_len > 0) {
+		if ((dest = nng_alloc(*str_len + 1)) == NULL) {
+			*str_len = 0;
+			return NULL;
+		}
+		memcpy(dest, src + (*pos), *str_len);
+		dest[*str_len] = '\0';
+		*pos           = (*pos) + (*str_len);
+	}
+	return dest;
+}
+
 int
 utf8_check(const char *str, size_t len)
 {
@@ -571,7 +601,7 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 		debug_msg("will_topic: %s %d", cparam->will_topic.body, rv);
 		// will msg
 		cparam->will_msg.body =
-		    (char *) copy_utf8_str(packet, &pos, &len_of_str);
+		    (char *) copy_utf8_str2(packet, &pos, &len_of_str);
 		cparam->will_msg.len = len_of_str;
 		rv                   = len_of_str < 0 ? 1 : 0;
 		debug_msg("will_msg: %s %d", cparam->will_msg.body, rv);
