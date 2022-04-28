@@ -336,7 +336,7 @@ tcptran_pipe_nego_cb(void *arg)
 		if (p->tcp_cparam == NULL) {
 			conn_param_alloc(&p->tcp_cparam);
 		}
-		if (conn_handler(p->conn_buf, p->tcp_cparam) == 0) {
+		if ((rv = conn_handler(p->conn_buf, p->tcp_cparam)) == 0) {
 			nng_free(p->conn_buf, p->wantrxhead);
 			p->conn_buf = NULL;
 			// Connection is accepted.
@@ -349,7 +349,6 @@ tcptran_pipe_nego_cb(void *arg)
 			nni_mtx_unlock(&ep->mtx);
 			return;
 		} else {
-			rv = NNG_EPROTO;
 			nng_free(p->conn_buf, p->wantrxhead);
 			conn_param_free(p->tcp_cparam);
 			goto error;
