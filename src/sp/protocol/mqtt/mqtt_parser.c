@@ -231,7 +231,7 @@ copy_utf8_str(const uint8_t *src, uint32_t *pos, int *str_len)
 }
 
 /**
- * copy utf-8 string to dst without utf8_check
+ * copy string to dst without utf8_check
  *
  * @param dest output string
  * @param src input bytes
@@ -240,7 +240,7 @@ copy_utf8_str(const uint8_t *src, uint32_t *pos, int *str_len)
  * string
  */
 uint8_t *
-copy_utf8_str2(const uint8_t *src, uint32_t *pos, int *str_len)
+copy_str(const uint8_t *src, uint32_t *pos, int *str_len)
 {
 	*str_len      = 0;
 	uint8_t *dest = NULL;
@@ -600,10 +600,15 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 		rv                     = len_of_str < 0 ? 1 : 0;
 		debug_msg("will_topic: %s %d", cparam->will_topic.body, rv);
 		// will msg
-		cparam->will_msg.body =
-		    (char *) copy_utf8_str2(packet, &pos, &len_of_str);
+		if (cparam->payload_format_indicator == 0) {
+			cparam->will_msg.body =
+			    (char *) copy_str(packet, &pos, &len_of_str);
+		} else if (cparam->payload_format_indicator == 0x01){
+			cparam->will_msg.body =
+		    (char *) copy_utf8_str(packet, &pos, &len_of_str);
+		}
 		cparam->will_msg.len = len_of_str;
-		rv                   = len_of_str < 0 ? 1 : 0;
+		rv                   = len_of_str < 0 ? 0x99 : 0;
 		debug_msg("will_msg: %s %d", cparam->will_msg.body, rv);
 	}
 
