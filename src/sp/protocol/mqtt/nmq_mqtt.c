@@ -514,7 +514,7 @@ nano_sock_init(void *arg, nni_sock *sock)
 	(void) nano_ctx_init(&s->ctx, s);
 
 #ifdef NNG_SUPP_SQLITE
-	nni_qos_db_init_sqlite(s->sqlite_db, DB_NAME);
+	nni_qos_db_init_sqlite(s->sqlite_db, DB_NAME, true);
 	nni_qos_db_reset_pipe(s->sqlite_db);
 #endif
 	debug_msg("************* nano_sock_init %p *************", s);
