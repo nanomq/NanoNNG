@@ -42,16 +42,12 @@ static inline void close_pipe(nano_pipe *p);
 struct nano_ctx {
 	nano_sock *sock;
 	uint32_t   pipe_id;
-	// uint32_t      resend_count;
-	// uint32_t      pipe_len;	//record total length of pipe_id queue
 	// when resending
 	nano_pipe *spipe, *qos_pipe; // send pipe
 	nni_aio *  saio;             // send aio
 	nni_aio *  raio;             // recv aio
-	// nni_list      send_queue; // contexts waiting to send.
 	nni_list_node sqnode;
 	nni_list_node rqnode;
-	// nni_timer_node qos_timer;
 };
 
 // nano_sock is our per-socket protocol private structure.
@@ -287,20 +283,6 @@ nano_pipe_timer_cb(void *arg)
 	return;
 }
 
-/*
-static void
-nano_keepalive(nano_pipe *p, void *arg)
-{
-    uint16_t     interval;
-
-    interval = conn_param_get_keepalive(p->conn_param);
-    debug_msg("KeepAlive: %d", interval);
-    //20% KeepAlive as buffer time for multi-threading
-    nni_timer_schedule(&p->ka_timer, nni_clock() + NNI_SECOND * interval *
-0.8);
-}
-*/
-
 static void
 nano_ctx_close(void *arg)
 {
@@ -331,11 +313,7 @@ nano_ctx_fini(void *arg)
 	nano_ctx *ctx = arg;
 
 	nano_ctx_close(ctx);
-
-	// timer
 	debug_msg("========= nano_ctx_fini =========");
-	// nni_timer_cancel(&ctx->qos_timer);
-	// nni_timer_fini(&ctx->qos_timer);
 }
 
 static void
@@ -643,7 +621,6 @@ nano_pipe_start(void *arg)
 			// replace nano_qos_db and pid with old one.
 			p->pipe->packet_id = old->pipe->packet_id;
 			// there should be no msg in this map
-			//TODO adapt SQLITE
 #ifndef NNG_SUPP_SQLITE
 			nni_qos_db_fini_id_hash(p->pipe->nano_qos_db);
 #endif
