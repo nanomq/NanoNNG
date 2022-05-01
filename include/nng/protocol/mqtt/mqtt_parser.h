@@ -24,15 +24,15 @@
 #define CONNECT_TOPIC "$SYS/brokers/connected"
 
 // strip off and return the QoS bits
-#define NANO_NNI_LMQ_GET_QOS_BITS(msg) ((size_t)(msg) &0x03)
+#define NANO_NNI_LMQ_GET_QOS_BITS(msg) ((size_t) (msg) &0x03)
 
 // strip off and return the msg pointer
 #define NANO_NNI_LMQ_GET_MSG_POINTER(msg) \
-	((nng_msg *) ((size_t)(msg) & (~0x03)))
+	((nng_msg *) ((size_t) (msg) & (~0x03)))
 
 // packed QoS bits to the least two significant bits of msg pointer
 #define NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos) \
-	((nng_msg *) ((size_t)(msg) | ((qos) &0x03)))
+	((nng_msg *) ((size_t) (msg) | ((qos) &0x03)))
 
 // Variables & Structs
 typedef struct pub_extra pub_extra;
@@ -45,7 +45,7 @@ extern void       pub_extra_free(pub_extra *);
 extern uint8_t    pub_extra_get_qos(pub_extra *);
 extern uint16_t   pub_extra_get_packet_id(pub_extra *);
 extern void       pub_extra_set_qos(pub_extra *, uint8_t);
-extern void *     pub_extra_get_msg(pub_extra *);
+extern void      *pub_extra_get_msg(pub_extra *);
 extern void       pub_extra_set_msg(pub_extra *, void *);
 extern void       pub_extra_set_packet_id(pub_extra *, uint16_t);
 
@@ -69,7 +69,8 @@ NNG_DECL uint8_t *copyn_utf8_str(
     const uint8_t *src, uint32_t *pos, uint32_t *str_len, int limit);
 
 // NNG_DECL char *convert_to_utf8(char *src, char *format, size_t *len);
-NNG_DECL uint8_t *copy_str(const uint8_t *src, uint32_t *pos, int *str_len);
+NNG_DECL uint8_t *copyn_str(
+    const uint8_t *src, uint32_t *pos, uint32_t *str_len, int limit);
 
     NNG_DECL int utf8_check(const char *str, size_t length);
 
