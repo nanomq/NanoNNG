@@ -50,7 +50,7 @@ extern void       pub_extra_set_msg(pub_extra *, void *);
 extern void       pub_extra_set_packet_id(pub_extra *, uint16_t);
 
 // MQTT CONNECT
-int32_t conn_handler(uint8_t *packet, conn_param *conn_param);
+int32_t conn_handler(uint8_t *packet, conn_param *conn_param, size_t max);
 int     conn_param_alloc(conn_param **cparam);
 void    conn_param_free(conn_param *cparam);
 void    conn_param_clone(conn_param *cparam);
@@ -65,6 +65,10 @@ NNG_DECL uint32_t get_var_integer(const uint8_t *buf, uint32_t *pos);
 NNG_DECL int32_t  get_utf8_str(char **dest, const uint8_t *src, uint32_t *pos);
 NNG_DECL uint8_t *copy_utf8_str(
     const uint8_t *src, uint32_t *pos, int *str_len);
+NNG_DECL uint8_t *copyn_utf8_str(
+    const uint8_t *src, uint32_t *pos, uint32_t *str_len, int limit);
+
+// NNG_DECL char *convert_to_utf8(char *src, char *format, size_t *len);
 NNG_DECL uint8_t *copy_str(const uint8_t *src, uint32_t *pos, int *str_len);
 
     NNG_DECL int utf8_check(const char *str, size_t length);
