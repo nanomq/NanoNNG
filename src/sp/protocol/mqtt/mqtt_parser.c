@@ -267,7 +267,7 @@ copy_utf8_str(const uint8_t *src, uint32_t *pos, int *str_len)
 }
 
 /**
- * copy string to dst
+ * copy size of limit binary string to dst without utf8_check
  *
  * @param dest output string
  * @param src input bytes
@@ -276,7 +276,7 @@ copy_utf8_str(const uint8_t *src, uint32_t *pos, int *str_len)
  * string
  */
 uint8_t *
-copy_str(const uint8_t *src, uint32_t *pos, int *str_len)
+copyn_str(const uint8_t *src, uint32_t *pos, uint32_t *str_len, int limit)
 {
 	*str_len      = 0;
 	uint8_t *dest = NULL;
@@ -284,6 +284,10 @@ copy_str(const uint8_t *src, uint32_t *pos, int *str_len)
 	NNI_GET16(src + (*pos), *str_len);
 
 	*pos = (*pos) + 2;
+	if (*str_len > (limit-2)) {
+		//buffer overflow
+		*str_len = -1;
+	}
 	if (*str_len > 0) {
 		if ((dest = nng_alloc(*str_len + 1)) == NULL || (src + (*pos) == NULL)) {
 			*str_len = 0;
@@ -697,31 +701,35 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		cparam->will_topic.len = len_of_str;
 		rv                     = len_of_str < 0 ? 1 : 0;
 		if (cparam->will_topic.body == NULL || rv != 0) {
-			rv = PAYLOAD_FORMAT_INVALID;
+			rv = PROTOCOL_ERROR;
 			return rv;
 		}
 		debug_msg("will_topic: %s %d", cparam->will_topic.body, rv);
 		// will msg
-		if (rv == 0 && cparam->payload_format_indicator == 0) {
-			cparam->will_msg.body =
-			    (char *) copy_str(packet, &pos, &len_of_str);
-		} else if (rv == 0 && cparam->payload_format_indicator == 0x01) {
-			cparam->will_msg.body =
-		    (char *) copy_utf8_str(packet, &pos, &len_of_str);
+		if (rv == 0) {
+			if (cparam->payload_format_indicator == 0) {
+				cparam->will_msg.body = (char *) copyn_str(
+				    packet, &pos, &len_of_str, max - pos);
+			} else if (rv == 0 &&
+			    cparam->payload_format_indicator == 0x01) {
+				cparam->will_msg.body =
+				    (char *) copyn_utf8_str(
+				        packet, &pos, &len_of_str, max - pos);
+			}
+			cparam->will_msg.len = len_of_str;
+			rv = len_of_str < 0 ? PAYLOAD_FORMAT_INVALID : 0;
+			debug_msg(
+			    "will_msg: %s %d", cparam->will_msg.body, rv);
 		}
-		cparam->will_msg.len = len_of_str;
-		rv                   = len_of_str < 0 ? 1 : 0;
-		debug_msg("will_msg: %s %d", cparam->will_msg.body, rv);
 	}
 
 	// username
 	if ((cparam->con_flag & 0x80) > 0) {
 		cparam->username.body =
-		    (char *) copy_utf8_str(packet, &pos, &len_of_str);
+		    (char *) copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
 		cparam->username.len = len_of_str;
-		rv                   = len_of_str < 0 ? 1 : 0;
-		if (len_of_str > max) {
-			rv = PAYLOAD_FORMAT_INVALID;
+		rv                   = len_of_str < 0 ? PAYLOAD_FORMAT_INVALID : 0;
+		if (rv != 0) {
 			return rv;
 		}
 		debug_msg(
@@ -730,19 +738,18 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	// password
 	if ((cparam->con_flag & 0x40) > 0) {
 		cparam->password.body =
-		    copy_utf8_str(packet, &pos, &len_of_str);
+		    copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
 		cparam->password.len = len_of_str;
-		rv                   = len_of_str < 0 ? 1 : 0;
-		if (len_of_str > max) {
-			rv = PAYLOAD_FORMAT_INVALID;
+		rv                   = len_of_str < 0 ? PAYLOAD_FORMAT_INVALID : 0;
+		if (rv != 0) {
 			return rv;
 		}
 		debug_msg(
 		    "password: %s %d", cparam->password.body, len_of_str);
 	}
-	// what if rv = 0?
 	if (len + len_of_var + 1 != pos) {
 		debug_msg("ERROR in connect handler");
+		rv = PROTOCOL_ERROR;
 	}
 	return rv;
 }
