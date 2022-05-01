@@ -317,6 +317,7 @@ tcptran_pipe_nego_cb(void *arg)
 		iov.iov_len = p->wantrxhead - p->gotrxhead;
 		if (p->conn_buf == NULL) {
 			p->conn_buf = nng_alloc(p->wantrxhead);
+			// copy fixed header to conn_buf
 			memcpy(p->conn_buf, p->rxlen, p->gotrxhead);
 		}
 		iov.iov_buf = &p->conn_buf[p->gotrxhead];
@@ -333,7 +334,7 @@ tcptran_pipe_nego_cb(void *arg)
 		if (p->tcp_cparam == NULL) {
 			conn_param_alloc(&p->tcp_cparam);
 		}
-		if (conn_handler(p->conn_buf, p->tcp_cparam, p->wantrxhead) == 0) {
+		if ((rv = conn_handler(p->conn_buf, p->tcp_cparam, p->wantrxhead)) == 0) {
 			nng_free(p->conn_buf, p->wantrxhead);
 			p->conn_buf = NULL;
 			// Connection is accepted.
