@@ -166,7 +166,7 @@ done:
 				conn_param_alloc(&p->ws_param);
 			}
 			if (conn_handler(
-			        nni_msg_body(p->tmp_msg), p->ws_param) != 0) {
+			        nni_msg_body(p->tmp_msg), p->ws_param, p->wantrxhead) != 0) {
 				goto reset;
 			}
 			nni_msg_free(p->tmp_msg);
