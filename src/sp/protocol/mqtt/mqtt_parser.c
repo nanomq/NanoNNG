@@ -192,6 +192,46 @@ get_utf8_str(char **dest, const uint8_t *src, uint32_t *pos)
 }
 
 /**
+ * @brief safe copy limit size of src data to dest
+ * 	  return null and -1 strlen if buffer overflow
+ * @param src 
+ * @param pos 
+ * @param str_len target size of data
+ * @param limit max size of data copied
+ * @return uint8_t* NULL if overflow or not utf-8
+ */
+uint8_t *
+copyn_utf8_str(const uint8_t *src, uint32_t *pos, uint32_t *str_len, int limit)
+{
+	*str_len      = 0;
+	uint8_t *dest = NULL;
+
+	NNI_GET16(src + (*pos), *str_len);
+
+	*pos = (*pos) + 2;
+	if (*str_len > (limit-2)) {
+		//buffer overflow
+		*str_len = -1;
+		return NULL;
+	}
+	if (*str_len > 0) {
+		if (utf8_check((const char *) (src + *pos), *str_len) ==
+		    ERR_SUCCESS) {
+			if ((dest = nng_alloc(*str_len + 1)) == NULL) {
+				*str_len = 0;
+				return NULL;
+			}
+			memcpy(dest, src + (*pos), *str_len);
+			dest[*str_len] = '\0';
+			*pos           = (*pos) + (*str_len);
+		} else {
+			*str_len = -1;
+		}
+	}
+	return dest;
+}
+
+/**
  * copy utf-8 string to dst
  *
  * @param dest output string
@@ -210,18 +250,16 @@ copy_utf8_str(const uint8_t *src, uint32_t *pos, int *str_len)
 
 	*pos = (*pos) + 2;
 	if (*str_len > 0) {
-		if ((dest = nng_alloc(*str_len + 1)) == NULL) {
-			*str_len = 0;
-			return NULL;
-		}
 		if (utf8_check((const char *) (src + *pos), *str_len) ==
 		    ERR_SUCCESS) {
+			if ((dest = nng_alloc(*str_len + 1)) == NULL) {
+				*str_len = 0;
+				return NULL;
+			}
 			memcpy(dest, src + (*pos), *str_len);
 			dest[*str_len] = '\0';
 			*pos           = (*pos) + (*str_len);
 		} else {
-			nng_free(dest, *str_len + 1);
-			dest     = NULL;
 			*str_len = -1;
 		}
 	}
@@ -247,7 +285,7 @@ copy_str(const uint8_t *src, uint32_t *pos, int *str_len)
 
 	*pos = (*pos) + 2;
 	if (*str_len > 0) {
-		if ((dest = nng_alloc(*str_len + 1)) == NULL) {
+		if ((dest = nng_alloc(*str_len + 1)) == NULL || (src + (*pos) == NULL)) {
 			*str_len = 0;
 			return NULL;
 		}
@@ -430,7 +468,7 @@ auto_id_prefix_len)
  * TODO CONNECT packet validation
  */
 int32_t
-conn_handler(uint8_t *packet, conn_param *cparam)
+conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 {
 	uint32_t len, tmp, pos = 0, len_of_properties = 0, len_of_var = 0;
 	int      len_of_str = 0;
@@ -448,7 +486,7 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 	pos += len_of_var;
 	// protocol name
 	cparam->pro_name.body =
-	    (char *) copy_utf8_str(packet, &pos, &len_of_str);
+	    (char *) copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
 	cparam->pro_name.len = len_of_str;
 	rv                   = len_of_str < 0 ? 1 : 0;
 	debug_msg("pro_name: %s", cparam->pro_name.body);
@@ -555,7 +593,7 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 
 	// payload client_id
 	cparam->clientid.body =
-	    (char *) copy_utf8_str(packet, &pos, &len_of_str);
+	    (char *) copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
 	cparam->clientid.len = len_of_str;
 
 	if (len_of_str == 0) {
@@ -655,13 +693,22 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 			}
 		}
 		cparam->will_topic.body =
-		    (char *) copy_utf8_str(packet, &pos, &len_of_str);
+		    (char *) copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
 		cparam->will_topic.len = len_of_str;
 		rv                     = len_of_str < 0 ? 1 : 0;
+		if (cparam->will_topic.body == NULL || rv != 0) {
+			rv = PAYLOAD_FORMAT_INVALID;
+			return rv;
+		}
 		debug_msg("will_topic: %s %d", cparam->will_topic.body, rv);
 		// will msg
-		cparam->will_msg.body =
-		    (char *) copy_str(packet, &pos, &len_of_str);
+		if (rv == 0 && cparam->payload_format_indicator == 0) {
+			cparam->will_msg.body =
+			    (char *) copy_str(packet, &pos, &len_of_str);
+		} else if (rv == 0 && cparam->payload_format_indicator == 0x01) {
+			cparam->will_msg.body =
+		    (char *) copy_utf8_str(packet, &pos, &len_of_str);
+		}
 		cparam->will_msg.len = len_of_str;
 		rv                   = len_of_str < 0 ? 1 : 0;
 		debug_msg("will_msg: %s %d", cparam->will_msg.body, rv);
@@ -673,6 +720,10 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 		    (char *) copy_utf8_str(packet, &pos, &len_of_str);
 		cparam->username.len = len_of_str;
 		rv                   = len_of_str < 0 ? 1 : 0;
+		if (len_of_str > max) {
+			rv = PAYLOAD_FORMAT_INVALID;
+			return rv;
+		}
 		debug_msg(
 		    "username: %s %d", cparam->username.body, len_of_str);
 	}
@@ -682,6 +733,10 @@ conn_handler(uint8_t *packet, conn_param *cparam)
 		    copy_utf8_str(packet, &pos, &len_of_str);
 		cparam->password.len = len_of_str;
 		rv                   = len_of_str < 0 ? 1 : 0;
+		if (len_of_str > max) {
+			rv = PAYLOAD_FORMAT_INVALID;
+			return rv;
+		}
 		debug_msg(
 		    "password: %s %d", cparam->password.body, len_of_str);
 	}
