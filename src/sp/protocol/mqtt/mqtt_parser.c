@@ -557,22 +557,22 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 				debug_msg("USER_PROPERTY");
 				// key
 				cparam->user_property.key =
-				    (char *) copy_utf8_str(
-				        packet, &pos, &len_of_str);
+				    (char *) copyn_utf8_str(
+				        packet, &pos, &len_of_str, max-pos);
 				cparam->user_property.len_key = len_of_str;
 				rv = len_of_str < 0 ? 1 : 0;
 				// value
 				cparam->user_property.val =
-				    (char *) copy_utf8_str(
-				        packet, &pos, &len_of_str);
+				    (char *) copyn_utf8_str(
+				        packet, &pos, &len_of_str, max-pos);
 				cparam->user_property.len_val = len_of_str;
 				rv = len_of_str < 0 ? 1 : 0;
 				break;
 			case AUTHENTICATION_METHOD:
 				debug_msg("AUTHENTICATION_METHOD");
 				cparam->auth_method.body =
-				    (char *) copy_utf8_str(
-				        packet, &pos, &len_of_str);
+				    (char *) copyn_utf8_str(
+				        packet, &pos, &len_of_str, max-pos);
 				rv = len_of_str < 0 ? 1 : 0;
 				cparam->auth_method.len = len_of_str;
 				len_of_str              = 0;
@@ -580,7 +580,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 			case AUTHENTICATION_DATA:
 				debug_msg("AUTHENTICATION_DATA");
 				cparam->auth_data.body =
-				    copy_utf8_str(packet, &pos, &len_of_str);
+				    copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
 				rv                    = len_of_str < 0 ? 1 : 0;
 				cparam->auth_data.len = len_of_str;
 				break;
@@ -644,8 +644,8 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 				case CONTENT_TYPE:
 					debug_msg("CONTENT_TYPE");
 					cparam->content_type.body =
-					    (char *) copy_utf8_str(
-					        packet, &pos, &len_of_str);
+					    (char *) copyn_utf8_str(
+					        packet, &pos, &len_of_str, max-pos);
 					cparam->content_type.len = len_of_str;
 					rv = len_of_str < 0 ? 1 : 0;
 					debug_msg("content type: %s %d",
@@ -654,8 +654,8 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 				case RESPONSE_TOPIC:
 					debug_msg("RESPONSE_TOPIC");
 					cparam->resp_topic.body =
-					    (char *) copy_utf8_str(
-					        packet, &pos, &len_of_str);
+					    (char *) copyn_utf8_str(
+					        packet, &pos, &len_of_str, max-pos);
 					cparam->resp_topic.len = len_of_str;
 					rv = len_of_str < 0 ? 1 : 0;
 					debug_msg("resp topic: %s %d",
@@ -674,15 +674,15 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 					debug_msg("USER_PROPERTY");
 					// key
 					cparam->payload_user_property.key =
-					    (char *) copy_utf8_str(
-					        packet, &pos, &len_of_str);
+					    (char *) copyn_utf8_str(
+					        packet, &pos, &len_of_str, max-pos);
 					cparam->payload_user_property.len_key =
 					    len_of_str;
 					rv = rv | len_of_str;
 					// value
 					cparam->payload_user_property.val =
-					    (char *) copy_utf8_str(
-					        packet, &pos, &len_of_str);
+					    (char *) copyn_utf8_str(
+					        packet, &pos, &len_of_str, max-pos);
 					cparam->payload_user_property.len_val =
 					    len_of_str;
 					rv = len_of_str < 0 ? 1 : 0;
