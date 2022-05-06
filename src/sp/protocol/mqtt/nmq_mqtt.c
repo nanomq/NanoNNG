@@ -71,23 +71,25 @@ struct nano_sock {
 
 // nano_pipe is our per-pipe protocol private structure.
 struct nano_pipe {
-	nni_mtx          lk;
-	nni_pipe *       pipe;
-	nano_sock *      broker;
-	uint32_t         id;
-	void *           tree; // root node of db tree
-	nni_aio          aio_send;
-	nni_aio          aio_recv;
-	nni_aio          aio_timer;
-	nni_list_node    rnode; // receivable list linkage
-	bool             busy;
-	bool             closed;
-	bool 			 event;	// indicates if exposure disconnect event is valid
-	uint8_t          reason_code;
-	uint8_t          ka_refresh;	//count how many times the keepalive timer has been triggered
+	nni_mtx       lk;
+	nni_pipe     *pipe;
+	nano_sock    *broker;
+	uint32_t      id;
+	uint16_t      keepalive;
+	void         *tree; // root node of db tree
+	nni_aio       aio_send;
+	nni_aio       aio_recv;
+	nni_aio       aio_timer;
+	nni_list_node rnode; // receivable list linkage
+	bool          busy;
+	bool          closed;
+	bool          event; // indicates if exposure disconnect event is valid
+	uint8_t       reason_code;
+	uint8_t ka_refresh; // count how many times the keepalive timer has
+	                    // been triggered
 	nano_conn_param *conn_param;
 	nni_lmq          rlmq;
-	void *           nano_qos_db; // 'sqlite' or 'nni_id_hash_map'
+	void            *nano_qos_db; // 'sqlite' or 'nni_id_hash_map'
 };
 
 void
@@ -243,7 +245,7 @@ nano_pipe_timer_cb(void *arg)
 		nni_mtx_unlock(&p->lk);
 		return;
 	}
-	if (p->ka_refresh * (qos_duration) > p->conn_param->keepalive_mqtt) {
+	if (p->ka_refresh * (qos_duration) > p->keepalive) {
 		nni_println("Warning: close pipe & kick client due to KeepAlive "
 		       "timeout!");
 		p->reason_code = NMQ_KEEP_ALIVE_TIMEOUT;
@@ -396,9 +398,8 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		nni_msg_free(msg);
 		return;
 	}
-	nni_mtx_unlock(&s->lk);
 	nni_mtx_lock(&p->lk);
-
+	nni_mtx_unlock(&s->lk);
 	if (p->pipe->cache) {
 		if (nni_msg_get_type(msg) == CMD_PUBLISH) {
 			qos_pac = nni_msg_get_pub_qos(msg);
@@ -536,9 +537,11 @@ nano_pipe_fini(void *arg)
 	nng_msg *           msg;
 
 	debug_msg(" ########## nano_pipe_fini ########## ");
-	if(p->pipe->cache)
+	// nni_mtx_lock(&p->lk);
+	if(p->pipe->cache) {
+		// nni_mtx_unlock(&p->lk);
 		return; //your time is yet to come
-
+	}
 	if ((msg = nni_aio_get_msg(&p->aio_recv)) != NULL) {
 		nni_aio_set_msg(&p->aio_recv, NULL);
 		nni_msg_free(msg);
@@ -554,8 +557,10 @@ nano_pipe_fini(void *arg)
 		NNI_ARG_UNUSED(nano_qos_db);
 #endif
 	} else {
+		// we keep all structs in broker layer, except this conn_param
 		conn_param_free(p->conn_param);
 	}
+	// nni_mtx_unlock(&p->lk);
 
 	nni_mtx_fini(&p->lk);
 	nni_aio_fini(&p->aio_send);
@@ -586,6 +591,7 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	p->ka_refresh              = 0;
 	p->event                   = true;
 	p->tree                    = sock->db;
+	p->keepalive		   = p->conn_param->keepalive_mqtt;
 
 	return (0);
 }
@@ -737,6 +743,7 @@ nano_pipe_close(void *arg)
 		return;
 	}
 	nni_mtx_lock(&s->lk);
+	// nni_mtx_lock(&p->lk);
 	// we freed the conn_param when restoring pipe
 	// so check status of conn_param. just let it close silently
 	if (p->conn_param != NULL)
@@ -758,6 +765,7 @@ nano_pipe_close(void *arg)
 		}
 		nano_nni_lmq_flush(&p->rlmq);
 		nni_mtx_unlock(&s->lk);
+		// nni_mtx_unlock(&p->lk);
 		return;
 	}
 	close_pipe(p);
@@ -769,6 +777,7 @@ nano_pipe_close(void *arg)
 		msg = nano_msg_notify_disconnect(p->conn_param, p->reason_code);
 		if (msg == NULL) {
 			nni_mtx_unlock(&s->lk);
+			// nni_mtx_unlock(&p->lk);
 			return;
 		}
 		nni_msg_set_conn_param(msg, p->conn_param);
@@ -781,6 +790,7 @@ nano_pipe_close(void *arg)
 			ctx->raio = NULL;
 			nni_list_remove(&s->recvq, ctx);
 			nni_mtx_unlock(&s->lk);
+			// nni_mtx_unlock(&p->lk);
 			nni_aio_set_msg(aio, msg);
 			// must be sync due to conn_param racing.
 			nni_aio_finish_sync(aio, 0, nni_msg_len(msg));
@@ -797,6 +807,7 @@ nano_pipe_close(void *arg)
 		}
 	}
 	nni_mtx_unlock(&s->lk);
+	// nni_mtx_unlock(&p->lk);
 }
 
 static void
@@ -811,7 +822,7 @@ nano_pipe_send_cb(void *arg)
 		msg = nni_aio_get_msg(&p->aio_send);
 		nni_msg_free(NANO_NNI_LMQ_GET_MSG_POINTER(msg));
 		nni_aio_set_msg(&p->aio_send, NULL);
-		// possibily due to frequent msg overflow
+		// possibily due to client crashed
 		p->reason_code = 0x96;
 		nni_pipe_close(p->pipe);
 		return;
@@ -944,6 +955,14 @@ nano_pipe_recv_cb(void *arg)
 		goto end;
 	}
 
+	if (p->closed) {
+		// If we are closed, then we can't return data.
+		nni_aio_set_msg(&p->aio_recv, NULL);
+		nni_msg_free(msg);
+		debug_msg("ERROR: pipe is closed abruptly!!");
+		return;
+	}
+
 	// ttl = nni_atomic_get(&s->ttl);
 	nni_msg_set_pipe(msg, p->id);
 	ptr = nni_msg_body(msg);
@@ -1005,14 +1024,6 @@ nano_pipe_recv_cb(void *arg)
 		goto drop;
 	default:
 		goto drop;
-	}
-
-	if (p->closed) {
-		// If we are closed, then we can't return data.
-		nni_aio_set_msg(&p->aio_recv, NULL);
-		nni_msg_free(msg);
-		debug_msg("ERROR: pipe is closed abruptly!!");
-		return;
 	}
 
 	nni_mtx_lock(&s->lk);
