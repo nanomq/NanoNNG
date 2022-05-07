@@ -396,8 +396,8 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		nni_msg_free(msg);
 		return;
 	}
-	nni_mtx_unlock(&s->lk);
 	nni_mtx_lock(&p->lk);
+	nni_mtx_unlock(&s->lk);
 
 	if (p->pipe->cache) {
 		if (nni_msg_get_type(msg) == CMD_PUBLISH) {
