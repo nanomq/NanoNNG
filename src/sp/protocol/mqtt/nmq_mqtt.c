@@ -435,13 +435,22 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	debug_msg("WARNING: pipe %d occupied! resending in cb!", pipe);
 	if (nni_lmq_full(&p->rlmq)) {
 		// Make space for the new message.
-		if (nni_lmq_cap(&p->rlmq) <= NANO_MAX_QOS_PACKET)
+		if (nni_lmq_cap(&p->rlmq) <= NANO_MAX_QOS_PACKET) {
 		if ((rv = nano_nni_lmq_resize(
 		         &p->rlmq, nni_lmq_cap(&p->rlmq) * 2)) != 0) {
 			debug_syslog("warning msg dropped!");
 			nni_msg *old;
 			(void) nano_nni_lmq_getq(&p->rlmq, &old, NULL);
 			nni_msg_free(old);
+		}
+		} else {
+			// Warning msg lost due to reach the limit of lmq
+			debug_syslog(
+			    "Warning: msg lost due to reach the limit of lmq");
+			    nni_msg_free(msg);
+			nni_mtx_unlock(&p->lk);
+			nni_aio_set_msg(aio, NULL);
+			return;
 		}
 	}
 
