@@ -25,10 +25,10 @@
 
 #define DB_NAME "nano_qos_db.db"
 
-typedef struct nano_pipe          nano_pipe;
-typedef struct nano_sock          nano_sock;
-typedef struct nano_ctx           nano_ctx;
-typedef struct cs_msg_list        cs_msg_list;
+typedef struct nano_pipe   nano_pipe;
+typedef struct nano_sock   nano_sock;
+typedef struct nano_ctx    nano_ctx;
+typedef struct cs_msg_list cs_msg_list;
 
 static void        nano_pipe_send_cb(void *);
 static void        nano_pipe_recv_cb(void *);
@@ -43,9 +43,9 @@ struct nano_ctx {
 	nano_sock *sock;
 	uint32_t   pipe_id;
 	// when resending
-	nano_pipe *spipe, *qos_pipe; // send pipe
-	nni_aio *  saio;             // send aio
-	nni_aio *  raio;             // recv aio
+	nano_pipe    *spipe, *qos_pipe; // send pipe
+	nni_aio      *saio;             // send aio
+	nni_aio      *raio;             // recv aio
 	nni_list_node sqnode;
 	nni_list_node rqnode;
 };
@@ -62,8 +62,8 @@ struct nano_sock {
 	nano_ctx       ctx; // base socket
 	nni_pollable   readable;
 	nni_pollable   writable;
-	conf *         conf;
-	void *         db;
+	conf          *conf;
+	void          *db;
 #ifdef NNG_SUPP_SQLITE
 	sqlite3 *sqlite_db;
 #endif
@@ -71,23 +71,26 @@ struct nano_sock {
 
 // nano_pipe is our per-pipe protocol private structure.
 struct nano_pipe {
-	nni_mtx          lk;
-	nni_pipe *       pipe;
-	nano_sock *      broker;
-	uint32_t         id;
-	void *           tree; // root node of db tree
-	nni_aio          aio_send;
-	nni_aio          aio_recv;
-	nni_aio          aio_timer;
-	nni_list_node    rnode; // receivable list linkage
-	bool             busy;
-	bool             closed;
-	bool 			 event;	// indicates if exposure disconnect event is valid
-	uint8_t          reason_code;
-	uint8_t          ka_refresh;	//count how many times the keepalive timer has been triggered
+	nni_mtx       lk;
+	nni_pipe     *pipe;
+	nano_sock    *broker;
+	uint32_t      id;
+	uint16_t      keepalive;
+	void         *tree; // root node of db tree
+	nni_aio       aio_send;
+	nni_aio       aio_recv;
+	nni_aio       aio_timer;
+	nni_list_node rnode; // receivable list linkage
+	bool          busy;
+	bool          closed;
+	bool          event; // indicates if exposure disconnect event is valid
+	uint8_t       reason_code;
+	// ka_refresh count how many times the keepalive timer has
+	// been triggered
+	uint8_t          ka_refresh;
 	nano_conn_param *conn_param;
 	nni_lmq          rlmq;
-	void *           nano_qos_db; // 'sqlite' or 'nni_id_hash_map'
+	void            *nano_qos_db; // 'sqlite' or 'nni_id_hash_map'
 };
 
 void
@@ -243,7 +246,7 @@ nano_pipe_timer_cb(void *arg)
 		nni_mtx_unlock(&p->lk);
 		return;
 	}
-	if (p->ka_refresh * (qos_duration) > p->conn_param->keepalive_mqtt) {
+	if (p->ka_refresh * (qos_duration) > p->keepalive) {
 		nni_println("Warning: close pipe & kick client due to KeepAlive "
 		       "timeout!");
 		p->reason_code = NMQ_KEEP_ALIVE_TIMEOUT;
@@ -367,6 +370,9 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
 
 	if (nni_aio_begin(aio) != 0) {
+		nni_msg_free(msg);
+		//AIO ERROR
+		debug_syslog("Please report this bug");
 		return;
 	}
 
@@ -398,7 +404,6 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	}
 	nni_mtx_lock(&p->lk);
 	nni_mtx_unlock(&s->lk);
-
 	if (p->pipe->cache) {
 		if (nni_msg_get_type(msg) == CMD_PUBLISH) {
 			qos_pac = nni_msg_get_pub_qos(msg);
@@ -545,9 +550,9 @@ nano_pipe_fini(void *arg)
 	nng_msg *           msg;
 
 	debug_msg(" ########## nano_pipe_fini ########## ");
-	if(p->pipe->cache)
+	if(p->pipe->cache) {
 		return; //your time is yet to come
-
+	}
 	if ((msg = nni_aio_get_msg(&p->aio_recv)) != NULL) {
 		nni_aio_set_msg(&p->aio_recv, NULL);
 		nni_msg_free(msg);
@@ -563,6 +568,7 @@ nano_pipe_fini(void *arg)
 		NNI_ARG_UNUSED(nano_qos_db);
 #endif
 	} else {
+		// we keep all structs in broker layer, except this conn_param
 		conn_param_free(p->conn_param);
 	}
 
@@ -595,6 +601,7 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	p->ka_refresh              = 0;
 	p->event                   = true;
 	p->tree                    = sock->db;
+	p->keepalive		   = p->conn_param->keepalive_mqtt;
 
 	return (0);
 }
@@ -713,16 +720,17 @@ close_pipe(nano_pipe *p)
 {
 	nano_sock *s = p->broker;
 
+	nni_mtx_lock(&p->lk);
 	nni_aio_close(&p->aio_send);
 	nni_aio_close(&p->aio_recv);
 	nni_aio_close(&p->aio_timer);
 
-	// nni_mtx_lock(&s->lk);
 	p->closed = true;
 	if (nni_list_active(&s->recvpipes, p)) {
 		nni_list_remove(&s->recvpipes, p);
 	}
 	nano_nni_lmq_flush(&p->rlmq);
+	nni_mtx_unlock(&p->lk);
 
 	nni_id_remove(&s->pipes, nni_pipe_id(p->pipe));
 }
@@ -820,7 +828,7 @@ nano_pipe_send_cb(void *arg)
 		msg = nni_aio_get_msg(&p->aio_send);
 		nni_msg_free(NANO_NNI_LMQ_GET_MSG_POINTER(msg));
 		nni_aio_set_msg(&p->aio_send, NULL);
-		// possibily due to frequent msg overflow
+		// possibily due to client crashed
 		p->reason_code = 0x96;
 		nni_pipe_close(p->pipe);
 		return;
@@ -953,6 +961,14 @@ nano_pipe_recv_cb(void *arg)
 		goto end;
 	}
 
+	if (p->closed) {
+		// If we are closed, then we can't return data.
+		nni_aio_set_msg(&p->aio_recv, NULL);
+		nni_msg_free(msg);
+		debug_msg("ERROR: pipe is closed abruptly!!");
+		return;
+	}
+
 	// ttl = nni_atomic_get(&s->ttl);
 	nni_msg_set_pipe(msg, p->id);
 	ptr = nni_msg_body(msg);
@@ -1014,14 +1030,6 @@ nano_pipe_recv_cb(void *arg)
 		goto drop;
 	default:
 		goto drop;
-	}
-
-	if (p->closed) {
-		// If we are closed, then we can't return data.
-		nni_aio_set_msg(&p->aio_recv, NULL);
-		nni_msg_free(msg);
-		debug_msg("ERROR: pipe is closed abruptly!!");
-		return;
 	}
 
 	nni_mtx_lock(&s->lk);
