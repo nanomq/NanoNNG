@@ -354,6 +354,8 @@ utf8_check(const char *str, size_t len)
 			/* Not enough data */
 			return ERR_MALFORMED_UTF8;
 		}
+		// check total len of packet in case overflow when there is
+		// only one byte
 		for (j = 0; j < codelen - 1 && len > 1; j++) {
 			if ((ustr[++i] & 0xC0) != 0x80) {
 				/* Not a continuation byte */
