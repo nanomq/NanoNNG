@@ -354,7 +354,9 @@ utf8_check(const char *str, size_t len)
 			/* Not enough data */
 			return ERR_MALFORMED_UTF8;
 		}
-		for (j = 0; j < codelen - 1; j++) {
+		// check total len of packet in case overflow when there is
+		// only one byte
+		for (j = 0; j < codelen - 1 && len > 1; j++) {
 			if ((ustr[++i] & 0xC0) != 0x80) {
 				/* Not a continuation byte */
 				return ERR_MALFORMED_UTF8;
@@ -832,6 +834,7 @@ conn_param_free(conn_param *cparam)
 
 	property_free(cparam->properties);
 	property_free(cparam->will_properties);
+
 
 	nng_free(cparam, sizeof(struct conn_param));
 	cparam = NULL;
