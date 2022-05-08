@@ -353,7 +353,7 @@ utf8_check(const char *str, size_t len)
 			/* Not enough data */
 			return ERR_MALFORMED_UTF8;
 		}
-		for (j = 0; j < codelen - 1; j++) {
+		for (j = 0; j < codelen - 1 && len > 1; j++) {
 			if ((ustr[++i] & 0xC0) != 0x80) {
 				/* Not a continuation byte */
 				return ERR_MALFORMED_UTF8;
