@@ -75,6 +75,7 @@ struct nano_pipe {
 	nni_pipe *       pipe;
 	nano_sock *      broker;
 	uint32_t         id;
+	uint16_t	 keepalive;
 	void *           tree; // root node of db tree
 	nni_aio          aio_send;
 	nni_aio          aio_recv;
@@ -234,7 +235,7 @@ nano_pipe_timer_cb(void *arg)
 		nni_mtx_unlock(&p->lk);
 		return;
 	}
-	if (p->ka_refresh * (qos_duration) > p->conn_param->keepalive_mqtt) {
+	if (p->ka_refresh * (qos_duration) > p->keepalive) {
 		nni_println("Warning: close pipe & kick client due to KeepAlive "
 		       "timeout!");
 		// TODO check keepalived timer interval
@@ -406,8 +407,8 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		nni_msg_free(msg);
 		return;
 	}
-	nni_mtx_unlock(&s->lk);
 	nni_mtx_lock(&p->lk);
+	nni_mtx_unlock(&s->lk);
 
 	if (p->pipe->cache) {
 		if (nni_msg_get_type(msg) == CMD_PUBLISH) {
@@ -595,6 +596,7 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	p->ka_refresh              = 0;
 	p->event                   = true;
 	p->tree                    = sock->db;
+	p->keepalive               = p->conn_param->keepalive_mqtt;
 
 	return (0);
 }
