@@ -722,12 +722,12 @@ nano_pipe_start(void *arg)
 	return (rv);
 }
 
+// please use it within a pipe lock
 static inline void
 close_pipe(nano_pipe *p)
 {
 	nano_sock *s = p->broker;
 
-	nni_mtx_lock(&p->lk);
 	nni_aio_close(&p->aio_send);
 	nni_aio_close(&p->aio_recv);
 	nni_aio_close(&p->aio_timer);
@@ -737,7 +737,6 @@ close_pipe(nano_pipe *p)
 		nni_list_remove(&s->recvpipes, p);
 	}
 	nano_nni_lmq_flush(&p->rlmq);
-	nni_mtx_unlock(&p->lk);
 
 	nni_id_remove(&s->pipes, nni_pipe_id(p->pipe));
 }
