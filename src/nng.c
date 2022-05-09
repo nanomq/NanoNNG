@@ -2245,9 +2245,9 @@ nng_msg_proto_set_property(nng_msg *m, void *p)
 }
 
 void *
-nng_msg_proto_get_property(nng_msg *m)
+nng_msg_get_proto_data(nng_msg *m)
 {
-	return nni_msg_proto_get_property(m);
+	return nni_msg_get_proto_data(m);
 }
 
 void

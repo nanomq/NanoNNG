@@ -169,6 +169,8 @@ typedef struct nni_proto_msg_ops {
 // set data. The message must not be shared when this is called.
 extern void nni_msg_set_proto_data(nng_msg *, nni_proto_msg_ops *, void *);
 
+extern void *nni_msg_get_proto_data(nng_msg *m);
+
 // nni_msg_get_proto_data returns the data previously set on the message.
 // Note that the protocol is responsible for ensuring that the data on
 // the message is set by it alone.
