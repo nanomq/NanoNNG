@@ -969,14 +969,6 @@ nano_pipe_recv_cb(void *arg)
 		goto end;
 	}
 
-	if (p->closed) {
-		// If we are closed, then we can't return data.
-		nni_aio_set_msg(&p->aio_recv, NULL);
-		nni_msg_free(msg);
-		debug_msg("ERROR: pipe is closed abruptly!!");
-		return;
-	}
-
 	// ttl = nni_atomic_get(&s->ttl);
 	nni_msg_set_pipe(msg, p->id);
 	ptr    = nni_msg_body(msg);
@@ -1040,6 +1032,13 @@ nano_pipe_recv_cb(void *arg)
 		goto drop;
 	}
 
+	if (p->closed) {
+		// If we are closed, then we can't return data.
+		nni_aio_set_msg(&p->aio_recv, NULL);
+		nni_msg_free(msg);
+		debug_msg("ERROR: pipe is closed abruptly!!");
+		return;
+	}
 	nni_mtx_lock(&s->lk);
 	if ((ctx = nni_list_first(&s->recvq)) == NULL) {
 		// No one waiting to receive yet, holding pattern.
