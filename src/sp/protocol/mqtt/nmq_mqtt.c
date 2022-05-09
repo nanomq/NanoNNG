@@ -993,6 +993,7 @@ nano_pipe_recv_cb(void *arg)
 		} else {
 			nni_msg_set_payload_ptr(msg, ptr + 2);
 		}
+		conn_param_clone(cparam);
 		break;
 	case CMD_UNSUBSCRIBE:
 		if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
