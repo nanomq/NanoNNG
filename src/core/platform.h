@@ -248,6 +248,8 @@ extern void *nni_atomic_get_ptr(nni_atomic_ptr *);
 // relax this last constraint, but there is no reason to, and leaves us the
 // option of using negative values for other purposes in the future.)
 extern nni_time nni_clock(void);
+// nn_clock returns a standard UNIX timestamp
+extern nni_time nni_timestamp(void);
 
 // nni_msleep sleeps for the specified number of milliseconds (at least).
 extern void nni_msleep(nni_duration);

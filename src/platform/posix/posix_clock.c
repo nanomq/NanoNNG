@@ -21,7 +21,7 @@
 
 // return standard timestamp in milliseconds
 nni_time
-nni_timestamp()
+nni_timestamp(void)
 {
 	struct timespec ts;
 	nni_time        msec;
