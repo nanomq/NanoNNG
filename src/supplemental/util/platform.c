@@ -21,6 +21,13 @@ nng_clock(void)
 	return (nni_clock());
 }
 
+nng_time
+nng_timestamp(void)
+{
+	(void) nni_init();
+	return (nni_timestamp());
+}
+
 // Sleep for specified msecs.
 void
 nng_msleep(nng_duration dur)
