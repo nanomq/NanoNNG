@@ -11,6 +11,7 @@
 #include "nng/nng.h"
 #include "core/nng_impl.h"
 #include "core/zmalloc.h"
+#include "nng/protocol/mqtt/mqtt_parser.h"
 
 // This file provides the "public" API.  This is a thin wrapper around
 // internal API functions.  We use the public prefix instead of internal,
