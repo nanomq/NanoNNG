@@ -2574,8 +2574,9 @@ static nni_proto_msg_ops proto_ops = {
 
 // TODO this is incompatible with client sdk
 void
-nni_msg_proto_set_property(nng_msg *msg, property *prop)
+nni_msg_proto_set_property(nng_msg *msg, void *p)
 {
+	property *prop = (property *) p;
 	if (prop != NULL) {
 		nni_msg_set_proto_data(msg, &proto_ops, prop);
 	}
