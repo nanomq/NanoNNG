@@ -208,5 +208,6 @@ typedef enum {
 
 // Maximum Packet Size of broker
 #define NANO_MAX_RECV_PACKET_SIZE (2*1024*1024)  // TODO set in conf
+NNG_DECL void nni_msg_proto_set_property(nng_msg *msg, void *prop);
 
 #endif

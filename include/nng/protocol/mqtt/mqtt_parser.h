@@ -130,5 +130,4 @@ NNG_DECL int  nmq_subinfo_decode(nng_msg *msg, void *l);
 NNG_DECL int  nmq_unsubinfo_decode(nng_msg *msg, void *l);
 NNG_DECL bool topic_filter(const char *origin, const char *input);
 NNG_DECL bool topic_filtern(const char *origin, const char *input, size_t n);
-NNG_DECL void nni_msg_proto_set_property(nng_msg *msg, property *prop);
 #endif // NNG_MQTT_H
