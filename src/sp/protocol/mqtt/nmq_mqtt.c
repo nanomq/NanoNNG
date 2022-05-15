@@ -7,10 +7,12 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
-#include <conf.h>
-#include <file.h>
-#include <hash_table.h>
-#include <mqtt_db.h>
+#include "conf.h"
+#include "file.h"
+#include "hash_table.h"
+#include "mqtt_db.h"
+#include "mongoose.h"
+#include "auth_http.h"
 #include <string.h>
 
 #include "core/nng_impl.h"
@@ -685,6 +687,9 @@ nano_pipe_start(void *arg)
 	// pipe_id is just random value of id_dyn_val with self-increment.
 	// nni_id_set(&s->pipes, nni_pipe_id(p->pipe), p);
 	rv = verify_connect(p->conn_param, s->conf);
+	if(rv == SUCCESS) {
+		rv = verify_connect_by_http(p->conn_param, &s->conf->auth_http);
+	}
 	nmq_connack_encode(msg, p->conn_param, rv);
 	p->nano_qos_db = npipe->nano_qos_db;
 	if (rv != 0) {
@@ -1155,6 +1160,7 @@ nano_sock_setdb(void *arg, void *data)
 	s->db   = nano_conf->db_root;
 
 	conf_auth_parser(s->conf);
+	conf_auth_http_parse(s->conf);
 }
 
 // This is the global protocol structure -- our linkage to the core.
