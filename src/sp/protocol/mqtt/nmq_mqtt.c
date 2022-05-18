@@ -686,11 +686,14 @@ nano_pipe_start(void *arg)
 
 	// pipe_id is just random value of id_dyn_val with self-increment.
 	// nni_id_set(&s->pipes, nni_pipe_id(p->pipe), p);
+	conn_param_clone(p->conn_param);
 	rv = verify_connect(p->conn_param, s->conf);
-	if(rv == SUCCESS) {
-		rv = verify_connect_by_http(p->conn_param, &s->conf->auth_http);
+	if (rv == SUCCESS) {
+		rv =
+		    verify_connect_by_http(p->conn_param, &s->conf->auth_http);
 	}
 	nmq_connack_encode(msg, p->conn_param, rv);
+	conn_param_free(p->conn_param);
 	p->nano_qos_db = npipe->nano_qos_db;
 	if (rv != 0) {
 		// TODO disconnect client && send connack with reason code 0x05
