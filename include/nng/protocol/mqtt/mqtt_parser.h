@@ -130,4 +130,9 @@ NNG_DECL int  nmq_subinfo_decode(nng_msg *msg, void *l);
 NNG_DECL int  nmq_unsubinfo_decode(nng_msg *msg, void *l);
 NNG_DECL bool topic_filter(const char *origin, const char *input);
 NNG_DECL bool topic_filtern(const char *origin, const char *input, size_t n);
+
+NNG_DECL int nmq_auth_http_connect(conn_param *cparam, conf_auth_http *conf);
+NNG_DECL int nmq_auth_http_pub_sub(
+    conn_param *cparam, bool is_sub, const char *topic, conf_auth_http *conf);
+
 #endif // NNG_MQTT_H

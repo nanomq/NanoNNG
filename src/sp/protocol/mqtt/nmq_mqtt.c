@@ -11,8 +11,6 @@
 #include "file.h"
 #include "hash_table.h"
 #include "mqtt_db.h"
-#include "mongoose.h"
-#include "auth_http.h"
 #include <string.h>
 
 #include "core/nng_impl.h"
@@ -690,7 +688,7 @@ nano_pipe_start(void *arg)
 	rv = verify_connect(p->conn_param, s->conf);
 	if (rv == SUCCESS) {
 		rv =
-		    verify_connect_by_http(p->conn_param, &s->conf->auth_http);
+		    nmq_auth_http_connect(p->conn_param, &s->conf->auth_http);
 	}
 	nmq_connack_encode(msg, p->conn_param, rv);
 	conn_param_free(p->conn_param);
@@ -726,7 +724,7 @@ nano_pipe_start(void *arg)
 	// Since pipe_start is definetly the first cb to be excuted of pipe.
 	nni_aio_set_msg(&p->aio_recv, msg);
 	// connection rate is not fast enough in this way.
-	nni_aio_finish(&p->aio_recv, 0, nni_msg_len(msg));
+	nni_aio_finish_sync(&p->aio_recv, 0, nni_msg_len(msg));
 	return (rv);
 }
 

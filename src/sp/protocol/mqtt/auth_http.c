@@ -1,23 +1,26 @@
-#include "auth_http.h"
+#include "conf.h"
+#include "cJSON.h"
+#include "nng/nng.h"
+#include "nng/supplemental/http/http.h"
+#include "nng/protocol/mqtt/mqtt.h"
 #include <stdarg.h>
 #include <stdio.h>
-#include <stdlib.h>
 
-typedef enum {
-	AUTH_REQ,
-	SUPER_REQ,
-	ACL_REQ,
-	REQ_COUNT,
-} auth_type;
-
-struct comm_data {
-	int                 status;
-	conf_auth_http *    config;
-	conf_auth_http_req *req;
-	auth_http_params *  params;
+struct auth_http_params {
+	const char *access; // (1 - subscribe, 2 - publish)
+	const char *username;
+	const char *clientid;
+	const char *ipaddress;
+	const char *protocol;
+	const char *password;
+	const char *sockport;
+	const char *common;
+	const char *subject;
+	const char *mountpoint;
+	const char *topic;
 };
 
-typedef struct comm_data comm_data;
+typedef struct auth_http_params auth_http_params;
 
 static size_t
 str_append(char **dest, const char *str)
@@ -37,12 +40,11 @@ str_append(char **dest, const char *str)
 }
 
 static void
-send_msg(struct mg_connection *c, conf_auth_http_req *req_conf,
-    auth_http_params *params)
+set_data(
+    nng_http_req *req, conf_auth_http_req *req_conf, auth_http_params *params)
 {
 	char *req_data     = NULL;
 	char *content_type = "application/x-www-form-urlencoded";
-	char *headers      = NULL;
 
 	for (size_t i = 0; i < req_conf->header_count; i++) {
 		if (strcasecmp(req_conf->headers[i]->key, "Content-Type") ==
@@ -50,10 +52,8 @@ send_msg(struct mg_connection *c, conf_auth_http_req *req_conf,
 			content_type = req_conf->headers[i]->value;
 			continue;
 		}
-		str_append(&headers, req_conf->headers[i]->key);
-		str_append(&headers, ": ");
-		str_append(&headers, req_conf->headers[i]->value);
-		str_append(&headers, "\r\n");
+		nng_http_req_add_header(req, req_conf->headers[i]->key,
+		    req_conf->headers[i]->value);
 	}
 
 	if (strcasecmp(content_type, "application/json") == 0 &&
@@ -225,152 +225,175 @@ send_msg(struct mg_connection *c, conf_auth_http_req *req_conf,
 			req_data[strlen(req_data) - 1] = '\0';
 		}
 	}
-	struct mg_str host = mg_url_host(req_conf->url);
+
+	nng_http_req_add_header(req, "Content-Type", content_type);
+	nng_http_req_set_method(req, req_conf->method);
 
 	if (strcasecmp(req_conf->method, "post") == 0 ||
 	    strcasecmp(req_conf->method, "put") == 0) {
-		int content_length = strlen(req_data);
-		mg_printf(c,
-		    "POST %s HTTP/1.0\r\n"
-		    "Host: %.*s:%hu\r\n"
-		    "%s"
-		    "Content-Type: %s\r\n"
-		    "Content-Length: %d\r\n"
-		    "\r\n",
-		    mg_url_uri(req_conf->url), (int) host.len, host.ptr,
-		    mg_url_port(req_conf->url), headers == NULL ? "" : headers,
-		    content_type, content_length);
-		mg_send(c, req_data, content_length);
-	} else if (strcasecmp(req_conf->method, "get") == 0) {
-		mg_printf(c,
-		    "GET %s?%s HTTP/1.1\r\n"
-		    "Host: %.*s:%hu\r\n"
-		    "%s"
-		    "Content-Type: %s\r\n"
-		    "\r\n",
-		    mg_url_uri(req_conf->url), req_data, (int) host.len,
-		    host.ptr, mg_url_port(req_conf->url),
-		    headers == NULL ? "" : headers, content_type);
-		mg_send(c, NULL, 0);
+		nng_http_req_copy_data(req, req_data, strlen(req_data));
+	} else {
+		size_t uri_len =
+		    strlen(nng_http_req_get_uri(req)) + strlen(req_data) + 2;
+		char *uri = nng_alloc(uri_len);
+		sprintf(uri, "%s?%s", nng_http_req_get_uri(req), req_data);
+		nng_http_req_set_uri(req, uri);
+		nng_free(uri, uri_len);
 	}
+
 	if (req_data) {
 		free(req_data);
 	}
-	if (headers) {
-		free(headers);
-	}
 }
 
-static void
-http_req_cb(struct mg_connection *c, int ev, void *ev_data, void *fn_data)
+static int
+send_request(conf_auth_http *conf ,conf_auth_http_req *conf_req, auth_http_params *params)
 {
-	struct mg_http_message *hm;
-	comm_data *             data = fn_data;
-	switch (ev) {
-	case MG_EV_OPEN:
-		*(uint64_t *) c->label =
-		    mg_millis() + (data->config->connect_timeout * 1000);
-		break;
+	nng_http_client *client = NULL;
+	nng_http_conn *  conn   = NULL;
+	nng_url *        url    = NULL;
+	nng_aio *        aio    = NULL;
+	nng_http_req *   req    = NULL;
+	nng_http_res *   res    = NULL;
+	int              status = 0;
+	int              rv;
 
-	case MG_EV_POLL:
-		if (mg_millis() > *(uint64_t *) c->label &&
-		    (c->is_connecting || c->is_resolving)) {
-			mg_error(c, "Connect timeout");
-			data->status = 408;
-		}
-		break;
-
-	case MG_EV_CONNECT:
-		send_msg(c, data->req, data->params);
-		break;
-
-	case MG_EV_HTTP_MSG:
-		hm = (struct mg_http_message *) ev_data;
-		c->is_closing = 1; // Tell mongoose to close this
-		data->status  = mg_http_status(hm);
-		break;
-
-	case MG_EV_ERROR:
-		data->status = 400;
-		break;
-
-	default:
-		break;
+	if (((rv = nng_url_parse(&url, conf_req->url)) != 0) ||
+	    ((rv = nng_http_client_alloc(&client, url)) != 0) ||
+	    ((rv = nng_http_req_alloc(&req, url)) != 0) ||
+	    ((rv = nng_http_res_alloc(&res)) != 0) ||
+	    ((rv = nng_aio_alloc(&aio, NULL, NULL)) != 0)) {
+		goto out;
 	}
+
+	// Start connection process...
+	nng_aio_set_timeout(aio, conf->connect_timeout * 1000);
+	nng_http_client_connect(client, aio);
+
+	// Wait for it to finish.
+	nng_aio_wait(aio);
+	if ((rv = nng_aio_result(aio)) != 0) {
+		fprintf(stderr, "Connect failed: %s\n", nng_strerror(rv));
+		goto out;
+	}
+
+	// Get the connection, at the 0th output.
+	conn = nng_aio_get_output(aio, 0);
+
+	// Request is already set up with URL, and for GET via HTTP/1.1.
+	// The Host: header is already set up too.
+	set_data(req, conf_req, params);
+	// Send the request, and wait for that to finish.
+	nng_http_conn_write_req(conn, req, aio);
+	nng_aio_set_timeout(aio, conf->timeout * 1000);
+
+	nng_aio_wait(aio);
+
+	if ((rv = nng_aio_result(aio)) != 0) {
+		fprintf(stderr, "Write_req failed: %s\n", nng_strerror(rv));
+		goto out;
+	}
+
+	// Read a response.
+	nng_aio_set_timeout(aio, conf->timeout * 1000);
+	nng_http_conn_read_res(conn, res, aio);
+	nng_aio_wait(aio);
+
+	if ((rv = nng_aio_result(aio)) != 0) {
+		goto out;
+	}
+
+	if ((status = nng_http_res_get_status(res)) !=
+	    NNG_HTTP_STATUS_OK) {
+		fprintf(stderr, "HTTP Server Responded: %d %s\n",
+		    nng_http_res_get_status(res),
+		    nng_http_res_get_reason(res));
+		goto out;
+	}
+
+out:
+	if (url) {
+		nng_url_free(url);
+	}
+	if (conn) {
+		nng_http_conn_close(conn);
+	}
+	if (client) {
+		nng_http_client_free(client);
+	}
+	if (req) {
+		nng_http_req_free(req);
+	}
+	if (res) {
+		nng_http_res_free(res);
+	}
+	if (aio) {
+		nng_aio_free(aio);
+	}
+
+	return status;
 }
 
 int
-http_auth_request(conf_auth_http *config, auth_http_params *params)
+http_request(conf_auth_http *conf, conf_auth_http_req *conf_req, auth_http_params *params)
 {
-	comm_data fn_data = {
-		.status = 0,
-		.config = config,
-		.params = params,
-	};
-
-	if (!config->enable) {
-		return 200;
+	if (!conf->enable) {
+		return NNG_HTTP_STATUS_OK;
 	}
 
-	for (auth_type type = AUTH_REQ; type < REQ_COUNT; type++) {
-		switch (type) {
-		case AUTH_REQ:
-			fn_data.req = &config->auth_req;
-			/* code */
-			break;
-		case SUPER_REQ:
-			fn_data.req = &config->super_req;
-			/* code */
-			break;
-		case ACL_REQ:
-			fn_data.req = &config->acl_req;
-			/* code */
-			break;
-		default:
-			break;
-		}
-		if (!fn_data.req->url) {
-			continue;
-		}
-		fn_data.status = 0;
-		struct mg_mgr mgr;
-		mg_mgr_init(&mgr);
-		mg_http_connect(&mgr, fn_data.req->url, http_req_cb,
-		    &fn_data); 
-
-		uint64_t timeout = config->timeout * 100;
-		do {
-			mg_mgr_poll(&mgr, 10);
-		} while (fn_data.status == 0 && timeout-- > 0);
-
-		mg_mgr_free(&mgr);
-		if (200 != fn_data.status) {
-			break;
-		}
-	}
-
-	return fn_data.status;
+	return send_request(conf, conf_req, params);
 }
 
 int
-verify_connect_by_http(conn_param *cparam, conf_auth_http *config)
+nmq_auth_http_connect(conn_param *cparam, conf_auth_http *conf)
 {
 	auth_http_params auth_params = {
-
 		.clientid = (const char *) conn_param_get_clientid(cparam),
 		.username = (const char *) conn_param_get_username(cparam),
 		.password = (const char *) conn_param_get_password(cparam),
 		// TODO incompleted fields
-		// .access = ,
 		// .ipaddress = ,
 		// .protocol = ,
 		// .sockport = ,
 		// .common = ,
 		// .subject = ,
-		// .topic = ,
 	};
 
-	int status = http_auth_request(config, &auth_params);
+	int status = http_request(conf, &conf->auth_req, &auth_params);
 
-	return status == 200 ? SUCCESS : NOT_AUTHORIZED;
+	return status == NNG_HTTP_STATUS_OK ? SUCCESS : NOT_AUTHORIZED;
+}
+
+int
+nmq_auth_http_pub_sub(
+    conn_param *cparam, bool is_sub, const char *topic, conf_auth_http *conf)
+{
+	auth_http_params auth_params = {
+		.clientid = (const char *) conn_param_get_clientid(cparam),
+		.username = (const char *) conn_param_get_username(cparam),
+		.password = (const char *) conn_param_get_password(cparam),
+		.access   = is_sub ? "1" : "2",
+		.topic    = topic,
+		// TODO incompleted fields
+		// .mountpoint = ,
+		// .ipaddress = ,
+		// .protocol = ,
+		// .sockport = ,
+		// .common = ,
+		// .subject = ,
+	};
+	int status = 0;
+	if (conf->super_req.url) {
+		status = http_request(conf, &conf->super_req, &auth_params);
+		if (status == NNG_HTTP_STATUS_OK) {
+			return status;
+		}
+	} else {
+		status = NNG_HTTP_STATUS_OK;
+	}
+	status = conf->acl_req.url == NULL
+	    ? NNG_HTTP_STATUS_OK
+	    : http_request(conf, &conf->super_req, &auth_params);
+
+	return status == NNG_HTTP_STATUS_OK ? SUCCESS : NOT_AUTHORIZED;
 }
