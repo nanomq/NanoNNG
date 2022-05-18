@@ -1,8 +1,10 @@
-#include "conf.h"
 #include "cJSON.h"
+#include "conf.h"
+#include "hash_table.h"
 #include "nng/nng.h"
-#include "nng/supplemental/http/http.h"
+#include "nng/nng_debug.h"
 #include "nng/protocol/mqtt/mqtt.h"
+#include "nng/supplemental/http/http.h"
 #include <stdarg.h>
 #include <stdio.h>
 
@@ -221,7 +223,8 @@ set_data(
 				break;
 			}
 		}
-		if (req_data[strlen(req_data) - 1] == '&') {
+		if (req_data != NULL &&
+		    req_data[strlen(req_data) - 1] == '&') {
 			req_data[strlen(req_data) - 1] = '\0';
 		}
 	}
@@ -247,7 +250,8 @@ set_data(
 }
 
 static int
-send_request(conf_auth_http *conf ,conf_auth_http_req *conf_req, auth_http_params *params)
+send_request(conf_auth_http *conf, conf_auth_http_req *conf_req,
+    auth_http_params *params)
 {
 	nng_http_client *client = NULL;
 	nng_http_conn *  conn   = NULL;
@@ -273,7 +277,7 @@ send_request(conf_auth_http *conf ,conf_auth_http_req *conf_req, auth_http_param
 	// Wait for it to finish.
 	nng_aio_wait(aio);
 	if ((rv = nng_aio_result(aio)) != 0) {
-		fprintf(stderr, "Connect failed: %s\n", nng_strerror(rv));
+		debug_msg("Connect failed: %s\n", nng_strerror(rv));
 		goto out;
 	}
 
@@ -290,7 +294,7 @@ send_request(conf_auth_http *conf ,conf_auth_http_req *conf_req, auth_http_param
 	nng_aio_wait(aio);
 
 	if ((rv = nng_aio_result(aio)) != 0) {
-		fprintf(stderr, "Write_req failed: %s\n", nng_strerror(rv));
+		debug_msg("Write req failed: %s\n", nng_strerror(rv));
 		goto out;
 	}
 
@@ -300,12 +304,12 @@ send_request(conf_auth_http *conf ,conf_auth_http_req *conf_req, auth_http_param
 	nng_aio_wait(aio);
 
 	if ((rv = nng_aio_result(aio)) != 0) {
+		debug_msg("Read response: %s\n", nng_strerror(rv));
 		goto out;
 	}
 
-	if ((status = nng_http_res_get_status(res)) !=
-	    NNG_HTTP_STATUS_OK) {
-		fprintf(stderr, "HTTP Server Responded: %d %s\n",
+	if ((status = nng_http_res_get_status(res)) != NNG_HTTP_STATUS_OK) {
+		debug_msg("HTTP Server Responded: %d %s\n",
 		    nng_http_res_get_status(res),
 		    nng_http_res_get_reason(res));
 		goto out;
@@ -335,18 +339,12 @@ out:
 }
 
 int
-http_request(conf_auth_http *conf, conf_auth_http_req *conf_req, auth_http_params *params)
+nmq_auth_http_connect(conn_param *cparam, conf_auth_http *conf)
 {
-	if (!conf->enable) {
+	if (conf->enable == false || conf->auth_req.url == NULL) {
 		return NNG_HTTP_STATUS_OK;
 	}
 
-	return send_request(conf, conf_req, params);
-}
-
-int
-nmq_auth_http_connect(conn_param *cparam, conf_auth_http *conf)
-{
 	auth_http_params auth_params = {
 		.clientid = (const char *) conn_param_get_clientid(cparam),
 		.username = (const char *) conn_param_get_username(cparam),
@@ -359,15 +357,19 @@ nmq_auth_http_connect(conn_param *cparam, conf_auth_http *conf)
 		// .subject = ,
 	};
 
-	int status = http_request(conf, &conf->auth_req, &auth_params);
+	int status = send_request(conf, &conf->auth_req, &auth_params);
 
 	return status == NNG_HTTP_STATUS_OK ? SUCCESS : NOT_AUTHORIZED;
 }
 
 int
-nmq_auth_http_pub_sub(
+nmq_auth_http_publish(
     conn_param *cparam, bool is_sub, const char *topic, conf_auth_http *conf)
 {
+	if (conf->enable == false ||
+	    (conf->super_req.url == NULL && conf->acl_req.url)) {
+		return NNG_HTTP_STATUS_OK;
+	}
 	auth_http_params auth_params = {
 		.clientid = (const char *) conn_param_get_clientid(cparam),
 		.username = (const char *) conn_param_get_username(cparam),
@@ -384,7 +386,7 @@ nmq_auth_http_pub_sub(
 	};
 	int status = 0;
 	if (conf->super_req.url) {
-		status = http_request(conf, &conf->super_req, &auth_params);
+		status = send_request(conf, &conf->super_req, &auth_params);
 		if (status == NNG_HTTP_STATUS_OK) {
 			return status;
 		}
@@ -393,7 +395,56 @@ nmq_auth_http_pub_sub(
 	}
 	status = conf->acl_req.url == NULL
 	    ? NNG_HTTP_STATUS_OK
-	    : http_request(conf, &conf->super_req, &auth_params);
+	    : send_request(conf, &conf->acl_req, &auth_params);
+
+	return status == NNG_HTTP_STATUS_OK ? SUCCESS : NOT_AUTHORIZED;
+}
+
+int
+nmq_auth_http_subscribe(
+    conn_param *cparam, bool is_sub, topic_queue *topics, conf_auth_http *conf)
+{
+	if (conf->enable == false ||
+	    (conf->super_req.url == NULL && conf->acl_req.url)) {
+		return NNG_HTTP_STATUS_OK;
+	}
+
+	char *topic_str = NULL;
+	for (topic_queue *tq = topics; tq != NULL; tq = tq->next) {
+		str_append(&topic_str, tq->topic);
+		str_append(&topic_str, ",");
+	}
+
+	if (topic_str != NULL && topic_str[strlen(topic_str) - 1] == ',') {
+		topic_str[strlen(topic_str) - 1] = '\0';
+	}
+
+	auth_http_params auth_params = {
+		.clientid = (const char *) conn_param_get_clientid(cparam),
+		.username = (const char *) conn_param_get_username(cparam),
+		.password = (const char *) conn_param_get_password(cparam),
+		.access   = is_sub ? "1" : "2",
+		.topic    = topic_str,
+		// TODO incompleted fields
+		// .mountpoint = ,
+		// .ipaddress = ,
+		// .protocol = ,
+		// .sockport = ,
+		// .common = ,
+		// .subject = ,
+	};
+	int status = 0;
+	if (conf->super_req.url) {
+		status = send_request(conf, &conf->super_req, &auth_params);
+		if (status == NNG_HTTP_STATUS_OK) {
+			return status;
+		}
+	} else {
+		status = NNG_HTTP_STATUS_OK;
+	}
+	status = conf->acl_req.url == NULL
+	    ? NNG_HTTP_STATUS_OK
+	    : send_request(conf, &conf->acl_req, &auth_params);
 
 	return status == NNG_HTTP_STATUS_OK ? SUCCESS : NOT_AUTHORIZED;
 }
