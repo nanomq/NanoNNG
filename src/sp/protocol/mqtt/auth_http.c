@@ -291,7 +291,6 @@ http_req_cb(struct mg_connection *c, int ev, void *ev_data, void *fn_data)
 		break;
 
 	case MG_EV_ERROR:
-		mg_error(c, "Request error");
 		data->status = 400;
 		break;
 
@@ -337,11 +336,13 @@ http_auth_request(conf_auth_http *config, auth_http_params *params)
 		struct mg_mgr mgr;
 		mg_mgr_init(&mgr);
 		mg_http_connect(&mgr, fn_data.req->url, http_req_cb,
-		    &fn_data); // Create client connection
+		    &fn_data); 
 
-		while (fn_data.status == 0) {
-			mg_mgr_poll(&mgr, 50);
-		}
+		uint64_t timeout = config->timeout * 100;
+		do {
+			mg_mgr_poll(&mgr, 10);
+		} while (fn_data.status == 0 && timeout-- > 0);
+
 		mg_mgr_free(&mgr);
 		if (200 != fn_data.status) {
 			break;
