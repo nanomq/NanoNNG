@@ -86,6 +86,12 @@ nni_msleep(nni_duration ms)
 #include <sys/time.h>
 
 nni_time
+nni_timestamp(void)
+{
+	return nni_clock();
+}
+
+nni_time
 nni_clock(void)
 {
 	nni_time ms;
