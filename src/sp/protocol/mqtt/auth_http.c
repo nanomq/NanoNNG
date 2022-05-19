@@ -275,6 +275,7 @@ send_request(conf_auth_http *conf, conf_auth_http_req *conf_req,
 	nng_http_client_connect(client, aio);
 
 	// Wait for it to finish.
+	// TODO It could cause some problems.
 	nng_aio_wait(aio);
 	if ((rv = nng_aio_result(aio)) != 0) {
 		debug_msg("Connect failed: %s\n", nng_strerror(rv));
@@ -290,26 +291,27 @@ send_request(conf_auth_http *conf, conf_auth_http_req *conf_req,
 	// Send the request, and wait for that to finish.
 	nng_http_conn_write_req(conn, req, aio);
 	nng_aio_set_timeout(aio, conf->timeout * 1000);
-
+	// TODO It could cause some problems.
 	nng_aio_wait(aio);
 
 	if ((rv = nng_aio_result(aio)) != 0) {
-		debug_msg("Write req failed: %s\n", nng_strerror(rv));
+		debug_msg("Write req failed: %s", nng_strerror(rv));
 		goto out;
 	}
 
 	// Read a response.
 	nng_aio_set_timeout(aio, conf->timeout * 1000);
 	nng_http_conn_read_res(conn, res, aio);
+	// TODO It could cause some problems.
 	nng_aio_wait(aio);
 
 	if ((rv = nng_aio_result(aio)) != 0) {
-		debug_msg("Read response: %s\n", nng_strerror(rv));
+		debug_msg("Read response: %s", nng_strerror(rv));
 		goto out;
 	}
 
 	if ((status = nng_http_res_get_status(res)) != NNG_HTTP_STATUS_OK) {
-		debug_msg("HTTP Server Responded: %d %s\n",
+		debug_msg("HTTP Server Responded: %d %s",
 		    nng_http_res_get_status(res),
 		    nng_http_res_get_reason(res));
 		goto out;
@@ -367,7 +369,7 @@ nmq_auth_http_publish(
     conn_param *cparam, bool is_sub, const char *topic, conf_auth_http *conf)
 {
 	if (conf->enable == false ||
-	    (conf->super_req.url == NULL && conf->acl_req.url)) {
+	    (conf->super_req.url == NULL && conf->acl_req.url == NULL)) {
 		return NNG_HTTP_STATUS_OK;
 	}
 	auth_http_params auth_params = {
@@ -405,7 +407,7 @@ nmq_auth_http_subscribe(
     conn_param *cparam, bool is_sub, topic_queue *topics, conf_auth_http *conf)
 {
 	if (conf->enable == false ||
-	    (conf->super_req.url == NULL && conf->acl_req.url)) {
+	    (conf->super_req.url == NULL && conf->acl_req.url == NULL)) {
 		return NNG_HTTP_STATUS_OK;
 	}
 
