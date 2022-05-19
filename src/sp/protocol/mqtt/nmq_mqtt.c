@@ -687,8 +687,10 @@ nano_pipe_start(void *arg)
 	conn_param_clone(p->conn_param);
 	rv = verify_connect(p->conn_param, s->conf);
 	if (rv == SUCCESS) {
-		rv =
-		    nmq_auth_http_connect(p->conn_param, &s->conf->auth_http);
+		if (s->conf->auth_http.enable) {
+			rv = nmq_auth_http_connect(
+			    p->conn_param, &s->conf->auth_http);
+		}
 	}
 	nmq_connack_encode(msg, p->conn_param, rv);
 	conn_param_free(p->conn_param);
