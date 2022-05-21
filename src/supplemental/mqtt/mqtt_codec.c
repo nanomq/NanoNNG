@@ -2275,6 +2275,10 @@ property_dup(property **dup, const property *src)
 {
 	property *list = property_alloc();
 	property *item = NULL;
+	if (src == NULL) {
+		return -1;
+	}
+
 	for (property *p = src->next; p != NULL; p = p->next) {
 		property_type_enum type = property_get_value_type(p->id);
 		switch (type) {
