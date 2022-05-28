@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <mqtt_db.h>
+#include <conf.h>
 
 #include "core/nng_impl.h"
 #include "core/sockimpl.h"
@@ -30,9 +31,10 @@ typedef struct ws_pipe     ws_pipe;
 
 struct ws_listener {
 	uint16_t             peer; // remote protocol
+	conf                *conf;
 	nni_list             aios;
 	nni_mtx              mtx;
-	nni_aio *            accaio;
+	nni_aio             *accaio;
 	nng_stream_listener *listener;
 	bool                 started;
 };
@@ -44,18 +46,19 @@ struct ws_pipe {
 	uint16_t    peer;
 	size_t      gotrxhead;
 	size_t      wantrxhead;
-	nni_msg *   tmp_msg;
-	nni_aio *   user_txaio;
-	nni_aio *   user_rxaio;
-	nni_aio *   ep_aio;
-	nni_aio *   txaio;
-	nni_aio *   rxaio;
-	nni_aio *   qsaio;
-	nni_pipe *  npipe;
+	conf       *conf;
+	nni_msg    *tmp_msg;
+	nni_aio    *user_txaio;
+	nni_aio    *user_rxaio;
+	nni_aio    *ep_aio;
+	nni_aio    *txaio;
+	nni_aio    *rxaio;
+	nni_aio    *qsaio;
+	nni_pipe   *npipe;
 	conn_param *ws_param;
 	nng_stream *ws;
-	uint8_t        *qos_buf; // msg trunk for qos & V4/V5 conversion
-	size_t          qlength; // length of qos_buf
+	uint8_t    *qos_buf; // msg trunk for qos & V4/V5 conversion
+	size_t      qlength; // length of qos_buf
 	// MQTT V5
 	uint16_t qrecv_quota;
 	uint32_t qsend_quota;
@@ -156,6 +159,11 @@ done:
 		uaio = p->ep_aio;
 	}
 	if (uaio != NULL) {
+		if (p->gotrxhead+p->wantrxhead > p->conf->max_packet_size) {
+			debug_msg("Warning: size error 0x95\n");
+			rv = NMQ_PACKET_TOO_LARGE;
+			goto recv_error;
+		}
 		p->gotrxhead  = 0;
 		p->wantrxhead = 0;
 		nni_msg_free(msg);
@@ -168,6 +176,11 @@ done:
 			        nni_msg_body(p->tmp_msg), p->ws_param, p->wantrxhead) != 0) {
 				conn_param_free(p->ws_param);
 				goto reset;
+			}
+			if (p->ws_param->max_packet_size == 0) {
+				// set default max packet size for client
+				p->ws_param->max_packet_size =
+				    p->conf->client_max_packet_size;
 			}
 			nni_msg_free(p->tmp_msg);
 			p->tmp_msg = NULL;
@@ -1030,16 +1043,13 @@ wstran_listener_close(void *arg)
 }
 
 static void
-ws_pipe_start(ws_pipe *pipe, nng_stream *conn)
+ws_pipe_start(ws_pipe *pipe, nng_stream *conn, ws_listener *l)
 {
 	NNI_ARG_UNUSED(conn);
 	ws_pipe *p = pipe;
 	debug_msg("ws_pipe_start!");
 	p->qrecv_quota = NANO_MAX_QOS_PACKET;
-	// p->gotrxhead   = 0;
-	// p->wantrxhead  = NANO_CONNECT_PACKET_LEN; // packet type 1 + remaining
-	                                          // length 1 + protocal name 7
-
+	p->conf        = l->conf;
 	nng_stream_recv(p->ws, p->rxaio);
 }
 
@@ -1069,7 +1079,7 @@ wstran_accept_cb(void *arg)
 				nni_aio_finish_error(uaio, rv);
 			} else {
 				p->peer = l->peer;
-				ws_pipe_start(p, p->ws);
+				ws_pipe_start(p, p->ws, l);
 				p->ep_aio = uaio;
 			}
 		}
@@ -1125,7 +1135,20 @@ wstran_fini(void)
 {
 }
 
+static void
+wstran_ep_set_conf(void *arg, void *v, size_t *sz, nni_opt_type t)
+{
+	ws_listener *l = arg;
+	nni_mtx_lock(&l->mtx);
+	l->conf = v;
+	nni_mtx_unlock(&l->mtx);
+}
+
 static const nni_option wstran_ep_opts[] = {
+	{
+	    .o_name = NANO_CONF,
+	    .o_set  = wstran_ep_set_conf,
+	},
 	// terminate list
 	{
 	    .o_name = NULL,
