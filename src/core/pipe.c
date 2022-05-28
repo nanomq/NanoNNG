@@ -466,11 +466,3 @@ nni_pipe_id_swap(uint32_t old_id, uint32_t new_id)
 		q->p_id = old_id;
 	}
 }
-
-/*
-nni_id_map *
-nni_pipe_get_idhash(nni_pipe *p)
-{
-        return &p->pipedb;
-}
-*/

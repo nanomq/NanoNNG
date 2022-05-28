@@ -1,5 +1,5 @@
 //
-// Copyright 2021 NanoMQ Team, Inc. <jaylin@emqx.io>
+// Copyright 2022 NanoMQ Team, Inc. <jaylin@emqx.io>
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -32,7 +32,7 @@ struct tcptran_pipe {
 	nni_pipe   *npipe; // for statitical
 	// uint16_t        peer;		//reserved for MQTT sdk version
 	// uint16_t        proto;
-	size_t          rcvmax;
+	size_t          rcvmax;	//duplicate with conf->max_packet_size
 	size_t          gotrxhead;
 	size_t          wantrxhead;
 	bool            closed;
@@ -50,6 +50,7 @@ struct tcptran_pipe {
 	nni_msg        *rxmsg, *cnmsg;
 	nni_mtx         mtx;
 	conn_param     *tcp_cparam;
+	conf	       *conf;
 	nni_list        recvq;
 	nni_list        sendq;
 	nni_list_node   node;
@@ -70,6 +71,7 @@ struct tcptran_ep {
 	bool                 closed;
 	nng_url             *url;
 	nng_sockaddr         src;
+	conf		    *conf;
 	int                  refcnt; // active pipes
 	nni_aio             *useraio;
 	nni_aio             *connaio;
@@ -254,6 +256,7 @@ tcptran_ep_match(tcptran_ep *ep)
 	nni_list_append(&ep->busypipes, p);
 	ep->useraio = NULL;
 	p->rcvmax   = ep->rcvmax;
+	p->conf     = ep->conf;
 	nni_aio_set_output(aio, 0, p);
 	nni_aio_finish(aio, 0, 0);
 }
@@ -348,6 +351,11 @@ tcptran_pipe_nego_cb(void *arg)
 			nni_list_remove(&ep->negopipes, p);
 			nni_list_append(&ep->waitpipes, p);
 			tcptran_ep_match(ep);
+			if (p->tcp_cparam->max_packet_size == 0) {
+				// set default max packet size for client
+				p->tcp_cparam->max_packet_size =
+				    p->conf->client_max_packet_size;
+			}
 			nni_mtx_unlock(&ep->mtx);
 			return;
 		} else {
@@ -516,7 +524,6 @@ tcptran_pipe_recv_cb(void *arg)
 	nni_aio      *rxaio = p->rxaio;
 	conn_param   *cparam;
 	bool          ack   = false;
-	nni_pipe     *npipe = p->npipe;
 
 	debug_msg("tcptran_pipe_recv_cb %p\n", p);
 	nni_mtx_lock(&p->mtx);
@@ -586,7 +593,7 @@ tcptran_pipe_recv_cb(void *arg)
 		    p->rxlen[4], p->wantrxhead);
 		// Make sure the message payload is not too big.  If it is
 		// the caller will shut down the pipe.
-		if (len > NANO_MAX_RECV_PACKET_SIZE) {
+		if (len > p->conf->client_max_packet_size) {
 			debug_msg("size error 0x95\n");
 			rv = NMQ_PACKET_TOO_LARGE;
 			goto recv_error;
@@ -1677,6 +1684,15 @@ tcptran_ep_get_url(void *arg, void *v, size_t *szp, nni_opt_type t)
 	}
 	return (rv);
 }
+static void
+tcptran_ep_set_conf(void *arg, void *v, size_t *sz, nni_opt_type t)
+{
+	tcptran_ep *ep = arg;
+
+	nni_mtx_lock(&ep->mtx);
+	ep->conf = v;
+	nni_mtx_unlock(&ep->mtx);
+}
 
 static int
 tcptran_ep_get_recvmaxsz(void *arg, void *v, size_t *szp, nni_opt_type t)
@@ -1785,6 +1801,10 @@ static const nni_option tcptran_ep_opts[] = {
 	{
 	    .o_name = NNG_OPT_URL,
 	    .o_get  = tcptran_ep_get_url,
+	},
+	{
+	    .o_name = NANO_CONF,
+	    .o_set  = tcptran_ep_set_conf,
 	},
 	// terminate list
 	{
