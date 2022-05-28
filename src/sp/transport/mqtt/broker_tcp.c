@@ -1,5 +1,5 @@
 //
-// Copyright 2021 NanoMQ Team, Inc. <jaylin@emqx.io>
+// Copyright 2022 NanoMQ Team, Inc. <jaylin@emqx.io>
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -32,7 +32,7 @@ struct tcptran_pipe {
 	nni_pipe   *npipe; // for statitical
 	// uint16_t        peer;		//reserved for MQTT sdk version
 	// uint16_t        proto;
-	size_t          rcvmax;
+	size_t          rcvmax;	//duplicate with conf->max_packet_size
 	size_t          gotrxhead;
 	size_t          wantrxhead;
 	bool            closed;
@@ -50,6 +50,7 @@ struct tcptran_pipe {
 	nni_msg        *rxmsg, *cnmsg;
 	nni_mtx         mtx;
 	conn_param     *tcp_cparam;
+	conf	       *conf;
 	nni_list        recvq;
 	nni_list        sendq;
 	nni_list_node   node;
@@ -255,6 +256,7 @@ tcptran_ep_match(tcptran_ep *ep)
 	nni_list_append(&ep->busypipes, p);
 	ep->useraio = NULL;
 	p->rcvmax   = ep->rcvmax;
+	p->conf     = ep->conf;
 	nni_aio_set_output(aio, 0, p);
 	nni_aio_finish(aio, 0, 0);
 }
@@ -586,7 +588,7 @@ tcptran_pipe_recv_cb(void *arg)
 		    p->rxlen[4], p->wantrxhead);
 		// Make sure the message payload is not too big.  If it is
 		// the caller will shut down the pipe.
-		if (len > NANO_MAX_RECV_PACKET_SIZE) {
+		if (len > p->conf->max_packet_size) {
 			debug_msg("size error 0x95\n");
 			rv = NMQ_PACKET_TOO_LARGE;
 			goto recv_error;
@@ -1709,6 +1711,7 @@ tcptran_ep_set_recvmaxsz(void *arg, const void *v, size_t sz, nni_opt_type t)
 		tcptran_pipe *p;
 		nni_mtx_lock(&ep->mtx);
 		ep->rcvmax = val;
+		ep->conf->max_packet_size = val;
 		NNI_LIST_FOREACH (&ep->waitpipes, p) {
 			p->rcvmax = val;
 		}
