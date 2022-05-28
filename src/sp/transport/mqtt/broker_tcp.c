@@ -70,6 +70,7 @@ struct tcptran_ep {
 	bool                 closed;
 	nng_url             *url;
 	nng_sockaddr         src;
+	conf		    *conf;
 	int                  refcnt; // active pipes
 	nni_aio             *useraio;
 	nni_aio             *connaio;
@@ -516,7 +517,6 @@ tcptran_pipe_recv_cb(void *arg)
 	nni_aio      *rxaio = p->rxaio;
 	conn_param   *cparam;
 	bool          ack   = false;
-	nni_pipe     *npipe = p->npipe;
 
 	debug_msg("tcptran_pipe_recv_cb %p\n", p);
 	nni_mtx_lock(&p->mtx);
@@ -1677,6 +1677,15 @@ tcptran_ep_get_url(void *arg, void *v, size_t *szp, nni_opt_type t)
 	}
 	return (rv);
 }
+static void
+tcptran_ep_set_conf(void *arg, void *v, size_t *sz, nni_opt_type t)
+{
+	tcptran_ep *ep = arg;
+
+	nni_mtx_lock(&ep->mtx);
+	ep->conf = v;
+	nni_mtx_unlock(&ep->mtx);
+}
 
 static int
 tcptran_ep_get_recvmaxsz(void *arg, void *v, size_t *szp, nni_opt_type t)
@@ -1785,6 +1794,10 @@ static const nni_option tcptran_ep_opts[] = {
 	{
 	    .o_name = NNG_OPT_URL,
 	    .o_get  = tcptran_ep_get_url,
+	},
+	{
+	    .o_name = NANO_CONF,
+	    .o_set  = tcptran_ep_set_conf,
 	},
 	// terminate list
 	{

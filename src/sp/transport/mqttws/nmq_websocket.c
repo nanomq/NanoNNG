@@ -98,7 +98,6 @@ wstran_pipe_recv_cb(void *arg)
 	nni_aio *raio = p->rxaio;
 	nni_aio *uaio = NULL;
 	bool          ack   = false;
-	nni_pipe     *npipe = p->npipe;
 
 	nni_mtx_lock(&p->mtx);
 	// only sets uaio at first time
@@ -379,11 +378,11 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	    nni_msg_get_type(msg) == CMD_PUBLISH) {
 		uint8_t      *body, *header, qos_pac;
 		target_prover target_prover;
-		uint8_t var_extra[2],
+		uint8_t       var_extra[2],
 		    fixheader[NNI_NANO_MAX_HEADER_SIZE] = { 0 },
 		    tmp[4]                              = { 0 };
-		int       len_offset = 0;
-		uint32_t  pos = 1;
+		int       len_offset                    = 0;
+		uint32_t  pos                           = 1;
 		nni_pipe *pipe;
 		uint16_t  pid;
 		uint32_t  property_bytes = 0, property_len = 0;
