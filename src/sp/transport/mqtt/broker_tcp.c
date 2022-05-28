@@ -593,7 +593,7 @@ tcptran_pipe_recv_cb(void *arg)
 		    p->rxlen[4], p->wantrxhead);
 		// Make sure the message payload is not too big.  If it is
 		// the caller will shut down the pipe.
-		if (len > p->conf->client_max_packet_size) {
+		if (len > p->conf->max_packet_size) {
 			debug_msg("size error 0x95\n");
 			rv = NMQ_PACKET_TOO_LARGE;
 			goto recv_error;
@@ -1684,6 +1684,7 @@ tcptran_ep_get_url(void *arg, void *v, size_t *szp, nni_opt_type t)
 	}
 	return (rv);
 }
+
 static void
 tcptran_ep_set_conf(void *arg, void *v, size_t *sz, nni_opt_type t)
 {

@@ -30,7 +30,8 @@ typedef struct tlstran_ep   tlstran_ep;
 // tcp_pipe is one end of a TCP connection.
 struct tlstran_pipe {
 	nng_stream *conn;
-	nni_pipe *  npipe; // for statitical
+	nni_pipe   *npipe; // for statitical
+	conf       *conf;
 	// uint16_t        peer;		//reserved for MQTT sdk version
 	// uint16_t        proto;
 	size_t          rcvmax;
@@ -38,25 +39,25 @@ struct tlstran_pipe {
 	size_t          wantrxhead;
 	size_t          qlength; // length of qos_buf
 	bool            closed;
-	bool        	busy; // indicator for qos ack & aio
+	bool            busy; // indicator for qos ack & aio
 	uint8_t         txlen[NANO_MIN_PACKET_LEN];
 	uint8_t         rxlen[NNI_NANO_MAX_HEADER_SIZE];
-	uint8_t *       conn_buf;
-	uint8_t *       qos_buf;
-	nni_aio *       txaio;
-	nni_aio *       rxaio;
-	nni_aio *       qsaio;
-	nni_aio *       rsaio;
-	nni_aio *       rpaio;
-	nni_aio *       negoaio;
-	nni_lmq     	rslmq;
-	nni_msg *       rxmsg, *cnmsg;
+	uint8_t        *conn_buf;
+	uint8_t        *qos_buf;
+	nni_aio        *txaio;
+	nni_aio        *rxaio;
+	nni_aio        *qsaio;
+	nni_aio        *rsaio;
+	nni_aio        *rpaio;
+	nni_aio        *negoaio;
+	nni_lmq         rslmq;
+	nni_msg        *rxmsg, *cnmsg;
 	nni_mtx         mtx;
-	conn_param *    tcp_cparam;
+	conn_param     *tcp_cparam;
 	nni_list        recvq;
 	nni_list        sendq;
 	nni_list_node   node;
-	tlstran_ep *    ep;
+	tlstran_ep     *ep;
 	nni_atomic_flag reaped;
 	nni_reap_node   reap;
 	// uint8_t       sli_win[5];	//use aio multiple times instead of
@@ -70,6 +71,7 @@ struct tlstran_ep {
 	nni_mtx mtx;
 	// uint16_t             proto;
 	size_t               rcvmax;
+	conf		    *conf;
 	bool                 fini;
 	bool                 started;
 	bool                 closed;
@@ -265,6 +267,7 @@ tlstran_ep_match(tlstran_ep *ep)
 	nni_list_append(&ep->busypipes, p);
 	ep->useraio = NULL;
 	p->rcvmax   = ep->rcvmax;
+	p->conf     = ep->conf;
 	nni_aio_set_output(aio, 0, p);
 	nni_aio_finish(aio, 0, 0);
 }
@@ -362,6 +365,11 @@ tlstran_pipe_nego_cb(void *arg)
 			nni_list_remove(&ep->negopipes, p);
 			nni_list_append(&ep->waitpipes, p);
 			tlstran_ep_match(ep);
+			if (p->tcp_cparam->max_packet_size == 0) {
+				// set default max packet size for client
+				p->tcp_cparam->max_packet_size =
+				    p->conf->client_max_packet_size;
+			}
 			nni_mtx_unlock(&ep->mtx);
 			return;
 		} else {
@@ -606,7 +614,7 @@ tlstran_pipe_recv_cb(void *arg)
 		    p->rxlen[4], p->wantrxhead);
 		// Make sure the message payload is not too big.  If it is
 		// the caller will shut down the pipe.
-		if (len > NANO_MAX_RECV_PACKET_SIZE) {
+		if (len > p->conf->max_packet_size) {
 			debug_msg("size error 0x95\n");
 			rv = NMQ_PACKET_TOO_LARGE;
 			goto recv_error;
@@ -1759,6 +1767,16 @@ tlstran_ep_get_url(void *arg, void *v, size_t *szp, nni_opt_type t)
 	return (rv);
 }
 
+static void
+tlstran_ep_set_conf(void *arg, void *v, size_t *sz, nni_opt_type t)
+{
+	tlstran_ep *ep = arg;
+
+	nni_mtx_lock(&ep->mtx);
+	ep->conf = v;
+	nni_mtx_unlock(&ep->mtx);
+}
+
 static int
 tlstran_ep_get_recvmaxsz(void *arg, void *v, size_t *szp, nni_opt_type t)
 {
@@ -1867,6 +1885,10 @@ static const nni_option tlstran_ep_opts[] = {
 	{
 	    .o_name = NNG_OPT_URL,
 	    .o_get  = tlstran_ep_get_url,
+	},
+	{
+	    .o_name = NANO_CONF,
+	    .o_set  = tlstran_ep_set_conf,
 	},
 	// terminate list
 	{
