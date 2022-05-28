@@ -351,6 +351,11 @@ tcptran_pipe_nego_cb(void *arg)
 			nni_list_remove(&ep->negopipes, p);
 			nni_list_append(&ep->waitpipes, p);
 			tcptran_ep_match(ep);
+			if (p->tcp_cparam->max_packet_size == 0) {
+				// set default max packet size for client
+				p->tcp_cparam->max_packet_size =
+				    p->conf->client_max_packet_size;
+			}
 			nni_mtx_unlock(&ep->mtx);
 			return;
 		} else {
@@ -588,7 +593,7 @@ tcptran_pipe_recv_cb(void *arg)
 		    p->rxlen[4], p->wantrxhead);
 		// Make sure the message payload is not too big.  If it is
 		// the caller will shut down the pipe.
-		if (len > p->conf->max_packet_size) {
+		if (len > p->conf->client_max_packet_size) {
 			debug_msg("size error 0x95\n");
 			rv = NMQ_PACKET_TOO_LARGE;
 			goto recv_error;
@@ -1711,7 +1716,6 @@ tcptran_ep_set_recvmaxsz(void *arg, const void *v, size_t sz, nni_opt_type t)
 		tcptran_pipe *p;
 		nni_mtx_lock(&ep->mtx);
 		ep->rcvmax = val;
-		ep->conf->max_packet_size = val;
 		NNI_LIST_FOREACH (&ep->waitpipes, p) {
 			p->rcvmax = val;
 		}

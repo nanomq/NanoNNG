@@ -778,7 +778,7 @@ conn_param_init(conn_param *cparam)
 	// MQTT_v5 Variable header
 	cparam->session_expiry_interval = 0;
 	cparam->rx_max                  = 65535;
-	cparam->max_packet_size         = 65535;
+	cparam->max_packet_size         = 0;
 	cparam->topic_alias_max         = 0;
 	cparam->req_resp_info           = 0;
 	cparam->req_problem_info        = 1;
