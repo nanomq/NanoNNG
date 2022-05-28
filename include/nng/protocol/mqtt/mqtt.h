@@ -1,5 +1,5 @@
 //
-// Copyright 2020 NanoMQ Team, Inc. <jaylin@emqx.io>
+// Copyright 2022 NanoMQ Team, Inc. <jaylin@emqx.io>
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -18,12 +18,18 @@
 #define PROTOCOL_VERSION_v311 4
 #define PROTOCOL_VERSION_v5 5
 
+/* NNG OPTs */
+#define NANO_CONF "nano:conf"
+
+
 /* Length defination */
-#define NANO_MAX_PACKET_LEN NNI_NANO_MAX_PACKET_SIZE
+// Maximum Packet Size of broker
+#define NANO_MAX_RECV_PACKET_SIZE (2*1024*1024)
 #define NANO_MIN_PACKET_LEN sizeof(uint8_t) * 8
 #define NANO_CONNECT_PACKET_LEN sizeof(uint8_t) * 12
 #define NANO_MIN_FIXED_HEADER_LEN sizeof(uint8_t) * 2
-
+//flow control:how many QoS packet broker willing to process at same time.
+#define NANO_MAX_QOS_PACKET 1024	//TODO set in conf
 
 #ifdef NANO_PACKET_SIZE
 #define NNI_NANO_MAX_PACKET_SIZE sizeof(uint8_t) * NANO_PACKET_SIZE
@@ -87,7 +93,7 @@ enum err_t {
 	ERR_OCSP               = 26,
 };
 
-//ERROR! Enum is not fit here
+//TODO Enum is not fitting here
 typedef enum {
 	SUCCESS                                = 0,
 	NORMAL_DISCONNECTION                   = 0,
@@ -203,11 +209,7 @@ typedef enum {
 	MQTTV5_V4 = 3,
 } target_prover;
 
-//flow control:how many QoS packet broker willing to process at same time.
-#define NANO_MAX_QOS_PACKET 1024	//TODO set in conf
-
-// Maximum Packet Size of broker
-#define NANO_MAX_RECV_PACKET_SIZE (2*1024*1024)  // TODO set in conf
+//NanoMQ wrapping API
 NNG_DECL void nni_msg_proto_set_property(nng_msg *msg, void *prop);
 
 #endif
