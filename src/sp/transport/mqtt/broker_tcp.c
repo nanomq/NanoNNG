@@ -50,7 +50,7 @@ struct tcptran_pipe {
 	nni_msg        *rxmsg, *cnmsg;
 	nni_mtx         mtx;
 	conn_param     *tcp_cparam;
-	conf	       *conf;
+	const conf     *conf;
 	nni_list        recvq;
 	nni_list        sendq;
 	nni_list_node   node;
@@ -71,7 +71,7 @@ struct tcptran_ep {
 	bool                 closed;
 	nng_url             *url;
 	nng_sockaddr         src;
-	conf		    *conf;
+	const conf          *conf;
 	int                  refcnt; // active pipes
 	nni_aio             *useraio;
 	nni_aio             *connaio;
@@ -1685,14 +1685,17 @@ tcptran_ep_get_url(void *arg, void *v, size_t *szp, nni_opt_type t)
 	return (rv);
 }
 
-static void
-tcptran_ep_set_conf(void *arg, void *v, size_t *sz, nni_opt_type t)
+static int
+tcptran_ep_set_conf(void *arg, const void *v, size_t sz, nni_opt_type t)
 {
 	tcptran_ep *ep = arg;
+	NNI_ARG_UNUSED(sz);
+	NNI_ARG_UNUSED(t);
 
 	nni_mtx_lock(&ep->mtx);
 	ep->conf = v;
 	nni_mtx_unlock(&ep->mtx);
+	return 0;
 }
 
 static int
