@@ -921,6 +921,8 @@ nano_dismsg_composer(reason_code code, char* rstr, uint8_t *ref, property *prop)
 		nng_msg_append(msg, buf, 1);
 		break;
 	default:
+		buf[0] = (uint8_t)UNSPECIFIED_ERROR;
+		nng_msg_append(msg, buf, 1);
 		break;
 	}
 
