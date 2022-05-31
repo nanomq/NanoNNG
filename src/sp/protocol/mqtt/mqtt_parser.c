@@ -896,7 +896,7 @@ nano_msg_set_dup(nng_msg *msg)
 
 // alloc a publish msg according to the need
 nng_msg *
-nano_msg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
+nano_pubmsg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
     mqtt_string *payload, mqtt_string *topic, uint8_t proto_ver, nng_time time)
 {
 	size_t   rlen;
@@ -1007,7 +1007,7 @@ nano_msg_notify_disconnect(conn_param *cparam, uint8_t code)
 	topic.body  = DISCONNECT_TOPIC;
 	topic.len   = strlen(DISCONNECT_TOPIC);
 	// V4 notification msg as default
-	msg = nano_msg_composer(
+	msg = nano_pubmsg_composer(
 	    &msg, 0, 0, &string, &topic, PROTOCOL_VERSION_v311, nng_clock());
 	return msg;
 }
@@ -1026,7 +1026,7 @@ nano_msg_notify_connect(conn_param *cparam, uint8_t code)
 	string.len  = strlen(string.body);
 	topic.body  = CONNECT_TOPIC;
 	topic.len   = strlen(CONNECT_TOPIC);
-	msg         = nano_msg_composer(
+	msg         = nano_pubmsg_composer(
             &msg, 0, 0, &string, &topic, PROTOCOL_VERSION_v311, nng_clock());
 	return msg;
 }
