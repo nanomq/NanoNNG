@@ -2,10 +2,11 @@
 #ifndef NNG_MQTT_H
 #define NNG_MQTT_H
 
-#include "nng/mqtt/packet.h"
-#include "nng/supplemental/util/platform.h"
 #include "conf.h"
 #include "hash_table.h"
+#include "nng/mqtt/packet.h"
+#include "mqtt.h"
+#include "nng/supplemental/util/platform.h"
 #include <nng/nng.h>
 #include <stdlib.h>
 
@@ -82,10 +83,12 @@ NNG_DECL uint64_t nano_hash(char *str);
 NNG_DECL uint8_t  verify_connect(conn_param *cparam, conf *conf);
 
 // repack
-NNG_DECL void     nano_msg_set_dup(nng_msg *msg);
+NNG_DECL void inline nano_msg_set_dup(nng_msg *msg);
 NNG_DECL nng_msg *nano_pubmsg_composer(nng_msg **, uint8_t retain, uint8_t qos,
     mqtt_string *payload, mqtt_string *topic, uint8_t proto_ver,
     nng_time time);
+NNG_DECL nng_msg *nano_dismsg_composer(
+    reason_code code, char *rstr, uint8_t *ref, property *prop);
 NNG_DECL nng_msg *nano_msg_notify_disconnect(conn_param *cparam, uint8_t code);
 NNG_DECL nng_msg *nano_msg_notify_connect(conn_param *cparam, uint8_t code);
 NNG_DECL nano_pipe_db *nano_msg_get_subtopic(
