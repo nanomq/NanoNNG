@@ -454,6 +454,7 @@ nmq_tcptran_pipe_send_cb(void *arg)
 		nni_pipe_bump_error(p->npipe, rv);
 		nni_aio_list_remove(aio);
 		nni_mtx_unlock(&p->mtx);
+		// push error to protocol layer
 		nni_aio_finish_error(aio, rv);
 		return;
 	}
@@ -500,6 +501,8 @@ nmq_tcptran_pipe_send_cb(void *arg)
 	nni_aio_set_msg(aio, NULL);
 	nni_msg_free(msg);
 	if (cmd == CMD_CONNACK && flag != 0x00) {
+		nni_aio_finish_error(aio, flag);
+	} else if (cmd == CMD_DISCONNECT) {
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 	} else {
 		nni_aio_finish_sync(aio, 0, n);
