@@ -598,6 +598,10 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		    packet, len, &pos, &cparam->prop_len, true);
 		if (cparam->properties) {
 			conn_param_set_property(cparam, cparam->properties);
+			if ((rv = check_properties(cparam->properties)) !=
+			    SUCCESS) {
+				return rv;
+			}
 		}
 	}
 	debug_msg("pos after property: [%d]", pos);
@@ -636,6 +640,11 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 			if (cparam->will_properties) {
 				conn_param_set_will_property(
 				    cparam, cparam->will_properties);
+				if ((rv = check_properties(
+				         cparam->will_properties)) !=
+				    SUCCESS) {
+					return rv;
+				}
 			}
 		}
 		cparam->will_topic.body =
@@ -1263,6 +1272,10 @@ nmq_pubres_decode(nng_msg *msg, uint16_t *packet_id, uint8_t *reason_code,
 	uint32_t prop_len = 0;
 
 	*prop = decode_properties(msg, &pos, &prop_len, false);
+	if (check_properties(*prop) != SUCCESS) {
+		property_free(*prop);
+		return PROTOCOL_ERROR;
+	}
 
 	return MQTT_SUCCESS;
 }
