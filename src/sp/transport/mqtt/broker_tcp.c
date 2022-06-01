@@ -256,7 +256,6 @@ tcptran_ep_match(tcptran_ep *ep)
 	nni_list_append(&ep->busypipes, p);
 	ep->useraio = NULL;
 	p->rcvmax   = ep->rcvmax;
-	p->conf     = ep->conf;
 	nni_aio_set_output(aio, 0, p);
 	nni_aio_finish(aio, 0, 0);
 }
@@ -351,10 +350,11 @@ tcptran_pipe_nego_cb(void *arg)
 			nni_list_remove(&ep->negopipes, p);
 			nni_list_append(&ep->waitpipes, p);
 			tcptran_ep_match(ep);
+			p->conf     = ep->conf;
 			if (p->tcp_cparam->max_packet_size == 0) {
 				// set default max packet size for client
-				p->tcp_cparam->max_packet_size =
-				    p->conf->client_max_packet_size;
+				p->tcp_cparam->max_packet_size = p->conf == NULL?
+				NANO_MAX_RECV_PACKET_SIZE : p->conf->client_max_packet_size;
 			}
 			nni_mtx_unlock(&ep->mtx);
 			return;
