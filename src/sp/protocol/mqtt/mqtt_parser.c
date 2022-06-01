@@ -885,13 +885,53 @@ nano_hash(char *str)
 	return hash;
 }
 
-void
+void inline
 nano_msg_set_dup(nng_msg *msg)
 {
 	uint8_t *header;
 
 	header  = nni_msg_header(msg);
 	*header = *header | 0x08;
+}
+/**
+ * @brief compose a MQTT V5 DISCONNECT msg from server side
+ *        ref & rstr is not effective yet
+ * 
+ * @param msgp msg pointer
+ * @param code reason code
+ * @param rstr reason string
+ * @param ref  server reference
+ * @param prop user property
+ * @return nng_msg*
+ */
+nng_msg *
+nano_dismsg_composer(reason_code code, char* rstr, uint8_t *ref, property *prop)
+{
+	size_t   rlen;
+	uint8_t *ptr, buf[5] = { 0x00 };
+	uint32_t len = 0; //remaining length
+	nni_msg *msg;
+
+	nni_msg_alloc(&msg, 0);
+	len = 2;
+	switch (code)
+	{
+	case PROTOCOL_ERROR:
+		buf[0] = (uint8_t)PROTOCOL_ERROR;
+		nng_msg_append(msg, buf, 1);
+		break;
+	default:
+		buf[0] = (uint8_t)UNSPECIFIED_ERROR;
+		nng_msg_append(msg, buf, 1);
+		break;
+	}
+
+	nng_msg_append(msg, buf+1, 1);
+	buf[0] = CMD_DISCONNECT;
+	buf[1] = 2;
+	nng_msg_header_append(msg, buf, 2);
+	nng_msg_set_cmd_type(msg, CMD_DISCONNECT);
+	return msg;
 }
 
 // alloc a publish msg according to the need

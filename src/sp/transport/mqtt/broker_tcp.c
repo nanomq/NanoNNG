@@ -43,9 +43,9 @@ struct tcptran_pipe {
 	uint8_t        *qos_buf; // msg trunk for qos & V4/V5 conversion
 	nni_aio        *txaio;
 	nni_aio        *rxaio;
-	nni_aio        *qsaio;
-	nni_aio        *rpaio;
-	nni_aio        *negoaio;
+	nni_aio        *qsaio;	// send qos ack/rel
+	nni_aio        *rpaio;  // reply DISCONNECT/PING
+	nni_aio        *negoaio;// deal with connect
 	nni_lmq         rslmq;
 	nni_msg        *rxmsg, *cnmsg;
 	nni_mtx         mtx;
@@ -275,6 +275,7 @@ tcptran_pipe_nego_cb(void *arg)
 	tcptran_ep   *ep  = p->ep;
 	nni_aio      *aio = p->negoaio;
 	nni_aio      *uaio;
+	nni_iov       iov;
 	uint32_t      len;
 	int           rv, len_of_varint = 0;
 
@@ -319,7 +320,6 @@ tcptran_pipe_nego_cb(void *arg)
 
 	// we have finished the fixed header
 	if (p->gotrxhead < p->wantrxhead) {
-		nni_iov iov;
 		iov.iov_len = p->wantrxhead - p->gotrxhead;
 		if (p->conn_buf == NULL) {
 			p->conn_buf = nng_alloc(p->wantrxhead);
@@ -361,7 +361,11 @@ tcptran_pipe_nego_cb(void *arg)
 		} else {
 			nng_free(p->conn_buf, p->wantrxhead);
 			conn_param_free(p->tcp_cparam);
-			goto error;
+			if (p->tcp_cparam->pro_ver == 5) {
+				goto close;
+			} else {
+				goto error;
+			}
 		}
 	}
 
@@ -369,6 +373,20 @@ tcptran_pipe_nego_cb(void *arg)
 	debug_msg("^^^^^^^^^^end of tcptran_pipe_nego_cb^^^^^^^^^^\n");
 	return;
 
+close:
+	// There is no err reason code of DISCONNECT in MQTT V3.1.1
+	// so this is only valid when client is V5
+	// TBD: reply DISCONNECT in broker app layer? or just send it here.
+	p->txlen[0] = CMD_DISCONNECT;
+	p->txlen[1] = 0x02;
+	p->txlen[2] = rv;
+	p->txlen[3] = 0x00;
+	iov.iov_len = 4;
+	iov.iov_buf = &p->txlen;
+	// send CMD_PINGRESP down...
+	nni_aio_set_iov(p->rpaio, 1, &iov);
+	nng_stream_send(p->conn, p->rpaio);
+	nng_aio_wait(p->rpaio);
 error:
 	// If the connection is closed, we need to pass back a different
 	// error code.  This is necessary to avoid a problem where the
@@ -454,6 +472,7 @@ nmq_tcptran_pipe_send_cb(void *arg)
 		nni_pipe_bump_error(p->npipe, rv);
 		nni_aio_list_remove(aio);
 		nni_mtx_unlock(&p->mtx);
+		// push error to protocol layer
 		nni_aio_finish_error(aio, rv);
 		return;
 	}
@@ -500,6 +519,8 @@ nmq_tcptran_pipe_send_cb(void *arg)
 	nni_aio_set_msg(aio, NULL);
 	nni_msg_free(msg);
 	if (cmd == CMD_CONNACK && flag != 0x00) {
+		nni_aio_finish_error(aio, flag);
+	} else if (cmd == CMD_DISCONNECT) {
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 	} else {
 		nni_aio_finish_sync(aio, 0, n);
