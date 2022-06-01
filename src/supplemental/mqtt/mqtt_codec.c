@@ -2365,6 +2365,26 @@ property_free(property *prop)
 	return 0;
 }
 
+reason_code
+check_properties(property *prop)
+{
+	if (prop == NULL) {
+		return SUCCESS;
+	}
+	for (property *p1 = prop->next; p1 != NULL; p1 = p1->next) {
+		for (property *p2 = prop->next; p2 != NULL; p2 = p2->next) {
+			if (p2 != p1) {
+				if (p1->data.p_type != STR_PAIR &&
+				    p1->id == p2->id) {
+					return PROTOCOL_ERROR;
+				}
+			}
+		}
+	}
+
+	return SUCCESS;
+}
+
 property *
 decode_buf_properties(uint8_t *packet, uint32_t packet_len, uint32_t *pos,
     uint32_t *len, bool copy_value)
@@ -2378,12 +2398,12 @@ decode_buf_properties(uint8_t *packet, uint32_t packet_len, uint32_t *pos,
 	property *list        = NULL;
 
 	if (current_pos >= msg_len) {
-		return 0;
+		return NULL;
 	}
 
 	if ((rv = read_variable_int(msg_body + current_pos,
 	         msg_len - current_pos, &prop_len, &bytes)) != 0) {
-		return 0;
+		return NULL;
 	}
 	current_pos += bytes;
 	struct pos_buf buf = { .curpos = &msg_body[current_pos],
