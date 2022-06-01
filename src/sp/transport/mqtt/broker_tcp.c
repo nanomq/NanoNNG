@@ -360,8 +360,11 @@ tcptran_pipe_nego_cb(void *arg)
 			return;
 		} else {
 			nng_free(p->conn_buf, p->wantrxhead);
-			conn_param_free(p->tcp_cparam);
-			goto close;
+			if (p->tcp_cparam->pro_ver == 5) {
+				goto close;
+			} else {
+				goto error;
+			}
 		}
 	}
 
@@ -370,16 +373,17 @@ tcptran_pipe_nego_cb(void *arg)
 	return;
 
 close:
-	// There is no err reason code of DISCONNECT in MQTT V3.1.1
-	// so this is only valid when client is V5
-	// TBD: reply DISCONNECT in broker app layer? or just send it here.
-	p->txlen[0] = CMD_DISCONNECT;
-	p->txlen[1] = 0x02;
-	p->txlen[2] = rv;
-	p->txlen[3] = 0x00;
-	iov.iov_len = 4;
+	// if a malformated CONNECT packet is received
+	// reply CONNACK here for MQTT V5
+	// otherwise deal with it in protocol layer
+	p->txlen[0] = CMD_CONNACK;
+	p->txlen[1] = 0x03;
+	p->txlen[2] = 0x00;
+	p->txlen[3] = rv;
+	p->txlen[4] = 0x00;
+	iov.iov_len = 5;
 	iov.iov_buf = &p->txlen;
-	// send CMD_PINGRESP down...
+	// send connack down...
 	nni_aio_set_iov(p->rpaio, 1, &iov);
 	nng_stream_send(p->conn, p->rpaio);
 	nng_aio_wait(p->rpaio);
@@ -388,6 +392,7 @@ error:
 	// error code.  This is necessary to avoid a problem where the
 	// closed status is confused with the accept file descriptor
 	// being closed.
+	conn_param_free(p->tcp_cparam);
 	if (rv == NNG_ECLOSED) {
 		rv = NNG_ECONNSHUT;
 	}
