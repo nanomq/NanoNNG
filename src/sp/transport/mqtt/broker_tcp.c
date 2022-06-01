@@ -361,11 +361,7 @@ tcptran_pipe_nego_cb(void *arg)
 		} else {
 			nng_free(p->conn_buf, p->wantrxhead);
 			conn_param_free(p->tcp_cparam);
-			if (p->tcp_cparam->pro_ver == 5) {
-				goto close;
-			} else {
-				goto error;
-			}
+			goto close;
 		}
 	}
 
