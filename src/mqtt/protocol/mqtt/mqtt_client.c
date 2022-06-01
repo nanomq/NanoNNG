@@ -267,7 +267,7 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 	mqtt_sock_t *s   = ctx->mqtt_sock;
 	mqtt_pipe_t *p   = s->mqtt_pipe;
 	uint16_t     ptype, packet_id;
-	uint8_t      qos;
+	uint8_t      qos = 0;
 	nni_msg *    msg;
 	nni_msg *    tmsg;
 

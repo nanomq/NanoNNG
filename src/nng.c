@@ -2265,7 +2265,7 @@ nng_msg_set_timestamp(nng_msg *m, uint64_t time)
 uint64_t
 nng_msg_get_timestamp(nng_msg *m)
 {
-	nni_msg_get_timestamp(m);
+	return nni_msg_get_timestamp(m);
 }
 
 void
