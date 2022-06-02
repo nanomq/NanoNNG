@@ -1999,7 +1999,7 @@ property_alloc(void)
 property_type_enum
 property_get_value_type(uint8_t prop_id)
 {
-	property_type_enum value_type;
+	property_type_enum value_type = UNKNOWN;
 	switch (prop_id) {
 	case PAYLOAD_FORMAT_INDICATOR:
 	case REQUEST_PROBLEM_INFORMATION:

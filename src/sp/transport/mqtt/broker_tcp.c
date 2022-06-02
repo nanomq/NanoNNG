@@ -459,7 +459,7 @@ nmq_tcptran_pipe_send_cb(void *arg)
 	int           rv;
 	nni_aio      *aio;
 	uint8_t      *header;
-	uint8_t       flag, cmd;
+	uint8_t       flag = 0, cmd;
 	size_t        n;
 	nni_msg      *msg;
 	nni_aio      *txaio = p->txaio;

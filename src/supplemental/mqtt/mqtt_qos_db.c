@@ -619,7 +619,7 @@ nni_mqtt_qos_db_set_client_msg(
 	nng_free(blob, len);
 	int rv = sqlite3_exec(db, "COMMIT;", 0, 0, 0);
 	nni_msg_free(msg);
-	return 0;
+	return rv;
 }
 
 nni_msg *
