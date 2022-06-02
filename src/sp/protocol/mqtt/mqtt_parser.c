@@ -916,9 +916,11 @@ nano_msg_set_dup(nng_msg *msg)
 nng_msg *
 nano_dismsg_composer(reason_code code, char* rstr, uint8_t *ref, property *prop)
 {
-	size_t   rlen;
-	uint8_t *ptr, buf[5] = { 0x00 };
-	uint32_t len = 0; //remaining length
+	NNI_ARG_UNUSED(rstr);
+	NNI_ARG_UNUSED(ref);
+	NNI_ARG_UNUSED(prop);
+	uint8_t  buf[5] = { 0x00 };
+	uint32_t len    = 0; // remaining length
 	nni_msg *msg;
 
 	nni_msg_alloc(&msg, 0);
