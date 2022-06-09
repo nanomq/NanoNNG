@@ -20,6 +20,7 @@ nng_sources(
    mqtt_codec.c
    mqtt_msg.c
    mqtt_msg.h 
+   mqtt_qos_db_api.c
    mqtt_qos_db_api.h
 )
 
