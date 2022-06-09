@@ -159,9 +159,11 @@ tcptran_pipe_init(void *arg, nni_pipe *npipe)
 
 	nni_pipe_set_conn_param(npipe, p->tcp_cparam);
 	p->npipe = npipe;
-#ifndef NNG_SUPP_SQLITE
-	nni_qos_db_init_id_hash(npipe->nano_qos_db);
-#endif
+
+	if (p->conf->persist == memory) {
+		nni_qos_db_init_id_hash(npipe->nano_qos_db);
+	}
+
 	p->conn_buf = NULL;
 	p->busy     = false;
 
@@ -256,6 +258,7 @@ tcptran_ep_match(tcptran_ep *ep)
 	nni_list_append(&ep->busypipes, p);
 	ep->useraio = NULL;
 	p->rcvmax   = ep->rcvmax;
+
 	nni_aio_set_output(aio, 0, p);
 	nni_aio_finish(aio, 0, 0);
 }
@@ -837,6 +840,9 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	int      niov;
 	nni_iov  iov[4];
 	uint8_t  qos;
+
+	persistence_type persist = p->conf->persist;
+
 	qos = NANO_NNI_LMQ_GET_QOS_BITS(msg);
 	// qos default to 0 if the msg is not PUBLISH
 	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
@@ -847,7 +853,7 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	if (nni_msg_header_len(msg) > 0 &&
 	    nni_msg_get_type(msg) == CMD_PUBLISH) {
 		uint8_t      *body, *header, qos_pac;
-		target_prover target_prover;
+
 		uint8_t       var_extra[2], fixheader, tmp[4] = { 0 };
 		int           len_offset = 0;
 		uint32_t      pos        = 1;
@@ -879,10 +885,10 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			}
 			// V5 msg sent to V4 client
 			// caculate property length and delete it
-			target_prover = MQTTV5_V4;
+
 			plength = property_len + property_bytes;
 		} else if (nni_msg_cmd_type(msg) == CMD_PUBLISH) {
-			target_prover = MQTTV4;
+
 			if (qos_pac == 0) {
 				// save time & space for QoS 0 publish
 				goto send;
@@ -923,14 +929,15 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			len_offset = 2;
 			nni_msg *old;
 			// to differ resend msg
-			pid = (uint8_t)nni_aio_get_prov_data(aio);
+			pid = (uint16_t) nni_aio_get_prov_data(aio);
 			if (pid == 0) {
 				// first time send this msg
 				pid = nni_pipe_inc_packetid(pipe);
 				// store msg for qos retrying
 				nni_msg_clone(msg);
-				if ((old = nni_qos_db_get(pipe->nano_qos_db,
-				         pipe->p_id, pid)) != NULL) {
+				if ((old = nni_qos_db_get(persist,
+				         pipe->nano_qos_db, pipe->p_id,
+				         pid)) != NULL) {
 					// TODO packetid already exists.
 					// do we need to replace old with new
 					// one ? print warning to users
@@ -941,11 +948,11 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 					    NANO_NNI_LMQ_GET_MSG_POINTER(old);
 
 					nni_qos_db_remove_msg(
-					    pipe->nano_qos_db, old);
+					    persist, pipe->nano_qos_db, old);
 				}
 				old = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
-				nni_qos_db_set(
-				    pipe->nano_qos_db, pipe->p_id, pid, old);
+				nni_qos_db_set(persist, pipe->nano_qos_db,
+				    pipe->p_id, pid, old);
 			}
 			NNI_PUT16(var_extra, pid);
 		} else if (qos_pac > 0) {
@@ -1022,12 +1029,13 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		goto send;
 	// never modify the original msg
 
-	uint8_t      *body, *header, qos_pac;
+	uint8_t *     body, *header, qos_pac;
 	target_prover target_prover;
 	int           len_offset = 0, sub_id = 0, qos;
 	uint16_t      pid;
 	uint32_t tprop_bytes, prop_bytes = 0, id_bytes = 0, property_len = 0;
 	size_t   tlen, rlen, mlen, hlen, qlength, plength;
+	persistence_type persist = p->conf->persist;
 
 	txaio   = p->txaio;
 	body    = nni_msg_body(msg);
@@ -1140,13 +1148,13 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				nni_msg *old;
 				// packetid in aio to differ resend msg
 				// TODO replace it with set prov data
-				pid = (uint8_t)nni_aio_get_prov_data(aio);
+				pid = (uint16_t) nni_aio_get_prov_data(aio);
 				if (pid == 0) {
 					// first time send this msg
 					pid = nni_pipe_inc_packetid(pipe);
 					// store msg for qos retrying
 					nni_msg_clone(msg);
-					if ((old = nni_qos_db_get(
+					if ((old = nni_qos_db_get(persist,
 					         pipe->nano_qos_db, pipe->p_id,
 					         pid)) != NULL) {
 						// TODO packetid already
@@ -1160,13 +1168,14 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 						    NANO_NNI_LMQ_GET_MSG_POINTER(
 						        old);
 
-						nni_qos_db_remove_msg(
+						nni_qos_db_remove_msg(persist,
 						    pipe->nano_qos_db, old);
 					}
 					old = NANO_NNI_LMQ_PACKED_MSG_QOS(
 					    msg, qos);
-					nni_qos_db_set(pipe->nano_qos_db,
-					    pipe->p_id, pid, old);
+					nni_qos_db_set(persist,
+					    pipe->nano_qos_db, pipe->p_id, pid,
+					    old);
 				}
 				NNI_PUT16(var_extra, pid);
 				// copy packet id
