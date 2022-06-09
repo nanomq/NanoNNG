@@ -894,7 +894,7 @@ nano_hash(char *str)
 	return hash;
 }
 
-void inline
+inline void
 nano_msg_set_dup(nng_msg *msg)
 {
 	uint8_t *header;
@@ -920,11 +920,10 @@ nano_dismsg_composer(reason_code code, char* rstr, uint8_t *ref, property *prop)
 	NNI_ARG_UNUSED(ref);
 	NNI_ARG_UNUSED(prop);
 	uint8_t  buf[5] = { 0x00 };
-	uint32_t len    = 0; // remaining length
 	nni_msg *msg;
 
 	nni_msg_alloc(&msg, 0);
-	len = 2;
+
 	switch (code)
 	{
 	case PROTOCOL_ERROR:
