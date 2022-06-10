@@ -929,7 +929,7 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			len_offset = 2;
 			nni_msg *old;
 			// to differ resend msg
-			pid = (uint16_t) nni_aio_get_prov_data(aio);
+			pid = (uint16_t)(size_t) nni_aio_get_prov_data(aio);
 			if (pid == 0) {
 				// first time send this msg
 				pid = nni_pipe_inc_packetid(pipe);
@@ -1148,7 +1148,9 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				nni_msg *old;
 				// packetid in aio to differ resend msg
 				// TODO replace it with set prov data
-				pid = (uint16_t) nni_aio_get_prov_data(aio);
+				pid = (uint16_t)(size_t) nni_aio_get_prov_data(
+				    aio);
+
 				if (pid == 0) {
 					// first time send this msg
 					pid = nni_pipe_inc_packetid(pipe);

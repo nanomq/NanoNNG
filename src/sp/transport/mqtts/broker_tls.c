@@ -934,7 +934,7 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			nni_msg *old;
 			// packetid in aio to differ resend msg
 			// TODO replace it with set prov data
-			pid = (uint16_t) nni_aio_get_prov_data(aio);
+			pid = (uint16_t)(size_t) nni_aio_get_prov_data(aio);
 			if (pid == 0) {
 				// first time send this msg
 				pid = nni_pipe_inc_packetid(pipe);
@@ -1156,7 +1156,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 				nni_msg *old;
 				// packetid in aio to differ resend msg
 				// TODO replace it with set prov data
-				pid = (uint16_t) nni_aio_get_prov_data(aio);
+				pid = (uint16_t) (size_t) nni_aio_get_prov_data(aio);
 				if (pid == 0) {
 					// first time send this msg
 					pid = nni_pipe_inc_packetid(pipe);
