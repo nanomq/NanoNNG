@@ -8,7 +8,6 @@
 //
 
 #include "core/nng_impl.h"
-#include "conf.h"
 #include "nng/protocol/mqtt/mqtt.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 #include "supplemental/mqtt/mqtt_qos_db_api.h"
@@ -53,6 +52,7 @@ static void mqtt_ctx_init(void *arg, void *sock);
 static void mqtt_ctx_fini(void *arg);
 static void mqtt_ctx_send(void *arg, nni_aio *aio);
 static void mqtt_ctx_recv(void *arg, nni_aio *aio);
+static persistence_type get_persist(mqtt_sock_t *s);
 
 typedef nni_mqtt_packet_type packet_type_t;
 
@@ -97,7 +97,9 @@ struct mqtt_sock_s {
 #ifdef NNG_SUPP_SQLITE
 	sqlite3 *sqlite_db;
 #endif
+#ifdef NNG_HAVE_MQTT_BROKER
 	conf *conf;
+#endif
 };
 
 /******************************************************************************
@@ -131,8 +133,9 @@ static void
 mqtt_sock_fini(void *arg)
 {
 	mqtt_sock_t *s = arg;
-#ifdef NNG_SUPP_SQLITE
-	if (s->conf->persist == sqlite) {
+#if defined(NNG_SUPP_SQLITE) && defined(NNG_HAVE_MQTT_BROKER)
+	persistence_type persist = get_persist(s);
+	if (persist == sqlite) {
 		nni_qos_db_fini_sqlite(s->sqlite_db);
 	}
 #endif
@@ -149,12 +152,13 @@ mqtt_sock_open(void *arg)
 static int
 mqtt_sock_set_conf_with_db(void *arg, const void *v, size_t sz, nni_opt_type t)
 {
-	mqtt_sock_t *s = arg;
 	NNI_ARG_UNUSED(sz);
+#ifdef NNG_HAVE_MQTT_BROKER
+	mqtt_sock_t *s = arg;
 	if (t == NNI_TYPE_OPAQUE) {
 		nni_mtx_lock(&s->mtx);
 		s->conf = (conf *) v;
-		
+
 #ifdef NNG_SUPP_SQLITE
 		if (s->conf->persist == sqlite) {
 			nni_qos_db_init_sqlite(s->sqlite_db, DB_NAME, false);
@@ -165,6 +169,11 @@ mqtt_sock_set_conf_with_db(void *arg, const void *v, size_t sz, nni_opt_type t)
 		nni_mtx_unlock(&s->mtx);
 		return 0;
 	}
+#else
+	NNI_ARG_UNUSED(arg);
+	NNI_ARG_UNUSED(v);
+	NNI_ARG_UNUSED(t);
+#endif
 	return NNG_EUNREACHABLE;
 }
 
@@ -245,7 +254,7 @@ mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	// Packet IDs are 16 bits
 	// We start at a random point, to minimize likelihood of
 	// accidental collision across restarts.
-	persistence_type persist = p->mqtt_sock->conf->persist;
+	persistence_type persist = get_persist(p->mqtt_sock);
 
 #ifdef NNG_SUPP_SQLITE
 	if (persist == sqlite) {
@@ -281,7 +290,8 @@ mqtt_pipe_fini(void *arg)
 	nni_aio_fini(&p->send_aio);
 	nni_aio_fini(&p->recv_aio);
 	nni_aio_fini(&p->time_aio);
-	if (p->mqtt_sock->conf->persist == memory) {
+	persistence_type persist = get_persist(p->mqtt_sock);
+	if (persist == memory) {
 		nni_qos_db_fini_id_hash(p->sent_unack);
 	}
 	nni_id_map_fini(&p->recv_unack);
@@ -293,14 +303,15 @@ mqtt_pipe_fini(void *arg)
 static inline void
 mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 {
-	mqtt_ctx_t * ctx = arg;
-	mqtt_sock_t *s   = ctx->mqtt_sock;
-	mqtt_pipe_t *p   = s->mqtt_pipe;
-	uint16_t     ptype, packet_id;
-	uint8_t      qos = 0;
-	nni_msg *    msg;
-	nni_msg *    tmsg;
-	persistence_type persist = s->conf->persist;
+	mqtt_ctx_t *     ctx = arg;
+	mqtt_sock_t *    s   = ctx->mqtt_sock;
+	mqtt_pipe_t *    p   = s->mqtt_pipe;
+	uint16_t         ptype, packet_id;
+	uint8_t          qos = 0;
+	nni_msg *        msg;
+	nni_msg *        tmsg;
+	persistence_type persist = get_persist(s);
+
 	msg   = nni_aio_get_msg(aio);
 	ptype = nni_mqtt_msg_get_packet_type(msg);
 	switch (ptype) {
@@ -437,7 +448,8 @@ mqtt_pipe_close(void *arg)
 	nni_lmq_flush(&p->recv_messages);
 	nni_lmq_flush(&p->send_messages);
 
-	if (s->conf->persist == memory) {
+	persistence_type persist = get_persist(s);
+	if (persist == memory) {
 		nni_id_map_foreach(p->sent_unack, mqtt_close_unack_msg_cb);
 	}
 
@@ -483,8 +495,8 @@ mqtt_timer_cb(void *arg)
 		return;
 	}
 	// start message resending
-	uint64_t row_id = 0;
-	persistence_type persist = s->conf->persist;
+	uint64_t         row_id  = 0;
+	persistence_type persist = get_persist(s);
 	msg = nni_qos_db_get_one_client_msg(persist, p->sent_unack, &row_id, &pid);
 	if (msg != NULL) {
 		nni_qos_db_remove_client_msg_by_id(persist, p->sent_unack, row_id);
@@ -570,12 +582,12 @@ mqtt_send_cb(void *arg)
 static void
 mqtt_recv_cb(void *arg)
 {
-	mqtt_pipe_t *p = arg;
-	mqtt_sock_t *s = p->mqtt_sock;
-	nni_aio * user_aio = NULL;
-	nni_msg * cached_msg = NULL;
-	mqtt_ctx_t * ctx;
-	persistence_type persist = s->conf->persist;
+	mqtt_pipe_t *    p          = arg;
+	mqtt_sock_t *    s          = p->mqtt_sock;
+	nni_aio *        user_aio   = NULL;
+	nni_msg *        cached_msg = NULL;
+	mqtt_ctx_t *     ctx;
+	persistence_type persist = get_persist(s);
 
 	if (nni_aio_result(&p->recv_aio) != 0) {
 		nni_pipe_close(p->pipe);
@@ -856,6 +868,17 @@ wait:
 	nni_list_append(&s->recv_queue, ctx);
 	nni_mtx_unlock(&s->mtx);
 	return;
+}
+
+static inline persistence_type
+get_persist(mqtt_sock_t *s)
+{
+#ifdef NNG_HAVE_MQTT_BROKER
+	return s->conf->persist;
+#else
+	NNI_ARG_UNUSED(s);
+	return memory;
+#endif
 }
 
 static nni_proto_pipe_ops mqtt_pipe_ops = {

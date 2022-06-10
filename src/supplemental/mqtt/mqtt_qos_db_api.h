@@ -4,7 +4,15 @@
 #include "nng/nng.h"
 #include "core/nng_impl.h"
 #include "mqtt_qos_db.h"
+
+#ifdef NNG_HAVE_MQTT_BROKER
 #include "conf.h"
+#else
+typedef enum {
+	memory,
+	sqlite,
+} persistence_type;
+#endif
 
 #define nni_qos_db_init_sqlite(db, db_name, is_broker) \
 	nni_mqtt_qos_db_init((sqlite3 **) &(db), db_name, is_broker)

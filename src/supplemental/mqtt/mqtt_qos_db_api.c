@@ -1,5 +1,7 @@
 #include "mqtt_qos_db_api.h"
+#ifdef NNG_HAVE_MQTT_BROKER
 #include "nng/protocol/mqtt/mqtt_parser.h"
+#endif
 
 void
 nni_qos_db_set(persistence_type type, void *db, uint32_t pipe_id,
@@ -7,9 +9,13 @@ nni_qos_db_set(persistence_type type, void *db, uint32_t pipe_id,
 {
 	switch (type) {
 	case sqlite:
-#ifdef NNG_SUPP_SQLITE
+#if defined(NNG_SUPP_SQLITE) && defined(NNG_HAVE_MQTT_BROKER)
 		nni_mqtt_qos_db_set((sqlite3 *) (db), pipe_id, packet_id, msg);
 		nni_msg_free(NANO_NNI_LMQ_GET_MSG_POINTER(msg));
+#else
+		NNI_ARG_UNUSED(pipe_id);
+		NNI_ARG_UNUSED(packet_id);
+		NNI_ARG_UNUSED(msg);
 #endif
 		break;
 	case memory:
@@ -113,6 +119,7 @@ nni_qos_db_remove_msg(persistence_type type, void *db, nng_msg *msg)
 		break;
 	case memory:
 		NNI_ARG_UNUSED(db);
+		NNI_ARG_UNUSED(msg);
 		break;
 	default:
 		break;
