@@ -169,9 +169,11 @@ tlstran_pipe_init(void *arg, nni_pipe *npipe)
 
 	nni_pipe_set_conn_param(npipe, p->tcp_cparam);
 	p->npipe    = npipe;
-#ifndef NNG_SUPP_SQLITE
-	nni_qos_db_init_id_hash(npipe->nano_qos_db);
-#endif
+
+	if (p->conf->persist == memory) {
+		nni_qos_db_init_id_hash(npipe->nano_qos_db);
+	}
+
 	p->conn_buf = NULL;
 	p->busy     = false;
 
@@ -545,7 +547,6 @@ tlstran_pipe_recv_cb(void *arg)
 	nni_aio *     rxaio = p->rxaio;
 	conn_param *  cparam;
 	bool          ack   = false;
-	nni_pipe     *npipe = p->npipe;
 
 	debug_msg("tlstran_pipe_recv_cb %p\n", p);
 	nni_mtx_lock(&p->mtx);
@@ -838,6 +839,9 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	int      niov;
 	nni_iov  iov[3];
 	uint8_t  qos;
+
+	persistence_type persist = p->conf->persist;
+
 	qos = NANO_NNI_LMQ_GET_QOS_BITS(msg);
 	// qos default to 0 if the msg is not PUBLISH
 	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
@@ -930,14 +934,15 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			nni_msg *old;
 			// packetid in aio to differ resend msg
 			// TODO replace it with set prov data
-			pid = (uint8_t)nni_aio_get_prov_data(aio);
+			pid = (uint16_t)(size_t) nni_aio_get_prov_data(aio);
 			if (pid == 0) {
 				// first time send this msg
 				pid = nni_pipe_inc_packetid(pipe);
 				// store msg for qos retrying
 				nni_msg_clone(msg);
-				if ((old = nni_qos_db_get(pipe->nano_qos_db,
-				         pipe->p_id, pid)) != NULL) {
+				if ((old = nni_qos_db_get(persist,
+				         pipe->nano_qos_db, pipe->p_id,
+				         pid)) != NULL) {
 					// TODO packetid already exists.
 					// do we need to replace old with new
 					// one ? print warning to users
@@ -948,11 +953,11 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 					    NANO_NNI_LMQ_GET_MSG_POINTER(old);
 
 					nni_qos_db_remove_msg(
-					    pipe->nano_qos_db, old);
+					    persist, pipe->nano_qos_db, old);
 				}
 				old = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
-				nni_qos_db_set(
-				    pipe->nano_qos_db, pipe->p_id, pid, old);
+				nni_qos_db_set(persist, pipe->nano_qos_db,
+				    pipe->p_id, pid, old);
 			}
 			NNI_PUT16(var_extra, pid);
 			qlength += 2;
@@ -1038,7 +1043,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	uint16_t      pid;
 	uint32_t tprop_bytes, prop_bytes = 0, id_bytes = 0, property_len = 0;
 	size_t   tlen, rlen, mlen, hlen, qlength, plength;
-
+	persistence_type persist = p->conf->persist;
 
 	txaio   = p->txaio;
 	niov    = 0;
@@ -1151,13 +1156,13 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 				nni_msg *old;
 				// packetid in aio to differ resend msg
 				// TODO replace it with set prov data
-				pid = (uint8_t)nni_aio_get_prov_data(aio);
+				pid = (uint16_t) (size_t) nni_aio_get_prov_data(aio);
 				if (pid == 0) {
 					// first time send this msg
 					pid = nni_pipe_inc_packetid(pipe);
 					// store msg for qos retrying
 					nni_msg_clone(msg);
-					if ((old = nni_qos_db_get(
+					if ((old = nni_qos_db_get(persist,
 					         pipe->nano_qos_db, pipe->p_id,
 					         pid)) != NULL) {
 						// TODO packetid already
@@ -1171,13 +1176,14 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 						    NANO_NNI_LMQ_GET_MSG_POINTER(
 						        old);
 
-						nni_qos_db_remove_msg(
+						nni_qos_db_remove_msg(persist,
 						    pipe->nano_qos_db, old);
 					}
 					old = NANO_NNI_LMQ_PACKED_MSG_QOS(
 					    msg, qos);
-					nni_qos_db_set(pipe->nano_qos_db,
-					    pipe->p_id, pid, old);
+					nni_qos_db_set(persist,
+					    pipe->nano_qos_db, pipe->p_id, pid,
+					    old);
 				}
 				NNI_PUT16(var_extra, pid);
 				// copy packet id
@@ -1767,14 +1773,16 @@ tlstran_ep_get_url(void *arg, void *v, size_t *szp, nni_opt_type t)
 	return (rv);
 }
 
-static void
-tlstran_ep_set_conf(void *arg, void *v, size_t *sz, nni_opt_type t)
+static int
+tlstran_ep_set_conf(void *arg, const void *v, size_t sz, nni_opt_type t)
 {
 	tlstran_ep *ep = arg;
-
+	NNI_ARG_UNUSED(sz);
+	NNI_ARG_UNUSED(t);
 	nni_mtx_lock(&ep->mtx);
-	ep->conf = v;
+	ep->conf = (conf *) v;
 	nni_mtx_unlock(&ep->mtx);
+	return 0;
 }
 
 static int
