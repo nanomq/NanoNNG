@@ -803,6 +803,18 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 		return;
 	}
 	if (p == NULL) {
+		// cache bridge message
+#if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
+		conf *config = s->conf;
+		if (config->bridge.bridge_mode && config->persist == sqlite) {
+			uint16_t packet_id =
+			    (uint16_t)(nng_random() % UINT16_MAX);
+			nni_mqtt_msg_set_packet_id(msg, packet_id);
+			nni_mqtt_msg_encode(msg);
+			nni_qos_db_set_client_msg(
+			    config->persist, s->sqlite_db, 0, packet_id, msg);
+		}
+#endif
 		// connection is lost or not established yet
 		if (!nni_list_active(&s->send_queue, ctx)) {
 			// cache ctx
