@@ -103,8 +103,11 @@ nni_mqtt_msg_encode(nni_msg *msg)
 	     i < sizeof(codec_handler) / sizeof(mqtt_msg_codec_handler); i++) {
 		if (codec_handler[i].packet_type ==
 		    mqtt->fixed_header.common.packet_type) {
+			if (!mqtt->initialized) {
+				mqtt->initialized = true;
+				mqtt->is_copied   = true;
+			}
 			mqtt->is_decoded = false;
-			mqtt->is_copied  = true;
 			return codec_handler[i].encode(msg);
 		}
 	}
@@ -127,7 +130,10 @@ nni_mqtt_msg_decode(nni_msg *msg)
 		if (codec_handler[i].packet_type ==
 		    mqtt->fixed_header.common.packet_type) {
 			mqtt_msg_content_free(mqtt);
-			mqtt->is_copied  = false;
+			if (!mqtt->initialized) {
+				mqtt->initialized = true;
+				mqtt->is_copied   = false;
+			}
 			mqtt->is_decoded = true;
 			return codec_handler[i].decode(msg);
 		}
@@ -200,7 +206,7 @@ nni_mqtt_msg_dup(void **dest, const void *src)
 
 	mqtt = NNI_ALLOC_STRUCT(mqtt);
 	memcpy(mqtt, (nni_mqtt_proto_data *) src, sizeof(nni_mqtt_proto_data));
-
+	mqtt->initialized = false;
 	switch (mqtt->fixed_header.common.packet_type) {
 	case NNG_MQTT_CONNECT:
 		if (mqtt->is_copied) {
@@ -334,6 +340,7 @@ destory_connect(nni_mqtt_proto_data *mqtt)
 {
 	if (mqtt->conn_ctx) {
 		nng_free(mqtt->conn_ctx, sizeof(conn_param));
+		mqtt->conn_ctx = NULL;
 	}
 	mqtt_buf_free(&mqtt->var_header.connect.protocol_name);
 	mqtt_buf_free(&mqtt->payload.connect.client_id);
