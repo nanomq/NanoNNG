@@ -229,7 +229,7 @@ nni_qos_db_set_client_msg(persistence_type type, void *db, uint32_t pipe_id,
 		break;
 	case memory:
 		NNI_ARG_UNUSED(pipe_id);
-		rv = nni_id_set((nni_id_map *) &db, packet_id, msg);
+		rv = nni_id_set((nni_id_map *) db, packet_id, msg);
 		break;
 	default:
 		break;
@@ -251,7 +251,7 @@ nni_qos_db_get_client_msg(
 		break;
 	case memory:
 		NNI_ARG_UNUSED(pipe_id);
-		msg = nni_id_get((nni_id_map *) &db, packet_id);
+		msg = nni_id_get((nni_id_map *) db, packet_id);
 		break;
 	default:
 		break;
@@ -272,7 +272,7 @@ nni_qos_db_remove_client_msg(
 		break;
 	case memory:
 		NNI_ARG_UNUSED(pipe_id);
-		nni_id_remove((nni_id_map *) &db, packet_id);
+		nni_id_remove((nni_id_map *) db, packet_id);
 		break;
 	default:
 		break;
