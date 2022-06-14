@@ -791,7 +791,6 @@ nni_mqtt_qos_db_get_client_offline_msg(sqlite3 *db, int64_t *row_id)
 
 	if (SQLITE_ROW == sqlite3_step(stmt)) {
 		*row_id        = sqlite3_column_int64(stmt, 0);
-		printf("get msg [%ld]\n", *row_id);
 		size_t   nbyte = (size_t) sqlite3_column_bytes16(stmt, 1);
 		uint8_t *bytes = sqlite3_malloc(nbyte);
 		memcpy(bytes, sqlite3_column_blob(stmt, 1), nbyte);
