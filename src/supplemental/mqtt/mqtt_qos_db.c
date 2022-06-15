@@ -1,8 +1,8 @@
 #include "mqtt_qos_db.h"
 #include "core/nng_impl.h"
 #include "nng/nng.h"
+#include "nng/supplemental/sqlite/sqlite3.h"
 #include "supplemental/mqtt/mqtt_msg.h"
-#include "supplemental/sqlite/sqlite3.h"
 
 #define table_main "t_main"
 #define table_msg "t_msg"

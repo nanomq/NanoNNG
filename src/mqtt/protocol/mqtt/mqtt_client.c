@@ -9,9 +9,9 @@
 
 #include "core/nng_impl.h"
 #include "nng/protocol/mqtt/mqtt.h"
+#include "nng/supplemental/sqlite/sqlite3.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 #include "supplemental/mqtt/mqtt_qos_db_api.h"
-#include "supplemental/sqlite/sqlite3.h"
 
 // MQTT client implementation.
 //
