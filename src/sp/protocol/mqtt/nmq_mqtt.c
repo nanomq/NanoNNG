@@ -820,6 +820,8 @@ nano_pipe_close(void *arg)
 			return;
 		}
 		nni_msg_set_conn_param(msg, p->conn_param);
+		// clone for notification pub
+		conn_param_clone(p->conn_param);
 		nni_msg_set_cmd_type(msg, CMD_DISCONNECT_EV);
 		nni_msg_set_pipe(msg, p->id);
 
