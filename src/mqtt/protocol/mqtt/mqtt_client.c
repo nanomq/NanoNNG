@@ -302,6 +302,7 @@ mqtt_pipe_fini(void *arg)
 }
 
 // Should be called with mutex lock hold. and it will unlock mtx.
+// flag indicates if need to skip msg in sqlite 1: check sqlite 0: only aio
 static inline void
 mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 {
@@ -314,32 +315,31 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 	nni_msg *        tmsg;
 	persistence_type persist = get_persist(s);
 
+	msg = nni_aio_get_msg(aio);
+	if (NULL == msg) {
 #if defined(NNG_HAVE_MQTT_BROKER)
-	conf *config = s->conf;
+		conf *config = s->conf;
 #if defined(NNG_SUPP_SQLITE)
-	if (config->persist == sqlite) {
-		int64_t row_id = 0;
+		if (config->persist == sqlite) {
+			int64_t row_id = 0;
 
-		msg = nni_mqtt_qos_db_get_client_offline_msg(
-		    s->sqlite_db, &row_id);
-		if (msg != NULL) {
-			nni_mqtt_qos_db_remove_client_offline_msg(
-			    s->sqlite_db, row_id);
-		} else {
-			msg = nni_aio_get_msg(aio);
+			msg = nni_mqtt_qos_db_get_client_offline_msg(
+			    s->sqlite_db, &row_id);
+			if (msg != NULL) {
+				nni_mqtt_qos_db_remove_client_offline_msg(
+				    s->sqlite_db, row_id);
+			} else {
+				goto out;
+			}
 		}
-	} else if (config->persist == memory) {
-		msg = nni_aio_get_msg(aio);
-	}
 #else
-	msg = nni_aio_get_msg(aio);
-#endif
-#else
-	msg = nni_aio_get_msg(aio);
-#endif
-	if (!msg) {
 		goto out;
+#endif
+#else
+		goto out;
+#endif
 	}
+
 	ptype = nni_mqtt_msg_get_packet_type(msg);
 	switch (ptype) {
 	case NNG_MQTT_CONNECT:
