@@ -93,7 +93,7 @@ struct mqtt_sock_s {
 	mqtt_ctx_t      master; // to which we delegate send/recv calls
 	mqtt_pipe_t *   mqtt_pipe;
 	nni_list        recv_queue; // ctx pending to receive
-	nni_list        send_queue; // ctx pending to send
+	nni_list        send_queue; // ctx pending to send (only offline msg)
 #ifdef NNG_SUPP_SQLITE
 	sqlite3 *sqlite_db;
 #endif
@@ -842,19 +842,20 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 			conf *config = s->conf;
 			if (config->bridge.bridge_mode &&
 			    config->persist == sqlite) {
+				// the msg order is exactly as same as the ctx in send_queue
 				nni_mqtt_qos_db_set_client_offline_msg(
 				    s->sqlite_db, msg);
 				nni_aio_set_msg(ctx->saio, NULL);
 			}
 #endif
 			nni_mtx_unlock(&s->mtx);
-			debug_msg("WARNING:client sending msg before connection! cached");
+			debug_msg("WARNING:client sending msg while disconnected! cached");
 		} else {
 			nni_msg_free(msg);
 			nni_mtx_unlock(&s->mtx);
 			nni_aio_set_msg(aio, NULL);
 			nni_aio_finish_error(aio, NNG_ECLOSED);
-			debug_msg("WARNING:client sending msg before connection! dropped");
+			debug_msg("WARNING:client sending msg while disconnected! dropped");
 		}
 		return;
 	}
