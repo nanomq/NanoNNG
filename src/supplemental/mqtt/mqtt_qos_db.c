@@ -750,6 +750,14 @@ nni_mqtt_qos_db_get_one_client_msg(sqlite3 *db, uint64_t *id, uint16_t *packet_i
 	return msg;
 }
 
+/**
+ * @brief serialize msg into sqlite db as KV, and free the original msg no
+ *        matter it is successed or not
+ * 	  only use this with mqtt_ctx
+ * @param db 
+ * @param msg 
+ * @return int 
+ */
 int
 nni_mqtt_qos_db_set_client_offline_msg(sqlite3 *db, nni_msg *msg)
 {
@@ -760,6 +768,7 @@ nni_mqtt_qos_db_set_client_offline_msg(sqlite3 *db, nni_msg *msg)
 
 	if (!blob) {
 		printf("nni_mqtt_msg_serialize failed\n");
+		nni_msg_free(msg);
 		return -1;
 	}
 
