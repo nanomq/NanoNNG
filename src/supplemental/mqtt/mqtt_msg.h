@@ -223,7 +223,8 @@ typedef struct mqtt_msg_t {
 	                         jump the point where the actual data starts */
 	bool is_decoded : 1; /* message is obtained from decoded or encoded */
 	bool is_copied : 1;  /* indicates string or array members are copied */
-	uint8_t _unused : 2;
+	bool initialized : 1; /* message is decoded or encoded*/
+	uint8_t _unused : 1;
 
 	conn_param *conn_ctx;
 } mqtt_msg;
@@ -269,8 +270,8 @@ extern int mqtt_msg_dump(mqtt_msg *, mqtt_buf *, mqtt_buf *, bool);
 // nni_msg proto_data alloc/free
 extern int  nni_mqtt_msg_proto_data_alloc(nni_msg *);
 extern void nni_mqtt_msg_proto_data_free(nni_msg *);
-extern int  nni_mqtt_msg_free(void *self);
-extern int  nni_mqtt_msg_dup(void **dest, const void *src);
+extern int  nni_mqtt_msg_free(void *);
+extern int  nni_mqtt_msg_dup(void **, const void *);
 
 // mqtt message alloc/encode/decode
 extern int nni_mqtt_msg_alloc(nni_msg **, size_t);

@@ -8,6 +8,7 @@
 #define table_msg "t_msg"
 #define table_pipe_client "t_pipe_client"
 #define table_client_msg "t_client_msg"
+#define table_client_offline_msg "t_client_offline_msg"
 
 static uint8_t *nni_msg_serialize(nni_msg *msg, size_t *out_len);
 static nni_msg *nni_msg_deserialize(uint8_t *bytes, size_t len);
@@ -17,6 +18,8 @@ static nni_msg *nni_mqtt_msg_deserialize(
 static int      create_msg_table(sqlite3 *db);
 static int      create_pipe_client_table(sqlite3 *db);
 static int      create_main_table(sqlite3 *db);
+static int      create_client_msg_table(sqlite3 *db);
+static int      create_client_offline_msg_table(sqlite3 *db);
 
 static int64_t get_id_by_msg(sqlite3 *db, nni_msg *msg);
 static int64_t insert_msg(sqlite3 *db, nni_msg *msg);
@@ -38,6 +41,16 @@ create_client_msg_table(sqlite3 *db)
 	             " (id INTEGER PRIMARY KEY AUTOINCREMENT, "
 	             "  packet_id INTEGER NOT NULL, "
 	             "  pipe_id INTEGER NOT NULL, "
+	             "  data BLOB)";
+
+	return sqlite3_exec(db, sql, 0, 0, 0);
+}
+
+static int
+create_client_offline_msg_table(sqlite3 *db)
+{
+	char sql[] = "CREATE TABLE IF NOT EXISTS " table_client_offline_msg ""
+	             " (id INTEGER PRIMARY KEY AUTOINCREMENT, "
 	             "  data BLOB)";
 
 	return sqlite3_exec(db, sql, 0, 0, 0);
@@ -98,6 +111,9 @@ nni_mqtt_qos_db_init(sqlite3 **db, const char *db_name, bool is_broker)
 			}
 		} else {
 			if (create_client_msg_table(*db) != 0) {
+				return;
+			}
+			if (create_client_offline_msg_table(*db) != 0) {
 				return;
 			}
 		}
@@ -597,7 +613,7 @@ nni_mqtt_qos_db_set_client_msg(
     sqlite3 *db, uint32_t pipe_id, uint16_t packet_id, nni_msg *msg)
 {
 	char sql[] =
-	    "INSERT INTO " table_client_msg " (pipe_id, packet_id, data ) "
+	    "INSERT INTO " table_client_msg " ( pipe_id, packet_id, data ) "
 	    "VALUES (?, ?, ?)";
 	size_t   len  = 0;
 	uint8_t *blob = nni_mqtt_msg_serialize(msg, &len);
@@ -734,6 +750,91 @@ nni_mqtt_qos_db_get_one_client_msg(sqlite3 *db, uint64_t *id, uint16_t *packet_i
 	return msg;
 }
 
+int
+nni_mqtt_qos_db_set_client_offline_msg(sqlite3 *db, nni_msg *msg)
+{
+	char sql[] = "INSERT INTO " table_client_offline_msg " ( data ) "
+	             "VALUES ( ? )";
+	size_t   len  = 0;
+	uint8_t *blob = nni_mqtt_msg_serialize(msg, &len);
+
+	if (!blob) {
+		printf("nni_mqtt_msg_serialize failed\n");
+		return -1;
+	}
+
+	sqlite3_stmt *stmt;
+	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
+	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
+	sqlite3_reset(stmt);
+	sqlite3_bind_blob64(stmt, 1, blob, len, SQLITE_TRANSIENT);
+	sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
+	nng_free(blob, len);
+	int rv = sqlite3_exec(db, "COMMIT;", 0, 0, 0);
+	nni_msg_free(msg);
+	return rv;
+}
+
+nng_msg *
+nni_mqtt_qos_db_get_client_offline_msg(sqlite3 *db, int64_t *row_id)
+{
+	nni_msg *     msg = NULL;
+	sqlite3_stmt *stmt;
+
+	char sql[] = "SELECT id, data FROM " table_client_offline_msg
+	             " ORDER BY id ASC LIMIT 1 ";
+
+	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
+	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
+	sqlite3_reset(stmt);
+
+	if (SQLITE_ROW == sqlite3_step(stmt)) {
+		*row_id        = sqlite3_column_int64(stmt, 0);
+		size_t   nbyte = (size_t) sqlite3_column_bytes16(stmt, 1);
+		uint8_t *bytes = sqlite3_malloc(nbyte);
+		memcpy(bytes, sqlite3_column_blob(stmt, 1), nbyte);
+		// deserialize blob data to nni_msg
+		msg = nni_mqtt_msg_deserialize(bytes, nbyte, false);
+		sqlite3_free(bytes);
+	}
+	sqlite3_finalize(stmt);
+	sqlite3_exec(db, "COMMIT;", 0, 0, 0);
+
+	return msg;
+}
+
+int
+nni_mqtt_qos_db_remove_client_offline_msg(sqlite3 *db, int64_t row_id)
+{
+	sqlite3_stmt *stmt;
+	char sql[] = "DELETE FROM " table_client_offline_msg " WHERE id = ?";
+	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
+	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
+	sqlite3_reset(stmt);
+
+	sqlite3_bind_int64(stmt, 1, row_id);
+	sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
+
+	return sqlite3_exec(db, "COMMIT;", 0, 0, 0);
+}
+
+int
+nni_mqtt_qos_db_remove_all_client_offline_msg(sqlite3 *db)
+{
+	sqlite3_stmt *stmt;
+	char sql[] = "DELETE FROM " table_client_offline_msg "";
+	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
+	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
+	sqlite3_reset(stmt);
+
+	sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
+
+	return sqlite3_exec(db, "COMMIT;", 0, 0, 0);
+}
+
 static uint8_t *
 nni_mqtt_msg_serialize(nni_msg *msg, size_t *out_len)
 {
@@ -838,7 +939,9 @@ nni_mqtt_msg_deserialize(uint8_t *bytes, size_t len, bool aio_available)
 	return msg;
 
 out:
-	nni_msg_free(msg);
+	if (msg) {
+		nni_msg_free(msg);
+	}
 	return NULL;
 }
 

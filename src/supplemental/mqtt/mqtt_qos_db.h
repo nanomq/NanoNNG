@@ -33,12 +33,21 @@
 **/
 
 /**
- client main_table
+ client msg_table
 ------------------------------------
 | id | pipe_id  | packet_id | data |
 ------------------------------------
 |    |          |           |      |
 ------------------------------------
+**/
+
+/**
+ client offline_msg_table
+----------------
+| id    | data |
+----------------
+|       |      |
+----------------
 **/
 
 #define MQTT_DB_GET_QOS_BITS(msg) ((size_t)(msg) &0x03)
@@ -75,4 +84,12 @@ extern void nni_mqtt_qos_db_remove_client_msg_by_id(sqlite3 *, uint64_t);
 extern nni_msg *nni_mqtt_qos_db_get_one_client_msg(
     sqlite3 *, uint64_t *, uint16_t *);
 extern void nni_mqtt_qos_db_reset_client_msg_pipe_id(sqlite3 *);
+
+extern int nni_mqtt_qos_db_set_client_offline_msg(sqlite3 *db, nni_msg *msg);
+extern nng_msg *nni_mqtt_qos_db_get_client_offline_msg(
+    sqlite3 *db, int64_t *row_id);
+extern int nni_mqtt_qos_db_remove_client_offline_msg(
+    sqlite3 *db, int64_t row_id);
+extern int nni_mqtt_qos_db_remove_all_client_offline_msg(sqlite3 *db);
+
 #endif

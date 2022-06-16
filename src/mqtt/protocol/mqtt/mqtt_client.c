@@ -164,6 +164,8 @@ mqtt_sock_set_conf_with_db(void *arg, const void *v, size_t sz, nni_opt_type t)
 			nni_qos_db_init_sqlite(s->sqlite_db, DB_NAME, false);
 			nni_qos_db_reset_client_msg_pipe_id(
 			    s->conf->persist, s->sqlite_db);
+			nni_mqtt_qos_db_remove_all_client_offline_msg(
+			    s->sqlite_db);
 		}
 #endif
 		nni_mtx_unlock(&s->mtx);
@@ -303,16 +305,41 @@ mqtt_pipe_fini(void *arg)
 static inline void
 mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 {
-	mqtt_ctx_t *     ctx = arg;
-	mqtt_sock_t *    s   = ctx->mqtt_sock;
-	mqtt_pipe_t *    p   = s->mqtt_pipe;
-	uint16_t         ptype, packet_id;
+	mqtt_ctx_t *     ctx   = arg;
+	mqtt_sock_t *    s     = ctx->mqtt_sock;
+	mqtt_pipe_t *    p     = s->mqtt_pipe;
+	uint16_t         ptype = 0, packet_id = 0;
 	uint8_t          qos = 0;
 	nni_msg *        msg;
 	nni_msg *        tmsg;
 	persistence_type persist = get_persist(s);
 
-	msg   = nni_aio_get_msg(aio);
+#if defined(NNG_HAVE_MQTT_BROKER)
+	conf *config = s->conf;
+#if defined(NNG_SUPP_SQLITE)
+	if (config->persist == sqlite) {
+		int64_t row_id = 0;
+
+		msg = nni_mqtt_qos_db_get_client_offline_msg(
+		    s->sqlite_db, &row_id);
+		if (msg != NULL) {
+			nni_mqtt_qos_db_remove_client_offline_msg(
+			    s->sqlite_db, row_id);
+		} else {
+			msg = nni_aio_get_msg(aio);
+		}
+	} else if (config->persist == memory) {
+		msg = nni_aio_get_msg(aio);
+	}
+#else
+	msg = nni_aio_get_msg(aio);
+#endif
+#else
+	msg = nni_aio_get_msg(aio);
+#endif
+	if (!msg) {
+		goto out;
+	}
 	ptype = nni_mqtt_msg_get_packet_type(msg);
 	switch (ptype) {
 	case NNG_MQTT_CONNECT:
@@ -378,6 +405,7 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 	if (0 != nni_lmq_put(&p->send_messages, msg)) {
 		nni_println("Warning! msg lost due to busy socket");
 	}
+out:
 	nni_mtx_unlock(&s->mtx);
 	if (0 == qos && ptype != NNG_MQTT_SUBSCRIBE &&
 	    ptype != NNG_MQTT_UNSUBSCRIBE) {
@@ -809,6 +837,16 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 			ctx->saio = aio;
 			ctx->raio = NULL;
 			nni_list_append(&s->send_queue, ctx);
+
+#if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
+			conf *config = s->conf;
+			if (config->bridge.bridge_mode &&
+			    config->persist == sqlite) {
+				nni_mqtt_qos_db_set_client_offline_msg(
+				    s->sqlite_db, msg);
+				nni_aio_set_msg(ctx->saio, NULL);
+			}
+#endif
 			nni_mtx_unlock(&s->mtx);
 			debug_msg("WARNING:client sending msg before connection! cached");
 		} else {
