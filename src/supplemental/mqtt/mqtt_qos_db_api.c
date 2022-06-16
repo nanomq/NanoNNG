@@ -119,7 +119,7 @@ nni_qos_db_remove_msg(persistence_type type, void *db, nng_msg *msg)
 		break;
 	case memory:
 		NNI_ARG_UNUSED(db);
-		NNI_ARG_UNUSED(msg);
+		nni_msg_free(msg);
 		break;
 	default:
 		break;
