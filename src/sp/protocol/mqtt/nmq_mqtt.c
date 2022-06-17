@@ -786,12 +786,10 @@ nano_pipe_close(void *arg)
 	nni_mtx_lock(&s->lk);
 	// we freed the conn_param when restoring pipe
 	// so check status of conn_param. just let it close silently
-	if (p->conn_param != NULL)
-		if (p->conn_param->clean_start == 0) {
-			// cache this pipe
-			clientid =
-			    (char *) conn_param_get_clientid(p->conn_param);
-		}
+	if (p->conn_param->clean_start == 0) {
+		// cache this pipe
+		clientid = (char *) conn_param_get_clientid(p->conn_param);
+	}
 	if (clientid) {
 		clientid_key = DJBHashn(clientid, strlen(clientid));
 		nni_id_set(&s->cached_sessions, clientid_key, p);
