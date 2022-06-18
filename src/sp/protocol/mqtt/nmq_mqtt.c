@@ -841,7 +841,6 @@ nano_pipe_close(void *arg)
 				}
 			}
 			nni_lmq_put(&s->waitlmq, msg);
-			printf("waitlmq");
 		}
 	}
 	nni_mtx_unlock(&s->lk);
@@ -1024,6 +1023,7 @@ nano_pipe_recv_cb(void *arg)
 		} else {
 			nni_msg_set_payload_ptr(msg, ptr + 2);
 		}
+		conn_param_clone(cparam);
 		break;
 	case CMD_DISCONNECT:
 		// TODO get & set reasoncode for app layer
