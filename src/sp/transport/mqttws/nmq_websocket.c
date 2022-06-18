@@ -235,14 +235,14 @@ done:
 				ack       = true;
 			}
 		} else if (nni_msg_cmd_type(smsg) == CMD_PUBREC) {
-			if (nmq_pubres_decode(msg, &packet_id, &reason_code, &prop,
+			if (nmq_pubres_decode(smsg, &packet_id, &reason_code, &prop,
 			        p->ws_param->pro_ver) != 0) {
 				debug_msg("decode PUBREC variable header failed!");
 			}
 			ack_cmd = CMD_PUBREL;
 			ack     = true;
 		} else if (nni_msg_cmd_type(smsg) == CMD_PUBREL) {
-			if (nmq_pubres_decode(msg, &packet_id, &reason_code, &prop,
+			if (nmq_pubres_decode(smsg, &packet_id, &reason_code, &prop,
 			        p->ws_param->pro_ver) != 0) {
 				debug_msg("decode PUBREL variable header failed!");
 			}
@@ -250,7 +250,7 @@ done:
 			ack     = true;
 			
 		} else if (nni_msg_cmd_type(smsg) == CMD_PUBACK || nni_msg_cmd_type(smsg) == CMD_PUBCOMP) {
-			if (nmq_pubres_decode(msg, &packet_id, &reason_code, &prop,
+			if (nmq_pubres_decode(smsg, &packet_id, &reason_code, &prop,
 			        p->ws_param->pro_ver) != 0) {
 				debug_msg("decode PUBACK or PUBCOMP variable header "
 				          "failed!");
