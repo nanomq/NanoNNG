@@ -56,7 +56,7 @@ int     conn_param_alloc(conn_param **cparam);
 void    conn_param_free(conn_param *cparam);
 void    conn_param_clone(conn_param *cparam);
 int     fixed_header_adaptor(uint8_t *packet, nng_msg *dst);
-int     ws_fixed_header_adaptor(uint8_t *packet, nng_msg *dst);
+int     ws_msg_adaptor(uint8_t *packet, nng_msg *dst);
 
 // parser
 NNG_DECL uint8_t put_var_integer(uint8_t *dest, uint32_t value);

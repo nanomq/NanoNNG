@@ -431,7 +431,7 @@ fixed_header_adaptor(uint8_t *packet, nng_msg *dst)
  * @return int
  */
 int
-ws_fixed_header_adaptor(uint8_t *packet, nng_msg *dst)
+ws_msg_adaptor(uint8_t *packet, nng_msg *dst)
 {
 	nni_msg *m;
 	int      rv;
