@@ -177,6 +177,9 @@ done:
 				conn_param_free(p->ws_param);
 				goto reset;
 			}
+			if (p->ws_param->pro_ver == 5) {
+				p->qsend_quota = p->ws_param->rx_max;
+			}
 			if (p->ws_param->max_packet_size == 0) {
 				// set default max packet size for client
 				p->ws_param->max_packet_size =
@@ -184,20 +187,18 @@ done:
 			}
 			nni_msg_free(p->tmp_msg);
 			p->tmp_msg = NULL;
-			nni_aio_set_msg(uaio, smsg);
+			// nni_aio_set_msg(uaio, smsg);
 			nni_aio_set_output(uaio, 0, p);
-			// let pipe_start_cb in protocol layer deal with
-			// CONNACK
+			// pipe_start_cb send CONNACK
 			nni_aio_finish(uaio, 0, 0);
 			nni_mtx_unlock(&p->mtx);
-
 			return;
 		} else {
 			if (nni_msg_alloc(&smsg, 0) != 0) {
 				goto reset;
 			}
 			// parse fixed header
-			ws_fixed_header_adaptor(ptr, smsg);
+			ws_msg_adaptor(ptr, smsg);
 			// msg = p->tmp_msg;
 			nni_msg_free(p->tmp_msg);
 			p->tmp_msg = NULL;
@@ -390,7 +391,6 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	if (nni_msg_header_len(msg) > 0 &&
 	    nni_msg_get_type(msg) == CMD_PUBLISH) {
 		uint8_t      *body, *header, qos_pac;
-	
 		uint8_t       var_extra[2],
 		    fixheader[NNI_NANO_MAX_HEADER_SIZE] = { 0 },
 		    tmp[4]                              = { 0 };
@@ -408,6 +408,8 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 		mlen    = nni_msg_len(msg);
 		qos_pac = nni_msg_get_pub_qos(msg);
 		NNI_GET16(body, tlen);
+
+		nni_msg_alloc(&smsg, 0);
 
 		if (nni_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
 			// V5 to V4 shrink msg, remove property length
@@ -452,6 +454,7 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 		rlen = put_var_integer(
 		    tmp, get_var_integer(header, &pos) + len_offset - plength);
 		memcpy(fixheader + 1, tmp, rlen);
+		nni_msg_header_append(smsg, fixheader, rlen+1);
 
 		// 1st part of variable header: topic
 
@@ -492,11 +495,7 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 		} else if (qos_pac > 0) {
 			len_offset += 2;
 		}
-
-
-		nni_msg_alloc(&smsg, 0);
-		nni_msg_header_append(smsg, fixheader, rlen + 1);
-		nni_msg_append(smsg, body, tlen + 2);
+		nni_msg_append(smsg, body, 2+ tlen);
 		if (qos > 0) {
 			// packetid
 			nni_msg_append(smsg, var_extra, 2);

@@ -786,12 +786,10 @@ nano_pipe_close(void *arg)
 	nni_mtx_lock(&s->lk);
 	// we freed the conn_param when restoring pipe
 	// so check status of conn_param. just let it close silently
-	if (p->conn_param != NULL)
-		if (p->conn_param->clean_start == 0) {
-			// cache this pipe
-			clientid =
-			    (char *) conn_param_get_clientid(p->conn_param);
-		}
+	if (p->conn_param->clean_start == 0) {
+		// cache this pipe
+		clientid = (char *) conn_param_get_clientid(p->conn_param);
+	}
 	if (clientid) {
 		clientid_key = DJBHashn(clientid, strlen(clientid));
 		nni_id_set(&s->cached_sessions, clientid_key, p);
@@ -832,8 +830,7 @@ nano_pipe_close(void *arg)
 			nni_list_remove(&s->recvq, ctx);
 			nni_mtx_unlock(&s->lk);
 			nni_aio_set_msg(aio, msg);
-			// must be sync due to conn_param racing.
-			nni_aio_finish_sync(aio, 0, nni_msg_len(msg));
+			nni_aio_finish(aio, 0, nni_msg_len(msg));
 			return;
 		} else {
 			// no enough ctx, so cache to waitlmq
@@ -920,7 +917,7 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 		nni_mtx_unlock(&s->lk);
 		debug_msg("handle msg in waitlmq.");
 		nni_aio_set_msg(aio, msg);
-		nni_aio_finish_sync(aio, 0, nni_msg_len(msg));
+		nni_aio_finish(aio, 0, nni_msg_len(msg));
 		return;
 	}
 
@@ -1026,6 +1023,7 @@ nano_pipe_recv_cb(void *arg)
 		} else {
 			nni_msg_set_payload_ptr(msg, ptr + 2);
 		}
+		conn_param_clone(cparam);
 		break;
 	case CMD_DISCONNECT:
 		// TODO get & set reasoncode for app layer
