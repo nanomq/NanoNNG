@@ -1026,7 +1026,9 @@ nano_pipe_recv_cb(void *arg)
 		conn_param_clone(cparam);
 		break;
 	case CMD_DISCONNECT:
-		// TODO get & set reasoncode for app layer
+		if (p->conn_param) {
+			p->conn_param->will_flag = 0;
+		}
 		p->reason_code = 0x00;
 		nni_pipe_close(p->pipe);
 		break;
@@ -1061,6 +1063,7 @@ nano_pipe_recv_cb(void *arg)
 
 	if (p->closed) {
 		// If we are closed, then we can't return data.
+		// This drops DISCONNECT packet.
 		nni_aio_set_msg(&p->aio_recv, NULL);
 		nni_msg_free(msg);
 		debug_msg("ERROR: pipe is closed abruptly!!");
