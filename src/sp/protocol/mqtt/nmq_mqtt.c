@@ -1034,8 +1034,6 @@ nano_pipe_recv_cb(void *arg)
 	case CMD_PUBLISH:
 		// clone for application layer
 		conn_param_clone(cparam);
-	case CMD_PINGREQ:
-		// Websocket need to reply PINGREQ in application layer
 		break;
 	case CMD_PUBACK:
 	case CMD_PUBCOMP:
@@ -1055,6 +1053,7 @@ nano_pipe_recv_cb(void *arg)
 	case CMD_CONNECT:
 	case CMD_PUBREC:
 	case CMD_PUBREL:
+	case CMD_PINGREQ:
 		goto drop;
 	default:
 		goto drop;
