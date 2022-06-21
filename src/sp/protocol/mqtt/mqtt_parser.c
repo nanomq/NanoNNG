@@ -1338,6 +1338,35 @@ nmq_msgack_encode(nng_msg *msg, uint16_t packet_id, uint8_t reason_code,
 	return MQTT_SUCCESS;
 }
 
+static int
+nmq_subinfol_add_or(nni_list *l, struct subinfo *n)
+{
+	struct subinfo *sn = NULL;
+	NNI_LIST_FOREACH(l, sn) {
+		if (0 == strcmp(n->topic, sn->topic)) {
+			return -1;
+		}
+	}
+	nni_list_append(l, n);
+	return 0;
+}
+
+static void *
+nmq_subinfol_rm_or(nni_list *l, struct subinfo *n)
+{
+	struct subinfo *sn = NULL;
+	NNI_LIST_FOREACH(l, sn) {
+		if (0 == strcmp(n->topic, sn->topic)) {
+			break;
+		}
+	}
+	if (sn) {
+		nni_list_remove(l, sn);
+		return sn;
+	}
+	return NULL;
+}
+
 /**
  * @brief decode sub for subid, topics and RAP to subinfol
  * 	  warning only use with sub msg & V5 client
@@ -1412,11 +1441,15 @@ nmq_subinfo_decode(nng_msg *msg, void *l)
 		bpos += len_of_topic;
 
 		sn->subid = subid;
-		sn->rap   = (uint8_t) ((0x08 & *(payload_ptr + bpos)) > 0);
-		sn->qos   = (uint8_t) ((0x03 & *(payload_ptr + bpos)));
+		// qos no_local rap retain_handling
+		memcpy(sn, payload_ptr + bpos, 1);
 		NNI_LIST_NODE_INIT(&sn->node);
 
-		nni_list_append(ll, sn);
+		if (0 != nmq_subinfol_add_or(ll, sn)) {
+			// already exists
+			nng_free(sn->topic, strlen(sn->topic));
+			nng_free(sn, sizeof(*sn));
+		}
 
 		debug_msg("sub topic: %s subid: %d rap: %d \n", sn->topic,
 		    sn->subid, sn->rap);
@@ -1442,7 +1475,7 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l)
 	uint8_t         len_of_topic = 0, *payload_ptr, *var_ptr;
 	uint32_t        num = 0, len, len_of_varint = 0, len_of_str = 0;
 	size_t          bpos = 0, remain = 0;
-	struct subinfo *sn = NULL;
+	struct subinfo *sn = NULL, *sn2, snode;
 	nni_list       *ll = l;
 
 	if (!l || !msg)
@@ -1491,14 +1524,9 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l)
 
 		bpos += len_of_topic;
 
-		sn = NULL;
-		NNI_LIST_FOREACH(ll, sn) {
-			if (0 == strcmp(topic, sn->topic)) {
-				nni_list_remove(ll, sn);
-				break;
-			}
-		}
-		if (sn) {
+		snode.topic = topic;
+		sn = &snode;
+		if (NULL != (sn2 = nmq_subinfol_rm_or(ll, sn))) {
 			debug_msg("Topic %s free from subinfol", sn->topic);
 			nng_free(sn->topic, strlen(sn->topic));
 			nng_free(sn, sizeof(*sn));
