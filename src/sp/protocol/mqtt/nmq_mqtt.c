@@ -385,8 +385,6 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	bool is_sqlite = s->conf->sqlite.enable;
 
 	msg = nni_aio_get_msg(aio);
-	qos = NANO_NNI_LMQ_GET_QOS_BITS(msg);
-	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
 
 	if (nni_aio_begin(aio) != 0) {
 		nni_msg_free(msg);
@@ -425,15 +423,27 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	nni_mtx_lock(&p->lk);
 	nni_mtx_unlock(&s->lk);
 
+	// Here we find the node from subinfol which has same topic with pubmsg
+	struct subinfo *sn = NULL;
+	char *_topic = nni_msg_get_pub_topic(msg, &topic_len);
+	char *topic = strndup(_topic, topic_len);
+	NNI_LIST_FOREACH(p->pipe->subinfol, sn) {
+		if (0 == strcmp(topic, sn->topic))
+			break;
+	}
+	nng_free(topic, topic_len);
+
+	// Not find if sn is null
+	if (!sn) {
+		nni_mtx_unlock(&p->lk);
+		nni_aio_set_msg(aio, NULL);
+		debug_syslog("not find the node in subinfol.");
+		return;
+	}
+
+	qos = sn->qos;
 	// No local
 	if (pipe != 0 && p->conn_param->pro_ver == MQTT_VERSION_V5) {
-		struct subinfo *sn = NULL;
-		char *_topic = nni_msg_get_topic(msg, &topic_len);
-		char *topic = strndup(_topic, topic_len);
-		NNI_LIST_FOREACH(p->pipe->subinfol, sn) {
-			if (0 == strcmp(topic, sn->topic))
-				break;
-		}
 		if (sn && sn->no_local) {
 			nni_mtx_unlock(&p->lk);
 			nni_aio_set_msg(aio, NULL);

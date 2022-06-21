@@ -783,7 +783,7 @@ nni_msg_get_pub_pid(nni_msg *m)
  * @return uint8_t
  */
 char *
-nni_msg_get_topic(nni_msg *m, int *topic_len)
+nni_msg_get_pub_topic(nni_msg *m, int *topic_len)
 {
 	uint8_t *pos, len;
 
