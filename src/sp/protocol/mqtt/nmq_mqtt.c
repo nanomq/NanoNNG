@@ -192,7 +192,8 @@ nano_pipe_timer_cb(void *arg)
 	nni_time         time;
 	nni_pipe *       npipe = p->pipe;
 	uint16_t         pid;
-	persistence_type persist = p->broker->conf->persist;
+
+	bool is_sqlite = p->broker->conf->sqlite.enable;
 
 	if (nng_aio_result(&p->aio_timer) != 0) {
 		return;
@@ -225,20 +226,24 @@ nano_pipe_timer_cb(void *arg)
 					old->event       = true;
 					old->pipe->cache = false;
 #ifdef NNG_SUPP_SQLITE
-					if (persist == sqlite) {
+					if (is_sqlite) {
 						nni_qos_db_remove_by_pipe(
-						    persist, old->nano_qos_db,
+						    is_sqlite,
+						    old->nano_qos_db,
 						    old->pipe->p_id);
-						nni_qos_db_remove_pipe(persist,
+						nni_qos_db_remove_pipe(
+						    is_sqlite,
 						    old->nano_qos_db,
 						    old->pipe->p_id);
 						nni_qos_db_remove_unused_msg(
-						    persist, old->nano_qos_db);
+						    is_sqlite,
+						    old->nano_qos_db);
 					}
 #endif
-					if (persist == memory) {
+					if (!is_sqlite) {
 						nni_qos_db_remove_all_msg(
-						    persist, old->nano_qos_db,
+						    is_sqlite,
+						    old->nano_qos_db,
 						    nmq_close_unack_msg_cb);
 						nni_id_remove(
 						    &s->cached_sessions,
@@ -265,7 +270,8 @@ nano_pipe_timer_cb(void *arg)
 	p->ka_refresh++;
 
 	if (!p->busy) {
-		msg = nni_qos_db_get_one(persist, npipe->nano_qos_db, npipe->p_id, &pid);
+		msg = nni_qos_db_get_one(
+		    is_sqlite, npipe->nano_qos_db, npipe->p_id, &pid);
 		if (msg != NULL) {
 			rmsg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
 			time = nni_msg_get_timestamp(rmsg);
@@ -284,10 +290,10 @@ nano_pipe_timer_cb(void *arg)
 				// TODO use dup field to check if msg is being
 				// resend
 				//  only remove msg from qos_db when get ack
-				nni_qos_db_remove(persist, npipe->nano_qos_db,
-				    npipe->p_id, pid);
+				nni_qos_db_remove(is_sqlite,
+				    npipe->nano_qos_db, npipe->p_id, pid);
 				nni_qos_db_remove_unused_msg(
-				    persist, npipe->nano_qos_db);
+				    is_sqlite, npipe->nano_qos_db);
 			}
 		}
 	}
@@ -375,7 +381,8 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	uint32_t         pipe;
 	uint8_t          qos = 0, qos_pac;
 	uint16_t         packetid;
-	persistence_type persist = s->conf->persist;
+
+	bool is_sqlite = s->conf->sqlite.enable;
 
 	msg = nni_aio_get_msg(aio);
 	qos = NANO_NNI_LMQ_GET_QOS_BITS(msg);
@@ -424,7 +431,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		if (qos > 0 && qos_pac > 0) {
 			msg      = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
 			packetid = nni_pipe_inc_packetid(p->pipe);
-			nni_qos_db_set(persist, p->pipe->nano_qos_db,
+			nni_qos_db_set(is_sqlite, p->pipe->nano_qos_db,
 			    p->pipe->p_id, packetid, msg);
 		} else {
 			nni_msg_free(msg);
@@ -485,7 +492,7 @@ nano_sock_fini(void *arg)
 {
 	nano_sock *s = arg;
 #ifdef NNG_SUPP_SQLITE
-	if (s->conf->persist == sqlite) {
+	if (s->conf->sqlite.enable) {
 		nni_qos_db_fini_sqlite(s->sqlite_db);
 	}
 #endif
@@ -573,7 +580,7 @@ nano_pipe_fini(void *arg)
 
 	// TODO safely free the msgs in qos_db
 	if (p->event == true) {
-		if (p->broker->conf->persist == memory) {
+		if (!p->broker->conf->sqlite.enable) {
 			nni_qos_db_fini_id_hash(nano_qos_db);
 		}
 	} else {
@@ -626,7 +633,8 @@ nano_pipe_start(void *arg)
 	char      *clientid;
 	uint32_t   clientid_key;
 	nano_pipe *old = NULL;
-	persistence_type persist = s->conf->persist;
+
+	bool is_sqlite = s->conf->sqlite.enable;
 
 	debug_msg(" ########## nano_pipe_start ########## ");
 	nni_msg_alloc(&msg, 0);
@@ -634,7 +642,7 @@ nano_pipe_start(void *arg)
 
 	clientid = (char *) conn_param_get_clientid(p->conn_param);
 #ifdef NNG_SUPP_SQLITE
-	if (persist == sqlite) {
+	if (is_sqlite) {
 		npipe->nano_qos_db = s->sqlite_db;
 		p->nano_qos_db     = s->sqlite_db;
 	}
@@ -650,7 +658,7 @@ nano_pipe_start(void *arg)
 			p->pipe->packet_id = old->pipe->packet_id;
 			// there should be no msg in this map
 
-			if (persist == memory) {
+			if (!is_sqlite) {
 				nni_qos_db_fini_id_hash(p->pipe->nano_qos_db);
 			}
 
@@ -672,16 +680,17 @@ nano_pipe_start(void *arg)
 			old->event       = true;
 			old->pipe->cache = false;
 #ifdef NNG_SUPP_SQLITE
-			if (persist == sqlite) {
-				nni_qos_db_remove_by_pipe(persist,
+			if (is_sqlite) {
+				nni_qos_db_remove_by_pipe(is_sqlite,
 				    old->nano_qos_db, old->pipe->p_id);
-				nni_qos_db_remove_pipe(persist,
+				nni_qos_db_remove_pipe(is_sqlite,
 				    old->nano_qos_db, old->pipe->p_id);
-				nni_qos_db_remove_unused_msg(persist, old->nano_qos_db);
+				nni_qos_db_remove_unused_msg(
+				    is_sqlite, old->nano_qos_db);
 			}
 #endif
-			if (persist == memory) {
-				nni_qos_db_remove_all_msg(persist,
+			if (!is_sqlite) {
+				nni_qos_db_remove_all_msg(is_sqlite,
 				    old->nano_qos_db, nmq_close_unack_msg_cb);
 				nni_id_remove(
 				    &s->cached_sessions, clientid_key);
@@ -689,9 +698,9 @@ nano_pipe_start(void *arg)
 		}
 	}
 #ifdef NNG_SUPP_SQLITE
-	if (persist == sqlite) {
+	if (is_sqlite) {
 		nni_qos_db_set_pipe(
-		    persist, p->pipe->nano_qos_db, p->id, clientid);
+		    is_sqlite, p->pipe->nano_qos_db, p->id, clientid);
 	}
 #endif
 	nni_id_set(&s->pipes, p->id, p);
@@ -979,7 +988,7 @@ nano_pipe_recv_cb(void *arg)
 	int              rv;
 	uint16_t         ackid;
 
-	persistence_type persist = s->conf->persist;
+	bool is_sqlite = s->conf->sqlite.enable;
 
 	if ((rv = nni_aio_result(&p->aio_recv)) != 0) {
 		// unexpected disconnect
@@ -1041,13 +1050,13 @@ nano_pipe_recv_cb(void *arg)
 	case CMD_PUBCOMP:
 		nni_mtx_lock(&p->lk);
 		NNI_GET16(ptr, ackid);
-		if ((qos_msg = nni_qos_db_get(persist, npipe->nano_qos_db,
+		if ((qos_msg = nni_qos_db_get(is_sqlite, npipe->nano_qos_db,
 		         npipe->p_id, ackid)) != NULL) {
 			qos_msg = NANO_NNI_LMQ_GET_MSG_POINTER(qos_msg);
 			nni_qos_db_remove_msg(
-			    persist, npipe->nano_qos_db, qos_msg);
+			    is_sqlite, npipe->nano_qos_db, qos_msg);
 			nni_qos_db_remove(
-			    persist, npipe->nano_qos_db, npipe->p_id, ackid);
+			    is_sqlite, npipe->nano_qos_db, npipe->p_id, ackid);
 		} else {
 			debug_syslog("qos msg not found!");
 		}
@@ -1187,9 +1196,9 @@ nano_sock_setdb(void *arg, void *data)
 	conf_auth_http_parse(s->conf);
 
 #ifdef NNG_SUPP_SQLITE
-	if (s->conf->persist == sqlite) {
+	if (s->conf->sqlite.enable) {
 		nni_qos_db_init_sqlite(s->sqlite_db, DB_NAME, true);
-		nni_qos_db_reset_pipe(s->conf->persist, s->sqlite_db);
+		nni_qos_db_reset_pipe(s->conf->sqlite.enable, s->sqlite_db);
 	}
 #endif
 }

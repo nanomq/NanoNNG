@@ -52,7 +52,7 @@ static void mqtt_ctx_init(void *arg, void *sock);
 static void mqtt_ctx_fini(void *arg);
 static void mqtt_ctx_send(void *arg, nni_aio *aio);
 static void mqtt_ctx_recv(void *arg, nni_aio *aio);
-static persistence_type get_persist(mqtt_sock_t *s);
+static bool get_persist(mqtt_sock_t *s);
 
 typedef nni_mqtt_packet_type packet_type_t;
 
@@ -134,8 +134,8 @@ mqtt_sock_fini(void *arg)
 {
 	mqtt_sock_t *s = arg;
 #if defined(NNG_SUPP_SQLITE) && defined(NNG_HAVE_MQTT_BROKER)
-	persistence_type persist = get_persist(s);
-	if (persist == sqlite) {
+	bool is_sqlite = get_persist(s);
+	if (is_sqlite) {
 		nni_qos_db_fini_sqlite(s->sqlite_db);
 	}
 #endif
@@ -160,10 +160,10 @@ mqtt_sock_set_conf_with_db(void *arg, const void *v, size_t sz, nni_opt_type t)
 		s->conf = (conf *) v;
 
 #ifdef NNG_SUPP_SQLITE
-		if (s->conf->persist == sqlite) {
+		if (s->conf->sqlite.enable) {
 			nni_qos_db_init_sqlite(s->sqlite_db, DB_NAME, false);
 			nni_qos_db_reset_client_msg_pipe_id(
-			    s->conf->persist, s->sqlite_db);
+			    s->conf->sqlite.enable, s->sqlite_db);
 			nni_mqtt_qos_db_remove_all_client_offline_msg(
 			    s->sqlite_db);
 		}
@@ -256,14 +256,14 @@ mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	// Packet IDs are 16 bits
 	// We start at a random point, to minimize likelihood of
 	// accidental collision across restarts.
-	persistence_type persist = get_persist(p->mqtt_sock);
+	bool is_sqlite = get_persist(p->mqtt_sock);
 
 #ifdef NNG_SUPP_SQLITE
-	if (persist == sqlite) {
+	if (is_sqlite) {
 		p->sent_unack = p->mqtt_sock->sqlite_db;
 	}
 #endif
-	if (persist == memory) {
+	if (!is_sqlite) {
 		nni_qos_db_init_id_hash_with_opt(
 		    p->sent_unack, 0x0000u, 0xffffu, true);
 	}
@@ -292,8 +292,8 @@ mqtt_pipe_fini(void *arg)
 	nni_aio_fini(&p->send_aio);
 	nni_aio_fini(&p->recv_aio);
 	nni_aio_fini(&p->time_aio);
-	persistence_type persist = get_persist(p->mqtt_sock);
-	if (persist == memory) {
+	bool is_sqlite = get_persist(p->mqtt_sock);
+	if (!is_sqlite) {
 		nni_qos_db_fini_id_hash(p->sent_unack);
 	}
 	nni_id_map_fini(&p->recv_unack);
@@ -313,16 +313,16 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 	uint8_t          qos = 0;
 	nni_msg *        msg;
 	nni_msg *        tmsg;
-	persistence_type persist = get_persist(s);
+
+	bool is_sqlite = get_persist(s);
 
 	msg = nni_aio_get_msg(aio);
 	if (NULL == msg) {
 #if defined(NNG_HAVE_MQTT_BROKER)
-		conf *config = s->conf;
+		conf_sqlite *sqlite = &s->conf->sqlite;
 #if defined(NNG_SUPP_SQLITE)
-		if (config->persist == sqlite) {
+		if (sqlite->enable) {
 			int64_t row_id = 0;
-
 			msg = nni_mqtt_qos_db_get_client_offline_msg(
 			    s->sqlite_db, &row_id);
 			if (msg != NULL) {
@@ -333,6 +333,7 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 			}
 		}
 #else
+		NNI_ARG_UNUSED(sqlite);
 		goto out;
 #endif
 #else
@@ -358,7 +359,7 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 		nni_mqtt_msg_set_packet_id(msg, packet_id);
 		nni_mqtt_msg_set_aio(msg, aio);
 		tmsg = nni_qos_db_get_client_msg(
-		    persist, p->sent_unack, nni_pipe_id(p->pipe), packet_id);
+		    is_sqlite, p->sent_unack, nni_pipe_id(p->pipe), packet_id);
 		if (tmsg != NULL) {
 			nni_plat_printf("Warning : msg %d lost due to "
 			                "packetID duplicated!",
@@ -368,11 +369,11 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 				nni_aio_finish_error(m_aio, NNG_EPROTO);
 			}
 			nni_msg_free(tmsg);
-			nni_qos_db_remove_client_msg(persist, p->sent_unack,
+			nni_qos_db_remove_client_msg(is_sqlite, p->sent_unack,
 			    nni_pipe_id(p->pipe), packet_id);
 		}
 		nni_msg_clone(msg);
-		if (nni_qos_db_set_client_msg(persist, p->sent_unack,
+		if (nni_qos_db_set_client_msg(is_sqlite, p->sent_unack,
 		        nni_pipe_id(p->pipe), packet_id, msg) != 0) {
 			// nni_println("Warning! Cache QoS msg failed");
 			nni_msg_free(msg);
@@ -476,8 +477,8 @@ mqtt_pipe_close(void *arg)
 	nni_lmq_flush(&p->recv_messages);
 	nni_lmq_flush(&p->send_messages);
 
-	persistence_type persist = get_persist(s);
-	if (persist == memory) {
+	bool is_sqlite = get_persist(s);
+	if (!is_sqlite) {
 		nni_id_map_foreach(p->sent_unack, mqtt_close_unack_msg_cb);
 	}
 
@@ -523,11 +524,14 @@ mqtt_timer_cb(void *arg)
 		return;
 	}
 	// start message resending
-	uint64_t         row_id  = 0;
-	persistence_type persist = get_persist(s);
-	msg = nni_qos_db_get_one_client_msg(persist, p->sent_unack, &row_id, &pid);
+	uint64_t row_id    = 0;
+	bool     is_sqlite = get_persist(s);
+
+	msg = nni_qos_db_get_one_client_msg(
+	    is_sqlite, p->sent_unack, &row_id, &pid);
 	if (msg != NULL) {
-		nni_qos_db_remove_client_msg_by_id(persist, p->sent_unack, row_id);
+		nni_qos_db_remove_client_msg_by_id(
+		    is_sqlite, p->sent_unack, row_id);
 		uint16_t ptype;
 		ptype = nni_mqtt_msg_get_packet_type(msg);
 		if (ptype == NNG_MQTT_PUBLISH) {
@@ -615,7 +619,8 @@ mqtt_recv_cb(void *arg)
 	nni_aio *        user_aio   = NULL;
 	nni_msg *        cached_msg = NULL;
 	mqtt_ctx_t *     ctx;
-	persistence_type persist = get_persist(s);
+
+	bool is_sqlite = get_persist(s);
 
 	if (nni_aio_result(&p->recv_aio) != 0) {
 		nni_pipe_close(p->pipe);
@@ -664,9 +669,9 @@ mqtt_recv_cb(void *arg)
 		// we have received a UNSUBACK, successful unsubscription
 		packet_id  = nni_mqtt_msg_get_packet_id(msg);
 		cached_msg = nni_qos_db_get_client_msg(
-		    persist, p->sent_unack, nni_pipe_id(p->pipe), packet_id);
+		    is_sqlite, p->sent_unack, nni_pipe_id(p->pipe), packet_id);
 		if (cached_msg != NULL) {
-			nni_qos_db_remove_client_msg(persist, p->sent_unack,
+			nni_qos_db_remove_client_msg(is_sqlite, p->sent_unack,
 			    nni_pipe_id(p->pipe), packet_id);
 			user_aio = nni_mqtt_msg_get_aio(cached_msg);
 			nni_msg_free(cached_msg);
@@ -841,8 +846,9 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 #if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
 			conf *config = s->conf;
 			if (config->bridge.bridge_mode &&
-			    config->persist == sqlite) {
-				// the msg order is exactly as same as the ctx in send_queue
+			    config->sqlite.enable) {
+				// the msg order is exactly as same as the ctx
+				// in send_queue
 				nni_mqtt_qos_db_set_client_offline_msg(
 				    s->sqlite_db, msg);
 				nni_aio_set_msg(ctx->saio, NULL);
@@ -909,14 +915,14 @@ wait:
 	return;
 }
 
-static inline persistence_type
+static inline bool
 get_persist(mqtt_sock_t *s)
 {
 #ifdef NNG_HAVE_MQTT_BROKER
-	return s->conf->persist;
+	return s->conf->sqlite.enable;
 #else
 	NNI_ARG_UNUSED(s);
-	return memory;
+	return false;
 #endif
 }
 
