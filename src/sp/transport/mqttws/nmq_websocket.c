@@ -399,7 +399,7 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	// qos default to 0 if the msg is not PUBLISH
 	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
 	nni_aio_set_msg(aio, msg);
-	persistence_type persist = p->conf->persist;
+	bool is_sqlite = p->conf->sqlite.enable;
 	// Recomposing
 	// never modify the original msg
 	if (nni_msg_header_len(msg) > 0 &&
@@ -486,7 +486,7 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 				pid = nni_pipe_inc_packetid(pipe);
 				// store msg for qos retrying
 				nni_msg_clone(msg);
-				if ((old = nni_qos_db_get(persist,
+				if ((old = nni_qos_db_get(is_sqlite,
 				         pipe->nano_qos_db, pipe->p_id,
 				         pid)) != NULL) {
 					// TODO packetid already exists.
@@ -499,10 +499,10 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 					    NANO_NNI_LMQ_GET_MSG_POINTER(old);
 
 					nni_qos_db_remove_msg(
-					    persist, pipe->nano_qos_db, old);
+					    is_sqlite, pipe->nano_qos_db, old);
 				}
 				old = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
-				nni_qos_db_set(persist, pipe->nano_qos_db,
+				nni_qos_db_set(is_sqlite, pipe->nano_qos_db,
 				    pipe->p_id, pid, old);
 			}
 			NNI_PUT16(var_extra, pid);
@@ -571,11 +571,12 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	int           len_offset = 0, sub_id = 0;
 	uint16_t      pid;
 	uint32_t tprop_bytes, prop_bytes = 0, id_bytes = 0, property_len = 0;
-	size_t   tlen, rlen, mlen, hlen, qlength, plength;
-	persistence_type persist = p->conf->persist;
+	size_t        tlen, rlen, mlen, hlen, qlength, plength;
+	bool          is_sqlite = p->conf->sqlite.enable;
+
 	body    = nni_msg_body(msg);
 	header  = nni_msg_header(msg);
-	niov 	= 0;
+	niov    = 0;
 	qlength = 0;
 	plength = 0;
 	mlen    = nni_msg_len(msg);
@@ -702,7 +703,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 					pid = nni_pipe_inc_packetid(pipe);
 					// store msg for qos retrying
 					nni_msg_clone(msg);
-					if ((old = nni_qos_db_get(persist,
+					if ((old = nni_qos_db_get(is_sqlite,
 					         pipe->nano_qos_db, pipe->p_id,
 					         pid)) != NULL) {
 						// TODO packetid already
@@ -716,12 +717,13 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 						    NANO_NNI_LMQ_GET_MSG_POINTER(
 						        old);
 
-						nni_qos_db_remove_msg(persist,
+						nni_qos_db_remove_msg(
+						    is_sqlite,
 						    pipe->nano_qos_db, old);
 					}
 					old = NANO_NNI_LMQ_PACKED_MSG_QOS(
 					    msg, qos);
-					nni_qos_db_set(persist,
+					nni_qos_db_set(is_sqlite,
 					    pipe->nano_qos_db, pipe->p_id, pid,
 					    old);
 				}
@@ -880,7 +882,7 @@ wstran_pipe_init(void *arg, nni_pipe *pipe)
 	nni_pipe_set_conn_param(pipe, p->ws_param);
 	p->npipe      = pipe;
 
-	if (p->conf->persist == memory) {
+	if (!p->conf->sqlite.enable) {
 		nni_qos_db_init_id_hash(pipe->nano_qos_db);
 	}
 

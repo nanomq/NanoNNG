@@ -7,11 +7,6 @@
 
 #ifdef NNG_HAVE_MQTT_BROKER
 #include "conf.h"
-#else
-typedef enum {
-	memory,
-	sqlite,
-} persistence_type;
 #endif
 
 #define nni_qos_db_init_sqlite(db, db_name, is_broker) \
@@ -35,123 +30,35 @@ typedef enum {
 		nni_id_map_init((nni_id_map *) db, lo, hi, randomize); \
 	}
 
-/*
-// #ifdef NNG_SUPP_SQLITE
-
-// #define nni_qos_db_set(db, pipe_id, packet_id, msg)              \
-// 	{                                                        \
-// 		nni_mqtt_qos_db_set(                             \
-// 		    (sqlite3 *) (db), pipe_id, packet_id, msg);  \
-// 		nni_msg_free(NANO_NNI_LMQ_GET_MSG_POINTER(msg)); \
-// 	}
-// #define nni_qos_db_get(db, pipe_id, packet_id) \
-// 	nni_mqtt_qos_db_get((sqlite3 *) (db), pipe_id, packet_id)
-// #define nni_qos_db_get_one(db, pipe_id, packet_id) \
-// 	nni_mqtt_qos_db_get_one(                   \
-// 	    (sqlite3 *) (db), pipe_id, (uint16_t *) &packet_id)
-// #define nni_qos_db_remove(db, pipe_id, packet_id) \
-// 	nni_mqtt_qos_db_remove((sqlite3 *) (db), pipe_id, packet_id)
-// #define nni_qos_db_remove_by_pipe(db, pipe_id) \
-// 	nni_mqtt_qos_db_remove_by_pipe((sqlite3 *) (db), pipe_id)
-// #define nni_qos_db_remove_msg(db, msg)                             \
-// 	{                                                          \
-// 		nni_mqtt_qos_db_remove_msg((sqlite3 *) (db), msg); \
-// 		nni_msg_free(msg);                                 \
-// 	}
-// #define nni_qos_db_remove_unused_msg(db) \
-// 	nni_mqtt_qos_db_remove_unused_msg((sqlite3 *) (db))
-// #define nni_qos_db_remove_all_msg(db, cb) \
-// 	nni_mqtt_qos_db_remove_all_msg((sqlite3 *) (db))
-// #define nni_qos_db_foreach(db, cb) \
-// 	nni_mqtt_qos_db_foreach((sqlite3 *) (db), cb)
-// #define nni_qos_db_check_remove_msg(db, msg) \
-// 	nni_mqtt_qos_db_check_remove_msg((sqlite3 *) (db), msg)
-// #define nni_qos_db_reset_pipe(db) \
-// 	nni_mqtt_qos_db_update_all_pipe((sqlite3 *) (db), 0)
-// #define nni_qos_db_set_pipe(db, pipe_id, client_id) \
-// 	nni_mqtt_qos_db_set_pipe((sqlite3 *) db, pipe_id, client_id)
-// #define nni_qos_db_remove_pipe(db, pipe_id) \
-// 	nni_mqtt_qos_db_remove_pipe((sqlite3 *) db, pipe_id)
-
-// #define nni_qos_db_set_client_msg(db, pipe_id, packet_id, msg) \
-// 	nni_mqtt_qos_db_set_client_msg((sqlite3 *) db, pipe_id, packet_id, msg)
-// #define nni_qos_db_get_client_msg(db, pipe_id, packet_id) \
-// 	nni_mqtt_qos_db_get_client_msg((sqlite3 *) db, pipe_id, packet_id)
-// #define nni_qos_db_remove_client_msg(db, pipe_id, packet_id) \
-// 	nni_mqtt_qos_db_remove_client_msg((sqlite3 *)db, pipe_id, packet_id)
-// #define nni_qos_db_remove_client_msg_by_id(db, id) \
-// 	nni_mqtt_qos_db_remove_client_msg_by_id((sqlite3 *)db, id)
-// #define nni_qos_db_get_one_client_msg(db, id, packet_id) \
-// 	nni_mqtt_qos_db_get_one_client_msg((sqlite3 *)db, &id, &packet_id)
-// #define nni_qos_db_reset_client_msg_pipe_id(db) \
-// 	nni_mqtt_qos_db_reset_client_msg_pipe_id((sqlite3 *) db)
-
-// #else
-
-// #define nni_qos_db_set(db, pipe_id, packet_id, msg) \
-// 	nni_id_set((nni_id_map *) (db), packet_id, msg)
-// #define nni_qos_db_get(db, pipe_id, packet_id) \
-// 	nni_id_get((nni_id_map *) (db), packet_id)
-// #define nni_qos_db_get_one(db, pipe_id, packet_id) \
-// 	nni_id_get_any((nni_id_map *) (db), &packet_id)
-// #define nni_qos_db_remove(db, pipe_id, packet_id) \
-// 	nni_id_remove((nni_id_map *) (db), packet_id)
-// #define nni_qos_db_remove_all_msg(db, cb) \
-// 	nni_id_map_foreach((nni_id_map *) (db), cb)
-// #define nni_qos_db_foreach(db, cb) nni_id_map_foreach((nni_id_map *) (db), cb)
-// #define nni_qos_db_remove_msg(db, msg) nni_msg_free(msg)
-// #define nni_qos_db_check_remove_msg(db, msg) nni_msg_free(msg)
-// #define nni_qos_db_remove_unused_msg(db)
-// #define nni_qos_db_reset_pipe(db)
-// #define nni_qos_db_set_pipe(db, pipe_id, client_id)
-// #define nni_qos_db_remove_pipe(db, pipe_id)
-
-// #define nni_qos_db_set_client_msg(db, pipe_id, packet_id, msg) \
-// 	nni_id_set((nni_id_map *) &db, packet_id, msg)
-// #define nni_qos_db_get_client_msg(db, pipe_id, packet_id) \
-// 	nni_id_get((nni_id_map *) &db, packet_id)
-// #define nni_qos_db_remove_client_msg(db, pipe_id, packet_id) \
-// 	nni_id_remove((nni_id_map *) &db, packet_id)
-// #define nni_qos_db_remove_client_msg_by_id(db, id)
-// #define nni_qos_db_get_one_client_msg(db, id, packet_id) \
-// 	nni_id_get_any((nni_id_map *) &db, &packet_id)
-// #define nni_qos_db_reset_client_msg_pipe_id(db)
-
-// #endif
-*/
-
-extern void nni_qos_db_set(persistence_type type, void *db, uint32_t pipe_id,
-    uint16_t packet_id, nng_msg *msg);
+extern void     nni_qos_db_set(bool is_sqlite, void *db, uint32_t pipe_id,
+        uint16_t packet_id, nng_msg *msg);
 extern nng_msg *nni_qos_db_get(
-    persistence_type type, void *db, uint32_t pipe_id, uint16_t packet_id);
+    bool is_sqlite, void *db, uint32_t pipe_id, uint16_t packet_id);
 extern nng_msg *nni_qos_db_get_one(
-    persistence_type type, void *db, uint32_t pipe_id, uint16_t *packet_id);
+    bool is_sqlite, void *db, uint32_t pipe_id, uint16_t *packet_id);
 extern void nni_qos_db_remove(
-    persistence_type type, void *db, uint32_t pipe_id, uint16_t packet_id);
+    bool is_sqlite, void *db, uint32_t pipe_id, uint16_t packet_id);
 extern void nni_qos_db_remove_by_pipe(
-    persistence_type type, void *db, uint32_t pipe_id);
-extern void nni_qos_db_remove_msg(
-    persistence_type type, void *db, nng_msg *msg);
-extern void nni_qos_db_remove_unused_msg(persistence_type type, void *db);
+    bool is_sqlite, void *db, uint32_t pipe_id);
+extern void nni_qos_db_remove_msg(bool is_sqlite, void *db, nng_msg *msg);
+extern void nni_qos_db_remove_unused_msg(bool is_sqlite, void *db);
 extern void nni_qos_db_remove_all_msg(
-    persistence_type type, void *db, nni_idhash_cb cb);
-extern void nni_qos_db_reset_pipe(persistence_type type, void *db);
+    bool is_sqlite, void *db, nni_idhash_cb cb);
+extern void nni_qos_db_reset_pipe(bool is_sqlite, void *db);
 extern void nni_qos_db_set_pipe(
-    persistence_type type, void *db, uint32_t pipe_id, const char *client_id);
-extern void nni_qos_db_remove_pipe(
-    persistence_type type, void *db, uint32_t pipe_id);
+    bool is_sqlite, void *db, uint32_t pipe_id, const char *client_id);
+extern void nni_qos_db_remove_pipe(bool is_sqlite, void *db, uint32_t pipe_id);
 
-extern int      nni_qos_db_set_client_msg(persistence_type type, void *db,
+extern int      nni_qos_db_set_client_msg(bool is_sqlite, void *db,
          uint32_t pipe_id, uint16_t packet_id, nng_msg *msg);
 extern nng_msg *nni_qos_db_get_client_msg(
-    persistence_type type, void *db, uint32_t pipe_id, uint16_t packet_id);
+    bool is_sqlite, void *db, uint32_t pipe_id, uint16_t packet_id);
 extern void nni_qos_db_remove_client_msg(
-    persistence_type type, void *db, uint32_t pipe_id, uint16_t packet_id);
+    bool is_sqlite, void *db, uint32_t pipe_id, uint16_t packet_id);
 extern void nni_qos_db_remove_client_msg_by_id(
-    persistence_type type, void *db, uint64_t row_id);
+    bool is_sqlite, void *db, uint64_t row_id);
 extern nng_msg *nni_qos_db_get_one_client_msg(
-    persistence_type type, void *db, uint64_t *row_id, uint16_t *packet_id);
-extern void nni_qos_db_reset_client_msg_pipe_id(
-    persistence_type type, void *db);
+    bool is_sqlite, void *db, uint64_t *row_id, uint16_t *packet_id);
+extern void nni_qos_db_reset_client_msg_pipe_id(bool is_sqlite, void *db);
 
 #endif
