@@ -427,8 +427,20 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	struct subinfo *sn = NULL;
 	char *_topic = nni_msg_get_pub_topic(msg, &topic_len);
 	char *topic = strndup(_topic, topic_len);
-	NNI_LIST_FOREACH(p->pipe->subinfol, sn) {
-		if (0 == strcmp(topic, sn->topic))
+	char *sub_topic;
+	NNI_LIST_FOREACH(&p->pipe->subinfol, sn) {
+		sub_topic = topic;
+		if (sub_topic[0] == '$') {
+			if (!strncmp(sub_topic, "$share/",
+			        strlen("$share/"))) {
+				sub_topic = strchr(sub_topic, '/');
+				sub_topic++;
+				sub_topic = strchr(sub_topic, '/');
+				sub_topic++;
+			}
+		}
+
+		if (true == topic_filter(sn->topic, sub_topic))
 			break;
 	}
 	nng_free(topic, topic_len);
