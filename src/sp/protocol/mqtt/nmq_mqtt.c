@@ -1040,10 +1040,11 @@ nano_pipe_recv_cb(void *arg)
 	cparam = p->conn_param;
 	switch (nng_msg_cmd_type(msg)) {
 	case CMD_SUBSCRIBE:
+		// extract sub id
+		// Store Subid RAP Topic for sub
+		nmq_subinfo_decode(msg, &npipe->subinfol);
+
 		if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
-			// extract sub id
-			// Store Subid RAP Topic for sub
-			nmq_subinfo_decode(msg, &npipe->subinfol);
 			len = get_var_integer(ptr + 2, &len_of_varint);
 			nni_msg_set_payload_ptr(
 			    msg, ptr + 2 + len + len_of_varint);
