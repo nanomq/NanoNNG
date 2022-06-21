@@ -768,6 +768,7 @@ tcptran_pipe_recv_cb(void *arg)
 			}
 		}
 		ack = false;
+		// TODO should we push ack msg back to protocol layer?
 	}
 
 	// keep connection & Schedule next receive

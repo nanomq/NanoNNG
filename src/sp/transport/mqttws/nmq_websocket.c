@@ -91,8 +91,8 @@ wstran_pipe_send_cb(void *arg)
 static void
 wstran_pipe_recv_cb(void *arg)
 {
-	ws_pipe *p   = arg;
-	nni_iov       iov[2];
+	ws_pipe *p = arg;
+	nni_iov  iov[2];
 	uint8_t  rv;
 	uint32_t pos = 1;
 	uint64_t len = 0;
@@ -100,7 +100,7 @@ wstran_pipe_recv_cb(void *arg)
 	nni_msg *smsg = NULL, *msg = NULL;
 	nni_aio *raio = p->rxaio;
 	nni_aio *uaio = NULL;
-	bool          ack   = false;
+	bool     ack  = false;
 
 	nni_mtx_lock(&p->mtx);
 	// only sets uaio at first time
@@ -187,7 +187,6 @@ done:
 			}
 			nni_msg_free(p->tmp_msg);
 			p->tmp_msg = NULL;
-			// nni_aio_set_msg(uaio, smsg);
 			nni_aio_set_output(uaio, 0, p);
 			// pipe_start_cb send CONNACK
 			nni_aio_finish(uaio, 0, 0);
@@ -205,16 +204,17 @@ done:
 			nni_msg_set_conn_param(smsg, p->ws_param);
 		}
 
-		uint8_t  qos_pac;
+		uint8_t   qos_pac;
 		property *prop        = NULL;
 		uint8_t   reason_code = 0;
 		uint8_t   ack_cmd     = 0;
-		uint16_t  packet_id   = 0;
+
+		uint16_t packet_id = 0;
 		nni_msg *qmsg;
-		if (nni_msg_cmd_type(smsg) == CMD_PUBLISH) {
+		uint8_t  cmd = nni_msg_cmd_type(smsg);
+		if (cmd == CMD_PUBLISH) {
 			qos_pac = nni_msg_get_pub_qos(smsg);
 			if (qos_pac > 0) {
-
 				// flow control, check rx_max
 				// recv_quota as length of lmq
 				if (p->ws_param->pro_ver == 5) {
@@ -234,22 +234,21 @@ done:
 				packet_id = nni_msg_get_pub_pid(smsg);
 				ack       = true;
 			}
-		} else if (nni_msg_cmd_type(smsg) == CMD_PUBREC) {
+		} else if (cmd == CMD_PUBREC) {
 			if (nmq_pubres_decode(smsg, &packet_id, &reason_code, &prop,
 			        p->ws_param->pro_ver) != 0) {
 				debug_msg("decode PUBREC variable header failed!");
 			}
 			ack_cmd = CMD_PUBREL;
 			ack     = true;
-		} else if (nni_msg_cmd_type(smsg) == CMD_PUBREL) {
+		} else if (cmd == CMD_PUBREL) {
 			if (nmq_pubres_decode(smsg, &packet_id, &reason_code, &prop,
 			        p->ws_param->pro_ver) != 0) {
 				debug_msg("decode PUBREL variable header failed!");
 			}
 			ack_cmd = CMD_PUBCOMP;
 			ack     = true;
-			
-		} else if (nni_msg_cmd_type(smsg) == CMD_PUBACK || nni_msg_cmd_type(smsg) == CMD_PUBCOMP) {
+		} else if (cmd == CMD_PUBACK || cmd == CMD_PUBCOMP) {
 			if (nmq_pubres_decode(smsg, &packet_id, &reason_code, &prop,
 			        p->ws_param->pro_ver) != 0) {
 				debug_msg("decode PUBACK or PUBCOMP variable header "
@@ -260,6 +259,9 @@ done:
 				property_free(prop);
 				p->qsend_quota++;
 			}
+		} else if (cmd == CMD_PINGREQ) {
+			// reply PINGRESP
+			ack = true;
 		}
 
 		if (ack == true) {
@@ -268,34 +270,46 @@ done:
 			if ((rv = nni_msg_alloc(&qmsg, 0)) != 0) {
 				ack = false;
 				rv  = NMQ_SERVER_BUSY;
+				nni_println("ERROR: OOM in WebSocket");
 				goto recv_error;
 			}
-			// TODO set reason code or property here if necessary
-
-			nni_msg_set_cmd_type(qmsg, ack_cmd);
-			nmq_msgack_encode(
-			    qmsg, packet_id, reason_code, prop, p->ws_param->pro_ver);
-			nmq_pubres_header_encode(qmsg, ack_cmd);
-			nng_aio_wait(p->qsaio);
-			iov[0].iov_len = nni_msg_header_len(qmsg);
-			iov[0].iov_buf = nni_msg_header(qmsg);
-			iov[1].iov_len = nni_msg_len(qmsg);
-			iov[1].iov_buf = nni_msg_body(qmsg);
-			nni_aio_set_msg(p->qsaio, qmsg);
-			// send ACK down...
-			nni_aio_set_iov(p->qsaio, 2, iov);
-			nng_stream_send(p->ws, p->qsaio);
+			if (cmd == CMD_PINGREQ) {
+				uint8_t buf[2] = { CMD_PINGRESP, 0x00 };
+				nni_msg_set_cmd_type(qmsg, CMD_PINGRESP);
+				nni_msg_header_append(qmsg, buf, 2);
+				nng_aio_wait(p->qsaio);
+				iov[0].iov_len = nni_msg_header_len(qmsg);
+				iov[0].iov_buf = nni_msg_header(qmsg);
+				nni_aio_set_msg(p->qsaio, qmsg);
+				// send ACK down...
+				nni_aio_set_iov(p->qsaio, 1, iov);
+				nng_stream_send(p->ws, p->qsaio);
+				//ignore PING msg, only notify
+			} else {
+				// TODO set reason code or property here if
+				// necessary
+				nni_msg_set_cmd_type(qmsg, ack_cmd);
+				nmq_msgack_encode(qmsg, packet_id, reason_code,
+				    prop, p->ws_param->pro_ver);
+				nmq_pubres_header_encode(qmsg, ack_cmd);
+				nng_aio_wait(p->qsaio);
+				iov[0].iov_len = nni_msg_header_len(qmsg);
+				iov[0].iov_buf = nni_msg_header(qmsg);
+				iov[1].iov_len = nni_msg_len(qmsg);
+				iov[1].iov_buf = nni_msg_body(qmsg);
+				nni_aio_set_msg(p->qsaio, qmsg);
+				// send ACK down...
+				nni_aio_set_iov(p->qsaio, 2, iov);
+				nng_stream_send(p->ws, p->qsaio);
+			}
 		}
-
 		nni_aio_set_msg(uaio, smsg);
 		nni_aio_set_output(uaio, 0, p);
-		nni_aio_finish(uaio, 0, nni_msg_len(smsg));
-		p->tmp_msg = NULL;
-
 	} else {
 		goto reset;
 	}
 	nni_mtx_unlock(&p->mtx);
+	nni_aio_finish(uaio, 0, nni_msg_len(smsg));
 	return;
 reset:
 	p->gotrxhead  = 0;
