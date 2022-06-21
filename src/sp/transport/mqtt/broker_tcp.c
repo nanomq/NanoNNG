@@ -159,7 +159,7 @@ tcptran_pipe_init(void *arg, nni_pipe *npipe)
 
 	nni_pipe_set_conn_param(npipe, p->tcp_cparam);
 	p->npipe = npipe;
-	if (p->conf->sqlite.enable) {
+	if (!p->conf->sqlite.enable) {
 		nni_qos_db_init_id_hash(npipe->nano_qos_db);
 	}
 
