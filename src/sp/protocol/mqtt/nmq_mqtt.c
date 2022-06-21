@@ -377,7 +377,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	nano_sock *      s   = ctx->sock;
 	nano_pipe *      p;
 	nni_msg *        msg;
-	int              rv;
+	int              rv, topic_len;
 	uint32_t         pipe;
 	uint8_t          qos = 0, qos_pac;
 	uint16_t         packetid;
@@ -424,6 +424,24 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	}
 	nni_mtx_lock(&p->lk);
 	nni_mtx_unlock(&s->lk);
+
+	// No local
+	if (pipe != 0 && p->conn_param->pro_ver == MQTT_VERSION_V5) {
+		struct subinfo *sn = NULL;
+		char *_topic = nni_msg_get_topic(msg, &topic_len);
+		char *topic = strndup(_topic, topic_len);
+		NNI_LIST_FOREACH(p->pipe->subinfol, sn) {
+			if (0 == strcmp(topic, sn->topic))
+				break;
+		}
+		if (sn && sn->no_local) {
+			nni_mtx_unlock(&p->lk);
+			nni_aio_set_msg(aio, NULL);
+			debug_syslog("msg cached for session");
+			return;
+		}
+	}
+
 	if (p->pipe->cache) {
 		if (nni_msg_get_type(msg) == CMD_PUBLISH) {
 			qos_pac = nni_msg_get_pub_qos(msg);
