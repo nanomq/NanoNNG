@@ -776,6 +776,22 @@ nni_msg_get_pub_pid(nni_msg *m)
 	return pid;
 }
 
+/**
+ * @brief get MQTT topic from msg
+ *
+ * @param nni_msg *m
+ * @return uint8_t
+ */
+char *
+nni_msg_get_topic(nni_msg *m, int *topic_len)
+{
+	uint8_t *pos, len;
+
+	pos = nni_msg_body(m);
+	NNI_GET16(pos, topic_len);
+	return (char *)(pos + 2);
+}
+
 void
 nni_msg_set_timestamp(nni_msg *m, nni_time time)
 {
