@@ -1044,7 +1044,9 @@ nano_pipe_recv_cb(void *arg)
 	case CMD_SUBSCRIBE:
 		// extract sub id
 		// Store Subid RAP Topic for sub
+		nni_mtx_lock(&p->lk);
 		nmq_subinfo_decode(msg, &npipe->subinfol, cparam->pro_ver);
+		nni_mtx_unlock(&p->lk);
 
 		if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
 			len = get_var_integer(ptr + 2, &len_of_varint);
@@ -1058,7 +1060,9 @@ nano_pipe_recv_cb(void *arg)
 	case CMD_UNSUBSCRIBE:
 		// extract sub id
 		// Remove Subid RAP Topic stored
+		nni_mtx_lock(&p->lk);
 		nmq_unsubinfo_decode(msg, &npipe->subinfol, cparam->pro_ver);
+		nni_mtx_unlock(&p->lk);
 
 		if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
 			len = get_var_integer(ptr + 2, &len_of_varint);
