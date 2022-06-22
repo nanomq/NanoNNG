@@ -89,33 +89,54 @@ create_main_table(sqlite3 *db)
 	return sqlite3_exec(db, sql, 0, 0, 0);
 }
 
-void
-nni_mqtt_qos_db_init(sqlite3 **db, const char *db_name, bool is_broker)
+static char *
+get_db_path(char *dest_path, const char *user_path, const char *db_name)
 {
-	char pwd[512]   = { 0 };
-	char path[1024] = { 0 };
-	if (getcwd(pwd, sizeof(pwd)) != NULL) {
-		sprintf(path, "%s/%s", pwd, db_name);
-		if (sqlite3_open(path, db) != 0) {
+	if (user_path == NULL) {
+		char pwd[512] = { 0 };
+		if (getcwd(pwd, sizeof(pwd)) != NULL) {
+			sprintf(dest_path, "%s/%s", pwd, db_name);
+		} else {
+			return NULL;
+		}
+	} else {
+		if (user_path[strlen(user_path) - 1] == '/') {
+			sprintf(dest_path, "%s%s", user_path, db_name);
+		} else {
+			sprintf(dest_path, "%s/%s", user_path, db_name);
+		}
+	}
+
+	return dest_path;
+}
+
+void
+nni_mqtt_qos_db_init(sqlite3 **db, const char *user_path, const char *db_name, bool is_broker)
+{
+	char db_path[1024] = { 0 };
+	int rv;
+
+	if (NULL != get_db_path(db_path, user_path, db_name) &&
+	    ((rv = sqlite3_open(db_path, db)) != 0)) {
+		nni_panic("sqlite3_open [%s] fail: %d", db_path, rv);
+		return;
+	}
+	if (is_broker) {
+		if (create_msg_table(*db) != 0) {
 			return;
 		}
-		if (is_broker) {
-			if (create_msg_table(*db) != 0) {
-				return;
-			}
-			if (create_pipe_client_table(*db) != 0) {
-				return;
-			}
-			if (create_main_table(*db) != 0) {
-				return;
-			}
-		} else {
-			if (create_client_msg_table(*db) != 0) {
-				return;
-			}
-			if (create_client_offline_msg_table(*db) != 0) {
-				return;
-			}
+		if (create_pipe_client_table(*db) != 0) {
+			return;
+		}
+		if (create_main_table(*db) != 0) {
+			return;
+		}
+	} else {
+		if (create_client_msg_table(*db) != 0) {
+			return;
+		}
+		if (create_client_offline_msg_table(*db) != 0) {
+			return;
 		}
 	}
 }

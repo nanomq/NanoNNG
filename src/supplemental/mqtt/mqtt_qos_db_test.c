@@ -1,9 +1,9 @@
 #include <string.h>
 
+#include "mqtt_msg.h"
 #include "mqtt_qos_db.h"
 #include "nng/nng.h"
 #include "nuts.h"
-#include "mqtt_msg.h"
 
 #define test_db "test.db"
 
@@ -11,7 +11,7 @@ void
 test_db_init(void)
 {
 	sqlite3 *db = NULL;
-	nni_mqtt_qos_db_init(&db, test_db, true);
+	nni_mqtt_qos_db_init(&db, NULL, test_db, true);
 	nni_mqtt_qos_db_close(db);
 }
 
@@ -19,7 +19,7 @@ void
 test_qos_db_set(void)
 {
 	sqlite3 *db = NULL;
-	nni_mqtt_qos_db_init(&db, test_db, true);
+	nni_mqtt_qos_db_init(&db, NULL, test_db, true);
 
 	char *   header = "uvwxyz";
 	char *   body   = "abcdefg";
@@ -46,7 +46,7 @@ void
 test_qos_db_get(void)
 {
 	sqlite3 *db = NULL;
-	nni_mqtt_qos_db_init(&db, test_db, true);
+	nni_mqtt_qos_db_init(&db, NULL, test_db, true);
 
 	char *   header = "uvwxyz";
 	char *   body   = "abcdefg";
@@ -72,7 +72,7 @@ void
 test_qos_db_get_one(void)
 {
 	sqlite3 *db = NULL;
-	nni_mqtt_qos_db_init(&db, test_db, true);
+	nni_mqtt_qos_db_init(&db, NULL, test_db, true);
 	uint32_t pipe_id   = 1001;
 	uint16_t packet_id = 999;
 	nni_msg *msg       = nni_mqtt_qos_db_get_one(db, pipe_id, &packet_id);
@@ -88,7 +88,7 @@ void
 test_qos_db_remove(void)
 {
 	sqlite3 *db = NULL;
-	nni_mqtt_qos_db_init(&db, test_db, true);
+	nni_mqtt_qos_db_init(&db, NULL, test_db, true);
 
 	nni_mqtt_qos_db_remove(db, 1001, 999);
 	nni_mqtt_qos_db_close(db);
@@ -98,7 +98,7 @@ void
 test_qos_db_check_remove_msg(void)
 {
 	sqlite3 *db = NULL;
-	nni_mqtt_qos_db_init(&db, test_db, true);
+	nni_mqtt_qos_db_init(&db, NULL, test_db, true);
 
 	char *header = "uvwxyz";
 	char *body   = "abcdefg";
@@ -125,7 +125,7 @@ void
 test_qos_db_foreach(void)
 {
 	sqlite3 *db = NULL;
-	nni_mqtt_qos_db_init(&db, test_db, true);
+	nni_mqtt_qos_db_init(&db, NULL, test_db, true);
 	nni_mqtt_qos_db_foreach(db, handle_cb);
 	nni_mqtt_qos_db_close(db);
 }
@@ -134,7 +134,7 @@ void
 test_qos_db_remove_all_msg(void)
 {
 	sqlite3 *db = NULL;
-	nni_mqtt_qos_db_init(&db, test_db, true);
+	nni_mqtt_qos_db_init(&db, NULL, test_db, true);
 	nni_mqtt_qos_db_remove_all_msg(db);
 	nni_mqtt_qos_db_close(db);
 }
@@ -143,7 +143,7 @@ void
 test_pipe_set(void)
 {
 	sqlite3 *db = NULL;
-	nni_mqtt_qos_db_init(&db, test_db, true);
+	nni_mqtt_qos_db_init(&db, NULL, test_db, true);
 	nni_mqtt_qos_db_set_pipe(db, 1001, "nanomq-client-1001");
 	nni_mqtt_qos_db_close(db);
 }
@@ -152,7 +152,7 @@ void
 test_pipe_remove(void)
 {
 	sqlite3 *db = NULL;
-	nni_mqtt_qos_db_init(&db, test_db, true);
+	nni_mqtt_qos_db_init(&db, NULL, test_db, true);
 	nni_mqtt_qos_db_remove_pipe(db, 1001);
 	nni_mqtt_qos_db_close(db);
 }
@@ -161,7 +161,7 @@ void
 test_pipe_update_all(void)
 {
 	sqlite3 *db = NULL;
-	nni_mqtt_qos_db_init(&db, test_db, true);
+	nni_mqtt_qos_db_init(&db, NULL, test_db, true);
 	nni_mqtt_qos_db_update_all_pipe(db, 0);
 	nni_mqtt_qos_db_close(db);
 }
@@ -170,7 +170,7 @@ void
 test_set_client_msg(void)
 {
 	sqlite3 *db = NULL;
-	nni_mqtt_qos_db_init(&db, test_db, false);
+	nni_mqtt_qos_db_init(&db, NULL, test_db, false);
 
 	nni_time ts        = 1650944298;
 	uint32_t pipe_id   = 12345;
@@ -202,7 +202,7 @@ void
 test_get_client_msg(void)
 {
 	sqlite3 *db = NULL;
-	nni_mqtt_qos_db_init(&db, test_db, false);
+	nni_mqtt_qos_db_init(&db, NULL, test_db, false);
 
 	nni_time ts = 1650944298;
 
@@ -222,11 +222,11 @@ test_get_client_msg(void)
 	nni_mqtt_qos_db_close(db);
 }
 
-void 
-test_remove_client_msg(void) 
+void
+test_remove_client_msg(void)
 {
 	sqlite3 *db = NULL;
-	nni_mqtt_qos_db_init(&db, test_db, false);
+	nni_mqtt_qos_db_init(&db, NULL, test_db, false);
 	nni_mqtt_qos_db_remove_client_msg(db, 12345, 54321);
 	nni_mqtt_qos_db_close(db);
 }
@@ -235,9 +235,9 @@ void
 test_set_client_offline_msg(void)
 {
 	sqlite3 *db = NULL;
-	nni_mqtt_qos_db_init(&db, test_db, false);
+	nni_mqtt_qos_db_init(&db, NULL, test_db, false);
 
-	nni_time ts        = 1650944298;
+	nni_time ts = 1650944298;
 
 	nni_msg *msg;
 	nni_mqtt_msg_alloc(&msg, 0);
@@ -264,10 +264,10 @@ void
 test_get_client_offline_msg(void)
 {
 	sqlite3 *db = NULL;
-	nni_mqtt_qos_db_init(&db, test_db, false);
+	nni_mqtt_qos_db_init(&db, NULL, test_db, false);
 
-	nni_time ts = 1650944298;
-	int64_t row_id = 0;
+	nni_time ts     = 1650944298;
+	int64_t  row_id = 0;
 
 	nni_msg *msg = nni_mqtt_qos_db_get_client_offline_msg(db, &row_id);
 	TEST_CHECK(msg != NULL);
@@ -285,11 +285,11 @@ test_get_client_offline_msg(void)
 	nni_mqtt_qos_db_close(db);
 }
 
-void 
-test_remove_client_offline_msg(void) 
+void
+test_remove_client_offline_msg(void)
 {
 	sqlite3 *db = NULL;
-	nni_mqtt_qos_db_init(&db, test_db, false);
+	nni_mqtt_qos_db_init(&db, NULL, test_db, false);
 	nni_mqtt_qos_db_remove_client_offline_msg(db, 1);
 	nni_mqtt_qos_db_close(db);
 }

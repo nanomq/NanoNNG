@@ -161,7 +161,9 @@ mqtt_sock_set_conf_with_db(void *arg, const void *v, size_t sz, nni_opt_type t)
 
 #ifdef NNG_SUPP_SQLITE
 		if (s->conf->bridge.sqlite.enable) {
-			nni_qos_db_init_sqlite(s->sqlite_db, DB_NAME, false);
+			nni_qos_db_init_sqlite(s->sqlite_db,
+			    s->conf->bridge.sqlite.mounted_file_path, DB_NAME,
+			    false);
 			nni_qos_db_reset_client_msg_pipe_id(
 			    s->conf->bridge.sqlite.enable, s->sqlite_db);
 			nni_mqtt_qos_db_remove_all_client_offline_msg(
