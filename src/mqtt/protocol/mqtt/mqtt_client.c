@@ -160,10 +160,10 @@ mqtt_sock_set_conf_with_db(void *arg, const void *v, size_t sz, nni_opt_type t)
 		s->conf = (conf *) v;
 
 #ifdef NNG_SUPP_SQLITE
-		if (s->conf->sqlite.enable) {
+		if (s->conf->bridge.sqlite.enable) {
 			nni_qos_db_init_sqlite(s->sqlite_db, DB_NAME, false);
 			nni_qos_db_reset_client_msg_pipe_id(
-			    s->conf->sqlite.enable, s->sqlite_db);
+			    s->conf->bridge.sqlite.enable, s->sqlite_db);
 			nni_mqtt_qos_db_remove_all_client_offline_msg(
 			    s->sqlite_db);
 		}
@@ -319,7 +319,7 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 	msg = nni_aio_get_msg(aio);
 	if (NULL == msg) {
 #if defined(NNG_HAVE_MQTT_BROKER)
-		conf_sqlite *sqlite = &s->conf->sqlite;
+		conf_sqlite *sqlite = &s->conf->bridge.sqlite;
 #if defined(NNG_SUPP_SQLITE)
 		if (sqlite->enable) {
 			int64_t row_id = 0;
@@ -844,9 +844,8 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 			nni_list_append(&s->send_queue, ctx);
 
 #if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
-			conf *config = s->conf;
-			if (config->bridge.enable &&
-			    config->sqlite.enable) {
+			conf_bridge *bridge = &s->conf->bridge;
+			if (bridge->bridge_mode && bridge->sqlite.enable) {
 				// the msg order is exactly as same as the ctx
 				// in send_queue
 				nni_mqtt_qos_db_set_client_offline_msg(
@@ -919,7 +918,7 @@ static inline bool
 get_persist(mqtt_sock_t *s)
 {
 #ifdef NNG_HAVE_MQTT_BROKER
-	return s->conf->sqlite.enable;
+	return s->conf->bridge.sqlite.enable;
 #else
 	NNI_ARG_UNUSED(s);
 	return false;
