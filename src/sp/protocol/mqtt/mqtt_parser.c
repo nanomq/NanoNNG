@@ -1492,7 +1492,7 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 
 	len = 0;
 	len_of_varint = 0;
-	if (ver = PROTOCOL_VERSION_v5)
+	if (ver == PROTOCOL_VERSION_v5)
 		len = get_var_integer(nni_msg_body(msg) + 2, &len_of_varint);
 
 	var_ptr     = nni_msg_body(msg);
@@ -1541,9 +1541,9 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 		snode.topic = topic;
 		sn = &snode;
 		if (NULL != (sn2 = nmq_subinfol_rm_or(ll, sn))) {
-			debug_msg("Topic %s free from subinfol", sn->topic);
-			nng_free(sn->topic, strlen(sn->topic));
-			nng_free(sn, sizeof(*sn));
+			debug_msg("Topic %s free from subinfol", sn2->topic);
+			nng_free(sn2->topic, strlen(sn2->topic));
+			nng_free(sn2, sizeof(*sn2));
 		}
 		nng_free(topic, len_of_topic+1);
 
