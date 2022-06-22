@@ -785,10 +785,12 @@ nni_msg_get_pub_pid(nni_msg *m)
 char *
 nni_msg_get_pub_topic(nni_msg *m, int *topic_len)
 {
-	uint8_t *pos, len;
+	uint8_t *pos;
+	uint16_t len;
 
 	pos = nni_msg_body(m);
-	NNI_GET16(pos, topic_len);
+	NNI_GET16(pos, len);
+	*topic_len = len;
 	return (char *)(pos + 2);
 }
 

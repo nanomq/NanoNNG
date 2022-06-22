@@ -1376,11 +1376,12 @@ nmq_subinfol_rm_or(nni_list *l, struct subinfo *n)
  * @return int -1: protocol error; -2: unknown error; num:numbers of topics
  */
 int
-nmq_subinfo_decode(nng_msg *msg, void *l)
+nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 {
 	char           *topic;
-	uint8_t         len_of_topic = 0, *payload_ptr, *var_ptr;
+	uint8_t         *payload_ptr, *var_ptr;
 	uint32_t        num = 0, len, len_of_varint = 0, len_of_str = 0, subid = 0;
+	uint16_t        len_of_topic = 0;
 	size_t          bpos = 0, remain = 0;
 	struct subinfo *sn = NULL;
 	nni_list       *ll = l;
@@ -1388,9 +1389,13 @@ nmq_subinfo_decode(nng_msg *msg, void *l)
 	if (!l || !msg)
 		return (-1);
 
-	len         = get_var_integer(nni_msg_body(msg) + 2, &len_of_varint);
-	var_ptr     = nni_msg_body(msg);
+	var_ptr = nni_msg_body(msg);
+	len = 0;
+	len_of_varint = 0;
+	if (ver == PROTOCOL_VERSION_v5)
+		len = get_var_integer(nni_msg_body(msg) + 2, &len_of_varint);
 	payload_ptr = nni_msg_body(msg) + 2 + len + len_of_varint;
+
 	int pos = 2 + len_of_varint, target_pos = 2 + len_of_varint + len;
 	while (pos < target_pos) {
 		switch (*(var_ptr + pos)) {
@@ -1442,6 +1447,10 @@ nmq_subinfo_decode(nng_msg *msg, void *l)
 
 		sn->subid = subid;
 		// qos no_local rap retain_handling
+		sn->qos      = (uint8_t) ((0x03 & *(payload_ptr + bpos)));
+		sn->no_local = (uint8_t) ((0x04 & *(payload_ptr + bpos)));
+		sn->rap      = (uint8_t) ((0x08 & *(payload_ptr + bpos)) > 0);
+		sn->retain_handling = (uint8_t) ((0x1f & *(payload_ptr + bpos)));
 		memcpy(sn, payload_ptr + bpos, 1);
 		NNI_LIST_NODE_INIT(&sn->node);
 
@@ -1469,7 +1478,7 @@ nmq_subinfo_decode(nng_msg *msg, void *l)
  * @return int -1: protocol error; -2: unknown error; num:numbers of topics
  */
 int
-nmq_unsubinfo_decode(nng_msg *msg, void *l)
+nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 {
 	char           *topic;
 	uint8_t         len_of_topic = 0, *payload_ptr, *var_ptr;
@@ -1481,10 +1490,15 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l)
 	if (!l || !msg)
 		return (-1);
 
-	len         = get_var_integer(nni_msg_body(msg) + 2, &len_of_varint);
+	len = 0;
+	len_of_varint = 0;
+	if (ver = PROTOCOL_VERSION_v5)
+		len = get_var_integer(nni_msg_body(msg) + 2, &len_of_varint);
+
 	var_ptr     = nni_msg_body(msg);
 	payload_ptr = nni_msg_body(msg) + 2 + len + len_of_varint;
 	int pos = 2 + len_of_varint, target_pos = 2 + len_of_varint + len;
+
 	while (pos < target_pos) {
 		switch (*(var_ptr + pos)) {
 		case USER_PROPERTY:
