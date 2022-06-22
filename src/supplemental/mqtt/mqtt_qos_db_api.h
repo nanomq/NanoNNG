@@ -9,8 +9,8 @@
 #include "conf.h"
 #endif
 
-#define nni_qos_db_init_sqlite(db, db_name, is_broker) \
-	nni_mqtt_qos_db_init((sqlite3 **) &(db), db_name, is_broker)
+#define nni_qos_db_init_sqlite(db, user_path, db_name, is_broker) \
+	nni_mqtt_qos_db_init((sqlite3 **) &(db), user_path, db_name, is_broker)
 #define nni_qos_db_fini_sqlite(db) nni_mqtt_qos_db_close((sqlite3 *) (db))
 
 #define nni_qos_db_init_id_hash(db)                              \

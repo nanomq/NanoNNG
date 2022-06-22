@@ -1197,7 +1197,9 @@ nano_sock_setdb(void *arg, void *data)
 
 #ifdef NNG_SUPP_SQLITE
 	if (s->conf->sqlite.enable) {
-		nni_qos_db_init_sqlite(s->sqlite_db, DB_NAME, true);
+
+		nni_qos_db_init_sqlite(s->sqlite_db,
+		    s->conf->sqlite.mounted_file_path, DB_NAME, true);
 		nni_qos_db_reset_pipe(s->conf->sqlite.enable, s->sqlite_db);
 	}
 #endif
