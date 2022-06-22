@@ -425,35 +425,37 @@ nano_ctx_send(void *arg, nni_aio *aio)
 
 	// Here we find the node from subinfol which has same topic with pubmsg
 	struct subinfo *sn = NULL;
-	char *_topic = nni_msg_get_pub_topic(msg, &topic_len);
-	char *topic = strndup(_topic, topic_len);
-	char *sub_topic;
-	NNI_LIST_FOREACH(&p->pipe->subinfol, sn) {
-		sub_topic = topic;
-		if (sub_topic[0] == '$') {
-			if (!strncmp(sub_topic, "$share/",
-			        strlen("$share/"))) {
-				sub_topic = strchr(sub_topic, '/');
-				sub_topic++;
-				sub_topic = strchr(sub_topic, '/');
-				sub_topic++;
+	if (CMD_PUBLISH == nni_msg_get_type(msg)) {
+		char *_topic = nni_msg_get_pub_topic(msg, &topic_len);
+		char *topic  = strndup(_topic, topic_len);
+		char *sub_topic;
+		NNI_LIST_FOREACH (&p->pipe->subinfol, sn) {
+			sub_topic = topic;
+			if (sub_topic[0] == '$') {
+				if (0 == strncmp(sub_topic, "$share/",
+				        strlen("$share/"))) {
+					sub_topic = strchr(sub_topic, '/');
+					sub_topic++;
+					sub_topic = strchr(sub_topic, '/');
+					sub_topic++;
+				}
 			}
+
+			if (true == topic_filter(sn->topic, sub_topic))
+				break;
 		}
+		nng_free(topic, topic_len);
 
-		if (true == topic_filter(sn->topic, sub_topic))
-			break;
-	}
-	nng_free(topic, topic_len);
-
-	// Not find if sn is null
-	if (!sn) {
-		nni_mtx_unlock(&p->lk);
-		nni_aio_set_msg(aio, NULL);
-		debug_syslog("not find the node in subinfol.");
-		return;
+		// Not find if sn is null
+		if (!sn) {
+			nni_mtx_unlock(&p->lk);
+			nni_aio_set_msg(aio, NULL);
+			debug_syslog("not find the node in subinfol.");
+			return;
+		}
 	}
 
-	qos = sn->qos;
+	qos = !sn ? 0 : sn->qos;
 	// No local
 	if (pipe != 0 && p->conn_param->pro_ver == MQTT_VERSION_V5) {
 		if (sn && sn->no_local) {
@@ -1051,7 +1053,7 @@ nano_pipe_recv_cb(void *arg)
 	case CMD_SUBSCRIBE:
 		// extract sub id
 		// Store Subid RAP Topic for sub
-		nmq_subinfo_decode(msg, &npipe->subinfol);
+		nmq_subinfo_decode(msg, &npipe->subinfol, cparam->pro_ver);
 
 		if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
 			len = get_var_integer(ptr + 2, &len_of_varint);
@@ -1063,10 +1065,11 @@ nano_pipe_recv_cb(void *arg)
 		conn_param_clone(cparam);
 		break;
 	case CMD_UNSUBSCRIBE:
+		// extract sub id
+		// Remove Subid RAP Topic stored
+		nmq_unsubinfo_decode(msg, &npipe->subinfol, cparam->pro_ver);
+
 		if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
-			// extract sub id
-			// Remove Subid RAP Topic stored
-			nmq_unsubinfo_decode(msg, &npipe->subinfol);
 			len = get_var_integer(ptr + 2, &len_of_varint);
 			nni_msg_set_payload_ptr(
 			    msg, ptr + 2 + len + len_of_varint);
