@@ -20,7 +20,9 @@ static int      create_pipe_client_table(sqlite3 *db);
 static int      create_main_table(sqlite3 *db);
 static int      create_client_msg_table(sqlite3 *db);
 static int      create_client_offline_msg_table(sqlite3 *db);
-
+static char *   get_db_path(
+       char *dest_path, const char *user_path, const char *db_name);
+static void    set_db_pragma(sqlite3 *db);
 static int64_t get_id_by_msg(sqlite3 *db, nni_msg *msg);
 static int64_t insert_msg(sqlite3 *db, nni_msg *msg);
 static int64_t get_id_by_pipe(sqlite3 *db, uint32_t pipe_id);
@@ -89,6 +91,14 @@ create_main_table(sqlite3 *db)
 	return sqlite3_exec(db, sql, 0, 0, 0);
 }
 
+static void
+set_db_pragma(sqlite3 *db)
+{
+	sqlite3_exec(db, "PRAGMA journal_mode=WAL", NULL, 0, 0);
+	sqlite3_exec(db, "PRAGMA synchronous=FULL", NULL, 0, 0);
+	sqlite3_exec(db, "PRAGMA wal_autocheckpoint", NULL, 0, 0);
+}
+
 static char *
 get_db_path(char *dest_path, const char *user_path, const char *db_name)
 {
@@ -114,13 +124,16 @@ void
 nni_mqtt_qos_db_init(sqlite3 **db, const char *user_path, const char *db_name, bool is_broker)
 {
 	char db_path[1024] = { 0 };
-	int rv;
+
+	int rv = 0;
 
 	if (NULL != get_db_path(db_path, user_path, db_name) &&
 	    ((rv = sqlite3_open(db_path, db)) != 0)) {
-		nni_panic("sqlite3_open [%s] fail: %d", db_path, rv);
+		nni_panic("Can't open database %s: %s\n", db_path,
+		    sqlite3_errmsg(*db));
 		return;
 	}
+	set_db_pragma(*db);
 	if (is_broker) {
 		if (create_msg_table(*db) != 0) {
 			return;
