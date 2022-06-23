@@ -23,6 +23,8 @@ static int      create_client_offline_msg_table(sqlite3 *db);
 static char *   get_db_path(
        char *dest_path, const char *user_path, const char *db_name);
 static void    set_db_pragma(sqlite3 *db);
+static void    remove_oldest_msg(
+       sqlite3 *db, const char *table_name, const char *col_name, uint64_t limit);
 static int64_t get_id_by_msg(sqlite3 *db, nni_msg *msg);
 static int64_t insert_msg(sqlite3 *db, nni_msg *msg);
 static int64_t get_id_by_pipe(sqlite3 *db, uint32_t pipe_id);
@@ -43,7 +45,8 @@ create_client_msg_table(sqlite3 *db)
 	             " (id INTEGER PRIMARY KEY AUTOINCREMENT, "
 	             "  packet_id INTEGER NOT NULL, "
 	             "  pipe_id INTEGER NOT NULL, "
-	             "  data BLOB)";
+	             "  data BLOB, "
+	             "  ts DATETIME DEFAULT CURRENT_TIMESTAMP )";
 
 	return sqlite3_exec(db, sql, 0, 0, 0);
 }
@@ -53,7 +56,8 @@ create_client_offline_msg_table(sqlite3 *db)
 {
 	char sql[] = "CREATE TABLE IF NOT EXISTS " table_client_offline_msg ""
 	             " (id INTEGER PRIMARY KEY AUTOINCREMENT, "
-	             "  data BLOB)";
+	             "  data BLOB, "
+	             "  ts DATETIME DEFAULT CURRENT_TIMESTAMP )";
 
 	return sqlite3_exec(db, sql, 0, 0, 0);
 }
@@ -86,7 +90,9 @@ create_main_table(sqlite3 *db)
 	             " p_id INTEGER NOT NULL, "
 	             " packet_id INTEGER NOT NULL, "
 	             " qos  TINYINT NOT NULL , "
-	             " m_id INTEGER NOT NULL )";
+	             " m_id INTEGER NOT NULL , "
+	             " ts DATETIME DEFAULT CURRENT_TIMESTAMP "
+	             " )";
 
 	return sqlite3_exec(db, sql, 0, 0, 0);
 }
@@ -159,17 +165,6 @@ nni_mqtt_qos_db_close(sqlite3 *db)
 {
 	sqlite3_close(db);
 }
-
-// static char *
-// bytes2Hex(uint8_t *bytes, size_t sz)
-// {
-// 	char *hex = nng_zalloc(sz * 2 + 1);
-// 	char *p   = hex;
-// 	for (size_t i = 0; i < sz; i++) {
-// 		p += sprintf(p, "%.2x", bytes[i]);
-// 	}
-// 	return hex;
-// }
 
 static int64_t
 get_id_by_msg(sqlite3 *db, nni_msg *msg)
@@ -319,6 +314,36 @@ update_main(
 	sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
 	return sqlite3_exec(db, "COMMIT;", 0, 0, 0);
+}
+
+static void
+remove_oldest_msg(
+    sqlite3 *db, const char *table_name, const char *col_name, uint64_t limit)
+{
+	sqlite3_stmt *stmt;
+	char          sql[256] = { 0 };
+
+	snprintf(sql, 256,
+	    "DELETE FROM %s WHERE %s NOT IN ( SELECT %s FROM %s ORDER BY"
+	    " %s DESC LIMIT ?)",
+	    table_name, col_name, col_name, table_name, col_name);
+
+	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
+	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
+	sqlite3_reset(stmt);
+	sqlite3_bind_int64(stmt, 1, limit);
+	sqlite3_step(stmt);
+	printf("expanded sql: %s\n", sqlite3_expanded_sql(stmt));
+	printf("sql: %s\n", sql);
+	sqlite3_finalize(stmt);
+
+	sqlite3_exec(db, "COMMIT;", 0, 0, 0);
+}
+
+void
+nni_mqtt_qos_db_remove_oldest(sqlite3 *db, uint64_t limit)
+{
+	remove_oldest_msg(db, table_main, "ts", limit);
 }
 
 void
@@ -752,6 +777,12 @@ nni_mqtt_qos_db_reset_client_msg_pipe_id(sqlite3 *db)
 	sqlite3_exec(db, "COMMIT;", 0, 0, 0);
 }
 
+void
+nni_mqtt_qos_db_remove_oldest_client_msg(sqlite3 *db, uint64_t limit)
+{
+	remove_oldest_msg(db, table_client_msg, "ts", limit);
+}
+
 nni_msg *
 nni_mqtt_qos_db_get_one_client_msg(sqlite3 *db, uint64_t *id, uint16_t *packet_id)
 {
@@ -845,6 +876,12 @@ nni_mqtt_qos_db_get_client_offline_msg(sqlite3 *db, int64_t *row_id)
 	sqlite3_exec(db, "COMMIT;", 0, 0, 0);
 
 	return msg;
+}
+
+void
+nni_mqtt_qos_db_remove_oldest_client_offline_msg(sqlite3 *db, uint64_t limit)
+{
+	remove_oldest_msg(db, table_client_offline_msg, "ts", limit);
 }
 
 int
