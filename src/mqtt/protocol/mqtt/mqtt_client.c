@@ -333,6 +333,9 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 			int64_t row_id = 0;
 			msg = nni_mqtt_qos_db_get_client_offline_msg(
 			    s->sqlite_db, &row_id);
+			if (!nni_lmq_empty(&s->offline_cache)) {
+				flush_offline_cache(s);
+			}
 			if (msg != NULL) {
 				nni_mqtt_qos_db_remove_client_offline_msg(
 				    s->sqlite_db, row_id);
@@ -555,16 +558,6 @@ mqtt_timer_cb(void *arg)
 	if (NULL == p || nni_atomic_get_bool(&p->closed)) {
 		return;
 	}
-	// flush offline_cache to sqlite db
-#if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
-	conf_bridge *bridge = &s->conf->bridge;
-	if (bridge->bridge_mode && bridge->sqlite.enable) {
-		if (!nni_lmq_empty(&s->offline_cache)) {
-			flush_offline_cache(s);
-		}
-	}
-#endif
-
 	// start message resending
 	uint64_t row_id    = 0;
 	bool     is_sqlite = get_persist(s);
