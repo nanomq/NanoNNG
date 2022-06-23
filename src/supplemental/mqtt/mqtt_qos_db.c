@@ -333,8 +333,6 @@ remove_oldest_msg(
 	sqlite3_reset(stmt);
 	sqlite3_bind_int64(stmt, 1, limit);
 	sqlite3_step(stmt);
-	printf("expanded sql: %s\n", sqlite3_expanded_sql(stmt));
-	printf("sql: %s\n", sql);
 	sqlite3_finalize(stmt);
 
 	sqlite3_exec(db, "COMMIT;", 0, 0, 0);

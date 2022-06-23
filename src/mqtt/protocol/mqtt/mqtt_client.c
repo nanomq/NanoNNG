@@ -53,6 +53,7 @@ static void mqtt_ctx_fini(void *arg);
 static void mqtt_ctx_send(void *arg, nni_aio *aio);
 static void mqtt_ctx_recv(void *arg, nni_aio *aio);
 static bool get_persist(mqtt_sock_t *s);
+static void flush_offline_cache(mqtt_sock_t *s);
 
 typedef nni_mqtt_packet_type packet_type_t;
 
@@ -96,6 +97,7 @@ struct mqtt_sock_s {
 	nni_list        send_queue; // ctx pending to send (only offline msg)
 #ifdef NNG_SUPP_SQLITE
 	sqlite3 *sqlite_db;
+	nni_lmq  offline_cache;
 #endif
 #ifdef NNG_HAVE_MQTT_BROKER
 	conf *conf;
@@ -137,6 +139,7 @@ mqtt_sock_fini(void *arg)
 	bool is_sqlite = get_persist(s);
 	if (is_sqlite) {
 		nni_qos_db_fini_sqlite(s->sqlite_db);
+		nni_lmq_fini(&s->offline_cache);
 	}
 #endif
 	mqtt_ctx_fini(&s->master);
@@ -161,6 +164,9 @@ mqtt_sock_set_conf_with_db(void *arg, const void *v, size_t sz, nni_opt_type t)
 
 #ifdef NNG_SUPP_SQLITE
 		if (s->conf->bridge.sqlite.enable) {
+			s->retry = s->conf->sqlite.resend_interval;
+			nni_lmq_init(&s->offline_cache,
+			    s->conf->bridge.sqlite.flush_mem_threshold);
 			nni_qos_db_init_sqlite(s->sqlite_db,
 			    s->conf->bridge.sqlite.mounted_file_path, DB_NAME,
 			    false);
@@ -512,6 +518,26 @@ mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
 	}
 }
 
+static void
+flush_offline_cache(mqtt_sock_t *s)
+{
+#if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
+	size_t cached_size = nni_lmq_len(&s->offline_cache);
+	// TODO we should use `batch commit` to
+	// improve performance
+	for (size_t i = 0; i < cached_size; i++) {
+		nni_msg *cache_msg;
+		if (0 == nni_lmq_get(&s->offline_cache, &cache_msg)) {
+			nni_mqtt_qos_db_set_client_offline_msg(
+			    s->sqlite_db, cache_msg);
+			nni_mqtt_qos_db_remove_oldest_client_offline_msg(
+			    s->sqlite_db,
+			    s->conf->bridge.sqlite.disk_cache_size);
+		}
+	}
+#endif
+}
+
 // Timer callback, we use it for retransmitting.
 static void
 mqtt_timer_cb(void *arg)
@@ -529,6 +555,16 @@ mqtt_timer_cb(void *arg)
 	if (NULL == p || nni_atomic_get_bool(&p->closed)) {
 		return;
 	}
+	// flush offline_cache to sqlite db
+#if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
+	conf_bridge *bridge = &s->conf->bridge;
+	if (bridge->bridge_mode && bridge->sqlite.enable) {
+		if (!nni_lmq_empty(&s->offline_cache)) {
+			flush_offline_cache(s);
+		}
+	}
+#endif
+
 	// start message resending
 	uint64_t row_id    = 0;
 	bool     is_sqlite = get_persist(s);
@@ -854,11 +890,10 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 			if (bridge->bridge_mode && bridge->sqlite.enable) {
 				// the msg order is exactly as same as the ctx
 				// in send_queue
-				nni_mqtt_qos_db_set_client_offline_msg(
-				    s->sqlite_db, msg);
-				nni_mqtt_qos_db_remove_oldest_client_offline_msg(
-				    s->sqlite_db,
-				    bridge->sqlite.disk_cache_size);
+				nni_lmq_put(&s->offline_cache, msg);
+				if (nni_lmq_full(&s->offline_cache)) {
+					flush_offline_cache(s);
+				}
 				nni_aio_set_msg(ctx->saio, NULL);
 			}
 #endif
