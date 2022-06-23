@@ -38,6 +38,8 @@ extern nng_msg *nni_qos_db_get_one(
     bool is_sqlite, void *db, uint32_t pipe_id, uint16_t *packet_id);
 extern void nni_qos_db_remove(
     bool is_sqlite, void *db, uint32_t pipe_id, uint16_t packet_id);
+extern void nni_qos_db_remove_oldest(bool is_sqlite, void *db, uint64_t limit);
+
 extern void nni_qos_db_remove_by_pipe(
     bool is_sqlite, void *db, uint32_t pipe_id);
 extern void nni_qos_db_remove_msg(bool is_sqlite, void *db, nng_msg *msg);
@@ -55,6 +57,8 @@ extern nng_msg *nni_qos_db_get_client_msg(
     bool is_sqlite, void *db, uint32_t pipe_id, uint16_t packet_id);
 extern void nni_qos_db_remove_client_msg(
     bool is_sqlite, void *db, uint32_t pipe_id, uint16_t packet_id);
+extern void nni_qos_db_remove_oldest_client_msg(
+    bool is_sqlite, void *db, uint64_t limit);
 extern void nni_qos_db_remove_client_msg_by_id(
     bool is_sqlite, void *db, uint64_t row_id);
 extern nng_msg *nni_qos_db_get_one_client_msg(
