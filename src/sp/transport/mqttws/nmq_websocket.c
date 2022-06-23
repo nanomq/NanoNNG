@@ -504,6 +504,9 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 				old = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
 				nni_qos_db_set(is_sqlite, pipe->nano_qos_db,
 				    pipe->p_id, pid, old);
+				nni_qos_db_remove_oldest(is_sqlite,
+				    pipe->nano_qos_db,
+				    p->conf->sqlite.disk_cache_size);
 			}
 			NNI_PUT16(var_extra, pid);
 		} else if (qos_pac > 0) {
@@ -726,6 +729,9 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 					nni_qos_db_set(is_sqlite,
 					    pipe->nano_qos_db, pipe->p_id, pid,
 					    old);
+					nni_qos_db_remove_oldest(is_sqlite,
+					    pipe->nano_qos_db,
+					    p->conf->sqlite.disk_cache_size);
 				}
 				NNI_PUT16(var_extra, pid);
 				// copy packet id
