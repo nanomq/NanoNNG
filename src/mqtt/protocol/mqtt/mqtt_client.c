@@ -380,6 +380,10 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 			// nni_println("Warning! Cache QoS msg failed");
 			nni_msg_free(msg);
 		}
+#if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
+		nni_qos_db_remove_oldest_client_msg(is_sqlite, s->sqlite_db,
+		    s->conf->bridge.sqlite.disk_cache_size);
+#endif
 		break;
 
 	default:
@@ -852,6 +856,9 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 				// in send_queue
 				nni_mqtt_qos_db_set_client_offline_msg(
 				    s->sqlite_db, msg);
+				nni_mqtt_qos_db_remove_oldest_client_offline_msg(
+				    s->sqlite_db,
+				    bridge->sqlite.disk_cache_size);
 				nni_aio_set_msg(ctx->saio, NULL);
 			}
 #endif

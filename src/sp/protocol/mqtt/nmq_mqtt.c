@@ -433,6 +433,9 @@ nano_ctx_send(void *arg, nni_aio *aio)
 			packetid = nni_pipe_inc_packetid(p->pipe);
 			nni_qos_db_set(is_sqlite, p->pipe->nano_qos_db,
 			    p->pipe->p_id, packetid, msg);
+			nni_qos_db_remove_oldest(is_sqlite,
+			    p->pipe->nano_qos_db,
+			    s->conf->sqlite.disk_cache_size);
 		} else {
 			nni_msg_free(msg);
 		}
