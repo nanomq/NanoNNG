@@ -95,9 +95,9 @@ struct nni_listener {
 struct subinfo {
 	// Dont change the order of first four fields or insert between them
 	uint8_t       qos : 2;
-	uint8_t       no_local : 1; // new
+	uint8_t       no_local : 1;
 	uint8_t       rap : 1; // Retain As Publish
-	uint8_t       retain_handling : 2; // new
+	uint8_t       retain_handling : 2;
 
 	char *        topic;
 	int           subid;

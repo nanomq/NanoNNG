@@ -416,7 +416,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		// lost interest in our reply.
 		nni_mtx_unlock(&s->lk);
 		nni_aio_set_msg(aio, NULL);
-		debug_syslog("Warning: pipe is gone, pub failed");
+		debug_msg("Warning: pipe is gone, pub failed");
 		nni_msg_free(msg);
 		return;
 	}
@@ -449,7 +449,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		if (!sn) {
 			nni_mtx_unlock(&p->lk);
 			nni_aio_set_msg(aio, NULL);
-			debug_syslog("not find the node in subinfol.");
+			debug_msg("not find the node in subinfol.");
 			return;
 		}
 	}
@@ -461,7 +461,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		if (sn && sn->no_local) {
 			nni_mtx_unlock(&p->lk);
 			nni_aio_set_msg(aio, NULL);
-			debug_syslog("msg cached for session");
+			debug_msg("msg not sent due to no_local");
 			return;
 		}
 	}
@@ -483,7 +483,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		}
 		nni_mtx_unlock(&p->lk);
 		nni_aio_set_msg(aio, NULL);
-		debug_syslog("msg cached for session");
+		debug_msg("msg cached for session");
 		return;
 	}
 
@@ -1109,7 +1109,7 @@ nano_pipe_recv_cb(void *arg)
 			nni_qos_db_remove(
 			    is_sqlite, npipe->nano_qos_db, npipe->p_id, ackid);
 		} else {
-			debug_syslog("qos msg not found!");
+			debug_msg("qos msg not found!");
 		}
 		nni_mtx_unlock(&p->lk);
 	case CMD_CONNECT:
