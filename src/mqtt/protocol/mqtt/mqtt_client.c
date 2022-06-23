@@ -845,7 +845,7 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 
 #if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
 			conf *config = s->conf;
-			if (config->bridge.bridge_mode &&
+			if (config->bridge.enable &&
 			    config->sqlite.enable) {
 				// the msg order is exactly as same as the ctx
 				// in send_queue
