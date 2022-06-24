@@ -419,8 +419,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	// Here we find the node from subinfol which has same topic with pubmsg
 	struct subinfo *sn = NULL;
 	if (CMD_PUBLISH == nni_msg_get_type(msg)) {
-		char *_topic = nni_msg_get_pub_topic(msg, &topic_len);
-		char *topic  = strndup(_topic, topic_len);
+		char *topic = nni_msg_get_pub_topic(msg, &topic_len);
 		char *sub_topic;
 		NNI_LIST_FOREACH (&p->pipe->subinfol, sn) {
 			sub_topic = topic;
@@ -431,13 +430,13 @@ nano_ctx_send(void *arg, nni_aio *aio)
 					sub_topic++;
 					sub_topic = strchr(sub_topic, '/');
 					sub_topic++;
+					topic_len -= (int)(sub_topic - topic);
 				}
 			}
 
-			if (true == topic_filter(sn->topic, sub_topic))
+			if (true == topic_filtern(sn->topic, sub_topic, topic_len))
 				break;
 		}
-		nng_free(topic, topic_len);
 
 		// Not find if sn is null
 		if (!sn) {
@@ -448,6 +447,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		}
 	}
 
+	// TODO Move QOS and NO LOCAL to transport layer
 	qos = !sn ? 0 : sn->qos;
 	// No local
 	if (pipe != 0 && p->conn_param->pro_ver == MQTT_VERSION_V5) {
