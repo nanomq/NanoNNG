@@ -525,19 +525,10 @@ static void
 flush_offline_cache(mqtt_sock_t *s)
 {
 #if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
-	size_t cached_size = nni_lmq_len(&s->offline_cache);
-	// TODO we should use `batch commit` to
-	// improve performance
-	for (size_t i = 0; i < cached_size; i++) {
-		nni_msg *cache_msg;
-		if (0 == nni_lmq_get(&s->offline_cache, &cache_msg)) {
-			nni_mqtt_qos_db_set_client_offline_msg(
-			    s->sqlite_db, cache_msg);
-			nni_mqtt_qos_db_remove_oldest_client_offline_msg(
-			    s->sqlite_db,
-			    s->conf->bridge.sqlite.disk_cache_size);
-		}
-	}
+	nni_mqtt_qos_db_set_client_offline_msg_batch(
+	    s->sqlite_db, &s->offline_cache);
+	nni_mqtt_qos_db_remove_oldest_client_offline_msg(
+	    s->sqlite_db, s->conf->bridge.sqlite.disk_cache_size);
 #else
 	NNI_ARG_UNUSED(s);
 #endif
