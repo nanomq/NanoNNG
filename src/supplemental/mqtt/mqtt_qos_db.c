@@ -848,6 +848,40 @@ nni_mqtt_qos_db_set_client_offline_msg(sqlite3 *db, nni_msg *msg)
 	return rv;
 }
 
+int
+nni_mqtt_qos_db_set_client_offline_msg_batch(sqlite3 *db, nni_lmq *lmq)
+{
+	char sql[] = "INSERT INTO " table_client_offline_msg " ( data ) "
+	             "VALUES ( ? )";
+
+	sqlite3_stmt *stmt;
+	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
+	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
+	size_t lmq_len = nni_lmq_len(lmq);
+	for (size_t i = 0; i < lmq_len; i++) {
+		nni_msg *msg;
+		if (nni_lmq_get(lmq, &msg) == 0) {
+			size_t   len  = 0;
+			uint8_t *blob = nni_mqtt_msg_serialize(msg, &len);
+			if (!blob) {
+				printf("nni_mqtt_msg_serialize failed\n");
+				nni_msg_free(msg);
+				continue;
+			}
+			sqlite3_reset(stmt);
+			sqlite3_bind_blob64(
+			    stmt, 1, blob, len, SQLITE_TRANSIENT);
+			sqlite3_step(stmt);
+			nng_free(blob, len);
+			nni_msg_free(msg);
+		}
+	}
+	sqlite3_finalize(stmt);
+	int rv = sqlite3_exec(db, "COMMIT;", 0, 0, 0);
+
+	return rv;
+}
+
 nng_msg *
 nni_mqtt_qos_db_get_client_offline_msg(sqlite3 *db, int64_t *row_id)
 {

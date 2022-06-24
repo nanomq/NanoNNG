@@ -294,6 +294,42 @@ test_remove_client_offline_msg(void)
 	nni_mqtt_qos_db_close(db);
 }
 
+
+void 
+test_batch_insert_client_offline_msg(void)
+{
+	sqlite3 *db = NULL;
+	nni_mqtt_qos_db_init(&db, NULL, test_db, false);
+
+	nni_lmq lmq;
+	nni_lmq_init(&lmq, 10);
+
+	for (int i = 0; i < 10; i++) {
+		nni_msg *msg;
+		nni_mqtt_msg_alloc(&msg, 0);
+		nni_mqtt_msg_set_packet_type(msg, NNG_MQTT_CONNECT);
+		NUTS_TRUE(
+		    nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNECT);
+		nni_mqtt_msg_set_connect_proto_version(msg, 4);
+		nng_mqtt_msg_set_connect_keep_alive(msg, 60 + i);
+		nni_lmq_put(&lmq, msg);
+	}
+
+	TEST_CHECK(
+	    nni_mqtt_qos_db_set_client_offline_msg_batch(db, &lmq) == 0);
+	nni_lmq_fini(&lmq);
+	nni_mqtt_qos_db_close(db);
+}
+
+void
+test_remove_oldest_client_offline_msg(void)
+{
+	sqlite3 *db = NULL;
+	nni_mqtt_qos_db_init(&db, NULL, test_db, false);
+	nni_mqtt_qos_db_remove_oldest_client_offline_msg(db, 0);
+	nni_mqtt_qos_db_close(db);
+}
+
 TEST_LIST = {
 	{ "db_init", test_db_init },
 	{ "db_pipe_set", test_pipe_set },
@@ -311,5 +347,9 @@ TEST_LIST = {
 	{ "db_set_client_offline_msg", test_set_client_offline_msg },
 	{ "db_get_client_offline_msg", test_get_client_offline_msg },
 	{ "db_remove_client_offline_msg", test_remove_client_offline_msg },
+	{ "db_batch_insert_client_offline_msg",
+	    test_batch_insert_client_offline_msg },
+	{ "db_remove_oldest_client_offline_msg",
+	    test_remove_oldest_client_offline_msg },
 	{ NULL, NULL },
 };
