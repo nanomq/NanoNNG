@@ -109,40 +109,39 @@ struct property {
 typedef struct property property;
 
 struct mqtt_msg_info {
-	uint8_t  qos;
 	uint32_t pipe;
 };
 typedef struct mqtt_msg_info mqtt_msg_info;
 
-// variable header in mqtt_packet_subscribe
-struct topic_with_option {
-	uint8_t     qos : 2;
-	uint8_t     no_local : 1;
-	uint8_t     rap : 1;
-	uint8_t     retain_handling : 2;
-	mqtt_string topic_filter;
-	uint8_t     reason_code;
-};
-typedef struct topic_with_option topic_with_option;
-
 struct topic_node {
-	topic_with_option *it;
+	uint8_t qos : 2;
+	uint8_t no_local : 1;
+	uint8_t rap : 1;
+	uint8_t retain_handling : 2;
+
+	struct {
+		char *body;
+		int   len;
+	} topic;
+
+	uint8_t reason_code;
+
 	struct topic_node *next;
 };
 typedef struct topic_node topic_node;
 
 struct packet_subscribe {
-	uint16_t packet_id;
+	uint16_t    packet_id;
 	uint32_t    prop_len;
-	property *  properties;
+	property   *properties;
 	topic_node *node; // stored topic and option
 };
 typedef struct packet_subscribe packet_subscribe;
 
 struct packet_unsubscribe {
-	uint16_t packet_id;
+	uint16_t    packet_id;
 	uint32_t    prop_len;
-	property *  properties;
+	property   *properties;
 	topic_node *node; // stored topic and option
 };
 typedef struct packet_unsubscribe packet_unsubscribe;
