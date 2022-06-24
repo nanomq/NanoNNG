@@ -538,6 +538,8 @@ flush_offline_cache(mqtt_sock_t *s)
 			    s->conf->bridge.sqlite.disk_cache_size);
 		}
 	}
+#else
+	NNI_ARG_UNUSED(s);
 #endif
 }
 
