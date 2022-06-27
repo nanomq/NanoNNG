@@ -144,6 +144,7 @@ tcptran_pipe_stop(void *arg)
 {
 	tcptran_pipe *p = arg;
 
+	p->tcp_cparam = NULL;
 	nni_aio_stop(p->qsaio);
 	nni_aio_stop(p->rpaio);
 	nni_aio_stop(p->rxaio);
@@ -163,8 +164,8 @@ tcptran_pipe_init(void *arg, nni_pipe *npipe)
 		nni_qos_db_init_id_hash(npipe->nano_qos_db);
 	}
 
-	p->conn_buf = NULL;
-	p->busy     = false;
+	p->conn_buf   = NULL;
+	p->busy       = false;
 
 	nni_lmq_init(&p->rslmq, 16);
 	p->qos_buf = nng_zalloc(16 + NNI_NANO_MAX_PACKET_SIZE);
@@ -429,7 +430,7 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 	msg  = nni_aio_get_msg(p->qsaio);
 	type = nni_msg_cmd_type(msg);
 
-	if (p->tcp_cparam->pro_ver == 5) {
+	if (!p->closed && p->tcp_cparam->pro_ver == 5) {
 		(type == CMD_PUBCOMP || type == PUBACK) ? p->qrecv_quota++
 		                                        : p->qrecv_quota;
 	}
