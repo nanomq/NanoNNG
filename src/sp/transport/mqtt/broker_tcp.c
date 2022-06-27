@@ -161,9 +161,8 @@ tcptran_pipe_init(void *arg, nni_pipe *npipe)
 	nni_pipe_set_conn_param(npipe, p->tcp_cparam);
 	p->npipe = npipe;
 	if (!p->conf->sqlite.enable) {
-		nni_qos_db_init_id_hash(npipe->nano_qos_db);
+		nni_qos_db_init_id_hash(p->npipe->nano_qos_db);
 	}
-
 	p->conn_buf   = NULL;
 	p->busy       = false;
 
@@ -353,7 +352,6 @@ tcptran_pipe_nego_cb(void *arg)
 			nni_list_remove(&ep->negopipes, p);
 			nni_list_append(&ep->waitpipes, p);
 			tcptran_ep_match(ep);
-			p->conf     = ep->conf;
 			if (p->tcp_cparam->max_packet_size == 0) {
 				// set default max packet size for client
 				p->tcp_cparam->max_packet_size = p->conf == NULL?
@@ -429,11 +427,8 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 
 	msg  = nni_aio_get_msg(p->qsaio);
 	type = nni_msg_cmd_type(msg);
-
-	if (!p->closed && p->tcp_cparam->pro_ver == 5) {
-		(type == CMD_PUBCOMP || type == PUBACK) ? p->qrecv_quota++
-		                                        : p->qrecv_quota;
-	}
+	(type == CMD_PUBCOMP || type == PUBACK) ? p->qrecv_quota++
+	                                        : p->qrecv_quota;
 	nni_msg_free(msg);
 	if (nni_lmq_get(&p->rslmq, &msg) == 0) {
 		nni_iov iov[2];
@@ -1434,6 +1429,7 @@ tcptran_pipe_start(tcptran_pipe *p, nng_stream *conn, tcptran_ep *ep)
 
 	p->conn = conn;
 	p->ep   = ep;
+	p->conf = ep->conf;
 	// p->proto = ep->proto;
 
 	debug_msg("tcptran_pipe_start!");
