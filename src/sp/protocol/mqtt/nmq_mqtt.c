@@ -430,7 +430,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		char *topic = nni_msg_get_pub_topic(msg, &topic_len);
 		char *sub_topic;
 		NNI_LIST_FOREACH (&p->pipe->subinfol, sn) {
-			sub_topic = topic;
+			sub_topic = sn->topic;
 			if (sub_topic[0] == '$') {
 				if (0 == strncmp(sub_topic, "$share/",
 				        strlen("$share/"))) {
@@ -438,11 +438,10 @@ nano_ctx_send(void *arg, nni_aio *aio)
 					sub_topic++;
 					sub_topic = strchr(sub_topic, '/');
 					sub_topic++;
-					topic_len -= (int)(sub_topic - topic);
 				}
 			}
 
-			if (true == topic_filtern(sn->topic, sub_topic, topic_len))
+			if (true == topic_filtern(sub_topic, topic, topic_len))
 				break;
 		}
 
