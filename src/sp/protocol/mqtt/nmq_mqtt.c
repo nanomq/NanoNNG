@@ -263,8 +263,8 @@ nano_pipe_timer_cb(void *arg)
 		    "Warning: close pipe & kick client due to KeepAlive "
 		    "timeout!");
 		p->reason_code = NMQ_KEEP_ALIVE_TIMEOUT;
-		nni_aio_finish_error(&p->aio_recv, NNG_ECONNREFUSED);
 		nni_mtx_unlock(&p->lk);
+		nni_aio_finish_error(&p->aio_recv, NNG_ECONNREFUSED);
 		return;
 	}
 	p->ka_refresh++;
@@ -420,8 +420,9 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		nni_msg_free(msg);
 		return;
 	}
-	nni_mtx_lock(&p->lk);
+
 	nni_mtx_unlock(&s->lk);
+	nni_mtx_lock(&p->lk);
 
 	// Here we find the node from subinfol which has same topic with pubmsg
 	struct subinfo *sn = NULL;
@@ -809,13 +810,13 @@ close_pipe(nano_pipe *p)
 	nni_aio_close(&p->aio_send);
 	nni_aio_close(&p->aio_recv);
 	nni_aio_close(&p->aio_timer);
-
+	nni_mtx_lock(&p->lk);
 	p->closed = true;
 	if (nni_list_active(&s->recvpipes, p)) {
 		nni_list_remove(&s->recvpipes, p);
 	}
 	nano_nni_lmq_flush(&p->rlmq);
-
+	nni_mtx_unlock(&p->lk);
 	nni_id_remove(&s->pipes, nni_pipe_id(p->pipe));
 }
 
@@ -847,6 +848,7 @@ nano_pipe_close(void *arg)
 	if (clientid) {
 		clientid_key = DJBHashn(clientid, strlen(clientid));
 		nni_id_set(&s->cached_sessions, clientid_key, p);
+		nni_mtx_lock(&p->lk);
 		// set event to false avoid of sending the disconnecting msg
 		p->event                   = false;
 		npipe->cache               = true;
@@ -857,6 +859,7 @@ nano_pipe_close(void *arg)
 		}
 		nano_nni_lmq_flush(&p->rlmq);
 		nni_mtx_unlock(&s->lk);
+		nni_mtx_unlock(&p->lk);
 		return;
 	}
 	close_pipe(p);
