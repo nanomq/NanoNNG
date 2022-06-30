@@ -56,6 +56,7 @@ static void mqtt_ctx_recv(void *arg, nni_aio *aio);
 static bool  get_persist(mqtt_sock_t *s);
 static char *get_config_name(mqtt_sock_t *s);
 static void  flush_offline_cache(mqtt_sock_t *s);
+static nni_msg* get_cache_msg(mqtt_sock_t *s);
 
 typedef nni_mqtt_packet_type packet_type_t;
 
@@ -316,6 +317,35 @@ mqtt_pipe_fini(void *arg)
 	nni_lmq_fini(&p->send_messages);
 }
 
+static inline nni_msg *
+get_cache_msg(mqtt_sock_t *s)
+{
+	nni_msg *msg = NULL;
+#if defined(NNG_HAVE_MQTT_BROKER)
+	conf_sqlite *sqlite = s->bridge_conf->sqlite;
+#if defined(NNG_SUPP_SQLITE)
+	if (sqlite->enable) {
+		int64_t row_id = 0;
+		msg            = nni_mqtt_qos_db_get_client_offline_msg(
+                    s->sqlite_db, &row_id, get_config_name(s));
+		if (!nni_lmq_empty(&s->offline_cache)) {
+			flush_offline_cache(s);
+		}
+		if (msg != NULL) {
+			nni_mqtt_qos_db_remove_client_offline_msg(
+			    s->sqlite_db, row_id);
+		}
+	}
+#else
+	NNI_ARG_UNUSED(sqlite);
+	return NULL;
+#endif
+#else
+	return NULL;
+#endif
+	return msg;
+}
+
 // Should be called with mutex lock hold. and it will unlock mtx.
 // flag indicates if need to skip msg in sqlite 1: check sqlite 0: only aio
 static inline void
@@ -332,32 +362,11 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 	bool  is_sqlite   = get_persist(s);
 	char *config_name = get_config_name(s);
 
-	msg = nni_aio_get_msg(aio);
-	if (NULL == msg) {
-#if defined(NNG_HAVE_MQTT_BROKER)
-		conf_sqlite *sqlite = s->bridge_conf->sqlite;
-#if defined(NNG_SUPP_SQLITE)
-		if (sqlite->enable) {
-			int64_t row_id = 0;
-			msg = nni_mqtt_qos_db_get_client_offline_msg(
-			    s->sqlite_db, &row_id, config_name);
-			if (!nni_lmq_empty(&s->offline_cache)) {
-				flush_offline_cache(s);
-			}
-			if (msg != NULL) {
-				nni_mqtt_qos_db_remove_client_offline_msg(
-				    s->sqlite_db, row_id);
-			} else {
-				goto out;
-			}
+	if (NULL == aio || NULL == (msg = nni_aio_get_msg(aio))) {
+		msg = get_cache_msg(s);
+		if (msg == NULL) {
+			goto out;
 		}
-#else
-		NNI_ARG_UNUSED(sqlite);
-		goto out;
-#endif
-#else
-		goto out;
-#endif
 	}
 
 	ptype = nni_mqtt_msg_get_packet_type(msg);
@@ -645,6 +654,16 @@ mqtt_send_cb(void *arg)
 		nni_mtx_unlock(&s->mtx);
 		return;
 	}
+
+	msg = get_cache_msg(s);
+	if (msg != NULL) {
+		p->busy = true;
+		nni_aio_set_msg(&p->send_aio, msg);
+		nni_pipe_send(p->pipe, &p->send_aio);
+		nni_mtx_unlock(&s->mtx);
+		return;
+	}
+
 	p->busy = false;
 	nni_mtx_unlock(&s->mtx);
 	return;
@@ -877,24 +896,27 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 	}
 	if (p == NULL) {
 		// connection is lost or not established yet
+#if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
+		conf_bridge_node *bridge = s->bridge_conf;
+		if (bridge->enable && bridge->sqlite->enable) {
+			// the msg order is exactly as same as the ctx
+			// in send_queue
+			nni_lmq_put(&s->offline_cache, msg);
+			if (nni_lmq_full(&s->offline_cache)) {
+				flush_offline_cache(s);
+			}
+			nni_aio_set_msg(aio, NULL);
+			nni_aio_finish_error(aio, NNG_ECLOSED);
+			nni_mtx_unlock(&s->mtx);
+			return;
+		}
+#endif
+
 		if (!nni_list_active(&s->send_queue, ctx)) {
 			// cache ctx
 			ctx->saio = aio;
 			ctx->raio = NULL;
 			nni_list_append(&s->send_queue, ctx);
-
-#if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
-			conf_bridge_node *bridge = s->bridge_conf;
-			if (bridge->enable && bridge->sqlite->enable) {
-				// the msg order is exactly as same as the ctx
-				// in send_queue
-				nni_lmq_put(&s->offline_cache, msg);
-				if (nni_lmq_full(&s->offline_cache)) {
-					flush_offline_cache(s);
-				}
-				nni_aio_set_msg(ctx->saio, NULL);
-			}
-#endif
 			nni_mtx_unlock(&s->mtx);
 			debug_msg("WARNING:client sending msg while disconnected! cached");
 		} else {

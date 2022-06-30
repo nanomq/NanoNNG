@@ -14,8 +14,7 @@
 static uint8_t *nni_msg_serialize(nni_msg *msg, size_t *out_len);
 static nni_msg *nni_msg_deserialize(uint8_t *bytes, size_t len);
 static uint8_t *nni_mqtt_msg_serialize(nni_msg *msg, size_t *out_len);
-static nni_msg *nni_mqtt_msg_deserialize(
-    uint8_t *bytes, size_t len, bool aio_available);
+static nni_msg *nni_mqtt_msg_deserialize(uint8_t *bytes, size_t len);
 static int      create_msg_table(sqlite3 *db);
 static int      create_pipe_client_table(sqlite3 *db);
 static int      create_main_table(sqlite3 *db);
@@ -745,8 +744,7 @@ nni_mqtt_qos_db_get_client_msg(
 		uint8_t *bytes = sqlite3_malloc(nbyte);
 		memcpy(bytes, sqlite3_column_blob(stmt, 0), nbyte);
 		// deserialize blob data to nni_msg
-		msg = nni_mqtt_msg_deserialize(
-		    bytes, nbyte, pipe_id > 0 ? true : false);
+		msg = nni_mqtt_msg_deserialize(bytes, nbyte);
 		sqlite3_free(bytes);
 	}
 	sqlite3_finalize(stmt);
@@ -876,8 +874,7 @@ nni_mqtt_qos_db_get_one_client_msg(
 		uint8_t *bytes   = sqlite3_malloc(nbyte);
 		memcpy(bytes, sqlite3_column_blob(stmt, 3), nbyte);
 		// deserialize blob data to nni_msg
-		msg = nni_mqtt_msg_deserialize(
-		    bytes, nbyte, pipe_id > 0 ? true : false);
+		msg = nni_mqtt_msg_deserialize(bytes, nbyte);
 		sqlite3_free(bytes);
 	}
 	sqlite3_finalize(stmt);
@@ -985,7 +982,7 @@ nni_mqtt_qos_db_get_client_offline_msg(
 		uint8_t *bytes = sqlite3_malloc(nbyte);
 		memcpy(bytes, sqlite3_column_blob(stmt, 1), nbyte);
 		// deserialize blob data to nni_msg
-		msg = nni_mqtt_msg_deserialize(bytes, nbyte, false);
+		msg = nni_mqtt_msg_deserialize(bytes, nbyte);
 		sqlite3_free(bytes);
 	}
 	sqlite3_finalize(stmt);
@@ -1142,7 +1139,7 @@ out:
 }
 
 static nni_msg *
-nni_mqtt_msg_deserialize(uint8_t *bytes, size_t len, bool aio_available)
+nni_mqtt_msg_deserialize(uint8_t *bytes, size_t len)
 {
 	nni_msg *msg;
 	if (nni_mqtt_msg_alloc(&msg, 0) != 0) {
@@ -1178,15 +1175,7 @@ nni_mqtt_msg_deserialize(uint8_t *bytes, size_t len, bool aio_available)
 
 	nni_mqtt_msg_decode(msg);
 
-	if (aio_available) {
-		uint64_t addr = 0;
-		if (read_uint64(&buf, &addr) != 0) {
-			goto out;
-		}
-		nni_mqtt_msg_set_aio(msg, (nni_aio *) addr);
-	} else {
-		nni_mqtt_msg_set_aio(msg, NULL);
-	}
+	nni_mqtt_msg_set_aio(msg, NULL);
 
 	return msg;
 
