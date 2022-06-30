@@ -83,6 +83,12 @@ nng_strdup(const char *src)
 	return (nni_strdup(src));
 }
 
+char *
+nng_strndup(const char *src, size_t len)
+{
+	return (nni_strndup(src, len));
+}
+
 void
 nng_strfree(char *s)
 {
