@@ -326,8 +326,9 @@ get_cache_msg(mqtt_sock_t *s)
 #if defined(NNG_SUPP_SQLITE)
 	if (sqlite->enable) {
 		int64_t row_id = 0;
-		msg            = nni_mqtt_qos_db_get_client_offline_msg(
-                    s->sqlite_db, &row_id, get_config_name(s));
+
+		msg = nni_mqtt_qos_db_get_client_offline_msg(
+		    s->sqlite_db, &row_id, get_config_name(s));
 		if (!nni_lmq_empty(&s->offline_cache)) {
 			flush_offline_cache(s);
 		}
@@ -655,8 +656,7 @@ mqtt_send_cb(void *arg)
 		return;
 	}
 
-	msg = get_cache_msg(s);
-	if (msg != NULL) {
+	if (NULL != (msg = get_cache_msg(s))) {
 		p->busy = true;
 		nni_aio_set_msg(&p->send_aio, msg);
 		nni_pipe_send(p->pipe, &p->send_aio);
@@ -905,9 +905,9 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 			if (nni_lmq_full(&s->offline_cache)) {
 				flush_offline_cache(s);
 			}
+			nni_mtx_unlock(&s->mtx);
 			nni_aio_set_msg(aio, NULL);
 			nni_aio_finish_error(aio, NNG_ECLOSED);
-			nni_mtx_unlock(&s->mtx);
 			return;
 		}
 #endif
