@@ -167,7 +167,7 @@ mqtt_sock_set_conf_with_db(void *arg, const void *v, size_t sz, nni_opt_type t)
 
 #ifdef NNG_SUPP_SQLITE
 		conf_bridge_node *bridge_conf = s->bridge_conf;
-		if (bridge_conf->sqlite->enable) {
+		if (bridge_conf != NULL && bridge_conf->sqlite->enable) {
 			s->retry = bridge_conf->sqlite->resend_interval;
 			nni_lmq_init(&s->offline_cache,
 			    bridge_conf->sqlite->flush_mem_threshold);
@@ -322,6 +322,9 @@ get_cache_msg(mqtt_sock_t *s)
 {
 	nni_msg *msg = NULL;
 #if defined(NNG_HAVE_MQTT_BROKER)
+	if (s->bridge_conf == NULL) {
+		return NULL;
+	}
 	conf_sqlite *sqlite = s->bridge_conf->sqlite;
 #if defined(NNG_SUPP_SQLITE)
 	if (sqlite->enable) {
@@ -409,8 +412,12 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 			nni_msg_free(msg);
 		}
 #if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
-		nni_qos_db_remove_oldest_client_msg(is_sqlite, s->sqlite_db,
-		    s->bridge_conf->sqlite->disk_cache_size, config_name);
+		if (s->bridge_conf != NULL) {
+			nni_qos_db_remove_oldest_client_msg(is_sqlite,
+			    s->sqlite_db,
+			    s->bridge_conf->sqlite->disk_cache_size,
+			    config_name);
+		}
 #endif
 		break;
 
@@ -544,11 +551,13 @@ static void
 flush_offline_cache(mqtt_sock_t *s)
 {
 #if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
-	char *config_name = get_config_name(s);
-	nni_mqtt_qos_db_set_client_offline_msg_batch(
-	    s->sqlite_db, &s->offline_cache, config_name);
-	nni_mqtt_qos_db_remove_oldest_client_offline_msg(s->sqlite_db,
-	    s->bridge_conf->sqlite->disk_cache_size, config_name);
+	if (s->bridge_conf) {
+		char *config_name = get_config_name(s);
+		nni_mqtt_qos_db_set_client_offline_msg_batch(
+		    s->sqlite_db, &s->offline_cache, config_name);
+		nni_mqtt_qos_db_remove_oldest_client_offline_msg(s->sqlite_db,
+		    s->bridge_conf->sqlite->disk_cache_size, config_name);
+	}
 #else
 	NNI_ARG_UNUSED(s);
 #endif
@@ -898,7 +907,8 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 		// connection is lost or not established yet
 #if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
 		conf_bridge_node *bridge = s->bridge_conf;
-		if (bridge->enable && bridge->sqlite->enable) {
+		if (bridge != NULL && bridge->enable &&
+		    bridge->sqlite->enable) {
 			// the msg order is exactly as same as the ctx
 			// in send_queue
 			nni_lmq_put(&s->offline_cache, msg);
@@ -982,7 +992,7 @@ static inline bool
 get_persist(mqtt_sock_t *s)
 {
 #ifdef NNG_HAVE_MQTT_BROKER
-	return s->bridge_conf->sqlite->enable;
+	return s->bridge_conf != NULL ? s->bridge_conf->sqlite->enable : false;
 #else
 	NNI_ARG_UNUSED(s);
 	return false;
@@ -993,7 +1003,7 @@ static inline char *
 get_config_name(mqtt_sock_t *s)
 {
 #ifdef NNG_HAVE_MQTT_BROKER
-	return s->bridge_conf->name;
+	return s->bridge_conf != NULL ? s->bridge_conf->name : NULL;
 #else
 	return NULL;
 #endif
