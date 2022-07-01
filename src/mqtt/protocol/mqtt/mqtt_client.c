@@ -272,18 +272,8 @@ mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	// Packet IDs are 16 bits
 	// We start at a random point, to minimize likelihood of
 	// accidental collision across restarts.
-	bool is_sqlite = get_persist(p->mqtt_sock);
-
-#ifdef NNG_SUPP_SQLITE
-	if (is_sqlite) {
-		p->sent_unack = p->mqtt_sock->sqlite_db;
-	}
-#endif
-	if (!is_sqlite) {
-		nni_qos_db_init_id_hash_with_opt(
-		    p->sent_unack, 0x0000u, 0xffffu, true);
-	}
-
+	nni_qos_db_init_id_hash_with_opt(
+	    p->sent_unack, 0x0000u, 0xffffu, true);
 	nni_id_map_init(&p->recv_unack, 0x0000u, 0xffffu, true);
 	nni_lmq_init(&p->recv_messages, NNG_MAX_RECV_LMQ);
 	nni_lmq_init(&p->send_messages, NNG_MAX_SEND_LMQ);
@@ -308,10 +298,9 @@ mqtt_pipe_fini(void *arg)
 	nni_aio_fini(&p->send_aio);
 	nni_aio_fini(&p->recv_aio);
 	nni_aio_fini(&p->time_aio);
-	bool is_sqlite = get_persist(p->mqtt_sock);
-	if (!is_sqlite) {
-		nni_qos_db_fini_id_hash(p->sent_unack);
-	}
+
+	nni_qos_db_fini_id_hash(p->sent_unack);
+
 	nni_id_map_fini(&p->recv_unack);
 	nni_lmq_fini(&p->recv_messages);
 	nni_lmq_fini(&p->send_messages);
@@ -363,9 +352,6 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 	nni_msg *        msg;
 	nni_msg *        tmsg;
 
-	bool  is_sqlite   = get_persist(s);
-	char *config_name = get_config_name(s);
-
 	if (NULL == aio || NULL == (msg = nni_aio_get_msg(aio))) {
 		msg = get_cache_msg(s);
 		if (msg == NULL) {
@@ -390,8 +376,7 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 		packet_id     = mqtt_pipe_get_next_packet_id(p);
 		nni_mqtt_msg_set_packet_id(msg, packet_id);
 		nni_mqtt_msg_set_aio(msg, aio);
-		tmsg = nni_qos_db_get_client_msg(is_sqlite, p->sent_unack,
-		    nni_pipe_id(p->pipe), packet_id, config_name);
+		tmsg = nni_id_get(p->sent_unack, packet_id);
 		if (tmsg != NULL) {
 			nni_plat_printf("Warning : msg %d lost due to "
 			                "packetID duplicated!",
@@ -401,24 +386,12 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 				nni_aio_finish_error(m_aio, NNG_EPROTO);
 			}
 			nni_msg_free(tmsg);
-			nni_qos_db_remove_client_msg(is_sqlite, p->sent_unack,
-			    nni_pipe_id(p->pipe), packet_id, config_name);
+			nni_id_remove(p->sent_unack, packet_id);
 		}
 		nni_msg_clone(msg);
-		if (nni_qos_db_set_client_msg(is_sqlite, p->sent_unack,
-		        nni_pipe_id(p->pipe), packet_id, msg,
-		        config_name) != 0) {
-			// nni_println("Warning! Cache QoS msg failed");
+		if (0 != nni_id_set(p->sent_unack, packet_id, msg)) {
 			nni_msg_free(msg);
 		}
-#if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
-		if (s->bridge_conf != NULL) {
-			nni_qos_db_remove_oldest_client_msg(is_sqlite,
-			    s->sqlite_db,
-			    s->bridge_conf->sqlite->disk_cache_size,
-			    config_name);
-		}
-#endif
 		break;
 
 	default:
@@ -581,15 +554,8 @@ mqtt_timer_cb(void *arg)
 		return;
 	}
 	// start message resending
-	uint64_t row_id    = 0;
-	bool     is_sqlite = get_persist(s);
-	char *   config_name = get_config_name(s);
-
-	msg = nni_qos_db_get_one_client_msg(
-	    is_sqlite, p->sent_unack, &row_id, &pid, config_name);
+	msg = nni_id_get_any(p->sent_unack, &pid);
 	if (msg != NULL) {
-		nni_qos_db_remove_client_msg_by_id(
-		    is_sqlite, p->sent_unack, row_id);
 		uint16_t ptype;
 		ptype = nni_mqtt_msg_get_packet_type(msg);
 		if (ptype == NNG_MQTT_PUBLISH) {
@@ -687,8 +653,6 @@ mqtt_recv_cb(void *arg)
 	nni_msg *        cached_msg = NULL;
 	mqtt_ctx_t *     ctx;
 
-	bool is_sqlite = get_persist(s);
-
 	if (nni_aio_result(&p->recv_aio) != 0) {
 		nni_pipe_close(p->pipe);
 		return;
@@ -714,7 +678,6 @@ mqtt_recv_cb(void *arg)
 	int32_t       packet_id;
 	uint8_t       qos;
 
-	char *config_name = get_config_name(s);
 	// schedule another receive
 	nni_pipe_recv(p->pipe, &p->recv_aio);
 
@@ -736,11 +699,9 @@ mqtt_recv_cb(void *arg)
 	case NNG_MQTT_UNSUBACK:
 		// we have received a UNSUBACK, successful unsubscription
 		packet_id  = nni_mqtt_msg_get_packet_id(msg);
-		cached_msg = nni_qos_db_get_client_msg(
-		    is_sqlite, p->sent_unack, nni_pipe_id(p->pipe), packet_id, config_name);
+		cached_msg = nni_id_get(p->sent_unack, packet_id);
 		if (cached_msg != NULL) {
-			nni_qos_db_remove_client_msg(is_sqlite, p->sent_unack,
-			    nni_pipe_id(p->pipe), packet_id, config_name);
+			nni_id_remove(p->sent_unack, packet_id);
 			user_aio = nni_mqtt_msg_get_aio(cached_msg);
 			nni_msg_free(cached_msg);
 		}
