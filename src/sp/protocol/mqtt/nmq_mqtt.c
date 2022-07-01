@@ -717,21 +717,16 @@ nano_pipe_start(void *arg)
 			old->event       = true;
 			old->pipe->cache = false;
 #ifdef NNG_SUPP_SQLITE
-			if (is_sqlite) {
-				nni_qos_db_remove_by_pipe(is_sqlite,
-				    old->nano_qos_db, old->pipe->p_id);
-				nni_qos_db_remove_pipe(is_sqlite,
-				    old->nano_qos_db, old->pipe->p_id);
-				nni_qos_db_remove_unused_msg(
-				    is_sqlite, old->nano_qos_db);
-			}
+			nni_qos_db_remove_by_pipe(
+			    is_sqlite, old->nano_qos_db, old->pipe->p_id);
+			nni_qos_db_remove_pipe(
+			    is_sqlite, old->nano_qos_db, old->pipe->p_id);
+			nni_qos_db_remove_unused_msg(
+			    is_sqlite, old->nano_qos_db);
 #endif
-			if (!is_sqlite) {
-				nni_qos_db_remove_all_msg(is_sqlite,
-				    old->nano_qos_db, nmq_close_unack_msg_cb);
-				nni_id_remove(
-				    &s->cached_sessions, clientid_key);
-			}
+			nni_qos_db_remove_all_msg(is_sqlite, old->nano_qos_db,
+			    nmq_close_unack_msg_cb);
+			nni_id_remove(&s->cached_sessions, clientid_key);
 		}
 	}
 #ifdef NNG_SUPP_SQLITE
