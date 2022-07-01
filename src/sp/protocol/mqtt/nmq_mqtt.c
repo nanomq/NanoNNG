@@ -226,32 +226,23 @@ nano_pipe_timer_cb(void *arg)
 					old->event       = true;
 					old->pipe->cache = false;
 #ifdef NNG_SUPP_SQLITE
-					if (is_sqlite) {
-						nni_qos_db_remove_by_pipe(
-						    is_sqlite,
-						    old->nano_qos_db,
-						    old->pipe->p_id);
-						nni_qos_db_remove_pipe(
-						    is_sqlite,
-						    old->nano_qos_db,
-						    old->pipe->p_id);
-						nni_qos_db_remove_unused_msg(
-						    is_sqlite,
-						    old->nano_qos_db);
-					}
+					nni_qos_db_remove_by_pipe(is_sqlite,
+					    old->nano_qos_db, old->pipe->p_id);
+					nni_qos_db_remove_pipe(is_sqlite,
+					    old->nano_qos_db, old->pipe->p_id);
+					nni_qos_db_remove_unused_msg(
+					    is_sqlite, old->nano_qos_db);
 #endif
-					if (!is_sqlite) {
-						nni_qos_db_remove_all_msg(
-						    is_sqlite,
-						    old->nano_qos_db,
-						    nmq_close_unack_msg_cb);
-						nni_id_remove(
-						    &s->cached_sessions,
-						    clientid_key);
-					}
+					nni_qos_db_remove_all_msg(is_sqlite,
+					    old->nano_qos_db,
+					    nmq_close_unack_msg_cb);
+					nni_id_remove(
+					    &s->cached_sessions, clientid_key);
 				}
 				p->reason_code = 0x8E;
+				nni_mtx_unlock(&p->lk);
 				nni_pipe_close(p->pipe);
+				return;
 			}
 		}
 		nni_sleep_aio(qos_duration * 1000, &p->aio_timer);
@@ -270,6 +261,7 @@ nano_pipe_timer_cb(void *arg)
 	p->ka_refresh++;
 
 	if (!p->busy) {
+		// trying to resend msg
 		msg = nni_qos_db_get_one(
 		    is_sqlite, npipe->nano_qos_db, npipe->p_id, &pid);
 		if (msg != NULL) {
