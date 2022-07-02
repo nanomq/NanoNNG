@@ -203,7 +203,7 @@ get_utf8_str(char **dest, const uint8_t *src, uint32_t *pos)
  * @return uint8_t* NULL if overflow or not utf-8
  */
 uint8_t *
-copyn_utf8_str(const uint8_t *src, uint32_t *pos, uint32_t *str_len, int limit)
+copyn_utf8_str(const uint8_t *src, uint32_t *pos, int *str_len, int limit)
 {
 	*str_len      = 0;
 	uint8_t *dest = NULL;
@@ -278,7 +278,7 @@ copy_utf8_str(const uint8_t *src, uint32_t *pos, int *str_len)
  * string
  */
 uint8_t *
-copyn_str(const uint8_t *src, uint32_t *pos, uint32_t *str_len, int limit)
+copyn_str(const uint8_t *src, uint32_t *pos, int *str_len, int limit)
 {
 	*str_len      = 0;
 	uint8_t *dest = NULL;

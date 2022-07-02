@@ -67,11 +67,11 @@ NNG_DECL int32_t  get_utf8_str(char **dest, const uint8_t *src, uint32_t *pos);
 NNG_DECL uint8_t *copy_utf8_str(
     const uint8_t *src, uint32_t *pos, int *str_len);
 NNG_DECL uint8_t *copyn_utf8_str(
-    const uint8_t *src, uint32_t *pos, uint32_t *str_len, int limit);
+    const uint8_t *src, uint32_t *pos, int *str_len, int limit);
 
 // NNG_DECL char *convert_to_utf8(char *src, char *format, size_t *len);
 NNG_DECL uint8_t *copyn_str(
-    const uint8_t *src, uint32_t *pos, uint32_t *str_len, int limit);
+    const uint8_t *src, uint32_t *pos, int *str_len, int limit);
 
 NNG_DECL int utf8_check(const char *str, size_t length);
 

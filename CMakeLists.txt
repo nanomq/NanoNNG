@@ -52,8 +52,8 @@ if ("${isSystemDir}" STREQUAL "-1")
     set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}")
 endif ("${isSystemDir}" STREQUAL "-1")
 
-set(NNG_DESCRIPTION "High-Performance Scalability Protocols NextGen")
-set(ISSUE_REPORT_MSG "Please consider opening an issue at https://github.com/nanomsg/nng")
+set(NNG_DESCRIPTION "High-Performance Scalability Protocols NextGen - NanoMQ optimized")
+set(ISSUE_REPORT_MSG "Please consider opening an issue at https://github.com/nanomq/NanoNNG")
 
 # Determine library versions.
 file(READ "include/nng/nng.h" nng_ver_h)
@@ -275,11 +275,11 @@ endif ()
 include_directories(${CMAKE_SOURCE_DIR}/nanolib/include)
 include_directories(${CMAKE_SOURCE_DIR}/nanomq/include)
 
-set(CPACK_PACKAGE_NAME ${PROJECT_NAME})
+set(CPACK_PACKAGE_NAME "nanonng")
 set(CPACK_PACKAGE_VERSION ${NNG_PACKAGE_VERSION})
 set(CPACK_PACKAGE_CONTACT "nanomsg@freelists.org")
 set(CPACK_PACKAGE_VENDOR "nanomsg.org")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "nanomsg next generation library")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "nanosdk")
 set(CPACK_SOURCE_GENERATOR "TBZ2;TGZ;ZIP")
 set(CPACK_SOURCE_IGNORE_FILES "/build/;/.git/;~$;${CPACK_SOURCE_IGNORE_FILES}")
 set(CPACK_SOURCE_PACKAGE_FILE_NAME
