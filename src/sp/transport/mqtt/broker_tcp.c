@@ -1012,13 +1012,10 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 					nni_println(
 					    "ERROR: packet id duplicates in "
 					    "nano_qos_db");
-					old =
-					    NANO_NNI_LMQ_GET_MSG_POINTER(old);
 
 					nni_qos_db_remove_msg(is_sqlite,
 					    pipe->nano_qos_db, old);
 				}
-				old = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
 				nni_qos_db_set(is_sqlite, pipe->nano_qos_db,
 				    pipe->p_id, pid, old);
 				nni_qos_db_remove_oldest(is_sqlite,
@@ -1075,7 +1072,6 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	int       niov;
 	nni_iov   iov[8];
 
-	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
 	nni_aio_set_msg(aio, msg);
 
 	if (nni_msg_get_type(msg) != CMD_PUBLISH)
@@ -1220,16 +1216,11 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 						nni_println("ERROR: packet id "
 						            "duplicates in "
 						            "nano_qos_db");
-						old =
-						    NANO_NNI_LMQ_GET_MSG_POINTER(
-						        old);
 
 						nni_qos_db_remove_msg(
 						    is_sqlite,
 						    pipe->nano_qos_db, old);
 					}
-					old = NANO_NNI_LMQ_PACKED_MSG_QOS(
-					    msg, qos);
 					nni_qos_db_set(is_sqlite,
 					    pipe->nano_qos_db, pipe->p_id, pid,
 					    old);
