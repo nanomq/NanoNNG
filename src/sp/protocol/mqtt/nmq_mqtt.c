@@ -416,48 +416,6 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	nni_mtx_unlock(&s->lk);
 	nni_mtx_lock(&p->lk);
 
-	// Here we find the node from subinfol which has same topic with pubmsg
-	struct subinfo *sn = NULL;
-	if (CMD_PUBLISH == nni_msg_get_type(msg)) {
-		char *topic = nni_msg_get_pub_topic(msg, &topic_len);
-		char *sub_topic;
-		NNI_LIST_FOREACH (&p->pipe->subinfol, sn) {
-			sub_topic = sn->topic;
-			if (sub_topic[0] == '$') {
-				if (0 == strncmp(sub_topic, "$share/",
-				        strlen("$share/"))) {
-					sub_topic = strchr(sub_topic, '/');
-					sub_topic++;
-					sub_topic = strchr(sub_topic, '/');
-					sub_topic++;
-				}
-			}
-
-			if (true == topic_filtern(sub_topic, topic, topic_len))
-				break;
-		}
-
-		// Not find if sn is null
-		if (!sn) {
-			nni_mtx_unlock(&p->lk);
-			nni_aio_set_msg(aio, NULL);
-			debug_msg("not find the node in subinfol.");
-			return;
-		}
-	}
-
-	// TODO Move QOS and NO LOCAL to transport layer
-	qos = !sn ? 0 : sn->qos;
-	// No local
-	if (pipe != 0 && p->conn_param->pro_ver == MQTT_VERSION_V5) {
-		if (sn && sn->no_local) {
-			nni_mtx_unlock(&p->lk);
-			nni_aio_set_msg(aio, NULL);
-			debug_msg("msg not sent due to no_local");
-			return;
-		}
-	}
-
 	if (p->pipe->cache) {
 		if (nni_msg_get_type(msg) == CMD_PUBLISH) {
 			qos_pac = nni_msg_get_pub_qos(msg);
