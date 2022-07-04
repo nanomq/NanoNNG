@@ -369,7 +369,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	nano_sock *      s   = ctx->sock;
 	nano_pipe *      p;
 	nni_msg *        msg;
-	int              rv, topic_len;
+	int              rv;
 	uint32_t         pipe;
 	uint8_t          qos = 0, qos_pac;
 	uint16_t         packetid;

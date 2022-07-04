@@ -562,7 +562,7 @@ tcptran_pipe_recv_cb(void *arg)
 	nni_aio_iov_advance(rxaio, n);
 	// not receive enough bytes, deal with remaining length
 	len = get_var_integer(p->rxlen, &pos);
-	debug_msg("new %ld recevied %ld header %x %d pos: %d len : %d", n,
+	debug_msg("new %ld recevied %ld header %x %d pos: %d len : %llu", n,
 	    p->gotrxhead, p->rxlen[0], p->rxlen[1], pos, len);
 	debug_msg("still need byte count:%ld > 0\n", nni_aio_iov_count(rxaio));
 
@@ -653,7 +653,7 @@ tcptran_pipe_recv_cb(void *arg)
 	// duplicated with fixed_header_adaptor
 	nni_msg_set_remaining_len(msg, len);
 	nni_msg_set_cmd_type(msg, type);
-	debug_msg("remain_len %d cparam %p clientid %s username %s proto %d\n",
+	debug_msg("remain_len %llu cparam %p clientid %s username %s proto %d\n",
 	    len, cparam, cparam->clientid.body, cparam->username.body,
 	    cparam->pro_ver);
 
@@ -836,7 +836,7 @@ static inline void
 nmq_pipe_send_start_msg_go(tcptran_pipe *p, nni_msg *msg)
 {
 	nni_aio *txaio = p->txaio;
-	int      niov;
+	int      niov = 0;
 	nni_iov  iov[4];
 
 	if (nni_msg_header_len(msg) > 0) {
@@ -880,7 +880,7 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		return;
 	}
 
-	if (nni_msg_get_type != CMD_PUBLISH) {
+	if (nni_msg_get_type(msg) != CMD_PUBLISH) {
 		nmq_pipe_send_start_msg_go(p, msg);
 	}
 
@@ -1055,7 +1055,7 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			niov++;
 		}
 
-		nmq_pipe_send_start_iov_go(p, niov, &iov);
+		nmq_pipe_send_start_iov_go(p, niov, iov);
 	}
 }
 
