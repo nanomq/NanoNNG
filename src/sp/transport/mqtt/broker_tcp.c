@@ -823,6 +823,37 @@ tcptran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 	nni_aio_finish_error(aio, rv);
 }
 
+static inline void
+nmq_pipe_send_start_iov_go(tcptran_pipe *p, int niov, nni_iov *iov)
+{
+	nni_aio *txaio = p->txaio;
+
+	nni_aio_set_iov(txaio, niov, iov);
+	nng_stream_send(p->conn, txaio);
+}
+
+static inline void
+nmq_pipe_send_start_msg_go(tcptran_pipe *p, nni_msg *msg)
+{
+	nni_aio *txaio = p->txaio;
+	int      niov;
+	nni_iov  iov[4];
+
+	if (nni_msg_header_len(msg) > 0) {
+		iov[niov].iov_buf = nni_msg_header(msg);
+		iov[niov].iov_len = nni_msg_header_len(msg);
+		niov++;
+	}
+	if (nni_msg_len(msg) > 0) {
+		iov[niov].iov_buf = nni_msg_body(msg);
+		iov[niov].iov_len = nni_msg_len(msg);
+		niov++;
+	}
+
+	nni_aio_set_iov(txaio, niov, iov);
+	nng_stream_send(p->conn, txaio);
+}
+
 /**
  * @brief send msg to V4 client
  * 
@@ -835,19 +866,54 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	nni_aio *txaio;
 	int      niov;
 	nni_iov  iov[4];
-	uint8_t  qos;
+
+	// qos default to 0 if the msg is not PUBLISH
+	uint8_t  qos = 0;
 
 	bool is_sqlite = p->conf->sqlite.enable;
 
-	qos = NANO_NNI_LMQ_GET_QOS_BITS(msg);
-	// qos default to 0 if the msg is not PUBLISH
-	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
 	nni_aio_set_msg(aio, msg);
 
-	// Recomposing
+	if (nni_msg_header_len(msg) <= 0) {
+		// TODO aio not handle
+		// nng_stream_send(p->conn, txaio);
+		return;
+	}
+
+	if (nni_msg_get_type != CMD_PUBLISH) {
+		nmq_pipe_send_start_msg_go(p, msg);
+	}
+
+	subinfo  *sn = NULL;
+	nni_list *subinfol = &p->npipe->subinfol;
+
+	int topic_len = 0;
+	char *topic = nni_msg_get_pub_topic(msg, &topic_len);
+
+	// Recomposing for each msg
 	// never modify the original msg
-	if (nni_msg_header_len(msg) > 0 &&
-	    nni_msg_get_type(msg) == CMD_PUBLISH) {
+
+	NNI_LIST_FOREACH(subinfol, sn) {
+		if (!sn)
+			continue;
+
+		char *sub_topic = sn->topic;
+		if (sub_topic[0] == '$') {
+			if (0 == strncmp(sub_topic, "$share/", strlen("$share/"))) {
+				sub_topic = strchr(sub_topic, '/');
+				sub_topic++;
+				sub_topic = strchr(sub_topic, '/');
+				sub_topic++;
+			}
+		}
+		if (false == topic_filtern(sub_topic, topic, topic_len))
+			continue;
+
+		// No local
+		if (sn->no_local && nni_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
+			continue;
+		}
+
 		uint8_t      *body, *header, qos_pac;
 
 		uint8_t       var_extra[2], fixheader, tmp[4] = { 0 };
@@ -887,7 +953,7 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 
 			if (qos_pac == 0) {
 				// save time & space for QoS 0 publish
-				goto send;
+				nmq_pipe_send_start_msg_go(p, msg);
 			}
 		}
 
@@ -908,6 +974,12 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				len_offset   = len_offset - 2;
 			}
 		}
+
+		// Retain As Publish
+		if (sn->rap) {
+			fixheader = fixheader | 0x01;
+		}
+
 		// copy remaining length
 		rlen = put_var_integer(
 		    tmp, get_var_integer(header, &pos) + len_offset - plength);
@@ -983,26 +1055,8 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			niov++;
 		}
 
-		nni_aio_set_iov(txaio, niov, iov);
-		nng_stream_send(p->conn, txaio);
-		return;
+		nmq_pipe_send_start_iov_go(p, niov, &iov);
 	}
-send:
-	txaio = p->txaio;
-	niov  = 0;
-
-	if (nni_msg_header_len(msg) > 0) {
-		iov[niov].iov_buf = nni_msg_header(msg);
-		iov[niov].iov_len = nni_msg_header_len(msg);
-		niov++;
-	}
-	if (nni_msg_len(msg) > 0) {
-		iov[niov].iov_buf = nni_msg_body(msg);
-		iov[niov].iov_len = nni_msg_len(msg);
-		niov++;
-	}
-	nni_aio_set_iov(txaio, niov, iov);
-	nng_stream_send(p->conn, txaio);
 }
 
 /**
