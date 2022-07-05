@@ -127,7 +127,7 @@ conf_update_var2(const char *fpath, const char *key1, const char *key2,
     const char *key3, uint8_t type, void *var)
 {
 	size_t sz  = strlen(key1) + strlen(key2) + strlen(key3) + 2;
-	char * key = nng_zalloc(sz);
+	char * key = nni_zalloc(sz);
 	sprintf(key, "%s%s%s", key1, key2, key3);
 	conf_update_var(fpath, key, type, var);
 	nng_free(key, sz);
@@ -206,7 +206,7 @@ conf_update2(const char *fpath, const char *key1, const char *key2,
     const char *key3, char *value)
 {
 	size_t sz  = strlen(key1) + strlen(key2) + strlen(key3) + 2;
-	char * key = nng_zalloc(sz);
+	char * key = nni_zalloc(sz);
 	sprintf(key, "%s%s%s", key1, key2, key3);
 	conf_update(fpath, key, value);
 	nng_free(key, sz);
@@ -219,17 +219,17 @@ get_conf_value(char *line, size_t len, const char *key)
 		return NULL;
 	}
 
-	char *prefix = nng_zalloc(len);
+	char *prefix = nni_zalloc(len);
 	char *trim   = strtrim(line, len);
 	char *value  = calloc(1, len);
 	int   match  = sscanf(trim, "%[^=]=%s", prefix, value);
 	char *res    = NULL;
-	free(trim);
+	nni_strfree(trim);
 
 	if (match == 2 && strcmp(prefix, key) == 0) {
 		res = value;
 	} else {
-		free(value);
+		nni_strfree(value);
 	}
 
 	free(prefix);
@@ -241,7 +241,7 @@ get_conf_value_with_prefix(
     char *line, size_t len, const char *prefix, const char *key)
 {
 	size_t sz  = strlen(prefix) + strlen(key) + 2;
-	char * str = nng_zalloc(sz);
+	char * str = nni_zalloc(sz);
 	sprintf(str, "%s%s", prefix, key);
 	char *value = get_conf_value(line, len, str);
 	free(str);
@@ -253,7 +253,7 @@ get_conf_value_with_prefix2(char *line, size_t len, const char *prefix,
     const char *name, const char *key)
 {
 	size_t sz  = strlen(prefix) + strlen(name) + strlen(key) + 2;
-	char * str = nng_zalloc(sz);
+	char * str = nni_zalloc(sz);
 	sprintf(str, "%s%s%s", prefix, name, key);
 	char *value = get_conf_value(line, len, str);
 	free(str);
@@ -295,51 +295,51 @@ conf_parser(conf *nanomq_conf)
 		    NULL) {
 			config->daemon = nni_strcasecmp(value, "yes") == 0 ||
 			    nni_strcasecmp(value, "true") == 0;
-			free(value);
+			nng_strfree(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "num_taskq_thread")) != NULL) {
 			config->num_taskq_thread = atoi(value);
-			free(value);
+			nng_strfree(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "max_taskq_thread")) != NULL) {
 			config->max_taskq_thread = atoi(value);
-			free(value);
+			nng_strfree(value);
 		} else if ((value = get_conf_value(line, sz, "parallel")) !=
 		    NULL) {
 			config->parallel = atoi(value);
-			free(value);
+			nng_strfree(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "property_size")) != NULL) {
 			config->property_size = atoi(value);
-			free(value);
+			nng_strfree(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "max_packet_size")) != NULL) {
 			config->max_packet_size = atoi(value) * 1024;
-			free(value);
+			nng_strfree(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "client_max_packet_size")) != NULL) {
 			config->client_max_packet_size = atoi(value) * 1024;
-			free(value);
+			nng_strfree(value);
 		} else if ((value = get_conf_value(line, sz, "msq_len")) !=
 		    NULL) {
 			config->msq_len = atoi(value);
-			free(value);
+			nng_strfree(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "qos_duration")) != NULL) {
 			config->qos_duration = atoi(value);
-			free(value);
+			nng_strfree(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "allow_anonymous")) != NULL) {
 			config->allow_anonymous =
 			    nni_strcasecmp(value, "yes") == 0 ||
 			    nni_strcasecmp(value, "true") == 0;
-			free(value);
+			nng_strfree(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "websocket.enable")) != NULL) {
 			config->websocket.enable =
 			    nni_strcasecmp(value, "yes") == 0 ||
 			    nni_strcasecmp(value, "true") == 0;
-			free(value);
+			nng_strfree(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "websocket.url")) != NULL) {
 			FREE_NONULL(config->websocket.url);
@@ -353,15 +353,15 @@ conf_parser(conf *nanomq_conf)
 			config->http_server.enable =
 			    nni_strcasecmp(value, "yes") == 0 ||
 			    nni_strcasecmp(value, "true") == 0;
-			free(value);
+			nng_strfree(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "http_server.port")) != NULL) {
 			config->http_server.port = atoi(value);
-			free(value);
+			nng_strfree(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "http_server.parallel")) != NULL) {
 			config->http_server.parallel = atol(value);
-			free(value);
+			nng_strfree(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "http_server.username")) != NULL) {
 			FREE_NONULL(config->http_server.username);
@@ -379,7 +379,7 @@ conf_parser(conf *nanomq_conf)
 			} else {
 				config->http_server.auth_type = NONE_AUTH;
 			}
-			free(value);
+			nng_strfree(value);
 		} else if ((value = get_conf_value(line, sz,
 		                "http_server.jwt.public.keyfile")) != NULL) {
 			FREE_NONULL(config->http_server.jwt.public_keyfile);
@@ -389,32 +389,9 @@ conf_parser(conf *nanomq_conf)
 			        config->http_server.jwt.public_keyfile,
 			        (void **) &config->http_server.jwt
 			            .public_key) > 0) {
-#ifdef NNG_PLATFORM_WINDOWS
-				if (strstr(
-				        config->http_server.jwt.public_keyfile,
-				        "\\")) {
-					config->http_server.jwt.iss =
-					    strrchr(config->http_server.jwt
-					                .public_keyfile,
-					        '\\');
-					config->http_server.jwt.iss += 1;
-				}
-#else
-				if (strstr(
-				        config->http_server.jwt.public_keyfile,
-				        "/")) {
-					config->http_server.jwt.iss =
-					    strrchr(config->http_server.jwt
-					                .public_keyfile,
-					        '/');
-					config->http_server.jwt.iss += 1;
-				}
-#endif
-				else {
-					config->http_server.jwt.iss =
-					    config->http_server.jwt
-					        .public_keyfile;
-				}
+				config->http_server.jwt
+				    .iss = (char *)nni_plat_file_basename(
+				    config->http_server.jwt.public_keyfile);
 				config->http_server.jwt.public_key_len =
 				    strlen(config->http_server.jwt.public_key);
 			}
@@ -435,7 +412,7 @@ conf_parser(conf *nanomq_conf)
 		    NULL) {
 			config->tls.enable =
 			    nni_strcasecmp(value, "true") == 0;
-			free(value);
+			nng_strfree(value);
 		} else if ((value = get_conf_value(line, sz, "tls.url")) !=
 		    NULL) {
 			FREE_NONULL(config->tls.url);
@@ -469,12 +446,12 @@ conf_parser(conf *nanomq_conf)
 		                line, sz, "tls.verify_peer")) != NULL) {
 			config->tls.verify_peer =
 			    nni_strcasecmp(value, "true") == 0;
-			free(value);
+			nng_strfree(value);
 		} else if ((value = get_conf_value(line, sz,
 		                "tls.fail_if_no_peer_cert")) != NULL) {
 			config->tls.set_fail =
 			    nni_strcasecmp(value, "true") == 0;
-			free(value);
+			nng_strfree(value);
 		}
 		free(line);
 		line = NULL;
@@ -509,13 +486,13 @@ conf_tls_init(conf_tls *tls)
 static void
 conf_tls_destroy(conf_tls *tls)
 {
-	zfree(tls->cafile);
-	zfree(tls->certfile);
-	zfree(tls->keyfile);
-	zfree(tls->key);
-	zfree(tls->key_password);
-	zfree(tls->cert);
-	zfree(tls->ca);
+	free(tls->cafile);
+	free(tls->certfile);
+	free(tls->keyfile);
+	free(tls->key);
+	free(tls->key_password);
+	free(tls->cert);
+	free(tls->ca);
 }
 
 static void
@@ -2154,24 +2131,24 @@ conf_web_hook_parse(conf *nanomq_conf)
 static void
 conf_web_hook_destroy(conf_web_hook *web_hook)
 {
-	zfree(web_hook->url);
+	free(web_hook->url);
 
 	if (web_hook->header_count > 0 && web_hook->headers != NULL) {
 		for (size_t i = 0; i < web_hook->header_count; i++) {
-			zfree(web_hook->headers[i]->key);
-			zfree(web_hook->headers[i]->value);
-			zfree(web_hook->headers[i]);
+			free(web_hook->headers[i]->key);
+			free(web_hook->headers[i]->value);
+			free(web_hook->headers[i]);
 		}
-		zfree(web_hook->headers);
+		free(web_hook->headers);
 	}
 
 	if (web_hook->rule_count > 0 && web_hook->rules != NULL) {
 		for (size_t i = 0; i < web_hook->rule_count; i++) {
-			zfree(web_hook->rules[i]->action);
-			zfree(web_hook->rules[i]->topic);
-			zfree(web_hook->rules[i]);
+			free(web_hook->rules[i]->action);
+			free(web_hook->rules[i]->topic);
+			free(web_hook->rules[i]);
 		}
-		zfree(web_hook->rules);
+		free(web_hook->rules);
 	}
 
 	conf_tls_destroy(&web_hook->tls);
@@ -2215,7 +2192,7 @@ conf_parse_http_headers(
 	size_t             sz      = 0;
 	conf_http_header **headers = NULL;
 
-	char *pattern = nng_zalloc(strlen(key_prefix) + 23);
+	char *pattern = nni_zalloc(strlen(key_prefix) + 23);
 	sprintf(pattern, "%s.headers.%%[^=]=%%[^\n]", key_prefix);
 
 	size_t header_count = 0;
@@ -2453,22 +2430,22 @@ conf_auth_http_parse(conf *nanomq_conf)
 static void
 conf_auth_http_req_destroy(conf_auth_http_req *req)
 {
-	zfree(req->url);
+	free(req->url);
 	if (req->header_count > 0 && req->headers != NULL) {
 		for (size_t i = 0; i < req->header_count; i++) {
-			zfree(req->headers[i]->key);
-			zfree(req->headers[i]->value);
-			zfree(req->headers[i]);
+			free(req->headers[i]->key);
+			free(req->headers[i]->value);
+			free(req->headers[i]);
 		}
-		zfree(req->headers);
+		free(req->headers);
 	}
 
 	if (req->param_count > 0 && req->params != NULL) {
 		for (size_t i = 0; i < req->param_count; i++) {
-			zfree(req->params[i]->name);
-			zfree(req->params[i]);
+			free(req->params[i]->name);
+			free(req->params[i]);
 		}
-		zfree(req->params);
+		free(req->params);
 	}
 }
 
@@ -2546,27 +2523,27 @@ conf_rule_destroy(conf_rule *re)
 void
 conf_fini(conf *nanomq_conf)
 {
-	zfree(nanomq_conf->url);
-	zfree(nanomq_conf->conf_file);
-	zfree(nanomq_conf->bridge_file);
+	nng_strfree(nanomq_conf->url);
+	nng_strfree(nanomq_conf->conf_file);
+	nng_strfree(nanomq_conf->bridge_file);
 
 #if defined(SUPP_RULE_ENGINE)
-	zfree(nanomq_conf->rule_file);
+	nng_strfree(nanomq_conf->rule_file);
 	conf_rule_destroy(&nanomq_conf->rule_eng);
 #endif
-	zfree(nanomq_conf->web_hook_file);
-	zfree(nanomq_conf->auth_file);
+	nng_strfree(nanomq_conf->web_hook_file);
+	nng_strfree(nanomq_conf->auth_file);
 	conf_sqlite_destroy(&nanomq_conf->sqlite);
 	conf_tls_destroy(&nanomq_conf->tls);
 
-	zfree(nanomq_conf->http_server.username);
-	zfree(nanomq_conf->http_server.password);
-	zfree(nanomq_conf->http_server.jwt.private_key);
-	zfree(nanomq_conf->http_server.jwt.public_key);
-	zfree(nanomq_conf->http_server.jwt.private_keyfile);
-	zfree(nanomq_conf->http_server.jwt.public_keyfile);
+	nng_strfree(nanomq_conf->http_server.username);
+	nng_strfree(nanomq_conf->http_server.password);
+	free(nanomq_conf->http_server.jwt.private_key);
+	free(nanomq_conf->http_server.jwt.public_key);
+	free(nanomq_conf->http_server.jwt.private_keyfile);
+	free(nanomq_conf->http_server.jwt.public_keyfile);
 
-	zfree(nanomq_conf->websocket.url);
+	nng_strfree(nanomq_conf->websocket.url);
 
 	conf_bridge_destroy(&nanomq_conf->bridge);
 	conf_web_hook_destroy(&nanomq_conf->web_hook);
