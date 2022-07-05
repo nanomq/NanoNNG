@@ -353,4 +353,14 @@ nni_plat_file_unlock(nni_plat_flock *lk)
 	lk->h = INVALID_HANDLE_VALUE;
 }
 
+bool
+nni_plat_file_exists(const char *path)
+{
+	DWORD attrs;
+	if ((attrs = GetFileAttributes(path)) == INVALID_FILE_ATTRIBUTES) {
+		return (false);
+	}
+	return (true);
+}
+
 #endif // NNG_PLATFORM_WINDOWS
