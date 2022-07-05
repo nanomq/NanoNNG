@@ -488,6 +488,10 @@ NNG_DECL char *nng_strndup(const char *, size_t);
 // nng_strfree is equivalent to nng_free(strlen(s)+1).
 NNG_DECL void nng_strfree(char *);
 
+NNG_DECL char *nng_strcasestr(const char *, const char *);
+NNG_DECL int   nng_strcasecmp(const char *, const char *);
+NNG_DECL int   nng_strncasecmp(const char *, const char *, size_t);
+
 // Async IO API.  AIO structures can be thought of as "handles" to
 // support asynchronous operations.  They contain the completion callback, and
 // a pointer to consumer data.  This is similar to how overlapped I/O
