@@ -1224,6 +1224,19 @@ NNG_DECL int nng_stream_listener_set_ptr(
 NNG_DECL int nng_stream_listener_set_addr(
     nng_stream_listener *, const char *, const nng_sockaddr *);
 
+typedef struct nng_lmq nng_lmq;
+
+NNG_DECL int nng_lmq_alloc(nng_lmq **, size_t );
+NNG_DECL void nng_lmq_free(nng_lmq *);
+NNG_DECL void nng_lmq_flush(nng_lmq *);
+NNG_DECL size_t nng_lmq_len(nng_lmq *);
+NNG_DECL size_t nng_lmq_cap(nng_lmq *);
+NNG_DECL int nng_lmq_put(nng_lmq *, nng_msg *);
+NNG_DECL int nng_lmq_get(nng_lmq *, nng_msg **);
+NNG_DECL int nng_lmq_resize(nng_lmq *, size_t );
+NNG_DECL bool nng_lmq_full(nng_lmq *);
+NNG_DECL bool nng_lmq_empty(nng_lmq *);
+
 // NANOMQ MQTT variables & APIs
 typedef struct conn_param        conn_param;
 typedef struct pub_packet_struct pub_packet_struct;
