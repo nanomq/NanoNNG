@@ -8,7 +8,7 @@
 //
 #include "nng/supplemental/nanolib/cmd.h"
 #include "nng/supplemental/nanolib/file.h"
-#include "nanomq.h"
+#include "nng/nng_debug.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -22,7 +22,7 @@
 char *cmd_output_buff = NULL;
 int   cmd_output_len  = 0;
 
-#ifndef NANO_PLATFORM_WINDOWS
+#ifndef NNG_PLATFORM_WINDOWS
 #include <sys/wait.h>
 
 int

@@ -1,4 +1,3 @@
-#include "nanomq.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <stdarg.h>
@@ -6,7 +5,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef NANO_PLATFORM_WINDOWS
+#include "nng/nng_debug.h"
+#ifdef NNG_PLATFORM_WINDOWS
 #include <mswsock.h>
 #include <winsock2.h>
 #include <ws2def.h>
@@ -21,7 +21,7 @@
 
 #define NG_MODE (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
 
-#ifdef NANO_PLATFORM_WINDOWS
+#ifdef NNG_PLATFORM_WINDOWS
 #define nano_mkdir(path, mode) mkdir(path)
 #else
 #define nano_mkdir(path, mode) mkdir(path, mode)
@@ -29,7 +29,7 @@
 
 static char fpath_tmp[100];
 
-#ifndef NANO_PLATFORM_WINDOWS
+#ifndef NNG_PLATFORM_WINDOWS
 
 static char *
 nano_strcasestr(const char *s1, const char *s2)
@@ -446,7 +446,7 @@ found:
 	return line_ptr;
 }
 
-#ifdef NANO_PLATFORM_WINDOWS
+#ifdef NNG_PLATFORM_WINDOWS
 
 int
 file_is_symlink(const char *fpath)
@@ -528,7 +528,7 @@ file_is_directory(const char *fpath)
 	int ret;
 	struct stat st;
 
-#if NANO_PLATFORM_WINDOWS
+#if NNG_PLATFORM_WINDOWS
 	ret = stat(fpath, &st);
 #else
 	ret = lstat(fpath, &st);

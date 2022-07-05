@@ -12,7 +12,7 @@
 extern char *cmd_output_buff;
 extern int   cmd_output_len;
 
-#ifndef NANO_PLATFORM_WINDOWS
+#ifndef NNG_PLATFORM_WINDOWS
 
 #define CMD_RUN(cmd)                \
 	do {                        \
