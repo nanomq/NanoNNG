@@ -1,4 +1,6 @@
 #include "nng/supplemental/nanolib/env.h"
+#include "core/nng_impl.h"
+#include "nng/nng.h"
 #include "nng/supplemental/nanolib/file.h"
 
 static void
@@ -11,7 +13,7 @@ set_string_var(char **var, const char *env_str)
 			free(*var);
 			*var = NULL;
 		}
-		*var = strdup(env);
+		*var = nni_strdup(env);
 	}
 }
 
@@ -41,9 +43,9 @@ set_bool_var(bool *var, const char *env_str)
 	char *env = NULL;
 
 	if ((env = getenv(env_str)) != NULL) {
-		*var = strcasecmp(env, "true") == 0
+		*var = nni_strcasecmp(env, "true") == 0
 		    ? true
-		    : strcasecmp(env, "yes") == 0;
+		    : nni_strcasecmp(env, "yes") == 0;
 	}
 }
 
@@ -63,9 +65,9 @@ set_auth_type(auth_type *var, const char *env_str)
 	char *env = NULL;
 
 	if ((env = getenv(env_str)) != NULL) {
-		if (strcasecmp(env, "basic") == 0) {
+		if (nni_strcasecmp(env, "basic") == 0) {
 			*var = BASIC;
-		} else if (strcasecmp(env, "jwt") == 0) {
+		} else if (nni_strcasecmp(env, "jwt") == 0) {
 			*var = JWT;
 		}
 	}
@@ -132,8 +134,6 @@ read_env_conf(conf *config)
 	set_string_var(&config->auth_http_file, NANOMQ_AUTH_HTTP_CONF_PATH);
 	set_string_var(&config->auth_file, NANOMQ_AUTH_CONF_PATH);
 #if defined(SUPP_RULE_ENGINE)
-	set_string_var(
-	    &config->rule_file, NANOMQ_RULE_ENGINE_CONF_PATH);
+	set_string_var(&config->rule_file, NANOMQ_RULE_ENGINE_CONF_PATH);
 #endif
-
 }
