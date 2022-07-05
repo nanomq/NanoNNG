@@ -3,7 +3,6 @@
 
 #include "hash_table.h"
 #include "mqtt_db.h"
-#include "zmalloc.h"
 #if defined(SUPP_RULE_ENGINE)
 #include "db_cli.h"
 #endif
