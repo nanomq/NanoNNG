@@ -461,7 +461,7 @@ mqtt_pipe_stop(void *arg)
 	nni_aio_stop(&p->time_aio);
 }
 
-void
+static void
 mqtt_close_unack_msg_cb(void *key, void *val)
 {
 	NNI_ARG_UNUSED(key);
@@ -621,7 +621,6 @@ mqtt_send_cb(void *arg)
 		mqtt_send_msg(c->saio, c);
 		return;
 	}
-
 	if (nni_lmq_get(&p->send_messages, &msg) == 0) {
 		p->busy = true;
 		nni_mqtt_msg_encode(msg);
