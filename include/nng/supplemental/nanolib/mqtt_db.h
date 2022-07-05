@@ -2,7 +2,6 @@
 #define MQTT_DB_H
 
 #include "cvector.h"
-#include <pthread.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>

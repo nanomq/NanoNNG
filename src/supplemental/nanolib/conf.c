@@ -6,28 +6,18 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
-#include <ctype.h>
+#include "nng/supplemental/nanolib/conf.h"
+#include "nng/nng.h"
 #include "nng/nng_debug.h"
 #include "nng/supplemental/nanolib/cJSON.h"
-#include "nng/supplemental/nanolib/conf.h"
 #include "nng/supplemental/nanolib/cvector.h"
 #include "nng/supplemental/nanolib/file.h"
+#include <ctype.h>
 
 #if defined(SUPP_RULE_ENGINE)
-static char *rule_engine_key_arr[] = {
-		"qos",
-		"id",
-		"topic",
-		"clientid",
-		"username",
-		"password",
-		"timestamp",
-		"payload",
-		"*",
-		NULL
-};
+static char *rule_engine_key_arr[] = { "qos", "id", "topic", "clientid",
+	"username", "password", "timestamp", "payload", "*", NULL };
 #endif
-
 
 static void conf_bridge_init(conf_bridge *bridge);
 static void conf_bridge_node_init(conf_bridge_node *node);
@@ -35,11 +25,11 @@ static void conf_bridge_destroy(conf_bridge *bridge);
 static void conf_bridge_node_destroy(conf_bridge_node *node);
 static bool conf_bridge_node_parse_subs(
     conf_bridge_node *node, const char *path, const char *name);
-static void conf_auth_destroy(conf_auth *auth);
-static void conf_web_hook_destroy(conf_web_hook *web_hook);
-static void conf_tls_init(conf_tls *tls);
-static void conf_tls_destroy(conf_tls *tls);
-static void conf_auth_http_req_init(conf_auth_http_req *req);
+static void               conf_auth_destroy(conf_auth *auth);
+static void               conf_web_hook_destroy(conf_web_hook *web_hook);
+static void               conf_tls_init(conf_tls *tls);
+static void               conf_tls_destroy(conf_tls *tls);
+static void               conf_auth_http_req_init(conf_auth_http_req *req);
 static conf_http_header **conf_parse_http_headers(
     const char *path, const char *key_prefix, size_t *count);
 static bool conf_sqlite_parse(
@@ -135,9 +125,11 @@ void
 conf_update_var2(const char *fpath, const char *key1, const char *key2,
     const char *key3, uint8_t type, void *var)
 {
-	char key[strlen(key1) + strlen(key2) + strlen(key3) + 2];
+	size_t sz  = strlen(key1) + strlen(key2) + strlen(key3) + 2;
+	char * key = nng_zalloc(sz);
 	sprintf(key, "%s%s%s", key1, key2, key3);
 	conf_update_var(fpath, key, type, var);
+	nng_free(key, sz);
 }
 
 void
@@ -168,9 +160,9 @@ conf_update(const char *fpath, const char *key, char *value)
 				is_found = true;
 				strcat(deststr, value);
 				strcat(deststr, "\n");
-				linearray[count] = strdup(deststr);
+				linearray[count] = nng_strdup(deststr);
 			} else {
-				linearray[count] = strdup(line);
+				linearray[count] = nng_strdup(line);
 			}
 			count++;
 		}
@@ -179,7 +171,7 @@ conf_update(const char *fpath, const char *key, char *value)
 			    realloc(linearray, (count + 1) * (sizeof(char *)));
 			strcat(deststr, value);
 			strcat(deststr, "\n");
-			linearray[count] = strdup(deststr);
+			linearray[count] = nng_strdup(deststr);
 			count++;
 		}
 		if (line) {
@@ -212,9 +204,11 @@ void
 conf_update2(const char *fpath, const char *key1, const char *key2,
     const char *key3, char *value)
 {
-	char key[strlen(key1) + strlen(key2) + strlen(key3) + 2];
+	size_t sz  = strlen(key1) + strlen(key2) + strlen(key3) + 2;
+	char * key = nng_zalloc(sz);
 	sprintf(key, "%s%s%s", key1, key2, key3);
 	conf_update(fpath, key, value);
+	nng_free(key, sz);
 }
 
 static char *
@@ -223,36 +217,46 @@ get_conf_value(char *line, size_t len, const char *key)
 	if (strlen(key) > len || len <= 0) {
 		return NULL;
 	}
-	char  prefix[len];
-	char *trim  = strtrim(line, len);
-	char *value = calloc(1, len);
-	int   match = sscanf(trim, "%[^=]=%s", prefix, value);
+
+	char *prefix = nng_zalloc(len);
+	char *trim   = strtrim(line, len);
+	char *value  = calloc(1, len);
+	int   match  = sscanf(trim, "%[^=]=%s", prefix, value);
+	char *res    = NULL;
 	free(trim);
 
 	if (match == 2 && strcmp(prefix, key) == 0) {
-		return value;
+		res = value;
 	} else {
 		free(value);
-		return NULL;
 	}
+
+	free(prefix);
+	return res;
 }
 
 static char *
 get_conf_value_with_prefix(
     char *line, size_t len, const char *prefix, const char *key)
 {
-	char str[strlen(prefix) + strlen(key) + 2];
+	size_t sz  = strlen(prefix) + strlen(key) + 2;
+	char * str = nng_zalloc(sz);
 	sprintf(str, "%s%s", prefix, key);
-	return get_conf_value(line, len, str);
+	char *value = get_conf_value(line, len, str);
+	free(str);
+	return value;
 }
 
 static char *
 get_conf_value_with_prefix2(char *line, size_t len, const char *prefix,
     const char *name, const char *key)
 {
-	char str[strlen(prefix) + strlen(name) + strlen(key) + 2];
+	size_t sz  = strlen(prefix) + strlen(name) + strlen(key) + 2;
+	char * str = nng_zalloc(sz);
 	sprintf(str, "%s%s%s", prefix, name, key);
-	return get_conf_value(line, len, str);
+	char *value = get_conf_value(line, len, str);
+	free(str);
+	return value;
 }
 
 bool
@@ -531,12 +535,13 @@ conf_sqlite_init(conf_sqlite *sqlite)
 	sqlite->flush_mem_threshold = 100;
 	sqlite->resend_interval     = 5000;
 }
-static void 
+
+static void
 conf_rule_init(conf_rule *rule_en)
 {
 	rule_en->option = 0;
-	rule_en->rules = NULL;
-	memset(rule_en->rdb, 0, sizeof(void*) * 3);
+	rule_en->rules  = NULL;
+	memset(rule_en->rdb, 0, sizeof(void *) * 3);
 }
 
 void
@@ -757,7 +762,6 @@ printf_gateway_conf(zmq_gateway_conf *gateway)
 	debug_msg("mqtt parallel: %d", gateway->parallel);
 }
 
-
 #if defined(SUPP_RULE_ENGINE)
 static int
 find_key(const char *str, size_t len)
@@ -777,7 +781,7 @@ find_key(const char *str, size_t len)
 static int
 find_as(char *str, int len, rule *info)
 {
-	int i = 0;
+	int    i  = 0;
 	char **as = info->as;
 	for (; i < 8; i++) {
 		if (as[i] == NULL)
@@ -797,13 +801,14 @@ get_key_arr(char *p, rule_key *key)
 	bool is_recur = false;
 	p++;
 	char *p_b = p;
-	while (*p != '\0' && *p != ' ' && *p != '.') p++;
+	while (*p != '\0' && *p != ' ' && *p != '.')
+		p++;
 
 	if (*p == '.') {
 		is_recur = true;
 	}
 
-	*p = '\0';
+	*p            = '\0';
 	char *key_str = zstrdup(p_b);
 	cvector_push_back(key->key_arr, key_str);
 	if (is_recur) {
@@ -812,7 +817,6 @@ get_key_arr(char *p, rule_key *key)
 	return p;
 }
 
-
 // Recursive get json payload key.
 static char *
 get_payload_key_arr(char *p, rule_payload *payload)
@@ -820,13 +824,14 @@ get_payload_key_arr(char *p, rule_payload *payload)
 	bool is_recur = false;
 	p++;
 	char *p_b = p;
-	while (*p != '\0' && *p != ' ' && *p != '.') p++;
+	while (*p != '\0' && *p != ' ' && *p != '.')
+		p++;
 
 	if (*p == '.') {
 		is_recur = true;
 	}
 
-	*p = '\0';
+	*p        = '\0';
 	char *key = zstrdup(p_b);
 	cvector_push_back(payload->psa, key);
 	if (is_recur) {
@@ -836,7 +841,7 @@ get_payload_key_arr(char *p, rule_payload *payload)
 }
 
 // Get payload field as string.
-static int 
+static int
 get_payload_as(char *p, rule_payload *payload)
 {
 	if (*p == '\0') {
@@ -845,7 +850,8 @@ get_payload_as(char *p, rule_payload *payload)
 
 	if (!strncmp("as", p, strlen("as"))) {
 		p += strlen("as");
-		while (*p == ' ' && *p != '\0') p++;
+		while (*p == ' ' && *p != '\0')
+			p++;
 		char *p_b = p;
 		if (*p_b != '\0') {
 			payload->pas = zstrdup(p_b);
@@ -870,16 +876,16 @@ rule_payload_new(void)
 	return payload;
 }
 
-// Parse payload subfield, mainly for get payload json 
-// subfield key array and as string. Return 0 if p is 
-// payload with subfield, or return -1 so parse it with 
+// Parse payload subfield, mainly for get payload json
+// subfield key array and as string. Return 0 if p is
+// payload with subfield, or return -1 so parse it with
 // other step.
 static int
 parse_payload_subfield(char *p, rule *info, bool is_store)
 {
-	char *p_b = p;
-	int key_len = strlen("payload");
-	int p_len = strlen(p);
+	char *p_b     = p;
+	int   key_len = strlen("payload");
+	int   p_len   = strlen(p);
 	if (p_len <= key_len || p[key_len] != '.')
 		return -1;
 	if (strncmp("payload", p, key_len))
@@ -887,15 +893,17 @@ parse_payload_subfield(char *p, rule *info, bool is_store)
 
 	p += key_len;
 	rule_payload *payload = rule_payload_new();
-	payload->is_store = is_store;
+	payload->is_store     = is_store;
 	cvector_push_back(info->payload, payload);
 	p = get_payload_key_arr(p, payload);
-	if (p - p_b < p_len) p++;
-	while (*p == ' ' && *p != '\0') p++;
+	if (p - p_b < p_len)
+		p++;
+	while (*p == ' ' && *p != '\0')
+		p++;
 	if (-1 == get_payload_as(p, payload)) {
-		p = p_b;
+		p        = p_b;
 		int size = cvector_size(payload->psa);
-		while (size-1) {
+		while (size - 1) {
 			if (*p == '\0') {
 				*p = '.';
 				size--;
@@ -911,16 +919,17 @@ parse_payload_subfield(char *p, rule *info, bool is_store)
 static int
 set_select_info(char *p_b, rule *info)
 {
-	int key_len = 0;
-	int rc      = 0;
-	char *p = p_b;
+	int   key_len = 0;
+	int   rc      = 0;
+	char *p       = p_b;
 
 	if (0 == parse_payload_subfield(p_b, info, true)) {
 		info->flag[RULE_PAYLOAD_FIELD] = 1;
 		goto finish;
 	}
 
-	while (*p != '\0' && *p != ' ') p++;
+	while (*p != '\0' && *p != ' ')
+		p++;
 
 	if (-1 != (rc = find_key(p_b, p - p_b))) {
 		if (rc == 8) {
@@ -960,7 +969,8 @@ parse_select(const char *select, rule *info)
 
 	while ((p = strchr(p, ','))) {
 		*p = '\0';
-		while (*p_b ==' ' && *p_b != '\0') p_b++;
+		while (*p_b == ' ' && *p_b != '\0')
+			p_b++;
 		set_select_info(p_b, info);
 		p++;
 
@@ -976,7 +986,8 @@ parse_select(const char *select, rule *info)
 static int
 parse_from(char *from, rule *info)
 {
-	while (*from != '\0' && *from == ' ') from++;
+	while (*from != '\0' && *from == ' ')
+		from++;
 	if (from[0] == '\"') {
 		from++;
 		char *p = from;
@@ -1003,7 +1014,7 @@ find_payload_as(char *str, int len, rule_payload **payloads)
 	return -1;
 }
 
-static int 
+static int
 set_payload_filter(char *str, rule_payload *payload)
 {
 	payload->filter = zstrdup(str);
@@ -1021,7 +1032,6 @@ pick_cmp_symb(char *p)
 	} else if (!strcmp("!=", p) || !strcmp("<>", p)) {
 		return RULE_CMP_UNEQUAL;
 	}
-
 }
 
 static char *
@@ -1049,33 +1059,32 @@ pick_value(char *p)
 	return str;
 }
 
-static rule_cmp_type 
+static rule_cmp_type
 get_rule_cmp_type(char **str)
 {
-	char *p = *str;
+	char *        p        = *str;
 	rule_cmp_type cmp_type = RULE_CMP_NONE;
 	while (' ' != *p) {
-		switch (*p)
-		{
+		switch (*p) {
 		case '=':
 			cmp_type = RULE_CMP_EQUAL;
 			break;
 		case '!':
-			if ('=' == *(p+1)) {
+			if ('=' == *(p + 1)) {
 				cmp_type = RULE_CMP_UNEQUAL;
-			} 
+			}
 			break;
 		case '>':
-			if ('=' == *(p+1)) {
+			if ('=' == *(p + 1)) {
 				cmp_type = RULE_CMP_GREATER_AND_EQUAL;
 			} else {
 				cmp_type = RULE_CMP_GREATER;
 			}
 			break;
 		case '<':
-			if ('>' == *(p+1)) {
+			if ('>' == *(p + 1)) {
 				cmp_type = RULE_CMP_UNEQUAL;
-			} else if ('=' == *(p+1)) {
+			} else if ('=' == *(p + 1)) {
 				cmp_type = RULE_CMP_LESS_AND_EQUAL;
 			} else {
 				cmp_type = RULE_CMP_LESS;
@@ -1111,22 +1120,28 @@ set_where_info(char *str, size_t len, rule *info)
 
 	if (-1 == (rc = find_key(str, key_len))) {
 		if (-1 == (rc = find_as(str, key_len, info))) {
-			if (-1 != (rc = find_payload_as(str, key_len, info->payload))) {
-				set_payload_filter(pick_value(p), info->payload[rc]);
+			if (-1 !=
+			    (rc = find_payload_as(
+			         str, key_len, info->payload))) {
+				set_payload_filter(
+				    pick_value(p), info->payload[rc]);
 				info->payload[rc]->cmp_type = cmp_type;
 			} else {
 				*p = '\0';
-				if (-1 != parse_payload_subfield(str, info, false)) {
+				if (-1 !=
+				    parse_payload_subfield(str, info, false)) {
 					int size = cvector_size(info->payload);
-					set_payload_filter(pick_value(++p), info->payload[size-1]);
-					info->payload[size-1]->cmp_type = cmp_type;
+					set_payload_filter(pick_value(++p),
+					    info->payload[size - 1]);
+					info->payload[size - 1]->cmp_type =
+					    cmp_type;
 				}
 			}
 			return 0;
 		}
 	}
 
-	info->filter[rc] = zstrdup(pick_value(p));
+	info->filter[rc]   = zstrdup(pick_value(p));
 	info->cmp_type[rc] = cmp_type;
 
 	return 0;
@@ -1137,7 +1152,7 @@ parse_where(char *where, rule *info)
 {
 	char *p   = where;
 	char *p_b = where;
-	int         rc  = 0;
+	int   rc  = 0;
 
 	info->filter = (char **) zmalloc(sizeof(char *) * 8);
 	memset(info->filter, 0, 8 * sizeof(char *));
@@ -1164,7 +1179,7 @@ sql_parse(conf_rule *cr, char *sql)
 
 	char *srt = strstr(sql, "SELECT");
 	if (NULL != srt) {
-		int len_srt, len_mid, len_end;
+		int   len_srt, len_mid, len_end;
 		char *mid = strstr(srt, "FROM");
 		char *end = strstr(mid, "WHERE");
 
@@ -1185,7 +1200,8 @@ sql_parse(conf_rule *cr, char *sql)
 			len_mid = end - mid;
 		} else {
 			char *p = mid;
-			while (*p != '\n' && *p != '\0') p++;
+			while (*p != '\n' && *p != '\0')
+				p++;
 			len_mid = p - mid + 1;
 		}
 
@@ -1200,7 +1216,8 @@ sql_parse(conf_rule *cr, char *sql)
 		// function where parser
 		if (end != NULL) {
 			char *p = end;
-			while (*p != '\n' && *p != '\0') p++;
+			while (*p != '\n' && *p != '\0')
+				p++;
 			len_end = p - end + 1;
 			end += strlen("WHERE ");
 			len_end -= strlen("WHERE ");
@@ -1212,7 +1229,6 @@ sql_parse(conf_rule *cr, char *sql)
 		}
 
 		cvector_push_back(cr->rules, re);
-
 	}
 
 	return true;
@@ -1224,15 +1240,16 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 	assert(path);
 	if (path == NULL || !nano_file_exists(path)) {
 		printf("Configure file [%s] not found or "
-		       "unreadable\n", path);
+		       "unreadable\n",
+		    path);
 		return false;
 	}
 
-	char * line = NULL;
-	rule *rules = NULL;
-	size_t sz   = 0;
+	char * line  = NULL;
+	rule * rules = NULL;
+	size_t sz    = 0;
 	FILE * fp;
-	char *table = NULL;
+	char * table = NULL;
 
 	if (NULL == (fp = fopen(path, "r"))) {
 		log_err("File %s open failed\n", path);
@@ -1241,8 +1258,8 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 
 	char *value;
 	while (nano_getline(&line, &sz, fp) != -1) {
-		if ((value = get_conf_value(
-		         line, sz, "rule.sqlite.path")) != NULL) {
+		if ((value = get_conf_value(line, sz, "rule.sqlite.path")) !=
+		    NULL) {
 			cr->sqlite_db_path = value;
 		} else if ((value = get_conf_value(
 		                line, sz, "rule.sqlite.table")) != NULL) {
@@ -1252,17 +1269,16 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 				value++;
 				// puts(value);
 				sql_parse(cr, value);
-				cr->rules[cvector_size(cr->rules) - 1].sqlite_table = table;
-				cr->rules[cvector_size(cr->rules) - 1].forword_type = RULE_FORWORD_SQLITE;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .sqlite_table = table;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .forword_type = RULE_FORWORD_SQLITE;
 			}
-
-		} 
+		}
 
 		free(line);
 		line = NULL;
 	}
-
-	
 
 	if (line) {
 		free(line);
@@ -1277,16 +1293,17 @@ conf_rule_fdb_parse(conf_rule *cr, char *path)
 {
 	if (path == NULL || !nano_file_exists(path)) {
 		printf("Configure file [%s] not found or "
-		       "unreadable\n", path);
+		       "unreadable\n",
+		    path);
 		return false;
 	}
 
-	char * line = NULL;
-	rule *rules = NULL;
-	int rc = 0;
-	size_t sz   = 0;
-	FILE * fp;
-	rule_key *rk = (rule_key*) zmalloc(sizeof(rule_key));
+	char *    line  = NULL;
+	rule *    rules = NULL;
+	int       rc    = 0;
+	size_t    sz    = 0;
+	FILE *    fp;
+	rule_key *rk = (rule_key *) zmalloc(sizeof(rule_key));
 	memset(rk, 0, sizeof(rule_key));
 
 	if (NULL == (fp = fopen(path, "r"))) {
@@ -1296,8 +1313,8 @@ conf_rule_fdb_parse(conf_rule *cr, char *path)
 
 	char *value;
 	while (nano_getline(&line, &sz, fp) != -1) {
-		if ((value = get_conf_value(
-		         line, sz, "rule.fdb.path")) != NULL) {
+		if ((value = get_conf_value(line, sz, "rule.fdb.path")) !=
+		    NULL) {
 			cr->sqlite_db_path = value;
 		} else if ((value = get_conf_value(
 		                line, sz, "rule.event.publish.key")) != NULL) {
@@ -1313,10 +1330,11 @@ conf_rule_fdb_parse(conf_rule *cr, char *path)
 				rk->flag[rc] = true;
 			}
 			free(value);
-		} else if ((value = get_conf_value(
-		                line, sz, "rule.event.publish.key.autoincrement")) != NULL) {
+		} else if ((value = get_conf_value(line, sz,
+		                "rule.event.publish.key.autoincrement")) !=
+		    NULL) {
 			if (0 == strcasecmp(value, "true")) {
-				 rk->auto_inc = true;
+				rk->auto_inc = true;
 			} else if (0 == strcasecmp(value, "false")) {
 				rk->auto_inc = false;
 			} else {
@@ -1329,11 +1347,12 @@ conf_rule_fdb_parse(conf_rule *cr, char *path)
 				value++;
 				// puts(value);
 				sql_parse(cr, value);
-				cr->rules[cvector_size(cr->rules) - 1].key = rk;
-				cr->rules[cvector_size(cr->rules) - 1].forword_type = RULE_FORWORD_FDB;
+				cr->rules[cvector_size(cr->rules) - 1].key =
+				    rk;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .forword_type = RULE_FORWORD_FDB;
 			}
-
-		} 
+		}
 
 		free(line);
 		line = NULL;
@@ -1352,7 +1371,7 @@ conf_rule_parse(conf *nanomq_conf)
 {
 
 	const char *dest_path = nanomq_conf->rule_file;
-	conf_rule cr = nanomq_conf->rule_eng;
+	conf_rule   cr        = nanomq_conf->rule_eng;
 
 	if (dest_path == NULL || !nano_file_exists(dest_path)) {
 		if (!nano_file_exists(CONF_RULE_ENGINE_PATH_NAME)) {
@@ -1365,9 +1384,9 @@ conf_rule_parse(conf *nanomq_conf)
 		}
 	}
 
-	char * line = NULL;
-	rule *rules = NULL;
-	size_t sz   = 0;
+	char * line  = NULL;
+	rule * rules = NULL;
+	size_t sz    = 0;
 	FILE * fp;
 
 	if ((fp = fopen(dest_path, "r")) == NULL) {
@@ -1377,11 +1396,13 @@ conf_rule_parse(conf *nanomq_conf)
 
 	char *value;
 	while (nano_getline(&line, &sz, fp) != -1) {
-		if ((value = get_conf_value(
-		         line, sz, "rule_option")) != NULL) {
+		if ((value = get_conf_value(line, sz, "rule_option")) !=
+		    NULL) {
 			if (0 != strcasecmp(value, "ON")) {
 				if (0 != strcasecmp(value, "OFF")) {
-					log_err("Unsupport option: %s\nrule option only support ON/OFF", value);
+					log_err("Unsupported option: %s\nrule "
+					        "option only support ON/OFF",
+					    value);
 				}
 				free(value);
 				break;
@@ -1392,8 +1413,11 @@ conf_rule_parse(conf *nanomq_conf)
 			if (0 == strcasecmp(value, "enable")) {
 				cr.option |= RULE_ENG_SDB;
 			} else {
-				if (0 != strcasecmp(value, "disable")){
-					log_err("Unsupport option: %s\nrule option sqlite only support enable/disable", value);
+				if (0 != strcasecmp(value, "disable")) {
+					log_err("Unsupported option: %s\nrule "
+					        "option sqlite only support "
+					        "enable/disable",
+					    value);
 					break;
 				}
 			}
@@ -1409,14 +1433,17 @@ conf_rule_parse(conf *nanomq_conf)
 			if (0 == strcasecmp(value, "enable")) {
 				cr.option |= RULE_ENG_FDB;
 			} else {
-				if (0 != strcasecmp(value, "disable")){
-					log_err("Unsupport option: %s\nrule option fdb only support enable/disable", value);
+				if (0 != strcasecmp(value, "disable")) {
+					log_err("Unsupported option: %s\nrule "
+					        "option fdb only support "
+					        "enable/disable",
+					    value);
 					break;
 				}
 			}
 			free(value);
-		} else if ((value = get_conf_value(
-		                line, sz, "rule_option.fdb.conf.path")) != NULL) {
+		} else if ((value = get_conf_value(line, sz,
+		                "rule_option.fdb.conf.path")) != NULL) {
 			if (RULE_ENG_FDB & cr.option) {
 				conf_rule_fdb_parse(&cr, value);
 			}
@@ -1661,7 +1688,8 @@ get_bridge_group_names(const char *path, size_t *count)
 	while (nano_getline(&line, &sz, fp) != -1) {
 		char *value = calloc(1, sz);
 		char *str   = strtrim_head_tail(line, sz);
-		int   res   = sscanf(str, "bridge.mqtt.%[^.].%*[^=]=%*[^\n]", value);
+		int   res =
+		    sscanf(str, "bridge.mqtt.%[^.].%*[^=]=%*[^\n]", value);
 		// avoid to read old version nanomq_bridge.conf
 		if (res == 1 && strchr(value, '=') == NULL) {
 			bool exists = false;
@@ -1689,7 +1717,7 @@ get_bridge_group_names(const char *path, size_t *count)
 	if (line) {
 		free(line);
 	}
-	if(group_count == 0) {
+	if (group_count == 0) {
 		free(group_names);
 		group_names = NULL;
 	}
@@ -1708,10 +1736,10 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 
 	conf_bridge_node *node = calloc(1, sizeof(conf_bridge_node));
 	conf_bridge_node_init(node);
-	char key_prefix[] = "bridge.mqtt.";
-	char *line = NULL;
-	size_t sz  = 0;
-	char *value = NULL;
+	char   key_prefix[] = "bridge.mqtt.";
+	char * line         = NULL;
+	size_t sz           = 0;
+	char * value        = NULL;
 	while (nano_getline(&line, &sz, fp) != -1) {
 		if ((value = get_conf_value_with_prefix2(line, sz, key_prefix,
 		         name, ".bridge_mode")) != NULL) {
@@ -1753,7 +1781,7 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 				node->forwards = realloc(node->forwards,
 				    sizeof(char *) * node->forwards_count);
 				node->forwards[node->forwards_count - 1] =
-				    strdup(tk);
+				    nng_strdup(tk);
 				tk = strtok(NULL, ",");
 			}
 			free(value);
@@ -1811,7 +1839,7 @@ conf_bridge_parse(conf *nanomq_conf)
 	for (size_t i = 0; i < group_count; i++) {
 		conf_bridge_node *node = conf_bridge_node_parse_with_name(
 		    dest_path, group_names[i]);
-		node->name    = strdup(group_names[i]);
+		node->name    = nng_strdup(group_names[i]);
 		node->sqlite  = &bridge->sqlite;
 		node_array[i] = node;
 		nanomq_conf->bridge_mode |= node->enable;
@@ -1954,14 +1982,14 @@ webhook_action_parse(const char *json, conf_web_hook_rule *hook_rule)
 	cJSON *action = cJSON_GetObjectItem(object, "action");
 	if (cJSON_IsString(action)) {
 		const char *act_val = cJSON_GetStringValue(action);
-		hook_rule->action   = strdup(act_val);
+		hook_rule->action   = nng_strdup(act_val);
 	} else {
 		hook_rule->action = NULL;
 	}
 	cJSON *topic = cJSON_GetObjectItem(object, "topic");
 	if (cJSON_IsString(topic)) {
 		const char *topic_str = cJSON_GetStringValue(topic);
-		hook_rule->topic      = strdup(topic_str);
+		hook_rule->topic      = nng_strdup(topic_str);
 	} else {
 		hook_rule->topic = NULL;
 	}
@@ -2185,7 +2213,7 @@ conf_parse_http_headers(
 	size_t             sz      = 0;
 	conf_http_header **headers = NULL;
 
-	char pattern[strlen(key_prefix) + 23];
+	char *pattern = nng_zalloc(strlen(key_prefix) + 23);
 	sprintf(pattern, "%s.headers.%%[^=]=%%[^\n]", key_prefix);
 
 	size_t header_count = 0;
@@ -2224,6 +2252,7 @@ conf_parse_http_headers(
 	if (line) {
 		free(line);
 	}
+	nng_strfree(pattern);
 	fclose(fp);
 	*count = header_count;
 	return headers;
@@ -2235,13 +2264,13 @@ get_params(const char *value, size_t *count)
 	conf_http_param **params      = NULL;
 	size_t            param_count = 0;
 
-	char *line = strdup(value);
+	char *line = nng_strdup(value);
 	char *tk   = strtok(line, ",");
 	while (tk != NULL) {
 		param_count++;
 		params =
 		    realloc(params, sizeof(conf_http_param *) * param_count);
-		char *str = strdup(tk);
+		char *str = nng_strdup(tk);
 		char *key = calloc(1, strlen(str));
 		char  c   = 0;
 		int   res = sscanf(str, "%[^=]=%%%c", key, &c);
@@ -2327,7 +2356,7 @@ conf_auth_http_req_parse(
 				req->method = value;
 			} else {
 				free(value);
-				req->method = strdup("post");
+				req->method = nng_strdup("post");
 			}
 		} else if ((value = get_conf_value_with_prefix(
 		                line, sz, key_prefix, ".params")) != NULL) {
@@ -2508,7 +2537,7 @@ static void
 conf_rule_destroy(conf_rule *re)
 {
 	if (re) {
-		// TODO 
+		// TODO
 	}
 	return;
 }
