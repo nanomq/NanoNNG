@@ -882,6 +882,7 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 
 	if (nni_msg_get_type(msg) != CMD_PUBLISH) {
 		nmq_pipe_send_start_msg_go(p, msg);
+		return;
 	}
 
 	subinfo  *sn = NULL;
@@ -954,9 +955,11 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			if (qos_pac == 0) {
 				// save time & space for QoS 0 publish
 				nmq_pipe_send_start_msg_go(p, msg);
+				continue;
 			}
 		}
 
+		qos = sn->qos;
 		debug_msg("qos_pac %d sub %d\n", qos_pac, qos);
 		fixheader = *header;
 		// get final qos
