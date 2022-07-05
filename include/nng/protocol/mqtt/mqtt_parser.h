@@ -2,12 +2,12 @@
 #ifndef NNG_MQTT_H
 #define NNG_MQTT_H
 
-#include "conf.h"
-#include "hash_table.h"
+#include "nng/supplemental/nanolib/conf.h"
+#include "nng/supplemental/nanolib/hash_table.h"
 #include "nng/mqtt/packet.h"
 #include "mqtt.h"
 #include "nng/supplemental/util/platform.h"
-#include <nng/nng.h>
+#include "nng/nng.h"
 #include <stdlib.h>
 
 // Do not change to %lu! just supress the warning of compiler!
