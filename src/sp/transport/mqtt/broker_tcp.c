@@ -1137,7 +1137,16 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		tinfo = NULL;
 		len_offset=0;
 		// TODO shared topic
-		if (topic_filtern(info->topic, (char*)(body + 2), tlen)) {
+		char *sub_topic = info->topic;
+		if (sub_topic[0] == '$') {
+			if (0 == strncmp(sub_topic, "$share/", strlen("$share/"))) {
+				sub_topic = strchr(sub_topic, '/');
+				sub_topic++;
+				sub_topic = strchr(sub_topic, '/');
+				sub_topic++;
+			}
+		}
+		if (topic_filtern(sub_topic, (char*)(body + 2), tlen)) {
 			if (niov >= 8) {
 				// nng aio only allow 2 msgs at a time
 				nni_aio_set_prov_data(txaio, info);
