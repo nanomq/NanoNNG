@@ -96,6 +96,8 @@ static void tcptran_ep_fini(void *);
 static void tcptran_pipe_fini(void *);
 
 static inline void
+nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio);
+static inline void
 nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio);
 
 static nni_reap_list tcptran_ep_reap_list = {
@@ -491,7 +493,10 @@ nmq_tcptran_pipe_send_cb(void *arg)
 	msg = nni_aio_get_msg(aio);
 	if (nni_aio_get_prov_data(txaio) != NULL) {
 		// msgs left behind due to multiple topics matched
-		nmq_pipe_send_start_v5(p, msg, aio);
+		if (p->tcp_cparam->pro_ver == 4)
+			nmq_pipe_send_start_v4(p, msg, aio);
+		else if (p->tcp_cparam->pro_ver == 5)
+			nmq_pipe_send_start_v5(p, msg, aio);
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
@@ -823,37 +828,6 @@ tcptran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 	nni_aio_finish_error(aio, rv);
 }
 
-static inline void
-nmq_pipe_send_start_iov_go(tcptran_pipe *p, int niov, nni_iov *iov)
-{
-	nni_aio *txaio = p->txaio;
-
-	nni_aio_set_iov(txaio, niov, iov);
-	nng_stream_send(p->conn, txaio);
-}
-
-static inline void
-nmq_pipe_send_start_msg_go(tcptran_pipe *p, nni_msg *msg)
-{
-	nni_aio *txaio = p->txaio;
-	int      niov = 0;
-	nni_iov  iov[4];
-
-	if (nni_msg_header_len(msg) > 0) {
-		iov[niov].iov_buf = nni_msg_header(msg);
-		iov[niov].iov_len = nni_msg_header_len(msg);
-		niov++;
-	}
-	if (nni_msg_len(msg) > 0) {
-		iov[niov].iov_buf = nni_msg_body(msg);
-		iov[niov].iov_len = nni_msg_len(msg);
-		niov++;
-	}
-
-	nni_aio_set_iov(txaio, niov, iov);
-	nng_stream_send(p->conn, txaio);
-}
-
 /**
  * @brief send msg to V4 client
  * 
@@ -875,30 +849,33 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	nni_aio_set_msg(aio, msg);
 
 	if (nni_msg_header_len(msg) <= 0) {
+		goto send;
 		// TODO aio not handle
-		// nng_stream_send(p->conn, txaio);
-		return;
 	}
 
 	if (nni_msg_get_type(msg) != CMD_PUBLISH) {
-		nmq_pipe_send_start_msg_go(p, msg);
-		return;
+		goto send;
 	}
 
-	subinfo  *sn = NULL;
+	subinfo  *tinfo = NULL, *info = NULL;
 	nni_list *subinfol = &p->npipe->subinfol;
 
 	int topic_len = 0;
 	char *topic = nni_msg_get_pub_topic(msg, &topic_len);
 
+	txaio = p->txaio;
+	tinfo = nni_aio_get_prov_data(txaio);
+	nni_aio_set_prov_data(txaio, NULL);
+
 	// Recomposing for each msg
 	// never modify the original msg
-
-	NNI_LIST_FOREACH(subinfol, sn) {
-		if (!sn)
+	NNI_LIST_FOREACH(subinfol, info) {
+		if (tinfo != NULL && info != tinfo)
 			continue;
 
-		char *sub_topic = sn->topic;
+		tinfo = NULL;
+
+		char *sub_topic = tinfo->topic;
 		if (sub_topic[0] == '$') {
 			if (0 == strncmp(sub_topic, "$share/", strlen("$share/"))) {
 				sub_topic = strchr(sub_topic, '/');
@@ -909,10 +886,10 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		}
 		if (false == topic_filtern(sub_topic, topic, topic_len))
 			continue;
-
-		// No local
-		if (sn->no_local && nni_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
-			continue;
+		if (niov > 4) {
+			// donot send too many msgs at a time
+			nni_aio_set_prov_data(txaio, info);
+			break;
 		}
 
 		uint8_t      *body, *header, qos_pac;
@@ -954,12 +931,11 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 
 			if (qos_pac == 0) {
 				// save time & space for QoS 0 publish
-				nmq_pipe_send_start_msg_go(p, msg);
-				continue;
+				goto send;
 			}
 		}
 
-		qos = sn->qos;
+		qos = info->qos;
 		debug_msg("qos_pac %d sub %d\n", qos_pac, qos);
 		fixheader = *header;
 		// get final qos
@@ -977,12 +953,6 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				len_offset   = len_offset - 2;
 			}
 		}
-
-		// Retain As Publish
-		if (sn->rap) {
-			fixheader = fixheader | 0x01;
-		}
-
 		// copy remaining length
 		rlen = put_var_integer(
 		    tmp, get_var_integer(header, &pos) + len_offset - plength);
@@ -990,7 +960,6 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		//rlen : max 4 bytes
 		memcpy(p->qos_buf+1, tmp, rlen);
 
-		txaio = p->txaio;
 		niov  = 0;
 		// 1st part of variable header: topic
 		len_offset = 0;      // now use it to indicates the pid length
@@ -1054,9 +1023,28 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			    mlen - 2 - len_offset - tlen - plength;
 			niov++;
 		}
-
-		nmq_pipe_send_start_iov_go(p, niov, iov);
 	}
+
+	nni_aio_set_iov(txaio, niov, iov);
+	nng_stream_send(p->conn, txaio);
+	return;
+
+send:
+	txaio = p->txaio;
+	niov  = 0;
+
+	if (nni_msg_header_len(msg) > 0) {
+		iov[niov].iov_buf = nni_msg_header(msg);
+		iov[niov].iov_len = nni_msg_header_len(msg);
+		niov++;
+	}
+	if (nni_msg_len(msg) > 0) {
+		iov[niov].iov_buf = nni_msg_body(msg);
+		iov[niov].iov_len = nni_msg_len(msg);
+		niov++;
+	}
+	nni_aio_set_iov(txaio, niov, iov);
+	nng_stream_send(p->conn, txaio);
 }
 
 /**
@@ -1133,6 +1121,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		}
 		tinfo = NULL;
 		len_offset=0;
+		// TODO shared topic
 		if (topic_filtern(info->topic, (char*)(body + 2), tlen)) {
 			if (niov >= 8) {
 				// nng aio only allow 2 msgs at a time
