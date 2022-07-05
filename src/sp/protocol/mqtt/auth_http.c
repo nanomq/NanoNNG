@@ -1,10 +1,10 @@
-#include "cJSON.h"
-#include "conf.h"
-#include "hash_table.h"
 #include "nng/nng.h"
 #include "nng/nng_debug.h"
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/supplemental/http/http.h"
+#include "nng/supplemental/nanolib/cJSON.h"
+#include "nng/supplemental/nanolib/conf.h"
+#include "nng/supplemental/nanolib/hash_table.h"
 #include <stdarg.h>
 #include <stdio.h>
 
