@@ -1000,6 +1000,7 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 					nni_qos_db_remove_msg(is_sqlite,
 					    pipe->nano_qos_db, old);
 				}
+				old = msg;
 				nni_qos_db_set(is_sqlite, pipe->nano_qos_db,
 				    pipe->p_id, pid, old);
 				nni_qos_db_remove_oldest(is_sqlite,
@@ -1227,6 +1228,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 						    is_sqlite,
 						    pipe->nano_qos_db, old);
 					}
+					old = msg;
 					nni_qos_db_set(is_sqlite,
 					    pipe->nano_qos_db, pipe->p_id, pid,
 					    old);
