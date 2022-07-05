@@ -364,7 +364,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	nni_msg *        msg;
 	int              rv;
 	uint32_t         pipe;
-	uint8_t          qos = 0, qos_pac;
+	uint8_t          qos_pac;
 	uint16_t         packetid;
 
 	bool is_sqlite = s->conf->sqlite.enable;
@@ -413,19 +413,20 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		if (nni_msg_get_type(msg) == CMD_PUBLISH) {
 			qos_pac = nni_msg_get_pub_qos(msg);
 		}
-		if (qos > 0 && qos_pac > 0) {
+		if (qos_pac > 0) {
 			packetid = nni_pipe_inc_packetid(p->pipe);
 			nni_qos_db_set(is_sqlite, p->pipe->nano_qos_db,
 			    p->pipe->p_id, packetid, msg);
 			nni_qos_db_remove_oldest(is_sqlite,
 			    p->pipe->nano_qos_db,
 			    s->conf->sqlite.disk_cache_size);
+			debug_msg("msg cached for session");
 		} else {
+			// only cache QoS messages
 			nni_msg_free(msg);
 		}
 		nni_mtx_unlock(&p->lk);
 		nni_aio_set_msg(aio, NULL);
-		debug_msg("msg cached for session");
 		return;
 	}
 
