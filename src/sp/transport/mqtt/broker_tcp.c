@@ -839,7 +839,7 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 {
 	nni_aio *txaio;
 	int      niov;
-	nni_iov  iov[4];
+	nni_iov  iov[8];
 
 	// qos default to 0 if the msg is not PUBLISH
 	uint8_t  qos = 0;
@@ -856,6 +856,9 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	if (nni_msg_get_type(msg) != CMD_PUBLISH) {
 		goto send;
 	}
+
+	niov  = 0;
+	int qlen = 0;
 
 	subinfo  *tinfo = NULL, *info = NULL;
 	nni_list *subinfol = &p->npipe->subinfol;
@@ -875,7 +878,7 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 
 		tinfo = NULL;
 
-		char *sub_topic = tinfo->topic;
+		char *sub_topic = info->topic;
 		if (sub_topic[0] == '$') {
 			if (0 == strncmp(sub_topic, "$share/", strlen("$share/"))) {
 				sub_topic = strchr(sub_topic, '/');
@@ -930,8 +933,18 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		} else if (nni_msg_cmd_type(msg) == CMD_PUBLISH) {
 
 			if (qos_pac == 0) {
+				if (nni_msg_header_len(msg) > 0) {
+					iov[niov].iov_buf = nni_msg_header(msg);
+					iov[niov].iov_len = nni_msg_header_len(msg);
+					niov++;
+				}
+				if (nni_msg_len(msg) > 0) {
+					iov[niov].iov_buf = nni_msg_body(msg);
+					iov[niov].iov_len = nni_msg_len(msg);
+					niov++;
+				}
 				// save time & space for QoS 0 publish
-				goto send;
+				continue;
 			}
 		}
 
@@ -956,11 +969,10 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		// copy remaining length
 		rlen = put_var_integer(
 		    tmp, get_var_integer(header, &pos) + len_offset - plength);
-		*(p->qos_buf) = fixheader;
+		*(p->qos_buf + qlen) = fixheader;
 		//rlen : max 4 bytes
-		memcpy(p->qos_buf+1, tmp, rlen);
+		memcpy(p->qos_buf+1+qlen, tmp, rlen);
 
-		niov  = 0;
 		// 1st part of variable header: topic
 		len_offset = 0;      // now use it to indicates the pid length
 		// packet id
@@ -999,9 +1011,10 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			len_offset += 2;
 		}
 		// fixed header
-		iov[niov].iov_buf = p->qos_buf;
+		iov[niov].iov_buf = p->qos_buf+qlen;
 		iov[niov].iov_len = 1+rlen;
 		niov++;
+		qlen += rlen + 1;
 		// topic + tlen
 		iov[niov].iov_buf = body;
 		iov[niov].iov_len = 2+tlen;
@@ -1009,10 +1022,11 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		// packet id if any
 		if (qos > 0) {
 			// copy packet id
-			memcpy(p->qos_buf + 5, var_extra, 2);
-			iov[niov].iov_buf = p->qos_buf + 5;
+			memcpy(p->qos_buf + 5 + qlen, var_extra, 2);
+			iov[niov].iov_buf = p->qos_buf + 5 + qlen;
 			iov[niov].iov_len = 2;
 			niov++;
+			qlen += 2;
 		}
 		// variable header + payload
 		if (mlen > 0) {
