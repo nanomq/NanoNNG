@@ -882,6 +882,7 @@ mqtt_tcptran_pipe_start(
 	p->wanttxhead = nni_msg_header_len(connmsg) + nni_msg_len(connmsg);
 	p->rxmsg      = NULL;
 	p->keepalive  = nni_mqtt_msg_get_connect_keep_alive(connmsg) * 1000;
+	p->proto      = nni_mqtt_msg_get_connect_proto_version(connmsg);
 
 	if (nni_msg_header_len(connmsg) > 0) {
 		iov[niov].iov_buf = nni_msg_header(connmsg);
