@@ -181,7 +181,7 @@ mqtt_tcptran_pipe_init(void *arg, nni_pipe *npipe)
 
 	p->npipe = npipe;
 	nni_lmq_init(&p->rslmq, 16);
-	p->busy   = false;
+	p->busy  = false;
 	nni_sleep_aio(p->keepalive, &p->tmaio);
 	return (0);
 }
