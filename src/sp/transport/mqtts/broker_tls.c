@@ -6,8 +6,8 @@
 // file was obtained (LICENSE.txt).  A copy of the license may also be
 // found online at https://opensource.org/licenses/MIT.
 //
-#include <conf.h>
-#include <mqtt_db.h>
+#include "nng/supplemental/nanolib/conf.h"
+#include "nng/supplemental/nanolib/conf.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
