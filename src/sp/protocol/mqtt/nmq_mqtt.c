@@ -99,7 +99,6 @@ nmq_close_unack_msg_cb(void *key, void *val)
 	NNI_ARG_UNUSED(key);
 
 	nni_msg *msg = val;
-	msg          = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
 	nni_msg_free(msg);
 }
 
@@ -107,12 +106,6 @@ static inline int
 nano_nni_lmq_getq(nni_lmq *lmq, nng_msg **msg, uint8_t *qos)
 {
 	int rv = nni_lmq_get(lmq, msg);
-	if (rv == 0) {
-		if (qos) {
-			*qos = NANO_NNI_LMQ_GET_QOS_BITS(*msg);
-		}
-		*msg = NANO_NNI_LMQ_GET_MSG_POINTER(*msg);
-	}
 	return rv;
 }
 
@@ -123,7 +116,7 @@ nano_nni_lmq_flush(nni_lmq *lmq)
 		nng_msg *msg = lmq->lmq_msgs[lmq->lmq_get++];
 		lmq->lmq_get &= lmq->lmq_mask;
 		lmq->lmq_len--;
-		nni_msg_free(NANO_NNI_LMQ_GET_MSG_POINTER(msg));
+		nni_msg_free(msg);
 	}
 }
 
@@ -265,7 +258,7 @@ nano_pipe_timer_cb(void *arg)
 		msg = nni_qos_db_get_one(
 		    is_sqlite, npipe->nano_qos_db, npipe->p_id, &pid);
 		if (msg != NULL) {
-			rmsg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
+			rmsg = msg;
 			time = nni_msg_get_timestamp(rmsg);
 			if ((nni_clock() - time) >=
 			    (long unsigned) qos_duration * 1250) {
@@ -369,9 +362,9 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	nano_sock *      s   = ctx->sock;
 	nano_pipe *      p;
 	nni_msg *        msg;
-	int              rv, topic_len;
+	int              rv;
 	uint32_t         pipe;
-	uint8_t          qos = 0, qos_pac;
+	uint8_t          qos_pac;
 	uint16_t         packetid;
 
 	bool is_sqlite = s->conf->sqlite.enable;
@@ -416,72 +409,29 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	nni_mtx_unlock(&s->lk);
 	nni_mtx_lock(&p->lk);
 
-	// Here we find the node from subinfol which has same topic with pubmsg
-	struct subinfo *sn = NULL;
-	if (CMD_PUBLISH == nni_msg_get_type(msg)) {
-		char *topic = nni_msg_get_pub_topic(msg, &topic_len);
-		char *sub_topic;
-		NNI_LIST_FOREACH (&p->pipe->subinfol, sn) {
-			sub_topic = sn->topic;
-			if (sub_topic[0] == '$') {
-				if (0 == strncmp(sub_topic, "$share/",
-				        strlen("$share/"))) {
-					sub_topic = strchr(sub_topic, '/');
-					sub_topic++;
-					sub_topic = strchr(sub_topic, '/');
-					sub_topic++;
-				}
-			}
-
-			if (true == topic_filtern(sub_topic, topic, topic_len))
-				break;
-		}
-
-		// Not find if sn is null
-		if (!sn) {
-			nni_mtx_unlock(&p->lk);
-			nni_aio_set_msg(aio, NULL);
-			debug_msg("not find the node in subinfol.");
-			return;
-		}
-	}
-
-	// TODO Move QOS and NO LOCAL to transport layer
-	qos = !sn ? 0 : sn->qos;
-	// No local
-	if (pipe != 0 && p->conn_param->pro_ver == MQTT_VERSION_V5) {
-		if (sn && sn->no_local) {
-			nni_mtx_unlock(&p->lk);
-			nni_aio_set_msg(aio, NULL);
-			debug_msg("msg not sent due to no_local");
-			return;
-		}
-	}
-
 	if (p->pipe->cache) {
 		if (nni_msg_get_type(msg) == CMD_PUBLISH) {
 			qos_pac = nni_msg_get_pub_qos(msg);
 		}
-		if (qos > 0 && qos_pac > 0) {
-			msg      = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
+		if (qos_pac > 0) {
 			packetid = nni_pipe_inc_packetid(p->pipe);
 			nni_qos_db_set(is_sqlite, p->pipe->nano_qos_db,
 			    p->pipe->p_id, packetid, msg);
 			nni_qos_db_remove_oldest(is_sqlite,
 			    p->pipe->nano_qos_db,
 			    s->conf->sqlite.disk_cache_size);
+			debug_msg("msg cached for session");
 		} else {
+			// only cache QoS messages
 			nni_msg_free(msg);
 		}
 		nni_mtx_unlock(&p->lk);
 		nni_aio_set_msg(aio, NULL);
-		debug_msg("msg cached for session");
 		return;
 	}
 
 	if (!p->busy) {
 		p->busy = true;
-		msg     = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
 		nni_aio_set_msg(&p->aio_send, msg);
 		nni_pipe_send(p->pipe, &p->aio_send);
 		nni_mtx_unlock(&p->lk);
@@ -516,7 +466,6 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		}
 	}
 
-	msg = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
 	nni_lmq_put(&p->rlmq, msg);
 
 	nni_mtx_unlock(&p->lk);
@@ -899,7 +848,7 @@ nano_pipe_send_cb(void *arg)
 	// retry here
 	if (nni_aio_result(&p->aio_send) != 0) {
 		msg = nni_aio_get_msg(&p->aio_send);
-		nni_msg_free(NANO_NNI_LMQ_GET_MSG_POINTER(msg));
+		nni_msg_free(msg);
 		nni_aio_set_msg(&p->aio_send, NULL);
 		// possibily due to client crashed
 		p->reason_code = 0x96;
@@ -910,7 +859,6 @@ nano_pipe_send_cb(void *arg)
 
 	nni_aio_set_prov_data(&p->aio_send, 0);
 	if (nni_lmq_get(&p->rlmq, &msg) == 0) {
-		// msg = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
 		nni_aio_set_msg(&p->aio_send, msg);
 		debug_msg("rlmq msg resending! %ld msgs left\n",
 		    nni_lmq_len(&p->rlmq));
@@ -1092,7 +1040,6 @@ nano_pipe_recv_cb(void *arg)
 		NNI_GET16(ptr, ackid);
 		if ((qos_msg = nni_qos_db_get(is_sqlite, npipe->nano_qos_db,
 		         npipe->p_id, ackid)) != NULL) {
-			qos_msg = NANO_NNI_LMQ_GET_MSG_POINTER(qos_msg);
 			nni_qos_db_remove_msg(
 			    is_sqlite, npipe->nano_qos_db, qos_msg);
 			nni_qos_db_remove(

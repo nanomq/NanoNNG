@@ -96,6 +96,8 @@ static void tcptran_ep_fini(void *);
 static void tcptran_pipe_fini(void *);
 
 static inline void
+nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio);
+static inline void
 nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio);
 
 static nni_reap_list tcptran_ep_reap_list = {
@@ -491,7 +493,10 @@ nmq_tcptran_pipe_send_cb(void *arg)
 	msg = nni_aio_get_msg(aio);
 	if (nni_aio_get_prov_data(txaio) != NULL) {
 		// msgs left behind due to multiple topics matched
-		nmq_pipe_send_start_v5(p, msg, aio);
+		if (p->tcp_cparam->pro_ver == 4)
+			nmq_pipe_send_start_v4(p, msg, aio);
+		else if (p->tcp_cparam->pro_ver == 5)
+			nmq_pipe_send_start_v5(p, msg, aio);
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
@@ -562,7 +567,7 @@ tcptran_pipe_recv_cb(void *arg)
 	nni_aio_iov_advance(rxaio, n);
 	// not receive enough bytes, deal with remaining length
 	len = get_var_integer(p->rxlen, &pos);
-	debug_msg("new %ld recevied %ld header %x %d pos: %d len : %d", n,
+	debug_msg("new %ld recevied %ld header %x %d pos: %d len : %llu", n,
 	    p->gotrxhead, p->rxlen[0], p->rxlen[1], pos, len);
 	debug_msg("still need byte count:%ld > 0\n", nni_aio_iov_count(rxaio));
 
@@ -653,7 +658,7 @@ tcptran_pipe_recv_cb(void *arg)
 	// duplicated with fixed_header_adaptor
 	nni_msg_set_remaining_len(msg, len);
 	nni_msg_set_cmd_type(msg, type);
-	debug_msg("remain_len %d cparam %p clientid %s username %s proto %d\n",
+	debug_msg("remain_len %llu cparam %p clientid %s username %s proto %d\n",
 	    len, cparam, cparam->clientid.body, cparam->username.body,
 	    cparam->pro_ver);
 
@@ -834,20 +839,62 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 {
 	nni_aio *txaio;
 	int      niov;
-	nni_iov  iov[4];
-	uint8_t  qos;
+	nni_iov  iov[8];
+
+	// qos default to 0 if the msg is not PUBLISH
+	uint8_t  qos = 0;
 
 	bool is_sqlite = p->conf->sqlite.enable;
 
-	qos = NANO_NNI_LMQ_GET_QOS_BITS(msg);
-	// qos default to 0 if the msg is not PUBLISH
-	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
 	nni_aio_set_msg(aio, msg);
 
-	// Recomposing
+	if (nni_msg_header_len(msg) <= 0) {
+		goto send;
+		// TODO aio not handle
+	}
+
+	if (nni_msg_get_type(msg) != CMD_PUBLISH) {
+		goto send;
+	}
+
+	niov  = 0;
+	int qlen = 0;
+
+	subinfo  *tinfo = NULL, *info = NULL;
+	nni_list *subinfol = &p->npipe->subinfol;
+
+	int topic_len = 0;
+	char *topic = nni_msg_get_pub_topic(msg, &topic_len);
+
+	txaio = p->txaio;
+	tinfo = nni_aio_get_prov_data(txaio);
+	nni_aio_set_prov_data(txaio, NULL);
+
+	// Recomposing for each msg
 	// never modify the original msg
-	if (nni_msg_header_len(msg) > 0 &&
-	    nni_msg_get_type(msg) == CMD_PUBLISH) {
+	NNI_LIST_FOREACH(subinfol, info) {
+		if (tinfo != NULL && info != tinfo)
+			continue;
+
+		tinfo = NULL;
+
+		char *sub_topic = info->topic;
+		if (sub_topic[0] == '$') {
+			if (0 == strncmp(sub_topic, "$share/", strlen("$share/"))) {
+				sub_topic = strchr(sub_topic, '/');
+				sub_topic++;
+				sub_topic = strchr(sub_topic, '/');
+				sub_topic++;
+			}
+		}
+		if (false == topic_filtern(sub_topic, topic, topic_len))
+			continue;
+		if (niov > 4) {
+			// donot send too many msgs at a time
+			nni_aio_set_prov_data(txaio, info);
+			break;
+		}
+
 		uint8_t      *body, *header, qos_pac;
 
 		uint8_t       var_extra[2], fixheader, tmp[4] = { 0 };
@@ -886,11 +933,22 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		} else if (nni_msg_cmd_type(msg) == CMD_PUBLISH) {
 
 			if (qos_pac == 0) {
+				if (nni_msg_header_len(msg) > 0) {
+					iov[niov].iov_buf = nni_msg_header(msg);
+					iov[niov].iov_len = nni_msg_header_len(msg);
+					niov++;
+				}
+				if (nni_msg_len(msg) > 0) {
+					iov[niov].iov_buf = nni_msg_body(msg);
+					iov[niov].iov_len = nni_msg_len(msg);
+					niov++;
+				}
 				// save time & space for QoS 0 publish
-				goto send;
+				continue;
 			}
 		}
 
+		qos = info->qos;
 		debug_msg("qos_pac %d sub %d\n", qos_pac, qos);
 		fixheader = *header;
 		// get final qos
@@ -911,12 +969,10 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		// copy remaining length
 		rlen = put_var_integer(
 		    tmp, get_var_integer(header, &pos) + len_offset - plength);
-		*(p->qos_buf) = fixheader;
+		*(p->qos_buf + qlen) = fixheader;
 		//rlen : max 4 bytes
-		memcpy(p->qos_buf+1, tmp, rlen);
+		memcpy(p->qos_buf+1+qlen, tmp, rlen);
 
-		txaio = p->txaio;
-		niov  = 0;
 		// 1st part of variable header: topic
 		len_offset = 0;      // now use it to indicates the pid length
 		// packet id
@@ -940,13 +996,11 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 					nni_println(
 					    "ERROR: packet id duplicates in "
 					    "nano_qos_db");
-					old =
-					    NANO_NNI_LMQ_GET_MSG_POINTER(old);
 
 					nni_qos_db_remove_msg(is_sqlite,
 					    pipe->nano_qos_db, old);
 				}
-				old = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
+				old = msg;
 				nni_qos_db_set(is_sqlite, pipe->nano_qos_db,
 				    pipe->p_id, pid, old);
 				nni_qos_db_remove_oldest(is_sqlite,
@@ -958,9 +1012,10 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			len_offset += 2;
 		}
 		// fixed header
-		iov[niov].iov_buf = p->qos_buf;
+		iov[niov].iov_buf = p->qos_buf+qlen;
 		iov[niov].iov_len = 1+rlen;
 		niov++;
+		qlen += rlen + 1;
 		// topic + tlen
 		iov[niov].iov_buf = body;
 		iov[niov].iov_len = 2+tlen;
@@ -968,10 +1023,11 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		// packet id if any
 		if (qos > 0) {
 			// copy packet id
-			memcpy(p->qos_buf + 5, var_extra, 2);
-			iov[niov].iov_buf = p->qos_buf + 5;
+			memcpy(p->qos_buf + 5 + qlen, var_extra, 2);
+			iov[niov].iov_buf = p->qos_buf + 5 + qlen;
 			iov[niov].iov_len = 2;
 			niov++;
+			qlen += 2;
 		}
 		// variable header + payload
 		if (mlen > 0) {
@@ -982,11 +1038,12 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			    mlen - 2 - len_offset - tlen - plength;
 			niov++;
 		}
-
-		nni_aio_set_iov(txaio, niov, iov);
-		nng_stream_send(p->conn, txaio);
-		return;
 	}
+
+	nni_aio_set_iov(txaio, niov, iov);
+	nng_stream_send(p->conn, txaio);
+	return;
+
 send:
 	txaio = p->txaio;
 	niov  = 0;
@@ -1021,7 +1078,6 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	int       niov;
 	nni_iov   iov[8];
 
-	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
 	nni_aio_set_msg(aio, msg);
 
 	if (nni_msg_get_type(msg) != CMD_PUBLISH)
@@ -1080,7 +1136,17 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		}
 		tinfo = NULL;
 		len_offset=0;
-		if (topic_filtern(info->topic, (char*)(body + 2), tlen)) {
+		// TODO shared topic
+		char *sub_topic = info->topic;
+		if (sub_topic[0] == '$') {
+			if (0 == strncmp(sub_topic, "$share/", strlen("$share/"))) {
+				sub_topic = strchr(sub_topic, '/');
+				sub_topic++;
+				sub_topic = strchr(sub_topic, '/');
+				sub_topic++;
+			}
+		}
+		if (topic_filtern(sub_topic, (char*)(body + 2), tlen)) {
 			if (niov >= 8) {
 				// nng aio only allow 2 msgs at a time
 				nni_aio_set_prov_data(txaio, info);
@@ -1166,16 +1232,12 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 						nni_println("ERROR: packet id "
 						            "duplicates in "
 						            "nano_qos_db");
-						old =
-						    NANO_NNI_LMQ_GET_MSG_POINTER(
-						        old);
 
 						nni_qos_db_remove_msg(
 						    is_sqlite,
 						    pipe->nano_qos_db, old);
 					}
-					old = NANO_NNI_LMQ_PACKED_MSG_QOS(
-					    msg, qos);
+					old = msg;
 					nni_qos_db_set(is_sqlite,
 					    pipe->nano_qos_db, pipe->p_id, pid,
 					    old);
