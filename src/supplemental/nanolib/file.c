@@ -7,8 +7,6 @@
 #include "nng/nng_debug.h"
 #include "nng/supplemental/nanolib/file.h"
 
-#define NG_MODE (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
-
 #ifdef NNG_PLATFORM_WINDOWS
 #define nano_mkdir(path, mode) mkdir(path)
 #else
@@ -87,11 +85,17 @@ nano_getline(char **restrict line, size_t *restrict len, FILE *restrict fp)
 
 #endif
 
-/*return 1 if exists*/
+/*return true if exists*/
 bool
 nano_file_exists(const char *fpath)
 {
 	return nni_plat_file_exists(fpath);
+}
+
+char *
+nano_getcwd(char *buf, size_t size)
+{
+	return nni_plat_getcwd(buf, size);
 }
 
 int

@@ -552,6 +552,9 @@ extern const char *nni_plat_file_basename(const char *);
 // nni_plat_file_exists return if file is exists.
 extern bool nni_plat_file_exists(const char *path);
 
+// nni_plat_getcwd get current directory where program is running.
+extern char *nni_plat_getcwd(char *buf, size_t size);
+
 //
 // Actual platforms we support.  This is included up front so that we can
 // get the specific types that are supplied by the platform.

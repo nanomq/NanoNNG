@@ -131,7 +131,7 @@ get_db_path(char *dest_path, const char *user_path, const char *db_name)
 {
 	if (user_path == NULL) {
 		char pwd[512] = { 0 };
-		if (getcwd(pwd, sizeof(pwd)) != NULL) {
+		if (nni_plat_getcwd(pwd, sizeof(pwd)) != NULL) {
 			sprintf(dest_path, "%s/%s", pwd, db_name);
 		} else {
 			return NULL;
