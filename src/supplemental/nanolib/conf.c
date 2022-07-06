@@ -16,8 +16,18 @@
 #include <ctype.h>
 
 #if defined(SUPP_RULE_ENGINE)
-static char *rule_engine_key_arr[] = { "qos", "id", "topic", "clientid",
-	"username", "password", "timestamp", "payload", "*", NULL };
+static char *rule_engine_key_arr[] = {
+	"qos",
+	"id",
+	"topic",
+	"clientid",
+	"username",
+	"password",
+	"timestamp",
+	"payload",
+	"*",
+	NULL,
+};
 #endif
 
 static void conf_bridge_init(conf_bridge *bridge);
