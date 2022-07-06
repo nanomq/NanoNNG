@@ -592,7 +592,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	cparam->keepalive_mqtt = tmp;
 	pos += 2;
 	// properties
-	if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
+	if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 		debug_msg("MQTT 5 Properties");
 		cparam->properties = decode_buf_properties(
 		    packet, len, &pos, &cparam->prop_len, true);
@@ -623,7 +623,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	}
 	debug_msg("clientid: [%s] [%d]", cparam->clientid.body, len_of_str);
 
-	if (cparam->pro_ver == PROTOCOL_VERSION_v5 && cparam->assignedid) {
+	if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5 && cparam->assignedid) {
 		property *assigned_cid =
 		    property_set_value_str(ASSIGNED_CLIENT_IDENTIFIER,
 		        cparam->clientid.body, cparam->clientid.len, false);
@@ -634,7 +634,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	}
 	// will topic
 	if (rv == 0 && cparam->will_flag != 0) {
-		if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
+		if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 			cparam->will_properties = decode_buf_properties(
 			    packet, len, &pos, &cparam->will_prop_len, true);
 			if (cparam->will_properties) {
@@ -736,7 +736,7 @@ nmq_connack_encode(nng_msg *msg, conn_param *cparam, uint8_t reason)
 	nni_msg_append(msg, &ack_flag, 1);
 	nni_msg_append(msg, &reason, 1);
 
-	if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
+	if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 		// TODO set properties if necessary
 		encode_properties(msg, cparam->properties, CMD_CONNACK);
 	}
@@ -955,7 +955,7 @@ nano_pubmsg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
 	nni_msg *msg;
 
 	len = payload->len + topic->len + 2;
-	len += proto_ver == PROTOCOL_VERSION_v5 ? 1 : 0;
+	len += proto_ver == MQTT_PROTOCOL_VERSION_v5 ? 1 : 0;
 
 	msg = *msgp;
 	if (msg == NULL) {
@@ -998,7 +998,7 @@ nano_pubmsg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
 		ptr = ptr + 2;
 	}
 
-	if (proto_ver == PROTOCOL_VERSION_v5) {
+	if (proto_ver == MQTT_PROTOCOL_VERSION_v5) {
 		uint8_t property_len = 0;
 		memcpy(ptr, &property_len, 1);
 		++ptr;
@@ -1058,7 +1058,7 @@ nano_msg_notify_disconnect(conn_param *cparam, uint8_t code)
 	topic.len   = strlen(DISCONNECT_TOPIC);
 	// V4 notification msg as default
 	msg = nano_pubmsg_composer(
-	    &msg, 0, 0, &string, &topic, PROTOCOL_VERSION_v311, nng_clock());
+	    &msg, 0, 0, &string, &topic, MQTT_PROTOCOL_VERSION_v311, nng_clock());
 	return msg;
 }
 
@@ -1077,7 +1077,7 @@ nano_msg_notify_connect(conn_param *cparam, uint8_t code)
 	topic.body  = CONNECT_TOPIC;
 	topic.len   = strlen(CONNECT_TOPIC);
 	msg         = nano_pubmsg_composer(
-            &msg, 0, 0, &string, &topic, PROTOCOL_VERSION_v311, nng_clock());
+            &msg, 0, 0, &string, &topic, MQTT_PROTOCOL_VERSION_v311, nng_clock());
 	return msg;
 }
 
@@ -1109,7 +1109,7 @@ nano_msg_get_subtopic(nni_msg *msg, nano_pipe_db *root, conn_param *cparam)
 		}
 	}
 
-	if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
+	if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 		len = get_var_integer(nni_msg_body(msg) + 2, &len_of_varint);
 		payload_ptr = nni_msg_body(msg) + 2 + len + len_of_varint;
 	} else {
@@ -1256,7 +1256,7 @@ nmq_pubres_decode(nng_msg *msg, uint16_t *packet_id, uint8_t *reason_code,
 		return rv;
 	}
 
-	if (length == 2 || proto_ver != PROTOCOL_VERSION_v5) {
+	if (length == 2 || proto_ver != MQTT_PROTOCOL_VERSION_v5) {
 		return MQTT_SUCCESS;
 	}
 
@@ -1326,7 +1326,7 @@ nmq_msgack_encode(nng_msg *msg, uint16_t packet_id, uint8_t reason_code,
 	nni_msg_clear(msg);
 	nni_msg_append(msg, rbuf, 2);
 
-	if (proto_ver == PROTOCOL_VERSION_v5) {
+	if (proto_ver == MQTT_PROTOCOL_VERSION_v5) {
 		if (reason_code == 0 && prop == NULL) {
 			return MQTT_SUCCESS;
 		}
@@ -1392,7 +1392,7 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 	var_ptr = nni_msg_body(msg);
 	len = 0;
 	len_of_varint = 0;
-	if (ver == PROTOCOL_VERSION_v5)
+	if (ver == MQTT_PROTOCOL_VERSION_v5)
 		len = get_var_integer(nni_msg_body(msg) + 2, &len_of_varint);
 	payload_ptr = nni_msg_body(msg) + 2 + len + len_of_varint;
 
@@ -1492,7 +1492,7 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 
 	len = 0;
 	len_of_varint = 0;
-	if (ver == PROTOCOL_VERSION_v5)
+	if (ver == MQTT_PROTOCOL_VERSION_v5)
 		len = get_var_integer(nni_msg_body(msg) + 2, &len_of_varint);
 
 	var_ptr     = nni_msg_body(msg);
