@@ -102,13 +102,6 @@ nmq_close_unack_msg_cb(void *key, void *val)
 	nni_msg_free(msg);
 }
 
-static inline int
-nano_nni_lmq_getq(nni_lmq *lmq, nng_msg **msg, uint8_t *qos)
-{
-	int rv = nni_lmq_get(lmq, msg);
-	return rv;
-}
-
 void
 nano_nni_lmq_flush(nni_lmq *lmq)
 {
@@ -452,7 +445,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 			         &p->rlmq, nni_lmq_cap(&p->rlmq) * 2)) != 0) {
 				debug_syslog("warning msg dropped!");
 				nni_msg *old;
-				(void) nano_nni_lmq_getq(&p->rlmq, &old, NULL);
+				nni_lmq_get(&p->rlmq, &old);
 				nni_msg_free(old);
 			}
 		} else {
@@ -997,7 +990,7 @@ nano_pipe_recv_cb(void *arg)
 		nmq_subinfo_decode(msg, &npipe->subinfol, cparam->pro_ver);
 		nni_mtx_unlock(&p->lk);
 
-		if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
+		if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 			len = get_var_integer(ptr + 2, &len_of_varint);
 			nni_msg_set_payload_ptr(
 			    msg, ptr + 2 + len + len_of_varint);
@@ -1013,7 +1006,7 @@ nano_pipe_recv_cb(void *arg)
 		nmq_unsubinfo_decode(msg, &npipe->subinfol, cparam->pro_ver);
 		nni_mtx_unlock(&p->lk);
 
-		if (cparam->pro_ver == PROTOCOL_VERSION_v5) {
+		if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 			len = get_var_integer(ptr + 2, &len_of_varint);
 			nni_msg_set_payload_ptr(
 			    msg, ptr + 2 + len + len_of_varint);
