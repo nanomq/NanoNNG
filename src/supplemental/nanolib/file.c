@@ -104,7 +104,7 @@ file_write_string(const char *fpath, const char *string)
 	return nni_plat_file_put(fpath, string, strlen(string));
 }
 
-int
+size_t
 file_load_data(const char *filepath, void **data)
 {
 	size_t size;
