@@ -10,13 +10,11 @@
 #ifndef MQTT_PROTOCOL_H
 #define MQTT_PROTOCOL_H
 
-#define PROTOCOL_NAME_v31 "MQIsdp"
-#define PROTOCOL_VERSION_v31 3
-
-#define PROTOCOL_NAME "MQTT"
-
-#define PROTOCOL_VERSION_v311 4
-#define PROTOCOL_VERSION_v5 5
+#define MQTT_PROTOCOL_NAME_v31 "MQIsdp"
+#define MQTT_PROTOCOL_VERSION_v31 3
+#define MQTT_PROTOCOL_NAME "MQTT"
+#define MQTT_PROTOCOL_VERSION_v311 4
+#define MQTT_PROTOCOL_VERSION_v5 5
 
 /* NNG OPTs */
 #define NANO_CONF "nano:conf"
@@ -29,7 +27,7 @@
 #define NANO_CONNECT_PACKET_LEN sizeof(uint8_t) * 12
 #define NANO_MIN_FIXED_HEADER_LEN sizeof(uint8_t) * 2
 //flow control:how many QoS packet broker willing to process at same time.
-#define NANO_MAX_QOS_PACKET 1024	//TODO set in conf
+#define NANO_MAX_QOS_PACKET 1024
 
 #ifdef NANO_PACKET_SIZE
 #define NNI_NANO_MAX_PACKET_SIZE sizeof(uint8_t) * NANO_PACKET_SIZE
@@ -37,11 +35,11 @@
 #define NNI_NANO_MAX_PACKET_SIZE sizeof(uint8_t) * 16
 #endif
 
-/* Message types & flags */
+/* CMD types & flags for internal usage */
 #define CMD_UNKNOWN 0x00
 #define CMD_CONNECT 0x10
 #define CMD_CONNACK 0x20
-#define CMD_PUBLISH 0x30	// indicates PUBLISH packet & MQTTV4 pub packet
+#define CMD_PUBLISH 0x30    // indicates PUBLISH packet & MQTTV4 pub packet
 #define CMD_PUBLISH_V5 0x31 // this is the flag for differing MQTTV5 from V4 V3
 #define CMD_PUBACK 0x40
 #define CMD_PUBREC 0x50
@@ -93,7 +91,7 @@ enum err_t {
 	ERR_OCSP               = 26,
 };
 
-//TODO Enum is not fitting here
+//only for return code to user
 typedef enum {
 	SUCCESS                                = 0,
 	NORMAL_DISCONNECTION                   = 0,
@@ -208,6 +206,11 @@ typedef enum {
 	MQTTV4_V5 = 2,
 	MQTTV5_V4 = 3,
 } target_prover;
+
+// NanoSDK callback func
+// (property, object, reason code)
+typedef void (*nano_cb)(void *, void *, reason_code);
+
 
 //NanoMQ wrapping API
 NNG_DECL void nni_msg_proto_set_property(nng_msg *msg, void *prop);
