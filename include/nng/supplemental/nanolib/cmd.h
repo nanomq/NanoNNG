@@ -21,13 +21,12 @@ extern int   cmd_output_len;
 			goto err;   \
 	} while (0)
 
-#define CMD_FRUN(fcmd, arg...)                    \
-	do {                                      \
-		ret = nano_cmd_frun(fcmd, ##arg); \
-		if (ret < 0)                      \
-			goto err;                 \
+#define CMD_FRUN(fcmd, ...)                             \
+	do {                                            \
+		ret = nano_cmd_frun(fcmd, __VA_ARGS__); \
+		if (ret < 0)                            \
+			goto err;                       \
 	} while (0)
-
 
 extern int nano_cmd_run(const char *cmd);
 extern int nano_cmd_run_status(const char *cmd);
