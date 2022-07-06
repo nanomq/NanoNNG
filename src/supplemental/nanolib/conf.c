@@ -801,7 +801,7 @@ get_key_arr(char *p, rule_key *key)
 	}
 
 	*p            = '\0';
-	char *key_str = zstrdup(p_b);
+	char *key_str = nng_strdup(p_b);
 	cvector_push_back(key->key_arr, key_str);
 	if (is_recur) {
 		p = get_key_arr(p, key);
@@ -824,7 +824,7 @@ get_payload_key_arr(char *p, rule_payload *payload)
 	}
 
 	*p        = '\0';
-	char *key = zstrdup(p_b);
+	char *key = nng_strdup(p_b);
 	cvector_push_back(payload->psa, key);
 	if (is_recur) {
 		p = get_payload_key_arr(p, payload);
@@ -846,7 +846,7 @@ get_payload_as(char *p, rule_payload *payload)
 			p++;
 		char *p_b = p;
 		if (*p_b != '\0') {
-			payload->pas = zstrdup(p_b);
+			payload->pas = nng_strdup(p_b);
 		}
 		return 0;
 	}
@@ -902,7 +902,7 @@ parse_payload_subfield(char *p, rule *info, bool is_store)
 			}
 			p++;
 		}
-		payload->pas = zstrdup(p_b);
+		payload->pas = nng_strdup(p_b);
 	}
 	return 0;
 }
@@ -941,7 +941,7 @@ set_select_info(char *p_b, rule *info)
 				while (*p_b == ' ' && *p_b != '\0')
 					p_b++;
 				if (*p_b != '\0') {
-					info->as[rc] = zstrdup(p_b);
+					info->as[rc] = nng_strdup(p_b);
 				}
 			}
 		}
@@ -987,7 +987,7 @@ parse_from(char *from, rule *info)
 			p++;
 		*p = '\0';
 	}
-	info->topic = zstrdup(from);
+	info->topic = nng_strdup(from);
 	return 0;
 }
 
@@ -1009,7 +1009,7 @@ find_payload_as(char *str, int len, rule_payload **payloads)
 static int
 set_payload_filter(char *str, rule_payload *payload)
 {
-	payload->filter = zstrdup(str);
+	payload->filter = nng_strdup(str);
 }
 
 static rule_cmp_type
@@ -1133,7 +1133,7 @@ set_where_info(char *str, size_t len, rule *info)
 		}
 	}
 
-	info->filter[rc]   = zstrdup(pick_value(p));
+	info->filter[rc]   = nng_strdup(pick_value(p));
 	info->cmp_type[rc] = cmp_type;
 
 	return 0;
