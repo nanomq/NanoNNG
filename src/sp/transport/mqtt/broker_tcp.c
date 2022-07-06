@@ -429,7 +429,7 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 
 	msg  = nni_aio_get_msg(p->qsaio);
 	type = nni_msg_cmd_type(msg);
-	(type == CMD_PUBCOMP || type == PUBACK) ? p->qrecv_quota++
+	(type == CMD_PUBCOMP || type == CMD_PUBACK) ? p->qrecv_quota++
 	                                        : p->qrecv_quota;
 	nni_msg_free(msg);
 	if (nni_lmq_get(&p->rslmq, &msg) == 0) {
