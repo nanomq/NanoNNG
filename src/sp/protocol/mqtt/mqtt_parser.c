@@ -1110,10 +1110,12 @@ nano_msg_get_subtopic(nni_msg *msg, nano_pipe_db *root, conn_param *cparam)
 	}
 
 	if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
-		len = get_var_integer(nni_msg_body(msg) + 2, &len_of_varint);
-		payload_ptr = nni_msg_body(msg) + 2 + len + len_of_varint;
+		len = get_var_integer(
+		    (uint8_t *) nni_msg_body(msg) + 2, &len_of_varint);
+		payload_ptr =
+		    (uint8_t *) nni_msg_body(msg) + 2 + len + len_of_varint;
 	} else {
-		payload_ptr = nni_msg_body(msg) + 2;
+		payload_ptr = (uint8_t *) nni_msg_body(msg) + 2;
 	}
 	nni_msg_set_payload_ptr(msg, payload_ptr);
 	remain = nni_msg_remaining_len(msg) - 2;
@@ -1393,8 +1395,9 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 	len = 0;
 	len_of_varint = 0;
 	if (ver == MQTT_PROTOCOL_VERSION_v5)
-		len = get_var_integer(nni_msg_body(msg) + 2, &len_of_varint);
-	payload_ptr = nni_msg_body(msg) + 2 + len + len_of_varint;
+		len = get_var_integer(
+		    (uint8_t *) nni_msg_body(msg) + 2, &len_of_varint);
+	payload_ptr = (uint8_t *) nni_msg_body(msg) + 2 + len + len_of_varint;
 
 	int pos = 2 + len_of_varint, target_pos = 2 + len_of_varint + len;
 	while (pos < target_pos) {
@@ -1493,10 +1496,11 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 	len = 0;
 	len_of_varint = 0;
 	if (ver == MQTT_PROTOCOL_VERSION_v5)
-		len = get_var_integer(nni_msg_body(msg) + 2, &len_of_varint);
+		len = get_var_integer(
+		    (uint8_t *) nni_msg_body(msg) + 2, &len_of_varint);
 
-	var_ptr     = nni_msg_body(msg);
-	payload_ptr = nni_msg_body(msg) + 2 + len + len_of_varint;
+	var_ptr     = (uint8_t *) nni_msg_body(msg);
+	payload_ptr = (uint8_t *) nni_msg_body(msg) + 2 + len + len_of_varint;
 	int pos = 2 + len_of_varint, target_pos = 2 + len_of_varint + len;
 
 	while (pos < target_pos) {
@@ -1696,11 +1700,14 @@ topic_filter(const char *origin, const char *input)
 bool
 topic_filtern(const char *origin, const char *input, size_t n)
 {
-	char buff[n+1];
-	memset(buff, '\0', n+1);
+	char *buff = nni_zalloc(n + 1);
 	strncpy(buff, input, n);
+	bool res = false;
 	if (strncmp(origin, input, n) == 0) {
-		return true;
+		res = true;
+	} else {
+		res = check_ifwildcard(origin, buff);
 	}
-	return check_ifwildcard(origin, buff);
+	nni_free(buff, n + 1);
+	return res;
 }
