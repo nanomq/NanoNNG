@@ -36,6 +36,9 @@ typedef uint64_t nng_time;
 // system clock.  (Do not use it for fine grained performance measurements.)
 NNG_DECL nng_time nng_clock(void);
 
+// Return unix timestamp (milliseconds) .
+NNG_DECL nng_time nng_timestamp(void);
+
 // Sleep for specified msecs.
 NNG_DECL void nng_msleep(nng_duration);
 
