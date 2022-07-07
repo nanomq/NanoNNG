@@ -13,7 +13,6 @@
 #include "nng/supplemental/nanolib/binary_search.h"
 #include "nng/supplemental/nanolib/khash.h"
 #include "nng/supplemental/nanolib/mqtt_db.h"
-#include "nng/supplemental/nanolib/zmalloc.h"
 #include <stdio.h>
 
 #define dbhash_check_init(name, h, lock) \
