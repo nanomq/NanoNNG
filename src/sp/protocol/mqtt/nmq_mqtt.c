@@ -7,10 +7,6 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
-#include "conf.h"
-#include "file.h"
-#include "hash_table.h"
-#include "mqtt_db.h"
 #include <string.h>
 
 #include "core/nng_impl.h"
@@ -19,9 +15,11 @@
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "nng/protocol/mqtt/nmq_mqtt.h"
+#include "nng/supplemental/nanolib/conf.h"
+#include "nng/supplemental/nanolib/file.h"
+#include "nng/supplemental/nanolib/hash_table.h"
+#include "nng/supplemental/nanolib/mqtt_db.h"
 #include "supplemental/mqtt/mqtt_qos_db_api.h"
-
-#include <sub_handler.h>
 
 #define DB_NAME "nano_qos_db.db"
 

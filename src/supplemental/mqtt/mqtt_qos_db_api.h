@@ -6,7 +6,7 @@
 #include "mqtt_qos_db.h"
 
 #ifdef NNG_HAVE_MQTT_BROKER
-#include "conf.h"
+#include "nng/supplemental/nanolib/conf.h"
 #endif
 
 #define nni_qos_db_init_sqlite(db, user_path, db_name, is_broker) \
