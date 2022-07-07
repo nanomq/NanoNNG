@@ -15,5 +15,4 @@ nng_sources(
   env.c
   file.c
   hash_table.c
-  mqtt_db.c
-  zmalloc.c)
+  mqtt_db.c)
