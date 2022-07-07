@@ -16,6 +16,7 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <direct.h>
 
 // File support.
 
@@ -361,6 +362,12 @@ nni_plat_file_exists(const char *path)
 		return (false);
 	}
 	return (true);
+}
+
+char *
+nni_plat_getcwd(char *buf, size_t size)
+{
+	return _getcwd(buf, size);
 }
 
 #endif // NNG_PLATFORM_WINDOWS
