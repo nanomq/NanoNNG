@@ -2,7 +2,6 @@
 #define MQTT_DB_H
 
 #include "cvector.h"
-#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
@@ -12,62 +11,16 @@ typedef enum {
 	MQTT_VERSION_V5   = 5,
 } mqtt_version_t;
 
-typedef struct {
+typedef struct dbtree            dbtree;
+
+struct dbtree_retain_msg {
 	uint8_t qos;
 	bool    exist;
-	char   *m;
-	void   *message;
-} dbtree_retain_msg;
-
-typedef struct dbtree_node dbtree_node;
-
-struct dbtree_node {
-	char	      *topic;
-	int                plus;
-	int                well;
-	dbtree_retain_msg *retain;
-	cvector(uint32_t) clients;
-	cvector(dbtree_node *) child;
-	pthread_rwlock_t rwlock;
+	char *  m;
+	void *  message;
 };
 
-typedef struct {
-	char  *topic;
-	char **clients;
-	int    cld_cnt;
-} dbtree_info;
-
-typedef struct {
-	dbtree_node     *root;
-	pthread_rwlock_t rwlock;
-} dbtree;
-
-/**
- * @brief node_cmp - A callback to compare different node
- * @param x - normally x is dbtree_node
- * @param y - y is topic we want to compare
- * @return 0, minus or plus, based on strcmp
- */
-static inline int
-node_cmp(void *x_, void *y_)
-{
-	char        *y     = (char *) y_;
-	dbtree_node *ele_x = (dbtree_node *) x_;
-	return strcmp(ele_x->topic, y);
-}
-
-// TODO
-/**
- * @brief ids_cmp - A callback to compare different id
- * @param x - normally x is pointer of id
- * @param y - normally y is pointer of id
- * @return 0, minus or plus, based on strcmp
- */
-static inline int
-ids_cmp(uint32_t x, uint32_t y)
-{
-	return y - x;
-}
+typedef struct dbtree_retain_msg dbtree_retain_msg;
 
 /**
  * @brief dbtree_create - Create a dbtree.
