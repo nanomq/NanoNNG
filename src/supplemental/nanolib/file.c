@@ -1,6 +1,4 @@
 #include <errno.h>
-#include <fcntl.h>
-#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,11 +10,13 @@
 #include <ws2def.h>
 #else
 #include <sys/ioctl.h>
+#include <fcntl.h>
+#include <unistd.h>
 #endif
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <unistd.h>
 
+#include "core/nng_impl.h"
 #include "nng/supplemental/nanolib/file.h"
 
 #define NG_MODE (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
@@ -30,12 +30,6 @@
 static char fpath_tmp[100];
 
 #ifndef NNG_PLATFORM_WINDOWS
-
-static char *
-nano_strcasestr(const char *s1, const char *s2)
-{
-	return (strcasestr(s1, s2));
-}
 
 int
 nano_fdprintf(int fd, char *fmt, ...)
@@ -55,24 +49,6 @@ nano_getline(char **restrict line, size_t *restrict len, FILE *restrict fp)
 }
 
 #else
-
-static char *
-nano_strcasestr(const char *s1, const char *s2)
-{
-	const char *t1, *t2;
-	while (*s1) {
-		for (t1 = s1, t2 = s2; *t1 && *t2; t2++, t1++) {
-			if (tolower(*t1) != tolower(*t2)) {
-				break;
-			}
-		}
-		if (*t2 == 0) {
-			return ((char *) s1);
-		}
-		s1++;
-	}
-	return (NULL);
-}
 
 int
 nano_fdprintf(int fd, char *fmt, ...)
@@ -428,7 +404,7 @@ file_find_line(const char *fpath, const char *string)
 		goto out;
 
 	while (nano_getline(&line_ptr, &len, fd) != -1) {
-		ptr = nano_strcasestr(line_ptr, string);
+		ptr = nni_strcasestr(line_ptr, string);
 
 		if (!ptr)
 			continue;

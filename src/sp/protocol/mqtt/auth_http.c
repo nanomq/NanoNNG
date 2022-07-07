@@ -1,5 +1,6 @@
 #include "nng/nng.h"
 #include "nng/nng_debug.h"
+#include "core/nng_impl.h"
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/supplemental/http/http.h"
 #include "nng/supplemental/nanolib/cJSON.h"
@@ -49,7 +50,7 @@ set_data(
 	char *content_type = "application/x-www-form-urlencoded";
 
 	for (size_t i = 0; i < req_conf->header_count; i++) {
-		if (strcasecmp(req_conf->headers[i]->key, "Content-Type") ==
+		if (nni_strcasecmp(req_conf->headers[i]->key, "Content-Type") ==
 		    0) {
 			content_type = req_conf->headers[i]->value;
 			continue;
@@ -58,12 +59,12 @@ set_data(
 		    req_conf->headers[i]->value);
 	}
 
-	if (strcasecmp(content_type, "application/json") == 0 &&
-	    strcasecmp(req_conf->method, "get") == 0) {
+	if (nni_strcasecmp(content_type, "application/json") == 0 &&
+	    nni_strcasecmp(req_conf->method, "get") == 0) {
 		content_type = "application/x-www-form-urlencoded";
 	}
 
-	if (strcasecmp(content_type, "application/json") == 0) {
+	if (nni_strcasecmp(content_type, "application/json") == 0) {
 		cJSON *obj = cJSON_CreateObject();
 		for (size_t i = 0; i < req_conf->param_count; i++) {
 			switch (req_conf->params[i]->type) {
@@ -232,8 +233,8 @@ set_data(
 	nng_http_req_add_header(req, "Content-Type", content_type);
 	nng_http_req_set_method(req, req_conf->method);
 
-	if (strcasecmp(req_conf->method, "post") == 0 ||
-	    strcasecmp(req_conf->method, "put") == 0) {
+	if (nni_strcasecmp(req_conf->method, "post") == 0 ||
+	    nni_strcasecmp(req_conf->method, "put") == 0) {
 		nng_http_req_copy_data(req, req_data, strlen(req_data));
 	} else {
 		size_t uri_len =
