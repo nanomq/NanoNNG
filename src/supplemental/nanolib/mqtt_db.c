@@ -24,6 +24,56 @@
 
 static int acnt = 0;
 
+typedef struct dbtree_node dbtree_node;
+
+struct dbtree_node {
+	char *             topic;
+	int                plus;
+	int                well;
+	dbtree_retain_msg *retain;
+	cvector(uint32_t) clients;
+	cvector(dbtree_node *) child;
+	nni_rwlock rwlock;
+};
+
+typedef struct {
+	char * topic;
+	char **clients;
+	int    cld_cnt;
+} dbtree_info;
+
+struct dbtree {
+	dbtree_node *root;
+	nni_rwlock   rwlock;
+};
+
+/**
+ * @brief node_cmp - A callback to compare different node
+ * @param x - normally x is dbtree_node
+ * @param y - y is topic we want to compare
+ * @return 0, minus or plus, based on strcmp
+ */
+static inline int
+node_cmp(void *x_, void *y_)
+{
+	char *       y     = (char *) y_;
+	dbtree_node *ele_x = (dbtree_node *) x_;
+	return strcmp(ele_x->topic, y);
+}
+
+// TODO
+/**
+ * @brief ids_cmp - A callback to compare different id
+ * @param x - normally x is pointer of id
+ * @param y - normally y is pointer of id
+ * @return 0, minus or plus, based on strcmp
+ */
+static inline int
+ids_cmp(uint32_t x, uint32_t y)
+{
+	return y - x;
+}
+
 /**
  * @brief print_client - A way to print client in vec.
  * @param v - normally v is an dynamic array
@@ -144,7 +194,7 @@ dbtree_get_tree(dbtree *db, void *(*cb)(uint32_t pipe_id))
 		return NULL;
 	}
 
-	pthread_rwlock_wrlock(&(db->rwlock));
+	nni_rwlock_wrlock(&(db->rwlock));
 
 	dbtree_node *  node    = db->root;
 	dbtree_node ** nodes   = NULL;
@@ -173,7 +223,7 @@ dbtree_get_tree(dbtree *db, void *(*cb)(uint32_t pipe_id))
 
 			vn->topic   = zstrdup(nodes[i]->topic);
 			vn->cld_cnt = cvector_size(nodes[i]->child);
-			for (size_t j = 0; j < (size_t)vn->cld_cnt; j++) {
+			for (size_t j = 0; j < (size_t) vn->cld_cnt; j++) {
 				cvector_push_back(
 				    nodes_t, (nodes[i]->child)[j]);
 			}
@@ -202,7 +252,7 @@ dbtree_get_tree(dbtree *db, void *(*cb)(uint32_t pipe_id))
 
 			vn->topic   = zstrdup(nodes_t[i]->topic);
 			vn->cld_cnt = cvector_size(nodes_t[i]->child);
-			for (size_t j = 0; j < (size_t)vn->cld_cnt; j++) {
+			for (size_t j = 0; j < (size_t) vn->cld_cnt; j++) {
 				cvector_push_back(
 				    nodes, (nodes_t[i]->child)[j]);
 			}
@@ -211,7 +261,7 @@ dbtree_get_tree(dbtree *db, void *(*cb)(uint32_t pipe_id))
 		cvector_free(nodes_t);
 		nodes_t = NULL;
 	}
-	pthread_rwlock_unlock(&(db->rwlock));
+	nni_rwlock_unlock(&(db->rwlock));
 	return (void ***) ret;
 }
 
@@ -235,7 +285,7 @@ dbtree_print(dbtree *db)
 		return;
 	}
 
-	pthread_rwlock_wrlock(&(db->rwlock));
+	nni_rwlock_wrlock(&(db->rwlock));
 
 	dbtree_node *node = db->root;
 	dbtree_node **nodes = NULL;
@@ -271,7 +321,7 @@ dbtree_print(dbtree *db)
 		cvector_free(nodes_t);
 		nodes_t = NULL;
 	}
-	pthread_rwlock_unlock(&(db->rwlock));
+	nni_rwlock_unlock(&(db->rwlock));
 	puts("___________PRINT_DB_TREE__________");
 }
 #endif
@@ -347,7 +397,7 @@ dbtree_node_new(char *topic)
 	node->well    = -1;
 	node->plus    = -1;
 
-	pthread_rwlock_init(&(node->rwlock), NULL);
+	nni_rwlock_init(&node->rwlock);
 	return node;
 }
 
@@ -365,7 +415,7 @@ dbtree_node_free(dbtree_node *node)
 			zfree(node->topic);
 			node->topic = NULL;
 		}
-		pthread_rwlock_destroy(&(node->rwlock));
+		nni_rwlock_fini(&node->rwlock);
 		zfree(node);
 		node = NULL;
 	}
@@ -385,7 +435,7 @@ dbtree_create(dbtree **db)
 
 	dbtree_node *node = dbtree_node_new("\0");
 	(*db)->root       = node;
-	pthread_rwlock_init(&((*db)->rwlock), NULL);
+	nni_rwlock_init(&(*db)->rwlock);
 #ifdef RANDOM
 	srand(time(NULL));
 #endif
@@ -406,8 +456,8 @@ dbtree_destory(dbtree *db)
 		db = NULL;
 	}
 
-	// pthread_rwlock_destroy(&(db->rwlock));
-	// pthread_rwlock_destroy(&(db->rwlock_session));
+	// nni_rwlock_destroy(&(db->rwlock));
+	// nni_rwlock_destroy(&(db->rwlock_session));
 }
 
 /**
@@ -419,7 +469,7 @@ dbtree_destory(dbtree *db)
 static void *
 insert_client_cb(dbtree_node *node, void *pipe_id)
 {
-	pthread_rwlock_wrlock(&(node->rwlock));
+	nni_rwlock_wrlock(&(node->rwlock));
 	size_t index = 0;
 	if (false ==
 	    binary_search_uint32(
@@ -432,7 +482,7 @@ insert_client_cb(dbtree_node *node, void *pipe_id)
 			    node->clients, index, *(uint32_t *) pipe_id);
 		}
 	}
-	pthread_rwlock_unlock(&(node->rwlock));
+	nni_rwlock_unlock(&(node->rwlock));
 	return NULL;
 }
 
@@ -492,8 +542,8 @@ dbtree_node_insert(dbtree_node *node, char **topic_queue)
 
 				node->well = 0;
 				new_node   = dbtree_node_new(*topic_queue);
-				cvector_insert(
-				    node->child, (size_t)node->well, new_node);
+				cvector_insert(node->child,
+				    (size_t) node->well, new_node);
 			}
 
 		} else if (is_plus(*topic_queue)) {
@@ -506,8 +556,8 @@ dbtree_node_insert(dbtree_node *node, char **topic_queue)
 
 				node->plus = 0;
 				new_node   = dbtree_node_new(*topic_queue);
-				cvector_insert(
-				    node->child, (size_t)node->plus, new_node);
+				cvector_insert(node->child,
+				    (size_t) node->plus, new_node);
 			}
 		} else {
 			size_t l = skip_wildcard(node);
@@ -567,7 +617,7 @@ search_insert_node(dbtree *db, char *topic, void *args,
 	char **topic_queue = topic_parse(topic);
 	char **for_free    = topic_queue;
 
-	pthread_rwlock_wrlock(&(db->rwlock));
+	nni_rwlock_wrlock(&(db->rwlock));
 	dbtree_node *node = db->root;
 	// while dbtree is NULL, we will insert directly.
 
@@ -580,8 +630,8 @@ search_insert_node(dbtree *db, char *topic, void *args,
 			debug_msg("topic is: %s, node->topic is: %s",
 			    *topic_queue, node_t->topic);
 			if (strcmp(node_t->topic, *topic_queue)) {
-				bool equal = false;
-				size_t  index = 0;
+				bool   equal = false;
+				size_t index = 0;
 
 				node_t = find_next(
 				    node, &equal, topic_queue, &index);
@@ -616,7 +666,7 @@ search_insert_node(dbtree *db, char *topic, void *args,
 	}
 
 	void *ret = inserter(node, args);
-	pthread_rwlock_unlock(&(db->rwlock));
+	nni_rwlock_unlock(&(db->rwlock));
 	topic_queue_free(for_free);
 	return ret;
 }
@@ -767,7 +817,7 @@ search_client(dbtree *db, char *topic)
 	char **   for_free    = topic_queue;
 	uint32_t *ret         = NULL;
 
-	pthread_rwlock_rdlock(&(db->rwlock));
+	nni_rwlock_rdlock(&(db->rwlock));
 
 	dbtree_node *node              = db->root;
 	cvector(uint32_t *) pipe_ids   = NULL;
@@ -792,7 +842,7 @@ search_client(dbtree *db, char *topic)
 
 	ret = iterate_client(pipe_ids);
 
-	pthread_rwlock_unlock(&(db->rwlock));
+	nni_rwlock_unlock(&(db->rwlock));
 	topic_queue_free(for_free);
 	cvector_free(nodes);
 	cvector_free(nodes_t);
@@ -820,7 +870,7 @@ delete_dbtree_client(dbtree_node *node, uint32_t pipe_id)
 	size_t index = 0;
 	void * ctxt  = NULL;
 
-	pthread_rwlock_wrlock(&(node->rwlock));
+	nni_rwlock_wrlock(&(node->rwlock));
 	if (true ==
 	    binary_search_uint32(node->clients, 0, &index, pipe_id, ids_cmp)) {
 		cvector_erase(node->clients, (size_t) index);
@@ -841,7 +891,7 @@ delete_dbtree_client(dbtree_node *node, uint32_t pipe_id)
 		}
 	}
 
-	pthread_rwlock_unlock(&(node->rwlock));
+	nni_rwlock_unlock(&(node->rwlock));
 	return ctxt;
 }
 
@@ -854,7 +904,7 @@ delete_dbtree_client(dbtree_node *node, uint32_t pipe_id)
 static int
 delete_dbtree_node(dbtree_node *node, size_t index)
 {
-	pthread_rwlock_wrlock(&(node->rwlock));
+	nni_rwlock_wrlock(&(node->rwlock));
 	dbtree_node *node_t = node->child[index];
 	// TODO plus && well
 
@@ -892,7 +942,7 @@ delete_dbtree_node(dbtree_node *node, size_t index)
 		node->child = NULL;
 	}
 
-	pthread_rwlock_unlock(&(node->rwlock));
+	nni_rwlock_unlock(&(node->rwlock));
 	return 0;
 }
 
@@ -904,14 +954,14 @@ dbtree_delete_client(dbtree *db, char *topic, uint32_t pipe_id)
 		return NULL;
 	}
 
-	pthread_rwlock_wrlock(&(db->rwlock));
+	nni_rwlock_wrlock(&(db->rwlock));
 
 	char **       topic_queue = topic_parse(topic);
 	char **       for_free    = topic_queue;
 	dbtree_node * node        = db->root;
 	dbtree_node **node_buf    = NULL;
 	int *         vec         = NULL;
-	size_t           index       = 0;
+	size_t        index       = 0;
 
 	while (*topic_queue && node->child && *node->child) {
 		index               = 0;
@@ -978,7 +1028,7 @@ mem_free:
 	cvector_free(node_buf);
 	topic_queue_free(for_free);
 	cvector_free(vec);
-	pthread_rwlock_unlock(&(db->rwlock));
+	nni_rwlock_unlock(&(db->rwlock));
 
 	return NULL;
 }
@@ -988,14 +1038,14 @@ insert_dbtree_retain(dbtree_node *node, void *args)
 {
 	dbtree_retain_msg *retain = (dbtree_retain_msg *) args;
 	void *             ret    = NULL;
-	pthread_rwlock_wrlock(&(node->rwlock));
+	nni_rwlock_wrlock(&(node->rwlock));
 	if (node->retain != NULL) {
 		ret = node->retain;
 	}
 
 	node->retain = retain;
 
-	pthread_rwlock_unlock(&(node->rwlock));
+	nni_rwlock_unlock(&(node->rwlock));
 
 	return ret;
 }
@@ -1100,7 +1150,7 @@ collect_retains(dbtree_retain_msg **vec, dbtree_node **nodes,
 
 			if (strcmp(t->topic, *topic_queue)) {
 				size_t index = 0;
-				t         = find_next(
+				t            = find_next(
                                     node_t, &equal, topic_queue, &index);
 
 			} else {
@@ -1143,7 +1193,7 @@ dbtree_find_retain(dbtree *db, char *topic)
 	}
 	char **topic_queue = topic_parse(topic);
 	char **for_free    = topic_queue;
-	pthread_rwlock_rdlock(&(db->rwlock));
+	nni_rwlock_rdlock(&(db->rwlock));
 
 	dbtree_node *node                 = db->root;
 	cvector(dbtree_retain_msg *) rets = NULL;
@@ -1165,7 +1215,7 @@ dbtree_find_retain(dbtree *db, char *topic)
 		topic_queue++;
 	}
 
-	pthread_rwlock_unlock(&(db->rwlock));
+	nni_rwlock_unlock(&(db->rwlock));
 
 	topic_queue_free(for_free);
 	cvector_free(nodes);
@@ -1197,7 +1247,7 @@ dbtree_delete_retain(dbtree *db, char *topic)
 		debug_msg("db or topic is NULL");
 		return NULL;
 	}
-	pthread_rwlock_wrlock(&(db->rwlock));
+	nni_rwlock_wrlock(&(db->rwlock));
 
 	char **       topic_queue = topic_parse(topic);
 	char **       for_free    = topic_queue;
@@ -1259,7 +1309,7 @@ dbtree_delete_retain(dbtree *db, char *topic)
 		// dbtree_print(dbtree);
 	}
 
-	pthread_rwlock_unlock(&(db->rwlock));
+	nni_rwlock_unlock(&(db->rwlock));
 
 mem_free:
 	cvector_free(node_buf);
@@ -1315,14 +1365,14 @@ dbtree_find_shared_clients(dbtree *db, char *topic)
 	cvector(uint32_t *) ids        = NULL;
 	cvector(dbtree_node *) nodes_p = NULL;
 	cvector(dbtree_node *) nodes_q = NULL;
-	bool  equal                    = false;
-	char *t                        = "$share";
-	size_t   index;
+	bool   equal                   = false;
+	char * t                       = "$share";
+	size_t index;
 
-	pthread_rwlock_rdlock(&(db->rwlock));
+	nni_rwlock_rdlock(&(db->rwlock));
 	dbtree_node *node = db->root;
 	if (node == NULL) {
-		pthread_rwlock_unlock(&(db->rwlock));
+		nni_rwlock_unlock(&(db->rwlock));
 		return NULL;
 	}
 
@@ -1330,7 +1380,7 @@ dbtree_find_shared_clients(dbtree *db, char *topic)
 	dbtree_node *shared = find_next(node, &equal, &t, &index);
 
 	if (equal == false || shared == NULL || shared->child == NULL) {
-		pthread_rwlock_unlock(&(db->rwlock));
+		nni_rwlock_unlock(&(db->rwlock));
 		return NULL;
 	}
 
@@ -1360,7 +1410,7 @@ dbtree_find_shared_clients(dbtree *db, char *topic)
 	}
 
 	uint32_t *ret = iterate_shared_client(ids);
-	pthread_rwlock_unlock(&(db->rwlock));
+	nni_rwlock_unlock(&(db->rwlock));
 	topic_queue_free(for_free);
 	cvector_free(nodes_p);
 	cvector_free(nodes_q);

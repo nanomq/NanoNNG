@@ -69,17 +69,18 @@ void dbhash_insert_topic(uint32_t id, char *val);
 
 bool dbhash_check_topic(uint32_t id, char *val);
 
-char* dbhash_get_first_topic(uint32_t id);
+char *dbhash_get_first_topic(uint32_t id);
 
 struct topic_queue *dbhash_get_topic_queue(uint32_t id);
 
 void dbhash_del_topic(uint32_t id, char *topic);
 
-void *dbhash_del_topic_queue(uint32_t id, void* (*cb)(void*, char *), void *args);
+void *dbhash_del_topic_queue(
+    uint32_t id, void *(*cb)(void *, char *), void *args);
 
 bool dbhash_check_id(uint32_t id);
 
-void *dbhash_check_id_and_do(uint32_t id, void* (*cb)(void*), void *arg);
+void *dbhash_check_id_and_do(uint32_t id, void *(*cb)(void *), void *arg);
 
 void dbhash_print_topic_queue(uint32_t id);
 
