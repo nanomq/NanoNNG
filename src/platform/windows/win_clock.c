@@ -16,10 +16,9 @@
 nni_time
 nni_timestamp(void)
 {
-	time_t ltime;
-	time(&ltime);
-
-	return ltime;
+	SYSTEMTIME t;
+	GetSystemTime(&t);
+	return (nni_time) (time(NULL) * 1000 + t.wMilliseconds);
 }
 
 nni_time
