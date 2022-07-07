@@ -6,11 +6,6 @@
 #include <stdint.h>
 #include <string.h>
 
-typedef enum {
-	MQTT_VERSION_V311 = 4,
-	MQTT_VERSION_V5   = 5,
-} mqtt_version_t;
-
 typedef struct dbtree            dbtree;
 
 struct dbtree_retain_msg {
