@@ -2028,6 +2028,71 @@ nng_url_clone(nng_url **dstp, const nng_url *src)
 	return (nni_url_clone(dstp, src));
 }
 
+int
+nng_lmq_alloc(nng_lmq **lmq, size_t cap)
+{
+	if ((*lmq = nng_alloc(sizeof(nng_lmq))) == NULL) {
+		return NNG_ENOMEM;
+	}
+	nni_lmq_init(*lmq, cap);
+	return (0);
+}
+
+void
+nng_lmq_free(nng_lmq *lmq)
+{
+	nni_lmq_fini(lmq);
+	nng_free(lmq, sizeof(nng_lmq));
+}
+
+void
+nng_lmq_flush(nng_lmq *lmq)
+{
+	nni_lmq_flush(lmq);
+}
+
+size_t
+nng_lmq_len(nng_lmq *lmq)
+{
+	return nni_lmq_len(lmq);
+}
+
+size_t
+nng_lmq_cap(nng_lmq *lmq)
+{
+	return nni_lmq_cap(lmq);
+}
+
+int
+nng_lmq_put(nng_lmq *lmq, nng_msg *msg)
+{
+	return nni_lmq_put(lmq, msg);
+}
+
+int
+nng_lmq_get(nng_lmq *lmq, nng_msg **mp)
+{
+	return nni_lmq_get(lmq, mp);
+}
+
+int
+nng_lmq_resize(nng_lmq *lmq, size_t cap)
+{
+	return nni_lmq_resize(lmq, cap);
+}
+
+bool
+nng_lmq_full(nng_lmq *lmq)
+{
+	return nni_lmq_full(lmq);
+}
+
+bool
+nng_lmq_empty(nng_lmq *lmq)
+{
+	return nni_lmq_empty(lmq);
+}
+
 #define xstr(a) str(a)
 #define str(a) #a
 
