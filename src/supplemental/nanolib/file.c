@@ -110,7 +110,7 @@ file_load_data(const char *filepath, void **data)
 	size_t size;
 
 	if (nni_plat_file_get(filepath, data, &size) != 0) {
-		return -1;
+		return 0;
 	}
 	return size;
 }
