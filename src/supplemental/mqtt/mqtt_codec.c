@@ -676,6 +676,133 @@ nni_mqtt_msg_encode_connect(nni_msg *msg)
 static int
 nni_mqttv5_msg_encode_connect(nni_msg *msg)
 {
+	nni_mqtt_proto_data *mqtt          = nni_msg_get_proto_data(msg);
+	char                 client_id[20] = { 0 };
+
+	nni_msg_clear(msg);
+
+	int poslength = 6;
+
+	mqttv5_connect_vhdr *var_header = &mqtt->var_header.connect_v5;
+
+	if (var_header->protocol_name.length == 0) {
+		mqtt_buf_create(&var_header->protocol_name,
+		    (const uint8_t *) MQTT_PROTOCOL_NAME,
+		    strlen(MQTT_PROTOCOL_NAME));
+	}
+
+	if (var_header->protocol_version == 0) {
+		var_header->protocol_version = 4;
+	}
+
+	if (mqtt->payload.connect.client_id.length == 0) {
+		snprintf(client_id, 20, "nanomq-%04x", nni_random());
+		mqtt_buf_create(&mqtt->payload.connect.client_id,
+		    (const uint8_t *) client_id, (uint32_t) strlen(client_id));
+	}
+
+	poslength += var_header->protocol_name.length;
+	/* add the length of payload part */
+	mqtt_connect_payload *payload = &mqtt->payload.connect;
+	/* Clientid length */
+	poslength += payload->client_id.length + 2;
+
+	/* Will Topic */
+	if (payload->will_topic.length > 0) {
+		poslength += 2 + payload->will_topic.length;
+		var_header->conn_flags.will_flag = 1;
+	}
+	/* Will Message */
+	if (payload->will_msg.length > 0) {
+		poslength += 2 + payload->will_msg.length;
+		var_header->conn_flags.will_flag = 1;
+	}
+	/* User Name */
+	if (payload->user_name.length > 0) {
+		poslength += 2 + payload->user_name.length;
+		var_header->conn_flags.username_flag = 1;
+	}
+	/* Password */
+	if (payload->password.length > 0) {
+		poslength += 2 + payload->password.length;
+		var_header->conn_flags.password_flag = 1;
+	}
+
+	mqtt->fixed_header.remaining_length = (uint32_t) poslength;
+	if (mqtt->fixed_header.remaining_length > MQTT_MAX_MSG_LEN) {
+		return MQTT_ERR_PAYLOAD_SIZE;
+	}
+	nni_mqtt_msg_encode_fixed_header(msg, mqtt);
+
+	nni_mqtt_msg_append_byte_str(msg, &var_header->protocol_name);
+
+	nni_mqtt_msg_append_u8(msg, var_header->protocol_version);
+
+	/* Connect Flags */
+	nni_mqtt_msg_append_u8(msg, *(uint8_t *) &var_header->conn_flags);
+
+	/* Keep Alive */
+	if (var_header->keep_alive == 0) {
+		var_header->keep_alive = 60;
+	}
+	nni_mqtt_msg_append_u16(msg, var_header->keep_alive);
+
+	/* Now we are in payload part */
+
+	/* Client Identifier */
+	/* Client Identifier is mandatory */
+	nni_mqtt_msg_append_byte_str(msg, &payload->client_id);
+
+	/* Will Topic */
+	if (payload->will_topic.length) {
+		if (!(var_header->conn_flags.will_flag)) {
+			return MQTT_ERR_PROTOCOL;
+		}
+		nni_mqtt_msg_append_byte_str(msg, &payload->will_topic);
+	} else {
+		if (var_header->conn_flags.will_flag) {
+			return MQTT_ERR_PROTOCOL;
+		}
+	}
+
+	/* Will Message */
+	if (payload->will_msg.length) {
+		if (!(var_header->conn_flags.will_flag)) {
+			return MQTT_ERR_PROTOCOL;
+		}
+		nni_mqtt_msg_append_byte_str(msg, &payload->will_msg);
+	} else {
+		if (var_header->conn_flags.will_flag) {
+			return MQTT_ERR_PROTOCOL;
+		}
+	}
+
+	/* User-Name */
+	if (payload->user_name.length) {
+		if (!(var_header->conn_flags.username_flag)) {
+			return MQTT_ERR_PROTOCOL;
+		}
+		nni_mqtt_msg_append_byte_str(msg, &payload->user_name);
+	} else {
+		if (var_header->conn_flags.username_flag) {
+			return MQTT_ERR_PROTOCOL;
+		}
+	}
+
+	/* Password */
+	if (payload->password.length) {
+		if (!(var_header->conn_flags.password_flag)) {
+			return MQTT_ERR_PROTOCOL;
+		}
+		nni_mqtt_msg_append_byte_str(msg, &payload->password);
+	} else {
+		if (var_header->conn_flags.password_flag) {
+			return MQTT_ERR_PROTOCOL;
+		}
+	}
+
+	return MQTT_SUCCESS;
+
 	NNI_ARG_UNUSED(msg);
 	return 0;
 }
