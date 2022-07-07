@@ -857,7 +857,7 @@ get_payload_as(char *p, rule_payload *payload)
 static rule_payload *
 rule_payload_new(void)
 {
-	rule_payload *payload = (rule_payload *) zmalloc(sizeof(rule_payload));
+	rule_payload *payload = (rule_payload *) nni_zalloc(sizeof(rule_payload));
 
 	payload->psa      = NULL;
 	payload->pas      = NULL;
@@ -1146,7 +1146,7 @@ parse_where(char *where, rule *info)
 	char *p_b = where;
 	int   rc  = 0;
 
-	info->filter = (char **) zmalloc(sizeof(char *) * 8);
+	info->filter = (char **) nni_zalloc(sizeof(char *) * 8);
 	memset(info->filter, 0, 8 * sizeof(char *));
 
 	while ((p = strstr(p, "and"))) {
@@ -1165,7 +1165,7 @@ static bool
 sql_parse(conf_rule *cr, char *sql)
 {
 	if (NULL == sql) {
-		log_err("Sql is NULL!");
+		debug_msg("Sql is NULL!");
 		return false;
 	}
 
@@ -1244,7 +1244,7 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 	char * table = NULL;
 
 	if (NULL == (fp = fopen(path, "r"))) {
-		log_err("File %s open failed\n", path);
+		debug_msg("File %s open failed\n", path);
 		return false;
 	}
 
@@ -1295,11 +1295,11 @@ conf_rule_fdb_parse(conf_rule *cr, char *path)
 	int       rc    = 0;
 	size_t    sz    = 0;
 	FILE *    fp;
-	rule_key *rk = (rule_key *) zmalloc(sizeof(rule_key));
+	rule_key *rk = (rule_key *) nni_zalloc(sizeof(rule_key));
 	memset(rk, 0, sizeof(rule_key));
 
 	if (NULL == (fp = fopen(path, "r"))) {
-		log_err("File %s open failed\n", path);
+		debug_msg("File %s open failed\n", path);
 		return false;
 	}
 
@@ -1330,7 +1330,7 @@ conf_rule_fdb_parse(conf_rule *cr, char *path)
 			} else if (0 == nni_strcasecmp(value, "false")) {
 				rk->auto_inc = false;
 			} else {
-				log_err("Unsupport autoincrement option.");
+				debug_msg("Unsupport autoincrement option.");
 			}
 			free(value);
 
@@ -1392,7 +1392,7 @@ conf_rule_parse(conf *nanomq_conf)
 		    NULL) {
 			if (0 != nni_strcasecmp(value, "ON")) {
 				if (0 != nni_strcasecmp(value, "OFF")) {
-					log_err("Unsupported option: %s\nrule "
+					debug_msg("Unsupported option: %s\nrule "
 					        "option only support ON/OFF",
 					    value);
 				}
@@ -1406,7 +1406,7 @@ conf_rule_parse(conf *nanomq_conf)
 				cr.option |= RULE_ENG_SDB;
 			} else {
 				if (0 != nni_strcasecmp(value, "disable")) {
-					log_err("Unsupported option: %s\nrule "
+					debug_msg("Unsupported option: %s\nrule "
 					        "option sqlite only support "
 					        "enable/disable",
 					    value);
@@ -1426,7 +1426,7 @@ conf_rule_parse(conf *nanomq_conf)
 				cr.option |= RULE_ENG_FDB;
 			} else {
 				if (0 != nni_strcasecmp(value, "disable")) {
-					log_err("Unsupported option: %s\nrule "
+					debug_msg("Unsupported option: %s\nrule "
 					        "option fdb only support "
 					        "enable/disable",
 					    value);
