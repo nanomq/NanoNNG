@@ -536,6 +536,7 @@ conf_sqlite_init(conf_sqlite *sqlite)
 	sqlite->resend_interval     = 5000;
 }
 
+#if defined(SUPP_RULE_ENGINE)
 static void
 conf_rule_init(conf_rule *rule_en)
 {
@@ -543,6 +544,7 @@ conf_rule_init(conf_rule *rule_en)
 	rule_en->rules  = NULL;
 	memset(rule_en->rdb, 0, sizeof(void *) * 3);
 }
+#endif
 
 void
 conf_init(conf *nanomq_conf)
@@ -1556,10 +1558,6 @@ conf_gateway_parse(zmq_gateway_conf *gateway)
 
 	fclose(fp);
 	return true;
-
-out:
-	fclose(fp);
-	return true;
 }
 
 static bool
@@ -2533,14 +2531,13 @@ conf_sqlite_destroy(conf_sqlite *sqlite)
 	}
 }
 
+#if defined(SUPP_RULE_ENGINE)
 static void
 conf_rule_destroy(conf_rule *re)
 {
-	if (re) {
-		// TODO
-	}
-	return;
+	if (re) { }
 }
+#endif
 
 void
 conf_fini(conf *nanomq_conf)
