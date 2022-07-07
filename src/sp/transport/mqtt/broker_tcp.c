@@ -6,8 +6,7 @@
 // file was obtained (LICENSE.txt).  A copy of the license may also be
 // found online at https://opensource.org/licenses/MIT.
 //
-#include <conf.h>
-#include <mqtt_db.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,6 +17,8 @@
 
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
+#include "nng/supplemental/nanolib/conf.h"
+#include "nng/supplemental/nanolib/mqtt_db.h"
 #include "supplemental/mqtt/mqtt_qos_db_api.h"
 
 // TCP transport.   Platform specific TCP operations must be
