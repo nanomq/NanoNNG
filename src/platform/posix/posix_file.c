@@ -308,6 +308,13 @@ nni_plat_file_unlock(nni_plat_flock *lk)
 	(void) close(fd);
 }
 
+bool
+nni_plat_file_exists(const char *path)
+{
+	struct stat sbuf;
+	return (stat(path, &sbuf) == 0);
+}
+
 char *
 nni_plat_temp_dir(void)
 {
