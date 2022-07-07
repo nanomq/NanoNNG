@@ -163,13 +163,13 @@ dbhash_ptpair_t *
 dbhash_ptpair_alloc(uint32_t p, char *t)
 {
 	dbhash_ptpair_t *pt =
-	    (dbhash_ptpair_t *) zmalloc(sizeof(dbhash_ptpair_t));
+	    (dbhash_ptpair_t *) nni_zalloc(sizeof(dbhash_ptpair_t));
 
 	if (pt == NULL) {
 		return NULL;
 	}
 	pt->pipe  = p;
-	pt->topic = zstrdup(t);
+	pt->topic = nni_strdup(t);
 	return pt;
 }
 
@@ -178,10 +178,10 @@ dbhash_ptpair_free(dbhash_ptpair_t *pt)
 {
 	if (pt) {
 		if (pt->topic) {
-			zfree(pt->topic);
+			free(pt->topic);
 			pt->topic = NULL;
 		}
-		zfree(pt);
+		free(pt);
 		pt = NULL;
 	}
 	return;
@@ -354,7 +354,7 @@ dbhash_get_first_topic(uint32_t id)
 	if (k != kh_end(ph)) {
 		struct topic_queue *ret = kh_val(ph, k);
 		if (ret && ret->topic) {
-			topic = zstrdup(ret->topic);
+			topic = nni_strdup(ret->topic);
 		}
 	}
 	nni_rwlock_unlock(&pipe_lock);
@@ -769,13 +769,13 @@ dbhash_atpair_alloc(uint32_t alias, const char *topic)
 		debug_msg("Topic should not be NULL");
 	}
 	dbhash_atpair_t *atpair =
-	    (dbhash_atpair_t *) zmalloc(sizeof(dbhash_atpair_t));
+	    (dbhash_atpair_t *) nni_zalloc(sizeof(dbhash_atpair_t));
 	if (atpair == NULL) {
 		debug_msg("Memory alloc error.");
 		return NULL;
 	}
 	atpair->alias = alias;
-	atpair->topic = zstrdup(topic);
+	atpair->topic = nni_strdup(topic);
 
 	return atpair;
 }
@@ -785,10 +785,10 @@ dbhash_atpair_free(dbhash_atpair_t *atpair)
 {
 	if (atpair) {
 		if (atpair->topic) {
-			zfree(atpair->topic);
+			free(atpair->topic);
 			atpair->topic = NULL;
 		}
-		zfree(atpair);
+		free(atpair);
 		atpair = NULL;
 	}
 }
