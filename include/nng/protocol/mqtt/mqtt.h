@@ -207,11 +207,6 @@ typedef enum {
 	MQTTV5_V4 = 3,
 } target_prover;
 
-// NanoSDK callback func
-// (property, object, reason code)
-typedef void (*nano_cb)(void *, void *, reason_code);
-
-
 //NanoMQ wrapping API
 NNG_DECL void nni_msg_proto_set_property(nng_msg *msg, void *prop);
 
