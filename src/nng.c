@@ -71,6 +71,7 @@ nng_zfree(void *ptr)
 {
 	zfree(ptr);
 }
+
 void
 nng_free(void *buf, size_t sz)
 {
