@@ -123,6 +123,7 @@ typedef struct mqttv5_connect_vhdr_t {
 	uint8_t    protocol_version;
 	conn_flags conn_flags;
 	uint16_t   keep_alive;
+	property * properties;
 } mqttv5_connect_vhdr;
 
 typedef struct mqttv5_connack_vhdr_t {
@@ -232,6 +233,7 @@ typedef struct {
  ****************************************************************************/
 typedef struct {
 	mqtt_buf client_id;
+	property *will_properties;
 	mqtt_buf will_topic;
 	mqtt_buf will_msg;
 	mqtt_buf user_name;
