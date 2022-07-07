@@ -22,7 +22,7 @@
 #define ROUND_ROBIN
 // #define RANDOM
 
-static int acnt = 0;
+static size_t acnt;
 
 typedef struct dbtree_node dbtree_node;
 
@@ -1351,7 +1351,7 @@ iterate_shared_client(uint32_t **v)
 			}
 		}
 		acnt++;
-		if (acnt == INT_MAX) {
+		if (acnt == ULLONG_MAX) {
 			acnt = 0;
 		}
 	}
