@@ -7,6 +7,7 @@
 //
 
 #include "nng/supplemental/nanolib/conf.h"
+#include "core/nng_impl.h"
 #include "nng/nng.h"
 #include "nng/nng_debug.h"
 #include "nng/supplemental/nanolib/cJSON.h"
@@ -292,8 +293,8 @@ conf_parser(conf *nanomq_conf)
 			config->url = value;
 		} else if ((value = get_conf_value(line, sz, "daemon")) !=
 		    NULL) {
-			config->daemon = strcasecmp(value, "yes") == 0 ||
-			    strcasecmp(value, "true") == 0;
+			config->daemon = nni_strcasecmp(value, "yes") == 0 ||
+			    nni_strcasecmp(value, "true") == 0;
 			free(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "num_taskq_thread")) != NULL) {
@@ -330,14 +331,14 @@ conf_parser(conf *nanomq_conf)
 		} else if ((value = get_conf_value(
 		                line, sz, "allow_anonymous")) != NULL) {
 			config->allow_anonymous =
-			    strcasecmp(value, "yes") == 0 ||
-			    strcasecmp(value, "true") == 0;
+			    nni_strcasecmp(value, "yes") == 0 ||
+			    nni_strcasecmp(value, "true") == 0;
 			free(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "websocket.enable")) != NULL) {
 			config->websocket.enable =
-			    strcasecmp(value, "yes") == 0 ||
-			    strcasecmp(value, "true") == 0;
+			    nni_strcasecmp(value, "yes") == 0 ||
+			    nni_strcasecmp(value, "true") == 0;
 			free(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "websocket.url")) != NULL) {
@@ -350,8 +351,8 @@ conf_parser(conf *nanomq_conf)
 		} else if ((value = get_conf_value(
 		                line, sz, "http_server.enable")) != NULL) {
 			config->http_server.enable =
-			    strcasecmp(value, "yes") == 0 ||
-			    strcasecmp(value, "true") == 0;
+			    nni_strcasecmp(value, "yes") == 0 ||
+			    nni_strcasecmp(value, "true") == 0;
 			free(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "http_server.port")) != NULL) {
@@ -371,9 +372,9 @@ conf_parser(conf *nanomq_conf)
 			config->http_server.password = value;
 		} else if ((value = get_conf_value(
 		                line, sz, "http_server.auth_type")) != NULL) {
-			if (strcasecmp("basic", value) == 0) {
+			if (nni_strcasecmp("basic", value) == 0) {
 				config->http_server.auth_type = BASIC;
-			} else if ((strcasecmp("jwt", value) == 0)) {
+			} else if ((nni_strcasecmp("jwt", value) == 0)) {
 				config->http_server.auth_type = JWT;
 			} else {
 				config->http_server.auth_type = NONE_AUTH;
@@ -432,7 +433,8 @@ conf_parser(conf *nanomq_conf)
 			}
 		} else if ((value = get_conf_value(line, sz, "tls.enable")) !=
 		    NULL) {
-			config->tls.enable = strcasecmp(value, "true") == 0;
+			config->tls.enable =
+			    nni_strcasecmp(value, "true") == 0;
 			free(value);
 		} else if ((value = get_conf_value(line, sz, "tls.url")) !=
 		    NULL) {
@@ -466,11 +468,12 @@ conf_parser(conf *nanomq_conf)
 		} else if ((value = get_conf_value(
 		                line, sz, "tls.verify_peer")) != NULL) {
 			config->tls.verify_peer =
-			    strcasecmp(value, "true") == 0;
+			    nni_strcasecmp(value, "true") == 0;
 			free(value);
 		} else if ((value = get_conf_value(line, sz,
 		                "tls.fail_if_no_peer_cert")) != NULL) {
-			config->tls.set_fail = strcasecmp(value, "true") == 0;
+			config->tls.set_fail =
+			    nni_strcasecmp(value, "true") == 0;
 			free(value);
 		}
 		free(line);
@@ -1335,9 +1338,9 @@ conf_rule_fdb_parse(conf_rule *cr, char *path)
 		} else if ((value = get_conf_value(line, sz,
 		                "rule.event.publish.key.autoincrement")) !=
 		    NULL) {
-			if (0 == strcasecmp(value, "true")) {
+			if (0 == nni_strcasecmp(value, "true")) {
 				rk->auto_inc = true;
-			} else if (0 == strcasecmp(value, "false")) {
+			} else if (0 == nni_strcasecmp(value, "false")) {
 				rk->auto_inc = false;
 			} else {
 				log_err("Unsupport autoincrement option.");
@@ -1400,8 +1403,8 @@ conf_rule_parse(conf *nanomq_conf)
 	while (nano_getline(&line, &sz, fp) != -1) {
 		if ((value = get_conf_value(line, sz, "rule_option")) !=
 		    NULL) {
-			if (0 != strcasecmp(value, "ON")) {
-				if (0 != strcasecmp(value, "OFF")) {
+			if (0 != nni_strcasecmp(value, "ON")) {
+				if (0 != nni_strcasecmp(value, "OFF")) {
 					log_err("Unsupported option: %s\nrule "
 					        "option only support ON/OFF",
 					    value);
@@ -1412,10 +1415,10 @@ conf_rule_parse(conf *nanomq_conf)
 			free(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "rule_option.sqlite")) != NULL) {
-			if (0 == strcasecmp(value, "enable")) {
+			if (0 == nni_strcasecmp(value, "enable")) {
 				cr.option |= RULE_ENG_SDB;
 			} else {
-				if (0 != strcasecmp(value, "disable")) {
+				if (0 != nni_strcasecmp(value, "disable")) {
 					log_err("Unsupported option: %s\nrule "
 					        "option sqlite only support "
 					        "enable/disable",
@@ -1432,10 +1435,10 @@ conf_rule_parse(conf *nanomq_conf)
 			free(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "rule_option.fdb")) != NULL) {
-			if (0 == strcasecmp(value, "enable")) {
+			if (0 == nni_strcasecmp(value, "enable")) {
 				cr.option |= RULE_ENG_FDB;
 			} else {
-				if (0 != strcasecmp(value, "disable")) {
+				if (0 != nni_strcasecmp(value, "disable")) {
 					log_err("Unsupported option: %s\nrule "
 					        "option fdb only support "
 					        "enable/disable",
@@ -1506,7 +1509,8 @@ conf_gateway_parse(zmq_gateway_conf *gateway)
 			free(value);
 		} else if ((value = get_conf_value(line, sz,
 		                "gateway.mqtt.clean_start")) != NULL) {
-			gateway->clean_start = strcasecmp(value, "true") == 0;
+			gateway->clean_start =
+			    nni_strcasecmp(value, "true") == 0;
 			free(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "gateway.mqtt.parallel")) != NULL) {
@@ -1741,7 +1745,7 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 	while (nano_getline(&line, &sz, fp) != -1) {
 		if ((value = get_conf_value_with_prefix2(line, sz, key_prefix,
 		         name, ".bridge_mode")) != NULL) {
-			node->enable = strcasecmp(value, "true") == 0;
+			node->enable = nni_strcasecmp(value, "true") == 0;
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".proto_ver")) != NULL) {
@@ -1753,7 +1757,7 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".clean_start")) != NULL) {
-			node->clean_start = strcasecmp(value, "true") == 0;
+			node->clean_start = nni_strcasecmp(value, "true") == 0;
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".parallel")) != NULL) {
@@ -1938,34 +1942,34 @@ print_bridge_conf(conf_bridge *bridge)
 static webhook_event
 get_webhook_event(const char *hook_type, const char *hook_name)
 {
-	if (strcasecmp("client", hook_type) == 0) {
-		if (strcasecmp("connect", hook_name) == 0) {
+	if (nni_strcasecmp("client", hook_type) == 0) {
+		if (nni_strcasecmp("connect", hook_name) == 0) {
 			return CLIENT_CONNECT;
-		} else if (strcasecmp("connack", hook_name) == 0) {
+		} else if (nni_strcasecmp("connack", hook_name) == 0) {
 			return CLIENT_CONNACK;
-		} else if (strcasecmp("connected", hook_name) == 0) {
+		} else if (nni_strcasecmp("connected", hook_name) == 0) {
 			return CLIENT_CONNECTED;
-		} else if (strcasecmp("disconnected", hook_name) == 0) {
+		} else if (nni_strcasecmp("disconnected", hook_name) == 0) {
 			return CLIENT_DISCONNECTED;
-		} else if (strcasecmp("subscribe", hook_name) == 0) {
+		} else if (nni_strcasecmp("subscribe", hook_name) == 0) {
 			return CLIENT_SUBSCRIBE;
-		} else if (strcasecmp("unsubscribe", hook_name) == 0) {
+		} else if (nni_strcasecmp("unsubscribe", hook_name) == 0) {
 			return CLIENT_UNSUBSCRIBE;
 		}
-	} else if (strcasecmp("session", hook_type) == 0) {
-		if (strcasecmp("subscribed", hook_name) == 0) {
+	} else if (nni_strcasecmp("session", hook_type) == 0) {
+		if (nni_strcasecmp("subscribed", hook_name) == 0) {
 			return SESSION_SUBSCRIBED;
-		} else if (strcasecmp("unsubscribed", hook_name) == 0) {
+		} else if (nni_strcasecmp("unsubscribed", hook_name) == 0) {
 			return SESSION_UNSUBSCRIBED;
-		} else if (strcasecmp("terminated", hook_name) == 0) {
+		} else if (nni_strcasecmp("terminated", hook_name) == 0) {
 			return SESSION_TERMINATED;
 		}
-	} else if (strcasecmp("message", hook_type) == 0) {
-		if (strcasecmp("publish", hook_name) == 0) {
+	} else if (nni_strcasecmp("message", hook_type) == 0) {
+		if (nni_strcasecmp("publish", hook_name) == 0) {
 			return MESSAGE_PUBLISH;
-		} else if (strcasecmp("delivered", hook_name) == 0) {
+		} else if (nni_strcasecmp("delivered", hook_name) == 0) {
 			return MESSAGE_DELIVERED;
-		} else if (strcasecmp("acked", hook_name) == 0) {
+		} else if (nni_strcasecmp("acked", hook_name) == 0) {
 			return MESSAGE_ACKED;
 		}
 	}
@@ -2112,7 +2116,7 @@ conf_web_hook_parse(conf *nanomq_conf)
 	while (nano_getline(&line, &sz, fp) != -1) {
 		if ((value = get_conf_value(line, sz, "web.hook.enable")) !=
 		    NULL) {
-			webhook->enable = strcasecmp(value, "true") == 0;
+			webhook->enable = nni_strcasecmp(value, "true") == 0;
 			free(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "web.hook.url")) != NULL) {
@@ -2124,11 +2128,11 @@ conf_web_hook_parse(conf *nanomq_conf)
 		} else if ((value = get_conf_value(line, sz,
 		                "web.hook.body.encoding_of_payload_field")) !=
 		    NULL) {
-			if (strcasecmp(value, "base64") == 0) {
+			if (nni_strcasecmp(value, "base64") == 0) {
 				webhook->encode_payload = base64;
-			} else if (strcasecmp(value, "base62") == 0) {
+			} else if (nni_strcasecmp(value, "base62") == 0) {
 				webhook->encode_payload = base62;
-			} else if (strcasecmp(value, "plain") == 0) {
+			} else if (nni_strcasecmp(value, "plain") == 0) {
 				webhook->encode_payload = plain;
 			}
 			free(value);
@@ -2349,8 +2353,8 @@ conf_auth_http_req_parse(
 			req->url = value;
 		} else if ((value = get_conf_value_with_prefix(
 		                line, sz, key_prefix, ".method")) != NULL) {
-			if (strcasecmp(value, "post") == 0 ||
-			    strcasecmp(value, "get") == 0) {
+			if (nni_strcasecmp(value, "post") == 0 ||
+			    nni_strcasecmp(value, "get") == 0) {
 				req->method = value;
 			} else {
 				free(value);
@@ -2408,7 +2412,7 @@ conf_auth_http_parse(conf *nanomq_conf)
 	while (nano_getline(&line, &sz, fp) != -1) {
 		if ((value = get_conf_value(line, sz, "auth.http.enable")) !=
 		    NULL) {
-			auth_http->enable = strcasecmp(value, "true") == 0;
+			auth_http->enable = nni_strcasecmp(value, "true") == 0;
 			free(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "auth.http.timeout")) != NULL) {
@@ -2494,7 +2498,7 @@ conf_sqlite_parse(
 	while (nano_getline(&line, &sz, fp) != -1) {
 		if ((value = get_conf_value_with_prefix(
 		         line, sz, key_prefix, ".enable")) != NULL) {
-			sqlite->enable = strcasecmp(value, "true") == 0;
+			sqlite->enable = nni_strcasecmp(value, "true") == 0;
 			free(value);
 		} else if ((value = get_conf_value_with_prefix(line, sz,
 		                key_prefix, ".disk_cache_size")) != NULL) {
