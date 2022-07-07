@@ -11,19 +11,18 @@
 #include "nng/nng_debug.h"
 
 #include <errno.h>
-#include <fcntl.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
-#include <unistd.h>
 
 char *cmd_output_buff = NULL;
 int   cmd_output_len  = 0;
 
 #ifndef NNG_PLATFORM_WINDOWS
 #include <sys/wait.h>
+#include <fcntl.h>
 
 int
 nano_cmd_run_status(const char *cmd)
