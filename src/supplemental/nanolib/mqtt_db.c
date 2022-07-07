@@ -17,7 +17,6 @@
 #include "nng/supplemental/nanolib/cvector.h"
 #include "nng/supplemental/nanolib/hash_table.h"
 #include "nng/supplemental/nanolib/mqtt_db.h"
-#include "nng/supplemental/nanolib/zmalloc.h"
 
 #define ROUND_ROBIN
 // #define RANDOM
@@ -141,12 +140,12 @@ topic_parse(char *topic)
 	int cnt = topic_count(topic);
 
 	// Here we will get (cnt + 1) memory, one for NULL end
-	char **topic_queue = (char **) zmalloc(sizeof(char *) * (cnt + 1));
+	char **topic_queue = (char **) nni_zalloc(sizeof(char *) * (cnt + 1));
 
 	while ((pos = strchr(b_pos, '/')) != NULL) {
 
 		len              = pos - b_pos + 1;
-		topic_queue[row] = (char *) zmalloc(sizeof(char) * len);
+		topic_queue[row] = (char *) nni_zalloc(sizeof(char) * len);
 		memcpy(topic_queue[row], b_pos, (len - 1));
 		topic_queue[row][len - 1] = '\0';
 		b_pos                     = pos + 1;
@@ -155,7 +154,7 @@ topic_parse(char *topic)
 
 	len = strlen(b_pos);
 
-	topic_queue[row] = (char *) zmalloc(sizeof(char) * (len + 1));
+	topic_queue[row] = (char *) nni_zalloc(sizeof(char) * (len + 1));
 	memcpy(topic_queue[row], b_pos, (len));
 	topic_queue[row][len] = '\0';
 	topic_queue[++row]    = NULL;
@@ -178,12 +177,12 @@ topic_queue_free(char **topic_queue)
 	while (*topic_queue) {
 		t = *topic_queue;
 		topic_queue++;
-		zfree(t);
+		free(t);
 		t = NULL;
 	}
 
 	if (tt) {
-		zfree(tt);
+		free(tt);
 	}
 }
 
@@ -205,7 +204,7 @@ dbtree_get_tree(dbtree *db, void *(*cb)(uint32_t pipe_id))
 	while (!cvector_empty(nodes)) {
 		dbtree_info **ret_line_ping = NULL;
 		for (size_t i = 0; i < cvector_size(nodes); i++) {
-			dbtree_info *vn = zmalloc(sizeof(dbtree_info));
+			dbtree_info *vn = nni_zalloc(sizeof(dbtree_info));
 			vn->clients     = NULL;
 			if (cb) {
 				for (size_t j = 0;
@@ -221,7 +220,7 @@ dbtree_get_tree(dbtree *db, void *(*cb)(uint32_t pipe_id))
 
 			cvector_push_back(ret_line_ping, vn);
 
-			vn->topic   = zstrdup(nodes[i]->topic);
+			vn->topic   = nni_strdup(nodes[i]->topic);
 			vn->cld_cnt = cvector_size(nodes[i]->child);
 			for (size_t j = 0; j < (size_t) vn->cld_cnt; j++) {
 				cvector_push_back(
@@ -234,7 +233,7 @@ dbtree_get_tree(dbtree *db, void *(*cb)(uint32_t pipe_id))
 
 		dbtree_info **ret_line_pang = NULL;
 		for (size_t i = 0; i < cvector_size(nodes_t); i++) {
-			dbtree_info *vn = zmalloc(sizeof(dbtree_info));
+			dbtree_info *vn = nni_zalloc(sizeof(dbtree_info));
 			vn->clients     = NULL;
 			if (cb) {
 				for (size_t j = 0;
@@ -250,7 +249,7 @@ dbtree_get_tree(dbtree *db, void *(*cb)(uint32_t pipe_id))
 
 			cvector_push_back(ret_line_pang, vn);
 
-			vn->topic   = zstrdup(nodes_t[i]->topic);
+			vn->topic   = nni_strdup(nodes_t[i]->topic);
 			vn->cld_cnt = cvector_size(nodes_t[i]->child);
 			for (size_t j = 0; j < (size_t) vn->cld_cnt; j++) {
 				cvector_push_back(
@@ -384,11 +383,11 @@ static dbtree_node *
 dbtree_node_new(char *topic)
 {
 	dbtree_node *node = NULL;
-	node              = (dbtree_node *) zmalloc(sizeof(dbtree_node));
+	node              = (dbtree_node *) nni_zalloc(sizeof(dbtree_node));
 	if (node == NULL) {
 		return NULL;
 	}
-	node->topic = zstrdup(topic);
+	node->topic = nni_strdup(topic);
 	debug_msg("New node: [%s]", node->topic);
 
 	node->retain  = NULL;
@@ -412,11 +411,11 @@ dbtree_node_free(dbtree_node *node)
 	if (node) {
 		if (node->topic) {
 			debug_msg("Delete node: [%s]", node->topic);
-			zfree(node->topic);
+			free(node->topic);
 			node->topic = NULL;
 		}
 		nni_rwlock_fini(&node->rwlock);
-		zfree(node);
+		free(node);
 		node = NULL;
 	}
 }
@@ -430,7 +429,7 @@ dbtree_node_free(dbtree_node *node)
 void
 dbtree_create(dbtree **db)
 {
-	*db = (dbtree *) zmalloc(sizeof(dbtree));
+	*db = (dbtree *) nni_zalloc(sizeof(dbtree));
 	memset(*db, 0, sizeof(dbtree));
 
 	dbtree_node *node = dbtree_node_new("\0");
@@ -452,7 +451,7 @@ dbtree_destory(dbtree *db)
 {
 	if (db) {
 		dbtree_node_free(db->root);
-		zfree(db);
+		free(db);
 		db = NULL;
 	}
 
@@ -912,9 +911,9 @@ delete_dbtree_node(dbtree_node *node, size_t index)
 		debug_msg("Delete node: [%s]", node_t->topic);
 		cvector_free(node_t->child);
 		cvector_free(node_t->clients);
-		zfree(node_t->topic);
+		free(node_t->topic);
 		cvector_erase(node->child, index);
-		zfree(node_t);
+		free(node_t);
 		node_t = NULL;
 		if (index == 0) {
 			if (node->plus >= 0) {
