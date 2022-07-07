@@ -384,7 +384,7 @@ conf_parser(conf *nanomq_conf)
 			        config->http_server.jwt.public_keyfile,
 			        (void **) &config->http_server.jwt
 			            .public_key) > 0) {
-#ifdef NANO_PLATFORM_WINDOWS
+#ifdef NNG_PLATFORM_WINDOWS
 				if (strstr(
 				        config->http_server.jwt.public_keyfile,
 				        "\\")) {
