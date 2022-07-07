@@ -105,5 +105,8 @@ file_load_data(const char *filepath, void **data)
 {
 	size_t size;
 
-	return nni_plat_file_get(filepath, data, &size);
+	if (nni_plat_file_get(filepath, data, &size) != 0) {
+		return -1;
+	}
+	return size;
 }
