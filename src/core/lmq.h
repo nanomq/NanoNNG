@@ -15,7 +15,7 @@
 // nni_lmq is a very lightweight message queue.  Defining it this way allows
 // us to share some common code.  Locking must be supplied by the caller.
 // For performance reasons, this is allocated inline.
-typedef struct nni_lmq {
+struct nng_lmq {
 	size_t    lmq_cap;
 	size_t    lmq_alloc; // alloc is cap, rounded up to power of 2
 	size_t    lmq_mask;
@@ -23,8 +23,10 @@ typedef struct nni_lmq {
 	size_t    lmq_get;
 	size_t    lmq_put;
 	nng_msg **lmq_msgs;
-	nng_msg  *lmq_buf[2]; // default minimal buffer
-} nni_lmq;
+	nng_msg * lmq_buf[2]; // default minimal buffer
+};
+
+typedef struct nng_lmq nni_lmq;
 
 extern void   nni_lmq_init(nni_lmq *, size_t);
 extern void   nni_lmq_fini(nni_lmq *);
