@@ -743,6 +743,12 @@ conn_param *
 nni_mqtt_msg_get_conn_param(nni_msg *msg)
 {
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
-
 	return proto_data->conn_ctx;
+}
+
+void
+nni_mqtt_msg_set_connect_property(nni_msg *msg, property *prop)
+{
+	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
+	proto_data->var_header.connect.properties = prop;
 }

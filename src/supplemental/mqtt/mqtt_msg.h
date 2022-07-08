@@ -422,8 +422,6 @@ extern property_type_enum property_get_value_type(uint8_t prop_id);
 extern property_data *property_get_value(property *prop, uint8_t prop_id);
 extern void      property_append(property *prop_list, property *last);
 
-extern void nni_mqtt_msg_set_property(nng_msg *msg, void *p);
-
 #ifdef __cplusplus
 }
 #endif
