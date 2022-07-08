@@ -98,13 +98,13 @@ struct mqtt_sock_s {
 	mqtt_pipe_t    *mqtt_pipe;
 	nni_list        recv_queue; // ctx pending to receive
 	nni_list        send_queue; // ctx pending to send (only offline msg)
+	reason_code     disconnect_code; // disconnect reason code
+	property       *dis_prop;        // disconnect property
 #ifdef NNG_SUPP_SQLITE
 	sqlite3 *sqlite_db;
 	nni_lmq  offline_cache;
 #endif
 #ifdef NNG_HAVE_MQTT_BROKER
-	reason_code       disconnect_code; // disconnect reason code
-	property         *dis_prop;        // disconnect property
 	conf_bridge_node *bridge_conf;
 #endif
 };
@@ -463,7 +463,9 @@ mqtt_pipe_start(void *arg)
 	mqtt_ctx_t  *c = NULL;
 
 	nni_mtx_lock(&s->mtx);
-	s->mqtt_pipe = p;
+	s->mqtt_pipe       = p;
+	s->disconnect_code = 0;
+	s->dis_prop        = NULL;
 	if ((c = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, c);
 		mqtt_send_msg(c->saio, c);
@@ -627,6 +629,7 @@ mqtt_send_cb(void *arg)
 		// We failed to send... clean up and deal with it.
 		nni_msg_free(nni_aio_get_msg(&p->send_aio));
 		nni_aio_set_msg(&p->send_aio, NULL);
+		s->disconnect_code = SERVER_SHUTTING_DOWN;
 		nni_pipe_close(p->pipe);
 		return;
 	}
@@ -679,6 +682,7 @@ mqtt_recv_cb(void *arg)
 	mqtt_ctx_t *     ctx;
 
 	if (nni_aio_result(&p->recv_aio) != 0) {
+		s->disconnect_code = SERVER_SHUTTING_DOWN;
 		nni_pipe_close(p->pipe);
 		return;
 	}
@@ -811,6 +815,7 @@ mqtt_recv_cb(void *arg)
 	default:
 		// unexpected packet type, server misbehaviour
 		nni_mtx_unlock(&s->mtx);
+		s->disconnect_code = PAYLOAD_FORMAT_INVALID;
 		nni_pipe_close(p->pipe);
 		return;
 	}
