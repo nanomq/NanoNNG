@@ -394,6 +394,34 @@ NNG_DECL int  nmq_msgack_encode(nng_msg *msg, uint16_t packet_id,
      uint8_t reason_code, property *prop, uint8_t proto_ver);
 NNG_DECL int  nmq_pubres_header_encode(nng_msg *msg, uint8_t cmd);
 
+extern void mqtt_close_unack_msg_cb(void *key, void *val);
+
+extern uint16_t nni_msg_get_pub_pid(nni_msg *m);
+
+extern reason_code check_properties(property *prop);
+extern property *decode_buf_properties(uint8_t *packet, uint32_t packet_len, uint32_t *pos, uint32_t *len, bool copy_value);
+extern property *decode_properties(nng_msg *msg, uint32_t *pos, uint32_t *len, bool copy_value);
+extern int      encode_properties(nng_msg *msg, property *prop, uint8_t cmd);
+
+extern uint32_t get_properties_len(property *prop);
+extern int      property_free(property *prop);
+extern void      property_foreach(property *prop, void (*cb)(property *));
+extern int       property_dup(property **dup, const property *src);
+extern property *property_pub_by_will(property *will_prop);
+
+extern property *property_alloc(void);
+extern property *property_set_value_u8(uint8_t prop_id, uint8_t value);
+extern property *property_set_value_u16(uint8_t prop_id, uint16_t value);
+extern property *property_set_value_u32(uint8_t prop_id, uint32_t value);
+extern property *property_set_value_varint(uint8_t prop_id, uint32_t value);
+extern property *property_set_value_binary(uint8_t prop_id, uint8_t *value, uint32_t len, bool copy_value);
+extern property *property_set_value_str( uint8_t prop_id, const char *value, uint32_t len, bool copy_value);
+extern property *property_set_value_strpair(uint8_t prop_id, const char *key, uint32_t key_len, const char *value, uint32_t value_len, bool copy_value);
+
+extern property_type_enum property_get_value_type(uint8_t prop_id);
+extern property_data *property_get_value(property *prop, uint8_t prop_id);
+extern void      property_append(property *prop_list, property *last);
+
 extern void nni_msg_proto_set_property(nng_msg *msg, void *p);
 
 #ifdef __cplusplus
