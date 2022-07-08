@@ -965,6 +965,7 @@ get_config_name(mqtt_sock_t *s)
 #ifdef NNG_HAVE_MQTT_BROKER
 	return s->bridge_conf != NULL ? s->bridge_conf->name : NULL;
 #else
+	NNI_ARG_UNUSED(s);
 	return NULL;
 #endif
 }
