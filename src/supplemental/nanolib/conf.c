@@ -1255,10 +1255,9 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 		} else if (NULL != strstr(
 		                line, "rule.sqlite")) {
 			
-			uint8_t num = 0;
-			char *str   = strtrim_head_tail(line, sz);
+			int num = 0;
 			int   res =
-			    sscanf(str, "rule.sqlite.%d.table", &num);
+			    sscanf(line, "rule.sqlite.%d.table", &num);
 			char key[32] = { 0 };
 			sprintf(key, "rule.sqlite.%d.table", num);
 
@@ -1268,10 +1267,10 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 
 		} else if (NULL != strstr(line, "rule.event.publish")) {
 
-			uint8_t num = 0;
-			char *str   = strtrim_head_tail(line, sz);
+			// TODO more accurate way table <======> sql 
+			int num = 0;
 			int   res =
-			    sscanf(str, "rule.event.publish.%d.sql", &num);
+			    sscanf(line, "rule.event.publish.%d.sql", &num);
 
 			if (NULL != (value = strchr(line, '='))) {
 				value++;
