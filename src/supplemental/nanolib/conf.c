@@ -1250,13 +1250,29 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 
 	char *value;
 	while (nano_getline(&line, &sz, fp) != -1) {
-		if ((value = get_conf_value(line, sz, "rule.sqlite.path")) !=
-		    NULL) {
+		if (NULL != (value = get_conf_value(line, sz, "rule.sqlite.path"))) {
 			cr->sqlite_db_path = value;
-		} else if ((value = get_conf_value(
-		                line, sz, "rule.sqlite.table")) != NULL) {
-			table = value;
-		} else if (NULL != strstr(line, "rule.event.publish.sql")) {
+		} else if (NULL != strstr(
+		                line, "rule.sqlite")) {
+			
+			uint8_t num = 0;
+			char *str   = strtrim_head_tail(line, sz);
+			int   res =
+			    sscanf(str, "rule.sqlite.%d.table", &num);
+			char key[32] = { 0 };
+			sprintf(key, "rule.sqlite.%d.table", num);
+
+			if (NULL != (value = get_conf_value(line, sz, key))) {
+				table = value;
+			}
+
+		} else if (NULL != strstr(line, "rule.event.publish")) {
+
+			uint8_t num = 0;
+			char *str   = strtrim_head_tail(line, sz);
+			int   res =
+			    sscanf(str, "rule.event.publish.%d.sql", &num);
+
 			if (NULL != (value = strchr(line, '='))) {
 				value++;
 				// puts(value);
