@@ -11,6 +11,7 @@ nng_sources(
   base64.c
   cJSON.c
   cmd.c
+  sql_parse.c
   conf.c
   env.c
   file.c
