@@ -1,11 +1,9 @@
-
-#if defined(SUPP_RULE_ENGINE)
-
 #include "nng/supplemental/nanolib/conf.h"
 #include "nng/supplemental/nanolib/cvector.h"
 #include "nng/nng.h"
 #include "nng/nng_debug.h"
 #include "core/nng_impl.h"
+
 
 static char *rule_engine_key_arr[] = {
 	"qos",
@@ -475,5 +473,3 @@ rule_sql_parse(conf_rule *cr, char *sql)
 
 	return true;
 }
-
-#endif

@@ -11,9 +11,18 @@ nng_sources(
   base64.c
   cJSON.c
   cmd.c
-  sql_parse.c
+  rule.c
   conf.c
   env.c
   file.c
   hash_table.c
   mqtt_db.c)
+
+
+if (SUPP_RULE_ENGINE)
+  nng_sources(rule.c)
+  nng_test(rule_test)
+endif (SUPP_RULE_ENGINE)
+
+
+  
