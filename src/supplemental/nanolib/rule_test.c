@@ -6,15 +6,54 @@
 #include <nuts.h>
 
 
+// int rule_find_key(const char *str, size_t len);
+// char *rule_get_key_arr(char *p, rule_key *key);
+// bool rule_sql_parse(conf_rule *cr, char *sql);
+
+
 void test_rule_find_key(void)
 {
+	char *test_key_arr[] = {
+		"qos",
+		"id",
+		"topic",
+		"clientid",
+		"username",
+		"password",
+		"timestamp",
+		"payload",
+		"*",
+		NULL,
+	};
 
-	NUTS_PASS(0);
+	// Find all key
+	int i = 0;
+	while (test_key_arr[i]) {
+		int j = rule_find_key(test_key_arr[i], strlen(test_key_arr[i]));
+		NUTS_TRUE(j >= 0 && j <= 8);
+		NUTS_TRUE(j == i);
+		i++;
+	}
+
+	char *invalid_arr[] = {
+		"invalid",
+		"preqos",
+		"qosaft",
+		NULL
+	};
+
+	/// Test invalid 
+	i = 0;
+	while (invalid_arr[i]) {
+		NUTS_TRUE(-1 == rule_find_key(invalid_arr[i], strlen(invalid_arr[i])));
+		i++;
+	}
 
 }
 
 void test_rule_get_key_arr(void)
 {
+	
 	NUTS_PASS(0);
 
 }
