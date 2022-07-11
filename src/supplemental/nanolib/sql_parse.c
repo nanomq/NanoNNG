@@ -3,7 +3,9 @@
 
 #include "nng/supplemental/nanolib/conf.h"
 #include "nng/supplemental/nanolib/cvector.h"
+#include "nng/nng.h"
 #include "nng/nng_debug.h"
+#include "core/nng_impl.h"
 
 static char *rule_engine_key_arr[] = {
 	"qos",
@@ -41,7 +43,7 @@ find_as(char *str, int len, rule *info)
 	for (; i < 8; i++) {
 		if (as[i] == NULL)
 			continue;
-		if (strlen(as[i]) != len)
+		if (strlen(as[i]) != (size_t) len)
 			continue;
 		if (!strncmp(as[i], str, len)) {
 			return i;
@@ -219,7 +221,6 @@ parse_select(const char *select, rule *info)
 {
 	char *p       = (char *) select;
 	char *p_b     = (char *) select;
-	int   rc      = 0;
 	info->payload = NULL;
 
 	while ((p = strchr(p, ','))) {
@@ -257,10 +258,10 @@ parse_from(char *from, rule *info)
 static int
 find_payload_as(char *str, int len, rule_payload **payloads)
 {
-	for (int i = 0; i < cvector_size(payloads); i++) {
+	for (size_t i = 0; i < cvector_size(payloads); i++) {
 		if (payloads[i]->pas == NULL)
 			continue;
-		if (strlen(payloads[i]->pas) != len)
+		if (strlen(payloads[i]->pas) != (size_t) len)
 			continue;
 		if (!strncmp(payloads[i]->pas, str, len)) {
 			return i;
@@ -273,20 +274,7 @@ static int
 set_payload_filter(char *str, rule_payload *payload)
 {
 	payload->filter = nng_strdup(str);
-}
-
-static rule_cmp_type
-pick_cmp_symb(char *p)
-{
-	if (!strcmp("=", p)) {
-		return RULE_CMP_EQUAL;
-	} else if (!strcmp(">", p)) {
-		return RULE_CMP_GREATER;
-	} else if (!strcmp("<", p)) {
-		return RULE_CMP_LESS;
-	} else if (!strcmp("!=", p) || !strcmp("<>", p)) {
-		return RULE_CMP_UNEQUAL;
-	}
+    return 0;
 }
 
 static char *
@@ -364,6 +352,7 @@ set_where_info(char *str, size_t len, rule *info)
 {
 	char *p  = str;
 	int   rc = 0;
+    NNI_ARG_UNUSED(len);
 
 	rule_cmp_type cmp_type = get_rule_cmp_type(&p);
 
@@ -407,13 +396,11 @@ parse_where(char *where, rule *info)
 {
 	char *p   = where;
 	char *p_b = where;
-	int   rc  = 0;
 
 	info->filter = (char **) nni_zalloc(sizeof(char *) * 8);
 	memset(info->filter, 0, 8 * sizeof(char *));
 
 	while ((p = strstr(p, "and"))) {
-		int key_end, value_st;
 		set_where_info(p_b, p - p_b, info);
 		p += 3;
 		while (*p == ' ')
