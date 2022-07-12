@@ -208,7 +208,10 @@ set_select_info(char *p_b, rule *info)
 				}
 			}
 		}
+	} else {
+		return -1;
 	}
+
 
 finish:
 	return 0;
@@ -225,7 +228,10 @@ parse_select(const char *select, rule *info)
 		*p = '\0';
 		while (*p_b == ' ' && *p_b != '\0')
 			p_b++;
-		set_select_info(p_b, info);
+		if (-1 == set_select_info(p_b, info)) {
+			debug_msg("Invalid sql field");
+			return -1;
+		}
 		p++;
 
 		while (*p == ' ' && *p != '\0')
@@ -233,7 +239,10 @@ parse_select(const char *select, rule *info)
 		p_b = p;
 	}
 
-	set_select_info(p_b, info);
+	if (-1 == set_select_info(p_b, info)) {
+		debug_msg("Invalid sql field");
+		return -1;
+	}
 	return 0;
 }
 
@@ -377,6 +386,9 @@ set_where_info(char *str, size_t len, rule *info)
 					    info->payload[size - 1]);
 					info->payload[size - 1]->cmp_type =
 					    cmp_type;
+				} else {
+					debug_msg("Invalid field");
+					return -1;
 				}
 			}
 			return 0;
@@ -399,13 +411,17 @@ parse_where(char *where, rule *info)
 	memset(info->filter, 0, 8 * sizeof(char *));
 
 	while ((p = strstr(p, "and"))) {
-		set_where_info(p_b, p - p_b, info);
+		if (-1 == set_where_info(p_b, p - p_b, info)) {
+			return -1;
+		}
 		p += 3;
 		while (*p == ' ')
 			p++;
 		p_b = p;
 	}
-	set_where_info(p_b, strlen(p_b), info);
+	if (-1 == set_where_info(p_b, strlen(p_b), info)) {
+		return -1;
+	}
 	return 0;
 }
 
@@ -433,7 +449,9 @@ rule_sql_parse(conf_rule *cr, char *sql)
 		char select[len_srt];
 		memcpy(select, srt, len_srt);
 		select[len_srt - 1] = '\0';
-		parse_select(select, &re);
+		if (-1 == parse_select(select, &re)) {
+			return false;
+		}
 
 		// function from parser
 		if (mid != NULL && end != NULL) {
@@ -465,7 +483,10 @@ rule_sql_parse(conf_rule *cr, char *sql)
 			char where[len_end];
 			memcpy(where, end, len_end);
 			where[len_end - 1] = '\0';
-			parse_where(where, &re);
+			if (-1 == parse_where(where, &re)) {
+				
+				return false;
+			}
 		}
 
 		cvector_push_back(cr->rules, re);
