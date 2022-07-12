@@ -1350,7 +1350,6 @@ NNG_DECL void    nng_aio_finish_error(nng_aio *aio, int rv);
 NNG_DECL void    nng_aio_finish_sync(nng_aio *aio, int rv);
 NNG_DECL uint8_t nng_msg_cmd_type(nng_msg *msg);
 NNG_DECL uint8_t nng_msg_get_type(nng_msg *msg);
-NNG_DECL void *  nng_msg_get_conn_param(nng_msg *msg);
 NNG_DECL size_t  nng_msg_remaining_len(nng_msg *msg);
 NNG_DECL uint8_t *nng_msg_header_ptr(nng_msg *msg);
 NNG_DECL uint8_t *nng_msg_payload_ptr(nng_msg *msg);
@@ -1367,6 +1366,7 @@ NNG_DECL uint64_t nng_msg_get_timestamp(nng_msg *m);
 
 NNG_DECL void  nng_aio_set_dbtree(nng_aio *aio, void *db);
 NNG_DECL void *nng_msg_get_conn_param(nng_msg *msg);
+NNG_DECL void  nng_msg_set_conn_param(nng_msg *msg, void *ptr);
 
 NNG_DECL const uint8_t *conn_param_get_clientid(conn_param *cparam);
 NNG_DECL const uint8_t *conn_param_get_pro_name(conn_param *cparam);
@@ -1385,6 +1385,9 @@ NNG_DECL void          *conn_param_get_qos_db(conn_param *cparam);
 NNG_DECL void          *conn_param_get_property(conn_param *cparam);
 NNG_DECL void          *conn_param_get_will_property(conn_param *cparam);
 NNG_DECL void           conn_param_set_qos_db(conn_param *cparam, void *);
+NNG_DECL void           conn_param_set_clientid(
+              conn_param *cparam, const char *clientid);
+NNG_DECL void conn_param_set_proto_ver(conn_param *cparam, uint8_t ver);
 NNG_DECL uint64_t conn_param_get_will_delay_timestamp(conn_param *cparam);
 NNG_DECL uint64_t conn_param_get_will_mexp(conn_param *cparam);
 NNG_DECL void     nng_msg_proto_set_property(nng_msg *m, void *p);

@@ -2192,6 +2192,12 @@ nng_msg_unique(nng_msg *m)
 	return m2;
 }
 
+void
+nng_msg_set_conn_param(nng_msg *msg, void *ptr)
+{
+	return (nni_msg_set_conn_param(msg, ptr));
+}
+
 void *
 nng_msg_get_conn_param(nng_msg *msg)
 {
@@ -2332,6 +2338,19 @@ void
 conn_param_set_qos_db(conn_param *cparam, void *qos)
 {
 	cparam->nano_qos_db = qos;
+}
+
+void
+conn_param_set_clientid(conn_param *cparam, const char *clientid)
+{
+	cparam->clientid.body = nng_strdup(clientid);
+	cparam->clientid.len  = strlen(clientid) + 1;
+}
+
+void
+conn_param_set_proto_ver(conn_param *cparam, uint8_t ver)
+{
+	cparam->pro_ver = ver;
 }
 
 void
