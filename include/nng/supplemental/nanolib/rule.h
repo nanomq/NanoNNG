@@ -36,9 +36,9 @@ typedef struct {
 	char         *pas;      // payload field string or alias
 	char         *filter;   // payload field related filter
 	rule_cmp_type cmp_type; // payload field compare type
+	bool          is_store; // payload value is store or not
 	uint8_t       type;     // payload field value type
 	void         *value;    // payload field value
-	bool          is_store;
 } rule_payload;
 
 typedef struct {
