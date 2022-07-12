@@ -484,6 +484,23 @@ rule_sql_parse(conf_rule *cr, char *sql)
 			memcpy(where, end, len_end);
 			where[len_end - 1] = '\0';
 			if (-1 == parse_where(where, &re)) {
+				if (re.topic) {
+					nng_free(re.topic, strlen(re.topic));
+				}
+				for (int i = 0; i < 8; i++) {
+					if (true == re.flag[i] && re.as && re.as[i]) {
+						nng_free(re.as[i], strlen(re.as[i]));
+					}
+					
+					if (true == re.flag[i] && re.filter && re.filter[i]) {
+						nng_free(re.as[i], strlen(re.as[i]));
+					}
+				}
+				nng_free(re.filter, sizeof(char*) * 8);
+
+				if (true == re.flag[RULE_PAYLOAD_FIELD] && re.payload) {
+
+				}
 				
 				return false;
 			}
