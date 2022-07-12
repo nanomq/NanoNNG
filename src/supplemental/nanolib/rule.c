@@ -446,12 +446,15 @@ rule_sql_parse(conf_rule *cr, char *sql)
 		len_srt = mid - srt;
 		srt += strlen("SELECT ");
 		len_srt -= strlen("SELECT ");
-		char select[len_srt];
+		char *select = (char *) nni_alloc(sizeof(char) * len_srt);
 		memcpy(select, srt, len_srt);
 		select[len_srt - 1] = '\0';
 		if (-1 == parse_select(select, &re)) {
+			nni_free(select, len_srt * sizeof(char));
 			return false;
 		}
+
+		nni_free(select, len_srt * sizeof(char));
 
 		// function from parser
 		if (mid != NULL && end != NULL) {
@@ -466,10 +469,11 @@ rule_sql_parse(conf_rule *cr, char *sql)
 		mid += strlen("FROM ");
 		len_mid -= strlen("FROM ");
 
-		char from[len_mid];
+		char *from = (char *) nni_alloc(sizeof(char) * len_mid);
 		memcpy(from, mid, len_mid);
 		from[len_mid - 1] = '\0';
 		parse_from(from, &re);
+		nni_free(from, len_mid);
 
 		// function where parser
 		if (end != NULL) {
@@ -480,30 +484,28 @@ rule_sql_parse(conf_rule *cr, char *sql)
 			end += strlen("WHERE ");
 			len_end -= strlen("WHERE ");
 
-			char where[len_end];
+			char *where = (char *) nni_alloc(sizeof(char) * len_end);
 			memcpy(where, end, len_end);
 			where[len_end - 1] = '\0';
 			if (-1 == parse_where(where, &re)) {
 				if (re.topic) {
-					nng_free(re.topic, strlen(re.topic));
+					nni_free(re.topic, strlen(re.topic));
 				}
 				for (int i = 0; i < 8; i++) {
 					if (true == re.flag[i] && re.as && re.as[i]) {
-						nng_free(re.as[i], strlen(re.as[i]));
+						nni_free(re.as[i], strlen(re.as[i]));
 					}
 					
 					if (true == re.flag[i] && re.filter && re.filter[i]) {
-						nng_free(re.as[i], strlen(re.as[i]));
+						nni_free(re.as[i], strlen(re.as[i]));
 					}
 				}
-				nng_free(re.filter, sizeof(char*) * 8);
-
-				if (true == re.flag[RULE_PAYLOAD_FIELD] && re.payload) {
-
-				}
-				
+				nni_free(re.filter, sizeof(char*) * 8);
+				nni_free(where, sizeof(char) * len_end);
 				return false;
 			}
+
+			nni_free(where, sizeof(char) * len_end);
 		}
 
 		cvector_push_back(cr->rules, re);
