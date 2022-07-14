@@ -454,6 +454,7 @@ NNG_DECL void nng_mqtt_msg_dump(nng_msg *, uint8_t *, uint32_t, bool);
 NNG_DECL void        nng_mqtt_msg_set_conn_param(nng_msg *);
 NNG_DECL conn_param *nng_mqtt_msg_get_conn_param(nng_msg *);
 NNG_DECL void nng_msg_proto_set_property(nng_msg *msg, void *p);
+NNG_DECL void nng_mqtt_msg_set_disconnect_reason_code(nng_msg *msg, uint8_t reason_code);
 
 struct mqtt_string {
 	char *   body;
