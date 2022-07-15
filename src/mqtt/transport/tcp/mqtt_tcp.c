@@ -182,7 +182,6 @@ mqtt_tcptran_pipe_init(void *arg, nni_pipe *npipe)
 	p->npipe = npipe;
 	nni_lmq_init(&p->rslmq, 16);
 	p->busy   = false;
-	p->cparam = NULL;
 	nni_sleep_aio(p->keepalive, &p->tmaio);
 	return (0);
 }
@@ -273,6 +272,8 @@ mqtt_tcptran_ep_match(mqtt_tcptran_ep *ep)
 	nni_list_append(&ep->busypipes, p);
 	ep->useraio = NULL;
 	p->rcvmax   = ep->rcvmax;
+	if (p->cparam == NULL)
+		p->cparam = nni_mqtt_msg_set_conn_param(ep->connmsg);
 	nni_aio_set_output(aio, 0, p);
 	nni_aio_finish(aio, 0, 0);
 }
@@ -901,8 +902,6 @@ mqtt_tcptran_pipe_start(
 	}
 	nni_aio_set_iov(p->negoaio, niov, iov);
 	nni_list_append(&ep->negopipes, p);
-	if (p->cparam != NULL)
-		p->cparam = nni_mqtt_msg_set_conn_param(connmsg);
 
 	nni_aio_set_timeout(p->negoaio, 10000); // 10 sec timeout to negotiate
 	nng_stream_send(p->conn, p->negoaio);

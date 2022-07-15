@@ -663,7 +663,7 @@ void
 nni_mqtt_msg_set_aio(nni_msg *msg, nni_aio *aio)
 {
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
-	proto_data->aio = aio;
+	proto_data->aio                 = aio;
 }
 
 conn_param *
@@ -688,7 +688,6 @@ nni_mqtt_msg_set_conn_param(nni_msg *msg)
 	    proto_data->var_header.connect.conn_flags.will_qos;
 	conn_ctx->will_retain =
 	    proto_data->var_header.connect.conn_flags.will_retain;
-
 	conn_ctx->keepalive_mqtt = proto_data->var_header.connect.keep_alive;
 
 	// memcpy(&conn_ctx->pro_name.body,
