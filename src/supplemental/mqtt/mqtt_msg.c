@@ -690,6 +690,11 @@ nni_mqtt_msg_set_conn_param(nni_msg *msg)
 	    proto_data->var_header.connect.conn_flags.will_retain;
 
 	conn_ctx->keepalive_mqtt = proto_data->var_header.connect.keep_alive;
+
+	// memcpy(&conn_ctx->pro_name.body,
+	//     (char *) proto_data->var_header.connect.protocol_name.buf,
+	//     (size_t) proto_data->var_header.connect.protocol_name.length);
+
 	conn_ctx->pro_name.body =
 	    (char *) proto_data->var_header.connect.protocol_name.buf;
 	conn_ctx->pro_name.len =
@@ -714,7 +719,8 @@ nni_mqtt_msg_set_conn_param(nni_msg *msg)
 
 	conn_ctx->password.body = proto_data->payload.connect.password.buf;
 	conn_ctx->password.len  = proto_data->payload.connect.password.length;
-
+	nni_atomic_init(&conn_ctx->refcnt);
+	nni_atomic_set(&conn_ctx->refcnt, 1);
 	return proto_data->conn_ctx;
 	// TODO  MQTT V5
 }
