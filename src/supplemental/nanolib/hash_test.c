@@ -270,6 +270,7 @@ test_cached_table()
 		tq = dbhash_get_topic_queue(table1[i].key);
 		
 		tq = dbhash_get_cached_topic(table1[i].key);
+		(void) tq;
 	}
 
 	return;
@@ -286,6 +287,7 @@ test_check(void)
 static void *
 test_single_thread(void *args)
 {
+	(void) args;
 
 	for (size_t i = 0; i < TEST_LOOP; i++) {
 		test_alias_table();
@@ -318,9 +320,9 @@ hash_test(void)
 
 	for (size_t j = 0; j < TABLE_SZ; j++) {
 		topic_queue *tq = dbhash_get_topic_queue(table1[j].key);
-		// NUTS_TRUE(NULL != tq);
+		NUTS_TRUE(NULL == tq);
 		tq = dbhash_get_cached_topic(table1[j].key);
-		// NUTS_TRUE(NULL == tq);
+		NUTS_TRUE(NULL != tq);
 	}
 
 	dbhash_destroy_alias_table();
