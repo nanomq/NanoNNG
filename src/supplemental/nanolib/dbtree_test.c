@@ -160,25 +160,25 @@ static void
 test_delete_shared_client()
 {
 	puts("================begin delete shared client===============");
-	dbtree_delete_client(db, topic0, pipe_id0);
-	dbtree_print(db);
-	dbtree_delete_client(db, topic1, pipe_id1);
-	dbtree_print(db);
-	dbtree_delete_client(db, topic2, pipe_id2);
-	dbtree_print(db);
-	dbtree_delete_client(db, topic3, pipe_id3);
-	dbtree_print(db);
-	dbtree_delete_client(db, topic4, pipe_id4);
-	dbtree_print(db);
-	dbtree_delete_client(db, topic5, pipe_id5);
-	dbtree_print(db);
-	dbtree_delete_client(db, topic6, pipe_id6);
-	dbtree_print(db);
-	dbtree_delete_client(db, topic7, pipe_id7);
-	dbtree_print(db);
-	dbtree_delete_client(db, topic8, pipe_id8);
-	dbtree_print(db);
-	dbtree_delete_client(db, topic9, pipe_id9);
+	dbtree_delete_client(db, share0, pipe_id0);
+	dbtree_print(db);              
+	dbtree_delete_client(db, share1, pipe_id1);
+	dbtree_print(db);              
+	dbtree_delete_client(db, share2, pipe_id2);
+	dbtree_print(db);              
+	dbtree_delete_client(db, share3, pipe_id3);
+	dbtree_print(db);              
+	dbtree_delete_client(db, share4, pipe_id4);
+	dbtree_print(db);              
+	dbtree_delete_client(db, share5, pipe_id5);
+	dbtree_print(db);              
+	dbtree_delete_client(db, share6, pipe_id6);
+	dbtree_print(db);              
+	dbtree_delete_client(db, share7, pipe_id7);
+	dbtree_print(db);              
+	dbtree_delete_client(db, share8, pipe_id8);
+	dbtree_print(db);              
+	dbtree_delete_client(db, share9, pipe_id9);
 	dbtree_print(db);
 
 
