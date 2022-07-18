@@ -19,6 +19,9 @@ nng_sources(
   mqtt_db.c)
 
 
+nng_test(hash_test)
+nng_test(dbtree_test)
+
 if (SUPP_RULE_ENGINE)
   nng_sources(rule.c)
   nng_test(rule_test)
