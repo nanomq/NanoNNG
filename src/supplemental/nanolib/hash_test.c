@@ -270,6 +270,7 @@ test_cached_table()
 		tq = dbhash_get_topic_queue(table1[i].key);
 		
 		tq = dbhash_get_cached_topic(table1[i].key);
+
 		(void) tq;
 	}
 
@@ -322,6 +323,7 @@ hash_test(void)
 		topic_queue *tq = dbhash_get_topic_queue(table1[j].key);
 		NUTS_TRUE(NULL == tq);
 		tq = dbhash_get_cached_topic(table1[j].key);
+		dbhash_del_cached_topic_all(table1[j].key);
 		NUTS_TRUE(NULL != tq);
 	}
 
