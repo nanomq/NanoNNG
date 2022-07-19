@@ -189,7 +189,7 @@ nni_mqtt_msg_get_publish_dup(nni_msg *msg)
 	return proto_data->fixed_header.publish.dup;
 }
 
-void
+int
 nni_mqtt_msg_set_publish_topic(nni_msg *msg, const char *topic)
 {
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
