@@ -170,7 +170,7 @@ mqtt_sock_get_disconnect_prop(void *arg, void *v, size_t *szp, nni_opt_type t)
 }
 
 static int
-mqtt_sock_get_disconnect_code(void *arg, const void *v, size_t *sz, nni_opt_type t)
+mqtt_sock_get_disconnect_code(void *arg, void *v, size_t *sz, nni_opt_type t)
 {
 	NNI_ARG_UNUSED(sz);
 	mqtt_sock_t *s = arg;
