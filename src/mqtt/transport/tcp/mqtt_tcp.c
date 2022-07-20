@@ -629,12 +629,12 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 			} else if (qos_pac == 2) {
 				ack_cmd = CMD_PUBREC;
 			}
-			packet_id         = nni_msg_get_pub_pid(msg);
+			packet_id = nni_msg_get_pub_pid(msg);
 			ack = true;
 		}
 		break;
 	case CMD_PUBREC:
-		if (nmq_pubres_decode(msg, &packet_id, &reason_code, &prop,
+		if (nni_mqtt_pubres_decode(msg, &packet_id, &reason_code, &prop,
 		        p->proto) != 0) {
 			goto recv_error;
 		}
@@ -643,7 +643,7 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 		break;
 	case CMD_PUBREL:
 		if (flags == 0x02) {
-			if (nmq_pubres_decode(msg, &packet_id, &reason_code,
+			if (nni_mqtt_pubres_decode(msg, &packet_id, &reason_code,
 			        &prop, p->proto) != 0) {
 				goto recv_error;
 			}
@@ -656,7 +656,7 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 	case CMD_PUBACK:
 		// TODO set property for user callback
 	case CMD_PUBCOMP:
-		if (nmq_pubres_decode(
+		if (nni_mqtt_pubres_decode(
 		        msg, &packet_id, &reason_code, &prop, p->proto) != 0) {
 			goto recv_error;
 		}
@@ -678,9 +678,9 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 			goto recv_error;
 		}
 		// TODO set reason code or property here if necessary
-		nmq_msgack_encode(
+		nni_mqtt_msgack_encode(
 		    qmsg, packet_id, reason_code, prop, p->proto);
-		nmq_pubres_header_encode(qmsg, ack_cmd);
+		nni_mqtt_pubres_header_encode(qmsg, ack_cmd);
 		// aio_begin?
 		if (p->busy == false) {
 			iov[0].iov_len = nni_msg_header_len(qmsg);
@@ -958,6 +958,7 @@ mqtt_tcptran_pipe_start(
 	p->conn   = conn;
 	p->ep     = ep;
 	p->rcvmax = 0;
+	p->sndmax = 65535;
 
 	nni_dialer_getopt(ep->ndialer, NNG_OPT_MQTT_CONNMSG, &connmsg, NULL,
 	    NNI_TYPE_POINTER);
