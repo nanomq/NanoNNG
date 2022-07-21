@@ -35,27 +35,6 @@
 #define NNI_NANO_MAX_PACKET_SIZE sizeof(uint8_t) * 16
 #endif
 
-/* CMD types & flags for internal usage */
-#define CMD_UNKNOWN 0x00
-#define CMD_CONNECT 0x10
-#define CMD_CONNACK 0x20
-#define CMD_PUBLISH 0x30    // indicates PUBLISH packet & MQTTV4 pub packet
-#define CMD_PUBLISH_V5 0x31 // this is the flag for differing MQTTV5 from V4 V3
-#define CMD_PUBACK 0x40
-#define CMD_PUBREC 0x50
-#define CMD_PUBREL 0x60
-#define CMD_PUBCOMP 0x70
-#define CMD_SUBSCRIBE 0x80
-#define CMD_SUBACK 0x90
-#define CMD_UNSUBSCRIBE 0xA0
-#define CMD_UNSUBACK 0xB0
-#define CMD_PINGREQ 0xC0
-#define CMD_PINGRESP 0xD0
-#define CMD_DISCONNECT 0xE0
-#define CMD_AUTH_V5 0xF0
-#define CMD_DISCONNECT_EV 0xE2
-#define CMD_LASTWILL 0XE3
-
 /* Error values */
 enum err_t {
 	ERR_AUTH_CONTINUE      = -4,
@@ -91,92 +70,12 @@ enum err_t {
 	ERR_OCSP               = 26,
 };
 
-//only for return code to user
-typedef enum {
-	SUCCESS                                = 0,
-	NORMAL_DISCONNECTION                   = 0,
-	GRANTED_QOS_0                          = 0,
-	GRANTED_QOS_1                          = 1,
-	GRANTED_QOS_2                          = 2,
-	DISCONNECT_WITH_WILL_MESSAGE           = 4,
-	NO_MATCHING_SUBSCRIBERS                = 16,
-	NO_SUBSCRIPTION_EXISTED                = 17,
-	CONTINUE_AUTHENTICATION                = 24,
-	RE_AUTHENTICATE                        = 25,
-	UNSPECIFIED_ERROR                      = 128,
-	MALFORMED_PACKET                       = 129,
-	PROTOCOL_ERROR                         = 130,
-	IMPLEMENTATION_SPECIFIC_ERROR          = 131,
-	UNSUPPORTED_PROTOCOL_VERSION           = 132,
-	CLIENT_IDENTIFIER_NOT_VALID            = 133,
-	BAD_USER_NAME_OR_PASSWORD              = 134,
-	NOT_AUTHORIZED                         = 135,
-	SERVER_UNAVAILABLE                     = 136,
-	SERVER_BUSY                            = 137,
-	BANNED                                 = 138,
-	SERVER_SHUTTING_DOWN                   = 139,
-	BAD_AUTHENTICATION_METHOD              = 140,
-	KEEP_ALIVE_TIMEOUT                     = 141,
-	SESSION_TAKEN_OVER                     = 142,
-	TOPIC_FILTER_INVALID                   = 143,
-	TOPIC_NAME_INVALID                     = 144,
-	PACKET_IDENTIFIER_IN_USE               = 145,
-	PACKET_IDENTIFIER_NOT_FOUND            = 146,
-	RECEIVE_MAXIMUM_EXCEEDED               = 147,
-	TOPIC_ALIAS_INVALID                    = 148,
-	PACKET_TOO_LARGE                       = 149,
-	MESSAGE_RATE_TOO_HIGH                  = 150,
-	QUOTA_EXCEEDED                         = 151,
-	ADMINISTRATIVE_ACTION                  = 152,
-	PAYLOAD_FORMAT_INVALID                 = 153,
-	RETAIN_NOT_SUPPORTED                   = 154,
-	QOS_NOT_SUPPORTED                      = 155,
-	USE_ANOTHER_SERVER                     = 156,
-	SERVER_MOVED                           = 157,
-	SHARED_SUBSCRIPTIONS_NOT_SUPPORTED     = 158,
-	CONNECTION_RATE_EXCEEDED               = 159,
-	MAXIMUM_CONNECT_TIME                   = 160,
-	SUBSCRIPTION_IDENTIFIERS_NOT_SUPPORTED = 161,
-	WILDCARD_SUBSCRIPTIONS_NOT_SUPPORTED   = 162
-
-} reason_code;
-
 // mqtt5 macro
 #define NMQ_RECEIVE_MAXIMUM_EXCEEDED 0X93;
 #define NMQ_PACKET_TOO_LARGE 0x95;
 #define NMQ_SERVER_UNAVAILABLE 0x88;
 #define NMQ_SERVER_BUSY 0x89;
 #define NMQ_KEEP_ALIVE_TIMEOUT 0x8D;
-
-typedef enum {
-	PAYLOAD_FORMAT_INDICATOR          = 1,
-	MESSAGE_EXPIRY_INTERVAL           = 2,
-	CONTENT_TYPE                      = 3,
-	RESPONSE_TOPIC                    = 8,
-	CORRELATION_DATA                  = 9,
-	SUBSCRIPTION_IDENTIFIER           = 11,
-	SESSION_EXPIRY_INTERVAL           = 17,
-	ASSIGNED_CLIENT_IDENTIFIER        = 18,
-	SERVER_KEEP_ALIVE                 = 19,
-	AUTHENTICATION_METHOD             = 21,
-	AUTHENTICATION_DATA               = 22,
-	REQUEST_PROBLEM_INFORMATION       = 23,
-	WILL_DELAY_INTERVAL               = 24,
-	REQUEST_RESPONSE_INFORMATION      = 25,
-	RESPONSE_INFORMATION              = 26,
-	SERVER_REFERENCE                  = 28,
-	REASON_STRING                     = 31,
-	RECEIVE_MAXIMUM                   = 33,
-	TOPIC_ALIAS_MAXIMUM               = 34,
-	TOPIC_ALIAS                       = 35,
-	PUBLISH_MAXIMUM_QOS               = 36,
-	RETAIN_AVAILABLE                  = 37,
-	USER_PROPERTY                     = 38,
-	MAXIMUM_PACKET_SIZE               = 39,
-	WILDCARD_SUBSCRIPTION_AVAILABLE   = 40,
-	SUBSCRIPTION_IDENTIFIER_AVAILABLE = 41,
-	SHARED_SUBSCRIPTION_AVAILABLE     = 42
-} properties_type;
 
 // MQTT Control Packet types
 typedef enum {
