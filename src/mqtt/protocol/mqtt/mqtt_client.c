@@ -470,6 +470,7 @@ mqtt_pipe_start(void *arg)
 	if ((c = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, c);
 		mqtt_send_msg(c->saio, c);
+		c->saio = NULL;
 		nni_sleep_aio(s->retry, &p->time_aio);
 		nni_pipe_recv(p->pipe, &p->recv_aio);
 		return(0);
@@ -633,6 +634,7 @@ mqtt_send_cb(void *arg)
 	if ((c = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, c);
 		mqtt_send_msg(c->saio, c);
+		c->saio = NULL;
 		return;
 	}
 	if (nni_lmq_get(&p->send_messages, &msg) == 0) {
@@ -717,6 +719,11 @@ mqtt_recv_cb(void *arg)
 		if (cached_msg != NULL) {
 			nni_id_remove(p->sent_unack, packet_id);
 			user_aio = nni_mqtt_msg_get_aio(cached_msg);
+			if (packet_type == NNG_MQTT_SUBACK ||
+			    packet_type == NNG_MQTT_UNSUBACK) {
+				nni_msg_clone(msg);
+				nni_aio_set_msg(user_aio, msg);
+			}
 			nni_msg_free(cached_msg);
 		}
 		nni_msg_free(msg);
@@ -901,7 +908,6 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 		if (!nni_list_active(&s->send_queue, ctx)) {
 			// cache ctx
 			ctx->saio = aio;
-			ctx->raio = NULL;
 			nni_list_append(&s->send_queue, ctx);
 			nni_mtx_unlock(&s->mtx);
 			debug_msg("WARNING:client sending msg while disconnected! cached");
@@ -958,7 +964,6 @@ wait:
 		return;
 	}
 	ctx->raio = aio;
-	ctx->saio = NULL;
 	nni_list_append(&s->recv_queue, ctx);
 	nni_mtx_unlock(&s->mtx);
 	return;
