@@ -491,22 +491,6 @@ mqtt_pipe_stop(void *arg)
 }
 
 static void
-mqtt_close_unack_msg_cb(void *key, void *val)
-{
-	NNI_ARG_UNUSED(key);
-
-	nni_msg * msg = val;
-	nni_aio * aio = NULL;
-
-	aio = nni_mqtt_msg_get_aio(msg);
-	if (aio) {
-		nni_aio_finish_error(aio, NNG_ECLOSED);
-	}
-	nni_msg_free(msg);
-
-}
-
-static void
 mqtt_pipe_close(void *arg)
 {
 	mqtt_pipe_t *p = arg;

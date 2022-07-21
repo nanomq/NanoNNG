@@ -24,6 +24,21 @@ nni_mqtt_msg_proto_data_alloc(nni_msg *msg)
 }
 
 void
+mqtt_close_unack_msg_cb(void *key, void *val)
+{
+	NNI_ARG_UNUSED(key);
+
+	nni_msg * msg = val;
+	nni_aio * aio = NULL;
+
+	aio = nni_mqtt_msg_get_aio(msg);
+	if (aio) {
+		nni_aio_finish_error(aio, NNG_ECLOSED);
+	}
+	nni_msg_free(msg);
+}
+
+void
 nni_mqtt_msg_proto_data_free(nni_msg *msg)
 {
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
