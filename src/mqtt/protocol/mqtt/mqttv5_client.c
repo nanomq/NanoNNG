@@ -67,9 +67,11 @@ struct mqtt_pipe_s {
 	nni_atomic_int  next_packet_id; // next packet id to use
 	nni_pipe *      pipe;
 	mqtt_sock_t *   mqtt_sock;
-    
-	void *sent_unack; // send messages unacknowledged
-
+#ifdef NNG_SUPP_SQLITE
+	sqlite3 *sent_unack;
+#else
+	nni_id_map sent_unack; // send messages unacknowledged
+#endif
 	nni_id_map      recv_unack;    // recv messages unacknowledged
 	nni_aio         send_aio;      // send aio to the underlying transport
 	nni_aio         recv_aio;      // recv aio to the underlying transport
@@ -88,6 +90,8 @@ struct mqtt_sock_s {
 	mqtt_pipe_t *   mqtt_pipe;
 	nni_list        recv_queue; // ctx pending to receive
 	nni_list        send_queue; // ctx pending to send (only offline msg)
+	reason_code     disconnect_code; // disconnect reason code
+	void           *dis_prop;        // disconnect property
 #ifdef NNG_SUPP_SQLITE
 	sqlite3 *sqlite_db;
 #endif
@@ -265,11 +269,14 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 	nni_msg *    msg;
 	nni_msg *    tmsg;
 
+	if (aio == NULL)
+		return;
 	msg   = nni_aio_get_msg(aio);
 	ptype = nni_mqtt_msg_get_packet_type(msg);
 	switch (ptype) {
 	case NNG_MQTT_CONNECT:
 	case NNG_MQTT_PINGREQ:
+	case NNG_MQTT_DISCONNECT:
 		break;
 
 	case NNG_MQTT_PUBLISH:
@@ -283,8 +290,7 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 		packet_id     = mqtt_pipe_get_next_packet_id(p);
 		nni_mqtt_msg_set_packet_id(msg, packet_id);
 		nni_mqtt_msg_set_aio(msg, aio);
-		tmsg = nni_qos_db_get_client_msg(
-		    p->sent_unack, nni_pipe_id(p->pipe), packet_id);
+		tmsg = nni_id_get(&p->sent_unack, packet_id);
 		if (tmsg != NULL) {
 			nni_plat_printf("Warning : msg %d lost due to "
 			                "packetID duplicated!",
@@ -294,12 +300,10 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 				nni_aio_finish_error(m_aio, NNG_EPROTO);
 			}
 			nni_msg_free(tmsg);
-			nni_qos_db_remove_client_msg(
-			    p->sent_unack, nni_pipe_id(p->pipe), packet_id);
+			nni_id_remove(&p->sent_unack, packet_id);
 		}
 		nni_msg_clone(msg);
-		if (nni_qos_db_set_client_msg(p->sent_unack,
-		        nni_pipe_id(p->pipe), packet_id, msg) != 0) {
+		if (0 != nni_id_set(&p->sent_unack, packet_id, msg)) {
 			// nni_println("Warning! Cache QoS msg failed");
 			nni_msg_free(msg);
 			//we finished here since there is no second time
@@ -314,7 +318,7 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 	}
 	if (!p->busy) {
 		p->busy = true;
-		nni_mqtt_msg_encode(msg);
+		nni_mqttv5_msg_encode(msg);
 		nni_aio_set_msg(&p->send_aio, msg);
 		nni_aio_bump_count(
 		    aio, nni_msg_header_len(msg) + nni_msg_len(msg));
@@ -350,9 +354,12 @@ mqtt_pipe_start(void *arg)
 
 	nni_mtx_lock(&s->mtx);
 	s->mqtt_pipe = p;
+	s->disconnect_code = SUCCESS;
+	s->dis_prop        = NULL;
 	if ((c = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, c);
 		mqtt_send_msg(c->saio, c);
+		c->saio = NULL;
 		nni_sleep_aio(s->retry, &p->time_aio);
 		nni_pipe_recv(p->pipe, &p->recv_aio);
 		return(0);
@@ -431,10 +438,8 @@ mqtt_timer_cb(void *arg)
 		return;
 	}
 	// start message resending
-	uint64_t row_id = 0;
-	msg = nni_qos_db_get_one_client_msg(p->sent_unack, row_id, pid);
+	msg = nni_id_get_any(&p->sent_unack, &pid);
 	if (msg != NULL) {
-		nni_qos_db_remove_client_msg_by_id(p->sent_unack, row_id);
 		uint16_t ptype;
 		ptype = nni_mqtt_msg_get_packet_type(msg);
 		if (ptype == NNG_MQTT_PUBLISH) {
@@ -443,7 +448,7 @@ mqtt_timer_cb(void *arg)
 		if (!p->busy) {
 			p->busy = true;
 			nni_msg_clone(msg);
-			nni_mqtt_msg_encode(msg);
+			nni_mqttv5_msg_encode(msg);
 			aio = nni_mqtt_msg_get_aio(msg);
 			if (aio) {
 				nni_aio_bump_count(aio,
@@ -471,15 +476,17 @@ mqtt_timer_cb(void *arg)
 static void
 mqtt_send_cb(void *arg)
 {
+	int rv = 0;
 	mqtt_pipe_t *p   = arg;
 	mqtt_sock_t *s   = p->mqtt_sock;
 	mqtt_ctx_t * c   = NULL;
 	nni_msg *    msg = NULL;
 
-	if (nni_aio_result(&p->send_aio) != 0) {
+	if ((rv = nni_aio_result(&p->send_aio)) != 0) {
 		// We failed to send... clean up and deal with it.
 		nni_msg_free(nni_aio_get_msg(&p->send_aio));
 		nni_aio_set_msg(&p->send_aio, NULL);
+		s->disconnect_code = rv;
 		nni_pipe_close(p->pipe);
 		return;
 	}
@@ -498,12 +505,13 @@ mqtt_send_cb(void *arg)
 	if ((c = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, c);
 		mqtt_send_msg(c->saio, c);
+		c->saio = NULL;
 		return;
 	}
 
 	if (nni_lmq_get(&p->send_messages, &msg) == 0) {
 		p->busy = true;
-		nni_mqtt_msg_encode(msg);
+		nni_mqttv5_msg_encode(msg);
 		nni_aio_set_msg(&p->send_aio, msg);
 		nni_pipe_send(p->pipe, &p->send_aio);
 		nni_mtx_unlock(&s->mtx);
@@ -517,13 +525,15 @@ mqtt_send_cb(void *arg)
 static void
 mqtt_recv_cb(void *arg)
 {
+	int rv;
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
 	nni_aio * user_aio = NULL;
 	nni_msg * cached_msg = NULL;
 	mqtt_ctx_t * ctx;
 
-	if (nni_aio_result(&p->recv_aio) != 0) {
+	if ((rv = nni_aio_result(&p->recv_aio)) != 0) {
+		s->disconnect_code = rv;
 		nni_pipe_close(p->pipe);
 		return;
 	}
@@ -542,7 +552,7 @@ mqtt_recv_cb(void *arg)
 	}
 	nni_msg_set_pipe(msg, nni_pipe_id(p->pipe));
 	nni_mqtt_msg_proto_data_alloc(msg);
-	nni_mqtt_msg_decode(msg);
+	nni_mqttv5_msg_decode(msg);
 
 	packet_type_t packet_type = nni_mqtt_msg_get_packet_type(msg);
 	int32_t       packet_id;
@@ -569,12 +579,15 @@ mqtt_recv_cb(void *arg)
 	case NNG_MQTT_UNSUBACK:
 		// we have received a UNSUBACK, successful unsubscription
 		packet_id  = nni_mqtt_msg_get_packet_id(msg);
-		cached_msg = nni_qos_db_get_client_msg(
-		    p->sent_unack, nni_pipe_id(p->pipe), packet_id);
+		cached_msg = nni_id_get(&p->sent_unack, packet_id);
 		if (cached_msg != NULL) {
-			nni_qos_db_remove_client_msg(
-			    p->sent_unack, nni_pipe_id(p->pipe), packet_id);
+			nni_id_remove(&p->sent_unack, packet_id);
 			user_aio = nni_mqtt_msg_get_aio(cached_msg);
+			if (packet_type == NNG_MQTT_SUBACK ||
+			    packet_type == NNG_MQTT_UNSUBACK) {
+				nni_msg_clone(msg);
+				nni_aio_set_msg(user_aio, msg);
+			}
 			nni_msg_free(cached_msg);
 		}
 		nni_msg_free(msg);
@@ -641,16 +654,17 @@ mqtt_recv_cb(void *arg)
 			//TODO check if this packetid already there
 			packet_id = nni_mqtt_msg_get_publish_packet_id(msg);
 			if ((cached_msg = nni_id_get(
-				         &p->recv_unack, packet_id)) != NULL) {
-					// packetid already exists.
-					// sth wrong with the broker
-					// replace old with new
-					nni_plat_printf(
-					    "ERROR: packet id %d duplicates in", packet_id);
-					nni_msg_free(cached_msg);
-					// nni_id_remove(&pipe->nano_qos_db,
-					// pid);
-				}
+			         &p->recv_unack, packet_id)) != NULL) {
+				// packetid already exists.
+				// sth wrong with the broker
+				// replace old with new
+				nni_plat_printf(
+				    "ERROR: packet id %d duplicates in",
+				    packet_id);
+				nni_msg_free(cached_msg);
+				// nni_id_remove(&pipe->nano_qos_db,
+				// pid);
+			}
 			nni_id_set(&p->recv_unack, packet_id, msg);
 		}
 		break;
@@ -658,6 +672,7 @@ mqtt_recv_cb(void *arg)
 	default:
 		// unexpected packet type, server misbehaviour
 		nni_mtx_unlock(&s->mtx);
+		s->disconnect_code = MALFORMED_PACKET;
 		nni_pipe_close(p->pipe);
 		return;
 	}
@@ -741,7 +756,6 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 		if (!nni_list_active(&s->send_queue, ctx)) {
 			// cache ctx
 			ctx->saio = aio;
-			ctx->raio = NULL;
 			nni_list_append(&s->send_queue, ctx);
 			nni_mtx_unlock(&s->mtx);
 		} else {
@@ -795,10 +809,35 @@ wait:
 		return;
 	}
 	ctx->raio = aio;
-	ctx->saio = NULL;
 	nni_list_append(&s->recv_queue, ctx);
 	nni_mtx_unlock(&s->mtx);
 	return;
+}
+
+
+static int
+mqtt_sock_get_disconnect_prop(void *arg, void *v, size_t *szp, nni_opt_type t)
+{
+	mqtt_sock_t *s = arg;
+	int              rv;
+
+	nni_mtx_lock(&s->mtx);
+	rv = nni_copyout_ptr(s->dis_prop, v, szp, t);
+	nni_mtx_lock(&s->mtx);
+	return (rv);
+}
+
+static int
+mqtt_sock_get_disconnect_code(void *arg, void *v, size_t *sz, nni_opt_type t)
+{
+	NNI_ARG_UNUSED(sz);
+	mqtt_sock_t *s = arg;
+	int              rv;
+
+	nni_mtx_lock(&s->mtx);
+	rv = nni_copyin_int((int *)v, &s->disconnect_code, sizeof(int), 0, 256, t);
+	nni_mtx_unlock(&s->mtx);
+	return (rv);
 }
 
 static nni_proto_pipe_ops mqtt_pipe_ops = {
@@ -826,6 +865,14 @@ static nni_proto_ctx_ops mqtt_ctx_ops = {
 };
 
 static nni_option mqtt_sock_options[] = {
+	{
+	    .o_name = NNG_OPT_MQTT_DISCONNECT_REASON,
+	    .o_get  = mqtt_sock_get_disconnect_code,
+	},
+	{
+	    .o_name = NNG_OPT_MQTT_DISCONNECT_PROPERTY,
+	    .o_get  = mqtt_sock_get_disconnect_prop,
+	},
 	// terminate list
 	{
 	    .o_name = NULL,
