@@ -1385,18 +1385,6 @@ mqtt_tcptran_ep_get_property(void *arg, void *v, size_t *szp, nni_opt_type t)
 }
 
 static int
-mqtt_tcptran_ep_get_property(void *arg, void *v, size_t *szp, nni_opt_type t)
-{
-	mqtt_tcptran_ep *ep = arg;
-	int              rv;
-
-	nni_copyout_ptr(ep->property, v, szp, t);
-	rv = 0;
-
-	return (rv);
-}
-
-static int
 mqtt_tcptran_ep_set_connmsg(
     void *arg, const void *v, size_t sz, nni_opt_type t)
 {
