@@ -46,6 +46,11 @@
 		}                                                       \
 	} while (0)
 
+struct mqtt_msg_info {
+	uint32_t pipe;
+};
+typedef struct mqtt_msg_info mqtt_msg_info;
+
 struct topic_node {
 	uint8_t qos : 2;
 	uint8_t no_local : 1;
