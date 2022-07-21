@@ -613,12 +613,11 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 	flags    = p->rxlen[0] & 0x0f;
 
 	// set the payload pointer of msg according to packet_type
-	uint8_t  qos_pac;
-	uint16_t packet_id = 0;
+	uint8_t   qos_pac;
+	uint16_t  packet_id   = 0;
 	uint8_t   reason_code = 0;
 	property *prop        = NULL;
-	uint8_t   ack_cmd = 0;
-	uint16_t pid;
+	uint8_t   ack_cmd     = 0;
 	switch (type) {
 	case CMD_PUBLISH:
 		// should we seperate the 2 phase work of QoS into 2 aios?
