@@ -3283,3 +3283,13 @@ nmq_msgack_encode(nng_msg *msg, uint16_t packet_id, uint8_t reason_code,
 
 	return MQTT_SUCCESS;
 }
+
+// TODO this is incompatible with client sdk
+void
+nni_msg_proto_set_property(nng_msg *msg, void *p)
+{
+	property *prop = (property *) p;
+	if (prop != NULL) {
+		nni_msg_set_proto_data(msg, &proto_ops, prop);
+	}
+}
