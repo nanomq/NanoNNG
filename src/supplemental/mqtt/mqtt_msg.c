@@ -192,11 +192,13 @@ nni_mqtt_msg_get_publish_dup(nni_msg *msg)
 int
 nni_mqtt_msg_set_publish_topic(nni_msg *msg, const char *topic)
 {
+	int rv;
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
-	mqtt_buf_create(&proto_data->var_header.publish.topic_name,
+	rv = mqtt_buf_create(&proto_data->var_header.publish.topic_name,
 	    (uint8_t *) topic, (uint32_t) strlen(topic));
+	proto_data->is_copied = true;
+	return rv;
 }
-
 const char *
 nni_mqtt_msg_get_publish_topic(nni_msg *msg, uint32_t *topic_len)
 {
