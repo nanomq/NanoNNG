@@ -235,21 +235,21 @@ done:
 				ack       = true;
 			}
 		} else if (cmd == CMD_PUBREC) {
-			if (nmq_pubres_decode(smsg, &packet_id, &reason_code, &prop,
+			if (nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
 			        p->ws_param->pro_ver) != 0) {
 				debug_msg("decode PUBREC variable header failed!");
 			}
 			ack_cmd = CMD_PUBREL;
 			ack     = true;
 		} else if (cmd == CMD_PUBREL) {
-			if (nmq_pubres_decode(smsg, &packet_id, &reason_code, &prop,
+			if (nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
 			        p->ws_param->pro_ver) != 0) {
 				debug_msg("decode PUBREL variable header failed!");
 			}
 			ack_cmd = CMD_PUBCOMP;
 			ack     = true;
 		} else if (cmd == CMD_PUBACK || cmd == CMD_PUBCOMP) {
-			if (nmq_pubres_decode(smsg, &packet_id, &reason_code, &prop,
+			if (nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
 			        p->ws_param->pro_ver) != 0) {
 				debug_msg("decode PUBACK or PUBCOMP variable header "
 				          "failed!");
@@ -289,9 +289,9 @@ done:
 				// TODO set reason code or property here if
 				// necessary
 				nni_msg_set_cmd_type(qmsg, ack_cmd);
-				nmq_msgack_encode(qmsg, packet_id, reason_code,
+				nni_mqtt_msgack_encode(qmsg, packet_id, reason_code,
 				    prop, p->ws_param->pro_ver);
-				nmq_pubres_header_encode(qmsg, ack_cmd);
+				nni_mqtt_pubres_header_encode(qmsg, ack_cmd);
 				nng_aio_wait(p->qsaio);
 				iov[0].iov_len = nni_msg_header_len(qmsg);
 				iov[0].iov_buf = nni_msg_header(qmsg);

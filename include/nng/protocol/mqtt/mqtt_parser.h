@@ -126,11 +126,6 @@ NNG_DECL property *property_set_value_strpair(uint8_t prop_id, const char *key,
     uint32_t key_len, const char *value, uint32_t value_len, bool copy_value);
 NNG_DECL void      property_append(property *prop_list, property *last);
 
-NNG_DECL int  nmq_pubres_decode(nng_msg *msg, uint16_t *packet_id,
-     uint8_t *reason_code, property **prop, uint8_t proto_ver);
-NNG_DECL int  nmq_msgack_encode(nng_msg *msg, uint16_t packet_id,
-     uint8_t reason_code, property *prop, uint8_t proto_ver);
-NNG_DECL int  nmq_pubres_header_encode(nng_msg *msg, uint8_t cmd);
 NNG_DECL int  nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver);
 NNG_DECL int  nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver);
 NNG_DECL bool topic_filter(const char *origin, const char *input);

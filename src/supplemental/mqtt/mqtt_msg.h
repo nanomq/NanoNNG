@@ -429,13 +429,6 @@ extern void nni_mqtt_topic_qos_array_free(nni_mqtt_topic_qos *, size_t);
 extern conn_param *nni_mqtt_msg_set_conn_param(nni_msg *);
 extern conn_param *nni_mqtt_msg_get_conn_param(nni_msg *);
 
-/* introduced from mqtt_parser, might be duplicated */
-NNG_DECL int  nmq_pubres_decode(nng_msg *msg, uint16_t *packet_id,
-     uint8_t *reason_code, property **prop, uint8_t proto_ver);
-NNG_DECL int  nmq_msgack_encode(nng_msg *msg, uint16_t packet_id,
-     uint8_t reason_code, property *prop, uint8_t proto_ver);
-NNG_DECL int  nmq_pubres_header_encode(nng_msg *msg, uint8_t cmd);
-
 extern void mqtt_close_unack_msg_cb(void *key, void *val);
 
 extern uint16_t nni_msg_get_pub_pid(nni_msg *m);
