@@ -318,7 +318,6 @@ typedef enum {
 
 } reason_code;
 
-
 typedef enum {
 	PAYLOAD_FORMAT_INDICATOR          = 1,
 	MESSAGE_EXPIRY_INTERVAL           = 2,
@@ -364,12 +363,32 @@ struct mqtt_kv_t {
 };
 typedef struct mqtt_kv_t mqtt_kv;
 
+typedef struct mqtt_topic_qos_t {
+	nng_mqtt_topic topic;
+	uint8_t        qos;
+} mqtt_topic_qos;
+
+typedef struct mqtt_topic_qos_t nng_mqtt_topic_qos;
+
+extern uint16_t nni_msg_get_pub_pid(nng_msg *m);
+
+struct mqtt_string {
+	char *   body;
+	uint32_t len;
+};
+typedef struct mqtt_string mqtt_string;
+
+struct mqtt_string_node {
+	struct mqtt_string_node *next;
+	mqtt_string *            it;
+};
+typedef struct mqtt_string_node mqtt_string_node;
+
 struct mqtt_binary {
 	uint8_t *body;
 	uint32_t len;
 };
 typedef struct mqtt_binary mqtt_binary;
-
 
 struct mqtt_str_pair {
 	char *   key; // key
@@ -400,19 +419,6 @@ typedef enum {
 	UNKNOWN
 } property_type_enum;
 
-struct mqtt_string {
-	char *   body;
-	uint32_t len;
-};
-typedef struct mqtt_string mqtt_string;
-
-struct mqtt_string_node {
-	struct mqtt_string_node *next;
-	mqtt_string *            it;
-};
-typedef struct mqtt_string_node mqtt_string_node;
-
-
 struct property_data {
 	property_type_enum  p_type;
 	union Property_type p_value;
@@ -428,18 +434,27 @@ struct property {
 };
 typedef struct property property;
 
-struct mqtt_msg_info {
-	uint32_t pipe;
-};
-typedef struct mqtt_msg_info mqtt_msg_info;
+extern reason_code check_properties(property *prop);
+extern property *decode_buf_properties(uint8_t *packet, uint32_t packet_len, uint32_t *pos, uint32_t *len, bool copy_value);
+extern property *decode_properties(nng_msg *msg, uint32_t *pos, uint32_t *len, bool copy_value);
+extern int      encode_properties(nng_msg *msg, property *prop, uint8_t cmd);
+extern uint32_t get_properties_len(property *prop);
+extern int      property_free(property *prop);
+extern property_data *property_get_value(property *prop, uint8_t prop_id);
+extern void      property_foreach(property *prop, void (*cb)(property *));
+extern int       property_dup(property **dup, const property *src);
+extern property *property_pub_by_will(property *will_prop);
 
-typedef struct mqtt_topic_qos_t {
-	nng_mqtt_topic topic;
-	uint8_t        qos;
-} mqtt_topic_qos;
-
-typedef struct mqtt_topic_qos_t nng_mqtt_topic_qos;
-
+extern property          *property_alloc(void);
+extern property_type_enum property_get_value_type(uint8_t prop_id);
+extern property *property_set_value_u8(uint8_t prop_id, uint8_t value);
+extern property *property_set_value_u16(uint8_t prop_id, uint16_t value);
+extern property *property_set_value_u32(uint8_t prop_id, uint32_t value);
+extern property *property_set_value_varint(uint8_t prop_id, uint32_t value);
+extern property *property_set_value_binary(uint8_t prop_id, uint8_t *value, uint32_t len, bool copy_value);
+extern property *property_set_value_str( uint8_t prop_id, const char *value, uint32_t len, bool copy_value);
+extern property *property_set_value_strpair(uint8_t prop_id, const char *key, uint32_t key_len, const char *value, uint32_t value_len, bool copy_value);
+extern void      property_append(property *prop_list, property *last);
 NNG_DECL int  nng_mqtt_msg_alloc(nng_msg **, size_t);
 NNG_DECL int  nng_mqtt_msg_proto_data_alloc(nng_msg *);
 NNG_DECL void nng_mqtt_msg_proto_data_free(nng_msg *);
