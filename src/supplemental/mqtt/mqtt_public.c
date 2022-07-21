@@ -670,4 +670,3 @@ mqtt_property_append(property *prop_list, property *last)
 {
 	return property_append(prop_list, last);
 }
-
