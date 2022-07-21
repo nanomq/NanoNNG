@@ -408,7 +408,7 @@ nng_mqtt_msg_get_publish_dup(nng_msg *msg)
 	return nni_mqtt_msg_get_publish_dup(msg);
 }
 
-void
+int
 nng_mqtt_msg_set_publish_topic(nng_msg *msg, const char *topic)
 {
 	nni_mqtt_msg_set_publish_topic(msg, topic);
@@ -648,33 +648,6 @@ nng_mqtt_msg_dump(
 	nni_mqtt_msg_dump(msg, buffer, len, print_bytes);
 }
 
-<<<<<<< HEAD
-void
-nng_mqtt_msg_set_conn_param(nng_msg *msg)
-{
-	nni_mqtt_msg_set_conn_param(msg);
-}
-
-conn_param *
-nng_mqtt_msg_get_conn_param(nng_msg *msg)
-{
-	return nni_mqtt_msg_get_conn_param(msg);
-}
-// TODO this is incompatible with client sdk
-void
-nng_mqtt_msg_set_connect_property(nng_msg *msg, property *p)
-{
-	nni_mqtt_msg_set_connect_property(msg, p);
-}
-
-property *
-nng_mqtt_msg_get_connect_property(nng_msg *msg)
-{
-	return nni_mqtt_msg_get_connect_property(msg);
-}
-
-=======
->>>>>>> b9e51940 (* NEW [mqttv5] Add property interface for properties in connack/connect.)
 uint32_t
 get_mqtt_properties_len(property *prop)
 {
@@ -769,4 +742,16 @@ void
 mqtt_property_append(property *prop_list, property *last)
 {
 	return property_append(prop_list, last);
+}
+
+void
+nng_mqtt_msg_set_conn_param(nng_msg *msg)
+{
+	nni_mqtt_msg_set_conn_param(msg);
+}
+
+conn_param *
+nng_mqtt_msg_get_conn_param(nng_msg *msg)
+{
+	return nni_mqtt_msg_get_conn_param(msg);
 }
