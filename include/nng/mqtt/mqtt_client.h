@@ -362,8 +362,76 @@ struct mqtt_kv_t {
 	mqtt_buf key;
 	mqtt_buf value;
 };
-
 typedef struct mqtt_kv_t mqtt_kv;
+
+struct mqtt_binary {
+	uint8_t *body;
+	uint32_t len;
+};
+typedef struct mqtt_binary mqtt_binary;
+
+
+struct mqtt_str_pair {
+	char *   key; // key
+	uint32_t len_key;
+	char *   val; // value
+	uint32_t len_val;
+};
+typedef struct mqtt_str_pair mqtt_str_pair;
+
+union Property_type {
+	uint8_t  u8;
+	uint16_t u16;
+	uint32_t u32;
+	uint32_t varint;
+	mqtt_buf binary;
+	mqtt_buf str;
+	mqtt_kv  strpair;
+};
+
+typedef enum {
+	U8,
+	U16,
+	U32,
+	VARINT,
+	BINARY,
+	STR,
+	STR_PAIR,
+	UNKNOWN
+} property_type_enum;
+
+struct mqtt_string {
+	char *   body;
+	uint32_t len;
+};
+typedef struct mqtt_string mqtt_string;
+
+struct mqtt_string_node {
+	struct mqtt_string_node *next;
+	mqtt_string *            it;
+};
+typedef struct mqtt_string_node mqtt_string_node;
+
+
+struct property_data {
+	property_type_enum  p_type;
+	union Property_type p_value;
+	bool                is_copy;
+};
+
+typedef struct property_data property_data;
+
+struct property {
+	uint8_t          id;
+	property_data    data;
+	struct property *next;
+};
+typedef struct property property;
+
+struct mqtt_msg_info {
+	uint32_t pipe;
+};
+typedef struct mqtt_msg_info mqtt_msg_info;
 
 typedef struct mqtt_topic_qos_t {
 	nng_mqtt_topic topic;
