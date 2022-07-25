@@ -22,6 +22,8 @@
 typedef struct mqtt_tcptran_pipe mqtt_tcptran_pipe;
 typedef struct mqtt_tcptran_ep   mqtt_tcptran_ep;
 
+#define NNI_NANO_MAX_HEADER_SIZE 5
+
 // tcp_pipe is one end of a TCP connection.
 struct mqtt_tcptran_pipe {
 	nng_stream *     conn;
@@ -983,7 +985,7 @@ mqtt_tcptran_pipe_start(
 	if (mqtt_version != MQTT_PROTOCOL_VERSION_v311 &&
 	    mqtt_version != MQTT_PROTOCOL_VERSION_v5) {
 		// Using MQTT V311 as default protocol version
-		mqtt_version = 4; // Default TODO Notify user as a warning
+		mqtt_version = MQTT_PROTOCOL_VERSION_v311; // Default TODO Notify user as a warning
 		nni_mqtt_msg_alloc(&connmsg, 0);
 		nni_mqtt_msg_set_packet_type(connmsg, NNG_MQTT_CONNECT);
 		nni_mqtt_msg_set_connect_proto_version(
