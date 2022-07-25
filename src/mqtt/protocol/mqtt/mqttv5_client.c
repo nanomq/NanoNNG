@@ -8,7 +8,7 @@
 //
 
 #include "core/nng_impl.h"
-// #include "nng/protocol/mqtt/mqtt.h"
+#include "nng/protocol/mqtt/mqtt.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 #include "supplemental/mqtt/mqtt_qos_db_api.h"
 
@@ -117,8 +117,7 @@ mqtt_sock_init(void *arg, nni_sock *sock)
 	mqtt_ctx_init(&s->master, s);
 
 #ifdef NNG_SUPP_SQLITE
-	nni_qos_db_init_sqlite(s->sqlite_db, DB_NAME, false);
-	nni_qos_db_reset_client_msg_pipe_id(s->sqlite_db);
+	// TODO support
 #endif
 
 	s->mqtt_pipe = NULL;
@@ -131,7 +130,7 @@ mqtt_sock_fini(void *arg)
 {
 	mqtt_sock_t *s = arg;
 #ifdef NNG_SUPP_SQLITE
-	nni_qos_db_fini_sqlite(s->sqlite_db);
+	// nni_qos_db_fini_sqlite(s->sqlite_db);
 #endif
 	mqtt_ctx_fini(&s->master);
 	nni_mtx_fini(&s->mtx);
@@ -840,6 +839,47 @@ mqtt_sock_get_disconnect_code(void *arg, void *v, size_t *sz, nni_opt_type t)
 	return (rv);
 }
 
+
+static int
+mqttv5_sock_set_conf_with_db(void *arg, const void *v, size_t sz, nni_opt_type t)
+{
+	NNI_ARG_UNUSED(sz);
+#ifdef NNG_HAVE_MQTT_BROKER
+	mqtt_sock_t *s = arg;
+	if (t == NNI_TYPE_OPAQUE) {
+		nni_mtx_lock(&s->mtx);
+		s->bridge_conf = (conf_bridge_node *) v;
+
+#ifdef NNG_SUPP_SQLITE
+		conf_bridge_node *bridge_conf = s->bridge_conf;
+		if (bridge_conf != NULL && bridge_conf->sqlite->enable) {
+			s->retry = bridge_conf->sqlite->resend_interval;
+			nni_lmq_init(&s->offline_cache,
+			    bridge_conf->sqlite->flush_mem_threshold);
+			nni_qos_db_init_sqlite(s->sqlite_db,
+			    bridge_conf->sqlite->mounted_file_path, DB_NAME,
+			    false);
+			nni_qos_db_reset_client_msg_pipe_id(
+			    bridge_conf->sqlite->enable, s->sqlite_db,
+			    bridge_conf->name);
+			nni_mqtt_qos_db_remove_all_client_offline_msg(
+			    s->sqlite_db, bridge_conf->name);
+			nni_mqtt_qos_db_set_client_info(s->sqlite_db,
+			    bridge_conf->name, NULL, "MQTT",
+			    bridge_conf->proto_ver);
+		}
+#endif
+		nni_mtx_unlock(&s->mtx);
+		return 0;
+	}
+#else
+	NNI_ARG_UNUSED(arg);
+	NNI_ARG_UNUSED(v);
+	NNI_ARG_UNUSED(t);
+#endif
+	return NNG_EUNREACHABLE;
+}
+
 static nni_proto_pipe_ops mqtt_pipe_ops = {
 	.pipe_size  = sizeof(mqtt_pipe_t),
 	.pipe_init  = mqtt_pipe_init,
@@ -872,6 +912,10 @@ static nni_option mqtt_sock_options[] = {
 	{
 	    .o_name = NNG_OPT_MQTT_DISCONNECT_PROPERTY,
 	    .o_get  = mqtt_sock_get_disconnect_prop,
+	},
+	{
+	    .o_name = NANO_CONF,
+	    .o_set  = mqttv5_sock_set_conf_with_db,
 	},
 	// terminate list
 	{
