@@ -23,6 +23,8 @@ static bool conf_bridge_node_parse_subs(
     conf_bridge_node *node, const char *path, const char *name);
 static void               conf_auth_destroy(conf_auth *auth);
 static void               conf_web_hook_destroy(conf_web_hook *web_hook);
+static bool               conf_tls_parse(
+                  conf_tls *tls, const char *path, const char *prefix1, const char *prefix2);
 static void               conf_tls_init(conf_tls *tls);
 static void               conf_tls_destroy(conf_tls *tls);
 static void               conf_auth_http_req_init(conf_auth_http_req *req);
@@ -247,12 +249,84 @@ static char *
 get_conf_value_with_prefix2(char *line, size_t len, const char *prefix,
     const char *name, const char *key)
 {
-	size_t sz  = strlen(prefix) + strlen(name) + strlen(key) + 2;
-	char * str = nni_zalloc(sz);
-	sprintf(str, "%s%s%s", prefix, name, key);
+	size_t prefix_sz = prefix ? strlen(prefix) : 0;
+	size_t name_sz   = name ? strlen(name) : 0;
+	size_t sz        = prefix_sz + name_sz + strlen(key) + 2;
+
+	char *str = nni_zalloc(sz);
+	sprintf(str, "%s%s%s", prefix, name ? name : "", key ? key : "");
 	char *value = get_conf_value(line, len, str);
 	free(str);
 	return value;
+}
+
+static bool
+conf_tls_parse(
+    conf_tls *tls, const char *path, const char *prefix1, const char *prefix2)
+{
+	FILE *fp;
+	if ((fp = fopen(path, "r")) == NULL) {
+		debug_msg("File %s open failed", path);
+		return false;
+	}
+	char * line = NULL;
+	size_t sz   = 0;
+
+	char *value;
+	while (nano_getline(&line, &sz, fp) != -1) {
+		if ((value = get_conf_value_with_prefix2(
+		         line, sz, prefix1, prefix2, "tls.enable")) != NULL) {
+			tls->enable = nni_strcasecmp(value, "true") == 0;
+			nng_strfree(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                prefix1, prefix2, "tls.url")) != NULL) {
+			FREE_NONULL(tls->url);
+			tls->url = value;
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                prefix1, prefix2, "tls.key_password")) !=
+		    NULL) {
+			FREE_NONULL(tls->key_password);
+			tls->key_password = value;
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                prefix1, prefix2, "tls.keyfile")) != NULL) {
+			FREE_NONULL(tls->key);
+			FREE_NONULL(tls->keyfile);
+			tls->keyfile = value;
+			file_load_data(tls->keyfile, (void **) &tls->key);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                prefix1, prefix2, "tls.certfile")) != NULL) {
+			FREE_NONULL(tls->cert);
+			FREE_NONULL(tls->certfile);
+			tls->certfile = value;
+			file_load_data(tls->certfile, (void **) &tls->cert);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                prefix1, prefix2, "tls.cacertfile")) != NULL) {
+			FREE_NONULL(tls->ca);
+			FREE_NONULL(tls->cafile);
+			tls->cafile = value;
+			file_load_data(tls->cafile, (void **) &tls->ca);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                prefix1, prefix2, "tls.verify_peer")) !=
+		    NULL) {
+			tls->verify_peer = nni_strcasecmp(value, "true") == 0;
+			nng_strfree(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                prefix1, prefix2,
+		                "tls.fail_if_no_peer_cert")) != NULL) {
+			tls->set_fail = nni_strcasecmp(value, "true") == 0;
+			nng_strfree(value);
+		}
+		free(line);
+		line = NULL;
+	}
+
+	if (line) {
+		free(line);
+	}
+
+	fclose(fp);
+
+	return true;
 }
 
 bool
@@ -408,46 +482,7 @@ conf_parser(conf *nanomq_conf)
 			config->tls.enable =
 			    nni_strcasecmp(value, "true") == 0;
 			nng_strfree(value);
-		} else if ((value = get_conf_value(line, sz, "tls.url")) !=
-		    NULL) {
-			FREE_NONULL(config->tls.url);
-			config->tls.url = value;
-		} else if ((value = get_conf_value(
-		                line, sz, "tls.key_password")) != NULL) {
-			FREE_NONULL(config->tls.key_password);
-			config->tls.key_password = value;
-		} else if ((value = get_conf_value(line, sz, "tls.keyfile")) !=
-		    NULL) {
-			FREE_NONULL(config->tls.key);
-			FREE_NONULL(config->tls.keyfile);
-			config->tls.keyfile = value;
-			file_load_data(
-			    config->tls.keyfile, (void **) &config->tls.key);
-		} else if ((value = get_conf_value(
-		                line, sz, "tls.certfile")) != NULL) {
-			FREE_NONULL(config->tls.cert);
-			FREE_NONULL(config->tls.certfile);
-			config->tls.certfile = value;
-			file_load_data(
-			    config->tls.certfile, (void **) &config->tls.cert);
-		} else if ((value = get_conf_value(
-		                line, sz, "tls.cacertfile")) != NULL) {
-			FREE_NONULL(config->tls.ca);
-			FREE_NONULL(config->tls.cafile);
-			config->tls.cafile = value;
-			file_load_data(
-			    config->tls.cafile, (void **) &config->tls.ca);
-		} else if ((value = get_conf_value(
-		                line, sz, "tls.verify_peer")) != NULL) {
-			config->tls.verify_peer =
-			    nni_strcasecmp(value, "true") == 0;
-			nng_strfree(value);
-		} else if ((value = get_conf_value(line, sz,
-		                "tls.fail_if_no_peer_cert")) != NULL) {
-			config->tls.set_fail =
-			    nni_strcasecmp(value, "true") == 0;
-			nng_strfree(value);
-		}
+		} 
 		free(line);
 		line = NULL;
 	}
@@ -457,7 +492,7 @@ conf_parser(conf *nanomq_conf)
 	}
 
 	fclose(fp);
-
+	conf_tls_parse(&config->tls, dest_path, "\0","\0");
 	conf_sqlite_parse(&config->sqlite, dest_path, "sqlite");
 
 	return true;
@@ -481,13 +516,27 @@ conf_tls_init(conf_tls *tls)
 static void
 conf_tls_destroy(conf_tls *tls)
 {
-	free(tls->cafile);
-	free(tls->certfile);
-	free(tls->keyfile);
-	free(tls->key);
-	free(tls->key_password);
-	free(tls->cert);
-	free(tls->ca);
+	if (tls->cafile) {
+		free(tls->cafile);
+	}
+	if (tls->certfile) {
+		free(tls->certfile);
+	}
+	if (tls->keyfile) {
+		free(tls->keyfile);
+	}
+	if (tls->key) {
+		free(tls->key);
+	}
+	if (tls->key_password) {
+		free(tls->key_password);
+	}
+	if (tls->cert) {
+		free(tls->cert);
+	}
+	if (tls->ca) {
+		free(tls->ca);
+	}
 }
 
 static void
@@ -569,6 +618,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->websocket.tls_url = NULL;
 
 	conf_bridge_init(&nanomq_conf->bridge);
+	conf_bridge_init(&nanomq_conf->aws_bridge);
 
 	nanomq_conf->web_hook.enable         = false;
 	nanomq_conf->web_hook.url            = NULL;
@@ -1170,6 +1220,8 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->enable         = false;
 	node->parallel       = 2;
 	node->address        = NULL;
+	node->host           = NULL;
+	node->port           = 1883;
 	node->clean_start    = true;
 	node->clientid       = NULL;
 	node->username       = NULL;
@@ -1288,6 +1340,13 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 		                key_prefix, name, ".address")) != NULL) {
 			node->address = value;
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".host")) != NULL) {
+			node->host = value;
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".port")) != NULL) {
+			node->port = atoi(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".clientid")) != NULL) {
 			node->clientid = value;
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
@@ -1320,8 +1379,48 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 	fclose(fp);
 
 	conf_bridge_node_parse_subs(node, path, name);
+	char *prefix2 = nng_zalloc(strlen(name) + 2);
+	sprintf(prefix2, "%s.", name);
+	conf_tls_parse(&node->tls, path, key_prefix, prefix2);
+	nng_strfree(prefix2);
 
 	return node;
+}
+
+static bool
+conf_bride_content_parse(
+    conf *nanomq_conf, conf_bridge *bridge, const char *path)
+{
+	// 1. parse sqlite config from nanomq_bridge.conf
+	conf_sqlite_parse(&bridge->sqlite, path, "bridge.sqlite");
+
+	// 2. find all the name from the file
+	size_t group_count;
+	char **group_names = get_bridge_group_names(path, &group_count);
+
+	if (group_count == 0 || group_names == NULL) {
+		debug_msg("No bridge config group found");
+		return false;
+	}
+
+	// 3. foreach the names as the key, get the value from the file and set
+	// sqlite config pointer;
+	conf_bridge_node **node_array =
+	    calloc(group_count, sizeof(conf_bridge_node *));
+
+	bridge->count = group_count;
+	for (size_t i = 0; i < group_count; i++) {
+		conf_bridge_node *node =
+		    conf_bridge_node_parse_with_name(path, group_names[i]);
+		node->name    = nng_strdup(group_names[i]);
+		node->sqlite  = &bridge->sqlite;
+		node_array[i] = node;
+		nanomq_conf->bridge_mode |= node->enable;
+	}
+	bridge->nodes = node_array;
+	free_bridge_group_names(group_names, group_count);
+
+	return true;
 }
 
 bool
@@ -1340,37 +1439,26 @@ conf_bridge_parse(conf *nanomq_conf)
 		}
 	}
 	conf_bridge *bridge = &nanomq_conf->bridge;
+	return conf_bride_content_parse(nanomq_conf, bridge, dest_path);
+}
 
-	// 1. parse sqlite config from nanomq_bridge.conf
-	conf_sqlite_parse(&bridge->sqlite, dest_path, "bridge.sqlite");
+bool
+conf_aws_bridge_parse(conf *nanomq_conf)
+{
+	const char *dest_path = nanomq_conf->aws_bridge_file;
 
-	// 2. find all the name from the file
-	size_t group_count;
-	char **group_names = get_bridge_group_names(dest_path, &group_count);
-
-	if (group_count == 0 || group_names == NULL) {
-		debug_msg("No bridge config group found");
-		return false;
+	if (dest_path == NULL || !nano_file_exists(dest_path)) {
+		if (!nano_file_exists(CONF_AWS_BRIDGE_PATH_NAME)) {
+			debug_msg("Configure file [%s] or [%s] not found or "
+			          "unreadable",
+			    dest_path, CONF_AWS_BRIDGE_PATH_NAME);
+			return false;
+		} else {
+			dest_path = CONF_AWS_BRIDGE_PATH_NAME;
+		}
 	}
-
-	// 3. foreach the names as the key, get the value from the file and set
-	// sqlite config pointer;
-	conf_bridge_node **node_array =
-	    calloc(group_count, sizeof(conf_bridge_node *));
-
-	bridge->count = group_count;
-	for (size_t i = 0; i < group_count; i++) {
-		conf_bridge_node *node = conf_bridge_node_parse_with_name(
-		    dest_path, group_names[i]);
-		node->name    = nng_strdup(group_names[i]);
-		node->sqlite  = &bridge->sqlite;
-		node_array[i] = node;
-		nanomq_conf->bridge_mode |= node->enable;
-	}
-	bridge->nodes = node_array;
-	free_bridge_group_names(group_names, group_count);
-
-	return true;
+	conf_bridge *bridge = &nanomq_conf->aws_bridge;
+	return conf_bride_content_parse(nanomq_conf, bridge, dest_path);
 }
 
 void
@@ -1385,6 +1473,9 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 	}
 	if (node->address) {
 		free(node->address);
+	}
+	if (node->host) {
+		free(node->host);
 	}
 	if (node->username) {
 		free(node->username);
@@ -2090,6 +2181,7 @@ conf_fini(conf *nanomq_conf)
 	nng_strfree(nanomq_conf->websocket.url);
 
 	conf_bridge_destroy(&nanomq_conf->bridge);
+	conf_bridge_destroy(&nanomq_conf->aws_bridge);
 	conf_web_hook_destroy(&nanomq_conf->web_hook);
 	conf_auth_http_destroy(&nanomq_conf->auth_http);
 	conf_auth_destroy(&nanomq_conf->auths);
