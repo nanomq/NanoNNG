@@ -14,6 +14,7 @@
 #define CONF_PATH_NAME "/etc/nanomq.conf"
 #define CONF_AUTH_PATH_NAME "/etc/nanomq_auth_username.conf"
 #define CONF_BRIDGE_PATH_NAME "/etc/nanomq_bridge.conf"
+#define CONF_AWS_BRIDGE_PATH_NAME "/etc/nanomq_aws_bridge.conf"
 #define CONF_GATEWAY_PATH_NAME "/etc/nanomq_gateway.conf"
 #define CONF_RULE_ENGINE_PATH_NAME "/etc/nanomq_rule.conf"
 #define CONF_WEB_HOOK_PATH_NAME "/etc/nanomq_web_hook.conf"
@@ -181,6 +182,8 @@ struct conf_bridge_node {
 	bool         enable;
 	char *       name;
 	char *       address;
+	char *       host;
+	uint16_t     port;
 	uint8_t      proto_ver;
 	char *       clientid;
 	bool         clean_start;
@@ -281,34 +284,36 @@ typedef enum {
 } persistence_type;
 
 struct conf {
-	char *conf_file;
-	char *bridge_file;
-	char            *web_hook_file;
-	char            *auth_file;
-	char            *auth_http_file;
-	char            *url; // "nmq-tcp://addr:port"
-	int              num_taskq_thread;
-	int              max_taskq_thread;
-	uint32_t         parallel;
-	uint32_t         max_packet_size;
-	uint32_t         client_max_packet_size;
-	int              property_size;
-	int              msq_len;
-	int              qos_duration;
-	void            *db_root;
-	bool             allow_anonymous;
-	bool             daemon;
-	bool             bridge_mode;
+	char *   conf_file;
+	char *   bridge_file;
+	char *   aws_bridge_file;
+	char *   web_hook_file;
+	char *   auth_file;
+	char *   auth_http_file;
+	char *   url; // "nmq-tcp://addr:port"
+	int      num_taskq_thread;
+	int      max_taskq_thread;
+	uint32_t parallel;
+	uint32_t max_packet_size;
+	uint32_t client_max_packet_size;
+	int      property_size;
+	int      msq_len;
+	int      qos_duration;
+	void *   db_root;
+	bool     allow_anonymous;
+	bool     daemon;
+	bool     bridge_mode;
 
 	conf_sqlite      sqlite;
 	conf_tls         tls;
 	conf_http_server http_server;
 	conf_websocket   websocket;
 	conf_bridge      bridge;
+	conf_bridge      aws_bridge;
 	conf_web_hook    web_hook;
 
 #if defined(SUPP_RULE_ENGINE)
-	char     *rule_file;
+	char *    rule_file;
 	conf_rule rule_eng;
 #endif
 
@@ -320,6 +325,7 @@ typedef struct conf conf;
 
 extern bool conf_parser(conf *nanomq_conf);
 extern bool conf_bridge_parse(conf *nanomq_conf);
+extern bool conf_aws_bridge_parse(conf *nanomq_conf);
 extern bool conf_gateway_parse(zmq_gateway_conf *g_conf);
 extern bool conf_web_hook_parse(conf *nanomq_conf);
 extern bool conf_rule_parse(conf *nanomq_conf);
