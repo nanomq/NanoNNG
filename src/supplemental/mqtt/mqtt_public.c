@@ -30,6 +30,18 @@ nng_mqtt_msg_decode(nng_msg *msg)
 	return nni_mqtt_msg_decode(msg);
 }
 
+int
+nng_mqttv5_msg_encode(nng_msg *msg)
+{
+	return nni_mqttv5_msg_encode(msg);
+}
+
+int
+nng_mqttv5_msg_decode(nng_msg *msg)
+{
+	return nni_mqttv5_msg_decode(msg);
+}
+
 void
 nng_mqtt_msg_set_packet_type(nng_msg *msg, nng_mqtt_packet_type packet_type)
 {

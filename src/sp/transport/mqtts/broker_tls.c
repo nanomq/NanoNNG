@@ -20,6 +20,7 @@
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "nng/supplemental/tls/tls.h"
 #include "supplemental/mqtt/mqtt_qos_db_api.h"
+#include "supplemental/mqtt/mqtt_msg.h"
 
 // TLS over TCP transport.   Platform specific TLS Over TCP operations must be
 // supplied as well.
