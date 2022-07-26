@@ -94,6 +94,10 @@ struct mqtt_sock_s {
 	void           *dis_prop;        // disconnect property
 #ifdef NNG_SUPP_SQLITE
 	sqlite3 *sqlite_db;
+	nni_lmq  offline_cache;
+#endif
+#ifdef NNG_HAVE_MQTT_BROKER
+	conf_bridge_node *bridge_conf;
 #endif
 };
 
