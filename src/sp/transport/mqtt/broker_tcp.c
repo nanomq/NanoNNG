@@ -20,6 +20,7 @@
 #include "nng/supplemental/nanolib/conf.h"
 #include "nng/supplemental/nanolib/mqtt_db.h"
 #include "supplemental/mqtt/mqtt_qos_db_api.h"
+#include "supplemental/mqtt/mqtt_msg.h"
 
 // TCP transport.   Platform specific TCP operations must be
 // supplied as well.

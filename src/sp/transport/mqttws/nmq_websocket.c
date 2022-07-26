@@ -25,6 +25,7 @@
 #include "nng/supplemental/nanolib/mqtt_db.h"
 #include "nng/supplemental/nanolib/conf.h"
 #include "supplemental/mqtt/mqtt_qos_db_api.h"
+#include "supplemental/mqtt/mqtt_msg.h"
 
 typedef struct ws_listener ws_listener;
 typedef struct ws_pipe     ws_pipe;

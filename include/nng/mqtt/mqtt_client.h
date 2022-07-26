@@ -442,6 +442,8 @@ NNG_DECL int  nng_mqtt_msg_proto_data_alloc(nng_msg *);
 NNG_DECL void nng_mqtt_msg_proto_data_free(nng_msg *);
 NNG_DECL int  nng_mqtt_msg_encode(nng_msg *);
 NNG_DECL int  nng_mqtt_msg_decode(nng_msg *);
+NNG_DECL int  nng_mqttv5_msg_encode(nng_msg *);
+NNG_DECL int  nng_mqttv5_msg_decode(nng_msg *);
 NNG_DECL void nng_mqtt_msg_set_packet_type(nng_msg *, nng_mqtt_packet_type);
 NNG_DECL nng_mqtt_packet_type nng_mqtt_msg_get_packet_type(nng_msg *);
 NNG_DECL void nng_mqtt_msg_set_connect_proto_version(nng_msg *, uint8_t);
