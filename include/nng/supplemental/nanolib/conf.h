@@ -317,8 +317,9 @@ struct conf {
 	conf_rule rule_eng;
 #endif
 
-	conf_auth      auths;
-	conf_auth_http auth_http;
+	conf_auth         auths;
+	conf_auth_http    auth_http;
+	struct hashmap_s *cid_table;
 };
 
 typedef struct conf conf;
