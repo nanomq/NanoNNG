@@ -173,9 +173,10 @@ done:
 			if (p->ws_param == NULL) {
 				conn_param_alloc(&p->ws_param);
 			}
-			if (conn_handler(
-			        nni_msg_body(p->tmp_msg), p->ws_param, p->wantrxhead) != 0) {
+			if (conn_handler(nni_msg_body(p->tmp_msg), p->ws_param,
+			        nni_msg_len(p->tmp_msg)) != 0) {
 				conn_param_free(p->ws_param);
+				rv = NNG_ECONNRESET;
 				goto reset;
 			}
 			if (p->ws_param->pro_ver == 5) {
