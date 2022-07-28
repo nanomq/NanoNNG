@@ -185,6 +185,7 @@ client(const char *url)
 
 	nng_dialer_set_ptr(dialer, NNG_OPT_MQTT_CONNMSG, msg);
 	nng_dialer_start(dialer, NNG_FLAG_NONBLOCK);
+
 	nng_mqtt_topic_qos topic_qos[] = {
 		{ .qos     = 0,
 		    .topic = { .buf = (uint8_t *) SUB_TOPIC1,
@@ -207,7 +208,7 @@ client(const char *url)
 	nng_mqtt_msg_set_subscribe_topics(submsg, topic_qos, topic_qos_count);
 
 	// Send subscribe message
-	nng_sendmsg(sock, msg, NNG_FLAG_NONBLOCK);
+	nng_sendmsg(sock, submsg, NNG_FLAG_NONBLOCK);
 
 	for (i = 0; i < nwork; i++) {
 		client_cb(works[i]);

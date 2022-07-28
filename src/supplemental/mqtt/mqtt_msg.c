@@ -9,6 +9,14 @@ static nni_proto_msg_ops proto_msg_ops = {
 	.msg_dup = nni_mqtt_msg_dup
 };
 
+// set default conn param in case User ignores it.
+void
+nni_proto_data_init(nni_mqtt_proto_data *proto_data)
+{
+	proto_data->var_header.connect.conn_flags.clean_session = true;
+	proto_data->var_header.connect.keep_alive = 30;
+}
+
 int
 nni_mqtt_msg_proto_data_alloc(nni_msg *msg)
 {
@@ -21,21 +29,6 @@ nni_mqtt_msg_proto_data_alloc(nni_msg *msg)
 	nni_msg_set_proto_data(msg, &proto_msg_ops, proto_data);
 
 	return 0;
-}
-
-void
-mqtt_close_unack_msg_cb(void *key, void *val)
-{
-	NNI_ARG_UNUSED(key);
-
-	nni_msg * msg = val;
-	nni_aio * aio = NULL;
-
-	aio = nni_mqtt_msg_get_aio(msg);
-	if (aio) {
-		nni_aio_finish_error(aio, NNG_ECLOSED);
-	}
-	nni_msg_free(msg);
 }
 
 void
@@ -213,6 +206,7 @@ nni_mqtt_msg_set_publish_topic(nni_msg *msg, const char *topic)
 	proto_data->is_copied = true;
 	return rv;
 }
+
 const char *
 nni_mqtt_msg_get_publish_topic(nni_msg *msg, uint32_t *topic_len)
 {
@@ -525,6 +519,13 @@ nni_mqtt_msg_set_disconnect_reason_code(nni_msg *msg, uint8_t reason_code)
 }
 
 void
+nni_mqtt_msg_set_disconnect_property(nni_msg *msg, property *prop)
+{
+	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
+	proto_data->var_header.disconnect.prop = prop;
+}
+
+void
 nni_mqtt_msg_set_connect_keep_alive(nni_msg *msg, uint16_t keep_alive)
 {
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
@@ -779,6 +780,21 @@ nni_mqtt_msg_set_aio(nni_msg *msg, nni_aio *aio)
 {
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
 	proto_data->aio                 = aio;
+}
+
+void
+mqtt_close_unack_msg_cb(void *key, void *val)
+{
+	NNI_ARG_UNUSED(key);
+
+	nni_msg * msg = val;
+	nni_aio * aio = NULL;
+
+	aio = nni_mqtt_msg_get_aio(msg);
+	if (aio) {
+		nni_aio_finish_error(aio, NNG_ECLOSED);
+	}
+	nni_msg_free(msg);
 }
 
 conn_param *

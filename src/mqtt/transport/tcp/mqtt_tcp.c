@@ -50,6 +50,7 @@ struct mqtt_tcptran_pipe {
 	nni_aio         *rxaio;
 	nni_aio         *qsaio; // aio for qos/pingreq
 	nni_aio         *negoaio;
+	nni_aio         *rpaio;
 	nni_msg         *rxmsg;
 	nni_msg         *smsg;
 	nni_lmq          rslmq;
@@ -160,6 +161,7 @@ mqtt_tcptran_pipe_close(void *arg)
 	nni_aio_close(p->qsaio);
 	nni_aio_close(p->txaio);
 	nni_aio_close(p->negoaio);
+	nni_aio_close(p->rpaio);
 	nni_aio_close(&p->tmaio);
 	nng_stream_close(p->conn);
 }
@@ -173,6 +175,7 @@ mqtt_tcptran_pipe_stop(void *arg)
 	nni_aio_stop(p->qsaio);
 	nni_aio_stop(p->txaio);
 	nni_aio_stop(p->negoaio);
+	nni_aio_stop(p->rpaio);
 	nni_aio_stop(&p->tmaio);
 }
 
@@ -211,6 +214,7 @@ mqtt_tcptran_pipe_fini(void *arg)
 	nni_aio_free(p->txaio);
 	nni_aio_free(p->qsaio);
 	nni_aio_free(p->negoaio);
+	nni_aio_free(p->rpaio);
 	nng_stream_free(p->conn);
 	nni_msg_free(p->rxmsg);
 	nni_lmq_fini(&p->rslmq);
@@ -248,6 +252,7 @@ mqtt_tcptran_pipe_alloc(mqtt_tcptran_pipe **pipep)
 	        0) ||
 	    ((rv = nni_aio_alloc(
 	          &p->qsaio, mqtt_tcptran_pipe_qos_send_cb, p)) != 0) ||
+	    ((rv = nni_aio_alloc(&p->rpaio, NULL, p)) != 0) ||
 	    ((rv = nni_aio_alloc(&p->negoaio, mqtt_tcptran_pipe_nego_cb, p)) !=
 	        0)) {
 		mqtt_tcptran_pipe_fini(p);
@@ -372,15 +377,21 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 		nni_mtx_unlock(&ep->mtx);
 		return;
 	}
+	// Connack
 	if (p->gotrxhead >= p->wantrxhead) {
 		if (p->proto == MQTT_PROTOCOL_VERSION_v5) {
 			rv = nni_mqttv5_msg_decode(p->rxmsg);
+			ep->reason_code = rv;
+			if (rv != 0)
+				goto mqtt_error;
 			ep->property = (void *)nni_mqtt_msg_get_connack_property(p->rxmsg);
 			property_data *data;
 			data = property_get_value(ep->property, RECEIVE_MAXIMUM);
 			if (data) {
 				if (data->p_value.u16 == 0) {
 					rv = MQTT_ERR_PROTOCOL;
+					ep->reason_code = rv;
+					goto mqtt_error;
 				} else {
 					p->sndmax = data->p_value.u16;
 				}
@@ -389,6 +400,8 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 			if (data) {
 				if (data->p_value.u32 == 0) {
 					rv = MQTT_ERR_PROTOCOL;
+					ep->reason_code = rv;
+					goto mqtt_error;
 				} else {
 					p->packmax = data->p_value.u32;
 				}
@@ -398,24 +411,44 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 				p->qosmax = data->p_value.u8;
 			}
 		} else {
-			rv = nni_mqtt_msg_decode(p->rxmsg);
+			if ((rv = nni_mqtt_msg_decode(p->rxmsg)) != MQTT_SUCCESS) {
+				ep->reason_code = rv;
+				goto mqtt_error;
+			}
 			ep->property = NULL;
 		}
-		ep->reason_code = rv;
-		// TODO set property for MQTTV5
-		nni_msg_free(p->rxmsg);
-		p->rxmsg = NULL;
+		ep->reason_code = nni_mqtt_msg_get_connack_return_code(p->rxmsg);
 	}
 
+mqtt_error:
 	// We are ready now.  We put this in the wait list, and
 	// then try to run the matcher.
 	nni_list_remove(&ep->negopipes, p);
 	nni_list_append(&ep->waitpipes, p);
 
+	nni_msg_free(p->rxmsg);
+	p->rxmsg = NULL;
+
 	if (rv == MQTT_SUCCESS) {
 		mqtt_tcptran_ep_match(ep);
 	} else {
-		// TODO send DISCONNECT
+		// Fail but still match to let user know ack has arrived
+		mqtt_tcptran_ep_match(ep);
+		// send DISCONNECT
+		nni_iov iov;
+		p->txlen[0] = CMD_DISCONNECT;
+		if (p->proto == MQTT_PROTOCOL_VERSION_v5) {
+			p->txlen[1] = 0x02;
+			p->txlen[2] = ep->reason_code;
+			p->txlen[3] = 0; // length of property
+			iov.iov_len = 4;
+		} else {
+			p->txlen[1] = 0x00;
+			iov.iov_len = 2;
+		}
+		iov.iov_buf = p->txlen;
+		nni_aio_set_iov(p->rpaio, 1, &iov);
+		nng_stream_send(p->conn, p->rpaio);
 	}
 	nni_mtx_unlock(&ep->mtx);
 
@@ -963,6 +996,7 @@ mqtt_tcptran_pipe_start(
 	nni_msg *connmsg = NULL;
 	uint8_t mqtt_version;
 	int      niov = 0;
+	int      rv;
 
 	ep->refcnt++;
 
@@ -980,27 +1014,34 @@ mqtt_tcptran_pipe_start(
 
 	mqtt_version = nni_mqtt_msg_get_connect_proto_version(connmsg);
 
-	if (mqtt_version != MQTT_PROTOCOL_VERSION_v311 &&
-	    mqtt_version != MQTT_PROTOCOL_VERSION_v5) {
-		// Using MQTT V311 as default protocol version
-		mqtt_version = MQTT_PROTOCOL_VERSION_v311; // Default TODO Notify user as a warning
-		nni_mqtt_msg_alloc(&connmsg, 0);
-		nni_mqtt_msg_set_packet_type(connmsg, NNG_MQTT_CONNECT);
-		nni_mqtt_msg_set_connect_proto_version(
-		    connmsg, MQTT_PROTOCOL_VERSION_v311);
-		nni_mqtt_msg_set_connect_keep_alive(connmsg, 60);
-		nni_mqtt_msg_set_connect_clean_session(connmsg, true);
-	}
-
 	if (mqtt_version == MQTT_PROTOCOL_VERSION_v311)
-		nni_mqtt_msg_encode(connmsg);
+		rv = nni_mqtt_msg_encode(connmsg);
 	else if (mqtt_version == MQTT_PROTOCOL_VERSION_v5) {
 		property *prop = nni_mqtt_msg_get_connect_property(connmsg);
 		property_data *data;
 		data = property_get_value(prop, MAXIMUM_PACKET_SIZE);
 		if (data)
 			p->rcvmax = data->p_value.u32;
-		nni_mqttv5_msg_encode(connmsg);
+		rv = nni_mqttv5_msg_encode(connmsg);
+	} else {
+		nni_plat_printf("Warning. MQTT protocol version is not specificed.\n");
+		rv = 1;
+	}
+
+	if (rv != MQTT_SUCCESS ||
+	   (mqtt_version != MQTT_PROTOCOL_VERSION_v311 &&
+	    mqtt_version != MQTT_PROTOCOL_VERSION_v5)) {
+		// Free the msg from user
+		nni_msg_free(connmsg);
+		nni_plat_printf("Warning. Cancelled a illegal connnect msg from user.\n");
+		// Using MQTT V311 as default protocol version
+		mqtt_version = 4; // Default TODO Notify user as a warning
+		nni_mqtt_msg_alloc(&connmsg, 0);
+		nni_mqtt_msg_set_packet_type(connmsg, NNG_MQTT_CONNECT);
+		nni_mqtt_msg_set_connect_proto_version(
+		    connmsg, MQTT_PROTOCOL_VERSION_v311);
+		nni_mqtt_msg_set_connect_keep_alive(connmsg, 60);
+		nni_mqtt_msg_set_connect_clean_session(connmsg, true);
 	}
 
 	p->gotrxhead  = 0;
@@ -1110,7 +1151,7 @@ mqtt_tcptran_url_parse_source(
 		return (0);
 	}
 
-	len             = (size_t)(semi - url->u_hostname);
+	len             = (size_t) (semi - url->u_hostname);
 	url->u_hostname = semi + 1;
 
 	if (strcmp(surl->u_scheme, "tcp") == 0) {
