@@ -165,35 +165,6 @@ extern "C" {
 #define NNG_OPT_MQTT_USERNAME "username"
 #define NNG_OPT_MQTT_PASSWORD "password"
 
-// Note that MQTT sockets can be connected to at most a single server.
-// Creating the client does not connect it.
-NNG_DECL int nng_mqtt_client_open(nng_socket *);
-NNG_DECL int nng_mqttv5_client_open(nng_socket *);
-
-// Note that there is a single implicit dialer for the client,
-// and options may be set on the socket to configure dial options.
-// Those options should be set before doing nng_dial().
-
-// close done via nng_close().
-
-// Question: session resumption.  Should we resume sessions under the hood
-// as part of reconnection, or do we want to expose this to the API user?
-// My inclination is not to expose.
-
-// nng_dial or nng_dialer_create can be used, but this protocol only
-// allows a single dialer to be created on the socket.
-
-// Subscriptions are normally run synchronously from the view of the
-// caller.  Because there is a round-trip message involved, we use
-// a separate method instead of merely relying upon socket options.
-// TODO: shared subscriptions.  Subscription options (retain, QoS)
-NNG_DECL int nng_mqtt_subscribe(nng_socket, const char *);
-NNG_DECL int nng_mqtt_subscribe_aio(nng_socket, const char *, nng_aio *);
-NNG_DECL int nng_mqtt_unsubscribe(nng_socket *, const char *);
-NNG_DECL int nng_mqtt_unsubscribe_aio(nng_socket *, const char *, nng_aio *);
-// as with other ctx based methods, we use the aio form exclusively
-NNG_DECL int nng_mqtt_ctx_subscribe(nng_ctx *, const char *, nng_aio *, ...);
-
 // Message handling.  Note that topic aliases are handled by the library
 // automatically on behalf of the consumer.
 
@@ -201,37 +172,6 @@ typedef enum {
 	nng_mqtt_msg_format_binary = 0,
 	nng_mqtt_msg_format_utf8   = 1,
 } nng_mqtt_msg_format_t;
-
-// Message options.  These are convenience wrappers around the above
-// options.
-
-NNG_DECL int nng_mqtt_set_msg_expiry(nng_msg *, nng_duration);
-NNG_DECL int nng_mqtt_get_msg_expiry(nng_msg *, nng_duration *);
-NNG_DECL int nng_mqtt_set_msg_format(nng_msg *, nng_mqtt_msg_format_t);
-NNG_DECL int nng_mqtt_get_msg_format(nng_msg *, nng_mqtt_msg_format_t *);
-NNG_DECL int nng_mqtt_set_msg_topic(nng_msg *, const char *);
-NNG_DECL int nng_mqtt_set_msg_qos(nng_msg *, int);
-NNG_DECL int nng_mqtt_get_msg_topic(nng_msg *, const char **);
-NNG_DECL int nng_mqtt_get_msg_qos(nng_msg *, int *);
-NNG_DECL int nng_mqtt_set_content_type(nng_msg *, const char *);
-NNG_DECL int nng_mqtt_get_content_type(nng_msg *, const char **);
-NNG_DECL int nng_mqtt_get_reason(nng_msg *, const char **);
-
-// User property support.
-typedef struct {
-	const char *up_name;
-	const char *up_value;
-} nng_mqtt_user_prop_t;
-
-typedef struct {
-	int                   up_count;
-	nng_mqtt_user_prop_t *up_props;
-} nng_mqtt_user_props_t;
-
-extern int nng_mqtt_user_props_alloc(nng_mqtt_user_props_t **);
-extern int nng_mqtt_user_props_add(
-    nng_mqtt_user_props_t *, const char *, const char *);
-extern void nng_mqtt_user_props_free(nng_mqtt_user_props_t *);
 
 /* Message types & flags */
 #define CMD_UNKNOWN 0x00

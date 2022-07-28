@@ -684,6 +684,7 @@ nni_mqttv5_msg_encode_connect(nni_msg *msg)
 	nni_msg_clear(msg);
 
 	int poslength = 6;
+	int rv = 0;
 
 	mqtt_connect_vhdr *var_header = &mqtt->var_header.connect;
 
@@ -744,7 +745,9 @@ nni_mqttv5_msg_encode_connect(nni_msg *msg)
 	nni_mqtt_msg_append_u16(msg, var_header->keep_alive);
 
 	/* Encode properties */
-	encode_properties(msg, var_header->properties, CMD_CONNECT);
+	rv = encode_properties(msg, var_header->properties, CMD_CONNECT);
+	if (rv != 0)
+		return rv;
 
 	/* Now we are in payload part */
 
@@ -1485,7 +1488,7 @@ nni_mqttv5_msg_decode_connect(nni_msg *msg)
 
 	// Check connect properties
 	property *prop = mqtt->var_header.connect.properties;
-	if (prop) {
+	if (prop != NULL) {
 		if ((ret = check_properties(prop)) != SUCCESS)
 			return ret;
 		// Check Invalid properties
@@ -1525,7 +1528,7 @@ nni_mqttv5_msg_decode_connect(nni_msg *msg)
 		buf.curpos = &body[0] + pos;
 
 		property *will_prop = mqtt->payload.connect.will_properties;
-		if (will_prop) {
+		if (will_prop != NULL) {
 			if ((ret = check_properties(will_prop)) != SUCCESS)
 				return ret;
 			// Check Invalid properties
@@ -1549,7 +1552,6 @@ nni_mqttv5_msg_decode_connect(nni_msg *msg)
 			}
 		}
 
-	if (mqtt->var_header.connect.conn_flags.will_flag) {
 		/* Will Topic */
 		ret = read_utf8_str(&buf, &mqtt->payload.connect.will_topic);
 		if (ret != 0) {
@@ -1663,7 +1665,7 @@ nni_mqttv5_msg_decode_connack(nni_msg *msg)
 	buf.curpos = &body[0] + pos;
 	// Check properties
 	property *prop = mqtt->var_header.connack.properties;
-	if (prop) {
+	if (prop != NULL) {
 		if ((result = check_properties(prop)) != SUCCESS)
 			return result;
 		// Check Invalid properties
@@ -2587,6 +2589,7 @@ read_byte(struct pos_buf *buf, uint8_t *val)
 	return 0;
 }
 
+
 int
 read_uint16(struct pos_buf *buf, uint16_t *val)
 {
@@ -3192,10 +3195,11 @@ mqtt_msg_dump(mqtt_msg *msg, mqtt_buf *buf, mqtt_buf *packet, bool print_bytes)
 	return 0;
 }
 
+
 property *
 property_alloc(void)
 {
-	property *p = nng_zalloc(sizeof(property));
+	property *p = nni_zalloc(sizeof(property));
 	p->next     = NULL;
 	return p;
 }
@@ -3569,6 +3573,7 @@ property_free(property *prop)
 	return 0;
 }
 
+// Check if repeated properties exist
 reason_code
 check_properties(property *prop)
 {
@@ -3576,12 +3581,10 @@ check_properties(property *prop)
 		return SUCCESS;
 	}
 	for (property *p1 = prop->next; p1 != NULL; p1 = p1->next) {
-		for (property *p2 = prop->next; p2 != NULL; p2 = p2->next) {
-			if (p2 != p1) {
-				if (p1->data.p_type != STR_PAIR &&
-				    p1->id == p2->id) {
-					return PROTOCOL_ERROR;
-				}
+		for (property *p2 = p1->next; p2 != NULL; p2 = p2->next) {
+			if (p1->id == p2->id &&
+			    p1->data.p_type != STR_PAIR) {
+				return PROTOCOL_ERROR;
 			}
 		}
 	}
@@ -3740,8 +3743,9 @@ encode_properties(nni_msg *msg, property *prop, uint8_t cmd)
 		return 0;
 	}
 	if (cmd == CMD_PUBLISH) {
-		nng_time       rtime = nni_msg_get_timestamp(msg);
-		nng_time       ntime = nng_clock();
+		/* TODO
+		nni_time       rtime = nni_msg_get_timestamp(msg);
+		nni_time       ntime = nni_clock();
 		property_data *data =
 		    property_get_value(prop, MESSAGE_EXPIRY_INTERVAL);
 		if (data && ntime > rtime + data->p_value.u32 * 1000) {
@@ -3750,6 +3754,7 @@ encode_properties(nni_msg *msg, property *prop, uint8_t cmd)
 			data->p_value.u32 =
 			    data->p_value.u32 - (ntime - rtime) / 1000;
 		}
+		*/
 	}
 
 	for (property *p = prop->next; p != NULL; p = p->next) {
