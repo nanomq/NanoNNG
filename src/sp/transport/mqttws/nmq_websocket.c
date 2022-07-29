@@ -63,7 +63,6 @@ struct ws_pipe {
 	// MQTT V5
 	uint16_t qrecv_quota;
 	uint32_t qsend_quota;
-	subinfo *tinfo;
 };
 
 static void
@@ -423,12 +422,8 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	qos_pac = nni_msg_get_pub_qos(msg);
 	NNI_GET16(body, tlen);
 
-	// subid
 	subinfo *info, *tinfo=NULL;
-	tinfo = p->tinfo;
-	// tinfo = nni_aio_get_prov_data(txaio);
-	// nni_aio_set_prov_data(txaio, NULL);
-	p->tinfo = NULL;
+	nni_msg_alloc(&smsg, 0);
 	if (nni_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
 		// V5 to V4 shrink msg, remove property length
 		// APP layer must give topic name even if topic
@@ -463,7 +458,6 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			if (niov >= 8) {
 				// nng aio only allow 8 iovs at a time
 				// nni_aio_set_prov_data(txaio, info);
-				p->tinfo = info;
 				break;
 			}
 			uint8_t  var_extra[2], fixheader, tmp[4] = { 0 };
@@ -542,30 +536,25 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 				NNI_PUT16(var_extra, pid);
 				// copy packet id
 				memcpy(p->qos_buf + qlength, var_extra, 2);
-
-				// 2nd part of variable header: pid
-				iov[niov].iov_buf = p->qos_buf + qlength;
-				iov[niov].iov_len = 2;
-				niov++;
-				qlength += 2;
 			} else if (qos_pac > 0) {
 				//ignore the packet id of original packet
 				len_offset += 2;
 			}
+			// 2nd part of variable header: pid
+			iov[niov].iov_buf = p->qos_buf + qlength;
+			iov[niov].iov_len = qos > 0 ? 2 : 0;
+			niov++;
+			qlength += qos > 0 ? 2 : 0;
 			// body
 			iov[niov].iov_buf = body + 2 + tlen + len_offset;
 			iov[niov].iov_len = mlen - 2 - len_offset - tlen;
 			niov++;
+			// apending directly
+			for (int i = 0; i < niov; i++) {
+				nni_msg_append(
+				    smsg, iov[i].iov_buf, iov[i].iov_len);
+			}
 		}
-	}
-
-	// TODO append to msg directly instead of using iov
-	nni_msg_alloc(&smsg, 0);
-	nni_msg_header_append(smsg, iov[0].iov_buf, iov[0].iov_len);
-
-	// payload
-	for (int i = 1; i < niov; i++) {
-		nni_msg_append(smsg, iov[i].iov_buf, iov[i].iov_len);
 	}
 
 	// duplicated msg is gonna be freed by http. so we free old one
@@ -579,6 +568,7 @@ send:
 	nni_aio_set_msg(p->txaio, msg);
 	nni_aio_set_msg(aio, NULL);
 	// verify connect
+	// for websocket, cmd type is 0x00 for PUBLISH
 	if (nni_msg_cmd_type(msg) == CMD_CONNACK) {
 		uint8_t *header = nni_msg_header(msg);
 		if (*(header + 3) != 0x00) {
@@ -651,17 +641,11 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	}
 
 	// subid
-	subinfo *info, *tinfo=NULL;
-	tinfo = p->tinfo;
+	subinfo *info = NULL;
 	// tinfo = nni_aio_get_prov_data(txaio);
 	// nni_aio_set_prov_data(txaio, NULL);
-	p->tinfo = NULL;
 
 	NNI_LIST_FOREACH (&p->npipe->subinfol, info) {
-		if (tinfo != NULL && info != tinfo ) {
-			continue;
-		}
-		tinfo = NULL;
 		len_offset=0;
 		char *sub_topic = info->topic;
 		if (sub_topic[0] == '$') {
@@ -673,12 +657,6 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			}
 		}
 		if (topic_filtern(sub_topic, (char*)(body + 2), tlen)) {
-			if (niov >= 8) {
-				// nng aio only allow 2 msgs at a time
-				// nni_aio_set_prov_data(txaio, info);
-				p->tinfo = info;
-				break;
-			}
 			uint8_t  var_extra[2], fixheader, tmp[4] = { 0 };
 			uint8_t  proplen[4] = { 0 }, var_subid[5] = { 0 };
 			uint32_t pos = 1;
@@ -839,7 +817,6 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			// normal send. qos msg will be resend
 			// afterwards
 			nni_msg_free(msg);
-			p->tinfo = NULL;
 			// nni_aio_set_prov_data(txaio, NULL);
 			nni_aio_set_msg(aio, NULL);
 			nni_aio_finish(aio, 0, 0);
