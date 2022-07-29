@@ -397,145 +397,182 @@ static inline void
 wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 {
 	nni_msg *smsg;
-	uint8_t qos  = NANO_NNI_LMQ_GET_QOS_BITS(msg);
-	// qos default to 0 if the msg is not PUBLISH
-	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
-	nni_aio_set_msg(aio, msg);
-	bool is_sqlite = p->conf->sqlite.enable;
-	// Recomposing
+	int       niov;
+	nni_iov   iov[8];
+	nni_pipe *pipe = p->npipe;
+	uint8_t   qos;
+
+
+	if (nni_msg_get_type(msg) != CMD_PUBLISH)
+		goto send;
+
 	// never modify the original msg
-	if (nni_msg_header_len(msg) > 0 &&
-	    nni_msg_get_type(msg) == CMD_PUBLISH) {
-		uint8_t      *body, *header, qos_pac;
-		uint8_t       var_extra[2],
-		    fixheader[NNI_NANO_MAX_HEADER_SIZE] = { 0 },
-		    tmp[4]                              = { 0 };
-		int       len_offset                    = 0;
-		uint32_t  pos                           = 1;
-		nni_pipe *pipe;
-		uint16_t  pid;
-		uint32_t  property_bytes = 0, property_len = 0;
-		size_t    tlen, rlen, mlen, plength;
+	uint8_t *     body, *header, qos_pac;
+	int           len_offset = 0, sub_id = 0;
+	uint16_t      pid;
+	uint32_t      tprop_bytes, prop_bytes = 0, id_bytes = 0, property_len = 0;
+	size_t        tlen, rlen, mlen, hlen, qlength, plength;
+	bool          is_sqlite = p->conf->sqlite.enable;
 
-		pipe    = p->npipe;
-		body    = nni_msg_body(msg);
-		header  = nni_msg_header(msg);
-		plength = 0;
-		mlen    = nni_msg_len(msg);
-		qos_pac = nni_msg_get_pub_qos(msg);
-		NNI_GET16(body, tlen);
+	body    = nni_msg_body(msg);
+	header  = nni_msg_header(msg);
+	niov    = 0;
+	qlength = 0;
+	mlen    = nni_msg_len(msg);
+	hlen    = nni_msg_header_len(msg);
+	qos_pac = nni_msg_get_pub_qos(msg);
+	NNI_GET16(body, tlen);
 
-		if (nni_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
-			// V5 to V4 shrink msg, remove property length
-			// APP layer must give topic name even if topic
-			// alias is set
-			if (qos_pac > 0) {
-				property_len = get_var_integer(
-				    body + 4 + tlen, &property_bytes);
+	// subid
+	subinfo *info, *tinfo=NULL;
+	tinfo = p->tinfo;
+	// tinfo = nni_aio_get_prov_data(txaio);
+	// nni_aio_set_prov_data(txaio, NULL);
+	p->tinfo = NULL;
+	if (nni_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
+		// V5 to V4 shrink msg, remove property length
+		// APP layer must give topic name even if topic
+		// alias is set
+		if (qos_pac > 0) {
+			property_len =
+			    get_var_integer(body + 4 + tlen, &prop_bytes);
 
-			} else {
-				property_len = get_var_integer(
-				    body + 2 + tlen, &property_bytes);
-			}
-			// V5 msg sent to V4 client
-			// caculate property length and delete it
-			plength = property_len + property_bytes;
-		} else if (nni_msg_cmd_type(msg) == CMD_PUBLISH) {
-			if (qos_pac == 0) {
-				// save time & space for QoS 0 publish
-				goto send;
-			}
+		} else {
+			property_len =
+			    get_var_integer(body + 2 + tlen, &prop_bytes);
 		}
-
-		debug_msg("qos_pac %d sub %d\n", qos_pac, qos);
-		memcpy(fixheader, header, nni_msg_header_len(msg));
-		// get final qos
-		qos = qos_pac > qos ? qos : qos_pac;
-
-		// alter qos according to sub qos
-		if (qos_pac > qos) {
-			if (qos == 1) {
-				// set qos to 1
-				fixheader[0] = fixheader[0] & 0xF9;
-				fixheader[0] = fixheader[0] | 0x02;
-			} else {
-				// set qos to 0
-				fixheader[0] = fixheader[0] & 0xF9;
-				len_offset   = len_offset - 2;
-			}
-		}
-		// copy remaining length
-		rlen = put_var_integer(
-		    tmp, get_var_integer(header, &pos) + len_offset - plength);
-		memcpy(fixheader + 1, tmp, rlen);
-		nni_msg_alloc(&smsg, 0);
-		nni_msg_header_append(smsg, fixheader, rlen+1);
-
-		// 1st part of variable header: topic
-
-		len_offset = 0;      // now use it to indicates the pid length
-		// packet id
-		if (qos > 0) {
-			// set pid
-			len_offset = 2;
-			nni_msg *old;
-			// packetid in aio to differ resend msg
-			// TODO replace it with set prov data
-			pid = (uint16_t)(size_t) nni_aio_get_prov_data(aio);
-			if (pid == 0) {
-				// first time send this msg
-				pid = nni_pipe_inc_packetid(pipe);
-				// store msg for qos retrying
-				nni_msg_clone(msg);
-				if ((old = nni_qos_db_get(is_sqlite,
-				         pipe->nano_qos_db, pipe->p_id,
-				         pid)) != NULL) {
-					// TODO packetid already exists.
-					// do we need to replace old with new
-					// one ? print warning to users
-					nni_println(
-					    "ERROR: packet id duplicates in "
-					    "nano_qos_db");
-					old =
-					    NANO_NNI_LMQ_GET_MSG_POINTER(old);
-
-					nni_qos_db_remove_msg(
-					    is_sqlite, pipe->nano_qos_db, old);
-				}
-				old = NANO_NNI_LMQ_PACKED_MSG_QOS(msg, qos);
-				nni_qos_db_set(is_sqlite, pipe->nano_qos_db,
-				    pipe->p_id, pid, old);
-				nni_qos_db_remove_oldest(is_sqlite,
-				    pipe->nano_qos_db,
-				    p->conf->sqlite.disk_cache_size);
-			}
-			NNI_PUT16(var_extra, pid);
-		} else if (qos_pac > 0) {
-			len_offset += 2;
-		}
-		nni_msg_append(smsg, body, 2+ tlen);
-		if (qos > 0) {
-			// packetid
-			nni_msg_append(smsg, var_extra, 2);
-		}
-
-
-		// variable header + payload
-		if (mlen > 0) {
-			// determine if it needs to skip packet id field
-			uint8_t *buf = body + 2 + tlen + len_offset + plength;
-
-			uint32_t len = mlen - 2 - len_offset - tlen - plength;
-			// payload
-			nni_msg_append(smsg, buf, len);
-			// nni_msg_append(smsg, body + 2 + tlen + len_offset + plength, mlen - 2 - len_offset - tlen - plength);
-		}
-
-		// duplicated msg is gonna be freed by http. so we free old one
-		// here
-		nni_msg_free(msg);
-		msg = smsg;
+		plength       = property_len + prop_bytes;
 	}
+
+	NNI_LIST_FOREACH (&p->npipe->subinfol, info) {
+		if (tinfo != NULL && info != tinfo ) {
+			continue;
+		}
+		tinfo = NULL;
+		len_offset=0;
+		char *sub_topic = info->topic;
+		if (sub_topic[0] == '$') {
+			if (0 == strncmp(sub_topic, "$share/", strlen("$share/"))) {
+				sub_topic = strchr(sub_topic, '/');
+				sub_topic++;
+				sub_topic = strchr(sub_topic, '/');
+				sub_topic++;
+			}
+		}
+		if (topic_filtern(sub_topic, (char*)(body + 2), tlen)) {
+			if (niov >= 8) {
+				// nng aio only allow 8 iovs at a time
+				// nni_aio_set_prov_data(txaio, info);
+				p->tinfo = info;
+				break;
+			}
+			uint8_t  var_extra[2], fixheader, tmp[4] = { 0 };
+			uint8_t  proplen[4] = { 0 }, var_subid[5] = { 0 };
+			uint32_t pos = 1;
+			sub_id       = info->subid;
+			qos          = info->qos;
+			fixheader    = *header;
+
+			// get final qos
+			qos = qos_pac > qos ? qos : qos_pac;
+
+			// alter qos according to sub qos
+			if (qos_pac > qos) {
+				if (qos == 1) {
+					// set qos to 1
+					fixheader = fixheader & 0xF9;
+					fixheader = fixheader | 0x02;
+				} else {
+					// set qos to 0
+					fixheader = fixheader & 0xF9;
+					len_offset   = len_offset - 2;
+				}
+			}
+			// fixed header + remaining length
+			rlen = put_var_integer(tmp,
+			    get_var_integer(header, &pos) + len_offset -
+			        plength);
+			*(p->qos_buf + qlength) = fixheader;
+			// copy remaining length
+			memcpy(p->qos_buf + qlength + 1, tmp, rlen);
+			iov[niov].iov_buf = p->qos_buf + qlength;
+			iov[niov].iov_len = rlen + 1;
+			niov++;
+			qlength += rlen + 1;
+			// 1st part of variable header: topic + topic len
+			iov[niov].iov_buf = body;
+			iov[niov].iov_len = tlen+2;
+			niov++;
+			// len to indicate the offset in packet
+			len_offset = 0;
+			if (qos > 0) {
+				// set pid
+				len_offset = 2;
+				nni_msg *old;
+				// packetid in aio to differ resend msg
+				// TODO replace it with set prov data
+				pid = (uint16_t)(size_t) nni_aio_get_prov_data(aio);
+				if (pid == 0) {
+					// first time send this msg
+					pid = nni_pipe_inc_packetid(pipe);
+					// store msg for qos retrying
+					nni_msg_clone(msg);
+					if ((old = nni_qos_db_get(is_sqlite,
+					         pipe->nano_qos_db, pipe->p_id,
+					         pid)) != NULL) {
+						// TODO packetid already
+						// exists. we need to
+						// replace old with new one
+						// print warning to users
+						nni_println("ERROR: packet id "
+						            "duplicates in "
+						            "nano_qos_db");
+						nni_qos_db_remove_msg(
+						    is_sqlite,
+						    pipe->nano_qos_db, old);
+					}
+					old = msg;
+					nni_qos_db_set(is_sqlite,
+					    pipe->nano_qos_db, pipe->p_id, pid,
+					    old);
+					nni_qos_db_remove_oldest(is_sqlite,
+					    pipe->nano_qos_db,
+					    p->conf->sqlite.disk_cache_size);
+				}
+				NNI_PUT16(var_extra, pid);
+				// copy packet id
+				memcpy(p->qos_buf + qlength, var_extra, 2);
+
+				// 2nd part of variable header: pid
+				iov[niov].iov_buf = p->qos_buf + qlength;
+				iov[niov].iov_len = 2;
+				niov++;
+				qlength += 2;
+			} else if (qos_pac > 0) {
+				//ignore the packet id of original packet
+				len_offset += 2;
+			}
+			// body
+			iov[niov].iov_buf = body + 2 + tlen + len_offset;
+			iov[niov].iov_len = mlen - 2 - len_offset - tlen;
+			niov++;
+		}
+	}
+
+	// TODO append to msg directly instead of using iov
+	nni_msg_alloc(&smsg, 0);
+	nni_msg_header_append(smsg, iov[0].iov_buf, iov[0].iov_len);
+
+	// payload
+	for (int i = 1; i < niov; i++) {
+		nni_msg_append(smsg, iov[i].iov_buf, iov[i].iov_len);
+	}
+
+	// duplicated msg is gonna be freed by http. so we free old one
+	// here
+	nni_msg_free(msg);
+	msg = smsg;
+
 // normal sending if it is not PUBLISH
 send:
 	nni_aio_set_msg(aio, msg);
@@ -626,7 +663,16 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 		}
 		tinfo = NULL;
 		len_offset=0;
-		if (topic_filtern(info->topic, (char*)(body + 2), tlen)) {
+		char *sub_topic = info->topic;
+		if (sub_topic[0] == '$') {
+			if (0 == strncmp(sub_topic, "$share/", strlen("$share/"))) {
+				sub_topic = strchr(sub_topic, '/');
+				sub_topic++;
+				sub_topic = strchr(sub_topic, '/');
+				sub_topic++;
+			}
+		}
+		if (topic_filtern(sub_topic, (char*)(body + 2), tlen)) {
 			if (niov >= 8) {
 				// nng aio only allow 2 msgs at a time
 				// nni_aio_set_prov_data(txaio, info);
