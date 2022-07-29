@@ -554,6 +554,7 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 				nni_msg_append(
 				    smsg, iov[i].iov_buf, iov[i].iov_len);
 			}
+			niov = 0;
 		}
 	}
 
