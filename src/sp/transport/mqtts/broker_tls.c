@@ -1034,9 +1034,6 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	int       niov;
 	nni_iov   iov[8];
 
-	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
-	nni_aio_set_msg(aio, msg);
-
 	if (nni_msg_get_type(msg) != CMD_PUBLISH)
 		goto send;
 	// never modify the original msg
@@ -1050,9 +1047,9 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	bool          is_sqlite = p->conf->sqlite.enable;
 
 	txaio   = p->txaio;
-	niov    = 0;
 	body    = nni_msg_body(msg);
 	header  = nni_msg_header(msg);
+	niov    = 0;
 	qlength = 0;
 	plength = 0;
 	mlen    = nni_msg_len(msg);
@@ -1176,15 +1173,10 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 						nni_println("ERROR: packet id "
 						            "duplicates in "
 						            "nano_qos_db");
-						old =
-						    NANO_NNI_LMQ_GET_MSG_POINTER(
-						        old);
-
 						nni_qos_db_remove_msg(is_sqlite,
 						    pipe->nano_qos_db, old);
 					}
-					old = NANO_NNI_LMQ_PACKED_MSG_QOS(
-					    msg, qos);
+					old = msg;
 					nni_qos_db_set(is_sqlite,
 					    pipe->nano_qos_db, pipe->p_id, pid,
 					    old);
