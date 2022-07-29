@@ -425,8 +425,6 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 		qos_pac = nni_msg_get_pub_qos(msg);
 		NNI_GET16(body, tlen);
 
-		nni_msg_alloc(&smsg, 0);
-
 		if (nni_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
 			// V5 to V4 shrink msg, remove property length
 			// APP layer must give topic name even if topic
@@ -470,6 +468,7 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 		rlen = put_var_integer(
 		    tmp, get_var_integer(header, &pos) + len_offset - plength);
 		memcpy(fixheader + 1, tmp, rlen);
+		nni_msg_alloc(&smsg, 0);
 		nni_msg_header_append(smsg, fixheader, rlen+1);
 
 		// 1st part of variable header: topic
@@ -561,10 +560,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	int       niov;
 	nni_iov   iov[8];
 	nni_pipe *pipe = p->npipe;
-	uint8_t qos  = NANO_NNI_LMQ_GET_QOS_BITS(msg);
-	// qos default to 0 if the msg is not PUBLISH
-	msg = NANO_NNI_LMQ_GET_MSG_POINTER(msg);
-	nni_aio_set_msg(aio, msg);
+	uint8_t   qos;
 
 
 	if (nni_msg_get_type(msg) != CMD_PUBLISH)
@@ -712,22 +708,17 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 					         pipe->nano_qos_db, pipe->p_id,
 					         pid)) != NULL) {
 						// TODO packetid already
-						// exists. do we need to
-						// replace old with new one ?
+						// exists. we need to
+						// replace old with new one
 						// print warning to users
 						nni_println("ERROR: packet id "
 						            "duplicates in "
 						            "nano_qos_db");
-						old =
-						    NANO_NNI_LMQ_GET_MSG_POINTER(
-						        old);
-
 						nni_qos_db_remove_msg(
 						    is_sqlite,
 						    pipe->nano_qos_db, old);
 					}
-					old = NANO_NNI_LMQ_PACKED_MSG_QOS(
-					    msg, qos);
+					old = msg;
 					nni_qos_db_set(is_sqlite,
 					    pipe->nano_qos_db, pipe->p_id, pid,
 					    old);
@@ -780,7 +771,6 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	// TODO append to msg directly instead of using iov
 	nni_msg_alloc(&smsg, 0);
 	nni_msg_header_append(smsg, iov[0].iov_buf, iov[0].iov_len);
-
 
 	// payload
 	for (int i = 1; i < niov; i++) {
