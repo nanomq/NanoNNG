@@ -161,7 +161,7 @@ nano_nni_lmq_fini(nni_lmq *lmq)
 		nng_msg *msg = lmq->lmq_msgs[lmq->lmq_get++];
 		lmq->lmq_get &= lmq->lmq_mask;
 		lmq->lmq_len--;
-		nni_msg_free(NANO_NNI_LMQ_GET_MSG_POINTER(msg));
+		nni_msg_free(msg);
 	}
 
 	nni_free(lmq->lmq_msgs, lmq->lmq_alloc * sizeof(nng_msg *));

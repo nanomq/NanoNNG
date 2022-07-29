@@ -431,8 +431,11 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 
 	msg  = nni_aio_get_msg(p->qsaio);
 	type = nni_msg_cmd_type(msg);
-	(type == CMD_PUBCOMP || type == CMD_PUBACK) ? p->qrecv_quota++
-	                                        : p->qrecv_quota;
+
+	if (p->tcp_cparam->pro_ver == 5) {
+		(type == CMD_PUBCOMP || type == PUBACK) ? p->qrecv_quota++
+		                                        : p->qrecv_quota;
+	}
 	nni_msg_free(msg);
 	if (nni_lmq_get(&p->rslmq, &msg) == 0) {
 		nni_iov iov[2];
@@ -840,33 +843,22 @@ static inline void
 nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 {
 	nni_aio *txaio;
-	int      niov;
+	int      niov = 0;
 	nni_iov  iov[8];
 
 	// qos default to 0 if the msg is not PUBLISH
 	uint8_t  qos = 0;
 
-	bool is_sqlite = p->conf->sqlite.enable;
-
-	nni_aio_set_msg(aio, msg);
-
-	if (nni_msg_header_len(msg) <= 0) {
-		goto send;
-		// TODO aio not handle
-	}
-
-	if (nni_msg_get_type(msg) != CMD_PUBLISH) {
+	if (nni_msg_header_len(msg) <= 0 ||
+	    nni_msg_get_type(msg) != CMD_PUBLISH) {
 		goto send;
 	}
 
-	niov  = 0;
-	int qlen = 0;
-
+	bool      is_sqlite = p->conf->sqlite.enable;
+	int       qlen = 0, topic_len = 0;
 	subinfo  *tinfo = NULL, *info = NULL;
 	nni_list *subinfol = &p->npipe->subinfol;
-
-	int topic_len = 0;
-	char *topic = nni_msg_get_pub_topic(msg, &topic_len);
+	char     *topic    = nni_msg_get_pub_topic(msg, &topic_len);
 
 	txaio = p->txaio;
 	tinfo = nni_aio_get_prov_data(txaio);
@@ -898,7 +890,6 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		}
 
 		uint8_t      *body, *header, qos_pac;
-
 		uint8_t       var_extra[2], fixheader, tmp[4] = { 0 };
 		int           len_offset = 0;
 		uint32_t      pos        = 1;
@@ -1080,8 +1071,6 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	int       niov;
 	nni_iov   iov[8];
 
-	nni_aio_set_msg(aio, msg);
-
 	if (nni_msg_get_type(msg) != CMD_PUBLISH)
 		goto send;
 	// never modify the original msg
@@ -1216,9 +1205,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				nni_msg *old;
 				// packetid in aio to differ resend msg
 				// TODO replace it with set prov data
-				pid = (uint16_t)(size_t) nni_aio_get_prov_data(
-				    aio);
-
+				pid = (uint16_t)(size_t) nni_aio_get_prov_data(aio);
 				if (pid == 0) {
 					// first time send this msg
 					pid = nni_pipe_inc_packetid(pipe);
