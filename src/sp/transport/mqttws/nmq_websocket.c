@@ -454,11 +454,6 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			}
 		}
 		if (topic_filtern(sub_topic, (char*)(body + 2), tlen)) {
-			if (niov >= 8) {
-				// nng aio only allow 8 iovs at a time
-				// nni_aio_set_prov_data(txaio, info);
-				break;
-			}
 			uint8_t  var_extra[2], fixheader, tmp[4] = { 0 };
 			uint32_t pos = 1;
 			qos          = info->qos;

@@ -1022,7 +1022,7 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			niov++;
 			qlen += 2;
 		}
-		// variable header + payload
+		// payload
 		if (mlen > 0) {
 			// determine if it needs to skip packet id field
 			iov[niov].iov_buf =
@@ -1127,7 +1127,6 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		}
 		tinfo = NULL;
 		len_offset=0;
-		// TODO shared topic
 		char *sub_topic = info->topic;
 		if (sub_topic[0] == '$') {
 			if (0 == strncmp(sub_topic, "$share/", strlen("$share/"))) {
@@ -1231,8 +1230,8 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 					    pipe->nano_qos_db, pipe->p_id, pid,
 					    old);
 					nni_qos_db_remove_oldest(is_sqlite,
-				    pipe->nano_qos_db,
-				    p->conf->sqlite.disk_cache_size);
+					    pipe->nano_qos_db,
+					    p->conf->sqlite.disk_cache_size);
 				}
 				NNI_PUT16(var_extra, pid);
 				// copy packet id
