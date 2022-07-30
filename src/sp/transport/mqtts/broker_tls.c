@@ -28,6 +28,11 @@
 typedef struct tlstran_pipe tlstran_pipe;
 typedef struct tlstran_ep   tlstran_ep;
 
+static inline void
+tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio);
+static inline void
+tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio);
+
 // tcp_pipe is one end of a TCP connection.
 struct tlstran_pipe {
 	nng_stream *conn;
