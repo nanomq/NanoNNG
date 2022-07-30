@@ -172,8 +172,7 @@ extern void nni_aio_sys_fini(void);
 // NANOMQ APIs
 extern void     nni_aio_set_sockaddr(nni_aio *aio, const nng_sockaddr *);
 extern void     nni_aio_get_sockaddr(nni_aio *aio, nng_sockaddr *);
-extern uint16_t nni_aio_get_packetid(nni_aio *aio);
-extern void     nni_aio_set_packetid(nni_aio *aio, uint16_t id);
+
 
 // extern void      nni_aio_set_pipelength(nni_aio *aio, uint32_t len);
 // extern void      nni_aio_set_pipes(nni_aio *aio, uint32_t *pipes);

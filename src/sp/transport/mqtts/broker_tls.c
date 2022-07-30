@@ -1203,7 +1203,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 				len_offset = 2;
 				nni_msg *old;
 				// packetid in aio to differ resend msg
-				// TODO replace it with set prov data
+				// TODO replace it with set prov data/pipe
 				pid = (uint16_t)(size_t) nni_aio_get_prov_data(aio);
 				if (pid == 0) {
 					// first time send this msg

@@ -53,7 +53,9 @@ static void mqtt_ctx_recv(void *arg, nni_aio *aio);
 
 static bool  get_persist(mqtt_sock_t *s);
 static char *get_config_name(mqtt_sock_t *s);
-static void  flush_offline_cache(mqtt_sock_t *s);
+#if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
+	static void  flush_offline_cache(mqtt_sock_t *s);
+#endif
 static nni_msg* get_cache_msg(mqtt_sock_t *s);
 
 typedef nni_mqtt_packet_type packet_type_t;
@@ -528,11 +530,10 @@ mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
 		nni_msg_free(msg);
 	}
 }
-
+#if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
 static void
 flush_offline_cache(mqtt_sock_t *s)
 {
-#if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
 	if (s->bridge_conf) {
 		char *config_name = get_config_name(s);
 		nni_mqtt_qos_db_set_client_offline_msg_batch(
@@ -540,10 +541,8 @@ flush_offline_cache(mqtt_sock_t *s)
 		nni_mqtt_qos_db_remove_oldest_client_offline_msg(s->sqlite_db,
 		    s->bridge_conf->sqlite->disk_cache_size, config_name);
 	}
-#else
-	NNI_ARG_UNUSED(s);
-#endif
 }
+#endif
 
 // Timer callback, we use it for retransmitting.
 static void
