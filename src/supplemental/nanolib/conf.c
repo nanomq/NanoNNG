@@ -100,7 +100,7 @@ conf_update_var(const char *fpath, const char *key, uint8_t type, void *var)
 		break;
 	case 4:
 		// uint64
-		sprintf(varstr, "%llu", *(uint64_t *) var);
+		sprintf(varstr, "%lu", *(uint64_t *) var);
 		break;
 	case 5:
 		// long
@@ -657,7 +657,7 @@ print_conf(conf *nanomq_conf)
 	    "num_taskq_thread:         %d", nanomq_conf->num_taskq_thread);
 	debug_msg(
 	    "max_taskq_thread:         %d", nanomq_conf->max_taskq_thread);
-	debug_msg("parallel:                 %lu", nanomq_conf->parallel);
+	debug_msg("parallel:                 %u", nanomq_conf->parallel);
 	debug_msg("property_size:            %d", nanomq_conf->property_size);
 	debug_msg("msq_len:                  %d", nanomq_conf->msq_len);
 	debug_msg("qos_duration:             %d", nanomq_conf->qos_duration);
@@ -666,7 +666,7 @@ print_conf(conf *nanomq_conf)
 	debug_msg(
 	    "http server port:         %d", nanomq_conf->http_server.port);
 	debug_msg(
-	    "http server parallel:     %d", nanomq_conf->http_server.parallel);
+	    "http server parallel:     %u", nanomq_conf->http_server.parallel);
 	debug_msg("enable tls:               %s",
 	    nanomq_conf->tls.enable ? "true" : "false");
 	if (nanomq_conf->tls.enable) {
@@ -1794,7 +1794,7 @@ get_time(const char *str, uint64_t *second)
 {
 	char     unit = 0;
 	uint64_t s    = 0;
-	if (2 == sscanf(str, "%llu%c", &s, &unit)) {
+	if (2 == sscanf(str, "%ld%c", &s, &unit)) {
 		switch (unit) {
 		case 's':
 			*second = s;

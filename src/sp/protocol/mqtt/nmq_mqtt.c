@@ -256,6 +256,7 @@ nano_pipe_timer_cb(void *arg)
 				p->busy = true;
 				// TODO set max retrying times in nanomq.conf
 				nano_msg_set_dup(rmsg);
+				// we use pipe as packet id here
 				nni_aio_set_prov_data(
 				    &p->aio_send, (void *) pid);
 				// put original msg into sending

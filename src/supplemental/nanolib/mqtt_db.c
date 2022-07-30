@@ -307,7 +307,7 @@ dbtree_print(dbtree *db)
 		cvector_free(nodes);
 		nodes = NULL;
 
-		for (int i = 0; i < cvector_size(nodes_t); i++) {
+		for (size_t i = 0; i < cvector_size(nodes_t); i++) {
 			printf(node_fmt, nodes_t[i]->topic);
 
 			for (int j = 0; j < cvector_size(nodes_t[i]->child);

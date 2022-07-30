@@ -572,8 +572,8 @@ tcptran_pipe_recv_cb(void *arg)
 	nni_aio_iov_advance(rxaio, n);
 	// not receive enough bytes, deal with remaining length
 	len = get_var_integer(p->rxlen, &pos);
-	debug_msg("new %ld recevied %ld header %x %d pos: %d len : %llu", n,
-	    p->gotrxhead, p->rxlen[0], p->rxlen[1], pos, len);
+	debug_msg("newly recevied %ld totoal received: %ld  pos: %d len : %ld", n,
+	    p->gotrxhead, pos, len);
 	debug_msg("still need byte count:%ld > 0\n", nni_aio_iov_count(rxaio));
 
 	if (nni_aio_iov_count(rxaio) > 0) {
@@ -663,7 +663,7 @@ tcptran_pipe_recv_cb(void *arg)
 	// duplicated with fixed_header_adaptor
 	nni_msg_set_remaining_len(msg, len);
 	nni_msg_set_cmd_type(msg, type);
-	debug_msg("remain_len %llu cparam %p clientid %s username %s proto %d\n",
+	debug_msg("remain_len %ld cparam %p clientid %s username %s proto %d\n",
 	    len, cparam, cparam->clientid.body, cparam->username.body,
 	    cparam->pro_ver);
 
