@@ -10,7 +10,7 @@ nni_qos_db_set(bool is_sqlite, void *db, uint32_t pipe_id, uint16_t packet_id,
 	if (is_sqlite) {
 #if defined(NNG_SUPP_SQLITE) && defined(NNG_HAVE_MQTT_BROKER)
 		nni_mqtt_qos_db_set((sqlite3 *) (db), pipe_id, packet_id, msg);
-		nni_msg_free(NANO_NNI_LMQ_GET_MSG_POINTER(msg));
+		nni_msg_free(msg);
 #else
 		NNI_ARG_UNUSED(pipe_id);
 		NNI_ARG_UNUSED(packet_id);
