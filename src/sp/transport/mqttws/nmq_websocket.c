@@ -407,10 +407,10 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 
 	// never modify the original msg
 	uint8_t *     body, *header, qos_pac;
-	int           len_offset = 0, sub_id = 0;
+	int           len_offset = 0;
 	uint16_t      pid;
-	uint32_t      tprop_bytes, prop_bytes = 0, id_bytes = 0, property_len = 0;
-	size_t        tlen, rlen, mlen, hlen, qlength, plength;
+	uint32_t      prop_bytes = 0, property_len = 0;
+	size_t        tlen, rlen, mlen, qlength, plength;
 	bool          is_sqlite = p->conf->sqlite.enable;
 
 	body    = nni_msg_body(msg);
@@ -418,7 +418,6 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	niov    = 0;
 	qlength = 0;
 	mlen    = nni_msg_len(msg);
-	hlen    = nni_msg_header_len(msg);
 	qos_pac = nni_msg_get_pub_qos(msg);
 	NNI_GET16(body, tlen);
 
@@ -461,9 +460,7 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 				break;
 			}
 			uint8_t  var_extra[2], fixheader, tmp[4] = { 0 };
-			uint8_t  proplen[4] = { 0 }, var_subid[5] = { 0 };
 			uint32_t pos = 1;
-			sub_id       = info->subid;
 			qos          = info->qos;
 			fixheader    = *header;
 
