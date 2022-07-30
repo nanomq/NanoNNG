@@ -407,10 +407,10 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 
 	// never modify the original msg
 	uint8_t *     body, *header, qos_pac;
-	int           len_offset = 0;
+	int           len_offset = 0, sub_id = 0;
 	uint16_t      pid;
-	uint32_t      prop_bytes = 0, property_len = 0;
-	size_t        tlen, rlen, mlen, qlength, plength;
+	uint32_t      tprop_bytes, prop_bytes = 0, id_bytes = 0, property_len = 0;
+	size_t        tlen, rlen, mlen, hlen, qlength, plength;
 	bool          is_sqlite = p->conf->sqlite.enable;
 
 	body    = nni_msg_body(msg);
@@ -418,10 +418,11 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	niov    = 0;
 	qlength = 0;
 	mlen    = nni_msg_len(msg);
+	hlen    = nni_msg_header_len(msg);
 	qos_pac = nni_msg_get_pub_qos(msg);
 	NNI_GET16(body, tlen);
 
-	subinfo *info = NULL;
+	subinfo *info, *tinfo=NULL;
 	nni_msg_alloc(&smsg, 0);
 	if (nni_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
 		// V5 to V4 shrink msg, remove property length
@@ -439,6 +440,10 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	}
 
 	NNI_LIST_FOREACH (&p->npipe->subinfol, info) {
+		if (tinfo != NULL && info != tinfo ) {
+			continue;
+		}
+		tinfo = NULL;
 		len_offset=0;
 		char *sub_topic = info->topic;
 		if (sub_topic[0] == '$') {
@@ -456,7 +461,9 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 				break;
 			}
 			uint8_t  var_extra[2], fixheader, tmp[4] = { 0 };
+			uint8_t  proplen[4] = { 0 }, var_subid[5] = { 0 };
 			uint32_t pos = 1;
+			sub_id       = info->subid;
 			qos          = info->qos;
 			fixheader    = *header;
 
@@ -539,8 +546,8 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			niov++;
 			qlength += qos > 0 ? 2 : 0;
 			// body
-			iov[niov].iov_buf = body + 2 + tlen + len_offset;
-			iov[niov].iov_len = mlen - 2 - len_offset - tlen;
+			iov[niov].iov_buf = body + 2 + tlen + len_offset + plength;
+			iov[niov].iov_len = mlen - 2 - len_offset - tlen - plength;
 			niov++;
 			// apending directly
 			for (int i = 0; i < niov; i++) {
@@ -582,6 +589,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	nni_iov   iov[8];
 	nni_pipe *pipe = p->npipe;
 	uint8_t   qos;
+
 
 	if (nni_msg_get_type(msg) != CMD_PUBLISH)
 		goto send;
