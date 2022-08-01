@@ -91,6 +91,16 @@ wstran_pipe_send_cb(void *arg)
 static void
 wstran_pipe_qos_send_cb(void *arg)
 {
+	ws_pipe *p = arg;
+	nni_aio *qsaio;
+
+	debug_msg(" wstran_pipe_qos_send_cb ");
+	qsaio          = p->qsaio;
+
+	nni_msg *msg = nni_aio_get_msg(qsaio);
+	if (msg != NULL) {
+		nni_msg_free(msg);
+	}
 }
 
 static void
