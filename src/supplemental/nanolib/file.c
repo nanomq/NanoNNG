@@ -112,5 +112,10 @@ file_load_data(const char *filepath, void **data)
 	if (nni_plat_file_get(filepath, data, &size) != 0) {
 		return 0;
 	}
+	size++;
+	uint8_t *buf  = *data;
+	buf           = realloc(buf, size);
+	buf[size - 1] = '\0';
+	*data         = buf;
 	return size;
 }
