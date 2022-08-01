@@ -52,7 +52,6 @@ struct tlstran_pipe {
 	nni_aio        *txaio;
 	nni_aio        *rxaio;
 	nni_aio        *qsaio;
-	nni_aio        *rsaio;
 	nni_aio        *rpaio;
 	nni_aio        *negoaio;
 	nni_lmq         rslmq;
@@ -69,14 +68,14 @@ struct tlstran_pipe {
 	// seperating 2 packets manually
 	// MQTT V5
 	uint16_t qrecv_quota;
-	uint16_t qsend_quota;
+	uint32_t qsend_quota;
 };
 
 struct tlstran_ep {
 	nni_mtx mtx;
 	// uint16_t             proto;
 	size_t               rcvmax;
-	conf		    *conf;
+	conf *               conf;
 	bool                 fini;
 	bool                 started;
 	bool                 closed;
@@ -145,7 +144,6 @@ tlstran_pipe_close(void *arg)
 	nni_aio_close(p->rxaio);
 	nni_aio_close(p->rpaio);
 	nni_aio_close(p->txaio);
-	nni_aio_close(p->rsaio);
 	nni_aio_close(p->qsaio);
 	nni_aio_close(p->negoaio);
 
@@ -158,8 +156,8 @@ tlstran_pipe_stop(void *arg)
 {
 	tlstran_pipe *p = arg;
 
+	p->tcp_cparam = NULL;
 	nni_aio_stop(p->qsaio);
-	nni_aio_stop(p->rsaio);
 	nni_aio_stop(p->rpaio);
 	nni_aio_stop(p->rxaio);
 	nni_aio_stop(p->txaio);
@@ -183,7 +181,7 @@ tlstran_pipe_init(void *arg, nni_pipe *npipe)
 	p->busy     = false;
 
 	nni_lmq_init(&p->rslmq, 16);
-	p->qos_buf  = nng_alloc(16 + NNI_NANO_MAX_PACKET_SIZE);
+	p->qos_buf = nng_zalloc(16 + NNI_NANO_MAX_PACKET_SIZE);
 	return (0);
 }
 
@@ -207,12 +205,12 @@ tlstran_pipe_fini(void *arg)
 	nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
 	nni_aio_free(p->qsaio);
 	nni_aio_free(p->rpaio);
-	nni_aio_free(p->rsaio);
 	nni_aio_free(p->rxaio);
 	nni_aio_free(p->txaio);
 	nni_aio_free(p->negoaio);
 	nng_stream_free(p->conn);
-	nni_msg_free(p->rxmsg);
+	if (p->rxmsg != NULL)
+		nni_msg_free(p->rxmsg);
 	nni_lmq_fini(&p->rslmq);
 	// nni_mtx_fini(&p->mtx);
 	NNI_FREE_STRUCT(p);
@@ -242,7 +240,6 @@ tlstran_pipe_alloc(tlstran_pipe **pipep)
 	if (((rv = nni_aio_alloc(&p->txaio, tlstran_pipe_send_cb, p)) != 0) ||
 	    ((rv = nni_aio_alloc(&p->qsaio, tlstran_pipe_qos_send_cb, p)) != 0) ||
 	    ((rv = nni_aio_alloc(&p->rpaio, NULL, p)) != 0) ||
-	    ((rv = nni_aio_alloc(&p->rsaio, NULL, p)) != 0) ||
 	    ((rv = nni_aio_alloc(&p->rxaio, tlstran_pipe_recv_cb, p)) != 0) ||
 	    ((rv = nni_aio_alloc(&p->negoaio, tlstran_pipe_nego_cb, p)) !=
 	        0)) {
@@ -292,6 +289,7 @@ tlstran_pipe_nego_cb(void *arg)
 	tlstran_ep *  ep  = p->ep;
 	nni_aio *     aio = p->negoaio;
 	nni_aio *     uaio;
+	nni_iov       iov;
 	uint32_t      len;
 	int           rv, len_of_varint = 0;
 
@@ -372,16 +370,18 @@ tlstran_pipe_nego_cb(void *arg)
 			tlstran_ep_match(ep);
 			if (p->tcp_cparam->max_packet_size == 0) {
 				// set default max packet size for client
-				p->tcp_cparam->max_packet_size =
-				    p->conf->client_max_packet_size;
+				p->tcp_cparam->max_packet_size = p->conf == NULL?
+				NANO_MAX_RECV_PACKET_SIZE : p->conf->client_max_packet_size;
 			}
 			nni_mtx_unlock(&ep->mtx);
 			return;
 		} else {
-			rv = NNG_EPROTO;
 			nng_free(p->conn_buf, p->wantrxhead);
-			conn_param_free(p->tcp_cparam);
-			goto error;
+			if (p->tcp_cparam->pro_ver == 5) {
+				goto close;
+			} else {
+				goto error;
+			}
 		}
 	}
 
@@ -389,11 +389,27 @@ tlstran_pipe_nego_cb(void *arg)
 	debug_msg("^^^^^^^^^^end of tlstran_pipe_nego_cb^^^^^^^^^^\n");
 	return;
 
+close:
+	// if a malformated CONNECT packet is received
+	// reply CONNACK here for MQTT V5
+	// otherwise deal with it in protocol layer
+	p->txlen[0] = CMD_CONNACK;
+	p->txlen[1] = 0x03;
+	p->txlen[2] = 0x00;
+	p->txlen[3] = rv;
+	p->txlen[4] = 0x00;
+	iov.iov_len = 5;
+	iov.iov_buf = &p->txlen;
+	// send connack down...
+	nni_aio_set_iov(p->rpaio, 1, &iov);
+	nng_stream_send(p->conn, p->rpaio);
+	nng_aio_wait(p->rpaio);
 error:
 	// If the connection is closed, we need to pass back a different
 	// error code.  This is necessary to avoid a problem where the
 	// closed status is confused with the accept file descriptor
 	// being closed.
+	conn_param_free(p->tcp_cparam);
 	if (rv == NNG_ECLOSED) {
 		rv = NNG_ECONNSHUT;
 	}
@@ -459,7 +475,7 @@ tlstran_pipe_send_cb(void *arg)
 	int           rv;
 	nni_aio *     aio;
 	uint8_t *     header;
-	uint8_t       flag, cmd;
+	uint8_t       flag = 0, cmd;
 	size_t        n;
 	nni_msg *     msg;
 	nni_aio *     txaio = p->txaio;
@@ -502,7 +518,6 @@ tlstran_pipe_send_cb(void *arg)
 	nni_aio_list_remove(aio);
 	tlstran_pipe_send_start(p);
 
-	msg = nni_aio_get_msg(aio);
 	if (msg == NULL) {
 		nni_mtx_unlock(&p->mtx);
 		// msg is lost due to flow control
@@ -735,14 +750,14 @@ tlstran_pipe_recv_cb(void *arg)
 		// }
 		// aio_begin?
 		if (p->busy == false) {
-			iov[0].iov_len = nni_msg_header_len(qmsg);
-			iov[0].iov_buf = nni_msg_header(qmsg);
-			iov[1].iov_len = nni_msg_len(qmsg);
-			iov[1].iov_buf = nni_msg_body(qmsg);
+			nni_msg_insert(qmsg, nni_msg_header(qmsg),
+			    nni_msg_header_len(qmsg));
+			iov[0].iov_len = nni_msg_len(qmsg);
+			iov[0].iov_buf = nni_msg_body(qmsg);
 			p->busy        = true;
 			nni_aio_set_msg(p->qsaio, qmsg);
 			// send ACK down...
-			nni_aio_set_iov(p->qsaio, 2, iov);
+			nni_aio_set_iov(p->qsaio, 1, iov);
 			nng_stream_send(p->conn, p->qsaio);
 		} else {
 			if (nni_lmq_full(&p->rslmq)) {
@@ -839,27 +854,22 @@ static inline void
 tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 {
 	nni_aio *txaio;
-	int      niov;
+	int      niov = 0;
 	nni_iov  iov[8];
 
 	// qos default to 0 if the msg is not PUBLISH
 	uint8_t  qos = 0;
-
-	bool is_sqlite = p->conf->sqlite.enable;
 
 	if (nni_msg_header_len(msg) <= 0 ||
 	    nni_msg_get_type(msg) != CMD_PUBLISH) {
 		goto send;
 	}
 
-	niov  = 0;
-	int qlen = 0;
-
-	subinfo  *tinfo = NULL, *info = NULL;
+	bool      is_sqlite = p->conf->sqlite.enable;
+	int       qlen = 0, topic_len = 0;
+	subinfo * tinfo = NULL, *info = NULL;
 	nni_list *subinfol = &p->npipe->subinfol;
-
-	int topic_len = 0;
-	char *topic = nni_msg_get_pub_topic(msg, &topic_len);
+	char *    topic    = nni_msg_get_pub_topic(msg, &topic_len);
 
 	txaio = p->txaio;
 	tinfo = nni_aio_get_prov_data(txaio);
@@ -870,6 +880,7 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	NNI_LIST_FOREACH(subinfol, info) {
 		if (tinfo != NULL && info != tinfo)
 			continue;
+
 		tinfo = NULL;
 
 		char *sub_topic = info->topic;
@@ -889,7 +900,7 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			break;
 		}
 
-		uint8_t  *body, *header, qos_pac;
+		uint8_t * body, *header, qos_pac;
 		uint8_t   var_extra[2], fixheader, tmp[4] = { 0 };
 		int       len_offset = 0;
 		uint32_t  pos        = 1;
@@ -1351,12 +1362,10 @@ tlstran_pipe_send_start(tlstran_pipe *p)
 	}
 	if (p->tcp_cparam->pro_ver == 4) {
 		tlstran_pipe_send_start_v4(p, msg, aio);
-		return;
 	} else if (p->tcp_cparam->pro_ver == 5) {
 		tlstran_pipe_send_start_v5(p, msg, aio);
-		return;
 	}
-
+	return;
 }
 
 static void
@@ -1432,16 +1441,6 @@ tlstran_pipe_recv(void *arg, nni_aio *aio)
 	nni_mtx_unlock(&p->mtx);
 }
 
-/*
-static uint16_t
-tlstran_pipe_peer(void *arg)
-{
-        tlstran_pipe *p = arg;
-
-        return (p->peer);
-}
-*/
-
 static int
 tlstran_pipe_getopt(
     void *arg, const char *name, void *buf, size_t *szp, nni_type t)
@@ -1491,6 +1490,7 @@ tlstran_pipe_start(tlstran_pipe *p, nng_stream *conn, tlstran_ep *ep)
 
 	p->conn = conn;
 	p->ep   = ep;
+	p->conf = ep->conf;
 	// p->proto = ep->proto;
 
 	debug_msg("tlstran_pipe_start!");
