@@ -89,6 +89,11 @@ wstran_pipe_send_cb(void *arg)
 }
 
 static void
+wstran_pipe_qos_send_cb(void *arg)
+{
+}
+
+static void
 wstran_pipe_recv_cb(void *arg)
 {
 	ws_pipe *p = arg;
@@ -112,6 +117,10 @@ wstran_pipe_recv_cb(void *arg)
 		goto reset;
 	}
 	msg = nni_aio_get_msg(raio);
+	if (nni_msg_header_len(msg) == 0 && nni_msg_len(msg) == 0) {
+		debug_msg("empty msg received! continue next receive");
+		goto recv;
+	}
 	ptr = nni_msg_body(msg);
 	p->gotrxhead += nni_msg_len(msg);
 	debug_msg("#### wstran_pipe_recv_cb got %ld msg: %p %x %ld",
@@ -417,6 +426,7 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	header  = nni_msg_header(msg);
 	niov    = 0;
 	qlength = 0;
+	plength = 0;
 	mlen    = nni_msg_len(msg);
 	qos_pac = nni_msg_get_pub_qos(msg);
 	NNI_GET16(body, tlen);
@@ -950,7 +960,7 @@ wstran_pipe_alloc(ws_pipe **pipep, void *ws)
 
 	// Initialize AIOs.
 	if (((rv = nni_aio_alloc(&p->txaio, wstran_pipe_send_cb, p)) != 0) ||
-	    ((rv = nni_aio_alloc(&p->qsaio, NULL, p)) != 0) ||
+	    ((rv = nni_aio_alloc(&p->qsaio, wstran_pipe_qos_send_cb, p)) != 0) ||
 	    ((rv = nni_aio_alloc(&p->rxaio, wstran_pipe_recv_cb, p)) != 0)) {
 		wstran_pipe_fini(p);
 		return (rv);
