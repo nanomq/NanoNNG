@@ -515,9 +515,9 @@ tlstran_pipe_send_cb(void *arg)
 	if (nni_aio_get_prov_data(txaio) != NULL) {
 		// msgs left behind due to multiple topics matched
 		if (p->tcp_cparam->pro_ver == 4)
-			tlstran_pipe_send_start_v4(p, msg, aio);
+			tlstran_pipe_send_start_v4(p, msg, txaio);
 		else if (p->tcp_cparam->pro_ver == 5)
-			tlstran_pipe_send_start_v5(p, msg, aio);
+			tlstran_pipe_send_start_v5(p, msg, txaio);
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
