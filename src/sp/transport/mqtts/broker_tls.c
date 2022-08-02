@@ -1060,7 +1060,19 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 		}
 	}
 
-	nni_aio_set_iov(txaio, niov, iov);
+	nni_msg *tmsg;
+	nni_msg_alloc(&tmsg, 0);
+	// apending directly
+	for (int i = 0; i < niov; i++) {
+		nni_msg_append(tmsg, iov[i].iov_buf, iov[i].iov_len);
+	}
+	// tls_common only send 1 iov each time
+	// to avoid of racing we alloc a new msg for tls
+	iov[0].iov_buf = nni_msg_body(tmsg);
+	iov[0].iov_len = nni_msg_len(tmsg);
+	nni_aio_set_msg(txaio, tmsg);
+	nni_aio_set_iov(txaio, 1, iov);
+
 	nng_stream_send(p->conn, txaio);
 	return;
 
