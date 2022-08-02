@@ -431,6 +431,7 @@ tlstran_pipe_qos_send_cb(void *arg)
 	nni_msg      *msg;
 	nni_aio      *qsaio = p->qsaio;
 	uint8_t       type;
+	size_t        n;
 
 	if (nni_aio_result(qsaio) != 0) {
 		nni_msg_free(nni_aio_get_msg(qsaio));
@@ -439,7 +440,13 @@ tlstran_pipe_qos_send_cb(void *arg)
 		return;
 	}
 	nni_mtx_lock(&p->mtx);
-
+	n = nni_aio_count(qsaio);
+	nni_aio_iov_advance(qsaio, n);
+	if (nni_aio_iov_count(qsaio) > 0) {
+		nng_stream_send(p->conn, qsaio);
+		nni_mtx_unlock(&p->mtx);
+		return;
+	}
 	msg  = nni_aio_get_msg(p->qsaio);
 	type = nni_msg_cmd_type(msg);
 
@@ -463,8 +470,8 @@ tlstran_pipe_qos_send_cb(void *arg)
 		return;
 	}
 	p->busy = false;
-	nni_aio_set_msg(qsaio, NULL);
 	nni_mtx_unlock(&p->mtx);
+	nni_aio_set_msg(qsaio, NULL);
 	return;
 }
 
@@ -750,15 +757,21 @@ tlstran_pipe_recv_cb(void *arg)
 		// }
 		// aio_begin?
 		if (p->busy == false) {
-			nni_msg_insert(qmsg, nni_msg_header(qmsg),
-			    nni_msg_header_len(qmsg));
-			iov[0].iov_len = nni_msg_len(qmsg);
-			iov[0].iov_buf = nni_msg_body(qmsg);
+			// nni_msg_insert(qmsg, nni_msg_header(qmsg),
+			//     nni_msg_header_len(qmsg));
+			if (nni_aio_begin(aio) != 0) {
+				debug_msg("ERROR: ACK aio error!!");
+			}
+			iov[0].iov_len = nni_msg_header_len(qmsg);
+			iov[0].iov_buf = nni_msg_header(qmsg);
+			iov[1].iov_len = nni_msg_len(qmsg);
+			iov[1].iov_buf = nni_msg_body(qmsg);
 			p->busy        = true;
 			nni_aio_set_msg(p->qsaio, qmsg);
 			// send ACK down...
-			nni_aio_set_iov(p->qsaio, 1, iov);
+			nni_aio_set_iov(p->qsaio, 2, iov);
 			nng_stream_send(p->conn, p->qsaio);
+			debug_msg(" ACK msg sent!!");
 		} else {
 			if (nni_lmq_full(&p->rslmq)) {
 				// Make space for the new message. TODO add max
