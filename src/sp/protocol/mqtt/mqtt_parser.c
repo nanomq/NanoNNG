@@ -1558,7 +1558,7 @@ check_ifwildcard(const char *w, const char *n)
 		flag = true;
 	}
 	if (*w_q && strcmp(*w_q, "+") == 0) {
-		flag = true;
+		flag = false;
 	}
 
 	if (!flag) {
@@ -1598,7 +1598,8 @@ topic_filtern(const char *origin, const char *input, size_t n)
 	char *buff = nni_zalloc(n + 1);
 	strncpy(buff, input, n);
 	bool res = false;
-	if (strncmp(origin, input, n) == 0) {
+	size_t len = strlen(origin);
+	if (len == n && strncmp(origin, input, n) == 0) {
 		res = true;
 	} else {
 		res = check_ifwildcard(origin, buff);
