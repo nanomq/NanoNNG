@@ -608,6 +608,12 @@ mqtt_property_pub_by_will(property *will_prop)
 	return property_pub_by_will(will_prop);
 }
 
+int
+mqtt_property_value_copy(property *dst, const property *src)
+{
+	return property_value_copy(dst, src);
+}
+
 property *
 mqtt_property_alloc(void)
 {
