@@ -420,6 +420,7 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 	nni_msg      *msg;
 	nni_aio      *qsaio = p->qsaio;
 	uint8_t       type;
+	size_t        n;
 
 	if (nni_aio_result(qsaio) != 0) {
 		nni_msg_free(nni_aio_get_msg(qsaio));
@@ -428,8 +429,16 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 		return;
 	}
 	nni_mtx_lock(&p->mtx);
+	n = nni_aio_count(qsaio);
+	nni_aio_iov_advance(qsaio, n);
 
-	msg  = nni_aio_get_msg(p->qsaio);
+	// more bytes to send
+	if (nni_aio_iov_count(qsaio) > 0) {
+		nng_stream_send(p->conn, qsaio);
+		nni_mtx_unlock(&p->mtx);
+		return;
+	}
+	msg  = nni_aio_get_msg(qsaio);
 	type = nni_msg_cmd_type(msg);
 
 	if (p->tcp_cparam->pro_ver == 5) {
@@ -443,10 +452,10 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 		iov[0].iov_buf = nni_msg_header(msg);
 		iov[1].iov_len = nni_msg_len(msg);
 		iov[1].iov_buf = nni_msg_body(msg);
-		nni_aio_set_msg(p->qsaio, msg);
+		nni_aio_set_msg(qsaio, msg);
 		// send it down...
-		nni_aio_set_iov(p->qsaio, 2, iov);
-		nng_stream_send(p->conn, p->qsaio);
+		nni_aio_set_iov(qsaio, 2, iov);
+		nng_stream_send(p->conn, qsaio);
 		p->busy = true;
 		nni_mtx_unlock(&p->mtx);
 		return;
