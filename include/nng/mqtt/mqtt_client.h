@@ -474,6 +474,7 @@ NNG_DECL int      mqtt_property_free(property *prop);
 NNG_DECL void      mqtt_property_foreach(property *prop, void (*cb)(property *));
 NNG_DECL int       mqtt_property_dup(property **dup, const property *src);
 NNG_DECL property *mqtt_property_pub_by_will(property *will_prop);
+NNG_DECL int mqtt_property_value_copy(property *dst, const property *src);
 
 NNG_DECL property *mqtt_property_alloc(void);
 NNG_DECL property *mqtt_property_set_value_u8(uint8_t prop_id, uint8_t value);
