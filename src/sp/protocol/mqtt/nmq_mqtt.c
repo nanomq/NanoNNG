@@ -171,11 +171,10 @@ static void
 nano_pipe_timer_cb(void *arg)
 {
 	nano_pipe *      p            = arg;
-	int              qos_duration = p->broker->conf->qos_duration;
-	nni_msg *        msg, *rmsg;
-	nni_time         time;
+	uint32_t         qos_duration = p->broker->conf->qos_duration;
 	nni_pipe *       npipe = p->pipe;
-	uint16_t         pid;
+	nni_time 	 time;
+	int 		 rv = 0;
 
 	bool is_sqlite = p->broker->conf->sqlite.enable;
 
@@ -185,50 +184,50 @@ nano_pipe_timer_cb(void *arg)
 	nni_mtx_lock(&p->lk);
 	// TODO pipe lock or sock lock?
 	if (npipe->cache) {
+		nng_time will_intval = p->conn_param->will_delay_interval;
+		nng_time session_int = p->conn_param->session_expiry_interval;
 		p->ka_refresh++;
+		time = p->ka_refresh * (qos_duration);
+		rv += will_intval > 0 ? (nng_clock() > will_intval ? 1 : 0) : 0;
+		rv += session_int > 0 ? (time > session_int ? 1 : 0) : 0;
 		// check session expiry interval
-		if (p->conn_param->session_expiry_interval > 0 ||
-		    p->conn_param->will_delay_interval > 0) {
-			if (p->ka_refresh * (qos_duration) >
-			        (int) p->conn_param->session_expiry_interval ||
-			    nng_clock() > p->conn_param->will_delay_interval) {
-				// close pipe
-				//  clean previous session
-				nano_pipe *old;
-				nano_sock *s = p->broker;
-				char      *clientid;
-				uint32_t   clientid_key = 0;
-				clientid = (char *) conn_param_get_clientid(
-				    p->conn_param);
+		debug_console("check session alive time %lu", time);
+		if (rv) {
+			// close pipe
+			//  clean previous session
+			nano_pipe *old;
+			nano_sock *s = p->broker;
+			char      *clientid;
+			uint32_t   clientid_key = 0;
+			clientid =
+			    (char *) conn_param_get_clientid(p->conn_param);
 
-				if (clientid)
-					clientid_key = DJBHashn(
-					    clientid, strlen(clientid));
-				old = nni_id_get(
-				    &s->cached_sessions, clientid_key);
-				if (old != NULL) {
-					old->event       = true;
-					old->pipe->cache = false;
+			if (clientid)
+				clientid_key =
+				    DJBHashn(clientid, strlen(clientid));
+			old = nni_id_get(&s->cached_sessions, clientid_key);
+			if (old != NULL) {
+				old->event       = true;
+				old->pipe->cache = false;
 #ifdef NNG_SUPP_SQLITE
-					nni_qos_db_remove_by_pipe(is_sqlite,
-					    old->nano_qos_db, old->pipe->p_id);
-					nni_qos_db_remove_pipe(is_sqlite,
-					    old->nano_qos_db, old->pipe->p_id);
-					nni_qos_db_remove_unused_msg(
-					    is_sqlite, old->nano_qos_db);
+				nni_qos_db_remove_by_pipe(is_sqlite,
+				    old->nano_qos_db, old->pipe->p_id);
+				nni_qos_db_remove_pipe(is_sqlite,
+				    old->nano_qos_db, old->pipe->p_id);
+				nni_qos_db_remove_unused_msg(
+				    is_sqlite, old->nano_qos_db);
 #endif
-					nni_qos_db_remove_all_msg(is_sqlite,
-					    old->nano_qos_db,
-					    nmq_close_unack_msg_cb);
-					nni_id_remove(
-					    &s->cached_sessions, clientid_key);
-				}
-				p->reason_code = 0x8E;
-				nni_mtx_unlock(&p->lk);
-				nni_pipe_close(p->pipe);
-				return;
+				nni_qos_db_remove_all_msg(is_sqlite,
+				    old->nano_qos_db, nmq_close_unack_msg_cb);
+				nni_id_remove(
+				    &s->cached_sessions, clientid_key);
 			}
+			p->reason_code = 0x8E;
+			nni_mtx_unlock(&p->lk);
+			nni_pipe_close(p->pipe);
+			return;
 		}
+		// }
 		nni_sleep_aio(qos_duration * 1000, &p->aio_timer);
 		nni_mtx_unlock(&p->lk);
 		return;
@@ -245,6 +244,8 @@ nano_pipe_timer_cb(void *arg)
 	p->ka_refresh++;
 
 	if (!p->busy) {
+		nni_msg *msg, *rmsg;
+		uint16_t pid;
 		// trying to resend msg
 		msg = nni_qos_db_get_one(
 		    is_sqlite, npipe->nano_qos_db, npipe->p_id, &pid);
