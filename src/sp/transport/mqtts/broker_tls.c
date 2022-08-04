@@ -511,6 +511,8 @@ tlstran_pipe_send_cb(void *arg)
 		return;
 	}
 	msg = nni_aio_get_msg(txaio);
+	nni_aio_set_msg(txaio, NULL);
+
 	if (msg != NULL) {
 		nni_msg_free(msg);
 	}
