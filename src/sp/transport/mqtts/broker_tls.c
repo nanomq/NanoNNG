@@ -136,6 +136,8 @@ tlstran_pipe_close(void *arg)
 	// nni_pipe *    npipe = p->npipe;
 
 	nni_mtx_lock(&p->mtx);
+	p->closed = true;
+	debug_msg(" ###### tlstran_pipe_close ###### ");
 	// p->closed = true;
 
 	nni_lmq_flush(&p->rslmq);
@@ -148,14 +150,13 @@ tlstran_pipe_close(void *arg)
 	nni_aio_close(p->negoaio);
 
 	nng_stream_close(p->conn);
-	debug_syslog("tlstran_pipe_close\n");
 }
 
 static void
 tlstran_pipe_stop(void *arg)
 {
 	tlstran_pipe *p = arg;
-
+	debug_msg(" ###### tlstran_pipe_stop ###### ");
 	p->tcp_cparam = NULL;
 	nni_aio_stop(p->qsaio);
 	nni_aio_stop(p->rpaio);
@@ -456,17 +457,18 @@ tlstran_pipe_qos_send_cb(void *arg)
 	}
 	nni_msg_free(msg);
 	if (nni_lmq_get(&p->rslmq, &msg) == 0) {
-		nni_iov iov[2];
-		iov[0].iov_len = nni_msg_header_len(msg);
-		iov[0].iov_buf = nni_msg_header(msg);
-		iov[1].iov_len = nni_msg_len(msg);
-		iov[1].iov_buf = nni_msg_body(msg);
+		nni_iov iov;
+		nni_msg_insert(
+		    msg, nni_msg_header(msg), nni_msg_header_len(msg));
+		iov.iov_len = nni_msg_len(msg);
+		iov.iov_buf = nni_msg_body(msg);
 		nni_aio_set_msg(p->qsaio, msg);
 		// send it down...
-		nni_aio_set_iov(p->qsaio, 2, iov);
+		nni_aio_set_iov(p->qsaio, 1, &iov);
 		nng_stream_send(p->conn, p->qsaio);
 		p->busy = true;
 		nni_mtx_unlock(&p->mtx);
+		nni_aio_set_msg(qsaio, NULL);
 		return;
 	}
 	p->busy = false;
@@ -512,11 +514,12 @@ tlstran_pipe_send_cb(void *arg)
 	}
 	msg = nni_aio_get_msg(txaio);
 	nni_aio_set_msg(txaio, NULL);
-
 	if (msg != NULL) {
+		// publish msg is special
 		nni_msg_free(msg);
 	}
 	msg = nni_aio_get_msg(aio);
+
 	if (nni_aio_get_prov_data(txaio) != NULL) {
 		// msgs left behind due to multiple topics matched
 		if (p->tcp_cparam->pro_ver == 4)
@@ -533,7 +536,8 @@ tlstran_pipe_send_cb(void *arg)
 	if (msg == NULL) {
 		nni_mtx_unlock(&p->mtx);
 		// msg is lost due to flow control
-		nni_aio_finish(aio, 0, 0);
+		nni_aio_set_msg(aio, NULL);
+		nni_aio_finish_sync(aio, 0, 0);
 		return;
 	}
 
@@ -767,16 +771,16 @@ tlstran_pipe_recv_cb(void *arg)
 			if (nni_aio_begin(aio) != 0) {
 				debug_msg("ERROR: ACK aio error!!");
 			}
-			iov[0].iov_len = nni_msg_header_len(qmsg);
-			iov[0].iov_buf = nni_msg_header(qmsg);
-			iov[1].iov_len = nni_msg_len(qmsg);
-			iov[1].iov_buf = nni_msg_body(qmsg);
+			nni_msg_insert(qmsg, nni_msg_header(qmsg),
+			    nni_msg_header_len(qmsg));
+			iov[0].iov_len = nni_msg_len(qmsg);
+			iov[0].iov_buf = nni_msg_body(qmsg);
 			p->busy        = true;
 			nni_aio_set_msg(p->qsaio, qmsg);
 			// send ACK down...
-			nni_aio_set_iov(p->qsaio, 2, iov);
+			nni_aio_set_iov(p->qsaio, 1, iov);
 			nng_stream_send(p->conn, p->qsaio);
-			debug_msg(" ACK msg sent!!");
+			debug_msg(" QoS ACK msg sent!!");
 		} else {
 			if (nni_lmq_full(&p->rslmq)) {
 				// Make space for the new message. TODO add max
@@ -1380,7 +1384,7 @@ tlstran_pipe_send_start(tlstran_pipe *p)
 	nni_aio *aio;
 	nni_msg *msg;
 
-	debug_msg("########### tcptran_pipe_send_start ###########");
+	debug_msg("########### tlstran_pipe_send_start ###########");
 	if (p->closed) {
 		while ((aio = nni_list_first(&p->sendq)) != NULL) {
 			nni_list_remove(&p->sendq, aio);
