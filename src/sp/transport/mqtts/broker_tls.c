@@ -515,7 +515,6 @@ tlstran_pipe_send_cb(void *arg)
 	msg = nni_aio_get_msg(txaio);
 	nni_aio_set_msg(txaio, NULL);
 	if (msg != NULL) {
-		// publish msg is special
 		nni_msg_free(msg);
 	}
 	msg = nni_aio_get_msg(aio);
@@ -876,9 +875,9 @@ static inline void
 tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 {
 	nni_aio *txaio;
-	int      niov = 0;
 	nni_iov  iov[8];
-
+	int      niov = 0;
+	nni_msg  *tmsg;
 	// qos default to 0 if the msg is not PUBLISH
 	uint8_t  qos = 0;
 
@@ -1066,7 +1065,6 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 		}
 	}
 
-	nni_msg *tmsg;
 	nni_msg_alloc(&tmsg, 0);
 	// apending directly
 	for (int i = 0; i < niov; i++) {
@@ -1083,20 +1081,22 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	return;
 
 send:
+	// have to alloc new msg due to TLS doesn't support scatter
+	nni_msg_alloc(&tmsg, 0);
 	txaio = p->txaio;
 	niov  = 0;
 
 	if (nni_msg_header_len(msg) > 0) {
-		iov[niov].iov_buf = nni_msg_header(msg);
-		iov[niov].iov_len = nni_msg_header_len(msg);
-		niov++;
+		nni_msg_append(
+		    tmsg, nni_msg_header(msg), nni_msg_header_len(msg));
 	}
 	if (nni_msg_len(msg) > 0) {
-		iov[niov].iov_buf = nni_msg_body(msg);
-		iov[niov].iov_len = nni_msg_len(msg);
-		niov++;
+		nni_msg_append(tmsg, nni_msg_body(msg), nni_msg_len(msg));
 	}
-	nni_aio_set_iov(txaio, niov, iov);
+	iov[0].iov_buf = nni_msg_body(tmsg);
+	iov[0].iov_len = nni_msg_len(tmsg);
+	nni_aio_set_msg(txaio, tmsg);
+	nni_aio_set_iov(txaio, 1, iov);
 	nng_stream_send(p->conn, txaio);
 }
 
@@ -1115,6 +1115,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	nni_pipe *pipe = p->npipe;
 	int       niov;
 	nni_iov   iov[8];
+	nni_msg  *tmsg;
 
 	if (nni_msg_get_type(msg) != CMD_PUBLISH)
 		goto send;
@@ -1336,7 +1337,6 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			return;
 		}
 	}
-	nni_msg *tmsg;
 	nni_msg_alloc(&tmsg, 0);
 	// apending directly
 	for (int i = 0; i < niov; i++) {
@@ -1353,20 +1353,22 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	return;
 
 send:
+	// have to alloc new msg due to TLS doesn't support scatter
+	nni_msg_alloc(&tmsg, 0);
 	txaio = p->txaio;
 	niov  = 0;
 
 	if (nni_msg_header_len(msg) > 0) {
-		iov[niov].iov_buf = nni_msg_header(msg);
-		iov[niov].iov_len = nni_msg_header_len(msg);
-		niov++;
+		nni_msg_append(
+		    tmsg, nni_msg_header(msg), nni_msg_header_len(msg));
 	}
 	if (nni_msg_len(msg) > 0) {
-		iov[niov].iov_buf = nni_msg_body(msg);
-		iov[niov].iov_len = nni_msg_len(msg);
-		niov++;
+		nni_msg_append(tmsg, nni_msg_body(msg), nni_msg_len(msg));
 	}
-	nni_aio_set_iov(txaio, niov, iov);
+	iov[0].iov_buf = nni_msg_body(tmsg);
+	iov[0].iov_len = nni_msg_len(tmsg);
+	nni_aio_set_msg(txaio, tmsg);
+	nni_aio_set_iov(txaio, 1, iov);
 	nng_stream_send(p->conn, txaio);
 }
 
