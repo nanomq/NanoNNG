@@ -898,10 +898,10 @@ int
 nni_mqtt_qos_db_set_client_offline_msg(
     sqlite3 *db, nni_msg *msg, const char *config_name, uint8_t proto_ver)
 {
-	char sql[] =
-	    "INSERT INTO " table_client_offline_msg " ( data, proto_ver, info_id ) "
-	    "VALUES ( ?, ?, (SELECT id FROM " table_client_info
-	    " WHERE config_name = ? LIMIT 1 ))";
+	char sql[] = "INSERT INTO " table_client_offline_msg
+	             " (proto_ver, data, info_id ) "
+	             "VALUES ( ?, ?, (SELECT id FROM " table_client_info
+	             " WHERE config_name = ? LIMIT 1 ))";
 	size_t   len  = 0;
 	uint8_t *blob = nni_mqtt_msg_serialize(msg, &len, proto_ver);
 
@@ -989,10 +989,10 @@ nni_mqtt_qos_db_get_client_offline_msg(
 	    stmt, 1, config_name, strlen(config_name), SQLITE_TRANSIENT);
 
 	if (SQLITE_ROW == sqlite3_step(stmt)) {
-		*row_id        = sqlite3_column_int64(stmt, 0);
-		uint8_t  proto_ver = sqlite3_column_int64(stmt, 1);
-		size_t   nbyte = (size_t) sqlite3_column_bytes16(stmt, 2);
-		uint8_t *bytes = sqlite3_malloc(nbyte);
+		*row_id            = sqlite3_column_int64(stmt, 0);
+		uint8_t  proto_ver = sqlite3_column_int(stmt, 1);
+		size_t   nbyte     = (size_t) sqlite3_column_bytes16(stmt, 2);
+		uint8_t *bytes     = sqlite3_malloc(nbyte);
 		memcpy(bytes, sqlite3_column_blob(stmt, 2), nbyte);
 		// deserialize blob data to nni_msg
 		msg = nni_mqtt_msg_deserialize(bytes, nbyte, false, proto_ver);
