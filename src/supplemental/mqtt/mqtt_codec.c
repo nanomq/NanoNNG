@@ -186,7 +186,10 @@ nni_mqttv5_msg_encode(nni_msg *msg)
 	     i < sizeof(codec_v5_handler) / sizeof(mqtt_msg_codec_handler); i++) {
 		if (codec_v5_handler[i].packet_type ==
 		    mqtt->fixed_header.common.packet_type) {
-			mqtt->is_decoded = false;
+			if (!mqtt->initialized) {
+				mqtt->initialized = true;
+				mqtt->is_copied   = true;
+			}
 			mqtt->is_copied  = true;
 			return codec_v5_handler[i].encode(msg);
 		}
@@ -237,7 +240,10 @@ nni_mqttv5_msg_decode(nni_msg *msg)
 		if (codec_v5_handler[i].packet_type ==
 		    mqtt->fixed_header.common.packet_type) {
 			mqtt_msg_content_free(mqtt);
-			mqtt->is_copied  = false;
+			if (!mqtt->initialized) {
+				mqtt->initialized = true;
+				mqtt->is_copied   = false;
+			}
 			mqtt->is_decoded = true;
 			return codec_v5_handler[i].decode(msg);
 		}
@@ -3608,11 +3614,11 @@ property_remove(property *prop_list, uint8_t prop_id)
 int
 property_dup(property **dup, const property *src)
 {
-	property *list = property_alloc();
 	property *item = NULL;
 	if (src == NULL) {
 		return -1;
 	}
+	property *list = property_alloc();
 
 	for (property *p = src->next; p != NULL; p = p->next) {
 		property_type_enum type = property_get_value_type(p->id);
