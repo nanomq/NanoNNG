@@ -296,9 +296,9 @@ struct conf {
 	uint32_t parallel;
 	uint32_t max_packet_size;
 	uint32_t client_max_packet_size;
+	uint32_t qos_duration;
 	int      property_size;
 	int      msq_len;
-	int      qos_duration;
 	void *   db_root;
 	bool     allow_anonymous;
 	bool     daemon;
