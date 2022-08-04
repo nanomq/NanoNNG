@@ -174,13 +174,14 @@ nni_qos_db_remove_pipe(bool is_sqlite, void *db, uint32_t pipe_id)
 
 int
 nni_qos_db_set_client_msg(bool is_sqlite, void *db, uint32_t pipe_id,
-    uint16_t packet_id, nng_msg *msg, const char *config_name)
+    uint16_t packet_id, nng_msg *msg, const char *config_name,
+    uint8_t proto_ver)
 {
 	int rv = 0;
 	if (is_sqlite) {
 #ifdef NNG_SUPP_SQLITE
-		rv = nni_mqtt_qos_db_set_client_msg(
-		    (sqlite3 *) db, pipe_id, packet_id, msg, config_name);
+		rv = nni_mqtt_qos_db_set_client_msg((sqlite3 *) db, pipe_id,
+		    packet_id, msg, config_name, proto_ver);
 #endif
 	} else {
 		NNI_ARG_UNUSED(pipe_id);

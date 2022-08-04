@@ -13,9 +13,10 @@
 
 static uint8_t *nni_msg_serialize(nni_msg *msg, size_t *out_len);
 static nni_msg *nni_msg_deserialize(uint8_t *bytes, size_t len);
-static uint8_t *nni_mqtt_msg_serialize(nni_msg *msg, size_t *out_len);
+static uint8_t *nni_mqtt_msg_serialize(
+    nni_msg *msg, size_t *out_len, uint8_t proto_ver);
 static nni_msg *nni_mqtt_msg_deserialize(
-    uint8_t *bytes, size_t len, bool aio_available);
+    uint8_t *bytes, size_t len, bool aio_available, uint8_t proto_ver);
 static int      create_msg_table(sqlite3 *db);
 static int      create_pipe_client_table(sqlite3 *db);
 static int      create_main_table(sqlite3 *db);
@@ -52,6 +53,7 @@ create_client_msg_table(sqlite3 *db)
 	             "  pipe_id INTEGER NOT NULL, "
 	             "  data BLOB, "
 	             "  info_id INTEGER NOT NULL,"
+				 "  proto_ver TINYINT DEFAULT 4,"
 	             "  ts DATETIME DEFAULT CURRENT_TIMESTAMP )";
 
 	return sqlite3_exec(db, sql, 0, 0, 0);
@@ -64,6 +66,7 @@ create_client_offline_msg_table(sqlite3 *db)
 	             " (id INTEGER PRIMARY KEY AUTOINCREMENT, "
 	             "  data BLOB, "
 	             "  info_id INTEGER NOT NULL, "
+				 "  proto_ver TINYINT DEFAULT 4, "
 	             "  ts DATETIME DEFAULT CURRENT_TIMESTAMP )";
 
 	return sqlite3_exec(db, sql, 0, 0, 0);
@@ -691,15 +694,15 @@ nni_mqtt_qos_db_foreach(sqlite3 *db, nni_idhash_cb cb)
 
 int
 nni_mqtt_qos_db_set_client_msg(sqlite3 *db, uint32_t pipe_id,
-    uint16_t packet_id, nni_msg *msg, const char *config_name)
+    uint16_t packet_id, nni_msg *msg, const char *config_name, uint8_t proto_ver)
 {
 	char sql[] =
 	    "INSERT INTO " table_client_msg
-	    " ( pipe_id, packet_id, data, info_id ) "
-	    " VALUES (?, ?, ?, (SELECT id FROM " table_client_info
+	    " ( pipe_id, packet_id, data, proto_ver, info_id ) "
+	    " VALUES (?, ?, ?, ?, (SELECT id FROM " table_client_info
 	    " WHERE config_name = ? LIMIT 1 ))";
 	size_t   len  = 0;
-	uint8_t *blob = nni_mqtt_msg_serialize(msg, &len);
+	uint8_t *blob = nni_mqtt_msg_serialize(msg, &len, proto_ver);
 	if (!blob) {
 		printf("nni_mqtt_msg_serialize failed\n");
 		return -1;
@@ -711,8 +714,9 @@ nni_mqtt_qos_db_set_client_msg(sqlite3 *db, uint32_t pipe_id,
 	sqlite3_bind_int(stmt, 1, pipe_id);
 	sqlite3_bind_int64(stmt, 2, packet_id);
 	sqlite3_bind_blob64(stmt, 3, blob, len, SQLITE_TRANSIENT);
+	sqlite3_bind_int(stmt, 4, proto_ver);
 	sqlite3_bind_text(
-	    stmt, 4, config_name, strlen(config_name), SQLITE_TRANSIENT);
+	    stmt, 5, config_name, strlen(config_name), SQLITE_TRANSIENT);
 	sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
 	nng_free(blob, len);
@@ -729,7 +733,7 @@ nni_mqtt_qos_db_get_client_msg(
 	sqlite3_stmt *stmt;
 
 	char sql[] =
-	    "SELECT data FROM " table_client_msg ""
+	    "SELECT proto_ver, data FROM " table_client_msg ""
 	    " WHERE pipe_id = ? AND packet_id = ? AND info_id = (SELECT id "
 	    "FROM " table_client_info " WHERE config_name = ? LIMIT 1) ";
 	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
@@ -741,12 +745,13 @@ nni_mqtt_qos_db_get_client_msg(
 	    stmt, 3, config_name, strlen(config_name), SQLITE_TRANSIENT);
 
 	if (SQLITE_ROW == sqlite3_step(stmt)) {
-		size_t   nbyte = (size_t) sqlite3_column_bytes16(stmt, 0);
-		uint8_t *bytes = sqlite3_malloc(nbyte);
-		memcpy(bytes, sqlite3_column_blob(stmt, 0), nbyte);
+		uint8_t  proto_ver = sqlite3_column_int(stmt, 0);
+		size_t   nbyte     = (size_t) sqlite3_column_bytes16(stmt, 1);
+		uint8_t *bytes     = sqlite3_malloc(nbyte);
+		memcpy(bytes, sqlite3_column_blob(stmt, 1), nbyte);
 		// deserialize blob data to nni_msg
 		msg = nni_mqtt_msg_deserialize(
-		    bytes, nbyte, pipe_id > 0 ? true : false);
+		    bytes, nbyte, pipe_id > 0 ? true : false, proto_ver);
 		sqlite3_free(bytes);
 	}
 	sqlite3_finalize(stmt);
@@ -858,7 +863,7 @@ nni_mqtt_qos_db_get_one_client_msg(
 	sqlite3_stmt *stmt;
 
 	char sql[] =
-	    "SELECT id, pipe_id, packet_id, data FROM " table_client_msg
+	    "SELECT id, pipe_id, packet_id, data, proto_ver FROM " table_client_msg
 	    " WHERE info_id = (SELECT id FROM " table_client_info
 	    " WHERE config_name = ? LIMIT 1) "
 	    " ORDER BY id LIMIT 1";
@@ -875,9 +880,11 @@ nni_mqtt_qos_db_get_one_client_msg(
 		size_t   nbyte   = (size_t) sqlite3_column_bytes16(stmt, 3);
 		uint8_t *bytes   = sqlite3_malloc(nbyte);
 		memcpy(bytes, sqlite3_column_blob(stmt, 3), nbyte);
+		uint8_t proto_ver = sqlite3_column_int(stmt, 4);
+
 		// deserialize blob data to nni_msg
 		msg = nni_mqtt_msg_deserialize(
-		    bytes, nbyte, pipe_id > 0 ? true : false);
+		    bytes, nbyte, pipe_id > 0 ? true : false, proto_ver);
 		sqlite3_free(bytes);
 	}
 	sqlite3_finalize(stmt);
@@ -889,14 +896,14 @@ nni_mqtt_qos_db_get_one_client_msg(
 
 int
 nni_mqtt_qos_db_set_client_offline_msg(
-    sqlite3 *db, nni_msg *msg, const char *config_name)
+    sqlite3 *db, nni_msg *msg, const char *config_name, uint8_t proto_ver)
 {
 	char sql[] =
-	    "INSERT INTO " table_client_offline_msg " ( data , info_id ) "
-	    "VALUES ( ?, (SELECT id FROM " table_client_info
+	    "INSERT INTO " table_client_offline_msg " ( data, proto_ver, info_id ) "
+	    "VALUES ( ?, ?, (SELECT id FROM " table_client_info
 	    " WHERE config_name = ? LIMIT 1 ))";
 	size_t   len  = 0;
-	uint8_t *blob = nni_mqtt_msg_serialize(msg, &len);
+	uint8_t *blob = nni_mqtt_msg_serialize(msg, &len, proto_ver);
 
 	if (!blob) {
 		printf("nni_mqtt_msg_serialize failed\n");
@@ -908,9 +915,10 @@ nni_mqtt_qos_db_set_client_offline_msg(
 	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
 	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
 	sqlite3_reset(stmt);
-	sqlite3_bind_blob64(stmt, 1, blob, len, SQLITE_TRANSIENT);
+	sqlite3_bind_int(stmt, 1, proto_ver);
+	sqlite3_bind_blob64(stmt, 2, blob, len, SQLITE_TRANSIENT);
 	sqlite3_bind_text(
-	    stmt, 2, config_name, strlen(config_name), SQLITE_TRANSIENT);
+	    stmt, 3, config_name, strlen(config_name), SQLITE_TRANSIENT);
 	sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
 	nng_free(blob, len);
@@ -921,7 +929,7 @@ nni_mqtt_qos_db_set_client_offline_msg(
 
 int
 nni_mqtt_qos_db_set_client_offline_msg_batch(
-    sqlite3 *db, nni_lmq *lmq, const char *config_name)
+    sqlite3 *db, nni_lmq *lmq, const char *config_name, uint8_t proto_ver)
 {
 	int info_id = get_client_info_id(db, config_name);
 	if(info_id < 0) {
@@ -929,8 +937,8 @@ nni_mqtt_qos_db_set_client_offline_msg_batch(
 	}
 
 	char sql[] =
-	    "INSERT INTO " table_client_offline_msg " ( data , info_id ) "
-	    "VALUES ( ? , ? )";
+	    "INSERT INTO " table_client_offline_msg " ( data, proto_ver, info_id ) "
+	    "VALUES ( ? , ? , ?)";
 
 	sqlite3_stmt *stmt;
 	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
@@ -940,7 +948,7 @@ nni_mqtt_qos_db_set_client_offline_msg_batch(
 		nni_msg *msg;
 		if (nni_lmq_get(lmq, &msg) == 0) {
 			size_t   len  = 0;
-			uint8_t *blob = nni_mqtt_msg_serialize(msg, &len);
+			uint8_t *blob = nni_mqtt_msg_serialize(msg, &len, proto_ver);
 			if (!blob) {
 				printf("nni_mqtt_msg_serialize failed\n");
 				nni_msg_free(msg);
@@ -949,7 +957,8 @@ nni_mqtt_qos_db_set_client_offline_msg_batch(
 			sqlite3_reset(stmt);
 			sqlite3_bind_blob64(
 			    stmt, 1, blob, len, SQLITE_TRANSIENT);
-			sqlite3_bind_int(stmt, 2, info_id);
+			sqlite3_bind_int(stmt, 2, proto_ver);
+			sqlite3_bind_int(stmt, 3, info_id);
 			sqlite3_step(stmt);
 			nng_free(blob, len);
 			nni_msg_free(msg);
@@ -968,7 +977,7 @@ nni_mqtt_qos_db_get_client_offline_msg(
 	nni_msg *     msg = NULL;
 	sqlite3_stmt *stmt;
 
-	char sql[] = "SELECT id, data FROM " table_client_offline_msg
+	char sql[] = "SELECT id, proto_ver, data FROM " table_client_offline_msg
 	             " WHERE info_id = (SELECT id FROM " table_client_info
 	             " WHERE config_name = ? LIMIT 1) "
 	             " ORDER BY id ASC LIMIT 1 ";
@@ -981,11 +990,12 @@ nni_mqtt_qos_db_get_client_offline_msg(
 
 	if (SQLITE_ROW == sqlite3_step(stmt)) {
 		*row_id        = sqlite3_column_int64(stmt, 0);
-		size_t   nbyte = (size_t) sqlite3_column_bytes16(stmt, 1);
+		uint8_t  proto_ver = sqlite3_column_int64(stmt, 1);
+		size_t   nbyte = (size_t) sqlite3_column_bytes16(stmt, 2);
 		uint8_t *bytes = sqlite3_malloc(nbyte);
-		memcpy(bytes, sqlite3_column_blob(stmt, 1), nbyte);
+		memcpy(bytes, sqlite3_column_blob(stmt, 2), nbyte);
 		// deserialize blob data to nni_msg
-		msg = nni_mqtt_msg_deserialize(bytes, nbyte, false);
+		msg = nni_mqtt_msg_deserialize(bytes, nbyte, false, proto_ver);
 		sqlite3_free(bytes);
 	}
 	sqlite3_finalize(stmt);
@@ -1089,14 +1099,18 @@ nni_mqtt_qos_db_set_client_info(sqlite3 *db, const char *config_name,
 }
 
 static uint8_t *
-nni_mqtt_msg_serialize(nni_msg *msg, size_t *out_len)
+nni_mqtt_msg_serialize(nni_msg *msg, size_t *out_len, uint8_t proto_ver)
 {
 	// int rv;
 	// if ((rv = nni_mqtt_msg_encode(msg)) != 0) {
 	// 	printf("nni_mqtt_msg_encode failed: %d\n", rv);
 	// 	return NULL;
 	// }
-	nni_mqtt_msg_encode(msg);
+	if (proto_ver == MQTT_PROTOCOL_VERSION_v5) {
+		nni_mqttv5_msg_encode(msg);
+	} else {
+		nni_mqtt_msg_encode(msg);
+	}
 
 	size_t len = nni_msg_header_len(msg) + nni_msg_len(msg) +
 	    (sizeof(uint32_t) * 2) + sizeof(nni_time) + sizeof(nni_aio *);
@@ -1143,7 +1157,8 @@ out:
 }
 
 static nni_msg *
-nni_mqtt_msg_deserialize(uint8_t *bytes, size_t len, bool aio_available)
+nni_mqtt_msg_deserialize(
+    uint8_t *bytes, size_t len, bool aio_available, uint8_t proto_ver)
 {
 	nni_msg *msg;
 	if (nni_mqtt_msg_alloc(&msg, 0) != 0) {
@@ -1177,7 +1192,11 @@ nni_mqtt_msg_deserialize(uint8_t *bytes, size_t len, bool aio_available)
 	}
 	nni_msg_set_timestamp(msg, ts);
 
-	nni_mqtt_msg_decode(msg);
+	if (proto_ver == MQTT_PROTOCOL_VERSION_v5) {
+		nni_mqttv5_msg_decode(msg);
+	} else {
+		nni_mqtt_msg_decode(msg);
+	}
 
 	if (aio_available) {
 		uint64_t addr = 0;
@@ -1197,7 +1216,6 @@ out:
 	}
 	return NULL;
 }
-
 
 static uint8_t *
 nni_msg_serialize(nni_msg *msg, size_t *out_len)

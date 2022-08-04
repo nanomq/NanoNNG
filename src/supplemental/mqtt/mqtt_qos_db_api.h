@@ -53,7 +53,7 @@ extern void nni_qos_db_remove_pipe(bool is_sqlite, void *db, uint32_t pipe_id);
 
 extern int      nni_qos_db_set_client_msg(bool is_sqlite, void *db,
          uint32_t pipe_id, uint16_t packet_id, nng_msg *msg,
-         const char *config_name);
+         const char *config_name, uint8_t proto_ver);
 extern nng_msg *nni_qos_db_get_client_msg(
     bool is_sqlite, void *db, uint32_t pipe_id, uint16_t packet_id,
     const char *config_name);
