@@ -13,6 +13,7 @@
 #include "nng/supplemental/nanolib/cJSON.h"
 #include "nng/supplemental/nanolib/cvector.h"
 #include "nng/supplemental/nanolib/file.h"
+#include "nng/supplemental/nanolib/log.h"
 #include <ctype.h>
 
 static void conf_bridge_init(conf_bridge *bridge);
@@ -33,6 +34,9 @@ static conf_http_header **conf_parse_http_headers(
 static bool conf_sqlite_parse(
     conf_sqlite *sqlite, const char *path, const char *key_prefix);
 static void conf_sqlite_destroy(conf_sqlite *sqlite);
+static void conf_log_init(conf_log *log);
+static void conf_log_destroy(conf_log *log);
+static bool conf_log_parse(conf_log *log, const char *path);
 
 static char *
 strtrim(char *str, size_t len)
@@ -494,7 +498,99 @@ conf_parser(conf *nanomq_conf)
 	fclose(fp);
 	conf_tls_parse(&config->tls, dest_path, "\0","\0");
 	conf_sqlite_parse(&config->sqlite, dest_path, "sqlite");
+	conf_log_parse(&config->log, dest_path);
 
+	return true;
+}
+
+static void
+conf_log_init(conf_log *log)
+{
+	log->enable = false;
+	log->level  = -1;
+	log->file   = NULL;
+	log->dir    = NULL;
+	log->type   = 0;
+}
+
+static void
+conf_log_destroy(conf_log *log)
+{
+	log->enable = false;
+	log->level  = -1;
+	if (log->file) {
+		free(log->file);
+	}
+	if (log->dir) {
+		free(log->dir);
+	}
+	log->type = 0;
+}
+
+static bool
+conf_log_parse(conf_log *log, const char *path)
+{
+	FILE *fp;
+	if ((fp = fopen(path, "r")) == NULL) {
+		debug_msg("File %s open failed", path);
+		return false;
+	}
+	char * line = NULL;
+	size_t sz   = 0;
+	int    rv   = 0;
+
+	char *value;
+	while (nano_getline(&line, &sz, fp) != -1) {
+		if ((value = get_conf_value(line, sz, "log.level")) != NULL) {
+			rv = log_level_num(value);
+			free(value);
+			if (rv != -1) {
+				log->level = rv;
+			} else {
+				break;
+			}
+		} else if ((value = get_conf_value(line, sz, "log.file")) !=
+		    NULL) {
+			FREE_NONULL(log->file);
+			log->file = value;
+		} else if ((value = get_conf_value(line, sz, "log.dir")) !=
+		    NULL) {
+			FREE_NONULL(log->dir);
+			log->dir = value;
+		} else if ((value = get_conf_value(line, sz, "log.to")) !=
+		    NULL) {
+			char *tk = strtok(value, ",");
+			while (tk != NULL) {
+				if (nni_strcasecmp(tk, "file") == 0) {
+					log->type |= LOG_TO_FILE;
+				} else if (nni_strcasecmp(tk, "console") ==
+				    0) {
+					log->type |= LOG_TO_CONSOLE;
+				} else if (nni_strcasecmp(tk, "syslog") == 0) {
+					log->type |= LOG_TO_SYSLOG;
+				}
+				tk = strtok(NULL, ",");
+			}
+			free(value);
+			if (log->type == 0) {
+				break;
+			}
+		}
+		free(line);
+		line = NULL;
+	}
+
+	if (line) {
+		free(line);
+	}
+
+	if (log->level == -1 || log->type == 0) {
+		log->enable = false;
+	} else {
+		log->enable = true;
+	}
+
+	fclose(fp);
 	return true;
 }
 
@@ -598,6 +694,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->daemon           = false;
 	nanomq_conf->bridge_mode      = false;
 
+	conf_log_init(&nanomq_conf->log);
 	conf_sqlite_init(&nanomq_conf->sqlite);
 	conf_tls_init(&nanomq_conf->tls);
 
@@ -638,6 +735,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->auth_http.connect_timeout = 5;
 	nanomq_conf->auth_http.pool_size       = 32;
 	conf_tls_init(&nanomq_conf->auth_http.tls);
+
 }
 
 void
@@ -676,6 +774,9 @@ print_conf(conf *nanomq_conf)
 		    nanomq_conf->tls.verify_peer ? "true" : "false");
 		debug_msg("tls fail_if_no_peer_cert: %s",
 		    nanomq_conf->tls.set_fail ? "true" : "false");
+	}
+	if (nanomq_conf->log.enable) {
+
 	}
 }
 
@@ -2185,5 +2286,6 @@ conf_fini(conf *nanomq_conf)
 	conf_web_hook_destroy(&nanomq_conf->web_hook);
 	conf_auth_http_destroy(&nanomq_conf->auth_http);
 	conf_auth_destroy(&nanomq_conf->auths);
+	conf_log_destroy(&nanomq_conf->log);
 	free(nanomq_conf);
 }

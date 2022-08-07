@@ -46,6 +46,21 @@
 		p = NULL; \
 	}
 
+// log type
+#define LOG_TO_FILE 1 << 0
+#define LOG_TO_CONSOLE 1 << 1
+#define LOG_TO_SYSLOG 1 << 2
+
+struct conf_log {
+	bool    enable;
+	uint8_t type;
+	int     level;
+	char *  dir;
+	char *  file;
+};
+
+typedef struct conf_log conf_log;
+
 struct conf_auth {
 	size_t count;
 	char **usernames;
@@ -304,6 +319,7 @@ struct conf {
 	bool     daemon;
 	bool     bridge_mode;
 
+	conf_log         log;
 	conf_sqlite      sqlite;
 	conf_tls         tls;
 	conf_http_server http_server;
