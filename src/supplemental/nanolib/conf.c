@@ -804,8 +804,6 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 	char    *line = NULL;
 	size_t   sz   = 0;
 	FILE    *fp;
-	char    *broker = NULL;
-	char    *topic  = NULL;
 	repub_t *repub  = NNI_ALLOC_STRUCT(repub);
 
 
@@ -816,101 +814,102 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 
 	char *value;
 	while (nano_getline(&line, &sz, fp) != -1) {
-		if (NULL != strstr(line, "rule.repub")) {
+		if (0 == strncmp(line, "rule.repub", strlen("rule.repub"))) {
 
 			int num = 0;
-
-			if (0 != sscanf(line, "rule.repub.%d.address", &num)) {
-				char key[32] = { 0 };
-				sprintf(key, "rule.repub.%d.address", num);
-
-				if (NULL !=
-				    (value = get_conf_value(line, sz, key))) {
-					repub->address = value;
-				}
-			} else if (sscanf(line, "rule.repub.%d.topic", &num)) {
-				char key[32] = { 0 };
-				sprintf(key, "rule.repub.%d.topic", num);
-
-				if (NULL !=
-				    (value = get_conf_value(line, sz, key))) {
-					repub->topic = value;
-				}
-			} else if (sscanf(line, "rule.repub.%d.proto_ver",
-			               &num)) {
-				char key[32] = { 0 };
-				sprintf(key, "rule.repub.%d.proto_ver", num);
-
-				if (NULL !=
-				    (value = get_conf_value(line, sz, key))) {
-					repub->proto_ver = atoi(value);
-					free(value);
-				}
-			} else if (sscanf(
-			               line, "rule.repub.%d.clientid", &num)) {
-				char key[32] = { 0 };
-				sprintf(key, "rule.repub.%d.clientid", num);
-
-				if (NULL !=
-				    (value = get_conf_value(line, sz, key))) {
-					repub->clientid = value;
-				}
-			} else if (sscanf(line, "rule.repub.%d.keepalive",
-			               &num)) {
-				char key[32] = { 0 };
-				sprintf(key, "rule.repub.%d.keepalive", num);
-
-				if (NULL !=
-				    (value = get_conf_value(line, sz, key))) {
-					repub->keepalive = atoi(value);
-					free(value);
-				}
-			} else if (sscanf(line, "rule.repub.%d.clean_start",
-			               &num)) {
-				char key[32] = { 0 };
-				sprintf(key, "rule.repub.%d.clean_start", num);
-
-				if (NULL !=
-				    (value = get_conf_value(line, sz, key))) {
-					if (!strcmp(value, "true")) {
-						repub->clean_start = true;
-					} else if (!strcmp(value, "true")) {
-						repub->clean_start = false;
-					} else {
-						debug_msg("Unsupport clean start option!");
-						exit(EXIT_FAILURE);
+			if (strstr(line, "address")) {
+				if (0 != sscanf(line, "rule.repub.%d", &num)) {
+					char key[32] = { 0 };
+					sprintf(key, "rule.repub.%d.address", num);
+					if (NULL !=
+					    (value = get_conf_value(line, sz, key))) {
+						repub->address = value;
 					}
-					free(value);
 				}
-			} else if (sscanf(
-			               line, "rule.repub.%d.username", &num)) {
-				char key[32] = { 0 };
-				sprintf(key, "rule.repub.%d.username", num);
-
-				if (NULL !=
-				    (value = get_conf_value(line, sz, key))) {
-					repub->username = value;
+			} else if (strstr(line, "topic")) {
+				if (0 != sscanf(line, "rule.repub.%d", &num)) {
+					char key[32] = { 0 };
+					sprintf(key, "rule.repub.%d.topic", num);
+					if (NULL !=
+					    (value = get_conf_value(line, sz, key))) {
+						repub->topic = value;
+					}
 				}
-			} else if (sscanf(
-			               line, "rule.repub.%d.password", &num)) {
-				char key[32] = { 0 };
-				sprintf(key, "rule.repub.%d.password", num);
-
-				if (NULL !=
-				    (value = get_conf_value(line, sz, key))) {
-					repub->password = value;
+			} else if (strstr(line, "proto_ver")) {
+				if (0 != sscanf(line, "rule.repub.%d", &num)) {
+					char key[32] = { 0 };
+					sprintf(key, "rule.repub.%d.proto_ver", num);
+					if (NULL !=
+					    (value = get_conf_value(line, sz, key))) {
+						repub->proto_ver = atoi(value);
+						free(value);
+					}
+				}
+			} else if (strstr(line, "clientid")) {
+				if (0 != sscanf(line, "rule.repub.%d", &num)) {
+					char key[32] = { 0 };
+					sprintf(key, "rule.repub.%d.clientid", num);
+					if (NULL !=
+					    (value = get_conf_value(line, sz, key))) {
+						repub->clientid = value;
+					}
+				}
+			} else if (strstr(line, "username")) {
+				if (0 != sscanf(line, "rule.repub.%d", &num)) {
+					char key[32] = { 0 };
+					sprintf(key, "rule.repub.%d.username", num);
+					if (NULL !=
+					    (value = get_conf_value(line, sz, key))) {
+						repub->username = value;
+					}
+				}
+			} else if (strstr(line, "password")) {
+				if (0 != sscanf(line, "rule.repub.%d", &num)) {
+					char key[32] = { 0 };
+					sprintf(key, "rule.repub.%d.password", num);
+					if (NULL !=
+					    (value = get_conf_value(line, sz, key))) {
+						repub->password = value;
+					}
+				}
+			} else if (strstr(line, "clean_start")) {
+				if (0 != sscanf(line, "rule.repub.%d", &num)) {
+					char key[32] = { 0 };
+					sprintf(key, "rule.repub.%d.clean_start", num);
+					if (NULL !=
+					    (value = get_conf_value(line, sz, key))) {
+						if (!strcmp(value, "true")) {
+							repub->clean_start = true;
+						} else if (!strcmp(value, "false")) {
+							repub->clean_start = false;
+						} else {
+							debug_msg("Unsupport clean start option!");
+							exit(EXIT_FAILURE);
+						}
+						free(value);
+					}
+				}
+			} else if (strstr(line, "keepalive")) {
+				if (0 != sscanf(line, "rule.repub.%d", &num)) {
+					char key[32] = { 0 };
+					sprintf(key, "rule.repub.%d.keepalive", num);
+					if (NULL !=
+					    (value = get_conf_value(line, sz, key))) {
+						repub->keepalive = atoi(value);
+						free(value);
+					}
 				}
 			}
 
-		} else if (NULL != strstr(line, "rule.event.publish")) {
+		} else if (0 == strncmp(line, "rule.event.publish", strlen("rule.event.publish"))) {
 
-			// TODO more accurate way topic <=======> broker
-			// <======> sql
+			// TODO more accurate way 
+			// topic <=======> broker <======> sql
 			int num = 0;
 			int res =
 			    sscanf(line, "rule.event.publish.%d.sql", &num);
 			if (0 == res) {
-				debug_msg("Do not find table num");
+				debug_msg("Do not find repub client");
 				exit(EXIT_FAILURE);
 			}
 
@@ -918,9 +917,9 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 				value++;
 				rule_sql_parse(cr, value);
 				cr->rules[cvector_size(cr->rules) - 1]
-				    .repub->address = broker;
-				cr->rules[cvector_size(cr->rules) - 1]
-				    .repub->topic = topic;
+				    .repub = NNI_ALLOC_STRUCT(repub);
+				memcpy(cr->rules[cvector_size(cr->rules) - 1]
+				    .repub, repub, sizeof(*repub));
 				cr->rules[cvector_size(cr->rules) - 1]
 				    .forword_type = RULE_FORWORD_REPUB;
 			}
@@ -930,6 +929,8 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 		line = NULL;
 	}
 
+	NNI_FREE_STRUCT(repub);
+
 	if (line) {
 		free(line);
 	}
@@ -937,8 +938,6 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 	fclose(fp);
 	return true;
 }
-
-
 
 static bool
 conf_rule_sqlite_parse(conf_rule *cr, char *path)
@@ -1155,6 +1154,29 @@ conf_rule_parse(conf *nanomq_conf)
 				conf_rule_sqlite_parse(&cr, value);
 			}
 			free(value);
+
+		} else if ((value = get_conf_value(
+		                line, sz, "rule_option.repub")) != NULL) {
+			if (0 == nni_strcasecmp(value, "enable")) {
+				cr.option |= RULE_ENG_RPB;
+			} else {
+				if (0 != nni_strcasecmp(value, "disable")) {
+					debug_msg("Unsupported option: %s\nrule "
+					        "option sqlite only support "
+					        "enable/disable",
+					    value);
+					break;
+				}
+			}
+			free(value);
+		} else if ((value = get_conf_value(line, sz,
+		                "rule_option.repub.conf.path")) != NULL) {
+			if (RULE_ENG_RPB & cr.option) {
+				conf_rule_repub_parse(&cr, value);
+			}
+			free(value);
+
+
 		} else if ((value = get_conf_value(
 		                line, sz, "rule_option.fdb")) != NULL) {
 			if (0 == nni_strcasecmp(value, "enable")) {
