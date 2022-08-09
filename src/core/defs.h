@@ -173,8 +173,6 @@ typedef nni_type nni_opt_type;
 
 // NANOMQ Tcp layer
 #define NNI_ARRAY_SIZE(x) (sizeof(x) / sizeof(uint32_t))
-typedef struct conn_param nano_conn_param;
-typedef struct conn_propt nano_conn_propt;
 
 //NanoMQ nmq_pipe
 typedef struct subinfo subinfo;
