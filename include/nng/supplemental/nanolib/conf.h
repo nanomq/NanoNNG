@@ -38,6 +38,8 @@
 #define RULE_ENG_OFF 0
 #define RULE_ENG_SDB 1
 #define RULE_ENG_FDB (1 << 1)
+#define RULE_ENG_MDB (1 << 2)
+#define RULE_ENG_RPB (1 << 3)
 
 
 #define FREE_NONULL(p)    \

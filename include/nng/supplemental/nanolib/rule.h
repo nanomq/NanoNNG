@@ -50,6 +50,19 @@ typedef struct {
 } rule_key;
 
 typedef struct {
+	char    *address;
+	uint8_t  proto_ver;
+	char    *clientid;
+	bool     clean_start;
+	char    *username;
+	char    *password;
+	uint16_t keepalive;
+	char    *topic;
+	void    *sock;
+} repub_t;
+
+
+typedef struct {
 	/* 
 	** flag[0] == RULE_QOS,
 	** flag[1] == RULE_ID,
@@ -68,9 +81,9 @@ typedef struct {
 	char          *as[8];          // if field string as a new string
 	rule_payload **payload;        // this is for payload info
 	char         **filter;         // filter parse from sql 'where'
-	char *sqlite_table;
-	rule_key *key;
-	// TODO support create multi different table name
+	char	     *sqlite_table;
+	rule_key     *key;
+	repub_t      *repub;
 } rule;
 
 typedef struct {
