@@ -791,6 +791,156 @@ printf_gateway_conf(zmq_gateway_conf *gateway)
 
 #if defined(SUPP_RULE_ENGINE)
 static bool
+conf_rule_repub_parse(conf_rule *cr, char *path)
+{
+	assert(path);
+	if (path == NULL || !nano_file_exists(path)) {
+		printf("Configure file [%s] not found or "
+		       "unreadable\n",
+		    path);
+		return false;
+	}
+
+	char    *line = NULL;
+	size_t   sz   = 0;
+	FILE    *fp;
+	char    *broker = NULL;
+	char    *topic  = NULL;
+	repub_t *repub  = NNI_ALLOC_STRUCT(repub);
+
+
+	if (NULL == (fp = fopen(path, "r"))) {
+		debug_msg("File %s open failed\n", path);
+		return false;
+	}
+
+	char *value;
+	while (nano_getline(&line, &sz, fp) != -1) {
+		if (NULL != strstr(line, "rule.repub")) {
+
+			int num = 0;
+
+			if (0 != sscanf(line, "rule.repub.%d.address", &num)) {
+				char key[32] = { 0 };
+				sprintf(key, "rule.repub.%d.address", num);
+
+				if (NULL !=
+				    (value = get_conf_value(line, sz, key))) {
+					repub->address = value;
+				}
+			} else if (sscanf(line, "rule.repub.%d.topic", &num)) {
+				char key[32] = { 0 };
+				sprintf(key, "rule.repub.%d.topic", num);
+
+				if (NULL !=
+				    (value = get_conf_value(line, sz, key))) {
+					repub->topic = value;
+				}
+			} else if (sscanf(line, "rule.repub.%d.proto_ver",
+			               &num)) {
+				char key[32] = { 0 };
+				sprintf(key, "rule.repub.%d.proto_ver", num);
+
+				if (NULL !=
+				    (value = get_conf_value(line, sz, key))) {
+					repub->proto_ver = atoi(value);
+					free(value);
+				}
+			} else if (sscanf(
+			               line, "rule.repub.%d.clientid", &num)) {
+				char key[32] = { 0 };
+				sprintf(key, "rule.repub.%d.clientid", num);
+
+				if (NULL !=
+				    (value = get_conf_value(line, sz, key))) {
+					repub->clientid = value;
+				}
+			} else if (sscanf(line, "rule.repub.%d.keepalive",
+			               &num)) {
+				char key[32] = { 0 };
+				sprintf(key, "rule.repub.%d.keepalive", num);
+
+				if (NULL !=
+				    (value = get_conf_value(line, sz, key))) {
+					repub->keepalive = atoi(value);
+					free(value);
+				}
+			} else if (sscanf(line, "rule.repub.%d.clean_start",
+			               &num)) {
+				char key[32] = { 0 };
+				sprintf(key, "rule.repub.%d.clean_start", num);
+
+				if (NULL !=
+				    (value = get_conf_value(line, sz, key))) {
+					if (!strcmp(value, "true")) {
+						repub->clean_start = true;
+					} else if (!strcmp(value, "true")) {
+						repub->clean_start = false;
+					} else {
+						debug_msg("Unsupport clean start option!");
+						exit(EXIT_FAILURE);
+					}
+					free(value);
+				}
+			} else if (sscanf(
+			               line, "rule.repub.%d.username", &num)) {
+				char key[32] = { 0 };
+				sprintf(key, "rule.repub.%d.username", num);
+
+				if (NULL !=
+				    (value = get_conf_value(line, sz, key))) {
+					repub->username = value;
+				}
+			} else if (sscanf(
+			               line, "rule.repub.%d.password", &num)) {
+				char key[32] = { 0 };
+				sprintf(key, "rule.repub.%d.password", num);
+
+				if (NULL !=
+				    (value = get_conf_value(line, sz, key))) {
+					repub->password = value;
+				}
+			}
+
+		} else if (NULL != strstr(line, "rule.event.publish")) {
+
+			// TODO more accurate way topic <=======> broker
+			// <======> sql
+			int num = 0;
+			int res =
+			    sscanf(line, "rule.event.publish.%d.sql", &num);
+			if (0 == res) {
+				debug_msg("Do not find table num");
+				exit(EXIT_FAILURE);
+			}
+
+			if (NULL != (value = strchr(line, '='))) {
+				value++;
+				rule_sql_parse(cr, value);
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .repub->address = broker;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .repub->topic = topic;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .forword_type = RULE_FORWORD_REPUB;
+			}
+		}
+
+		free(line);
+		line = NULL;
+	}
+
+	if (line) {
+		free(line);
+	}
+
+	fclose(fp);
+	return true;
+}
+
+
+
+static bool
 conf_rule_sqlite_parse(conf_rule *cr, char *path)
 {
 	assert(path);
