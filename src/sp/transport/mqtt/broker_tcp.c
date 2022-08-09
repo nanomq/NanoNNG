@@ -441,6 +441,11 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 	msg  = nni_aio_get_msg(qsaio);
 	type = nni_msg_cmd_type(msg);
 
+	if (p->closed) {
+		nni_msg_free(msg);
+		goto exit;
+
+	}
 	if (p->tcp_cparam->pro_ver == 5) {
 		(type == CMD_PUBCOMP || type == PUBACK) ? p->qrecv_quota++
 		                                        : p->qrecv_quota;
@@ -460,6 +465,7 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
+exit:
 	p->busy = false;
 	nni_aio_set_msg(qsaio, NULL);
 	nni_mtx_unlock(&p->mtx);
