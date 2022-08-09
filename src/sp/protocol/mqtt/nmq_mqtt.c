@@ -50,7 +50,7 @@ struct nano_ctx {
 
 // nano_sock is our per-socket protocol private structure.
 struct nano_sock {
-	nni_mtx        lk;
+	nni_rwlock     lk;
 	nni_atomic_int ttl;
 	nni_id_map     pipes;
 	nni_id_map     cached_sessions;
@@ -289,7 +289,6 @@ nano_ctx_close(void *arg)
 	nni_aio   *aio;
 
 	debug_msg("nano_ctx_close");
-	nni_mtx_lock(&s->lk);
 	if ((aio = ctx->saio) != NULL) {
 		// nano_pipe *pipe = ctx->spipe;
 		ctx->saio     = NULL;
@@ -297,12 +296,13 @@ nano_ctx_close(void *arg)
 		ctx->qos_pipe = NULL;
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
+	nni_rwlock_wrlock(&s->lk);
 	if ((aio = ctx->raio) != NULL) {
 		nni_list_remove(&s->recvq, ctx);
 		ctx->raio = NULL;
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
-	nni_mtx_unlock(&s->lk);
+	nni_rwlock_unlock(&s->lk);
 }
 
 static void
@@ -335,14 +335,13 @@ nano_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
 	nano_sock *s   = ctx->sock;
 
 	debug_msg("*********** nano_ctx_cancel_send ***********");
-	nni_mtx_lock(&s->lk);
 	if (ctx->saio != aio) {
-		nni_mtx_unlock(&s->lk);
 		return;
 	}
+	nni_rwlock_wrlock(&s->lk);
 	nni_list_node_remove(&ctx->sqnode);
 	ctx->saio = NULL;
-	nni_mtx_unlock(&s->lk);
+	nni_rwlock_unlock(&s->lk);
 
 	nni_msg_header_clear(nni_aio_get_msg(aio)); // reset the headers
 	nni_aio_finish_error(aio, rv);
@@ -379,27 +378,26 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	} else {
 		pipe = ctx->pipe_id; // reply to self
 	}
-	ctx->pipe_id =
-	    0; // ensure connack/PING/DISCONNECT/PUBACK only sends once
+	// ensure connack/PING/DISCONNECT/PUBACK only sends once
+	ctx->pipe_id = 0;
 
 	if (ctx == &s->ctx) {
 		nni_pollable_clear(&s->writable);
 	}
 
-	nni_mtx_lock(&s->lk);
-	debug_msg(" ******** working with pipe id : %d ctx ********", pipe);
+	nni_rwlock_rdlock(&s->lk);
+	debug_msg(" ******** working with pipe id : %d ctx ******** ", pipe);
 	if ((p = nni_id_get(&s->pipes, pipe)) == NULL) {
 		// Pipe is gone.  Make this look like a good send to avoid
 		// disrupting the state machine.  We don't care if the peer
 		// lost interest in our reply.
-		nni_mtx_unlock(&s->lk);
+		nni_rwlock_unlock(&s->lk);
 		nni_aio_set_msg(aio, NULL);
 		debug_msg("Warning: pipe is gone, pub failed");
 		nni_msg_free(msg);
 		return;
 	}
-
-	nni_mtx_unlock(&s->lk);
+	nni_rwlock_unlock(&s->lk);
 	nni_mtx_lock(&p->lk);
 
 	if (p->pipe->cache) {
@@ -481,7 +479,7 @@ nano_sock_fini(void *arg)
 	nano_ctx_fini(&s->ctx);
 	nni_pollable_fini(&s->writable);
 	nni_pollable_fini(&s->readable);
-	nni_mtx_fini(&s->lk);
+	nni_rwlock_fini(&s->lk);
 
 	conf_fini(s->conf);
 }
@@ -493,7 +491,7 @@ nano_sock_init(void *arg, nni_sock *sock)
 
 	NNI_ARG_UNUSED(sock);
 
-	nni_mtx_init(&s->lk);
+	nni_rwlock_init(&s->lk);
 
 	nni_id_map_init(&s->pipes, 0, 0, false);
 	nni_id_map_init(&s->cached_sessions, 0, 0, false);
@@ -617,7 +615,7 @@ nano_pipe_start(void *arg)
 
 	debug_msg(" ########## nano_pipe_start ########## ");
 	nni_msg_alloc(&msg, 0);
-	nni_mtx_lock(&s->lk);
+	nni_rwlock_wrlock(&s->lk);
 
 	clientid = (char *) conn_param_get_clientid(p->conn_param);
 #ifdef NNG_SUPP_SQLITE
@@ -698,7 +696,7 @@ nano_pipe_start(void *arg)
 		// TODO disconnect client && send connack with reason code 0x05
 		debug_syslog("Invalid auth info.");
 	}
-	nni_mtx_unlock(&s->lk);
+	nni_rwlock_unlock(&s->lk);
 
 	// TODO MQTT V5 check return code
 	if (rv == 0) {
@@ -766,7 +764,7 @@ nano_pipe_close(void *arg)
 		nni_atomic_swap_bool(&npipe->p_closed, false);
 		return;
 	}
-	nni_mtx_lock(&s->lk);
+	nni_rwlock_wrlock(&s->lk);
 	// we freed the conn_param when restoring pipe
 	// so check status of conn_param. just let it close silently
 	if (p->conn_param->clean_start == 0) {
@@ -776,7 +774,7 @@ nano_pipe_close(void *arg)
 	if (clientid) {
 		clientid_key = DJBHashn(clientid, strlen(clientid));
 		nni_id_set(&s->cached_sessions, clientid_key, p);
-		nni_mtx_lock(&p->lk);
+		// nni_mtx_lock(&p->lk);
 		// set event to false avoid of sending the disconnecting msg
 		p->event                   = false;
 		npipe->cache               = true;
@@ -786,8 +784,8 @@ nano_pipe_close(void *arg)
 			nni_list_remove(&s->recvpipes, p);
 		}
 		nano_nni_lmq_flush(&p->rlmq);
-		nni_mtx_unlock(&s->lk);
-		nni_mtx_unlock(&p->lk);
+		nni_rwlock_unlock(&s->lk);
+		// nni_mtx_unlock(&p->lk);
 		return;
 	}
 	close_pipe(p);
@@ -799,7 +797,7 @@ nano_pipe_close(void *arg)
 		msg =
 		    nano_msg_notify_disconnect(p->conn_param, p->reason_code);
 		if (msg == NULL) {
-			nni_mtx_unlock(&s->lk);
+			nni_rwlock_unlock(&s->lk);
 			return;
 		}
 		nni_msg_set_conn_param(msg, p->conn_param);
@@ -813,7 +811,7 @@ nano_pipe_close(void *arg)
 			aio       = ctx->raio;
 			ctx->raio = NULL;
 			nni_list_remove(&s->recvq, ctx);
-			nni_mtx_unlock(&s->lk);
+			nni_rwlock_unlock(&s->lk);
 			nni_aio_set_msg(aio, msg);
 			nni_aio_finish(aio, 0, nni_msg_len(msg));
 			return;
@@ -828,7 +826,7 @@ nano_pipe_close(void *arg)
 			nni_lmq_put(&s->waitlmq, msg);
 		}
 	}
-	nni_mtx_unlock(&s->lk);
+	nni_rwlock_unlock(&s->lk);
 }
 
 static void
@@ -872,13 +870,13 @@ nano_cancel_recv(nni_aio *aio, void *arg, int rv)
 	nano_sock *s   = ctx->sock;
 
 	debug_msg("*********** nano_cancel_recv ***********");
-	nni_mtx_lock(&s->lk);
+	nni_rwlock_wrlock(&s->lk);
 	if (ctx->raio == aio) {
 		nni_list_remove(&s->recvq, ctx);
 		ctx->raio = NULL;
 		nni_aio_finish_error(aio, rv);
 	}
-	nni_mtx_unlock(&s->lk);
+	nni_rwlock_unlock(&s->lk);
 }
 
 static void
@@ -895,10 +893,10 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 	}
 
 	debug_msg("nano_ctx_recv start %p", ctx);
-	nni_mtx_lock(&s->lk);
+	nni_rwlock_wrlock(&s->lk);
 
 	if (nni_lmq_get(&s->waitlmq, &msg) == 0) {
-		nni_mtx_unlock(&s->lk);
+		nni_rwlock_unlock(&s->lk);
 		debug_msg("handle msg in waitlmq.");
 		nni_aio_set_msg(aio, msg);
 		nni_aio_finish(aio, 0, nni_msg_len(msg));
@@ -908,7 +906,7 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 	if ((p = nni_list_first(&s->recvpipes)) == NULL) {
 		int rv;
 		if ((rv = nni_aio_schedule(aio, nano_cancel_recv, ctx)) != 0) {
-			nni_mtx_unlock(&s->lk);
+			nni_rwlock_unlock(&s->lk);
 			nni_aio_finish_error(aio, rv);
 			return;
 		}
@@ -917,13 +915,13 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 			// This could be ESTATE, or we could cancel the first
 			// with ECANCELED.  We elect the former.
 			debug_msg("ERROR: former aio not finish yet");
-			nni_mtx_unlock(&s->lk);
+			nni_rwlock_unlock(&s->lk);
 			nni_aio_finish_error(aio, NNG_ESTATE);
 			return;
 		}
 		ctx->raio = aio;
 		nni_list_append(&s->recvq, ctx);
-		nni_mtx_unlock(&s->lk);
+		nni_rwlock_unlock(&s->lk);
 		return;
 	}
 	msg = nni_aio_get_msg(&p->aio_recv);
@@ -942,7 +940,7 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 	ctx->pipe_id = nni_pipe_id(p->pipe);
 	debug_msg("nano_ctx_recv ends %p pipe: %p pipe_id: %d", ctx, p,
 	    ctx->pipe_id);
-	nni_mtx_unlock(&s->lk);
+	nni_rwlock_unlock(&s->lk);
 
 	nni_aio_set_msg(aio, msg);
 	nni_aio_finish(aio, 0, nni_msg_len(msg));
@@ -1058,12 +1056,12 @@ nano_pipe_recv_cb(void *arg)
 		debug_msg("ERROR: pipe is closed abruptly!!");
 		return;
 	}
-	nni_mtx_lock(&s->lk);
+	nni_rwlock_wrlock(&s->lk);
 	if ((ctx = nni_list_first(&s->recvq)) == NULL) {
 		// No one waiting to receive yet, holding pattern.
 		nni_list_append(&s->recvpipes, p);
 		nni_pollable_raise(&s->readable);
-		nni_mtx_unlock(&s->lk);
+		nni_rwlock_unlock(&s->lk);
 		debug_msg("ERROR: no ctx found!! create more ctxs!");
 		// nni_println("ERROR: no ctx found!! create more ctxs!");
 		return;
@@ -1083,7 +1081,7 @@ nano_pipe_recv_cb(void *arg)
 	ctx->pipe_id = p->id;
 	debug_msg("currently processing pipe_id: %d", p->id);
 
-	nni_mtx_unlock(&s->lk);
+	nni_rwlock_unlock(&s->lk);
 	nni_aio_set_msg(aio, msg);
 
 	nni_aio_finish_sync(aio, 0, nni_msg_len(msg));
