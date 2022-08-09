@@ -85,10 +85,10 @@ struct nano_pipe {
 	uint8_t       reason_code;
 	// ka_refresh count how many times the keepalive timer has
 	// been triggered
-	uint8_t          ka_refresh;
-	nano_conn_param *conn_param;
-	nni_lmq          rlmq;
-	void            *nano_qos_db; // 'sqlite' or 'nni_id_hash_map'
+	uint8_t     ka_refresh;
+	conn_param *conn_param;
+	nni_lmq     rlmq;
+	void       *nano_qos_db; // 'sqlite' or 'nni_id_hash_map'
 };
 
 void
@@ -953,7 +953,7 @@ nano_pipe_recv_cb(void *arg)
 {
 	nano_pipe       *p      = arg;
 	nano_sock       *s      = p->broker;
-	nano_conn_param *cparam = NULL;
+	conn_param 	*cparam = NULL;
 	uint32_t         len, len_of_varint = 0;
 	nano_ctx        *ctx;
 	nni_msg         *msg, *qos_msg = NULL;
@@ -1121,6 +1121,14 @@ nano_sock_get_max_ttl(void *arg, void *buf, size_t *szp, nni_opt_type t)
 }
 
 static int
+nano_sock_get_idmap(void *arg, void *buf, size_t *szp, nni_opt_type t)
+{
+	nano_sock *s = arg;
+
+	return (nni_copyout_ptr(&s->pipes, buf, szp, t));
+}
+
+static int
 nano_sock_get_sendfd(void *arg, void *buf, size_t *szp, nni_opt_type t)
 {
 	nano_sock *s = arg;
@@ -1217,6 +1225,10 @@ static nni_option nano_sock_options[] = {
 	{
 	    .o_name = NNG_OPT_SENDFD,
 	    .o_get  = nano_sock_get_sendfd,
+	},
+	{
+	    .o_name = NMQ_OPT_MQTT_PIPES,
+	    .o_get  = nano_sock_get_idmap,
 	},
 	{
 	    .o_name = NULL,
