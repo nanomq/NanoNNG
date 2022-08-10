@@ -279,7 +279,7 @@ send_request(conf_auth_http *conf, conf_auth_http_req *conf_req,
 	// TODO It could cause some problems.
 	nng_aio_wait(aio);
 	if ((rv = nng_aio_result(aio)) != 0) {
-		debug_msg("Connect failed: %s\n", nng_strerror(rv));
+		log_error("Connect failed: %s\n", nng_strerror(rv));
 		goto out;
 	}
 
@@ -296,7 +296,7 @@ send_request(conf_auth_http *conf, conf_auth_http_req *conf_req,
 	nng_aio_wait(aio);
 
 	if ((rv = nng_aio_result(aio)) != 0) {
-		debug_msg("Write req failed: %s", nng_strerror(rv));
+		log_error("Write req failed: %s", nng_strerror(rv));
 		goto out;
 	}
 
@@ -307,12 +307,12 @@ send_request(conf_auth_http *conf, conf_auth_http_req *conf_req,
 	nng_aio_wait(aio);
 
 	if ((rv = nng_aio_result(aio)) != 0) {
-		debug_msg("Read response: %s", nng_strerror(rv));
+		log_error("Read response: %s", nng_strerror(rv));
 		goto out;
 	}
 
 	if ((status = nng_http_res_get_status(res)) != NNG_HTTP_STATUS_OK) {
-		debug_msg("HTTP Server Responded: %d %s",
+		log_error("HTTP Server Responded: %d %s",
 		    nng_http_res_get_status(res),
 		    nng_http_res_get_reason(res));
 		goto out;

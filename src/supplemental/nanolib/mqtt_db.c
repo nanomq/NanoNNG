@@ -17,6 +17,7 @@
 #include "nng/supplemental/nanolib/cvector.h"
 #include "nng/supplemental/nanolib/hash_table.h"
 #include "nng/supplemental/nanolib/mqtt_db.h"
+#include "nng/supplemental/nanolib/log.h"
 
 #define ROUND_ROBIN
 // #define RANDOM
@@ -79,14 +80,14 @@ print_client(uint32_t *v)
 #ifdef NOLOG
 	NNI_ARG_UNUSED(v);
 #else
-	puts("____________PRINT_DB_CLIENT___________");
+	log_debug("____________PRINT_DB_CLIENT___________");
 	if (v) {
-		for (int i = 0; i < cvector_size(v); i++) {
-			printf("%d\t", v[i]);
+		for (size_t i = 0; i < cvector_size(v); i++) {
+			log_debug("%d\t", v[i]);
 		}
-		puts("");
+		log_debug("");
 	}
-	puts("____________PRINT_DB_CLIENT___________");
+	log_debug("____________PRINT_DB_CLIENT___________");
 #endif
 }
 
@@ -102,7 +103,7 @@ topic_count(char *topic)
 	char *t   = topic;
 
 	while (t) {
-		// debug_msg("%s", t);
+		// log_debug("%s", t);
 		t = strchr(t, '/');
 		cnt++;
 		if (t == NULL) {
@@ -123,7 +124,7 @@ static char **
 topic_parse(char *topic)
 {
 	if (topic == NULL) {
-		debug_msg("topic is NULL");
+		log_debug("topic is NULL");
 		return NULL;
 	}
 
@@ -287,36 +288,36 @@ dbtree_print(dbtree *db)
 
 	const char node_fmt[] = "[%-5s]\t";
 	cvector_push_back(nodes, node);
-	puts("___________PRINT_DB_TREE__________");
+	log_debug("___________PRINT_DB_TREE__________");
 	while (!cvector_empty(nodes)) {
-		for (int i = 0; i < cvector_size(nodes); i++) {
-			printf(node_fmt, nodes[i]->topic);
+		for (size_t i = 0; i < cvector_size(nodes); i++) {
+			log_debug(node_fmt, nodes[i]->topic);
 
-			for (int j = 0; j < cvector_size(nodes[i]->child);
+			for (size_t j = 0; j < cvector_size(nodes[i]->child);
 			     j++) {
 				cvector_push_back(
 				    nodes_t, (nodes[i]->child)[j]);
 			}
 		}
-		printf("\n");
+		log_debug("\n");
 		cvector_free(nodes);
 		nodes = NULL;
 
 		for (size_t i = 0; i < cvector_size(nodes_t); i++) {
-			printf(node_fmt, nodes_t[i]->topic);
+			log_debug(node_fmt, nodes_t[i]->topic);
 
-			for (int j = 0; j < cvector_size(nodes_t[i]->child);
+			for (size_t j = 0; j < cvector_size(nodes_t[i]->child);
 			     j++) {
 				cvector_push_back(
 				    nodes, (nodes_t[i]->child)[j]);
 			}
 		}
-		printf("\n");
+		log_debug("\n");
 		cvector_free(nodes_t);
 		nodes_t = NULL;
 	}
 	nni_rwlock_unlock(&(db->rwlock));
-	puts("___________PRINT_DB_TREE__________");
+	log_debug("___________PRINT_DB_TREE__________");
 }
 #endif
 
@@ -383,7 +384,7 @@ dbtree_node_new(char *topic)
 		return NULL;
 	}
 	node->topic = nni_strdup(topic);
-	debug_msg("New node: [%s]", node->topic);
+	log_debug("New node: [%s]", node->topic);
 
 	node->retain  = NULL;
 	node->child   = NULL;
@@ -405,7 +406,7 @@ dbtree_node_free(dbtree_node *node)
 {
 	if (node) {
 		if (node->topic) {
-			debug_msg("Delete node: [%s]", node->topic);
+			log_debug("Delete node: [%s]", node->topic);
 			free(node->topic);
 			node->topic = NULL;
 		}
@@ -520,7 +521,7 @@ static dbtree_node *
 dbtree_node_insert(dbtree_node *node, char **topic_queue)
 {
 	if (node == NULL || topic_queue == NULL) {
-		debug_msg("node or topic_queue is NULL");
+		log_warn("node or topic_queue is NULL");
 		return NULL;
 	}
 
@@ -604,7 +605,7 @@ search_insert_node(dbtree *db, char *topic, void *args,
     void *(*inserter)(dbtree_node *node, void *args))
 {
 	if (db == NULL || topic == NULL) {
-		debug_msg("db or topic is NULL");
+		log_warn("db or topic is NULL");
 		return NULL;
 	}
 
@@ -621,7 +622,7 @@ search_insert_node(dbtree *db, char *topic, void *args,
 
 		while (*topic_queue && node->child && *node->child) {
 			dbtree_node *node_t = *node->child;
-			debug_msg("topic is: %s, node->topic is: %s",
+			log_debug("topic is: %s, node->topic is: %s",
 			    *topic_queue, node_t->topic);
 			if (strcmp(node_t->topic, *topic_queue)) {
 				bool   equal = false;
@@ -635,7 +636,7 @@ search_insert_node(dbtree *db, char *topic, void *args,
 					 ** insert node until topic_queue
 					 ** is NULL
 					 */
-					debug_msg("searching unequal");
+					log_debug("searching unequal");
 					node = dbtree_node_insert(
 					    node_t, topic_queue);
 					break;
@@ -647,11 +648,11 @@ search_insert_node(dbtree *db, char *topic, void *args,
 				topic_queue++;
 				node = node_t;
 			} else if (*(topic_queue + 1) == NULL) {
-				debug_msg("Search and insert client");
+				log_debug("Search and insert client");
 				node = node_t;
 				break;
 			} else {
-				debug_msg("Insert node and client");
+				log_debug("Insert node and client");
 				node = dbtree_node_insert(
 				    node_t, topic_queue + 1);
 				break;
@@ -700,7 +701,7 @@ collect_clients(uint32_t **vec, dbtree_node **nodes, dbtree_node ***nodes_t,
 
 		if (node_t->well != -1) {
 			if (!cvector_empty(child[node_t->well]->clients)) {
-				debug_msg("Find # tag");
+				log_debug("Find # tag");
 				cvector_push_back(
 				    vec, child[node_t->well]->clients);
 			}
@@ -708,7 +709,7 @@ collect_clients(uint32_t **vec, dbtree_node **nodes, dbtree_node ***nodes_t,
 
 		if (node_t->plus != -1) {
 			if (*(topic_queue + 1) == NULL) {
-				debug_msg("add + clients");
+				log_debug("add + clients");
 				if (!cvector_empty(
 				        child[node_t->plus]->clients)) {
 					cvector_push_back(
@@ -718,7 +719,7 @@ collect_clients(uint32_t **vec, dbtree_node **nodes, dbtree_node ***nodes_t,
 			} else {
 				cvector_push_back(
 				    (*nodes_t), child[node_t->plus]);
-				debug_msg("add node_t: %s",
+				log_debug("add node_t: %s",
 				    (*(cvector_end((*nodes_t)) - 1))->topic);
 			}
 		}
@@ -732,10 +733,10 @@ collect_clients(uint32_t **vec, dbtree_node **nodes, dbtree_node ***nodes_t,
 		}
 
 		if (equal == true) {
-			debug_msg("Searching client: %s", t->topic);
+			log_debug("Searching client: %s", t->topic);
 			if (*(topic_queue + 1) == NULL) {
 				if (!cvector_empty(t->clients)) {
-					debug_msg(
+					log_debug(
 					    "Searching client: %s", t->topic);
 					cvector_push_back(vec, t->clients);
 				}
@@ -743,7 +744,7 @@ collect_clients(uint32_t **vec, dbtree_node **nodes, dbtree_node ***nodes_t,
 				if (t->well != -1) {
 					t = t->child[t->well];
 					if (!cvector_empty(t->clients)) {
-						debug_msg(
+						log_debug(
 						    "Searching client: %s",
 						    t->topic);
 						cvector_push_back(
@@ -752,9 +753,9 @@ collect_clients(uint32_t **vec, dbtree_node **nodes, dbtree_node ***nodes_t,
 				}
 
 			} else {
-				debug_msg("Searching client: %s", t->topic);
+				log_debug("Searching client: %s", t->topic);
 				cvector_push_back((*nodes_t), t);
-				debug_msg("add node_t: %s",
+				log_debug("add node_t: %s",
 				    (*(cvector_end((*nodes_t)) - 1))->topic);
 			}
 		}
@@ -803,7 +804,7 @@ uint32_t *
 search_client(dbtree *db, char *topic)
 {
 	if (db == NULL || topic == NULL) {
-		debug_msg("db or topic is NULL");
+		log_error("db or topic is NULL");
 		return NULL;
 	}
 
@@ -877,11 +878,11 @@ delete_dbtree_client(dbtree_node *node, uint32_t pipe_id)
 			print_client(node->clients);
 		}
 	} else {
-		debug_msg("Not find pipe id: [%d]", pipe_id);
-		debug_msg("node->topic: %s", node->topic);
+		log_debug("Not find pipe id: [%d]", pipe_id);
+		log_debug("node->topic: %s", node->topic);
 		for (size_t i = 0; i < cvector_size(node->clients); i++) {
-			debug_msg(
-			    "node->clients[%d]: [%d]:", i, node->clients[i]);
+			log_debug(
+			    "node->clients[%ld]: [%ld]:", i, node->clients[i]);
 		}
 	}
 
@@ -903,7 +904,7 @@ delete_dbtree_node(dbtree_node *node, size_t index)
 	// TODO plus && well
 
 	if (cvector_empty(node_t->child) && cvector_empty(node_t->clients)) {
-		debug_msg("Delete node: [%s]", node_t->topic);
+		log_debug("Delete node: [%s]", node_t->topic);
 		cvector_free(node_t->child);
 		cvector_free(node_t->clients);
 		free(node_t->topic);
@@ -944,7 +945,7 @@ void *
 dbtree_delete_client(dbtree *db, char *topic, uint32_t pipe_id)
 {
 	if (db == NULL || topic == NULL) {
-		debug_msg("db or topic is NULL");
+		log_error("db or topic is NULL");
 		return NULL;
 	}
 
@@ -960,7 +961,7 @@ dbtree_delete_client(dbtree *db, char *topic, uint32_t pipe_id)
 	while (*topic_queue && node->child && *node->child) {
 		index               = 0;
 		dbtree_node *node_t = *node->child;
-		debug_msg("topic is: %s, node->topic is: %s", *topic_queue,
+		log_debug("topic is: %s, node->topic is: %s", *topic_queue,
 		    node_t->topic);
 		if (strcmp(node_t->topic, *topic_queue)) {
 			bool equal = false;
@@ -982,7 +983,7 @@ dbtree_delete_client(dbtree *db, char *topic, uint32_t pipe_id)
 				node_t = find_next(
 				    node, &equal, topic_queue, &index);
 				if (equal == false) {
-					debug_msg("searching unequal");
+					log_debug("searching unequal");
 					goto mem_free;
 				}
 			}
@@ -995,11 +996,11 @@ dbtree_delete_client(dbtree *db, char *topic, uint32_t pipe_id)
 			node = node_t;
 
 		} else if (*(topic_queue + 1) == NULL) {
-			debug_msg("Search and delete client");
-			debug_msg("node->topic: %s", node->topic);
+			log_debug("Search and delete client");
+			log_debug("node->topic: %s", node->topic);
 			break;
 		} else {
-			debug_msg("No node and client need to be delete");
+			log_debug("No node and client need to be delete");
 			goto mem_free;
 		}
 	}
@@ -1152,21 +1153,21 @@ collect_retains(dbtree_retain_msg **vec, dbtree_node **nodes,
 			}
 
 			if (equal == true) {
-				debug_msg(
+				log_debug(
 				    "Searching client: %s", node_t->topic);
 				if (*(topic_queue + 1) == NULL) {
 					if (t->retain) {
-						debug_msg(
+						log_debug(
 						    "Searching client: %s",
 						    t->topic);
 						cvector_push_back(
 						    vec, t->retain);
 					}
 				} else {
-					debug_msg(
+					log_debug(
 					    "Searching client: %s", t->topic);
 					cvector_push_back((*nodes_t), t);
-					debug_msg("add node_t: %s",
+					log_debug("add node_t: %s",
 					    (*(cvector_end((*nodes_t)) - 1))
 					        ->topic);
 				}
@@ -1182,7 +1183,7 @@ dbtree_find_retain(dbtree *db, char *topic)
 {
 
 	if (db == NULL || topic == NULL) {
-		debug_msg("db or topic is NULL");
+		log_error("db or topic is NULL");
 		return NULL;
 	}
 	char **topic_queue = topic_parse(topic);
@@ -1222,7 +1223,7 @@ static void *
 delete_dbtree_retain(dbtree_node *node)
 {
 	if (node == NULL) {
-		debug_msg("node is NULL");
+		log_debug("node is NULL");
 		return NULL;
 	}
 	void *retain = NULL;
@@ -1238,7 +1239,7 @@ void *
 dbtree_delete_retain(dbtree *db, char *topic)
 {
 	if (db == NULL || topic == NULL) {
-		debug_msg("db or topic is NULL");
+		log_debug("db or topic is NULL");
 		return NULL;
 	}
 	nni_rwlock_wrlock(&(db->rwlock));
@@ -1254,7 +1255,7 @@ dbtree_delete_retain(dbtree *db, char *topic)
 	while (*topic_queue && node->child && *node->child) {
 		index               = 0;
 		dbtree_node *node_t = *node->child;
-		debug_msg("topic is: %s, node->topic is: %s", *topic_queue,
+		log_debug("topic is: %s, node->topic is: %s", *topic_queue,
 		    node_t->topic);
 		if (strcmp(node_t->topic, *topic_queue)) {
 			bool equal = false;
@@ -1263,7 +1264,7 @@ dbtree_delete_retain(dbtree *db, char *topic)
 			// node_t is needed
 			node_t = find_next(node, &equal, topic_queue, &index);
 			if (equal == false) {
-				debug_msg("searching unequal");
+				log_debug("searching unequal");
 				goto mem_free;
 			}
 		}
@@ -1275,11 +1276,11 @@ dbtree_delete_retain(dbtree *db, char *topic)
 			node = node_t;
 
 		} else if (*(topic_queue + 1) == NULL) {
-			debug_msg("Search and delete retain");
-			debug_msg("node->topic: %s", node->topic);
+			log_debug("Search and delete retain");
+			log_debug("node->topic: %s", node->topic);
 			break;
 		} else {
-			debug_msg("No node and client need to be delete");
+			log_debug("No node and client need to be delete");
 			goto mem_free;
 		}
 	}
@@ -1391,7 +1392,7 @@ dbtree_find_shared_clients(dbtree *db, char *topic)
 		}
 	}
 
-	debug_msg("nodes size: %lu", cvector_size(nlist));
+	log_debug("nodes size: %lu", cvector_size(nlist));
 	while (*topic_queue && (!cvector_empty(nodes_p))) {
 
 		ids = collect_clients(ids, nodes_p, &nodes_q, topic_queue);

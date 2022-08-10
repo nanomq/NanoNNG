@@ -155,7 +155,7 @@ conf_update(const char *fpath, const char *key, char *value)
 			linearray =
 			    realloc(linearray, (count + 1) * (sizeof(char *)));
 			if (linearray == NULL) {
-				debug_msg("realloc fail");
+				log_error("realloc fail");
 			}
 			ptr = strstr(line, deststr);
 			if (ptr == line) {
@@ -180,7 +180,7 @@ conf_update(const char *fpath, const char *key, char *value)
 			free(line);
 		}
 	} else {
-		debug_msg("Open file %s error", fpath);
+		log_error("Open file %s error", fpath);
 	}
 
 	if (deststr) {
@@ -270,7 +270,7 @@ conf_tls_parse(
 {
 	FILE *fp;
 	if ((fp = fopen(path, "r")) == NULL) {
-		debug_msg("File %s open failed", path);
+		log_error("File %s open failed", path);
 		return false;
 	}
 	char * line = NULL;
@@ -340,7 +340,7 @@ conf_parser(conf *nanomq_conf)
 
 	if (dest_path == NULL || !nano_file_exists(dest_path)) {
 		if (!nano_file_exists(CONF_PATH_NAME)) {
-			debug_msg("Configure file [%s] or [%s] not found or "
+			log_debug("Configure file [%s] or [%s] not found or "
 			          "unreadable",
 			    dest_path, CONF_PATH_NAME);
 			return false;
@@ -355,7 +355,7 @@ conf_parser(conf *nanomq_conf)
 	conf * config = nanomq_conf;
 
 	if ((fp = fopen(dest_path, "r")) == NULL) {
-		debug_msg("File %s open failed", dest_path);
+		log_error("File %s open failed", dest_path);
 		return true;
 	}
 
@@ -534,7 +534,7 @@ conf_log_parse(conf_log *log, const char *path)
 {
 	FILE *fp;
 	if ((fp = fopen(path, "r")) == NULL) {
-		debug_msg("File %s open failed", path);
+		log_error("File %s open failed", path);
 		return false;
 	}
 	char * line = NULL;
@@ -739,38 +739,38 @@ conf_init(conf *nanomq_conf)
 void
 print_conf(conf *nanomq_conf)
 {
-	debug_msg("This NanoMQ instance configured as:");
+	log_info("This NanoMQ instance configured as:");
 
-	debug_msg("tcp url:                  %s ", nanomq_conf->url);
-	debug_msg("enable websocket:         %s",
+	log_info("tcp url:                  %s ", nanomq_conf->url);
+	log_info("enable websocket:         %s",
 	    nanomq_conf->websocket.enable ? "true" : "false");
-	debug_msg("websocket url:            %s", nanomq_conf->websocket.url);
-	debug_msg(
+	log_info("websocket url:            %s", nanomq_conf->websocket.url);
+	log_info(
 	    "websocket tls url:        %s", nanomq_conf->websocket.tls_url);
-	debug_msg("daemon:                   %s",
+	log_info("daemon:                   %s",
 	    nanomq_conf->daemon ? "true" : "false");
-	debug_msg(
+	log_info(
 	    "num_taskq_thread:         %d", nanomq_conf->num_taskq_thread);
-	debug_msg(
+	log_info(
 	    "max_taskq_thread:         %d", nanomq_conf->max_taskq_thread);
-	debug_msg("parallel:                 %u", nanomq_conf->parallel);
-	debug_msg("property_size:            %d", nanomq_conf->property_size);
-	debug_msg("msq_len:                  %d", nanomq_conf->msq_len);
-	debug_msg("qos_duration:             %d", nanomq_conf->qos_duration);
-	debug_msg("enable http server:       %s",
+	log_info("parallel:                 %u", nanomq_conf->parallel);
+	log_info("property_size:            %d", nanomq_conf->property_size);
+	log_info("msq_len:                  %d", nanomq_conf->msq_len);
+	log_info("qos_duration:             %d", nanomq_conf->qos_duration);
+	log_info("enable http server:       %s",
 	    nanomq_conf->http_server.enable ? "true" : "false");
-	debug_msg(
+	log_info(
 	    "http server port:         %d", nanomq_conf->http_server.port);
-	debug_msg(
+	log_info(
 	    "http server parallel:     %u", nanomq_conf->http_server.parallel);
-	debug_msg("enable tls:               %s",
+	log_info("enable tls:               %s",
 	    nanomq_conf->tls.enable ? "true" : "false");
 	if (nanomq_conf->tls.enable) {
-		debug_msg(
+		log_info(
 		    "tls url:                  %s", nanomq_conf->tls.url);
-		debug_msg("tls verify peer:          %s",
+		log_info("tls verify peer:          %s",
 		    nanomq_conf->tls.verify_peer ? "true" : "false");
-		debug_msg("tls fail_if_no_peer_cert: %s",
+		log_info("tls fail_if_no_peer_cert: %s",
 		    nanomq_conf->tls.set_fail ? "true" : "false");
 	}
 }
@@ -781,7 +781,7 @@ conf_auth_parser(conf *nanomq_conf)
 	char *dest_path = nanomq_conf->auth_file;
 	if (dest_path == NULL || !nano_file_exists(dest_path)) {
 		if (!nano_file_exists(CONF_AUTH_PATH_NAME)) {
-			debug_msg("Configure file [%s] or [%s] not found or "
+			log_debug("Configure file [%s] or [%s] not found or "
 			          "unreadable",
 			    dest_path, CONF_AUTH_PATH_NAME);
 			return;
@@ -807,7 +807,7 @@ conf_auth_parser(conf *nanomq_conf)
 
 	FILE *fp;
 	if ((fp = fopen(dest_path, "r")) == NULL) {
-		debug_msg("File %s open failed", dest_path);
+		log_error("File %s open failed", dest_path);
 		return;
 	}
 
@@ -870,19 +870,19 @@ conf_auth_destroy(conf_auth *auth)
 static void
 printf_gateway_conf(zmq_gateway_conf *gateway)
 {
-	debug_msg("zmq sub url: %s", gateway->zmq_sub_url);
-	debug_msg("zmq pub url: %s", gateway->zmq_pub_url);
-	debug_msg("zmq sub pre: %s", gateway->zmq_sub_pre);
-	debug_msg("zmq pub pre: %s", gateway->zmq_pub_pre);
-	debug_msg("mqtt url: %s", gateway->mqtt_url);
-	debug_msg("mqtt sub url: %s", gateway->sub_topic);
-	debug_msg("mqtt pub url: %s", gateway->pub_topic);
-	debug_msg("mqtt username: %s", gateway->username);
-	debug_msg("mqtt password: %s", gateway->password);
-	debug_msg("mqtt proto version: %d", gateway->proto_ver);
-	debug_msg("mqtt keepalive: %d", gateway->keepalive);
-	debug_msg("mqtt clean start: %d", gateway->clean_start);
-	debug_msg("mqtt parallel: %d", gateway->parallel);
+	log_info("zmq sub url: %s", gateway->zmq_sub_url);
+	log_info("zmq pub url: %s", gateway->zmq_pub_url);
+	log_info("zmq sub pre: %s", gateway->zmq_sub_pre);
+	log_info("zmq pub pre: %s", gateway->zmq_pub_pre);
+	log_info("mqtt url: %s", gateway->mqtt_url);
+	log_info("mqtt sub url: %s", gateway->sub_topic);
+	log_info("mqtt pub url: %s", gateway->pub_topic);
+	log_info("mqtt username: %s", gateway->username);
+	log_info("mqtt password: %s", gateway->password);
+	log_info("mqtt proto version: %d", gateway->proto_ver);
+	log_info("mqtt keepalive: %d", gateway->keepalive);
+	log_info("mqtt clean start: %d", gateway->clean_start);
+	log_info("mqtt parallel: %d", gateway->parallel);
 }
 
 #if defined(SUPP_RULE_ENGINE)
@@ -1040,7 +1040,7 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 {
 	assert(path);
 	if (path == NULL || !nano_file_exists(path)) {
-		printf("Configure file [%s] not found or "
+		log_debug("Configure file [%s] not found or "
 		       "unreadable\n",
 		    path);
 		return false;
@@ -1052,7 +1052,7 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 	char * table = NULL;
 
 	if (NULL == (fp = fopen(path, "r"))) {
-		debug_msg("File %s open failed\n", path);
+		log_error("File %s open failed\n", path);
 		return false;
 	}
 
@@ -1067,7 +1067,7 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 			int   res =
 			    sscanf(line, "rule.sqlite.%d.table", &num);
 			if (0 == res) {
-				debug_msg("Do not find table num");
+				log_fatal("Do not find table num");
 				exit(EXIT_FAILURE);
 			}
 			
@@ -1085,7 +1085,7 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 			int   res =
 			    sscanf(line, "rule.event.publish.%d.sql", &num);
 			if (0 == res) {
-				debug_msg("Do not find table num");
+				log_fatal("Do not find table num");
 				exit(EXIT_FAILURE);
 			}
 
@@ -1116,7 +1116,7 @@ static bool
 conf_rule_fdb_parse(conf_rule *cr, char *path)
 {
 	if (path == NULL || !nano_file_exists(path)) {
-		printf("Configure file [%s] not found or "
+		log_debug("Configure file [%s] not found or "
 		       "unreadable\n",
 		    path);
 		return false;
@@ -1130,7 +1130,7 @@ conf_rule_fdb_parse(conf_rule *cr, char *path)
 	memset(rk, 0, sizeof(rule_key));
 
 	if (NULL == (fp = fopen(path, "r"))) {
-		debug_msg("File %s open failed\n", path);
+		log_error("File %s open failed\n", path);
 		return false;
 	}
 
@@ -1161,7 +1161,7 @@ conf_rule_fdb_parse(conf_rule *cr, char *path)
 			} else if (0 == nni_strcasecmp(value, "false")) {
 				rk->auto_inc = false;
 			} else {
-				debug_msg("Unsupport autoincrement option.");
+				log_warn("Unsupport autoincrement option.");
 			}
 			free(value);
 
@@ -1198,7 +1198,7 @@ conf_rule_parse(conf *nanomq_conf)
 
 	if (dest_path == NULL || !nano_file_exists(dest_path)) {
 		if (!nano_file_exists(CONF_RULE_ENGINE_PATH_NAME)) {
-			printf("Configure file [%s] or [%s] not found or "
+			log_debug("Configure file [%s] or [%s] not found or "
 			       "unreadable\n",
 			    dest_path, CONF_RULE_ENGINE_PATH_NAME);
 			return false;
@@ -1212,7 +1212,7 @@ conf_rule_parse(conf *nanomq_conf)
 	FILE * fp;
 
 	if ((fp = fopen(dest_path, "r")) == NULL) {
-		printf("File %s open failed\n", dest_path);
+		log_error("File %s open failed\n", dest_path);
 		return true;
 	}
 
@@ -1222,7 +1222,7 @@ conf_rule_parse(conf *nanomq_conf)
 		    NULL) {
 			if (0 != nni_strcasecmp(value, "ON")) {
 				if (0 != nni_strcasecmp(value, "OFF")) {
-					debug_msg("Unsupported option: %s\nrule "
+					log_warn("Unsupported option: %s\nrule "
 					        "option only support ON/OFF",
 					    value);
 				}
@@ -1236,7 +1236,7 @@ conf_rule_parse(conf *nanomq_conf)
 				cr.option |= RULE_ENG_SDB;
 			} else {
 				if (0 != nni_strcasecmp(value, "disable")) {
-					debug_msg("Unsupported option: %s\nrule "
+					log_warn("Unsupported option: %s\nrule "
 					        "option sqlite only support "
 					        "enable/disable",
 					    value);
@@ -1279,7 +1279,7 @@ conf_rule_parse(conf *nanomq_conf)
 				cr.option |= RULE_ENG_FDB;
 			} else {
 				if (0 != nni_strcasecmp(value, "disable")) {
-					debug_msg("Unsupported option: %s\nrule "
+					log_warn("Unsupported option: %s\nrule "
 					        "option fdb only support "
 					        "enable/disable",
 					    value);
@@ -1318,7 +1318,7 @@ conf_gateway_parse(zmq_gateway_conf *gateway)
 
 	if (dest_path == NULL || !nano_file_exists(dest_path)) {
 		if (!nano_file_exists(CONF_GATEWAY_PATH_NAME)) {
-			printf("Configure file [%s] or [%s] not found or "
+			log_debug("Configure file [%s] or [%s] not found or "
 			       "unreadable\n",
 			    dest_path, CONF_GATEWAY_PATH_NAME);
 			return false;
@@ -1332,7 +1332,7 @@ conf_gateway_parse(zmq_gateway_conf *gateway)
 	FILE * fp;
 
 	if ((fp = fopen(dest_path, "r")) == NULL) {
-		printf("File %s open failed\n", dest_path);
+		log_error("File %s open failed\n", dest_path);
 		return true;
 	}
 
@@ -1409,7 +1409,7 @@ conf_bridge_node_parse_subs(
 {
 	FILE *fp;
 	if ((fp = fopen(path, "r")) == NULL) {
-		debug_msg("File %s open failed", path);
+		log_error("File %s open failed", path);
 		return false;
 	}
 
@@ -1521,7 +1521,7 @@ get_bridge_group_names(const char *path, size_t *count)
 {
 	FILE *fp;
 	if ((fp = fopen(path, "r")) == NULL) {
-		debug_msg("File %s open failed", path);
+		log_error("File %s open failed", path);
 		return NULL;
 	}
 	char * line        = NULL;
@@ -1573,7 +1573,7 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 {
 	FILE *fp;
 	if ((fp = fopen(path, "r")) == NULL) {
-		debug_msg("File %s open failed", path);
+		log_error("File %s open failed", path);
 		return NULL;
 	}
 
@@ -1667,7 +1667,7 @@ conf_bride_content_parse(
 	char **group_names = get_bridge_group_names(path, &group_count);
 
 	if (group_count == 0 || group_names == NULL) {
-		debug_msg("No bridge config group found");
+		log_debug("No bridge config group found");
 		return false;
 	}
 
@@ -1698,7 +1698,7 @@ conf_bridge_parse(conf *nanomq_conf)
 
 	if (dest_path == NULL || !nano_file_exists(dest_path)) {
 		if (!nano_file_exists(CONF_BRIDGE_PATH_NAME)) {
-			debug_msg("Configure file [%s] or [%s] not found or "
+			log_debug("Configure file [%s] or [%s] not found or "
 			          "unreadable",
 			    dest_path, CONF_BRIDGE_PATH_NAME);
 			return false;
@@ -1717,7 +1717,7 @@ conf_aws_bridge_parse(conf *nanomq_conf)
 
 	if (dest_path == NULL || !nano_file_exists(dest_path)) {
 		if (!nano_file_exists(CONF_AWS_BRIDGE_PATH_NAME)) {
-			debug_msg("Configure file [%s] or [%s] not found or "
+			log_debug("Configure file [%s] or [%s] not found or "
 			          "unreadable",
 			    dest_path, CONF_AWS_BRIDGE_PATH_NAME);
 			return false;
@@ -1792,31 +1792,52 @@ conf_bridge_destroy(conf_bridge *bridge)
 void
 print_bridge_conf(conf_bridge *bridge)
 {
-	// debug_msg("bridge.mqtt.enable:  %s",
-	//     bridge->enable ? "true" : "false");
-	// if (!bridge->enable) {
-	// 	return;
-	// }
-	// debug_msg("bridge.mqtt.address:      %s", bridge->address);
-	// debug_msg("bridge.mqtt.proto_ver:    %d", bridge->proto_ver);
-	// debug_msg("bridge.mqtt.clientid:     %s", bridge->clientid);
-	// debug_msg("bridge.mqtt.clean_start:  %d", bridge->clean_start);
-	// debug_msg("bridge.mqtt.username:     %s", bridge->username);
-	// debug_msg("bridge.mqtt.password:     %s", bridge->password);
-	// debug_msg("bridge.mqtt.keepalive:    %d", bridge->keepalive);
-	// debug_msg("bridge.mqtt.parallel:     %ld", bridge->parallel);
-	// debug_msg("bridge.mqtt.forwards: ");
-	// for (size_t i = 0; i < bridge->forwards_count; i++) {
-	// 	debug_msg("\t[%ld] topic:        %s", i, bridge->forwards[i]);
-	// }
-	// debug_msg("bridge.mqtt.subscription: ");
-	// for (size_t i = 0; i < bridge->sub_count; i++) {
-	// 	debug_msg("\t[%ld] topic:        %.*s", i + 1,
-	// 	    bridge->sub_list[i].topic_len, bridge->sub_list[i].topic);
-	// 	debug_msg("\t[%ld] qos:          %d", i + 1,
-	// 	    bridge->sub_list[i].qos);
-	// }
-	// debug_msg("");
+	if (bridge->count == 0 || bridge->nodes == NULL) {
+		return;
+	}
+	for (size_t i = 0; i < bridge->count; i++) {
+		log_info("bridge.mqtt.%s.address:      %s",
+		    bridge->nodes[i]->name, bridge->nodes[i]->address);
+		log_info("bridge.mqtt.%s.proto_ver:    %d",
+		    bridge->nodes[i]->name, bridge->nodes[i]->proto_ver);
+		log_info("bridge.mqtt.%s.clientid:     %s",
+		    bridge->nodes[i]->name, bridge->nodes[i]->clientid);
+		log_info("bridge.mqtt.%s.clean_start:  %d",
+		    bridge->nodes[i]->name, bridge->nodes[i]->clean_start);
+		log_info("bridge.mqtt.%s.username:     %s",
+		    bridge->nodes[i]->name, bridge->nodes[i]->username);
+		log_info("bridge.mqtt.%s.password:     %s",
+		    bridge->nodes[i]->name, bridge->nodes[i]->password);
+		log_info("bridge.mqtt.%s.keepalive:    %d",
+		    bridge->nodes[i]->name, bridge->nodes[i]->keepalive);
+		log_info("bridge.mqtt.%s.parallel:     %ld",
+		    bridge->nodes[i]->name, bridge->nodes[i]->parallel);
+		log_info("bridge.mqtt.%s.forwards: ", bridge->nodes[i]->name);
+
+		for (size_t j = 0; j < bridge->nodes[j]->forwards_count; j++) {
+			log_info("\t[%ld] topic:        %s", j,
+			    bridge->nodes[i]->forwards[j]);
+		}
+		log_info("bridge.mqtt.%s.subscription: ");
+		for (size_t k = 0; k < bridge->nodes[i]->sub_count; k++) {
+			log_info("\t[%ld] topic:        %.*s", k + 1,
+			    bridge->nodes[i]->sub_list[k].topic_len,
+			    bridge->nodes[i]->sub_list[k].topic);
+			log_info("\t[%ld] qos:          %d", k + 1,
+			    bridge->nodes[i]->sub_list[k].qos);
+		}
+	}
+
+	log_info("bridge.sqlite.enable: %s",
+	    bridge->sqlite.enable ? "true" : "false");
+	log_info("bridge.sqlite.disk_cache_size: %ld",
+	    bridge->sqlite.disk_cache_size);
+	log_info("bridge.sqlite.mounted_file_path: %s",
+	    bridge->sqlite.mounted_file_path);
+	log_info("bridge.sqlite.flush_mem_threshold: %ld",
+	    bridge->sqlite.flush_mem_threshold);
+	log_info("bridge.sqlite.resend_interval: %ld",
+	    bridge->sqlite.resend_interval);
 }
 
 static webhook_event
@@ -1884,7 +1905,7 @@ conf_web_hook_parse_rules(conf_web_hook *webhook, const char *path)
 {
 	FILE *fp;
 	if ((fp = fopen(path, "r")) == NULL) {
-		debug_msg("File %s open failed", path);
+		log_error("File %s open failed", path);
 		return false;
 	}
 
@@ -1971,7 +1992,7 @@ conf_web_hook_parse(conf *nanomq_conf)
 
 	if (dest_path == NULL || !nano_file_exists(dest_path)) {
 		if (!nano_file_exists(CONF_WEB_HOOK_PATH_NAME)) {
-			debug_msg("Configure file [%s] or [%s] not found or "
+			log_debug("Configure file [%s] or [%s] not found or "
 			          "unreadable",
 			    dest_path, CONF_WEB_HOOK_PATH_NAME);
 			return false;
@@ -1987,7 +2008,7 @@ conf_web_hook_parse(conf *nanomq_conf)
 	conf_web_hook *webhook = &nanomq_conf->web_hook;
 
 	if ((fp = fopen(dest_path, "r")) == NULL) {
-		debug_msg("File %s open failed", dest_path);
+		log_error("File %s open failed", dest_path);
 		webhook->enable = false;
 		return true;
 	}
@@ -2087,7 +2108,7 @@ conf_parse_http_headers(
 {
 	FILE *fp;
 	if ((fp = fopen(path, "r")) == NULL) {
-		debug_msg("File %s open failed", path);
+		log_error("File %s open failed", path);
 		return NULL;
 	}
 
@@ -2220,7 +2241,7 @@ conf_auth_http_req_parse(
 {
 	FILE *fp;
 	if ((fp = fopen(path, "r")) == NULL) {
-		debug_msg("File %s open failed", path);
+		log_error("File %s open failed", path);
 		return false;
 	}
 	char * line = NULL;
@@ -2268,7 +2289,7 @@ conf_auth_http_parse(conf *nanomq_conf)
 
 	if (dest_path == NULL || !nano_file_exists(dest_path)) {
 		if (!nano_file_exists(CONF_AUTH_HTTP_PATH_NAME)) {
-			debug_msg("Configure file [%s] or [%s] not found or "
+			log_debug("Configure file [%s] or [%s] not found or "
 			          "unreadable",
 			    dest_path, CONF_AUTH_HTTP_PATH_NAME);
 			return false;
@@ -2284,7 +2305,7 @@ conf_auth_http_parse(conf *nanomq_conf)
 	conf_auth_http *auth_http = &nanomq_conf->auth_http;
 
 	if ((fp = fopen(dest_path, "r")) == NULL) {
-		debug_msg("File %s open failed", dest_path);
+		log_debug("File %s open failed", dest_path);
 		auth_http->enable = false;
 		return true;
 	}
@@ -2370,7 +2391,7 @@ conf_sqlite_parse(
 	FILE * fp;
 
 	if ((fp = fopen(path, "r")) == NULL) {
-		debug_msg("File %s open failed", path);
+		log_error("File %s open failed", path);
 		sqlite->enable = false;
 		return false;
 	}

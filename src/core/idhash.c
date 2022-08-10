@@ -409,7 +409,7 @@ void
 nni_id_show_cb(nni_msg* msg)
 {
 	NNI_ARG_UNUSED(msg);
-	debug_msg("message has an address: %p", msg);
+	log_trace("message has an address: %p", msg);
 }
 
 void*

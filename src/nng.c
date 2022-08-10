@@ -369,7 +369,7 @@ nng_ctx_recv(nng_ctx cid, nng_aio *aio)
 	int      rv;
 	nni_ctx *ctx;
 
-	debug_msg(" ######## nng_ctx_recv context id %d ######## ", cid.id);
+	log_trace(" ######## nng_ctx_recv context id %d ######## ", cid.id);
 	if ((rv = nni_ctx_find(&ctx, cid.id, false)) != 0) {
 		if (nni_aio_begin(aio) == 0) {
 			nni_aio_finish_error(aio, rv);

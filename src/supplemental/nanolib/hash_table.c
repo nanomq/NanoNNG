@@ -797,12 +797,12 @@ dbhash_atpair_t *
 dbhash_atpair_alloc(uint32_t alias, const char *topic)
 {
 	if (topic == NULL) {
-		debug_msg("Topic should not be NULL");
+		log_error("Topic should not be NULL");
 	}
 	dbhash_atpair_t *atpair =
 	    (dbhash_atpair_t *) nni_zalloc(sizeof(dbhash_atpair_t));
 	if (atpair == NULL) {
-		debug_msg("Memory alloc error.");
+		log_error("Memory alloc error.");
 		return NULL;
 	}
 	atpair->alias = alias;

@@ -8,6 +8,7 @@
 //
 #include "nng/supplemental/nanolib/cmd.h"
 #include "nng/supplemental/nanolib/file.h"
+#include "nng/supplemental/nanolib/log.h"
 #include "nng/nng_debug.h"
 
 #include <errno.h>
@@ -30,7 +31,7 @@ nano_cmd_run_status(const char *cmd)
 	int          error, pipes[2], stderr_fd = -1, ret = 0;
 	unsigned int sock_opts;
 
-	debug_msg("cmd = %s", cmd);
+	log_info("cmd = %s", cmd);
 
 	/* -------------------
 	 * validate given args
@@ -46,7 +47,7 @@ nano_cmd_run_status(const char *cmd)
 
 	error = pipe(pipes);
 	if (error < 0) {
-		debug_msg("Warning - could not create a pipe to '%s': %s", cmd,
+		log_warn("could not create a pipe to '%s': %s", cmd,
 		    strerror(errno));
 		return -1;
 	}
@@ -86,11 +87,11 @@ nano_cmd_run(const char *cmd)
 	error = nano_cmd_run_status(cmd);
 
 	if (error != 0) {
-		debug_msg("Warning - command '%s' returned an error", cmd);
+		log_warn("command '%s' returned an error", cmd);
 
 		if (cmd_output_len > 0)
 			// debug_msg("          %s", cmd_output_buff);
-			debug_msg("warning");
+			log_warn("");
 
 		ret = -1;
 	}

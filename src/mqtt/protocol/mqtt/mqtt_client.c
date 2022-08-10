@@ -933,18 +933,18 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 			ctx->saio = aio;
 			nni_list_append(&s->send_queue, ctx);
 			nni_mtx_unlock(&s->mtx);
-			debug_msg("WARNING:client sending msg while disconnected! cached");
+			log_warn("client sending msg while disconnected! cached");
 		} else {
 			nni_msg_free(msg);
 			nni_mtx_unlock(&s->mtx);
 			nni_aio_set_msg(aio, NULL);
 			nni_aio_finish_error(aio, NNG_ECLOSED);
-			debug_msg("WARNING:client sending msg while disconnected! dropped");
+			log_warn("client sending msg while disconnected! dropped");
 		}
 		return;
 	}
 	mqtt_send_msg(aio, ctx);
-	debug_msg("client sending msg now");
+	log_trace("client sending msg now");
 	return;
 }
 

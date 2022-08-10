@@ -94,7 +94,7 @@ wstran_pipe_qos_send_cb(void *arg)
 	ws_pipe *p = arg;
 	nni_aio *qsaio;
 
-	debug_msg(" wstran_pipe_qos_send_cb ");
+	log_trace(" wstran_pipe_qos_send_cb ");
 	qsaio          = p->qsaio;
 
 	nni_msg *msg = nni_aio_get_msg(qsaio);
@@ -128,17 +128,17 @@ wstran_pipe_recv_cb(void *arg)
 	}
 	msg = nni_aio_get_msg(raio);
 	if (nni_msg_header_len(msg) == 0 && nni_msg_len(msg) == 0) {
-		debug_msg("empty msg received! continue next receive");
+		log_trace("empty msg received! continue next receive");
 		goto recv;
 	}
 	ptr = nni_msg_body(msg);
 	p->gotrxhead += nni_msg_len(msg);
-	debug_msg("#### wstran_pipe_recv_cb got %ld msg: %p %x %ld",
+	log_trace("#### wstran_pipe_recv_cb got %ld msg: %p %x %ld",
 	    p->gotrxhead, ptr, *ptr, nni_msg_len(msg));
 	// first we collect complete Fixheader
 	if (p->tmp_msg == NULL && p->gotrxhead > 0) {
 		if ((rv = nni_msg_alloc(&p->tmp_msg, 0)) != 0) {
-			debug_syslog("mem error %ld\n", (size_t) len);
+			log_error("mem error %ld\n", (size_t) len);
 			goto reset;
 		}
 	}
@@ -179,7 +179,7 @@ done:
 	}
 	if (uaio != NULL) {
 		if (p->gotrxhead+p->wantrxhead > p->conf->max_packet_size) {
-			debug_msg("Warning: size error 0x95\n");
+			log_trace("size error 0x95\n");
 			rv = NMQ_PACKET_TOO_LARGE;
 			goto recv_error;
 		}
@@ -257,21 +257,21 @@ done:
 		} else if (cmd == CMD_PUBREC) {
 			if (nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
 			        p->ws_param->pro_ver) != 0) {
-				debug_msg("decode PUBREC variable header failed!");
+				log_trace("decode PUBREC variable header failed!");
 			}
 			ack_cmd = CMD_PUBREL;
 			ack     = true;
 		} else if (cmd == CMD_PUBREL) {
 			if (nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
 			        p->ws_param->pro_ver) != 0) {
-				debug_msg("decode PUBREL variable header failed!");
+				log_trace("decode PUBREL variable header failed!");
 			}
 			ack_cmd = CMD_PUBCOMP;
 			ack     = true;
 		} else if (cmd == CMD_PUBACK || cmd == CMD_PUBCOMP) {
 			if (nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
 			        p->ws_param->pro_ver) != 0) {
-				debug_msg("decode PUBACK or PUBCOMP variable header "
+				log_trace("decode PUBACK or PUBCOMP variable header "
 				          "failed!");
 			}
 			// MQTT V5 flow control
@@ -290,7 +290,7 @@ done:
 			if ((rv = nni_msg_alloc(&qmsg, 0)) != 0) {
 				ack = false;
 				rv  = NMQ_SERVER_BUSY;
-				nni_println("ERROR: OOM in WebSocket");
+				log_error("ERROR: OOM in WebSocket");
 				goto recv_error;
 			}
 			if (cmd == CMD_PINGREQ) {
@@ -357,7 +357,7 @@ recv_error:
 	nni_mtx_unlock(&p->mtx);
 	nni_msg_free(msg);
 	// nni_aio_finish_error(aio, rv);
-	debug_msg("tcptran_pipe_recv_cb: recv error rv: %d\n", rv);
+	log_error("tcptran_pipe_recv_cb: recv error rv: %d\n", rv);
 	return;
 }
 
@@ -630,7 +630,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	if (total_len > p->ws_param->max_packet_size) {
 		// drop msg and finish aio
 		// pretend it has been sent
-		debug_syslog("Warning:msg dropped due to overceed max packet size!");
+		log_warn("msg dropped due to overceed max packet size!");
 		nni_msg_free(msg);
 		nni_aio_set_msg(aio, NULL);
 		nni_aio_finish(aio, 0, 0);
@@ -907,7 +907,7 @@ wstran_pipe_stop(void *arg)
 static int
 wstran_pipe_init(void *arg, nni_pipe *pipe)
 {
-	debug_msg("************wstran_pipe_init************");
+	log_trace("************wstran_pipe_init************");
 	ws_pipe *p = arg;
 
 	nni_pipe_set_conn_param(pipe, p->ws_param);
@@ -1096,7 +1096,7 @@ ws_pipe_start(ws_pipe *pipe, nng_stream *conn, ws_listener *l)
 {
 	NNI_ARG_UNUSED(conn);
 	ws_pipe *p = pipe;
-	debug_msg("ws_pipe_start!");
+	log_trace("ws_pipe_start!");
 	p->qrecv_quota = NANO_MAX_QOS_PACKET;
 	p->conf        = l->conf;
 	nng_stream_recv(p->ws, p->rxaio);

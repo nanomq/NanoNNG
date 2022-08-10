@@ -11,6 +11,7 @@
 #define CORE_NNG_IMPL_H
 
 #include "nng/nng.h"
+#include "nng/supplemental/nanolib/log.h"
 // NanoMQ
 #include "nng/nng_debug.h"
 // Internal implementation things for NNG, common definitions, etc.
