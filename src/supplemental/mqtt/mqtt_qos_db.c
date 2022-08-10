@@ -3,6 +3,8 @@
 #include "nng/nng.h"
 #include "nng/supplemental/sqlite/sqlite3.h"
 #include "supplemental/mqtt/mqtt_msg.h"
+#include <string.h>
+#include <stdlib.h>
 
 #define table_main "t_main"
 #define table_msg "t_msg"

@@ -1,4 +1,5 @@
 #include "mqtt_msg.h"
+#include <string.h>
 
 int
 nng_mqtt_msg_proto_data_alloc(nng_msg *msg)
