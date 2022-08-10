@@ -1,24 +1,24 @@
 #include "nng/supplemental/nanolib/log.h"
 #include "core/nng_impl.h"
+#include "core/defs.h"
 
-#if defined(DEBUG_SYSLOG)
+#if defined(SUPP_SYSLOG)
 #include <syslog.h>
 #endif
 
-#define MAX_CALLBACKS 32
-// #define LOG_USE_COLOR 1
+#define MAX_CALLBACKS 10
 
 typedef struct {
 	log_func fn;
 	void *   udata;
-	int      level;
+	uint8_t  level;
+	nng_mtx *mtx;
 } log_callback;
 
 static struct {
-	void *        udata;
-	log_lock_func lock;
-	int           level;
-	log_callback  callbacks[MAX_CALLBACKS];
+	void *       udata;
+	uint8_t      level;
+	log_callback callbacks[MAX_CALLBACKS];
 } L;
 
 static const char *level_strings[] = {
@@ -72,7 +72,7 @@ file_callback(log_event *ev)
 	fflush(ev->udata);
 }
 
-#if defined(DEBUG_SYSLOG)
+#if defined(SUPP_SYSLOG)
 
 static uint8_t
 convert_syslog_level(uint8_t level)
@@ -99,28 +99,22 @@ syslog_callback(log_event *ev)
 }
 
 void
-log_add_syslog(const char *log_name, uint8_t level)
+log_add_syslog(const char *log_name, uint8_t level, nng_mtx *mtx)
 {
 	openlog(log_name, LOG_PID, LOG_DAEMON | convert_syslog_level(level));
-	log_add_callback(syslog_callback, NULL, level);
+	log_add_callback(syslog_callback, NULL, level, mtx);
 }
+#else
+
+void
+log_add_syslog(const char *log_name, uint8_t level, void *mtx)
+{
+	NNI_ARG_UNUSED(log_name);
+	NNI_ARG_UNUSED(level);
+	NNI_ARG_UNUSED(mtx);
+}
+
 #endif
-
-static void
-lock(void)
-{
-	if (L.lock) {
-		L.lock(true, L.udata);
-	}
-}
-
-static void
-unlock(void)
-{
-	if (L.lock) {
-		L.lock(false, L.udata);
-	}
-}
 
 const char *
 log_level_string(int level)
@@ -141,24 +135,22 @@ log_level_num(const char *level)
 }
 
 void
-log_set_lock(log_lock_func fn, void *udata)
-{
-	L.lock  = fn;
-	L.udata = udata;
-}
-
-void
 log_set_level(int level)
 {
 	L.level = level;
 }
 
 int
-log_add_callback(log_func fn, void *udata, int level)
+log_add_callback(log_func fn, void *udata, int level, void *mtx)
 {
 	for (int i = 0; i < MAX_CALLBACKS; i++) {
 		if (!L.callbacks[i].fn) {
-			L.callbacks[i] = (log_callback) { fn, udata, level };
+			L.callbacks[i] = (log_callback) {
+				.fn    = fn,
+				.udata = udata,
+				.level = level,
+				.mtx   = (nng_mtx *) mtx,
+			};
 			return 0;
 		}
 	}
@@ -166,15 +158,15 @@ log_add_callback(log_func fn, void *udata, int level)
 }
 
 int
-log_add_fp(FILE *fp, int level)
+log_add_fp(FILE *fp, int level, void *mtx)
 {
-	return log_add_callback(file_callback, fp, level);
+	return log_add_callback(file_callback, fp, level, mtx);
 }
 
 void
-log_add_console(int level)
+log_add_console(int level, void *mtx)
 {
-	log_add_callback(stdout_callback, stdout, level);
+	log_add_callback(stdout_callback, stdout, level, mtx);
 }
 
 static void
@@ -201,17 +193,19 @@ log_log(int level, const char *file, int line, const char *func,
 		.func  = func,
 	};
 
-	lock();
-
 	for (int i = 0; i < MAX_CALLBACKS && L.callbacks[i].fn; i++) {
 		log_callback *cb = &L.callbacks[i];
 		if (level <= cb->level) {
 			init_event(&ev, cb->udata);
 			va_start(ev.ap, fmt);
-			cb->fn(&ev);
+			if (cb->mtx == NULL) {
+				cb->fn(&ev);
+			} else {
+				nng_mtx_lock(cb->mtx);
+				cb->fn(&ev);
+				nng_mtx_unlock(cb->mtx);
+			}
 			va_end(ev.ap);
 		}
 	}
-
-	unlock();
 }
