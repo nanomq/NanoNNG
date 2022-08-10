@@ -295,12 +295,13 @@ struct conf {
 	char *   url; // "nmq-tcp://addr:port"
 	int      num_taskq_thread;
 	int      max_taskq_thread;
+	int      property_size;
+	int      msq_len;
 	uint32_t parallel;
 	uint32_t max_packet_size;
 	uint32_t client_max_packet_size;
 	uint32_t qos_duration;
-	int      property_size;
-	int      msq_len;
+	float    backoff;
 	void *   db_root;
 	bool     allow_anonymous;
 	bool     daemon;
