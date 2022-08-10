@@ -11,7 +11,6 @@
 #include <string.h>
 
 #include "core/nng_impl.h"
-#include "nng/nng_debug.h"
 
 // Message API.
 
