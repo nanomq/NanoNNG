@@ -85,7 +85,7 @@ struct nano_pipe {
 	uint8_t       reason_code;
 	// ka_refresh count how many times the keepalive timer has
 	// been triggered
-	uint8_t          ka_refresh;
+	uint16_t          ka_refresh;
 	nano_conn_param *conn_param;
 	nni_lmq          rlmq;
 	void            *nano_qos_db; // 'sqlite' or 'nni_id_hash_map'
@@ -172,8 +172,9 @@ nano_pipe_timer_cb(void *arg)
 {
 	nano_pipe *      p            = arg;
 	uint32_t         qos_duration = p->broker->conf->qos_duration;
-	nni_pipe *       npipe = p->pipe;
-	nni_time 	 time;
+	float            qos_backoff  = p->broker->conf->backoff;
+	nni_pipe        *npipe        = p->pipe;
+	nni_time         time;
 	int 		 rv = 0;
 
 	bool is_sqlite = p->broker->conf->sqlite.enable;
@@ -227,12 +228,13 @@ nano_pipe_timer_cb(void *arg)
 			nni_pipe_close(p->pipe);
 			return;
 		}
-		// }
 		nni_sleep_aio(qos_duration * 1000, &p->aio_timer);
 		nni_mtx_unlock(&p->lk);
 		return;
 	}
-	if (p->ka_refresh * (qos_duration) > p->keepalive) {
+	qos_backoff = p->ka_refresh * (qos_duration) *1000 -
+	    p->keepalive * qos_backoff * 1000;
+	if (qos_backoff > 0) {
 		nni_println(
 		    "Warning: close pipe & kick client due to KeepAlive "
 		    "timeout!");
@@ -971,7 +973,7 @@ nano_pipe_recv_cb(void *arg)
 		nni_pipe_close(p->pipe);
 		return;
 	}
-	debug_msg("######### nano_pipe_recv_cb ############");
+	debug_msg(" ######### nano_pipe_recv_cb ######### ");
 	p->ka_refresh = 0;
 	msg           = nni_aio_get_msg(&p->aio_recv);
 	if (msg == NULL) {
