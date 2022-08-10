@@ -1438,6 +1438,12 @@ nng_pipe_close(nng_pipe p)
 	return (0);
 }
 
+/**
+ * @brief get conn param from nng_pipe
+ * 	  user need to free conn_param by itself
+ * @param p nng_pipe
+ * @return conn_param* cloned 
+ */
 conn_param*
 nng_pipe_cparam(nng_pipe p)
 {
