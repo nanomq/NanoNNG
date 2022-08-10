@@ -10,7 +10,6 @@
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "core/nng_impl.h"
 #include "core/sockimpl.h"
-#include "nng/nng_debug.h"
 #include "core/zmalloc.h"
 #include "nng/protocol/mqtt/mqtt.h"
 #include "supplemental/mqtt/mqtt_msg.h"

@@ -12,7 +12,6 @@
 #include <time.h>
 
 #include "core/nng_impl.h"
-#include "nng/nng_debug.h"
 #include "nng/supplemental/nanolib/binary_search.h"
 #include "nng/supplemental/nanolib/cvector.h"
 #include "nng/supplemental/nanolib/hash_table.h"

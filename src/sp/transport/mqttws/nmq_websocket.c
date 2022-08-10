@@ -19,7 +19,6 @@
 #include "nng/supplemental/tls/tls.h"
 #include "nng/transport/mqttws/nmq_websocket.h"
 
-#include "nng/nng_debug.h"
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "nng/supplemental/nanolib/mqtt_db.h"

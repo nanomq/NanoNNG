@@ -1,4 +1,3 @@
-#include "nng/nng_debug.h"
 #include "nng/supplemental/nanolib/hash_table.h"
 #include "test.h"
 #include <nuts.h>

@@ -1,5 +1,4 @@
 #include "nng/nng.h"
-#include "nng/nng_debug.h"
 #include "core/nng_impl.h"
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/supplemental/http/http.h"

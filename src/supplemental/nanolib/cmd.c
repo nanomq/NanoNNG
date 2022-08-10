@@ -9,7 +9,6 @@
 #include "nng/supplemental/nanolib/cmd.h"
 #include "nng/supplemental/nanolib/file.h"
 #include "nng/supplemental/nanolib/log.h"
-#include "nng/nng_debug.h"
 
 #include <errno.h>
 #include <stdarg.h>

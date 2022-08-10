@@ -14,7 +14,6 @@
 
 #include "core/nng_impl.h"
 #include "core/sockimpl.h"
-#include "nng/nng_debug.h"
 
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
