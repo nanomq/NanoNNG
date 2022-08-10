@@ -89,6 +89,8 @@ convert_syslog_level(uint8_t level)
 	case NNG_LOG_DEBUG:
 	case NNG_LOG_TRACE:
 		return LOG_DEBUG;
+	default:
+		return LOG_WARNING;
 	}
 }
 
@@ -99,7 +101,7 @@ syslog_callback(log_event *ev)
 }
 
 void
-log_add_syslog(const char *log_name, uint8_t level, nng_mtx *mtx)
+log_add_syslog(const char *log_name, uint8_t level, void *mtx)
 {
 	openlog(log_name, LOG_PID, LOG_DAEMON | convert_syslog_level(level));
 	log_add_callback(syslog_callback, NULL, level, mtx);

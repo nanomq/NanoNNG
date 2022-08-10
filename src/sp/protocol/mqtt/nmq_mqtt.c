@@ -192,7 +192,7 @@ nano_pipe_timer_cb(void *arg)
 		rv += will_intval > 0 ? (nng_clock() > will_intval ? 1 : 0) : 0;
 		rv += session_int > 0 ? (time > session_int ? 1 : 0) : 0;
 		// check session expiry interval
-		debug_console("check session alive time %lu", time);
+		log_trace("check session alive time %lu", time);
 		if (rv) {
 			// close pipe
 			//  clean previous session

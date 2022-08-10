@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include <string.h>
 
 char *cmd_output_buff = NULL;
 int   cmd_output_len  = 0;
@@ -23,6 +24,7 @@ int   cmd_output_len  = 0;
 #ifndef NNG_PLATFORM_WINDOWS
 #include <sys/wait.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 int
 nano_cmd_run_status(const char *cmd)
