@@ -428,6 +428,11 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 		tcptran_pipe_close(p);
 		return;
 	}
+	if (p->closed) {
+		msg  = nni_aio_get_msg(qsaio);
+		nni_msg_free(msg);
+		return;
+	}
 	nni_mtx_lock(&p->mtx);
 	n = nni_aio_count(qsaio);
 	nni_aio_iov_advance(qsaio, n);
@@ -441,11 +446,6 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 	msg  = nni_aio_get_msg(qsaio);
 	type = nni_msg_cmd_type(msg);
 
-	if (p->closed) {
-		nni_msg_free(msg);
-		goto exit;
-
-	}
 	if (p->tcp_cparam->pro_ver == 5) {
 		(type == CMD_PUBCOMP || type == PUBACK) ? p->qrecv_quota++
 		                                        : p->qrecv_quota;
@@ -465,7 +465,7 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
-exit:
+
 	p->busy = false;
 	nni_aio_set_msg(qsaio, NULL);
 	nni_mtx_unlock(&p->mtx);
@@ -842,6 +842,7 @@ tcptran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
+	nni_aio_abort(p->qsaio, rv);
 	nni_aio_list_remove(aio);
 	nni_mtx_unlock(&p->mtx);
 
