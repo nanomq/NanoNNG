@@ -1438,6 +1438,21 @@ nng_pipe_close(nng_pipe p)
 	return (0);
 }
 
+conn_param*
+nng_pipe_cparam(nng_pipe p)
+{
+	int       rv;
+	nni_pipe *pipe;
+	conn_param *cp = NULL;
+
+	if ((rv = nni_pipe_find(&pipe, p.id)) != 0) {
+		return NULL;
+	}
+
+	cp = (conn_param*)nni_pipe_get_conn_param(pipe);
+	return cp;
+}
+
 int
 nng_pipe_id(nng_pipe p)
 {
