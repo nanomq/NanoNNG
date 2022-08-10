@@ -1441,6 +1441,7 @@ nng_pipe_close(nng_pipe p)
 /**
  * @brief get conn param from nng_pipe
  * 	  user need to free conn_param by itself
+ * 	  Warning: this still has narrow boundary that cause data racing
  * @param p nng_pipe
  * @return conn_param* cloned 
  */
@@ -1456,6 +1457,8 @@ nng_pipe_cparam(nng_pipe p)
 	}
 
 	cp = (conn_param*)nni_pipe_get_conn_param(pipe);
+	nni_pipe_rele(pipe);
+
 	return cp;
 }
 
