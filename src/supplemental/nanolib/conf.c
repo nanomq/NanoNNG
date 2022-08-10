@@ -382,6 +382,10 @@ conf_parser(conf *nanomq_conf)
 			config->property_size = atoi(value);
 			nng_strfree(value);
 		} else if ((value = get_conf_value(
+		                line, sz, "keepalive_backoff")) != NULL) {
+			config->backoff = atof(value);
+			nng_strfree(value);
+		} else if ((value = get_conf_value(
 		                line, sz, "max_packet_size")) != NULL) {
 			config->max_packet_size = atoi(value) * 1024;
 			nng_strfree(value);
@@ -590,10 +594,11 @@ conf_init(conf *nanomq_conf)
 
 	nanomq_conf->num_taskq_thread = 10;
 	nanomq_conf->max_taskq_thread = 10;
-	nanomq_conf->parallel         = 30; // not work
+	nanomq_conf->parallel         = 30;
 	nanomq_conf->property_size    = sizeof(uint8_t) * 32;
 	nanomq_conf->msq_len          = 64;
 	nanomq_conf->qos_duration     = 30;
+	nanomq_conf->backoff          = 1.5;
 	nanomq_conf->allow_anonymous  = true;
 	nanomq_conf->daemon           = false;
 	nanomq_conf->bridge_mode      = false;
