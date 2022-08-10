@@ -25,6 +25,8 @@ NNG_DECL int nng_nmq_tcp0_open(nng_socket *);
 #define NNG_NMQ_TCP_SELF_NAME "nmq_broker"
 #define NNG_NMQ_TCP_PEER_NAME "nmq_client"
 
+#define NMQ_OPT_MQTT_PIPES "mqtt-clients-pipes"
+
 #ifdef __cplusplus
 }
 #endif

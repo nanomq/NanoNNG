@@ -1358,8 +1358,6 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 			nng_free(sn, sizeof(*sn));
 		}
 
-		debug_msg("sub topic: %s subid: %d rap: %d \n", sn->topic,
-		    sn->subid, sn->rap);
 		bpos += 1;
 		num++;
 	}

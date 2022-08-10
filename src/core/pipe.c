@@ -438,7 +438,10 @@ nni_pipe_set_conn_param(nni_pipe *p, void *c)
 void *
 nni_pipe_get_conn_param(nni_pipe *p)
 {
-	return p->conn_param;
+	conn_param *cp = p->conn_param;
+	if (cp != NULL)
+		nni_atomic_inc(&cp->refcnt);
+	return cp;
 }
 
 uint16_t
