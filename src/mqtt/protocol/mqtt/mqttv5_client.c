@@ -503,6 +503,22 @@ mqtt_pipe_close(void *arg)
 	nni_aio_close(&p->send_aio);
 	nni_aio_close(&p->recv_aio);
 	nni_aio_close(&p->time_aio);
+
+#if defined(NNG_SUPP_SQLITE) && defined(NNG_HAVE_MQTT_BROKER)
+	bool is_sqlite = get_persist(s);
+	if (!nni_lmq_empty(&p->send_messages)) {
+		if (s->bridge_conf) {
+			char *config_name = get_config_name(s);
+			nni_mqtt_qos_db_set_client_offline_msg_batch(
+			    s->sqlite_db, &p->send_messages, config_name,
+			    MQTT_PROTOCOL_VERSION_v5);
+			nni_mqtt_qos_db_remove_oldest_client_offline_msg(
+			    s->sqlite_db,
+			    s->bridge_conf->sqlite->disk_cache_size,
+			    config_name);
+		}
+	}
+#endif
 	nni_lmq_flush(&p->recv_messages);
 	nni_lmq_flush(&p->send_messages);
 
