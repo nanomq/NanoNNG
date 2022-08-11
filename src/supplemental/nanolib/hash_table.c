@@ -239,7 +239,7 @@ dbhash_get_topic_queue_all(size_t *sz)
 }
 
 static struct topic_queue *
-new_topic_queue(char *val)
+new_topic_queue(char *val, uint8_t qos)
 {
 	struct topic_queue *tq  = NULL;
 	int                 len = strlen(val);
@@ -258,6 +258,7 @@ new_topic_queue(char *val)
 	}
 	memcpy(tq->topic, val, len);
 	tq->topic[len] = '\0';
+	tq->qos = qos;
 	tq->next       = NULL;
 
 	return tq;
@@ -286,9 +287,9 @@ delete_topic_queue(struct topic_queue *tq)
 // TODO If we have same topic to same id,
 // how to deal with ?
 void
-dbhash_insert_topic(uint32_t id, char *val)
+dbhash_insert_topic(uint32_t id, char *val, uint8_t qos)
 {
-	struct topic_queue *ntq = new_topic_queue(val);
+	struct topic_queue *ntq = new_topic_queue(val, qos);
 	struct topic_queue *tq  = NULL;
 
 	nni_rwlock_wrlock(&pipe_lock);
@@ -383,6 +384,36 @@ dbhash_get_topic_queue(uint32_t id)
 
 	return ret;
 }
+
+struct topic_queue *
+dbhash_copy_topic_queue(uint32_t id)
+{
+
+	// dbhash_check_init(pipe_table, ph, pipe_lock);
+	struct topic_queue *ret = NNI_ALLOC_STRUCT(ret);
+	struct topic_queue *res = ret;
+	
+
+	nni_rwlock_wrlock(&pipe_lock);
+	khint_t k = kh_get(pipe_table, ph, id);
+	if (k != kh_end(ph)) {
+		struct topic_queue *tq = kh_val(ph, k);
+		while (tq) {
+			ret->next = tq->next;
+			ret->qos = tq->qos;
+			ret->topic = nng_strdup(tq->topic);
+			ret = ret->next;
+			tq = tq->next;
+			if (tq) {
+				ret = NNI_ALLOC_STRUCT(ret);
+			}
+		}
+	}
+	nni_rwlock_unlock(&pipe_lock);
+
+	return res;
+}
+
 
 /*
  * @obj. _topic_hash.
