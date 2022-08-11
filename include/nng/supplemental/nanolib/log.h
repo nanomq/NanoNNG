@@ -45,6 +45,8 @@ extern void log_add_syslog(const char *log_name, uint8_t level, void *mtx);
 extern void log_log(int level, const char *file, int line, const char *func,
     const char *fmt, ...);
 
+#ifdef ENABLE_LOG
+
 #define log_trace(...) \
     log_log(NNG_LOG_TRACE, __FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
 #define log_debug(...) \
@@ -57,6 +59,18 @@ extern void log_log(int level, const char *file, int line, const char *func,
     log_log(NNG_LOG_ERROR, __FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
 #define log_fatal(...) \
     log_log(NNG_LOG_FATAL, __FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
+
+#else
+
+#define log_trace(...)
+#define log_debug(...)
+#define log_info(...)
+#define log_warn(...)
+#define log_error(...)
+#define log_fatal(...)
+
+#endif
+
 
 #ifdef __cplusplus
 }
