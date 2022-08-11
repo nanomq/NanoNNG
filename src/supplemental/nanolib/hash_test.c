@@ -106,8 +106,8 @@ test_check_pipe_table()
 {
 
 	for (int i = 0; i < TABLE_SZ; i++) {
-		dbhash_insert_topic(table1[i].key, table1[i].topic);
-		dbhash_insert_topic(table2[i].key, table2[i].topic);
+		dbhash_insert_topic(table1[i].key, table1[i].topic, 0);
+		dbhash_insert_topic(table2[i].key, table2[i].topic, 0);
 	}
 
 	dbhash_ptpair_t **pt = dbhash_get_ptpair_all();
@@ -165,8 +165,8 @@ test_pipe_table()
 {
 
 	for (size_t i = 0; i < TABLE_SZ; i++) {
-		dbhash_insert_topic(table1[i].key, table1[i].topic);
-		dbhash_insert_topic(table2[i].key, table2[i].topic);
+		dbhash_insert_topic(table1[i].key, table1[i].topic, 0);
+		dbhash_insert_topic(table2[i].key, table2[i].topic, 0);
 
 		dbhash_check_topic(table1[i].key, table1[i].topic);
 		dbhash_check_topic(table2[i].key, table2[i].topic);
@@ -180,8 +180,8 @@ test_pipe_table()
 		dbhash_check_topic(table1[i].key, table1[i].topic);
 		dbhash_check_topic(table2[i].key, table2[i].topic);
 
-		dbhash_insert_topic(table1[i].key, table1[i].topic);
-		dbhash_insert_topic(table2[i].key, table2[i].topic);
+		dbhash_insert_topic(table1[i].key, table1[i].topic, 0);
+		dbhash_insert_topic(table2[i].key, table2[i].topic, 0);
 
 		char *first_topic = dbhash_get_first_topic(table1[i].key);
 		nng_free(first_topic, strlen(first_topic));
@@ -194,11 +194,11 @@ test_pipe_table()
 static void
 test_check_cached_table()
 {
-	dbhash_insert_topic(table1[0].key, table1[0].topic);
-	dbhash_insert_topic(table1[0].key, table2[0].topic);
+	dbhash_insert_topic(table1[0].key, table1[0].topic, 0);
+	dbhash_insert_topic(table1[0].key, table2[0].topic, 0);
 
-	dbhash_insert_topic(table1[1].key, table1[1].topic);
-	dbhash_insert_topic(table1[1].key, table2[1].topic);
+	dbhash_insert_topic(table1[1].key, table1[1].topic, 0);
+	dbhash_insert_topic(table1[1].key, table2[1].topic, 0);
 
 	dbhash_cache_topic_all(table1[0].key, table1[0].key);
 	dbhash_cache_topic_all(table1[1].key, table1[1].key);
@@ -257,8 +257,8 @@ test_cached_table()
 {
 
 	for (size_t i = 0; i < TABLE_SZ; i++) {
-		dbhash_insert_topic(table1[i].key, table1[i].topic);
-		dbhash_insert_topic(table2[i].key, table2[i].topic);
+		dbhash_insert_topic(table1[i].key, table1[i].topic, 0);
+		dbhash_insert_topic(table2[i].key, table2[i].topic, 0);
 
 		dbhash_check_topic(table1[i].key, table1[i].topic);
 		dbhash_check_topic(table2[i].key, table2[i].topic);

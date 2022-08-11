@@ -6,7 +6,8 @@
 #include <stdint.h>
 
 struct topic_queue {
-	char *              topic;
+	uint8_t             qos;
+	char	       *topic;
 	struct topic_queue *next;
 };
 
@@ -65,13 +66,15 @@ void dbhash_init_pipe_table(void);
 
 void dbhash_destroy_pipe_table(void);
 
-void dbhash_insert_topic(uint32_t id, char *val);
+void dbhash_insert_topic(uint32_t id, char *val, uint8_t qos);
 
 bool dbhash_check_topic(uint32_t id, char *val);
 
 char *dbhash_get_first_topic(uint32_t id);
 
 struct topic_queue *dbhash_get_topic_queue(uint32_t id);
+
+struct topic_queue *dbhash_copy_topic_queue(uint32_t id);
 
 void dbhash_del_topic(uint32_t id, char *topic);
 
