@@ -504,8 +504,9 @@ mqtt_pipe_close(void *arg)
 	nni_aio_close(&p->recv_aio);
 	nni_aio_close(&p->time_aio);
 
-#if defined(NNG_SUPP_SQLITE) && defined(NNG_HAVE_MQTT_BROKER)
 	bool is_sqlite = get_persist(s);
+
+#if defined(NNG_SUPP_SQLITE) && defined(NNG_HAVE_MQTT_BROKER)
 	if (!nni_lmq_empty(&p->send_messages)) {
 		if (s->bridge_conf) {
 			char *config_name = get_config_name(s);
@@ -522,7 +523,6 @@ mqtt_pipe_close(void *arg)
 	nni_lmq_flush(&p->recv_messages);
 	nni_lmq_flush(&p->send_messages);
 
-	bool is_sqlite = get_persist(s);
 	if (!is_sqlite) {
 		nni_id_map_foreach(p->sent_unack, mqtt_close_unack_msg_cb);
 	}
