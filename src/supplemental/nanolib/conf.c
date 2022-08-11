@@ -536,9 +536,10 @@ conf_log_parse(conf_log *log, const char *path)
 		log_error("File %s open failed", path);
 		return false;
 	}
-	char * line = NULL;
-	size_t sz   = 0;
-	int    rv   = 0;
+	char *  line     = NULL;
+	size_t  sz       = 0;
+	int     rv       = 0;
+	uint8_t log_type = 0;
 
 	char *value;
 	while (nano_getline(&line, &sz, fp) != -1) {
@@ -560,7 +561,6 @@ conf_log_parse(conf_log *log, const char *path)
 			log->dir = value;
 		} else if ((value = get_conf_value(line, sz, "log.to")) !=
 		    NULL) {
-			uint8_t log_type = 0;
 			char *tk = strtok(value, ",");
 			while (tk != NULL) {
 				if (nni_strcasecmp(tk, "file") == 0) {
@@ -574,9 +574,6 @@ conf_log_parse(conf_log *log, const char *path)
 				tk = strtok(NULL, ",");
 			}
 			free(value);
-			if (log_type > 0) {
-				log->type = log_type;
-			}
 		}
 		free(line);
 		line = NULL;
@@ -585,8 +582,9 @@ conf_log_parse(conf_log *log, const char *path)
 	if (line) {
 		free(line);
 	}
-
 	fclose(fp);
+	
+	log->type = log_type;
 	return true;
 }
 
