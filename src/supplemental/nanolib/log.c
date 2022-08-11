@@ -97,7 +97,7 @@ convert_syslog_level(uint8_t level)
 static void
 syslog_callback(log_event *ev)
 {
-	syslog(ev->level, "%s: %s", ev->fmt, ev->func);
+	vsyslog(ev->level, ev->fmt, ev->ap);
 }
 
 void
