@@ -58,7 +58,6 @@ struct conf_log {
 	int     level;
 	char *  dir;
 	char *  file;
-	FILE *  fp;
 };
 
 typedef struct conf_log conf_log;
