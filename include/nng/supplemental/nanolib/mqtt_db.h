@@ -13,6 +13,12 @@ typedef enum {
 
 typedef struct dbtree            dbtree;
 
+typedef struct {
+	char * topic;
+	char **clients;
+	int    cld_cnt;
+} dbtree_info;
+
 struct dbtree_retain_msg {
 	uint8_t qos;
 	bool    exist;

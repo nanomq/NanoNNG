@@ -35,11 +35,6 @@ struct dbtree_node {
 	nni_rwlock rwlock;
 };
 
-typedef struct {
-	char * topic;
-	char **clients;
-	int    cld_cnt;
-} dbtree_info;
 
 struct dbtree {
 	dbtree_node *root;
