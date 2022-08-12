@@ -10,7 +10,6 @@ extern "C" {
 #include <stdio.h>
 #include <stdint.h>
 #include <time.h>
-#include <unistd.h>
 
 #define LOG_VERSION "0.1.0"
 
