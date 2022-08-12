@@ -510,25 +510,23 @@ conf_parser(conf *nanomq_conf)
 static void
 conf_log_init(conf_log *log)
 {
-	log->enable = false;
-	log->level  = -1;
+	log->level  = NNG_LOG_WARN;
 	log->file   = NULL;
 	log->dir    = NULL;
-	log->type   = 0;
+	log->type   = LOG_TO_CONSOLE;
 }
 
 static void
 conf_log_destroy(conf_log *log)
 {
-	log->enable = false;
-	log->level  = -1;
+	log->level = NNG_LOG_WARN;
 	if (log->file) {
 		free(log->file);
 	}
 	if (log->dir) {
 		free(log->dir);
 	}
-	log->type = 0;
+	log->type = LOG_TO_CONSOLE;
 }
 
 static bool
@@ -551,7 +549,7 @@ conf_log_parse(conf_log *log, const char *path)
 			if (rv != -1) {
 				log->level = rv;
 			} else {
-				break;
+				log->level = NNG_LOG_ERROR;
 			}
 		} else if ((value = get_conf_value(line, sz, "log.file")) !=
 		    NULL) {
@@ -563,21 +561,22 @@ conf_log_parse(conf_log *log, const char *path)
 			log->dir = value;
 		} else if ((value = get_conf_value(line, sz, "log.to")) !=
 		    NULL) {
+			uint8_t log_type = 0;
 			char *tk = strtok(value, ",");
 			while (tk != NULL) {
 				if (nni_strcasecmp(tk, "file") == 0) {
-					log->type |= LOG_TO_FILE;
+					log_type |= LOG_TO_FILE;
 				} else if (nni_strcasecmp(tk, "console") ==
 				    0) {
-					log->type |= LOG_TO_CONSOLE;
+					log_type |= LOG_TO_CONSOLE;
 				} else if (nni_strcasecmp(tk, "syslog") == 0) {
-					log->type |= LOG_TO_SYSLOG;
+					log_type |= LOG_TO_SYSLOG;
 				}
 				tk = strtok(NULL, ",");
 			}
 			free(value);
-			if (log->type == 0) {
-				break;
+			if (log_type > 0) {
+				log->type = log_type;
 			}
 		}
 		free(line);
@@ -586,12 +585,6 @@ conf_log_parse(conf_log *log, const char *path)
 
 	if (line) {
 		free(line);
-	}
-
-	if (log->level == -1 || log->type == 0) {
-		log->enable = false;
-	} else {
-		log->enable = true;
 	}
 
 	fclose(fp);
@@ -779,9 +772,6 @@ print_conf(conf *nanomq_conf)
 		    nanomq_conf->tls.verify_peer ? "true" : "false");
 		debug_msg("tls fail_if_no_peer_cert: %s",
 		    nanomq_conf->tls.set_fail ? "true" : "false");
-	}
-	if (nanomq_conf->log.enable) {
-
 	}
 }
 

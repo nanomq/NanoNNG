@@ -54,7 +54,6 @@
 #define LOG_TO_SYSLOG 1 << 2
 
 struct conf_log {
-	bool    enable;
 	uint8_t type;
 	int     level;
 	char *  dir;
