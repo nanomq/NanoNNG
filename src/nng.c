@@ -2431,6 +2431,12 @@ nng_file_delete(const char *name)
 	return nni_file_delete(name);
 }
 
+bool
+nng_file_is_dir(const char *path)
+{
+	return nni_file_is_dir(path);
+}
+
 void
 nng_taskq_setter(int num_taskq_threads, int max_taskq_threads)
 {
