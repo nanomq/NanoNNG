@@ -10,7 +10,7 @@ if(NNG_QUIC_LIB STREQUAL "msquic")
                         Taking MSQUIC as quic lib
         ************************************************************")
         add_subdirectory(${PROJECT_SOURCE_DIR}/extern/msquic msquic)
-#     target_include_directories(msquic PRIVATE)
+    target_include_directories(msquic PRIVATE)
 #     nng_check_lib(msquic)
 
     nng_defines(QUIC_TLS_ENGINE_INIT=nng_quic_libs_init_msquic)
