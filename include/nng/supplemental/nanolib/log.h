@@ -11,21 +11,20 @@ extern "C" {
 #include <stdint.h>
 #include <time.h>
 
-#define LOG_VERSION "0.1.0"
+#define LOG_VERSION "0.2.0"
 
 typedef struct {
-    va_list     ap;
-    const char *fmt;
-    const char *file;
-    const char *func;
-    struct tm * time;
-    void *      udata;
-    int         line;
-    int         level;
+	va_list         ap;
+	const char *    fmt;
+	const char *    file;
+	const char *    func;
+	struct tm *     time;
+	void *          udata;
+	int             line;
+	int             level;
 } log_event;
 
 typedef void (*log_func)(log_event *ev);
-typedef void (*log_lock_func)(bool lock, void *udata);
 
 enum {
 	NNG_LOG_FATAL = 0,
@@ -38,13 +37,11 @@ enum {
 
 extern const char *log_level_string(int level);
 extern int         log_level_num(const char *level);
-extern void        log_set_lock(log_lock_func fn, void *udata);
 extern void        log_set_level(int level);
-extern void        log_set_quiet(bool enable);
-extern int         log_add_callback(log_func fn, void *udata, int level);
-extern void        log_add_console(int level);
-extern int         log_add_fp(FILE *fp, int level);
-extern void        log_add_syslog(const char *log_name, uint8_t level);
+extern int log_add_callback(log_func fn, void *udata, int level, void *mtx);
+extern void        log_add_console(int level, void *mtx);
+extern int         log_add_fp(FILE *fp, int level, void *mtx);
+extern void log_add_syslog(const char *log_name, uint8_t level, void *mtx);
 extern void log_log(int level, const char *file, int line, const char *func,
     const char *fmt, ...);
 
