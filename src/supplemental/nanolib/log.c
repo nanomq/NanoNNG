@@ -18,7 +18,6 @@ static struct {
 	void *        udata;
 	log_lock_func lock;
 	int           level;
-	bool          quiet;
 	log_callback  callbacks[MAX_CALLBACKS];
 } L;
 
@@ -152,12 +151,6 @@ void
 log_set_level(int level)
 {
 	L.level = level;
-}
-
-void
-log_set_quiet(bool enable)
-{
-	L.quiet = enable;
 }
 
 int
