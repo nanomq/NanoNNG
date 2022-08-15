@@ -60,6 +60,7 @@ struct quic_strm_s {
 	uint16_t rticket_sz;
 	bool     rticket_active;
 	nng_url *url_s;
+	conn_param *cparam;
 };
 
 // Config for msquic
@@ -148,6 +149,7 @@ quic_strm_init(quic_strm_t *qstrm)
 	qstrm->url_s = NULL;
 	qstrm->rticket_sz = 0;
 	qstrm->rticket_active = false;
+	conn_param_alloc(&qstrm->cparam);
 }
 
 static void
@@ -155,6 +157,7 @@ quic_strm_fini(quic_strm_t *qstrm)
 {
 	if (qstrm->rxmsg)
 		free(qstrm->rxmsg);
+	conn_param_free(qstrm->cparam);
 	return;
 }
 
@@ -329,6 +332,8 @@ upload:		// get aio and trigger cb of protocol layer
 		if (aio != NULL) {
 			// Set msg and remove from list and finish
 			nni_aio_set_msg(aio, qstrm->rxmsg);
+			if (qstrm->cparam)
+				nng_msg_set_conn_param(qstrm->rxmsg, qstrm->cparam);
 			qstrm->rxmsg = NULL;
 			nni_aio_finish(aio, 0, 0);
 		}

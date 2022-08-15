@@ -1,4 +1,3 @@
-//
 // Copyright 2020 NanoMQ Team, Inc. <jaylin@emqx.io>
 //
 // This software is supplied under the terms of the MIT License, a
