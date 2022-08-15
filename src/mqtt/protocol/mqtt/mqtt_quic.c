@@ -469,11 +469,11 @@ mqtt_quic_recv_cb(void *arg)
 			nni_id_remove(&p->sent_unack, packet_id);
 			user_aio = nni_mqtt_msg_get_aio(cached_msg);
 			// should we support sub/unsub cb here?
-			// if (packet_type == NNG_MQTT_SUBACK ||
-			//     packet_type == NNG_MQTT_UNSUBACK) {
-			// 	nni_msg_clone(msg);
-			// 	nni_aio_set_msg(user_aio, msg);
-			// }
+			if (packet_type == NNG_MQTT_SUBACK ||
+			    packet_type == NNG_MQTT_UNSUBACK) {
+				nni_msg_clone(msg);
+				nni_aio_set_msg(user_aio, msg);
+			}
 			nni_msg_free(cached_msg);
 		}
 		nni_msg_free(msg);
