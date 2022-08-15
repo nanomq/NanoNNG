@@ -11,6 +11,7 @@
 
 #include "core/nng_impl.h"
 #include "sockimpl.h"
+#include <string.h>
 
 // This file contains functions related to pipe objects.
 //

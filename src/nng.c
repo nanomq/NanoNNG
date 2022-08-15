@@ -369,7 +369,7 @@ nng_ctx_recv(nng_ctx cid, nng_aio *aio)
 	int      rv;
 	nni_ctx *ctx;
 
-	debug_msg(" ######## nng_ctx_recv context id %d ######## ", cid.id);
+	log_trace(" ######## nng_ctx_recv context id %d ######## ", cid.id);
 	if ((rv = nni_ctx_find(&ctx, cid.id, false)) != 0) {
 		if (nni_aio_begin(aio) == 0) {
 			nni_aio_finish_error(aio, rv);
@@ -2429,6 +2429,12 @@ int
 nng_file_delete(const char *name)
 {
 	return nni_file_delete(name);
+}
+
+bool
+nng_file_is_dir(const char *path)
+{
+	return nni_file_is_dir(path);
 }
 
 void

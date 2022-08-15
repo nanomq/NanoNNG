@@ -14,7 +14,6 @@
 
 #include "core/nng_impl.h"
 #include "core/sockimpl.h"
-#include "nng/nng_debug.h"
 
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
@@ -137,7 +136,7 @@ tlstran_pipe_close(void *arg)
 
 	nni_mtx_lock(&p->mtx);
 	p->closed = true;
-	debug_msg(" ###### tlstran_pipe_close ###### ");
+	log_trace(" ###### tlstran_pipe_close ###### ");
 	// p->closed = true;
 
 	nni_lmq_flush(&p->rslmq);
@@ -156,7 +155,7 @@ static void
 tlstran_pipe_stop(void *arg)
 {
 	tlstran_pipe *p = arg;
-	debug_msg(" ###### tlstran_pipe_stop ###### ");
+	log_trace(" ###### tlstran_pipe_stop ###### ");
 	p->tcp_cparam = NULL;
 	nni_aio_stop(p->qsaio);
 	nni_aio_stop(p->rpaio);
@@ -168,7 +167,7 @@ tlstran_pipe_stop(void *arg)
 static int
 tlstran_pipe_init(void *arg, nni_pipe *npipe)
 {
-	debug_msg("************tlstran_pipe_init************");
+	log_trace("************tlstran_pipe_init************");
 	tlstran_pipe *p = arg;
 
 	nni_pipe_set_conn_param(npipe, p->tcp_cparam);
@@ -294,7 +293,7 @@ tlstran_pipe_nego_cb(void *arg)
 	uint32_t      len;
 	int           rv, len_of_varint = 0;
 
-	debug_msg("start tlstran_pipe_nego_cb max len %ld pipe_addr %p\n",
+	log_trace("start tlstran_pipe_nego_cb max len %ld pipe_addr %p\n",
 	    NANO_CONNECT_PACKET_LEN, p);
 	nni_mtx_lock(&ep->mtx);
 
@@ -319,7 +318,7 @@ tlstran_pipe_nego_cb(void *arg)
 	}
 	if (p->gotrxhead == NNI_NANO_MAX_HEADER_SIZE) {
 		if (p->rxlen[0] != CMD_CONNECT) {
-			debug_msg("CMD TYPE %x", p->rxlen[0]);
+			log_warn("CMD TYPE %x", p->rxlen[0]);
 			rv = NNG_EPROTO;
 			goto error;
 		}
@@ -387,7 +386,7 @@ tlstran_pipe_nego_cb(void *arg)
 	}
 
 	nni_mtx_unlock(&ep->mtx);
-	debug_msg("^^^^^^^^^^end of tlstran_pipe_nego_cb^^^^^^^^^^\n");
+	log_trace("^^^^^^^^^^end of tlstran_pipe_nego_cb^^^^^^^^^^\n");
 	return;
 
 close:
@@ -422,7 +421,7 @@ error:
 	}
 	nni_mtx_unlock(&ep->mtx);
 	tlstran_pipe_reap(p);
-	debug_msg("connect nego error rv: %s(%d)", nng_strerror(rv), rv);
+	log_error("connect nego error rv: %s(%d)", nng_strerror(rv), rv);
 }
 
 static void
@@ -492,7 +491,7 @@ tlstran_pipe_send_cb(void *arg)
 	nni_mtx_lock(&p->mtx);
 	aio = nni_list_first(&p->sendq);
 
-	debug_msg("############### tlstran_pipe_send_cb ################");
+	log_trace("############### tlstran_pipe_send_cb ################");
 
 	if ((rv = nni_aio_result(txaio)) != 0) {
 		nni_pipe_bump_error(p->npipe, rv);
@@ -504,7 +503,7 @@ tlstran_pipe_send_cb(void *arg)
 
 	n = nni_aio_count(txaio);
 	nni_aio_iov_advance(txaio, n);
-	debug_msg("tls over tcp socket sent %ld bytes iov %ld", n,
+	log_trace("tls over tcp socket sent %ld bytes iov %ld", n,
 	    nni_aio_iov_count(txaio));
 
 	if (nni_aio_iov_count(txaio) > 0) {
@@ -581,13 +580,13 @@ tlstran_pipe_recv_cb(void *arg)
 	conn_param *  cparam;
 	bool          ack   = false;
 
-	debug_msg("tlstran_pipe_recv_cb %p\n", p);
+	log_trace("tlstran_pipe_recv_cb %p\n", p);
 	nni_mtx_lock(&p->mtx);
 
 	aio = nni_list_first(&p->recvq);
 
 	if ((rv = nni_aio_result(rxaio)) != 0) {
-		debug_msg("nni aio error!! %d\n", rv);
+		log_error("nni aio error!! %d\n", rv);
 		rv = NMQ_SERVER_BUSY;
 		goto recv_error;
 	}
@@ -598,12 +597,12 @@ tlstran_pipe_recv_cb(void *arg)
 	nni_aio_iov_advance(rxaio, n);
 	// not receive enough bytes, deal with remaining length
 	len = get_var_integer(p->rxlen, &pos);
-	debug_msg("new %ld recevied %ld header %x %d pos: %d len : %d", n,
+	log_trace("new %ld recevied %ld header %x %d pos: %d len : %d", n,
 	    p->gotrxhead, p->rxlen[0], p->rxlen[1], pos, len);
-	debug_msg("still need byte count:%ld > 0\n", nni_aio_iov_count(rxaio));
+	log_trace("still need byte count:%ld > 0\n", nni_aio_iov_count(rxaio));
 
 	if (nni_aio_iov_count(rxaio) > 0) {
-		debug_msg("got: %x %x, %ld!!\n", p->rxlen[0], p->rxlen[1],
+		log_trace("got: %x %x, %ld!!\n", p->rxlen[0], p->rxlen[1],
 		    strlen((char *) p->rxlen));
 		nng_stream_recv(p->conn, rxaio);
 		nni_mtx_unlock(&p->mtx);
@@ -643,19 +642,19 @@ tlstran_pipe_recv_cb(void *arg)
 	if (p->rxmsg == NULL) {
 		// We should have gotten a message header. len -> remaining
 		// length to define how many bytes left
-		debug_msg("pipe %p header got: %x %x %x %x %x, %ld!!\n", p,
+		log_trace("pipe %p header got: %x %x %x %x %x, %ld!!\n", p,
 		    p->rxlen[0], p->rxlen[1], p->rxlen[2], p->rxlen[3],
 		    p->rxlen[4], p->wantrxhead);
 		// Make sure the message payload is not too big.  If it is
 		// the caller will shut down the pipe.
 		if (len > p->conf->max_packet_size) {
-			debug_msg("size error 0x95\n");
+			log_error("size error 0x95\n");
 			rv = NMQ_PACKET_TOO_LARGE;
 			goto recv_error;
 		}
 
 		if ((rv = nni_msg_alloc(&p->rxmsg, (size_t) len)) != 0) {
-			debug_syslog("mem error %ld\n", (size_t) len);
+			log_error("mem error %ld\n", (size_t) len);
 			rv = NMQ_SERVER_UNAVAILABLE;
 			goto recv_error;
 		}
@@ -688,12 +687,12 @@ tlstran_pipe_recv_cb(void *arg)
 	// duplicated with fixed_header_adaptor
 	nni_msg_set_remaining_len(msg, len);
 	nni_msg_set_cmd_type(msg, type);
-	debug_msg("remain_len %d cparam %p clientid %s username %s proto %d\n",
+	log_trace("remain_len %d cparam %p clientid %s username %s proto %d\n",
 	    len, cparam, cparam->clientid.body, cparam->username.body,
 	    cparam->pro_ver);
 
 	// set the payload pointer of msg according to packet_type
-	debug_msg("The type of msg is %x", type);
+	log_trace("The type of msg is %x", type);
 	uint16_t  packet_id   = 0;
 	uint8_t   reason_code = 0;
 	property *prop        = NULL;
@@ -723,21 +722,21 @@ tlstran_pipe_recv_cb(void *arg)
 	} else if (type == CMD_PUBREC) {
 		if (nni_mqtt_pubres_decode(msg, &packet_id, &reason_code, &prop,
 		        cparam->pro_ver) != 0) {
-			debug_msg("decode PUBREC variable header failed!");
+			log_error("decode PUBREC variable header failed!");
 		}
 		ack_cmd = CMD_PUBREL;
 		ack     = true;
 	} else if (type == CMD_PUBREL) {
 		if (nni_mqtt_pubres_decode(msg, &packet_id, &reason_code, &prop,
 		        cparam->pro_ver) != 0) {
-			debug_msg("decode PUBREL variable header failed!");
+			log_error("decode PUBREL variable header failed!");
 		}
 		ack_cmd = CMD_PUBCOMP;
 		ack     = true;
 	} else if (type == CMD_PUBACK || type == CMD_PUBCOMP) {
 		if (nni_mqtt_pubres_decode(msg, &packet_id, &reason_code, &prop,
 		        cparam->pro_ver) != 0) {
-			debug_msg("decode PUBACK or PUBCOMP variable header "
+			log_error("decode PUBACK or PUBCOMP variable header "
 			          "failed!");
 		}
 		// MQTT V5 flow control
@@ -768,7 +767,7 @@ tlstran_pipe_recv_cb(void *arg)
 			// nni_msg_insert(qmsg, nni_msg_header(qmsg),
 			//     nni_msg_header_len(qmsg));
 			if (nni_aio_begin(aio) != 0) {
-				debug_msg("ERROR: ACK aio error!!");
+				log_error("ACK aio error!!");
 			}
 			nni_msg_insert(qmsg, nni_msg_header(qmsg),
 			    nni_msg_header_len(qmsg));
@@ -779,7 +778,7 @@ tlstran_pipe_recv_cb(void *arg)
 			// send ACK down...
 			nni_aio_set_iov(p->qsaio, 1, iov);
 			nng_stream_send(p->conn, p->qsaio);
-			debug_msg(" QoS ACK msg sent!!");
+			log_trace("QoS ACK msg sent!");
 		} else {
 			if (nni_lmq_full(&p->rslmq)) {
 				// Make space for the new message. TODO add max
@@ -817,7 +816,7 @@ tlstran_pipe_recv_cb(void *arg)
 
 	nni_aio_set_msg(aio, msg);
 	nni_aio_finish_sync(aio, 0, n);
-	debug_msg("end of tlstran_pipe_recv_cb: synch! %p\n", p);
+	log_trace("end of tlstran_pipe_recv_cb: synch! %p\n", p);
 	return;
 
 recv_error:
@@ -829,7 +828,7 @@ recv_error:
 
 	nni_msg_free(msg);
 	nni_aio_finish_error(aio, rv);
-	debug_msg("tlstran_pipe_recv_cb: recv error rv: %d\n", rv);
+	log_trace("tlstran_pipe_recv_cb: recv error rv: %d\n", rv);
 	return;
 notify:
 	// nni_pipe_bump_rx(p->npipe, n);
@@ -974,7 +973,7 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 		}
 
 		qos = info->qos;
-		debug_msg("qos_pac %d sub %d\n", qos_pac, qos);
+		log_trace("qos_pac %d sub %d\n", qos_pac, qos);
 		fixheader = *header;
 		// get final qos
 		qos = qos_pac > qos ? qos : qos_pac;
@@ -1018,9 +1017,8 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 					// TODO packetid already exists.
 					// do we need to replace old with new
 					// one ? print warning to users
-					nni_println(
-					    "ERROR: packet id duplicates in "
-					    "nano_qos_db");
+					log_error("packet id duplicates in "
+					          "nano_qos_db");
 
 					nni_qos_db_remove_msg(is_sqlite,
 					    pipe->nano_qos_db, old);
@@ -1146,7 +1144,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	if (total_len > p->tcp_cparam->max_packet_size) {
 		// drop msg and finish aio
 		// pretend it has been sent
-		debug_syslog("Warning:msg dropped due to overceed max packet size!");
+		log_warn("msg dropped due to overceed max packet size!");
 		nni_msg_free(msg);
 		nni_aio_set_msg(aio, NULL);
 		nni_aio_finish(aio, 0, 0);
@@ -1386,7 +1384,7 @@ tlstran_pipe_send_start(tlstran_pipe *p)
 	nni_aio *aio;
 	nni_msg *msg;
 
-	debug_msg("########### tlstran_pipe_send_start ###########");
+	log_trace("########### tlstran_pipe_send_start ###########");
 	if (p->closed) {
 		while ((aio = nni_list_first(&p->sendq)) != NULL) {
 			nni_list_remove(&p->sendq, aio);
@@ -1396,7 +1394,7 @@ tlstran_pipe_send_start(tlstran_pipe *p)
 	}
 
 	if ((aio = nni_list_first(&p->sendq)) == NULL) {
-		debug_msg("aio not functioning");
+		log_trace("aio not functioning");
 		return;
 	}
 
@@ -1422,7 +1420,7 @@ tlstran_pipe_send(void *arg, nni_aio *aio)
 	tlstran_pipe *p = arg;
 	int           rv;
 
-	debug_msg("####################tlstran_pipe_send###########");
+	log_trace("####################tlstran_pipe_send###########");
 	if (nni_aio_begin(aio) != 0) {
 		return;
 	}
@@ -1502,7 +1500,7 @@ tlstran_pipe_recv_start(tlstran_pipe *p)
 {
 	nni_aio *rxaio;
 	nni_iov  iov;
-	debug_msg("*** tlstran_pipe_recv_start ***\n");
+	log_trace("*** tlstran_pipe_recv_start ***\n");
 	NNI_ASSERT(p->rxmsg == NULL);
 
 	if (p->closed) {
@@ -1541,7 +1539,7 @@ tlstran_pipe_start(tlstran_pipe *p, nng_stream *conn, tlstran_ep *ep)
 	p->conf = ep->conf;
 	// p->proto = ep->proto;
 
-	debug_msg("tlstran_pipe_start!");
+	log_trace("tlstran_pipe_start!");
 	p->qrecv_quota = NANO_MAX_QOS_PACKET;
 	p->gotrxhead  = 0;
 	p->wantrxhead = NANO_CONNECT_PACKET_LEN; // packet type 1 + remaining
@@ -1588,7 +1586,7 @@ tlstran_ep_close(void *arg)
 
 	nni_mtx_lock(&ep->mtx);
 
-	debug_syslog("tlstran_ep_close");
+	log_trace("tlstran_ep_close");
 	ep->closed = true;
 	nni_aio_close(ep->timeaio);
 	if (ep->listener != NULL) {

@@ -1,4 +1,3 @@
-#include "nng/nng_debug.h"
 #include "nng/supplemental/nanolib/hash_table.h"
 #include "test.h"
 #include <nuts.h>
@@ -38,7 +37,7 @@ static void
 assert_str(const char *s1, const char *s2)
 {
 	if (strcmp(s1, s2)) {
-		debug_msg("Test failed lv: %s, rv: %s", s1, s2);
+		printf("Test failed lv: %s, rv: %s", s1, s2);
 		exit(0);
 	}
 	// } else {
@@ -302,8 +301,6 @@ test_single_thread(void *args)
 void
 hash_test(void)
 {
-
-	debug_msg("TEST STARTED");
 	dbhash_init_alias_table();
 	dbhash_init_pipe_table();
 	dbhash_init_cached_table();
@@ -331,7 +328,6 @@ hash_test(void)
 	dbhash_destroy_pipe_table();
 	dbhash_destroy_cached_table();
 
-	debug_msg("TEST FINISHED");
 	return;
 }
 

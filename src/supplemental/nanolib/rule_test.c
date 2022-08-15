@@ -1,7 +1,6 @@
 #include "nng/supplemental/nanolib/conf.h"
 #include "nng/supplemental/nanolib/cvector.h"
 #include "nng/nng.h"
-#include "nng/nng_debug.h"
 #include "core/nng_impl.h"
 #include "string.h"
 #include <nuts.h>

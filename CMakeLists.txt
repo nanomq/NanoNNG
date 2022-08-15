@@ -33,17 +33,9 @@ include(CheckCCompilerFlag)
 include(GNUInstallDirs)
 
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
-SET(NOLOG 1 CACHE STRING "run NNG without printing log")
 
 include(NNGHelpers)
 include(NNGOptions)
-
-if (NOLOG)
-  message("LOG=OFF")
-  add_definitions(-DNOLOG)
-else ()
-  message("LOG=ON")
-endif (NOLOG)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)

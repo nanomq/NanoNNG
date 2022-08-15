@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include "core/nng_impl.h"
-#include "nng/nng_debug.h"
 #include "nng/supplemental/nanolib/file.h"
 
 #ifdef NNG_PLATFORM_WINDOWS

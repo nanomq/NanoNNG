@@ -252,7 +252,7 @@ nni_taskq_setter(int num_taskq_threads, int max_taskq_threads)
 		var_num_taskq_threads = num_taskq_threads;
 	if (max_taskq_threads)
 		var_max_taskq_threads = max_taskq_threads;
-	debug_msg("command line given: tq [%d], max_tq [%d]",
+	log_debug("command line given: tq [%d], max_tq [%d]",
 	    var_num_taskq_threads, var_max_taskq_threads);
 }
 
@@ -263,7 +263,7 @@ nni_taskq_getter(void)
 		if (var_num_taskq_threads >= var_max_taskq_threads)
 			return var_max_taskq_threads;
 	}
-	debug_msg("command line given: tq [%d], max_tq [%d]",
+	log_debug("command line given: tq [%d], max_tq [%d]",
 	    var_num_taskq_threads, var_max_taskq_threads);
 	return var_num_taskq_threads ? var_num_taskq_threads
 	                             : var_max_taskq_threads;
@@ -286,7 +286,7 @@ nni_taskq_sys_init(void)
 #endif
 
 	int result = nni_taskq_getter();
-	debug_msg("result is %d", result);
+	log_trace("result is %d", result);
 	if (result) {
 		nthrs = result;
 	}

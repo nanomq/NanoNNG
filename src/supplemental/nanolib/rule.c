@@ -1,7 +1,6 @@
 #include "nng/supplemental/nanolib/conf.h"
 #include "nng/supplemental/nanolib/cvector.h"
 #include "nng/nng.h"
-#include "nng/nng_debug.h"
 #include "core/nng_impl.h"
 
 
@@ -229,7 +228,7 @@ parse_select(const char *select, rule *info)
 		while (*p_b == ' ' && *p_b != '\0')
 			p_b++;
 		if (-1 == set_select_info(p_b, info)) {
-			debug_msg("Invalid sql field");
+			log_error("Invalid sql field");
 			return -1;
 		}
 		p++;
@@ -240,7 +239,7 @@ parse_select(const char *select, rule *info)
 	}
 
 	if (-1 == set_select_info(p_b, info)) {
-		debug_msg("Invalid sql field");
+		log_error("Invalid sql field");
 		return -1;
 	}
 	return 0;
@@ -387,7 +386,7 @@ set_where_info(char *str, size_t len, rule *info)
 					info->payload[size - 1]->cmp_type =
 					    cmp_type;
 				} else {
-					debug_msg("Invalid field");
+					log_error("Invalid field");
 					return -1;
 				}
 			}
@@ -429,7 +428,7 @@ bool
 rule_sql_parse(conf_rule *cr, char *sql)
 {
 	if (NULL == sql) {
-		debug_msg("Sql is NULL!");
+		log_warn("Sql is NULL!");
 		return false;
 	}
 

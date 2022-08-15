@@ -16,7 +16,9 @@ nng_sources(
   env.c
   file.c
   hash_table.c
-  mqtt_db.c)
+  mqtt_db.c
+  log.c
+  )
 
 
 nng_test(hash_test)

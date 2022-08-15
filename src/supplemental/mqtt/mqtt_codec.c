@@ -3497,22 +3497,22 @@ property_parse(struct pos_buf *buf, property *prop, uint8_t prop_id,
 	switch (type) {
 	case U8:
 		read_byte(buf, &prop->data.p_value.u8);
-		debug_msg(
+		log_trace(
 		    "id: %d, value: %d (U8)", prop_id, prop->data.p_value.u8);
 		break;
 	case U16:
 		read_uint16(buf, &prop->data.p_value.u16);
-		debug_msg("id: %d, value: %d (U16)", prop_id,
+		log_trace("id: %d, value: %d (U16)", prop_id,
 		    prop->data.p_value.u16);
 		break;
 	case U32:
 		read_uint32(buf, &prop->data.p_value.u32);
-		debug_msg("id: %d, value: %u (U32)", prop_id,
+		log_trace("id: %d, value: %u (U32)", prop_id,
 		    prop->data.p_value.u32);
 		break;
 	case VARINT:
 		read_variable_integer(buf, &prop->data.p_value.varint);
-		debug_msg("id: %d, value: %d (VARINT)", prop_id,
+		log_trace("id: %d, value: %d (VARINT)", prop_id,
 		    prop->data.p_value.varint);
 		break;
 	case BINARY:
@@ -3523,7 +3523,7 @@ property_parse(struct pos_buf *buf, property *prop, uint8_t prop_id,
 		} else {
 			read_utf8_str(buf, &prop->data.p_value.binary);
 		}
-		debug_msg("id: %d, value pointer: %p (BINARY)", prop_id,
+		log_trace("id: %d, value pointer: %p (BINARY)", prop_id,
 		    prop->data.p_value.binary.buf);
 		break;
 	case STR:
@@ -3534,7 +3534,7 @@ property_parse(struct pos_buf *buf, property *prop, uint8_t prop_id,
 		} else {
 			read_utf8_str(buf, &prop->data.p_value.str);
 		}
-		debug_msg("id: %d, value: %.*s (STR)", prop_id,
+		log_trace("id: %d, value: %.*s (STR)", prop_id,
 		    prop->data.p_value.str.length,
 		    (const char *) prop->data.p_value.str.buf);
 		break;
@@ -3548,7 +3548,7 @@ property_parse(struct pos_buf *buf, property *prop, uint8_t prop_id,
 			read_utf8_str(buf, &prop->data.p_value.strpair.key);
 			read_utf8_str(buf, &prop->data.p_value.strpair.value);
 		}
-		debug_msg("id: %d, value: '%.*s -> %.*s' (STR_PAIR)", prop_id,
+		log_trace("id: %d, value: '%.*s -> %.*s' (STR_PAIR)", prop_id,
 		    prop->data.p_value.strpair.key.length,
 		    prop->data.p_value.strpair.key.buf,
 		    prop->data.p_value.strpair.value.length,

@@ -10,7 +10,6 @@
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "core/nng_impl.h"
 #include "core/sockimpl.h"
-#include "nng/nng_debug.h"
 #include "core/zmalloc.h"
 #include "nng/protocol/mqtt/mqtt.h"
 #include "supplemental/mqtt/mqtt_msg.h"
@@ -575,7 +574,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	    (char *) copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
 	cparam->pro_name.len = len_of_str;
 	rv                   = len_of_str < 0 ? PROTOCOL_ERROR : 0;
-	debug_msg("pro_name: %s", cparam->pro_name.body);
+	log_trace("pro_name: %s", cparam->pro_name.body);
 	// protocol ver
 	cparam->pro_ver = packet[pos];
 	pos++;
@@ -585,7 +584,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	cparam->will_flag   = (cparam->con_flag & 0x04) >> 2;
 	cparam->will_qos    = (cparam->con_flag & 0x18) >> 3;
 	cparam->will_retain = (cparam->con_flag & 0x20) >> 5;
-	debug_msg("conn flag:%x", cparam->con_flag);
+	log_trace("conn flag:%x", cparam->con_flag);
 	pos++;
 	// keepalive
 	NNI_GET16(packet + pos, tmp);
@@ -593,7 +592,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	pos += 2;
 	// properties
 	if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
-		debug_msg("MQTT 5 Properties");
+		log_trace("MQTT V5 Properties");
 		cparam->properties = decode_buf_properties(
 		    packet, len, &pos, &cparam->prop_len, true);
 		if (cparam->properties) {
@@ -604,7 +603,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 			}
 		}
 	}
-	debug_msg("pos after property: [%d]", pos);
+	log_trace("pos after property: [%d]", pos);
 
 	// payload client_id
 	cparam->clientid.body =
@@ -621,7 +620,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	} else if (len_of_str < 0) {
 		return (PROTOCOL_ERROR);
 	}
-	debug_msg("clientid: [%s] [%d]", cparam->clientid.body, len_of_str);
+	log_trace("clientid: [%s] [%d]", cparam->clientid.body, len_of_str);
 
 	if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5 && cparam->assignedid) {
 		property *assigned_cid =
@@ -655,7 +654,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 			rv = PROTOCOL_ERROR;
 			return rv;
 		}
-		debug_msg("will_topic: %s %d", cparam->will_topic.body, rv);
+		log_trace("will_topic: %s %d", cparam->will_topic.body, rv);
 		// will msg
 		if (rv == 0) {
 			if (cparam->payload_format_indicator == 0) {
@@ -669,7 +668,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 			}
 			cparam->will_msg.len = len_of_str;
 			rv = len_of_str < 0 ? PAYLOAD_FORMAT_INVALID : 0;
-			debug_msg(
+			log_trace(
 			    "will_msg: %s %d", cparam->will_msg.body, rv);
 		}
 	}
@@ -683,7 +682,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		if (rv != 0) {
 			return rv;
 		}
-		debug_msg(
+		log_trace(
 		    "username: %s %d", cparam->username.body, len_of_str);
 	}
 	// password
@@ -695,11 +694,11 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		if (rv != 0) {
 			return rv;
 		}
-		debug_msg(
+		log_trace(
 		    "password: %s %d", cparam->password.body, len_of_str);
 	}
 	if (len + len_of_var + 1 != pos) {
-		debug_msg("ERROR in connect handler");
+		log_error("in connect handler");
 		rv = PROTOCOL_ERROR;
 	}
 	return rv;
@@ -833,7 +832,7 @@ conn_param_free(conn_param *cparam)
 	if (nni_atomic_dec_nv(&cparam->refcnt) != 0) {
 		return;
 	}
-	debug_msg("destroy conn param");
+	log_trace("destroy conn param");
 	nng_free(cparam->pro_name.body, cparam->pro_name.len);
 	nng_free(cparam->clientid.body, cparam->clientid.len);
 	nng_free(cparam->will_topic.body, cparam->will_topic.len);
@@ -1018,8 +1017,7 @@ verify_connect(conn_param *cparam, conf *conf)
 	char *password = (char *) cparam->password.body;
 
 	if (conf->auths.count == 0 || conf->allow_anonymous == true) {
-		debug_msg("WARNING: no valid entry in "
-		          "etc/nanomq_auth_username.conf.");
+		log_trace("no valid entry in %s", conf->auth_file);
 		return 0;
 	}
 
@@ -1125,7 +1123,7 @@ nano_msg_get_subtopic(nni_msg *msg, nano_pipe_db *root, conn_param *cparam)
 
 		if (len_of_topic != 0) {
 
-			debug_msg("The current process topic is %s",
+			log_trace("The current process topic is %s",
 			    payload_ptr + bpos + 2);
 			iter = root;
 			while (iter) {
@@ -1179,7 +1177,7 @@ nano_msg_get_subtopic(nni_msg *msg, nano_pipe_db *root, conn_param *cparam)
 		}
 		db->qos  = *(payload_ptr + bpos);
 		db->next = NULL;
-		debug_msg("sub topic: %s qos : %x\n", db->topic, db->qos);
+		log_trace("sub topic: %s qos : %x\n", db->topic, db->qos);
 		bpos += 1;
 	}
 
@@ -1314,7 +1312,7 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 			pos += len_of_varint;
 			break;
 		default:
-			debug_msg("Error: Invalid property id");
+			log_error("Invalid property id");
 			return (-2);
 		}
 	}
@@ -1330,7 +1328,7 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 			continue;
 		bpos += 2;
 
-		debug_msg(
+		log_trace(
 		    "The current process topic is %s", payload_ptr + bpos);
 		if ((sn = nng_alloc(sizeof(struct subinfo))) == NULL)
 			return (-2);
@@ -1409,7 +1407,7 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 			len_of_str = 0;
 			break;
 		default:
-			debug_msg("Error: Invalid property id");
+			log_error("Invalid property id");
 			return (-2);
 		}
 	}
@@ -1425,7 +1423,7 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 			continue;
 		bpos += 2;
 
-		debug_msg(
+		log_trace(
 		    "The current process topic is %s", payload_ptr + bpos);
 		if ((topic = nng_alloc(len_of_topic + 1)) == NULL)
 			return (-2);
@@ -1438,7 +1436,7 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 		snode.topic = topic;
 		sn = &snode;
 		if (NULL != (sn2 = nmq_subinfol_rm_or(ll, sn))) {
-			debug_msg("Topic %s free from subinfol", sn2->topic);
+			log_trace("Topic %s free from subinfol", sn2->topic);
 			nng_free(sn2->topic, strlen(sn2->topic));
 			nng_free(sn2, sizeof(*sn2));
 		}
