@@ -409,7 +409,7 @@ parse_where(char *where, rule *info)
 	info->filter = (char **) nni_zalloc(sizeof(char *) * 8);
 	memset(info->filter, 0, 8 * sizeof(char *));
 
-	while ((p = strstr(p, "and"))) {
+	while ((p = nng_strcasestr(p, "and"))) {
 		if (-1 == set_where_info(p_b, p - p_b, info)) {
 			return -1;
 		}
@@ -432,11 +432,11 @@ rule_sql_parse(conf_rule *cr, char *sql)
 		return false;
 	}
 
-	char *srt = strstr(sql, "SELECT");
+	char *srt = nng_strcasestr(sql, "SELECT");
 	if (NULL != srt) {
 		int   len_srt, len_mid, len_end;
-		char *mid = strstr(srt, "FROM");
-		char *end = strstr(mid, "WHERE");
+		char *mid = nng_strcasestr(srt, "FROM");
+		char *end = nng_strcasestr(mid, "WHERE");
 
 		rule re;
 		memset(&re, 0, sizeof(re));
