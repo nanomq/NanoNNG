@@ -74,16 +74,19 @@ typedef struct {
 	** flag[7] == RULE_PAYLOAD_ALL,
 	** flag[8] == RULE_PAYLOAD_FIELD,
 	*/
-	bool           flag[9];        // if this field need to store
-	rule_cmp_type  cmp_type[8]; 	// filter compare type
-	rule_forword_type forword_type; // forword type
+	bool              flag[9]; // if this field need to store
+	bool              enabled; // if this rule is enabled
+	rule_cmp_type     cmp_type[8];    // filter compare type
+	rule_forword_type forword_type;   // forword type
 	char          *topic;          // topic parse from sql 'from'
 	char          *as[8];          // if field string as a new string
 	rule_payload **payload;        // this is for payload info
 	char         **filter;         // filter parse from sql 'where'
 	char	     *sqlite_table;
-	rule_key     *key;
-	repub_t      *repub;
+	char	     *raw_sql;
+	uint32_t          rule_id;
+	rule_key         *key;
+	repub_t          *repub;
 } rule;
 
 typedef struct {
@@ -109,9 +112,9 @@ typedef struct {
 	char *sqlite_db_path;
 } conf_rule;
 
-int rule_find_key(const char *str, size_t len);
-char *rule_get_key_arr(char *p, rule_key *key);
-bool rule_sql_parse(conf_rule *cr, char *sql);
-
+int      rule_find_key(const char *str, size_t len);
+uint32_t rule_generate_rule_id(void);
+char    *rule_get_key_arr(char *p, rule_key *key);
+bool     rule_sql_parse(conf_rule *cr, char *sql);
 
 #endif

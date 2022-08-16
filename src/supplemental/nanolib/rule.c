@@ -17,6 +17,13 @@ static char *rule_engine_key_arr[] = {
 	NULL,
 };
 
+uint32_t rule_generate_rule_id(void)
+{
+	static uint32_t rule_id = 0;
+	rule_id++;
+	return rule_id;
+}
+
 int
 rule_find_key(const char *str, size_t len)
 {
