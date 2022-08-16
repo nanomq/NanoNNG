@@ -1009,12 +1009,22 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 			if (NULL != (value = strchr(line, '='))) {
 				value++;
 				rule_sql_parse(cr, value);
+				char *p = strrchr(value, '\"');
+				*p = '\0';
+
 				cr->rules[cvector_size(cr->rules) - 1]
 				    .repub = NNI_ALLOC_STRUCT(repub);
 				memcpy(cr->rules[cvector_size(cr->rules) - 1]
 				    .repub, repub, sizeof(*repub));
 				cr->rules[cvector_size(cr->rules) - 1]
 				    .forword_type = RULE_FORWORD_REPUB;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .raw_sql = nng_strdup(++value);
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .enabled = true;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .rule_id = rule_generate_rule_id();
+
 			}
 		}
 
@@ -1090,10 +1100,19 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 				value++;
 				// puts(value);
 				rule_sql_parse(cr, value);
+				char *p = strrchr(value, '\"');
+				*p = '\0';
+
 				cr->rules[cvector_size(cr->rules) - 1]
 				    .sqlite_table = table;
 				cr->rules[cvector_size(cr->rules) - 1]
 				    .forword_type = RULE_FORWORD_SQLITE;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .raw_sql = nng_strdup(++value);
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .enabled = true;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .rule_id = rule_generate_rule_id();
 			}
 		}
 
@@ -1167,10 +1186,18 @@ conf_rule_fdb_parse(conf_rule *cr, char *path)
 				value++;
 				// puts(value);
 				rule_sql_parse(cr, value);
+				char *p = strrchr(value, '\"');
+				*p = '\0';
 				cr->rules[cvector_size(cr->rules) - 1].key =
 				    rk;
 				cr->rules[cvector_size(cr->rules) - 1]
 				    .forword_type = RULE_FORWORD_FDB;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .raw_sql = nng_strdup(++value);
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .enabled = true;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .rule_id = rule_generate_rule_id();
 			}
 		}
 
