@@ -254,6 +254,12 @@ if (NNG_TESTS)
     set(all_tests, "")
 endif ()
 
+if(NNG_ENABLE_QUIC)
+  include_directories(${PROJECT_SOURCE_DIR}/extern/msquic/src/inc)
+  set(NNG_PROTO_MQTT_QUIC_CLIENT ON)
+  add_definitions(-DSUPP_QUIC)
+endif()
+
 add_subdirectory(src)
 
 if (NNG_TESTS)
@@ -261,8 +267,6 @@ if (NNG_TESTS)
 endif ()
 
 #  Build the tools
-
-# add_subdirectory(docs/man)
 
 include_directories(${CMAKE_SOURCE_DIR}/nanolib/include)
 include_directories(${CMAKE_SOURCE_DIR}/nanomq/include)

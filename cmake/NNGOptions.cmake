@@ -43,7 +43,7 @@ option(NNG_ENABLE_STATS "Enable statistics." ON)
 mark_as_advanced(NNG_ENABLE_STATS)
 
 # SQLITE API support.
-option (NNG_ENABLE_SQLITE "Enable SQLITE API." ON)
+option (NNG_ENABLE_SQLITE "Enable SQLITE API." OFF)
 if (NNG_ENABLE_SQLITE)
     set(NNG_SUPP_SQLITE ON)
 endif()
@@ -88,6 +88,24 @@ mark_as_advanced(NNG_PROTO_MQTT_CLIENT)
 
 option (NNG_PROTO_MQTT_BROKER "Enable MQTT Broker protocol." OFF)
 mark_as_advanced(NNG_PROTO_MQTT_BROKER)
+
+option (NNG_PROTO_MQTT_QUIC_CLIENT "Enable MQTT over msQuic Client protocol." ON)
+mark_as_advanced(NNG_PROTO_MQTT_QUIC_CLIENT)
+
+option(NNG_ENABLE_QUIC "Enable Quic support." ON)
+if (NNG_ENABLE_QUIC)
+    set(NNG_SUPP_QUIC ON)
+    # For now we only accept msQuic as the quic lib
+endif ()
+
+if (NNG_ENABLE_QUIC)
+    set(NNG_QUIC_LIBS msquic none)
+    # We assume MSQUIC for now.  (Someday replaced perhaps with Bear.)
+    set(NNG_QUIC_LIB msquic CACHE STRING "Quic lib to use.")
+    set_property(CACHE NNG_QUIC_LIB PROPERTY STRINGS ${NNG_QUIC_LIBS})
+else ()
+    set(NNG_QUIC_LIB none)
+endif ()
 
 # TLS support.
 
