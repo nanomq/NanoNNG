@@ -901,7 +901,7 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 
 
 	if (NULL == (fp = fopen(path, "r"))) {
-		debug_msg("File %s open failed\n", path);
+		log_debug("File %s open failed\n", path);
 		return false;
 	}
 
@@ -976,7 +976,7 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 						} else if (!strcmp(value, "false")) {
 							repub->clean_start = false;
 						} else {
-							debug_msg("Unsupport clean start option!");
+							log_error("Unsupport clean start option!");
 							exit(EXIT_FAILURE);
 						}
 						free(value);
@@ -1002,7 +1002,7 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 			int res =
 			    sscanf(line, "rule.event.publish.%d.sql", &num);
 			if (0 == res) {
-				debug_msg("Do not find repub client");
+				log_error("Do not find repub client");
 				exit(EXIT_FAILURE);
 			}
 
@@ -1281,7 +1281,7 @@ conf_rule_parse(conf *nanomq_conf)
 				cr.option |= RULE_ENG_RPB;
 			} else {
 				if (0 != nni_strcasecmp(value, "disable")) {
-					debug_msg("Unsupported option: %s\nrule "
+					log_error("Unsupported option: %s\nrule "
 					        "option sqlite only support "
 					        "enable/disable",
 					    value);
