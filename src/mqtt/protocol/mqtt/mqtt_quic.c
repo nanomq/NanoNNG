@@ -802,6 +802,7 @@ mqtt_quic_sock_recv(void *arg, nni_aio *aio)
 static int
 quic_mqtt_stream_init(void *arg,nni_pipe *qstrm, void *sock)
 {
+	nni_plat_printf("quic_mqtt_stream_init.\n");
 	mqtt_pipe_t *p = arg;
 	p->qstream = qstrm;
 	p->mqtt_sock = sock;

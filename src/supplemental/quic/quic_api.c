@@ -55,6 +55,12 @@ struct quic_strm_s {
 	uint8_t  rxbuf[5];
 	nni_msg *rxmsg; // nng_msg for received
 
+	nni_aio  rraio;
+	uint8_t *rrbuf; // Buffer for remaining packet
+	uint32_t rrlen; // Length of rrbuf
+	uint32_t rrpos; // Start position of rrbuf
+	uint32_t rrcap; // Start position of rrbuf
+
 	uint8_t  rticket[2048];
 	uint16_t rticket_sz;
 	bool     rticket_active;
@@ -140,8 +146,15 @@ quic_strm_init(quic_strm_t *qstrm)
 	nni_lmq_init(&qstrm->recv_messages, NNG_MAX_RECV_LMQ);
 	nni_lmq_init(&qstrm->send_messages, NNG_MAX_SEND_LMQ);
 
+	nni_aio_init(&qstrm->rraio, quic_strm_recv_start, qstrm);
+
 	qstrm->rxlen = 0;
 	qstrm->rxmsg = NULL;
+
+	qstrm->rrbuf = NULL;
+	qstrm->rrlen = 0;
+	qstrm->rrpos = 0;
+	qstrm->rrcap = 0;
 
 	qstrm->url_s = NULL;
 	qstrm->rticket_sz = 0;
@@ -154,6 +167,8 @@ quic_strm_fini(quic_strm_t *qstrm)
 {
 	if (qstrm->rxmsg)
 		free(qstrm->rxmsg);
+	if (qstrm->rrbuf)
+		free(qstrm->rrbuf);
 	conn_param_free(qstrm->cparam);
 	return;
 }
@@ -483,6 +498,7 @@ quic_strm_close(HQUIC Connection, HQUIC Stream)
 		MsQuic->StreamClose(Stream);
 	if (Connection)
 		MsQuic->ConnectionShutdown(Connection, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
+	return 0;
 }
 
 /**
