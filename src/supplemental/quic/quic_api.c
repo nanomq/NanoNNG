@@ -14,7 +14,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#define QUIC_API_C_DEBUG 0
+#define QUIC_API_C_DEBUG 1
 #define QUIC_API_C_INFO 0
 
 #if QUIC_API_C_DEBUG
@@ -181,8 +181,8 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
         _Inout_ QUIC_STREAM_EVENT *Event)
 {
 	quic_strm_t *qstrm = Context;
-	int rlen, n;
-	uint32_t remain_len;
+	int n;
+	uint32_t remain_len, rlen;
 	uint8_t *rbuf, usedbytes;
 	nni_msg *rmsg, *smsg;
 	nni_aio *aio;
@@ -217,147 +217,27 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 		qinfo("[strm][%p] Data received\n", Stream);
 		qdebug("Body is [%d]-[0x%x 0x%x].\n", rlen, *(rbuf), *(rbuf + 1));
 
-		// Not get enough len, wait to be re-schedule
 		nni_mtx_lock(&qstrm->mtx);
-		if (Event->RECEIVE.Buffers->Length + qstrm->rxlen < qstrm->rwlen ||
-		    count == 0) {
-			if (!nni_list_empty(&qstrm->recvq)) {
-				quic_strm_recv_start(qstrm);
-			}
-			// TODO I'am not sure if the buffer in msquic would be free
+
+		// Get all the buffers in quic stream
+		if (count == 0 || rlen <= 0) {
 			nni_mtx_unlock(&qstrm->mtx);
 			return QUIC_STATUS_PENDING;
 		}
 
-		qdebug("before rxlen %d rwlen %d.\n", qstrm->rxlen, qstrm->rwlen);
-
-		// Already get 2 Bytes
-		if (qstrm->rxlen == 0) {
-			n = 2; // new
-			memcpy(qstrm->rxbuf, rbuf, n);
-			qstrm->rxlen = 0 + n;
-			MsQuic->StreamReceiveComplete(qstrm->stream, n);
-			if (qstrm->rxbuf[1] == 0) {
-				// 0 remaining length could be
-				// PINGRESP/DISCONNECT
-				if (0 != nng_msg_alloc(&qstrm->rxmsg, 0)) {
-					qdebug("error in msg allocated.\n");
-				}
-				nni_msg_header_append(
-				    qstrm->rxmsg, qstrm->rxbuf, 2);
-				goto upload;
-			}
-			if (qstrm->rxbuf[1] == 2)
-				qstrm->rwlen = n + 2; // Only this case exclude
-			else
-				qstrm->rwlen = n + 3;
-
-			// Wait to be re-schedule
-			if (!nni_list_empty(&qstrm->recvq)) {
-				quic_strm_recv_start(qstrm);
-			}
-			nni_mtx_unlock(&qstrm->mtx);
-			// TODO I'am not sure if the buffer in msquic would be free
-			qdebug("1after  rxlen %d rwlen %d.\n", qstrm->rxlen, qstrm->rwlen);
-			return QUIC_STATUS_PENDING;
+		if (rlen > qstrm->rrcap - qstrm->rrlen) {
+			qstrm->rrbuf = realloc(qstrm->rrbuf, rlen + qstrm->rrlen);
+			qstrm->rrcap = rlen + qstrm->rrlen;
 		}
+		// Copy data from quic stream to rrbuf
+		strncpy((char *)qstrm->rrbuf + (int)qstrm->rrlen, (char *)rbuf, rlen);
+		qstrm->rrlen += rlen;
+		MsQuic->StreamReceiveComplete(qstrm->stream, rlen);
 
-		// Already get 4 Bytes
-		if (qstrm->rxbuf[1] == 2 && qstrm->rwlen == 4) {
-			// Handle 4 bytes msg
-			n = 2; // new
-			memcpy(qstrm->rxbuf + 2, rbuf, n);
-			qstrm->rxlen += n;
-			MsQuic->StreamReceiveComplete(qstrm->stream, n);
-
-			// Compose msg
-			if (0 != nng_msg_alloc(&qstrm->rxmsg, 4)) {
-				qdebug("error in msg allocated.\n");
-			}
-
-			nni_msg_header_clear(qstrm->rxmsg);
-			nni_msg_clear(qstrm->rxmsg);
-			// Copy Header
-			nni_msg_header_append(qstrm->rxmsg, qstrm->rxbuf, 2);
-			// Copy Body
-			nni_msg_append(qstrm->rxmsg, qstrm->rxbuf + 2, 2);
-
-			// Done
-			qdebug("2after  rxlen %d rwlen %d.\n", qstrm->rxlen, qstrm->rwlen);
-		}
-
-		// Already get 5 Bytes
-		if (qstrm->rxbuf[1] > 0x02 && qstrm->rwlen == 5) {
-			n = 3; // new
-			memcpy(qstrm->rxbuf + 2, rbuf, n);
-			qstrm->rxlen += n;
-			MsQuic->StreamReceiveComplete(qstrm->stream, n);
-
-			usedbytes = 0;
-			if (0 != mqtt_get_remaining_length(qstrm->rxbuf, qstrm->rxlen, &remain_len, &usedbytes)) {
-				qdebug("error in get remain_len.\n");
-			}
-			if (0 != nng_msg_alloc(&qstrm->rxmsg, 1 + usedbytes + remain_len)) {
-				qdebug("error in msg allocated.\n");
-			}
-			qstrm->rwlen = remain_len + usedbytes + 1;
-
-			if (qstrm->rxbuf[1] == 0x03) {
-				nni_msg_header_clear(qstrm->rxmsg);
-				nni_msg_clear(qstrm->rxmsg);
-				// Copy Header
-				nni_msg_header_append(qstrm->rxmsg, qstrm->rxbuf, 2);
-				// Copy Body
-				nni_msg_append(qstrm->rxmsg, qstrm->rxbuf + 2, 3);
-			} else {
-				// Wait to be re-schedule
-				if (!nni_list_empty(&qstrm->recvq)) {
-					quic_strm_recv_start(qstrm);
-				}
-				nni_mtx_unlock(&qstrm->mtx);
-				// TODO I'am not sure if the buffer in msquic would be free
-				qdebug("3after  rxlen %d rwlen %d.\n", qstrm->rxlen, qstrm->rwlen);
-				return QUIC_STATUS_PENDING;
-			}
-		}
-
-		// Already get remain_len Bytes
-		if (qstrm->rwlen > 0x05 && qstrm->rxmsg != NULL) {
-			usedbytes = 0;
-			if (0 != mqtt_get_remaining_length(qstrm->rxbuf, qstrm->rxlen, &remain_len, &usedbytes)) {
-				qdebug("error in get remain_len.\n");
-			}
-			n = 1 + usedbytes + remain_len - 5; // new
-
-			nni_msg_header_clear(qstrm->rxmsg);
-			nni_msg_clear(qstrm->rxmsg);
-			// Copy Header
-			nni_msg_header_append(qstrm->rxmsg, qstrm->rxbuf, 1 + usedbytes);
-			// Copy Body
-			nni_msg_append(qstrm->rxmsg,
-				qstrm->rxbuf + (1 + usedbytes), 5 - (1 + usedbytes));
-			nni_msg_append(qstrm->rxmsg, rbuf, n);
-
-			qstrm->rxlen += n;
-			MsQuic->StreamReceiveComplete(qstrm->stream, n);
-		}
-		qdebug("4after  rxlen %d rwlen %d.\n", qstrm->rxlen, qstrm->rwlen);
-
-upload: ;
-		// get aio and trigger cb of protocol layer
-		nni_aio *aio = nni_list_first(&qstrm->recvq);
-		nni_aio_list_remove(aio);
 		nni_mtx_unlock(&qstrm->mtx);
 
-		if (aio != NULL) {
-			// Set msg and remove from list and finish
-			nni_aio_set_msg(aio, qstrm->rxmsg);
-			if (qstrm->cparam)
-				nng_msg_set_conn_param(qstrm->rxmsg, qstrm->cparam);
-			qstrm->rxmsg = NULL;
-			nni_aio_finish_sync(aio, 0, 0);
-		}
-		qdebug("over\n");
+		if (!nni_list_empty(&qstrm->recvq)) {
+			quic_strm_recv_start(qstrm);
 		return QUIC_STATUS_PENDING;
 
 	case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
@@ -460,6 +340,7 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 			qinfo("[conn][%p] try to resume by ticket\n", Connection);
 			quic_reconnect(qstrm);
 		} else { // No rticket
+			qdebug("No ticket and done.\n", Connection);
 			quic_strm_fini(qstrm);
 			nng_free(qstrm, sizeof(quic_strm_t));
 		}
@@ -761,8 +642,6 @@ quic_strm_send_start(quic_strm_t *qstrm)
 	uint8_t type = (((uint8_t *)nni_msg_header(msg))[0] & 0xf0) >> 4;
 	qdebug("type is 0x%x %x.\n", type, ((uint8_t *)nni_msg_header(msg))[0]);
 
-	if (!buf)
-		qdebug("error in iov.\n");
 	qdebug(" body len: %d header len: %d \n", buf[1].Length, buf[0].Length);
 
 	if (QUIC_FAILED(Status = MsQuic->StreamSend(qstrm->stream, buf, bl > 0 ? 2:1,
@@ -815,7 +694,151 @@ quic_strm_recv_start(void *arg)
 		return;
 	}
 
-	MsQuic->StreamReceiveSetEnabled(qstrm->stream, TRUE);
+	qdebug("before rxlen %d rwlen %d.\n", qstrm->rxlen, qstrm->rwlen);
+
+	// Wait MsQuic take back data
+	if (rlen < qstrm->rxlen) {
+		if (rlen > 0) {
+			memmove(qstrm->rrbuf, qstrm->rrbuf+qstrm->rrpos, qstrm->rrlen);
+			qstrm->rrpos = 0;
+		}
+		MsQuic->StreamReceiveSetEnabled(qstrm->stream, TRUE);
+		return;
+	}
+
+	uint8_t  usedbytes;
+	nni_aio *aio;
+	// We get enough data
+	uint8_t *rbuf = qstrm->rrbuf;
+	size_t   rlen = qstrm->rrlen;
+
+	// Already get 2 Bytes
+	if (qstrm->rxlen == 0) {
+		n = 2; // new
+		memcpy(qstrm->rxbuf, rbuf, n);
+		qstrm->rxlen = 0 + n;
+		qstrm->rrpos += n;
+		qstrm->rrlen -= n;
+		if (qstrm->rxbuf[1] == 0) {
+			// 0 remaining length could be
+			// PINGRESP/DISCONNECT
+			if (0 != nng_msg_alloc(&qstrm->rxmsg, 0)) {
+				qdebug("error in msg allocated.\n");
+			}
+			nni_msg_header_append(
+			    qstrm->rxmsg, qstrm->rxbuf, 2);
+			goto upload;
+		}
+		if (qstrm->rxbuf[1] == 2)
+			qstrm->rwlen = n + 2; // Only this case exclude
+		else
+			qstrm->rwlen = n + 3;
+
+		// Re-schedule now
+		if (!nni_list_empty(&qstrm->recvq)) {
+			nni_aio_finish_sync(&qstrm->rraio);
+		}
+		nni_mtx_unlock(&qstrm->mtx);
+		qdebug("1after  rxlen %d rwlen %d.\n", qstrm->rxlen, qstrm->rwlen);
+	}
+
+	// Already get 4 Bytes
+	if (qstrm->rxbuf[1] == 2 && qstrm->rwlen == 4) {
+		// Handle 4 bytes msg
+		n = 2; // new
+		memcpy(qstrm->rxbuf + 2, rbuf, n);
+		qstrm->rxlen += n;
+		qstrm->rrpos += n;
+		qstrm->rrlen -= n;
+
+		// Compose msg
+		if (0 != nng_msg_alloc(&qstrm->rxmsg, 4)) {
+			qdebug("error in msg allocated.\n");
+		}
+
+		nni_msg_header_clear(qstrm->rxmsg);
+		nni_msg_clear(qstrm->rxmsg);
+		// Copy Header
+		nni_msg_header_append(qstrm->rxmsg, qstrm->rxbuf, 2);
+		// Copy Body
+		nni_msg_append(qstrm->rxmsg, qstrm->rxbuf + 2, 2);
+
+		// Done
+		qdebug("2after  rxlen %d rwlen %d.\n", qstrm->rxlen, qstrm->rwlen);
+	}
+
+	// Already get 5 Bytes
+	if (qstrm->rxbuf[1] > 0x02 && qstrm->rwlen == 5) {
+		n = 3; // new
+		memcpy(qstrm->rxbuf + 2, rbuf, n);
+		qstrm->rxlen += n;
+		qstrm->rrpos += n;
+		qstrm->rrlen -= n;
+
+		usedbytes = 0;
+		if (0 != mqtt_get_remaining_length(qstrm->rxbuf, qstrm->rxlen, &remain_len, &usedbytes)) {
+			qdebug("error in get remain_len.\n");
+		}
+		if (0 != nng_msg_alloc(&qstrm->rxmsg, 1 + usedbytes + remain_len)) {
+			qdebug("error in msg allocated.\n");
+		}
+		qstrm->rwlen = remain_len + usedbytes + 1;
+
+		if (qstrm->rxbuf[1] == 0x03) {
+			nni_msg_header_clear(qstrm->rxmsg);
+			nni_msg_clear(qstrm->rxmsg);
+			// Copy Header
+			nni_msg_header_append(qstrm->rxmsg, qstrm->rxbuf, 2);
+			// Copy Body
+			nni_msg_append(qstrm->rxmsg, qstrm->rxbuf + 2, 3);
+		} else {
+			// Wait to be re-schedule
+			if (!nni_list_empty(&qstrm->recvq)) {
+				nni_aio_finish_sync(&qstrm->rraio);
+			}
+			nni_mtx_unlock(&qstrm->mtx);
+			qdebug("3after  rxlen %d rwlen %d.\n", qstrm->rxlen, qstrm->rwlen);
+		}
+	}
+
+	// Already get remain_len Bytes
+	if (qstrm->rwlen > 0x05 && qstrm->rxmsg != NULL) {
+		usedbytes = 0;
+		if (0 != mqtt_get_remaining_length(qstrm->rxbuf, qstrm->rxlen, &remain_len, &usedbytes)) {
+			qdebug("error in get remain_len.\n");
+		}
+		n = 1 + usedbytes + remain_len - 5; // new
+
+		nni_msg_header_clear(qstrm->rxmsg);
+		nni_msg_clear(qstrm->rxmsg);
+		// Copy Header
+		nni_msg_header_append(qstrm->rxmsg, qstrm->rxbuf, 1 + usedbytes);
+		// Copy Body
+		nni_msg_append(qstrm->rxmsg,
+			qstrm->rxbuf + (1 + usedbytes), 5 - (1 + usedbytes));
+		nni_msg_append(qstrm->rxmsg, rbuf, n);
+
+		qstrm->rxlen += n;
+		qstrm->rrpos += n;
+		qstrm->rrlen -= n;
+	}
+	qdebug("4after  rxlen %d rwlen %d.\n", qstrm->rxlen, qstrm->rwlen);
+
+upload:
+	// get aio and trigger cb of protocol layer
+	nni_aio *aio = nni_list_first(&qstrm->recvq);
+	nni_aio_list_remove(aio);
+	nni_mtx_unlock(&qstrm->mtx);
+
+	if (aio != NULL) {
+		// Set msg and remove from list and finish
+		nni_aio_set_msg(aio, qstrm->rxmsg);
+		if (qstrm->cparam)
+			nng_msg_set_conn_param(qstrm->rxmsg, qstrm->cparam);
+		qstrm->rxmsg = NULL;
+		nni_aio_finish_sync(aio, 0, 0);
+	}
+	qdebug("over\n");
 }
 
 static void
