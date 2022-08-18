@@ -224,7 +224,7 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 			return QUIC_STATUS_PENDING;
 		}
 
-		if (rlen > qstrm->rrcap - qstrm->rrlen) {
+		if (rlen > qstrm->rrcap - qstrm->rrlen - qstrm->rrpos) {
 			qstrm->rrbuf = realloc(qstrm->rrbuf, rlen + qstrm->rrlen);
 			qstrm->rrcap = rlen + qstrm->rrlen;
 		}
@@ -716,15 +716,17 @@ quic_strm_recv_cb(void *arg)
 	nni_aio *aio = NULL;
 
 	qdebug("before rxlen %d rwlen %d.\n", qstrm->rxlen, qstrm->rwlen);
+	qdebug("rrpos %d rrlen %d.\n", qstrm->rrpos, qstrm->rrlen);
 
 	uint8_t  usedbytes;
-	uint8_t *rbuf = qstrm->rrbuf;
+	uint8_t *rbuf = qstrm->rrbuf + qstrm->rrpos;
 	uint32_t rlen = qstrm->rrlen, n, remain_len;
 
 	nni_mtx_lock(&qstrm->mtx);
 
 	// Wait MsQuic take back data
 	if (rlen < qstrm->rwlen - qstrm->rxlen) {
+		qdebug("Data is not enough and rrpos %d rrlen %d.\n", qstrm->rrpos, qstrm->rrlen);
 		if (rlen > 0) {
 			memmove(qstrm->rrbuf, qstrm->rrbuf+qstrm->rrpos, qstrm->rrlen);
 			qstrm->rrpos = 0;
@@ -860,8 +862,11 @@ upload:
 		if (qstrm->cparam)
 			nng_msg_set_conn_param(qstrm->rxmsg, qstrm->cparam);
 		qstrm->rxmsg = NULL;
+		qdebug("AIO FINISH\n");
 		nni_aio_finish(aio, 0, 0);
 	}
+	memmove(qstrm->rrbuf, qstrm->rrbuf+qstrm->rrpos, qstrm->rrlen);
+	qstrm->rrpos = 0;
 	qdebug("over\n");
 	nni_mtx_unlock(&qstrm->mtx);
 }
