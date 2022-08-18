@@ -92,7 +92,7 @@ mark_as_advanced(NNG_PROTO_MQTT_BROKER)
 option (NNG_PROTO_MQTT_QUIC_CLIENT "Enable MQTT over msQuic Client protocol." ON)
 mark_as_advanced(NNG_PROTO_MQTT_QUIC_CLIENT)
 
-option(NNG_ENABLE_QUIC "Enable Quic support." ON)
+option(NNG_ENABLE_QUIC "Enable Quic support." OFF)
 if (NNG_ENABLE_QUIC)
     set(NNG_SUPP_QUIC ON)
     # For now we only accept msQuic as the quic lib
@@ -100,7 +100,7 @@ endif ()
 
 if (NNG_ENABLE_QUIC)
     set(NNG_QUIC_LIBS msquic none)
-    # We assume MSQUIC for now.  (Someday replaced perhaps with Bear.)
+    # We assume MSQUIC as default for now.  (Someday replaced perhaps with Bear.)
     set(NNG_QUIC_LIB msquic CACHE STRING "Quic lib to use.")
     set_property(CACHE NNG_QUIC_LIB PROPERTY STRINGS ${NNG_QUIC_LIBS})
 else ()
