@@ -233,12 +233,12 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 		qstrm->rrlen += rlen;
 		MsQuic->StreamReceiveComplete(qstrm->stream, rlen);
 
-		nni_mtx_unlock(&qstrm->mtx);
-
 		if (!nni_list_empty(&qstrm->recvq)) {
 			// We should not do executing now, Or circle calling occurs
 			nni_aio_finish_sync(&qstrm->rraio, 0, 0);
 		}
+		nni_mtx_unlock(&qstrm->mtx);
+
 		return QUIC_STATUS_PENDING;
 
 	case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
@@ -695,7 +695,7 @@ quic_strm_recv_start(void *arg)
 		return;
 	}
 	if (qstrm->rrlen > qstrm->rwlen) {
-		nni_aio_finish(&qstrm->rraio, 0, 0);
+		nni_aio_finish_sync(&qstrm->rraio, 0, 0);
 		return;
 	}
 
@@ -726,8 +726,6 @@ quic_strm_recv_cb(void *arg)
 	uint8_t *rbuf = qstrm->rrbuf + qstrm->rrpos;
 	uint32_t rlen = qstrm->rrlen, n, remain_len;
 
-	nni_mtx_lock(&qstrm->mtx);
-
 	// Wait MsQuic take back data
 	if (rlen < qstrm->rwlen - qstrm->rxlen) {
 		qdebug("Data is not enough and rrpos %d rrlen %d.\n", qstrm->rrpos, qstrm->rrlen);
@@ -736,7 +734,6 @@ quic_strm_recv_cb(void *arg)
 			qstrm->rrpos = 0;
 		}
 		MsQuic->StreamReceiveSetEnabled(qstrm->stream, TRUE);
-		nni_mtx_unlock(&qstrm->mtx);
 		return;
 	}
 	// We get enough data
@@ -765,10 +762,9 @@ quic_strm_recv_cb(void *arg)
 
 		// Re-schedule now
 		if (!nni_list_empty(&qstrm->recvq)) {
-			nni_aio_finish(&qstrm->rraio, 0, 0);
+			nni_aio_finish_sync(&qstrm->rraio, 0, 0);
 		}
 		qdebug("1after  rxlen %d rwlen %d.\n", qstrm->rxlen, qstrm->rwlen);
-		nni_mtx_unlock(&qstrm->mtx);
 		return;
 	}
 
@@ -824,10 +820,9 @@ quic_strm_recv_cb(void *arg)
 		} else {
 			// Wait to be re-schedule
 			if (!nni_list_empty(&qstrm->recvq)) {
-				nni_aio_finish(&qstrm->rraio, 0, 0);
+				nni_aio_finish_sync(&qstrm->rraio, 0, 0);
 			}
 			qdebug("3after  rxlen %d rwlen %d.\n", qstrm->rxlen, qstrm->rwlen);
-			nni_mtx_unlock(&qstrm->mtx);
 			return;
 		}
 	}
@@ -872,7 +867,6 @@ upload:
 	memmove(qstrm->rrbuf, qstrm->rrbuf+qstrm->rrpos, qstrm->rrlen);
 	qstrm->rrpos = 0;
 	qdebug("over\n");
-	nni_mtx_unlock(&qstrm->mtx);
 }
 
 static void
