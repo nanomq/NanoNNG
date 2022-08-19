@@ -229,7 +229,7 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 			qstrm->rrcap = rlen + qstrm->rrlen;
 		}
 		// Copy data from quic stream to rrbuf
-		strncpy((char *)qstrm->rrbuf + (int)qstrm->rrlen, (char *)rbuf, rlen);
+		memcpy(qstrm->rrbuf + (int)qstrm->rrlen, rbuf, rlen);
 		qstrm->rrlen += rlen;
 		MsQuic->StreamReceiveComplete(qstrm->stream, rlen);
 
@@ -694,6 +694,10 @@ quic_strm_recv_start(void *arg)
 	if (nni_list_empty(&qstrm->recvq)) {
 		return;
 	}
+	if (qstrm->rrlen > qstrm->rwlen) {
+		nni_aio_finish(&qstrm->rraio, 0, 0);
+		return;
+	}
 
 	// Wait MsQuic take back data
 	MsQuic->StreamReceiveSetEnabled(qstrm->stream, TRUE);
@@ -716,7 +720,7 @@ quic_strm_recv_cb(void *arg)
 	nni_aio *aio = NULL;
 
 	qdebug("before rxlen %d rwlen %d.\n", qstrm->rxlen, qstrm->rwlen);
-	qdebug("rrpos %d rrlen %d.\n", qstrm->rrpos, qstrm->rrlen);
+	qdebug("rrpos %d rrlen %d rrbuf %x %x.\n", qstrm->rrpos, qstrm->rrlen, qstrm->rrbuf[qstrm->rrpos], qstrm->rrbuf[qstrm->rrpos + 1]);
 
 	uint8_t  usedbytes;
 	uint8_t *rbuf = qstrm->rrbuf + qstrm->rrpos;
@@ -854,9 +858,9 @@ quic_strm_recv_cb(void *arg)
 upload:
 	// get aio and trigger cb of protocol layer
 	aio = nni_list_first(&qstrm->recvq);
-	nni_aio_list_remove(aio);
 
 	if (aio != NULL) {
+		nni_list_remove(&qstrm->recvq, aio);
 		// Set msg and remove from list and finish
 		nni_aio_set_msg(aio, qstrm->rxmsg);
 		if (qstrm->cparam)
