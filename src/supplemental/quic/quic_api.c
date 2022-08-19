@@ -14,7 +14,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#define QUIC_API_C_DEBUG 1
+#define QUIC_API_C_DEBUG 0
 #define QUIC_API_C_INFO 0
 
 #if QUIC_API_C_DEBUG
@@ -720,7 +720,8 @@ quic_strm_recv_cb(void *arg)
 	nni_aio *aio = NULL;
 
 	qdebug("before rxlen %d rwlen %d.\n", qstrm->rxlen, qstrm->rwlen);
-	qdebug("rrpos %d rrlen %d rrbuf %x %x.\n", qstrm->rrpos, qstrm->rrlen, qstrm->rrbuf[qstrm->rrpos], qstrm->rrbuf[qstrm->rrpos + 1]);
+	qdebug("rrpos %d rrlen %d rrbuf %x %x.\n", qstrm->rrpos, qstrm->rrlen,
+	    qstrm->rrbuf[qstrm->rrpos], qstrm->rrbuf[qstrm->rrpos + 1]);
 
 	uint8_t  usedbytes;
 	uint8_t *rbuf = qstrm->rrbuf + qstrm->rrpos;
