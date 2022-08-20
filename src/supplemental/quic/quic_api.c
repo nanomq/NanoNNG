@@ -14,8 +14,8 @@
 #include <time.h>
 #include <unistd.h>
 
-#define QUIC_API_C_DEBUG 0
-#define QUIC_API_C_INFO 0
+#define QUIC_API_C_DEBUG 1
+#define QUIC_API_C_INFO 1
 
 #if QUIC_API_C_DEBUG
 #define qdebug(fmt, ...)                                                 \
@@ -97,7 +97,7 @@ LoadConfiguration(BOOLEAN Unsecure)
 {
 	QUIC_SETTINGS Settings = { 0 };
 	// Configures the client's idle timeout.
-	Settings.IdleTimeoutMs       = 60*1000;
+	Settings.IdleTimeoutMs       = 100*1000;
 	Settings.IsSet.IdleTimeoutMs = TRUE;
 
 	// Configures a default client configuration, optionally disabling
@@ -232,12 +232,14 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 		memcpy(qstrm->rrbuf + (int)qstrm->rrlen, rbuf, rlen);
 		qstrm->rrlen += rlen;
 		MsQuic->StreamReceiveComplete(qstrm->stream, rlen);
-
+		nni_mtx_unlock(&qstrm->mtx);
 		if (!nni_list_empty(&qstrm->recvq)) {
 			// We should not do executing now, Or circle calling occurs
+			nng_aio_wait(&qstrm->rraio);
 			nni_aio_finish_sync(&qstrm->rraio, 0, 0);
+			// nng_aio_wait(&qstrm->rraio);
 		}
-		nni_mtx_unlock(&qstrm->mtx);
+		qdebug("stream cb over\n");
 
 		return QUIC_STATUS_PENDING;
 
@@ -695,7 +697,7 @@ quic_strm_recv_start(void *arg)
 		return;
 	}
 	if (qstrm->rrlen > qstrm->rwlen) {
-		nni_aio_finish_sync(&qstrm->rraio, 0, 0);
+		nni_aio_finish(&qstrm->rraio, 0, 0);
 		return;
 	}
 
@@ -726,7 +728,9 @@ quic_strm_recv_cb(void *arg)
 	uint8_t  usedbytes;
 	uint8_t *rbuf = qstrm->rrbuf + qstrm->rrpos;
 	uint32_t rlen = qstrm->rrlen, n, remain_len;
-
+	if (nni_aio_result(&qstrm->rraio) != 0)
+		qdebug("cacacacacacas@@@@@@@@@@@@@@@@@@@@@@@@@");
+	nni_mtx_lock(&qstrm->mtx);
 	// Wait MsQuic take back data
 	if (rlen < qstrm->rwlen - qstrm->rxlen) {
 		qdebug("Data is not enough and rrpos %d rrlen %d.\n", qstrm->rrpos, qstrm->rrlen);
@@ -735,6 +739,7 @@ quic_strm_recv_cb(void *arg)
 			qstrm->rrpos = 0;
 		}
 		MsQuic->StreamReceiveSetEnabled(qstrm->stream, TRUE);
+		nni_mtx_unlock(&qstrm->mtx);
 		return;
 	}
 	// We get enough data
@@ -761,6 +766,7 @@ quic_strm_recv_cb(void *arg)
 		else
 			qstrm->rwlen = n + 3;
 
+		nni_mtx_unlock(&qstrm->mtx);
 		// Re-schedule now
 		if (!nni_list_empty(&qstrm->recvq)) {
 			nni_aio_finish_sync(&qstrm->rraio, 0, 0);
@@ -819,6 +825,7 @@ quic_strm_recv_cb(void *arg)
 			// Copy Body
 			nni_msg_append(qstrm->rxmsg, qstrm->rxbuf + 2, 3);
 		} else {
+			nni_mtx_unlock(&qstrm->mtx);
 			// Wait to be re-schedule
 			if (!nni_list_empty(&qstrm->recvq)) {
 				nni_aio_finish_sync(&qstrm->rraio, 0, 0);
@@ -854,6 +861,7 @@ quic_strm_recv_cb(void *arg)
 upload:
 	// get aio and trigger cb of protocol layer
 	aio = nni_list_first(&qstrm->recvq);
+	qdebug("push to upper layer!!!!!!!!!!\n");
 
 	if (aio != NULL) {
 		nni_list_remove(&qstrm->recvq, aio);
@@ -863,7 +871,11 @@ upload:
 			nng_msg_set_conn_param(qstrm->rxmsg, qstrm->cparam);
 		qstrm->rxmsg = NULL;
 		qdebug("AIO FINISH\n");
-		nni_aio_finish(aio, 0, 0);
+		nni_mtx_unlock(&qstrm->mtx);
+		nni_aio_finish_sync(aio, 0, 0);
+	}else {
+		nni_mtx_unlock(&qstrm->mtx);
+		printf("msg dropped!!!!!!!!!!!!!!!!!!!!!\n");
 	}
 	memmove(qstrm->rrbuf, qstrm->rrbuf+qstrm->rrpos, qstrm->rrlen);
 	qstrm->rrpos = 0;
@@ -878,6 +890,12 @@ mqtt_quic_strm_recv_cancel(nni_aio *aio, void *arg, int rv)
 	nni_mtx_lock(&p->mtx);
 	if (!nni_aio_list_active(aio)) {
 		nni_mtx_unlock(&p->mtx);
+		return;
+	}
+	if (nni_list_first(&p->recvq) == aio) {
+		nni_aio_list_remove(aio);
+		nni_mtx_unlock(&p->mtx);
+		nni_aio_finish_error(aio, rv);
 		return;
 	}
 	nni_aio_list_remove(aio);
@@ -917,19 +935,17 @@ int
 quic_strm_send(void *arg, nni_aio *aio)
 {
 	quic_strm_t *qstrm = arg;
+	int          rv;
 
 	if (nni_aio_begin(aio) != 0) {
 		return;
 	}
 	nni_mtx_lock(&qstrm->mtx);
-	/*
-	qstrm->txaio = aio;
 	if ((rv = nni_aio_schedule(aio, quic_strm_send_cancel, qstrm)) != 0) {
 	        nni_mtx_unlock(&qstrm->mtx);
 	        nni_aio_finish_error(aio, rv);
 	        return (-1);
 	}
-	*/
 	nni_list_append(&qstrm->sendq, aio);
 	if (nni_list_first(&qstrm->sendq) == aio) {
 		quic_strm_send_start(qstrm);
