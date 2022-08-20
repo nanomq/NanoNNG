@@ -681,6 +681,27 @@ mqtt_property_append(property *prop_list, property *last)
 	return property_append(prop_list, last);
 }
 
+
+static void
+mqtt_sub_aio_cancel(nni_aio *aio, void *arg, int rv)
+{
+	nng_mqtt_client *client = arg;
+
+	if (!nni_aio_list_active(aio)) {
+		return;
+	}
+	// If receive in progress, then cancel the pending transfer.
+	// The callback on the rxaio will cause the user aio to
+	// be canceled too.
+	// if (nni_list_first(&p->recvq) == aio) {
+	// 	nni_aio_abort(p->rxaio, rv);
+	// 	nni_mtx_unlock(&p->mtx);
+	// 	return;
+	// }
+	nni_aio_list_remove(aio);
+	nni_aio_finish_error(aio, rv);
+}
+
 nng_mqtt_client *
 nng_mqtt_client_alloc(nng_socket sock, nng_mqtt_sub_cb cb, bool is_async)
 {
@@ -692,8 +713,15 @@ nng_mqtt_client_alloc(nng_socket sock, nng_mqtt_sub_cb cb, bool is_async)
 	return client;
 }
 
+/**
+ * @brief an AIO cannot kill itself in its own callback!!
+ * 
+ * @param client 
+ * @param is_async 
+ */
 void nng_mqtt_client_free(nng_mqtt_client *client, bool is_async)
 {
+	nni_aio_close(client->sub_aio);
 	if (client) {
 		if (is_async) {
 			nng_aio_free(client->sub_aio);
@@ -740,6 +768,11 @@ nng_mqtt_subscribe_async(nng_mqtt_client *client, nng_mqtt_topic_qos *sbs, size_
 	}
 
 	nng_aio_set_msg(aio, submsg);
+	if (nni_aio_schedule(client->sub_aio, mqtt_sub_aio_cancel, client) !=
+	    0) {
+		nni_aio_finish_error(&client->sub_aio, NNG_ECANCELED);
+		return;
+	}
 	nng_send_aio(client->sock, aio);
 
 	return rv;
