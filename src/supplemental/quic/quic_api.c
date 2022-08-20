@@ -892,13 +892,14 @@ quic_strm_recv(void *arg, nni_aio *raio)
 	int                rv;
 
 	if (nni_aio_begin(raio) != 0) {
-		return;
+		return -1;
 	}
 	nni_mtx_lock(&qstrm->mtx);
 	if ((rv = nni_aio_schedule(raio, mqtt_quic_strm_recv_cancel, qstrm)) !=
 	    0) {
+		nni_mtx_unlock(&qstrm->mtx);
 		nni_aio_finish_error(raio, rv);
-		return;
+		return 0;
 	}
 
 	nni_list_append(&qstrm->recvq, raio);
