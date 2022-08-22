@@ -696,7 +696,7 @@ quic_strm_recv_start(void *arg)
 	if (nni_list_empty(&qstrm->recvq)) {
 		return;
 	}
-	if (qstrm->rrlen > qstrm->rwlen) {
+	if (qstrm->rrlen > qstrm->rwlen && &qstrm->rrlen == 0) {
 		nni_aio_finish(&qstrm->rraio, 0, 0);
 		return;
 	}
@@ -747,6 +747,7 @@ quic_strm_recv_cb(void *arg)
 	// Already get 2 Bytes
 	if (qstrm->rxlen == 0) {
 		n = 2; // new
+		qdebug("type !!!!!!!: %x\n", *rbuf);
 		memcpy(qstrm->rxbuf, rbuf, n);
 		qstrm->rxlen = 0 + n;
 		qstrm->rrpos += n;
@@ -783,6 +784,7 @@ quic_strm_recv_cb(void *arg)
 		qstrm->rxlen += n;
 		qstrm->rrpos += n;
 		qstrm->rrlen -= n;
+		qdebug("4bytes byte1 !!!!!!!: %x\n", *rbuf);
 
 		// Compose msg
 		if (0 != nng_msg_alloc(&qstrm->rxmsg, 4)) {
@@ -856,7 +858,7 @@ quic_strm_recv_cb(void *arg)
 		qstrm->rrpos += n;
 		qstrm->rrlen -= n;
 	}
-	qdebug("4after  rxlen %d rwlen %d.\n", qstrm->rxlen, qstrm->rwlen);
+	qdebug("4after  rxlen %d rwlen %d rrlen %d.\n", qstrm->rxlen, qstrm->rwlen, qstrm->rrlen);
 
 upload:
 	// get aio and trigger cb of protocol layer
@@ -873,7 +875,11 @@ upload:
 		qdebug("AIO FINISH\n");
 		nni_mtx_unlock(&qstrm->mtx);
 		nni_aio_finish_sync(aio, 0, 0);
-	}else {
+		if (qstrm->rrlen > 0)
+		if (!nni_list_empty(&qstrm->recvq)) {
+				nni_aio_finish_sync(&qstrm->rraio, 0, 0);
+			}
+	} else {
 		nni_mtx_unlock(&qstrm->mtx);
 		printf("msg dropped!!!!!!!!!!!!!!!!!!!!!\n");
 	}
