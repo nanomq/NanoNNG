@@ -14,8 +14,8 @@
 #include <time.h>
 #include <unistd.h>
 
-#define QUIC_API_C_DEBUG 1
-#define QUIC_API_C_INFO 1
+#define QUIC_API_C_DEBUG 0
+#define QUIC_API_C_INFO 0
 
 #if QUIC_API_C_DEBUG
 #define qdebug(fmt, ...)                                                 \
@@ -403,6 +403,8 @@ quic_strm_start(HQUIC Connection, void *Context, HQUIC *Streamp, bool active)
 {
 	HQUIC       Stream = NULL;
 	QUIC_STATUS Status;
+
+	NNI_ARG_UNUSED(active);
 
 	// Create/allocate a new bidirectional stream. The stream is just
 	// allocated and no QUIC stream identifier is assigned until it's
@@ -969,8 +971,8 @@ quic_strm_send(void *arg, nni_aio *aio)
 	quic_strm_t *qstrm = arg;
 	int          rv;
 
-	if (nni_aio_begin(aio) != 0) {
-		return;
+	if ((rv = nni_aio_begin(aio)) != 0) {
+		return rv;
 	}
 	nni_mtx_lock(&qstrm->mtx);
 	if ((rv = nni_aio_schedule(aio, quic_strm_send_cancel, qstrm)) != 0) {
@@ -997,11 +999,15 @@ quic_alloc()
 int
 nni_msquic_dialer_alloc(nng_stream_dialer **dp, const nng_url *url)
 {
+	NNI_ARG_UNUSED(dp);
+	NNI_ARG_UNUSED(url);
 	return 0;
 }
 
 int
 nni_msquic_listener_alloc(nng_stream_listener **lp, const nng_url *url)
 {
+	NNI_ARG_UNUSED(lp);
+	NNI_ARG_UNUSED(url);
 	return 0;
 }
