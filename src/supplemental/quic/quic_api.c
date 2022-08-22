@@ -169,7 +169,12 @@ quic_strm_fini(quic_strm_t *qstrm)
 		free(qstrm->rxmsg);
 	if (qstrm->rrbuf)
 		free(qstrm->rrbuf);
+
 	conn_param_free(qstrm->cparam);
+
+	nni_lmq_fini(&qstrm->recv_messages);
+	nni_lmq_fini(&qstrm->send_messages);
+
 	return;
 }
 
@@ -865,24 +870,35 @@ upload:
 	aio = nni_list_first(&qstrm->recvq);
 	qdebug("push to upper layer!!!!!!!!!!\n");
 
+	if (qstrm->cparam)
+		nng_msg_set_conn_param(qstrm->rxmsg, qstrm->cparam);
+
 	if (aio != NULL) {
 		nni_list_remove(&qstrm->recvq, aio);
 		// Set msg and remove from list and finish
 		nni_aio_set_msg(aio, qstrm->rxmsg);
-		if (qstrm->cparam)
-			nng_msg_set_conn_param(qstrm->rxmsg, qstrm->cparam);
 		qstrm->rxmsg = NULL;
 		qdebug("AIO FINISH\n");
 		nni_mtx_unlock(&qstrm->mtx);
 		nni_aio_finish_sync(aio, 0, 0);
-		if (qstrm->rrlen > 0)
-		if (!nni_list_empty(&qstrm->recvq)) {
-				nni_aio_finish_sync(&qstrm->rraio, 0, 0);
-			}
 	} else {
+		if (nni_lmq_full(&qstrm->recv_messages)) {
+			if (0 != nni_lmq_resize(&qstrm->recv_messages,
+				2 * nni_lmq_cap(&qstrm->recv_messages))) {
+				// memory error
+				nni_msg_free(qstrm->rxmsg);
+				printf("msg dropped due to no more memory!\n");
+			}
+		}
+		nni_lmq_put(&qstrm->recv_messages, qstrm->rxmsg);
+		qstrm->rxmsg = NULL;
 		nni_mtx_unlock(&qstrm->mtx);
-		printf("msg dropped!!!!!!!!!!!!!!!!!!!!!\n");
 	}
+
+	if (qstrm->rrlen > 0)
+		if (!nni_list_empty(&qstrm->recvq))
+			nni_aio_finish_sync(&qstrm->rraio, 0, 0);
+
 	memmove(qstrm->rrbuf, qstrm->rrbuf+qstrm->rrpos, qstrm->rrlen);
 	qstrm->rrpos = 0;
 	qdebug("over\n");
