@@ -928,8 +928,9 @@ mqtt_quic_strm_recv_cancel(nni_aio *aio, void *arg, int rv)
 int
 quic_strm_recv(void *arg, nni_aio *raio)
 {
-	quic_strm_t *qstrm = arg;
 	int                rv;
+	quic_strm_t *qstrm = arg;
+	nng_msg *msg;
 
 	if (nni_aio_begin(raio) != 0) {
 		return -1;
@@ -939,6 +940,15 @@ quic_strm_recv(void *arg, nni_aio *raio)
 	    0) {
 		nni_mtx_unlock(&qstrm->mtx);
 		nni_aio_finish_error(raio, rv);
+		return 0;
+	}
+	// Get msg from cache
+	if (!nni_lmq_empty(&qstrm->recv_messages)) {
+		nni_lmq_get(&qstrm->recv_messages, &msg);
+		nni_mtx_unlock(&qstrm->mtx);
+
+		nni_aio_set_msg(raio, msg);
+		nni_aio_finish_sync(raio, 0, 0);
 		return 0;
 	}
 
