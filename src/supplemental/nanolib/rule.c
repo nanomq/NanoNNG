@@ -126,7 +126,7 @@ get_payload_as(char *p, rule_payload *payload)
 static rule_payload *
 rule_payload_new(void)
 {
-	rule_payload *payload = (rule_payload *) nni_zalloc(sizeof(rule_payload));
+	rule_payload *payload = NNI_ALLOC_STRUCT(payload);
 
 	payload->psa      = NULL;
 	payload->pas      = NULL;
@@ -135,6 +135,34 @@ rule_payload_new(void)
 	payload->type     = 0;
 	payload->is_store = false;
 	return payload;
+}
+
+static void 
+rule_payload_free(rule_payload *payload)
+{
+
+	if (payload) {
+		if (payload->psa) {
+			for (size_t i = 0; i < cvector_size(payload->psa); i++) {
+				nng_strfree(payload->psa[i]);
+			}
+			cvector_free(payload->psa);
+		}
+
+		if (payload->pas) {
+			nng_strfree(payload->pas);
+		}
+
+		if (payload->filter) {
+			nng_strfree(payload->filter);
+		}
+
+		// if (payload->value) {
+		// 	nng_strfree(payload->value);
+		// }
+
+		NNI_FREE_STRUCT(payload);
+	}
 }
 
 // Parse payload subfield, mainly for get payload json
@@ -518,4 +546,79 @@ rule_sql_parse(conf_rule *cr, char *sql)
 	}
 
 	return true;
+}
+
+repub_t *rule_repub_init(void)
+{
+	repub_t *repub = NNI_ALLOC_STRUCT(repub);
+	repub->address = NULL;
+	repub->proto_ver = 4;
+	repub->clientid = NULL;
+	repub->clean_start = true;
+	repub->username = NULL;
+	repub->password = NULL;
+	repub->keepalive = 60;
+	repub->topic = NULL;
+	repub->sock = NULL;
+	return repub;
+}
+
+void
+rule_repub_free(repub_t *repub)
+{
+
+	if (repub) {
+		if (NULL != repub->address) {
+			nng_strfree(repub->address);
+		}
+		if (NULL != repub->clientid) {
+			nng_strfree(repub->clientid);
+		}
+		if (NULL != repub->username) {
+			nng_strfree(repub->username);
+		}
+		if (NULL != repub->password) {
+			nng_strfree(repub->password);
+		}
+		if (NULL != repub->topic) {
+			nng_strfree(repub->topic);
+		}
+		if (NULL != repub->sock) {
+			nng_close(*(nng_socket *) repub->sock);
+			NNI_FREE_STRUCT((nng_socket *) repub->sock);
+		}
+
+		NNI_FREE_STRUCT(repub);
+	}
+}
+
+void
+rule_free(rule *r)
+{
+	if (r) {
+		if (r->topic) {
+			nng_strfree(r->topic);
+		}
+
+		if (r->as) {
+			for (size_t i = 0; i < 8; i++) {
+				nng_strfree(r->as[i]);
+			}
+		}
+
+		if (r->payload) {
+			for (size_t i = 0; i < cvector_size(r->payload); i++) {
+				rule_payload_free(r->payload[i]);
+			}
+			cvector_free(r->payload);
+		}
+
+		if (r->filter) {
+			nng_free(r->filter, sizeof(char *) * 8);
+		}
+
+		if (r->raw_sql) {
+			nng_strfree(r->raw_sql);
+		}
+	}
 }
