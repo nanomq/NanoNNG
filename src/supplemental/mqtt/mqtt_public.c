@@ -771,7 +771,7 @@ nng_mqtt_subscribe_async(nng_mqtt_client *client, nng_mqtt_topic_qos *sbs, size_
 	if (nni_aio_schedule(client->sub_aio, mqtt_sub_aio_cancel, client) !=
 	    0) {
 		nni_aio_finish_error(&client->sub_aio, NNG_ECANCELED);
-		return;
+		return 0;
 	}
 	nng_send_aio(client->sock, aio);
 
