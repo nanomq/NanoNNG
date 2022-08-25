@@ -121,12 +121,15 @@ typedef struct {
 	char *mysql_db;
 } conf_rule;
 
-int      rule_find_key(const char *str, size_t len);
-uint32_t rule_generate_rule_id(void);
-char    *rule_get_key_arr(char *p, rule_key *key);
-bool     rule_sql_parse(conf_rule *cr, char *sql);
-repub_t *rule_repub_init(void);
-void     rule_repub_free(repub_t *repub);
-void     rule_free(rule *r);
+int         rule_find_key(const char *str, size_t len);
+uint32_t    rule_generate_rule_id(void);
+char       *rule_get_key_arr(char *p, rule_key *key);
+bool        rule_sql_parse(conf_rule *cr, char *sql);
+repub_t    *rule_repub_init(void);
+void        rule_repub_free(repub_t *repub);
+void        rule_free(rule *r);
+bool        rule_mysql_check(rule_mysql *mysql);
+void        rule_mysql_free(rule_mysql *mysql);
+rule_mysql *rule_mysql_init(void);
 
 #endif
