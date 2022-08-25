@@ -61,6 +61,13 @@ typedef struct {
 	void    *sock;
 } repub_t;
 
+typedef struct {
+	char *table;
+	char *host;
+	char *username;
+	char *password;
+	void *conn;
+} rule_mysql;
 
 typedef struct {
 	/* 
@@ -87,6 +94,7 @@ typedef struct {
 	uint32_t          rule_id;
 	rule_key         *key;
 	repub_t          *repub;
+	rule_mysql       *mysql;
 } rule;
 
 typedef struct {
@@ -109,7 +117,8 @@ typedef struct {
 	*/
 	void *rdb[3]; 
 	rule *rules;
-	char *sqlite_db_path;
+	char *sqlite_db;
+	char *mysql_db;
 } conf_rule;
 
 int      rule_find_key(const char *str, size_t len);
