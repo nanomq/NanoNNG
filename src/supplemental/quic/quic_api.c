@@ -3,6 +3,7 @@
 #include "msquic.h"
 
 #include "nng/mqtt/mqtt_client.h"
+#include "nng/protocol/mqtt/mqtt_parser.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 
 #include <assert.h>
@@ -82,7 +83,7 @@ nni_proto *g_quic_proto;
 
 static BOOLEAN LoadConfiguration(BOOLEAN Unsecure);
 static int     quic_strm_start(HQUIC Connection, void *Context, HQUIC *Streamp, bool active);
-static int     quic_strm_close(HQUIC Connection, HQUIC Stream);
+// static int     quic_strm_close(HQUIC Connection, HQUIC Stream);
 static void    quic_strm_send_cancel(nni_aio *aio, void *arg, int rv);
 static void    quic_strm_send_start(quic_strm_t *qstrm);
 static void    quic_strm_recv_cb(void *arg);
@@ -97,7 +98,7 @@ LoadConfiguration(BOOLEAN Unsecure)
 {
 	QUIC_SETTINGS Settings = { 0 };
 	// Configures the client's idle timeout.
-	Settings.IdleTimeoutMs       = 100*1000;
+	Settings.IdleTimeoutMs       = 60*1000;
 	Settings.IsSet.IdleTimeoutMs = TRUE;
 
 	// Configures a default client configuration, optionally disabling
@@ -276,7 +277,7 @@ _IRQL_requires_max_(DISPATCH_LEVEL)
 QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
         _Inout_ QUIC_CONNECTION_EVENT *Event)
 {
-	nni_proto_pipe_ops *pipe_ops = g_quic_proto->proto_pipe_ops;
+	const nni_proto_pipe_ops *pipe_ops = g_quic_proto->proto_pipe_ops;
 	quic_strm_t        *qstrm    = GStream;
 
 	switch (Event->Type) {
@@ -380,6 +381,7 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 	return QUIC_STATUS_SUCCESS;
 }
 
+/*
 static int
 quic_strm_close(HQUIC Connection, HQUIC Stream)
 {
@@ -389,6 +391,7 @@ quic_strm_close(HQUIC Connection, HQUIC Stream)
 		MsQuic->ConnectionShutdown(Connection, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
 	return 0;
 }
+*/
 
 /**
  * @brief
@@ -444,12 +447,6 @@ void
 quic_proto_open(nni_proto *proto)
 {
 	g_quic_proto = proto;
-}
-
-static void
-quic_close()
-{
-        
 }
 
 void
@@ -524,7 +521,7 @@ quic_connect(const char *url, nni_sock *sock)
 	}
 
 	nng_url_parse(&url_s, url);
-	for (int i = 0; i < strlen(url_s->u_host); ++i)
+	for (size_t i = 0; i < strlen(url_s->u_host); ++i)
 		if (url_s->u_host[i] == ':') {
 			url_s->u_host[i] = '\0';
 			break;
@@ -649,10 +646,12 @@ quic_strm_send_start(quic_strm_t *qstrm)
 		buf2->Buffer = nni_msg_body(msg);
 	}
 
-	uint8_t type = (((uint8_t *)nni_msg_header(msg))[0] & 0xf0) >> 4;
-	qdebug("type is 0x%x %x.\n", type, ((uint8_t *)nni_msg_header(msg))[0]);
+	qdebug("type is 0x%x %x.\n",
+	    ((((uint8_t *) nni_msg_header(msg))[0] & 0xf0) >> 4),
+	    ((uint8_t *) nni_msg_header(msg))[0]);
 
-	qdebug(" body len: %d header len: %d \n", buf[1].Length, buf[0].Length);
+	qdebug(
+	    " body len: %d header len: %d \n", buf[1].Length, buf[0].Length);
 
 	if (QUIC_FAILED(Status = MsQuic->StreamSend(qstrm->stream, buf, bl > 0 ? 2:1,
 	                    QUIC_SEND_FLAG_NONE, buf))) {
@@ -870,7 +869,6 @@ quic_strm_recv_cb(void *arg)
 upload:
 	// get aio and trigger cb of protocol layer
 	aio = nni_list_first(&qstrm->recvq);
-	qdebug("push to upper layer!!!!!!!!!!\n");
 
 	if (qstrm->cparam)
 		nng_msg_set_conn_param(qstrm->rxmsg, qstrm->cparam);
@@ -986,28 +984,5 @@ quic_strm_send(void *arg, nni_aio *aio)
 	}
 	nni_mtx_unlock(&qstrm->mtx);
 
-	return 0;
-}
-
-// unite init of msquic here, deal with cb of stream
-static int
-quic_alloc()
-{
-	return 0;
-}
-
-int
-nni_msquic_dialer_alloc(nng_stream_dialer **dp, const nng_url *url)
-{
-	NNI_ARG_UNUSED(dp);
-	NNI_ARG_UNUSED(url);
-	return 0;
-}
-
-int
-nni_msquic_listener_alloc(nng_stream_listener **lp, const nng_url *url)
-{
-	NNI_ARG_UNUSED(lp);
-	NNI_ARG_UNUSED(url);
 	return 0;
 }
