@@ -685,7 +685,8 @@ mqtt_property_append(property *prop_list, property *last)
 static void
 mqtt_sub_aio_cancel(nni_aio *aio, void *arg, int rv)
 {
-	nng_mqtt_client *client = arg;
+	NNI_ARG_UNUSED(arg);
+	// nng_mqtt_client *client = arg;
 
 	if (!nni_aio_list_active(aio)) {
 		return;
@@ -756,7 +757,7 @@ int
 nng_mqtt_subscribe_async(nng_mqtt_client *client, nng_mqtt_topic_qos *sbs, size_t count, property *pl)
 {
 	int rv = 0;
-	nng_aio *aio = client->sub_aio;
+
 	// create a SUBSCRIBE message
 	nng_msg *submsg;
 	nng_mqtt_msg_alloc(&submsg, 0);
@@ -767,13 +768,13 @@ nng_mqtt_subscribe_async(nng_mqtt_client *client, nng_mqtt_topic_qos *sbs, size_
 		nng_mqtt_msg_set_subscribe_property(submsg, pl);
 	}
 
-	nng_aio_set_msg(aio, submsg);
+	nng_aio_set_msg(client->sub_aio, submsg);
 	if (nni_aio_schedule(client->sub_aio, mqtt_sub_aio_cancel, client) !=
 	    0) {
-		nni_aio_finish_error(&client->sub_aio, NNG_ECANCELED);
-		return;
+		nni_aio_finish_error(client->sub_aio, NNG_ECANCELED);
+		return rv;
 	}
-	nng_send_aio(client->sock, aio);
+	nng_send_aio(client->sock, client->sub_aio);
 
 	return rv;
 
