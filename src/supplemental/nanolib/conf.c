@@ -1043,6 +1043,127 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 }
 
 static bool
+conf_rule_mysql_parse(conf_rule *cr, char *path)
+{
+	assert(path);
+	if (path == NULL || !nano_file_exists(path)) {
+		printf("Configure file [%s] not found or "
+		       "unreadable\n",
+		    path);
+		return false;
+	}
+
+	char    *line = NULL;
+	size_t   sz   = 0;
+	FILE    *fp;
+	rule_mysql *mysql  = NNI_ALLOC_STRUCT(mysql);
+
+
+	if (NULL == (fp = fopen(path, "r"))) {
+		log_debug("File %s open failed\n", path);
+		return false;
+	}
+
+	char *value;
+	while (nano_getline(&line, &sz, fp) != -1) {
+		if (NULL != (value = get_conf_value(line, sz, "rule.mysql.name"))) {
+			cr->mysql_db = value;
+			log_debug(value);
+		} else if (0 == strncmp(line, "rule.mysql", strlen("rule.mysql"))) {
+			int num = 0;
+
+			if (strstr(line, "table")) {
+				if (0 != sscanf(line, "rule.mysql.%d", &num)) {
+					char key[32] = { 0 };
+					sprintf(key, "rule.mysql.%d.table", num);
+					if (NULL !=
+					    (value = get_conf_value(line, sz, key))) {
+						log_debug(value);
+						mysql->table = value;
+					}
+				}
+			} else if (strstr(line, "host")) {
+				if (0 != sscanf(line, "rule.mysql.%d", &num)) {
+					char key[32] = { 0 };
+					sprintf(key, "rule.mysql.%d.host", num);
+					if (NULL !=
+					    (value = get_conf_value(line, sz, key))) {
+						log_debug(value);
+						mysql->host = value;
+					}
+				}
+			} else if (strstr(line, "username")) {
+				if (0 != sscanf(line, "rule.mysql.%d", &num)) {
+					char key[32] = { 0 };
+					sprintf(key, "rule.mysql.%d.username", num);
+					if (NULL !=
+					    (value = get_conf_value(line, sz, key))) {
+						log_debug(value);
+						mysql->username = value;
+					}
+				}
+			} else if (strstr(line, "password")) {
+				if (0 != sscanf(line, "rule.mysql.%d", &num)) {
+					char key[32] = { 0 };
+					sprintf(key, "rule.mysql.%d.password", num);
+					if (NULL !=
+					    (value = get_conf_value(line, sz, key))) {
+						log_debug(value);
+						mysql->password = value;
+					}
+				}
+			}
+		} else if (0 == strncmp(line, "rule.event.publish", strlen("rule.event.publish"))) {
+
+			// TODO more accurate way 
+			// topic <=======> broker <======> sql
+			int num = 0;
+			int res =
+			    sscanf(line, "rule.event.publish.%d.sql", &num);
+			if (0 == res) {
+				log_error("Do not find mysql client");
+				exit(EXIT_FAILURE);
+			}
+
+			if (NULL != (value = strchr(line, '='))) {
+				value++;
+				rule_sql_parse(cr, value);
+				char *p = strrchr(value, '\"');
+				*p = '\0';
+
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .mysql = NNI_ALLOC_STRUCT(mysql);
+				memcpy(cr->rules[cvector_size(cr->rules) - 1]
+				    .mysql, mysql, sizeof(*mysql));
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .forword_type = RULE_FORWORD_MYSOL;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .raw_sql = nng_strdup(++value);
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .enabled = true;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .rule_id = rule_generate_rule_id();
+
+			}
+		}
+
+		free(line);
+		line = NULL;
+	}
+
+	NNI_FREE_STRUCT(mysql);
+
+	if (line) {
+		free(line);
+	}
+
+	fclose(fp);
+	return true;
+}
+
+
+
+static bool
 conf_rule_sqlite_parse(conf_rule *cr, char *path)
 {
 	assert(path);
@@ -1066,7 +1187,7 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 	char *value;
 	while (nano_getline(&line, &sz, fp) != -1) {
 		if (NULL != (value = get_conf_value(line, sz, "rule.sqlite.path"))) {
-			cr->sqlite_db_path = value;
+			cr->sqlite_db = value;
 		} else if (NULL != strstr(
 		                line, "rule.sqlite")) {
 			
@@ -1154,7 +1275,7 @@ conf_rule_fdb_parse(conf_rule *cr, char *path)
 	while (nano_getline(&line, &sz, fp) != -1) {
 		if ((value = get_conf_value(line, sz, "rule.fdb.path")) !=
 		    NULL) {
-			cr->sqlite_db_path = value;
+			cr->sqlite_db = value;
 		} else if ((value = get_conf_value(
 		                line, sz, "rule.event.publish.key")) != NULL) {
 			if (-1 == (rc = rule_find_key(value, strlen(value)))) {
@@ -1213,6 +1334,7 @@ conf_rule_fdb_parse(conf_rule *cr, char *path)
 	return true;
 }
 
+
 bool
 conf_rule_parse(conf *nanomq_conf)
 {
@@ -1254,6 +1376,7 @@ conf_rule_parse(conf *nanomq_conf)
 				break;
 			}
 			free(value);
+		// sqlite
 		} else if ((value = get_conf_value(
 		                line, sz, "rule_option.sqlite")) != NULL) {
 			if (0 == nni_strcasecmp(value, "enable")) {
@@ -1274,7 +1397,7 @@ conf_rule_parse(conf *nanomq_conf)
 				conf_rule_sqlite_parse(&cr, value);
 			}
 			free(value);
-
+		// repub
 		} else if ((value = get_conf_value(
 		                line, sz, "rule_option.repub")) != NULL) {
 			if (0 == nni_strcasecmp(value, "enable")) {
@@ -1295,8 +1418,28 @@ conf_rule_parse(conf *nanomq_conf)
 				conf_rule_repub_parse(&cr, value);
 			}
 			free(value);
-
-
+		// mysql
+		} else if ((value = get_conf_value(
+		                line, sz, "rule_option.mysql")) != NULL) {
+			if (0 == nni_strcasecmp(value, "enable")) {
+				cr.option |= RULE_ENG_MDB;
+			} else {
+				if (0 != nni_strcasecmp(value, "disable")) {
+					log_warn("Unsupported option: %s\nrule "
+					        "option mysql only support "
+					        "enable/disable",
+					    value);
+					break;
+				}
+			}
+			free(value);
+		} else if ((value = get_conf_value(line, sz,
+		                "rule_option.mysql.conf.path")) != NULL) {
+			if (RULE_ENG_MDB & cr.option) {
+				conf_rule_mysql_parse(&cr, value);
+			}
+			free(value);
+		// fdb
 		} else if ((value = get_conf_value(
 		                line, sz, "rule_option.fdb")) != NULL) {
 			if (0 == nni_strcasecmp(value, "enable")) {

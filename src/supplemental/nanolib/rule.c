@@ -622,3 +622,46 @@ rule_free(rule *r)
 		}
 	}
 }
+
+
+bool rule_mysql_check(rule_mysql *mysql)
+{
+	if (mysql) {
+		if (mysql->host && mysql->password && mysql->username &&
+		    mysql->table) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+rule_mysql *rule_mysql_init(void)
+{
+	rule_mysql *mysql = NNI_ALLOC_STRUCT(mysql);
+	mysql->host = NULL;
+	mysql->password = NULL;
+	mysql->username = NULL;
+	mysql->table = NULL;
+	mysql->conn = NULL;
+	return mysql;
+}
+
+void rule_mysql_free(rule_mysql *mysql)
+{
+	if (mysql) {
+		if (mysql->host) {
+			nng_strfree(mysql->host);
+		}
+		if (mysql->password) {
+			nng_strfree(mysql->password);
+		}
+		if (mysql->username) {
+			nng_strfree(mysql->username);
+		}
+		if (mysql->table) {
+			nng_strfree(mysql->table);
+		}
+		NNI_FREE_STRUCT(mysql);
+	}
+}
