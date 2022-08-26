@@ -1068,7 +1068,7 @@ conf_rule_mysql_parse(conf_rule *cr, char *path)
 	while (nano_getline(&line, &sz, fp) != -1) {
 		if (NULL != (value = get_conf_value(line, sz, "rule.mysql.name"))) {
 			cr->mysql_db = value;
-			puts(value);
+			log_debug(value);
 		} else if (0 == strncmp(line, "rule.mysql", strlen("rule.mysql"))) {
 			int num = 0;
 
@@ -1078,7 +1078,7 @@ conf_rule_mysql_parse(conf_rule *cr, char *path)
 					sprintf(key, "rule.mysql.%d.table", num);
 					if (NULL !=
 					    (value = get_conf_value(line, sz, key))) {
-						puts(value);
+						log_debug(value);
 						mysql->table = value;
 					}
 				}
@@ -1088,7 +1088,7 @@ conf_rule_mysql_parse(conf_rule *cr, char *path)
 					sprintf(key, "rule.mysql.%d.host", num);
 					if (NULL !=
 					    (value = get_conf_value(line, sz, key))) {
-						puts(value);
+						log_debug(value);
 						mysql->host = value;
 					}
 				}
@@ -1098,7 +1098,7 @@ conf_rule_mysql_parse(conf_rule *cr, char *path)
 					sprintf(key, "rule.mysql.%d.username", num);
 					if (NULL !=
 					    (value = get_conf_value(line, sz, key))) {
-						puts(value);
+						log_debug(value);
 						mysql->username = value;
 					}
 				}
@@ -1108,7 +1108,7 @@ conf_rule_mysql_parse(conf_rule *cr, char *path)
 					sprintf(key, "rule.mysql.%d.password", num);
 					if (NULL !=
 					    (value = get_conf_value(line, sz, key))) {
-						puts(value);
+						log_debug(value);
 						mysql->password = value;
 					}
 				}
