@@ -15,8 +15,8 @@
 #include <time.h>
 #include <unistd.h>
 
-#define QUIC_API_C_DEBUG 0
-#define QUIC_API_C_INFO 0
+#define QUIC_API_C_DEBUG 1
+#define QUIC_API_C_INFO 1
 
 #if QUIC_API_C_DEBUG
 #define qdebug(fmt, ...)                                                 \
@@ -44,8 +44,6 @@ struct quic_strm_s {
 	nni_mtx  mtx;
 	nni_list sendq;
 	nni_list recvq;
-	nni_aio *txaio;
-	nni_aio *rxaio;
 	nni_sock *sock;
 	bool     closed;
 	nni_lmq  recv_messages; // recv messages queue
@@ -98,7 +96,7 @@ LoadConfiguration(BOOLEAN Unsecure)
 {
 	QUIC_SETTINGS Settings = { 0 };
 	// Configures the client's idle timeout.
-	Settings.IdleTimeoutMs       = 60*1000;
+	Settings.IdleTimeoutMs       = 10*1000;
 	Settings.IsSet.IdleTimeoutMs = TRUE;
 
 	// Configures a default client configuration, optionally disabling
@@ -138,8 +136,9 @@ static void
 quic_strm_init(quic_strm_t *qstrm)
 {
 	qstrm->closed = false;
-	qstrm->rxaio  = NULL;
-	qstrm->txaio  = NULL;
+	qstrm->pipe   = NULL;
+	qstrm->cparam = NULL;
+
 	nni_mtx_init(&qstrm->mtx);
 	nni_aio_list_init(&qstrm->sendq);
 	nni_aio_list_init(&qstrm->recvq);
@@ -316,11 +315,8 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 			    Connection,
 			    Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status);
 		}
-		if (qstrm->pipe) {
-			pipe_ops->pipe_close(qstrm->pipe);
-			pipe_ops->pipe_stop(qstrm->pipe);
-		}
-		qdebug("pipe stop\n");
+		//auto reconnect here!
+		qdebug("pipe shutting down\n");
 		break;
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER:
 		// The connection was explicitly shut down by the peer.
@@ -341,12 +337,16 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 
 		// Close and finite nng pipe ONCE disconnect
 		if (qstrm->pipe) {
+			pipe_ops->pipe_close(qstrm->pipe);
+			pipe_ops->pipe_stop(qstrm->pipe);
 			pipe_ops->pipe_fini(qstrm->pipe);
 			nng_free(qstrm->pipe, 0);
+			qstrm->pipe = NULL;
 		}
 
 		if (qstrm->rticket_active) {
 			qinfo("[conn][%p] try to resume by ticket\n", Connection);
+			// nng_msleep(3000);
 			quic_reconnect(qstrm);
 		} else { // No rticket
 			qdebug("No ticket and done.\n", Connection);
@@ -670,11 +670,7 @@ quic_strm_send_cancel(nni_aio *aio, void *arg, int rv)
 		nni_mtx_unlock(&qstrm->mtx);
 		return;
 	}
-	// If this is being sent, then cancel the pending transfer.
-	// The callback on the txaio will cause the user aio to
-	// be canceled too.
 	if (nni_list_first(&qstrm->sendq) == aio) {
-		nni_aio_abort(qstrm->txaio, rv);
 		nni_mtx_unlock(&qstrm->mtx);
 		return;
 	}
@@ -728,14 +724,13 @@ quic_strm_recv_cb(void *arg)
 	nni_aio *aio = NULL;
 
 	qdebug("before rxlen %d rwlen %d.\n", qstrm->rxlen, qstrm->rwlen);
-	qdebug("rrpos %d rrlen %d rrbuf %x %x.\n", qstrm->rrpos, qstrm->rrlen,
-	    qstrm->rrbuf[qstrm->rrpos], qstrm->rrbuf[qstrm->rrpos + 1]);
-
+	// qdebug("rrpos %d rrlen %d rrbuf %x %x.\n", qstrm->rrpos, qstrm->rrlen,
+        //    qstrm->rrbuf[qstrm->rrpos], qstrm->rrbuf[qstrm->rrpos + 1]);
 	uint8_t  usedbytes;
 	uint8_t *rbuf = qstrm->rrbuf + qstrm->rrpos;
 	uint32_t rlen = qstrm->rrlen, n, remain_len;
 	if (nni_aio_result(&qstrm->rraio) != 0)
-		qdebug("cacacacacacas@@@@@@@@@@@@@@@@@@@@@@@@@");
+		qdebug("QUIC aio receving error!");
 	nni_mtx_lock(&qstrm->mtx);
 	// Wait MsQuic take back data
 	if (rlen < qstrm->rwlen - qstrm->rxlen) {
