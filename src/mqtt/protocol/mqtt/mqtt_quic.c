@@ -828,6 +828,7 @@ quic_mqtt_stream_init(void *arg,nni_pipe *qstrm, void *sock)
 static void
 quic_mqtt_stream_fini(void *arg)
 {
+	nni_aio *aio;
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
 
@@ -851,6 +852,13 @@ quic_mqtt_stream_fini(void *arg)
 	*/
 	nni_id_map_fini(&p->recv_unack);
 	nni_lmq_fini(&p->recv_messages);
+	// while ((aio = nni_list_first(&s->recv_queue)) != NULL) {
+	// 	// Pipe was closed.  just push an error back to the
+	// 	// entire socket, because we only have one pipe
+	// 	nni_list_remove(&s->recv_queue, aio);
+	// 	// there should be no msg waiting
+	// 	nni_aio_finish_error(aio, NNG_ECLOSED);
+	// }
 	if (s->cb.disconnect_cb != NULL) {
 		s->cb.disconnect_cb(NULL, s->cb.discarg);
 	}
@@ -1032,6 +1040,7 @@ mqtt_quic_ctx_recv(void *arg, nni_aio *aio)
 	}
 	// no open pipe or msg wating
 wait:
+	// return error or caching aio?
 	// nni_plat_printf("connection lost! caching aio \n");
 	if (!nni_list_active(&s->recv_queue, aio)) {
 		// cache aio
