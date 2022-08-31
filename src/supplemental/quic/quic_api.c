@@ -151,6 +151,7 @@ quic_strm_init(quic_strm_t *qstrm)
 
 	qstrm->rxlen = 0;
 	qstrm->rxmsg = NULL;
+	qstrm->pipe = NULL;
 
 	qstrm->rrbuf = NULL;
 	qstrm->rrlen = 0;
