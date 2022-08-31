@@ -91,9 +91,7 @@ nano_cmd_run(const char *cmd)
 		log_warn("command '%s' returned an error", cmd);
 
 		if (cmd_output_len > 0)
-			// debug_msg("          %s", cmd_output_buff);
-			log_warn("");
-
+			log_debug("          %s", cmd_output_buff);
 		ret = -1;
 	}
 
