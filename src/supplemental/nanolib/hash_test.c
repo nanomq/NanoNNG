@@ -39,9 +39,9 @@ assert_str(const char *s1, const char *s2)
 	if (strcmp(s1, s2)) {
 		printf("Test failed lv: %s, rv: %s", s1, s2);
 		exit(0);
-	}
-	// } else {
-	// 	debug_msg("FOR OBSERVE: %s, %s", s1, s2);
+	} 
+	// else {
+	// 	log_debug("FOR OBSERVE: %s, %s", s1, s2);
 	// }
 
 	return;
