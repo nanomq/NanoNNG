@@ -358,6 +358,7 @@ conf_parser(conf *nanomq_conf)
 		return true;
 	}
 
+	int   n;
 	char *value;
 	while (nano_getline(&line, &sz, fp) != -1) {
 		if ((value = get_conf_value(line, sz, "url")) != NULL) {
@@ -370,15 +371,21 @@ conf_parser(conf *nanomq_conf)
 			nng_strfree(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "num_taskq_thread")) != NULL) {
-			config->num_taskq_thread = atoi(value);
+			n = atoi(value);
+			if (n > 0)
+				config->num_taskq_thread = atoi(value);
 			nng_strfree(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "max_taskq_thread")) != NULL) {
-			config->max_taskq_thread = atoi(value);
+			n = atoi(value);
+			if (n > 0)
+				config->max_taskq_thread = n;
 			nng_strfree(value);
 		} else if ((value = get_conf_value(line, sz, "parallel")) !=
 		    NULL) {
-			config->parallel = atoi(value);
+			n = atoi(value);
+			if (n > 0)
+				config->parallel = n;
 			nng_strfree(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "property_size")) != NULL) {
@@ -678,12 +685,15 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->max_packet_size        = (1024 * 1024);
 	nanomq_conf->client_max_packet_size = (1024 * 1024);
 
-	nanomq_conf->num_taskq_thread = 10;
-	nanomq_conf->max_taskq_thread = 10;
-	nanomq_conf->parallel         = 30;
+	int ncpu = nni_plat_ncpu();
+
+	nanomq_conf->num_taskq_thread = ncpu * 2;
+	nanomq_conf->max_taskq_thread = ncpu * 2;
+	nanomq_conf->parallel         = ncpu * 2;
+
 	nanomq_conf->property_size    = sizeof(uint8_t) * 32;
-	nanomq_conf->msq_len          = 64;
-	nanomq_conf->qos_duration     = 30;
+	nanomq_conf->msq_len          = 256;
+	nanomq_conf->qos_duration     = 10;
 	nanomq_conf->backoff          = 1.5;
 	nanomq_conf->allow_anonymous  = true;
 	nanomq_conf->daemon           = false;
