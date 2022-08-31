@@ -15,6 +15,9 @@
 #include <time.h>
 #include <unistd.h>
 
+#define NNI_QUIC_KEEPALIVE 60
+#define NNI_QUIC_TIMER 3
+
 #define QUIC_API_C_DEBUG 1
 #define QUIC_API_C_INFO 1
 
@@ -96,7 +99,7 @@ LoadConfiguration(BOOLEAN Unsecure)
 {
 	QUIC_SETTINGS Settings = { 0 };
 	// Configures the client's idle timeout.
-	Settings.IdleTimeoutMs       = 10*1000;
+	Settings.IdleTimeoutMs       = NNI_QUIC_KEEPALIVE*1000;
 	Settings.IsSet.IdleTimeoutMs = TRUE;
 
 	// Configures a default client configuration, optionally disabling
@@ -346,7 +349,7 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 
 		if (qstrm->rticket_active) {
 			qinfo("[conn][%p] try to resume by ticket\n", Connection);
-			// nng_msleep(3000);
+			nng_msleep(NNI_QUIC_TIMER * 1000);
 			quic_reconnect(qstrm);
 		} else { // No rticket
 			qdebug("No ticket and done.\n", Connection);
