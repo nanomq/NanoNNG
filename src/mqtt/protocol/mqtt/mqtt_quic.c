@@ -10,9 +10,9 @@
 #include "nng/mqtt/mqtt_quic.h"
 #include "core/nng_impl.h"
 #include "nng/protocol/mqtt/mqtt.h"
-#include "supplemental/quic/quic_api.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 #include "supplemental/mqtt/mqtt_qos_db_api.h"
+#include "supplemental/quic/quic_api.h"
 
 #define NNG_MQTT_SELF 0
 #define NNG_MQTT_SELF_NAME "mqtt-client"
@@ -21,8 +21,10 @@
 
 #define DB_NAME "mqtt_qos_db_quic.db"
 
-typedef struct mqtt_sock_s mqtt_sock_t;
-typedef struct mqtt_pipe_s mqtt_pipe_t;
+#define MQTT_QUIC_KEEPALIVE 5  // 5 seconds as default 
+
+typedef struct mqtt_sock_s   mqtt_sock_t;
+typedef struct mqtt_pipe_s   mqtt_pipe_t;
 typedef struct mqtt_quic_ctx mqtt_quic_ctx;
 typedef nni_mqtt_packet_type packet_type_t;
 
@@ -47,8 +49,8 @@ static void mqtt_quic_ctx_recv(void *arg, nni_aio *aio);
 static void mqtt_quic_ctx_send(void *arg, nni_aio *aio);
 
 // TODO as same as the mqtt_client mqttv5_client. move to supplemental!
-static void  flush_offline_cache(mqtt_sock_t *s);
-static nni_msg* get_cache_msg(mqtt_sock_t *s);
+static void     flush_offline_cache(mqtt_sock_t *s);
+static nni_msg *get_cache_msg(mqtt_sock_t *s);
 
 struct mqtt_client_cb {
 	int (*connect_cb)(void *, void *);
@@ -62,9 +64,9 @@ struct mqtt_client_cb {
 };
 
 struct mqtt_quic_ctx {
-	mqtt_sock_t * mqtt_sock;
-	nni_aio *     saio;
-	nni_aio *     raio;
+	mqtt_sock_t  *mqtt_sock;
+	nni_aio      *saio;
+	nni_aio      *raio;
 	nni_list_node sqnode;
 	nni_list_node rqnode;
 };
@@ -83,7 +85,7 @@ struct mqtt_sock_s {
 #ifdef NNG_HAVE_MQTT_BROKER
 	conf_bridge_node *bridge_conf;
 #endif
-	nni_mtx mtx; // more fine grained mutual exclusion
+	nni_mtx       mtx;    // more fine grained mutual exclusion
 	mqtt_quic_ctx master; // to which we delegate send/recv calls
 	// mqtt_pipe_t *   mqtt_pipe;
 	nni_list recv_queue;    // aio pending to receive
@@ -99,21 +101,19 @@ struct mqtt_sock_s {
 
 // A mqtt_pipe_s is our per-pipe protocol private structure.
 struct mqtt_pipe_s {
-	void        *stream;
+	void           *stream;
 	void           *qstream; // nni_pipe
 	nni_atomic_bool closed;
 	bool            busy;
 	nni_atomic_int  next_packet_id; // next packet id to use
-	mqtt_sock_t *mqtt_sock;
-	nni_id_map sent_unack; // send messages unacknowledged
-	nni_id_map recv_unack;    // recv messages unacknowledged
-	nni_aio    send_aio;      // send aio to the underlying transport
-	nni_aio    recv_aio;      // recv aio to the underlying transport
-	nni_aio	   rep_aio;	  // aio for resending qos msg and PINGREQ  
-	nni_lmq    recv_messages; // recv messages queue
+	mqtt_sock_t    *mqtt_sock;
+	nni_id_map      sent_unack;    // send messages unacknowledged
+	nni_id_map      recv_unack;    // recv messages unacknowledged
+	nni_aio         send_aio;      // send aio to the underlying transport
+	nni_aio         recv_aio;      // recv aio to the underlying transport
+	nni_aio         rep_aio;       // aio for resending qos msg and PINGREQ
+	nni_lmq         recv_messages; // recv messages queue
 };
-
-
 
 static inline void
 mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
@@ -378,7 +378,7 @@ mqtt_quic_send_cb(void *arg)
 		nni_list_remove(&s->send_queue, aio);
 		msg = nni_aio_get_msg(aio);
 		int rv = 0;
-		if ((rv = mqtt_send_msg(aio, msg, s)) >= 0){
+		if ((rv = mqtt_send_msg(aio, msg, s)) >= 0) {
 			nni_mtx_unlock(&s->mtx);
 			nni_aio_finish(aio, rv, 0);
 			return;
@@ -428,7 +428,7 @@ mqtt_quic_recv_cb(void *arg)
 	nni_aio *aio;
 
 	if (nni_aio_result(&p->recv_aio) != 0) {
-		// TODO close quic stream
+		// stream is closed in transport layer
 		return;
 	}
 
@@ -695,7 +695,7 @@ static void mqtt_quic_sock_init(void *arg, nni_sock *sock)
 	nni_atomic_set_bool(&s->closed, false);
 
 	// this is a pre-defined timer for global timer
-	s->retry   = 5;  // 5 seconds as default
+	s->retry   = MQTT_QUIC_KEEPALIVE;
 	s->counter = 0;
 	s->connmsg = NULL;
 
@@ -852,13 +852,17 @@ quic_mqtt_stream_fini(void *arg)
 	*/
 	nni_id_map_fini(&p->recv_unack);
 	nni_lmq_fini(&p->recv_messages);
-	// while ((aio = nni_list_first(&s->recv_queue)) != NULL) {
-	// 	// Pipe was closed.  just push an error back to the
-	// 	// entire socket, because we only have one pipe
-	// 	nni_list_remove(&s->recv_queue, aio);
-	// 	// there should be no msg waiting
-	// 	nni_aio_finish_error(aio, NNG_ECLOSED);
-	// }
+	uint16_t count = 0;
+	while ((aio = nni_list_first(&s->recv_queue)) != NULL) {
+		// Pipe was closed.  just push an error back to the
+		// entire socket, because we only have one pipe
+		nni_list_remove(&s->recv_queue, aio);
+		// only return pipe closed error once for notification
+		count == 0 ? nni_aio_finish_error(aio, NNG_ECONNSHUT)
+		           : nni_aio_finish_error(aio, NNG_ECLOSED);
+		// there should be no msg waiting
+		count++;
+	}
 	if (s->cb.disconnect_cb != NULL) {
 		s->cb.disconnect_cb(NULL, s->cb.discarg);
 	}
@@ -1049,7 +1053,7 @@ wait:
 	} else {
 		nni_mtx_unlock(&s->mtx);
 		nni_aio_set_msg(aio, NULL);
-		// nni_println("ERROR! former aio not finished!");
+		nni_println("ERROR! former aio not finished!");
 		nni_aio_finish_error(aio, NNG_EBUSY);
 	}
 	return;
