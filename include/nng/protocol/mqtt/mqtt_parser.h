@@ -41,22 +41,22 @@ typedef struct pub_extra pub_extra;
 // int hex_to_oct(char *str);
 // uint32_t htoi(char *str);
 
-extern pub_extra *pub_extra_alloc(pub_extra *);
-extern void       pub_extra_free(pub_extra *);
-extern uint8_t    pub_extra_get_qos(pub_extra *);
-extern uint16_t   pub_extra_get_packet_id(pub_extra *);
-extern void       pub_extra_set_qos(pub_extra *, uint8_t);
-extern void      *pub_extra_get_msg(pub_extra *);
-extern void       pub_extra_set_msg(pub_extra *, void *);
-extern void       pub_extra_set_packet_id(pub_extra *, uint16_t);
+NNG_DECL pub_extra *pub_extra_alloc(pub_extra *);
+NNG_DECL void       pub_extra_free(pub_extra *);
+NNG_DECL uint8_t    pub_extra_get_qos(pub_extra *);
+NNG_DECL uint16_t   pub_extra_get_packet_id(pub_extra *);
+NNG_DECL void       pub_extra_set_qos(pub_extra *, uint8_t);
+NNG_DECL void      *pub_extra_get_msg(pub_extra *);
+NNG_DECL void       pub_extra_set_msg(pub_extra *, void *);
+NNG_DECL void       pub_extra_set_packet_id(pub_extra *, uint16_t);
 
 // MQTT CONNECT
-int32_t conn_handler(uint8_t *packet, conn_param *conn_param, size_t max);
-int     conn_param_alloc(conn_param **cparam);
-void    conn_param_free(conn_param *cparam);
-void    conn_param_clone(conn_param *cparam);
-int     fixed_header_adaptor(uint8_t *packet, nng_msg *dst);
-int     ws_msg_adaptor(uint8_t *packet, nng_msg *dst);
+NNG_DECL int32_t conn_handler(uint8_t *packet, conn_param *conn_param, size_t max);
+NNG_DECL int     conn_param_alloc(conn_param **cparam);
+NNG_DECL void    conn_param_free(conn_param *cparam);
+NNG_DECL void    conn_param_clone(conn_param *cparam);
+NNG_DECL int     fixed_header_adaptor(uint8_t *packet, nng_msg *dst);
+NNG_DECL int     ws_msg_adaptor(uint8_t *packet, nng_msg *dst);
 
 // parser
 NNG_DECL uint8_t put_var_integer(uint8_t *dest, uint32_t value);

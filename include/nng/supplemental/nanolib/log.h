@@ -1,5 +1,6 @@
 #ifndef NNG_NANOLIB_LOG_H
 #define NNG_NANOLIB_LOG_H
+#include "nng/nng.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,14 +36,14 @@ enum {
 	NNG_LOG_TRACE,
 };
 
-extern const char *log_level_string(int level);
-extern int         log_level_num(const char *level);
-extern void        log_set_level(int level);
-extern int log_add_callback(log_func fn, void *udata, int level, void *mtx);
-extern void        log_add_console(int level, void *mtx);
-extern int         log_add_fp(FILE *fp, int level, void *mtx);
-extern void log_add_syslog(const char *log_name, uint8_t level, void *mtx);
-extern void log_log(int level, const char *file, int line, const char *func,
+NNG_DECL const char *log_level_string(int level);
+NNG_DECL int         log_level_num(const char *level);
+NNG_DECL void        log_set_level(int level);
+NNG_DECL int log_add_callback(log_func fn, void *udata, int level, void *mtx);
+NNG_DECL void        log_add_console(int level, void *mtx);
+NNG_DECL int         log_add_fp(FILE *fp, int level, void *mtx);
+NNG_DECL void log_add_syslog(const char *log_name, uint8_t level, void *mtx);
+NNG_DECL void log_log(int level, const char *file, int line, const char *func,
     const char *fmt, ...);
 
 #ifdef ENABLE_LOG

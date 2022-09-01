@@ -5,6 +5,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
+#include "nng/nng.h"
+
 
 typedef enum {
 	MQTT_VERSION_V311 = 4,
@@ -33,21 +35,21 @@ typedef struct dbtree_retain_msg dbtree_retain_msg;
  * @param dbtree - dbtree
  * @return void
  */
-void dbtree_create(dbtree **db);
+NNG_DECL void dbtree_create(dbtree **db);
 
 /**
  * @brief dbtree_destory - Destory dbtree tree
  * @param dbtree - dbtree
  * @return void
  */
-void dbtree_destory(dbtree *db);
+NNG_DECL void dbtree_destory(dbtree *db);
 
 /**
  * @brief dbtree_print - Print dbtree for debug.
  * @param dbtree - dbtree
  * @return void
  */
-void dbtree_print(dbtree *db);
+NNG_DECL void dbtree_print(dbtree *db);
 
 /**
  * @brief dbtree_insert_client - check if this
@@ -60,7 +62,7 @@ void dbtree_print(dbtree *db);
  * @param pipe_id - pipe id
  * @return
  */
-void *dbtree_insert_client(
+NNG_DECL void *dbtree_insert_client(
     dbtree *db, char *topic, uint32_t pipe_id);
 
 /**
@@ -86,7 +88,7 @@ void *dbtree_insert_client(
  * @param pipe_id - pipe id
  * @return
  */
-void *dbtree_delete_client(
+NNG_DECL void *dbtree_delete_client(
     dbtree *db, char *topic, uint32_t pipe_id);
 
 /**
@@ -96,7 +98,7 @@ void *dbtree_delete_client(
  * @param topic - topic
  * @return pipe id array
  */
-uint32_t *dbtree_find_clients(dbtree *db, char *topic);
+NNG_DECL uint32_t *dbtree_find_clients(dbtree *db, char *topic);
 
 /**
  * @brief dbtree_insert_retain - Insert retain message to this topic.
@@ -105,7 +107,7 @@ uint32_t *dbtree_find_clients(dbtree *db, char *topic);
  * @param ret_msg - dbtree_retain_msg
  * @return
  */
-void *dbtree_insert_retain(
+NNG_DECL void *dbtree_insert_retain(
     dbtree *db, char *topic, dbtree_retain_msg *ret_msg);
 
 /**
@@ -114,7 +116,7 @@ void *dbtree_insert_retain(
  * @param topic - topic
  * @return ctxt or NULL, if client can be delete or not
  */
-void *dbtree_delete_retain(dbtree *db, char *topic);
+NNG_DECL void *dbtree_delete_retain(dbtree *db, char *topic);
 
 /**
  * @brief dbtree_find_retain - Get all retain message to this topic.
@@ -122,7 +124,7 @@ void *dbtree_delete_retain(dbtree *db, char *topic);
  * @param topic - topic
  * @return dbtree_retain_msg pointer vector
  */
-dbtree_retain_msg **dbtree_find_retain(dbtree *db, char *topic);
+NNG_DECL dbtree_retain_msg **dbtree_find_retain(dbtree *db, char *topic);
 
 /**
  * @brief dbtree_find_shared_clients - This function
@@ -131,8 +133,7 @@ dbtree_retain_msg **dbtree_find_retain(dbtree *db, char *topic);
  * @param topic - topic
  * @return pipe id array
  */
-uint32_t *
-dbtree_find_shared_clients(dbtree *db, char *topic);
+NNG_DECL uint32_t *dbtree_find_shared_clients(dbtree *db, char *topic);
 
 /**
  * @brief dbtree_get_tree - This function will
@@ -141,6 +142,6 @@ dbtree_find_shared_clients(dbtree *db, char *topic);
  * @param cb - a callback function
  * @return all info about this tree
  */
-void ***dbtree_get_tree(dbtree *db, void *(*cb)(uint32_t pipe_id));
+NNG_DECL void ***dbtree_get_tree(dbtree *db, void *(*cb)(uint32_t pipe_id));
 
 #endif
