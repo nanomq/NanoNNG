@@ -943,6 +943,39 @@ nano_dismsg_composer(reason_code code, char* rstr, uint8_t *ref, property *prop)
 	return msg;
 }
 
+uint8_t
+verify_connect(conn_param *cparam, conf *conf)
+{
+	int   i, n = conf->auths.count;
+	char *username = (char *) cparam->username.body;
+	char *password = (char *) cparam->password.body;
+
+	if (conf->auths.count == 0 || conf->allow_anonymous == true) {
+		log_trace("no valid entry in %s", conf->auth_file);
+		return 0;
+	}
+
+	if (cparam->username.len == 0 || cparam->password.len == 0) {
+		if (cparam->pro_ver == 5) {
+			return BAD_USER_NAME_OR_PASSWORD;
+		} else {
+			return 0x04;
+		}
+	}
+
+	for (i = 0; i < n; i++) {
+		if (strcmp(username, conf->auths.usernames[i]) == 0 &&
+		    strcmp(password, conf->auths.passwords[i]) == 0) {
+			return 0;
+		}
+	}
+	if (cparam->pro_ver == 5) {
+		return BAD_USER_NAME_OR_PASSWORD;
+	} else {
+		return 0x05;
+	}
+}
+
 // alloc a publish msg according to the need
 nng_msg *
 nano_pubmsg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
@@ -1007,39 +1040,6 @@ nano_pubmsg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
 	nni_msg_set_payload_ptr(msg, ptr);
 
 	return msg;
-}
-
-uint8_t
-verify_connect(conn_param *cparam, conf *conf)
-{
-	int   i, n = conf->auths.count;
-	char *username = (char *) cparam->username.body;
-	char *password = (char *) cparam->password.body;
-
-	if (conf->auths.count == 0 || conf->allow_anonymous == true) {
-		log_trace("no valid entry in %s", conf->auth_file);
-		return 0;
-	}
-
-	if (cparam->username.len == 0 || cparam->password.len == 0) {
-		if (cparam->pro_ver == 5) {
-			return BAD_USER_NAME_OR_PASSWORD;
-		} else {
-			return 0x04;
-		}
-	}
-
-	for (i = 0; i < n; i++) {
-		if (strcmp(username, conf->auths.usernames[i]) == 0 &&
-		    strcmp(password, conf->auths.passwords[i]) == 0) {
-			return 0;
-		}
-	}
-	if (cparam->pro_ver == 5) {
-		return BAD_USER_NAME_OR_PASSWORD;
-	} else {
-		return 0x05;
-	}
 }
 
 nng_msg *

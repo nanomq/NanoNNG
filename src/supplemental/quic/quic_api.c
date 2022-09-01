@@ -15,7 +15,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#define NNI_QUIC_KEEPALIVE 60
+#define NNI_QUIC_KEEPALIVE 10
 #define NNI_QUIC_TIMER 3
 
 #define QUIC_API_C_DEBUG 1
@@ -162,7 +162,6 @@ quic_strm_init(quic_strm_t *qstrm)
 	qstrm->url_s = NULL;
 	qstrm->rticket_sz = 0;
 	qstrm->rticket_active = false;
-	conn_param_alloc(&qstrm->cparam);
 }
 
 static void
@@ -632,6 +631,9 @@ quic_strm_send_start(quic_strm_t *qstrm)
 
 	// This runs to send the message.
 	msg = nni_aio_get_msg(aio);
+	if (nni_msg_get_type(msg) == CMD_CONNECT) {
+		qstrm->cparam = nni_mqtt_msg_set_conn_param(msg);
+	}
 
 	QUIC_BUFFER *buf=(QUIC_BUFFER*)malloc(sizeof(QUIC_BUFFER)*2);
 	int          hl   = nni_msg_header_len(msg);
@@ -885,7 +887,7 @@ upload:
 				2 * nni_lmq_cap(&qstrm->recv_messages))) {
 				// memory error
 				nni_msg_free(qstrm->rxmsg);
-				printf("msg dropped due to no more memory!\n");
+				nni_println("msg dropped due to no more memory!\n");
 			}
 		}
 		nni_lmq_put(&qstrm->recv_messages, qstrm->rxmsg);
