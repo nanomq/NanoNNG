@@ -238,7 +238,10 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 	ptype = nni_mqtt_msg_get_packet_type(msg);
 	switch (ptype) {
 	case NNG_MQTT_CONNECT:
-		// TODO : only send CONNECT once
+		// Free old connect msg if user set a new one
+		if (s->connmsg != msg && s->connmsg != NULL) {
+			nni_msg_free(s->connmsg);
+		}
 		s->connmsg = msg;
 		nni_msg_clone(s->connmsg);
 		s->keepalive = nni_mqtt_msg_get_connect_keep_alive(msg);
@@ -479,6 +482,7 @@ mqtt_quic_recv_cb(void *arg)
 		packet_id  = nni_mqtt_msg_get_packet_id(msg);
 		cached_msg = nni_id_get(&p->sent_unack, packet_id);
 		if (cached_msg != NULL) {
+			printf("free msg id %d\n", packet_id);
 			nni_id_remove(&p->sent_unack, packet_id);
 			user_aio = nni_mqtt_msg_get_aio(cached_msg);
 			// should we support sub/unsub cb here?
@@ -736,6 +740,7 @@ mqtt_quic_sock_fini(void *arg)
 	}
 #endif
 	*/
+
 	mqtt_quic_ctx_fini(&s->master);
 	nni_lmq_fini(&s->send_messages);
 	nni_aio_fini(&s->time_aio);
