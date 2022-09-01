@@ -2,6 +2,7 @@
 #define NANOLIB_ENV_H
 
 #include "conf.h"
+#include "nng/nng.h"
 
 #define NANOMQ_BROKER_URL "NANOMQ_BROKER_URL"
 #define NANOMQ_DAEMON "NANOMQ_DAEMON"
@@ -48,6 +49,6 @@
 #define NANOMQ_RULE_ENGINE_CONF_PATH "NANOMQ_RULE_ENGINE_CONF_PATH" 
 #define NANOMQ_AUTH_CONF_PATH "NANOMQ_AUTH_CONF_PATH"
 
-extern void read_env_conf(conf *config);
+NNG_DECL void read_env_conf(conf *config);
 
 #endif

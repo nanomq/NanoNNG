@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "nng/nng.h"
 #include "rule.h"
 
 #define PID_PATH_NAME "/tmp/nanomq/nanomq.pid"
@@ -342,24 +343,24 @@ struct conf {
 
 typedef struct conf conf;
 
-extern bool conf_parser(conf *nanomq_conf);
-extern bool conf_bridge_parse(conf *nanomq_conf);
-extern bool conf_aws_bridge_parse(conf *nanomq_conf);
-extern bool conf_gateway_parse(zmq_gateway_conf *g_conf);
-extern bool conf_web_hook_parse(conf *nanomq_conf);
-extern bool conf_rule_parse(conf *nanomq_conf);
-extern bool conf_auth_http_parse(conf *nanomq_conf);
-extern void print_bridge_conf(conf_bridge *bridge);
-extern void conf_init(conf *nanomq_conf);
-extern void print_conf(conf *nanomq_conf);
-extern void conf_fini(conf *nanomq_conf);
-extern void conf_auth_parser(conf *);
-extern void conf_update(const char *fpath, const char *key, char *value);
-extern void conf_update2(const char *fpath, const char *key1, const char *key2,
+NNG_DECL bool conf_parser(conf *nanomq_conf);
+NNG_DECL bool conf_bridge_parse(conf *nanomq_conf);
+NNG_DECL bool conf_aws_bridge_parse(conf *nanomq_conf);
+NNG_DECL bool conf_gateway_parse(zmq_gateway_conf *g_conf);
+NNG_DECL bool conf_web_hook_parse(conf *nanomq_conf);
+NNG_DECL bool conf_rule_parse(conf *nanomq_conf);
+NNG_DECL bool conf_auth_http_parse(conf *nanomq_conf);
+NNG_DECL void print_bridge_conf(conf_bridge *bridge);
+NNG_DECL void conf_init(conf *nanomq_conf);
+NNG_DECL void print_conf(conf *nanomq_conf);
+NNG_DECL void conf_fini(conf *nanomq_conf);
+NNG_DECL void conf_auth_parser(conf *);
+NNG_DECL void conf_update(const char *fpath, const char *key, char *value);
+NNG_DECL void conf_update2(const char *fpath, const char *key1, const char *key2,
     const char *key3, char *value);
-extern void conf_update_var(
+NNG_DECL void conf_update_var(
     const char *fpath, const char *key, uint8_t type, void *var);
-extern void conf_update_var2(const char *fpath, const char *key1,
+NNG_DECL void conf_update_var2(const char *fpath, const char *key1,
     const char *key2, const char *key3, uint8_t type, void *var);
 
 #define conf_update_int(path, key, var) \
