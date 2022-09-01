@@ -856,6 +856,7 @@ quic_mqtt_stream_fini(void *arg)
 #endif
 	*/
 	nni_id_map_fini(&p->recv_unack);
+	nni_id_map_fini(&p->sent_unack);
 	nni_lmq_fini(&p->recv_messages);
 	uint16_t count = 0;
 	while ((aio = nni_list_first(&s->recv_queue)) != NULL) {
