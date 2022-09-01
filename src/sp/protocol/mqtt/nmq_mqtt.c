@@ -974,7 +974,7 @@ nano_pipe_recv_cb(void *arg)
 		nni_pipe_close(p->pipe);
 		return;
 	}
-	log_trace("######### nano_pipe_recv_cb ############");
+	log_trace(" ######### nano_pipe_recv_cb ######### ");
 	p->ka_refresh = 0;
 	msg           = nni_aio_get_msg(&p->aio_recv);
 	if (msg == NULL) {

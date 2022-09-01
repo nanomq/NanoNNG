@@ -482,7 +482,6 @@ mqtt_quic_recv_cb(void *arg)
 		packet_id  = nni_mqtt_msg_get_packet_id(msg);
 		cached_msg = nni_id_get(&p->sent_unack, packet_id);
 		if (cached_msg != NULL) {
-			printf("free msg id %d\n", packet_id);
 			nni_id_remove(&p->sent_unack, packet_id);
 			user_aio = nni_mqtt_msg_get_aio(cached_msg);
 			// should we support sub/unsub cb here?
