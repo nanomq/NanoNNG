@@ -465,6 +465,7 @@ mqtt_pipe_start(void *arg)
 	s->mqtt_pipe       = p;
 	s->disconnect_code = 0;
 	s->dis_prop        = NULL;
+	// add connack msg to app layer only for notify in broker bridge
 	if ((c = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, c);
 		mqtt_send_msg(c->saio, c);
