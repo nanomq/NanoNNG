@@ -10,6 +10,7 @@
 #include "nng/mqtt/mqtt_quic.h"
 #include "core/nng_impl.h"
 #include "nng/protocol/mqtt/mqtt.h"
+#include "nng/protocol/mqtt/mqtt_parser.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 #include "supplemental/mqtt/mqtt_qos_db_api.h"
 #include "supplemental/quic/quic_api.h"
@@ -113,6 +114,7 @@ struct mqtt_pipe_s {
 	nni_aio         recv_aio;      // recv aio to the underlying transport
 	nni_aio         rep_aio;       // aio for resending qos msg and PINGREQ
 	nni_lmq         recv_messages; // recv messages queue
+	conn_param     *cparam;
 };
 
 static inline void
@@ -241,7 +243,14 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		// Free old connect msg if user set a new one
 		if (s->connmsg != msg && s->connmsg != NULL) {
 			nni_msg_free(s->connmsg);
+			// free connmsg also free the cparam
+			p->cparam = NULL;
 		}
+		// Only send CONNECT once for each pipe otherwise memleak
+		conn_param_alloc(&p->cparam);
+		nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
+		proto_data->conn_ctx            = p->cparam;
+		p->cparam  = nni_mqtt_msg_set_conn_param(msg);
 		s->connmsg = msg;
 		nni_msg_clone(s->connmsg);
 		s->keepalive = nni_mqtt_msg_get_connect_keep_alive(msg);
@@ -464,9 +473,21 @@ mqtt_quic_recv_cb(void *arg)
 
 	// schedule another receive
 	quic_strm_recv(p->qstream, &p->recv_aio);
-	
+
+	// set conn_param for upper layer
+	if (p->cparam)
+		nng_msg_set_conn_param(msg, p->cparam);
 	switch (packet_type) {
 	case NNG_MQTT_CONNACK:
+		if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
+			// No one waiting to receive yet, putting msg
+			// into lmq
+			mqtt_pipe_recv_msgq_putq(p, msg);
+			break;
+		}
+		nni_list_remove(&s->recv_queue, aio);
+		user_aio = aio;
+		nni_aio_set_msg(user_aio, msg);
 		break;
 	case NNG_MQTT_PUBACK:
 		// we have received a PUBACK, successful delivery of a QoS 1
@@ -610,10 +631,13 @@ mqtt_quic_recv_cb(void *arg)
 	if (user_aio) {
 		nni_aio_finish(user_aio, 0, 0);
 	}
-
+	// Trigger cb
 	if (packet_type == NNG_MQTT_CONNACK)
-		if (s->cb.connect_cb) // Trigger cb
+		if (s->cb.connect_cb) {
+			nni_msg_clone(msg);
 			s->cb.connect_cb(msg, s->cb.connarg);
+		}
+
 	if (packet_type == NNG_MQTT_PUBLISH)
 		if (s->cb.msg_recv_cb) // Trigger cb
 			s->cb.msg_recv_cb(msg, s->cb.recvarg);
@@ -807,14 +831,15 @@ mqtt_quic_sock_recv(void *arg, nni_aio *aio)
 static int
 quic_mqtt_stream_init(void *arg,nni_pipe *qstrm, void *sock)
 {
-	mqtt_pipe_t *p = arg;
-	p->qstream = qstrm;
-	p->mqtt_sock = sock;
+	mqtt_pipe_t *p     = arg;
+	p->qstream         = qstrm;
+	p->mqtt_sock       = sock;
 	p->mqtt_sock->pipe = p;
+	p->cparam          = NULL;
 
 	nni_atomic_init_bool(&p->closed);
 	nni_atomic_set_bool(&p->closed, false);
-	p->busy   = false;
+	p->busy = false;
 	nni_atomic_set(&p->next_packet_id, 1);
 	nni_aio_init(&p->send_aio, mqtt_quic_send_cb, p);
 	nni_aio_init(&p->rep_aio, NULL, p);
@@ -871,6 +896,7 @@ quic_mqtt_stream_fini(void *arg)
 	if (s->cb.disconnect_cb != NULL) {
 		s->cb.disconnect_cb(NULL, s->cb.discarg);
 	}
+	conn_param_free(p->cparam);
 }
 
 static int
@@ -1132,6 +1158,7 @@ nng_mqtt_quic_client_open(nng_socket *sock, const char *url)
 		nni_sock_find(&nsock, sock->id);
 		quic_open();
 		quic_proto_open(&mqtt_msquic_proto);
+		// TODO seperate init & connect API
 		quic_connect(url, nsock);
 	}
 	return rv;

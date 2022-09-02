@@ -67,7 +67,6 @@ struct quic_strm_s {
 	uint16_t rticket_sz;
 	bool     rticket_active;
 	nng_url *url_s;
-	conn_param *cparam;
 };
 
 // Config for msquic
@@ -140,7 +139,6 @@ quic_strm_init(quic_strm_t *qstrm)
 {
 	qstrm->closed = false;
 	qstrm->pipe   = NULL;
-	qstrm->cparam = NULL;
 
 	nni_mtx_init(&qstrm->mtx);
 	nni_aio_list_init(&qstrm->sendq);
@@ -171,8 +169,6 @@ quic_strm_fini(quic_strm_t *qstrm)
 		free(qstrm->rxmsg);
 	if (qstrm->rrbuf)
 		free(qstrm->rrbuf);
-
-	conn_param_free(qstrm->cparam);
 
 	nni_lmq_fini(&qstrm->recv_messages);
 	nni_lmq_fini(&qstrm->send_messages);
@@ -631,9 +627,6 @@ quic_strm_send_start(quic_strm_t *qstrm)
 
 	// This runs to send the message.
 	msg = nni_aio_get_msg(aio);
-	if (nni_msg_get_type(msg) == CMD_CONNECT) {
-		qstrm->cparam = nni_mqtt_msg_set_conn_param(msg);
-	}
 
 	QUIC_BUFFER *buf=(QUIC_BUFFER*)malloc(sizeof(QUIC_BUFFER)*2);
 	int          hl   = nni_msg_header_len(msg);
@@ -869,9 +862,6 @@ quic_strm_recv_cb(void *arg)
 upload:
 	// get aio and trigger cb of protocol layer
 	aio = nni_list_first(&qstrm->recvq);
-
-	if (qstrm->cparam)
-		nng_msg_set_conn_param(qstrm->rxmsg, qstrm->cparam);
 
 	if (aio != NULL) {
 		nni_list_remove(&qstrm->recvq, aio);
