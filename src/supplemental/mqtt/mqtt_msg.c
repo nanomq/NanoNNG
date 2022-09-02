@@ -821,34 +821,48 @@ nni_mqtt_msg_set_conn_param(nni_msg *msg)
 	    proto_data->var_header.connect.conn_flags.will_retain;
 	conn_ctx->keepalive_mqtt = proto_data->var_header.connect.keep_alive;
 
-	// memcpy(&conn_ctx->pro_name.body,
-	//     (char *) proto_data->var_header.connect.protocol_name.buf,
-	//     (size_t) proto_data->var_header.connect.protocol_name.length);
-
-	conn_ctx->pro_name.body =
-	    (char *) proto_data->var_header.connect.protocol_name.buf;
 	conn_ctx->pro_name.len =
 	    proto_data->var_header.connect.protocol_name.length;
+	conn_ctx->pro_name.body = nng_strndup(
+	    (const char *) proto_data->var_header.connect.protocol_name.buf,
+	    conn_ctx->pro_name.len);
+	// conn_ctx->pro_name.body =
+	//     (char *) proto_data->var_header.connect.protocol_name.buf;
 
-	conn_ctx->clientid.body =
-	    (char *) proto_data->payload.connect.client_id.buf;
-	conn_ctx->clientid.len = proto_data->payload.connect.client_id.length;
+	conn_ctx->clientid.len  = proto_data->payload.connect.client_id.length;
+	conn_ctx->clientid.body = nng_strndup(
+	    (const char *) proto_data->payload.connect.client_id.buf,
+	    conn_ctx->clientid.len);
+	// conn_ctx->clientid.body =
+	//     (char *) proto_data->payload.connect.client_id.buf;
 
-	conn_ctx->will_topic.body =
-	    (char *) proto_data->payload.connect.will_topic.buf;
 	conn_ctx->will_topic.len =
 	    proto_data->payload.connect.will_topic.length;
+	conn_ctx->will_topic.body = nng_strndup(
+	    (const char *) proto_data->payload.connect.will_topic.buf,
+	    conn_ctx->will_topic.len);
+	// conn_ctx->will_topic.body =
+	//     (char *) proto_data->payload.connect.will_topic.buf;
 
-	conn_ctx->will_msg.body =
-	    (char *) proto_data->payload.connect.will_msg.buf;
-	conn_ctx->will_msg.len = proto_data->payload.connect.will_msg.length;
+	conn_ctx->will_msg.len  = proto_data->payload.connect.will_msg.length;
+	conn_ctx->will_msg.body = nng_strndup(
+	    (const char *) proto_data->payload.connect.will_msg.buf,
+	    conn_ctx->will_msg.len);
+	// conn_ctx->will_msg.body =
+	//     (char *) proto_data->payload.connect.will_msg.buf;
 
-	conn_ctx->username.body =
-	    (char *) proto_data->payload.connect.user_name.buf;
-	conn_ctx->username.len = proto_data->payload.connect.user_name.length;
+	conn_ctx->username.len  = proto_data->payload.connect.user_name.length;
+	conn_ctx->username.body = nng_strndup(
+	    (const char *) proto_data->payload.connect.user_name.buf,
+	    conn_ctx->username.len);
+	//     (char *) copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
+	// conn_ctx->username.body =
+	//     (char *) proto_data->payload.connect.user_name.buf;
 
-	conn_ctx->password.body = proto_data->payload.connect.password.buf;
 	conn_ctx->password.len  = proto_data->payload.connect.password.length;
+	conn_ctx->password.body = nng_strndup(
+	    proto_data->payload.connect.password.buf, conn_ctx->password.len);
+	// conn_ctx->password.body = proto_data->payload.connect.password.buf;
 	nni_atomic_init(&conn_ctx->refcnt);
 	nni_atomic_set(&conn_ctx->refcnt, 1);
 	return proto_data->conn_ctx;
