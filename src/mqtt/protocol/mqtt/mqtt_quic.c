@@ -485,6 +485,7 @@ mqtt_quic_recv_cb(void *arg)
 			mqtt_pipe_recv_msgq_putq(p, msg);
 			break;
 		}
+		conn_param_clone(p->cparam);
 		nni_list_remove(&s->recv_queue, aio);
 		user_aio = aio;
 		nni_aio_set_msg(user_aio, msg);
