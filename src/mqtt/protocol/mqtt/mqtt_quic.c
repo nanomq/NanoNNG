@@ -883,12 +883,17 @@ quic_mqtt_stream_fini(void *arg)
 	nni_id_map_fini(&p->sent_unack);
 	nni_lmq_fini(&p->recv_messages);
 	uint16_t count = 0;
+	nni_msg *tmsg = nano_msg_notify_disconnect(p->cparam, SERVER_SHUTTING_DOWN);
+	nni_msg_set_conn_param(tmsg, p->cparam);
+	// emulate disconnect notify msg as a normal publish
 	while ((aio = nni_list_first(&s->recv_queue)) != NULL) {
 		// Pipe was closed.  just push an error back to the
 		// entire socket, because we only have one pipe
 		nni_list_remove(&s->recv_queue, aio);
+		nni_aio_set_msg(aio, tmsg);
 		// only return pipe closed error once for notification
-		count == 0 ? nni_aio_finish_error(aio, NNG_ECONNSHUT)
+		// sync action to avoid NULL conn param
+		count == 0 ? nni_aio_finish_sync(aio, NNG_ECONNSHUT, 0)
 		           : nni_aio_finish_error(aio, NNG_ECLOSED);
 		// there should be no msg waiting
 		count++;
