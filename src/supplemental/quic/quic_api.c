@@ -15,11 +15,11 @@
 #include <time.h>
 #include <unistd.h>
 
-#define NNI_QUIC_KEEPALIVE 10
+#define NNI_QUIC_KEEPALIVE 100
 #define NNI_QUIC_TIMER 3
 
-#define QUIC_API_C_DEBUG 1
-#define QUIC_API_C_INFO 1
+#define QUIC_API_C_DEBUG 0
+#define QUIC_API_C_INFO 0
 
 #if QUIC_API_C_DEBUG
 #define qdebug(fmt, ...)                                                 \
