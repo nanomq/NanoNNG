@@ -274,7 +274,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		nni_mqtt_msg_set_aio(msg, aio);
 		tmsg = nni_id_get(&p->sent_unack, packet_id);
 		if (tmsg != NULL) {
-			nni_plat_printf("Warning : msg %d lost due to "
+			log_warn("Warning : msg %d lost due to "
 			                "packetID duplicated!",
 			    packet_id);
 			nni_aio *m_aio = nni_mqtt_msg_get_aio(tmsg);
@@ -521,7 +521,7 @@ mqtt_quic_recv_cb(void *arg)
 		cached_msg = nni_id_get(&p->recv_unack, packet_id);
 		nni_msg_free(msg);
 		if (cached_msg == NULL) {
-			nni_plat_printf("ERROR! packet id %d not found\n", packet_id);
+			log_warn("ERROR! packet id %d not found\n", packet_id);
 			break;
 		}
 		nni_id_remove(&p->recv_unack, packet_id);
@@ -583,7 +583,7 @@ mqtt_quic_recv_cb(void *arg)
 				// packetid already exists.
 				// sth wrong with the broker
 				// replace old with new
-				nni_plat_printf(
+				log_error(
 				    "ERROR: packet id %d duplicates in",
 				    packet_id);
 				nni_msg_free(cached_msg);
