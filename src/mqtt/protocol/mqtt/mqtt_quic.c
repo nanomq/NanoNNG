@@ -247,9 +247,8 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 			p->cparam = NULL;
 		}
 		// Only send CONNECT once for each pipe otherwise memleak
-		conn_param_alloc(&p->cparam);
+		// conn_param_alloc(&p->cparam);
 		nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
-		proto_data->conn_ctx            = p->cparam;
 		p->cparam  = nni_mqtt_msg_set_conn_param(msg);
 		s->connmsg = msg;
 		nni_msg_clone(s->connmsg);

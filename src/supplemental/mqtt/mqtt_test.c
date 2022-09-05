@@ -1,6 +1,7 @@
 #include <string.h>
 
 #include "nng/nng.h"
+#include "nng/protocol/mqtt/mqtt_parser.h"
 
 #include "mqtt_msg.h"
 #include "nuts.h"
@@ -108,9 +109,11 @@ void
 test_encode_connect(void)
 {
 	nng_msg *msg;
+	conn_param *cparam;
 	char     client_id[] = "nanomq-mqtt";
 
 	NUTS_PASS(nng_mqtt_msg_alloc(&msg, 0));
+	NUTS_PASS(conn_param_alloc(&cparam));
 
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_CONNECT);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNECT);
@@ -133,9 +136,7 @@ test_encode_connect(void)
 	nng_mqtt_msg_set_connect_password(msg, passwd);
 	nng_mqtt_msg_set_connect_clean_session(msg, true);
 	nng_mqtt_msg_set_connect_keep_alive(msg, 60);
-	nng_mqtt_msg_set_conn_param(msg);
-	
-	NUTS_ASSERT(nng_mqtt_msg_get_conn_param(msg) != NULL);
+	nng_get_conn_param_from_msg(msg, cparam);
 
 	nng_mqtt_msg_encode(msg);
 	print_mqtt_msg(msg);

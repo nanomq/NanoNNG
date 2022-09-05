@@ -797,16 +797,18 @@ mqtt_close_unack_msg_cb(void *key, void *val)
 	nni_msg_free(msg);
 }
 
+/**
+ * @brief alloc and set a new connection parameters from CONNECT msg
+ * 	  be aware of the life & memory cycle of this conn_param!
+ * @param CONNECT msg 
+ * @return newly allocted conn_param* 
+ */
 conn_param *
-nni_mqtt_msg_set_conn_param(nni_msg *msg)
+nni_get_conn_param_from_msg(nni_msg *msg, conn_param *cparam)
 {
+	conn_param *conn_ctx = cparam;
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
 
-	if (proto_data->conn_ctx == NULL) {
-		proto_data->conn_ctx = NNI_ALLOC_STRUCT(proto_data->conn_ctx);
-	}
-
-	conn_param *conn_ctx = proto_data->conn_ctx;
 	conn_ctx->pro_ver    = nni_mqtt_msg_get_connect_proto_version(msg);
 	memcpy(&conn_ctx->con_flag, &proto_data->var_header.connect.conn_flags,
 	    1);
@@ -865,15 +867,8 @@ nni_mqtt_msg_set_conn_param(nni_msg *msg)
 	// conn_ctx->password.body = proto_data->payload.connect.password.buf;
 	nni_atomic_init(&conn_ctx->refcnt);
 	nni_atomic_set(&conn_ctx->refcnt, 1);
-	return proto_data->conn_ctx;
+	return conn_ctx;
 	// TODO  MQTT V5
-}
-
-conn_param *
-nni_mqtt_msg_get_conn_param(nni_msg *msg)
-{
-	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
-	return proto_data->conn_ctx;
 }
 
 void
