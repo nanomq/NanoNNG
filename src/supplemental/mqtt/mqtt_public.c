@@ -780,14 +780,8 @@ nng_mqtt_subscribe_async(nng_mqtt_client *client, nng_mqtt_topic_qos *sbs, size_
 
 }
 
-void
-nng_mqtt_msg_set_conn_param(nng_msg *msg)
+conn_param*
+nng_get_conn_param_from_msg(nng_msg *msg, conn_param *cparam)
 {
-	nni_mqtt_msg_set_conn_param(msg);
-}
-
-conn_param *
-nng_mqtt_msg_get_conn_param(nng_msg *msg)
-{
-	return nni_mqtt_msg_get_conn_param(msg);
+	return nni_get_conn_param_from_msg(msg, cparam);
 }
