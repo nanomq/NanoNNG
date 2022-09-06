@@ -7,11 +7,11 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
-#include "nng/protocol/mqtt/mqtt_parser.h"
 #include "core/nng_impl.h"
 #include "core/sockimpl.h"
 #include "core/zmalloc.h"
 #include "nng/protocol/mqtt/mqtt.h"
+#include "nng/protocol/mqtt/mqtt_parser.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 
 #include "nng/mqtt/packet.h"

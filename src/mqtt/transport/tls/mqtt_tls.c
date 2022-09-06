@@ -887,7 +887,9 @@ mqtts_tcptran_pipe_start(
 	}
 	nni_aio_set_iov(p->negoaio, niov, iov);
 	nni_list_append(&ep->negopipes, p);
-	p->cparam = nni_mqtt_msg_set_conn_param(connmsg);
+	if (p->cparam == NULL) {
+		p->cparam = nni_get_conn_param_from_msg(connmsg);
+	}
 
 	nni_aio_set_timeout(p->negoaio, 10000); // 10 sec timeout to negotiate
 	nng_stream_send(p->conn, p->negoaio);
