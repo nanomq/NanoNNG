@@ -129,14 +129,4 @@ read_env_conf(conf *config)
 	set_bool_var(&config->tls.set_fail, NANOMQ_TLS_FAIL_IF_NO_PEER_CERT);
 
 	set_string_var(&config->conf_file, NANOMQ_CONF_PATH);
-	set_string_var(&config->bridge_file, NANOMQ_BRIDGE_CONF_PATH);
-	set_string_var(&config->web_hook_file, NANOMQ_WEBHOOK_CONF_PATH);
-	set_string_var(&config->auth_http_file, NANOMQ_AUTH_HTTP_CONF_PATH);
-	set_string_var(&config->auth_file, NANOMQ_AUTH_CONF_PATH);
-#if defined(SUPP_AWS_BRIDGE)
-	set_string_var(&config->aws_bridge_file, NANOMQ_AWS_BRIDGE_CONF_PATH);
-#endif
-#if defined(SUPP_RULE_ENGINE)
-	set_string_var(&config->rule_file, NANOMQ_RULE_ENGINE_CONF_PATH);
-#endif
 }

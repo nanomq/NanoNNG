@@ -358,8 +358,8 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	nano_pipe *      p;
 	nni_msg *        msg;
 	int              rv;
-	uint32_t         pipe;
-	uint8_t          qos_pac;
+	uint32_t         pipe    = 0;
+	uint8_t          qos_pac = 0;
 	uint16_t         packetid;
 
 	bool is_sqlite = s->conf->sqlite.enable;
@@ -1177,13 +1177,10 @@ static void
 nano_sock_setdb(void *arg, void *data)
 {
 	nano_sock *s         = arg;
-	conf      *nano_conf = data;
+	conf *     nano_conf = data;
 
 	s->conf = nano_conf;
 	s->db   = nano_conf->db_root;
-
-	conf_auth_parser(s->conf);
-	conf_auth_http_parse(s->conf);
 
 #ifdef NNG_SUPP_SQLITE
 	if (s->conf->sqlite.enable) {
