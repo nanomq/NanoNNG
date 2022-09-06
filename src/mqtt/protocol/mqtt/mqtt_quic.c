@@ -739,7 +739,7 @@ mqtt_quic_sock_set_sqlite_option(
  ******************************************************************************/
 
 static int
-quic_mqtt_stream_init(void *arg,nni_pipe *qstrm, void *sock)
+quic_mqtt_stream_init(void *arg, nni_pipe *qstrm, void *sock)
 {
 	mqtt_pipe_t *p     = arg;
 	p->qstream         = qstrm;
@@ -796,6 +796,9 @@ quic_mqtt_stream_fini(void *arg)
 	nni_lmq_fini(&p->recv_messages);
 
 	uint16_t count = 0;
+	// TODO
+	if (!p->cparam)
+		conn_param_alloc(&p->cparam);
 	nni_msg *tmsg = nano_msg_notify_disconnect(p->cparam, SERVER_SHUTTING_DOWN);
 	nni_msg_set_conn_param(tmsg, p->cparam);
 	// emulate disconnect notify msg as a normal publish
