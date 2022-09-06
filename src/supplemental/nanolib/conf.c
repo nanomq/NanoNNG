@@ -15,27 +15,47 @@
 #include "nng/supplemental/nanolib/log.h"
 #include <ctype.h>
 
+static void conf_bridge_parse(conf *nanomq_conf, const char *path);
+static void conf_aws_bridge_parse(conf *nanomq_conf, const char *path);
 static void conf_bridge_init(conf_bridge *bridge);
 static void conf_bridge_node_init(conf_bridge_node *node);
 static void conf_bridge_destroy(conf_bridge *bridge);
 static void conf_bridge_node_destroy(conf_bridge_node *node);
-static bool conf_bridge_node_parse_subs(
+static void conf_bridge_node_parse_subs(
     conf_bridge_node *node, const char *path, const char *name);
-static void               conf_auth_destroy(conf_auth *auth);
-static void               conf_web_hook_destroy(conf_web_hook *web_hook);
-static bool               conf_tls_parse(
-                  conf_tls *tls, const char *path, const char *prefix1, const char *prefix2);
+static void print_bridge_conf(conf_bridge *bridge, const char *prefix);
+static void conf_auth_parse(conf_auth *auth, const char *path);
+static void conf_auth_destroy(conf_auth *auth);
+static void conf_auth_http_req_init(conf_auth_http_req *req);
+
+static void conf_auth_http_parse(conf_auth_http *auth_http, const char *path);
+static void conf_auth_http_destroy(conf_auth_http *auth_http);
+
+static void conf_web_hook_destroy(conf_web_hook *web_hook);
+static void conf_tls_parse(
+    conf_tls *tls, const char *path, const char *prefix1, const char *prefix2);
 static void               conf_tls_init(conf_tls *tls);
 static void               conf_tls_destroy(conf_tls *tls);
-static void               conf_auth_http_req_init(conf_auth_http_req *req);
 static conf_http_header **conf_parse_http_headers(
     const char *path, const char *key_prefix, size_t *count);
-static bool conf_sqlite_parse(
+static void conf_sqlite_parse(
     conf_sqlite *sqlite, const char *path, const char *key_prefix);
 static void conf_sqlite_destroy(conf_sqlite *sqlite);
+
+static void conf_web_hook_parse(conf_web_hook *webhook, const char *path);
+static void conf_web_hook_destroy(conf_web_hook *web_hook);
+
 static void conf_log_init(conf_log *log);
 static void conf_log_destroy(conf_log *log);
-static bool conf_log_parse(conf_log *log, const char *path);
+static void conf_log_parse(conf_log *log, const char *path);
+
+#if defined(SUPP_RULE_ENGINE)
+static void conf_rule_repub_parse(conf_rule *cr, char *path);
+static void conf_rule_mysql_parse(conf_rule *cr, char *path);
+static bool conf_rule_sqlite_parse(conf_rule *cr, char *path);
+static void conf_rule_fdb_parse(conf_rule *cr, char *path);
+static void conf_rule_parse(conf_rule *rule, const char *path);
+#endif
 
 static char *
 strtrim(char *str, size_t len)
@@ -103,7 +123,7 @@ conf_update_var(const char *fpath, const char *key, uint8_t type, void *var)
 		break;
 	case 4:
 		// uint64
-		sprintf(varstr, "%lu", *(uint64_t *) var);
+		sprintf(varstr, "%llu", *(uint64_t *) var);
 		break;
 	case 5:
 		// long
@@ -263,14 +283,14 @@ get_conf_value_with_prefix2(char *line, size_t len, const char *prefix,
 	return value;
 }
 
-static bool
+static void
 conf_tls_parse(
     conf_tls *tls, const char *path, const char *prefix1, const char *prefix2)
 {
 	FILE *fp;
 	if ((fp = fopen(path, "r")) == NULL) {
 		log_error("File %s open failed", path);
-		return false;
+		return;
 	}
 	char * line = NULL;
 	size_t sz   = 0;
@@ -328,34 +348,18 @@ conf_tls_parse(
 	}
 
 	fclose(fp);
-
-	return true;
 }
 
-bool
-conf_parser(conf *nanomq_conf)
+static void
+conf_basic_parse(conf *config, const char *path)
 {
-	const char *dest_path = nanomq_conf->conf_file;
-
-	if (dest_path == NULL || !nano_file_exists(dest_path)) {
-		if (!nano_file_exists(CONF_PATH_NAME)) {
-			log_debug("Configure file [%s] or [%s] not found or "
-			          "unreadable",
-			    dest_path, CONF_PATH_NAME);
-			return false;
-		} else {
-			dest_path = CONF_PATH_NAME;
-		}
-	}
-
 	char * line = NULL;
 	size_t sz   = 0;
 	FILE * fp;
-	conf * config = nanomq_conf;
 
-	if ((fp = fopen(dest_path, "r")) == NULL) {
-		log_error("File %s open failed", dest_path);
-		return true;
+	if ((fp = fopen(path, "r")) == NULL) {
+		log_error("File %s open failed", path);
+		return;
 	}
 
 	int   n;
@@ -473,7 +477,7 @@ conf_parser(conf *nanomq_conf)
 			        (void **) &config->http_server.jwt
 			            .public_key) > 0) {
 				config->http_server.jwt
-				    .iss = (char *)nni_plat_file_basename(
+				    .iss = (char *) nni_plat_file_basename(
 				    config->http_server.jwt.public_keyfile);
 				config->http_server.jwt.public_key_len =
 				    strlen(config->http_server.jwt.public_key);
@@ -496,7 +500,7 @@ conf_parser(conf *nanomq_conf)
 			config->tls.enable =
 			    nni_strcasecmp(value, "true") == 0;
 			nng_strfree(value);
-		} 
+		}
 		free(line);
 		line = NULL;
 	}
@@ -506,20 +510,48 @@ conf_parser(conf *nanomq_conf)
 	}
 
 	fclose(fp);
-	conf_tls_parse(&config->tls, dest_path, "\0","\0");
-	conf_sqlite_parse(&config->sqlite, dest_path, "sqlite");
-	conf_log_parse(&config->log, dest_path);
+}
 
-	return true;
+void
+conf_parse(conf *nanomq_conf)
+{
+	const char *conf_path = nanomq_conf->conf_file;
+
+	if (conf_path == NULL || !nano_file_exists(conf_path)) {
+		if (!nano_file_exists(CONF_PATH_NAME)) {
+			log_debug("Configure file [%s] or [%s] not found or "
+			          "unreadable",
+			    conf_path, CONF_PATH_NAME);
+			return;
+		} else {
+			conf_path = CONF_PATH_NAME;
+		}
+	}
+
+	conf *config = nanomq_conf;
+	conf_basic_parse(config, conf_path);
+	conf_tls_parse(&config->tls, conf_path, "\0", "\0");
+	conf_sqlite_parse(&config->sqlite, conf_path, "sqlite");
+	conf_log_parse(&config->log, conf_path);
+	conf_web_hook_parse(&config->web_hook, conf_path);
+	conf_bridge_parse(config, conf_path);
+	conf_aws_bridge_parse(config, conf_path);
+
+#if defined(SUPP_RULE_ENGINE)
+	conf_rule_parse(&config->rule_eng, conf_path);
+#endif
+
+	conf_auth_parse(&config->auths, conf_path);
+	conf_auth_http_parse(&config->auth_http, conf_path);
 }
 
 static void
 conf_log_init(conf_log *log)
 {
-	log->level  = NNG_LOG_WARN;
-	log->file   = NULL;
-	log->dir    = NULL;
-	log->type   = LOG_TO_CONSOLE;
+	log->level = NNG_LOG_WARN;
+	log->file  = NULL;
+	log->dir   = NULL;
+	log->type  = LOG_TO_CONSOLE;
 }
 
 static void
@@ -535,13 +567,13 @@ conf_log_destroy(conf_log *log)
 	log->type = LOG_TO_CONSOLE;
 }
 
-static bool
+static void
 conf_log_parse(conf_log *log, const char *path)
 {
 	FILE *fp;
 	if ((fp = fopen(path, "r")) == NULL) {
 		log_error("File %s open failed", path);
-		return false;
+		return;
 	}
 	char *  line     = NULL;
 	size_t  sz       = 0;
@@ -590,9 +622,8 @@ conf_log_parse(conf_log *log, const char *path)
 		free(line);
 	}
 	fclose(fp);
-	
+
 	log->type = log_type;
-	return true;
 }
 
 static void
@@ -670,9 +701,8 @@ conf_rule_init(conf_rule *rule_en)
 void
 conf_init(conf *nanomq_conf)
 {
-	nanomq_conf->url = NULL;
-
-	nanomq_conf->conf_file      = NULL;
+	nanomq_conf->url       = NULL;
+	nanomq_conf->conf_file = NULL;
 
 #if defined(SUPP_RULE_ENGINE)
 	conf_rule_init(&nanomq_conf->rule_eng);
@@ -736,7 +766,6 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->auth_http.connect_timeout = 5;
 	nanomq_conf->auth_http.pool_size       = 32;
 	conf_tls_init(&nanomq_conf->auth_http.tls);
-
 }
 
 void
@@ -769,30 +798,22 @@ print_conf(conf *nanomq_conf)
 	log_info("enable tls:               %s",
 	    nanomq_conf->tls.enable ? "true" : "false");
 	if (nanomq_conf->tls.enable) {
-		log_info(
-		    "tls url:                  %s", nanomq_conf->tls.url);
+		log_info("tls url:                  %s", nanomq_conf->tls.url);
 		log_info("tls verify peer:          %s",
 		    nanomq_conf->tls.verify_peer ? "true" : "false");
 		log_info("tls fail_if_no_peer_cert: %s",
 		    nanomq_conf->tls.set_fail ? "true" : "false");
 	}
+
+	print_bridge_conf(&nanomq_conf->bridge, "");
+#if defined(SUPP_AWS_BRIDGE)
+	print_bridge_conf(&nanomq_conf->aws_bridge, "aws.");
+#endif
 }
 
-void
-conf_auth_parser(conf *nanomq_conf)
+static void
+conf_auth_parse(conf_auth *auth, const char *path)
 {
-	char *dest_path = nanomq_conf->auth_file;
-	if (dest_path == NULL || !nano_file_exists(dest_path)) {
-		if (!nano_file_exists(CONF_AUTH_PATH_NAME)) {
-			log_debug("Configure file [%s] or [%s] not found or "
-			          "unreadable",
-			    dest_path, CONF_AUTH_PATH_NAME);
-			return;
-		} else {
-			dest_path = CONF_AUTH_PATH_NAME;
-		}
-	}
-
 	char   name_key[64] = "";
 	char   pass_key[64] = "";
 	char * name;
@@ -800,17 +821,15 @@ conf_auth_parser(conf *nanomq_conf)
 	size_t index    = 1;
 	bool   get_name = false;
 	bool   get_pass = false;
-	char * line;
-	size_t sz = 0;
+	char * line     = NULL;
+	size_t sz       = 0;
 	char * value;
-
-	conf_auth *auth = &nanomq_conf->auths;
 
 	auth->count = 0;
 
 	FILE *fp;
-	if ((fp = fopen(dest_path, "r")) == NULL) {
-		log_error("File %s open failed", dest_path);
+	if ((fp = fopen(path, "r")) == NULL) {
+		log_error("File %s open failed", path);
 		return;
 	}
 
@@ -889,7 +908,7 @@ printf_gateway_conf(zmq_gateway_conf *gateway)
 }
 
 #if defined(SUPP_RULE_ENGINE)
-static bool
+static void
 conf_rule_repub_parse(conf_rule *cr, char *path)
 {
 	assert(path);
@@ -897,18 +916,17 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 		printf("Configure file [%s] not found or "
 		       "unreadable\n",
 		    path);
-		return false;
+		return;
 	}
 
-	char    *line = NULL;
+	char *   line = NULL;
 	size_t   sz   = 0;
-	FILE    *fp;
-	repub_t *repub  = NNI_ALLOC_STRUCT(repub);
-
+	FILE *   fp;
+	repub_t *repub = NNI_ALLOC_STRUCT(repub);
 
 	if (NULL == (fp = fopen(path, "r"))) {
 		log_debug("File %s open failed\n", path);
-		return false;
+		return;
 	}
 
 	char *value;
@@ -919,27 +937,33 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 			if (strstr(line, "address")) {
 				if (0 != sscanf(line, "rule.repub.%d", &num)) {
 					char key[32] = { 0 };
-					sprintf(key, "rule.repub.%d.address", num);
+					sprintf(
+					    key, "rule.repub.%d.address", num);
 					if (NULL !=
-					    (value = get_conf_value(line, sz, key))) {
+					    (value = get_conf_value(
+					         line, sz, key))) {
 						repub->address = value;
 					}
 				}
 			} else if (strstr(line, "topic")) {
 				if (0 != sscanf(line, "rule.repub.%d", &num)) {
 					char key[32] = { 0 };
-					sprintf(key, "rule.repub.%d.topic", num);
+					sprintf(
+					    key, "rule.repub.%d.topic", num);
 					if (NULL !=
-					    (value = get_conf_value(line, sz, key))) {
+					    (value = get_conf_value(
+					         line, sz, key))) {
 						repub->topic = value;
 					}
 				}
 			} else if (strstr(line, "proto_ver")) {
 				if (0 != sscanf(line, "rule.repub.%d", &num)) {
 					char key[32] = { 0 };
-					sprintf(key, "rule.repub.%d.proto_ver", num);
+					sprintf(key, "rule.repub.%d.proto_ver",
+					    num);
 					if (NULL !=
-					    (value = get_conf_value(line, sz, key))) {
+					    (value = get_conf_value(
+					         line, sz, key))) {
 						repub->proto_ver = atoi(value);
 						free(value);
 					}
@@ -947,42 +971,55 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 			} else if (strstr(line, "clientid")) {
 				if (0 != sscanf(line, "rule.repub.%d", &num)) {
 					char key[32] = { 0 };
-					sprintf(key, "rule.repub.%d.clientid", num);
+					sprintf(key, "rule.repub.%d.clientid",
+					    num);
 					if (NULL !=
-					    (value = get_conf_value(line, sz, key))) {
+					    (value = get_conf_value(
+					         line, sz, key))) {
 						repub->clientid = value;
 					}
 				}
 			} else if (strstr(line, "username")) {
 				if (0 != sscanf(line, "rule.repub.%d", &num)) {
 					char key[32] = { 0 };
-					sprintf(key, "rule.repub.%d.username", num);
+					sprintf(key, "rule.repub.%d.username",
+					    num);
 					if (NULL !=
-					    (value = get_conf_value(line, sz, key))) {
+					    (value = get_conf_value(
+					         line, sz, key))) {
 						repub->username = value;
 					}
 				}
 			} else if (strstr(line, "password")) {
 				if (0 != sscanf(line, "rule.repub.%d", &num)) {
 					char key[32] = { 0 };
-					sprintf(key, "rule.repub.%d.password", num);
+					sprintf(key, "rule.repub.%d.password",
+					    num);
 					if (NULL !=
-					    (value = get_conf_value(line, sz, key))) {
+					    (value = get_conf_value(
+					         line, sz, key))) {
 						repub->password = value;
 					}
 				}
 			} else if (strstr(line, "clean_start")) {
 				if (0 != sscanf(line, "rule.repub.%d", &num)) {
 					char key[32] = { 0 };
-					sprintf(key, "rule.repub.%d.clean_start", num);
+					sprintf(key,
+					    "rule.repub.%d.clean_start", num);
 					if (NULL !=
-					    (value = get_conf_value(line, sz, key))) {
+					    (value = get_conf_value(
+					         line, sz, key))) {
 						if (!strcmp(value, "true")) {
-							repub->clean_start = true;
-						} else if (!strcmp(value, "false")) {
-							repub->clean_start = false;
+							repub->clean_start =
+							    true;
+						} else if (!strcmp(value,
+						               "false")) {
+							repub->clean_start =
+							    false;
 						} else {
-							log_error("Unsupport clean start option!");
+							log_error(
+							    "Unsupport clean "
+							    "start option!");
 							exit(EXIT_FAILURE);
 						}
 						free(value);
@@ -991,18 +1028,22 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 			} else if (strstr(line, "keepalive")) {
 				if (0 != sscanf(line, "rule.repub.%d", &num)) {
 					char key[32] = { 0 };
-					sprintf(key, "rule.repub.%d.keepalive", num);
+					sprintf(key, "rule.repub.%d.keepalive",
+					    num);
 					if (NULL !=
-					    (value = get_conf_value(line, sz, key))) {
+					    (value = get_conf_value(
+					         line, sz, key))) {
 						repub->keepalive = atoi(value);
 						free(value);
 					}
 				}
 			}
 
-		} else if (0 == strncmp(line, "rule.event.publish", strlen("rule.event.publish"))) {
+		} else if (0 ==
+		    strncmp(line, "rule.event.publish",
+		        strlen("rule.event.publish"))) {
 
-			// TODO more accurate way 
+			// TODO more accurate way
 			// topic <=======> broker <======> sql
 			int num = 0;
 			int res =
@@ -1016,12 +1057,13 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 				value++;
 				rule_sql_parse(cr, value);
 				char *p = strrchr(value, '\"');
-				*p = '\0';
+				*p      = '\0';
 
-				cr->rules[cvector_size(cr->rules) - 1]
-				    .repub = NNI_ALLOC_STRUCT(repub);
+				cr->rules[cvector_size(cr->rules) - 1].repub =
+				    NNI_ALLOC_STRUCT(repub);
 				memcpy(cr->rules[cvector_size(cr->rules) - 1]
-				    .repub, repub, sizeof(*repub));
+				           .repub,
+				    repub, sizeof(*repub));
 				cr->rules[cvector_size(cr->rules) - 1]
 				    .forword_type = RULE_FORWORD_REPUB;
 				cr->rules[cvector_size(cr->rules) - 1]
@@ -1030,7 +1072,6 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 				    .enabled = true;
 				cr->rules[cvector_size(cr->rules) - 1]
 				    .rule_id = rule_generate_rule_id();
-
 			}
 		}
 
@@ -1045,10 +1086,9 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 	}
 
 	fclose(fp);
-	return true;
 }
 
-static bool
+static void
 conf_rule_mysql_parse(conf_rule *cr, char *path)
 {
 	assert(path);
@@ -1056,34 +1096,37 @@ conf_rule_mysql_parse(conf_rule *cr, char *path)
 		printf("Configure file [%s] not found or "
 		       "unreadable\n",
 		    path);
-		return false;
+		return;
 	}
 
-	char    *line = NULL;
-	size_t   sz   = 0;
-	FILE    *fp;
-	rule_mysql *mysql  = NNI_ALLOC_STRUCT(mysql);
-
+	char *      line = NULL;
+	size_t      sz   = 0;
+	FILE *      fp;
+	rule_mysql *mysql = NNI_ALLOC_STRUCT(mysql);
 
 	if (NULL == (fp = fopen(path, "r"))) {
 		log_debug("File %s open failed\n", path);
-		return false;
+		return;
 	}
 
 	char *value;
 	while (nano_getline(&line, &sz, fp) != -1) {
-		if (NULL != (value = get_conf_value(line, sz, "rule.mysql.name"))) {
+		if (NULL !=
+		    (value = get_conf_value(line, sz, "rule.mysql.name"))) {
 			cr->mysql_db = value;
 			log_debug(value);
-		} else if (0 == strncmp(line, "rule.mysql", strlen("rule.mysql"))) {
+		} else if (0 ==
+		    strncmp(line, "rule.mysql", strlen("rule.mysql"))) {
 			int num = 0;
 
 			if (strstr(line, "table")) {
 				if (0 != sscanf(line, "rule.mysql.%d", &num)) {
 					char key[32] = { 0 };
-					sprintf(key, "rule.mysql.%d.table", num);
+					sprintf(
+					    key, "rule.mysql.%d.table", num);
 					if (NULL !=
-					    (value = get_conf_value(line, sz, key))) {
+					    (value = get_conf_value(
+					         line, sz, key))) {
 						log_debug(value);
 						mysql->table = value;
 					}
@@ -1091,9 +1134,11 @@ conf_rule_mysql_parse(conf_rule *cr, char *path)
 			} else if (strstr(line, "host")) {
 				if (0 != sscanf(line, "rule.mysql.%d", &num)) {
 					char key[32] = { 0 };
-					sprintf(key, "rule.mysql.%d.host", num);
+					sprintf(
+					    key, "rule.mysql.%d.host", num);
 					if (NULL !=
-					    (value = get_conf_value(line, sz, key))) {
+					    (value = get_conf_value(
+					         line, sz, key))) {
 						log_debug(value);
 						mysql->host = value;
 					}
@@ -1101,9 +1146,11 @@ conf_rule_mysql_parse(conf_rule *cr, char *path)
 			} else if (strstr(line, "username")) {
 				if (0 != sscanf(line, "rule.mysql.%d", &num)) {
 					char key[32] = { 0 };
-					sprintf(key, "rule.mysql.%d.username", num);
+					sprintf(key, "rule.mysql.%d.username",
+					    num);
 					if (NULL !=
-					    (value = get_conf_value(line, sz, key))) {
+					    (value = get_conf_value(
+					         line, sz, key))) {
 						log_debug(value);
 						mysql->username = value;
 					}
@@ -1111,17 +1158,21 @@ conf_rule_mysql_parse(conf_rule *cr, char *path)
 			} else if (strstr(line, "password")) {
 				if (0 != sscanf(line, "rule.mysql.%d", &num)) {
 					char key[32] = { 0 };
-					sprintf(key, "rule.mysql.%d.password", num);
+					sprintf(key, "rule.mysql.%d.password",
+					    num);
 					if (NULL !=
-					    (value = get_conf_value(line, sz, key))) {
+					    (value = get_conf_value(
+					         line, sz, key))) {
 						log_debug(value);
 						mysql->password = value;
 					}
 				}
 			}
-		} else if (0 == strncmp(line, "rule.event.publish", strlen("rule.event.publish"))) {
+		} else if (0 ==
+		    strncmp(line, "rule.event.publish",
+		        strlen("rule.event.publish"))) {
 
-			// TODO more accurate way 
+			// TODO more accurate way
 			// topic <=======> broker <======> sql
 			int num = 0;
 			int res =
@@ -1135,12 +1186,13 @@ conf_rule_mysql_parse(conf_rule *cr, char *path)
 				value++;
 				rule_sql_parse(cr, value);
 				char *p = strrchr(value, '\"');
-				*p = '\0';
+				*p      = '\0';
 
-				cr->rules[cvector_size(cr->rules) - 1]
-				    .mysql = NNI_ALLOC_STRUCT(mysql);
+				cr->rules[cvector_size(cr->rules) - 1].mysql =
+				    NNI_ALLOC_STRUCT(mysql);
 				memcpy(cr->rules[cvector_size(cr->rules) - 1]
-				    .mysql, mysql, sizeof(*mysql));
+				           .mysql,
+				    mysql, sizeof(*mysql));
 				cr->rules[cvector_size(cr->rules) - 1]
 				    .forword_type = RULE_FORWORD_MYSOL;
 				cr->rules[cvector_size(cr->rules) - 1]
@@ -1149,7 +1201,6 @@ conf_rule_mysql_parse(conf_rule *cr, char *path)
 				    .enabled = true;
 				cr->rules[cvector_size(cr->rules) - 1]
 				    .rule_id = rule_generate_rule_id();
-
 			}
 		}
 
@@ -1164,10 +1215,7 @@ conf_rule_mysql_parse(conf_rule *cr, char *path)
 	}
 
 	fclose(fp);
-	return true;
 }
-
-
 
 static bool
 conf_rule_sqlite_parse(conf_rule *cr, char *path)
@@ -1175,36 +1223,35 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 	assert(path);
 	if (path == NULL || !nano_file_exists(path)) {
 		log_debug("Configure file [%s] not found or "
-		       "unreadable\n",
+		          "unreadable\n",
 		    path);
-		return false;
+		return;
 	}
 
-	char * line  = NULL;
-	size_t sz    = 0;
+	char * line = NULL;
+	size_t sz   = 0;
 	FILE * fp;
 	char * table = NULL;
 
 	if (NULL == (fp = fopen(path, "r"))) {
 		log_error("File %s open failed\n", path);
-		return false;
+		return;
 	}
 
 	char *value;
 	while (nano_getline(&line, &sz, fp) != -1) {
-		if (NULL != (value = get_conf_value(line, sz, "rule.sqlite.path"))) {
+		if (NULL !=
+		    (value = get_conf_value(line, sz, "rule.sqlite.path"))) {
 			cr->sqlite_db = value;
-		} else if (NULL != strstr(
-		                line, "rule.sqlite")) {
-			
+		} else if (NULL != strstr(line, "rule.sqlite")) {
+
 			int num = 0;
-			int   res =
-			    sscanf(line, "rule.sqlite.%d.table", &num);
+			int res = sscanf(line, "rule.sqlite.%d.table", &num);
 			if (0 == res) {
 				log_fatal("Do not find table num");
 				exit(EXIT_FAILURE);
 			}
-			
+
 			char key[32] = { 0 };
 			sprintf(key, "rule.sqlite.%d.table", num);
 
@@ -1214,9 +1261,9 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 
 		} else if (NULL != strstr(line, "rule.event.publish")) {
 
-			// TODO more accurate way table <======> sql 
+			// TODO more accurate way table <======> sql
 			int num = 0;
-			int   res =
+			int res =
 			    sscanf(line, "rule.event.publish.%d.sql", &num);
 			if (0 == res) {
 				log_fatal("Do not find table num");
@@ -1228,7 +1275,7 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 				// puts(value);
 				rule_sql_parse(cr, value);
 				char *p = strrchr(value, '\"');
-				*p = '\0';
+				*p      = '\0';
 
 				cr->rules[cvector_size(cr->rules) - 1]
 				    .sqlite_table = table;
@@ -1252,29 +1299,28 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 	}
 
 	fclose(fp);
-	return true;
 }
 
-static bool
+static void
 conf_rule_fdb_parse(conf_rule *cr, char *path)
 {
 	if (path == NULL || !nano_file_exists(path)) {
-		log_debug("Configure file [%s] not found or "
-		       "unreadable\n",
+		log_error("Configure file [%s] not found or "
+		          "unreadable\n",
 		    path);
-		return false;
+		return;
 	}
 
-	char *    line  = NULL;
-	int       rc    = 0;
-	size_t    sz    = 0;
+	char *    line = NULL;
+	int       rc   = 0;
+	size_t    sz   = 0;
 	FILE *    fp;
 	rule_key *rk = (rule_key *) nni_zalloc(sizeof(rule_key));
 	memset(rk, 0, sizeof(rule_key));
 
 	if (NULL == (fp = fopen(path, "r"))) {
 		log_error("File %s open failed\n", path);
-		return false;
+		return;
 	}
 
 	char *value;
@@ -1314,7 +1360,7 @@ conf_rule_fdb_parse(conf_rule *cr, char *path)
 				// puts(value);
 				rule_sql_parse(cr, value);
 				char *p = strrchr(value, '\"');
-				*p = '\0';
+				*p      = '\0';
 				cr->rules[cvector_size(cr->rules) - 1].key =
 				    rk;
 				cr->rules[cvector_size(cr->rules) - 1]
@@ -1337,35 +1383,18 @@ conf_rule_fdb_parse(conf_rule *cr, char *path)
 	}
 
 	fclose(fp);
-	return true;
 }
 
-
-bool
-conf_rule_parse(conf *nanomq_conf)
+static void
+conf_rule_parse(conf_rule *rule, const char *path)
 {
-
-	const char *dest_path = nanomq_conf->rule_file;
-	conf_rule   cr        = nanomq_conf->rule_eng;
-
-	if (dest_path == NULL || !nano_file_exists(dest_path)) {
-		if (!nano_file_exists(CONF_RULE_ENGINE_PATH_NAME)) {
-			log_debug("Configure file [%s] or [%s] not found or "
-			       "unreadable\n",
-			    dest_path, CONF_RULE_ENGINE_PATH_NAME);
-			return false;
-		} else {
-			dest_path = CONF_RULE_ENGINE_PATH_NAME;
-		}
-	}
-
-	char * line  = NULL;
-	size_t sz    = 0;
+	char * line = NULL;
+	size_t sz   = 0;
 	FILE * fp;
 
-	if ((fp = fopen(dest_path, "r")) == NULL) {
-		log_error("File %s open failed\n", dest_path);
-		return true;
+	if ((fp = fopen(path, "r")) == NULL) {
+		log_error("File %s open failed\n", path);
+		return;
 	}
 
 	char *value;
@@ -1374,24 +1403,26 @@ conf_rule_parse(conf *nanomq_conf)
 		    NULL) {
 			if (0 != nni_strcasecmp(value, "ON")) {
 				if (0 != nni_strcasecmp(value, "OFF")) {
-					log_warn("Unsupported option: %s\nrule "
-					        "option only support ON/OFF",
+					log_warn(
+					    "Unsupported option: %s\nrule "
+					    "option only support ON/OFF",
 					    value);
 				}
 				free(value);
 				break;
 			}
 			free(value);
-		// sqlite
+			// sqlite
 		} else if ((value = get_conf_value(
 		                line, sz, "rule_option.sqlite")) != NULL) {
 			if (0 == nni_strcasecmp(value, "enable")) {
-				cr.option |= RULE_ENG_SDB;
+				rule->option |= RULE_ENG_SDB;
 			} else {
 				if (0 != nni_strcasecmp(value, "disable")) {
-					log_warn("Unsupported option: %s\nrule "
-					        "option sqlite only support "
-					        "enable/disable",
+					log_warn(
+					    "Unsupported option: %s\nrule "
+					    "option sqlite only support "
+					    "enable/disable",
 					    value);
 					break;
 				}
@@ -1399,20 +1430,21 @@ conf_rule_parse(conf *nanomq_conf)
 			free(value);
 		} else if ((value = get_conf_value(line, sz,
 		                "rule_option.sqlite.conf.path")) != NULL) {
-			if (RULE_ENG_SDB & cr.option) {
+			if (RULE_ENG_SDB & rule->option) {
 				conf_rule_sqlite_parse(&cr, value);
 			}
 			free(value);
-		// repub
+			// repub
 		} else if ((value = get_conf_value(
 		                line, sz, "rule_option.repub")) != NULL) {
 			if (0 == nni_strcasecmp(value, "enable")) {
-				cr.option |= RULE_ENG_RPB;
+				rule->option |= RULE_ENG_RPB;
 			} else {
 				if (0 != nni_strcasecmp(value, "disable")) {
-					log_error("Unsupported option: %s\nrule "
-					        "option sqlite only support "
-					        "enable/disable",
+					log_error(
+					    "Unsupported option: %s\nrule "
+					    "option sqlite only support "
+					    "enable/disable",
 					    value);
 					break;
 				}
@@ -1420,20 +1452,21 @@ conf_rule_parse(conf *nanomq_conf)
 			free(value);
 		} else if ((value = get_conf_value(line, sz,
 		                "rule_option.repub.conf.path")) != NULL) {
-			if (RULE_ENG_RPB & cr.option) {
+			if (RULE_ENG_RPB & rule->option) {
 				conf_rule_repub_parse(&cr, value);
 			}
 			free(value);
-		// mysql
+			// mysql
 		} else if ((value = get_conf_value(
 		                line, sz, "rule_option.mysql")) != NULL) {
 			if (0 == nni_strcasecmp(value, "enable")) {
-				cr.option |= RULE_ENG_MDB;
+				rule->option |= RULE_ENG_MDB;
 			} else {
 				if (0 != nni_strcasecmp(value, "disable")) {
-					log_warn("Unsupported option: %s\nrule "
-					        "option mysql only support "
-					        "enable/disable",
+					log_warn(
+					    "Unsupported option: %s\nrule "
+					    "option mysql only support "
+					    "enable/disable",
 					    value);
 					break;
 				}
@@ -1441,20 +1474,21 @@ conf_rule_parse(conf *nanomq_conf)
 			free(value);
 		} else if ((value = get_conf_value(line, sz,
 		                "rule_option.mysql.conf.path")) != NULL) {
-			if (RULE_ENG_MDB & cr.option) {
+			if (RULE_ENG_MDB & rule->option) {
 				conf_rule_mysql_parse(&cr, value);
 			}
 			free(value);
-		// fdb
+			// fdb
 		} else if ((value = get_conf_value(
 		                line, sz, "rule_option.fdb")) != NULL) {
 			if (0 == nni_strcasecmp(value, "enable")) {
-				cr.option |= RULE_ENG_FDB;
+				rule->option |= RULE_ENG_FDB;
 			} else {
 				if (0 != nni_strcasecmp(value, "disable")) {
-					log_warn("Unsupported option: %s\nrule "
-					        "option fdb only support "
-					        "enable/disable",
+					log_warn(
+					    "Unsupported option: %s\nrule "
+					    "option fdb only support "
+					    "enable/disable",
 					    value);
 					break;
 				}
@@ -1462,8 +1496,8 @@ conf_rule_parse(conf *nanomq_conf)
 			free(value);
 		} else if ((value = get_conf_value(line, sz,
 		                "rule_option.fdb.conf.path")) != NULL) {
-			if (RULE_ENG_FDB & cr.option) {
-				conf_rule_fdb_parse(&cr, value);
+			if (RULE_ENG_FDB & rule->option) {
+				conf_rule_fdb_parse(rule, value);
 			}
 			free(value);
 		}
@@ -1476,15 +1510,11 @@ conf_rule_parse(conf *nanomq_conf)
 		free(line);
 	}
 
-	memcpy(&nanomq_conf->rule_eng, &cr, sizeof(cr));
-	// printf_rule_engine_conf(rule_engine);
-
 	fclose(fp);
-	return true;
 }
 #endif
 
-bool
+void
 conf_gateway_parse(zmq_gateway_conf *gateway)
 {
 	const char *dest_path = gateway->path;
@@ -1492,9 +1522,9 @@ conf_gateway_parse(zmq_gateway_conf *gateway)
 	if (dest_path == NULL || !nano_file_exists(dest_path)) {
 		if (!nano_file_exists(CONF_GATEWAY_PATH_NAME)) {
 			log_debug("Configure file [%s] or [%s] not found or "
-			       "unreadable\n",
+			          "unreadable\n",
 			    dest_path, CONF_GATEWAY_PATH_NAME);
-			return false;
+			return;
 		} else {
 			dest_path = CONF_GATEWAY_PATH_NAME;
 		}
@@ -1506,7 +1536,7 @@ conf_gateway_parse(zmq_gateway_conf *gateway)
 
 	if ((fp = fopen(dest_path, "r")) == NULL) {
 		log_error("File %s open failed\n", dest_path);
-		return true;
+		return;
 	}
 
 	char *value;
@@ -1573,17 +1603,16 @@ conf_gateway_parse(zmq_gateway_conf *gateway)
 	printf_gateway_conf(gateway);
 
 	fclose(fp);
-	return true;
 }
 
-static bool
+static void
 conf_bridge_node_parse_subs(
     conf_bridge_node *node, const char *path, const char *name)
 {
 	FILE *fp;
 	if ((fp = fopen(path, "r")) == NULL) {
 		log_error("File %s open failed", path);
-		return false;
+		return;
 	}
 
 	char    topic_key[128] = "";
@@ -1642,7 +1671,6 @@ conf_bridge_node_parse_subs(
 	}
 
 	fclose(fp);
-	return true;
 }
 
 static void
@@ -1697,11 +1725,11 @@ get_bridge_group_names(const char *path, const char *prefix, size_t *count)
 		log_error("File %s open failed", path);
 		return NULL;
 	}
-	char * line        = NULL;
-	size_t sz          = 0;
+	char * line = NULL;
+	size_t sz   = 0;
 
 	char *pattern = nni_zalloc(strlen(prefix) + 34);
-	sprintf(pattern, "%sbridge.mqtt.%[^.].%*[^=]=%*[^\n]", prefix);
+	sprintf(pattern, "%sbridge.mqtt.%%[^.].%%*[^=]=%%*[^\n]", prefix);
 
 	char **group_names = calloc(1, sizeof(char *));
 	size_t group_count = 0;
@@ -1832,13 +1860,13 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 	return node;
 }
 
-static bool
-conf_bride_content_parse(
-    conf *nanomq_conf, conf_bridge *bridge,const char *prefix, const char *path)
+static void
+conf_bride_content_parse(conf *nanomq_conf, conf_bridge *bridge,
+    const char *prefix, const char *path)
 {
 	// 1. parse sqlite config from nanomq_bridge.conf
 	char *key = nni_zalloc(strlen(prefix) + 15);
-	sprintf(key, "%sbridge.sqlite",prefix);
+	sprintf(key, "%sbridge.sqlite", prefix);
 	conf_sqlite_parse(&bridge->sqlite, path, "bridge.sqlite");
 	nni_strfree(key);
 	// 2. find all the name from the file
@@ -1848,7 +1876,7 @@ conf_bride_content_parse(
 
 	if (group_count == 0 || group_names == NULL) {
 		log_debug("No bridge config group found");
-		return false;
+		return;
 	}
 
 	// 3. foreach the names as the key, get the value from the file and set
@@ -1867,49 +1895,28 @@ conf_bride_content_parse(
 	}
 	bridge->nodes = node_array;
 	free_bridge_group_names(group_names, group_count);
-
-	return true;
 }
 
-bool
-conf_bridge_parse(conf *nanomq_conf)
+static void
+conf_bridge_parse(conf *nanomq_conf, const char *path)
 {
-	const char *dest_path = nanomq_conf->bridge_file;
-
-	if (dest_path == NULL || !nano_file_exists(dest_path)) {
-		if (!nano_file_exists(CONF_BRIDGE_PATH_NAME)) {
-			log_debug("Configure file [%s] or [%s] not found or "
-			          "unreadable",
-			    dest_path, CONF_BRIDGE_PATH_NAME);
-			return false;
-		} else {
-			dest_path = CONF_BRIDGE_PATH_NAME;
-		}
-	}
 	conf_bridge *bridge = &nanomq_conf->bridge;
-	return conf_bride_content_parse(nanomq_conf, bridge, dest_path);
+	conf_bride_content_parse(nanomq_conf, bridge, "", path);
 }
 
-bool
-conf_aws_bridge_parse(conf *nanomq_conf)
+static void
+conf_aws_bridge_parse(conf *nanomq_conf, const char *path)
 {
-	const char *dest_path = nanomq_conf->aws_bridge_file;
-
-	if (dest_path == NULL || !nano_file_exists(dest_path)) {
-		if (!nano_file_exists(CONF_AWS_BRIDGE_PATH_NAME)) {
-			log_debug("Configure file [%s] or [%s] not found or "
-			          "unreadable",
-			    dest_path, CONF_AWS_BRIDGE_PATH_NAME);
-			return false;
-		} else {
-			dest_path = CONF_AWS_BRIDGE_PATH_NAME;
-		}
-	}
+#if defined(SUPP_AWS_BRIDGE)
 	conf_bridge *bridge = &nanomq_conf->aws_bridge;
-	return conf_bride_content_parse(nanomq_conf, bridge, dest_path);
+	conf_bride_content_parse(nanomq_conf, bridge, "aws.", path);
+#else
+	NNI_ARG_UNUSED(nanomq_conf);
+	NNI_ARG_UNUSED(path);
+#endif
 }
 
-void
+static void
 conf_bridge_node_destroy(conf_bridge_node *node)
 {
 	node->enable = false;
@@ -1969,54 +1976,56 @@ conf_bridge_destroy(conf_bridge *bridge)
 	}
 }
 
-void
-print_bridge_conf(conf_bridge *bridge)
+static void
+print_bridge_conf(conf_bridge *bridge, const char *prefix)
 {
 	if (bridge->count == 0 || bridge->nodes == NULL) {
 		return;
 	}
 	for (size_t i = 0; i < bridge->count; i++) {
-		log_info("bridge.mqtt.%s.address:      %s",
-		    bridge->nodes[i]->name, bridge->nodes[i]->address);
-		log_info("bridge.mqtt.%s.proto_ver:    %d",
-		    bridge->nodes[i]->name, bridge->nodes[i]->proto_ver);
-		log_info("bridge.mqtt.%s.clientid:     %s",
-		    bridge->nodes[i]->name, bridge->nodes[i]->clientid);
-		log_info("bridge.mqtt.%s.clean_start:  %d",
-		    bridge->nodes[i]->name, bridge->nodes[i]->clean_start);
-		log_info("bridge.mqtt.%s.username:     %s",
-		    bridge->nodes[i]->name, bridge->nodes[i]->username);
-		log_info("bridge.mqtt.%s.password:     %s",
-		    bridge->nodes[i]->name, bridge->nodes[i]->password);
-		log_info("bridge.mqtt.%s.keepalive:    %d",
-		    bridge->nodes[i]->name, bridge->nodes[i]->keepalive);
-		log_info("bridge.mqtt.%s.parallel:     %ld",
-		    bridge->nodes[i]->name, bridge->nodes[i]->parallel);
-		log_info("bridge.mqtt.%s.forwards: ", bridge->nodes[i]->name);
+		conf_bridge_node *node = bridge->nodes[i];
+		log_info("%sbridge.mqtt.%s.address:      %s", prefix,
+		    node->name, node->address);
+		log_info("%sbridge.mqtt.%s.proto_ver:    %d", prefix,
+		    node->name, node->proto_ver);
+		log_info("%sbridge.mqtt.%s.clientid:     %s", prefix,
+		    node->name, node->clientid);
+		log_info("%sbridge.mqtt.%s.clean_start:  %d", prefix,
+		    node->name, node->clean_start);
+		log_info("%sbridge.mqtt.%s.username:     %s", prefix,
+		    node->name, node->username);
+		log_info("%sbridge.mqtt.%s.password:     %s", prefix,
+		    node->name, node->password);
+		log_info("%sbridge.mqtt.%s.keepalive:    %d", prefix,
+		    node->name, node->keepalive);
+		log_info("%sbridge.mqtt.%s.parallel:     %ld", prefix,
+		    node->name, node->parallel);
+		log_info("%sbridge.mqtt.%s.forwards: ", prefix, node->name);
 
-		for (size_t j = 0; j < bridge->nodes[j]->forwards_count; j++) {
-			log_info("\t[%ld] topic:        %s", j,
-			    bridge->nodes[i]->forwards[j]);
+		for (size_t j = 0; j < node->forwards_count; j++) {
+			log_info(
+			    "\t[%ld] topic:        %s", j, node->forwards[j]);
 		}
-		log_info("bridge.mqtt.%s.subscription: ");
-		for (size_t k = 0; k < bridge->nodes[i]->sub_count; k++) {
+		log_info(
+		    "%sbridge.mqtt.%s.subscription: ", prefix, node->name);
+		for (size_t k = 0; k < node->sub_count; k++) {
 			log_info("\t[%ld] topic:        %.*s", k + 1,
-			    bridge->nodes[i]->sub_list[k].topic_len,
-			    bridge->nodes[i]->sub_list[k].topic);
+			    node->sub_list[k].topic_len,
+			    node->sub_list[k].topic);
 			log_info("\t[%ld] qos:          %d", k + 1,
-			    bridge->nodes[i]->sub_list[k].qos);
+			    node->sub_list[k].qos);
 		}
 	}
 
-	log_info("bridge.sqlite.enable: %s",
+	log_info("%sbridge.sqlite.enable: %s", prefix,
 	    bridge->sqlite.enable ? "true" : "false");
-	log_info("bridge.sqlite.disk_cache_size: %ld",
+	log_info("%sbridge.sqlite.disk_cache_size: %ld", prefix,
 	    bridge->sqlite.disk_cache_size);
-	log_info("bridge.sqlite.mounted_file_path: %s",
+	log_info("%sbridge.sqlite.mounted_file_path: %s", prefix,
 	    bridge->sqlite.mounted_file_path);
-	log_info("bridge.sqlite.flush_mem_threshold: %ld",
+	log_info("%sbridge.sqlite.flush_mem_threshold: %ld", prefix,
 	    bridge->sqlite.flush_mem_threshold);
-	log_info("bridge.sqlite.resend_interval: %ld",
+	log_info("%sbridge.sqlite.resend_interval: %ld", prefix,
 	    bridge->sqlite.resend_interval);
 }
 
@@ -2080,13 +2089,13 @@ webhook_action_parse(const char *json, conf_web_hook_rule *hook_rule)
 	cJSON_Delete(object);
 }
 
-bool
+static void
 conf_web_hook_parse_rules(conf_web_hook *webhook, const char *path)
 {
 	FILE *fp;
 	if ((fp = fopen(path, "r")) == NULL) {
 		log_error("File %s open failed", path);
-		return false;
+		return;
 	}
 
 	char * line = NULL;
@@ -2162,35 +2171,19 @@ conf_web_hook_parse_rules(conf_web_hook *webhook, const char *path)
 	}
 
 	fclose(fp);
-	return true;
 }
 
-bool
-conf_web_hook_parse(conf *nanomq_conf)
+static void
+conf_web_hook_parse(conf_web_hook *webhook, const char *path)
 {
-	const char *dest_path = nanomq_conf->web_hook_file;
-
-	if (dest_path == NULL || !nano_file_exists(dest_path)) {
-		if (!nano_file_exists(CONF_WEB_HOOK_PATH_NAME)) {
-			log_debug("Configure file [%s] or [%s] not found or "
-			          "unreadable",
-			    dest_path, CONF_WEB_HOOK_PATH_NAME);
-			return false;
-		} else {
-			dest_path = CONF_WEB_HOOK_PATH_NAME;
-		}
-	}
-
 	char * line = NULL;
 	size_t sz   = 0;
 	FILE * fp;
 
-	conf_web_hook *webhook = &nanomq_conf->web_hook;
-
-	if ((fp = fopen(dest_path, "r")) == NULL) {
-		log_error("File %s open failed", dest_path);
+	if ((fp = fopen(path, "r")) == NULL) {
+		log_error("File %s open failed", path);
 		webhook->enable = false;
-		return true;
+		return;
 	}
 
 	char *value;
@@ -2226,10 +2219,9 @@ conf_web_hook_parse(conf *nanomq_conf)
 	}
 	fclose(fp);
 
-	webhook->headers = conf_parse_http_headers(
-	    dest_path, "web.hook", &webhook->header_count);
-	conf_web_hook_parse_rules(webhook, dest_path);
-	return true;
+	webhook->headers =
+	    conf_parse_http_headers(path, "web.hook", &webhook->header_count);
+	conf_web_hook_parse_rules(webhook, path);
 }
 
 static void
@@ -2263,7 +2255,7 @@ get_time(const char *str, uint64_t *second)
 {
 	char     unit = 0;
 	uint64_t s    = 0;
-	if (2 == sscanf(str, "%ld%c", &s, &unit)) {
+	if (2 == sscanf(str, "%lld%c", &s, &unit)) {
 		switch (unit) {
 		case 's':
 			*second = s;
@@ -2415,14 +2407,14 @@ get_params(const char *value, size_t *count)
 	return params;
 }
 
-static bool
+static void
 conf_auth_http_req_parse(
     conf_auth_http_req *req, const char *path, const char *key_prefix)
 {
 	FILE *fp;
 	if ((fp = fopen(path, "r")) == NULL) {
 		log_error("File %s open failed", path);
-		return false;
+		return;
 	}
 	char * line = NULL;
 	size_t sz   = 0;
@@ -2458,37 +2450,21 @@ conf_auth_http_req_parse(
 
 	req->headers =
 	    conf_parse_http_headers(path, key_prefix, &req->header_count);
-
-	return true;
 }
 
-bool
-conf_auth_http_parse(conf *nanomq_conf)
+static void
+conf_auth_http_parse(conf_auth_http *auth_http, const char *path)
 {
-	const char *dest_path = nanomq_conf->auth_http_file;
-
-	if (dest_path == NULL || !nano_file_exists(dest_path)) {
-		if (!nano_file_exists(CONF_AUTH_HTTP_PATH_NAME)) {
-			log_debug("Configure file [%s] or [%s] not found or "
-			          "unreadable",
-			    dest_path, CONF_AUTH_HTTP_PATH_NAME);
-			return false;
-		} else {
-			dest_path = CONF_AUTH_HTTP_PATH_NAME;
-		}
-	}
-
 	char * line = NULL;
 	size_t sz   = 0;
 	FILE * fp;
 
-	conf_auth_http *auth_http = &nanomq_conf->auth_http;
-
-	if ((fp = fopen(dest_path, "r")) == NULL) {
-		log_debug("File %s open failed", dest_path);
+	if ((fp = fopen(path, "r")) == NULL) {
+		log_debug("File %s open failed", path);
 		auth_http->enable = false;
-		return true;
+		return;
 	}
+
 	char *value;
 	while (nano_getline(&line, &sz, fp) != -1) {
 		if ((value = get_conf_value(line, sz, "auth.http.enable")) !=
@@ -2522,13 +2498,11 @@ conf_auth_http_parse(conf *nanomq_conf)
 	fclose(fp);
 
 	conf_auth_http_req_parse(
-	    &auth_http->auth_req, dest_path, "auth.http.auth_req");
+	    &auth_http->auth_req, path, "auth.http.auth_req");
 	conf_auth_http_req_parse(
-	    &auth_http->super_req, dest_path, "auth.http.super_req");
+	    &auth_http->super_req, path, "auth.http.super_req");
 	conf_auth_http_req_parse(
-	    &auth_http->acl_req, dest_path, "auth.http.acl_req");
-
-	return true;
+	    &auth_http->acl_req, path, "auth.http.acl_req");
 }
 
 static void
@@ -2553,7 +2527,7 @@ conf_auth_http_req_destroy(conf_auth_http_req *req)
 	}
 }
 
-void
+static void
 conf_auth_http_destroy(conf_auth_http *auth_http)
 {
 	conf_auth_http_req_destroy(&auth_http->auth_req);
@@ -2562,7 +2536,7 @@ conf_auth_http_destroy(conf_auth_http *auth_http)
 	conf_tls_destroy(&auth_http->tls);
 }
 
-static bool
+static void
 conf_sqlite_parse(
     conf_sqlite *sqlite, const char *path, const char *key_prefix)
 {
@@ -2573,7 +2547,7 @@ conf_sqlite_parse(
 	if ((fp = fopen(path, "r")) == NULL) {
 		log_error("File %s open failed", path);
 		sqlite->enable = false;
-		return false;
+		return;
 	}
 	char *value;
 	while (nano_getline(&line, &sz, fp) != -1) {
@@ -2604,8 +2578,6 @@ conf_sqlite_parse(
 		free(line);
 	}
 	fclose(fp);
-
-	return true;
 }
 
 static void
@@ -2629,14 +2601,10 @@ conf_fini(conf *nanomq_conf)
 {
 	nng_strfree(nanomq_conf->url);
 	nng_strfree(nanomq_conf->conf_file);
-	nng_strfree(nanomq_conf->bridge_file);
 
 #if defined(SUPP_RULE_ENGINE)
-	nng_strfree(nanomq_conf->rule_file);
 	conf_rule_destroy(&nanomq_conf->rule_eng);
 #endif
-	nng_strfree(nanomq_conf->web_hook_file);
-	nng_strfree(nanomq_conf->auth_file);
 	conf_sqlite_destroy(&nanomq_conf->sqlite);
 	conf_tls_destroy(&nanomq_conf->tls);
 
