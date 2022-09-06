@@ -435,7 +435,7 @@ NNG_DECL void                nni_mqtt_topic_qos_array_set(
 NNG_DECL void nni_mqtt_topic_qos_array_free(nni_mqtt_topic_qos *, size_t);
 
 // for bridging msg from nanosdk to nanomq usage
-NNG_DECL conn_param *nni_get_conn_param_from_msg(nni_msg *msg, conn_param *cparam);
+NNG_DECL conn_param *nni_get_conn_param_from_msg(nni_msg *msg);
 
 NNG_DECL void mqtt_close_unack_msg_cb(void *, void *);
 

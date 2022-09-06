@@ -781,7 +781,7 @@ nng_mqtt_subscribe_async(nng_mqtt_client *client, nng_mqtt_topic_qos *sbs, size_
 }
 
 conn_param*
-nng_get_conn_param_from_msg(nng_msg *msg, conn_param *cparam)
+nng_get_conn_param_from_msg(nng_msg *msg)
 {
-	return nni_get_conn_param_from_msg(msg, cparam);
+	return nni_get_conn_param_from_msg(msg);
 }
