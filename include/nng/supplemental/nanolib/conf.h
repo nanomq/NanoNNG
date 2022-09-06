@@ -50,9 +50,9 @@
 	}
 
 // log type
-#define LOG_TO_FILE 1 << 0
-#define LOG_TO_CONSOLE 1 << 1
-#define LOG_TO_SYSLOG 1 << 2
+#define LOG_TO_FILE (1 << 0)
+#define LOG_TO_CONSOLE (1 << 1)
+#define LOG_TO_SYSLOG (1 << 2)
 
 struct conf_log {
 	uint8_t type;
@@ -337,20 +337,12 @@ struct conf {
 
 typedef struct conf conf;
 
-NNG_DECL bool conf_parser(conf *nanomq_conf);
-NNG_DECL bool conf_bridge_parse(conf *nanomq_conf);
-NNG_DECL bool conf_aws_bridge_parse(conf *nanomq_conf);
-NNG_DECL bool conf_gateway_parse(zmq_gateway_conf *g_conf);
-NNG_DECL bool conf_web_hook_parse(conf *nanomq_conf);
-NNG_DECL bool conf_rule_parse(conf *nanomq_conf);
-NNG_DECL bool conf_auth_http_parse(conf *nanomq_conf);
-NNG_DECL void print_bridge_conf(conf_bridge *bridge);
-NNG_DECL void conf_init(conf *nanomq_conf);
-NNG_DECL void print_conf(conf *nanomq_conf);
-NNG_DECL void conf_fini(conf *nanomq_conf);
-NNG_DECL void conf_auth_parser(conf *);
-NNG_DECL void conf_update(const char *fpath, const char *key, char *value);
-NNG_DECL void conf_update2(const char *fpath, const char *key1, const char *key2,
+extern void conf_parse(conf *nanomq_conf);
+extern void conf_init(conf *nanomq_conf);
+extern void print_conf(conf *nanomq_conf);
+extern void conf_fini(conf *nanomq_conf);
+extern void conf_update(const char *fpath, const char *key, char *value);
+extern void conf_update2(const char *fpath, const char *key1, const char *key2,
     const char *key3, char *value);
 NNG_DECL void conf_update_var(
     const char *fpath, const char *key, uint8_t type, void *var);
