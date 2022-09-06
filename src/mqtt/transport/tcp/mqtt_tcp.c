@@ -435,6 +435,7 @@ mqtt_error:
 	p->rxmsg = NULL;
 
 	if (rv == MQTT_SUCCESS) {
+		// TODO pass reason code of CONNACK to upper layer
 		mqtt_tcptran_ep_match(ep);
 	} else {
 		// Fail but still match to let user know ack has arrived

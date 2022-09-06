@@ -15,6 +15,7 @@
 #include "nng/mqtt/mqtt_client.h"
 #include "nng/supplemental/tls/tls.h"
 #include "supplemental/mqtt/mqtt_msg.h"
+#include "nng/protocol/mqtt/mqtt_parser.h"
 
 // TLS Over TCP transport.   Platform specific TLS Over TCP operations must be
 // supplied as well.
@@ -178,6 +179,7 @@ mqtts_tcptran_pipe_init(void *arg, nni_pipe *npipe)
 	nni_pipe_set_conn_param(npipe, p->cparam);
 
 	p->npipe              = npipe;
+	p->cparam             = NULL;
 
 	nni_lmq_init(&p->rslmq, 16);
 	p->busy = false;
@@ -211,6 +213,7 @@ mqtts_tcptran_pipe_fini(void *arg)
 	nni_lmq_fini(&p->rslmq);
 	nni_mtx_fini(&p->mtx);
 	nni_aio_fini(&p->tmaio);
+	conn_param_free(p->cparam);
 	NNI_FREE_STRUCT(p);
 }
 
