@@ -107,35 +107,35 @@ conf_update_var(const char *fpath, const char *key, uint8_t type, void *var)
 	switch (type) {
 	case 0:
 		// int
-		sprintf(varstr, "%d", *(int *) var);
+		snprintf(varstr, 50, "%d", *(int *) var);
 		break;
 	case 1:
 		// uint8
-		sprintf(varstr, "%hhu", *(uint8_t *) var);
+		snprintf(varstr, 50, "%hhu", *(uint8_t *) var);
 		break;
 	case 2:
 		// uint16
-		sprintf(varstr, "%hu", *(uint16_t *) var);
+		snprintf(varstr, 50, "%hu", *(uint16_t *) var);
 		break;
 	case 3:
 		// uint32
-		sprintf(varstr, "%u", *(uint32_t *) var);
+		snprintf(varstr, 50, "%u", *(uint32_t *) var);
 		break;
 	case 4:
 		// uint64
-		sprintf(varstr, "%llu", *(uint64_t *) var);
+		snprintf(varstr, 50, "%llu", *(uint64_t *) var);
 		break;
 	case 5:
 		// long
-		sprintf(varstr, "%ld", *(long *) var);
+		snprintf(varstr, 50, "%ld", *(long *) var);
 		break;
 	case 6:
 		// double
-		snprintf(varstr, 20, "%lf", *(double *) var);
+		snprintf(varstr, 50, "%lf", *(double *) var);
 		break;
 	case 7:
 		// bool
-		sprintf(varstr, "%s", (*(bool *) var) ? "true" : "false");
+		snprintf(varstr, 50, "%s", (*(bool *) var) ? "true" : "false");
 	default:
 		return;
 	}
@@ -148,7 +148,7 @@ conf_update_var2(const char *fpath, const char *key1, const char *key2,
 {
 	size_t sz  = strlen(key1) + strlen(key2) + strlen(key3) + 2;
 	char * key = nni_zalloc(sz);
-	sprintf(key, "%s%s%s", key1, key2, key3);
+	snprintf(key, sz, "%s%s%s", key1, key2, key3);
 	conf_update_var(fpath, key, type, var);
 	nng_free(key, sz);
 }
@@ -169,7 +169,7 @@ conf_update(const char *fpath, const char *key, char *value)
 	size_t len        = 0;
 	bool   is_found   = false;
 	if (fp) {
-		sprintf(deststr, "%s=", key);
+		snprintf(deststr, descstrlen, "%s=", key);
 		while (nano_getline(&line, &len, fp) != -1) {
 			linearray =
 			    realloc(linearray, (count + 1) * (sizeof(char *)));
@@ -207,7 +207,6 @@ conf_update(const char *fpath, const char *key, char *value)
 	}
 
 	rewind(fp);
-	feof(fp);
 	fflush(fp);
 	fclose(fp);
 
@@ -227,7 +226,7 @@ conf_update2(const char *fpath, const char *key1, const char *key2,
 {
 	size_t sz  = strlen(key1) + strlen(key2) + strlen(key3) + 2;
 	char * key = nni_zalloc(sz);
-	sprintf(key, "%s%s%s", key1, key2, key3);
+	snprintf(key, sz, "%s%s%s", key1, key2, key3);
 	conf_update(fpath, key, value);
 	nng_free(key, sz);
 }
@@ -262,7 +261,7 @@ get_conf_value_with_prefix(
 {
 	size_t sz  = strlen(prefix) + strlen(key) + 2;
 	char * str = nni_zalloc(sz);
-	sprintf(str, "%s%s", prefix, key);
+	snprintf(str, sz, "%s%s", prefix, key);
 	char *value = get_conf_value(line, len, str);
 	free(str);
 	return value;
@@ -277,7 +276,7 @@ get_conf_value_with_prefix2(char *line, size_t len, const char *prefix,
 	size_t sz        = prefix_sz + name_sz + strlen(key) + 2;
 
 	char *str = nni_zalloc(sz);
-	sprintf(str, "%s%s%s", prefix, name ? name : "", key ? key : "");
+	snprintf(str, sz, "%s%s%s", prefix, name ? name : "", key ? key : "");
 	char *value = get_conf_value(line, len, str);
 	free(str);
 	return value;
@@ -814,14 +813,14 @@ print_conf(conf *nanomq_conf)
 static void
 conf_auth_parse(conf_auth *auth, const char *path)
 {
-	char   name_key[64] = "";
-	char   pass_key[64] = "";
-	char * name;
-	char * pass;
-	size_t index    = 1;
-	bool   get_name = false;
-	bool   get_pass = false;
-	char * line     = NULL;
+	char   name_key[256] = "";
+	char   pass_key[256] = "";
+	char * name          = NULL;
+	char * pass          = NULL;
+	size_t index         = 1;
+	bool   get_name      = false;
+	bool   get_pass      = false;
+	char * line          = NULL;
 	size_t sz       = 0;
 	char * value;
 
@@ -834,7 +833,7 @@ conf_auth_parse(conf_auth *auth, const char *path)
 	}
 
 	while (nano_getline(&line, &sz, fp) != -1) {
-		sprintf(name_key, "auth.%ld.login", index);
+		snprintf(name_key, 256, "auth.%ld.login", index);
 		if (!get_name &&
 		    (value = get_conf_value(line, sz, name_key)) != NULL) {
 			name     = value;
@@ -842,7 +841,7 @@ conf_auth_parse(conf_auth *auth, const char *path)
 			goto check;
 		}
 
-		sprintf(pass_key, "auth.%ld.password", index);
+		snprintf(pass_key, 256, "auth.%ld.password", index);
 		if (!get_pass &&
 		    (value = get_conf_value(line, sz, pass_key)) != NULL) {
 			pass     = value;
@@ -861,7 +860,7 @@ conf_auth_parse(conf_auth *auth, const char *path)
 			    auth->usernames, sizeof(char *) * auth->count);
 			auth->passwords = realloc(
 			    auth->passwords, sizeof(char *) * auth->count);
-
+			
 			auth->usernames[auth->count - 1] = name;
 			auth->passwords[auth->count - 1] = pass;
 
@@ -937,8 +936,8 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 			if (strstr(line, "address")) {
 				if (0 != sscanf(line, "rule.repub.%d", &num)) {
 					char key[32] = { 0 };
-					sprintf(
-					    key, "rule.repub.%d.address", num);
+					snprintf(key, 32,
+					    "rule.repub.%d.address", num);
 					if (NULL !=
 					    (value = get_conf_value(
 					         line, sz, key))) {
@@ -948,8 +947,8 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 			} else if (strstr(line, "topic")) {
 				if (0 != sscanf(line, "rule.repub.%d", &num)) {
 					char key[32] = { 0 };
-					sprintf(
-					    key, "rule.repub.%d.topic", num);
+					snprintf(key, 32,
+					    "rule.repub.%d.topic", num);
 					if (NULL !=
 					    (value = get_conf_value(
 					         line, sz, key))) {
@@ -959,8 +958,8 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 			} else if (strstr(line, "proto_ver")) {
 				if (0 != sscanf(line, "rule.repub.%d", &num)) {
 					char key[32] = { 0 };
-					sprintf(key, "rule.repub.%d.proto_ver",
-					    num);
+					snprintf(key, 32,
+					    "rule.repub.%d.proto_ver", num);
 					if (NULL !=
 					    (value = get_conf_value(
 					         line, sz, key))) {
@@ -971,8 +970,8 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 			} else if (strstr(line, "clientid")) {
 				if (0 != sscanf(line, "rule.repub.%d", &num)) {
 					char key[32] = { 0 };
-					sprintf(key, "rule.repub.%d.clientid",
-					    num);
+					snprintf(key, 32,
+					    "rule.repub.%d.clientid", num);
 					if (NULL !=
 					    (value = get_conf_value(
 					         line, sz, key))) {
@@ -982,8 +981,8 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 			} else if (strstr(line, "username")) {
 				if (0 != sscanf(line, "rule.repub.%d", &num)) {
 					char key[32] = { 0 };
-					sprintf(key, "rule.repub.%d.username",
-					    num);
+					snprintf(key, 32,
+					    "rule.repub.%d.username", num);
 					if (NULL !=
 					    (value = get_conf_value(
 					         line, sz, key))) {
@@ -993,8 +992,8 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 			} else if (strstr(line, "password")) {
 				if (0 != sscanf(line, "rule.repub.%d", &num)) {
 					char key[32] = { 0 };
-					sprintf(key, "rule.repub.%d.password",
-					    num);
+					snprintf(key, 32,
+					    "rule.repub.%d.password", num);
 					if (NULL !=
 					    (value = get_conf_value(
 					         line, sz, key))) {
@@ -1004,7 +1003,7 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 			} else if (strstr(line, "clean_start")) {
 				if (0 != sscanf(line, "rule.repub.%d", &num)) {
 					char key[32] = { 0 };
-					sprintf(key,
+					snprintf(key, 32,
 					    "rule.repub.%d.clean_start", num);
 					if (NULL !=
 					    (value = get_conf_value(
@@ -1028,8 +1027,8 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 			} else if (strstr(line, "keepalive")) {
 				if (0 != sscanf(line, "rule.repub.%d", &num)) {
 					char key[32] = { 0 };
-					sprintf(key, "rule.repub.%d.keepalive",
-					    num);
+					snprintf(key, 32,
+					    "rule.repub.%d.keepalive", num);
 					if (NULL !=
 					    (value = get_conf_value(
 					         line, sz, key))) {
@@ -1122,8 +1121,8 @@ conf_rule_mysql_parse(conf_rule *cr, char *path)
 			if (strstr(line, "table")) {
 				if (0 != sscanf(line, "rule.mysql.%d", &num)) {
 					char key[32] = { 0 };
-					sprintf(
-					    key, "rule.mysql.%d.table", num);
+					snprintf(key, 32,
+					    "rule.mysql.%d.table", num);
 					if (NULL !=
 					    (value = get_conf_value(
 					         line, sz, key))) {
@@ -1134,8 +1133,8 @@ conf_rule_mysql_parse(conf_rule *cr, char *path)
 			} else if (strstr(line, "host")) {
 				if (0 != sscanf(line, "rule.mysql.%d", &num)) {
 					char key[32] = { 0 };
-					sprintf(
-					    key, "rule.mysql.%d.host", num);
+					snprintf(key, 32, "rule.mysql.%d.host",
+					    num);
 					if (NULL !=
 					    (value = get_conf_value(
 					         line, sz, key))) {
@@ -1146,7 +1145,7 @@ conf_rule_mysql_parse(conf_rule *cr, char *path)
 			} else if (strstr(line, "username")) {
 				if (0 != sscanf(line, "rule.mysql.%d", &num)) {
 					char key[32] = { 0 };
-					sprintf(key, "rule.mysql.%d.username",
+					snprintf(key, 32, "rule.mysql.%d.username",
 					    num);
 					if (NULL !=
 					    (value = get_conf_value(
@@ -1158,7 +1157,7 @@ conf_rule_mysql_parse(conf_rule *cr, char *path)
 			} else if (strstr(line, "password")) {
 				if (0 != sscanf(line, "rule.mysql.%d", &num)) {
 					char key[32] = { 0 };
-					sprintf(key, "rule.mysql.%d.password",
+					snprintf(key, 32, "rule.mysql.%d.password",
 					    num);
 					if (NULL !=
 					    (value = get_conf_value(
@@ -1253,7 +1252,7 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 			}
 
 			char key[32] = { 0 };
-			sprintf(key, "rule.sqlite.%d.table", num);
+			snprintf(key, 32, "rule.sqlite.%d.table", num);
 
 			if (NULL != (value = get_conf_value(line, sz, key))) {
 				table = value;
@@ -1272,7 +1271,6 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 
 			if (NULL != (value = strchr(line, '='))) {
 				value++;
-				// puts(value);
 				rule_sql_parse(cr, value);
 				char *p = strrchr(value, '\"');
 				*p      = '\0';
@@ -1333,7 +1331,6 @@ conf_rule_fdb_parse(conf_rule *cr, char *path)
 			if (-1 == (rc = rule_find_key(value, strlen(value)))) {
 				if (strstr(value, "payload.")) {
 					char *p = strchr(value, '.');
-					// p++;
 					rk->key_arr = NULL;
 					rule_get_key_arr(p, rk);
 					rk->flag[8] = true;
@@ -1357,7 +1354,6 @@ conf_rule_fdb_parse(conf_rule *cr, char *path)
 		} else if (NULL != strstr(line, "rule.event.publish.sql")) {
 			if (NULL != (value = strchr(line, '='))) {
 				value++;
-				// puts(value);
 				rule_sql_parse(cr, value);
 				char *p = strrchr(value, '\"');
 				*p      = '\0';
@@ -1617,19 +1613,19 @@ conf_bridge_node_parse_subs(
 
 	char    topic_key[128] = "";
 	char    qos_key[128]   = "";
-	char *  topic;
-	uint8_t qos;
-	size_t  sub_index = 1;
-	bool    get_topic = false;
-	bool    get_qos   = false;
-	char *  line      = NULL;
-	size_t  sz        = 0;
-	char *  value     = NULL;
+	char *  topic          = NULL;
+	uint8_t qos            = 0;
+	size_t  sub_index      = 1;
+	bool    get_topic      = false;
+	bool    get_qos        = false;
+	char *  line           = NULL;
+	size_t  sz             = 0;
+	char *  value          = NULL;
 
 	node->sub_count = 0;
 	while (nano_getline(&line, &sz, fp) != -1) {
-		sprintf(topic_key, "bridge.mqtt.%s.subscription.%ld.topic",
-		    name, sub_index);
+		snprintf(topic_key, 128,
+		    "bridge.mqtt.%s.subscription.%ld.topic", name, sub_index);
 		if (!get_topic &&
 		    (value = get_conf_value(line, sz, topic_key)) != NULL) {
 			topic     = value;
@@ -1637,8 +1633,8 @@ conf_bridge_node_parse_subs(
 			goto check;
 		}
 
-		sprintf(qos_key, "bridge.mqtt.%s.subscription.%ld.qos", name,
-		    sub_index);
+		snprintf(qos_key, 128, "bridge.mqtt.%s.subscription.%ld.qos",
+		    name, sub_index);
 		if (!get_qos &&
 		    (value = get_conf_value(line, sz, qos_key)) != NULL) {
 			qos = (uint8_t) atoi(value);
@@ -1725,12 +1721,14 @@ get_bridge_group_names(const char *path, const char *prefix, size_t *count)
 		log_error("File %s open failed", path);
 		return NULL;
 	}
+
+	size_t len     = strlen(prefix) + 34;
+	char * pattern = nni_zalloc(len);
+	snprintf(
+	    pattern, len, "%sbridge.mqtt.%%[^.].%%*[^=]=%%*[^\n]", prefix);
+
 	char * line = NULL;
-	size_t sz   = 0;
-
-	char *pattern = nni_zalloc(strlen(prefix) + 34);
-	sprintf(pattern, "%sbridge.mqtt.%%[^.].%%*[^=]=%%*[^\n]", prefix);
-
+	size_t sz      = 0;
 	char **group_names = calloc(1, sizeof(char *));
 	size_t group_count = 0;
 	while (nano_getline(&line, &sz, fp) != -1) {
@@ -1852,8 +1850,9 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 	fclose(fp);
 
 	conf_bridge_node_parse_subs(node, path, name);
-	char *prefix2 = nng_zalloc(strlen(name) + 2);
-	sprintf(prefix2, "%s.", name);
+	sz            = strlen(name) + 2;
+	char *prefix2 = nng_zalloc(sz);
+	snprintf(prefix2, sz, "%s.", name);
 	conf_tls_parse(&node->tls, path, key_prefix, prefix2);
 	nng_strfree(prefix2);
 
@@ -1865,8 +1864,9 @@ conf_bride_content_parse(conf *nanomq_conf, conf_bridge *bridge,
     const char *prefix, const char *path)
 {
 	// 1. parse sqlite config from nanomq_bridge.conf
-	char *key = nni_zalloc(strlen(prefix) + 15);
-	sprintf(key, "%sbridge.sqlite", prefix);
+	size_t sz = strlen(prefix) + 15;
+	char * key = nni_zalloc(sz);
+	snprintf(key, sz, "%sbridge.sqlite", prefix);
 	conf_sqlite_parse(&bridge->sqlite, path, "bridge.sqlite");
 	nni_strfree(key);
 	// 2. find all the name from the file
@@ -2288,8 +2288,9 @@ conf_parse_http_headers(
 	size_t             sz      = 0;
 	conf_http_header **headers = NULL;
 
-	char *pattern = nni_zalloc(strlen(key_prefix) + 23);
-	sprintf(pattern, "%s.headers.%%[^=]=%%[^\n]", key_prefix);
+	size_t len     = strlen(key_prefix) + 23;
+	char * pattern = nni_zalloc(len);
+	snprintf(pattern, len, "%s.headers.%%[^=]=%%[^\n]", key_prefix);
 
 	size_t header_count = 0;
 	while (nano_getline(&line, &sz, fp) != -1) {
