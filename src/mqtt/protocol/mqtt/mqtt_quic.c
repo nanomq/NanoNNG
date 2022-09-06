@@ -797,6 +797,7 @@ mqtt_quic_sock_close(void *arg)
 		}
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
+	// recv_queue will be empty when pipi_fini
 	while ((aio = nni_list_first(&s->recv_queue)) != NULL) {
 		// Pipe was closed.  just push an error back to the
 		// entire socket, because we only have one pipe

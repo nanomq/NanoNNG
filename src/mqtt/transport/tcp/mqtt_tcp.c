@@ -15,6 +15,7 @@
 #include "core/sockimpl.h"
 #include "nng/mqtt/mqtt_client.h"
 #include "supplemental/mqtt/mqtt_msg.h"
+#include "nng/protocol/mqtt/mqtt_parser.h"
 
 // TCP transport.   Platform specific TCP operations must be
 // supplied as well.
@@ -220,6 +221,7 @@ mqtt_tcptran_pipe_fini(void *arg)
 	nni_lmq_fini(&p->rslmq);
 	nni_mtx_fini(&p->mtx);
 	nni_aio_fini(&p->tmaio);
+	conn_param_free(p->cparam);
 	NNI_FREE_STRUCT(p);
 }
 
@@ -387,7 +389,7 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 				goto mqtt_error;
 			property_free(ep->property);
 			property *prop = (void *)nni_mqtt_msg_get_connack_property(p->rxmsg);
-			property_dup(&ep->property, prop);
+			property_dup((property **)&ep->property, prop);
 			property_data *data;
 			data = property_get_value(ep->property, RECEIVE_MAXIMUM);
 			if (data) {
@@ -1007,6 +1009,7 @@ mqtt_tcptran_pipe_start(
 	p->ep     = ep;
 	p->rcvmax = 0;
 	p->sndmax = 65535;
+	p->cparam = NULL;
 
 	nni_dialer_getopt(ep->ndialer, NNG_OPT_MQTT_CONNMSG, &connmsg, NULL,
 	    NNI_TYPE_POINTER);

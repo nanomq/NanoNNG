@@ -125,7 +125,7 @@ mqtt_sock_init(void *arg, nni_sock *sock)
 	nni_atomic_set(&s->ttl, 8);
 
 	// this is "semi random" start for request IDs.
-	s->retry = NNI_SECOND * 60;
+	s->retry = NNI_SECOND * 10;
 
 	nni_mtx_init(&s->mtx);
 	mqtt_ctx_init(&s->master, s);
