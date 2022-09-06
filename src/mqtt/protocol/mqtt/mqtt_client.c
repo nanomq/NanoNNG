@@ -128,8 +128,9 @@ mqtt_sock_init(void *arg, nni_sock *sock)
 
 	// this is "semi random" start for request IDs.
 	s->retry  = NNI_SECOND * 10;
+#ifdef NNG_HAVE_MQTT_BROKER
 	s->cparam = NULL;
-
+#endif
 	nni_mtx_init(&s->mtx);
 	mqtt_ctx_init(&s->master, s);
 
@@ -150,8 +151,10 @@ mqtt_sock_fini(void *arg)
 	}
 #endif
 	mqtt_ctx_fini(&s->master);
+#ifdef NNG_HAVE_MQTT_BROKER
 	if(s->cparam != NULL)
 		conn_param_free(s->cparam);
+#endif
 	nni_mtx_fini(&s->mtx);
 }
 
