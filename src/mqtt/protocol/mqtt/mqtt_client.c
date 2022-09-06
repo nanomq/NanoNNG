@@ -314,9 +314,7 @@ static void
 mqtt_pipe_fini(void *arg)
 {
 	mqtt_pipe_t *p = arg;
-	mqtt_sock_t *s = p->mqtt_sock;
 	nni_msg * msg;
-	nni_aio *aio;
 
 	if ((msg = nni_aio_get_msg(&p->recv_aio)) != NULL) {
 		nni_aio_set_msg(&p->recv_aio, NULL);
@@ -336,24 +334,6 @@ mqtt_pipe_fini(void *arg)
 	nni_id_map_fini(&p->recv_unack);
 	nni_lmq_fini(&p->recv_messages);
 	nni_lmq_fini(&p->send_messages);
-
-	uint16_t count = 0;
-	// nni_msg *tmsg = nano_msg_notify_disconnect(p->cparam, SERVER_SHUTTING_DOWN);
-	// nni_msg_set_conn_param(tmsg, p->cparam);
-	// return error to all receving aio
-	// emulate disconnect notify msg as a normal publish
-	while ((aio = nni_list_first(&s->recv_queue)) != NULL) {
-		// Pipe was closed.  just push an error back to the
-		// entire socket, because we only have one pipe
-		nni_list_remove(&s->recv_queue, aio);
-		// nni_aio_set_msg(aio, tmsg);
-		// only return pipe closed error once for notification
-		// sync action to avoid NULL conn param
-		count == 0 ? nni_aio_finish_sync(aio, NNG_ECONNSHUT, 0)
-		           : nni_aio_finish_error(aio, NNG_ECLOSED);
-		// there should be no msg waiting
-		count++;
-	}
 }
 
 static inline nni_msg *
@@ -537,6 +517,7 @@ mqtt_pipe_start(void *arg)
 		nni_msg_append(smsg, rbuf+2, 2);
 		nni_msg_set_cmd_type(smsg, CMD_CONNACK);
 		nni_msg_set_conn_param(smsg, (void *)s->cparam);
+		conn_param_clone(s->cparam);
 
 		if ((c = nni_list_first(&s->recv_queue)) == NULL) {
 			// No one waiting to receive yet, putting msg
@@ -589,6 +570,7 @@ mqtt_pipe_close(void *arg)
 {
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
+	nni_aio     *user_aio;
 
 	nni_mtx_lock(&s->mtx);
 	s->mqtt_pipe = NULL;
@@ -617,6 +599,31 @@ mqtt_pipe_close(void *arg)
 
 	if (!is_sqlite) {
 		nni_id_map_foreach(p->sent_unack, mqtt_close_unack_msg_cb);
+	}
+
+	// Return disconnect event to broker
+	uint16_t count = 0;
+	mqtt_ctx_t *ctx;
+	nni_msg *tmsg = nano_msg_notify_disconnect(s->cparam, SERVER_SHUTTING_DOWN);
+	nni_msg_set_conn_param(tmsg, s->cparam);
+	// return error to all receving aio
+	// emulate disconnect notify msg as a normal publish
+	while ((ctx = nni_list_first(&s->recv_queue)) != NULL) {
+		nni_list_remove(&s->recv_queue, ctx);
+
+		user_aio  = ctx->raio;
+		ctx->raio = NULL;
+		nni_aio_set_msg(user_aio, tmsg);
+		// only return pipe closed error once for notification
+		// sync action to avoid NULL conn param
+		count == 0 ? nni_aio_finish_sync(user_aio, NNG_ECONNSHUT, 0)
+		           : nni_aio_finish_error(user_aio, NNG_ECLOSED);
+		// there should be no msg waiting
+		count++;
+	}
+	if (count == 0) {
+		nni_println("disconnect msg of bridging is lost due to no ctx on receving");
+		nni_msg_free(tmsg);
 	}
 
 	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
