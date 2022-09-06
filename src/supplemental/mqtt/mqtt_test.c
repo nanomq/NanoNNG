@@ -113,7 +113,7 @@ test_encode_connect(void)
 	char     client_id[] = "nanomq-mqtt";
 
 	NUTS_PASS(nng_mqtt_msg_alloc(&msg, 0));
-	NUTS_PASS(conn_param_alloc(&cparam));
+	// NUTS_PASS(conn_param_alloc(&cparam));
 
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_CONNECT);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNECT);
@@ -136,7 +136,8 @@ test_encode_connect(void)
 	nng_mqtt_msg_set_connect_password(msg, passwd);
 	nng_mqtt_msg_set_connect_clean_session(msg, true);
 	nng_mqtt_msg_set_connect_keep_alive(msg, 60);
-	nng_get_conn_param_from_msg(msg, cparam);
+
+	cparam = nng_get_conn_param_from_msg(msg);
 
 	nng_mqtt_msg_encode(msg);
 	print_mqtt_msg(msg);
@@ -148,8 +149,21 @@ test_encode_connect(void)
 	nng_mqtt_msg_decode(decode_msg);
 	print_mqtt_msg(decode_msg);
 
-	// NUTS_TRUE(memcmp(nng_msg_body(msg), nng_msg_body(decode_msg),
-	//                 nng_msg_len(msg)) == 0);
+	if (nni_atomic_dec_nv(&cparam->refcnt) != 0) {
+		return;
+	}
+	nng_free(cparam->pro_name.body, cparam->pro_name.len);
+	nng_free(cparam->clientid.body, cparam->clientid.len);
+	nng_free(cparam->will_topic.body, cparam->will_topic.len);
+	nng_free(cparam->will_msg.body, cparam->will_msg.len);
+	nng_free(cparam->username.body, cparam->username.len);
+	nng_free(cparam->password.body, cparam->password.len);
+
+	property_free(cparam->properties);
+	property_free(cparam->will_properties);
+
+
+	nng_free(cparam, sizeof(struct conn_param));
 
 	nng_msg_free(decode_msg);
 }

@@ -801,13 +801,20 @@ mqtt_close_unack_msg_cb(void *key, void *val)
  * @brief alloc and set a new connection parameters from CONNECT msg
  * 	  be aware of the life & memory cycle of this conn_param!
  * @param CONNECT msg 
- * @return newly allocted conn_param* 
+ * @return newly allocted conn_param* or NULL
  */
 conn_param *
-nni_get_conn_param_from_msg(nni_msg *msg, conn_param *cparam)
+nni_get_conn_param_from_msg(nni_msg *msg)
 {
-	conn_param *conn_ctx = cparam;
+	conn_param *conn_ctx;
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
+
+	// alloc a new conn_param
+	if ((conn_ctx = nng_alloc(sizeof(conn_param))) == NULL) {
+		return NULL;
+	}
+	nni_atomic_init(&conn_ctx->refcnt);
+	nni_atomic_set(&conn_ctx->refcnt, 1);
 
 	conn_ctx->pro_ver    = nni_mqtt_msg_get_connect_proto_version(msg);
 	memcpy(&conn_ctx->con_flag, &proto_data->var_header.connect.conn_flags,
@@ -865,10 +872,24 @@ nni_get_conn_param_from_msg(nni_msg *msg, conn_param *cparam)
 	conn_ctx->password.body = nng_strndup(
 	    proto_data->payload.connect.password.buf, conn_ctx->password.len);
 	// conn_ctx->password.body = proto_data->payload.connect.password.buf;
-	nni_atomic_init(&conn_ctx->refcnt);
-	nni_atomic_set(&conn_ctx->refcnt, 1);
+
+	// property is not concerned in bridging
+	conn_ctx->assignedid      = false;
+	conn_ctx->properties	  = NULL;
+	conn_ctx->will_properties = NULL;
+
+	// MQTT_v5 Variable header
+	conn_ctx->session_expiry_interval = 0;
+	conn_ctx->rx_max                  = 65535;
+	conn_ctx->max_packet_size         = 0;
+	conn_ctx->topic_alias_max         = 0;
+	conn_ctx->req_resp_info           = 0;
+	conn_ctx->req_problem_info        = 1;
+	conn_ctx->auth_method             = NULL;
+	conn_ctx->auth_data               = NULL;
+	conn_ctx->user_property           = NULL;
 	return conn_ctx;
-	// TODO  MQTT V5
+	// TODO  utlize MQTT V5 feature in bridging
 }
 
 void
