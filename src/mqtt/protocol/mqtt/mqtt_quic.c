@@ -97,6 +97,7 @@ struct mqtt_pipe_s {
 	void           *qstream; // nni_pipe
 	nni_atomic_bool closed;
 	bool            busy;
+	bool            ready;
 	nni_atomic_int  next_packet_id; // next packet id to use
 	mqtt_sock_t    *mqtt_sock;
 	nni_id_map      sent_unack;    // send messages unacknowledged
@@ -750,6 +751,7 @@ quic_mqtt_stream_init(void *arg, nni_pipe *qstrm, void *sock)
 	nni_atomic_init_bool(&p->closed);
 	nni_atomic_set_bool(&p->closed, false);
 	p->busy = false;
+	p->ready = false;
 	nni_atomic_set(&p->next_packet_id, 1);
 	nni_aio_init(&p->send_aio, mqtt_quic_send_cb, p);
 	nni_aio_init(&p->rep_aio, NULL, p);
@@ -845,6 +847,7 @@ quic_mqtt_stream_start(void *arg)
 	if (!nni_aio_list_active(&s->time_aio))
 		nni_sleep_aio(s->retry * NNI_SECOND, &s->time_aio);
 
+	p->ready = true;
 	if ((aio = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, aio);
 		msg    = nni_aio_get_msg(aio);
@@ -949,7 +952,7 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 		return;
 	}
 
-	if (p == NULL) {
+	if (p == NULL || p->ready == false) {
 		// connection is lost or not established yet
 #if defined(NNG_SUPP_SQLITE)
 		if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBLISH) {
