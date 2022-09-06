@@ -86,7 +86,7 @@ mark_as_advanced(NNG_PROTO_SURVEYOR0)
 option (NNG_PROTO_MQTT_CLIENT "Enable MQTT Client protocol." ON)
 mark_as_advanced(NNG_PROTO_MQTT_CLIENT)
 
-option (NNG_PROTO_MQTT_BROKER "Enable MQTT Broker protocol." OFF)
+option (NNG_PROTO_MQTT_BROKER "Enable MQTT Broker protocol." ON)
 mark_as_advanced(NNG_PROTO_MQTT_BROKER)
 
 option (NNG_PROTO_MQTT_QUIC_CLIENT "Enable MQTT over msQuic Client protocol." OFF)
@@ -168,15 +168,15 @@ option (NNG_TRANSPORT_MQTT_TCP "Enable MQTT TCP transport." ON)
 mark_as_advanced(NNG_TRANSPORT_MQTT_TCP)
 
 #MQTT Broker TCP
-option (NNG_TRANSPORT_MQTT_BROKER_TCP "Enable MQTT BROKER TCP transport." OFF)
+option (NNG_TRANSPORT_MQTT_BROKER_TCP "Enable MQTT BROKER TCP transport." ON)
 mark_as_advanced(NNG_TRANSPORT_MQTT_BROKER_TCP)
 
 #MQTT Broker TLS
-option (NNG_TRANSPORT_MQTT_BROKER_TLS "Enable MQTT BROKER TLS transport." OFF)
+option (NNG_TRANSPORT_MQTT_BROKER_TLS "Enable MQTT BROKER TLS transport." ON)
 mark_as_advanced(NNG_TRANSPORT_MQTT_BROKER_TLS)
 
 #MQTT Broker Websocket
-option (NNG_TRANSPORT_MQTT_BROKER_WS "Enable MQTT BROKER WS transport." OFF)
+option (NNG_TRANSPORT_MQTT_BROKER_WS "Enable MQTT BROKER WS transport." ON)
 mark_as_advanced(NNG_TRANSPORT_MQTT_BROKER_WS)
 
 #MQTT Broker Websocket TLS
