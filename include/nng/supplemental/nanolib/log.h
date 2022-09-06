@@ -19,7 +19,7 @@ typedef struct {
 	const char *    fmt;
 	const char *    file;
 	const char *    func;
-	struct tm *     time;
+	struct tm       time;
 	void *          udata;
 	int             line;
 	int             level;
