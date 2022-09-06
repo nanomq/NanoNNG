@@ -318,11 +318,6 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 		MsQuic->StreamReceiveSetEnabled(qstrm->stream, FALSE);
 		// }
 
-		// Start/ReStart the nng pipe
-		if ((qstrm->pipe = nng_alloc(pipe_ops->pipe_size)) == NULL) {
-			log_error("Failed in allocating pipe.");
-		}
-		pipe_ops->pipe_init(qstrm->pipe, (nni_pipe *)qstrm, Context);
 		pipe_ops->pipe_start(qstrm->pipe);
 		break;
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_TRANSPORT:
@@ -339,7 +334,6 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 			    Connection,
 			    Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status);
 		}
-		//auto reconnect here!
 		break;
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER:
 		// The connection was explicitly shut down by the peer.
@@ -385,6 +379,7 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 			nng_free(qstrm, sizeof(quic_strm_t));
 		}
 		*/
+
 		break;
 	case QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED:
 		// A resumption ticket (also called New Session Ticket or NST)
@@ -602,6 +597,13 @@ quic_connect_ipv4(const char *url, nni_sock *sock)
 	}
 
 	GConnection = &Connection;
+
+	// Start/ReStart the nng pipe
+	const nni_proto_pipe_ops *pipe_ops = g_quic_proto->proto_pipe_ops;
+	if ((qstrm->pipe = nng_alloc(pipe_ops->pipe_size)) == NULL) {
+		log_error("error in alloc pipe.\n");
+	}
+	pipe_ops->pipe_init(qstrm->pipe, (nni_pipe *)qstrm, sock_data);
 	return 0;
 
 Error:
