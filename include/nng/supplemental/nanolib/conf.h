@@ -302,11 +302,6 @@ typedef enum {
 
 struct conf {
 	char *   conf_file;
-	char *   bridge_file;
-	char *   aws_bridge_file;
-	char *   web_hook_file;
-	char *   auth_file;
-	char *   auth_http_file;
 	char *   url; // "nmq-tcp://addr:port"
 	int      num_taskq_thread;
 	int      max_taskq_thread;
@@ -332,7 +327,6 @@ struct conf {
 	conf_web_hook    web_hook;
 
 #if defined(SUPP_RULE_ENGINE)
-	char *    rule_file;
 	conf_rule rule_eng;
 #endif
 

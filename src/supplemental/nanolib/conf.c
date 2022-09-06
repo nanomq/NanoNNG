@@ -673,10 +673,6 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->url = NULL;
 
 	nanomq_conf->conf_file      = NULL;
-	nanomq_conf->bridge_file    = NULL;
-	nanomq_conf->web_hook_file  = NULL;
-	nanomq_conf->auth_file      = NULL;
-	nanomq_conf->auth_http_file = NULL;
 
 #if defined(SUPP_RULE_ENGINE)
 	conf_rule_init(&nanomq_conf->rule_eng);
@@ -1694,7 +1690,7 @@ free_bridge_group_names(char **group_names, size_t n)
 }
 
 static char **
-get_bridge_group_names(const char *path, size_t *count)
+get_bridge_group_names(const char *path, const char *prefix, size_t *count)
 {
 	FILE *fp;
 	if ((fp = fopen(path, "r")) == NULL) {
@@ -1703,13 +1699,16 @@ get_bridge_group_names(const char *path, size_t *count)
 	}
 	char * line        = NULL;
 	size_t sz          = 0;
+
+	char *pattern = nni_zalloc(strlen(prefix) + 34);
+	sprintf(pattern, "%sbridge.mqtt.%[^.].%*[^=]=%*[^\n]", prefix);
+
 	char **group_names = calloc(1, sizeof(char *));
 	size_t group_count = 0;
 	while (nano_getline(&line, &sz, fp) != -1) {
 		char *value = calloc(1, sz);
 		char *str   = strtrim_head_tail(line, sz);
-		int   res =
-		    sscanf(str, "bridge.mqtt.%[^.].%*[^=]=%*[^\n]", value);
+		int   res   = sscanf(str, pattern, value);
 		// avoid to read old version nanomq_bridge.conf
 		if (res == 1 && strchr(value, '=') == NULL) {
 			bool exists = false;
@@ -1741,6 +1740,7 @@ get_bridge_group_names(const char *path, size_t *count)
 		free(group_names);
 		group_names = NULL;
 	}
+	nng_strfree(pattern);
 	*count = group_count;
 	return group_names;
 }
@@ -1834,14 +1834,17 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 
 static bool
 conf_bride_content_parse(
-    conf *nanomq_conf, conf_bridge *bridge, const char *path)
+    conf *nanomq_conf, conf_bridge *bridge,const char *prefix, const char *path)
 {
 	// 1. parse sqlite config from nanomq_bridge.conf
+	char *key = nni_zalloc(strlen(prefix) + 15);
+	sprintf(key, "%sbridge.sqlite",prefix);
 	conf_sqlite_parse(&bridge->sqlite, path, "bridge.sqlite");
-
+	nni_strfree(key);
 	// 2. find all the name from the file
 	size_t group_count;
-	char **group_names = get_bridge_group_names(path, &group_count);
+	char **group_names =
+	    get_bridge_group_names(path, prefix, &group_count);
 
 	if (group_count == 0 || group_names == NULL) {
 		log_debug("No bridge config group found");
