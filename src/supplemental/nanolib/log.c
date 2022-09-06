@@ -8,6 +8,12 @@
 
 #define MAX_CALLBACKS 10
 
+#if NANO_PLATFORM_WINDOWS
+#define nano_localtime(t, pTm) localtime_s(pTm, t)
+#else
+#define nano_localtime(t, pTm) localtime_r(t, pTm)
+#endif
+
 typedef struct {
 	log_func fn;
 	void *   udata;
@@ -45,7 +51,7 @@ static void
 stdout_callback(log_event *ev)
 {
 	char buf[64];
-	buf[strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", ev->time)] = '\0';
+	buf[strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &ev->time)] = '\0';
 #ifdef LOG_USE_COLOR
 	fprintf(ev->udata,
 	    "%s [%i] %s%-5s\x1b[0m \x1b[0m%s:%d \x1b[0m %s: ", buf,
@@ -64,7 +70,7 @@ static void
 file_callback(log_event *ev)
 {
 	char buf[64];
-	buf[strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", ev->time)] = '\0';
+	buf[strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &ev->time)] = '\0';
 	fprintf(ev->udata, "%s [%i] %-5s %s:%d: ", buf, nni_plat_getpid(),
 	    level_strings[ev->level], ev->file, ev->line);
 	vfprintf(ev->udata, ev->fmt, ev->ap);
@@ -174,10 +180,8 @@ log_add_console(int level, void *mtx)
 static void
 init_event(log_event *ev, void *udata)
 {
-	if (!ev->time) {
-		time_t t = time(NULL);
-		ev->time = localtime(&t);
-	}
+	const time_t now_seconds = time(NULL);
+	nano_localtime(&now_seconds, &ev->time);
 	ev->udata = udata;
 }
 
