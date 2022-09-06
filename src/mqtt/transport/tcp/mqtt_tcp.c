@@ -281,7 +281,7 @@ mqtt_tcptran_ep_match(mqtt_tcptran_ep *ep)
 	nni_list_append(&ep->busypipes, p);
 	ep->useraio = NULL;
 	if (p->cparam == NULL) {
-		p->cparam = nni_mqtt_msg_set_conn_param(ep->connmsg);
+		p->cparam = nni_get_conn_param_from_msg(ep->connmsg);
 	}
 	nni_aio_set_output(aio, 0, p);
 	nni_aio_finish(aio, 0, 0);
