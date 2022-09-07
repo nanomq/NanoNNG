@@ -52,7 +52,7 @@ static const char *level_colors[] = {
 };
 #endif
 
-static void file_rotation(conf_log *config);
+static void file_rotation(FILE *fp, conf_log *config);
 
 static void
 stdout_callback(log_event *ev)
@@ -77,7 +77,7 @@ static void
 file_callback(log_event *ev)
 {
 	char  buf[64];
-	FILE *fp = ev->udata;
+	FILE *fp = ev->config->fp;
 	buf[strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &ev->time)] = '\0';
 	fprintf(fp, "%s [%i] %-5s %s:%d: ", buf, nni_plat_getpid(),
 	    level_strings[ev->level], ev->file, ev->line);
@@ -85,7 +85,7 @@ file_callback(log_event *ev)
 	fprintf(fp, "\n");
 	fflush(fp);
 
-	file_rotation(ev->config);
+	file_rotation(fp, ev->config);
 }
 
 #if defined(SUPP_SYSLOG)
@@ -178,9 +178,10 @@ log_add_callback(
 }
 
 static void
-file_rotation(conf_log *config)
+file_rotation(FILE *fp, conf_log *config)
 {
-	// Note : do not call log_xxx() in this function, it will cause dead lock
+	// Note : do not call log_xxx() in this function, it will cause dead
+	// lock
 	size_t sz = 0;
 	int    rv;
 	if ((rv = nni_plat_file_size(config->abs_path, &sz)) != 0) {
@@ -213,13 +214,14 @@ file_rotation(conf_log *config)
 		    log_name, log_name_len, "%s.%lu", config->file, index);
 		char *backup_log_path =
 		    nano_concat_path(config->dir, log_name);
-		fclose(config->fp);
-
+		fclose(fp);
+		fp = NULL;
 		rename(config->abs_path, backup_log_path);
 		nni_free(log_name, log_name_len);
 		nni_strfree(backup_log_path);
-		config->fp = fopen(config->abs_path, "a");
 
+		fp           = fopen(config->abs_path, "a");
+		config->fp   = fp;
 		char num[20] = { 0 };
 		index++; // increase index
 		if (index >= config->rotation_count) {
