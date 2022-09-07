@@ -185,7 +185,7 @@ file_rotation(FILE *fp, conf_log *config)
 	size_t sz = 0;
 	int    rv;
 	if ((rv = nni_plat_file_size(config->abs_path, &sz)) != 0) {
-		fprintf(stderr, "get file %s size failed: %s",
+		fprintf(stderr, "get file %s size failed: %s\n",
 		    config->abs_path, nng_strerror(rv));
 		return;
 	}
@@ -198,10 +198,7 @@ file_rotation(FILE *fp, conf_log *config)
 		size_t index      = 1;
 
 		if ((rv = nni_plat_file_get(
-		         index_file, (void **) &index_data, &size)) != 0) {
-			fprintf(stderr, "get from file %s failed: %s",
-			    index_file, nng_strerror(rv));
-		} else {
+		         index_file, (void **) &index_data, &size)) == 0) {
 			if (1 != sscanf(index_data, "%zu", &index)) {
 				index = 1;
 			}
@@ -216,6 +213,7 @@ file_rotation(FILE *fp, conf_log *config)
 		    nano_concat_path(config->dir, log_name);
 		fclose(fp);
 		fp = NULL;
+		remove(backup_log_path);
 		rename(config->abs_path, backup_log_path);
 		nni_free(log_name, log_name_len);
 		nni_strfree(backup_log_path);
@@ -230,7 +228,7 @@ file_rotation(FILE *fp, conf_log *config)
 		snprintf(num, 20, "%zu", index);
 		if ((rv = nni_plat_file_put(index_file, num, strlen(num))) !=
 		    0) {
-			fprintf(stderr, "write to file %s failed: %s",
+			fprintf(stderr, "write to file %s failed: %s\n",
 			    index_file, nng_strerror(rv));
 		}
 		nni_strfree(index_file);
