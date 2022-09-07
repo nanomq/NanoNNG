@@ -956,11 +956,8 @@ quic_mqtt_stream_close(void *arg)
 
 	nni_lmq_flush(&p->recv_messages);
 	nni_lmq_flush(&s->send_messages);
-	/*
-#if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
+
 	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
-#endif
-	*/
 	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
 	nni_mtx_unlock(&s->mtx);
 
