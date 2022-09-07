@@ -58,6 +58,7 @@ struct quic_strm_s {
 	nni_msg *rxmsg; // nng_msg for received
 
 	nni_aio  rraio;
+	nni_aio  close_aio;
 	uint8_t *rrbuf; // Buffer for remaining packet
 	uint32_t rrlen; // Length of rrbuf
 	uint32_t rrpos; // Start position of rrbuf
@@ -87,6 +88,7 @@ static int     quic_strm_start(HQUIC Connection, void *Context, HQUIC *Streamp, 
 static void    quic_strm_send_cancel(nni_aio *aio, void *arg, int rv);
 static void    quic_strm_send_start(quic_strm_t *qstrm);
 static void    quic_strm_recv_cb(void *arg);
+static void    quic_strm_close_cb(void *arg);
 static void    quic_strm_recv_start(void *arg);
 static void    quic_strm_init(quic_strm_t *qstrm);
 static void    quic_strm_fini(quic_strm_t *qstrm);
@@ -148,6 +150,7 @@ quic_strm_init(quic_strm_t *qstrm)
 	nni_lmq_init(&qstrm->send_messages, NNG_MAX_SEND_LMQ);
 
 	nni_aio_init(&qstrm->rraio, quic_strm_recv_cb, qstrm);
+	nni_aio_init(&qstrm->close_aio, quic_strm_close_cb, qstrm);
 
 	qstrm->rxlen = 0;
 	qstrm->rxmsg = NULL;
@@ -172,6 +175,14 @@ quic_strm_fini(quic_strm_t *qstrm)
 
 	nni_lmq_fini(&qstrm->recv_messages);
 	nni_lmq_fini(&qstrm->send_messages);
+	nni_mtx_fini(&qstrm->mtx);
+
+	nni_aio_stop(&qstrm->rraio);
+	nni_aio_close(&qstrm->rraio);
+	nni_aio_fini(&qstrm->rraio);
+	nni_aio_stop(&qstrm->close_aio);
+	nni_aio_close(&qstrm->close_aio);
+	nni_aio_fini(&qstrm->close_aio);
 
 	return;
 }
@@ -343,9 +354,8 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 		}
 
 		if (qstrm->rticket_active) {
-			qinfo("[conn][%p] try to resume by ticket\n", Connection);
-			nng_msleep(NNI_QUIC_TIMER * 1000);
-			quic_reconnect(qstrm);
+			printf("closed! reconnecting via close aio\n");
+			nni_aio_finish(&qstrm->close_aio, 0, 0);
 		} else { // No rticket
 			qdebug("No ticket and done.\n", Connection);
 			quic_strm_fini(qstrm);
@@ -604,6 +614,16 @@ Error:
 	}
 
 	return 0;
+}
+
+static void
+quic_strm_close_cb(void *arg)
+{
+	quic_strm_t *qstrm = arg;
+
+	qinfo("[conn][%p] try to resume by ticket\n", qstrm->stream);
+	nng_msleep(NNI_QUIC_TIMER * 1000);
+	quic_reconnect(qstrm);
 }
 
 static void
