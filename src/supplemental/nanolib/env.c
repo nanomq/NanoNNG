@@ -87,7 +87,7 @@ read_env_conf(conf *config)
 	set_long_var((long *) &config->client_max_packet_size,
 	    NANOMQ_CLIENT_MAX_PACKET_SIZE);
 	set_int_var(&config->msq_len, NANOMQ_MSQ_LEN);
-	set_int_var(&config->qos_duration, NANOMQ_QOS_DURATION);
+	set_long_var((long *) &config->qos_duration, NANOMQ_QOS_DURATION);
 	set_bool_var(&config->allow_anonymous, NANOMQ_ALLOW_ANONYMOUS);
 	set_bool_var(&config->websocket.enable, NANOMQ_WEBSOCKET_ENABLE);
 	set_string_var(&config->websocket.url, NANOMQ_WEBSOCKET_URL);
