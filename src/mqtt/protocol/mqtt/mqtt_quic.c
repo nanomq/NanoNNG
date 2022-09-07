@@ -789,22 +789,7 @@ mqtt_quic_sock_close(void *arg)
 	mqtt_sock_t *s = arg;
 	nni_msg *msg;
 	nni_aio *aio;
-	while ((aio = nni_list_first(&s->send_queue)) != NULL) {
-		nni_list_remove(&s->send_queue, aio);
-		msg = nni_aio_get_msg(aio);
-		if (msg != NULL) {
-			nni_msg_free(msg);
-		}
-		nni_aio_finish_error(aio, NNG_ECLOSED);
-	}
-	// recv_queue will be empty when pipi_fini
-	while ((aio = nni_list_first(&s->recv_queue)) != NULL) {
-		// Pipe was closed.  just push an error back to the
-		// entire socket, because we only have one pipe
-		nni_list_remove(&s->recv_queue, aio);
-		// there should be no msg waiting
-		nni_aio_finish_error(aio, NNG_ECLOSED);
-	}
+
 	nni_aio_stop(&s->time_aio);
 	nni_aio_close(&s->time_aio);
 }
@@ -881,6 +866,7 @@ quic_mqtt_stream_fini(void *arg)
 	nni_id_map_fini(&p->recv_unack);
 	nni_id_map_fini(&p->sent_unack);
 	nni_lmq_fini(&p->recv_messages);
+
 	uint16_t count = 0;
 	nni_msg *tmsg = nano_msg_notify_disconnect(p->cparam, SERVER_SHUTTING_DOWN);
 	nni_msg_set_conn_param(tmsg, p->cparam);
@@ -896,6 +882,14 @@ quic_mqtt_stream_fini(void *arg)
 		           : nni_aio_finish_error(aio, NNG_ECLOSED);
 		// there should be no msg waiting
 		count++;
+	}
+	while ((aio = nni_list_first(&s->send_queue)) != NULL) {
+		nni_list_remove(&s->send_queue, aio);
+		msg = nni_aio_get_msg(aio);
+		if (msg != NULL) {
+			nni_msg_free(msg);
+		}
+		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
 	if (s->cb.disconnect_cb != NULL) {
 		s->cb.disconnect_cb(NULL, s->cb.discarg);
