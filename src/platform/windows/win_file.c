@@ -370,4 +370,30 @@ nni_plat_getcwd(char *buf, size_t size)
 	return _getcwd(buf, size);
 }
 
+int
+nni_plat_file_size(const char *path, size_t *size)
+{
+	int    rv = 0;
+	void * data;
+	DWORD  sz;
+	DWORD  nread;
+	HANDLE h;
+
+	h = CreateFile(name, GENERIC_READ, 0, NULL, OPEN_EXISTING,
+	    FILE_ATTRIBUTE_NORMAL, NULL);
+	if (h == INVALID_HANDLE_VALUE) {
+		return (nni_win_error(GetLastError()));
+	}
+	// We choose not to support extraordinarily large files (>4GB)
+	if ((sz = GetFileSize(h, NULL)) == INVALID_FILE_SIZE) {
+		rv = nni_win_error(GetLastError());
+		goto done;
+	}
+	*size = sz;
+done:
+	*size = 0;
+	(void) CloseHandle(h);
+	return (rv);
+}
+
 #endif // NNG_PLATFORM_WINDOWS

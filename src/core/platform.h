@@ -550,13 +550,16 @@ extern char *nni_plat_join_dir(const char *, const char *);
 extern const char *nni_plat_file_basename(const char *);
 
 // nni_plat_file_exists return if file is exists.
-extern bool nni_plat_file_exists(const char *path);
+extern bool nni_plat_file_exists(const char *);
 
 // nni_plat_getcwd get current directory where program is running.
-extern char *nni_plat_getcwd(char *buf, size_t size);
+extern char *nni_plat_getcwd(char *, size_t );
 
 // nni_plat_getpid get current process Id.
 extern int nni_plat_getpid(void);
+
+// nni_plat_file_size get file size.
+extern int nni_plat_file_size(const char *, size_t *);
 
 //
 // Actual platforms we support.  This is included up front so that we can
