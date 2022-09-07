@@ -373,24 +373,18 @@ nni_plat_getcwd(char *buf, size_t size)
 int
 nni_plat_file_size(const char *path, size_t *size)
 {
-	int    rv = 0;
-	DWORD  sz;
-	HANDLE h;
+	int   rv = 0;
 
-	h = CreateFile(path, GENERIC_READ, 0, NULL, OPEN_EXISTING,
-	    FILE_ATTRIBUTE_NORMAL, NULL);
-	if (h == INVALID_HANDLE_VALUE) {
+	WIN32_FILE_ATTRIBUTE_DATA fad;
+
+	if (!GetFileAttributesEx(path, GetFileExInfoStandard, &fad)) {
 		return (nni_win_error(GetLastError()));
 	}
-	// We choose not to support extraordinarily large files (>4GB)
-	if ((sz = GetFileSize(h, NULL)) == INVALID_FILE_SIZE) {
-		rv = nni_win_error(GetLastError());
-		goto done;
-	}
-	*size = sz;
-done:
-	*size = 0;
-	(void) CloseHandle(h);
+
+	LARGE_INTEGER file_sz;
+	file_sz.HighPart = fad.nFileSizeHigh;
+	file_sz.LowPart  = fad.nFileSizeLow;
+	*size            = file_sz.QuadPart;
 	return (rv);
 }
 
