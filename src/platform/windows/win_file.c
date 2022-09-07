@@ -374,12 +374,10 @@ int
 nni_plat_file_size(const char *path, size_t *size)
 {
 	int    rv = 0;
-	void * data;
 	DWORD  sz;
-	DWORD  nread;
 	HANDLE h;
 
-	h = CreateFile(name, GENERIC_READ, 0, NULL, OPEN_EXISTING,
+	h = CreateFile(path, GENERIC_READ, 0, NULL, OPEN_EXISTING,
 	    FILE_ATTRIBUTE_NORMAL, NULL);
 	if (h == INVALID_HANDLE_VALUE) {
 		return (nni_win_error(GetLastError()));
