@@ -844,8 +844,9 @@ quic_mqtt_stream_fini(void *arg)
 	nni_aio *aio;
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
-
 	nni_msg * msg;
+
+	log_warn(" QUIC Stream closed, pipe finit!");
 	if ((msg = nni_aio_get_msg(&p->recv_aio)) != NULL) {
 		nni_aio_set_msg(&p->recv_aio, NULL);
 		nni_msg_free(msg);
@@ -952,6 +953,7 @@ quic_mqtt_stream_close(void *arg)
 	nni_aio_close(&p->send_aio);
 	nni_aio_close(&p->recv_aio);
 	nni_aio_close(&p->rep_aio);
+
 	nni_lmq_flush(&p->recv_messages);
 	nni_lmq_flush(&s->send_messages);
 	/*
@@ -1017,8 +1019,9 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 
 	if (p == NULL) {
 		// connection is lost or not established yet
-		if (!nni_list_active(&s->send_queue, aio)) {
+		if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNECT && !nni_list_active(&s->send_queue, aio)) {
 			// cache aio
+			printf("cached!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
 			nni_list_append(&s->send_queue, aio);
 			nni_mtx_unlock(&s->mtx);
 		} else {
