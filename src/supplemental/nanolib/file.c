@@ -118,3 +118,32 @@ file_load_data(const char *filepath, void **data)
 	*data         = buf;
 	return size;
 }
+
+char *
+nano_concat_path(const char *dir, const char *file_name)
+{
+	if (file_name == NULL) {
+		return NULL;
+	}
+
+#if defined(NNG_PLATFORM_WINDOWS)
+	char *directory = dir == NULL ? nni_strdup(".\\") : nni_strdup(dir);
+#else
+	char *directory = dir == NULL ? nni_strdup("./") : nni_strdup(dir);
+#endif
+
+	size_t path_len = strlen(directory) + strlen(file_name) + 3;
+	char * path     = nng_zalloc(path_len);
+
+#if defined(NNG_PLATFORM_WINDOWS)
+	snprintf(path, path_len, "%s%s%s", directory,
+	    directory[strlen(directory) - 1] == '\\' ? "" : "\\", file_name);
+#else
+	snprintf(path, path_len, "%s%s%s", directory,
+	    directory[strlen(directory) - 1] == '/' ? "" : "/", file_name);
+#endif
+
+	nni_strfree(directory);
+
+	return path;
+}
