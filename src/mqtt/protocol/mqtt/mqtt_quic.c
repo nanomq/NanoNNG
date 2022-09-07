@@ -1018,7 +1018,6 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 		// connection is lost or not established yet
 		if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNECT && !nni_list_active(&s->send_queue, aio)) {
 			// cache aio
-			printf("cached!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
 			nni_list_append(&s->send_queue, aio);
 			nni_mtx_unlock(&s->mtx);
 		} else {
