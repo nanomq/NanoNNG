@@ -551,6 +551,10 @@ conf_log_init(conf_log *log)
 	log->file  = NULL;
 	log->dir   = NULL;
 	log->type  = LOG_TO_CONSOLE;
+
+	log->rotation_sz_str = NULL;
+	log->rotation_sz     = 10 * 1024;
+	log->rotation_count  = 5;
 }
 
 static void
@@ -563,7 +567,12 @@ conf_log_destroy(conf_log *log)
 	if (log->dir) {
 		free(log->dir);
 	}
-	log->type = LOG_TO_CONSOLE;
+	if (log->rotation_sz_str) {
+		free(log->rotation_sz_str);
+	}
+	log->type           = LOG_TO_CONSOLE;
+	log->rotation_count = 5;
+	log->rotation_sz    = 10 * 1024;
 }
 
 static void
@@ -611,6 +620,24 @@ conf_log_parse(conf_log *log, const char *path)
 				}
 				tk = strtok(NULL, ",");
 			}
+			free(value);
+		} else if ((value = get_conf_value(line, sz, "log.rotation.size")) != 0) {
+			log->rotation_sz_str = value;
+			size_t num           = 0;
+			char   unit[10]      = { 0 };
+			int    res = sscanf(value, "%llu%s", &num, unit);
+			if (res == 2) {
+				if (nni_strcasecmp(unit, "KB") == 0) {
+					log->rotation_sz = num * 1024;
+				} else if (nni_strcasecmp(unit, "MB") == 0) {
+					log->rotation_sz = num * 1024 * 1024;
+				} else if (nni_strcasecmp(unit, "GB") == 0) {
+					log->rotation_sz =
+					    num * 1024 * 1024 * 1024;
+				}
+			}
+		} else if ((value = get_conf_value(line, sz, "log.rotation.count")) != 0) {
+			log->rotation_count = atoi(value);
 			free(value);
 		}
 		free(line);
