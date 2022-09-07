@@ -551,7 +551,9 @@ conf_log_init(conf_log *log)
 	log->file  = NULL;
 	log->dir   = NULL;
 	log->type  = LOG_TO_CONSOLE;
+	log->fp    = NULL;
 
+	log->abs_path        = NULL;
 	log->rotation_sz_str = NULL;
 	log->rotation_sz     = 10 * 1024;
 	log->rotation_count  = 5;
@@ -561,14 +563,21 @@ static void
 conf_log_destroy(conf_log *log)
 {
 	log->level = NNG_LOG_WARN;
+	if (log->fp) {
+		fclose(log->fp);
+		log->fp = NULL;
+	}
 	if (log->file) {
-		free(log->file);
+		nni_strfree(log->file);
 	}
 	if (log->dir) {
-		free(log->dir);
+		nni_strfree(log->dir);
 	}
 	if (log->rotation_sz_str) {
-		free(log->rotation_sz_str);
+		nni_strfree(log->rotation_sz_str);
+	}
+	if (log->abs_path) {
+		nni_strfree(log->abs_path);
 	}
 	log->type           = LOG_TO_CONSOLE;
 	log->rotation_count = 5;
@@ -625,7 +634,7 @@ conf_log_parse(conf_log *log, const char *path)
 			log->rotation_sz_str = value;
 			size_t num           = 0;
 			char   unit[10]      = { 0 };
-			int    res = sscanf(value, "%llu%s", &num, unit);
+			int    res = sscanf(value, "%zu%s", &num, unit);
 			if (res == 2) {
 				if (nni_strcasecmp(unit, "KB") == 0) {
 					log->rotation_sz = num * 1024;

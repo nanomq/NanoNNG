@@ -12,17 +12,20 @@ extern "C" {
 #include <stdint.h>
 #include <time.h>
 
+#include "conf.h"
+
 #define LOG_VERSION "0.2.0"
 
 typedef struct {
-	va_list         ap;
-	const char *    fmt;
-	const char *    file;
-	const char *    func;
-	struct tm       time;
-	void *          udata;
-	int             line;
-	int             level;
+	va_list     ap;
+	const char *fmt;
+	const char *file;
+	const char *func;
+	struct tm   time;
+	void *      udata;
+	int         line;
+	int         level;
+	conf_log *  config;
 } log_event;
 
 typedef void (*log_func)(log_event *ev);
@@ -39,9 +42,10 @@ enum {
 NNG_DECL const char *log_level_string(int level);
 NNG_DECL int         log_level_num(const char *level);
 NNG_DECL void        log_set_level(int level);
-NNG_DECL int log_add_callback(log_func fn, void *udata, int level, void *mtx);
-NNG_DECL void        log_add_console(int level, void *mtx);
-NNG_DECL int         log_add_fp(FILE *fp, int level, void *mtx);
+NNG_DECL int         log_add_callback(
+            log_func fn, void *udata, int level, void *mtx, conf_log *config);
+NNG_DECL void log_add_console(int level, void *mtx);
+NNG_DECL int  log_add_fp(FILE *fp, int level, void *mtx, conf_log *config);
 NNG_DECL void log_add_syslog(const char *log_name, uint8_t level, void *mtx);
 NNG_DECL void log_log(int level, const char *file, int line, const char *func,
     const char *fmt, ...);

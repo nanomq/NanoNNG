@@ -52,6 +52,8 @@ struct conf_log {
 	int     level;
 	char *  dir;
 	char *  file;
+	FILE *  fp;
+	char *  abs_path;        // absolut path of log file
 	char *  rotation_sz_str; // 1000KB, 100MB, 10GB
 	size_t  rotation_sz;     // unit: byte
 	size_t  rotation_count;  // rotation count

@@ -1,6 +1,10 @@
 #include "nng/supplemental/nanolib/log.h"
+#include "nng/supplemental/nanolib/conf.h"
+#include "nng/supplemental/nanolib/file.h"
 #include "core/nng_impl.h"
 #include "core/defs.h"
+
+#define INDEX_FILE_NAME ".idx"
 
 #if defined(SUPP_SYSLOG)
 #include <syslog.h>
@@ -15,10 +19,11 @@
 #endif
 
 typedef struct {
-	log_func fn;
-	void *   udata;
-	uint8_t  level;
-	nng_mtx *mtx;
+	log_func  fn;
+	void *    udata;
+	uint8_t   level;
+	nng_mtx * mtx;
+	conf_log *config;
 } log_callback;
 
 static struct {
@@ -47,6 +52,8 @@ static const char *level_colors[] = {
 };
 #endif
 
+static void file_rotation(conf_log *config);
+
 static void
 stdout_callback(log_event *ev)
 {
@@ -69,13 +76,16 @@ stdout_callback(log_event *ev)
 static void
 file_callback(log_event *ev)
 {
-	char buf[64];
+	char  buf[64];
+	FILE *fp = ev->udata;
 	buf[strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &ev->time)] = '\0';
-	fprintf(ev->udata, "%s [%i] %-5s %s:%d: ", buf, nni_plat_getpid(),
+	fprintf(fp, "%s [%i] %-5s %s:%d: ", buf, nni_plat_getpid(),
 	    level_strings[ev->level], ev->file, ev->line);
-	vfprintf(ev->udata, ev->fmt, ev->ap);
-	fprintf(ev->udata, "\n");
-	fflush(ev->udata);
+	vfprintf(fp, ev->fmt, ev->ap);
+	fprintf(fp, "\n");
+	fflush(fp);
+
+	file_rotation(ev->config);
 }
 
 #if defined(SUPP_SYSLOG)
@@ -110,7 +120,7 @@ void
 log_add_syslog(const char *log_name, uint8_t level, void *mtx)
 {
 	openlog(log_name, LOG_PID, LOG_DAEMON | convert_syslog_level(level));
-	log_add_callback(syslog_callback, NULL, level, mtx);
+	log_add_callback(syslog_callback, NULL, level, mtx, NULL);
 }
 #else
 
@@ -149,15 +159,17 @@ log_set_level(int level)
 }
 
 int
-log_add_callback(log_func fn, void *udata, int level, void *mtx)
+log_add_callback(
+    log_func fn, void *udata, int level, void *mtx, conf_log *config)
 {
 	for (int i = 0; i < MAX_CALLBACKS; i++) {
 		if (!L.callbacks[i].fn) {
 			L.callbacks[i] = (log_callback) {
-				.fn    = fn,
-				.udata = udata,
-				.level = level,
-				.mtx   = (nng_mtx *) mtx,
+				.fn     = fn,
+				.udata  = udata,
+				.level  = level,
+				.mtx    = (nng_mtx *) mtx,
+				.config = config,
 			};
 			return 0;
 		}
@@ -165,24 +177,83 @@ log_add_callback(log_func fn, void *udata, int level, void *mtx)
 	return -1;
 }
 
-int
-log_add_fp(FILE *fp, int level, void *mtx)
+static void
+file_rotation(conf_log *config)
 {
-	return log_add_callback(file_callback, fp, level, mtx);
+	// Note : do not call log_xxx() in this function, it will cause dead lock
+	size_t sz = 0;
+	int    rv;
+	if ((rv = nni_plat_file_size(config->abs_path, &sz)) != 0) {
+		fprintf(stderr, "get file %s size failed: %s",
+		    config->abs_path, nng_strerror(rv));
+		return;
+	}
+
+	if (sz >= config->rotation_sz) {
+		char *index_file =
+		    nano_concat_path(config->dir, INDEX_FILE_NAME);
+		char * index_data = NULL;
+		size_t size       = 0;
+		size_t index      = 1;
+
+		if ((rv = nni_plat_file_get(
+		         index_file, (void **) &index_data, &size)) != 0) {
+			fprintf(stderr, "get from file %s failed: %s",
+			    index_file, nng_strerror(rv));
+		} else {
+			if (1 != sscanf(index_data, "%zu", &index)) {
+				index = 1;
+			}
+			nni_free(index_data, size);
+		}
+
+		size_t log_name_len = strlen(config->abs_path) + 20;
+		char * log_name     = nni_zalloc(log_name_len);
+		snprintf(
+		    log_name, log_name_len, "%s.%lu", config->file, index);
+		char *backup_log_path =
+		    nano_concat_path(config->dir, log_name);
+		fclose(config->fp);
+
+		rename(config->abs_path, backup_log_path);
+		nni_free(log_name, log_name_len);
+		nni_strfree(backup_log_path);
+		config->fp = fopen(config->abs_path, "a");
+
+		char num[20] = { 0 };
+		index++; // increase index
+		if (index >= config->rotation_count) {
+			index = 1;
+		}
+		snprintf(num, 20, "%zu", index);
+		if ((rv = nni_plat_file_put(index_file, num, strlen(num))) !=
+		    0) {
+			fprintf(stderr, "write to file %s failed: %s",
+			    index_file, nng_strerror(rv));
+		}
+		nni_strfree(index_file);
+	}
+}
+
+int
+log_add_fp(FILE *fp, int level, void *mtx, conf_log *config)
+{
+	return log_add_callback(file_callback, fp, level, mtx, config);
 }
 
 void
 log_add_console(int level, void *mtx)
 {
-	log_add_callback(stdout_callback, stdout, level, mtx);
+	log_add_callback(stdout_callback, stdout, level, mtx, NULL);
 }
 
 static void
-init_event(log_event *ev, void *udata)
+init_event(log_event *ev, void *udata, conf_log *config)
 {
 	const time_t now_seconds = time(NULL);
 	nano_localtime(&now_seconds, &ev->time);
-	ev->udata = udata;
+	ev->udata  = udata;
+	ev->config = config;
 }
 
 void
@@ -202,7 +273,7 @@ log_log(int level, const char *file, int line, const char *func,
 	for (int i = 0; i < MAX_CALLBACKS && L.callbacks[i].fn; i++) {
 		log_callback *cb = &L.callbacks[i];
 		if (level <= cb->level) {
-			init_event(&ev, cb->udata);
+			init_event(&ev, cb->udata, cb->config);
 			va_start(ev.ap, fmt);
 			if (cb->mtx == NULL) {
 				cb->fn(&ev);
