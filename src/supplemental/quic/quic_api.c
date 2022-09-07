@@ -354,7 +354,6 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 		}
 
 		if (qstrm->rticket_active) {
-			printf("closed! reconnecting via close aio\n");
 			nni_aio_finish(&qstrm->close_aio, 0, 0);
 		} else { // No rticket
 			qdebug("No ticket and done.\n", Connection);
