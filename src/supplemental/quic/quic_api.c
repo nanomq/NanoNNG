@@ -18,8 +18,8 @@
 #define NNI_QUIC_KEEPALIVE 100
 #define NNI_QUIC_TIMER 3
 
-#define QUIC_API_C_DEBUG 0
-#define QUIC_API_C_INFO 0
+#define QUIC_API_C_DEBUG 1
+#define QUIC_API_C_INFO 1
 
 #if QUIC_API_C_DEBUG
 #define qdebug(fmt, ...)                                                 \
@@ -287,6 +287,7 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 {
 	const nni_proto_pipe_ops *pipe_ops = g_quic_proto->proto_pipe_ops;
 	quic_strm_t        *qstrm    = GStream;
+	nni_aio *aio;
 
 	switch (Event->Type) {
 	case QUIC_CONNECTION_EVENT_CONNECTED:
@@ -344,10 +345,15 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 			MsQuic->ConnectionClose(Connection);
 		}
 
+		while ((aio = nni_list_first(&qstrm->recvq)) != NULL) {
+			nni_list_remove(&qstrm->recvq, aio);
+			// nni_aio_abort(aio, NNG_ECLOSED);
+			nni_aio_finish_sync(aio, NNG_ECLOSED, 0);
+		}
 		// Close and finite nng pipe ONCE disconnect
 		if (qstrm->pipe) {
-			pipe_ops->pipe_close(qstrm->pipe);
 			pipe_ops->pipe_stop(qstrm->pipe);
+			pipe_ops->pipe_close(qstrm->pipe);
 			pipe_ops->pipe_fini(qstrm->pipe);
 			nng_free(qstrm->pipe, 0);
 			qstrm->pipe = NULL;
