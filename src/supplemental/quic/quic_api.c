@@ -18,8 +18,8 @@
 #define NNI_QUIC_KEEPALIVE 100
 #define NNI_QUIC_TIMER 3
 
-#define QUIC_API_C_DEBUG 0
-#define QUIC_API_C_INFO 0
+#define QUIC_API_C_DEBUG 1
+#define QUIC_API_C_INFO 1
 
 #if QUIC_API_C_DEBUG
 #define qdebug(fmt, ...)                                                 \
@@ -200,6 +200,7 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 	nni_msg *smsg;
 	nni_aio *aio;
 
+	log_warn("QuicStreamCallback triggered! %d", Event->Type);
 	switch (Event->Type) {
 	case QUIC_STREAM_EVENT_SEND_COMPLETE:
 		// A previous StreamSend call has completed, and the context is
@@ -266,15 +267,23 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 		// The peer aborted its send direction of the stream.
 		qinfo("[strm][%p] Peer shut down\n", Stream);
 		break;
+	case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 		// Both directions of the stream have been shut down and MsQuic
 		// is done with the stream. It can now be safely cleaned up.
-		qinfo("[strm][%p] All done\n", Stream);
+		qinfo("[strm][%p] shutdown event: All done\n", Stream);
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
 			MsQuic->StreamClose(Stream);
 		}
 		break;
+	case QUIC_STREAM_EVENT_START_COMPLETE:
+		log_warn("QUIC_STREAM_EVENT_START_COMPLETE");
+		break;
+	case QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE:
+		log_warn("QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE");
+		break;
 	default:
+		log_warn("Unknown Event Type %d", Event->Type);
 		break;
 	}
 	return QUIC_STATUS_SUCCESS;
@@ -288,7 +297,8 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 	const nni_proto_pipe_ops *pipe_ops = g_quic_proto->proto_pipe_ops;
 	quic_strm_t        *qstrm    = GStream;
 	nni_aio *aio;
-
+	
+	log_warn("QuicConnectionCallback triggered! %d", Event->Type);
 	switch (Event->Type) {
 	case QUIC_CONNECTION_EVENT_CONNECTED:
 		// The handshake has completed for the connection.
@@ -297,11 +307,13 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 
 		// First starting the quic stream
 		// if (!qstrm->rticket_active) {
-			if (0 != quic_strm_start(Connection, qstrm, &qstrm->stream, qstrm->rticket_active)) {
-				qdebug("Error in quic strm start.\n");
-				break;
-			}
-			MsQuic->StreamReceiveSetEnabled(qstrm->stream, FALSE);
+		if (0 !=
+		    quic_strm_start(Connection, qstrm, &qstrm->stream,
+		        qstrm->rticket_active)) {
+			qdebug("Error in quic strm start.\n");
+			break;
+		}
+		MsQuic->StreamReceiveSetEnabled(qstrm->stream, FALSE);
 		// }
 
 		// Start/ReStart the nng pipe
@@ -352,6 +364,7 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 		}
 		// Close and finite nng pipe ONCE disconnect
 		if (qstrm->pipe) {
+			log_warn("stream disconnected!");
 			pipe_ops->pipe_stop(qstrm->pipe);
 			pipe_ops->pipe_close(qstrm->pipe);
 			pipe_ops->pipe_fini(qstrm->pipe);
@@ -360,13 +373,13 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 		}
 
 		if (qstrm->rticket_active) {
+			log_warn("try to do stream reconnect!");
 			nni_aio_finish(&qstrm->close_aio, 0, 0);
 		} else { // No rticket
 			qdebug("No ticket and done.\n", Connection);
 			quic_strm_fini(qstrm);
 			nng_free(qstrm, sizeof(quic_strm_t));
 		}
-
 		break;
 	case QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED:
 		// A resumption ticket (also called New Session Ticket or NST)
@@ -388,7 +401,17 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 		memcpy(qstrm->rticket, Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicket,
 		        Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength);
 		break;
+	case QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED:
+		log_warn("QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED");
+		break;
+	case QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE:
+		log_info("QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE");
+		break;
+	case QUIC_CONNECTION_EVENT_IDEAL_PROCESSOR_CHANGED:
+		log_info("QUIC_CONNECTION_EVENT_IDEAL_PROCESSOR_CHANGED");
+		break;
 	default:
+		log_warn("Unknown event type %d!", Event->Type);
 		break;
 	}
 	return QUIC_STATUS_SUCCESS;
