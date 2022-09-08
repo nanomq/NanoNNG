@@ -229,7 +229,6 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 		uint8_t count = Event->RECEIVE.BufferCount;
 
 		log_debug("[strm][%p] Data received\n", Stream);
-		qdebug("Body is [%d]-[0x%x 0x%x].\n", rlen, *(rbuf), *(rbuf + 1));
 
 		nni_mtx_lock(&qstrm->mtx);
 
@@ -238,6 +237,7 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 			nni_mtx_unlock(&qstrm->mtx);
 			return QUIC_STATUS_PENDING;
 		}
+		qdebug("Body is [%d]-[0x%x 0x%x].\n", rlen, *(rbuf), *(rbuf + 1));
 
 		if (rlen > qstrm->rrcap - qstrm->rrlen - qstrm->rrpos) {
 			qstrm->rrbuf = realloc(qstrm->rrbuf, rlen + qstrm->rrlen);
