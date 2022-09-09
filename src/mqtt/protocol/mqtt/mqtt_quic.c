@@ -661,6 +661,7 @@ mqtt_timer_cb(void *arg)
 		return;
 	}
 	s->counter += s->retry;
+	/*
 	if (s->counter > s->keepalive) {
 		// send PINGREQ
 		nng_aio_wait(&p->rep_aio);
@@ -669,6 +670,7 @@ mqtt_timer_cb(void *arg)
 		quic_strm_send(p->qstream, &p->rep_aio);
 		s->counter = 0;
 	}
+	*/
 
 	// start message resending
 	msg = nni_id_get_any(&p->sent_unack, &pid);
@@ -776,9 +778,11 @@ mqtt_quic_sock_open(void *arg)
 	// enable time aio in sock open when utlize 0RTT to unbind MQTT with Gstream
 	// nni_sleep_aio(s->retry * NNI_SECOND, &s->time_aio);
 	// alloc Ping msg
+	/*
 	nng_msg_alloc(&s->ping_msg, 0);
 	nng_msg_header_append(s->ping_msg, buf, 1);
 	nng_msg_append(s->ping_msg, buf+1, 1);
+	*/
 
 	// initiate the global resend timer
 	nni_sleep_aio(s->retry * NNI_SECOND, &s->time_aio);
