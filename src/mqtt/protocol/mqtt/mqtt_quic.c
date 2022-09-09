@@ -1023,6 +1023,7 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 			nni_mtx_unlock(&s->mtx);
 		} else {
 			// aio is already on the list. Wrong behaviour from user
+			log_warn("former AIO is still waiting! msg dropped");
 			nni_msg_free(msg);
 			nni_mtx_unlock(&s->mtx);
 			nni_aio_set_msg(aio, NULL);

@@ -18,8 +18,8 @@
 #define NNI_QUIC_KEEPALIVE 100
 #define NNI_QUIC_TIMER 3
 
-#define QUIC_API_C_DEBUG 1
-#define QUIC_API_C_INFO 1
+#define QUIC_API_C_DEBUG 0
+#define QUIC_API_C_INFO 0
 
 #if QUIC_API_C_DEBUG
 #define qdebug(fmt, ...)                                                 \
@@ -200,13 +200,13 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 	nni_msg *smsg;
 	nni_aio *aio;
 
-	log_warn("QuicStreamCallback triggered! %d", Event->Type);
+	log_debug("QuicStreamCallback triggered! %d", Event->Type);
 	switch (Event->Type) {
 	case QUIC_STREAM_EVENT_SEND_COMPLETE:
 		// A previous StreamSend call has completed, and the context is
 		// being returned back to the app.
 		free(Event->SEND_COMPLETE.ClientContext);
-		qinfo("[strm][%p] Data sent\n", Stream);
+		log_debug("[strm][%p] Data sent\n", Stream);
 
 		// Get aio from sendq and finish
 		nni_mtx_lock(&qstrm->mtx);
@@ -228,7 +228,7 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 		rlen = Event->RECEIVE.Buffers->Length;
 		uint8_t count = Event->RECEIVE.BufferCount;
 
-		qinfo("[strm][%p] Data received\n", Stream);
+		log_debug("[strm][%p] Data received\n", Stream);
 		qdebug("Body is [%d]-[0x%x 0x%x].\n", rlen, *(rbuf), *(rbuf + 1));
 
 		nni_mtx_lock(&qstrm->mtx);
@@ -254,24 +254,24 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 			nni_aio_finish_sync(&qstrm->rraio, 0, 0);
 			// nng_aio_wait(&qstrm->rraio);
 		}
-		qdebug("stream cb over\n");
+		log_debug("stream cb over\n");
 
 		return QUIC_STATUS_PENDING;
 
 	case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
 		// The peer gracefully shut down its send direction of the
 		// stream.
-		qinfo("[strm][%p] Peer aborted\n", Stream);
+		log_info("[strm][%p] Peer aborted\n", Stream);
 		break;
 	case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
 		// The peer aborted its send direction of the stream.
-		qinfo("[strm][%p] Peer shut down\n", Stream);
+		log_info("[strm][%p] Peer shut down\n", Stream);
 		break;
 	case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 		// Both directions of the stream have been shut down and MsQuic
 		// is done with the stream. It can now be safely cleaned up.
-		qinfo("[strm][%p] shutdown event: All done\n", Stream);
+		log_info("[strm][%p] QUIC_STREAM_EVENT shutdown: All done %d\n", Stream);
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
 			MsQuic->StreamClose(Stream);
 		}
@@ -298,12 +298,12 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 	quic_strm_t        *qstrm    = GStream;
 	nni_aio *aio;
 	
-	log_warn("QuicConnectionCallback triggered! %d", Event->Type);
+	log_info("QuicConnectionCallback triggered! %d", Event->Type);
 	switch (Event->Type) {
 	case QUIC_CONNECTION_EVENT_CONNECTED:
 		// The handshake has completed for the connection.
 		// do not init any var here due to potential frequent reconnect
-		qinfo("[conn][%p] Connected\n", Connection);
+		log_info("[conn][%p] Connected\n", Connection);
 
 		// First starting the quic stream
 		// if (!qstrm->rticket_active) {
@@ -330,20 +330,20 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 		// the connection.
 		if (Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status ==
 		    QUIC_STATUS_CONNECTION_IDLE) {
-			qinfo("[conn][%p] Successfully shut down on idle.\n",
+			log_error("[conn][%p] Successfully shut down on idle.\n",
 			    Connection);
 		} else {
-			qinfo("[conn][%p] Shut down by transport, 0x%x\n",
+			log_error("[conn][%p] Shut down by transport, 0x%x\n",
 			    Connection,
 			    Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status);
 		}
 		//auto reconnect here!
-		qdebug("pipe shutting down\n");
 		break;
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER:
 		// The connection was explicitly shut down by the peer.
-		qinfo("[conn][%p] Shut down by peer, 0x%llu\n", Connection,
+		log_error("[conn][%p] QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER, 0x%llu\n", Connection,
 		    (unsigned long long) Event->SHUTDOWN_INITIATED_BY_PEER.ErrorCode);
+
 		if (qstrm->pipe) {
 			pipe_ops->pipe_close(qstrm->pipe);
 			pipe_ops->pipe_stop(qstrm->pipe);
@@ -352,7 +352,7 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE:
 		// The connection has completed the shutdown process and is
 		// ready to be safely cleaned up.
-		qinfo("[conn][%p] All done\n\n", Connection);
+		log_info("[conn][%p] QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE: All done\n\n", Connection);
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
 			MsQuic->ConnectionClose(Connection);
 		}
@@ -384,7 +384,7 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 	case QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED:
 		// A resumption ticket (also called New Session Ticket or NST)
 		// was received from the server.
-		qinfo("[conn][%p] Resumption ticket received (%u bytes):\n",
+		log_info("[conn][%p] Resumption ticket received (%u bytes):\n",
 		    Connection, Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength);
 		/*
 		for (uint32_t i = 0; i <
@@ -450,23 +450,23 @@ quic_strm_start(HQUIC Connection, void *Context, HQUIC *Streamp, bool active)
 	// started.
 	if (QUIC_FAILED(Status = MsQuic->StreamOpen(Connection,
 	                    QUIC_STREAM_OPEN_FLAG_NONE, QuicStreamCallback, Context, &Stream))) {
-		qdebug("StreamOpen failed, 0x%x!\n", Status);
+		log_error("StreamOpen failed, 0x%x!\n", Status);
 		goto Error;
 	}
 
-	qinfo("[strm][%p] Starting...\n", Stream);
+	log_debug("[strm][%p] Starting...\n", Stream);
 
 	// Starts the bidirectional stream. By default, the peer is not
 	// notified of the stream being started until data is sent on the
 	// stream.
 	if (QUIC_FAILED(Status = MsQuic->StreamStart(
 	                    Stream, QUIC_STREAM_START_FLAG_NONE))) {
-		qdebug("StreamStart failed, 0x%x!\n", Status);
+		log_error("StreamStart failed, 0x%x!\n", Status);
 		MsQuic->StreamClose(Stream);
 		goto Error;
 	}
 
-	qdebug("[strm][%p] Done...\n", Stream);
+	log_debug("[strm][%p] Done...\n", Stream);
 	*Streamp = Stream;
 	return 0;
 
@@ -491,14 +491,14 @@ quic_open()
 	QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
 
 	if (QUIC_FAILED(Status = MsQuicOpen2(&MsQuic))) {
-		qdebug("MsQuicOpen2 failed, 0x%x!\n", Status);
+		log_error("MsQuicOpen2 failed, 0x%x!\n", Status);
 		goto Error;
 	}
 
 	// Create a registration for the app's connections.
 	if (QUIC_FAILED(Status = MsQuic->RegistrationOpen(
 	                    &RegConfig, &Registration))) {
-		qdebug("RegistrationOpen failed, 0x%x!\n", Status);
+		log_error("RegistrationOpen failed, 0x%x!\n", Status);
 		goto Error;
 	}
 
@@ -587,6 +587,7 @@ quic_connect(const char *url, nni_sock *sock)
 Error:
 
 	if (QUIC_FAILED(Status) && Connection != NULL) {
+		log_error("failed status %d connection closed", Status);
 		MsQuic->ConnectionClose(Connection);
 	}
 
