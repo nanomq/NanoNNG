@@ -575,7 +575,7 @@ tcptran_pipe_recv_cb(void *arg)
 	aio = nni_list_first(&p->recvq);
 
 	if ((rv = nni_aio_result(rxaio)) != 0) {
-		log_error("nni aio error!! %d\n", rv);
+		log_warn("nni aio recv error!! %d\n", rv);
 		rv = NMQ_SERVER_BUSY;
 		goto recv_error;
 	}
@@ -811,7 +811,7 @@ recv_error:
 	nni_mtx_unlock(&p->mtx);
 	nni_msg_free(msg);
 	nni_aio_finish_error(aio, rv);
-	log_error("tcptran_pipe_recv_cb: recv error rv: %d\n", rv);
+	log_warn("tcptran_pipe_recv_cb: recv error rv: %d\n", rv);
 	return;
 notify:
 	// nni_pipe_bump_rx(p->npipe, n);
