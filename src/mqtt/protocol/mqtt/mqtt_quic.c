@@ -22,7 +22,7 @@
 
 #define DB_NAME "mqtt_qos_db_quic.db"
 
-#define MQTT_QUIC_KEEPALIVE 5  // 5 seconds as default 
+#define MQTT_QUIC_RETRTY 5  // 5 seconds as default minimum timer 
 
 typedef struct mqtt_sock_s   mqtt_sock_t;
 typedef struct mqtt_pipe_s   mqtt_pipe_t;
@@ -93,8 +93,8 @@ struct mqtt_sock_s {
 	nni_list send_queue;    // aio pending to send
 	nni_lmq  send_messages; // send messages queue
 	nni_aio  time_aio;      // timer aio to resend unack msg
-	uint16_t counter;
-	uint16_t pingcnt;
+	uint16_t counter;	// counter for elapsed time
+	uint16_t pingcnt;    // count how many ping msg is lost
 	uint16_t keepalive; // MQTT keepalive
 	nni_msg *ping_msg, *connmsg;
 
@@ -103,7 +103,7 @@ struct mqtt_sock_s {
 
 // A mqtt_pipe_s is our per-pipe protocol private structure.
 struct mqtt_pipe_s {
-	void           *stream;
+	void           *qconnection;
 	void           *qstream; // nni_pipe
 	nni_atomic_bool closed;
 	bool            busy;
@@ -484,6 +484,8 @@ mqtt_quic_recv_cb(void *arg)
 	// set conn_param for upper layer
 	if (p->cparam)
 		nng_msg_set_conn_param(msg, p->cparam);
+	// Restore pingcnt
+	s->pingcnt = 0;
 	switch (packet_type) {
 	case NNG_MQTT_CONNACK:
 		if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
@@ -612,8 +614,6 @@ mqtt_quic_recv_cb(void *arg)
 		// Rely on health checker of Quic stream
 		// free msg
 		nni_msg_free(msg);
-		// Restore pingcnt
-		s->pingcnt = 0;
 		nni_mtx_unlock(&s->mtx);
 		return;
 	case NNG_MQTT_PUBREC:
@@ -653,6 +653,38 @@ mqtt_quic_recv_cb(void *arg)
 			s->cb.msg_recv_cb(msg, s->cb.recvarg);
 }
 
+// static void
+// quic_strm_mqtt_ping(void *arg)
+// {
+// 	quic_strm_t *qstrm = arg;
+// 	QUIC_STATUS  Status;
+// 	qdebug("Mqtt Ping [%ds]\n", qstrm->keepalive);
+
+// 	nni_mtx_lock(&qstrm->mtx);
+// 	if (qstrm->pingcnt > 1) {
+// 		// Last ping does not completed, which indicate the stream is disconnected
+// 		if (GConnection != NULL)
+// 			MsQuic->ConnectionShutdown(*GConnection, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
+// 		nni_mtx_unlock(&qstrm->mtx);
+// 		// nni_sleep_aio(qstrm->keepalive * NNI_SECOND, &qstrm->pingaio);
+// 		return;
+// 	}
+
+// 	QUIC_BUFFER *buf=(QUIC_BUFFER*)malloc(sizeof(QUIC_BUFFER));
+// 	buf->Buffer = (uint8_t *)mqttping;
+// 	buf->Length = 2;
+
+// 	if (QUIC_FAILED(Status = MsQuic->StreamSend(qstrm->stream, buf, 1,
+// 	                    QUIC_SEND_FLAG_NONE, buf))) {
+// 		qdebug("StreamSend failed, 0x%x!\n", Status);
+// 		free(buf);
+// 	}
+// 	qstrm->pingcnt ++;
+// 	nni_mtx_unlock(&qstrm->mtx);
+
+// 	nni_sleep_aio(qstrm->keepalive * NNI_SECOND, &qstrm->pingaio);
+// }
+
 // Timer callback, we use it for retransmition.
 static void
 mqtt_timer_cb(void *arg)
@@ -667,17 +699,19 @@ mqtt_timer_cb(void *arg)
 		return;
 	}
 	nni_mtx_lock(&s->mtx);
+
 	if (NULL == p || nni_atomic_get_bool(&p->closed)) {
 		nni_mtx_unlock(&s->mtx);
 		// nni_sleep_aio(s->retry * NNI_SECOND, &s->time_aio);
 		return;
 	}
+
 	s->counter += s->retry;
-	if (s->counter > s->keepalive) {
+	log_warn("%d %d", s->counter, s->pingcnt);
+	if (s->counter >= s->keepalive) {
 		// send PINGREQ
-		s->pingcnt ++;
 		if (s->pingcnt > 1) {
-			log_warn("Close the quic connection due to no enough pingresp received");
+			log_warn("Close the quic connection due to timeout");
 			s->pingcnt = 0; // restore pingcnt
 			quic_disconnect();
 			nni_mtx_unlock(&s->mtx);
@@ -688,6 +722,7 @@ mqtt_timer_cb(void *arg)
 			nni_msg_clone(s->ping_msg);
 			quic_strm_send(p->qstream, &p->rep_aio);
 			s->counter = 0;
+			s->pingcnt ++;
 		}
 	}
 
@@ -742,7 +777,7 @@ static void mqtt_quic_sock_init(void *arg, nni_sock *sock)
 	nni_atomic_set_bool(&s->closed, false);
 
 	// this is a pre-defined timer for global timer
-	s->retry   = MQTT_QUIC_KEEPALIVE;
+	s->retry   = MQTT_QUIC_RETRTY;
 	s->counter = 0;
 	s->pingcnt = 0;
 	s->connmsg = NULL;
@@ -795,15 +830,11 @@ mqtt_quic_sock_open(void *arg)
 {
 	mqtt_sock_t *s = arg;
 	uint8_t buf[2] = {0xC0,0x00};
-	// enable time aio in sock open when utlize 0RTT to unbind MQTT with Gstream
-	// nni_sleep_aio(s->retry * NNI_SECOND, &s->time_aio);
+
 	// alloc Ping msg
 	nng_msg_alloc(&s->ping_msg, 0);
 	nng_msg_header_append(s->ping_msg, buf, 1);
 	nng_msg_append(s->ping_msg, buf+1, 1);
-
-	// initiate the global resend timer
-	nni_sleep_aio(s->retry * NNI_SECOND, &s->time_aio);
 }
 
 static void
@@ -837,6 +868,7 @@ static int
 quic_mqtt_stream_init(void *arg,nni_pipe *qstrm, void *sock)
 {
 	mqtt_pipe_t *p     = arg;
+	mqtt_sock_t *s	   = sock;
 	p->qstream         = qstrm;
 	p->mqtt_sock       = sock;
 	p->mqtt_sock->pipe = p;
