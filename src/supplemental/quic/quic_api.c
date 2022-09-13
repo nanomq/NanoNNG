@@ -57,10 +57,6 @@ struct quic_strm_s {
 	uint8_t  rxbuf[5];
 	nni_msg *rxmsg; // nng_msg for received
 
-	int          pingcnt;
-	nni_aio      pingaio;   // Ping in mqtt layer
-	nni_duration keepalive; // Keep alive for mqtt
-
 	nni_aio  rraio;
 	nni_aio  close_aio;
 	uint8_t *rrbuf; // Buffer for remaining packet
@@ -94,7 +90,6 @@ static void    quic_strm_send_cancel(nni_aio *aio, void *arg, int rv);
 static void    quic_strm_send_start(quic_strm_t *qstrm);
 static void    quic_strm_recv_cb(void *arg);
 static void    quic_strm_close_cb(void *arg);
-static void    quic_strm_mqtt_ping(void *arg);
 static void    quic_strm_recv_start(void *arg);
 static void    quic_strm_init(quic_strm_t *qstrm);
 static void    quic_strm_fini(quic_strm_t *qstrm);
@@ -157,7 +152,6 @@ quic_strm_init(quic_strm_t *qstrm)
 
 	nni_aio_init(&qstrm->rraio, quic_strm_recv_cb, qstrm);
 	nni_aio_init(&qstrm->close_aio, quic_strm_close_cb, qstrm);
-	nni_aio_init(&qstrm->pingaio, quic_strm_mqtt_ping, qstrm);
 
 	qstrm->rxlen = 0;
 	qstrm->rxmsg = NULL;
@@ -170,9 +164,6 @@ quic_strm_init(quic_strm_t *qstrm)
 	qstrm->url_s = NULL;
 	qstrm->rticket_sz = 0;
 	qstrm->rticket_active = false;
-
-	qstrm->keepalive = 5; // 30s by default
-	qstrm->pingcnt   = 0;
 }
 
 static void
@@ -187,9 +178,6 @@ quic_strm_fini(quic_strm_t *qstrm)
 	nni_lmq_fini(&qstrm->send_messages);
 	nni_mtx_fini(&qstrm->mtx);
 
-	nni_aio_stop(&qstrm->pingaio);
-	nni_aio_close(&qstrm->pingaio);
-	nni_aio_fini(&qstrm->pingaio);
 	nni_aio_stop(&qstrm->rraio);
 	nni_aio_close(&qstrm->rraio);
 	nni_aio_fini(&qstrm->rraio);
@@ -335,10 +323,6 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 		}
 		pipe_ops->pipe_init(qstrm->pipe, (nni_pipe *)qstrm, Context);
 		pipe_ops->pipe_start(qstrm->pipe);
-		// Enable the mqtt ping aio
-		if (!nni_aio_list_active(&qstrm->pingaio))
-			nni_sleep_aio(qstrm->keepalive * NNI_SECOND, &qstrm->pingaio);
-		qstrm->pingcnt = 0;
 		break;
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_TRANSPORT:
 		// The connection has been shut down by the transport.
@@ -676,39 +660,6 @@ quic_strm_close_cb(void *arg)
 	quic_reconnect(qstrm);
 }
 
-static const char mqttping[2] = {0xc0, 0x00};
-static void
-quic_strm_mqtt_ping(void *arg)
-{
-	quic_strm_t *qstrm = arg;
-	QUIC_STATUS  Status;
-	qdebug("Mqtt Ping [%ds]\n", qstrm->keepalive);
-
-	nni_mtx_lock(&qstrm->mtx);
-	if (qstrm->pingcnt > 1) {
-		// Last ping does not completed, which indicate the stream is disconnected
-		if (GConnection != NULL)
-			MsQuic->ConnectionShutdown(*GConnection, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
-		nni_mtx_unlock(&qstrm->mtx);
-		// nni_sleep_aio(qstrm->keepalive * NNI_SECOND, &qstrm->pingaio);
-		return;
-	}
-
-	QUIC_BUFFER *buf=(QUIC_BUFFER*)malloc(sizeof(QUIC_BUFFER));
-	buf->Buffer = (uint8_t *)mqttping;
-	buf->Length = 2;
-
-	if (QUIC_FAILED(Status = MsQuic->StreamSend(qstrm->stream, buf, 1,
-	                    QUIC_SEND_FLAG_NONE, buf))) {
-		qdebug("StreamSend failed, 0x%x!\n", Status);
-		free(buf);
-	}
-	qstrm->pingcnt ++;
-	nni_mtx_unlock(&qstrm->mtx);
-
-	nni_sleep_aio(qstrm->keepalive * NNI_SECOND, &qstrm->pingaio);
-}
-
 static void
 quic_strm_send_start(quic_strm_t *qstrm)
 {
@@ -806,16 +757,6 @@ quic_strm_recv_start(void *arg)
 
 	// Wait MsQuic take back data
 	MsQuic->StreamReceiveSetEnabled(qstrm->stream, TRUE);
-	/*
-	if (rlen < qstrm->rwlen) {
-		if (rlen > 0) {
-			memmove(qstrm->rrbuf, qstrm->rrbuf+qstrm->rrpos, qstrm->rrlen);
-			qstrm->rrpos = 0;
-		}
-		MsQuic->StreamReceiveSetEnabled(qstrm->stream, TRUE);
-		return;
-	}
-	*/
 }
 
 static void
@@ -862,9 +803,6 @@ quic_strm_recv_cb(void *arg)
 			}
 			nni_msg_header_append(
 			    qstrm->rxmsg, qstrm->rxbuf, 2);
-			if ((qstrm->rxbuf[0] & 0xd0) == 0xd0) {
-				qstrm->pingcnt = 0; // The connection is active once we get a pingresp
-			}
 			goto upload;
 		}
 		if (qstrm->rxbuf[1] == 2)
