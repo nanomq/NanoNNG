@@ -205,6 +205,7 @@ struct conf_bridge_node {
 	char *       username;
 	char *       password;
 	uint16_t     keepalive;
+	uint64_t     qkeepalive;		//keepalive timeout interval of QUIC transport
 	size_t       forwards_count;
 	char **      forwards;
 	size_t       sub_count;
