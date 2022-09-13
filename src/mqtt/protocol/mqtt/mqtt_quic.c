@@ -147,6 +147,8 @@ get_persist(mqtt_sock_t *s)
 	return false;
 #endif
 */
+	NNI_ARG_UNUSED(s);
+	return false;
 }
 
 static inline char *
@@ -160,6 +162,8 @@ get_config_name(mqtt_sock_t *s)
 	return NULL;
 #endif
 	*/
+	NNI_ARG_UNUSED(s);
+	return NULL;
 }
 
 static uint16_t
@@ -177,6 +181,7 @@ mqtt_pipe_get_next_packet_id(mqtt_pipe_t *p)
 static void
 flush_offline_cache(mqtt_sock_t *s)
 {
+	NNI_ARG_UNUSED(s);
 	/*
 #if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
 	if (s->bridge_conf) {
@@ -196,6 +201,7 @@ flush_offline_cache(mqtt_sock_t *s)
 static inline nni_msg *
 get_cache_msg(mqtt_sock_t *s)
 {
+	NNI_ARG_UNUSED(s);
 	nni_msg *msg = NULL;
 	/*
 #if defined(NNG_HAVE_MQTT_BROKER)
@@ -323,7 +329,10 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 static int
 quic_sock_set_conf_with_db(void *arg, const void *v, size_t sz, nni_opt_type t)
 {
+	NNI_ARG_UNUSED(arg);
+	NNI_ARG_UNUSED(v);
 	NNI_ARG_UNUSED(sz);
+	NNI_ARG_UNUSED(t);
 	/*
 #ifdef NNG_HAVE_MQTT_BROKER
 	mqtt_sock_t *s = arg;
@@ -801,8 +810,6 @@ static void
 mqtt_quic_sock_close(void *arg)
 {
 	mqtt_sock_t *s = arg;
-	nni_msg *msg;
-	nni_aio *aio;
 
 	nni_aio_stop(&s->time_aio);
 	nni_aio_close(&s->time_aio);
