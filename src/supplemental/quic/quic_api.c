@@ -78,12 +78,13 @@ const QUIC_API_TABLE *MsQuic;
 HQUIC                 Registration;
 HQUIC                 Configuration;
 
-quic_strm_t *GStream = NULL;
-HQUIC       *GConnection = NULL;
+quic_strm_t    *GStream     = NULL;
+HQUIC          *GConnection = NULL;
+static uint64_t keepalive   = 0;
 
 nni_proto *g_quic_proto;
 
-static BOOLEAN LoadConfiguration(BOOLEAN Unsecure);
+static BOOLEAN LoadConfiguration(BOOLEAN Unsecure, uint64_t interval);
 static int     quic_strm_start(HQUIC Connection, void *Context, HQUIC *Streamp, bool active);
 // static int     quic_strm_close(HQUIC Connection, HQUIC Stream);
 static void    quic_strm_send_cancel(nni_aio *aio, void *arg, int rv);
@@ -97,12 +98,16 @@ static int     quic_reconnect(quic_strm_t *qstrm);
 
 // Helper function to load a client configuration.
 static BOOLEAN
-LoadConfiguration(BOOLEAN Unsecure)
+LoadConfiguration(BOOLEAN Unsecure, uint64_t interval)
 {
 	QUIC_SETTINGS Settings = { 0 };
 	// Configures the client's idle timeout.
-	Settings.IdleTimeoutMs       = NNI_QUIC_KEEPALIVE * 1000;
-	Settings.IsSet.IdleTimeoutMs = TRUE;
+	if(interval == 0) {
+		Settings.IsSet.IdleTimeoutMs = FALSE;
+	} else {
+		keepalive = interval;
+		Settings.IdleTimeoutMs       = interval * 1000;
+	}
 
 	// Configures a default client configuration, optionally disabling
 	// server certificate validation.
@@ -485,6 +490,12 @@ quic_proto_open(nni_proto *proto)
 }
 
 void
+quic_proto_set_keepalive(uint64_t interval)
+{
+	keepalive = interval;
+}
+
+void
 quic_open()
 {
 	QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
@@ -525,7 +536,7 @@ quic_connect(const char *url, nni_sock *sock)
 {
 	// Load the client configuration based on the "unsecure" command line
 	// option.
-	if (!LoadConfiguration(TRUE)) {
+	if (!LoadConfiguration(TRUE, keepalive)) {
 		return (-1);
 	}
 
@@ -601,7 +612,7 @@ quic_reconnect(quic_strm_t *qstrm)
 {
 	// Load the client configuration based on the "unsecure" command line
 	// option.
-	if (!LoadConfiguration(TRUE)) {
+	if (!LoadConfiguration(TRUE, keepalive)) {
 		return (-1);
 	}
 

@@ -329,43 +329,38 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 static int
 quic_sock_set_conf_with_db(void *arg, const void *v, size_t sz, nni_opt_type t)
 {
-	NNI_ARG_UNUSED(arg);
-	NNI_ARG_UNUSED(v);
-	NNI_ARG_UNUSED(sz);
-	NNI_ARG_UNUSED(t);
-	/*
 #ifdef NNG_HAVE_MQTT_BROKER
 	mqtt_sock_t *s = arg;
 	if (t == NNI_TYPE_OPAQUE) {
 		nni_mtx_lock(&s->mtx);
 		s->bridge_conf = (conf_bridge_node *) v;
 
-#ifdef NNG_SUPP_SQLITE
-		conf_bridge_node *bridge_conf = s->bridge_conf;
-		if (bridge_conf != NULL && bridge_conf->sqlite->enable) {
-			s->retry = bridge_conf->sqlite->resend_interval;
-			nni_lmq_init(&s->offline_cache,
-			    bridge_conf->sqlite->flush_mem_threshold);
-			nni_qos_db_init_sqlite(s->sqlite_db,
-			    bridge_conf->sqlite->mounted_file_path, DB_NAME,
-			    false);
-			nni_qos_db_reset_client_msg_pipe_id(
-			    bridge_conf->sqlite->enable, s->sqlite_db,
-			    bridge_conf->name);
-			nni_mqtt_qos_db_set_client_info(s->sqlite_db,
-			    bridge_conf->name, NULL, "MQTT",
-			    bridge_conf->proto_ver);
-		}
-#endif
+// #ifdef NNG_SUPP_SQLITE
+// 		conf_bridge_node *bridge_conf = s->bridge_conf;
+// 		if (bridge_conf != NULL && bridge_conf->sqlite->enable) {
+// 			s->retry = bridge_conf->sqlite->resend_interval;
+// 			nni_lmq_init(&s->offline_cache,
+// 			    bridge_conf->sqlite->flush_mem_threshold);
+// 			nni_qos_db_init_sqlite(s->sqlite_db,
+// 			    bridge_conf->sqlite->mounted_file_path, DB_NAME,
+// 			    false);
+// 			nni_qos_db_reset_client_msg_pipe_id(
+// 			    bridge_conf->sqlite->enable, s->sqlite_db,
+// 			    bridge_conf->name);
+// 			nni_mqtt_qos_db_set_client_info(s->sqlite_db,
+// 			    bridge_conf->name, NULL, "MQTT",
+// 			    bridge_conf->proto_ver);
+// 		}
+// #endif
 		nni_mtx_unlock(&s->mtx);
 		return 0;
 	}
 #else
 	NNI_ARG_UNUSED(arg);
 	NNI_ARG_UNUSED(v);
+	NNI_ARG_UNUSED(sz);
 	NNI_ARG_UNUSED(t);
 #endif
-	*/
 	return NNG_EUNREACHABLE;
 }
 
@@ -652,38 +647,6 @@ mqtt_quic_recv_cb(void *arg)
 		if (s->cb.msg_recv_cb) // Trigger cb
 			s->cb.msg_recv_cb(msg, s->cb.recvarg);
 }
-
-// static void
-// quic_strm_mqtt_ping(void *arg)
-// {
-// 	quic_strm_t *qstrm = arg;
-// 	QUIC_STATUS  Status;
-// 	qdebug("Mqtt Ping [%ds]\n", qstrm->keepalive);
-
-// 	nni_mtx_lock(&qstrm->mtx);
-// 	if (qstrm->pingcnt > 1) {
-// 		// Last ping does not completed, which indicate the stream is disconnected
-// 		if (GConnection != NULL)
-// 			MsQuic->ConnectionShutdown(*GConnection, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
-// 		nni_mtx_unlock(&qstrm->mtx);
-// 		// nni_sleep_aio(qstrm->keepalive * NNI_SECOND, &qstrm->pingaio);
-// 		return;
-// 	}
-
-// 	QUIC_BUFFER *buf=(QUIC_BUFFER*)malloc(sizeof(QUIC_BUFFER));
-// 	buf->Buffer = (uint8_t *)mqttping;
-// 	buf->Length = 2;
-
-// 	if (QUIC_FAILED(Status = MsQuic->StreamSend(qstrm->stream, buf, 1,
-// 	                    QUIC_SEND_FLAG_NONE, buf))) {
-// 		qdebug("StreamSend failed, 0x%x!\n", Status);
-// 		free(buf);
-// 	}
-// 	qstrm->pingcnt ++;
-// 	nni_mtx_unlock(&qstrm->mtx);
-
-// 	nni_sleep_aio(qstrm->keepalive * NNI_SECOND, &qstrm->pingaio);
-// }
 
 // Timer callback, we use it for retransmition.
 static void
@@ -1205,19 +1168,42 @@ int
 nng_mqtt_quic_client_open(nng_socket *sock, const char *url)
 {
 	nni_sock *nsock;
-	int rv = 0;
+	int       rv = 0;
 	// Quic settings
 	if ((rv = nni_proto_open(sock, &mqtt_msquic_proto)) == 0) {
-		// TODO write an independent transport layer for msquic
 		nni_sock_find(&nsock, sock->id);
-		quic_open();
-		quic_proto_open(&mqtt_msquic_proto);
-		// TODO seperate init & connect API
-		quic_connect(url, nsock);
+		if (nsock) {
+			quic_open();
+			quic_proto_open(&mqtt_msquic_proto);
+			rv = quic_connect(url, nsock);
+		} else {
+			rv = -1;
+		}
+		return rv;
 	}
-	return rv;
 }
-
+#ifdef NNG_HAVE_MQTT_BROKER
+int
+nng_mqtt_quic_open_keepalive(nng_socket *sock, const char *url, uint64_t interval)
+{
+	nni_sock *nsock;
+	int       rv = 0;
+	// Quic settings
+	if ((rv = nni_proto_open(sock, &mqtt_msquic_proto)) == 0) {
+		nni_sock_find(&nsock, sock->id);
+		if (nsock) {
+			mqtt_sock_t *mqtt_sock = nni_sock_proto_data(nsock);
+			quic_open();
+			quic_proto_open(&mqtt_msquic_proto);
+			quic_proto_set_keepalive(interval);
+			quic_connect(url, nsock);
+		} else {
+			rv = -1;
+		}
+		return rv;
+	}
+}
+#endif
 int
 nng_mqtt_quic_set_connect_cb(nng_socket *sock, int (*cb)(void *, void *), void *arg)
 {

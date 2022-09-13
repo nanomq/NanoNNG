@@ -6,8 +6,10 @@
 
 extern int quic_connect(const char *url, nni_sock *sock);
 extern int quic_disconnect();
+
 extern void quic_proto_open(nni_proto *proto);
 extern void quic_open();
+extern void quic_proto_set_keepalive(uint64_t interval);
 
 extern int quic_strm_recv(void *arg, nni_aio *raio);
 extern int quic_strm_send(void *arg, nni_aio *saio);
