@@ -964,6 +964,8 @@ quic_mqtt_stream_start(void *arg)
 		nni_msg_clone(s->connmsg);
 		mqtt_send_msg(NULL, s->connmsg, s);
 	}
+	if (!nni_aio_list_active(&s->time_aio))
+		nni_sleep_aio(s->retry * NNI_SECOND, &s->time_aio);
 	if (NULL != (msg = get_cache_msg(s))) {
 		p->busy = true;
 		nni_aio_set_msg(&p->send_aio, msg);
@@ -980,8 +982,7 @@ quic_mqtt_stream_start(void *arg)
 			return 0;
 		}
 	}
-	if (!nni_aio_list_active(&s->time_aio))
-		nni_sleep_aio(s->retry * NNI_SECOND, &s->time_aio);
+
 	nni_mtx_unlock(&s->mtx);
 	quic_strm_recv(p->qstream, &p->recv_aio);
 	return 0;
