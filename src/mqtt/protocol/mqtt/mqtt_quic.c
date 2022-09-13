@@ -94,6 +94,7 @@ struct mqtt_sock_s {
 	nni_lmq  send_messages; // send messages queue
 	nni_aio  time_aio;      // timer aio to resend unack msg
 	uint16_t counter;
+	uint16_t pingcnt;
 	uint16_t keepalive; // MQTT keepalive
 	nni_msg *ping_msg, *connmsg;
 
@@ -602,6 +603,8 @@ mqtt_quic_recv_cb(void *arg)
 		// Rely on health checker of Quic stream
 		// free msg
 		nni_msg_free(msg);
+		// Restore pingcnt
+		s->pingcnt = 0;
 		nni_mtx_unlock(&s->mtx);
 		return;
 	case NNG_MQTT_PUBREC:
@@ -661,16 +664,23 @@ mqtt_timer_cb(void *arg)
 		return;
 	}
 	s->counter += s->retry;
-	/*
 	if (s->counter > s->keepalive) {
 		// send PINGREQ
-		nng_aio_wait(&p->rep_aio);
-		nni_aio_set_msg(&p->rep_aio, s->ping_msg);
-		nni_msg_clone(s->ping_msg);
-		quic_strm_send(p->qstream, &p->rep_aio);
-		s->counter = 0;
+		s->pingcnt ++;
+		if (s->pingcnt > 1) {
+			log_warn("Close the quic connection due to no enough pingresp received");
+			s->pingcnt = 0; // restore pingcnt
+			quic_disconnect();
+			nni_mtx_unlock(&s->mtx);
+			return;
+		} else {
+			nng_aio_wait(&p->rep_aio);
+			nni_aio_set_msg(&p->rep_aio, s->ping_msg);
+			nni_msg_clone(s->ping_msg);
+			quic_strm_send(p->qstream, &p->rep_aio);
+			s->counter = 0;
+		}
 	}
-	*/
 
 	// start message resending
 	msg = nni_id_get_any(&p->sent_unack, &pid);
@@ -725,6 +735,7 @@ static void mqtt_quic_sock_init(void *arg, nni_sock *sock)
 	// this is a pre-defined timer for global timer
 	s->retry   = MQTT_QUIC_KEEPALIVE;
 	s->counter = 0;
+	s->pingcnt = 0;
 	s->connmsg = NULL;
 
 	nni_mtx_init(&s->mtx);
@@ -778,11 +789,9 @@ mqtt_quic_sock_open(void *arg)
 	// enable time aio in sock open when utlize 0RTT to unbind MQTT with Gstream
 	// nni_sleep_aio(s->retry * NNI_SECOND, &s->time_aio);
 	// alloc Ping msg
-	/*
 	nng_msg_alloc(&s->ping_msg, 0);
 	nng_msg_header_append(s->ping_msg, buf, 1);
 	nng_msg_append(s->ping_msg, buf+1, 1);
-	*/
 
 	// initiate the global resend timer
 	nni_sleep_aio(s->retry * NNI_SECOND, &s->time_aio);
@@ -932,6 +941,8 @@ quic_mqtt_stream_start(void *arg)
 			return 0;
 		}
 	}
+	if (!nni_aio_list_active(&s->time_aio))
+		nni_sleep_aio(s->retry * NNI_SECOND, &s->time_aio);
 	nni_mtx_unlock(&s->mtx);
 	quic_strm_recv(p->qstream, &p->recv_aio);
 	return 0;
