@@ -5,6 +5,7 @@
 #include "nng/nng.h"
 
 extern int quic_connect(const char *url, nni_sock *sock);
+extern int quic_disconnect();
 extern void quic_proto_open(nni_proto *proto);
 extern void quic_open();
 

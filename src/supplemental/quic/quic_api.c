@@ -435,17 +435,14 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 	return QUIC_STATUS_SUCCESS;
 }
 
-/*
-static int
-quic_strm_close(HQUIC Connection, HQUIC Stream)
+int
+quic_disconnect()
 {
-	if (Stream)
-		MsQuic->StreamClose(Stream);
-	if (Connection)
-		MsQuic->ConnectionShutdown(Connection, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
+	if (!GConnection)
+		return -1;
+	MsQuic->ConnectionShutdown(*GConnection, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
 	return 0;
 }
-*/
 
 /**
  * @brief
