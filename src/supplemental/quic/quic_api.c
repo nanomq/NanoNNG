@@ -101,7 +101,7 @@ LoadConfiguration(BOOLEAN Unsecure)
 {
 	QUIC_SETTINGS Settings = { 0 };
 	// Configures the client's idle timeout.
-	Settings.IdleTimeoutMs       = NNI_QUIC_KEEPALIVE*1000;
+	Settings.IdleTimeoutMs       = NNI_QUIC_KEEPALIVE * 1000;
 	Settings.IsSet.IdleTimeoutMs = TRUE;
 
 	// Configures a default client configuration, optionally disabling
