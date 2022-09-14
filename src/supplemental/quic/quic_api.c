@@ -267,17 +267,17 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 	case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
 		// The peer gracefully shut down its send direction of the
 		// stream.
-		log_info("[strm][%p] Peer aborted\n", Stream);
+		log_warn("[strm][%p] Peer aborted\n", Stream);
 		break;
 	case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
 		// The peer aborted its send direction of the stream.
-		log_info("[strm][%p] Peer shut down\n", Stream);
+		log_warn("[strm][%p] Peer shut down\n", Stream);
 		break;
 	case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 		// Both directions of the stream have been shut down and MsQuic
 		// is done with the stream. It can now be safely cleaned up.
-		log_info("[strm][%p] QUIC_STREAM_EVENT shutdown: All done %d\n", Stream);
+		log_warn("[strm][%p] QUIC_STREAM_EVENT shutdown: All done %d\n", Stream);
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
 			MsQuic->StreamClose(Stream);
 		}
@@ -383,7 +383,7 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 			log_warn("try to do stream reconnect!");
 			nni_aio_finish(&qstrm->close_aio, 0, 0);
 		} else { // No rticket
-			qdebug("No ticket and done.\n");
+			log_warn("reconnect failed due to no resumption ticket.\n");
 			quic_strm_fini(qstrm);
 			nng_free(qstrm, sizeof(quic_strm_t));
 		}
@@ -391,7 +391,7 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 	case QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED:
 		// A resumption ticket (also called New Session Ticket or NST)
 		// was received from the server.
-		log_info("[conn][%p] Resumption ticket received (%u bytes):\n",
+		log_warn("[conn][%p] Resumption ticket received (%u bytes):\n",
 		    Connection, Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength);
 		/*
 		for (uint32_t i = 0; i <

@@ -376,7 +376,6 @@ mqtt_quic_send_cb(void *arg)
 		// We failed to send... clean up and deal with it.
 		nni_msg_free(nni_aio_get_msg(&p->send_aio));
 		nni_aio_set_msg(&p->send_aio, NULL);
-		// TODO close quic stream
 		return;
 	}
 	nni_mtx_lock(&s->mtx);
@@ -670,7 +669,6 @@ mqtt_timer_cb(void *arg)
 	}
 
 	s->counter += s->retry;
-	log_warn("%d %d", s->counter, s->pingcnt);
 	if (s->counter >= s->keepalive) {
 		// send PINGREQ
 		if (s->pingcnt > 1) {
@@ -686,6 +684,7 @@ mqtt_timer_cb(void *arg)
 			quic_strm_send(p->qstream, &p->rep_aio);
 			s->counter = 0;
 			s->pingcnt ++;
+			log_info("send PINGREQ %d %d", s->counter, s->pingcnt);
 		}
 	}
 
@@ -807,6 +806,8 @@ mqtt_quic_sock_close(void *arg)
 
 	nni_aio_stop(&s->time_aio);
 	nni_aio_close(&s->time_aio);
+
+	nni_lmq_flush(&s->send_messages);
 }
 
 static void
@@ -973,8 +974,8 @@ quic_mqtt_stream_close(void *arg)
 	nni_aio_close(&p->recv_aio);
 	nni_aio_close(&p->rep_aio);
 
+	// only clear the receving msg queue
 	nni_lmq_flush(&p->recv_messages);
-	nni_lmq_flush(&s->send_messages);
 
 	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
 	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
