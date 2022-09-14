@@ -1182,7 +1182,7 @@ nng_mqtt_quic_client_open(nng_socket *sock, const char *url)
 		return rv;
 	}
 }
-#ifdef NNG_HAVE_MQTT_BROKER
+
 int
 nng_mqtt_quic_open_keepalive(nng_socket *sock, const char *url, uint64_t interval)
 {
@@ -1203,7 +1203,7 @@ nng_mqtt_quic_open_keepalive(nng_socket *sock, const char *url, uint64_t interva
 		return rv;
 	}
 }
-#endif
+
 int
 nng_mqtt_quic_set_connect_cb(nng_socket *sock, int (*cb)(void *, void *), void *arg)
 {
