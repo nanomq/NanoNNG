@@ -126,14 +126,12 @@ nni_id_get(nni_id_map *m, uint32_t id)
 void *
 nni_id_get_any(nni_id_map *m, uint16_t *pid)
 {
-	size_t index;
-	size_t start;
+	size_t index = 1;
+	size_t start = index;
 	if (m->id_count == 0 || m->id_entries == NULL) {
 		return NULL;
 	}
 
-	index = 1;
-	start = index;
 	for (;;) {
 		// The value of ihe_key is only valid if ihe_val is not NULL.
 		if (m->id_entries[index].val != NULL) {
@@ -410,16 +408,4 @@ nni_id_show_cb(nni_msg* msg)
 {
 	NNI_ARG_UNUSED(msg);
 	log_trace("message has an address: %p", msg);
-}
-
-void*
-nni_id_get_one(nni_id_map *m, uint32_t *key)
-{
-	for (int i = 0; i < (int) m->id_cap; i++) {
-		if ((m->id_entries[i].val) != NULL) {
-			*key = m->id_entries[i].key;
-			return &m->id_entries[i];
-		}
-	}
-	return NULL;
 }

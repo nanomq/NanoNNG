@@ -64,7 +64,5 @@ extern void  nni_id_map_sys_fini(void);
 extern void *nni_id_get_any(nni_id_map *m, uint16_t *pid);
 extern void  nni_id_msgfree_cb(nni_msg *msg);
 extern void  nni_id_show_cb(nni_msg *msg);
-// TODO duplicate with the last one API ^^
-extern void *nni_id_get_one(nni_id_map *m, uint32_t *key);
 
 #endif // CORE_IDHASH_H
