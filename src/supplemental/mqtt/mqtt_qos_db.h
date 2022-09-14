@@ -92,8 +92,7 @@ typedef struct nng_mqtt_sqlite_option nni_mqtt_sqlite_option;
 
 #define MQTT_DB_GET_MSG_POINTER(msg) ((nni_msg *) ((size_t)(msg) & (~0x03)))
 
-extern void nni_mqtt_sqlite_db_init(
-    nng_mqtt_sqlite_option *, const char *, const char *, uint8_t);
+extern void nni_mqtt_qos_db_init(sqlite3 **, const char *, const char *, bool);
 extern void nni_mqtt_qos_db_close(sqlite3 *);
 extern void     nni_mqtt_qos_db_set(sqlite3 *, uint32_t, uint16_t, nni_msg *);
 extern nni_msg *nni_mqtt_qos_db_get(sqlite3 *, uint32_t, uint16_t);
