@@ -830,7 +830,6 @@ static int
 quic_mqtt_stream_init(void *arg,nni_pipe *qstrm, void *sock)
 {
 	mqtt_pipe_t *p     = arg;
-	mqtt_sock_t *s	   = sock;
 	p->qstream         = qstrm;
 	p->mqtt_sock       = sock;
 	p->mqtt_sock->pipe = p;
@@ -1027,25 +1026,33 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 	msg = nni_aio_get_msg(aio);
 	if (msg == NULL) {
 		nni_mtx_unlock(&s->mtx);
-		nni_aio_set_msg(aio, NULL);
 		nni_aio_finish_error(aio, NNG_EPROTO);
 		return;
 	}
 
 	if (p == NULL) {
 		// connection is lost or not established yet
-		// for QUIC, instead of caching AIO, we simply put msg in lmq
-		// and ignore the result/ack of cb
-		nni_aio_set_msg(aio, NULL);
-		if (0 != nni_lmq_put(&s->send_messages, msg)) {
-			log_warn("caching msg failed due to full lmq!");
-			nni_msg_free(msg);
+		if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNECT &&
+		    !nni_list_active(&s->send_queue, aio)) {
+			// cache aio
+			nni_list_append(&s->send_queue, aio);
 			nni_mtx_unlock(&s->mtx);
-			nni_aio_finish_error(aio, NNG_EBUSY);
-			return;
+		} else {
+			// aio is already on the list.
+			// caching msg in lmq of sock and ignore the result/ack
+			// of cb
+			if (0 != nni_lmq_put(&s->send_messages, msg)) {
+				log_warn("caching msg failed!");
+				nni_msg_free(msg);
+				nni_mtx_unlock(&s->mtx);
+				nni_aio_set_msg(aio, NULL);
+				nni_aio_finish_error(aio, NNG_EBUSY);
+				return;
+			}
+			nni_mtx_unlock(&s->mtx);
+			nni_aio_set_msg(aio, NULL);
+			nni_aio_finish(aio, 0, 0);
 		}
-		nni_mtx_unlock(&s->mtx);
-		nni_aio_finish(aio, 0, 0);
 		return;
 	}
 	if ((rv = mqtt_send_msg(aio, msg, s)) >= 0) {
@@ -1178,8 +1185,8 @@ nng_mqtt_quic_client_open(nng_socket *sock, const char *url)
 		} else {
 			rv = -1;
 		}
-		return rv;
 	}
+	return rv;
 }
 
 int
@@ -1191,7 +1198,6 @@ nng_mqtt_quic_open_keepalive(nng_socket *sock, const char *url, uint64_t interva
 	if ((rv = nni_proto_open(sock, &mqtt_msquic_proto)) == 0) {
 		nni_sock_find(&nsock, sock->id);
 		if (nsock) {
-			mqtt_sock_t *mqtt_sock = nni_sock_proto_data(nsock);
 			quic_open();
 			quic_proto_open(&mqtt_msquic_proto);
 			quic_proto_set_keepalive(interval);
@@ -1199,8 +1205,8 @@ nng_mqtt_quic_open_keepalive(nng_socket *sock, const char *url, uint64_t interva
 		} else {
 			rv = -1;
 		}
-		return rv;
 	}
+	return rv;
 }
 
 int
