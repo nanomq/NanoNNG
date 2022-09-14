@@ -306,6 +306,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 	} else {
 		if (nni_lmq_full(&s->send_messages)) {
 			(void) nni_lmq_get(&s->send_messages, &tmsg);
+			log_warn("msg lost due to flight window is full");
 			nni_msg_free(tmsg);
 		}
 		if (0 != nni_lmq_put(&s->send_messages, msg)) {
@@ -1033,18 +1034,18 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 
 	if (p == NULL) {
 		// connection is lost or not established yet
-		if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNECT && !nni_list_active(&s->send_queue, aio)) {
-			// cache aio
-			nni_list_append(&s->send_queue, aio);
-			nni_mtx_unlock(&s->mtx);
-		} else {
-			// aio is already on the list. Wrong behaviour from user
-			log_warn("former AIO is still waiting! msg dropped");
+		// for QUIC, instead of caching AIO, we simply put msg in lmq
+		// and ignore the result/ack of cb
+		nni_aio_set_msg(aio, NULL);
+		if (0 != nni_lmq_put(&s->send_messages, msg)) {
+			log_warn("caching msg failed due to full lmq!");
 			nni_msg_free(msg);
 			nni_mtx_unlock(&s->mtx);
-			nni_aio_set_msg(aio, NULL);
 			nni_aio_finish_error(aio, NNG_EBUSY);
+			return;
 		}
+		nni_mtx_unlock(&s->mtx);
+		nni_aio_finish(aio, 0, 0);
 		return;
 	}
 	if ((rv = mqtt_send_msg(aio, msg, s)) >= 0) {
