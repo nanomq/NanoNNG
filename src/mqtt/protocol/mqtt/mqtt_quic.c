@@ -713,9 +713,6 @@ mqtt_timer_cb(void *arg)
 			nni_mtx_unlock(&s->mtx);
 			nni_sleep_aio(s->retry  * NNI_SECOND, &s->time_aio);
 			return;
-		} else {
-			nni_msg_clone(msg);
-			nni_lmq_put(&s->send_messages, msg);
 		}
 	}
 
