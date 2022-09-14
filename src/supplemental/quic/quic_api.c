@@ -713,7 +713,7 @@ quic_strm_send_start(quic_strm_t *qstrm)
 	    ((((uint8_t *) nni_msg_header(msg))[0] & 0xf0) >> 4),
 	    ((uint8_t *) nni_msg_header(msg))[0]);
 
-	qdebug(
+	log_trace(
 	    " body len: %d header len: %d \n", buf[1].Length, buf[0].Length);
 
 	if (QUIC_FAILED(Status = MsQuic->StreamSend(qstrm->stream, buf, bl > 0 ? 2:1,
