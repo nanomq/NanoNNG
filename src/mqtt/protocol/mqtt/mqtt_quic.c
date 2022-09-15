@@ -842,20 +842,6 @@ quic_mqtt_stream_start(void *arg)
 	if (!nni_aio_list_active(&s->time_aio))
 		nni_sleep_aio(s->retry * NNI_SECOND, &s->time_aio);
 
-#if defined(NNG_SUPP_SQLITE)
-	nni_mqtt_sqlite_option *sqlite = mqtt_quic_sock_get_sqlite_option(s);
-	if (sqlite_is_enabled(sqlite)) {
-		if (!nni_lmq_empty(&sqlite->offline_cache)) {
-			sqlite_flush_offline_cache(sqlite);
-		}
-		msg = sqlite_get_cache_msg(sqlite);
-		if (NULL != msg) {
-			p->busy = true;
-			nni_aio_set_msg(&p->send_aio, msg);
-			quic_strm_send(p->qstream, &p->send_aio);
-		}
-	}
-#endif
 	if ((aio = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, aio);
 		msg    = nni_aio_get_msg(aio);
