@@ -5,6 +5,10 @@
 #include "nng/nng.h"
 #include "nng/supplemental/sqlite/sqlite3.h"
 
+#if defined(NNG_HAVE_MQTT_BROKER)
+#include "nng/supplemental/nanolib/conf.h"
+#endif
+
 /**
  *
  *  pipe_client_table
@@ -65,6 +69,23 @@
 -------------------------------------------------------------------
 **/
 
+struct nng_mqtt_sqlite_option {
+#if defined(NNG_HAVE_MQTT_BROKER)
+	conf_bridge_node *bridge;
+#else
+	void *bridge;
+#endif
+	char *  db_name;
+	nni_lmq offline_cache;
+#if defined(NNG_SUPP_SQLITE)
+	sqlite3 *db;
+#else
+	void *db;
+#endif
+};
+
+typedef struct nng_mqtt_sqlite_option nni_mqtt_sqlite_option;
+
 #define MQTT_DB_GET_QOS_BITS(msg) ((size_t)(msg) &0x03)
 #define MQTT_DB_PACKED_MSG_QOS(msg, qos) \
 	((nni_msg *) ((size_t)(msg) | ((qos) &0x03)))
@@ -117,5 +138,8 @@ extern int      nni_mqtt_qos_db_remove_all_client_offline_msg(sqlite3 *,const ch
 
 extern int nni_mqtt_qos_db_set_client_info(
     sqlite3 *, const char *, const char *, const char *, uint8_t);
+
+extern void nni_mqtt_sqlite_db_init(nni_mqtt_sqlite_option *, const char *);
+extern void nni_mqtt_sqlite_db_fini(nni_mqtt_sqlite_option *);
 
 #endif

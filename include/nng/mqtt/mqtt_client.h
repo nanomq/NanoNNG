@@ -65,6 +65,8 @@ extern "C" {
 
 #define NNG_OPT_MQTT_DISCONNECT_REASON "mqtt-disconnect-reason"
 
+#define NNG_OPT_MQTT_SQLITE "mqtt-sqlite-option"
+
 // NNG_OPT_MQTT_QOS is a byte (only lower two bits significant) representing
 // the quality of service.  At this time, only level zero is supported.
 // TODO: level 1 and level 2 QoS
@@ -529,6 +531,16 @@ NNG_DECL int nng_mqtt_unsubscribe_aio(nng_socket *, const char *, nng_aio *);
 // as with other ctx based methods, we use the aio form exclusively
 NNG_DECL int nng_mqtt_ctx_subscribe(nng_ctx *, const char *, nng_aio *, ...);
 
+typedef struct nng_mqtt_sqlite_option nng_mqtt_sqlite_option;
+
+#if defined(NNG_SUPP_SQLITE)
+NNG_DECL int  nng_mqtt_alloc_sqlite_opt(nng_mqtt_sqlite_option **);
+NNG_DECL int  nng_mqtt_free_sqlite_opt(nng_mqtt_sqlite_option *);
+NNG_DECL void nng_mqtt_set_sqlite_conf(
+    nng_mqtt_sqlite_option *sqlite, void *config);
+NNG_DECL void nng_mqtt_sqlite_db_init(nng_mqtt_sqlite_option *, const char *);
+NNG_DECL void nng_mqtt_sqlite_db_fini(nng_mqtt_sqlite_option *);
+#endif
 
 #ifdef __cplusplus
 }
