@@ -963,19 +963,21 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 	if (p == NULL) {
 		// connection is lost or not established yet
 #if defined(NNG_SUPP_SQLITE)
-		nni_mqtt_sqlite_option *sqlite =
-		    mqtt_quic_sock_get_sqlite_option(s);
-		if (sqlite_is_enabled(sqlite)) {
-			// the msg order is exactly as same as the ctx
-			// in send_queue
-			nni_lmq_put(&sqlite->offline_cache, msg);
-			if (nni_lmq_full(&sqlite->offline_cache)) {
-				sqlite_flush_offline_cache(sqlite);
+		if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBLISH) {
+			nni_mqtt_sqlite_option *sqlite =
+			    mqtt_quic_sock_get_sqlite_option(s);
+			if (sqlite_is_enabled(sqlite)) {
+				// the msg order is exactly as same as the ctx
+				// in send_queue
+				nni_lmq_put(&sqlite->offline_cache, msg);
+				if (nni_lmq_full(&sqlite->offline_cache)) {
+					sqlite_flush_offline_cache(sqlite);
+				}
+				nni_mtx_unlock(&s->mtx);
+				nni_aio_set_msg(aio, NULL);
+				nni_aio_finish_error(aio, NNG_ECLOSED);
+				return;
 			}
-			nni_mtx_unlock(&s->mtx);
-			nni_aio_set_msg(aio, NULL);
-			nni_aio_finish_error(aio, NNG_ECLOSED);
-			return;
 		}
 #endif
 		if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNECT && !nni_list_active(&s->send_queue, aio)) {
