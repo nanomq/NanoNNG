@@ -106,6 +106,7 @@ LoadConfiguration(BOOLEAN Unsecure, uint64_t interval)
 		Settings.IsSet.IdleTimeoutMs = FALSE;
 	} else {
 		keepalive = interval;
+		Settings.IsSet.IdleTimeoutMs = TRUE;
 		Settings.IdleTimeoutMs       = interval * 1000;
 		Settings.DisconnectTimeoutMs = interval * 1000;
 		Settings.KeepAliveIntervalMs = interval * 1000;
