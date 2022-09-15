@@ -6,7 +6,11 @@
 inline bool
 sqlite_is_enabled(nni_mqtt_sqlite_option *sqlite)
 {
-	return sqlite != NULL ? sqlite->config->enable : false;
+	if (sqlite != NULL && sqlite->bridge != NULL &&
+	    sqlite->bridge->sqlite != NULL) {
+		return sqlite->bridge->sqlite->enable;
+	}
+	return false;
 }
 
 inline nni_msg *
@@ -16,7 +20,7 @@ sqlite_get_cache_msg(nni_mqtt_sqlite_option *sqlite)
 	int64_t  row_id = 0;
 
 	msg = nni_mqtt_qos_db_get_client_offline_msg(
-	    sqlite->db, &row_id, sqlite->db_name);
+	    sqlite->db, &row_id, sqlite->bridge->name);
 	if (msg != NULL) {
 		nni_mqtt_qos_db_remove_client_offline_msg(sqlite->db, row_id);
 	}
@@ -28,9 +32,9 @@ inline void
 sqlite_flush_lmq(nni_mqtt_sqlite_option *sqlite, nni_lmq *lmq)
 {
 	nni_mqtt_qos_db_set_client_offline_msg_batch(
-	    sqlite->db, lmq, sqlite->db_name, MQTT_PROTOCOL_VERSION_v311);
+	    sqlite->db, lmq, sqlite->bridge->name, sqlite->bridge->proto_ver);
 	nni_mqtt_qos_db_remove_oldest_client_offline_msg(
-	    sqlite->db, sqlite->config->disk_cache_size, sqlite->db_name);
+	    sqlite->db, sqlite->bridge->sqlite->disk_cache_size, sqlite->bridge->name);
 }
 
 inline void

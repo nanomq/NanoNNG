@@ -1300,27 +1300,27 @@ out:
 }
 
 void
-nni_mqtt_sqlite_db_init(nng_mqtt_sqlite_option *sqlite, const char *db_name,
-    const char *config_name, uint8_t proto_ver)
+nni_mqtt_sqlite_db_init(nng_mqtt_sqlite_option *opt, const char *db_name)
 {
-	if (sqlite != NULL && sqlite->config->enable) {
-		nni_lmq_init(&sqlite->offline_cache,
-		    sqlite->config->flush_mem_threshold);
-		sqlite->db_name = nni_strdup(db_name);
-		nni_mqtt_qos_db_init(&sqlite->db,
-		    sqlite->config->mounted_file_path, db_name, false);
-		nni_mqtt_qos_db_set_client_info(sqlite->db, config_name, NULL,
-		    "MQTT",
-		    proto_ver == 0 ? MQTT_PROTOCOL_VERSION_v311 : proto_ver);
+	if (opt != NULL && opt->bridge != NULL &&
+	    opt->bridge->sqlite->enable) {
+		nni_lmq_init(&opt->offline_cache,
+		    opt->bridge->sqlite->flush_mem_threshold);
+		opt->db_name = nni_strdup(db_name);
+		nni_mqtt_qos_db_init(&opt->db,
+		    opt->bridge->sqlite->mounted_file_path, db_name, false);
+		nni_mqtt_qos_db_set_client_info(opt->db, opt->bridge->name,
+		    NULL, "MQTT", opt->bridge->proto_ver);
 	}
 }
 
 void
-nni_mqtt_sqlite_db_fini(nni_mqtt_sqlite_option *sqlite)
+nni_mqtt_sqlite_db_fini(nni_mqtt_sqlite_option *sqlite_opt)
 {
-	if (sqlite != NULL && sqlite->config->enable) {
-		nni_lmq_fini(&sqlite->offline_cache);
-		nni_strfree(sqlite->db_name);
-		nni_mqtt_qos_db_close(sqlite->db);
+	if (sqlite_opt != NULL && sqlite_opt->bridge != NULL &&
+	    sqlite_opt->bridge->sqlite->enable) {
+		nni_lmq_fini(&sqlite_opt->offline_cache);
+		nni_strfree(sqlite_opt->db_name);
+		nni_mqtt_qos_db_close(sqlite_opt->db);
 	}
 }

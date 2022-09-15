@@ -71,9 +71,9 @@
 
 struct nng_mqtt_sqlite_option {
 #if defined(NNG_HAVE_MQTT_BROKER)
-	conf_sqlite *config;
+	conf_bridge_node *bridge;
 #else
-	void *config;
+	void *bridge;
 #endif
 	char *  db_name;
 	nni_lmq offline_cache;
@@ -139,8 +139,7 @@ extern int      nni_mqtt_qos_db_remove_all_client_offline_msg(sqlite3 *,const ch
 extern int nni_mqtt_qos_db_set_client_info(
     sqlite3 *, const char *, const char *, const char *, uint8_t);
 
-extern void nni_mqtt_sqlite_db_init(
-    nni_mqtt_sqlite_option *, const char *, const char *, uint8_t);
+extern void nni_mqtt_sqlite_db_init(nni_mqtt_sqlite_option *, const char *);
 extern void nni_mqtt_sqlite_db_fini(nni_mqtt_sqlite_option *);
 
 #endif
