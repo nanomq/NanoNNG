@@ -107,6 +107,8 @@ LoadConfiguration(BOOLEAN Unsecure, uint64_t interval)
 	} else {
 		keepalive = interval;
 		Settings.IdleTimeoutMs       = interval * 1000;
+		Settings.DisconnectTimeoutMs = interval * 1000;
+		Settings.KeepAliveIntervalMs = interval * 1000;
 	}
 
 	// Configures a default client configuration, optionally disabling
