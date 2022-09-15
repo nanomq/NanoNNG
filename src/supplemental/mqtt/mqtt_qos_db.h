@@ -5,6 +5,10 @@
 #include "nng/nng.h"
 #include "nng/supplemental/sqlite/sqlite3.h"
 
+#if defined(NNG_HAVE_MQTT_BROKER)
+#include "nng/supplemental/nanolib/conf.h"
+#endif
+
 /**
  *
  *  pipe_client_table
@@ -66,9 +70,13 @@
 **/
 
 struct nng_mqtt_sqlite_option {
+#if defined(NNG_HAVE_MQTT_BROKER)
 	conf_sqlite *config;
-	char *       db_name;
-	nni_lmq      offline_cache;
+#else
+	void *config;
+#endif
+	char *  db_name;
+	nni_lmq offline_cache;
 #if defined(NNG_SUPP_SQLITE)
 	sqlite3 *db;
 #else

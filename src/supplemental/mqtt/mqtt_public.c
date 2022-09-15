@@ -825,7 +825,7 @@ nng_mqtt_free_sqlite_opt(nng_mqtt_sqlite_option *sqlite)
 }
 
 void
-nng_mqtt_set_sqlite_conf(nng_mqtt_sqlite_option *sqlite, conf_sqlite *config)
+nng_mqtt_set_sqlite_conf(nng_mqtt_sqlite_option *sqlite, void *config)
 {
 	sqlite->config = config;
 }
