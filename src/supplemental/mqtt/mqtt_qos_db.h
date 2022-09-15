@@ -65,13 +65,27 @@
 -------------------------------------------------------------------
 **/
 
+struct nng_mqtt_sqlite_option {
+	conf_sqlite *config;
+	char *       db_name;
+	nni_lmq      offline_cache;
+#if defined(NNG_SUPP_SQLITE)
+	sqlite3 *db;
+#else
+	void *db;
+#endif
+};
+
+typedef struct nng_mqtt_sqlite_option nni_mqtt_sqlite_option;
+
 #define MQTT_DB_GET_QOS_BITS(msg) ((size_t)(msg) &0x03)
 #define MQTT_DB_PACKED_MSG_QOS(msg, qos) \
 	((nni_msg *) ((size_t)(msg) | ((qos) &0x03)))
 
 #define MQTT_DB_GET_MSG_POINTER(msg) ((nni_msg *) ((size_t)(msg) & (~0x03)))
 
-extern void nni_mqtt_qos_db_init(sqlite3 **, const char *, const char *, bool);
+extern void nni_mqtt_sqlite_db_init(
+    nng_mqtt_sqlite_option *, const char *, const char *, uint8_t);
 extern void nni_mqtt_qos_db_close(sqlite3 *);
 extern void     nni_mqtt_qos_db_set(sqlite3 *, uint32_t, uint16_t, nni_msg *);
 extern nni_msg *nni_mqtt_qos_db_get(sqlite3 *, uint32_t, uint16_t);
@@ -117,5 +131,9 @@ extern int      nni_mqtt_qos_db_remove_all_client_offline_msg(sqlite3 *,const ch
 
 extern int nni_mqtt_qos_db_set_client_info(
     sqlite3 *, const char *, const char *, const char *, uint8_t);
+
+extern void nni_mqtt_sqlite_db_init(
+    nni_mqtt_sqlite_option *, const char *, const char *, uint8_t);
+extern void nni_mqtt_sqlite_db_fini(nni_mqtt_sqlite_option *);
 
 #endif

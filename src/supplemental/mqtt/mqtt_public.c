@@ -1,5 +1,6 @@
 #include "mqtt_msg.h"
 #include <string.h>
+#include "mqtt_qos_db.h"
 
 int
 nng_mqtt_msg_proto_data_alloc(nng_msg *msg)
@@ -785,3 +786,48 @@ nng_get_conn_param_from_msg(nng_msg *msg)
 {
 	return nni_get_conn_param_from_msg(msg);
 }
+
+#if defined(NNG_SUPP_SQLITE)
+
+void
+nng_mqtt_sqlite_db_init(nng_mqtt_sqlite_option *sqlite, const char *db_name,
+    const char *config_name, uint8_t proto_version)
+{
+	nni_mqtt_sqlite_db_init(sqlite, db_name, config_name, proto_version);
+}
+
+void
+nng_mqtt_sqlite_db_fini(nng_mqtt_sqlite_option *sqlite)
+{
+	nni_mqtt_sqlite_db_fini(sqlite);
+}
+
+int
+nng_mqtt_alloc_sqlite_opt(nng_mqtt_sqlite_option **sqlite)
+{
+	int                     rv  = 0;
+	nng_mqtt_sqlite_option *opt = NULL;
+	if ((opt = nni_zalloc(sizeof(nng_mqtt_sqlite_option))) == NULL) {
+		return (NNG_ENOMEM);
+	}
+
+	*sqlite = opt;
+	return (rv);
+}
+
+int
+nng_mqtt_free_sqlite_opt(nng_mqtt_sqlite_option *sqlite)
+{
+	if (sqlite) {
+		nni_free(sqlite, sizeof(nng_mqtt_sqlite_option));
+	}
+	return 0;
+}
+
+void
+nng_mqtt_set_sqlite_conf(nng_mqtt_sqlite_option *sqlite, conf_sqlite *config)
+{
+	sqlite->config = config;
+}
+
+#endif

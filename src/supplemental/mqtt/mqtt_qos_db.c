@@ -1298,3 +1298,29 @@ out:
 	nni_msg_free(msg);
 	return NULL;
 }
+
+void
+nni_mqtt_sqlite_db_init(nng_mqtt_sqlite_option *sqlite, const char *db_name,
+    const char *config_name, uint8_t proto_ver)
+{
+	if (sqlite != NULL && sqlite->config->enable) {
+		nni_lmq_init(&sqlite->offline_cache,
+		    sqlite->config->flush_mem_threshold);
+		sqlite->db_name = nni_strdup(db_name);
+		nni_mqtt_qos_db_init(&sqlite->db,
+		    sqlite->config->mounted_file_path, db_name, false);
+		nni_mqtt_qos_db_set_client_info(sqlite->db, config_name, NULL,
+		    "MQTT",
+		    proto_ver == 0 ? MQTT_PROTOCOL_VERSION_v311 : proto_ver);
+	}
+}
+
+void
+nni_mqtt_sqlite_db_fini(nni_mqtt_sqlite_option *sqlite)
+{
+	if (sqlite != NULL && sqlite->config->enable) {
+		nni_lmq_fini(&sqlite->offline_cache);
+		nni_strfree(sqlite->db_name);
+		nni_mqtt_qos_db_close(sqlite->db);
+	}
+}
