@@ -972,19 +972,30 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 			nni_mtx_unlock(&s->mtx);
 		} else {
 			// aio is already on the list.
-			// caching msg in lmq of sock and ignore the result/ack
-			// of cb
-			if (0 != nni_lmq_put(&s->send_messages, msg)) {
-				log_warn("caching msg failed!");
+			// caching pubmsg in lmq of sock and ignore the
+			// result/ack of cb
+			if (nni_mqtt_msg_get_packet_type(msg) ==
+			    NNG_MQTT_PUBLISH) {
+				nni_mqtt_msg_set_publish_qos(msg, 0);
+				log_info("caching msg!");
+				if (0 != nni_lmq_put(&s->send_messages, msg)) {
+					log_warn("caching msg failed due to full lmq!");
+					nni_msg_free(msg);
+					nni_mtx_unlock(&s->mtx);
+					nni_aio_set_msg(aio, NULL);
+					nni_aio_finish_error(aio, NNG_EBUSY);
+					return;
+				}
+				nni_mtx_unlock(&s->mtx);
+				nni_aio_set_msg(aio, NULL);
+				nni_aio_finish(aio, 0, 0);
+				return;
+			} else {
 				nni_msg_free(msg);
 				nni_mtx_unlock(&s->mtx);
 				nni_aio_set_msg(aio, NULL);
 				nni_aio_finish_error(aio, NNG_EBUSY);
-				return;
 			}
-			nni_mtx_unlock(&s->mtx);
-			nni_aio_set_msg(aio, NULL);
-			nni_aio_finish(aio, 0, 0);
 		}
 		return;
 	}

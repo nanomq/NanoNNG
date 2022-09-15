@@ -455,10 +455,12 @@ mqtt_pipe_start(void *arg)
 	if (s->cparam != NULL) {
 		// fake reason code now
 		uint8_t rbuf[4] = {0x20, 0x02, 0x00, 0x00};
-		nni_msg_alloc(&smsg, 0);
+		nni_mqtt_msg_alloc(&smsg, 0);
 		nni_msg_header_append(smsg, rbuf, 2);
 		nni_msg_append(smsg, rbuf+2, 2);
+		nni_mqtt_msg_set_packet_type(smsg, NNG_MQTT_PUBLISH);
 		nni_msg_set_cmd_type(smsg, CMD_CONNACK);
+		nni_mqtt_msg_encode(smsg);
 		nni_msg_set_conn_param(smsg, (void *)s->cparam);
 		conn_param_clone(s->cparam);
 
@@ -527,6 +529,7 @@ mqtt_pipe_close(void *arg)
 	nni_aio     *user_aio;
 
 	nni_mtx_lock(&s->mtx);
+	nni_atomic_set_bool(&p->closed, true);
 	s->mqtt_pipe = NULL;
 	nni_aio_close(&p->send_aio);
 	nni_aio_close(&p->recv_aio);
@@ -543,8 +546,15 @@ mqtt_pipe_close(void *arg)
 	nni_lmq_flush(&p->send_messages);
 
 	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
+	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
+	if (s->cparam == NULL) {
+		nni_mtx_unlock(&s->mtx);
+		return;
+	}
 
-	// Return disconnect event to broker
+
+#ifdef NNG_HAVE_MQTT_BROKER
+	// Return disconnect event to broker, only when compiled with nanomq
 	uint16_t count = 0;
 	mqtt_ctx_t *ctx;
 	nni_msg *tmsg = nano_msg_notify_disconnect(s->cparam, SERVER_SHUTTING_DOWN);
@@ -568,11 +578,8 @@ mqtt_pipe_close(void *arg)
 		nni_println("disconnect msg of bridging is lost due to no ctx on receving");
 		nni_msg_free(tmsg);
 	}
-
-	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
+#endif
 	nni_mtx_unlock(&s->mtx);
-
-	nni_atomic_set_bool(&p->closed, true);
 }
 
 // Timer callback, we use it for retransmitting.
