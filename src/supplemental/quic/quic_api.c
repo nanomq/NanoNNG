@@ -190,8 +190,6 @@ quic_strm_fini(quic_strm_t *qstrm)
 	nni_aio_stop(&qstrm->close_aio);
 	nni_aio_close(&qstrm->close_aio);
 	nni_aio_fini(&qstrm->close_aio);
-
-	return;
 }
 
 // The clients's callback for stream events from MsQuic.
@@ -481,18 +479,6 @@ Error:
 }
 
 void
-quic_proto_open(nni_proto *proto)
-{
-	g_quic_proto = proto;
-}
-
-void
-quic_proto_set_keepalive(uint64_t interval)
-{
-	keepalive = interval;
-}
-
-void
 quic_open()
 {
 	QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
@@ -509,12 +495,16 @@ quic_open()
 		goto Error;
 	}
 
-	qdebug("msquic is init.\n");
-
+	log_info("Msquic is enabled");
 	return;
 
 Error:
+	quic_close();
+}
 
+void
+quic_close()
+{
 	if (MsQuic != NULL) {
 		if (Configuration != NULL) {
 			MsQuic->ConfigurationClose(Configuration);
@@ -526,6 +516,24 @@ Error:
 		}
 		MsQuicClose(MsQuic);
 	}
+}
+
+void
+quic_proto_open(nni_proto *proto)
+{
+	g_quic_proto = proto;
+}
+
+void
+quic_proto_close()
+{
+	g_quic_proto = NULL;
+}
+
+void
+quic_proto_set_keepalive(uint64_t interval)
+{
+	keepalive = interval;
 }
 
 int
@@ -1020,5 +1028,16 @@ quic_strm_send(void *arg, nni_aio *aio)
 	}
 	nni_mtx_unlock(&qstrm->mtx);
 
+	return 0;
+}
+
+int
+quic_strm_close(void *arg)
+{
+	if (!arg)
+		return -1;
+	quic_strm_t *qstrm = arg;
+	quic_strm_fini(qstrm);
+	nng_free(qstrm, sizeof(quic_strm_t));
 	return 0;
 }
