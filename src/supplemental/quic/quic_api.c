@@ -540,6 +540,7 @@ quic_connect(const char *url, nni_sock *sock)
 	// Load the client configuration based on the "unsecure" command line
 	// option.
 	if (!LoadConfiguration(TRUE, keepalive)) {
+		log_error("Failed in load quic configuration");
 		return (-1);
 	}
 
@@ -553,7 +554,7 @@ quic_connect(const char *url, nni_sock *sock)
 	// Allocate a new connection object.
 	if (QUIC_FAILED(Status = MsQuic->ConnectionOpen(Registration,
 	                    QuicConnectionCallback, sock_data, &Connection))) {
-		qdebug("ConnectionOpen failed, 0x%x!\n", Status);
+		log_error("Failed in Quic ConnectionOpen, 0x%x!", Status);
 		goto Error;
 	}
 	QUIC_ADDR Address = { 0 };
@@ -565,7 +566,7 @@ quic_connect(const char *url, nni_sock *sock)
 	// QuicAddrSetPort(&Address, 0);
 	if (QUIC_FAILED(Status = MsQuic->SetParam(Connection, QUIC_PARAM_CONN_LOCAL_ADDRESS,
 	    sizeof(QUIC_ADDR), &Address))) {
-		qdebug("address setting failed, 0x%x!\n", Status);
+		log_error("Failed in address setting, 0x%x!\n", Status);
 		goto Error;
 	}
 
@@ -578,7 +579,7 @@ quic_connect(const char *url, nni_sock *sock)
 
 	// Create a pipe for quic client
 	if ((qstrm = nng_alloc(sizeof(quic_strm_t))) == NULL) {
-		qdebug("Error in alloc quic strm.\n");
+		log_error("Failed in alloc quic strm.");
 		goto Error;
 	}
 	quic_strm_init(qstrm);
@@ -587,13 +588,13 @@ quic_connect(const char *url, nni_sock *sock)
 	qstrm->sock = sock;
 	GStream = qstrm; // It should be stored in sock, but...
 
-	qinfo("[conn] Connecting... %s : %s\n", url_s->u_host, url_s->u_port);
+	log_info("Quic connecting... %s:%s", url_s->u_host, url_s->u_port);
 
 	// Start the connection to the server.
 	if (QUIC_FAILED(Status = MsQuic->ConnectionStart(Connection,
 	                    Configuration, QUIC_ADDRESS_FAMILY_UNSPEC,
 	                    url_s->u_host, atoi(url_s->u_port)))) {
-		qdebug("ConnectionStart failed, 0x%x!\n", Status);
+		log_error("Failed in ConnectionStart, 0x%x!", Status);
 		goto Error;
 	}
 
@@ -603,10 +604,8 @@ quic_connect(const char *url, nni_sock *sock)
 Error:
 
 	if (QUIC_FAILED(Status) && Connection != NULL) {
-		log_error("failed status %d connection closed", Status);
 		MsQuic->ConnectionClose(Connection);
 	}
-
 	return 0;
 }
 
@@ -616,6 +615,7 @@ quic_reconnect(quic_strm_t *qstrm)
 	// Load the client configuration based on the "unsecure" command line
 	// option.
 	if (!LoadConfiguration(TRUE, keepalive)) {
+		log_error("Failed in load quic configuration");
 		return (-1);
 	}
 
@@ -627,7 +627,7 @@ quic_reconnect(quic_strm_t *qstrm)
 	// Allocate a new connection object.
 	if (QUIC_FAILED(Status = MsQuic->ConnectionOpen(Registration,
 	                    QuicConnectionCallback, sock_data, &Connection))) {
-		qdebug("ConnectionOpen failed, 0x%x!\n", Status);
+		log_error("Failed in Quic ConnectionOpen, 0x%x!", Status);
 		goto Error;
 	}
 
@@ -635,20 +635,18 @@ quic_reconnect(quic_strm_t *qstrm)
 		if (QUIC_FAILED(Status = MsQuic->SetParam(Connection,
 		                    QUIC_PARAM_CONN_RESUMPTION_TICKET,
 		                    qstrm->rticket_sz, qstrm->rticket))) {
-			qdebug("SetParam(QUIC_PARAM_CONN_RESUMPTION_TICKET) "
-			       "failed, 0x%x!\n",
-			    Status);
+			log_error("Failed in setting resumption ticket, 0x%x!", Status);
 			goto Error;
 		}
 	}
 
-	qinfo("[conn] ReConnecting... %s : %s\n", url_s->u_host, url_s->u_port);
+	log_info("Quic reconnecting... %s:%s", url_s->u_host, url_s->u_port);
 
 	// Start the connection to the server.
 	if (QUIC_FAILED(Status = MsQuic->ConnectionStart(Connection,
 	                    Configuration, QUIC_ADDRESS_FAMILY_UNSPEC,
 	                    url_s->u_host, atoi(url_s->u_port)))) {
-		qdebug("ConnectionStart failed, 0x%x!\n", Status);
+		log_error("Failed in ConnectionStart, 0x%x!", Status);
 		goto Error;
 	}
 
@@ -660,7 +658,6 @@ Error:
 	if (QUIC_FAILED(Status) && Connection != NULL) {
 		MsQuic->ConnectionClose(Connection);
 	}
-
 	return 0;
 }
 
@@ -669,7 +666,6 @@ quic_strm_close_cb(void *arg)
 {
 	quic_strm_t *qstrm = arg;
 
-	qinfo("[conn][%p] try to resume by ticket\n", qstrm->stream);
 	nng_msleep(NNI_QUIC_TIMER * 1000);
 	quic_reconnect(qstrm);
 }
@@ -712,16 +708,14 @@ quic_strm_send_start(quic_strm_t *qstrm)
 		buf2->Buffer = nni_msg_body(msg);
 	}
 
-	qdebug("type is 0x%x %x.\n",
+	log_debug("type is 0x%x %x.",
 	    ((((uint8_t *) nni_msg_header(msg))[0] & 0xf0) >> 4),
 	    ((uint8_t *) nni_msg_header(msg))[0]);
-
-	log_trace(
-	    " body len: %d header len: %d \n", buf[1].Length, buf[0].Length);
+	log_debug("body len: %d header len: %d", buf[1].Length, buf[0].Length);
 
 	if (QUIC_FAILED(Status = MsQuic->StreamSend(qstrm->stream, buf, bl > 0 ? 2:1,
 	                    QUIC_SEND_FLAG_NONE, buf))) {
-		qdebug("StreamSend failed, 0x%x!\n", Status);
+		log_debug("Failed in StreamSend, 0x%x!", Status);
 		free(buf);
 	}
 }
