@@ -66,7 +66,6 @@ struct quic_strm_s {
 
 	uint8_t  rticket[2048];
 	uint16_t rticket_sz;
-	bool     rticket_active;
 	nng_url *url_s;
 };
 
@@ -85,7 +84,7 @@ static uint64_t keepalive   = 0;
 nni_proto *g_quic_proto;
 
 static BOOLEAN LoadConfiguration(BOOLEAN Unsecure, uint64_t interval);
-static int     quic_strm_start(HQUIC Connection, void *Context, HQUIC *Streamp, bool active);
+static int     quic_strm_start(HQUIC Connection, void *Context, HQUIC *Streamp);
 // static int     quic_strm_close(HQUIC Connection, HQUIC Stream);
 static void    quic_strm_send_cancel(nni_aio *aio, void *arg, int rv);
 static void    quic_strm_send_start(quic_strm_t *qstrm);
@@ -171,7 +170,6 @@ quic_strm_init(quic_strm_t *qstrm)
 
 	qstrm->url_s = NULL;
 	qstrm->rticket_sz = 0;
-	qstrm->rticket_active = false;
 }
 
 static void
@@ -312,14 +310,11 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 	case QUIC_CONNECTION_EVENT_CONNECTED:
 		// The handshake has completed for the connection.
 		// do not init any var here due to potential frequent reconnect
-		log_info("[conn][%p] Connected\n", Connection);
+		log_info("[conn][%p] Connected", Connection);
 
 		// First starting the quic stream
-		// if (!qstrm->rticket_active) {
-		if (0 !=
-		    quic_strm_start(Connection, qstrm, &qstrm->stream,
-		        qstrm->rticket_active)) {
-			qdebug("Error in quic strm start.\n");
+		if (0 != quic_strm_start(Connection, qstrm, &qstrm->stream)) {
+		    log_error("Error in quic strm start.");
 			break;
 		}
 		MsQuic->StreamReceiveSetEnabled(qstrm->stream, FALSE);
@@ -327,7 +322,7 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 
 		// Start/ReStart the nng pipe
 		if ((qstrm->pipe = nng_alloc(pipe_ops->pipe_size)) == NULL) {
-			qdebug("error in alloc pipe.\n");
+			log_error("Failed in allocing pipe.");
 		}
 		pipe_ops->pipe_init(qstrm->pipe, (nni_pipe *)qstrm, Context);
 		pipe_ops->pipe_start(qstrm->pipe);
@@ -382,14 +377,16 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 		}
 
 		GConnection = NULL;
-		if (qstrm->rticket_active) {
-			log_warn("try to do stream reconnect!");
-			nni_aio_finish(&qstrm->close_aio, 0, 0);
-		} else { // No rticket
+		log_warn("Try to do quic stream reconnect!");
+		nni_aio_finish(&qstrm->close_aio, 0, 0);
+		/*
+		if (qstrm->rtt0_enable) {
+			// No rticket
 			log_warn("reconnect failed due to no resumption ticket.\n");
 			quic_strm_fini(qstrm);
 			nng_free(qstrm, sizeof(quic_strm_t));
 		}
+		*/
 		break;
 	case QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED:
 		// A resumption ticket (also called New Session Ticket or NST)
@@ -406,7 +403,6 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 		}
 		qdebug("\n");
 		*/
-		qstrm->rticket_active = true;
 		qstrm->rticket_sz = Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength;
 		memcpy(qstrm->rticket, Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicket,
 		        Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength);
@@ -445,12 +441,10 @@ quic_disconnect()
  * @return int
  */
 static int
-quic_strm_start(HQUIC Connection, void *Context, HQUIC *Streamp, bool active)
+quic_strm_start(HQUIC Connection, void *Context, HQUIC *Streamp)
 {
 	HQUIC       Stream = NULL;
 	QUIC_STATUS Status;
-
-	NNI_ARG_UNUSED(active);
 
 	// Create/allocate a new bidirectional stream. The stream is just
 	// allocated and no QUIC stream identifier is assigned until it's
