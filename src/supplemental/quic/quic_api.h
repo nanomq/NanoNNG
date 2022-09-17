@@ -4,7 +4,7 @@
 #include "core/nng_impl.h"
 #include "nng/nng.h"
 
-extern int quic_connect(const char *url, nni_sock *sock);
+extern int quic_connect_ipv4(const char *url, nni_sock *sock);
 extern int quic_disconnect();
 
 extern void quic_open();

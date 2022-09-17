@@ -538,7 +538,7 @@ quic_proto_set_keepalive(uint64_t interval)
 }
 
 int
-quic_connect(const char *url, nni_sock *sock)
+quic_connect_ipv4(const char *url, nni_sock *sock)
 {
 	// Load the client configuration based on the "unsecure" command line
 	// option.
