@@ -1056,7 +1056,7 @@ nano_msg_notify_disconnect(conn_param *cparam, uint8_t code)
 	topic.len   = strlen(DISCONNECT_TOPIC);
 	// V4 notification msg as default
 	msg = nano_pubmsg_composer(
-	    &msg, 0, 0, &string, &topic, MQTT_PROTOCOL_VERSION_v311, nng_clock());
+	    &msg, 0, 0, &string, &topic, cparam->pro_ver, nng_clock());
 	return msg;
 }
 
@@ -1075,7 +1075,7 @@ nano_msg_notify_connect(conn_param *cparam, uint8_t code)
 	topic.body  = CONNECT_TOPIC;
 	topic.len   = strlen(CONNECT_TOPIC);
 	msg         = nano_pubmsg_composer(
-            &msg, 0, 0, &string, &topic, MQTT_PROTOCOL_VERSION_v311, nng_clock());
+            &msg, 0, 0, &string, &topic, cparam->pro_ver, nng_clock());
 	return msg;
 }
 
