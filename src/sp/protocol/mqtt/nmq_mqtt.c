@@ -396,7 +396,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		// lost interest in our reply.
 		nni_mtx_unlock(&s->lk);
 		nni_aio_set_msg(aio, NULL);
-		log_warn("pipe is gone, pub failed");
+		log_warn("pipe id %ld is gone, pub failed", pipe);
 		nni_msg_free(msg);
 		return;
 	}

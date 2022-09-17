@@ -446,40 +446,11 @@ mqtt_pipe_start(void *arg)
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
 	mqtt_ctx_t  *c = NULL;
-	nni_msg *    smsg = NULL;
-	nni_aio *    user_aio;
 
 	nni_mtx_lock(&s->mtx);
 	s->mqtt_pipe       = p;
 	s->disconnect_code = 0;
 	s->dis_prop        = NULL;
-#ifdef NNG_HAVE_MQTT_BROKER
-	// add connack msg to app layer only for notify in broker bridge
-	if (s->cparam != NULL) {
-		// fake reason code now
-		uint8_t rbuf[4] = {0x20, 0x02, 0x00, 0x00};
-		nni_mqtt_msg_alloc(&smsg, 0);
-		nni_msg_header_append(smsg, rbuf, 2);
-		nni_msg_append(smsg, rbuf+2, 2);
-		nni_mqtt_msg_set_packet_type(smsg, NNG_MQTT_PUBLISH);
-		nni_msg_set_cmd_type(smsg, CMD_CONNACK);
-		nni_mqtt_msg_encode(smsg);
-		nni_msg_set_conn_param(smsg, (void *)s->cparam);
-		conn_param_clone(s->cparam);
-
-		if ((c = nni_list_first(&s->recv_queue)) == NULL) {
-			// No one waiting to receive yet, putting msg
-			// into lmq
-			mqtt_pipe_recv_msgq_putq(p, smsg);
-		} else {
-			nni_list_remove(&s->recv_queue, c);
-			user_aio  = c->raio;
-			c->raio = NULL;
-			nni_aio_set_msg(user_aio, smsg);
-			nni_aio_finish(user_aio, 0, 0);
-		}
-	}
-#endif
 
 	if ((c = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, c);
@@ -747,7 +718,33 @@ mqtt_recv_cb(void *arg)
 	// state transitions
 	switch (packet_type) {
 	case NNG_MQTT_CONNACK:
-		// never reach here
+		// return CONNACK to APP when working with broker
+#ifdef NNG_HAVE_MQTT_BROKER
+		s->cparam = nni_msg_get_conn_param(msg);
+		// add connack msg to app layer only for notify in broker
+		// bridge
+		if (s->cparam != NULL) {
+			nni_mqtt_msg_set_packet_type(msg, NNG_MQTT_CONNACK);
+			nni_mqtt_msg_encode(msg);
+			conn_param_clone(s->cparam);
+			if ((ctx = nni_list_first(&s->recv_queue)) == NULL) {
+				// No one waiting to receive yet, putting msg
+				// into lmq
+				mqtt_pipe_recv_msgq_putq(p, msg);
+				nni_mtx_unlock(&s->mtx);
+				log_warn("Warning: no ctx found!! create more "
+				         "ctxs!");
+				return;
+			}
+			nni_list_remove(&s->recv_queue, ctx);
+			user_aio  = ctx->raio;
+			ctx->raio = NULL;
+			nni_aio_set_msg(user_aio, msg);
+			nni_mtx_unlock(&s->mtx);
+			nni_aio_finish(user_aio, 0, 0);
+			return;
+		}
+#endif
 		nni_mtx_unlock(&s->mtx);
 		return;
 	case NNG_MQTT_PUBACK:

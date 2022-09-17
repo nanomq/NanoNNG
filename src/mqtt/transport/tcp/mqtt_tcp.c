@@ -575,7 +575,7 @@ mqtt_tcptran_pipe_send_cb(void *arg)
 
 	nni_aio_set_msg(aio, NULL);
 	nni_msg_free(msg);
-	nni_aio_finish_sync(aio, 0, n);
+	nni_aio_finish_sync(aio, rv, n);
 }
 
 static void
@@ -787,7 +787,7 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 	}
 #ifdef NNG_HAVE_MQTT_BROKER
 	nni_msg_set_conn_param(msg, p->cparam);
-#endif	
+#endif
 	nni_aio_set_msg(aio, msg);
 	nni_mtx_unlock(&p->mtx);
 
@@ -983,7 +983,16 @@ mqtt_tcptran_pipe_recv(void *arg, nni_aio *aio)
 		nni_aio_finish_error(aio, rv);
 		return;
 	}
-
+#ifdef NNG_HAVE_MQTT_BROKER
+	if (p->connack != NULL) {
+		nni_aio_set_msg(aio, p->connack);
+		nni_msg_set_conn_param(p->connack, p->cparam);
+		p->connack = NULL;
+		nni_mtx_unlock(&p->mtx);
+		nni_aio_finish(aio, 0, 0);
+		return;
+	}
+#endif
 	nni_list_append(&p->recvq, aio);
 	if (nni_list_first(&p->recvq) == aio) {
 		mqtt_tcptran_pipe_recv_start(p);
