@@ -120,7 +120,9 @@ mqtt_sock_init(void *arg, nni_sock *sock)
 
 	// this is "semi random" start for request IDs.
 	s->retry  = NNI_SECOND * 10;
+#ifdef NNG_HAVE_MQTT_BROKER
 	s->cparam = NULL;
+#endif
 
 	nni_mtx_init(&s->mtx);
 	mqtt_ctx_init(&s->master, s);
@@ -451,6 +453,7 @@ mqtt_pipe_start(void *arg)
 	s->mqtt_pipe       = p;
 	s->disconnect_code = 0;
 	s->dis_prop        = NULL;
+#ifdef NNG_HAVE_MQTT_BROKER
 	// add connack msg to app layer only for notify in broker bridge
 	if (s->cparam != NULL) {
 		// fake reason code now
@@ -476,6 +479,7 @@ mqtt_pipe_start(void *arg)
 			nni_aio_finish(user_aio, 0, 0);
 		}
 	}
+#endif
 
 	if ((c = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, c);
@@ -547,13 +551,13 @@ mqtt_pipe_close(void *arg)
 
 	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
 	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
+
+#ifdef NNG_HAVE_MQTT_BROKER
 	if (s->cparam == NULL) {
 		nni_mtx_unlock(&s->mtx);
 		return;
 	}
 
-
-#ifdef NNG_HAVE_MQTT_BROKER
 	// Return disconnect event to broker, only when compiled with nanomq
 	uint16_t count = 0;
 	mqtt_ctx_t *ctx;
