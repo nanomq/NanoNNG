@@ -53,12 +53,14 @@ struct mqtt_tcptran_pipe {
 	nni_aio         *negoaio;
 	nni_aio         *rpaio;
 	nni_msg         *rxmsg;
-	nni_msg         *smsg;
 	nni_lmq          rslmq;
 	nni_mtx          mtx;
-	conn_param *     cparam;
 	bool             closed;
 	bool             busy;
+#ifdef NNG_HAVE_MQTT_BROKER
+	nni_msg         *connack;
+	conn_param *     cparam;
+#endif
 };
 
 struct mqtt_tcptran_ep {
@@ -221,7 +223,9 @@ mqtt_tcptran_pipe_fini(void *arg)
 	nni_lmq_fini(&p->rslmq);
 	nni_mtx_fini(&p->mtx);
 	nni_aio_fini(&p->tmaio);
+#ifdef NNG_HAVE_MQTT_BROKER
 	conn_param_free(p->cparam);
+#endif
 	NNI_FREE_STRUCT(p);
 }
 
@@ -282,9 +286,11 @@ mqtt_tcptran_ep_match(mqtt_tcptran_ep *ep)
 	nni_list_remove(&ep->waitpipes, p);
 	nni_list_append(&ep->busypipes, p);
 	ep->useraio = NULL;
+#ifdef NNG_HAVE_MQTT_BROKER
 	if (p->cparam == NULL) {
 		p->cparam = nni_get_conn_param_from_msg(ep->connmsg);
 	}
+#endif
 	nni_aio_set_output(aio, 0, p);
 	nni_aio_finish(aio, 0, 0);
 }
@@ -340,14 +346,13 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 		nni_mtx_unlock(&ep->mtx);
 		return;
 	}
-
+	// only accept CONNACK msg
+	if ((p->rxlen[0] & CMD_CONNACK) != CMD_CONNACK) {
+		rv = PROTOCOL_ERROR;
+		goto error;
+	}
 	// finish recevied fixed header
 	if (p->rxmsg == NULL) {
-		if ((p->rxlen[0] & 0x20) != 0x20) {
-			rv = PROTOCOL_ERROR;
-			goto error;
-		}
-
 		pos = 0;
 		if ((rv = mqtt_get_remaining_length(p->rxlen, p->gotrxhead,
 		         (uint32_t *) &var_int, &pos)) != 0) {
@@ -424,6 +429,12 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 		}
 		ep->reason_code = nni_mqtt_msg_get_connack_return_code(p->rxmsg);
 	}
+	// put 
+#ifdef NNG_HAVE_MQTT_BROKER
+	nni_msg_clone(p->rxmsg);
+	p->connack = p->rxmsg;
+#endif
+
 
 mqtt_error:
 	// We are ready now.  We put this in the wait list, and
@@ -774,7 +785,9 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 	if (!nni_list_empty(&p->recvq)) {
 		mqtt_tcptran_pipe_recv_start(p);
 	}
+#ifdef NNG_HAVE_MQTT_BROKER
 	nni_msg_set_conn_param(msg, p->cparam);
+#endif	
 	nni_aio_set_msg(aio, msg);
 	nni_mtx_unlock(&p->mtx);
 
@@ -1010,8 +1023,9 @@ mqtt_tcptran_pipe_start(
 	p->ep     = ep;
 	p->rcvmax = 0;
 	p->sndmax = 65535;
+#ifdef NNG_HAVE_MQTT_BROKER
 	p->cparam = NULL;
-
+#endif
 	nni_dialer_getopt(ep->ndialer, NNG_OPT_MQTT_CONNMSG, &connmsg, NULL,
 	    NNI_TYPE_POINTER);
 

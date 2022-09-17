@@ -13,6 +13,7 @@
 #include "supplemental/mqtt/mqtt_qos_db_api.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "nng/mqtt/mqtt_client.h"
+#include "nng/protocol/mqtt/mqtt_parser.h"
 
 // MQTT client implementation.
 //
@@ -113,8 +114,10 @@ mqtt_sock_init(void *arg, nni_sock *sock)
 	nni_atomic_set_bool(&s->closed, false);
 
 	// this is "semi random" start for request IDs.
-	s->retry  = NNI_SECOND * 60;
+	s->retry  = NNI_SECOND * 10;
+#ifdef NNG_HAVE_MQTT_BROKER
 	s->cparam = NULL;
+#endif
 
 	nni_mtx_init(&s->mtx);
 	mqtt_ctx_init(&s->master, s);
@@ -447,6 +450,7 @@ mqtt_pipe_start(void *arg)
 	s->mqtt_pipe       = p;
 	s->disconnect_code = 0;
 	s->dis_prop        = NULL;
+#ifdef NNG_HAVE_MQTT_BROKER
 	// add connack msg to app layer only for notify in broker bridge
 	if (s->cparam != NULL) {
 		// fake reason code now
@@ -470,6 +474,7 @@ mqtt_pipe_start(void *arg)
 			nni_aio_finish(user_aio, 0, 0);
 		}
 	}
+#endif
 
 	if ((c = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, c);
@@ -524,6 +529,7 @@ mqtt_pipe_close(void *arg)
 
 	nni_mtx_lock(&s->mtx);
 	s->mqtt_pipe = NULL;
+	nni_atomic_set_bool(&p->closed, true);
 	nni_aio_close(&p->send_aio);
 	nni_aio_close(&p->recv_aio);
 	nni_aio_close(&p->time_aio);
@@ -539,7 +545,13 @@ mqtt_pipe_close(void *arg)
 	nni_lmq_flush(&p->send_messages);
 
 	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
+	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
 
+#ifdef NNG_HAVE_MQTT_BROKER
+	if (s->cparam == NULL) {
+		nni_mtx_unlock(&s->mtx);
+		return;
+	}
 	// Return disconnect event to broker
 	uint16_t count = 0;
 	mqtt_ctx_t *ctx;
@@ -549,7 +561,6 @@ mqtt_pipe_close(void *arg)
 	// emulate disconnect notify msg as a normal publish
 	while ((ctx = nni_list_first(&s->recv_queue)) != NULL) {
 		nni_list_remove(&s->recv_queue, ctx);
-
 		user_aio  = ctx->raio;
 		ctx->raio = NULL;
 		nni_aio_set_msg(user_aio, tmsg);
@@ -564,11 +575,8 @@ mqtt_pipe_close(void *arg)
 		nni_println("disconnect msg of bridging is lost due to no ctx on receving");
 		nni_msg_free(tmsg);
 	}
-
-	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
+#endif
 	nni_mtx_unlock(&s->mtx);
-
-	nni_atomic_set_bool(&p->closed, true);
 }
 
 // Timer callback, we use it for retransmitting.
