@@ -16,7 +16,7 @@
 #include <unistd.h>
 
 #define NNI_QUIC_KEEPALIVE 100
-#define NNI_QUIC_TIMER 3
+#define NNI_QUIC_TIMER 1
 
 #define QUIC_API_C_DEBUG 0
 #define QUIC_API_C_INFO 0
@@ -66,7 +66,6 @@ struct quic_strm_s {
 
 	uint8_t  rticket[2048];
 	uint16_t rticket_sz;
-	bool     rticket_active;
 	nng_url *url_s;
 };
 
@@ -85,8 +84,7 @@ static uint64_t keepalive   = 0;
 nni_proto *g_quic_proto;
 
 static BOOLEAN LoadConfiguration(BOOLEAN Unsecure, uint64_t interval);
-static int     quic_strm_start(HQUIC Connection, void *Context, HQUIC *Streamp, bool active);
-// static int     quic_strm_close(HQUIC Connection, HQUIC Stream);
+static int     quic_strm_start(HQUIC Connection, void *Context, HQUIC *Streamp);
 static void    quic_strm_send_cancel(nni_aio *aio, void *arg, int rv);
 static void    quic_strm_send_start(quic_strm_t *qstrm);
 static void    quic_strm_recv_cb(void *arg);
@@ -171,7 +169,6 @@ quic_strm_init(quic_strm_t *qstrm)
 
 	qstrm->url_s = NULL;
 	qstrm->rticket_sz = 0;
-	qstrm->rticket_active = false;
 }
 
 static void
@@ -192,8 +189,6 @@ quic_strm_fini(quic_strm_t *qstrm)
 	nni_aio_stop(&qstrm->close_aio);
 	nni_aio_close(&qstrm->close_aio);
 	nni_aio_fini(&qstrm->close_aio);
-
-	return;
 }
 
 // The clients's callback for stream events from MsQuic.
@@ -280,8 +275,9 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 		// Both directions of the stream have been shut down and MsQuic
 		// is done with the stream. It can now be safely cleaned up.
-		log_warn("[strm][%p] QUIC_STREAM_EVENT shutdown: All done %d\n", Stream);
+		log_warn("[strm][%p] QUIC_STREAM_EVENT shutdown: All done");
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
+			log_warn("close the QUIC stream!");
 			MsQuic->StreamClose(Stream);
 		}
 		break;
@@ -307,19 +303,16 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 	quic_strm_t        *qstrm    = GStream;
 	nni_aio *aio;
 	
-	log_info("QuicConnectionCallback triggered! %d", Event->Type);
+	log_debug("QuicConnectionCallback triggered! %d", Event->Type);
 	switch (Event->Type) {
 	case QUIC_CONNECTION_EVENT_CONNECTED:
 		// The handshake has completed for the connection.
 		// do not init any var here due to potential frequent reconnect
-		log_info("[conn][%p] Connected\n", Connection);
+		log_info("[conn][%p] is Connected", Connection);
 
 		// First starting the quic stream
-		// if (!qstrm->rticket_active) {
-		if (0 !=
-		    quic_strm_start(Connection, qstrm, &qstrm->stream,
-		        qstrm->rticket_active)) {
-			qdebug("Error in quic strm start.\n");
+		if (0 != quic_strm_start(Connection, qstrm, &qstrm->stream)) {
+		    log_error("Error in quic strm start.");
 			break;
 		}
 		MsQuic->StreamReceiveSetEnabled(qstrm->stream, FALSE);
@@ -327,7 +320,7 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 
 		// Start/ReStart the nng pipe
 		if ((qstrm->pipe = nng_alloc(pipe_ops->pipe_size)) == NULL) {
-			qdebug("error in alloc pipe.\n");
+			log_error("Failed in allocating pipe.");
 		}
 		pipe_ops->pipe_init(qstrm->pipe, (nni_pipe *)qstrm, Context);
 		pipe_ops->pipe_start(qstrm->pipe);
@@ -382,14 +375,16 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 		}
 
 		GConnection = NULL;
-		if (qstrm->rticket_active) {
-			log_warn("try to do stream reconnect!");
-			nni_aio_finish(&qstrm->close_aio, 0, 0);
-		} else { // No rticket
+		log_warn("Try to do quic stream reconnect!");
+		nni_aio_finish(&qstrm->close_aio, 0, 0);
+		/*
+		if (qstrm->rtt0_enable) {
+			// No rticket
 			log_warn("reconnect failed due to no resumption ticket.\n");
 			quic_strm_fini(qstrm);
 			nng_free(qstrm, sizeof(quic_strm_t));
 		}
+		*/
 		break;
 	case QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED:
 		// A resumption ticket (also called New Session Ticket or NST)
@@ -406,7 +401,6 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 		}
 		qdebug("\n");
 		*/
-		qstrm->rticket_active = true;
 		qstrm->rticket_sz = Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength;
 		memcpy(qstrm->rticket, Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicket,
 		        Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength);
@@ -432,7 +426,8 @@ quic_disconnect()
 {
 	if (!GConnection)
 		return -1;
-	MsQuic->ConnectionShutdown(*GConnection, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
+	MsQuic->ConnectionShutdown(
+	    *GConnection, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, NNG_ECONNSHUT);
 	return 0;
 }
 
@@ -445,12 +440,10 @@ quic_disconnect()
  * @return int
  */
 static int
-quic_strm_start(HQUIC Connection, void *Context, HQUIC *Streamp, bool active)
+quic_strm_start(HQUIC Connection, void *Context, HQUIC *Streamp)
 {
 	HQUIC       Stream = NULL;
 	QUIC_STATUS Status;
-
-	NNI_ARG_UNUSED(active);
 
 	// Create/allocate a new bidirectional stream. The stream is just
 	// allocated and no QUIC stream identifier is assigned until it's
@@ -487,18 +480,6 @@ Error:
 }
 
 void
-quic_proto_open(nni_proto *proto)
-{
-	g_quic_proto = proto;
-}
-
-void
-quic_proto_set_keepalive(uint64_t interval)
-{
-	keepalive = interval;
-}
-
-void
 quic_open()
 {
 	QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
@@ -515,12 +496,16 @@ quic_open()
 		goto Error;
 	}
 
-	qdebug("msquic is init.\n");
-
+	log_info("Msquic is enabled");
 	return;
 
 Error:
+	quic_close();
+}
 
+void
+quic_close()
+{
 	if (MsQuic != NULL) {
 		if (Configuration != NULL) {
 			MsQuic->ConfigurationClose(Configuration);
@@ -534,12 +519,31 @@ Error:
 	}
 }
 
+void
+quic_proto_open(nni_proto *proto)
+{
+	g_quic_proto = proto;
+}
+
+void
+quic_proto_close()
+{
+	g_quic_proto = NULL;
+}
+
+void
+quic_proto_set_keepalive(uint64_t interval)
+{
+	keepalive = interval;
+}
+
 int
-quic_connect(const char *url, nni_sock *sock)
+quic_connect_ipv4(const char *url, nni_sock *sock)
 {
 	// Load the client configuration based on the "unsecure" command line
 	// option.
 	if (!LoadConfiguration(TRUE, keepalive)) {
+		log_error("Failed in load quic configuration");
 		return (-1);
 	}
 
@@ -553,7 +557,7 @@ quic_connect(const char *url, nni_sock *sock)
 	// Allocate a new connection object.
 	if (QUIC_FAILED(Status = MsQuic->ConnectionOpen(Registration,
 	                    QuicConnectionCallback, sock_data, &Connection))) {
-		qdebug("ConnectionOpen failed, 0x%x!\n", Status);
+		log_error("Failed in Quic ConnectionOpen, 0x%x!", Status);
 		goto Error;
 	}
 	QUIC_ADDR Address = { 0 };
@@ -565,7 +569,7 @@ quic_connect(const char *url, nni_sock *sock)
 	// QuicAddrSetPort(&Address, 0);
 	if (QUIC_FAILED(Status = MsQuic->SetParam(Connection, QUIC_PARAM_CONN_LOCAL_ADDRESS,
 	    sizeof(QUIC_ADDR), &Address))) {
-		qdebug("address setting failed, 0x%x!\n", Status);
+		log_error("Failed in address setting, 0x%x!\n", Status);
 		goto Error;
 	}
 
@@ -578,7 +582,7 @@ quic_connect(const char *url, nni_sock *sock)
 
 	// Create a pipe for quic client
 	if ((qstrm = nng_alloc(sizeof(quic_strm_t))) == NULL) {
-		qdebug("Error in alloc quic strm.\n");
+		log_error("Failed in alloc quic strm.");
 		goto Error;
 	}
 	quic_strm_init(qstrm);
@@ -587,13 +591,13 @@ quic_connect(const char *url, nni_sock *sock)
 	qstrm->sock = sock;
 	GStream = qstrm; // It should be stored in sock, but...
 
-	qinfo("[conn] Connecting... %s : %s\n", url_s->u_host, url_s->u_port);
+	log_info("Quic connecting... %s:%s", url_s->u_host, url_s->u_port);
 
 	// Start the connection to the server.
 	if (QUIC_FAILED(Status = MsQuic->ConnectionStart(Connection,
 	                    Configuration, QUIC_ADDRESS_FAMILY_UNSPEC,
 	                    url_s->u_host, atoi(url_s->u_port)))) {
-		qdebug("ConnectionStart failed, 0x%x!\n", Status);
+		log_error("Failed in ConnectionStart, 0x%x!", Status);
 		goto Error;
 	}
 
@@ -603,10 +607,8 @@ quic_connect(const char *url, nni_sock *sock)
 Error:
 
 	if (QUIC_FAILED(Status) && Connection != NULL) {
-		log_error("failed status %d connection closed", Status);
 		MsQuic->ConnectionClose(Connection);
 	}
-
 	return 0;
 }
 
@@ -616,6 +618,7 @@ quic_reconnect(quic_strm_t *qstrm)
 	// Load the client configuration based on the "unsecure" command line
 	// option.
 	if (!LoadConfiguration(TRUE, keepalive)) {
+		log_error("Failed in load quic configuration");
 		return (-1);
 	}
 
@@ -627,28 +630,27 @@ quic_reconnect(quic_strm_t *qstrm)
 	// Allocate a new connection object.
 	if (QUIC_FAILED(Status = MsQuic->ConnectionOpen(Registration,
 	                    QuicConnectionCallback, sock_data, &Connection))) {
-		qdebug("ConnectionOpen failed, 0x%x!\n", Status);
+		log_error("Failed in Quic ConnectionOpen, 0x%x!", Status);
 		goto Error;
 	}
 
 	if (qstrm->rticket_sz != 0) {
+		log_info("QUIC connection reconnect with 0RTT enabled");
 		if (QUIC_FAILED(Status = MsQuic->SetParam(Connection,
 		                    QUIC_PARAM_CONN_RESUMPTION_TICKET,
 		                    qstrm->rticket_sz, qstrm->rticket))) {
-			qdebug("SetParam(QUIC_PARAM_CONN_RESUMPTION_TICKET) "
-			       "failed, 0x%x!\n",
-			    Status);
+			log_error("Failed in setting resumption ticket, 0x%x!", Status);
 			goto Error;
 		}
 	}
 
-	qinfo("[conn] ReConnecting... %s : %s\n", url_s->u_host, url_s->u_port);
+	log_info("Quic reconnecting... %s:%s", url_s->u_host, url_s->u_port);
 
 	// Start the connection to the server.
 	if (QUIC_FAILED(Status = MsQuic->ConnectionStart(Connection,
 	                    Configuration, QUIC_ADDRESS_FAMILY_UNSPEC,
 	                    url_s->u_host, atoi(url_s->u_port)))) {
-		qdebug("ConnectionStart failed, 0x%x!\n", Status);
+		log_error("Failed in ConnectionStart, 0x%x!", Status);
 		goto Error;
 	}
 
@@ -660,7 +662,6 @@ Error:
 	if (QUIC_FAILED(Status) && Connection != NULL) {
 		MsQuic->ConnectionClose(Connection);
 	}
-
 	return 0;
 }
 
@@ -669,7 +670,6 @@ quic_strm_close_cb(void *arg)
 {
 	quic_strm_t *qstrm = arg;
 
-	qinfo("[conn][%p] try to resume by ticket\n", qstrm->stream);
 	nng_msleep(NNI_QUIC_TIMER * 1000);
 	quic_reconnect(qstrm);
 }
@@ -712,16 +712,14 @@ quic_strm_send_start(quic_strm_t *qstrm)
 		buf2->Buffer = nni_msg_body(msg);
 	}
 
-	qdebug("type is 0x%x %x.\n",
+	log_debug("type is 0x%x %x.",
 	    ((((uint8_t *) nni_msg_header(msg))[0] & 0xf0) >> 4),
 	    ((uint8_t *) nni_msg_header(msg))[0]);
-
-	log_trace(
-	    " body len: %d header len: %d \n", buf[1].Length, buf[0].Length);
+	log_debug("body len: %d header len: %d", buf[1].Length, buf[0].Length);
 
 	if (QUIC_FAILED(Status = MsQuic->StreamSend(qstrm->stream, buf, bl > 0 ? 2:1,
 	                    QUIC_SEND_FLAG_NONE, buf))) {
-		qdebug("StreamSend failed, 0x%x!\n", Status);
+		log_debug("Failed in StreamSend, 0x%x!", Status);
 		free(buf);
 	}
 }
@@ -1032,5 +1030,16 @@ quic_strm_send(void *arg, nni_aio *aio)
 	}
 	nni_mtx_unlock(&qstrm->mtx);
 
+	return 0;
+}
+
+int
+quic_strm_close(void *arg)
+{
+	if (!arg)
+		return -1;
+	quic_strm_t *qstrm = arg;
+	quic_strm_fini(qstrm);
+	nng_free(qstrm, sizeof(quic_strm_t));
 	return 0;
 }

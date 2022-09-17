@@ -1125,7 +1125,7 @@ nng_mqtt_quic_client_open(nng_socket *sock, const char *url)
 		if (nsock) {
 			quic_open();
 			quic_proto_open(&mqtt_msquic_proto);
-			rv = quic_connect(url, nsock);
+			rv = quic_connect_ipv4(url, nsock);
 		} else {
 			rv = -1;
 		}
@@ -1145,7 +1145,7 @@ nng_mqtt_quic_open_keepalive(nng_socket *sock, const char *url, uint64_t interva
 			quic_open();
 			quic_proto_open(&mqtt_msquic_proto);
 			quic_proto_set_keepalive(interval);
-			quic_connect(url, nsock);
+			quic_connect_ipv4(url, nsock);
 		} else {
 			rv = -1;
 		}
