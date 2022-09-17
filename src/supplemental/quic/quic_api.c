@@ -16,7 +16,7 @@
 #include <unistd.h>
 
 #define NNI_QUIC_KEEPALIVE 100
-#define NNI_QUIC_TIMER 3
+#define NNI_QUIC_TIMER 1
 
 #define QUIC_API_C_DEBUG 0
 #define QUIC_API_C_INFO 0
@@ -85,7 +85,6 @@ nni_proto *g_quic_proto;
 
 static BOOLEAN LoadConfiguration(BOOLEAN Unsecure, uint64_t interval);
 static int     quic_strm_start(HQUIC Connection, void *Context, HQUIC *Streamp);
-// static int     quic_strm_close(HQUIC Connection, HQUIC Stream);
 static void    quic_strm_send_cancel(nni_aio *aio, void *arg, int rv);
 static void    quic_strm_send_start(quic_strm_t *qstrm);
 static void    quic_strm_recv_cb(void *arg);
@@ -276,8 +275,9 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 		// Both directions of the stream have been shut down and MsQuic
 		// is done with the stream. It can now be safely cleaned up.
-		log_warn("[strm][%p] QUIC_STREAM_EVENT shutdown: All done %d\n", Stream);
+		log_warn("[strm][%p] QUIC_STREAM_EVENT shutdown: All done");
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
+			log_warn("close the QUIC stream!");
 			MsQuic->StreamClose(Stream);
 		}
 		break;
@@ -303,12 +303,12 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 	quic_strm_t        *qstrm    = GStream;
 	nni_aio *aio;
 	
-	log_info("QuicConnectionCallback triggered! %d", Event->Type);
+	log_debug("QuicConnectionCallback triggered! %d", Event->Type);
 	switch (Event->Type) {
 	case QUIC_CONNECTION_EVENT_CONNECTED:
 		// The handshake has completed for the connection.
 		// do not init any var here due to potential frequent reconnect
-		log_info("[conn][%p] Connected", Connection);
+		log_info("[conn][%p] is Connected", Connection);
 
 		// First starting the quic stream
 		if (0 != quic_strm_start(Connection, qstrm, &qstrm->stream)) {
@@ -320,7 +320,7 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 
 		// Start/ReStart the nng pipe
 		if ((qstrm->pipe = nng_alloc(pipe_ops->pipe_size)) == NULL) {
-			log_error("Failed in allocing pipe.");
+			log_error("Failed in allocating pipe.");
 		}
 		pipe_ops->pipe_init(qstrm->pipe, (nni_pipe *)qstrm, Context);
 		pipe_ops->pipe_start(qstrm->pipe);
@@ -426,7 +426,8 @@ quic_disconnect()
 {
 	if (!GConnection)
 		return -1;
-	MsQuic->ConnectionShutdown(*GConnection, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
+	MsQuic->ConnectionShutdown(
+	    *GConnection, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, NNG_ECONNSHUT);
 	return 0;
 }
 
@@ -634,6 +635,7 @@ quic_reconnect(quic_strm_t *qstrm)
 	}
 
 	if (qstrm->rticket_sz != 0) {
+		log_info("QUIC connection reconnect with 0RTT enabled");
 		if (QUIC_FAILED(Status = MsQuic->SetParam(Connection,
 		                    QUIC_PARAM_CONN_RESUMPTION_TICKET,
 		                    qstrm->rticket_sz, qstrm->rticket))) {
