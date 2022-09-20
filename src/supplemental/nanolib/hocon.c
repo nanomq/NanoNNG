@@ -1,4 +1,5 @@
 #include "nng/supplemental/nanolib/hocon.h"
+#include "nng/supplemental/nanolib/cvector.h"
 #include "stdbool.h"
 #include "stdio.h"
 
@@ -17,23 +18,27 @@ static char *skip_whitespace(char *str)
 
 }
 
-static cJSON *path_expression_core(cJSON *parent, cJSON *jso)
+static cJSON *path_expression_parse_core(cJSON *parent, cJSON *jso)
 {
     char *str = jso->string;
     char *p = jso->string;
     char *p_a = jso->string + strlen(jso->string);
-    cJSON *jso_new = NULL;
-    jso = cJSON_GetObjectItem(jso, jso->string);
+    jso = cJSON_GetObjectItem(parent, jso->string);
+
     char t[128] = { 0 };
     while (NULL != (p = strrchr(str, '.'))) {
+        cJSON *jso_new = cJSON_CreateObject();
+        // cJSON *jso_new = NULL;
 
         // a.b.c: {object}
         // c ==> create json object jso(c, jso)
         *p = '_';
         strncpy(t, p + 1, p_a - p);
-        cJSON_AddItemToObject(jso_new, t, jso);
+        // cJSON_AddItemToObject(jso_new, t, jso);
+        cJSON_AddItemToObject(jso_new, t, cJSON_Duplicate(jso, cJSON_True));
         memset(t, 0, 128);
         // jso_new = json(c, jso)
+        // cJSON_Delete(jso);
         jso = jso_new;
         jso_new = NULL;
         p_a = --p;
@@ -42,6 +47,7 @@ static cJSON *path_expression_core(cJSON *parent, cJSON *jso)
     strncpy(t, str, p_a - str + 1);
     cJSON_AddItemToObject(parent, t, jso);
     memset(t, 0, 128);
+    cJSON_DeleteItemFromObject(parent, str);
 
     return parent;
 }
@@ -55,24 +61,25 @@ static cJSON *path_expression_core(cJSON *parent, cJSON *jso)
 // insert object bridge with sqlite
 // delete bridge.sqlite
 
-static cJSON *path_expression(cJSON *jso)
+static cJSON *path_expression_parse(cJSON *jso)
 {
     cJSON *parent = jso;
     cJSON *child = jso->child;
 
     while (child) {
-        if (NULL != child->string && NULL != strchr(child->string, '.')) {
-            split(parent, child);
-        }
         if (child->child) {
-            path_expression(child);
+            path_expression_parse(child);
         }
-        child = child->next;
+        if (NULL != child->string && NULL != strchr(child->string, '.')) {
+            path_expression_parse_core(parent, child);
+            child = parent->child->next;
+        } else {
+            child = child->next;
+        }
     }
 
     return jso;
 }
-
 
 
 cJSON *hocon_str_to_json(char *str)
@@ -143,7 +150,7 @@ cJSON *hocon_str_to_json(char *str)
 
     if ((jso = cJSON_Parse(new))) {
         if (cJSON_False != cJSON_IsInvalid(jso)) {
-            return path_expression(jso);
+            return path_expression_parse(jso);
         }
     }
 
