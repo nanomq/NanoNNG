@@ -901,6 +901,7 @@ quic_mqtt_stream_close(void *arg)
 	nni_mtx_unlock(&s->mtx);
 
 	nni_atomic_set_bool(&p->closed, true);
+	p->ready = false;
 }
 
 /******************************************************************************
