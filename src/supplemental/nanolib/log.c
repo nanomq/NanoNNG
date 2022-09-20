@@ -222,7 +222,7 @@ file_rotation(FILE *fp, conf_log *config)
 		config->fp   = fp;
 		char num[20] = { 0 };
 		index++; // increase index
-		if (index >= config->rotation_count) {
+		if (index > config->rotation_count) {
 			index = 1;
 		}
 		snprintf(num, 20, "%zu", index);
