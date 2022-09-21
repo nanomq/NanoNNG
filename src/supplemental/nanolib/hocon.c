@@ -18,6 +18,47 @@ static char *skip_whitespace(char *str)
 
 }
 
+
+// TODO incomplete, if the comment appears after the string
+bool skip_comment_line(char *line)
+{
+    while ('\0' != *line && '\n' != *line) {
+        line = skip_whitespace(line);
+        if ('#' == *line || ('/' == *line && '/' == *(line+1))) {
+            return true;
+        } 
+
+        return false;
+    }
+    return false;
+}
+
+// char str = "abc\ndef\njkl\n#aaaaa\n"
+char *skip_comment(char *str)
+{
+    char *ret = NULL;
+    char *p = str;
+    char *p_b = str;
+
+    while (p = strchr(p, '\n')) {
+        if (true == skip_comment_line(p_b)) {
+            p++;
+            p_b = p;
+        } else {
+            for (; p != p_b; p_b++) {
+                cvector_push_back(ret, *p_b);
+            }
+            p++;
+            p_b = p;
+        }
+
+    }
+
+    cvector_push_back(ret, '\0');
+    return ret;
+}
+
+
 static cJSON *path_expression_parse_core(cJSON *parent, cJSON *jso)
 {
     char *str = jso->string;
@@ -141,6 +182,7 @@ cJSON *hocon_str_to_json(char *str)
     if (NULL == str) {
         return NULL;
     }
+
 
     // If it's not an illegal json object return
     cJSON *jso = cJSON_Parse(str);
