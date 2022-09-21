@@ -72,12 +72,66 @@ static cJSON *path_expression_parse(cJSON *jso)
         }
         if (NULL != child->string && NULL != strchr(child->string, '.')) {
             path_expression_parse_core(parent, child);
-            child = parent->child->next;
+            child = parent->child;
         } else {
             child = child->next;
         }
     }
 
+    return jso;
+}
+
+// if same level has same name, if they are not object 
+// the back covers the front
+// TODO FIXME memory leak
+cJSON *deduplication_and_merging(cJSON *jso)
+{
+    cJSON *parent = jso;
+    cJSON *child = jso->child;
+    cJSON **table = NULL;
+
+
+    while (child) {
+        for (size_t i = 0; i < cvector_size(table); i++) {
+            if (0 == strcmp(table[i]->string, child->string)) {
+                if (table[i]->type == child->type && cJSON_Object == table[i]->type) {
+                    // merging object
+                    cJSON *next = child->child->next;
+                    while (next) {
+                        next = next->next;
+                    }
+                    next = table[i]->child;
+                    table[i]->child = NULL;
+                    cJSON_DeleteItemFromObject(parent, table[i]->string);
+                    // cJSON_Delete(table[i]->child);
+                    cvector_erase(table, 1);
+
+                } else {
+                    if (0 == i) {
+                        parent->child = child;
+                        // cJSON_Delete(table[i]);
+                        cJSON_free(table[i]);
+                        cvector_erase(table, i);
+                        
+                    } else {
+                        cJSON *free = table[i-1]->next;
+                        table[i-1]->next = table[i-1]->next->next;
+                        cvector_erase(table, i);
+                        cJSON_free(free);
+                        // cJSON_Delete(free);
+                    }
+                }
+            }
+        }
+
+        cvector_push_back(table, child);
+
+        if (child->child) {
+            deduplication_and_merging(child);
+        }
+        child = child->next;
+    }
+    cvector_free(table);
     return jso;
 }
 
@@ -150,7 +204,8 @@ cJSON *hocon_str_to_json(char *str)
 
     if ((jso = cJSON_Parse(new))) {
         if (cJSON_False != cJSON_IsInvalid(jso)) {
-            return path_expression_parse(jso);
+            jso = path_expression_parse(jso);
+            return deduplication_and_merging(jso);
         }
     }
 
