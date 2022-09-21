@@ -17,7 +17,7 @@
 
 #define NNI_QUIC_KEEPALIVE 100
 #define NNI_QUIC_TIMER 1
-#define NNI_QUIC_MAX_RETRY 3
+#define NNI_QUIC_MAX_RETRY 2
 
 #define QUIC_API_C_DEBUG 0
 #define QUIC_API_C_INFO 0
@@ -423,7 +423,7 @@ quic_disconnect()
 		return -1;
 	quic_strm_t *qstrm = GStream;
 	if (qstrm) {
-		qstrm->retry = 3; // Make qstream can be destroyed normally
+		qstrm->retry = NNI_QUIC_MAX_RETRY; // Make qstream can be destroyed normally
 	}
 	MsQuic->ConnectionShutdown(
 	    *GConnection, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, NNG_ECONNSHUT);
