@@ -97,7 +97,7 @@ struct mqtt_pipe_s {
 	void           *qstream; // nni_pipe
 	nni_atomic_bool closed;
 	bool            busy;
-	bool            ready;
+	bool            ready;			// mark if QUIC stream is ready
 	nni_atomic_int  next_packet_id; // next packet id to use
 	mqtt_sock_t    *mqtt_sock;
 	nni_id_map      sent_unack;    // send messages unacknowledged
@@ -797,11 +797,17 @@ quic_mqtt_stream_fini(void *arg)
 	nni_id_map_fini(&p->sent_unack);
 	nni_lmq_fini(&p->recv_messages);
 
+	if (s->cb.disconnect_cb != NULL) {
+		s->cb.disconnect_cb(NULL, s->cb.discarg);
+	}
+
 	uint16_t count = 0;
-	// TODO
-	if (!p->cparam)
-		conn_param_alloc(&p->cparam);
-	nni_msg *tmsg = nano_msg_notify_disconnect(p->cparam, SERVER_SHUTTING_DOWN);
+	// connect failed also triggered stream finit, ignore it
+	if (p->cparam == NULL) {
+		return;
+	}
+	nni_msg *tmsg =
+	    nano_msg_notify_disconnect(p->cparam, SERVER_SHUTTING_DOWN);
 	nni_msg_set_conn_param(tmsg, p->cparam);
 	// emulate disconnect notify msg as a normal publish
 	while ((aio = nni_list_first(&s->recv_queue)) != NULL) {
@@ -824,9 +830,7 @@ quic_mqtt_stream_fini(void *arg)
 		}
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
-	if (s->cb.disconnect_cb != NULL) {
-		s->cb.disconnect_cb(NULL, s->cb.discarg);
-	}
+
 	conn_param_free(p->cparam);
 }
 
