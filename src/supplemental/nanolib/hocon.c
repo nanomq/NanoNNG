@@ -40,7 +40,7 @@ char *skip_comment(char *str)
     char *p = str;
     char *p_b = str;
 
-    while (p = strchr(p, '\n')) {
+    while (NULL != (p = strchr(p, '\n'))) {
         if (true == skip_comment_line(p_b)) {
             p++;
             p_b = p;
@@ -137,12 +137,12 @@ cJSON *deduplication_and_merging(cJSON *jso)
             if (0 == strcmp(table[i]->string, child->string)) {
                 if (table[i]->type == child->type && cJSON_Object == table[i]->type) {
                     // merging object
-                    cJSON *next = child->child->next;
-                    while (next) {
-                        next = next->next;
+                    cJSON *next1 = table[i]->child;
+                    while (next1) {
+                        cJSON_AddItemToObject(child, next1->string, cJSON_Duplicate(next1, cJSON_False));
+                        next1 = next1->next;
                     }
-                    next = table[i]->child;
-                    table[i]->child = NULL;
+                    
                     cJSON_DeleteItemFromObject(parent, table[i]->string);
                     // cJSON_Delete(table[i]->child);
                     cvector_erase(table, 1);
@@ -182,6 +182,8 @@ cJSON *hocon_str_to_json(char *str)
     if (NULL == str) {
         return NULL;
     }
+
+    str = skip_comment(str);
 
 
     // If it's not an illegal json object return
