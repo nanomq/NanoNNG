@@ -5,27 +5,29 @@
 #include "string.h"
 #include <nuts.h>
 
+
+
 void test_hocon_str_to_json(void)
 {
     char *test = 
-        " bridge.sqlite {"
-        " 	enable=false,"
-        " 	enable=false,"
-        " 	disk_cache_size=102400,"
-        " 	mounted_file_path=\"/tmp/\","
-        " 	flush_mem_threshold=100,"
-        " 	resend_interval=5000,"
-        " }"
-        " bridge.sqlite {"
-        " 	enable=false,"
-        " 	enable=false,"
-        " 	test=false,"
-        " 	test=false,"
-        " 	disk_cache_size=102400,"
-        " 	mounted_file_path=\"/tmp/\","
-        " 	flush_mem_threshold=100,"
-        " 	resend_interval=5000,"
-        " }";
+        "\n bridge.sqlite {"
+        "\n 	enable=false,"
+        "\n 	# enable=false,"
+        "\n 	// enable=false,"
+        "\n 	enable=false,"
+        "\n 	disk_cache_size=102400,"
+        "\n 	mounted_file_path=\"/tmp/\","
+        "\n 	flush_mem_threshold=100,"
+        "\n 	resend_interval=5000,"
+        "\n }"
+        "\n bridge.sqlite {"
+        "\n 	test=false,"
+        "\n 	test=false,"
+        "\n 	disk_cache_size=102400,"
+        "\n 	mounted_file_path=\"/tmp/\","
+        "\n 	flush_mem_threshold=100,"
+        "\n 	resend_interval=5000,"
+        "\n }\n";
 
 
     char result[] = 

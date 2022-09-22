@@ -17,12 +17,14 @@ nng_sources(
   file.c
   hash_table.c
   mqtt_db.c
+  hocon.c
   log.c
   )
 
 
 nng_test(hash_test)
 nng_test(dbtree_test)
+nng_test(hocon_test)
 
 if (SUPP_RULE_ENGINE)
   nng_sources(rule.c)
