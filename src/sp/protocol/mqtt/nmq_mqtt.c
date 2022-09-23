@@ -1258,5 +1258,6 @@ static nni_proto nano_tcp_proto = {
 int
 nng_nmq_tcp0_open(nng_socket *sidp)
 {
+	log_debug("open up nmq tcp0 protocol.");
 	return (nni_proto_mqtt_open(sidp, &nano_tcp_proto, nano_sock_setdb));
 }
