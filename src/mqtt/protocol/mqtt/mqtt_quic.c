@@ -565,7 +565,7 @@ mqtt_timer_cb(void *arg)
 			quic_strm_send(p->qstream, &p->rep_aio);
 			s->counter = 0;
 			s->pingcnt ++;
-			log_info("send PINGREQ %d %d", s->counter, s->pingcnt);
+			log_debug("send PINGREQ %d %d", s->counter, s->pingcnt);
 		}
 	}
 
@@ -736,7 +736,7 @@ mqtt_quic_sock_set_sqlite_option(
 }
 
 /******************************************************************************
- *                          Stream(Pipe) Implementation                       *
+ *                          Stream(PIPE) Implementation                       *
  ******************************************************************************/
 
 static int
@@ -750,7 +750,7 @@ quic_mqtt_stream_init(void *arg, nni_pipe *qstrm, void *sock)
 
 	nni_atomic_init_bool(&p->closed);
 	nni_atomic_set_bool(&p->closed, false);
-	p->busy = false;
+	p->busy  = false;
 	p->ready = false;
 	nni_atomic_set(&p->next_packet_id, 1);
 	nni_aio_init(&p->send_aio, mqtt_quic_send_cb, p);
