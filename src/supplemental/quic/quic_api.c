@@ -68,7 +68,6 @@ struct quic_strm_s {
 	uint8_t  rticket[2048];
 	uint16_t rticket_sz;
 	nng_url *url_s;
-	uint8_t  retry;
 };
 
 // Config for msquic
@@ -171,7 +170,6 @@ quic_strm_init(quic_strm_t *qstrm)
 
 	qstrm->url_s = NULL;
 	qstrm->rticket_sz = 0;
-	qstrm->retry      = 0;
 }
 
 static void
@@ -319,9 +317,6 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 			break;
 		}
 		MsQuic->StreamReceiveSetEnabled(qstrm->stream, FALSE);
-		// }
-
-		qstrm->retry = 0; // Reset retry counter once connected
 		pipe_ops->pipe_start(qstrm->pipe);
 		break;
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_TRANSPORT:
@@ -359,7 +354,7 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 			nni_aio_finish_sync(aio, NNG_ECLOSED, 0);
 		}
 		// Close and finite nng pipe ONCE disconnect
-		if (qstrm->pipe && qstrm->retry >= NNI_QUIC_MAX_RETRY) {
+		if (qstrm->pipe) {
 			log_warn("Quic reconnect failed so disconnected!");
 			pipe_ops->pipe_stop(qstrm->pipe);
 			pipe_ops->pipe_close(qstrm->pipe);
@@ -419,12 +414,10 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 int
 quic_disconnect()
 {
+	log_debug("actively disclose the QUIC stream");
 	if (!GConnection)
 		return -1;
 	quic_strm_t *qstrm = GStream;
-	if (qstrm) {
-		qstrm->retry = NNI_QUIC_MAX_RETRY; // Make qstream can be destroyed normally
-	}
 	MsQuic->ConnectionShutdown(
 	    *GConnection, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, NNG_ECONNSHUT);
 	return 0;
@@ -676,7 +669,6 @@ quic_strm_close_cb(void *arg)
 {
 	quic_strm_t *qstrm = arg;
 
-	qstrm->retry ++;
 	nng_msleep(NNI_QUIC_TIMER * 1000);
 	quic_reconnect(qstrm);
 }
