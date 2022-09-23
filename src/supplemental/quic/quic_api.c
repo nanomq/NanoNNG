@@ -84,7 +84,7 @@ static uint64_t keepalive   = 0;
 
 nni_proto *g_quic_proto;
 
-static BOOLEAN LoadConfiguration(BOOLEAN Unsecure, uint64_t interval);
+static BOOLEAN LoadConfiguration(BOOLEAN Unsecure, uint64_t interval, uint64_t timeout);
 static int     quic_strm_start(HQUIC Connection, void *Context, HQUIC *Streamp);
 static void    quic_strm_send_cancel(nni_aio *aio, void *arg, int rv);
 static void    quic_strm_send_start(quic_strm_t *qstrm);
@@ -97,7 +97,7 @@ static int     quic_reconnect(quic_strm_t *qstrm);
 
 // Helper function to load a client configuration.
 static BOOLEAN
-LoadConfiguration(BOOLEAN Unsecure, uint64_t interval)
+LoadConfiguration(BOOLEAN Unsecure, uint64_t interval, uint64_t timeout)
 {
 	QUIC_SETTINGS Settings = { 0 };
 	// Configures the client's idle timeout.
@@ -105,10 +105,11 @@ LoadConfiguration(BOOLEAN Unsecure, uint64_t interval)
 		Settings.IsSet.IdleTimeoutMs = FALSE;
 	} else {
 		keepalive = interval;
-		Settings.IsSet.IdleTimeoutMs = TRUE;
-		Settings.IdleTimeoutMs       = interval * 1000;
-		Settings.DisconnectTimeoutMs = interval * 1000;
-		Settings.KeepAliveIntervalMs = interval * 1000;
+		Settings.IsSet.IdleTimeoutMs    = TRUE;
+		Settings.IdleTimeoutMs          = interval * 1000;
+		Settings.DisconnectTimeoutMs    = interval * 1000;
+		Settings.KeepAliveIntervalMs    = interval * 1000;
+		Settings.HandshakeIdleTimeoutMs = timeout  * 1000;
 	}
 
 	// Configures a default client configuration, optionally disabling
@@ -257,7 +258,6 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 			// We should not do executing now, Or circle calling occurs
 			nng_aio_wait(&qstrm->rraio);
 			nni_aio_finish_sync(&qstrm->rraio, 0, 0);
-			// nng_aio_wait(&qstrm->rraio);
 		}
 		log_debug("stream cb over\n");
 
@@ -317,6 +317,16 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 			break;
 		}
 		MsQuic->StreamReceiveSetEnabled(qstrm->stream, FALSE);
+		// Start/ReStart the nng pipe
+		if (qstrm->pipe == NULL) {
+			// not first time to establish QUIC pipe
+			if ((qstrm->pipe = nng_alloc(pipe_ops->pipe_size)) ==
+			    NULL) {
+				log_error("Failed in allocating pipe.");
+			}
+			pipe_ops->pipe_init(
+			    qstrm->pipe, (nni_pipe *) qstrm, Context);
+		}
 		pipe_ops->pipe_start(qstrm->pipe);
 		break;
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_TRANSPORT:
@@ -360,7 +370,7 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 			pipe_ops->pipe_close(qstrm->pipe);
 			pipe_ops->pipe_fini(qstrm->pipe);
 			nng_free(qstrm->pipe, 0);
-			break;
+			qstrm->pipe = NULL;
 		}
 
 		GConnection = NULL;
@@ -534,7 +544,7 @@ quic_connect_ipv4(const char *url, nni_sock *sock)
 {
 	// Load the client configuration based on the "unsecure" command line
 	// option.
-	if (!LoadConfiguration(TRUE, keepalive)) {
+	if (!LoadConfiguration(TRUE, keepalive, 10)) {
 		log_error("Failed in load quic configuration");
 		return (-1);
 	}
@@ -616,7 +626,7 @@ quic_reconnect(quic_strm_t *qstrm)
 {
 	// Load the client configuration based on the "unsecure" command line
 	// option.
-	if (!LoadConfiguration(TRUE, keepalive)) {
+	if (!LoadConfiguration(TRUE, keepalive, 10)) {
 		log_error("Failed in load quic configuration");
 		return (-1);
 	}
