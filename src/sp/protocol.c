@@ -37,7 +37,9 @@ nni_proto_mqtt_open(nng_socket *sockidp, const nni_proto *proto,
 	if ((rv = nni_init()) != 0) {
 		return (rv);
 	}
+	log_debug(" nng internal init finished! Listener start");
 	if ((rv = nni_sock_open(&sock, proto)) == 0) {
+		log_debug("mqtt socket opened!");
 		sockidp->id = nni_sock_id(sock); // Keep socket held open.
 		sock_setdb(nni_sock_proto_data(sock), sockidp->data);
 	}
