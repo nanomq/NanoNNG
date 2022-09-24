@@ -710,7 +710,7 @@ nng_mqtt_client_alloc(nng_socket sock, nng_mqtt_sub_cb cb, bool is_async)
 	nng_mqtt_client *client = NNI_ALLOC_STRUCT(client);
 	client->sock            = sock;
 	if (is_async) {
-		nng_aio_alloc(&client->sub_aio, cb, client);
+		nng_aio_alloc(&client->send_aio, cb, client);
 	}
 	return client;
 }
@@ -718,15 +718,15 @@ nng_mqtt_client_alloc(nng_socket sock, nng_mqtt_sub_cb cb, bool is_async)
 /**
  * @brief an AIO cannot kill itself in its own callback!!
  * 
- * @param client 
- * @param is_async 
+ * @param client
+ * @param is_async
  */
 void nng_mqtt_client_free(nng_mqtt_client *client, bool is_async)
 {
-	nni_aio_close(client->sub_aio);
+	nni_aio_close(client->send_aio);
 	if (client) {
 		if (is_async) {
-			nng_aio_free(client->sub_aio);
+			nng_aio_free(client->send_aio);
 		}
 		NNI_FREE_STRUCT(client);
 	}
@@ -769,13 +769,13 @@ nng_mqtt_subscribe_async(nng_mqtt_client *client, nng_mqtt_topic_qos *sbs, size_
 		nng_mqtt_msg_set_subscribe_property(submsg, pl);
 	}
 
-	nng_aio_set_msg(client->sub_aio, submsg);
-	if (nni_aio_schedule(client->sub_aio, mqtt_sub_aio_cancel, client) !=
+	nng_aio_set_msg(client->send_aio, submsg);
+	if (nni_aio_schedule(client->send_aio, mqtt_sub_aio_cancel, client) !=
 	    0) {
-		nni_aio_finish_error(client->sub_aio, NNG_ECANCELED);
+		nni_aio_finish_error(client->send_aio, NNG_ECANCELED);
 		return rv;
 	}
-	nng_send_aio(client->sock, client->sub_aio);
+	nng_send_aio(client->sock, client->send_aio);
 
 	return rv;
 
