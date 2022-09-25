@@ -18,7 +18,6 @@ static char *skip_whitespace(char *str)
 
 }
 
-
 // TODO incomplete, if the comment appears after the string
 bool skip_comment_line(char *line)
 {
@@ -30,7 +29,8 @@ bool skip_comment_line(char *line)
 
         return false;
     }
-    return false;
+    // skip blank line
+    return true;
 }
 
 // char str = "abc\ndef\njkl\n#aaaaa\n"
@@ -55,16 +55,17 @@ char *skip_comment(char *str)
     }
 
     cvector_push_back(ret, '\0');
+    // puts(ret);
     return ret;
 }
 
 
 static cJSON *path_expression_parse_core(cJSON *parent, cJSON *jso)
 {
-    char *str = jso->string;
-    char *p = jso->string;
-    char *p_a = jso->string + strlen(jso->string);
-    jso = cJSON_GetObjectItem(parent, jso->string);
+    jso = cJSON_DetachItemFromObject(parent, jso->string);
+    char *str = strdup(jso->string);
+    char *p = str;
+    char *p_a = str + strlen(str);
 
     char t[128] = { 0 };
     while (NULL != (p = strrchr(str, '.'))) {
@@ -76,7 +77,7 @@ static cJSON *path_expression_parse_core(cJSON *parent, cJSON *jso)
         *p = '_';
         strncpy(t, p + 1, p_a - p);
         // cJSON_AddItemToObject(jso_new, t, jso);
-        cJSON_AddItemToObject(jso_new, t, cJSON_Duplicate(jso, cJSON_True));
+        cJSON_AddItemToObject(jso_new, t, jso); //cJSON_Duplicate(jso, cJSON_True));
         memset(t, 0, 128);
         // jso_new = json(c, jso)
         // cJSON_Delete(jso);
@@ -87,9 +88,10 @@ static cJSON *path_expression_parse_core(cJSON *parent, cJSON *jso)
 
     strncpy(t, str, p_a - str + 1);
     cJSON_AddItemToObject(parent, t, jso);
-    memset(t, 0, 128);
-    cJSON_DeleteItemFromObject(parent, str);
+    // memset(t, 0, 128);
+    // cJSON_DeleteItemFromObject(parent, str);
 
+    free(str);
     return parent;
 }
 
@@ -137,20 +139,22 @@ cJSON *deduplication_and_merging(cJSON *jso)
             if (0 == strcmp(table[i]->string, child->string)) {
                 if (table[i]->type == child->type && cJSON_Object == table[i]->type) {
                     // merging object
-                    cJSON *next1 = table[i]->child;
-                    while (next1) {
-                        cJSON_AddItemToObject(child, next1->string, cJSON_Duplicate(next1, cJSON_False));
-                        next1 = next1->next;
+                    cJSON *next = table[i]->child;
+                    while (next) {
+                        cJSON *dup = cJSON_Duplicate(next, true);
+                        cJSON_AddItemToObject(child, dup->string, dup); //cJSON_Duplicate(next, cJSON_True));
+                        // cJSON_AddItemToObject(child, next->string, next); //cJSON_Duplicate(next, cJSON_True));
+                        // cJSON *free = next;
+                        next = next->next;
+                        // cJSON_DetachItemFromObject(table[i], free->string);
                     }
                     
                     cJSON_DeleteItemFromObject(parent, table[i]->string);
-                    // cJSON_Delete(table[i]->child);
                     cvector_erase(table, 1);
 
                 } else {
                     if (0 == i) {
                         parent->child = child;
-                        // cJSON_Delete(table[i]);
                         cJSON_free(table[i]);
                         cvector_erase(table, i);
                         
@@ -159,7 +163,6 @@ cJSON *deduplication_and_merging(cJSON *jso)
                         table[i-1]->next = table[i-1]->next->next;
                         cvector_erase(table, i);
                         cJSON_free(free);
-                        // cJSON_Delete(free);
                     }
                 }
             }
@@ -189,6 +192,7 @@ cJSON *hocon_str_to_json(char *str)
     // If it's not an illegal json object return
     cJSON *jso = cJSON_Parse(str);
     if (cJSON_False == cJSON_IsInvalid(jso)) {
+        cvector_free(str);
         return jso;
     }
 
@@ -243,8 +247,10 @@ cJSON *hocon_str_to_json(char *str)
         }
     }
 
+    cvector_free(str);
     new[index++] = '}';
 
+    // puts(new);
 
     if ((jso = cJSON_Parse(new))) {
         if (cJSON_False != cJSON_IsInvalid(jso)) {
