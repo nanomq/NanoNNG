@@ -48,6 +48,17 @@ char *skip_comment(char *str)
             for (; p != p_b; p_b++) {
                 cvector_push_back(ret, *p_b);
             }
+            char *t = p_b - 1;
+            while (' ' == *t || '\t' == *t ) t--;
+            if ('{' != *t && '}' != *t && ',' != *t) {
+                if ('}' != *(p+1) && ']' != *(p+1)) {
+                    cvector_push_back(ret, ',');
+                }
+            // } else if ('}' == *t) {
+            //     if ('\0' != *(p+1)) {
+            //         cvector_push_back(ret, ',');
+            //     }
+            }
             p++;
             p_b = p;
         }
@@ -55,7 +66,7 @@ char *skip_comment(char *str)
     }
 
     cvector_push_back(ret, '\0');
-    // puts(ret);
+    puts(ret);
     return ret;
 }
 
@@ -250,7 +261,7 @@ cJSON *hocon_str_to_json(char *str)
     cvector_free(str);
     new[index++] = '}';
 
-    // puts(new);
+    puts(new);
 
     if ((jso = cJSON_Parse(new))) {
         if (cJSON_False != cJSON_IsInvalid(jso)) {
