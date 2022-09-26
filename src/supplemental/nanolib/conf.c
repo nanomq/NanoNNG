@@ -1677,12 +1677,19 @@ conf_bridge_node_parse_subs(
 			free(value);
 			get_qos = true;
 			goto check;
+		} else {
+			log_warn("Invalid QoS level in bridging conf!");
 		}
 
 		free(line);
 		line = NULL;
 
 	check:
+		if (!get_qos) {
+			log_warn("Use default QoS level 0 for bridging!");
+			qos = 0;
+			get_qos = true;
+		}
 		if (get_topic && get_qos) {
 			sub_index++;
 			node->sub_count++;
