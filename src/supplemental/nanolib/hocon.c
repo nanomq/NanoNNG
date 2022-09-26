@@ -50,16 +50,16 @@ char *skip_comment(char *str)
             }
             char *t = p_b - 1;
             while (' ' == *t || '\t' == *t ) t--;
-            if ('{' != *t && '}' != *t && ',' != *t) {
+            if ('{' != *t && '}' != *t && ',' != *t && '[' != *t && ']' != *t) {
                 char *q = p + 1;
                 while (' ' == *q || '\t' == *q ) q++;
                 if ('}' != *q && ']' != *q) {
                     cvector_push_back(ret, ',');
                 }
-            // } else if ('}' == *t) {
-            //     if ('\0' != *(p+1)) {
-            //         cvector_push_back(ret, ',');
-            //     }
+            } else if (']' == *t) {
+                if ('\0' != *(p+1)) {
+                    cvector_push_back(ret, ',');
+                }
             }
             p++;
             p_b = p;
@@ -149,7 +149,7 @@ cJSON *deduplication_and_merging(cJSON *jso)
 
     while (child) {
         for (size_t i = 0; i < cvector_size(table); i++) {
-            if (0 == strcmp(table[i]->string, child->string)) {
+            if (table[i]->string && child->string && 0 == strcmp(table[i]->string, child->string)) {
                 if (table[i]->type == child->type && cJSON_Object == table[i]->type) {
                     // merging object
                     cJSON *next = table[i]->child;
@@ -223,13 +223,17 @@ cJSON *hocon_str_to_json(char *str)
     // Replace key to \"key\"
     while ('\0' != *p && NULL != (p = skip_whitespace(p))) {
         while (' ' != *p && '\0' != *p) {
+            p = skip_whitespace(p);
 
             if ('}' == new[index-1]) {
                 new[index++] = ',';
-                new[index++] = '"';
+                if ('{' != *p ) {
+                    new[index++] = '"';
+                }
             }
 
-            if ('{' == *p && ':' != new[index-1]) {
+            // TODO fix
+            if (('{' == *p && ':' != new[index-1] && '[' != new[index-1] && '}' != new[index-2]) || ('[' == *p && ':' != new[index-1])) {
                 new[index++] = '"';
                 new[index++] = ':';
             }
@@ -240,7 +244,7 @@ cJSON *hocon_str_to_json(char *str)
             } else if (',' == *p || '{' == *p) {
                 new[index++] = *p;
                 // TODO FIXME unsafe
-                if ('}' != *(p+1)) {
+                if ('}' != *(p+1) && '"' != *(p+1) && '{' != *(p+1)) {
                     new[index++] = '"';
                 }
             } else {
@@ -254,6 +258,14 @@ cJSON *hocon_str_to_json(char *str)
                 new[index-1] = '\0';
                 index -= 2;
             }
+            
+            if (']' == new[index-1] && '"' == new[index-2] && ',' == new[index-3]) {
+                new[index-3] = new[index-1];
+                new[index-2] = '\0';
+                new[index-1] = '\0';
+                index -= 2;
+            }
+
 
             p++;
 
@@ -263,11 +275,13 @@ cJSON *hocon_str_to_json(char *str)
     cvector_free(str);
     new[index++] = '}';
 
+    puts("\n");
     puts(new);
 
     if ((jso = cJSON_Parse(new))) {
         if (cJSON_False != cJSON_IsInvalid(jso)) {
             jso = path_expression_parse(jso);
+            puts(cJSON_PrintUnformatted(jso));
             return deduplication_and_merging(jso);
         }
     }
