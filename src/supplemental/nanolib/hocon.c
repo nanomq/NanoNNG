@@ -51,7 +51,9 @@ char *skip_comment(char *str)
             char *t = p_b - 1;
             while (' ' == *t || '\t' == *t ) t--;
             if ('{' != *t && '}' != *t && ',' != *t) {
-                if ('}' != *(p+1) && ']' != *(p+1)) {
+                char *q = p + 1;
+                while (' ' == *q || '\t' == *q ) q++;
+                if ('}' != *q && ']' != *q) {
                     cvector_push_back(ret, ',');
                 }
             // } else if ('}' == *t) {
