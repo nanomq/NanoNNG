@@ -256,6 +256,7 @@ endif ()
 
 if(NNG_ENABLE_QUIC)
   set(NNG_PROTO_MQTT_QUIC_CLIENT ON)
+#   include_directories(${PROJECT_SOURCE_DIR}/extern/msquic/src/inc)
   add_definitions(-DSUPP_QUIC)
 endif()
 

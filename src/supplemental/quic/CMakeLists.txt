@@ -15,6 +15,15 @@ if (NNG_ENABLE_QUIC)
     nng_sources(quic_api.c)
     nng_sources(quic_api.h)
 
+    find_path(INTERNAL_MSQUIC_INCLUDE_DIR
+    NAMES msquic.h
+    HINTS ${_MSQUIC_ROOT_HINTS}
+    PATHS ${PROJECT_SOURCE_DIR}/extern/msquic/src
+    PATH_SUFFIXES inc)
+
+    if(NNG_PROTO_MQTT_BROKER)
+        nng_include_directories(${INTERNAL_MSQUIC_INCLUDE_DIR})
+    endif()
     # set_property(CACHE NNG_QUIC_LIB PROPERTY STRINGS ${NNG_TLS_ENGINES})
 else ()
     set(NNG_QUIC_LIB none)
