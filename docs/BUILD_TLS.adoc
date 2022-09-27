@@ -42,7 +42,7 @@ with the CMake option `NNG_ENABLE_QUIC=ON`.
 By default NNG searches for an installed copy of msQUIC in `/usr/local`,
 as well as the normal installation directories for libraries on your system.
 
-If you have installed mbedTLS elsewhere, you can direct the NNG configuration
+If you have installed msQUIC elsewhere, you can direct the NNG configuration
 to it by setting the `MSQUIC_ROOT_DIR` CMake variable.
 
 == Example
