@@ -53,11 +53,11 @@ char *skip_comment(char *str)
             if ('{' != *t && '}' != *t && ',' != *t && '[' != *t && ']' != *t) {
                 char *q = p + 1;
                 while (' ' == *q || '\t' == *q ) q++;
-                if ('}' != *q && ']' != *q) {
+                if ('}' != *q && ']' != *q && '{' != *q && '[' != *q ) {
                     cvector_push_back(ret, ',');
                 }
             } else if (']' == *t) {
-                if ('\0' != *(p+1)) {
+                if ('\0' != *(p+1) && '}' != *(p+1)) {
                     cvector_push_back(ret, ',');
                 }
             }
@@ -137,6 +137,8 @@ static cJSON *path_expression_parse(cJSON *jso)
     return jso;
 }
 
+
+
 // if same level has same name, if they are not object 
 // the back covers the front
 // TODO FIXME memory leak
@@ -149,7 +151,7 @@ cJSON *deduplication_and_merging(cJSON *jso)
 
     while (child) {
         for (size_t i = 0; i < cvector_size(table); i++) {
-            if (table[i]->string && child->string && 0 == strcmp(table[i]->string, child->string)) {
+            if (table[i] && child && table[i]->string && child->string && 0 == strcmp(table[i]->string, child->string)) {
                 if (table[i]->type == child->type && cJSON_Object == table[i]->type) {
                     // merging object
                     cJSON *next = table[i]->child;
@@ -163,7 +165,7 @@ cJSON *deduplication_and_merging(cJSON *jso)
                     }
                     
                     cJSON_DeleteItemFromObject(parent, table[i]->string);
-                    cvector_erase(table, 1);
+                    cvector_erase(table, i);
 
                 } else {
                     if (0 == i) {
@@ -281,6 +283,7 @@ cJSON *hocon_str_to_json(char *str)
     if ((jso = cJSON_Parse(new))) {
         if (cJSON_False != cJSON_IsInvalid(jso)) {
             jso = path_expression_parse(jso);
+            puts("\n");
             puts(cJSON_PrintUnformatted(jso));
             return deduplication_and_merging(jso);
         }
