@@ -225,6 +225,17 @@ cJSON *hocon_str_to_json(char *str)
     // Replace key to \"key\"
     while ('\0' != *p && NULL != (p = skip_whitespace(p))) {
         while (' ' != *p && '\0' != *p) {
+            // read value
+            if ('"' == *p && '=' == *(p-1)) {
+                new[index++] = *p++;
+                while ('\0' != *p) {
+                    if ('"' == *p && '\\' != *(p-1)) {
+                        break;
+                    }
+                    new[index++] = *p++;
+                }
+                new[index++] = *p++;
+            }
             p = skip_whitespace(p);
 
             if ('}' == new[index-1]) {
