@@ -248,13 +248,10 @@ hocon_str_to_json(char *str)
 		return jso;
 	}
 
-	char *p     = str;
-	int   index = 0;
-	char new[strlen(str) * 2];
-	memset(new, 0, sizeof(new));
-
-	new[index++] = '{';
-	new[index++] = '"';
+	char *p    = str;
+	char *data = NULL;
+	cvector_push_back(data, '{');
+	cvector_push_back(data, '"');
 
 	// Replace all '=' to ':'
 	// If there are no '=' before object, add ':'
@@ -264,62 +261,66 @@ hocon_str_to_json(char *str)
 		while (' ' != *p && '\0' != *p) {
 			// read value
 			if ('"' == *p && '=' == *(p - 1)) {
-				new[index++] = *p++;
+				cvector_push_back(data, *p++);
 				while ('\0' != *p) {
 					if ('"' == *p && '\\' != *(p - 1)) {
 						break;
 					}
-					new[index++] = *p++;
+					cvector_push_back(data, *p++);
 				}
-				new[index++] = *p++;
+				cvector_push_back(data, *p++);
 			}
 			p = skip_whitespace(p);
 
-			if ('}' == new[index - 1]) {
-				new[index++] = ',';
+			if ('}' == data[cvector_size(data) - 1]) {
+				cvector_push_back(data, ',');
 				if ('{' != *p) {
-					new[index++] = '"';
+					cvector_push_back(data, '"');
 				}
 			}
 
 			// TODO fix
-			if (('{' == *p && ':' != new[index - 1] &&
-			        '[' != new[index - 1] &&
-			        '}' != new[index - 2]) ||
-			    ('[' == *p && ':' != new[index - 1])) {
-				new[index++] = '"';
-				new[index++] = ':';
+			if (('{' == *p &&
+			        ':' != data[cvector_size(data) - 1] &&
+			        '[' != data[cvector_size(data) - 1] &&
+			        '}' != data[cvector_size(data) - 2]) ||
+			    ('[' == *p &&
+			        ':' != data[cvector_size(data) - 1])) {
+				cvector_push_back(data, '"');
+				cvector_push_back(data, ':');
 			}
 
 			if ('=' == *p) {
-				new[index++] = '"';
-				new[index++] = ':';
+				cvector_push_back(data, '"');
+				cvector_push_back(data, ':');
 			} else if (',' == *p || '{' == *p) {
-				new[index++] = *p;
+				cvector_push_back(data, *p);
 				// TODO FIXME unsafe
 				if ('}' != *(p + 1) && '"' != *(p + 1) &&
 				    '{' != *(p + 1)) {
-					new[index++] = '"';
+					cvector_push_back(data, '"');
 				}
 			} else {
-				new[index++] = *p;
+				cvector_push_back(data, *p);
 			}
 
 			// remove ,"}
-			if ('}' == new[index - 1] && '"' == new[index - 2] &&
-			    ',' == new[index - 3]) {
-				new[index - 3] = new[index - 1];
-				new[index - 2] = '\0';
-				new[index - 1] = '\0';
-				index -= 2;
+			if ('}' == data[cvector_size(data) - 1] &&
+			    '"' == data[cvector_size(data) - 2] &&
+			    ',' == data[cvector_size(data) - 3]) {
+				data[cvector_size(data) - 3] =
+				    data[cvector_size(data) - 1];
+				cvector_pop_back(data);
+				cvector_pop_back(data);
 			}
 
-			if (']' == new[index - 1] && '"' == new[index - 2] &&
-			    ',' == new[index - 3]) {
-				new[index - 3] = new[index - 1];
-				new[index - 2] = '\0';
-				new[index - 1] = '\0';
-				index -= 2;
+			if (']' == data[cvector_size(data) - 1] &&
+			    '"' == data[cvector_size(data) - 2] &&
+			    ',' == data[cvector_size(data) - 3]) {
+				data[cvector_size(data) - 3] =
+				    data[cvector_size(data) - 1];
+				cvector_pop_back(data);
+				cvector_pop_back(data);
 			}
 
 			p++;
@@ -327,21 +328,24 @@ hocon_str_to_json(char *str)
 	}
 
 	cvector_free(str);
-	new[index++] = '}';
+	cvector_push_back(data, '}');
+	cvector_push_back(data, '\0');
 
 	puts("\n");
-	puts(new);
+	puts(data);
 
-	if ((jso = cJSON_Parse(new))) {
+	if ((jso = cJSON_Parse(data))) {
 		if (cJSON_False != cJSON_IsInvalid(jso)) {
 			jso = path_expression_parse(jso);
 			puts("\n");
 			char *tmp = cJSON_PrintUnformatted(jso);
 			puts(tmp);
 			cJSON_free(tmp);
+			cvector_free(data);
 			return deduplication_and_merging(jso);
 		}
 	}
 
+	cvector_free(data);
 	return NULL;
 }
