@@ -18,9 +18,24 @@ skip_whitespace(char *str)
 	return str;
 }
 
+static char *
+skip_whitespace_reverse(char *str)
+{
+	if (NULL == str) {
+		return NULL;
+	}
+
+	// Skip white_space and tab with bounds check
+	while ('\0' != *str && (' ' == *str || '\t' == *str)) {
+		str--;
+	}
+
+	return str;
+}
+
 // TODO incomplete, if the comment appears after the string
-bool
-skip_comment_line(char *line)
+static bool
+is_comment_line(char *line)
 {
 	while ('\0' != *line && '\n' != *line) {
 		line = skip_whitespace(line);
@@ -34,32 +49,36 @@ skip_comment_line(char *line)
 	return true;
 }
 
-// char str = "abc\ndef\njkl\n#aaaaa\n"
-char *
-skip_comment(char *str)
+static bool
+is_not_brackets(char *s)
+{
+	return ('{' != *s && '}' != *s && ']' != *s && '[' != *s);
+}
+
+static char *
+data_preprocessing(char *str)
 {
 	char *ret = NULL;
 	char *p   = str;
 	char *p_b = str;
 
 	while (NULL != (p = strchr(p, '\n'))) {
-		if (true == skip_comment_line(p_b)) {
+		// skip comment
+		if (true == is_comment_line(p_b)) {
 			p++;
 			p_b = p;
 		} else {
+			// push one line
 			for (; p != p_b; p_b++) {
 				cvector_push_back(ret, *p_b);
 			}
-			char *t = p_b - 1;
-			while (' ' == *t || '\t' == *t)
-				t--;
-			if ('{' != *t && '}' != *t && ',' != *t && '[' != *t &&
-			    ']' != *t) {
-				char *q = p + 1;
-				while (' ' == *q || '\t' == *q)
-					q++;
-				if ('}' != *q && ']' != *q && '{' != *q &&
-				    '[' != *q) {
+
+			// find last non blank character
+			// judge if we should append ','
+			char *t = skip_whitespace_reverse(p_b - 1);
+			if (is_not_brackets(t) && ',' != *t) {
+				char *q = skip_whitespace(p + 1);
+				if (is_not_brackets(q)) {
 					cvector_push_back(ret, ',');
 				}
 			} else if (']' == *t) {
@@ -73,7 +92,6 @@ skip_comment(char *str)
 	}
 
 	cvector_push_back(ret, '\0');
-	puts(ret);
 	return ret;
 }
 
@@ -221,7 +239,7 @@ hocon_str_to_json(char *str)
 		return NULL;
 	}
 
-	str = skip_comment(str);
+	str = data_preprocessing(str);
 
 	// If it's not an illegal json object return
 	cJSON *jso = cJSON_Parse(str);
