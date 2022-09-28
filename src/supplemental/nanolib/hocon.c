@@ -231,7 +231,50 @@ deduplication_and_merging(cJSON *jso)
 	cvector_free(table);
 	return jso;
 }
+static char *
+remove_error_add(char *data)
+{
+	// remove ,"}
+	if ('}' == data[cvector_size(data) - 1] &&
+	    '"' == data[cvector_size(data) - 2] &&
+	    ',' == data[cvector_size(data) - 3]) {
+		data[cvector_size(data) - 3] = data[cvector_size(data) - 1];
+		cvector_pop_back(data);
+		cvector_pop_back(data);
+	}
 
+	if (']' == data[cvector_size(data) - 1] &&
+	    '"' == data[cvector_size(data) - 2] &&
+	    ',' == data[cvector_size(data) - 3]) {
+		data[cvector_size(data) - 3] = data[cvector_size(data) - 1];
+		cvector_pop_back(data);
+		cvector_pop_back(data);
+	}
+	return data;
+}
+
+// This function assumes that the value
+// is enclosed in double quotes
+static char *
+read_value(char **data, char *p)
+{
+	if ('"' == *p && '=' == *(p - 1)) {
+		cvector_push_back((*data), *p++);
+		while ('\0' != *p) {
+			if ('"' == *p && '\\' != *(p - 1)) {
+				break;
+			}
+			cvector_push_back((*data), *p++);
+		}
+		cvector_push_back((*data), *p++);
+	}
+	return p;
+}
+
+// Replace all '=' to ':'
+// If there are no '=' before object, add ':'
+// If first non-blank character is not '{', push-front '{' and push
+// push-back '}' Replace key to \"key\"
 cJSON *
 hocon_str_to_json(char *str)
 {
@@ -253,25 +296,16 @@ hocon_str_to_json(char *str)
 	cvector_push_back(data, '{');
 	cvector_push_back(data, '"');
 
-	// Replace all '=' to ':'
-	// If there are no '=' before object, add ':'
-	// If first non-blank character is not '{', push-front '{' and push
-	// push-back '}' Replace key to \"key\"
 	while ('\0' != *p && NULL != (p = skip_whitespace(p))) {
 		while (' ' != *p && '\0' != *p) {
-			// read value
-			if ('"' == *p && '=' == *(p - 1)) {
-				cvector_push_back(data, *p++);
-				while ('\0' != *p) {
-					if ('"' == *p && '\\' != *(p - 1)) {
-						break;
-					}
-					cvector_push_back(data, *p++);
-				}
-				cvector_push_back(data, *p++);
-			}
+			// read value enclosed in double quotes
+			p = read_value(&data, p);
 			p = skip_whitespace(p);
 
+			// begin key
+			// push ',' after '}', if last is object finish.
+			// push '"' before key, if next is not an object.
+			// example: '},"key'
 			if ('}' == data[cvector_size(data) - 1]) {
 				cvector_push_back(data, ',');
 				if ('{' != *p) {
@@ -279,7 +313,9 @@ hocon_str_to_json(char *str)
 				}
 			}
 
-			// TODO fix
+			// end key
+			// push '":' if last is not object/array begin
+			//
 			if (('{' == *p &&
 			        ':' != data[cvector_size(data) - 1] &&
 			        '[' != data[cvector_size(data) - 1] &&
@@ -290,6 +326,7 @@ hocon_str_to_json(char *str)
 				cvector_push_back(data, ':');
 			}
 
+			// replace '=' to ':' and push value
 			if ('=' == *p) {
 				cvector_push_back(data, '"');
 				cvector_push_back(data, ':');
@@ -304,25 +341,7 @@ hocon_str_to_json(char *str)
 				cvector_push_back(data, *p);
 			}
 
-			// remove ,"}
-			if ('}' == data[cvector_size(data) - 1] &&
-			    '"' == data[cvector_size(data) - 2] &&
-			    ',' == data[cvector_size(data) - 3]) {
-				data[cvector_size(data) - 3] =
-				    data[cvector_size(data) - 1];
-				cvector_pop_back(data);
-				cvector_pop_back(data);
-			}
-
-			if (']' == data[cvector_size(data) - 1] &&
-			    '"' == data[cvector_size(data) - 2] &&
-			    ',' == data[cvector_size(data) - 3]) {
-				data[cvector_size(data) - 3] =
-				    data[cvector_size(data) - 1];
-				cvector_pop_back(data);
-				cvector_pop_back(data);
-			}
-
+			data = remove_error_add(data);
 			p++;
 		}
 	}
@@ -331,16 +350,16 @@ hocon_str_to_json(char *str)
 	cvector_push_back(data, '}');
 	cvector_push_back(data, '\0');
 
-	puts("\n");
-	puts(data);
+	// puts("\n");
+	// puts(data);
 
 	if ((jso = cJSON_Parse(data))) {
 		if (cJSON_False != cJSON_IsInvalid(jso)) {
 			jso = path_expression_parse(jso);
-			puts("\n");
-			char *tmp = cJSON_PrintUnformatted(jso);
-			puts(tmp);
-			cJSON_free(tmp);
+			// puts("\n");
+			// char *tmp = cJSON_PrintUnformatted(jso);
+			// puts(tmp);
+			// cJSON_free(tmp);
 			cvector_free(data);
 			return deduplication_and_merging(jso);
 		}
