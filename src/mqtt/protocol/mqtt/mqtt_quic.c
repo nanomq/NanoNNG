@@ -11,6 +11,7 @@
 #include "sqlite_handler.h"
 #include "core/nng_impl.h"
 #include "nng/protocol/mqtt/mqtt.h"
+#include "nng/supplemental/nanolib/conf.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 #include "supplemental/mqtt/mqtt_qos_db_api.h"
@@ -1145,9 +1146,10 @@ nng_mqtt_quic_client_open(nng_socket *sock, const char *url)
 }
 
 int
-nng_mqtt_quic_open_keepalive(nng_socket *sock, const char *url, uint64_t interval)
+nng_mqtt_quic_open_keepalive(nng_socket *sock, const char *url, void *node)
 {
 	nni_sock *nsock;
+	conf_bridge_node *conf_node = node;
 	int       rv = 0;
 	// Quic settings
 	if ((rv = nni_proto_open(sock, &mqtt_msquic_proto)) == 0) {
@@ -1155,7 +1157,7 @@ nng_mqtt_quic_open_keepalive(nng_socket *sock, const char *url, uint64_t interva
 		if (nsock) {
 			quic_open();
 			quic_proto_open(&mqtt_msquic_proto);
-			quic_proto_set_keepalive(interval);
+			quic_proto_set_bridge_conf(conf_node);
 			quic_connect_ipv4(url, nsock);
 		} else {
 			rv = -1;

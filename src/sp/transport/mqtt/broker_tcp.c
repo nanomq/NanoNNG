@@ -309,7 +309,7 @@ tcptran_pipe_nego_cb(void *arg)
 	}
 	if (p->gotrxhead == NNI_NANO_MAX_HEADER_SIZE) {
 		if (p->rxlen[0] != CMD_CONNECT) {
-			log_error("CMD TYPE %x", p->rxlen[0]);
+			log_error("Illegal CONNECT Packet type %x", p->rxlen[0]);
 			rv = NNG_EPROTO;
 			goto error;
 		}
