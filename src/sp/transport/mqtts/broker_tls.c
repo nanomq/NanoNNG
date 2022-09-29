@@ -1121,7 +1121,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 
 	uint8_t *     body, *header, qos_pac;
 	target_prover target_prover;
-	int           len_offset = 0, sub_id = 0, qos;
+	int           len_offset = 0, sub_id = 0, qos = 0;
 	uint16_t      pid;
 	uint32_t tprop_bytes, prop_bytes = 0, id_bytes = 0, property_len = 0;
 	size_t   tlen, rlen, mlen, hlen, qlength, plength;
@@ -1501,7 +1501,6 @@ tlstran_pipe_recv_start(tlstran_pipe *p)
 	nni_aio *rxaio;
 	nni_iov  iov;
 	log_trace("*** tlstran_pipe_recv_start ***\n");
-	NNI_ASSERT(p->rxmsg == NULL);
 
 	if (p->closed) {
 		nni_aio *aio;
