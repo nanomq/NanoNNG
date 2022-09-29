@@ -195,7 +195,6 @@ typedef struct {
 
 struct conf_bridge_node {
 	bool         enable;
-	bool         hybrid;  // hybrid bridging affects auto-reconnect of QUIC transport
 	char        *name;
 	char        *address;
 	char        *host;
@@ -206,7 +205,6 @@ struct conf_bridge_node {
 	char        *username;
 	char        *password;
 	uint16_t     keepalive;
-	uint64_t     qkeepalive;		//keepalive timeout interval of QUIC transport
 	size_t       forwards_count;
 	char **      forwards;
 	size_t       sub_count;
@@ -215,6 +213,15 @@ struct conf_bridge_node {
 	conf_tls     tls;
 	void *       sock;
 	conf_sqlite *sqlite;
+
+#if defined(SUPP_QUIC)
+	// config params for QUIC only
+	bool         hybrid;  // hybrid bridging affects auto-reconnect of QUIC transport
+	uint64_t     qkeepalive;		//keepalive timeout interval of QUIC transport
+	uint64_t     qconnect_timeout;	// HandshakeIdleTimeoutMs of QUIC
+	uint32_t     qdiscon_timeout;	// DisconnectTimeoutMs
+	uint32_t     qidle_timeout;	    // Disconnect after idle
+#endif
 };
 
 typedef struct conf_bridge_node conf_bridge_node;

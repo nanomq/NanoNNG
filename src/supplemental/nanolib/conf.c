@@ -1736,12 +1736,18 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->password       = NULL;
 	node->proto_ver      = 4;
 	node->keepalive      = 60;
-	node->qkeepalive     = 100;
 	node->forwards_count = 0;
 	node->forwards       = NULL;
 	node->sub_count      = 0;
 	node->sub_list       = NULL;
 	node->sqlite         = NULL;
+#if defined(SUPP_QUIC)
+	node->hybrid           = false;
+	node->qkeepalive       = 100;
+	node->qconnect_timeout = 30; // HandshakeIdleTimeoutMs of QUIC
+	node->qdiscon_timeout  = 30; // DisconnectTimeoutMs
+	node->qidle_timeout    = 60;  // Disconnect after idle
+#endif
 	conf_tls_init(&node->tls);
 }
 
