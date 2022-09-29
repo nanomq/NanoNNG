@@ -951,7 +951,6 @@ mqtt_tcptran_pipe_recv_start(mqtt_tcptran_pipe *p)
 {
 	nni_aio *rxaio;
 	nni_iov  iov;
-	NNI_ASSERT(p->rxmsg == NULL);
 
 	if (p->closed) {
 		nni_aio *aio;

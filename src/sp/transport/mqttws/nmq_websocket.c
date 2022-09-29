@@ -599,7 +599,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	int       niov;
 	nni_iov   iov[8];
 	nni_pipe *pipe = p->npipe;
-	uint8_t   qos;
+	uint8_t   qos = 0;
 
 
 	if (nni_msg_get_type(msg) != CMD_PUBLISH)
@@ -610,7 +610,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	target_prover target_prover;
 	int           len_offset = 0, sub_id = 0;
 	uint16_t      pid;
-	uint32_t tprop_bytes, prop_bytes = 0, id_bytes = 0, property_len = 0;
+	uint32_t tprop_bytes = 0, prop_bytes = 0, id_bytes = 0, property_len = 0;
 	size_t        tlen, rlen, mlen, hlen, qlength, plength;
 	bool          is_sqlite = p->conf->sqlite.enable;
 
