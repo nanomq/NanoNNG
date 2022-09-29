@@ -770,11 +770,11 @@ nng_mqtt_subscribe_async(nng_mqtt_client *client, nng_mqtt_topic_qos *sbs, size_
 	}
 
 	nng_aio_set_msg(client->send_aio, submsg);
-	if (nni_aio_schedule(client->send_aio, mqtt_sub_aio_cancel, client) !=
-	    0) {
-		nni_aio_finish_error(client->send_aio, NNG_ECANCELED);
-		return rv;
-	}
+	// if (nni_aio_schedule(client->send_aio, mqtt_sub_aio_cancel, client) !=
+	//     0) {
+	// 	nni_aio_finish_error(client->send_aio, NNG_ECANCELED);
+	// 	return rv;
+	// }
 	nng_send_aio(client->sock, client->send_aio);
 
 	return rv;
