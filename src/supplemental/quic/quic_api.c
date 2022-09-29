@@ -3,6 +3,7 @@
 #include "msquic.h"
 
 #include "nng/mqtt/mqtt_client.h"
+#include "nng/supplemental/nanolib/conf.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 
@@ -78,9 +79,9 @@ const QUIC_API_TABLE *MsQuic;
 HQUIC                 Registration;
 HQUIC                 Configuration;
 
-quic_strm_t    *GStream     = NULL;
-HQUIC          *GConnection = NULL;
-static uint64_t keepalive   = 0;
+quic_strm_t             *GStream     = NULL;
+HQUIC                   *GConnection = NULL;
+static conf_bridge_node *bridge_node = NULL;
 
 nni_proto *g_quic_proto;
 
@@ -104,7 +105,6 @@ LoadConfiguration(BOOLEAN Unsecure, uint64_t interval, uint64_t timeout)
 	if(interval == 0) {
 		Settings.IsSet.IdleTimeoutMs = FALSE;
 	} else {
-		keepalive = interval;
 		Settings.IsSet.IdleTimeoutMs    = TRUE;
 		Settings.IdleTimeoutMs          = interval * 1000;
 		Settings.DisconnectTimeoutMs    = interval * 1000;
@@ -371,6 +371,7 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 			pipe_ops->pipe_fini(qstrm->pipe);
 			nng_free(qstrm->pipe, 0);
 			qstrm->pipe = NULL;
+			// break;
 		}
 
 		GConnection = NULL;
@@ -534,9 +535,9 @@ quic_proto_close()
 }
 
 void
-quic_proto_set_keepalive(uint64_t interval)
+quic_proto_set_bridge_conf(void *node)
 {
-	keepalive = interval;
+	bridge_node = node;
 }
 
 int
@@ -544,7 +545,7 @@ quic_connect_ipv4(const char *url, nni_sock *sock)
 {
 	// Load the client configuration based on the "unsecure" command line
 	// option.
-	if (!LoadConfiguration(TRUE, keepalive, 10)) {
+	if (!LoadConfiguration(TRUE, bridge_node->qkeepalive, 10)) {
 		log_error("Failed in load quic configuration");
 		return (-1);
 	}
@@ -626,7 +627,7 @@ quic_reconnect(quic_strm_t *qstrm)
 {
 	// Load the client configuration based on the "unsecure" command line
 	// option.
-	if (!LoadConfiguration(TRUE, keepalive, 10)) {
+	if (!LoadConfiguration(TRUE, bridge_node->qkeepalive, 10)) {
 		log_error("Failed in load quic configuration");
 		return (-1);
 	}
