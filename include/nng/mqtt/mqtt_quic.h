@@ -20,7 +20,7 @@ extern "C" {
 
 NNG_DECL int nng_mqtt_quic_client_open(nng_socket *, const char *url);
 NNG_DECL int nng_mqtt_quic_open_keepalive(
-    nng_socket *sock, const char *url, uint64_t interval);
+    nng_socket *sock, const char *url, void *node);
 NNG_DECL int nng_mqtt_quic_set_connect_cb(
     nng_socket *, int (*cb)(void *, void *), void *arg);
 NNG_DECL int nng_mqtt_quic_set_disconnect_cb(
