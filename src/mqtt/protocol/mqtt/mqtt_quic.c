@@ -371,6 +371,8 @@ mqtt_quic_recv_cb(void *arg)
 			break;
 		}
 		conn_param_clone(p->cparam);
+		// Clone CONNACK for connect_cb & aio_cb
+		nni_msg_clone(msg);
 		nni_list_remove(&s->recv_queue, aio);
 		user_aio = aio;
 		nni_aio_set_msg(user_aio, msg);
@@ -517,13 +519,12 @@ mqtt_quic_recv_cb(void *arg)
 	if (user_aio) {
 		nni_aio_finish(user_aio, 0, 0);
 	}
-	// Trigger cb
+	// Trigger connect cb first in case connack being freed
 	if (packet_type == NNG_MQTT_CONNACK)
 		if (s->cb.connect_cb) {
-			nni_msg_clone(msg);
 			s->cb.connect_cb(msg, s->cb.connarg);
 		}
-
+	// Trigger publish cb
 	if (packet_type == NNG_MQTT_PUBLISH)
 		if (s->cb.msg_recv_cb) // Trigger cb
 			s->cb.msg_recv_cb(msg, s->cb.recvarg);

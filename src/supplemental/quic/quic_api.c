@@ -85,7 +85,7 @@ static conf_bridge_node *bridge_node = NULL;
 
 nni_proto *g_quic_proto;
 
-static BOOLEAN LoadConfiguration(BOOLEAN Unsecure, uint64_t interval, uint64_t timeout);
+static BOOLEAN LoadConfiguration(BOOLEAN Unsecure, conf_bridge_node *node);
 static int     quic_strm_start(HQUIC Connection, void *Context, HQUIC *Streamp);
 static void    quic_strm_send_cancel(nni_aio *aio, void *arg, int rv);
 static void    quic_strm_send_start(quic_strm_t *qstrm);
@@ -98,19 +98,30 @@ static int     quic_reconnect(quic_strm_t *qstrm);
 
 // Helper function to load a client configuration.
 static BOOLEAN
-LoadConfiguration(BOOLEAN Unsecure, uint64_t interval, uint64_t timeout)
+LoadConfiguration(BOOLEAN Unsecure, conf_bridge_node *node)
 {
 	QUIC_SETTINGS Settings = { 0 };
 	// Configures the client's idle timeout.
-	if(interval == 0) {
+	if (node->qidle_timeout == 0) {
 		Settings.IsSet.IdleTimeoutMs = FALSE;
 	} else {
-		Settings.IsSet.IdleTimeoutMs    = TRUE;
-		Settings.IdleTimeoutMs          = interval * 1000;
-		Settings.DisconnectTimeoutMs    = interval * 1000;
-		Settings.KeepAliveIntervalMs    = interval * 1000;
-		Settings.HandshakeIdleTimeoutMs = timeout  * 1000;
+		Settings.IsSet.IdleTimeoutMs = TRUE;
+		Settings.IdleTimeoutMs       = node->qidle_timeout * 1000;
 	}
+	if (node->qconnect_timeout != 0) {
+		Settings.IsSet.HandshakeIdleTimeoutMs = TRUE;
+		Settings.HandshakeIdleTimeoutMs =
+		    node->qconnect_timeout * 1000;
+	}
+	if (node->qdiscon_timeout != 0) {
+		Settings.IsSet.DisconnectTimeoutMs = TRUE;
+		Settings.DisconnectTimeoutMs       = node->qdiscon_timeout * 1000;
+	}
+
+	Settings.IsSet.KeepAliveIntervalMs = TRUE;
+	Settings.KeepAliveIntervalMs       = node->qkeepalive * 1000;
+
+
 
 	// Configures a default client configuration, optionally disabling
 	// server certificate validation.
@@ -280,6 +291,7 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
 			log_warn("close the QUIC stream!");
 			MsQuic->StreamClose(Stream);
+			qstrm->closed = true;
 		}
 		break;
 	case QUIC_STREAM_EVENT_START_COMPLETE:
@@ -301,9 +313,9 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
         _Inout_ QUIC_CONNECTION_EVENT *Event)
 {
 	const nni_proto_pipe_ops *pipe_ops = g_quic_proto->proto_pipe_ops;
-	quic_strm_t        *qstrm    = GStream;
-	nni_aio *aio;
-	
+	quic_strm_t              *qstrm    = GStream;
+	nni_aio	          *aio;
+
 	log_debug("QuicConnectionCallback triggered! %d", Event->Type);
 	switch (Event->Type) {
 	case QUIC_CONNECTION_EVENT_CONNECTED:
@@ -317,6 +329,7 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 			break;
 		}
 		MsQuic->StreamReceiveSetEnabled(qstrm->stream, FALSE);
+		qstrm->closed = false;
 		// Start/ReStart the nng pipe
 		if (qstrm->pipe == NULL) {
 			// not first time to establish QUIC pipe
@@ -354,6 +367,7 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 		// The connection has completed the shutdown process and is
 		// ready to be safely cleaned up.
 		log_info("[conn][%p] QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE: All done\n\n", Connection);
+		nni_mtx_lock(&qstrm->mtx);
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
 			MsQuic->ConnectionClose(Connection);
 		}
@@ -363,6 +377,7 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 			// nni_aio_abort(aio, NNG_ECLOSED);
 			nni_aio_finish_sync(aio, NNG_ECLOSED, 0);
 		}
+		qstrm->closed = true;
 		// Close and finite nng pipe ONCE disconnect
 		if (qstrm->pipe) {
 			log_warn("Quic reconnect failed so disconnected!");
@@ -371,11 +386,15 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 			pipe_ops->pipe_fini(qstrm->pipe);
 			nng_free(qstrm->pipe, 0);
 			qstrm->pipe = NULL;
-			// break;
+			if (bridge_node->hybrid) {
+				nni_mtx_unlock(&qstrm->mtx);
+				break;
+			}
 		}
 
 		GConnection = NULL;
 		log_warn("Try to do quic stream reconnect!");
+		nni_mtx_unlock(&qstrm->mtx);
 		nni_aio_finish(&qstrm->close_aio, 0, 0);
 		/*
 		if (qstrm->rtt0_enable) {
@@ -545,7 +564,7 @@ quic_connect_ipv4(const char *url, nni_sock *sock)
 {
 	// Load the client configuration based on the "unsecure" command line
 	// option.
-	if (!LoadConfiguration(TRUE, bridge_node->qkeepalive, 10)) {
+	if (!LoadConfiguration(TRUE, bridge_node)) {
 		log_error("Failed in load quic configuration");
 		return (-1);
 	}
@@ -627,7 +646,7 @@ quic_reconnect(quic_strm_t *qstrm)
 {
 	// Load the client configuration based on the "unsecure" command line
 	// option.
-	if (!LoadConfiguration(TRUE, bridge_node->qkeepalive, 10)) {
+	if (!LoadConfiguration(TRUE, bridge_node)) {
 		log_error("Failed in load quic configuration");
 		return (-1);
 	}
