@@ -182,7 +182,6 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		if (qos == 0) {
 			break; // QoS 0 need no packet id
 		}
-		__attribute__ ((fallthrough));
 	case NNG_MQTT_SUBSCRIBE:
 	case NNG_MQTT_UNSUBSCRIBE:
 		packet_id     = mqtt_pipe_get_next_packet_id(p);
