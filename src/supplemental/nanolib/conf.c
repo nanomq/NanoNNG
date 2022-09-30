@@ -1743,10 +1743,10 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->sqlite         = NULL;
 #if defined(SUPP_QUIC)
 	node->hybrid           = false;
-	node->qkeepalive       = 100;
+	node->qkeepalive       = 120;
 	node->qconnect_timeout = 30; // HandshakeIdleTimeoutMs of QUIC
 	node->qdiscon_timeout  = 30; // DisconnectTimeoutMs
-	node->qidle_timeout    = 60;  // Disconnect after idle
+	node->qidle_timeout    = 120;  // Disconnect after idle
 #endif
 	conf_tls_init(&node->tls);
 }
@@ -1849,10 +1849,28 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 		                key_prefix, name, ".keepalive")) != NULL) {
 			node->keepalive = atoi(value);
 			free(value);
+#if defined(SUPP_QUIC)
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".quic_keepalive")) != NULL) {
 			node->qkeepalive = atoi(value);
 			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".quic_idleTimeout")) != NULL) {
+			node->qidle_timeout = atoi(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".quic_disconTimeout")) != NULL) {
+			node->qdiscon_timeout = atoi(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".quic_handshake_timeout")) != NULL) {
+			node->qconnect_timeout = atoi(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".hybrid_bridging")) != NULL) {
+			node->hybrid = nni_strcasecmp(value, "true") == 0;
+			free(value);
+#endif
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".clean_start")) != NULL) {
 			node->clean_start = nni_strcasecmp(value, "true") == 0;
