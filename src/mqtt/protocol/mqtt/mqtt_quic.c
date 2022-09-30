@@ -74,18 +74,19 @@ struct mqtt_quic_ctx {
 struct mqtt_sock_s {
 	nni_atomic_bool closed;
 	nni_duration    retry;
-	mqtt_pipe_t *   pipe;
+	mqtt_pipe_t    *pipe;
 	nni_mtx         mtx;    // more fine grained mutual exclusion
 	mqtt_quic_ctx   master; // to which we delegate send/recv calls
 	// mqtt_pipe_t *   mqtt_pipe;
-	nni_list recv_queue;    // aio pending to receive
-	nni_list send_queue;    // aio pending to send
-	nni_lmq  send_messages; // send messages queue
-	nni_aio  time_aio;      // timer aio to resend unack msg
-	uint16_t counter;       // counter for elapsed time
-	uint16_t pingcnt;       // count how many ping msg is lost
-	uint16_t keepalive;     // MQTT keepalive
-	nni_msg *ping_msg, *connmsg;
+	nni_list  recv_queue;    // aio pending to receive
+	nni_list  send_queue;    // aio pending to send
+	nni_lmq   send_messages; // send messages queue
+	nni_aio   time_aio;      // timer aio to resend unack msg
+	uint16_t  counter;       // counter for elapsed time
+	uint16_t  pingcnt;       // count how many ping msg is lost
+	uint16_t  keepalive;     // MQTT keepalive
+	nni_msg  *ping_msg, *connmsg;
+	nni_sock *nsock;
 
 	nni_mqtt_sqlite_option *sqlite_opt;
 
@@ -612,8 +613,8 @@ mqtt_timer_cb(void *arg)
 static void mqtt_quic_sock_init(void *arg, nni_sock *sock)
 {
 	NNI_ARG_UNUSED(arg);
-	NNI_ARG_UNUSED(sock);
 	mqtt_sock_t *s = arg;
+	s->nsock       = sock;
 
 	nni_atomic_init_bool(&s->closed);
 	nni_atomic_set_bool(&s->closed, false);
@@ -683,12 +684,20 @@ mqtt_quic_sock_open(void *arg)
 static void
 mqtt_quic_sock_close(void *arg)
 {
+	nni_aio *aio;
 	mqtt_sock_t *s = arg;
 
 	nni_aio_stop(&s->time_aio);
 	nni_aio_close(&s->time_aio);
 
+	while ((aio = nni_list_first(&s->recv_queue)) != NULL) {
+		// Pipe was closed.  just push an error back to the
+		// entire socket, because we only have one pipe
+		nni_list_remove(&s->recv_queue, aio);
+		nni_aio_finish_error(aio, NNG_ECONNABORTED);
+	}
 	nni_lmq_flush(&s->send_messages);
+	nni_sock_rele(s->nsock);
 }
 
 static void
@@ -1143,6 +1152,7 @@ nng_mqtt_quic_client_open(nng_socket *sock, const char *url)
 			rv = -1;
 		}
 	}
+	nni_sock_rele(nsock);
 	return rv;
 }
 
@@ -1164,6 +1174,7 @@ nng_mqtt_quic_open_keepalive(nng_socket *sock, const char *url, void *node)
 			rv = -1;
 		}
 	}
+	nni_sock_rele(nsock);
 	return rv;
 }
 
@@ -1180,6 +1191,7 @@ nng_mqtt_quic_set_connect_cb(nng_socket *sock, int (*cb)(void *, void *), void *
 	} else {
 		return -1;
 	}
+	nni_sock_rele(nsock);
 	return 0;
 }
 
@@ -1196,6 +1208,7 @@ nng_mqtt_quic_set_disconnect_cb(nng_socket *sock, int (*cb)(void *, void *), voi
 	} else {
 		return -1;
 	}
+	nni_sock_rele(nsock);
 	return 0;
 }
 
@@ -1212,6 +1225,7 @@ nng_mqtt_quic_set_msg_recv_cb(nng_socket *sock, int (*cb)(void *, void *), void 
 	} else {
 		return -1;
 	}
+	nni_sock_rele(nsock);
 	return 0;
 }
 
@@ -1228,6 +1242,7 @@ nng_mqtt_quic_set_msg_send_cb(nng_socket *sock, int (*cb)(void *, void *), void 
 	} else {
 		return -1;
 	}
+	nni_sock_rele(nsock);
 	return 0;
 }
 
