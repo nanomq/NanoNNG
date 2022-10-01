@@ -295,7 +295,7 @@ copyn_str(const uint8_t *src, uint32_t *pos, int *str_len, int limit)
 		*str_len = -1;
 	}
 	if (*str_len > 0) {
-		if ((dest = nng_alloc(*str_len + 1)) == NULL) {
+		if ((dest = nng_alloc(*str_len + 1)) == NULL || (src + (*pos) == NULL)) {
 			*str_len = 0;
 			return NULL;
 		}
