@@ -2070,8 +2070,6 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		    node->name, node->password);
 		log_info("%sbridge.mqtt.%s.keepalive:    %d", prefix,
 		    node->name, node->keepalive);
-		log_info("%sbridge.mqtt.%s.keepalive:    %d", prefix,
-		    node->name, node->qkeepalive);
 		log_info("%sbridge.mqtt.%s.parallel:     %ld", prefix,
 		    node->name, node->parallel);
 		log_info("%sbridge.mqtt.%s.forwards: ", prefix, node->name);
