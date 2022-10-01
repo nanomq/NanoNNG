@@ -869,8 +869,8 @@ nni_get_conn_param_from_msg(nni_msg *msg)
 	//     (char *) proto_data->payload.connect.user_name.buf;
 
 	conn_ctx->password.len  = proto_data->payload.connect.password.length;
-	conn_ctx->password.body = nng_strndup(
-	    proto_data->payload.connect.password.buf, conn_ctx->password.len);
+	conn_ctx->password.body = (uint8_t *)nng_strndup(
+	    (const char *)proto_data->payload.connect.password.buf, conn_ctx->password.len);
 	// conn_ctx->password.body = proto_data->payload.connect.password.buf;
 
 	// property is not concerned in bridging

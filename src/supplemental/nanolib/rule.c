@@ -526,7 +526,7 @@ rule_sql_parse(conf_rule *cr, char *sql)
 					nni_free(re.topic, strlen(re.topic));
 				}
 				for (int i = 0; i < 8; i++) {
-					if (true == re.flag[i] && re.as && re.as[i]) {
+					if (true == re.flag[i] && re.as[i]) {
 						nni_free(re.as[i], strlen(re.as[i]));
 					}
 					
@@ -600,10 +600,8 @@ rule_free(rule *r)
 			nng_strfree(r->topic);
 		}
 
-		if (r->as) {
-			for (size_t i = 0; i < 8; i++) {
-				nng_strfree(r->as[i]);
-			}
+		for (size_t i = 0; i < 8; i++) {
+			nng_strfree(r->as[i]);
 		}
 
 		if (r->payload) {

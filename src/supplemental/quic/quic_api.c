@@ -314,7 +314,7 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 {
 	const nni_proto_pipe_ops *pipe_ops = g_quic_proto->proto_pipe_ops;
 	quic_strm_t              *qstrm    = GStream;
-	nni_aio	          *aio;
+	nni_aio                  *aio;
 
 	log_debug("QuicConnectionCallback triggered! %d", Event->Type);
 	switch (Event->Type) {
@@ -447,7 +447,6 @@ quic_disconnect()
 	log_debug("actively disclose the QUIC stream");
 	if (!GConnection)
 		return -1;
-	quic_strm_t *qstrm = GStream;
 	MsQuic->ConnectionShutdown(
 	    *GConnection, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, NNG_ECONNSHUT);
 	return 0;

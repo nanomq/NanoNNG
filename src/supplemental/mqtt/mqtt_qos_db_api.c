@@ -184,10 +184,11 @@ nni_qos_db_set_client_msg(bool is_sqlite, void *db, uint32_t pipe_id,
 		    packet_id, msg, config_name, proto_ver);
 #endif
 	} else {
+		rv = nni_id_set((nni_id_map *) db, packet_id, msg);
 		NNI_ARG_UNUSED(pipe_id);
 		NNI_ARG_UNUSED(config_name);
-		rv = nni_id_set((nni_id_map *) db, packet_id, msg);
 	}
+	NNI_ARG_UNUSED(proto_ver);
 	return rv;
 }
 
@@ -202,9 +203,9 @@ nni_qos_db_get_client_msg(bool is_sqlite, void *db, uint32_t pipe_id,
 		    (sqlite3 *) db, pipe_id, packet_id, config_name);
 #endif
 	} else {
+		msg = nni_id_get((nni_id_map *) db, packet_id);
 		NNI_ARG_UNUSED(pipe_id);
 		NNI_ARG_UNUSED(config_name);
-		msg = nni_id_get((nni_id_map *) db, packet_id);
 	}
 	return msg;
 }
@@ -219,9 +220,9 @@ nni_qos_db_remove_client_msg(
 		    (sqlite3 *) db, pipe_id, packet_id, config_name);
 #endif
 	} else {
+		nni_id_remove((nni_id_map *) db, packet_id);
 		NNI_ARG_UNUSED(pipe_id);
 		NNI_ARG_UNUSED(config_name);
-		nni_id_remove((nni_id_map *) db, packet_id);
 	}
 }
 

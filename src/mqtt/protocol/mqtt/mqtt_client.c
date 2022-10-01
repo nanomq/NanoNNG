@@ -53,7 +53,9 @@ static void mqtt_ctx_recv(void *arg, nni_aio *aio);
 
 typedef nni_mqtt_packet_type packet_type_t;
 
+#if defined(NNG_SUPP_SQLITE)
 static void *mqtt_sock_get_sqlite_option(mqtt_sock_t *s);
+#endif
 
 // A mqtt_ctx_s is our per-ctx protocol private state.
 struct mqtt_ctx_s {
@@ -181,16 +183,13 @@ mqtt_sock_get_disconnect_code(void *arg, void *v, size_t *sz, nni_opt_type t)
 	return (rv);
 }
 
+#ifdef NNG_SUPP_SQLITE
 static void *
 mqtt_sock_get_sqlite_option(mqtt_sock_t *s)
 {
-#ifdef NNG_SUPP_SQLITE
 	return (s->sqlite_opt);
-#else
-	NNI_ARG_UNUSED(s);
-	return (NULL);
-#endif
 }
+#endif
 
 static int
 mqtt_sock_set_sqlite_option(
@@ -350,9 +349,9 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 	mqtt_sock_t *    s     = ctx->mqtt_sock;
 	mqtt_pipe_t *    p     = s->mqtt_pipe;
 	uint16_t         ptype = 0, packet_id = 0;
-	uint8_t          qos = 0;
-	nni_msg *        msg;
-	nni_msg *        tmsg;
+	uint8_t          qos   = 0;
+	nni_msg *        msg   = NULL;
+	nni_msg *        tmsg  = NULL;
 
 	if (NULL == aio || NULL == (msg = nni_aio_get_msg(aio))) {
 #if defined(NNG_SUPP_SQLITE)
