@@ -870,10 +870,9 @@ mqtt_tcptran_pipe_send_start(mqtt_tcptran_pipe *p)
 			if (qos > 0)
 				p->sndmax --;
 			if (qos > p->qosmax) {
-				if (p->qosmax == 1) *header &= 0XFB;
-				if (p->qosmax == 0) *header &= 0XF9;
+				p->qosmax == 1 ? (*header &= 0XF9) & (*header |= 0X02) : *header;
+				p->qosmax == 0 ? *header &= 0XF9 : *header;
 			}
-
 		}
 		// check max packet size
 		if (nni_msg_header_len(msg) + nni_msg_len(msg) > p->packmax) {
