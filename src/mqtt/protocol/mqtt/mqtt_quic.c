@@ -49,7 +49,9 @@ static void mqtt_quic_ctx_fini(void *arg);
 static void mqtt_quic_ctx_recv(void *arg, nni_aio *aio);
 static void mqtt_quic_ctx_send(void *arg, nni_aio *aio);
 
+#if defined(NNG_SUPP_SQLITE)
 static void *mqtt_quic_sock_get_sqlite_option(mqtt_sock_t *s);
+#endif
 
 struct mqtt_client_cb {
 	int (*connect_cb)(void *, void *);
@@ -180,6 +182,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		if (qos == 0) {
 			break; // QoS 0 need no packet id
 		}
+		__attribute__ ((fallthrough));
 	case NNG_MQTT_SUBSCRIBE:
 	case NNG_MQTT_UNSUBSCRIBE:
 		packet_id     = mqtt_pipe_get_next_packet_id(p);
@@ -714,16 +717,13 @@ mqtt_quic_sock_recv(void *arg, nni_aio *aio)
 	mqtt_quic_ctx_recv(&s->master, aio);
 }
 
+#ifdef NNG_SUPP_SQLITE
 static void *
 mqtt_quic_sock_get_sqlite_option(mqtt_sock_t *s)
 {
-#ifdef NNG_SUPP_SQLITE
 	return (s->sqlite_opt);
-#else
-	NNI_ARG_UNUSED(s);
-	return (NULL);
-#endif
 }
+#endif
 
 static int
 mqtt_quic_sock_set_sqlite_option(
@@ -884,7 +884,7 @@ static void
 quic_mqtt_stream_stop(void *arg)
 {
 	mqtt_pipe_t *p = arg;
-	mqtt_sock_t *s = p->mqtt_sock;
+	// mqtt_sock_t *s = p->mqtt_sock;
 
 	nni_aio_stop(&p->send_aio);
 	nni_aio_stop(&p->recv_aio);

@@ -282,6 +282,11 @@ copyn_str(const uint8_t *src, uint32_t *pos, int *str_len, int limit)
 	*str_len      = 0;
 	uint8_t *dest = NULL;
 
+	if (!src || !pos) {
+		*str_len = 0;
+		return NULL;
+	}
+
 	NNI_GET16(src + (*pos), *str_len);
 
 	*pos = (*pos) + 2;
@@ -290,7 +295,7 @@ copyn_str(const uint8_t *src, uint32_t *pos, int *str_len, int limit)
 		*str_len = -1;
 	}
 	if (*str_len > 0) {
-		if ((dest = nng_alloc(*str_len + 1)) == NULL || (src + (*pos) == NULL)) {
+		if ((dest = nng_alloc(*str_len + 1)) == NULL) {
 			*str_len = 0;
 			return NULL;
 		}

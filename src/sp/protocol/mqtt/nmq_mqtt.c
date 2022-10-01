@@ -261,7 +261,7 @@ nano_pipe_timer_cb(void *arg)
 				nano_msg_set_dup(rmsg);
 				// we use pipe as packet id here
 				nni_aio_set_prov_data(
-				    &p->aio_send, (void *) pid);
+				    &p->aio_send, (void *)(uintptr_t)pid);
 				// put original msg into sending
 				nni_aio_set_msg(&p->aio_send, msg);
 				log_trace(
