@@ -1685,11 +1685,6 @@ conf_bridge_node_parse_subs(
 		line = NULL;
 
 	check:
-		if (!get_qos) {
-			log_warn("Use default QoS level 0 for bridging!");
-			qos = 0;
-			get_qos = true;
-		}
 		if (get_topic && get_qos) {
 			sub_index++;
 			node->sub_count++;
