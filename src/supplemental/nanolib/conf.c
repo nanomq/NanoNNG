@@ -238,19 +238,31 @@ get_conf_value(char *line, size_t len, const char *key)
 		return NULL;
 	}
 
+	char *ptr = strstr(line, key);
+	if(ptr == NULL) {
+		return NULL;
+	}
+
+	char *pound = strstr(line, "#");
+    
+    if (pound != NULL && pound < ptr) {
+        return NULL;
+    }
+
 	char *prefix = nni_zalloc(len);
-	char *trim   = strtrim(line, len);
-	char *value  = calloc(1, len);
-	int   match  = sscanf(trim, "%[^=]=%s", prefix, value);
+	char *trim   = strtrim_head_tail(line, len);
+	char *value  = nni_zalloc(len);
+	int   match  = sscanf(trim, "%[^=]=%[^\n]s", prefix, value);
 	char *res    = NULL;
 	nni_strfree(trim);
 
-	if (match == 2 && strcmp(prefix, key) == 0) {
-		res = value;
-	} else {
-		nni_strfree(value);
+	char *line_key = strtrim_head_tail(prefix, strlen(prefix));
+	if (match == 2 && strcmp(line_key, key) == 0) {
+		res = strtrim_head_tail(value, strlen(value));
 	}
+	nni_strfree(value);
 
+	free(line_key);
 	free(prefix);
 	return res;
 }
@@ -2067,6 +2079,8 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		    node->name, node->keepalive);
 		log_info("%sbridge.mqtt.%s.parallel:     %ld", prefix,
 		    node->name, node->parallel);
+		log_info("%sbridge.mqtt.%s.tls.enable:     %s", prefix,
+		    node->name, node->tls.enable ? "true" : "false");
 		log_info("%sbridge.mqtt.%s.forwards: ", prefix, node->name);
 
 		for (size_t j = 0; j < node->forwards_count; j++) {
