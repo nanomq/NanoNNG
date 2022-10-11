@@ -101,6 +101,13 @@ static BOOLEAN
 LoadConfiguration(BOOLEAN Unsecure, conf_bridge_node *node)
 {
 	QUIC_SETTINGS Settings = { 0 };
+	QUIC_CREDENTIAL_CONFIG CredConfig;
+	if (!node) {
+		Settings.IsSet.IdleTimeoutMs = FALSE;
+		Settings.IsSet.KeepAliveIntervalMs = TRUE;
+		Settings.KeepAliveIntervalMs       = 60 * 1000;
+		goto there;
+	}
 	// Configures the client's idle timeout.
 	if (node->qidle_timeout == 0) {
 		Settings.IsSet.IdleTimeoutMs = FALSE;
@@ -121,11 +128,10 @@ LoadConfiguration(BOOLEAN Unsecure, conf_bridge_node *node)
 	Settings.IsSet.KeepAliveIntervalMs = TRUE;
 	Settings.KeepAliveIntervalMs       = node->qkeepalive * 1000;
 
-
+there:
 
 	// Configures a default client configuration, optionally disabling
 	// server certificate validation.
-	QUIC_CREDENTIAL_CONFIG CredConfig;
 	memset(&CredConfig, 0, sizeof(CredConfig));
 	CredConfig.Type  = QUIC_CREDENTIAL_TYPE_NONE;
 	CredConfig.Flags = QUIC_CREDENTIAL_FLAG_CLIENT;
