@@ -506,64 +506,6 @@ Error:
 	return (-1);
 }
 
-void
-quic_open()
-{
-	QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
-
-	if (QUIC_FAILED(Status = MsQuicOpen2(&MsQuic))) {
-		log_error("MsQuicOpen2 failed, 0x%x!\n", Status);
-		goto Error;
-	}
-
-	// Create a registration for the app's connections.
-	if (QUIC_FAILED(Status = MsQuic->RegistrationOpen(
-	                    &RegConfig, &Registration))) {
-		log_error("RegistrationOpen failed, 0x%x!\n", Status);
-		goto Error;
-	}
-
-	log_info("Msquic is enabled");
-	return;
-
-Error:
-	quic_close();
-}
-
-void
-quic_close()
-{
-	if (MsQuic != NULL) {
-		if (Configuration != NULL) {
-			MsQuic->ConfigurationClose(Configuration);
-		}
-		if (Registration != NULL) {
-			// This will block until all outstanding child objects
-			// have been closed.
-			MsQuic->RegistrationClose(Registration);
-		}
-		MsQuicClose(MsQuic);
-	}
-}
-
-void
-quic_proto_open(nni_proto *proto)
-{
-	g_quic_proto = proto;
-}
-
-void
-quic_proto_close()
-{
-	g_quic_proto = NULL;
-}
-
-void
-quic_proto_set_bridge_conf(void *node)
-{
-	bridge_node = node;
-}
-
 int
 quic_connect_ipv4(const char *url, nni_sock *sock)
 {
@@ -1068,12 +1010,117 @@ quic_strm_send(void *arg, nni_aio *aio)
 }
 
 int
-quic_strm_close(void *arg)
+quic_pipe_open(void *qsock, void **qpipe)
 {
-	if (!arg)
+	HQUIC qs   = qsock;
+	HQUIC strm = NULL;
+	QUIC_STATUS rv;
+	void *quic_ctx;
+
+	quic_strm_t *qstrm = nng_alloc(sizeof(quic_strm_t));
+	if (qstrm == NULL)
 		return -1;
-	quic_strm_t *qstrm = arg;
+
+	// Allocate a new bidirectional stream.
+	// The stream is just allocated and no QUIC stream identifier
+	// is assigned until it's started.
+	if (QUIC_FAILED(rv = MsQuic->StreamOpen(qs, QUIC_STREAM_OPEN_FLAG_NONE,
+	        quic_strm_cb, (void *)qstrm, &strm))) {
+		log_error("StreamOpen failed, 0x%x!\n", rv);
+		goto error;
+	}
+	log_debug("[strm][%p] Starting...", strm);
+
+	// Starts the bidirectional stream.
+	// By default, the peer is not notified of the stream being started
+	// until data is sent on the stream.
+	if (QUIC_FAILED(rv = MsQuic->StreamStart(strm, QUIC_STREAM_START_FLAG_NONE))) {
+		log_error("quic stream start failed, 0x%x!\n", rv);
+		MsQuic->StreamClose(strm);
+		goto error;
+	}
+	log_debug("[strm][%p] Done...\n", strm);
+
+	qstrm->stream = strm;
+
+	*qpipe = qstrm;
+	return 0;
+
+error:
+	if (QUIC_FAILED(rv))
+		MsQuic->ConnectionShutdown(qs, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
+	nng_free(qstrm, sizeof(quic_strm_t));
+
+	return (-2);
+}
+
+int
+quic_pipe_close(void *qpipe)
+{
+	quic_strm_t *qstrm = qpipe;
+	if (!qpipe)
+		return -1;
+
 	quic_strm_fini(qstrm);
 	nng_free(qstrm, sizeof(quic_strm_t));
+
 	return 0;
+}
+
+void
+quic_open()
+{
+	QUIC_STATUS status = QUIC_STATUS_SUCCESS;
+
+	if (QUIC_FAILED(status = MsQuicOpen2(&MsQuic))) {
+		log_error("MsQuicOpen2 failed, 0x%x!\n", status);
+		goto error;
+	}
+
+	// Create a registration for the app's connections.
+	if (QUIC_FAILED(status = MsQuic->RegistrationOpen(
+	                    &RegConfig, &Registration))) {
+		log_error("RegistrationOpen failed, 0x%x!\n", status);
+		goto error;
+	}
+
+	log_info("Msquic is enabled");
+	return;
+
+error:
+	quic_close();
+}
+
+void
+quic_close()
+{
+	if (MsQuic != NULL) {
+		if (Configuration != NULL) {
+			MsQuic->ConfigurationClose(Configuration);
+		}
+		if (Registration != NULL) {
+			// This will block until all outstanding child objects
+			// have been closed.
+			MsQuic->RegistrationClose(Registration);
+		}
+		MsQuicClose(MsQuic);
+	}
+}
+
+void
+quic_proto_open(nni_proto *proto)
+{
+	g_quic_proto = proto;
+}
+
+void
+quic_proto_close()
+{
+	g_quic_proto = NULL;
+}
+
+void
+quic_proto_set_bridge_conf(void *node)
+{
+	bridge_node = node;
 }
