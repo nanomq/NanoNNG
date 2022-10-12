@@ -41,6 +41,22 @@
 #define qinfo(fmt, ...) do {} while(0)
 #endif
 
+typedef struct quic_sock_s quic_sock_t;
+
+struct quic_sock_s {
+	HQUIC     qconn; // QUIC connection
+	nni_sock *sock;
+
+	nni_mtx  mtx; // for reconnect
+	nni_aio  close_aio;
+
+	uint8_t  rticket[2048];
+	uint16_t rticket_sz;
+	nng_url *url_s;
+
+	conf_bridge_node *bridge_node;
+};
+
 typedef struct quic_strm_s quic_strm_t;
 
 struct quic_strm_s {
@@ -49,7 +65,9 @@ struct quic_strm_s {
 	nni_mtx  mtx;
 	nni_list sendq;
 	nni_list recvq;
-	nni_sock *sock;
+
+	quic_sock_t *sock; // QUIC socket
+
 	bool     closed;
 	nni_lmq  recv_messages; // recv messages queue
 	nni_lmq  send_messages; // send messages queue
@@ -60,28 +78,27 @@ struct quic_strm_s {
 	nni_msg *rxmsg; // nng_msg for received
 
 	nni_aio  rraio;
-	nni_aio  close_aio;
 	uint8_t *rrbuf; // Buffer for remaining packet
 	uint32_t rrlen; // Length of rrbuf
 	uint32_t rrpos; // Start position of rrbuf
 	uint32_t rrcap; // Start position of rrbuf
-
-	uint8_t  rticket[2048];
-	uint16_t rticket_sz;
-	nng_url *url_s;
 };
 
-// Config for msquic
-const QUIC_REGISTRATION_CONFIG RegConfig = { "mqtt",
-	QUIC_EXECUTION_PROFILE_LOW_LATENCY };
-const QUIC_BUFFER     Alpn = { sizeof("mqtt") - 1, (uint8_t *) "mqtt" };
 const QUIC_API_TABLE *MsQuic;
-HQUIC                 Registration;
-HQUIC                 Configuration;
 
-quic_strm_t             *GStream     = NULL;
-HQUIC                   *GConnection = NULL;
-static conf_bridge_node *bridge_node = NULL;
+// Config for msquic
+const QUIC_REGISTRATION_CONFIG quic_reg_config = {
+	"mqtt",
+	QUIC_EXECUTION_PROFILE_LOW_LATENCY
+};
+
+const QUIC_BUFFER quic_alpn = {
+	sizeof("mqtt") - 1,
+	(uint8_t *) "mqtt"
+};
+
+HQUIC registration;
+HQUIC configuration;
 
 nni_proto *g_quic_proto;
 
