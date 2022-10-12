@@ -102,18 +102,23 @@ static conf_bridge_node *bridge_node;
 nni_proto *g_quic_proto;
 
 static BOOLEAN quic_load_config(BOOLEAN unsecure, conf_bridge_node *node);
-static void    quic_strm_send_cancel(nni_aio *aio, void *arg, int rv);
-static void    quic_strm_send_start(quic_strm_t *qstrm);
-static void    quic_strm_recv_cb(void *arg);
-static void    quic_strm_close_cb(void *arg);
-static void    quic_strm_recv_start(void *arg);
+static void    quic_pipe_send_cancel(nni_aio *aio, void *arg, int rv);
+static void    quic_pipe_recv_cancel(nni_aio *aio, void *arg, int rv);
+static void    quic_pipe_recv_cb(void *arg);
+static void    quic_pipe_send_start(quic_strm_t *qstrm);
+static void    quic_pipe_recv_start(void *arg);
+
+static int     quic_sock_reconnect(quic_sock_t *qsock);
+static void    quic_sock_close_cb(void *arg);
+static void    quic_sock_init(quic_sock_t *qsock);
+static void    quic_sock_fini(quic_sock_t *qsock);
+
 static void    quic_strm_init(quic_strm_t *qstrm);
 static void    quic_strm_fini(quic_strm_t *qstrm);
-static int     quic_reconnect(quic_strm_t *qstrm);
 
 // Helper function to load a client configuration.
 static BOOLEAN
-LoadConfiguration(BOOLEAN Unsecure, conf_bridge_node *node)
+quic_load_config(BOOLEAN Unsecure, conf_bridge_node *node)
 {
 	QUIC_SETTINGS Settings = { 0 };
 	QUIC_CREDENTIAL_CONFIG CredConfig;
@@ -157,20 +162,19 @@ there:
 
 	// Allocate/initialize the configuration object, with the configured
 	// ALPN and settings.
-	QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
-	if (QUIC_FAILED(
-	        Status = MsQuic->ConfigurationOpen(Registration, &Alpn, 1,
-	            &Settings, sizeof(Settings), NULL, &Configuration))) {
-		qdebug("ConfigurationOpen failed, 0x%x!\n", Status);
+	QUIC_STATUS rv = QUIC_STATUS_SUCCESS;
+	if (QUIC_FAILED(rv = MsQuic->ConfigurationOpen(registration,
+	    &quic_alpn, 1, &Settings, sizeof(Settings), NULL, &Configuration))) {
+		qdebug("ConfigurationOpen failed, 0x%x!\n", rv);
 		return FALSE;
 	}
 
 	// Loads the TLS credential part of the configuration. This is required
 	// even on client side, to indicate if a certificate is required or
 	// not.
-	if (QUIC_FAILED(Status = MsQuic->ConfigurationLoadCredential(
-	                    Configuration, &CredConfig))) {
-		qdebug("ConfigurationLoadCredential failed, 0x%x!\n", Status);
+	if (QUIC_FAILED(rv = MsQuic->ConfigurationLoadCredential(
+	                    configuration, &CredConfig))) {
+		qdebug("ConfigurationLoadCredential failed, 0x%x!\n", rv);
 		return FALSE;
 	}
 
@@ -178,20 +182,47 @@ there:
 }
 
 static void
-quic_strm_init(quic_strm_t *qstrm)
+quic_sock_init(quic_sock_t *qsock)
 {
-	qstrm->closed = false;
-	qstrm->pipe   = NULL;
+	qsock->qconn = NULL;
+	qsock->sock  = NULL;
+	qsock->pipe  = NULL;
+
+	nni_mtx_init(&qsock->mtx);
+	nni_aio_init(&qsock->close_aio, quic_sock_close_cb, qsock);
+
+	qsock->url_s = NULL;
+	qsock->rticket_sz = 0;
+}
+
+static void
+quic_sock_fini(quic_sock_t *qsock)
+{
+	nni_mtx_fini(&qsock->mtx);
+	if (qsock->url_s)
+		nng_url_free(qstrm->url_s);
+
+	nni_aio_stop(&qsock->close_aio);
+	nni_aio_close(&qsock->close_aio);
+	nni_aio_fini(&qsock->close_aio);
+}
+
+static void
+quic_strm_init(quic_strm_t *qstrm, quic_sock_t *qsock)
+{
+	qstrm->stream = NULL;
 
 	nni_mtx_init(&qstrm->mtx);
 	nni_aio_list_init(&qstrm->sendq);
 	nni_aio_list_init(&qstrm->recvq);
 
+	qstrm->sock = qsock;
+	qstrm->closed = false;
+
 	nni_lmq_init(&qstrm->recv_messages, NNG_MAX_RECV_LMQ);
 	nni_lmq_init(&qstrm->send_messages, NNG_MAX_SEND_LMQ);
 
-	nni_aio_init(&qstrm->rraio, quic_strm_recv_cb, qstrm);
-	nni_aio_init(&qstrm->close_aio, quic_strm_close_cb, qstrm);
+	nni_aio_init(&qstrm->rraio, quic_pipe_recv_cb, qstrm);
 
 	qstrm->rxlen = 0;
 	qstrm->rxmsg = NULL;
@@ -200,9 +231,6 @@ quic_strm_init(quic_strm_t *qstrm)
 	qstrm->rrlen = 0;
 	qstrm->rrpos = 0;
 	qstrm->rrcap = 0;
-
-	qstrm->url_s = NULL;
-	qstrm->rticket_sz = 0;
 }
 
 static void
@@ -220,9 +248,6 @@ quic_strm_fini(quic_strm_t *qstrm)
 	nni_aio_stop(&qstrm->rraio);
 	nni_aio_close(&qstrm->rraio);
 	nni_aio_fini(&qstrm->rraio);
-	nni_aio_stop(&qstrm->close_aio);
-	nni_aio_close(&qstrm->close_aio);
-	nni_aio_fini(&qstrm->close_aio);
 }
 
 // The clients's callback for stream events from MsQuic.
@@ -457,13 +482,16 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 }
 
 int
-quic_disconnect()
+quic_disconnect(void *qsock)
 {
 	log_debug("actively disclose the QUIC stream");
-	if (!GConnection)
+	quic_sock_t *qs = qsock;
+	if (qsock) {
 		return -1;
+	}
+
 	MsQuic->ConnectionShutdown(
-	    *GConnection, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, NNG_ECONNSHUT);
+	    qs->qconn, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, NNG_ECONNSHUT);
 	return 0;
 }
 
@@ -603,7 +631,7 @@ Error:
 }
 
 static void
-quic_pipe_close_cb(void *arg)
+quic_sock_close_cb(void *arg)
 {
 	quic_strm_t *qstrm = arg;
 
