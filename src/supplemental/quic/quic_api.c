@@ -53,8 +53,6 @@ struct quic_sock_s {
 	uint8_t  rticket[2048];
 	uint16_t rticket_sz;
 	nng_url *url_s;
-
-	conf_bridge_node *bridge_node;
 };
 
 typedef struct quic_strm_s quic_strm_t;
@@ -100,9 +98,10 @@ const QUIC_BUFFER quic_alpn = {
 HQUIC registration;
 HQUIC configuration;
 
+static conf_bridge_node *bridge_node;
 nni_proto *g_quic_proto;
 
-static BOOLEAN LoadConfiguration(BOOLEAN Unsecure, conf_bridge_node *node);
+static BOOLEAN quic_load_config(BOOLEAN Unsecure, conf_bridge_node *node);
 static int     quic_strm_start(HQUIC Connection, void *Context, HQUIC *Streamp);
 static void    quic_strm_send_cancel(nni_aio *aio, void *arg, int rv);
 static void    quic_strm_send_start(quic_strm_t *qstrm);
@@ -608,43 +607,43 @@ Error:
 static int
 quic_reconnect(quic_strm_t *qstrm)
 {
-	// Load the client configuration based on the "unsecure" command line
-	// option.
+	// Load the client configuration.
 	if (!LoadConfiguration(TRUE, bridge_node)) {
 		log_error("Failed in load quic configuration");
 		return (-1);
 	}
 
-	QUIC_STATUS Status;
-	HQUIC       Connection             = NULL;
-	void  *sock_data = nni_sock_proto_data(qstrm->sock);
+	QUIC_STATUS rv;
+	HQUIC       qsock = NULL;
+	void       *sock_data = nni_sock_proto_data(qstrm->sock);
+
 	nng_url *url_s = qstrm->url_s;
 
 	// Allocate a new connection object.
-	if (QUIC_FAILED(Status = MsQuic->ConnectionOpen(Registration,
-	                    QuicConnectionCallback, sock_data, &Connection))) {
-		log_error("Failed in Quic ConnectionOpen, 0x%x!", Status);
-		goto Error;
+	if (QUIC_FAILED(rv = MsQuic->ConnectionOpen(Registration,
+	                    quic_connection_cb, sock_data, &qsock))) {
+		log_error("Failed in Quic ConnectionOpen, 0x%x!", rv);
+		goto error;
 	}
 
 	if (qstrm->rticket_sz != 0) {
 		log_info("QUIC connection reconnect with 0RTT enabled");
-		if (QUIC_FAILED(Status = MsQuic->SetParam(Connection,
+		if (QUIC_FAILED(rv = MsQuic->SetParam(qsock,
 		                    QUIC_PARAM_CONN_RESUMPTION_TICKET,
 		                    qstrm->rticket_sz, qstrm->rticket))) {
-			log_error("Failed in setting resumption ticket, 0x%x!", Status);
-			goto Error;
+			log_error("Failed in setting resumption ticket, 0x%x!", rv);
+			goto error;
 		}
 	}
 
 	log_info("Quic reconnecting... %s:%s", url_s->u_host, url_s->u_port);
 
 	// Start the connection to the server.
-	if (QUIC_FAILED(Status = MsQuic->ConnectionStart(Connection,
+	if (QUIC_FAILED(rv = MsQuic->ConnectionStart(qsock,
 	                    Configuration, QUIC_ADDRESS_FAMILY_UNSPEC,
 	                    url_s->u_host, atoi(url_s->u_port)))) {
-		log_error("Failed in ConnectionStart, 0x%x!", Status);
-		goto Error;
+		log_error("Failed in ConnectionStart, 0x%x!", rv);
+		goto error;
 	}
 
 	GConnection = &Connection;
@@ -659,7 +658,7 @@ Error:
 }
 
 static void
-quic_strm_close_cb(void *arg)
+quic_pipe_close_cb(void *arg)
 {
 	quic_strm_t *qstrm = arg;
 
@@ -668,11 +667,11 @@ quic_strm_close_cb(void *arg)
 }
 
 static void
-quic_strm_send_start(quic_strm_t *qstrm)
+quic_pipe_send_start(quic_strm_t *qstrm)
 {
 	nni_aio    *aio;
 	nni_msg    *msg;
-	QUIC_STATUS Status;
+	QUIC_STATUS rv;
 
 	if (qstrm->closed) {
 		while ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
@@ -689,20 +688,20 @@ quic_strm_send_start(quic_strm_t *qstrm)
 	// This runs to send the message.
 	msg = nni_aio_get_msg(aio);
 
-	QUIC_BUFFER *buf=(QUIC_BUFFER*)malloc(sizeof(QUIC_BUFFER)*2);
-	int          hl   = nni_msg_header_len(msg);
-	int          bl   = nni_msg_len(msg);
+	QUIC_BUFFER *buf = (QUIC_BUFFER*)malloc(sizeof(QUIC_BUFFER)*2);
+	int          hl  = nni_msg_header_len(msg);
+	int          bl  = nni_msg_len(msg);
 
 	if (hl > 0) {
 		QUIC_BUFFER *buf1 = &buf[0];
-		buf1->Length = hl;
-		buf1->Buffer = nni_msg_header(msg);
+		buf1->Length      = hl;
+		buf1->Buffer      = nni_msg_header(msg);
 	}
 
 	if (bl > 0) {
 		QUIC_BUFFER *buf2 = &buf[1];
-		buf2->Length = bl;
-		buf2->Buffer = nni_msg_body(msg);
+		buf2->Length      = bl;
+		buf2->Buffer      = nni_msg_body(msg);
 	}
 
 	log_debug("type is 0x%x %x.",
@@ -710,41 +709,20 @@ quic_strm_send_start(quic_strm_t *qstrm)
 	    ((uint8_t *) nni_msg_header(msg))[0]);
 	log_debug("body len: %d header len: %d", buf[1].Length, buf[0].Length);
 
-	if (QUIC_FAILED(Status = MsQuic->StreamSend(qstrm->stream, buf, bl > 0 ? 2:1,
+	if (QUIC_FAILED(rv = MsQuic->StreamSend(qstrm->stream, buf, bl > 0 ? 2:1,
 	                    QUIC_SEND_FLAG_NONE, buf))) {
-		log_debug("Failed in StreamSend, 0x%x!", Status);
+		log_debug("Failed in StreamSend, 0x%x!", rv);
 		free(buf);
 	}
 }
 
 static void
-quic_strm_send_cancel(nni_aio *aio, void *arg, int rv)
-{
-	quic_strm_t *qstrm = arg;
-
-	nni_mtx_lock(&qstrm->mtx);
-	if (!nni_aio_list_active(aio)) {
-		nni_mtx_unlock(&qstrm->mtx);
-		return;
-	}
-	if (nni_list_first(&qstrm->sendq) == aio) {
-		nni_mtx_unlock(&qstrm->mtx);
-		return;
-	}
-	nni_aio_list_remove(aio);
-	nni_mtx_unlock(&qstrm->mtx);
-
-	nni_aio_finish_error(aio, rv);
-}
-
-static void
-quic_strm_recv_start(void *arg)
+quic_pipe_recv_start(void *arg)
 {
 	qdebug("quic_strm_recv_start.\n");
 	quic_strm_t *qstrm = arg;
 	nni_aio *aio = NULL;
 
-	// TODO recv_start can be called from sender
 	if (qstrm->closed) {
 		while ((aio = nni_list_first(&qstrm->recvq)) != NULL) {
 			nni_list_remove(&qstrm->recvq, aio);
@@ -765,7 +743,7 @@ quic_strm_recv_start(void *arg)
 }
 
 static void
-quic_strm_recv_cb(void *arg)
+quic_pipe_recv_cb(void *arg)
 {
 	quic_strm_t *qstrm = arg;
 	nni_aio *aio = NULL;
@@ -944,7 +922,27 @@ upload:
 }
 
 static void
-mqtt_quic_strm_recv_cancel(nni_aio *aio, void *arg, int rv)
+quic_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
+{
+	quic_strm_t *qstrm = arg;
+
+	nni_mtx_lock(&qstrm->mtx);
+	if (!nni_aio_list_active(aio)) {
+		nni_mtx_unlock(&qstrm->mtx);
+		return;
+	}
+	if (nni_list_first(&qstrm->sendq) == aio) {
+		nni_mtx_unlock(&qstrm->mtx);
+		return;
+	}
+	nni_aio_list_remove(aio);
+	nni_mtx_unlock(&qstrm->mtx);
+
+	nni_aio_finish_error(aio, rv);
+}
+
+static void
+quic_pipe_recv_cancel(nni_aio *aio, void *arg, int rv)
 {
 	quic_strm_t *p = arg;
 
@@ -965,17 +963,18 @@ mqtt_quic_strm_recv_cancel(nni_aio *aio, void *arg, int rv)
 }
 
 int
-quic_strm_recv(void *arg, nni_aio *raio)
+quic_pipe_recv(void *qpipe, nni_aio *raio)
 {
-	int                rv;
-	quic_strm_t *qstrm = arg;
-	nng_msg *msg;
+	int          rv;
+	quic_strm_t *qstrm = qpipe;
+	nng_msg     *msg;
 
 	if (nni_aio_begin(raio) != 0) {
 		return -1;
 	}
+
 	nni_mtx_lock(&qstrm->mtx);
-	if ((rv = nni_aio_schedule(raio, mqtt_quic_strm_recv_cancel, qstrm)) !=
+	if ((rv = nni_aio_schedule(raio, quic_pipe_recv_cancel, qstrm)) !=
 	    0) {
 		nni_mtx_unlock(&qstrm->mtx);
 		nni_aio_finish_error(raio, rv);
@@ -1003,16 +1002,17 @@ quic_strm_recv(void *arg, nni_aio *raio)
 }
 
 int
-quic_strm_send(void *arg, nni_aio *aio)
+quic_pipe_send(void *qpipe, nni_aio *aio)
 {
-	quic_strm_t *qstrm = arg;
+	quic_strm_t *qstrm = qpipe;
 	int          rv;
 
 	if ((rv = nni_aio_begin(aio)) != 0) {
 		return rv;
 	}
+
 	nni_mtx_lock(&qstrm->mtx);
-	if ((rv = nni_aio_schedule(aio, quic_strm_send_cancel, qstrm)) != 0) {
+	if ((rv = nni_aio_schedule(aio, quic_pipe_send_cancel, qstrm)) != 0) {
 		nni_mtx_unlock(&qstrm->mtx);
 		nni_aio_finish_error(aio, rv);
 		return (-1);
@@ -1087,17 +1087,17 @@ quic_pipe_close(void *qpipe)
 void
 quic_open()
 {
-	QUIC_STATUS status = QUIC_STATUS_SUCCESS;
+	QUIC_STATUS rv = QUIC_STATUS_SUCCESS;
 
-	if (QUIC_FAILED(status = MsQuicOpen2(&MsQuic))) {
-		log_error("MsQuicOpen2 failed, 0x%x!\n", status);
+	if (QUIC_FAILED(rv = MsQuicOpen2(&MsQuic))) {
+		log_error("MsQuicOpen2 failed, 0x%x!\n", rv);
 		goto error;
 	}
 
 	// Create a registration for the app's connections.
-	if (QUIC_FAILED(status = MsQuic->RegistrationOpen(
-	                    &RegConfig, &Registration))) {
-		log_error("RegistrationOpen failed, 0x%x!\n", status);
+	if (QUIC_FAILED(rv = MsQuic->RegistrationOpen(
+	                    &quic_reg_config, &registration))) {
+		log_error("RegistrationOpen failed, 0x%x!\n", rv);
 		goto error;
 	}
 
