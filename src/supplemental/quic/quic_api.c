@@ -275,14 +275,14 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		nni_mtx_lock(&qstrm->mtx);
 		if ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
 			nni_aio_list_remove(aio);
-			quic_strm_send_start(qstrm);
+			quic_pipe_send_start(qstrm);
 			nni_mtx_unlock(&qstrm->mtx);
 			smsg = nni_aio_get_msg(aio);
 			nni_msg_free(smsg);
 			nni_aio_finish_sync(aio, 0, 0);
 			break;
 		}
-		quic_strm_send_start(qstrm);
+		quic_pipe_send_start(qstrm);
 		nni_mtx_unlock(&qstrm->mtx);
 		break;
 	case QUIC_STREAM_EVENT_RECEIVE:
@@ -430,8 +430,8 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 			}
 		}
 
-		nni_mtx_unlock(&qstrm->mtx);
-		nni_aio_finish(&qstrm->close_aio, 0, 0);
+		nni_mtx_unlock(&qsock->mtx);
+		nni_aio_finish(&qsock->close_aio, 0, 0);
 		/*
 		if (qstrm->rtt0_enable) {
 			// No rticket
@@ -574,7 +574,7 @@ error:
 }
 
 static int
-quic_reconnect(quic_strm_t *qstrm)
+quic_sock_reconnect(quic_sock_t *qsock)
 {
 	// Load the client configuration.
 	if (!LoadConfiguration(TRUE, bridge_node)) {
@@ -583,45 +583,42 @@ quic_reconnect(quic_strm_t *qstrm)
 	}
 
 	QUIC_STATUS rv;
+	HQUIC       conn = NULL;
 	HQUIC       qsock = NULL;
-	void       *sock_data = nni_sock_proto_data(qstrm->sock);
-
-	nng_url *url_s = qstrm->url_s;
+	void       *sock_data = nni_sock_proto_data(qsock->sock);
 
 	// Allocate a new connection object.
-	if (QUIC_FAILED(rv = MsQuic->ConnectionOpen(Registration,
-	                    quic_connection_cb, sock_data, &qsock))) {
+	if (QUIC_FAILED(rv = MsQuic->ConnectionOpen(registration,
+	        quic_connection_cb, (void *)qsock, &conn))) {
 		log_error("Failed in Quic ConnectionOpen, 0x%x!", rv);
 		goto error;
 	}
 
-	if (qstrm->rticket_sz != 0) {
+	if (qsock->rticket_sz != 0) {
 		log_info("QUIC connection reconnect with 0RTT enabled");
-		if (QUIC_FAILED(rv = MsQuic->SetParam(qsock,
-		                    QUIC_PARAM_CONN_RESUMPTION_TICKET,
-		                    qstrm->rticket_sz, qstrm->rticket))) {
+		if (QUIC_FAILED(rv = MsQuic->SetParam(qsock->qconn,
+		    QUIC_PARAM_CONN_RESUMPTION_TICKET, qsock->rticket_sz, qsock->rticket))) {
 			log_error("Failed in setting resumption ticket, 0x%x!", rv);
 			goto error;
 		}
 	}
 
+	nng_url *url_s = qstrm->url_s;
 	log_info("Quic reconnecting... %s:%s", url_s->u_host, url_s->u_port);
 
 	// Start the connection to the server.
-	if (QUIC_FAILED(rv = MsQuic->ConnectionStart(qsock,
-	                    Configuration, QUIC_ADDRESS_FAMILY_UNSPEC,
+	if (QUIC_FAILED(rv = MsQuic->ConnectionStart(qsock->qconn,
+	                    configuration, QUIC_ADDRESS_FAMILY_UNSPEC,
 	                    url_s->u_host, atoi(url_s->u_port)))) {
 		log_error("Failed in ConnectionStart, 0x%x!", rv);
 		goto error;
 	}
-
-	GConnection = &Connection;
 	return 0;
 
 Error:
 
-	if (QUIC_FAILED(Status) && Connection != NULL) {
-		MsQuic->ConnectionClose(Connection);
+	if (QUIC_FAILED(Status) && conn != NULL) {
+		MsQuic->ConnectionClose(conn);
 	}
 	return 0;
 }
@@ -629,11 +626,11 @@ Error:
 static void
 quic_sock_close_cb(void *arg)
 {
-	quic_strm_t *qstrm = arg;
+	quic_sock_t *qsock = arg;
 
 	log_warn("Try to do quic stream reconnect!");
 	nng_msleep(NNI_QUIC_TIMER * 1000);
-	quic_reconnect(qstrm);
+	quic_sock_reconnect(qsock);
 }
 
 static void
@@ -965,7 +962,7 @@ quic_pipe_recv(void *qpipe, nni_aio *raio)
 		//TODO set different init length for different packet.
 		qstrm->rxlen = 0;
 		qstrm->rwlen = 2; // Minimal RX length
-		quic_strm_recv_start(qstrm);
+		quic_pipe_recv_start(qstrm);
 	}
 	nni_mtx_unlock(&qstrm->mtx);
 	return 0;
@@ -989,7 +986,7 @@ quic_pipe_send(void *qpipe, nni_aio *aio)
 	}
 	nni_list_append(&qstrm->sendq, aio);
 	if (nni_list_first(&qstrm->sendq) == aio) {
-		quic_strm_send_start(qstrm);
+		quic_pipe_send_start(qstrm);
 	}
 	nni_mtx_unlock(&qstrm->mtx);
 
