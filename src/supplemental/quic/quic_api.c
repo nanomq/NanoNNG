@@ -46,6 +46,7 @@ typedef struct quic_sock_s quic_sock_t;
 struct quic_sock_s {
 	HQUIC     qconn; // QUIC connection
 	nni_sock *sock;
+	void     *pipe;
 
 	nni_mtx  mtx; // for reconnect
 	nni_aio  close_aio;
@@ -59,7 +60,6 @@ typedef struct quic_strm_s quic_strm_t;
 
 struct quic_strm_s {
 	HQUIC    stream;
-	void    *pipe;
 	nni_mtx  mtx;
 	nni_list sendq;
 	nni_list recvq;
@@ -101,8 +101,7 @@ HQUIC configuration;
 static conf_bridge_node *bridge_node;
 nni_proto *g_quic_proto;
 
-static BOOLEAN quic_load_config(BOOLEAN Unsecure, conf_bridge_node *node);
-static int     quic_strm_start(HQUIC Connection, void *Context, HQUIC *Streamp);
+static BOOLEAN quic_load_config(BOOLEAN unsecure, conf_bridge_node *node);
 static void    quic_strm_send_cancel(nni_aio *aio, void *arg, int rv);
 static void    quic_strm_send_start(quic_strm_t *qstrm);
 static void    quic_strm_recv_cb(void *arg);
@@ -331,29 +330,23 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
     _Function_class_(QUIC_CONNECTION_CALLBACK) QUIC_STATUS QUIC_API
-QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
+quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
         _Inout_ QUIC_CONNECTION_EVENT *Event)
 {
 	const nni_proto_pipe_ops *pipe_ops = g_quic_proto->proto_pipe_ops;
+
 	quic_strm_t              *qstrm    = GStream;
 	nni_aio                  *aio;
 
-	log_debug("QuicConnectionCallback triggered! %d", Event->Type);
+	log_debug("quic_connection_cb triggered! %d", Event->Type);
 	switch (Event->Type) {
 	case QUIC_CONNECTION_EVENT_CONNECTED:
 		// The handshake has completed for the connection.
 		// do not init any var here due to potential frequent reconnect
 		log_info("[conn][%p] is Connected", Connection);
 
-		// First starting the quic stream
-		if (0 != quic_strm_start(Connection, qstrm, &qstrm->stream)) {
-		    log_error("Error in quic strm start.");
-			break;
-		}
-		MsQuic->StreamReceiveSetEnabled(qstrm->stream, FALSE);
-		qstrm->closed = false;
 		// Start/ReStart the nng pipe
-		if (qstrm->pipe == NULL) {
+		if (qsock == NULL) {
 			// not first time to establish QUIC pipe
 			if ((qstrm->pipe = nng_alloc(pipe_ops->pipe_size)) ==
 			    NULL) {
@@ -474,77 +467,32 @@ quic_disconnect()
 	return 0;
 }
 
-/**
- * @brief
- *
- * @param Connection
- * @param Context
- * @param Streamp
- * @return int
- */
-static int
-quic_strm_start(HQUIC Connection, void *Context, HQUIC *Streamp)
-{
-	HQUIC       Stream = NULL;
-	QUIC_STATUS Status;
-
-	// Create/allocate a new bidirectional stream. The stream is just
-	// allocated and no QUIC stream identifier is assigned until it's
-	// started.
-	if (QUIC_FAILED(Status = MsQuic->StreamOpen(Connection,
-	                    QUIC_STREAM_OPEN_FLAG_NONE, QuicStreamCallback, Context, &Stream))) {
-		log_error("StreamOpen failed, 0x%x!\n", Status);
-		goto Error;
-	}
-
-	log_debug("[strm][%p] Starting...\n", Stream);
-
-	// Starts the bidirectional stream. By default, the peer is not
-	// notified of the stream being started until data is sent on the
-	// stream.
-	if (QUIC_FAILED(Status = MsQuic->StreamStart(
-	                    Stream, QUIC_STREAM_START_FLAG_NONE))) {
-		log_error("StreamStart failed, 0x%x!\n", Status);
-		MsQuic->StreamClose(Stream);
-		goto Error;
-	}
-
-	log_debug("[strm][%p] Done...\n", Stream);
-	*Streamp = Stream;
-	return 0;
-
-Error:
-
-	if (QUIC_FAILED(Status)) {
-		MsQuic->ConnectionShutdown(
-		    Connection, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
-	}
-	return (-1);
-}
-
 int
 quic_connect_ipv4(const char *url, nni_sock *sock)
 {
-	// Load the client configuration based on the "unsecure" command line
-	// option.
-	if (!LoadConfiguration(TRUE, bridge_node)) {
+	// Load the client configuration
+	if (!quic_load_config(TRUE, bridge_node)) {
 		log_error("Failed in load quic configuration");
 		return (-1);
 	}
 
-	QUIC_STATUS  Status;
-	HQUIC        Connection = NULL;
+	QUIC_STATUS  rv;
+	HQUIC        conn = NULL;
 	quic_strm_t *qstrm = NULL;
+	nng_url     *url_s;
+	quic_sock_t *qsock;
 
-	nng_url *url_s;
-
-	void *sock_data = nni_sock_proto_data(sock);
-	// Allocate a new connection object.
-	if (QUIC_FAILED(Status = MsQuic->ConnectionOpen(Registration,
-	                    QuicConnectionCallback, sock_data, &Connection))) {
-		log_error("Failed in Quic ConnectionOpen, 0x%x!", Status);
-		goto Error;
+	if ((qsock = malloc(sizeof(quic_sock_t))) == NULL) {
+		return -2;
 	}
+
+	// Allocate a new connection object.
+	if (QUIC_FAILED(rv = MsQuic->ConnectionOpen(registration,
+	        quic_connection_cb, (void *)qsock, &conn))) {
+		log_error("Failed in Quic ConnectionOpen, 0x%x!", rv);
+		goto error;
+	}
+
 	QUIC_ADDR Address = { 0 };
 	// Address.Ip.sa_family = QUIC_ADDRESS_FAMILY_UNSPEC;
 	Address.Ip.sa_family = QUIC_ADDRESS_FAMILY_INET;
@@ -552,56 +500,53 @@ quic_connect_ipv4(const char *url, nni_sock *sock)
 	Address.Ipv4.sin_port = htons(0);
 	// QuicAddrSetFamily(&Address, QUIC_ADDRESS_FAMILY_UNSPEC);
 	// QuicAddrSetPort(&Address, 0);
-	if (QUIC_FAILED(Status = MsQuic->SetParam(Connection, QUIC_PARAM_CONN_LOCAL_ADDRESS,
+	if (QUIC_FAILED(rv = MsQuic->SetParam(conn, QUIC_PARAM_CONN_LOCAL_ADDRESS,
 	    sizeof(QUIC_ADDR), &Address))) {
-		log_error("Failed in address setting, 0x%x!\n", Status);
-		goto Error;
+		log_error("Failed in address setting, 0x%x!\n", rv);
+		goto error;
 	}
 
 	nng_url_parse(&url_s, url);
+	// TODO maybe something wrong happened
 	for (size_t i = 0; i < strlen(url_s->u_host); ++i)
 		if (url_s->u_host[i] == ':') {
 			url_s->u_host[i] = '\0';
 			break;
 		}
 
-	// Create a pipe for quic client
-	if ((qstrm = nng_alloc(sizeof(quic_strm_t))) == NULL) {
-		log_error("Failed in alloc quic strm.");
-		goto Error;
-	}
-	quic_strm_init(qstrm);
-
-	qstrm->url_s = url_s;
-	qstrm->sock = sock;
-	GStream = qstrm; // It should be stored in sock, but...
+	qsock->url_s = url_s;
+	qsock->sock  = sock;
 
 	log_info("Quic connecting... %s:%s", url_s->u_host, url_s->u_port);
 
 	// Start the connection to the server.
-	if (QUIC_FAILED(Status = MsQuic->ConnectionStart(Connection,
-	                    Configuration, QUIC_ADDRESS_FAMILY_UNSPEC,
-	                    url_s->u_host, atoi(url_s->u_port)))) {
-		log_error("Failed in ConnectionStart, 0x%x!", Status);
-		goto Error;
+	if (QUIC_FAILED(rv = MsQuic->ConnectionStart(conn, configuration,
+	        QUIC_ADDRESS_FAMILY_UNSPEC, url_s->u_host, atoi(url_s->u_port)))) {
+		log_error("Failed in ConnectionStart, 0x%x!", rv);
+		goto error;
 	}
-
-	GConnection = &Connection;
 
 	// Start/ReStart the nng pipe
 	const nni_proto_pipe_ops *pipe_ops = g_quic_proto->proto_pipe_ops;
-	if ((qstrm->pipe = nng_alloc(pipe_ops->pipe_size)) == NULL) {
+	if ((qsock->pipe = nng_alloc(pipe_ops->pipe_size)) == NULL) {
 		log_error("error in alloc pipe.\n");
+		goto error;
 	}
-	pipe_ops->pipe_init(qstrm->pipe, (nni_pipe *)qstrm, sock_data);
+	void *sock_data = nni_sock_proto_data(sock);
+	pipe_ops->pipe_init(qsock->pipe, (nni_pipe *)qsock, sock_data);
 	return 0;
 
-Error:
+error:
 
-	if (QUIC_FAILED(Status) && Connection != NULL) {
+	if (QUIC_FAILED(rv) && Connection != NULL) {
 		MsQuic->ConnectionClose(Connection);
 	}
-	return 0;
+	if (qsock) {
+		if (qsock->pipe)
+			nng_free(qsock->pipe, 0);
+		nng_free(qsock, sizeof(quic_sock_t));
+	}
+	return rv;
 }
 
 static int
@@ -1029,20 +974,21 @@ quic_pipe_send(void *qpipe, nni_aio *aio)
 int
 quic_pipe_open(void *qsock, void **qpipe)
 {
-	HQUIC qs   = qsock;
 	HQUIC strm = NULL;
 	QUIC_STATUS rv;
+	quic_sock_t qs = qsock;
 	void *quic_ctx;
 
 	quic_strm_t *qstrm = nng_alloc(sizeof(quic_strm_t));
 	if (qstrm == NULL)
 		return -1;
+	quic_strm_init(qstrm);
 
 	// Allocate a new bidirectional stream.
 	// The stream is just allocated and no QUIC stream identifier
 	// is assigned until it's started.
-	if (QUIC_FAILED(rv = MsQuic->StreamOpen(qs, QUIC_STREAM_OPEN_FLAG_NONE,
-	        quic_strm_cb, (void *)qstrm, &strm))) {
+	if (QUIC_FAILED(rv = MsQuic->StreamOpen(qs->qconn,
+	        QUIC_STREAM_OPEN_FLAG_NONE, quic_strm_cb, (void *)qstrm, &strm))) {
 		log_error("StreamOpen failed, 0x%x!\n", rv);
 		goto error;
 	}
@@ -1056,6 +1002,11 @@ quic_pipe_open(void *qsock, void **qpipe)
 		MsQuic->StreamClose(strm);
 		goto error;
 	}
+
+	// Not ready for receiving
+	MsQuic->StreamReceiveSetEnabled(qstrm->stream, FALSE);
+	qstrm->closed = false;
+
 	log_debug("[strm][%p] Done...\n", strm);
 
 	qstrm->stream = strm;
