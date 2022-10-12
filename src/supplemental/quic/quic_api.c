@@ -254,7 +254,7 @@ quic_strm_fini(quic_strm_t *qstrm)
 // New recv cb of quic transport
 _IRQL_requires_max_(DISPATCH_LEVEL)
     _Function_class_(QUIC_STREAM_CALLBACK) QUIC_STATUS QUIC_API
-QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
+quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
         _Inout_ QUIC_STREAM_EVENT *Event)
 {
 	quic_strm_t *qstrm = Context;
@@ -263,13 +263,13 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 	nni_msg *smsg;
 	nni_aio *aio;
 
-	log_debug("QuicStreamCallback triggered! %d", Event->Type);
+	log_debug("quic_strm_cb triggered! %d", Event->Type);
 	switch (Event->Type) {
 	case QUIC_STREAM_EVENT_SEND_COMPLETE:
 		// A previous StreamSend call has completed, and the context is
 		// being returned back to the app.
 		free(Event->SEND_COMPLETE.ClientContext);
-		log_debug("[strm][%p] Data sent\n", Stream);
+		log_debug("[strm][%p] Data sent\n", stream);
 
 		// Get aio from sendq and finish
 		nni_mtx_lock(&qstrm->mtx);
@@ -291,7 +291,7 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 		rlen = Event->RECEIVE.Buffers->Length;
 		uint8_t count = Event->RECEIVE.BufferCount;
 
-		log_debug("[strm][%p] Data received\n", Stream);
+		log_debug("[strm][%p] Data received", stream);
 
 		nni_mtx_lock(&qstrm->mtx);
 
@@ -300,7 +300,7 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 			nni_mtx_unlock(&qstrm->mtx);
 			return QUIC_STATUS_PENDING;
 		}
-		qdebug("Body is [%d]-[0x%x 0x%x].\n", rlen, *(rbuf), *(rbuf + 1));
+		log_debug("Body is [%d]-[0x%x 0x%x].", rlen, *(rbuf), *(rbuf + 1));
 
 		if (rlen > qstrm->rrcap - qstrm->rrlen - qstrm->rrpos) {
 			qstrm->rrbuf = realloc(qstrm->rrbuf, rlen + qstrm->rrlen);
@@ -321,13 +321,12 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 		return QUIC_STATUS_PENDING;
 
 	case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
-		// The peer gracefully shut down its send direction of the
-		// stream.
-		log_warn("[strm][%p] Peer aborted\n", Stream);
+		// The peer gracefully shut down its send direction of the stream.
+		log_warn("[strm][%p] Peer aborted\n", stream);
 		break;
 	case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
 		// The peer aborted its send direction of the stream.
-		log_warn("[strm][%p] Peer shut down\n", Stream);
+		log_warn("[strm][%p] Peer shut down\n", stream);
 		break;
 	case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
@@ -336,7 +335,7 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 		log_warn("[strm][%p] QUIC_STREAM_EVENT shutdown: All done");
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
 			log_warn("close the QUIC stream!");
-			MsQuic->StreamClose(Stream);
+			MsQuic->StreamClose(stream);
 			qstrm->closed = true;
 		}
 		break;
@@ -360,28 +359,32 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 {
 	const nni_proto_pipe_ops *pipe_ops = g_quic_proto->proto_pipe_ops;
 
-	quic_strm_t              *qstrm    = GStream;
-	nni_aio                  *aio;
+	quic_sock_t *qsock = Context;
+	HQUIC       *qconn = qsock->qconn;
+	nni_aio     *aio;
+	void        *mqtt_sock;
 
 	log_debug("quic_connection_cb triggered! %d", Event->Type);
 	switch (Event->Type) {
 	case QUIC_CONNECTION_EVENT_CONNECTED:
 		// The handshake has completed for the connection.
 		// do not init any var here due to potential frequent reconnect
-		log_info("[conn][%p] is Connected", Connection);
+		log_info("[conn][%p] is Connected", qconn);
 
 		// Start/ReStart the nng pipe
-		if (qsock == NULL) {
+		if (qsock->pipe == NULL) {
 			// not first time to establish QUIC pipe
-			if ((qstrm->pipe = nng_alloc(pipe_ops->pipe_size)) ==
-			    NULL) {
+			if ((qsock->pipe = nng_alloc(pipe_ops->pipe_size)) == NULL) {
 				log_error("Failed in allocating pipe.");
+				break;
 			}
+			mqtt_sock = nni_sock_proto_data(qsock->sock);
 			pipe_ops->pipe_init(
-			    qstrm->pipe, (nni_pipe *) qstrm, Context);
+			    qsock->pipe, (nni_pipe *) qsock, mqtt_sock);
 		}
 		pipe_ops->pipe_start(qstrm->pipe);
 		break;
+
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_TRANSPORT:
 		// The connection has been shut down by the transport.
 		// Generally, this is the expected way for the connection to
@@ -390,50 +393,43 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		if (Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status ==
 		    QUIC_STATUS_CONNECTION_IDLE) {
 			log_error("[conn][%p] Successfully shut down on idle.\n",
-			    Connection);
+			    qconn);
 		} else {
 			log_error("[conn][%p] Shut down by transport, 0x%x\n",
-			    Connection,
-			    Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status);
+			    qconn, Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status);
 		}
 		break;
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER:
 		// The connection was explicitly shut down by the peer.
-		log_error("[conn][%p] QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER, 0x%llu\n", Connection,
+		log_error("[conn][%p] QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER, 0x%llu\n", qconn,
 		    (unsigned long long) Event->SHUTDOWN_INITIATED_BY_PEER.ErrorCode);
 
 		break;
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE:
 		// The connection has completed the shutdown process and is
 		// ready to be safely cleaned up.
-		log_info("[conn][%p] QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE: All done\n\n", Connection);
-		nni_mtx_lock(&qstrm->mtx);
+		log_info("[conn][%p] QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE: All done\n\n", qconn);
+		nni_mtx_lock(&qsock->mtx);
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
-			MsQuic->ConnectionClose(Connection);
+			MsQuic->ConnectionClose(qconn);
 		}
 
-		while ((aio = nni_list_first(&qstrm->recvq)) != NULL) {
-			nni_list_remove(&qstrm->recvq, aio);
-			// nni_aio_abort(aio, NNG_ECLOSED);
-			nni_aio_finish_sync(aio, NNG_ECLOSED, 0);
-		}
-		qstrm->closed = true;
 		// Close and finite nng pipe ONCE disconnect
-		if (qstrm->pipe) {
+		if (qsock->pipe) {
 			log_warn("Quic reconnect failed so disconnected!");
-			pipe_ops->pipe_stop(qstrm->pipe);
-			pipe_ops->pipe_close(qstrm->pipe);
-			pipe_ops->pipe_fini(qstrm->pipe);
-			nng_free(qstrm->pipe, 0);
-			qstrm->pipe = NULL;
+			pipe_ops->pipe_stop(qsock->pipe);
+			pipe_ops->pipe_close(qsock->pipe);
+			pipe_ops->pipe_fini(qsock->pipe);
+
+			nng_free(qsock->pipe, 0);
+			qsock->pipe = NULL;
+
 			if (bridge_node->hybrid) {
 				nni_mtx_unlock(&qstrm->mtx);
 				break;
 			}
 		}
 
-		GConnection = NULL;
-		log_warn("Try to do quic stream reconnect!");
 		nni_mtx_unlock(&qstrm->mtx);
 		nni_aio_finish(&qstrm->close_aio, 0, 0);
 		/*
@@ -635,6 +631,7 @@ quic_sock_close_cb(void *arg)
 {
 	quic_strm_t *qstrm = arg;
 
+	log_warn("Try to do quic stream reconnect!");
 	nng_msleep(NNI_QUIC_TIMER * 1000);
 	quic_reconnect(qstrm);
 }
@@ -1054,8 +1051,17 @@ int
 quic_pipe_close(void *qpipe)
 {
 	quic_strm_t *qstrm = qpipe;
+	nni_aio     *aio;
 	if (!qpipe)
 		return -1;
+
+	qstrm->closed = true;
+
+	while ((aio = nni_list_first(&qstrm->recvq)) != NULL) {
+		nni_list_remove(&qstrm->recvq, aio);
+		// nni_aio_abort(aio, NNG_ECLOSED);
+		nni_aio_finish_sync(aio, NNG_ECLOSED, 0);
+	}
 
 	quic_strm_fini(qstrm);
 	nng_free(qstrm, sizeof(quic_strm_t));
