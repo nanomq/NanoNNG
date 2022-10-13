@@ -59,3 +59,24 @@
 			break;                                      \
 		}                                                   \
 	} while (0);
+
+#define hocon_read_str_arr_base(structure, field, key, jso)              \
+	do {                                                                 \
+		cJSON *jso_arr = cJSON_GetObjectItem(jso, key);           \
+		if (NULL == jso_arr) {                                       \
+			log_error("Read config %s failed!", key); \
+			break;                                              	\
+		}                                                            \
+		cJSON *elem = NULL;                                          \
+		cJSON_ArrayForEach(elem, jso_arr)                            \
+		{                                                            \
+			switch (elem->type) {                                \
+			case cJSON_String:                                   \
+				cvector_push_back((structure)->field,             \
+				    nng_strdup(cJSON_GetStringValue(elem))); \
+				break;                                       \
+			default:                                             \
+				break;                                       \
+			}                                                    \
+		}                                                            \
+	} while (0);
