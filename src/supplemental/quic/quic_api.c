@@ -423,7 +423,8 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 			nng_free(qsock->pipe, 0);
 			qsock->pipe = NULL;
 
-			if (bridge_node->hybrid) {
+			// No bridge_node when NOT bridge mode
+			if (bridge_node && bridge_node->hybrid) {
 				nni_mtx_unlock(&qsock->mtx);
 				break;
 			}
