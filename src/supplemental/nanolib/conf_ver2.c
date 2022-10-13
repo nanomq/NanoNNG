@@ -219,5 +219,57 @@ static void conf_sqlite_parse_ver2(conf *config, cJSON *jso)
 	hocon_read_num(sqlite, resend_interval, jso_sqlite);
     
     return;
+}
 
+static void conf_log_parse_ver2(conf *config, cJSON *jso)
+{
+	cJSON *jso_log = cJSON_GetObjectItem(jso, "log");
+	if (NULL == jso_log) {
+		log_error("Read config nanomq sqlite failed!");
+		return;
+	}
+
+	conf_log *log = &(config->log);
+
+	cJSON *jso_log_to     = hocon_get_obj("to", jso_log);
+	cJSON *jso_log_to_ele = NULL;
+	cJSON_ArrayForEach(jso_log_to_ele, jso_log_to)
+	{
+		if (!strcmp("file", cJSON_GetStringValue(jso_log_to_ele))) {
+			log->type |= LOG_TO_FILE;
+		} else if (!strcmp("console",
+		               cJSON_GetStringValue(jso_log_to_ele))) {
+			log->type |= LOG_TO_CONSOLE;
+		} else if (!strcmp("syslog",
+		               cJSON_GetStringValue(jso_log_to_ele))) {
+			log->type |= LOG_TO_SYSLOG;
+		} else {
+			log_error("Unsupport log to");
+		}
+	}
+
+	cJSON *jso_log_level = hocon_get_obj("level", jso_log);
+	log->level = log_level_num(cJSON_GetStringValue(jso_log_level));
+
+	hocon_read_str(log, dir, jso_log);
+	hocon_read_str(log, file, jso_log);
+	cJSON *jso_log_rotation = hocon_get_obj("rotation", jso_log);
+	hocon_read_str_base(log, rotation_sz_str, "size", jso_log_rotation);
+	size_t num           = 0;
+	char   unit[10]      = { 0 };
+	int    res = sscanf(log->rotation_sz_str, "%zu%s", &num, unit);
+	if (res == 2) {
+		if (nni_strcasecmp(unit, "KB") == 0) {
+			log->rotation_sz = num * 1024;
+		} else if (nni_strcasecmp(unit, "MB") == 0) {
+			log->rotation_sz = num * 1024 * 1024;
+		} else if (nni_strcasecmp(unit, "GB") == 0) {
+			log->rotation_sz =
+			    num * 1024 * 1024 * 1024;
+		}
+	}
+
+	hocon_read_num_base(log, rotation_count, "count", jso_log_rotation);
+
+    return;
 }
