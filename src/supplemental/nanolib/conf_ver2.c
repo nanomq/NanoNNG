@@ -88,3 +88,16 @@
 #define hocon_read_num(structure, key, jso) hocon_read_num_base(structure, key, #key, jso)
 #define hocon_read_bool(structure, key, jso) hocon_read_bool_base(structure, key, #key, jso)
 #define hocon_read_str_arr(structure, key, jso) hocon_read_str_arr_base(structure, key, #key, jso)
+
+static char **string_split(char *str, char sp)
+{
+	char **ret = NULL;
+	char *p = str;
+	char *p_b = p;
+	while (NULL != (p = strchr(p, sp))) {
+		*p++ = '\0';
+		cvector_push_back(ret, p_b);
+	}
+	cvector_push_back(ret, p_b);
+	return ret;
+}
