@@ -80,3 +80,11 @@
 			}                                                    \
 		}                                                            \
 	} while (0);
+
+// Add easier interface
+// if struct fields and json key 
+// are the same use this interface
+#define hocon_read_str(structure, key, jso) hocon_read_str_base(structure, key, #key, jso)
+#define hocon_read_num(structure, key, jso) hocon_read_num_base(structure, key, #key, jso)
+#define hocon_read_bool(structure, key, jso) hocon_read_bool_base(structure, key, #key, jso)
+#define hocon_read_str_arr(structure, key, jso) hocon_read_str_arr_base(structure, key, #key, jso)
