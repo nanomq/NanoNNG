@@ -1,38 +1,38 @@
-#include "nng/supplemental/nanolib/conf.h"
 #include "core/nng_impl.h"
 #include "nng/nng.h"
 #include "nng/supplemental/nanolib/cJSON.h"
+#include "nng/supplemental/nanolib/conf.h"
 #include "nng/supplemental/nanolib/cvector.h"
 #include "nng/supplemental/nanolib/file.h"
-#include "nng/supplemental/nanolib/log.h"
 #include "nng/supplemental/nanolib/hocon.h"
+#include "nng/supplemental/nanolib/log.h"
 #include <ctype.h>
 #include <string.h>
 
 // Read json value into struct
 // use same struct fields and json keys
-#define hocon_read_str_base(structure, field, key, jso)          \
-	do {                                                     \
-		cJSON *jso_key = cJSON_GetObjectItem(jso, key);  \
-		if (NULL == jso_key) {                           \
+#define hocon_read_str_base(structure, field, key, jso)           \
+	do {                                                      \
+		cJSON *jso_key = cJSON_GetObjectItem(jso, key);   \
+		if (NULL == jso_key) {                            \
 			log_error("Read config %s failed!", key); \
-			break;                                   \
-		}                                                \
-		switch (jso_key->type) {                         \
-		case cJSON_String:                               \
-			(structure)->field =                     \
-			    nng_strdup(jso_key->valuestring);    \
-			break;                                   \
-		default:                                         \
-			break;                                   \
-		}                                                \
+			break;                                    \
+		}                                                 \
+		switch (jso_key->type) {                          \
+		case cJSON_String:                                \
+			(structure)->field =                      \
+			    nng_strdup(jso_key->valuestring);     \
+			break;                                    \
+		default:                                          \
+			break;                                    \
+		}                                                 \
 	} while (0);
 
 #define hocon_read_bool_base(structure, field, key, jso)            \
 	do {                                                        \
 		cJSON *jso_key = cJSON_GetObjectItem(jso, key);     \
 		if (NULL == jso_key) {                              \
-			log_error("Read config %s failed!", key); \
+			log_error("Read config %s failed!", key);   \
 			break;                                      \
 		}                                                   \
 		switch (jso_key->type) {                            \
@@ -44,35 +44,35 @@
 		}                                                   \
 	} while (0);
 
-#define hocon_read_num_base(structure, field, key, jso)             \
-	do {                                                        \
-		cJSON *jso_key = cJSON_GetObjectItem(jso, key);     \
-		if (NULL == jso_key) {                              \
+#define hocon_read_num_base(structure, field, key, jso)           \
+	do {                                                      \
+		cJSON *jso_key = cJSON_GetObjectItem(jso, key);   \
+		if (NULL == jso_key) {                            \
 			log_error("Read config %s failed!", key); \
-			break;                                      \
-		}                                                   \
-		switch (jso_key->type) {                            \
-		case cJSON_Number:                                  \
-			(structure)->field = jso_key->valueint;     \
-			break;                                      \
-		default:                                            \
-			break;                                      \
-		}                                                   \
+			break;                                    \
+		}                                                 \
+		switch (jso_key->type) {                          \
+		case cJSON_Number:                                \
+			(structure)->field = jso_key->valueint;   \
+			break;                                    \
+		default:                                          \
+			break;                                    \
+		}                                                 \
 	} while (0);
 
-#define hocon_read_str_arr_base(structure, field, key, jso)              \
+#define hocon_read_str_arr_base(structure, field, key, jso)                  \
 	do {                                                                 \
-		cJSON *jso_arr = cJSON_GetObjectItem(jso, key);           \
+		cJSON *jso_arr = cJSON_GetObjectItem(jso, key);              \
 		if (NULL == jso_arr) {                                       \
-			log_error("Read config %s failed!", key); \
-			break;                                              	\
+			log_error("Read config %s failed!", key);            \
+			break;                                               \
 		}                                                            \
 		cJSON *elem = NULL;                                          \
 		cJSON_ArrayForEach(elem, jso_arr)                            \
 		{                                                            \
 			switch (elem->type) {                                \
 			case cJSON_String:                                   \
-				cvector_push_back((structure)->field,             \
+				cvector_push_back((structure)->field,        \
 				    nng_strdup(cJSON_GetStringValue(elem))); \
 				break;                                       \
 			default:                                             \
@@ -82,39 +82,50 @@
 	} while (0);
 
 // Add easier interface
-// if struct fields and json key 
+// if struct fields and json key
 // are the same use this interface
-#define hocon_read_str(structure, key, jso) hocon_read_str_base(structure, key, #key, jso)
-#define hocon_read_num(structure, key, jso) hocon_read_num_base(structure, key, #key, jso)
-#define hocon_read_bool(structure, key, jso) hocon_read_bool_base(structure, key, #key, jso)
-#define hocon_read_str_arr(structure, key, jso) hocon_read_str_arr_base(structure, key, #key, jso)
+#define hocon_read_str(structure, key, jso) \
+	hocon_read_str_base(structure, key, #key, jso)
+#define hocon_read_num(structure, key, jso) \
+	hocon_read_num_base(structure, key, #key, jso)
+#define hocon_read_bool(structure, key, jso) \
+	hocon_read_bool_base(structure, key, #key, jso)
+#define hocon_read_str_arr(structure, key, jso) \
+	hocon_read_str_arr_base(structure, key, #key, jso)
 
-static char **string_split(char *str, char sp)
+static char **
+string_split(char *str, char sp)
 {
 	char **ret = NULL;
-	char *p = str;
-	char *p_b = p;
+	char  *p   = str;
+	char  *p_b = p;
 	while (NULL != (p = strchr(p, sp))) {
-		*p++ = '\0';
-		cvector_push_back(ret, p_b);
+		// abc.def.jkl
+		cvector_push_back(ret, nng_strndup(p_b, p - p_b));
+		p_b = ++p;
 	}
-	cvector_push_back(ret, p_b);
+	cvector_push_back(ret, nng_strdup(p_b));
 	return ret;
 }
 
-cJSON *hocon_get_obj(char *key, cJSON *jso)
+cJSON *
+hocon_get_obj(char *key, cJSON *jso)
 {
-	cJSON *ret = jso;
+	cJSON *ret     = jso;
 	char **str_vec = string_split(key, '.');
-	
-	for (size_t i = 0; cvector_size(str_vec); i++) {
+
+	for (size_t i = 0; i < cvector_size(str_vec); i++) {
 		ret = cJSON_GetObjectItem(ret, str_vec[i]);
+		nng_strfree(str_vec[i]);
 	}
+
+	cvector_free(str_vec);
 
 	return ret;
 }
 
-static void conf_basic_parse_ver2(conf *config, cJSON *jso)
+static void
+conf_basic_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *jso_nanomq = cJSON_GetObjectItem(jso, "nanomq");
 	if (NULL == jso_nanomq) {
@@ -179,10 +190,11 @@ static void conf_basic_parse_ver2(conf *config, cJSON *jso)
 	hocon_read_str_base(jwt, public_keyfile, "keyfile", jso_pub_key_file);
 	hocon_read_str_base(jwt, private_keyfile, "keyfile", jso_pri_key_file);
 
-    return;
+	return;
 }
 
-static void conf_tls_parse_ver2(conf *config, cJSON *jso)
+static void
+conf_tls_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *jso_tls = cJSON_GetObjectItem(jso, "tls");
 	if (NULL == jso_tls) {
@@ -200,10 +212,11 @@ static void conf_tls_parse_ver2(conf *config, cJSON *jso)
 	hocon_read_bool(tls, verify_peer, jso_tls);
 	hocon_read_bool_base(tls, set_fail, "fail_if_no_peer_cert", jso_tls);
 
-    return;
+	return;
 }
 
-static void conf_sqlite_parse_ver2(conf *config, cJSON *jso)
+static void
+conf_sqlite_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *jso_sqlite = cJSON_GetObjectItem(jso, "sqlite");
 	if (NULL == jso_sqlite) {
@@ -217,11 +230,12 @@ static void conf_sqlite_parse_ver2(conf *config, cJSON *jso)
 	hocon_read_str(sqlite, mounted_file_path, jso_sqlite);
 	hocon_read_num(sqlite, flush_mem_threshold, jso_sqlite);
 	hocon_read_num(sqlite, resend_interval, jso_sqlite);
-    
-    return;
+
+	return;
 }
 
-static void conf_log_parse_ver2(conf *config, cJSON *jso)
+static void
+conf_log_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *jso_log = cJSON_GetObjectItem(jso, "log");
 	if (NULL == jso_log) {
@@ -255,27 +269,26 @@ static void conf_log_parse_ver2(conf *config, cJSON *jso)
 	hocon_read_str(log, file, jso_log);
 	cJSON *jso_log_rotation = hocon_get_obj("rotation", jso_log);
 	hocon_read_str_base(log, rotation_sz_str, "size", jso_log_rotation);
-	size_t num           = 0;
-	char   unit[10]      = { 0 };
-	int    res = sscanf(log->rotation_sz_str, "%zu%s", &num, unit);
+	size_t num      = 0;
+	char   unit[10] = { 0 };
+	int    res      = sscanf(log->rotation_sz_str, "%zu%s", &num, unit);
 	if (res == 2) {
 		if (nni_strcasecmp(unit, "KB") == 0) {
 			log->rotation_sz = num * 1024;
 		} else if (nni_strcasecmp(unit, "MB") == 0) {
 			log->rotation_sz = num * 1024 * 1024;
 		} else if (nni_strcasecmp(unit, "GB") == 0) {
-			log->rotation_sz =
-			    num * 1024 * 1024 * 1024;
+			log->rotation_sz = num * 1024 * 1024 * 1024;
 		}
 	}
 
 	hocon_read_num_base(log, rotation_count, "count", jso_log_rotation);
 
-    return;
+	return;
 }
 
-
-static void conf_webhook_parse_ver2(conf *config, cJSON *jso)
+static void
+conf_webhook_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *jso_webhook = cJSON_GetObjectItem(jso, "webhook");
 	if (NULL == jso_webhook) {
@@ -309,10 +322,11 @@ static void conf_webhook_parse_ver2(conf *config, cJSON *jso)
 		webhook->encode_payload = plain;
 	}
 
-    return;
+	return;
 }
 
-static void conf_auth_parse_ver2(conf *config, cJSON *jso)
+static void
+conf_auth_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *jso_auth = cJSON_GetObjectItem(jso, "auth");
 	if (NULL == jso_auth) {
@@ -334,17 +348,17 @@ static void conf_auth_parse_ver2(conf *config, cJSON *jso)
 	}
 	auth->count = cvector_size(auth->usernames);
 
-    return;
+	return;
 }
 
-static void conf_auth_http_parse_ver2(conf *config, cJSON *jso)
+static void
+conf_auth_http_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *jso_auth_http = cJSON_GetObjectItem(jso, "auth_http");
 	if (NULL == jso_auth_http) {
 		log_error("Read config nanomq sqlite failed!");
 		return;
 	}
-
 
 	conf_auth_http *auth_http = &(config->auth_http);
 
@@ -362,7 +376,8 @@ static void conf_auth_http_parse_ver2(conf *config, cJSON *jso)
 	cJSON_ArrayForEach(jso_auth_http_req_header, jso_auth_http_req_headers)
 	{
 		conf_http_header auth_http_req_header = { 0 };
-		auth_http_req_header.key = nng_strdup(jso_auth_http_req_header->string);
+		auth_http_req_header.key =
+		    nng_strdup(jso_auth_http_req_header->string);
 		auth_http_req_header.value =
 		    nng_strdup(jso_auth_http_req_header->valuestring);
 		cvector_push_back(
@@ -370,10 +385,11 @@ static void conf_auth_http_parse_ver2(conf *config, cJSON *jso)
 	}
 	auth_http_req->header_count = cvector_size(auth_http_req->headers);
 
-    return;
+	return;
 }
 
-static void conf_bridge_parse_ver2(conf *config, cJSON *jso)
+static void
+conf_bridge_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *bridge_mqtt_nodes = hocon_get_obj("bridge.mqtt.nodes", jso);
 	cJSON *bridge_mqtt_node  = NULL;
@@ -434,10 +450,11 @@ static void conf_bridge_parse_ver2(conf *config, cJSON *jso)
 	hocon_read_num(bridge_sqlite, resend_interval, bridge_mqtt_sqlite);
 	hocon_read_str(bridge_sqlite, mounted_file_path, bridge_mqtt_sqlite);
 
-    return;
+	return;
 }
 
-static void conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
+static void
+conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *bridge_aws_nodes = hocon_get_obj("bridge.aws.nodes", jso);
 	cJSON *bridge_aws_node  = NULL;
@@ -490,12 +507,12 @@ static void conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 		cvector_push_back(config->aws_bridge.nodes, &node);
 	}
 
-    return;
-
+	return;
 }
 
 #if defined(SUPP_RULE_ENGINE)
-static void conf_rule_parse_ver2(conf *config, cJSON *jso)
+static void
+conf_rule_parse_ver2(conf *config, cJSON *jso)
 {
 
 	rule  *rules      = &(config.rule_eng.rules);
@@ -555,7 +572,7 @@ static void conf_rule_parse_ver2(conf *config, cJSON *jso)
 		// cvector_push_back(rules, r);
 	}
 
-    return;
+	return;
 }
 #endif
 
@@ -563,11 +580,12 @@ char *
 json_buffer_from_fp(FILE *fp)
 {
 
-	char   *buffer    = NULL;
-	char    buf[8192] = { 0 };
-	ssize_t ret;
+	char  *buffer    = NULL;
+	char   buf[8192] = { 0 };
+	size_t num;
 
-	while ((ret = fread(buf, sizeof(buf), 1, fp)) > 0) {
+	while (!feof(fp)) {
+		num = fread(buf, sizeof(buf), 1, fp);
 		for (size_t i = 0; i < sizeof(buf); i++) {
 			cvector_push_back(buffer, buf[i]);
 		}
@@ -580,7 +598,7 @@ json_buffer_from_fp(FILE *fp)
 void
 conf_parse_ver2(conf *config)
 {
-    const char *conf_path = config->conf_file;
+	const char *conf_path = config->conf_file;
 	if (conf_path == NULL || !nano_file_exists(conf_path)) {
 		if (!nano_file_exists(CONF_PATH_NAME)) {
 			log_debug("Configure file [%s] or [%s] not found or "
@@ -592,30 +610,31 @@ conf_parse_ver2(conf *config)
 		}
 	}
 
-	FILE * fp;
+	FILE *fp;
 	if ((fp = fopen(conf_path, "r")) == NULL) {
 		log_error("File %s open failed", conf_path);
 		return;
 	}
 
 	char *str = json_buffer_from_fp(fp);
+	puts(str);
 	if (str != NULL) {
 
-		cJSON *jso    = hocon_str_to_json(str);
-		char *ret = cJSON_PrintUnformatted(jso);
+		cJSON *jso = hocon_str_to_json(str);
+		char  *ret = cJSON_PrintUnformatted(jso);
 
-	    conf_basic_parse_ver2(config, jso);
-	    conf_sqlite_parse_ver2(config, jso);
-	    conf_tls_parse_ver2(config, jso);
-	    conf_log_parse_ver2(config, jso);
-	    conf_webhook_parse_ver2(config, jso);
-	    conf_auth_parse_ver2(config, jso);
-	    conf_auth_http_parse_ver2(config, jso);
-	    conf_bridge_parse_ver2(config, jso);
-	    conf_aws_bridge_parse_ver2(config, jso);
+		conf_basic_parse_ver2(config, jso);
+		conf_sqlite_parse_ver2(config, jso);
+		conf_tls_parse_ver2(config, jso);
+		conf_log_parse_ver2(config, jso);
+		conf_webhook_parse_ver2(config, jso);
+		conf_auth_parse_ver2(config, jso);
+		conf_auth_http_parse_ver2(config, jso);
+		conf_bridge_parse_ver2(config, jso);
+		conf_aws_bridge_parse_ver2(config, jso);
 
 #if defined(SUPP_RULE_ENGINE)
-	    conf_rule_parse_ver2(config, jso);
+		conf_rule_parse_ver2(config, jso);
 #endif
 
 		cJSON_free(ret);
@@ -623,10 +642,9 @@ conf_parse_ver2(conf *config)
 		cvector_free(str);
 
 	} else {
-		log_err( "Unable to parse contents of json");
+		log_error("Unable to parse contents of json");
 	}
 	fclose(fp);
-
 
 	return;
 }
