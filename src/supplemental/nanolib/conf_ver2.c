@@ -491,3 +491,66 @@ static void conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 	}
 
 }
+
+#if defined(SUPP_RULE_ENGINE)
+static void conf_rule_parse_ver2(conf *config, cJSON *jso)
+{
+
+	rule  *rules      = &(config.rule_eng.rules);
+	cJSON *rule_sqlte = hocon_get_obj("rules.sqlite", jso);
+
+	hocon_read_str(rule, path, rule_sqlite);
+	hocon_read_bool(rule, enabled, rule_sqlite);
+	cJSON *jso_rules = hocon_get_obj("rules", rule_sqlite);
+	cJSON *jso_rule  = NULL;
+
+	cJSON_ArrayForEach(jso_rule, jso_rules)
+	{
+		rule r = { 0 };
+		hocon_read_bool(r, enabled, jso_rule);
+		hocon_read_str(r, sql, jso_rule);
+		hocon_read_str(r, table, jso_rule);
+		// cvector_push_back(rules, r);
+	}
+
+	cJSON *rule_repub = hocon_get_obj("rules.repub", jso);
+
+	hocon_read_bool(rule, enabled, rule_repub);
+	jso_rules = hocon_get_obj("rules", rule_repub);
+	jso_rule  = NULL;
+
+	cJSON_ArrayForEach(jso_rule, jso_rules)
+	{
+		rule r = { 0 };
+		hocon_read_bool(&r, enabled, jso_rule);
+		hocon_read_str(&r, sql, jso_rule);
+		hocon_read_str(&r, address, jso_rule);
+		hocon_read_str(&r, topic, jso_rule);
+		hocon_read_num(&r, proto_ver, jso_rule);
+		hocon_read_str(&r, clientid, jso_rule);
+		hocon_read_num(&r, keepalive, jso_rule);
+		hocon_read_bool(&r, clean_start, jso_rule);
+		hocon_read_str(&r, username, jso_rule);
+		hocon_read_str(&r, password, jso_rule);
+		// cvector_push_back(rules, r);
+	}
+
+	cJSON *rule_mysql = hocon_get_obj("rules.mysql", jso);
+	hocon_read_bool(rule, enabled, rule_mysql);
+	hocon_read_str(rule, name, rule_mysql);
+	jso_rules = hocon_get_obj("rules", rule_mysql);
+	jso_rule  = NULL;
+
+	cJSON_ArrayForEach(jso_rule, jso_rules)
+	{
+		rule r = { 0 };
+		hocon_read_bool(&r, enabled, jso_rule);
+		hocon_read_str(&r, sql, jso_rule);
+		hocon_read_str(&r, host, jso_rule);
+		hocon_read_str(&r, table, jso_rule);
+		hocon_read_str(&r, username, jso_rule);
+		hocon_read_str(&r, password, jso_rule);
+		// cvector_push_back(rules, r);
+	}
+}
+#endif
