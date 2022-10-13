@@ -309,4 +309,30 @@ static void conf_webhook_parse_ver2(conf *config, cJSON *jso)
 		webhook->encode_payload = plain;
 	}
 
+    return;
+}
+
+static void conf_auth_parse_ver2(conf *config, cJSON *jso)
+{
+	cJSON *jso_auth = cJSON_GetObjectItem(jso, "auth");
+	if (NULL == jso_auth) {
+		log_error("Read config nanomq sqlite failed!");
+		return;
+	}
+
+	conf_auth *auth         = &(config->auths);
+	cJSON     *jso_auth_ele = NULL;
+
+	cJSON_ArrayForEach(jso_auth_ele, jso_auth)
+	{
+		char *auth_username = cJSON_GetStringValue(
+		    cJSON_GetObjectItem(jso_auth_ele, "login"));
+		cvector_push_back(auth->usernames, nng_strdup(auth_username));
+		char *auth_password = cJSON_GetStringValue(
+		    cJSON_GetObjectItem(jso_auth_ele, "password"));
+		cvector_push_back(auth->passwords, nng_strdup(auth_password));
+	}
+	auth->count = cvector_size(auth->usernames);
+
+    return;
 }
