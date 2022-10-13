@@ -549,6 +549,7 @@ quic_connect_ipv4(const char *url, nni_sock *sock)
 		log_error("Failed in ConnectionStart, 0x%x!", rv);
 		goto error;
 	}
+	qsock->qconn = conn;
 
 	// Start/ReStart the nng pipe
 	const nni_proto_pipe_ops *pipe_ops = g_quic_proto->proto_pipe_ops;
