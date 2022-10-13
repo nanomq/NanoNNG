@@ -98,7 +98,9 @@ struct mqtt_sock_s {
 // A mqtt_pipe_s is our per-pipe protocol private structure.
 struct mqtt_pipe_s {
 	void           *qconnection;
-	void           *qstream; // nni_pipe
+	void           *qsock; // quic socket
+	void           *qpipe; // main quic pipe, others needs a map to store the relationship between
+						   // MQTT topics and quic pipes
 	nni_atomic_bool closed;
 	bool            busy;
 	bool            ready;			// mark if QUIC stream is ready
@@ -213,7 +215,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		nni_mqtt_msg_encode(msg);
 		nni_aio_set_msg(&p->send_aio, msg);
 		p->busy = true;
-		quic_strm_send(p->qstream, &p->send_aio);
+		quic_pipe_send(p->qpipe, &p->send_aio);
 	} else {
 		if (nni_lmq_full(&s->send_messages)) {
 			(void) nni_lmq_get(&s->send_messages, &tmsg);
@@ -283,7 +285,7 @@ mqtt_quic_send_cb(void *arg)
 		p->busy = true;
 		nni_mqtt_msg_encode(msg);
 		nni_aio_set_msg(&p->send_aio, msg);
-		quic_strm_send(p->qstream, &p->send_aio);
+		quic_pipe_send(p->qpipe, &p->send_aio);
 		nni_mtx_unlock(&s->mtx);
 		if (s->cb.msg_send_cb)
 			s->cb.msg_send_cb(NULL, s->cb.sendarg);
@@ -299,7 +301,7 @@ mqtt_quic_send_cb(void *arg)
 		if (NULL != (msg = sqlite_get_cache_msg(sqlite))) {
 			p->busy = true;
 			nni_aio_set_msg(&p->send_aio, msg);
-			quic_strm_send(p->qstream, &p->send_aio);
+			quic_pipe_send(p->qpipe, &p->send_aio);
 			nni_mtx_unlock(&s->mtx);
 			return;
 		}
@@ -335,7 +337,7 @@ mqtt_quic_recv_cb(void *arg)
 	nni_aio_set_msg(&p->recv_aio, NULL);
 	if (msg == NULL) {
 		nni_mtx_unlock(&s->mtx);
-		quic_strm_recv(p->qstream, &p->recv_aio);
+		quic_pipe_recv(p->qpipe, &p->recv_aio);
 		return;
 	}
 	if (nni_atomic_get_bool(&s->closed) ||
@@ -358,7 +360,7 @@ mqtt_quic_recv_cb(void *arg)
 	nni_msg      *ack;
 
 	// schedule another receive
-	quic_strm_recv(p->qstream, &p->recv_aio);
+	quic_pipe_recv(p->qpipe, &p->recv_aio);
 
 	// set conn_param for upper layer
 	if (p->cparam)
@@ -560,14 +562,14 @@ mqtt_timer_cb(void *arg)
 		if (s->pingcnt > 1) {
 			log_warn("Close the quic connection due to timeout");
 			s->pingcnt = 0; // restore pingcnt
-			quic_disconnect();
+			quic_disconnect(p->qsock);
 			nni_mtx_unlock(&s->mtx);
 			return;
 		} else {
 			nng_aio_wait(&p->rep_aio);
 			nni_aio_set_msg(&p->rep_aio, s->ping_msg);
 			nni_msg_clone(s->ping_msg);
-			quic_strm_send(p->qstream, &p->rep_aio);
+			quic_pipe_send(p->qpipe, &p->rep_aio);
 			s->counter = 0;
 			s->pingcnt ++;
 			log_debug("send PINGREQ %d %d", s->counter, s->pingcnt);
@@ -594,7 +596,7 @@ mqtt_timer_cb(void *arg)
 				nni_aio_set_msg(aio, NULL);
 			}
 			nni_aio_set_msg(&p->send_aio, msg);
-			quic_strm_send(p->qstream, &p->send_aio);
+			quic_pipe_send(p->qpipe, &p->send_aio);
 
 			nni_mtx_unlock(&s->mtx);
 			nni_sleep_aio(s->retry  * NNI_SECOND, &s->time_aio);
@@ -750,13 +752,18 @@ mqtt_quic_sock_set_sqlite_option(
  ******************************************************************************/
 
 static int
-quic_mqtt_stream_init(void *arg, nni_pipe *qstrm, void *sock)
+quic_mqtt_stream_init(void *arg, nni_pipe *qsock, void *sock)
 {
 	mqtt_pipe_t *p     = arg;
-	p->qstream         = qstrm;
+	p->qsock           = qsock;
 	p->mqtt_sock       = sock;
 	p->mqtt_sock->pipe = p;
 	p->cparam          = NULL;
+
+	if (0 != quic_pipe_open(qsock, &p->qpipe)) {
+		log_warn("Failed in open the main quic pipe.");
+		return -1;
+	}
 
 	nni_atomic_init_bool(&p->closed);
 	nni_atomic_set_bool(&p->closed, false);
@@ -869,13 +876,13 @@ quic_mqtt_stream_start(void *arg)
 		if ((rv = mqtt_send_msg(aio, msg, s)) >= 0) {
 			nni_mtx_unlock(&s->mtx);
 			nni_aio_finish(aio, rv, 0);
-			quic_strm_recv(p->qstream, &p->recv_aio);
+			quic_pipe_recv(p->qpipe, &p->recv_aio);
 			return 0;
 		}
 	}
 
 	nni_mtx_unlock(&s->mtx);
-	quic_strm_recv(p->qstream, &p->recv_aio);
+	quic_pipe_recv(p->qpipe, &p->recv_aio);
 	return 0;
 }
 
@@ -1138,7 +1145,7 @@ static nni_proto mqtt_msquic_proto = {
 int
 nng_mqtt_quic_client_open(nng_socket *sock, const char *url)
 {
-	nni_sock *nsock;
+	nni_sock *nsock = NULL;
 	int       rv = 0;
 	// Quic settings
 	if ((rv = nni_proto_open(sock, &mqtt_msquic_proto)) == 0) {
@@ -1158,7 +1165,7 @@ nng_mqtt_quic_client_open(nng_socket *sock, const char *url)
 int
 nng_mqtt_quic_open_keepalive(nng_socket *sock, const char *url, void *node)
 {
-	nni_sock *nsock;
+	nni_sock *nsock = NULL;
 	conf_bridge_node *conf_node = node;
 	int       rv = 0;
 	// Quic settings
