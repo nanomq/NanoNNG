@@ -372,3 +372,67 @@ static void conf_auth_http_parse_ver2(conf *config, cJSON *jso)
 
     return;
 }
+
+static void conf_bridge_parse_ver2(conf *config, cJSON *jso)
+{
+	cJSON *bridge_mqtt_nodes = hocon_get_obj("bridge.mqtt.nodes", jso);
+	cJSON *bridge_mqtt_node  = NULL;
+
+	config->bridge.count = cJSON_GetArraySize(bridge_mqtt_nodes);
+	// allocate memory
+	config->bridge.nodes = NULL;
+	cJSON_ArrayForEach(bridge_mqtt_node, bridge_mqtt_nodes)
+	{
+		conf_bridge_node node = { 0 };
+		hocon_read_str((&node), name, bridge_mqtt_node);
+		hocon_read_str((&node), address, bridge_mqtt_node);
+		hocon_read_num((&node), proto_ver, bridge_mqtt_node);
+		hocon_read_bool((&node), enable, bridge_mqtt_node);
+		hocon_read_str((&node), clientid, bridge_mqtt_node);
+		hocon_read_num((&node), keepalive, bridge_mqtt_node);
+		hocon_read_bool((&node), clean_start, bridge_mqtt_node);
+		hocon_read_str((&node), username, bridge_mqtt_node);
+		hocon_read_str((&node), password, bridge_mqtt_node);
+		hocon_read_str_arr((&node), forwards, bridge_mqtt_node);
+
+		subscribe *slist = node.sub_list;
+		cJSON     *subscriptions =
+		    hocon_get_obj("subscription", bridge_mqtt_node);
+		cJSON *subscription = NULL;
+		cJSON_ArrayForEach(subscription, subscriptions)
+		{
+			subscribe s = { 0 };
+			hocon_read_str((&s), topic, subscription);
+			hocon_read_num((&s), qos, subscription);
+			s.topic_len = strlen(s.topic);
+			cvector_push_back(slist, s);
+		}
+
+		hocon_read_num((&node), parallel, bridge_mqtt_node);
+		cJSON *bridge_mqtt_node_tls =
+		    hocon_get_obj("tls", bridge_mqtt_node);
+		conf_tls *bridge_node_tls = &(node.tls);
+		hocon_read_bool(bridge_node_tls, enable, bridge_mqtt_node_tls);
+		hocon_read_str(
+		    bridge_node_tls, key_password, bridge_mqtt_node_tls);
+		hocon_read_str(bridge_node_tls, keyfile, bridge_mqtt_node_tls);
+		hocon_read_str(bridge_node_tls, keyfile, bridge_mqtt_node_tls);
+		hocon_read_str(
+		    bridge_node_tls, certfile, bridge_mqtt_node_tls);
+		hocon_read_str_base(bridge_node_tls, cafile, "cacertfile",
+		    bridge_mqtt_node_tls);
+
+		// TODO FIX
+		cvector_push_back(config->bridge.nodes, &node);
+	}
+
+	cJSON *bridge_mqtt_sqlite  = hocon_get_obj("bridge.mqtt.sqlite", jso);
+	conf_sqlite *bridge_sqlite = &(config->bridge.sqlite);
+	hocon_read_bool(bridge_sqlite, enable, bridge_mqtt_sqlite);
+	hocon_read_num(bridge_sqlite, disk_cache_size, bridge_mqtt_sqlite);
+	hocon_read_num(bridge_sqlite, flush_mem_threshold, bridge_mqtt_sqlite);
+	hocon_read_num(bridge_sqlite, resend_interval, bridge_mqtt_sqlite);
+	hocon_read_str(bridge_sqlite, mounted_file_path, bridge_mqtt_sqlite);
+
+    return;
+}
