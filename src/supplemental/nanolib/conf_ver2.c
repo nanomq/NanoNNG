@@ -202,3 +202,22 @@ static void conf_tls_parse_ver2(conf *config, cJSON *jso)
 
     return;
 }
+
+static void conf_sqlite_parse_ver2(conf *config, cJSON *jso)
+{
+	cJSON *jso_sqlite = cJSON_GetObjectItem(jso, "sqlite");
+	if (NULL == jso_sqlite) {
+		log_error("Read config sqlite failed!");
+		return;
+	}
+
+	conf_sqlite *sqlite = &(config->sqlite);
+	hocon_read_bool(sqlite, enable, jso_sqlite);
+	hocon_read_num(sqlite, disk_cache_size, jso_sqlite);
+	hocon_read_str(sqlite, mounted_file_path, jso_sqlite);
+	hocon_read_num(sqlite, flush_mem_threshold, jso_sqlite);
+	hocon_read_num(sqlite, resend_interval, jso_sqlite);
+    
+    return;
+
+}
