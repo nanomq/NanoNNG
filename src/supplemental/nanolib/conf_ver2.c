@@ -43,3 +43,19 @@
 			break;                                      \
 		}                                                   \
 	} while (0);
+
+#define hocon_read_num_base(structure, field, key, jso)             \
+	do {                                                        \
+		cJSON *jso_key = cJSON_GetObjectItem(jso, key);     \
+		if (NULL == jso_key) {                              \
+			log_error("Read config %s failed!", key); \
+			break;                                      \
+		}                                                   \
+		switch (jso_key->type) {                            \
+		case cJSON_Number:                                  \
+			(structure)->field = jso_key->valueint;     \
+			break;                                      \
+		default:                                            \
+			break;                                      \
+		}                                                   \
+	} while (0);
