@@ -336,3 +336,39 @@ static void conf_auth_parse_ver2(conf *config, cJSON *jso)
 
     return;
 }
+
+static void conf_auth_http_parse_ver2(conf *config, cJSON *jso)
+{
+	cJSON *jso_auth_http = cJSON_GetObjectItem(jso, "auth_http");
+	if (NULL == jso_auth_http) {
+		log_error("Read config nanomq sqlite failed!");
+		return;
+	}
+
+
+	conf_auth_http *auth_http = &(config->auth_http);
+
+	hocon_read_bool(auth_http, enable, jso_auth_http);
+	hocon_read_num(auth_http, timeout, jso_auth_http);
+	hocon_read_num(auth_http, connect_timeout, jso_auth_http);
+	hocon_read_num(auth_http, pool_size, jso_auth_http);
+	conf_auth_http_req *auth_http_req = &(auth_http->auth_req);
+	cJSON *jso_auth_http_req = hocon_get_obj("auth_req", jso_auth_http);
+	hocon_read_str(auth_http_req, url, jso_auth_http_req);
+	hocon_read_str(auth_http_req, method, jso_auth_http_req);
+	cJSON *jso_auth_http_req_headers =
+	    hocon_get_obj("headers", jso_auth_http);
+	cJSON *jso_auth_http_req_header = NULL;
+	cJSON_ArrayForEach(jso_auth_http_req_header, jso_auth_http_req_headers)
+	{
+		conf_http_header auth_http_req_header = { 0 };
+		auth_http_req_header.key = nng_strdup(jso_auth_http_req_header->string);
+		auth_http_req_header.value =
+		    nng_strdup(jso_auth_http_req_header->valuestring);
+		cvector_push_back(
+		    auth_http_req->headers, &auth_http_req_header);
+	}
+	auth_http_req->header_count = cvector_size(auth_http_req->headers);
+
+    return;
+}
