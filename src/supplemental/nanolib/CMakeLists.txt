@@ -13,6 +13,7 @@ nng_sources(
   cmd.c
   rule.c
   conf.c
+  conf_ver2.c
   env.c
   file.c
   hash_table.c
