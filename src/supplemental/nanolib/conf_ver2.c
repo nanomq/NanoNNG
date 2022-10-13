@@ -490,6 +490,8 @@ static void conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 		cvector_push_back(config->aws_bridge.nodes, &node);
 	}
 
+    return;
+
 }
 
 #if defined(SUPP_RULE_ENGINE)
@@ -552,5 +554,79 @@ static void conf_rule_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_str(&r, password, jso_rule);
 		// cvector_push_back(rules, r);
 	}
+
+    return;
 }
 #endif
+
+char *
+json_buffer_from_fp(FILE *fp)
+{
+
+	char   *buffer    = NULL;
+	char    buf[8192] = { 0 };
+	ssize_t ret;
+
+	while ((ret = fread(buf, sizeof(buf), 1, fp)) > 0) {
+		for (size_t i = 0; i < sizeof(buf); i++) {
+			cvector_push_back(buffer, buf[i]);
+		}
+		memset(buf, 0, 8192);
+	}
+
+	return buffer;
+}
+
+void
+conf_parse_ver2(conf *config)
+{
+    const char *conf_path = config->conf_file;
+	if (conf_path == NULL || !nano_file_exists(conf_path)) {
+		if (!nano_file_exists(CONF_PATH_NAME)) {
+			log_debug("Configure file [%s] or [%s] not found or "
+			          "unreadable",
+			    conf_path, CONF_PATH_NAME);
+			return;
+		} else {
+			conf_path = CONF_PATH_NAME;
+		}
+	}
+
+	FILE * fp;
+	if ((fp = fopen(conf_path, "r")) == NULL) {
+		log_error("File %s open failed", conf_path);
+		return;
+	}
+
+	char *str = json_buffer_from_fp(fp);
+	if (str != NULL) {
+
+		cJSON *jso    = hocon_str_to_json(str);
+		char *ret = cJSON_PrintUnformatted(jso);
+
+	    conf_basic_parse_ver2(config, jso);
+	    conf_sqlite_parse_ver2(config, jso);
+	    conf_tls_parse_ver2(config, jso);
+	    conf_log_parse_ver2(config, jso);
+	    conf_webhook_parse_ver2(config, jso);
+	    conf_auth_parse_ver2(config, jso);
+	    conf_auth_http_parse_ver2(config, jso);
+	    conf_bridge_parse_ver2(config, jso);
+	    conf_aws_bridge_parse_ver2(config, jso);
+
+#if defined(SUPP_RULE_ENGINE)
+	    conf_rule_parse_ver2(config, jso);
+#endif
+
+		cJSON_free(ret);
+		cJSON_Delete(jso);
+		cvector_free(str);
+
+	} else {
+		log_err( "Unable to parse contents of json");
+	}
+	fclose(fp);
+
+
+	return;
+}
