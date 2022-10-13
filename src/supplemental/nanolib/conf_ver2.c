@@ -113,3 +113,71 @@ cJSON *hocon_get_obj(char *key, cJSON *jso)
 
 	return ret;
 }
+
+static void conf_basic_parse_ver2(conf *config, cJSON *jso)
+{
+	cJSON *jso_nanomq = cJSON_GetObjectItem(jso, "nanomq");
+	if (NULL == jso_nanomq) {
+		log_error("Read config nanomq failed!");
+		return;
+	}
+
+	hocon_read_str(config, url, jso_nanomq);
+	hocon_read_bool(config, daemon, jso_nanomq);
+	hocon_read_num(config, num_taskq_thread, jso_nanomq);
+	hocon_read_num(config, max_taskq_thread, jso_nanomq);
+	hocon_read_num(config, parallel, jso_nanomq);
+	hocon_read_num(config, property_size, jso_nanomq);
+	hocon_read_num(config, max_packet_size, jso_nanomq);
+	hocon_read_num(config, client_max_packet_size, jso_nanomq);
+	hocon_read_num(config, msq_len, jso_nanomq);
+	hocon_read_num(config, qos_duration, jso_nanomq);
+	hocon_read_num_base(config, backoff, "keepalive_backoff", jso_nanomq);
+	hocon_read_bool(config, allow_anonymous, jso_nanomq);
+
+	cJSON *jso_websocket = cJSON_GetObjectItem(jso, "websocket");
+	if (NULL == jso_websocket) {
+		log_error("Read config nanomq sqlite failed!");
+		return;
+	}
+
+	conf_websocket *websocket = &(config->websocket);
+	hocon_read_bool(websocket, enable, jso_websocket);
+	hocon_read_str(websocket, url, jso_websocket);
+	hocon_read_str(websocket, tls_url, jso_websocket);
+
+	// http server
+	cJSON *jso_http_server = cJSON_GetObjectItem(jso, "http_server");
+	if (NULL == jso_http_server) {
+		log_error("Read config nanomq sqlite failed!");
+		return;
+	}
+
+	conf_http_server *http_server = &(config->http_server);
+	hocon_read_bool(http_server, enable, jso_http_server);
+	hocon_read_num(http_server, port, jso_http_server);
+	hocon_read_num(http_server, parallel, jso_http_server);
+	hocon_read_str(http_server, username, jso_http_server);
+	hocon_read_str(http_server, password, jso_http_server);
+
+	char *auth_type_value = cJSON_GetStringValue(
+	    cJSON_GetObjectItem(jso_http_server, "auth_type"));
+
+	if (nni_strcasecmp("basic", auth_type_value) == 0) {
+		config->http_server.auth_type = BASIC;
+	} else if ((nni_strcasecmp("jwt", auth_type_value) == 0)) {
+		config->http_server.auth_type = JWT;
+	} else {
+		config->http_server.auth_type = NONE_AUTH;
+	}
+
+	conf_jwt *jwt = &(http_server->jwt);
+
+	cJSON *jso_pub_key_file = hocon_get_obj("jwt.public", jso_http_server);
+	cJSON *jso_pri_key_file =
+	    hocon_get_obj("jwt.private", jso_http_server);
+	hocon_read_str_base(jwt, public_keyfile, "keyfile", jso_pub_key_file);
+	hocon_read_str_base(jwt, private_keyfile, "keyfile", jso_pri_key_file);
+
+    return;
+}
