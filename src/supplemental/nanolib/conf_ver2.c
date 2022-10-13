@@ -181,3 +181,24 @@ static void conf_basic_parse_ver2(conf *config, cJSON *jso)
 
     return;
 }
+
+static void conf_tls_parse_ver2(conf *config, cJSON *jso)
+{
+	cJSON *jso_tls = cJSON_GetObjectItem(jso, "tls");
+	if (NULL == jso_tls) {
+		log_error("Read config tls failed!");
+		return;
+	}
+
+	conf_tls *tls = &(config->tls);
+	hocon_read_bool(tls, enable, jso_tls);
+	hocon_read_str(tls, url, jso_tls);
+	hocon_read_str(tls, key_password, jso_tls);
+	hocon_read_str(tls, keyfile, jso_tls);
+	hocon_read_str(tls, certfile, jso_tls);
+	hocon_read_str_base(tls, cafile, "cacertfile", jso_tls);
+	hocon_read_bool(tls, verify_peer, jso_tls);
+	hocon_read_bool_base(tls, set_fail, "fail_if_no_peer_cert", jso_tls);
+
+    return;
+}
