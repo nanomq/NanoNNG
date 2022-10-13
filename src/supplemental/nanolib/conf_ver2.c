@@ -436,3 +436,58 @@ static void conf_bridge_parse_ver2(conf *config, cJSON *jso)
 
     return;
 }
+
+static void conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
+{
+	cJSON *bridge_aws_nodes = hocon_get_obj("bridge.aws.nodes", jso);
+	cJSON *bridge_aws_node  = NULL;
+
+	config->aws_bridge.count = cJSON_GetArraySize(bridge_aws_nodes);
+	// allocate memory
+	config->aws_bridge.nodes = NULL;
+	cJSON_ArrayForEach(bridge_aws_node, bridge_aws_nodes)
+	{
+		conf_bridge_node node = { 0 };
+		hocon_read_str((&node), name, bridge_aws_node);
+		hocon_read_str_base((&node), host, "hosts", bridge_aws_node);
+		hocon_read_num((&node), port, bridge_aws_node);
+		hocon_read_num((&node), proto_ver, bridge_aws_node);
+		hocon_read_bool((&node), enable, bridge_aws_node);
+		hocon_read_str((&node), clientid, bridge_aws_node);
+		hocon_read_num((&node), keepalive, bridge_aws_node);
+		hocon_read_bool((&node), clean_start, bridge_aws_node);
+		hocon_read_str((&node), username, bridge_aws_node);
+		hocon_read_str((&node), password, bridge_aws_node);
+		hocon_read_str_arr((&node), forwards, bridge_aws_node);
+
+		subscribe *slist = node.sub_list;
+		cJSON     *subscriptions =
+		    hocon_get_obj("subscription", bridge_aws_node);
+		cJSON *subscription = NULL;
+		cJSON_ArrayForEach(subscription, subscriptions)
+		{
+			subscribe s = { 0 };
+			hocon_read_str((&s), topic, subscription);
+			hocon_read_num((&s), qos, subscription);
+			s.topic_len = strlen(s.topic);
+			cvector_push_back(slist, s);
+		}
+
+		hocon_read_num((&node), parallel, bridge_aws_node);
+		cJSON *bridge_aws_node_tls =
+		    hocon_get_obj("tls", bridge_aws_node);
+		conf_tls *bridge_node_tls = &(node.tls);
+		hocon_read_bool(bridge_node_tls, enable, bridge_aws_node_tls);
+		hocon_read_str(
+		    bridge_node_tls, key_password, bridge_aws_node_tls);
+		hocon_read_str(bridge_node_tls, keyfile, bridge_aws_node_tls);
+		hocon_read_str(bridge_node_tls, keyfile, bridge_aws_node_tls);
+		hocon_read_str(bridge_node_tls, certfile, bridge_aws_node_tls);
+		hocon_read_str_base(bridge_node_tls, cafile, "cacertfile",
+		    bridge_aws_node_tls);
+
+		// TODO FIX
+		cvector_push_back(config->aws_bridge.nodes, &node);
+	}
+
+}
