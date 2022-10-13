@@ -273,3 +273,40 @@ static void conf_log_parse_ver2(conf *config, cJSON *jso)
 
     return;
 }
+
+
+static void conf_webhook_parse_ver2(conf *config, cJSON *jso)
+{
+	cJSON *jso_webhook = cJSON_GetObjectItem(jso, "webhook");
+	if (NULL == jso_webhook) {
+		log_error("Read config nanomq sqlite failed!");
+		return;
+	}
+
+	conf_web_hook *webhook = &(config->web_hook);
+	hocon_read_bool(webhook, enable, jso_webhook);
+	hocon_read_str(webhook, url, jso_webhook);
+	cJSON *webhook_headers = hocon_get_obj("headers", jso_webhook);
+	cJSON *webhook_header  = NULL;
+	cJSON_ArrayForEach(webhook_header, webhook_headers)
+	{
+		conf_http_header web_hook_http_header = { 0 };
+		web_hook_http_header.key = nng_strdup(webhook_header->string);
+		web_hook_http_header.value =
+		    nng_strdup(webhook_header->valuestring);
+		// TODO FIX
+		cvector_push_back(webhook->headers, &web_hook_http_header);
+	}
+	webhook->header_count = cvector_size(webhook->headers);
+
+	char *webhook_encoding =
+	    cJSON_GetStringValue(cJSON_GetObjectItem(jso_webhook, "encoding"));
+	if (nni_strcasecmp(webhook_encoding, "base64") == 0) {
+		webhook->encode_payload = base64;
+	} else if (nni_strcasecmp(webhook_encoding, "base62") == 0) {
+		webhook->encode_payload = base62;
+	} else if (nni_strcasecmp(webhook_encoding, "plain") == 0) {
+		webhook->encode_payload = plain;
+	}
+
+}
