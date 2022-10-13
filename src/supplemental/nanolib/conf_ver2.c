@@ -101,3 +101,15 @@ static char **string_split(char *str, char sp)
 	cvector_push_back(ret, p_b);
 	return ret;
 }
+
+cJSON *hocon_get_obj(char *key, cJSON *jso)
+{
+	cJSON *ret = jso;
+	char **str_vec = string_split(key, '.');
+	
+	for (size_t i = 0; cvector_size(str_vec); i++) {
+		ret = cJSON_GetObjectItem(ret, str_vec[i]);
+	}
+
+	return ret;
+}
