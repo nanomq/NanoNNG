@@ -276,7 +276,12 @@ conf_log_parse_ver2(conf *config, cJSON *jso)
 	}
 
 	cJSON *jso_log_level = hocon_get_obj("level", jso_log);
-	log->level = log_level_num(cJSON_GetStringValue(jso_log_level));
+	int rv = log_level_num(cJSON_GetStringValue(jso_log_level));
+	if (-1 != rv) {
+		log->level = rv;
+	} else {
+		log->level = NNG_LOG_ERROR;
+	}
 
 	hocon_read_str(log, dir, jso_log);
 	hocon_read_str(log, file, jso_log);
