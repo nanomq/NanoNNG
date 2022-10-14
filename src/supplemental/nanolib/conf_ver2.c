@@ -20,7 +20,7 @@
 		}                                                 \
 		switch (jso_key->type) {                          \
 		case cJSON_String:                                \
-            FREE_NONULL((structure)->field);            \
+			FREE_NONULL((structure)->field);          \
 			(structure)->field =                      \
 			    nng_strdup(jso_key->valuestring);     \
 			break;                                    \
@@ -191,8 +191,8 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	    hocon_get_obj("jwt.private", jso_http_server);
 	hocon_read_str_base(jwt, public_keyfile, "keyfile", jso_pub_key_file);
 	hocon_read_str_base(jwt, private_keyfile, "keyfile", jso_pri_key_file);
-	if (file_load_data(
-	        jwt->public_keyfile, (void **) &jwt->public_key) > 0) {
+	if (file_load_data(jwt->public_keyfile, (void **) &jwt->public_key) >
+	    0) {
 		jwt->iss =
 		    (char *) nni_plat_file_basename(jwt->public_keyfile);
 		jwt->public_key_len = strlen(jwt->public_key);
@@ -276,7 +276,7 @@ conf_log_parse_ver2(conf *config, cJSON *jso)
 	}
 
 	cJSON *jso_log_level = hocon_get_obj("level", jso_log);
-	int rv = log_level_num(cJSON_GetStringValue(jso_log_level));
+	int    rv = log_level_num(cJSON_GetStringValue(jso_log_level));
 	if (-1 != rv) {
 		log->level = rv;
 	} else {
@@ -308,8 +308,8 @@ conf_log_parse_ver2(conf *config, cJSON *jso)
 static void
 conf_web_hook_parse_rules_ver2(conf *config, cJSON *jso)
 {
-    // TODO
-    return;
+	// TODO
+	return;
 }
 
 static void
@@ -328,7 +328,8 @@ conf_webhook_parse_ver2(conf *config, cJSON *jso)
 	cJSON *webhook_header  = NULL;
 	cJSON_ArrayForEach(webhook_header, webhook_headers)
 	{
-		conf_http_header *web_hook_http_header = NNI_ALLOC_STRUCT(web_hook_http_header);
+		conf_http_header *web_hook_http_header =
+		    NNI_ALLOC_STRUCT(web_hook_http_header);
 		web_hook_http_header->key = nng_strdup(webhook_header->string);
 		web_hook_http_header->value =
 		    nng_strdup(webhook_header->valuestring);
@@ -346,7 +347,7 @@ conf_webhook_parse_ver2(conf *config, cJSON *jso)
 		webhook->encode_payload = plain;
 	}
 
-    conf_web_hook_parse_rules_ver2(config, jso);
+	conf_web_hook_parse_rules_ver2(config, jso);
 
 	return;
 }
@@ -401,13 +402,13 @@ conf_auth_http_parse_ver2(conf *config, cJSON *jso)
 	cJSON *jso_auth_http_req_header = NULL;
 	cJSON_ArrayForEach(jso_auth_http_req_header, jso_auth_http_req_headers)
 	{
-		conf_http_header auth_http_req_header = { 0 };
-		auth_http_req_header.key =
+		conf_http_header *auth_http_req_header = NNI_ALLOC_STRUCT(auth_http_req_header);
+		auth_http_req_header->key =
 		    nng_strdup(jso_auth_http_req_header->string);
-		auth_http_req_header.value =
+		auth_http_req_header->value =
 		    nng_strdup(jso_auth_http_req_header->valuestring);
 		cvector_push_back(
-		    auth_http_req->headers, &auth_http_req_header);
+		    auth_http_req->headers, auth_http_req_header);
 	}
 	auth_http_req->header_count = cvector_size(auth_http_req->headers);
 
@@ -421,23 +422,30 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 	cJSON *bridge_mqtt_node  = NULL;
 
 	config->bridge.count = cJSON_GetArraySize(bridge_mqtt_nodes);
-	// allocate memory
 	config->bridge.nodes = NULL;
 	cJSON_ArrayForEach(bridge_mqtt_node, bridge_mqtt_nodes)
 	{
-		conf_bridge_node node = { 0 };
-		hocon_read_str((&node), name, bridge_mqtt_node);
-		hocon_read_str((&node), address, bridge_mqtt_node);
-		hocon_read_num((&node), proto_ver, bridge_mqtt_node);
-		hocon_read_bool((&node), enable, bridge_mqtt_node);
-		hocon_read_str((&node), clientid, bridge_mqtt_node);
-		hocon_read_num((&node), keepalive, bridge_mqtt_node);
-		hocon_read_bool((&node), clean_start, bridge_mqtt_node);
-		hocon_read_str((&node), username, bridge_mqtt_node);
-		hocon_read_str((&node), password, bridge_mqtt_node);
-		hocon_read_str_arr((&node), forwards, bridge_mqtt_node);
+		conf_bridge_node *node = NNI_ALLOC_STRUCT(node);
+		hocon_read_str(node, name, bridge_mqtt_node);
+		hocon_read_str(node, address, bridge_mqtt_node);
+		hocon_read_num(node, proto_ver, bridge_mqtt_node);
+		hocon_read_bool(node, enable, bridge_mqtt_node);
+		hocon_read_str(node, clientid, bridge_mqtt_node);
+		hocon_read_num(node, keepalive, bridge_mqtt_node);
+		hocon_read_bool(node, clean_start, bridge_mqtt_node);
+		hocon_read_str(node, username, bridge_mqtt_node);
+		hocon_read_str(node, password, bridge_mqtt_node);
+		hocon_read_str_arr(node, forwards, bridge_mqtt_node);
+        // TODO quic
+#if defined(SUPP_QUIC)
+		hocon_read_num_base(node, qkeepalive, "quic_keepalive", bridge_mqtt_node);
+		hocon_read_num_base(node, qidle_timeout, "quic_idle_timeout", bridge_mqtt_node);
+		hocon_read_num_base(node, qdiscon_timeout, "quic_discon_timeout", bridge_mqtt_node);
+		hocon_read_num_base(node, qconnect_timeout, "quic_handshake_timeout", bridge_mqtt_node);
+		hocon_read_bool_base(node, hybird, "hybird_bridging", bridge_mqtt_node);
+#endif
 
-		subscribe *slist = node.sub_list;
+		subscribe *slist = node->sub_list;
 		cJSON     *subscriptions =
 		    hocon_get_obj("subscription", bridge_mqtt_node);
 		cJSON *subscription = NULL;
@@ -450,10 +458,10 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 			cvector_push_back(slist, s);
 		}
 
-		hocon_read_num((&node), parallel, bridge_mqtt_node);
+		hocon_read_num(node, parallel, bridge_mqtt_node);
 		cJSON *bridge_mqtt_node_tls =
 		    hocon_get_obj("tls", bridge_mqtt_node);
-		conf_tls *bridge_node_tls = &(node.tls);
+		conf_tls *bridge_node_tls = &(node->tls);
 		hocon_read_bool(bridge_node_tls, enable, bridge_mqtt_node_tls);
 		hocon_read_str(
 		    bridge_node_tls, key_password, bridge_mqtt_node_tls);
@@ -464,8 +472,7 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_str_base(bridge_node_tls, cafile, "cacertfile",
 		    bridge_mqtt_node_tls);
 
-		// TODO FIX
-		cvector_push_back(config->bridge.nodes, &node);
+		cvector_push_back(config->bridge.nodes, node);
 	}
 
 	cJSON *bridge_mqtt_sqlite  = hocon_get_obj("bridge.mqtt.sqlite", jso);
@@ -479,6 +486,7 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 	return;
 }
 
+#if defined(SUPP_AWS_BRIDGE)
 static void
 conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 {
@@ -486,24 +494,23 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 	cJSON *bridge_aws_node  = NULL;
 
 	config->aws_bridge.count = cJSON_GetArraySize(bridge_aws_nodes);
-	// allocate memory
 	config->aws_bridge.nodes = NULL;
 	cJSON_ArrayForEach(bridge_aws_node, bridge_aws_nodes)
 	{
-		conf_bridge_node node = { 0 };
-		hocon_read_str((&node), name, bridge_aws_node);
-		hocon_read_str_base((&node), host, "hosts", bridge_aws_node);
-		hocon_read_num((&node), port, bridge_aws_node);
-		hocon_read_num((&node), proto_ver, bridge_aws_node);
-		hocon_read_bool((&node), enable, bridge_aws_node);
-		hocon_read_str((&node), clientid, bridge_aws_node);
-		hocon_read_num((&node), keepalive, bridge_aws_node);
-		hocon_read_bool((&node), clean_start, bridge_aws_node);
-		hocon_read_str((&node), username, bridge_aws_node);
-		hocon_read_str((&node), password, bridge_aws_node);
-		hocon_read_str_arr((&node), forwards, bridge_aws_node);
+		conf_bridge_node *node = NNI_ALLOC_STRUCT(node);
+		hocon_read_str(node, name, bridge_aws_node);
+		hocon_read_str_base(node, host, "hosts", bridge_aws_node);
+		hocon_read_num(node, port, bridge_aws_node);
+		hocon_read_num(node, proto_ver, bridge_aws_node);
+		hocon_read_bool(node, enable, bridge_aws_node);
+		hocon_read_str(node, clientid, bridge_aws_node);
+		hocon_read_num(node, keepalive, bridge_aws_node);
+		hocon_read_bool(node, clean_start, bridge_aws_node);
+		hocon_read_str(node, username, bridge_aws_node);
+		hocon_read_str(node, password, bridge_aws_node);
+		hocon_read_str_arr(node, forwards, bridge_aws_node);
 
-		subscribe *slist = node.sub_list;
+		subscribe *slist = node->sub_list;
 		cJSON     *subscriptions =
 		    hocon_get_obj("subscription", bridge_aws_node);
 		cJSON *subscription = NULL;
@@ -516,10 +523,10 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 			cvector_push_back(slist, s);
 		}
 
-		hocon_read_num((&node), parallel, bridge_aws_node);
+		hocon_read_num(node, parallel, bridge_aws_node);
 		cJSON *bridge_aws_node_tls =
 		    hocon_get_obj("tls", bridge_aws_node);
-		conf_tls *bridge_node_tls = &(node.tls);
+		conf_tls *bridge_node_tls = &(node->tls);
 		hocon_read_bool(bridge_node_tls, enable, bridge_aws_node_tls);
 		hocon_read_str(
 		    bridge_node_tls, key_password, bridge_aws_node_tls);
@@ -529,12 +536,12 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_str_base(bridge_node_tls, cafile, "cacertfile",
 		    bridge_aws_node_tls);
 
-		// TODO FIX
-		cvector_push_back(config->aws_bridge.nodes, &node);
+		cvector_push_back(config->aws_bridge.nodes, node);
 	}
 
 	return;
 }
+#endif
 
 #if defined(SUPP_RULE_ENGINE)
 static void
@@ -657,7 +664,10 @@ conf_parse_ver2(conf *config)
 		conf_auth_parse_ver2(config, jso);
 		conf_auth_http_parse_ver2(config, jso);
 		conf_bridge_parse_ver2(config, jso);
+
+#if defined(SUPP_AWS_BRIDGE)
 		conf_aws_bridge_parse_ver2(config, jso);
+#endif
 
 #if defined(SUPP_RULE_ENGINE)
 		conf_rule_parse_ver2(config, jso);
