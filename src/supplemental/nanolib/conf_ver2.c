@@ -402,7 +402,8 @@ conf_auth_http_parse_ver2(conf *config, cJSON *jso)
 	cJSON *jso_auth_http_req_header = NULL;
 	cJSON_ArrayForEach(jso_auth_http_req_header, jso_auth_http_req_headers)
 	{
-		conf_http_header *auth_http_req_header = NNI_ALLOC_STRUCT(auth_http_req_header);
+		conf_http_header *auth_http_req_header =
+		    NNI_ALLOC_STRUCT(auth_http_req_header);
 		auth_http_req_header->key =
 		    nng_strdup(jso_auth_http_req_header->string);
 		auth_http_req_header->value =
@@ -436,13 +437,17 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_str(node, username, bridge_mqtt_node);
 		hocon_read_str(node, password, bridge_mqtt_node);
 		hocon_read_str_arr(node, forwards, bridge_mqtt_node);
-        // TODO quic
 #if defined(SUPP_QUIC)
-		hocon_read_num_base(node, qkeepalive, "quic_keepalive", bridge_mqtt_node);
-		hocon_read_num_base(node, qidle_timeout, "quic_idle_timeout", bridge_mqtt_node);
-		hocon_read_num_base(node, qdiscon_timeout, "quic_discon_timeout", bridge_mqtt_node);
-		hocon_read_num_base(node, qconnect_timeout, "quic_handshake_timeout", bridge_mqtt_node);
-		hocon_read_bool_base(node, hybird, "hybird_bridging", bridge_mqtt_node);
+		hocon_read_num_base(
+		    node, qkeepalive, "quic_keepalive", bridge_mqtt_node);
+		hocon_read_num_base(node, qidle_timeout, "quic_idle_timeout",
+		    bridge_mqtt_node);
+		hocon_read_num_base(node, qdiscon_timeout,
+		    "quic_discon_timeout", bridge_mqtt_node);
+		hocon_read_num_base(node, qconnect_timeout,
+		    "quic_handshake_timeout", bridge_mqtt_node);
+		hocon_read_bool_base(
+		    node, hybrid, "hybird_bridging", bridge_mqtt_node);
 #endif
 
 		subscribe *slist = node->sub_list;
@@ -548,61 +553,134 @@ static void
 conf_rule_parse_ver2(conf *config, cJSON *jso)
 {
 
-	rule  *rules      = &(config.rule_eng.rules);
-	cJSON *rule_sqlte = hocon_get_obj("rules.sqlite", jso);
+	conf_rule *cr = &(config->rule_eng);
+	char *rule_option = cJSON_GetStringValue(hocon_get_obj("rules.option", jso));
+	if (0 != nni_strcasecmp(rule_option, "ON")) {
+		if (0 != nni_strcasecmp(rule_option, "OFF")) {
+			log_warn(
+			    "Unsupported option: %s\nrule "
+			    "option only support ON/OFF",
+			    rule_option);
+		}
+	}
 
-	hocon_read_str(rule, path, rule_sqlite);
-	hocon_read_bool(rule, enabled, rule_sqlite);
-	cJSON *jso_rules = hocon_get_obj("rules", rule_sqlite);
+	cJSON *jso_rule_sqlite = hocon_get_obj("rules.sqlite", jso);
+	hocon_read_str(cr, sqlite_db, jso_rule_sqlite);
+
+	if (cJSON_IsTrue(cJSON_GetObjectItem(jso_rule_sqlite, "enabled"))) {
+		cr->option |= RULE_ENG_SDB;
+	}
+	cJSON *jso_rules = hocon_get_obj("rules", jso_rule_sqlite);
 	cJSON *jso_rule  = NULL;
 
 	cJSON_ArrayForEach(jso_rule, jso_rules)
 	{
+
 		rule r = { 0 };
-		hocon_read_bool(r, enabled, jso_rule);
-		hocon_read_str(r, sql, jso_rule);
-		hocon_read_str(r, table, jso_rule);
-		// cvector_push_back(rules, r);
+		hocon_read_bool(&r, enabled, jso_rule);
+		hocon_read_str_base(&r, raw_sql, "sql", jso_rule);
+		hocon_read_str_base(&r, sqlite_table, "table", jso_rule);
+
+		rule_sql_parse(cr, r.raw_sql);
+
+		cr->rules[cvector_size(cr->rules) - 1]
+		    .sqlite_table = r.sqlite_table;
+		cr->rules[cvector_size(cr->rules) - 1]
+		    .forword_type = RULE_FORWORD_SQLITE;
+		cr->rules[cvector_size(cr->rules) - 1]
+		    .raw_sql = r.raw_sql;
+		cr->rules[cvector_size(cr->rules) - 1]
+		    .enabled = r.enabled;
+		cr->rules[cvector_size(cr->rules) - 1]
+		    .rule_id = rule_generate_rule_id();
+
 	}
 
-	cJSON *rule_repub = hocon_get_obj("rules.repub", jso);
+	cJSON *jso_rule_repub = hocon_get_obj("rules.repub", jso);
 
-	hocon_read_bool(rule, enabled, rule_repub);
-	jso_rules = hocon_get_obj("rules", rule_repub);
+	if (cJSON_IsTrue(cJSON_GetObjectItem(jso_rule_repub, "enabled"))) {
+		cr->option |= RULE_ENG_RPB;
+	}
+
+	jso_rules = hocon_get_obj("rules", jso_rule_repub);
+	jso_rule  = NULL;
+
+	cJSON_ArrayForEach(jso_rule, jso_rules)
+	{
+
+		rule re = { 0 };
+		repub_t *repub = NNI_ALLOC_STRUCT(repub);
+		hocon_read_bool(&re, enabled, jso_rule);
+		hocon_read_str_base(&re, raw_sql, "sql", jso_rule);
+		hocon_read_str(repub, address, jso_rule);
+		hocon_read_str(repub, topic, jso_rule);
+		hocon_read_num(repub, proto_ver, jso_rule);
+		hocon_read_str(repub, clientid, jso_rule);
+		hocon_read_num(repub, keepalive, jso_rule);
+		hocon_read_bool(repub, clean_start, jso_rule);
+		hocon_read_str(repub, username, jso_rule);
+		hocon_read_str(repub, password, jso_rule);
+
+		rule_sql_parse(cr, re.raw_sql);
+
+		cr->rules[cvector_size(cr->rules) - 1].repub =
+		    NNI_ALLOC_STRUCT(repub);
+		memcpy(cr->rules[cvector_size(cr->rules) - 1]
+		           .repub,
+		    repub, sizeof(*repub));
+		cr->rules[cvector_size(cr->rules) - 1]
+		    .forword_type = RULE_FORWORD_REPUB;
+		cr->rules[cvector_size(cr->rules) - 1]
+		    .raw_sql = re.raw_sql;
+		cr->rules[cvector_size(cr->rules) - 1]
+		    .enabled = re.enabled;
+		cr->rules[cvector_size(cr->rules) - 1]
+		    .rule_id = rule_generate_rule_id();
+
+		NNI_FREE_STRUCT(repub);
+	}
+
+
+
+	cJSON *jso_rule_mysql = hocon_get_obj("rules.mysql", jso);
+	if (cJSON_IsTrue(cJSON_GetObjectItem(jso_rule_mysql, "enabled"))) {
+		cr->option |= RULE_ENG_MDB;
+	}
+
+	hocon_read_str_base(cr, mysql_db, "table", jso_rule_mysql);
+	jso_rules = hocon_get_obj("rules", jso_rule_mysql);
 	jso_rule  = NULL;
 
 	cJSON_ArrayForEach(jso_rule, jso_rules)
 	{
 		rule r = { 0 };
-		hocon_read_bool(&r, enabled, jso_rule);
-		hocon_read_str(&r, sql, jso_rule);
-		hocon_read_str(&r, address, jso_rule);
-		hocon_read_str(&r, topic, jso_rule);
-		hocon_read_num(&r, proto_ver, jso_rule);
-		hocon_read_str(&r, clientid, jso_rule);
-		hocon_read_num(&r, keepalive, jso_rule);
-		hocon_read_bool(&r, clean_start, jso_rule);
-		hocon_read_str(&r, username, jso_rule);
-		hocon_read_str(&r, password, jso_rule);
-		// cvector_push_back(rules, r);
-	}
 
-	cJSON *rule_mysql = hocon_get_obj("rules.mysql", jso);
-	hocon_read_bool(rule, enabled, rule_mysql);
-	hocon_read_str(rule, name, rule_mysql);
-	jso_rules = hocon_get_obj("rules", rule_mysql);
-	jso_rule  = NULL;
-
-	cJSON_ArrayForEach(jso_rule, jso_rules)
-	{
-		rule r = { 0 };
 		hocon_read_bool(&r, enabled, jso_rule);
-		hocon_read_str(&r, sql, jso_rule);
-		hocon_read_str(&r, host, jso_rule);
-		hocon_read_str(&r, table, jso_rule);
-		hocon_read_str(&r, username, jso_rule);
-		hocon_read_str(&r, password, jso_rule);
-		// cvector_push_back(rules, r);
+		hocon_read_str_base(&r, raw_sql, "sql", jso_rule);
+		rule_mysql *mysql = NNI_ALLOC_STRUCT(mysql);
+
+		hocon_read_str(mysql, host, jso_rule);
+		hocon_read_str(mysql, table, jso_rule);
+		hocon_read_str(mysql, username, jso_rule);
+		hocon_read_str(mysql, password, jso_rule);
+
+		rule_sql_parse(cr, r.raw_sql);
+
+		cr->rules[cvector_size(cr->rules) - 1].mysql =
+		    NNI_ALLOC_STRUCT(mysql);
+		memcpy(cr->rules[cvector_size(cr->rules) - 1]
+		           .mysql,
+		    mysql, sizeof(*mysql));
+		cr->rules[cvector_size(cr->rules) - 1]
+		    .forword_type = RULE_FORWORD_MYSOL;
+		cr->rules[cvector_size(cr->rules) - 1]
+		    .raw_sql = r.raw_sql;
+		cr->rules[cvector_size(cr->rules) - 1]
+		    .enabled = r.enabled;
+		cr->rules[cvector_size(cr->rules) - 1]
+		    .rule_id = rule_generate_rule_id();
+
+		NNI_FREE_STRUCT(mysql);
 	}
 
 	return;
@@ -654,7 +732,8 @@ conf_parse_ver2(conf *config)
 	if (str != NULL) {
 
 		cJSON *jso = hocon_str_to_json(str);
-		char  *ret = cJSON_PrintUnformatted(jso);
+		char  *ret = cJSON_Print(jso);
+        puts(ret);
 
 		conf_basic_parse_ver2(config, jso);
 		conf_sqlite_parse_ver2(config, jso);
