@@ -306,6 +306,13 @@ conf_log_parse_ver2(conf *config, cJSON *jso)
 }
 
 static void
+conf_web_hook_parse_rules_ver2(conf *config, cJSON *jso)
+{
+    // TODO
+    return;
+}
+
+static void
 conf_webhook_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *jso_webhook = cJSON_GetObjectItem(jso, "webhook");
@@ -321,12 +328,11 @@ conf_webhook_parse_ver2(conf *config, cJSON *jso)
 	cJSON *webhook_header  = NULL;
 	cJSON_ArrayForEach(webhook_header, webhook_headers)
 	{
-		conf_http_header web_hook_http_header = { 0 };
-		web_hook_http_header.key = nng_strdup(webhook_header->string);
-		web_hook_http_header.value =
+		conf_http_header *web_hook_http_header = NNI_ALLOC_STRUCT(web_hook_http_header);
+		web_hook_http_header->key = nng_strdup(webhook_header->string);
+		web_hook_http_header->value =
 		    nng_strdup(webhook_header->valuestring);
-		// TODO FIX
-		cvector_push_back(webhook->headers, &web_hook_http_header);
+		cvector_push_back(webhook->headers, web_hook_http_header);
 	}
 	webhook->header_count = cvector_size(webhook->headers);
 
@@ -339,6 +345,8 @@ conf_webhook_parse_ver2(conf *config, cJSON *jso)
 	} else if (nni_strcasecmp(webhook_encoding, "plain") == 0) {
 		webhook->encode_payload = plain;
 	}
+
+    conf_web_hook_parse_rules_ver2(config, jso);
 
 	return;
 }
