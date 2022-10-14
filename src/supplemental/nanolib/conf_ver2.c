@@ -20,6 +20,7 @@
 		}                                                 \
 		switch (jso_key->type) {                          \
 		case cJSON_String:                                \
+            FREE_NONULL((structure)->field);            \
 			(structure)->field =                      \
 			    nng_strdup(jso_key->valuestring);     \
 			break;                                    \
@@ -124,6 +125,7 @@ hocon_get_obj(char *key, cJSON *jso)
 	return ret;
 }
 
+// TODO FREE_NULL
 static void
 conf_basic_parse_ver2(conf *config, cJSON *jso)
 {
@@ -175,11 +177,11 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	    cJSON_GetObjectItem(jso_http_server, "auth_type"));
 
 	if (nni_strcasecmp("basic", auth_type_value) == 0) {
-		config->http_server.auth_type = BASIC;
+		http_server->auth_type = BASIC;
 	} else if ((nni_strcasecmp("jwt", auth_type_value) == 0)) {
-		config->http_server.auth_type = JWT;
+		http_server->auth_type = JWT;
 	} else {
-		config->http_server.auth_type = NONE_AUTH;
+		http_server->auth_type = NONE_AUTH;
 	}
 
 	conf_jwt *jwt = &(http_server->jwt);
@@ -189,6 +191,17 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	    hocon_get_obj("jwt.private", jso_http_server);
 	hocon_read_str_base(jwt, public_keyfile, "keyfile", jso_pub_key_file);
 	hocon_read_str_base(jwt, private_keyfile, "keyfile", jso_pri_key_file);
+	if (file_load_data(
+	        jwt->public_keyfile, (void **) &jwt->public_key) > 0) {
+		jwt->iss =
+		    (char *) nni_plat_file_basename(jwt->public_keyfile);
+		jwt->public_key_len = strlen(jwt->public_key);
+	}
+
+	if (file_load_data(jwt->private_keyfile, (void **) &jwt->private_key) >
+	    0) {
+		jwt->private_key_len = strlen(jwt->private_key);
+	}
 
 	return;
 }
