@@ -106,6 +106,7 @@ struct mqtt_pipe_s {
 	bool            ready;			// mark if QUIC stream is ready
 	nni_atomic_int  next_packet_id; // next packet id to use
 	mqtt_sock_t    *mqtt_sock;
+	nni_id_map     *streams;	   // only effective in multi-stream mode
 	nni_id_map      sent_unack;    // send messages unacknowledged
 	nni_id_map      recv_unack;    // recv messages unacknowledged
 	nni_aio         send_aio;      // send aio to the underlying transport
@@ -750,7 +751,7 @@ mqtt_quic_sock_set_sqlite_option(
 /******************************************************************************
  *                          Stream(PIPE) Implementation                       *
  ******************************************************************************/
-
+// allocate main stream with pipe
 static int
 quic_mqtt_stream_init(void *arg, nni_pipe *qsock, void *sock)
 {
@@ -1228,6 +1229,33 @@ nng_mqtt_quic_set_msg_recv_cb(nng_socket *sock, int (*cb)(void *, void *), void 
 		mqtt_sock_t *mqtt_sock = nni_sock_proto_data(nsock);
 		mqtt_sock->cb.msg_recv_cb = cb;
 		mqtt_sock->cb.recvarg = arg;
+	} else {
+		return -1;
+	}
+	nni_sock_rele(nsock);
+	return 0;
+}
+
+/**
+ * Create independent & seperated stream for specific topic.
+ * Only effective on Publish
+*/
+int
+nng_mqtt_quic_open_topic_stream(nng_socket *sock, const char *topic)
+{
+	void *strm = NULL;
+	nni_sock *nsock = NULL;
+	mqtt_pipe_t *p     = NULL;
+
+	nni_sock_find(&nsock, sock->id);
+	if (nsock) {
+		mqtt_sock_t *mqtt_sock = nni_sock_proto_data(nsock);
+		p = mqtt_sock->pipe;
+		if (0 != quic_pipe_open(p->qsock, &strm)) {
+			log_warn("Failed in open the topic-stream pari.");
+			return -1;
+		}
+		nni_id_set(p->streams, DJBHashn(topic, strlen(topic)), strm);
 	} else {
 		return -1;
 	}
