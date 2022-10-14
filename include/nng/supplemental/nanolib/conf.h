@@ -344,6 +344,9 @@ struct conf {
 
 typedef struct conf conf;
 
+
+webhook_event get_webhook_event(const char *hook_type, const char *hook_name);
+
 extern void conf_parse(conf *nanomq_conf);
 extern void conf_parse_ver2(conf *nanomq_conf);
 extern void conf_init(conf *nanomq_conf);
