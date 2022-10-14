@@ -734,7 +734,7 @@ quic_pipe_recv_cb(void *arg)
 	// Already get 2 Bytes
 	if (qstrm->rxlen == 0) {
 		n = 2; // new
-		qdebug("type !!!!!!!: %x\n", *rbuf);
+		qdebug("msg type !!: %x\n", *rbuf);
 		memcpy(qstrm->rxbuf, rbuf, n);
 		qstrm->rxlen = 0 + n;
 		qstrm->rrpos += n;

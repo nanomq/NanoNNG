@@ -33,8 +33,6 @@ static void        nano_pipe_recv_cb(void *);
 static void        nano_pipe_fini(void *);
 static void        nano_pipe_close(void *);
 static inline void close_pipe(nano_pipe *p);
-// static void nano_period_check(nano_sock *s, nni_list *sent_list, void *arg);
-// static void nano_keepalive(nano_pipe *p, void *arg);
 
 // huge context/ dynamic context?
 struct nano_ctx {
@@ -85,7 +83,7 @@ struct nano_pipe {
 	uint8_t       reason_code;
 	// ka_refresh count how many times the keepalive timer has
 	// been triggered
-	uint16_t          ka_refresh;
+	uint16_t    ka_refresh;
 	conn_param *conn_param;
 	nni_lmq     rlmq;
 	void       *nano_qos_db; // 'sqlite' or 'nni_id_hash_map'
