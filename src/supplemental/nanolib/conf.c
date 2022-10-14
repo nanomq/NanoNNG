@@ -13,6 +13,7 @@
 #include "nng/supplemental/nanolib/cvector.h"
 #include "nng/supplemental/nanolib/file.h"
 #include "nng/supplemental/nanolib/log.h"
+#include "nng/supplemental/nanolib/hocon.h"
 #include <ctype.h>
 
 static void conf_bridge_parse(conf *nanomq_conf, const char *path);
@@ -231,6 +232,8 @@ conf_update2(const char *fpath, const char *key1, const char *key2,
 	nng_free(key, sz);
 }
 
+
+
 static char *
 get_conf_value(char *line, size_t len, const char *key)
 {
@@ -360,6 +363,9 @@ conf_tls_parse(
 
 	fclose(fp);
 }
+
+
+
 
 static void
 conf_basic_parse(conf *config, const char *path)
@@ -538,6 +544,7 @@ conf_parse(conf *nanomq_conf)
 			conf_path = CONF_PATH_NAME;
 		}
 	}
+	
 
 	conf *config = nanomq_conf;
 	conf_basic_parse(config, conf_path);
@@ -1435,6 +1442,7 @@ conf_rule_parse(conf_rule *rule, const char *path)
 	char * line = NULL;
 	size_t sz   = 0;
 	FILE * fp;
+	conf_rule *cr = rule;
 
 	if ((fp = fopen(path, "r")) == NULL) {
 		log_error("File %s open failed\n", path);
@@ -2110,7 +2118,7 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 	    bridge->sqlite.resend_interval);
 }
 
-static webhook_event
+webhook_event
 get_webhook_event(const char *hook_type, const char *hook_name)
 {
 	if (nni_strcasecmp("client", hook_type) == 0) {
@@ -2147,7 +2155,7 @@ get_webhook_event(const char *hook_type, const char *hook_name)
 	return UNKNOWN_EVENT;
 }
 
-static void
+void
 webhook_action_parse(const char *json, conf_web_hook_rule *hook_rule)
 {
 	cJSON *object = cJSON_Parse(json);

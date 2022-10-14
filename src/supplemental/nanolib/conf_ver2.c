@@ -125,7 +125,6 @@ hocon_get_obj(char *key, cJSON *jso)
 	return ret;
 }
 
-// TODO FREE_NULL
 static void
 conf_basic_parse_ver2(conf *config, cJSON *jso)
 {
@@ -306,9 +305,48 @@ conf_log_parse_ver2(conf *config, cJSON *jso)
 }
 
 static void
+webhook_action_parse_ver2(cJSON *object, conf_web_hook_rule *hook_rule)
+{
+	cJSON *action = cJSON_GetObjectItem(object, "action");
+	if (cJSON_IsString(action)) {
+		const char *act_val = cJSON_GetStringValue(action);
+		hook_rule->action   = nng_strdup(act_val);
+	} else {
+		hook_rule->action = NULL;
+	}
+	cJSON *topic = cJSON_GetObjectItem(object, "topic");
+	if (cJSON_IsString(topic)) {
+		const char *topic_str = cJSON_GetStringValue(topic);
+		hook_rule->topic      = nng_strdup(topic_str);
+	} else {
+		hook_rule->topic = NULL;
+	}
+}
+
+
+static void
 conf_web_hook_parse_rules_ver2(conf *config, cJSON *jso)
 {
-	// TODO
+	cJSON *jso_webhook_rules = hocon_get_obj("webhook.rule", jso);
+	cJSON *jso_webhook_rule = NULL;
+	cJSON *jso_webhook_rule_elem_arr = NULL;
+	cJSON *jso_webhook_rule_elem = NULL;
+
+	conf_web_hook *webhook = &(config->web_hook);
+	webhook->rules = NULL;
+
+	cJSON_ArrayForEach(jso_webhook_rule, jso_webhook_rules) {
+		cJSON_ArrayForEach(jso_webhook_rule_elem_arr, jso_webhook_rule) {
+			cJSON_ArrayForEach(jso_webhook_rule_elem, jso_webhook_rule_elem_arr) {
+				conf_web_hook_rule *hook_rule = NNI_ALLOC_STRUCT(hook_rule);
+				webhook_action_parse_ver2(jso_webhook_rule_elem, hook_rule);
+				hook_rule->event = get_webhook_event(jso_webhook_rule->string, jso_webhook_rule_elem_arr->string);
+				cvector_push_back(webhook->rules, hook_rule);
+			}
+		}
+	}
+	webhook->rule_count = cvector_size(webhook->rules);
+
 	return;
 }
 
@@ -565,7 +603,7 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 	}
 
 	cJSON *jso_rule_sqlite = hocon_get_obj("rules.sqlite", jso);
-	hocon_read_str(cr, sqlite_db, jso_rule_sqlite);
+	hocon_read_str_base(cr, sqlite_db, "path", jso_rule_sqlite);
 
 	if (cJSON_IsTrue(cJSON_GetObjectItem(jso_rule_sqlite, "enabled"))) {
 		cr->option |= RULE_ENG_SDB;
@@ -728,12 +766,9 @@ conf_parse_ver2(conf *config)
 	}
 
 	char *str = json_buffer_from_fp(fp);
-	puts(str);
 	if (str != NULL) {
 
 		cJSON *jso = hocon_str_to_json(str);
-		char  *ret = cJSON_Print(jso);
-        puts(ret);
 
 		conf_basic_parse_ver2(config, jso);
 		conf_sqlite_parse_ver2(config, jso);
@@ -752,7 +787,6 @@ conf_parse_ver2(conf *config)
 		conf_rule_parse_ver2(config, jso);
 #endif
 
-		cJSON_free(ret);
 		cJSON_Delete(jso);
 		cvector_free(str);
 
