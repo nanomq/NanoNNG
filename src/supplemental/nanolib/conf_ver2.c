@@ -11,22 +11,24 @@
 
 // Read json value into struct
 // use same struct fields and json keys
-#define hocon_read_str_base(structure, field, key, jso)           \
-	do {                                                      \
-		cJSON *jso_key = cJSON_GetObjectItem(jso, key);   \
-		if (NULL == jso_key) {                            \
-			log_error("Read config %s failed!", key); \
-			break;                                    \
-		}                                                 \
-		switch (jso_key->type) {                          \
-		case cJSON_String:                                \
-			FREE_NONULL((structure)->field);          \
-			(structure)->field =                      \
-			    nng_strdup(jso_key->valuestring);     \
-			break;                                    \
-		default:                                          \
-			break;                                    \
-		}                                                 \
+#define hocon_read_str_base(structure, field, key, jso)               \
+	do {                                                          \
+		cJSON *jso_key = cJSON_GetObjectItem(jso, key);       \
+		if (NULL == jso_key) {                                \
+			log_error("Read config %s failed!", key);     \
+			break;                                        \
+		}                                                     \
+		switch (jso_key->type) {                              \
+		case cJSON_String:                                    \
+			if (NULL != jso_key->valuestring) {           \
+				FREE_NONULL((structure)->field);      \
+				(structure)->field =                  \
+				    nng_strdup(jso_key->valuestring); \
+			}                                             \
+			break;                                        \
+		default:                                              \
+			break;                                        \
+		}                                                     \
 	} while (0);
 
 #define hocon_read_bool_base(structure, field, key, jso)            \
@@ -45,20 +47,21 @@
 		}                                                   \
 	} while (0);
 
-#define hocon_read_num_base(structure, field, key, jso)           \
-	do {                                                      \
-		cJSON *jso_key = cJSON_GetObjectItem(jso, key);   \
-		if (NULL == jso_key) {                            \
-			log_error("Read config %s failed!", key); \
-			break;                                    \
-		}                                                 \
-		switch (jso_key->type) {                          \
-		case cJSON_Number:                                \
-			(structure)->field = jso_key->valueint;   \
-			break;                                    \
-		default:                                          \
-			break;                                    \
-		}                                                 \
+#define hocon_read_num_base(structure, field, key, jso)                 \
+	do {                                                            \
+		cJSON *jso_key = cJSON_GetObjectItem(jso, key);         \
+		if (NULL == jso_key) {                                  \
+			log_error("Read config %s failed!", key);       \
+			break;                                          \
+		}                                                       \
+		switch (jso_key->type) {                                \
+		case cJSON_Number:                                      \
+			if (jso_key->valueint > 0)                      \
+				(structure)->field = jso_key->valueint; \
+			break;                                          \
+		default:                                                \
+			break;                                          \
+		}                                                       \
 	} while (0);
 
 #define hocon_read_str_arr_base(structure, field, key, jso)                  \
@@ -323,24 +326,31 @@ webhook_action_parse_ver2(cJSON *object, conf_web_hook_rule *hook_rule)
 	}
 }
 
-
 static void
 conf_web_hook_parse_rules_ver2(conf *config, cJSON *jso)
 {
-	cJSON *jso_webhook_rules = hocon_get_obj("webhook.rule", jso);
-	cJSON *jso_webhook_rule = NULL;
+	cJSON *jso_webhook_rules         = hocon_get_obj("webhook.rule", jso);
+	cJSON *jso_webhook_rule          = NULL;
 	cJSON *jso_webhook_rule_elem_arr = NULL;
-	cJSON *jso_webhook_rule_elem = NULL;
+	cJSON *jso_webhook_rule_elem     = NULL;
 
 	conf_web_hook *webhook = &(config->web_hook);
-	webhook->rules = NULL;
+	webhook->rules         = NULL;
 
-	cJSON_ArrayForEach(jso_webhook_rule, jso_webhook_rules) {
-		cJSON_ArrayForEach(jso_webhook_rule_elem_arr, jso_webhook_rule) {
-			cJSON_ArrayForEach(jso_webhook_rule_elem, jso_webhook_rule_elem_arr) {
-				conf_web_hook_rule *hook_rule = NNI_ALLOC_STRUCT(hook_rule);
-				webhook_action_parse_ver2(jso_webhook_rule_elem, hook_rule);
-				hook_rule->event = get_webhook_event(jso_webhook_rule->string, jso_webhook_rule_elem_arr->string);
+	cJSON_ArrayForEach(jso_webhook_rule, jso_webhook_rules)
+	{
+		cJSON_ArrayForEach(jso_webhook_rule_elem_arr, jso_webhook_rule)
+		{
+			cJSON_ArrayForEach(
+			    jso_webhook_rule_elem, jso_webhook_rule_elem_arr)
+			{
+				conf_web_hook_rule *hook_rule =
+				    NNI_ALLOC_STRUCT(hook_rule);
+				webhook_action_parse_ver2(
+				    jso_webhook_rule_elem, hook_rule);
+				hook_rule->event =
+				    get_webhook_event(jso_webhook_rule->string,
+				        jso_webhook_rule_elem_arr->string);
 				cvector_push_back(webhook->rules, hook_rule);
 			}
 		}
@@ -592,16 +602,6 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 {
 
 	conf_rule *cr = &(config->rule_eng);
-	char *rule_option = cJSON_GetStringValue(hocon_get_obj("rules.option", jso));
-	if (0 != nni_strcasecmp(rule_option, "ON")) {
-		if (0 != nni_strcasecmp(rule_option, "OFF")) {
-			log_warn(
-			    "Unsupported option: %s\nrule "
-			    "option only support ON/OFF",
-			    rule_option);
-		}
-	}
-
 	cJSON *jso_rule_sqlite = hocon_get_obj("rules.sqlite", jso);
 	hocon_read_str_base(cr, sqlite_db, "path", jso_rule_sqlite);
 
@@ -621,17 +621,14 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 
 		rule_sql_parse(cr, r.raw_sql);
 
-		cr->rules[cvector_size(cr->rules) - 1]
-		    .sqlite_table = r.sqlite_table;
-		cr->rules[cvector_size(cr->rules) - 1]
-		    .forword_type = RULE_FORWORD_SQLITE;
-		cr->rules[cvector_size(cr->rules) - 1]
-		    .raw_sql = r.raw_sql;
-		cr->rules[cvector_size(cr->rules) - 1]
-		    .enabled = r.enabled;
-		cr->rules[cvector_size(cr->rules) - 1]
-		    .rule_id = rule_generate_rule_id();
-
+		cr->rules[cvector_size(cr->rules) - 1].sqlite_table =
+		    r.sqlite_table;
+		cr->rules[cvector_size(cr->rules) - 1].forword_type =
+		    RULE_FORWORD_SQLITE;
+		cr->rules[cvector_size(cr->rules) - 1].raw_sql = r.raw_sql;
+		cr->rules[cvector_size(cr->rules) - 1].enabled = r.enabled;
+		cr->rules[cvector_size(cr->rules) - 1].rule_id =
+		    rule_generate_rule_id();
 	}
 
 	cJSON *jso_rule_repub = hocon_get_obj("rules.repub", jso);
@@ -646,7 +643,7 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 	cJSON_ArrayForEach(jso_rule, jso_rules)
 	{
 
-		rule re = { 0 };
+		rule     re    = { 0 };
 		repub_t *repub = NNI_ALLOC_STRUCT(repub);
 		hocon_read_bool(&re, enabled, jso_rule);
 		hocon_read_str_base(&re, raw_sql, "sql", jso_rule);
@@ -663,22 +660,17 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 
 		cr->rules[cvector_size(cr->rules) - 1].repub =
 		    NNI_ALLOC_STRUCT(repub);
-		memcpy(cr->rules[cvector_size(cr->rules) - 1]
-		           .repub,
-		    repub, sizeof(*repub));
-		cr->rules[cvector_size(cr->rules) - 1]
-		    .forword_type = RULE_FORWORD_REPUB;
-		cr->rules[cvector_size(cr->rules) - 1]
-		    .raw_sql = re.raw_sql;
-		cr->rules[cvector_size(cr->rules) - 1]
-		    .enabled = re.enabled;
-		cr->rules[cvector_size(cr->rules) - 1]
-		    .rule_id = rule_generate_rule_id();
+		memcpy(cr->rules[cvector_size(cr->rules) - 1].repub, repub,
+		    sizeof(*repub));
+		cr->rules[cvector_size(cr->rules) - 1].forword_type =
+		    RULE_FORWORD_REPUB;
+		cr->rules[cvector_size(cr->rules) - 1].raw_sql = re.raw_sql;
+		cr->rules[cvector_size(cr->rules) - 1].enabled = re.enabled;
+		cr->rules[cvector_size(cr->rules) - 1].rule_id =
+		    rule_generate_rule_id();
 
 		NNI_FREE_STRUCT(repub);
 	}
-
-
 
 	cJSON *jso_rule_mysql = hocon_get_obj("rules.mysql", jso);
 	if (cJSON_IsTrue(cJSON_GetObjectItem(jso_rule_mysql, "enabled"))) {
@@ -706,19 +698,28 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 
 		cr->rules[cvector_size(cr->rules) - 1].mysql =
 		    NNI_ALLOC_STRUCT(mysql);
-		memcpy(cr->rules[cvector_size(cr->rules) - 1]
-		           .mysql,
-		    mysql, sizeof(*mysql));
-		cr->rules[cvector_size(cr->rules) - 1]
-		    .forword_type = RULE_FORWORD_MYSOL;
-		cr->rules[cvector_size(cr->rules) - 1]
-		    .raw_sql = r.raw_sql;
-		cr->rules[cvector_size(cr->rules) - 1]
-		    .enabled = r.enabled;
-		cr->rules[cvector_size(cr->rules) - 1]
-		    .rule_id = rule_generate_rule_id();
+		memcpy(cr->rules[cvector_size(cr->rules) - 1].mysql, mysql,
+		    sizeof(*mysql));
+		cr->rules[cvector_size(cr->rules) - 1].forword_type =
+		    RULE_FORWORD_MYSOL;
+		cr->rules[cvector_size(cr->rules) - 1].raw_sql = r.raw_sql;
+		cr->rules[cvector_size(cr->rules) - 1].enabled = r.enabled;
+		cr->rules[cvector_size(cr->rules) - 1].rule_id =
+		    rule_generate_rule_id();
 
 		NNI_FREE_STRUCT(mysql);
+	}
+
+	char *rule_option =
+	    cJSON_GetStringValue(hocon_get_obj("rules.option", jso));
+	if (0 != nni_strcasecmp(rule_option, "ON")) {
+		if (0 != nni_strcasecmp(rule_option, "OFF")) { 			
+			log_error("Unsupported option:%s\nrule"			    
+			"option only support ON/OFF", rule_option);
+		} else {
+			cr->option = 0;
+		}
+
 	}
 
 	return;
@@ -729,12 +730,11 @@ char *
 json_buffer_from_fp(FILE *fp)
 {
 
-	char  *buffer    = NULL;
-	char   buf[8192] = { 0 };
-	size_t num;
+	char *buffer    = NULL;
+	char  buf[8192] = { 0 };
 
 	while (!feof(fp)) {
-		num = fread(buf, sizeof(buf), 1, fp);
+		fread(buf, sizeof(buf), 1, fp);
 		for (size_t i = 0; i < sizeof(buf); i++) {
 			cvector_push_back(buffer, buf[i]);
 		}
