@@ -658,10 +658,10 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 
 		rule_sql_parse(cr, re.raw_sql);
 
-		cr->rules[cvector_size(cr->rules) - 1].repub =
-		    NNI_ALLOC_STRUCT(repub);
-		memcpy(cr->rules[cvector_size(cr->rules) - 1].repub, repub,
-		    sizeof(*repub));
+		cr->rules[cvector_size(cr->rules) - 1].repub = repub;
+		    // NNI_ALLOC_STRUCT(repub);
+		// memcpy(cr->rules[cvector_size(cr->rules) - 1].repub, repub,
+		//     sizeof(*repub));
 		cr->rules[cvector_size(cr->rules) - 1].forword_type =
 		    RULE_FORWORD_REPUB;
 		cr->rules[cvector_size(cr->rules) - 1].raw_sql = re.raw_sql;
@@ -669,7 +669,7 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 		cr->rules[cvector_size(cr->rules) - 1].rule_id =
 		    rule_generate_rule_id();
 
-		NNI_FREE_STRUCT(repub);
+		// NNI_FREE_STRUCT(repub);
 	}
 
 	cJSON *jso_rule_mysql = hocon_get_obj("rules.mysql", jso);
@@ -696,10 +696,10 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 
 		rule_sql_parse(cr, r.raw_sql);
 
-		cr->rules[cvector_size(cr->rules) - 1].mysql =
-		    NNI_ALLOC_STRUCT(mysql);
-		memcpy(cr->rules[cvector_size(cr->rules) - 1].mysql, mysql,
-		    sizeof(*mysql));
+		cr->rules[cvector_size(cr->rules) - 1].mysql = mysql;
+		    // NNI_ALLOC_STRUCT(mysql);
+		// memcpy(cr->rules[cvector_size(cr->rules) - 1].mysql, mysql,
+		//     sizeof(*mysql));
 		cr->rules[cvector_size(cr->rules) - 1].forword_type =
 		    RULE_FORWORD_MYSOL;
 		cr->rules[cvector_size(cr->rules) - 1].raw_sql = r.raw_sql;
@@ -707,7 +707,7 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 		cr->rules[cvector_size(cr->rules) - 1].rule_id =
 		    rule_generate_rule_id();
 
-		NNI_FREE_STRUCT(mysql);
+		// NNI_FREE_STRUCT(mysql);
 	}
 
 	char *rule_option =
@@ -796,4 +796,61 @@ conf_parse_ver2(conf *config)
 	fclose(fp);
 
 	return;
+}
+
+void
+conf_gateway_parse_ver2(zmq_gateway_conf *config)
+{
+	const char *dest_path = config->path;
+
+	if (dest_path == NULL || !nano_file_exists(dest_path)) {
+		if (!nano_file_exists(CONF_GATEWAY_PATH_NAME)) {
+			log_debug("Configure file [%s] or [%s] not found or "
+			          "unreadable\n",
+			    dest_path, CONF_GATEWAY_PATH_NAME);
+			return;
+		} else {
+			dest_path = CONF_GATEWAY_PATH_NAME;
+		}
+	}
+
+
+	FILE *fp;
+	if ((fp = fopen(dest_path, "r")) == NULL) {
+		log_error("File %s open failed", dest_path);
+		return;
+	}
+
+	char *str = json_buffer_from_fp(fp);
+	if (str != NULL) {
+
+		cJSON *jso = hocon_str_to_json(str);
+		cJSON *jso_mqtt = hocon_get_obj("gateway.mqtt", jso);
+		cJSON *jso_zmq = hocon_get_obj("gateway.zmq", jso);
+
+		hocon_read_num(config, proto_ver, jso_mqtt);
+		hocon_read_num(config, keepalive, jso_mqtt);
+		hocon_read_bool(config, clean_start, jso_mqtt);
+		hocon_read_num(config, parallel, jso_mqtt);
+		hocon_read_str_base(config, mqtt_url, "address", jso_mqtt);
+		hocon_read_str_base(config, pub_topic, "forward", jso_mqtt);
+		hocon_read_str(config, sub_topic, jso_mqtt);
+
+		hocon_read_str_base(config, zmq_sub_pre, "sub_pre", jso_zmq);
+		hocon_read_str_base(config, zmq_pub_pre, "pub_pre", jso_zmq);
+		hocon_read_str_base(config, zmq_sub_url, "sub_address", jso_zmq);
+		hocon_read_str_base(config, zmq_pub_url, "pub_address", jso_zmq);
+
+		cJSON_Delete(jso);
+		cvector_free(str);
+
+		// printf_gateway_conf(config);
+
+	} else {
+		log_error("Unable to parse contents of json");
+	}
+	fclose(fp);
+
+	return;
+
 }
