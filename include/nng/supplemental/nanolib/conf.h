@@ -131,6 +131,8 @@ struct conf_auth_http_req {
 	conf_http_header **headers;
 	size_t param_count;
 	conf_http_param **params;
+	// TODO not support yet
+	conf_tls tls;
 };
 
 typedef struct conf_auth_http_req conf_auth_http_req;
@@ -143,8 +145,6 @@ struct conf_auth_http {
 	uint64_t           timeout;         // seconds
 	uint64_t           connect_timeout; // seconds
 	size_t             pool_size;
-	// TODO not support yet
-	conf_tls tls;
 };
 
 typedef struct conf_auth_http conf_auth_http;

@@ -730,6 +730,7 @@ conf_auth_http_req_init(conf_auth_http_req *req)
 	req->headers      = NULL;
 	req->param_count  = 0;
 	req->params       = NULL;
+	conf_tls_init(&req->tls);
 }
 
 static void
@@ -819,7 +820,6 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->auth_http.timeout         = 5;
 	nanomq_conf->auth_http.connect_timeout = 5;
 	nanomq_conf->auth_http.pool_size       = 32;
-	conf_tls_init(&nanomq_conf->auth_http.tls);
 }
 
 void
@@ -2615,6 +2615,7 @@ conf_auth_http_req_destroy(conf_auth_http_req *req)
 		}
 		free(req->params);
 	}
+	conf_tls_destroy(&req->tls);
 }
 
 static void
@@ -2623,7 +2624,6 @@ conf_auth_http_destroy(conf_auth_http *auth_http)
 	conf_auth_http_req_destroy(&auth_http->auth_req);
 	conf_auth_http_req_destroy(&auth_http->super_req);
 	conf_auth_http_req_destroy(&auth_http->acl_req);
-	conf_tls_destroy(&auth_http->tls);
 }
 
 static void
