@@ -137,6 +137,7 @@ conf_update_var(const char *fpath, const char *key, uint8_t type, void *var)
 	case 7:
 		// bool
 		snprintf(varstr, 50, "%s", (*(bool *) var) ? "true" : "false");
+		break;
 	default:
 		return;
 	}
