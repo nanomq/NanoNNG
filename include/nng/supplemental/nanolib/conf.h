@@ -235,16 +235,16 @@ struct conf_bridge {
 typedef struct conf_bridge conf_bridge;
 
 typedef struct {
-    const char *zmq_sub_url;
-    const char *zmq_pub_url;
-    const char *mqtt_url;
-    const char *sub_topic;
-    const char *pub_topic;
-    const char *zmq_sub_pre;
-    const char *zmq_pub_pre;
-    const char *path;
-    const char *username;
-    const char *password;
+    char *zmq_sub_url;
+    char *zmq_pub_url;
+    char *mqtt_url;
+    char *sub_topic;
+    char *pub_topic;
+    char *zmq_sub_pre;
+    char *zmq_pub_pre;
+    char *path;
+    char *username;
+    char *password;
     void       *zmq_sender;
     int         proto_ver;
     int         keepalive;
