@@ -21,7 +21,6 @@
 #define NNI_QUIC_MAX_RETRY 2
 
 #define QUIC_API_C_DEBUG 0
-#define QUIC_API_C_INFO 0
 
 #if QUIC_API_C_DEBUG
 #define qdebug(fmt, ...)                                                 \
@@ -30,15 +29,6 @@
 	} while (0)
 #else
 #define qdebug(fmt, ...) do {} while(0)
-#endif
-
-#if QUIC_API_C_INFO
-#define qinfo(fmt, ...)                                                 \
-	do {                                                            \
-		printf("[%s]: " fmt "", __FUNCTION__, ##__VA_ARGS__); \
-	} while (0)
-#else
-#define qinfo(fmt, ...) do {} while(0)
 #endif
 
 typedef struct quic_sock_s quic_sock_t;
@@ -203,7 +193,7 @@ quic_sock_fini(quic_sock_t *qsock)
 		nng_url_free(qsock->url_s);
 
 	nni_aio_stop(&qsock->close_aio);
-	nni_aio_close(&qsock->close_aio);
+	// nni_aio_close(&qsock->close_aio);
 	nni_aio_fini(&qsock->close_aio);
 }
 
@@ -550,7 +540,6 @@ quic_connect_ipv4(const char *url, nni_sock *sock)
 		log_error("Failed in ConnectionStart, 0x%x!", rv);
 		goto error;
 	}
-	qsock->qconn = conn;
 
 	// Start/ReStart the nng pipe
 	const nni_proto_pipe_ops *pipe_ops = g_quic_proto->proto_pipe_ops;
@@ -558,6 +547,9 @@ quic_connect_ipv4(const char *url, nni_sock *sock)
 		log_error("error in alloc pipe.\n");
 		goto error;
 	}
+	// Successfully creating quic connection then assign to qsock
+	qsock->qconn = conn;
+
 	void *sock_data = nni_sock_proto_data(sock);
 	pipe_ops->pipe_init(qsock->pipe, (nni_pipe *)qsock, sock_data);
 	return 0;
@@ -596,7 +588,7 @@ quic_sock_reconnect(quic_sock_t *qsock)
 
 	if (qsock->rticket_sz != 0) {
 		log_info("QUIC connection reconnect with 0RTT enabled");
-		if (QUIC_FAILED(rv = MsQuic->SetParam(qsock->qconn,
+		if (QUIC_FAILED(rv = MsQuic->SetParam(conn,
 		    QUIC_PARAM_CONN_RESUMPTION_TICKET, qsock->rticket_sz, qsock->rticket))) {
 			log_error("Failed in setting resumption ticket, 0x%x!", rv);
 			goto error;
@@ -607,12 +599,14 @@ quic_sock_reconnect(quic_sock_t *qsock)
 	log_info("Quic reconnecting... %s:%s", url_s->u_host, url_s->u_port);
 
 	// Start the connection to the server.
-	if (QUIC_FAILED(rv = MsQuic->ConnectionStart(qsock->qconn,
-	                    configuration, QUIC_ADDRESS_FAMILY_UNSPEC,
-	                    url_s->u_host, atoi(url_s->u_port)))) {
+	if (QUIC_FAILED(rv = MsQuic->ConnectionStart(conn, configuration,
+	        QUIC_ADDRESS_FAMILY_UNSPEC, url_s->u_host, atoi(url_s->u_port)))) {
 		log_error("Failed in ConnectionStart, 0x%x!", rv);
 		goto error;
 	}
+	// Successfully creating quic connection then assign to qsock
+	qsock->qconn = conn;
+
 	return 0;
 
 error:
