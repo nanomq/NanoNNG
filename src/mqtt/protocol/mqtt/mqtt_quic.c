@@ -76,29 +76,31 @@ struct mqtt_quic_ctx {
 struct mqtt_sock_s {
 	nni_atomic_bool closed;
 	nni_duration    retry;
-	mqtt_pipe_t    *pipe;
-	nni_mtx         mtx;    // more fine grained mutual exclusion
-	mqtt_quic_ctx   master; // to which we delegate send/recv calls
-	// mqtt_pipe_t *   mqtt_pipe;
-	nni_list  recv_queue;    // aio pending to receive
-	nni_list  send_queue;    // aio pending to send
-	nni_lmq   send_messages; // send messages queue
-	nni_aio   time_aio;      // timer aio to resend unack msg
-	uint16_t  counter;       // counter for elapsed time
-	uint16_t  pingcnt;       // count how many ping msg is lost
-	uint16_t  keepalive;     // MQTT keepalive
-	nni_msg  *ping_msg, *connmsg;
-	nni_sock *nsock;
+	nni_mtx         mtx;           // more fine grained mutual exclusion
+	mqtt_quic_ctx   master;        // to which we delegate send/recv calls
+	nni_list        recv_queue;    // aio pending to receive
+	nni_list        send_queue;    // aio pending to send
+	nni_lmq         send_messages; // send messages queue
+	nni_id_map     *streams;  // pipes, only effective in multi-stream mode
+	mqtt_pipe_t    *pipe;     // the major pipe (control stream)
+	nni_aio         time_aio; // timer aio to resend unack msg
+	uint16_t        counter;  // counter for elapsed time
+	uint16_t        pingcnt;  // count how many ping msg is lost
+	uint16_t        keepalive; // MQTT keepalive
+	nni_msg        *ping_msg, *connmsg;
+	nni_sock       *nsock;
 
 	nni_mqtt_sqlite_option *sqlite_opt;
 
 	struct mqtt_client_cb cb; // user cb
 };
 
-// A mqtt_pipe_s is our per-pipe protocol private structure.
+// A mqtt_pipe_s is our per-stream protocol private structure.
+// equal to self-defined pipe in other protocols
 struct mqtt_pipe_s {
+	nni_mtx        *lk;
 	void           *qconnection;
-	void           *qsock; // quic socket
+	void           *qsock; // quic socket for MSQUIC/etc transport usage
 	void           *qpipe; // main quic pipe, others needs a map to store the relationship between
 						   // MQTT topics and quic pipes
 	nni_atomic_bool closed;
@@ -106,7 +108,6 @@ struct mqtt_pipe_s {
 	bool            ready;			// mark if QUIC stream is ready
 	nni_atomic_int  next_packet_id; // next packet id to use
 	mqtt_sock_t    *mqtt_sock;
-	nni_id_map     *streams;	   // only effective in multi-stream mode
 	nni_id_map      sent_unack;    // send messages unacknowledged
 	nni_id_map      recv_unack;    // recv messages unacknowledged
 	nni_aio         send_aio;      // send aio to the underlying transport
@@ -239,9 +240,6 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 // mqtt_qos_send_cb(void *arg)
 // {
 // }
-
-
-
 
 static void
 mqtt_quic_send_cb(void *arg)
@@ -643,6 +641,9 @@ static void mqtt_quic_sock_init(void *arg, nni_sock *sock)
 #endif
 	*/
 	nni_lmq_init(&s->send_messages, NNG_MAX_SEND_LMQ);
+	// if ()
+	s->streams = nng_alloc(sizeof(nni_id_map));
+	nni_id_map_init(s->streams, 0x0000u, 0xffffu, true);
 	nni_aio_list_init(&s->send_queue);
 	nni_aio_list_init(&s->recv_queue);
 	nni_aio_init(&s->time_aio, mqtt_timer_cb, s);
@@ -669,6 +670,7 @@ mqtt_quic_sock_fini(void *arg)
 #endif
 	*/
 
+	nni_id_map_fini(s->streams);
 	mqtt_quic_ctx_fini(&s->master);
 	nni_lmq_fini(&s->send_messages);
 	nni_aio_fini(&s->time_aio);
@@ -780,6 +782,7 @@ quic_mqtt_stream_init(void *arg, nni_pipe *qsock, void *sock)
 	nni_id_map_init(&p->sent_unack, 0x0000u, 0xffffu, true);
 	nni_id_map_init(&p->recv_unack, 0x0000u, 0xffffu, true);
 	nni_lmq_init(&p->recv_messages, NNG_MAX_RECV_LMQ);
+	nni_mtx_init(p->lk);
 
 	return (0);
 }
@@ -814,8 +817,10 @@ quic_mqtt_stream_fini(void *arg)
 	nni_id_map_fini(&p->recv_unack);
 	nni_id_map_fini(&p->sent_unack);
 	nni_lmq_fini(&p->recv_messages);
+	nni_mtx_fini(p->lk);
 
-	if (s->cb.disconnect_cb != NULL) {
+	// only report disconnect when major pipe is closed
+	if (s->pipe == p && s->cb.disconnect_cb != NULL) {
 		s->cb.disconnect_cb(NULL, s->cb.discarg);
 	}
 
@@ -1239,23 +1244,31 @@ nng_mqtt_quic_set_msg_recv_cb(nng_socket *sock, int (*cb)(void *, void *), void 
 /**
  * Create independent & seperated stream for specific topic.
  * Only effective on Publish
+ * This stream is unidirecitional by default
 */
 int
 nng_mqtt_quic_open_topic_stream(nng_socket *sock, const char *topic)
 {
-	void *strm = NULL;
 	nni_sock *nsock = NULL;
 	mqtt_pipe_t *p     = NULL;
+	mqtt_pipe_t *new_pipe   = NULL;
 
 	nni_sock_find(&nsock, sock->id);
 	if (nsock) {
 		mqtt_sock_t *mqtt_sock = nni_sock_proto_data(nsock);
 		p = mqtt_sock->pipe;
-		if (0 != quic_pipe_open(p->qsock, &strm)) {
-			log_warn("Failed in open the topic-stream pari.");
+		if (0 != quic_mqtt_stream_init(new_pipe, p->qsock, p->mqtt_sock)) {
+			log_warn("Failed in open the topic-stream pair.");
 			return -1;
 		}
-		nni_id_set(p->streams, DJBHashn(topic, strlen(topic)), strm);
+		
+		// if (0 != quic_pipe_open(p->qsock, &strm)) {
+		// 	log_warn("Failed in open the topic-stream pair.");
+		// 	return -1;
+		// }
+		// create a new pipe/stream pair
+		// pipe_ops->pipe_init(qsock->pipe, (nni_pipe *)qsock, sock_data);
+		nni_id_set(mqtt_sock->streams, DJBHashn(topic, strlen(topic)), new_pipe);
 	} else {
 		return -1;
 	}
