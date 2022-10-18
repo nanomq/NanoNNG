@@ -85,6 +85,8 @@ struct mqtt_sock_s {
 	nni_lmq send_messages;  // send messages queue (only for major stream)
 	nni_id_map  *streams;   // pipes, only effective in multi-stream mode
 	mqtt_pipe_t *pipe;      // the major pipe (control stream)
+	                   // main quic pipe, others needs a map to store the
+	                   // relationship between MQTT topics and quic pipes
 	nni_aio      time_aio;  // timer aio to resend unack msg
 	uint16_t     counter;   // counter for elapsed time
 	uint16_t     pingcnt;   // count how many ping msg is lost
@@ -104,8 +106,7 @@ struct mqtt_pipe_s {
 	nni_mtx         lk;
 	void           *qconnection;
 	void           *qsock; // quic socket for MSQUIC/etc transport usage
-	void           *qpipe; // main quic pipe, others needs a map to store the relationship between
-						   // MQTT topics and quic pipes
+	void           *qpipe; // each pipe has their own QUIC stream
 	nni_atomic_bool closed;
 	bool            busy;
 	bool            ready;			// mark if QUIC stream is ready
@@ -240,10 +241,51 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 	return -1;
 }
 
-// static void
-// mqtt_qos_send_cb(void *arg)
-// {
-// }
+
+static void
+mqtt_quic_data_strm_send_cb(void *arg)
+{
+	mqtt_pipe_t *p   = arg;
+	mqtt_sock_t *s   = p->mqtt_sock;
+	nni_msg *    msg = NULL;
+	nni_aio * aio;
+
+	if (nni_aio_result(&p->send_aio) != 0) {
+		// We failed to send... clean up and deal with it.
+		nni_msg_free(nni_aio_get_msg(&p->send_aio));
+		nni_aio_set_msg(&p->send_aio, NULL);
+		return;
+	}
+	nni_mtx_lock(&p->lk);
+	if (nni_atomic_get_bool(&p->closed)) {
+		// This occurs if the mqtt_pipe_close has been called.
+		// In that case we don't want any more processing.
+		nni_mtx_unlock(&p->lk);
+		return;
+	}
+	// Check cached aio first in s->send_queue? or p->sendqueue?
+	// Check cached msg in lmq
+	// this msg is already proessed by mqtt_send_msg
+	if (nni_lmq_get(&p->send_inflight, &msg) == 0) {
+		p->busy = true;
+		nni_mqtt_msg_encode(msg);
+		nni_aio_set_msg(&p->send_aio, msg);
+		quic_pipe_send(p->qpipe, &p->send_aio);
+		nni_mtx_unlock(&p->lk);
+		if (s->cb.msg_send_cb)
+			s->cb.msg_send_cb(NULL, s->cb.sendarg);
+		return;
+	}
+
+	nni_aio_set_msg(&p->send_aio, NULL);
+	p->busy = false;
+	nni_mtx_unlock(&p->lk);
+
+	if (s->cb.msg_send_cb)
+		s->cb.msg_send_cb(NULL, s->cb.sendarg);
+
+	return;
+}
 
 static void
 mqtt_quic_send_cb(void *arg)
@@ -321,8 +363,213 @@ mqtt_quic_send_cb(void *arg)
 	return;
 }
 
+// only publish & suback/unsuback packet is valid
 static void
 mqtt_quic_recv_cb(void *arg)
+{
+	mqtt_pipe_t *p = arg;
+	mqtt_sock_t *s = p->mqtt_sock;
+	nni_aio * user_aio = NULL;
+	nni_msg * cached_msg = NULL;
+	nni_aio *aio;
+
+	if (nni_aio_result(&p->recv_aio) != 0) {
+		// stream is closed in transport layer
+		return;
+	}
+
+	nni_mtx_lock(&p->lk);
+	nni_msg *msg = nni_aio_get_msg(&p->recv_aio);
+	nni_aio_set_msg(&p->recv_aio, NULL);
+	if (msg == NULL) {
+		nni_mtx_unlock(&p->lk);
+		quic_pipe_recv(p->qpipe, &p->recv_aio);
+		return;
+	}
+	if (nni_atomic_get_bool(&p->closed)) {
+		//free msg and dont return data when pipe is closed.
+		if (msg) {
+			nni_msg_free(msg);
+		}
+		nni_mtx_unlock(&p->lk);
+		return;
+	}
+	nni_mqtt_msg_proto_data_alloc(msg);
+	nni_mqtt_msg_decode(msg);
+
+	packet_type_t packet_type = nni_mqtt_msg_get_packet_type(msg);
+
+	int32_t       packet_id;
+	uint8_t       qos;
+	nni_msg      *ack;
+
+	// schedule another receive
+	quic_pipe_recv(p->qpipe, &p->recv_aio);
+
+	// set conn_param for upper layer
+	if (p->cparam)
+		nng_msg_set_conn_param(msg, p->cparam);
+	// Restore pingcnt
+	s->pingcnt = 0;
+	switch (packet_type) {
+	case NNG_MQTT_CONNACK:
+		nni_msg_free(msg);
+		break;
+	case NNG_MQTT_PUBACK:
+		// we have received a PUBACK, successful delivery of a QoS 1
+		// FALLTHROUGH
+	case NNG_MQTT_PUBCOMP:
+		// we have received a PUBCOMP, successful delivery of a QoS 2
+		// FALLTHROUGH
+	case NNG_MQTT_SUBACK:
+		// we have received a SUBACK, successful subscription
+		// FALLTHROUGH
+	case NNG_MQTT_UNSUBACK:
+		// we have received a UNSUBACK, successful unsubscription
+		packet_id  = nni_mqtt_msg_get_packet_id(msg);
+		cached_msg = nni_id_get(&p->sent_unack, packet_id);
+		if (cached_msg != NULL) {
+			nni_id_remove(&p->sent_unack, packet_id);
+			user_aio = nni_mqtt_msg_get_aio(cached_msg);
+			// should we support sub/unsub cb here?
+			if (packet_type == NNG_MQTT_SUBACK ||
+			    packet_type == NNG_MQTT_UNSUBACK) {
+				nni_msg_clone(msg);
+				nni_aio_set_msg(user_aio, msg);
+			}
+			nni_msg_free(cached_msg);
+		}
+		nni_msg_free(msg);
+		break;
+	case NNG_MQTT_PUBREL:
+		packet_id = nni_mqtt_msg_get_pubrel_packet_id(msg);
+		cached_msg = nni_id_get(&p->recv_unack, packet_id);
+		nni_msg_free(msg);
+		if (cached_msg == NULL) {
+			log_warn("ERROR! packet id %d not found\n", packet_id);
+			break;
+		}
+		nni_id_remove(&p->recv_unack, packet_id);
+
+		// return PUBCOMP
+		nni_mqtt_msg_alloc(&ack, 0);
+		nni_mqtt_msg_set_packet_type(ack, NNG_MQTT_PUBCOMP);
+		nni_mqtt_msg_set_puback_packet_id(ack, packet_id);
+		nni_mqtt_msg_encode(ack);
+		// ignore result of this send ?
+		mqtt_send_msg(NULL, ack, s);
+		// return msg to user
+		if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
+			// No one waiting to receive yet, putting msg
+			// into lmq
+			mqtt_pipe_recv_msgq_putq(p, cached_msg);
+			break;
+		}
+		nni_list_remove(&s->recv_queue, aio);
+		user_aio  = aio;
+		nni_aio_set_msg(user_aio, cached_msg);
+		break;
+	case NNG_MQTT_PUBLISH:
+		// we have received a PUBLISH
+		qos = nni_mqtt_msg_get_publish_qos(msg);
+
+		if (2 > qos) {
+			if (qos == 1) {
+				// QoS 1 return PUBACK
+				nni_mqtt_msg_alloc(&ack, 0);
+				/*
+				uint8_t *payload;
+				uint32_t payload_len;
+				payload = nng_mqtt_msg_get_publish_payload(msg, &payload_len);
+				*/
+				packet_id = nni_mqtt_msg_get_publish_packet_id(msg);
+				nni_mqtt_msg_set_packet_type(ack, NNG_MQTT_PUBACK);
+				nni_mqtt_msg_set_puback_packet_id(ack, packet_id);
+				nni_mqtt_msg_encode(ack);
+				// ignore result of this send ?
+				mqtt_send_msg(NULL, ack, s);
+			}
+			if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
+				// No one waiting to receive yet, putting msg
+				// into lmq
+				mqtt_pipe_recv_msgq_putq(p, msg);
+				// nni_println("ERROR: no ctx found!! create
+				// more ctxs!");
+				break;
+			}
+			nni_list_remove(&s->recv_queue, aio);
+			user_aio  = aio;
+			nni_aio_set_msg(user_aio, msg);
+			break;
+		} else {
+			packet_id = nni_mqtt_msg_get_publish_packet_id(msg);
+			if ((cached_msg = nni_id_get(
+			         &p->recv_unack, packet_id)) != NULL) {
+				// packetid already exists.
+				// sth wrong with the broker
+				// replace old with new
+				log_error(
+				    "ERROR: packet id %d duplicates in",
+				    packet_id);
+				nni_msg_free(cached_msg);
+				// nni_id_remove(&pipe->nano_qos_db,
+				// pid);
+			}
+			nni_id_set(&p->recv_unack, packet_id, msg);
+			// return PUBREC
+			nni_mqtt_msg_alloc(&ack, 0);
+			nni_mqtt_msg_set_packet_type(ack, NNG_MQTT_PUBREC);
+			nni_mqtt_msg_set_puback_packet_id(ack, packet_id);
+			nni_mqtt_msg_encode(ack);
+			// ignore result of this send ?
+			mqtt_send_msg(NULL, ack, s);
+		}
+		break;
+	case NNG_MQTT_PINGRESP:
+		// PINGRESP is ignored in protocol layer
+		// Rely on health checker of Quic stream
+		// free msg
+		nni_msg_free(msg);
+		nni_mtx_unlock(&p->lk);
+		return;
+	case NNG_MQTT_PUBREC:
+		// return PUBREL
+		packet_id = nni_mqtt_msg_get_pubrec_packet_id(msg);
+		nni_mqtt_msg_alloc(&ack, 0);
+		nni_mqtt_msg_set_packet_type(ack, NNG_MQTT_PUBREL);
+		nni_mqtt_msg_set_puback_packet_id(ack, packet_id);
+		nni_mqtt_msg_encode(ack);
+		// ignore result of this send ?
+		mqtt_send_msg(NULL, ack, s);
+		nni_msg_free(msg);
+		nni_mtx_unlock(&p->lk);
+		return;
+	default:
+		// unexpected packet type, server misbehaviour
+		nni_msg_free(msg);
+		nni_mtx_unlock(&p->lk);
+		// close quic stream
+		// nni_pipe_close(p->pipe);
+		return;
+	}
+	nni_mtx_unlock(&p->lk);
+
+	if (user_aio) {
+		nni_aio_finish(user_aio, 0, 0);
+	}
+	// Trigger connect cb first in case connack being freed
+	if (packet_type == NNG_MQTT_CONNACK)
+		if (s->cb.connect_cb) {
+			s->cb.connect_cb(msg, s->cb.connarg);
+		}
+	// Trigger publish cb
+	if (packet_type == NNG_MQTT_PUBLISH)
+		if (s->cb.msg_recv_cb) // Trigger cb
+			s->cb.msg_recv_cb(msg, s->cb.recvarg);
+}
+
+static void
+mqtt_quic_data_strm_recv_cb(void *arg)
 {
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
@@ -762,13 +1009,16 @@ mqtt_quic_sock_set_sqlite_option(
 static int
 quic_mqtt_stream_init(void *arg, nni_pipe *qsock, void *sock)
 {
+	bool         major = false;
 	mqtt_pipe_t *p     = arg;
 	p->qsock           = qsock;
 	p->mqtt_sock       = sock;
 	p->cparam          = NULL;
 
-	if (p->mqtt_sock->pipe == NULL)
+	if (p->mqtt_sock->pipe == NULL) {
 		p->mqtt_sock->pipe = p;
+		major = true;
+	}
 	// QUIC stream init
 	if (0 != quic_pipe_open(qsock, &p->qpipe)) {
 		log_warn("Failed in open the main quic pipe.");
@@ -780,9 +1030,12 @@ quic_mqtt_stream_init(void *arg, nni_pipe *qsock, void *sock)
 	p->busy  = false;
 	p->ready = false;
 	nni_atomic_set(&p->next_packet_id, 1);
-	nni_aio_init(&p->send_aio, mqtt_quic_send_cb, p);
+	major == true
+	    ? nni_aio_init(&p->send_aio, mqtt_quic_send_cb, p)
+	    : nni_aio_init(&p->send_aio, mqtt_quic_data_strm_send_cb, p);
 	nni_aio_init(&p->rep_aio, NULL, p);
-	nni_aio_init(&p->recv_aio, mqtt_quic_recv_cb, p);
+	major == true ? nni_aio_init(&p->recv_aio, mqtt_quic_recv_cb, p)
+	              : nni_aio_init(&p->recv_aio, mqtt_quic_recv_cb, p);
 	// Packet IDs are 16 bits
 	// We start at a random point, to minimize likelihood of
 	// accidental collision across restarts.
@@ -1304,6 +1557,7 @@ nng_mqtt_quic_set_config(nng_socket *sock, void *node)
 
 /***
  * create a unidirectional stream for receving msg from a topic
+ * mapping sub topics (if >1) with the new stream.
 */
 static int
 mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
