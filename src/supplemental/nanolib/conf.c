@@ -1770,6 +1770,7 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->sub_list       = NULL;
 	node->sqlite         = NULL;
 #if defined(SUPP_QUIC)
+	node->multi_stream     = false;
 	node->hybrid           = false;
 	node->qkeepalive       = 120;
 	node->qconnect_timeout = 30; // HandshakeIdleTimeoutMs of QUIC
@@ -1897,6 +1898,10 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".hybrid_bridging")) != NULL) {
 			node->hybrid = nni_strcasecmp(value, "true") == 0;
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".multi_stream")) != NULL) {
+			node->multi_stream = nni_strcasecmp(value, "true") == 0;
 			free(value);
 #endif
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
