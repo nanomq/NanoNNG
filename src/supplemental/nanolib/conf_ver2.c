@@ -131,24 +131,19 @@ hocon_get_obj(char *key, cJSON *jso)
 static void
 conf_basic_parse_ver2(conf *config, cJSON *jso)
 {
-	cJSON *jso_nanomq = cJSON_GetObjectItem(jso, "nanomq");
-	if (NULL == jso_nanomq) {
-		log_error("Read config nanomq failed!");
-		return;
-	}
 
-	hocon_read_str(config, url, jso_nanomq);
-	hocon_read_bool(config, daemon, jso_nanomq);
-	hocon_read_num(config, num_taskq_thread, jso_nanomq);
-	hocon_read_num(config, max_taskq_thread, jso_nanomq);
-	hocon_read_num(config, parallel, jso_nanomq);
-	hocon_read_num(config, property_size, jso_nanomq);
-	hocon_read_num(config, max_packet_size, jso_nanomq);
-	hocon_read_num(config, client_max_packet_size, jso_nanomq);
-	hocon_read_num(config, msq_len, jso_nanomq);
-	hocon_read_num(config, qos_duration, jso_nanomq);
-	hocon_read_num_base(config, backoff, "keepalive_backoff", jso_nanomq);
-	hocon_read_bool(config, allow_anonymous, jso_nanomq);
+	hocon_read_str(config, url, jso);
+	hocon_read_bool(config, daemon, jso);
+	hocon_read_num(config, num_taskq_thread, jso);
+	hocon_read_num(config, max_taskq_thread, jso);
+	hocon_read_num(config, parallel, jso);
+	hocon_read_num(config, property_size, jso);
+	hocon_read_num(config, max_packet_size, jso);
+	hocon_read_num(config, client_max_packet_size, jso);
+	hocon_read_num(config, msq_len, jso);
+	hocon_read_num(config, qos_duration, jso);
+	hocon_read_num_base(config, backoff, "keepalive_backoff", jso);
+	hocon_read_bool(config, allow_anonymous, jso);
 
 	cJSON *jso_websocket = cJSON_GetObjectItem(jso, "websocket");
 	if (NULL == jso_websocket) {
