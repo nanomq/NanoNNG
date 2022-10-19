@@ -306,7 +306,7 @@ hocon_str_to_json(char *str)
 			// push ',' after '}', if last is object finish.
 			// push '"' before key, if next is not an object.
 			// example: '},"key'
-			if ('}' == data[cvector_size(data) - 1]) {
+			if ('}' == data[cvector_size(data) - 1] && ',' != *p) {
 				cvector_push_back(data, ',');
 				if ('{' != *p) {
 					cvector_push_back(data, '"');
