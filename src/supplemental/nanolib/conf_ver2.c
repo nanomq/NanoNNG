@@ -431,6 +431,95 @@ conf_auth_parse_ver2(conf *config, cJSON *jso)
 	return;
 }
 
+
+static void
+conf_auth_http_req_parse_ver2(conf_auth_http_req *config, cJSON *jso)
+{
+	hocon_read_str(config, url, jso);
+	hocon_read_str(config, method, jso);
+	cJSON *jso_headers =
+	    hocon_get_obj("headers", jso);
+	cJSON *jso_header = NULL;
+	cJSON_ArrayForEach(jso_header, jso_headers)
+	{
+		conf_http_header *config_header =
+		    NNI_ALLOC_STRUCT(config_header);
+		config_header->key =
+		    nng_strdup(jso_header->string);
+		config_header->value =
+		    nng_strdup(jso_header->valuestring);
+		cvector_push_back(
+		    config->headers, config_header);
+	}
+	config->header_count = cvector_size(config->headers);
+
+	cJSON *jso_params =
+	    hocon_get_obj("params", jso);
+	cJSON *jso_param = NULL;
+	cJSON_ArrayForEach(jso_param, jso_params)
+	{
+			conf_http_param *param = NNI_ALLOC_STRUCT(param);
+			param->name = nng_strdup(jso_param->string);
+			char  c   = 0;
+			if (1 == sscanf(jso_param->valuestring, "%%%c", &c)) {
+				switch (c) {
+				case 'A':
+					param->type = ACCESS;
+					break;
+				case 'u':
+					param->type = USERNAME;
+					break;
+				case 'c':
+					param->type = CLIENTID;
+					break;
+				case 'a':
+					param->type = IPADDRESS;
+					break;
+				case 'P':
+					param->type = PASSWORD;
+					break;
+				case 'p':
+					param->type = SOCKPORT;
+					break;
+				case 'C':
+					param->type = COMMON_NAME;
+					break;
+				case 'd':
+					param->type = SUBJECT;
+					break;
+				case 't':
+					param->type = TOPIC;
+					break;
+				case 'm':
+					param->type = MOUNTPOINT;
+					break;
+				case 'r':
+					param->type = PROTOCOL;
+					break;
+				default:
+					break;
+				}
+				cvector_push_back(config->params, param);
+			} else {
+				nng_strfree(param->name);
+				NNI_FREE_STRUCT(param);
+			}
+	}
+	config->header_count = cvector_size(config->params);
+
+	cJSON    *jso_http_req_tls = hocon_get_obj("tls", jso);
+	conf_tls *http_req_tls     = &(config->tls);
+	hocon_read_bool(http_req_tls, enable, jso_http_req_tls);
+	hocon_read_str(http_req_tls, key_password, jso_http_req_tls);
+	hocon_read_str(http_req_tls, keyfile, jso_http_req_tls);
+	hocon_read_str(http_req_tls, keyfile, jso_http_req_tls);
+	hocon_read_str(http_req_tls, certfile, jso_http_req_tls);
+	hocon_read_str_base(
+	    http_req_tls, cafile, "cacertfile", jso_http_req_tls);
+
+}
+
+
 static void
 conf_auth_http_parse_ver2(conf *config, cJSON *jso)
 {
@@ -446,25 +535,36 @@ conf_auth_http_parse_ver2(conf *config, cJSON *jso)
 	hocon_read_num(auth_http, timeout, jso_auth_http);
 	hocon_read_num(auth_http, connect_timeout, jso_auth_http);
 	hocon_read_num(auth_http, pool_size, jso_auth_http);
+
 	conf_auth_http_req *auth_http_req = &(auth_http->auth_req);
 	cJSON *jso_auth_http_req = hocon_get_obj("auth_req", jso_auth_http);
-	hocon_read_str(auth_http_req, url, jso_auth_http_req);
-	hocon_read_str(auth_http_req, method, jso_auth_http_req);
-	cJSON *jso_auth_http_req_headers =
-	    hocon_get_obj("headers", jso_auth_http);
-	cJSON *jso_auth_http_req_header = NULL;
-	cJSON_ArrayForEach(jso_auth_http_req_header, jso_auth_http_req_headers)
-	{
-		conf_http_header *auth_http_req_header =
-		    NNI_ALLOC_STRUCT(auth_http_req_header);
-		auth_http_req_header->key =
-		    nng_strdup(jso_auth_http_req_header->string);
-		auth_http_req_header->value =
-		    nng_strdup(jso_auth_http_req_header->valuestring);
-		cvector_push_back(
-		    auth_http_req->headers, auth_http_req_header);
-	}
-	auth_http_req->header_count = cvector_size(auth_http_req->headers);
+	conf_auth_http_req_parse_ver2(auth_http_req, jso_auth_http_req);
+
+	conf_auth_http_req *auth_http_super_req = &(auth_http->super_req);
+	cJSON *jso_auth_http_super_req = hocon_get_obj("super_req", jso_auth_http);
+	conf_auth_http_req_parse_ver2(auth_http_super_req, jso_auth_http_super_req);
+
+	conf_auth_http_req *auth_http_acl_req = &(auth_http->acl_req);
+	cJSON *jso_auth_http_acl_req = hocon_get_obj("acl_req", jso_auth_http);
+	conf_auth_http_req_parse_ver2(auth_http_acl_req, jso_auth_http_acl_req);
+
+	// hocon_read_str(auth_http_req, url, jso_auth_http_req);
+	// hocon_read_str(auth_http_req, method, jso_auth_http_req);
+	// cJSON *jso_auth_http_req_headers =
+	//     hocon_get_obj("headers", jso_auth_http);
+	// cJSON *jso_auth_http_req_header = NULL;
+	// cJSON_ArrayForEach(jso_auth_http_req_header, jso_auth_http_req_headers)
+	// {
+	// 	conf_http_header *auth_http_req_header =
+	// 	    NNI_ALLOC_STRUCT(auth_http_req_header);
+	// 	auth_http_req_header->key =
+	// 	    nng_strdup(jso_auth_http_req_header->string);
+	// 	auth_http_req_header->value =
+	// 	    nng_strdup(jso_auth_http_req_header->valuestring);
+	// 	cvector_push_back(
+	// 	    auth_http_req->headers, auth_http_req_header);
+	// }
+	// auth_http_req->header_count = cvector_size(auth_http_req->headers);
 
 
 	return;
@@ -775,7 +875,6 @@ conf_parse_ver2(conf *config)
 	if (str != NULL) {
 
 		cJSON *jso = hocon_str_to_json(str);
-
 		conf_basic_parse_ver2(config, jso);
 		conf_sqlite_parse_ver2(config, jso);
 		conf_tls_parse_ver2(config, jso);
