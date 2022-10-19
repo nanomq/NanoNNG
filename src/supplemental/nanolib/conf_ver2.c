@@ -381,7 +381,7 @@ conf_webhook_parse_ver2(conf *config, cJSON *jso)
 	webhook->header_count = cvector_size(webhook->headers);
 
 	char *webhook_encoding =
-	    cJSON_GetStringValue(cJSON_GetObjectItem(jso_webhook, "encoding"));
+	    cJSON_GetStringValue(hocon_get_obj("body.encoding", jso_webhook));
 	if (nni_strcasecmp(webhook_encoding, "base64") == 0) {
 		webhook->encode_payload = base64;
 	} else if (nni_strcasecmp(webhook_encoding, "base62") == 0) {
@@ -389,6 +389,16 @@ conf_webhook_parse_ver2(conf *config, cJSON *jso)
 	} else if (nni_strcasecmp(webhook_encoding, "plain") == 0) {
 		webhook->encode_payload = plain;
 	}
+
+	cJSON    *jso_webhook_tls = hocon_get_obj("tls", jso_webhook);
+	conf_tls *webhook_tls     = &(webhook->tls);
+	hocon_read_bool(webhook_tls, enable, jso_webhook_tls);
+	hocon_read_str(webhook_tls, key_password, jso_webhook_tls);
+	hocon_read_str(webhook_tls, keyfile, jso_webhook_tls);
+	hocon_read_str(webhook_tls, keyfile, jso_webhook_tls);
+	hocon_read_str(webhook_tls, certfile, jso_webhook_tls);
+	hocon_read_str_base(
+	    webhook_tls, cafile, "cacertfile", jso_webhook_tls);
 
 	conf_web_hook_parse_rules_ver2(config, jso);
 
@@ -455,6 +465,7 @@ conf_auth_http_parse_ver2(conf *config, cJSON *jso)
 		    auth_http_req->headers, auth_http_req_header);
 	}
 	auth_http_req->header_count = cvector_size(auth_http_req->headers);
+
 
 	return;
 }
