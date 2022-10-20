@@ -25,6 +25,7 @@ static void conf_bridge_node_destroy(conf_bridge_node *node);
 static void conf_bridge_node_parse_subs(
     conf_bridge_node *node, const char *path, const char *name);
 static void print_bridge_conf(conf_bridge *bridge, const char *prefix);
+static void conf_auth_init(conf_auth *auth);
 static void conf_auth_parse(conf_auth *auth, const char *path);
 static void conf_auth_destroy(conf_auth *auth);
 static void conf_auth_http_req_init(conf_auth_http_req *req);
@@ -684,6 +685,7 @@ conf_log_parse(conf_log *log, const char *path)
 static void
 conf_tls_init(conf_tls *tls)
 {
+	tls->url          = NULL;
 	tls->enable       = false;
 	tls->cafile       = NULL;
 	tls->certfile     = NULL;
@@ -814,6 +816,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->web_hook.rule_count     = 0;
 	conf_tls_init(&nanomq_conf->web_hook.tls);
 
+	conf_auth_init(&nanomq_conf->auths);
 	nanomq_conf->auth_http.enable = false;
 	conf_auth_http_req_init(&nanomq_conf->auth_http.auth_req);
 	conf_auth_http_req_init(&nanomq_conf->auth_http.super_req);
@@ -864,6 +867,14 @@ print_conf(conf *nanomq_conf)
 #if defined(SUPP_AWS_BRIDGE)
 	print_bridge_conf(&nanomq_conf->aws_bridge, "aws.");
 #endif
+}
+
+static void
+conf_auth_init(conf_auth *auth)
+{
+	auth->count     = 0;
+	auth->usernames = NULL;
+	auth->passwords = NULL;
 }
 
 static void
@@ -1698,8 +1709,6 @@ conf_bridge_node_parse_subs(
 			free(value);
 			get_qos = true;
 			goto check;
-		} else {
-			log_warn("Invalid QoS level in bridging conf!");
 		}
 
 		free(line);
@@ -2025,9 +2034,6 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 	}
 	if (node->password) {
 		free(node->password);
-	}
-	if (node->forwards) {
-		free(node->forwards);
 	}
 	if (node->forwards_count > 0 && node->forwards) {
 		for (size_t i = 0; i < node->forwards_count; i++) {
