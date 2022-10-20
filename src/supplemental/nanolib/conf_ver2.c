@@ -519,6 +519,29 @@ conf_auth_http_req_parse_ver2(conf_auth_http_req *config, cJSON *jso)
 
 }
 
+static int
+get_time(const char *str, uint64_t *second)
+{
+	char     unit = 0;
+	uint64_t s    = 0;
+	if (2 == sscanf(str, "%lld%c", &s, &unit)) {
+		switch (unit) {
+		case 's':
+			*second = s;
+			break;
+		case 'm':
+			*second = s * 60;
+			break;
+		case 'h':
+			*second = s * 3600;
+			break;
+		default:
+			break;
+		}
+		return 0;
+	}
+	return -1;
+}
 
 static void
 conf_auth_http_parse_ver2(conf *config, cJSON *jso)
@@ -532,8 +555,10 @@ conf_auth_http_parse_ver2(conf *config, cJSON *jso)
 	conf_auth_http *auth_http = &(config->auth_http);
 
 	hocon_read_bool(auth_http, enable, jso_auth_http);
-	hocon_read_num(auth_http, timeout, jso_auth_http);
-	hocon_read_num(auth_http, connect_timeout, jso_auth_http);
+	char *timeout = cJSON_GetStringValue(hocon_get_obj("timeout", jso_auth_http));
+	char *connect_timeout = cJSON_GetStringValue(hocon_get_obj("connect_timeout", jso_auth_http));
+	get_time(timeout, &auth_http->timeout);
+	get_time(connect_timeout, &auth_http->timeout);
 	hocon_read_num(auth_http, pool_size, jso_auth_http);
 
 	conf_auth_http_req *auth_http_req = &(auth_http->auth_req);
