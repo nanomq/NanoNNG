@@ -505,7 +505,7 @@ conf_auth_http_req_parse_ver2(conf_auth_http_req *config, cJSON *jso)
 				NNI_FREE_STRUCT(param);
 			}
 	}
-	config->header_count = cvector_size(config->params);
+	config->param_count = cvector_size(config->params);
 
 	cJSON    *jso_http_req_tls = hocon_get_obj("tls", jso);
 	conf_tls *http_req_tls     = &(config->tls);
@@ -572,24 +572,6 @@ conf_auth_http_parse_ver2(conf *config, cJSON *jso)
 	conf_auth_http_req *auth_http_acl_req = &(auth_http->acl_req);
 	cJSON *jso_auth_http_acl_req = hocon_get_obj("acl_req", jso_auth_http);
 	conf_auth_http_req_parse_ver2(auth_http_acl_req, jso_auth_http_acl_req);
-
-	// hocon_read_str(auth_http_req, url, jso_auth_http_req);
-	// hocon_read_str(auth_http_req, method, jso_auth_http_req);
-	// cJSON *jso_auth_http_req_headers =
-	//     hocon_get_obj("headers", jso_auth_http);
-	// cJSON *jso_auth_http_req_header = NULL;
-	// cJSON_ArrayForEach(jso_auth_http_req_header, jso_auth_http_req_headers)
-	// {
-	// 	conf_http_header *auth_http_req_header =
-	// 	    NNI_ALLOC_STRUCT(auth_http_req_header);
-	// 	auth_http_req_header->key =
-	// 	    nng_strdup(jso_auth_http_req_header->string);
-	// 	auth_http_req_header->value =
-	// 	    nng_strdup(jso_auth_http_req_header->valuestring);
-	// 	cvector_push_back(
-	// 	    auth_http_req->headers, auth_http_req_header);
-	// }
-	// auth_http_req->header_count = cvector_size(auth_http_req->headers);
 
 
 	return;
@@ -900,25 +882,27 @@ conf_parse_ver2(conf *config)
 	if (str != NULL) {
 
 		cJSON *jso = hocon_str_to_json(str);
-		conf_basic_parse_ver2(config, jso);
-		conf_sqlite_parse_ver2(config, jso);
-		conf_tls_parse_ver2(config, jso);
-		conf_log_parse_ver2(config, jso);
-		conf_webhook_parse_ver2(config, jso);
-		conf_auth_parse_ver2(config, jso);
-		conf_auth_http_parse_ver2(config, jso);
-		conf_bridge_parse_ver2(config, jso);
-
+		if (NULL != jso) {
+			conf_basic_parse_ver2(config, jso);
+			conf_sqlite_parse_ver2(config, jso);
+			conf_tls_parse_ver2(config, jso);
+			conf_log_parse_ver2(config, jso);
+			conf_webhook_parse_ver2(config, jso);
+			conf_auth_parse_ver2(config, jso);
+			conf_auth_http_parse_ver2(config, jso);
+			conf_bridge_parse_ver2(config, jso);
 #if defined(SUPP_AWS_BRIDGE)
-		conf_aws_bridge_parse_ver2(config, jso);
+			conf_aws_bridge_parse_ver2(config, jso);
 #endif
 
 #if defined(SUPP_RULE_ENGINE)
-		conf_rule_parse_ver2(config, jso);
+			conf_rule_parse_ver2(config, jso);
 #endif
 
-		cJSON_Delete(jso);
-		cvector_free(str);
+			cJSON_Delete(jso);
+			cvector_free(str);
+		}
+
 
 	} else {
 		log_error("Unable to parse contents of json");
