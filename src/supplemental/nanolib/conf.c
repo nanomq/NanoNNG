@@ -701,6 +701,9 @@ conf_tls_init(conf_tls *tls)
 static void
 conf_tls_destroy(conf_tls *tls)
 {
+	if (tls->url) {
+		free(tls->url);
+	}
 	if (tls->cafile) {
 		free(tls->cafile);
 	}
@@ -2605,7 +2608,12 @@ conf_auth_http_parse(conf_auth_http *auth_http, const char *path)
 static void
 conf_auth_http_req_destroy(conf_auth_http_req *req)
 {
-	free(req->url);
+	if (req->url) {
+		free(req->url);
+	}
+	if (req->method) {
+		free(req->method);
+	}
 	if (req->header_count > 0 && req->headers != NULL) {
 		for (size_t i = 0; i < req->header_count; i++) {
 			free(req->headers[i]->key);
@@ -2698,6 +2706,7 @@ conf_fini(conf *nanomq_conf)
 {
 	nng_strfree(nanomq_conf->url);
 	nng_strfree(nanomq_conf->conf_file);
+	nng_strfree(nanomq_conf->websocket.tls_url);
 
 #if defined(SUPP_RULE_ENGINE)
 	conf_rule_destroy(&nanomq_conf->rule_eng);
