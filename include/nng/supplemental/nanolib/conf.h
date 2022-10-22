@@ -217,6 +217,7 @@ struct conf_bridge_node {
 #if defined(SUPP_QUIC)
 	// config params for QUIC only
 	bool         hybrid;  // hybrid bridging affects auto-reconnect of QUIC transport
+	uint8_t      qcongestion_control; // congestion control algorithm
 	uint64_t     qkeepalive;		//keepalive timeout interval of QUIC transport
 	uint64_t     qconnect_timeout;	// HandshakeIdleTimeoutMs of QUIC
 	uint32_t     qdiscon_timeout;	// DisconnectTimeoutMs

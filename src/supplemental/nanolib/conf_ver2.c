@@ -619,6 +619,15 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 		    "quic_handshake_timeout", bridge_mqtt_node);
 		hocon_read_bool_base(
 		    node, hybrid, "hybird_bridging", bridge_mqtt_node);
+		char *cc = cJSON_GetStringValue(cJSON_GetObjectItem(bridge_mqtt_node, "congestion_control"));
+		if (0 == nng_strcasecmp(cc, "bbr")) {
+			node->qcongestion_control = 1;
+		} else if (0 == nng_strcasecmp(cc, "cubic")) {
+			node->qcongestion_control = 0;
+		} else {
+			node->qcongestion_control = 0;
+			log_warn("unsupport congestion control algorithm, use default cubic!");
+		}
 #endif
 
 
