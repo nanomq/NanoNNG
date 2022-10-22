@@ -23,6 +23,7 @@
 #define QUIC_API_C_DEBUG 0
 #define QUIC_API_C_INFO 0
 
+
 #if QUIC_API_C_DEBUG
 #define qdebug(fmt, ...)                                                 \
 	do {                                                            \
@@ -120,6 +121,23 @@ LoadConfiguration(BOOLEAN Unsecure, conf_bridge_node *node)
 
 	Settings.IsSet.KeepAliveIntervalMs = TRUE;
 	Settings.KeepAliveIntervalMs       = node->qkeepalive * 1000;
+	switch (node->qcongestion_control)
+	{
+	case QUIC_CONGESTION_CONTROL_ALGORITHM_CUBIC:
+		Settings.IsSet.CongestionControlAlgorithm = TRUE;
+		Settings.CongestionControlAlgorithm       = QUIC_CONGESTION_CONTROL_ALGORITHM_CUBIC;
+		break;
+#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
+	case QUIC_CONGESTION_CONTROL_ALGORITHM_BBR:
+		Settings.IsSet.CongestionControlAlgorithm = TRUE;
+		Settings.CongestionControlAlgorithm       = QUIC_CONGESTION_CONTROL_ALGORITHM_BBR;
+		break;
+#endif
+	
+	default:
+		log_warn("unsupport congestion control algorithm, use default cubic!");
+		break;
+	}
 
 
 
