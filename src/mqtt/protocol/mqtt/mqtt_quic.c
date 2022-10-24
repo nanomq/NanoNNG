@@ -247,8 +247,7 @@ mqtt_quic_data_strm_send_cb(void *arg)
 {
 	mqtt_pipe_t *p   = arg;
 	mqtt_sock_t *s   = p->mqtt_sock;
-	nni_msg *    msg = NULL;
-	nni_aio * aio;
+	nni_msg     *msg = NULL;
 
 	if (nni_aio_result(&p->send_aio) != 0) {
 		// We failed to send... clean up and deal with it.
@@ -365,7 +364,7 @@ mqtt_quic_send_cb(void *arg)
 
 // only publish & suback/unsuback packet is valid
 static void
-mqtt_quic_recv_cb(void *arg)
+mqtt_quic_data_strm_recv_cb(void *arg)
 {
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
@@ -413,6 +412,7 @@ mqtt_quic_recv_cb(void *arg)
 	s->pingcnt = 0;
 	switch (packet_type) {
 	case NNG_MQTT_CONNACK:
+		nni_println("ERROR: CONNACK received in data stream!");
 		nni_msg_free(msg);
 		break;
 	case NNG_MQTT_PUBACK:
@@ -459,6 +459,7 @@ mqtt_quic_recv_cb(void *arg)
 		// ignore result of this send ?
 		mqtt_send_msg(NULL, ack, s);
 		// return msg to user
+		// TODO need to return msg to aio outside for reentrance safety
 		if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
 			// No one waiting to receive yet, putting msg
 			// into lmq
@@ -486,7 +487,7 @@ mqtt_quic_recv_cb(void *arg)
 				nni_mqtt_msg_set_packet_type(ack, NNG_MQTT_PUBACK);
 				nni_mqtt_msg_set_puback_packet_id(ack, packet_id);
 				nni_mqtt_msg_encode(ack);
-				// ignore result of this send ?
+				// TODO: send msg without touching Socket
 				mqtt_send_msg(NULL, ack, s);
 			}
 			if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
@@ -568,8 +569,11 @@ mqtt_quic_recv_cb(void *arg)
 			s->cb.msg_recv_cb(msg, s->cb.recvarg);
 }
 
+/***
+ * recv cb func for singe-stream mode or main stream
+*/
 static void
-mqtt_quic_data_strm_recv_cb(void *arg)
+mqtt_quic_recv_cb(void *arg)
 {
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
@@ -1030,12 +1034,12 @@ quic_mqtt_stream_init(void *arg, nni_pipe *qsock, void *sock)
 	p->busy  = false;
 	p->ready = false;
 	nni_atomic_set(&p->next_packet_id, 1);
+	nni_aio_init(&p->rep_aio, NULL, p);
 	major == true
 	    ? nni_aio_init(&p->send_aio, mqtt_quic_send_cb, p)
 	    : nni_aio_init(&p->send_aio, mqtt_quic_data_strm_send_cb, p);
-	nni_aio_init(&p->rep_aio, NULL, p);
 	major == true ? nni_aio_init(&p->recv_aio, mqtt_quic_recv_cb, p)
-	              : nni_aio_init(&p->recv_aio, mqtt_quic_recv_cb, p);
+	              : nni_aio_init(&p->recv_aio, mqtt_quic_data_strm_recv_cb, p);
 	// Packet IDs are 16 bits
 	// We start at a random point, to minimize likelihood of
 	// accidental collision across restarts.
