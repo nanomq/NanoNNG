@@ -566,9 +566,8 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 				mqtt_pipe_send_msg(NULL, ack, p, mqtt_pipe_get_next_packet_id(p->mqtt_sock->pipe));
 			}
 			nni_mtx_lock(&s->mtx);
+			// TODO aio should be placed in p->recv_queue to achieve parallel
 			if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
-				// No one waiting to receive yet, putting msg
-				// into lmq
 				mqtt_pipe_recv_msgq_putq(p, msg);
 				// nni_println("ERROR: no ctx found!! create
 				// more ctxs!");
@@ -972,9 +971,6 @@ static void mqtt_quic_sock_init(void *arg, nni_sock *sock)
 #endif
 	*/
 	nni_lmq_init(&s->send_messages, NNG_MAX_SEND_LMQ);
-	// if ()
-	s->streams = nng_alloc(sizeof(nni_id_map));
-	nni_id_map_init(s->streams, 0x0000u, 0xffffu, true);
 	nni_aio_list_init(&s->send_queue);
 	nni_aio_list_init(&s->recv_queue);
 	nni_aio_init(&s->time_aio, mqtt_timer_cb, s);
@@ -1000,9 +996,10 @@ mqtt_quic_sock_fini(void *arg)
 	}
 #endif
 	*/
-	// if ()
-	nni_id_map_fini(s->streams);
-	nng_free(s->streams, sizeof(nni_id_map));
+	if (s->bridge_conf->multi_stream) {
+		nni_id_map_fini(s->streams);
+		nng_free(s->streams, sizeof(nni_id_map));
+	}
 	mqtt_quic_ctx_fini(&s->master);
 	nni_lmq_fini(&s->send_messages);
 	nni_aio_fini(&s->time_aio);
@@ -1122,7 +1119,8 @@ quic_mqtt_stream_init(void *arg, nni_pipe *qsock, void *sock)
 	nni_id_map_init(&p->sent_unack, 0x0000u, 0xffffu, true);
 	nni_id_map_init(&p->recv_unack, 0x0000u, 0xffffu, true);
 	nni_lmq_init(&p->recv_messages, NNG_MAX_RECV_LMQ);
-	nni_lmq_init(&p->send_inflight, NNG_MAX_RECV_LMQ);
+	if (p->mqtt_sock->bridge_conf->multi_stream)
+		nni_lmq_init(&p->send_inflight, NNG_MAX_RECV_LMQ);
 	nni_mtx_init(&p->lk);
 
 	return (0);
@@ -1157,7 +1155,8 @@ quic_mqtt_stream_fini(void *arg)
 	*/
 	nni_id_map_fini(&p->recv_unack);
 	nni_id_map_fini(&p->sent_unack);
-	nni_id_map_fini(&p->send_inflight);
+	if (p->mqtt_sock->bridge_conf->multi_stream)
+		nni_id_map_fini(&p->send_inflight);
 	nni_lmq_fini(&p->recv_messages);
 	nni_mtx_fini(&p->lk);
 
@@ -1264,7 +1263,8 @@ quic_mqtt_stream_close(void *arg)
 	}
 #endif
 	nni_lmq_flush(&p->recv_messages);
-	nni_lmq_flush(&p->send_inflight);
+	if (p->mqtt_sock->bridge_conf->multi_stream)
+		nni_lmq_flush(&p->send_inflight);
 	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
 	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
 	nni_mtx_unlock(&s->mtx);
@@ -1375,9 +1375,9 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 		}
 		return;
 	}
-	// if multi-stream mode enabled
-	//
-	if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_SUBSCRIBE) {
+
+	if (s->bridge_conf->multi_stream &&
+	    nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_SUBSCRIBE) {
 		mqtt_sub_stream(p, msg, mqtt_pipe_get_next_packet_id(p), aio);
 	} else if ((rv = mqtt_send_msg(aio, msg, s)) >= 0) {
 		nni_mtx_unlock(&s->mtx);
@@ -1526,6 +1526,8 @@ nng_mqtt_quic_open_keepalive(nng_socket *sock, const char *url, void *node)
 	if ((rv = nni_proto_open(sock, &mqtt_msquic_proto)) == 0) {
 		nni_sock_find(&nsock, sock->id);
 		if (nsock) {
+			// set bridge conf
+			nng_mqtt_quic_set_config(sock, node);
 			quic_open();
 			quic_proto_open(&mqtt_msquic_proto);
 			quic_proto_set_bridge_conf(conf_node);
@@ -1629,6 +1631,11 @@ nng_mqtt_quic_set_config(nng_socket *sock, void *node)
 	if (nsock) {
 		mqtt_sock              = nni_sock_proto_data(nsock);
 		mqtt_sock->bridge_conf = node;
+		if (mqtt_sock->bridge_conf->multi_stream) {
+			mqtt_sock->streams = nng_alloc(sizeof(nni_id_map));
+			nni_id_map_init(
+			    mqtt_sock->streams, 0x0000u, 0xffffu, true);
+		}
 	} else {
 		return -1;
 	}
