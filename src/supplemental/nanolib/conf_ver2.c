@@ -9,6 +9,27 @@
 #include <ctype.h>
 #include <string.h>
 
+typedef struct {
+	uint8_t enumerate;
+	char   *desc;
+} enum_map;
+
+static enum_map webhook_encoding[] = {
+	{ plain, "plain" }, 
+	{ base64, "base64" }, 
+	{ base62, "base62" },
+	{ -1, NULL }
+};
+
+static enum_map http_server_auth_type[] = {
+	{ BASIC, "basic" }, 
+	{ JWT, "jwt" }, 
+	{ NONE_AUTH, "no_auth" },
+	{ -1, NULL }
+};
+
+cJSON *hocon_get_obj(char *key, cJSON *jso);
+
 // Read json value into struct
 // use same struct fields and json keys
 #define hocon_read_str_base(structure, field, key, jso)               \
@@ -64,6 +85,27 @@
 		}                                                       \
 	} while (0);
 
+#define hocon_read_enum_base(structure, field, key, jso, map)             \
+	{                                                                 \
+		do {                                                      \
+			cJSON *jso_key = hocon_get_obj(key, jso);         \
+			char  *str     = cJSON_GetStringValue(jso_key);   \
+			int    index   = 0;                               \
+			if (NULL != str) {                                \
+				while (NULL != map[index].desc) {         \
+					if (0 ==                          \
+					    nni_strcasecmp(               \
+					        str, map[index].desc)) {  \
+						(structure)->field =      \
+						    map[index].enumerate; \
+						break;                    \
+					}                                 \
+					index++;                          \
+				}                                         \
+			}                                                 \
+		} while (0);                                              \
+	}
+
 #define hocon_read_str_arr_base(structure, field, key, jso)                  \
 	do {                                                                 \
 		cJSON *jso_arr = cJSON_GetObjectItem(jso, key);              \
@@ -96,6 +138,8 @@
 	hocon_read_bool_base(structure, key, #key, jso)
 #define hocon_read_str_arr(structure, key, jso) \
 	hocon_read_str_arr_base(structure, key, #key, jso)
+#define hocon_read_enum(structure, key, jso, map) \
+	hocon_read_enum_base(structure, key, #key, jso, map)
 
 static char **
 string_split(char *str, char sp)
@@ -169,18 +213,8 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	hocon_read_num(http_server, parallel, jso_http_server);
 	hocon_read_str(http_server, username, jso_http_server);
 	hocon_read_str(http_server, password, jso_http_server);
-
-	char *auth_type_value = cJSON_GetStringValue(
-	    cJSON_GetObjectItem(jso_http_server, "auth_type"));
-
-	if (nni_strcasecmp("basic", auth_type_value) == 0) {
-		http_server->auth_type = BASIC;
-	} else if ((nni_strcasecmp("jwt", auth_type_value) == 0)) {
-		http_server->auth_type = JWT;
-	} else {
-		http_server->auth_type = NONE_AUTH;
-	}
-
+	hocon_read_enum(
+	    http_server, auth_type, jso_http_server, http_server_auth_type);
 	conf_jwt *jwt = &(http_server->jwt);
 
 	cJSON *jso_pub_key_file = hocon_get_obj("jwt.public", jso_http_server);
@@ -257,6 +291,7 @@ conf_log_parse_ver2(conf *config, cJSON *jso)
 
 	cJSON *jso_log_to     = hocon_get_obj("to", jso_log);
 	cJSON *jso_log_to_ele = NULL;
+
 	cJSON_ArrayForEach(jso_log_to_ele, jso_log_to)
 	{
 		if (!strcmp("file", cJSON_GetStringValue(jso_log_to_ele))) {
@@ -380,15 +415,8 @@ conf_webhook_parse_ver2(conf *config, cJSON *jso)
 	}
 	webhook->header_count = cvector_size(webhook->headers);
 
-	char *webhook_encoding =
-	    cJSON_GetStringValue(hocon_get_obj("body.encoding", jso_webhook));
-	if (nni_strcasecmp(webhook_encoding, "base64") == 0) {
-		webhook->encode_payload = base64;
-	} else if (nni_strcasecmp(webhook_encoding, "base62") == 0) {
-		webhook->encode_payload = base62;
-	} else if (nni_strcasecmp(webhook_encoding, "plain") == 0) {
-		webhook->encode_payload = plain;
-	}
+	hocon_read_enum_base(webhook, encode_payload, "body.encoding",
+	    jso_webhook, webhook_encoding);
 
 	cJSON    *jso_webhook_tls = hocon_get_obj("tls", jso_webhook);
 	conf_tls *webhook_tls     = &(webhook->tls);
@@ -431,79 +459,73 @@ conf_auth_parse_ver2(conf *config, cJSON *jso)
 	return;
 }
 
-
 static void
 conf_auth_http_req_parse_ver2(conf_auth_http_req *config, cJSON *jso)
 {
 	hocon_read_str(config, url, jso);
 	hocon_read_str(config, method, jso);
-	cJSON *jso_headers =
-	    hocon_get_obj("headers", jso);
-	cJSON *jso_header = NULL;
+	cJSON *jso_headers = hocon_get_obj("headers", jso);
+	cJSON *jso_header  = NULL;
 	cJSON_ArrayForEach(jso_header, jso_headers)
 	{
 		conf_http_header *config_header =
 		    NNI_ALLOC_STRUCT(config_header);
-		config_header->key =
-		    nng_strdup(jso_header->string);
-		config_header->value =
-		    nng_strdup(jso_header->valuestring);
-		cvector_push_back(
-		    config->headers, config_header);
+		config_header->key   = nng_strdup(jso_header->string);
+		config_header->value = nng_strdup(jso_header->valuestring);
+		cvector_push_back(config->headers, config_header);
 	}
 	config->header_count = cvector_size(config->headers);
 
-	cJSON *jso_params =
-	    hocon_get_obj("params", jso);
-	cJSON *jso_param = NULL;
+	cJSON *jso_params = hocon_get_obj("params", jso);
+	cJSON *jso_param  = NULL;
 	cJSON_ArrayForEach(jso_param, jso_params)
 	{
-			conf_http_param *param = NNI_ALLOC_STRUCT(param);
-			param->name = nng_strdup(jso_param->string);
-			char  c   = 0;
-			if (1 == sscanf(jso_param->valuestring, "%%%c", &c)) {
-				switch (c) {
-				case 'A':
-					param->type = ACCESS;
-					break;
-				case 'u':
-					param->type = USERNAME;
-					break;
-				case 'c':
-					param->type = CLIENTID;
-					break;
-				case 'a':
-					param->type = IPADDRESS;
-					break;
-				case 'P':
-					param->type = PASSWORD;
-					break;
-				case 'p':
-					param->type = SOCKPORT;
-					break;
-				case 'C':
-					param->type = COMMON_NAME;
-					break;
-				case 'd':
-					param->type = SUBJECT;
-					break;
-				case 't':
-					param->type = TOPIC;
-					break;
-				case 'm':
-					param->type = MOUNTPOINT;
-					break;
-				case 'r':
-					param->type = PROTOCOL;
-					break;
-				default:
-					break;
-				}
-				cvector_push_back(config->params, param);
-			} else {
-				nng_strfree(param->name);
-				NNI_FREE_STRUCT(param);
+		conf_http_param *param = NNI_ALLOC_STRUCT(param);
+		param->name            = nng_strdup(jso_param->string);
+		char c                 = 0;
+		if (1 == sscanf(jso_param->valuestring, "%%%c", &c)) {
+			switch (c) {
+			case 'A':
+				param->type = ACCESS;
+				break;
+			case 'u':
+				param->type = USERNAME;
+				break;
+			case 'c':
+				param->type = CLIENTID;
+				break;
+			case 'a':
+				param->type = IPADDRESS;
+				break;
+			case 'P':
+				param->type = PASSWORD;
+				break;
+			case 'p':
+				param->type = SOCKPORT;
+				break;
+			case 'C':
+				param->type = COMMON_NAME;
+				break;
+			case 'd':
+				param->type = SUBJECT;
+				break;
+			case 't':
+				param->type = TOPIC;
+				break;
+			case 'm':
+				param->type = MOUNTPOINT;
+				break;
+			case 'r':
+				param->type = PROTOCOL;
+				break;
+			default:
+				break;
 			}
+			cvector_push_back(config->params, param);
+		} else {
+			nng_strfree(param->name);
+			NNI_FREE_STRUCT(param);
+		}
 	}
 	config->param_count = cvector_size(config->params);
 
@@ -516,7 +538,6 @@ conf_auth_http_req_parse_ver2(conf_auth_http_req *config, cJSON *jso)
 	hocon_read_str(http_req_tls, certfile, jso_http_req_tls);
 	hocon_read_str_base(
 	    http_req_tls, cafile, "cacertfile", jso_http_req_tls);
-
 }
 
 static int
@@ -555,8 +576,10 @@ conf_auth_http_parse_ver2(conf *config, cJSON *jso)
 	conf_auth_http *auth_http = &(config->auth_http);
 
 	hocon_read_bool(auth_http, enable, jso_auth_http);
-	char *timeout = cJSON_GetStringValue(hocon_get_obj("timeout", jso_auth_http));
-	char *connect_timeout = cJSON_GetStringValue(hocon_get_obj("connect_timeout", jso_auth_http));
+	char *timeout =
+	    cJSON_GetStringValue(hocon_get_obj("timeout", jso_auth_http));
+	char *connect_timeout = cJSON_GetStringValue(
+	    hocon_get_obj("connect_timeout", jso_auth_http));
 	get_time(timeout, &auth_http->timeout);
 	get_time(connect_timeout, &auth_http->timeout);
 	hocon_read_num(auth_http, pool_size, jso_auth_http);
@@ -566,13 +589,15 @@ conf_auth_http_parse_ver2(conf *config, cJSON *jso)
 	conf_auth_http_req_parse_ver2(auth_http_req, jso_auth_http_req);
 
 	conf_auth_http_req *auth_http_super_req = &(auth_http->super_req);
-	cJSON *jso_auth_http_super_req = hocon_get_obj("super_req", jso_auth_http);
-	conf_auth_http_req_parse_ver2(auth_http_super_req, jso_auth_http_super_req);
+	cJSON	      *jso_auth_http_super_req =
+	    hocon_get_obj("super_req", jso_auth_http);
+	conf_auth_http_req_parse_ver2(
+	    auth_http_super_req, jso_auth_http_super_req);
 
 	conf_auth_http_req *auth_http_acl_req = &(auth_http->acl_req);
 	cJSON *jso_auth_http_acl_req = hocon_get_obj("acl_req", jso_auth_http);
-	conf_auth_http_req_parse_ver2(auth_http_acl_req, jso_auth_http_acl_req);
-
+	conf_auth_http_req_parse_ver2(
+	    auth_http_acl_req, jso_auth_http_acl_req);
 
 	return;
 }
@@ -607,7 +632,7 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_str(node, password, bridge_mqtt_node);
 		hocon_read_str_arr(node, forwards, bridge_mqtt_node);
 		node->forwards_count = cvector_size(node->forwards);
-		node->sqlite = bridge_sqlite;
+		node->sqlite         = bridge_sqlite;
 #if defined(SUPP_QUIC)
 		hocon_read_num_base(
 		    node, qkeepalive, "quic_keepalive", bridge_mqtt_node);
@@ -619,25 +644,27 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 		    "quic_handshake_timeout", bridge_mqtt_node);
 		hocon_read_bool_base(
 		    node, hybrid, "hybird_bridging", bridge_mqtt_node);
-		char *cc = cJSON_GetStringValue(cJSON_GetObjectItem(bridge_mqtt_node, "congestion_control"));
+		char *cc = cJSON_GetStringValue(cJSON_GetObjectItem(
+		    bridge_mqtt_node, "congestion_control"));
 		if (0 == nng_strcasecmp(cc, "bbr")) {
 			node->qcongestion_control = 1;
 		} else if (0 == nng_strcasecmp(cc, "cubic")) {
 			node->qcongestion_control = 0;
 		} else {
 			node->qcongestion_control = 0;
-			log_warn("unsupport congestion control algorithm, use default cubic!");
+			log_warn("unsupport congestion control algorithm, use "
+			         "default cubic!");
 		}
 #endif
 
-
-		cJSON     *subscriptions =
+		cJSON *subscriptions =
 		    hocon_get_obj("subscription", bridge_mqtt_node);
 		node->sub_count = cJSON_GetArraySize(subscriptions);
-		node->sub_list = NNI_ALLOC_STRUCTS(node->sub_list, node->sub_count);
-		subscribe *slist = node->sub_list;
-		cJSON *subscription = NULL;
-		int i = 0;
+		node->sub_list =
+		    NNI_ALLOC_STRUCTS(node->sub_list, node->sub_count);
+		subscribe *slist        = node->sub_list;
+		cJSON     *subscription = NULL;
+		int        i            = 0;
 		cJSON_ArrayForEach(subscription, subscriptions)
 		{
 			subscribe *s = &slist[i++];
@@ -663,7 +690,6 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 		cvector_push_back(config->bridge.nodes, node);
 		config->bridge_mode |= node->enable;
 	}
-
 
 	return;
 }
@@ -693,15 +719,16 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_str_arr(node, forwards, bridge_aws_node);
 		node->forwards_count = cvector_size(node->forwards);
 
-		cJSON     *subscriptions =
+		cJSON *subscriptions =
 		    hocon_get_obj("subscription", bridge_aws_node);
 		cJSON *subscription = NULL;
 
 		node->sub_count = cJSON_GetArraySize(subscriptions);
-		node->sub_list = NNI_ALLOC_STRUCTS(node->sub_list, node->sub_count);
-		subscribe *slist = node->sub_list;
-		cJSON *subscription = NULL;
-		int i = 0;
+		node->sub_list =
+		    NNI_ALLOC_STRUCTS(node->sub_list, node->sub_count);
+		subscribe *slist        = node->sub_list;
+		cJSON     *subscription = NULL;
+		int        i            = 0;
 		cJSON_ArrayForEach(subscription, subscriptions)
 		{
 			subscribe *s = &slist[i++];
@@ -709,7 +736,6 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 			hocon_read_num(s, qos, subscription);
 			s->topic_len = strlen(s->topic);
 		}
-
 
 		hocon_read_num(node, parallel, bridge_aws_node);
 		cJSON *bridge_aws_node_tls =
@@ -736,8 +762,8 @@ static void
 conf_rule_parse_ver2(conf *config, cJSON *jso)
 {
 
-	conf_rule *cr = &(config->rule_eng);
-	cJSON *jso_rule_sqlite = hocon_get_obj("rules.sqlite", jso);
+	conf_rule *cr              = &(config->rule_eng);
+	cJSON     *jso_rule_sqlite = hocon_get_obj("rules.sqlite", jso);
 	hocon_read_str_base(cr, sqlite_db, "path", jso_rule_sqlite);
 
 	if (cJSON_IsTrue(cJSON_GetObjectItem(jso_rule_sqlite, "enabled"))) {
@@ -794,7 +820,7 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 		rule_sql_parse(cr, re.raw_sql);
 
 		cr->rules[cvector_size(cr->rules) - 1].repub = repub;
-		    // NNI_ALLOC_STRUCT(repub);
+		// NNI_ALLOC_STRUCT(repub);
 		// memcpy(cr->rules[cvector_size(cr->rules) - 1].repub, repub,
 		//     sizeof(*repub));
 		cr->rules[cvector_size(cr->rules) - 1].forword_type =
@@ -824,17 +850,21 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_str_base(&r, raw_sql, "sql", jso_rule);
 		rule_mysql *mysql = NNI_ALLOC_STRUCT(mysql);
 
-		hocon_read_str(mysql, host, jso_rule);
-		hocon_read_str(mysql, table, jso_rule);
-		hocon_read_str(mysql, username, jso_rule);
-		hocon_read_str(mysql, password, jso_rule);
-
 		rule_sql_parse(cr, r.raw_sql);
 
 		cr->rules[cvector_size(cr->rules) - 1].mysql = mysql;
-		    // NNI_ALLOC_STRUCT(mysql);
+		// NNI_ALLOC_STRUCT(mysql);
 		// memcpy(cr->rules[cvector_size(cr->rules) - 1].mysql, mysql,
 		//     sizeof(*mysql));
+		hocon_read_str(cr->rules[cvector_size(cr->rules) - 1].mysql,
+		    host, jso_rule);
+		hocon_read_str(cr->rules[cvector_size(cr->rules) - 1].mysql,
+		    table, jso_rule);
+		hocon_read_str(cr->rules[cvector_size(cr->rules) - 1].mysql,
+		    username, jso_rule);
+		hocon_read_str(cr->rules[cvector_size(cr->rules) - 1].mysql,
+		    password, jso_rule);
+
 		cr->rules[cvector_size(cr->rules) - 1].forword_type =
 		    RULE_FORWORD_MYSOL;
 		cr->rules[cvector_size(cr->rules) - 1].raw_sql = r.raw_sql;
@@ -848,13 +878,13 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 	char *rule_option =
 	    cJSON_GetStringValue(hocon_get_obj("rules.option", jso));
 	if (0 != nni_strcasecmp(rule_option, "ON")) {
-		if (0 != nni_strcasecmp(rule_option, "OFF")) { 			
-			log_error("Unsupported option:%s\nrule"			    
-			"option only support ON/OFF", rule_option);
+		if (0 != nni_strcasecmp(rule_option, "OFF")) {
+			log_error("Unsupported option:%s\nrule"
+			          "option only support ON/OFF",
+			    rule_option);
 		} else {
 			cr->option = 0;
 		}
-
 	}
 
 	return;
@@ -925,7 +955,6 @@ conf_parse_ver2(conf *config)
 			cvector_free(str);
 		}
 
-
 	} else {
 		log_error("Unable to parse contents of json");
 	}
@@ -950,7 +979,6 @@ conf_gateway_parse_ver2(zmq_gateway_conf *config)
 		}
 	}
 
-
 	FILE *fp;
 	if ((fp = fopen(dest_path, "r")) == NULL) {
 		log_error("File %s open failed", dest_path);
@@ -960,9 +988,9 @@ conf_gateway_parse_ver2(zmq_gateway_conf *config)
 	char *str = json_buffer_from_fp(fp);
 	if (str != NULL) {
 
-		cJSON *jso = hocon_str_to_json(str);
+		cJSON *jso      = hocon_str_to_json(str);
 		cJSON *jso_mqtt = hocon_get_obj("gateway.mqtt", jso);
-		cJSON *jso_zmq = hocon_get_obj("gateway.zmq", jso);
+		cJSON *jso_zmq  = hocon_get_obj("gateway.zmq", jso);
 
 		hocon_read_num(config, proto_ver, jso_mqtt);
 		hocon_read_num(config, keepalive, jso_mqtt);
@@ -974,8 +1002,10 @@ conf_gateway_parse_ver2(zmq_gateway_conf *config)
 
 		hocon_read_str_base(config, zmq_sub_pre, "sub_pre", jso_zmq);
 		hocon_read_str_base(config, zmq_pub_pre, "pub_pre", jso_zmq);
-		hocon_read_str_base(config, zmq_sub_url, "sub_address", jso_zmq);
-		hocon_read_str_base(config, zmq_pub_url, "pub_address", jso_zmq);
+		hocon_read_str_base(
+		    config, zmq_sub_url, "sub_address", jso_zmq);
+		hocon_read_str_base(
+		    config, zmq_pub_url, "pub_address", jso_zmq);
 
 		cJSON_Delete(jso);
 		cvector_free(str);
@@ -988,5 +1018,4 @@ conf_gateway_parse_ver2(zmq_gateway_conf *config)
 	fclose(fp);
 
 	return;
-
 }
