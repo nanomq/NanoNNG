@@ -199,7 +199,6 @@ mqtts_tcptran_pipe_init(void *arg, nni_pipe *npipe)
 	nni_pipe_set_conn_param(npipe, p->cparam);
 
 	p->npipe              = npipe;
-	p->cparam             = NULL;
 
 	nni_lmq_init(&p->rslmq, 16);
 	p->busy = false;
