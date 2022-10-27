@@ -1903,6 +1903,20 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 		                key_prefix, name, ".multi_stream")) != NULL) {
 			node->multi_stream = nni_strcasecmp(value, "true") == 0;
 			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".congestion_control")) !=
+		    NULL) {
+			if (0 == nng_strcasecmp(value, "bbr")) {
+				node->qcongestion_control = 1;
+			} else if (0 == nng_strcasecmp(value, "cubic")) {
+				node->qcongestion_control = 0;
+			} else {
+				node->qcongestion_control = 1;
+				log_warn("unsupport congestion control "
+				         "algorithm, use "
+				         "default bbr!");
+			}
+			free(value);
 #endif
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".clean_start")) != NULL) {
