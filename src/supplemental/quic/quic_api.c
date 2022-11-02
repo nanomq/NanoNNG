@@ -501,7 +501,7 @@ quic_disconnect(void *qsock)
 }
 
 int
-quic_connect_ipv4(const char *url, nni_sock *sock)
+quic_connect_ipv4(const char *url, nni_sock *sock, uint32_t *index)
 {
 	// Load the client configuration
 	if (!quic_load_config(TRUE, bridge_node)) {
@@ -538,6 +538,15 @@ quic_connect_ipv4(const char *url, nni_sock *sock)
 		log_error("Failed in address setting, 0x%x!\n", rv);
 		goto error;
 	}
+	// TODO get index from address
+	if (index)
+		if (QUIC_FAILED(rv = MsQuic->SetParam(conn,
+		                    QUIC_PARAM_CONN_LOCAL_INTERFACE,
+		                    sizeof(uint32_t), index))) {
+			log_error(
+			    "Failed in local address binding, 0x%x!\n", rv);
+			goto error;
+		}
 
 	nng_url_parse(&url_s, url);
 	// TODO maybe something wrong happened
