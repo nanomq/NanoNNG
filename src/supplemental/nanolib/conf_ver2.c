@@ -647,11 +647,11 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 		char *cc = cJSON_GetStringValue(cJSON_GetObjectItem(
 		    bridge_mqtt_node, "congestion_control"));
 		if (0 == nng_strcasecmp(cc, "bbr")) {
-			node->qcongestion_control = 0;
-		} else if (0 == nng_strcasecmp(cc, "cubic")) {
 			node->qcongestion_control = 1;
-		} else {
+		} else if (0 == nng_strcasecmp(cc, "cubic")) {
 			node->qcongestion_control = 0;
+		} else {
+			node->qcongestion_control = 1;
 			log_warn("unsupport congestion control algorithm, use "
 			         "default bbr!");
 		}
