@@ -962,6 +962,9 @@ static void mqtt_quic_sock_init(void *arg, nni_sock *sock)
 	nni_mtx_init(&s->mtx);
 	mqtt_quic_ctx_init(&s->master, s);
 
+	s->bridge_conf = NULL;
+	s->streams     = NULL;
+
 	/*
 #if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
 	nni_qos_db_init_sqlite(s->sqlite_db,
@@ -996,7 +999,7 @@ mqtt_quic_sock_fini(void *arg)
 	}
 #endif
 	*/
-	if (s->bridge_conf->multi_stream) {
+	if (s->bridge_conf && s->bridge_conf->multi_stream) {
 		nni_id_map_fini(s->streams);
 		nng_free(s->streams, sizeof(nni_id_map));
 	}
@@ -1119,7 +1122,8 @@ quic_mqtt_stream_init(void *arg, nni_pipe *qsock, void *sock)
 	nni_id_map_init(&p->sent_unack, 0x0000u, 0xffffu, true);
 	nni_id_map_init(&p->recv_unack, 0x0000u, 0xffffu, true);
 	nni_lmq_init(&p->recv_messages, NNG_MAX_RECV_LMQ);
-	if (p->mqtt_sock->bridge_conf->multi_stream)
+	if (p->mqtt_sock->bridge_conf &&
+	        p->mqtt_sock->bridge_conf->multi_stream)
 		nni_lmq_init(&p->send_inflight, NNG_MAX_RECV_LMQ);
 	nni_mtx_init(&p->lk);
 
@@ -1155,7 +1159,8 @@ quic_mqtt_stream_fini(void *arg)
 	*/
 	nni_id_map_fini(&p->recv_unack);
 	nni_id_map_fini(&p->sent_unack);
-	if (p->mqtt_sock->bridge_conf->multi_stream)
+	if (p->mqtt_sock->bridge_conf &&
+	        p->mqtt_sock->bridge_conf->multi_stream)
 		nni_id_map_fini(&p->send_inflight);
 	nni_lmq_fini(&p->recv_messages);
 	nni_mtx_fini(&p->lk);
@@ -1263,7 +1268,8 @@ quic_mqtt_stream_close(void *arg)
 	}
 #endif
 	nni_lmq_flush(&p->recv_messages);
-	if (p->mqtt_sock->bridge_conf->multi_stream)
+	if (p->mqtt_sock->bridge_conf &&
+	        p->mqtt_sock->bridge_conf->multi_stream)
 		nni_lmq_flush(&p->send_inflight);
 	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
 	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
@@ -1376,7 +1382,7 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 		return;
 	}
 
-	if (s->bridge_conf->multi_stream &&
+	if (s->bridge_conf && s->bridge_conf->multi_stream &&
 	    nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_SUBSCRIBE) {
 		mqtt_sub_stream(p, msg, mqtt_pipe_get_next_packet_id(p), aio);
 	} else if ((rv = mqtt_send_msg(aio, msg, s)) >= 0) {
