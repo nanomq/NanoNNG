@@ -324,6 +324,7 @@ struct conf {
 	void *   db_root;
 	bool     allow_anonymous;
 	bool     daemon;
+	bool     ipc_internal;
 	bool     bridge_mode;
 
 	conf_sqlite      sqlite;
