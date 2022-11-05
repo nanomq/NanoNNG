@@ -552,10 +552,12 @@ conf_parse(conf *nanomq_conf)
 	conf_basic_parse(config, conf_path);
 	conf_tls_parse(&config->tls, conf_path, "\0", "\0");
 	conf_sqlite_parse(&config->sqlite, conf_path, "sqlite");
-	conf_log_parse(&config->log, conf_path);
 	conf_web_hook_parse(&config->web_hook, conf_path);
 	conf_bridge_parse(config, conf_path);
 	conf_aws_bridge_parse(config, conf_path);
+#if defined(ENABLE_LOG)
+	conf_log_parse(&config->log, conf_path);
+#endif
 
 #if defined(SUPP_RULE_ENGINE)
 	conf_rule_parse(&config->rule_eng, conf_path);
@@ -786,7 +788,9 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->daemon           = false;
 	nanomq_conf->bridge_mode      = false;
 
+#if defined(ENABLE_LOG)
 	conf_log_init(&nanomq_conf->log);
+#endif
 	conf_sqlite_init(&nanomq_conf->sqlite);
 	conf_tls_init(&nanomq_conf->tls);
 
@@ -2747,6 +2751,8 @@ conf_fini(conf *nanomq_conf)
 	conf_web_hook_destroy(&nanomq_conf->web_hook);
 	conf_auth_http_destroy(&nanomq_conf->auth_http);
 	conf_auth_destroy(&nanomq_conf->auths);
+#if defined(ENABLE_LOG)
 	conf_log_destroy(&nanomq_conf->log);
+#endif
 	free(nanomq_conf);
 }

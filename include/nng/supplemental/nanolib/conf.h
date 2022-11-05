@@ -311,7 +311,7 @@ typedef enum {
 
 struct conf {
 	char *   conf_file;
-	char *   url; // "nmq-tcp://addr:port"
+	char *   url;
 	int      num_taskq_thread;
 	int      max_taskq_thread;
 	int      property_size;
@@ -326,7 +326,6 @@ struct conf {
 	bool     daemon;
 	bool     bridge_mode;
 
-	conf_log         log;
 	conf_sqlite      sqlite;
 	conf_tls         tls;
 	conf_http_server http_server;
@@ -334,7 +333,9 @@ struct conf {
 	conf_bridge      bridge;
 	conf_bridge      aws_bridge;
 	conf_web_hook    web_hook;
-
+#if defined(ENABLE_LOG)
+	conf_log         log;
+#endif
 #if defined(SUPP_RULE_ENGINE)
 	conf_rule rule_eng;
 #endif
