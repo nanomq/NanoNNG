@@ -938,7 +938,9 @@ conf_parse_ver2(conf *config)
 			conf_basic_parse_ver2(config, jso);
 			conf_sqlite_parse_ver2(config, jso);
 			conf_tls_parse_ver2(config, jso);
+#if defined(ENABLE_LOG)
 			conf_log_parse_ver2(config, jso);
+#endif
 			conf_webhook_parse_ver2(config, jso);
 			conf_auth_parse_ver2(config, jso);
 			conf_auth_http_parse_ver2(config, jso);
