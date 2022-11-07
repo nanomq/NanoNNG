@@ -12,6 +12,7 @@ nng_sources(
   cJSON.c
   cmd.c
   rule.c
+  acl_conf.c
   conf.c
   # conf_ver2.c
   env.c
