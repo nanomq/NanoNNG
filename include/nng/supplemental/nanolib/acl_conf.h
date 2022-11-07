@@ -4,43 +4,58 @@
 #include "nng/nng.h"
 
 typedef enum {
-	ALLOW,
-	DENY,
+	ACL_ALLOW,
+	ACL_DENY,
 } acl_permit;
 
 typedef enum {
 	ACL_USERNAME,
 	ACL_CLIENTID,
 	ACL_IPADDR,
+	ACL_AND,
+	ACL_OR,
 } acl_rule_type;
 
+typedef enum {
+	ACL_PUB,
+	ACL_SUB,
+	ACL_ALL,
+} acl_action_type;
+
+typedef enum {
+	ACL_RULE_SINGLE_STRING,
+	ACL_RULE_STRING_ARRAY,
+	ACL_RULE_INT_ARRAY,
+	ACL_RULE_ALL,
+} acl_value_type;
+
 typedef struct {
-	acl_rule_type type;
-	bool          regex;
-	char *        value;
+	acl_value_type type;
+	size_t         count;
+	union {
+		char * str;
+		char **str_array;
+		int *  int_array;
+	} value;
+} acl_rule_ct;
+
+typedef struct acl_rule {
+	size_t          id;
+	acl_permit      permit;
+	acl_rule_type   rule_type;
+	acl_rule_ct     content;
+	acl_action_type action;
+	size_t          topic_count;
+	char **         topics;
 } acl_rule;
 
 typedef struct {
 	size_t     rule_count;
 	acl_rule **rules;
-	enum { AND, OR } rules_logic;
-} acl_rule_set;
-
-typedef struct {
-	size_t topic_count;
-	char * topics;
-} acl_topic_set;
-
-typedef struct {
-	acl_permit   permit;
-	acl_rule_set rule_set;
-	enum { PUB, SUB, ALL } act_req;
-	acl_topic_set topic_set;
-} acl_action;
-
-typedef struct {
-	size_t       action_count;
-	acl_action **actions;
 } conf_acl;
+
+extern void conf_acl_parse(conf_acl *acl, const char *path);
+extern void conf_acl_init(conf_acl *acl);
+extern void conf_acl_destroy(conf_acl *acl);
 
 #endif /* NANOLIB_ACL_CONF_H */
