@@ -325,7 +325,6 @@ struct conf {
 	void *   db_root;
 	bool     allow_anonymous;
 	bool     acl_nomatch;
-	char *   acl_file;
 	bool     enable_acl_cache;
 	size_t   acl_cache_max_size;
 	size_t   acl_cache_ttl;
