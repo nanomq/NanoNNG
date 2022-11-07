@@ -829,7 +829,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->bridge_mode      = false;
 
 	conf_acl_init(&nanomq_conf->acl);
-
+#if defined(ENABLE_LOG)
 	conf_log_init(&nanomq_conf->log);
 #endif
 	conf_sqlite_init(&nanomq_conf->sqlite);
