@@ -893,8 +893,14 @@ print_conf(conf *nanomq_conf)
 	    "max_taskq_thread:         %d", nanomq_conf->max_taskq_thread);
 	log_info("parallel:                 %u", nanomq_conf->parallel);
 	log_info("property_size:            %d", nanomq_conf->property_size);
+	log_info(
+	    "max_packet_size: 		%d", nanomq_conf->max_packet_size);
+	log_info("client_max_packet_size: 	%d",
+	    nanomq_conf->client_max_packet_size);
 	log_info("msq_len:                  %d", nanomq_conf->msq_len);
 	log_info("qos_duration:             %d", nanomq_conf->qos_duration);
+	log_info("keepalive_backoff:        %f", nanomq_conf->backoff);
+
 	log_info("enable http server:       %s",
 	    nanomq_conf->http_server.enable ? "true" : "false");
 	log_info(
@@ -910,6 +916,19 @@ print_conf(conf *nanomq_conf)
 		log_info("tls fail_if_no_peer_cert: %s",
 		    nanomq_conf->tls.set_fail ? "true" : "false");
 	}
+	log_info("allow_anonymous:          %s",
+	    nanomq_conf->allow_anonymous ? "true" : "false");
+	log_info("acl_nomatch:              %s",
+	    nanomq_conf->acl_nomatch ? "allow" : "deny");
+	log_info("enable_acl_cache:         %s",
+	    nanomq_conf->enable_acl_cache ? "on" : "off");
+	log_info(
+	    "acl_cache_max_size:       %d", nanomq_conf->acl_cache_max_size);
+	log_info("acl_cache_ttl:            %d", nanomq_conf->acl_cache_ttl);
+	log_info("acl_deny_action:          %s",
+	    nanomq_conf->acl_deny_action == ACL_IGNORE ? "ignore"
+	                                               : "disconnect");
+	print_acl_conf(&nanomq_conf->acl);
 
 	print_bridge_conf(&nanomq_conf->bridge, "");
 #if defined(SUPP_AWS_BRIDGE)
