@@ -57,5 +57,6 @@ typedef struct {
 extern void conf_acl_parse(conf_acl *acl, const char *path);
 extern void conf_acl_init(conf_acl *acl);
 extern void conf_acl_destroy(conf_acl *acl);
+extern void print_acl_conf(conf_acl *acl);
 
 #endif /* NANOLIB_ACL_CONF_H */
