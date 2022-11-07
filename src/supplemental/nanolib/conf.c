@@ -59,6 +59,8 @@ static void conf_rule_fdb_parse(conf_rule *cr, char *path);
 static void conf_rule_parse(conf_rule *rule, const char *path);
 #endif
 
+static int get_time(const char *str, uint64_t *second);
+
 static char *
 strtrim(char *str, size_t len)
 {
@@ -440,6 +442,38 @@ conf_basic_parse(conf *config, const char *path)
 			    nni_strcasecmp(value, "yes") == 0 ||
 			    nni_strcasecmp(value, "true") == 0;
 			nng_strfree(value);
+		} else if ((value = get_conf_value(line, sz, "acl_nomatch")) !=
+		    NULL) {
+			config->acl_nomatch =
+			    nni_strcasecmp(value, "allow") == 0;
+			nng_strfree(value);
+		} else if ((value = get_conf_value(line, sz, "acl_file")) !=
+		    NULL) {
+			config->acl_file = value;
+		} else if ((value = get_conf_value(
+		                line, sz, "enable_acl_cache")) != NULL) {
+			config->enable_acl_cache =
+			    nni_strcasecmp(value, "on") == 0;
+			nng_strfree(value);
+		} else if ((value = get_conf_value(
+		                line, sz, "acl_cache_max_size")) != NULL) {
+			config->acl_cache_max_size = (size_t) atol(value);
+			nng_strfree(value);
+		} else if ((value = get_conf_value(
+		                line, sz, "acl_cache_ttl")) != NULL) {
+			uint64_t ttl = 0;
+			if (get_time(value, &ttl) == 0) {
+				config->acl_cache_ttl = ttl;
+			}
+			nng_strfree(value);
+		} else if ((value = get_conf_value(
+		                line, sz, "acl_deny_action")) != NULL) {
+			if (nni_strcasecmp(value, "ignore") == 0) {
+				config->acl_deny_action = ACL_IGNORE;
+			} else if (nni_strcasecmp(value, "disconnect") == 0) {
+				config->acl_deny_action = ACL_DISCONNECT;
+			}
+			nng_strfree(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "enable_ipc_internal")) != NULL) {
 			config->ipc_internal =
@@ -520,11 +554,6 @@ conf_basic_parse(conf *config, const char *path)
 				    strlen(
 				        config->http_server.jwt.private_key);
 			}
-		} else if ((value = get_conf_value(line, sz, "tls.enable")) !=
-		    NULL) {
-			config->tls.enable =
-			    nni_strcasecmp(value, "true") == 0;
-			nng_strfree(value);
 		}
 		free(line);
 		line = NULL;
@@ -786,11 +815,19 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->max_taskq_thread = ncpu * 2;
 	nanomq_conf->parallel         = ncpu * 2;
 
-	nanomq_conf->property_size    = sizeof(uint8_t) * 32;
-	nanomq_conf->msq_len          = 2048;
-	nanomq_conf->qos_duration     = 10;
-	nanomq_conf->backoff          = 1.5;
-	nanomq_conf->allow_anonymous  = true;
+	nanomq_conf->property_size = sizeof(uint8_t) * 32;
+	nanomq_conf->msq_len       = 2048;
+	nanomq_conf->qos_duration  = 10;
+	nanomq_conf->backoff       = 1.5;
+
+	nanomq_conf->allow_anonymous    = true;
+	nanomq_conf->acl_nomatch        = true;
+	nanomq_conf->acl_file           = NULL;
+	nanomq_conf->enable_acl_cache   = true;
+	nanomq_conf->acl_cache_max_size = 32;
+	nanomq_conf->acl_cache_ttl      = 60;
+	nanomq_conf->acl_deny_action    = ACL_IGNORE;
+
 	nanomq_conf->daemon           = false;
 	nanomq_conf->bridge_mode      = false;
 
@@ -2735,6 +2772,7 @@ conf_fini(conf *nanomq_conf)
 {
 	nng_strfree(nanomq_conf->url);
 	nng_strfree(nanomq_conf->conf_file);
+	nng_strfree(nanomq_conf->acl_file);
 	nng_strfree(nanomq_conf->websocket.tls_url);
 
 #if defined(SUPP_RULE_ENGINE)
