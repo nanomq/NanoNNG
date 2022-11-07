@@ -10,6 +10,7 @@
 #include <string.h>
 #include "nng/nng.h"
 #include "rule.h"
+#include "acl_conf.h"
 
 #define PID_PATH_NAME "/tmp/nanomq/nanomq.pid"
 #define CONF_PATH_NAME "/etc/nanomq.conf"
@@ -323,6 +324,13 @@ struct conf {
 	float    backoff;
 	void *   db_root;
 	bool     allow_anonymous;
+	bool     acl_nomatch;
+	char *   acl_file;
+	bool     enable_acl_cache;
+	size_t   acl_cache_max_size;
+	size_t   acl_cache_ttl;
+	enum { ACL_IGNORE, ACL_DISCONNECT } acl_deny_action;
+
 	bool     daemon;
 	bool     ipc_internal;
 	bool     bridge_mode;
@@ -343,6 +351,7 @@ struct conf {
 
 	conf_auth         auths;
 	conf_auth_http    auth_http;
+	conf_acl          acl;
 	struct hashmap_s *cid_table;
 };
 
