@@ -76,7 +76,7 @@ strtrim(char *str, size_t len)
 	return dest;
 }
 
-static char *
+char *
 strtrim_head_tail(char *str, size_t len)
 {
 	size_t head = 0, tail = 0;
@@ -447,9 +447,6 @@ conf_basic_parse(conf *config, const char *path)
 			config->acl_nomatch =
 			    nni_strcasecmp(value, "allow") == 0;
 			nng_strfree(value);
-		} else if ((value = get_conf_value(line, sz, "acl_file")) !=
-		    NULL) {
-			config->acl_file = value;
 		} else if ((value = get_conf_value(
 		                line, sz, "enable_acl_cache")) != NULL) {
 			config->enable_acl_cache =
@@ -585,6 +582,7 @@ conf_parse(conf *nanomq_conf)
 
 	conf *config = nanomq_conf;
 	conf_basic_parse(config, conf_path);
+	conf_acl_parse(&config->acl, conf_path);
 	conf_tls_parse(&config->tls, conf_path, "\0", "\0");
 	conf_sqlite_parse(&config->sqlite, conf_path, "sqlite");
 	conf_web_hook_parse(&config->web_hook, conf_path);
@@ -822,7 +820,6 @@ conf_init(conf *nanomq_conf)
 
 	nanomq_conf->allow_anonymous    = true;
 	nanomq_conf->acl_nomatch        = true;
-	nanomq_conf->acl_file           = NULL;
 	nanomq_conf->enable_acl_cache   = true;
 	nanomq_conf->acl_cache_max_size = 32;
 	nanomq_conf->acl_cache_ttl      = 60;
@@ -831,7 +828,8 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->daemon           = false;
 	nanomq_conf->bridge_mode      = false;
 
-#if defined(ENABLE_LOG)
+	conf_acl_init(&nanomq_conf->acl);
+
 	conf_log_init(&nanomq_conf->log);
 #endif
 	conf_sqlite_init(&nanomq_conf->sqlite);
@@ -2772,7 +2770,6 @@ conf_fini(conf *nanomq_conf)
 {
 	nng_strfree(nanomq_conf->url);
 	nng_strfree(nanomq_conf->conf_file);
-	nng_strfree(nanomq_conf->acl_file);
 	nng_strfree(nanomq_conf->websocket.tls_url);
 
 #if defined(SUPP_RULE_ENGINE)
@@ -2790,6 +2787,7 @@ conf_fini(conf *nanomq_conf)
 
 	nng_strfree(nanomq_conf->websocket.url);
 
+	conf_acl_destroy(&nanomq_conf->acl);
 	conf_bridge_destroy(&nanomq_conf->bridge);
 	conf_bridge_destroy(&nanomq_conf->aws_bridge);
 	conf_web_hook_destroy(&nanomq_conf->web_hook);
