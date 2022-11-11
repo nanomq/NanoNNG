@@ -1,9 +1,7 @@
-#ifndef __HOCON_H__
-#define __HOCON_H__
-#include <string.h>
+#ifndef HOCON_H
+#define HOCON_H
 #include "cJSON.h"
 
-
-cJSON *hocon_str_to_json(char *str);
+cJSON *hocon_parse(const char *file);
 
 #endif
