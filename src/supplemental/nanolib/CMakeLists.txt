@@ -21,12 +21,12 @@ bison_target(PARSER "parser.y" "${PARSER_OUT}" DEFINES_FILE "${SRC_DIR}/parser.h
 flex_target(LEXER "scanner.l" "${LEXER_OUT}" DEFINES_FILE "${SRC_DIR}/scanner.h")
 add_flex_bison_dependency(LEXER PARSER)
 
-add_library(hocon SHARED "${LEXER_OUT}" "${PARSER_OUT}" "cJSON.c" "hocon.c")
+add_library(hocon STATIC "${LEXER_OUT}" "${PARSER_OUT}" "cJSON.c" "hocon.c")
 target_include_directories(hocon PRIVATE ${CMAKE_SOURCE_DIR}/nng/include)
 
 
-target_link_libraries(nng PRIVATE ${PARSER_DIR}/libhocon.so)
-target_link_libraries(nng_testing PRIVATE ${PARSER_DIR}/libhocon.so)
+target_link_libraries(nng PRIVATE ${PARSER_DIR}/libhocon.a)
+target_link_libraries(nng_testing PRIVATE ${PARSER_DIR}/libhocon.a)
 
 
 
@@ -49,7 +49,6 @@ nng_sources(
 
 nng_test(hash_test)
 nng_test(dbtree_test)
-nng_test(hocon_test)
 
 if (SUPP_RULE_ENGINE)
   nng_sources(rule.c)
