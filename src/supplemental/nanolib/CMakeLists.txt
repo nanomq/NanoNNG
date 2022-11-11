@@ -7,6 +7,29 @@
 # https://opensource.org/licenses/MIT.
 #
 
+
+set(SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+set(PARSER_DIR "${CMAKE_CURRENT_BINARY_DIR}")
+
+find_package(FLEX 2.6 REQUIRED)
+find_package(BISON 3.0 REQUIRED)
+
+set(LEXER_OUT "${SRC_DIR}/scanner.c")
+set(PARSER_OUT "${SRC_DIR}/parser.c")
+
+bison_target(PARSER "parser.y" "${PARSER_OUT}" DEFINES_FILE "${SRC_DIR}/parser.h")
+flex_target(LEXER "scanner.l" "${LEXER_OUT}" DEFINES_FILE "${SRC_DIR}/scanner.h")
+add_flex_bison_dependency(LEXER PARSER)
+
+add_library(hocon SHARED "${LEXER_OUT}" "${PARSER_OUT}" "cJSON.c" "hocon.c")
+target_include_directories(hocon PRIVATE ${CMAKE_SOURCE_DIR}/nng/include)
+
+
+target_link_libraries(nng PRIVATE ${PARSER_DIR}/libhocon.so)
+target_link_libraries(nng_testing PRIVATE ${PARSER_DIR}/libhocon.so)
+
+
+
 nng_sources(
   base64.c
   cJSON.c
@@ -14,7 +37,7 @@ nng_sources(
   rule.c
   acl_conf.c
   conf.c
-  # conf_ver2.c
+  conf_ver2.c
   env.c
   file.c
   hash_table.c
