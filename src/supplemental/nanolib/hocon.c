@@ -1,99 +1,11 @@
-#include "nng/supplemental/nanolib/hocon.h"
 #include "nng/supplemental/nanolib/cvector.h"
-#include "stdbool.h"
-#include "stdio.h"
+#include "nng/supplemental/nanolib/hocon.h"
+#include "parser.h"
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
 
-static char *
-skip_whitespace(char *str)
-{
-	if (NULL == str) {
-		return NULL;
-	}
-
-	// Skip white_space and tab with bounds check
-	while ('\0' != *str && (' ' == *str || '\t' == *str)) {
-		str++;
-	}
-
-	return str;
-}
-
-static char *
-skip_whitespace_reverse(char *str)
-{
-	if (NULL == str) {
-		return NULL;
-	}
-
-	// Skip white_space and tab with bounds check
-	while ('\0' != *str && (' ' == *str || '\t' == *str)) {
-		str--;
-	}
-
-	return str;
-}
-
-// TODO incomplete, if the comment appears after the string
-static bool
-is_comment_line(char *line)
-{
-	while ('\0' != *line && '\n' != *line) {
-		line = skip_whitespace(line);
-		if ('#' == *line || ('/' == *line && '/' == *(line + 1))) {
-			return true;
-		}
-
-		return false;
-	}
-	// skip blank line
-	return true;
-}
-
-static bool
-is_not_brackets(char *s)
-{
-	return ('{' != *s && '}' != *s && ']' != *s && '[' != *s);
-}
-
-static char *
-data_preprocessing(char *str)
-{
-	char *ret = NULL;
-	char *p   = str;
-	char *p_b = str;
-
-	while (NULL != (p = strchr(p, '\n'))) {
-		// skip comment
-		if (true == is_comment_line(p_b)) {
-			p++;
-			p_b = p;
-		} else {
-			// push one line
-			for (; p != p_b; p_b++) {
-				cvector_push_back(ret, *p_b);
-			}
-
-			// find last non blank character
-			// judge if we should append ','
-			char *t = skip_whitespace_reverse(p_b - 1);
-			if (is_not_brackets(t) && ',' != *t) {
-				char *q = skip_whitespace(p + 1);
-				if (is_not_brackets(q)) {
-					cvector_push_back(ret, ',');
-				}
-			} else if (']' == *t) {
-				if ('\0' != *(p + 1) && '}' != *(p + 1)) {
-					cvector_push_back(ret, ',');
-				}
-			}
-			p++;
-			p_b = p;
-		}
-	}
-
-	cvector_push_back(ret, '\0');
-	return ret;
-}
+extern FILE *yyin;
 
 static cJSON *
 path_expression_parse_core(cJSON *parent, cJSON *jso)
@@ -184,7 +96,7 @@ deduplication_and_merging(cJSON *jso)
 					cJSON *next = table[i]->child;
 					while (next) {
 						cJSON *dup = cJSON_Duplicate(
-						    next, true);
+						    next, cJSON_True);
 						cJSON_AddItemToObject(child,
 						    dup->string,
 						    dup); // cJSON_Duplicate(next,
@@ -231,140 +143,26 @@ deduplication_and_merging(cJSON *jso)
 	cvector_free(table);
 	return jso;
 }
-static char *
-remove_error_add(char *data)
+
+cJSON *hocon_parse(const char *file)
 {
-	// remove ,"}
-	if ('}' == data[cvector_size(data) - 1] &&
-	    '"' == data[cvector_size(data) - 2] &&
-	    ',' == data[cvector_size(data) - 3]) {
-		data[cvector_size(data) - 3] = data[cvector_size(data) - 1];
-		cvector_pop_back(data);
-		cvector_pop_back(data);
-	}
+    // yydebug = 1;
+    if (!(yyin = fopen(file, "r"))) {
+            perror((file));
+            return NULL;
+    }
 
-	if (']' == data[cvector_size(data) - 1] &&
-	    '"' == data[cvector_size(data) - 2] &&
-	    ',' == data[cvector_size(data) - 3]) {
-		data[cvector_size(data) - 3] = data[cvector_size(data) - 1];
-		cvector_pop_back(data);
-		cvector_pop_back(data);
-	}
-	return data;
-}
 
-// This function assumes that the value
-// is enclosed in double quotes
-static char *
-read_value(char **data, char *p)
-{
-	if ('"' == *p && '=' == *(p - 1)) {
-		cvector_push_back((*data), *p++);
-		while ('\0' != *p) {
-			if ('"' == *p && '\\' != *(p - 1)) {
-				break;
-			}
-			cvector_push_back((*data), *p++);
-		}
-		cvector_push_back((*data), *p++);
-	}
-	return p;
-}
-
-// Replace all '=' to ':'
-// If there are no '=' before object, add ':'
-// If first non-blank character is not '{', push-front '{' and push
-// push-back '}' Replace key to \"key\"
-cJSON *
-hocon_str_to_json(char *str)
-{
-	if (NULL == str) {
-		return NULL;
-	}
-
-	str = data_preprocessing(str);
-
-	// If it's not an illegal json object return
-	cJSON *jso = cJSON_Parse(str);
-	if (cJSON_False == cJSON_IsInvalid(jso)) {
-		cvector_free(str);
-		return jso;
-	}
-
-	char *p    = str;
-	char *data = NULL;
-	cvector_push_back(data, '{');
-	cvector_push_back(data, '"');
-
-	while ('\0' != *p && NULL != (p = skip_whitespace(p))) {
-		while (' ' != *p && '\0' != *p) {
-			// read value enclosed in double quotes
-			p = read_value(&data, p);
-			p = skip_whitespace(p);
-
-			// begin key
-			// push ',' after '}', if last is object finish.
-			// push '"' before key, if next is not an object.
-			// example: '},"key'
-			if ('}' == data[cvector_size(data) - 1] && ',' != *p) {
-				cvector_push_back(data, ',');
-				if ('{' != *p) {
-					cvector_push_back(data, '"');
-				}
-			}
-
-			// end key
-			// push '":' if last is not object/array begin
-			//
-			if (('{' == *p &&
-			        ':' != data[cvector_size(data) - 1] &&
-			        '[' != data[cvector_size(data) - 1] &&
-			        '}' != data[cvector_size(data) - 2]) ||
-			    ('[' == *p &&
-			        ':' != data[cvector_size(data) - 1])) {
-				cvector_push_back(data, '"');
-				cvector_push_back(data, ':');
-			}
-
-			// replace '=' to ':' and push value
-			if ('=' == *p) {
-				cvector_push_back(data, '"');
-				cvector_push_back(data, ':');
-			} else if (',' == *p || '{' == *p) {
-				cvector_push_back(data, *p);
-				// TODO FIXME unsafe
-				if ('}' != *(p + 1) && '"' != *(p + 1) &&
-				    '{' != *(p + 1)) {
-					cvector_push_back(data, '"');
-				}
-			} else {
-				cvector_push_back(data, *p);
-			}
-
-			data = remove_error_add(data);
-			p++;
-		}
-	}
-
-	cvector_free(str);
-	cvector_push_back(data, '}');
-	cvector_push_back(data, '\0');
-
-	// puts("\n");
-	// puts(data);
-
-	if ((jso = cJSON_Parse(data))) {
-		if (cJSON_False != cJSON_IsInvalid(jso)) {
-			jso = path_expression_parse(jso);
-			// puts("\n");
-			// char *tmp = cJSON_PrintUnformatted(jso);
-			// puts(tmp);
-			// cJSON_free(tmp);
-			cvector_free(data);
-			return deduplication_and_merging(jso);
-		}
-	}
-
-	cvector_free(data);
-	return NULL;
+   cJSON *jso = cJSON_CreateObject();
+   int rv = yyparse(&jso);
+   if (0 != rv) {
+		fprintf(stderr, "invalid data to parse!");
+		exit(1);
+   }
+   if (cJSON_False != cJSON_IsInvalid(jso))
+   {
+        jso = path_expression_parse(jso);
+        return deduplication_and_merging(jso);
+   }
+   return NULL;
 }
