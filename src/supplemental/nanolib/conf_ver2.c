@@ -924,43 +924,28 @@ conf_parse_ver2(conf *config)
 		}
 	}
 
-	FILE *fp;
-	if ((fp = fopen(conf_path, "r")) == NULL) {
-		log_error("File %s open failed", conf_path);
-		return;
-	}
-
-	char *str = json_buffer_from_fp(fp);
-	if (str != NULL) {
-
-		cJSON *jso = hocon_str_to_json(str);
-		if (NULL != jso) {
-			conf_basic_parse_ver2(config, jso);
-			conf_sqlite_parse_ver2(config, jso);
-			conf_tls_parse_ver2(config, jso);
+	cJSON *jso = hocon_parse(conf_path);
+	if (NULL != jso) {
+		conf_basic_parse_ver2(config, jso);
+		conf_sqlite_parse_ver2(config, jso);
+		conf_tls_parse_ver2(config, jso);
 #if defined(ENABLE_LOG)
-			conf_log_parse_ver2(config, jso);
+		conf_log_parse_ver2(config, jso);
 #endif
-			conf_webhook_parse_ver2(config, jso);
-			conf_auth_parse_ver2(config, jso);
-			conf_auth_http_parse_ver2(config, jso);
-			conf_bridge_parse_ver2(config, jso);
+		conf_webhook_parse_ver2(config, jso);
+		conf_auth_parse_ver2(config, jso);
+		conf_auth_http_parse_ver2(config, jso);
+		conf_bridge_parse_ver2(config, jso);
 #if defined(SUPP_AWS_BRIDGE)
-			conf_aws_bridge_parse_ver2(config, jso);
+		conf_aws_bridge_parse_ver2(config, jso);
 #endif
 
 #if defined(SUPP_RULE_ENGINE)
-			conf_rule_parse_ver2(config, jso);
+		conf_rule_parse_ver2(config, jso);
 #endif
 
-			cJSON_Delete(jso);
-			cvector_free(str);
-		}
-
-	} else {
-		log_error("Unable to parse contents of json");
+		cJSON_Delete(jso);
 	}
-	fclose(fp);
 
 	return;
 }
@@ -981,43 +966,26 @@ conf_gateway_parse_ver2(zmq_gateway_conf *config)
 		}
 	}
 
-	FILE *fp;
-	if ((fp = fopen(dest_path, "r")) == NULL) {
-		log_error("File %s open failed", dest_path);
-		return;
-	}
+	cJSON *jso      = hocon_parse(dest_path);
+	cJSON *jso_mqtt = hocon_get_obj("gateway.mqtt", jso);
+	cJSON *jso_zmq  = hocon_get_obj("gateway.zmq", jso);
 
-	char *str = json_buffer_from_fp(fp);
-	if (str != NULL) {
+	hocon_read_num(config, proto_ver, jso_mqtt);
+	hocon_read_num(config, keepalive, jso_mqtt);
+	hocon_read_bool(config, clean_start, jso_mqtt);
+	hocon_read_num(config, parallel, jso_mqtt);
+	hocon_read_str_base(config, mqtt_url, "address", jso_mqtt);
+	hocon_read_str_base(config, pub_topic, "forward", jso_mqtt);
+	hocon_read_str(config, sub_topic, jso_mqtt);
 
-		cJSON *jso      = hocon_str_to_json(str);
-		cJSON *jso_mqtt = hocon_get_obj("gateway.mqtt", jso);
-		cJSON *jso_zmq  = hocon_get_obj("gateway.zmq", jso);
+	hocon_read_str_base(config, zmq_sub_pre, "sub_pre", jso_zmq);
+	hocon_read_str_base(config, zmq_pub_pre, "pub_pre", jso_zmq);
+	hocon_read_str_base(config, zmq_sub_url, "sub_address", jso_zmq);
+	hocon_read_str_base(config, zmq_pub_url, "pub_address", jso_zmq);
 
-		hocon_read_num(config, proto_ver, jso_mqtt);
-		hocon_read_num(config, keepalive, jso_mqtt);
-		hocon_read_bool(config, clean_start, jso_mqtt);
-		hocon_read_num(config, parallel, jso_mqtt);
-		hocon_read_str_base(config, mqtt_url, "address", jso_mqtt);
-		hocon_read_str_base(config, pub_topic, "forward", jso_mqtt);
-		hocon_read_str(config, sub_topic, jso_mqtt);
+	cJSON_Delete(jso);
 
-		hocon_read_str_base(config, zmq_sub_pre, "sub_pre", jso_zmq);
-		hocon_read_str_base(config, zmq_pub_pre, "pub_pre", jso_zmq);
-		hocon_read_str_base(
-		    config, zmq_sub_url, "sub_address", jso_zmq);
-		hocon_read_str_base(
-		    config, zmq_pub_url, "pub_address", jso_zmq);
-
-		cJSON_Delete(jso);
-		cvector_free(str);
-
-		// printf_gateway_conf(config);
-
-	} else {
-		log_error("Unable to parse contents of json");
-	}
-	fclose(fp);
+	// printf_gateway_conf(config);
 
 	return;
 }
