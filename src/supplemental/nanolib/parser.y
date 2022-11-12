@@ -11,6 +11,8 @@ struct jso_kv {
         cJSON *val;
 };
 
+
+extern void jso_kv_free(struct jso_kv* kv);
 extern void yyerror(struct cJSON** jso, const char*);
 extern int hocon_parse(int argc, char **argv);
 
@@ -53,16 +55,16 @@ json:  value {*jso =  $1;}
 
 value: object      { $$ = $1; /*printf("[OB]: %s\n", cJSON_PrintUnformatted($1));*/ }
         | array    { $$ = $1; /*printf("[AR]: %s\t", cJSON_PrintUnformatted($1));*/ }
-        | STRING   { char *str = strdup($1); str++; int len = strlen(str); str[len-1] = '\0'; $$ = cJSON_CreateString(str); }
-        | USTRING  { $$ = cJSON_CreateString($1); }
+        | STRING   { char *str = strdup($1); free($1); char *p = str; str++; int len = strlen(str); str[len-1] = '\0'; $$ = cJSON_CreateString(str); free(p);}
+        | USTRING  { $$ = cJSON_CreateString($1); free($1);}
         | DECIMAL  { $$ = cJSON_CreateNumber($1); }
         | INTEGER  { $$ = cJSON_CreateNumber($1); }
         | VTRUE    { $$ = cJSON_CreateTrue(); }
         | VFALSE   { $$ = cJSON_CreateFalse(); }
         | VNULL    { $$ = cJSON_CreateNull(); }
-        | BYTESIZE { $$ = cJSON_CreateString($1); }
-        | DURATION { $$ = cJSON_CreateString($1); }
-        | PERCENT  { $$ = cJSON_CreateString($1); }
+        | BYTESIZE { $$ = cJSON_CreateString($1); free($1);}
+        | DURATION { $$ = cJSON_CreateString($1); free($1);}
+        | PERCENT  { $$ = cJSON_CreateString($1); free($1);}
         ;
 
 object: LCURLY RCURLY            { /*printf("{}\n");*/ }
@@ -70,15 +72,15 @@ object: LCURLY RCURLY            { /*printf("{}\n");*/ }
         | members                { $$ = $1; }
         ;
 
-members: member                  { $$ = cJSON_CreateObject();  cJSON_AddItemToObject($$, $1->key, $1->val); /*printf("%s\t", cJSON_PrintUnformatted($$));*/}
-        | members COMMA member   { cJSON_AddItemToObject($$, $3->key, $3->val); /*printf("%s\t", cJSON_PrintUnformatted($$));*/ }
-        | members member   { cJSON_AddItemToObject($$, $2->key, $2->val); /*printf("%s\t", cJSON_PrintUnformatted($$));*/ }
+members: member                  { $$ = cJSON_CreateObject();  cJSON_AddItemToObject($$, $1->key, $1->val); jso_kv_free($1);}
+        | members COMMA member   { cJSON_AddItemToObject($$, $3->key, $3->val); jso_kv_free($3);}
+        | members member   { cJSON_AddItemToObject($$, $2->key, $2->val); jso_kv_free($2);}
         ;
 
-member: STRING PUNCT value       { $$ = (struct jso_kv *) malloc(sizeof(struct jso_kv)); char *str = strdup($1); str++; int len = strlen(str); str[len-1] = '\0'; $$->key = str, $$->val = $3; /*printf("%s\n", cJSON_PrintUnformatted($3));*/ }
-        | USTRING PUNCT value       { $$ = (struct jso_kv *) malloc(sizeof(struct jso_kv)); $$->key = $1, $$->val = $3; /*printf("%s\n", cJSON_PrintUnformatted($3));*/ }
-        | USTRING LCURLY value RCURLY      { $$ = (struct jso_kv *) malloc(sizeof(struct jso_kv)); $$->key = $1, $$->val = $3; /*printf("%s\n", cJSON_PrintUnformatted($3));*/ }
-        | USTRING LBRAC values RBRAC      { $$ = (struct jso_kv *) malloc(sizeof(struct jso_kv)); $$->key = $1, $$->val = $3; /*printf("%s\n", cJSON_PrintUnformatted($3));*/ }
+member: STRING PUNCT value       { $$ = (struct jso_kv *) malloc(sizeof(struct jso_kv)); char *str = strdup($1); str++; int len = strlen(str); str[len-1] = '\0'; $$->key = str, $$->val = $3;}
+        | USTRING PUNCT value       { $$ = (struct jso_kv *) malloc(sizeof(struct jso_kv)); $$->key = $1, $$->val = $3;}
+        | USTRING LCURLY value RCURLY      { $$ = (struct jso_kv *) malloc(sizeof(struct jso_kv)); $$->key = $1, $$->val = $3;}
+        | USTRING LBRAC values RBRAC      { $$ = (struct jso_kv *) malloc(sizeof(struct jso_kv)); $$->key = $1, $$->val = $3;}
         ;
 
 array: LBRAC RBRAC               { /*printf("[]\n"); */}
@@ -94,6 +96,15 @@ values: value                    { $$ = cJSON_CreateArray(); cJSON_AddItemToArra
 %%
 
 
+extern void jso_kv_free(struct jso_kv* kv)
+{
+        if (NULL != kv) {
+                if (NULL != kv->key) {
+                        free(kv->key); 
+                }
+                free(kv);
+        }
+}
 
 void yyerror(struct cJSON **jso, const char *s)
 {

@@ -153,7 +153,7 @@ cJSON *hocon_parse(const char *file)
     }
 
 
-   cJSON *jso = cJSON_CreateObject();
+   cJSON *jso = NULL;
    int rv = yyparse(&jso);
    if (0 != rv) {
 		fprintf(stderr, "invalid data to parse!");
