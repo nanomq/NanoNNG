@@ -278,6 +278,7 @@ conf_sqlite_parse_ver2(conf *config, cJSON *jso)
 	return;
 }
 
+#if defined(ENABLE_LOG)
 static void
 conf_log_parse_ver2(conf *config, cJSON *jso)
 {
@@ -286,9 +287,7 @@ conf_log_parse_ver2(conf *config, cJSON *jso)
 		log_error("Read config nanomq sqlite failed!");
 		return;
 	}
-#if defined(ENABLE_LOG)
 	conf_log *log = &(config->log);
-#endif
 	cJSON *jso_log_to     = hocon_get_obj("to", jso_log);
 	cJSON *jso_log_to_ele = NULL;
 
@@ -336,6 +335,7 @@ conf_log_parse_ver2(conf *config, cJSON *jso)
 
 	return;
 }
+#endif
 
 static void
 webhook_action_parse_ver2(cJSON *object, conf_web_hook_rule *hook_rule)
