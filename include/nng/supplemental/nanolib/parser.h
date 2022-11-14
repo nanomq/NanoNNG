@@ -87,7 +87,7 @@ union YYSTYPE
     struct cJSON *jsonval;
     struct jso_kv *jkval;
 
-#line 91 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.h"
+#line 91 "nng/src/supplemental/nanolib/parser.h"
 
 };
 typedef union YYSTYPE YYSTYPE;
