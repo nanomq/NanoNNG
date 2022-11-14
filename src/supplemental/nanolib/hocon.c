@@ -1,6 +1,6 @@
 #include "nng/supplemental/nanolib/cvector.h"
 #include "nng/supplemental/nanolib/hocon.h"
-#include "parser.h"
+#include "nng/supplemental/nanolib/parser.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
