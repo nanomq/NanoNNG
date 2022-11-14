@@ -22,8 +22,7 @@ flex_target(LEXER "scanner.l" "${LEXER_OUT}" DEFINES_FILE "${SRC_DIR}/scanner.h"
 add_flex_bison_dependency(LEXER PARSER)
 
 add_library(hocon STATIC "${LEXER_OUT}" "${PARSER_OUT}" "cJSON.c" "hocon.c")
-target_include_directories(hocon PRIVATE ${CMAKE_SOURCE_DIR}/nng/include)
-
+target_include_directories(hocon PRIVATE ${PROJECT_SOURCE_DIR}/include)
 
 target_link_libraries(nng PRIVATE ${PARSER_DIR}/libhocon.a)
 target_link_libraries(nng_testing PRIVATE ${PARSER_DIR}/libhocon.a)
