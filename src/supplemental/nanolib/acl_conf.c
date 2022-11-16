@@ -7,6 +7,44 @@
 extern char *strtrim_head_tail(char *str, size_t len);
 
 static bool
+parse_str_item(cJSON *obj, const char *key, acl_rule_ct *content)
+{
+	cJSON *item = cJSON_GetObjectItem(obj, key);
+	if (cJSON_IsString(item)) {
+		char *name = cJSON_GetStringValue(item);
+		if (strcmp(name, "#") == 0) {
+			content->type = ACL_RULE_ALL;
+		} else {
+			content->type      = ACL_RULE_SINGLE_STRING;
+			content->value.str = nni_strdup(name);
+		}
+		return true;
+	}
+	return false;
+}
+
+static bool
+parse_str_array_item(cJSON *obj, const char *key, acl_rule_ct *content)
+{
+	cJSON *array = cJSON_GetObjectItem(obj, key);
+	if (cJSON_IsArray(array)) {
+		int size                 = cJSON_GetArraySize(array);
+		content->type            = ACL_RULE_STRING_ARRAY;
+		content->count           = size;
+		content->value.str_array = nni_zalloc(size * sizeof(char *));
+		for (int i = 0; i < size; i++) {
+			cJSON *item = cJSON_GetArrayItem(array, i);
+			if (cJSON_IsString(item)) {
+				content->value.str_array[i] =
+				    nni_strdup(cJSON_GetStringValue(item));
+			}
+		}
+		return true;
+	}
+	return false;
+}
+
+static bool
 parse_json_rule(char *json, size_t id, acl_rule **rule)
 {
 	cJSON *obj = cJSON_Parse(json);
@@ -20,6 +58,7 @@ parse_json_rule(char *json, size_t id, acl_rule **rule)
 	r->action      = ACL_ALL;
 	r->topic_count = 0;
 	r->topics      = NULL;
+	r->rule_type   = ACL_NONE;
 
 	char *value;
 
@@ -65,89 +104,64 @@ parse_json_rule(char *json, size_t id, acl_rule **rule)
 		}
 	}
 
-	cJSON *ipaddr = cJSON_GetObjectItem(obj, "ipaddr");
-	if (cJSON_IsString(ipaddr)) {
-		r->rule_type    = ACL_IPADDR;
-		r->content.type = ACL_RULE_SINGLE_STRING;
-		r->content.value.str =
-		    nni_strdup(cJSON_GetStringValue(ipaddr));
+	if (parse_str_item(obj, "ipaddr", &r->rule_ct.ct)) {
+		r->rule_type = ACL_IPADDR;
 		goto out;
 	}
 
-	cJSON *ipaddrs = cJSON_GetObjectItem(obj, "ipaddrs");
-	if (cJSON_IsArray(ipaddrs)) {
-		int size                   = cJSON_GetArraySize(ipaddrs);
-		r->rule_type               = ACL_IPADDR;
-		r->content.type            = ACL_RULE_STRING_ARRAY;
-		r->content.count           = size;
-		r->content.value.str_array = nni_zalloc(size * sizeof(char *));
-		for (int i = 0; i < size; i++) {
-			cJSON *item = cJSON_GetArrayItem(ipaddrs, i);
-			if (cJSON_IsString(item)) {
-				r->content.value.str_array[i] =
-				    nni_strdup(cJSON_GetStringValue(item));
-			}
-		}
+	if (parse_str_array_item(obj, "ipaddrs", &r->rule_ct.ct)) {
+		r->rule_type = ACL_IPADDR;
 		goto out;
 	}
 
-	cJSON *user = cJSON_GetObjectItem(obj, "user");
-	if (cJSON_IsString(user)) {
+	if (parse_str_item(obj, "username", &r->rule_ct.ct)){
 		r->rule_type = ACL_USERNAME;
-		char *name   = cJSON_GetStringValue(user);
-		if (strcmp(name, "#") == 0) {
-			r->content.type = ACL_RULE_ALL;
-		} else {
-			r->content.type      = ACL_RULE_SINGLE_STRING;
-			r->content.value.str = nni_strdup(name);
-		}
-
 		goto out;
 	}
 
-	cJSON *clientid = cJSON_GetObjectItem(obj, "clientid");
-	if (cJSON_IsString(clientid)) {
+	if (parse_str_item(obj, "clientid", &r->rule_ct.ct)) {
 		r->rule_type = ACL_CLIENTID;
-		char *name   = cJSON_GetStringValue(clientid);
-		if (strcmp(name, "#") == 0) {
-			r->content.type = ACL_RULE_ALL;
-		} else {
-			r->content.type      = ACL_RULE_SINGLE_STRING;
-			r->content.value.str = nni_strdup(name);
-		}
 		goto out;
 	}
 
-	cJSON *and_op = cJSON_GetObjectItem(obj, "and");
-	if (cJSON_IsArray(and_op)) {
-		int size                   = cJSON_GetArraySize(and_op);
-		r->rule_type               = ACL_AND;
-		r->content.type            = ACL_RULE_INT_ARRAY;
-		r->content.count           = size;
-		r->content.value.int_array = nni_zalloc(size * sizeof(int));
-		for (int i = 0; i < size; i++) {
-			cJSON *item = cJSON_GetArrayItem(and_op, i);
-			if (cJSON_IsNumber(item)) {
-				r->content.value.int_array[i] =
-				    cJSON_GetNumberValue(item);
-			}
+	cJSON *op = cJSON_GetObjectItem(obj, "and");
+	if (cJSON_IsArray(op)) {
+		r->rule_type = ACL_AND;
+	} else {
+		op = cJSON_GetObjectItem(obj, "or");
+		if (cJSON_IsArray(op)) {
+			r->rule_type = ACL_OR;
 		}
-		goto out;
 	}
 
-	cJSON *or_op = cJSON_GetObjectItem(obj, "or");
-	if (cJSON_IsArray(or_op)) {
-		int size                   = cJSON_GetArraySize(or_op);
-		r->rule_type               = ACL_OR;
-		r->content.type            = ACL_RULE_INT_ARRAY;
-		r->content.count           = size;
-		r->content.value.int_array = nni_zalloc(size * sizeof(int));
+	if (r->rule_type == ACL_OR || r->rule_type == ACL_AND) {
+		int                  size      = cJSON_GetArraySize(op);
+		acl_sub_rules_array *rule_list = &r->rule_ct.array;
+		rule_list->rules = nni_zalloc(sizeof(acl_sub_rule *) * size);
+		rule_list->count = 0;
 		for (int i = 0; i < size; i++) {
-			cJSON *item = cJSON_GetArrayItem(or_op, i);
-			if (cJSON_IsNumber(item)) {
-				r->content.value.int_array[i] =
-				    cJSON_GetNumberValue(item);
+			cJSON *       sub_item = cJSON_GetArrayItem(op, i);
+			acl_sub_rule *sub_rule =
+			    nni_zalloc(sizeof(acl_sub_rule));
+
+			if (parse_str_item(
+			        sub_item, "clientid", &sub_rule->rule_ct)) {
+				sub_rule->rule_type = ACL_CLIENTID;
+			} else if (parse_str_item(sub_item, "username",
+			               &sub_rule->rule_ct)) {
+				sub_rule->rule_type = ACL_USERNAME;
+			} else if (parse_str_item(sub_item, "ipaddr",
+			               &sub_rule->rule_ct) ||
+			    parse_str_array_item(
+			        sub_item, "ipaddrs", &sub_rule->rule_ct)) {
+				sub_rule->rule_type = ACL_IPADDR;
+			} else {
+				nni_free(
+				    sub_rule, sizeof(acl_sub_rule *) * size);
+				continue;
 			}
+			rule_list->rules[rule_list->count] = sub_rule;
+			rule_list->count++;
 		}
 		goto out;
 	}
@@ -220,33 +234,35 @@ conf_acl_init(conf_acl *acl)
 void
 conf_acl_destroy(conf_acl *acl)
 {
-	for (size_t i = 0; i < acl->rule_count; i++) {
-		acl_rule *   rule = acl->rules[i];
-		acl_rule_ct *ct   = &rule->content;
-		switch (ct->type) {
-		case ACL_RULE_SINGLE_STRING:
-			nni_strfree(ct->value.str);
-			break;
+	// for (size_t i = 0; i < acl->rule_count; i++) {
+	// 	acl_rule *   rule = acl->rules[i];
+	// 	acl_rule_ct *ct   = &rule->content;
+	// 	switch (ct->type) {
+	// 	case ACL_RULE_SINGLE_STRING:
+	// 		nni_strfree(ct->value.str);
+	// 		break;
 
-		case ACL_RULE_INT_ARRAY:
-			nni_free(ct->value.int_array, ct->count * sizeof(int));
-			break;
+	// 	case ACL_RULE_INT_ARRAY:
+	// 		nni_free(ct->value.int_array, ct->count * sizeof(int));
+	// 		break;
 
-		case ACL_RULE_STRING_ARRAY:
-			for (size_t i = 0; i < ct->count; i++) {
-				nni_strfree(ct->value.str_array[i]);
-			}
-			nni_free(
-			    ct->value.str_array, ct->count * sizeof(char *));
-			break;
+	// 	case ACL_RULE_STRING_ARRAY:
+	// 		for (size_t i = 0; i < ct->count; i++) {
+	// 			nni_strfree(ct->value.str_array[i]);
+	// 		}
+	// 		nni_free(
+	// 		    ct->value.str_array, ct->count * sizeof(char *));
+	// 		break;
 
-		default:
-			break;
-		}
-		nni_free(rule, sizeof(acl_rule));
+	// 	default:
+	// 		break;
+	// 	}
+	// 	nni_free(rule, sizeof(acl_rule));
+	// }
+	if (acl->rule_count > 0) {
+		nni_free(acl->rules, acl->rule_count * sizeof(acl_rule *));
+		acl->rule_count = 0;
 	}
-	nni_free(acl->rules, acl->rule_count * sizeof(acl_rule *));
-	acl->rule_count = 0;
 }
 
 void
@@ -264,34 +280,80 @@ print_acl_conf(conf_acl *acl)
 
 		log_info("[%zu] rule_type: '%s'", rule->id,
 		    rule->rule_type == ACL_CLIENTID       ? "clientid"
-		        : rule->rule_type == ACL_USERNAME ? "user"
+		        : rule->rule_type == ACL_USERNAME ? "username"
 		        : rule->rule_type == ACL_IPADDR   ? "ipaddr"
 		        : rule->rule_type == ACL_AND      ? "and"
 		        : rule->rule_type == ACL_OR       ? "or"
-		                                          : "");
+		                                          : "(none)");
+
 		log_info("[%zu] rule_content: ", rule->id);
-		switch (rule->content.type) {
-		case ACL_RULE_SINGLE_STRING:
-			log_info(
-			    "[%zu] \t%s", rule->id, rule->content.value.str);
-			break;
-		case ACL_RULE_INT_ARRAY:
-			for (size_t j = 0; j < rule->content.count; j++) {
-				log_info("[%zu] \t%d", rule->id,
-				    rule->content.value.int_array[j]);
-			}
-			break;
-		case ACL_RULE_STRING_ARRAY:
-			for (size_t j = 0; j < rule->content.count; j++) {
+		if (rule->rule_type != ACL_AND && rule->rule_type != ACL_OR) {
+			switch (rule->rule_ct.ct.type) {
+			case ACL_RULE_SINGLE_STRING:
 				log_info("[%zu] \t%s", rule->id,
-				    rule->content.value.str_array[j]);
+				    rule->rule_ct.ct.value.str);
+				break;
+
+			case ACL_RULE_STRING_ARRAY:
+				for (size_t j = 0; j < rule->rule_ct.ct.count;
+				     j++) {
+					log_info("[%zu] \t%s", rule->id,
+					    rule->rule_ct.ct.value
+					        .str_array[j]);
+				}
+				break;
+			case ACL_RULE_ALL:
+				log_info("[%zu] \tall", rule->id);
+				break;
+			default:
+				break;
 			}
-			break;
-		case ACL_RULE_ALL:
-			log_info("[%zu] \tall", rule->id);
-			break;
-		default:
-			break;
+		} else {
+			acl_sub_rules_array *array = &rule->rule_ct.array;
+			for (size_t j = 0; j < array->count; j++) {
+				acl_sub_rule *sub_rule = array->rules[i];
+				log_info("sub_rule: [%p]", sub_rule);
+				log_info("sub_rule type: [%d]", sub_rule->rule_type);
+
+				log_info("[%zu][%zu] sub_rule_type: '%s'",
+				    rule->id, j,
+				    sub_rule->rule_type == ACL_CLIENTID
+				        ? "clientid"
+				        : sub_rule->rule_type == ACL_USERNAME
+				        ? "username"
+				        : sub_rule->rule_type == ACL_IPADDR
+				        ? "ipaddr"
+				        : sub_rule->rule_type == ACL_AND
+				        ? "and"
+				        : sub_rule->rule_type == ACL_OR
+				        ? "or"
+				        : "(none)");
+
+				switch (sub_rule->rule_ct.type) {
+				case ACL_RULE_SINGLE_STRING:
+					log_info("[%zu][%zu] \t%s", rule->id,
+					    j, sub_rule->rule_ct.value.str);
+					break;
+
+				case ACL_RULE_STRING_ARRAY:
+					for (size_t k = 0;
+					     k < sub_rule->rule_ct.count;
+					     k++) {
+						log_info(
+						    "[%zu][%zu][%zu] \t%s",
+						    rule->id, j, k,
+						    sub_rule->rule_ct.value
+						        .str_array[k]);
+					}
+					break;
+
+				case ACL_RULE_ALL:
+					log_info("[%zu] \tall", rule->id);
+					break;
+				default:
+					break;
+				}
+			}
 		}
 
 		log_info("[%zu] topics:", rule->id);
