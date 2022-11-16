@@ -311,23 +311,23 @@ typedef enum {
 } persistence_type;
 
 struct conf {
-	char *   conf_file;
-	char *   url;
-	int      num_taskq_thread;
-	int      max_taskq_thread;
-	int      property_size;
-	int      msq_len;
-	uint32_t parallel;
-	uint32_t max_packet_size;
-	uint32_t client_max_packet_size;
-	uint32_t qos_duration;
-	float    backoff;
-	void *   db_root;
-	bool     allow_anonymous;
-	bool     acl_nomatch;
-	bool     enable_acl_cache;
-	size_t   acl_cache_max_size;
-	size_t   acl_cache_ttl;
+	char *     conf_file;
+	char *     url;
+	int        num_taskq_thread;
+	int        max_taskq_thread;
+	int        property_size;
+	int        msq_len;
+	uint32_t   parallel;
+	uint32_t   max_packet_size;
+	uint32_t   client_max_packet_size;
+	uint32_t   qos_duration;
+	float      backoff;
+	void *     db_root;
+	bool       allow_anonymous;
+	acl_permit acl_nomatch;
+	bool       enable_acl_cache;
+	size_t     acl_cache_max_size;
+	size_t     acl_cache_ttl;
 	enum { ACL_IGNORE, ACL_DISCONNECT } acl_deny_action;
 
 	bool     daemon;

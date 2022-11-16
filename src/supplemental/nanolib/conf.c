@@ -445,7 +445,8 @@ conf_basic_parse(conf *config, const char *path)
 		} else if ((value = get_conf_value(line, sz, "acl_nomatch")) !=
 		    NULL) {
 			config->acl_nomatch =
-			    nni_strcasecmp(value, "allow") == 0;
+			    nni_strcasecmp(value, "allow") == 0 ? ACL_ALLOW
+			                                        : ACL_DENY;
 			nng_strfree(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "enable_acl_cache")) != NULL) {
@@ -819,7 +820,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->backoff       = 1.5;
 
 	nanomq_conf->allow_anonymous    = true;
-	nanomq_conf->acl_nomatch        = true;
+	nanomq_conf->acl_nomatch        = ACL_ALLOW;
 	nanomq_conf->enable_acl_cache   = true;
 	nanomq_conf->acl_cache_max_size = 32;
 	nanomq_conf->acl_cache_ttl      = 60;
@@ -919,7 +920,7 @@ print_conf(conf *nanomq_conf)
 	log_info("allow_anonymous:          %s",
 	    nanomq_conf->allow_anonymous ? "true" : "false");
 	log_info("acl_nomatch:              %s",
-	    nanomq_conf->acl_nomatch ? "allow" : "deny");
+	    nanomq_conf->acl_nomatch == ACL_ALLOW ? "allow" : "deny");
 	log_info("enable_acl_cache:         %s",
 	    nanomq_conf->enable_acl_cache ? "on" : "off");
 	log_info(
