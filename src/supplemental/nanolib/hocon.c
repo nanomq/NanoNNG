@@ -144,25 +144,50 @@ deduplication_and_merging(cJSON *jso)
 	return jso;
 }
 
-cJSON *hocon_parse(const char *file)
+cJSON *hocon_parse_file(const char *file)
 {
-    // yydebug = 1;
-    if (!(yyin = fopen(file, "r"))) {
-            perror((file));
-            return NULL;
-    }
+	// yydebug = 1;
+	if (!(yyin = fopen(file, "r")))
+	{
+		perror((file));
+		return NULL;
+	}
 
-
-   cJSON *jso = NULL;
-   int rv = yyparse(&jso);
-   if (0 != rv) {
+	cJSON *jso = NULL;
+	int rv = yyparse(&jso);
+	if (0 != rv)
+	{
 		fprintf(stderr, "invalid data to parse!");
 		exit(1);
-   }
-   if (cJSON_False != cJSON_IsInvalid(jso))
-   {
-        jso = path_expression_parse(jso);
-        return deduplication_and_merging(jso);
-   }
-   return NULL;
+	}
+	if (cJSON_False != cJSON_IsInvalid(jso))
+	{
+		jso = path_expression_parse(jso);
+		return deduplication_and_merging(jso);
+	}
+	return NULL;
+}
+
+typedef struct yy_buffer_state *YY_BUFFER_STATE;
+extern YY_BUFFER_STATE yy_scan_bytes(char *buffer, size_t size);
+extern void yy_delete_buffer(struct yy_buffer_state *buffer);
+
+cJSON *hocon_parse_str(char *str, size_t len)
+{
+	YY_BUFFER_STATE buffer = yy_scan_bytes(str, len);
+
+	cJSON *jso = NULL;
+	int rv = yyparse(&jso);
+	if (0 != rv)
+	{
+		fprintf(stderr, "invalid data to parse!");
+		exit(1);
+	}
+	yy_delete_buffer(buffer);
+	if (cJSON_False != cJSON_IsInvalid(jso))
+	{
+		jso = path_expression_parse(jso);
+		return deduplication_and_merging(jso);
+	}
+	return NULL;
 }
