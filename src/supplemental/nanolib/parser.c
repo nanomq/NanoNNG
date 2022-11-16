@@ -84,6 +84,7 @@ struct jso_kv {
 
 extern void jso_kv_free(struct jso_kv* kv);
 extern struct jso_kv* jso_kv_new(char *key, struct cJSON *val);
+extern char * remove_white_space(char *str);
 extern void yyerror(struct cJSON** jso, const char*);
 extern int hocon_parse(int argc, char **argv);
 
@@ -533,7 +534,7 @@ static const yytype_int8 yyrline[] =
 {
        0,    54,    54,    57,    58,    59,    65,    66,    67,    68,
       69,    70,    71,    72,    73,    76,    77,    78,    81,    86,
-      87,    90,    94,    95,    96,    99,   100,   103,   104,   105
+      87,    90,    95,    96,    97,   100,   101,   104,   105,   106
 };
 #endif
 
@@ -1254,28 +1255,29 @@ yyreduce:
   case 21: /* member: STRING PUNCT value  */
 #line 90 "parser.y"
                                         { 
-                                                char *str = strdup((yyvsp[-2].strval)); str++; int len = strlen(str); 
+                                                char *str = strdup((yyvsp[-2].strval) + 1); 
+                                                int len = strlen(str); free((yyvsp[-2].strval));
                                                 str[len-1] = '\0'; (yyval.jkval) = jso_kv_new(str, (yyvsp[0].jsonval));
                                         }
 #line 1261 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
     break;
 
   case 22: /* member: USTRING PUNCT value  */
-#line 94 "parser.y"
-                                        { (yyval.jkval) = jso_kv_new((yyvsp[-2].strval), (yyvsp[0].jsonval));}
-#line 1267 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 95 "/home/lee/workspace/hocon/parser.y"
+                                        { (yyval.jkval) = jso_kv_new(remove_white_space((yyvsp[-2].strval)), (yyvsp[0].jsonval));}
+#line 1268 "/home/lee/workspace/hocon/build/parser.c"
     break;
 
   case 23: /* member: USTRING LCURLY value RCURLY  */
-#line 95 "parser.y"
-                                        { (yyval.jkval) = jso_kv_new((yyvsp[-3].strval), (yyvsp[-1].jsonval));}
-#line 1273 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 96 "/home/lee/workspace/hocon/parser.y"
+                                        { (yyval.jkval) = jso_kv_new(remove_white_space((yyvsp[-3].strval)), (yyvsp[-1].jsonval));}
+#line 1274 "/home/lee/workspace/hocon/build/parser.c"
     break;
 
   case 24: /* member: USTRING LBRAC values RBRAC  */
-#line 96 "parser.y"
-                                        { (yyval.jkval) = jso_kv_new((yyvsp[-3].strval), (yyvsp[-1].jsonval));}
-#line 1279 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 97 "/home/lee/workspace/hocon/parser.y"
+                                        { (yyval.jkval) = jso_kv_new(remove_white_space((yyvsp[-3].strval)), (yyvsp[-1].jsonval));}
+#line 1280 "/home/lee/workspace/hocon/build/parser.c"
     break;
 
   case 25: /* array: LBRAC RBRAC  */
@@ -1523,6 +1525,23 @@ struct jso_kv* jso_kv_new(char *key, struct cJSON *val)
         kv->val = val;
         return kv;
 }
+
+char *remove_white_space(char *str)
+{
+        while (' ' == *str || '\t' == *str) {
+                str++;
+        }
+
+        char *ret = str;
+        str = str + strlen(str);
+        
+        while (' ' == *str || '\t' == *str || '\0' == *str) {
+                str--;
+        }
+        *(str+1) = '\0';
+        return ret;
+}
+
 
 
 void yyerror(struct cJSON **jso, const char *s)
