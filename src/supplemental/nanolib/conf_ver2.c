@@ -924,7 +924,7 @@ conf_parse_ver2(conf *config)
 		}
 	}
 
-	cJSON *jso = hocon_parse(conf_path);
+	cJSON *jso = hocon_parse_file(conf_path);
 	if (NULL != jso) {
 		conf_basic_parse_ver2(config, jso);
 		conf_sqlite_parse_ver2(config, jso);
@@ -966,7 +966,7 @@ conf_gateway_parse_ver2(zmq_gateway_conf *config)
 		}
 	}
 
-	cJSON *jso      = hocon_parse(dest_path);
+	cJSON *jso      = hocon_parse_file(dest_path);
 	cJSON *jso_mqtt = hocon_get_obj("gateway.mqtt", jso);
 	cJSON *jso_zmq  = hocon_get_obj("gateway.zmq", jso);
 
