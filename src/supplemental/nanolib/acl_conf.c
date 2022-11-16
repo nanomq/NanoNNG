@@ -114,7 +114,7 @@ parse_json_rule(char *json, size_t id, acl_rule **rule)
 		goto out;
 	}
 
-	if (parse_str_item(obj, "username", &r->rule_ct.ct)){
+	if (parse_str_item(obj, "username", &r->rule_ct.ct)) {
 		r->rule_type = ACL_USERNAME;
 		goto out;
 	}
@@ -215,6 +215,14 @@ conf_acl_parse(conf_acl *acl, const char *path)
 			free(line);
 			line = NULL;
 		}
+		if (str) {
+			free(str);
+			str = NULL;
+		}
+		if (value) {
+			free(value);
+			value = NULL;
+		}
 	}
 
 	if (line) {
@@ -231,34 +239,50 @@ conf_acl_init(conf_acl *acl)
 	acl->rules      = NULL;
 }
 
+static void
+free_acl_content(acl_rule_ct *ct)
+{
+	switch (ct->type) {
+	case ACL_RULE_SINGLE_STRING:
+		nni_strfree(ct->value.str);
+		break;
+
+	case ACL_RULE_STRING_ARRAY:
+		for (size_t j = 0; j < ct->count; j++) {
+			nni_strfree(ct->value.str_array[j]);
+		}
+		nni_free(ct->value.str_array, ct->count * sizeof(char *));
+		break;
+	default:
+		break;
+	}
+}
+
 void
 conf_acl_destroy(conf_acl *acl)
 {
-	// for (size_t i = 0; i < acl->rule_count; i++) {
-	// 	acl_rule *   rule = acl->rules[i];
-	// 	acl_rule_ct *ct   = &rule->content;
-	// 	switch (ct->type) {
-	// 	case ACL_RULE_SINGLE_STRING:
-	// 		nni_strfree(ct->value.str);
-	// 		break;
+	for (size_t i = 0; i < acl->rule_count; i++) {
+		acl_rule *rule = acl->rules[i];
 
-	// 	case ACL_RULE_INT_ARRAY:
-	// 		nni_free(ct->value.int_array, ct->count * sizeof(int));
-	// 		break;
-
-	// 	case ACL_RULE_STRING_ARRAY:
-	// 		for (size_t i = 0; i < ct->count; i++) {
-	// 			nni_strfree(ct->value.str_array[i]);
-	// 		}
-	// 		nni_free(
-	// 		    ct->value.str_array, ct->count * sizeof(char *));
-	// 		break;
-
-	// 	default:
-	// 		break;
-	// 	}
-	// 	nni_free(rule, sizeof(acl_rule));
-	// }
+		if (rule->rule_type != ACL_AND && rule->rule_type != ACL_OR) {
+			free_acl_content(&rule->rule_ct.ct);
+		} else {
+			acl_sub_rules_array *array = &rule->rule_ct.array;
+			for (size_t j = 0; j < array->count; j++) {
+				acl_sub_rule *sub_rule = array->rules[j];
+				free_acl_content(&sub_rule->rule_ct);
+				nni_free(sub_rule, sizeof(acl_sub_rule));
+			}
+			nni_free(array->rules,
+			    sizeof(acl_sub_rule *) * array->count);
+		}
+		for (size_t k = 0; k < rule->topic_count; k++) {
+			nni_strfree(rule->topics[k]);
+		}
+		nni_free(rule->topics, rule->topic_count * sizeof(char *));
+		nni_free(rule, sizeof(acl_rule));
+	}
+	
 	if (acl->rule_count > 0) {
 		nni_free(acl->rules, acl->rule_count * sizeof(acl_rule *));
 		acl->rule_count = 0;
@@ -311,9 +335,9 @@ print_acl_conf(conf_acl *acl)
 		} else {
 			acl_sub_rules_array *array = &rule->rule_ct.array;
 			for (size_t j = 0; j < array->count; j++) {
-				acl_sub_rule *sub_rule = array->rules[i];
-				log_info("sub_rule: [%p]", sub_rule);
-				log_info("sub_rule type: [%d]", sub_rule->rule_type);
+				acl_sub_rule *sub_rule = array->rules[j];
+				log_info("sub_rule type: [%d]",
+				    sub_rule->rule_type);
 
 				log_info("[%zu][%zu] sub_rule_type: '%s'",
 				    rule->id, j,
@@ -339,8 +363,8 @@ print_acl_conf(conf_acl *acl)
 					for (size_t k = 0;
 					     k < sub_rule->rule_ct.count;
 					     k++) {
-						log_info(
-						    "[%zu][%zu][%zu] \t%s",
+						log_info("[%zu][%zu][%"
+						         "zu] \t%s",
 						    rule->id, j, k,
 						    sub_rule->rule_ct.value
 						        .str_array[k]);
