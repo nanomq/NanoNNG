@@ -14,6 +14,7 @@ typedef enum {
 	ACL_IPADDR,
 	ACL_AND,
 	ACL_OR,
+	ACL_NONE,
 } acl_rule_type;
 
 typedef enum {
@@ -29,7 +30,7 @@ typedef enum {
 	ACL_RULE_ALL,
 } acl_value_type;
 
-typedef struct {
+typedef struct acl_rule_ct {
 	acl_value_type type;
 	size_t         count;
 	union {
@@ -39,11 +40,24 @@ typedef struct {
 	} value;
 } acl_rule_ct;
 
+typedef struct {
+	acl_rule_type rule_type;
+	acl_rule_ct   rule_ct;
+} acl_sub_rule;
+
+typedef struct {
+	size_t         count;
+	acl_sub_rule **rules;
+} acl_sub_rules_array;
+
 typedef struct acl_rule {
-	size_t          id;
-	acl_permit      permit;
-	acl_rule_type   rule_type;
-	acl_rule_ct     content;
+	size_t        id;
+	acl_permit    permit;
+	acl_rule_type rule_type;
+	union {
+		acl_rule_ct         ct;
+		acl_sub_rules_array array;
+	} rule_ct;
 	acl_action_type action;
 	size_t          topic_count;
 	char **         topics;
