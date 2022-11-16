@@ -361,6 +361,7 @@ webhook_event get_webhook_event(const char *hook_type, const char *hook_name);
 
 extern void conf_parse(conf *nanomq_conf);
 extern void conf_parse_ver2(conf *nanomq_conf);
+extern void conf_gateway_parse_ver2(zmq_gateway_conf *gateway);
 extern void conf_init(conf *nanomq_conf);
 extern void print_conf(conf *nanomq_conf);
 extern void conf_fini(conf *nanomq_conf);
