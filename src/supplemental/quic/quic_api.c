@@ -342,9 +342,11 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		// is done with the stream. It can now be safely cleaned up.
 		log_warn("[strm][%p] QUIC_STREAM_EVENT shutdown: All done");
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
+			// only server close the stream gonna trigger this
 			log_warn("close the QUIC stream!");
 			MsQuic->StreamClose(stream);
 			qstrm->closed = true;
+			qstrm->stream = NULL;
 		}
 		break;
 	case QUIC_STREAM_EVENT_START_COMPLETE:
@@ -427,7 +429,7 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 			pipe_ops->pipe_stop(qsock->pipe);
 			pipe_ops->pipe_close(qsock->pipe);
 			pipe_ops->pipe_fini(qsock->pipe);
-
+			// quic_pipe_close(qsock->pipe);
 			nng_free(qsock->pipe, 0);
 			qsock->pipe = NULL;
 
@@ -1013,6 +1015,7 @@ quic_pipe_send(void *qpipe, nni_aio *aio)
 	return 0;
 }
 
+// create pipe & stream
 int
 quic_pipe_open(void *qsock, void **qpipe)
 {
@@ -1064,13 +1067,15 @@ error:
 int
 quic_pipe_close(void *qpipe)
 {
-	quic_strm_t *qstrm = qpipe;
-	nni_aio     *aio;
 	if (!qpipe)
 		return -1;
-
-	qstrm->closed = true;
-
+	quic_strm_t *qstrm = qpipe;
+	nni_aio     *aio;
+	if (qstrm->closed != true) {
+		qstrm->closed = true;
+		log_warn("close the QUIC stream!");
+		MsQuic->StreamClose(qstrm->stream);
+	}
 	while ((aio = nni_list_first(&qstrm->recvq)) != NULL) {
 		nni_list_remove(&qstrm->recvq, aio);
 		// nni_aio_abort(aio, NNG_ECLOSED);
