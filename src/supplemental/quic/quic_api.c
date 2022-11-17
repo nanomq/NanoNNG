@@ -496,7 +496,6 @@ quic_disconnect(void *qsock)
 
 	MsQuic->ConnectionShutdown(
 	    qs->qconn, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, NNG_ECONNSHUT);
-	quic_sock_fini(qs);
 	return 0;
 }
 
