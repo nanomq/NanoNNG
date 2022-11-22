@@ -646,13 +646,20 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 		    node, hybrid, "hybird_bridging", bridge_mqtt_node);
 		char *cc = cJSON_GetStringValue(cJSON_GetObjectItem(
 		    bridge_mqtt_node, "congestion_control"));
-		if (0 == nng_strcasecmp(cc, "bbr")) {
-			node->qcongestion_control = 1;
-		} else if (0 == nng_strcasecmp(cc, "cubic")) {
-			node->qcongestion_control = 0;
+		if (NULL != cc) {
+			if (0 == nng_strcasecmp(cc, "bbr")) {
+				node->congestion_control = 1;
+			} else if (0 == nng_strcasecmp(cc, "cubic")) {
+				node->congestion_control = 0;
+			} else {
+				node->congestion_control = 1;
+				log_warn("unsupport congestion control "
+				         "algorithm, use "
+				         "default bbr!");
+			}
 		} else {
-			node->qcongestion_control = 1;
-			log_warn("unsupport congestion control algorithm, use "
+			node->congestion_control = 1;
+			log_warn("Unsupport congestion control algorithm, use "
 			         "default bbr!");
 		}
 #endif
@@ -877,13 +884,15 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 
 	char *rule_option =
 	    cJSON_GetStringValue(hocon_get_obj("rules.option", jso));
-	if (0 != nni_strcasecmp(rule_option, "ON")) {
-		if (0 != nni_strcasecmp(rule_option, "OFF")) {
-			log_error("Unsupported option:%s\nrule"
-			          "option only support ON/OFF",
-			    rule_option);
-		} else {
-			cr->option = 0;
+	if (NULL != rule_option) {
+		if (0 != nni_strcasecmp(rule_option, "ON")) {
+			if (0 != nni_strcasecmp(rule_option, "OFF")) {
+				log_error("Unsupported option:%s\nrule"
+				          "option only support ON/OFF",
+				    rule_option);
+			} else {
+				cr->option = 0;
+			}
 		}
 	}
 
