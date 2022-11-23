@@ -77,6 +77,7 @@ void
 read_env_conf(conf *config)
 {
 	set_string_var(&config->url, NANOMQ_BROKER_URL);
+	set_bool_var(&config->enable, NANOMQ_TCP_ENABLE);
 	set_bool_var(&config->daemon, NANOMQ_DAEMON);
 	set_int_var(&config->num_taskq_thread, NANOMQ_NUM_TASKQ_THREAD);
 	set_int_var(&config->max_taskq_thread, NANOMQ_MAX_TASKQ_THREAD);
