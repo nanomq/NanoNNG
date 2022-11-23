@@ -61,7 +61,7 @@ extern void  nni_id_map_sys_fini(void);
 	}
 
 // NanoMQ
-extern void *nni_id_get_any(nni_id_map *m, uint16_t *pid);
+extern void *nni_id_get_min(nni_id_map *m, uint16_t *pid);
 extern void  nni_id_msgfree_cb(nni_msg *msg);
 extern void  nni_id_show_cb(nni_msg *msg);
 
