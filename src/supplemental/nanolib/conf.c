@@ -827,6 +827,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->acl_deny_action    = ACL_IGNORE;
 
 	nanomq_conf->daemon           = false;
+	nanomq_conf->enable           = true;
 	nanomq_conf->bridge_mode      = false;
 
 	conf_acl_init(&nanomq_conf->acl);
@@ -880,6 +881,8 @@ print_conf(conf *nanomq_conf)
 {
 	log_info("This NanoMQ instance configured as:");
 
+	log_info("enable tcp:         %s",
+	    nanomq_conf->enable ? "true" : "false");
 	log_info("tcp url:                  %s ", nanomq_conf->url);
 	log_info("enable websocket:         %s",
 	    nanomq_conf->websocket.enable ? "true" : "false");
