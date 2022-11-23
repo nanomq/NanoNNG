@@ -175,21 +175,39 @@ hocon_get_obj(char *key, cJSON *jso)
 static void
 conf_basic_parse_ver2(conf *config, cJSON *jso)
 {
+	cJSON *jso_sys = cJSON_GetObjectItem(jso, "sys");
+	if (NULL == jso_sys) {
+		log_error("Read config sys failed!");
+		return;
+	}
+	hocon_read_bool(config, daemon, jso_sys);
+	hocon_read_num(config, num_taskq_thread, jso_sys);
+	hocon_read_num(config, max_taskq_thread, jso_sys);
+	hocon_read_num(config, parallel, jso_sys);
 
-	hocon_read_str(config, url, jso);
-	hocon_read_bool(config, daemon, jso);
-	hocon_read_num(config, num_taskq_thread, jso);
-	hocon_read_num(config, max_taskq_thread, jso);
-	hocon_read_num(config, parallel, jso);
-	hocon_read_num(config, property_size, jso);
-	hocon_read_num(config, max_packet_size, jso);
-	hocon_read_num(config, client_max_packet_size, jso);
-	hocon_read_num(config, msq_len, jso);
-	hocon_read_num(config, qos_duration, jso);
-	hocon_read_num_base(config, backoff, "keepalive_backoff", jso);
-	hocon_read_bool(config, allow_anonymous, jso);
+	cJSON *jso_listeners = cJSON_GetObjectItem(jso, "listeners");
+	if (NULL == jso_listeners) {
+		log_error("Read config listeners failed!");
+		return;
+	}
+	hocon_read_num(config, property_size, jso_listeners);
+	hocon_read_num(config, max_packet_size, jso_listeners);
+	hocon_read_num(config, client_max_packet_size, jso_listeners);
+	hocon_read_num(config, msq_len, jso_listeners);
+	hocon_read_num(config, qos_duration, jso_listeners);
+	hocon_read_num_base(config, backoff, "keepalive_backoff", jso_listeners);
+	hocon_read_bool(config, allow_anonymous, jso_listeners);
 
-	cJSON *jso_websocket = cJSON_GetObjectItem(jso, "websocket");
+
+	cJSON *jso_tcp = cJSON_GetObjectItem(jso_listeners, "tcp");
+	if (NULL == jso_tcp) {
+		log_error("Read config tcp failed!");
+		return;
+	}
+	hocon_read_str(config, url, jso_tcp);
+	hocon_read_bool(config, enable, jso_tcp);
+
+	cJSON *jso_websocket = hocon_get_obj("listener.ws", jso);
 	if (NULL == jso_websocket) {
 		log_error("Read config nanomq sqlite failed!");
 		return;
@@ -198,7 +216,6 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	conf_websocket *websocket = &(config->websocket);
 	hocon_read_bool(websocket, enable, jso_websocket);
 	hocon_read_str(websocket, url, jso_websocket);
-	hocon_read_str(websocket, tls_url, jso_websocket);
 
 	// http server
 	cJSON *jso_http_server = cJSON_GetObjectItem(jso, "http_server");
@@ -240,7 +257,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 static void
 conf_tls_parse_ver2(conf *config, cJSON *jso)
 {
-	cJSON *jso_tls = cJSON_GetObjectItem(jso, "tls");
+	cJSON *jso_tls = hocon_get_obj("listener.tls", jso);
 	if (NULL == jso_tls) {
 		log_error("Read config tls failed!");
 		return;
@@ -648,17 +665,17 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 		    bridge_mqtt_node, "congestion_control"));
 		if (NULL != cc) {
 			if (0 == nng_strcasecmp(cc, "bbr")) {
-				node->congestion_control = 1;
+				node->qcongestion_control = 1;
 			} else if (0 == nng_strcasecmp(cc, "cubic")) {
-				node->congestion_control = 0;
+				node->qcongestion_control = 0;
 			} else {
-				node->congestion_control = 1;
+				node->qcongestion_control = 1;
 				log_warn("unsupport congestion control "
 				         "algorithm, use "
 				         "default bbr!");
 			}
 		} else {
-			node->congestion_control = 1;
+			node->qcongestion_control = 1;
 			log_warn("Unsupport congestion control algorithm, use "
 			         "default bbr!");
 		}
