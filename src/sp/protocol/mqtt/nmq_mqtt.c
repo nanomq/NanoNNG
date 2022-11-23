@@ -680,12 +680,12 @@ nano_pipe_start(void *arg)
 		    is_sqlite, p->pipe->nano_qos_db, p->id, clientid);
 	}
 #endif
+	// pipe_id is just random value of id_dyn_val with self-increment.
+	// nni_id_set(&s->pipes, nni_pipe_id(p->pipe), p);
 	nni_id_set(&s->pipes, p->id, p);
 	p->conn_param->nano_qos_db = p->pipe->nano_qos_db;
 	p->nano_qos_db             = p->pipe->nano_qos_db;
 
-	// pipe_id is just random value of id_dyn_val with self-increment.
-	// nni_id_set(&s->pipes, nni_pipe_id(p->pipe), p);
 	conn_param_clone(p->conn_param);
 	rv = verify_connect(p->conn_param, s->conf);
 	if (rv == SUCCESS) {
