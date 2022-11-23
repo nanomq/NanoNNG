@@ -21,6 +21,12 @@ if (NNG_ENABLE_QUIC)
     PATHS ${PROJECT_SOURCE_DIR}/extern/msquic/src
     PATH_SUFFIXES inc)
 
+    if(NNG_PLATFORM_POSIX)
+        nng_link_libraries(dl)
+    elseif(NNG_PLATFORM_WINDOWS)
+        nng_link_libraries(ws2_32)
+    endif()
+
     if(NNG_PROTO_MQTT_BROKER)
         nng_include_directories(${INTERNAL_MSQUIC_INCLUDE_DIR})
     endif()
