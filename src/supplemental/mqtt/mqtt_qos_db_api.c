@@ -49,7 +49,7 @@ nni_qos_db_get_one(
 #endif
 	} else {
 		NNI_ARG_UNUSED(pipe_id);
-		msg = nni_id_get_any((nni_id_map *) (db), packet_id);
+		msg = nni_id_get_min((nni_id_map *) (db), packet_id);
 	}
 	return msg;
 }
@@ -269,7 +269,7 @@ nni_qos_db_get_one_client_msg(bool is_sqlite, void *db, uint64_t *row_id,
 	} else {
 		NNI_ARG_UNUSED(row_id);
 		NNI_ARG_UNUSED(config_name);
-		msg = nni_id_get_any((nni_id_map *) db, packet_id);
+		msg = nni_id_get_min((nni_id_map *) db, packet_id);
 	}
 	return msg;
 }
