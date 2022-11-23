@@ -311,8 +311,9 @@ typedef enum {
 } persistence_type;
 
 struct conf {
-	char *     conf_file;
-	char *     url;
+	char      *conf_file;
+	char      *url;
+	bool       enable;
 	int        num_taskq_thread;
 	int        max_taskq_thread;
 	int        property_size;
