@@ -52,6 +52,53 @@ cJSON *hocon_get_obj(char *key, cJSON *jso);
 		}                                                     \
 	} while (0);
 
+char *compose_url(char *head, char *address)
+{
+	size_t url_len = strlen(head) + strlen(address);
+	char *url = nng_alloc(url_len+1);
+	sprintf(url, "%s%s", head, address);
+	return url;
+}
+
+#define hocon_read_address_base(structure, field, key, head, jso)  \
+	do {                                                          \
+		cJSON *jso_key = cJSON_GetObjectItem(jso, key);       \
+		if (NULL == jso_key) {                                \
+			log_error("Read config %s failed!", key);     \
+			break;                                        \
+		}                                                     \
+		switch (jso_key->type) {                              \
+		case cJSON_String:                                    \
+			if (NULL != jso_key->valuestring) {           \
+				FREE_NONULL((structure)->field);      \
+				(structure)->field = compose_url(head, jso_key->valuestring); \
+			}                                             \
+			break;                                        \
+		default:                                              \
+			break;                                        \
+		}                                                     \
+	} while (0);
+
+#define hocon_read_time_base(structure, field, key, jso)               \
+	do {                                                          \
+		cJSON *jso_key = cJSON_GetObjectItem(jso, key);       \
+		if (NULL == jso_key) {                                \
+			log_error("Read config %s failed!", key);     \
+			break;                                        \
+		}                                                     \
+		switch (jso_key->type) {                              \
+		case cJSON_String:                                    \
+			if (NULL != jso_key->valuestring) {           \
+				uint64_t seconds = 0;						\
+				get_time(jso_key->valuestring, &seconds);	\
+				(structure)->field = seconds;                 \
+			}                                             \
+			break;                                        \
+		default:                                              \
+			break;                                        \
+		}                                                     \
+	} while (0);
+
 #define hocon_read_bool_base(structure, field, key, jso)            \
 	do {                                                        \
 		cJSON *jso_key = cJSON_GetObjectItem(jso, key);     \
@@ -132,6 +179,10 @@ cJSON *hocon_get_obj(char *key, cJSON *jso);
 // are the same use this interface
 #define hocon_read_str(structure, key, jso) \
 	hocon_read_str_base(structure, key, #key, jso)
+#define hocon_read_time(structure, key, jso) \
+	hocon_read_time_base(structure, key, #key, jso)
+#define hocon_read_address(structure, key, head, jso) \
+	hocon_read_address_base(structure, key, #key, head, jso)
 #define hocon_read_num(structure, key, jso) \
 	hocon_read_num_base(structure, key, #key, jso)
 #define hocon_read_bool(structure, key, jso) \
@@ -204,7 +255,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 		log_error("Read config tcp failed!");
 		return;
 	}
-	hocon_read_str(config, url, jso_tcp);
+	hocon_read_address_base(config, url, "bind", "nmq-tcp://", jso_tcp);
 	hocon_read_bool(config, enable, jso_tcp);
 
 	cJSON *jso_websocket = hocon_get_obj("listener.ws", jso);
@@ -215,7 +266,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 
 	conf_websocket *websocket = &(config->websocket);
 	hocon_read_bool(websocket, enable, jso_websocket);
-	hocon_read_str(websocket, url, jso_websocket);
+	hocon_read_address_base(websocket, url, "bind", "nmq-ws://", jso_websocket);
 
 	// http server
 	cJSON *jso_http_server = cJSON_GetObjectItem(jso, "http_server");
@@ -265,7 +316,7 @@ conf_tls_parse_ver2(conf *config, cJSON *jso)
 
 	conf_tls *tls = &(config->tls);
 	hocon_read_bool(tls, enable, jso_tls);
-	hocon_read_str(tls, url, jso_tls);
+	hocon_read_address_base(tls, url, "bind", "nmq-tls://", jso_tls);
 	hocon_read_str(tls, key_password, jso_tls);
 	hocon_read_str(tls, keyfile, jso_tls);
 	hocon_read_str(tls, certfile, jso_tls);
@@ -557,29 +608,6 @@ conf_auth_http_req_parse_ver2(conf_auth_http_req *config, cJSON *jso)
 	    http_req_tls, cafile, "cacertfile", jso_http_req_tls);
 }
 
-static int
-get_time(const char *str, uint64_t *second)
-{
-	char     unit = 0;
-	uint64_t s    = 0;
-	if (2 == sscanf(str, "%lld%c", &s, &unit)) {
-		switch (unit) {
-		case 's':
-			*second = s;
-			break;
-		case 'm':
-			*second = s * 60;
-			break;
-		case 'h':
-			*second = s * 3600;
-			break;
-		default:
-			break;
-		}
-		return 0;
-	}
-	return -1;
-}
 
 static void
 conf_auth_http_parse_ver2(conf *config, cJSON *jso)
@@ -622,10 +650,10 @@ conf_auth_http_parse_ver2(conf *config, cJSON *jso)
 static void
 conf_bridge_parse_ver2(conf *config, cJSON *jso)
 {
-	cJSON *bridge_mqtt_nodes = hocon_get_obj("bridge.mqtt.nodes", jso);
+	cJSON *bridge_mqtt_nodes = hocon_get_obj("bridges.mqtt.nodes", jso);
 	cJSON *bridge_mqtt_node  = NULL;
 
-	cJSON *bridge_mqtt_sqlite  = hocon_get_obj("bridge.mqtt.sqlite", jso);
+	cJSON *bridge_mqtt_sqlite  = hocon_get_obj("bridges.mqtt.sqlite", jso);
 	conf_sqlite *bridge_sqlite = &(config->bridge.sqlite);
 	hocon_read_bool(bridge_sqlite, enable, bridge_mqtt_sqlite);
 	hocon_read_num(bridge_sqlite, disk_cache_size, bridge_mqtt_sqlite);
@@ -639,25 +667,27 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 	{
 		conf_bridge_node *node = NNI_ALLOC_STRUCT(node);
 		hocon_read_str(node, name, bridge_mqtt_node);
-		hocon_read_str(node, address, bridge_mqtt_node);
-		hocon_read_num(node, proto_ver, bridge_mqtt_node);
 		hocon_read_bool(node, enable, bridge_mqtt_node);
-		hocon_read_str(node, clientid, bridge_mqtt_node);
-		hocon_read_num(node, keepalive, bridge_mqtt_node);
-		hocon_read_bool(node, clean_start, bridge_mqtt_node);
-		hocon_read_str(node, username, bridge_mqtt_node);
-		hocon_read_str(node, password, bridge_mqtt_node);
+
+		cJSON *connector_jso = hocon_get_obj("connector", bridge_mqtt_node);
+		hocon_read_str_base(node, address, "server", connector_jso);
+		hocon_read_num(node, proto_ver, connector_jso);
+		hocon_read_str(node, clientid, connector_jso);
+		hocon_read_time(node, keepalive, connector_jso);
+		hocon_read_bool(node, clean_start, connector_jso);
+		hocon_read_str(node, username, connector_jso);
+		hocon_read_str(node, password, connector_jso);
 		hocon_read_str_arr(node, forwards, bridge_mqtt_node);
 		node->forwards_count = cvector_size(node->forwards);
 		node->sqlite         = bridge_sqlite;
 #if defined(SUPP_QUIC)
-		hocon_read_num_base(
+		hocon_read_time_base(
 		    node, qkeepalive, "quic_keepalive", bridge_mqtt_node);
-		hocon_read_num_base(node, qidle_timeout, "quic_idle_timeout",
+		hocon_read_time_base(node, qidle_timeout, "quic_idle_timeout",
 		    bridge_mqtt_node);
-		hocon_read_num_base(node, qdiscon_timeout,
+		hocon_read_time_base(node, qdiscon_timeout,
 		    "quic_discon_timeout", bridge_mqtt_node);
-		hocon_read_num_base(node, qconnect_timeout,
+		hocon_read_time_base(node, qconnect_timeout,
 		    "quic_handshake_timeout", bridge_mqtt_node);
 		hocon_read_bool_base(
 		    node, hybrid, "hybird_bridging", bridge_mqtt_node);
