@@ -70,7 +70,8 @@ struct nano_pipe {
 	nni_mtx       lk;
 	nni_pipe     *pipe;
 	nano_sock    *broker;
-	uint32_t      id;
+	uint32_t      id;	// pipe id of nni_pipe
+	uint16_t      rid;  // index of packet ID for resending
 	uint16_t      keepalive;
 	void         *tree; // root node of db tree
 	nni_aio       aio_send;
@@ -245,7 +246,7 @@ nano_pipe_timer_cb(void *arg)
 
 	if (!p->busy) {
 		nni_msg *msg, *rmsg;
-		uint16_t pid;
+		uint16_t pid = p->rid;
 		// trying to resend msg
 		msg = nni_qos_db_get_one(
 		    is_sqlite, npipe->nano_qos_db, npipe->p_id, &pid);
@@ -586,6 +587,7 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	p->conn_param  = nni_pipe_get_conn_param(pipe);
 	conn_param_free(p->conn_param);
 	p->id          = nni_pipe_id(pipe);
+	p->rid         = 1;
 	p->pipe        = pipe;
 	p->reason_code = 0x00;
 	p->broker      = s;
@@ -1027,6 +1029,7 @@ nano_pipe_recv_cb(void *arg)
 	case CMD_PUBCOMP:
 		nni_mtx_lock(&p->lk);
 		NNI_GET16(ptr, ackid);
+		p->rid = ackid + 1;
 		if ((qos_msg = nni_qos_db_get(is_sqlite, npipe->nano_qos_db,
 		         npipe->p_id, ackid)) != NULL) {
 			nni_qos_db_remove_msg(
