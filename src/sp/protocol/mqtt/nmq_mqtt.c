@@ -263,17 +263,12 @@ nano_pipe_timer_cb(void *arg)
 				nni_aio_set_prov_data(
 				    &p->aio_send, (void *) pid);
 				// put original msg into sending
+				nni_msg_clone(msg);
 				nni_aio_set_msg(&p->aio_send, msg);
 				log_trace(
 				    "resending qos msg packetid: %d", pid);
 				nni_pipe_send(p->pipe, &p->aio_send);
-				// TODO use dup field to check if msg is being
-				// resend
 				//  only remove msg from qos_db when get ack
-				nni_qos_db_remove(is_sqlite,
-				    npipe->nano_qos_db, npipe->p_id, pid);
-				nni_qos_db_remove_unused_msg(
-				    is_sqlite, npipe->nano_qos_db);
 			}
 		}
 	}
