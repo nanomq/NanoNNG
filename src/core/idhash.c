@@ -121,10 +121,41 @@ nni_id_get(nni_id_map *m, uint32_t id)
 }
 
 /**
- * get message from idhash, start from minimum id on rolling base
+ * get message from idhash, start from *pid on rolling base
+ * return the first matched msg with its packet ID
+ * Potentially affect QoS msg throughput
 */
 void *
 nni_id_get_min(nni_id_map *m, uint16_t *pid)
+{
+	size_t   index = *pid;
+	uint16_t id    = *pid;
+
+	if (m->id_count == 0 || m->id_entries == NULL) {
+		return NULL;
+	}
+
+	for (;;) {
+		if ((index = id_find(m, id)) == (size_t) -1) {
+			id++;
+			if (id == *pid) {
+				break;
+			}
+		} else {
+			*pid = m->id_entries[index].key;
+			return (m->id_entries[index].val);
+		}
+	}
+
+	return NULL;
+}
+
+
+/*
+ * return any solid value in hash, with key returned.
+
+void *
+nni_id_get_any(nni_id_map *m, uint16_t *pid)
 {
 	size_t index = 1;
 	size_t start = index;
@@ -138,16 +169,16 @@ nni_id_get_min(nni_id_map *m, uint16_t *pid)
 			*pid = m->id_entries[index].key;
 			return m->id_entries[index].val;
 		}
-		index++;
-		if (index == m->id_cap) {
-			index = 0;
-		} else if (index == 0) {
+		index = ID_NEXT(m, index);
+
+		if (index == start) {
 			break;
 		}
 	}
 
 	return NULL;
 }
+*/
 
 static int
 id_map_register(nni_id_map *m)
@@ -410,32 +441,3 @@ nni_id_show_cb(nni_msg* msg)
 	NNI_ARG_UNUSED(msg);
 	log_trace("message has an address: %p", msg);
 }
-
-/*
- * return any solid value in hash, with key returned.
-
-void *
-nni_id_get_any(nni_id_map *m, uint16_t *pid)
-{
-	size_t index = 1;
-	size_t start = index;
-	if (m->id_count == 0 || m->id_entries == NULL) {
-		return NULL;
-	}
-
-	for (;;) {
-		// The value of ihe_key is only valid if ihe_val is not NULL.
-		if (m->id_entries[index].val != NULL) {
-			*pid = m->id_entries[index].key;
-			return m->id_entries[index].val;
-		}
-		index = ID_NEXT(m, index);
-
-		if (index == start) {
-			break;
-		}
-	}
-
-	return NULL;
-}
-*/
