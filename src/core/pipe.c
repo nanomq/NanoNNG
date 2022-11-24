@@ -448,6 +448,8 @@ uint16_t
 nni_pipe_inc_packetid(nni_pipe *p)
 {
 	p->packet_id++;
+	p->packet_id == 0 ? p->packet_id++:p->packet_id;
+	// Skip 0 packet id
 	return p->packet_id;
 }
 
