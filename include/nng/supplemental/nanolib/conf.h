@@ -357,9 +357,8 @@ struct conf {
 
 typedef struct conf conf;
 
-
 webhook_event get_webhook_event(const char *hook_type, const char *hook_name);
-
+extern int  get_time(const char *str, uint64_t *second);
 extern void conf_parse(conf *nanomq_conf);
 extern void conf_parse_ver2(conf *nanomq_conf);
 extern void conf_gateway_parse_ver2(zmq_gateway_conf *gateway);

@@ -59,7 +59,6 @@ static void conf_rule_fdb_parse(conf_rule *cr, char *path);
 static void conf_rule_parse(conf_rule *rule, const char *path);
 #endif
 
-static int get_time(const char *str, uint64_t *second);
 
 static char *
 strtrim(char *str, size_t len)
@@ -2436,7 +2435,7 @@ conf_web_hook_destroy(conf_web_hook *web_hook)
 	conf_tls_destroy(&web_hook->tls);
 }
 
-static int
+int
 get_time(const char *str, uint64_t *second)
 {
 	char     unit = 0;
