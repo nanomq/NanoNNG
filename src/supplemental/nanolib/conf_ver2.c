@@ -258,7 +258,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	hocon_read_address_base(config, url, "bind", "nmq-tcp://", jso_tcp);
 	hocon_read_bool(config, enable, jso_tcp);
 
-	cJSON *jso_websocket = hocon_get_obj("listener.ws", jso);
+	cJSON *jso_websocket = hocon_get_obj("listeners.ws", jso);
 	if (NULL == jso_websocket) {
 		log_error("Read config nanomq sqlite failed!");
 		return;
@@ -308,7 +308,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 static void
 conf_tls_parse_ver2(conf *config, cJSON *jso)
 {
-	cJSON *jso_tls = hocon_get_obj("listener.tls", jso);
+	cJSON *jso_tls = hocon_get_obj("listeners.ssl", jso);
 	if (NULL == jso_tls) {
 		log_error("Read config tls failed!");
 		return;
@@ -316,7 +316,7 @@ conf_tls_parse_ver2(conf *config, cJSON *jso)
 
 	conf_tls *tls = &(config->tls);
 	hocon_read_bool(tls, enable, jso_tls);
-	hocon_read_address_base(tls, url, "bind", "nmq-tls://", jso_tls);
+	hocon_read_address_base(tls, url, "bind", "tls+nmq-tcp://", jso_tls);
 	hocon_read_str(tls, key_password, jso_tls);
 	hocon_read_str(tls, keyfile, jso_tls);
 	hocon_read_str(tls, certfile, jso_tls);
@@ -743,7 +743,7 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 
 		hocon_read_num(node, parallel, bridge_mqtt_node);
 		cJSON *bridge_mqtt_node_tls =
-		    hocon_get_obj("tls", bridge_mqtt_node);
+		    hocon_get_obj("ssl", bridge_mqtt_node);
 		conf_tls *bridge_node_tls = &(node->tls);
 		hocon_read_bool(bridge_node_tls, enable, bridge_mqtt_node_tls);
 		hocon_read_str(
@@ -814,7 +814,7 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 
 		hocon_read_num(node, parallel, bridge_aws_node);
 		cJSON *bridge_aws_node_tls =
-		    hocon_get_obj("tls", bridge_aws_node);
+		    hocon_get_obj("ssl", bridge_aws_node);
 		conf_tls *bridge_node_tls = &(node->tls);
 		hocon_read_bool(bridge_node_tls, enable, bridge_aws_node_tls);
 		hocon_read_str(
