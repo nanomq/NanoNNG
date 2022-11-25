@@ -48,7 +48,9 @@ static bool
 parse_json_rule(char *json, size_t id, acl_rule **rule)
 {
 	cJSON *obj = cJSON_Parse(json);
-	if (obj == NULL) {
+
+	if (!cJSON_IsObject(obj)) {
+		log_warn("invalid json string: %s", json);
 		return false;
 	}
 
@@ -201,10 +203,9 @@ conf_acl_parse(conf_acl *acl, const char *path)
 		int    res   = sscanf(str, "acl.rule.%zu=%[^\n]", &id, value);
 
 		if (res == 2) {
-			acl->rule_count++;
 			acl_rule *rule;
-
 			if (parse_json_rule(value, id, &rule)) {
+				acl->rule_count++;
 				acl->rules = realloc(acl->rules,
 				    acl->rule_count * sizeof(acl_rule));
 				acl->rules[acl->rule_count - 1] = rule;
