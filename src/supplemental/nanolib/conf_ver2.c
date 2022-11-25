@@ -648,6 +648,53 @@ conf_auth_http_parse_ver2(conf *config, cJSON *jso)
 }
 
 static void
+conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
+{
+	hocon_read_str_base(node, address, "server", jso_connector);
+	hocon_read_num(node, proto_ver, jso_connector);
+	hocon_read_str(node, clientid, jso_connector);
+	hocon_read_time(node, keepalive, jso_connector);
+	hocon_read_bool(node, clean_start, jso_connector);
+	hocon_read_str(node, username, jso_connector);
+	hocon_read_str(node, password, jso_connector);
+}
+
+#if defined(SUPP_QUIC)
+static void
+conf_bridge_quic_parse_ver2(conf_bridge_node *node, cJSON *jso_bridge_node)
+{
+	hocon_read_time_base(
+	    node, qkeepalive, "quic_keepalive", jso_bridge_node);
+	hocon_read_time_base(
+	    node, qidle_timeout, "quic_idle_timeout", jso_bridge_node);
+	hocon_read_time_base(
+	    node, qdiscon_timeout, "quic_discon_timeout", jso_bridge_node);
+	hocon_read_time_base(node, qconnect_timeout, "quic_handshake_timeout",
+	    jso_bridge_node);
+	hocon_read_bool_base(
+	    node, hybrid, "hybird_bridging", jso_bridge_node);
+	char *cc = cJSON_GetStringValue(
+	    cJSON_GetObjectItem(jso_bridge_node, "congestion_control"));
+	if (NULL != cc) {
+		if (0 == nng_strcasecmp(cc, "bbr")) {
+			node->qcongestion_control = 1;
+		} else if (0 == nng_strcasecmp(cc, "cubic")) {
+			node->qcongestion_control = 0;
+		} else {
+			node->qcongestion_control = 1;
+			log_warn("unsupport congestion control "
+			         "algorithm, use "
+			         "default bbr!");
+		}
+	} else {
+		node->qcongestion_control = 1;
+		log_warn("Unsupport congestion control algorithm, use "
+		         "default bbr!");
+	}
+}
+#endif
+
+static void
 conf_bridge_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *bridge_mqtt_nodes = hocon_get_obj("bridges.mqtt.nodes", jso);
@@ -668,47 +715,14 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 		conf_bridge_node *node = NNI_ALLOC_STRUCT(node);
 		hocon_read_str(node, name, bridge_mqtt_node);
 		hocon_read_bool(node, enable, bridge_mqtt_node);
-
-		cJSON *connector_jso = hocon_get_obj("connector", bridge_mqtt_node);
-		hocon_read_str_base(node, address, "server", connector_jso);
-		hocon_read_num(node, proto_ver, connector_jso);
-		hocon_read_str(node, clientid, connector_jso);
-		hocon_read_time(node, keepalive, connector_jso);
-		hocon_read_bool(node, clean_start, connector_jso);
-		hocon_read_str(node, username, connector_jso);
-		hocon_read_str(node, password, connector_jso);
+		cJSON *jso_connector = hocon_get_obj("connector", bridge_mqtt_node);
+		conf_bridge_connector_parse_ver2(node, jso_connector);
 		hocon_read_str_arr(node, forwards, bridge_mqtt_node);
 		node->forwards_count = cvector_size(node->forwards);
 		node->sqlite         = bridge_sqlite;
+
 #if defined(SUPP_QUIC)
-		hocon_read_time_base(
-		    node, qkeepalive, "quic_keepalive", bridge_mqtt_node);
-		hocon_read_time_base(node, qidle_timeout, "quic_idle_timeout",
-		    bridge_mqtt_node);
-		hocon_read_time_base(node, qdiscon_timeout,
-		    "quic_discon_timeout", bridge_mqtt_node);
-		hocon_read_time_base(node, qconnect_timeout,
-		    "quic_handshake_timeout", bridge_mqtt_node);
-		hocon_read_bool_base(
-		    node, hybrid, "hybird_bridging", bridge_mqtt_node);
-		char *cc = cJSON_GetStringValue(cJSON_GetObjectItem(
-		    bridge_mqtt_node, "congestion_control"));
-		if (NULL != cc) {
-			if (0 == nng_strcasecmp(cc, "bbr")) {
-				node->qcongestion_control = 1;
-			} else if (0 == nng_strcasecmp(cc, "cubic")) {
-				node->qcongestion_control = 0;
-			} else {
-				node->qcongestion_control = 1;
-				log_warn("unsupport congestion control "
-				         "algorithm, use "
-				         "default bbr!");
-			}
-		} else {
-			node->qcongestion_control = 1;
-			log_warn("Unsupport congestion control algorithm, use "
-			         "default bbr!");
-		}
+		conf_bridge_quic_parse_ver2(node, bridge_mqtt_node);
 #endif
 
 		cJSON *subscriptions =
@@ -761,15 +775,22 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 	{
 		conf_bridge_node *node = NNI_ALLOC_STRUCT(node);
 		hocon_read_str(node, name, bridge_aws_node);
-		hocon_read_str_base(node, host, "hosts", bridge_aws_node);
-		hocon_read_num(node, port, bridge_aws_node);
+		hocon_read_str(node, enable, bridge_aws_node);
+		hocon_read_str_base(node, address, "server", connector_jso);
 		hocon_read_num(node, proto_ver, bridge_aws_node);
-		hocon_read_bool(node, enable, bridge_aws_node);
 		hocon_read_str(node, clientid, bridge_aws_node);
 		hocon_read_num(node, keepalive, bridge_aws_node);
 		hocon_read_bool(node, clean_start, bridge_aws_node);
 		hocon_read_str(node, username, bridge_aws_node);
 		hocon_read_str(node, password, bridge_aws_node);
+
+		conf_bridge_connector_parse_ver2(node, bridge_aws_node);
+
+		if (node->address) {
+			node->host = (char*) nng_alloc(strlen(node->address));
+			sscanf(node->address, "%s:%d", node->host, &node->port);
+		}
+
 		hocon_read_str_arr(node, forwards, bridge_aws_node);
 		node->forwards_count = cvector_size(node->forwards);
 
