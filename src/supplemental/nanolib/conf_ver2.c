@@ -992,7 +992,7 @@ conf_parse_ver2(conf *config)
 	const char *conf_path = config->conf_file;
 	if (conf_path == NULL || !nano_file_exists(conf_path)) {
 		if (!nano_file_exists(CONF_PATH_NAME)) {
-			log_debug("Configure file [%s] or [%s] not found or "
+			log_warn("Configure file [%s] or [%s] not found or "
 			          "unreadable",
 			    conf_path, CONF_PATH_NAME);
 			return;
