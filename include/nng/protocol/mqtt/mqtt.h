@@ -76,6 +76,7 @@ enum err_t {
 #define NMQ_SERVER_UNAVAILABLE 0x88;
 #define NMQ_SERVER_BUSY 0x89;
 #define NMQ_KEEP_ALIVE_TIMEOUT 0x8D;
+#define NMQ_AUTH_SUB_ERROR 0X87;
 
 // MQTT Control Packet types
 typedef enum {
