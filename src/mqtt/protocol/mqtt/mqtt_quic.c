@@ -706,6 +706,7 @@ mqtt_quic_recv_cb(void *arg)
 			mqtt_pipe_recv_msgq_putq(p, msg);
 			break;
 		}
+		nng_msg_set_cmd_type(msg, CMD_CONNACK);
 		conn_param_clone(p->cparam);
 		// Clone CONNACK for connect_cb & aio_cb
 		nni_msg_clone(msg);
@@ -1182,6 +1183,7 @@ quic_mqtt_stream_fini(void *arg)
 	}
 	nni_msg *tmsg =
 	    nano_msg_notify_disconnect(p->cparam, SERVER_SHUTTING_DOWN);
+	nni_msg_set_cmd_type(tmsg, CMD_DISCONNECT_EV);
 	nni_msg_set_conn_param(tmsg, p->cparam);
 	// emulate disconnect notify msg as a normal publish
 	while ((aio = nni_list_first(&s->recv_queue)) != NULL) {
