@@ -790,21 +790,19 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 	{
 		conf_bridge_node *node = NNI_ALLOC_STRUCT(node);
 		hocon_read_str(node, name, bridge_aws_node);
-		hocon_read_str(node, enable, bridge_aws_node);
-		hocon_read_str_base(node, address, "server", connector_jso);
-		hocon_read_num(node, proto_ver, bridge_aws_node);
-		hocon_read_str(node, clientid, bridge_aws_node);
-		hocon_read_num(node, keepalive, bridge_aws_node);
-		hocon_read_bool(node, clean_start, bridge_aws_node);
-		hocon_read_str(node, username, bridge_aws_node);
-		hocon_read_str(node, password, bridge_aws_node);
+		hocon_read_bool(node, enable, bridge_aws_node);
 
-		conf_bridge_connector_parse_ver2(node, bridge_aws_node);
+		cJSON *jso_connector = hocon_get_obj("connector", bridge_aws_node);
+		conf_bridge_connector_parse_ver2(node, jso_connector);
 
 		if (node->address) {
-			node->host = (char *) nng_alloc(strlen(node->address));
-			sscanf(
-			    node->address, "%s:%d", node->host, &node->port);
+			char *p = NULL;
+			if (NULL != (p = strchr(node->address, ':'))) {
+				*p = '\0';
+				node->host = nng_strdup(node->address);
+				node->port = atoi(++p);
+				*(p-1) = ':';
+			}
 		}
 
 		hocon_read_str_arr(node, forwards, bridge_aws_node);
@@ -812,8 +810,6 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 
 		cJSON *subscriptions =
 		    hocon_get_obj("subscription", bridge_aws_node);
-		cJSON *subscription = NULL;
-
 		node->sub_count = cJSON_GetArraySize(subscriptions);
 		node->sub_list =
 		    NNI_ALLOC_STRUCTS(node->sub_list, node->sub_count);
