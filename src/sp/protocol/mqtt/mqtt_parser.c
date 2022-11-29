@@ -1021,7 +1021,8 @@ verify_connect(conn_param *cparam, conf *conf)
 	char *username = (char *) cparam->username.body;
 	char *password = (char *) cparam->password.body;
 
-	if (conf->auths.count == 0 || conf->allow_anonymous == true) {
+	if ((!conf->auths.enable) || conf->auths.count == 0 ||
+	    conf->allow_anonymous == true) {
 		log_trace("no valid entry in auth list");
 		return 0;
 	}
