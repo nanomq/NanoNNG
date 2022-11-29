@@ -531,15 +531,16 @@ mqtt_pipe_close(void *arg)
 	}
 
 	// Return disconnect event to broker, only when compiled with nanomq
-	uint16_t count = 0;
+	uint16_t    count = 0;
 	mqtt_ctx_t *ctx;
-	nni_msg *tmsg = nano_msg_notify_disconnect(s->cparam, SERVER_SHUTTING_DOWN);
+	nni_msg    *tmsg =
+	    nano_msg_notify_disconnect(s->cparam, SERVER_SHUTTING_DOWN);
+	nni_msg_set_cmd_type(tmsg, CMD_DISCONNECT_EV);
 	nni_msg_set_conn_param(tmsg, s->cparam);
 	// return error to all receving aio
 	// emulate disconnect notify msg as a normal publish
 	while ((ctx = nni_list_first(&s->recv_queue)) != NULL) {
 		nni_list_remove(&s->recv_queue, ctx);
-
 		user_aio  = ctx->raio;
 		ctx->raio = NULL;
 		nni_aio_set_msg(user_aio, tmsg);
@@ -551,7 +552,8 @@ mqtt_pipe_close(void *arg)
 		count++;
 	}
 	if (count == 0) {
-		nni_println("disconnect msg of bridging is lost due to no ctx on receving");
+		nni_println("disconnect msg of bridging is lost due to no ctx "
+		            "on receving");
 		nni_msg_free(tmsg);
 	}
 #endif
@@ -721,6 +723,7 @@ mqtt_recv_cb(void *arg)
 	case NNG_MQTT_CONNACK:
 		// return CONNACK to APP when working with broker
 #ifdef NNG_HAVE_MQTT_BROKER
+		nng_msg_set_cmd_type(msg, CMD_CONNACK);
 		s->cparam = nni_msg_get_conn_param(msg);
 		// add connack msg to app layer only for notify in broker
 		// bridge

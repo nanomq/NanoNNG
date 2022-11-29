@@ -529,6 +529,7 @@ mqtt_pipe_close(void *arg)
 	uint16_t count = 0;
 	mqtt_ctx_t *ctx;
 	nni_msg *tmsg = nano_msg_notify_disconnect(s->cparam, SERVER_SHUTTING_DOWN);
+	nni_msg_set_cmd_type(tmsg, CMD_DISCONNECT_EV);
 	nni_msg_set_conn_param(tmsg, s->cparam);
 	// return error to all receving aio
 	// emulate disconnect notify msg as a normal publish
@@ -743,6 +744,7 @@ mqtt_recv_cb(void *arg)
 	case NNG_MQTT_CONNACK:
 	// return CONNACK to APP when working with broker
 #ifdef NNG_HAVE_MQTT_BROKER
+		nng_msg_set_cmd_type(msg, CMD_CONNACK);
 		s->cparam = nni_msg_get_conn_param(msg);
 		// add connack msg to app layer only for notify in broker
 		// bridge
