@@ -1004,9 +1004,6 @@ conf_acl_parse_ver2(conf *config, cJSON *jso)
 	conf_acl *acl = &config->acl;
 
 	hocon_read_bool(acl, enable, jso);
-	char *json_str = cJSON_Print(jso);
-	printf("acl object: %s\n", json_str);
-	free(json_str);
 
 	cJSON *rule_list = hocon_get_obj("rules", jso);
 	if (cJSON_IsArray(rule_list)) {
