@@ -7,7 +7,7 @@
 extern char *strtrim_head_tail(char *str, size_t len);
 
 static bool
-parse_str_item(cJSON *obj, const char *key, acl_rule_ct *content)
+acl_parse_str_item(cJSON *obj, const char *key, acl_rule_ct *content)
 {
 	cJSON *item = cJSON_GetObjectItem(obj, key);
 	if (cJSON_IsString(item)) {
@@ -24,7 +24,7 @@ parse_str_item(cJSON *obj, const char *key, acl_rule_ct *content)
 }
 
 static bool
-parse_str_array_item(cJSON *obj, const char *key, acl_rule_ct *content)
+acl_parse_str_array_item(cJSON *obj, const char *key, acl_rule_ct *content)
 {
 	cJSON *array = cJSON_GetObjectItem(obj, key);
 	if (cJSON_IsArray(array)) {
@@ -44,16 +44,9 @@ parse_str_array_item(cJSON *obj, const char *key, acl_rule_ct *content)
 	return false;
 }
 
-static bool
-parse_json_rule(char *json, size_t id, acl_rule **rule)
+bool
+acl_parse_json_rule(cJSON *obj, size_t id, acl_rule **rule)
 {
-	cJSON *obj = cJSON_Parse(json);
-
-	if (!cJSON_IsObject(obj)) {
-		log_warn("invalid json string: %s", json);
-		return false;
-	}
-
 	acl_rule *r = nni_zalloc(sizeof(acl_rule));
 
 	r->id          = id;
@@ -106,22 +99,22 @@ parse_json_rule(char *json, size_t id, acl_rule **rule)
 		}
 	}
 
-	if (parse_str_item(obj, "ipaddr", &r->rule_ct.ct)) {
+	if (acl_parse_str_item(obj, "ipaddr", &r->rule_ct.ct)) {
 		r->rule_type = ACL_IPADDR;
 		goto out;
 	}
 
-	if (parse_str_array_item(obj, "ipaddrs", &r->rule_ct.ct)) {
+	if (acl_parse_str_array_item(obj, "ipaddrs", &r->rule_ct.ct)) {
 		r->rule_type = ACL_IPADDR;
 		goto out;
 	}
 
-	if (parse_str_item(obj, "username", &r->rule_ct.ct)) {
+	if (acl_parse_str_item(obj, "username", &r->rule_ct.ct)) {
 		r->rule_type = ACL_USERNAME;
 		goto out;
 	}
 
-	if (parse_str_item(obj, "clientid", &r->rule_ct.ct)) {
+	if (acl_parse_str_item(obj, "clientid", &r->rule_ct.ct)) {
 		r->rule_type = ACL_CLIENTID;
 		goto out;
 	}
@@ -146,15 +139,15 @@ parse_json_rule(char *json, size_t id, acl_rule **rule)
 			acl_sub_rule *sub_rule =
 			    nni_zalloc(sizeof(acl_sub_rule));
 
-			if (parse_str_item(
+			if (acl_parse_str_item(
 			        sub_item, "clientid", &sub_rule->rule_ct)) {
 				sub_rule->rule_type = ACL_CLIENTID;
-			} else if (parse_str_item(sub_item, "username",
+			} else if (acl_parse_str_item(sub_item, "username",
 			               &sub_rule->rule_ct)) {
 				sub_rule->rule_type = ACL_USERNAME;
-			} else if (parse_str_item(sub_item, "ipaddr",
+			} else if (acl_parse_str_item(sub_item, "ipaddr",
 			               &sub_rule->rule_ct) ||
-			    parse_str_array_item(
+			    acl_parse_str_array_item(
 			        sub_item, "ipaddrs", &sub_rule->rule_ct)) {
 				sub_rule->rule_type = ACL_IPADDR;
 			} else {
@@ -169,12 +162,10 @@ parse_json_rule(char *json, size_t id, acl_rule **rule)
 	}
 
 out:
-	cJSON_Delete(obj);
 	*rule = r;
 	return true;
 
 err:
-	cJSON_Delete(obj);
 	nni_free(r, sizeof(acl_rule));
 	return false;
 }
@@ -204,11 +195,19 @@ conf_acl_parse(conf_acl *acl, const char *path)
 
 		if (res == 2) {
 			acl_rule *rule;
-			if (parse_json_rule(value, id, &rule)) {
-				acl->rule_count++;
-				acl->rules = realloc(acl->rules,
-				    acl->rule_count * sizeof(acl_rule));
-				acl->rules[acl->rule_count - 1] = rule;
+			cJSON *   obj = cJSON_Parse(value);
+
+			if (cJSON_IsObject(obj)) {
+				if (acl_parse_json_rule(obj, id, &rule)) {
+					acl->rule_count++;
+					acl->rules = realloc(acl->rules,
+					    acl->rule_count *
+					        sizeof(acl_rule));
+					acl->rules[acl->rule_count - 1] = rule;
+				}
+				cJSON_Delete(obj);
+			} else {
+				log_warn("invalid json string: %s", value);
 			}
 		}
 
@@ -236,6 +235,7 @@ conf_acl_parse(conf_acl *acl, const char *path)
 void
 conf_acl_init(conf_acl *acl)
 {
+	acl->enable     = false;
 	acl->rule_count = 0;
 	acl->rules      = NULL;
 }
@@ -283,7 +283,7 @@ conf_acl_destroy(conf_acl *acl)
 		nni_free(rule->topics, rule->topic_count * sizeof(char *));
 		nni_free(rule, sizeof(acl_rule));
 	}
-	
+
 	if (acl->rule_count > 0) {
 		nni_free(acl->rules, acl->rule_count * sizeof(acl_rule *));
 		acl->rule_count = 0;
@@ -293,6 +293,7 @@ conf_acl_destroy(conf_acl *acl)
 void
 print_acl_conf(conf_acl *acl)
 {
+	log_info("enable: %s", acl->enable ? "true" : "false");
 	for (size_t i = 0; i < acl->rule_count; i++) {
 		acl_rule *rule = acl->rules[i];
 		log_info("[%zu] permit: %s", rule->id,
