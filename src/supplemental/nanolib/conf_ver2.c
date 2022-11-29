@@ -1,5 +1,6 @@
 #include "core/nng_impl.h"
 #include "nng/nng.h"
+#include "nng/supplemental/nanolib/acl_conf.h"
 #include "nng/supplemental/nanolib/cJSON.h"
 #include "nng/supplemental/nanolib/conf.h"
 #include "nng/supplemental/nanolib/cvector.h"
@@ -11,21 +12,31 @@
 
 typedef struct {
 	uint8_t enumerate;
-	char   *desc;
+	char *  desc;
 } enum_map;
 
+static enum_map auth_acl_permit[] = {
+	{ ACL_ALLOW, "allow" },
+	{ ACL_DENY, "deny" },
+};
+
+static enum_map auth_deny_action[] = {
+	{ ACL_IGNORE, "ignore" },
+	{ ACL_DISCONNECT, "disconnect" },
+};
+
 static enum_map webhook_encoding[] = {
-	{ plain, "plain" }, 
-	{ base64, "base64" }, 
+	{ plain, "plain" },
+	{ base64, "base64" },
 	{ base62, "base62" },
-	{ -1, NULL }
+	{ -1, NULL },
 };
 
 static enum_map http_server_auth_type[] = {
-	{ BASIC, "basic" }, 
-	{ JWT, "jwt" }, 
+	{ BASIC, "basic" },
+	{ JWT, "jwt" },
 	{ NONE_AUTH, "no_auth" },
-	{ -1, NULL }
+	{ -1, NULL },
 };
 
 cJSON *hocon_get_obj(char *key, cJSON *jso);
@@ -52,51 +63,53 @@ cJSON *hocon_get_obj(char *key, cJSON *jso);
 		}                                                     \
 	} while (0);
 
-char *compose_url(char *head, char *address)
+char *
+compose_url(char *head, char *address)
 {
 	size_t url_len = strlen(head) + strlen(address);
-	char *url = nng_alloc(url_len+1);
+	char * url     = nng_alloc(url_len + 1);
 	sprintf(url, "%s%s", head, address);
 	return url;
 }
 
-#define hocon_read_address_base(structure, field, key, head, jso)  \
-	do {                                                          \
-		cJSON *jso_key = cJSON_GetObjectItem(jso, key);       \
-		if (NULL == jso_key) {                                \
-			log_error("Read config %s failed!", key);     \
-			break;                                        \
-		}                                                     \
-		switch (jso_key->type) {                              \
-		case cJSON_String:                                    \
-			if (NULL != jso_key->valuestring) {           \
-				FREE_NONULL((structure)->field);      \
-				(structure)->field = compose_url(head, jso_key->valuestring); \
-			}                                             \
-			break;                                        \
-		default:                                              \
-			break;                                        \
-		}                                                     \
+#define hocon_read_address_base(structure, field, key, head, jso)            \
+	do {                                                                 \
+		cJSON *jso_key = cJSON_GetObjectItem(jso, key);              \
+		if (NULL == jso_key) {                                       \
+			log_error("Read config %s failed!", key);            \
+			break;                                               \
+		}                                                            \
+		switch (jso_key->type) {                                     \
+		case cJSON_String:                                           \
+			if (NULL != jso_key->valuestring) {                  \
+				FREE_NONULL((structure)->field);             \
+				(structure)->field =                         \
+				    compose_url(head, jso_key->valuestring); \
+			}                                                    \
+			break;                                               \
+		default:                                                     \
+			break;                                               \
+		}                                                            \
 	} while (0);
 
-#define hocon_read_time_base(structure, field, key, jso)               \
-	do {                                                          \
-		cJSON *jso_key = cJSON_GetObjectItem(jso, key);       \
-		if (NULL == jso_key) {                                \
-			log_error("Read config %s failed!", key);     \
-			break;                                        \
-		}                                                     \
-		switch (jso_key->type) {                              \
-		case cJSON_String:                                    \
-			if (NULL != jso_key->valuestring) {           \
-				uint64_t seconds = 0;						\
-				get_time(jso_key->valuestring, &seconds);	\
-				(structure)->field = seconds;                 \
-			}                                             \
-			break;                                        \
-		default:                                              \
-			break;                                        \
-		}                                                     \
+#define hocon_read_time_base(structure, field, key, jso)                  \
+	do {                                                              \
+		cJSON *jso_key = cJSON_GetObjectItem(jso, key);           \
+		if (NULL == jso_key) {                                    \
+			log_error("Read config %s failed!", key);         \
+			break;                                            \
+		}                                                         \
+		switch (jso_key->type) {                                  \
+		case cJSON_String:                                        \
+			if (NULL != jso_key->valuestring) {               \
+				uint64_t seconds = 0;                     \
+				get_time(jso_key->valuestring, &seconds); \
+				(structure)->field = seconds;             \
+			}                                                 \
+			break;                                            \
+		default:                                                  \
+			break;                                            \
+		}                                                         \
 	} while (0);
 
 #define hocon_read_bool_base(structure, field, key, jso)            \
@@ -136,7 +149,7 @@ char *compose_url(char *head, char *address)
 	{                                                                 \
 		do {                                                      \
 			cJSON *jso_key = hocon_get_obj(key, jso);         \
-			char  *str     = cJSON_GetStringValue(jso_key);   \
+			char * str     = cJSON_GetStringValue(jso_key);   \
 			int    index   = 0;                               \
 			if (NULL != str) {                                \
 				while (NULL != map[index].desc) {         \
@@ -196,8 +209,8 @@ static char **
 string_split(char *str, char sp)
 {
 	char **ret = NULL;
-	char  *p   = str;
-	char  *p_b = p;
+	char * p   = str;
+	char * p_b = p;
 	while (NULL != (p = strchr(p, sp))) {
 		// abc.def.jkl
 		cvector_push_back(ret, nng_strndup(p_b, p - p_b));
@@ -236,6 +249,19 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	hocon_read_num(config, max_taskq_thread, jso_sys);
 	hocon_read_num(config, parallel, jso_sys);
 
+	cJSON *jso_auth = cJSON_GetObjectItem(jso, "authorization");
+	hocon_read_enum_base(
+	    config, acl_nomatch, "no_match", jso_auth, auth_acl_permit);
+	hocon_read_enum_base(config, acl_deny_action, "deny_action", jso_auth,
+	    auth_deny_action);
+
+	cJSON *jso_auth_cache = hocon_get_obj("authorization.cache", jso_auth);
+	hocon_read_bool_base(
+	    config, enable_acl_cache, "enable", jso_auth_cache);
+	hocon_read_num_base(
+	    config, acl_cache_max_size, "max_size", jso_auth_cache);
+	hocon_read_num_base(config, acl_cache_ttl, "ttl", jso_auth_cache);
+
 	cJSON *jso_listeners = cJSON_GetObjectItem(jso, "listeners");
 	if (NULL == jso_listeners) {
 		log_error("Read config listeners failed!");
@@ -246,9 +272,9 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	hocon_read_num(config, client_max_packet_size, jso_listeners);
 	hocon_read_num(config, msq_len, jso_listeners);
 	hocon_read_num(config, qos_duration, jso_listeners);
-	hocon_read_num_base(config, backoff, "keepalive_backoff", jso_listeners);
+	hocon_read_num_base(
+	    config, backoff, "keepalive_backoff", jso_listeners);
 	hocon_read_bool(config, allow_anonymous, jso_listeners);
-
 
 	cJSON *jso_tcp = cJSON_GetObjectItem(jso_listeners, "tcp");
 	if (NULL == jso_tcp) {
@@ -266,7 +292,8 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 
 	conf_websocket *websocket = &(config->websocket);
 	hocon_read_bool(websocket, enable, jso_websocket);
-	hocon_read_address_base(websocket, url, "bind", "nmq-ws://", jso_websocket);
+	hocon_read_address_base(
+	    websocket, url, "bind", "nmq-ws://", jso_websocket);
 
 	// http server
 	cJSON *jso_http_server = cJSON_GetObjectItem(jso, "http_server");
@@ -355,9 +382,9 @@ conf_log_parse_ver2(conf *config, cJSON *jso)
 		log_error("Read config nanomq sqlite failed!");
 		return;
 	}
-	conf_log *log = &(config->log);
-	cJSON *jso_log_to     = hocon_get_obj("to", jso_log);
-	cJSON *jso_log_to_ele = NULL;
+	conf_log *log            = &(config->log);
+	cJSON *   jso_log_to     = hocon_get_obj("to", jso_log);
+	cJSON *   jso_log_to_ele = NULL;
 
 	cJSON_ArrayForEach(jso_log_to_ele, jso_log_to)
 	{
@@ -486,7 +513,7 @@ conf_webhook_parse_ver2(conf *config, cJSON *jso)
 	hocon_read_enum_base(webhook, encode_payload, "body.encoding",
 	    jso_webhook, webhook_encoding);
 
-	cJSON    *jso_webhook_tls = hocon_get_obj("tls", jso_webhook);
+	cJSON *   jso_webhook_tls = hocon_get_obj("tls", jso_webhook);
 	conf_tls *webhook_tls     = &(webhook->tls);
 	hocon_read_bool(webhook_tls, enable, jso_webhook_tls);
 	hocon_read_str(webhook_tls, key_password, jso_webhook_tls);
@@ -504,19 +531,16 @@ conf_webhook_parse_ver2(conf *config, cJSON *jso)
 static void
 conf_auth_parse_ver2(conf *config, cJSON *jso)
 {
-	cJSON *jso_auth = cJSON_GetObjectItem(jso, "auth");
-	if (NULL == jso_auth) {
-		log_error("Read config nanomq sqlite failed!");
-		return;
-	}
-
 	conf_auth *auth         = &(config->auths);
-	cJSON     *jso_auth_ele = NULL;
+	cJSON *    jso_auth_ele = NULL;
 
-	cJSON_ArrayForEach(jso_auth_ele, jso_auth)
+	hocon_read_bool(auth, enable, jso);
+	cJSON *user_arr = hocon_get_obj("users", jso);
+
+	cJSON_ArrayForEach(jso_auth_ele, user_arr)
 	{
 		char *auth_username = cJSON_GetStringValue(
-		    cJSON_GetObjectItem(jso_auth_ele, "login"));
+		    cJSON_GetObjectItem(jso_auth_ele, "username"));
 		cvector_push_back(auth->usernames, nng_strdup(auth_username));
 		char *auth_password = cJSON_GetStringValue(
 		    cJSON_GetObjectItem(jso_auth_ele, "password"));
@@ -597,7 +621,7 @@ conf_auth_http_req_parse_ver2(conf_auth_http_req *config, cJSON *jso)
 	}
 	config->param_count = cvector_size(config->params);
 
-	cJSON    *jso_http_req_tls = hocon_get_obj("tls", jso);
+	cJSON *   jso_http_req_tls = hocon_get_obj("tls", jso);
 	conf_tls *http_req_tls     = &(config->tls);
 	hocon_read_bool(http_req_tls, enable, jso_http_req_tls);
 	hocon_read_str(http_req_tls, key_password, jso_http_req_tls);
@@ -608,39 +632,30 @@ conf_auth_http_req_parse_ver2(conf_auth_http_req *config, cJSON *jso)
 	    http_req_tls, cafile, "cacertfile", jso_http_req_tls);
 }
 
-
 static void
 conf_auth_http_parse_ver2(conf *config, cJSON *jso)
 {
-	cJSON *jso_auth_http = cJSON_GetObjectItem(jso, "auth_http");
-	if (NULL == jso_auth_http) {
-		log_error("Read config nanomq sqlite failed!");
-		return;
-	}
-
 	conf_auth_http *auth_http = &(config->auth_http);
 
-	hocon_read_bool(auth_http, enable, jso_auth_http);
-	char *timeout =
-	    cJSON_GetStringValue(hocon_get_obj("timeout", jso_auth_http));
-	char *connect_timeout = cJSON_GetStringValue(
-	    hocon_get_obj("connect_timeout", jso_auth_http));
+	hocon_read_bool(auth_http, enable, jso);
+	char *timeout = cJSON_GetStringValue(hocon_get_obj("timeout", jso));
+	char *connect_timeout =
+	    cJSON_GetStringValue(hocon_get_obj("connect_timeout", jso));
 	get_time(timeout, &auth_http->timeout);
 	get_time(connect_timeout, &auth_http->timeout);
-	hocon_read_num(auth_http, pool_size, jso_auth_http);
+	hocon_read_num(auth_http, pool_size, jso);
 
-	conf_auth_http_req *auth_http_req = &(auth_http->auth_req);
-	cJSON *jso_auth_http_req = hocon_get_obj("auth_req", jso_auth_http);
+	conf_auth_http_req *auth_http_req     = &(auth_http->auth_req);
+	cJSON *             jso_auth_http_req = hocon_get_obj("auth_req", jso);
 	conf_auth_http_req_parse_ver2(auth_http_req, jso_auth_http_req);
 
 	conf_auth_http_req *auth_http_super_req = &(auth_http->super_req);
-	cJSON	      *jso_auth_http_super_req =
-	    hocon_get_obj("super_req", jso_auth_http);
+	cJSON *jso_auth_http_super_req = hocon_get_obj("super_req", jso);
 	conf_auth_http_req_parse_ver2(
 	    auth_http_super_req, jso_auth_http_super_req);
 
 	conf_auth_http_req *auth_http_acl_req = &(auth_http->acl_req);
-	cJSON *jso_auth_http_acl_req = hocon_get_obj("acl_req", jso_auth_http);
+	cJSON *jso_auth_http_acl_req          = hocon_get_obj("acl_req", jso);
 	conf_auth_http_req_parse_ver2(
 	    auth_http_acl_req, jso_auth_http_acl_req);
 
@@ -669,10 +684,9 @@ conf_bridge_quic_parse_ver2(conf_bridge_node *node, cJSON *jso_bridge_node)
 	    node, qidle_timeout, "quic_idle_timeout", jso_bridge_node);
 	hocon_read_time_base(
 	    node, qdiscon_timeout, "quic_discon_timeout", jso_bridge_node);
-	hocon_read_time_base(node, qconnect_timeout, "quic_handshake_timeout",
-	    jso_bridge_node);
-	hocon_read_bool_base(
-	    node, hybrid, "hybird_bridging", jso_bridge_node);
+	hocon_read_time_base(
+	    node, qconnect_timeout, "quic_handshake_timeout", jso_bridge_node);
+	hocon_read_bool_base(node, hybrid, "hybird_bridging", jso_bridge_node);
 	char *cc = cJSON_GetStringValue(
 	    cJSON_GetObjectItem(jso_bridge_node, "congestion_control"));
 	if (NULL != cc) {
@@ -715,7 +729,8 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 		conf_bridge_node *node = NNI_ALLOC_STRUCT(node);
 		hocon_read_str(node, name, bridge_mqtt_node);
 		hocon_read_bool(node, enable, bridge_mqtt_node);
-		cJSON *jso_connector = hocon_get_obj("connector", bridge_mqtt_node);
+		cJSON *jso_connector =
+		    hocon_get_obj("connector", bridge_mqtt_node);
 		conf_bridge_connector_parse_ver2(node, jso_connector);
 		hocon_read_str_arr(node, forwards, bridge_mqtt_node);
 		node->forwards_count = cvector_size(node->forwards);
@@ -731,7 +746,7 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 		node->sub_list =
 		    NNI_ALLOC_STRUCTS(node->sub_list, node->sub_count);
 		subscribe *slist        = node->sub_list;
-		cJSON     *subscription = NULL;
+		cJSON *    subscription = NULL;
 		int        i            = 0;
 		cJSON_ArrayForEach(subscription, subscriptions)
 		{
@@ -787,8 +802,9 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 		conf_bridge_connector_parse_ver2(node, bridge_aws_node);
 
 		if (node->address) {
-			node->host = (char*) nng_alloc(strlen(node->address));
-			sscanf(node->address, "%s:%d", node->host, &node->port);
+			node->host = (char *) nng_alloc(strlen(node->address));
+			sscanf(
+			    node->address, "%s:%d", node->host, &node->port);
 		}
 
 		hocon_read_str_arr(node, forwards, bridge_aws_node);
@@ -802,7 +818,7 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 		node->sub_list =
 		    NNI_ALLOC_STRUCTS(node->sub_list, node->sub_count);
 		subscribe *slist        = node->sub_list;
-		cJSON     *subscription = NULL;
+		cJSON *    subscription = NULL;
 		int        i            = 0;
 		cJSON_ArrayForEach(subscription, subscriptions)
 		{
@@ -838,7 +854,7 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 {
 
 	conf_rule *cr              = &(config->rule_eng);
-	cJSON     *jso_rule_sqlite = hocon_get_obj("rules.sqlite", jso);
+	cJSON *    jso_rule_sqlite = hocon_get_obj("rules.sqlite", jso);
 	hocon_read_str_base(cr, sqlite_db, "path", jso_rule_sqlite);
 
 	if (cJSON_IsTrue(cJSON_GetObjectItem(jso_rule_sqlite, "enabled"))) {
@@ -986,6 +1002,64 @@ json_buffer_from_fp(FILE *fp)
 	return buffer;
 }
 
+static void
+conf_acl_parse_ver2(conf *config, cJSON *jso)
+{
+	conf_acl *acl = &config->acl;
+
+	hocon_read_bool(acl, enable, jso);
+	char *json_str = cJSON_Print(jso);
+	printf("acl object: %s\n", json_str);
+	free(json_str);
+
+	cJSON *rule_list = hocon_get_obj("rules", jso);
+	if (cJSON_IsArray(rule_list)) {
+		int count = cJSON_GetArraySize(rule_list);
+		for (size_t i = 0; i < count; i++) {
+			cJSON *rule_item = cJSON_GetArrayItem(rule_list, i);
+			cJSON *rule;
+			if (acl_parse_json_rule(rule_item, i, &rule)) {
+				acl->rule_count++;
+				cvector_push_back(acl->rules, rule);
+			}
+		}
+	}
+}
+
+static void
+conf_authorization_prase_ver2(conf *config, cJSON *jso)
+{
+	cJSON *jso_auth_sources = hocon_get_obj("authorization.sources", jso);
+	if (!cJSON_IsArray(jso_auth_sources)) {
+		log_error("Read config nanomq authorization.sources failed!");
+		return;
+	}
+
+	cJSON *auth_item;
+
+	cJSON_ArrayForEach(auth_item, jso_auth_sources)
+	{
+		cJSON *type_obj = cJSON_GetObjectItem(auth_item, "type");
+		if (cJSON_IsString(type_obj)) {
+			char *type_str = cJSON_GetStringValue(type_obj);
+			if (type_str != NULL) {
+				if (strcmp(type_str, "simple") == 0) {
+					conf_auth_parse_ver2(
+					    config, auth_item);
+				} else if (strcmp(type_str, "file") == 0) {
+					conf_acl_parse_ver2(config, auth_item);
+				} else if (strcmp(type_str, "http") == 0) {
+					conf_auth_http_parse_ver2(
+					    config, auth_item);
+				} else {
+					log_error("Read unsupported "
+					          "authorization type");
+				}
+			}
+		}
+	}
+}
+
 void
 conf_parse_ver2(conf *config)
 {
@@ -1010,8 +1084,7 @@ conf_parse_ver2(conf *config)
 		conf_log_parse_ver2(config, jso);
 #endif
 		conf_webhook_parse_ver2(config, jso);
-		conf_auth_parse_ver2(config, jso);
-		conf_auth_http_parse_ver2(config, jso);
+		conf_authorization_prase_ver2(config, jso);
 		conf_bridge_parse_ver2(config, jso);
 #if defined(SUPP_AWS_BRIDGE)
 		conf_aws_bridge_parse_ver2(config, jso);
