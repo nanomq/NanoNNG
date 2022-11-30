@@ -248,6 +248,7 @@ quic_strm_fini(quic_strm_t *qstrm)
 		free(qstrm->rxmsg);
 	if (qstrm->rrbuf)
 		free(qstrm->rrbuf);
+	log_debug("%p quic_strm_fini", qstrm->stream);
 
 	nni_lmq_fini(&qstrm->recv_messages);
 	nni_lmq_fini(&qstrm->send_messages);
@@ -327,10 +328,16 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		log_debug("stream cb over\n");
 
 		return QUIC_STATUS_PENDING;
-
+	case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
+		log_warn("[strm][%p] Peer RECEIVE aborted\n", stream);
+		log_info("PEER_RECEIVE_ABORTED Error Code: %llu",
+				 (unsigned long long) Event->PEER_RECEIVE_ABORTED.ErrorCode);
+		break;
 	case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
 		// The peer gracefully shut down its send direction of the stream.
-		log_warn("[strm][%p] Peer aborted\n", stream);
+		log_warn("[strm][%p] Peer SEND aborted\n", stream);
+		log_info("PEER_SEND_ABORTED Error Code: %llu",
+				 (unsigned long long) Event->PEER_SEND_ABORTED.ErrorCode);
 		break;
 	case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
 		// The peer aborted its send direction of the stream.
@@ -340,7 +347,9 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 		// Both directions of the stream have been shut down and MsQuic
 		// is done with the stream. It can now be safely cleaned up.
-		log_warn("[strm][%p] QUIC_STREAM_EVENT shutdown: All done");
+		log_warn("[strm][%p] QUIC_STREAM_EVENT shutdown: All done.");
+		log_info("SHUTDOWN_COMPLETE Error Code: %llu",
+				 (unsigned long long) Event->SHUTDOWN_COMPLETE.ConnectionErrorCode);
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
 			// only server close the stream gonna trigger this
 			log_warn("close the QUIC stream!");
@@ -404,15 +413,15 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 			log_warn("[conn][%p] Successfully shut down on idle.\n",
 			    qconn);
 		} else {
-			log_warn("[conn][%p] Shut down by transport, 0x%x\n",
-			    qconn, Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status);
+			log_warn("[conn][%p] Shut down by transport, 0x%x, Error Code %llu\n",
+			    qconn, Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status,
+				(unsigned long long) Event->SHUTDOWN_INITIATED_BY_TRANSPORT.ErrorCode);
 		}
 		break;
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER:
 		// The connection was explicitly shut down by the peer.
 		log_warn("[conn][%p] QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER, 0x%llu\n", qconn,
 		    (unsigned long long) Event->SHUTDOWN_INITIATED_BY_PEER.ErrorCode);
-
 		break;
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE:
 		// The connection has completed the shutdown process and is
@@ -425,11 +434,10 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 
 		// Close and finite nng pipe ONCE disconnect
 		if (qsock->pipe) {
-			log_warn("Quic reconnect failed so disconnected!");
+			log_warn("Quic reconnect failed or disconnected!");
 			pipe_ops->pipe_stop(qsock->pipe);
 			pipe_ops->pipe_close(qsock->pipe);
 			pipe_ops->pipe_fini(qsock->pipe);
-			// quic_pipe_close(qsock->pipe);
 			nng_free(qsock->pipe, 0);
 			qsock->pipe = NULL;
 
@@ -457,22 +465,12 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		// was received from the server.
 		log_warn("[conn][%p] Resumption ticket received (%u bytes):\n",
 		    Connection, Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength);
-		/*
-		for (uint32_t i = 0; i <
-		     Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength;
-		     i++) {
-			qdebug("%x",
-			    (uint8_t) Event->RESUMPTION_TICKET_RECEIVED
-			        .ResumptionTicket[i]);
-		}
-		qdebug("\n");
-		*/
 		qsock->rticket_sz = Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength;
 		memcpy(qsock->rticket, Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicket,
 		        Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength);
 		break;
 	case QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED:
-		log_warn("QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED");
+		log_info("QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED");
 		break;
 	case QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE:
 		log_info("QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE");
@@ -1065,12 +1063,13 @@ error:
 }
 
 int
-quic_pipe_close(void *qpipe)
+quic_pipe_close(void *qpipe, uint8_t *code)
 {
 	if (!qpipe)
 		return -1;
 	quic_strm_t *qstrm = qpipe;
 	nni_aio     *aio;
+	log_debug(" %p quic_pipe_close", qstrm->stream);
 	if (qstrm->closed != true) {
 		qstrm->closed = true;
 		log_warn("close the QUIC stream!");
