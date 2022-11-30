@@ -18,11 +18,13 @@ typedef struct {
 static enum_map auth_acl_permit[] = {
 	{ ACL_ALLOW, "allow" },
 	{ ACL_DENY, "deny" },
+	{ -1, NULL },
 };
 
 static enum_map auth_deny_action[] = {
 	{ ACL_IGNORE, "ignore" },
 	{ ACL_DISCONNECT, "disconnect" },
+	{ -1, NULL },
 };
 
 static enum_map webhook_encoding[] = {
@@ -239,9 +241,9 @@ hocon_get_obj(char *key, cJSON *jso)
 static void
 conf_basic_parse_ver2(conf *config, cJSON *jso)
 {
-	cJSON *jso_sys = cJSON_GetObjectItem(jso, "sys");
+	cJSON *jso_sys = cJSON_GetObjectItem(jso, "system");
 	if (NULL == jso_sys) {
-		log_error("Read config sys failed!");
+		log_error("Read config system failed!");
 		return;
 	}
 	hocon_read_bool(config, daemon, jso_sys);
@@ -262,20 +264,26 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	    config, acl_cache_max_size, "max_size", jso_auth_cache);
 	hocon_read_num_base(config, acl_cache_ttl, "ttl", jso_auth_cache);
 
+	cJSON *jso_mqtt_session = hocon_get_obj("mqtt.session", jso);
+	if (NULL == jso_mqtt_session) {
+		log_error("Read config listeners failed!");
+		return;
+	}
+	hocon_read_num(config, property_size, jso_mqtt_session);
+	hocon_read_num(config, max_packet_size, jso_mqtt_session);
+	hocon_read_num(config, client_max_packet_size, jso_mqtt_session);
+	hocon_read_num(config, msq_len, jso_mqtt_session);
+	hocon_read_num(config, qos_duration, jso_mqtt_session);
+	hocon_read_num_base(
+	    config, backoff, "keepalive_backoff", jso_mqtt_session);
+	hocon_read_bool(config, allow_anonymous, jso_mqtt_session);
+
+
 	cJSON *jso_listeners = cJSON_GetObjectItem(jso, "listeners");
 	if (NULL == jso_listeners) {
 		log_error("Read config listeners failed!");
 		return;
 	}
-	hocon_read_num(config, property_size, jso_listeners);
-	hocon_read_num(config, max_packet_size, jso_listeners);
-	hocon_read_num(config, client_max_packet_size, jso_listeners);
-	hocon_read_num(config, msq_len, jso_listeners);
-	hocon_read_num(config, qos_duration, jso_listeners);
-	hocon_read_num_base(
-	    config, backoff, "keepalive_backoff", jso_listeners);
-	hocon_read_bool(config, allow_anonymous, jso_listeners);
-
 	cJSON *jso_tcp = cJSON_GetObjectItem(jso_listeners, "tcp");
 	if (NULL == jso_tcp) {
 		log_error("Read config tcp failed!");
