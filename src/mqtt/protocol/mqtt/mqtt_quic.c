@@ -876,6 +876,11 @@ mqtt_timer_cb(void *arg)
 	mqtt_pipe_t *p = s->pipe;
 	nni_msg *  msg;
 	nni_aio *  aio;
+
+	if (p == NULL) {
+		// QUIC connection has been shut down
+		return;
+	}
 	uint16_t   pid = p->rid;
 
 	if (nng_aio_result(&s->time_aio) != 0) {
@@ -1184,6 +1189,8 @@ quic_mqtt_stream_fini(void *arg)
 	nni_msg *tmsg =
 	    nano_msg_notify_disconnect(p->cparam, SERVER_SHUTTING_DOWN);
 	nni_msg_set_cmd_type(tmsg, CMD_DISCONNECT_EV);
+	// clone once for DISCONNECT_EV state
+	conn_param_clone(p->cparam);
 	nni_msg_set_conn_param(tmsg, p->cparam);
 	// emulate disconnect notify msg as a normal publish
 	while ((aio = nni_list_first(&s->recv_queue)) != NULL) {
