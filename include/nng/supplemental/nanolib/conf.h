@@ -325,17 +325,11 @@ struct conf {
 	uint32_t   client_max_packet_size;
 	uint32_t   qos_duration;
 	float      backoff;
-	void *     db_root;
+	void      *db_root;
 	bool       allow_anonymous;
-	acl_permit acl_nomatch;
-	bool       enable_acl_cache;
-	size_t     acl_cache_max_size;
-	size_t     acl_cache_ttl;
-	enum { ACL_IGNORE, ACL_DISCONNECT } acl_deny_action;
-
-	bool     daemon;
-	bool     ipc_internal;
-	bool     bridge_mode;
+	bool       daemon;
+	bool       ipc_internal;
+	bool       bridge_mode;
 
 	conf_sqlite      sqlite;
 	conf_tls         tls;
@@ -350,10 +344,16 @@ struct conf {
 #if defined(SUPP_RULE_ENGINE)
 	conf_rule rule_eng;
 #endif
-
+#ifdef ACL_SUPP
+	conf_acl   acl;
+	acl_permit acl_nomatch;
+	bool       enable_acl_cache;
+	size_t     acl_cache_max_size;
+	size_t     acl_cache_ttl;
+	enum { ACL_IGNORE, ACL_DISCONNECT } acl_deny_action;
+#endif
 	conf_auth         auths;
 	conf_auth_http    auth_http;
-	conf_acl          acl;
 	struct hashmap_s *cid_table;
 };
 
