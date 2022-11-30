@@ -401,16 +401,16 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		// the connection.
 		if (Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status ==
 		    QUIC_STATUS_CONNECTION_IDLE) {
-			log_error("[conn][%p] Successfully shut down on idle.\n",
+			log_warn("[conn][%p] Successfully shut down on idle.\n",
 			    qconn);
 		} else {
-			log_error("[conn][%p] Shut down by transport, 0x%x\n",
+			log_warn("[conn][%p] Shut down by transport, 0x%x\n",
 			    qconn, Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status);
 		}
 		break;
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER:
 		// The connection was explicitly shut down by the peer.
-		log_error("[conn][%p] QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER, 0x%llu\n", qconn,
+		log_warn("[conn][%p] QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER, 0x%llu\n", qconn,
 		    (unsigned long long) Event->SHUTDOWN_INITIATED_BY_PEER.ErrorCode);
 
 		break;

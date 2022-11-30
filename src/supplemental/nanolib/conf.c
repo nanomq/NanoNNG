@@ -441,6 +441,7 @@ conf_basic_parse(conf *config, const char *path)
 			    nni_strcasecmp(value, "yes") == 0 ||
 			    nni_strcasecmp(value, "true") == 0;
 			nng_strfree(value);
+#ifdef ACL_SUPP
 		} else if ((value = get_conf_value(
 		                line, sz, "acl_enable")) != NULL) {
 			config->acl.enable =
@@ -477,6 +478,7 @@ conf_basic_parse(conf *config, const char *path)
 				config->acl_deny_action = ACL_DISCONNECT;
 			}
 			nng_strfree(value);
+#endif
 		} else if ((value = get_conf_value(
 		                line, sz, "enable_ipc_internal")) != NULL) {
 			config->ipc_internal =
@@ -588,7 +590,9 @@ conf_parse(conf *nanomq_conf)
 
 	conf *config = nanomq_conf;
 	conf_basic_parse(config, conf_path);
+#ifdef ACL_SUPP
 	conf_acl_parse(&config->acl, conf_path);
+#endif
 	conf_tls_parse(&config->tls, conf_path, "\0", "\0");
 	conf_sqlite_parse(&config->sqlite, conf_path, "sqlite");
 	conf_web_hook_parse(&config->web_hook, conf_path);
@@ -825,17 +829,18 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->backoff       = 1.5;
 
 	nanomq_conf->allow_anonymous    = true;
+#ifdef ACL_SUPP
 	nanomq_conf->acl_nomatch        = ACL_ALLOW;
 	nanomq_conf->enable_acl_cache   = true;
 	nanomq_conf->acl_cache_max_size = 32;
 	nanomq_conf->acl_cache_ttl      = 60;
 	nanomq_conf->acl_deny_action    = ACL_IGNORE;
-
+	conf_acl_init(&nanomq_conf->acl);
+#endif
 	nanomq_conf->daemon           = false;
 	nanomq_conf->enable           = true;
 	nanomq_conf->bridge_mode      = false;
 
-	conf_acl_init(&nanomq_conf->acl);
 #if defined(ENABLE_LOG)
 	conf_log_init(&nanomq_conf->log);
 #endif
@@ -927,6 +932,7 @@ print_conf(conf *nanomq_conf)
 	}
 	log_info("allow_anonymous:          %s",
 	    nanomq_conf->allow_anonymous ? "true" : "false");
+#ifdef ACL_SUPP
 	log_info("acl_nomatch:              %s",
 	    nanomq_conf->acl_nomatch == ACL_ALLOW ? "allow" : "deny");
 	log_info("enable_acl_cache:         %s",
@@ -938,6 +944,8 @@ print_conf(conf *nanomq_conf)
 	    nanomq_conf->acl_deny_action == ACL_IGNORE ? "ignore"
 	                                               : "disconnect");
 	print_acl_conf(&nanomq_conf->acl);
+#endif
+
 
 	print_bridge_conf(&nanomq_conf->bridge, "");
 #if defined(SUPP_AWS_BRIDGE)
@@ -2814,8 +2822,9 @@ conf_fini(conf *nanomq_conf)
 	free(nanomq_conf->http_server.jwt.public_keyfile);
 
 	nng_strfree(nanomq_conf->websocket.url);
-
+#ifdef ACL_SUPP
 	conf_acl_destroy(&nanomq_conf->acl);
+#endif
 	conf_bridge_destroy(&nanomq_conf->bridge);
 	conf_bridge_destroy(&nanomq_conf->aws_bridge);
 	conf_web_hook_destroy(&nanomq_conf->web_hook);
