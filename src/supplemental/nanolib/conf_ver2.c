@@ -14,7 +14,7 @@ typedef struct {
 	uint8_t enumerate;
 	char *  desc;
 } enum_map;
-
+#ifdef ACL_SUPP
 static enum_map auth_acl_permit[] = {
 	{ ACL_ALLOW, "allow" },
 	{ ACL_DENY, "deny" },
@@ -26,7 +26,7 @@ static enum_map auth_deny_action[] = {
 	{ ACL_DISCONNECT, "disconnect" },
 	{ -1, NULL },
 };
-
+#endif
 static enum_map webhook_encoding[] = {
 	{ plain, "plain" },
 	{ base64, "base64" },
@@ -252,6 +252,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	hocon_read_num(config, parallel, jso_sys);
 
 	cJSON *jso_auth = cJSON_GetObjectItem(jso, "authorization");
+#ifdef ACL_SUPP
 	hocon_read_enum_base(
 	    config, acl_nomatch, "no_match", jso_auth, auth_acl_permit);
 	hocon_read_enum_base(config, acl_deny_action, "deny_action", jso_auth,
@@ -263,7 +264,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	hocon_read_num_base(
 	    config, acl_cache_max_size, "max_size", jso_auth_cache);
 	hocon_read_num_base(config, acl_cache_ttl, "ttl", jso_auth_cache);
-
+#endif
 	cJSON *jso_mqtt_session = hocon_get_obj("mqtt.session", jso);
 	if (NULL == jso_mqtt_session) {
 		log_error("Read config listeners failed!");
@@ -661,12 +662,12 @@ conf_auth_http_parse_ver2(conf *config, cJSON *jso)
 	cJSON *jso_auth_http_super_req = hocon_get_obj("super_req", jso);
 	conf_auth_http_req_parse_ver2(
 	    auth_http_super_req, jso_auth_http_super_req);
-
+#ifdef ACL_SUPP
 	conf_auth_http_req *auth_http_acl_req = &(auth_http->acl_req);
 	cJSON *jso_auth_http_acl_req          = hocon_get_obj("acl_req", jso);
 	conf_auth_http_req_parse_ver2(
 	    auth_http_acl_req, jso_auth_http_acl_req);
-
+#endif
 	return;
 }
 
@@ -1009,6 +1010,7 @@ json_buffer_from_fp(FILE *fp)
 static void
 conf_acl_parse_ver2(conf *config, cJSON *jso)
 {
+#ifdef ACL_SUPP
 	conf_acl *acl = &config->acl;
 
 	hocon_read_bool(acl, enable, jso);
@@ -1025,6 +1027,7 @@ conf_acl_parse_ver2(conf *config, cJSON *jso)
 			}
 		}
 	}
+#endif
 }
 
 static void

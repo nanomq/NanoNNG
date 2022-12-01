@@ -40,6 +40,6 @@ extern int quic_pipe_recv(void *qpipe, nni_aio *raio);
 // Send msg to a qpipe
 extern int quic_pipe_send(void *qpipe, nni_aio *saio);
 // Close a qpipe and free it
-extern int quic_pipe_close(void *qpipe);
+extern int quic_pipe_close(void *qpipe, uint8_t *code);
 
 #endif

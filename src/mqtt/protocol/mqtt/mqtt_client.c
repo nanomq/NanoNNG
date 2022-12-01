@@ -537,7 +537,7 @@ mqtt_pipe_close(void *arg)
 	    nano_msg_notify_disconnect(s->cparam, SERVER_SHUTTING_DOWN);
 	nni_msg_set_cmd_type(tmsg, CMD_DISCONNECT_EV);
 	// clone once for DISCONNECT_EV state
-	conn_param_clone(p->cparam);
+	conn_param_clone(s->cparam);
 	nni_msg_set_conn_param(tmsg, s->cparam);
 	// return error to all receving aio
 	// emulate disconnect notify msg as a normal publish

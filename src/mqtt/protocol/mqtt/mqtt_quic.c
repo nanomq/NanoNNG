@@ -121,6 +121,7 @@ struct mqtt_pipe_s {
 	nni_lmq         recv_messages; // recv messages queue
 	conn_param     *cparam;
 	uint16_t        rid;           // index of resending packet id
+	uint8_t         reason_code;   // MQTTV5 reason code
 };
 
 static inline void
@@ -900,6 +901,7 @@ mqtt_timer_cb(void *arg)
 		if (s->pingcnt > 1) {
 			log_warn("Close the quic connection due to timeout");
 			s->pingcnt = 0; // restore pingcnt
+			p->reason_code = KEEP_ALIVE_TIMEOUT;
 			quic_disconnect(p->qsock);
 			nni_mtx_unlock(&s->mtx);
 			return;
@@ -1109,6 +1111,7 @@ quic_mqtt_stream_init(void *arg, nni_pipe *qsock, void *sock)
 		major = true;
 	}
 	p->rid = 1;
+	p->reason_code = 0;
 
 	// QUIC stream init
 	if (0 != quic_pipe_open(qsock, &p->qpipe)) {
@@ -1186,8 +1189,10 @@ quic_mqtt_stream_fini(void *arg)
 	if (p->cparam == NULL) {
 		return;
 	}
+	p->reason_code == 0 ? p->reason_code = SERVER_SHUTTING_DOWN
+	                    : p->reason_code;
 	nni_msg *tmsg =
-	    nano_msg_notify_disconnect(p->cparam, SERVER_SHUTTING_DOWN);
+	    nano_msg_notify_disconnect(p->cparam, p->reason_code);
 	nni_msg_set_cmd_type(tmsg, CMD_DISCONNECT_EV);
 	// clone once for DISCONNECT_EV state
 	conn_param_clone(p->cparam);
@@ -1287,7 +1292,7 @@ quic_mqtt_stream_close(void *arg)
 		nni_lmq_flush(&p->send_inflight);
 	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
 	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
-	quic_pipe_close(p->qpipe);
+	quic_pipe_close(p->qpipe, &p->reason_code);
 	p->qpipe = NULL;
 	nni_mtx_unlock(&s->mtx);
 
