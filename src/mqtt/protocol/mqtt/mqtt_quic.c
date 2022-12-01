@@ -98,6 +98,7 @@ struct mqtt_pipe_s {
 	nni_atomic_bool closed;
 	bool            busy;
 	bool            ready;			// mark if QUIC stream is ready
+	uint8_t reason_code; // MQTTV5 reason code
 	nni_atomic_int  next_packet_id; // next packet id to use
 	mqtt_sock_t    *mqtt_sock;
 	nni_id_map      sent_unack;    // send messages unacknowledged
@@ -555,6 +556,7 @@ mqtt_timer_cb(void *arg)
 		if (s->pingcnt > 1) {
 			log_warn("Close the quic connection due to timeout");
 			s->pingcnt = 0; // restore pingcnt
+			p->reason_code = KEEP_ALIVE_TIMEOUT;
 			quic_disconnect();
 			nni_mtx_unlock(&s->mtx);
 			return;
@@ -752,6 +754,7 @@ quic_mqtt_stream_init(void *arg, nni_pipe *qstrm, void *sock)
 	nni_atomic_set_bool(&p->closed, false);
 	p->busy  = false;
 	p->ready = false;
+	p->reason_code = 0;
 	nni_atomic_set(&p->next_packet_id, 1);
 	nni_aio_init(&p->send_aio, mqtt_quic_send_cb, p);
 	nni_aio_init(&p->rep_aio, NULL, p);
@@ -806,8 +809,10 @@ quic_mqtt_stream_fini(void *arg)
 	if (p->cparam == NULL) {
 		return;
 	}
+	p->reason_code == 0 ? p->reason_code = SERVER_SHUTTING_DOWN
+                    : p->reason_code;
 	nni_msg *tmsg =
-	    nano_msg_notify_disconnect(p->cparam, SERVER_SHUTTING_DOWN);
+	    nano_msg_notify_disconnect(p->cparam, p->reason_code);
 	nni_msg_set_conn_param(tmsg, p->cparam);
 	// emulate disconnect notify msg as a normal publish
 	while ((aio = nni_list_first(&s->recv_queue)) != NULL) {
