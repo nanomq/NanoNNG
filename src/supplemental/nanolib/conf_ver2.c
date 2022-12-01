@@ -250,7 +250,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	hocon_read_num(config, max_packet_size, jso_mqtt_session);
 	hocon_read_num(config, client_max_packet_size, jso_mqtt_session);
 	hocon_read_num(config, msq_len, jso_mqtt_session);
-	hocon_read_num(config, qos_duration, jso_mqtt_session);
+	hocon_read_time(config, qos_duration, jso_mqtt_session);
 	hocon_read_num_base(
 	    config, backoff, "keepalive_backoff", jso_mqtt_session);
 	hocon_read_bool(config, allow_anonymous, jso_mqtt_session);
