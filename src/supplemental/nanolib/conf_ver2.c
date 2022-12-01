@@ -10,6 +10,7 @@
 #include <ctype.h>
 #include <string.h>
 
+
 typedef struct {
 	uint8_t enumerate;
 	char *  desc;
@@ -335,6 +336,8 @@ conf_tls_parse_ver2(conf *config, cJSON *jso)
 	hocon_read_str_base(tls, cafile, "cacertfile", jso_tls);
 	hocon_read_bool(tls, verify_peer, jso_tls);
 	hocon_read_bool_base(tls, set_fail, "fail_if_no_peer_cert", jso_tls);
+
+	
 
 	return;
 }
@@ -766,7 +769,7 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 static void
 conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 {
-	cJSON *bridge_aws_nodes = hocon_get_obj("bridge.aws.nodes", jso);
+	cJSON *bridge_aws_nodes = hocon_get_obj("bridges.aws.nodes", jso);
 	cJSON *bridge_aws_node  = NULL;
 
 	config->aws_bridge.count = cJSON_GetArraySize(bridge_aws_nodes);
@@ -878,7 +881,7 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 
 		rule     re    = { 0 };
 		repub_t *repub = NNI_ALLOC_STRUCT(repub);
-		hocon_read_bool(&re, enabled, jso_rule);
+		hocon_read_bool_base(&re, enabled, "enable", jso_rule);
 		hocon_read_str_base(&re, raw_sql, "sql", jso_rule);
 		hocon_read_str(repub, address, jso_rule);
 		hocon_read_str(repub, topic, jso_rule);
