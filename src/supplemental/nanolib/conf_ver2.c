@@ -52,16 +52,12 @@ cJSON *hocon_get_obj(char *key, cJSON *jso);
 			log_error("Read config %s failed!", key);     \
 			break;                                        \
 		}                                                     \
-		switch (jso_key->type) {                              \
-		case cJSON_String:                                    \
+		if (cJSON_IsString(jso_key)) {                        \
 			if (NULL != jso_key->valuestring) {           \
 				FREE_NONULL((structure)->field);      \
 				(structure)->field =                  \
 				    nng_strdup(jso_key->valuestring); \
 			}                                             \
-			break;                                        \
-		default:                                              \
-			break;                                        \
 		}                                                     \
 	} while (0);
 
@@ -81,16 +77,12 @@ compose_url(char *head, char *address)
 			log_error("Read config %s failed!", key);            \
 			break;                                               \
 		}                                                            \
-		switch (jso_key->type) {                                     \
-		case cJSON_String:                                           \
+		if (cJSON_IsString(jso_key)) {                               \
 			if (NULL != jso_key->valuestring) {                  \
 				FREE_NONULL((structure)->field);             \
 				(structure)->field =                         \
 				    compose_url(head, jso_key->valuestring); \
 			}                                                    \
-			break;                                               \
-		default:                                                     \
-			break;                                               \
 		}                                                            \
 	} while (0);
 
@@ -101,16 +93,12 @@ compose_url(char *head, char *address)
 			log_error("Read config %s failed!", key);         \
 			break;                                            \
 		}                                                         \
-		switch (jso_key->type) {                                  \
-		case cJSON_String:                                        \
+		if (cJSON_IsString(jso_key)) {                            \
 			if (NULL != jso_key->valuestring) {               \
 				uint64_t seconds = 0;                     \
 				get_time(jso_key->valuestring, &seconds); \
 				(structure)->field = seconds;             \
 			}                                                 \
-			break;                                            \
-		default:                                                  \
-			break;                                            \
 		}                                                         \
 	} while (0);
 
@@ -121,12 +109,8 @@ compose_url(char *head, char *address)
 			log_error("Read config %s failed!", key);   \
 			break;                                      \
 		}                                                   \
-		switch (jso_key->type) {                            \
-		case cJSON_True:                                    \
+		if (cJSON_IsBool(jso_key)) {                        \
 			(structure)->field = cJSON_IsTrue(jso_key); \
-			break;                                      \
-		default:                                            \
-			break;                                      \
 		}                                                   \
 	} while (0);
 
@@ -137,13 +121,9 @@ compose_url(char *head, char *address)
 			log_error("Read config %s failed!", key);       \
 			break;                                          \
 		}                                                       \
-		switch (jso_key->type) {                                \
-		case cJSON_Number:                                      \
+		if (cJSON_IsNumber(jso_key)) {                          \
 			if (jso_key->valueint > 0)                      \
 				(structure)->field = jso_key->valueint; \
-			break;                                          \
-		default:                                                \
-			break;                                          \
 		}                                                       \
 	} while (0);
 
@@ -178,13 +158,9 @@ compose_url(char *head, char *address)
 		cJSON *elem = NULL;                                          \
 		cJSON_ArrayForEach(elem, jso_arr)                            \
 		{                                                            \
-			switch (elem->type) {                                \
-			case cJSON_String:                                   \
+			if (cJSON_IsString(elem)) {                          \
 				cvector_push_back((structure)->field,        \
 				    nng_strdup(cJSON_GetStringValue(elem))); \
-				break;                                       \
-			default:                                             \
-				break;                                       \
 			}                                                    \
 		}                                                            \
 	} while (0);
