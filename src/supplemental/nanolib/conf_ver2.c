@@ -319,6 +319,30 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 }
 
 static void
+conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
+{
+	hocon_read_bool(tls, enable, jso_tls);
+	hocon_read_str(tls, key_password, jso_tls);
+	hocon_read_str(tls, keyfile, jso_tls);
+	hocon_read_str(tls, certfile, jso_tls);
+	hocon_read_str_base(tls, cafile, "cacertfile", jso_tls);
+	hocon_read_bool(tls, verify_peer, jso_tls);
+	hocon_read_bool_base(tls, set_fail, "fail_if_no_peer_cert", jso_tls);
+
+	if (0 == file_load_data(tls->keyfile, (void **) &tls->key)) {
+		log_error("Read %s failed!", tls->keyfile);
+		exit(EXIT_FAILURE);
+	}
+	if (0 == file_load_data(tls->certfile, (void **) &tls->cert)) {
+		log_error("Read %s failed!", tls->certfile);
+	}
+	if (0 == file_load_data(tls->cafile, (void **) &tls->ca)) {
+		log_error("Read %s failed!", tls->cafile);
+	}
+
+	return;
+}
+static void
 conf_tls_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *jso_tls = hocon_get_obj("listeners.ssl", jso);
@@ -328,17 +352,8 @@ conf_tls_parse_ver2(conf *config, cJSON *jso)
 	}
 
 	conf_tls *tls = &(config->tls);
-	hocon_read_bool(tls, enable, jso_tls);
+	conf_tls_parse_ver2_base(tls, jso_tls);
 	hocon_read_address_base(tls, url, "bind", "tls+nmq-tcp://", jso_tls);
-	hocon_read_str(tls, key_password, jso_tls);
-	hocon_read_str(tls, keyfile, jso_tls);
-	hocon_read_str(tls, certfile, jso_tls);
-	hocon_read_str_base(tls, cafile, "cacertfile", jso_tls);
-	hocon_read_bool(tls, verify_peer, jso_tls);
-	hocon_read_bool_base(tls, set_fail, "fail_if_no_peer_cert", jso_tls);
-
-	
-
 	return;
 }
 
@@ -748,16 +763,7 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 		cJSON *bridge_mqtt_node_tls =
 		    hocon_get_obj("ssl", bridge_mqtt_node);
 		conf_tls *bridge_node_tls = &(node->tls);
-		hocon_read_bool(bridge_node_tls, enable, bridge_mqtt_node_tls);
-		hocon_read_str(
-		    bridge_node_tls, key_password, bridge_mqtt_node_tls);
-		hocon_read_str(bridge_node_tls, keyfile, bridge_mqtt_node_tls);
-		hocon_read_str(bridge_node_tls, keyfile, bridge_mqtt_node_tls);
-		hocon_read_str(
-		    bridge_node_tls, certfile, bridge_mqtt_node_tls);
-		hocon_read_str_base(bridge_node_tls, cafile, "cacertfile",
-		    bridge_mqtt_node_tls);
-
+		conf_tls_parse_ver2_base(bridge_node_tls, bridge_mqtt_node_tls);
 		cvector_push_back(config->bridge.nodes, node);
 		config->bridge_mode |= node->enable;
 	}
