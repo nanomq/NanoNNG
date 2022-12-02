@@ -552,7 +552,7 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 	case NNG_MQTT_PUBLISH:
 		// we have received a PUBLISH
 		qos = nni_mqtt_msg_get_publish_qos(msg);
-
+		nng_msg_set_cmd_type(msg, CMD_PUBLISH);
 		if (2 > qos) {
 			if (qos == 1) {
 				// QoS 1 return PUBACK
@@ -773,7 +773,7 @@ mqtt_quic_recv_cb(void *arg)
 	case NNG_MQTT_PUBLISH:
 		// we have received a PUBLISH
 		qos = nni_mqtt_msg_get_publish_qos(msg);
-
+		nng_msg_set_cmd_type(msg, CMD_PUBLISH);
 		if (2 > qos) {
 			if (qos == 1) {
 				// QoS 1 return PUBACK
