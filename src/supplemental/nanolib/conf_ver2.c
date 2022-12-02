@@ -331,7 +331,6 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 
 	if (0 == file_load_data(tls->keyfile, (void **) &tls->key)) {
 		log_error("Read %s failed!", tls->keyfile);
-		exit(EXIT_FAILURE);
 	}
 	if (0 == file_load_data(tls->certfile, (void **) &tls->cert)) {
 		log_error("Read %s failed!", tls->certfile);
