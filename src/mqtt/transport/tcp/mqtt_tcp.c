@@ -154,6 +154,7 @@ mqtt_pipe_timer_cb(void *arg)
 	}
 
 	if (p->pingcnt > 1) {
+		p->ep->reason_code = KEEP_ALIVE_TIMEOUT;
 		mqtt_tcptran_pipe_close(p);
 		return;
 	}
