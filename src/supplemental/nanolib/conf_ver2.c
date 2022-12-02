@@ -67,7 +67,7 @@ compose_url(char *head, char *address)
 {
 	size_t url_len = strlen(head) + strlen(address);
 	char * url     = nng_alloc(url_len + 1);
-	sprintf(url, "%s%s", head, address);
+	snprintf(url, url_len, "%s%s", head, address);
 	return url;
 }
 
@@ -1001,10 +1001,10 @@ conf_acl_parse_ver2(conf *config, cJSON *jso)
 
 	cJSON *rule_list = hocon_get_obj("rules", jso);
 	if (cJSON_IsArray(rule_list)) {
-		int count = cJSON_GetArraySize(rule_list);
+		size_t count = (size_t) cJSON_GetArraySize(rule_list);
 		for (size_t i = 0; i < count; i++) {
 			cJSON *rule_item = cJSON_GetArrayItem(rule_list, i);
-			cJSON *rule;
+			acl_rule *rule;
 			if (acl_parse_json_rule(rule_item, i, &rule)) {
 				acl->rule_count++;
 				cvector_push_back(acl->rules, rule);
