@@ -65,7 +65,7 @@ cJSON *hocon_get_obj(char *key, cJSON *jso);
 char *
 compose_url(char *head, char *address)
 {
-	size_t url_len = strlen(head) + strlen(address);
+	size_t url_len = strlen(head) + strlen(address) + 1;
 	char * url     = nng_alloc(url_len + 1);
 	snprintf(url, url_len, "%s%s", head, address);
 	return url;
