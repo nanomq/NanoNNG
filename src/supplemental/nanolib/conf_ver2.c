@@ -846,7 +846,7 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 	cJSON *    jso_rule_sqlite = hocon_get_obj("rules.sqlite", jso);
 	hocon_read_str_base(cr, sqlite_db, "path", jso_rule_sqlite);
 
-	if (cJSON_IsTrue(cJSON_GetObjectItem(jso_rule_sqlite, "enabled"))) {
+	if (cJSON_IsTrue(cJSON_GetObjectItem(jso_rule_sqlite, "enable"))) {
 		cr->option |= RULE_ENG_SDB;
 	}
 	cJSON *jso_rules = hocon_get_obj("rules", jso_rule_sqlite);
@@ -856,7 +856,7 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 	{
 
 		rule r = { 0 };
-		hocon_read_bool(&r, enabled, jso_rule);
+		hocon_read_bool_base(&r, enabled, "enable", jso_rule);
 		hocon_read_str_base(&r, raw_sql, "sql", jso_rule);
 		hocon_read_str_base(&r, sqlite_table, "table", jso_rule);
 
@@ -874,7 +874,7 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 
 	cJSON *jso_rule_repub = hocon_get_obj("rules.repub", jso);
 
-	if (cJSON_IsTrue(cJSON_GetObjectItem(jso_rule_repub, "enabled"))) {
+	if (cJSON_IsTrue(cJSON_GetObjectItem(jso_rule_repub, "enable"))) {
 		cr->option |= RULE_ENG_RPB;
 	}
 
@@ -888,7 +888,7 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 		repub_t *repub = NNI_ALLOC_STRUCT(repub);
 		hocon_read_bool_base(&re, enabled, "enable", jso_rule);
 		hocon_read_str_base(&re, raw_sql, "sql", jso_rule);
-		hocon_read_str(repub, address, jso_rule);
+		hocon_read_str_base(repub, address, "server", jso_rule);
 		hocon_read_str(repub, topic, jso_rule);
 		hocon_read_num(repub, proto_ver, jso_rule);
 		hocon_read_str(repub, clientid, jso_rule);
@@ -914,7 +914,7 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 	}
 
 	cJSON *jso_rule_mysql = hocon_get_obj("rules.mysql", jso);
-	if (cJSON_IsTrue(cJSON_GetObjectItem(jso_rule_mysql, "enabled"))) {
+	if (cJSON_IsTrue(cJSON_GetObjectItem(jso_rule_mysql, "enable"))) {
 		cr->option |= RULE_ENG_MDB;
 	}
 
@@ -926,7 +926,7 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 	{
 		rule r = { 0 };
 
-		hocon_read_bool(&r, enabled, jso_rule);
+		hocon_read_bool_base(&r, enabled, "enable", jso_rule);
 		hocon_read_str_base(&r, raw_sql, "sql", jso_rule);
 		rule_mysql *mysql = NNI_ALLOC_STRUCT(mysql);
 
