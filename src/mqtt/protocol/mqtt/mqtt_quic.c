@@ -221,7 +221,6 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		return NNG_EPROTO;
 	}
 	if (!p->busy) {
-		nni_mqtt_msg_encode(msg);
 		nni_aio_set_msg(&p->send_aio, msg);
 		p->busy = true;
 		quic_pipe_send(p->qpipe, &p->send_aio);
@@ -294,7 +293,6 @@ mqtt_pipe_send_msg(nni_aio *aio, nni_msg *msg, mqtt_pipe_t *p, uint16_t packet_i
 		return NNG_EPROTO;
 	}
 	if (!p->busy) {
-		nni_mqtt_msg_encode(msg);
 		nni_aio_set_msg(&p->send_aio, msg);
 		p->busy = true;
 		quic_pipe_send(p->qpipe, &p->send_aio);
@@ -343,7 +341,6 @@ mqtt_quic_data_strm_send_cb(void *arg)
 	// this msg is already proessed by mqtt_send_msg
 	if (nni_lmq_get(&p->send_inflight, &msg) == 0) {
 		p->busy = true;
-		nni_mqtt_msg_encode(msg);
 		nni_aio_set_msg(&p->send_aio, msg);
 		quic_pipe_send(p->qpipe, &p->send_aio);
 		nni_mtx_unlock(&p->lk);
@@ -404,7 +401,6 @@ mqtt_quic_send_cb(void *arg)
 	// this msg is already proessed by mqtt_send_msg
 	if (nni_lmq_get(&s->send_messages, &msg) == 0) {
 		p->busy = true;
-		nni_mqtt_msg_encode(msg);
 		nni_aio_set_msg(&p->send_aio, msg);
 		quic_pipe_send(p->qpipe, &p->send_aio);
 		nni_mtx_unlock(&s->mtx);
@@ -927,7 +923,6 @@ mqtt_timer_cb(void *arg)
 		if (!p->busy) {
 			p->busy = true;
 			nni_msg_clone(msg);
-			nni_mqtt_msg_encode(msg);
 			aio = nni_mqtt_msg_get_aio(msg);
 			if (aio) {
 				nni_aio_bump_count(aio,
@@ -1348,6 +1343,7 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 		nni_aio_finish_error(aio, NNG_EPROTO);
 		return;
 	}
+	nni_mqtt_msg_encode(msg);
 
 	if (p == NULL || p->ready == false) {
 		// connection is lost or not established yet
@@ -1369,7 +1365,8 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 			}
 		}
 #endif
-		if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNECT && !nni_list_active(&s->send_queue, aio)) {
+		if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNECT &&
+		    !nni_list_active(&s->send_queue, aio)) {
 			// cache aio
 			nni_list_append(&s->send_queue, aio);
 			nni_mtx_unlock(&s->mtx);
@@ -1712,7 +1709,6 @@ mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 	}
 
 	if (!p->busy) {
-		nni_mqtt_msg_encode(msg);
 		nni_aio_set_msg(&new_pipe->send_aio, msg);
 		p->busy = true;
 		quic_pipe_send(new_pipe->qpipe, &new_pipe->send_aio);
