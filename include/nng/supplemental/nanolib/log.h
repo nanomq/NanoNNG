@@ -49,7 +49,7 @@ NNG_DECL int  log_add_fp(FILE *fp, int level, void *mtx, conf_log *config);
 NNG_DECL void log_add_syslog(const char *log_name, uint8_t level, void *mtx);
 NNG_DECL void log_log(int level, const char *file, int line, const char *func,
     const char *fmt, ...);
-
+NNG_DECL void log_clear_callback();
 #ifdef ENABLE_LOG
 
 #define log_trace(...) \
