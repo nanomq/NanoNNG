@@ -71,7 +71,9 @@
 
 #include <stdio.h>
 #include "nng/supplemental/nanolib/cJSON.h"
+#include "nng/supplemental/nanolib/cvector.h"
 #include <string.h>
+#include <stdlib.h>
 // #define YYDEBUG 1
 
 extern int yylex();
@@ -82,14 +84,15 @@ struct jso_kv {
 };
 
 
-extern void jso_kv_free(struct jso_kv* kv);
-extern struct jso_kv* jso_kv_new(char *key, struct cJSON *val);
-extern char * remove_white_space(char *str);
+extern void jso_kv_free(struct jso_kv *kv);
+extern struct jso_kv *jso_kv_new(char *key, struct cJSON *val);
+extern char *remove_white_space(char *str);
+extern char *remove_escape(char *str);
 extern void yyerror(struct cJSON** jso, const char*);
 extern int hocon_parse(int argc, char **argv);
 
 
-#line 92 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 92 "nng/src/supplemental/nanolib/parser.c"
 
 # ifndef YY_CAST
 #  ifdef __cplusplus
@@ -532,9 +535,9 @@ static const yytype_int8 yytranslate[] =
 /* YYRLINE[YYN] -- Source line where rule number YYN was defined.  */
 static const yytype_int8 yyrline[] =
 {
-       0,    54,    54,    57,    58,    59,    65,    66,    67,    68,
-      69,    70,    71,    72,    73,    76,    77,    78,    81,    86,
-      87,    90,    95,    96,    97,   100,   101,   104,   105,   106
+       0,    57,    57,    60,    61,    62,    68,    69,    70,    71,
+      72,    73,    74,    75,    76,    79,    80,    81,    84,    89,
+      90,    93,    99,   100,   101,   104,   105,   108,   109,   110
 };
 #endif
 
@@ -1130,104 +1133,104 @@ yyreduce:
   switch (yyn)
     {
   case 2: /* json: value  */
-#line 54 "parser.y"
+#line 57 "parser.y"
              {*jso =  (yyvsp[0].jsonval);}
-#line 1135 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1138 "nng/src/supplemental/nanolib/parser.c"
     break;
 
   case 3: /* value: object  */
 #line 57 "parser.y"
                    { (yyval.jsonval) = (yyvsp[0].jsonval);}
-#line 1141 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1141 "nng/src/supplemental/nanolib/parser.c"
     break;
 
   case 4: /* value: array  */
 #line 58 "parser.y"
                    { (yyval.jsonval) = (yyvsp[0].jsonval);}
-#line 1147 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1147 "nng/src/supplemental/nanolib/parser.c"
     break;
 
   case 5: /* value: STRING  */
 #line 59 "parser.y"
                    { 
-                        char *str = strdup((yyvsp[0].strval)); free((yyvsp[0].strval)); 
-                        char *p = str; str++; int len = strlen(str); 
-                        str[len-1] = '\0'; (yyval.jsonval) = cJSON_CreateString(str); 
-                        free(p);
+                        char *str = remove_escape((yyvsp[0].strval));
+                        free((yyvsp[0].strval));
+                        (yyval.jsonval) = cJSON_CreateString(str); 
+                        free(str);
                    }
-#line 1158 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1158 "nng/src/supplemental/nanolib/parser.c"
     break;
 
   case 6: /* value: USTRING  */
 #line 65 "parser.y"
                    { (yyval.jsonval) = cJSON_CreateString((yyvsp[0].strval)); free((yyvsp[0].strval));}
-#line 1164 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1164 "nng/src/supplemental/nanolib/parser.c"
     break;
 
   case 7: /* value: DECIMAL  */
 #line 66 "parser.y"
                    { (yyval.jsonval) = cJSON_CreateNumber((yyvsp[0].floatval)); }
-#line 1170 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1170 "nng/src/supplemental/nanolib/parser.c"
     break;
 
   case 8: /* value: INTEGER  */
 #line 67 "parser.y"
                    { (yyval.jsonval) = cJSON_CreateNumber((yyvsp[0].intval)); }
-#line 1176 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1176 "nng/src/supplemental/nanolib/parser.c"
     break;
 
   case 9: /* value: VTRUE  */
 #line 68 "parser.y"
                    { (yyval.jsonval) = cJSON_CreateTrue(); }
-#line 1182 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1182 "nng/src/supplemental/nanolib/parser.c"
     break;
 
   case 10: /* value: VFALSE  */
 #line 69 "parser.y"
                    { (yyval.jsonval) = cJSON_CreateFalse(); }
-#line 1188 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1188 "nng/src/supplemental/nanolib/parser.c"
     break;
 
   case 11: /* value: VNULL  */
 #line 70 "parser.y"
                    { (yyval.jsonval) = cJSON_CreateNull(); }
-#line 1194 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1194 "nng/src/supplemental/nanolib/parser.c"
     break;
 
   case 12: /* value: BYTESIZE  */
 #line 71 "parser.y"
                    { (yyval.jsonval) = cJSON_CreateString((yyvsp[0].strval)); free((yyvsp[0].strval));}
-#line 1200 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1200 "nng/src/supplemental/nanolib/parser.c"
     break;
 
   case 13: /* value: DURATION  */
 #line 72 "parser.y"
                    { (yyval.jsonval) = cJSON_CreateString((yyvsp[0].strval)); free((yyvsp[0].strval));}
-#line 1206 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1206 "nng/src/supplemental/nanolib/parser.c"
     break;
 
   case 14: /* value: PERCENT  */
 #line 73 "parser.y"
                    { (yyval.jsonval) = cJSON_CreateString((yyvsp[0].strval)); free((yyvsp[0].strval));}
-#line 1212 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1212 "nng/src/supplemental/nanolib/parser.c"
     break;
 
   case 15: /* object: LCURLY RCURLY  */
 #line 76 "parser.y"
                                 { printf("[]\n");}
-#line 1218 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1218 "nng/src/supplemental/nanolib/parser.c"
     break;
 
   case 16: /* object: LCURLY members RCURLY  */
 #line 77 "parser.y"
                                 { (yyval.jsonval) = (yyvsp[-1].jsonval); }
-#line 1224 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1224 "nng/src/supplemental/nanolib/parser.c"
     break;
 
   case 17: /* object: members  */
 #line 78 "parser.y"
                                 { (yyval.jsonval) = (yyvsp[0].jsonval); }
-#line 1230 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1230 "nng/src/supplemental/nanolib/parser.c"
     break;
 
   case 18: /* members: member  */
@@ -1237,81 +1240,82 @@ yyreduce:
                                         cJSON_AddItemToObject((yyval.jsonval), (yyvsp[0].jkval)->key, (yyvsp[0].jkval)->val); 
                                         jso_kv_free((yyvsp[0].jkval));
                                 }
-#line 1240 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1240 "nng/src/supplemental/nanolib/parser.c"
     break;
 
   case 19: /* members: members COMMA member  */
 #line 86 "parser.y"
                                 { cJSON_AddItemToObject((yyval.jsonval), (yyvsp[0].jkval)->key, (yyvsp[0].jkval)->val); jso_kv_free((yyvsp[0].jkval));}
-#line 1246 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1246 "nng/src/supplemental/nanolib/parser.c"
     break;
 
   case 20: /* members: members member  */
 #line 87 "parser.y"
                                 { cJSON_AddItemToObject((yyval.jsonval), (yyvsp[0].jkval)->key, (yyvsp[0].jkval)->val); jso_kv_free((yyvsp[0].jkval));}
-#line 1252 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1252 "nng/src/supplemental/nanolib/parser.c"
     break;
 
   case 21: /* member: STRING PUNCT value  */
 #line 90 "parser.y"
                                         { 
-                                                char *str = strdup((yyvsp[-2].strval) + 1); 
-                                                int len = strlen(str); free((yyvsp[-2].strval));
-                                                str[len-1] = '\0'; (yyval.jkval) = jso_kv_new(str, (yyvsp[0].jsonval));
+
+                                                char *str = remove_escape((yyvsp[-2].strval));
+                                                free((yyvsp[-2].strval));
+                                                (yyval.jkval) = jso_kv_new(str, (yyvsp[0].jsonval));
                                         }
-#line 1261 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1261 "nng/src/supplemental/nanolib/parser.c"
     break;
 
   case 22: /* member: USTRING PUNCT value  */
-#line 95 "/home/lee/workspace/hocon/parser.y"
+#line 95 "parser.y"
                                         { (yyval.jkval) = jso_kv_new(remove_white_space((yyvsp[-2].strval)), (yyvsp[0].jsonval));}
-#line 1268 "/home/lee/workspace/hocon/build/parser.c"
+#line 1268 "parser.c"
     break;
 
   case 23: /* member: USTRING LCURLY value RCURLY  */
-#line 96 "/home/lee/workspace/hocon/parser.y"
+#line 100 "parser.y"
                                         { (yyval.jkval) = jso_kv_new(remove_white_space((yyvsp[-3].strval)), (yyvsp[-1].jsonval));}
-#line 1274 "/home/lee/workspace/hocon/build/parser.c"
+#line 1278 "parser.c"
     break;
 
   case 24: /* member: USTRING LBRAC values RBRAC  */
-#line 97 "/home/lee/workspace/hocon/parser.y"
+#line 101 "parser.y"
                                         { (yyval.jkval) = jso_kv_new(remove_white_space((yyvsp[-3].strval)), (yyvsp[-1].jsonval));}
-#line 1280 "/home/lee/workspace/hocon/build/parser.c"
+#line 1284 "parser.c"
     break;
 
   case 25: /* array: LBRAC RBRAC  */
-#line 99 "parser.y"
+#line 104 "parser.y"
                                  { printf("[]\n");}
-#line 1285 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1290 "parser.c"
     break;
 
   case 26: /* array: LBRAC values RBRAC  */
-#line 100 "parser.y"
+#line 105 "parser.y"
                                  { (yyval.jsonval) = (yyvsp[-1].jsonval);}
-#line 1291 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1296 "parser.c"
     break;
 
   case 27: /* values: value  */
-#line 103 "parser.y"
+#line 108 "parser.y"
                                  { (yyval.jsonval) = cJSON_CreateArray(); cJSON_AddItemToArray((yyval.jsonval), (yyvsp[0].jsonval));}
-#line 1297 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1302 "parser.c"
     break;
 
   case 28: /* values: values COMMA value  */
-#line 104 "parser.y"
+#line 109 "parser.y"
                                  { cJSON_AddItemToArray((yyval.jsonval), (yyvsp[0].jsonval));}
-#line 1303 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1308 "parser.c"
     break;
 
   case 29: /* values: values value  */
-#line 105 "parser.y"
+#line 110 "parser.y"
                            { cJSON_AddItemToArray((yyval.jsonval), (yyvsp[0].jsonval));}
-#line 1309 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1314 "parser.c"
     break;
 
 
-#line 1313 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/parser.c"
+#line 1318 "parser.c"
 
       default: break;
     }
@@ -1504,7 +1508,7 @@ yyreturnlab:
   return yyresult;
 }
 
-#line 109 "parser.y"
+#line 114 "parser.y"
 
 
 
@@ -1540,6 +1544,23 @@ char *remove_white_space(char *str)
         }
         *(str+1) = '\0';
         return ret;
+}
+
+char *remove_escape(char *str)
+{
+        str++;
+        char *ret = NULL;
+        while ('\0' != *str) {
+                if ('\\' != *str) {
+                        cvector_push_back(ret, *str);
+                }
+                str++;
+        }
+        cvector_pop_back(ret);
+        cvector_push_back(ret, '\0');
+        char *res = strdup(ret);
+        cvector_free(ret);
+        return res;
 }
 
 
