@@ -177,6 +177,12 @@ log_add_callback(
 	return -1;
 }
 
+void
+log_clear_callback()
+{
+	memset(L.callbacks, 0, sizeof(log_callback) * MAX_CALLBACKS);
+}
+
 static void
 file_rotation(FILE *fp, conf_log *config)
 {
