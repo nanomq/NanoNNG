@@ -413,7 +413,6 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 	}
 	if (!p->busy) {
 		p->busy = true;
-		// nni_mqtt_msg_encode(msg);
 		nni_aio_set_msg(&p->send_aio, msg);
 		nni_aio_bump_count(
 		    aio, nni_msg_header_len(msg) + nni_msg_len(msg));
@@ -591,7 +590,6 @@ mqtt_timer_cb(void *arg)
 		if (!p->busy) {
 			p->busy = true;
 			nni_msg_clone(msg);
-			// nni_mqtt_msg_encode(msg);
 			aio = nni_mqtt_msg_get_aio(msg);
 			if (aio) {
 				nni_aio_bump_count(aio,
@@ -652,7 +650,6 @@ mqtt_send_cb(void *arg)
 	}
 	if (nni_lmq_get(&p->send_messages, &msg) == 0) {
 		p->busy = true;
-		// nni_mqtt_msg_encode(msg);
 		nni_aio_set_msg(&p->send_aio, msg);
 		nni_pipe_send(p->pipe, &p->send_aio);
 		nni_mtx_unlock(&s->mtx);
