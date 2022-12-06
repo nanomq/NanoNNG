@@ -1,4 +1,5 @@
 #include "core/nng_impl.h"
+
 #include "nng/nng.h"
 #include "nng/supplemental/nanolib/acl_conf.h"
 #include "nng/supplemental/nanolib/cJSON.h"
@@ -50,7 +51,7 @@ cJSON *hocon_get_obj(char *key, cJSON *jso);
 	do {                                                          \
 		cJSON *jso_key = cJSON_GetObjectItem(jso, key);       \
 		if (NULL == jso_key) {                                \
-			log_error("Read config %s failed!", key);     \
+			log_debug("Config %s is not set, use default!", key);     \
 			break;                                        \
 		}                                                     \
 		if (cJSON_IsString(jso_key)) {                        \
@@ -75,7 +76,7 @@ compose_url(char *head, char *address)
 	do {                                                                 \
 		cJSON *jso_key = cJSON_GetObjectItem(jso, key);              \
 		if (NULL == jso_key) {                                       \
-			log_error("Read config %s failed!", key);            \
+			log_debug("Config %s is not set, use default!", key);            \
 			break;                                               \
 		}                                                            \
 		if (cJSON_IsString(jso_key)) {                               \
@@ -91,7 +92,7 @@ compose_url(char *head, char *address)
 	do {                                                              \
 		cJSON *jso_key = cJSON_GetObjectItem(jso, key);           \
 		if (NULL == jso_key) {                                    \
-			log_error("Read config %s failed!", key);         \
+			log_debug("Config %s is not set, use default!", key);         \
 			break;                                            \
 		}                                                         \
 		if (cJSON_IsString(jso_key)) {                            \
@@ -107,7 +108,7 @@ compose_url(char *head, char *address)
 	do {                                                        \
 		cJSON *jso_key = cJSON_GetObjectItem(jso, key);     \
 		if (NULL == jso_key) {                              \
-			log_error("Read config %s failed!", key);   \
+			log_debug("Config %s is not set, use default!", key);   \
 			break;                                      \
 		}                                                   \
 		if (cJSON_IsBool(jso_key)) {                        \
@@ -119,7 +120,7 @@ compose_url(char *head, char *address)
 	do {                                                            \
 		cJSON *jso_key = cJSON_GetObjectItem(jso, key);         \
 		if (NULL == jso_key) {                                  \
-			log_error("Read config %s failed!", key);       \
+			log_debug("Config %s is not set, use default!", key);       \
 			break;                                          \
 		}                                                       \
 		if (cJSON_IsNumber(jso_key)) {                          \
@@ -153,7 +154,7 @@ compose_url(char *head, char *address)
 	do {                                                                 \
 		cJSON *jso_arr = cJSON_GetObjectItem(jso, key);              \
 		if (NULL == jso_arr) {                                       \
-			log_error("Read config %s failed!", key);            \
+			log_debug("Config %s is not set, use default!", key);            \
 			break;                                               \
 		}                                                            \
 		cJSON *elem = NULL;                                          \
@@ -322,7 +323,6 @@ static void
 conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 {
 	hocon_read_bool(tls, enable, jso_tls);
-	hocon_read_str(tls, key_password, jso_tls);
 	hocon_read_str(tls, keyfile, jso_tls);
 	hocon_read_str(tls, certfile, jso_tls);
 	hocon_read_str_base(tls, cafile, "cacertfile", jso_tls);
@@ -352,6 +352,7 @@ conf_tls_parse_ver2(conf *config, cJSON *jso)
 
 	conf_tls *tls = &(config->tls);
 	conf_tls_parse_ver2_base(tls, jso_tls);
+	hocon_read_str(tls, key_password, jso_tls);
 	hocon_read_address_base(tls, url, "bind", "tls+nmq-tcp://", jso_tls);
 	return;
 }
@@ -515,11 +516,10 @@ conf_webhook_parse_ver2(conf *config, cJSON *jso)
 	hocon_read_enum_base(webhook, encode_payload, "body.encoding",
 	    jso_webhook, webhook_encoding);
 
-	cJSON *   jso_webhook_tls = hocon_get_obj("tls", jso_webhook);
+	cJSON *   jso_webhook_tls = hocon_get_obj("ssl", jso_webhook);
 	conf_tls *webhook_tls     = &(webhook->tls);
 	hocon_read_bool(webhook_tls, enable, jso_webhook_tls);
 	hocon_read_str(webhook_tls, key_password, jso_webhook_tls);
-	hocon_read_str(webhook_tls, keyfile, jso_webhook_tls);
 	hocon_read_str(webhook_tls, keyfile, jso_webhook_tls);
 	hocon_read_str(webhook_tls, certfile, jso_webhook_tls);
 	hocon_read_str_base(
@@ -623,11 +623,10 @@ conf_auth_http_req_parse_ver2(conf_auth_http_req *config, cJSON *jso)
 	}
 	config->param_count = cvector_size(config->params);
 
-	cJSON *   jso_http_req_tls = hocon_get_obj("tls", jso);
+	cJSON *   jso_http_req_tls = hocon_get_obj("ssl", jso);
 	conf_tls *http_req_tls     = &(config->tls);
 	hocon_read_bool(http_req_tls, enable, jso_http_req_tls);
 	hocon_read_str(http_req_tls, key_password, jso_http_req_tls);
-	hocon_read_str(http_req_tls, keyfile, jso_http_req_tls);
 	hocon_read_str(http_req_tls, keyfile, jso_http_req_tls);
 	hocon_read_str(http_req_tls, certfile, jso_http_req_tls);
 	hocon_read_str_base(
@@ -698,13 +697,13 @@ conf_bridge_quic_parse_ver2(conf_bridge_node *node, cJSON *jso_bridge_node)
 			node->qcongestion_control = 0;
 		} else {
 			node->qcongestion_control = 1;
-			log_warn("unsupport congestion control "
+			log_error("unsupport congestion control "
 			         "algorithm, use "
 			         "default bbr!");
 		}
 	} else {
 		node->qcongestion_control = 1;
-		log_warn("Unsupport congestion control algorithm, use "
+		log_error("Unsupport congestion control algorithm, use "
 		         "default bbr!");
 	}
 }
@@ -1051,10 +1050,11 @@ conf_authorization_prase_ver2(conf *config, cJSON *jso)
 void
 conf_parse_ver2(conf *config)
 {
+	log_add_console(NNG_LOG_INFO, NULL);
 	const char *conf_path = config->conf_file;
 	if (conf_path == NULL || !nano_file_exists(conf_path)) {
 		if (!nano_file_exists(CONF_PATH_NAME)) {
-			log_warn("Configure file [%s] or [%s] not found or "
+			log_error("Configure file [%s] or [%s] not found or "
 			          "unreadable",
 			    conf_path, CONF_PATH_NAME);
 			return;
@@ -1084,6 +1084,8 @@ conf_parse_ver2(conf *config)
 
 		cJSON_Delete(jso);
 	}
+
+	log_clear_callback();
 
 	return;
 }
