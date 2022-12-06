@@ -68,7 +68,7 @@ struct mqtt_ctx_s {
 
 // A mqtt_pipe_s is our per-pipe protocol private structure.
 struct mqtt_pipe_s {
-	nni_atomic_bool closed;
+	nni_atomic_bool closed;			// indicates mqtt connection status
 	nni_atomic_int  next_packet_id; // next packet id to use
 	nni_pipe *      pipe;
 	mqtt_sock_t *   mqtt_sock;
@@ -355,9 +355,13 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 	nni_msg *        msg   = NULL;
 	nni_msg *        tmsg  = NULL;
 
-	if (p == NULL || nni_atomic_get_bool(&p->closed)) {
+	if (p == NULL) {
 		// pipe closed, should never gets here
-		nni_println("Sendong msg on a closed pipe!");
+		nni_println("Sendong msg on a NULL pipe!");
+		goto out;
+	}
+	if (nni_atomic_get_bool(&p->closed)) {
+		// sending msg on a closed pipe
 		goto out;
 	}
 	if (NULL == aio || NULL == (msg = nni_aio_get_msg(aio))) {
@@ -511,6 +515,7 @@ mqtt_pipe_close(void *arg)
 
 	nni_mtx_lock(&s->mtx);
 	nni_atomic_set_bool(&p->closed, true);
+	s->mqtt_pipe = NULL;
 	nni_aio_close(&p->send_aio);
 	nni_aio_close(&p->recv_aio);
 	nni_aio_close(&p->time_aio);
@@ -941,7 +946,7 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 		return;
 	}
 	nni_mqtt_msg_encode(msg);
-	if (p == NULL || nni_atomic_get_bool(&p->closed)) {
+	if (p == NULL) {
 		// connection is lost or not established yet
 #if defined(NNG_SUPP_SQLITE)
 		nni_mqtt_sqlite_option *sqlite =
