@@ -198,24 +198,25 @@ typedef struct {
 
 struct conf_bridge_node {
 	bool         enable;
+	bool         clean_start;
+	void        *sock;
+	uint8_t      proto_ver;
+	uint16_t     port;
+	uint16_t     keepalive;
+	size_t       sub_count;
+	size_t       forwards_count;
 	char        *name;
 	char        *address;
 	char        *host;
-	uint16_t     port;
-	uint8_t      proto_ver;
 	char        *clientid;
-	bool         clean_start;
 	char        *username;
 	char        *password;
-	uint16_t     keepalive;
-	size_t       forwards_count;
-	char **      forwards;
-	size_t       sub_count;
-	subscribe *  sub_list;
+	char       **forwards;
 	uint64_t     parallel;
+	subscribe   *sub_list;
 	conf_tls     tls;
-	void *       sock;
 	conf_sqlite *sqlite;
+	nng_aio     *bridge_aio;
 
 #if defined(SUPP_QUIC)
 	// config params for QUIC only
