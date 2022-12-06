@@ -1103,16 +1103,6 @@ nni_mqtt_qos_db_set_client_info(sqlite3 *db, const char *config_name,
 static uint8_t *
 nni_mqtt_msg_serialize(nni_msg *msg, size_t *out_len, uint8_t proto_ver)
 {
-	// int rv;
-	// if ((rv = nni_mqtt_msg_encode(msg)) != 0) {
-	// 	printf("nni_mqtt_msg_encode failed: %d\n", rv);
-	// 	return NULL;
-	// }
-	if (proto_ver == MQTT_PROTOCOL_VERSION_v5) {
-		nni_mqttv5_msg_encode(msg);
-	} else {
-		nni_mqtt_msg_encode(msg);
-	}
 
 	size_t len = nni_msg_header_len(msg) + nni_msg_len(msg) +
 	    (sizeof(uint32_t) * 2) + sizeof(nni_time) + sizeof(nni_aio *);
