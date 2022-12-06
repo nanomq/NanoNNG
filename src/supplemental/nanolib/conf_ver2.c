@@ -326,17 +326,19 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 	hocon_read_str(tls, keyfile, jso_tls);
 	hocon_read_str(tls, certfile, jso_tls);
 	hocon_read_str_base(tls, cafile, "cacertfile", jso_tls);
-	hocon_read_bool(tls, verify_peer, jso_tls);
-	hocon_read_bool_base(tls, set_fail, "fail_if_no_peer_cert", jso_tls);
+	hocon_read_str(tls, key_password, jso_tls);
 
-	if (0 == file_load_data(tls->keyfile, (void **) &tls->key)) {
-		log_error("Read %s failed!", tls->keyfile);
-	}
-	if (0 == file_load_data(tls->certfile, (void **) &tls->cert)) {
-		log_error("Read %s failed!", tls->certfile);
-	}
-	if (0 == file_load_data(tls->cafile, (void **) &tls->ca)) {
-		log_error("Read %s failed!", tls->cafile);
+	if (tls->enable) {
+		if (NULL == tls->keyfile || 0 == file_load_data(tls->keyfile, (void **) &tls->key)) {
+			log_error("Read keyfile %s failed!", tls->keyfile);
+		}
+		if (NULL == tls->certfile || 0 == file_load_data(tls->certfile, (void **) &tls->cert)) {
+			log_error("Read certfile %s failed!", tls->certfile);
+		}
+		if (NULL == tls->cafile || 0 == file_load_data(tls->cafile, (void **) &tls->ca)) {
+			log_error("Read cacertfile %s failed!", tls->cafile);
+		}
+
 	}
 
 	return;
@@ -346,13 +348,14 @@ conf_tls_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *jso_tls = hocon_get_obj("listeners.ssl", jso);
 	if (NULL == jso_tls) {
-		log_error("Read config tls failed!");
+		log_error("Read config ssl failed!");
 		return;
 	}
 
 	conf_tls *tls = &(config->tls);
 	conf_tls_parse_ver2_base(tls, jso_tls);
-	hocon_read_str(tls, key_password, jso_tls);
+	hocon_read_bool(tls, verify_peer, jso_tls);
+	hocon_read_bool_base(tls, set_fail, "fail_if_no_peer_cert", jso_tls);
 	hocon_read_address_base(tls, url, "bind", "tls+nmq-tcp://", jso_tls);
 	return;
 }
@@ -518,13 +521,7 @@ conf_webhook_parse_ver2(conf *config, cJSON *jso)
 
 	cJSON *   jso_webhook_tls = hocon_get_obj("ssl", jso_webhook);
 	conf_tls *webhook_tls     = &(webhook->tls);
-	hocon_read_bool(webhook_tls, enable, jso_webhook_tls);
-	hocon_read_str(webhook_tls, key_password, jso_webhook_tls);
-	hocon_read_str(webhook_tls, keyfile, jso_webhook_tls);
-	hocon_read_str(webhook_tls, certfile, jso_webhook_tls);
-	hocon_read_str_base(
-	    webhook_tls, cafile, "cacertfile", jso_webhook_tls);
-
+	conf_tls_parse_ver2_base(webhook_tls, jso_webhook_tls);
 	conf_web_hook_parse_rules_ver2(config, jso);
 
 	return;
@@ -625,12 +622,7 @@ conf_auth_http_req_parse_ver2(conf_auth_http_req *config, cJSON *jso)
 
 	cJSON *   jso_http_req_tls = hocon_get_obj("ssl", jso);
 	conf_tls *http_req_tls     = &(config->tls);
-	hocon_read_bool(http_req_tls, enable, jso_http_req_tls);
-	hocon_read_str(http_req_tls, key_password, jso_http_req_tls);
-	hocon_read_str(http_req_tls, keyfile, jso_http_req_tls);
-	hocon_read_str(http_req_tls, certfile, jso_http_req_tls);
-	hocon_read_str_base(
-	    http_req_tls, cafile, "cacertfile", jso_http_req_tls);
+	conf_tls_parse_ver2_base(http_req_tls, jso_http_req_tls);
 }
 
 static void
@@ -820,15 +812,7 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 		cJSON *bridge_aws_node_tls =
 		    hocon_get_obj("ssl", bridge_aws_node);
 		conf_tls *bridge_node_tls = &(node->tls);
-		hocon_read_bool(bridge_node_tls, enable, bridge_aws_node_tls);
-		hocon_read_str(
-		    bridge_node_tls, key_password, bridge_aws_node_tls);
-		hocon_read_str(bridge_node_tls, keyfile, bridge_aws_node_tls);
-		hocon_read_str(bridge_node_tls, keyfile, bridge_aws_node_tls);
-		hocon_read_str(bridge_node_tls, certfile, bridge_aws_node_tls);
-		hocon_read_str_base(bridge_node_tls, cafile, "cacertfile",
-		    bridge_aws_node_tls);
-
+		conf_tls_parse_ver2_base(bridge_node_tls, bridge_aws_node_tls);
 		cvector_push_back(config->aws_bridge.nodes, node);
 	}
 
