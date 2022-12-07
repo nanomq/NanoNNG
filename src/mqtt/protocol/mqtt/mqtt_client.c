@@ -923,7 +923,8 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 	mqtt_ctx_t * ctx = arg;
 	mqtt_sock_t *s   = ctx->mqtt_sock;
 	mqtt_pipe_t *p;
-	nni_msg *    msg;
+	nni_msg     *msg;
+	uint8_t      qos;
 	uint16_t     packet_id;
 
 	if (nni_aio_begin(aio) != 0) {
@@ -950,11 +951,10 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 	switch (ptype)
 	{
 	case NNG_MQTT_PUBLISH:
-		uint8_t qos = nni_mqtt_msg_get_publish_qos(msg);
+		qos = nni_mqtt_msg_get_publish_qos(msg);
 		if (qos == 0) {
 			break;
 		}
-		break;
 	case NNG_MQTT_SUBSCRIBE:
 	case NNG_MQTT_UNSUBSCRIBE:
 		packet_id = mqtt_pipe_get_next_packet_id(p);
