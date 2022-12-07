@@ -195,8 +195,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		}
 	case NNG_MQTT_SUBSCRIBE:
 	case NNG_MQTT_UNSUBSCRIBE:
-		packet_id     = mqtt_pipe_get_next_packet_id(p);
-		nni_mqtt_msg_set_packet_id(msg, packet_id);
+		packet_id = nni_mqtt_msg_get_packet_id(msg);
 		nni_mqtt_msg_set_aio(msg, aio);
 		tmsg = nni_id_get(&p->sent_unack, packet_id);
 		if (tmsg != NULL) {
@@ -1322,8 +1321,9 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 	mqtt_quic_ctx *ctx = arg;
 	mqtt_sock_t   *s   = ctx->mqtt_sock;
 	mqtt_pipe_t   *p   = s->pipe;
-	nni_msg *msg;
-	int rv;
+	nni_msg       *msg;
+	uint16_t       packet_id;
+	int            rv;
 
 	if (nni_aio_begin(aio) != 0) {
 		return;
@@ -1342,6 +1342,23 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 		nni_mtx_unlock(&s->mtx);
 		nni_aio_finish_error(aio, NNG_EPROTO);
 		return;
+	}
+	nni_mqtt_packet_type ptype = nni_mqtt_msg_get_packet_type(msg);
+	switch (ptype)
+	{
+	case NNG_MQTT_PUBLISH:
+		uint8_t qos = nni_mqtt_msg_get_publish_qos(msg);
+		if (qos == 0) {
+			break;
+		}
+		break;
+	case NNG_MQTT_SUBSCRIBE:
+	case NNG_MQTT_UNSUBSCRIBE:
+		packet_id = mqtt_pipe_get_next_packet_id(p);
+		nni_mqtt_msg_set_packet_id(msg, packet_id);
+		break;
+	default:
+		break;
 	}
 	nni_mqtt_msg_encode(msg);
 
@@ -1402,7 +1419,7 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 
 	if (s->bridge_conf && s->bridge_conf->multi_stream &&
 	    nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_SUBSCRIBE) {
-		mqtt_sub_stream(p, msg, mqtt_pipe_get_next_packet_id(p), aio);
+		mqtt_sub_stream(p, msg, packet_id, aio);
 	} else if ((rv = mqtt_send_msg(aio, msg, s)) >= 0) {
 		nni_mtx_unlock(&s->mtx);
 		// nni_aio_set_msg(aio, NULL);
