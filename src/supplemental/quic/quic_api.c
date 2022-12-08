@@ -225,7 +225,6 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 			nni_aio_finish_sync(aio, 0, 0);
 			break;
 		}
-		quic_strm_send_start(qstrm);
 		nni_mtx_unlock(&qstrm->mtx);
 		break;
 	case QUIC_STREAM_EVENT_RECEIVE:
@@ -273,10 +272,14 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 		log_warn("[strm][%p] Peer shut down\n", Stream);
 		break;
 	case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
+		// fall through to close the stream
+		log_warn("[strm][%p] QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE.", Stream);
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 		// Both directions of the stream have been shut down and MsQuic
 		// is done with the stream. It can now be safely cleaned up.
-		log_warn("[strm][%p] QUIC_STREAM_EVENT shutdown: All done");
+		log_warn("[strm][%p] QUIC_STREAM_EVENT shutdown: All done.", Stream);
+		log_info("close connection with Error Code: %llu",
+				 (unsigned long long) Event->SHUTDOWN_COMPLETE.ConnectionErrorCode);
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
 			log_warn("close the QUIC stream!");
 			MsQuic->StreamClose(Stream);
@@ -365,7 +368,7 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 		}
 		// Close and finite nng pipe ONCE disconnect
 		if (qstrm->pipe) {
-			log_warn("Quic reconnect failed so disconnected!");
+			log_warn("Quic reconnect failed or disconnected!");
 			pipe_ops->pipe_stop(qstrm->pipe);
 			pipe_ops->pipe_close(qstrm->pipe);
 			pipe_ops->pipe_fini(qstrm->pipe);
@@ -1046,10 +1049,69 @@ quic_strm_send(void *arg, nni_aio *aio)
 int
 quic_strm_close(void *arg)
 {
-	if (!arg)
-		return -1;
-	quic_strm_t *qstrm = arg;
-	quic_strm_fini(qstrm);
-	nng_free(qstrm, sizeof(quic_strm_t));
+// 	if (!arg)
+// 		return -1;
+// 	quic_strm_init(qstrm, qsock);
+
+// 	// Allocate a new bidirectional stream.
+// 	// The stream is just allocated and no QUIC stream identifier
+// 	// is assigned until it's started.
+// 	if (QUIC_FAILED(rv = MsQuic->StreamOpen(qs->qconn,
+// 	        QUIC_STREAM_OPEN_FLAG_NONE, quic_strm_cb, (void *)qstrm, &strm))) {
+// 		log_error("StreamOpen failed, 0x%x!\n", rv);
+// 		goto error;
+// 	}
+// 	log_debug("[strm][%p] Starting...", strm);
+
+// 	// Starts the bidirectional stream.
+// 	// By default, the peer is not notified of the stream being started
+// 	// until data is sent on the stream.
+// 	if (QUIC_FAILED(rv = MsQuic->StreamStart(strm, QUIC_STREAM_START_FLAG_NONE))) {
+// 		log_error("quic stream start failed, 0x%x!\n", rv);
+// 		MsQuic->StreamClose(strm);
+// 		goto error;
+// 	}
+
+// 	// Not ready for receiving
+// 	MsQuic->StreamReceiveSetEnabled(qstrm->stream, FALSE);
+// 	qstrm->closed = false;
+
+// 	log_debug("[strm][%p] Done...\n", strm);
+
+// 	qstrm->stream = strm;
+
+// 	*qpipe = qstrm;
+// 	return 0;
+
+// error:
+// 	nng_free(qstrm, sizeof(quic_strm_t));
+
+// 	return (-2);
+}
+
+int
+quic_pipe_close(uint8_t *code)
+{
+	quic_strm_t        *qstrm    = GStream;
+	nni_aio     *aio;
+	log_debug(" %p quic_pipe_close", qstrm->stream);
+	if (qstrm->closed != true) {
+		qstrm->closed = true;
+		log_warn("close the QUIC stream!");
+		MsQuic->StreamClose(qstrm->stream);
+	}
+
+	// take care of aios
+	while ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
+		nni_list_remove(&qstrm->sendq, aio);
+		nni_aio_abort(aio, NNG_ECANCELED);
+		nni_aio_finish_error(aio, code);
+	}
+	while ((aio = nni_list_first(&qstrm->recvq)) != NULL) {
+		nni_list_remove(&qstrm->recvq, aio);
+		nni_aio_abort(aio, NNG_ECLOSED);
+		nni_aio_finish_error(aio, code);
+	}
+	// quic_strm_fini(qstrm);
 	return 0;
 }
