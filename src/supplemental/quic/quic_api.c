@@ -495,7 +495,7 @@ quic_disconnect(void *qsock)
 	}
 
 	MsQuic->ConnectionShutdown(
-	    qs->qconn, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, NNG_ECONNSHUT);
+	    qs->qconn, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, NNG_ECLOSED);
 	return 0;
 }
 
@@ -640,6 +640,7 @@ error:
 	if (QUIC_FAILED(rv) && conn != NULL) {
 		MsQuic->ConnectionClose(conn);
 	}
+	log_error("reconnect failed");
 	return 0;
 }
 
