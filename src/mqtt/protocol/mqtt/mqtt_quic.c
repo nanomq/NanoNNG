@@ -546,11 +546,14 @@ mqtt_timer_cb(void *arg)
 
 	if (NULL == p || nni_atomic_get_bool(&p->closed)) {
 		nni_mtx_unlock(&s->mtx);
-		// nni_sleep_aio(s->retry * NNI_SECOND, &s->time_aio);
 		return;
 	}
 
 	s->counter += s->retry;
+	if (nni_aio_busy(&p->rep_aio)) {
+		log_error("rep_aio busy! stream is in serious congestion");
+		nni_aio_abort(&p->rep_aio, NNG_ECANCELED);
+	}
 	if (s->counter >= s->keepalive) {
 		// send PINGREQ
 		if (s->pingcnt > 1) {
@@ -879,6 +882,7 @@ quic_mqtt_stream_stop(void *arg)
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
 
+	quic_pipe_close(p->qpipe, &p->reason_code);
 	nni_aio_abort(&p->send_aio, NNG_ECANCELED);
 	// nni_aio_finish_error(&p->send_aio, NNG_ECANCELED);
 	nni_aio_stop(&p->send_aio);
@@ -912,6 +916,10 @@ quic_mqtt_stream_close(void *arg)
 
 	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
 	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
+<<<<<<< HEAD
+=======
+	p->qpipe = NULL;
+>>>>>>> 555a2ee0 ( * FIX [mqtt_quic] close trans_pipe of quic_api first then stop aio.)
 	nni_mtx_unlock(&s->mtx);
 
 	nni_atomic_set_bool(&p->closed, true);
