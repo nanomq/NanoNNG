@@ -357,7 +357,7 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 
 	if (p == NULL) {
 		// pipe closed, should never gets here
-		nni_println("Sendong msg on a NULL pipe!");
+		nni_println("Sending msg on a NULL pipe!");
 		goto out;
 	}
 	if (nni_atomic_get_bool(&p->closed)) {
