@@ -573,33 +573,33 @@ mqtt_timer_cb(void *arg)
 		}
 	}
 
-	// start message resending
-	msg = nni_id_get_min(&p->sent_unack, &pid);
-	if (msg != NULL) {
-		uint16_t ptype;
-		ptype = nni_mqtt_msg_get_packet_type(msg);
-		if (ptype == NNG_MQTT_PUBLISH) {
-			nni_mqtt_msg_set_publish_dup(msg, true);
-		}
-		if (!p->busy) {
-			p->busy = true;
-			nni_msg_clone(msg);
-			nni_mqtt_msg_encode(msg);
-			aio = nni_mqtt_msg_get_aio(msg);
-			if (aio) {
-				nni_aio_bump_count(aio,
-				    nni_msg_header_len(msg) +
-				        nni_msg_len(msg));
-				nni_aio_set_msg(aio, NULL);
-			}
-			nni_aio_set_msg(&p->send_aio, msg);
-			quic_strm_send(p->qstream, &p->send_aio);
+	// // start message resending
+	// msg = nni_id_get_min(&p->sent_unack, &pid);
+	// if (msg != NULL) {
+	// 	uint16_t ptype;
+	// 	ptype = nni_mqtt_msg_get_packet_type(msg);
+	// 	if (ptype == NNG_MQTT_PUBLISH) {
+	// 		nni_mqtt_msg_set_publish_dup(msg, true);
+	// 	}
+	// 	if (!p->busy) {
+	// 		p->busy = true;
+	// 		nni_msg_clone(msg);
+	// 		nni_mqtt_msg_encode(msg);
+	// 		aio = nni_mqtt_msg_get_aio(msg);
+	// 		if (aio) {
+	// 			nni_aio_bump_count(aio,
+	// 			    nni_msg_header_len(msg) +
+	// 			        nni_msg_len(msg));
+	// 			nni_aio_set_msg(aio, NULL);
+	// 		}
+	// 		nni_aio_set_msg(&p->send_aio, msg);
+	// 		quic_strm_send(p->qstream, &p->send_aio);
 
-			nni_mtx_unlock(&s->mtx);
-			nni_sleep_aio(s->retry  * NNI_SECOND, &s->time_aio);
-			return;
-		}
-	}
+	// 		nni_mtx_unlock(&s->mtx);
+	// 		nni_sleep_aio(s->retry  * NNI_SECOND, &s->time_aio);
+	// 		return;
+	// 	}
+	// }
 
 	nni_mtx_unlock(&s->mtx);
 	nni_sleep_aio(s->retry * NNI_SECOND, &s->time_aio);
