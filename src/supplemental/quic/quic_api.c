@@ -1074,6 +1074,7 @@ quic_pipe_close(void *qpipe, uint8_t *code)
 		return -1;
 	quic_strm_t *qstrm = qpipe;
 	nni_aio     *aio;
+
 	log_debug(" %p quic_pipe_close", qstrm->stream);
 	if (qstrm->closed != true) {
 		qstrm->closed = true;
@@ -1084,13 +1085,11 @@ quic_pipe_close(void *qpipe, uint8_t *code)
 	// take care of aios
 	while ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
 		nni_list_remove(&qstrm->sendq, aio);
-		nni_aio_abort(aio, NNG_ECANCELED);
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
 	while ((aio = nni_list_first(&qstrm->recvq)) != NULL) {
 		nni_list_remove(&qstrm->recvq, aio);
-		nni_aio_abort(aio, NNG_ECLOSED);
-		nni_aio_finish_sync(aio, NNG_ECLOSED, 0);
+		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
 	quic_strm_fini(qstrm);
 	nng_free(qstrm, sizeof(quic_strm_t));
