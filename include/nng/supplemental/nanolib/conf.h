@@ -214,6 +214,8 @@ struct conf_bridge_node {
 	conf_tls     tls;
 	void *       sock;
 	conf_sqlite *sqlite;
+	size_t       max_recv_queue_len;
+	size_t       max_send_queue_len;
 };
 
 typedef struct conf_bridge_node conf_bridge_node;
