@@ -1856,6 +1856,14 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 			node->parallel = atoi(value);
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".max_send_queue_len")) != NULL) {
+			node->max_send_queue_len = atoi(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".max_recv_queue_len")) != NULL) {
+			node->max_recv_queue_len = atoi(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".address")) != NULL) {
 			node->address = value;
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
