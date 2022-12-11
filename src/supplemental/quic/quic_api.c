@@ -328,11 +328,6 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		log_debug("stream cb over\n");
 
 		return QUIC_STATUS_PENDING;
-	case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
-		log_warn("[strm][%p] Peer RECEIVE aborted\n", stream);
-		log_info("PEER_RECEIVE_ABORTED Error Code: %llu",
-				 (unsigned long long) Event->PEER_RECEIVE_ABORTED.ErrorCode);
-		break;
 	case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
 		// The peer gracefully shut down its send direction of the stream.
 		log_warn("[strm][%p] Peer SEND aborted\n", stream);
@@ -363,11 +358,29 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		// nni_mtx_unlock(&qstrm->mtx);
 		break;
 	case QUIC_STREAM_EVENT_START_COMPLETE:
-		log_warn("QUIC_STREAM_EVENT_START_COMPLETE");
+		log_info("QUIC_STREAM_EVENT_START_COMPLETE");
 		break;
 	case QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE:
 		log_warn("QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE");
 		break;
+	case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
+		// The peer has requested that we stop sending. Close abortively.
+		log_warn("[strm][%p] Peer RECEIVE aborted\n", stream);
+		log_warn("QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED Error Code: %llu",
+				 (unsigned long long) Event->PEER_RECEIVE_ABORTED.ErrorCode);
+		// Get aio from sendq and finish error
+		nni_mtx_lock(&qstrm->mtx);
+		if ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
+			nni_aio_list_remove(aio);
+			nni_mtx_unlock(&qstrm->mtx);
+			smsg = nni_aio_get_msg(aio);
+			nni_msg_free(smsg);
+			nni_aio_finish_error(aio, ECONNABORTED);
+			break;
+		}
+		nni_mtx_unlock(&qstrm->mtx);
+		break;
+
 	default:
 		log_warn("Unknown Event Type %d", Event->Type);
 		break;
