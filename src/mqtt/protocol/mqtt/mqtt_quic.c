@@ -131,6 +131,26 @@ static inline void
 mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
 {
 	if (0 != nni_lmq_put(&p->recv_messages, msg)) {
+		if (p->mqtt_sock->conf_bridge_node->max_recv_queue_len !=
+		    nni_lmq_cap(&p->recv_messages)) {
+			if (0 !=
+			    nni_lmq_resize(&p->recv_messages,
+			        p->mqtt_sock->conf_bridge_node
+			            ->max_recv_queue_len)) {
+				log_error("Resize receive max queue error!");
+			} else {
+				log_debug("Resize receive message queue "
+				         "capacity to %d",
+				    nni_lmq_cap(&p->recv_messages));
+				if (0 == nni_lmq_put(&p->recv_messages, msg)) {
+					return;
+				}
+				log_error(
+				    "Message dropped due to receive "
+				    "message queue is full!");
+			}
+		}
+
 		// resize to ensure we do not lost messages or just lose it?
 		// add option to drop messages
 		// if (0 !=
@@ -227,14 +247,14 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		p->busy = true;
 		quic_pipe_send(p->qpipe, &p->send_aio);
 	} else {
-		if (s->conf_bridge_node->max_send_queue_len != nni_lmq_len(&s->send_messages)) {
-			log_error("Resize as %d", nni_lmq_len(&s->send_messages));
+		if (s->conf_bridge_node->max_send_queue_len != nni_lmq_cap(&s->send_messages)) {
 			nni_lmq_resize(&s->send_messages, s->conf_bridge_node->max_send_queue_len);
+			log_error("Resize as %d", nni_lmq_cap(&s->send_messages));
 		}
 
 		if (nni_lmq_full(&s->send_messages)) {
-			log_error("Resize as %d", nni_lmq_len(&s->send_messages));
 			(void) nni_lmq_get(&s->send_messages, &tmsg);
+			log_debug("Resize as %d", nni_lmq_len(&s->send_messages));
 			log_warn("msg lost due to flight window is full");
 			nni_msg_free(tmsg);
 		}
