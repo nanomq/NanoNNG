@@ -128,11 +128,11 @@ static inline void
 mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
 {
 	if (0 != nni_lmq_put(&p->recv_messages, msg)) {
-		if (p->mqtt_sock->conf_bridge_node->max_recv_queue_len !=
+		if (p->mqtt_sock->bridge_conf->max_recv_queue_len !=
 		    nni_lmq_cap(&p->recv_messages)) {
 			if (0 !=
 			    nni_lmq_resize(&p->recv_messages,
-			        p->mqtt_sock->conf_bridge_node
+			        p->mqtt_sock->bridge_conf
 			            ->max_recv_queue_len)) {
 				log_error("Resize receive max queue error!");
 			} else {
