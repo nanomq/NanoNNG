@@ -750,6 +750,8 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 		}
 
 		hocon_read_num(node, parallel, bridge_mqtt_node);
+		hocon_read_num(node, max_recv_queue_len, bridge_mqtt_node);
+		hocon_read_num(node, max_send_queue_len, bridge_mqtt_node);
 		cJSON *bridge_mqtt_node_tls =
 		    hocon_get_obj("ssl", bridge_mqtt_node);
 		conf_tls *bridge_node_tls = &(node->tls);
