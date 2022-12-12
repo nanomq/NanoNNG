@@ -40,6 +40,7 @@ struct tcptran_pipe {
 	bool            busy; // indicator for qos ack & aio
 	uint8_t         txlen[NANO_MIN_PACKET_LEN];
 	uint8_t         rxlen[NNI_NANO_MAX_HEADER_SIZE];
+	uint8_t			pro_ver;
 	uint8_t        *conn_buf;
 	uint8_t        *qos_buf; // msg trunk for qos & V4/V5 conversion
 	nni_aio        *txaio;
@@ -345,13 +346,15 @@ tcptran_pipe_nego_cb(void *arg)
 		if (p->tcp_cparam == NULL) {
 			conn_param_alloc(&p->tcp_cparam);
 		}
-		if ((rv = conn_handler(p->conn_buf, p->tcp_cparam, p->wantrxhead)) == 0) {
+		if ((rv = conn_handler(
+		         p->conn_buf, p->tcp_cparam, p->wantrxhead)) == 0) {
 			nng_free(p->conn_buf, p->wantrxhead);
 			p->conn_buf = NULL;
 			// Connection is accepted.
 			if (p->tcp_cparam->pro_ver == 5) {
 				p->qsend_quota = p->tcp_cparam->rx_max;
 			}
+			p->pro_ver = p->tcp_cparam->pro_ver;
 			nni_list_remove(&ep->negopipes, p);
 			nni_list_append(&ep->waitpipes, p);
 			tcptran_ep_match(ep);
@@ -445,7 +448,7 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 	msg  = nni_aio_get_msg(qsaio);
 	type = nni_msg_cmd_type(msg);
 
-	if (p->tcp_cparam->pro_ver == 5) {
+	if (p->pro_ver == 5) {
 		(type == CMD_PUBCOMP || type == PUBACK) ? p->qrecv_quota++
 		                                        : p->qrecv_quota;
 	}
@@ -512,9 +515,9 @@ nmq_tcptran_pipe_send_cb(void *arg)
 	msg = nni_aio_get_msg(aio);
 	if (nni_aio_get_prov_data(txaio) != NULL) {
 		// msgs left behind due to multiple topics matched
-		if (p->tcp_cparam->pro_ver == 4)
+		if (p->pro_ver == 4)
 			nmq_pipe_send_start_v4(p, msg, txaio);
-		else if (p->tcp_cparam->pro_ver == 5)
+		else if (p->pro_ver == 5)
 			nmq_pipe_send_start_v5(p, msg, txaio);
 		nni_mtx_unlock(&p->mtx);
 		return;
@@ -694,7 +697,7 @@ tcptran_pipe_recv_cb(void *arg)
 		if (qos_pac > 0) {
 			// flow control, check rx_max
 			// recv_quota as length of lmq
-			if (p->tcp_cparam->pro_ver == 5) {
+			if (p->pro_ver == 5) {
 				if (p->qrecv_quota > 0) {
 					p->qrecv_quota--;
 				} else {
@@ -712,26 +715,26 @@ tcptran_pipe_recv_cb(void *arg)
 		}
 	} else if (type == CMD_PUBREC) {
 		if (nni_mqtt_pubres_decode(msg, &packet_id, &reason_code, &prop,
-		        cparam->pro_ver) != 0) {
+		        p->pro_ver) != 0) {
 			log_error("decode PUBREC variable header failed!");
 		}
 		ack_cmd = CMD_PUBREL;
 		ack     = true;
 	} else if (type == CMD_PUBREL) {
 		if (nni_mqtt_pubres_decode(msg, &packet_id, &reason_code, &prop,
-		        cparam->pro_ver) != 0) {
+		        p->pro_ver) != 0) {
 			log_error("decode PUBREL variable header failed!");
 		}
 		ack_cmd = CMD_PUBCOMP;
 		ack     = true;
 	} else if (type == CMD_PUBACK || type == CMD_PUBCOMP) {
 		if (nni_mqtt_pubres_decode(msg, &packet_id, &reason_code, &prop,
-		        cparam->pro_ver) != 0) {
+		        p->pro_ver) != 0) {
 			log_error("decode PUBACK or PUBCOMP variable header "
 			          "failed!");
 		}
 		// MQTT V5 flow control
-		if (p->tcp_cparam->pro_ver == 5) {
+		if (p->pro_ver == 5) {
 			property_free(prop);
 			p->qsend_quota++;
 		}
@@ -748,7 +751,7 @@ tcptran_pipe_recv_cb(void *arg)
 
 		nni_msg_set_cmd_type(qmsg, ack_cmd);
 		nni_mqtt_msgack_encode(
-		    qmsg, packet_id, reason_code, prop, cparam->pro_ver);
+		    qmsg, packet_id, reason_code, prop, p->pro_ver);
 		nni_mqtt_pubres_header_encode(qmsg, ack_cmd);
 		// if (prop != NULL) {
 		// nni_msg_proto_set_property(qmsg, prop);
@@ -1365,9 +1368,9 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		nni_aio_finish(aio, NNG_ECANCELED, 0);
 		return;
 	}
-	if (p->tcp_cparam->pro_ver == 4) {
+	if (p->pro_ver == 4) {
 		nmq_pipe_send_start_v4(p, msg, aio);
-	} else if (p->tcp_cparam->pro_ver == 5) {
+	} else if (p->pro_ver == 5) {
 		nmq_pipe_send_start_v5(p, msg, aio);
 	}
 	return;
