@@ -13,7 +13,6 @@
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/supplemental/nanolib/conf.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
-#include "nng/supplemental/nanolib/conf.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 #include "supplemental/mqtt/mqtt_qos_db_api.h"
 #include "supplemental/quic/quic_api.h"
@@ -55,7 +54,6 @@ static int mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni
 #if defined(NNG_SUPP_SQLITE)
 static void *mqtt_quic_sock_get_sqlite_option(mqtt_sock_t *s);
 #endif
-static void *mqtt_quic_sock_get_bridge_node_option(mqtt_sock_t *s);
 
 struct mqtt_client_cb {
 	int (*connect_cb)(void *, void *);
@@ -98,7 +96,6 @@ struct mqtt_sock_s {
 
 	nni_mqtt_sqlite_option *sqlite_opt;
 	conf_bridge_node       *bridge_conf;
-	conf_bridge_node *conf_bridge_node;
 
 	struct mqtt_client_cb cb; // user cb
 };
@@ -247,10 +244,9 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		p->busy = true;
 		quic_pipe_send(p->qpipe, &p->send_aio);
 	} else {
-
 		if (nni_lmq_full(&s->send_messages)) {
-			if (s->conf_bridge_node->max_send_queue_len != nni_lmq_cap(&s->send_messages)) {
-				if (0 != nni_lmq_resize(&s->send_messages, s->conf_bridge_node->max_send_queue_len)) {
+			if (s->bridge_conf->max_send_queue_len != nni_lmq_cap(&s->send_messages)) {
+				if (0 != nni_lmq_resize(&s->send_messages, s->bridge_conf->max_send_queue_len)) {
 					(void) nni_lmq_get(&s->send_messages, &tmsg);
 					log_warn("Max send queue capacity is %d", nni_lmq_cap(&s->send_messages));
 					log_warn("Max send queue len is %d", nni_lmq_len(&s->send_messages));
@@ -340,18 +336,20 @@ mqtt_pipe_send_msg(nni_aio *aio, nni_msg *msg, mqtt_pipe_t *p, uint16_t packet_i
 			(void) nni_lmq_get(&p->send_inflight, &tmsg);
 			log_warn("msg lost due to flight window is full");
 			nni_msg_free(tmsg);
+		}
+		if (0 != nni_lmq_put(&p->send_inflight, msg)) {
+			nni_println(
+			    "Warning! msg send failed due to busy socket");
+		}
+	}
+	if (0 == qos && ptype != NNG_MQTT_SUBSCRIBE &&
+	    ptype != NNG_MQTT_UNSUBSCRIBE) {
+		return 0;
+	}
+	return -1;
+}
 
-		if (nni_lmq_full(&s->send_messages)) {
-			if (s->conf_bridge_node->max_send_queue_len != nni_lmq_cap(&s->send_messages)) {
-				if (0 != nni_lmq_resize(&s->send_messages, s->conf_bridge_node->max_send_queue_len)) {
-					(void) nni_lmq_get(&s->send_messages, &tmsg);
-					log_warn("Max send queue capacity is %d", nni_lmq_cap(&s->send_messages));
-					log_warn("Max send queue len is %d", nni_lmq_len(&s->send_messages));
-					log_warn("msg lost due to flight window is full");
-					nni_msg_free(tmsg);
-				}
-
-
+// only work for data strm.
 static void
 mqtt_quic_data_strm_send_cb(void *arg)
 {
@@ -1104,29 +1102,8 @@ static void *
 mqtt_quic_sock_get_sqlite_option(mqtt_sock_t *s)
 {
 	return (s->sqlite_opt);
-#else
-	NNI_ARG_UNUSED(s);
-	return (NULL);
+}
 #endif
-}
-
-static int
-mqtt_quic_sock_set_bridge_node_option(
-    void *arg, const void *v, size_t sz, nni_opt_type t)
-{
-	NNI_ARG_UNUSED(sz);
-	mqtt_sock_t *s = arg;
-	if (t == NNI_TYPE_POINTER) {
-		nni_mtx_lock(&s->mtx);
-		s->conf_bridge_node = *(conf_bridge_node **) v;
-		nni_mtx_unlock(&s->mtx);
-		return (0);
-	}
-
-	return NNG_EUNREACHABLE;
-}
-
-
 
 static int
 mqtt_quic_sock_set_sqlite_option(
@@ -1577,10 +1554,6 @@ static nni_option mqtt_quic_sock_options[] = {
 	{
 	    .o_name = NNG_OPT_MQTT_SQLITE,
 	    .o_set  = mqtt_quic_sock_set_sqlite_option,
-	},
-	{
-	    .o_name = NNG_OPT_MQTT_BRIDGE_NODE,
-	    .o_set  = mqtt_quic_sock_set_bridge_node_option,
 	},
 	// terminate list
 	{
