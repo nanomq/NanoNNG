@@ -574,9 +574,8 @@ quic_connect_ipv4(const char *url, nni_sock *sock)
 
 	QUIC_STATUS  Status;
 	HQUIC        Connection = NULL;
-	quic_strm_t *qstrm = NULL;
-
-	nng_url *url_s;
+	quic_strm_t *qstrm      = NULL;
+	nng_url     *url_s;
 
 	void *sock_data = nni_sock_proto_data(sock);
 	// Allocate a new connection object.
@@ -614,6 +613,7 @@ quic_connect_ipv4(const char *url, nni_sock *sock)
 
 	qstrm->url_s = url_s;
 	qstrm->sock = sock;
+	qstrm->stream = NULL;
 	GStream = qstrm; // It should be stored in sock, but...
 
 	log_info("Quic connecting... %s:%s", url_s->u_host, url_s->u_port);
@@ -1116,7 +1116,7 @@ quic_pipe_close(uint8_t *code)
 	nni_aio     *aio;
 
 	log_debug(" %p quic_pipe_close", qstrm->stream);
-	if (qstrm->closed != true) {
+	if (qstrm->closed != true && qstrm->stream != NULL) {
 		qstrm->closed = true;
 		log_warn("close the QUIC stream!");
 		MsQuic->StreamClose(qstrm->stream);
