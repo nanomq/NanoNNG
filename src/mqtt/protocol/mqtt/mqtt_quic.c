@@ -224,42 +224,43 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		p->busy = true;
 		quic_strm_send(p->qstream, &p->send_aio);
 	} else {
-
-		if (nni_lmq_full(&s->send_messages)) {
-			if (s->conf_bridge_node->max_send_queue_len >
-			    nni_lmq_cap(&s->send_messages)) {
-				if (0 !=
-				    nni_lmq_resize(&s->send_messages,
-				        s->conf_bridge_node
-				            ->max_send_queue_len)) {
-					(void) nni_lmq_get(
-					    &s->send_messages, &tmsg);
-					log_debug(
-					    "Max send queue capacity is %d",
-					    nni_lmq_cap(&s->send_messages));
-					log_debug("Max send queue len is %d",
-					    nni_lmq_len(&s->send_messages));
-					log_warn("msg lost due to flight "
-					         "window resize failed");
-					nni_msg_free(tmsg);
-				}
-				log_info("Resize max send queue to %d",
-				    nni_lmq_cap(&s->send_messages));
-			} else {
-				(void) nni_lmq_get(&s->send_messages, &tmsg);
-				log_debug("Max send queue capacity is %d",
-				    nni_lmq_cap(&s->send_messages));
-				log_debug("Max send queue len is %d",
-				    nni_lmq_len(&s->send_messages));
-				log_warn(
-				    "msg lost due to flight window is full");
-				nni_msg_free(tmsg);
-			}
-		}
-		if (0 != nni_lmq_put(&s->send_messages, msg)) {
-			nni_println(
-			    "Warning! msg send failed due to busy socket");
-		}
+		// if (nni_lmq_full(&s->send_messages)) {
+		// 	if (s->conf_bridge_node->max_send_queue_len >
+		// 	    nni_lmq_cap(&s->send_messages)) {
+		// 		if (0 !=
+		// 		    nni_lmq_resize(&s->send_messages,
+		// 		        s->conf_bridge_node
+		// 		            ->max_send_queue_len)) {
+		// 			(void) nni_lmq_get(
+		// 			    &s->send_messages, &tmsg);
+		// 			log_debug(
+		// 			    "Max send queue capacity is %d",
+		// 			    nni_lmq_cap(&s->send_messages));
+		// 			log_debug("Max send queue len is %d",
+		// 			    nni_lmq_len(&s->send_messages));
+		// 			log_warn("msg lost due to flight "
+		// 			         "window resize failed");
+		// 			nni_msg_free(tmsg);
+		// 		}
+		// 		log_info("Resize max send queue to %d",
+		// 		    nni_lmq_cap(&s->send_messages));
+		// 	} else {
+		// 		(void) nni_lmq_get(&s->send_messages, &tmsg);
+		// 		log_debug("Max send queue capacity is %d",
+		// 		    nni_lmq_cap(&s->send_messages));
+		// 		log_debug("Max send queue len is %d",
+		// 		    nni_lmq_len(&s->send_messages));
+		// 		log_warn(
+		// 		    "msg lost due to flight window is full");
+		// 		nni_msg_free(tmsg);
+		// 	}
+		// }
+		// if (0 != nni_lmq_put(&s->send_messages, msg)) {
+		// 	nni_println(
+		// 	    "Warning! msg send failed due to busy socket");
+		// }
+		nni_msg_free(tmsg);
+		log_warn("msg lost due to busy pipe");
 	}
 	if (0 == qos && ptype != NNG_MQTT_SUBSCRIBE &&
 	    ptype != NNG_MQTT_UNSUBSCRIBE) {
