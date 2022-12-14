@@ -1080,6 +1080,7 @@ error:
 	return (-2);
 }
 
+// return value 0 : normal close -1 : not even started
 int
 quic_pipe_close(void *qpipe, uint8_t *code)
 {
@@ -1093,6 +1094,8 @@ quic_pipe_close(void *qpipe, uint8_t *code)
 		qstrm->closed = true;
 		log_warn("close the QUIC stream!");
 		MsQuic->StreamClose(qstrm->stream);
+	} else {
+		return -1;
 	}
 
 	// take care of aios
