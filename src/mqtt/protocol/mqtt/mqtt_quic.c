@@ -590,6 +590,7 @@ mqtt_timer_cb(void *arg)
 	}
 
 	s->counter += s->retry;
+	log_info("timer triggered %d", s->counter);
 	if (nni_aio_busy(&p->rep_aio)) {
 		log_warn("rep_aio busy! stream is in serious congestion");
 		nni_aio_abort(&p->rep_aio, NNG_ECANCELED);
