@@ -600,6 +600,7 @@ mqtt_timer_cb(void *arg)
 			s->pingcnt = 0; // restore pingcnt
 			p->reason_code = KEEP_ALIVE_TIMEOUT;
 			quic_disconnect();
+			log_info("connection shutting down");
 			nni_mtx_unlock(&s->mtx);
 			return;
 		} else if (!nni_aio_busy(&p->rep_aio)){
@@ -978,10 +979,10 @@ quic_mqtt_stream_close(void *arg)
 
 	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
 	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
+	p->ready = false;
 	nni_mtx_unlock(&s->mtx);
 
 	nni_atomic_set_bool(&p->closed, true);
-	p->ready = false;
 }
 
 /******************************************************************************

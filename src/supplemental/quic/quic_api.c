@@ -104,12 +104,17 @@ LoadConfiguration(BOOLEAN Unsecure, uint64_t interval, uint64_t timeout)
 	if(interval == 0) {
 		Settings.IsSet.IdleTimeoutMs = FALSE;
 	} else {
-		keepalive = interval;
-		Settings.IsSet.IdleTimeoutMs    = TRUE;
-		Settings.IdleTimeoutMs          = interval * 1000;
-		Settings.DisconnectTimeoutMs    = interval * 1000;
-		Settings.KeepAliveIntervalMs    = interval * 1000;
-		Settings.HandshakeIdleTimeoutMs = timeout  * 1000;
+		keepalive                             = interval;
+		Settings.IsSet.IdleTimeoutMs          = TRUE;
+		Settings.IsSet.DisconnectTimeoutMs    = TRUE;
+		Settings.IsSet.HandshakeIdleTimeoutMs = TRUE;
+		Settings.IsSet.KeepAliveIntervalMs    = TRUE;
+		Settings.IsSet.SendIdleTimeoutMs      = TRUE;
+		Settings.SendIdleTimeoutMs            = 10 * 1000;
+		Settings.IdleTimeoutMs                = 20 * 1000;
+		Settings.DisconnectTimeoutMs          = 10 * 1000;
+		Settings.KeepAliveIntervalMs          = interval * 1000;
+		Settings.HandshakeIdleTimeoutMs       = 10 * 1000;
 	}
 
 	// Configures a default client configuration, optionally disabling
@@ -206,7 +211,7 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 	nni_msg *smsg;
 	nni_aio *aio;
 
-	log_debug("QuicStreamCallback triggered! %d", Event->Type);
+	log_info("QuicStreamCallback triggered! %d", Event->Type);
 	switch (Event->Type) {
 	case QUIC_STREAM_EVENT_SEND_COMPLETE:
 		// A previous StreamSend call has completed, and the context is
@@ -324,7 +329,7 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 	quic_strm_t        *qstrm    = GStream;
 	nni_aio *aio;
 	
-	log_debug("QuicConnectionCallback triggered! %d", Event->Type);
+	log_info("QuicConnectionCallback triggered! %d", Event->Type);
 	switch (Event->Type) {
 	case QUIC_CONNECTION_EVENT_CONNECTED:
 		// The handshake has completed for the connection.
@@ -357,18 +362,27 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 		// the connection.
 		if (Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status ==
 		    QUIC_STATUS_CONNECTION_IDLE) {
-			log_error("[conn][%p] Successfully shut down on idle.\n",
+			log_warn(
+			    "[conn][%p] Successfully shut down on idle.\n",
 			    Connection);
-		} else {
-			log_error("[conn][%p] Shut down by transport, 0x%x\n",
-			    Connection,
-			    Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status);
+		} else if (Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status ==
+		    QUIC_STATUS_CONNECTION_TIMEOUT) {
+			log_warn("[conn][%p] Successfully shut down on "
+			         "CONNECTION_TIMEOUT.\n",
+			    Connection);
 		}
+		log_warn("[conn][%p] Shut down by transport,Code: %llu\n",
+		    Connection,
+		    Event->SHUTDOWN_INITIATED_BY_TRANSPORT.ErrorCode);
 		break;
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER:
 		// The connection was explicitly shut down by the peer.
-		log_error("[conn][%p] QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER, 0x%llu\n", Connection,
-		    (unsigned long long) Event->SHUTDOWN_INITIATED_BY_PEER.ErrorCode);
+		log_error(
+		    "[conn][%p] "
+		    "QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER, %llu\n",
+		    Connection,
+		    (unsigned long long)
+		        Event->SHUTDOWN_INITIATED_BY_PEER.ErrorCode);
 
 		break;
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE:
@@ -387,10 +401,11 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 		// Close and finite nng pipe ONCE disconnect
 		if (qstrm->pipe) {
 			log_warn("Quic reconnect failed or disconnected!");
-			nni_mtx_lock(&qstrm->mtx);
 			pipe_ops->pipe_stop(qstrm->pipe);
 			pipe_ops->pipe_close(qstrm->pipe);
 			pipe_ops->pipe_fini(qstrm->pipe);
+			nni_mtx_lock(&qstrm->mtx);
+			qstrm->closed = true;
 			nng_free(qstrm->pipe, 0);
 			qstrm->pipe = NULL;
 			nni_mtx_unlock(&qstrm->mtx);
@@ -447,12 +462,23 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 int
 quic_disconnect()
 {
-	log_debug("actively disclose the QUIC stream");
-	if (!GConnection)
+	log_info("actively disclose the stream of QUIC connection");
+	if (!GConnection) {
+		log_info("no connection found!");
 		return -1;
+	}
 	quic_strm_t *qstrm = GStream;
+
+	if (qstrm->closed == true || qstrm->stream != NULL) {
+		return -1;
+	}
+	MsQuic->StreamClose(qstrm->stream);
+	MsQuic->StreamShutdown(
+	    qstrm->stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, NNG_ECONNSHUT);
+	// MsQuic->ConnectionClose(*GConnection);
 	MsQuic->ConnectionShutdown(
-	    *GConnection, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, NNG_ECONNSHUT);
+	    *GConnection, QUIC_CONNECTION_SHUTDOWN_FLAG_SILENT, NNG_ECONNSHUT);
+
 	return 0;
 }
 
@@ -714,15 +740,17 @@ quic_strm_send_start(quic_strm_t *qstrm)
 	nni_msg    *msg;
 	QUIC_STATUS Status;
 
-	if (qstrm->closed) {
-		while ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
-			nni_list_remove(&qstrm->sendq, aio);
-			nni_aio_finish_error(aio, NNG_ECLOSED);
-		}
+	if ((aio = nni_list_first(&qstrm->sendq)) == NULL) {
 		return;
 	}
 
-	if ((aio = nni_list_first(&qstrm->sendq)) == NULL) {
+	if (qstrm->closed) {
+		while ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
+			nni_list_remove(&qstrm->sendq, aio);
+			msg = nni_aio_get_msg(aio);
+			nni_msg_free(msg);
+			nni_aio_finish_error(aio, NNG_ECLOSED);
+		}
 		return;
 	}
 
@@ -1047,11 +1075,18 @@ quic_strm_send(void *arg, nni_aio *aio)
 {
 	quic_strm_t *qstrm = arg;
 	int          rv;
+	nni_msg     *msg;
 
 	if ((rv = nni_aio_begin(aio)) != 0) {
 		return rv;
 	}
 	nni_mtx_lock(&qstrm->mtx);
+	if (qstrm->closed) {
+		msg = nni_aio_get_msg(aio);
+		nni_msg_free(msg);
+		nni_aio_finish_error(aio, NNG_ECLOSED);
+		return -1;
+	}
 	if ((rv = nni_aio_schedule(aio, quic_strm_send_cancel, qstrm)) != 0) {
 		nni_mtx_unlock(&qstrm->mtx);
 		nni_aio_finish_error(aio, rv);
