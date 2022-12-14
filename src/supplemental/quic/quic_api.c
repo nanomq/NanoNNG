@@ -1089,7 +1089,7 @@ quic_pipe_close(void *qpipe, uint8_t *code)
 	nni_aio     *aio;
 
 	log_debug(" %p quic_pipe_close", qstrm->stream);
-	if (qstrm->closed != true) {
+	if (qstrm->closed != true && qstrm->stream != NULL) {
 		qstrm->closed = true;
 		log_warn("close the QUIC stream!");
 		MsQuic->StreamClose(qstrm->stream);
