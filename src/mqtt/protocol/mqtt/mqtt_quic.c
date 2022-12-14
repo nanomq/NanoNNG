@@ -260,7 +260,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		// 	    "Warning! msg send failed due to busy socket");
 		// }
 		nni_msg_free(msg);
-		log_warn("msg lost due to busy pipe");
+		// log_warn("msg lost due to busy pipe");
 	}
 	if (0 == qos && ptype != NNG_MQTT_SUBSCRIBE &&
 	    ptype != NNG_MQTT_UNSUBSCRIBE) {
