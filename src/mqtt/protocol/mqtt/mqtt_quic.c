@@ -696,16 +696,16 @@ mqtt_quic_recv_cb(void *arg)
 	s->pingcnt = 0;
 	switch (packet_type) {
 	case NNG_MQTT_CONNACK:
+		nng_msg_set_cmd_type(msg, CMD_CONNACK);
+		conn_param_clone(p->cparam);
+		// Clone CONNACK for connect_cb & aio_cb
+		nni_msg_clone(msg);
 		if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
 			// No one waiting to receive yet, putting msg
 			// into lmq
 			mqtt_pipe_recv_msgq_putq(p, msg);
 			break;
 		}
-		nng_msg_set_cmd_type(msg, CMD_CONNACK);
-		conn_param_clone(p->cparam);
-		// Clone CONNACK for connect_cb & aio_cb
-		nni_msg_clone(msg);
 		nni_list_remove(&s->recv_queue, aio);
 		user_aio = aio;
 		nni_aio_set_msg(user_aio, msg);
