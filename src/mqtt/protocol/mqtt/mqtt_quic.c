@@ -1108,6 +1108,11 @@ quic_mqtt_stream_init(void *arg, nni_pipe *qsock, void *sock)
 	}
 	p->rid = 1;
 	p->reason_code = 0;
+	nni_atomic_init_bool(&p->closed);
+	nni_atomic_set_bool(&p->closed, true);
+	p->busy  = false;
+	p->ready = false;
+	nni_atomic_set(&p->next_packet_id, 1);
 
 	// QUIC stream init
 	if (0 != quic_pipe_open(qsock, &p->qpipe)) {
@@ -1115,11 +1120,6 @@ quic_mqtt_stream_init(void *arg, nni_pipe *qsock, void *sock)
 		return -1;
 	}
 
-	nni_atomic_init_bool(&p->closed);
-	nni_atomic_set_bool(&p->closed, false);
-	p->busy  = false;
-	p->ready = false;
-	nni_atomic_set(&p->next_packet_id, 1);
 	nni_aio_init(&p->rep_aio, NULL, p);
 	major == true
 	    ? nni_aio_init(&p->send_aio, mqtt_quic_send_cb, p)
@@ -1236,6 +1236,7 @@ quic_mqtt_stream_start(void *arg)
 		nni_sleep_aio(s->retry * NNI_SECOND, &s->time_aio);
 
 	p->ready = true;
+	nni_atomic_set_bool(&p->closed, false);
 	if ((aio = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, aio);
 		msg    = nni_aio_get_msg(aio);
@@ -1257,16 +1258,17 @@ static void
 quic_mqtt_stream_stop(void *arg)
 {
 	mqtt_pipe_t *p = arg;
-	// mqtt_sock_t *s = p->mqtt_sock;
+	mqtt_sock_t *s = p->mqtt_sock;
 
-	if (quic_pipe_close(p->qpipe, &p->reason_code) == 0) {
-		nni_aio_stop(&p->send_aio);
-		nni_aio_stop(&p->recv_aio);
-		nni_aio_abort(&p->rep_aio, NNG_ECANCELED);
-		nni_aio_finish_error(&p->rep_aio, NNG_ECANCELED);
-		nni_aio_stop(&p->rep_aio);
-		// nni_aio_stop(&s->time_aio);
-	}
+	if (!nni_atomic_get_bool(&p->closed))
+		if (quic_pipe_close(p->qpipe, &p->reason_code) == 0) {
+			nni_aio_stop(&p->send_aio);
+			nni_aio_stop(&p->recv_aio);
+			nni_aio_abort(&p->rep_aio, NNG_ECANCELED);
+			nni_aio_finish_error(&p->rep_aio, NNG_ECANCELED);
+			nni_aio_stop(&p->rep_aio);
+			// nni_aio_stop(&s->time_aio);
+		}
 }
 
 static void

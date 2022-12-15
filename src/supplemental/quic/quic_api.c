@@ -533,6 +533,7 @@ quic_connect_ipv4(const char *url, nni_sock *sock, uint32_t *index)
 	if ((qsock = malloc(sizeof(quic_sock_t))) == NULL) {
 		return -2;
 	}
+	// never free the sock in bridging mode
 	quic_sock_init(qsock);
 
 	// Allocate a new connection object.
@@ -594,18 +595,15 @@ quic_connect_ipv4(const char *url, nni_sock *sock, uint32_t *index)
 	qsock->qconn = conn;
 
 	void *sock_data = nni_sock_proto_data(sock);
-	pipe_ops->pipe_init(qsock->pipe, (nni_pipe *)qsock, sock_data);
+	if (pipe_ops->pipe_init(qsock->pipe, (nni_pipe *)qsock, sock_data) == -1){
+		goto error;
+	}
 	return 0;
 
 error:
 
 	if (QUIC_FAILED(rv) && conn != NULL) {
 		MsQuic->ConnectionClose(conn);
-	}
-	if (qsock) {
-		if (qsock->pipe)
-			nng_free(qsock->pipe, 0);
-		nng_free(qsock, sizeof(quic_sock_t));
 	}
 	return rv;
 }
@@ -1089,7 +1087,6 @@ quic_pipe_close(void *qpipe, uint8_t *code)
 	quic_strm_t *qstrm = qpipe;
 	nni_aio     *aio;
 
-	log_debug(" %p quic_pipe_close", qstrm->stream);
 	if (qstrm->closed != true && qstrm->stream != NULL) {
 		qstrm->closed = true;
 		log_warn("close the QUIC stream!");
