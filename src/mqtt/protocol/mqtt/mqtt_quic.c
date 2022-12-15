@@ -1171,7 +1171,7 @@ quic_mqtt_stream_fini(void *arg)
 	nni_id_map_fini(&p->sent_unack);
 	if (p->mqtt_sock->bridge_conf &&
 	        p->mqtt_sock->bridge_conf->multi_stream)
-		nni_id_map_fini(&p->send_inflight);
+		nni_lmq_fini(&p->send_inflight);
 	nni_lmq_fini(&p->recv_messages);
 	nni_mtx_fini(&p->lk);
 
@@ -1455,8 +1455,9 @@ mqtt_quic_ctx_recv(void *arg, nni_aio *aio)
 		goto wait;
 	}
 
-	if (nni_atomic_get_bool(&s->closed) || nni_atomic_get_bool(&p->closed)) {
+	if (nni_atomic_get_bool(&s->closed)) {
 		nni_mtx_unlock(&s->mtx);
+		log_debug("recv action on closed socket!");
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
 	}
