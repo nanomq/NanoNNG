@@ -901,6 +901,7 @@ mqtt_timer_cb(void *arg)
 			s->pingcnt = 0; // restore pingcnt
 			p->reason_code = KEEP_ALIVE_TIMEOUT;
 			quic_disconnect(p->qsock);
+			log_warn("connection shutting down");
 			nni_mtx_unlock(&s->mtx);
 			return;
 		} else if (!nni_aio_busy(&p->rep_aio)){
@@ -1148,7 +1149,7 @@ quic_mqtt_stream_fini(void *arg)
 	mqtt_sock_t *s = p->mqtt_sock;
 	nni_msg * msg;
 
-	log_warn(" QUIC Stream closed, pipe finit!");
+	log_warn("quic_mqtt_stream_fini! pipe finit!");
 	if ((msg = nni_aio_get_msg(&p->recv_aio)) != NULL) {
 		nni_aio_set_msg(&p->recv_aio, NULL);
 		nni_msg_free(msg);
@@ -1216,6 +1217,9 @@ quic_mqtt_stream_fini(void *arg)
 	}
 
 	conn_param_free(p->cparam);
+	// Free the mqtt_pipe
+	// FIX: potential unsafe free
+	nng_free(p, sizeof(p));
 }
 
 static int
