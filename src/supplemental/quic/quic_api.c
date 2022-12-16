@@ -244,6 +244,8 @@ quic_strm_init(quic_strm_t *qstrm, quic_sock_t *qsock)
 static void
 quic_strm_fini(quic_strm_t *qstrm)
 {
+	if (qstrm == NULL)
+		return;
 	if (qstrm->rxmsg)
 		free(qstrm->rxmsg);
 	if (qstrm->rrbuf)
@@ -347,15 +349,15 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		log_warn("[strm][%p] QUIC_STREAM_EVENT shutdown: All done.", stream);
 		log_info("close connection with Error Code: %llu",
 				 (unsigned long long) Event->SHUTDOWN_COMPLETE.ConnectionErrorCode);
-		// nni_mtx_lock(&qstrm->mtx);
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
 			// only server close the stream gonna trigger this
 			log_warn("close the QUIC stream!");
 			MsQuic->StreamClose(stream);
-			qstrm->closed = true;
 			qstrm->stream = NULL;
+			// close stream here if in multi-stream mode?
+			// Conflic with quic_pipe_close
+			// qstrm->closed = true;
 		}
-		// nni_mtx_unlock(&qstrm->mtx);
 		break;
 	case QUIC_STREAM_EVENT_START_COMPLETE:
 		log_info("QUIC_STREAM_EVENT_START_COMPLETE");
@@ -455,10 +457,8 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 			pipe_ops->pipe_stop(qsock->pipe);
 			pipe_ops->pipe_close(qsock->pipe);
 			pipe_ops->pipe_fini(qsock->pipe);
-			nng_free(qsock->pipe, 0);
 			qsock->pipe = NULL;
-
-			// No bridge_node when NOT bridge mode
+			// No bridge_node if NOT bridge mode
 			if (bridge_node && bridge_node->hybrid) {
 				nni_mtx_unlock(&qsock->mtx);
 				break;
@@ -676,15 +676,15 @@ quic_pipe_send_start(quic_strm_t *qstrm)
 	nni_msg    *msg;
 	QUIC_STATUS rv;
 
+	if ((aio = nni_list_first(&qstrm->sendq)) == NULL) {
+		return;
+	}
+
 	if (qstrm->closed) {
 		while ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
 			nni_list_remove(&qstrm->sendq, aio);
 			nni_aio_finish_error(aio, NNG_ECLOSED);
 		}
-		return;
-	}
-
-	if ((aio = nni_list_first(&qstrm->sendq)) == NULL) {
 		return;
 	}
 
@@ -1087,14 +1087,15 @@ quic_pipe_close(void *qpipe, uint8_t *code)
 	quic_strm_t *qstrm = qpipe;
 	nni_aio     *aio;
 
-	if (qstrm->closed != true && qstrm->stream != NULL) {
+	if (qstrm->closed != true) {
 		qstrm->closed = true;
-		log_warn("close the QUIC stream!");
+		log_warn("closing the QUIC stream!");
 		MsQuic->StreamClose(qstrm->stream);
 	} else {
 		return -1;
 	}
 
+	log_info("Protocol layer is closing QUIC pipe!");
 	// take care of aios
 	while ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
 		nni_list_remove(&qstrm->sendq, aio);

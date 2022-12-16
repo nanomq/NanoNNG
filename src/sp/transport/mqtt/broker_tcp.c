@@ -40,7 +40,7 @@ struct tcptran_pipe {
 	bool            busy; // indicator for qos ack & aio
 	uint8_t         txlen[NANO_MIN_PACKET_LEN];
 	uint8_t         rxlen[NNI_NANO_MAX_HEADER_SIZE];
-	uint8_t			pro_ver;
+	uint8_t         pro_ver;
 	uint8_t        *conn_buf;
 	uint8_t        *qos_buf; // msg trunk for qos & V4/V5 conversion
 	nni_aio        *txaio;
