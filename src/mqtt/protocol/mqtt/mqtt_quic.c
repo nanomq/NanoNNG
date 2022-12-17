@@ -82,17 +82,17 @@ struct mqtt_sock_s {
 	mqtt_quic_ctx   master;     // to which we delegate send/recv calls
 	nni_list        recv_queue; // aio pending to receive
 	nni_list        send_queue; // aio pending to send
-	nni_lmq send_messages;  // send messages queue (only for major stream)
-	nni_id_map  *streams;   // pipes, only effective in multi-stream mode
-	mqtt_pipe_t *pipe;      // the major pipe (control stream)
+	nni_lmq send_messages; // send messages queue (only for major stream)
+	nni_id_map  *streams;  // pipes, only effective in multi-stream mode
+	mqtt_pipe_t *pipe;     // the major pipe (control stream)
 	                   // main quic pipe, others needs a map to store the
 	                   // relationship between MQTT topics and quic pipes
-	nni_aio      time_aio;  // timer aio to resend unack msg
-	uint16_t     counter;   // counter for elapsed time
-	uint16_t     pingcnt;   // count how many ping msg is lost
-	uint16_t     keepalive; // MQTT keepalive
-	nni_msg     *ping_msg, *connmsg;
-	nni_sock    *nsock;
+	nni_aio   time_aio;  // timer aio to resend unack msg
+	uint16_t  counter;   // counter for elapsed time
+	uint16_t  pingcnt;   // count how many ping msg is lost
+	uint16_t  keepalive; // MQTT keepalive
+	nni_msg  *ping_msg, *connmsg;
+	nni_sock *nsock;
 
 	nni_mqtt_sqlite_option *sqlite_opt;
 	conf_bridge_node       *bridge_conf;
@@ -389,6 +389,7 @@ mqtt_quic_data_strm_send_cb(void *arg)
 		nni_mtx_unlock(&p->lk);
 		return;
 	}
+	s->counter = 0;
 	// Check cached aio first in s->send_queue? or p->sendqueue?
 	// Check cached msg in lmq
 	// this msg is already proessed by mqtt_send_msg
@@ -435,6 +436,7 @@ mqtt_quic_send_cb(void *arg)
 		nni_mtx_unlock(&s->mtx);
 		return;
 	}
+	s->counter = 0;
 	// Check cached aio first
 	if ((aio = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, aio);
@@ -530,6 +532,7 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 
 	// schedule another receive
 	quic_pipe_recv(p->qpipe, &p->recv_aio);
+    s->counter = 0;
 
 	// set conn_param for upper layer
 	if (p->cparam)
@@ -742,6 +745,7 @@ mqtt_quic_recv_cb(void *arg)
 
 	// schedule another receive
 	quic_pipe_recv(p->qpipe, &p->recv_aio);
+	s->counter = 0;
 
 	// set conn_param for upper layer
 	if (p->cparam)
