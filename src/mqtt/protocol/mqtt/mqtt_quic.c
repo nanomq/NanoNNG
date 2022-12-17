@@ -78,7 +78,6 @@ struct mqtt_sock_s {
 	mqtt_pipe_t *   pipe;
 	nni_mtx         mtx;    // more fine grained mutual exclusion
 	mqtt_quic_ctx   master; // to which we delegate send/recv calls
-	// mqtt_pipe_t *   mqtt_pipe;
 	nni_list recv_queue;    // aio pending to receive
 	nni_list send_queue;    // aio pending to send
 	nni_lmq  send_messages; // send messages queue
@@ -199,7 +198,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		tmsg = nni_id_get(&p->sent_unack, packet_id);
 		if (tmsg != NULL) {
 			log_warn("Warning : msg %d lost due to "
-			                "packetID duplicated!",
+			         "packetID duplicated!",
 			    packet_id);
 			nni_aio *m_aio = nni_mqtt_msg_get_aio(tmsg);
 			if (m_aio) {
@@ -260,7 +259,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		// 	    "Warning! msg send failed due to busy socket");
 		// }
 		nni_msg_free(msg);
-		// log_warn("msg lost due to busy pipe");
+		log_warn("msg lost due to busy pipe");
 	}
 	if (0 == qos && ptype != NNG_MQTT_SUBSCRIBE &&
 	    ptype != NNG_MQTT_UNSUBSCRIBE) {
@@ -273,10 +272,6 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 // mqtt_qos_send_cb(void *arg)
 // {
 // }
-
-
-
-
 static void
 mqtt_quic_send_cb(void *arg)
 {
@@ -299,6 +294,7 @@ mqtt_quic_send_cb(void *arg)
 		nni_mtx_unlock(&s->mtx);
 		return;
 	}
+	s->counter = 0;
 	// Check cached aio first
 	if ((aio = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, aio);
@@ -368,6 +364,7 @@ mqtt_quic_recv_cb(void *arg)
 	}
 
 	nni_mtx_lock(&s->mtx);
+	s->counter = 0;
 	nni_msg *msg = nni_aio_get_msg(&p->recv_aio);
 	nni_aio_set_msg(&p->recv_aio, NULL);
 	if (msg == NULL) {
@@ -615,33 +612,33 @@ mqtt_timer_cb(void *arg)
 		}
 	}
 
-	// // start message resending
-	// msg = nni_id_get_min(&p->sent_unack, &pid);
-	// if (msg != NULL) {
-	// 	uint16_t ptype;
-	// 	ptype = nni_mqtt_msg_get_packet_type(msg);
-	// 	if (ptype == NNG_MQTT_PUBLISH) {
-	// 		nni_mqtt_msg_set_publish_dup(msg, true);
-	// 	}
-	// 	if (!p->busy) {
-	// 		p->busy = true;
-	// 		nni_msg_clone(msg);
-	// 		nni_mqtt_msg_encode(msg);
-	// 		aio = nni_mqtt_msg_get_aio(msg);
-	// 		if (aio) {
-	// 			nni_aio_bump_count(aio,
-	// 			    nni_msg_header_len(msg) +
-	// 			        nni_msg_len(msg));
-	// 			nni_aio_set_msg(aio, NULL);
-	// 		}
-	// 		nni_aio_set_msg(&p->send_aio, msg);
-	// 		quic_strm_send(p->qstream, &p->send_aio);
+	// start message resending
+	msg = nni_id_get_min(&p->sent_unack, &pid);
+	if (msg != NULL) {
+		uint16_t ptype;
+		ptype = nni_mqtt_msg_get_packet_type(msg);
+		if (ptype == NNG_MQTT_PUBLISH) {
+			nni_mqtt_msg_set_publish_dup(msg, true);
+		}
+		if (!p->busy) {
+			p->busy = true;
+			nni_msg_clone(msg);
+			nni_mqtt_msg_encode(msg);
+			aio = nni_mqtt_msg_get_aio(msg);
+			if (aio) {
+				nni_aio_bump_count(aio,
+				    nni_msg_header_len(msg) +
+				        nni_msg_len(msg));
+				nni_aio_set_msg(aio, NULL);
+			}
+			nni_aio_set_msg(&p->send_aio, msg);
+			quic_strm_send(p->qstream, &p->send_aio);
 
-	// 		nni_mtx_unlock(&s->mtx);
-	// 		nni_sleep_aio(s->retry  * NNI_SECOND, &s->time_aio);
-	// 		return;
-	// 	}
-	// }
+			nni_mtx_unlock(&s->mtx);
+			nni_sleep_aio(s->retry  * NNI_SECOND, &s->time_aio);
+			return;
+		}
+	}
 
 	nni_mtx_unlock(&s->mtx);
 	nni_sleep_aio(s->retry * NNI_SECOND, &s->time_aio);
@@ -1056,7 +1053,8 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 			}
 		}
 #endif
-		if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNECT && !nni_list_active(&s->send_queue, aio)) {
+		if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNECT &&
+		    !nni_list_active(&s->send_queue, aio)) {
 			// cache aio
 			nni_list_append(&s->send_queue, aio);
 			nni_mtx_unlock(&s->mtx);
