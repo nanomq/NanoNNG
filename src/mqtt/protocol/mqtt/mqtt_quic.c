@@ -680,7 +680,7 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 		nni_msg_free(msg);
 		nni_mtx_unlock(&p->lk);
 		// close quic stream
-		// nni_pipe_close(p->pipe);
+		// quic_pipe_close
 		return;
 	}
 	nni_mtx_unlock(&p->lk);
@@ -958,7 +958,7 @@ mqtt_timer_cb(void *arg)
 			log_warn("Close the quic connection due to timeout");
 			s->pingcnt = 0; // restore pingcnt
 			p->reason_code = KEEP_ALIVE_TIMEOUT;
-			quic_disconnect(p->qsock);
+			quic_disconnect(p->qsock, p->qpipe);
 			log_warn("connection shutting down");
 			nni_mtx_unlock(&s->mtx);
 			return;
@@ -1357,10 +1357,10 @@ quic_mqtt_stream_close(void *arg)
 	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
 	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
 	p->qpipe = NULL;
+	p->ready = false;
 	nni_mtx_unlock(&s->mtx);
 
 	nni_atomic_set_bool(&p->closed, true);
-	p->ready = false;
 }
 
 /******************************************************************************

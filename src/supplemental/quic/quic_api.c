@@ -280,7 +280,7 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		// A previous StreamSend call has completed, and the context is
 		// being returned back to the app.
 		free(Event->SEND_COMPLETE.ClientContext);
-		log_debug("[strm][%p] Data sent\n", stream);
+		log_debug("[strm][%p] Data sent Canceled: %b", stream, Event->SEND_COMPLETE.Canceled);
 
 		// Get aio from sendq and finish
 		nni_mtx_lock(&qstrm->mtx);
@@ -293,7 +293,6 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			nni_aio_finish_sync(aio, 0, 0);
 			break;
 		}
-		// quic_pipe_send_start(qstrm);
 		nni_mtx_unlock(&qstrm->mtx);
 		break;
 	case QUIC_STREAM_EVENT_RECEIVE:
@@ -302,7 +301,7 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		rlen = Event->RECEIVE.Buffers->Length;
 		uint8_t count = Event->RECEIVE.BufferCount;
 
-		log_debug("[strm][%p] Data received", stream);
+		log_debug("[strm][%p] Data received Flag: %d", stream, Event->RECEIVE.Flags);
 
 		nni_mtx_lock(&qstrm->mtx);
 
@@ -363,7 +362,10 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		log_info("QUIC_STREAM_EVENT_START_COMPLETE");
 		break;
 	case QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE:
-		log_warn("QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE");
+		log_info("QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE");
+		break;
+	case QUIC_STREAM_EVENT_PEER_ACCEPTED:
+		log_info("QUIC_STREAM_EVENT_PEER_ACCEPTED");
 		break;
 	case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
 		// The peer has requested that we stop sending. Close abortively.
@@ -406,7 +408,8 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 	case QUIC_CONNECTION_EVENT_CONNECTED:
 		// The handshake has completed for the connection.
 		// do not init any var here due to potential frequent reconnect
-		log_info("[conn][%p] is Connected", qconn);
+		log_info("[conn][%p] is Connected. Resumed Session %b", qconn,
+		    Event->CONNECTED.SessionResumed);
 
 		// Start/ReStart the nng pipe
 		if (qsock->pipe == NULL) {
@@ -421,7 +424,6 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		}
 		pipe_ops->pipe_start(qsock->pipe);
 		break;
-
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_TRANSPORT:
 		// The connection has been shut down by the transport.
 		// Generally, this is the expected way for the connection to
@@ -429,18 +431,29 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		// the connection.
 		if (Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status ==
 		    QUIC_STATUS_CONNECTION_IDLE) {
-			log_warn("[conn][%p] Successfully shut down on idle.\n",
+			log_warn(
+			    "[conn][%p] Successfully shut down on idle.\n",
 			    qconn);
-		} else {
-			log_warn("[conn][%p] Shut down by transport, 0x%x, Error Code %llu\n",
-			    qconn, Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status,
-				(unsigned long long) Event->SHUTDOWN_INITIATED_BY_TRANSPORT.ErrorCode);
+		} else if (Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status ==
+		    QUIC_STATUS_CONNECTION_TIMEOUT) {
+			log_warn("[conn][%p] Successfully shut down on "
+			         "CONNECTION_TIMEOUT.\n",
+			    qconn);
 		}
+		log_warn("[conn][%p] Shut down by transport, 0x%x, Error Code "
+		         "%llu\n",
+		    qconn, Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status,
+		    (unsigned long long)
+		        Event->SHUTDOWN_INITIATED_BY_TRANSPORT.ErrorCode);
 		break;
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER:
 		// The connection was explicitly shut down by the peer.
-		log_warn("[conn][%p] QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER, 0x%llu\n", qconn,
-		    (unsigned long long) Event->SHUTDOWN_INITIATED_BY_PEER.ErrorCode);
+		log_warn("[conn][%p] "
+		         "QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER, "
+		         "0x%llu\n",
+		    qconn,
+		    (unsigned long long)
+		        Event->SHUTDOWN_INITIATED_BY_PEER.ErrorCode);
 		break;
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE:
 		// The connection has completed the shutdown process and is
@@ -448,6 +461,7 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		log_info("[conn][%p] QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE: All done\n\n", qconn);
 		nni_mtx_lock(&qsock->mtx);
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
+			// explicitly shutdon on protocol layer.
 			MsQuic->ConnectionClose(qconn);
 		}
 
@@ -503,13 +517,20 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 }
 
 int
-quic_disconnect(void *qsock)
+quic_disconnect(void *qsock, void *qpipe)
 {
 	log_debug("actively disclose the QUIC stream");
-	quic_sock_t *qs = qsock;
+	quic_sock_t *qs    = qsock;
+	quic_strm_t *qstrm = qpipe;
 	if (!qsock) {
 		return -1;
 	}
+	if (qstrm->closed == true || qstrm->stream != NULL) {
+		return -1;
+	}
+	MsQuic->StreamClose(qstrm->stream);
+	MsQuic->StreamShutdown(
+	    qstrm->stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, NNG_ECONNSHUT);
 
 	MsQuic->ConnectionShutdown(
 	    qs->qconn, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, NNG_ECLOSED);
