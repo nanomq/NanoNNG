@@ -845,7 +845,7 @@ quic_strm_recv_cb(void *arg)
 	uint8_t *rbuf = qstrm->rrbuf + qstrm->rrpos;
 	uint32_t rlen = qstrm->rrlen, n, remain_len;
 	if (nni_aio_result(&qstrm->rraio) != 0)
-		qdebug("QUIC aio receving error!");
+		log_error("QUIC aio receving error!");
 	nni_mtx_lock(&qstrm->mtx);
 	// Wait MsQuic take back data
 	if (rlen < qstrm->rwlen - qstrm->rxlen) {
@@ -864,6 +864,7 @@ quic_strm_recv_cb(void *arg)
 	if (qstrm->rxlen == 0) {
 		n = 2; // new
 		qdebug("type !!!!!!!: %x\n", *rbuf);
+
 		memcpy(qstrm->rxbuf, rbuf, n);
 		qstrm->rxlen = 0 + n;
 		qstrm->rrpos += n;
@@ -872,7 +873,7 @@ quic_strm_recv_cb(void *arg)
 			// 0 remaining length could be
 			// PINGRESP/DISCONNECT
 			if (0 != nng_msg_alloc(&qstrm->rxmsg, 0)) {
-				qdebug("error in msg allocated.\n");
+				log_error("error in msg allocated.\n");
 			}
 			nni_msg_header_append(
 			    qstrm->rxmsg, qstrm->rxbuf, 2);
@@ -928,10 +929,10 @@ quic_strm_recv_cb(void *arg)
 
 		usedbytes = 0;
 		if (0 != mqtt_get_remaining_length(qstrm->rxbuf, qstrm->rxlen, &remain_len, &usedbytes)) {
-			qdebug("error in get remain_len.\n");
+			log_error("error in get remain_len.\n");
 		}
 		if (0 != nng_msg_alloc(&qstrm->rxmsg, 1 + usedbytes + remain_len)) {
-			qdebug("error in msg allocated.\n");
+			log_error("error in msg allocated.\n");
 		}
 		qstrm->rwlen = remain_len + usedbytes + 1;
 
