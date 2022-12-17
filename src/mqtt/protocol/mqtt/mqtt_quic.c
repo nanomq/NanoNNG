@@ -128,23 +128,30 @@ static inline void
 mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
 {
 	if (0 != nni_lmq_put(&p->recv_messages, msg)) {
-		if (p->mqtt_sock->bridge_conf->max_recv_queue_len >
-		    nni_lmq_cap(&p->recv_messages)) {
+		size_t max_que_len =
+		    p->mqtt_sock->bridge_conf->max_recv_queue_len;
+		if (max_que_len > nni_lmq_cap(&p->recv_messages)) {
+
+			size_t double_que_cap =
+			    nni_lmq_cap(&p->recv_messages) * 2;
+			size_t resize_que_len = double_que_cap < max_que_len
+			    ? double_que_cap
+			    : max_que_len;
+
 			if (0 !=
-			    nni_lmq_resize(&p->recv_messages,
-			        p->mqtt_sock->bridge_conf
-			            ->max_recv_queue_len)) {
-				log_warn("Resize receive lmq failed due to memory error!");
+			    nni_lmq_resize(
+			        &p->recv_messages, resize_que_len)) {
+				log_warn("Resize receive lmq failed due to "
+				         "memory error!");
 			} else {
-				log_debug("Resize receive message queue "
-				         "capacity to %d",
+				log_info("Resize receive message queue "
+				          "capacity to %d",
 				    nni_lmq_cap(&p->recv_messages));
 				if (0 == nni_lmq_put(&p->recv_messages, msg)) {
 					return;
 				}
-				log_warn(
-				    "Message dropped due to receive "
-				    "message queue is full!");
+				log_warn("Message dropped due to receive "
+				         "message queue is full!");
 			}
 		}
 
@@ -235,11 +242,21 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		quic_pipe_send(p->qpipe, &p->send_aio);
 	} else {
 		if (nni_lmq_full(&s->send_messages)) {
-			if (s->bridge_conf->max_send_queue_len >
-			    nni_lmq_cap(&s->send_messages)) {
+
+			size_t max_que_len =
+			    s->bridge_conf->max_send_queue_len;
+
+			if (max_que_len > nni_lmq_cap(&s->send_messages)) {
+				size_t double_que_cap =
+				    nni_lmq_cap(&s->send_messages) * 2;
+				size_t resize_que_len =
+				    double_que_cap < max_que_len
+				    ? double_que_cap
+				    : max_que_len;
+
 				if (0 !=
-				    nni_lmq_resize(&s->send_messages,
-				        s->bridge_conf->max_send_queue_len)) {
+				    nni_lmq_resize(
+				        &s->send_messages, resize_que_len)) {
 					(void) nni_lmq_get(
 					    &s->send_messages, &tmsg);
 					log_debug(
