@@ -31,7 +31,7 @@ extern void quic_proto_set_bridge_conf(void *arg);
 // Or the connection is failed in eastablishing.
 extern int quic_connect_ipv4(const char *url, nni_sock *sock, uint32_t *index);
 // Close connection
-extern int quic_disconnect(void *qsock);
+extern int quic_disconnect(void *qsock, void *qpipe);
 
 // Create a qpipe and open it
 extern int quic_pipe_open(void *qsock, void **qpipe);
