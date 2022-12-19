@@ -5,6 +5,7 @@
 #include "nng/mqtt/mqtt_client.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "supplemental/mqtt/mqtt_msg.h"
+#include "nng/supplemental/nanolib/conf.h"
 
 #include <assert.h>
 #include <errno.h>
@@ -70,7 +71,7 @@ struct quic_strm_s {
 	nng_url *url_s;
 };
 
-// Config for msquic
+static conf_bridge_node *bridge_node;
 const QUIC_REGISTRATION_CONFIG RegConfig = { "mqtt",
 	QUIC_EXECUTION_PROFILE_LOW_LATENCY };
 const QUIC_BUFFER     Alpn = { sizeof("mqtt") - 1, (uint8_t *) "mqtt" };
@@ -80,11 +81,10 @@ HQUIC                 Configuration;
 
 quic_strm_t    *GStream     = NULL;
 HQUIC          *GConnection = NULL;
-static uint64_t keepalive   = 0;
 
 nni_proto *g_quic_proto;
 
-static BOOLEAN LoadConfiguration(BOOLEAN Unsecure, uint64_t interval, uint64_t timeout);
+static BOOLEAN LoadConfiguration(BOOLEAN Unsecure, conf_bridge_node *node);
 static int     quic_strm_start(HQUIC Connection, void *Context, HQUIC *Streamp);
 static void    quic_strm_send_cancel(nni_aio *aio, void *arg, int rv);
 static void    quic_strm_send_start(quic_strm_t *qstrm);
@@ -97,29 +97,40 @@ static int     quic_reconnect(quic_strm_t *qstrm);
 
 // Helper function to load a client configuration.
 static BOOLEAN
-LoadConfiguration(BOOLEAN Unsecure, uint64_t interval, uint64_t timeout)
+LoadConfiguration(BOOLEAN Unsecure, conf_bridge_node *node)
 {
 	QUIC_SETTINGS Settings = { 0 };
+	QUIC_CREDENTIAL_CONFIG CredConfig;
+	if (!node) {
+		Settings.IsSet.IdleTimeoutMs = FALSE;
+		Settings.IsSet.KeepAliveIntervalMs = TRUE;
+		Settings.KeepAliveIntervalMs       = 60 * 1000;
+		goto there;
+	}
 	// Configures the client's idle timeout.
-	if(interval == 0) {
+	if (node->qidle_timeout == 0) {
 		Settings.IsSet.IdleTimeoutMs = FALSE;
 	} else {
-		keepalive                             = interval;
-		Settings.IsSet.IdleTimeoutMs          = TRUE;
-		Settings.IsSet.DisconnectTimeoutMs    = TRUE;
-		Settings.IsSet.HandshakeIdleTimeoutMs = TRUE;
-		Settings.IsSet.KeepAliveIntervalMs    = TRUE;
-		Settings.IsSet.SendIdleTimeoutMs      = TRUE;
-		Settings.SendIdleTimeoutMs            = 10 * 1000;
-		Settings.IdleTimeoutMs                = 20 * 1000;
-		Settings.DisconnectTimeoutMs          = 10 * 1000;
-		Settings.KeepAliveIntervalMs          = interval * 1000;
-		Settings.HandshakeIdleTimeoutMs       = 10 * 1000;
+		Settings.IsSet.IdleTimeoutMs = TRUE;
+		Settings.IdleTimeoutMs       = node->qidle_timeout * 1000;
 	}
+	if (node->qconnect_timeout != 0) {
+		Settings.IsSet.HandshakeIdleTimeoutMs = TRUE;
+		Settings.HandshakeIdleTimeoutMs =
+		    node->qconnect_timeout * 1000;
+	}
+	if (node->qdiscon_timeout != 0) {
+		Settings.IsSet.DisconnectTimeoutMs = TRUE;
+		Settings.DisconnectTimeoutMs       = node->qdiscon_timeout * 1000;
+	}
+
+	Settings.IsSet.KeepAliveIntervalMs = TRUE;
+	Settings.KeepAliveIntervalMs       = node->qkeepalive * 1000;
+
+there:
 
 	// Configures a default client configuration, optionally disabling
 	// server certificate validation.
-	QUIC_CREDENTIAL_CONFIG CredConfig;
 	memset(&CredConfig, 0, sizeof(CredConfig));
 	CredConfig.Type  = QUIC_CREDENTIAL_TYPE_NONE;
 	CredConfig.Flags = QUIC_CREDENTIAL_FLAG_CLIENT;
@@ -582,18 +593,12 @@ quic_proto_close()
 	g_quic_proto = NULL;
 }
 
-void
-quic_proto_set_keepalive(uint64_t interval)
-{
-	keepalive = interval;
-}
-
 int
 quic_connect_ipv4(const char *url, nni_sock *sock)
 {
 	// Load the client configuration based on the "unsecure" command line
 	// option.
-	if (!LoadConfiguration(TRUE, keepalive, 10)) {
+	if (!LoadConfiguration(TRUE, bridge_node)) {
 		log_error("Failed in load quic configuration");
 		return (-1);
 	}
@@ -675,7 +680,7 @@ quic_reconnect(quic_strm_t *qstrm)
 {
 	// Load the client configuration based on the "unsecure" command line
 	// option.
-	if (!LoadConfiguration(TRUE, keepalive, 10)) {
+	if (!LoadConfiguration(TRUE, bridge_node)) {
 		log_error("Failed in load quic configuration");
 		return (-1);
 	}
@@ -1102,9 +1107,9 @@ quic_strm_send(void *arg, nni_aio *aio)
 	return 0;
 }
 
-int
-quic_strm_close(void *arg)
-{
+// int
+// quic_strm_close(void *arg)
+// {
 // 	if (!arg)
 // 		return -1;
 // 	quic_strm_init(qstrm, qsock);
@@ -1143,7 +1148,7 @@ quic_strm_close(void *arg)
 // 	nng_free(qstrm, sizeof(quic_strm_t));
 
 // 	return (-2);
-}
+// }
 
 // return value 0 : normal close -1 : not even started
 int
@@ -1165,14 +1170,20 @@ quic_pipe_close(uint8_t *code)
 	while ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
 		nni_list_remove(&qstrm->sendq, aio);
 		// nni_aio_abort(aio, NNG_ECANCELED);
-		nni_aio_finish_error(aio, code);
+		nni_aio_finish_error(aio, *code);
 	}
 	while ((aio = nni_list_first(&qstrm->recvq)) != NULL) {
 		nni_list_remove(&qstrm->recvq, aio);
 		// nni_aio_abort(aio, NNG_ECLOSED);
-		nni_aio_finish_error(aio, code);
+		nni_aio_finish_error(aio, *code);
 	}
 	// we never free qstrm in single stream mode
 	// quic_strm_fini(qstrm);
 	return 0;
+}
+
+void
+quic_proto_set_bridge_conf(void *node)
+{
+	bridge_node = (conf_bridge_node *)node;
 }

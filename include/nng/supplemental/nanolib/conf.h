@@ -194,25 +194,28 @@ typedef struct {
 } subscribe;
 
 struct conf_bridge_node {
-	bool         enable;
-	char *       name;
-	char *       address;
-	char *       host;
-	uint16_t     port;
-	uint8_t      proto_ver;
-	char *       clientid;
-	bool         clean_start;
-	char *       username;
-	char *       password;
-	uint16_t     keepalive;
-	uint64_t     qkeepalive;		//keepalive timeout interval of QUIC transport
-	size_t       forwards_count;
-	char **      forwards;
-	size_t       sub_count;
-	subscribe *  sub_list;
-	uint64_t     parallel;
-	conf_tls     tls;
-	void *       sock;
+	bool       enable;
+	char      *name;
+	char      *address;
+	char      *host;
+	uint16_t   port;
+	uint8_t    proto_ver;
+	char      *clientid;
+	bool       clean_start;
+	char      *username;
+	char      *password;
+	uint16_t   keepalive;
+	uint32_t   qdiscon_timeout;
+	uint64_t   qkeepalive; // keepalive timeout interval of QUIC transport
+	uint64_t   qidle_timeout;
+	uint64_t   qconnect_timeout;
+	size_t     forwards_count;
+	char     **forwards;
+	size_t     sub_count;
+	subscribe *sub_list;
+	uint64_t   parallel;
+	conf_tls   tls;
+	void      *sock;
 	conf_sqlite *sqlite;
 	size_t       max_recv_queue_len;
 	size_t       max_send_queue_len;
