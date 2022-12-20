@@ -229,7 +229,9 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 		// being returned back to the app.
 		free(Event->SEND_COMPLETE.ClientContext);
 		log_debug("[strm][%p] Data sent\n", Stream);
-
+		if (Event->SEND_COMPLETE.Canceled) {
+			log_error("MsQUIC send Canceled!");
+		}
 		// Get aio from sendq and finish
 		nni_mtx_lock(&qstrm->mtx);
 		if ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
