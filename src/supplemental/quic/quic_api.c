@@ -243,7 +243,7 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 			nni_mtx_unlock(&qstrm->mtx);
 			smsg = nni_aio_get_msg(aio);
 			nni_msg_free(smsg);
-			nni_aio_finish_sync(aio, 0, 0);
+			nni_aio_finish(aio, 0, 0);
 			break;
 		}
 		if ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
@@ -253,6 +253,7 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 			smsg = nni_aio_get_msg(aio);
 			nni_msg_free(smsg);
 			nni_aio_finish_sync(aio, 0, 0);
+			log_error("never reach here");
 			break;
 		}
 		nni_mtx_unlock(&qstrm->mtx);
@@ -762,11 +763,7 @@ quic_aio_send(void *arg, nni_aio *aio)
 	nni_msg     *msg;
 	QUIC_STATUS Status;
 
-	if ((rv = nni_aio_begin(aio)) != 0) {
-		return rv;
-	}
 	nni_mtx_lock(&qstrm->mtx);
-
 	if ((rv = nni_aio_schedule(aio, quic_strm_send_cancel, qstrm)) != 0) {
 		nni_mtx_unlock(&qstrm->mtx);
 		nni_aio_finish_error(aio, rv);

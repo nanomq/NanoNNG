@@ -220,12 +220,11 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 	default:
 		return NNG_EPROTO;
 	}
-	if (qos == 0 && ptype == NNG_MQTT_PUBLISH) {
-			log_warn("send via new api!");
+	if (qos > 0 && ptype == NNG_MQTT_PUBLISH) {
 			nni_mqtt_msg_encode(msg);
 			nni_aio_set_msg(aio, msg);
 			quic_aio_send(p->qstream, aio);
-			return -1;
+			return 0;
 		}
 	if (!p->busy) {
 		nni_mqtt_msg_encode(msg);
@@ -233,10 +232,6 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		p->busy = true;
 		quic_strm_send(p->qstream, &p->send_aio);
 	} else {
-		if (qos == 0 && ptype == NNG_MQTT_PUBLISH) {
-			log_warn("send via new api!");
-			quic_aio_send(p->qstream, aio);
-		}
 		// if (nni_lmq_full(&s->send_messages)) {
 		// 	if (s->conf_bridge_node->max_send_queue_len >
 		// 	    nni_lmq_cap(&s->send_messages)) {
@@ -647,7 +642,7 @@ mqtt_timer_cb(void *arg)
 			s->pingcnt = 0; // restore pingcnt
 			p->reason_code = KEEP_ALIVE_TIMEOUT;
 			quic_disconnect();
-			log_info("connection shutting down");
+			log_warn("connection shutting down");
 			nni_mtx_unlock(&s->mtx);
 			return;
 		} else if (!nni_aio_busy(&p->rep_aio)){
