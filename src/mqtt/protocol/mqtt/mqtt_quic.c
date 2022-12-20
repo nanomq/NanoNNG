@@ -622,7 +622,7 @@ mqtt_timer_cb(void *arg)
 		if (ptype == NNG_MQTT_PUBLISH) {
 			nni_mqtt_msg_set_publish_dup(msg, true);
 		}
-		log_warn("start msg resending pid: ld%", pid);
+
 		if (!p->busy) {
 			p->busy = true;
 			nni_msg_clone(msg);
@@ -635,7 +635,7 @@ mqtt_timer_cb(void *arg)
 				nni_aio_set_msg(aio, NULL);
 			}
 			nni_aio_set_msg(&p->send_aio, msg);
-			log_warn("actually resend qos msg pid: ld%", pid);
+
 			quic_strm_send(p->qstream, &p->send_aio);
 
 			nni_mtx_unlock(&s->mtx);
