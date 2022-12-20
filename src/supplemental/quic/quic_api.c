@@ -238,11 +238,12 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 		if (aio != NULL) {
 			nni_aio_list_remove(aio);
 			// free the buf
-			free(nni_aio_get_input(aio, 0));
+			QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
+			free(buf);
 			nni_mtx_unlock(&qstrm->mtx);
 			smsg = nni_aio_get_msg(aio);
 			nni_msg_free(smsg);
-			nni_aio_finish(aio, 0, 0);
+			nni_aio_finish_sync(aio, 0, 0);
 			break;
 		}
 		if ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
@@ -804,9 +805,10 @@ quic_aio_send(void *arg, nni_aio *aio)
 	    ((((uint8_t *) nni_msg_header(msg))[0] & 0xf0) >> 4),
 	    ((uint8_t *) nni_msg_header(msg))[0]);
 	log_debug("body len: %d header len: %d", buf[1].Length, buf[0].Length);
+	nni_aio_set_input(aio, 0, buf);
 
 	if (QUIC_FAILED(Status = MsQuic->StreamSend(qstrm->stream, buf, bl > 0 ? 2:1,
-	                    QUIC_SEND_FLAG_ALLOW_0_RTT, aio))) {
+	                    QUIC_SEND_FLAG_NONE, aio))) {
 		log_error("Failed in StreamSend, 0x%x!", Status);
 		free(buf);
 	}
