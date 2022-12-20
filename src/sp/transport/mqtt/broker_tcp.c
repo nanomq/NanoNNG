@@ -33,7 +33,7 @@ struct tcptran_pipe {
 	nni_pipe   *npipe; // for statitical
 	// uint16_t        peer;		//reserved for MQTT sdk version
 	// uint16_t        proto;
-	size_t          rcvmax;	//duplicate with conf->max_packet_size
+	size_t          rcvmax; // duplicate with conf->max_packet_size
 	size_t          gotrxhead;
 	size_t          wantrxhead;
 	bool            closed;
@@ -612,8 +612,10 @@ tcptran_pipe_recv_cb(void *arg)
 		return;
 	} else if (len == 0 && n == 2) {
 		if ((p->rxlen[0] & 0XFF) == CMD_PINGREQ) {
-			// TODO set timeout in case it never finish
-			nng_aio_wait(p->rpaio);
+			// TODO add callback func for rpaio
+			if (nni_aio_busy(p->rpaio)) {
+				goto notify;
+			}
 			p->txlen[0]    = CMD_PINGRESP;
 			p->txlen[1]    = 0x00;
 			iov[0].iov_len = 2;

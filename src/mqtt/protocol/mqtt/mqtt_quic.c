@@ -203,6 +203,8 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 			nni_aio *m_aio = nni_mqtt_msg_get_aio(tmsg);
 			if (m_aio) {
 				nni_aio_finish_error(m_aio, UNSPECIFIED_ERROR);
+			} else {
+				log_error("NULL Aio found in qos msg %ld", packet_id);
 			}
 			nni_msg_free(tmsg);
 			nni_id_remove(&p->sent_unack, packet_id);
@@ -620,6 +622,7 @@ mqtt_timer_cb(void *arg)
 		if (ptype == NNG_MQTT_PUBLISH) {
 			nni_mqtt_msg_set_publish_dup(msg, true);
 		}
+
 		if (!p->busy) {
 			p->busy = true;
 			nni_msg_clone(msg);
@@ -632,6 +635,7 @@ mqtt_timer_cb(void *arg)
 				nni_aio_set_msg(aio, NULL);
 			}
 			nni_aio_set_msg(&p->send_aio, msg);
+
 			quic_strm_send(p->qstream, &p->send_aio);
 
 			nni_mtx_unlock(&s->mtx);
@@ -945,7 +949,6 @@ static void
 quic_mqtt_stream_stop(void *arg)
 {
 	mqtt_pipe_t *p = arg;
-	mqtt_sock_t *s = p->mqtt_sock;
 
 	if (quic_pipe_close(&p->reason_code) == 0) {
 		nni_aio_stop(&p->send_aio);
@@ -1226,7 +1229,7 @@ nng_mqtt_quic_client_open(nng_socket *sock, const char *url)
 }
 
 int
-nng_mqtt_quic_open_keepalive(nng_socket *sock, const char *url, uint64_t interval)
+nng_mqtt_quic_open_conf(nng_socket *sock, const char *url,  void *node)
 {
 	nni_sock *nsock;
 	int       rv = 0;
@@ -1236,7 +1239,7 @@ nng_mqtt_quic_open_keepalive(nng_socket *sock, const char *url, uint64_t interva
 		if (nsock) {
 			quic_open();
 			quic_proto_open(&mqtt_msquic_proto);
-			quic_proto_set_keepalive(interval);
+			quic_proto_set_bridge_conf(node);
 			quic_connect_ipv4(url, nsock);
 		} else {
 			rv = -1;
