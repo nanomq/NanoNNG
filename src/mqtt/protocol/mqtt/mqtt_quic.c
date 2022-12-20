@@ -220,12 +220,22 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 	default:
 		return NNG_EPROTO;
 	}
+	if (qos == 0 && ptype == NNG_MQTT_PUBLISH) {
+			log_warn("send via new api!");
+			nni_mqtt_msg_encode(msg);
+			nni_aio_set_msg(aio, msg);
+			quic_aio_send(p->qstream, aio);
+		}
 	if (!p->busy) {
 		nni_mqtt_msg_encode(msg);
 		nni_aio_set_msg(&p->send_aio, msg);
 		p->busy = true;
 		quic_strm_send(p->qstream, &p->send_aio);
 	} else {
+		if (qos == 0 && ptype == NNG_MQTT_PUBLISH) {
+			log_warn("send via new api!");
+			quic_aio_send(p->qstream, aio);
+		}
 		// if (nni_lmq_full(&s->send_messages)) {
 		// 	if (s->conf_bridge_node->max_send_queue_len >
 		// 	    nni_lmq_cap(&s->send_messages)) {

@@ -227,13 +227,24 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 	case QUIC_STREAM_EVENT_SEND_COMPLETE:
 		// A previous StreamSend call has completed, and the context is
 		// being returned back to the app.
-		free(Event->SEND_COMPLETE.ClientContext);
+		// free(Event->SEND_COMPLETE.ClientContext);
 		log_debug("[strm][%p] Data sent\n", Stream);
 		if (Event->SEND_COMPLETE.Canceled) {
 			log_error("MsQUIC send Canceled!");
 		}
 		// Get aio from sendq and finish
 		nni_mtx_lock(&qstrm->mtx);
+		aio = Event->SEND_COMPLETE.ClientContext;
+		if (aio != NULL) {
+			nni_aio_list_remove(aio);
+			// free the buf
+			free(nni_aio_get_input(aio, 0));
+			nni_mtx_unlock(&qstrm->mtx);
+			smsg = nni_aio_get_msg(aio);
+			nni_msg_free(smsg);
+			nni_aio_finish(aio, 0, 0);
+			break;
+		}
 		if ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
 			nni_aio_list_remove(aio);
 			quic_strm_send_start(qstrm);
@@ -740,6 +751,71 @@ quic_strm_close_cb(void *arg)
 	quic_reconnect(qstrm);
 }
 
+
+// only for qos 0
+int
+quic_aio_send(void *arg, nni_aio *aio)
+{
+	quic_strm_t *qstrm = arg;
+	int          rv;
+	nni_msg     *msg;
+	QUIC_STATUS Status;
+
+	if ((rv = nni_aio_begin(aio)) != 0) {
+		return rv;
+	}
+	nni_mtx_lock(&qstrm->mtx);
+
+	if ((rv = nni_aio_schedule(aio, quic_strm_send_cancel, qstrm)) != 0) {
+		nni_mtx_unlock(&qstrm->mtx);
+		nni_aio_finish_error(aio, rv);
+		return (-1);
+	}
+	msg = nni_aio_get_msg(aio);
+	if (qstrm->closed) {
+		nni_msg_free(msg);
+		nni_aio_finish_error(aio, NNG_ECLOSED);
+		while ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
+			nni_list_remove(&qstrm->sendq, aio);
+			msg = nni_aio_get_msg(aio);
+			nni_msg_free(msg);
+			nni_aio_finish_error(aio, NNG_ECLOSED);
+		}
+		return;
+	}
+
+	QUIC_BUFFER *buf=(QUIC_BUFFER*)malloc(sizeof(QUIC_BUFFER)*2);
+	int          hl   = nni_msg_header_len(msg);
+	int          bl   = nni_msg_len(msg);
+
+	if (hl > 0) {
+		QUIC_BUFFER *buf1 = &buf[0];
+		buf1->Length = hl;
+		buf1->Buffer = nni_msg_header(msg);
+	}
+
+	if (bl > 0) {
+		QUIC_BUFFER *buf2 = &buf[1];
+		buf2->Length = bl;
+		buf2->Buffer = nni_msg_body(msg);
+	}
+
+	log_debug("type is 0x%x %x.",
+	    ((((uint8_t *) nni_msg_header(msg))[0] & 0xf0) >> 4),
+	    ((uint8_t *) nni_msg_header(msg))[0]);
+	log_debug("body len: %d header len: %d", buf[1].Length, buf[0].Length);
+
+	if (QUIC_FAILED(Status = MsQuic->StreamSend(qstrm->stream, buf, bl > 0 ? 2:1,
+	                    QUIC_SEND_FLAG_ALLOW_0_RTT, aio))) {
+		log_error("Failed in StreamSend, 0x%x!", Status);
+		free(buf);
+	}
+
+	nni_mtx_unlock(&qstrm->mtx);
+
+	return 0;
+}
+
 static void
 quic_strm_send_start(quic_strm_t *qstrm)
 {
@@ -784,9 +860,10 @@ quic_strm_send_start(quic_strm_t *qstrm)
 	    ((((uint8_t *) nni_msg_header(msg))[0] & 0xf0) >> 4),
 	    ((uint8_t *) nni_msg_header(msg))[0]);
 	log_debug("body len: %d header len: %d", buf[1].Length, buf[0].Length);
+	nni_aio_set_input(aio, 0, buf);
 
 	if (QUIC_FAILED(Status = MsQuic->StreamSend(qstrm->stream, buf, bl > 0 ? 2:1,
-	                    QUIC_SEND_FLAG_NONE, buf))) {
+	                    QUIC_SEND_FLAG_NONE, aio))) {
 		log_debug("Failed in StreamSend, 0x%x!", Status);
 		free(buf);
 	}
