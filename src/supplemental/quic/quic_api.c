@@ -236,24 +236,27 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 		nni_mtx_lock(&qstrm->mtx);
 		aio = Event->SEND_COMPLETE.ClientContext;
 		if (aio != NULL) {
+			// QoS messages send_cb
 			nni_aio_list_remove(aio);
 			// free the buf
 			QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
 			free(buf);
-			nni_mtx_unlock(&qstrm->mtx);
 			smsg = nni_aio_get_msg(aio);
 			nni_msg_free(smsg);
-			nni_aio_finish(aio, 0, 0);
+			nni_mtx_unlock(&qstrm->mtx);
+			// leave aio_finish to ACK
+			// nni_aio_finish_sync(aio, 0, 0);
 			break;
 		}
 		if ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
 			nni_aio_list_remove(aio);
+			QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
+			free(buf);
 			quic_strm_send_start(qstrm);
 			nni_mtx_unlock(&qstrm->mtx);
 			smsg = nni_aio_get_msg(aio);
 			nni_msg_free(smsg);
 			nni_aio_finish_sync(aio, 0, 0);
-			log_error("never reach here");
 			break;
 		}
 		nni_mtx_unlock(&qstrm->mtx);
@@ -764,12 +767,14 @@ quic_aio_send(void *arg, nni_aio *aio)
 	QUIC_STATUS Status;
 
 	nni_mtx_lock(&qstrm->mtx);
+	msg = nni_aio_get_msg(aio);
 	if ((rv = nni_aio_schedule(aio, quic_strm_send_cancel, qstrm)) != 0) {
 		nni_mtx_unlock(&qstrm->mtx);
+		nni_msg_free(msg);
 		nni_aio_finish_error(aio, rv);
 		return (-1);
 	}
-	msg = nni_aio_get_msg(aio);
+
 	if (qstrm->closed) {
 		nni_msg_free(msg);
 		nni_aio_finish_error(aio, NNG_ECLOSED);
@@ -807,7 +812,12 @@ quic_aio_send(void *arg, nni_aio *aio)
 	if (QUIC_FAILED(Status = MsQuic->StreamSend(qstrm->stream, buf, bl > 0 ? 2:1,
 	                    QUIC_SEND_FLAG_NONE, aio))) {
 		log_error("Failed in StreamSend, 0x%x!", Status);
+		nni_aio_list_remove(aio);
+		nni_mtx_unlock(&qstrm->mtx);
 		free(buf);
+		nni_msg_free(msg);
+		nni_aio_finish_error(aio, NNG_ECLOSED);
+		return NNG_ECANCELED;
 	}
 
 	nni_mtx_unlock(&qstrm->mtx);
@@ -860,9 +870,9 @@ quic_strm_send_start(quic_strm_t *qstrm)
 	    ((uint8_t *) nni_msg_header(msg))[0]);
 	log_debug("body len: %d header len: %d", buf[1].Length, buf[0].Length);
 	nni_aio_set_input(aio, 0, buf);
-
+	// senf QoS 0 msg with NULL context
 	if (QUIC_FAILED(Status = MsQuic->StreamSend(qstrm->stream, buf, bl > 0 ? 2:1,
-	                    QUIC_SEND_FLAG_NONE, aio))) {
+	                    QUIC_SEND_FLAG_NONE, NULL))) {
 		log_debug("Failed in StreamSend, 0x%x!", Status);
 		free(buf);
 	}
