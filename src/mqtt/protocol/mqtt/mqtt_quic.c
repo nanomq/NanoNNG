@@ -336,7 +336,7 @@ mqtt_quic_send_cb(void *arg)
 
 	// start message resending
 	uint16_t   pid = 0;
-	msg = nni_id_get_min(&p->sent_unack, &pid);
+	// msg = nni_id_get_min(&p->sent_unack, &pid);
 	if (msg != NULL && nni_clock() > nni_msg_get_timestamp(msg) + 20000 ) {
 		uint16_t ptype;
 		ptype = nni_mqtt_msg_get_packet_type(msg);
@@ -659,8 +659,8 @@ mqtt_timer_cb(void *arg)
 	}
 
 	// start message resending
-	msg = nni_id_get_min(&p->sent_unack, &pid);
-	if (msg != NULL && nni_clock() > nni_msg_get_timestamp(msg) + 2000000) {
+	// msg = nni_id_get_min(&p->sent_unack, &pid);
+	if (msg != NULL && nni_clock() > nni_msg_get_timestamp(msg) + 20000) {
 		uint16_t ptype;
 		ptype = nni_mqtt_msg_get_packet_type(msg);
 		if (ptype == NNG_MQTT_PUBLISH) {
