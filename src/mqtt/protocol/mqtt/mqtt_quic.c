@@ -224,7 +224,8 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 			nni_mqtt_msg_encode(msg);
 			nni_aio_set_msg(aio, msg);
 			quic_aio_send(p->qstream, aio);
-			return 0;
+			log_info("sending highpriority QoS msg in parallel");
+			return -1;
 		}
 	if (!p->busy) {
 		nni_mqtt_msg_encode(msg);
@@ -336,7 +337,7 @@ mqtt_quic_send_cb(void *arg)
 	// start message resending
 	uint16_t   pid = 0;
 	msg = nni_id_get_min(&p->sent_unack, &pid);
-	if (msg != NULL && nni_clock() > nni_msg_get_timestamp(msg) + 5000 ) {
+	if (msg != NULL && nni_clock() > nni_msg_get_timestamp(msg) + 20000 ) {
 		uint16_t ptype;
 		ptype = nni_mqtt_msg_get_packet_type(msg);
 		if (ptype == NNG_MQTT_PUBLISH) {
@@ -634,6 +635,8 @@ mqtt_timer_cb(void *arg)
 	if (nni_aio_busy(&p->rep_aio)) {
 		log_warn("rep_aio busy! stream is in serious congestion");
 		nni_aio_abort(&p->rep_aio, NNG_ECANCELED);
+		// nni_mtx_unlock(&s->mtx);
+		// return;
 	}
 	if (s->counter >= s->keepalive) {
 		// send PINGREQ
@@ -657,7 +660,7 @@ mqtt_timer_cb(void *arg)
 
 	// start message resending
 	msg = nni_id_get_min(&p->sent_unack, &pid);
-	if (msg != NULL && nni_clock() > nni_msg_get_timestamp(msg) + 5000) {
+	if (msg != NULL && nni_clock() > nni_msg_get_timestamp(msg) + 2000000) {
 		uint16_t ptype;
 		ptype = nni_mqtt_msg_get_packet_type(msg);
 		if (ptype == NNG_MQTT_PUBLISH) {
@@ -1140,7 +1143,7 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 		return;
 	}
 	nni_mtx_unlock(&s->mtx);
-	nni_aio_set_msg(aio, NULL);
+	// nni_aio_set_msg(aio, NULL);
 	return;
 }
 
