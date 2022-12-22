@@ -291,7 +291,7 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	case QUIC_STREAM_EVENT_SEND_COMPLETE:
 		// A previous StreamSend call has completed, and the context is
 		// being returned back to the app.
-		log_debug("[strm][%p] Data sent Canceled: %b", stream, Event->SEND_COMPLETE.Canceled);
+		log_debug("[strm][%p] Data sent Canceled: d", stream, Event->SEND_COMPLETE.Canceled);
 		if (Event->SEND_COMPLETE.Canceled) {
 			log_error("MsQUIC send Canceled!");
 		}
@@ -455,7 +455,7 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 	case QUIC_CONNECTION_EVENT_CONNECTED:
 		// The handshake has completed for the connection.
 		// do not init any var here due to potential frequent reconnect
-		log_info("[conn][%p] is Connected. Resumed Session %b", qconn,
+		log_info("[conn][%p] is Connected. Resumed Session %d", qconn,
 		    Event->CONNECTED.SessionResumed);
 
 		// Start/ReStart the nng pipe
@@ -1235,7 +1235,7 @@ quic_pipe_close(void *qpipe, uint8_t *code)
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
 	quic_strm_fini(qstrm);
-	nng_free(qstrm, sizeof(quic_strm_t));
+	// nng_free(qstrm, sizeof(quic_strm_t));
 
 	return 0;
 }
