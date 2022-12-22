@@ -652,20 +652,9 @@ quic_connect_ipv4(const char *url, nni_sock *sock, uint32_t *index)
 		log_error("Failed in ConnectionStart, 0x%x!", rv);
 		goto error;
 	}
-
-	// Start/ReStart the nng pipe
-	const nni_proto_pipe_ops *pipe_ops = g_quic_proto->proto_pipe_ops;
-	if ((qsock->pipe = nng_alloc(pipe_ops->pipe_size)) == NULL) {
-		log_error("error in alloc pipe.\n");
-		goto error;
-	}
 	// Successfully creating quic connection then assign to qsock
 	qsock->qconn = conn;
 
-	void *sock_data = nni_sock_proto_data(sock);
-	if (pipe_ops->pipe_init(qsock->pipe, (nni_pipe *)qsock, sock_data) == -1){
-		goto error;
-	}
 	return 0;
 
 error:
