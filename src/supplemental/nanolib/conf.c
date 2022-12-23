@@ -828,7 +828,9 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->qos_duration  = 10;
 	nanomq_conf->backoff       = 1.5;
 
-	nanomq_conf->allow_anonymous    = true;
+	nanomq_conf->allow_anonymous = true;
+	nanomq_conf->ipc_internal    = true;
+
 #ifdef ACL_SUPP
 	nanomq_conf->acl_nomatch        = ACL_ALLOW;
 	nanomq_conf->enable_acl_cache   = true;

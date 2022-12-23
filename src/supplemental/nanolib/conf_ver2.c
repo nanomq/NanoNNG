@@ -228,6 +228,8 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	hocon_read_num(config, num_taskq_thread, jso_sys);
 	hocon_read_num(config, max_taskq_thread, jso_sys);
 	hocon_read_num(config, parallel, jso_sys);
+	hocon_read_bool_base(
+	    config, ipc_internal, "enable_ipc_internal", jso_sys);
 
 	cJSON *jso_auth = cJSON_GetObjectItem(jso, "authorization");
 #ifdef ACL_SUPP
