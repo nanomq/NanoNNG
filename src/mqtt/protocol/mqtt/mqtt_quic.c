@@ -248,52 +248,55 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		p->busy = true;
 		quic_pipe_send(p->qpipe, &p->send_aio);
 	} else {
-		if (nni_lmq_full(&s->send_messages)) {
+		nni_msg_free(msg);
+		log_warn("msg 0x%x lost due to busy pipe",
+		    nni_mqtt_msg_get_packet_type(msg));
+		// if (nni_lmq_full(&s->send_messages)) {
 
-			size_t max_que_len =
-			    s->bridge_conf->max_send_queue_len;
+		// 	size_t max_que_len =
+		// 	    s->bridge_conf->max_send_queue_len;
 
-			if (max_que_len > nni_lmq_cap(&s->send_messages)) {
-				size_t double_que_cap =
-				    nni_lmq_cap(&s->send_messages) * 2;
-				size_t resize_que_len =
-				    double_que_cap < max_que_len
-				    ? double_que_cap
-				    : max_que_len;
+		// 	if (max_que_len > nni_lmq_cap(&s->send_messages)) {
+		// 		size_t double_que_cap =
+		// 		    nni_lmq_cap(&s->send_messages) * 2;
+		// 		size_t resize_que_len =
+		// 		    double_que_cap < max_que_len
+		// 		    ? double_que_cap
+		// 		    : max_que_len;
 
-				if (0 !=
-				    nni_lmq_resize(
-				        &s->send_messages, resize_que_len)) {
-					(void) nni_lmq_get(
-					    &s->send_messages, &tmsg);
-					log_debug(
-					    "Max send queue capacity is %d",
-					    nni_lmq_cap(&s->send_messages));
-					log_debug("Max send queue len is %d",
-					    nni_lmq_len(&s->send_messages));
-					log_warn("msg lost due to flight "
-					         "window is full");
-					nni_msg_free(tmsg);
-				}
+		// 		if (0 !=
+		// 		    nni_lmq_resize(
+		// 		        &s->send_messages, resize_que_len)) {
+		// 			(void) nni_lmq_get(
+		// 			    &s->send_messages, &tmsg);
+		// 			log_debug(
+		// 			    "Max send queue capacity is %d",
+		// 			    nni_lmq_cap(&s->send_messages));
+		// 			log_debug("Max send queue len is %d",
+		// 			    nni_lmq_len(&s->send_messages));
+		// 			log_warn("msg lost due to flight "
+		// 			         "window is full");
+		// 			nni_msg_free(tmsg);
+		// 		}
 
-				log_info("Resize max send queue to %d",
-				    nni_lmq_cap(&s->send_messages));
+		// 		log_info("Resize max send queue to %d",
+		// 		    nni_lmq_cap(&s->send_messages));
 
-			} else {
-				(void) nni_lmq_get(&s->send_messages, &tmsg);
-				log_debug("Max send queue capacity is %d",
-				    nni_lmq_cap(&s->send_messages));
-				log_debug("Max send queue len is %d",
-				    nni_lmq_len(&s->send_messages));
-				log_warn(
-				    "msg lost due to flight window is full");
-				nni_msg_free(tmsg);
-			}
-		}
-		if (0 != nni_lmq_put(&s->send_messages, msg)) {
-			nni_println(
-			    "Warning! msg send failed due to busy socket");
-		}
+		// 	} else {
+		// 		(void) nni_lmq_get(&s->send_messages, &tmsg);
+		// 		log_debug("Max send queue capacity is %d",
+		// 		    nni_lmq_cap(&s->send_messages));
+		// 		log_debug("Max send queue len is %d",
+		// 		    nni_lmq_len(&s->send_messages));
+		// 		log_warn(
+		// 		    "msg lost due to flight window is full");
+		// 		nni_msg_free(tmsg);
+		// 	}
+		// }
+		// if (0 != nni_lmq_put(&s->send_messages, msg)) {
+		// 	nni_println(
+		// 	    "Warning! msg send failed due to busy socket");
+		// }
 	}
 	if (0 == qos && ptype != NNG_MQTT_SUBSCRIBE &&
 	    ptype != NNG_MQTT_UNSUBSCRIBE) {
@@ -1346,6 +1349,7 @@ quic_mqtt_stream_close(void *arg)
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
 
+	nni_atomic_set_bool(&p->closed, true);
 	nni_mtx_lock(&s->mtx);
 	s->pipe = NULL;
 	nni_aio_close(&p->send_aio);
@@ -1366,8 +1370,6 @@ quic_mqtt_stream_close(void *arg)
 	p->qpipe = NULL;
 	p->ready = false;
 	nni_mtx_unlock(&s->mtx);
-
-	nni_atomic_set_bool(&p->closed, true);
 }
 
 /******************************************************************************
@@ -1408,16 +1410,16 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 
 	nni_mtx_lock(&s->mtx);
 
-	if (nni_atomic_get_bool(&s->closed)) {
-		nni_mtx_unlock(&s->mtx);
-		nni_aio_finish_error(aio, NNG_ECLOSED);
-		return;
-	}
-
 	msg = nni_aio_get_msg(aio);
 	if (msg == NULL) {
 		nni_mtx_unlock(&s->mtx);
 		nni_aio_finish_error(aio, NNG_EPROTO);
+		return;
+	}
+	if (nni_atomic_get_bool(&s->closed)) {
+		nni_mtx_unlock(&s->mtx);
+		nni_msg_free(msg);
+		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
 	}
 	nni_mqtt_packet_type ptype = nni_mqtt_msg_get_packet_type(msg);
@@ -1498,12 +1500,10 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 		mqtt_sub_stream(p, msg, packet_id, aio);
 	} else if ((rv = mqtt_send_msg(aio, msg, s)) >= 0) {
 		nni_mtx_unlock(&s->mtx);
-		// nni_aio_set_msg(aio, NULL);
 		nni_aio_finish(aio, rv, 0);
 		return;
 	}
 	nni_mtx_unlock(&s->mtx);
-	// nni_aio_set_msg(aio, NULL);
 	return;
 }
 
