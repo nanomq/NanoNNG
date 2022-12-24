@@ -85,8 +85,8 @@ struct mqtt_sock_s {
 	nni_lmq send_messages; // send messages queue (only for major stream)
 	nni_id_map  *streams;  // pipes, only effective in multi-stream mode
 	mqtt_pipe_t *pipe;     // the major pipe (control stream)
-	                   // main quic pipe, others needs a map to store the
-	                   // relationship between MQTT topics and quic pipes
+	                     // main quic pipe, others needs a map to store the
+	                     // relationship between MQTT topics and quic pipes
 	nni_aio   time_aio;  // timer aio to resend unack msg
 	uint16_t  counter;   // counter for elapsed time
 	uint16_t  pingcnt;   // count how many ping msg is lost
@@ -94,6 +94,7 @@ struct mqtt_sock_s {
 	nni_msg  *ping_msg, *connmsg;
 	nni_sock *nsock;
 
+	nni_atomic_int          next_packet_id; // next packet id to use, shared by multiple pipes
 	nni_mqtt_sqlite_option *sqlite_opt;
 	conf_bridge_node       *bridge_conf;
 
@@ -110,7 +111,6 @@ struct mqtt_pipe_s {
 	nni_atomic_bool closed;
 	bool            busy;
 	bool            ready;			// mark if QUIC stream is ready
-	nni_atomic_int  next_packet_id; // next packet id to use
 	mqtt_sock_t    *mqtt_sock;
 	nni_id_map      sent_unack;    // send messages unacknowledged
 	nni_id_map      recv_unack;    // recv messages unacknowledged
@@ -161,13 +161,13 @@ mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
 
 
 static uint16_t
-mqtt_pipe_get_next_packet_id(mqtt_pipe_t *p)
+mqtt_pipe_get_next_packet_id(mqtt_sock_t *s)
 {
 	int packet_id;
 	do {
-		packet_id = nni_atomic_get(&p->next_packet_id);
+		packet_id = nni_atomic_get(&s->next_packet_id);
 	} while (
-	    !nni_atomic_cas(&p->next_packet_id, packet_id, packet_id + 1));
+	    !nni_atomic_cas(&s->next_packet_id, packet_id, packet_id + 1));
 	return packet_id & 0xFFFF;
 }
 
@@ -597,7 +597,7 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 		nni_mqtt_msg_set_puback_packet_id(ack, packet_id);
 		nni_mqtt_msg_encode(ack);
 		// ignore result of this send ?
-		mqtt_pipe_send_msg(NULL, ack, p, mqtt_pipe_get_next_packet_id(p->mqtt_sock->pipe));
+		mqtt_pipe_send_msg(NULL, ack, p, mqtt_pipe_get_next_packet_id(p->mqtt_sock));
 		// return msg to user
 		nni_mtx_lock(&s->mtx);
 		if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
@@ -628,7 +628,7 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 				nni_mqtt_msg_set_packet_type(ack, NNG_MQTT_PUBACK);
 				nni_mqtt_msg_set_puback_packet_id(ack, packet_id);
 				nni_mqtt_msg_encode(ack);
-				mqtt_pipe_send_msg(NULL, ack, p, mqtt_pipe_get_next_packet_id(p->mqtt_sock->pipe));
+				mqtt_pipe_send_msg(NULL, ack, p, mqtt_pipe_get_next_packet_id(p->mqtt_sock));
 			}
 			nni_mtx_lock(&s->mtx);
 			// TODO aio should be placed in p->recv_queue to achieve parallel
@@ -1037,6 +1037,7 @@ static void mqtt_quic_sock_init(void *arg, nni_sock *sock)
 
 	nni_mtx_init(&s->mtx);
 	mqtt_quic_ctx_init(&s->master, s);
+	nni_atomic_set(&s->next_packet_id, 1);
 
 	s->bridge_conf = NULL;
 	s->streams     = NULL;
@@ -1181,7 +1182,6 @@ quic_mqtt_stream_init(void *arg, nni_pipe *qsock, void *sock)
 	nni_atomic_set_bool(&p->closed, true);
 	p->busy  = false;
 	p->ready = false;
-	nni_atomic_set(&p->next_packet_id, 1);
 
 	// QUIC stream init
 	if (0 != quic_pipe_open(qsock, &p->qpipe)) {
@@ -1432,7 +1432,7 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 		}
 	case NNG_MQTT_SUBSCRIBE:
 	case NNG_MQTT_UNSUBSCRIBE:
-		packet_id = mqtt_pipe_get_next_packet_id(p);
+		packet_id = mqtt_pipe_get_next_packet_id(s);
 		nni_mqtt_msg_set_packet_id(msg, packet_id);
 		break;
 	default:
