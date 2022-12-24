@@ -45,7 +45,7 @@ typedef struct quic_sock_s quic_sock_t;
 struct quic_sock_s {
 	HQUIC     qconn; // QUIC connection
 	nni_sock *sock;
-	void     *pipe; //mqtt_pipe
+	void     *pipe; //main mqtt_pipe
 
 	nni_mtx  mtx; // for reconnect
 	nni_aio  close_aio;
@@ -458,7 +458,7 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		log_info("[conn][%p] is Connected. Resumed Session %d", qconn,
 		    Event->CONNECTED.SessionResumed);
 
-		// Start/ReStart the nng pipe
+		// only create main stream/pipe it there is none.
 		if (qsock->pipe == NULL) {
 			// not first time to establish QUIC pipe
 			if ((qsock->pipe = nng_alloc(pipe_ops->pipe_size)) == NULL) {
@@ -654,6 +654,19 @@ quic_connect_ipv4(const char *url, nni_sock *sock, uint32_t *index)
 	}
 	// Successfully creating quic connection then assign to qsock
 	qsock->qconn = conn;
+
+	// // Start/ReStart the nng pipe
+	// const nni_proto_pipe_ops *pipe_ops = g_quic_proto->proto_pipe_ops;
+	// if ((qsock->pipe = nng_alloc(pipe_ops->pipe_size)) == NULL) {
+	// 	log_error("error in alloc pipe.\n");
+	// 	goto error;
+	// }
+
+	// void *sock_data = nni_sock_proto_data(sock);
+	// if (pipe_ops->pipe_init(qsock->pipe, (nni_pipe *) qsock, sock_data) ==
+	//     -1) {
+	// 	goto error;
+	// }
 
 	return 0;
 
@@ -1235,7 +1248,7 @@ quic_pipe_close(void *qpipe, uint8_t *code)
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
 	quic_strm_fini(qstrm);
-	// nng_free(qstrm, sizeof(quic_strm_t));
+	nng_free(qstrm, sizeof(quic_strm_t));
 
 	return 0;
 }
