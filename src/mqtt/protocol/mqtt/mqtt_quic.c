@@ -240,7 +240,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		nni_mqtt_msg_encode(msg);
 		nni_aio_set_msg(aio, msg);
 		quic_aio_send(p->qpipe, aio);
-		log_info("sending highpriority QoS msg in parallel");
+		log_debug("sending highpriority QoS msg in parallel");
 		return -1;
 	}
 	if (!p->busy) {
