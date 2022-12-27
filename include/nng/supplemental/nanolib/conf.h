@@ -223,6 +223,7 @@ struct conf_bridge_node {
 #if defined(SUPP_QUIC)
 	// config params for QUIC only
 	bool         multi_stream;
+	bool         qos_first; // send QoS msg in high priority
 	bool         hybrid;  // hybrid bridging affects auto-reconnect of QUIC transport
 	uint8_t      qcongestion_control; // congestion control algorithm 1: bbr 0: cubic
 	uint64_t     qkeepalive;		//keepalive timeout interval of QUIC transport

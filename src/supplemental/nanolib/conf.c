@@ -1983,8 +1983,12 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 			node->hybrid = nni_strcasecmp(value, "true") == 0;
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
-		                key_prefix, name, ".multi_stream")) != NULL) {
+		                key_prefix, name, ".quic_multi_stream")) != NULL) {
 			node->multi_stream = nni_strcasecmp(value, "true") == 0;
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".quic_qos_priority")) != NULL) {
+			node->qos_first = nni_strcasecmp(value, "true") == 0;
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".congestion_control")) !=
