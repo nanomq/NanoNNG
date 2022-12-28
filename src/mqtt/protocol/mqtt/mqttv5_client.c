@@ -69,7 +69,6 @@ struct mqtt_ctx_s {
 // A mqtt_pipe_s is our per-pipe protocol private structure.
 struct mqtt_pipe_s {
 	nni_atomic_bool closed;
-	nni_atomic_int  next_packet_id; // next packet id to use
 	nni_pipe *      pipe;
 	mqtt_sock_t *   mqtt_sock;
 
@@ -88,6 +87,7 @@ struct mqtt_pipe_s {
 struct mqtt_sock_s {
 	nni_atomic_bool closed;
 	nni_duration    retry;
+	nni_atomic_int  next_packet_id; // next packet id to use
 	nni_mtx         mtx;    // more fine grained mutual exclusion
 	mqtt_ctx_t      master; // to which we delegate send/recv calls
 	mqtt_pipe_t *   mqtt_pipe;
@@ -115,6 +115,7 @@ mqtt_sock_init(void *arg, nni_sock *sock)
 
 	nni_atomic_init_bool(&s->closed);
 	nni_atomic_set_bool(&s->closed, false);
+	nni_atomic_set(&s->next_packet_id, 1);
 
 	// this is "semi random" start for request IDs.
 	s->retry  = NNI_SECOND * 10;
@@ -259,13 +260,13 @@ mqtt_sock_recv(void *arg, nni_aio *aio)
  ******************************************************************************/
 
 static uint16_t
-mqtt_pipe_get_next_packet_id(mqtt_pipe_t *p)
+mqtt_sock_get_next_packet_id(mqtt_sock_t *s)
 {
 	int packet_id;
 	do {
-		packet_id = nni_atomic_get(&p->next_packet_id);
+		packet_id = nni_atomic_get(&s->next_packet_id);
 	} while (
-	    !nni_atomic_cas(&p->next_packet_id, packet_id, packet_id + 1));
+	    !nni_atomic_cas(&s->next_packet_id, packet_id, packet_id + 1));
 	return packet_id & 0xFFFF;
 }
 
@@ -276,7 +277,6 @@ mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s)
 
 	nni_atomic_init_bool(&p->closed);
 	nni_atomic_set_bool(&p->closed, false);
-	nni_atomic_set(&p->next_packet_id, 1);
 	p->pipe      = pipe;
 	p->mqtt_sock = s;
 	p->rid       = 1;
@@ -967,7 +967,7 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 		}
 	case NNG_MQTT_SUBSCRIBE:
 	case NNG_MQTT_UNSUBSCRIBE:
-		packet_id = mqtt_pipe_get_next_packet_id(p);
+		packet_id = mqtt_sock_get_next_packet_id(s);
 		nni_mqtt_msg_set_packet_id(msg, packet_id);
 		break;
 	default:
