@@ -219,6 +219,7 @@ struct conf_bridge_node {
 	conf_tls     tls;
 	conf_sqlite *sqlite;
 	nng_aio     *bridge_aio;
+	nng_lmq     *lmq;
 
 #if defined(SUPP_QUIC)
 	// config params for QUIC only
@@ -236,9 +237,9 @@ struct conf_bridge_node {
 typedef struct conf_bridge_node conf_bridge_node;
 
 struct conf_bridge {
-	size_t count;
+	size_t             count;
 	conf_bridge_node **nodes;
-	conf_sqlite sqlite;
+	conf_sqlite        sqlite;
 };
 
 typedef struct conf_bridge conf_bridge;

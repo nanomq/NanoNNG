@@ -79,7 +79,6 @@ struct mqtt_pipe_s {
 	nni_aio         time_aio;      // timer aio to resend unack msg
 	nni_lmq         recv_messages; // recv messages queue
 	nni_lmq         send_messages; // send messages queue
-	nni_lmq         ctx_aios;      // awaiting aio of QoS
 	bool            busy;
 	uint16_t        rid;
 };
