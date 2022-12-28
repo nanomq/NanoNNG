@@ -349,6 +349,7 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 	uint8_t          qos   = 0;
 	nni_msg *        msg   = NULL;
 	nni_msg *        tmsg  = NULL;
+	nni_aio *        taio  = NULL;
 
 	if (NULL == aio || NULL == (msg = nni_aio_get_msg(aio))) {
 #if defined(NNG_SUPP_SQLITE)
@@ -383,21 +384,17 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 	case NNG_MQTT_UNSUBSCRIBE:
 		packet_id = nni_mqtt_msg_get_packet_id(msg);
 		nni_mqtt_msg_set_aio(msg, aio);
-		tmsg = nni_id_get(&p->sent_unack, packet_id);
-		if (tmsg != NULL) {
+		taio = nni_id_get(&p->sent_unack, packet_id);
+		if (taio != NULL) {
 			nni_plat_printf("Warning : msg %d lost due to "
 			                "packetID duplicated!",
 			    packet_id);
-			nni_aio *m_aio = nni_mqtt_msg_get_aio(tmsg);
-			if (m_aio) {
-				nni_aio_finish_error(m_aio, NNG_EPROTO);
-			}
-			nni_msg_free(tmsg);
+			nni_aio_finish_error(taio, NNG_EPROTO);
 			nni_id_remove(&p->sent_unack, packet_id);
 		}
-		nni_msg_clone(msg);
-		if (0 != nni_id_set(&p->sent_unack, packet_id, msg)) {
-			nni_msg_free(msg);
+		if (0 != nni_id_set(&p->sent_unack, packet_id, aio)) {
+			nni_plat_printf("Warning : aio caching failed");
+			nni_aio_finish_error(aio, NNG_ECANCELED);
 		}
 		break;
 
@@ -515,7 +512,7 @@ mqtt_pipe_close(void *arg)
 	nni_lmq_flush(&p->recv_messages);
 	nni_lmq_flush(&p->send_messages);
 
-	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
+	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_aio_cb);
 	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
 
 #ifdef NNG_HAVE_MQTT_BROKER
@@ -572,34 +569,34 @@ mqtt_timer_cb(void *arg)
 		return;
 	}
 	// start message resending
-	msg = nni_id_get_min(&p->sent_unack, &pid);
-	if (msg != NULL) {
-		uint16_t ptype;
-		ptype = nni_mqtt_msg_get_packet_type(msg);
-		if (ptype == NNG_MQTT_PUBLISH) {
-			nni_mqtt_msg_set_publish_dup(msg, true);
-		}
-		if (!p->busy) {
-			p->busy = true;
-			nni_msg_clone(msg);
-			aio = nni_mqtt_msg_get_aio(msg);
-			if (aio) {
-				nni_aio_bump_count(aio,
-				    nni_msg_header_len(msg) +
-				        nni_msg_len(msg));
-				nni_aio_set_msg(aio, NULL);
-			}
-			nni_aio_set_msg(&p->send_aio, msg);
-			nni_pipe_send(p->pipe, &p->send_aio);
+	// msg = nni_id_get_min(&p->sent_unack, &pid);
+	// if (msg != NULL) {
+	// 	uint16_t ptype;
+	// 	ptype = nni_mqtt_msg_get_packet_type(msg);
+	// 	if (ptype == NNG_MQTT_PUBLISH) {
+	// 		nni_mqtt_msg_set_publish_dup(msg, true);
+	// 	}
+	// 	if (!p->busy) {
+	// 		p->busy = true;
+	// 		nni_msg_clone(msg);
+	// 		aio = nni_mqtt_msg_get_aio(msg);
+	// 		if (aio) {
+	// 			nni_aio_bump_count(aio,
+	// 			    nni_msg_header_len(msg) +
+	// 			        nni_msg_len(msg));
+	// 			nni_aio_set_msg(aio, NULL);
+	// 		}
+	// 		nni_aio_set_msg(&p->send_aio, msg);
+	// 		nni_pipe_send(p->pipe, &p->send_aio);
 
-			nni_mtx_unlock(&s->mtx);
-			nni_sleep_aio(s->retry, &p->time_aio);
-			return;
-		} else {
-			nni_msg_clone(msg);
-			nni_lmq_put(&p->send_messages, msg);
-		}
-	}
+	// 		nni_mtx_unlock(&s->mtx);
+	// 		nni_sleep_aio(s->retry, &p->time_aio);
+	// 		return;
+	// 	} else {
+	// 		nni_msg_clone(msg);
+	// 		nni_lmq_put(&p->send_messages, msg);
+	// 	}
+	// }
 
 	nni_mtx_unlock(&s->mtx);
 	nni_sleep_aio(s->retry, &p->time_aio);
@@ -782,17 +779,15 @@ mqtt_recv_cb(void *arg)
 	case NNG_MQTT_UNSUBACK:
 		// we have received a UNSUBACK, successful unsubscription
 		packet_id  = nni_mqtt_msg_get_packet_id(msg);
-		p->rid     = packet_id;
-		cached_msg = nni_id_get(&p->sent_unack, packet_id);
-		if (cached_msg != NULL) {
+		p->rid ++;
+		user_aio = nni_id_get(&p->sent_unack, packet_id);
+		if (user_aio != NULL) {
 			nni_id_remove(&p->sent_unack, packet_id);
-			user_aio = nni_mqtt_msg_get_aio(cached_msg);
 			if (packet_type == NNG_MQTT_SUBACK ||
 			    packet_type == NNG_MQTT_UNSUBACK) {
 				nni_msg_clone(msg);
 				nni_aio_set_msg(user_aio, msg);
 			}
-			nni_msg_free(cached_msg);
 		}
 		nni_msg_free(msg);
 		break;
