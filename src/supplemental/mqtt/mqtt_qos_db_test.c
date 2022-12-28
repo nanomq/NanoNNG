@@ -209,6 +209,8 @@ test_set_client_msg(void)
 	nng_mqtt_msg_set_connect_keep_alive(msg, 60);
 	nni_msg_set_timestamp(msg, ts);
 
+	nni_mqtt_msg_encode(msg);
+
 	TEST_CHECK(
 	    nni_mqtt_qos_db_set_client_msg(db, pipe_id, packet_id, msg, "emqx", 4) == 0);
 	nni_mqtt_qos_db_close(db);
@@ -272,6 +274,8 @@ test_set_client_offline_msg(void)
 	nng_mqtt_msg_set_connect_keep_alive(msg, 60);
 	nni_msg_set_timestamp(msg, ts);
 
+	nni_mqtt_msg_encode(msg);
+
 	TEST_CHECK(
 	    nni_mqtt_qos_db_set_client_offline_msg(db, msg, "emqx", 4) == 0);
 	nni_mqtt_qos_db_close(db);
@@ -328,6 +332,7 @@ test_batch_insert_client_offline_msg(void)
 		    nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNECT);
 		nni_mqtt_msg_set_connect_proto_version(msg, 4);
 		nng_mqtt_msg_set_connect_keep_alive(msg, 60 + i);
+		nni_mqtt_msg_encode(msg);
 		nni_lmq_put(&lmq, msg);
 	}
 
