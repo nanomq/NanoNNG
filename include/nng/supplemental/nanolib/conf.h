@@ -205,6 +205,8 @@ struct conf_bridge_node {
 	uint16_t     keepalive;
 	size_t       sub_count;
 	size_t       forwards_count;
+	size_t       max_recv_queue_len;
+	size_t       max_send_queue_len;
 	char        *name;
 	char        *address;
 	char        *host;
@@ -216,8 +218,6 @@ struct conf_bridge_node {
 	subscribe   *sub_list;
 	conf_tls     tls;
 	conf_sqlite *sqlite;
-	size_t       max_recv_queue_len;
-	size_t       max_send_queue_len;
 	nng_aio     *bridge_aio;
 
 #if defined(SUPP_QUIC)
