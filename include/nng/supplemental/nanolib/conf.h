@@ -219,7 +219,6 @@ struct conf_bridge_node {
 	conf_tls     tls;
 	conf_sqlite *sqlite;
 	nng_aio    **bridge_aio;
-	nng_lmq     *lmq;
 
 #if defined(SUPP_QUIC)
 	// config params for QUIC only
