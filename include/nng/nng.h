@@ -1365,7 +1365,6 @@ NNG_DECL int      nng_file_delete(const char *name);
 NNG_DECL void     nng_msg_set_timestamp(nng_msg *m, uint64_t time);
 NNG_DECL uint64_t nng_msg_get_timestamp(nng_msg *m);
 
-NNG_DECL void  nng_aio_set_dbtree(nng_aio *aio, void *db);
 NNG_DECL void *nng_msg_get_conn_param(nng_msg *msg);
 NNG_DECL void  nng_msg_set_conn_param(nng_msg *msg, void *ptr);
 
