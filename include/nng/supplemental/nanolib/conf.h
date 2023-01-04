@@ -262,6 +262,21 @@ typedef struct {
     enum {PUB_SUB, REQ_REP} type;
 } zmq_gateway_conf;
 
+typedef struct {
+	nng_socket *sock;
+	char       *mqtt_url;
+	char       *sub_topic;
+	char       *pub_topic;
+	char       *username;
+	char       *password;
+	char       *clientid;
+	char       *path;
+	int         proto_ver;
+	int         keepalive;
+	bool        clean_start;
+	int         parallel;
+} vsomeip_gateway_conf;
+
 typedef enum {
 	CLIENT_CONNECT,
 	CLIENT_CONNACK,
@@ -367,6 +382,7 @@ extern int  get_time(const char *str, uint64_t *second);
 extern void conf_parse(conf *nanomq_conf);
 extern void conf_parse_ver2(conf *nanomq_conf);
 extern void conf_gateway_parse_ver2(zmq_gateway_conf *gateway);
+extern void conf_vsomeip_gateway_parse_ver2(vsomeip_gateway_conf *config);
 extern void conf_init(conf *nanomq_conf);
 extern void print_conf(conf *nanomq_conf);
 extern void conf_fini(conf *nanomq_conf);
