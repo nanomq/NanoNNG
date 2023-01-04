@@ -60,7 +60,7 @@ set_data_from_path_var(void **var, const char *env_str)
 }
 
 static void
-set_auth_type(auth_type *var, const char *env_str)
+set_auth_type(auth_type_t *var, const char *env_str)
 {
 	char *env = NULL;
 

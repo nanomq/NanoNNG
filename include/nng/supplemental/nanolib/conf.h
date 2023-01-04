@@ -168,16 +168,16 @@ typedef enum {
 	BASIC,
 	JWT,
 	NONE_AUTH,
-} auth_type;
+} auth_type_t;
 
 struct conf_http_server {
-	bool      enable;
-	uint16_t  port;
-	char *    username;
-	char *    password;
-	size_t    parallel;
-	auth_type auth_type;
-	conf_jwt  jwt;
+	bool        enable;
+	uint16_t    port;
+	char       *username;
+	char       *password;
+	size_t      parallel;
+	auth_type_t auth_type;
+	conf_jwt    jwt;
 };
 
 typedef struct conf_http_server conf_http_server;
@@ -261,7 +261,6 @@ typedef struct {
     int         parallel;
     enum {PUB_SUB, REQ_REP} type;
 } zmq_gateway_conf;
-
 
 typedef enum {
 	CLIENT_CONNECT,
