@@ -1119,3 +1119,37 @@ conf_gateway_parse_ver2(zmq_gateway_conf *config)
 
 	return;
 }
+
+void
+conf_vsomeip_gateway_parse_ver2(vsomeip_gateway_conf *config)
+{
+	const char *dest_path = config->path;
+
+	if (dest_path == NULL || !nano_file_exists(dest_path)) {
+		if (!nano_file_exists(CONF_GATEWAY_PATH_NAME)) {
+			log_debug("Configure file [%s] or [%s] not found or "
+			          "unreadable\n",
+			    dest_path, CONF_GATEWAY_PATH_NAME);
+			return;
+		} else {
+			dest_path = CONF_GATEWAY_PATH_NAME;
+		}
+	}
+
+	cJSON *jso         = hocon_parse_file(dest_path);
+	cJSON *jso_mqtt    = hocon_get_obj("gateway.mqtt", jso);
+	cJSON *jso_vsomeip = hocon_get_obj("gateway.vsomeip", jso);
+
+	hocon_read_num(config, proto_ver, jso_mqtt);
+	hocon_read_num(config, keepalive, jso_mqtt);
+	hocon_read_bool(config, clean_start, jso_mqtt);
+	hocon_read_num(config, parallel, jso_mqtt);
+	hocon_read_str_base(config, mqtt_url, "address", jso_mqtt);
+	hocon_read_str_base(config, pub_topic, "forward", jso_mqtt);
+	hocon_read_str(config, sub_topic, jso_mqtt);
+
+	cJSON_Delete(jso);
+	// printf_gateway_conf(config);
+
+	return;
+}
