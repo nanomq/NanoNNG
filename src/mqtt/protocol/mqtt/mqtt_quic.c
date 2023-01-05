@@ -221,12 +221,17 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		return NNG_EPROTO;
 	}
 	if (qos > 0 && ptype == NNG_MQTT_PUBLISH) {
-			nni_mqtt_msg_encode(msg);
-			nni_aio_set_msg(aio, msg);
-			quic_aio_send(p->qstream, aio);
-			log_info("sending highpriority QoS msg in parallel");
-			return -1;
-		}
+		nni_mqtt_msg_encode(msg);
+		uint32_t topic_len;
+		char    *topic;
+		topic = nni_mqtt_msg_get_publish_topic(msg, &topic_len);
+		nni_aio_set_msg(aio, msg);
+		log_info("Pub high priority QoS %d msg to %.*s in "
+		         "parallel %ld",
+		    qos, topic_len, topic, nni_clock());
+		quic_aio_send(p->qstream, aio);
+		return -1;
+	        }
 	if (!p->busy) {
 		nni_mqtt_msg_encode(msg);
 		nni_aio_set_msg(&p->send_aio, msg);
@@ -513,7 +518,14 @@ mqtt_quic_recv_cb(void *arg)
 	case NNG_MQTT_PUBLISH:
 		// we have received a PUBLISH
 		qos = nni_mqtt_msg_get_publish_qos(msg);
-
+		if (qos > 0) {
+			uint32_t topic_len;
+			char    *topic;
+			topic =
+			    nni_mqtt_msg_get_publish_topic(msg, &topic_len);
+			log_info("Recv QoS %d msg from %.*s in %ld",
+			    qos, topic_len, topic, nni_clock());
+		}
 		if (2 > qos) {
 			if (qos == 1) {
 				// QoS 1 return PUBACK
@@ -631,7 +643,7 @@ mqtt_timer_cb(void *arg)
 	}
 
 	s->counter += s->retry;
-	log_info("timer triggered %d", s->counter);
+	log_trace("timer triggered %d", s->counter);
 	if (nni_aio_busy(&p->rep_aio)) {
 		log_warn("rep_aio busy! stream is in serious congestion");
 		nni_aio_abort(&p->rep_aio, NNG_ECANCELED);
