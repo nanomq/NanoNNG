@@ -815,7 +815,7 @@ recv_error:
 	nni_mtx_unlock(&p->mtx);
 
 	nni_msg_free(msg);
-	nni_aio_finish_error(aio, rv);
+	nni_aio_finish_error(aio, SERVER_UNAVAILABLE);
 }
 
 static void
@@ -959,7 +959,7 @@ mqtt_tcptran_pipe_recv_start(mqtt_tcptran_pipe *p)
 		nni_aio *aio;
 		while ((aio = nni_list_first(&p->recvq)) != NULL) {
 			nni_list_remove(&p->recvq, aio);
-			nni_aio_finish_error(aio, NNG_ECLOSED);
+			nni_aio_finish_error(aio, SERVER_SHUTTING_DOWN);
 		}
 		return;
 	}
