@@ -236,7 +236,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 	default:
 		return NNG_EPROTO;
 	}
-	if (s->bridge_conf->qos_first)
+	if (s->bridge_conf && s->bridge_conf->qos_first)
 		if (qos > 0 && ptype == NNG_MQTT_PUBLISH) {
 			nni_mqtt_msg_encode(msg);
 			nni_aio_set_msg(aio, msg);
