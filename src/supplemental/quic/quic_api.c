@@ -579,8 +579,11 @@ quic_disconnect(void *qsock, void *qpipe)
 	MsQuic->StreamShutdown(
 	    qstrm->stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, NNG_ECONNSHUT);
 
+	nni_mtx_lock(&qs->mtx);
 	MsQuic->ConnectionShutdown(
 	    qs->qconn, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, NNG_ECLOSED);
+	nni_mtx_unlock(&qs->mtx);
+
 	return 0;
 }
 
@@ -653,6 +656,7 @@ quic_connect_ipv4(const char *url, nni_sock *sock, uint32_t *index)
 		goto error;
 	}
 	// Successfully creating quic connection then assign to qsock
+	// Here mutex should be unnecessary.
 	qsock->qconn = conn;
 
 	// // Start/ReStart the nng pipe
@@ -716,7 +720,9 @@ quic_sock_reconnect(quic_sock_t *qsock)
 		goto error;
 	}
 	// Successfully creating quic connection then assign to qsock
+	nni_mtx_lock(&qsock->mtx);
 	qsock->qconn = conn;
+	nni_mtx_unlock(&qsock->mtx);
 
 	return 0;
 
@@ -1188,8 +1194,11 @@ quic_pipe_open(void *qsock, void **qpipe)
 	// Allocate a new bidirectional stream.
 	// The stream is just allocated and no QUIC stream identifier
 	// is assigned until it's started.
-	if (QUIC_FAILED(rv = MsQuic->StreamOpen(qs->qconn,
-	        QUIC_STREAM_OPEN_FLAG_NONE, quic_strm_cb, (void *)qstrm, &strm))) {
+	nni_mtx_lock(&qs->mtx);
+	rv = MsQuic->StreamOpen(qs->qconn, QUIC_STREAM_OPEN_FLAG_NONE,
+	        quic_strm_cb, (void *)qstrm, &strm);
+	nni_mtx_unlock(&qs->mtx);
+	if (QUIC_FAILED(rv)) {
 		log_error("StreamOpen failed, 0x%x!\n", rv);
 		goto error;
 	}
