@@ -274,7 +274,14 @@ typedef struct {
 	int         proto_ver;
 	int         keepalive;
 	bool        clean_start;
+	uint8_t     sub_qos;
 	int         parallel;
+
+	// vsomeip parameter
+	uint16_t    service_id;
+	uint16_t    service_instance_id;
+	uint16_t    service_method_id;
+	char       *conf_path;
 } vsomeip_gateway_conf;
 
 typedef enum {

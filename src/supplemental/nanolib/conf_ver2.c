@@ -1159,14 +1159,24 @@ conf_vsomeip_gateway_parse_ver2(vsomeip_gateway_conf *config)
 	cJSON *jso_mqtt    = hocon_get_obj("gateway.mqtt", jso);
 	cJSON *jso_vsomeip = hocon_get_obj("gateway.vsomeip", jso);
 
+	// Parse mqtt
+	hocon_read_str_base(config, mqtt_url, "address", jso_mqtt);
+	hocon_read_str(config, sub_topic, jso_mqtt);
+	hocon_read_num_base(config, sub_qos, "subscription_qos", jso_mqtt);
 	hocon_read_num(config, proto_ver, jso_mqtt);
 	hocon_read_num(config, keepalive, jso_mqtt);
 	hocon_read_bool(config, clean_start, jso_mqtt);
-	hocon_read_num(config, parallel, jso_mqtt);
-	hocon_read_str_base(config, mqtt_url, "address", jso_mqtt);
+	hocon_read_str(config, username, jso_mqtt);
+	hocon_read_str(config, password, jso_mqtt);
+	hocon_read_str(config, clientid, jso_mqtt);
 	hocon_read_str_base(config, pub_topic, "forward", jso_mqtt);
-	hocon_read_str(config, sub_topic, jso_mqtt);
+	hocon_read_num(config, parallel, jso_mqtt);
 
+	// Parse vsomeip
+	hocon_read_hex_str(config, service_id, jso_vsomeip);
+	hocon_read_hex_str(config, service_instance_id, jso_vsomeip);
+	hocon_read_hex_str(config, service_method_id, jso_vsomeip);
+	hocon_read_str(config, conf_path, jso_vsomeip);
 	
 
 	cJSON_Delete(jso);
