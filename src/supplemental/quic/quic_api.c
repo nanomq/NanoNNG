@@ -767,7 +767,7 @@ quic_aio_send(void *arg, nni_aio *aio)
 			nni_msg_free(msg);
 			nni_aio_finish_error(aio, NNG_ECLOSED);
 		}
-		return;
+		return 0;
 	}
 
 	QUIC_BUFFER *buf=(QUIC_BUFFER*)malloc(sizeof(QUIC_BUFFER)*2);
