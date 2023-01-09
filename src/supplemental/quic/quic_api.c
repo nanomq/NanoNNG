@@ -448,7 +448,7 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 
 	quic_sock_t *qsock = Context;
 	void        *mqtt_sock;
-	HQUIC        qconn = qsock->qconn;
+	HQUIC        qconn = Connection;
 
 	log_debug("quic_connection_cb triggered! %d", Event->Type);
 	switch (Event->Type) {
