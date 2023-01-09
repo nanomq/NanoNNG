@@ -104,6 +104,23 @@ compose_url(char *head, char *address)
 		}                                                         \
 	} while (0);
 
+#define hocon_read_hex_str_base(structure, field, key, jso)                  \
+	do {                                                              \
+		cJSON *jso_key = cJSON_GetObjectItem(jso, key);           \
+		if (NULL == jso_key) {                                    \
+			log_debug("Config %s is not set, use default!", key);         \
+			break;                                            \
+		}                                                         \
+		if (cJSON_IsString(jso_key)) {                            \
+			if (NULL != jso_key->valuestring) {               \
+				uint32_t hex = 0;                     			\
+				sscanf(jso_key->valuestring, "%x", &hex); 		\
+				(structure)->field = hex;             			\
+			}                                                 \
+		}                                                         \
+	} while (0);
+
+
 #define hocon_read_bool_base(structure, field, key, jso)            \
 	do {                                                        \
 		cJSON *jso_key = cJSON_GetObjectItem(jso, key);     \
@@ -184,6 +201,8 @@ compose_url(char *head, char *address)
 	hocon_read_str_arr_base(structure, key, #key, jso)
 #define hocon_read_enum(structure, key, jso, map) \
 	hocon_read_enum_base(structure, key, #key, jso, map)
+#define hocon_read_hex_str(structure, key, jso) \
+	hocon_read_hex_str_base(structure, key, #key, jso)
 
 static char **
 string_split(char *str, char sp)
@@ -1148,8 +1167,9 @@ conf_vsomeip_gateway_parse_ver2(vsomeip_gateway_conf *config)
 	hocon_read_str_base(config, pub_topic, "forward", jso_mqtt);
 	hocon_read_str(config, sub_topic, jso_mqtt);
 
+	
+
 	cJSON_Delete(jso);
-	// printf_gateway_conf(config);
 
 	return;
 }
