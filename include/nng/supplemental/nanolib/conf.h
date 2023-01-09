@@ -15,6 +15,7 @@
 #define PID_PATH_NAME "/tmp/nanomq/nanomq.pid"
 #define CONF_PATH_NAME "/etc/nanomq.conf"
 #define CONF_GATEWAY_PATH_NAME "/etc/nanomq_gateway.conf"
+#define CONF_VSOMEIP_GATEWAY_PATH_NAME "/etc/nanomq_vsomeip_gateway.conf"
 
 #define CONF_TCP_URL_DEFAULT "nmq-tcp://0.0.0.0:1883"
 #define CONF_TLS_URL_DEFAULT "tls+nmq-tcp://0.0.0.0:8883"
