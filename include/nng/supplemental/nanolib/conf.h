@@ -17,6 +17,8 @@
 #define CONF_GATEWAY_PATH_NAME "/etc/nanomq_gateway.conf"
 #define CONF_VSOMEIP_GATEWAY_PATH_NAME "/etc/nanomq_vsomeip_gateway.conf"
 
+#define CONF_DDS_GATEWAY_PATH_NAME "/etc/nanomq_dds_gateway.conf"
+
 #define CONF_TCP_URL_DEFAULT "nmq-tcp://0.0.0.0:1883"
 #define CONF_TLS_URL_DEFAULT "tls+nmq-tcp://0.0.0.0:8883"
 #define CONF_WS_URL_DEFAULT "nmq-ws://0.0.0.0:8083/mqtt"
@@ -285,6 +287,41 @@ typedef struct {
 	char       *conf_path;
 } vsomeip_gateway_conf;
 
+typedef struct {
+	char *in;
+	char *out;
+} dds_gateway_topic;
+
+typedef struct {
+	nng_socket *       sock;
+	bool               clean_start;
+	uint8_t            proto_ver;
+	uint16_t           port;
+	uint16_t           keepalive;
+	char *             name;
+	char *             address;
+	char *             host;
+	char *             clientid;
+	char *             username;
+	char *             password;
+	conf_tls           tls;
+	size_t             topic_num;
+	dds_gateway_topic **topics;
+} dds_gateway_mqtt;
+
+typedef struct {
+	char *             idl_type;
+	size_t             domain_id;
+	size_t             topic_num;
+	dds_gateway_topic *topics;
+} dds_gateway_dds;
+
+typedef struct {
+	char *           path;
+	dds_gateway_mqtt mqtt;
+	dds_gateway_dds  dds;
+} dds_gateway_conf;
+
 typedef enum {
 	CLIENT_CONNECT,
 	CLIENT_CONNACK,
@@ -386,15 +423,16 @@ struct conf {
 typedef struct conf conf;
 
 webhook_event get_webhook_event(const char *hook_type, const char *hook_name);
-extern int  get_time(const char *str, uint64_t *second);
-extern void conf_parse(conf *nanomq_conf);
-extern void conf_parse_ver2(conf *nanomq_conf);
-extern void conf_gateway_parse_ver2(zmq_gateway_conf *gateway);
-extern void conf_vsomeip_gateway_parse_ver2(vsomeip_gateway_conf *config);
-extern void conf_init(conf *nanomq_conf);
-extern void print_conf(conf *nanomq_conf);
-extern void conf_fini(conf *nanomq_conf);
-extern void conf_update(const char *fpath, const char *key, char *value);
+extern int    get_time(const char *str, uint64_t *second);
+extern void   conf_parse(conf *nanomq_conf);
+extern void   conf_parse_ver2(conf *nanomq_conf);
+extern void   conf_gateway_parse_ver2(zmq_gateway_conf *gateway);
+extern void   conf_vsomeip_gateway_parse_ver2(vsomeip_gateway_conf *config);
+extern void   conf_dds_gateway_parse_ver2(dds_gateway_conf *config);
+extern void   conf_init(conf *nanomq_conf);
+extern void   print_conf(conf *nanomq_conf);
+extern void   conf_fini(conf *nanomq_conf);
+extern void   conf_update(const char *fpath, const char *key, char *value);
 extern void conf_update2(const char *fpath, const char *key1, const char *key2,
     const char *key3, char *value);
 NNG_DECL void conf_update_var(
