@@ -359,7 +359,6 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 		if (NULL == tls->cafile || 0 == file_load_data(tls->cafile, (void **) &tls->ca)) {
 			log_error("Read cacertfile %s failed!", tls->cafile);
 		}
-
 	}
 
 	return;
@@ -1178,6 +1177,100 @@ conf_vsomeip_gateway_parse_ver2(vsomeip_gateway_conf *config)
 	hocon_read_hex_str(config, service_method_id, jso_vsomeip);
 	hocon_read_str(config, conf_path, jso_vsomeip);
 	
+
+	cJSON_Delete(jso);
+
+	return;
+}
+
+static size_t
+conf_dds_gateway_topics_parse_ver2(
+    dds_gateway_topic ***topics, cJSON *json_mqtt_topics)
+{
+	cJSON *json_topic_obj = NULL;
+
+	cJSON_ArrayForEach(json_topic_obj, json_mqtt_topics)
+	{
+		char *topic_in = cJSON_GetStringValue(
+		    cJSON_GetObjectItem(json_topic_obj, "in"));
+		char *topic_out = cJSON_GetStringValue(
+		    cJSON_GetObjectItem(json_topic_obj, "out"));
+
+		if (topic_in == NULL || topic_out == NULL) {
+			continue;
+		}
+
+		dds_gateway_topic *topic_pair = NULL;
+		topic_pair                    = NNI_ALLOC_STRUCT(topic_pair);
+
+		topic_pair->in  = nni_strdup(topic_in);
+		topic_pair->out = nni_strdup(topic_out);
+
+		cvector_push_back(*topics, topic_pair);
+	}
+
+	return cvector_size(*topics);
+}
+
+static void
+conf_dds_gateway_mqtt_parse_ver2(dds_gateway_mqtt *mqtt, cJSON *jso)
+{
+	cJSON *jso_mqtt       = hocon_get_obj("mqtt", jso);
+	cJSON *json_mqtt_conn = hocon_get_obj("connector", jso_mqtt);
+
+	hocon_read_str_base(mqtt, address, "server", json_mqtt_conn);
+	hocon_read_num(mqtt, proto_ver, json_mqtt_conn);
+	hocon_read_str(mqtt, clientid, json_mqtt_conn);
+	hocon_read_time(mqtt, keepalive, json_mqtt_conn);
+	hocon_read_bool(mqtt, clean_start, json_mqtt_conn);
+	hocon_read_str(mqtt, username, json_mqtt_conn);
+	hocon_read_str(mqtt, password, json_mqtt_conn);
+
+	cJSON *json_conn_tls = hocon_get_obj("ssl", json_mqtt_conn);
+	conf_tls_parse_ver2_base(&mqtt->tls, json_conn_tls);
+
+	cJSON *json_mqtt_topics = hocon_get_obj("to.dds.topics", jso_mqtt);
+
+	mqtt->topic_num = conf_dds_gateway_topics_parse_ver2(
+	    &mqtt->topics, json_mqtt_topics);
+}
+
+static void
+conf_dds_gateway_dds_parse_ver2(dds_gateway_dds *dds, cJSON *jso)
+{
+	cJSON *jso_dds = hocon_get_obj("dds", jso);
+	hocon_read_str(dds, idl_type, jso_dds);
+	hocon_read_num(dds, domain_id, jso_dds);
+
+	cJSON *json_dds_topics = hocon_get_obj("to.mqtt.topics", jso_dds);
+
+	dds->topic_num =
+	    conf_dds_gateway_topics_parse_ver2(&dds->topics, json_dds_topics);
+}
+
+void
+conf_dds_gateway_parse_ver2(dds_gateway_conf *config)
+{
+	const char *dest_path = config->path;
+
+	if (dest_path == NULL || !nano_file_exists(dest_path)) {
+		if (!nano_file_exists(CONF_DDS_GATEWAY_PATH_NAME)) {
+			log_debug("Configure file [%s] or [%s] not found or "
+			          "unreadable\n",
+			    dest_path, CONF_DDS_GATEWAY_PATH_NAME);
+			return;
+		} else {
+			dest_path = CONF_DDS_GATEWAY_PATH_NAME;
+		}
+	}
+
+	dds_gateway_mqtt *mqtt = &config->mqtt;
+	dds_gateway_mqtt *dds  = &config->dds;
+
+	cJSON *jso = hocon_parse_file(dest_path);
+
+	conf_dds_gateway_mqtt_parse_ver2(mqtt, jso);
+	conf_dds_gateway_dds_parse_ver2(dds, jso);
 
 	cJSON_Delete(jso);
 
