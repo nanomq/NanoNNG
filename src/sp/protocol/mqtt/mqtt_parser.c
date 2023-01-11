@@ -24,6 +24,10 @@
 #include <libkern/OSByteOrder.h>
 #define le64toh(x) OSSwapLittleToHostInt64(x)
 
+#elif defined(__WINDOWS__)
+
+#define le64toh(x) (x)
+
 #else
 
 #include <endian.h>
