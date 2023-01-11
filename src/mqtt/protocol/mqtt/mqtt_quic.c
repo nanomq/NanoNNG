@@ -934,18 +934,13 @@ mqtt_timer_cb(void *arg)
 	nni_msg *  msg = NULL;
 	nni_aio *  aio;
 
-	if (p == NULL) {
-		// QUIC connection has been shut down
-		return;
-	}
-	uint16_t   pid = p->rid;
-
 	if (nng_aio_result(&s->time_aio) != 0) {
 		return;
 	}
 	nni_mtx_lock(&s->mtx);
 
 	if (NULL == p || nni_atomic_get_bool(&p->closed)) {
+		// QUIC connection has been shut down
 		nni_mtx_unlock(&s->mtx);
 		return;
 	}
@@ -976,6 +971,7 @@ mqtt_timer_cb(void *arg)
 	}
 
 	// start message resending
+	// uint16_t   pid = p->rid;
 	// msg = nni_id_get_min(&p->sent_unack, &pid);
 	// if (msg != NULL) {
 	// 	uint16_t ptype;
@@ -1283,6 +1279,7 @@ quic_mqtt_stream_fini(void *arg)
 	nng_free(p, sizeof(p));
 }
 
+// only work for main stream
 static int
 quic_mqtt_stream_start(void *arg)
 {
@@ -1762,9 +1759,21 @@ nng_mqtt_quic_set_config(nng_socket *sock, void *node)
 static int
 mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 {
+	uint32_t count, hash;
 	nni_msg *tmsg;
+	mqtt_sock_t *sock = p->mqtt_sock;
 	mqtt_pipe_t *new_pipe   = NULL;
+	nni_mqtt_topic_qos *topics;
 
+	// check topic/stream pair exsitence
+	topics = nni_mqtt_msg_get_subscribe_topics(msg, &count);
+	for (uint32_t i = 0; i<count; i++) {
+		hash = DJBHashn(topics[i].topic.buf, topics[i].topic.length);
+		if (nni_id_get(sock->streams, hash) == NULL) {
+			// create pipe
+			log_warn("%s %d", topics[i].topic.buf, topics[i].qos);
+		}
+	}
 	// create a pipe/stream here
 	if ((new_pipe = nng_alloc(sizeof(mqtt_pipe_t))) == NULL) {
 		log_error("error in alloc pipe.\n");
@@ -1774,6 +1783,12 @@ mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 			log_warn("Failed in open the topic-stream pair.");
 			return -1;
 		}
+
+	new_pipe->ready = true;
+	nni_atomic_set_bool(&new_pipe->closed, false);
+	// there is no aio in send_queue, because this is a newly established stream
+	quic_pipe_recv(new_pipe->qpipe, &new_pipe->recv_aio);
+
 	nni_mqtt_msg_set_packet_id(msg, packet_id);
 	nni_mqtt_msg_set_aio(msg, aio);
 	tmsg = nni_id_get(&new_pipe->sent_unack, packet_id);
