@@ -11,6 +11,10 @@
 #include <ctype.h>
 #include <string.h>
 
+extern void conf_tls_init(conf_tls *tls);
+extern void conf_tls_destroy(conf_tls *tls);
+extern void conf_tls_parse(
+    conf_tls *tls, const char *path, const char *prefix1, const char *prefix2);
 
 typedef struct {
 	uint8_t enumerate;
@@ -1227,6 +1231,7 @@ conf_dds_gateway_mqtt_parse_ver2(dds_gateway_mqtt *mqtt, cJSON *jso)
 	hocon_read_str(mqtt, password, json_mqtt_conn);
 
 	cJSON *json_conn_tls = hocon_get_obj("ssl", json_mqtt_conn);
+	conf_tls_init(&mqtt->tls);
 	conf_tls_parse_ver2_base(&mqtt->tls, json_conn_tls);
 
 	cJSON *json_mqtt_topics = hocon_get_obj("to.dds.topics", jso_mqtt);
@@ -1265,7 +1270,7 @@ conf_dds_gateway_parse_ver2(dds_gateway_conf *config)
 	}
 
 	dds_gateway_mqtt *mqtt = &config->mqtt;
-	dds_gateway_mqtt *dds  = &config->dds;
+	dds_gateway_dds * dds  = &config->dds;
 
 	cJSON *jso = hocon_parse_file(dest_path);
 
@@ -1275,4 +1280,43 @@ conf_dds_gateway_parse_ver2(dds_gateway_conf *config)
 	cJSON_Delete(jso);
 
 	return;
+}
+
+void
+conf_dds_gateway_destory(dds_gateway_conf *config)
+{
+	dds_gateway_mqtt *mqtt = &config->mqtt;
+	dds_gateway_dds * dds  = &config->dds;
+
+	nng_strfree(config->path);
+
+	if (mqtt->clientid) {
+		free(mqtt->clientid);
+	}
+	if (mqtt->address) {
+		free(mqtt->address);
+	}
+	if (mqtt->username) {
+		free(mqtt->username);
+	}
+	if (mqtt->password) {
+		free(mqtt->password);
+	}
+	conf_tls_destroy(&mqtt->tls);
+
+	for (size_t i = 0; i < mqtt->topic_num; i++) {
+		dds_gateway_topic *topic = mqtt->topics[i];
+		nni_strfree(topic->in);
+		nni_strfree(topic->out);
+		NNI_FREE_STRUCT(topic);
+	}
+	cvector_free(mqtt->topics);
+
+	for (size_t i = 0; i < dds->topic_num; i++) {
+		dds_gateway_topic *topic = dds->topics[i];
+		nni_strfree(topic->in);
+		nni_strfree(topic->out);
+		NNI_FREE_STRUCT(topic);
+	}
+	cvector_free(dds->topics);
 }
