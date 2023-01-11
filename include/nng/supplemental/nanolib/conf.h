@@ -298,9 +298,7 @@ typedef struct {
 	uint8_t            proto_ver;
 	uint16_t           port;
 	uint16_t           keepalive;
-	char *             name;
 	char *             address;
-	char *             host;
 	char *             clientid;
 	char *             username;
 	char *             password;
@@ -313,7 +311,7 @@ typedef struct {
 	char *             idl_type;
 	size_t             domain_id;
 	size_t             topic_num;
-	dds_gateway_topic *topics;
+	dds_gateway_topic **topics;
 } dds_gateway_dds;
 
 typedef struct {
@@ -429,6 +427,7 @@ extern void   conf_parse_ver2(conf *nanomq_conf);
 extern void   conf_gateway_parse_ver2(zmq_gateway_conf *gateway);
 extern void   conf_vsomeip_gateway_parse_ver2(vsomeip_gateway_conf *config);
 extern void   conf_dds_gateway_parse_ver2(dds_gateway_conf *config);
+extern void   conf_dds_gateway_destory(dds_gateway_conf *config);
 extern void   conf_init(conf *nanomq_conf);
 extern void   print_conf(conf *nanomq_conf);
 extern void   conf_fini(conf *nanomq_conf);

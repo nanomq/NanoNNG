@@ -34,10 +34,6 @@ static void conf_auth_http_parse(conf_auth_http *auth_http, const char *path);
 static void conf_auth_http_destroy(conf_auth_http *auth_http);
 
 static void conf_web_hook_destroy(conf_web_hook *web_hook);
-static void conf_tls_parse(
-    conf_tls *tls, const char *path, const char *prefix1, const char *prefix2);
-static void               conf_tls_init(conf_tls *tls);
-static void               conf_tls_destroy(conf_tls *tls);
 static conf_http_header **conf_parse_http_headers(
     const char *path, const char *key_prefix, size_t *count);
 static void conf_sqlite_parse(
@@ -59,6 +55,10 @@ static void conf_rule_fdb_parse(conf_rule *cr, char *path);
 static void conf_rule_parse(conf_rule *rule, const char *path);
 #endif
 
+void conf_tls_parse(
+    conf_tls *tls, const char *path, const char *prefix1, const char *prefix2);
+void conf_tls_init(conf_tls *tls);
+void conf_tls_destroy(conf_tls *tls);
 
 static char *
 strtrim(char *str, size_t len)
@@ -300,7 +300,7 @@ get_conf_value_with_prefix2(char *line, size_t len, const char *prefix,
 	return value;
 }
 
-static void
+void
 conf_tls_parse(
     conf_tls *tls, const char *path, const char *prefix1, const char *prefix2)
 {
@@ -727,7 +727,7 @@ conf_log_parse(conf_log *log, const char *path)
 	log->type = log_type;
 }
 
-static void
+void
 conf_tls_init(conf_tls *tls)
 {
 	tls->url          = NULL;
@@ -743,7 +743,7 @@ conf_tls_init(conf_tls *tls)
 	tls->verify_peer  = false;
 }
 
-static void
+void
 conf_tls_destroy(conf_tls *tls)
 {
 	if (tls->url) {
