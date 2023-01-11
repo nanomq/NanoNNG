@@ -1190,21 +1190,22 @@ conf_vsomeip_gateway_parse_ver2(vsomeip_gateway_conf *config)
 static void
 conf_dds_gateway_forward_parse_ver2(dds_gateway_forward *forward, cJSON *json)
 {
-	cJSON *rules = hocon_get_obj("forward.rules", json);
+	cJSON *rules = hocon_get_obj("forward_rules", json);
 
 	if (rules == NULL) {
 		return;
 	}
 
 	dds_gateway_topic *dds2mqtt = &forward->dds2mqtt;
+	dds_gateway_topic *mqtt2dds = &forward->mqtt2dds;
 
-	cJSON *jso_dds2mqtt = hocon_get_obj("dds.to.mqtt", rules);
-	hocon_read_str_base(dds2mqtt, from, "from.dds", jso_dds2mqtt);
-	hocon_read_str_base(dds2mqtt, to, "to.mqtt", jso_dds2mqtt);
+	cJSON *jso_dds2mqtt = hocon_get_obj("dds_to_mqtt", rules);
+	hocon_read_str_base(dds2mqtt, from, "from_dds", jso_dds2mqtt);
+	hocon_read_str_base(dds2mqtt, to, "to_mqtt", jso_dds2mqtt);
 
-	cJSON *mqtt2dds = hocon_get_obj("mqtt.to.dds", rules);
-	hocon_read_str_base(dds2mqtt, from, "from.mqtt", mqtt2dds);
-	hocon_read_str_base(dds2mqtt, to, "to.dds", mqtt2dds);
+	cJSON *jso_mqtt2dds = hocon_get_obj("mqtt_to_dds", rules);
+	hocon_read_str_base(mqtt2dds, from, "from_mqtt", jso_mqtt2dds);
+	hocon_read_str_base(mqtt2dds, to, "to_dds", jso_mqtt2dds);
 }
 
 static void
