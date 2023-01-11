@@ -288,9 +288,14 @@ typedef struct {
 } vsomeip_gateway_conf;
 
 typedef struct {
-	char *in;
-	char *out;
+	char *from;
+	char *to;
 } dds_gateway_topic;
+
+typedef struct {
+	dds_gateway_topic dds2mqtt;
+	dds_gateway_topic mqtt2dds;
+} dds_gateway_forward;
 
 typedef struct {
 	nng_socket *       sock;
@@ -303,21 +308,18 @@ typedef struct {
 	char *             username;
 	char *             password;
 	conf_tls           tls;
-	size_t             topic_num;
-	dds_gateway_topic **topics;
 } dds_gateway_mqtt;
 
 typedef struct {
 	char *             idl_type;
 	size_t             domain_id;
-	size_t             topic_num;
-	dds_gateway_topic **topics;
 } dds_gateway_dds;
 
 typedef struct {
-	char *           path;
-	dds_gateway_mqtt mqtt;
-	dds_gateway_dds  dds;
+	char *              path;
+	dds_gateway_mqtt    mqtt;
+	dds_gateway_dds     dds;
+	dds_gateway_forward forward;
 } dds_gateway_conf;
 
 typedef enum {

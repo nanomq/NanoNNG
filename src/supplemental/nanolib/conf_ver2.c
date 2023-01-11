@@ -1187,33 +1187,24 @@ conf_vsomeip_gateway_parse_ver2(vsomeip_gateway_conf *config)
 	return;
 }
 
-static size_t
-conf_dds_gateway_topics_parse_ver2(
-    dds_gateway_topic ***topics, cJSON *json_mqtt_topics)
+static void
+conf_dds_gateway_forward_parse_ver2(dds_gateway_forward *forward, cJSON *json)
 {
-	cJSON *json_topic_obj = NULL;
+	cJSON *rules = hocon_get_obj("forward.rules", json);
 
-	cJSON_ArrayForEach(json_topic_obj, json_mqtt_topics)
-	{
-		char *topic_in = cJSON_GetStringValue(
-		    cJSON_GetObjectItem(json_topic_obj, "in"));
-		char *topic_out = cJSON_GetStringValue(
-		    cJSON_GetObjectItem(json_topic_obj, "out"));
-
-		if (topic_in == NULL || topic_out == NULL) {
-			continue;
-		}
-
-		dds_gateway_topic *topic_pair = NULL;
-		topic_pair                    = NNI_ALLOC_STRUCT(topic_pair);
-
-		topic_pair->in  = nni_strdup(topic_in);
-		topic_pair->out = nni_strdup(topic_out);
-
-		cvector_push_back(*topics, topic_pair);
+	if (rules == NULL) {
+		return;
 	}
 
-	return cvector_size(*topics);
+	dds_gateway_topic *dds2mqtt = &forward->dds2mqtt;
+
+	cJSON *jso_dds2mqtt = hocon_get_obj("dds.to.mqtt", rules);
+	hocon_read_str_base(dds2mqtt, from, "from.dds", jso_dds2mqtt);
+	hocon_read_str_base(dds2mqtt, to, "to.mqtt", jso_dds2mqtt);
+
+	cJSON *mqtt2dds = hocon_get_obj("mqtt.to.dds", rules);
+	hocon_read_str_base(dds2mqtt, from, "from.mqtt", mqtt2dds);
+	hocon_read_str_base(dds2mqtt, to, "to.dds", mqtt2dds);
 }
 
 static void
@@ -1233,11 +1224,6 @@ conf_dds_gateway_mqtt_parse_ver2(dds_gateway_mqtt *mqtt, cJSON *jso)
 	cJSON *json_conn_tls = hocon_get_obj("ssl", json_mqtt_conn);
 	conf_tls_init(&mqtt->tls);
 	conf_tls_parse_ver2_base(&mqtt->tls, json_conn_tls);
-
-	cJSON *json_mqtt_topics = hocon_get_obj("to.dds.topics", jso_mqtt);
-
-	mqtt->topic_num = conf_dds_gateway_topics_parse_ver2(
-	    &mqtt->topics, json_mqtt_topics);
 }
 
 static void
@@ -1246,11 +1232,6 @@ conf_dds_gateway_dds_parse_ver2(dds_gateway_dds *dds, cJSON *jso)
 	cJSON *jso_dds = hocon_get_obj("dds", jso);
 	hocon_read_str(dds, idl_type, jso_dds);
 	hocon_read_num(dds, domain_id, jso_dds);
-
-	cJSON *json_dds_topics = hocon_get_obj("to.mqtt.topics", jso_dds);
-
-	dds->topic_num =
-	    conf_dds_gateway_topics_parse_ver2(&dds->topics, json_dds_topics);
 }
 
 void
@@ -1265,17 +1246,20 @@ conf_dds_gateway_parse_ver2(dds_gateway_conf *config)
 			    dest_path, CONF_DDS_GATEWAY_PATH_NAME);
 			return;
 		} else {
-			dest_path = CONF_DDS_GATEWAY_PATH_NAME;
+			dest_path    = CONF_DDS_GATEWAY_PATH_NAME;
+			config->path = nni_strdup(dest_path);
 		}
 	}
 
 	dds_gateway_mqtt *mqtt = &config->mqtt;
 	dds_gateway_dds * dds  = &config->dds;
+	dds_gateway_forward *forward = &config->forward;
 
 	cJSON *jso = hocon_parse_file(dest_path);
 
 	conf_dds_gateway_mqtt_parse_ver2(mqtt, jso);
 	conf_dds_gateway_dds_parse_ver2(dds, jso);
+	conf_dds_gateway_forward_parse_ver2(forward, jso);
 
 	cJSON_Delete(jso);
 
@@ -1285,8 +1269,9 @@ conf_dds_gateway_parse_ver2(dds_gateway_conf *config)
 void
 conf_dds_gateway_destory(dds_gateway_conf *config)
 {
-	dds_gateway_mqtt *mqtt = &config->mqtt;
-	dds_gateway_dds * dds  = &config->dds;
+	dds_gateway_mqtt *   mqtt    = &config->mqtt;
+	dds_gateway_dds *    dds     = &config->dds;
+	dds_gateway_forward *forward = &config->forward;
 
 	nng_strfree(config->path);
 
@@ -1304,19 +1289,21 @@ conf_dds_gateway_destory(dds_gateway_conf *config)
 	}
 	conf_tls_destroy(&mqtt->tls);
 
-	for (size_t i = 0; i < mqtt->topic_num; i++) {
-		dds_gateway_topic *topic = mqtt->topics[i];
-		nni_strfree(topic->in);
-		nni_strfree(topic->out);
-		NNI_FREE_STRUCT(topic);
+	if(dds->idl_type) {
+		free(dds->idl_type);
 	}
-	cvector_free(mqtt->topics);
 
-	for (size_t i = 0; i < dds->topic_num; i++) {
-		dds_gateway_topic *topic = dds->topics[i];
-		nni_strfree(topic->in);
-		nni_strfree(topic->out);
-		NNI_FREE_STRUCT(topic);
+	if(forward->dds2mqtt.from){
+		free(forward->dds2mqtt.from);
 	}
-	cvector_free(dds->topics);
+	if(forward->dds2mqtt.to){
+		free(forward->dds2mqtt.to);
+	}
+	if(forward->mqtt2dds.from){
+		free(forward->mqtt2dds.from);
+	}
+	if(forward->mqtt2dds.to){
+		free(forward->mqtt2dds.to);
+	}
+
 }
