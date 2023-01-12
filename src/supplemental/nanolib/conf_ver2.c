@@ -8,13 +8,9 @@
 #include "nng/supplemental/nanolib/file.h"
 #include "nng/supplemental/nanolib/hocon.h"
 #include "nng/supplemental/nanolib/log.h"
+#include "nanolib.h"
 #include <ctype.h>
 #include <string.h>
-
-extern void conf_tls_init(conf_tls *tls);
-extern void conf_tls_destroy(conf_tls *tls);
-extern void conf_tls_parse(
-    conf_tls *tls, const char *path, const char *prefix1, const char *prefix2);
 
 typedef struct {
 	uint8_t enumerate;
