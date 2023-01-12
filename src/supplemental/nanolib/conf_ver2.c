@@ -685,6 +685,10 @@ conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 	hocon_read_bool(node, clean_start, jso_connector);
 	hocon_read_str(node, username, jso_connector);
 	hocon_read_str(node, password, jso_connector);
+
+	cJSON *   jso_tls         = hocon_get_obj("ssl", jso_connector);
+	conf_tls *bridge_node_tls = &(node->tls);
+	conf_tls_parse_ver2_base(bridge_node_tls, jso_tls);
 }
 
 #if defined(SUPP_QUIC)
@@ -774,10 +778,6 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_num(node, parallel, bridge_mqtt_node);
 		hocon_read_num(node, max_recv_queue_len, bridge_mqtt_node);
 		hocon_read_num(node, max_send_queue_len, bridge_mqtt_node);
-		cJSON *bridge_mqtt_node_tls =
-		    hocon_get_obj("ssl", bridge_mqtt_node);
-		conf_tls *bridge_node_tls = &(node->tls);
-		conf_tls_parse_ver2_base(bridge_node_tls, bridge_mqtt_node_tls);
 		cvector_push_back(config->bridge.nodes, node);
 		config->bridge_mode |= node->enable;
 	}
