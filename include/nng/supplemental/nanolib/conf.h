@@ -298,21 +298,22 @@ typedef struct {
 } dds_gateway_forward;
 
 typedef struct {
-	nng_socket *       sock;
-	bool               clean_start;
-	uint8_t            proto_ver;
-	uint16_t           port;
-	uint16_t           keepalive;
-	char *             address;
-	char *             clientid;
-	char *             username;
-	char *             password;
-	conf_tls           tls;
+	nng_socket *sock;
+	bool        clean_start;
+	uint8_t     proto_ver;
+	uint16_t    port;
+	uint16_t    keepalive;
+	char *      address;
+	char *      clientid;
+	char *      username;
+	char *      password;
+	conf_tls    tls;
 } dds_gateway_mqtt;
 
 typedef struct {
-	char *             idl_type;
-	size_t             domain_id;
+	char * idl_type;
+	size_t domain_id;
+	char * dds_uri;
 } dds_gateway_dds;
 
 typedef struct {
@@ -428,6 +429,7 @@ extern void   conf_parse(conf *nanomq_conf);
 extern void   conf_parse_ver2(conf *nanomq_conf);
 extern void   conf_gateway_parse_ver2(zmq_gateway_conf *gateway);
 extern void   conf_vsomeip_gateway_parse_ver2(vsomeip_gateway_conf *config);
+extern void   conf_dds_gateway_init(dds_gateway_conf *config);
 extern void   conf_dds_gateway_parse_ver2(dds_gateway_conf *config);
 extern void   conf_dds_gateway_destory(dds_gateway_conf *config);
 extern void   conf_init(conf *nanomq_conf);
