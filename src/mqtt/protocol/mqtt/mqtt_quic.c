@@ -287,8 +287,9 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 			}
 		}
 		if (0 != nni_lmq_put(&s->send_messages, msg)) {
-			nni_println(
+			log_warn(
 			    "Warning! msg send failed due to busy socket");
+			nni_msg_free(msg);
 		}
 	}
 	if (0 == qos && ptype != NNG_MQTT_SUBSCRIBE &&
@@ -1782,7 +1783,7 @@ mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 	if (0 != quic_mqtt_stream_init(new_pipe, p->qsock, p->mqtt_sock)) {
 			log_warn("Failed in open the topic-stream pair.");
 			return -1;
-		}
+	}
 
 	new_pipe->ready = true;
 	nni_atomic_set_bool(&new_pipe->closed, false);
@@ -1810,7 +1811,7 @@ mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 		nni_aio_finish_error(aio, UNSPECIFIED_ERROR);
 	}
 
-	if (!p->busy) {
+	if (!new_pipe->busy) {
 		nni_aio_set_msg(&new_pipe->send_aio, msg);
 		p->busy = true;
 		quic_pipe_send(new_pipe->qpipe, &new_pipe->send_aio);
