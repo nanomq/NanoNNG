@@ -1577,7 +1577,7 @@ check_ifwildcard(const char *w, const char *n)
 }
 
 /**
- * @brief check if there is any topic mathed with
+ * @brief check if there is any topic matched with
  * 		  *origin
  * 
  * @param origin topic with wildcard 

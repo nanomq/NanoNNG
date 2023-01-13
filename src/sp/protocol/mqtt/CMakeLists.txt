@@ -9,3 +9,5 @@ if (NNG_PROTO_MQTT_BROKER)
     nng_headers_if(NNG_PROTO_MQTT_BROKER nng/protocol/mqtt/mqtt_parser.h nng/protocol/mqtt/nmq_mqtt.h)
     nng_defines_if(NNG_PROTO_MQTT_BROKER NNG_HAVE_MQTT_BROKER)
 endif ()
+
+nanomq_test(mqtt_parser_test)
