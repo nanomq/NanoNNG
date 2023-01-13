@@ -322,6 +322,8 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			nni_msg_free(smsg);
 			nni_aio_finish_sync(aio, 0, 0);
 			break;
+		} else {
+			log_error("AIO missing, potential msg leaking!");
 		}
 		nni_mtx_unlock(&qstrm->mtx);
 		break;
@@ -389,7 +391,7 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		}
 		break;
 	case QUIC_STREAM_EVENT_START_COMPLETE:
-		log_info("QUIC_STREAM_EVENT_START_COMPLETE");
+		log_info("QUIC_STREAM_EVENT_START_COMPLETE [stream] %p", stream);
 		break;
 	case QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE:
 		log_info("QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE");
@@ -402,34 +404,6 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		log_warn("[strm][%p] Peer RECEIVE aborted\n", stream);
 		log_warn("QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED Error Code: %llu",
 				 (unsigned long long) Event->PEER_RECEIVE_ABORTED.ErrorCode);
-		// Get aio from sendq and finish error
-		// not tested yet
-		nni_mtx_lock(&qstrm->mtx);
-		aio = Event->SEND_COMPLETE.ClientContext;
-		if (aio != NULL) {
-			// QoS messages send_cb
-			nni_aio_list_remove(aio);
-			// free the buf
-			QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
-			free(buf);
-			smsg = nni_aio_get_msg(aio);
-			nni_msg_free(smsg);
-			nni_mtx_unlock(&qstrm->mtx);
-			// leave aio_finish to ACK
-			// nni_aio_finish_sync(aio, 0, 0);
-			break;
-		}
-		if ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
-			nni_aio_list_remove(aio);
-			QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
-			free(buf);
-			nni_mtx_unlock(&qstrm->mtx);
-			smsg = nni_aio_get_msg(aio);
-			nni_msg_free(smsg);
-			nni_aio_finish_error(aio, ECONNABORTED);
-			break;
-		}
-		nni_mtx_unlock(&qstrm->mtx);
 		break;
 
 	default:
@@ -860,6 +834,7 @@ quic_pipe_send_start(quic_strm_t *qstrm)
 	log_debug("body len: %d header len: %d", buf[1].Length, buf[0].Length);
 	nni_aio_set_input(aio, 0, buf);
 	// send QoS 0 msg with NULL context
+
 	if (QUIC_FAILED(rv = MsQuic->StreamSend(qstrm->stream, buf, bl > 0 ? 2:1,
 	                    QUIC_SEND_FLAG_NONE, NULL))) {
 		log_debug("Failed in StreamSend, 0x%x!", rv);
