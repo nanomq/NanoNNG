@@ -516,6 +516,7 @@ NNG_DECL int nng_mqttv5_client_open(nng_socket *);
 typedef struct {
 	nng_socket sock;
 	nng_aio   *send_aio;
+	nng_lmq   *msgq;
 } nng_mqtt_client;
 
 

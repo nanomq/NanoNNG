@@ -711,6 +711,7 @@ nng_mqtt_client_alloc(nng_socket sock, nng_mqtt_sub_cb cb, bool is_async)
 	client->sock            = sock;
 	if (is_async) {
 		nng_aio_alloc(&client->send_aio, cb, client);
+		nng_lmq_alloc(&client->msgq, NNG_MAX_SEND_LMQ);
 	}
 	return client;
 }
@@ -757,8 +758,6 @@ nng_mqtt_subscribe(nng_socket sock, nng_mqtt_topic_qos *sbs, size_t count, prope
 int 
 nng_mqtt_subscribe_async(nng_mqtt_client *client, nng_mqtt_topic_qos *sbs, size_t count, property *pl)
 {
-	int rv = 0;
-
 	// create a SUBSCRIBE message
 	nng_msg *submsg;
 	nng_mqtt_msg_alloc(&submsg, 0);
@@ -768,17 +767,16 @@ nng_mqtt_subscribe_async(nng_mqtt_client *client, nng_mqtt_topic_qos *sbs, size_
 	if (pl) {
 		nng_mqtt_msg_set_subscribe_property(submsg, pl);
 	}
-
+	if (nng_aio_busy(client->send_aio)) {
+		if (nng_lmq_put(client->msgq, submsg) != 0) {
+			log_error("bridging subscribe failed!");
+		}
+		return 1;
+	}
 	nng_aio_set_msg(client->send_aio, submsg);
-	// if (nni_aio_schedule(client->send_aio, mqtt_sub_aio_cancel, client) !=
-	//     0) {
-	// 	nni_aio_finish_error(client->send_aio, NNG_ECANCELED);
-	// 	return rv;
-	// }
 	nng_send_aio(client->sock, client->send_aio);
 
-	return rv;
-
+	return 0;
 }
 
 conn_param*
