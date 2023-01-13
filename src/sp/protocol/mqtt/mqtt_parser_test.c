@@ -8,7 +8,7 @@ test_utf8_check()
 	int     rv;
 	uint8_t src[] = { 0x24, 0x4D, 0x51, 0x54, 0x54 };
 	// TODO more cases for failure.
-	rv = utf8_check(src, strlen(src) - 1);
+	rv = utf8_check((char *) src, strlen((char *) src) - 1);
 	assert(rv == ERR_SUCCESS);
 
 	return ERR_SUCCESS;
@@ -29,7 +29,7 @@ test_get_utf8_str()
 	pos    = 0;
 	rv     = get_utf8_str(&dest, src, &pos);
 	assert(rv == 5);
-	assert(strcmp(dest, "$MQTT") == 0);
+	assert(strcmp((char *) dest, "$MQTT") == 0);
 
 	return ERR_SUCCESS;
 }
@@ -38,13 +38,13 @@ static int
 test_copyn_utf8_str()
 {
 	uint8_t  src[]   = { 0x00, 0x05, 0x24, 0x4D, 0x51, 0x54, 0x54 };
-	int      pos     = 0;
+	uint32_t pos     = 0;
 	int      str_len = 0;
 	int      limit   = 20;
 	uint8_t *ptr_rv  = NULL;
 
 	ptr_rv = copyn_utf8_str(src, &pos, &str_len, limit);
-	assert(strcmp(ptr_rv, "$MQTT") == 0);
+	assert(strcmp((char *) ptr_rv, "$MQTT") == 0);
 
 	limit  = 1;
 	ptr_rv = copyn_utf8_str(src, &pos, &str_len, limit);
@@ -57,12 +57,12 @@ static int
 test_copy_utf8_str()
 {
 	uint8_t  src[]   = { 0x00, 0x05, 0x24, 0x4D, 0x51, 0x54, 0x54 };
-	int      pos     = 0;
+	uint32_t pos     = 0;
 	int      str_len = 0;
 	uint8_t *ptr_rv  = NULL;
 
-	ptr_rv           = copy_utf8_str(src, &pos, &str_len);
-	assert(strcmp(ptr_rv, "$MQTT") == 0);
+	ptr_rv = copy_utf8_str(src, &pos, &str_len);
+	assert(strcmp((char *) ptr_rv, "$MQTT") == 0);
 
 	return ERR_SUCCESS;
 }
@@ -71,13 +71,13 @@ static int
 test_copyn_str()
 {
 	uint8_t  src[]   = { 0x00, 0x05, 0x23, 0x4D, 0x51, 0x54, 0x54 };
-	int      pos     = 0;
+	uint32_t pos     = 0;
 	int      str_len = 0;
 	int      limit   = 20;
 	uint8_t *ptr_rv  = NULL;
 
-	ptr_rv           = copyn_str(src, &pos, &str_len, limit);
-	assert(strcmp(ptr_rv, "#MQTT") == 0);
+	ptr_rv = copyn_str(src, &pos, &str_len, limit);
+	assert(strcmp((char *) ptr_rv, "#MQTT") == 0);
 
 	ptr_rv = copyn_str(NULL, &pos, &str_len, limit);
 	assert(ptr_rv == NULL);
@@ -96,9 +96,9 @@ test_get_variable_binary()
 	char   *dest;
 	uint8_t src[] = { 0x00, 0x05, 0x24, 0x4D, 0x51, 0x54, 0x54 };
 
-	rv            = get_variable_binary(&dest, src);
+	rv = get_variable_binary((uint8_t **) &dest, src);
 	assert(rv == 5);
-	assert(strcmp(dest, "$MQTT") == 0);
+	assert(strcmp((char *) dest, "$MQTT") == 0);
 
 	return ERR_SUCCESS;
 }
@@ -141,7 +141,7 @@ test_DJBHash()
 	int   rv  = 0;
 	char *str = "test";
 
-	rv        = DJBHash(str);
+	rv = DJBHash(str);
 	assert(rv == 2090756197);
 
 	return ERR_SUCCESS;
@@ -154,7 +154,7 @@ test_DJBHashn()
 	char    *str = "test";
 	uint16_t len = 2;
 
-	rv           = DJBHashn(str, len);
+	rv = DJBHashn(str, len);
 	assert(rv == 5863838);
 
 	return ERR_SUCCESS;
@@ -163,7 +163,7 @@ test_DJBHashn()
 static int
 test_check_ifwildcard()
 {
-	bool  rv    = false;
+	bool rv = false;
 
 	char *orgin = "test/#";
 	char *input = "test/topic";
@@ -192,7 +192,7 @@ test_check_ifwildcard()
 static int
 test_topic_filter()
 {
-	bool  rv    = false;
+	bool rv = false;
 
 	char *orgin = "test/topic";
 	char *input = "test/topic";
@@ -209,13 +209,13 @@ test_topic_filter()
 static int
 test_topic_filtern()
 {
-	bool  rv    = false;
+	bool rv = false;
 
 	char *orgin = "test/topic";
 	char *input = "test/topic/test";
 	rv          = topic_filtern(orgin, input, 10);
 	assert(rv == true);
-    
+
 	rv = topic_filtern(orgin, input, 11);
 	assert(rv == false);
 
