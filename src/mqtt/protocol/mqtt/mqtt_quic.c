@@ -1768,10 +1768,11 @@ mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 
 	// check topic/stream pair exsitence
 	topics = nni_mqtt_msg_get_subscribe_topics(msg, &count);
+	// there is only one topic in Sub msg if multi-stream is enabled
 	for (uint32_t i = 0; i<count; i++) {
 		hash = DJBHashn(topics[i].topic.buf, topics[i].topic.length);
 		if (nni_id_get(sock->streams, hash) == NULL) {
-			// create pipe
+			// create pipe here & set stream id
 			log_warn("%s %d", topics[i].topic.buf, topics[i].qos);
 		}
 	}
@@ -1784,9 +1785,11 @@ mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 			log_warn("Failed in open the topic-stream pair.");
 			return -1;
 	}
+	log_debug("create new pipe %p for topic %s", new_pipe, topics[0].topic.buf);
 
 	new_pipe->ready = true;
 	nni_atomic_set_bool(&new_pipe->closed, false);
+	new_pipe->cparam = p->cparam;
 	// there is no aio in send_queue, because this is a newly established stream
 	quic_pipe_recv(new_pipe->qpipe, &new_pipe->recv_aio);
 
