@@ -313,7 +313,8 @@ typedef struct {
 typedef struct {
 	char * idl_type;
 	size_t domain_id;
-	char * dds_uri;
+	bool   shm_mode;
+	char * shm_log_level;
 } dds_gateway_dds;
 
 typedef struct {

@@ -1226,9 +1226,12 @@ static void
 conf_dds_gateway_dds_parse_ver2(dds_gateway_dds *dds, cJSON *jso)
 {
 	cJSON *jso_dds = hocon_get_obj("dds", jso);
+
 	hocon_read_str(dds, idl_type, jso_dds);
 	hocon_read_num(dds, domain_id, jso_dds);
-	hocon_read_str_base(dds, dds_uri, "CYCLONEDDS_URI", jso_dds);
+	cJSON *jso_shm = hocon_get_obj("shared_memory", jso_dds);
+	hocon_read_bool_base(dds, shm_mode, "enable", jso_shm);
+	hocon_read_str_base(dds, shm_log_level, "log_level", jso_shm);
 }
 
 void
@@ -1252,9 +1255,10 @@ conf_dds_gateway_init(dds_gateway_conf *config)
 
 	conf_tls_init(&mqtt->tls);
 
-	dds->dds_uri   = NULL;
-	dds->domain_id = 0xffffffffu;
-	dds->idl_type  = NULL;
+	dds->idl_type      = NULL;
+	dds->domain_id     = 0;
+	dds->shm_mode      = false;
+	dds->shm_log_level = NULL;
 
 	forward->dds2mqtt.from = NULL;
 	forward->dds2mqtt.to   = NULL;
@@ -1320,8 +1324,8 @@ conf_dds_gateway_destory(dds_gateway_conf *config)
 	if (dds->idl_type) {
 		free(dds->idl_type);
 	}
-	if (dds->dds_uri) {
-		free(dds->dds_uri);
+	if (dds->shm_log_level) {
+		free(dds->shm_log_level);
 	}
 
 	if(forward->dds2mqtt.from){
