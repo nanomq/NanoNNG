@@ -1219,7 +1219,6 @@ conf_dds_gateway_mqtt_parse_ver2(dds_gateway_mqtt *mqtt, cJSON *jso)
 	hocon_read_str(mqtt, password, json_mqtt_conn);
 
 	cJSON *json_conn_tls = hocon_get_obj("ssl", json_mqtt_conn);
-	conf_tls_init(&mqtt->tls);
 	conf_tls_parse_ver2_base(&mqtt->tls, json_conn_tls);
 }
 
@@ -1229,6 +1228,38 @@ conf_dds_gateway_dds_parse_ver2(dds_gateway_dds *dds, cJSON *jso)
 	cJSON *jso_dds = hocon_get_obj("dds", jso);
 	hocon_read_str(dds, idl_type, jso_dds);
 	hocon_read_num(dds, domain_id, jso_dds);
+	hocon_read_str_base(dds, dds_uri, "CYCLONEDDS_URI", jso_dds);
+}
+
+void
+conf_dds_gateway_init(dds_gateway_conf *config)
+{
+	config->path = NULL;
+
+	dds_gateway_mqtt *   mqtt    = &config->mqtt;
+	dds_gateway_dds *    dds     = &config->dds;
+	dds_gateway_forward *forward = &config->forward;
+
+	mqtt->sock        = NULL;
+	mqtt->address     = NULL;
+	mqtt->clean_start = true;
+	mqtt->keepalive   = 60;
+	mqtt->proto_ver   = 4;
+	mqtt->clientid    = NULL;
+	mqtt->username    = NULL;
+	mqtt->password    = NULL;
+	mqtt->port        = 1883;
+
+	conf_tls_init(&mqtt->tls);
+
+	dds->dds_uri   = NULL;
+	dds->domain_id = 0xffffffffu;
+	dds->idl_type  = NULL;
+
+	forward->dds2mqtt.from = NULL;
+	forward->dds2mqtt.to   = NULL;
+	forward->mqtt2dds.from = NULL;
+	forward->mqtt2dds.to   = NULL;
 }
 
 void
@@ -1286,8 +1317,11 @@ conf_dds_gateway_destory(dds_gateway_conf *config)
 	}
 	conf_tls_destroy(&mqtt->tls);
 
-	if(dds->idl_type) {
+	if (dds->idl_type) {
 		free(dds->idl_type);
+	}
+	if (dds->dds_uri) {
+		free(dds->dds_uri);
 	}
 
 	if(forward->dds2mqtt.from){
