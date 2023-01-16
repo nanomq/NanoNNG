@@ -160,6 +160,129 @@ mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
 }
 
 
+// Multi-stream API
+/**
+ * Create independent & seperated stream for specific topic.
+ * Only effective on Publish
+ * This stream is unidirecitional by default
+*/
+static mqtt_pipe_t*
+nng_mqtt_quic_open_topic_stream(mqtt_sock_t *mqtt_sock, const char *topic, uint32_t len)
+{
+	mqtt_pipe_t *p          = mqtt_sock->pipe;
+	mqtt_pipe_t *new_pipe   = NULL;
+
+	// create a pipe/stream here
+	if ((new_pipe = nng_alloc(sizeof(mqtt_pipe_t))) == NULL) {
+		log_error("error in alloc pipe.\n");
+		return -1;
+	}
+	if (0 != quic_mqtt_stream_init(new_pipe, p->qsock, mqtt_sock)) {
+		log_warn("Failed in open the topic-stream pair.");
+		return -1;
+	}
+	nni_id_set(
+	    mqtt_sock->streams, DJBHashn(topic, len), new_pipe);
+	log_debug("create new pipe %p for topic %s", new_pipe, topic);
+
+	new_pipe->ready = true;
+	nni_atomic_set_bool(&new_pipe->closed, false);
+	new_pipe->cparam = p->cparam;
+	// there is no aio in send_queue, because this is a newly established stream
+	// for now, pub stream is also bidirectional
+	quic_pipe_recv(new_pipe->qpipe, &new_pipe->recv_aio);
+	return new_pipe;
+}
+
+/***
+ * create a unidirectional stream and pub msg to it.
+ * mapping sub topics (if >1) with the new stream.
+*/
+static int
+mqtt_pub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
+{
+}
+/***
+ * create a unidirectional stream and send SUB/UNSUB packet
+ * receving msg only from a unique topic
+ * mapping sub topics (if >1) with the new stream.
+*/
+static int
+mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
+{
+	uint32_t count, hash;
+	nni_msg *tmsg;
+	mqtt_sock_t *sock = p->mqtt_sock;
+	mqtt_pipe_t *new_pipe   = NULL;
+	nni_mqtt_topic_qos *topics;
+
+	// check topic/stream pair exsitence
+	topics = nni_mqtt_msg_get_subscribe_topics(msg, &count);
+	// there is only one topic in Sub msg if multi-stream is enabled
+	for (uint32_t i = 0; i<count; i++) {
+		hash = DJBHashn(topics[i].topic.buf, topics[i].topic.length);
+		if (nni_id_get(sock->streams, hash) == NULL) {
+			// create pipe here & set stream id
+			log_warn("%s %d", topics[i].topic.buf, topics[i].qos);
+		}
+	}
+	// create a pipe/stream here
+	if ((new_pipe = nng_alloc(sizeof(mqtt_pipe_t))) == NULL) {
+		log_error("error in alloc pipe.\n");
+		return -1;
+	}
+	if (0 != quic_mqtt_stream_init(new_pipe, p->qsock, p->mqtt_sock)) {
+			log_warn("Failed in open the topic-stream pair.");
+			return -1;
+	}
+	log_debug("create new pipe %p for topic %s", new_pipe, topics[0].topic.buf);
+
+	new_pipe->ready = true;
+	nni_atomic_set_bool(&new_pipe->closed, false);
+	new_pipe->cparam = p->cparam;
+	// there is no aio in send_queue, because this is a newly established stream
+	quic_pipe_recv(new_pipe->qpipe, &new_pipe->recv_aio);
+
+	nni_mqtt_msg_set_packet_id(msg, packet_id);
+	nni_mqtt_msg_set_aio(msg, aio);
+	tmsg = nni_id_get(&new_pipe->sent_unack, packet_id);
+	if (tmsg != NULL) {
+		log_warn("Warning : msg %d lost due to "
+		         "packetID duplicated!",
+		    packet_id);
+		nni_aio *m_aio = nni_mqtt_msg_get_aio(tmsg);
+		if (m_aio) {
+			nni_aio_finish_error(m_aio, UNSPECIFIED_ERROR);
+		}
+		nni_msg_free(tmsg);
+		nni_id_remove(&new_pipe->sent_unack, packet_id);
+	}
+	nni_msg_clone(msg);
+	if (0 != nni_id_set(&new_pipe->sent_unack, packet_id, msg)) {
+		nni_println("Warning! Cache QoS msg failed");
+		nni_msg_free(msg);
+		nni_aio_finish_error(aio, UNSPECIFIED_ERROR);
+	}
+
+	if (!new_pipe->busy) {
+		nni_aio_set_msg(&new_pipe->send_aio, msg);
+		p->busy = true;
+		quic_pipe_send(new_pipe->qpipe, &new_pipe->send_aio);
+	} else {
+		if (nni_lmq_full(&new_pipe->send_inflight)) {
+			(void) nni_lmq_get(&new_pipe->send_inflight, &tmsg);
+			log_warn("msg lost due to flight window is full");
+			nni_msg_free(tmsg);
+		}
+		if (0 != nni_lmq_put(&new_pipe->send_inflight, msg)) {
+			nni_println(
+			    "Warning! msg send failed due to busy socket");
+		}
+	}
+	return 0;
+}
+// end of Multi-stream API
+
 static uint16_t
 mqtt_pipe_get_next_packet_id(mqtt_sock_t *s)
 {
@@ -181,6 +304,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 	mqtt_pipe_t *p   = s->pipe;
 	nni_msg     *tmsg;
 	uint16_t     ptype, packet_id;
+	uint32_t     topic_len = 0;
 	uint8_t      qos = 0;
 
 	ptype = nni_mqtt_msg_get_packet_type(msg);
@@ -206,6 +330,18 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		break;
 
 	case NNG_MQTT_PUBLISH:
+		if (s->bridge_conf->multi_stream) {
+			// check if topic-stream pair exist
+			mqtt_pipe_t *pub_pipe;
+
+			char *topic = nni_mqtt_msg_get_publish_topic(msg, &topic_len);
+			pub_pipe = nni_id_get(s->streams, DJBHashn(topic, topic_len));
+			if (pub_pipe == NULL) {
+				pub_pipe = nng_mqtt_quic_open_topic_stream(s, topic, topic_len);
+			}
+			p = pub_pipe;
+		}
+
 		qos = nni_mqtt_msg_get_publish_qos(msg);
 		if (qos == 0) {
 			break; // QoS 0 need no packet id
@@ -298,6 +434,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 	}
 	return -1;
 }
+
 // send msg with specific pipe/stream for only Sub/UnSub/Pub
 static inline int
 mqtt_pipe_send_msg(nni_aio *aio, nni_msg *msg, mqtt_pipe_t *p, uint16_t packet_id)
@@ -1700,35 +1837,6 @@ nng_mqtt_quic_set_msg_recv_cb(nng_socket *sock, int (*cb)(void *, void *), void 
 	return 0;
 }
 
-// Multi-stream API
-/**
- * Create independent & seperated stream for specific topic.
- * Only effective on Publish
- * This stream is unidirecitional by default
-*/
-int
-nng_mqtt_quic_open_topic_stream(nng_socket *sock, const char *topic)
-{
-	nni_sock *nsock = NULL;
-	mqtt_pipe_t *p     = NULL;
-	mqtt_pipe_t *new_pipe   = NULL;
-
-	nni_sock_find(&nsock, sock->id);
-	if (nsock) {
-		mqtt_sock_t *mqtt_sock = nni_sock_proto_data(nsock);
-		p = mqtt_sock->pipe;
-		if (0 != quic_mqtt_stream_init(new_pipe, p->qsock, p->mqtt_sock)) {
-			log_warn("Failed in open the topic-stream pair.");
-			return -1;
-		}
-		nni_id_set(mqtt_sock->streams, DJBHashn(topic, strlen(topic)), new_pipe);
-	} else {
-		return -1;
-	}
-	nni_sock_rele(nsock);
-	return 0;
-}
-
 int
 nng_mqtt_quic_set_config(nng_socket *sock, void *node)
 {
@@ -1749,86 +1857,6 @@ nng_mqtt_quic_set_config(nng_socket *sock, void *node)
 		return -1;
 	}
 	nni_sock_rele(nsock);
-	return 0;
-}
-
-/***
- * create a unidirectional stream and send SUB/UNSUB packet 
- * receving msg sorely from a unique topic
- * mapping sub topics (if >1) with the new stream.
-*/
-static int
-mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
-{
-	uint32_t count, hash;
-	nni_msg *tmsg;
-	mqtt_sock_t *sock = p->mqtt_sock;
-	mqtt_pipe_t *new_pipe   = NULL;
-	nni_mqtt_topic_qos *topics;
-
-	// check topic/stream pair exsitence
-	topics = nni_mqtt_msg_get_subscribe_topics(msg, &count);
-	// there is only one topic in Sub msg if multi-stream is enabled
-	for (uint32_t i = 0; i<count; i++) {
-		hash = DJBHashn(topics[i].topic.buf, topics[i].topic.length);
-		if (nni_id_get(sock->streams, hash) == NULL) {
-			// create pipe here & set stream id
-			log_warn("%s %d", topics[i].topic.buf, topics[i].qos);
-		}
-	}
-	// create a pipe/stream here
-	if ((new_pipe = nng_alloc(sizeof(mqtt_pipe_t))) == NULL) {
-		log_error("error in alloc pipe.\n");
-		return -1;
-	}
-	if (0 != quic_mqtt_stream_init(new_pipe, p->qsock, p->mqtt_sock)) {
-			log_warn("Failed in open the topic-stream pair.");
-			return -1;
-	}
-	log_debug("create new pipe %p for topic %s", new_pipe, topics[0].topic.buf);
-
-	new_pipe->ready = true;
-	nni_atomic_set_bool(&new_pipe->closed, false);
-	new_pipe->cparam = p->cparam;
-	// there is no aio in send_queue, because this is a newly established stream
-	quic_pipe_recv(new_pipe->qpipe, &new_pipe->recv_aio);
-
-	nni_mqtt_msg_set_packet_id(msg, packet_id);
-	nni_mqtt_msg_set_aio(msg, aio);
-	tmsg = nni_id_get(&new_pipe->sent_unack, packet_id);
-	if (tmsg != NULL) {
-		log_warn("Warning : msg %d lost due to "
-		         "packetID duplicated!",
-		    packet_id);
-		nni_aio *m_aio = nni_mqtt_msg_get_aio(tmsg);
-		if (m_aio) {
-			nni_aio_finish_error(m_aio, UNSPECIFIED_ERROR);
-		}
-		nni_msg_free(tmsg);
-		nni_id_remove(&new_pipe->sent_unack, packet_id);
-	}
-	nni_msg_clone(msg);
-	if (0 != nni_id_set(&new_pipe->sent_unack, packet_id, msg)) {
-		nni_println("Warning! Cache QoS msg failed");
-		nni_msg_free(msg);
-		nni_aio_finish_error(aio, UNSPECIFIED_ERROR);
-	}
-
-	if (!new_pipe->busy) {
-		nni_aio_set_msg(&new_pipe->send_aio, msg);
-		p->busy = true;
-		quic_pipe_send(new_pipe->qpipe, &new_pipe->send_aio);
-	} else {
-		if (nni_lmq_full(&new_pipe->send_inflight)) {
-			(void) nni_lmq_get(&new_pipe->send_inflight, &tmsg);
-			log_warn("msg lost due to flight window is full");
-			nni_msg_free(tmsg);
-		}
-		if (0 != nni_lmq_put(&new_pipe->send_inflight, msg)) {
-			nni_println(
-			    "Warning! msg send failed due to busy socket");
-		}
-	}
 	return 0;
 }
 
