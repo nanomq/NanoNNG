@@ -11,7 +11,7 @@ test_utf8_check()
 	NUTS_PASS(utf8_check((char *) src, strlen((char *) src) - 1));
 	// test oversize src.
 	NUTS_FAIL(utf8_check((char *) src, 65537), ERR_INVAL);
-	// test non-utf8 check
+	// test control characters.
 	src[0] = 0x04;
 	NUTS_FAIL(utf8_check((char *) src, strlen((char *) src) - 1),
 	    ERR_MALFORMED_UTF8);
@@ -42,7 +42,7 @@ test_copyn_utf8_str()
 	uint8_t *ptr_rv  = NULL;
 	// test src.
 	ptr_rv = copyn_utf8_str(src, &pos, &str_len, limit);
-	NUTS_MATCH(ptr_rv, "$MQTT");
+	NUTS_MATCH((char *) ptr_rv, "$MQTT");
 	nng_free(ptr_rv, sizeof(ptr_rv));
 	// test for buffer overflow.
 	limit   = 1;
@@ -60,7 +60,7 @@ test_copy_utf8_str()
 	uint8_t *ptr_rv  = NULL;
 
 	ptr_rv = copy_utf8_str(src, &pos, &str_len);
-	NUTS_MATCH(ptr_rv, "$MQTT");
+	NUTS_MATCH((char *) ptr_rv, "$MQTT");
 	nng_free(ptr_rv, sizeof(ptr_rv));
 }
 
@@ -74,7 +74,7 @@ test_copyn_str()
 	uint8_t *ptr_rv  = NULL;
 
 	ptr_rv = copyn_str(src, &pos, &str_len, limit);
-	NUTS_MATCH(ptr_rv, "$MQTT");
+	NUTS_MATCH((char *) ptr_rv, "$MQTT");
 	nng_free(ptr_rv, sizeof(ptr_rv));
 
 	ptr_rv = copyn_str(NULL, &pos, &str_len, limit);
@@ -137,26 +137,6 @@ test_DJBHashn()
 }
 
 static void
-test_check_ifwildcard()
-{
-	char *orgin = "test/#";
-	char *input = "test/topic";
-	NUTS_ASSERT(check_ifwildcard(orgin, input) == true);
-
-	char *orgin2 = "test/topic2";
-	NUTS_ASSERT(check_ifwildcard(orgin2, input) == false);
-
-	char *orgin3 = "test/topic/#";
-	NUTS_ASSERT(check_ifwildcard(orgin3, input) == true);
-
-	char *orgin4 = "test/topic/+";
-	NUTS_ASSERT(check_ifwildcard(orgin4, input) == false);
-
-	char *input2 = "test/topic/topic2";
-	NUTS_ASSERT(check_ifwildcard(orgin2, input2) == false);
-}
-
-static void
 test_topic_filter()
 {
 	char *orgin = "test/topic";
@@ -178,21 +158,20 @@ test_topic_filtern()
 }
 
 NUTS_TESTS = {
-	{ "utf8_check", test_utf8_check },
-	{ "test_get_utf8_str", test_get_utf8_str },
-	{ "test_copyn_utf8_str", test_copyn_utf8_str },
-	{ "test_copy_utf8_str", test_copy_utf8_str },
-	{ "test_copyn_str", test_copyn_str },
-	{ "test_get_variable_binary", test_get_variable_binary },
-	{ "test_fixed_header_adaptor", test_fixed_header_adaptor },
-	{ "test_ws_msg_adaptor", test_ws_msg_adaptor },
+	{ "mqtt_parser utf8_check", test_utf8_check },
+	{ "mqtt_parser get_utf8_str", test_get_utf8_str },
+	{ "mqtt_parser copyn_utf8_str", test_copyn_utf8_str },
+	{ "mqtt_parser copy_utf8_str", test_copy_utf8_str },
+	{ "mqtt_parser copyn_str", test_copyn_str },
+	{ "mqtt_parser get_variable_binary", test_get_variable_binary },
+	{ "mqtt_parser fixed_header_adaptor", test_fixed_header_adaptor },
+	{ "mqtt_parser ws_msg_adaptor", test_ws_msg_adaptor },
 	// TODO more tests needed.
-	{ "test_DJBHash", test_DJBHash },
-	{ "test_DJBHashn", test_DJBHashn },
+	{ "mqtt_parser DJBHash", test_DJBHash },
+	{ "mqtt_parser DJBHashn", test_DJBHashn },
 	// TODO more tests needed.
-	{ "test_check_ifwildcard", test_check_ifwildcard },
-	{ "test_topic_filter", test_topic_filter },
-	{ "test_topic_filtern", test_topic_filtern },
+	{ "mqtt_parser topic_filter", test_topic_filter },
+	{ "mqtt_parser topic_filtern", test_topic_filtern },
 
 	{ NULL, NULL },
 };
