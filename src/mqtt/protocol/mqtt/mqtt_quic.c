@@ -175,11 +175,11 @@ nng_mqtt_quic_open_topic_stream(mqtt_sock_t *mqtt_sock, const char *topic, uint3
 	// create a pipe/stream here
 	if ((new_pipe = nng_alloc(sizeof(mqtt_pipe_t))) == NULL) {
 		log_error("error in alloc pipe.\n");
-		return -1;
+		return NULL;
 	}
 	if (0 != quic_mqtt_stream_init(new_pipe, p->qsock, mqtt_sock)) {
 		log_warn("Failed in open the topic-stream pair.");
-		return -1;
+		return NULL;
 	}
 	nni_id_set(
 	    mqtt_sock->streams, DJBHashn(topic, len), new_pipe);
