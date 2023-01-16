@@ -773,6 +773,8 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 			hocon_read_str(s, topic, subscription);
 			hocon_read_num(s, qos, subscription);
 			s->topic_len = strlen(s->topic);
+			s->stream_id = 0;
+			hocon_read_num(s, stream_id, subscription);
 		}
 
 		hocon_read_num(node, parallel, bridge_mqtt_node);

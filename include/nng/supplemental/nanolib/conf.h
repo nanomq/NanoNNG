@@ -197,6 +197,7 @@ typedef struct {
 	char *   topic;
 	uint32_t topic_len;
 	uint8_t  qos;
+	uint32_t stream_id;	    // only effective when multi_stream is enabled
 } topics;
 
 struct conf_bridge_node {
@@ -218,7 +219,7 @@ struct conf_bridge_node {
 	char        *password;
 	char       **forwards;
 	uint64_t     parallel;
-	topics   *sub_list;
+	topics      *sub_list;
 	conf_tls     tls;
 	conf_sqlite *sqlite;
 	nng_aio    **bridge_aio;
@@ -233,7 +234,6 @@ struct conf_bridge_node {
 	uint64_t     qconnect_timeout;	// HandshakeIdleTimeoutMs of QUIC
 	uint32_t     qdiscon_timeout;	// DisconnectTimeoutMs
 	uint32_t     qidle_timeout;	    // Disconnect after idle
-	uint32_t     stream_id;	    // only effective when multi_stream is enabled
 	uint8_t      qcongestion_control; // congestion control algorithm 1: bbr 0: cubic
 #endif
 };
