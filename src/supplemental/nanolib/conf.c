@@ -1805,7 +1805,7 @@ conf_bridge_node_parse_subs(
 			sub_index++;
 			node->sub_count++;
 			node->sub_list = realloc(node->sub_list,
-			    sizeof(subscribe) * node->sub_count);
+			    sizeof(topics) * node->sub_count);
 			node->sub_list[node->sub_count - 1].topic = topic;
 			node->sub_list[node->sub_count - 1].topic_len =
 			    strlen(topic);
