@@ -1,47 +1,38 @@
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include <assert.h>
+#include <nuts.h>
 #include <stdio.h>
 
-static int
+static void
 test_utf8_check()
 {
-	int     rv    = 0;
 	uint8_t src[] = { 0x24, 0x4D, 0x51, 0x54, 0x54, '\0' };
 	// TODO more cases for failure.
-	rv = utf8_check((char *) src, strlen((char *) src) - 1);
-	assert(rv == ERR_SUCCESS);
+	NUTS_PASS(utf8_check((char *) src, strlen((char *) src) - 1));
 	// test oversize src.
-	rv = utf8_check((char *) src, 65537);
-	assert(rv = ERR_INVAL);
+	NUTS_FAIL(utf8_check((char *) src, 65537), ERR_INVAL);
 	// test non-utf8 check
 	src[0] = 0x04;
-	rv     = utf8_check((char *) src, strlen((char *) src) - 1);
-	assert(rv = ERR_MALFORMED_UTF8);
-
-	return ERR_SUCCESS;
+	NUTS_FAIL(utf8_check((char *) src, strlen((char *) src) - 1),
+	    ERR_MALFORMED_UTF8);
 }
 
-static int
+static void
 test_get_utf8_str()
 {
-	int      rv    = 0;
-	uint8_t  src[] = { 0x00, 0x05, 0x04, 0x4D, 0x51, 0x54, 0x54, '\0' };
+	uint8_t  src[] = { 0x00, 0x05, 0x24, 0x4D, 0x51, 0x54, 0x54, '\0' };
 	uint32_t pos   = 0;
 	char    *dest;
-	// test for non-utf8 src.
-	rv = get_utf8_str(&dest, src, &pos);
-	assert(rv == -1);
 	// test for correct src.
-	src[2] = 0x24;
+	NUTS_ASSERT(get_utf8_str(&dest, src, &pos) == 5);
+	NUTS_MATCH((char *) dest, "$MQTT");
+	src[2] = 0x04;
 	pos    = 0;
-	rv     = get_utf8_str(&dest, src, &pos);
-	assert(rv == 5);
-	assert(strcmp((char *) dest, "$MQTT") == 0);
-
-	return ERR_SUCCESS;
+	// test for non-utf8 src.
+	NUTS_FAIL(get_utf8_str(&dest, src, &pos), -1);
 }
 
-static int
+static void
 test_copyn_utf8_str()
 {
 	uint8_t  src[]   = { 0x00, 0x05, 0x24, 0x4D, 0x51, 0x54, 0x54, '\0' };
@@ -51,19 +42,16 @@ test_copyn_utf8_str()
 	uint8_t *ptr_rv  = NULL;
 	// test src.
 	ptr_rv = copyn_utf8_str(src, &pos, &str_len, limit);
-	assert(strcmp((char *) ptr_rv, "$MQTT") == 0);
+	NUTS_MATCH(ptr_rv, "$MQTT");
 	nng_free(ptr_rv, sizeof(ptr_rv));
 	// test for buffer overflow.
 	limit   = 1;
 	pos     = 0;
 	str_len = 0;
-	ptr_rv  = copyn_utf8_str(src, &pos, &str_len, limit);
-	assert(ptr_rv == NULL);
-
-	return ERR_SUCCESS;
+	NUTS_ASSERT(copyn_utf8_str(src, &pos, &str_len, limit) == NULL);
 }
 
-static int
+static void
 test_copy_utf8_str()
 {
 	uint8_t  src[]   = { 0x00, 0x05, 0x24, 0x4D, 0x51, 0x54, 0x54, '\0' };
@@ -72,202 +60,139 @@ test_copy_utf8_str()
 	uint8_t *ptr_rv  = NULL;
 
 	ptr_rv = copy_utf8_str(src, &pos, &str_len);
-	assert(strcmp((char *) ptr_rv, "$MQTT") == 0);
+	NUTS_MATCH(ptr_rv, "$MQTT");
 	nng_free(ptr_rv, sizeof(ptr_rv));
-
-	return ERR_SUCCESS;
 }
 
-static int
+static void
 test_copyn_str()
 {
-	uint8_t  src[]   = { 0x00, 0x05, 0x23, 0x4D, 0x51, 0x54, 0x54, '\0' };
+	uint8_t  src[]   = { 0x00, 0x05, 0x24, 0x4D, 0x51, 0x54, 0x54, '\0' };
 	uint32_t pos     = 0;
 	int      str_len = 0;
 	int      limit   = 20;
 	uint8_t *ptr_rv  = NULL;
 
 	ptr_rv = copyn_str(src, &pos, &str_len, limit);
-	assert(strcmp((char *) ptr_rv, "#MQTT") == 0);
+	NUTS_MATCH(ptr_rv, "$MQTT");
 	nng_free(ptr_rv, sizeof(ptr_rv));
 
 	ptr_rv = copyn_str(NULL, &pos, &str_len, limit);
-	assert(ptr_rv == NULL);
+	NUTS_NULL(ptr_rv);
 
 	limit  = 1;
 	ptr_rv = copyn_str(NULL, &pos, &str_len, limit);
-	assert(ptr_rv == NULL);
-
-	return ERR_SUCCESS;
+	NUTS_NULL(ptr_rv);
 }
 
-static int
+static void
 test_get_variable_binary()
 {
-	int     rv = 0;
 	char   *dest;
 	uint8_t src[] = { 0x00, 0x05, 0x24, 0x4D, 0x51, 0x54, 0x54, '\0' };
 
-	rv = get_variable_binary((uint8_t **) &dest, src);
-	assert(rv == 5);
-	assert(strcmp((char *) dest, "$MQTT") == 0);
-
-	return ERR_SUCCESS;
+	NUTS_ASSERT(get_variable_binary((uint8_t **) &dest, src) == 5);
+	NUTS_MATCH(dest, "$MQTT");
 }
 
-static int
+static void
 test_fixed_header_adaptor()
 {
-	int      rv       = 0;
 	uint8_t  packet[] = { 0x00, 0x05, 0x12, '\0' };
 	nng_msg *dst;
 	nng_msg_alloc(&dst, 10);
 
-	rv = fixed_header_adaptor(packet, dst);
-	assert(rv == 0);
+	NUTS_PASS(fixed_header_adaptor(packet, dst));
 
 	nng_msg_free(dst);
-
-	return ERR_SUCCESS;
 }
 
-static int
+static void
 test_ws_msg_adaptor()
 {
-	int      rv       = 0;
 	uint8_t  packet[] = { 0x00, 0x05, 0x12, 0x22, 0x23, 0x24, '\0' };
 	nng_msg *dst;
 	nng_msg_alloc(&dst, 10);
 
-	rv = ws_msg_adaptor(packet, dst);
-	assert(rv == 0);
+	NUTS_PASS(ws_msg_adaptor(packet, dst));
 
 	nng_msg_free(dst);
-
-	return ERR_SUCCESS;
 }
 
-static int
+static void
 test_DJBHash()
 {
-	int   rv  = 0;
 	char *str = "test";
 
-	rv = DJBHash(str);
-	assert(rv == 2090756197);
-
-	return ERR_SUCCESS;
+	NUTS_ASSERT(DJBHash(str) == 2090756197);
 }
 
-static int
+static void
 test_DJBHashn()
 {
-	int      rv  = 0;
 	char    *str = "test";
 	uint16_t len = 2;
 
-	rv = DJBHashn(str, len);
-	assert(rv == 5863838);
-
-	return ERR_SUCCESS;
+	NUTS_ASSERT(DJBHashn(str, len) == 5863838);
 }
 
-static int
+static void
 test_check_ifwildcard()
 {
-	bool rv = false;
-
 	char *orgin = "test/#";
 	char *input = "test/topic";
-	rv          = check_ifwildcard(orgin, input);
-	assert(rv == true);
+	NUTS_ASSERT(check_ifwildcard(orgin, input) == true);
 
 	char *orgin2 = "test/topic2";
-	rv           = check_ifwildcard(orgin2, input);
-	assert(rv == false);
+	NUTS_ASSERT(check_ifwildcard(orgin2, input) == false);
 
 	char *orgin3 = "test/topic/#";
-	rv           = check_ifwildcard(orgin3, input);
-	assert(rv == true);
+	NUTS_ASSERT(check_ifwildcard(orgin3, input) == true);
 
 	char *orgin4 = "test/topic/+";
-	rv           = check_ifwildcard(orgin4, input);
-	assert(rv == false);
+	NUTS_ASSERT(check_ifwildcard(orgin4, input) == false);
 
 	char *input2 = "test/topic/topic2";
-	rv           = check_ifwildcard(orgin2, input2);
-	assert(rv == false);
-
-	return ERR_SUCCESS;
+	NUTS_ASSERT(check_ifwildcard(orgin2, input2) == false);
 }
 
-static int
+static void
 test_topic_filter()
 {
-	bool rv = false;
-
 	char *orgin = "test/topic";
 	char *input = "test/topic";
-	rv          = topic_filter(orgin, input);
-	assert(rv == true);
+	NUTS_ASSERT(topic_filter(orgin, input) == true);
 
 	char *orgin2 = "test/#";
-	rv           = topic_filter(orgin2, input);
-	assert(rv == true);
-
-	return ERR_SUCCESS;
+	NUTS_ASSERT(topic_filter(orgin2, input) == true);
 }
 
-static int
+static void
 test_topic_filtern()
 {
-	bool rv = false;
-
 	char *orgin = "test/topic";
 	char *input = "test/topic/test";
-	rv          = topic_filtern(orgin, input, 10);
-	assert(rv == true);
+	NUTS_ASSERT(topic_filtern(orgin, input, 10) == true);
 
-	rv = topic_filtern(orgin, input, 11);
-	assert(rv == false);
-
-	return ERR_SUCCESS;
+	NUTS_ASSERT(topic_filtern(orgin, input, 11) == false);
 }
 
-int
-main()
-{
-	test_utf8_check();
+NUTS_TESTS = {
+	{ "utf8_check", test_utf8_check },
+	{ "test_get_utf8_str", test_get_utf8_str },
+	{ "test_copyn_utf8_str", test_copyn_utf8_str },
+	{ "test_copy_utf8_str", test_copy_utf8_str },
+	{ "test_copyn_str", test_copyn_str },
+	{ "test_get_variable_binary", test_get_variable_binary },
+	{ "test_fixed_header_adaptor", test_fixed_header_adaptor },
+	{ "test_ws_msg_adaptor", test_ws_msg_adaptor },
+	// TODO more tests needed.
+	{ "test_DJBHash", test_DJBHash },
+	{ "test_DJBHashn", test_DJBHashn },
+	// TODO more tests needed.
+	{ "test_check_ifwildcard", test_check_ifwildcard },
+	{ "test_topic_filter", test_topic_filter },
+	{ "test_topic_filtern", test_topic_filtern },
 
-	test_get_utf8_str();
-
-	test_copyn_utf8_str();
-
-	test_copy_utf8_str();
-
-	test_copyn_str();
-
-	test_get_variable_binary();
-
-	test_fixed_header_adaptor();
-
-	test_ws_msg_adaptor();
-
-	/*
-	 * TODO more tests needed.
-	 */
-
-	test_DJBHash();
-
-	test_DJBHashn();
-
-	/*
-	 * TODO more tests needed.
-	 */
-
-	test_check_ifwildcard();
-
-	test_topic_filter();
-
-	test_topic_filtern();
-}
+	{ NULL, NULL },
+};
