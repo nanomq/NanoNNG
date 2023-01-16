@@ -5,11 +5,18 @@
 static int
 test_utf8_check()
 {
-	int     rv;
-	uint8_t src[] = { 0x24, 0x4D, 0x51, 0x54, 0x54 };
+	int     rv    = 0;
+	uint8_t src[] = { 0x24, 0x4D, 0x51, 0x54, 0x54, '\0' };
 	// TODO more cases for failure.
 	rv = utf8_check((char *) src, strlen((char *) src) - 1);
 	assert(rv == ERR_SUCCESS);
+	// test oversize src.
+	rv = utf8_check((char *) src, 65537);
+	assert(rv = ERR_INVAL);
+	// test non-utf8 check
+	src[0] = 0x04;
+	rv     = utf8_check((char *) src, strlen((char *) src) - 1);
+	assert(rv = ERR_MALFORMED_UTF8);
 
 	return ERR_SUCCESS;
 }
@@ -18,7 +25,7 @@ static int
 test_get_utf8_str()
 {
 	int      rv    = 0;
-	uint8_t  src[] = { 0x00, 0x05, 0x04, 0x4D, 0x51, 0x54, 0x54 };
+	uint8_t  src[] = { 0x00, 0x05, 0x04, 0x4D, 0x51, 0x54, 0x54, '\0' };
 	uint32_t pos   = 0;
 	char    *dest;
 	// test for non-utf8 src.
@@ -37,17 +44,20 @@ test_get_utf8_str()
 static int
 test_copyn_utf8_str()
 {
-	uint8_t  src[]   = { 0x00, 0x05, 0x24, 0x4D, 0x51, 0x54, 0x54 };
+	uint8_t  src[]   = { 0x00, 0x05, 0x24, 0x4D, 0x51, 0x54, 0x54, '\0' };
 	uint32_t pos     = 0;
 	int      str_len = 0;
 	int      limit   = 20;
 	uint8_t *ptr_rv  = NULL;
-
+	// test src.
 	ptr_rv = copyn_utf8_str(src, &pos, &str_len, limit);
 	assert(strcmp((char *) ptr_rv, "$MQTT") == 0);
-
-	limit  = 1;
-	ptr_rv = copyn_utf8_str(src, &pos, &str_len, limit);
+	nng_free(ptr_rv, sizeof(ptr_rv));
+	// test for buffer overflow.
+	limit   = 1;
+	pos     = 0;
+	str_len = 0;
+	ptr_rv  = copyn_utf8_str(src, &pos, &str_len, limit);
 	assert(ptr_rv == NULL);
 
 	return ERR_SUCCESS;
@@ -56,13 +66,14 @@ test_copyn_utf8_str()
 static int
 test_copy_utf8_str()
 {
-	uint8_t  src[]   = { 0x00, 0x05, 0x24, 0x4D, 0x51, 0x54, 0x54 };
+	uint8_t  src[]   = { 0x00, 0x05, 0x24, 0x4D, 0x51, 0x54, 0x54, '\0' };
 	uint32_t pos     = 0;
 	int      str_len = 0;
 	uint8_t *ptr_rv  = NULL;
 
 	ptr_rv = copy_utf8_str(src, &pos, &str_len);
 	assert(strcmp((char *) ptr_rv, "$MQTT") == 0);
+	nng_free(ptr_rv, sizeof(ptr_rv));
 
 	return ERR_SUCCESS;
 }
@@ -70,7 +81,7 @@ test_copy_utf8_str()
 static int
 test_copyn_str()
 {
-	uint8_t  src[]   = { 0x00, 0x05, 0x23, 0x4D, 0x51, 0x54, 0x54 };
+	uint8_t  src[]   = { 0x00, 0x05, 0x23, 0x4D, 0x51, 0x54, 0x54, '\0' };
 	uint32_t pos     = 0;
 	int      str_len = 0;
 	int      limit   = 20;
@@ -78,6 +89,7 @@ test_copyn_str()
 
 	ptr_rv = copyn_str(src, &pos, &str_len, limit);
 	assert(strcmp((char *) ptr_rv, "#MQTT") == 0);
+	nng_free(ptr_rv, sizeof(ptr_rv));
 
 	ptr_rv = copyn_str(NULL, &pos, &str_len, limit);
 	assert(ptr_rv == NULL);
@@ -94,7 +106,7 @@ test_get_variable_binary()
 {
 	int     rv = 0;
 	char   *dest;
-	uint8_t src[] = { 0x00, 0x05, 0x24, 0x4D, 0x51, 0x54, 0x54 };
+	uint8_t src[] = { 0x00, 0x05, 0x24, 0x4D, 0x51, 0x54, 0x54, '\0' };
 
 	rv = get_variable_binary((uint8_t **) &dest, src);
 	assert(rv == 5);
@@ -107,7 +119,7 @@ static int
 test_fixed_header_adaptor()
 {
 	int      rv       = 0;
-	uint8_t  packet[] = { 0x00, 0x05, 0x12 };
+	uint8_t  packet[] = { 0x00, 0x05, 0x12, '\0' };
 	nng_msg *dst;
 	nng_msg_alloc(&dst, 10);
 
@@ -123,7 +135,7 @@ static int
 test_ws_msg_adaptor()
 {
 	int      rv       = 0;
-	uint8_t  packet[] = { 0x00, 0x05, 0x12 };
+	uint8_t  packet[] = { 0x00, 0x05, 0x12, 0x22, 0x23, 0x24, '\0' };
 	nng_msg *dst;
 	nng_msg_alloc(&dst, 10);
 
