@@ -10,4 +10,4 @@ if (NNG_PROTO_MQTT_BROKER)
     nng_defines_if(NNG_PROTO_MQTT_BROKER NNG_HAVE_MQTT_BROKER)
 endif ()
 
-nanomq_test(mqtt_parser_test)
+nng_test(mqtt_parser_test)
