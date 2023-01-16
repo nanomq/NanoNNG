@@ -764,12 +764,12 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 		node->sub_count = cJSON_GetArraySize(subscriptions);
 		node->sub_list =
 		    NNI_ALLOC_STRUCTS(node->sub_list, node->sub_count);
-		subscribe *slist        = node->sub_list;
+		topics *slist           = node->sub_list;
 		cJSON *    subscription = NULL;
 		int        i            = 0;
 		cJSON_ArrayForEach(subscription, subscriptions)
 		{
-			subscribe *s = &slist[i++];
+			topics *s = &slist[i++];
 			hocon_read_str(s, topic, subscription);
 			hocon_read_num(s, qos, subscription);
 			s->topic_len = strlen(s->topic);

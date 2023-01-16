@@ -197,7 +197,7 @@ typedef struct {
 	char *   topic;
 	uint32_t topic_len;
 	uint8_t  qos;
-} subscribe;
+} topics;
 
 struct conf_bridge_node {
 	bool         enable;
@@ -218,7 +218,7 @@ struct conf_bridge_node {
 	char        *password;
 	char       **forwards;
 	uint64_t     parallel;
-	subscribe   *sub_list;
+	topics   *sub_list;
 	conf_tls     tls;
 	conf_sqlite *sqlite;
 	nng_aio    **bridge_aio;
@@ -226,13 +226,15 @@ struct conf_bridge_node {
 #if defined(SUPP_QUIC)
 	// config params for QUIC only
 	bool         multi_stream;
+	bool         stream_auto_genid; // generate stream id automatically for each stream
 	bool         qos_first; // send QoS msg in high priority
 	bool         hybrid;  // hybrid bridging affects auto-reconnect of QUIC transport
-	uint8_t      qcongestion_control; // congestion control algorithm 1: bbr 0: cubic
 	uint64_t     qkeepalive;		//keepalive timeout interval of QUIC transport
 	uint64_t     qconnect_timeout;	// HandshakeIdleTimeoutMs of QUIC
 	uint32_t     qdiscon_timeout;	// DisconnectTimeoutMs
 	uint32_t     qidle_timeout;	    // Disconnect after idle
+	uint32_t     stream_id;	    // only effective when multi_stream is enabled
+	uint8_t      qcongestion_control; // congestion control algorithm 1: bbr 0: cubic
 #endif
 };
 
