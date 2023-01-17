@@ -1856,11 +1856,13 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->multi_stream     = false;
 	node->hybrid           = false;
 	node->qkeepalive       = 120;
-	node->qconnect_timeout = 30; // HandshakeIdleTimeoutMs of QUIC
-	node->qdiscon_timeout  = 30; // DisconnectTimeoutMs
-	node->qidle_timeout    = 120;  // Disconnect after idle
+	node->qconnect_timeout = 30;  // HandshakeIdleTimeoutMs of QUIC
+	node->qdiscon_timeout  = 30;  // DisconnectTimeoutMs
+	node->qidle_timeout    = 120; // Disconnect after idle
 #endif
 	conf_tls_init(&node->tls);
+	node->conn_properties = NULL;
+	node->sub_properties  = NULL;
 }
 
 static void
@@ -2131,6 +2133,26 @@ conf_aws_bridge_parse(conf *nanomq_conf, const char *path)
 }
 
 static void
+conf_bridge_user_property_destroy(conf_user_property **prop, size_t sz)
+{
+	if (sz > 0 && prop) {
+		for (size_t i = 0; i < sz; i++) {
+			if (prop[i]) {
+				if (prop[i]->key) {
+					free(prop[i]->key);
+				}
+				if (prop[i]->value) {
+					free(prop[i]->value);
+				}
+				free(prop[i]);
+			}
+		}
+		free(prop);
+		prop = NULL;
+	}
+}
+
+static void
 conf_bridge_node_destroy(conf_bridge_node *node)
 {
 	node->enable = false;
@@ -2167,6 +2189,20 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 			}
 		}
 		free(node->sub_list);
+	}
+	if (node->conn_properties) {
+		conf_bridge_user_property_destroy(
+		    node->conn_properties->user_property,
+		    node->conn_properties->user_property_size);
+		node->conn_properties->user_property_size = 0;
+		free(node->conn_properties);
+	}
+	if (node->sub_properties) {
+		conf_bridge_user_property_destroy(
+		    node->sub_properties->user_property,
+		    node->sub_properties->user_property_size);
+		node->sub_properties->user_property_size = 0;
+		free(node->sub_properties);
 	}
 	conf_tls_destroy(&node->tls);
 }
