@@ -64,21 +64,21 @@ struct quic_strm_s {
 	nni_list recvq;
 
 	quic_sock_t *sock; // QUIC socket
+	void        *pipe; // Stream pipe if multi-stream is enabled
 
 	bool     closed;
 	nni_lmq  recv_messages; // recv messages queue
 	nni_lmq  send_messages; // send messages queue
-
-	uint32_t rxlen; // Length received
-	uint32_t rwlen; // Length wanted
-	uint8_t  rxbuf[5];
-	nni_msg *rxmsg; // nng_msg for received
+	nni_msg *rxmsg;         // nng_msg for received
 
 	nni_aio  rraio;
 	uint8_t *rrbuf; // Buffer for remaining packet
 	uint32_t rrlen; // Length of rrbuf
 	uint32_t rrpos; // Start position of rrbuf
 	uint32_t rrcap; // Start position of rrbuf
+	uint32_t rxlen; // Length received
+	uint32_t rwlen; // Length wanted
+	uint8_t  rxbuf[5];
 };
 
 const QUIC_API_TABLE *MsQuic;
@@ -291,9 +291,10 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	case QUIC_STREAM_EVENT_SEND_COMPLETE:
 		// A previous StreamSend call has completed, and the context is
 		// being returned back to the app.
-		log_debug("[strm][%p] Data sent Canceled: d", stream, Event->SEND_COMPLETE.Canceled);
+		log_debug("QUIC_STREAM_EVENT_SEND_COMPLETE!");
 		if (Event->SEND_COMPLETE.Canceled) {
-			log_error("MsQUIC send Canceled!");
+			log_warn("[strm][%p] Data sent Canceled: d",
+					 stream, Event->SEND_COMPLETE.Canceled);
 		}
 		// Get aio from sendq and finish
 		nni_mtx_lock(&qstrm->mtx);
@@ -336,7 +337,6 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		log_debug("[strm][%p] Data received Flag: %d", stream, Event->RECEIVE.Flags);
 
 		nni_mtx_lock(&qstrm->mtx);
-
 		// Get all the buffers in quic stream
 		if (count == 0 || rlen <= 0) {
 			nni_mtx_unlock(&qstrm->mtx);
@@ -366,6 +366,11 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		log_warn("[strm][%p] Peer SEND aborted\n", stream);
 		log_info("PEER_SEND_ABORTED Error Code: %llu",
 				 (unsigned long long) Event->PEER_SEND_ABORTED.ErrorCode);
+		if (qstrm->sock->pipe != qstrm->pipe) {
+			const nni_proto_pipe_ops *pipe_ops =
+			    g_quic_proto->proto_pipe_ops;
+			pipe_ops->pipe_stop(qstrm->pipe);
+		}
 		break;
 	case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
 		// The peer aborted its send direction of the stream.
@@ -374,11 +379,12 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
 		// fall through to close the stream
 		log_warn("[strm][%p] QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE.", stream);
+		break;
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 		// Both directions of the stream have been shut down and MsQuic
 		// is done with the stream. It can now be safely cleaned up.
 		log_warn("[strm][%p] QUIC_STREAM_EVENT shutdown: All done.", stream);
-		log_info("close connection with Error Code: %llu",
+		log_info("close stream with Error Code: %llu",
 				 (unsigned long long) Event->SHUTDOWN_COMPLETE.ConnectionErrorCode);
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
 			// only server close the stream gonna trigger this
@@ -453,7 +459,7 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		if (Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status ==
 		    QUIC_STATUS_CONNECTION_IDLE) {
 			log_warn(
-			    "[conn][%p] Successfully shut down on idle.\n",
+			    "[conn][%p] Successfully shut down connection on idle.\n",
 			    qconn);
 		} else if (Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status ==
 		    QUIC_STATUS_CONNECTION_TIMEOUT) {
@@ -1155,7 +1161,7 @@ quic_pipe_send(void *qpipe, nni_aio *aio)
 
 // create pipe & stream
 int
-quic_pipe_open(void *qsock, void **qpipe)
+quic_pipe_open(void *qsock, void **qpipe, void *mqtt_pipe)
 {
 	HQUIC strm = NULL;
 	QUIC_STATUS  rv;
@@ -1195,6 +1201,7 @@ quic_pipe_open(void *qsock, void **qpipe)
 	log_debug("[strm][%p] Done...\n", strm);
 
 	qstrm->stream = strm;
+	qstrm->pipe   = mqtt_pipe;
 
 	*qpipe = qstrm;
 	return 0;
