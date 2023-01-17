@@ -676,6 +676,37 @@ conf_auth_http_parse_ver2(conf *config, cJSON *jso)
 }
 
 static void
+conf_bridge_properties_parser_ver2(conf_bridge_node *node, cJSON *jso_prop)
+{
+	conf_bridge_properties *prop = node->properties =
+	    NNI_ALLOC_STRUCT(node->properties);
+	hocon_read_num(prop, session_expiry_interval, jso_prop);
+
+	hocon_read_num_base(prop, request_problem_info,
+	    "request_problem_infomation", jso_prop);
+	hocon_read_num_base(prop, request_response_info,
+	    "request_response_infomation", jso_prop);
+	hocon_read_num(prop, receive_maximum, jso_prop);
+	hocon_read_num(prop, topic_alias_maximum, jso_prop);
+	hocon_read_num(prop, maximum_packet_size, jso_prop);
+
+	conf_user_property **ups = prop->user_property;
+	conf_user_property *up;
+
+	cJSON *jso_up = hocon_get_obj("user_property", jso_prop);
+
+	cJSON *jso_item = NULL;
+	cJSON_ArrayForEach(jso_item, jso_up) {
+		up        = NNI_ALLOC_STRUCT(up);
+		up->key   = nni_strdup(jso_item->string);
+		up->value = nni_strdup(jso_item->valuestring);
+		cvector_push_back(ups, up);
+	}
+
+	prop->user_property_size = cvector_size(ups);
+}
+
+static void
 conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 {
 	hocon_read_str_base(node, address, "server", jso_connector);
@@ -689,6 +720,11 @@ conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 	cJSON *   jso_tls         = hocon_get_obj("ssl", jso_connector);
 	conf_tls *bridge_node_tls = &(node->tls);
 	conf_tls_parse_ver2_base(bridge_node_tls, jso_tls);
+
+	cJSON *jso_prop = hocon_get_obj("properties", jso_connector);
+	if (jso_prop != NULL) {
+		conf_bridge_properties_parser_ver2(node, jso_prop);
+	}
 }
 
 #if defined(SUPP_QUIC)
