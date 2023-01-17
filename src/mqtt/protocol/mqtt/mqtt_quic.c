@@ -120,6 +120,7 @@ struct mqtt_pipe_s {
 	nni_lmq 		send_inflight; // only used in multi-stream mode
 	nni_lmq         recv_messages; // recv messages queue
 	conn_param     *cparam;
+	uint32_t        stream_id;	   // only for multi-stream
 	uint16_t        rid;           // index of resending packet id
 	uint8_t         reason_code;   // MQTTV5 reason code
 };
@@ -171,6 +172,7 @@ nng_mqtt_quic_open_topic_stream(mqtt_sock_t *mqtt_sock, const char *topic, uint3
 {
 	mqtt_pipe_t *p          = mqtt_sock->pipe;
 	mqtt_pipe_t *new_pipe   = NULL;
+	uint32_t     hash;
 
 	// create a pipe/stream here
 	if ((new_pipe = nng_alloc(sizeof(mqtt_pipe_t))) == NULL) {
@@ -181,8 +183,9 @@ nng_mqtt_quic_open_topic_stream(mqtt_sock_t *mqtt_sock, const char *topic, uint3
 		log_warn("Failed in open the topic-stream pair.");
 		return NULL;
 	}
-	nni_id_set(
-	    mqtt_sock->streams, DJBHashn(topic, len), new_pipe);
+	hash = DJBHashn(topic, len);
+	nni_id_set(mqtt_sock->streams, hash, new_pipe);
+	new_pipe->stream_id = hash;
 	log_debug("create new pipe %p for topic %s", new_pipe, topic);
 
 	new_pipe->ready = true;
@@ -221,7 +224,7 @@ mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 	// there is only one topic in Sub msg if multi-stream is enabled
 	for (uint32_t i = 0; i < count; i++) {
 		hash = DJBHashn(topics[i].topic.buf, topics[i].topic.length);
-		if (new_pipe = nni_id_get(sock->streams, hash) == NULL) {
+		if ((new_pipe = nni_id_get(sock->streams, hash)) == NULL) {
 			// create pipe here & set stream id
 			log_warn("%s %d", topics[i].topic.buf, topics[i].qos);
 			// create a pipe/stream here
@@ -236,6 +239,7 @@ mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 				return -1;
 			}
 			nni_id_set(sock->streams, hash, new_pipe);
+			new_pipe->stream_id = hash;
 
 			log_debug("create new pipe %p for topic %s", new_pipe,
 			    topics[0].topic.buf);
@@ -1316,7 +1320,7 @@ quic_mqtt_stream_init(void *arg, nni_pipe *qsock, void *sock)
 	p->ready = false;
 
 	// QUIC stream init
-	if (0 != quic_pipe_open(qsock, &p->qpipe)) {
+	if (0 != quic_pipe_open(qsock, &p->qpipe, p)) {
 		log_warn("Failed in open the main quic pipe.");
 		return -1;
 	}
@@ -1464,6 +1468,8 @@ quic_mqtt_stream_stop(void *arg)
 {
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
+	nni_msg *msg;
+	nni_aio *aio;
 
 	if (!nni_atomic_get_bool(&p->closed))
 		if (quic_pipe_close(p->qpipe, &p->reason_code) == 0) {
@@ -1474,8 +1480,57 @@ quic_mqtt_stream_stop(void *arg)
 			nni_aio_stop(&p->rep_aio);
 			// nni_aio_stop(&s->time_aio);
 		}
-}
+	if (p != s->pipe) {
+		// close & finit data stream
+		log_warn("close data stream of topic");
+		nni_atomic_set_bool(&p->closed, true);
+		nni_mtx_lock(&s->mtx);
 
+		nni_aio_close(&p->send_aio);
+		nni_aio_close(&p->recv_aio);
+		nni_aio_close(&p->rep_aio);
+		nni_lmq_flush(&p->recv_messages);
+		nni_lmq_flush(&p->send_inflight);
+		nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
+		nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
+		p->qpipe = NULL;
+		p->ready = false;
+
+		if ((msg = nni_aio_get_msg(&p->recv_aio)) != NULL) {
+			nni_aio_set_msg(&p->recv_aio, NULL);
+			nni_msg_free(msg);
+		}
+		if ((msg = nni_aio_get_msg(&p->send_aio)) != NULL) {
+			nni_aio_set_msg(&p->send_aio, NULL);
+			nni_msg_free(msg);
+		}
+
+		nni_aio_fini(&p->send_aio);
+		nni_aio_fini(&p->recv_aio);
+		nni_aio_fini(&p->rep_aio);
+
+		/*
+	#if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
+		nni_id_map_fini(&p->sent_unack);
+	#endif
+		*/
+		nni_id_map_fini(&p->recv_unack);
+		nni_id_map_fini(&p->sent_unack);
+		if (p->mqtt_sock->bridge_conf &&
+		    p->mqtt_sock->bridge_conf->multi_stream)
+			nni_lmq_fini(&p->send_inflight);
+		nni_lmq_fini(&p->recv_messages);
+		nni_mtx_fini(&p->lk);
+
+		// Free the mqtt_pipe
+		// FIX: potential unsafe free
+		nni_id_remove(s->streams, p->stream_id);
+		nng_free(p, sizeof(p));
+
+		nni_mtx_unlock(&s->mtx);
+	}
+}
+// main stream close
 static void
 quic_mqtt_stream_close(void *arg)
 {
