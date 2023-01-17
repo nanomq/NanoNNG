@@ -214,8 +214,13 @@ typedef struct {
 	uint32_t             maximum_packet_size;
 	size_t               user_property_size;
 	conf_user_property **user_property;
+} conf_bridge_conn_properties;
 
-} conf_bridge_properties;
+typedef struct {
+	uint32_t             identifier;
+	size_t               user_property_size;
+	conf_user_property **user_property;
+} conf_bridge_sub_properties;
 
 struct conf_bridge_node {
 	bool         enable;
@@ -241,8 +246,9 @@ struct conf_bridge_node {
 	conf_sqlite *sqlite;
 	nng_aio    **bridge_aio;
 
-	// For mqtt v5
-	conf_bridge_properties *properties;
+	// MQTT v5 property
+	conf_bridge_conn_properties *conn_properties;
+	conf_bridge_sub_properties * sub_properties;
 
 #if defined(SUPP_QUIC)
 	// config params for QUIC only
