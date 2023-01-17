@@ -697,10 +697,20 @@ conf_bridge_user_property_parse_ver2(cJSON *jso_prop, size_t *sz)
 }
 
 static void
+conf_bridge_sub_properties_init(conf_bridge_sub_properties *prop)
+{
+	prop->identifier         = 0xffffffff;
+	prop->user_property      = NULL;
+	prop->user_property_size = 0;
+}
+
+static void
 conf_bridge_sub_properties_parse_ver2(conf_bridge_node *node, cJSON *jso_prop)
 {
 	conf_bridge_sub_properties *prop = node->sub_properties =
 	    NNI_ALLOC_STRUCT(node->sub_properties);
+
+	conf_bridge_sub_properties_init(prop);
 	hocon_read_num(prop, identifier, jso_prop);
 
 	prop->user_property = conf_bridge_user_property_parse_ver2(
@@ -708,10 +718,26 @@ conf_bridge_sub_properties_parse_ver2(conf_bridge_node *node, cJSON *jso_prop)
 }
 
 static void
+conf_bridge_conn_properties_init(conf_bridge_conn_properties *prop)
+{
+	prop->maximum_packet_size     = 0;
+	prop->receive_maximum         = 65535;
+	prop->topic_alias_maximum     = 0;
+	prop->request_problem_info    = 0;
+	prop->request_response_info   = 1;
+	prop->session_expiry_interval = 0;
+	prop->user_property_size      = 0;
+	prop->user_property           = NULL;
+}
+
+static void
 conf_bridge_conn_properties_parse_ver2(conf_bridge_node *node, cJSON *jso_prop)
 {
 	conf_bridge_conn_properties *prop = node->conn_properties =
 	    NNI_ALLOC_STRUCT(node->conn_properties);
+
+	conf_bridge_conn_properties_init(prop);
+
 	hocon_read_num(prop, session_expiry_interval, jso_prop);
 
 	hocon_read_num_base(prop, request_problem_info,
