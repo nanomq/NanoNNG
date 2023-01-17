@@ -675,11 +675,43 @@ conf_auth_http_parse_ver2(conf *config, cJSON *jso)
 	return;
 }
 
-static void
-conf_bridge_properties_parser_ver2(conf_bridge_node *node, cJSON *jso_prop)
+static conf_user_property **
+conf_bridge_user_property_parse_ver2(cJSON *jso_prop, size_t *sz)
 {
-	conf_bridge_properties *prop = node->properties =
-	    NNI_ALLOC_STRUCT(node->properties);
+	conf_user_property **ups = NULL;
+	conf_user_property * up  = NULL;
+
+	cJSON *jso_up = hocon_get_obj("user_property", jso_prop);
+
+	cJSON *jso_item = NULL;
+	cJSON_ArrayForEach(jso_item, jso_up)
+	{
+		up        = NNI_ALLOC_STRUCT(up);
+		up->key   = nni_strdup(jso_item->string);
+		up->value = nni_strdup(jso_item->valuestring);
+		cvector_push_back(ups, up);
+	}
+
+	*sz = cvector_size(ups);
+	return ups;
+}
+
+static void
+conf_bridge_sub_properties_parse_ver2(conf_bridge_node *node, cJSON *jso_prop)
+{
+	conf_bridge_sub_properties *prop = node->sub_properties =
+	    NNI_ALLOC_STRUCT(node->sub_properties);
+	hocon_read_num(prop, identifier, jso_prop);
+
+	prop->user_property = conf_bridge_user_property_parse_ver2(
+	    jso_prop, &prop->user_property_size);
+}
+
+static void
+conf_bridge_conn_properties_parse_ver2(conf_bridge_node *node, cJSON *jso_prop)
+{
+	conf_bridge_conn_properties *prop = node->conn_properties =
+	    NNI_ALLOC_STRUCT(node->conn_properties);
 	hocon_read_num(prop, session_expiry_interval, jso_prop);
 
 	hocon_read_num_base(prop, request_problem_info,
@@ -690,20 +722,8 @@ conf_bridge_properties_parser_ver2(conf_bridge_node *node, cJSON *jso_prop)
 	hocon_read_num(prop, topic_alias_maximum, jso_prop);
 	hocon_read_num(prop, maximum_packet_size, jso_prop);
 
-	conf_user_property **ups = prop->user_property;
-	conf_user_property *up;
-
-	cJSON *jso_up = hocon_get_obj("user_property", jso_prop);
-
-	cJSON *jso_item = NULL;
-	cJSON_ArrayForEach(jso_item, jso_up) {
-		up        = NNI_ALLOC_STRUCT(up);
-		up->key   = nni_strdup(jso_item->string);
-		up->value = nni_strdup(jso_item->valuestring);
-		cvector_push_back(ups, up);
-	}
-
-	prop->user_property_size = cvector_size(ups);
+	prop->user_property = conf_bridge_user_property_parse_ver2(
+	    jso_prop, &prop->user_property_size);
 }
 
 static void
@@ -721,9 +741,9 @@ conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 	conf_tls *bridge_node_tls = &(node->tls);
 	conf_tls_parse_ver2_base(bridge_node_tls, jso_tls);
 
-	cJSON *jso_prop = hocon_get_obj("properties", jso_connector);
+	cJSON *jso_prop = hocon_get_obj("conn_properties", jso_connector);
 	if (jso_prop != NULL) {
-		conf_bridge_properties_parser_ver2(node, jso_prop);
+		conf_bridge_conn_properties_parse_ver2(node, jso_prop);
 	}
 }
 
@@ -809,6 +829,12 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 			hocon_read_str(s, topic, subscription);
 			hocon_read_num(s, qos, subscription);
 			s->topic_len = strlen(s->topic);
+		}
+
+		cJSON *jso_prop =
+		    hocon_get_obj("sub_properties", bridge_mqtt_node);
+		if (jso_prop != NULL) {
+			conf_bridge_sub_properties_parse_ver2(node, jso_prop);
 		}
 
 		hocon_read_num(node, parallel, bridge_mqtt_node);
