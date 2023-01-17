@@ -222,6 +222,23 @@ typedef struct {
 	conf_user_property **user_property;
 } conf_bridge_sub_properties;
 
+typedef struct {
+	char *key;
+	char *value;
+}conf_user_property;
+
+typedef struct {
+	uint32_t             session_expiry_interval;
+	uint8_t              request_problem_info;
+	uint8_t              request_response_info;
+	uint16_t             receive_maximum;
+	uint16_t             topic_alias_maximum;
+	uint32_t             maximum_packet_size;
+	size_t               user_property_size;
+	conf_user_property **user_property;
+
+} conf_bridge_properties;
+
 struct conf_bridge_node {
 	bool         enable;
 	bool         clean_start;
