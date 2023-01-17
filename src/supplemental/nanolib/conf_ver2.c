@@ -727,10 +727,21 @@ conf_bridge_conn_properties_parse_ver2(conf_bridge_node *node, cJSON *jso_prop)
 }
 
 static void
-conf_bridge_properties_parser_ver2(conf_bridge_node *node, cJSON *jso_prop)
+conf_bridge_sub_properties_parse_ver2(conf_bridge_node *node, cJSON *jso_prop)
 {
-	conf_bridge_properties *prop = node->properties =
-	    NNI_ALLOC_STRUCT(node->properties);
+	conf_bridge_sub_properties *prop = node->sub_properties =
+	    NNI_ALLOC_STRUCT(node->sub_properties);
+	hocon_read_num(prop, identifier, jso_prop);
+
+	prop->user_property = conf_bridge_user_property_parse_ver2(
+	    jso_prop, &prop->user_property_size);
+}
+
+static void
+conf_bridge_conn_properties_parse_ver2(conf_bridge_node *node, cJSON *jso_prop)
+{
+	conf_bridge_conn_properties *prop = node->conn_properties =
+	    NNI_ALLOC_STRUCT(node->conn_properties);
 	hocon_read_num(prop, session_expiry_interval, jso_prop);
 
 	hocon_read_num_base(prop, request_problem_info,
@@ -741,20 +752,8 @@ conf_bridge_properties_parser_ver2(conf_bridge_node *node, cJSON *jso_prop)
 	hocon_read_num(prop, topic_alias_maximum, jso_prop);
 	hocon_read_num(prop, maximum_packet_size, jso_prop);
 
-	conf_user_property **ups = prop->user_property;
-	conf_user_property *up;
-
-	cJSON *jso_up = hocon_get_obj("user_property", jso_prop);
-
-	cJSON *jso_item = NULL;
-	cJSON_ArrayForEach(jso_item, jso_up) {
-		up        = NNI_ALLOC_STRUCT(up);
-		up->key   = nni_strdup(jso_item->string);
-		up->value = nni_strdup(jso_item->valuestring);
-		cvector_push_back(ups, up);
-	}
-
-	prop->user_property_size = cvector_size(ups);
+	prop->user_property = conf_bridge_user_property_parse_ver2(
+	    jso_prop, &prop->user_property_size);
 }
 
 static void
@@ -862,6 +861,12 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 			s->topic_len = strlen(s->topic);
 			s->stream_id = 0;
 			hocon_read_num(s, stream_id, subscription);
+		}
+
+		cJSON *jso_prop =
+		    hocon_get_obj("sub_properties", bridge_mqtt_node);
+		if (jso_prop != NULL) {
+			conf_bridge_sub_properties_parse_ver2(node, jso_prop);
 		}
 
 		cJSON *jso_prop =
