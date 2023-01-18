@@ -681,6 +681,8 @@ conf_bridge_user_property_parse_ver2(cJSON *jso_prop, size_t *sz)
 	conf_user_property **ups = NULL;
 	conf_user_property * up  = NULL;
 
+	*sz = 0;
+
 	cJSON *jso_up = hocon_get_obj("user_property", jso_prop);
 
 	cJSON *jso_item = NULL;
