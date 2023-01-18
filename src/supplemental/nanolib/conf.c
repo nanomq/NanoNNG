@@ -1826,6 +1826,27 @@ conf_bridge_node_parse_subs(
 	fclose(fp);
 }
 
+void
+conf_bridge_sub_properties_init(conf_bridge_sub_properties *prop)
+{
+	prop->identifier         = 0xffffffff;
+	prop->user_property      = NULL;
+	prop->user_property_size = 0;
+}
+
+void
+conf_bridge_conn_properties_init(conf_bridge_conn_properties *prop)
+{
+	prop->maximum_packet_size     = 0;
+	prop->receive_maximum         = 65535;
+	prop->topic_alias_maximum     = 0;
+	prop->request_problem_info    = 0;
+	prop->request_response_info   = 1;
+	prop->session_expiry_interval = 0;
+	prop->user_property_size      = 0;
+	prop->user_property           = NULL;
+}
+
 static void
 conf_bridge_init(conf_bridge *bridge)
 {
