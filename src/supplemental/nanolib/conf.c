@@ -2005,8 +2005,8 @@ conf_bridge_conn_properties_init(conf_bridge_conn_properties *prop)
 	prop->maximum_packet_size     = 0;
 	prop->receive_maximum         = 65535;
 	prop->topic_alias_maximum     = 0;
-	prop->request_problem_info    = 0;
-	prop->request_response_info   = 1;
+	prop->request_problem_info    = 1;
+	prop->request_response_info   = 0;
 	prop->session_expiry_interval = 0;
 	prop->user_property_size      = 0;
 	prop->user_property           = NULL;
