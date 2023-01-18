@@ -14,6 +14,7 @@
 #include "nng/supplemental/nanolib/file.h"
 #include "nng/supplemental/nanolib/log.h"
 #include "nng/supplemental/nanolib/hocon.h"
+#include "nanolib.h"
 #include <ctype.h>
 
 static void conf_bridge_parse(conf *nanomq_conf, const char *path);
@@ -24,6 +25,12 @@ static void conf_bridge_destroy(conf_bridge *bridge);
 static void conf_bridge_node_destroy(conf_bridge_node *node);
 static void conf_bridge_node_parse_subs(
     conf_bridge_node *node, const char *path, const char *name);
+static void conf_bridge_user_property_destroy(
+    conf_user_property **prop, size_t sz);
+static void conf_bridge_subscription_properties_parse(
+    conf_bridge_node *node, const char *path, const char *name);
+static void conf_bridge_connect_properties_parse(
+    conf_bridge_node *node, const char *path, const char *name);
 static void print_bridge_conf(conf_bridge *bridge, const char *prefix);
 static void conf_auth_init(conf_auth *auth);
 static void conf_auth_parse(conf_auth *auth, const char *path);
@@ -33,7 +40,7 @@ static void conf_auth_http_req_init(conf_auth_http_req *req);
 static void conf_auth_http_parse(conf_auth_http *auth_http, const char *path);
 static void conf_auth_http_destroy(conf_auth_http *auth_http);
 
-static void conf_web_hook_destroy(conf_web_hook *web_hook);
+static void               conf_web_hook_destroy(conf_web_hook *web_hook);
 static conf_http_header **conf_parse_http_headers(
     const char *path, const char *key_prefix, size_t *count);
 static void conf_sqlite_parse(
@@ -54,11 +61,6 @@ static bool conf_rule_sqlite_parse(conf_rule *cr, char *path);
 static void conf_rule_fdb_parse(conf_rule *cr, char *path);
 static void conf_rule_parse(conf_rule *rule, const char *path);
 #endif
-
-void conf_tls_parse(
-    conf_tls *tls, const char *path, const char *prefix1, const char *prefix2);
-void conf_tls_init(conf_tls *tls);
-void conf_tls_destroy(conf_tls *tls);
 
 static char *
 strtrim(char *str, size_t len)
@@ -1755,6 +1757,169 @@ conf_gateway_parse(zmq_gateway_conf *gateway)
 	fclose(fp);
 }
 
+static conf_user_property **
+conf_bridge_user_property_parse_ver2(
+    const char *json, size_t json_len, size_t *sz)
+{
+	conf_user_property **ups = NULL;
+	conf_user_property * up  = NULL;
+	*sz                      = 0;
+
+	cJSON *root = cJSON_ParseWithLength(json, json_len);
+	if (cJSON_IsInvalid(root)) {
+		return NULL;
+	}
+
+	cJSON *jso_item = NULL;
+	cJSON_ArrayForEach(jso_item, root)
+	{
+		up        = NNI_ALLOC_STRUCT(up);
+		up->key   = nni_strdup(jso_item->string);
+		up->value = nni_strdup(jso_item->valuestring);
+		cvector_push_back(ups, up);
+	}
+
+	*sz = cvector_size(ups);
+	cJSON_Delete(root);
+	return ups;
+}
+
+static void
+conf_bridge_subscription_properties_parse(
+    conf_bridge_node *node, const char *path, const char *name)
+{
+	FILE *fp;
+	if ((fp = fopen(path, "r")) == NULL) {
+		log_error("File %s open failed", path);
+		return;
+	}
+
+	node->sub_properties = NNI_ALLOC_STRUCT(node->sub_properties);
+	conf_bridge_sub_properties_init(node->sub_properties);
+	conf_bridge_sub_properties *sub_prop = node->sub_properties;
+
+	char   key_prefix[] = "bridge.mqtt.";
+	char * line         = NULL;
+	size_t sz           = 0;
+	char * value        = NULL;
+	while (nano_getline(&line, &sz, fp) != -1) {
+		if ((value = get_conf_value_with_prefix2(line, sz, key_prefix,
+		         name, ".subscription.properties.identifier")) !=
+		    NULL) {
+			sub_prop->identifier = (uint32_t) atol(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name,
+		                ".subscription.properties.user_property")) !=
+		    NULL) {
+			conf_bridge_user_property_destroy(
+			    sub_prop->user_property,
+			    sub_prop->user_property_size);
+
+			sub_prop->user_property =
+			    conf_bridge_user_property_parse_ver2(value,
+			        strlen(value), &sub_prop->user_property_size);
+			free(value);
+		}
+
+		if (line) {
+			free(line);
+			line = NULL;
+		}
+	}
+
+	if (line) {
+		free(line);
+		line = NULL;
+	}
+
+	fclose(fp);
+}
+
+static void
+conf_bridge_connect_properties_parse(
+    conf_bridge_node *node, const char *path, const char *name)
+{
+	FILE *fp;
+	if ((fp = fopen(path, "r")) == NULL) {
+		log_error("File %s open failed", path);
+		return;
+	}
+
+	node->conn_properties = NNI_ALLOC_STRUCT(node->conn_properties);
+	conf_bridge_conn_properties_init(node->conn_properties);
+	conf_bridge_conn_properties *con_prop = node->conn_properties;
+
+	char   key_prefix[] = "bridge.mqtt.";
+	char * line         = NULL;
+	size_t sz           = 0;
+	char * value        = NULL;
+	while (nano_getline(&line, &sz, fp) != -1) {
+		if ((value = get_conf_value_with_prefix2(line, sz, key_prefix,
+		         name, ".connect.properties.maximum_packet_size")) !=
+		    NULL) {
+			con_prop->maximum_packet_size = (uint32_t) atol(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name,
+		                ".connect.properties.receive_maximum")) !=
+		    NULL) {
+			con_prop->receive_maximum = (uint16_t) atoi(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name,
+		                ".connect.properties.topic_alias_maximum")) !=
+		    NULL) {
+			con_prop->topic_alias_maximum = (uint16_t) atoi(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name,
+		                ".connect.properties.request_problem_"
+		                "infomation")) != NULL) {
+			con_prop->request_problem_info = (uint8_t) atoi(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name,
+		                ".connect.properties.request_response_"
+		                "infomation")) != NULL) {
+			con_prop->request_response_info =
+			    (uint8_t) atoi(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name,
+		                ".connect.properties.session_expiry_"
+		                "interval")) != NULL) {
+			con_prop->session_expiry_interval =
+			    (uint32_t) atol(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name,
+		                ".connect.properties.user_property")) !=
+		    NULL) {
+			conf_bridge_user_property_destroy(
+			    con_prop->user_property,
+			    con_prop->user_property_size);
+
+			con_prop->user_property =
+			    conf_bridge_user_property_parse_ver2(value,
+			        strlen(value), &con_prop->user_property_size);
+			free(value);
+		}
+
+		if (line) {
+			free(line);
+			line = NULL;
+		}
+	}
+
+	if (line) {
+		free(line);
+		line = NULL;
+	}
+
+	fclose(fp);
+}
+
 static void
 conf_bridge_node_parse_subs(
     conf_bridge_node *node, const char *path, const char *name)
@@ -2089,7 +2254,13 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 	}
 	fclose(fp);
 
+	if (node->proto_ver == MQTT_PROTOCOL_VERSION_v5) {
+		conf_bridge_connect_properties_parse(node, path, name);
+		conf_bridge_subscription_properties_parse(node, path, name);
+	}
+
 	conf_bridge_node_parse_subs(node, path, name);
+
 	sz            = strlen(name) + 2;
 	char *prefix2 = nng_zalloc(sz);
 	snprintf(prefix2, sz, "%s.", name);
