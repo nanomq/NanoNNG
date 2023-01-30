@@ -366,11 +366,6 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		log_warn("[strm][%p] Peer SEND aborted\n", stream);
 		log_info("PEER_SEND_ABORTED Error Code: %llu",
 				 (unsigned long long) Event->PEER_SEND_ABORTED.ErrorCode);
-		if (qstrm->sock->pipe != qstrm->pipe) {
-			const nni_proto_pipe_ops *pipe_ops =
-			    g_quic_proto->proto_pipe_ops;
-			pipe_ops->pipe_stop(qstrm->pipe);
-		}
 		break;
 	case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
 		// The peer aborted its send direction of the stream.
@@ -386,9 +381,17 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		log_warn("[strm][%p] QUIC_STREAM_EVENT shutdown: All done.", stream);
 		log_info("close stream with Error Code: %llu",
 				 (unsigned long long) Event->SHUTDOWN_COMPLETE.ConnectionErrorCode);
+		if (qstrm->sock->pipe != qstrm->pipe) {
+			const nni_proto_pipe_ops *pipe_ops =
+			    g_quic_proto->proto_pipe_ops;
+				log_warn("close the data stream [%p]!", stream);
+			pipe_ops->pipe_stop(qstrm->pipe);
+			MsQuic->StreamClose(stream);
+			break;
+		}
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
 			// only server close the stream gonna trigger this
-			log_warn("close the QUIC stream!");
+			log_warn("close the main stream [%p]!", stream);
 			MsQuic->StreamClose(stream);
 			qstrm->stream = NULL;
 			// close stream here if in multi-stream mode?
