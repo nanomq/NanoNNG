@@ -267,7 +267,7 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 		rlen = Event->RECEIVE.Buffers->Length;
 		uint8_t count = Event->RECEIVE.BufferCount;
 
-		log_debug("[strm][%p] Data received\n", Stream);
+		log_debug("[strm][%p] Data received flag: %d\n", Stream, Event->RECEIVE.Flags);
 
 		nni_mtx_lock(&qstrm->mtx);
 
@@ -299,15 +299,15 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 	case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
 		// The peer gracefully shut down its send direction of the
 		// stream.
-		log_warn("[strm][%p] Peer send aborted\n", Stream);
+		log_warn("[strm][%p] Peer send aborted %ld\n", Stream, Event->PEER_SEND_ABORTED.ErrorCode);
 		break;
 	case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
 		// The peer aborted its send direction of the stream.
 		log_warn("[strm][%p] Peer shut down\n", Stream);
 		break;
 	case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
-		// fall through to close the stream
 		log_warn("[strm][%p] QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE.", Stream);
+		break;
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 		// Both directions of the stream have been shut down and MsQuic
 		// is done with the stream. It can now be safely cleaned up.
@@ -320,26 +320,20 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 		}
 		break;
 	case QUIC_STREAM_EVENT_START_COMPLETE:
-		log_info("QUIC_STREAM_EVENT_START_COMPLETE");
+		log_info("QUIC_STREAM_EVENT_START_COMPLETE %ld status: %d",
+		    Event->START_COMPLETE.ID, Event->START_COMPLETE.Status);
+		if (!Event->START_COMPLETE.PeerAccepted) {
+			log_error("Peer refused!");
+		}
 		break;
 	case QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE:
-		log_warn("QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE");
+		log_warn("QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE %ld",
+		    Event->IDEAL_SEND_BUFFER_SIZE.ByteCount);
 		break;
 	case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
 		// The peer has requested that we stop sending. Close abortively.
 		log_warn("QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED Error Code: %llu",
 				 (unsigned long long) Event->PEER_RECEIVE_ABORTED.ErrorCode);
-		// Get aio from sendq and finish error
-		nni_mtx_lock(&qstrm->mtx);
-		if ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
-			nni_aio_list_remove(aio);
-			nni_mtx_unlock(&qstrm->mtx);
-			smsg = nni_aio_get_msg(aio);
-			nni_msg_free(smsg);
-			nni_aio_finish_error(aio, ECONNABORTED);
-			break;
-		}
-		nni_mtx_unlock(&qstrm->mtx);
 		break;
 
 	default:
