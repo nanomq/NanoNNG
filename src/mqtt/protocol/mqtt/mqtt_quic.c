@@ -183,7 +183,7 @@ nng_mqtt_quic_open_topic_stream(mqtt_sock_t *mqtt_sock, const char *topic, uint3
 		log_warn("Failed in open the topic-stream pair.");
 		return NULL;
 	}
-	hash = DJBHashn(topic, len);
+	hash = DJBHashn((char *) topic, len);
 	nni_id_set(mqtt_sock->streams, hash, new_pipe);
 	new_pipe->stream_id = hash;
 	log_debug("create new pipe %p for topic %s", new_pipe, topic);
@@ -204,6 +204,7 @@ nng_mqtt_quic_open_topic_stream(mqtt_sock_t *mqtt_sock, const char *topic, uint3
 static int
 mqtt_pub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 {
+	return 0;
 }
 /***
  * create a unidirectional stream and send SUB/UNSUB packet
@@ -223,7 +224,8 @@ mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 	topics = nni_mqtt_msg_get_subscribe_topics(msg, &count);
 	// there is only one topic in Sub msg if multi-stream is enabled
 	for (uint32_t i = 0; i < count; i++) {
-		hash = DJBHashn(topics[i].topic.buf, topics[i].topic.length);
+		hash = DJBHashn(
+		    (char *) topics[i].topic.buf, topics[i].topic.length);
 		if ((new_pipe = nni_id_get(sock->streams, hash)) == NULL) {
 			// create pipe here & set stream id
 			log_debug("topic %s qos %d", topics[i].topic.buf, topics[i].qos);
@@ -242,7 +244,7 @@ mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 			new_pipe->stream_id = hash;
 
 			log_debug("create new pipe %p for topic %s", new_pipe,
-			    topics[0].topic.buf);
+			    (char *) topics[0].topic.buf);
 			new_pipe->ready = true;
 			nni_atomic_set_bool(&new_pipe->closed, false);
 			new_pipe->cparam = p->cparam;
@@ -341,14 +343,17 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		break;
 
 	case NNG_MQTT_PUBLISH:
-		if (s->bridge_conf->multi_stream) {
+		if (s->bridge_conf != NULL && s->bridge_conf->multi_stream) {
 			// check if topic-stream pair exist
 			mqtt_pipe_t *pub_pipe;
 
-			char *topic = nni_mqtt_msg_get_publish_topic(msg, &topic_len);
-			pub_pipe = nni_id_get(s->streams, DJBHashn(topic, topic_len));
+			char *topic = (char *) nni_mqtt_msg_get_publish_topic(
+			    msg, &topic_len);
+			pub_pipe =
+			    nni_id_get(s->streams, DJBHashn(topic, topic_len));
 			if (pub_pipe == NULL) {
-				pub_pipe = nng_mqtt_quic_open_topic_stream(s, topic, topic_len);
+				pub_pipe = nng_mqtt_quic_open_topic_stream(
+				    s, topic, topic_len);
 			}
 			p = pub_pipe;
 		}
