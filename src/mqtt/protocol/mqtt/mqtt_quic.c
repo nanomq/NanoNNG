@@ -226,7 +226,7 @@ mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 		hash = DJBHashn(topics[i].topic.buf, topics[i].topic.length);
 		if ((new_pipe = nni_id_get(sock->streams, hash)) == NULL) {
 			// create pipe here & set stream id
-			log_warn("%s %d", topics[i].topic.buf, topics[i].qos);
+			log_debug("topic %s qos %d", topics[i].topic.buf, topics[i].qos);
 			// create a pipe/stream here
 			if ((new_pipe = nng_alloc(sizeof(mqtt_pipe_t))) == NULL) {
 				log_error("error in alloc pipe.\n");
@@ -249,6 +249,8 @@ mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 			// there is no aio in send_queue, because this is a
 			// newly established stream
 			quic_pipe_recv(new_pipe->qpipe, &new_pipe->recv_aio);
+		} else {
+			log_info("topic-stream already existed");
 		}
 	}
 
