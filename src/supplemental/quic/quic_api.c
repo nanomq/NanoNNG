@@ -123,7 +123,8 @@ quic_load_config(BOOLEAN Unsecure, conf_bridge_node *node)
 	QUIC_SETTINGS Settings = { 0 };
 	QUIC_CREDENTIAL_CONFIG CredConfig;
 	if (!node) {
-		Settings.IsSet.IdleTimeoutMs = FALSE;
+		Settings.IsSet.IdleTimeoutMs       = TRUE;
+		Settings.IdleTimeoutMs             = 60 * 1000;
 		Settings.IsSet.KeepAliveIntervalMs = TRUE;
 		Settings.KeepAliveIntervalMs       = 60 * 1000;
 		goto there;
