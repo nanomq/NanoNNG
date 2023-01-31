@@ -293,7 +293,7 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		// being returned back to the app.
 		log_debug("QUIC_STREAM_EVENT_SEND_COMPLETE!");
 		if (Event->SEND_COMPLETE.Canceled) {
-			log_warn("[strm][%p] Data sent Canceled: d",
+			log_warn("[strm][%p] Data sent Canceled: %d",
 					 stream, Event->SEND_COMPLETE.Canceled);
 		}
 		// Get aio from sendq and finish
@@ -400,7 +400,12 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		}
 		break;
 	case QUIC_STREAM_EVENT_START_COMPLETE:
-		log_info("QUIC_STREAM_EVENT_START_COMPLETE [stream] %p", stream);
+		log_info(
+		    "QUIC_STREAM_EVENT_START_COMPLETE [%p] ID: %ld Status: %d",
+		    stream, Event->START_COMPLETE.ID,
+		    Event->START_COMPLETE.Status);
+		if (!Event->START_COMPLETE.PeerAccepted)
+			log_warn("Peer refused");
 		break;
 	case QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE:
 		log_info("QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE");
