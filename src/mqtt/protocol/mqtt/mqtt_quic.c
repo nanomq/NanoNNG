@@ -82,12 +82,15 @@ struct mqtt_sock_s {
 	mqtt_quic_ctx   master;     // to which we delegate send/recv calls
 	nni_list        recv_queue; // aio pending to receive
 	nni_list        send_queue; // aio pending to send
-	nni_lmq send_messages; // send messages queue (only for major stream)
+	nni_lmq  send_messages; // send messages queue (only for major stream)
+	nni_lmq *ack_lmq;
 	nni_id_map  *streams;  // pipes, only effective in multi-stream mode
 	mqtt_pipe_t *pipe;     // the major pipe (control stream)
 	                     // main quic pipe, others needs a map to store the
 	                     // relationship between MQTT topics and quic pipes
 	nni_aio   time_aio;  // timer aio to resend unack msg
+	nni_aio  *pub_aio;   // set by user, expose puback/pubcomp
+	nni_aio  *conn_aio;   // set by user, expose connack
 	uint16_t  counter;   // counter for elapsed time
 	uint16_t  pingcnt;   // count how many ping msg is lost
 	uint16_t  keepalive; // MQTT keepalive
@@ -112,8 +115,8 @@ struct mqtt_pipe_s {
 	bool            busy;
 	bool            ready;			// mark if QUIC stream is ready
 	mqtt_sock_t    *mqtt_sock;
-	nni_id_map      sent_unack;    // send messages unacknowledged
-	nni_id_map      recv_unack;    // recv messages unacknowledged
+	nni_id_map      sent_unack;    // unacknowledged sent     messages
+	nni_id_map      recv_unack;    // unacknowledged received messages
 	nni_aio         send_aio;      // send aio to the underlying transport
 	nni_aio         recv_aio;      // recv aio to the underlying transport
 	nni_aio         rep_aio;       // aio for resending qos msg and PINGREQ
@@ -706,7 +709,20 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 		// FALLTHROUGH
 	case NNG_MQTT_PUBCOMP:
 		// we have received a PUBCOMP, successful delivery of a QoS 2
-		// FALLTHROUGH
+		packet_id  = nni_mqtt_msg_get_packet_id(msg);
+		p->rid     = packet_id;
+		cached_msg = nni_id_get(&p->sent_unack, packet_id);
+		if (cached_msg != NULL) {
+			nni_id_remove(&p->sent_unack, packet_id);
+			nni_msg_free(cached_msg);
+		}
+		if (s->pub_aio && nni_aio_busy(s->pub_aio)) {
+			nni_aio_set_msg(s->pub_aio, msg);
+			nni_aio_finish_sync(s->pub_aio, 0, nni_msg_len(msg));
+		} else {
+			nni_msg_free(msg);
+		}
+		break;
 	case NNG_MQTT_SUBACK:
 		// we have received a SUBACK, successful subscription
 		// FALLTHROUGH
@@ -930,7 +946,20 @@ mqtt_quic_recv_cb(void *arg)
 		// FALLTHROUGH
 	case NNG_MQTT_PUBCOMP:
 		// we have received a PUBCOMP, successful delivery of a QoS 2
-		// FALLTHROUGH
+		packet_id  = nni_mqtt_msg_get_packet_id(msg);
+		p->rid     = packet_id;
+		cached_msg = nni_id_get(&p->sent_unack, packet_id);
+		if (cached_msg != NULL) {
+			nni_id_remove(&p->sent_unack, packet_id);
+			nni_msg_free(cached_msg);
+		}
+		if (s->pub_aio && !nni_aio_busy(s->pub_aio)) {
+			nni_aio_set_msg(s->pub_aio, msg);
+			nni_aio_finish_sync(s->pub_aio, 0, nni_msg_len(msg));
+		} else {
+			nni_msg_free(msg);
+		}
+		break;
 	case NNG_MQTT_SUBACK:
 		// we have received a SUBACK, successful subscription
 		// FALLTHROUGH
@@ -1315,6 +1344,7 @@ quic_mqtt_stream_init(void *arg, nni_pipe *qsock, void *sock)
 	p->mqtt_sock       = sock;
 	p->cparam          = NULL;
 
+	// nni_mtx_lock(&p->mqtt_sock->mtx);
 	if (p->mqtt_sock->pipe == NULL) {
 		p->mqtt_sock->pipe = p;
 		major = true;
@@ -1329,6 +1359,7 @@ quic_mqtt_stream_init(void *arg, nni_pipe *qsock, void *sock)
 	// QUIC stream init
 	if (0 != quic_pipe_open(qsock, &p->qpipe, p)) {
 		log_warn("Failed in open the main quic pipe.");
+		// nni_mtx_unlock(&p->mqtt_sock->mtx);
 		return -1;
 	}
 
@@ -1348,6 +1379,7 @@ quic_mqtt_stream_init(void *arg, nni_pipe *qsock, void *sock)
 	        p->mqtt_sock->bridge_conf->multi_stream)
 		nni_lmq_init(&p->send_inflight, NNG_MAX_RECV_LMQ);
 	nni_mtx_init(&p->lk);
+	// nni_mtx_unlock(&p->mqtt_sock->mtx);
 
 	return (0);
 }
@@ -1853,6 +1885,35 @@ nng_mqtt_quic_open_keepalive(nng_socket *sock, const char *url, void *node)
 	return rv;
 }
 
+/**
+ * init an AIO for Acknoledgement message only, in order to make QoS truly asychrounous
+ * For QoS 0 message, we do not care the result of sending
+ * return 0 if set callback sucessfully
+*/
+int
+nng_mqtt_quic_publish_callback_set(nng_socket *sock, void (*cb)(void *))
+{
+	nni_sock *nsock = NULL;
+	nni_aio  *aio;
+
+	nni_sock_find(&nsock, sock->id);
+	if (nsock) {
+		mqtt_sock_t *mqtt_sock = nni_sock_proto_data(nsock);
+		if ((aio = NNI_ALLOC_STRUCT(aio)) == NULL) {
+			return (NNG_ENOMEM);
+		}
+		nni_aio_init(aio, (nni_cb) cb, aio);
+		mqtt_sock->pub_aio = aio;
+		mqtt_sock->ack_lmq = nni_alloc(sizeof(nni_lmq));
+		nni_lmq_init(mqtt_sock->ack_lmq, NNG_MAX_RECV_LMQ);
+	} else {
+		nni_sock_rele(nsock);
+		return -1;
+	}
+	nni_sock_rele(nsock);
+	return 0;
+}
+
 int
 nng_mqtt_quic_set_connect_cb(nng_socket *sock, int (*cb)(void *, void *), void *arg)
 {
@@ -1943,4 +2004,3 @@ nng_mqtt_quic_set_msg_send_cb(nng_socket *sock, int (*cb)(void *, void *), void 
 	nni_sock_rele(nsock);
 	return 0;
 }
-
