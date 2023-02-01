@@ -309,8 +309,8 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			smsg = nni_aio_get_msg(aio);
 			nni_msg_free(smsg);
 			nni_mtx_unlock(&qstrm->mtx);
-			// leave aio_finish to ACK
-			// nni_aio_finish_sync(aio, 0, 0);
+			//Process QoS ACK in Protocol layer
+			nni_aio_finish_sync(aio, 0, 0);
 			break;
 		}
 		if ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
