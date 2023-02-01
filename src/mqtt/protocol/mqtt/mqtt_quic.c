@@ -711,7 +711,7 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 			nni_id_remove(&p->sent_unack, packet_id);
 			nni_msg_free(cached_msg);
 		}
-		if (s->pub_aio && nni_aio_busy(s->pub_aio)) {
+		if (s->pub_aio && !nni_aio_busy(s->pub_aio)) {
 			nni_aio_set_msg(s->pub_aio, msg);
 			nni_aio_finish_sync(s->pub_aio, 0, nni_msg_len(msg));
 		} else {
@@ -950,9 +950,10 @@ mqtt_quic_recv_cb(void *arg)
 		}
 		if (s->pub_aio && !nni_aio_busy(s->pub_aio)) {
 			nni_aio_set_msg(s->pub_aio, msg);
-			nni_aio_finish_sync(s->pub_aio, 0, nni_msg_len(msg));
+			nni_aio_finish(s->pub_aio, 0, nni_msg_len(msg));
 		} else {
-			nni_msg_free(msg);
+			nni_lmq_put(s->ack_lmq, msg);
+			log_debug("ack msg cached!");
 		}
 		break;
 	case NNG_MQTT_SUBACK:
@@ -1339,7 +1340,6 @@ quic_mqtt_stream_init(void *arg, nni_pipe *qsock, void *sock)
 	p->mqtt_sock       = sock;
 	p->cparam          = NULL;
 
-	// nni_mtx_lock(&p->mqtt_sock->mtx);
 	if (p->mqtt_sock->pipe == NULL) {
 		p->mqtt_sock->pipe = p;
 		major = true;
@@ -1354,7 +1354,6 @@ quic_mqtt_stream_init(void *arg, nni_pipe *qsock, void *sock)
 	// QUIC stream init
 	if (0 != quic_pipe_open(qsock, &p->qpipe, p)) {
 		log_warn("Failed in open the main quic pipe.");
-		// nni_mtx_unlock(&p->mqtt_sock->mtx);
 		return -1;
 	}
 
@@ -1374,7 +1373,6 @@ quic_mqtt_stream_init(void *arg, nni_pipe *qsock, void *sock)
 	        p->mqtt_sock->bridge_conf->multi_stream)
 		nni_lmq_init(&p->send_inflight, NNG_MAX_RECV_LMQ);
 	nni_mtx_init(&p->lk);
-	// nni_mtx_unlock(&p->mqtt_sock->mtx);
 
 	return (0);
 }
@@ -1753,6 +1751,17 @@ mqtt_quic_ctx_recv(void *arg, nni_aio *aio)
 		return;
 	}
 
+	if (aio == s->pub_aio) {
+		if (nni_lmq_get(s->ack_lmq, &msg) == 0) {
+			nni_aio_set_msg(aio, msg);
+			nni_mtx_unlock(&s->mtx);
+			nni_aio_finish_msg(aio, msg);
+			return;
+		}
+		nni_aio_finish(aio, NNG_ECANCELED, 0);
+		nni_mtx_unlock(&s->mtx);
+		return;
+	}
 	if (nni_lmq_get(&p->recv_messages, &msg) == 0) {
 		nni_aio_set_msg(aio, msg);
 		nni_mtx_unlock(&s->mtx);
@@ -1898,6 +1907,7 @@ nng_mqtt_quic_publish_callback_set(nng_socket *sock, void (*cb)(void *))
 			return (NNG_ENOMEM);
 		}
 		nni_aio_init(aio, (nni_cb) cb, aio);
+		nni_aio_set_prov_data(aio, sock);
 		mqtt_sock->pub_aio = aio;
 		mqtt_sock->ack_lmq = nni_alloc(sizeof(nni_lmq));
 		nni_lmq_init(mqtt_sock->ack_lmq, NNG_MAX_RECV_LMQ);
