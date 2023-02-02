@@ -171,11 +171,58 @@ there:
 	// Configures a default client configuration, optionally disabling
 	// server certificate validation.
 	memset(&CredConfig, 0, sizeof(CredConfig));
+	// Unsecure by default
 	CredConfig.Type  = QUIC_CREDENTIAL_TYPE_NONE;
 	CredConfig.Flags = QUIC_CREDENTIAL_FLAG_CLIENT;
-	if (Unsecure) {
-		CredConfig.Flags |=
-		    QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION;
+
+	if (/* TODO */ 1) {
+		// TODO options from config
+		char *cert_path = "/Users/wangha/Documents/Git/nanomq/etc/"
+		                  "certs/client-cert.pem";
+		char *key_path  = "/Users/wangha/Documents/Git/nanomq/etc/"
+		                  "certs/client-key.pem";
+		char *password  = "12345678";
+
+		if (password) {
+			QUIC_CERTIFICATE_FILE_PROTECTED *CertFile =
+			    (QUIC_CERTIFICATE_FILE_PROTECTED *)
+			        CXPLAT_ALLOC_NONPAGED(
+			            sizeof(QUIC_CERTIFICATE_FILE_PROTECTED),
+			            QUICER_CERTIFICATE_FILE);
+			CertFile->CertificateFile           = cert_path;
+			CertFile->PrivateKeyFile            = key_path;
+			CertFile->PrivateKeyPassword        = password;
+			CredConfig.CertificateFileProtected = CertFile;
+			CredConfig.Type =
+			    QUIC_CREDENTIAL_TYPE_CERTIFICATE_FILE_PROTECTED;
+		} else {
+			QUIC_CERTIFICATE_FILE *CertFile =
+			    (QUIC_CERTIFICATE_FILE *) CXPLAT_ALLOC_NONPAGED(
+			        sizeof(QUIC_CERTIFICATE_FILE),
+			        QUICER_CERTIFICATE_FILE);
+			CertFile->CertificateFile  = cert_path;
+			CertFile->PrivateKeyFile   = key_path;
+			CredConfig.CertificateFile = CertFile;
+			CredConfig.Type =
+			    QUIC_CREDENTIAL_TYPE_CERTIFICATE_FILE;
+		}
+
+		// TODO options from config
+		BOOLEAN verify = TRUE;
+		BOOLEAN has_ca_cert = TRUE;
+		if (!verify) {
+			CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION;
+		} else if (has_ca_cert) {
+			// Do own validation instead against provided ca certs in cacertfile
+			CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_INDICATE_CERTIFICATE_RECEIVED;
+			CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION;
+		}
+
+		CredConfig.Type = QUIC_CREDENTIAL_TYPE_CERTIFICATE_FILE;
+		CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_INDICATE_CERTIFICATE_RECEIVED;
+	} else {
+		CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION;
+		log_warn("No quic TLS/SSL credentials was specified.");
 	}
 
 	// Allocate/initialize the configuration object, with the configured
@@ -545,6 +592,10 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		break;
 	case QUIC_CONNECTION_EVENT_IDEAL_PROCESSOR_CHANGED:
 		log_info("QUIC_CONNECTION_EVENT_IDEAL_PROCESSOR_CHANGED");
+		break;
+	case QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED:
+		log_info("QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED");
+		// TODO Using openssl/mbedtls APIs to verify
 		break;
 	default:
 		log_warn("Unknown event type %d!", Event->Type);
