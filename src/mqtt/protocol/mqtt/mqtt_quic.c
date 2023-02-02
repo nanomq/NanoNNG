@@ -447,14 +447,14 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 			nni_msg_free(msg);
 		}
 	}
-	if (0 == qos && ptype != NNG_MQTT_SUBSCRIBE &&
+	if (ptype != NNG_MQTT_SUBSCRIBE &&
 	    ptype != NNG_MQTT_UNSUBSCRIBE) {
 		return 0;
 	}
 	return -1;
 }
 
-// send msg with specific pipe/stream for only Sub/UnSub/Pub
+// send msg with specific pipe/stream for only Pub
 static inline int
 mqtt_pipe_send_msg(nni_aio *aio, nni_msg *msg, mqtt_pipe_t *p, uint16_t packet_id)
 {
@@ -479,8 +479,8 @@ mqtt_pipe_send_msg(nni_aio *aio, nni_msg *msg, mqtt_pipe_t *p, uint16_t packet_i
 		if (qos == 0) {
 			break; // QoS 0 need no packet id
 		}
-	case NNG_MQTT_SUBSCRIBE:
-	case NNG_MQTT_UNSUBSCRIBE:
+	// case NNG_MQTT_SUBSCRIBE:
+	// case NNG_MQTT_UNSUBSCRIBE:
 		nni_mqtt_msg_set_packet_id(msg, packet_id);
 		nni_mqtt_msg_set_aio(msg, aio);
 		tmsg = nni_id_get(&p->sent_unack, packet_id);
@@ -520,8 +520,7 @@ mqtt_pipe_send_msg(nni_aio *aio, nni_msg *msg, mqtt_pipe_t *p, uint16_t packet_i
 			    "Warning! msg send failed due to busy socket");
 		}
 	}
-	if (0 == qos && ptype != NNG_MQTT_SUBSCRIBE &&
-	    ptype != NNG_MQTT_UNSUBSCRIBE) {
+	if (ptype == NNG_MQTT_PUBLISH ) {
 		return 0;
 	}
 	return -1;
@@ -716,11 +715,17 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 			nni_id_remove(&p->sent_unack, packet_id);
 			nni_msg_free(cached_msg);
 		}
-		if (s->pub_aio && !nni_aio_busy(s->pub_aio)) {
-			nni_aio_set_msg(s->pub_aio, msg);
-			nni_aio_finish_sync(s->pub_aio, 0, nni_msg_len(msg));
-		} else {
+		if (s->pub_aio == NULL) {
+			// no callback being set
+			log_debug("Ack Reason code:");
 			nni_msg_free(msg);
+		}
+		if (!nni_aio_busy(s->pub_aio)) {
+			nni_aio_set_msg(s->pub_aio, msg);
+			nni_aio_finish(s->pub_aio, 0, nni_msg_len(msg));
+		} else {
+			nni_lmq_put(s->ack_lmq, msg);
+			log_debug("ack msg cached!");
 		}
 		break;
 	case NNG_MQTT_SUBACK:
@@ -953,7 +958,12 @@ mqtt_quic_recv_cb(void *arg)
 			nni_id_remove(&p->sent_unack, packet_id);
 			nni_msg_free(cached_msg);
 		}
-		if (s->pub_aio && !nni_aio_busy(s->pub_aio)) {
+		if (s->pub_aio == NULL) {
+			// no callback being set
+			log_debug("Ack Reason code:");
+			nni_msg_free(msg);
+		}
+		if (!nni_aio_busy(s->pub_aio)) {
 			nni_aio_set_msg(s->pub_aio, msg);
 			nni_aio_finish(s->pub_aio, 0, nni_msg_len(msg));
 		} else {
@@ -973,11 +983,8 @@ mqtt_quic_recv_cb(void *arg)
 			nni_id_remove(&p->sent_unack, packet_id);
 			user_aio = nni_mqtt_msg_get_aio(cached_msg);
 			// should we support sub/unsub cb here?
-			if (packet_type == NNG_MQTT_SUBACK ||
-			    packet_type == NNG_MQTT_UNSUBACK) {
-				nni_msg_clone(msg);
-				nni_aio_set_msg(user_aio, msg);
-			}
+			nni_msg_clone(msg);
+			nni_aio_set_msg(user_aio, msg);
 			nni_msg_free(cached_msg);
 		}
 		nni_msg_free(msg);
