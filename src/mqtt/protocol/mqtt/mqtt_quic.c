@@ -89,8 +89,7 @@ struct mqtt_sock_s {
 	                     // main quic pipe, others needs a map to store the
 	                     // relationship between MQTT topics and quic pipes
 	nni_aio   time_aio;  // timer aio to resend unack msg
-	nni_aio  *pub_aio;   // set by user, expose puback/pubcomp
-	nni_aio  *conn_aio;   // set by user, expose connack
+	nni_aio  *ack_aio;   // set by user, expose puback/pubcomp
 	uint16_t  counter;   // counter for elapsed time
 	uint16_t  pingcnt;   // count how many ping msg is lost
 	uint16_t  keepalive; // MQTT keepalive
@@ -715,14 +714,14 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 			nni_id_remove(&p->sent_unack, packet_id);
 			nni_msg_free(cached_msg);
 		}
-		if (s->pub_aio == NULL) {
+		if (s->ack_aio == NULL) {
 			// no callback being set
 			log_debug("Ack Reason code:");
 			nni_msg_free(msg);
 		}
-		if (!nni_aio_busy(s->pub_aio)) {
-			nni_aio_set_msg(s->pub_aio, msg);
-			nni_aio_finish(s->pub_aio, 0, nni_msg_len(msg));
+		if (!nni_aio_busy(s->ack_aio)) {
+			nni_aio_set_msg(s->ack_aio, msg);
+			nni_aio_finish(s->ack_aio, 0, nni_msg_len(msg));
 		} else {
 			nni_lmq_put(s->ack_lmq, msg);
 			log_debug("ack msg cached!");
@@ -866,11 +865,6 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 	if (user_aio) {
 		nni_aio_finish(user_aio, 0, 0);
 	}
-	// Trigger connect cb first in case connack being freed
-	if (packet_type == NNG_MQTT_CONNACK)
-		if (s->cb.connect_cb) {
-			s->cb.connect_cb(msg, s->cb.connarg);
-		}
 	// Trigger publish cb
 	if (packet_type == NNG_MQTT_PUBLISH)
 		if (s->cb.msg_recv_cb) // Trigger cb
@@ -936,6 +930,11 @@ mqtt_quic_recv_cb(void *arg)
 		conn_param_clone(p->cparam);
 		// Clone CONNACK for connect_cb & aio_cb
 		nni_msg_clone(msg);
+		if (s->ack_aio != NULL && !nni_aio_busy(s->ack_aio)) {
+			nni_msg_clone(msg);
+			nni_aio_finish_msg(s->ack_aio, msg);
+			break;
+		}
 		if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
 			// No one waiting to receive yet, putting msg
 			// into lmq
@@ -958,14 +957,14 @@ mqtt_quic_recv_cb(void *arg)
 			nni_id_remove(&p->sent_unack, packet_id);
 			nni_msg_free(cached_msg);
 		}
-		if (s->pub_aio == NULL) {
+		if (s->ack_aio == NULL) {
 			// no callback being set
 			log_debug("Ack Reason code:");
 			nni_msg_free(msg);
 		}
-		if (!nni_aio_busy(s->pub_aio)) {
-			nni_aio_set_msg(s->pub_aio, msg);
-			nni_aio_finish(s->pub_aio, 0, nni_msg_len(msg));
+		if (!nni_aio_busy(s->ack_aio)) {
+			nni_aio_set_msg(s->ack_aio, msg);
+			nni_aio_finish(s->ack_aio, 0, nni_msg_len(msg));
 		} else {
 			nni_lmq_put(s->ack_lmq, msg);
 			log_debug("ack msg cached!");
@@ -1763,7 +1762,7 @@ mqtt_quic_ctx_recv(void *arg, nni_aio *aio)
 		return;
 	}
 
-	if (aio == s->pub_aio) {
+	if (aio == s->ack_aio) {
 		if (nni_lmq_get(s->ack_lmq, &msg) == 0) {
 			nni_aio_set_msg(aio, msg);
 			nni_mtx_unlock(&s->mtx);
@@ -1902,12 +1901,13 @@ nng_mqtt_quic_open_keepalive(nng_socket *sock, const char *url, void *node)
 }
 
 /**
- * init an AIO for Acknoledgement message only, in order to make QoS truly asychrounous
+ * init an AIO for Acknoledgement message only, in order to make QoS/connect truly asychrounous
  * For QoS 0 message, we do not care the result of sending
+ * valid with Connack + puback + pubcomp
  * return 0 if set callback sucessfully
 */
 int
-nng_mqtt_quic_publish_callback_set(nng_socket *sock, void (*cb)(void *), void *arg)
+nng_mqtt_quic_ack_callback_set(nng_socket *sock, void (*cb)(void *), void *arg)
 {
 	nni_sock *nsock = NULL;
 	nni_aio  *aio;
@@ -1922,7 +1922,7 @@ nng_mqtt_quic_publish_callback_set(nng_socket *sock, void (*cb)(void *), void *a
 		nni_aio_set_prov_data(aio, sock);
 		if (arg != NULL)
 			nni_aio_set_output(aio, 0, arg);
-		mqtt_sock->pub_aio = aio;
+		mqtt_sock->ack_aio = aio;
 		mqtt_sock->ack_lmq = nni_alloc(sizeof(nni_lmq));
 		nni_lmq_init(mqtt_sock->ack_lmq, NNG_MAX_RECV_LMQ);
 	} else {
