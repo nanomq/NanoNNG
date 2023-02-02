@@ -15,6 +15,11 @@
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 
+/*
+#include "openssl/pem.h"
+#include "openssl/x509.h"
+*/
+
 #include <assert.h>
 #include <errno.h>
 #include <stdint.h>
@@ -116,6 +121,43 @@ static void    quic_sock_fini(quic_sock_t *qsock);
 static void    quic_strm_init(quic_strm_t *qstrm, quic_sock_t *qsock);
 static void    quic_strm_fini(quic_strm_t *qstrm);
 
+static QUIC_STATUS verify_peer_cert_tls();
+
+static QUIC_STATUS
+verify_peer_cert_tls()
+{
+	return QUIC_STATUS_SUCCESS;
+/*
+	// @TODO peer_certificate_received
+	// Only with QUIC_CREDENTIAL_FLAG_INDICATE_CERTIFICATE_RECEIVED
+	// set
+	assert(QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED ==
+	    Event->Type);
+	// Validate against CA certificates using OpenSSL API:s
+	X509 *cert =
+	    (X509 *) Event->PEER_CERTIFICATE_RECEIVED.Certificate;
+	X509_STORE_CTX *x509_ctx =
+	    (X509_STORE_CTX *) Event->PEER_CERTIFICATE_RECEIVED.Chain;
+	STACK_OF(X509) *untrusted =
+	    X509_STORE_CTX_get0_untrusted(x509_ctx);
+
+	if (cert == NULL)
+		return QUIC_STATUS_BAD_CERTIFICATE;
+
+	X509_STORE_CTX *ctx = X509_STORE_CTX_new();
+	// X509_STORE_CTX_init(ctx, c_ctx->trusted, cert, untrusted);
+	X509_STORE_CTX_init(ctx, NULL, cert, untrusted);
+	int res = X509_verify_cert(ctx);
+	X509_STORE_CTX_free(ctx);
+
+	if (res <= 0)
+		return QUIC_STATUS_BAD_CERTIFICATE;
+	else
+		return QUIC_STATUS_SUCCESS;
+*/
+	/* @TODO validate SNI */
+}
+
 // Helper function to load a client configuration.
 static BOOLEAN
 quic_load_config(conf_bridge_node *node)
@@ -185,10 +227,12 @@ there:
 
 		if (password) {
 			QUIC_CERTIFICATE_FILE_PROTECTED *CertFile =
-			    (QUIC_CERTIFICATE_FILE_PROTECTED *)
+			    (QUIC_CERTIFICATE_FILE_PROTECTED *) malloc(sizeof(QUIC_CERTIFICATE_FILE_PROTECTED));
+				/*
 			        CXPLAT_ALLOC_NONPAGED(
 			            sizeof(QUIC_CERTIFICATE_FILE_PROTECTED),
 			            QUICER_CERTIFICATE_FILE);
+						*/
 			CertFile->CertificateFile           = cert_path;
 			CertFile->PrivateKeyFile            = key_path;
 			CertFile->PrivateKeyPassword        = password;
@@ -197,9 +241,12 @@ there:
 			    QUIC_CREDENTIAL_TYPE_CERTIFICATE_FILE_PROTECTED;
 		} else {
 			QUIC_CERTIFICATE_FILE *CertFile =
+			    (QUIC_CERTIFICATE_FILE_PROTECTED *) malloc(sizeof(QUIC_CERTIFICATE_FILE_PROTECTED));
+			/*
 			    (QUIC_CERTIFICATE_FILE *) CXPLAT_ALLOC_NONPAGED(
 			        sizeof(QUIC_CERTIFICATE_FILE),
 			        QUICER_CERTIFICATE_FILE);
+					*/
 			CertFile->CertificateFile  = cert_path;
 			CertFile->PrivateKeyFile   = key_path;
 			CredConfig.CertificateFile = CertFile;
@@ -486,6 +533,7 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 	quic_sock_t *qsock = Context;
 	void        *mqtt_sock;
 	HQUIC        qconn = Connection;
+	QUIC_STATUS  rv;
 
 	log_debug("quic_connection_cb triggered! %d", Event->Type);
 	switch (Event->Type) {
@@ -584,6 +632,14 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		memcpy(qsock->rticket, Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicket,
 		        Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength);
 		break;
+	case QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED:
+		log_info("QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED");
+		// TODO Using openssl/mbedtls APIs to verify
+		if (QUIC_FAILED(rv = verify_peer_cert_tls())) {
+			log_error("BAD CERT");
+			return rv;
+		}
+		break;
 	case QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED:
 		log_info("QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED");
 		break;
@@ -592,10 +648,6 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		break;
 	case QUIC_CONNECTION_EVENT_IDEAL_PROCESSOR_CHANGED:
 		log_info("QUIC_CONNECTION_EVENT_IDEAL_PROCESSOR_CHANGED");
-		break;
-	case QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED:
-		log_info("QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED");
-		// TODO Using openssl/mbedtls APIs to verify
 		break;
 	default:
 		log_warn("Unknown event type %d!", Event->Type);
