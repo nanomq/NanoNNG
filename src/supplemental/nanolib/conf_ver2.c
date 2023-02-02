@@ -236,6 +236,43 @@ hocon_get_obj(char *key, cJSON *jso)
 }
 
 static void
+conf_http_server_parse_ver2(conf_http_server *http_server, cJSON *json)
+{
+	// http server
+	cJSON *jso_http_server = cJSON_GetObjectItem(json, "http_server");
+	if (NULL == jso_http_server) {
+		log_error("Read config nanomq sqlite failed!");
+		return;
+	}
+
+	hocon_read_bool(http_server, enable, jso_http_server);
+	hocon_read_num(http_server, port, jso_http_server);
+	hocon_read_num(http_server, parallel, jso_http_server);
+	hocon_read_str(http_server, username, jso_http_server);
+	hocon_read_str(http_server, password, jso_http_server);
+	hocon_read_enum(
+	    http_server, auth_type, jso_http_server, http_server_auth_type);
+	conf_jwt *jwt = &(http_server->jwt);
+
+	cJSON *jso_pub_key_file = hocon_get_obj("jwt.public", jso_http_server);
+	cJSON *jso_pri_key_file =
+	    hocon_get_obj("jwt.private", jso_http_server);
+	hocon_read_str_base(jwt, public_keyfile, "keyfile", jso_pub_key_file);
+	hocon_read_str_base(jwt, private_keyfile, "keyfile", jso_pri_key_file);
+	if (file_load_data(jwt->public_keyfile, (void **) &jwt->public_key) >
+	    0) {
+		jwt->iss =
+		    (char *) nni_plat_file_basename(jwt->public_keyfile);
+		jwt->public_key_len = strlen(jwt->public_key);
+	}
+
+	if (file_load_data(jwt->private_keyfile, (void **) &jwt->private_key) >
+	    0) {
+		jwt->private_key_len = strlen(jwt->private_key);
+	}
+}
+
+static void
 conf_basic_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *jso_sys = cJSON_GetObjectItem(jso, "system");
@@ -303,39 +340,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	hocon_read_address_base(
 	    websocket, url, "bind", "nmq-ws://", jso_websocket);
 
-	// http server
-	cJSON *jso_http_server = cJSON_GetObjectItem(jso, "http_server");
-	if (NULL == jso_http_server) {
-		log_error("Read config nanomq sqlite failed!");
-		return;
-	}
-
-	conf_http_server *http_server = &(config->http_server);
-	hocon_read_bool(http_server, enable, jso_http_server);
-	hocon_read_num(http_server, port, jso_http_server);
-	hocon_read_num(http_server, parallel, jso_http_server);
-	hocon_read_str(http_server, username, jso_http_server);
-	hocon_read_str(http_server, password, jso_http_server);
-	hocon_read_enum(
-	    http_server, auth_type, jso_http_server, http_server_auth_type);
-	conf_jwt *jwt = &(http_server->jwt);
-
-	cJSON *jso_pub_key_file = hocon_get_obj("jwt.public", jso_http_server);
-	cJSON *jso_pri_key_file =
-	    hocon_get_obj("jwt.private", jso_http_server);
-	hocon_read_str_base(jwt, public_keyfile, "keyfile", jso_pub_key_file);
-	hocon_read_str_base(jwt, private_keyfile, "keyfile", jso_pri_key_file);
-	if (file_load_data(jwt->public_keyfile, (void **) &jwt->public_key) >
-	    0) {
-		jwt->iss =
-		    (char *) nni_plat_file_basename(jwt->public_keyfile);
-		jwt->public_key_len = strlen(jwt->public_key);
-	}
-
-	if (file_load_data(jwt->private_keyfile, (void **) &jwt->private_key) >
-	    0) {
-		jwt->private_key_len = strlen(jwt->private_key);
-	}
+	conf_http_server_parse_ver2(&(config->http_server), jso);
 
 	return;
 }
@@ -1202,6 +1207,9 @@ conf_gateway_parse_ver2(zmq_gateway_conf *config)
 	hocon_read_str_base(config, zmq_sub_url, "sub_address", jso_zmq);
 	hocon_read_str_base(config, zmq_pub_url, "pub_address", jso_zmq);
 
+	conf_http_server_init(&(config->http_server), 8082);
+	conf_http_server_parse_ver2(&(config->http_server), jso);
+
 	cJSON_Delete(jso);
 
 	// printf_gateway_conf(config);
@@ -1247,7 +1255,10 @@ conf_vsomeip_gateway_parse_ver2(vsomeip_gateway_conf *config)
 	hocon_read_hex_str(config, service_instance_id, jso_vsomeip);
 	hocon_read_hex_str(config, service_method_id, jso_vsomeip);
 	hocon_read_str(config, conf_path, jso_vsomeip);
-	
+
+	// Parse http server 
+	conf_http_server_init(&config->http_server, 8082);
+	conf_http_server_parse_ver2(&config->http_server, jso);
 
 	cJSON_Delete(jso);
 
@@ -1313,6 +1324,9 @@ conf_dds_gateway_init(dds_gateway_conf *config)
 	dds_gateway_mqtt *   mqtt    = &config->mqtt;
 	dds_gateway_dds *    dds     = &config->dds;
 	dds_gateway_forward *forward = &config->forward;
+	conf_http_server *   http    = &config->http_server;
+
+	conf_http_server_init(http, 8082);
 
 	mqtt->sock        = NULL;
 	mqtt->address     = NULL;
@@ -1354,15 +1368,17 @@ conf_dds_gateway_parse_ver2(dds_gateway_conf *config)
 		}
 	}
 
-	dds_gateway_mqtt *mqtt = &config->mqtt;
-	dds_gateway_dds * dds  = &config->dds;
+	dds_gateway_mqtt *   mqtt    = &config->mqtt;
+	dds_gateway_dds *    dds     = &config->dds;
 	dds_gateway_forward *forward = &config->forward;
+	conf_http_server *   http    = &config->http_server;
 
 	cJSON *jso = hocon_parse_file(dest_path);
 
 	conf_dds_gateway_mqtt_parse_ver2(mqtt, jso);
 	conf_dds_gateway_dds_parse_ver2(dds, jso);
 	conf_dds_gateway_forward_parse_ver2(forward, jso);
+	conf_http_server_parse_ver2(http, jso);
 
 	cJSON_Delete(jso);
 
@@ -1375,6 +1391,9 @@ conf_dds_gateway_destory(dds_gateway_conf *config)
 	dds_gateway_mqtt *   mqtt    = &config->mqtt;
 	dds_gateway_dds *    dds     = &config->dds;
 	dds_gateway_forward *forward = &config->forward;
+	conf_http_server *   http    = &config->http_server;
+
+	conf_http_server_destroy(http);
 
 	nng_strfree(config->path);
 
