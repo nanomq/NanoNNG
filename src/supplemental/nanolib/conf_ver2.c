@@ -255,20 +255,27 @@ conf_http_server_parse_ver2(conf_http_server *http_server, cJSON *json)
 	conf_jwt *jwt = &(http_server->jwt);
 
 	cJSON *jso_pub_key_file = hocon_get_obj("jwt.public", jso_http_server);
-	cJSON *jso_pri_key_file =
-	    hocon_get_obj("jwt.private", jso_http_server);
-	hocon_read_str_base(jwt, public_keyfile, "keyfile", jso_pub_key_file);
-	hocon_read_str_base(jwt, private_keyfile, "keyfile", jso_pri_key_file);
-	if (file_load_data(jwt->public_keyfile, (void **) &jwt->public_key) >
-	    0) {
-		jwt->iss =
-		    (char *) nni_plat_file_basename(jwt->public_keyfile);
-		jwt->public_key_len = strlen(jwt->public_key);
+	if (cJSON_IsObject(jso_pub_key_file)) {
+		hocon_read_str_base(
+		    jwt, public_keyfile, "keyfile", jso_pub_key_file);
+		if (file_load_data(
+		        jwt->public_keyfile, (void **) &jwt->public_key) > 0) {
+			jwt->iss = (char *) nni_plat_file_basename(
+			    jwt->public_keyfile);
+			jwt->public_key_len = strlen(jwt->public_key);
+		}
 	}
 
-	if (file_load_data(jwt->private_keyfile, (void **) &jwt->private_key) >
-	    0) {
-		jwt->private_key_len = strlen(jwt->private_key);
+	cJSON *jso_pri_key_file =
+	    hocon_get_obj("jwt.private", jso_http_server);
+	if (cJSON_IsObject(jso_pri_key_file)) {
+		hocon_read_str_base(
+		    jwt, private_keyfile, "keyfile", jso_pri_key_file);
+
+		if (file_load_data(jwt->private_keyfile,
+		        (void **) &jwt->private_key) > 0) {
+			jwt->private_key_len = strlen(jwt->private_key);
+		}
 	}
 }
 
