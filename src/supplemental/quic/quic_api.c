@@ -101,7 +101,7 @@ HQUIC configuration;
 static conf_bridge_node *bridge_node;
 nni_proto *g_quic_proto;
 
-static BOOLEAN quic_load_config(BOOLEAN unsecure, conf_bridge_node *node);
+static BOOLEAN quic_load_config(conf_bridge_node *node);
 static void    quic_pipe_send_cancel(nni_aio *aio, void *arg, int rv);
 static void    quic_pipe_recv_cancel(nni_aio *aio, void *arg, int rv);
 static void    quic_pipe_recv_cb(void *arg);
@@ -118,7 +118,7 @@ static void    quic_strm_fini(quic_strm_t *qstrm);
 
 // Helper function to load a client configuration.
 static BOOLEAN
-quic_load_config(BOOLEAN Unsecure, conf_bridge_node *node)
+quic_load_config(conf_bridge_node *node)
 {
 	QUIC_SETTINGS Settings = { 0 };
 	QUIC_CREDENTIAL_CONFIG CredConfig;
@@ -581,7 +581,7 @@ int
 quic_connect_ipv4(const char *url, nni_sock *sock, uint32_t *index)
 {
 	// Load the client configuration
-	if (!quic_load_config(TRUE, bridge_node)) {
+	if (!quic_load_config(bridge_node)) {
 		log_error("Failed in load quic configuration");
 		return (-1);
 	}
@@ -676,7 +676,7 @@ static int
 quic_sock_reconnect(quic_sock_t *qsock)
 {
 	// Load the client configuration.
-	if (!quic_load_config(TRUE, bridge_node)) {
+	if (!quic_load_config(bridge_node)) {
 		log_error("Failed in load quic configuration");
 		return (-1);
 	}
