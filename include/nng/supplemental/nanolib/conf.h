@@ -275,22 +275,23 @@ struct conf_bridge {
 typedef struct conf_bridge conf_bridge;
 
 typedef struct {
-    char *zmq_sub_url;
-    char *zmq_pub_url;
-    char *mqtt_url;
-    char *sub_topic;
-    char *pub_topic;
-    char *zmq_sub_pre;
-    char *zmq_pub_pre;
-    char *path;
-    char *username;
-    char *password;
-    void       *zmq_sender;
-    int         proto_ver;
-    int         keepalive;
-    bool        clean_start;
-    int         parallel;
-    enum {PUB_SUB, REQ_REP} type;
+	char *zmq_sub_url;
+	char *zmq_pub_url;
+	char *mqtt_url;
+	char *sub_topic;
+	char *pub_topic;
+	char *zmq_sub_pre;
+	char *zmq_pub_pre;
+	char *path;
+	char *username;
+	char *password;
+	void *zmq_sender;
+	int   proto_ver;
+	int   keepalive;
+	bool  clean_start;
+	int   parallel;
+	enum { PUB_SUB, REQ_REP } type;
+	conf_http_server http_server;
 } zmq_gateway_conf;
 
 typedef struct {
@@ -307,6 +308,8 @@ typedef struct {
 	bool        clean_start;
 	uint8_t     sub_qos;
 	int         parallel;
+
+	conf_http_server http_server;
 
 	// vsomeip parameter
 	uint16_t    service_id;
@@ -350,6 +353,7 @@ typedef struct {
 	dds_gateway_mqtt    mqtt;
 	dds_gateway_dds     dds;
 	dds_gateway_forward forward;
+	conf_http_server    http_server;
 } dds_gateway_conf;
 
 typedef enum {
