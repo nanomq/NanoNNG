@@ -807,6 +807,34 @@ conf_rule_init(conf_rule *rule_en)
 #endif
 
 void
+conf_http_server_init(conf_http_server *http, uint16_t port)
+{
+	http->enable              = false;
+	http->port                = port;
+	http->parallel            = 32;
+	http->username            = NULL;
+	http->password            = NULL;
+	http->auth_type           = BASIC;
+	http->jwt.iss             = NULL;
+	http->jwt.private_key     = NULL;
+	http->jwt.public_key      = NULL;
+	http->jwt.private_keyfile = NULL;
+	http->jwt.public_keyfile  = NULL;
+}
+
+void
+conf_http_server_destroy(conf_http_server *http)
+{
+	nng_strfree(http->username);
+	nng_strfree(http->password);
+
+	nng_strfree(http->jwt.private_key);
+	nng_strfree(http->jwt.public_key);
+	nng_strfree(http->jwt.private_keyfile);
+	nng_strfree(http->jwt.public_keyfile);
+}
+
+void
 conf_init(conf *nanomq_conf)
 {
 	nanomq_conf->url       = NULL;
@@ -851,17 +879,7 @@ conf_init(conf *nanomq_conf)
 	conf_sqlite_init(&nanomq_conf->sqlite);
 	conf_tls_init(&nanomq_conf->tls);
 
-	nanomq_conf->http_server.enable              = false;
-	nanomq_conf->http_server.port                = 8081;
-	nanomq_conf->http_server.parallel            = 32;
-	nanomq_conf->http_server.username            = NULL;
-	nanomq_conf->http_server.password            = NULL;
-	nanomq_conf->http_server.auth_type           = BASIC;
-	nanomq_conf->http_server.jwt.iss             = NULL;
-	nanomq_conf->http_server.jwt.private_key     = NULL;
-	nanomq_conf->http_server.jwt.public_key      = NULL;
-	nanomq_conf->http_server.jwt.private_keyfile = NULL;
-	nanomq_conf->http_server.jwt.public_keyfile  = NULL;
+	conf_http_server_init(&nanomq_conf->http_server, 8081);
 
 	nanomq_conf->websocket.enable  = true;
 	nanomq_conf->websocket.url     = NULL;
@@ -3058,13 +3076,6 @@ conf_fini(conf *nanomq_conf)
 #endif
 	conf_sqlite_destroy(&nanomq_conf->sqlite);
 	conf_tls_destroy(&nanomq_conf->tls);
-
-	nng_strfree(nanomq_conf->http_server.username);
-	nng_strfree(nanomq_conf->http_server.password);
-	free(nanomq_conf->http_server.jwt.private_key);
-	free(nanomq_conf->http_server.jwt.public_key);
-	free(nanomq_conf->http_server.jwt.private_keyfile);
-	free(nanomq_conf->http_server.jwt.public_keyfile);
 
 	nng_strfree(nanomq_conf->websocket.url);
 #ifdef ACL_SUPP
