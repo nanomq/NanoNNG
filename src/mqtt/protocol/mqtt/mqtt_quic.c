@@ -1923,9 +1923,7 @@ nng_mqtt_quic_ack_callback_set(nng_socket *sock, void (*cb)(void *), void *arg)
 			return (NNG_ENOMEM);
 		}
 		nni_aio_init(aio, (nni_cb) cb, aio);
-		nni_aio_set_prov_data(aio, sock);
-		if (arg != NULL)
-			nni_aio_set_output(aio, 0, arg);
+		nni_aio_set_prov_data(aio, arg);
 		mqtt_sock->ack_aio = aio;
 		mqtt_sock->ack_lmq = nni_alloc(sizeof(nni_lmq));
 		nni_lmq_init(mqtt_sock->ack_lmq, NNG_MAX_RECV_LMQ);
