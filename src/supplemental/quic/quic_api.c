@@ -383,6 +383,7 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		log_info("close stream with Error Code: %llu",
 				 (unsigned long long) Event->SHUTDOWN_COMPLETE.ConnectionErrorCode);
 		if (qstrm->sock->pipe != qstrm->pipe) {
+			// close data stream only
 			const nni_proto_pipe_ops *pipe_ops =
 			    g_quic_proto->proto_pipe_ops;
 				log_warn("close the data stream [%p]!", stream);
