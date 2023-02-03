@@ -935,7 +935,6 @@ mqtt_quic_recv_cb(void *arg)
 		if (s->ack_aio != NULL && !nni_aio_busy(s->ack_aio)) {
 			nni_msg_clone(msg);
 			nni_aio_finish_msg(s->ack_aio, msg);
-			break;
 		}
 		if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
 			// No one waiting to receive yet, putting msg
