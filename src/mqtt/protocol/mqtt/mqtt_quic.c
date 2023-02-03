@@ -718,10 +718,12 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 			// no callback being set
 			log_debug("Ack Reason code:");
 			nni_msg_free(msg);
+			break;
 		}
 		if (!nni_aio_busy(s->ack_aio)) {
 			nni_aio_set_msg(s->ack_aio, msg);
-			nni_aio_finish(s->ack_aio, 0, nni_msg_len(msg));
+			user_aio = s->ack_aio;
+			// nni_aio_finish(s->ack_aio, 0, nni_msg_len(msg));
 		} else {
 			nni_lmq_put(s->ack_lmq, msg);
 			log_debug("ack msg cached!");
@@ -961,10 +963,12 @@ mqtt_quic_recv_cb(void *arg)
 			// no callback being set
 			log_debug("Ack Reason code:");
 			nni_msg_free(msg);
+			break;
 		}
 		if (!nni_aio_busy(s->ack_aio)) {
 			nni_aio_set_msg(s->ack_aio, msg);
-			nni_aio_finish(s->ack_aio, 0, nni_msg_len(msg));
+			user_aio = s->ack_aio;
+			// nni_aio_finish(s->ack_aio, 0, nni_msg_len(msg));
 		} else {
 			nni_lmq_put(s->ack_lmq, msg);
 			log_debug("ack msg cached!");
@@ -1769,8 +1773,8 @@ mqtt_quic_ctx_recv(void *arg, nni_aio *aio)
 			nni_aio_finish_msg(aio, msg);
 			return;
 		}
-		nni_aio_finish(aio, NNG_ECANCELED, 0);
 		nni_mtx_unlock(&s->mtx);
+		nni_aio_finish(aio, NNG_ECANCELED, 0);
 		return;
 	}
 	if (nni_lmq_get(&p->recv_messages, &msg) == 0) {
