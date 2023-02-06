@@ -55,7 +55,7 @@ struct quic_sock_s {
 	nni_mtx  mtx; // for reconnect
 	nni_aio  close_aio;
 
-	uint8_t  rticket[2048];
+	uint8_t  rticket[4096];
 	uint16_t rticket_sz;
 	nng_url *url_s;
 };
