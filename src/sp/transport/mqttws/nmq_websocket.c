@@ -123,6 +123,7 @@ wstran_pipe_recv_cb(void *arg)
 	}
 	// process scatterd msgs
 	if ((rv = nni_aio_result(raio)) != 0) {
+		log_warn(" recv aio error %s", nng_strerror(rv));
 		goto reset;
 	}
 	msg = nni_aio_get_msg(raio);

@@ -298,6 +298,7 @@ tlstran_pipe_nego_cb(void *arg)
 	nni_mtx_lock(&ep->mtx);
 
 	if ((rv = nni_aio_result(aio)) != 0) {
+		log_warn(" nego aio error %s", nng_strerror(rv));
 		goto error;
 	}
 
@@ -494,6 +495,7 @@ tlstran_pipe_send_cb(void *arg)
 	log_trace("############### tlstran_pipe_send_cb ################");
 
 	if ((rv = nni_aio_result(txaio)) != 0) {
+		log_warn(" send aio error %s", nng_strerror(rv));
 		nni_pipe_bump_error(p->npipe, rv);
 		nni_aio_list_remove(aio);
 		nni_mtx_unlock(&p->mtx);
@@ -586,7 +588,7 @@ tlstran_pipe_recv_cb(void *arg)
 	aio = nni_list_first(&p->recvq);
 
 	if ((rv = nni_aio_result(rxaio)) != 0) {
-		log_error("nni aio error!! %d\n", rv);
+		log_warn(" recv aio error %s", nng_strerror(rv));
 		rv = NMQ_SERVER_BUSY;
 		goto recv_error;
 	}
@@ -1687,6 +1689,7 @@ tlstran_accept_cb(void *arg)
 	nni_mtx_lock(&ep->mtx);
 
 	if ((rv = nni_aio_result(aio)) != 0) {
+		log_warn(" send aio error %s", nng_strerror(rv));
 		goto error;
 	}
 

@@ -159,7 +159,6 @@ tcptran_pipe_stop(void *arg)
 static int
 tcptran_pipe_init(void *arg, nni_pipe *npipe)
 {
-	log_trace("************tcptran_pipe_init************");
 	tcptran_pipe *p = arg;
 
 	nni_pipe_set_conn_param(npipe, p->tcp_cparam);
@@ -172,6 +171,7 @@ tcptran_pipe_init(void *arg, nni_pipe *npipe)
 
 	nni_lmq_init(&p->rslmq, 16);
 	p->qos_buf = nng_zalloc(16 + NNI_NANO_MAX_PACKET_SIZE);
+	log_trace(" ************ tcptran_pipe_init [%p] ************ ", p);
 	return (0);
 }
 
@@ -181,6 +181,7 @@ tcptran_pipe_fini(void *arg)
 	tcptran_pipe *p = arg;
 	tcptran_ep   *ep;
 
+	log_trace(" ************ tcptran_pipe_finit [%p] ************ ", p);
 	tcptran_pipe_stop(p);
 	if ((ep = p->ep) != NULL) {
 		nni_mtx_lock(&ep->mtx);
@@ -290,6 +291,7 @@ tcptran_pipe_nego_cb(void *arg)
 	nni_mtx_lock(&ep->mtx);
 
 	if ((rv = nni_aio_result(aio)) != 0) {
+		log_warn("nego aio error: %s", nng_strerror(rv));
 		goto error;
 	}
 
@@ -376,7 +378,7 @@ tcptran_pipe_nego_cb(void *arg)
 	}
 
 	nni_mtx_unlock(&ep->mtx);
-	log_trace("^^^^^^^^^^end of tcptran_pipe_nego_cb^^^^^^^^^^\n");
+	log_trace("^^^^^^^^^^ end of tcptran_pipe_nego_cb ^^^^^^^^^^\n");
 	return;
 
 close:
@@ -423,8 +425,10 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 	nni_aio      *qsaio = p->qsaio;
 	uint8_t       type;
 	size_t        n;
+	int			  rv;
 
-	if (nni_aio_result(qsaio) != 0) {
+	if ((rv = nni_aio_result(qsaio)) != 0) {
+		log_warn(" send aio error %s", nng_strerror(rv));
 		nni_msg_free(nni_aio_get_msg(qsaio));
 		nni_aio_set_msg(qsaio, NULL);
 		tcptran_pipe_close(p);
@@ -489,9 +493,10 @@ nmq_tcptran_pipe_send_cb(void *arg)
 	nni_mtx_lock(&p->mtx);
 	aio = nni_list_first(&p->sendq);
 
-	log_trace("############### nmq_tcptran_pipe_send_cb ################");
+	log_trace(" ################ nmq_tcptran_pipe_send_cb [%p] ################ ", p);
 
 	if ((rv = nni_aio_result(txaio)) != 0) {
+		log_warn(" send aio error %s", nng_strerror(rv));
 		nni_pipe_bump_error(p->npipe, rv);
 		nni_aio_list_remove(aio);
 		nni_mtx_unlock(&p->mtx);
@@ -578,8 +583,16 @@ tcptran_pipe_recv_cb(void *arg)
 	aio = nni_list_first(&p->recvq);
 
 	if ((rv = nni_aio_result(rxaio)) != 0) {
-		log_warn("nni aio recv error!! %d\n", rv);
-		rv = NMQ_SERVER_BUSY;
+		log_warn("nni aio recv error!! %s\n", nng_strerror(rv));
+		nni_pipe_bump_error(p->npipe, rv);
+		if (rv == NNG_ECONNRESET || rv == NNG_ECONNSHUT || rv == NNG_ECLOSED) {
+			// peer shutting down
+			rv = NMQ_SERVER_SHUTTING_DOWN;
+		} else if (rv == NNG_ENOMEM) {
+			rv = NMQ_SERVER_BUSY;
+		} else {
+			rv = NMQ_UNSEPECIFY_ERROR;
+		}
 		goto recv_error;
 	}
 
@@ -810,9 +823,9 @@ recv_error:
 	nni_aio_list_remove(aio);
 	msg      = p->rxmsg;
 	p->rxmsg = NULL;
-	nni_pipe_bump_error(p->npipe, rv);
 	nni_mtx_unlock(&p->mtx);
 	nni_msg_free(msg);
+	// error code cannot be 0. otherwise connection will sustain
 	nni_aio_finish_error(aio, rv);
 	log_warn("tcptran_pipe_recv_cb: recv error rv: %d\n", rv);
 	return;
