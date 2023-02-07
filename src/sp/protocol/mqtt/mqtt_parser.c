@@ -1619,11 +1619,17 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 		case USER_PROPERTY:
 			// key
 			NNI_GET16(var_ptr + pos, len_of_str);
-			pos += len_of_str;
+			pos += (2 + len_of_str);
+			// Check the index of properties
+			if (pos > target_pos)
+				return (-3);
 			len_of_str = 0;
 			// value
 			NNI_GET16(var_ptr + pos, len_of_str);
-			pos += len_of_str;
+			pos += (2 + len_of_str);
+			// Check the index of properties
+			if (pos > target_pos)
+				return (-3);
 			len_of_str = 0;
 			break;
 		default:
