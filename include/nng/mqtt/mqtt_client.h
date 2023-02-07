@@ -433,9 +433,20 @@ NNG_DECL property   *nng_mqtt_msg_get_publish_property(nng_msg *);
 NNG_DECL void        nng_mqtt_msg_set_publish_property(nng_msg *, property *);
 
 NNG_DECL uint16_t nng_mqtt_msg_get_puback_packet_id(nng_msg *);
+NNG_DECL property *nng_mqtt_msg_get_puback_property(nng_msg *);
+NNG_DECL void      nng_mqtt_msg_set_puback_property(nng_msg *, property *);
+
 NNG_DECL uint16_t nng_mqtt_msg_get_pubrec_packet_id(nng_msg *);
+NNG_DECL property *nng_mqtt_msg_get_pubrec_property(nng_msg *);
+NNG_DECL void      nng_mqtt_msg_set_pubrec_property(nng_msg *, property *);
+
 NNG_DECL uint16_t nng_mqtt_msg_get_pubrel_packet_id(nng_msg *);
+NNG_DECL property *nng_mqtt_msg_get_pubrel_property(nng_msg *);
+NNG_DECL void      nng_mqtt_msg_set_pubrel_property(nng_msg *, property *);
+
 NNG_DECL uint16_t nng_mqtt_msg_get_pubcomp_packet_id(nng_msg *);
+NNG_DECL property *nng_mqtt_msg_get_pubcomp_property(nng_msg *);
+NNG_DECL void      nng_mqtt_msg_set_pubcomp_property(nng_msg *, property *);
 
 NNG_DECL nng_mqtt_topic_qos *nng_mqtt_msg_get_subscribe_topics(
     nng_msg *, uint32_t *);

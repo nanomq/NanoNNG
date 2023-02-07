@@ -259,6 +259,20 @@ nni_mqtt_msg_get_puback_packet_id(nni_msg *msg)
 	return proto_data->var_header.puback.packet_id;
 }
 
+property *
+nni_mqtt_msg_get_puback_property(nni_msg *msg)
+{
+	nni_mqtt_proto_data *mqtt = nni_msg_get_proto_data(msg);
+	return mqtt->var_header.puback.properties;
+}
+
+void
+nni_mqtt_msg_set_puback_property(nni_msg *msg, property *prop)
+{
+	nni_mqtt_proto_data *mqtt          = nni_msg_get_proto_data(msg);
+	mqtt->var_header.puback.properties = prop;
+}
+
 uint16_t
 nni_mqtt_msg_get_pubrec_packet_id(nni_msg *msg)
 {
@@ -271,6 +285,20 @@ nni_mqtt_msg_set_pubrec_packet_id(nni_msg *msg, uint16_t packet_id)
 {
 	nni_mqtt_proto_data *proto_data         = nni_msg_get_proto_data(msg);
 	proto_data->var_header.pubrec.packet_id = packet_id;
+}
+
+property *
+nni_mqtt_msg_get_pubrec_property(nni_msg *msg)
+{
+	nni_mqtt_proto_data *mqtt = nni_msg_get_proto_data(msg);
+	return mqtt->var_header.pubrec.properties;
+}
+
+void
+nni_mqtt_msg_set_pubrec_property(nni_msg *msg, property *prop)
+{
+	nni_mqtt_proto_data *mqtt          = nni_msg_get_proto_data(msg);
+	mqtt->var_header.pubrec.properties = prop;
 }
 
 uint16_t
@@ -287,6 +315,20 @@ nni_mqtt_msg_set_pubrel_packet_id(nni_msg *msg, uint16_t packet_id)
 	proto_data->var_header.pubrel.packet_id = packet_id;
 }
 
+property *
+nni_mqtt_msg_get_pubrel_property(nni_msg *msg)
+{
+	nni_mqtt_proto_data *mqtt = nni_msg_get_proto_data(msg);
+	return mqtt->var_header.pubrel.properties;
+}
+
+void
+nni_mqtt_msg_set_pubrel_property(nni_msg *msg, property *prop)
+{
+	nni_mqtt_proto_data *mqtt          = nni_msg_get_proto_data(msg);
+	mqtt->var_header.pubrel.properties = prop;
+}
+
 uint16_t
 nni_mqtt_msg_get_pubcomp_packet_id(nni_msg *msg)
 {
@@ -299,6 +341,20 @@ nni_mqtt_msg_set_pubcomp_packet_id(nni_msg *msg, uint16_t packet_id)
 {
 	nni_mqtt_proto_data *proto_data          = nni_msg_get_proto_data(msg);
 	proto_data->var_header.pubcomp.packet_id = packet_id;
+}
+
+property *
+nni_mqtt_msg_get_pubcomp_property(nni_msg *msg)
+{
+	nni_mqtt_proto_data *mqtt = nni_msg_get_proto_data(msg);
+	return mqtt->var_header.pubcomp.properties;
+}
+
+void
+nni_mqtt_msg_set_pubcomp_property(nni_msg *msg, property *prop)
+{
+	nni_mqtt_proto_data *mqtt           = nni_msg_get_proto_data(msg);
+	mqtt->var_header.pubcomp.properties = prop;
 }
 
 uint16_t

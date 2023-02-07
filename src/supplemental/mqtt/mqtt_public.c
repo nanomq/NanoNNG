@@ -349,6 +349,54 @@ nng_mqtt_msg_set_puback_packet_id(nng_msg *msg, uint16_t packet_id)
 	nni_mqtt_msg_set_puback_packet_id(msg, packet_id);
 }
 
+property *
+nng_mqtt_msg_get_puback_property(nng_msg *msg)
+{
+	return nni_mqtt_msg_get_puback_property(msg);
+}
+
+void
+nng_mqtt_msg_set_puback_property(nng_msg *msg, property *prop)
+{
+	nni_mqtt_msg_set_puback_property(msg, prop);
+}
+
+property *
+nng_mqtt_msg_get_pubrec_property(nng_msg *msg)
+{
+	return nni_mqtt_msg_get_pubrec_property(msg);
+}
+
+void
+nng_mqtt_msg_set_pubrec_property(nng_msg *msg, property *prop)
+{
+	nni_mqtt_msg_set_pubrec_property(msg, prop);
+}
+
+property *
+nng_mqtt_msg_get_pubrel_property(nng_msg *msg)
+{
+	return nni_mqtt_msg_get_pubrel_property(msg);
+}
+
+void
+nng_mqtt_msg_set_pubrel_property(nng_msg *msg, property *prop)
+{
+	nni_mqtt_msg_set_pubrel_property(msg, prop);
+}
+
+property *
+nng_mqtt_msg_get_pubcomp_property(nng_msg *msg)
+{
+	return nni_mqtt_msg_get_pubcomp_property(msg);
+}
+
+void
+nng_mqtt_msg_set_pubcomp_property(nng_msg *msg, property *prop)
+{
+	nni_mqtt_msg_set_pubcomp_property(msg, prop);
+}
+
 uint16_t
 nng_mqtt_msg_get_pubrec_packet_id(nng_msg *msg)
 {
