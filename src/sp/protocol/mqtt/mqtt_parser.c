@@ -1529,11 +1529,17 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 	remain = nni_msg_remaining_len(msg) - target_pos;
 
 	while (bpos < remain) {
+		// Check the index of topic len
+		if (bpos + 2 > remain)
+			return (-3);
 		NNI_GET16(payload_ptr + bpos, len_of_topic);
 
 		if (len_of_topic == 0)
 			continue;
 		bpos += 2;
+		// Check the index of topic body
+		if (bpos + len_of_topic > remain)
+			return (-3);
 
 		log_trace(
 		    "The current process topic is %s", payload_ptr + bpos);
@@ -1547,6 +1553,9 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 
 		sn->topic = topic;
 		bpos += len_of_topic;
+		// Check the index of topic option
+		if (bpos > remain)
+			return (-3);
 
 		sn->subid = subid;
 		// qos no_local rap retain_handling
@@ -1624,11 +1633,17 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 	remain = nni_msg_remaining_len(msg) - target_pos;
 
 	while (bpos < remain) {
+		// Check the index of topic len
+		if (bpos + 2 > remain)
+			return (-3);
 		NNI_GET16(payload_ptr + bpos, len_of_topic);
 
 		if (len_of_topic == 0)
 			continue;
 		bpos += 2;
+		// Check the index of topic body
+		if (bpos + len_of_topic > remain)
+			return (-3);
 
 		log_trace(
 		    "The current process topic is %s", payload_ptr + bpos);
@@ -1639,6 +1654,9 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 		topic[len_of_topic] = 0x00;
 
 		bpos += len_of_topic;
+		// Check the index of topic option
+		if (bpos > remain)
+			return (-3);
 
 		snode.topic = topic;
 		sn = &snode;
