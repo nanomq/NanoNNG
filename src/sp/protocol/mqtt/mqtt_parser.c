@@ -1533,10 +1533,10 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 		if (bpos + 2 > remain)
 			return (-3);
 		NNI_GET16(payload_ptr + bpos, len_of_topic);
+		bpos += 2;
 
 		if (len_of_topic == 0)
 			continue;
-		bpos += 2;
 		// Check the index of topic body
 		if (bpos + len_of_topic > remain)
 			return (-3);
@@ -1647,10 +1647,10 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 		if (bpos + 2 > remain)
 			return (-3);
 		NNI_GET16(payload_ptr + bpos, len_of_topic);
+		bpos += 2;
 
 		if (len_of_topic == 0)
 			continue;
-		bpos += 2;
 		// Check the index of topic body
 		if (bpos + len_of_topic > remain)
 			return (-3);
