@@ -351,8 +351,8 @@ NNG_DECL property *nni_mqtt_msg_get_connack_property(nni_msg *);
 // mqtt publish
 
 
-NNG_DECL property *nni_mqtt_msg_get_publish_property(nng_msg *msg);
-NNG_DECL void nni_mqtt_msg_set_publish_property(nng_msg *msg, property *prop);
+NNG_DECL property *nni_mqtt_msg_get_publish_property(nni_msg *msg);
+NNG_DECL void nni_mqtt_msg_set_publish_property(nni_msg *msg, property *prop);
 NNG_DECL void        nni_mqtt_msg_set_publish_qos(nni_msg *, uint8_t);
 NNG_DECL uint8_t     nni_mqtt_msg_get_publish_qos(nni_msg *);
 NNG_DECL void        nni_mqtt_msg_set_publish_retain(nni_msg *, bool);
@@ -369,18 +369,26 @@ NNG_DECL uint8_t    *nni_mqtt_msg_get_publish_payload(nni_msg *, uint32_t *);
 // mqtt puback
 NNG_DECL uint16_t nni_mqtt_msg_get_puback_packet_id(nni_msg *);
 NNG_DECL void     nni_mqtt_msg_set_puback_packet_id(nni_msg *, uint16_t);
+NNG_DECL property *nni_mqtt_msg_get_puback_property(nni_msg *);
+NNG_DECL void      nni_mqtt_msg_set_puback_property(nni_msg *, property *);
 
 // mqtt pubrec
 NNG_DECL uint16_t nni_mqtt_msg_get_pubrec_packet_id(nni_msg *);
 NNG_DECL void     nni_mqtt_msg_set_pubrec_packet_id(nni_msg *, uint16_t);
+NNG_DECL property *nni_mqtt_msg_get_pubrec_property(nni_msg *);
+NNG_DECL void      nni_mqtt_msg_set_pubrec_property(nni_msg *, property *);
 
 // mqtt pubrel
 NNG_DECL uint16_t nni_mqtt_msg_get_pubrel_packet_id(nni_msg *);
 NNG_DECL void     nni_mqtt_msg_set_pubrel_packet_id(nni_msg *, uint16_t);
+NNG_DECL property *nni_mqtt_msg_get_pubrel_property(nni_msg *);
+NNG_DECL void      nni_mqtt_msg_set_pubrel_property(nni_msg *, property *);
 
 // mqtt pubcomp
 NNG_DECL uint16_t nni_mqtt_msg_get_pubcomp_packet_id(nni_msg *);
 NNG_DECL void     nni_mqtt_msg_set_pubcomp_packet_id(nni_msg *, uint16_t);
+NNG_DECL property *nni_mqtt_msg_get_pubcomp_property(nni_msg *);
+NNG_DECL void      nni_mqtt_msg_set_pubcomp_property(nni_msg *, property *);
 
 // mqtt subscribe
 NNG_DECL uint16_t  nni_mqtt_msg_get_subscribe_packet_id(nni_msg *);
