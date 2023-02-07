@@ -15,6 +15,19 @@
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 
+/* Copy from tls.c */
+/* START */
+#include "mbedtls/version.h" // Must be first in order to pick up version
+#include "mbedtls/error.h"
+// mbedTLS renamed this header for 2.4.0.
+#if MBEDTLS_VERSION_MAJOR > 2 || MBEDTLS_VERSION_MINOR >= 4
+#include "mbedtls/net_sockets.h"
+#else
+#include "mbedtls/net.h"
+#endif
+#include "mbedtls/ssl.h"
+/* END */
+
 /*
 #include "openssl/pem.h"
 #include "openssl/x509.h"
@@ -121,11 +134,45 @@ static void    quic_sock_fini(quic_sock_t *qsock);
 static void    quic_strm_init(quic_strm_t *qstrm, quic_sock_t *qsock);
 static void    quic_strm_fini(quic_strm_t *qstrm);
 
-static QUIC_STATUS verify_peer_cert_tls();
+static QUIC_STATUS verify_peer_cert_tls(QUIC_CERTIFICATE* crt, QUIC_CERTIFICATE* chain);
+
+//taken from https://github.com/Mbed-TLS/mbedtls/blob/development/programs/x509/cert_app.c
+static int my_verify(void *data, mbedtls_x509_crt *crt, int depth, uint32_t *flags) {
+    char buf[1024];
+    ((void) data);
+
+    log_warn("\nVerify requested for (Depth %d):\n", depth);
+    mbedtls_x509_crt_info(buf, sizeof(buf) - 1, "", crt);
+    log_warn("%s", buf);
+
+    if ((*flags) == 0)
+        log_warn("  This certificate has no flags\n");
+    else {
+        mbedtls_x509_crt_verify_info(buf, sizeof(buf), "  ! ", *flags);
+        log_warn("%s\n", buf);
+    }
+
+    return (0);
+}
 
 static QUIC_STATUS
-verify_peer_cert_tls()
+verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain)
 {
+	int rv;
+	uint32_t flags = 0;
+	mbedtls_x509_crt* crt = (mbedtls_x509_crt *)cert;
+	mbedtls_x509_crt* chn = (mbedtls_x509_crt *)chain;
+	rv = mbedtls_x509_crt_verify(chn, crt, NULL, NULL, &flags, my_verify, NULL);
+	if (rv != 0) {
+		char vrfy_buf[512];
+		log_warn(" failed\n");
+		mbedtls_x509_crt_verify_info(vrfy_buf, sizeof(vrfy_buf), "  ! ", flags);
+		log_warn("%s\n", vrfy_buf);
+	} else {
+		log_warn(" Verify OK\n");
+	}
+	if (0 != rv) log_warn("Error: 0x%04x; flag: %u\n", rv, flags);
+
 	return QUIC_STATUS_SUCCESS;
 /*
 	// @TODO peer_certificate_received
@@ -635,7 +682,9 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 	case QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED:
 		log_info("QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED");
 		// TODO Using openssl/mbedtls APIs to verify
-		if (QUIC_FAILED(rv = verify_peer_cert_tls())) {
+		if (QUIC_FAILED(rv = verify_peer_cert_tls(
+				Event->PEER_CERTIFICATE_RECEIVED.Certificate,
+				Event->PEER_CERTIFICATE_RECEIVED.Chain))) {
 			log_error("BAD CERT");
 			return rv;
 		}
