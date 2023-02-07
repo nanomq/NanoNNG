@@ -1602,6 +1602,10 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 
 	len = 0;
 	len_of_varint = 0;
+
+	// Check the index of property length
+	if (nni_msg_len(msg) < 3)
+		return (-3);
 	if (ver == MQTT_PROTOCOL_VERSION_v5)
 		len = get_var_integer(
 		    (uint8_t *) nni_msg_body(msg) + 2, &len_of_varint);
