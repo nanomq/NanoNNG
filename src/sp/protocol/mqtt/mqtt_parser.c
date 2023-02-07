@@ -369,7 +369,7 @@ utf8_check(const char *str, size_t len)
 		}
 
 		/* Reconstruct full code point */
-		if (i == (int) len - codelen + 1) {
+		if (i >= (int) len - codelen + 1) {
 			/* Not enough data */
 			return ERR_MALFORMED_UTF8;
 		}
