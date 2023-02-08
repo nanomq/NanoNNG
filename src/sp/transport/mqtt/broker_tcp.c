@@ -1381,10 +1381,10 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		nni_aio_finish(aio, NNG_ECANCELED, 0);
 		return;
 	}
-	if (p->pro_ver == 4) {
-		nmq_pipe_send_start_v4(p, msg, aio);
-	} else if (p->pro_ver == 5) {
+	if (p->pro_ver == 5) {
 		nmq_pipe_send_start_v5(p, msg, aio);
+	} else {
+		nmq_pipe_send_start_v4(p, msg, aio);
 	}
 	return;
 }
