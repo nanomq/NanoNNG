@@ -524,6 +524,10 @@ nmq_tcptran_pipe_send_cb(void *arg)
 			nmq_pipe_send_start_v4(p, msg, txaio);
 		else if (p->pro_ver == 5)
 			nmq_pipe_send_start_v5(p, msg, txaio);
+		else {
+			log_error("msg with pro_ver that neither 4 nor 5 should not happened.");
+			nni_aio_finish_error(txaio, NNG_EPROTO);
+		}
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
@@ -1381,10 +1385,12 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		nni_aio_finish(aio, NNG_ECANCELED, 0);
 		return;
 	}
-	if (p->pro_ver == 5) {
+	if (p->pro_ver == 4) {
+		nmq_pipe_send_start_v4(p, msg, aio);
+	} else if (p->pro_ver == 5) {
 		nmq_pipe_send_start_v5(p, msg, aio);
 	} else {
-		nmq_pipe_send_start_v4(p, msg, aio);
+		nni_aio_finish_error(aio, NNG_EPROTO);
 	}
 	return;
 }
