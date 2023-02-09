@@ -134,7 +134,7 @@ static void    quic_sock_fini(quic_sock_t *qsock);
 static void    quic_strm_init(quic_strm_t *qstrm, quic_sock_t *qsock);
 static void    quic_strm_fini(quic_strm_t *qstrm);
 
-static QUIC_STATUS verify_peer_cert_tls(QUIC_CERTIFICATE* crt, QUIC_CERTIFICATE* chain);
+static QUIC_STATUS verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain);
 
 //taken from https://github.com/Mbed-TLS/mbedtls/blob/development/programs/x509/cert_app.c
 static int my_verify(void *data, mbedtls_x509_crt *crt, int depth, uint32_t *flags) {
@@ -160,9 +160,22 @@ verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain)
 {
 	int rv;
 	uint32_t flags = 0;
-	mbedtls_x509_crt* crt = (mbedtls_x509_crt *)cert;
-	mbedtls_x509_crt* chn = (mbedtls_x509_crt *)chain;
-	rv = mbedtls_x509_crt_verify(chn, crt, NULL, NULL, &flags, my_verify, NULL);
+
+	// cert and chain are as quic_buffer when QUIC_CREDENTIAL_FLAG_USE_PORTABLE_CERTIFICATES is set
+	// refer. https://github.com/microsoft/msquic/blob/main/docs/api/QUIC_CONNECTION_EVENT.md#quic_connection_event_peer_certificate_received
+	QUIC_BUFFER *ce = (QUIC_BUFFER *)cert;
+	QUIC_BUFFER *ch = (QUIC_BUFFER *)chain;
+
+	mbedtls_x509_crt crt;
+	mbedtls_x509_crt chn;
+	mbedtls_x509_crt_init(&crt);
+	mbedtls_x509_crt_init(&chn);
+
+	mbedtls_x509_crt_parse_der(&crt, ce->Buffer, ce->Length);
+	mbedtls_x509_crt_parse_der(&chn, ch->Buffer, ch->Length);
+
+	rv = mbedtls_x509_crt_verify(&chn, &crt, NULL, NULL, &flags, my_verify, NULL);
+
 	if (rv != 0) {
 		char vrfy_buf[512];
 		log_warn(" failed\n");
@@ -171,7 +184,8 @@ verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain)
 	} else {
 		log_warn(" Verify OK\n");
 	}
-	if (0 != rv) log_warn("Error: 0x%04x; flag: %u\n", rv, flags);
+	if (rv != 0)
+		log_warn("Error: 0x%04x; flag: %u\n", rv, flags);
 
 	return QUIC_STATUS_SUCCESS;
 /*
