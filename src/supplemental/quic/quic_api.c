@@ -136,23 +136,26 @@ static void    quic_strm_fini(quic_strm_t *qstrm);
 
 static QUIC_STATUS verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain);
 
-//taken from https://github.com/Mbed-TLS/mbedtls/blob/development/programs/x509/cert_app.c
-static int my_verify(void *data, mbedtls_x509_crt *crt, int depth, uint32_t *flags) {
-    char buf[1024];
-    ((void) data);
+// taken from
+// https://github.com/Mbed-TLS/mbedtls/blob/development/programs/x509/cert_app.c
+static int
+my_verify(void *data, mbedtls_x509_crt *crt, int depth, uint32_t *flags)
+{
+	char buf[1024];
+	((void) data);
 
-    log_warn("\nVerify requested for (Depth %d):\n", depth);
-    mbedtls_x509_crt_info(buf, sizeof(buf) - 1, "", crt);
-    log_warn("%s", buf);
+	log_warn("\nVerify requested for (Depth %d):\n", depth);
+	mbedtls_x509_crt_info(buf, sizeof(buf) - 1, "", crt);
+	log_warn("%s", buf);
 
-    if ((*flags) == 0)
-        log_warn("  This certificate has no flags\n");
-    else {
-        mbedtls_x509_crt_verify_info(buf, sizeof(buf), "  ! ", *flags);
-        log_warn("%s\n", buf);
-    }
+	if ((*flags) == 0)
+		log_warn("  This certificate has no flags\n");
+	else {
+		mbedtls_x509_crt_verify_info(buf, sizeof(buf), "  ! ", *flags);
+		log_warn("%s\n", buf);
+	}
 
-    return (0);
+	return (0);
 }
 
 static QUIC_STATUS
@@ -264,7 +267,7 @@ quic_load_config(conf_bridge_node *node)
 		Settings.CongestionControlAlgorithm       = QUIC_CONGESTION_CONTROL_ALGORITHM_BBR;
 		break;
 #endif
-	
+
 	default:
 		log_warn("unsupport congestion control algorithm, use default cubic!");
 		break;
@@ -433,9 +436,9 @@ quic_strm_fini(quic_strm_t *qstrm)
 // The clients's callback for stream events from MsQuic.
 // New recv cb of quic transport
 _IRQL_requires_max_(DISPATCH_LEVEL)
-    _Function_class_(QUIC_STREAM_CALLBACK) QUIC_STATUS QUIC_API
+_Function_class_(QUIC_STREAM_CALLBACK) QUIC_STATUS QUIC_API
 quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
-        _Inout_ QUIC_STREAM_EVENT *Event)
+	_Inout_ QUIC_STREAM_EVENT *Event)
 {
 	quic_strm_t *qstrm = Context;
 	uint32_t rlen;
@@ -567,6 +570,7 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		break;
 	case QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE:
 		log_info("QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE");
+		return QUIC_STATUS_PENDING;
 		break;
 	case QUIC_STREAM_EVENT_PEER_ACCEPTED:
 		log_info("QUIC_STREAM_EVENT_PEER_ACCEPTED");
@@ -586,9 +590,9 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 }
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
-    _Function_class_(QUIC_CONNECTION_CALLBACK) QUIC_STATUS QUIC_API
+_Function_class_(QUIC_CONNECTION_CALLBACK) QUIC_STATUS QUIC_API
 quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
-        _Inout_ QUIC_CONNECTION_EVENT *Event)
+	_Inout_ QUIC_CONNECTION_EVENT *Event)
 {
 	const nni_proto_pipe_ops *pipe_ops = g_quic_proto->proto_pipe_ops;
 
@@ -774,7 +778,7 @@ quic_connect_ipv4(const char *url, nni_sock *sock, uint32_t *index)
 	QUIC_ADDR Address = { 0 };
 	// Address.Ip.sa_family = QUIC_ADDRESS_FAMILY_UNSPEC;
 	Address.Ip.sa_family = QUIC_ADDRESS_FAMILY_INET;
-	// Address.Ipv4 = 
+	// Address.Ipv4 =
 	Address.Ipv4.sin_port = htons(0);
 	// QuicAddrSetFamily(&Address, QUIC_ADDRESS_FAMILY_UNSPEC);
 	// QuicAddrSetPort(&Address, 0);
@@ -1060,7 +1064,7 @@ quic_pipe_recv_cb(void *arg)
 
 	qdebug("before rxlen %d rwlen %d.\n", qstrm->rxlen, qstrm->rwlen);
 	// qdebug("rrpos %d rrlen %d rrbuf %x %x.\n", qstrm->rrpos, qstrm->rrlen,
-        //    qstrm->rrbuf[qstrm->rrpos], qstrm->rrbuf[qstrm->rrpos + 1]);
+	// qstrm->rrbuf[qstrm->rrpos], qstrm->rrbuf[qstrm->rrpos + 1]);
 	uint8_t  usedbytes;
 	uint8_t *rbuf = qstrm->rrbuf + qstrm->rrpos;
 	uint32_t rlen = qstrm->rrlen, n, remain_len;
