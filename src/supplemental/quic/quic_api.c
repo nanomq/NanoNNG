@@ -171,8 +171,9 @@ verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain)
 	mbedtls_x509_crt_init(&crt);
 	mbedtls_x509_crt_init(&chn);
 
+	log_info("chain %p %d cert %p %d\n", ch->Buffer, ch->Length, ce->Buffer, ce->Length);
 	mbedtls_x509_crt_parse_der(&crt, ce->Buffer, ce->Length);
-	mbedtls_x509_crt_parse_der(&chn, ch->Buffer, ch->Length);
+	mbedtls_x509_crt_parse(&chn, ch->Buffer, ch->Length);
 
 	rv = mbedtls_x509_crt_verify(&chn, &crt, NULL, NULL, &flags, my_verify, NULL);
 
@@ -276,7 +277,7 @@ there:
 	memset(&CredConfig, 0, sizeof(CredConfig));
 	// Unsecure by default
 	CredConfig.Type  = QUIC_CREDENTIAL_TYPE_NONE;
-	CredConfig.Flags = QUIC_CREDENTIAL_FLAG_CLIENT;
+	CredConfig.Flags = QUIC_CREDENTIAL_FLAG_CLIENT | QUIC_CREDENTIAL_FLAG_USE_PORTABLE_CERTIFICATES;
 
 	if (/* TODO */ 1) {
 		// TODO options from config
