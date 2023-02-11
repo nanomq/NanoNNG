@@ -158,7 +158,7 @@ put_var_integer(uint8_t *dest, uint32_t value)
  * Get variable integer value
  *
  * @param buf Byte array
- * @param pos how many bits rlen occupied
+ * @param pos how many bits rlen occupied (accumulated value)
  * @return Integer value
  */
 uint32_t
@@ -571,7 +571,7 @@ conn_param_set_will_property(conn_param *cparam, property *prop)
 /**
  * @brief handle and decode CONNECT packet
  * only use in nego_cb !!!
- * TODO CONNECT packet validation
+ *
  */
 int32_t
 conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
@@ -611,8 +611,15 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	cparam->keepalive_mqtt = tmp;
 	pos += 2;
 	// properties
+
 	if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
+		// check length
 		log_trace("MQTT V5 Properties");
+		len_of_var = 0;
+		cparam->prop_len = (uint32_t) get_var_integer(packet + pos, &len_of_var);
+		if (cparam->prop_len > (max - pos - 1 - cparam->will_flag*2 ))
+			return PROTOCOL_ERROR;
+		log_debug("remain len %d max len %d prop len %d pos %d", len, max, cparam->prop_len, pos);
 		cparam->properties = decode_buf_properties(
 		    packet, len, &pos, &cparam->prop_len, true);
 		if (cparam->properties) {
