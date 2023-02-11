@@ -2810,7 +2810,7 @@ read_str_data(struct pos_buf *buf, mqtt_buf *val)
 	}
 	return 0;
 }
-
+// TODO unite with get_var_integer
 static int
 read_variable_int(
     uint8_t *ptr, uint32_t length, uint32_t *value, uint8_t *used_bytes)
@@ -3717,6 +3717,10 @@ check_properties(property *prop)
 	return SUCCESS;
 }
 
+/**
+ * packet_len: remaining length
+ * len: property length
+ * */
 property *
 decode_buf_properties(uint8_t *packet, uint32_t packet_len, uint32_t *pos,
     uint32_t *len, bool copy_value)
@@ -3750,6 +3754,7 @@ decode_buf_properties(uint8_t *packet, uint32_t packet_len, uint32_t *pos,
 	/* Check properties appearance time */
 	// TODO
 
+	log_debug("remain len %d prop len %d curpos %p endpos %p", msg_len, prop_len, buf.curpos, buf.endpos);
 	while (buf.curpos < buf.endpos) {
 		read_byte(&buf, &prop_id);
 		property *         cur_prop = NULL;
