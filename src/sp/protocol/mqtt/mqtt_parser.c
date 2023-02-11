@@ -223,7 +223,7 @@ copyn_utf8_str(const uint8_t *src, uint32_t *pos, int *str_len, int limit)
 	uint8_t *dest = NULL;
 
 	if (limit <= 0)
-		return PROTOCOL_ERROR;
+		return NULL;
 	NNI_GET16(src + (*pos), *str_len);
 
 	*pos = (*pos) + 2;
@@ -663,6 +663,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	// will topic
 	if (rv == 0 && cparam->will_flag != 0) {
 		if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
+			// TO BE FIXED
 			cparam->will_properties = decode_buf_properties(
 			    packet, len, &pos, &cparam->will_prop_len, true);
 			if (cparam->will_properties) {
@@ -678,7 +679,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		cparam->will_topic.body =
 		    (char *) copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
 		cparam->will_topic.len = len_of_str;
-		rv                     = len_of_str < 0 ? 1 : 0;
+		rv                     = len_of_str <= 0 ? 1 : 0;
 		if (cparam->will_topic.body == NULL || rv != 0) {
 			rv = PROTOCOL_ERROR;
 			return rv;
@@ -696,7 +697,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 				        packet, &pos, &len_of_str, max - pos);
 			}
 			cparam->will_msg.len = len_of_str;
-			rv = len_of_str < 0 ? PAYLOAD_FORMAT_INVALID : 0;
+			rv = len_of_str <= 0 ? PAYLOAD_FORMAT_INVALID : 0;
 			log_trace(
 			    "will_msg: %s %d", cparam->will_msg.body, rv);
 		}
@@ -707,7 +708,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		cparam->username.body =
 		    (char *) copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
 		cparam->username.len = len_of_str;
-		rv                   = len_of_str < 0 ? PAYLOAD_FORMAT_INVALID : 0;
+		rv                   = len_of_str <= 0 ? PAYLOAD_FORMAT_INVALID : 0;
 		if (rv != 0) {
 			return rv;
 		}
@@ -719,8 +720,9 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		cparam->password.body =
 		    copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
 		cparam->password.len = len_of_str;
-		rv                   = len_of_str < 0 ? PAYLOAD_FORMAT_INVALID : 0;
+		rv                   = len_of_str <= 0 ? PAYLOAD_FORMAT_INVALID : 0;
 		if (rv != 0) {
+			log_warn("MQTT Packet parsing error!");
 			return rv;
 		}
 		log_trace(
