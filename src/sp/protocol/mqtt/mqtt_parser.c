@@ -1521,15 +1521,15 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 		case USER_PROPERTY:
 			// key
 			NNI_GET16(var_ptr + pos, len_of_str);
-			if (len_of_str > len)
-				return -1;
 			pos += len_of_str;
+			if (pos > target_pos)
+				return (-3);
 			len_of_str = 0;
 			// value
 			NNI_GET16(var_ptr + pos, len_of_str);
-			if (len_of_str > len)
-				return -1;
 			pos += len_of_str;
+			if (pos > target_pos)
+				return (-3);
 			len_of_str = 0;
 			break;
 		case SUBSCRIPTION_IDENTIFIER:
