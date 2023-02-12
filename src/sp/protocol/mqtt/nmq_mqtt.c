@@ -985,7 +985,15 @@ nano_pipe_recv_cb(void *arg)
 		// extract sub id
 		// Store Subid RAP Topic for sub
 		nni_mtx_lock(&p->lk);
-		nmq_subinfo_decode(msg, &npipe->subinfol, cparam->pro_ver);
+		rv = nmq_subinfo_decode(msg, &npipe->subinfol, cparam->pro_ver);
+		if (rv < 0) {
+			log_error("Invalid subscribe packet!");
+			nni_msg_free(msg);
+			p->reason_code = PROTOCOL_ERROR;
+			nni_mtx_unlock(&p->lk);
+			nni_pipe_close(p->pipe);
+			return;
+		}
 		nni_mtx_unlock(&p->lk);
 
 		if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
@@ -1001,7 +1009,15 @@ nano_pipe_recv_cb(void *arg)
 		// extract sub id
 		// Remove Subid RAP Topic stored
 		nni_mtx_lock(&p->lk);
-		nmq_unsubinfo_decode(msg, &npipe->subinfol, cparam->pro_ver);
+		rv = nmq_unsubinfo_decode(msg, &npipe->subinfol, cparam->pro_ver);
+		if (rv < 0) {
+			log_error("Invalid unsubscribe packet!");
+			nni_msg_free(msg);
+			p->reason_code = PROTOCOL_ERROR;
+			nni_mtx_unlock(&p->lk);
+			nni_pipe_close(p->pipe);
+			return;
+		}
 		nni_mtx_unlock(&p->lk);
 
 		if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
