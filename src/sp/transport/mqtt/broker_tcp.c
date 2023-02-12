@@ -292,6 +292,10 @@ tcptran_pipe_nego_cb(void *arg)
 
 	if ((rv = nni_aio_result(aio)) != 0) {
 		log_warn("nego aio error: %s", nng_strerror(rv));
+		if (p->conn_buf != NULL) {
+			nng_free(p->conn_buf, p->wantrxhead);
+			p->conn_buf = NULL;
+		}
 		goto error;
 	}
 
