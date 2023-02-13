@@ -833,6 +833,7 @@ recv_error:
 	p->rxmsg = NULL;
 	nni_mtx_unlock(&p->mtx);
 	nni_msg_free(msg);
+	nni_aio_set_msg(aio, NULL);
 	// error code cannot be 0. otherwise connection will sustain
 	nni_aio_finish_error(aio, rv);
 	log_warn("tcptran_pipe_recv_cb: recv error rv: %d\n", rv);

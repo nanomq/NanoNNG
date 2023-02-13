@@ -548,7 +548,6 @@ nano_pipe_fini(void *arg)
 	}
 	if ((msg = nni_aio_get_msg(&p->aio_recv)) != NULL) {
 		nni_aio_set_msg(&p->aio_recv, NULL);
-		nni_msg_free(msg);
 	}
 
 	void *nano_qos_db = p->pipe->nano_qos_db;
