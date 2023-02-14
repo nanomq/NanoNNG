@@ -127,12 +127,14 @@ struct mqtt_pipe_s {
 	uint8_t         reason_code;   // MQTTV5 reason code
 };
 
-static inline void
+static inline int
 mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
 {
 	if (0 != nni_lmq_put(&p->recv_messages, msg)) {
-		size_t max_que_len =
-		    p->mqtt_sock->bridge_conf->max_recv_queue_len;
+		size_t max_que_len = p->mqtt_sock->bridge_conf != NULL
+		    ? p->mqtt_sock->bridge_conf->max_recv_queue_len
+		    : NNG_TRAN_MAX_LMQ_SIZE;
+
 		if (max_que_len > nni_lmq_cap(&p->recv_messages)) {
 
 			size_t double_que_cap =
@@ -147,21 +149,18 @@ mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
 				log_warn("Resize receive lmq failed due to "
 				         "memory error!");
 			} else {
-				log_info("Resize receive message queue "
-				          "capacity to %d",
-				    nni_lmq_cap(&p->recv_messages));
 				if (0 == nni_lmq_put(&p->recv_messages, msg)) {
-					return;
+					return 0;
 				}
 				log_warn("Message dropped due to receive "
 				         "message queue is full!");
 			}
 		}
-
-		nni_msg_free(msg);
+		return -1;
+	} else {
+		return 0;
 	}
 }
-
 
 // Multi-stream API
 /**
@@ -772,7 +771,10 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 		if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
 			// No one waiting to receive yet, putting msg
 			// into lmq
-			mqtt_pipe_recv_msgq_putq(p, cached_msg);
+			if (0 != mqtt_pipe_recv_msgq_putq(p, cached_msg)) {
+				nni_msg_free(cached_msg);
+				cached_msg = NULL;
+			}
 			break;
 		}
 		nni_list_remove(&s->recv_queue, aio);
@@ -802,7 +804,10 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 			nni_mtx_lock(&s->mtx);
 			// TODO aio should be placed in p->recv_queue to achieve parallel
 			if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
-				mqtt_pipe_recv_msgq_putq(p, msg);
+				if (0 != mqtt_pipe_recv_msgq_putq(p, msg)) {
+					nni_msg_free(msg);
+					msg = NULL;
+				}
 				// nni_println("ERROR: no ctx found!! create
 				// more ctxs!");
 				break;
@@ -939,7 +944,10 @@ mqtt_quic_recv_cb(void *arg)
 		if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
 			// No one waiting to receive yet, putting msg
 			// into lmq
-			mqtt_pipe_recv_msgq_putq(p, msg);
+			if (0 != mqtt_pipe_recv_msgq_putq(p, msg)) {
+				nni_msg_free(msg);
+				msg = NULL;
+			}
 			break;
 		}
 		nni_list_remove(&s->recv_queue, aio);
@@ -1012,7 +1020,10 @@ mqtt_quic_recv_cb(void *arg)
 		if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
 			// No one waiting to receive yet, putting msg
 			// into lmq
-			mqtt_pipe_recv_msgq_putq(p, cached_msg);
+			if (0 != mqtt_pipe_recv_msgq_putq(p, cached_msg)) {
+				nni_msg_free(cached_msg);
+				cached_msg = NULL;
+			}
 			break;
 		}
 		nni_list_remove(&s->recv_queue, aio);
@@ -1042,7 +1053,10 @@ mqtt_quic_recv_cb(void *arg)
 			if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
 				// No one waiting to receive yet, putting msg
 				// into lmq
-				mqtt_pipe_recv_msgq_putq(p, msg);
+				if (0 != mqtt_pipe_recv_msgq_putq(p, msg)) {
+					nni_msg_free(msg);
+					msg = NULL;
+				}
 				// nni_println("ERROR: no ctx found!! create
 				// more ctxs!");
 				break;
