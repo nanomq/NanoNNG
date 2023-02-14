@@ -982,6 +982,8 @@ nano_pipe_recv_cb(void *arg)
 	cparam = p->conn_param;
 	switch (nng_msg_cmd_type(msg)) {
 	case CMD_SUBSCRIBE:
+		// 1. Clone for App layer 2. Clone should be called before being used
+		conn_param_clone(cparam);
 		// extract sub id
 		// Store Subid RAP Topic for sub
 		nni_mtx_lock(&p->lk);
@@ -1003,9 +1005,10 @@ nano_pipe_recv_cb(void *arg)
 		} else {
 			nni_msg_set_payload_ptr(msg, ptr + 2);
 		}
-		conn_param_clone(cparam);
 		break;
 	case CMD_UNSUBSCRIBE:
+		// 1. Clone for App layer 2. Clone should be called before being used
+		conn_param_clone(cparam);
 		// extract sub id
 		// Remove Subid RAP Topic stored
 		nni_mtx_lock(&p->lk);
@@ -1027,7 +1030,6 @@ nano_pipe_recv_cb(void *arg)
 		} else {
 			nni_msg_set_payload_ptr(msg, ptr + 2);
 		}
-		conn_param_clone(cparam);
 		break;
 	case CMD_DISCONNECT:
 		if (p->conn_param) {
@@ -1038,7 +1040,7 @@ nano_pipe_recv_cb(void *arg)
 		break;
 	case CMD_CONNACK:
 	case CMD_PUBLISH:
-		// clone for application layer
+		// 1. Clone for App layer 2. Clone should be called before being used
 		conn_param_clone(cparam);
 		break;
 	case CMD_PUBACK:
