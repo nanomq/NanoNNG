@@ -305,6 +305,9 @@ NNG_DECL int nni_mqtt_msg_decode(nni_msg *);
 NNG_DECL int nni_mqttv5_msg_encode(nni_msg *);
 NNG_DECL int nni_mqttv5_msg_decode(nni_msg *);
 
+NNG_DECL int nni_mqtt_msg_validate(nni_msg *, uint8_t);
+NNG_DECL int nni_mqtt_msg_packet_validate(uint8_t *, size_t, size_t, uint8_t);
+
 // mqtt packet_type
 NNG_DECL void nni_mqtt_msg_set_packet_type(nni_msg *, nni_mqtt_packet_type);
 NNG_DECL nni_mqtt_packet_type nni_mqtt_msg_get_packet_type(nni_msg *);

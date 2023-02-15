@@ -252,6 +252,69 @@ nni_mqttv5_msg_decode(nni_msg *msg)
 	return MQTT_ERR_PROTOCOL;
 }
 
+int
+nni_mqtt_msg_packet_validate(
+    uint8_t *buf, size_t buf_len, size_t header_len, uint8_t mqtt_version)
+{
+	nni_msg *check_msg = NULL;
+
+	if (buf == NULL || buf_len < header_len) {
+		return MQTT_ERR_PROTOCOL;
+	}
+
+	int rv = nni_mqtt_msg_alloc(&check_msg, buf_len - header_len);
+
+	if (rv != 0) {
+		return MQTT_ERR_NOMEM;
+	}
+
+	nng_msg_header_append(check_msg, buf, header_len);
+
+	if (buf_len > header_len) {
+		memcpy(nni_msg_body(check_msg), buf + header_len, buf_len - header_len);
+	}
+
+	if (mqtt_version == MQTT_PROTOCOL_VERSION_v5) {
+		rv = nni_mqttv5_msg_decode(check_msg);
+	} else {
+		rv = nni_mqtt_msg_decode(check_msg);
+	}
+
+	nni_msg_free(check_msg);
+
+	return rv;
+}
+
+int
+nni_mqtt_msg_validate(nni_msg *msg, uint8_t mqtt_version)
+{
+	nni_msg *check_msg = NULL;
+
+	size_t msg_len = nni_msg_len(msg);
+
+	int rv = nni_mqtt_msg_alloc(&check_msg, msg_len);
+
+	if (rv != 0) {
+		return MQTT_ERR_NOMEM;
+	}
+
+	nni_msg_header_append(
+	    check_msg, nni_msg_header(msg), nni_msg_header_len(msg));
+	if (msg_len > 0) {
+		memcpy(nni_msg_body(check_msg), nni_msg_body(msg), msg_len);
+	}
+
+	if (mqtt_version == MQTT_PROTOCOL_VERSION_v5) {
+		rv = nni_mqttv5_msg_decode(check_msg);
+	} else {
+		rv = nni_mqtt_msg_decode(check_msg);
+	}
+
+	nni_msg_free(check_msg);
+
+	return rv;
+}
+
 static void
 mqtt_msg_content_free(nni_mqtt_proto_data *mqtt)
 {
