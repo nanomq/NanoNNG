@@ -184,7 +184,7 @@ get_var_integer(const uint8_t *buf, uint32_t *pos)
  *
  * @param dest output string
  * @param src input bytes
- * @param pos
+ * @param pos offset value
  * @return string length -1: not utf-8, 0: empty string, >0 : normal utf-8
  * string
  */
@@ -1505,9 +1505,14 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 	var_ptr = nni_msg_body(msg);
 	len = 0;
 	len_of_varint = 0;
-	if (ver == MQTT_PROTOCOL_VERSION_v5)
+	// get variable length of properties
+	if (ver == MQTT_PROTOCOL_VERSION_v5) {
 		len = get_var_integer(
 		    (uint8_t *) nni_msg_body(msg) + 2, &len_of_varint);
+		if (len > nni_msg_remaining_len(msg))
+			return -1;
+	}
+	log_trace("prop len %d varint %d remain %d", len, len_of_varint, nni_msg_remaining_len(msg));
 	payload_ptr = (uint8_t *) nni_msg_body(msg) + 2 + len + len_of_varint;
 
 	int pos = 2 + len_of_varint, target_pos = 2 + len_of_varint + len;
@@ -1517,10 +1522,14 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 			// key
 			NNI_GET16(var_ptr + pos, len_of_str);
 			pos += len_of_str;
+			if (pos > target_pos)
+				return (-3);
 			len_of_str = 0;
 			// value
 			NNI_GET16(var_ptr + pos, len_of_str);
 			pos += len_of_str;
+			if (pos > target_pos)
+				return (-3);
 			len_of_str = 0;
 			break;
 		case SUBSCRIPTION_IDENTIFIER:
@@ -1544,6 +1553,8 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 		if (bpos + 2 > remain)
 			return (-3);
 		NNI_GET16(payload_ptr + bpos, len_of_topic);
+		if (len_of_str > remain)
+			return -1;
 		bpos += 2;
 
 		if (len_of_topic == 0)
@@ -1617,9 +1628,12 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 	// Check the index of property length
 	if (nni_msg_len(msg) < 3)
 		return (-3);
-	if (ver == MQTT_PROTOCOL_VERSION_v5)
+	if (ver == MQTT_PROTOCOL_VERSION_v5) {
 		len = get_var_integer(
 		    (uint8_t *) nni_msg_body(msg) + 2, &len_of_varint);
+		if (len > nni_msg_remaining_len(msg))
+			return -1;
+	}
 
 	var_ptr     = (uint8_t *) nni_msg_body(msg);
 	payload_ptr = (uint8_t *) nni_msg_body(msg) + 2 + len + len_of_varint;

@@ -548,7 +548,6 @@ nano_pipe_fini(void *arg)
 	}
 	if ((msg = nni_aio_get_msg(&p->aio_recv)) != NULL) {
 		nni_aio_set_msg(&p->aio_recv, NULL);
-		nni_msg_free(msg);
 	}
 
 	void *nano_qos_db = p->pipe->nano_qos_db;
@@ -982,10 +981,20 @@ nano_pipe_recv_cb(void *arg)
 	cparam = p->conn_param;
 	switch (nng_msg_cmd_type(msg)) {
 	case CMD_SUBSCRIBE:
+		// 1. Clone for App layer 2. Clone should be called before being used
+		conn_param_clone(cparam);
 		// extract sub id
 		// Store Subid RAP Topic for sub
 		nni_mtx_lock(&p->lk);
-		nmq_subinfo_decode(msg, &npipe->subinfol, cparam->pro_ver);
+		rv = nmq_subinfo_decode(msg, &npipe->subinfol, cparam->pro_ver);
+		if (rv < 0) {
+			log_error("Invalid subscribe packet!");
+			nni_msg_free(msg);
+			p->reason_code = PROTOCOL_ERROR;
+			nni_mtx_unlock(&p->lk);
+			nni_pipe_close(p->pipe);
+			return;
+		}
 		nni_mtx_unlock(&p->lk);
 
 		if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
@@ -995,13 +1004,22 @@ nano_pipe_recv_cb(void *arg)
 		} else {
 			nni_msg_set_payload_ptr(msg, ptr + 2);
 		}
-		conn_param_clone(cparam);
 		break;
 	case CMD_UNSUBSCRIBE:
+		// 1. Clone for App layer 2. Clone should be called before being used
+		conn_param_clone(cparam);
 		// extract sub id
 		// Remove Subid RAP Topic stored
 		nni_mtx_lock(&p->lk);
-		nmq_unsubinfo_decode(msg, &npipe->subinfol, cparam->pro_ver);
+		rv = nmq_unsubinfo_decode(msg, &npipe->subinfol, cparam->pro_ver);
+		if (rv < 0) {
+			log_error("Invalid unsubscribe packet!");
+			nni_msg_free(msg);
+			p->reason_code = PROTOCOL_ERROR;
+			nni_mtx_unlock(&p->lk);
+			nni_pipe_close(p->pipe);
+			return;
+		}
 		nni_mtx_unlock(&p->lk);
 
 		if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
@@ -1011,7 +1029,6 @@ nano_pipe_recv_cb(void *arg)
 		} else {
 			nni_msg_set_payload_ptr(msg, ptr + 2);
 		}
-		conn_param_clone(cparam);
 		break;
 	case CMD_DISCONNECT:
 		if (p->conn_param) {
@@ -1022,7 +1039,7 @@ nano_pipe_recv_cb(void *arg)
 		break;
 	case CMD_CONNACK:
 	case CMD_PUBLISH:
-		// clone for application layer
+		// 1. Clone for App layer 2. Clone should be called before being used
 		conn_param_clone(cparam);
 		break;
 	case CMD_PUBACK:

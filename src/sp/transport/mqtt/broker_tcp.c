@@ -292,6 +292,10 @@ tcptran_pipe_nego_cb(void *arg)
 
 	if ((rv = nni_aio_result(aio)) != 0) {
 		log_warn("nego aio error: %s", nng_strerror(rv));
+		if (p->conn_buf != NULL) {
+			nng_free(p->conn_buf, p->wantrxhead);
+			p->conn_buf = NULL;
+		}
 		goto error;
 	}
 
@@ -829,6 +833,7 @@ recv_error:
 	p->rxmsg = NULL;
 	nni_mtx_unlock(&p->mtx);
 	nni_msg_free(msg);
+	nni_aio_set_msg(aio, NULL);
 	// error code cannot be 0. otherwise connection will sustain
 	nni_aio_finish_error(aio, rv);
 	log_warn("tcptran_pipe_recv_cb: recv error rv: %d\n", rv);
