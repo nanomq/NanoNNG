@@ -988,6 +988,7 @@ nano_pipe_recv_cb(void *arg)
 	switch (type) {
 	case CMD_SUBSCRIBE:
 		// 1. Clone for App layer 2. Clone should be called before being used
+		conn_param_clone(cparam);
 		// extract sub id
 		// Store Subid RAP Topic for sub
 		nni_mtx_lock(&p->lk);
@@ -995,12 +996,12 @@ nano_pipe_recv_cb(void *arg)
 		if (rv < 0) {
 			log_error("Invalid subscribe packet!");
 			nni_msg_free(msg);
+			conn_param_free(cparam);
 			p->reason_code = PROTOCOL_ERROR;
 			nni_mtx_unlock(&p->lk);
 			nni_pipe_close(p->pipe);
 			return;
 		}
-		conn_param_clone(cparam);
 		nni_mtx_unlock(&p->lk);
 
 		if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
@@ -1013,6 +1014,7 @@ nano_pipe_recv_cb(void *arg)
 		break;
 	case CMD_UNSUBSCRIBE:
 		// 1. Clone for App layer 2. Clone should be called before being used
+		conn_param_clone(cparam);
 		// extract sub id
 		// Remove Subid RAP Topic stored
 		nni_mtx_lock(&p->lk);
@@ -1020,12 +1022,12 @@ nano_pipe_recv_cb(void *arg)
 		if (rv < 0) {
 			log_error("Invalid unsubscribe packet!");
 			nni_msg_free(msg);
+			conn_param_free(cparam);
 			p->reason_code = PROTOCOL_ERROR;
 			nni_mtx_unlock(&p->lk);
 			nni_pipe_close(p->pipe);
 			return;
 		}
-		conn_param_clone(cparam);
 		nni_mtx_unlock(&p->lk);
 
 		if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {

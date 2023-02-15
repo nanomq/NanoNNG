@@ -290,8 +290,8 @@ tcptran_pipe_nego_cb(void *arg)
 	uint32_t      len;
 	int           rv, len_of_varint = 0;
 
-	log_trace("start tcptran_pipe_nego_cb max len %ld pipe_addr %p\n",
-	    NANO_CONNECT_PACKET_LEN, p);
+	log_trace("start tcptran_pipe_nego_cb max len %ld pipe_addr %p gotrx %d wantrx %d\n",
+	    NANO_CONNECT_PACKET_LEN, p, p->gotrxhead, p->wantrxhead);
 	nni_mtx_lock(&ep->mtx);
 
 	if ((rv = nni_aio_result(aio)) != 0) {
