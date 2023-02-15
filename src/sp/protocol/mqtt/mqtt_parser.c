@@ -211,7 +211,7 @@ get_utf8_str(char **dest, const uint8_t *src, uint32_t *pos)
  * @brief safe copy limit size of src data to dest
  * 	  return null and -1 strlen if buffer overflow
  * @param src 
- * @param pos 
+ * @param pos the index cursor of processed packet, will be moved
  * @param str_len target size of data
  * @param limit max size of data copied
  * @return uint8_t* NULL if overflow or not utf-8
@@ -591,6 +591,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	// remaining length
 	len = (uint32_t) get_var_integer(packet + pos, &len_of_var);
 	pos += len_of_var;
+	log_trace("fix header length: %d", len_of_str);
 	// protocol name
 	cparam->pro_name.body =
 	    (char *) copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
@@ -634,7 +635,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	}
 	log_trace("pos after property: [%d]", pos);
 
-	// payload client_id
+	// here starts payload: client_id
 	cparam->clientid.body =
 	    (char *) copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
 	cparam->clientid.len = len_of_str;
@@ -650,6 +651,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		return (PROTOCOL_ERROR);
 	}
 	log_trace("clientid: [%s] [%d]", cparam->clientid.body, len_of_str);
+	log_trace("pos after clientid: [%d]", pos);
 
 	if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5 && cparam->assignedid) {
 		property *assigned_cid =
@@ -663,7 +665,6 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	// will topic
 	if (rv == 0 && cparam->will_flag != 0) {
 		if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
-			// TO BE FIXED
 			cparam->will_properties = decode_buf_properties(
 			    packet, len, &pos, &cparam->will_prop_len, true);
 			if (cparam->will_properties) {
@@ -672,35 +673,37 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 				if ((rv = check_properties(
 				         cparam->will_properties)) !=
 				    SUCCESS) {
-					return rv;
+					return PROTOCOL_ERROR;
 				}
 			}
+			log_trace("pos after will property: [%d]", pos);
 		}
 		cparam->will_topic.body =
 		    (char *) copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
 		cparam->will_topic.len = len_of_str;
 		rv                     = len_of_str <= 0 ? 1 : 0;
+
 		if (cparam->will_topic.body == NULL || rv != 0) {
-			rv = PROTOCOL_ERROR;
-			return rv;
+			return PROTOCOL_ERROR;
 		}
 		log_trace("will_topic: %s %d", cparam->will_topic.body, rv);
+		log_trace("pos after will topic body: [%d]", pos);
 		// will msg
-		if (rv == 0) {
-			if (cparam->payload_format_indicator == 0) {
-				cparam->will_msg.body = (char *) copyn_str(
-				    packet, &pos, &len_of_str, max - pos);
-			} else if (rv == 0 &&
-			    cparam->payload_format_indicator == 0x01) {
-				cparam->will_msg.body =
-				    (char *) copyn_utf8_str(
-				        packet, &pos, &len_of_str, max - pos);
-			}
-			cparam->will_msg.len = len_of_str;
-			rv = len_of_str <= 0 ? PAYLOAD_FORMAT_INVALID : 0;
-			log_trace(
-			    "will_msg: %s %d", cparam->will_msg.body, rv);
+		if (rv == 0 && cparam->payload_format_indicator == 0) {
+			cparam->will_msg.body = (char *) copyn_str(
+			    packet, &pos, &len_of_str, max - pos);
+		} else if (rv == 0 &&
+		    cparam->payload_format_indicator == 0x01) {
+			cparam->will_msg.body = (char *) copyn_utf8_str(
+			    packet, &pos, &len_of_str, max - pos);
 		}
+		rv = len_of_str <= 0 ? PAYLOAD_FORMAT_INVALID : 0;
+		if (cparam->will_msg.body == NULL || rv != 0) {
+			return PROTOCOL_ERROR;
+		}
+		cparam->will_msg.len = len_of_str;
+		log_trace("will_msg: %s %d", cparam->will_msg.body, rv);
+		log_trace("pos after will msg: [%d]", pos);
 	}
 
 	// username
@@ -714,6 +717,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		}
 		log_trace(
 		    "username: %s %d", cparam->username.body, len_of_str);
+		log_trace("pos after username: [%d]", pos);
 	}
 	// password
 	if (rv == 0 && (cparam->con_flag & 0x40) > 0) {
@@ -726,10 +730,12 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 			return rv;
 		}
 		log_trace(
-		    "password: %s %d", cparam->password.body, len_of_str);
+		    "password: %s [%d]", cparam->password.body, len_of_str);
+		log_trace("pos after password: [%d]", pos);
 	}
+	log_trace("pos: [%d] len: [%d]", pos, len);
 	if (len + len_of_var + 1 != pos) {
-		log_error("in connect handler");
+		log_error("inconnect handler");
 		rv = PROTOCOL_ERROR;
 	}
 	return rv;
