@@ -138,7 +138,7 @@ struct nni_pipe {
 	void    *conn_param;
 	bool     cache;
 	uint16_t packet_id;
-	nni_list subinfol;    // additional info for sub
+	nni_list *subinfol;    // additional info for sub
 	void    *nano_qos_db; // qos msgs, 'sqlite' or 'nni_id_hash_map'
 };
 

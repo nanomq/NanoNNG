@@ -890,7 +890,7 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	bool      is_sqlite = p->conf->sqlite.enable;
 	int       qlen = 0, topic_len = 0;
 	subinfo * tinfo = NULL, *info = NULL;
-	nni_list *subinfol = &p->npipe->subinfol;
+	nni_list *subinfol = p->npipe->subinfol;
 	char *    topic    = nni_msg_get_pub_topic(msg, &topic_len);
 
 	txaio = p->txaio;
@@ -1167,7 +1167,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	subinfo *info, *tinfo;
 	tinfo = nni_aio_get_prov_data(txaio);
 	nni_aio_set_prov_data(txaio, NULL);
-	NNI_LIST_FOREACH (&p->npipe->subinfol, info) {
+	NNI_LIST_FOREACH (p->npipe->subinfol, info) {
 		if (tinfo != NULL && info != tinfo ) {
 			continue;
 		}

@@ -458,7 +458,7 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 		plength       = property_len + prop_bytes;
 	}
 
-	NNI_LIST_FOREACH (&p->npipe->subinfol, info) {
+	NNI_LIST_FOREACH (p->npipe->subinfol, info) {
 		if (tinfo != NULL && info != tinfo ) {
 			continue;
 		}
@@ -659,7 +659,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	// nni_aio_set_prov_data(txaio, NULL);
 	nni_msg_alloc(&smsg, 0);
 
-	NNI_LIST_FOREACH (&p->npipe->subinfol, info) {
+	NNI_LIST_FOREACH (p->npipe->subinfol, info) {
 		len_offset=0;
 		char *sub_topic = info->topic;
 		if (sub_topic[0] == '$') {
