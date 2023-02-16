@@ -629,8 +629,9 @@ nano_pipe_start(void *arg)
 
 	clientid = (char *) conn_param_get_clientid(p->conn_param);
 	if (!clientid) {
+		nni_mtx_unlock(&s->lk);
 		log_error("No client id be found when try to restore session.");
-		return 0;
+		return UNSPECIFIED_ERROR;
 	}
 
 	clientid_key = DJBHashn(clientid, strlen(clientid));
