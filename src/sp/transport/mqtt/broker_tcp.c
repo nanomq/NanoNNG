@@ -148,7 +148,6 @@ tcptran_pipe_stop(void *arg)
 {
 	tcptran_pipe *p = arg;
 
-	p->tcp_cparam = NULL;
 	nni_aio_stop(p->qsaio);
 	nni_aio_stop(p->rpaio);
 	nni_aio_stop(p->rxaio);
@@ -191,6 +190,11 @@ tcptran_pipe_fini(void *arg)
 			nni_reap(&tcptran_ep_reap_list, ep);
 		}
 		nni_mtx_unlock(&ep->mtx);
+	}
+
+	if (p->tcp_cparam) {
+		conn_param_free(p->tcp_cparam);
+		p->tcp_cparam = NULL;
 	}
 
 	nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
@@ -286,8 +290,8 @@ tcptran_pipe_nego_cb(void *arg)
 	uint32_t      len;
 	int           rv, len_of_varint = 0;
 
-	log_trace("start tcptran_pipe_nego_cb max len %ld pipe_addr %p\n",
-	    NANO_CONNECT_PACKET_LEN, p);
+	log_trace("start tcptran_pipe_nego_cb max len %ld pipe_addr %p gotrx %d wantrx %d\n",
+	    NANO_CONNECT_PACKET_LEN, p, p->gotrxhead, p->wantrxhead);
 	nni_mtx_lock(&ep->mtx);
 
 	if ((rv = nni_aio_result(aio)) != 0) {
@@ -349,13 +353,17 @@ tcptran_pipe_nego_cb(void *arg)
 	// CONNECT packet serialization
 
 	if (p->gotrxhead >= p->wantrxhead) {
-		if (p->tcp_cparam == NULL) {
-			conn_param_alloc(&p->tcp_cparam);
+		if (0 != conn_param_alloc(&p->tcp_cparam)) {
+			goto error;
 		}
 		if ((rv = conn_handler(
 		         p->conn_buf, p->tcp_cparam, p->wantrxhead)) == 0) {
 			nng_free(p->conn_buf, p->wantrxhead);
 			p->conn_buf = NULL;
+
+			// connection packet handled successfully. clone it for protocol or app layer
+			conn_param_clone(p->tcp_cparam);
+
 			// Connection is accepted.
 			if (p->tcp_cparam->pro_ver == 5) {
 				p->qsend_quota = p->tcp_cparam->rx_max;
@@ -405,7 +413,10 @@ error:
 	// error code.  This is necessary to avoid a problem where the
 	// closed status is confused with the accept file descriptor
 	// being closed.
-	conn_param_free(p->tcp_cparam);
+	if (p->tcp_cparam) {
+		conn_param_free(p->tcp_cparam);
+		p->tcp_cparam = NULL;
+	}
 	if (rv == NNG_ECLOSED) {
 		rv = NNG_ECONNSHUT;
 	}
@@ -876,9 +887,9 @@ tcptran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 
 /**
  * @brief send msg to V4 client
- * 
- * @param p 
- * @param msg 
+ *
+ * @param p
+ * @param msg
  */
 static inline void
 nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
@@ -1099,10 +1110,10 @@ send:
 /**
  * @brief we consider memory saving is prior to performance due
  * 	  to the requirement of our boss. so we use fragmented iov.
- * 
- * @param p 
- * @param msg 
- * @param aio 
+ *
+ * @param p
+ * @param msg
+ * @param aio
  */
 static inline void
 nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)

@@ -367,7 +367,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		return;
 	}
 
-	log_trace("#### nano_ctx_send with ctx %p msg type %x ####", ctx,
+	log_trace(" #### nano_ctx_send with ctx %p msg type %x #### ", ctx,
 	    nni_msg_get_type(msg));
 
 	if ((pipe = nni_msg_get_pipe(msg)) != 0) {
@@ -383,7 +383,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	}
 
 	nni_mtx_lock(&s->lk);
-	log_trace("******** working with pipe id : %d ctx ********", pipe);
+	log_trace(" ******** working with pipe id : %d ctx ******** ", pipe);
 	if ((p = nni_id_get(&s->pipes, pipe)) == NULL) {
 		// Pipe is gone.  Make this look like a good send to avoid
 		// disrupting the state machine.  We don't care if the peer
@@ -548,6 +548,10 @@ nano_pipe_fini(void *arg)
 	}
 	if ((msg = nni_aio_get_msg(&p->aio_recv)) != NULL) {
 		nni_aio_set_msg(&p->aio_recv, NULL);
+	}
+	if ((msg = nni_aio_get_msg(&p->aio_send)) != NULL) {
+		nni_aio_set_msg(&p->aio_send, NULL);
+		nni_msg_free(msg);
 	}
 
 	void *nano_qos_db = p->pipe->nano_qos_db;
@@ -948,17 +952,18 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 static void
 nano_pipe_recv_cb(void *arg)
 {
-	nano_pipe       *p      = arg;
-	nano_sock       *s      = p->broker;
-	conn_param 	*cparam = NULL;
-	uint32_t         len, len_of_varint = 0;
-	nano_ctx        *ctx;
-	nni_msg         *msg, *qos_msg = NULL;
-	nni_aio         *aio;
-	nni_pipe        *npipe = p->pipe;
-	uint8_t         *ptr;
-	int              rv;
-	uint16_t         ackid;
+	uint32_t    len, len_of_varint = 0;
+	uint16_t    ackid;
+	uint8_t     type;
+	uint8_t    *ptr;
+	nano_pipe  *p      = arg;
+	nano_sock  *s      = p->broker;
+	conn_param *cparam = NULL;
+	nano_ctx   *ctx;
+	nni_msg    *msg, *qos_msg = NULL;
+	nni_aio    *aio;
+	nni_pipe   *npipe = p->pipe;
+	int         rv;
 
 	bool is_sqlite = s->conf->sqlite.enable;
 
@@ -979,7 +984,8 @@ nano_pipe_recv_cb(void *arg)
 	nni_msg_set_pipe(msg, p->id);
 	ptr    = nni_msg_body(msg);
 	cparam = p->conn_param;
-	switch (nng_msg_cmd_type(msg)) {
+	type = nng_msg_cmd_type(msg);
+	switch (type) {
 	case CMD_SUBSCRIBE:
 		// 1. Clone for App layer 2. Clone should be called before being used
 		conn_param_clone(cparam);
@@ -990,6 +996,7 @@ nano_pipe_recv_cb(void *arg)
 		if (rv < 0) {
 			log_error("Invalid subscribe packet!");
 			nni_msg_free(msg);
+			conn_param_free(cparam);
 			p->reason_code = PROTOCOL_ERROR;
 			nni_mtx_unlock(&p->lk);
 			nni_pipe_close(p->pipe);
@@ -1015,6 +1022,7 @@ nano_pipe_recv_cb(void *arg)
 		if (rv < 0) {
 			log_error("Invalid unsubscribe packet!");
 			nni_msg_free(msg);
+			conn_param_free(cparam);
 			p->reason_code = PROTOCOL_ERROR;
 			nni_mtx_unlock(&p->lk);
 			nni_pipe_close(p->pipe);
@@ -1071,6 +1079,9 @@ nano_pipe_recv_cb(void *arg)
 		// This drops DISCONNECT packet.
 		nni_aio_set_msg(&p->aio_recv, NULL);
 		nni_msg_free(msg);
+		if (type == CMD_SUBSCRIBE || type == CMD_UNSUBSCRIBE ||
+		    type == CMD_CONNACK || type == CMD_PUBLISH)
+			conn_param_free(cparam);
 		log_trace("pipe is closed abruptly!");
 		return;
 	}
