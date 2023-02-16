@@ -907,6 +907,7 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 
 	// Recomposing for each msg
 	// never modify the original msg
+	// TODO Error when topic match missing in subinfol
 	NNI_LIST_FOREACH(subinfol, info) {
 		if (tinfo != NULL && info != tinfo)
 			continue;
