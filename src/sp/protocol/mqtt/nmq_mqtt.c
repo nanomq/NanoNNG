@@ -626,16 +626,15 @@ nano_pipe_start(void *arg)
 		p->nano_qos_db     = s->sqlite_db;
 	}
 #endif
-
+	// Clientid should not be NULL since broker will assign one
 	clientid = (char *) conn_param_get_clientid(p->conn_param);
 	if (!clientid) {
+		log_error("NULL clientid found when try to restore session.");
 		nni_mtx_unlock(&s->lk);
-		log_error("No client id be found when try to restore session.");
-		return UNSPECIFIED_ERROR;
+		return NNG_ECONNSHUT;
 	}
 
 	clientid_key = DJBHashn(clientid, strlen(clientid));
-
 	// restore session according to clientid
 	if (p->conn_param->clean_start == 0) {
 		old = nni_id_get(&s->cached_sessions, clientid_key);
