@@ -60,12 +60,13 @@ pipe_destroy(void *arg)
 
 	// Freed here
 	struct subinfo * s = NULL;
-	while (!nni_list_empty(&p->subinfol)) {
-		s = nni_list_last(&p->subinfol);
-		nni_list_remove(&p->subinfol, s);
+	while (!nni_list_empty(p->subinfol)) {
+		s = nni_list_last(p->subinfol);
+		nni_list_remove(p->subinfol, s);
 		nng_free(s->topic, strlen(s->topic));
 		nng_free(s, sizeof(*s));
 	}
+	nni_free(p->subinfol, sizeof(nni_list));
 
 #ifdef NNG_ENABLE_STATS
 	nni_stat_unregister(&p->st_root);
@@ -265,7 +266,8 @@ pipe_create(nni_pipe **pp, nni_sock *sock, nni_sp_tran *tran, void *tran_data)
 	// NanoMQ
 	p->packet_id = 0;
 	p->cache     = false;
-	NNI_LIST_INIT(&p->subinfol, struct subinfo, node);
+	p->subinfol = nni_zalloc(sizeof(nni_list));
+	NNI_LIST_INIT(p->subinfol, struct subinfo, node);
 
 	nni_atomic_init_bool(&p->p_closed);
 	nni_atomic_flag_reset(&p->p_stop);
@@ -454,7 +456,7 @@ nni_pipe_inc_packetid(nni_pipe *p)
 }
 
 /**
- * @brief swap pipe_id of 2 pipes
+ * @brief swap pipe_id & subinfol of 2 pipes
  * 
  * @param old_id 
  * @param new_id 
@@ -462,6 +464,7 @@ nni_pipe_inc_packetid(nni_pipe *p)
 void
 nni_pipe_id_swap(uint32_t old_id, uint32_t new_id)
 {
+	// q is the new pipe, p is the old one
 	nni_pipe *p, *q;
 	if ((p = nni_id_get(&pipes, old_id)) != NULL &&
 	    (q = nni_id_get(&pipes, new_id)) != NULL) {
