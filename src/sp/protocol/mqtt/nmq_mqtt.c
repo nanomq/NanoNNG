@@ -620,7 +620,6 @@ nano_pipe_start(void *arg)
 	nni_msg_alloc(&msg, 0);
 	nni_mtx_lock(&s->lk);
 
-	clientid = (char *) conn_param_get_clientid(p->conn_param);
 #ifdef NNG_SUPP_SQLITE
 	if (is_sqlite) {
 		npipe->nano_qos_db = s->sqlite_db;
@@ -628,6 +627,7 @@ nano_pipe_start(void *arg)
 	}
 #endif
 
+	clientid = (char *) conn_param_get_clientid(p->conn_param);
 	if (!clientid) {
 		log_error("No client id be found when try to restore session.");
 		return 0;
@@ -647,7 +647,15 @@ nano_pipe_start(void *arg)
 				nni_qos_db_fini_id_hash(p->pipe->nano_qos_db);
 			}
 
+			/* Move subinfos */
+			while (!nni_list_empty(&old->pipe->subinfol)) {
+				void *si = nni_list_last(&old->pipe->subinfol);
+				nni_list_remove(&old->pipe->subinfol, si);
+				nni_list_append(&p->pipe->subinfol, si);
+			}
+
 			p->pipe->nano_qos_db = old->nano_qos_db;
+
 			nni_pipe_id_swap(npipe->p_id, old->pipe->p_id);
 			p->id = nni_pipe_id(npipe);
 			// set event to false so that no notification will be
