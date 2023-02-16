@@ -623,11 +623,16 @@ nano_pipe_start(void *arg)
 		p->nano_qos_db     = s->sqlite_db;
 	}
 #endif
-	if (clientid)
-		clientid_key = DJBHashn(clientid, strlen(clientid));
+
+	if (!clientid) {
+		log_error("No client id be found when try to restore session.");
+		return 0;
+	}
+
+	clientid_key = DJBHashn(clientid, strlen(clientid));
 
 	// restore session according to clientid
-	if (clientid && (p->conn_param->clean_start == 0)) {
+	if (p->conn_param->clean_start == 0) {
 		old = nni_id_get(&s->cached_sessions, clientid_key);
 		if (old != NULL) {
 			// replace nano_qos_db and pid with old one.
@@ -649,7 +654,7 @@ nano_pipe_start(void *arg)
 			old->pipe->cache = false;
 			nni_id_remove(&s->cached_sessions, clientid_key);
 		}
-	} else if (clientid) {
+	} else {
 		// clean previous session
 		old = nni_id_get(&s->cached_sessions, clientid_key);
 		if (old != NULL) {
