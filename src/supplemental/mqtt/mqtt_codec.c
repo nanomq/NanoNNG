@@ -3739,15 +3739,17 @@ decode_buf_properties(uint8_t *packet, uint32_t packet_len, uint32_t *pos,
 
 	if ((rv = read_variable_int(msg_body + current_pos,
 	         msg_len - current_pos, &prop_len, &bytes)) != 0) {
+		*len = 0;
 		return NULL;
 	}
 	current_pos += bytes;
-	struct pos_buf buf = { .curpos = &msg_body[current_pos],
-		.endpos                = &msg_body[current_pos + prop_len] };
-
 	if (prop_len == 0) {
 		goto out;
 	}
+	struct pos_buf buf = {
+		.curpos = &msg_body[current_pos],
+		.endpos = &msg_body[current_pos + prop_len],
+	};
 
 	uint8_t prop_id = 0;
 	list            = property_alloc();
@@ -3756,7 +3758,10 @@ decode_buf_properties(uint8_t *packet, uint32_t packet_len, uint32_t *pos,
 
 	log_debug("remain len %d prop len %d curpos %p endpos %p", msg_len, prop_len, buf.curpos, buf.endpos);
 	while (buf.curpos < buf.endpos) {
-		read_byte(&buf, &prop_id);
+		if (0 != read_byte(&buf, &prop_id)) {
+			property_free(list);
+			break;
+		}
 		property *         cur_prop = NULL;
 		property_type_enum type     = property_get_value_type(prop_id);
 		cur_prop =
