@@ -407,7 +407,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 			pld_pac = nni_msg_get_pub_topic(msg, &tlen_pac);
 		}
 		subinfo *info = NULL;
-		NNI_LIST_FOREACH(&p->pipe->subinfol, info) {
+		NNI_LIST_FOREACH(p->pipe->subinfol, info) {
 			if (!info)
 				continue;
 			if (topic_filtern(info->topic, pld_pac, tlen_pac)) {
