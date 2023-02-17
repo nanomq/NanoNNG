@@ -784,6 +784,7 @@ tcptran_pipe_recv_cb(void *arg)
 		nni_msg_set_cmd_type(qmsg, ack_cmd);
 		nni_mqtt_msgack_encode(
 		    qmsg, packet_id, reason_code, prop, p->pro_ver);
+		property_free(prop);
 		nni_mqtt_pubres_header_encode(qmsg, ack_cmd);
 		// if (prop != NULL) {
 		// nni_msg_proto_set_property(qmsg, prop);
@@ -831,6 +832,7 @@ tcptran_pipe_recv_cb(void *arg)
 	if (!nni_list_empty(&p->recvq)) {
 		tcptran_pipe_recv_start(p);
 	}
+
 	nni_mtx_unlock(&p->mtx);
 
 	nni_aio_set_msg(aio, msg);
