@@ -4136,7 +4136,7 @@ nni_mqtt_pubres_header_encode(nng_msg *msg, uint8_t cmd)
  * @param msg
  * @param packet_id
  * @param reason_code
- * @param prop
+ * @param prop copy content from prop
  * @param proto_ver
  * @return int
  */
