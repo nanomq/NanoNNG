@@ -16,7 +16,7 @@
 #include "supplemental/mqtt/mqtt_msg.h"
 
 /* Copy from tls.c */
-/* START */
+/* START
 #include "mbedtls/version.h" // Must be first in order to pick up version
 #include "mbedtls/error.h"
 // mbedTLS renamed this header for 2.4.0.
@@ -26,12 +26,10 @@
 #include "mbedtls/net.h"
 #endif
 #include "mbedtls/ssl.h"
-/* END */
+END */
 
-/*
 #include "openssl/pem.h"
 #include "openssl/x509.h"
-*/
 
 #include <assert.h>
 #include <errno.h>
@@ -136,6 +134,7 @@ static void    quic_strm_fini(quic_strm_t *qstrm);
 
 static QUIC_STATUS verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain);
 
+/*
 // taken from
 // https://github.com/Mbed-TLS/mbedtls/blob/development/programs/x509/cert_app.c
 static int
@@ -157,10 +156,12 @@ my_verify(void *data, mbedtls_x509_crt *crt, int depth, uint32_t *flags)
 
 	return (0);
 }
+*/
 
 static QUIC_STATUS
 verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain)
 {
+/*
 	int rv;
 	uint32_t flags = 0;
 
@@ -192,34 +193,32 @@ verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain)
 		log_warn("Error: 0x%04x; flag: %u\n", rv, flags);
 
 	return QUIC_STATUS_SUCCESS;
-/*
+*/
+
 	// @TODO peer_certificate_received
 	// Only with QUIC_CREDENTIAL_FLAG_INDICATE_CERTIFICATE_RECEIVED
 	// set
-	assert(QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED ==
-	    Event->Type);
-	// Validate against CA certificates using OpenSSL API:s
-	X509 *cert =
-	    (X509 *) Event->PEER_CERTIFICATE_RECEIVED.Certificate;
-	X509_STORE_CTX *x509_ctx =
-	    (X509_STORE_CTX *) Event->PEER_CERTIFICATE_RECEIVED.Chain;
-	STACK_OF(X509) *untrusted =
-	    X509_STORE_CTX_get0_untrusted(x509_ctx);
+	// assert(QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED == Event->Type);
 
-	if (cert == NULL)
+	// Validate against CA certificates using OpenSSL API:s
+	X509 *crt = (X509 *) cert;
+	X509_STORE_CTX *x509_ctx = (X509_STORE_CTX *) chain;
+	STACK_OF(X509) *untrusted = X509_STORE_CTX_get0_untrusted(x509_ctx);
+
+	if (crt == NULL)
 		return QUIC_STATUS_BAD_CERTIFICATE;
 
 	X509_STORE_CTX *ctx = X509_STORE_CTX_new();
-	// X509_STORE_CTX_init(ctx, c_ctx->trusted, cert, untrusted);
-	X509_STORE_CTX_init(ctx, NULL, cert, untrusted);
-	int res = X509_verify_cert(ctx);
+	// X509_STORE_CTX_init(ctx, c_ctx->trusted, crt, untrusted);
+	X509_STORE_CTX_init(ctx, NULL, crt, untrusted);
+	int res = X509_verify_crt(ctx);
 	X509_STORE_CTX_free(ctx);
 
 	if (res <= 0)
 		return QUIC_STATUS_BAD_CERTIFICATE;
 	else
 		return QUIC_STATUS_SUCCESS;
-*/
+
 	/* @TODO validate SNI */
 }
 
