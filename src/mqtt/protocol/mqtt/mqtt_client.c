@@ -1024,7 +1024,7 @@ mqtt_ctx_recv(void *arg, nni_aio *aio)
 		return;
 	}
 
-	// no open pipe or msg wating
+	// no open pipe or msg waiting
 wait:
 	if (ctx->raio != NULL) {
 		nni_mtx_unlock(&s->mtx);
