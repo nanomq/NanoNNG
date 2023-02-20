@@ -211,7 +211,7 @@ verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain)
 	X509_STORE_CTX *ctx = X509_STORE_CTX_new();
 	// X509_STORE_CTX_init(ctx, c_ctx->trusted, crt, untrusted);
 	X509_STORE_CTX_init(ctx, NULL, crt, untrusted);
-	int res = X509_verify_crt(ctx);
+	int res = X509_verify_cert(ctx);
 	X509_STORE_CTX_free(ctx);
 
 	if (res <= 0)
