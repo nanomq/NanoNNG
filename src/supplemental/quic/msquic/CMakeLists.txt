@@ -37,6 +37,13 @@ if(NNG_QUIC_LIB STREQUAL "msquic")
         ${MSQUIC_LIBRARIES})
     mark_as_advanced(QUIC_LIBRARIES)
 
+  find_package(OpenSSL REQUIRED)
+  if(OPENSSL_FOUND)
+      include_directories(${OPENSSL_INCLUDE_DIRS})
+      message(STATUS "OpenSSL Found!")
+  endif()
+  nng_link_libraries(OpenSSL::SSL OpenSSL::Crypto)
+
     if(NNG_PROTO_MQTT_BROKER)
         message(" ** Build msquic with nanonng ** ")
     else()
