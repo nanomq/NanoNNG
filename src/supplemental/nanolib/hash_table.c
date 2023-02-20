@@ -398,13 +398,15 @@ dbhash_copy_topic_queue(uint32_t id)
 	if (k != kh_end(ph)) {
 		struct topic_queue *tq = kh_val(ph, k);
 		while (tq) {
-			ret->next = tq->next;
-			ret->qos = tq->qos;
-			ret->topic = nng_strdup(tq->topic);
-			ret = ret->next;
+			topic_queue *tmp;
+			tmp = ret;
+			tmp->qos = tq->qos;
+			tmp->topic = nng_strdup(tq->topic);
+			ret = ret->next; //???
 			tq = tq->next;
 			if (tq) {
 				ret = NNI_ALLOC_STRUCT(ret);
+				tmp->next = ret;
 			}
 		}
 	}
