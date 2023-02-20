@@ -23,6 +23,7 @@ nng_sources(
   parser.c
   hocon.c
   log.c
+  utils.c
   )
 
 
