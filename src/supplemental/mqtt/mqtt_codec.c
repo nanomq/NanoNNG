@@ -4078,14 +4078,17 @@ nni_mqtt_pubres_decode(nng_msg *msg, uint16_t *packet_id, uint8_t *reason_code,
 	struct pos_buf buf = { .curpos = &body[0], .endpos = &body[length] };
 
 	if ((rv = read_uint16(&buf, packet_id)) != MQTT_SUCCESS) {
+		*prop = NULL;
 		return rv;
 	}
 
 	if (length == 2 || proto_ver != MQTT_PROTOCOL_VERSION_v5) {
+		*prop = NULL;
 		return MQTT_SUCCESS;
 	}
 
 	if ((rv = read_byte(&buf, reason_code)) != MQTT_SUCCESS) {
+		*prop = NULL;
 		return rv;
 	}
 
@@ -4100,6 +4103,7 @@ nni_mqtt_pubres_decode(nng_msg *msg, uint16_t *packet_id, uint8_t *reason_code,
 	*prop = decode_properties(msg, &pos, &prop_len, false);
 	if (check_properties(*prop) != SUCCESS) {
 		property_free(*prop);
+		*prop = NULL;
 		return PROTOCOL_ERROR;
 	}
 

@@ -767,6 +767,7 @@ tcptran_pipe_recv_cb(void *arg)
 		}
 		// MQTT V5 flow control
 		if (p->pro_ver == 5) {
+			log_debug("free property & reduce send quota");
 			property_free(prop);
 			p->qsend_quota++;
 		}
