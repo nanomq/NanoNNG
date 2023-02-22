@@ -220,6 +220,11 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 	default:
 		return NNG_EPROTO;
 	}
+	if (ptype == NNG_MQTT_SUBSCRIBE || ptype == NNG_MQTT_UNSUBSCRIBE) {
+		nni_mqtt_msg_encode(msg);
+		quic_aio_send(p->qstream, aio);
+		return -1;
+	}
 	if (qos > 0 && ptype == NNG_MQTT_PUBLISH) {
 		nni_mqtt_msg_encode(msg);
 		uint32_t topic_len;
@@ -231,7 +236,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		    qos, topic_len, topic, nni_clock());
 		quic_aio_send(p->qstream, aio);
 		return -1;
-	        }
+	}
 	if (!p->busy) {
 		nni_mqtt_msg_encode(msg);
 		nni_aio_set_msg(&p->send_aio, msg);
