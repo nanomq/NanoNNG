@@ -11,6 +11,8 @@ if (NNG_ENABLE_QUIC)
     # We assume msquic for now.
     set(NNG_QUIC_LIB msquic CACHE STRING "QUIC lib to use.")
     add_subdirectory(msquic)
+    add_dependencies(nng msquic)
+
 
     nng_sources(quic_api.c)
     nng_sources(quic_api.h)
@@ -27,24 +29,27 @@ if (NNG_ENABLE_QUIC)
         nng_link_libraries(ws2_32)
     endif()
 
-	find_library(OPENSSLQUIC_LIBRARIES
-	   NAMES openssl ssl libssl libopenssl
-	   HINTS "${CMAKE_SOURCE_DIR}/build/_deps/opensslquic-build/openssl"
-	   PATHS "${CMAKE_SOURCE_DIR}/build/_deps/opensslquic-build/openssl"
-	   PATH_SUFFIXES lib)
+	# find_library(OPENSSLQUIC_LIBRARIES
+	#    NAMES openssl ssl libssl libopenssl
+	#    HINTS "${CMAKE_SOURCE_DIR}/build/_deps/opensslquic-build/openssl"
+	#    PATHS "${CMAKE_SOURCE_DIR}/build/_deps/opensslquic-build/openssl"
+	#    PATH_SUFFIXES lib)
 
 
-	if(OPENSSLQUIC_LIBRARIES_NOTFOUND)
-		message("!!!!!!!!!!!!!!!!!!!! No openssl for MsQuic be found")
-	else()
+	# if(OPENSSLQUIC_LIBRARIES_NOTFOUND)
+	# 	message("!!!!!!!!!!!!!!!!!!!! No openssl for MsQuic be found")
+	# else()
 		nng_include_directories(${CMAKE_SOURCE_DIR}/build/_deps/opensslquic-build/openssl/include)
 		set(SSLQUIC_LIBRARIES ${OPENSSLQUIC_LIBRARIES})
 		mark_as_advanced(SSLQUIC_LIBRARIES)
-		nng_link_libraries(${SSLQUIC_LIBRARIES})
-		message(${CMAKE_SOURCE_DIR})
-		message(${SSLQUIC_LIBRARIES})
-		message("---------------------------------")
-	endif()
+		nng_link_libraries("${CMAKE_SOURCE_DIR}/build/_deps/opensslquic-build/openssl/lib/libssl.a")
+		nng_link_libraries("${CMAKE_SOURCE_DIR}/build/_deps/opensslquic-build/openssl/lib/libcrypto.a")
+
+		# nng_link_libraries(${SSLQUIC_LIBRARIES})
+		# message(${CMAKE_SOURCE_DIR})
+		# message(${SSLQUIC_LIBRARIES})
+		# message("---------------------------------")
+	# endif()
 
 	#if(OPENSSL_DIR)
 	#include_directories(${OPENSSL_DIR}/include)
