@@ -194,6 +194,29 @@ verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain)
 
 	return QUIC_STATUS_SUCCESS;
 */
+	// local ca
+	X509_LOOKUP *lookup = NULL;
+	X509_STORE *trusted = NULL;
+	trusted = X509_STORE_new();
+	if (trusted == NULL) {
+		return QUIC_STATUS_ABORTED;
+	}
+	lookup = X509_STORE_add_lookup(trusted, X509_LOOKUP_file());
+	if (lookup == NULL) {
+		X509_STORE_free(trusted);
+		trusted = NULL;
+		return QUIC_STATUS_ABORTED;
+	}
+
+	// if (!X509_LOOKUP_load_file(lookup, cacertfile, X509_FILETYPE_PEM)) {
+	if (!X509_LOOKUP_load_file(lookup, "/Users/wangha/Documents/Git/nanomq/etc/certs/client-cert.pem", X509_FILETYPE_PEM)) {
+		log_warn("No load cacertfile be found");
+		X509_STORE_free(trusted);
+		trusted = NULL;
+	}
+	if (trusted == NULL) {
+		return QUIC_STATUS_ABORTED;
+	}
 
 	// @TODO peer_certificate_received
 	// Only with QUIC_CREDENTIAL_FLAG_INDICATE_CERTIFICATE_RECEIVED
@@ -210,9 +233,10 @@ verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain)
 
 	X509_STORE_CTX *ctx = X509_STORE_CTX_new();
 	// X509_STORE_CTX_init(ctx, c_ctx->trusted, crt, untrusted);
-	X509_STORE_CTX_init(ctx, NULL, crt, untrusted);
+	X509_STORE_CTX_init(ctx, trusted, crt, untrusted);
 	int res = X509_verify_cert(ctx);
 	X509_STORE_CTX_free(ctx);
+	log_error("rv %d: %s", res, X509_verify_cert_error_string(ctx));
 
 	if (res <= 0)
 		return QUIC_STATUS_BAD_CERTIFICATE;
