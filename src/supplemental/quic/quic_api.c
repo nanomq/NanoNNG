@@ -69,6 +69,8 @@ struct quic_sock_s {
 	uint8_t  rticket[4096];
 	uint16_t rticket_sz;
 	nng_url *url_s;
+
+	char    *cacert;
 };
 
 typedef struct quic_strm_s quic_strm_t;
@@ -132,7 +134,7 @@ static void    quic_sock_fini(quic_sock_t *qsock);
 static void    quic_strm_init(quic_strm_t *qstrm, quic_sock_t *qsock);
 static void    quic_strm_fini(quic_strm_t *qstrm);
 
-static QUIC_STATUS verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain);
+static QUIC_STATUS verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *cacert);
 
 /*
 // taken from
@@ -159,41 +161,8 @@ my_verify(void *data, mbedtls_x509_crt *crt, int depth, uint32_t *flags)
 */
 
 static QUIC_STATUS
-verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain)
+verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *cacert)
 {
-/*
-	int rv;
-	uint32_t flags = 0;
-
-	// cert and chain are as quic_buffer when QUIC_CREDENTIAL_FLAG_USE_PORTABLE_CERTIFICATES is set
-	// refer. https://github.com/microsoft/msquic/blob/main/docs/api/QUIC_CONNECTION_EVENT.md#quic_connection_event_peer_certificate_received
-	QUIC_BUFFER *ce = (QUIC_BUFFER *)cert;
-	QUIC_BUFFER *ch = (QUIC_BUFFER *)chain;
-
-	mbedtls_x509_crt crt;
-	mbedtls_x509_crt chn;
-	mbedtls_x509_crt_init(&crt);
-	mbedtls_x509_crt_init(&chn);
-
-	log_info("chain %p %d cert %p %d\n", ch->Buffer, ch->Length, ce->Buffer, ce->Length);
-	mbedtls_x509_crt_parse_der(&crt, ce->Buffer, ce->Length);
-	mbedtls_x509_crt_parse(&chn, ch->Buffer, ch->Length);
-
-	rv = mbedtls_x509_crt_verify(&chn, &crt, NULL, NULL, &flags, my_verify, NULL);
-
-	if (rv != 0) {
-		char vrfy_buf[512];
-		log_warn(" failed\n");
-		mbedtls_x509_crt_verify_info(vrfy_buf, sizeof(vrfy_buf), "  ! ", flags);
-		log_warn("%s\n", vrfy_buf);
-	} else {
-		log_warn(" Verify OK\n");
-	}
-	if (rv != 0)
-		log_warn("Error: 0x%04x; flag: %u\n", rv, flags);
-
-	return QUIC_STATUS_SUCCESS;
-*/
 	// local ca
 	X509_LOOKUP *lookup = NULL;
 	X509_STORE *trusted = NULL;
@@ -209,7 +178,7 @@ verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain)
 	}
 
 	// if (!X509_LOOKUP_load_file(lookup, cacertfile, X509_FILETYPE_PEM)) {
-	if (!X509_LOOKUP_load_file(lookup, "/Users/wangha/Documents/Git/nanomq/etc/certs/cacert.pem", X509_FILETYPE_PEM)) {
+	if (!X509_LOOKUP_load_file(lookup, cacert, X509_FILETYPE_PEM)) {
 		log_warn("No load cacertfile be found");
 		X509_STORE_free(trusted);
 		trusted = NULL;
@@ -244,6 +213,41 @@ verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain)
 		return QUIC_STATUS_SUCCESS;
 
 	/* @TODO validate SNI */
+
+/*
+	int rv;
+	uint32_t flags = 0;
+
+	// cert and chain are as quic_buffer when QUIC_CREDENTIAL_FLAG_USE_PORTABLE_CERTIFICATES is set
+	// refer. https://github.com/microsoft/msquic/blob/main/docs/api/QUIC_CONNECTION_EVENT.md#quic_connection_event_peer_certificate_received
+	QUIC_BUFFER *ce = (QUIC_BUFFER *)cert;
+	QUIC_BUFFER *ch = (QUIC_BUFFER *)chain;
+
+	mbedtls_x509_crt crt;
+	mbedtls_x509_crt chn;
+	mbedtls_x509_crt_init(&crt);
+	mbedtls_x509_crt_init(&chn);
+
+	log_info("chain %p %d cert %p %d\n", ch->Buffer, ch->Length, ce->Buffer, ce->Length);
+	mbedtls_x509_crt_parse_der(&crt, ce->Buffer, ce->Length);
+	mbedtls_x509_crt_parse(&chn, ch->Buffer, ch->Length);
+
+	rv = mbedtls_x509_crt_verify(&chn, &crt, NULL, NULL, &flags, my_verify, NULL);
+
+	if (rv != 0) {
+		char vrfy_buf[512];
+		log_warn(" failed\n");
+		mbedtls_x509_crt_verify_info(vrfy_buf, sizeof(vrfy_buf), "  ! ", flags);
+		log_warn("%s\n", vrfy_buf);
+	} else {
+		log_warn(" Verify OK\n");
+	}
+	if (rv != 0)
+		log_warn("Error: 0x%04x; flag: %u\n", rv, flags);
+
+	return QUIC_STATUS_SUCCESS;
+*/
+
 }
 
 // Helper function to load a client configuration.
@@ -306,22 +310,14 @@ there:
 	// CredConfig.Flags = QUIC_CREDENTIAL_FLAG_CLIENT | QUIC_CREDENTIAL_FLAG_USE_PORTABLE_CERTIFICATES;
 	CredConfig.Flags = QUIC_CREDENTIAL_FLAG_CLIENT;
 
-	if (/* TODO */ 1) {
-		// TODO options from config
-		char *cert_path = "/Users/wangha/Documents/Git/nanomq/etc/"
-		                  "certs/client-cert.pem";
-		char *key_path  = "/Users/wangha/Documents/Git/nanomq/etc/"
-		                  "certs/client-key.pem";
-		char *password  = "12345678";
+	if (node->tls.enable) {
+		char *cert_path = node->tls.certfile;
+		char *key_path  = node->tls.keyfile;
+		char *password  = node->tls.key_password;
 
 		if (password) {
 			QUIC_CERTIFICATE_FILE_PROTECTED *CertFile =
 			    (QUIC_CERTIFICATE_FILE_PROTECTED *) malloc(sizeof(QUIC_CERTIFICATE_FILE_PROTECTED));
-				/*
-			        CXPLAT_ALLOC_NONPAGED(
-			            sizeof(QUIC_CERTIFICATE_FILE_PROTECTED),
-			            QUICER_CERTIFICATE_FILE);
-						*/
 			CertFile->CertificateFile           = cert_path;
 			CertFile->PrivateKeyFile            = key_path;
 			CertFile->PrivateKeyPassword        = password;
@@ -331,11 +327,6 @@ there:
 		} else {
 			QUIC_CERTIFICATE_FILE *CertFile =
 			    (QUIC_CERTIFICATE_FILE_PROTECTED *) malloc(sizeof(QUIC_CERTIFICATE_FILE_PROTECTED));
-			/*
-			    (QUIC_CERTIFICATE_FILE *) CXPLAT_ALLOC_NONPAGED(
-			        sizeof(QUIC_CERTIFICATE_FILE),
-			        QUICER_CERTIFICATE_FILE);
-					*/
 			CertFile->CertificateFile  = cert_path;
 			CertFile->PrivateKeyFile   = key_path;
 			CredConfig.CertificateFile = CertFile;
@@ -343,8 +334,8 @@ there:
 			    QUIC_CREDENTIAL_TYPE_CERTIFICATE_FILE;
 		}
 
-		// TODO options from config
-		BOOLEAN verify = TRUE;
+		BOOLEAN verify = (node->tls.verify_peer == true ? 1 : 0);
+		// TODO options from config ?????
 		BOOLEAN has_ca_cert = TRUE;
 		if (!verify) {
 			CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION;
@@ -394,6 +385,8 @@ quic_sock_init(quic_sock_t *qsock)
 
 	qsock->url_s = NULL;
 	qsock->rticket_sz = 0;
+
+	qsock->cacert = NULL;
 }
 
 static void
@@ -727,7 +720,7 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		// TODO Using openssl/mbedtls APIs to verify
 		if (QUIC_FAILED(rv = verify_peer_cert_tls(
 				Event->PEER_CERTIFICATE_RECEIVED.Certificate,
-				Event->PEER_CERTIFICATE_RECEIVED.Chain))) {
+				Event->PEER_CERTIFICATE_RECEIVED.Chain, qsock->cacert))) {
 			log_error("BAD CERT");
 			return rv;
 		}
@@ -791,6 +784,9 @@ quic_connect_ipv4(const char *url, nni_sock *sock, uint32_t *index)
 	}
 	// never free the sock in bridging mode
 	quic_sock_init(qsock);
+	// CACert
+	if (bridge_node && bridge_node->tls.enable)
+		qsock->cacert = bridge_node->tls.cafile;
 
 	// Allocate a new connection object.
 	if (QUIC_FAILED(rv = MsQuic->ConnectionOpen(registration,
