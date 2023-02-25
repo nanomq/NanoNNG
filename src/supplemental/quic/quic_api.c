@@ -279,7 +279,8 @@ there:
 	memset(&CredConfig, 0, sizeof(CredConfig));
 	// Unsecure by default
 	CredConfig.Type  = QUIC_CREDENTIAL_TYPE_NONE;
-	CredConfig.Flags = QUIC_CREDENTIAL_FLAG_CLIENT | QUIC_CREDENTIAL_FLAG_USE_PORTABLE_CERTIFICATES;
+	// CredConfig.Flags = QUIC_CREDENTIAL_FLAG_CLIENT | QUIC_CREDENTIAL_FLAG_USE_PORTABLE_CERTIFICATES;
+	CredConfig.Flags = QUIC_CREDENTIAL_FLAG_CLIENT;
 
 	if (/* TODO */ 1) {
 		// TODO options from config
