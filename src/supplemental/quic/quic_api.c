@@ -209,7 +209,7 @@ verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain)
 	}
 
 	// if (!X509_LOOKUP_load_file(lookup, cacertfile, X509_FILETYPE_PEM)) {
-	if (!X509_LOOKUP_load_file(lookup, "/Users/wangha/Documents/Git/nanomq/etc/certs/client-cert.pem", X509_FILETYPE_PEM)) {
+	if (!X509_LOOKUP_load_file(lookup, "/Users/wangha/Documents/Git/nanomq/etc/certs/cacert.pem", X509_FILETYPE_PEM)) {
 		log_warn("No load cacertfile be found");
 		X509_STORE_free(trusted);
 		trusted = NULL;
@@ -236,11 +236,11 @@ verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain)
 	X509_STORE_CTX_init(ctx, trusted, crt, untrusted);
 	int res = X509_verify_cert(ctx);
 	X509_STORE_CTX_free(ctx);
-	log_error("rv %d: %s", res, X509_verify_cert_error_string(ctx));
 
-	if (res <= 0)
+	if (res <= 0) {
+		log_error("rv %d: %s", res, X509_verify_cert_error_string(ctx));
 		return QUIC_STATUS_BAD_CERTIFICATE;
-	else
+	} else
 		return QUIC_STATUS_SUCCESS;
 
 	/* @TODO validate SNI */
