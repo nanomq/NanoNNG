@@ -15,19 +15,6 @@
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 
-/* Copy from tls.c */
-/* START
-#include "mbedtls/version.h" // Must be first in order to pick up version
-#include "mbedtls/error.h"
-// mbedTLS renamed this header for 2.4.0.
-#if MBEDTLS_VERSION_MAJOR > 2 || MBEDTLS_VERSION_MINOR >= 4
-#include "mbedtls/net_sockets.h"
-#else
-#include "mbedtls/net.h"
-#endif
-#include "mbedtls/ssl.h"
-END */
-
 #include "openssl/pem.h"
 #include "openssl/x509.h"
 
@@ -126,39 +113,16 @@ static void    quic_pipe_recv_cb(void *arg);
 static void    quic_pipe_send_start(quic_strm_t *qstrm);
 static void    quic_pipe_recv_start(void *arg);
 
-static int     quic_sock_reconnect(quic_sock_t *qsock);
-static void    quic_sock_close_cb(void *arg);
-static void    quic_sock_init(quic_sock_t *qsock);
-static void    quic_sock_fini(quic_sock_t *qsock);
+static int  quic_sock_reconnect(quic_sock_t *qsock);
+static void quic_sock_close_cb(void *arg);
+static void quic_sock_init(quic_sock_t *qsock);
+static void quic_sock_fini(quic_sock_t *qsock);
 
-static void    quic_strm_init(quic_strm_t *qstrm, quic_sock_t *qsock);
-static void    quic_strm_fini(quic_strm_t *qstrm);
+static void quic_strm_init(quic_strm_t *qstrm, quic_sock_t *qsock);
+static void quic_strm_fini(quic_strm_t *qstrm);
 
-static QUIC_STATUS verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *cacert);
-
-/*
-// taken from
-// https://github.com/Mbed-TLS/mbedtls/blob/development/programs/x509/cert_app.c
-static int
-my_verify(void *data, mbedtls_x509_crt *crt, int depth, uint32_t *flags)
-{
-	char buf[1024];
-	((void) data);
-
-	log_warn("\nVerify requested for (Depth %d):\n", depth);
-	mbedtls_x509_crt_info(buf, sizeof(buf) - 1, "", crt);
-	log_warn("%s", buf);
-
-	if ((*flags) == 0)
-		log_warn("  This certificate has no flags\n");
-	else {
-		mbedtls_x509_crt_verify_info(buf, sizeof(buf), "  ! ", *flags);
-		log_warn("%s\n", buf);
-	}
-
-	return (0);
-}
-*/
+static QUIC_STATUS verify_peer_cert_tls(
+    QUIC_CERTIFICATE *cert, QUIC_CERTIFICATE *chain, char *cacert);
 
 static QUIC_STATUS
 verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *cacert)
@@ -189,65 +153,29 @@ verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *cace
 
 	// @TODO peer_certificate_received
 	// Only with QUIC_CREDENTIAL_FLAG_INDICATE_CERTIFICATE_RECEIVED
-	// set
 	// assert(QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED == Event->Type);
 
-	// Validate against CA certificates using OpenSSL API:s
+	// Validate against CA certificates using OpenSSL API
 	X509 *crt = (X509 *) cert;
 	X509_STORE_CTX *x509_ctx = (X509_STORE_CTX *) chain;
 	STACK_OF(X509) *untrusted = X509_STORE_CTX_get0_untrusted(x509_ctx);
 
-	if (crt == NULL)
+	if (crt == NULL) {
+		log_error("NULL Cert!");
 		return QUIC_STATUS_BAD_CERTIFICATE;
-
+	}
 	X509_STORE_CTX *ctx = X509_STORE_CTX_new();
-	// X509_STORE_CTX_init(ctx, c_ctx->trusted, crt, untrusted);
 	X509_STORE_CTX_init(ctx, trusted, crt, untrusted);
 	int res = X509_verify_cert(ctx);
 	X509_STORE_CTX_free(ctx);
 
 	if (res <= 0) {
-		log_error("rv %d: %s", res, X509_verify_cert_error_string(ctx));
+		log_error("X509 verify error: %d: %s", res, X509_verify_cert_error_string(ctx));
 		return QUIC_STATUS_BAD_CERTIFICATE;
 	} else
 		return QUIC_STATUS_SUCCESS;
 
 	/* @TODO validate SNI */
-
-/*
-	int rv;
-	uint32_t flags = 0;
-
-	// cert and chain are as quic_buffer when QUIC_CREDENTIAL_FLAG_USE_PORTABLE_CERTIFICATES is set
-	// refer. https://github.com/microsoft/msquic/blob/main/docs/api/QUIC_CONNECTION_EVENT.md#quic_connection_event_peer_certificate_received
-	QUIC_BUFFER *ce = (QUIC_BUFFER *)cert;
-	QUIC_BUFFER *ch = (QUIC_BUFFER *)chain;
-
-	mbedtls_x509_crt crt;
-	mbedtls_x509_crt chn;
-	mbedtls_x509_crt_init(&crt);
-	mbedtls_x509_crt_init(&chn);
-
-	log_info("chain %p %d cert %p %d\n", ch->Buffer, ch->Length, ce->Buffer, ce->Length);
-	mbedtls_x509_crt_parse_der(&crt, ce->Buffer, ce->Length);
-	mbedtls_x509_crt_parse(&chn, ch->Buffer, ch->Length);
-
-	rv = mbedtls_x509_crt_verify(&chn, &crt, NULL, NULL, &flags, my_verify, NULL);
-
-	if (rv != 0) {
-		char vrfy_buf[512];
-		log_warn(" failed\n");
-		mbedtls_x509_crt_verify_info(vrfy_buf, sizeof(vrfy_buf), "  ! ", flags);
-		log_warn("%s\n", vrfy_buf);
-	} else {
-		log_warn(" Verify OK\n");
-	}
-	if (rv != 0)
-		log_warn("Error: 0x%04x; flag: %u\n", rv, flags);
-
-	return QUIC_STATUS_SUCCESS;
-*/
-
 }
 
 // Helper function to load a client configuration.
@@ -334,7 +262,6 @@ there:
 			    QUIC_CREDENTIAL_TYPE_CERTIFICATE_FILE;
 		}
 
-		// TODO options from config ?????
 		BOOLEAN verify = (node->tls.verify_peer == true ? 1 : 0);
 		BOOLEAN has_ca_cert = (node->tls.cafile != NULL ? 1 : 0);
 		if (!verify) {
@@ -587,7 +514,6 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		break;
 	case QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE:
 		log_info("QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE");
-		return QUIC_STATUS_PENDING;
 		break;
 	case QUIC_STREAM_EVENT_PEER_ACCEPTED:
 		log_info("QUIC_STREAM_EVENT_PEER_ACCEPTED");
@@ -718,13 +644,12 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 	case QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED:
 		log_info("QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED");
 
+		// TODO Using mbedtls APIs to verify
 		/*
 		 * TODO
 		 * Does MsQuic ensure the connected event will happen after
 		 * peer_certificate_received event.?
 		 */
-
-		// Using openssl/mbedtls APIs to verify
 		if (QUIC_FAILED(rv = verify_peer_cert_tls(
 				Event->PEER_CERTIFICATE_RECEIVED.Certificate,
 				Event->PEER_CERTIFICATE_RECEIVED.Chain, qsock->cacert))) {
@@ -802,10 +727,10 @@ quic_connect_ipv4(const char *url, nni_sock *sock, uint32_t *index)
 		goto error;
 	}
 
+	// TODO: Windows compatible
 	QUIC_ADDR Address = { 0 };
 	// Address.Ip.sa_family = QUIC_ADDRESS_FAMILY_UNSPEC;
 	Address.Ip.sa_family = QUIC_ADDRESS_FAMILY_INET;
-	// Address.Ipv4 =
 	Address.Ipv4.sin_port = htons(0);
 	// QuicAddrSetFamily(&Address, QUIC_ADDRESS_FAMILY_UNSPEC);
 	// QuicAddrSetPort(&Address, 0);
