@@ -207,7 +207,10 @@ dbhash_get_ptpair_all(void)
 	for (khint_t k = kh_begin(ph); k != kh_end(ph); ++k) {
 		if (!kh_exist(ph, k))
 			continue;
-		topic_queue *    tq = kh_val(ph, k);
+		topic_queue *tq = kh_val(ph, k);
+		if (tq == NULL) {
+			continue;
+		}
 		dbhash_ptpair_t *pt =
 		    dbhash_ptpair_alloc(kh_key(ph, k), tq->topic);
 		cvector_push_back(res, pt);
@@ -215,6 +218,26 @@ dbhash_get_ptpair_all(void)
 
 	nni_rwlock_unlock(&pipe_lock);
 	return res;
+}
+
+uint32_t *
+dbhash_get_ptpair_pid_all(void)
+{
+	nni_rwlock_wrlock(&pipe_lock);
+	size_t size = kh_size(ph);
+
+	uint32_t *pipe_id = NULL;
+	cvector_set_size(pipe_id, size);
+
+	for (khint_t k = kh_begin(ph); k != kh_end(ph); ++k) {
+		if (!kh_exist(ph, k))
+			continue;
+
+		cvector_push_back(pipe_id, kh_key(ph, k));
+	}
+
+	nni_rwlock_unlock(&pipe_lock);
+	return pipe_id;
 }
 
 topic_queue **
@@ -295,16 +318,37 @@ dbhash_insert_topic(uint32_t id, char *val, uint8_t qos)
 	khint_t k = kh_get(pipe_table, ph, id);
 	// Pipe id is find in hash table.
 	if (k != kh_end(ph)) {
-		tq                      = kh_val(ph, k);
-		struct topic_queue *tmp = tq->next;
-		tq->next                = ntq;
-		ntq->next               = tmp;
+		tq = kh_val(ph, k);
+		if (tq == NULL) {
+			kh_val(ph, k) = ntq;
+		} else {
+			struct topic_queue *tmp = tq->next;
+			tq->next                = ntq;
+			ntq->next               = tmp;
+		}
 	} else {
 		// If not find pipe id in this hash table, we add a new one.
 		int     absent;
 		khint_t l = kh_put(pipe_table, ph, id, &absent);
 		if (absent) {
 			kh_val(ph, l) = ntq;
+		}
+	}
+	nni_rwlock_unlock(&pipe_lock);
+}
+
+void
+dbhash_insert_client(uint32_t id)
+{
+	nni_rwlock_wrlock(&pipe_lock);
+	khint_t k = kh_get(pipe_table, ph, id);
+	// Pipe id is find in hash table.
+	if (k == kh_end(ph)) {
+		// If not find pipe id in this hash table, we add a new one.
+		int     absent;
+		khint_t l = kh_put(pipe_table, ph, id, &absent);
+		if (absent) {
+			kh_val(ph, l) = NULL;
 		}
 	}
 	nni_rwlock_unlock(&pipe_lock);

@@ -69,6 +69,8 @@ NNG_DECL void dbhash_destroy_pipe_table(void);
 
 NNG_DECL void dbhash_insert_topic(uint32_t id, char *val, uint8_t qos);
 
+NNG_DECL void dbhash_insert_client(uint32_t id);
+
 NNG_DECL bool dbhash_check_topic(uint32_t id, char *val);
 
 NNG_DECL char *dbhash_get_first_topic(uint32_t id);
@@ -95,6 +97,8 @@ NNG_DECL dbhash_ptpair_t *dbhash_ptpair_alloc(uint32_t p, char *t);
 NNG_DECL void dbhash_ptpair_free(dbhash_ptpair_t *pt);
 
 NNG_DECL dbhash_ptpair_t **dbhash_get_ptpair_all(void);
+
+NNG_DECL uint32_t *dbhash_get_ptpair_pid_all(void);
 
 NNG_DECL size_t dbhash_get_pipe_cnt(void);
 
