@@ -263,10 +263,10 @@ there:
 		}
 
 		BOOLEAN verify = (node->tls.verify_peer == true ? 1 : 0);
-		BOOLEAN has_ca_cert = TRUE;
+		BOOLEAN has_ca_cert = (node->tls.cafile != NULL ? 1 : 0);
 		if (!verify) {
 			CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION;
-		} else if (node->tls.certfile) {
+		} else if (has_ca_cert) {
 			// Do own validation instead against provided ca certs in cacertfile
 			CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_INDICATE_CERTIFICATE_RECEIVED;
 			CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION;
@@ -554,7 +554,7 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 
 		// only create main stream/pipe it there is none.
 		if (qsock->pipe == NULL) {
-			// not first time to establish QUIC pipe
+			// First time to establish QUIC pipe
 			if ((qsock->pipe = nng_alloc(pipe_ops->pipe_size)) == NULL) {
 				log_error("Failed in allocating pipe.");
 				break;
@@ -643,11 +643,17 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		break;
 	case QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED:
 		log_info("QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED");
+
 		// TODO Using mbedtls APIs to verify
+		/*
+		 * TODO
+		 * Does MsQuic ensure the connected event will happen after
+		 * peer_certificate_received event.?
+		 */
 		if (QUIC_FAILED(rv = verify_peer_cert_tls(
 				Event->PEER_CERTIFICATE_RECEIVED.Certificate,
 				Event->PEER_CERTIFICATE_RECEIVED.Chain, qsock->cacert))) {
-			log_error("BAD CERT");
+			log_error("[conn][%p] Invalid certificate file received from the peer");
 			return rv;
 		}
 		break;
