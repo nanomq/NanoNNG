@@ -334,9 +334,9 @@ there:
 			    QUIC_CREDENTIAL_TYPE_CERTIFICATE_FILE;
 		}
 
-		BOOLEAN verify = (node->tls.verify_peer == true ? 1 : 0);
 		// TODO options from config ?????
-		BOOLEAN has_ca_cert = TRUE;
+		BOOLEAN verify = (node->tls.verify_peer == true ? 1 : 0);
+		BOOLEAN has_ca_cert = (node->tls.cafile != NULL ? 1 : 0);
 		if (!verify) {
 			CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION;
 		} else if (has_ca_cert) {
