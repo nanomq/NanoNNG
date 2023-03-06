@@ -2136,6 +2136,56 @@ nng_lmq_empty(nng_lmq *lmq)
 	return nni_lmq_empty(lmq);
 }
 
+void
+nng_id_map_init(
+    nng_id_map *map, uint32_t min_val, uint32_t max_val, bool randomize)
+{
+	nni_id_map_init(map, min_val, max_val, randomize);
+}
+
+void
+nng_id_map_fini(nng_id_map *map)
+{
+	nni_id_map_fini(map);
+}
+
+void *
+nng_id_get(nng_id_map *map, uint32_t id)
+{
+	return nni_id_get(map, id);
+}
+
+int
+nng_id_set(nng_id_map *map, uint32_t id, void *value)
+{
+	return nni_id_set(map, id, value);
+}
+
+int
+nng_id_alloc(nng_id_map *map, uint32_t *idp, void *val)
+{
+	return nni_id_alloc(map, idp, val);
+}
+
+int
+nng_id_remove(nng_id_map *map, uint32_t id)
+{
+	return nni_id_remove(map, id);
+}
+
+void
+nng_id_map_foreach(nng_id_map *map, void (*cb)(void *id, void *value))
+{
+	nni_id_map_foreach(map, cb);
+}
+
+void
+nng_id_map_foreach2(nng_id_map *map,
+    void (*cb)(void *id, void *value, void *arg), void *user_arg)
+{
+	nni_id_map_foreach2(map, cb, user_arg);
+}
+
 #define xstr(a) str(a)
 #define str(a) #a
 

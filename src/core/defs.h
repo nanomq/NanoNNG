@@ -65,6 +65,7 @@ typedef int32_t  nni_duration; // Rel. time (ms).
 
 typedef void (*nni_cb)(void *);
 typedef void (*nni_idhash_cb)(void *, void *);
+typedef void (*nni_idhash_cb2)(void *, void *, void *);
 
 // Notify descriptor.
 typedef struct {
