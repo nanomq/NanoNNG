@@ -23,12 +23,12 @@
 // use table sizes that are powers of two.  Note that hash items
 // must be non-NULL.  The table is protected by an internal lock.
 
-typedef struct nni_id_map   nni_id_map;
+typedef struct nng_id_map   nni_id_map;
 typedef struct nni_id_entry nni_id_entry;
 
 // NB: These details are entirely private to the hash implementation.
 // They are provided here to facilitate inlining in structures.
-struct nni_id_map {
+struct nng_id_map {
 	uint32_t      id_cap;
 	uint32_t      id_count;
 	uint32_t      id_load;
@@ -48,6 +48,7 @@ struct nni_id_map {
 extern void  nni_id_map_init(nni_id_map *, uint32_t, uint32_t, bool);
 extern void  nni_id_map_fini(nni_id_map *);
 extern void  nni_id_map_foreach(nni_id_map *, nni_idhash_cb);
+extern void  nni_id_map_foreach2(nni_id_map *, nni_idhash_cb2, void *);
 extern void *nni_id_get(nni_id_map *, uint32_t);
 extern int   nni_id_set(nni_id_map *, uint32_t, void *);
 extern int   nni_id_alloc(nni_id_map *, uint32_t *, void *);
