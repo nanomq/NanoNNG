@@ -181,6 +181,7 @@ struct conf_http_server {
 	size_t      parallel;
 	auth_type_t auth_type;
 	conf_jwt    jwt;
+	nng_socket *broker_sock;
 };
 
 typedef struct conf_http_server conf_http_server;
