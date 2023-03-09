@@ -30,8 +30,9 @@ if (NNG_ENABLE_QUIC)
     endif()
 
     nng_include_directories(${CMAKE_SOURCE_DIR}/build/_deps/opensslquic-build/openssl/include)
-    nng_link_libraries("${CMAKE_SOURCE_DIR}/build/_deps/opensslquic-build/openssl/lib/libssl.a")
-    nng_link_libraries("${CMAKE_SOURCE_DIR}/build/_deps/opensslquic-build/openssl/lib/libcrypto.a")
+    ## link openssl through target
+    # nng_link_libraries("${CMAKE_SOURCE_DIR}/build/_deps/opensslquic-build/openssl/lib/libssl.a")
+    # nng_link_libraries("${CMAKE_SOURCE_DIR}/build/_deps/opensslquic-build/openssl/lib/libcrypto.a")
 
     if(NNG_PROTO_MQTT_BROKER)
         nng_include_directories(${INTERNAL_MSQUIC_INCLUDE_DIR})
