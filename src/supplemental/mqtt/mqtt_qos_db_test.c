@@ -4,6 +4,7 @@
 #include "mqtt_qos_db.h"
 #include "nng/nng.h"
 #include "nuts.h"
+#include "nng/supplemental/nanolib/cvector.h"
 
 #define test_db "test.db"
 
@@ -351,6 +352,68 @@ test_remove_oldest_client_offline_msg(void)
 	nni_mqtt_qos_db_close(db);
 }
 
+void 
+test_set_retain_msg(void)
+{
+	sqlite3 *db = NULL;
+	nni_mqtt_qos_db_init(&db, NULL, test_db, true);
+
+	nni_msg *msg = NULL;
+	nni_msg_alloc(&msg, 0);
+	nni_msg_append(msg, "hello", 5);
+
+	NUTS_TRUE(nni_mqtt_qos_db_set_retain(db, "topic1/2/3", msg) == 0);
+
+	nni_mqtt_qos_db_close(db);
+}
+
+void 
+test_get_retain_msg(void)
+{
+	sqlite3 *db = NULL;
+	nni_mqtt_qos_db_init(&db, NULL, test_db, true);
+
+	nni_msg *msg = nni_mqtt_qos_db_get_retain(db, "topic1/2/3");
+
+	NUTS_ASSERT(msg != NULL);
+
+	NUTS_TRUE(strcmp(nni_msg_body(msg), "hello") == 0);
+
+	nni_msg_free(msg);
+
+	nni_mqtt_qos_db_close(db);
+}
+
+void 
+test_find_retain_msg(void)
+{
+	sqlite3 *db = NULL;
+	nni_mqtt_qos_db_init(&db, NULL, test_db, true);
+
+	nni_msg **msgs = nni_mqtt_qos_db_find_retain(db, "topic1/#");
+
+	NUTS_ASSERT(msgs != NULL);
+
+	for (size_t i = 0; i < cvector_size(msgs); i++) {
+		nni_msg *msg = msgs[i];
+		NUTS_TRUE(strcmp(nni_msg_body(msg), "hello") == 0);
+	}
+
+	nni_mqtt_qos_db_close(db);
+}
+
+
+void
+test_remove_retain_msg(void)
+{
+	sqlite3 *db = NULL;
+	nni_mqtt_qos_db_init(&db, NULL, test_db, true);
+
+	NUTS_TRUE(nni_mqtt_qos_db_remove_retain(db, "topic1/2/3") == 0);
+
+	nni_mqtt_qos_db_close(db);
+}
+
 TEST_LIST = {
 	{ "db_init", test_db_init },
 	{ "db_pipe_set", test_pipe_set },
@@ -362,6 +425,10 @@ TEST_LIST = {
 	{ "db_remove", test_qos_db_remove },
 	{ "db_check_remove_msg", test_qos_db_check_remove_msg },
 	{ "db_pipe_remove", test_pipe_remove },
+	{ "db_set_retain", test_set_retain_msg },
+	{ "db_get_retain", test_get_retain_msg },
+	{ "db_find_retain", test_find_retain_msg },
+	{ "db_remove_retain", test_remove_retain_msg },
 	{ "db_set_client_info", test_set_client_info },
 	{ "db_set_client_msg", test_set_client_msg },
 	{ "db_get_client_msg", test_get_client_msg },
