@@ -12,6 +12,7 @@
 #define table_client_msg "t_client_msg"
 #define table_client_offline_msg "t_client_offline_msg"
 #define table_client_info "t_client_info"
+#define table_retain "t_retain"
 
 static uint8_t *nni_msg_serialize(nni_msg *msg, size_t *out_len);
 static nni_msg *nni_msg_deserialize(uint8_t *bytes, size_t len);
@@ -25,6 +26,7 @@ static int      create_main_table(sqlite3 *db);
 static int      create_client_msg_table(sqlite3 *db);
 static int      create_client_offline_msg_table(sqlite3 *db);
 static int      create_client_info_table(sqlite3 *db);
+static int      create_retain_msg_table(sqlite3 *db);
 static char *   get_db_path(
        char *dest_path, const char *user_path, const char *db_name);
 static void    set_db_pragma(sqlite3 *db);
@@ -123,6 +125,16 @@ create_main_table(sqlite3 *db)
 	return sqlite3_exec(db, sql, 0, 0, 0);
 }
 
+static int
+create_retain_msg_table(sqlite3 *db)
+{
+	char sql[] = "CREATE TABLE IF NOT EXISTS " table_retain ""
+	             "(topic TEXT PRIMARY KEY NOT NULL,"
+	             "msg BLOB)";
+
+	return sqlite3_exec(db, sql, 0, 0, 0);
+}
+
 static void
 set_db_pragma(sqlite3 *db)
 {
@@ -174,6 +186,9 @@ nni_mqtt_qos_db_init(sqlite3 **db, const char *user_path, const char *db_name, b
 			return;
 		}
 		if (create_main_table(*db) != 0) {
+			return;
+		}
+		if (create_retain_msg_table(*db) != 0) {
 			return;
 		}
 	} else {
@@ -689,6 +704,79 @@ nni_mqtt_qos_db_foreach(sqlite3 *db, nni_idhash_cb cb)
 		}
 		sqlite3_free(bytes);
 	}
+
+	sqlite3_finalize(stmt);
+	sqlite3_exec(db, "COMMIT;", 0, 0, 0);
+}
+
+int
+nni_mqtt_qos_db_set_retain(sqlite3 *db, const char *topic, nni_msg *msg)
+{
+	char sql[] = "INSERT or REPLACE INTO " table_retain
+	             " ( topic, msg ) VALUES (?, ?)";
+	size_t   len  = 0;
+	uint8_t *blob = nni_msg_serialize(msg, &len);
+	if (!blob) {
+		printf("nni_mqtt_msg_serialize failed\n");
+		return -1;
+	}
+	sqlite3_stmt *stmt;
+	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
+	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
+	sqlite3_reset(stmt);
+
+	sqlite3_bind_text(stmt, 1, topic, strlen(topic), SQLITE_TRANSIENT);
+	sqlite3_bind_blob64(stmt, 2, blob, len, SQLITE_TRANSIENT);
+	sqlite3_step(stmt);
+
+	sqlite3_finalize(stmt);
+	sqlite3_exec(db, "COMMIT;", 0, 0, 0);
+	sqlite3_free(blob);
+
+	return 0;
+}
+
+nni_msg *
+nni_mqtt_qos_db_get_retain(sqlite3 *db, const char *topic)
+{
+	nni_msg *msg = NULL;
+	char     sql[] =
+	    "SELECT msg FROM " table_retain " WHERE topic = ? LIMIT 1";
+
+	sqlite3_stmt *stmt;
+
+	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
+	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
+	sqlite3_reset(stmt);
+
+	sqlite3_bind_text(stmt, 1, topic, strlen(topic), SQLITE_TRANSIENT);
+
+	if (SQLITE_ROW == sqlite3_step(stmt)) {
+		size_t   nbyte = (size_t) sqlite3_column_bytes16(stmt, 0);
+		uint8_t *bytes = sqlite3_malloc(nbyte);
+		memcpy(bytes, sqlite3_column_blob(stmt, 0), nbyte);
+		msg = nni_msg_deserialize(bytes, nbyte);
+		sqlite3_free(bytes);
+	}
+
+	sqlite3_finalize(stmt);
+	sqlite3_exec(db, "COMMIT;", 0, 0, 0);
+
+	return msg;
+}
+
+int
+nni_mqtt_qos_db_remove_retain(sqlite3 *db, const char *topic)
+{
+	char sql[] = "DELETE FROM t_retain WHERE topic = ?";
+
+	sqlite3_stmt *stmt;
+
+	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
+	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
+	sqlite3_reset(stmt);
+
+	sqlite3_bind_text(stmt, 1, topic, strlen(topic), SQLITE_TRANSIENT);
 
 	sqlite3_finalize(stmt);
 	sqlite3_exec(db, "COMMIT;", 0, 0, 0);

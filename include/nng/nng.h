@@ -1410,6 +1410,15 @@ NNG_DECL conn_param *nng_pipe_cparam(nng_pipe p);
 
 NNG_DECL void nng_taskq_setter(int num_taskq_threads, int max_taskq_threads);
 
+#if defined(NNG_SUPP_SQLITE)
+
+NNG_DECL int nng_mqtt_qos_db_set_retain(void *, const char *, nng_msg *);
+NNG_DECL nng_msg *nng_mqtt_qos_db_get_retain(void *, const char *);
+NNG_DECL int      nng_mqtt_qos_db_remove_retain(void *, const char *);
+
+#endif
+
+
 #ifdef __cplusplus
 }
 #endif

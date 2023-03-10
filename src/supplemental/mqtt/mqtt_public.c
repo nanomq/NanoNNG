@@ -881,4 +881,22 @@ nng_mqtt_set_sqlite_conf(nng_mqtt_sqlite_option *opt, void *config)
 	opt->bridge = config;
 }
 
+int
+nng_mqtt_qos_db_set_retain(void *db, const char *topic, nng_msg *msg)
+{
+	return nni_mqtt_qos_db_set_retain((sqlite3 *) db, topic, msg);
+}
+
+nng_msg *
+nng_mqtt_qos_db_get_retain(void *db, const char *topic)
+{
+	return nni_mqtt_qos_db_get_retain((sqlite3 *) db, topic);
+}
+
+int
+nng_mqtt_qos_db_remove_retain(void *db, const char *topic)
+{
+	return nni_mqtt_qos_db_remove_retain((sqlite3 *) db, topic);
+}
+
 #endif
