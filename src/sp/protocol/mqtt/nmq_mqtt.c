@@ -1180,7 +1180,7 @@ nano_sock_get_qos_db(void *arg, void *buf, size_t *szp, nni_opt_type t)
 {
 	nano_sock *s = arg;
 
-	return (nni_copyout_ptr(&s->sqlite_db, buf, szp, t));
+	return (nni_copyout_ptr(s->sqlite_db, buf, szp, t));
 }
 #endif
 
