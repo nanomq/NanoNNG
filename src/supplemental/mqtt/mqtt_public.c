@@ -899,4 +899,10 @@ nng_mqtt_qos_db_remove_retain(void *db, const char *topic)
 	return nni_mqtt_qos_db_remove_retain((sqlite3 *) db, topic);
 }
 
+nng_msg **
+nng_mqtt_qos_db_find_retain(void *db, const char *topic_pattern)
+{
+	return nni_mqtt_qos_db_find_retain((sqlite3 *) db, topic_pattern);
+}
+
 #endif
