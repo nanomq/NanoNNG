@@ -2427,12 +2427,6 @@ conn_param_set_proto_ver(conn_param *cparam, uint8_t ver)
 	cparam->pro_ver = ver;
 }
 
-void
-nng_msg_proto_set_property(nng_msg *m, void *p)
-{
-	nni_msg_proto_set_property(m, p);
-}
-
 void *
 nng_msg_get_proto_data(nng_msg *m)
 {
