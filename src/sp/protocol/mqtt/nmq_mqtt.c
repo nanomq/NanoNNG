@@ -1174,6 +1174,16 @@ nano_sock_get_idmap(void *arg, void *buf, size_t *szp, nni_opt_type t)
 	return (nni_copyout_ptr(&s->pipes, buf, szp, t));
 }
 
+#if defined(NNG_SUPP_SQLITE)
+static int
+nano_sock_get_qos_db(void *arg, void *buf, size_t *szp, nni_opt_type t)
+{
+	nano_sock *s = arg;
+
+	return (nni_copyout_ptr(&s->sqlite_db, buf, szp, t));
+}
+#endif
+
 static int
 nano_sock_get_sendfd(void *arg, void *buf, size_t *szp, nni_opt_type t)
 {
@@ -1273,6 +1283,12 @@ static nni_option nano_sock_options[] = {
 	    .o_name = NMQ_OPT_MQTT_PIPES,
 	    .o_get  = nano_sock_get_idmap,
 	},
+#if defined(NNG_SUPP_SQLITE)
+	{
+	    .o_name = NMQ_OPT_MQTT_QOS_DB,
+	    .o_get  = nano_sock_get_qos_db,
+	},
+#endif
 	{
 	    .o_name = NULL,
 	},
