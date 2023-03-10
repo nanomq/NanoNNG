@@ -732,7 +732,7 @@ nni_mqtt_qos_db_set_retain(sqlite3 *db, const char *topic, nni_msg *msg)
 
 	sqlite3_finalize(stmt);
 	sqlite3_exec(db, "COMMIT;", 0, 0, 0);
-	sqlite3_free(blob);
+	nng_free(blob, len);
 
 	return 0;
 }
