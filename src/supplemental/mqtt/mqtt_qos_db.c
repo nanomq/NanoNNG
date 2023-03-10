@@ -775,23 +775,22 @@ nni_mqtt_qos_db_find_retain(sqlite3 *db, const char *topic_pattern)
 	char *topic_str = nng_strdup(topic_pattern);
 
 	for (size_t i = 0; i < strlen(topic_pattern); i++) {
-		if (topic_pattern[i] == '+') {
-			topic_str[i] = '?';
-		} else if (topic_pattern[i] == '#') {
+		if (topic_pattern[i] == '+' || topic_pattern[i] == '#') {
 			topic_str[i] = '*';
 		}
 	}
 
 	char sql[] = "SELECT msg FROM " table_retain " WHERE topic GLOB ";
 
-	sqlite3_str *str = sqlite3_str_new(db);
-	sqlite3_str_appendf(str, "%s '%s'", sql, topic_str);
+	size_t full_sql_sz = strlen(sql) + strlen(topic_str) + 10;
+	char * full_sql    = nni_zalloc(full_sql_sz);
+	snprintf(full_sql, full_sql_sz, "%s '%s'", sql, topic_str);
 
 	sqlite3_stmt *stmt;
 
 	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
-	sqlite3_prepare_v2(db, sqlite3_str_value(str),
-	    strlen(sqlite3_str_value(str)), &stmt, 0);
+	sqlite3_prepare_v2(db, full_sql,
+	    strlen(full_sql), &stmt, 0);
 	sqlite3_reset(stmt);
 
 	while (SQLITE_ROW == sqlite3_step(stmt)) {
@@ -805,8 +804,8 @@ nni_mqtt_qos_db_find_retain(sqlite3 *db, const char *topic_pattern)
 
 	sqlite3_finalize(stmt);
 	sqlite3_exec(db, "COMMIT;", 0, 0, 0);
-	sqlite3_str_finish(str);
 	nng_strfree(topic_str);
+	nng_free(full_sql, full_sql_sz);
 
 	return msg_vec;
 }
@@ -1375,6 +1374,9 @@ nni_msg_serialize(nni_msg *msg, size_t *out_len)
 	if (write_uint64(nni_msg_get_timestamp(msg), &buf) != 0) {
 		goto out;
 	}
+	if (write_byte(nni_msg_cmd_type(msg), &buf)) {
+		goto out;
+	}
 
 	return bytes;
 
@@ -1416,6 +1418,11 @@ nni_msg_deserialize(uint8_t *bytes, size_t len)
 		goto out;
 	}
 	nni_msg_set_timestamp(msg, ts);
+
+	uint8_t cmd_type = 0;
+	if (read_byte(&buf, &cmd_type) == 0) {
+		nni_msg_set_cmd_type(msg, cmd_type);
+	}
 
 	return msg;
 
