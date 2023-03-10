@@ -112,6 +112,10 @@ extern void     nni_mqtt_qos_db_update_pipe_by_clientid(
 extern void nni_mqtt_qos_db_update_all_pipe(sqlite3 *, uint32_t);
 extern void nni_mqtt_qos_db_check_remove_msg(sqlite3 *, nni_msg *);
 
+extern int      nni_mqtt_qos_db_set_retain(sqlite3 *, const char *, nni_msg *);
+extern nni_msg *nni_mqtt_qos_db_get_retain(sqlite3 *, const char *);
+extern int      nni_mqtt_qos_db_remove_retain(sqlite3 *, const char *);
+
 extern void nni_mqtt_qos_db_remove_oldest_client_msg(
     sqlite3 *, uint64_t ,const char *);
 extern void nni_mqtt_qos_db_remove_oldest_client_offline_msg(
