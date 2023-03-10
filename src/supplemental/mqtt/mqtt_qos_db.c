@@ -2,6 +2,7 @@
 #include "core/nng_impl.h"
 #include "nng/nng.h"
 #include "nng/supplemental/sqlite/sqlite3.h"
+#include "nng/supplemental/nanolib/cvector.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 #include <string.h>
 #include <stdlib.h>
@@ -765,10 +766,55 @@ nni_mqtt_qos_db_get_retain(sqlite3 *db, const char *topic)
 	return msg;
 }
 
+nni_msg **
+nni_mqtt_qos_db_find_retain(sqlite3 *db, const char *topic_pattern)
+{
+	nni_msg * msg     = NULL;
+	nni_msg **msg_vec = NULL;
+
+	char *topic_str = nng_strdup(topic_pattern);
+
+	for (size_t i = 0; i < strlen(topic_pattern); i++) {
+		if (topic_pattern[i] == '+') {
+			topic_str[i] = '?';
+		} else if (topic_pattern[i] == '#') {
+			topic_str[i] = '*';
+		}
+	}
+
+	char sql[] = "SELECT msg FROM " table_retain " WHERE topic GLOB ";
+
+	sqlite3_str *str = sqlite3_str_new(db);
+	sqlite3_str_appendf(str, "%s '%s'", sql, topic_str);
+
+	sqlite3_stmt *stmt;
+
+	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
+	sqlite3_prepare_v2(db, sqlite3_str_value(str),
+	    strlen(sqlite3_str_value(str)), &stmt, 0);
+	sqlite3_reset(stmt);
+
+	while (SQLITE_ROW == sqlite3_step(stmt)) {
+		size_t   nbyte = (size_t) sqlite3_column_bytes16(stmt, 0);
+		uint8_t *bytes = sqlite3_malloc(nbyte);
+		memcpy(bytes, sqlite3_column_blob(stmt, 0), nbyte);
+		msg = nni_msg_deserialize(bytes, nbyte);
+		sqlite3_free(bytes);
+		cvector_push_back(msg_vec, msg);
+	}
+
+	sqlite3_finalize(stmt);
+	sqlite3_exec(db, "COMMIT;", 0, 0, 0);
+	sqlite3_str_finish(str);
+	nng_strfree(topic_str);
+
+	return msg_vec;
+}
+
 int
 nni_mqtt_qos_db_remove_retain(sqlite3 *db, const char *topic)
 {
-	char sql[] = "DELETE FROM t_retain WHERE topic = ?";
+	char sql[] = "DELETE FROM " table_retain "  WHERE topic = ?";
 
 	sqlite3_stmt *stmt;
 
@@ -777,9 +823,10 @@ nni_mqtt_qos_db_remove_retain(sqlite3 *db, const char *topic)
 	sqlite3_reset(stmt);
 
 	sqlite3_bind_text(stmt, 1, topic, strlen(topic), SQLITE_TRANSIENT);
+	sqlite3_step(stmt);
 
 	sqlite3_finalize(stmt);
-	sqlite3_exec(db, "COMMIT;", 0, 0, 0);
+	return sqlite3_exec(db, "COMMIT;", 0, 0, 0);
 }
 
 int
