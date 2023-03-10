@@ -365,6 +365,7 @@ test_set_retain_msg(void)
 	NUTS_TRUE(nni_mqtt_qos_db_set_retain(db, "topic1/2/3", msg) == 0);
 
 	nni_mqtt_qos_db_close(db);
+	nni_msg_free(msg);
 }
 
 void 
@@ -397,9 +398,11 @@ test_find_retain_msg(void)
 	for (size_t i = 0; i < cvector_size(msgs); i++) {
 		nni_msg *msg = msgs[i];
 		NUTS_TRUE(strcmp(nni_msg_body(msg), "hello") == 0);
+		nni_msg_free(msg);
 	}
 
 	nni_mqtt_qos_db_close(db);
+	cvector_free(msgs);
 }
 
 
