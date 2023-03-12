@@ -362,7 +362,7 @@ test_set_retain_msg(void)
 	nni_msg_alloc(&msg, 0);
 	nni_msg_append(msg, "hello", 5);
 
-	NUTS_TRUE(nni_mqtt_qos_db_set_retain(db, "topic1/2/3", msg) == 0);
+	NUTS_TRUE(nni_mqtt_qos_db_set_retain(db, "topic1/2/3", msg, 4) == 0);
 
 	nni_mqtt_qos_db_close(db);
 	nni_msg_free(msg);
