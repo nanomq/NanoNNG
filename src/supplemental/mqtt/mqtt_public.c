@@ -882,9 +882,11 @@ nng_mqtt_set_sqlite_conf(nng_mqtt_sqlite_option *opt, void *config)
 }
 
 int
-nng_mqtt_qos_db_set_retain(void *db, const char *topic, nng_msg *msg)
+nng_mqtt_qos_db_set_retain(
+    void *db, const char *topic, nng_msg *msg, uint8_t proto_ver)
 {
-	return nni_mqtt_qos_db_set_retain((sqlite3 *) db, topic, msg);
+	return nni_mqtt_qos_db_set_retain(
+	    (sqlite3 *) db, topic, msg, proto_ver);
 }
 
 nng_msg *

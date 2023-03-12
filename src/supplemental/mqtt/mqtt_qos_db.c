@@ -130,7 +130,8 @@ static int
 create_retain_msg_table(sqlite3 *db)
 {
 	char sql[] = "CREATE TABLE IF NOT EXISTS " table_retain ""
-	             "(topic TEXT PRIMARY KEY NOT NULL,"
+	             "(topic TEXT PRIMARY KEY NOT NULL, "
+				 "proto_ver TINYINT NOT NULL, "
 	             "msg BLOB)";
 
 	return sqlite3_exec(db, sql, 0, 0, 0);
@@ -711,10 +712,11 @@ nni_mqtt_qos_db_foreach(sqlite3 *db, nni_idhash_cb cb)
 }
 
 int
-nni_mqtt_qos_db_set_retain(sqlite3 *db, const char *topic, nni_msg *msg)
+nni_mqtt_qos_db_set_retain(
+    sqlite3 *db, const char *topic, nni_msg *msg, uint8_t proto_ver)
 {
 	char sql[] = "INSERT or REPLACE INTO " table_retain
-	             " ( topic, msg ) VALUES (?, ?)";
+	             " ( topic, msg, proto_ver ) VALUES (?, ?, ?)";
 	size_t   len  = 0;
 	uint8_t *blob = nni_msg_serialize(msg, &len);
 	if (!blob) {
@@ -728,6 +730,7 @@ nni_mqtt_qos_db_set_retain(sqlite3 *db, const char *topic, nni_msg *msg)
 
 	sqlite3_bind_text(stmt, 1, topic, strlen(topic), SQLITE_TRANSIENT);
 	sqlite3_bind_blob64(stmt, 2, blob, len, SQLITE_TRANSIENT);
+	sqlite3_bind_int(stmt, 3, proto_ver);
 	sqlite3_step(stmt);
 
 	sqlite3_finalize(stmt);
@@ -742,7 +745,7 @@ nni_mqtt_qos_db_get_retain(sqlite3 *db, const char *topic)
 {
 	nni_msg *msg = NULL;
 	char     sql[] =
-	    "SELECT msg FROM " table_retain " WHERE topic = ? LIMIT 1";
+	    "SELECT msg, proto_ver FROM " table_retain " WHERE topic = ? LIMIT 1";
 
 	sqlite3_stmt *stmt;
 
@@ -758,6 +761,13 @@ nni_mqtt_qos_db_get_retain(sqlite3 *db, const char *topic)
 		memcpy(bytes, sqlite3_column_blob(stmt, 0), nbyte);
 		msg = nni_msg_deserialize(bytes, nbyte);
 		sqlite3_free(bytes);
+		uint8_t proto_ver = sqlite3_column_int(stmt, 1);
+		nni_mqtt_msg_proto_data_alloc(msg);
+		if (proto_ver == MQTT_PROTOCOL_VERSION_v5) {
+			nni_mqttv5_msg_decode(msg);
+		} else {
+			nni_mqtt_msg_decode(msg);
+		}
 	}
 
 	sqlite3_finalize(stmt);
@@ -799,6 +809,13 @@ nni_mqtt_qos_db_find_retain(sqlite3 *db, const char *topic_pattern)
 		memcpy(bytes, sqlite3_column_blob(stmt, 0), nbyte);
 		msg = nni_msg_deserialize(bytes, nbyte);
 		sqlite3_free(bytes);
+		uint8_t proto_ver = sqlite3_column_int(stmt, 1);
+				nni_mqtt_msg_proto_data_alloc(msg);
+		if(proto_ver == MQTT_PROTOCOL_VERSION_v5) {
+			nni_mqttv5_msg_decode(msg);
+		}else {
+			nni_mqtt_msg_decode(msg);
+		}
 		cvector_push_back(msg_vec, msg);
 	}
 
