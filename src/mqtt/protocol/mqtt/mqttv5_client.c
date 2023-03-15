@@ -867,7 +867,13 @@ mqtt_recv_cb(void *arg)
 			nni_id_set(&p->recv_unack, packet_id, msg);
 		}
 		break;
-
+	case NNG_MQTT_DISCONNECT:
+		uint8_t *body      = nni_msg_body(msg);
+		s->disconnect_code = *body;
+		nni_msg_free(msg);
+		nni_mtx_unlock(&s->mtx);
+		nni_pipe_close(p->pipe);
+		return;
 	default:
 		// unexpected packet type, server misbehaviour
 		nni_mtx_unlock(&s->mtx);
