@@ -736,6 +736,11 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 			p->sndmax++;
 		}
 		break;
+	case CMD_PINGRESP:
+		//free here?
+		break;
+	case CMD_DISCONNECT:
+		break;
 	default:
 		break;
 	}
