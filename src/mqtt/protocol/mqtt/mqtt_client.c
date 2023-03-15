@@ -852,7 +852,12 @@ mqtt_recv_cb(void *arg)
 			nni_id_set(&p->recv_unack, packet_id, msg);
 		}
 		break;
-
+	case NNG_MQTT_DISCONNECT:
+		s->disconnect_code = NORMAL_DISCONNECTION;
+		nni_msg_free(msg);
+		nni_mtx_unlock(&s->mtx);
+		nni_pipe_close(p->pipe);
+		return;
 	default:
 		// unexpected packet type, server misbehaviour
 		nni_mtx_unlock(&s->mtx);
