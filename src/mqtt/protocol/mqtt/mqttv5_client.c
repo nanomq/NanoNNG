@@ -868,8 +868,7 @@ mqtt_recv_cb(void *arg)
 		}
 		break;
 	case NNG_MQTT_DISCONNECT:
-		uint8_t *body      = nni_msg_body(msg);
-		s->disconnect_code = *body;
+		s->disconnect_code = *(uint8_t *)nni_msg_body(msg);
 		nni_msg_free(msg);
 		nni_mtx_unlock(&s->mtx);
 		nni_pipe_close(p->pipe);
