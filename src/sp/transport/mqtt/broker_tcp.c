@@ -128,6 +128,10 @@ tcptran_pipe_close(void *arg)
 	tcptran_pipe *p = arg;
 	// nni_pipe *    npipe = p->npipe;
 
+	if (p->npipe->cache) {
+		nng_stream_close(p->conn);
+		return;
+	}
 	nni_mtx_lock(&p->mtx);
 	p->closed = true;
 	nni_lmq_flush(&p->rslmq);

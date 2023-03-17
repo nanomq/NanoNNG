@@ -144,15 +144,15 @@ nni_pipe_close(nni_pipe *p)
 	if (p->p_proto_data != NULL) {
 		p->p_proto_ops.pipe_close(p->p_proto_data);
 	}
-	//MQTT Session reserved
-	if (p->cache) {
-		return;
-	}
+
 	// Close the underlying transport.
 	if (p->p_tran_data != NULL) {
 		p->p_tran_ops.p_close(p->p_tran_data);
 	}
-
+	//MQTT Session reserved
+	if (p->cache) {
+		return;
+	}
 	nni_reap(&pipe_reap_list, p);
 }
 
