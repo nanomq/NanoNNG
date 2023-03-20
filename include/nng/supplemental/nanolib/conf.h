@@ -320,8 +320,10 @@ typedef struct {
 } vsomeip_gateway_conf;
 
 typedef struct {
-	char *from;
-	char *to;
+	char * from;
+	char * to;
+	size_t struct_sz;
+	char **struct_names;
 } dds_gateway_topic;
 
 typedef struct {
