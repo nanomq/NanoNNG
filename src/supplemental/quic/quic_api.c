@@ -66,7 +66,7 @@ struct quic_strm_s {
 	uint32_t rrpos; // Start position of rrbuf
 	uint32_t rrcap; // Start position of rrbuf
 
-	uint8_t  rticket[2048];
+	// uint8_t  rticket[2048];
 	uint16_t rticket_sz;
 	nng_url *url_s;
 };
@@ -450,7 +450,7 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 	case QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED:
 		// A resumption ticket (also called New Session Ticket or NST)
 		// was received from the server.
-		log_warn("[conn][%p] Resumption ticket received (%u bytes):\n",
+		log_warn("[conn][%p] Resumption ticket received (%u bytes) droped!\n",
 		    Connection, Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength);
 		/*
 		for (uint32_t i = 0; i <
@@ -462,9 +462,9 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 		}
 		qdebug("\n");
 		*/
-		qstrm->rticket_sz = Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength;
-		memcpy(qstrm->rticket, Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicket,
-		        Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength);
+		// qstrm->rticket_sz = Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength;
+		// memcpy(qstrm->rticket, Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicket,
+		//         Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength);
 		break;
 	case QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED:
 		log_warn("QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED");
@@ -709,15 +709,15 @@ quic_reconnect(quic_strm_t *qstrm)
 		goto Error;
 	}
 
-	if (qstrm->rticket_sz != 0) {
-		log_info("QUIC connection reconnect with 0RTT enabled");
-		if (QUIC_FAILED(Status = MsQuic->SetParam(Connection,
-		                    QUIC_PARAM_CONN_RESUMPTION_TICKET,
-		                    qstrm->rticket_sz, qstrm->rticket))) {
-			log_error("Failed in setting resumption ticket, 0x%x!", Status);
-			goto Error;
-		}
-	}
+	// if (qstrm->rticket_sz != 0 && config->zerortt_enable) {
+	// 	log_info("QUIC connection reconnect with 0RTT enabled");
+	// 	if (QUIC_FAILED(Status = MsQuic->SetParam(Connection,
+	// 	                    QUIC_PARAM_CONN_RESUMPTION_TICKET,
+	// 	                    qstrm->rticket_sz, qstrm->rticket))) {
+	// 		log_error("Failed in setting resumption ticket, 0x%x!", Status);
+	// 		goto Error;
+	// 	}
+	// }
 
 	log_info("Quic reconnecting... %s:%s", url_s->u_host, url_s->u_port);
 
