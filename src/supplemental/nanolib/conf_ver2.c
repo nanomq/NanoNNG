@@ -1287,30 +1287,12 @@ conf_dds_gateway_forward_parse_ver2(dds_gateway_forward *forward, cJSON *json)
 	cJSON *jso_dds2mqtt = hocon_get_obj("dds_to_mqtt", rules);
 	hocon_read_str_base(dds2mqtt, from, "from_dds", jso_dds2mqtt);
 	hocon_read_str_base(dds2mqtt, to, "to_mqtt", jso_dds2mqtt);
-
-	cJSON *structs = hocon_get_obj("struct_names", jso_dds2mqtt);
-	cJSON *item;
-	if (structs != NULL) {
-		cJSON_ArrayForEach(item, structs)
-		{
-			cvector_push_back(dds2mqtt->struct_names,
-			    nng_strdup(item->valuestring));
-		}
-		dds2mqtt->struct_sz = cvector_size(dds2mqtt->struct_names);
-	}
+	hocon_read_str(dds2mqtt, struct_name, jso_dds2mqtt);
 
 	cJSON *jso_mqtt2dds = hocon_get_obj("mqtt_to_dds", rules);
 	hocon_read_str_base(mqtt2dds, from, "from_mqtt", jso_mqtt2dds);
 	hocon_read_str_base(mqtt2dds, to, "to_dds", jso_mqtt2dds);
-	structs = hocon_get_obj("struct_names", jso_mqtt2dds);
-	if (structs != NULL) {
-		cJSON_ArrayForEach(item, structs)
-		{
-			cvector_push_back(mqtt2dds->struct_names,
-			    nng_strdup(item->valuestring));
-		}
-		mqtt2dds->struct_sz = cvector_size(mqtt2dds->struct_names);
-	}
+	hocon_read_str(mqtt2dds, struct_name, jso_mqtt2dds);
 }
 
 static void
@@ -1372,15 +1354,13 @@ conf_dds_gateway_init(dds_gateway_conf *config)
 	dds->shm_mode      = false;
 	dds->shm_log_level = NULL;
 
-	forward->dds2mqtt.from         = NULL;
-	forward->dds2mqtt.to           = NULL;
-	forward->dds2mqtt.struct_sz    = 0;
-	forward->dds2mqtt.struct_names = NULL;
+	forward->dds2mqtt.from        = NULL;
+	forward->dds2mqtt.to          = NULL;
+	forward->dds2mqtt.struct_name = NULL;
 
-	forward->mqtt2dds.from         = NULL;
-	forward->mqtt2dds.to           = NULL;
-	forward->dds2mqtt.struct_sz    = 0;
-	forward->dds2mqtt.struct_names = NULL;
+	forward->mqtt2dds.from        = NULL;
+	forward->mqtt2dds.to          = NULL;
+	forward->dds2mqtt.struct_name = NULL;
 }
 
 void
@@ -1459,11 +1439,8 @@ conf_dds_gateway_destory(dds_gateway_conf *config)
 	if (dds2mqtt_tp->to) {
 		free(dds2mqtt_tp->to);
 	}
-	for (size_t i = 0; i < dds2mqtt_tp->struct_sz; i++) {
-		nng_strfree(dds2mqtt_tp->struct_names[i]);
-	}
-	cvector_free(dds2mqtt_tp->struct_names);
-	dds2mqtt_tp->struct_sz = 0;
+
+	nng_strfree(dds2mqtt_tp->struct_name);
 
 	if (mqtt2dds_tp->from) {
 		free(mqtt2dds_tp->from);
@@ -1471,9 +1448,6 @@ conf_dds_gateway_destory(dds_gateway_conf *config)
 	if (mqtt2dds_tp->to) {
 		free(mqtt2dds_tp->to);
 	}
-	for (size_t i = 0; i < mqtt2dds_tp->struct_sz; i++) {
-		nng_strfree(mqtt2dds_tp->struct_names[i]);
-	}
-	cvector_free(mqtt2dds_tp->struct_names);
-	mqtt2dds_tp->struct_sz = 0;
+
+	nng_strfree(mqtt2dds_tp->struct_name);
 }
