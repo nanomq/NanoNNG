@@ -1,4 +1,5 @@
 #include <nuts.h>
+#include "core/nng_impl.h"
 
 void
 test_main(void)
