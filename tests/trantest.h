@@ -132,6 +132,21 @@ trantest_init(trantest *tt, const char *addr)
 }
 
 void
+mqtt_trantest_init(trantest *tt, const char *addr)
+{
+	trantest_next_address(tt->addr, addr);
+
+	So(nng_req_open(&tt->reqsock) == 0);
+	So(nng_rep_open(&tt->repsock) == 0);
+
+	nng_url *url;
+	So(nng_url_parse(&url, tt->addr) == 0);
+	tt->tran = nni_mqtt_tran_find(url);
+	So(tt->tran != NULL);
+	nng_url_free(url);
+}
+
+void
 trantest_fini(trantest *tt)
 {
 	nng_close(tt->reqsock);
@@ -475,6 +490,28 @@ trantest_test_extended(const char *addr, trantest_proptest_t f)
 		trantest_send_recv_large(&tt);
 		trantest_send_recv_multi(&tt);
 		trantest_check_properties(&tt, f);
+	})
+}
+
+void
+mqtt_trantest_test_extended(const char *addr, trantest_proptest_t f)
+{
+	trantest tt;
+
+	memset(&tt, 0, sizeof(tt));
+	Convey("Given transport", {
+		mqtt_trantest_init(&tt, addr);
+
+		Reset({ trantest_fini(&tt); });
+
+		trantest_scheme(&tt);
+		trantest_conn_refused(&tt);
+		trantest_duplicate_listen(&tt);
+		// trantest_listen_accept(&tt);
+		// trantest_send_recv(&tt);
+		// trantest_send_recv_large(&tt);
+		// trantest_send_recv_multi(&tt);
+		// trantest_check_properties(&tt, f);
 	})
 }
 
