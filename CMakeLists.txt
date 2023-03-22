@@ -263,7 +263,7 @@ endif()
 add_subdirectory(src)
 
 if (NNG_TESTS)
-#    add_subdirectory(tests)
+   add_subdirectory(tests)
 endif ()
 
 #  Build the tools
