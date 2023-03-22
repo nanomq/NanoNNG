@@ -1303,13 +1303,12 @@ dbtree_delete_retain(dbtree *db, char *topic)
 		// dbtree_print(dbtree);
 	}
 
-	nni_rwlock_unlock(&(db->rwlock));
-
 mem_free:
 	cvector_free(node_buf);
 	topic_queue_free(for_free);
 	cvector_free(vec);
-
+	nni_rwlock_unlock(&(db->rwlock));
+	
 	return ret;
 }
 
