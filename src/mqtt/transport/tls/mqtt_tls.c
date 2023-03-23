@@ -1548,46 +1548,6 @@ mqtts_tcptran_ep_get_url(void *arg, void *v, size_t *szp, nni_opt_type t)
 }
 
 static int
-mqtts_tcptran_ep_get_recvmaxsz(void *arg, void *v, size_t *szp, nni_opt_type t)
-{
-	mqtts_tcptran_ep *ep = arg;
-	int               rv;
-
-	nni_mtx_lock(&ep->mtx);
-	rv = nni_copyout_size(ep->rcvmax, v, szp, t);
-	nni_mtx_unlock(&ep->mtx);
-	return (rv);
-}
-
-static int
-mqtts_tcptran_ep_set_recvmaxsz(
-    void *arg, const void *v, size_t sz, nni_opt_type t)
-{
-	mqtts_tcptran_ep *ep = arg;
-	size_t            val;
-	int               rv;
-	if ((rv = nni_copyin_size(&val, v, sz, 0, NNI_MAXSZ, t)) == 0) {
-		mqtts_tcptran_pipe *p;
-		nni_mtx_lock(&ep->mtx);
-		ep->rcvmax = val;
-		NNI_LIST_FOREACH (&ep->waitpipes, p) {
-			p->rcvmax = val;
-		}
-		NNI_LIST_FOREACH (&ep->negopipes, p) {
-			p->rcvmax = val;
-		}
-		NNI_LIST_FOREACH (&ep->busypipes, p) {
-			p->rcvmax = val;
-		}
-		nni_mtx_unlock(&ep->mtx);
-#ifdef NNG_ENABLE_STATS
-		nni_stat_set_value(&ep->st_rcv_max, val);
-#endif
-	}
-	return (rv);
-}
-
-static int
 mqtts_tcptran_ep_get_connmsg(void *arg, void *v, size_t *szp, nni_opt_type t)
 {
 	mqtts_tcptran_ep *ep = arg;
