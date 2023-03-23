@@ -19,7 +19,7 @@ extern "C" {
 #endif
 #if defined(SUPP_QUIC)
 NNG_DECL int nng_mqtt_quic_client_open(nng_socket *, const char *url);
-NNG_DECL int nng_mqtt_quic_open_keepalive(
+NNG_DECL int nng_mqtt_quic_open_conf(
     nng_socket *sock, const char *url, void *node);
 NNG_DECL int nng_mqtt_quic_set_connect_cb(
     nng_socket *, int (*cb)(void *, void *), void *arg);
