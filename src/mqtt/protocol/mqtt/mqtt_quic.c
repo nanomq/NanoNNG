@@ -404,8 +404,9 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		quic_pipe_send(p->qpipe, &p->send_aio);
 	} else {
 		if (nni_lmq_full(&s->send_messages)) {
-			size_t max_que_len =
-			    s->bridge_conf->max_send_queue_len;
+			size_t max_que_len = p->mqtt_sock->bridge_conf != NULL
+			    ? p->mqtt_sock->bridge_conf->max_send_queue_len
+			    : NNG_TRAN_MAX_LMQ_SIZE;
 
 			if (max_que_len > nni_lmq_cap(&s->send_messages)) {
 				size_t double_que_cap =
