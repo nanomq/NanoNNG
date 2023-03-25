@@ -1723,28 +1723,30 @@ conf_bridge_init(conf_bridge *bridge)
 static void
 conf_bridge_node_init(conf_bridge_node *node)
 {
-	node->sock             = NULL;
-	node->name             = NULL;
-	node->enable           = false;
-	node->parallel         = 2;
-	node->address          = NULL;
-	node->host             = NULL;
-	node->port             = 1883;
-	node->clean_start      = true;
-	node->clientid         = NULL;
-	node->username         = NULL;
-	node->password         = NULL;
-	node->proto_ver        = 4;
-	node->keepalive        = 30;
-	node->qkeepalive       = 60;
-	node->qconnect_timeout = 0;
-	node->qdiscon_timeout  = 0;
-	node->qidle_timeout    = 61;
-	node->forwards_count   = 0;
-	node->forwards         = NULL;
-	node->sub_count        = 0;
-	node->sub_list         = NULL;
-	node->sqlite           = NULL;
+	node->sock               = NULL;
+	node->name               = NULL;
+	node->enable             = false;
+	node->parallel           = 2;
+	node->address            = NULL;
+	node->host               = NULL;
+	node->port               = 1883;
+	node->clean_start        = true;
+	node->clientid           = NULL;
+	node->username           = NULL;
+	node->password           = NULL;
+	node->proto_ver          = 4;
+	node->keepalive          = 30;
+	node->qkeepalive         = 60;
+	node->qconnect_timeout   = 0;
+	node->qdiscon_timeout    = 0;
+	node->qinitial_rtt       = 0;
+	node->qsend_idle_timeout = 0;
+	node->qidle_timeout      = 61;
+	node->forwards_count     = 0;
+	node->forwards           = NULL;
+	node->sub_count          = 0;
+	node->sub_list           = NULL;
+	node->sqlite             = NULL;
 	conf_tls_init(&node->tls);
 }
 
@@ -1857,6 +1859,14 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".quic_disconTimeout")) != NULL) {
 			node->qdiscon_timeout = atoi(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".quic_initial_rtt")) != NULL) {
+			node->qinitial_rtt = atoi(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".quic_send_idleTimeout")) != NULL) {
+			node->qsend_idle_timeout = atoi(value);
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".quic_handshake_timeout")) != NULL) {
