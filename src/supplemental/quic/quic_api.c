@@ -108,12 +108,9 @@ LoadConfiguration(BOOLEAN Unsecure, conf_bridge_node *node)
 		goto there;
 	}
 	// Configures the client's idle timeout.
-	if (node->qidle_timeout == 0) {
-		Settings.IsSet.IdleTimeoutMs = FALSE;
-	} else {
-		Settings.IsSet.IdleTimeoutMs = TRUE;
-		Settings.IdleTimeoutMs       = node->qidle_timeout * 1000;
-	}
+	Settings.IsSet.IdleTimeoutMs = TRUE;
+	Settings.IdleTimeoutMs       = node->qidle_timeout * 1000;
+
 	if (node->qconnect_timeout != 0) {
 		Settings.IsSet.HandshakeIdleTimeoutMs = TRUE;
 		Settings.HandshakeIdleTimeoutMs =
