@@ -1462,6 +1462,23 @@ nng_pipe_cparam(nng_pipe p)
 	return cp;
 }
 
+bool
+nng_pipe_status(nng_pipe p)
+{
+	int       rv;
+	bool      status = false;
+	nni_pipe *pipe;
+
+	if ((rv = nni_pipe_find(&pipe, p.id)) != 0) {
+		return NULL;
+	}
+	status = nni_pipe_get_status(pipe);
+
+	nni_pipe_rele(pipe);
+
+	return status;
+}
+
 int
 nng_pipe_id(nng_pipe p)
 {

@@ -446,6 +446,12 @@ nni_pipe_get_conn_param(nni_pipe *p)
 	return cp;
 }
 
+bool
+nni_pipe_get_status(nni_pipe *p)
+{
+	return p->cache;
+}
+
 uint16_t
 nni_pipe_inc_packetid(nni_pipe *p)
 {
