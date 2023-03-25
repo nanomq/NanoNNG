@@ -121,7 +121,15 @@ LoadConfiguration(BOOLEAN Unsecure, conf_bridge_node *node)
 	}
 	if (node->qdiscon_timeout != 0) {
 		Settings.IsSet.DisconnectTimeoutMs = TRUE;
-		Settings.DisconnectTimeoutMs       = node->qdiscon_timeout * 1000;
+		Settings.DisconnectTimeoutMs = node->qdiscon_timeout * 1000;
+	}
+	if (node->qsend_idle_timeout != 0) {
+		Settings.IsSet.SendIdleTimeoutMs = TRUE;
+		Settings.SendIdleTimeoutMs = node->qsend_idle_timeout * 1000;
+	}
+	if (node->qinitial_rtt != 0) {
+		Settings.IsSet.InitialRttMs = TRUE;
+		Settings.InitialRttMs       = node->qinitial_rtt * 1000;
 	}
 
 	Settings.IsSet.KeepAliveIntervalMs = TRUE;
