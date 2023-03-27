@@ -253,7 +253,7 @@ void print_property(property *prop)
 static void
 sub_callback(void *arg) {
 	nng_mqtt_client *client = (nng_mqtt_client *) arg;
-	nng_aio *aio = client->sub_aio;
+	nng_aio *aio = client->send_aio;
 	nng_msg *msg = nng_aio_get_msg(aio);
 	uint32_t count;
 	reason_code *code;
@@ -263,14 +263,18 @@ sub_callback(void *arg) {
 	nng_msg_free(msg);
 }
 
-// Subscribe to the given subscriptions, and start receiving messages forever.
-int
-client_subscribe(nng_socket sock, nng_mqtt_topic_qos *subscriptions, int count,
-    bool verbose)
-{
-	int rv;
-	mqtt_example *exp;
-	nng_aio **cb_aio;
+static void
+unsub_callback(void *arg) {
+	nng_mqtt_client *client = (nng_mqtt_client *) arg;
+	nng_aio *aio = client->send_aio;
+	nng_msg *msg = nng_aio_get_msg(aio);
+	uint32_t count;
+	reason_code *code;
+	// code = (reason_code *)nng_mqtt_msg_get_suback_return_codes(msg, &count);
+	printf("aio mqtt result %d \n", nng_aio_result(aio));
+	// printf("suback %d \n", *code);
+	nng_msg_free(msg);
+}
 
 	// create a SUBSCRIBE message
 	nng_msg *submsg;
@@ -516,7 +520,11 @@ main(const int argc, const char **argv)
 		        SUBSCRIPTION_IDENTIFIER, 120));
 		// rv = nng_mqtt_subscribe(sock, subscriptions, 1, plist);
 
-		nng_mqtt_client *client = nng_mqtt_client_alloc(sock, sub_callback, true);
+		// Sync subscription
+		// rv = nng_mqtt_subscribe(sock, subscriptions, 1, plist);
+
+		// Asynchronous subscription
+		nng_mqtt_client *client = nng_mqtt_client_alloc(sock, &sub_callback, true);
 		nng_mqtt_subscribe_async(client, subscriptions, 1, plist);
 
 		printf("Start receiving loop:\n");
@@ -532,6 +540,12 @@ main(const int argc, const char **argv)
 			assert(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBLISH);
 			msg_recv_deal(msg, verbose);
 		}
+
+		// Sync unsubscription
+		// rv = nng_mqtt_unsubscribe(sock, subscriptions, 1, plist);
+		// Asynchronous unsubscription
+		nng_mqtt_unsubscribe_async(
+		    client, unsubscriptions, 1, unsub_plist);
 		nng_mqtt_client_free(client, true);
 
 	}
