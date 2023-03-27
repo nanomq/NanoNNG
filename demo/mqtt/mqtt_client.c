@@ -329,7 +329,50 @@ main(const int argc, const char **argv)
 			    .topic = { .buf = (uint8_t *) topic,
 			        .length     = strlen(topic) } },
 		};
-		rv = client_subscribe(sock, subscriptions, 1, verbose);
+		nng_mqtt_topic unsubscriptions[] = {
+			{
+			    .buf    = (uint8_t *) topic,
+			    .length = strlen(topic),
+			},
+		};
+
+		// Sync subscription
+		// rv = nng_mqtt_subscribe(&sock, subscriptions, 1, NULL);
+
+		// Asynchronous subscription
+		nng_mqtt_client *client = nng_mqtt_client_alloc(sock, &sub_callback, true);
+		nng_mqtt_subscribe_async(client, subscriptions, 1, NULL);
+
+
+		uint8_t buff[1024] = { 0 };
+		printf("Start receiving loop:\n");
+		while (true) {
+			nng_msg *msg;
+			uint8_t *payload;
+			uint32_t payload_len;
+			if ((rv = nng_recvmsg(sock, &msg, 0)) != 0) {
+				fatal("nng_recvmsg", rv);
+				continue;
+			}
+
+			// we should only receive publish messages
+			assert(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBLISH);
+
+			payload = nng_mqtt_msg_get_publish_payload(msg, &payload_len);
+
+			print80("Received: ", (char *) payload, payload_len, true);
+
+			if (verbose) {
+				memset(buff, 0, sizeof(buff));
+				nng_mqtt_msg_dump(msg, buff, sizeof(buff), true);
+				printf("%s\n", buff);
+			}
+
+			nng_msg_free(msg);
+			// break;
+		}
+
+		nng_mqtt_unsubscribe_async(client, unsubscriptions, 1, NULL);
 	}
 
 	nng_msleep(1000);
