@@ -492,9 +492,22 @@ main(const int argc, const char **argv)
 		}
 	} else if (strcmp(SUBSCRIBE, cmd) == 0) {
 		nng_mqtt_topic_qos subscriptions[] = {
-			{ .qos     = qos,
-			    .topic = { .buf = (uint8_t *) topic,
-			        .length     = strlen(topic) } },
+			{
+			    .qos   = qos,
+			    .topic = { 
+					.buf    = (uint8_t *) topic,
+			        .length = strlen(topic), 
+				},
+				.nolocal         = 1,
+				.rap             = 1,
+				.retain_handling = 0,
+			},
+		};
+		nng_mqtt_topic unsubscriptions[] = {
+			{
+			    .buf    = (uint8_t *) topic,
+			    .length = strlen(topic),
+			},
 		};
 
 		property *plist = mqtt_property_alloc();
