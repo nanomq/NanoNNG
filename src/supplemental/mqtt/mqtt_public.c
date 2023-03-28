@@ -779,9 +779,13 @@ nng_mqtt_client_alloc(nng_socket sock, nng_mqtt_sub_cb cb, bool is_async)
 {
 	nng_mqtt_client *client = NNI_ALLOC_STRUCT(client);
 	client->sock            = sock;
+
 	if (is_async) {
 		nng_aio_alloc(&client->send_aio, cb, client);
-		nng_lmq_alloc(&client->msgq, NNG_MAX_SEND_LMQ);
+		if ((client->msgq = nng_alloc(sizeof(nni_lmq))) == NULL) {
+			return NULL;
+		}
+		nni_lmq_init((nni_lmq *)client->msgq, NNG_MAX_SEND_LMQ);
 	}
 	return client;
 }
@@ -802,6 +806,51 @@ void nng_mqtt_client_free(nng_mqtt_client *client, bool is_async)
 		NNI_FREE_STRUCT(client);
 	}
 	return;
+}
+
+int
+nng_mqtt_unsubscribe(nng_socket sock, nng_mqtt_topic *sbs, size_t count, property *pl)
+{
+	int rv = 0;
+	// create a SUBSCRIBE message
+	nng_msg *unsubmsg;
+	nng_mqtt_msg_alloc(&unsubmsg, 0);
+	nng_mqtt_msg_set_packet_type(unsubmsg, NNG_MQTT_UNSUBSCRIBE);
+	nng_mqtt_msg_set_unsubscribe_topics(unsubmsg, sbs, count);
+
+	if (pl) {
+		nng_mqtt_msg_set_unsubscribe_property(unsubmsg, pl);
+	}
+
+	if ((rv = nng_sendmsg(sock, unsubmsg, NNG_FLAG_ALLOC)) != 0) {
+		nng_msg_free(unsubmsg);
+	}
+
+	return rv;
+}
+
+int 
+nng_mqtt_unsubscribe_async(nng_mqtt_client *client, nng_mqtt_topic *sbs, size_t count, property *pl)
+{
+	nng_msg *unsubmsg;
+	nng_mqtt_msg_alloc(&unsubmsg, 0);
+	nng_mqtt_msg_set_packet_type(unsubmsg, NNG_MQTT_UNSUBSCRIBE);
+	nng_mqtt_msg_set_unsubscribe_topics(unsubmsg, sbs, count);
+
+	if (pl) {
+		nng_mqtt_msg_set_subscribe_property(unsubmsg, pl);
+	}
+	if (nng_aio_busy(client->send_aio)) {
+		if (nni_lmq_put((nni_lmq *)client->msgq, unsubmsg) != 0) {
+			nni_plat_println("unsubscribe failed!");
+		}
+		return 1;
+	}
+	nng_aio_set_msg(client->send_aio, unsubmsg);
+	nng_send_aio(client->sock, client->send_aio);
+
+	return 0;
+
 }
 
 int
@@ -838,8 +887,8 @@ nng_mqtt_subscribe_async(nng_mqtt_client *client, nng_mqtt_topic_qos *sbs, size_
 		nng_mqtt_msg_set_subscribe_property(submsg, pl);
 	}
 	if (nng_aio_busy(client->send_aio)) {
-		if (nng_lmq_put(client->msgq, submsg) != 0) {
-			log_error("bridging subscribe failed!");
+		if (nni_lmq_put((nni_lmq *)client->msgq, submsg) != 0) {
+			nni_plat_println("subscribe failed!");
 		}
 		return 1;
 	}
