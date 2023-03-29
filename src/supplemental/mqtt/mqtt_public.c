@@ -860,6 +860,32 @@ void nng_mqtt_client_free(nng_mqtt_client *client, bool is_async)
 }
 
 int
+nng_mqtt_disconnect(nng_socket *sock, uint8_t reason_code, property *pl)
+{
+	// create a DISCONNECT message
+	int      rv = 0;
+	nng_msg *disconnmsg;
+	nng_mqtt_msg_alloc(&disconnmsg, 0);
+	nng_mqtt_msg_set_packet_type(disconnmsg, NNG_MQTT_DISCONNECT);
+	if (0 != reason_code) {
+		nng_mqtt_msg_set_disconnect_reason_code(
+		    disconnmsg, reason_code);
+	}
+
+	if (NULL != pl) {
+		nng_mqtt_msg_set_disconnect_property(disconnmsg, pl);
+	}
+
+	if ((rv = nng_sendmsg(*sock, disconnmsg, 0)) != 0) {
+		nng_msg_free(disconnmsg);
+	}
+
+	nng_close(*sock);
+
+	return (rv);
+}
+
+int
 nng_mqtt_unsubscribe(nng_socket sock, nng_mqtt_topic *sbs, size_t count, property *pl)
 {
 	int rv = 0;
