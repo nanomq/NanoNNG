@@ -35,20 +35,13 @@
 #include <signal.h>
 #include <time.h>
 
-#include "nng/mqtt/mqtt_client.h"
+#include <nng/mqtt/mqtt_client.h>
 #include <nng/nng.h>
 #include <nng/supplemental/util/platform.h>
 
 // Subcommands
 #define PUBLISH "pub"
 #define SUBSCRIBE "sub"
-
-typedef struct mqtt_example {
-	nng_msg *        msg;      // request message
-	nng_aio *        aio;      // request flow
-	nng_ctx          ctx;      // context on the request socket
-	void           *next;
-} mqtt_example;
 
 void
 fatal(const char *msg, int rv)
@@ -62,7 +55,6 @@ intHandler(int dummy)
 {
 	keepRunning = 0;
 	fprintf(stderr, "\nclient exit(0).\n");
-	nng_closeall();
 	exit(0);
 }
 
@@ -89,9 +81,7 @@ print80(const char *prefix, const char *str, size_t len, bool quote)
 static void
 disconnect_cb(nng_pipe p, nng_pipe_ev ev, void *arg)
 {
-	nng_msg * msg = arg;
-	nng_msg_free(msg);
-	int reason;
+	int reason = 0;
 	// get connect reason
 	nng_pipe_get_int(p, NNG_OPT_MQTT_DISCONNECT_REASON, &reason);
 	// property *prop;
@@ -146,7 +136,7 @@ client_connect(nng_socket *sock, const char *url, bool verbose)
 	mqtt_property_append(p, p1);
 	nng_mqtt_msg_set_connect_property(connmsg, p);
 
-	nng_mqtt_set_connect_cb(*sock, connect_cb, &sock);
+	nng_mqtt_set_connect_cb(*sock, connect_cb, sock);
 	nng_mqtt_set_disconnect_cb(*sock, disconnect_cb, connmsg);
 
 	uint8_t buff[1024] = { 0 };
@@ -159,43 +149,6 @@ client_connect(nng_socket *sock, const char *url, bool verbose)
 	printf("Connecting to server ...\n");
 	nng_dialer_set_ptr(dialer, NNG_OPT_MQTT_CONNMSG, connmsg);
 	nng_dialer_start(dialer, NNG_FLAG_NONBLOCK);
-
-	return (0);
-}
-
-int
-client_disconnect(nng_socket *sock, bool verbose)
-{
-	// create a DISCONNECT message
-	/* DISCONNECT */
-	int rv = 0;
-	nng_msg *disconnmsg;
-	nng_mqtt_msg_alloc(&disconnmsg, 0);
-	nng_mqtt_msg_set_packet_type(disconnmsg, NNG_MQTT_DISCONNECT);
-	nng_mqtt_msg_set_disconnect_reason_code(disconnmsg, 5);
-	// nng_mqtt_msg_set_property_u32(disconnmsg, SESSION_EXPIRY_INTERVAL, 100, NNG_MQTT_DISCONNECT);
-	// nng_mqtt_msg_set_property_str_pair(disconnmsg, USER_PROPERTY, "aaa", strlen("aaa"), "aaa", strlen("aaa"), NNG_MQTT_DISCONNECT);
-	property *plist = mqtt_property_alloc();
-	property *p = mqtt_property_set_value_strpair(USER_PROPERTY, "aaa", strlen("aaa"), "aaa", strlen("aaa"), true);
-	mqtt_property_append(plist, p);
-	nng_mqtt_msg_set_disconnect_property(disconnmsg, plist);
-
-	if ((rv = nng_sendmsg(*sock, disconnmsg, 0)) != 0) {
-		nng_msg_free(disconnmsg);
-		fatal("nng_sendmsg", rv);
-	}
-	printf("done.\n");
-
-	uint8_t buff[1024] = { 0 };
-
-	if (true) {
-		nng_mqtt_msg_dump(disconnmsg, buff, sizeof(buff), true);
-		printf("%s\n", buff);
-	}
-
-	// printf("Connecting to server ...\n");
-	// nng_dialer_set_ptr(dialer, NNG_OPT_MQTT_CONNMSG, connmsg);
-	// nng_dialer_start(dialer, NNG_FLAG_NONBLOCK);
 
 	return (0);
 }
@@ -288,63 +241,6 @@ send_callback(nng_mqtt_client *client, nng_msg *msg, void *arg) {
 	nng_msg_free(msg);
 }
 
-	// create a SUBSCRIBE message
-	nng_msg *submsg;
-	nng_mqtt_msg_alloc(&submsg, 0);
-	nng_mqtt_msg_set_packet_type(submsg, NNG_MQTT_SUBSCRIBE);
-
-	nng_mqtt_msg_set_subscribe_topics(submsg, subscriptions, count);
-
-	uint8_t buff[1024] = { 0 };
-
-	if (verbose) {
-		nng_mqtt_msg_dump(submsg, buff, sizeof(buff), true);
-		printf("%s\n", buff);
-	}
-
-	printf("Subscribing ...");
-	// nng_mqtt_client *client = nng_mqtt_client_alloc(sock, sub_callback, true);
-	// nng_mqtt_subscribe_async(client, subscriptions, 1, pl);
-
-	// if ((rv = nng_sendmsg(sock, submsg, 0)) != 0) {
-	// 	nng_msg_free(submsg);
-	// 	fatal("nng_sendmsg", rv);
-	// }
-	printf("done.\n");
-
-	printf("Start receiving loop:\n");
-	while (true) {
-		nng_msg *msg;
-		uint8_t *payload;
-		uint32_t payload_len;
-		if ((rv = nng_recvmsg(sock, &msg, 0)) != 0) {
-			fatal("nng_recvmsg", rv);
-			continue;
-		}
-
-		// we should only receive publish messages
-		assert(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBLISH);
-
-		payload = nng_mqtt_msg_get_publish_payload(msg, &payload_len);
-		print80("Received: ", (char *) payload, payload_len, true);
-
-		if (verbose) {
-			memset(buff, 0, sizeof(buff));
-			nng_mqtt_msg_dump(msg, buff, sizeof(buff), true);
-			printf("%s\n", buff);
-
-			property *pl = nng_mqtt_msg_get_publish_property(msg);
-			if (pl != NULL) {
-				mqtt_property_foreach(pl, print_property);
-			}
-		}
-
-		nng_msg_free(msg);
-	}
-
-	return rv;
-}
-
 // Publish a message to the given topic and with the given QoS.
 int
 client_publish(nng_socket sock, const char *topic, uint8_t *payload,
@@ -372,7 +268,8 @@ client_publish(nng_socket sock, const char *topic, uint8_t *payload,
 	mqtt_property_append(plist, p3);
 	property *p4 = mqtt_property_set_value_str(RESPONSE_TOPIC, "aaaaaa", strlen("aaaaaa"), true);
 	mqtt_property_append(plist, p4);
-	property *p5 = mqtt_property_set_value_binary(CORRELATION_DATA, "aaaaaa", strlen("aaaaaa"), true);
+	property *p5 = mqtt_property_set_value_binary(
+	    CORRELATION_DATA, (uint8_t *) "aaaaaa", strlen("aaaaaa"), true);
 	mqtt_property_append(plist, p5);
 	property *p6 = mqtt_property_set_value_strpair(USER_PROPERTY, "aaaaaa", strlen("aaaaaa"), "aaaaaa", strlen("aaaaaa"), true);
 	mqtt_property_append(plist, p6);
@@ -415,9 +312,11 @@ void msg_recv_deal(nng_msg *msg, bool verbose)
 		uint32_t topic_len = 0;
 		uint32_t payload_len = 0;
 		const char *topic = nng_mqtt_msg_get_publish_topic(msg, &topic_len);
-		char *payload = nng_mqtt_msg_get_publish_payload(msg, &payload_len);
+	        char *      payload =
+	            (char *) nng_mqtt_msg_get_publish_payload(
+	                msg, &payload_len);
 
-		printf("Receive \'%.*s\' from \'%.*s\'\n", payload_len, payload, topic_len, topic);
+	        printf("Receive \'%.*s\' from \'%.*s\'\n", payload_len, payload, topic_len, topic);
 		property *pl = nng_mqtt_msg_get_publish_property(msg);
 		if (pl != NULL) {
 			mqtt_property_foreach(pl, print_property);
@@ -439,10 +338,10 @@ publish_cb(void *args)
 	int                rv;
 	struct pub_params *params = args;
 	do {
-		rv = client_publish(*params->sock, params->topic, params->data,
+		client_publish(*params->sock, params->topic, params->data,
 		    params->data_len, params->qos, params->verbose);
 		nng_msleep(params->interval);
-	} while (params->interval > 0 && rv == 0);
+	} while (params->interval > 0);
 	printf("thread_exit\n");
 }
 
@@ -473,6 +372,7 @@ main(const int argc, const char **argv)
 	bool        verbose     = verbose_env && strlen(verbose_env) > 0;
 
 	client_connect(&sock, url, verbose);
+	nng_msleep(1000);
 
 	signal(SIGINT, intHandler);
 
@@ -530,17 +430,17 @@ main(const int argc, const char **argv)
 		mqtt_property_append(plist,
 		    mqtt_property_set_value_varint(
 		        SUBSCRIPTION_IDENTIFIER, 120));
-		// rv = nng_mqtt_subscribe(sock, subscriptions, 1, plist);
+		property *unsub_plist = NULL;
+		mqtt_property_dup(&unsub_plist, plist);
 
 		// Sync subscription
 		// rv = nng_mqtt_subscribe(sock, subscriptions, 1, plist);
 
 		// Asynchronous subscription
-		nng_mqtt_client *client = nng_mqtt_client_alloc(sock, &sub_callback, true);
+		nng_mqtt_client *client = nng_mqtt_client_alloc(sock, &send_callback, true);
 		nng_mqtt_subscribe_async(client, subscriptions, 1, plist);
 
 		printf("Start receiving loop:\n");
-
 		while (true) {
 			nng_msg *msg;
 			if ((rv = nng_recvmsg(sock, &msg, 0)) != 0) {
@@ -559,13 +459,13 @@ main(const int argc, const char **argv)
 		nng_mqtt_unsubscribe_async(
 		    client, unsubscriptions, 1, unsub_plist);
 		nng_mqtt_client_free(client, true);
-
 	}
 
-
-	client_disconnect(&sock, false);
-	nng_close(sock);
-
+	// disconnect 
+	property *plist = mqtt_property_alloc();
+	property *p = mqtt_property_set_value_strpair(USER_PROPERTY, "aaa", strlen("aaa"), "aaa", strlen("aaa"), true);
+	mqtt_property_append(plist, p);
+	nng_mqtt_disconnect(&sock, 5, plist);
 	return 0;
 
 error:
