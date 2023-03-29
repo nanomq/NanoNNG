@@ -271,6 +271,9 @@ endif ()
 include_directories(${CMAKE_SOURCE_DIR}/nanolib/include)
 include_directories(${CMAKE_SOURCE_DIR}/nanomq/include)
 
+add_subdirectory(docs/man)
+add_subdirectory(demo)
+
 set(CPACK_PACKAGE_NAME "nanonng")
 set(CPACK_PACKAGE_VERSION ${NNG_PACKAGE_VERSION})
 set(CPACK_PACKAGE_CONTACT "nanomsg@freelists.org")
