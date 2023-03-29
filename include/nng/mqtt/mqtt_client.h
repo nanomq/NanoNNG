@@ -554,11 +554,11 @@ NNG_DECL nng_mqtt_client *nng_mqtt_client_alloc(nng_socket, nng_mqtt_send_cb, bo
 NNG_DECL void nng_mqtt_client_free(nng_mqtt_client*, bool);
 NNG_DECL int nng_mqtt_subscribe(nng_socket, nng_mqtt_topic_qos *, size_t, property *);
 NNG_DECL int nng_mqtt_subscribe_async(nng_mqtt_client *, nng_mqtt_topic_qos *, size_t, property *);
-NNG_DECL int nng_mqtt_subscribe_aio(nng_socket, const char *, nng_aio *);
-NNG_DECL int nng_mqtt_unsubscribe(nng_socket *, const char *);
-NNG_DECL int nng_mqtt_unsubscribe_aio(nng_socket *, const char *, nng_aio *);
+NNG_DECL int nng_mqtt_unsubscribe(nng_socket, nng_mqtt_topic *, size_t, property *);
+NNG_DECL int nng_mqtt_unsubscribe_async(nng_mqtt_client *, nng_mqtt_topic *, size_t, property *);
 // as with other ctx based methods, we use the aio form exclusively
 NNG_DECL int nng_mqtt_ctx_subscribe(nng_ctx *, const char *, nng_aio *, ...);
+NNG_DECL int nng_mqtt_disconnect(nng_socket *, uint8_t, property *);
 
 typedef struct nng_mqtt_sqlite_option nng_mqtt_sqlite_option;
 
