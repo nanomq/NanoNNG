@@ -265,6 +265,70 @@ publish_cb(void *args)
 
 struct pub_params params;
 
+static int
+sqlite_config(nng_socket *sock, uint8_t proto_ver)
+{
+#if defined(NNG_SUPP_SQLITE)
+	int rv;
+	// create sqlite option
+	nng_mqtt_sqlite_option *sqlite;
+	if ((rv = nng_mqtt_alloc_sqlite_opt(&sqlite)) != 0) {
+		fatal("nng_mqtt_alloc_sqlite_opt", rv);
+	}
+	// set sqlite option
+	nng_mqtt_set_sqlite_enable(sqlite, true);
+	nng_mqtt_set_sqlite_flush_threshold(sqlite, 10);
+	nng_mqtt_set_sqlite_max_rows(sqlite, 20);
+	nng_mqtt_set_sqlite_db_dir(sqlite, "/tmp/nanomq");
+
+	// init sqlite db
+	nng_mqtt_sqlite_db_init(sqlite, "mqtt_client.db", proto_ver);
+
+	// set sqlite option pointer to socket
+	return nng_socket_set_ptr(*sock, NNG_OPT_MQTT_SQLITE, sqlite);
+#else
+	return (0);
+#endif
+}
+
+static void
+send_callback(void *arg) {
+
+	nng_mqtt_client *client = (nng_mqtt_client *) arg;
+	nng_aio *        aio    = client->send_aio;
+	nng_msg *        msg    = nng_aio_get_msg(aio);
+	uint32_t         count;
+	uint8_t *        code;
+	uint8_t          type;
+
+	if (msg == NULL || nng_aio_result(aio) != 0)
+		return;
+	switch (nng_mqtt_msg_get_packet_type(msg)) {
+	case NNG_MQTT_SUBACK:
+		code = (reason_code *) nng_mqtt_msg_get_suback_return_codes(
+		    msg, &count);
+		printf("SUBACK reason codes are");
+		for (int i = 0; i < count; ++i)
+			printf("%d ", code[i]);
+		printf("\n");
+		break;
+	case NNG_MQTT_UNSUBACK:
+		code = (reason_code *) nng_mqtt_msg_get_unsuback_return_codes(
+		    msg, &count);
+		printf("UNSUBACK reason codes are");
+		for (int i = 0; i < count; ++i)
+			printf("%d ", code[i]);
+		printf("\n");
+		break;
+	default:
+		printf("Sending in async way is done.\n");
+		break;
+	}
+	printf("aio mqtt result %d \n", nng_aio_result(aio));
+	// printf("suback %d \n", *code);
+	nng_msg_free(msg);
+}
+
 int
 main(const int argc, const char **argv)
 {
