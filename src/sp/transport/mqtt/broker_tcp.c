@@ -472,7 +472,7 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 	type = nni_msg_cmd_type(msg);
 
 	if (p->pro_ver == 5) {
-		(type == CMD_PUBCOMP || type == PUBACK) ? p->qrecv_quota++
+		(type == CMD_PUBCOMP || type == CMD_PUBACK) ? p->qrecv_quota++
 		                                        : p->qrecv_quota;
 	}
 	nni_msg_free(msg);
@@ -716,7 +716,7 @@ tcptran_pipe_recv_cb(void *arg)
 	// duplicated with fixed_header_adaptor
 	nni_msg_set_remaining_len(msg, len);
 	nni_msg_set_cmd_type(msg, type);
-	log_trace(
+	log_debug(
 	    "remain_len %ld cparam %p clientid %s username %s proto %d\n", len,
 	    cparam, cparam->clientid.body, cparam->username.body,
 	    cparam->pro_ver);
