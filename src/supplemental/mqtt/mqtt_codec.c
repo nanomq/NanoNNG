@@ -3814,12 +3814,16 @@ decode_buf_properties(uint8_t *packet, uint32_t packet_len, uint32_t *pos,
 		.endpos = &msg_body[current_pos + prop_len],
 	};
 
+	log_debug("remain len %d prop len %d curpos %p endpos %p", msg_len, prop_len, buf.curpos, buf.endpos);
+	if (msg_len - 4 < prop_len) {
+		log_warn("Malformed packet: property len > remaining len!");
+		goto out;
+	}
 	uint8_t prop_id = 0;
 	list            = property_alloc();
 	/* Check properties appearance time */
 	// TODO
 
-	log_debug("remain len %d prop len %d curpos %p endpos %p", msg_len, prop_len, buf.curpos, buf.endpos);
 	while (buf.curpos < buf.endpos) {
 		if (0 != read_byte(&buf, &prop_id)) {
 			property_free(list);
