@@ -16,4 +16,3 @@ nng_sources(
         transport.c
         transport.h
 )
-# nng_test(transport_test)

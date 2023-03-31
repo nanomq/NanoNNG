@@ -213,8 +213,8 @@ nni_listener_create(nni_listener **lp, nni_sock *s, const char *url_str)
 	if ((rv = nni_url_parse(&url, url_str)) != 0) {
 		return (rv);
 	}
-	if ((tran = nni_sp_tran_find(url)) == NULL ||
-	    tran->tran_listener == NULL) {
+	if (((tran = nni_sp_tran_find(url)) == NULL) ||
+	    (tran->tran_listener == NULL)) {
 		nni_url_free(url);
 		return (NNG_ENOTSUP);
 	}
