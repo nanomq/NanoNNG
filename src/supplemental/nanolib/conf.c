@@ -2060,12 +2060,16 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->sub_list       = NULL;
 	node->sqlite         = NULL;
 #if defined(SUPP_QUIC)
-	node->multi_stream     = false;
-	node->hybrid           = false;
-	node->qkeepalive       = 120;
-	node->qconnect_timeout = 30;  // HandshakeIdleTimeoutMs of QUIC
-	node->qdiscon_timeout  = 30;  // DisconnectTimeoutMs
-	node->qidle_timeout    = 120; // Disconnect after idle
+	node->multi_stream       = false;
+	node->hybrid             = false;
+	node->qkeepalive         = 30;
+	node->qconnect_timeout   = 20; // HandshakeIdleTimeoutMs of QUIC
+	node->qdiscon_timeout    = 20; // DisconnectTimeoutMs
+	node->qidle_timeout      = 60; // Disconnect after idle
+	node->qsend_idle_timeout = 2;
+	node->qinitial_rtt_ms    = 800; // Ms
+	node->qmax_ack_delay_ms  = 100;
+	node->qcongestion_control = 1; // QUIC_CONGESTION_CONTROL_ALGORITHM_CUBIC
 #endif
 	conf_tls_init(&node->tls);
 	node->conn_properties = NULL;
@@ -2186,6 +2190,18 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".quic_handshake_timeout")) != NULL) {
 			node->qconnect_timeout = atoi(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".qsend_idle_timeout")) != NULL) {
+			node->qsend_idle_timeout = atoi(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".qinitial_rtt_ms")) != NULL) {
+			node->qinitial_rtt_ms = atoi(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".qmax_ack_delay_ms")) != NULL) {
+			node->qmax_ack_delay_ms = atoi(value);
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".hybrid_bridging")) != NULL) {
