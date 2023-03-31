@@ -191,25 +191,22 @@ quic_load_config(conf_bridge_node *node)
 		Settings.KeepAliveIntervalMs       = 60 * 1000;
 		goto there;
 	}
-	// Configures the client's idle timeout.
-	if (node->qidle_timeout == 0) {
-		Settings.IsSet.IdleTimeoutMs = FALSE;
-	} else {
-		Settings.IsSet.IdleTimeoutMs = TRUE;
-		Settings.IdleTimeoutMs       = node->qidle_timeout * 1000;
-	}
-	if (node->qconnect_timeout != 0) {
-		Settings.IsSet.HandshakeIdleTimeoutMs = TRUE;
-		Settings.HandshakeIdleTimeoutMs =
-		    node->qconnect_timeout * 1000;
-	}
-	if (node->qdiscon_timeout != 0) {
-		Settings.IsSet.DisconnectTimeoutMs = TRUE;
-		Settings.DisconnectTimeoutMs       = node->qdiscon_timeout * 1000;
-	}
+	// Configures the QUIC params of client
+	Settings.IsSet.IdleTimeoutMs          = TRUE;
+	Settings.IdleTimeoutMs                = node->qidle_timeout * 1000;
+	Settings.IsSet.KeepAliveIntervalMs    = TRUE;
+	Settings.KeepAliveIntervalMs          = node->qkeepalive * 1000;
+	Settings.IsSet.HandshakeIdleTimeoutMs = TRUE;
+	Settings.HandshakeIdleTimeoutMs       = node->qconnect_timeout * 1000;
+	Settings.IsSet.DisconnectTimeoutMs    = TRUE;
+	Settings.DisconnectTimeoutMs          = node->qdiscon_timeout * 1000;
+	Settings.IsSet.SendIdleTimeoutMs      = TRUE;
+	Settings.SendIdleTimeoutMs   = node->qsend_idle_timeout * 1000;
+	Settings.IsSet.InitialRttMs  = TRUE;
+	Settings.InitialRttMs        = node->qinitial_rtt_ms;
+	Settings.IsSet.MaxAckDelayMs = TRUE;
+	Settings.MaxAckDelayMs       = node->qmax_ack_delay_ms;
 
-	Settings.IsSet.KeepAliveIntervalMs = TRUE;
-	Settings.KeepAliveIntervalMs       = node->qkeepalive * 1000;
 	switch (node->qcongestion_control)
 	{
 	case QUIC_CONGESTION_CONTROL_ALGORITHM_CUBIC:
