@@ -363,13 +363,20 @@ connect_cb(nng_pipe p, nng_pipe_ev ev, void *arg)
 
 // Connect to the given address.
 int
-client_connect(nng_socket *sock, const char *url)
+client_connect(nng_socket *sock, const char *url, uint8_t proto_version)
 {
 	nng_dialer dialer;
 	int        rv;
 
-	if ((rv = nng_mqtt_client_open(sock)) != 0) {
-		fatal("nng_socket", rv);
+	if (proto_version == MQTT_PROTOCOL_VERSION_v311) {
+		if ((rv = nng_mqtt_client_open(sock)) != 0) {
+			fatal("nng_socket", rv);
+		}
+	}
+	else if(proto_version == MQTT_PROTOCOL_VERSION_v5){
+		if ((rv = nng_mqttv5_client_open(sock)) != 0) {
+			fatal("nng_socket", rv);
+		}
 	}
 
 	if ((rv = nng_dialer_create(&dialer, *sock, url)) != 0) {
@@ -381,7 +388,7 @@ client_connect(nng_socket *sock, const char *url)
 	nng_msg *connmsg;
 	nng_mqtt_msg_alloc(&connmsg, 0);
 	nng_mqtt_msg_set_packet_type(connmsg, NNG_MQTT_CONNECT);
-	nng_mqtt_msg_set_connect_proto_version(connmsg, MQTT_PROTOCOL_VERSION_v311);
+	nng_mqtt_msg_set_connect_proto_version(connmsg, proto_version);
 	nng_mqtt_msg_set_connect_keep_alive(connmsg, 60);
 	nng_mqtt_msg_set_connect_user_name(connmsg, "nng_mqtt_client");
 	nng_mqtt_msg_set_connect_password(connmsg, "secrets");
@@ -399,27 +406,13 @@ client_connect(nng_socket *sock, const char *url)
 	return (0);
 }
 
-void 
-mytest(trantest *tt)
+void
+transtest_mqtt_sub_send(nng_socket sock)
 {
-	int         rv    = 0;
-	const char *url   = tt->addr;
-	uint8_t     qos   = 0;
-	const char *topic = "myTopic";
-	const char *data  = "ping";
-
-	client_connect(&tt->reqsock, url);
-	client_connect(&tt->repsock, url);
-
-	params.topic    = topic;
-	params.data     = (uint8_t *) data;
-	params.data_len = strlen(data);
-	params.qos      = qos;
-
 	nng_mqtt_topic_qos subscriptions[] = {
-		{ .qos     = qos,
-		    .topic = { .buf = (uint8_t *) topic,
-		        .length     = strlen(topic) } },
+		{ .qos     = params.qos,
+		    .topic = { .buf = (uint8_t *) params.topic,
+		        .length     = strlen(params.topic) } },
 	};
 
 	nng_msg *submsg;
@@ -427,11 +420,14 @@ mytest(trantest *tt)
 	nng_mqtt_msg_set_packet_type(submsg, NNG_MQTT_SUBSCRIBE);
 	nng_mqtt_msg_set_subscribe_topics(submsg, (nng_mqtt_topic_qos *)&subscriptions, 1);
 
-	if ((rv = nng_sendmsg(tt->reqsock, submsg, 0)) != 0) {
+	if (nng_sendmsg(sock, submsg, 0) != 0) {
 		nng_msg_free(submsg);
-		fatal("nng_sendmsg", rv);
 	}
+}
 
+void
+trantest_mqtt_pub(nng_socket sock)
+{
 	nng_msg *pubmsg;
 	nng_mqtt_msg_alloc(&pubmsg, 0);
 	nng_mqtt_msg_set_packet_type(pubmsg, NNG_MQTT_PUBLISH);
@@ -441,17 +437,17 @@ mytest(trantest *tt)
 	nng_mqtt_msg_set_publish_payload(
 	    pubmsg, (uint8_t *) params.data, params.data_len);
 	nng_mqtt_msg_set_publish_topic(pubmsg, params.topic);
+	nng_sendmsg(sock, pubmsg, NNG_FLAG_NONBLOCK);
+}
 
-	if ((rv = nng_sendmsg(tt->repsock, pubmsg, NNG_FLAG_NONBLOCK)) != 0) {
-		fatal("nng_sendmsg", rv);
-	}
-
+void
+transtest_mqtt_sub_recv(nng_socket sock)
+{
 	while (1) {
 		nng_msg *msg = NULL;
 		uint8_t *payload;
 		uint32_t payload_len;
-		if ((rv = nng_recvmsg(tt->reqsock, &msg, 0)) != 0) {
-			fatal("nng_recvmsg", rv);
+		if (nng_recvmsg(sock, &msg, 0) != 0) {
 			continue;
 		}
 
@@ -466,12 +462,52 @@ mytest(trantest *tt)
 
 		nng_msg_free(msg);
 	}
-
 }
+
 void
 trantest_mqtt_sub_pub(trantest *tt)
 {
-	Convey("mqtt pub and sub", { mytest(tt); });
+	Convey("mqtt pub and sub", {
+		const char *url   = tt->addr;
+		uint8_t     qos   = 0;
+		const char *topic = "myTopic";
+		const char *data  = "ping";
+
+		client_connect(&tt->reqsock, url, MQTT_PROTOCOL_VERSION_v311);
+		client_connect(&tt->repsock, url, MQTT_PROTOCOL_VERSION_v311);
+
+		params.topic    = topic;
+		params.data     = (uint8_t *) data;
+		params.data_len = strlen(data);
+		params.qos      = qos;
+
+		transtest_mqtt_sub_send(tt->reqsock);
+		trantest_mqtt_pub(tt->repsock);
+		transtest_mqtt_sub_recv(tt->reqsock);
+	});
+}
+
+void
+trantest_mqttv5_sub_pub(trantest *tt)
+{
+	Convey("mqttv5 pub and sub", {
+		const char *url   = tt->addr;
+		uint8_t     qos   = 0;
+		const char *topic = "myTopic";
+		const char *data  = "ping";
+
+		client_connect(&tt->reqsock, url, MQTT_PROTOCOL_VERSION_v5);
+		client_connect(&tt->repsock, url, MQTT_PROTOCOL_VERSION_v5);
+
+		params.topic    = topic;
+		params.data     = (uint8_t *) data;
+		params.data_len = strlen(data);
+		params.qos      = qos;
+
+		transtest_mqtt_sub_send(tt->reqsock);
+		trantest_mqtt_pub(tt->repsock);
+		transtest_mqtt_sub_recv(tt->reqsock);
+	});
 }
 
 void
@@ -673,6 +709,7 @@ mqtt_trantest_test(const char *addr)
 
 		trantest_scheme(&tt);
 		trantest_mqtt_sub_pub(&tt);
+		trantest_mqttv5_sub_pub(&tt);
 		// trantest_send_recv_large(&tt);
 		// trantest_send_recv_multi(&tt);
 		// trantest_check_properties(&tt, f);
