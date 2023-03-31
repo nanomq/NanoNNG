@@ -335,31 +335,31 @@ struct _params {
 
 struct _params params;
 
-// static void
-// disconnect_cb(nng_pipe p, nng_pipe_ev ev, void *arg)
-// {
-// 	nng_msg * msg = arg;
-// 	nng_msg_free(msg);
-// 	// int reason;
-// 	// get connect reason
-// 	// nng_pipe_get_int(p, NNG_OPT_MQTT_DISCONNECT_REASON, &reason);
-// 	// property *prop;
-// 	// nng_pipe_get_ptr(p, NNG_OPT_MQTT_DISCONNECT_PROPERTY, &prop);
-// 	// nng_socket_get?
-// 	// printf("%s: disconnected!\n", __FUNCTION__);
-// }
+static void
+disconnect_cb(nng_pipe p, nng_pipe_ev ev, void *arg)
+{
+	nng_msg * msg = arg;
+	nng_msg_free(msg);
+	// int reason;
+	// get connect reason
+	// nng_pipe_get_int(p, NNG_OPT_MQTT_DISCONNECT_REASON, &reason);
+	// property *prop;
+	// nng_pipe_get_ptr(p, NNG_OPT_MQTT_DISCONNECT_PROPERTY, &prop);
+	// nng_socket_get?
+	// printf("%s: disconnected!\n", __FUNCTION__);
+}
 
-// static void
-// connect_cb(nng_pipe p, nng_pipe_ev ev, void *arg)
-// {
-// 	int reason;
-// 	// get connect reason
-// 	nng_pipe_get_int(p, NNG_OPT_MQTT_CONNECT_REASON, &reason);
-// 	// get property for MQTT V5
-// 	// property *prop;
-// 	// nng_pipe_get_ptr(p, NNG_OPT_MQTT_CONNECT_PROPERTY, &prop);
-// 	// printf("%s: connected!\n", __FUNCTION__);
-// }
+static void
+connect_cb(nng_pipe p, nng_pipe_ev ev, void *arg)
+{
+	int reason;
+	// get connect reason
+	nng_pipe_get_int(p, NNG_OPT_MQTT_CONNECT_REASON, &reason);
+	// get property for MQTT V5
+	// property *prop;
+	// nng_pipe_get_ptr(p, NNG_OPT_MQTT_CONNECT_PROPERTY, &prop);
+	// printf("%s: connected!\n", __FUNCTION__);
+}
 
 // Connect to the given address.
 int
@@ -390,9 +390,8 @@ client_connect(nng_socket *sock, const char *url)
 	nng_mqtt_msg_set_connect_will_topic(connmsg, "will_topic");
 	nng_mqtt_msg_set_connect_clean_session(connmsg, true);
 
-	// not neccessary for pub/sub test
-	// nng_mqtt_set_connect_cb(*sock, connect_cb, &sock);
-	// nng_mqtt_set_disconnect_cb(*sock, disconnect_cb, connmsg);
+	nng_mqtt_set_connect_cb(*sock, connect_cb, &sock);
+	nng_mqtt_set_disconnect_cb(*sock, disconnect_cb, connmsg);
 
 	nng_dialer_set_ptr(dialer, NNG_OPT_MQTT_CONNMSG, connmsg);
 	nng_dialer_start(dialer, NNG_FLAG_NONBLOCK);
