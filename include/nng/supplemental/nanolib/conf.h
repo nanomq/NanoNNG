@@ -257,10 +257,13 @@ struct conf_bridge_node {
 	bool         stream_auto_genid; // generate stream id automatically for each stream
 	bool         qos_first; // send QoS msg in high priority
 	bool         hybrid;  // hybrid bridging affects auto-reconnect of QUIC transport
-	uint64_t     qkeepalive;		//keepalive timeout interval of QUIC transport
-	uint64_t     qconnect_timeout;	// HandshakeIdleTimeoutMs of QUIC
-	uint32_t     qdiscon_timeout;	// DisconnectTimeoutMs
-	uint32_t     qidle_timeout;	    // Disconnect after idle
+	uint64_t     qkeepalive;		 //keepalive timeout interval of QUIC transport
+	uint64_t     qconnect_timeout;	 // HandshakeIdleTimeoutMs of QUIC
+	uint32_t     qdiscon_timeout;	 // DisconnectTimeoutMs
+	uint32_t     qidle_timeout;	     // Disconnect after idle
+	uint32_t     qsend_idle_timeout; // SendIdleTimeoutMs
+	uint32_t     qinitial_rtt_ms;       // Initial RTT estimate.
+	uint32_t     qmax_ack_delay_ms;     // MaxAckDelayMs How long to wait after receiving data before sending an ACK.
 	uint8_t      qcongestion_control; // congestion control algorithm 1: bbr 0: cubic
 #endif
 };
