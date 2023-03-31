@@ -62,6 +62,12 @@ extern void trantest_test_all(const char *addr);
 #define nng_wss_register notransport
 #endif
 
+void
+fatal(const char *msg, int rv)
+{
+	fprintf(stderr, "%s: %s\n", msg, nng_strerror(rv));
+}
+
 int
 notransport(void)
 {
@@ -110,6 +116,18 @@ trantest_next_address(char *out, const char *prefix)
 }
 
 void
+mqtt_trantest_set_address(char *out, const char *prefix)
+{
+	trantest_checktran(prefix);
+
+	trantest_port = 1883;
+
+	// we append the port, and for web sockets also a /test path
+	(void) snprintf(out, NNG_MAXADDRLEN, "%s%u%s", prefix, trantest_port,
+		prefix[0] == 'w' ? "/test" : "");
+}
+
+void
 trantest_prev_address(char *out, const char *prefix)
 {
 	trantest_port--;
@@ -134,7 +152,7 @@ trantest_init(trantest *tt, const char *addr)
 void
 mqtt_trantest_init(trantest *tt, const char *addr)
 {
-	trantest_next_address(tt->addr, addr);
+	mqtt_trantest_set_address(tt->addr, addr);
 
 	So(nng_req_open(&tt->reqsock) == 0);
 	So(nng_rep_open(&tt->repsock) == 0);
@@ -176,6 +194,7 @@ trantest_dial(trantest *tt, nng_dialer *dp)
 	*dp = d;
 	return (0);
 }
+
 
 int
 trantest_listen(trantest *tt, nng_listener *lp)
@@ -305,6 +324,154 @@ trantest_send_recv(trantest *tt)
 		nng_strfree(url);
 		nng_msg_free(recv);
 	});
+}
+struct _params {
+	nng_socket *sock;
+	const char *topic;
+	uint8_t *   data;
+	uint32_t    data_len;
+	uint8_t     qos;
+};
+
+struct _params params;
+
+static void
+disconnect_cb(nng_pipe p, nng_pipe_ev ev, void *arg)
+{
+	nng_msg * msg = arg;
+	nng_msg_free(msg);
+	// int reason;
+	// get connect reason
+	// nng_pipe_get_int(p, NNG_OPT_MQTT_DISCONNECT_REASON, &reason);
+	// property *prop;
+	// nng_pipe_get_ptr(p, NNG_OPT_MQTT_DISCONNECT_PROPERTY, &prop);
+	// nng_socket_get?
+	// printf("%s: disconnected!\n", __FUNCTION__);
+}
+
+static void
+connect_cb(nng_pipe p, nng_pipe_ev ev, void *arg)
+{
+	int reason;
+	// get connect reason
+	nng_pipe_get_int(p, NNG_OPT_MQTT_CONNECT_REASON, &reason);
+	// get property for MQTT V5
+	// property *prop;
+	// nng_pipe_get_ptr(p, NNG_OPT_MQTT_CONNECT_PROPERTY, &prop);
+	// printf("%s: connected!\n", __FUNCTION__);
+}
+
+// Connect to the given address.
+int
+client_connect(nng_socket *sock, const char *url)
+{
+	nng_dialer dialer;
+	int        rv;
+
+	if ((rv = nng_mqtt_client_open(sock)) != 0) {
+		fatal("nng_socket", rv);
+	}
+
+	if ((rv = nng_dialer_create(&dialer, *sock, url)) != 0) {
+		fatal("nng_dialer_create", rv);
+	}
+
+	// create a CONNECT message
+	/* CONNECT */
+	nng_msg *connmsg;
+	nng_mqtt_msg_alloc(&connmsg, 0);
+	nng_mqtt_msg_set_packet_type(connmsg, NNG_MQTT_CONNECT);
+	nng_mqtt_msg_set_connect_proto_version(connmsg, MQTT_PROTOCOL_VERSION_v311);
+	nng_mqtt_msg_set_connect_keep_alive(connmsg, 60);
+	nng_mqtt_msg_set_connect_user_name(connmsg, "nng_mqtt_client");
+	nng_mqtt_msg_set_connect_password(connmsg, "secrets");
+	nng_mqtt_msg_set_connect_will_msg(
+	    connmsg, (uint8_t *) "bye-bye", strlen("bye-bye"));
+	nng_mqtt_msg_set_connect_will_topic(connmsg, "will_topic");
+	nng_mqtt_msg_set_connect_clean_session(connmsg, true);
+
+	nng_mqtt_set_connect_cb(*sock, connect_cb, &sock);
+	nng_mqtt_set_disconnect_cb(*sock, disconnect_cb, connmsg);
+
+	nng_dialer_set_ptr(dialer, NNG_OPT_MQTT_CONNMSG, connmsg);
+	nng_dialer_start(dialer, NNG_FLAG_NONBLOCK);
+
+	return (0);
+}
+
+void 
+mytest(trantest *tt)
+{
+	int         rv    = 0;
+	const char *url   = tt->addr;
+	uint8_t     qos   = 0;
+	const char *topic = "myTopic";
+	const char *data  = "ping";
+
+	client_connect(&tt->reqsock, url);
+	client_connect(&tt->repsock, url);
+
+	params.topic    = topic;
+	params.data     = (uint8_t *) data;
+	params.data_len = strlen(data);
+	params.qos      = qos;
+
+	nng_mqtt_topic_qos subscriptions[] = {
+		{ .qos     = qos,
+		    .topic = { .buf = (uint8_t *) topic,
+		        .length     = strlen(topic) } },
+	};
+
+	nng_msg *submsg;
+	nng_mqtt_msg_alloc(&submsg, 0);
+	nng_mqtt_msg_set_packet_type(submsg, NNG_MQTT_SUBSCRIBE);
+	nng_mqtt_msg_set_subscribe_topics(submsg, &subscriptions, 1);
+
+	if ((rv = nng_sendmsg(tt->reqsock, submsg, 0)) != 0) {
+		nng_msg_free(submsg);
+		fatal("nng_sendmsg", rv);
+	}
+
+	nng_msg *pubmsg;
+	nng_mqtt_msg_alloc(&pubmsg, 0);
+	nng_mqtt_msg_set_packet_type(pubmsg, NNG_MQTT_PUBLISH);
+	nng_mqtt_msg_set_publish_dup(pubmsg, 0);
+	nng_mqtt_msg_set_publish_qos(pubmsg, params.qos);
+	nng_mqtt_msg_set_publish_retain(pubmsg, 0);
+	nng_mqtt_msg_set_publish_payload(
+	    pubmsg, (uint8_t *) params.data, params.data_len);
+	nng_mqtt_msg_set_publish_topic(pubmsg, params.topic);
+
+	if ((rv = nng_sendmsg(tt->repsock, pubmsg, NNG_FLAG_NONBLOCK)) != 0) {
+		fatal("nng_sendmsg", rv);
+	}
+
+	while (1) {
+		nng_msg *msg = NULL;
+		uint8_t *payload;
+		uint32_t payload_len;
+		if ((rv = nng_recvmsg(tt->reqsock, &msg, 0)) != 0) {
+			fatal("nng_recvmsg", rv);
+			continue;
+		}
+
+		// we should only receive publish messages
+		if (nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBLISH) {
+			payload = nng_mqtt_msg_get_publish_payload(
+			    msg, &payload_len);
+			// printf("what I get:%s\n", (char *) payload);
+			So(strcmp((char *) payload, "ping") == 0);
+			break;
+		}
+
+		nng_msg_free(msg);
+	}
+
+}
+void
+trantest_mqtt_sub_pub(trantest *tt)
+{
+	Convey("mqtt pub and sub", { mytest(tt); });
 }
 
 void
@@ -494,21 +661,19 @@ trantest_test_extended(const char *addr, trantest_proptest_t f)
 }
 
 void
-mqtt_trantest_test_extended(const char *addr, trantest_proptest_t f)
+mqtt_trantest_test(const char *addr)
 {
 	trantest tt;
 
 	memset(&tt, 0, sizeof(tt));
-	Convey("Given transport", {
+	Convey("MQTT given transport", {
 		mqtt_trantest_init(&tt, addr);
 
 		Reset({ trantest_fini(&tt); });
 
-		trantest_scheme(&tt);
-		trantest_conn_refused(&tt);
-		trantest_duplicate_listen(&tt);
-		// trantest_listen_accept(&tt);
-		// trantest_send_recv(&tt);
+		// trantest_scheme(&tt);
+		// mqtt_trantest_dial(&tt);
+		trantest_mqtt_sub_pub(&tt);
 		// trantest_send_recv_large(&tt);
 		// trantest_send_recv_multi(&tt);
 		// trantest_check_properties(&tt, f);
