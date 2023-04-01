@@ -259,7 +259,7 @@ nano_pipe_timer_cb(void *arg)
 				p->busy = true;
 				// TODO set max retrying times in nanomq.conf
 				nano_msg_set_dup(rmsg);
-				// we use pipe as packet id here
+				// deliver packet id to transport here
 				nni_aio_set_prov_data(
 				    &p->aio_send, (void *)(uintptr_t)pid);
 				// put original msg into sending
@@ -354,6 +354,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	nni_msg *        msg;
 	int              rv;
 	uint32_t         pipe    = 0;
+	uint32_t *       pipeid;
 	uint8_t          qos_pac = 0;
 	uint8_t          qos     = 0;
 	char *           pld_pac = NULL;
@@ -366,22 +367,20 @@ nano_ctx_send(void *arg, nni_aio *aio)
 
 	if (nni_aio_begin(aio) != 0) {
 		nni_msg_free(msg);
-		// AIO ERROR
-		log_error("Please report this bug");
+		log_error("Aio misuesed!");
 		return;
 	}
 
 	log_trace(" #### nano_ctx_send with ctx %p msg type %x #### ", ctx,
 	    nni_msg_get_type(msg));
 
-	if ((pipe = nni_msg_get_pipe(msg)) != 0) {
-		nni_msg_set_pipe(msg, 0);
-	} else {
+	pipeid = nni_aio_get_prov_data(aio);
+	if (pipeid)
+		pipe = *pipeid;
+	nni_aio_set_prov_data(aio, NULL);
+	if (pipe == 0)
 		pipe = ctx->pipe_id; // reply to self
-	}
-	ctx->pipe_id =
-	    0; // ensure connack/PING/DISCONNECT/PUBACK only sends once
-
+	ctx->pipe_id = 0; // ensure connack/PING/DISCONNECT/PUBACK only sends once
 	if (ctx == &s->ctx) {
 		nni_pollable_clear(&s->writable);
 	}
@@ -644,7 +643,7 @@ nano_pipe_start(void *arg)
 	// Clientid should not be NULL since broker will assign one
 	clientid = (char *) conn_param_get_clientid(p->conn_param);
 	if (!clientid) {
-		log_error("NULL clientid found when try to restore session.");
+		log_warn("NULL clientid found when try to restore session.");
 		nni_mtx_unlock(&s->lk);
 		return NNG_ECONNSHUT;
 	}
@@ -959,8 +958,6 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 		nni_pollable_raise(&s->writable);
 	}
 
-	// TODO MQTT 5 property
-
 	ctx->pipe_id = nni_pipe_id(p->pipe);
 	log_trace("nano_ctx_recv ends %p pipe: %p pipe_id: %d", ctx, p,
 	    ctx->pipe_id);
@@ -1083,7 +1080,7 @@ nano_pipe_recv_cb(void *arg)
 			nni_qos_db_remove(
 			    is_sqlite, npipe->nano_qos_db, npipe->p_id, ackid);
 		} else {
-			log_error("qos msg not found!");
+			log_error("ACK failed! qos msg not found!");
 		}
 		nni_mtx_unlock(&p->lk);
 	case CMD_CONNECT:
@@ -1112,7 +1109,7 @@ nano_pipe_recv_cb(void *arg)
 		nni_list_append(&s->recvpipes, p);
 		nni_pollable_raise(&s->readable);
 		nni_mtx_unlock(&s->lk);
-		log_error("no ctx found!! create more ctxs!");
+		log_warn("no ctx found!! create more ctxs!");
 		// nni_println("ERROR: no ctx found!! create more ctxs!");
 		return;
 	}
