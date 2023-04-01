@@ -1185,6 +1185,9 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		if (tinfo != NULL && info != tinfo ) {
 			continue;
 		}
+		if (info->no_local == 1 && p->npipe->p_id == nni_msg_get_pipe(msg)) {
+			continue;
+		}
 		tinfo = NULL;
 		len_offset=0;
 		char *sub_topic = info->topic;
@@ -1263,12 +1266,11 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				len_offset = 2;
 				nni_msg *old;
 				// packetid in aio to differ resend msg
-				// TODO replace it with set prov data
 				pid = (uint16_t)(size_t) nni_aio_get_prov_data(aio);
 				if (pid == 0) {
 					// first time send this msg
 					pid = nni_pipe_inc_packetid(pipe);
-					// store msg for qos retrying
+					// store msg for qos retry
 					nni_msg_clone(msg);
 					if ((old = nni_qos_db_get(is_sqlite,
 					         pipe->nano_qos_db, pipe->p_id,
