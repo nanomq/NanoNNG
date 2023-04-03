@@ -222,6 +222,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 	}
 	if (ptype == NNG_MQTT_SUBSCRIBE || ptype == NNG_MQTT_UNSUBSCRIBE) {
 		nni_mqtt_msg_encode(msg);
+		log_info("Sending Sub/UnSub msg first");
 		quic_aio_send(p->qstream, aio);
 		return -1;
 	}
@@ -280,7 +281,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		// 	    "Warning! msg send failed due to busy socket");
 		// }
 		nni_msg_free(msg);
-		log_warn("msg 0x%x lost due to busy pipe",
+		log_trace("msg 0x%x lost due to busy pipe",
 		    nni_mqtt_msg_get_packet_type(msg));
 	}
 	if (0 == qos && ptype != NNG_MQTT_SUBSCRIBE &&
@@ -665,7 +666,7 @@ mqtt_timer_cb(void *arg)
 			quic_strm_send(p->qstream, &p->rep_aio);
 			s->counter = 0;
 			s->pingcnt ++;
-			log_debug("send PINGREQ %d %d", s->counter, s->pingcnt);
+			log_info("send PINGREQ %d %d", s->counter, s->pingcnt);
 		}
 	}
 
@@ -1200,7 +1201,7 @@ wait:
 	} else {
 		nni_mtx_unlock(&s->mtx);
 		nni_aio_set_msg(aio, NULL);
-		nni_println("ERROR! former aio not finished!");
+		log_error("ERROR! former aio not finished!");
 		nni_aio_finish_error(aio, NNG_EBUSY);
 	}
 	return;

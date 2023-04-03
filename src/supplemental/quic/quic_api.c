@@ -227,7 +227,7 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 	nni_msg *smsg;
 	nni_aio *aio;
 
-	log_debug("QuicStreamCallback triggered! %d", Event->Type);
+	log_info("QuicStreamCallback triggered! %d", Event->Type);
 	switch (Event->Type) {
 	case QUIC_STREAM_EVENT_SEND_COMPLETE:
 		// A previous StreamSend call has completed, and the context is
@@ -237,6 +237,7 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 		if (Event->SEND_COMPLETE.Canceled) {
 			log_error("MsQUIC send Canceled!");
 		}
+
 		// Get aio from sendq and finish
 		nni_mtx_lock(&qstrm->mtx);
 		aio = Event->SEND_COMPLETE.ClientContext;
@@ -304,7 +305,8 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 	case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
 		// The peer gracefully shut down its send direction of the
 		// stream.
-		log_warn("[strm][%p] Peer send aborted %ld\n", Stream, Event->PEER_SEND_ABORTED.ErrorCode);
+		log_warn("[strm][%p] Peer send aborted %ld\n", Stream,
+		    Event->PEER_SEND_ABORTED.ErrorCode);
 		break;
 	case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
 		// The peer aborted its send direction of the stream.
