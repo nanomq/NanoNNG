@@ -1348,6 +1348,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			// afterwards
 			nni_msg_free(msg);
 			nni_aio_set_prov_data(txaio, NULL);
+			nni_list_remove(&p->sendq, aio);
 			nni_aio_set_msg(aio, NULL);
 			nni_aio_finish(aio, 0, 0);
 			return;
@@ -1357,6 +1358,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		// No local caused
 		nni_msg_free(msg);
 		nni_aio_set_prov_data(txaio, NULL);
+		nni_list_remove(&p->sendq, aio);
 		nni_aio_set_msg(aio, NULL);
 		nni_aio_finish(aio, 0, 0);
 		return;
