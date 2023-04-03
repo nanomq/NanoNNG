@@ -202,10 +202,12 @@ file_rotation(FILE *fp, conf_log *config)
 		char * index_data = NULL;
 		size_t size       = 0;
 		size_t index      = 1;
+		char   buf[4]     = { 0 };
 
 		if ((rv = nni_plat_file_get(
 		         index_file, (void **) &index_data, &size)) == 0) {
-			if (1 != sscanf(index_data, "%zu", &index)) {
+			memcpy(buf, index_data, size);
+			if (1 != sscanf(buf, "%zu", &index)) {
 				index = 1;
 			}
 			nni_free(index_data, size);
