@@ -225,6 +225,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		quic_aio_send(p->qstream, aio);
 		return -1;
 	}
+	//Assign NNG_MQTT_PUBREL NNG_MQTT_PUBACK NNG_MQTT_PUBREC NNG_MQTT_PUBCOMP high priority
 	if (qos > 0 && ptype == NNG_MQTT_PUBLISH) {
 		nni_mqtt_msg_encode(msg);
 		uint32_t topic_len;
@@ -506,7 +507,6 @@ mqtt_quic_recv_cb(void *arg)
 		nni_mqtt_msg_alloc(&ack, 0);
 		nni_mqtt_msg_set_packet_type(ack, NNG_MQTT_PUBCOMP);
 		nni_mqtt_msg_set_puback_packet_id(ack, packet_id);
-		nni_mqtt_msg_encode(ack);
 		// ignore result of this send ?
 		mqtt_send_msg(NULL, ack, s);
 		// return msg to user
@@ -523,14 +523,11 @@ mqtt_quic_recv_cb(void *arg)
 	case NNG_MQTT_PUBLISH:
 		// we have received a PUBLISH
 		qos = nni_mqtt_msg_get_publish_qos(msg);
-		if (qos > 0) {
-			uint32_t topic_len;
-			char    *topic;
-			topic =
-			    nni_mqtt_msg_get_publish_topic(msg, &topic_len);
-			log_info("Recv QoS %d msg from %.*s in %ld",
-			    qos, topic_len, topic, nni_clock());
-		}
+		uint32_t topic_len;
+		char    *topic;
+		topic = nni_mqtt_msg_get_publish_topic(msg, &topic_len);
+		log_info("Recv QoS %d Msg from %.*s in %ld", qos, topic_len,
+		    topic, nni_clock());
 		if (2 > qos) {
 			if (qos == 1) {
 				// QoS 1 return PUBACK
@@ -543,7 +540,6 @@ mqtt_quic_recv_cb(void *arg)
 				packet_id = nni_mqtt_msg_get_publish_packet_id(msg);
 				nni_mqtt_msg_set_packet_type(ack, NNG_MQTT_PUBACK);
 				nni_mqtt_msg_set_puback_packet_id(ack, packet_id);
-				nni_mqtt_msg_encode(ack);
 				// ignore result of this send ?
 				mqtt_send_msg(NULL, ack, s);
 			}
@@ -578,7 +574,6 @@ mqtt_quic_recv_cb(void *arg)
 			nni_mqtt_msg_alloc(&ack, 0);
 			nni_mqtt_msg_set_packet_type(ack, NNG_MQTT_PUBREC);
 			nni_mqtt_msg_set_puback_packet_id(ack, packet_id);
-			nni_mqtt_msg_encode(ack);
 			// ignore result of this send ?
 			mqtt_send_msg(NULL, ack, s);
 		}
@@ -596,7 +591,6 @@ mqtt_quic_recv_cb(void *arg)
 		nni_mqtt_msg_alloc(&ack, 0);
 		nni_mqtt_msg_set_packet_type(ack, NNG_MQTT_PUBREL);
 		nni_mqtt_msg_set_puback_packet_id(ack, packet_id);
-		nni_mqtt_msg_encode(ack);
 		// ignore result of this send ?
 		mqtt_send_msg(NULL, ack, s);
 		nni_msg_free(msg);
