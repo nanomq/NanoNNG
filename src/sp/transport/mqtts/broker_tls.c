@@ -1171,6 +1171,9 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 		if (tinfo != NULL && info != tinfo ) {
 			continue;
 		}
+		if (info->no_local == 1 && p->npipe->p_id == nni_msg_get_pipe(msg)) {
+			continue;
+		}
 		tinfo = NULL;
 		len_offset=0;
 		char *sub_topic = info->topic;

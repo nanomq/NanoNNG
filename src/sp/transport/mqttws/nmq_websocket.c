@@ -660,6 +660,9 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	nni_msg_alloc(&smsg, 0);
 
 	NNI_LIST_FOREACH (p->npipe->subinfol, info) {
+		if (info->no_local == 1 && p->npipe->p_id == nni_msg_get_pipe(msg)) {
+			continue;
+		}
 		len_offset=0;
 		char *sub_topic = info->topic;
 		if (sub_topic[0] == '$') {
@@ -815,7 +818,6 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	// here
 	nni_msg_free(msg);
 	msg = smsg;
-
 
 	// MQTT V5 flow control
 	if (qos > 0) {
