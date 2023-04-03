@@ -655,25 +655,25 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 
 	// subid
 	subinfo *info = NULL;
-	// tinfo = nni_aio_get_prov_data(txaio);
-	// nni_aio_set_prov_data(txaio, NULL);
 	nni_msg_alloc(&smsg, 0);
 
 	NNI_LIST_FOREACH (p->npipe->subinfol, info) {
-		if (info->no_local == 1 && p->npipe->p_id == nni_msg_get_pipe(msg)) {
+		if (info->no_local == 1 &&
+		    p->npipe->p_id == nni_msg_get_pipe(msg)) {
 			continue;
 		}
-		len_offset=0;
+		len_offset      = 0;
 		char *sub_topic = info->topic;
 		if (sub_topic[0] == '$') {
-			if (0 == strncmp(sub_topic, "$share/", strlen("$share/"))) {
+			if (0 ==
+			    strncmp(sub_topic, "$share/", strlen("$share/"))) {
 				sub_topic = strchr(sub_topic, '/');
 				sub_topic++;
 				sub_topic = strchr(sub_topic, '/');
 				sub_topic++;
 			}
 		}
-		if (topic_filtern(sub_topic, (char*)(body + 2), tlen)) {
+		if (topic_filtern(sub_topic, (char *) (body + 2), tlen)) {
 			uint8_t  var_extra[2], fixheader, tmp[4] = { 0 };
 			uint8_t  proplen[4] = { 0 }, var_subid[5] = { 0 };
 			uint32_t pos = 1;

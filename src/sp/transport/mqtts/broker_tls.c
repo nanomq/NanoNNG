@@ -1335,10 +1335,20 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			// afterwards
 			nni_msg_free(msg);
 			nni_aio_set_prov_data(txaio, NULL);
+			nni_list_remove(&p->sendq, aio);
 			nni_aio_set_msg(aio, NULL);
 			nni_aio_finish(aio, 0, 0);
 			return;
 		}
+	}
+	if (niov == 0) {
+		// No content to send
+		nni_msg_free(msg);
+		nni_aio_set_prov_data(txaio, NULL);
+		nni_list_remove(&p->sendq, aio);
+		nni_aio_set_msg(aio, NULL);
+		nni_aio_finish(aio, 0, 0);
+		return;
 	}
 	nni_msg_alloc(&tmsg, 0);
 	// apending directly

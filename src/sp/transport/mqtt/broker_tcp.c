@@ -1355,7 +1355,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		}
 	}
 	if (niov == 0) {
-		// No local caused
+		// No content to send
 		nni_msg_free(msg);
 		nni_aio_set_prov_data(txaio, NULL);
 		nni_list_remove(&p->sendq, aio);
