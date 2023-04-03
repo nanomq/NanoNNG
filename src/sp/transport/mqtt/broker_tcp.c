@@ -1353,6 +1353,14 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			return;
 		}
 	}
+	if (niov == 0) {
+		// No local caused
+		nni_msg_free(msg);
+		nni_aio_set_prov_data(txaio, NULL);
+		nni_aio_set_msg(aio, NULL);
+		nni_aio_finish(aio, 0, 0);
+		return;
+	}
 	nni_aio_set_iov(txaio, niov, iov);
 	nng_stream_send(p->conn, txaio);
 	return;
