@@ -785,6 +785,7 @@ conf_bridge_quic_parse_ver2(conf_bridge_node *node, cJSON *jso_bridge_node)
 	hocon_read_time_base(
 	    node, qconnect_timeout, "quic_handshake_timeout", jso_bridge_node);
 	hocon_read_bool_base(node, hybrid, "hybird_bridging", jso_bridge_node);
+	hocon_read_bool_base(node, quic_0rtt, "quic_0rtt", jso_bridge_node);
 	hocon_read_bool_base(node, multi_stream, "quic_multi_stream", jso_bridge_node);
 	hocon_read_bool_base(node, qos_first, "quic_qos_priority", jso_bridge_node);
 	char *cc = cJSON_GetStringValue(
