@@ -109,28 +109,28 @@ LoadConfiguration(BOOLEAN Unsecure, conf_bridge_node *node)
 	}
 	// Configures the client's idle timeout.
 	Settings.IsSet.IdleTimeoutMs = TRUE;
-	Settings.IdleTimeoutMs       = node->qidle_timeout * 1000;
+	Settings.IdleTimeoutMs       = node->qidle_timeout;
 
 	if (node->qconnect_timeout != 0) {
 		Settings.IsSet.HandshakeIdleTimeoutMs = TRUE;
 		Settings.HandshakeIdleTimeoutMs =
-		    node->qconnect_timeout * 1000;
+		    node->qconnect_timeout;
 	}
 	if (node->qdiscon_timeout != 0) {
 		Settings.IsSet.DisconnectTimeoutMs = TRUE;
-		Settings.DisconnectTimeoutMs = node->qdiscon_timeout * 1000;
+		Settings.DisconnectTimeoutMs = node->qdiscon_timeout;
 	}
 	if (node->qsend_idle_timeout != 0) {
 		Settings.IsSet.SendIdleTimeoutMs = TRUE;
-		Settings.SendIdleTimeoutMs = node->qsend_idle_timeout * 1000;
+		Settings.SendIdleTimeoutMs = node->qsend_idle_timeout;
 	}
 	if (node->qinitial_rtt != 0) {
 		Settings.IsSet.InitialRttMs = TRUE;
-		Settings.InitialRttMs       = node->qinitial_rtt * 1000;
+		Settings.InitialRttMs       = node->qinitial_rtt;
 	}
 
 	Settings.IsSet.KeepAliveIntervalMs = TRUE;
-	Settings.KeepAliveIntervalMs       = node->qkeepalive * 1000;
+	Settings.KeepAliveIntervalMs       = node->qkeepalive;
 
 there:
 
