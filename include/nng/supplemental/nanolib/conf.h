@@ -262,9 +262,10 @@ struct conf_bridge_node {
 	uint32_t     qdiscon_timeout;	 // DisconnectTimeoutMs
 	uint32_t     qidle_timeout;	     // Disconnect after idle
 	uint32_t     qsend_idle_timeout; // SendIdleTimeoutMs
-	uint32_t     qinitial_rtt_ms;       // Initial RTT estimate.
-	uint32_t     qmax_ack_delay_ms;     // MaxAckDelayMs How long to wait after receiving data before sending an ACK.
+	uint32_t     qinitial_rtt_ms;     // Initial RTT estimate.
+	uint32_t     qmax_ack_delay_ms;   // MaxAckDelayMs How long to wait after receiving data before sending an ACK.
 	uint8_t      qcongestion_control; // congestion control algorithm 1: bbr 0: cubic
+	bool         quic_0rtt;           // 0RTT.
 #endif
 };
 

@@ -2070,6 +2070,7 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->qinitial_rtt_ms    = 800; // Ms
 	node->qmax_ack_delay_ms  = 100;
 	node->qcongestion_control = 1; // QUIC_CONGESTION_CONTROL_ALGORITHM_CUBIC
+	node->quic_0rtt          = true;
 #endif
 	conf_tls_init(&node->tls);
 	node->conn_properties = NULL;
@@ -2228,6 +2229,10 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 				         "algorithm, use "
 				         "default bbr!");
 			}
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".quic_0rtt")) != NULL) {
+			node->quic_0rtt = nni_strcasecmp(value, "true") == 0;
 			free(value);
 #endif
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
