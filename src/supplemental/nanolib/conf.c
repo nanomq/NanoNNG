@@ -1865,7 +1865,7 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 			node->qinitial_rtt = atoi(value);
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
-		                key_prefix, name, ".quic_send_idleTimeout")) != NULL) {
+		                key_prefix, name, ".quic_send_idle_timeout")) != NULL) {
 			node->qsend_idle_timeout = atoi(value);
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
