@@ -230,12 +230,15 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 	if (qos > 0 && ptype == NNG_MQTT_PUBLISH) {
 		nni_mqtt_msg_encode(msg);
 		uint32_t topic_len;
+		uint32_t plen;
 		char    *topic;
-		topic = nni_mqtt_msg_get_publish_topic(msg, &topic_len);
+		uint8_t *payload;
+		topic   = nni_mqtt_msg_get_publish_topic(msg, &topic_len);
+		payload = nni_mqtt_msg_get_publish_payload(msg, &plen);
 		nni_aio_set_msg(aio, msg);
 		log_info("Pub high priority QoS %d msg to %.*s in "
-		         "parallel %ld",
-		    qos, topic_len, topic, nni_clock());
+		         "parallel %ld payload %.*s",
+		    qos, topic_len, topic, nni_clock(), plen, payload);
 		quic_aio_send(p->qstream, aio);
 		return -1;
 	}
@@ -526,9 +529,12 @@ mqtt_quic_recv_cb(void *arg)
 		qos = nni_mqtt_msg_get_publish_qos(msg);
 		uint32_t topic_len;
 		char    *topic;
-		topic = nni_mqtt_msg_get_publish_topic(msg, &topic_len);
-		log_info("Recv QoS %d Msg from %.*s in %ld", qos, topic_len,
-		    topic, nni_clock());
+		uint32_t plen;
+		uint8_t *payload;
+		topic   = nni_mqtt_msg_get_publish_topic(msg, &topic_len);
+		payload = nni_mqtt_msg_get_publish_payload(msg, &plen);
+		log_info("Recv QoS %d Msg from %.*s time %ld payload %.*s", qos, topic_len,
+		    topic, nni_clock(), plen, payload);
 		if (2 > qos) {
 			if (qos == 1) {
 				// QoS 1 return PUBACK
