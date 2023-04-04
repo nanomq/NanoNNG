@@ -58,6 +58,7 @@ struct quic_sock_s {
 	nng_url *url_s;
 
 	char    *cacert;
+	bool     enable_0rtt;
 };
 
 typedef struct quic_strm_s quic_strm_t;
@@ -310,7 +311,8 @@ quic_sock_init(quic_sock_t *qsock)
 	qsock->url_s = NULL;
 	qsock->rticket_sz = 0;
 
-	qsock->cacert = NULL;
+	qsock->cacert      = NULL;
+	qsock->enable_0rtt = true;
 }
 
 static void
@@ -634,6 +636,10 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		// was received from the server.
 		log_warn("[conn][%p] Resumption ticket received (%u bytes):\n",
 		    Connection, Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength);
+		if (qsock->enable_0rtt == false) {
+			log_warn("[conn][%p] Ignore ticket due to turn off the 0RTT");
+			break;
+		}
 		qsock->rticket_sz = Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength;
 		memcpy(qsock->rticket, Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicket,
 		        Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength);
@@ -716,6 +722,9 @@ quic_connect_ipv4(const char *url, nni_sock *sock, uint32_t *index)
 	// CACert
 	if (bridge_node && bridge_node->tls.enable)
 		qsock->cacert = bridge_node->tls.cafile;
+	// 0RTT Settings
+	if (bridge_node)
+		qsock->enable_0rtt = bridge_node->quic_0rtt;
 
 	// Allocate a new connection object.
 	if (QUIC_FAILED(rv = MsQuic->ConnectionOpen(registration,
