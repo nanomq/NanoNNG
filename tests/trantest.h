@@ -15,6 +15,7 @@
 #include <nng/protocol/reqrep0/rep.h>
 #include <nng/protocol/reqrep0/req.h>
 #include <nng/supplemental/util/platform.h>
+#include "nng/protocol/mqtt/mqtt_parser.h"
 
 #include "convey.h"
 #include "core/nng_impl.h"
