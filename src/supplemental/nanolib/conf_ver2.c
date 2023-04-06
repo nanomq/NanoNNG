@@ -829,6 +829,7 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 	cJSON_ArrayForEach(bridge_mqtt_node, bridge_mqtt_nodes)
 	{
 		conf_bridge_node *node = NNI_ALLOC_STRUCT(node);
+		conf_bridge_node_init(node);
 		hocon_read_str(node, name, bridge_mqtt_node);
 		hocon_read_bool(node, enable, bridge_mqtt_node);
 		cJSON *jso_connector =

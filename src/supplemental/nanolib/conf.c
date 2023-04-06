@@ -20,7 +20,6 @@
 static void conf_bridge_parse(conf *nanomq_conf, const char *path);
 static void conf_aws_bridge_parse(conf *nanomq_conf, const char *path);
 static void conf_bridge_init(conf_bridge *bridge);
-static void conf_bridge_node_init(conf_bridge_node *node);
 static void conf_bridge_destroy(conf_bridge *bridge);
 static void conf_bridge_node_destroy(conf_bridge_node *node);
 static void conf_bridge_node_parse_subs(
@@ -2038,7 +2037,7 @@ conf_bridge_init(conf_bridge *bridge)
 	conf_sqlite_init(&bridge->sqlite);
 }
 
-static void
+void
 conf_bridge_node_init(conf_bridge_node *node)
 {
 	node->sock           = NULL;
