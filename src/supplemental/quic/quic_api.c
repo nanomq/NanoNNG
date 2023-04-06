@@ -236,7 +236,7 @@ there:
 	// CredConfig.Flags = QUIC_CREDENTIAL_FLAG_CLIENT | QUIC_CREDENTIAL_FLAG_USE_PORTABLE_CERTIFICATES;
 	CredConfig.Flags = QUIC_CREDENTIAL_FLAG_CLIENT;
 
-	if (node->tls.enable) {
+	if (node != NULL && node->tls.enable) {
 		char *cert_path = node->tls.certfile;
 		char *key_path  = node->tls.keyfile;
 		char *password  = node->tls.key_password;
@@ -291,7 +291,7 @@ there:
 	// not.
 	if (QUIC_FAILED(rv = MsQuic->ConfigurationLoadCredential(
 	                    configuration, &CredConfig))) {
-		qdebug("Configuration Load Credential failed, 0x%x!\n", rv);
+		log_error("Configuration Load Credential failed, 0x%x!\n", rv);
 		return FALSE;
 	}
 
