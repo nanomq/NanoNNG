@@ -788,24 +788,25 @@ conf_bridge_quic_parse_ver2(conf_bridge_node *node, cJSON *jso_bridge_node)
 	hocon_read_bool_base(node, quic_0rtt, "quic_0rtt", jso_bridge_node);
 	hocon_read_bool_base(node, multi_stream, "quic_multi_stream", jso_bridge_node);
 	hocon_read_bool_base(node, qos_first, "quic_qos_priority", jso_bridge_node);
-	char *cc = cJSON_GetStringValue(
-	    cJSON_GetObjectItem(jso_bridge_node, "congestion_control"));
-	if (NULL != cc) {
-		if (0 == nng_strcasecmp(cc, "bbr")) {
-			node->qcongestion_control = 1;
-		} else if (0 == nng_strcasecmp(cc, "cubic")) {
-			node->qcongestion_control = 0;
-		} else {
-			node->qcongestion_control = 1;
-			log_error("unsupport congestion control "
-			         "algorithm, use "
-			         "default bbr!");
-		}
-	} else {
-		node->qcongestion_control = 1;
-		log_error("Unsupport congestion control algorithm, use "
-		         "default bbr!");
-	}
+	node->qcongestion_control = 0; // only support cubic
+	// char *cc = cJSON_GetStringValue(
+	//     cJSON_GetObjectItem(jso_bridge_node, "congestion_control"));
+	// if (NULL != cc) {
+	// 	if (0 == nng_strcasecmp(cc, "bbr")) {
+	// 		node->qcongestion_control = 1;
+	// 	} else if (0 == nng_strcasecmp(cc, "cubic")) {
+	// 		node->qcongestion_control = 0;
+	// 	} else {
+	// 		node->qcongestion_control = 1;
+	// 		log_error("unsupport congestion control "
+	// 		         "algorithm, use "
+	// 		         "default bbr!");
+	// 	}
+	// } else {
+	// 	node->qcongestion_control = 1;
+	// 	log_error("Unsupport congestion control algorithm, use "
+	// 	         "default bbr!");
+	// }
 }
 #endif
 
