@@ -852,7 +852,7 @@ void nng_mqtt_client_free(nng_mqtt_client *client, bool is_async)
 			nng_aio_free(client->send_aio);
 		}
 		nni_lmq_fini(client->msgq);
-		NNI_FREE_STRUCT(client->msgq);
+		nni_free(client->msgq,sizeof(nni_lmq));
 		NNI_FREE_STRUCT(client);
 	}
 	return;
