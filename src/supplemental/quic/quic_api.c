@@ -268,7 +268,7 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 			break;
 		} else {
 			// TODO: clean AIO from quic_aio_send
-			log_info("No AIO found! Wild callback from QUIC transport")
+			log_info("No AIO found! Wild callback from QUIC transport");
 		}
 		nni_mtx_unlock(&qstrm->mtx);
 		break;
@@ -443,6 +443,7 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 			qstrm->closed = true;
 			nng_free(qstrm->pipe, 0);
 			qstrm->pipe = NULL;
+			log_warn("Clean up stream state");
 			nni_mtx_unlock(&qstrm->mtx);
 		}
 

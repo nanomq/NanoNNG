@@ -419,6 +419,18 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		nni_aio_set_msg(aio, NULL);
 		return;
 	}
+	if (nni_msg_get_type(msg) == CMD_PUBLISH) {
+		qos_pac = nni_mqtt_msg_get_publish_qos(msg);
+		uint32_t topic_len;
+		char    *topic;
+		uint32_t plen;
+		uint8_t *payload;
+		topic   = nni_mqtt_msg_get_publish_topic(msg, &topic_len);
+		payload = nni_mqtt_msg_get_publish_payload(msg, &plen);
+		log_info(
+		    "Local: Send QoS %d Msg to %.*s time %ld payload %.*s",
+		    qos_pac, topic_len, topic, nni_clock(), plen, payload);
+	}
 
 	if (!p->busy) {
 		p->busy = true;
@@ -434,7 +446,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		nni_mtx_unlock(&p->lk);
 		return;
 	}
-	log_warn("pipe %d occupied! resending in cb!", pipe);
+	log_info("pipe %d occupied! resending in cb!", pipe);
 	if (nni_lmq_full(&p->rlmq)) {
 		// Make space for the new message.
 		if (nni_lmq_cap(&p->rlmq) <= NANO_MAX_QOS_PACKET) {
