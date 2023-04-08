@@ -777,11 +777,11 @@ conf_bridge_quic_parse_ver2(conf_bridge_node *node, cJSON *jso_bridge_node)
 	hocon_read_time_base(
 	    node, qdiscon_timeout, "quic_discon_timeout", jso_bridge_node);
 	hocon_read_time_base(
-	    node, qsend_idle_timeout, "qsend_idle_timeout", jso_bridge_node);
+	    node, qsend_idle_timeout, "quic_send_idle_timeout", jso_bridge_node);
 	hocon_read_time_base(
-	    node, qinitial_rtt_ms, "qinitial_rtt_ms", jso_bridge_node);
+	    node, qinitial_rtt_ms, "quic_initial_rtt_ms", jso_bridge_node);
 	hocon_read_time_base(
-	    node, qmax_ack_delay_ms, "qmax_ack_delay_ms", jso_bridge_node);
+	    node, qmax_ack_delay_ms, "quic_max_ack_delay_ms", jso_bridge_node);
 	hocon_read_time_base(
 	    node, qconnect_timeout, "quic_handshake_timeout", jso_bridge_node);
 	hocon_read_bool_base(node, hybrid, "hybird_bridging", jso_bridge_node);

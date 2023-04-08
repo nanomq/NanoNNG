@@ -2180,11 +2180,11 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 			node->qkeepalive = atoi(value);
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
-		                key_prefix, name, ".quic_idleTimeout")) != NULL) {
+		                key_prefix, name, ".quic_idle_timeout")) != NULL) {
 			node->qidle_timeout = atoi(value);
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
-		                key_prefix, name, ".quic_disconTimeout")) != NULL) {
+		                key_prefix, name, ".quic_discon_timeout")) != NULL) {
 			node->qdiscon_timeout = atoi(value);
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
@@ -2192,15 +2192,15 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 			node->qconnect_timeout = atoi(value);
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
-		                key_prefix, name, ".qsend_idle_timeout")) != NULL) {
+		                key_prefix, name, ".quic_send_idle_timeout")) != NULL) {
 			node->qsend_idle_timeout = atoi(value);
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
-		                key_prefix, name, ".qinitial_rtt_ms")) != NULL) {
+		                key_prefix, name, ".quic_initial_rtt_ms")) != NULL) {
 			node->qinitial_rtt_ms = atoi(value);
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
-		                key_prefix, name, ".qmax_ack_delay_ms")) != NULL) {
+		                key_prefix, name, ".quic_max_ack_delay_ms")) != NULL) {
 			node->qmax_ack_delay_ms = atoi(value);
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
@@ -2216,7 +2216,7 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 			node->qos_first = nni_strcasecmp(value, "true") == 0;
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
-		                key_prefix, name, ".congestion_control")) !=
+		                key_prefix, name, ".quic_congestion_control")) !=
 		    NULL) {
 			if (0 == nng_strcasecmp(value, "bbr")) {
 				node->qcongestion_control = 1;
