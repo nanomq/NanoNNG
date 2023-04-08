@@ -776,12 +776,14 @@ quic_aio_send(void *arg, nni_aio *aio)
 	if (qstrm->closed) {
 		nni_msg_free(msg);
 		nni_aio_finish_error(aio, NNG_ECLOSED);
+		log_info("Sending msg on a closed pipe");
 		while ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
 			nni_list_remove(&qstrm->sendq, aio);
 			msg = nni_aio_get_msg(aio);
 			nni_msg_free(msg);
 			nni_aio_finish_error(aio, NNG_ECLOSED);
 		}
+		nni_mtx_unlock(&qstrm->mtx);
 		return;
 	}
 
@@ -1175,6 +1177,7 @@ quic_strm_send(void *arg, nni_aio *aio)
 	nni_mtx_lock(&qstrm->mtx);
 	if (qstrm->closed) {
 		msg = nni_aio_get_msg(aio);
+		nni_mtx_unlock(&qstrm->mtx);
 		nni_msg_free(msg);
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return -1;
