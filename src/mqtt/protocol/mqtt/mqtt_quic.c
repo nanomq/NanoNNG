@@ -911,7 +911,7 @@ quic_mqtt_stream_fini(void *arg)
 	mqtt_sock_t *s = p->mqtt_sock;
 	nni_msg * msg;
 
-	log_warn(" QUIC Stream closed, pipe finit!");
+	log_info(" QUIC Stream closed, pipe finit!");
 	if ((msg = nni_aio_get_msg(&p->recv_aio)) != NULL) {
 		nni_aio_set_msg(&p->recv_aio, NULL);
 		nni_msg_free(msg);
@@ -924,6 +924,7 @@ quic_mqtt_stream_fini(void *arg)
 	nni_aio_fini(&p->send_aio);
 	nni_aio_fini(&p->recv_aio);
 	nni_aio_fini(&p->rep_aio);
+
 	nni_aio_abort(&s->time_aio, 0);
 	/*
 #if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
@@ -1014,8 +1015,13 @@ quic_mqtt_stream_stop(void *arg)
 {
 	mqtt_pipe_t *p = arg;
 
+	log_info("Stopping MQTT over QUIC Stream");
 	if (quic_pipe_close(&p->reason_code) == 0) {
+		if(nni_aio_busy(&p->send_aio))
+			nni_aio_finish_error(&p->send_aio, NNG_ECANCELED);
 		nni_aio_stop(&p->send_aio);
+		if(nni_aio_busy(&p->recv_aio))
+			nni_aio_finish_error(&p->recv_aio, NNG_ECANCELED);
 		nni_aio_stop(&p->recv_aio);
 		nni_aio_abort(&p->rep_aio, NNG_ECANCELED);
 		nni_aio_finish_error(&p->rep_aio, NNG_ECANCELED);
@@ -1030,6 +1036,7 @@ quic_mqtt_stream_close(void *arg)
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
 
+	log_info("Closing MQTT over QUIC Stream");
 	nni_mtx_lock(&s->mtx);
 	s->pipe = NULL;
 	nni_aio_close(&p->send_aio);
