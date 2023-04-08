@@ -583,6 +583,7 @@ mqtt_quic_send_cb(void *arg)
 
 	if (nni_aio_result(&p->send_aio) != 0) {
 		// We failed to send... clean up and deal with it.
+		log_warn("fail to send on aio");
 		nni_msg_free(nni_aio_get_msg(&p->send_aio));
 		nni_aio_set_msg(&p->send_aio, NULL);
 		return;
@@ -674,10 +675,10 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 	}
 	if (nni_atomic_get_bool(&p->closed)) {
 		//free msg and dont return data when pipe is closed.
+		nni_mtx_unlock(&p->lk);
 		if (msg) {
 			nni_msg_free(msg);
 		}
-		nni_mtx_unlock(&p->lk);
 		return;
 	}
 	nni_mqtt_msg_proto_data_alloc(msg);
@@ -908,10 +909,10 @@ mqtt_quic_recv_cb(void *arg)
 	if (nni_atomic_get_bool(&s->closed) ||
 	    nni_atomic_get_bool(&p->closed)) {
 		//free msg and dont return data when pipe is closed.
+		nni_mtx_unlock(&s->mtx);
 		if (msg) {
 			nni_msg_free(msg);
 		}
-		nni_mtx_unlock(&s->mtx);
 		return;
 	}
 	// nni_msg_set_pipe(msg, nni_pipe_id(p->pipe));
@@ -1533,6 +1534,7 @@ quic_mqtt_stream_stop(void *arg)
 	nni_msg *msg;
 	nni_aio *aio;
 
+	log_info("Stopping MQTT over QUIC Stream");
 	if (!nni_atomic_get_bool(&p->closed))
 		if (quic_pipe_close(p->qpipe, &p->reason_code) == 0) {
 			nni_aio_stop(&p->send_aio);
