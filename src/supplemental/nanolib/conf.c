@@ -1853,19 +1853,19 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 			node->qkeepalive = atoi(value);
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
-		                key_prefix, name, ".quic_idleTimeout")) != NULL) {
+		                key_prefix, name, ".quic_idle_timeout")) != NULL) {
 			node->qidle_timeout = atoi(value);
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
-		                key_prefix, name, ".quic_disconTimeout")) != NULL) {
+		                key_prefix, name, ".quic_discon_timeout")) != NULL) {
 			node->qdiscon_timeout = atoi(value);
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
-		                key_prefix, name, ".quic_initial_rtt")) != NULL) {
+		                key_prefix, name, ".quic_initial_rtt_ms")) != NULL) {
 			node->qinitial_rtt = atoi(value);
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
-		                key_prefix, name, ".quic_send_idleTimeout")) != NULL) {
+		                key_prefix, name, ".quic_send_idle_timeout")) != NULL) {
 			node->qsend_idle_timeout = atoi(value);
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,

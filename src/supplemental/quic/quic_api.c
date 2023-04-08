@@ -202,14 +202,17 @@ quic_strm_fini(quic_strm_t *qstrm)
 	if (qstrm->rrbuf)
 		free(qstrm->rrbuf);
 
+	log_info("quic_strm_fini");
 	nni_lmq_fini(&qstrm->recv_messages);
 	nni_lmq_fini(&qstrm->send_messages);
 	nni_mtx_fini(&qstrm->mtx);
 
 	nni_aio_stop(&qstrm->rraio);
+	log_info("quic rraio fini done");
 	nni_aio_close(&qstrm->rraio);
 	nni_aio_fini(&qstrm->rraio);
 	nni_aio_stop(&qstrm->close_aio);
+	log_info("quic close_aio fini done");
 	nni_aio_close(&qstrm->close_aio);
 	nni_aio_fini(&qstrm->close_aio);
 }
@@ -253,8 +256,7 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 			// leave aio_finish to ACK
 			// nni_aio_finish_sync(aio, 0, 0);
 			break;
-		}
-		if ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
+		} else if ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
 			nni_aio_list_remove(aio);
 			QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
 			free(buf);
@@ -264,6 +266,9 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 			nni_msg_free(smsg);
 			nni_aio_finish_sync(aio, 0, 0);
 			break;
+		} else {
+			// TODO: clean AIO from quic_aio_send
+			log_info("No AIO found! Wild callback from QUIC transport")
 		}
 		nni_mtx_unlock(&qstrm->mtx);
 		break;
@@ -444,14 +449,6 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 		GConnection = NULL;
 		log_warn("Try to do quic stream reconnect!");
 		nni_aio_finish(&qstrm->close_aio, 0, 0);
-		/*
-		if (qstrm->rtt0_enable) {
-			// No rticket
-			log_warn("reconnect failed due to no resumption ticket.\n");
-			quic_strm_fini(qstrm);
-			nng_free(qstrm, sizeof(quic_strm_t));
-		}
-		*/
 
 		break;
 	case QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED:
@@ -1249,7 +1246,7 @@ quic_pipe_close(uint8_t *code)
 	log_debug(" %p quic_pipe_close", qstrm->stream);
 	if (qstrm->closed != true && qstrm->stream != NULL) {
 		qstrm->closed = true;
-		log_warn("close the QUIC stream!");
+		log_warn("close the QUIC stream in pipe_close!");
 		MsQuic->StreamClose(qstrm->stream);
 	} else {
 		return -1;
