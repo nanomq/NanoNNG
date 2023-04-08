@@ -884,6 +884,7 @@ quic_aio_send(void *arg, nni_aio *aio)
 	}
 
 	if (qstrm->closed) {
+		log_info("Sending msg on a closed pipe");
 		nni_msg_free(msg);
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 		while ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
@@ -892,6 +893,7 @@ quic_aio_send(void *arg, nni_aio *aio)
 			nni_msg_free(msg);
 			nni_aio_finish_error(aio, NNG_ECLOSED);
 		}
+		nni_mtx_unlock(&qstrm->mtx);
 		return 0;
 	}
 
