@@ -15,6 +15,9 @@
 #if NANO_PLATFORM_WINDOWS
 #define nano_localtime(t, pTm) localtime_s(pTm, t)
 #else
+#include <sys/types.h>
+#include <unistd.h>
+#include <sys/syscall.h>
 #define nano_localtime(t, pTm) localtime_r(t, pTm)
 #endif
 
@@ -58,14 +61,20 @@ static void
 stdout_callback(log_event *ev)
 {
 	char buf[64];
+#if NANO_PLATFORM_WINDOWS
+	pid_t pid = nni_plat_getpid();
+#else
+	pid_t pid = syscall(__NR_gettid);
+#endif
+
 	buf[strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &ev->time)] = '\0';
 #ifdef LOG_USE_COLOR
 	fprintf(ev->udata,
-	    "%s [%i] %s%-5s\x1b[0m \x1b[0m%s:%d \x1b[0m %s: ", buf,
-	    nni_plat_getpid(), level_colors[ev->level],
-	    level_strings[ev->level], ev->file, ev->line, ev->func);
+	    "%s [%i] %s%-5s\x1b[0m \x1b[0m%s:%d \x1b[0m %s: ", buf, pid,
+	    level_colors[ev->level], level_strings[ev->level], ev->file,
+	    ev->line, ev->func);
 #else
-	fprintf(ev->udata, "%s [%i] %-5s %s:%d %s: ", buf, nni_plat_getpid(),
+	fprintf(ev->udata, "%s [%i] %-5s %s:%d %s: ", buf, pid,
 	    level_strings[ev->level], ev->file, ev->line, ev->func);
 #endif
 	vfprintf(ev->udata, ev->fmt, ev->ap);
@@ -77,9 +86,14 @@ static void
 file_callback(log_event *ev)
 {
 	char  buf[64];
+#if NANO_PLATFORM_WINDOWS
+	pid_t pid = nni_plat_getpid();
+#else
+	pid_t pid = syscall(__NR_gettid);
+#endif
 	FILE *fp = ev->config->fp;
 	buf[strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &ev->time)] = '\0';
-	fprintf(fp, "%s [%i] %-5s %s:%d: ", buf, nni_plat_getpid(),
+	fprintf(fp, "%s [%i] %-5s %s:%d: ", buf, pid,
 	    level_strings[ev->level], ev->file, ev->line);
 	vfprintf(fp, ev->fmt, ev->ap);
 	fprintf(fp, "\n");
