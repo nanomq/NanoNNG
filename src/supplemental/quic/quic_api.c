@@ -1285,6 +1285,12 @@ quic_pipe_send(void *qpipe, nni_aio *aio)
 		return rv;
 	}
 
+	if (qstrm->closed) {
+		nni_msg *msg = nni_aio_get_msg(aio);
+		nni_msg_free(msg);
+		nni_aio_finish_error(aio, NNG_ECLOSED);
+		return -1;
+	}
 	nni_mtx_lock(&qstrm->mtx);
 	if ((rv = nni_aio_schedule(aio, quic_pipe_send_cancel, qstrm)) != 0) {
 		nni_mtx_unlock(&qstrm->mtx);
