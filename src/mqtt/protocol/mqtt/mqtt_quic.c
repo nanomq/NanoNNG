@@ -1019,11 +1019,9 @@ quic_mqtt_stream_stop(void *arg)
 	log_info("Stopping MQTT over QUIC Stream");
 	nni_atomic_set_bool(&p->closed, true);
 	if (quic_pipe_close(&p->reason_code) == 0) {
-		if(nni_aio_busy(&p->send_aio))
-			nni_aio_finish_error(&p->send_aio, NNG_ECANCELED);
+		nni_aio_abort(&p->send_aio, NNG_ECANCELED);
 		nni_aio_stop(&p->send_aio);
-		if(nni_aio_busy(&p->recv_aio))
-			nni_aio_finish_error(&p->recv_aio, NNG_ECANCELED);
+		nni_aio_abort(&p->recv_aio, NNG_ECANCELED);
 		nni_aio_stop(&p->recv_aio);
 		nni_aio_abort(&p->rep_aio, NNG_ECANCELED);
 		nni_aio_finish_error(&p->rep_aio, NNG_ECANCELED);
