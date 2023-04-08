@@ -22,7 +22,7 @@
 #define NNG_MQTT_PEER 0
 #define NNG_MQTT_PEER_NAME "mqtt-server"
 #define MQTT_QUIC_RETRTY 5  // 5 seconds as default minimum timer 
-#define MQTT_QUIC_KEEPALIVE 5000  // 5 seconds as default 
+#define MQTT_QUIC_KEEPALIVE 5  // 5 seconds as default 
 
 typedef struct mqtt_sock_s   mqtt_sock_t;
 typedef struct mqtt_pipe_s   mqtt_pipe_t;
