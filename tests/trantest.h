@@ -16,6 +16,7 @@
 #include <nng/protocol/reqrep0/req.h>
 #include <nng/supplemental/util/platform.h>
 #include "nng/protocol/mqtt/mqtt_parser.h"
+// #include "nng/protocol/mqtt/nmq_mqtt.h"
 
 #include "convey.h"
 #include "core/nng_impl.h"
@@ -164,6 +165,20 @@ mqtt_trantest_init(trantest *tt, const char *addr)
 	So(tt->tran != NULL);
 	nng_url_free(url);
 }
+
+// void
+// mqtt_broker_trantest_init(trantest *tt, const char *addr)
+// {
+// 	mqtt_trantest_set_address(tt->addr, addr);
+
+// 	So(nng_req_open(&tt->reqsock) == 0);
+
+// 	nng_url *url;
+// 	So(nng_url_parse(&url, tt->addr) == 0);
+// 	tt->tran = nni_sp_tran_find(url);
+// 	So(tt->tran != NULL);
+// 	nng_url_free(url);
+// }
 
 void
 trantest_fini(trantest *tt)
@@ -453,12 +468,24 @@ transtest_mqtt_sub_send(nng_socket sock, nng_mqtt_client **client)
 		        .length     = strlen(params.topic) } },
 	};
 
-	*client = nng_mqtt_client_alloc(sock, &send_callback, true);
 	nng_mqtt_subscribe_async(*client, subscriptions, 1, NULL);
 }
 
 void
-trantest_mqtt_pub(nng_socket sock)
+transtest_mqtt_unsub_send(nng_socket sock, nng_mqtt_client **client)
+{
+	nng_mqtt_topic unsubscriptions[] = {
+		{
+		    .buf    = (uint8_t *) params.topic,
+		    .length = strlen(params.topic),
+		},
+	};
+
+	nng_mqtt_unsubscribe_async(*client, unsubscriptions, 1, NULL);
+}
+
+void
+trantest_mqtt_pub(nng_socket sock, bool broker_enabled)
 {
 	nng_msg *pubmsg;
 	nng_mqtt_msg_alloc(&pubmsg, 0);
@@ -472,7 +499,7 @@ trantest_mqtt_pub(nng_socket sock)
 	nng_sendmsg(sock, pubmsg, NNG_FLAG_NONBLOCK);
 
 	conn_param *cp;
-	while (1) {
+	while (1 && broker_enabled) {
 		nng_msg *msg = NULL;
 		if (nng_recvmsg(sock, &msg, 0) != 0) {
 			continue;
@@ -489,13 +516,6 @@ trantest_mqtt_pub(nng_socket sock)
 void
 transtest_mqtt_sub_recv(nng_socket sock, nng_mqtt_client **client)
 {
-	nng_mqtt_topic unsubscriptions[] = {
-		{
-		    .buf    = (uint8_t *) params.topic,
-		    .length = strlen(params.topic),
-		},
-	};
-
 	conn_param *cp;
 
 	nng_msg *msg = NULL;
@@ -507,10 +527,9 @@ transtest_mqtt_sub_recv(nng_socket sock, nng_mqtt_client **client)
 		if (nng_recvmsg(sock, &msg, 0) != 0) {
 			continue;
 		}
-
 		// we should only receive publish messages
 		nng_mqtt_packet_type type = nng_mqtt_msg_get_packet_type(msg);
-		if(type == NNG_MQTT_PUBLISH){
+		if (type == NNG_MQTT_PUBLISH) {
 			payload = nng_mqtt_msg_get_publish_payload(
 			    msg, &payload_len);
 			// printf("what I get:%s\n", (char *) payload);
@@ -523,9 +542,6 @@ transtest_mqtt_sub_recv(nng_socket sock, nng_mqtt_client **client)
 		}
 	}
 	conn_param_free(cp);
-
-	nng_mqtt_unsubscribe_async(*client, unsubscriptions, 1, NULL);
-	nng_mqtt_client_free(*client, true);
 }
 
 void
@@ -548,13 +564,67 @@ trantest_mqtt_sub_pub(trantest *tt)
 		params.data_len = strlen(data);
 		params.qos      = qos;
 
+		client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true);
 		transtest_mqtt_sub_send(tt->reqsock, &client);
 		nng_msleep(200);
-		trantest_mqtt_pub(tt->repsock);
+		trantest_mqtt_pub(tt->repsock, true);
 		transtest_mqtt_sub_recv(tt->reqsock, &client);
+		transtest_mqtt_unsub_send(tt->reqsock, &client);
+		nng_mqtt_client_free(client, true);
 
 	});
 }
+
+// void
+// transtest_broker_start(trantest *tt)
+// {
+// 	nng_listener listener;
+// 	conf *nanomq_conf;
+// 	nanomq_conf = nng_zalloc(sizeof(conf));
+// 	conf_init(nanomq_conf);
+// 	tt->repsock.data = nanomq_conf;
+// 	So(nng_nmq_tcp0_open(&tt->repsock) == 0);
+// 	nng_listener_create(&listener, tt->repsock, tt->addr);
+// 	nng_listener_set(listener, NANO_CONF, nanomq_conf, sizeof(conf));
+// 	if (nng_listener_start(listener, 0) != 0) {
+// 		nng_listener_close(listener);
+// 		return;
+// 	}
+// }
+
+// void
+// trantest_mqtt_broker_listen(trantest *tt)
+// {
+// 	Convey("mqtt broker pub and sub", {
+// 		printf("%s\n\n",tt->addr);
+// 		const char      *url   = "mqtt-tcp://127.0.0.1:1883";
+// 		uint8_t          qos   = 0;
+// 		const char      *topic = "myTopic";
+// 		const char      *data  = "ping";
+// 		nng_dialer       subdialer;
+// 		nng_dialer       pubdialer;
+// 		nng_mqtt_client *client = NULL;
+
+// 		transtest_broker_start(tt);
+		
+
+// 		printf("dialer creating\n");
+// 		client_connect(&tt->reqsock, &subdialer, url, MQTT_PROTOCOL_VERSION_v311);
+
+// 		params.topic    = topic;
+// 		params.data     = (uint8_t *) data;
+// 		params.data_len = strlen(data);
+// 		params.qos      = qos;
+
+
+// 		client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true);
+// 		transtest_mqtt_sub_send(tt->reqsock, &client);
+// 		nng_msleep(200);
+// 		trantest_mqtt_pub(tt->reqsock, true);
+// 		transtest_mqtt_unsub_send(tt->reqsock, &client);
+// 		nng_mqtt_client_free(client, true);
+// 	});
+// }
 
 void
 trantest_mqttv5_sub_pub(trantest *tt)
@@ -576,11 +646,13 @@ trantest_mqttv5_sub_pub(trantest *tt)
 		params.data_len = strlen(data);
 		params.qos      = qos;
 
+		client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true);
 		transtest_mqtt_sub_send(tt->reqsock, &client);
 		nng_msleep(200);
-		trantest_mqtt_pub(tt->repsock);
+		trantest_mqtt_pub(tt->repsock, true);
 		transtest_mqtt_sub_recv(tt->reqsock, &client);
-
+		transtest_mqtt_unsub_send(tt->reqsock, &client);
+		nng_mqtt_client_free(client, true);
 	});
 }
 
@@ -784,6 +856,29 @@ mqtt_trantest_test(const char *addr)
 		trantest_scheme(&tt);
 		trantest_mqtt_sub_pub(&tt);
 		trantest_mqttv5_sub_pub(&tt);
+		// trantest_send_recv_large(&tt);
+		// trantest_send_recv_multi(&tt);
+		// trantest_check_properties(&tt, f);
+	})
+}
+
+void
+mqtt_broker_trantest_test(const char *addr)
+{
+	trantest tt;
+
+	memset(&tt, 0, sizeof(tt));
+	Convey("MQTT broker given transport", {
+		// mqtt_broker_trantest_init(&tt, addr);
+
+		Reset({ trantest_fini(&tt); });
+
+		// trantest_scheme(&tt);
+		// trantest_conn_refused(&tt);
+		// trantest_duplicate_listen(&tt);
+		// trantest_listen_accept(&tt);
+		// trantest_mqtt_broker_listen(&tt);
+		// trantest_mqttv5_sub_pub(&tt);
 		// trantest_send_recv_large(&tt);
 		// trantest_send_recv_multi(&tt);
 		// trantest_check_properties(&tt, f);
