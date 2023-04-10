@@ -12,9 +12,11 @@
 #include "core/nng_impl.h"
 #include "core/sockimpl.h"
 #include "nng/nng.h"
+#include "nng/mqtt/mqtt_client.h"
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "nng/protocol/mqtt/nmq_mqtt.h"
+#include "supplemental/mqtt/mqtt_msg.h"
 #include "nng/supplemental/nanolib/conf.h"
 #include "nng/supplemental/nanolib/file.h"
 #include "nng/supplemental/nanolib/hash_table.h"
@@ -419,17 +421,27 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		nni_aio_set_msg(aio, NULL);
 		return;
 	}
-	if (nni_msg_get_type(msg) == CMD_PUBLISH) {
-		qos_pac = nni_mqtt_msg_get_publish_qos(msg);
-		uint32_t topic_len;
-		char    *topic;
-		uint32_t plen;
-		uint8_t *payload;
-		topic   = nni_mqtt_msg_get_publish_topic(msg, &topic_len);
-		payload = nni_mqtt_msg_get_publish_payload(msg, &plen);
-		log_info(
-		    "Local: Send QoS %d Msg to %.*s time %ld payload %.*s",
-		    qos_pac, topic_len, topic, nni_clock(), plen, payload);
+	if (nni_msg_get_type(msg) == CMD_PUBLISH &&
+	    nni_msg_cmd_type(msg) == CMD_PUBLISH) {
+		nni_mqtt_msg_proto_data_alloc(msg);
+		if (nni_mqtt_msg_decode(msg) == MQTT_SUCCESS) {
+			uint32_t topic_len;
+			char    *topic;
+			uint32_t plen;
+			uint8_t *payload;
+			
+			qos_pac = nni_mqtt_msg_get_publish_qos(msg);
+			topic =
+			    nni_mqtt_msg_get_publish_topic(msg, &topic_len);
+			payload = nni_mqtt_msg_get_publish_payload(msg, &plen);
+			log_info("Local: Send QoS %d Msg to %.*s time %ld "
+			         "payload %.*s",
+			    qos_pac, topic_len, topic, nni_clock(), plen,
+			    payload);
+
+		} else {
+			log_info("wrong publish msg");
+		}
 	}
 
 	if (!p->busy) {
