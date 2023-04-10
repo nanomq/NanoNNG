@@ -61,7 +61,7 @@ static void
 stdout_callback(log_event *ev)
 {
 	char buf[64];
-#if NANO_PLATFORM_WINDOWS
+ #if (NNG_PLATFORM_WINDOWS || NNG_PLATFORM_DARWIN)
 	pid_t pid = nni_plat_getpid();
 #else
 	pid_t pid = syscall(__NR_gettid);
@@ -86,7 +86,7 @@ static void
 file_callback(log_event *ev)
 {
 	char  buf[64];
-#if NANO_PLATFORM_WINDOWS
+#if (NNG_PLATFORM_WINDOWS || NNG_PLATFORM_DARWIN)
 	pid_t pid = nni_plat_getpid();
 #else
 	pid_t pid = syscall(__NR_gettid);
