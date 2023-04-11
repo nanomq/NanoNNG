@@ -2065,23 +2065,35 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 	}
 	for (size_t i = 0; i < bridge->count; i++) {
 		conf_bridge_node *node = bridge->nodes[i];
-		log_info("%sbridge.mqtt.%s.address:      %s", prefix,
+		log_info("%sbridge.mqtt.%s.address:            %s", prefix,
 		    node->name, node->address);
-		log_info("%sbridge.mqtt.%s.proto_ver:    %d", prefix,
+		log_info("%sbridge.mqtt.%s.proto_ver:          %d", prefix,
 		    node->name, node->proto_ver);
-		log_info("%sbridge.mqtt.%s.clientid:     %s", prefix,
+		log_info("%sbridge.mqtt.%s.clientid:           %s", prefix,
 		    node->name, node->clientid);
-		log_info("%sbridge.mqtt.%s.clean_start:  %d", prefix,
+		log_info("%sbridge.mqtt.%s.clean_start:        %d", prefix,
 		    node->name, node->clean_start);
-		log_info("%sbridge.mqtt.%s.username:     %s", prefix,
+		log_info("%sbridge.mqtt.%s.username:           %s", prefix,
 		    node->name, node->username);
-		log_info("%sbridge.mqtt.%s.password:     %s", prefix,
+		log_info("%sbridge.mqtt.%s.password:           %s", prefix,
 		    node->name, node->password);
-		log_info("%sbridge.mqtt.%s.keepalive:    %d", prefix,
+		log_info("%sbridge.mqtt.%s.keepalive:          %d", prefix,
 		    node->name, node->keepalive);
-		log_info("%sbridge.mqtt.%s.keepalive:    %d", prefix,
+
+		log_info("%sbridge.mqtt.%s.qkeepalive:         %d", prefix,
 		    node->name, node->qkeepalive);
-		log_info("%sbridge.mqtt.%s.parallel:     %ld", prefix,
+		log_info("%sbridge.mqtt.%s.qconnect_timeout:   %d", prefix,
+		    node->name, node->qconnect_timeout);
+		log_info("%sbridge.mqtt.%s.qdiscon_timeout:    %d", prefix,
+		    node->name, node->qdiscon_timeout);
+		log_info("%sbridge.mqtt.%s.qidle_timeout:      %d", prefix,
+		    node->name, node->qidle_timeout);
+		log_info("%sbridge.mqtt.%s.qsend_idle_timeout: %d", prefix,
+		    node->name, node->qsend_idle_timeout);
+		log_info("%sbridge.mqtt.%s.qinitial_rtt:       %d", prefix,
+		    node->name, node->qinitial_rtt);
+
+		log_info("%sbridge.mqtt.%s.parallel:           %ld", prefix,
 		    node->name, node->parallel);
 		log_info("%sbridge.mqtt.%s.forwards: ", prefix, node->name);
 
