@@ -1137,9 +1137,7 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 			if (nni_mqtt_msg_get_packet_type(msg) ==
 			    NNG_MQTT_PUBLISH) {
 				nni_mqtt_msg_set_publish_qos(msg, 0);
-				log_info("caching msg!");
 				if (0 != nni_lmq_put(&s->send_messages, msg)) {
-					log_warn("caching msg failed due to full lmq!");
 					nni_msg_free(msg);
 					nni_mtx_unlock(&s->mtx);
 					nni_aio_set_msg(aio, NULL);
