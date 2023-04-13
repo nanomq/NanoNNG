@@ -443,6 +443,35 @@ nano_ctx_send(void *arg, nni_aio *aio)
 			log_info("wrong publish msg");
 		}
 	}
+	if ( nni_msg_get_type(msg) == CMD_UNSUBACK) {
+		nni_mqtt_msg_proto_data_alloc(msg);
+		if (nni_mqtt_msg_decode(msg) == MQTT_SUCCESS) {
+			uint16_t subid;
+
+			subid = nni_mqtt_msg_get_unsuback_packet_id(msg);
+			log_info("Local: Send UNSUBACK id: %d time %ld ",
+			    subid, nni_clock());
+		} else {
+			log_info("wrong SUBACK msg");
+		}
+	}
+	if (nni_msg_get_type(msg) == CMD_SUBACK) {
+		nni_mqtt_msg_proto_data_alloc(msg);
+		uint8_t *body = nni_msg_body(msg);
+
+		if (nni_mqtt_msg_decode(msg) == MQTT_SUCCESS) {
+			uint32_t slen;
+			uint16_t subid;
+			uint8_t *code;
+			NNI_GET16(body, subid);
+			code =
+			    nni_mqtt_msg_get_suback_return_codes(msg, &slen);
+			log_info("Local: Send SUBACK id: %d result %d time %ld ",
+			    subid, *code, nni_clock());
+		} else {
+			log_info("wrong SUBACK msg");
+		}
+	}
 
 	if (!p->busy) {
 		p->busy = true;
