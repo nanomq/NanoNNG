@@ -12,7 +12,7 @@
 
 #define MAX_CALLBACKS 10
 
-#if NANO_PLATFORM_WINDOWS
+#if NNG_PLATFORM_WINDOWS
 #define nano_localtime(t, pTm) localtime_s(pTm, t)
 #else
 #include <sys/types.h>
@@ -61,8 +61,8 @@ static void
 stdout_callback(log_event *ev)
 {
 	char buf[64];
- #if (NNG_PLATFORM_WINDOWS || NNG_PLATFORM_DARWIN)
-	pid_t pid = nni_plat_getpid();
+#if (NNG_PLATFORM_WINDOWS || NNG_PLATFORM_DARWIN)
+	int pid = nni_plat_getpid();
 #else
 	pid_t pid = syscall(__NR_gettid);
 #endif
@@ -85,9 +85,9 @@ stdout_callback(log_event *ev)
 static void
 file_callback(log_event *ev)
 {
-	char  buf[64];
+	char buf[64];
 #if (NNG_PLATFORM_WINDOWS || NNG_PLATFORM_DARWIN)
-	pid_t pid = nni_plat_getpid();
+	int pid = nni_plat_getpid();
 #else
 	pid_t pid = syscall(__NR_gettid);
 #endif
