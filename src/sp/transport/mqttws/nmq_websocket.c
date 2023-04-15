@@ -250,9 +250,17 @@ done:
 					ack_cmd = CMD_PUBACK;
 				} else if (qos_pac == 2) {
 					ack_cmd = CMD_PUBREC;
+				} else {
+					log_warn("Wrong QoS level!");
+					rv = PROTOCOL_ERROR;
+					goto recv_error;
 				}
-				packet_id = nni_msg_get_pub_pid(smsg);
-				ack       = true;
+				if ((packet_id = nni_msg_get_pub_pid(msg)) ==
+				    0) {
+					rv = PROTOCOL_ERROR;
+					goto recv_error;
+				}
+				ack = true;
 			}
 		} else if (cmd == CMD_PUBREC) {
 			if (nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
