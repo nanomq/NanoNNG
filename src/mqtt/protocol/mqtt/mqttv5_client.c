@@ -543,7 +543,7 @@ mqtt_pipe_close(void *arg)
 		count++;
 	}
 	if (count == 0) {
-		nni_println("disconnect msg of bridging is lost due to no ctx on receving");
+		log_info("disconnect msg of bridging is lost due to no ctx on receving");
 		nni_msg_free(tmsg);
 	}
 #endif
