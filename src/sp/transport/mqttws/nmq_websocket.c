@@ -255,7 +255,7 @@ done:
 					rv = PROTOCOL_ERROR;
 					goto recv_error;
 				}
-				if ((packet_id = nni_msg_get_pub_pid(msg)) ==
+				if ((packet_id = nni_msg_get_pub_pid(smsg)) ==
 				    0) {
 					rv = PROTOCOL_ERROR;
 					goto recv_error;
