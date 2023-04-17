@@ -715,18 +715,16 @@ void
 trantest_mqttv5_sub_pub(trantest *tt)
 {
 	Convey("mqttv5 pub and sub", {
-		const char      *url   = tt->addr;
-		uint8_t          qos   = 0;
-		const char      *topic = "myTopic";
-		const char      *data  = "ping";
-		nng_dialer       subdialer;
-		nng_dialer       pubdialer;
+		const char *url   = tt->addr;
+		uint8_t     qos   = 0;
+		const char *topic = "myTopic";
+		const char *data  = "ping";
+		nng_dialer  subdialer;
+		nng_dialer  pubdialer;
 		nng_mqtt_client *client = NULL;
 
-		client_connect(
-		    &tt->reqsock, &subdialer, url, MQTT_PROTOCOL_VERSION_v5);
-		client_connect(
-		    &tt->repsock, &pubdialer, url, MQTT_PROTOCOL_VERSION_v5);
+		client_connect(&tt->reqsock, &subdialer, url, MQTT_PROTOCOL_VERSION_v5);
+		client_connect(&tt->repsock, &pubdialer, url, MQTT_PROTOCOL_VERSION_v5);
 
 		params.topic    = topic;
 		params.data     = (uint8_t *) data;
