@@ -424,6 +424,9 @@ send_callback (nng_mqtt_client *client, nng_msg *msg, void *arg) {
 	if (msg == NULL)
 		return;
 	switch (nng_mqtt_msg_get_packet_type(msg)) {
+	case NNG_MQTT_CONNACK:
+		// printf("connack!\n");
+		break;
 	case NNG_MQTT_SUBACK:
 		// code = (reason_code *) nng_mqtt_msg_get_suback_return_codes(
 		//     msg, &count);
@@ -433,7 +436,8 @@ send_callback (nng_mqtt_client *client, nng_msg *msg, void *arg) {
 		// printf("\n");
 		break;
 	case NNG_MQTT_UNSUBACK:
-		// code = (reason_code *) nng_mqtt_msg_get_unsuback_return_codes(
+		// code = (reason_code *)
+		// nng_mqtt_msg_get_unsuback_return_codes(
 		//     msg, &count);
 		// printf("UNSUBACK reason codes are\n");
 		// for (int i = 0; i < count; ++i)
@@ -626,6 +630,7 @@ trantest_mqtt_sub_pub(trantest *tt)
 void
 server_cb(void *arg)
 {
+	// printf("AIO START\n");
 }
 
 void
@@ -661,7 +666,7 @@ void
 trantest_mqtt_broker_listen(trantest *tt)
 {
 	Convey("mqtt broker pub and sub", {
-		printf("%s\n\n",tt->addr);
+		printf("%s\n\n", tt->addr);
 		const char      *url   = "mqtt-tcp://127.0.0.1:1883";
 		uint8_t          qos   = 0;
 		const char      *topic = "myTopic";
@@ -672,8 +677,7 @@ trantest_mqtt_broker_listen(trantest *tt)
 		nng_msg         *rmsg = NULL;
 		nng_msg         *msg  = NULL;
 		int              rv;
-
-		// printf("msg len = %d\n", nng_msg_len(rmsg));
+		conn_param      *cp = NULL;
 
 		params.topic    = topic;
 		params.data     = (uint8_t *) data;
@@ -681,53 +685,31 @@ trantest_mqtt_broker_listen(trantest *tt)
 		params.qos      = qos;
 
 		transtest_broker_start(tt, listener);
-		nng_msleep(200);
 
 		client_connect(&tt->reqsock, &dialer, url, MQTT_PROTOCOL_VERSION_v311);
-		
-		nng_recvmsg(tt->repsock, &rmsg, 0);
+
+		// recv connmsg & send connack 
+		nng_aio_wait(work->aio);
+		nng_msleep(10);
 		nng_ctx_recv(work->ctx, work->aio);
-		if ((msg = nng_aio_get_msg(work->aio)) == NULL) {
-			printf("msg is null");
-		}
-
+		rmsg = nng_aio_get_msg(work->aio);
 		nng_aio_set_msg(work->aio, rmsg);
-
 		nng_ctx_send(work->ctx, work->aio);
 
-		// nng_msg *pubmsg;
-		// nng_mqtt_msg_alloc(&pubmsg, 0);
-		// nng_mqtt_msg_set_packet_type(pubmsg, NNG_MQTT_PUBLISH);
-		// nng_mqtt_msg_set_publish_dup(pubmsg, 0);
-		// nng_mqtt_msg_set_publish_qos(pubmsg, params.qos);
-		// nng_mqtt_msg_set_publish_retain(pubmsg, 0);
-		// nng_mqtt_msg_set_publish_payload(
-		//     pubmsg, (uint8_t *) params.data, params.data_len);
-		// nng_mqtt_msg_set_publish_topic(pubmsg, params.topic);
-		// nng_sendmsg(tt->repsock, pubmsg, 0);
-		// if (rmsg == NULL) {
-		// 	printf("rmsg == null\n");
-		// } else {
-		// 	printf("rmsg != null\n");
-		// }
-		// printf("rmsg type = %d\n", nng_msg_get_type(rmsg));
-		// printf("rmsg len = %d\n", nng_msg_len(rmsg));
+		cp = nng_msg_get_conn_param(rmsg);
+		conn_param_free(cp);
+		conn_param_free(cp);
 
-		client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true);
-		// sub sending
+		nng_recvmsg(tt->reqsock, &msg, 0);
+		conn_param_free(nng_msg_get_conn_param(msg));
+		nng_msg_free(msg);
 
-		transtest_mqtt_sub_send(tt->reqsock, &client, true);
-		nng_recvmsg(tt->repsock, &rmsg, 0);
-		if(rmsg == NULL){
-			printf("\trmsg == null\n");
-		} else {
-			printf("\trmsg != null\n");
-		}
-		printf("\trmsg type = %d\n", nng_msg_get_type(rmsg));
-		printf("\trmsg len = %d\n", nng_msg_len(rmsg));
+		// nmq_broker will check connmsg before connection is close, so
+		// we close the socket in advance hereto aviod
+		// heap-use-after-free.
+		nng_close(tt->repsock);
+		conn_param_free(cp);
 
-		nng_msg_free(rmsg);
-		nng_mqtt_client_free(client, true);
 	});
 }
 
@@ -735,16 +717,18 @@ void
 trantest_mqttv5_sub_pub(trantest *tt)
 {
 	Convey("mqttv5 pub and sub", {
-		const char *url   = tt->addr;
-		uint8_t     qos   = 0;
-		const char *topic = "myTopic";
-		const char *data  = "ping";
-		nng_dialer  subdialer;
-		nng_dialer  pubdialer;
+		const char      *url   = tt->addr;
+		uint8_t          qos   = 0;
+		const char      *topic = "myTopic";
+		const char      *data  = "ping";
+		nng_dialer       subdialer;
+		nng_dialer       pubdialer;
 		nng_mqtt_client *client = NULL;
 
-		client_connect(&tt->reqsock, &subdialer, url, MQTT_PROTOCOL_VERSION_v5);
-		client_connect(&tt->repsock, &pubdialer, url, MQTT_PROTOCOL_VERSION_v5);
+		client_connect(
+		    &tt->reqsock, &subdialer, url, MQTT_PROTOCOL_VERSION_v5);
+		client_connect(
+		    &tt->repsock, &pubdialer, url, MQTT_PROTOCOL_VERSION_v5);
 
 		params.topic    = topic;
 		params.data     = (uint8_t *) data;
