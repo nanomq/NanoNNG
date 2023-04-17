@@ -536,7 +536,7 @@ transtest_mqtt_unsub_send(nng_socket sock, nng_mqtt_client **client, bool async)
 }
 
 void
-trantest_mqtt_pub(nng_socket sock, bool broker_enabled)
+trantest_mqtt_pub(nng_socket sock)
 {
 	nng_msg *pubmsg;
 	nng_mqtt_msg_alloc(&pubmsg, 0);
@@ -550,7 +550,7 @@ trantest_mqtt_pub(nng_socket sock, bool broker_enabled)
 	nng_sendmsg(sock, pubmsg, NNG_FLAG_NONBLOCK);
 
 	conn_param *cp = NULL;
-	while (1 && broker_enabled) {
+	while (1) {
 		nng_msg *msg = NULL;
 		if (nng_recvmsg(sock, &msg, 0) != 0) {
 			continue;
@@ -599,7 +599,6 @@ void
 trantest_mqtt_sub_pub(trantest *tt)
 {
 	Convey("mqtt pub and sub", {
-		printf("%s\n\n",tt->addr);
 		const char *url   = tt->addr;
 		uint8_t     qos   = 0;
 		const char *topic = "myTopic";
@@ -619,7 +618,7 @@ trantest_mqtt_sub_pub(trantest *tt)
 		client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true);
 		transtest_mqtt_sub_send(tt->reqsock, &client, true);
 		nng_msleep(200);
-		trantest_mqtt_pub(tt->repsock, true);
+		trantest_mqtt_pub(tt->repsock);
 		transtest_mqtt_sub_recv(tt->reqsock, &client);
 		transtest_mqtt_unsub_send(tt->reqsock, &client, true);
 		nng_mqtt_client_free(client, true);
@@ -647,7 +646,6 @@ transtest_broker_start(trantest *tt, nng_listener listener)
 		nng_listener_close(listener);
 		return;
 	}
-	printf("listener start\n");
 	// alloc and init work
 	if ((work = nng_alloc(sizeof(*work))) == NULL) {
 	}
@@ -666,7 +664,6 @@ void
 trantest_mqtt_broker_listen(trantest *tt)
 {
 	Convey("mqtt broker pub and sub", {
-		printf("%s\n\n", tt->addr);
 		const char      *url   = "mqtt-tcp://127.0.0.1:1883";
 		uint8_t          qos   = 0;
 		const char      *topic = "myTopic";
@@ -690,7 +687,8 @@ trantest_mqtt_broker_listen(trantest *tt)
 
 		// recv connmsg & send connack 
 		nng_aio_wait(work->aio);
-		nng_msleep(10);
+		// recv aio may be slightly behind.
+		nng_msleep(20);
 		nng_ctx_recv(work->ctx, work->aio);
 		rmsg = nng_aio_get_msg(work->aio);
 		nng_aio_set_msg(work->aio, rmsg);
@@ -738,7 +736,7 @@ trantest_mqttv5_sub_pub(trantest *tt)
 		client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true);
 		transtest_mqtt_sub_send(tt->reqsock, &client, true);
 		nng_msleep(200);
-		trantest_mqtt_pub(tt->repsock, true);
+		trantest_mqtt_pub(tt->repsock);
 		transtest_mqtt_sub_recv(tt->reqsock, &client);
 		transtest_mqtt_unsub_send(tt->reqsock, &client, true);
 		nng_mqtt_client_free(client, true);
