@@ -30,6 +30,8 @@ static void conf_bridge_subscription_properties_parse(
     conf_bridge_node *node, const char *path, const char *name);
 static void conf_bridge_connect_properties_parse(
     conf_bridge_node *node, const char *path, const char *name);
+static void conf_bridge_connect_will_properties_parse(
+    conf_bridge_node *node, const char *path, const char *name);
 static void print_bridge_conf(conf_bridge *bridge, const char *prefix);
 static void conf_auth_init(conf_auth *auth);
 static void conf_auth_parse(conf_auth *auth, const char *path);
@@ -1854,6 +1856,84 @@ conf_bridge_subscription_properties_parse(
 }
 
 static void
+conf_bridge_connect_will_properties_parse(
+    conf_bridge_node *node, const char *path, const char *name)
+{
+		FILE *fp;
+	if ((fp = fopen(path, "r")) == NULL) {
+		log_error("File %s open failed", path);
+		return;
+	}
+
+	node->will_properties = NNI_ALLOC_STRUCT(node->will_properties);
+	conf_bridge_conn_will_properties *will_prop = node->will_properties;
+
+	char   key_prefix[] = "bridge.mqtt.";
+	char * line         = NULL;
+	size_t sz           = 0;
+	char * value        = NULL;
+	while (nano_getline(&line, &sz, fp) != -1) {
+		if ((value = get_conf_value_with_prefix2(line, sz, key_prefix,
+		         name, ".will.properties.content_type")) != NULL) {
+			will_prop->content_type = value;
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name,
+		                ".will.properties.response_topic")) != NULL) {
+			will_prop->response_topic = value;
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name,
+		                ".will.properties.correlation_data")) !=
+		    NULL) {
+			will_prop->correlation_data = value;
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name,
+		                ".will.properties.message_expiry_interval")) !=
+		    NULL) {
+			will_prop->message_expiry_interval =
+			    (uint32_t) atoi(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name,
+		                ".will.properties.payload_format_"
+		                "indicator")) != NULL) {
+			will_prop->payload_format_indicator =
+			    (uint8_t) atoi(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name,
+		                ".will.properties.will_delay_interval")) !=
+		    NULL) {
+			will_prop->will_delay_interval =
+			    (uint32_t) atol(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name,
+		                ".will.properties.user_property")) != NULL) {
+			conf_bridge_user_property_destroy(
+			    will_prop->user_property,
+			    will_prop->user_property_size);
+
+			will_prop->user_property =
+			    conf_bridge_user_property_parse_ver2(value,
+			        strlen(value), &will_prop->user_property_size);
+			free(value);
+		}
+
+		if (line) {
+			free(line);
+			line = NULL;
+		}
+	}
+
+	if (line) {
+		free(line);
+		line = NULL;
+	}
+
+	fclose(fp);
+}
+
+static void
 conf_bridge_connect_properties_parse(
     conf_bridge_node *node, const char *path, const char *name)
 {
@@ -2029,6 +2109,18 @@ conf_bridge_conn_properties_init(conf_bridge_conn_properties *prop)
 	prop->user_property           = NULL;
 }
 
+void
+conf_bridge_conn_will_properties_init(conf_bridge_conn_will_properties *prop)
+{
+	prop->content_type = NULL;
+	prop->message_expiry_interval = 0;
+	prop->payload_format_indicator = 0;
+	prop->response_topic = NULL;
+	prop->correlation_data = NULL;
+	prop->user_property_size = 0;
+	prop->user_property = NULL;
+}
+
 static void
 conf_bridge_init(conf_bridge *bridge)
 {
@@ -2057,6 +2149,13 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->forwards       = NULL;
 	node->sub_count      = 0;
 	node->sub_list       = NULL;
+
+	node->will_flag    = false;
+	node->will_topic   = NULL;
+	node->will_payload = NULL;
+	node->will_qos     = 0;
+	node->will_retain  = false;
+
 	node->sqlite         = NULL;
 #if defined(SUPP_QUIC)
 	node->multi_stream       = false;
@@ -2073,6 +2172,7 @@ conf_bridge_node_init(conf_bridge_node *node)
 #endif
 	conf_tls_init(&node->tls);
 	node->conn_properties = NULL;
+	node->will_properties = NULL;
 	node->sub_properties  = NULL;
 }
 
@@ -2270,6 +2370,20 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 		                key_prefix, name, ".password")) != NULL) {
 			node->password = value;
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".will.topic")) != NULL) {
+			node->will_topic = value;
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".will.payload")) != NULL) {
+			node->will_payload = value;
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".will.retain")) != NULL) {
+			node->will_retain = nni_strcasecmp(value, "true") == 0;
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".will.qos")) != NULL) {
+			node->will_qos = (uint8_t) atoi(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".forwards")) != NULL) {
 			char *tk = strtok(value, ",");
 			while (tk != NULL) {
@@ -2294,6 +2408,11 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 
 	if (node->proto_ver == MQTT_PROTOCOL_VERSION_v5) {
 		conf_bridge_connect_properties_parse(node, path, name);
+		if (node->will_topic != NULL && node->will_payload != NULL) {
+			node->will_flag = true;
+			conf_bridge_connect_will_properties_parse(
+			    node, path, name);
+		}
 		conf_bridge_subscription_properties_parse(node, path, name);
 	}
 
@@ -2407,6 +2526,12 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 	if (node->password) {
 		free(node->password);
 	}
+	if (node->will_topic) {
+		free(node->will_topic);
+	}
+	if (node->will_payload) {
+		free(node->will_payload);
+	}
 	if (node->forwards_count > 0 && node->forwards) {
 		for (size_t i = 0; i < node->forwards_count; i++) {
 			if (node->forwards[i]) {
@@ -2429,6 +2554,16 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 		    node->conn_properties->user_property_size);
 		node->conn_properties->user_property_size = 0;
 		free(node->conn_properties);
+	}
+	if (node->will_properties) {
+		conf_bridge_user_property_destroy(
+		    node->will_properties->user_property,
+		    node->will_properties->user_property_size);
+		node->will_properties->user_property_size = 0;
+		free(node->will_properties->content_type);
+		free(node->will_properties->response_topic);
+		free(node->will_properties->correlation_data);
+		free(node->will_properties);
 	}
 	if (node->sub_properties) {
 		conf_bridge_user_property_destroy(

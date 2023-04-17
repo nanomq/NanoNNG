@@ -15,5 +15,7 @@ extern void conf_bridge_node_init(conf_bridge_node *node);
 extern void conf_bridge_sub_properties_init(conf_bridge_sub_properties *prop);
 extern void conf_bridge_conn_properties_init(
     conf_bridge_conn_properties *prop);
+extern void conf_bridge_conn_will_properties_init(
+    conf_bridge_conn_will_properties *prop);
 
 #endif //NNG_SUPPLEMENTAL_NANOLIB_NANOLIB_H

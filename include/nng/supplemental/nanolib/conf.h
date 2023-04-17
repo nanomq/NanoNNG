@@ -218,6 +218,17 @@ typedef struct {
 } conf_bridge_conn_properties;
 
 typedef struct {
+	uint8_t              payload_format_indicator;
+	uint32_t             message_expiry_interval;
+	char *               content_type;
+	char *               response_topic;
+	char *               correlation_data;
+	uint32_t             will_delay_interval;
+	size_t               user_property_size;
+	conf_user_property **user_property;
+} conf_bridge_conn_will_properties;
+
+typedef struct {
 	uint32_t             identifier;
 	size_t               user_property_size;
 	conf_user_property **user_property;
@@ -247,9 +258,16 @@ struct conf_bridge_node {
 	conf_sqlite *sqlite;
 	nng_aio    **bridge_aio;
 
+	bool    will_flag;
+	char *  will_payload;
+	char *  will_topic;
+	bool    will_retain;
+	uint8_t will_qos;
+
 	// MQTT v5 property
-	conf_bridge_conn_properties *conn_properties;
-	conf_bridge_sub_properties * sub_properties;
+	conf_bridge_conn_properties *     conn_properties;
+	conf_bridge_conn_will_properties *will_properties;
+	conf_bridge_sub_properties *      sub_properties;
 
 #if defined(SUPP_QUIC)
 	// config params for QUIC only

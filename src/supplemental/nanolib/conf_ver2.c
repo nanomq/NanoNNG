@@ -746,6 +746,27 @@ conf_bridge_conn_properties_parse_ver2(conf_bridge_node *node, cJSON *jso_prop)
 }
 
 static void
+conf_bridge_conn_will_properties_parse_ver2(
+    conf_bridge_node *node, cJSON *jso_prop)
+{
+	conf_bridge_conn_will_properties *prop = node->will_properties =
+	    NNI_ALLOC_STRUCT(node->will_properties);
+
+	conf_bridge_conn_will_properties_init(prop);
+
+	hocon_read_num(prop, payload_format_indicator, jso_prop);
+	hocon_read_num(prop, message_expiry_interval, jso_prop);
+	hocon_read_num(prop, will_delay_interval, jso_prop);
+
+	hocon_read_str(prop, content_type, jso_prop);
+	hocon_read_str(prop, response_topic, jso_prop);
+	hocon_read_str(prop, correlation_data, jso_prop);
+
+	prop->user_property = conf_bridge_user_property_parse_ver2(
+	    jso_prop, &prop->user_property_size);
+}
+
+static void
 conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 {
 	hocon_read_str_base(node, address, "server", jso_connector);
@@ -763,6 +784,22 @@ conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 	cJSON *jso_prop = hocon_get_obj("conn_properties", jso_connector);
 	if (jso_prop != NULL) {
 		conf_bridge_conn_properties_parse_ver2(node, jso_prop);
+	}
+
+	cJSON *jso_will = hocon_get_obj("will", jso_connector);
+	hocon_read_str_base(node, will_payload, "payload", jso_connector);
+	hocon_read_str_base(node, will_topic, "topic", jso_connector);
+	hocon_read_bool_base(node, will_retain, "retain", jso_connector);
+	hocon_read_num_base(node, will_qos, "qos", jso_connector);
+
+	if (node->will_payload != NULL && node->will_topic != NULL) {
+		node->will_flag = true;
+
+		jso_prop = hocon_get_obj("properties", jso_will);
+		if (jso_prop != NULL) {
+			conf_bridge_conn_will_properties_parse_ver2(
+			    node, jso_prop);
+		}
 	}
 }
 
