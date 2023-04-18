@@ -633,35 +633,47 @@ server_cb(void *arg)
 }
 
 void
-transtest_broker_start(trantest *tt, nng_listener listener)
+trantest_broker_start(trantest *tt, nng_listener listener)
 {
+	int   rv;
+	// alloc and init nmq_conf
 	conf *nanomq_conf;
-	nanomq_conf = nng_zalloc(sizeof(conf));
+	if((nanomq_conf = nng_zalloc(sizeof(conf))) == NULL) {
+		fatal("nng_zalloc", NNG_ENOMEM);
+	}
 	conf_init(nanomq_conf);
+
+	// set sock.date and open sock.
 	tt->repsock.data = nanomq_conf;
 	So(nng_nmq_tcp0_open(&tt->repsock) == 0);
-	nng_listener_create(&listener, tt->repsock, tt->addr);
+
+	if ((rv = nng_listener_create(&listener, tt->repsock, tt->addr) !=0)) {
+		fatal("nng_listen", rv);
+	}
 	nng_listener_set(listener, NANO_CONF, nanomq_conf, sizeof(conf));
 	if (nng_listener_start(listener, 0) != 0) {
 		nng_listener_close(listener);
 		return;
 	}
+
 	// alloc and init work
 	if ((work = nng_alloc(sizeof(*work))) == NULL) {
+		fatal("nng_alloc", NNG_ENOMEM);
 	}
-	if (nng_aio_alloc(&work->aio, server_cb, work) != 0) {
+	if ((rv = nng_aio_alloc(&work->aio, server_cb, work)) != 0) {
+		fatal("nng_aio_alloc", rv);
 	}
-	if (nng_ctx_open(&work->ctx, tt->repsock) != 0) {
-		printf("ctx_open fail\n");
+	if (rv = (nng_ctx_open(&work->ctx, tt->repsock)) != 0) {
+		fatal("nng_ctx_open", rv);
 	}
-	work->state = INIT;
+	work->state  = INIT;
 	work->proto  = 0;
 	work->config = nanomq_conf;
 	work->code   = SUCCESS;
 }
 
 void
-trantest_mqtt_broker_listen(trantest *tt)
+trantest_mqtt_broker_send_recv(trantest *tt)
 {
 	Convey("mqtt broker pub and sub", {
 		const char      *url   = "mqtt-tcp://127.0.0.1:1883";
@@ -681,35 +693,39 @@ trantest_mqtt_broker_listen(trantest *tt)
 		params.data_len = strlen(data);
 		params.qos      = qos;
 
-		transtest_broker_start(tt, listener);
-
+		trantest_broker_start(tt, listener);
+		// create client and send CONNECT msg to establish connection.
 		client_connect(&tt->reqsock, &dialer, url, MQTT_PROTOCOL_VERSION_v311);
 
-		// recv connmsg & send connack 
-		nng_aio_wait(work->aio);
 		// recv aio may be slightly behind.
 		nng_msleep(100);
+
+		// server recv CONNECT msg.
 		nng_ctx_recv(work->ctx, work->aio);
 		rmsg = nng_aio_get_msg(work->aio);
+		So(rmsg != NULL);
 		// we don't need conn_parm in trantest so we just free it.
 		cp = nng_msg_get_conn_param(rmsg);
+		So(cp != NULL);
+		// send CONNACK back to the client.
 		nng_aio_set_msg(work->aio, rmsg);
 		nng_ctx_send(work->ctx, work->aio);
-
+		// cp is cloned in protocol and app layer, so we free it twice.
 		conn_param_free(cp);
 		conn_param_free(cp);
 
+		// client recv CONNACK msg.
 		nng_recvmsg(tt->reqsock, &msg, 0);
+		So(msg != NULL);
+		So(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNACK);
+		
 		conn_param_free(nng_msg_get_conn_param(msg));
 		nng_msg_free(msg);
-
-		// nmq_broker will check connmsg before connection is close, so
-		// we close the socket in advance here and wait a while to aviod
+		// nmq_broker will check connmsg when connection is about to
+		// close, so we close the socket in advance here to aviod
 		// heap-use-after-free.
 		nng_close(tt->repsock);
-		nng_msleep(100);
 		conn_param_free(cp);
-
 	});
 }
 
@@ -964,7 +980,7 @@ mqtt_broker_trantest_test(const char *addr)
 		// trantest_conn_refused(&tt);
 		// trantest_duplicate_listen(&tt);
 		// trantest_listen_accept(&tt);
-		trantest_mqtt_broker_listen(&tt);
+		trantest_mqtt_broker_send_recv(&tt);
 		// trantest_mqttv5_sub_pub(&tt);
 		// trantest_send_recv_large(&tt);
 		// trantest_send_recv_multi(&tt);
