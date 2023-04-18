@@ -691,10 +691,12 @@ trantest_mqtt_broker_listen(trantest *tt)
 		nng_msleep(100);
 		nng_ctx_recv(work->ctx, work->aio);
 		rmsg = nng_aio_get_msg(work->aio);
+		// we don't need conn_parm in trantest so we just free it.
+		cp = nng_msg_get_conn_param(rmsg);
 		nng_aio_set_msg(work->aio, rmsg);
 		nng_ctx_send(work->ctx, work->aio);
 
-		cp = nng_msg_get_conn_param(rmsg);
+		conn_param_free(cp);
 		conn_param_free(cp);
 
 		nng_recvmsg(tt->reqsock, &msg, 0);
@@ -706,7 +708,6 @@ trantest_mqtt_broker_listen(trantest *tt)
 		// heap-use-after-free.
 		nng_close(tt->repsock);
 		nng_msleep(100);
-		conn_param_free(cp);
 		conn_param_free(cp);
 
 	});
