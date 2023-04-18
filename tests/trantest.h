@@ -509,12 +509,12 @@ transtest_mqtt_sub_send(nng_socket sock, nng_mqtt_client **client, bool async)
 		    .topic = { .buf = (uint8_t *) params.topic,
 		        .length     = strlen(params.topic) } },
 	};
+	size_t topic_cnt = 1;
 
-	if(async){
-		nng_mqtt_subscribe_async(*client, subscriptions, 1, NULL);
-	}
-	else{
-		nng_mqtt_subscribe(sock, subscriptions, 1, NULL);
+	if (async) {
+		So(nng_mqtt_subscribe_async(*client, subscriptions, topic_cnt, NULL) == 0);
+	} else {
+		So(nng_mqtt_subscribe(sock, subscriptions, topic_cnt, NULL) == 0);
 	}
 }
 
@@ -527,11 +527,12 @@ transtest_mqtt_unsub_send(nng_socket sock, nng_mqtt_client **client, bool async)
 		    .length = strlen(params.topic),
 		},
 	};
+	size_t topic_cnt = 1;
 
 	if (async) {
-		nng_mqtt_unsubscribe_async(*client, unsubscriptions, 1, NULL);
+		So(nng_mqtt_unsubscribe_async(*client, unsubscriptions, topic_cnt, NULL) == 0);
 	} else {
-		nng_mqtt_unsubscribe(sock, unsubscriptions, 1, NULL);
+		So(nng_mqtt_unsubscribe(sock, unsubscriptions, topic_cnt, NULL) == 0);
 	}
 }
 
@@ -547,7 +548,7 @@ trantest_mqtt_pub(nng_socket sock)
 	nng_mqtt_msg_set_publish_payload(
 	    pubmsg, (uint8_t *) params.data, params.data_len);
 	nng_mqtt_msg_set_publish_topic(pubmsg, params.topic);
-	nng_sendmsg(sock, pubmsg, NNG_FLAG_NONBLOCK);
+	So(nng_sendmsg(sock, pubmsg, NNG_FLAG_NONBLOCK) == 0);
 
 	conn_param *cp = NULL;
 	while (1) {
@@ -615,7 +616,7 @@ trantest_mqtt_sub_pub(trantest *tt)
 		params.data_len = strlen(data);
 		params.qos      = qos;
 
-		client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true);
+		So((client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true)) != NULL);
 		transtest_mqtt_sub_send(tt->reqsock, &client, true);
 		nng_msleep(200);
 		trantest_mqtt_pub(tt->repsock);
@@ -637,35 +638,22 @@ trantest_broker_start(trantest *tt, nng_listener listener)
 {
 	int   rv;
 	// alloc and init nmq_conf
-	conf *nanomq_conf;
-	if((nanomq_conf = nng_zalloc(sizeof(conf))) == NULL) {
-		fatal("nng_zalloc", NNG_ENOMEM);
-	}
+	conf *nanomq_conf = NULL;
+	So((nanomq_conf = nng_zalloc(sizeof(conf))) != NULL);
 	conf_init(nanomq_conf);
 
 	// set sock.date and open sock.
 	tt->repsock.data = nanomq_conf;
 	So(nng_nmq_tcp0_open(&tt->repsock) == 0);
 
-	if ((rv = nng_listener_create(&listener, tt->repsock, tt->addr) !=0)) {
-		fatal("nng_listen", rv);
-	}
-	nng_listener_set(listener, NANO_CONF, nanomq_conf, sizeof(conf));
-	if (nng_listener_start(listener, 0) != 0) {
-		nng_listener_close(listener);
-		return;
-	}
+	So(nng_listener_create(&listener, tt->repsock, tt->addr) == 0);
+	So(nng_listener_set(listener, NANO_CONF, nanomq_conf, sizeof(conf)) == 0);
+	So(nng_listener_start(listener, 0) == 0);
 
 	// alloc and init work
-	if ((work = nng_alloc(sizeof(*work))) == NULL) {
-		fatal("nng_alloc", NNG_ENOMEM);
-	}
-	if ((rv = nng_aio_alloc(&work->aio, server_cb, work)) != 0) {
-		fatal("nng_aio_alloc", rv);
-	}
-	if (rv = (nng_ctx_open(&work->ctx, tt->repsock)) != 0) {
-		fatal("nng_ctx_open", rv);
-	}
+	So((work = nng_alloc(sizeof(*work))) != NULL);
+	So((nng_aio_alloc(&work->aio, server_cb, work)) == 0);
+	So((nng_ctx_open(&work->ctx, tt->repsock)) == 0);
 	work->state  = INIT;
 	work->proto  = 0;
 	work->config = nanomq_conf;
@@ -702,11 +690,9 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 
 		// server recv CONNECT msg.
 		nng_ctx_recv(work->ctx, work->aio);
-		rmsg = nng_aio_get_msg(work->aio);
-		So(rmsg != NULL);
+		So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
 		// we don't need conn_parm in trantest so we just free it.
-		cp = nng_msg_get_conn_param(rmsg);
-		So(cp != NULL);
+		So((cp = nng_msg_get_conn_param(rmsg)) != NULL);
 		// send CONNACK back to the client.
 		nng_aio_set_msg(work->aio, rmsg);
 		nng_ctx_send(work->ctx, work->aio);
@@ -715,7 +701,7 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 		conn_param_free(cp);
 
 		// client recv CONNACK msg.
-		nng_recvmsg(tt->reqsock, &msg, 0);
+		So(nng_recvmsg(tt->reqsock, &msg, 0) == 0);
 		So(msg != NULL);
 		So(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNACK);
 		
@@ -749,7 +735,7 @@ trantest_mqttv5_sub_pub(trantest *tt)
 		params.data_len = strlen(data);
 		params.qos      = qos;
 
-		client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true);
+		So((client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true)) != NULL);
 		transtest_mqtt_sub_send(tt->reqsock, &client, true);
 		nng_msleep(200);
 		trantest_mqtt_pub(tt->repsock);
