@@ -860,7 +860,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->backoff       = 1.5;
 
 	nanomq_conf->allow_anonymous = true;
-	nanomq_conf->ipc_internal    = true;
+	nanomq_conf->ipc_internal    = false;
 
 #ifdef ACL_SUPP
 	nanomq_conf->acl_nomatch        = ACL_ALLOW;
