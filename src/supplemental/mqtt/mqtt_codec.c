@@ -3828,7 +3828,7 @@ decode_buf_properties(uint8_t *packet, uint32_t packet_len, uint32_t *pos,
 	};
 
 	log_debug("remain len %d prop len %d curpos %p endpos %p", msg_len, prop_len, buf.curpos, buf.endpos);
-	if (msg_len - 4 < prop_len) {
+	if (msg_len - 1 < prop_len) {
 		log_warn("Malformed packet: property len > remaining len!");
 		goto out;
 	}
