@@ -300,6 +300,7 @@ mqtt_tcptran_ep_match(mqtt_tcptran_ep *ep)
 #ifdef NNG_HAVE_MQTT_BROKER
 	if (p->cparam == NULL) {
 		p->cparam = nni_get_conn_param_from_msg(ep->connmsg);
+		nni_msg_set_conn_param(ep->connmsg, p->cparam);
 	}
 #endif
 	nni_aio_set_output(aio, 0, p);
