@@ -787,10 +787,10 @@ conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 	}
 
 	cJSON *jso_will = hocon_get_obj("will", jso_connector);
-	hocon_read_str_base(node, will_payload, "payload", jso_connector);
-	hocon_read_str_base(node, will_topic, "topic", jso_connector);
-	hocon_read_bool_base(node, will_retain, "retain", jso_connector);
-	hocon_read_num_base(node, will_qos, "qos", jso_connector);
+	hocon_read_str_base(node, will_payload, "payload", jso_will);
+	hocon_read_str_base(node, will_topic, "topic", jso_will);
+	hocon_read_bool_base(node, will_retain, "retain", jso_will);
+	hocon_read_num_base(node, will_qos, "qos", jso_will);
 
 	if (node->will_payload != NULL && node->will_topic != NULL) {
 		node->will_flag = true;
