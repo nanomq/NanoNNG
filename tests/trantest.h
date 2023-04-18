@@ -688,7 +688,7 @@ trantest_mqtt_broker_listen(trantest *tt)
 		// recv connmsg & send connack 
 		nng_aio_wait(work->aio);
 		// recv aio may be slightly behind.
-		nng_msleep(20);
+		nng_msleep(100);
 		nng_ctx_recv(work->ctx, work->aio);
 		rmsg = nng_aio_get_msg(work->aio);
 		nng_aio_set_msg(work->aio, rmsg);
@@ -696,16 +696,17 @@ trantest_mqtt_broker_listen(trantest *tt)
 
 		cp = nng_msg_get_conn_param(rmsg);
 		conn_param_free(cp);
-		conn_param_free(cp);
 
 		nng_recvmsg(tt->reqsock, &msg, 0);
 		conn_param_free(nng_msg_get_conn_param(msg));
 		nng_msg_free(msg);
 
 		// nmq_broker will check connmsg before connection is close, so
-		// we close the socket in advance hereto aviod
+		// we close the socket in advance here and wait a while to aviod
 		// heap-use-after-free.
 		nng_close(tt->repsock);
+		nng_msleep(100);
+		conn_param_free(cp);
 		conn_param_free(cp);
 
 	});
