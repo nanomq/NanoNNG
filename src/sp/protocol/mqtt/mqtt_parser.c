@@ -223,10 +223,10 @@ copyn_utf8_str(const uint8_t *src, uint32_t *pos, int *str_len, int limit)
 	uint8_t *dest = NULL;
 
 	// remaining length must > 2 for a valid length
-	if (limit <= 2)
+	if (limit < 2)
 		return NULL;
-	NNI_GET16(src + (*pos), *str_len);
 
+	NNI_GET16(src + (*pos), *str_len);
 	*pos = (*pos) + 2;
 	if (*str_len > (limit-2)) {
 		//buffer overflow
