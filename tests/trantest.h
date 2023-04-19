@@ -502,7 +502,7 @@ client_connect(nng_socket *sock, nng_dialer *dialer, const char *url, uint8_t pr
 }
 
 void
-transtest_mqtt_sub_send(nng_socket sock, nng_mqtt_client **client, bool async)
+transtest_mqtt_sub_send(nng_socket sock, nng_mqtt_client *client, bool async)
 {
 	nng_mqtt_topic_qos subscriptions[] = {
 		{ .qos     = params.qos,
@@ -512,14 +512,14 @@ transtest_mqtt_sub_send(nng_socket sock, nng_mqtt_client **client, bool async)
 	size_t topic_cnt = 1;
 
 	if (async) {
-		So(nng_mqtt_subscribe_async(*client, subscriptions, topic_cnt, NULL) == 0);
+		So(nng_mqtt_subscribe_async(client, subscriptions, topic_cnt, NULL) == 0);
 	} else {
 		So(nng_mqtt_subscribe(sock, subscriptions, topic_cnt, NULL) == 0);
 	}
 }
 
 void
-transtest_mqtt_unsub_send(nng_socket sock, nng_mqtt_client **client, bool async)
+transtest_mqtt_unsub_send(nng_socket sock, nng_mqtt_client *client, bool async)
 {
 	nng_mqtt_topic unsubscriptions[] = {
 		{
@@ -530,7 +530,7 @@ transtest_mqtt_unsub_send(nng_socket sock, nng_mqtt_client **client, bool async)
 	size_t topic_cnt = 1;
 
 	if (async) {
-		So(nng_mqtt_unsubscribe_async(*client, unsubscriptions, topic_cnt, NULL) == 0);
+		So(nng_mqtt_unsubscribe_async(client, unsubscriptions, topic_cnt, NULL) == 0);
 	} else {
 		So(nng_mqtt_unsubscribe(sock, unsubscriptions, topic_cnt, NULL) == 0);
 	}
@@ -617,13 +617,44 @@ trantest_mqtt_sub_pub(trantest *tt)
 		params.qos      = qos;
 
 		So((client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true)) != NULL);
-		transtest_mqtt_sub_send(tt->reqsock, &client, true);
-		nng_msleep(200);
+		transtest_mqtt_sub_send(tt->reqsock, client, true);
+		nng_msleep(200);// make sure the server recv sub msg before we send pub msg.
 		trantest_mqtt_pub(tt->repsock);
-		transtest_mqtt_sub_recv(tt->reqsock, &client);
-		transtest_mqtt_unsub_send(tt->reqsock, &client, true);
+		transtest_mqtt_sub_recv(tt->reqsock, client);
+		transtest_mqtt_unsub_send(tt->reqsock, client, true);
 		nng_mqtt_client_free(client, true);
 
+	});
+}
+
+
+void
+trantest_mqttv5_sub_pub(trantest *tt)
+{
+	Convey("mqttv5 pub and sub", {
+		const char *url   = tt->addr;
+		uint8_t     qos   = 0;
+		const char *topic = "myTopic";
+		const char *data  = "ping";
+		nng_dialer  subdialer;
+		nng_dialer  pubdialer;
+		nng_mqtt_client *client = NULL;
+
+		client_connect(&tt->reqsock, &subdialer, url, MQTT_PROTOCOL_VERSION_v5);
+		client_connect(&tt->repsock, &pubdialer, url, MQTT_PROTOCOL_VERSION_v5);
+
+		params.topic    = topic;
+		params.data     = (uint8_t *) data;
+		params.data_len = strlen(data);
+		params.qos      = qos;
+
+		So((client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true)) != NULL);
+		transtest_mqtt_sub_send(tt->reqsock, client, true);
+		nng_msleep(200); // make sure the server recv sub msg before we send pub msg.
+		trantest_mqtt_pub(tt->repsock);
+		transtest_mqtt_sub_recv(tt->reqsock, client);
+		transtest_mqtt_unsub_send(tt->reqsock, client, true);
+		nng_mqtt_client_free(client, true);
 	});
 }
 
@@ -636,7 +667,6 @@ server_cb(void *arg)
 void
 trantest_broker_start(trantest *tt, nng_listener listener)
 {
-	int   rv;
 	// alloc and init nmq_conf
 	conf *nanomq_conf = NULL;
 	So((nanomq_conf = nng_zalloc(sizeof(conf))) != NULL);
@@ -712,36 +742,6 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 		// heap-use-after-free.
 		nng_close(tt->repsock);
 		conn_param_free(cp);
-	});
-}
-
-void
-trantest_mqttv5_sub_pub(trantest *tt)
-{
-	Convey("mqttv5 pub and sub", {
-		const char *url   = tt->addr;
-		uint8_t     qos   = 0;
-		const char *topic = "myTopic";
-		const char *data  = "ping";
-		nng_dialer  subdialer;
-		nng_dialer  pubdialer;
-		nng_mqtt_client *client = NULL;
-
-		client_connect(&tt->reqsock, &subdialer, url, MQTT_PROTOCOL_VERSION_v5);
-		client_connect(&tt->repsock, &pubdialer, url, MQTT_PROTOCOL_VERSION_v5);
-
-		params.topic    = topic;
-		params.data     = (uint8_t *) data;
-		params.data_len = strlen(data);
-		params.qos      = qos;
-
-		So((client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true)) != NULL);
-		transtest_mqtt_sub_send(tt->reqsock, &client, true);
-		nng_msleep(200);
-		trantest_mqtt_pub(tt->repsock);
-		transtest_mqtt_sub_recv(tt->reqsock, &client);
-		transtest_mqtt_unsub_send(tt->reqsock, &client, true);
-		nng_mqtt_client_free(client, true);
 	});
 }
 
