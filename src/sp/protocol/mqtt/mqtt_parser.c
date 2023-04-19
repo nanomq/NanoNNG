@@ -620,7 +620,9 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 
 	if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 		// check length
-		log_trace("MQTT V5 Properties");
+		log_trace("Decoding MQTT V5 Properties");
+		if (pos >= max)
+			return PROTOCOL_ERROR;
 		len_of_var = 0;
 		cparam->prop_len = (uint32_t) get_var_integer(packet + pos, &len_of_var);
 		if (cparam->prop_len > (max - pos - 1 - cparam->will_flag*2 ))
