@@ -712,7 +712,7 @@ tcptran_pipe_recv_cb(void *arg)
 
 	if (len <= 0 &&
 	    (type == CMD_SUBSCRIBE || type == CMD_PUBLISH ||
-	        CMD_UNSUBSCRIBE)) {
+	        type == CMD_UNSUBSCRIBE)) {
 		rv = PROTOCOL_ERROR;
 		goto recv_error;
 	}
