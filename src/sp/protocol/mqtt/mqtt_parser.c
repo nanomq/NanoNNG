@@ -1627,10 +1627,11 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 int
 nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 {
+	int             remain = 0;
 	char           *topic;
 	uint8_t         len_of_topic = 0, *payload_ptr, *var_ptr;
 	uint32_t        num = 0, len, len_of_varint = 0, len_of_str = 0;
-	size_t          bpos = 0, remain = 0;
+	size_t          bpos = 0;
 	struct subinfo *sn = NULL, *sn2, snode;
 	nni_list       *ll = l;
 
@@ -1644,6 +1645,7 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 	if (nni_msg_len(msg) < 3)
 		return (-3);
 	if (ver == MQTT_PROTOCOL_VERSION_v5) {
+		// get Property Length
 		len = get_var_integer(
 		    (uint8_t *) nni_msg_body(msg) + 2, &len_of_varint);
 		if (len > nni_msg_remaining_len(msg))
@@ -1677,7 +1679,7 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 			return (-2);
 		}
 	}
-	if (pos > target_pos)
+	if (pos > target_pos || nni_msg_len(msg) < target_pos)
 		return (-2);
 
 	remain = nni_msg_remaining_len(msg) - target_pos;
