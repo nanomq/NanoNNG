@@ -1166,8 +1166,11 @@ nano_dismsg_composer(reason_code code, char* rstr, uint8_t *ref, property *prop)
 	nng_msg_set_cmd_type(msg, CMD_DISCONNECT);
 	return msg;
 }
-
-// alloc a publish msg according to the need
+/**
+ *  Alloc a publish msg according to the connect msg
+ *  Caller is responsible for msg management
+ *  TODO: validation of last-will msg 
+*/
 nng_msg *
 nano_pubmsg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
     mqtt_string *payload, mqtt_string *topic, uint8_t proto_ver, nng_time time)
@@ -1197,6 +1200,7 @@ nano_pubmsg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
 			buf[0] = CMD_PUBLISH | 0x04;
 		} else {
 			nni_println("ERROR: will msg qos invalid");
+			nni_msg_free(msg);
 			return NULL;
 		}
 	} else {
