@@ -3255,7 +3255,7 @@ conf_fini(conf *nanomq_conf)
 	conf_tls_destroy(&nanomq_conf->tls);
 
 	nng_strfree(nanomq_conf->websocket.url);
-#ifdef ACL_SUPP
+#if defined(ACL_SUPP)
 	conf_acl_destroy(&nanomq_conf->acl);
 #endif
 	conf_bridge_destroy(&nanomq_conf->bridge);
