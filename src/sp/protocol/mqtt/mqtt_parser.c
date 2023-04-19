@@ -1506,11 +1506,12 @@ nmq_subinfol_rm_or(nni_list *l, struct subinfo *n)
 int
 nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 {
+	int             remain = 0;
 	char           *topic;
 	uint8_t         *payload_ptr, *var_ptr;
 	uint32_t        num = 0, len, len_of_varint = 0, len_of_str = 0, subid = 0;
 	uint16_t        len_of_topic = 0;
-	size_t          bpos = 0, remain = 0;
+	size_t          bpos = 0;
 	struct subinfo *sn = NULL;
 	nni_list       *ll = l;
 
@@ -1558,7 +1559,7 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 			return (-2);
 		}
 	}
-	if (pos > target_pos)
+	if (pos > target_pos || nni_msg_len(msg) < target_pos)
 		return (-2);
 
 	remain = nni_msg_remaining_len(msg) - target_pos;
