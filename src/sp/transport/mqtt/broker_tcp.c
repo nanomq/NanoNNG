@@ -384,6 +384,7 @@ tcptran_pipe_nego_cb(void *arg)
 			nni_mtx_unlock(&ep->mtx);
 			return;
 		} else {
+			log_info("Disconnect Client due to %d", rv);
 			nng_free(p->conn_buf, p->wantrxhead);
 			if (p->tcp_cparam->pro_ver == 5) {
 				goto close;
