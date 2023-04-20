@@ -21,15 +21,6 @@ typedef struct {
 	int    cld_cnt;
 } dbtree_info;
 
-struct dbtree_retain_msg {
-	uint8_t qos;
-	bool    exist;
-	char *  m;
-	void *  message;
-};
-
-typedef struct dbtree_retain_msg dbtree_retain_msg;
-
 /**
  * @brief dbtree_create - Create a dbtree.
  * @param dbtree - dbtree
@@ -107,8 +98,8 @@ NNG_DECL uint32_t *dbtree_find_clients(dbtree *db, char *topic);
  * @param ret_msg - dbtree_retain_msg
  * @return
  */
-NNG_DECL void *dbtree_insert_retain(
-    dbtree *db, char *topic, dbtree_retain_msg *ret_msg);
+NNG_DECL nng_msg *dbtree_insert_retain(
+    dbtree *db, char *topic, nng_msg *ret_msg);
 
 /**
  * @brief dbtree_delete_retain - Delete all retain message to this topic.
@@ -116,7 +107,7 @@ NNG_DECL void *dbtree_insert_retain(
  * @param topic - topic
  * @return ctxt or NULL, if client can be delete or not
  */
-NNG_DECL void *dbtree_delete_retain(dbtree *db, char *topic);
+NNG_DECL nng_msg *dbtree_delete_retain(dbtree *db, char *topic);
 
 /**
  * @brief dbtree_find_retain - Get all retain message to this topic.
@@ -124,7 +115,7 @@ NNG_DECL void *dbtree_delete_retain(dbtree *db, char *topic);
  * @param topic - topic
  * @return dbtree_retain_msg pointer vector
  */
-NNG_DECL dbtree_retain_msg **dbtree_find_retain(dbtree *db, char *topic);
+NNG_DECL nng_msg **dbtree_find_retain(dbtree *db, char *topic);
 
 /**
  * @brief dbtree_find_shared_clients - This function
