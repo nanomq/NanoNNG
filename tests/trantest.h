@@ -433,39 +433,39 @@ send_callback(nng_mqtt_client *client, nng_msg *msg, void *arg)
 	// uint8_t *        code;
 	// uint8_t          type;
 
-	// if (msg == NULL)
-	// 	return;
-	// switch (nng_mqtt_msg_get_packet_type(msg)) {
-	// case NNG_MQTT_CONNACK:
-	// 	// printf("connack!\n");
-	// 	break;
-	// case NNG_MQTT_SUBACK:
-	// 	// code = (reason_code *) nng_mqtt_msg_get_suback_return_codes(
-	// 	//     msg, &count);
-	// 	// printf("SUBACK reason codes are\n");
-	// 	// for (int i = 0; i < count; ++i)
-	// 	// 	printf("%d ", code[i]);
-	// 	// printf("\n");
-	// 	break;
-	// case NNG_MQTT_UNSUBACK:
-	// 	// code = (reason_code *)
-	// 	// nng_mqtt_msg_get_unsuback_return_codes(
-	// 	//     msg, &count);
-	// 	// printf("UNSUBACK reason codes are\n");
-	// 	// for (int i = 0; i < count; ++i)
-	// 	// 	printf("%d ", code[i]);
-	// 	// printf("\n");
-	// 	break;
-	// case NNG_MQTT_PUBACK:
-	// 	// printf("PUBACK\n");
-	// 	break;
-	// default:
-	// 	// printf("Sending in async way is done.\n");
-	// 	// printf("default\n");
-	// 	break;
-	// }
-	// // printf("aio mqtt result %d \n", nng_aio_result(aio));
-	// // printf("suback %d \n", *code);
+	if (msg == NULL)
+		return;
+	switch (nng_mqtt_msg_get_packet_type(msg)) {
+	case NNG_MQTT_CONNACK:
+		printf("connack!\n");
+		break;
+	case NNG_MQTT_SUBACK:
+		// code = (reason_code *) nng_mqtt_msg_get_suback_return_codes(
+		//     msg, &count);
+		printf("SUBACK reason codes are\n");
+		// for (int i = 0; i < count; ++i)
+		// 	printf("%d ", code[i]);
+		// printf("\n");
+		break;
+	case NNG_MQTT_UNSUBACK:
+		// code = (reason_code *)
+		// nng_mqtt_msg_get_unsuback_return_codes(
+		//     msg, &count);
+		printf("UNSUBACK reason codes are\n");
+		// for (int i = 0; i < count; ++i)
+		// 	printf("%d ", code[i]);
+		// printf("\n");
+		break;
+	case NNG_MQTT_PUBACK:
+		printf("PUBACK\n");
+		break;
+	default:
+		// printf("Sending in async way is done.\n");
+		// printf("default\n");
+		break;
+	}
+	// printf("aio mqtt result %d \n", nng_aio_result(aio));
+	// printf("suback %d \n", *code);
 	nng_msg_free(msg);
 }
 
@@ -704,6 +704,198 @@ trantest_broker_start(trantest *tt, nng_listener listener)
 	work->code   = SUCCESS;
 }
 
+int
+decode_sub_msg(nano_work *work)
+{
+	uint8_t *variable_ptr, *payload_ptr;
+	int      vpos          = 0; // pos in variable
+	int      bpos          = 0; // pos in payload
+	size_t   len_of_varint = 0, len_of_property = 0, len_of_properties = 0;
+	int      len_of_str = 0, len_of_topic = 0;
+	uint8_t  property_id;
+
+	topic_node *       tn, *_tn;
+
+	nng_msg *     msg           = work->msg;
+	size_t        remaining_len = nng_msg_remaining_len(msg);
+	const uint8_t proto_ver     = work->proto_ver;
+
+	// handle variable header
+	variable_ptr = nng_msg_body(msg);
+
+	packet_subscribe *sub_pkt = work->sub_pkt;
+	sub_pkt->node = NULL;
+	NNI_GET16(variable_ptr + vpos, sub_pkt->packet_id);
+	if (sub_pkt->packet_id == 0)
+		return PROTOCOL_ERROR; // packetid should be non-zero
+	// TODO packetid should be checked if it's unused
+	vpos += 2;
+
+	sub_pkt->properties = NULL;
+	sub_pkt->prop_len   = 0;
+	// Only Mqtt_v5 include property.
+	if (MQTT_PROTOCOL_VERSION_v5 == proto_ver) {
+		sub_pkt->properties =
+		    decode_properties(msg, (uint32_t *)&vpos, &sub_pkt->prop_len, true);
+		if (check_properties(sub_pkt->properties) != SUCCESS) {
+			return PROTOCOL_ERROR;
+		}
+	}
+
+	log_debug("remainLen: [%ld] packetid : [%d]", remaining_len,
+	    sub_pkt->packet_id);
+	// handle payload
+	payload_ptr = nng_msg_payload_ptr(msg);
+
+	if ((tn = nng_zalloc(sizeof(topic_node))) == NULL) {
+		log_error("nng_zalloc");
+		return NNG_ENOMEM;
+	}
+	tn->next = NULL;
+	sub_pkt->node      = tn;
+
+	while (1) {
+		_tn      = tn;
+
+		tn->reason_code  = GRANTED_QOS_2; // default
+
+		// TODO Decoding topic has potential buffer overflow
+		tn->topic.body =
+		    (char *)copy_utf8_str(payload_ptr, (uint32_t *)&bpos, &len_of_topic);
+		tn->topic.len = len_of_topic;
+		log_info("topic: [%s] len: [%d]", tn->topic.body, len_of_topic);
+		len_of_topic = 0;
+
+		if (tn->topic.len < 1 || tn->topic.body == NULL) {
+			log_error("NOT utf8-encoded string OR null string.");
+			tn->reason_code = UNSPECIFIED_ERROR;
+			if (MQTT_PROTOCOL_VERSION_v5 == proto_ver)
+				tn->reason_code = TOPIC_FILTER_INVALID;
+			bpos += 1; // ignore option
+			goto next;
+		}
+
+		tn->rap = 1; // Default Setting
+		memcpy(tn, payload_ptr + bpos, 1);
+		if (tn->retain_handling > 2) {
+			log_error("error in retain_handling");
+			tn->reason_code = UNSPECIFIED_ERROR;
+			return PROTOCOL_ERROR;
+		}
+		bpos ++;
+
+		// Setting no_local on shared subscription is invalid
+		if (MQTT_PROTOCOL_VERSION_v5 == proto_ver &&
+		    strncmp(tn->topic.body, "$share/", strlen("$share/")) == 0 &&
+		    tn->no_local == 1) {
+			tn->reason_code = UNSPECIFIED_ERROR;
+			return PROTOCOL_ERROR;
+		}
+
+next:
+		if (bpos < remaining_len - vpos) {
+			if (NULL == (tn = nng_zalloc(sizeof(topic_node)))) {
+				log_error("nng_zalloc");
+				return NNG_ENOMEM;
+			}
+			tn->next = NULL;
+			_tn->next  = tn;
+		} else {
+			break;
+		}
+	}
+	return 0;
+}
+
+int
+encode_suback_msg(nng_msg *msg, nano_work *work)
+{
+	nng_msg_header_clear(msg);
+	nng_msg_clear(msg);
+
+	uint8_t     packet_id[2];
+	uint8_t     varint[4];
+	uint8_t     reason_code, cmd;
+	uint32_t    remaining_len, len_of_properties;
+	int         len_of_varint, rv;
+	topic_node *tn;
+
+	packet_subscribe *sub_pkt;
+	if ((sub_pkt = work->sub_pkt) == NULL)
+		return (-1);
+
+	const uint8_t proto_ver = work->proto_ver;
+
+	// handle variable header first
+	NNI_PUT16(packet_id, sub_pkt->packet_id);
+	if ((rv = nng_msg_append(msg, packet_id, 2)) != 0) {
+		log_error("nng_msg_append [%d]", rv);
+		return PROTOCOL_ERROR;
+	}
+
+	if (MQTT_PROTOCOL_VERSION_v5 == proto_ver) { // add property in variable
+		encode_properties(msg, NULL, CMD_SUBACK);
+	}
+
+	// Note. packetid should be non-zero, BUT in order to make subclients
+	// known that, we return an error(ALREADY IN USE)
+	reason_code = PACKET_IDENTIFIER_IN_USE;
+	if (sub_pkt->packet_id == 0) {
+		if ((rv = nng_msg_append(msg, &reason_code, 1)) != 0) {
+			log_error("nng_msg_append [%d]", rv);
+			return PROTOCOL_ERROR;
+		}
+	}
+
+	// Note. When packet_id is zero, topic node must be empty. So, Dont worry
+	// about that the order of reason codes would be changed.
+	// handle payload
+	tn = sub_pkt->node;
+	while (tn) {
+		reason_code = tn->reason_code;
+		// MQTT_v3: 0x00-qos0  0x01-qos1  0x02-qos2  0x80-fail
+		if ((rv = nng_msg_append(msg, &reason_code, 1)) != 0) {
+			log_error("nng_msg_append [%d]", rv);
+			return PROTOCOL_ERROR;
+		}
+		tn = tn->next;
+		log_debug("reason_code: [%x]", reason_code);
+	}
+
+	// If NOT find any reason codes
+	if (!sub_pkt->node && sub_pkt->packet_id != 0) {
+		reason_code = UNSPECIFIED_ERROR;
+		if ((rv = nng_msg_append(msg, &reason_code, 1)) != 0) {
+			log_error("nng_msg_append [%d]", rv);
+			return PROTOCOL_ERROR;
+		}
+	}
+
+	// handle fixed header
+	cmd = CMD_SUBACK;
+	if ((rv = nng_msg_header_append(msg, (uint8_t *) &cmd, 1)) != 0) {
+		log_error("nng_msg_header_append [%d]", rv);
+		return PROTOCOL_ERROR;
+	}
+
+	remaining_len = (uint32_t) nng_msg_len(msg);
+	len_of_varint = put_var_integer(varint, remaining_len);
+	if ((rv = nng_msg_header_append(msg, varint, len_of_varint)) != 0) {
+		log_error("nng_msg_header_append [%d]", rv);
+		return PROTOCOL_ERROR;
+	}
+
+	log_debug("remain: [%d] "
+	          "varint: [%d %d %d %d] "
+	          "len: [%d] "
+	          "packetid: [%x %x] ",
+	    remaining_len, varint[0], varint[1], varint[2], varint[3],
+	    len_of_varint, packet_id[0], packet_id[1]);
+
+	return 0;
+}
+
+
 void
 trantest_mqtt_broker_send_recv(trantest *tt)
 {
@@ -713,11 +905,12 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 		const char      *topic = "myTopic";
 		const char      *data  = "ping";
 		nng_dialer       dialer;
-		// nng_mqtt_client *client = NULL; // will be used in sub and pub.
+		nng_mqtt_client *client = NULL; // will be used in sub and pub.
 		nng_listener     listener;
 		nng_msg         *rmsg = NULL;
 		nng_msg         *msg  = NULL;
 		conn_param      *cp = NULL;
+		conn_param      *rcp  = NULL;
 
 		params.topic    = topic;
 		params.data     = (uint8_t *) data;
@@ -727,6 +920,7 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 		trantest_broker_start(tt, listener);
 		// create client and send CONNECT msg to establish connection.
 		client_connect(&tt->reqsock, &dialer, url, MQTT_PROTOCOL_VERSION_v311);
+		So((client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true)) != NULL);
 
 		// recv aio may be slightly behind.
 		nng_msleep(100);
@@ -739,22 +933,53 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 		// send CONNACK back to the client.
 		nng_aio_set_msg(work->aio, rmsg);
 		nng_ctx_send(work->ctx, work->aio);
+		// nng_sendmsg(tt->repsock, rmsg, 0);
 		// cp is cloned in protocol and app layer, so we free it twice.
 		conn_param_free(cp);
 		conn_param_free(cp);
 
 		// client recv CONNACK msg.
 		So(nng_recvmsg(tt->reqsock, &msg, 0) == 0);
-		So(msg != NULL);
 		So(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNACK);
+		rcp = nng_msg_get_conn_param(msg);
+		// nng_msg_free(msg);
+
+		// client send sub & server send suback
+		transtest_mqtt_sub_send(tt->reqsock, client, true);
+		nng_msleep(100);
+		nng_ctx_recv(work->ctx, work->aio);
+		So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
+		So(nng_msg_get_type(rmsg) == CMD_SUBSCRIBE);
+		So((work->sub_pkt = nng_alloc(sizeof(packet_subscribe))) != NULL);
+		memset(work->sub_pkt, '\0', sizeof(packet_subscribe));
+		work->msg = rmsg;
+		work->pid       = nng_msg_get_pipe(work->msg);
+		work->cparam    = nng_msg_get_conn_param(work->msg);
+		work->proto_ver = conn_param_get_protover(work->cparam);
+		decode_sub_msg(work);
+		encode_suback_msg(rmsg, work);
+		// sub_pkt_free(work->sub_pkt);
+		nng_msg_set_cmd_type(rmsg, CMD_SUBACK);
+		nng_aio_set_msg(work->aio, rmsg);
+		nng_ctx_send(work->ctx, work->aio);
+		work->msg = NULL;
 		
-		conn_param_free(nng_msg_get_conn_param(msg));
+		// nng_msleep(1000);
+		// printf("qqqqqqqqqqqqq\n");
+		// So(nng_recvmsg(tt->reqsock, &msg, 0) == 0);
+		// printf("qqqqqqqqqqqqq\n");
+		// So(msg != NULL);
+		// printf("qqqqqqqqqqqqq\n");
+		// So(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_SUBACK);
+
+		conn_param_free(rcp);
 		nng_msg_free(msg);
-		// nmq_broker will check connmsg when connection is about to
-		// close, so we close the socket in advance here to aviod
-		// heap-use-after-free.
+		// nmq_broker will check connmsg when connection is
+		// about to close, so we close the socket in advance
+		// here to aviod heap-use-after-free.
 		nng_close(tt->repsock);
 		conn_param_free(cp);
+		nng_mqtt_client_free(client, true);
 	});
 }
 
