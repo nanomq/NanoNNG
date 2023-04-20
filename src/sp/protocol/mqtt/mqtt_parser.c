@@ -245,7 +245,7 @@ copyn_utf8_str(const uint8_t *src, uint32_t *pos, int *str_len, int limit)
 			memcpy(dest, src + (*pos), *str_len);
 			dest[*str_len] = '\0';
 			*pos           = (*pos) + (*str_len);
-			if (*pos > max) {
+			if ((int)*pos > max) {
 				nng_free(dest, *str_len + 1);
 				*str_len = -1;
 				return NULL;
@@ -602,9 +602,11 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	log_trace("fix header length: %d", len_of_str);
 	// protocol name
 	cparam->pro_name.body =
-	    (char *) copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
+	    (char *) copyn_utf8_str(packet, &pos, &len_of_str, max - pos);
 	cparam->pro_name.len = len_of_str;
-	rv                   = (len_of_str < 0 && pos + 4 < max) ? PROTOCOL_ERROR : 0;
+	rv = (len_of_str < 0 && pos + 4 < max) ? PROTOCOL_ERROR : 0;
+	if (strncmp(cparam->pro_name.body, "MQTT", 4) != 0)
+		rv = PROTOCOL_ERROR;
 	if (rv != 0)
 		return rv;
 	log_trace("pro_name: %s", cparam->pro_name.body);
@@ -1515,12 +1517,11 @@ nmq_subinfol_rm_or(nni_list *l, struct subinfo *n)
 int
 nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 {
-	int             remain = 0;
 	char           *topic;
 	uint8_t         *payload_ptr, *var_ptr;
 	uint32_t        num = 0, len, len_of_varint = 0, len_of_str = 0, subid = 0;
 	uint16_t        len_of_topic = 0;
-	size_t          bpos = 0;
+	size_t          bpos = 0, remain = 0;
 	struct subinfo *sn = NULL;
 	nni_list       *ll = l;
 
@@ -1540,7 +1541,7 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 	log_trace("prop len %d varint %d remain %d", len, len_of_varint, nni_msg_remaining_len(msg));
 	payload_ptr = (uint8_t *) nni_msg_body(msg) + 2 + len + len_of_varint;
 
-	int pos = 2 + len_of_varint, target_pos = 2 + len_of_varint + len;
+	size_t pos = 2 + len_of_varint, target_pos = 2 + len_of_varint + len;
 	while (pos < target_pos) {
 		switch (*(var_ptr + pos)) {
 		case USER_PROPERTY:
@@ -1637,11 +1638,10 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 int
 nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 {
-	int             remain = 0;
 	char           *topic;
 	uint8_t         len_of_topic = 0, *payload_ptr, *var_ptr;
 	uint32_t        num = 0, len, len_of_varint = 0, len_of_str = 0;
-	size_t          bpos = 0;
+	size_t          bpos = 0, remain = 0;
 	struct subinfo *sn = NULL, *sn2, snode;
 	nni_list       *ll = l;
 
@@ -1664,7 +1664,7 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 
 	var_ptr     = (uint8_t *) nni_msg_body(msg);
 	payload_ptr = (uint8_t *) nni_msg_body(msg) + 2 + len + len_of_varint;
-	int pos = 2 + len_of_varint, target_pos = 2 + len_of_varint + len;
+	size_t pos = 2 + len_of_varint, target_pos = 2 + len_of_varint + len;
 
 	while (pos < target_pos) {
 		switch (*(var_ptr + pos)) {
