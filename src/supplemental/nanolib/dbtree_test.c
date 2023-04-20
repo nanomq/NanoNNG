@@ -81,16 +81,18 @@ uint32_t pipe_id7 = 150422;
 uint32_t pipe_id8 = 150421;
 uint32_t pipe_id9 = 150420;
 
-dbtree_retain_msg retain0 = { 1, true, "150429", NULL };
-dbtree_retain_msg retain1 = { 1, true, "150428", NULL };
-dbtree_retain_msg retain2 = { 1, true, "150427", NULL };
-dbtree_retain_msg retain3 = { 1, true, "150426", NULL };
-dbtree_retain_msg retain4 = { 1, true, "150425", NULL };
-dbtree_retain_msg retain5 = { 1, true, "150424", NULL };
-dbtree_retain_msg retain6 = { 1, true, "150423", NULL };
-dbtree_retain_msg retain7 = { 1, true, "150422", NULL };
-dbtree_retain_msg retain8 = { 1, true, "150421", NULL };
-dbtree_retain_msg retain9 = { 1, true, "150420", NULL };
+nng_msg *retain0 = NULL;
+nng_msg *retain1 = NULL;
+nng_msg *retain2 = NULL;
+nng_msg *retain3 = NULL;
+nng_msg *retain4 = NULL;
+nng_msg *retain5 = NULL;
+nng_msg *retain6 = NULL;
+nng_msg *retain7 = NULL;
+nng_msg *retain8 = NULL;
+nng_msg *retain9 = NULL;
+
+
 
 uint32_t pipe_ids[] = {
 	130429,
@@ -242,51 +244,86 @@ test_search_shared_client()
 static void
 test_insert_retain()
 {
-	dbtree_insert_retain(db_ret, topic00, &retain0);
+	nng_msg_alloc(&retain0, 0);
+	nng_msg_alloc(&retain1, 0);
+	nng_msg_alloc(&retain2, 0);
+	nng_msg_alloc(&retain3, 0);
+	nng_msg_alloc(&retain4, 0);
+	nng_msg_alloc(&retain5, 0);
+	nng_msg_alloc(&retain6, 0);
+	nng_msg_alloc(&retain7, 0);
+	nng_msg_alloc(&retain8, 0);
+	nng_msg_alloc(&retain9, 0);
+
+	dbtree_insert_retain(db_ret, topic00, retain0);
 	dbtree_print(db_ret);
-	dbtree_insert_retain(db_ret, topic01, &retain1);
+	dbtree_insert_retain(db_ret, topic01, retain1);
 	dbtree_print(db_ret);
-	dbtree_insert_retain(db_ret, topic02, &retain2);
+	dbtree_insert_retain(db_ret, topic02, retain2);
 	dbtree_print(db_ret);
-	dbtree_insert_retain(db_ret, topic03, &retain3);
+	dbtree_insert_retain(db_ret, topic03, retain3);
 	dbtree_print(db_ret);
-	dbtree_insert_retain(db_ret, topic04, &retain4);
+	dbtree_insert_retain(db_ret, topic04, retain4);
 	dbtree_print(db_ret);
-	dbtree_insert_retain(db_ret, topic05, &retain5);
+	dbtree_insert_retain(db_ret, topic05, retain5);
 	dbtree_print(db_ret);
-	dbtree_insert_retain(db_ret, topic06, &retain6);
+	dbtree_insert_retain(db_ret, topic06, retain6);
 	dbtree_print(db_ret);
-	dbtree_insert_retain(db_ret, topic07, &retain7);
+	dbtree_insert_retain(db_ret, topic07, retain7);
 	dbtree_print(db_ret);
-	dbtree_insert_retain(db_ret, topic08, &retain8);
+	dbtree_insert_retain(db_ret, topic08, retain8);
 	dbtree_print(db_ret);
-	dbtree_insert_retain(db_ret, topic09, &retain9);
+	dbtree_insert_retain(db_ret, topic09, retain9);
 	dbtree_print(db_ret);
 }
 
 static void
 test_delete_retain()
 {
-	dbtree_delete_retain(db_ret, topic00);
+	nng_msg *ret0 = NULL;
+	nng_msg *ret1 = NULL;
+	nng_msg *ret2 = NULL;
+	nng_msg *ret3 = NULL;
+	nng_msg *ret4 = NULL;
+	nng_msg *ret5 = NULL;
+	nng_msg *ret6 = NULL;
+	nng_msg *ret7 = NULL;
+	nng_msg *ret8 = NULL;
+	nng_msg *ret9 = NULL;
+
+
+	ret0 = dbtree_delete_retain(db_ret, topic00);
 	dbtree_print(db_ret);
-	dbtree_delete_retain(db_ret, topic01);
+	ret1 = dbtree_delete_retain(db_ret, topic01);
 	dbtree_print(db_ret);
-	dbtree_delete_retain(db_ret, topic02);
+	ret2 = dbtree_delete_retain(db_ret, topic02);
 	dbtree_print(db_ret);
-	dbtree_delete_retain(db_ret, topic03);
+	ret3 = dbtree_delete_retain(db_ret, topic03);
 	dbtree_print(db_ret);
-	dbtree_delete_retain(db_ret, topic04);
+	ret4 = dbtree_delete_retain(db_ret, topic04);
 	dbtree_print(db_ret);
-	dbtree_delete_retain(db_ret, topic05);
+	ret5 = dbtree_delete_retain(db_ret, topic05);
 	dbtree_print(db_ret);
-	dbtree_delete_retain(db_ret, topic06);
+	ret6 = dbtree_delete_retain(db_ret, topic06);
 	dbtree_print(db_ret);
-	dbtree_delete_retain(db_ret, topic07);
+	ret7 = dbtree_delete_retain(db_ret, topic07);
 	dbtree_print(db_ret);
-	dbtree_delete_retain(db_ret, topic08);
+	ret8 = dbtree_delete_retain(db_ret, topic08);
 	dbtree_print(db_ret);
-	dbtree_delete_retain(db_ret, topic09);
+	ret9 = dbtree_delete_retain(db_ret, topic09);
 	dbtree_print(db_ret);
+
+	nng_msg_free(ret0);
+	nng_msg_free(ret1);
+	nng_msg_free(ret2);
+	nng_msg_free(ret3);
+	nng_msg_free(ret4);
+	nng_msg_free(ret5);
+	nng_msg_free(ret6);
+	nng_msg_free(ret7);
+	nng_msg_free(ret8);
+	nng_msg_free(ret9);
+
 }
 
 static void *
@@ -320,12 +357,14 @@ dbtree_test(void)
 	dbtree_create(&db_ret);
 	test_insert_retain();
 	puts("=======================================");
-	dbtree_retain_msg **r = dbtree_find_retain(db_ret, topic6);
+	nng_msg **r = dbtree_find_retain(db_ret, topic6);
 	for (size_t i = 0; i < cvector_size(r); i++) {
 		if (r[i]) {
-			printf("%s\t", r[i]->m);
+			nng_msg_free(r[i]);
+			printf("%p\t", r[i]);
 		}
 	}
+	cvector_free(r);
 	puts("");
 	puts("=======================================");
 	test_delete_retain();
