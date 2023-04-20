@@ -601,7 +601,7 @@ trantest_mqtt_sub_pub(trantest *tt)
 {
 	Convey("mqtt pub and sub", {
 		const char *url   = tt->addr;
-		uint8_t     qos   = 0;
+		uint8_t     qos   = 2;
 		const char *topic = "myTopic";
 		const char *data  = "ping";
 		nng_dialer  subdialer;
@@ -633,7 +633,7 @@ trantest_mqttv5_sub_pub(trantest *tt)
 {
 	Convey("mqttv5 pub and sub", {
 		const char *url   = tt->addr;
-		uint8_t     qos   = 0;
+		uint8_t     qos   = 2;
 		const char *topic = "myTopic";
 		const char *data  = "ping";
 		nng_dialer  subdialer;
@@ -695,7 +695,7 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 {
 	Convey("mqtt broker pub and sub", {
 		const char      *url   = "mqtt-tcp://127.0.0.1:1883";
-		uint8_t          qos   = 0;
+		uint8_t          qos   = 2;
 		const char      *topic = "myTopic";
 		const char      *data  = "ping";
 		nng_dialer       dialer;
