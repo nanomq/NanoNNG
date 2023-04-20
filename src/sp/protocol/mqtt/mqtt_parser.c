@@ -605,29 +605,27 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	    (char *) copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
 	cparam->pro_name.len = len_of_str;
 	rv                   = (len_of_str < 0 && pos + 4 < max) ? PROTOCOL_ERROR : 0;
-	if (rv == 0) {
-		log_trace("pro_name: %s", cparam->pro_name.body);
-		// protocol ver
-		cparam->pro_ver = packet[pos];
-		pos++;
-		// connect flag
-		cparam->con_flag    = packet[pos];
-		cparam->clean_start = (cparam->con_flag & 0x02) >> 1;
-		cparam->will_flag   = (cparam->con_flag & 0x04) >> 2;
-		cparam->will_qos    = (cparam->con_flag & 0x18) >> 3;
-		cparam->will_retain = (cparam->con_flag & 0x20) >> 5;
-		log_trace("conn flag:%x", cparam->con_flag);
-		if (cparam->will_flag == 1 && cparam->will_qos > 2)
-			return PROTOCOL_ERROR;
-		pos++;
-		// keepalive
-		NNI_GET16(packet + pos, tmp);
-		cparam->keepalive_mqtt = tmp;
-		pos += 2;
-		// properties
-	} else {
+	if (rv != 0)
 		return rv;
-	}
+	log_trace("pro_name: %s", cparam->pro_name.body);
+	// protocol ver
+	cparam->pro_ver = packet[pos];
+	pos++;
+	// connect flag
+	cparam->con_flag    = packet[pos];
+	cparam->clean_start = (cparam->con_flag & 0x02) >> 1;
+	cparam->will_flag   = (cparam->con_flag & 0x04) >> 2;
+	cparam->will_qos    = (cparam->con_flag & 0x18) >> 3;
+	cparam->will_retain = (cparam->con_flag & 0x20) >> 5;
+	log_trace("conn flag:%x", cparam->con_flag);
+	if (cparam->will_flag == 1 && cparam->will_qos > 2)
+		return PROTOCOL_ERROR;
+	pos++;
+	// keepalive
+	NNI_GET16(packet + pos, tmp);
+	cparam->keepalive_mqtt = tmp;
+	pos += 2;
+	// properties
 
 	if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 		// check length
