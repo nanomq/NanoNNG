@@ -245,7 +245,7 @@ copyn_utf8_str(const uint8_t *src, uint32_t *pos, int *str_len, int limit)
 			memcpy(dest, src + (*pos), *str_len);
 			dest[*str_len] = '\0';
 			*pos           = (*pos) + (*str_len);
-			if (*pos >= max) {
+			if (*pos > max) {
 				nng_free(dest, *str_len + 1);
 				*str_len = -1;
 				return NULL;
