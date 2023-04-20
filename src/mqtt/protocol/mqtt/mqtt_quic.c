@@ -190,7 +190,7 @@ nng_mqtt_quic_open_topic_stream(mqtt_sock_t *mqtt_sock, const char *topic, uint3
 	hash = DJBHashn((char *) topic, len);
 	nni_id_set(mqtt_sock->streams, hash, new_pipe);
 	new_pipe->stream_id = hash;
-	log_debug("create new pipe %p for topic %s", new_pipe, topic);
+	log_debug("create new pipe %p for topic %.*s", new_pipe, len, topic);
 
 	new_pipe->ready = true;
 	nni_atomic_set_bool(&new_pipe->closed, false);
