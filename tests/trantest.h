@@ -20,7 +20,7 @@
 
 #include "convey.h"
 #include "core/nng_impl.h"
-struct nano_work {
+typedef struct nano_work {
 	enum {
 		INIT,
 		RECV,
@@ -54,7 +54,7 @@ struct nano_work {
 	packet_unsubscribe *      unsub_pkt;
 
 	void *sqlite_db;
-};
+} nano_work;
 
 // Transport common tests.  By making a common test framework for transports,
 // we can avoid rewriting the same tests for each new transport.  Include this
@@ -394,6 +394,9 @@ disconnect_cb(nng_pipe p, nng_pipe_ev ev, void *arg)
 	nng_msg *msg = arg;
 	nng_msg_free(msg);
 
+	NNI_ARG_UNUSED(p);
+	NNI_ARG_UNUSED(ev);
+
 	// int reason;
 	// get connect reason
 	// nng_pipe_get_int(p, NNG_OPT_MQTT_DISCONNECT_REASON, &reason);
@@ -406,54 +409,63 @@ disconnect_cb(nng_pipe p, nng_pipe_ev ev, void *arg)
 static void
 connect_cb(nng_pipe p, nng_pipe_ev ev, void *arg)
 {
-	int reason;
+	NNI_ARG_UNUSED(p);
+	NNI_ARG_UNUSED(ev);
+	NNI_ARG_UNUSED(arg);
+
+	// int reason;
 	// get connect reason
-	nng_pipe_get_int(p, NNG_OPT_MQTT_CONNECT_REASON, &reason);
+	// nng_pipe_get_int(p, NNG_OPT_MQTT_CONNECT_REASON, &reason);
 	// get property for MQTT V5
 	// property *prop;
 	// nng_pipe_get_ptr(p, NNG_OPT_MQTT_CONNECT_PROPERTY, &prop);
 	// printf("%s: connected!\n", __FUNCTION__);
 }
 static void
-send_callback (nng_mqtt_client *client, nng_msg *msg, void *arg) {
-	nng_aio *        aio    = client->send_aio;
-	uint32_t         count;
-	uint8_t *        code;
-	uint8_t          type;
+send_callback(nng_mqtt_client *client, nng_msg *msg, void *arg)
+{
+	NNI_ARG_UNUSED(client);
+	NNI_ARG_UNUSED(msg);
+	NNI_ARG_UNUSED(arg);
 
-	if (msg == NULL)
-		return;
-	switch (nng_mqtt_msg_get_packet_type(msg)) {
-	case NNG_MQTT_CONNACK:
-		// printf("connack!\n");
-		break;
-	case NNG_MQTT_SUBACK:
-		// code = (reason_code *) nng_mqtt_msg_get_suback_return_codes(
-		//     msg, &count);
-		// printf("SUBACK reason codes are\n");
-		// for (int i = 0; i < count; ++i)
-		// 	printf("%d ", code[i]);
-		// printf("\n");
-		break;
-	case NNG_MQTT_UNSUBACK:
-		// code = (reason_code *)
-		// nng_mqtt_msg_get_unsuback_return_codes(
-		//     msg, &count);
-		// printf("UNSUBACK reason codes are\n");
-		// for (int i = 0; i < count; ++i)
-		// 	printf("%d ", code[i]);
-		// printf("\n");
-		break;
-	case NNG_MQTT_PUBACK:
-		// printf("PUBACK\n");
-		break;
-	default:
-		// printf("Sending in async way is done.\n");
-		// printf("default\n");
-		break;
-	}
-	// printf("aio mqtt result %d \n", nng_aio_result(aio));
-	// printf("suback %d \n", *code);
+	// nng_aio *        aio    = client->send_aio;
+	// uint32_t         count;
+	// uint8_t *        code;
+	// uint8_t          type;
+
+	// if (msg == NULL)
+	// 	return;
+	// switch (nng_mqtt_msg_get_packet_type(msg)) {
+	// case NNG_MQTT_CONNACK:
+	// 	// printf("connack!\n");
+	// 	break;
+	// case NNG_MQTT_SUBACK:
+	// 	// code = (reason_code *) nng_mqtt_msg_get_suback_return_codes(
+	// 	//     msg, &count);
+	// 	// printf("SUBACK reason codes are\n");
+	// 	// for (int i = 0; i < count; ++i)
+	// 	// 	printf("%d ", code[i]);
+	// 	// printf("\n");
+	// 	break;
+	// case NNG_MQTT_UNSUBACK:
+	// 	// code = (reason_code *)
+	// 	// nng_mqtt_msg_get_unsuback_return_codes(
+	// 	//     msg, &count);
+	// 	// printf("UNSUBACK reason codes are\n");
+	// 	// for (int i = 0; i < count; ++i)
+	// 	// 	printf("%d ", code[i]);
+	// 	// printf("\n");
+	// 	break;
+	// case NNG_MQTT_PUBACK:
+	// 	// printf("PUBACK\n");
+	// 	break;
+	// default:
+	// 	// printf("Sending in async way is done.\n");
+	// 	// printf("default\n");
+	// 	break;
+	// }
+	// // printf("aio mqtt result %d \n", nng_aio_result(aio));
+	// // printf("suback %d \n", *code);
 	nng_msg_free(msg);
 }
 
@@ -566,7 +578,7 @@ trantest_mqtt_pub(nng_socket sock)
 }
 
 void
-transtest_mqtt_sub_recv(nng_socket sock, nng_mqtt_client **client)
+transtest_mqtt_sub_recv(nng_socket sock)
 {
 	conn_param *cp = NULL;
 
@@ -620,7 +632,7 @@ trantest_mqtt_sub_pub(trantest *tt)
 		transtest_mqtt_sub_send(tt->reqsock, client, true);
 		nng_msleep(200);// make sure the server recv sub msg before we send pub msg.
 		trantest_mqtt_pub(tt->repsock);
-		transtest_mqtt_sub_recv(tt->reqsock, client);
+		transtest_mqtt_sub_recv(tt->reqsock);
 		transtest_mqtt_unsub_send(tt->reqsock, client, true);
 		nng_mqtt_client_free(client, true);
 
@@ -652,7 +664,7 @@ trantest_mqttv5_sub_pub(trantest *tt)
 		transtest_mqtt_sub_send(tt->reqsock, client, true);
 		nng_msleep(200); // make sure the server recv sub msg before we send pub msg.
 		trantest_mqtt_pub(tt->repsock);
-		transtest_mqtt_sub_recv(tt->reqsock, client);
+		transtest_mqtt_sub_recv(tt->reqsock);
 		transtest_mqtt_unsub_send(tt->reqsock, client, true);
 		nng_mqtt_client_free(client, true);
 	});
@@ -661,6 +673,8 @@ trantest_mqttv5_sub_pub(trantest *tt)
 void
 server_cb(void *arg)
 {
+	struct nano_work *work = arg;
+	NNI_ARG_UNUSED(work); // to be used.
 	// printf("AIO START\n");
 }
 
@@ -699,11 +713,10 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 		const char      *topic = "myTopic";
 		const char      *data  = "ping";
 		nng_dialer       dialer;
-		nng_mqtt_client *client = NULL;
+		// nng_mqtt_client *client = NULL; // will be used in sub and pub.
 		nng_listener     listener;
 		nng_msg         *rmsg = NULL;
 		nng_msg         *msg  = NULL;
-		int              rv;
 		conn_param      *cp = NULL;
 
 		params.topic    = topic;
