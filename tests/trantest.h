@@ -720,6 +720,9 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 
 		// server recv CONNECT msg.
 		nng_ctx_recv(work->ctx, work->aio);
+		while (nng_aio_result(work->aio) != 0) {
+			nng_ctx_recv(work->ctx, work->aio);
+		}
 		So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
 		// we don't need conn_parm in trantest so we just free it.
 		So((cp = nng_msg_get_conn_param(rmsg)) != NULL);
