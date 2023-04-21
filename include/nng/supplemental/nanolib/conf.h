@@ -257,6 +257,7 @@ struct conf_bridge_node {
 	conf_tls     tls;
 	conf_sqlite *sqlite;
 	nng_aio    **bridge_aio;
+	nng_aio     *bridge_reload_aio; // TODO nng_cv would be better
 
 	bool    will_flag;
 	char *  will_payload;
