@@ -2939,6 +2939,7 @@ get_time(const char *str, uint64_t *second)
 		case 'h':
 			*second = s * 3600;
 			break;
+		// FIXME need to consider `ms` @ Xinyi
 		default:
 			break;
 		}
