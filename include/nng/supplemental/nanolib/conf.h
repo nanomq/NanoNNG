@@ -481,20 +481,20 @@ struct conf {
 typedef struct conf conf;
 
 webhook_event get_webhook_event(const char *hook_type, const char *hook_name);
-extern int    get_time(const char *str, uint64_t *second);
-extern void   conf_parse(conf *nanomq_conf);
-extern void   conf_parse_ver2(conf *nanomq_conf);
-extern void   conf_gateway_parse_ver2(zmq_gateway_conf *gateway);
-extern void   conf_vsomeip_gateway_parse_ver2(vsomeip_gateway_conf *config);
-extern void   conf_dds_gateway_init(dds_gateway_conf *config);
-extern void   conf_dds_gateway_parse_ver2(dds_gateway_conf *config);
-extern void   conf_dds_gateway_destory(dds_gateway_conf *config);
-extern void   conf_init(conf *nanomq_conf);
-extern void   print_conf(conf *nanomq_conf);
-extern void   conf_fini(conf *nanomq_conf);
-extern void   conf_update(const char *fpath, const char *key, char *value);
-extern void conf_update2(const char *fpath, const char *key1, const char *key2,
-    const char *key3, char *value);
+NNG_DECL int  get_time(const char *str, uint64_t *second);
+NNG_DECL void conf_parse(conf *nanomq_conf);
+NNG_DECL void conf_parse_ver2(conf *nanomq_conf);
+NNG_DECL void conf_gateway_parse_ver2(zmq_gateway_conf *gateway);
+NNG_DECL void conf_vsomeip_gateway_parse_ver2(vsomeip_gateway_conf *config);
+NNG_DECL void conf_dds_gateway_init(dds_gateway_conf *config);
+NNG_DECL void conf_dds_gateway_parse_ver2(dds_gateway_conf *config);
+NNG_DECL void conf_dds_gateway_destory(dds_gateway_conf *config);
+NNG_DECL void conf_init(conf *nanomq_conf);
+NNG_DECL void print_conf(conf *nanomq_conf);
+NNG_DECL void conf_fini(conf *nanomq_conf);
+NNG_DECL void conf_update(const char *fpath, const char *key, char *value);
+NNG_DECL void conf_update2(const char *fpath, const char *key1,
+    const char *key2, const char *key3, char *value);
 NNG_DECL void conf_update_var(
     const char *fpath, const char *key, uint8_t type, void *var);
 NNG_DECL void conf_update_var2(const char *fpath, const char *key1,
