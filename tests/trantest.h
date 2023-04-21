@@ -477,12 +477,12 @@ send_callback(nng_mqtt_client *client, nng_msg *msg, void *arg)
 		return;
 	switch (nng_mqtt_msg_get_packet_type(msg)) {
 	case NNG_MQTT_CONNACK:
-		printf("connack!\n");
+		// printf("connack!\n");
 		break;
 	case NNG_MQTT_SUBACK:
 		// code = (reason_code *) nng_mqtt_msg_get_suback_return_codes(
 		//     msg, &count);
-		printf("SUBACK reason codes are\n");
+		// printf("SUBACK reason codes are\n");
 		// for (int i = 0; i < count; ++i)
 		// 	printf("%d ", code[i]);
 		// printf("\n");
@@ -491,13 +491,13 @@ send_callback(nng_mqtt_client *client, nng_msg *msg, void *arg)
 		// code = (reason_code *)
 		// nng_mqtt_msg_get_unsuback_return_codes(
 		//     msg, &count);
-		printf("UNSUBACK reason codes are\n");
+		// printf("UNSUBACK reason codes are\n");
 		// for (int i = 0; i < count; ++i)
 		// 	printf("%d ", code[i]);
 		// printf("\n");
 		break;
 	case NNG_MQTT_PUBACK:
-		printf("PUBACK\n");
+		// printf("PUBACK\n");
 		break;
 	default:
 		// printf("Sending in async way is done.\n");
@@ -554,7 +554,7 @@ client_connect(nng_socket *sock, nng_dialer *dialer, const char *url, uint8_t pr
 }
 
 void
-transtest_mqtt_sub_send(nng_socket sock, nng_mqtt_client *client, bool async)
+trantest_mqtt_sub_send(nng_socket sock, nng_mqtt_client *client, bool async)
 {
 	nng_mqtt_topic_qos subscriptions[] = {
 		{ .qos     = params.qos,
@@ -571,7 +571,7 @@ transtest_mqtt_sub_send(nng_socket sock, nng_mqtt_client *client, bool async)
 }
 
 void
-transtest_mqtt_unsub_send(nng_socket sock, nng_mqtt_client *client, bool async)
+trantest_mqtt_unsub_send(nng_socket sock, nng_mqtt_client *client, bool async)
 {
 	nng_mqtt_topic unsubscriptions[] = {
 		{
@@ -615,7 +615,7 @@ trantest_mqtt_pub(nng_socket sock, bool no_broker)
 }
 
 void
-transtest_mqtt_sub_recv(nng_socket sock)
+trantest_mqtt_sub_recv(nng_socket sock)
 {
 	conn_param *cp = NULL;
 
@@ -666,11 +666,11 @@ trantest_mqtt_sub_pub(trantest *tt)
 		params.qos      = qos;
 
 		So((client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true)) != NULL);
-		transtest_mqtt_sub_send(tt->reqsock, client, true);
+		trantest_mqtt_sub_send(tt->reqsock, client, true);
 		nng_msleep(200);// make sure the server recv sub msg before we send pub msg.
 		trantest_mqtt_pub(tt->repsock, true);
-		transtest_mqtt_sub_recv(tt->reqsock);
-		transtest_mqtt_unsub_send(tt->reqsock, client, true);
+		trantest_mqtt_sub_recv(tt->reqsock);
+		trantest_mqtt_unsub_send(tt->reqsock, client, true);
 		nng_mqtt_client_free(client, true);
 
 	});
@@ -698,11 +698,11 @@ trantest_mqttv5_sub_pub(trantest *tt)
 		params.qos      = qos;
 
 		So((client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true)) != NULL);
-		transtest_mqtt_sub_send(tt->reqsock, client, true);
+		trantest_mqtt_sub_send(tt->reqsock, client, true);
 		nng_msleep(200); // make sure the server recv sub msg before we send pub msg.
 		trantest_mqtt_pub(tt->repsock, true);
-		transtest_mqtt_sub_recv(tt->reqsock);
-		transtest_mqtt_unsub_send(tt->reqsock, client, true);
+		trantest_mqtt_sub_recv(tt->reqsock);
+		trantest_mqtt_unsub_send(tt->reqsock, client, true);
 		nng_mqtt_client_free(client, true);
 	});
 }
@@ -747,9 +747,10 @@ decode_sub_msg(nano_work *work)
 	uint8_t *variable_ptr, *payload_ptr;
 	int      vpos          = 0; // pos in variable
 	int      bpos          = 0; // pos in payload
-	size_t   len_of_varint = 0, len_of_property = 0, len_of_properties = 0;
-	int      len_of_str = 0, len_of_topic = 0;
-	uint8_t  property_id;
+	// size_t   len_of_varint = 0, len_of_property = 0, len_of_properties = 0;
+	// int len_of_str = 0;
+	int len_of_topic   = 0;
+	// uint8_t  property_id;
 
 	topic_node *       tn, *_tn;
 
@@ -853,7 +854,8 @@ encode_suback_msg(nng_msg *msg, nano_work *work)
 	uint8_t     packet_id[2];
 	uint8_t     varint[4];
 	uint8_t     reason_code, cmd;
-	uint32_t    remaining_len, len_of_properties;
+	uint32_t    remaining_len;
+	// uint32_t  len_of_properties;
 	int         len_of_varint, rv;
 	topic_node *tn;
 
@@ -940,14 +942,15 @@ decode_unsub_msg(nano_work *work)
 	uint32_t vpos = 0; // pos in variable
 	uint32_t bpos = 0; // pos in payload
 
-	uint32_t len_of_varint = 0, len_of_property = 0, len_of_properties = 0;
-	uint32_t len_of_str = 0, len_of_topic;
+	// uint32_t len_of_varint = 0, len_of_property = 0, len_of_properties = 0;
+	// uint32_t len_of_str = 0;
+	uint32_t len_of_topic;
 
 	packet_unsubscribe *unsub_pkt     = work->unsub_pkt;
 	nng_msg *           msg           = work->msg;
 	size_t              remaining_len = nng_msg_remaining_len(msg);
 
-	uint8_t property_id;
+	// uint8_t property_id;
 	topic_node *       tn, *_tn;
 
 	const uint8_t proto_ver = work->proto_ver;
@@ -1018,7 +1021,8 @@ encode_unsuback_msg(nng_msg *msg, nano_work *work)
 
 	uint8_t     packet_id[2];
 	uint8_t     varint[4];
-	uint8_t     reason_code, cmd, property_len = 0;
+	uint8_t     reason_code, cmd = 0;
+	// uint8_t     property_len = 0;
 	uint32_t    remaining_len;
 	int         len_of_varint, rv;
 	topic_node *tn;
@@ -1116,7 +1120,6 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 		// send CONNACK back to the client.
 		nng_aio_set_msg(work->aio, rmsg);
 		nng_ctx_send(work->ctx, work->aio);
-		// nng_sendmsg(tt->repsock, rmsg, 0);
 		// cp is cloned in protocol and app layer, so we free it twice.
 		conn_param_free(cp);
 		conn_param_free(cp);
@@ -1125,10 +1128,9 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 		So(nng_recvmsg(tt->reqsock, &msg, 0) == 0);
 		So(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNACK);
 		rcp = nng_msg_get_conn_param(msg);
-		// nng_msg_free(msg);
 
 		// client send sub & server send suback.
-		transtest_mqtt_sub_send(tt->reqsock, client, true);
+		trantest_mqtt_sub_send(tt->reqsock, client, true);
 		nng_msleep(100);
 		nng_ctx_recv(work->ctx, work->aio);
 		So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
@@ -1142,22 +1144,24 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 		work->proto_ver = conn_param_get_protover(work->cparam);
 		So(decode_sub_msg(work) == 0);
 		So(encode_suback_msg(rmsg, work) == 0);
-		// sub_pkt_free(work->sub_pkt);
 		nng_msg_set_cmd_type(rmsg, CMD_SUBACK);
 		nng_aio_set_msg(work->aio, rmsg);
 		nng_ctx_send(work->ctx, work->aio);
 
-		// client send pub & server send puback
+		// client send pub msg & server send pub msg.
 		trantest_mqtt_pub(tt->reqsock, false);
 		nng_msleep(100);
 		nng_ctx_recv(work->ctx, work->aio);
 		So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
 		So(nng_msg_get_type(rmsg) == CMD_PUBLISH);
-		nng_msg_free(rmsg);
+		nng_aio_set_msg(work->aio, rmsg);
+		nng_ctx_send(work->ctx, work->aio);
 
-		nng_msleep(100);
-		// client send unsub msg
-		transtest_mqtt_unsub_send(tt->reqsock, client, true);
+		//client recv pub msg.
+		trantest_mqtt_sub_recv(tt->reqsock);
+
+		// client send unsub msg and server recv unsub msg.
+		trantest_mqtt_unsub_send(tt->reqsock, client, true);
 		nng_msleep(100);
 		nng_ctx_recv(work->ctx, work->aio);
 		So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
@@ -1169,14 +1173,6 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 		nng_aio_set_msg(work->aio, rmsg);
 		nng_ctx_send(work->ctx, work->aio);
 		nng_aio_finish(work->aio, 0);
-
-		// nng_msleep(1000);
-		// printf("qqqqqqqqqqqqq\n");
-		// So(nng_recvmsg(tt->reqsock, &msg, 0) == 0);
-		// printf("qqqqqqqqqqqqq\n");
-		// So(msg != NULL);
-		// printf("qqqqqqqqqqqqq\n");
-		// So(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_SUBACK);
 
 		conn_param_free(rcp);
 		nng_msg_free(msg);
