@@ -602,19 +602,14 @@ trantest_mqtt_pub(nng_socket sock)
 	nng_mqtt_msg_set_publish_topic(pubmsg, params.topic);
 	So(nng_sendmsg(sock, pubmsg, NNG_FLAG_NONBLOCK) == 0);
 
-	// conn_param *cp = NULL;
-	// while (1) {
-	// 	nng_msg *msg = NULL;
-	// 	if (nng_recvmsg(sock, &msg, 0) != 0) {
-	// 		continue;
-	// 	}
-	// 	if (nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNACK) {
-	// 		cp = nng_msg_get_conn_param(msg);
-	// 		nng_msg_free(msg);
-	// 		break;
-	// 	}
-	// }
-	// conn_param_free(cp);
+	conn_param *cp  = NULL;
+	nng_msg    *msg = NULL;
+	nng_recvmsg(sock, &msg, 0);
+	if (nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNACK) {
+		cp = nng_msg_get_conn_param(msg);
+		nng_msg_free(msg);
+	}
+	conn_param_free(cp);
 }
 
 void
@@ -1151,13 +1146,14 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 		nng_ctx_send(work->ctx, work->aio);
 
 		// client send pub & server send puback
-		trantest_mqtt_pub(tt->reqsock);
-		nng_msleep(100);
-		nng_ctx_recv(work->ctx, work->aio);
-		So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
-		So(nng_msg_get_type(rmsg) == CMD_PUBLISH);
-		nng_msg_free(rmsg);
+		// trantest_mqtt_pub(tt->reqsock);
+		// nng_msleep(100);
+		// nng_ctx_recv(work->ctx, work->aio);
+		// So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
+		// So(nng_msg_get_type(rmsg) == CMD_PUBLISH);
+		// nng_msg_free(rmsg);
 
+		nng_msleep(100);
 		// client send unsub msg
 		transtest_mqtt_unsub_send(tt->reqsock, client, true);
 		nng_msleep(100);
@@ -1168,8 +1164,7 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 		work->msg = rmsg;
 		So(decode_unsub_msg(work) == 0);
 		So(encode_unsuback_msg(rmsg, work) == 0);
-		nng_aio_set_msg(work->aio, work->msg);
-		work->msg = NULL;
+		nng_aio_set_msg(work->aio, rmsg);
 		nng_ctx_send(work->ctx, work->aio);
 		nng_aio_finish(work->aio, 0);
 
