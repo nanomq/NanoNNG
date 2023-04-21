@@ -821,7 +821,7 @@ conf_bridge_quic_parse_ver2(conf_bridge_node *node, cJSON *jso_bridge_node)
 	    node, qmax_ack_delay_ms, "quic_max_ack_delay_ms", jso_bridge_node);
 	hocon_read_time_base(
 	    node, qconnect_timeout, "quic_handshake_timeout", jso_bridge_node);
-	hocon_read_bool_base(node, hybrid, "hybird_bridging", jso_bridge_node);
+	hocon_read_bool_base(node, hybrid, "hybrid_bridging", jso_bridge_node);
 	hocon_read_bool_base(node, quic_0rtt, "quic_0rtt", jso_bridge_node);
 	hocon_read_bool_base(node, multi_stream, "quic_multi_stream", jso_bridge_node);
 	hocon_read_bool_base(node, qos_first, "quic_qos_priority", jso_bridge_node);
@@ -847,11 +847,51 @@ conf_bridge_quic_parse_ver2(conf_bridge_node *node, cJSON *jso_bridge_node)
 }
 #endif
 
+void
+conf_bridge_node_parse(
+    conf_bridge_node *node, conf_sqlite *bridge_sqlite, cJSON *obj)
+{
+	hocon_read_str(node, name, obj);
+	hocon_read_bool(node, enable, obj);
+	cJSON *jso_connector = hocon_get_obj("connector", obj);
+	conf_bridge_connector_parse_ver2(node, jso_connector);
+	hocon_read_str_arr(node, forwards, obj);
+	node->forwards_count = cvector_size(node->forwards);
+	node->sqlite         = bridge_sqlite;
+#if defined(SUPP_QUIC)
+	conf_bridge_quic_parse_ver2(node, obj);
+#endif
+	cJSON *subscriptions = hocon_get_obj("subscription", obj);
+	node->sub_count      = cJSON_GetArraySize(subscriptions);
+	node->sub_list = NNI_ALLOC_STRUCTS(node->sub_list, node->sub_count);
+	topics *slist  = node->sub_list;
+	cJSON * subscription = NULL;
+	int     i            = 0;
+	cJSON_ArrayForEach(subscription, subscriptions)
+	{
+		topics *s = &slist[i++];
+		hocon_read_str(s, topic, subscription);
+		hocon_read_num(s, qos, subscription);
+		s->topic_len = strlen(s->topic);
+		s->stream_id = 0;
+		hocon_read_num(s, stream_id, subscription);
+	}
+
+	cJSON *jso_prop = hocon_get_obj("sub_properties", obj);
+	if (jso_prop != NULL) {
+		conf_bridge_sub_properties_parse_ver2(node, jso_prop);
+	}
+
+	hocon_read_num(node, parallel, obj);
+	hocon_read_num(node, max_recv_queue_len, obj);
+	hocon_read_num(node, max_send_queue_len, obj);
+}
+
 static void
 conf_bridge_parse_ver2(conf *config, cJSON *jso)
 {
-	cJSON *bridge_mqtt_nodes = hocon_get_obj("bridges.mqtt.nodes", jso);
-	cJSON *bridge_mqtt_node  = NULL;
+	cJSON *node_array = hocon_get_obj("bridges.mqtt.nodes", jso);
+	cJSON *node_item  = NULL;
 
 	cJSON *bridge_mqtt_sqlite  = hocon_get_obj("bridges.mqtt.sqlite", jso);
 	conf_sqlite *bridge_sqlite = &(config->bridge.sqlite);
@@ -861,52 +901,13 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 	hocon_read_num(bridge_sqlite, resend_interval, bridge_mqtt_sqlite);
 	hocon_read_str(bridge_sqlite, mounted_file_path, bridge_mqtt_sqlite);
 
-	config->bridge.count = cJSON_GetArraySize(bridge_mqtt_nodes);
+	config->bridge.count = cJSON_GetArraySize(node_array);
 	config->bridge.nodes = NULL;
-	cJSON_ArrayForEach(bridge_mqtt_node, bridge_mqtt_nodes)
+	cJSON_ArrayForEach(node_item, node_array)
 	{
 		conf_bridge_node *node = NNI_ALLOC_STRUCT(node);
 		conf_bridge_node_init(node);
-		hocon_read_str(node, name, bridge_mqtt_node);
-		hocon_read_bool(node, enable, bridge_mqtt_node);
-		cJSON *jso_connector =
-		    hocon_get_obj("connector", bridge_mqtt_node);
-		conf_bridge_connector_parse_ver2(node, jso_connector);
-		hocon_read_str_arr(node, forwards, bridge_mqtt_node);
-		node->forwards_count = cvector_size(node->forwards);
-		node->sqlite         = bridge_sqlite;
-
-#if defined(SUPP_QUIC)
-		conf_bridge_quic_parse_ver2(node, bridge_mqtt_node);
-#endif
-
-		cJSON *subscriptions =
-		    hocon_get_obj("subscription", bridge_mqtt_node);
-		node->sub_count = cJSON_GetArraySize(subscriptions);
-		node->sub_list =
-		    NNI_ALLOC_STRUCTS(node->sub_list, node->sub_count);
-		topics *slist           = node->sub_list;
-		cJSON *    subscription = NULL;
-		int        i            = 0;
-		cJSON_ArrayForEach(subscription, subscriptions)
-		{
-			topics *s = &slist[i++];
-			hocon_read_str(s, topic, subscription);
-			hocon_read_num(s, qos, subscription);
-			s->topic_len = strlen(s->topic);
-			s->stream_id = 0;
-			hocon_read_num(s, stream_id, subscription);
-		}
-
-		cJSON *jso_prop =
-		    hocon_get_obj("sub_properties", bridge_mqtt_node);
-		if (jso_prop != NULL) {
-			conf_bridge_sub_properties_parse_ver2(node, jso_prop);
-		}
-
-		hocon_read_num(node, parallel, bridge_mqtt_node);
-		hocon_read_num(node, max_recv_queue_len, bridge_mqtt_node);
-		hocon_read_num(node, max_send_queue_len, bridge_mqtt_node);
+		conf_bridge_node_parse(node, bridge_sqlite, node_item);
 		cvector_push_back(config->bridge.nodes, node);
 		config->bridge_mode |= node->enable;
 	}
