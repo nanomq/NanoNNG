@@ -489,6 +489,10 @@ extern void   conf_vsomeip_gateway_parse_ver2(vsomeip_gateway_conf *config);
 extern void   conf_dds_gateway_init(dds_gateway_conf *config);
 extern void   conf_dds_gateway_parse_ver2(dds_gateway_conf *config);
 extern void   conf_dds_gateway_destory(dds_gateway_conf *config);
+extern void
+conf_bridge_node_parse(
+    conf_bridge_node *node, conf_sqlite *bridge_sqlite, cJSON *obj);
+extern void   conf_bridge_node_destroy(conf_bridge_node *node);
 extern void   conf_init(conf *nanomq_conf);
 extern void   print_conf(conf *nanomq_conf);
 extern void   conf_fini(conf *nanomq_conf);

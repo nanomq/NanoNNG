@@ -21,7 +21,6 @@ static void conf_bridge_parse(conf *nanomq_conf, const char *path);
 static void conf_aws_bridge_parse(conf *nanomq_conf, const char *path);
 static void conf_bridge_init(conf_bridge *bridge);
 static void conf_bridge_destroy(conf_bridge *bridge);
-static void conf_bridge_node_destroy(conf_bridge_node *node);
 static void conf_bridge_node_parse_subs(
     conf_bridge_node *node, const char *path, const char *name);
 static void conf_bridge_user_property_destroy(
@@ -751,27 +750,35 @@ conf_tls_destroy(conf_tls *tls)
 {
 	if (tls->url) {
 		free(tls->url);
+		tls->url = NULL;
 	}
 	if (tls->cafile) {
 		free(tls->cafile);
+		tls->cafile = NULL;
 	}
 	if (tls->certfile) {
 		free(tls->certfile);
+		tls->certfile = NULL;
 	}
 	if (tls->keyfile) {
 		free(tls->keyfile);
+		tls->keyfile = NULL;
 	}
 	if (tls->key) {
 		free(tls->key);
+		tls->key = NULL;
 	}
 	if (tls->key_password) {
 		free(tls->key_password);
+		tls->key_password = NULL;
 	}
 	if (tls->cert) {
 		free(tls->cert);
+		tls->cert = NULL;
 	}
 	if (tls->ca) {
 		free(tls->ca);
+		tls->ca = NULL;
 	}
 }
 
@@ -2499,52 +2506,65 @@ conf_bridge_user_property_destroy(conf_user_property **prop, size_t sz)
 				free(prop[i]);
 			}
 		}
-		free(prop);
+		cvector_free(prop);
 		prop = NULL;
 	}
 }
 
-static void
+void
 conf_bridge_node_destroy(conf_bridge_node *node)
 {
 	node->enable = false;
 	if (node->name) {
 		free(node->name);
+		node->name = NULL;
 	}
 	if (node->clientid) {
 		free(node->clientid);
+		node->clientid = NULL;
 	}
 	if (node->address) {
 		free(node->address);
+		node->address = NULL;
 	}
 	if (node->host) {
 		free(node->host);
+		node->host = NULL;
 	}
 	if (node->username) {
 		free(node->username);
+		node->username = NULL;
 	}
 	if (node->password) {
 		free(node->password);
+		node->password = NULL;
+
 	}
 	if (node->will_topic) {
 		free(node->will_topic);
+		node->will_topic = NULL;
 	}
 	if (node->will_payload) {
 		free(node->will_payload);
+		node->will_payload = NULL;
 	}
 	if (node->forwards_count > 0 && node->forwards) {
 		for (size_t i = 0; i < node->forwards_count; i++) {
 			if (node->forwards[i]) {
 				free(node->forwards[i]);
+				node->forwards[i] = NULL;
 			}
 		}
-		free(node->forwards);
+		cvector_free(node->forwards);
+		node->forwards = NULL;
 	}
 	if (node->sub_count > 0 && node->sub_list) {
 		for (size_t i = 0; i < node->sub_count; i++) {
 			if (node->sub_list[i].topic) {
 				free(node->sub_list[i].topic);
+				node->sub_list[i].topic = NULL;
 			}
+			
 		}
 		free(node->sub_list);
 	}
@@ -2554,16 +2574,29 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 		    node->conn_properties->user_property_size);
 		node->conn_properties->user_property_size = 0;
 		free(node->conn_properties);
+		node->conn_properties = NULL;
 	}
 	if (node->will_properties) {
 		conf_bridge_user_property_destroy(
 		    node->will_properties->user_property,
 		    node->will_properties->user_property_size);
 		node->will_properties->user_property_size = 0;
-		free(node->will_properties->content_type);
-		free(node->will_properties->response_topic);
-		free(node->will_properties->correlation_data);
+		
+		if (node->will_properties->content_type != NULL) {
+			free(node->will_properties->content_type);
+			node->will_properties->content_type = NULL;
+		}
+		if (node->will_properties->response_topic != NULL) {
+			free(node->will_properties->response_topic);
+			node->will_properties->response_topic = NULL;
+		}
+		if (node->will_properties->correlation_data != NULL) {
+			free(node->will_properties->correlation_data);
+			node->will_properties->correlation_data = NULL;
+		}
+
 		free(node->will_properties);
+		node->will_properties =NULL;
 	}
 	if (node->sub_properties) {
 		conf_bridge_user_property_destroy(
@@ -2571,6 +2604,7 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 		    node->sub_properties->user_property_size);
 		node->sub_properties->user_property_size = 0;
 		free(node->sub_properties);
+		node->sub_properties = NULL;
 	}
 	conf_tls_destroy(&node->tls);
 }
