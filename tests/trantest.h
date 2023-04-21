@@ -589,7 +589,7 @@ transtest_mqtt_unsub_send(nng_socket sock, nng_mqtt_client *client, bool async)
 }
 
 void
-trantest_mqtt_pub(nng_socket sock)
+trantest_mqtt_pub(nng_socket sock, bool no_broker)
 {
 	nng_msg *pubmsg;
 	nng_mqtt_msg_alloc(&pubmsg, 0);
@@ -602,14 +602,16 @@ trantest_mqtt_pub(nng_socket sock)
 	nng_mqtt_msg_set_publish_topic(pubmsg, params.topic);
 	So(nng_sendmsg(sock, pubmsg, NNG_FLAG_NONBLOCK) == 0);
 
-	conn_param *cp  = NULL;
-	nng_msg    *msg = NULL;
-	nng_recvmsg(sock, &msg, 0);
-	if (nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNACK) {
-		cp = nng_msg_get_conn_param(msg);
-		nng_msg_free(msg);
+	if (no_broker) {
+		conn_param *cp  = NULL;
+		nng_msg    *msg = NULL;
+		nng_recvmsg(sock, &msg, 0);
+		if (nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNACK) {
+			cp = nng_msg_get_conn_param(msg);
+			nng_msg_free(msg);
+		}
+		conn_param_free(cp);
 	}
-	conn_param_free(cp);
 }
 
 void
@@ -666,7 +668,7 @@ trantest_mqtt_sub_pub(trantest *tt)
 		So((client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true)) != NULL);
 		transtest_mqtt_sub_send(tt->reqsock, client, true);
 		nng_msleep(200);// make sure the server recv sub msg before we send pub msg.
-		trantest_mqtt_pub(tt->repsock);
+		trantest_mqtt_pub(tt->repsock, true);
 		transtest_mqtt_sub_recv(tt->reqsock);
 		transtest_mqtt_unsub_send(tt->reqsock, client, true);
 		nng_mqtt_client_free(client, true);
@@ -698,7 +700,7 @@ trantest_mqttv5_sub_pub(trantest *tt)
 		So((client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true)) != NULL);
 		transtest_mqtt_sub_send(tt->reqsock, client, true);
 		nng_msleep(200); // make sure the server recv sub msg before we send pub msg.
-		trantest_mqtt_pub(tt->repsock);
+		trantest_mqtt_pub(tt->repsock, true);
 		transtest_mqtt_sub_recv(tt->reqsock);
 		transtest_mqtt_unsub_send(tt->reqsock, client, true);
 		nng_mqtt_client_free(client, true);
@@ -1146,12 +1148,12 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 		nng_ctx_send(work->ctx, work->aio);
 
 		// client send pub & server send puback
-		// trantest_mqtt_pub(tt->reqsock);
-		// nng_msleep(100);
-		// nng_ctx_recv(work->ctx, work->aio);
-		// So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
-		// So(nng_msg_get_type(rmsg) == CMD_PUBLISH);
-		// nng_msg_free(rmsg);
+		trantest_mqtt_pub(tt->reqsock, false);
+		nng_msleep(100);
+		nng_ctx_recv(work->ctx, work->aio);
+		So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
+		So(nng_msg_get_type(rmsg) == CMD_PUBLISH);
+		nng_msg_free(rmsg);
 
 		nng_msleep(100);
 		// client send unsub msg
