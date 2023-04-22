@@ -604,7 +604,8 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	cparam->pro_name.body =
 	    (char *) copyn_utf8_str(packet, &pos, &len_of_str, max - pos);
 	cparam->pro_name.len = len_of_str;
-	rv = (len_of_str < 0 && pos + 4 < max) ? PROTOCOL_ERROR : 0;
+	// At least 4 bytes left in valid CONNECT
+	rv = (len_of_str < 0 || pos + 4 > max) ? PROTOCOL_ERROR : 0;
 	if (strncmp(cparam->pro_name.body, "MQTT", 4) != 0)
 		rv = PROTOCOL_ERROR;
 	if (rv != 0)
