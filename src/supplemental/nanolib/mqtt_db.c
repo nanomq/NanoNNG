@@ -26,15 +26,14 @@ static size_t acnt;
 typedef struct dbtree_node dbtree_node;
 
 struct dbtree_node {
-	char *             topic;
-	int                plus;
-	int                well;
-	dbtree_retain_msg *retain;
+	char    *topic;
+	int      plus;
+	int      well;
+	nng_msg *retain;
 	cvector(uint32_t) clients;
 	cvector(dbtree_node *) child;
 	nni_rwlock rwlock;
 };
-
 
 struct dbtree {
 	dbtree_node *root;
@@ -1030,7 +1029,7 @@ mem_free:
 static void *
 insert_dbtree_retain(dbtree_node *node, void *args)
 {
-	dbtree_retain_msg *retain = (dbtree_retain_msg *) args;
+	nng_msg *retain = (nng_msg *) args;
 	void *             ret    = NULL;
 	nni_rwlock_wrlock(&(node->rwlock));
 	if (node->retain != NULL) {
@@ -1044,14 +1043,14 @@ insert_dbtree_retain(dbtree_node *node, void *args)
 	return ret;
 }
 
-void *
-dbtree_insert_retain(dbtree *db, char *topic, dbtree_retain_msg *ret_msg)
+nng_msg *
+dbtree_insert_retain(dbtree *db, char *topic, nng_msg *ret_msg)
 {
 	return search_insert_node(db, topic, ret_msg, insert_dbtree_retain);
 }
 
-dbtree_retain_msg **
-collect_retain_well(dbtree_retain_msg **vec, dbtree_node *node)
+nng_msg **
+collect_retain_well(void **vec, dbtree_node *node)
 {
 	dbtree_node **nodes   = NULL;
 	dbtree_node **nodes_t = NULL;
@@ -1059,6 +1058,7 @@ collect_retain_well(dbtree_retain_msg **vec, dbtree_node *node)
 	while (!cvector_empty(nodes)) {
 		for (size_t i = 0; i < cvector_size(nodes); i++) {
 			if (nodes[i]->retain) {
+				nng_msg_clone(nodes[i]->retain);
 				cvector_push_back(vec, nodes[i]->retain);
 			}
 
@@ -1074,6 +1074,7 @@ collect_retain_well(dbtree_retain_msg **vec, dbtree_node *node)
 
 		for (size_t i = 0; i < cvector_size(nodes_t); i++) {
 			if (nodes_t[i]->retain) {
+				nng_msg_clone(nodes_t[i]->retain);
 				cvector_push_back(vec, nodes_t[i]->retain);
 			}
 
@@ -1098,8 +1099,8 @@ collect_retain_well(dbtree_retain_msg **vec, dbtree_node *node)
  * @param topic_queue - topic queue position
  * @return all clients on lots of nodes
  */
-static dbtree_retain_msg **
-collect_retains(dbtree_retain_msg **vec, dbtree_node **nodes,
+static nng_msg **
+collect_retains(void **vec, dbtree_node **nodes,
     dbtree_node ***nodes_t, char **topic_queue)
 {
 
@@ -1125,6 +1126,7 @@ collect_retains(dbtree_retain_msg **vec, dbtree_node **nodes,
 				     i++) {
 					node_t = child[i];
 					if (node_t->retain) {
+						nng_msg_clone(node_t->retain);
 						cvector_push_back(
 						    vec, node_t->retain);
 					}
@@ -1159,6 +1161,7 @@ collect_retains(dbtree_retain_msg **vec, dbtree_node **nodes,
 						log_debug(
 						    "Searching client: %s",
 						    t->topic);
+						nng_msg_clone(t->retain);
 						cvector_push_back(
 						    vec, t->retain);
 					}
@@ -1177,7 +1180,7 @@ collect_retains(dbtree_retain_msg **vec, dbtree_node **nodes,
 	return vec;
 }
 
-dbtree_retain_msg **
+nng_msg **
 dbtree_find_retain(dbtree *db, char *topic)
 {
 
@@ -1189,10 +1192,10 @@ dbtree_find_retain(dbtree *db, char *topic)
 	char **for_free    = topic_queue;
 	nni_rwlock_rdlock(&(db->rwlock));
 
-	dbtree_node *node                 = db->root;
-	cvector(dbtree_retain_msg *) rets = NULL;
-	cvector(dbtree_node *) nodes      = NULL;
-	cvector(dbtree_node *) nodes_t    = NULL;
+	dbtree_node *node              = db->root;
+	cvector(nng_msg *) rets        = NULL;
+	cvector(dbtree_node *) nodes   = NULL;
+	cvector(dbtree_node *) nodes_t = NULL;
 
 	if (node->child && *node->child) {
 		cvector_push_back(nodes, node);
@@ -1234,7 +1237,7 @@ delete_dbtree_retain(dbtree_node *node)
 	return retain;
 }
 
-void *
+nng_msg *
 dbtree_delete_retain(dbtree *db, char *topic)
 {
 	if (db == NULL || topic == NULL) {
