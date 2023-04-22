@@ -481,6 +481,7 @@ struct conf {
 typedef struct conf conf;
 
 webhook_event get_webhook_event(const char *hook_type, const char *hook_name);
+
 NNG_DECL int  get_time(const char *str, uint64_t *second);
 NNG_DECL void conf_parse(conf *nanomq_conf);
 NNG_DECL void conf_parse_ver2(conf *nanomq_conf);
@@ -495,6 +496,11 @@ NNG_DECL void conf_fini(conf *nanomq_conf);
 NNG_DECL void conf_update(const char *fpath, const char *key, char *value);
 NNG_DECL void conf_update2(const char *fpath, const char *key1,
     const char *key2, const char *key3, char *value);
+NNG_DECL void
+conf_bridge_node_parse(
+    conf_bridge_node *node, conf_sqlite *bridge_sqlite, cJSON *obj);
+NNG_DECL void   conf_bridge_node_destroy(conf_bridge_node *node);
+
 NNG_DECL void conf_update_var(
     const char *fpath, const char *key, uint8_t type, void *var);
 NNG_DECL void conf_update_var2(const char *fpath, const char *key1,
