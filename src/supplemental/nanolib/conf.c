@@ -916,6 +916,17 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->auth_http.pool_size       = 32;
 }
 
+static void print_auth_conf(conf_auth *auth)
+{
+	if (auth && auth->enable) {
+		for (size_t i = 0; i < auth->count; i++) {
+			log_info("[%d] username: %s", i, auth->usernames[i]);
+		}
+	}
+
+}
+
+
 void
 print_conf(conf *nanomq_conf)
 {
@@ -962,6 +973,7 @@ print_conf(conf *nanomq_conf)
 	}
 	log_info("allow_anonymous:          %s",
 	    nanomq_conf->allow_anonymous ? "true" : "false");
+
 #ifdef ACL_SUPP
 	log_info("acl_nomatch:              %s",
 	    nanomq_conf->acl_nomatch == ACL_ALLOW ? "allow" : "deny");
@@ -975,8 +987,10 @@ print_conf(conf *nanomq_conf)
 	                                               : "disconnect");
 	print_acl_conf(&nanomq_conf->acl);
 #endif
-
-
+	conf_auth *auth = &(nanomq_conf->auths);
+	conf_auth_http *auth_http = &(nanomq_conf->auth_http);
+	print_auth_conf(auth);
+	print_auth_http_conf(auth_http);
 	print_bridge_conf(&nanomq_conf->bridge, "");
 #if defined(SUPP_AWS_BRIDGE)
 	print_bridge_conf(&nanomq_conf->aws_bridge, "aws.");
