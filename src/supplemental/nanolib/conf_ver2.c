@@ -300,11 +300,12 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	    auth_deny_action);
 
 	cJSON *jso_auth_cache = hocon_get_obj("authorization.cache", jso_auth);
-	hocon_read_bool_base(
-	    config, enable_acl_cache, "enable", jso_auth_cache);
-	hocon_read_num_base(
-	    config, acl_cache_max_size, "max_size", jso_auth_cache);
-	hocon_read_num_base(config, acl_cache_ttl, "ttl", jso_auth_cache);
+	if (jso_auth_cache) {
+		config->enable_acl_cache = true;
+		hocon_read_num_base(
+		    config, acl_cache_max_size, "max_size", jso_auth_cache);
+		hocon_read_num_base(config, acl_cache_ttl, "ttl", jso_auth_cache);
+	}
 #endif
 	cJSON *jso_mqtt_session = hocon_get_obj("mqtt.session", jso);
 	if (jso_mqtt_session) {
@@ -390,17 +391,14 @@ static void
 conf_sqlite_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *jso_sqlite = cJSON_GetObjectItem(jso, "sqlite");
-	if (NULL == jso_sqlite) {
-		log_error("Read config sqlite failed!");
-		return;
+	if (jso_sqlite) {
+		conf_sqlite *sqlite = &(config->sqlite);
+		sqlite->enable = true;
+		hocon_read_num(sqlite, disk_cache_size, jso_sqlite);
+		hocon_read_str(sqlite, mounted_file_path, jso_sqlite);
+		hocon_read_num(sqlite, flush_mem_threshold, jso_sqlite);
+		hocon_read_num(sqlite, resend_interval, jso_sqlite);
 	}
-
-	conf_sqlite *sqlite = &(config->sqlite);
-	hocon_read_bool(sqlite, enable, jso_sqlite);
-	hocon_read_num(sqlite, disk_cache_size, jso_sqlite);
-	hocon_read_str(sqlite, mounted_file_path, jso_sqlite);
-	hocon_read_num(sqlite, flush_mem_threshold, jso_sqlite);
-	hocon_read_num(sqlite, resend_interval, jso_sqlite);
 
 	return;
 }
@@ -410,56 +408,57 @@ static void
 conf_log_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *jso_log = cJSON_GetObjectItem(jso, "log");
-	if (NULL == jso_log) {
-		log_error("Read config nanomq sqlite failed!");
-		return;
-	}
-	conf_log *log            = &(config->log);
-	cJSON *   jso_log_to     = hocon_get_obj("to", jso_log);
-	cJSON *   jso_log_to_ele = NULL;
 
-	cJSON_ArrayForEach(jso_log_to_ele, jso_log_to)
-	{
-		if (!strcmp("file", cJSON_GetStringValue(jso_log_to_ele))) {
-			log->type |= LOG_TO_FILE;
-		} else if (!strcmp("console",
-		               cJSON_GetStringValue(jso_log_to_ele))) {
-			log->type |= LOG_TO_CONSOLE;
-		} else if (!strcmp("syslog",
-		               cJSON_GetStringValue(jso_log_to_ele))) {
-			log->type |= LOG_TO_SYSLOG;
+	if (jso_log) {
+		conf_log *log            = &(config->log);
+		cJSON    *jso_log_to     = hocon_get_obj("to", jso_log);
+		cJSON    *jso_log_to_ele = NULL;
+
+		cJSON_ArrayForEach(jso_log_to_ele, jso_log_to)
+		{
+			if (!strcmp("file",
+			        cJSON_GetStringValue(jso_log_to_ele))) {
+				log->type |= LOG_TO_FILE;
+			} else if (!strcmp("console",
+			               cJSON_GetStringValue(jso_log_to_ele))) {
+				log->type |= LOG_TO_CONSOLE;
+			} else if (!strcmp("syslog",
+			               cJSON_GetStringValue(jso_log_to_ele))) {
+				log->type |= LOG_TO_SYSLOG;
+			} else {
+				log_error("Unsupport log to");
+			}
+		}
+
+		cJSON *jso_log_level = hocon_get_obj("level", jso_log);
+		int    rv = log_level_num(cJSON_GetStringValue(jso_log_level));
+		if (-1 != rv) {
+			log->level = rv;
 		} else {
-			log_error("Unsupport log to");
+			log->level = NNG_LOG_ERROR;
 		}
-	}
 
-	cJSON *jso_log_level = hocon_get_obj("level", jso_log);
-	int    rv = log_level_num(cJSON_GetStringValue(jso_log_level));
-	if (-1 != rv) {
-		log->level = rv;
-	} else {
-		log->level = NNG_LOG_ERROR;
-	}
-
-	hocon_read_str(log, dir, jso_log);
-	hocon_read_str(log, file, jso_log);
-	cJSON *jso_log_rotation = hocon_get_obj("rotation", jso_log);
-	hocon_read_str_base(log, rotation_sz_str, "size", jso_log_rotation);
-	size_t num      = 0;
-	char   unit[10] = { 0 };
-	int    res      = sscanf(log->rotation_sz_str, "%zu%s", &num, unit);
-	if (res == 2) {
-		if (nni_strcasecmp(unit, "KB") == 0) {
-			log->rotation_sz = num * 1024;
-		} else if (nni_strcasecmp(unit, "MB") == 0) {
-			log->rotation_sz = num * 1024 * 1024;
-		} else if (nni_strcasecmp(unit, "GB") == 0) {
-			log->rotation_sz = num * 1024 * 1024 * 1024;
+		hocon_read_str(log, dir, jso_log);
+		hocon_read_str(log, file, jso_log);
+		cJSON *jso_log_rotation = hocon_get_obj("rotation", jso_log);
+		hocon_read_str_base(
+		    log, rotation_sz_str, "size", jso_log_rotation);
+		size_t num      = 0;
+		char   unit[10] = { 0 };
+		int    res = sscanf(log->rotation_sz_str, "%zu%s", &num, unit);
+		if (res == 2) {
+			if (nni_strcasecmp(unit, "KB") == 0) {
+				log->rotation_sz = num * 1024;
+			} else if (nni_strcasecmp(unit, "MB") == 0) {
+				log->rotation_sz = num * 1024 * 1024;
+			} else if (nni_strcasecmp(unit, "GB") == 0) {
+				log->rotation_sz = num * 1024 * 1024 * 1024;
+			}
 		}
+
+		hocon_read_num_base(
+		    log, rotation_count, "count", jso_log_rotation);
 	}
-
-	hocon_read_num_base(log, rotation_count, "count", jso_log_rotation);
-
 	return;
 }
 #endif
@@ -521,34 +520,33 @@ static void
 conf_webhook_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *jso_webhook = cJSON_GetObjectItem(jso, "webhook");
-	if (NULL == jso_webhook) {
-		log_error("Read config nanomq sqlite failed!");
-		return;
+	if (jso_webhook) {
+		conf_web_hook *webhook = &(config->web_hook);
+		hocon_read_bool(webhook, enable, jso_webhook);
+		hocon_read_str(webhook, url, jso_webhook);
+		cJSON *webhook_headers = hocon_get_obj("headers", jso_webhook);
+		cJSON *webhook_header  = NULL;
+		cJSON_ArrayForEach(webhook_header, webhook_headers)
+		{
+			conf_http_header *web_hook_http_header =
+			    NNI_ALLOC_STRUCT(web_hook_http_header);
+			web_hook_http_header->key =
+			    nng_strdup(webhook_header->string);
+			web_hook_http_header->value =
+			    nng_strdup(webhook_header->valuestring);
+			cvector_push_back(
+			    webhook->headers, web_hook_http_header);
+		}
+		webhook->header_count = cvector_size(webhook->headers);
+
+		hocon_read_enum_base(webhook, encode_payload, "body.encoding",
+		    jso_webhook, webhook_encoding);
+
+		cJSON    *jso_webhook_tls = hocon_get_obj("ssl", jso_webhook);
+		conf_tls *webhook_tls     = &(webhook->tls);
+		conf_tls_parse_ver2_base(webhook_tls, jso_webhook_tls);
+		conf_web_hook_parse_rules_ver2(config, jso);
 	}
-
-	conf_web_hook *webhook = &(config->web_hook);
-	hocon_read_bool(webhook, enable, jso_webhook);
-	hocon_read_str(webhook, url, jso_webhook);
-	cJSON *webhook_headers = hocon_get_obj("headers", jso_webhook);
-	cJSON *webhook_header  = NULL;
-	cJSON_ArrayForEach(webhook_header, webhook_headers)
-	{
-		conf_http_header *web_hook_http_header =
-		    NNI_ALLOC_STRUCT(web_hook_http_header);
-		web_hook_http_header->key = nng_strdup(webhook_header->string);
-		web_hook_http_header->value =
-		    nng_strdup(webhook_header->valuestring);
-		cvector_push_back(webhook->headers, web_hook_http_header);
-	}
-	webhook->header_count = cvector_size(webhook->headers);
-
-	hocon_read_enum_base(webhook, encode_payload, "body.encoding",
-	    jso_webhook, webhook_encoding);
-
-	cJSON *   jso_webhook_tls = hocon_get_obj("ssl", jso_webhook);
-	conf_tls *webhook_tls     = &(webhook->tls);
-	conf_tls_parse_ver2_base(webhook_tls, jso_webhook_tls);
-	conf_web_hook_parse_rules_ver2(config, jso);
 
 	return;
 }
