@@ -761,6 +761,9 @@ conf_bridge_conn_will_properties_parse_ver2(
 static void
 conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 {
+	if (!jso_connector) {
+		log_error("bridge connecter should not be null");
+	}
 	hocon_read_str_base(node, address, "server", jso_connector);
 	hocon_read_num(node, proto_ver, jso_connector);
 	hocon_read_str(node, clientid, jso_connector);
@@ -771,7 +774,9 @@ conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 
 	cJSON *   jso_tls         = hocon_get_obj("ssl", jso_connector);
 	conf_tls *bridge_node_tls = &(node->tls);
-	conf_tls_parse_ver2_base(bridge_node_tls, jso_tls);
+	if (bridge_node_tls) {
+		conf_tls_parse_ver2_base(bridge_node_tls, jso_tls);
+	}
 
 	cJSON *jso_prop = hocon_get_obj("conn_properties", jso_connector);
 	if (jso_prop != NULL) {
@@ -844,12 +849,12 @@ conf_bridge_node_parse(
     conf_bridge_node *node, conf_sqlite *bridge_sqlite, cJSON *obj)
 {
 	hocon_read_str(node, name, obj);
-	hocon_read_bool(node, enable, obj);
 	cJSON *jso_connector = hocon_get_obj("connector", obj);
 	conf_bridge_connector_parse_ver2(node, jso_connector);
 	hocon_read_str_arr(node, forwards, obj);
 	node->forwards_count = cvector_size(node->forwards);
 	node->sqlite         = bridge_sqlite;
+	node->enable         = true;
 #if defined(SUPP_QUIC)
 	conf_bridge_quic_parse_ver2(node, obj);
 #endif
@@ -887,11 +892,13 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 
 	cJSON *bridge_mqtt_sqlite  = hocon_get_obj("bridges.mqtt.sqlite", jso);
 	conf_sqlite *bridge_sqlite = &(config->bridge.sqlite);
-	hocon_read_bool(bridge_sqlite, enable, bridge_mqtt_sqlite);
-	hocon_read_num(bridge_sqlite, disk_cache_size, bridge_mqtt_sqlite);
-	hocon_read_num(bridge_sqlite, flush_mem_threshold, bridge_mqtt_sqlite);
-	hocon_read_num(bridge_sqlite, resend_interval, bridge_mqtt_sqlite);
-	hocon_read_str(bridge_sqlite, mounted_file_path, bridge_mqtt_sqlite);
+	if (bridge_mqtt_sqlite) {
+		bridge_sqlite->enable = true;
+		hocon_read_num(bridge_sqlite, disk_cache_size, bridge_mqtt_sqlite);
+		hocon_read_num(bridge_sqlite, flush_mem_threshold, bridge_mqtt_sqlite);
+		hocon_read_num(bridge_sqlite, resend_interval, bridge_mqtt_sqlite);
+		hocon_read_str(bridge_sqlite, mounted_file_path, bridge_mqtt_sqlite);
+	}
 
 	config->bridge.count = cJSON_GetArraySize(node_array);
 	config->bridge.nodes = NULL;
@@ -920,7 +927,7 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 	{
 		conf_bridge_node *node = NNI_ALLOC_STRUCT(node);
 		hocon_read_str(node, name, bridge_aws_node);
-		hocon_read_bool(node, enable, bridge_aws_node);
+		node->enable = true;
 
 		cJSON *jso_connector = hocon_get_obj("connector", bridge_aws_node);
 		conf_bridge_connector_parse_ver2(node, jso_connector);
