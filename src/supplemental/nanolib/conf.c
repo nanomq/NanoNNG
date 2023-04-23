@@ -921,14 +921,24 @@ print_conf(conf *nanomq_conf)
 {
 	log_info("This NanoMQ instance configured as:");
 
-	log_info("enable tcp:         %s",
-	    nanomq_conf->enable ? "true" : "false");
-	log_info("tcp url:                  %s ", nanomq_conf->url);
-	log_info("enable websocket:         %s",
-	    nanomq_conf->websocket.enable ? "true" : "false");
-	log_info("websocket url:            %s", nanomq_conf->websocket.url);
-	log_info(
-	    "websocket tls url:        %s", nanomq_conf->websocket.tls_url);
+	if (nanomq_conf->enable) {
+		log_info("tcp url:                  %s ", nanomq_conf->url);
+	}
+	if (nanomq_conf->websocket.enable) {
+		log_info("websocket url:            %s",
+		    nanomq_conf->websocket.url);
+	}
+	if (nanomq_conf->websocket.tls_url) {
+		log_info("websocket tls url:        %s",
+		    nanomq_conf->websocket.tls_url);
+	}
+	if (nanomq_conf->tls.enable) {
+		log_info("tls url:                  %s", nanomq_conf->tls.url);
+		log_info("tls verify peer:          %s",
+		    nanomq_conf->tls.verify_peer ? "true" : "false");
+		log_info("tls fail_if_no_peer_cert: %s",
+		    nanomq_conf->tls.set_fail ? "true" : "false");
+	}
 	log_info("daemon:                   %s",
 	    nanomq_conf->daemon ? "true" : "false");
 	log_info(
@@ -937,28 +947,18 @@ print_conf(conf *nanomq_conf)
 	    "max_taskq_thread:         %d", nanomq_conf->max_taskq_thread);
 	log_info("parallel:                 %u", nanomq_conf->parallel);
 	log_info("property_size:            %d", nanomq_conf->property_size);
-	log_info(
-	    "max_packet_size: 		%d", nanomq_conf->max_packet_size);
-	log_info("client_max_packet_size: 	%d",
+	log_info("max_packet_size:          %d", nanomq_conf->max_packet_size);
+	log_info("client_max_packet_size:   %d",
 	    nanomq_conf->client_max_packet_size);
 	log_info("msq_len:                  %d", nanomq_conf->msq_len);
 	log_info("qos_duration:             %d", nanomq_conf->qos_duration);
 	log_info("keepalive_backoff:        %f", nanomq_conf->backoff);
 
-	log_info("enable http server:       %s",
-	    nanomq_conf->http_server.enable ? "true" : "false");
-	log_info(
-	    "http server port:         %d", nanomq_conf->http_server.port);
-	log_info(
-	    "http server parallel:     %u", nanomq_conf->http_server.parallel);
-	log_info("enable tls:               %s",
-	    nanomq_conf->tls.enable ? "true" : "false");
-	if (nanomq_conf->tls.enable) {
-		log_info("tls url:                  %s", nanomq_conf->tls.url);
-		log_info("tls verify peer:          %s",
-		    nanomq_conf->tls.verify_peer ? "true" : "false");
-		log_info("tls fail_if_no_peer_cert: %s",
-		    nanomq_conf->tls.set_fail ? "true" : "false");
+	if (nanomq_conf->http_server.enable) {
+		log_info(
+		    "http server port:         %d", nanomq_conf->http_server.port);
+		log_info(
+		    "http server parallel:     %u", nanomq_conf->http_server.parallel);
 	}
 	log_info("allow_anonymous:          %s",
 	    nanomq_conf->allow_anonymous ? "true" : "false");

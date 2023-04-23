@@ -293,99 +293,113 @@ conf_acl_destroy(conf_acl *acl)
 void
 print_acl_conf(conf_acl *acl)
 {
-	log_info("enable: %s", acl->enable ? "true" : "false");
-	for (size_t i = 0; i < acl->rule_count; i++) {
-		acl_rule *rule = acl->rules[i];
-		log_info("[%zu] permit: %s", rule->id,
-		    rule->permit == ACL_ALLOW ? "allow" : "deny");
+	if (acl->enable) {
+		for (size_t i = 0; i < acl->rule_count; i++) {
+			acl_rule *rule = acl->rules[i];
+			log_info("[%zu] permit: %s", rule->id,
+			    rule->permit == ACL_ALLOW ? "allow" : "deny");
 
-		log_info("[%zu] action: %s", rule->id,
-		    rule->action == ACL_SUB       ? "subscribe"
-		        : rule->action == ACL_PUB ? "publish"
-		                                  : "pubsub");
+			log_info("[%zu] action: %s", rule->id,
+			    rule->action == ACL_SUB       ? "subscribe"
+			        : rule->action == ACL_PUB ? "publish"
+			                                  : "pubsub");
 
-		log_info("[%zu] rule_type: '%s'", rule->id,
-		    rule->rule_type == ACL_CLIENTID       ? "clientid"
-		        : rule->rule_type == ACL_USERNAME ? "username"
-		        : rule->rule_type == ACL_IPADDR   ? "ipaddr"
-		        : rule->rule_type == ACL_AND      ? "and"
-		        : rule->rule_type == ACL_OR       ? "or"
-		                                          : "(none)");
+			log_info("[%zu] rule_type: '%s'", rule->id,
+			    rule->rule_type == ACL_CLIENTID       ? "clientid"
+			        : rule->rule_type == ACL_USERNAME ? "username"
+			        : rule->rule_type == ACL_IPADDR   ? "ipaddr"
+			        : rule->rule_type == ACL_AND      ? "and"
+			        : rule->rule_type == ACL_OR       ? "or"
+			                                          : "(none)");
 
-		log_info("[%zu] rule_content: ", rule->id);
-		if (rule->rule_type != ACL_AND && rule->rule_type != ACL_OR) {
-			switch (rule->rule_ct.ct.type) {
-			case ACL_RULE_SINGLE_STRING:
-				log_info("[%zu] \t%s", rule->id,
-				    rule->rule_ct.ct.value.str);
-				break;
-
-			case ACL_RULE_STRING_ARRAY:
-				for (size_t j = 0; j < rule->rule_ct.ct.count;
-				     j++) {
-					log_info("[%zu] \t%s", rule->id,
-					    rule->rule_ct.ct.value
-					        .str_array[j]);
-				}
-				break;
-			case ACL_RULE_ALL:
-				log_info("[%zu] \tall", rule->id);
-				break;
-			default:
-				break;
-			}
-		} else {
-			acl_sub_rules_array *array = &rule->rule_ct.array;
-			for (size_t j = 0; j < array->count; j++) {
-				acl_sub_rule *sub_rule = array->rules[j];
-				log_info("sub_rule type: [%d]",
-				    sub_rule->rule_type);
-
-				log_info("[%zu][%zu] sub_rule_type: '%s'",
-				    rule->id, j,
-				    sub_rule->rule_type == ACL_CLIENTID
-				        ? "clientid"
-				        : sub_rule->rule_type == ACL_USERNAME
-				        ? "username"
-				        : sub_rule->rule_type == ACL_IPADDR
-				        ? "ipaddr"
-				        : sub_rule->rule_type == ACL_AND
-				        ? "and"
-				        : sub_rule->rule_type == ACL_OR
-				        ? "or"
-				        : "(none)");
-
-				switch (sub_rule->rule_ct.type) {
+			log_info("[%zu] rule_content: ", rule->id);
+			if (rule->rule_type != ACL_AND &&
+			    rule->rule_type != ACL_OR) {
+				switch (rule->rule_ct.ct.type) {
 				case ACL_RULE_SINGLE_STRING:
-					log_info("[%zu][%zu] \t%s", rule->id,
-					    j, sub_rule->rule_ct.value.str);
+					log_info("[%zu] \t%s", rule->id,
+					    rule->rule_ct.ct.value.str);
 					break;
 
 				case ACL_RULE_STRING_ARRAY:
-					for (size_t k = 0;
-					     k < sub_rule->rule_ct.count;
-					     k++) {
-						log_info("[%zu][%zu][%"
-						         "zu] \t%s",
-						    rule->id, j, k,
-						    sub_rule->rule_ct.value
-						        .str_array[k]);
+					for (size_t j = 0;
+					     j < rule->rule_ct.ct.count; j++) {
+						log_info("[%zu] \t%s",
+						    rule->id,
+						    rule->rule_ct.ct.value
+						        .str_array[j]);
 					}
 					break;
-
 				case ACL_RULE_ALL:
 					log_info("[%zu] \tall", rule->id);
 					break;
 				default:
 					break;
 				}
-			}
-		}
+			} else {
+				acl_sub_rules_array *array =
+				    &rule->rule_ct.array;
+				for (size_t j = 0; j < array->count; j++) {
+					acl_sub_rule *sub_rule =
+					    array->rules[j];
+					log_info("sub_rule type: [%d]",
+					    sub_rule->rule_type);
 
-		log_info("[%zu] topics:", rule->id);
-		for (size_t k = 0; k < rule->topic_count; k++) {
-			log_info("[%zu] \t%s", rule->id, rule->topics[k]);
+					log_info(
+					    "[%zu][%zu] sub_rule_type: '%s'",
+					    rule->id, j,
+					    sub_rule->rule_type == ACL_CLIENTID
+					        ? "clientid"
+					        : sub_rule->rule_type ==
+					            ACL_USERNAME
+					        ? "username"
+					        : sub_rule->rule_type ==
+					            ACL_IPADDR
+					        ? "ipaddr"
+					        : sub_rule->rule_type ==
+					            ACL_AND
+					        ? "and"
+					        : sub_rule->rule_type == ACL_OR
+					        ? "or"
+					        : "(none)");
+
+					switch (sub_rule->rule_ct.type) {
+					case ACL_RULE_SINGLE_STRING:
+						log_info("[%zu][%zu] \t%s",
+						    rule->id, j,
+						    sub_rule->rule_ct.value
+						        .str);
+						break;
+
+					case ACL_RULE_STRING_ARRAY:
+						for (size_t k = 0; k <
+						     sub_rule->rule_ct.count;
+						     k++) {
+							log_info("[%zu][%zu][%"
+							         "zu] \t%s",
+							    rule->id, j, k,
+							    sub_rule->rule_ct
+							        .value
+							        .str_array[k]);
+						}
+						break;
+
+					case ACL_RULE_ALL:
+						log_info(
+						    "[%zu] \tall", rule->id);
+						break;
+					default:
+						break;
+					}
+				}
+			}
+
+			log_info("[%zu] topics:", rule->id);
+			for (size_t k = 0; k < rule->topic_count; k++) {
+				log_info(
+				    "[%zu] \t%s", rule->id, rule->topics[k]);
+			}
+			log_info("");
 		}
-		log_info("");
 	}
 }
