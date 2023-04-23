@@ -240,41 +240,40 @@ conf_http_server_parse_ver2(conf_http_server *http_server, cJSON *json)
 {
 	// http server
 	cJSON *jso_http_server = cJSON_GetObjectItem(json, "http_server");
-	if (NULL == jso_http_server) {
-		log_error("Read config nanomq sqlite failed!");
-		return;
-	}
+	if (jso_http_server) {
+		http_server->enable = true;
+		hocon_read_num(http_server, port, jso_http_server);
+		hocon_read_num(http_server, parallel, jso_http_server);
+		hocon_read_str(http_server, username, jso_http_server);
+		hocon_read_str(http_server, password, jso_http_server);
+		hocon_read_enum(http_server, auth_type, jso_http_server,
+		    http_server_auth_type);
+		conf_jwt *jwt = &(http_server->jwt);
 
-	hocon_read_bool(http_server, enable, jso_http_server);
-	hocon_read_num(http_server, port, jso_http_server);
-	hocon_read_num(http_server, parallel, jso_http_server);
-	hocon_read_str(http_server, username, jso_http_server);
-	hocon_read_str(http_server, password, jso_http_server);
-	hocon_read_enum(
-	    http_server, auth_type, jso_http_server, http_server_auth_type);
-	conf_jwt *jwt = &(http_server->jwt);
-
-	cJSON *jso_pub_key_file = hocon_get_obj("jwt.public", jso_http_server);
-	if (cJSON_IsObject(jso_pub_key_file)) {
-		hocon_read_str_base(
-		    jwt, public_keyfile, "keyfile", jso_pub_key_file);
-		if (file_load_data(
-		        jwt->public_keyfile, (void **) &jwt->public_key) > 0) {
-			jwt->iss = (char *) nni_plat_file_basename(
-			    jwt->public_keyfile);
-			jwt->public_key_len = strlen(jwt->public_key);
+		cJSON *jso_pub_key_file =
+		    hocon_get_obj("jwt.public", jso_http_server);
+		if (cJSON_IsObject(jso_pub_key_file)) {
+			hocon_read_str_base(
+			    jwt, public_keyfile, "keyfile", jso_pub_key_file);
+			if (file_load_data(jwt->public_keyfile,
+			        (void **) &jwt->public_key) > 0) {
+				jwt->iss = (char *) nni_plat_file_basename(
+				    jwt->public_keyfile);
+				jwt->public_key_len = strlen(jwt->public_key);
+			}
 		}
-	}
 
-	cJSON *jso_pri_key_file =
-	    hocon_get_obj("jwt.private", jso_http_server);
-	if (cJSON_IsObject(jso_pri_key_file)) {
-		hocon_read_str_base(
-		    jwt, private_keyfile, "keyfile", jso_pri_key_file);
+		cJSON *jso_pri_key_file =
+		    hocon_get_obj("jwt.private", jso_http_server);
+		if (cJSON_IsObject(jso_pri_key_file)) {
+			hocon_read_str_base(
+			    jwt, private_keyfile, "keyfile", jso_pri_key_file);
 
-		if (file_load_data(jwt->private_keyfile,
-		        (void **) &jwt->private_key) > 0) {
-			jwt->private_key_len = strlen(jwt->private_key);
+			if (file_load_data(jwt->private_keyfile,
+			        (void **) &jwt->private_key) > 0) {
+				jwt->private_key_len =
+				    strlen(jwt->private_key);
+			}
 		}
 	}
 }
@@ -349,27 +348,30 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 static void
 conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 {
-	hocon_read_str(tls, keyfile, jso_tls);
-	hocon_read_str(tls, certfile, jso_tls);
-	hocon_read_str_base(tls, cafile, "cacertfile", jso_tls);
-	hocon_read_str(tls, key_password, jso_tls);
+	if (jso_tls) {
+		tls->enable = true;
+		hocon_read_str(tls, keyfile, jso_tls);
+		hocon_read_str(tls, certfile, jso_tls);
+		hocon_read_str_base(tls, cafile, "cacertfile", jso_tls);
+		hocon_read_str(tls, key_password, jso_tls);
 
-	tls->enable = true;
-	if (NULL == tls->keyfile ||
-	    0 == file_load_data(tls->keyfile, (void **) &tls->key)) {
-		log_error("Read keyfile %s failed!", tls->keyfile);
-	}
-	if (NULL == tls->certfile ||
-	    0 == file_load_data(tls->certfile, (void **) &tls->cert)) {
-		log_error("Read certfile %s failed!", tls->certfile);
-	}
-	if (NULL == tls->cafile ||
-	    0 == file_load_data(tls->cafile, (void **) &tls->ca)) {
-		log_error("Read cacertfile %s failed!", tls->cafile);
+		if (NULL == tls->keyfile ||
+		    0 == file_load_data(tls->keyfile, (void **) &tls->key)) {
+			log_error("Read keyfile %s failed!", tls->keyfile);
+		}
+		if (NULL == tls->certfile ||
+		    0 == file_load_data(tls->certfile, (void **) &tls->cert)) {
+			log_error("Read certfile %s failed!", tls->certfile);
+		}
+		if (NULL == tls->cafile ||
+		    0 == file_load_data(tls->cafile, (void **) &tls->ca)) {
+			log_error("Read cacertfile %s failed!", tls->cafile);
+		}
 	}
 
 	return;
 }
+
 static void
 conf_tls_parse_ver2(conf *config, cJSON *jso)
 {
@@ -555,10 +557,9 @@ static void
 conf_auth_parse_ver2(conf *config, cJSON *jso)
 {
 	conf_auth *auth         = &(config->auths);
-	cJSON *    jso_auth_ele = NULL;
-
-	hocon_read_bool(auth, enable, jso);
-	cJSON *user_arr = hocon_get_obj("users", jso);
+	cJSON     *jso_auth_ele = NULL;
+	auth->enable            = true;
+	cJSON *user_arr         = hocon_get_obj("users", jso);
 
 	cJSON_ArrayForEach(jso_auth_ele, user_arr)
 	{
@@ -654,28 +655,34 @@ conf_auth_http_parse_ver2(conf *config, cJSON *jso)
 {
 	conf_auth_http *auth_http = &(config->auth_http);
 
-	hocon_read_bool(auth_http, enable, jso);
-	char *timeout = cJSON_GetStringValue(hocon_get_obj("timeout", jso));
-	char *connect_timeout =
-	    cJSON_GetStringValue(hocon_get_obj("connect_timeout", jso));
-	get_time(timeout, &auth_http->timeout);
-	get_time(connect_timeout, &auth_http->timeout);
-	hocon_read_num(auth_http, pool_size, jso);
+	if (jso) {
+		auth_http->enable = true;
+		char *timeout =
+		    cJSON_GetStringValue(hocon_get_obj("timeout", jso));
+		char *connect_timeout = cJSON_GetStringValue(
+		    hocon_get_obj("connect_timeout", jso));
+		get_time(timeout, &auth_http->timeout);
+		get_time(connect_timeout, &auth_http->timeout);
+		hocon_read_num(auth_http, pool_size, jso);
 
-	conf_auth_http_req *auth_http_req     = &(auth_http->auth_req);
-	cJSON *             jso_auth_http_req = hocon_get_obj("auth_req", jso);
-	conf_auth_http_req_parse_ver2(auth_http_req, jso_auth_http_req);
+		conf_auth_http_req *auth_http_req = &(auth_http->auth_req);
+		cJSON *jso_auth_http_req = hocon_get_obj("auth_req", jso);
+		conf_auth_http_req_parse_ver2(
+		    auth_http_req, jso_auth_http_req);
 
-	conf_auth_http_req *auth_http_super_req = &(auth_http->super_req);
-	cJSON *jso_auth_http_super_req = hocon_get_obj("super_req", jso);
-	conf_auth_http_req_parse_ver2(
-	    auth_http_super_req, jso_auth_http_super_req);
+		conf_auth_http_req *auth_http_super_req =
+		    &(auth_http->super_req);
+		cJSON *jso_auth_http_super_req =
+		    hocon_get_obj("super_req", jso);
+		conf_auth_http_req_parse_ver2(
+		    auth_http_super_req, jso_auth_http_super_req);
 #ifdef ACL_SUPP
-	conf_auth_http_req *auth_http_acl_req = &(auth_http->acl_req);
-	cJSON *jso_auth_http_acl_req          = hocon_get_obj("acl_req", jso);
-	conf_auth_http_req_parse_ver2(
-	    auth_http_acl_req, jso_auth_http_acl_req);
+		conf_auth_http_req *auth_http_acl_req = &(auth_http->acl_req);
+		cJSON *jso_auth_http_acl_req = hocon_get_obj("acl_req", jso);
+		conf_auth_http_req_parse_ver2(
+		    auth_http_acl_req, jso_auth_http_acl_req);
 #endif
+	}
 	return;
 }
 
@@ -774,9 +781,7 @@ conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 
 	cJSON *   jso_tls         = hocon_get_obj("ssl", jso_connector);
 	conf_tls *bridge_node_tls = &(node->tls);
-	if (bridge_node_tls) {
-		conf_tls_parse_ver2_base(bridge_node_tls, jso_tls);
-	}
+	conf_tls_parse_ver2_base(bridge_node_tls, jso_tls);
 
 	cJSON *jso_prop = hocon_get_obj("conn_properties", jso_connector);
 	if (jso_prop != NULL) {
@@ -1122,8 +1127,7 @@ conf_acl_parse_ver2(conf *config, cJSON *jso)
 {
 #ifdef ACL_SUPP
 	conf_acl *acl = &config->acl;
-
-	hocon_read_bool(acl, enable, jso);
+	acl->enable = true;
 
 	cJSON *rule_list = hocon_get_obj("rules", jso);
 	if (cJSON_IsArray(rule_list)) {
@@ -1144,30 +1148,39 @@ static void
 conf_authorization_prase_ver2(conf *config, cJSON *jso)
 {
 	cJSON *jso_auth_sources = hocon_get_obj("authorization.sources", jso);
-	if (!cJSON_IsArray(jso_auth_sources)) {
-		log_error("Read config nanomq authorization.sources failed!");
-		return;
-	}
+	if (jso_auth_sources) {
+		if (!cJSON_IsArray(jso_auth_sources)) {
+			log_error("Read config nanomq authorization.sources "
+			          "failed!");
+			return;
+		}
 
-	cJSON *auth_item;
+		cJSON *auth_item;
 
-	cJSON_ArrayForEach(auth_item, jso_auth_sources)
-	{
-		cJSON *type_obj = cJSON_GetObjectItem(auth_item, "type");
-		if (cJSON_IsString(type_obj)) {
-			char *type_str = cJSON_GetStringValue(type_obj);
-			if (type_str != NULL) {
-				if (strcmp(type_str, "simple") == 0) {
-					conf_auth_parse_ver2(
-					    config, auth_item);
-				} else if (strcmp(type_str, "file") == 0) {
-					conf_acl_parse_ver2(config, auth_item);
-				} else if (strcmp(type_str, "http") == 0) {
-					conf_auth_http_parse_ver2(
-					    config, auth_item);
-				} else {
-					log_error("Read unsupported "
-					          "authorization type");
+		cJSON_ArrayForEach(auth_item, jso_auth_sources)
+		{
+			cJSON *type_obj =
+			    cJSON_GetObjectItem(auth_item, "type");
+			if (cJSON_IsString(type_obj)) {
+				char *type_str =
+				    cJSON_GetStringValue(type_obj);
+				if (type_str != NULL) {
+					if (strcmp(type_str, "simple") == 0) {
+						conf_auth_parse_ver2(
+						    config, auth_item);
+					} else if (strcmp(type_str, "file") ==
+					    0) {
+						conf_acl_parse_ver2(
+						    config, auth_item);
+					} else if (strcmp(type_str, "http") ==
+					    0) {
+						conf_auth_http_parse_ver2(
+						    config, auth_item);
+					} else {
+						log_error(
+						    "Read unsupported "
+						    "authorization type");
+					}
 				}
 			}
 		}
