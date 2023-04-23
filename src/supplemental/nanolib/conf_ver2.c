@@ -283,16 +283,14 @@ static void
 conf_basic_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *jso_sys = cJSON_GetObjectItem(jso, "system");
-	if (NULL == jso_sys) {
-		log_error("Read config system failed!");
-		return;
+	if (jso_sys) {
+		hocon_read_bool(config, daemon, jso_sys);
+		hocon_read_num(config, num_taskq_thread, jso_sys);
+		hocon_read_num(config, max_taskq_thread, jso_sys);
+		hocon_read_num(config, parallel, jso_sys);
+		hocon_read_bool_base(
+		    config, ipc_internal, "enable_ipc_internal", jso_sys);
 	}
-	hocon_read_bool(config, daemon, jso_sys);
-	hocon_read_num(config, num_taskq_thread, jso_sys);
-	hocon_read_num(config, max_taskq_thread, jso_sys);
-	hocon_read_num(config, parallel, jso_sys);
-	hocon_read_bool_base(
-	    config, ipc_internal, "enable_ipc_internal", jso_sys);
 
 	cJSON *jso_auth = cJSON_GetObjectItem(jso, "authorization");
 #ifdef ACL_SUPP
@@ -309,43 +307,38 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	hocon_read_num_base(config, acl_cache_ttl, "ttl", jso_auth_cache);
 #endif
 	cJSON *jso_mqtt_session = hocon_get_obj("mqtt.session", jso);
-	if (NULL == jso_mqtt_session) {
-		log_error("Read config listeners failed!");
-		return;
+	if (jso_mqtt_session) {
+		hocon_read_num(config, property_size, jso_mqtt_session);
+		hocon_read_num(config, max_packet_size, jso_mqtt_session);
+		hocon_read_num(config, client_max_packet_size, jso_mqtt_session);
+		hocon_read_num(config, msq_len, jso_mqtt_session);
+		hocon_read_time(config, qos_duration, jso_mqtt_session);
+		hocon_read_num_base(
+		    config, backoff, "keepalive_backoff", jso_mqtt_session);
+		hocon_read_bool(config, allow_anonymous, jso_mqtt_session);
+
 	}
-	hocon_read_num(config, property_size, jso_mqtt_session);
-	hocon_read_num(config, max_packet_size, jso_mqtt_session);
-	hocon_read_num(config, client_max_packet_size, jso_mqtt_session);
-	hocon_read_num(config, msq_len, jso_mqtt_session);
-	hocon_read_time(config, qos_duration, jso_mqtt_session);
-	hocon_read_num_base(
-	    config, backoff, "keepalive_backoff", jso_mqtt_session);
-	hocon_read_bool(config, allow_anonymous, jso_mqtt_session);
 
 
 	cJSON *jso_listeners = cJSON_GetObjectItem(jso, "listeners");
-	if (NULL == jso_listeners) {
-		log_error("Read config listeners failed!");
-		return;
-	}
-	cJSON *jso_tcp = cJSON_GetObjectItem(jso_listeners, "tcp");
-	if (NULL == jso_tcp) {
-		log_error("Read config tcp failed!");
-		return;
-	}
-	hocon_read_address_base(config, url, "bind", "nmq-tcp://", jso_tcp);
-	hocon_read_bool(config, enable, jso_tcp);
+	if (jso_listeners) {
+		cJSON *jso_tcp = cJSON_GetObjectItem(jso_listeners, "tcp");
+		if (jso_tcp) {
+			hocon_read_address_base(config, url, "bind", "nmq-tcp://", jso_tcp);
+			config->enable = true;
+		}
 
-	cJSON *jso_websocket = hocon_get_obj("listeners.ws", jso);
-	if (NULL == jso_websocket) {
-		log_error("Read config nanomq sqlite failed!");
-		return;
-	}
+		cJSON *jso_websocket = hocon_get_obj("listeners.ws", jso);
+		if (NULL == jso_websocket) {
+			log_error("Read config nanomq sqlite failed!");
+			return;
+		}
 
-	conf_websocket *websocket = &(config->websocket);
-	hocon_read_bool(websocket, enable, jso_websocket);
-	hocon_read_address_base(
-	    websocket, url, "bind", "nmq-ws://", jso_websocket);
+		conf_websocket *websocket = &(config->websocket);
+		hocon_read_address_base(
+		    websocket, url, "bind", "nmq-ws://", jso_websocket);
+		websocket->enable = true;
+	}
 
 	conf_http_server_parse_ver2(&(config->http_server), jso);
 
@@ -355,22 +348,23 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 static void
 conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 {
-	hocon_read_bool(tls, enable, jso_tls);
 	hocon_read_str(tls, keyfile, jso_tls);
 	hocon_read_str(tls, certfile, jso_tls);
 	hocon_read_str_base(tls, cafile, "cacertfile", jso_tls);
 	hocon_read_str(tls, key_password, jso_tls);
 
-	if (tls->enable) {
-		if (NULL == tls->keyfile || 0 == file_load_data(tls->keyfile, (void **) &tls->key)) {
-			log_error("Read keyfile %s failed!", tls->keyfile);
-		}
-		if (NULL == tls->certfile || 0 == file_load_data(tls->certfile, (void **) &tls->cert)) {
-			log_error("Read certfile %s failed!", tls->certfile);
-		}
-		if (NULL == tls->cafile || 0 == file_load_data(tls->cafile, (void **) &tls->ca)) {
-			log_error("Read cacertfile %s failed!", tls->cafile);
-		}
+	tls->enable = true;
+	if (NULL == tls->keyfile ||
+	    0 == file_load_data(tls->keyfile, (void **) &tls->key)) {
+		log_error("Read keyfile %s failed!", tls->keyfile);
+	}
+	if (NULL == tls->certfile ||
+	    0 == file_load_data(tls->certfile, (void **) &tls->cert)) {
+		log_error("Read certfile %s failed!", tls->certfile);
+	}
+	if (NULL == tls->cafile ||
+	    0 == file_load_data(tls->cafile, (void **) &tls->ca)) {
+		log_error("Read cacertfile %s failed!", tls->cafile);
 	}
 
 	return;
@@ -379,16 +373,16 @@ static void
 conf_tls_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *jso_tls = hocon_get_obj("listeners.ssl", jso);
-	if (NULL == jso_tls) {
-		log_error("Read config ssl failed!");
-		return;
+	if (jso_tls) {
+		conf_tls *tls = &(config->tls);
+		conf_tls_parse_ver2_base(tls, jso_tls);
+		hocon_read_bool(tls, verify_peer, jso_tls);
+		hocon_read_bool_base(
+		    tls, set_fail, "fail_if_no_peer_cert", jso_tls);
+		hocon_read_address_base(
+		    tls, url, "bind", "tls+nmq-tcp://", jso_tls);
 	}
 
-	conf_tls *tls = &(config->tls);
-	conf_tls_parse_ver2_base(tls, jso_tls);
-	hocon_read_bool(tls, verify_peer, jso_tls);
-	hocon_read_bool_base(tls, set_fail, "fail_if_no_peer_cert", jso_tls);
-	hocon_read_address_base(tls, url, "bind", "tls+nmq-tcp://", jso_tls);
 	return;
 }
 
