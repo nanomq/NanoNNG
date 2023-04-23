@@ -916,16 +916,73 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->auth_http.pool_size       = 32;
 }
 
-static void print_auth_conf(conf_auth *auth)
+static void
+print_auth_conf(conf_auth *auth)
 {
 	if (auth && auth->enable) {
 		for (size_t i = 0; i < auth->count; i++) {
 			log_info("[%d] username: %s", i, auth->usernames[i]);
 		}
 	}
-
 }
 
+static char *
+get_http_req_val(http_param_type type)
+{
+	switch (type) {
+	case ACCESS:
+		return "access";
+	case USERNAME:
+		return "username";
+	case CLIENTID:
+		return "clientid";
+	case IPADDRESS:
+		return "ipaddress";
+	case PROTOCOL:
+		return "protocol";
+	case PASSWORD:
+		return "password";
+	case SOCKPORT: // sockport of server accepte
+		return "sockport";
+	case COMMON_NAME: // common name of client TLS cer:
+		return "common_name";
+	case SUBJECT: // subject of client TLS cer
+		return "subject";
+	case TOPIC:
+		return "topic";
+	case MOUNTPOINT:
+		return "mountpoint";
+	default:
+		break;
+	}
+}
+
+static void
+print_auth_http_req(conf_auth_http_req *req, const char *prefix)
+{
+	log_info("%s_req_url:       %s", prefix, req->url);
+	log_info("%s_req_method:    %s", prefix, req->method);
+	for (size_t i = 0; i < req->header_count; i++) {
+		log_info("%s_hearders:      %s: %s", prefix, req->headers[i]->key,
+		    req->headers[i]->value);
+	}
+	for (size_t i = 0; i < req->param_count; i++) {
+		char *type = get_http_req_val(req->params[i]->type);
+		log_info("%s_params:        %s: %s", prefix, req->params[i]->name, type);
+	}
+}
+
+static void
+print_auth_http_conf(conf_auth_http *auth_http)
+{
+	if (auth_http && auth_http->enable) {
+		conf_auth_http_req auth = auth_http->auth_req;
+		print_auth_http_req(&auth_http->auth_req, "auth");
+		print_auth_http_req(&auth_http->super_req, "super");
+		print_auth_http_req(&auth_http->acl_req, "acl");
+	}
+
+}
 
 void
 print_conf(conf *nanomq_conf)
