@@ -1081,6 +1081,61 @@ print_webhook_conf(conf_web_hook *webhook)
 	}
 }
 
+#if defined(SUPP_RULE_ENGINE)
+static void
+print_rule_engine_conf(conf_rule *rule_eng)
+{
+	if (rule_eng->option & RULE_ENG_SDB) {
+		log_info("rule engine sqlite:");
+		log_info("path:           %s", rule_eng->sqlite_db);
+		rule *r = rule_eng->rules;
+		for (size_t i = 0; i < cvector_size(r); i++) {
+			if (r[i].forword_type == RULE_FORWORD_SQLITE) {
+				log_info("[%d] sql:        %s", i, r[i].raw_sql);
+				log_info("[%d] table:      %s", i, r[i].sqlite_table);
+			}
+		}
+	}
+
+	if (rule_eng->option & RULE_ENG_RPB) {
+		log_info("rule engine repub:");
+		rule *r = rule_eng->rules;
+		for (size_t i = 0; i < cvector_size(r); i++) {
+			if (r[i].forword_type == RULE_FORWORD_REPUB) {
+				repub_t *repub = r[i].repub;
+				log_info("[%d] sql:        %s", i, r[i].raw_sql);
+				log_info("[%d] server:     %s", i, repub->address);
+				log_info("[%d] topic:      %s", i, repub->topic);
+				log_info("[%d] proto_ver:  %d", i, repub->proto_ver);
+				log_info("[%d] clientid:   %s", i, repub->clientid);
+				log_info("[%d] keepalive:  %d", i, repub->keepalive);
+				log_info("[%d] clean start:%d", i, repub->clean_start);
+				log_info("[%d] username:   %s", i, repub->username);
+				log_info("[%d] password:   ******", i);
+
+			}
+		}
+	}
+
+	if (rule_eng->option & RULE_ENG_MDB) {
+		log_info("rule engine mysql:");
+		log_info("name:         %s", rule_eng->mysql_db);
+		rule *r = rule_eng->rules;
+		for (size_t i = 0; i < cvector_size(r); i++) {
+			if (r[i].forword_type == RULE_FORWORD_MYSOL) {
+				rule_mysql *mysql = r[i].mysql;
+				log_info("[%d] sql:      %s", i, r[i].raw_sql);
+				log_info("[%d] table:    %s", i, mysql->table);
+				log_info("[%d] host:     %s", i, mysql->host);
+				log_info("[%d] username: %s", i, mysql->username);
+				log_info("[%d] password: ******", i);
+			}
+		}
+	}
+}
+#endif
+
+
 void
 print_conf(conf *nanomq_conf)
 {
@@ -1178,6 +1233,11 @@ print_conf(conf *nanomq_conf)
 	print_bridge_conf(&nanomq_conf->bridge, "");
 #if defined(SUPP_AWS_BRIDGE)
 	print_bridge_conf(&nanomq_conf->aws_bridge, "aws.");
+#endif
+
+#if defined(SUPP_RULE_ENGINE)
+	conf_rule *rule_eng = &(nanomq_conf->rule_eng);
+	print_rule_engine_conf(rule_eng);
 #endif
 }
 
