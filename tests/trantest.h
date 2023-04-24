@@ -1172,7 +1172,6 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 		So(encode_unsuback_msg(rmsg, work) == 0);
 		nng_aio_set_msg(work->aio, rmsg);
 		nng_ctx_send(work->ctx, work->aio);
-		nng_aio_finish(work->aio, 0);
 
 		conn_param_free(rcp);
 		nng_msg_free(msg);
