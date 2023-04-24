@@ -1000,6 +1000,87 @@ get_http_auth_type(auth_type_t type)
 	}
 }
 
+static char *
+get_webhook_type(hook_payload_type type)
+{
+	switch (type)
+	{
+	case plain:
+		return "plain";
+	case base64:
+		return "base64";
+	case base62:
+		return "base62";
+	default:
+		return "error type";
+	}
+}
+
+static char *
+get_webhook_event_type(webhook_event type)
+{
+	switch (type)
+	{
+	case CLIENT_CONNECT:
+		return "client_connect";
+	case CLIENT_CONNACK:
+		return "client_connack";
+	case CLIENT_CONNECTED:
+		return "client_connected";
+	case CLIENT_DISCONNECTED:
+		return "client_disconnected";
+	case CLIENT_SUBSCRIBE:
+		return "client_subscribe";
+	case CLIENT_UNSUBSCRIBE:
+		return "client_unsubscribe";
+	case SESSION_SUBSCRIBED:
+		return "session_subscribed";
+	case SESSION_UNSUBSCRIBED:
+		return "session_unsubscribed";
+	case SESSION_TERMINATED:
+		return "session_terminated";
+	case MESSAGE_PUBLISH:
+		return "message_publish";
+	case MESSAGE_DELIVERED:
+		return "message_delivered";
+	case MESSAGE_ACKED:
+		return "message_acked";
+	case UNKNOWN_EVENT:
+	default:
+		return "unknown_event";
+	}
+}
+
+
+static void
+print_webhook_conf(conf_web_hook *webhook)
+{
+	if (webhook->enable) {
+		log_info("webhook url:       %s", webhook->url);
+		log_info("webhook_hearders:");
+		for (size_t i = 0; i < webhook->header_count; i++) {
+			conf_http_header *header = webhook->headers[i];
+			log_info("	%s: %s", header->key, header->value);
+		}
+		const char *encode_type =
+		    get_webhook_type(webhook->encode_payload);
+		log_info("webhook encoding:  %s", encode_type);
+		log_info("webhook poll size: %d", webhook->pool_size);
+		log_info("webhook rule:");
+		for (size_t i = 0; i < webhook->rule_count; i++) {
+			conf_web_hook_rule *rule = webhook->rules[i];
+			const char         *event =
+			    get_webhook_event_type(rule->event);
+			log_info("[%d] event:          %s", i, event);
+			log_info("[%d] action:         %s", i, rule->action);
+			if (rule->topic) {
+				log_info(
+				    "[%d] topic:          %s", i, rule->topic);
+			}
+		}
+	}
+}
+
 void
 print_conf(conf *nanomq_conf)
 {
@@ -1090,8 +1171,10 @@ print_conf(conf *nanomq_conf)
 #endif
 	conf_auth *auth = &(nanomq_conf->auths);
 	conf_auth_http *auth_http = &(nanomq_conf->auth_http);
+	conf_web_hook *webhook = &(nanomq_conf->web_hook);
 	print_auth_conf(auth);
 	print_auth_http_conf(auth_http);
+	print_webhook_conf(webhook);
 	print_bridge_conf(&nanomq_conf->bridge, "");
 #if defined(SUPP_AWS_BRIDGE)
 	print_bridge_conf(&nanomq_conf->aws_bridge, "aws.");
