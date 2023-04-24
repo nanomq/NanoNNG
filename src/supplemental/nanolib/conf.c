@@ -1056,6 +1056,22 @@ print_conf(conf *nanomq_conf)
 			    hs.jwt.public_keyfile);
 		}
 	}
+
+	if (nanomq_conf->sqlite.enable) {
+		conf_sqlite sql = nanomq_conf->sqlite;
+		log_info("sqlite:");
+		log_info(
+		    "	disk_cache_size:      %ld", sql.disk_cache_size);
+		if (sql.mounted_file_path) {
+			log_info("	mounted_file_path:    %s",
+			    sql.mounted_file_path);
+		}
+		log_info(
+		    "	flush_mem_threshold:  %ld", sql.flush_mem_threshold);
+		log_info(
+		    "	resend_interval:      %ld", sql.resend_interval);
+	}
+
 	log_info("allow_anonymous:          %s",
 	    nanomq_conf->allow_anonymous ? "true" : "false");
 
