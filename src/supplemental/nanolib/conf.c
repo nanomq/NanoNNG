@@ -1135,7 +1135,6 @@ print_rule_engine_conf(conf_rule *rule_eng)
 }
 #endif
 
-
 void
 print_conf(conf *nanomq_conf)
 {
@@ -1153,7 +1152,11 @@ print_conf(conf *nanomq_conf)
 		    nanomq_conf->websocket.tls_url);
 	}
 	if (nanomq_conf->tls.enable) {
+		conf_tls tls = nanomq_conf->tls;
 		log_info("tls url:                  %s", nanomq_conf->tls.url);
+		log_info("tls key file:             %s", tls.keyfile);
+		log_info("tls cert file:            %s", tls.certfile);
+		log_info("tls cacert file:          %s", tls.cafile);
 		log_info("tls verify peer:          %s",
 		    nanomq_conf->tls.verify_peer ? "true" : "false");
 		log_info("tls fail_if_no_peer_cert: %s",
@@ -2909,6 +2912,12 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		    node->name, node->parallel);
 		log_info("%sbridge.mqtt.%s.tls.enable:   %s", prefix,
 		    node->name, node->tls.enable ? "true" : "false");
+		if (node->tls.enable) {
+			log_info("tls:");
+			log_info("	key file:         %s", node->tls.keyfile);
+			log_info("	cert file:        %s", node->tls.certfile);
+			log_info("	cacert file:      %s", node->tls.cafile);
+		}
 		log_info("%sbridge.mqtt.%s.forwards: ", prefix, node->name);
 
 		for (size_t j = 0; j < node->forwards_count; j++) {
