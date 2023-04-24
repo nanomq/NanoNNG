@@ -985,11 +985,14 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 
 	conf_rule *cr              = &(config->rule_eng);
 	cJSON *    jso_rule_sqlite = hocon_get_obj("rules.sqlite", jso);
+	cJSON *jso_rules = NULL;
+	cJSON *jso_rule = NULL;
+
 	if (jso_rule_sqlite) {
 		hocon_read_str_base(cr, sqlite_db, "path", jso_rule_sqlite);
-		cJSON *jso_rules = hocon_get_obj("rules", jso_rule_sqlite);
+		jso_rules = hocon_get_obj("rules", jso_rule_sqlite);
 		cr->option |= RULE_ENG_SDB;
-		cJSON *jso_rule  = NULL;
+		jso_rule  = NULL;
 
 		cJSON_ArrayForEach(jso_rule, jso_rules)
 		{
@@ -1061,7 +1064,7 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 	if (jso_rule_mysql) {
 		cr->option |= RULE_ENG_MDB;
 
-		hocon_read_str_base(cr, mysql_db, "table", jso_rule_mysql);
+		hocon_read_str_base(cr, mysql_db, "name", jso_rule_mysql);
 		jso_rules = hocon_get_obj("rules", jso_rule_mysql);
 		jso_rule  = NULL;
 
