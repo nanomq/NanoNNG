@@ -447,7 +447,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		nni_mtx_unlock(&p->lk);
 		return;
 	}
-	log_warn("pipe %d occupied! resending in cb!", pipe);
+	log_info("pipe %d occupied! resending in cb!", pipe);
 	if (nni_lmq_full(&p->rlmq)) {
 		// Make space for the new message.
 		if (nni_lmq_cap(&p->rlmq) <= NANO_MAX_QOS_PACKET) {
@@ -1080,7 +1080,7 @@ nano_pipe_recv_cb(void *arg)
 			nni_qos_db_remove(
 			    is_sqlite, npipe->nano_qos_db, npipe->p_id, ackid);
 		} else {
-			log_error("ACK failed! qos msg not found!");
+			log_error("ACK failed! qos msg %ld not found!", ackid);
 		}
 		nni_mtx_unlock(&p->lk);
 	case CMD_CONNECT:
