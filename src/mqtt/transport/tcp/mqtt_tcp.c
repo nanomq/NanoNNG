@@ -1482,7 +1482,6 @@ mqtt_tcptran_ep_connect(void *arg, nni_aio *aio)
 {
 	mqtt_tcptran_ep *ep = arg;
 	int              rv;
-	nni_duration     time;
 
 	if (nni_aio_begin(aio) != 0) {
 		return;
@@ -1589,7 +1588,7 @@ mqtt_tcptran_ep_set_connmsg(
 
 // NanoSDK use exponential backoff strategy as default
 // Backoff for random time that exponentially curving
-static void
+static int
 mqtt_tcptran_ep_set_reconnect_backoff(void *arg, const void *v, size_t sz, nni_opt_type t)
 {
 	mqtt_tcptran_ep *ep = arg;
