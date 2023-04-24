@@ -953,7 +953,7 @@ get_http_req_val(http_param_type type)
 	case MOUNTPOINT:
 		return "mountpoint";
 	default:
-		break;
+		return "error type";
 	}
 }
 
@@ -982,6 +982,22 @@ print_auth_http_conf(conf_auth_http *auth_http)
 		print_auth_http_req(&auth_http->acl_req, "acl");
 	}
 
+}
+
+static char *
+get_http_auth_type(auth_type_t type)
+{
+	switch (type)
+	{
+	case BASIC:
+		return "basic";
+	case JWT:
+		return "jwt";
+	case NONE_AUTH:
+		return "no_auth";
+	default:
+		return "error type";
+	}
 }
 
 void
@@ -1023,10 +1039,22 @@ print_conf(conf *nanomq_conf)
 	log_info("keepalive_backoff:        %f", nanomq_conf->backoff);
 
 	if (nanomq_conf->http_server.enable) {
-		log_info(
-		    "http server port:         %d", nanomq_conf->http_server.port);
-		log_info(
-		    "http server parallel:     %u", nanomq_conf->http_server.parallel);
+		conf_http_server hs = nanomq_conf->http_server;
+		log_info("http server port:         %d", hs.port);
+		log_info("http server parallel:     %u", hs.parallel);
+		log_info("http server username:     %s", hs.username);
+		const char *type = get_http_auth_type(hs.auth_type);
+		log_info("http server auth type:    %s", type);
+		if (hs.jwt.private_keyfile) {
+			log_info("http server jwt:");
+			log_info("	private key file:     %s",
+			    hs.jwt.private_keyfile);
+		}
+
+		if (hs.jwt.public_keyfile) {
+			log_info("	public key file:      %s",
+			    hs.jwt.public_keyfile);
+		}
 	}
 	log_info("allow_anonymous:          %s",
 	    nanomq_conf->allow_anonymous ? "true" : "false");
@@ -2761,16 +2789,16 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 #endif
 	}
 
-	log_info("%sbridge.sqlite.enable: %s", prefix,
-	    bridge->sqlite.enable ? "true" : "false");
-	log_info("%sbridge.sqlite.disk_cache_size: %ld", prefix,
-	    bridge->sqlite.disk_cache_size);
-	log_info("%sbridge.sqlite.mounted_file_path: %s", prefix,
-	    bridge->sqlite.mounted_file_path);
-	log_info("%sbridge.sqlite.flush_mem_threshold: %ld", prefix,
-	    bridge->sqlite.flush_mem_threshold);
-	log_info("%sbridge.sqlite.resend_interval: %ld", prefix,
-	    bridge->sqlite.resend_interval);
+	if (bridge->sqlite.enable) {
+		log_info("%sbridge.sqlite.disk_cache_size: %ld", prefix,
+		    bridge->sqlite.disk_cache_size);
+		log_info("%sbridge.sqlite.mounted_file_path: %s", prefix,
+		    bridge->sqlite.mounted_file_path);
+		log_info("%sbridge.sqlite.flush_mem_threshold: %ld", prefix,
+		    bridge->sqlite.flush_mem_threshold);
+		log_info("%sbridge.sqlite.resend_interval: %ld", prefix,
+		    bridge->sqlite.resend_interval);
+	}
 }
 
 webhook_event
