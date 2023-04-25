@@ -259,6 +259,7 @@ struct conf_bridge_node {
 	nng_aio    **bridge_aio;
 	nng_aio     *bridge_reload_aio; // TODO nng_cv would be better
 	nng_aio     *bridge_reload_aio2; // Reload the bridge related to the current config
+	void        *bridge_arg;
 
 	bool    will_flag;
 	char *  will_payload;
