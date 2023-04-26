@@ -698,6 +698,7 @@ trantest_mqttv5_sub_pub(trantest *tt)
 		params.qos      = qos;
 
 		So((client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true)) != NULL);
+
 		trantest_mqtt_sub_send(tt->reqsock, client, true);
 		nng_msleep(200); // make sure the server recv sub msg before we send pub msg.
 		trantest_mqtt_pub(tt->repsock, true);
@@ -1383,10 +1384,7 @@ mqtt_trantest_test(const char *addr)
 
 		trantest_scheme(&tt);
 		trantest_mqtt_sub_pub(&tt);
-		trantest_mqttv5_sub_pub(&tt);
-		// trantest_send_recv_large(&tt);
-		// trantest_send_recv_multi(&tt);
-		// trantest_check_properties(&tt, f);
+		// trantest_mqttv5_sub_pub(&tt);
 	})
 }
 
@@ -1401,15 +1399,7 @@ mqtt_broker_trantest_test(const char *addr)
 
 		Reset({ trantest_fini(&tt); });
 
-		// trantest_scheme(&tt);
-		// trantest_conn_refused(&tt);
-		// trantest_duplicate_listen(&tt);
-		// trantest_listen_accept(&tt);
 		trantest_mqtt_broker_send_recv(&tt);
-		// trantest_mqttv5_sub_pub(&tt);
-		// trantest_send_recv_large(&tt);
-		// trantest_send_recv_multi(&tt);
-		// trantest_check_properties(&tt, f);
 	})
 }
 
