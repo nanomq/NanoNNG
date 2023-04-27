@@ -1313,9 +1313,10 @@ mqtt_quic_sock_close(void *arg)
 		// Pipe was closed.  just push an error back to the
 		// entire socket, because we only have one pipe
 		nni_list_remove(&s->recv_queue, aio);
-		nni_aio_finish_error(aio, NNG_ECONNABORTED);
+		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
 	nni_lmq_flush(&s->send_messages);
+
 	nni_sock_rele(s->nsock);
 }
 
