@@ -49,6 +49,7 @@ struct quic_sock_s {
 	HQUIC     qconn; // QUIC connection
 	nni_sock *sock;
 	void     *pipe; //main mqtt_pipe
+	int       closed; // True when actively close
 
 	nni_mtx  mtx; // for reconnect
 	nni_aio  close_aio;
@@ -304,6 +305,7 @@ quic_sock_init(quic_sock_t *qsock)
 	qsock->qconn = NULL;
 	qsock->sock  = NULL;
 	qsock->pipe  = NULL;
+	qsock->closed = 0;
 
 	nni_mtx_init(&qsock->mtx);
 	nni_aio_init(&qsock->close_aio, quic_sock_close_cb, qsock);
@@ -318,7 +320,8 @@ quic_sock_init(quic_sock_t *qsock)
 static void
 quic_sock_fini(quic_sock_t *qsock)
 {
-	nni_mtx_fini(&qsock->mtx);
+	// nni_mtx_fini(&qsock->mtx);
+	qsock->closed = 1;
 	if (qsock->url_s)
 		nng_url_free(qsock->url_s);
 
@@ -613,7 +616,7 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 			pipe_ops->pipe_fini(qsock->pipe);
 			qsock->pipe = NULL;
 			// No bridge_node if NOT bridge mode
-			if (bridge_node && bridge_node->hybrid) {
+			if (bridge_node && (bridge_node->hybrid || qsock->closed)) {
 				nni_mtx_unlock(&qsock->mtx);
 				break;
 			}
@@ -685,23 +688,25 @@ quic_disconnect(void *qsock, void *qpipe)
 	if (!qsock) {
 		return -1;
 	}
-	if (qstrm->closed == true || qstrm->stream != NULL) {
-		return -1;
+	if (qstrm != NULL) {
+		if (qstrm->closed == true || qstrm->stream == NULL)
+			return -2;
+		MsQuic->StreamShutdown(
+		    qstrm->stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, NNG_ECONNSHUT);
 	}
-	MsQuic->StreamClose(qstrm->stream);
-	MsQuic->StreamShutdown(
-	    qstrm->stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, NNG_ECONNSHUT);
 
 	nni_mtx_lock(&qs->mtx);
 	MsQuic->ConnectionShutdown(
 	    qs->qconn, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, NNG_ECLOSED);
 	nni_mtx_unlock(&qs->mtx);
 
+	quic_sock_fini(qs);
+
 	return 0;
 }
 
 int
-quic_connect_ipv4(const char *url, nni_sock *sock, uint32_t *index)
+quic_connect_ipv4(const char *url, nni_sock *sock, uint32_t *index, void **qsockp)
 {
 	// Load the client configuration
 	if (!quic_load_config(bridge_node)) {
@@ -777,6 +782,8 @@ quic_connect_ipv4(const char *url, nni_sock *sock, uint32_t *index)
 	// Successfully creating quic connection then assign to qsock
 	// Here mutex should be unnecessary.
 	qsock->qconn = conn;
+
+	*qsockp = qsock;
 
 	// // Start/ReStart the nng pipe
 	// const nni_proto_pipe_ops *pipe_ops = g_quic_proto->proto_pipe_ops;
