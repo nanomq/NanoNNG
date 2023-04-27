@@ -89,6 +89,8 @@ struct mqtt_sock_s {
 	nni_list      recv_queue; // aio pending to receive
 	nni_list      send_queue; // aio pending to send
 
+	void    *qsock;         // The matrix of quic sock. Which only be allow to use when disconnect.
+	                        // Or lock first.
 	nni_lmq  send_messages; // send messages queue (only for major stream)
 	nni_lmq *ack_lmq;
 	nni_id_map  *streams; // pipes, only effective in multi-stream mode
@@ -1886,6 +1888,9 @@ nng_mqtt_quic_open_conf(nng_socket *sock, const char *url, void *node)
 {
 	int       rv = 0;
 	nni_sock *nsock = NULL;
+	void     *qsock = NULL;
+
+	mqtt_sock_t *msock = NULL;
 
 	// Quic settings
 	if ((rv = nni_proto_open(sock, &mqtt_msquic_proto)) == 0) {
@@ -1896,13 +1901,44 @@ nng_mqtt_quic_open_conf(nng_socket *sock, const char *url, void *node)
 			quic_open();
 			quic_proto_open(&mqtt_msquic_proto);
 			quic_proto_set_bridge_conf(node);
-			rv = quic_connect_ipv4(url, nsock, NULL);
+			rv = quic_connect_ipv4(url, nsock, NULL, &qsock);
+			if (rv == 0) {
+				msock = nni_sock_proto_data(nsock);
+				msock->qsock = qsock;
+			}
 		} else {
 			rv = -1;
 		}
 	}
 	nni_sock_rele(nsock);
 	return rv;
+}
+
+int
+nng_mqtt_quic_client_close(nng_socket *sock)
+{
+	nni_sock *nsock = NULL;
+	mqtt_sock_t *s= NULL;
+
+	nni_sock_find(&nsock, sock->id);
+	if (nsock) {
+		s= nni_sock_proto_data(nsock);
+		if (!s)
+			return -1;
+		if (s->pipe && s->pipe->qpipe) {
+			quic_disconnect(s->qsock, s->pipe->qpipe);
+		} else {
+			quic_disconnect(s->qsock, NULL);
+		}
+
+		// nni_sock_close(nsock);
+		nni_sock_rele(nsock);
+
+		return 0;
+	}
+
+
+	return -2;
 }
 
 /**
