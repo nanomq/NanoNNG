@@ -1137,7 +1137,7 @@ quic_pipe_recv_cb(void *arg)
 			nni_mtx_unlock(&qstrm->mtx);
 			// Wait to be re-schedule
 			if (!nni_list_empty(&qstrm->recvq)) {
-				nni_aio_finish_sync(&qstrm->rraio, 0, 0);
+				nni_aio_finish(&qstrm->rraio, 0, 0);
 			}
 			qdebug("3after  rxlen %d rwlen %d.\n", qstrm->rxlen, qstrm->rwlen);
 			return;
@@ -1195,7 +1195,7 @@ upload:
 
 	if (qstrm->rrlen > 0)
 		if (!nni_list_empty(&qstrm->recvq))
-			nni_aio_finish_sync(&qstrm->rraio, 0, 0);
+			nni_aio_finish(&qstrm->rraio, 0, 0);
 
 	memmove(qstrm->rrbuf, qstrm->rrbuf+qstrm->rrpos, qstrm->rrlen);
 	qstrm->rrpos = 0;
