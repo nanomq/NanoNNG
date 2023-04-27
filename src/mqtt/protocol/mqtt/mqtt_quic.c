@@ -1996,8 +1996,8 @@ nng_mqtt_quic_set_config(nng_socket *sock, void *node)
 
 	nni_sock_find(&nsock, sock->id);
 	if (nsock) {
-		mqtt_sock->bridge_conf = node;
 		mqtt_sock              = nni_sock_proto_data(nsock);
+		mqtt_sock->bridge_conf = node;
 		if (node == NULL) {
 			mqtt_sock->multi_stream = false;
 			mqtt_sock->qos_first    = false;
