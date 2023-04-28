@@ -1306,6 +1306,8 @@ mqtt_quic_sock_close(void *arg)
 	nni_aio *aio;
 	mqtt_sock_t *s = arg;
 
+	nni_atomic_set_bool(&s->closed, true);
+
 	nni_aio_stop(&s->time_aio);
 	nni_aio_close(&s->time_aio);
 
@@ -1773,6 +1775,7 @@ mqtt_quic_ctx_recv(void *arg, nni_aio *aio)
 	}
 
 	nni_mtx_lock(&s->mtx);
+	// TODO Should socket is closed be check first?
 	if (p == NULL) {
 		goto wait;
 	}
