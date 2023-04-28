@@ -1289,6 +1289,7 @@ mqtt_quic_sock_fini(void *arg)
 	mqtt_quic_ctx_fini(&s->master);
 	nni_lmq_fini(&s->send_messages);
 	nni_aio_fini(&s->time_aio);
+	nni_msg_free(s->ping_msg);
 }
 
 static void
