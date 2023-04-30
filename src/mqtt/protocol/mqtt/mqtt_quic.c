@@ -939,6 +939,7 @@ mqtt_quic_recv_cb(void *arg)
 	switch (packet_type) {
 	case NNG_MQTT_CONNACK:
 		nng_msg_set_cmd_type(msg, CMD_CONNACK);
+		// Pair with connect_cb
 		conn_param_clone(p->cparam);
 		// Clone CONNACK for connect_cb & aio_cb
 		nni_msg_clone(msg);
@@ -1036,6 +1037,8 @@ mqtt_quic_recv_cb(void *arg)
 		nni_aio_set_msg(user_aio, cached_msg);
 		break;
 	case NNG_MQTT_PUBLISH:
+		// clone conn_param every single time
+		conn_param_clone(p->cparam);
 		// we have received a PUBLISH
 		qos = nni_mqtt_msg_get_publish_qos(msg);
 		nng_msg_set_cmd_type(msg, CMD_PUBLISH);
@@ -1159,7 +1162,7 @@ mqtt_timer_cb(void *arg)
 
 	s->counter += s->retry;
 	if (nni_aio_busy(&p->rep_aio)) {
-		log_warn("rep_aio busy! stream is in serious congestion");
+		log_warn("rep_aio busy! stream is congested");
 		nni_aio_abort(&p->rep_aio, NNG_ECANCELED);
 	}
 	if (s->counter >= s->keepalive) {
