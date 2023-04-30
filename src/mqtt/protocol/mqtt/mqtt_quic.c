@@ -1467,7 +1467,7 @@ quic_mqtt_stream_fini(void *arg)
 	nni_msg *tmsg =
 	    nano_msg_notify_disconnect(p->cparam, p->reason_code);
 	nni_msg_set_cmd_type(tmsg, CMD_DISCONNECT_EV);
-	// clone once for DISCONNECT_EV state
+	// clone once for pub DISCONNECT_EV
 	conn_param_clone(p->cparam);
 	nni_msg_set_conn_param(tmsg, p->cparam);
 	// emulate disconnect notify msg as a normal publish
