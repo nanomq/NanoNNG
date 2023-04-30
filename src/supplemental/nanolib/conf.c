@@ -2673,11 +2673,12 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 		free(line);
 	}
 	fclose(fp);
+	if (node->will_topic != NULL && node->will_payload != NULL)
+			node->will_flag = true;
 
 	if (node->proto_ver == MQTT_PROTOCOL_VERSION_v5) {
 		conf_bridge_connect_properties_parse(node, path, name);
 		if (node->will_topic != NULL && node->will_payload != NULL) {
-			node->will_flag = true;
 			conf_bridge_connect_will_properties_parse(
 			    node, path, name);
 		}
