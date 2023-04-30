@@ -939,7 +939,7 @@ mqtt_quic_recv_cb(void *arg)
 	switch (packet_type) {
 	case NNG_MQTT_CONNACK:
 		nng_msg_set_cmd_type(msg, CMD_CONNACK);
-		// Pair with connect_cb
+		// turn to publish msg and free in WAIT state
 		conn_param_clone(p->cparam);
 		// Clone CONNACK for connect_cb & aio_cb
 		nni_msg_clone(msg);
