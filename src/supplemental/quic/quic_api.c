@@ -497,7 +497,7 @@ quic_disconnect()
 	}
 	quic_strm_t *qstrm = GStream;
 
-	if (qstrm->closed == true || qstrm->stream != NULL) {
+	if (qstrm->closed == true || qstrm->stream == NULL) {
 		return -1;
 	}
 	MsQuic->StreamClose(qstrm->stream);
