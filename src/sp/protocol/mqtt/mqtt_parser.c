@@ -604,8 +604,10 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	cparam->pro_name.body =
 	    (char *) copyn_utf8_str(packet, &pos, &len_of_str, max - pos);
 	cparam->pro_name.len = len_of_str;
-	// At least 4 bytes left in valid CONNECT
-	rv = (len_of_str < 0 || pos + 4 > max) ? PROTOCOL_ERROR : 0;
+	// At least 4 bytes left in valid CONNECT & proname must be valid
+	rv = (cparam->pro_name.body == NULL || len_of_str < 0 || pos + 4 > max)
+	    ? PROTOCOL_ERROR
+	    : 0;
 	if (rv != 0)
 		return rv;
 	log_trace("pro_name: %s", cparam->pro_name.body);
