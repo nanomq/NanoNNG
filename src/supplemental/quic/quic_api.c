@@ -493,13 +493,15 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			    g_quic_proto->proto_pipe_ops;
 				log_warn("close the data stream [%p]!", stream);
 			pipe_ops->pipe_stop(qstrm->pipe);
-			MsQuic->StreamClose(stream);
+			if (qstrm->closed != true)
+				MsQuic->StreamClose(stream);
 			break;
 		}
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
 			// only server close the stream gonna trigger this
 			log_warn("close the main stream [%p]!", stream);
-			MsQuic->StreamClose(stream);
+			if (qstrm->closed != true)
+				MsQuic->StreamClose(stream);
 			qstrm->stream = NULL;
 			// close stream here if in multi-stream mode?
 			// Conflic with quic_pipe_close
@@ -688,13 +690,14 @@ quic_disconnect(void *qsock, void *qpipe)
 	if (!qsock) {
 		return -1;
 	}
+	// unable to close a closed pipe
 	if (qstrm != NULL) {
 		if (qstrm->closed == true || qstrm->stream == NULL)
 			return -2;
 		MsQuic->StreamShutdown(
 		    qstrm->stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, NNG_ECONNSHUT);
 	}
-
+	qstrm->closed = true;
 	nni_mtx_lock(&qs->mtx);
 	MsQuic->ConnectionShutdown(
 	    qs->qconn, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, NNG_ECLOSED);
