@@ -864,8 +864,7 @@ conf_bridge_node_parse(
 	conf_bridge_quic_parse_ver2(node, obj);
 #endif
 	cJSON *subscriptions = hocon_get_obj("subscription", obj);
-	node->sub_count      = cJSON_GetArraySize(subscriptions);
-
+	
 	cJSON * subscription = NULL;
 	cJSON_ArrayForEach(subscription, subscriptions)
 	{
