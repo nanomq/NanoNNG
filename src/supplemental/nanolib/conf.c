@@ -2334,16 +2334,17 @@ conf_bridge_node_parse_subs(
 		if (get_topic && get_qos) {
 			sub_index++;
 			node->sub_count++;
-			node->sub_list = realloc(
-			    node->sub_list, sizeof(topics) * node->sub_count);
-			node->sub_list[node->sub_count - 1].topic = topic;
-			node->sub_list[node->sub_count - 1].topic_len =
-			    strlen(topic);
-			node->sub_list[node->sub_count - 1].qos       = qos;
+			topics *s    = NNI_ALLOC_STRUCT(s);
+			s->stream_id = 0;
+			s->topic     = topic;
+			s->topic_len = strlen(topic);
+			s->qos       = qos;
+
 #if defined(SUPP_QUIC)
 			if (node->stream_auto_genid)
-				node->sub_list[node->sub_count - 1].stream_id = sub_index;
+				s->stream_id = sub_index;
 #endif
+			cvector_push_back(node->sub_list, s);
 			get_topic = false;
 			get_qos   = false;
 		}
@@ -2822,13 +2823,15 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 	}
 	if (node->sub_count > 0 && node->sub_list) {
 		for (size_t i = 0; i < node->sub_count; i++) {
-			if (node->sub_list[i].topic) {
-				free(node->sub_list[i].topic);
-				node->sub_list[i].topic = NULL;
+			topics *s = node->sub_list[i];
+			if (s->topic) {
+				free(s->topic);
+				s->topic = NULL;
 			}
-			
+			NNI_FREE_STRUCT(s);
 		}
-		free(node->sub_list);
+		node->sub_count = 0;
+		cvector_free(node->sub_list);
 	}
 	if (node->conn_properties) {
 		conf_bridge_user_property_destroy(
@@ -2929,10 +2932,10 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		    "%sbridge.mqtt.%s.subscription: ", prefix, node->name);
 		for (size_t k = 0; k < node->sub_count; k++) {
 			log_info("\t[%ld] topic:        %.*s", k + 1,
-			    node->sub_list[k].topic_len,
-			    node->sub_list[k].topic);
+			    node->sub_list[k]->topic_len,
+			    node->sub_list[k]->topic);
 			log_info("\t[%ld] qos:          %d", k + 1,
-			    node->sub_list[k].qos);
+			    node->sub_list[k]->qos);
 		}
 #if defined(SUPP_QUIC)
 		log_info("%sbridge.mqtt.%s.quic_multi_stream:      %s", prefix,

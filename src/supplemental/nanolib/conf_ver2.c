@@ -865,19 +865,19 @@ conf_bridge_node_parse(
 #endif
 	cJSON *subscriptions = hocon_get_obj("subscription", obj);
 	node->sub_count      = cJSON_GetArraySize(subscriptions);
-	node->sub_list = NNI_ALLOC_STRUCTS(node->sub_list, node->sub_count);
-	topics *slist  = node->sub_list;
+
 	cJSON * subscription = NULL;
-	int     i            = 0;
 	cJSON_ArrayForEach(subscription, subscriptions)
 	{
-		topics *s = &slist[i++];
+		topics *s = NNI_ALLOC_STRUCT(s);
 		hocon_read_str(s, topic, subscription);
 		hocon_read_num(s, qos, subscription);
 		s->topic_len = strlen(s->topic);
 		s->stream_id = 0;
 		hocon_read_num(s, stream_id, subscription);
+		cvector_push_back(node->sub_list, s);
 	}
+	node->sub_count = cvector_size(node->sub_list);
 
 	cJSON *jso_prop = hocon_get_obj("sub_properties", obj);
 	if (jso_prop != NULL) {
@@ -952,19 +952,20 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 
 		cJSON *subscriptions =
 		    hocon_get_obj("subscription", bridge_aws_node);
-		node->sub_count = cJSON_GetArraySize(subscriptions);
-		node->sub_list =
-		    NNI_ALLOC_STRUCTS(node->sub_list, node->sub_count);
-		topics *slist        = node->sub_list;
-		cJSON *    subscription = NULL;
-		int        i            = 0;
+
+		cJSON *subscription = NULL;
 		cJSON_ArrayForEach(subscription, subscriptions)
 		{
-			topics *s = &slist[i++];
+			topics *s = NNI_ALLOC_STRUCT(s);
 			hocon_read_str(s, topic, subscription);
 			hocon_read_num(s, qos, subscription);
 			s->topic_len = strlen(s->topic);
+			s->stream_id = 0;
+			hocon_read_num(s, stream_id, subscription);
+			cvector_push_back(node->sub_list, s);
 		}
+
+		node->sub_count = cvector_size(node->sub_list);
 
 		hocon_read_num(node, parallel, bridge_aws_node);
 		cJSON *bridge_aws_node_tls =

@@ -253,7 +253,7 @@ struct conf_bridge_node {
 	char        *password;
 	char       **forwards;
 	uint64_t     parallel;
-	topics      *sub_list;
+	topics     **sub_list;
 	conf_tls     tls;
 	conf_sqlite *sqlite;
 	nng_aio    **bridge_aio;
