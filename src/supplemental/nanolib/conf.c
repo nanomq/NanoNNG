@@ -2832,6 +2832,7 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 		}
 		node->sub_count = 0;
 		cvector_free(node->sub_list);
+		node->sub_list = NULL;
 	}
 	if (node->conn_properties) {
 		conf_bridge_user_property_destroy(
