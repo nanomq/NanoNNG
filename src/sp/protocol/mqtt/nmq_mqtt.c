@@ -99,6 +99,7 @@ nmq_close_unack_msg_cb(void *key, void *val)
 	nni_msg_free(msg);
 }
 
+// Flush lmq and conn_param
 void
 nano_nni_lmq_flush(nni_lmq *lmq, bool cp)
 {
@@ -851,7 +852,7 @@ nano_pipe_close(void *arg)
 				if (nni_lmq_resize(&s->waitlmq,
 				        nni_lmq_cap(&s->waitlmq) * 2) != 0) {
 					log_error("wait lmq resize failed.");
-					conn_param_clone(p->conn_param);
+					conn_param_free(p->conn_param);
 					nni_msg_free(msg);
 				}
 			}
