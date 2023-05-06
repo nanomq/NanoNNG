@@ -52,7 +52,7 @@ struct nano_sock {
 	nni_atomic_int ttl;
 	nni_id_map     pipes;
 	nni_id_map     cached_sessions;
-	nni_lmq        waitlmq;
+	nni_lmq        waitlmq;   // this is for receving
 	nni_list       recvpipes; // list of pipes with data to receive
 	nni_list       recvq;
 	nano_ctx       ctx; // base socket
@@ -86,7 +86,7 @@ struct nano_pipe {
 	// been triggered
 	uint16_t    ka_refresh;
 	conn_param *conn_param;
-	nni_lmq     rlmq;
+	nni_lmq     rlmq; 		 // only for sending cache
 	void       *nano_qos_db; // 'sqlite' or 'nni_id_hash_map'
 };
 
@@ -100,17 +100,21 @@ nmq_close_unack_msg_cb(void *key, void *val)
 }
 
 void
-nano_nni_lmq_flush(nni_lmq *lmq)
+nano_nni_lmq_flush(nni_lmq *lmq, bool cp)
 {
 	while (lmq->lmq_len > 0) {
 		nng_msg *msg = lmq->lmq_msgs[lmq->lmq_get++];
 		lmq->lmq_get &= lmq->lmq_mask;
 		lmq->lmq_len--;
+		if (cp)
+			conn_param_free(nni_msg_get_conn_param(msg));
 		nni_msg_free(msg);
 	}
 }
 
-int
+
+// only use for sending lmq
+static int
 nano_nni_lmq_resize(nni_lmq *lmq, size_t cap)
 {
 	nng_msg  *msg;
@@ -134,7 +138,7 @@ nano_nni_lmq_resize(nni_lmq *lmq, size_t cap)
 	}
 
 	// Flush anything left over.
-	nano_nni_lmq_flush(lmq);
+	nano_nni_lmq_flush(lmq, false);
 
 	nni_free(lmq->lmq_msgs, lmq->lmq_alloc * sizeof(nng_msg *));
 	lmq->lmq_msgs  = newq;
@@ -487,6 +491,8 @@ nano_sock_fini(void *arg)
 #endif
 	nni_id_map_fini(&s->pipes);
 	nni_id_map_fini(&s->cached_sessions);
+	// flush msg and conn params in waitlmq
+	nano_nni_lmq_flush(&s->waitlmq, true);
 	nni_lmq_fini(&s->waitlmq);
 	nano_ctx_fini(&s->ctx);
 	nni_pollable_fini(&s->writable);
@@ -764,7 +770,7 @@ close_pipe(nano_pipe *p)
 	if (nni_list_active(&s->recvpipes, p)) {
 		nni_list_remove(&s->recvpipes, p);
 	}
-	nano_nni_lmq_flush(&p->rlmq);
+	nano_nni_lmq_flush(&p->rlmq, false);
 	nni_mtx_unlock(&p->lk);
 	nni_id_remove(&s->pipes, nni_pipe_id(p->pipe));
 }
@@ -806,7 +812,7 @@ nano_pipe_close(void *arg)
 		if (nni_list_active(&s->recvpipes, p)) {
 			nni_list_remove(&s->recvpipes, p);
 		}
-		nano_nni_lmq_flush(&p->rlmq);
+		nano_nni_lmq_flush(&p->rlmq, false);
 		nni_mtx_unlock(&s->lk);
 		nni_mtx_unlock(&p->lk);
 		return;
@@ -840,10 +846,13 @@ nano_pipe_close(void *arg)
 			return;
 		} else {
 			// no enough ctx, so cache to waitlmq
+			// free conn param when discard waitlmq
 			if (nni_lmq_full(&s->waitlmq)) {
 				if (nni_lmq_resize(&s->waitlmq,
 				        nni_lmq_cap(&s->waitlmq) * 2) != 0) {
 					log_error("wait lmq resize failed.");
+					conn_param_clone(p->conn_param);
+					nni_msg_free(msg);
 				}
 			}
 			nni_lmq_put(&s->waitlmq, msg);
@@ -1109,8 +1118,8 @@ nano_pipe_recv_cb(void *arg)
 		nni_list_append(&s->recvpipes, p);
 		nni_pollable_raise(&s->readable);
 		nni_mtx_unlock(&s->lk);
+		// this gonna cause broker lagging
 		log_warn("no ctx found!! create more ctxs!");
-		// nni_println("ERROR: no ctx found!! create more ctxs!");
 		return;
 	}
 
