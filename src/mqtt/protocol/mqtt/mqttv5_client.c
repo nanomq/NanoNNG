@@ -318,16 +318,10 @@ static inline void
 mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
 {
 	if (0 != nni_lmq_put(&p->recv_messages, msg)) {
-		// resize to ensure we do not lost messages or just lose it?
-		// add option to drop messages
-		// if (0 !=
-		//     nni_lmq_resize(&p->recv_messages,
-		//         nni_lmq_len(&p->recv_messages) * 2)) {
-		// 	// drop the message when no memory available
-		// 	nni_msg_free(msg);
-		// 	return;
-		// }
-		// nni_lmq_put(&p->recv_messages, msg);
+		packet_type_t packet_type = nni_mqtt_msg_get_packet_type(msg);
+		if (packet_type == NNG_MQTT_PUBLISH ||
+		    packet_type == NNG_MQTT_CONNACK)
+			conn_param_free(nni_msg_get_conn_param(msg));
 		nni_msg_free(msg);
 	}
 }
@@ -504,7 +498,8 @@ mqtt_pipe_close(void *arg)
 	}
 #endif
 
-	nni_lmq_flush(&p->recv_messages);
+	// particular for NanoSDK in bridging
+	nni_lmq_flush_cp(&p->recv_messages, true);
 	nni_lmq_flush(&p->send_messages);
 
 	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_aio_cb);
@@ -540,6 +535,7 @@ mqtt_pipe_close(void *arg)
 	if (count == 0) {
 		log_info("disconnect msg of bridging is lost due to no ctx on receving");
 		nni_msg_free(tmsg);
+		conn_param_free(s->cparam);
 	}
 #endif
 	nni_mtx_unlock(&s->mtx);

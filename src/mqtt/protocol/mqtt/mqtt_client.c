@@ -103,6 +103,7 @@ struct mqtt_sock_s {
 #endif
 };
 
+
 /******************************************************************************
  *                              Sock Implementation                           *
  ******************************************************************************/
@@ -329,6 +330,9 @@ mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
 		// 	return;
 		// }
 		// nni_lmq_put(&p->recv_messages, msg);
+		packet_type_t packet_type = nni_mqtt_msg_get_packet_type(msg);
+		if (packet_type == NNG_MQTT_PUBLISH || packet_type == NNG_MQTT_CONNACK)
+			conn_param_free(nni_msg_get_conn_param(msg));
 		nni_msg_free(msg);
 	}
 }
@@ -513,8 +517,8 @@ mqtt_pipe_close(void *arg)
 		    mqtt_sock_get_sqlite_option(s), &p->send_messages);
 	}
 #endif
-
-	nni_lmq_flush(&p->recv_messages);
+	// particular for NanoSDK in bridging
+	nni_lmq_flush_cp(&p->recv_messages, true);
 	nni_lmq_flush(&p->send_messages);
 
 	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_aio_cb);
@@ -550,9 +554,10 @@ mqtt_pipe_close(void *arg)
 		count++;
 	}
 	if (count == 0) {
-		nni_println("disconnect msg of bridging is lost due to no ctx "
+		log_warn("disconnect msg of bridging is lost due to no ctx "
 		            "on receving");
 		nni_msg_free(tmsg);
+		conn_param_free(s->cparam);
 	}
 #endif
 	nni_mtx_unlock(&s->mtx);
