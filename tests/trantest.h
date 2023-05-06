@@ -680,8 +680,8 @@ trantest_mqtt_sub_pub(trantest *tt)
 		nng_mqtt_client_free(client, true);
 		nng_close(tt->repsock);
 		nng_close(tt->reqsock);
-		conn_param_free(cp1);
-		conn_param_free(cp2);
+		// conn_param_free(cp1);
+		// conn_param_free(cp2);
 	});
 }
 
@@ -1136,8 +1136,7 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 		// send CONNACK back to the client.
 		nng_aio_set_msg(work->aio, rmsg);
 		nng_ctx_send(work->ctx, work->aio);
-		// cp is cloned in protocol and app layer, so we free it twice.
-		conn_param_free(cp);
+		// cp is cloned in protocol layer, so we free it here
 		conn_param_free(cp);
 
 		// client recv CONNACK msg.
@@ -1193,7 +1192,6 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 		// about to close, so we close the socket in advance
 		// here to aviod heap-use-after-free.
 		nng_close(tt->repsock);
-		conn_param_free(rcp);
 		conn_param_free(rcp);
 		nng_msg_free(msg);
 		// for previously pub msg
