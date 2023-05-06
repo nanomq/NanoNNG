@@ -487,6 +487,7 @@ NNG_DECL property_type_enum property_get_value_type(uint8_t prop_id);
 NNG_DECL property_data *    property_get_value(property *prop, uint8_t prop_id);
 NNG_DECL void               property_append(property *prop_list, property *last);
 NNG_DECL int                property_value_copy(property *dest,const property *src);
+NNG_DECL void               nni_lmq_flush_cp(nni_lmq *lmq, bool cp);
 
 /* introduced from mqtt_parser, might be duplicated */
 NNG_DECL int  nni_mqtt_pubres_decode(nng_msg *msg, uint16_t *packet_id,
