@@ -1012,3 +1012,18 @@ nni_mqtt_msg_get_connect_property(nni_msg *msg)
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
 	return proto_data->var_header.connect.properties;
 }
+
+// peculiar API for SDK to free Conn_param
+void
+nni_lmq_flush_cp(nni_lmq *lmq, bool cp)
+{
+	while (lmq->lmq_len > 0) {
+		nng_msg *msg = lmq->lmq_msgs[lmq->lmq_get++];
+		lmq->lmq_get &= lmq->lmq_mask;
+		lmq->lmq_len--;
+		uint8_t packet_type = nni_msg_get_type(msg);
+		if (cp && (packet_type == CMD_PUBLISH || packet_type == CMD_CONNACK))
+			conn_param_free(nni_msg_get_conn_param(msg));
+		nni_msg_free(msg);
+	}
+}
