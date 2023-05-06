@@ -718,8 +718,8 @@ trantest_mqttv5_sub_pub(trantest *tt)
 		nng_mqtt_client_free(client, true);
 		nng_close(tt->repsock);
 		nng_close(tt->reqsock);
-		conn_param_free(cp1);
-		conn_param_free(cp2);
+		// conn_param_free(cp1);
+		// conn_param_free(cp2);
 	});
 }
 
