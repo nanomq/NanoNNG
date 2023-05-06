@@ -556,6 +556,7 @@ mqtt_pipe_close(void *arg)
 	if (count == 0) {
 		log_warn("disconnect msg of bridging is lost due to no ctx "
 		            "on receving");
+		conn_param_free(s->cparam);
 		nni_msg_free(tmsg);
 		conn_param_free(s->cparam);
 	}
@@ -564,9 +565,7 @@ mqtt_pipe_close(void *arg)
 	while (!nni_lmq_empty(&p->recv_messages)) {
 		nni_lmq_get(&p->recv_messages, &msg);
 		packet_type_t packet_type = nni_mqtt_msg_get_packet_type(msg);
-		if (packet_type == NNG_MQTT_CONNACK ||
-		        packet_type == NNG_MQTT_PUBLISH ||
-		        packet_type == NNG_MQTT_DISCONNECT)
+		if (packet_type == NNG_MQTT_CONNACK || packet_type == NNG_MQTT_PUBLISH)
 			conn_param_free(s->cparam);
 		nni_msg_free(msg);
 	}
