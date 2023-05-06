@@ -673,7 +673,6 @@ trantest_mqtt_sub_pub(trantest *tt)
 		trantest_mqtt_sub_recv(tt->reqsock);
 		trantest_mqtt_unsub_send(tt->reqsock, client, true);
 		nng_mqtt_client_free(client, true);
-
 	});
 }
 
@@ -1156,7 +1155,6 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 		nng_ctx_recv(work->ctx, work->aio);
 		So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
 		So(nng_msg_get_type(rmsg) == CMD_PUBLISH);
-		conn_param_free(nng_msg_get_conn_param(msg));
 		nng_aio_set_msg(work->aio, rmsg);
 		nng_ctx_send(work->ctx, work->aio);
 
@@ -1183,7 +1181,7 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 		// here to aviod heap-use-after-free.
 		nng_close(tt->repsock);
 		// for previously pub msg
-		// conn_param_free(cp);
+		conn_param_free(cp);
 		// for offline event msg
 		conn_param_free(cp);
 		// final round
