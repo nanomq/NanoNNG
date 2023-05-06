@@ -1175,12 +1175,13 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 		nng_aio_set_msg(work->aio, rmsg);
 		nng_ctx_send(work->ctx, work->aio);
 
-		conn_param_free(rcp);
-		nng_msg_free(msg);
 		// nmq_broker will check connmsg when connection is
 		// about to close, so we close the socket in advance
 		// here to aviod heap-use-after-free.
 		nng_close(tt->repsock);
+		conn_param_free(rcp);
+		conn_param_free(rcp);
+		nng_msg_free(msg);
 		// for previously pub msg
 		conn_param_free(cp);
 		// for offline event msg
