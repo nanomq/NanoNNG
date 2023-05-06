@@ -843,16 +843,15 @@ mqtt_recv_cb(void *arg)
 			packet_id = nni_mqtt_msg_get_publish_packet_id(msg);
 			if ((cached_msg = nni_id_get(
 				         &p->recv_unack, packet_id)) != NULL) {
-					// packetid already exists.
-					// sth wrong with the broker
-					// replace old with new
-					log_error(
-					    "packet id %d duplicates in", packet_id);
-					nni_msg_free(cached_msg);
-					conn_param_free(s->cparam);
-					// nni_id_remove(&pipe->nano_qos_db,
-					// pid);
-				}
+				// packetid already exists.
+				// sth wrong with the broker
+				// replace old with new
+				log_error(
+				    "packet id %d duplicates in", packet_id);
+				nni_msg_free(cached_msg);
+				// nni_id_remove(&pipe->nano_qos_db,
+				// pid);
+			}
 			nni_id_set(&p->recv_unack, packet_id, msg);
 		}
 		break;
