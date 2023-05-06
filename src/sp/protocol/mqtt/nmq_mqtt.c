@@ -492,7 +492,7 @@ nano_sock_fini(void *arg)
 	nni_id_map_fini(&s->pipes);
 	nni_id_map_fini(&s->cached_sessions);
 	// flush msg and conn params in waitlmq
-	nano_nni_lmq_flush(&s->waitlmq, true);
+	nano_nni_lmq_flush(&s->waitlmq, false);
 	nni_lmq_fini(&s->waitlmq);
 	nano_ctx_fini(&s->ctx);
 	nni_pollable_fini(&s->writable);
