@@ -313,18 +313,6 @@ mqtt_pipe_fini(void *arg)
 	nni_lmq_fini(&p->send_messages);
 }
 
-static inline void
-mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
-{
-	if (0 != nni_lmq_put(&p->recv_messages, msg)) {
-		packet_type_t packet_type = nni_mqtt_msg_get_packet_type(msg);
-		if (packet_type == NNG_MQTT_PUBLISH ||
-		    packet_type == NNG_MQTT_CONNACK)
-			conn_param_free(nni_msg_get_conn_param(msg));
-		nni_msg_free(msg);
-	}
-}
-
 // Should be called with mutex lock hold. and it will unlock mtx.
 // flag indicates if need to skip msg in sqlite 1: check sqlite 0: only aio
 static inline void
@@ -740,7 +728,10 @@ mqtt_recv_cb(void *arg)
 			if ((ctx = nni_list_first(&s->recv_queue)) == NULL) {
 				// No one waiting to receive yet, putting msg
 				// into lmq
-				mqtt_pipe_recv_msgq_putq(p, msg);
+				if (0 != nni_lmq_put(&p->recv_messages, msg)) {
+					nni_msg_free(msg);
+					conn_param_free(s->cparam);
+				}
 				nni_mtx_unlock(&s->mtx);
 				log_warn("Warning: no ctx found!! create more "
 				         "ctxs!");
@@ -805,9 +796,13 @@ mqtt_recv_cb(void *arg)
 		if ((ctx = nni_list_first(&s->recv_queue)) == NULL) {
 			// No one waiting to receive yet, putting msg
 			// into lmq
-			mqtt_pipe_recv_msgq_putq(p, cached_msg);
+			if (0 != nni_lmq_put(&p->recv_messages, cached_msg)) {
+				nni_msg_free(cached_msg);
+				conn_param_free(s->cparam);
+			}
 			nni_mtx_unlock(&s->mtx);
-			// nni_println("ERROR: no ctx found!! create more ctxs!");
+			// nni_println("ERROR: no ctx found!! create more
+			// ctxs!");
 			return;
 		}
 		nni_list_remove(&s->recv_queue, ctx);
@@ -829,9 +824,13 @@ mqtt_recv_cb(void *arg)
 			if ((ctx = nni_list_first(&s->recv_queue)) == NULL) {
 				// No one waiting to receive yet, putting msg
 				// into lmq
-				mqtt_pipe_recv_msgq_putq(p, msg);
+				if (0 != nni_lmq_put(&p->recv_messages, msg)) {
+					nni_msg_free(msg);
+					conn_param_free(s->cparam);
+				}
 				nni_mtx_unlock(&s->mtx);
-				// nni_println("ERROR: no ctx found!! create more ctxs!");
+				// nni_println("ERROR: no ctx found!! create
+				// more ctxs!");
 				return;
 			}
 			nni_list_remove(&s->recv_queue, ctx);

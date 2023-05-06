@@ -316,11 +316,12 @@ mqtt_pipe_fini(void *arg)
 	nni_lmq_fini(&p->send_messages);
 }
 
-static inline void
+static inline int
 mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
 {
-	if (0 != nni_lmq_put(&p->recv_messages, msg)) {
-		// resize to ensure we do not lost messages or just lose it?
+	int rv = nni_lmq_put(&p->recv_messages, msg);
+	if (rv != 0) {
+		// resize to ensure we do not lost messages or just let it go?
 		// add option to drop messages
 		// if (0 !=
 		//     nni_lmq_resize(&p->recv_messages,
@@ -330,11 +331,9 @@ mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
 		// 	return;
 		// }
 		// nni_lmq_put(&p->recv_messages, msg);
-		packet_type_t packet_type = nni_mqtt_msg_get_packet_type(msg);
-		if (packet_type == NNG_MQTT_PUBLISH || packet_type == NNG_MQTT_CONNACK)
-			conn_param_free(nni_msg_get_conn_param(msg));
 		nni_msg_free(msg);
 	}
+	return rv;
 }
 
 // Should be called with mutex lock hold. and it will unlock mtx.
@@ -735,7 +734,8 @@ mqtt_recv_cb(void *arg)
 			if ((ctx = nni_list_first(&s->recv_queue)) == NULL) {
 				// No one waiting to receive yet, putting msg
 				// into lmq
-				mqtt_pipe_recv_msgq_putq(p, msg);
+				if (mqtt_pipe_recv_msgq_putq(p, msg) != 0)
+					conn_param_free(s->cparam);
 				nni_mtx_unlock(&s->mtx);
 				log_warn("Warning: no ctx found!! create more "
 				         "ctxs!");
@@ -800,9 +800,10 @@ mqtt_recv_cb(void *arg)
 		if ((ctx = nni_list_first(&s->recv_queue)) == NULL) {
 			// No one waiting to receive yet, putting msg
 			// into lmq
-			mqtt_pipe_recv_msgq_putq(p, cached_msg);
+			if (mqtt_pipe_recv_msgq_putq(p, cached_msg) != 0)
+				conn_param_free(s->cparam);
 			nni_mtx_unlock(&s->mtx);
-			// nni_println("ERROR: no ctx found!! create more ctxs!");
+			log_warn("ERROR: no ctx found! msg queue full! QoS2 msg lost!");
 			return;
 		}
 		nni_list_remove(&s->recv_queue, ctx);
@@ -825,7 +826,8 @@ mqtt_recv_cb(void *arg)
 			if ((ctx = nni_list_first(&s->recv_queue)) == NULL) {
 				// No one waiting to receive yet, putting msg
 				// into lmq
-				mqtt_pipe_recv_msgq_putq(p, msg);
+				if (mqtt_pipe_recv_msgq_putq(p, msg) != 0)
+					conn_param_free(s->cparam);
 				nni_mtx_unlock(&s->mtx);
 				// nni_println("ERROR: no ctx found!! create more ctxs!");
 				return;
@@ -838,7 +840,6 @@ mqtt_recv_cb(void *arg)
 			nni_aio_finish(user_aio, 0, 0);
 			return;
 		} else {
-			//TODO check if this packetid already there
 			packet_id = nni_mqtt_msg_get_publish_packet_id(msg);
 			if ((cached_msg = nni_id_get(
 				         &p->recv_unack, packet_id)) != NULL) {
@@ -848,6 +849,7 @@ mqtt_recv_cb(void *arg)
 					log_error(
 					    "packet id %d duplicates in", packet_id);
 					nni_msg_free(cached_msg);
+					conn_param_free(s->cparam);
 					// nni_id_remove(&pipe->nano_qos_db,
 					// pid);
 				}
