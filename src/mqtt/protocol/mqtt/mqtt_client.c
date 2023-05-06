@@ -502,6 +502,7 @@ mqtt_pipe_close(void *arg)
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
 	nni_aio     *user_aio;
+	nng_msg     *msg;
 
 	nni_mtx_lock(&s->mtx);
 	nni_atomic_set_bool(&p->closed, true);
@@ -558,6 +559,17 @@ mqtt_pipe_close(void *arg)
 		nni_msg_free(tmsg);
 		conn_param_free(s->cparam);
 	}
+
+	/*
+	while (!nni_lmq_empty(&p->recv_messages)) {
+		nni_lmq_get(&p->recv_messages, &msg);
+		packet_type_t packet_type = nni_mqtt_msg_get_packet_type(msg);
+		if (packet_type == NNG_MQTT_CONNACK || packet_type == NNG_MQTT_PUBLISH)
+			conn_param_free(s->cparam);
+		nni_msg_free(msg);
+	}
+	*/
+
 #endif
 	nni_mtx_unlock(&s->mtx);
 }
