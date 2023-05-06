@@ -140,11 +140,6 @@ mqtt_sock_fini(void *arg)
 #endif
 	mqtt_ctx_fini(&s->master);
 
-#ifdef NNG_HAVE_MQTT_BROKER
-	if (s->cparam != NULL)
-		conn_param_free(s->cparam);
-#endif
-
 	nni_mtx_fini(&s->mtx);
 }
 
