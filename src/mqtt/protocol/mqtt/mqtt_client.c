@@ -502,6 +502,7 @@ mqtt_pipe_close(void *arg)
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
 	nni_aio     *user_aio;
+	nng_msg     *msg;
 
 	nni_mtx_lock(&s->mtx);
 	nni_atomic_set_bool(&p->closed, true);
@@ -558,6 +559,7 @@ mqtt_pipe_close(void *arg)
 	}
 	// particular for NanoSDK in bridging
 	nni_lmq_flush_cp(&p->recv_messages, true);
+
 #endif
 	nni_mtx_unlock(&s->mtx);
 }
