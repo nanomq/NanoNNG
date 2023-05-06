@@ -588,7 +588,7 @@ trantest_mqtt_unsub_send(nng_socket sock, nng_mqtt_client *client, bool async)
 	}
 }
 
-void
+conn_param *
 trantest_mqtt_pub(nng_socket sock, bool no_broker)
 {
 	nng_msg *pubmsg;
@@ -611,10 +611,12 @@ trantest_mqtt_pub(nng_socket sock, bool no_broker)
 			nng_msg_free(msg);
 		}
 		conn_param_free(cp);
+		return cp;
 	}
+	return NULL;
 }
 
-void
+conn_param *
 trantest_mqtt_sub_recv(nng_socket sock)
 {
 	conn_param *cp = NULL;
@@ -644,6 +646,7 @@ trantest_mqtt_sub_recv(nng_socket sock)
 		}
 	}
 	conn_param_free(cp);
+	return cp;
 }
 
 void
@@ -657,6 +660,8 @@ trantest_mqtt_sub_pub(trantest *tt)
 		nng_dialer  subdialer;
 		nng_dialer  pubdialer;
 		nng_mqtt_client *client = NULL;
+		conn_param      *cp1     = NULL; //cp in repsock
+		conn_param      *cp2     = NULL; //cp in reqsock
 
 		client_connect(&tt->reqsock, &subdialer, url, MQTT_PROTOCOL_VERSION_v311);
 		client_connect(&tt->repsock, &pubdialer, url, MQTT_PROTOCOL_VERSION_v311);
@@ -669,11 +674,14 @@ trantest_mqtt_sub_pub(trantest *tt)
 		So((client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true)) != NULL);
 		trantest_mqtt_sub_send(tt->reqsock, client, true);
 		nng_msleep(200);// make sure the server recv sub msg before we send pub msg.
-		trantest_mqtt_pub(tt->repsock, true);
-		trantest_mqtt_sub_recv(tt->reqsock);
+		cp1 = trantest_mqtt_pub(tt->repsock, true);
+		cp2 = trantest_mqtt_sub_recv(tt->reqsock);
 		trantest_mqtt_unsub_send(tt->reqsock, client, true);
 		nng_mqtt_client_free(client, true);
-
+		nng_close(tt->repsock);
+		nng_close(tt->reqsock);
+		conn_param_free(cp1);
+		conn_param_free(cp2);
 	});
 }
 
@@ -689,6 +697,8 @@ trantest_mqttv5_sub_pub(trantest *tt)
 		nng_dialer  subdialer;
 		nng_dialer  pubdialer;
 		nng_mqtt_client *client = NULL;
+		conn_param      *cp1     = NULL; //cp in repsock
+		conn_param      *cp2     = NULL; //cp in reqsock
 
 		client_connect(&tt->reqsock, &subdialer, url, MQTT_PROTOCOL_VERSION_v5);
 		client_connect(&tt->repsock, &pubdialer, url, MQTT_PROTOCOL_VERSION_v5);
@@ -701,11 +711,15 @@ trantest_mqttv5_sub_pub(trantest *tt)
 		So((client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true)) != NULL);
 
 		trantest_mqtt_sub_send(tt->reqsock, client, true);
-		nng_msleep(200); // make sure the server recv sub msg before we send pub msg.
-		trantest_mqtt_pub(tt->repsock, true);
-		trantest_mqtt_sub_recv(tt->reqsock);
+		nng_msleep(200);// make sure the server recv sub msg before we send pub msg.
+		cp1 = trantest_mqtt_pub(tt->repsock, true);
+		cp2 = trantest_mqtt_sub_recv(tt->reqsock);
 		trantest_mqtt_unsub_send(tt->reqsock, client, true);
 		nng_mqtt_client_free(client, true);
+		nng_close(tt->repsock);
+		nng_close(tt->reqsock);
+		conn_param_free(cp1);
+		conn_param_free(cp2);
 	});
 }
 
