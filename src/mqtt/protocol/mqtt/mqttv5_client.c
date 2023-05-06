@@ -13,7 +13,6 @@
 #include "supplemental/mqtt/mqtt_qos_db_api.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "nng/mqtt/mqtt_client.h"
-#include "nng/protocol/mqtt/mqtt_parser.h"
 
 // MQTT client implementation.
 //
