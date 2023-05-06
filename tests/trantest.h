@@ -673,6 +673,7 @@ trantest_mqtt_sub_pub(trantest *tt)
 		trantest_mqtt_sub_recv(tt->reqsock);
 		trantest_mqtt_unsub_send(tt->reqsock, client, true);
 		nng_mqtt_client_free(client, true);
+
 	});
 }
 
@@ -1183,8 +1184,6 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 		// for previously pub msg
 		conn_param_free(cp);
 		// for offline event msg
-		conn_param_free(cp);
-		// final round
 		conn_param_free(cp);
 		nng_mqtt_client_free(client, true);
 	});
