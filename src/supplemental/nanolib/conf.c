@@ -2729,7 +2729,6 @@ conf_bride_content_parse(conf *nanomq_conf, conf_bridge *bridge,
 		node->name    = nng_strdup(group_names[i]);
 		node->sqlite  = &bridge->sqlite;
 		node_array[i] = node;
-		nanomq_conf->bridge_mode |= node->enable;
 	}
 	bridge->nodes = node_array;
 	free_bridge_group_names(group_names, group_count);
