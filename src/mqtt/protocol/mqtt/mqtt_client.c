@@ -554,7 +554,6 @@ mqtt_pipe_close(void *arg)
 	if (count == 0) {
 		log_warn("disconnect msg of bridging is lost due to no ctx "
 		            "on receving");
-		conn_param_free(s->cparam);
 		nni_msg_free(tmsg);
 		conn_param_free(s->cparam);
 	}
