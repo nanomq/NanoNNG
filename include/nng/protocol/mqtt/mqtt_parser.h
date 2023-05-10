@@ -136,9 +136,9 @@ NNG_DECL bool topic_filter(const char *origin, const char *input);
 NNG_DECL bool topic_filtern(const char *origin, const char *input, size_t n);
 
 NNG_DECL int nmq_auth_http_connect(conn_param *cparam, conf_auth_http *conf);
-NNG_DECL int nmq_auth_http_publish(
-    conn_param *cparam, bool is_sub, const char *topic, conf_auth_http *conf);
-NNG_DECL int nmq_auth_http_subscribe(conn_param *cparam, bool is_sub,
-    topic_queue *topics, conf_auth_http *conf);
+// NNG_DECL int nmq_auth_http_publish(
+//     conn_param *cparam, bool is_sub, const char *topic, conf_auth_http *conf);
+// NNG_DECL int nmq_auth_http_subscribe(conn_param *cparam, bool is_sub,
+//     topic_queue *topics, conf_auth_http *conf);
 
 #endif // NNG_MQTT_H
