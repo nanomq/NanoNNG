@@ -932,6 +932,7 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 		conf_bridge_node *node = NNI_ALLOC_STRUCT(node);
 		hocon_read_str(node, name, bridge_aws_node);
 		node->enable = true;
+		config->bridge_mode |= node->enable;
 
 		cJSON *jso_connector = hocon_get_obj("connector", bridge_aws_node);
 		conf_bridge_connector_parse_ver2(node, jso_connector);

@@ -21,16 +21,16 @@ static void conf_bridge_parse(conf *nanomq_conf, const char *path);
 static void conf_aws_bridge_parse(conf *nanomq_conf, const char *path);
 static void conf_bridge_init(conf_bridge *bridge);
 static void conf_bridge_destroy(conf_bridge *bridge);
-static void conf_bridge_node_parse_subs(
-    conf_bridge_node *node, const char *path, const char *name);
+static void conf_bridge_node_parse_subs(conf_bridge_node *node,
+    const char *path, const char *key_prefix, const char *name);
 static void conf_bridge_user_property_destroy(
     conf_user_property **prop, size_t sz);
-static void conf_bridge_subscription_properties_parse(
-    conf_bridge_node *node, const char *path, const char *name);
-static void conf_bridge_connect_properties_parse(
-    conf_bridge_node *node, const char *path, const char *name);
-static void conf_bridge_connect_will_properties_parse(
-    conf_bridge_node *node, const char *path, const char *name);
+static void conf_bridge_subscription_properties_parse(conf_bridge_node *node,
+    const char *path, const char *key_prefix, const char *name);
+static void conf_bridge_connect_properties_parse(conf_bridge_node *node,
+    const char *path, const char *key_prefix, const char *name);
+static void conf_bridge_connect_will_properties_parse(conf_bridge_node *node,
+    const char *path, const char *key_prefix, const char *name);
 static void print_bridge_conf(conf_bridge *bridge, const char *prefix);
 static void conf_auth_init(conf_auth *auth);
 static void conf_auth_parse(conf_auth *auth, const char *path);
@@ -2072,8 +2072,8 @@ conf_bridge_user_property_parse_ver2(
 }
 
 static void
-conf_bridge_subscription_properties_parse(
-    conf_bridge_node *node, const char *path, const char *name)
+conf_bridge_subscription_properties_parse(conf_bridge_node *node,
+    const char *path, const char *key_prefix, const char *name)
 {
 	FILE *fp;
 	if ((fp = fopen(path, "r")) == NULL) {
@@ -2085,7 +2085,6 @@ conf_bridge_subscription_properties_parse(
 	conf_bridge_sub_properties_init(node->sub_properties);
 	conf_bridge_sub_properties *sub_prop = node->sub_properties;
 
-	char   key_prefix[] = "bridge.mqtt.";
 	char * line         = NULL;
 	size_t sz           = 0;
 	char * value        = NULL;
@@ -2124,8 +2123,8 @@ conf_bridge_subscription_properties_parse(
 }
 
 static void
-conf_bridge_connect_will_properties_parse(
-    conf_bridge_node *node, const char *path, const char *name)
+conf_bridge_connect_will_properties_parse(conf_bridge_node *node,
+    const char *path, const char *key_prefix, const char *name)
 {
 		FILE *fp;
 	if ((fp = fopen(path, "r")) == NULL) {
@@ -2136,7 +2135,6 @@ conf_bridge_connect_will_properties_parse(
 	node->will_properties = NNI_ALLOC_STRUCT(node->will_properties);
 	conf_bridge_conn_will_properties *will_prop = node->will_properties;
 
-	char   key_prefix[] = "bridge.mqtt.";
 	char * line         = NULL;
 	size_t sz           = 0;
 	char * value        = NULL;
@@ -2202,8 +2200,8 @@ conf_bridge_connect_will_properties_parse(
 }
 
 static void
-conf_bridge_connect_properties_parse(
-    conf_bridge_node *node, const char *path, const char *name)
+conf_bridge_connect_properties_parse(conf_bridge_node *node, const char *path,
+    const char *key_prefix, const char *name)
 {
 	FILE *fp;
 	if ((fp = fopen(path, "r")) == NULL) {
@@ -2215,7 +2213,6 @@ conf_bridge_connect_properties_parse(
 	conf_bridge_conn_properties_init(node->conn_properties);
 	conf_bridge_conn_properties *con_prop = node->conn_properties;
 
-	char   key_prefix[] = "bridge.mqtt.";
 	char * line         = NULL;
 	size_t sz           = 0;
 	char * value        = NULL;
@@ -2287,7 +2284,7 @@ conf_bridge_connect_properties_parse(
 
 static void
 conf_bridge_node_parse_subs(
-    conf_bridge_node *node, const char *path, const char *name)
+    conf_bridge_node *node, const char *path, const char *prefix, const char *name)
 {
 	FILE *fp;
 	if ((fp = fopen(path, "r")) == NULL) {
@@ -2309,7 +2306,10 @@ conf_bridge_node_parse_subs(
 	node->sub_count = 0;
 	while (nano_getline(&line, &sz, fp) != -1) {
 		snprintf(topic_key, 128,
-		    "bridge.mqtt.%s.subscription.%ld.topic", name, sub_index);
+		    "%s%s.subscription.%ld.topic", prefix, name,
+		    sub_index);
+		printf("line: %s\n", line);
+		printf("topic_key: %s\n", topic_key);
 		if (!get_topic &&
 		    (value = get_conf_value(line, sz, topic_key)) != NULL) {
 			topic     = value;
@@ -2317,8 +2317,9 @@ conf_bridge_node_parse_subs(
 			goto check;
 		}
 
-		snprintf(qos_key, 128, "bridge.mqtt.%s.subscription.%ld.qos",
+		snprintf(qos_key, 128, "%s%s.subscription.%ld.qos", prefix,
 		    name, sub_index);
+		printf("qos_key: %s\n", qos_key);
 		if (!get_qos &&
 		    (value = get_conf_value(line, sz, qos_key)) != NULL) {
 			qos = (uint8_t) atoi(value);
@@ -2516,7 +2517,7 @@ get_bridge_group_names(const char *path, const char *prefix, size_t *count)
 }
 
 static conf_bridge_node *
-conf_bridge_node_parse_with_name(const char *path, const char *name)
+conf_bridge_node_parse_with_name(const char *path,const char *key_prefix, const char *name)
 {
 	FILE *fp;
 	if ((fp = fopen(path, "r")) == NULL) {
@@ -2526,7 +2527,6 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 
 	conf_bridge_node *node = calloc(1, sizeof(conf_bridge_node));
 	conf_bridge_node_init(node);
-	char   key_prefix[] = "bridge.mqtt.";
 	char * line         = NULL;
 	size_t sz           = 0;
 	char * value        = NULL;
@@ -2678,15 +2678,17 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 			node->will_flag = true;
 
 	if (node->proto_ver == MQTT_PROTOCOL_VERSION_v5) {
-		conf_bridge_connect_properties_parse(node, path, name);
+		conf_bridge_connect_properties_parse(
+		    node, path, key_prefix, name);
 		if (node->will_topic != NULL && node->will_payload != NULL) {
 			conf_bridge_connect_will_properties_parse(
-			    node, path, name);
+			    node, path, key_prefix, name);
 		}
-		conf_bridge_subscription_properties_parse(node, path, name);
+		conf_bridge_subscription_properties_parse(
+		    node, path, key_prefix, name);
 	}
 
-	conf_bridge_node_parse_subs(node, path, name);
+	conf_bridge_node_parse_subs(node, path, key_prefix, name);
 
 	sz            = strlen(name) + 2;
 	char *prefix2 = nng_zalloc(sz);
@@ -2698,7 +2700,7 @@ conf_bridge_node_parse_with_name(const char *path, const char *name)
 }
 
 static void
-conf_bride_content_parse(conf *nanomq_conf, conf_bridge *bridge,
+conf_bridge_content_parse(conf *nanomq_conf, conf_bridge *bridge,
     const char *prefix, const char *path)
 {
 	// 1. parse sqlite config from nanomq_bridge.conf
@@ -2722,13 +2724,17 @@ conf_bride_content_parse(conf *nanomq_conf, conf_bridge *bridge,
 	conf_bridge_node **node_array =
 	    calloc(group_count, sizeof(conf_bridge_node *));
 
+	char key_prefix[100] = {0};
+	snprintf(key_prefix, 100, "%sbridge.mqtt.", prefix);
+
 	bridge->count = group_count;
 	for (size_t i = 0; i < group_count; i++) {
-		conf_bridge_node *node =
-		    conf_bridge_node_parse_with_name(path, group_names[i]);
+		conf_bridge_node *node = conf_bridge_node_parse_with_name(
+		    path, key_prefix, group_names[i]);
 		node->name    = nng_strdup(group_names[i]);
 		node->sqlite  = &bridge->sqlite;
 		node_array[i] = node;
+		nanomq_conf->bridge_mode |= node->enable;
 	}
 	bridge->nodes = node_array;
 	free_bridge_group_names(group_names, group_count);
@@ -2738,7 +2744,7 @@ static void
 conf_bridge_parse(conf *nanomq_conf, const char *path)
 {
 	conf_bridge *bridge = &nanomq_conf->bridge;
-	conf_bride_content_parse(nanomq_conf, bridge, "", path);
+	conf_bridge_content_parse(nanomq_conf, bridge, "", path);
 }
 
 static void
@@ -2746,7 +2752,7 @@ conf_aws_bridge_parse(conf *nanomq_conf, const char *path)
 {
 #if defined(SUPP_AWS_BRIDGE)
 	conf_bridge *bridge = &nanomq_conf->aws_bridge;
-	conf_bride_content_parse(nanomq_conf, bridge, "aws.", path);
+	conf_bridge_content_parse(nanomq_conf, bridge, "aws.", path);
 #else
 	NNI_ARG_UNUSED(nanomq_conf);
 	NNI_ARG_UNUSED(path);
