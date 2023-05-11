@@ -909,6 +909,7 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 	cJSON_ArrayForEach(node_item, node_array)
 	{
 		conf_bridge_node *node = NNI_ALLOC_STRUCT(node);
+		nng_mtx_alloc(&node->mtx);
 		conf_bridge_node_init(node);
 		conf_bridge_node_parse(node, bridge_sqlite, node_item);
 		cvector_push_back(config->bridge.nodes, node);

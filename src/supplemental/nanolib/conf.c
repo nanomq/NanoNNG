@@ -2523,6 +2523,7 @@ conf_bridge_node_parse_with_name(const char *path,const char *key_prefix, const 
 	}
 
 	conf_bridge_node *node = calloc(1, sizeof(conf_bridge_node));
+	nng_mtx_alloc(&node->mtx);
 	conf_bridge_node_init(node);
 	char * line         = NULL;
 	size_t sz           = 0;
@@ -2884,6 +2885,7 @@ conf_bridge_destroy(conf_bridge *bridge)
 		for (size_t i = 0; i < bridge->count; i++) {
 			conf_bridge_node *node = bridge->nodes[i];
 			conf_bridge_node_destroy(node);
+			nng_mtx_free(node->mtx);
 			free(node);
 		}
 		bridge->count = 0;
