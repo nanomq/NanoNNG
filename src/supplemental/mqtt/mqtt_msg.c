@@ -208,6 +208,16 @@ nni_mqtt_msg_set_publish_topic(nni_msg *msg, const char *topic)
 	return rv;
 }
 
+// only for internal use (aws bridge)
+int
+nni_mqtt_msg_set_publish_topic_len(nni_msg *msg, uint32_t len)
+{
+	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
+	proto_data->var_header.publish.topic_name.length = len;
+	proto_data->is_copied = true;
+	return 0;
+}
+
 const char *
 nni_mqtt_msg_get_publish_topic(nni_msg *msg, uint32_t *topic_len)
 {

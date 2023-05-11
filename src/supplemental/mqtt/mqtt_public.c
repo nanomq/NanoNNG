@@ -325,6 +325,12 @@ nng_mqtt_msg_set_publish_topic(nng_msg *msg, const char *topic)
 	return nni_mqtt_msg_set_publish_topic(msg, topic);
 }
 
+int
+nng_mqtt_msg_set_publish_topic_len(nng_msg *msg, uint32_t len)
+{
+	return nni_mqtt_msg_set_publish_topic_len(msg, len);
+}
+
 const char *
 nng_mqtt_msg_get_publish_topic(nng_msg *msg, uint32_t *topic_len)
 {

@@ -33,7 +33,7 @@ struct nng_msg {
 	uint32_t           m_pipe; // set on receive
 	nni_atomic_int     m_refcnt;
 	// FOR NANOMQ
-	size_t           remaining_len;
+	size_t           remaining_len; // TODO replace it with body len
 	uint8_t          CMD_TYPE;
 	uint8_t *        payload_ptr; // payload
 	nni_time         times;		  // the time msg arrives
