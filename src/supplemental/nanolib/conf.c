@@ -852,8 +852,8 @@ conf_init(conf *nanomq_conf)
 	conf_rule_init(&nanomq_conf->rule_eng);
 #endif
 
-	nanomq_conf->max_packet_size        = (1024 * 1024);
-	nanomq_conf->client_max_packet_size = (1024 * 1024);
+	nanomq_conf->max_packet_size        = (10240 * 1024);
+	nanomq_conf->client_max_packet_size = (10240 * 1024);
 
 	int ncpu = nni_plat_ncpu();
 
