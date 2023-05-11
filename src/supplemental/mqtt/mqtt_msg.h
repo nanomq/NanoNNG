@@ -246,6 +246,7 @@ typedef struct mqtt_msg_t {
 	                         packetType and packetFlags)  may be used to
 	                         jump the point where the actual data starts */
 	bool is_decoded : 1; /* message is obtained from decoded or encoded */
+	// is_copied is for bridging(if true needs free)
 	bool is_copied : 1;  /* indicates string or array members are copied */
 	bool initialized : 1; /* message is decoded or encoded*/
 	uint8_t _unused : 1;
@@ -367,6 +368,7 @@ NNG_DECL bool        nni_mqtt_msg_get_publish_retain(nni_msg *);
 NNG_DECL void        nni_mqtt_msg_set_publish_dup(nni_msg *, bool);
 NNG_DECL bool        nni_mqtt_msg_get_publish_dup(nni_msg *);
 NNG_DECL int         nni_mqtt_msg_set_publish_topic(nni_msg *, const char *);
+NNG_DECL int         nni_mqtt_msg_set_publish_topic_len(nni_msg *, uint32_t);
 NNG_DECL const char *nni_mqtt_msg_get_publish_topic(nni_msg *, uint32_t *);
 NNG_DECL void        nni_mqtt_msg_set_publish_packet_id(nni_msg *, uint16_t);
 NNG_DECL uint16_t    nni_mqtt_msg_get_publish_packet_id(nni_msg *);
