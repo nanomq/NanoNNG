@@ -11,6 +11,7 @@
 #include "nng/nng.h"
 #include "rule.h"
 #include "acl_conf.h"
+#include "nng/supplemental/util/platform.h"
 
 #define PID_PATH_NAME "/tmp/nanomq/nanomq.pid"
 #define CONF_PATH_NAME "/etc/nanomq.conf"
@@ -260,6 +261,8 @@ struct conf_bridge_node {
 	nng_aio     *bridge_reload_aio; // TODO nng_cv would be better
 	nng_aio     *bridge_reload_aio2; // Reload the bridge related to the current config
 	void        *bridge_arg;
+
+	nng_mtx     *mtx;
 
 	bool    will_flag;
 	char *  will_payload;
