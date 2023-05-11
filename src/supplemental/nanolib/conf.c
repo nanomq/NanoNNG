@@ -2427,6 +2427,12 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->will_retain  = false;
 
 	node->sqlite         = NULL;
+
+	node->bridge_aio     = NULL;
+	node->bridge_reload_aio = NULL;
+	node->bridge_reload_aio2 = NULL;
+	node->bridge_arg = NULL;
+
 #if defined(SUPP_QUIC)
 	node->multi_stream       = false;
 	node->hybrid             = false;
