@@ -141,8 +141,8 @@ compose_url(char *head, char *address)
 			break;                                          \
 		}                                                       \
 		if (cJSON_IsNumber(jso_key)) {                          \
-			if (jso_key->valueint > 0)                      \
-				(structure)->field = jso_key->valueint; \
+			if (jso_key->valuedouble > 0)                      \
+				(structure)->field = jso_key->valuedouble; \
 		}                                                       \
 	} while (0);
 
