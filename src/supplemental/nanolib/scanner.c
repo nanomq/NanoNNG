@@ -1,6 +1,6 @@
-#line 2 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/scanner.c"
+#line 2 "nanomq/nng/src/supplemental/nanolib/scanner.c"
 
-#line 4 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/scanner.c"
+#line 4 "nanomq/nng/src/supplemental/nanolib/scanner.c"
 
 #define  YY_INT_ALIGNED short int
 
@@ -519,9 +519,9 @@ char *yytext;
 #include <string.h>
 #include "nng/supplemental/nanolib/parser.h"
 
-#line 523 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/scanner.c"
+#line 523 "nanomq/nng/src/supplemental/nanolib/scanner.c"
 /* %option debug */
-#line 525 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/scanner.c"
+#line 525 "nanomq/nng/src/supplemental/nanolib/scanner.c"
 
 #define INITIAL 0
 
@@ -729,7 +729,7 @@ YY_DECL
 	{
 #line 51 "scanner.l"
 
-#line 744 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/scanner.c"
+#line 744 "nanomq/nng/src/supplemental/nanolib/scanner.c"
 
 	while ( /*CONSTCOND*/1 )		/* loops until end-of-file is reached */
 		{
@@ -866,7 +866,7 @@ YY_RULE_SETUP
 case 16:
 YY_RULE_SETUP
 #line 67 "scanner.l"
-{ yylval.intval  = atoi(yytext); return INTEGER; } 
+{ yylval.intval  = atoll(yytext); return INTEGER; } 
 	YY_BREAK
 case 17:
 YY_RULE_SETUP
@@ -898,7 +898,7 @@ YY_RULE_SETUP
 #line 74 "scanner.l"
 ECHO;
 	YY_BREAK
-#line 913 "/home/lee/workspace/nanomq/nng/src/supplemental/nanolib/scanner.c"
+#line 913 "nanomq/nng/src/supplemental/nanolib/scanner.c"
 case YY_STATE_EOF(INITIAL):
 	yyterminate();
 
