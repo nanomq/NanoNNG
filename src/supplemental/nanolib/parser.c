@@ -77,7 +77,6 @@
 // #define YYDEBUG 1
 
 extern int yylex();
-
 struct jso_kv {
         char *key;
         cJSON *val;
@@ -473,18 +472,18 @@ union yyalloc
 #endif /* !YYCOPY_NEEDED */
 
 /* YYFINAL -- State number of the termination state.  */
-#define YYFINAL  30
+#define YYFINAL  31
 /* YYLAST -- Last index in YYTABLE.  */
-#define YYLAST   94
+#define YYLAST   118
 
 /* YYNTOKENS -- Number of terminals.  */
 #define YYNTOKENS  20
 /* YYNNTS -- Number of nonterminals.  */
 #define YYNNTS  8
 /* YYNRULES -- Number of rules.  */
-#define YYNRULES  29
+#define YYNRULES  30
 /* YYNSTATES -- Number of states.  */
-#define YYNSTATES  45
+#define YYNSTATES  46
 
 /* YYMAXUTOK -- Last valid token kind.  */
 #define YYMAXUTOK   274
@@ -535,9 +534,10 @@ static const yytype_int8 yytranslate[] =
 /* YYRLINE[YYN] -- Source line where rule number YYN was defined.  */
 static const yytype_int8 yyrline[] =
 {
-       0,    57,    57,    60,    61,    62,    68,    69,    70,    71,
-      72,    73,    74,    75,    76,    79,    80,    81,    84,    89,
-      90,    93,    99,   100,   101,   104,   105,   108,   109,   110
+       0,    61,    61,    62,    65,    66,    67,    73,    74,    75,
+      76,    77,    78,    79,    80,    81,    84,    85,    86,    89,
+      95,    96,    99,   105,   106,   107,   110,   111,   114,   115,
+     116
 };
 #endif
 
@@ -567,7 +567,7 @@ yysymbol_name (yysymbol_kind_t yysymbol)
 }
 #endif
 
-#define YYPACT_NINF (-11)
+#define YYPACT_NINF (-25)
 
 #define yypact_value_is_default(Yyn) \
   ((Yyn) == YYPACT_NINF)
@@ -581,11 +581,11 @@ yysymbol_name (yysymbol_kind_t yysymbol)
    STATE-NUM.  */
 static const yytype_int8 yypact[] =
 {
-      65,    18,    48,   -11,   -11,   -11,    -6,    84,   -11,   -11,
-     -11,   -11,   -11,    28,   -11,   -11,    11,   -11,   -11,   -11,
-      -6,    84,    81,   -11,   -11,    -2,    65,    65,    65,    65,
-     -11,     7,   -11,   -11,   -11,    65,   -11,   -11,    29,    31,
-     -11,   -11,   -11,   -11,   -11
+       1,   -25,    19,    66,   -25,   -25,   -25,    -7,   110,   -25,
+     -25,   -25,   -25,   -25,     3,   -25,   -25,    97,   -25,   -25,
+     -25,    -7,   110,    99,   -25,   -25,    32,    83,    83,    83,
+      83,   -25,    -5,   -25,   -25,   -25,    83,   -25,   -25,    17,
+      49,   -25,   -25,   -25,   -25,   -25
 };
 
 /* YYDEFACT[STATE-NUM] -- Default reduction number in state STATE-NUM.
@@ -593,23 +593,23 @@ static const yytype_int8 yypact[] =
    means the default is an error.  */
 static const yytype_int8 yydefact[] =
 {
-       0,     0,     0,     9,    10,    11,     5,     6,    12,    14,
-      13,     7,     8,     0,     2,     3,    17,    18,     4,    15,
-       0,     0,     0,    25,    27,     0,     0,     0,     0,     0,
-       1,     0,    20,    16,    26,     0,    29,    21,     0,     0,
-      22,    19,    28,    23,    24
+       0,     3,     0,     0,    10,    11,    12,     6,     7,    13,
+      15,    14,     8,     9,     0,     2,     4,    18,    19,     5,
+      16,     0,     0,     0,    26,    28,     0,     0,     0,     0,
+       0,     1,     0,    21,    17,    27,     0,    30,    22,     0,
+       0,    23,    20,    29,    24,    25
 };
 
 /* YYPGOTO[NTERM-NUM].  */
 static const yytype_int8 yypgoto[] =
 {
-     -11,   -11,     0,   -11,    44,   -10,   -11,     4
+     -25,   -25,     0,   -25,    20,    -8,   -25,   -24
 };
 
 /* YYDEFGOTO[NTERM-NUM].  */
 static const yytype_int8 yydefgoto[] =
 {
-       0,    13,    24,    15,    16,    17,    18,    25
+       0,    14,    25,    16,    17,    18,    19,    26
 };
 
 /* YYTABLE[YYPACT[STATE-NUM]] -- What to do in state STATE-NUM.  If
@@ -617,57 +617,63 @@ static const yytype_int8 yydefgoto[] =
    number is the opposite.  If YYTABLE_NINF, syntax error.  */
 static const yytype_int8 yytable[] =
 {
-      14,     1,    26,     2,    34,    35,    32,     3,     4,     5,
-       6,     7,    32,     8,     9,    10,    11,    12,    31,    20,
-      21,    41,    19,    20,    21,    36,    37,    38,    30,    40,
-      20,    21,    39,    43,     1,    42,     2,    44,    35,    36,
-       3,     4,     5,     6,     7,    22,     8,     9,    10,    11,
-      12,     1,     0,     2,    23,     0,     0,     3,     4,     5,
-       6,     7,     0,     8,     9,    10,    11,    12,     1,     0,
-       2,     0,     0,     0,     3,     4,     5,     6,     7,     0,
-       8,     9,    10,    11,    12,    33,     0,    27,    31,    28,
-       0,     0,    29,    20,    21
+      15,    27,     1,    31,     2,    40,     3,    21,    22,    33,
+       4,     5,     6,     7,     8,    33,     9,    10,    11,    12,
+      13,    44,    23,    20,    42,     0,    37,    38,    39,     0,
+      41,    21,    22,     0,     0,     2,    43,     3,    35,    36,
+      37,     4,     5,     6,     7,     8,     0,     9,    10,    11,
+      12,    13,     2,     0,     3,    45,    36,     0,     4,     5,
+       6,     7,     8,     0,     9,    10,    11,    12,    13,     2,
+       0,     3,    24,     0,     0,     4,     5,     6,     7,     8,
+       0,     9,    10,    11,    12,    13,     2,     0,     3,     0,
+       0,     0,     4,     5,     6,     7,     8,     0,     9,    10,
+      11,    12,    13,    34,    32,     0,    32,     0,     0,    21,
+      22,    21,    22,    28,     0,    29,     0,     0,    30
 };
 
 static const yytype_int8 yycheck[] =
 {
-       0,     3,     8,     5,     6,     7,    16,     9,    10,    11,
-      12,    13,    22,    15,    16,    17,    18,    19,     7,    12,
-      13,    31,     4,    12,    13,    25,    26,    27,     0,    29,
-      12,    13,    28,     4,     3,    35,     5,     6,     7,    39,
-       9,    10,    11,    12,    13,     1,    15,    16,    17,    18,
-      19,     3,    -1,     5,     6,    -1,    -1,     9,    10,    11,
-      12,    13,    -1,    15,    16,    17,    18,    19,     3,    -1,
-       5,    -1,    -1,    -1,     9,    10,    11,    12,    13,    -1,
-      15,    16,    17,    18,    19,     4,    -1,     3,     7,     5,
-      -1,    -1,     8,    12,    13
+       0,     8,     1,     0,     3,    29,     5,    12,    13,    17,
+       9,    10,    11,    12,    13,    23,    15,    16,    17,    18,
+      19,     4,     2,     4,    32,    -1,    26,    27,    28,    -1,
+      30,    12,    13,    -1,    -1,     3,    36,     5,     6,     7,
+      40,     9,    10,    11,    12,    13,    -1,    15,    16,    17,
+      18,    19,     3,    -1,     5,     6,     7,    -1,     9,    10,
+      11,    12,    13,    -1,    15,    16,    17,    18,    19,     3,
+      -1,     5,     6,    -1,    -1,     9,    10,    11,    12,    13,
+      -1,    15,    16,    17,    18,    19,     3,    -1,     5,    -1,
+      -1,    -1,     9,    10,    11,    12,    13,    -1,    15,    16,
+      17,    18,    19,     4,     7,    -1,     7,    -1,    -1,    12,
+      13,    12,    13,     3,    -1,     5,    -1,    -1,     8
 };
 
 /* YYSTOS[STATE-NUM] -- The symbol kind of the accessing symbol of
    state STATE-NUM.  */
 static const yytype_int8 yystos[] =
 {
-       0,     3,     5,     9,    10,    11,    12,    13,    15,    16,
-      17,    18,    19,    21,    22,    23,    24,    25,    26,     4,
-      12,    13,    24,     6,    22,    27,     8,     3,     5,     8,
-       0,     7,    25,     4,     6,     7,    22,    22,    22,    27,
-      22,    25,    22,     4,     6
+       0,     1,     3,     5,     9,    10,    11,    12,    13,    15,
+      16,    17,    18,    19,    21,    22,    23,    24,    25,    26,
+       4,    12,    13,    24,     6,    22,    27,     8,     3,     5,
+       8,     0,     7,    25,     4,     6,     7,    22,    22,    22,
+      27,    22,    25,    22,     4,     6
 };
 
 /* YYR1[RULE-NUM] -- Symbol kind of the left-hand side of rule RULE-NUM.  */
 static const yytype_int8 yyr1[] =
 {
-       0,    20,    21,    22,    22,    22,    22,    22,    22,    22,
-      22,    22,    22,    22,    22,    23,    23,    23,    24,    24,
-      24,    25,    25,    25,    25,    26,    26,    27,    27,    27
+       0,    20,    21,    21,    22,    22,    22,    22,    22,    22,
+      22,    22,    22,    22,    22,    22,    23,    23,    23,    24,
+      24,    24,    25,    25,    25,    25,    26,    26,    27,    27,
+      27
 };
 
 /* YYR2[RULE-NUM] -- Number of symbols on the right-hand side of rule RULE-NUM.  */
 static const yytype_int8 yyr2[] =
 {
        0,     2,     1,     1,     1,     1,     1,     1,     1,     1,
-       1,     1,     1,     1,     1,     2,     3,     1,     1,     3,
-       2,     3,     3,     4,     4,     2,     3,     1,     3,     2
+       1,     1,     1,     1,     1,     1,     2,     3,     1,     1,
+       3,     2,     3,     3,     4,     4,     2,     3,     1,     3,
+       2
 };
 
 
@@ -870,7 +876,65 @@ yydestruct (const char *yymsg,
   YY_SYMBOL_PRINT (yymsg, yykind, yyvaluep, yylocationp);
 
   YY_IGNORE_MAYBE_UNINITIALIZED_BEGIN
-  YY_USE (yykind);
+  switch (yykind)
+    {
+    case YYSYMBOL_STRING: /* STRING  */
+#line 57 "/home/lee/workspace/hocon/parser.y"
+            { free(((*yyvaluep).strval)); }
+#line 885 "/home/lee/workspace/hocon/build/parser.c"
+        break;
+
+    case YYSYMBOL_USTRING: /* USTRING  */
+#line 57 "/home/lee/workspace/hocon/parser.y"
+            { free(((*yyvaluep).strval)); }
+#line 891 "/home/lee/workspace/hocon/build/parser.c"
+        break;
+
+    case YYSYMBOL_BYTESIZE: /* BYTESIZE  */
+#line 57 "/home/lee/workspace/hocon/parser.y"
+            { free(((*yyvaluep).strval)); }
+#line 897 "/home/lee/workspace/hocon/build/parser.c"
+        break;
+
+    case YYSYMBOL_PERCENT: /* PERCENT  */
+#line 57 "/home/lee/workspace/hocon/parser.y"
+            { free(((*yyvaluep).strval)); }
+#line 903 "/home/lee/workspace/hocon/build/parser.c"
+        break;
+
+    case YYSYMBOL_DURATION: /* DURATION  */
+#line 57 "/home/lee/workspace/hocon/parser.y"
+            { free(((*yyvaluep).strval)); }
+#line 909 "/home/lee/workspace/hocon/build/parser.c"
+        break;
+
+    case YYSYMBOL_value: /* value  */
+#line 56 "/home/lee/workspace/hocon/parser.y"
+            { cJSON_Delete(((*yyvaluep).jsonval)); }
+#line 915 "/home/lee/workspace/hocon/build/parser.c"
+        break;
+
+    case YYSYMBOL_members: /* members  */
+#line 56 "/home/lee/workspace/hocon/parser.y"
+            { cJSON_Delete(((*yyvaluep).jsonval)); }
+#line 921 "/home/lee/workspace/hocon/build/parser.c"
+        break;
+
+    case YYSYMBOL_member: /* member  */
+#line 55 "/home/lee/workspace/hocon/parser.y"
+            { jso_kv_free(((*yyvaluep).jkval)); }
+#line 927 "/home/lee/workspace/hocon/build/parser.c"
+        break;
+
+    case YYSYMBOL_values: /* values  */
+#line 56 "/home/lee/workspace/hocon/parser.y"
+            { cJSON_Delete(((*yyvaluep).jsonval)); }
+#line 933 "/home/lee/workspace/hocon/build/parser.c"
+        break;
+
+      default:
+        break;
+    }
   YY_IGNORE_MAYBE_UNINITIALIZED_END
 }
 
@@ -1138,19 +1202,19 @@ yyreduce:
 #line 1138 "nng/src/supplemental/nanolib/parser.c"
     break;
 
-  case 3: /* value: object  */
-#line 57 "parser.y"
+  case 4: /* value: object  */
+#line 65 "parser.y"
                    { (yyval.jsonval) = (yyvsp[0].jsonval);}
-#line 1141 "nng/src/supplemental/nanolib/parser.c"
+#line 1209 "nng/src/supplemental/nanolib/parser.c"
     break;
 
-  case 4: /* value: array  */
+  case 5: /* value: array  */
 #line 58 "parser.y"
                    { (yyval.jsonval) = (yyvsp[0].jsonval);}
 #line 1147 "nng/src/supplemental/nanolib/parser.c"
     break;
 
-  case 5: /* value: STRING  */
+  case 6: /* value: STRING  */
 #line 59 "parser.y"
                    { 
                         char *str = remove_escape((yyvsp[0].strval));
@@ -1161,101 +1225,102 @@ yyreduce:
 #line 1158 "nng/src/supplemental/nanolib/parser.c"
     break;
 
-  case 6: /* value: USTRING  */
+  case 7: /* value: USTRING  */
 #line 65 "parser.y"
                    { (yyval.jsonval) = cJSON_CreateString((yyvsp[0].strval)); free((yyvsp[0].strval));}
 #line 1164 "nng/src/supplemental/nanolib/parser.c"
     break;
 
-  case 7: /* value: DECIMAL  */
+  case 8: /* value: DECIMAL  */
 #line 66 "parser.y"
                    { (yyval.jsonval) = cJSON_CreateNumber((yyvsp[0].floatval)); }
 #line 1170 "nng/src/supplemental/nanolib/parser.c"
     break;
 
-  case 8: /* value: INTEGER  */
+  case 9: /* value: INTEGER  */
 #line 67 "parser.y"
                    { (yyval.jsonval) = cJSON_CreateNumber((yyvsp[0].intval)); }
 #line 1176 "nng/src/supplemental/nanolib/parser.c"
     break;
 
-  case 9: /* value: VTRUE  */
+  case 10: /* value: VTRUE  */
 #line 68 "parser.y"
                    { (yyval.jsonval) = cJSON_CreateTrue(); }
 #line 1182 "nng/src/supplemental/nanolib/parser.c"
     break;
 
-  case 10: /* value: VFALSE  */
+  case 11: /* value: VFALSE  */
 #line 69 "parser.y"
                    { (yyval.jsonval) = cJSON_CreateFalse(); }
 #line 1188 "nng/src/supplemental/nanolib/parser.c"
     break;
 
-  case 11: /* value: VNULL  */
+  case 12: /* value: VNULL  */
 #line 70 "parser.y"
                    { (yyval.jsonval) = cJSON_CreateNull(); }
 #line 1194 "nng/src/supplemental/nanolib/parser.c"
     break;
 
-  case 12: /* value: BYTESIZE  */
+  case 13: /* value: BYTESIZE  */
 #line 71 "parser.y"
                    { (yyval.jsonval) = cJSON_CreateString((yyvsp[0].strval)); free((yyvsp[0].strval));}
 #line 1200 "nng/src/supplemental/nanolib/parser.c"
     break;
 
-  case 13: /* value: DURATION  */
+  case 14: /* value: DURATION  */
 #line 72 "parser.y"
                    { (yyval.jsonval) = cJSON_CreateString((yyvsp[0].strval)); free((yyvsp[0].strval));}
 #line 1206 "nng/src/supplemental/nanolib/parser.c"
     break;
 
-  case 14: /* value: PERCENT  */
+  case 15: /* value: PERCENT  */
 #line 73 "parser.y"
                    { (yyval.jsonval) = cJSON_CreateString((yyvsp[0].strval)); free((yyvsp[0].strval));}
 #line 1212 "nng/src/supplemental/nanolib/parser.c"
     break;
 
-  case 15: /* object: LCURLY RCURLY  */
+  case 16: /* object: LCURLY RCURLY  */
 #line 76 "parser.y"
-                                { printf("[]\n");}
+                                { (yyval.jsonval) = NULL; printf("{}\n");}
 #line 1218 "nng/src/supplemental/nanolib/parser.c"
     break;
 
-  case 16: /* object: LCURLY members RCURLY  */
+  case 17: /* object: LCURLY members RCURLY  */
 #line 77 "parser.y"
                                 { (yyval.jsonval) = (yyvsp[-1].jsonval); }
 #line 1224 "nng/src/supplemental/nanolib/parser.c"
     break;
 
-  case 17: /* object: members  */
+  case 18: /* object: members  */
 #line 78 "parser.y"
                                 { (yyval.jsonval) = (yyvsp[0].jsonval); }
 #line 1230 "nng/src/supplemental/nanolib/parser.c"
     break;
 
-  case 18: /* members: member  */
+  case 19: /* members: member  */
 #line 81 "parser.y"
                                 { 
                                         (yyval.jsonval) = cJSON_CreateObject();  
-                                        cJSON_AddItemToObject((yyval.jsonval), (yyvsp[0].jkval)->key, (yyvsp[0].jkval)->val); 
+                                        if (NULL != (yyvsp[0].jkval)->val)
+                                                cJSON_AddItemToObject((yyval.jsonval), (yyvsp[0].jkval)->key, (yyvsp[0].jkval)->val); 
                                         jso_kv_free((yyvsp[0].jkval));
                                 }
 #line 1240 "nng/src/supplemental/nanolib/parser.c"
     break;
 
-  case 19: /* members: members COMMA member  */
+  case 20: /* members: members COMMA member  */
 #line 86 "parser.y"
                                 { cJSON_AddItemToObject((yyval.jsonval), (yyvsp[0].jkval)->key, (yyvsp[0].jkval)->val); jso_kv_free((yyvsp[0].jkval));}
 #line 1246 "nng/src/supplemental/nanolib/parser.c"
     break;
 
-  case 20: /* members: members member  */
+  case 21: /* members: members member  */
 #line 87 "parser.y"
                                 { cJSON_AddItemToObject((yyval.jsonval), (yyvsp[0].jkval)->key, (yyvsp[0].jkval)->val); jso_kv_free((yyvsp[0].jkval));}
 #line 1252 "nng/src/supplemental/nanolib/parser.c"
     break;
 
-  case 21: /* member: STRING PUNCT value  */
+  case 22: /* member: STRING PUNCT value  */
 #line 90 "parser.y"
                                         { 
 
@@ -1266,49 +1331,49 @@ yyreduce:
 #line 1261 "nng/src/supplemental/nanolib/parser.c"
     break;
 
-  case 22: /* member: USTRING PUNCT value  */
+  case 23: /* member: USTRING PUNCT value  */
 #line 95 "parser.y"
                                         { (yyval.jkval) = jso_kv_new(remove_white_space((yyvsp[-2].strval)), (yyvsp[0].jsonval));}
 #line 1268 "parser.c"
     break;
 
-  case 23: /* member: USTRING LCURLY value RCURLY  */
+  case 24: /* member: USTRING LCURLY value RCURLY  */
 #line 100 "parser.y"
                                         { (yyval.jkval) = jso_kv_new(remove_white_space((yyvsp[-3].strval)), (yyvsp[-1].jsonval));}
 #line 1278 "parser.c"
     break;
 
-  case 24: /* member: USTRING LBRAC values RBRAC  */
+  case 25: /* member: USTRING LBRAC values RBRAC  */
 #line 101 "parser.y"
                                         { (yyval.jkval) = jso_kv_new(remove_white_space((yyvsp[-3].strval)), (yyvsp[-1].jsonval));}
 #line 1284 "parser.c"
     break;
 
-  case 25: /* array: LBRAC RBRAC  */
+  case 26: /* array: LBRAC RBRAC  */
 #line 104 "parser.y"
                                  { printf("[]\n");}
 #line 1290 "parser.c"
     break;
 
-  case 26: /* array: LBRAC values RBRAC  */
+  case 27: /* array: LBRAC values RBRAC  */
 #line 105 "parser.y"
                                  { (yyval.jsonval) = (yyvsp[-1].jsonval);}
 #line 1296 "parser.c"
     break;
 
-  case 27: /* values: value  */
+  case 28: /* values: value  */
 #line 108 "parser.y"
                                  { (yyval.jsonval) = cJSON_CreateArray(); cJSON_AddItemToArray((yyval.jsonval), (yyvsp[0].jsonval));}
 #line 1302 "parser.c"
     break;
 
-  case 28: /* values: values COMMA value  */
+  case 29: /* values: values COMMA value  */
 #line 109 "parser.y"
                                  { cJSON_AddItemToArray((yyval.jsonval), (yyvsp[0].jsonval));}
 #line 1308 "parser.c"
     break;
 
-  case 29: /* values: values value  */
+  case 30: /* values: values value  */
 #line 110 "parser.y"
                            { cJSON_AddItemToArray((yyval.jsonval), (yyvsp[0].jsonval));}
 #line 1314 "parser.c"

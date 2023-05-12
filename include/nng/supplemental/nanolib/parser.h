@@ -81,7 +81,7 @@ union YYSTYPE
 {
 #line 25 "parser.y"
 
-    int intval;
+    double intval;
     double floatval;
     char *strval;
     struct cJSON *jsonval;
