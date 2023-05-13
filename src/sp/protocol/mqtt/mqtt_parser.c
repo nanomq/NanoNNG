@@ -258,41 +258,6 @@ copyn_utf8_str(const uint8_t *src, uint32_t *pos, int *str_len, int limit)
 }
 
 /**
- * copy utf-8 string to dst
- *
- * @param dest output string
- * @param src input bytes
- * @param pos
- * @return string length -1: not utf-8, 0: empty string, >0 : normal utf-8
- * string
- */
-uint8_t *
-copy_utf8_str(const uint8_t *src, uint32_t *pos, int *str_len)
-{
-	*str_len      = 0;
-	uint8_t *dest = NULL;
-
-	NNI_GET16(src + (*pos), *str_len);
-
-	*pos = (*pos) + 2;
-	if (*str_len > 0) {
-		if (utf8_check((const char *) (src + *pos), *str_len) ==
-		    ERR_SUCCESS) {
-			if ((dest = nng_alloc(*str_len + 1)) == NULL) {
-				*str_len = 0;
-				return NULL;
-			}
-			memcpy(dest, src + (*pos), *str_len);
-			dest[*str_len] = '\0';
-			*pos           = (*pos) + (*str_len);
-		} else {
-			*str_len = -1;
-		}
-	}
-	return dest;
-}
-
-/**
  * copy size of limit binary string to dst without utf8_check
  *
  * @param dest output string
