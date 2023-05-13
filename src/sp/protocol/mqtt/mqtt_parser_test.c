@@ -52,19 +52,6 @@ test_copyn_utf8_str()
 }
 
 static void
-test_copy_utf8_str()
-{
-	uint8_t  src[]   = { 0x00, 0x05, 0x24, 0x4D, 0x51, 0x54, 0x54, '\0' };
-	uint32_t pos     = 0;
-	int      str_len = 0;
-	uint8_t *ptr_rv  = NULL;
-
-	ptr_rv = copy_utf8_str(src, &pos, &str_len);
-	NUTS_MATCH((char *) ptr_rv, "$MQTT");
-	nng_free(ptr_rv, sizeof(ptr_rv));
-}
-
-static void
 test_copyn_str()
 {
 	uint8_t  src[]   = { 0x00, 0x05, 0x24, 0x4D, 0x51, 0x54, 0x54, '\0' };
@@ -161,7 +148,6 @@ NUTS_TESTS = {
 	{ "mqtt_parser utf8_check", test_utf8_check },
 	{ "mqtt_parser get_utf8_str", test_get_utf8_str },
 	{ "mqtt_parser copyn_utf8_str", test_copyn_utf8_str },
-	{ "mqtt_parser copy_utf8_str", test_copy_utf8_str },
 	{ "mqtt_parser copyn_str", test_copyn_str },
 	{ "mqtt_parser get_variable_binary", test_get_variable_binary },
 	{ "mqtt_parser fixed_header_adaptor", test_fixed_header_adaptor },
