@@ -2308,8 +2308,6 @@ conf_bridge_node_parse_subs(
 		snprintf(topic_key, 128,
 		    "%s%s.subscription.%ld.topic", prefix, name,
 		    sub_index);
-		printf("line: %s\n", line);
-		printf("topic_key: %s\n", topic_key);
 		if (!get_topic &&
 		    (value = get_conf_value(line, sz, topic_key)) != NULL) {
 			topic     = value;
@@ -2319,7 +2317,6 @@ conf_bridge_node_parse_subs(
 
 		snprintf(qos_key, 128, "%s%s.subscription.%ld.qos", prefix,
 		    name, sub_index);
-		printf("qos_key: %s\n", qos_key);
 		if (!get_qos &&
 		    (value = get_conf_value(line, sz, qos_key)) != NULL) {
 			qos = (uint8_t) atoi(value);
