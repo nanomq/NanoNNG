@@ -215,12 +215,6 @@ quic_load_config(conf_bridge_node *node)
 		Settings.IsSet.CongestionControlAlgorithm = TRUE;
 		Settings.CongestionControlAlgorithm       = QUIC_CONGESTION_CONTROL_ALGORITHM_CUBIC;
 		break;
-#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
-	case QUIC_CONGESTION_CONTROL_ALGORITHM_BBR:
-		Settings.IsSet.CongestionControlAlgorithm = TRUE;
-		Settings.CongestionControlAlgorithm       = QUIC_CONGESTION_CONTROL_ALGORITHM_BBR;
-		break;
-#endif
 
 	default:
 		log_warn("unsupport congestion control algorithm, use default cubic!");
