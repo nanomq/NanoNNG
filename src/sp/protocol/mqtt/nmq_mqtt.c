@@ -403,8 +403,9 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		return;
 	}
 
-	nni_mtx_unlock(&s->lk);
+	// 2 locks here cause performance degradation
 	nni_mtx_lock(&p->lk);
+	nni_mtx_unlock(&s->lk);
 
 	if (p->pipe->cache) {
 		if (nni_msg_get_type(msg) == CMD_PUBLISH) {
