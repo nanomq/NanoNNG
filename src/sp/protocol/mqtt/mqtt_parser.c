@@ -1837,6 +1837,9 @@ check_ifwildcard(const char *w, const char *n)
 bool
 topic_filter(const char *origin, const char *input)
 {
+	// Wrong topic or invalid topic alias
+	if (input == NULL || origin == NULL)
+		return false;
 	if (strcmp(origin, input) == 0) {
 		return true;
 	}
