@@ -485,8 +485,6 @@ mqtt_pipe_close(void *arg)
 	}
 #endif
 
-	// particular for NanoSDK in bridging
-	nni_lmq_flush_cp(&p->recv_messages, true);
 	nni_lmq_flush(&p->send_messages);
 
 	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_aio_cb);
@@ -524,6 +522,8 @@ mqtt_pipe_close(void *arg)
 		nni_msg_free(tmsg);
 		conn_param_free(s->cparam);
 	}
+	// particular for NanoSDK in bridging
+	nni_lmq_flush_cp(&p->recv_messages, true);
 #endif
 	nni_mtx_unlock(&s->mtx);
 }
