@@ -60,8 +60,9 @@ struct ws_pipe {
 	uint8_t    *qos_buf; // msg trunk for qos & V4/V5 conversion
 	size_t      qlength; // length of qos_buf
 	// MQTT V5
-	uint16_t qrecv_quota;
-	uint32_t qsend_quota;
+	uint16_t    qrecv_quota;
+	uint32_t    qsend_quota;
+	reason_code err_code; // work with closed flag
 };
 
 static void
@@ -71,14 +72,17 @@ wstran_pipe_send_cb(void *arg)
 	nni_aio *taio;
 	nni_aio *uaio;
 
-	if (p->closed)
-		nni_pipe_close(p->npipe);
 	nni_mtx_lock(&p->mtx);
 	taio          = p->txaio;
 	uaio          = p->user_txaio;
 	p->user_txaio = NULL;
 
 	if (uaio != NULL) {
+		if (p->closed){
+			nni_aio_finish_error(uaio, p->err_code);
+			nni_mtx_unlock(&p->mtx);
+			return;
+		}
 		int rv;
 		if ((rv = nni_aio_result(taio)) != 0) {
 			nni_aio_finish_error(uaio, rv);
@@ -172,6 +176,7 @@ wstran_pipe_recv_cb(void *arg)
 
 recv:
 	nni_msg_free(msg);
+	msg = NULL;
 	nng_stream_recv(p->ws, raio);
 	nni_mtx_unlock(&p->mtx);
 	return;
@@ -184,11 +189,13 @@ done:
 			log_trace("size error 0x95\n");
 			rv = NMQ_PACKET_TOO_LARGE;
 			nni_msg_free(msg);
+			msg = NULL;
 			goto recv_error;
 		}
 		p->gotrxhead  = 0;
 		p->wantrxhead = 0;
 		nni_msg_free(msg);
+		msg = NULL;
 		if (nni_msg_cmd_type(p->tmp_msg) == CMD_CONNECT) {
 			// end of nego
 			if (p->ws_param == NULL) {
@@ -197,9 +204,7 @@ done:
 			if (conn_handler(nni_msg_body(p->tmp_msg), p->ws_param,
 			        nni_msg_len(p->tmp_msg)) != 0) {
 				p->closed = true;
-				// conn_param_free(p->ws_param);
-				// rv = NNG_ECONNRESET;
-				// goto reset;
+				p->err_code = PROTOCOL_ERROR;
 			}
 			if (p->ws_param->pro_ver == 5) {
 				p->qsend_quota = p->ws_param->rx_max;
@@ -222,7 +227,6 @@ done:
 			}
 			// parse fixed header
 			ws_msg_adaptor(ptr, smsg);
-			// msg = p->tmp_msg;
 			nni_msg_free(p->tmp_msg);
 			p->tmp_msg = NULL;
 			nni_msg_set_conn_param(smsg, p->ws_param);
@@ -246,7 +250,7 @@ done:
 						p->qrecv_quota--;
 					} else {
 						rv = NMQ_RECEIVE_MAXIMUM_EXCEEDED;
-						log_error("Size of packet exceeds limitation: 0x95\n");
+						log_error("Quota exceeds limitation\n");
 						goto recv_error;
 					}
 				}
@@ -271,7 +275,7 @@ done:
 		} else if (cmd == CMD_PUBREC) {
 			if ((rv = nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
 			        p->ws_param->pro_ver)) != 0) {
-				log_trace("decode PUBREC variable header failed!");
+				log_warn("decode PUBREC variable header failed!");
 				goto recv_error;
 			}
 			ack_cmd = CMD_PUBREL;
@@ -279,7 +283,7 @@ done:
 		} else if (cmd == CMD_PUBREL) {
 			if ((rv = nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
 			        p->ws_param->pro_ver)) != 0) {
-				log_trace("decode PUBREL variable header failed!");
+				log_warn("decode PUBREL variable header failed!");
 				goto recv_error;
 			}
 			ack_cmd = CMD_PUBCOMP;
@@ -287,7 +291,7 @@ done:
 		} else if (cmd == CMD_PUBACK || cmd == CMD_PUBCOMP) {
 			if ((rv = nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
 			        p->ws_param->pro_ver)) != 0) {
-				log_trace("decode PUBACK or PUBCOMP variable header "
+				log_warn("decode PUBACK or PUBCOMP variable header "
 				          "failed!");
 				goto recv_error;
 			}
@@ -351,30 +355,35 @@ done:
 reset:
 	p->gotrxhead  = 0;
 	p->wantrxhead = 0;
+	// a potential memleak case here
 	nng_stream_close(p->ws);
+	if (uaio != NULL) {
+		nni_aio_set_msg(uaio, NULL);
+		nni_aio_finish_error(uaio, rv);
+	} else if (p->ep_aio != NULL) {
+		nni_aio_finish_error(p->ep_aio, rv);
+	}
+	nni_mtx_unlock(&p->mtx);
+	if (smsg != NULL)
+		nni_msg_free(smsg);
+	if (p->tmp_msg != NULL) {
+		nni_msg_free(p->tmp_msg);
+		p->tmp_msg = NULL;
+	}
+	if (msg != NULL)
+		nni_msg_free(msg);
+	return;
+
+recv_error:
+	nni_pipe_bump_error(p->npipe, rv);
+	nni_mtx_unlock(&p->mtx);
+	if (smsg)
+		nni_msg_free(smsg);
 	if (uaio != NULL) {
 		nni_aio_finish_error(uaio, rv);
 	} else if (p->ep_aio != NULL) {
 		nni_aio_finish_error(p->ep_aio, rv);
 	}
-	if (p->tmp_msg != NULL) {
-		smsg = p->tmp_msg;
-		nni_msg_free(smsg);
-		p->tmp_msg = NULL;
-	}
-	nni_mtx_unlock(&p->mtx);
-	return;
-
-recv_error:
-	//TODO fixme
-	// nni_aio_list_remove(aio);
-	// msg      = p->rxmsg;
-	// p->rxmsg = NULL;
-	nni_pipe_bump_error(p->npipe, rv);
-	nni_mtx_unlock(&p->mtx);
-	if (smsg)
-		nni_msg_free(smsg);
-	// nni_aio_finish_error(aio, rv);
 	log_error("tcptran_pipe_recv_cb: recv error rv: %d\n", rv);
 	return;
 }
@@ -598,6 +607,8 @@ send:
 		uint8_t *header = nni_msg_header(msg);
 		if (*(header + 3) != 0x00) {
 			p->closed = true;
+			// TODO get err code from CONNACK
+			p->err_code = NOT_AUTHORIZED;
 		}
 	}
 	nng_stream_send(p->ws, p->txaio);
@@ -858,6 +869,7 @@ send:
 		uint8_t *header = nni_msg_header(msg);
 		if (*(header + 3) != 0x00) {
 			p->closed = true;
+			p->err_code = NOT_AUTHORIZED;
 		}
 	}
 	nng_stream_send(p->ws, p->txaio);
