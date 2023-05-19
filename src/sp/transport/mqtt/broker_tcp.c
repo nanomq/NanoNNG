@@ -595,7 +595,7 @@ tcptran_pipe_recv_cb(void *arg)
 	uint32_t      pos = 1;
 	uint64_t      len = 0;
 	size_t        n;
-	nni_msg      *msg, *qmsg;
+	nni_msg      *msg = NULL, *qmsg;
 	tcptran_pipe *p     = arg;
 	nni_aio      *rxaio = p->rxaio;
 	conn_param   *cparam;
@@ -711,6 +711,7 @@ tcptran_pipe_recv_cb(void *arg)
 	msg      = p->rxmsg;
 	n        = nni_msg_len(msg);
 	type     = p->rxlen[0] & 0xf0;
+	p->rxmsg = NULL;
 
 	if (len <= 0 &&
 	    (type == CMD_SUBSCRIBE || type == CMD_PUBLISH ||
@@ -719,7 +720,6 @@ tcptran_pipe_recv_cb(void *arg)
 		rv = MALFORMED_PACKET;
 		goto recv_error;
 	}
-	p->rxmsg = NULL;
 
 	fixed_header_adaptor(p->rxlen, msg);
 	nni_msg_set_conn_param(msg, cparam);
@@ -867,7 +867,7 @@ tcptran_pipe_recv_cb(void *arg)
 
 recv_error:
 	nni_aio_list_remove(aio);
-	if (p->rxmsg == NULL)
+	if (msg != NULL)
 		nni_msg_free(msg);
 	nni_msg_free(p->rxmsg);
 	p->rxmsg = NULL;

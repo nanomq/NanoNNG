@@ -817,7 +817,7 @@ nng_mqtt_client_send_cb(void* arg)
 	nni_lmq * lmq = (nni_lmq *)client->msgq;
 
 	if (msg == NULL || nng_aio_result(aio) != 0) {
-		client->cb(client, msg, client->obj);
+		client->cb(client, NULL, client->obj);
 		return;
 	}
 
