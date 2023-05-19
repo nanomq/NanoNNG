@@ -71,6 +71,8 @@ wstran_pipe_send_cb(void *arg)
 	nni_aio *taio;
 	nni_aio *uaio;
 
+	if (p->closed)
+		nni_pipe_close(p->npipe);
 	nni_mtx_lock(&p->mtx);
 	taio          = p->txaio;
 	uaio          = p->user_txaio;
@@ -194,9 +196,10 @@ done:
 			}
 			if (conn_handler(nni_msg_body(p->tmp_msg), p->ws_param,
 			        nni_msg_len(p->tmp_msg)) != 0) {
-				conn_param_free(p->ws_param);
-				rv = NNG_ECONNRESET;
-				goto reset;
+				p->closed = true;
+				// conn_param_free(p->ws_param);
+				// rv = NNG_ECONNRESET;
+				// goto reset;
 			}
 			if (p->ws_param->pro_ver == 5) {
 				p->qsend_quota = p->ws_param->rx_max;
@@ -380,15 +383,12 @@ static void
 wstran_pipe_recv_cancel(nni_aio *aio, void *arg, int rv)
 {
 	ws_pipe *p = arg;
-	nni_mtx_lock(&p->mtx);
 	if (p->user_rxaio != aio) {
-		nni_mtx_unlock(&p->mtx);
 		return;
 	}
 	p->user_rxaio = NULL;
 	nni_aio_abort(p->rxaio, rv);
 	nni_aio_finish_error(aio, rv);
-	nni_mtx_unlock(&p->mtx);
 }
 
 static void
@@ -415,15 +415,12 @@ static void
 wstran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 {
 	ws_pipe *p = arg;
-	nni_mtx_lock(&p->mtx);
 	if (p->user_txaio != aio) {
-		nni_mtx_unlock(&p->mtx);
 		return;
 	}
 	p->user_txaio = NULL;
 	nni_aio_abort(p->txaio, rv);
 	nni_aio_finish_error(aio, rv);
-	nni_mtx_unlock(&p->mtx);
 }
 
 static inline void
@@ -600,7 +597,7 @@ send:
 	if (nni_msg_cmd_type(msg) == CMD_CONNACK) {
 		uint8_t *header = nni_msg_header(msg);
 		if (*(header + 3) != 0x00) {
-			nni_pipe_close(p->npipe);
+			p->closed = true;
 		}
 	}
 	nng_stream_send(p->ws, p->txaio);
@@ -860,7 +857,7 @@ send:
 	if (nni_msg_cmd_type(msg) == CMD_CONNACK) {
 		uint8_t *header = nni_msg_header(msg);
 		if (*(header + 3) != 0x00) {
-			nni_pipe_close(p->npipe);
+			p->closed = true;
 		}
 	}
 	nng_stream_send(p->ws, p->txaio);
@@ -1116,6 +1113,7 @@ ws_pipe_start(ws_pipe *pipe, nng_stream *conn, ws_listener *l)
 	log_trace("ws_pipe_start!");
 	p->qrecv_quota = NANO_MAX_QOS_PACKET;
 	p->conf        = l->conf;
+	p->closed      = false;
 	nng_stream_recv(p->ws, p->rxaio);
 }
 
