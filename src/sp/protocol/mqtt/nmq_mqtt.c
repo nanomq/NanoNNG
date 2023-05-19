@@ -870,15 +870,16 @@ nano_pipe_send_cb(void *arg)
 {
 	nano_pipe *p = arg;
 	nni_msg   *msg;
+	int       rv;
 
 	log_trace("******** nano_pipe_send_cb %d ****", p->id);
 	// retry here
-	if (nni_aio_result(&p->aio_send) != 0) {
+	if ((rv = nni_aio_result(&p->aio_send)) != 0) {
 		msg = nni_aio_get_msg(&p->aio_send);
 		nni_msg_free(msg);
 		nni_aio_set_msg(&p->aio_send, NULL);
 		// possibily due to client crashed
-		p->reason_code = 0x96;
+		p->reason_code = rv;
 		nni_pipe_close(p->pipe);
 		return;
 	}
