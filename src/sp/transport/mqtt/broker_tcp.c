@@ -867,9 +867,9 @@ tcptran_pipe_recv_cb(void *arg)
 
 recv_error:
 	nni_aio_list_remove(aio);
-	nni_msg_free(msg);
+	if (p->rxmsg == NULL)
+		nni_msg_free(msg);
 	nni_msg_free(p->rxmsg);
-	msg      = NULL;
 	p->rxmsg = NULL;
 	nni_mtx_unlock(&p->mtx);
 	nni_aio_set_msg(aio, NULL);
