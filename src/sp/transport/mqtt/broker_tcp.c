@@ -726,8 +726,7 @@ tcptran_pipe_recv_cb(void *arg)
 	// duplicated with fixed_header_adaptor
 	nni_msg_set_remaining_len(msg, len);
 	nni_msg_set_cmd_type(msg, type);
-	log_debug(
-	    "remain_len %ld cparam %p clientid %s username %s proto %d\n", len,
+	log_trace("remain_len %ld cparam %p clientid %s username %s proto %d\n", len,
 	    cparam, cparam->clientid.body, cparam->username.body,
 	    cparam->pro_ver);
 
@@ -771,6 +770,7 @@ tcptran_pipe_recv_cb(void *arg)
 		if ((rv = nni_mqtt_pubres_decode(msg, &packet_id, &reason_code, &prop,
 		        p->pro_ver)) != 0) {
 			log_error("decode PUBREC variable header failed!");
+			goto recv_error;
 		}
 		ack_cmd = CMD_PUBREL;
 		ack     = true;
@@ -778,6 +778,7 @@ tcptran_pipe_recv_cb(void *arg)
 		if ((rv = nni_mqtt_pubres_decode(msg, &packet_id, &reason_code, &prop,
 		        p->pro_ver)) != 0) {
 			log_error("decode PUBREL variable header failed!");
+			goto recv_error;
 		}
 		ack_cmd = CMD_PUBCOMP;
 		ack     = true;
