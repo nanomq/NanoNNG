@@ -578,9 +578,11 @@ nano_pipe_fini(void *arg)
 
 	void *nano_qos_db = p->pipe->nano_qos_db;
 
-	// TODO safely free the msgs in qos_db
+	//Safely free the msgs in qos_db
 	if (p->event == true) {
 		if (!p->broker->conf->sqlite.enable) {
+			nni_qos_db_remove_all_msg(false,
+				nano_qos_db, nmq_close_unack_msg_cb);
 			nni_qos_db_fini_id_hash(nano_qos_db);
 		}
 	} else {
