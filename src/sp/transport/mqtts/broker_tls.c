@@ -588,8 +588,16 @@ tlstran_pipe_recv_cb(void *arg)
 	aio = nni_list_first(&p->recvq);
 
 	if ((rv = nni_aio_result(rxaio)) != 0) {
-		log_warn(" recv aio error %s", nng_strerror(rv));
-		rv = NMQ_SERVER_BUSY;
+		log_warn("nni aio recv error!! %s\n", nng_strerror(rv));
+		nni_pipe_bump_error(p->npipe, rv);
+		if (rv == NNG_ECONNRESET || rv == NNG_ECONNSHUT || rv == NNG_ECLOSED) {
+			// peer shutting down
+			rv = NMQ_SERVER_SHUTTING_DOWN;
+		} else if (rv == NNG_ENOMEM) {
+			rv = NMQ_SERVER_BUSY;
+		} else {
+			rv = NMQ_UNSEPECIFY_ERROR;
+		}
 		goto recv_error;
 	}
 
@@ -614,6 +622,7 @@ tlstran_pipe_recv_cb(void *arg)
 		// length error
 		if (p->gotrxhead == NNI_NANO_MAX_HEADER_SIZE) {
 			rv = NNG_EMSGSIZE;
+			log_warn("MALFORMED_PACKET received.");
 			goto recv_error;
 		}
 		// same packet, continue receving next byte of remaining length
@@ -650,7 +659,7 @@ tlstran_pipe_recv_cb(void *arg)
 		// Make sure the message payload is not too big.  If it is
 		// the caller will shut down the pipe.
 		if (len > p->conf->max_packet_size) {
-			log_error("size error 0x95\n");
+			log_error("Size of packet exceeds limitation: 0x95\n");
 			rv = NMQ_PACKET_TOO_LARGE;
 			goto recv_error;
 		}
@@ -680,9 +689,17 @@ tlstran_pipe_recv_cb(void *arg)
 	// as application message callback of users
 	nni_aio_list_remove(aio);
 	msg      = p->rxmsg;
-	p->rxmsg = NULL;
 	n        = nni_msg_len(msg);
 	type     = p->rxlen[0] & 0xf0;
+
+	if (len <= 0 &&
+	    (type == CMD_SUBSCRIBE || type == CMD_PUBLISH ||
+	        type == CMD_UNSUBSCRIBE)) {
+		log_warn("Invalid Packet Type: Connection closed.");
+		rv = MALFORMED_PACKET;
+		goto recv_error;
+	}
+	p->rxmsg = NULL;
 
 	fixed_header_adaptor(p->rxlen, msg);
 	nni_msg_set_conn_param(msg, cparam);
@@ -705,6 +722,7 @@ tlstran_pipe_recv_cb(void *arg)
 		if (qos_pac > 0) {
 			// flow control, check rx_max
 			// recv_quota as length of lmq
+			// TODO add pro_ver in tlstran_pipe
 			if (p->tcp_cparam->pro_ver == 5) {
 				if (p->qrecv_quota > 0) {
 					p->qrecv_quota--;
@@ -723,33 +741,38 @@ tlstran_pipe_recv_cb(void *arg)
 				goto recv_error;
 			}
 			if ((packet_id = nni_msg_get_pub_pid(msg)) == 0) {
+				log_warn("0 Packet ID in QoS Message!");
 				rv = PROTOCOL_ERROR;
 				goto recv_error;
 			}
 			ack       = true;
 		}
 	} else if (type == CMD_PUBREC) {
-		if (nni_mqtt_pubres_decode(msg, &packet_id, &reason_code, &prop,
-		        cparam->pro_ver) != 0) {
+		if ((rv = nni_mqtt_pubres_decode(msg, &packet_id, &reason_code, &prop,
+		        cparam->pro_ver)) != 0) {
 			log_error("decode PUBREC variable header failed!");
+			goto recv_error;
 		}
 		ack_cmd = CMD_PUBREL;
 		ack     = true;
 	} else if (type == CMD_PUBREL) {
-		if (nni_mqtt_pubres_decode(msg, &packet_id, &reason_code, &prop,
-		        cparam->pro_ver) != 0) {
+		if ((rv = nni_mqtt_pubres_decode(msg, &packet_id, &reason_code, &prop,
+		        cparam->pro_ver)) != 0) {
 			log_error("decode PUBREL variable header failed!");
+			goto recv_error;
 		}
 		ack_cmd = CMD_PUBCOMP;
 		ack     = true;
 	} else if (type == CMD_PUBACK || type == CMD_PUBCOMP) {
-		if (nni_mqtt_pubres_decode(msg, &packet_id, &reason_code, &prop,
-		        cparam->pro_ver) != 0) {
+		if ((rv = nni_mqtt_pubres_decode(msg, &packet_id, &reason_code, &prop,
+		        cparam->pro_ver)) != 0) {
 			log_error("decode PUBACK or PUBCOMP variable header "
 			          "failed!");
+			goto recv_error;
 		}
 		// MQTT V5 flow control
-		if (p->tcp_cparam->pro_ver == 5) {
+		if (cparam->pro_ver == 5) {
+			log_debug("free property & reduce send quota");
 			property_free(prop);
 			p->qsend_quota++;
 		}
@@ -767,6 +790,7 @@ tlstran_pipe_recv_cb(void *arg)
 		nni_msg_set_cmd_type(qmsg, ack_cmd);
 		nni_mqtt_msgack_encode(
 		    qmsg, packet_id, reason_code, prop, cparam->pro_ver);
+		property_free(prop);
 		nni_mqtt_pubres_header_encode(qmsg, ack_cmd);
 		// if (prop != NULL) {
 		// nni_msg_proto_set_property(qmsg, prop);
@@ -816,11 +840,9 @@ tlstran_pipe_recv_cb(void *arg)
 	}
 
 	// keep connection & Schedule next receive
-	// nni_pipe_bump_rx(p->npipe, n);
 	if (!nni_list_empty(&p->recvq)) {
 		tlstran_pipe_recv_start(p);
 	}
-	nni_pipe_bump_rx(p->npipe, n);
 	nni_mtx_unlock(&p->mtx);
 
 	nni_aio_set_msg(aio, msg);
@@ -830,12 +852,13 @@ tlstran_pipe_recv_cb(void *arg)
 
 recv_error:
 	nni_aio_list_remove(aio);
-	msg      = p->rxmsg;
-	p->rxmsg = NULL;
-	nni_pipe_bump_error(p->npipe, rv);
-	nni_mtx_unlock(&p->mtx);
-
 	nni_msg_free(msg);
+	nni_msg_free(p->rxmsg);
+	msg      = NULL;
+	p->rxmsg = NULL;
+	nni_mtx_unlock(&p->mtx);
+	nni_aio_set_msg(aio, NULL);
+	// error code cannot be 0. otherwise connection will sustain
 	nni_aio_finish_error(aio, rv);
 	log_trace("tlstran_pipe_recv_cb: recv error rv: %d\n", rv);
 	return;
