@@ -181,6 +181,7 @@ done:
 		if (p->gotrxhead+p->wantrxhead > p->conf->max_packet_size) {
 			log_trace("size error 0x95\n");
 			rv = NMQ_PACKET_TOO_LARGE;
+			nni_msg_free(msg);
 			goto recv_error;
 		}
 		p->gotrxhead  = 0;
@@ -242,6 +243,7 @@ done:
 						p->qrecv_quota--;
 					} else {
 						rv = NMQ_RECEIVE_MAXIMUM_EXCEEDED;
+						log_error("Size of packet exceeds limitation: 0x95\n");
 						goto recv_error;
 					}
 				}
@@ -257,30 +259,34 @@ done:
 				}
 				if ((packet_id = nni_msg_get_pub_pid(smsg)) ==
 				    0) {
+					log_warn("0 Packet ID in QoS Message!");
 					rv = PROTOCOL_ERROR;
 					goto recv_error;
 				}
 				ack = true;
 			}
 		} else if (cmd == CMD_PUBREC) {
-			if (nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
-			        p->ws_param->pro_ver) != 0) {
+			if ((rv = nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
+			        p->ws_param->pro_ver)) != 0) {
 				log_trace("decode PUBREC variable header failed!");
+				goto recv_error;
 			}
 			ack_cmd = CMD_PUBREL;
 			ack     = true;
 		} else if (cmd == CMD_PUBREL) {
-			if (nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
-			        p->ws_param->pro_ver) != 0) {
+			if ((rv = nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
+			        p->ws_param->pro_ver)) != 0) {
 				log_trace("decode PUBREL variable header failed!");
+				goto recv_error;
 			}
 			ack_cmd = CMD_PUBCOMP;
 			ack     = true;
 		} else if (cmd == CMD_PUBACK || cmd == CMD_PUBCOMP) {
-			if (nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
-			        p->ws_param->pro_ver) != 0) {
+			if ((rv = nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
+			        p->ws_param->pro_ver)) != 0) {
 				log_trace("decode PUBACK or PUBCOMP variable header "
 				          "failed!");
+				goto recv_error;
 			}
 			// MQTT V5 flow control
 			if (p->ws_param->pro_ver == 5) {
@@ -363,7 +369,8 @@ recv_error:
 	// p->rxmsg = NULL;
 	nni_pipe_bump_error(p->npipe, rv);
 	nni_mtx_unlock(&p->mtx);
-	nni_msg_free(msg);
+	if (smsg)
+		nni_msg_free(smsg);
 	// nni_aio_finish_error(aio, rv);
 	log_error("tcptran_pipe_recv_cb: recv error rv: %d\n", rv);
 	return;
