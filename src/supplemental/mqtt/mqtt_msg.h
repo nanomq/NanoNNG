@@ -55,6 +55,15 @@ struct pos_buf {
 
 /* CONNECT flags */
 typedef struct conn_flags_t {
+#ifdef NNG_BIG_ENDIAN
+	uint8_t username_flag : 1;
+	uint8_t password_flag : 1;
+	uint8_t will_retain : 1;
+	uint8_t will_qos : 2;
+	uint8_t will_flag : 1;
+	uint8_t clean_session : 1;
+	uint8_t reserved : 1;
+#else
 	uint8_t reserved : 1;
 	uint8_t clean_session : 1;
 	uint8_t will_flag : 1;
@@ -62,6 +71,7 @@ typedef struct conn_flags_t {
 	uint8_t will_retain : 1;
 	uint8_t password_flag : 1;
 	uint8_t username_flag : 1;
+#endif
 } conn_flags;
 
 /*****************************************************************************
@@ -211,18 +221,33 @@ union mqtt_payload {
 };
 
 typedef struct {
+#ifdef NNG_BIG_ENDIAN
+	uint8_t packet_type : 4;
+	uint8_t bit_3 : 1;
+	uint8_t bit_2 : 1;
+	uint8_t bit_1 : 1;
+	uint8_t bit_0 : 1;
+#else
 	uint8_t bit_0 : 1;
 	uint8_t bit_1 : 1;
 	uint8_t bit_2 : 1;
 	uint8_t bit_3 : 1;
 	uint8_t packet_type : 4;
+#endif
 } mqtt_common_hdr;
 
 typedef struct {
+#ifdef NNG_BIG_ENDIAN
+	uint8_t packet_type : 4;
+	uint8_t dup : 1;
+	uint8_t qos : 2;
+	uint8_t retain : 1;
+#else
 	uint8_t retain : 1;
 	uint8_t qos : 2;
 	uint8_t dup : 1;
 	uint8_t packet_type : 4;
+#endif
 } mqtt_pub_hdr;
 
 typedef struct mqtt_fixed_hdr_t {
