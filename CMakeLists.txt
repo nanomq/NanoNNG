@@ -155,6 +155,14 @@ if (NOT NNG_SANITIZER STREQUAL "none")
     set(NNG_SANITIZER_FLAGS "-fsanitize=${NNG_SANITIZER}")
 endif ()
 
+
+include(TestBigEndian)
+test_big_endian(NNG_BIG_ENDIAN)
+if (NNG_BIG_ENDIAN)
+    add_definitions(-DNNG_BIG_ENDIAN)
+endif ()
+
+
 if (NNG_ENABLE_COVERAGE)
     # NB: This only works for GCC and Clang 3.0 and newer.  If your stuff
     # is older than that, you will need to find something newer.  For
