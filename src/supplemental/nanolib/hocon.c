@@ -57,7 +57,9 @@ static cJSON *
 path_expression_parse(cJSON *jso)
 {
 	cJSON *parent = jso;
-	cJSON *child  = jso->child;
+	cJSON *child  = NULL;
+	if (NULL != jso)
+		child = jso->child;
 
 	while (child) {
 		if (child->child) {
@@ -81,53 +83,57 @@ path_expression_parse(cJSON *jso)
 cJSON *
 deduplication_and_merging(cJSON *jso)
 {
-	cJSON  *parent = jso;
-	cJSON  *child  = jso->child;
-	cJSON **table  = NULL;
+	cJSON *parent = jso;
+	cJSON *child  = NULL;
+	if (NULL != jso)
+		child = jso->child;
+	cJSON **table = NULL;
 
 	while (child) {
 		for (size_t i = 0; i < cvector_size(table); i++) {
+
+			// If we find duplicate, compare json key
 			if (table[i] && child && table[i]->string &&
 			    child->string &&
 			    0 == strcmp(table[i]->string, child->string)) {
 				if (table[i]->type == child->type &&
 				    cJSON_Object == table[i]->type) {
-					// merging object
+					// merging object, move all child
+					// of table[i] to current (child) node
 					cJSON *next = table[i]->child;
 					while (next) {
 						cJSON *dup = cJSON_Duplicate(
 						    next, cJSON_True);
-						cJSON_AddItemToObject(child,
-						    dup->string,
-						    dup); // cJSON_Duplicate(next,
-						          // cJSON_True));
-						// cJSON_AddItemToObject(child,
-						// next->string, next);
-						// //cJSON_Duplicate(next,
-						// cJSON_True)); cJSON *free =
-						// next;
+						cJSON_AddItemToObject(
+						    child, dup->string, dup);
 						next = next->next;
-						// cJSON_DetachItemFromObject(table[i],
-						// free->string);
 					}
-
 					cJSON_DeleteItemFromObject(
 					    parent, table[i]->string);
 					cvector_erase(table, i);
-
 				} else {
+					// The rule of No object merge is
+					// depending on the last value, thus we
+					// delete node from table if we find
+					// dup node
 					if (0 == i) {
-						parent->child = child;
+						// If first child is duplicate,
+						// free it and move child to
+						// child next
+						parent->child->next->prev =
+						    parent->child->prev;
+						parent->child =
+						    parent->child->next;
 						cJSON_free(table[i]);
 						cvector_erase(table, i);
 
 					} else {
-						cJSON *free =
-						    table[i - 1]->next;
+						table[i]->next->prev =
+						    table[i]->prev;
 						table[i - 1]->next =
-						    table[i - 1]->next->next;
+						    table[i]->next;
+						cJSON_free(table[i]);
 						cvector_erase(table, i);
-						cJSON_free(free);
 					}
 				}
 			}
@@ -144,24 +150,22 @@ deduplication_and_merging(cJSON *jso)
 	return jso;
 }
 
-cJSON *hocon_parse_file(const char *file)
+cJSON *
+hocon_parse_file(const char *file)
 {
 	// yydebug = 1;
-	if (!(yyin = fopen(file, "r")))
-	{
+	if (!(yyin = fopen(file, "r"))) {
 		perror((file));
 		return NULL;
 	}
 
 	cJSON *jso = NULL;
-	int rv = yyparse(&jso);
-	if (0 != rv)
-	{
-		fprintf(stderr, "invalid data to parse!");
-		exit(1);
+	int    rv  = yyparse(&jso);
+	if (0 != rv) {
+		fprintf(stderr, "invalid data to parse!\n");
+		return NULL;
 	}
-	if (cJSON_False != cJSON_IsInvalid(jso))
-	{
+	if (cJSON_False != cJSON_IsInvalid(jso)) {
 		jso = path_expression_parse(jso);
 		return deduplication_and_merging(jso);
 	}
@@ -169,23 +173,22 @@ cJSON *hocon_parse_file(const char *file)
 }
 
 typedef struct yy_buffer_state *YY_BUFFER_STATE;
-extern YY_BUFFER_STATE yy_scan_bytes(char *buffer, size_t size);
+extern YY_BUFFER_STATE          yy_scan_bytes(char *buffer, size_t size);
 extern void yy_delete_buffer(struct yy_buffer_state *buffer);
 
-cJSON *hocon_parse_str(char *str, size_t len)
+cJSON *
+hocon_parse_str(char *str, size_t len)
 {
 	YY_BUFFER_STATE buffer = yy_scan_bytes(str, len);
 
 	cJSON *jso = NULL;
-	int rv = yyparse(&jso);
-	if (0 != rv)
-	{
-		fprintf(stderr, "invalid data to parse!");
-		exit(1);
+	int    rv  = yyparse(&jso);
+	if (0 != rv) {
+		fprintf(stderr, "invalid data to parse!\n");
+		return NULL;
 	}
 	yy_delete_buffer(buffer);
-	if (cJSON_False != cJSON_IsInvalid(jso))
-	{
+	if (cJSON_False != cJSON_IsInvalid(jso)) {
 		jso = path_expression_parse(jso);
 		return deduplication_and_merging(jso);
 	}
