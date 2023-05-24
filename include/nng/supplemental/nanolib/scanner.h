@@ -216,6 +216,8 @@ extern char *yytext;
 
 #ifdef YY_HEADER_EXPORT_START_CONDITIONS
 #define INITIAL 0
+#define incl 1
+#define inclr 2
 
 #endif
 
