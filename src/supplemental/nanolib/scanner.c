@@ -355,8 +355,8 @@ static void yynoreturn yy_fatal_error ( const char* msg  );
 	(yy_hold_char) = *yy_cp; \
 	*yy_cp = '\0'; \
 	(yy_c_buf_p) = yy_cp;
-#define YY_NUM_RULES 22
-#define YY_END_OF_BUFFER 23
+#define YY_NUM_RULES 30
+#define YY_END_OF_BUFFER 31
 /* This struct is not used in this scanner,
    but its presence is necessary. */
 struct yy_trans_info
@@ -364,35 +364,42 @@ struct yy_trans_info
 	flex_int32_t yy_verify;
 	flex_int32_t yy_nxt;
 	};
-static const flex_int16_t yy_accept[83] =
+static const flex_int16_t yy_accept[151] =
     {   0,
-        0,    0,   23,   21,    1,    1,   21,    1,   21,   21,
-        6,   21,   16,    7,   15,    4,    5,   15,   15,   15,
-        2,    3,    1,    0,   14,    0,    1,    0,   16,    1,
-       12,   17,   16,   13,    0,    0,    0,   13,    0,    0,
-       13,    0,   15,   15,   15,   15,    0,   14,    0,    0,
-       16,   17,    0,   17,   11,   15,   15,   15,    0,    0,
-        0,   19,   15,   10,    8,    0,    0,   20,    9,    0,
-        0,    0,    0,    0,    0,    0,    0,    0,    0,    0,
-       18,    0
+        0,    0,   16,   16,   12,   12,   31,   29,    1,    1,
+        1,   29,    1,   29,   29,    6,   29,   24,    7,   23,
+        4,    5,   23,   23,   23,   23,    2,    3,   17,   16,
+       18,   13,   12,   14,    1,    1,    0,    0,   22,    0,
+        1,    0,   24,    1,   20,   25,   24,   21,    0,    0,
+        0,   21,    0,    0,   21,    0,   23,   23,   23,   23,
+       23,    0,   17,   16,   13,   12,    0,   22,    0,    0,
+       24,   25,    0,   25,   19,   23,   23,   23,   23,    0,
+        0,    0,    0,   27,   23,   23,   10,    8,    0,    0,
+        0,   28,    9,   23,    0,    0,   23,    0,    0,   23,
+
+        0,    0,    0,   15,   23,   23,    0,   15,    0,    0,
+       23,   23,    0,    0,    0,   23,   23,    0,    0,    0,
+       23,   23,    0,    0,    0,    0,   23,    0,    0,    0,
+       23,    0,    0,   23,    0,    0,   23,    0,    0,    0,
+       26,    0,   11,    0,    0,    0,    0,    0,    0,    0
     } ;
 
 static const YY_CHAR yy_ec[256] =
     {   0,
         1,    1,    1,    1,    1,    1,    1,    1,    2,    3,
-        1,    1,    2,    1,    1,    1,    1,    1,    1,    1,
+        1,    1,    4,    1,    1,    1,    1,    1,    1,    1,
         1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
-        1,    4,    1,    5,    6,    7,    8,    1,    1,    1,
-        1,    9,   10,   11,   12,   13,   14,   15,   15,   15,
-       15,   15,   15,   15,   15,   15,   15,   16,    1,    1,
-       16,    1,   17,   18,   19,   20,   21,   22,   23,   19,
-       24,   25,   19,   19,   26,   19,   27,   19,   19,   19,
-       19,   19,   28,   19,   19,   19,   19,   19,   19,   19,
-       29,   30,   31,    1,   18,    1,   32,   33,   19,   34,
+        1,    2,    1,    5,    6,    7,    8,    1,    1,    9,
+       10,   11,   12,   13,   14,   15,   16,   17,   17,   17,
+       17,   17,   17,   17,   17,   17,   17,   18,    1,    1,
+       18,    1,   19,   20,   21,   22,   23,   24,   25,   21,
+       26,   27,   21,   21,   28,   21,   29,   21,   21,   21,
+       21,   21,   30,   21,   21,   21,   21,   21,   21,   21,
+       31,   32,   33,    1,   20,    1,   34,   35,   36,   37,
 
-       35,   36,   37,   38,   39,   19,   40,   41,   42,   43,
-       19,   19,   19,   44,   45,   46,   47,   19,   19,   19,
-       19,   19,   48,   18,   49,    1,    1,    1,    1,    1,
+       38,   39,   40,   41,   42,   21,   43,   44,   45,   46,
+       21,   21,   47,   48,   49,   50,   51,   21,   21,   21,
+       21,   21,   52,   20,   53,    1,    1,    1,    1,    1,
         1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
         1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
         1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
@@ -409,95 +416,144 @@ static const YY_CHAR yy_ec[256] =
         1,    1,    1,    1,    1
     } ;
 
-static const YY_CHAR yy_meta[50] =
+static const YY_CHAR yy_meta[54] =
     {   0,
-        1,    1,    2,    3,    3,    1,    1,    3,    1,    1,
-        1,    3,    3,    1,    3,    1,    4,    3,    5,    5,
-        5,    5,    5,    5,    5,    5,    5,    5,    1,    3,
-        1,    5,    5,    5,    5,    5,    5,    5,    5,    5,
-        5,    5,    5,    5,    5,    5,    5,    1,    6
+        1,    2,    3,    1,    4,    1,    1,    5,    1,    6,
+        1,    1,    1,    5,    5,    1,    5,    1,    7,    5,
+        8,    8,    8,    8,    8,    8,    8,    8,    8,    8,
+        1,    5,    1,    8,    8,    8,    8,    8,    8,    8,
+        8,    8,    8,    8,    8,    8,    8,    8,    8,    8,
+        8,    1,    9
     } ;
 
-static const flex_int16_t yy_base[90] =
+static const flex_int16_t yy_base[162] =
     {   0,
-        0,    0,  168,  169,   48,   51,   51,    0,  119,  151,
-      169,  151,   74,  169,    0,  169,  169,  132,  116,  118,
-      134,  169,   55,   55,  169,   56,    0,  143,   49,    0,
-      169,   48,    0,  169,   55,  139,  138,   46,  124,  123,
-       35,  110,    0,  113,  112,  105,  104,   64,    0,   99,
-       80,   90,  129,  124,  169,   88,   83,   88,   81,   71,
-       69,  169,   82,    0,    0,   64,   58,  169,    0,   67,
-       63,   53,   48,   55,   67,   41,   46,   33,   27,   66,
-      169,  169,  125,  131,  135,  137,   68,  140,  144
+        0,    0,   52,   56,   60,   64,  302,  303,   69,   73,
+       76,   51,    0,  249,  283,  303,  283,  104,  303,    0,
+      303,  303,  264,  251,  245,  247,  265,  303,    0,  291,
+      303,    0,  290,  303,   82,   85,  245,   59,  303,   63,
+        0,  271,   75,    0,  303,   76,    0,  303,   82,  267,
+      266,   75,  252,  251,   67,  236,    0,  240,  247,  238,
+      230,  229,    0,  277,    0,  276,  241,   76,    0,  223,
+      100,  101,  258,  257,  303,  224,  228,  227,  232,  225,
+      222,  212,  207,  303,  221,  200,    0,    0,  199,  197,
+      194,  303,    0,  203,  197,  201,  197,  190,  187,  104,
+
+      152,  118,  135,    0,  150,  153,  144,  303,  147,  150,
+      143,  139,  147,  140,  135,  143,  129,  156,  140,  126,
+      167,  133,  132,  163,  129,  102,  122,  135,  120,  146,
+      129,  116,  116,  113,   93,   99,  126,  116,  113,  154,
+      303,  156,  303,   68,   59,   60,   73,  158,  160,  303,
+      195,  204,  213,  222,  228,  236,  245,  248,   52,  253,
+      259
     } ;
 
-static const flex_int16_t yy_def[90] =
+static const flex_int16_t yy_def[162] =
     {   0,
-       82,    1,   82,   82,   82,   82,   83,   84,   82,   82,
-       82,   82,   82,   82,   85,   82,   82,   85,   85,   85,
-       82,   82,   82,   83,   82,   83,   84,   86,   82,   84,
-       82,   82,   13,   82,   82,   82,   82,   82,   82,   82,
-       82,   82,   85,   85,   85,   85,   82,   83,   87,   88,
-       82,   82,   82,   82,   82,   85,   85,   85,   82,   89,
-       88,   82,   85,   85,   85,   82,   89,   82,   85,   82,
-       82,   82,   82,   82,   82,   82,   82,   82,   82,   82,
-       82,    0,   82,   82,   82,   82,   82,   82,   82
+      150,    1,  151,  151,  152,  152,  150,  150,  150,  150,
+      150,  153,  154,  150,  150,  150,  150,  150,  150,  155,
+      150,  150,  155,  155,  155,  155,  150,  150,  156,  150,
+      150,  157,  150,  150,  150,  150,  150,  153,  150,  153,
+      154,  158,  150,  154,  150,  150,   18,  150,  150,  150,
+      150,  150,  150,  150,  150,  150,  155,  155,  155,  155,
+      155,  150,  156,  150,  157,  150,  150,  153,  159,  160,
+      150,  150,  150,  150,  150,  155,  155,  155,  155,  150,
+      150,  161,  160,  150,  155,  155,  155,  155,  150,  150,
+      161,  150,  155,  155,  150,  150,  155,  150,  150,  155,
+
+      150,  150,  150,  155,  155,  155,  150,  150,  150,  150,
+      155,  155,  150,  150,  150,  155,  155,  150,  150,  150,
+      155,  155,  150,  150,  150,  150,  155,  150,  150,  150,
+      155,  150,  150,  155,  150,  150,  155,  150,  150,  150,
+      150,  150,  150,  150,  150,  150,  150,  150,  150,    0,
+      150,  150,  150,  150,  150,  150,  150,  150,  150,  150,
+      150
     } ;
 
-static const flex_int16_t yy_nxt[219] =
+static const flex_int16_t yy_nxt[357] =
     {   0,
-        4,    5,    6,    5,    7,    8,    9,    4,    4,   10,
-       11,   10,    4,   12,   13,   14,    4,    4,   15,   15,
-       15,   15,   15,   15,   15,   15,   15,   15,   16,    4,
-       17,   15,   15,   15,   15,   18,   15,   15,   15,   15,
-       15,   15,   19,   15,   15,   20,   15,   21,   22,   23,
-       23,   23,   23,   23,   23,   25,   23,   23,   23,   25,
-       48,   32,   52,   51,   53,   55,   53,   55,   25,   54,
-       35,   35,   60,   34,   81,   80,   79,   78,   77,   34,
-       26,   31,   35,   35,   26,   26,   32,   76,   33,   75,
-       74,   73,   32,   26,   51,   34,   35,   36,   34,   37,
+        8,    9,   10,   11,   12,   13,   14,    8,    8,    8,
+        8,   15,   16,   15,    8,   17,   18,   19,    8,    8,
+       20,   20,   20,   20,   20,   20,   20,   20,   20,   20,
+       21,    8,   22,   20,   20,   20,   20,   20,   23,   20,
+       20,   24,   20,   20,   20,   25,   20,   20,   20,   26,
+       20,   27,   28,   30,   31,   39,   31,   30,   31,   82,
+       31,   33,   34,   39,   34,   33,   34,   68,   34,   34,
+       35,   36,   36,   34,   36,   36,   36,   36,   36,   36,
+       39,  148,   40,   35,   36,   36,   36,   36,   36,   46,
+       40,   71,   72,   73,   40,   73,   75,  147,   74,   49,
 
-       38,   34,   35,   72,   52,   71,   68,   34,   35,   70,
-       39,   34,   35,   40,   35,   41,   69,   62,   34,   68,
-       42,   66,   65,   64,   35,   24,   24,   24,   24,   24,
-       24,   27,   63,   27,   27,   27,   27,   43,   54,   43,
-       50,   50,   61,   54,   61,   61,   67,   62,   67,   67,
-       59,   58,   57,   56,   34,   55,   55,   55,   55,   49,
-       47,   46,   45,   44,   30,   29,   28,   82,    3,   82,
-       82,   82,   82,   82,   82,   82,   82,   82,   82,   82,
-       82,   82,   82,   82,   82,   82,   82,   82,   82,   82,
-       82,   82,   82,   82,   82,   82,   82,   82,   82,   82,
+       49,   75,  146,  130,   48,  103,  108,   40,  104,  145,
+       37,   45,   49,   49,   46,   48,   71,   72,   46,  103,
+       47,  140,  108,   37,   49,   49,  141,   48,   49,   50,
+       48,   51,   52,   48,  140,  139,  103,   49,   49,  108,
+       48,   49,  105,   53,   48,  138,   54,  130,   55,  137,
+      108,  106,   48,  136,   56,  142,  109,  142,  143,  149,
+      143,  149,  143,  135,  143,  110,  134,  133,  132,  131,
+      129,  126,  128,  109,  127,  126,  125,  124,  123,  122,
+      121,  120,  110,  119,  118,  117,  116,  115,  114,  113,
+      112,  111,  144,  107,  144,   29,   29,   29,   29,   29,
 
-       82,   82,   82,   82,   82,   82,   82,   82,   82,   82,
-       82,   82,   82,   82,   82,   82,   82,   82
+       29,   29,   29,   29,   32,   32,   32,   32,   32,   32,
+       32,   32,   32,   38,   38,   38,   38,   38,   38,   38,
+       38,   38,   41,   41,  102,   41,   41,   41,   41,   41,
+       41,   57,   57,  101,  100,   57,   63,   99,   98,   97,
+       63,   63,   63,   63,   63,   65,   92,   96,   95,   65,
+       94,   65,   65,   65,   70,   70,   83,   83,   93,   84,
+       83,   83,   91,   91,   92,   90,   91,   91,   89,   88,
+       87,   86,   85,   74,   74,   84,   81,   66,   64,   80,
+       79,   78,   77,   76,   48,   75,   75,   75,   75,   69,
+       67,   66,   64,   62,   61,   60,   59,   58,   44,   43,
+
+       42,  150,    7,  150,  150,  150,  150,  150,  150,  150,
+      150,  150,  150,  150,  150,  150,  150,  150,  150,  150,
+      150,  150,  150,  150,  150,  150,  150,  150,  150,  150,
+      150,  150,  150,  150,  150,  150,  150,  150,  150,  150,
+      150,  150,  150,  150,  150,  150,  150,  150,  150,  150,
+      150,  150,  150,  150,  150,  150
     } ;
 
-static const flex_int16_t yy_chk[219] =
+static const flex_int16_t yy_chk[357] =
     {   0,
         1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
         1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
         1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
         1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
-        1,    1,    1,    1,    1,    1,    1,    1,    1,    5,
-        5,    5,    6,    6,    6,    7,   23,   23,   23,   24,
-       26,   29,   32,   29,   35,   38,   35,   41,   48,   35,
-       32,   29,   87,   38,   80,   79,   78,   77,   76,   41,
-        7,   13,   32,   29,   24,   26,   13,   75,   13,   74,
-       73,   72,   51,   48,   51,   13,   13,   13,   13,   13,
+        1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
+        1,    1,    1,    3,    3,   12,    3,    4,    4,  159,
+        4,    5,    5,   38,    5,    6,    6,   40,    6,    5,
+        9,    9,    9,    6,   10,   10,   10,   11,   11,   11,
+       68,  147,   12,   35,   35,   35,   36,   36,   36,   43,
+       38,   43,   46,   49,   40,   49,   52,  146,   49,   43,
 
-       13,   13,   51,   71,   52,   70,   67,   13,   13,   66,
-       13,   13,   52,   13,   51,   13,   63,   61,   13,   60,
-       13,   59,   58,   57,   52,   83,   83,   83,   83,   83,
-       83,   84,   56,   84,   84,   84,   84,   85,   54,   85,
-       86,   86,   88,   53,   88,   88,   89,   50,   89,   89,
-       47,   46,   45,   44,   42,   40,   39,   37,   36,   28,
-       21,   20,   19,   18,   12,   10,    9,    3,   82,   82,
-       82,   82,   82,   82,   82,   82,   82,   82,   82,   82,
-       82,   82,   82,   82,   82,   82,   82,   82,   82,   82,
-       82,   82,   82,   82,   82,   82,   82,   82,   82,   82,
+       46,   55,  145,  126,   52,  100,  126,   68,  100,  144,
+        9,   18,   43,   46,   71,   55,   71,   72,   18,  102,
+       18,  139,  102,   35,   71,   72,  138,   18,   18,   18,
+       18,   18,   18,   18,  137,  136,  103,   71,   72,  103,
+       18,   18,  100,   18,   18,  135,   18,  130,   18,  134,
+      130,  100,   18,  133,   18,  140,  102,  142,  140,  148,
+      142,  149,  148,  132,  149,  102,  131,  129,  128,  127,
+      125,  124,  123,  103,  122,  121,  120,  119,  118,  117,
+      116,  115,  103,  114,  113,  112,  111,  110,  109,  107,
+      106,  105,  140,  101,  142,  151,  151,  151,  151,  151,
 
-       82,   82,   82,   82,   82,   82,   82,   82,   82,   82,
-       82,   82,   82,   82,   82,   82,   82,   82
+      151,  151,  151,  151,  152,  152,  152,  152,  152,  152,
+      152,  152,  152,  153,  153,  153,  153,  153,  153,  153,
+      153,  153,  154,  154,   99,  154,  154,  154,  154,  154,
+      154,  155,  155,   98,   97,  155,  156,   96,   95,   94,
+      156,  156,  156,  156,  156,  157,   91,   90,   89,  157,
+       86,  157,  157,  157,  158,  158,  160,  160,   85,   83,
+      160,  160,  161,  161,   82,   81,  161,  161,   80,   79,
+       78,   77,   76,   74,   73,   70,   67,   66,   64,   62,
+       61,   60,   59,   58,   56,   54,   53,   51,   50,   42,
+       37,   33,   30,   27,   26,   25,   24,   23,   17,   15,
+
+       14,    7,  150,  150,  150,  150,  150,  150,  150,  150,
+      150,  150,  150,  150,  150,  150,  150,  150,  150,  150,
+      150,  150,  150,  150,  150,  150,  150,  150,  150,  150,
+      150,  150,  150,  150,  150,  150,  150,  150,  150,  150,
+      150,  150,  150,  150,  150,  150,  150,  150,  150,  150,
+      150,  150,  150,  150,  150,  150
     } ;
 
 static yy_state_type yy_last_accepting_state;
@@ -514,16 +570,27 @@ int yy_flex_debug = 0;
 #define YY_MORE_ADJ 0
 #define YY_RESTORE_YY_MORE_OFFSET
 char *yytext;
-#line 1 "scanner.l"
-#line 2 "scanner.l"
+#line 1 "nanomq/nng/src/supplemental/nanolib/scanner.l"
+#line 2 "nanomq/nng/src/supplemental/nanolib/scanner.l"
 #include <string.h>
 #include "nng/supplemental/nanolib/parser.h"
 
-#line 523 "nanomq/nng/src/supplemental/nanolib/scanner.c"
+#define MAX_INCLUDE_DEPTH 10
+YY_BUFFER_STATE include_stack[MAX_INCLUDE_DEPTH];
+int include_stack_ptr = 0;
+int bcount = 0; // brace count
+int count_brace(char *);
+#line 584 "nanomq/nng/src/supplemental/nanolib/scanner.c"
 /* %option debug */
-#line 525 "nanomq/nng/src/supplemental/nanolib/scanner.c"
+/* the "incl" state is used for picking up the name
+ * of an include file
+ */
+
+#line 590 "nanomq/nng/src/supplemental/nanolib/scanner.c"
 
 #define INITIAL 0
+#define incl 1
+#define inclr 2
 
 #ifndef YY_NO_UNISTD_H
 /* Special case for "unistd.h", since it is non-ANSI. We include it way
@@ -584,12 +651,27 @@ extern int yywrap ( void );
 #endif
 #endif
 
+#ifndef YY_NO_UNPUT
+    
+    static void yyunput ( int c, char *buf_ptr  );
+    
+#endif
+
 #ifndef yytext_ptr
 static void yy_flex_strncpy ( char *, const char *, int );
 #endif
 
 #ifdef YY_NEED_STRLEN
 static int yy_flex_strlen ( const char * );
+#endif
+
+#ifndef YY_NO_INPUT
+#ifdef __cplusplus
+static int yyinput ( void );
+#else
+static int input ( void );
+#endif
+
 #endif
 
 /* Amount of stuff to slurp up with each read. */
@@ -727,9 +809,9 @@ YY_DECL
 		}
 
 	{
-#line 51 "scanner.l"
+#line 70 "nanomq/nng/src/supplemental/nanolib/scanner.l"
 
-#line 744 "nanomq/nng/src/supplemental/nanolib/scanner.c"
+#line 811 "nanomq/nng/src/supplemental/nanolib/build/scanner.c"
 
 	while ( /*CONSTCOND*/1 )		/* loops until end-of-file is reached */
 		{
@@ -756,13 +838,13 @@ yy_match:
 			while ( yy_chk[yy_base[yy_current_state] + yy_c] != yy_current_state )
 				{
 				yy_current_state = (int) yy_def[yy_current_state];
-				if ( yy_current_state >= 83 )
+				if ( yy_current_state >= 151 )
 					yy_c = yy_meta[yy_c];
 				}
 			yy_current_state = yy_nxt[yy_base[yy_current_state] + yy_c];
 			++yy_cp;
 			}
-		while ( yy_base[yy_current_state] != 169 );
+		while ( yy_base[yy_current_state] != 303 );
 
 yy_find_action:
 		yy_act = yy_accept[yy_current_state];
@@ -789,118 +871,236 @@ do_action:	/* This label is used only to access EOF actions. */
 case 1:
 /* rule 1 can match eol */
 YY_RULE_SETUP
-#line 52 "scanner.l"
+#line 71 "nanomq/nng/src/supplemental/nanolib/scanner.l"
 
 	YY_BREAK
 case 2:
 YY_RULE_SETUP
-#line 53 "scanner.l"
+#line 72 "nanomq/nng/src/supplemental/nanolib/scanner.l"
 { return LCURLY; }
 	YY_BREAK
 case 3:
 YY_RULE_SETUP
-#line 54 "scanner.l"
+#line 73 "nanomq/nng/src/supplemental/nanolib/scanner.l"
 { return RCURLY; } 
 	YY_BREAK
 case 4:
 YY_RULE_SETUP
-#line 55 "scanner.l"
+#line 74 "nanomq/nng/src/supplemental/nanolib/scanner.l"
 { return LBRAC; } 
 	YY_BREAK
 case 5:
 YY_RULE_SETUP
-#line 56 "scanner.l"
+#line 75 "nanomq/nng/src/supplemental/nanolib/scanner.l"
 { return RBRAC; } 
 	YY_BREAK
 case 6:
 YY_RULE_SETUP
-#line 57 "scanner.l"
+#line 76 "nanomq/nng/src/supplemental/nanolib/scanner.l"
 { return COMMA; } 
 	YY_BREAK
 case 7:
 YY_RULE_SETUP
-#line 58 "scanner.l"
+#line 77 "nanomq/nng/src/supplemental/nanolib/scanner.l"
 { return PUNCT;}
 	YY_BREAK
 case 8:
 YY_RULE_SETUP
-#line 59 "scanner.l"
+#line 78 "nanomq/nng/src/supplemental/nanolib/scanner.l"
 { return VTRUE; } 
 	YY_BREAK
 case 9:
 YY_RULE_SETUP
-#line 60 "scanner.l"
+#line 79 "nanomq/nng/src/supplemental/nanolib/scanner.l"
 { return VFALSE; }
 	YY_BREAK
 case 10:
 YY_RULE_SETUP
-#line 61 "scanner.l"
+#line 80 "nanomq/nng/src/supplemental/nanolib/scanner.l"
 { return VNULL; } 
 	YY_BREAK
 case 11:
 YY_RULE_SETUP
-#line 62 "scanner.l"
-{ yylval.strval = strdup(yytext); return BYTESIZE; }
+#line 82 "nanomq/nng/src/supplemental/nanolib/scanner.l"
+{ BEGIN(inclr); bcount = count_brace(yytext);}
 	YY_BREAK
 case 12:
 YY_RULE_SETUP
-#line 63 "scanner.l"
-{ yylval.strval = strdup(yytext); return PERCENT; }
+#line 83 "nanomq/nng/src/supplemental/nanolib/scanner.l"
+/* eat the whitespace */
 	YY_BREAK
 case 13:
 YY_RULE_SETUP
-#line 64 "scanner.l"
-{ yylval.strval = strdup(yytext); return DURATION; }
+#line 84 "nanomq/nng/src/supplemental/nanolib/scanner.l"
+{  /* got the include file name */
+                            {
+                                int c;
+                                while ((c = input()) && c != ')');
+                            }
+
+                            if (include_stack_ptr >= MAX_INCLUDE_DEPTH) {
+                                fprintf(stderr, "Includes nested too deeply!");
+                                exit(1);
+                            }
+
+                            include_stack[include_stack_ptr++] =
+                                YY_CURRENT_BUFFER;
+
+                            yyin = fopen(yytext, "r");
+
+                            if (bcount == 2) {
+                                int c = 0;
+                                while ((c = input()) && c != ')');
+                            }
+
+                            if (!yyin) {
+                                fprintf(stderr, "File %s is not exist!\n", yytext);
+                                yyterminate();
+                            } else {
+                                yy_switch_to_buffer(
+                                    yy_create_buffer(yyin, YY_BUF_SIZE));
+                            }
+                            BEGIN(INITIAL);
+
+                        }
 	YY_BREAK
 case 14:
 /* rule 14 can match eol */
 YY_RULE_SETUP
-#line 65 "scanner.l"
-{ yylval.strval = strdup(yytext); return STRING; } 
+#line 115 "nanomq/nng/src/supplemental/nanolib/scanner.l"
+{   fprintf(stderr, "Include error occured!\n"); yyterminate();}
 	YY_BREAK
 case 15:
 YY_RULE_SETUP
-#line 66 "scanner.l"
-{ yylval.strval = strdup(yytext); return USTRING; } 
+#line 117 "nanomq/nng/src/supplemental/nanolib/scanner.l"
+{ BEGIN(incl); bcount = count_brace(yytext); }
 	YY_BREAK
 case 16:
 YY_RULE_SETUP
-#line 67 "scanner.l"
-{ yylval.intval  = atoll(yytext); return INTEGER; } 
+#line 118 "nanomq/nng/src/supplemental/nanolib/scanner.l"
+/* eat the whitespace */
 	YY_BREAK
 case 17:
 YY_RULE_SETUP
-#line 68 "scanner.l"
-{ yylval.floatval = atof(yytext); return DECIMAL ; } 
+#line 119 "nanomq/nng/src/supplemental/nanolib/scanner.l"
+{  /* got the include file name */
+                            {
+                                int c;
+                                while ((c = input()) && c != '"');
+                            }
+
+                            if (include_stack_ptr >= MAX_INCLUDE_DEPTH) {
+                                fprintf(stderr, "Includes nested too deeply!\n");
+                                exit(1);
+                            }
+
+                            include_stack[include_stack_ptr++] =
+                                YY_CURRENT_BUFFER;
+
+                            yyin = fopen(yytext, "r");
+
+                            if (bcount == 1) {
+                                int c = 0;
+                                while ((c = input()) && c != ')');
+                            }
+
+
+                            if (!yyin) {
+                                fprintf(stderr, "File %s is not exist!\n", yytext);
+                                include_stack_ptr--;
+                            } else {
+                                yy_switch_to_buffer(
+                                    yy_create_buffer(yyin, YY_BUF_SIZE));
+                            }
+                            BEGIN(INITIAL);
+
+                        }
 	YY_BREAK
 case 18:
+/* rule 18 can match eol */
 YY_RULE_SETUP
-#line 69 "scanner.l"
-{ /*TODO*/ printf("Multi line string: %s\n", yytext);}
+#line 151 "nanomq/nng/src/supplemental/nanolib/scanner.l"
+{   fprintf(stderr, "Include error occured!\n"); yyterminate();}
+	YY_BREAK
+case YY_STATE_EOF(INITIAL):
+case YY_STATE_EOF(incl):
+case YY_STATE_EOF(inclr):
+#line 152 "nanomq/nng/src/supplemental/nanolib/scanner.l"
+{
+                            if ( --include_stack_ptr < 0 )
+                            {
+                                yyterminate();
+                            }
+                            else
+                            {
+                               yy_delete_buffer(YY_CURRENT_BUFFER);
+                               yy_switch_to_buffer(
+                                 include_stack[include_stack_ptr]);
+                            }
+                        }
 	YY_BREAK
 case 19:
 YY_RULE_SETUP
-#line 70 "scanner.l"
-{ /*TODO*/ printf("Variable string: %s\n", yytext);}
+#line 164 "nanomq/nng/src/supplemental/nanolib/scanner.l"
+{ yylval.strval = strdup(yytext); return BYTESIZE; }
 	YY_BREAK
 case 20:
 YY_RULE_SETUP
-#line 71 "scanner.l"
-{ /*TODO*/ printf("MaybeVar line string: %s\n", yytext);}
+#line 165 "nanomq/nng/src/supplemental/nanolib/scanner.l"
+{ yylval.strval = strdup(yytext); return PERCENT; }
 	YY_BREAK
 case 21:
 YY_RULE_SETUP
-#line 72 "scanner.l"
-{ printf("Unrecognized %c\n", yytext[0]); }
+#line 166 "nanomq/nng/src/supplemental/nanolib/scanner.l"
+{ yylval.strval = strdup(yytext); return DURATION; }
 	YY_BREAK
 case 22:
+/* rule 22 can match eol */
 YY_RULE_SETUP
-#line 74 "scanner.l"
+#line 167 "nanomq/nng/src/supplemental/nanolib/scanner.l"
+{ yylval.strval = strdup(yytext); return STRING; } 
+	YY_BREAK
+case 23:
+YY_RULE_SETUP
+#line 168 "nanomq/nng/src/supplemental/nanolib/scanner.l"
+{ yylval.strval = strdup(yytext); return USTRING; } 
+	YY_BREAK
+case 24:
+YY_RULE_SETUP
+#line 169 "nanomq/nng/src/supplemental/nanolib/scanner.l"
+{ yylval.intval  = atoll(yytext); return INTEGER; }
+	YY_BREAK
+case 25:
+YY_RULE_SETUP
+#line 170 "nanomq/nng/src/supplemental/nanolib/scanner.l"
+{ yylval.floatval = atof(yytext); return DECIMAL; } 
+	YY_BREAK
+case 26:
+YY_RULE_SETUP
+#line 171 "nanomq/nng/src/supplemental/nanolib/scanner.l"
+{ /*TODO*/ printf("Multi line string: %s\n", yytext);}
+	YY_BREAK
+case 27:
+YY_RULE_SETUP
+#line 172 "nanomq/nng/src/supplemental/nanolib/scanner.l"
+{ /*TODO*/ printf("Variable string: %s\n", yytext);}
+	YY_BREAK
+case 28:
+YY_RULE_SETUP
+#line 173 "nanomq/nng/src/supplemental/nanolib/scanner.l"
+{ /*TODO*/ printf("MaybeVar line string: %s\n", yytext);}
+	YY_BREAK
+case 29:
+YY_RULE_SETUP
+#line 174 "nanomq/nng/src/supplemental/nanolib/scanner.l"
+{ printf("Unrecognized %c\n", yytext[0]); }
+	YY_BREAK
+case 30:
+YY_RULE_SETUP
+#line 176 "nanomq/nng/src/supplemental/nanolib/scanner.l"
 ECHO;
 	YY_BREAK
-#line 913 "nanomq/nng/src/supplemental/nanolib/scanner.c"
-case YY_STATE_EOF(INITIAL):
-	yyterminate();
+#line 1100 "nanomq/nng/src/supplemental/nanolib/scanner.c"
 
 	case YY_END_OF_BUFFER:
 		{
@@ -1195,7 +1395,7 @@ static int yy_get_next_buffer (void)
 		while ( yy_chk[yy_base[yy_current_state] + yy_c] != yy_current_state )
 			{
 			yy_current_state = (int) yy_def[yy_current_state];
-			if ( yy_current_state >= 83 )
+			if ( yy_current_state >= 151 )
 				yy_c = yy_meta[yy_c];
 			}
 		yy_current_state = yy_nxt[yy_base[yy_current_state] + yy_c];
@@ -1223,14 +1423,129 @@ static int yy_get_next_buffer (void)
 	while ( yy_chk[yy_base[yy_current_state] + yy_c] != yy_current_state )
 		{
 		yy_current_state = (int) yy_def[yy_current_state];
-		if ( yy_current_state >= 83 )
+		if ( yy_current_state >= 151 )
 			yy_c = yy_meta[yy_c];
 		}
 	yy_current_state = yy_nxt[yy_base[yy_current_state] + yy_c];
-	yy_is_jam = (yy_current_state == 82);
+	yy_is_jam = (yy_current_state == 150);
 
 		return yy_is_jam ? 0 : yy_current_state;
 }
+
+#ifndef YY_NO_UNPUT
+
+    static void yyunput (int c, char * yy_bp )
+{
+	char *yy_cp;
+    
+    yy_cp = (yy_c_buf_p);
+
+	/* undo effects of setting up yytext */
+	*yy_cp = (yy_hold_char);
+
+	if ( yy_cp < YY_CURRENT_BUFFER_LVALUE->yy_ch_buf + 2 )
+		{ /* need to shift things up to make room */
+		/* +2 for EOB chars. */
+		int number_to_move = (yy_n_chars) + 2;
+		char *dest = &YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[
+					YY_CURRENT_BUFFER_LVALUE->yy_buf_size + 2];
+		char *source =
+				&YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[number_to_move];
+
+		while ( source > YY_CURRENT_BUFFER_LVALUE->yy_ch_buf )
+			*--dest = *--source;
+
+		yy_cp += (int) (dest - source);
+		yy_bp += (int) (dest - source);
+		YY_CURRENT_BUFFER_LVALUE->yy_n_chars =
+			(yy_n_chars) = (int) YY_CURRENT_BUFFER_LVALUE->yy_buf_size;
+
+		if ( yy_cp < YY_CURRENT_BUFFER_LVALUE->yy_ch_buf + 2 )
+			YY_FATAL_ERROR( "flex scanner push-back overflow" );
+		}
+
+	*--yy_cp = (char) c;
+
+	(yytext_ptr) = yy_bp;
+	(yy_hold_char) = *yy_cp;
+	(yy_c_buf_p) = yy_cp;
+}
+
+#endif
+
+#ifndef YY_NO_INPUT
+#ifdef __cplusplus
+    static int yyinput (void)
+#else
+    static int input  (void)
+#endif
+
+{
+	int c;
+    
+	*(yy_c_buf_p) = (yy_hold_char);
+
+	if ( *(yy_c_buf_p) == YY_END_OF_BUFFER_CHAR )
+		{
+		/* yy_c_buf_p now points to the character we want to return.
+		 * If this occurs *before* the EOB characters, then it's a
+		 * valid NUL; if not, then we've hit the end of the buffer.
+		 */
+		if ( (yy_c_buf_p) < &YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[(yy_n_chars)] )
+			/* This was really a NUL. */
+			*(yy_c_buf_p) = '\0';
+
+		else
+			{ /* need more input */
+			int offset = (int) ((yy_c_buf_p) - (yytext_ptr));
+			++(yy_c_buf_p);
+
+			switch ( yy_get_next_buffer(  ) )
+				{
+				case EOB_ACT_LAST_MATCH:
+					/* This happens because yy_g_n_b()
+					 * sees that we've accumulated a
+					 * token and flags that we need to
+					 * try matching the token before
+					 * proceeding.  But for input(),
+					 * there's no matching to consider.
+					 * So convert the EOB_ACT_LAST_MATCH
+					 * to EOB_ACT_END_OF_FILE.
+					 */
+
+					/* Reset buffer status. */
+					yyrestart( yyin );
+
+					/*FALLTHROUGH*/
+
+				case EOB_ACT_END_OF_FILE:
+					{
+					if ( yywrap(  ) )
+						return 0;
+
+					if ( ! (yy_did_buffer_switch_on_eof) )
+						YY_NEW_FILE;
+#ifdef __cplusplus
+					return yyinput();
+#else
+					return input();
+#endif
+					}
+
+				case EOB_ACT_CONTINUE_SCAN:
+					(yy_c_buf_p) = (yytext_ptr) + offset;
+					break;
+				}
+			}
+		}
+
+	c = *(unsigned char *) (yy_c_buf_p);	/* cast for 8-bit char's */
+	*(yy_c_buf_p) = '\0';	/* preserve yytext */
+	(yy_hold_char) = *++(yy_c_buf_p);
+
+	return c;
+}
+#endif	/* ifndef YY_NO_INPUT */
 
 /** Immediately switch to a different input stream.
  * @param input_file A readable stream.
@@ -1793,3 +2108,13 @@ void yyfree (void * ptr )
 
 
 
+int count_brace(char *str)
+{
+  int count = 0;
+  while (*str != '"') {
+    str++;
+    if (*str == '(')
+      count++;
+  }
+  return count;
+}
