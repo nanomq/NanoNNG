@@ -18,48 +18,16 @@
 extern "C" {
 #endif
 #if defined(SUPP_QUIC)
-typedef struct conf_tls  conf_tls;
-typedef struct conf_quic conf_quic;
-struct conf_tls {
-	bool  enable;
-	char *url; // "tls+nmq-tcp://addr:port"
-	char *cafile;
-	char *certfile;
-	char *keyfile;
-	char *ca;
-	char *cert;
-	char *key;
-	char *key_password;
-	bool  verify_peer;
-	bool  set_fail; // fail_if_no_peer_cert
-};
-
-struct conf_quic {
-	conf_tls tls;
-	bool     qos_first; // send QoS msg in high priority
-	bool     multi_stream;
-	uint64_t qkeepalive; // keepalive timeout interval of QUIC transport
-	uint64_t qconnect_timeout;    // HandshakeIdleTimeoutMs of QUIC
-	uint32_t qdiscon_timeout;     // DisconnectTimeoutMs
-	uint32_t qidle_timeout;       // Disconnect after idle
-	uint8_t  qcongestion_control; // congestion control algorithm 1: bbr 0:
-	                              // cubic
-};
-
-// It is an interface only for ffi.
-void conf_quic_tls_create(conf_quic **cqp, char *cafile, char *certfile,
-    char *keyfile, char *key_pwd);
 
 NNG_DECL int nng_mqttv5_quic_client_open(nng_socket *, const char *url);
-NNG_DECL int nng_mqttv5_quic_client_open_conf(
-    nng_socket *sock, const char *url, conf_quic *conf);
 NNG_DECL int nng_mqtt_quic_client_open(nng_socket *, const char *url);
-NNG_DECL int nng_mqtt_quic_client_open_conf(
-    nng_socket *sock, const char *url, conf_quic *conf);
 NNG_DECL int nng_mqtt_quic_client_close(nng_socket *);
 NNG_DECL int nng_mqtt_quic_open_conf(
     nng_socket *sock, const char *url, void *node);
-NNG_DECL int nng_mqtt_quic_set_connect_cb(
+NNG_DECL int nng_mqttv5_quic_open_conf(
+    nng_socket *sock, const char *url, void *node);
+NNG_DECL
+int nng_mqtt_quic_set_connect_cb(
     nng_socket *, int (*cb)(void *, void *), void *arg);
 NNG_DECL int nng_mqtt_quic_set_disconnect_cb(
     nng_socket *, int (*cb)(void *, void *), void *arg);
