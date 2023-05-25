@@ -890,6 +890,7 @@ mqtt_ctx_init(void *arg, void *sock)
 	mqtt_sock_t *s   = sock;
 
 	ctx->mqtt_sock = s;
+	log_debug("mqtt_ctx_init");
 	NNI_LIST_NODE_INIT(&ctx->sqnode);
 	NNI_LIST_NODE_INIT(&ctx->rqnode);
 }

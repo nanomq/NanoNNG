@@ -1273,6 +1273,9 @@ static void
 mqtt_quic_sock_fini(void *arg)
 {
 	mqtt_sock_t *s = arg;
+	nni_aio *aio;
+	nni_msg *tmsg, *msg;
+	size_t count;
 	/*
 #if defined(NNG_SUPP_SQLITE) && defined(NNG_HAVE_MQTT_BROKER)
 	bool is_sqlite = get_persist(s);
@@ -1282,6 +1285,41 @@ mqtt_quic_sock_fini(void *arg)
 	}
 #endif
 	*/
+	log_debug("mqtt_quic_sock_fini %p", s);
+	if (s->connmsg != NULL) {
+		nni_msg_free(s->connmsg);
+	}
+
+	if (s->ack_aio != NULL) {
+		nni_aio_fini(s->ack_aio);
+		nng_free(s->ack_aio, sizeof(nni_aio *));
+	}
+
+	if (s->ack_lmq != NULL) {
+		nni_lmq_fini(s->ack_lmq);
+		nng_free(s->ack_lmq, sizeof(nni_lmq));
+	}
+	// emulate disconnect notify msg as a normal publish
+	while ((aio = nni_list_first(&s->recv_queue)) != NULL) {
+		// Pipe was closed.  just push an error back to the
+		// entire socket, because we only have one pipe
+		nni_list_remove(&s->recv_queue, aio);
+		nni_aio_set_msg(aio, tmsg);
+		// only return pipe closed error once for notification
+		// sync action to avoid NULL conn param
+		count == 0 ? nni_aio_finish_sync(aio, NNG_ECONNSHUT, 0)
+		           : nni_aio_finish_error(aio, NNG_ECLOSED);
+		// there should be no msg waiting
+		count++;
+	}
+	while ((aio = nni_list_first(&s->send_queue)) != NULL) {
+		nni_list_remove(&s->send_queue, aio);
+		msg = nni_aio_get_msg(aio);
+		if (msg != NULL) {
+			nni_msg_free(msg);
+		}
+		nni_aio_finish_error(aio, NNG_ECLOSED);
+	}
 	if (s->multi_stream) {
 		nni_id_map_fini(s->streams);
 		nng_free(s->streams, sizeof(nni_id_map));
@@ -1435,7 +1473,10 @@ quic_mqtt_stream_fini(void *arg)
 		nni_aio_set_msg(&p->send_aio, NULL);
 		nni_msg_free(msg);
 	}
-
+	// hold nni_sock twice for thread safety
+	nni_sock_hold(s->nsock);
+	nni_sock_hold(s->nsock);
+	nni_mtx_lock(&s->mtx);
 	nni_aio_fini(&p->send_aio);
 	nni_aio_fini(&p->recv_aio);
 	nni_aio_fini(&p->rep_aio);
@@ -1493,10 +1534,14 @@ quic_mqtt_stream_fini(void *arg)
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
 
+exit:
 	conn_param_free(p->cparam);
 	// Free the mqtt_pipe
 	// FIX: potential unsafe free
 	nng_free(p, sizeof(p));
+	nni_mtx_unlock(&s->mtx);
+	nni_sock_rele(s->nsock);
+	nni_sock_rele(s->nsock);
 }
 
 // only work for main stream
