@@ -667,6 +667,53 @@ nni_sock_open(nni_sock **sockp, const nni_proto *proto)
 	return (0);
 }
 
+// a temp API for hybrid bridging only
+nni_sock_rm(nni_sock *sock, nni_sock *new)
+{
+	nni_pipe     *pipe;
+	nni_dialer   *d;
+	nni_listener *l;
+	nni_ctx      *ctx;
+	nni_ctx      *nctx;
+	size_t   sz;
+
+	nni_mtx_lock(&sock_lk);
+
+	nctx = nni_list_first(&sock->s_ctxs);
+	while ((ctx = nctx) != NULL) {
+		nctx = nni_list_next(&sock->s_ctxs, ctx);
+
+		nni_list_remove(&sock->s_ctxs, ctx);
+		log_error(
+		    "rm ctx %p %d from sock %d", ctx, ctx->c_id, sock->s_id);
+		if (ctx->c_data != NULL) {
+			ctx->c_ops.ctx_fini(ctx->c_data);
+		}
+		// nni_free(ctx, ctx->c_size);
+		// sz = NNI_ALIGN_UP(sizeof(*ctx)) + new->s_ctx_ops.ctx_size;
+		// if ((ctx = nni_zalloc(sz)) == NULL) {
+		// 	return (NNG_ENOMEM);
+		// }
+		ctx->c_sock     = new;
+		ctx->c_size     = sz;
+		ctx->c_data     = ctx + 1;
+		ctx->c_closed   = false;
+		ctx->c_ref      = 1; // Caller implicitly gets a reference.
+		ctx->c_ops      = new->s_ctx_ops;
+		ctx->c_rcvtimeo = new->s_rcvtimeo;
+		ctx->c_sndtimeo = new->s_sndtimeo;
+		if (new->s_closed) {
+			nni_mtx_unlock(&sock_lk);
+			nni_free(ctx, ctx->c_size);
+			return (NNG_ECLOSED);
+		}
+		new->s_ctx_ops.ctx_init(ctx->c_data, new->s_data);
+		nni_list_append(&new->s_ctxs, ctx);
+	}
+	nni_mtx_unlock(&sock_lk);
+}
+
+
 // nni_sock_shutdown shuts down the socket; after this point no
 // further access to the socket will function, and any threads blocked
 // in entry points will be woken (and the functions they are blocked
