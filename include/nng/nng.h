@@ -419,6 +419,8 @@ NNG_DECL void nng_recv_aio(nng_socket, nng_aio *);
 // protocol implementation does not support separate contexts.
 NNG_DECL int nng_ctx_open(nng_ctx *, nng_socket);
 
+NNG_DECL int nng_sock_remove(nng_socket, nng_socket);
+
 // nng_ctx_close closes the context.
 NNG_DECL int nng_ctx_close(nng_ctx);
 
