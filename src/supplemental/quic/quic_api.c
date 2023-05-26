@@ -88,7 +88,7 @@ struct quic_strm_s {
 	uint8_t  rxbuf[5];
 };
 
-const QUIC_API_TABLE *MsQuic;
+const QUIC_API_TABLE *MsQuic = NULL;
 
 // Config for msquic
 const QUIC_REGISTRATION_CONFIG quic_reg_config = {
@@ -318,7 +318,6 @@ quic_sock_fini(quic_sock_t *qsock)
 	qsock->closed = 1;
 	if (qsock->url_s)
 		nng_url_free(qsock->url_s);
-
 	nni_aio_stop(&qsock->close_aio);
 	nni_aio_fini(&qsock->close_aio);
 	// Do not stop close aio here due to reconnect
@@ -1400,11 +1399,12 @@ void
 quic_open()
 {
 	QUIC_STATUS rv = QUIC_STATUS_SUCCESS;
-
-	if (QUIC_FAILED(rv = MsQuicOpen2(&MsQuic))) {
-		log_error("MsQuicOpen2 failed, 0x%x!\n", rv);
-		goto error;
-	}
+	// only Open MsQUIC lib once, otherwise cause memleak
+	if (MsQuic == NULL)
+		if (QUIC_FAILED(rv = MsQuicOpen2(&MsQuic))) {
+			log_error("MsQuicOpen2 failed, 0x%x!\n", rv);
+			goto error;
+		}
 
 	// Create a registration for the app's connections.
 	if (QUIC_FAILED(rv = MsQuic->RegistrationOpen(
