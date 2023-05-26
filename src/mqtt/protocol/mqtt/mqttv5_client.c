@@ -851,6 +851,7 @@ mqtt_recv_cb(void *arg)
 					log_error(
 					    "packet id %d duplicates in", packet_id);
 					nni_msg_free(cached_msg);
+					conn_param_free(s->cparam);
 					// nni_id_remove(&pipe->nano_qos_db,
 					// pid);
 				}
