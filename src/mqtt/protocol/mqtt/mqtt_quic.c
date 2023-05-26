@@ -1328,6 +1328,8 @@ mqtt_quic_sock_fini(void *arg)
 	nni_lmq_fini(&s->send_messages);
 	nni_aio_fini(&s->time_aio);
 	nni_msg_free(s->ping_msg);
+	// potential memleak here. need to adapt to MsQUIC finit
+	// quic_close();
 }
 
 static void
