@@ -432,7 +432,8 @@ static void
 disconnect_cb(nng_pipe p, nng_pipe_ev ev, void *arg)
 {
 	nng_msg *msg = arg;
-	nng_msg_free(msg);
+	// we free connmsg in ep_fini
+	// nng_msg_free(msg);
 
 	NNI_ARG_UNUSED(p);
 	NNI_ARG_UNUSED(ev);
@@ -635,7 +636,7 @@ trantest_mqtt_sub_recv(nng_socket sock)
 		if (type == NNG_MQTT_PUBLISH) {
 			payload = nng_mqtt_msg_get_publish_payload(
 			    msg, &payload_len);
-			// printf("what I get:%s\n", (char *) payload);
+			printf("what I get:%s\n", (char *) payload);
 			So(strcmp((char *) payload, "ping") == 0);
 			conn_param_free(nng_msg_get_conn_param(msg));
 			nng_msg_free(msg);
@@ -655,7 +656,7 @@ trantest_mqtt_sub_pub(trantest *tt)
 	Convey("mqtt pub and sub", {
 		const char *url   = tt->addr;
 		uint8_t     qos   = 2;
-		const char *topic = "myTopic";
+		const char *topic = "myTopic-nanomq-test";
 		const char *data  = "ping";
 		nng_dialer  subdialer;
 		nng_dialer  pubdialer;
