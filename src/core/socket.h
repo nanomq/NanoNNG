@@ -68,7 +68,10 @@ extern void nni_sock_set_pipe_cb(nni_sock *sock, int, nng_pipe_cb, void *);
 // sockets (will also return NNG_ENOTSUP).
 extern int nni_ctx_open(nni_ctx **, nni_sock *);
 
-extern int nni_sock_rm(nni_sock *, nni_sock *);
+// replace all essential arguments related to nni_sock.
+// especially ctx and c_data
+// This API is for dynamic socket + internal use only
+extern int nni_sock_replace(nni_sock *, nni_sock *);
 
 // nni_ctx_find finds a context given its id.  The last argument should
 // be true if the context is acquired merely to close it, false otherwise.

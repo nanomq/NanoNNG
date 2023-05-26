@@ -668,7 +668,7 @@ nni_sock_open(nni_sock **sockp, const nni_proto *proto)
 }
 
 // a temp API for hybrid bridging only
-nni_sock_rm(nni_sock *sock, nni_sock *new)
+nni_sock_replace(nni_sock *sock, nni_sock *new)
 {
 	nni_pipe     *pipe;
 	nni_dialer   *d;

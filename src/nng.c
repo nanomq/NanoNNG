@@ -288,7 +288,7 @@ nng_send_aio(nng_socket s, nng_aio *aio)
 }
 
 int
-nng_sock_remove(nng_socket s, nng_socket d)
+nng_sock_replace(nng_socket s, nng_socket d)
 {
 	nni_sock *olds, *news;
 	nni_ctx  *ctx;
@@ -301,7 +301,7 @@ nng_sock_remove(nng_socket s, nng_socket d)
 	if ((rv = nni_sock_find(&news, d.id)) != 0) {
 		return (rv);
 	}
-	nni_sock_rm(olds, news);
+	nni_sock_replace(olds, news);
 	nni_sock_rele(olds);
 	nni_sock_rele(news);
 	return (0);
