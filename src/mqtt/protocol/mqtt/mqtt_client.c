@@ -844,7 +844,7 @@ mqtt_recv_cb(void *arg)
 		} else {
 			packet_id = nni_mqtt_msg_get_publish_packet_id(msg);
 			if ((cached_msg = nni_id_get(
-				         &p->recv_unack, packet_id)) != NULL) {
+			         &p->recv_unack, packet_id)) != NULL) {
 				// packetid already exists.
 				// sth wrong with the broker
 				// replace old with new
