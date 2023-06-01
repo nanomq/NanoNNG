@@ -146,7 +146,7 @@ endif()
 if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
     set(NNG_WARN_FLAGS "-Wall -Wextra -fno-omit-frame-pointer")
 elseif (CMAKE_C_COMPILER_ID MATCHES "Clang")
-    set(NNG_WARN_FLAGS "-Wall -Wextra -fno-omit-frame-pointer")
+    set(NNG_WARN_FLAGS "-Wall -Wextra -fno-omit-frame-pointer -Wno-microsoft-anon-tag")
 endif ()
 
 include(CheckSanitizer)
