@@ -350,16 +350,13 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 	nni_msg *        tmsg  = NULL;
 	nni_aio *        taio  = NULL;
 
-	if (p == NULL) {
-		// pipe closed, should never gets here
-		nni_println("Sending msg on a NULL pipe!");
-		goto out;
-	}
-	if (nni_atomic_get_bool(&p->closed)) {
+	if (p == NULL || nni_atomic_get_bool(&p->closed) || aio == NULL) {
+		//pipe closed, should never gets here
 		// sending msg on a closed pipe
 		goto out;
 	}
-	if (NULL == aio || NULL == (msg = nni_aio_get_msg(aio))) {
+	msg = nni_aio_get_msg(aio);
+	if ( msg == NULL ) {
 #if defined(NNG_SUPP_SQLITE)
 		nni_mqtt_sqlite_option *sqlite =
 		    mqtt_sock_get_sqlite_option(s);
