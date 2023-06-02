@@ -184,7 +184,8 @@ verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *cace
 static BOOLEAN
 quic_load_config(conf_bridge_node *node)
 {
-	QUIC_SETTINGS Settings = { 0 };
+	NNI_ARG_UNUSED(Unsecure);
+	QUIC_SETTINGS          Settings = { 0 };
 	QUIC_CREDENTIAL_CONFIG CredConfig;
 	if (!node) {
 		Settings.IsSet.IdleTimeoutMs       = TRUE;
