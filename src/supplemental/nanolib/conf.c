@@ -2661,10 +2661,7 @@ conf_bridge_node_parse_with_name(const char *path,const char *key_prefix, const 
 			char *tk = strtok(value, ",");
 			while (tk != NULL) {
 				node->forwards_count++;
-				node->forwards = realloc(node->forwards,
-				    sizeof(char *) * node->forwards_count);
-				node->forwards[node->forwards_count - 1] =
-				    nng_strdup(tk);
+				cvector_push_back(node->forwards, nng_strdup(tk));
 				tk = strtok(NULL, ",");
 			}
 			free(value);
@@ -2725,8 +2722,8 @@ conf_bridge_content_parse(conf *nanomq_conf, conf_bridge *bridge,
 
 	// 3. foreach the names as the key, get the value from the file and set
 	// sqlite config pointer;
-	conf_bridge_node **node_array =
-	    calloc(group_count, sizeof(conf_bridge_node *));
+	conf_bridge_node **node_array = NULL;
+	cvector_set_size(node_array, sizeof(conf_bridge_node *) * group_count);
 
 	char key_prefix[100] = {0};
 	snprintf(key_prefix, 100, "%sbridge.mqtt.", prefix);
@@ -2737,7 +2734,7 @@ conf_bridge_content_parse(conf *nanomq_conf, conf_bridge *bridge,
 		    path, key_prefix, group_names[i]);
 		node->name    = nng_strdup(group_names[i]);
 		node->sqlite  = &bridge->sqlite;
-		node_array[i] = node;
+		cvector_push_back(node_array, node);
 		nanomq_conf->bridge_mode |= node->enable;
 	}
 	bridge->nodes = node_array;
@@ -2895,7 +2892,7 @@ conf_bridge_destroy(conf_bridge *bridge)
 			free(node);
 		}
 		bridge->count = 0;
-		free(bridge->nodes);
+		cvector_free(bridge->nodes);
 		bridge->nodes = NULL;
 		conf_sqlite_destroy(&bridge->sqlite);
 	}
