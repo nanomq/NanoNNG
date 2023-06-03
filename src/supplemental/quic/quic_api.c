@@ -441,11 +441,18 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			nni_mtx_unlock(&qstrm->mtx);
 			return QUIC_STATUS_PENDING;
 		}
-		log_debug("Body is [%d]-[0x%x 0x%x].", rlen, *(rbuf), *(rbuf + 1));
+		log_debug(
+		    "Body is [%d]-[0x%x 0x%x].", rlen, *(rbuf), *(rbuf + 1));
 
 		if (rlen > qstrm->rrcap - qstrm->rrlen - qstrm->rrpos) {
-			qstrm->rrbuf = realloc(qstrm->rrbuf, rlen + qstrm->rrlen);
+			log_debug(
+			    "qstrm before resize cap: %d, pos: %d, len: %d\n",
+			    qstrm->rrcap, qstrm->rrpos, qstrm->rrlen);
+			qstrm->rrbuf =
+			    realloc(qstrm->rrbuf, rlen + qstrm->rrlen);
 			qstrm->rrcap = rlen + qstrm->rrlen;
+			log_debug("qstrm resize cap: %d, pos: %d, len: %d\n",
+			    qstrm->rrcap, qstrm->rrpos, qstrm->rrlen);
 		}
 		// Copy data from quic stream to rrbuf
 		memcpy(qstrm->rrbuf + (int)qstrm->rrlen, rbuf, rlen);
@@ -1189,11 +1196,13 @@ upload:
 		nni_mtx_unlock(&qstrm->mtx);
 	}
 
-	if (qstrm->rrlen > 0)
+	if (qstrm->rrlen > 0) {
+		log_debug(" Rein cap: %d, pos: %d, len: %d\n", qstrm->rrcap,
+		    qstrm->rrpos, qstrm->rrlen);
 		if (!nni_list_empty(&qstrm->recvq))
-			nni_aio_finish(&qstrm->rraio, 0, 0);
+			nni_aio_finish_sync(&qstrm->rraio, 0, 0);
+	}
 
-	memmove(qstrm->rrbuf, qstrm->rrbuf+qstrm->rrpos, qstrm->rrlen);
 	qstrm->rrpos = 0;
 	qdebug("over\n");
 }
