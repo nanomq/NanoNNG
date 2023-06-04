@@ -902,24 +902,20 @@ mqtt_quic_recv_cb(void *arg)
 	}
 
 	nni_mtx_lock(&s->mtx);
-	if (nni_atomic_get_bool(&s->closed) ||
-	    nni_atomic_get_bool(&p->closed)) {
-		//free msg and dont return data when pipe is closed.
-		// if (msg) {
-		// 	nni_msg_free(msg);
-		// }
-		nni_sock_rele(s->nsock);
-		nni_mtx_unlock(&s->mtx);
-		return;
-	}
-
-	nni_sock_hold(s->nsock);
 	nni_msg *msg = nni_aio_get_msg(&p->recv_aio);
 	nni_aio_set_msg(&p->recv_aio, NULL);
 	if (msg == NULL) {
-		nni_sock_rele(s->nsock);
 		nni_mtx_unlock(&s->mtx);
 		quic_pipe_recv(p->qpipe, &p->recv_aio);
+		return;
+	}
+	if (nni_atomic_get_bool(&s->closed) ||
+	    nni_atomic_get_bool(&p->closed)) {
+		//free msg and dont return data when pipe is closed.
+		if (msg) {
+			nni_msg_free(msg);
+		}
+		nni_mtx_unlock(&s->mtx);
 		return;
 	}
 	// nni_msg_set_pipe(msg, nni_pipe_id(p->pipe));
@@ -1108,7 +1104,6 @@ mqtt_quic_recv_cb(void *arg)
 		// Rely on health checker of Quic stream
 		// free msg
 		nni_msg_free(msg);
-		nni_sock_rele(s->nsock);
 		nni_mtx_unlock(&s->mtx);
 		return;
 	case NNG_MQTT_PUBREC:
@@ -1121,7 +1116,6 @@ mqtt_quic_recv_cb(void *arg)
 		// ignore result of this send ?
 		mqtt_send_msg(NULL, ack, s);
 		nni_msg_free(msg);
-		nni_sock_rele(s->nsock);
 		nni_mtx_unlock(&s->mtx);
 		return;
 	case NNG_MQTT_DISCONNECT:
@@ -1129,13 +1123,11 @@ mqtt_quic_recv_cb(void *arg)
 	default:
 		// unexpected packet type, server misbehaviour
 		nni_msg_free(msg);
-		nni_sock_rele(s->nsock);
 		nni_mtx_unlock(&s->mtx);
 		// close quic stream
 		// nni_pipe_close(p->pipe);
 		return;
 	}
-	nni_sock_rele(s->nsock);
 	nni_mtx_unlock(&s->mtx);
 
 	if (user_aio) {
@@ -1307,10 +1299,18 @@ mqtt_quic_sock_open(void *arg)
 }
 
 static void
+mqtt_quic_pipe_close(void *key, void *val)
+{
+	NNI_ARG_UNUSED(key);
+	quic_mqtt_stream_stop(val);
+}
+
+static void
 mqtt_quic_sock_close(void *arg)
 {
 	nni_aio *aio;
 	mqtt_sock_t *s = arg;
+	mqtt_pipe_t *p = s->pipe;
 
 	nni_sock_hold(s->nsock);
 	nni_aio_stop(&s->time_aio);
@@ -1323,6 +1323,12 @@ mqtt_quic_sock_close(void *arg)
 		nni_list_remove(&s->recv_queue, aio);
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
+	// need to disconnect connection before sock fini
+	quic_disconnect(p->qsock, p->qpipe);
+	if (s->multi_stream) {
+		nni_id_map_foreach(s->streams,mqtt_quic_pipe_close);
+	}
+	// have to wait for connection shutdown
 	nni_lmq_flush(&s->send_messages);
 
 	nni_sock_rele(s->nsock);

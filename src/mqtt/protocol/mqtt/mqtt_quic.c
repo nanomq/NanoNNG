@@ -1345,21 +1345,34 @@ mqtt_quic_sock_open(void *arg)
 }
 
 static void
+mqtt_quic_pipe_close(void *key, void *val)
+{
+	NNI_ARG_UNUSED(key);
+	quic_mqtt_stream_stop(val);
+}
+
+static void
 mqtt_quic_sock_close(void *arg)
 {
 	nni_aio *aio;
 	mqtt_sock_t *s = arg;
+	mqtt_pipe_t *p = s->pipe;
 
-	nni_atomic_set_bool(&s->closed, true);
-
+	nni_sock_hold(s->nsock);
 	nni_aio_stop(&s->time_aio);
 	nni_aio_close(&s->time_aio);
+	nni_atomic_set_bool(&s->closed, true);
 
 	while ((aio = nni_list_first(&s->recv_queue)) != NULL) {
 		// Pipe was closed.  just push an error back to the
 		// entire socket, because we only have one pipe
 		nni_list_remove(&s->recv_queue, aio);
 		nni_aio_finish_error(aio, NNG_ECLOSED);
+	}
+	// need to disconnect connection before sock fini
+	quic_disconnect(p->qsock, p->qpipe);
+	if (s->multi_stream) {
+		nni_id_map_foreach(s->streams,mqtt_quic_pipe_close);
 	}
 	nni_lmq_flush(&s->send_messages);
 
@@ -1589,7 +1602,6 @@ quic_mqtt_stream_stop(void *arg)
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
 	nni_msg *msg;
-	nni_aio *aio;
 
 	log_info("Stopping MQTT over QUIC Stream");
 	if (!nni_atomic_get_bool(&p->closed))
