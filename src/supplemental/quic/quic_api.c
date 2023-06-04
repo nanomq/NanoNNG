@@ -46,13 +46,13 @@
 typedef struct quic_sock_s quic_sock_t;
 
 struct quic_sock_s {
-	HQUIC     qconn; // QUIC connection
-	nni_sock *sock;
-	void     *pipe; //main mqtt_pipe
-	int       closed; // True when actively close
+	HQUIC           qconn; // QUIC connection
+	nni_sock       *sock;
+	bool            closed;
+	void           *pipe; // main mqtt_pipe
 
-	nni_mtx  mtx; // for reconnect
-	nni_aio  close_aio;
+	nni_mtx mtx;          // for reconnect
+	nni_aio close_aio;
 
 	uint8_t  rticket[4096];
 	uint16_t rticket_sz;
@@ -296,19 +296,30 @@ there:
 static void
 quic_sock_init(quic_sock_t *qsock)
 {
-	qsock->qconn = NULL;
-	qsock->sock  = NULL;
-	qsock->pipe  = NULL;
+	qsock->qconn  = NULL;
+	qsock->sock   = NULL;
+	qsock->pipe   = NULL;
 	qsock->closed = 0;
 
 	nni_mtx_init(&qsock->mtx);
 	nni_aio_init(&qsock->close_aio, quic_sock_close_cb, qsock);
 
-	qsock->url_s = NULL;
-	qsock->rticket_sz = 0;
-
+	qsock->url_s       = NULL;
+	qsock->rticket_sz  = 0;
 	qsock->cacert      = NULL;
 	qsock->enable_0rtt = true;
+	qsock->closed      = false;
+}
+
+void
+quic_sock_close(void *qsock)
+{
+	log_debug("actively disclose the QUIC Socket");
+	quic_sock_t *qs    = qsock;
+
+	nni_mtx_lock(&qs->mtx);
+	qs->closed = true;
+	nni_mtx_unlock(&qs->mtx);
 }
 
 static void
@@ -618,7 +629,11 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		}
 
 		nni_mtx_unlock(&qsock->mtx);
-		nni_aio_finish(&qsock->close_aio, 0, 0);
+		if (qsock->closed == true) {
+			nni_sock_rele(qsock->sock);
+		} else {
+			nni_aio_finish(&qsock->close_aio, 0, 0);
+		}
 		/*
 		if (qstrm->rtt0_enable) {
 			// No rticket
@@ -680,6 +695,7 @@ quic_disconnect(void *qsock, void *qpipe)
 	log_debug("actively disclose the QUIC stream");
 	quic_sock_t *qs    = qsock;
 	quic_strm_t *qstrm = qpipe;
+
 	if (!qsock) {
 		return -1;
 	}
@@ -694,7 +710,10 @@ quic_disconnect(void *qsock, void *qpipe)
 	nni_mtx_lock(&qs->mtx);
 	MsQuic->ConnectionShutdown(
 	    qs->qconn, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, NNG_ECLOSED);
+
 	nni_mtx_unlock(&qs->mtx);
+	nni_aio_wait(&qs->close_aio);
+	nni_aio_wait(&qstrm->rraio);
 
 	quic_sock_fini(qs);
 
@@ -766,6 +785,7 @@ quic_connect_ipv4(const char *url, nni_sock *sock, uint32_t *index, void **qsock
 
 	qsock->url_s = url_s;
 	qsock->sock  = sock;
+	nni_sock_hold(sock);
 
 	log_info("Quic connecting... %s:%s", url_s->u_host, url_s->u_port);
 
