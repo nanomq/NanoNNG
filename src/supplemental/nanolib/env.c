@@ -111,6 +111,26 @@ set_log_rotation_size(conf_log *log)
 
 }
 
+static void
+set_log_to(conf_log *log)
+{
+	char *log_to = NULL;
+	set_string_var(&log_to, NANOMQ_LOG_TO);
+	if (log_to) {
+		puts(log_to);
+		if (!strstr(log_to, "file")) {
+			log->type |= LOG_TO_FILE;
+		}
+		if (!strstr(log_to, "console")) {
+			log->type |= LOG_TO_CONSOLE;
+		}
+		if (!strstr(log_to, "syslog")) {
+			log->type |= LOG_TO_SYSLOG;
+		}
+
+	}
+}
+
 void
 read_env_conf(conf *config)
 {
@@ -171,6 +191,7 @@ read_env_conf(conf *config)
 	// log env
 	set_log_level(&config->log);
 	set_log_rotation_size(&config->log);
+	set_log_to(&config->log);
 
 	set_string_var(&config->conf_file, NANOMQ_CONF_PATH);
 }
