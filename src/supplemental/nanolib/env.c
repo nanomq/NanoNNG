@@ -87,6 +87,29 @@ set_log_level(conf_log *log)
 	}
 }
 
+static void
+set_log_rotation_size(conf_log *log)
+{
+	char *size = NULL;
+	set_string_var(&size, NANOMQ_LOG_ROTATION_SIZE);
+	if (size) {
+		size_t num      = 0;
+		char   unit[10] = { 0 };
+		int    res      = sscanf(size, "%zu%s", &num, unit);
+		if (res == 2) {
+			if (nni_strcasecmp(unit, "KB") == 0) {
+				log->rotation_sz = num * 1024;
+			} else if (nni_strcasecmp(unit, "MB") == 0) {
+				log->rotation_sz = num * 1024 * 1024;
+			} else if (nni_strcasecmp(unit, "GB") == 0) {
+				log->rotation_sz =
+				    num * 1024 * 1024 * 1024;
+			}
+		}
+	}
+
+
+}
 
 void
 read_env_conf(conf *config)
@@ -147,6 +170,7 @@ read_env_conf(conf *config)
 
 	// log env
 	set_log_level(&config->log);
+	set_log_rotation_size(&config->log);
 
 	set_string_var(&config->conf_file, NANOMQ_CONF_PATH);
 }
