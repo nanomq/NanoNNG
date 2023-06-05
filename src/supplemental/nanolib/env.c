@@ -192,6 +192,14 @@ read_env_conf(conf *config)
 	set_log_level(&config->log);
 	set_log_rotation_size(&config->log);
 	set_log_to(&config->log);
+	set_string_var(&config->log.dir, NANOMQ_LOG_DIR);
+	set_string_var(&config->log.file, NANOMQ_LOG_FILE);
+	set_long_var((long*) &config->log.rotation_count, NANOMQ_LOG_ROTATION_COUNT);
+	log_debug("ENV %s: %s", NANOMQ_LOG_DIR ,config->log.dir);
+	log_debug("ENV %s: %s", NANOMQ_LOG_FILE ,config->log.file);
+	log_debug("ENV %s: %ld",NANOMQ_LOG_ROTATION_COUNT , config->log.rotation_count);
+	log_debug("ENV %s: %ld",NANOMQ_LOG_ROTATION_SIZE , config->log.rotation_sz);
+	log_debug("ENV %s: %d", NANOMQ_LOG_LEVEL ,config->log.type);
 
 	set_string_var(&config->conf_file, NANOMQ_CONF_PATH);
 }
