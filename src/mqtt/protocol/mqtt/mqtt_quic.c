@@ -1358,6 +1358,7 @@ mqtt_quic_sock_close(void *arg)
 	mqtt_sock_t *s = arg;
 	mqtt_pipe_t *p = s->pipe;
 
+	nni_mtx_lock(&s->mtx);
 	nni_sock_hold(s->nsock);
 	nni_aio_stop(&s->time_aio);
 	nni_aio_close(&s->time_aio);
@@ -1378,6 +1379,7 @@ mqtt_quic_sock_close(void *arg)
 	nni_lmq_flush(&s->send_messages);
 
 	nni_sock_rele(s->nsock);
+	nni_mtx_unlock(&s->mtx);
 }
 
 static void
@@ -1553,7 +1555,10 @@ quic_mqtt_stream_fini(void *arg)
 exit:
 	conn_param_free(p->cparam);
 	// Free the mqtt_pipe
-	// FIX: potential unsafe free
+	if (p == s->pipe) {
+		// sock closed
+		s->pipe = NULL;
+	}
 	nng_free(p, sizeof(p));
 	nni_mtx_unlock(&s->mtx);
 	nni_sock_rele(s->nsock);
