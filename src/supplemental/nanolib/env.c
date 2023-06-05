@@ -15,6 +15,7 @@ set_string_var(char **var, const char *env_str)
 		}
 		*var = nni_strdup(env);
 	}
+
 }
 
 static void
@@ -73,6 +74,20 @@ set_auth_type(auth_type_t *var, const char *env_str)
 	}
 }
 
+static void
+set_log_level(conf_log *log)
+{
+	char *level = NULL;
+	set_string_var(&level, NANOMQ_LOG_LEVEL);
+	if (level != NULL) {
+		int rv = log_level_num(level);
+		if (-1 != rv) {
+			log->level = rv;
+		}
+	}
+}
+
+
 void
 read_env_conf(conf *config)
 {
@@ -128,6 +143,10 @@ read_env_conf(conf *config)
 
 	set_bool_var(&config->tls.verify_peer, NANOMQ_TLS_VERIFY_PEER);
 	set_bool_var(&config->tls.set_fail, NANOMQ_TLS_FAIL_IF_NO_PEER_CERT);
+
+
+	// log env
+	set_log_level(&config->log);
 
 	set_string_var(&config->conf_file, NANOMQ_CONF_PATH);
 }
