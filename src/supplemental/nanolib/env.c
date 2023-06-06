@@ -74,6 +74,7 @@ set_auth_type(auth_type_t *var, const char *env_str)
 	}
 }
 
+#if defined(ENABLE_LOG)
 static void
 set_log_level(conf_log *log)
 {
@@ -102,13 +103,10 @@ set_log_rotation_size(conf_log *log)
 			} else if (nni_strcasecmp(unit, "MB") == 0) {
 				log->rotation_sz = num * 1024 * 1024;
 			} else if (nni_strcasecmp(unit, "GB") == 0) {
-				log->rotation_sz =
-				    num * 1024 * 1024 * 1024;
+				log->rotation_sz = num * 1024 * 1024 * 1024;
 			}
 		}
 	}
-
-
 }
 
 static void
@@ -117,7 +115,6 @@ set_log_to(conf_log *log)
 	char *log_to = NULL;
 	set_string_var(&log_to, NANOMQ_LOG_TO);
 	if (log_to) {
-		puts(log_to);
 		if (!strstr(log_to, "file")) {
 			log->type |= LOG_TO_FILE;
 		}
@@ -127,9 +124,9 @@ set_log_to(conf_log *log)
 		if (!strstr(log_to, "syslog")) {
 			log->type |= LOG_TO_SYSLOG;
 		}
-
 	}
 }
+#endif
 
 void
 read_env_conf(conf *config)
@@ -189,17 +186,20 @@ read_env_conf(conf *config)
 
 
 	// log env
+#if defined(ENABLE_LOG)
 	set_log_level(&config->log);
 	set_log_rotation_size(&config->log);
 	set_log_to(&config->log);
 	set_string_var(&config->log.dir, NANOMQ_LOG_DIR);
 	set_string_var(&config->log.file, NANOMQ_LOG_FILE);
 	set_long_var((long*) &config->log.rotation_count, NANOMQ_LOG_ROTATION_COUNT);
+
 	log_debug("ENV %s: %s", NANOMQ_LOG_DIR ,config->log.dir);
 	log_debug("ENV %s: %s", NANOMQ_LOG_FILE ,config->log.file);
 	log_debug("ENV %s: %ld",NANOMQ_LOG_ROTATION_COUNT , config->log.rotation_count);
 	log_debug("ENV %s: %ld",NANOMQ_LOG_ROTATION_SIZE , config->log.rotation_sz);
 	log_debug("ENV %s: %d", NANOMQ_LOG_LEVEL ,config->log.type);
+#endif
 
 	set_string_var(&config->conf_file, NANOMQ_CONF_PATH);
 }
