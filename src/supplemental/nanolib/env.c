@@ -86,6 +86,7 @@ set_log_level(conf_log *log)
 			log->level = rv;
 		}
 	}
+	nng_strfree(level);
 }
 
 static void
@@ -107,6 +108,8 @@ set_log_rotation_size(conf_log *log)
 			}
 		}
 	}
+	nng_strfree(size);
+
 }
 
 static void
@@ -125,6 +128,7 @@ set_log_to(conf_log *log)
 			log->type |= LOG_TO_SYSLOG;
 		}
 	}
+	nng_strfree(log_to);
 }
 #endif
 
