@@ -359,6 +359,7 @@ nng_mqtt_msg_set_publish_payload(nng_msg *msg, uint8_t *payload, uint32_t len)
 	nni_mqtt_msg_set_publish_payload(msg, payload, len);
 }
 
+// payload & topic must be set together!
 uint8_t *
 nng_mqtt_msg_get_publish_payload(nng_msg *msg, uint32_t *len)
 {
@@ -872,6 +873,8 @@ void nng_mqtt_client_free(nng_mqtt_client *client, bool is_async)
 	if (client) {
 		if (is_async) {
 			nng_aio_free(client->send_aio);
+			nni_lmq_fini((nni_lmq *) client->msgq);
+			nng_free(client->msgq, sizeof(nni_lmq));
 		}
 		nni_lmq_fini(client->msgq);
 		nni_free(client->msgq,sizeof(nni_lmq));
