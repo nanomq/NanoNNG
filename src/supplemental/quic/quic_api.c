@@ -500,7 +500,6 @@ quic_disconnect()
 	if (qstrm->closed == true || qstrm->stream == NULL) {
 		return -1;
 	}
-	MsQuic->StreamClose(qstrm->stream);
 	MsQuic->StreamShutdown(
 	    qstrm->stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, NNG_ECONNSHUT);
 	// MsQuic->ConnectionClose(*GConnection);
