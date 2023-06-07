@@ -325,7 +325,7 @@ quic_sock_close(void *qsock)
 static void
 quic_sock_fini(quic_sock_t *qsock)
 {
-	// nni_mtx_fini(&qsock->mtx);
+	nni_mtx_fini(&qsock->mtx);
 	if (qsock->url_s)
 		nng_url_free(qsock->url_s);
 	nni_aio_stop(&qsock->close_aio);
@@ -713,8 +713,6 @@ quic_disconnect(void *qsock, void *qpipe)
 	nni_mtx_unlock(&qs->mtx);
 	nni_aio_wait(&qs->close_aio);
 	nni_aio_wait(&qstrm->rraio);
-
-	quic_sock_fini(qs);
 
 	return 0;
 }
