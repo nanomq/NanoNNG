@@ -306,16 +306,20 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_num_base(config, acl_cache_ttl, "ttl", jso_auth_cache);
 	}
 #endif
-	cJSON *jso_mqtt_session = hocon_get_obj("mqtt.session", jso);
+	cJSON *jso_mqtt_session = hocon_get_obj("mqtt", jso);
 	if (jso_mqtt_session) {
 		hocon_read_num(config, property_size, jso_mqtt_session);
 		hocon_read_num(config, max_packet_size, jso_mqtt_session);
 		hocon_read_num(config, client_max_packet_size, jso_mqtt_session);
-		hocon_read_num(config, msq_len, jso_mqtt_session);
-		hocon_read_time(config, qos_duration, jso_mqtt_session);
+		hocon_read_num_base(config, msq_len, "max_mqueue_len", jso_mqtt_session);
+		hocon_read_time_base(config, qos_duration, "retry_interval", jso_mqtt_session);
 		hocon_read_num_base(
-		    config, backoff, "keepalive_backoff", jso_mqtt_session);
+		    config, backoff, "keepalive_multiplier", jso_mqtt_session);
 		hocon_read_bool(config, allow_anonymous, jso_mqtt_session);
+
+		hocon_read_num(config, max_inflight_window, jso_mqtt_session);
+		hocon_read_time(config, max_awaiting_rel, jso_mqtt_session);
+		hocon_read_time(config, await_rel_timeout, jso_mqtt_session);
 
 	}
 
