@@ -865,6 +865,9 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->msq_len       = 2048;
 	nanomq_conf->qos_duration  = 10;
 	nanomq_conf->backoff       = 1.5;
+	nanomq_conf->max_inflight_window = 2048;
+	nanomq_conf->max_awaiting_rel = 10;
+	nanomq_conf->await_rel_timeout = 10;
 
 	nanomq_conf->allow_anonymous = true;
 	nanomq_conf->ipc_internal    = true;
@@ -1173,9 +1176,12 @@ print_conf(conf *nanomq_conf)
 	log_info("max_packet_size:          %d", nanomq_conf->max_packet_size);
 	log_info("client_max_packet_size:   %d",
 	    nanomq_conf->client_max_packet_size);
-	log_info("msq_len:                  %d", nanomq_conf->msq_len);
-	log_info("qos_duration:             %d", nanomq_conf->qos_duration);
-	log_info("keepalive_backoff:        %f", nanomq_conf->backoff);
+	log_info("max_mqueue_len:           %d", nanomq_conf->msq_len);
+	log_info("max_inflight_window:      %d", nanomq_conf->max_inflight_window);
+	log_info("max_awaiting_rel:         %ds", nanomq_conf->max_awaiting_rel);
+	log_info("await_rel_timeout:        %ds", nanomq_conf->await_rel_timeout);
+	log_info("retry_interval:           %ds", nanomq_conf->qos_duration);
+	log_info("keepalive_multiplier:     %f", nanomq_conf->backoff);
 
 	if (nanomq_conf->http_server.enable) {
 		conf_http_server hs = nanomq_conf->http_server;
