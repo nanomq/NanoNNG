@@ -450,6 +450,9 @@ struct conf {
 	uint32_t   parallel;
 	uint32_t   max_packet_size;
 	uint32_t   client_max_packet_size;
+	uint32_t   max_inflight_window;
+	uint32_t   max_awaiting_rel;
+	uint32_t   await_rel_timeout;
 	uint32_t   qos_duration;
 	float      backoff;
 	void      *db_root;
