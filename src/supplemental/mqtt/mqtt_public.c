@@ -876,8 +876,8 @@ void nng_mqtt_client_free(nng_mqtt_client *client, bool is_async)
 			nni_lmq_fini((nni_lmq *) client->msgq);
 			nng_free(client->msgq, sizeof(nni_lmq));
 		}
-		nni_lmq_fini(client->msgq);
-		nni_free(client->msgq,sizeof(nni_lmq));
+		// nni_lmq_fini(client->msgq);
+		// nni_free(client->msgq,sizeof(nni_lmq));
 		NNI_FREE_STRUCT(client);
 	}
 	return;
