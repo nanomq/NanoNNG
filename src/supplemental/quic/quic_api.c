@@ -41,6 +41,8 @@
 #define qinfo(fmt, ...) do {} while(0)
 #endif
 
+static nni_mtx   gConnection_lock  = NNI_MTX_INITIALIZER;
+
 typedef struct quic_strm_s quic_strm_t;
 
 struct quic_strm_s {
@@ -424,14 +426,9 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 		// The connection has completed the shutdown process and is
 		// ready to be safely cleaned up.
 		log_info("[conn][%p] QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE: All done\n\n", Connection);
+		nni_mtx_lock(&gConnection_lock);
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
 			MsQuic->ConnectionClose(Connection);
-		}
-
-		while ((aio = nni_list_first(&qstrm->recvq)) != NULL) {
-			nni_list_remove(&qstrm->recvq, aio);
-			// nni_aio_abort(aio, NNG_ECLOSED);
-			nni_aio_finish_sync(aio, NNG_ECLOSED, 0);
 		}
 		// Close and finite nng pipe ONCE disconnect
 		if (qstrm->pipe) {
@@ -448,6 +445,7 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 		}
 
 		GConnection = NULL;
+		nni_mtx_unlock(&gConnection_lock);
 		log_warn("Try to do quic stream reconnect!");
 		nni_aio_finish(&qstrm->close_aio, 0, 0);
 
@@ -491,6 +489,7 @@ int
 quic_disconnect()
 {
 	log_info("actively disclose the stream of QUIC connection");
+	nni_mtx_lock(&gConnection_lock);
 	if (!GConnection) {
 		log_info("no connection found!");
 		return -1;
@@ -500,12 +499,10 @@ quic_disconnect()
 	if (qstrm->closed == true || qstrm->stream == NULL) {
 		return -1;
 	}
-	MsQuic->StreamShutdown(
-	    qstrm->stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, NNG_ECONNSHUT);
-	// MsQuic->ConnectionClose(*GConnection);
 	MsQuic->ConnectionShutdown(
 	    *GConnection, QUIC_CONNECTION_SHUTDOWN_FLAG_SILENT, NNG_ECONNSHUT);
-
+		// MsQuic->ConnectionClose(*GConnection);
+	nni_mtx_unlock(&gConnection_lock);
 	return 0;
 }
 
@@ -526,11 +523,13 @@ quic_strm_start(HQUIC Connection, void *Context, HQUIC *Streamp)
 	// Create/allocate a new bidirectional stream. The stream is just
 	// allocated and no QUIC stream identifier is assigned until it's
 	// started.
+	nni_mtx_lock(&gConnection_lock);
 	if (QUIC_FAILED(Status = MsQuic->StreamOpen(Connection,
 	                    QUIC_STREAM_OPEN_FLAG_NONE, QuicStreamCallback, Context, &Stream))) {
 		log_error("StreamOpen failed, 0x%x!\n", Status);
 		goto Error;
 	}
+	nni_mtx_unlock(&gConnection_lock);
 
 	log_debug("[strm][%p] Starting...\n", Stream);
 
@@ -732,8 +731,9 @@ quic_reconnect(quic_strm_t *qstrm)
 		log_error("Failed in ConnectionStart, 0x%x!", Status);
 		goto Error;
 	}
-
+	nni_mtx_lock(&gConnection_lock);
 	GConnection = &Connection;
+	nni_mtx_unlock(&gConnection_lock);
 	return 0;
 
 Error:
