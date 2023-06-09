@@ -448,8 +448,8 @@ struct conf {
 	int        property_size;
 	int        msq_len;
 	uint32_t   parallel;
-	uint32_t   max_packet_size;
-	uint32_t   client_max_packet_size;
+	uint32_t   max_packet_size;        // byte
+	uint32_t   client_max_packet_size; // byte
 	uint32_t   max_inflight_window;
 	uint32_t   max_awaiting_rel;
 	uint32_t   await_rel_timeout;
@@ -491,6 +491,7 @@ typedef struct conf conf;
 
 webhook_event get_webhook_event(const char *hook_type, const char *hook_name);
 
+NNG_DECL int  get_size(const char *str, uint64_t *size);
 NNG_DECL int  get_time(const char *str, uint64_t *second);
 NNG_DECL void conf_parse(conf *nanomq_conf);
 NNG_DECL void conf_parse_ver2(conf *nanomq_conf);
