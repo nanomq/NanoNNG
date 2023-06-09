@@ -700,19 +700,7 @@ conf_log_parse(conf_log *log, const char *path)
 			free(value);
 		} else if ((value = get_conf_value(line, sz, "log.rotation.size")) != 0) {
 			log->rotation_sz_str = value;
-			size_t num           = 0;
-			char   unit[10]      = { 0 };
-			int    res = sscanf(value, "%zu%s", &num, unit);
-			if (res == 2) {
-				if (nni_strcasecmp(unit, "KB") == 0) {
-					log->rotation_sz = num * 1024;
-				} else if (nni_strcasecmp(unit, "MB") == 0) {
-					log->rotation_sz = num * 1024 * 1024;
-				} else if (nni_strcasecmp(unit, "GB") == 0) {
-					log->rotation_sz =
-					    num * 1024 * 1024 * 1024;
-				}
-			}
+			get_size(log->rotation_sz_str, &log->rotation_sz);
 		} else if ((value = get_conf_value(line, sz, "log.rotation.count")) != 0) {
 			log->rotation_count = atoi(value);
 			free(value);
@@ -3206,6 +3194,29 @@ conf_web_hook_destroy(conf_web_hook *web_hook)
 	}
 
 	conf_tls_destroy(&web_hook->tls);
+}
+
+int
+get_size(const char *str, uint64_t *size)
+{
+	uint32_t num      = 0;
+	char     unit[10] = { 0 };
+	int      res      = sscanf(str, "%zu%s", &num, unit);
+	if (res == 2) {
+		if (nni_strcasecmp(unit, "KB") == 0) {
+			num *= 1024;
+		} else if (nni_strcasecmp(unit, "MB") == 0) {
+			num *= 1024 * 1024;
+		} else if (nni_strcasecmp(unit, "GB") == 0) {
+			num *= 1024 * 1024 * 1024;
+		} else {
+			return -1;
+		}
+	} else if (res != 1 || num == 0) {
+		return -1;
+	}
+	*size = num;
+	return 0;
 }
 
 int
