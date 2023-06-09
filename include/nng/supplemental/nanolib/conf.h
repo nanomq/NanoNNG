@@ -53,15 +53,15 @@
 #define LOG_TO_SYSLOG (1 << 2)
 
 struct conf_log {
-	uint8_t type;
-	int     level;
-	char *  dir;
-	char *  file;
-	FILE *  fp;
-	char *  abs_path;        // absolut path of log file
-	char *  rotation_sz_str; // 1000KB, 100MB, 10GB
-	size_t  rotation_sz;     // unit: byte
-	size_t  rotation_count;  // rotation count
+	uint8_t  type;
+	int      level;
+	char    *dir;
+	char    *file;
+	FILE    *fp;
+	char    *abs_path;        // absolut path of log file
+	char    *rotation_sz_str; // 1000KB, 100MB, 10GB
+	uint64_t rotation_sz;     // unit: byte
+	size_t   rotation_count;  // rotation count
 };
 
 typedef struct conf_log conf_log;
@@ -448,7 +448,7 @@ struct conf {
 	int        property_size;
 	int        msq_len;
 	uint32_t   parallel;
-	uint32_t   max_packet_size;        // byte
+	uint64_t   max_packet_size;        // byte
 	uint32_t   client_max_packet_size; // byte
 	uint32_t   max_inflight_window;
 	uint32_t   max_awaiting_rel;
