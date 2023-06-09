@@ -3199,9 +3199,11 @@ conf_web_hook_destroy(conf_web_hook *web_hook)
 int
 get_size(const char *str, uint64_t *size)
 {
-	uint32_t num      = 0;
+	puts(str);
+	uint64_t num      = 0;
 	char     unit[10] = { 0 };
-	int      res      = sscanf(str, "%zu%s", &num, unit);
+	int      res      = sscanf(str, "%lu%s", &num, unit);
+	printf("num: %lu\n", num);
 	if (res == 2) {
 		if (nni_strcasecmp(unit, "KB") == 0) {
 			num *= 1024;
