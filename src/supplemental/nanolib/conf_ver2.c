@@ -117,7 +117,7 @@ compose_url(char *head, char *address)
 				    &(structure)->field);                     \
 			}                                                     \
 		} else if (cJSON_IsNumber(jso_key) && jso_key->valuedouble) { \
-			(structure)->field = jso_key->valuedouble;            \
+			(structure)->field = (uint64_t) jso_key->valuedouble;   \
 		}                                                             \
 	} while (0);
 
@@ -329,8 +329,10 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	if (jso_mqtt_session) {
 		hocon_read_num(config, property_size, jso_mqtt_session);
 		hocon_read_size(config, max_packet_size, jso_mqtt_session);
-		hocon_read_num_base(config, msq_len, "max_mqueue_len", jso_mqtt_session);
-		hocon_read_time_base(config, qos_duration, "retry_interval", jso_mqtt_session);
+		hocon_read_num_base(
+		    config, msq_len, "max_mqueue_len", jso_mqtt_session);
+		hocon_read_time_base(
+		    config, qos_duration, "retry_interval", jso_mqtt_session);
 		hocon_read_num_base(
 		    config, backoff, "keepalive_multiplier", jso_mqtt_session);
 		hocon_read_bool(config, allow_anonymous, jso_mqtt_session);
@@ -338,7 +340,6 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_num(config, max_inflight_window, jso_mqtt_session);
 		hocon_read_time(config, max_awaiting_rel, jso_mqtt_session);
 		hocon_read_time(config, await_rel_timeout, jso_mqtt_session);
-
 	}
 
 
@@ -465,24 +466,8 @@ conf_log_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_str(log, dir, jso_log);
 		hocon_read_str(log, file, jso_log);
 		cJSON *jso_log_rotation = hocon_get_obj("rotation", jso_log);
-		hocon_read_str_base(
-		    log, rotation_sz_str, "size", jso_log_rotation);
-
-		get_size(log->rotation_sz_str, &log->rotation_sz);
-
-		// size_t num      = 0;
-		// char   unit[10] = { 0 };
-		// int    res = sscanf(log->rotation_sz_str, "%zu%s", &num, unit);
-		// if (res == 2) {
-		// 	if (nni_strcasecmp(unit, "KB") == 0) {
-		// 		log->rotation_sz = num * 1024;
-		// 	} else if (nni_strcasecmp(unit, "MB") == 0) {
-		// 		log->rotation_sz = num * 1024 * 1024;
-		// 	} else if (nni_strcasecmp(unit, "GB") == 0) {
-		// 		log->rotation_sz = num * 1024 * 1024 * 1024;
-		// 	}
-		// }
-
+		hocon_read_size_base(
+		    log, rotation_sz, "size", jso_log_rotation);
 		hocon_read_num_base(
 		    log, rotation_count, "count", jso_log_rotation);
 	}
