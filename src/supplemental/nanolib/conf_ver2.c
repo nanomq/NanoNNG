@@ -104,6 +104,23 @@ compose_url(char *head, char *address)
 		}                                                         \
 	} while (0);
 
+#define hocon_read_size_base(structure, field, key, jso)                      \
+	do {                                                                  \
+		cJSON *jso_key = cJSON_GetObjectItem(jso, key);               \
+		if (NULL == jso_key) {                                        \
+			log_debug("Config %s is not set, use default!", key); \
+			break;                                                \
+		}                                                             \
+		if (cJSON_IsString(jso_key)) {                                \
+			if (NULL != jso_key->valuestring) {                   \
+				get_size(jso_key->valuestring,                \
+				    &(structure)->field);                     \
+			}                                                     \
+		} else if (cJSON_IsNumber(jso_key) && jso_key->valuedouble) { \
+			(structure)->field = jso_key->valuedouble;            \
+		}                                                             \
+	} while (0);
+
 #define hocon_read_hex_str_base(structure, field, key, jso)                  \
 	do {                                                              \
 		cJSON *jso_key = cJSON_GetObjectItem(jso, key);           \
@@ -191,6 +208,8 @@ compose_url(char *head, char *address)
 	hocon_read_str_base(structure, key, #key, jso)
 #define hocon_read_time(structure, key, jso) \
 	hocon_read_time_base(structure, key, #key, jso)
+#define hocon_read_size(structure, key, jso) \
+	hocon_read_size_base(structure, key, #key, jso)
 #define hocon_read_address(structure, key, head, jso) \
 	hocon_read_address_base(structure, key, #key, head, jso)
 #define hocon_read_num(structure, key, jso) \
@@ -309,8 +328,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	cJSON *jso_mqtt_session = hocon_get_obj("mqtt", jso);
 	if (jso_mqtt_session) {
 		hocon_read_num(config, property_size, jso_mqtt_session);
-		hocon_read_num(config, max_packet_size, jso_mqtt_session);
-		hocon_read_num(config, client_max_packet_size, jso_mqtt_session);
+		hocon_read_size(config, max_packet_size, jso_mqtt_session);
 		hocon_read_num_base(config, msq_len, "max_mqueue_len", jso_mqtt_session);
 		hocon_read_time_base(config, qos_duration, "retry_interval", jso_mqtt_session);
 		hocon_read_num_base(
@@ -449,18 +467,21 @@ conf_log_parse_ver2(conf *config, cJSON *jso)
 		cJSON *jso_log_rotation = hocon_get_obj("rotation", jso_log);
 		hocon_read_str_base(
 		    log, rotation_sz_str, "size", jso_log_rotation);
-		size_t num      = 0;
-		char   unit[10] = { 0 };
-		int    res = sscanf(log->rotation_sz_str, "%zu%s", &num, unit);
-		if (res == 2) {
-			if (nni_strcasecmp(unit, "KB") == 0) {
-				log->rotation_sz = num * 1024;
-			} else if (nni_strcasecmp(unit, "MB") == 0) {
-				log->rotation_sz = num * 1024 * 1024;
-			} else if (nni_strcasecmp(unit, "GB") == 0) {
-				log->rotation_sz = num * 1024 * 1024 * 1024;
-			}
-		}
+
+		get_size(log->rotation_sz_str, &log->rotation_sz);
+
+		// size_t num      = 0;
+		// char   unit[10] = { 0 };
+		// int    res = sscanf(log->rotation_sz_str, "%zu%s", &num, unit);
+		// if (res == 2) {
+		// 	if (nni_strcasecmp(unit, "KB") == 0) {
+		// 		log->rotation_sz = num * 1024;
+		// 	} else if (nni_strcasecmp(unit, "MB") == 0) {
+		// 		log->rotation_sz = num * 1024 * 1024;
+		// 	} else if (nni_strcasecmp(unit, "GB") == 0) {
+		// 		log->rotation_sz = num * 1024 * 1024 * 1024;
+		// 	}
+		// }
 
 		hocon_read_num_base(
 		    log, rotation_count, "count", jso_log_rotation);
