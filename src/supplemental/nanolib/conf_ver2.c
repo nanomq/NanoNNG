@@ -316,6 +316,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	    config, acl_nomatch, "no_match", jso_auth, auth_acl_permit);
 	hocon_read_enum_base(config, acl_deny_action, "deny_action", jso_auth,
 	    auth_deny_action);
+	hocon_read_bool(config, allow_anonymous, jso_auth);
 
 	cJSON *jso_auth_cache = hocon_get_obj("authorization.cache", jso_auth);
 	if (jso_auth_cache) {
@@ -325,21 +326,21 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_num_base(config, acl_cache_ttl, "ttl", jso_auth_cache);
 	}
 #endif
-	cJSON *jso_mqtt_session = hocon_get_obj("mqtt", jso);
-	if (jso_mqtt_session) {
-		hocon_read_num(config, property_size, jso_mqtt_session);
-		hocon_read_size(config, max_packet_size, jso_mqtt_session);
+	cJSON *jso_mqtt = hocon_get_obj("mqtt", jso);
+	if (jso_mqtt) {
+		hocon_read_num(config, property_size, jso_mqtt);
+		hocon_read_size(config, max_packet_size, jso_mqtt);
+		config->client_max_packet_size = config->max_packet_size;
 		hocon_read_num_base(
-		    config, msq_len, "max_mqueue_len", jso_mqtt_session);
+		    config, msq_len, "max_mqueue_len", jso_mqtt);
 		hocon_read_time_base(
-		    config, qos_duration, "retry_interval", jso_mqtt_session);
+		    config, qos_duration, "retry_interval", jso_mqtt);
 		hocon_read_num_base(
-		    config, backoff, "keepalive_multiplier", jso_mqtt_session);
-		hocon_read_bool(config, allow_anonymous, jso_mqtt_session);
+		    config, backoff, "keepalive_multiplier", jso_mqtt);
 
-		hocon_read_num(config, max_inflight_window, jso_mqtt_session);
-		hocon_read_time(config, max_awaiting_rel, jso_mqtt_session);
-		hocon_read_time(config, await_rel_timeout, jso_mqtt_session);
+		hocon_read_num(config, max_inflight_window, jso_mqtt);
+		hocon_read_time(config, max_awaiting_rel, jso_mqtt);
+		hocon_read_time(config, await_rel_timeout, jso_mqtt);
 	}
 
 
