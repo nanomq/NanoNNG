@@ -568,18 +568,16 @@ static void
 conf_auth_parse_ver2(conf *config, cJSON *jso)
 {
 	conf_auth *auth         = &(config->auths);
-	cJSON     *jso_auth_ele = NULL;
+	cJSON     *ele          = NULL;
 	auth->enable            = true;
-	cJSON *user_arr         = hocon_get_obj("users", jso);
-
-	cJSON_ArrayForEach(jso_auth_ele, user_arr)
+	cJSON_ArrayForEach(ele, jso)
 	{
-		char *auth_username = cJSON_GetStringValue(
-		    cJSON_GetObjectItem(jso_auth_ele, "username"));
-		cvector_push_back(auth->usernames, nng_strdup(auth_username));
-		char *auth_password = cJSON_GetStringValue(
-		    cJSON_GetObjectItem(jso_auth_ele, "password"));
-		cvector_push_back(auth->passwords, nng_strdup(auth_password));
+		if (cJSON_IsString(ele)) {
+			cvector_push_back(
+			    auth->usernames, nng_strdup(ele->string));
+			cvector_push_back(
+			    auth->passwords, nng_strdup(ele->valuestring));
+		}
 	}
 	auth->count = cvector_size(auth->usernames);
 
