@@ -310,7 +310,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 		    config, ipc_internal, "enable_ipc_internal", jso_sys);
 	}
 
-	cJSON *jso_auth = cJSON_GetObjectItem(jso, "authorization");
+	cJSON *jso_auth = cJSON_GetObjectItem(jso, "auth");
 #ifdef ACL_SUPP
 	hocon_read_enum_base(
 	    config, acl_nomatch, "no_match", jso_auth, auth_acl_permit);
@@ -318,7 +318,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	    auth_deny_action);
 	hocon_read_bool(config, allow_anonymous, jso_auth);
 
-	cJSON *jso_auth_cache = hocon_get_obj("authorization.cache", jso_auth);
+	cJSON *jso_auth_cache = hocon_get_obj("auth.cache", jso_auth);
 	if (jso_auth_cache) {
 		config->enable_acl_cache = true;
 		hocon_read_num_base(
@@ -1163,7 +1163,7 @@ conf_acl_parse_ver2(conf *config, cJSON *jso)
 static void
 conf_authorization_prase_ver2(conf *config, cJSON *jso)
 {
-	cJSON *jso_auth_sources = hocon_get_obj("authorization.sources", jso);
+	cJSON *jso_auth_sources = hocon_get_obj("auth.sources", jso);
 	if (jso_auth_sources) {
 		if (!cJSON_IsArray(jso_auth_sources)) {
 			log_error("Read config nanomq authorization.sources "
