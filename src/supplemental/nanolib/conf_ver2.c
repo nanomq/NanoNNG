@@ -1163,43 +1163,18 @@ conf_acl_parse_ver2(conf *config, cJSON *jso)
 static void
 conf_authorization_prase_ver2(conf *config, cJSON *jso)
 {
-	cJSON *jso_auth_sources = hocon_get_obj("auth.sources", jso);
-	if (jso_auth_sources) {
-		if (!cJSON_IsArray(jso_auth_sources)) {
-			log_error("Read config nanomq authorization.sources "
-			          "failed!");
-			return;
-		}
-
-		cJSON *auth_item;
-
-		cJSON_ArrayForEach(auth_item, jso_auth_sources)
-		{
-			cJSON *type_obj =
-			    cJSON_GetObjectItem(auth_item, "type");
-			if (cJSON_IsString(type_obj)) {
-				char *type_str =
-				    cJSON_GetStringValue(type_obj);
-				if (type_str != NULL) {
-					if (strcmp(type_str, "simple") == 0) {
-						conf_auth_parse_ver2(
-						    config, auth_item);
-					} else if (strcmp(type_str, "file") ==
-					    0) {
-						conf_acl_parse_ver2(
-						    config, auth_item);
-					} else if (strcmp(type_str, "http") ==
-					    0) {
-						conf_auth_http_parse_ver2(
-						    config, auth_item);
-					} else {
-						log_error(
-						    "Read unsupported "
-						    "authorization type");
-					}
-				}
-			}
-		}
+	cJSON *jso_auth_http = hocon_get_obj("auth.http_auth", jso);
+	if (jso_auth_http) {
+		conf_auth_http_parse_ver2(config, jso_auth_http);
+	}
+	// TODO if not use include, we should read file manually.
+	cJSON *jso_auth_pwd = hocon_get_obj("auth.password", jso);
+	if (jso_auth_pwd) {
+		conf_auth_parse_ver2(config, jso_auth_pwd);
+	}
+	cJSON *jso_auth_acl = hocon_get_obj("auth.acl", jso);
+	if (jso_auth_acl) {
+		conf_acl_parse_ver2(config, jso_auth_acl);
 	}
 }
 
