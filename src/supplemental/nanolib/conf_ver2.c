@@ -881,9 +881,8 @@ void
 conf_bridge_node_parse(
     conf_bridge_node *node, conf_sqlite *bridge_sqlite, cJSON *obj)
 {
-	hocon_read_str(node, name, obj);
-	cJSON *jso_connector = hocon_get_obj("connector", obj);
-	conf_bridge_connector_parse_ver2(node, jso_connector);
+	node->name = nng_strdup(obj->string);
+	conf_bridge_connector_parse_ver2(node, obj);
 	hocon_read_str_arr(node, forwards, obj);
 	node->forwards_count = cvector_size(node->forwards);
 	node->sqlite         = bridge_sqlite;
@@ -911,7 +910,7 @@ conf_bridge_node_parse(
 		conf_bridge_sub_properties_parse_ver2(node, jso_prop);
 	}
 
-	hocon_read_num(node, parallel, obj);
+	hocon_read_num_base(node, parallel, "max_parallel_processes", obj);
 	hocon_read_num(node, max_recv_queue_len, obj);
 	hocon_read_num(node, max_send_queue_len, obj);
 }
@@ -919,30 +918,36 @@ conf_bridge_node_parse(
 static void
 conf_bridge_parse_ver2(conf *config, cJSON *jso)
 {
-	cJSON *node_array = hocon_get_obj("bridges.mqtt.nodes", jso);
+	cJSON *node_array = hocon_get_obj("bridges.mqtt", jso);
 	cJSON *node_item  = NULL;
 
-	cJSON *bridge_mqtt_sqlite  = hocon_get_obj("bridges.mqtt.sqlite", jso);
 	conf_sqlite *bridge_sqlite = &(config->bridge.sqlite);
-	if (bridge_mqtt_sqlite) {
-		bridge_sqlite->enable = true;
-		hocon_read_num(bridge_sqlite, disk_cache_size, bridge_mqtt_sqlite);
-		hocon_read_num(bridge_sqlite, flush_mem_threshold, bridge_mqtt_sqlite);
-		hocon_read_num(bridge_sqlite, resend_interval, bridge_mqtt_sqlite);
-		hocon_read_str(bridge_sqlite, mounted_file_path, bridge_mqtt_sqlite);
-	}
-
-	config->bridge.count = cJSON_GetArraySize(node_array);
 	config->bridge.nodes = NULL;
 	cJSON_ArrayForEach(node_item, node_array)
 	{
-		conf_bridge_node *node = NNI_ALLOC_STRUCT(node);
-		nng_mtx_alloc(&node->mtx);
-		conf_bridge_node_init(node);
-		conf_bridge_node_parse(node, bridge_sqlite, node_item);
-		cvector_push_back(config->bridge.nodes, node);
-		config->bridge_mode |= node->enable;
+		if (nng_strcasecmp(node_item->string, "cache") == 0) {
+			bridge_sqlite->enable      = true;
+			hocon_read_num(
+			    bridge_sqlite, disk_cache_size, node_item);
+			hocon_read_num(
+			    bridge_sqlite, flush_mem_threshold, node_item);
+			hocon_read_num(
+			    bridge_sqlite, resend_interval, node_item);
+			hocon_read_str(
+			    bridge_sqlite, mounted_file_path, node_item);
+
+		} else {
+			conf_bridge_node *node = NNI_ALLOC_STRUCT(node);
+			nng_mtx_alloc(&node->mtx);
+			conf_bridge_node_init(node);
+			conf_bridge_node_parse(node, bridge_sqlite, node_item);
+			cvector_push_back(config->bridge.nodes, node);
+			config->bridge_mode |= node->enable;
+
+		}
 	}
+
+	config->bridge.count = cvector_size(config->bridge.nodes);
 
 	return;
 }
