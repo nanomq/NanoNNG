@@ -318,7 +318,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	    auth_deny_action);
 	hocon_read_bool(config, allow_anonymous, jso_auth);
 
-	cJSON *jso_auth_cache = hocon_get_obj("auth.cache", jso_auth);
+	cJSON *jso_auth_cache = hocon_get_obj("cache", jso_auth);
 	if (jso_auth_cache) {
 		config->enable_acl_cache = true;
 		hocon_read_num_base(
@@ -476,13 +476,20 @@ conf_log_parse_ver2(conf *config, cJSON *jso)
 }
 #endif
 
+webhook_event
+get_webhook_event_ver2(const char *hook_event)
+{
+	return UNKNOWN_EVENT;
+}
+
 static void
 webhook_action_parse_ver2(cJSON *object, conf_web_hook_rule *hook_rule)
 {
-	cJSON *action = cJSON_GetObjectItem(object, "action");
+	cJSON *action = cJSON_GetObjectItem(object, "event");
 	if (cJSON_IsString(action)) {
 		const char *act_val = cJSON_GetStringValue(action);
 		hook_rule->action   = nng_strdup(act_val);
+		hook_rule->event    = get_webhook_event_ver2(act_val);
 	} else {
 		hook_rule->action = NULL;
 	}
@@ -498,33 +505,19 @@ webhook_action_parse_ver2(cJSON *object, conf_web_hook_rule *hook_rule)
 static void
 conf_web_hook_parse_rules_ver2(conf *config, cJSON *jso)
 {
-	cJSON *jso_webhook_rules         = hocon_get_obj("webhook.rule", jso);
-	cJSON *jso_webhook_rule          = NULL;
-	cJSON *jso_webhook_rule_elem_arr = NULL;
-	cJSON *jso_webhook_rule_elem     = NULL;
+	cJSON *jso_webhook_rules = hocon_get_obj("webhook.events", jso);
+	cJSON *jso_webhook_rule  = NULL;
 
 	conf_web_hook *webhook = &(config->web_hook);
 	webhook->rules         = NULL;
 
 	cJSON_ArrayForEach(jso_webhook_rule, jso_webhook_rules)
 	{
-		cJSON_ArrayForEach(jso_webhook_rule_elem_arr, jso_webhook_rule)
-		{
-			cJSON_ArrayForEach(
-			    jso_webhook_rule_elem, jso_webhook_rule_elem_arr)
-			{
-				conf_web_hook_rule *hook_rule =
-				    NNI_ALLOC_STRUCT(hook_rule);
-				webhook_action_parse_ver2(
-				    jso_webhook_rule_elem, hook_rule);
-				hook_rule->event =
-				    get_webhook_event(jso_webhook_rule->string,
-				        jso_webhook_rule_elem_arr->string);
-				cvector_push_back(webhook->rules, hook_rule);
-			}
-		}
+		conf_web_hook_rule *hook_rule = NNI_ALLOC_STRUCT(hook_rule);
+		webhook_action_parse_ver2(jso_webhook_rule, hook_rule);
+		cvector_push_back(webhook->rules, hook_rule);
+		webhook->rule_count = cvector_size(webhook->rules);
 	}
-	webhook->rule_count = cvector_size(webhook->rules);
 
 	return;
 }
@@ -535,7 +528,7 @@ conf_webhook_parse_ver2(conf *config, cJSON *jso)
 	cJSON *jso_webhook = cJSON_GetObjectItem(jso, "webhook");
 	if (jso_webhook) {
 		conf_web_hook *webhook = &(config->web_hook);
-		hocon_read_bool(webhook, enable, jso_webhook);
+		webhook->enable = true;
 		hocon_read_str(webhook, url, jso_webhook);
 		cJSON *webhook_headers = hocon_get_obj("headers", jso_webhook);
 		cJSON *webhook_header  = NULL;
