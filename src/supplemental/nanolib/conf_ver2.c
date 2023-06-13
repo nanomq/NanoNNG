@@ -479,6 +479,32 @@ conf_log_parse_ver2(conf *config, cJSON *jso)
 webhook_event
 get_webhook_event_ver2(const char *hook_event)
 {
+	if (nni_strcasecmp("on_client_connect", hook_event) == 0) {
+		return CLIENT_CONNECT;
+	} else if (nni_strcasecmp("on_client_connack", hook_event) == 0) {
+		return CLIENT_CONNACK;
+	} else if (nni_strcasecmp("on_client_connected", hook_event) == 0) {
+		return CLIENT_CONNECTED;
+	} else if (nni_strcasecmp("on_client_disconnected", hook_event) == 0) {
+		return CLIENT_DISCONNECTED;
+	} else if (nni_strcasecmp("on_client_subscribe", hook_event) == 0) {
+		return CLIENT_SUBSCRIBE;
+	} else if (nni_strcasecmp("on_client_unsubscribe", hook_event) == 0) {
+		return CLIENT_UNSUBSCRIBE;
+	} else if (nni_strcasecmp("on_session_subscribed", hook_event) == 0) {
+		return SESSION_SUBSCRIBED;
+	} else if (nni_strcasecmp("on_session_unsubscribed", hook_event) ==
+	    0) {
+		return SESSION_UNSUBSCRIBED;
+	} else if (nni_strcasecmp("on_session_terminated", hook_event) == 0) {
+		return SESSION_TERMINATED;
+	} else if (nni_strcasecmp("on_message_publish", hook_event) == 0) {
+		return MESSAGE_PUBLISH;
+	} else if (nni_strcasecmp("on_message_delivered", hook_event) == 0) {
+		return MESSAGE_DELIVERED;
+	} else if (nni_strcasecmp("on_message_acked", hook_event) == 0) {
+		return MESSAGE_ACKED;
+	}
 	return UNKNOWN_EVENT;
 }
 
@@ -505,8 +531,8 @@ webhook_action_parse_ver2(cJSON *object, conf_web_hook_rule *hook_rule)
 static void
 conf_web_hook_parse_rules_ver2(conf *config, cJSON *jso)
 {
-	cJSON *jso_webhook_rules = hocon_get_obj("webhook.events", jso);
-	cJSON *jso_webhook_rule  = NULL;
+	cJSON *jso_webhook_rules         = hocon_get_obj("webhook.events", jso);
+	cJSON *jso_webhook_rule          = NULL;
 
 	conf_web_hook *webhook = &(config->web_hook);
 	webhook->rules         = NULL;
