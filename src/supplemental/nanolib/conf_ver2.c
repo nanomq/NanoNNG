@@ -956,7 +956,7 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 static void
 conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 {
-	cJSON *bridge_aws_nodes = hocon_get_obj("bridges.aws.nodes", jso);
+	cJSON *bridge_aws_nodes = hocon_get_obj("bridges.aws", jso);
 	cJSON *bridge_aws_node  = NULL;
 
 	config->aws_bridge.count = cJSON_GetArraySize(bridge_aws_nodes);
@@ -964,12 +964,11 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 	cJSON_ArrayForEach(bridge_aws_node, bridge_aws_nodes)
 	{
 		conf_bridge_node *node = NNI_ALLOC_STRUCT(node);
-		hocon_read_str(node, name, bridge_aws_node);
+		node->name = nng_strdup(bridge_aws_node->string);
 		node->enable = true;
 		config->bridge_mode |= node->enable;
 
-		cJSON *jso_connector = hocon_get_obj("connector", bridge_aws_node);
-		conf_bridge_connector_parse_ver2(node, jso_connector);
+		conf_bridge_connector_parse_ver2(node, bridge_aws_node);
 
 		if (node->address) {
 			char *p = NULL;
@@ -1001,7 +1000,8 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 
 		node->sub_count = cvector_size(node->sub_list);
 
-		hocon_read_num(node, parallel, bridge_aws_node);
+		hocon_read_num_base(
+		    node, parallel, "max_parallel_processes", bridge_aws_node);
 		cJSON *bridge_aws_node_tls =
 		    hocon_get_obj("ssl", bridge_aws_node);
 		conf_tls *bridge_node_tls = &(node->tls);
