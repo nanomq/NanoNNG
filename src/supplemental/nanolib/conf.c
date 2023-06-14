@@ -1174,7 +1174,7 @@ print_conf(conf *nanomq_conf)
 	if (nanomq_conf->http_server.enable) {
 		conf_http_server hs = nanomq_conf->http_server;
 		log_info("http server port:         %d", hs.port);
-		log_info("http server parallel:     %u", hs.parallel);
+		log_info("http server limit_conn:   %u", hs.parallel);
 		log_info("http server username:     %s", hs.username);
 		const char *type = get_http_auth_type(hs.auth_type);
 		log_info("http server auth type:    %s", type);
@@ -2900,26 +2900,50 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 	}
 	for (size_t i = 0; i < bridge->count; i++) {
 		conf_bridge_node *node = bridge->nodes[i];
-		log_info("%sbridge.mqtt.%s.address:      %s", prefix,
+		log_info("%sbridge.mqtt.%s.address:                    %s", prefix,
 		    node->name, node->address);
-		log_info("%sbridge.mqtt.%s.proto_ver:    %d", prefix,
+		log_info("%sbridge.mqtt.%s.proto_ver:                  %d", prefix,
 		    node->name, node->proto_ver);
-		log_info("%sbridge.mqtt.%s.clientid:     %s", prefix,
+		log_info("%sbridge.mqtt.%s.clientid:                   %s", prefix,
 		    node->name, node->clientid);
-		log_info("%sbridge.mqtt.%s.clean_start:  %d", prefix,
+		log_info("%sbridge.mqtt.%s.clean_start:                %d", prefix,
 		    node->name, node->clean_start);
-		log_info("%sbridge.mqtt.%s.username:     %s", prefix,
+		log_info("%sbridge.mqtt.%s.username:                   %s", prefix,
 		    node->name, node->username);
-		log_info("%sbridge.mqtt.%s.password:     %s", prefix,
+		log_info("%sbridge.mqtt.%s.password:                   %s", prefix,
 		    node->name, node->password);
-		log_info("%sbridge.mqtt.%s.keepalive:    %d", prefix,
+		log_info("%sbridge.mqtt.%s.keepalive:                  %d", prefix,
 		    node->name, node->keepalive);
-		log_info("%sbridge.mqtt.%s.parallel:     %ld", prefix,
+		log_info("%sbridge.mqtt.%s.max_parallel_processes:     %ld", prefix,
 		    node->name, node->parallel);
-		log_info("%sbridge.mqtt.%s.tls.enable:   %s", prefix,
+
+#if defined(SUPP_QUIC)
+		log_info("%sbridge.mqtt.%s.quic_multi_stream:          %s", prefix,
+		    node->name, node->multi_stream ? "true" : "false");
+		log_info("%sbridge.mqtt.%s.quic_keepalive:             %ld", prefix,
+		    node->name, node->qkeepalive);
+		log_info("%sbridge.mqtt.%s.quic_handshake_timeout:     %ld", prefix,
+		    node->name, node->qconnect_timeout);
+		log_info("%sbridge.mqtt.%s.quic_discon_timeout:        %ld", prefix,
+		    node->name, node->qdiscon_timeout);
+		log_info("%sbridge.mqtt.%s.qidle_timeout:              %ld", prefix,
+		    node->name, node->qidle_timeout);
+		log_info("%sbridge.mqtt.%s.qsend_idle_timeout:         %ld", prefix,
+		    node->name, node->qsend_idle_timeout);
+		log_info("%sbridge.mqtt.%s.qinitial_rtt_ms:            %ld", prefix,
+		    node->name, node->qinitial_rtt_ms);
+		log_info("%sbridge.mqtt.%s.qmax_ack_delay_ms:          %ld", prefix,
+		    node->name, node->qinitial_rtt_ms);
+		log_info("%sbridge.mqtt.%s.qcongestion_control:        %d", prefix,
+		    node->name, node->qcongestion_control);
+		log_info("%sbridge.mqtt.%s.quic_0rtt:                  %s", prefix,
+		    node->name, node->quic_0rtt ? "true" : "false");
+#endif
+
+		log_info("%sbridge.mqtt.%s.tls.enable:                 %s", prefix,
 		    node->name, node->tls.enable ? "true" : "false");
 		if (node->tls.enable) {
-			log_info("tls:");
+			log_info("bridge.mqtt.%s.tls:", node->name);
 			log_info("	key file:         %s", node->tls.keyfile);
 			log_info("	cert file:        %s", node->tls.certfile);
 			log_info("	cacert file:      %s", node->tls.cafile);
@@ -2939,28 +2963,6 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 			log_info("\t[%ld] qos:          %d", k + 1,
 			    node->sub_list[k]->qos);
 		}
-#if defined(SUPP_QUIC)
-		log_info("%sbridge.mqtt.%s.quic_multi_stream:      %s", prefix,
-		    node->name, node->multi_stream ? "true" : "false");
-		log_info("%sbridge.mqtt.%s.quic_keepalive:         %ld", prefix,
-		    node->name, node->qkeepalive);
-		log_info("%sbridge.mqtt.%s.quic_handshake_timeout: %ld", prefix,
-		    node->name, node->qconnect_timeout);
-		log_info("%sbridge.mqtt.%s.quic_discon_timeout:    %ld", prefix,
-		    node->name, node->qdiscon_timeout);
-		log_info("%sbridge.mqtt.%s.qidle_timeout:          %ld", prefix,
-		    node->name, node->qidle_timeout);
-		log_info("%sbridge.mqtt.%s.qsend_idle_timeout:     %ld", prefix,
-		    node->name, node->qsend_idle_timeout);
-		log_info("%sbridge.mqtt.%s.qinitial_rtt_ms:        %ld", prefix,
-		    node->name, node->qinitial_rtt_ms);
-		log_info("%sbridge.mqtt.%s.qmax_ack_delay_ms:      %ld", prefix,
-		    node->name, node->qinitial_rtt_ms);
-		log_info("%sbridge.mqtt.%s.qcongestion_control:    %d", prefix,
-		    node->name, node->qcongestion_control);
-		log_info("%sbridge.mqtt.%s.quic_0rtt:              %s", prefix,
-		    node->name, node->quic_0rtt ? "true" : "false");
-#endif
 	}
 
 	if (bridge->sqlite.enable) {
