@@ -1066,10 +1066,6 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 			rule_sql_parse(cr, re.raw_sql);
 
 			cr->rules[cvector_size(cr->rules) - 1].repub = repub;
-			// NNI_ALLOC_STRUCT(repub);
-			// memcpy(cr->rules[cvector_size(cr->rules) - 1].repub,
-			// repub,
-			//     sizeof(*repub));
 			cr->rules[cvector_size(cr->rules) - 1].forword_type =
 			    RULE_FORWORD_REPUB;
 			cr->rules[cvector_size(cr->rules) - 1].raw_sql =
@@ -1078,8 +1074,6 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 			    re.enabled;
 			cr->rules[cvector_size(cr->rules) - 1].rule_id =
 			    rule_generate_rule_id();
-
-			// NNI_FREE_STRUCT(repub);
 		}
 	}
 
@@ -1087,43 +1081,56 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 	if (jso_rule_mysql) {
 		cr->option |= RULE_ENG_MDB;
 
-		hocon_read_str_base(cr, mysql_db, "name", jso_rule_mysql);
-		jso_rules = hocon_get_obj("rules", jso_rule_mysql);
-		jso_rule  = NULL;
-
-		cJSON_ArrayForEach(jso_rule, jso_rules)
+		// TODO support multiple mysql database
+		cJSON *ele = NULL;
+		cJSON_ArrayForEach(ele, jso_rule_mysql)
 		{
-			rule r = { 0 };
-			r.enabled = true;
-			hocon_read_str_base(&r, raw_sql, "sql", jso_rule);
-			rule_mysql *mysql = NNI_ALLOC_STRUCT(mysql);
+			cJSON *jso_conn  = cJSON_GetObjectItem(ele, "conn");
+			cJSON *jso_rules = cJSON_GetObjectItem(ele, "rules");
+			rule_mysql sql   = { 0 };
 
-			rule_sql_parse(cr, r.raw_sql);
+			if (jso_conn) {
+				hocon_read_str_base(
+				    cr, mysql_db, "database", jso_conn);
 
-			cr->rules[cvector_size(cr->rules) - 1].mysql = mysql;
-			// NNI_ALLOC_STRUCT(mysql);
-			// memcpy(cr->rules[cvector_size(cr->rules) - 1].mysql, mysql,
-			//     sizeof(*mysql));
-			hocon_read_str(cr->rules[cvector_size(cr->rules) - 1].mysql,
-			    host, jso_rule);
-			hocon_read_str(cr->rules[cvector_size(cr->rules) - 1].mysql,
-			    table, jso_rule);
-			hocon_read_str(cr->rules[cvector_size(cr->rules) - 1].mysql,
-			    username, jso_rule);
-			hocon_read_str(cr->rules[cvector_size(cr->rules) - 1].mysql,
-			    password, jso_rule);
+				hocon_read_str(&sql, host, jso_conn);
+				hocon_read_str(&sql, username, jso_conn);
+				hocon_read_str(&sql, password, jso_conn);
+			}
 
-			cr->rules[cvector_size(cr->rules) - 1].forword_type =
-			    RULE_FORWORD_MYSOL;
-			cr->rules[cvector_size(cr->rules) - 1].raw_sql = r.raw_sql;
-			cr->rules[cvector_size(cr->rules) - 1].enabled = r.enabled;
-			cr->rules[cvector_size(cr->rules) - 1].rule_id =
-			    rule_generate_rule_id();
+			jso_rule = NULL;
 
-			// NNI_FREE_STRUCT(mysql);
+			cJSON_ArrayForEach(jso_rule, jso_rules)
+			{
+				rule r    = { 0 };
+				r.enabled = true;
+				hocon_read_str_base(
+				    &r, raw_sql, "sql", jso_rule);
+				rule_mysql *mysql = NNI_ALLOC_STRUCT(mysql);
+
+				rule_sql_parse(cr, r.raw_sql);
+
+				mysql->host     = nng_strdup(sql.host);
+				mysql->username = nng_strdup(sql.username);
+				mysql->password = nng_strdup(sql.password);
+				hocon_read_str(mysql, table, jso_rule);
+
+				cr->rules[cvector_size(cr->rules) - 1].mysql =
+				    mysql;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .forword_type = RULE_FORWORD_MYSOL;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .raw_sql = r.raw_sql;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .enabled = r.enabled;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .rule_id = rule_generate_rule_id();
+			}
+
+			nng_strfree(sql.host);
+			nng_strfree(sql.username);
+			nng_strfree(sql.password);
 		}
-
-
 	}
 
 	return;
