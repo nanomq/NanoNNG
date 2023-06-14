@@ -262,7 +262,8 @@ conf_http_server_parse_ver2(conf_http_server *http_server, cJSON *json)
 	if (jso_http_server) {
 		http_server->enable = true;
 		hocon_read_num(http_server, port, jso_http_server);
-		hocon_read_num(http_server, parallel, jso_http_server);
+		hocon_read_num_base(
+		    http_server, parallel, "limit_conn", jso_http_server);
 		hocon_read_str(http_server, username, jso_http_server);
 		hocon_read_str(http_server, password, jso_http_server);
 		hocon_read_enum(http_server, auth_type, jso_http_server,
@@ -279,19 +280,6 @@ conf_http_server_parse_ver2(conf_http_server *http_server, cJSON *json)
 				jwt->iss = (char *) nni_plat_file_basename(
 				    jwt->public_keyfile);
 				jwt->public_key_len = strlen(jwt->public_key);
-			}
-		}
-
-		cJSON *jso_pri_key_file =
-		    hocon_get_obj("jwt.private", jso_http_server);
-		if (cJSON_IsObject(jso_pri_key_file)) {
-			hocon_read_str_base(
-			    jwt, private_keyfile, "keyfile", jso_pri_key_file);
-
-			if (file_load_data(jwt->private_keyfile,
-			        (void **) &jwt->private_key) > 0) {
-				jwt->private_key_len =
-				    strlen(jwt->private_key);
 			}
 		}
 	}
