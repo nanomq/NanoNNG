@@ -237,6 +237,7 @@ typedef struct {
 
 struct conf_bridge_node {
 	bool         enable;
+	bool         dynamic;
 	bool         clean_start;
 	void        *sock;
 	uint8_t      proto_ver;
@@ -258,8 +259,7 @@ struct conf_bridge_node {
 	conf_tls     tls;
 	conf_sqlite *sqlite;
 	nng_aio    **bridge_aio;
-	nng_aio     *bridge_reload_aio; // TODO nng_cv would be better
-	nng_aio     *bridge_reload_aio2; // Reload the bridge related to the current config
+	nng_aio     *bridge_reload_aio; // Reload the bridge related to the current config TODO nng_cv would be better
 	void        *bridge_arg;
 
 	nng_mtx     *mtx;

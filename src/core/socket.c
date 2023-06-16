@@ -684,7 +684,7 @@ nni_sock_replace(nni_sock *sock, nni_sock *new)
 		nctx = nni_list_next(&sock->s_ctxs, ctx);
 
 		nni_list_remove(&sock->s_ctxs, ctx);
-		log_error(
+		log_trace(
 		    "rm ctx %p %d from sock %d", ctx, ctx->c_id, sock->s_id);
 		if (ctx->c_data != NULL) {
 			ctx->c_ops.ctx_fini(ctx->c_data);
