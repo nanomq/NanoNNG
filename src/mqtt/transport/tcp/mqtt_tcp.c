@@ -774,15 +774,15 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 		}
 		// aio_begin?
 		if (!nni_aio_busy(p->qsaio)) {
-		iov[0].iov_len = nni_msg_header_len(qmsg);
-		iov[0].iov_buf = nni_msg_header(qmsg);
-		iov[1].iov_len = nni_msg_len(qmsg);
-		iov[1].iov_buf = nni_msg_body(qmsg);
-		p->busy        = true;
-		nni_aio_set_msg(p->qsaio, qmsg);
-		// send ACK down...
-		nni_aio_set_iov(p->qsaio, 2, iov);
-		nng_stream_send(p->conn, p->qsaio);
+			iov[0].iov_len = nni_msg_header_len(qmsg);
+			iov[0].iov_buf = nni_msg_header(qmsg);
+			iov[1].iov_len = nni_msg_len(qmsg);
+			iov[1].iov_buf = nni_msg_body(qmsg);
+			p->busy        = true;
+			nni_aio_set_msg(p->qsaio, qmsg);
+			// send ACK down...
+			nni_aio_set_iov(p->qsaio, 2, iov);
+			nng_stream_send(p->conn, p->qsaio);
 		} else {
 			nni_msg_free(qmsg);
 		}
