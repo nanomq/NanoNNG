@@ -259,8 +259,7 @@ struct conf_bridge_node {
 	conf_tls     tls;
 	conf_sqlite *sqlite;
 	nng_aio    **bridge_aio;
-	nng_aio     *bridge_reload_aio; // Reload the bridge related to the current config TODO nng_cv would be better
-	void        *bridge_arg;
+	void        *bridge_arg;	// for reloading bridge case
 
 	nng_mtx     *mtx;
 
