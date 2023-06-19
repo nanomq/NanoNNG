@@ -376,6 +376,7 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 	switch (ptype) {
 	case NNG_MQTT_CONNECT:
 	case NNG_MQTT_PINGREQ:
+	case NNG_MQTT_DISCONNECT:
 		break;
 
 	case NNG_MQTT_PUBLISH:
@@ -404,6 +405,7 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 
 	default:
 		nni_mtx_unlock(&s->mtx);
+		nni_msg_free(msg);
 		nni_aio_finish_error(aio, NNG_EPROTO);
 		return;
 	}
@@ -416,6 +418,7 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 		nni_mtx_unlock(&s->mtx);
 		if (0 == qos && ptype != NNG_MQTT_SUBSCRIBE &&
 		    ptype != NNG_MQTT_UNSUBSCRIBE) {
+			nni_aio_set_msg(aio, NULL);
 			nni_aio_finish(aio, 0, 0);
 		}
 		return;
@@ -688,7 +691,7 @@ mqtt_recv_cb(void *arg)
 	int		 rv;
 
 	if ((rv = nni_aio_result(&p->recv_aio)) != 0) {
-		log_error("MQTT client recv error %d!", rv);
+		log_warn("MQTT client recv error %d!", rv);
 		s->disconnect_code = 0x8B;
 		nni_pipe_close(p->pipe);
 		return;
