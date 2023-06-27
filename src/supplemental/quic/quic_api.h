@@ -13,8 +13,9 @@ extern void quic_close();
 extern void quic_proto_open(nni_proto *proto);
 extern void quic_proto_close();
 
-extern int  quic_strm_recv(void *arg, nni_aio *raio);
-extern int  quic_strm_send(void *arg, nni_aio *saio);
+extern uint8_t quic_strm_disconnect_code(void *arg);
+extern int     quic_strm_recv(void *arg, nni_aio *raio);
+extern int     quic_strm_send(void *arg, nni_aio *saio);
 // extern int  quic_strm_close(void *arg);
 extern int  quic_pipe_close(uint8_t *code);
 extern void quic_proto_set_bridge_conf(void *node);
