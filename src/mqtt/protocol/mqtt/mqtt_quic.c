@@ -100,7 +100,7 @@ struct mqtt_pipe_s {
 	nni_atomic_bool closed;
 	bool            busy;
 	bool            ready;			// mark if QUIC stream is ready
-	uint8_t reason_code; // MQTTV5 reason code
+	uint8_t 		reason_code;    // MQTTV5 reason code
 	nni_atomic_int  next_packet_id; // next packet id to use
 	mqtt_sock_t    *mqtt_sock;
 	nni_id_map      sent_unack;    // send messages unacknowledged
@@ -604,6 +604,11 @@ mqtt_quic_recv_cb(void *arg)
 		nni_msg_free(msg);
 		nni_mtx_unlock(&s->mtx);
 		return;
+	case NNG_MQTT_DISCONNECT:
+		p->reason_code = nni_mqtt_msg_get_disconnect_reason_code(msg);
+		log_info(" Disconnect received from Broker %d", p->reason_code);
+		quic_disconnect();
+		return;
 	default:
 		// unexpected packet type, server misbehaviour
 		nni_msg_free(msg);
@@ -945,10 +950,11 @@ quic_mqtt_stream_fini(void *arg)
 	if (p->cparam == NULL) {
 		return;
 	}
-	p->reason_code == 0 ? p->reason_code = SERVER_SHUTTING_DOWN
-                    : p->reason_code;
-	nni_msg *tmsg =
-	    nano_msg_notify_disconnect(p->cparam, p->reason_code);
+	p->reason_code == 0
+	    ? p->reason_code = quic_strm_disconnect_code(p->qstream)
+	    : p->reason_code;
+
+	nni_msg *tmsg = nano_msg_notify_disconnect(p->cparam, p->reason_code);
 	nni_msg_set_conn_param(tmsg, p->cparam);
 	// emulate disconnect notify msg as a normal publish
 	while ((aio = nni_list_first(&s->recv_queue)) != NULL) {
