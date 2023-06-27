@@ -59,6 +59,7 @@ struct quic_strm_s {
 	uint32_t rxlen; // Length received
 	uint32_t rwlen; // Length wanted
 	uint8_t  rxbuf[5];
+	uint8_t  reason_code;
 	nni_msg *rxmsg; // nng_msg for received
 
 	nni_aio  rraio;
@@ -191,6 +192,7 @@ quic_strm_init(quic_strm_t *qstrm)
 	qstrm->rrlen = 0;
 	qstrm->rrpos = 0;
 	qstrm->rrcap = 0;
+	qstrm->reason_code = 0;
 
 	qstrm->url_s = NULL;
 	qstrm->rticket_sz = 0;
@@ -283,6 +285,7 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 		log_debug("[strm][%p] Data received flag: %d\n", Stream, Event->RECEIVE.Flags);
 
         if (Event->RECEIVE.Flags & QUIC_RECEIVE_FLAG_FIN) {
+			qstrm->reason_code = CLIENT_IDENTIFIER_NOT_VALID;
 			break;
         }
 
@@ -322,7 +325,9 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 	case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
 		// The peer aborted its send direction of the stream.
 		log_warn("[strm][%p] Peer shut down\n", Stream);
-        MsQuic->StreamShutdown(Stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
+        if (qstrm->reason_code == 0)
+			qstrm->reason_code = SERVER_SHUTTING_DOWN;
+		MsQuic->StreamShutdown(Stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
         break;
 	case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
 		log_warn("[strm][%p] QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE.", Stream);
@@ -416,6 +421,8 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 		log_warn("[conn][%p] Shut down by transport,Code: %llu\n",
 		    Connection,
 		    Event->SHUTDOWN_INITIATED_BY_TRANSPORT.ErrorCode);
+		if (qstrm->reason_code == 0)
+			qstrm->reason_code = SERVER_UNAVAILABLE;
 		break;
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER:
 		// The connection was explicitly shut down by the peer.
@@ -425,7 +432,8 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 		    Connection,
 		    (unsigned long long)
 		        Event->SHUTDOWN_INITIATED_BY_PEER.ErrorCode);
-
+		if (qstrm->reason_code == 0)
+			qstrm->reason_code = SERVER_SHUTTING_DOWN;
 		break;
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE:
 		// The connection has completed the shutdown process and is
@@ -1169,6 +1177,14 @@ quic_strm_recv(void *arg, nni_aio *raio)
 	return 0;
 }
 
+// only call this when main stream is closed!
+uint8_t
+quic_strm_disconnect_code(void *arg)
+{
+	quic_strm_t *qstrm = arg;
+	return qstrm->reason_code;
+}
+
 int
 quic_strm_send(void *arg, nni_aio *aio)
 {
@@ -1263,12 +1279,10 @@ quic_pipe_close(uint8_t *code)
 	// take care of aios
 	while ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
 		nni_list_remove(&qstrm->sendq, aio);
-		// nni_aio_abort(aio, NNG_ECANCELED);
 		nni_aio_finish_error(aio, *code);
 	}
 	while ((aio = nni_list_first(&qstrm->recvq)) != NULL) {
 		nni_list_remove(&qstrm->recvq, aio);
-		// nni_aio_abort(aio, NNG_ECLOSED);
 		nni_aio_finish_error(aio, *code);
 	}
 	// we never free qstrm in single stream mode
