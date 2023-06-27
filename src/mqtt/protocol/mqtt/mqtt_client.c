@@ -782,6 +782,12 @@ mqtt_recv_cb(void *arg)
 	case NNG_MQTT_PUBREC:
 		nni_msg_free(msg);
 		break;
+	case NNG_MQTT_DISCONNECT:
+		s->disconnect_code =
+		    nni_mqtt_msg_get_disconnect_reason_code(msg);
+		nni_plat_printf(" Disconnect received from Broker %d\n",
+		    s->disconnect_code);
+		break;
 
 	case NNG_MQTT_PUBREL:
 		packet_id  = nni_mqtt_msg_get_pubrel_packet_id(msg);
