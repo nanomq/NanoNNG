@@ -364,7 +364,6 @@ QuicConnectionCallback(_In_ HQUIC Connection, _In_opt_ void *Context,
 {
 	const nni_proto_pipe_ops *pipe_ops = g_quic_proto->proto_pipe_ops;
 	quic_strm_t        *qstrm    = GStream;
-	nni_aio *aio;
 	
 	log_info("QuicConnectionCallback triggered! %d", Event->Type);
 	switch (Event->Type) {
@@ -784,7 +783,7 @@ quic_aio_send(void *arg, nni_aio *aio)
 			nni_aio_finish_error(aio, NNG_ECLOSED);
 		}
 		nni_mtx_unlock(&qstrm->mtx);
-		return;
+		return (-1);
 	}
 
 	QUIC_BUFFER *buf=(QUIC_BUFFER*)malloc(sizeof(QUIC_BUFFER)*2);
