@@ -369,7 +369,12 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 	switch (ptype) {
 	case NNG_MQTT_CONNECT:
 	case NNG_MQTT_PINGREQ:
+		break;
 	case NNG_MQTT_DISCONNECT:
+		s->disconnect_code =
+		    nni_mqtt_msg_get_disconnect_reason_code(msg);
+		nni_plat_printf(" Disconnect received from Broker %d\n",
+		    s->disconnect_code);
 		break;
 
 	case NNG_MQTT_PUBLISH:

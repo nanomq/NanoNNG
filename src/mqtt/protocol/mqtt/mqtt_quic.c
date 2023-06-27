@@ -678,7 +678,7 @@ mqtt_timer_cb(void *arg)
 			quic_strm_send(p->qstream, &p->rep_aio);
 			s->counter = 0;
 			s->pingcnt ++;
-			log_info("send PINGREQ %d %d", s->counter, s->pingcnt);
+			log_debug("send PINGREQ %d %d", s->counter, s->pingcnt);
 		}
 	}
 
