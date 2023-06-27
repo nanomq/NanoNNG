@@ -232,7 +232,7 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 	nni_msg *smsg;
 	nni_aio *aio;
 
-	log_trace("QuicStreamCallback triggered! %d", Event->Type);
+	log_error("QuicStreamCallback triggered! %d", Event->Type);
 	switch (Event->Type) {
 	case QUIC_STREAM_EVENT_SEND_COMPLETE:
 		// A previous StreamSend call has completed, and the context is
@@ -282,6 +282,10 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 
 		log_debug("[strm][%p] Data received flag: %d\n", Stream, Event->RECEIVE.Flags);
 
+        if (Event->RECEIVE.Flags & QUIC_RECEIVE_FLAG_FIN) {
+			break;
+        }
+
 		nni_mtx_lock(&qstrm->mtx);
 
 		// Get all the buffers in quic stream
@@ -318,7 +322,8 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 	case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
 		// The peer aborted its send direction of the stream.
 		log_warn("[strm][%p] Peer shut down\n", Stream);
-		break;
+        MsQuic->StreamShutdown(Stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
+        break;
 	case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
 		log_warn("[strm][%p] QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE.", Stream);
 		break;
@@ -330,6 +335,7 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 				 (unsigned long long) Event->SHUTDOWN_COMPLETE.ConnectionErrorCode);
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
 			log_warn("close the QUIC stream!");
+			MsQuic->ConnectionShutdown(Stream, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
 			MsQuic->StreamClose(Stream);
 		}
 		break;
