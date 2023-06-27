@@ -419,6 +419,7 @@ NNG_DECL void      nni_mqtt_msg_set_unsuback_property(nni_msg *, property *);
 
 // mqtt disconnect
 NNG_DECL void nni_mqtt_msg_set_disconnect_reason_code(nng_msg *msg, uint8_t reason_code);
+NNG_DECL uint8_t nni_mqtt_msg_get_disconnect_reason_code(nni_msg *msg);
 NNG_DECL property *nni_mqtt_msg_get_disconnect_property(nng_msg *msg);
 NNG_DECL void nni_mqtt_msg_set_disconnect_property(nng_msg *msg, property *prop);
 
