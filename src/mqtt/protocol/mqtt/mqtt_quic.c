@@ -1120,6 +1120,14 @@ mqtt_quic_recv_cb(void *arg)
 		return;
 	case NNG_MQTT_DISCONNECT:
 		log_debug("Broker disconnect QUIC actively");
+		p->reason_code = *(uint8_t *)nni_msg_body(msg);
+		log_info(
+		    " Disconnect received from Broker %d", *(uint8_t *)nni_msg_body(msg));
+		// we wait for other side to close the stream
+		nni_msg_free(msg);
+		nni_mtx_unlock(&s->mtx);
+		return;
+
 	default:
 		// unexpected packet type, server misbehaviour
 		nni_msg_free(msg);

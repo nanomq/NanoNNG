@@ -706,7 +706,8 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 	s->pingcnt = 0;
 	switch (packet_type) {
 	case NNG_MQTT_CONNACK:
-		nni_println("ERROR: CONNACK received in data stream!");
+	case NNG_MQTT_DISCONNECT:
+		nni_println("ERROR: CONNACK/DISCONNECT received in data stream!");
 		nni_msg_free(msg);
 		break;
 	case NNG_MQTT_PUBACK:
@@ -1125,6 +1126,13 @@ mqtt_quic_recv_cb(void *arg)
 		return;
 	case NNG_MQTT_DISCONNECT:
 		log_debug("Broker disconnect QUIC actively");
+		p->reason_code = *(uint8_t *)nni_msg_body(msg);
+		log_info(
+		    " Disconnect received from Broker %d", *(uint8_t *)nni_msg_body(msg));
+		// we wait for other side to close the stream
+		nni_msg_free(msg);
+		nni_mtx_unlock(&s->mtx);
+		return;
 	default:
 		// unexpected packet type, server misbehaviour
 		nni_msg_free(msg);
@@ -1280,15 +1288,63 @@ static void
 mqtt_quic_sock_fini(void *arg)
 {
 	mqtt_sock_t *s = arg;
+	nni_aio     *aio;
+	nni_msg     *tmsg = NULL, *msg = NULL;
+	size_t       count = 0;
+	/*
+#if defined(NNG_SUPP_SQLITE) && defined(NNG_HAVE_MQTT_BROKER)
+	bool is_sqlite = get_persist(s);
+	if (is_sqlite) {
+		nni_qos_db_fini_sqlite(s->sqlite_db);
+		nni_lmq_fini(&s->offline_cache);
+	}
+#endif
+	*/
+	log_debug("mqtt_quic_sock_fini %p", s);
+	if (s->connmsg != NULL) {
+		nni_msg_free(s->connmsg);
+	}
 
-	nni_id_map_fini(s->streams);
-	nng_free(s->streams, sizeof(nni_id_map));
+	if (s->ack_aio != NULL) {
+		nni_aio_fini(s->ack_aio);
+		nng_free(s->ack_aio, sizeof(nni_aio *));
+	}
+
+	if (s->ack_lmq != NULL) {
+		nni_lmq_fini(s->ack_lmq);
+		nng_free(s->ack_lmq, sizeof(nni_lmq));
+	}
+	// emulate disconnect notify msg as a normal publish
+	while ((aio = nni_list_first(&s->recv_queue)) != NULL) {
+		// Pipe was closed.  just push an error back to the
+		// entire socket, because we only have one pipe
+		nni_list_remove(&s->recv_queue, aio);
+		nni_aio_set_msg(aio, tmsg);
+		// only return pipe closed error once for notification
+		// sync action to avoid NULL conn param
+		count == 0 ? nni_aio_finish_sync(aio, NNG_ECONNSHUT, 0)
+		           : nni_aio_finish_error(aio, NNG_ECLOSED);
+		// there should be no msg waiting
+		count++;
+	}
+	while ((aio = nni_list_first(&s->send_queue)) != NULL) {
+		nni_list_remove(&s->send_queue, aio);
+		msg = nni_aio_get_msg(aio);
+		if (msg != NULL) {
+			nni_msg_free(msg);
+		}
+		nni_aio_finish_error(aio, NNG_ECLOSED);
+	}
+	if (s->multi_stream) {
+		nni_id_map_fini(s->streams);
+		nng_free(s->streams, sizeof(nni_id_map));
+	}
 	mqtt_quic_ctx_fini(&s->master);
 	nni_lmq_fini(&s->send_messages);
 	nni_aio_fini(&s->time_aio);
-	nni_msg_free(s->connmsg);
 	nni_msg_free(s->ping_msg);
-	s = NULL;
+	// potential memleak here. need to adapt to MsQUIC finit
+	// quic_close();
 }
 
 static void
@@ -1440,7 +1496,7 @@ quic_mqtt_stream_fini(void *arg)
 	nni_aio *aio;
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
-	nni_msg * msg;
+	nni_msg * msg = NULL;
 
 	log_warn("quic_mqtt_stream_fini! pipe finit!");
 	if ((msg = nni_aio_get_msg(&p->recv_aio)) != NULL) {
@@ -1475,10 +1531,10 @@ quic_mqtt_stream_fini(void *arg)
 	if (p->cparam == NULL) {
 		return;
 	}
-	p->reason_code == 0 ? p->reason_code = SERVER_SHUTTING_DOWN
-	                    : p->reason_code;
-	nni_msg *tmsg =
-	    nano_msg_notify_disconnect(p->cparam, p->reason_code);
+	p->reason_code == 0
+	    ? p->reason_code = quic_sock_disconnect_code(p->qsock)
+	    : p->reason_code;
+	nni_msg *tmsg = nano_msg_notify_disconnect(p->cparam, p->reason_code);
 	nni_msg_set_cmd_type(tmsg, CMD_DISCONNECT_EV);
 	// clone once for pub DISCONNECT_EV
 	conn_param_clone(p->cparam);
