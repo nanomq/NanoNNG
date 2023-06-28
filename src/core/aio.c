@@ -815,6 +815,10 @@ nni_aio_sys_init(void)
 
 	nni_aio_expire_q_list =
 	    nni_zalloc(sizeof(nni_aio_expire_q *) * num_thr);
+	if (nni_aio_expire_q_list == NULL) {
+		return NNG_ENOMEM;
+	}
+
 	nni_aio_expire_q_cnt = num_thr;
 	for (int i = 0; i < num_thr; i++) {
 		nni_aio_expire_q *eq;

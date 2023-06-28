@@ -1850,6 +1850,11 @@ bool
 topic_filtern(const char *origin, const char *input, size_t n)
 {
 	char *buff = nni_zalloc(n + 1);
+	if (buff == NULL) {
+		log_error("Cannot allocate memory");
+		return false;
+	}
+
 	strncpy(buff, input, n);
 	bool res = false;
 	size_t len = strlen(origin);

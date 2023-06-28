@@ -32,6 +32,11 @@ acl_parse_str_array_item(cJSON *obj, const char *key, acl_rule_ct *content)
 		content->type            = ACL_RULE_STRING_ARRAY;
 		content->count           = size;
 		content->value.str_array = nni_zalloc(size * sizeof(char *));
+		if (content->value.str_array == NULL) {
+			log_error("Cannot allocate memory");
+			return false;
+		}
+
 		for (int i = 0; i < size; i++) {
 			cJSON *item = cJSON_GetArrayItem(array, i);
 			if (cJSON_IsString(item)) {
@@ -48,6 +53,10 @@ bool
 acl_parse_json_rule(cJSON *obj, size_t id, acl_rule **rule)
 {
 	acl_rule *r = nni_zalloc(sizeof(acl_rule));
+	if (r == NULL) {
+		log_error("Cannot allocate memory");
+		return false;
+	}
 
 	r->id          = id;
 	r->action      = ACL_ALL;
@@ -90,6 +99,11 @@ acl_parse_json_rule(cJSON *obj, size_t id, acl_rule **rule)
 		int size       = cJSON_GetArraySize(topics);
 		r->topic_count = size;
 		r->topics      = nni_zalloc(size * sizeof(char *));
+		if (r->topics == NULL) {
+			log_error("Cannot allocate memory");
+			goto err;
+		}
+
 		for (int i = 0; i < size; i++) {
 			cJSON *item = cJSON_GetArrayItem(topics, i);
 			if (cJSON_IsString(item)) {
@@ -133,11 +147,21 @@ acl_parse_json_rule(cJSON *obj, size_t id, acl_rule **rule)
 		int                  size      = cJSON_GetArraySize(op);
 		acl_sub_rules_array *rule_list = &r->rule_ct.array;
 		rule_list->rules = nni_zalloc(sizeof(acl_sub_rule *) * size);
+		if (rule_list->rules == NULL) {
+			log_error("Cannot allocate memory");
+			goto err;
+		}
+
 		rule_list->count = 0;
 		for (int i = 0; i < size; i++) {
 			cJSON *       sub_item = cJSON_GetArrayItem(op, i);
 			acl_sub_rule *sub_rule =
 			    nni_zalloc(sizeof(acl_sub_rule));
+			if (sub_rule == NULL) {
+				log_error("Cannot allocate memory");
+				nni_free(rule_list->rules, sizeof(acl_sub_rule *) * size);
+				goto err;
+			}
 
 			if (acl_parse_str_item(
 			        sub_item, "clientid", &sub_rule->rule_ct)) {
@@ -166,6 +190,10 @@ out:
 	return true;
 
 err:
+	if (r->topics != NULL) {
+		nni_free(r->topics, cJSON_GetArraySize(topics) * sizeof(char *));
+	}
+
 	nni_free(r, sizeof(acl_rule));
 	return false;
 }
