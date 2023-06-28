@@ -340,7 +340,7 @@ QuicStreamCallback(_In_ HQUIC Stream, _In_opt_ void *Context,
 				 (unsigned long long) Event->SHUTDOWN_COMPLETE.ConnectionErrorCode);
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
 			log_warn("close the QUIC stream!");
-			// MsQuic->ConnectionShutdown(Stream, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
+			MsQuic->ConnectionShutdown(Stream, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
 			MsQuic->StreamClose(Stream);
 		}
 		break;
