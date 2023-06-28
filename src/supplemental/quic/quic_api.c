@@ -447,6 +447,11 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 
 		log_debug("[strm][%p] Data received Flag: %d", stream, Event->RECEIVE.Flags);
 
+		if (Event->RECEIVE.Flags & QUIC_RECEIVE_FLAG_FIN) {
+			log_warn("FIN received in QUIC stream");
+			break;
+		}
+
 		nni_mtx_lock(&qstrm->mtx);
 		// Get all the buffers in quic stream
 		if (count == 0 || rlen <= 0) {
@@ -480,12 +485,13 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		break;
 	case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
 		// The peer aborted its send direction of the stream.
-		log_warn("[strm][%p] Peer shut down\n", stream);
+		log_warn("[strm][%p] Peer send shut down\n", stream);
+		MsQuic->StreamShutdown(stream, QUIC_STREAM_SHUTDOWN_FLAG_GRACEFUL, 0);
 		break;
 	case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
-		// fall through to close the stream
 		log_warn("[strm][%p] QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE.", stream);
 		break;
+
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 		// Both directions of the stream have been shut down and MsQuic
 		// is done with the stream. It can now be safely cleaned up.
@@ -503,11 +509,14 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			break;
 		}
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
-			// only server close the stream gonna trigger this
+			// only server close the main stream gonna trigger this
 			log_warn("close the main stream [%p]!", stream);
-			if (qstrm->closed != true)
+			if (qstrm->closed != true) {
+				MsQuic->ConnectionShutdown(stream, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
 				MsQuic->StreamClose(stream);
+			}
 			qstrm->stream = NULL;
+			
 			// close stream here if in multi-stream mode?
 			// Conflic with quic_pipe_close
 			// qstrm->closed = true;
