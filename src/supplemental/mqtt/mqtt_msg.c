@@ -612,6 +612,13 @@ nni_mqtt_msg_set_disconnect_reason_code(nni_msg *msg, uint8_t reason_code)
 	proto_data->var_header.disconnect.reason_code = reason_code;
 }
 
+uint8_t
+nni_mqtt_msg_get_disconnect_reason_code(nni_msg *msg)
+{
+	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
+	return proto_data->var_header.disconnect.reason_code;
+}
+
 void
 nni_mqtt_msg_set_disconnect_property(nni_msg *msg, property *prop)
 {
