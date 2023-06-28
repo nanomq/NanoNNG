@@ -495,14 +495,16 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 		// Both directions of the stream have been shut down and MsQuic
 		// is done with the stream. It can now be safely cleaned up.
-		log_warn("[strm][%p] QUIC_STREAM_EVENT shutdown: All done.", stream);
+		log_warn("[strm][%p] QUIC_STREAM_EVENT shutdown: All done.",
+		    stream);
 		log_info("close stream with Error Code: %llu",
-				 (unsigned long long) Event->SHUTDOWN_COMPLETE.ConnectionErrorCode);
+		    (unsigned long long)
+		        Event->SHUTDOWN_COMPLETE.ConnectionErrorCode);
 		if (qstrm->sock->pipe != qstrm->pipe) {
 			// close data stream only
 			const nni_proto_pipe_ops *pipe_ops =
 			    g_quic_proto->proto_pipe_ops;
-				log_warn("close the data stream [%p]!", stream);
+			log_warn("close the data stream [%p]!", stream);
 			pipe_ops->pipe_stop(qstrm->pipe);
 			if (qstrm->closed != true)
 				MsQuic->StreamClose(stream);
@@ -512,11 +514,11 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			// only server close the main stream gonna trigger this
 			log_warn("close the main stream [%p]!", stream);
 			if (qstrm->closed != true) {
-				MsQuic->ConnectionShutdown(stream, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
+				MsQuic->ConnectionShutdown(stream,
+				    QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
 				MsQuic->StreamClose(stream);
 			}
 			qstrm->stream = NULL;
-			
 			// close stream here if in multi-stream mode?
 			// Conflic with quic_pipe_close
 			// qstrm->closed = true;
