@@ -36,6 +36,8 @@ extern int quic_disconnect(void *qsock, void *qpipe);
 extern void quic_sock_close(void *qsock);
 // Create a qpipe and open it
 extern int quic_pipe_open(void *qsock, void **qpipe, void *mqtt_pipe);
+// get disconnect reason code from QUIC transport
+extern uint8_t quic_sock_disconnect_code(void *arg);
 // Receive msg from a qpipe
 extern int quic_pipe_recv(void *qpipe, nni_aio *raio);
 // Send msg to a qpipe

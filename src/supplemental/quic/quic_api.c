@@ -60,6 +60,7 @@ struct quic_sock_s {
 
 	char    *cacert;
 	bool     enable_0rtt;
+	uint8_t  reason_code; // reason code in transport layer
 };
 
 typedef struct quic_strm_s quic_strm_t;
@@ -309,6 +310,7 @@ quic_sock_init(quic_sock_t *qsock)
 	qsock->cacert      = NULL;
 	qsock->enable_0rtt = true;
 	qsock->closed      = false;
+	qsock->reason_code = 0;
 }
 
 void
@@ -390,6 +392,7 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	_Inout_ QUIC_STREAM_EVENT *Event)
 {
 	quic_strm_t *qstrm = Context;
+	quic_sock_t *qsock = qstrm->sock;
 	uint32_t rlen;
 	uint8_t *rbuf;
 	nni_msg *smsg;
@@ -448,6 +451,8 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		log_debug("[strm][%p] Data received Flag: %d", stream, Event->RECEIVE.Flags);
 
 		if (Event->RECEIVE.Flags & QUIC_RECEIVE_FLAG_FIN) {
+			if (qsock->reason_code == 0)
+				qsock->reason_code = CLIENT_IDENTIFIER_NOT_VALID;
 			log_warn("FIN received in QUIC stream");
 			break;
 		}
@@ -478,10 +483,13 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 
 		return QUIC_STATUS_PENDING;
 	case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
-		// The peer gracefully shut down its send direction of the stream.
+		// The peer gracefully shut down its send direction of the
+		// stream.
 		log_warn("[strm][%p] Peer SEND aborted\n", stream);
 		log_info("PEER_SEND_ABORTED Error Code: %llu",
-				 (unsigned long long) Event->PEER_SEND_ABORTED.ErrorCode);
+		    (unsigned long long) Event->PEER_SEND_ABORTED.ErrorCode);
+		if (qsock->reason_code == 0)
+			qsock->reason_code = SERVER_SHUTTING_DOWN;
 		break;
 	case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
 		// The peer aborted its send direction of the stream.
@@ -606,6 +614,8 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		    qconn, Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status,
 		    (unsigned long long)
 		        Event->SHUTDOWN_INITIATED_BY_TRANSPORT.ErrorCode);
+		if (qsock->reason_code == 0)
+            	qsock->reason_code = SERVER_UNAVAILABLE;
 		break;
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER:
 		// The connection was explicitly shut down by the peer.
@@ -615,6 +625,8 @@ quic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		    qconn,
 		    (unsigned long long)
 		        Event->SHUTDOWN_INITIATED_BY_PEER.ErrorCode);
+		if (qsock->reason_code == 0)
+			qsock->reason_code = SERVER_SHUTTING_DOWN;
 		break;
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE:
 		// The connection has completed the shutdown process and is
@@ -1419,6 +1431,14 @@ quic_pipe_close(void *qpipe, uint8_t *code)
 	nng_free(qstrm, sizeof(quic_strm_t));
 
 	return 0;
+}
+
+// only call this when main stream is closed!
+uint8_t
+quic_sock_disconnect_code(void *arg)
+{
+       quic_sock_t *qsock = arg;
+       return qsock->reason_code;
 }
 
 void
