@@ -362,6 +362,8 @@ tlstran_pipe_nego_cb(void *arg)
 			// We are all ready now.  We put this in the wait list,
 			// and then try to run the matcher.
 
+			// connection packet handled successfully. clone it for protocol or app layer
+			conn_param_clone(p->tcp_cparam);
 			// Connection is accepted.
 			if (p->tcp_cparam->pro_ver == 5) {
 				p->qsend_quota = p->tcp_cparam->rx_max;
