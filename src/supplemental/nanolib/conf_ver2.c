@@ -325,6 +325,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 		    config, qos_duration, "retry_interval", jso_mqtt);
 		hocon_read_num_base(
 		    config, backoff, "keepalive_multiplier", jso_mqtt);
+		config->backoff *= 1000;
 
 		hocon_read_num(config, max_inflight_window, jso_mqtt);
 		hocon_read_time(config, max_awaiting_rel, jso_mqtt);
@@ -427,7 +428,6 @@ conf_log_parse_ver2(conf *config, cJSON *jso)
 		conf_log *log            = &(config->log);
 		cJSON    *jso_log_to     = hocon_get_obj("to", jso_log);
 		cJSON    *jso_log_to_ele = NULL;
-
 		cJSON_ArrayForEach(jso_log_to_ele, jso_log_to)
 		{
 			if (!strcmp("file",
@@ -1012,6 +1012,10 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 	cJSON *jso_rule = NULL;
 
 	if (jso_rule_sqlite) {
+#ifndef NNG_SUPP_SQLITE
+		log_error("If you want use sqlite rule, recompile nanomq with option `-DNNG_ENABLE_SQLITE=ON`");
+	}
+#else
 		hocon_read_str_base(cr, sqlite_db, "path", jso_rule_sqlite);
 		jso_rules = hocon_get_obj("rules", jso_rule_sqlite);
 		cr->option |= RULE_ENG_SDB;
@@ -1037,6 +1041,7 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 			    rule_generate_rule_id();
 		}
 	}
+#endif
 
 	cJSON *jso_rule_repub = hocon_get_obj("rules.repub", jso);
 
@@ -1079,6 +1084,10 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 
 	cJSON *jso_rule_mysql = hocon_get_obj("rules.mysql", jso);
 	if (jso_rule_mysql) {
+#ifndef SUPP_MYSQL
+		log_error("If you want use mysql rule, recompile nanomq with option `-DENABLE_MYSQL=ON`");
+	}
+#else
 		cr->option |= RULE_ENG_MDB;
 
 		// TODO support multiple mysql database
@@ -1132,6 +1141,7 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 			nng_strfree(sql.password);
 		}
 	}
+#endif
 
 	return;
 }

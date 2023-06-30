@@ -56,8 +56,12 @@ static void conf_log_parse(conf_log *log, const char *path);
 
 #if defined(SUPP_RULE_ENGINE)
 static void conf_rule_repub_parse(conf_rule *cr, char *path);
+# if defined(SUPP_MYSQL)
 static void conf_rule_mysql_parse(conf_rule *cr, char *path);
+#endif
+#if defined(NNG_SUPP_SQLITE)
 static bool conf_rule_sqlite_parse(conf_rule *cr, char *path);
+#endif
 static void conf_rule_fdb_parse(conf_rule *cr, char *path);
 static void conf_rule_parse(conf_rule *rule, const char *path);
 #endif
@@ -1076,6 +1080,7 @@ print_webhook_conf(conf_web_hook *webhook)
 static void
 print_rule_engine_conf(conf_rule *rule_eng)
 {
+	log_error("size: %d", cvector_size(rule_eng->rules));
 	if (rule_eng->option & RULE_ENG_SDB) {
 		log_info("rule engine sqlite:");
 		log_info("path:           %s", rule_eng->sqlite_db);
@@ -1523,6 +1528,7 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 	fclose(fp);
 }
 
+
 static void
 conf_rule_mysql_parse(conf_rule *cr, char *path)
 {
@@ -1660,7 +1666,7 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 		log_debug("Configure file [%s] not found or "
 		          "unreadable\n",
 		    path);
-		return;
+		return false;
 	}
 
 	char * line = NULL;
@@ -1670,7 +1676,7 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 
 	if (NULL == (fp = fopen(path, "r"))) {
 		log_error("File %s open failed\n", path);
-		return;
+		return false;
 	}
 
 	char *value;
@@ -1849,7 +1855,11 @@ conf_rule_parse(conf_rule *rule, const char *path)
 		} else if ((value = get_conf_value(
 		                line, sz, "rule_option.sqlite")) != NULL) {
 			if (0 == nni_strcasecmp(value, "enable")) {
+#if defined(NNG_SUPP_SQLITE)
 				rule->option |= RULE_ENG_SDB;
+#else
+				log_error("If you want use sqlite rule, recompile nanomq with option `-DNNG_ENABLE_SQLITE=ON`");
+#endif
 			} else {
 				if (0 != nni_strcasecmp(value, "disable")) {
 					log_warn(
@@ -1864,7 +1874,7 @@ conf_rule_parse(conf_rule *rule, const char *path)
 		} else if ((value = get_conf_value(line, sz,
 		                "rule_option.sqlite.conf.path")) != NULL) {
 			if (RULE_ENG_SDB & rule->option) {
-				conf_rule_sqlite_parse(&cr, value);
+				conf_rule_sqlite_parse(cr, value);
 			}
 			free(value);
 			// repub
@@ -1886,14 +1896,16 @@ conf_rule_parse(conf_rule *rule, const char *path)
 		} else if ((value = get_conf_value(line, sz,
 		                "rule_option.repub.conf.path")) != NULL) {
 			if (RULE_ENG_RPB & rule->option) {
-				conf_rule_repub_parse(&cr, value);
+				conf_rule_repub_parse(cr, value);
 			}
 			free(value);
 			// mysql
 		} else if ((value = get_conf_value(
 		                line, sz, "rule_option.mysql")) != NULL) {
 			if (0 == nni_strcasecmp(value, "enable")) {
+#if defined(SUPP_MYSQL)
 				rule->option |= RULE_ENG_MDB;
+#endif
 			} else {
 				if (0 != nni_strcasecmp(value, "disable")) {
 					log_warn(
@@ -1908,7 +1920,7 @@ conf_rule_parse(conf_rule *rule, const char *path)
 		} else if ((value = get_conf_value(line, sz,
 		                "rule_option.mysql.conf.path")) != NULL) {
 			if (RULE_ENG_MDB & rule->option) {
-				conf_rule_mysql_parse(&cr, value);
+				conf_rule_mysql_parse(cr, value);
 			}
 			free(value);
 			// fdb
