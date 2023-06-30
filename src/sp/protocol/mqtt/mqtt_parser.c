@@ -1057,6 +1057,7 @@ nano_msg_notify_disconnect(conn_param *cparam, uint8_t code)
 	// V4 notification msg as default
 	msg = nano_pubmsg_composer(
 	    &msg, 0, 0, &string, &topic, cparam->pro_ver, nng_clock());
+	log_info("Disconnect event: %s", string.body);
 	return msg;
 }
 
