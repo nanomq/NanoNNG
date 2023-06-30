@@ -1205,6 +1205,7 @@ conf_parse_ver2(conf *config)
 			log_error("Configure file [%s] or [%s] not found or "
 			          "unreadable",
 			    conf_path, CONF_PATH_NAME);
+			log_clear_callback();
 			return;
 		} else {
 			conf_path = CONF_PATH_NAME;
