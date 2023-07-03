@@ -1137,7 +1137,8 @@ mqtt_tcptran_ep_fini(void *arg)
 
 	nni_mtx_lock(&ep->mtx);
 	ep->fini = true;
-	nni_msg_free(ep->connmsg);
+	if (ep->connmsg)
+		nni_msg_free(ep->connmsg);
 	if (ep->refcnt != 0) {
 		nni_mtx_unlock(&ep->mtx);
 		return;
