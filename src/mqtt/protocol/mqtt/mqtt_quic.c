@@ -1736,7 +1736,7 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 {
 	mqtt_quic_ctx *ctx = arg;
 	mqtt_sock_t   *s   = ctx->mqtt_sock;
-	mqtt_pipe_t   *p   = s->pipe;
+	mqtt_pipe_t   *p;
 	nni_msg       *msg;
 	uint16_t       packet_id;
 	uint8_t        qos;
@@ -1747,6 +1747,7 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 	}
 
 	nni_mtx_lock(&s->mtx);
+	p = s->pipe;
 
 	msg = nni_aio_get_msg(aio);
 	if (msg == NULL) {
@@ -1849,15 +1850,16 @@ static void
 mqtt_quic_ctx_recv(void *arg, nni_aio *aio)
 {
 	mqtt_quic_ctx *ctx = arg;
-	mqtt_sock_t *s   = ctx->mqtt_sock;
-	mqtt_pipe_t *p   = s->pipe;
-	nni_msg     *msg = NULL;
+	mqtt_sock_t   *s   = ctx->mqtt_sock;
+	mqtt_pipe_t   *p;
+	nni_msg       *msg = NULL;
 
 	if (nni_aio_begin(aio) != 0) {
 		return;
 	}
 
 	nni_mtx_lock(&s->mtx);
+	p = s->pipe;
 	// TODO Should socket is closed be check first?
 	if (p == NULL) {
 		goto wait;
