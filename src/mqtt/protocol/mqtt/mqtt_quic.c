@@ -1158,12 +1158,14 @@ static void
 mqtt_timer_cb(void *arg)
 {
 	mqtt_sock_t *s = arg;
-	mqtt_pipe_t *p = s->pipe;
+	mqtt_pipe_t *p;
 
 	if (nng_aio_result(&s->time_aio) != 0) {
 		return;
 	}
 	nni_mtx_lock(&s->mtx);
+
+	p = s->pipe;
 
 	if (NULL == p || nni_atomic_get_bool(&p->closed)) {
 		// QUIC connection has been shut down
