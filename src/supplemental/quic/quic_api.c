@@ -990,6 +990,7 @@ quic_pipe_send_start(quic_strm_t *qstrm)
 			nni_list_remove(&qstrm->sendq, aio);
 			msg = nni_aio_get_msg(aio);
 			nni_msg_free(msg);
+			nni_aio_set_msg(aio, NULL);
 			nni_aio_finish_error(aio, NNG_ECLOSED);
 		}
 		return;
@@ -1421,6 +1422,7 @@ quic_pipe_close(void *qpipe, uint8_t *code)
 		nni_list_remove(&qstrm->sendq, aio);
 		nni_msg *msg = nni_aio_get_msg(aio);
 		nni_msg_free(msg);
+		nni_aio_set_msg(aio, NULL);
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
 	while ((aio = nni_list_first(&qstrm->recvq)) != NULL) {
