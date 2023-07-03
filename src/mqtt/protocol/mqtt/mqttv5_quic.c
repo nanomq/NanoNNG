@@ -542,7 +542,7 @@ mqtt_quic_data_strm_send_cb(void *arg)
 	if (nni_aio_result(&p->send_aio) != 0) {
 		// We failed to send... clean up and deal with it.
 		p->busy = false;
-		nni_msg_free(nni_aio_get_msg(&p->send_aio));
+		// nni_msg_free(nni_aio_get_msg(&p->send_aio));
 		nni_aio_set_msg(&p->send_aio, NULL);
 		return;
 	}
