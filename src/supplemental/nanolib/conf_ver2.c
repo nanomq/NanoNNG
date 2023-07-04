@@ -1249,6 +1249,39 @@ conf_parse_ver2(conf *config)
 	return;
 }
 
+void printf_zmq_gateway_conf(zmq_gateway_conf *config)
+{
+	printf("zmq gateway conf zmq_sub_url:            %s\n",
+	    config->zmq_sub_url);
+	printf("zmq gateway conf zmq_pub_url:            %s\n",
+	    config->zmq_pub_url);
+	printf(
+	    "zmq gateway conf mqtt_url:               %s\n", config->mqtt_url);
+	printf("zmq gateway conf sub_topic:              %s\n",
+	    config->sub_topic);
+	printf("zmq gateway conf pub_topic:              %s\n",
+	    config->pub_topic);
+	printf("zmq gateway conf zmq_sub_pre:            %s\n",
+	    config->zmq_sub_pre);
+	printf("zmq gateway conf zmq_pub_pre:            %s\n",
+	    config->zmq_pub_pre);
+	printf("zmq gateway conf path:                   %s\n", config->path);
+	printf(
+	    "zmq gateway conf username:               %s\n", config->username);
+	printf(
+	    "zmq gateway conf password:               %s\n", config->password);
+	printf("zmq gateway conf proto_ver:    	         %d\n",
+	    config->proto_ver);
+	printf("zmq gateway conf keepalive:    	         %d\n",
+	    config->keepalive);
+	printf("zmq gateway conf clean_start:  	         %d\n",
+	    config->clean_start);
+	printf("zmq gateway conf parallel:     	         %d\n",
+	    config->parallel);
+	printf("zmq gateway conf zmq type:     	         %s\n",
+	    config->type == PUB_SUB ? "pub_sub" : "req_rep");
+}
+
 void
 conf_gateway_parse_ver2(zmq_gateway_conf *config)
 {
@@ -1287,6 +1320,7 @@ conf_gateway_parse_ver2(zmq_gateway_conf *config)
 
 	cJSON_Delete(jso);
 
+	printf_zmq_gateway_conf(config);
 
 	return;
 }
