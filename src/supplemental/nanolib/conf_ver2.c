@@ -1255,13 +1255,13 @@ conf_gateway_parse_ver2(zmq_gateway_conf *config)
 	const char *dest_path = config->path;
 
 	if (dest_path == NULL || !nano_file_exists(dest_path)) {
-		if (!nano_file_exists(CONF_GATEWAY_PATH_NAME)) {
+		if (!nano_file_exists(CONF_ZMQ_GATEWAY_PATH_NAME)) {
 			log_debug("Configure file [%s] or [%s] not found or "
 			          "unreadable\n",
-			    dest_path, CONF_GATEWAY_PATH_NAME);
+			    dest_path, CONF_ZMQ_GATEWAY_PATH_NAME);
 			return;
 		} else {
-			dest_path = CONF_GATEWAY_PATH_NAME;
+			dest_path = CONF_ZMQ_GATEWAY_PATH_NAME;
 		}
 	}
 
@@ -1287,7 +1287,6 @@ conf_gateway_parse_ver2(zmq_gateway_conf *config)
 
 	cJSON_Delete(jso);
 
-	// printf_gateway_conf(config);
 
 	return;
 }
