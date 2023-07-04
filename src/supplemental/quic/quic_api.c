@@ -74,6 +74,7 @@ struct quic_strm_s {
 	quic_sock_t *sock; // QUIC socket
 	void        *pipe; // Stream pipe if multi-stream is enabled
 
+	bool     inrr;          // is rraio in run_q
 	bool     closed;
 	nni_lmq  recv_messages; // recv messages queue
 	nni_lmq  send_messages; // send messages queue
@@ -349,6 +350,7 @@ quic_strm_init(quic_strm_t *qstrm, quic_sock_t *qsock)
 
 	qstrm->sock = qsock;
 	qstrm->closed = false;
+	qstrm->inrr   = false;
 
 	nni_lmq_init(&qstrm->recv_messages, NNG_MAX_RECV_LMQ);
 	nni_lmq_init(&qstrm->send_messages, NNG_MAX_SEND_LMQ);
@@ -466,19 +468,20 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		log_debug("Body is [%d]-[0x%x 0x%x].", rlen, *(rbuf), *(rbuf + 1));
 
 		if (rlen > qstrm->rrcap - qstrm->rrlen - qstrm->rrpos) {
-			qstrm->rrbuf = realloc(qstrm->rrbuf, rlen + qstrm->rrlen);
-			qstrm->rrcap = rlen + qstrm->rrlen;
+			qstrm->rrbuf = realloc(qstrm->rrbuf, rlen + qstrm->rrlen + qstrm->rrpos);
+			qstrm->rrcap = rlen + qstrm->rrlen + qstrm->rrpos;
 		}
 		// Copy data from quic stream to rrbuf
-		memcpy(qstrm->rrbuf + (int)qstrm->rrlen, rbuf, rlen);
+		memcpy(qstrm->rrbuf + qstrm->rrpos + (int)qstrm->rrlen, rbuf, rlen);
 		qstrm->rrlen += rlen;
 		MsQuic->StreamReceiveComplete(qstrm->stream, rlen);
-		nni_mtx_unlock(&qstrm->mtx);
-		if (!nni_list_empty(&qstrm->recvq)) {
+		if (!nni_list_empty(&qstrm->recvq) && qstrm->inrr == false) {
 			// We should not do executing now, Or circle calling occurs
-			nng_aio_wait(&qstrm->rraio);
-			nni_aio_finish_sync(&qstrm->rraio, 0, 0);
+			// nng_aio_wait(&qstrm->rraio);
+			qstrm->inrr = true;
+			nni_aio_finish(&qstrm->rraio, 0, 0);
 		}
+		nni_mtx_unlock(&qstrm->mtx);
 		log_debug("stream cb over\n");
 
 		return QUIC_STATUS_PENDING;
@@ -1047,7 +1050,8 @@ quic_pipe_recv_start(void *arg)
 	if (nni_list_empty(&qstrm->recvq)) {
 		return;
 	}
-	if (qstrm->rrlen > qstrm->rwlen && qstrm->rrlen == 0) {
+	if (qstrm->rrlen > qstrm->rwlen && qstrm->rrlen > 0 && qstrm->inrr == false) {
+		qstrm->inrr = true;
 		nni_aio_finish(&qstrm->rraio, 0, 0);
 		return;
 	}
@@ -1074,7 +1078,7 @@ quic_pipe_recv_cb(void *arg)
 	// Wait MsQuic take back data
 	if (rlen < qstrm->rwlen - qstrm->rxlen) {
 		qdebug("Data is not enough and rrpos %d rrlen %d.\n", qstrm->rrpos, qstrm->rrlen);
-		if (rlen > 0) {
+		if (rlen > 0 && qstrm->rrpos > 0) {
 			memmove(qstrm->rrbuf, qstrm->rrbuf+qstrm->rrpos, qstrm->rrlen);
 			qstrm->rrpos = 0;
 		}
@@ -1107,12 +1111,12 @@ quic_pipe_recv_cb(void *arg)
 		else
 			qstrm->rwlen = n + 3;
 
-		nni_mtx_unlock(&qstrm->mtx);
-		// Re-schedule now
+		// Re-schedule
 		if (!nni_list_empty(&qstrm->recvq)) {
-			nni_aio_finish_sync(&qstrm->rraio, 0, 0);
+			nni_aio_finish(&qstrm->rraio, 0, 0);
 		}
-		qdebug("1after  rxlen %d rwlen %d.\n", qstrm->rxlen, qstrm->rwlen);
+		qdebug("1after  rxlen %d rwlen %d rrlen %d.\n", qstrm->rxlen, qstrm->rwlen, qstrm->rrlen);
+		nni_mtx_unlock(&qstrm->mtx);
 		return;
 	}
 
@@ -1167,12 +1171,12 @@ quic_pipe_recv_cb(void *arg)
 			// Copy Body
 			nni_msg_append(qstrm->rxmsg, qstrm->rxbuf + 2, 3);
 		} else {
-			nni_mtx_unlock(&qstrm->mtx);
 			// Wait to be re-schedule
 			if (!nni_list_empty(&qstrm->recvq)) {
-				nni_aio_finish_sync(&qstrm->rraio, 0, 0);
+				nni_aio_finish(&qstrm->rraio, 0, 0);
 			}
 			qdebug("3after  rxlen %d rwlen %d.\n", qstrm->rxlen, qstrm->rwlen);
+			nni_mtx_unlock(&qstrm->mtx);
 			return;
 		}
 	}
@@ -1200,6 +1204,12 @@ quic_pipe_recv_cb(void *arg)
 	}
 	qdebug("4after  rxlen %d rwlen %d rrlen %d.\n", qstrm->rxlen, qstrm->rwlen, qstrm->rrlen);
 
+	if (qstrm->rrlen > 0 && qstrm->rrpos > 0) {
+		memmove(qstrm->rrbuf, qstrm->rrbuf+qstrm->rrpos, qstrm->rrlen);
+		qstrm->rrpos = 0;
+	}
+	qstrm->inrr = false;
+
 upload:
 	// get aio and trigger cb of protocol layer
 	aio = nni_list_first(&qstrm->recvq);
@@ -1210,8 +1220,19 @@ upload:
 		nni_aio_set_msg(aio, qstrm->rxmsg);
 		qstrm->rxmsg = NULL;
 		qdebug("AIO FINISH\n");
+
+		if (qstrm->rrlen > 0) {
+			if (!nni_list_empty(&qstrm->recvq) && qstrm->inrr == false) {
+				qdebug("inrr false\n");
+				qstrm->rxlen = 0;
+				qstrm->rwlen = 2;
+				qstrm->inrr = true;
+				nni_aio_finish(&qstrm->rraio, 0, 0);
+			}
+		}
+
 		nni_mtx_unlock(&qstrm->mtx);
-		nni_aio_finish_sync(aio, 0, 0);
+		nni_aio_finish(aio, 0, 0);
 	} else {
 		if (nni_lmq_full(&qstrm->recv_messages)) {
 			if (0 != nni_lmq_resize(&qstrm->recv_messages,
@@ -1223,15 +1244,19 @@ upload:
 		}
 		nni_lmq_put(&qstrm->recv_messages, qstrm->rxmsg);
 		qstrm->rxmsg = NULL;
+		qstrm->inrr = false;
 		nni_mtx_unlock(&qstrm->mtx);
 	}
 
+	/*
 	if (qstrm->rrlen > 0)
 		if (!nni_list_empty(&qstrm->recvq))
 			nni_aio_finish(&qstrm->rraio, 0, 0);
 
 	memmove(qstrm->rrbuf, qstrm->rrbuf+qstrm->rrpos, qstrm->rrlen);
 	qstrm->rrpos = 0;
+	*/
+
 	qdebug("over\n");
 }
 
@@ -1297,10 +1322,10 @@ quic_pipe_recv(void *qpipe, nni_aio *raio)
 	// Get msg from cache
 	if (!nni_lmq_empty(&qstrm->recv_messages)) {
 		nni_lmq_get(&qstrm->recv_messages, &msg);
+		nni_aio_set_msg(raio, msg);
 		nni_mtx_unlock(&qstrm->mtx);
 
-		nni_aio_set_msg(raio, msg);
-		nni_aio_finish_sync(raio, 0, 0);
+		nni_aio_finish(raio, 0, 0);
 		return 0;
 	}
 
