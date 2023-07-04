@@ -1070,12 +1070,13 @@ quic_pipe_recv_cb(void *arg)
 	// qdebug("rrpos %d rrlen %d rrbuf %x %x.\n", qstrm->rrpos, qstrm->rrlen,
 	// qstrm->rrbuf[qstrm->rrpos], qstrm->rrbuf[qstrm->rrpos + 1]);
 	uint8_t  usedbytes;
-	uint8_t *rbuf = qstrm->rrbuf + qstrm->rrpos;
-	uint32_t rlen = qstrm->rrlen, n, remain_len;
+	uint8_t *rbuf;
+	uint32_t rlen, n, remain_len;
 	if (nni_aio_result(&qstrm->rraio) != 0)
 		qdebug("QUIC aio receving error!");
 	nni_mtx_lock(&qstrm->mtx);
-	// Wait MsQuic take back data
+	rbuf = qstrm->rrbuf + qstrm->rrpos;
+	rlen = qstrm->rrlen; // Wait MsQuic take back data
 	if (rlen < qstrm->rwlen - qstrm->rxlen) {
 		qdebug("Data is not enough and rrpos %d rrlen %d.\n", qstrm->rrpos, qstrm->rrlen);
 		if (rlen > 0 && qstrm->rrpos > 0) {
@@ -1232,7 +1233,7 @@ upload:
 		}
 
 		nni_mtx_unlock(&qstrm->mtx);
-		nni_aio_finish(aio, 0, 0);
+		nni_aio_finish_sync(aio, 0, 0);
 	} else {
 		if (nni_lmq_full(&qstrm->recv_messages)) {
 			if (0 != nni_lmq_resize(&qstrm->recv_messages,
