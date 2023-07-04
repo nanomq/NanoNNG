@@ -1965,13 +1965,13 @@ conf_gateway_parse(zmq_gateway_conf *gateway)
 	const char *dest_path = gateway->path;
 
 	if (dest_path == NULL || !nano_file_exists(dest_path)) {
-		if (!nano_file_exists(CONF_GATEWAY_PATH_NAME)) {
+		if (!nano_file_exists(CONF_ZMQ_GATEWAY_PATH_NAME)) {
 			log_debug("Configure file [%s] or [%s] not found or "
 			          "unreadable\n",
-			    dest_path, CONF_GATEWAY_PATH_NAME);
+			    dest_path, CONF_ZMQ_GATEWAY_PATH_NAME);
 			return;
 		} else {
-			dest_path = CONF_GATEWAY_PATH_NAME;
+			dest_path = CONF_ZMQ_GATEWAY_PATH_NAME;
 		}
 	}
 

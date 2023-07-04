@@ -15,7 +15,7 @@
 
 #define PID_PATH_NAME "/tmp/nanomq/nanomq.pid"
 #define CONF_PATH_NAME "/etc/nanomq.conf"
-#define CONF_GATEWAY_PATH_NAME "/etc/nanomq_gateway.conf"
+#define CONF_ZMQ_GATEWAY_PATH_NAME "/etc/nanomq_zmq_gateway.conf"
 #define CONF_VSOMEIP_GATEWAY_PATH_NAME "/etc/nanomq_vsomeip_gateway.conf"
 
 #define CONF_DDS_GATEWAY_PATH_NAME "/etc/nanomq_dds_gateway.conf"
