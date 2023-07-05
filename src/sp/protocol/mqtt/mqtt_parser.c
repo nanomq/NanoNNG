@@ -587,7 +587,8 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	cparam->will_retain = (cparam->con_flag & 0x20) >> 5;
 	log_trace("conn flag:%x", cparam->con_flag);
 	if ((cparam->will_flag == 1 && cparam->will_qos > 2) ||
-	    strncmp(cparam->pro_name.body, "MQTT", 4) != 0 ||
+	    (strncmp(cparam->pro_name.body, "MQTT", 4) != 0 &&
+	    strncmp(cparam->pro_name.body, "MQIsdp", 6) != 0) ||
 	    cparam->pro_ver > 5 || cparam->pro_ver < 3)
 		return PROTOCOL_ERROR;
 	pos++;
@@ -633,6 +634,9 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		cparam->assignedid    = true;
 	} else if (len_of_str < 0) {
 		return (PROTOCOL_ERROR);
+	} else if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v31 &&
+	    len_of_str > 23) {
+		return (CLIENT_IDENTIFIER_NOT_VALID);
 	}
 	log_trace("clientid: [%s] [%d]", cparam->clientid.body, len_of_str);
 	log_trace("pos after clientid: [%d]", pos);
