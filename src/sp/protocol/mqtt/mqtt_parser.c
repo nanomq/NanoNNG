@@ -564,7 +564,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	// remaining length
 	len = (uint32_t) get_var_integer(packet + pos, &len_of_var);
 	pos += len_of_var;
-	log_trace("fix header length: %d", len_of_str);
+	log_trace("remaining length: %d", len);
 	// protocol name
 	cparam->pro_name.body =
 	    (char *) copyn_utf8_str(packet, &pos, &len_of_str, max - pos);
@@ -578,6 +578,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	log_trace("pro_name: %s", cparam->pro_name.body);
 	// protocol ver
 	cparam->pro_ver = packet[pos];
+	log_trace("pro_ver: %d", cparam->pro_ver);
 	pos++;
 	// connect flag
 	cparam->con_flag    = packet[pos];
