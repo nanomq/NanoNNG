@@ -544,6 +544,8 @@ nmq_tcptran_pipe_send_cb(void *arg)
 			nmq_pipe_send_start_v4(p, msg, txaio);
 		else if (p->pro_ver == 5)
 			nmq_pipe_send_start_v5(p, msg, txaio);
+		else if (p->pro_ver == 3)
+			nmq_pipe_send_start_v4(p, msg, txaio);
 		else {
 			log_error("msg with pro_ver that neither 4 nor 5 should not happened.");
 			nni_aio_finish_error(txaio, NNG_EPROTO);
