@@ -308,7 +308,7 @@ utf8_check(const char *str, size_t len)
 
 	if (!str)
 		return ERR_INVAL;
-	if (len > 65536)
+	if (len > 65535)
 		return ERR_INVAL;
 
 	for (i = 0; i < (int) len; i++) {
