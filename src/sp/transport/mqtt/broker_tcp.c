@@ -1446,6 +1446,8 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		nmq_pipe_send_start_v4(p, msg, aio);
 	} else if (p->pro_ver == 5) {
 		nmq_pipe_send_start_v5(p, msg, aio);
+	} else if (p->pro_ver == 3) {
+		nmq_pipe_send_start_v4(p, msg, aio);
 	} else {
 		nni_aio_finish_error(aio, NNG_EPROTO);
 	}
