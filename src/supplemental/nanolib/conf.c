@@ -1080,7 +1080,6 @@ print_webhook_conf(conf_web_hook *webhook)
 static void
 print_rule_engine_conf(conf_rule *rule_eng)
 {
-	log_error("size: %d", cvector_size(rule_eng->rules));
 	if (rule_eng->option & RULE_ENG_SDB) {
 		log_info("rule engine sqlite:");
 		log_info("path:           %s", rule_eng->sqlite_db);
@@ -1684,22 +1683,7 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 		if (NULL !=
 		    (value = get_conf_value(line, sz, "rule.sqlite.path"))) {
 			cr->sqlite_db = value;
-		} else if (NULL != strstr(line, "rule.sqlite")) {
-
-			int num = 0;
-			int res = sscanf(line, "rule.sqlite.%d.table", &num);
-			if (0 == res) {
-				log_fatal("Do not find table num");
-				exit(EXIT_FAILURE);
-			}
-
-			char key[32] = { 0 };
-			snprintf(key, 32, "rule.sqlite.%d.table", num);
-
-			if (NULL != (value = get_conf_value(line, sz, key))) {
-				table = value;
-			}
-
+		
 		} else if (NULL != strstr(line, "rule.sqlite.event.publish")) {
 
 			// TODO more accurate way table <======> sql
@@ -1728,6 +1712,22 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 				cr->rules[cvector_size(cr->rules) - 1]
 				    .rule_id = rule_generate_rule_id();
 			}
+		} else if (NULL != strstr(line, "rule.sqlite")) {
+
+			int num = 0;
+			int res = sscanf(line, "rule.sqlite.%d.table", &num);
+			if (0 == res) {
+				log_fatal("Do not find table num");
+				exit(EXIT_FAILURE);
+			}
+
+			char key[32] = { 0 };
+			snprintf(key, 32, "rule.sqlite.%d.table", num);
+
+			if (NULL != (value = get_conf_value(line, sz, key))) {
+				table = value;
+			}
+
 		}
 
 		free(line);
