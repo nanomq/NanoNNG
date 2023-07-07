@@ -1480,14 +1480,14 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 			}
 
 		} else if (0 ==
-		    strncmp(line, "rule.event.publish",
-		        strlen("rule.event.publish"))) {
+		    strncmp(line, "rule.repub.event.publish",
+		        strlen("rule.repub.event.publish"))) {
 
 			// TODO more accurate way
 			// topic <=======> broker <======> sql
 			int num = 0;
 			int res =
-			    sscanf(line, "rule.event.publish.%d.sql", &num);
+			    sscanf(line, "rule.repub.event.publish.%d.sql", &num);
 			if (0 == res) {
 				log_error("Do not find repub client");
 				exit(EXIT_FAILURE);
@@ -1610,14 +1610,14 @@ conf_rule_mysql_parse(conf_rule *cr, char *path)
 				}
 			}
 		} else if (0 ==
-		    strncmp(line, "rule.event.publish",
-		        strlen("rule.event.publish"))) {
+		    strncmp(line, "rule.mysql.event.publish",
+		        strlen("rule.mysql.event.publish"))) {
 
 			// TODO more accurate way
 			// topic <=======> broker <======> sql
 			int num = 0;
 			int res =
-			    sscanf(line, "rule.event.publish.%d.sql", &num);
+			    sscanf(line, "rule.mysql.event.publish.%d.sql", &num);
 			if (0 == res) {
 				log_error("Do not find mysql client");
 				exit(EXIT_FAILURE);
@@ -1700,12 +1700,12 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 				table = value;
 			}
 
-		} else if (NULL != strstr(line, "rule.event.publish")) {
+		} else if (NULL != strstr(line, "rule.sqlite.event.publish")) {
 
 			// TODO more accurate way table <======> sql
 			int num = 0;
 			int res =
-			    sscanf(line, "rule.event.publish.%d.sql", &num);
+			    sscanf(line, "rule.sqlite.event.publish.%d.sql", &num);
 			if (0 == res) {
 				log_fatal("Do not find table num");
 				exit(EXIT_FAILURE);
@@ -1857,6 +1857,7 @@ conf_rule_parse(conf_rule *rule, const char *path)
 			if (0 == nni_strcasecmp(value, "enable")) {
 #if defined(NNG_SUPP_SQLITE)
 				rule->option |= RULE_ENG_SDB;
+				conf_rule_sqlite_parse(cr, path);
 #else
 				log_error("If you want use sqlite rule, recompile nanomq with option `-DNNG_ENABLE_SQLITE=ON`");
 #endif
@@ -1871,17 +1872,12 @@ conf_rule_parse(conf_rule *rule, const char *path)
 				}
 			}
 			free(value);
-		} else if ((value = get_conf_value(line, sz,
-		                "rule_option.sqlite.conf.path")) != NULL) {
-			if (RULE_ENG_SDB & rule->option) {
-				conf_rule_sqlite_parse(cr, value);
-			}
-			free(value);
 			// repub
 		} else if ((value = get_conf_value(
 		                line, sz, "rule_option.repub")) != NULL) {
 			if (0 == nni_strcasecmp(value, "enable")) {
 				rule->option |= RULE_ENG_RPB;
+				conf_rule_repub_parse(cr, path);
 			} else {
 				if (0 != nni_strcasecmp(value, "disable")) {
 					log_error(
@@ -1893,18 +1889,15 @@ conf_rule_parse(conf_rule *rule, const char *path)
 				}
 			}
 			free(value);
-		} else if ((value = get_conf_value(line, sz,
-		                "rule_option.repub.conf.path")) != NULL) {
-			if (RULE_ENG_RPB & rule->option) {
-				conf_rule_repub_parse(cr, value);
-			}
-			free(value);
 			// mysql
 		} else if ((value = get_conf_value(
 		                line, sz, "rule_option.mysql")) != NULL) {
 			if (0 == nni_strcasecmp(value, "enable")) {
 #if defined(SUPP_MYSQL)
 				rule->option |= RULE_ENG_MDB;
+				conf_rule_mysql_parse(cr, path);
+#else
+				log_error("If you want use mysql rule, recompile nanomq with option `-DENABLE_MYSQL=ON`");
 #endif
 			} else {
 				if (0 != nni_strcasecmp(value, "disable")) {
@@ -1915,34 +1908,6 @@ conf_rule_parse(conf_rule *rule, const char *path)
 					    value);
 					break;
 				}
-			}
-			free(value);
-		} else if ((value = get_conf_value(line, sz,
-		                "rule_option.mysql.conf.path")) != NULL) {
-			if (RULE_ENG_MDB & rule->option) {
-				conf_rule_mysql_parse(cr, value);
-			}
-			free(value);
-			// fdb
-		} else if ((value = get_conf_value(
-		                line, sz, "rule_option.fdb")) != NULL) {
-			if (0 == nni_strcasecmp(value, "enable")) {
-				rule->option |= RULE_ENG_FDB;
-			} else {
-				if (0 != nni_strcasecmp(value, "disable")) {
-					log_warn(
-					    "Unsupported option: %s\nrule "
-					    "option fdb only support "
-					    "enable/disable",
-					    value);
-					break;
-				}
-			}
-			free(value);
-		} else if ((value = get_conf_value(line, sz,
-		                "rule_option.fdb.conf.path")) != NULL) {
-			if (RULE_ENG_FDB & rule->option) {
-				conf_rule_fdb_parse(rule, value);
 			}
 			free(value);
 		}
