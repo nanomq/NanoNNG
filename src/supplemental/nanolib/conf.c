@@ -1556,6 +1556,41 @@ conf_rule_mysql_parse(conf_rule *cr, char *path)
 			cr->mysql_db = value;
 			log_debug(value);
 		} else if (0 ==
+		    strncmp(line, "rule.mysql.event.publish",
+		        strlen("rule.mysql.event.publish"))) {
+
+			// TODO more accurate way
+			// topic <=======> broker <======> sql
+			int num = 0;
+			int res =
+			    sscanf(line, "rule.mysql.event.publish.%d.sql", &num);
+			if (0 == res) {
+				log_error("Do not find mysql client");
+				exit(EXIT_FAILURE);
+			}
+
+			if (NULL != (value = strchr(line, '='))) {
+				value++;
+				rule_sql_parse(cr, value);
+				char *p = strrchr(value, '\"');
+				*p      = '\0';
+
+				cr->rules[cvector_size(cr->rules) - 1].mysql =
+				    NNI_ALLOC_STRUCT(mysql);
+				memcpy(cr->rules[cvector_size(cr->rules) - 1]
+				           .mysql,
+				    mysql, sizeof(*mysql));
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .forword_type = RULE_FORWORD_MYSOL;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .raw_sql = nng_strdup(++value);
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .enabled = true;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .rule_id = rule_generate_rule_id();
+			}
+		
+		} else if (0 ==
 		    strncmp(line, "rule.mysql", strlen("rule.mysql"))) {
 			int num = 0;
 
@@ -1607,40 +1642,6 @@ conf_rule_mysql_parse(conf_rule *cr, char *path)
 						mysql->password = value;
 					}
 				}
-			}
-		} else if (0 ==
-		    strncmp(line, "rule.mysql.event.publish",
-		        strlen("rule.mysql.event.publish"))) {
-
-			// TODO more accurate way
-			// topic <=======> broker <======> sql
-			int num = 0;
-			int res =
-			    sscanf(line, "rule.mysql.event.publish.%d.sql", &num);
-			if (0 == res) {
-				log_error("Do not find mysql client");
-				exit(EXIT_FAILURE);
-			}
-
-			if (NULL != (value = strchr(line, '='))) {
-				value++;
-				rule_sql_parse(cr, value);
-				char *p = strrchr(value, '\"');
-				*p      = '\0';
-
-				cr->rules[cvector_size(cr->rules) - 1].mysql =
-				    NNI_ALLOC_STRUCT(mysql);
-				memcpy(cr->rules[cvector_size(cr->rules) - 1]
-				           .mysql,
-				    mysql, sizeof(*mysql));
-				cr->rules[cvector_size(cr->rules) - 1]
-				    .forword_type = RULE_FORWORD_MYSOL;
-				cr->rules[cvector_size(cr->rules) - 1]
-				    .raw_sql = nng_strdup(++value);
-				cr->rules[cvector_size(cr->rules) - 1]
-				    .enabled = true;
-				cr->rules[cvector_size(cr->rules) - 1]
-				    .rule_id = rule_generate_rule_id();
 			}
 		}
 
