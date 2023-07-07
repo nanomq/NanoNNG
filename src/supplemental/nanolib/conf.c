@@ -1370,7 +1370,42 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 
 	char *value;
 	while (nano_getline(&line, &sz, fp) != -1) {
-		if (0 == strncmp(line, "rule.repub", strlen("rule.repub"))) {
+		if (0 ==
+		    strncmp(line, "rule.repub.event.publish",
+		        strlen("rule.repub.event.publish"))) {
+
+			// TODO more accurate way
+			// topic <=======> broker <======> sql
+			int num = 0;
+			int res =
+			    sscanf(line, "rule.repub.event.publish.%d.sql", &num);
+			if (0 == res) {
+				log_error("Do not find repub client");
+				exit(EXIT_FAILURE);
+			}
+
+			if (NULL != (value = strchr(line, '='))) {
+				value++;
+				rule_sql_parse(cr, value);
+				char *p = strrchr(value, '\"');
+				*p      = '\0';
+
+				cr->rules[cvector_size(cr->rules) - 1].repub =
+				    NNI_ALLOC_STRUCT(repub);
+				memcpy(cr->rules[cvector_size(cr->rules) - 1]
+				           .repub,
+				    repub, sizeof(*repub));
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .forword_type = RULE_FORWORD_REPUB;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .raw_sql = nng_strdup(++value);
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .enabled = true;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .rule_id = rule_generate_rule_id();
+			}
+
+		} else if (0 == strncmp(line, "rule.repub", strlen("rule.repub"))) {
 
 			int num = 0;
 			if (strstr(line, "address")) {
@@ -1478,40 +1513,6 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 				}
 			}
 
-		} else if (0 ==
-		    strncmp(line, "rule.repub.event.publish",
-		        strlen("rule.repub.event.publish"))) {
-
-			// TODO more accurate way
-			// topic <=======> broker <======> sql
-			int num = 0;
-			int res =
-			    sscanf(line, "rule.repub.event.publish.%d.sql", &num);
-			if (0 == res) {
-				log_error("Do not find repub client");
-				exit(EXIT_FAILURE);
-			}
-
-			if (NULL != (value = strchr(line, '='))) {
-				value++;
-				rule_sql_parse(cr, value);
-				char *p = strrchr(value, '\"');
-				*p      = '\0';
-
-				cr->rules[cvector_size(cr->rules) - 1].repub =
-				    NNI_ALLOC_STRUCT(repub);
-				memcpy(cr->rules[cvector_size(cr->rules) - 1]
-				           .repub,
-				    repub, sizeof(*repub));
-				cr->rules[cvector_size(cr->rules) - 1]
-				    .forword_type = RULE_FORWORD_REPUB;
-				cr->rules[cvector_size(cr->rules) - 1]
-				    .raw_sql = nng_strdup(++value);
-				cr->rules[cvector_size(cr->rules) - 1]
-				    .enabled = true;
-				cr->rules[cvector_size(cr->rules) - 1]
-				    .rule_id = rule_generate_rule_id();
-			}
 		}
 
 		free(line);
