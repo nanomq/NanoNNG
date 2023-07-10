@@ -486,8 +486,14 @@ mqtt_pipe_send_msg(nni_aio *aio, nni_msg *msg, mqtt_pipe_t *p, uint16_t packet_i
 		tmsg = nni_id_get(&p->sent_unack, packet_id);
 		if (tmsg != NULL) {
 			log_warn("Warning : msg %d lost due to "
-			                "packetID duplicated!",
+			         "packetID duplicated!",
 			    packet_id);
+			nni_aio *m_aio = nni_mqtt_msg_get_aio(tmsg);
+			if (m_aio &&
+			    nni_mqtt_msg_get_packet_type(tmsg) !=
+			        NNG_MQTT_PUBLISH) {
+				nni_aio_finish_error(m_aio, UNSPECIFIED_ERROR);
+			}
 			nni_msg_free(tmsg);
 			nni_id_remove(&p->sent_unack, packet_id);
 		}
