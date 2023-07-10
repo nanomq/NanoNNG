@@ -2,6 +2,23 @@
 
 #include "nuts.h"
 
+// #define OLD_CONF_PATH \
+// 	"../../../../../nng/src/supplemental/nanolib/test_conf/nmq_old_test.conf"
+#define OLD_CONF_PATH \
+	"../../../../src/supplemental/nanolib/test_conf/nmq_old_test.conf"
+#define CONF_PATH \
+	"../../../../src/supplemental/nanolib/test_conf/nmq_test.conf"
+
+conf *
+get_test_conf(const char *conf_path)
+{
+	conf *nmq_conf  = nng_zalloc(sizeof(conf));
+	conf_init(nmq_conf);
+	nmq_conf->conf_file = nng_strdup(conf_path);
+
+	return nmq_conf;
+}
+
 void
 test_get_size(void)
 {
@@ -9,7 +26,7 @@ test_get_size(void)
 	char    *str_size2 = "2MB";
 	char    *str_size3 = "1GB";
 	char    *str_size_tb = "1TB";
-	char    *str_size_0  = "s0";
+	char    *str_size_0  = "0s";
 	uint64_t size        = 0;
 
 	NUTS_PASS(get_size(str_size1, &size));
@@ -46,8 +63,30 @@ test_get_time(void)
 	NUTS_FAIL(get_time(str_fail, &second), -1);
 }
 
+void
+test_conf_parse(void)
+{
+	conf *conf = get_test_conf(OLD_CONF_PATH);
+	conf_parse(conf);
+	nng_strfree(conf->http_server.username);
+	nng_strfree(conf->http_server.password);
+	nng_strfree(conf->http_server.jwt.private_keyfile);
+	nng_strfree(conf->http_server.jwt.public_keyfile);
+	conf_fini(conf);
+}
+
+void
+test_conf_parse_ver2(void)
+{
+	conf *conf = get_test_conf(CONF_PATH);
+	conf_parse_ver2(conf);
+	conf_fini(conf);
+}
+
 TEST_LIST = {
    {"get size", test_get_size},
    {"get time", test_get_time},
+   {"conf parse", test_conf_parse},
+//    {"conf parse v2", test_conf_parse_ver2},
    {NULL, NULL} 
 };
