@@ -1084,6 +1084,7 @@ quic_pipe_recv_cb(void *arg)
 			qstrm->rrpos = 0;
 		}
 		MsQuic->StreamReceiveSetEnabled(qstrm->stream, TRUE);
+		nni_aio_finish(&qstrm->rraio, 0, 0);
 		nni_mtx_unlock(&qstrm->mtx);
 		return;
 	}
