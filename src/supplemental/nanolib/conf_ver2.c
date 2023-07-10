@@ -351,6 +351,15 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_address_base(
 		    websocket, url, "bind", "nmq-ws://", jso_websocket);
 		websocket->enable = true;
+
+		conf_tls *tls = &(config->tls);
+		if (tls != NULL) {
+			cJSON *jso_websocket_tls = hocon_get_obj("listeners.wss", jso);
+			if (jso_websocket_tls != NULL) {
+				hocon_read_address_base(
+				    websocket, tls_url, "bind", "nmq-wss://", jso_websocket_tls);
+			}
+		}
 	}
 
 	conf_http_server_parse_ver2(&(config->http_server), jso);
