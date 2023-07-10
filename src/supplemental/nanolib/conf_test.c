@@ -2,8 +2,6 @@
 
 #include "nuts.h"
 
-// #define OLD_CONF_PATH \
-// 	"../../../../../nng/src/supplemental/nanolib/test_conf/nmq_old_test.conf"
 #define OLD_CONF_PATH \
 	"../../../../src/supplemental/nanolib/test_conf/nmq_old_test.conf"
 #define CONF_PATH \
@@ -68,6 +66,7 @@ test_conf_parse(void)
 {
 	conf *conf = get_test_conf(OLD_CONF_PATH);
 	conf_parse(conf);
+	
 	nng_strfree(conf->http_server.username);
 	nng_strfree(conf->http_server.password);
 	nng_strfree(conf->http_server.jwt.private_keyfile);
