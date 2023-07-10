@@ -3,5 +3,6 @@ ignore:
  - "src/testing"
  - "perf"
  - "**/*_test.c"
+ - "**/cJSON.c"
 coverage:
  range: 50..95
