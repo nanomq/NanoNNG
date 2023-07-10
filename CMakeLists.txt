@@ -152,7 +152,7 @@ endif ()
 include(CheckSanitizer)
 CheckSanitizer()
 if (NOT NNG_SANITIZER STREQUAL "none")
-    set(NNG_SANITIZER_FLAGS "-fsanitize=${NNG_SANITIZER}")
+    set(NNG_SANITIZER_FLAGS "-g -fsanitize=${NNG_SANITIZER}")
 endif ()
 
 
