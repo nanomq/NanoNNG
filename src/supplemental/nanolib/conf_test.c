@@ -77,7 +77,7 @@ test_conf_parse_ver2(void)
 	conf *conf = get_test_conf(CONF_PATH);
 
 	conf_parse_ver2(conf);
-	
+
 	conf_fini(conf);
 }
 
@@ -85,6 +85,6 @@ TEST_LIST = {
    {"get size", test_get_size},
    {"get time", test_get_time},
    {"conf parse", test_conf_parse},
-//    {"conf parse v2", test_conf_parse_ver2},
+   {"conf parse v2", test_conf_parse_ver2},
    {NULL, NULL} 
 };
