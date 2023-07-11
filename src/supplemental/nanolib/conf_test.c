@@ -65,12 +65,9 @@ void
 test_conf_parse(void)
 {
 	conf *conf = get_test_conf(OLD_CONF_PATH);
+
 	conf_parse(conf);
-	
-	nng_strfree(conf->http_server.username);
-	nng_strfree(conf->http_server.password);
-	nng_strfree(conf->http_server.jwt.private_keyfile);
-	nng_strfree(conf->http_server.jwt.public_keyfile);
+
 	conf_fini(conf);
 }
 
@@ -78,7 +75,9 @@ void
 test_conf_parse_ver2(void)
 {
 	conf *conf = get_test_conf(CONF_PATH);
+
 	conf_parse_ver2(conf);
+	
 	conf_fini(conf);
 }
 

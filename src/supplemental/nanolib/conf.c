@@ -3558,6 +3558,8 @@ conf_fini(conf *nanomq_conf)
 	nng_strfree(nanomq_conf->conf_file);
 	nng_strfree(nanomq_conf->websocket.tls_url);
 
+	conf_http_server_destroy(&nanomq_conf->http_server);
+
 #if defined(SUPP_RULE_ENGINE)
 	conf_rule_destroy(&nanomq_conf->rule_eng);
 #endif
