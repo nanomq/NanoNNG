@@ -1237,7 +1237,6 @@ mqtt_timer_cb(void *arg)
 
 static void mqtt_quic_sock_init(void *arg, nni_sock *sock)
 {
-	NNI_ARG_UNUSED(arg);
 	mqtt_sock_t *s = arg;
 	s->nsock       = sock;
 
