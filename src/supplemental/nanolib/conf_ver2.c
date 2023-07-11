@@ -533,14 +533,19 @@ conf_web_hook_parse_rules_ver2(conf *config, cJSON *jso)
 
 	conf_web_hook *webhook = &(config->web_hook);
 	webhook->rules         = NULL;
+	size_t cnt             = 0;
 
 	cJSON_ArrayForEach(jso_webhook_rule, jso_webhook_rules)
 	{
-		conf_web_hook_rule *hook_rule = NNI_ALLOC_STRUCT(hook_rule);
-		webhook_action_parse_ver2(jso_webhook_rule, hook_rule);
-		cvector_push_back(webhook->rules, hook_rule);
-		webhook->rule_count = cvector_size(webhook->rules);
+		cnt++;
+		webhook->rules = realloc(
+		    webhook->rules, cnt * sizeof(conf_web_hook_rule *));
+		webhook->rules[cnt - 1] =
+		    calloc(1, sizeof(conf_web_hook_rule));
+		webhook_action_parse_ver2(
+		    jso_webhook_rule, webhook->rules[cnt - 1]);
 	}
+	webhook->rule_count = cnt;
 
 	return;
 }
@@ -555,18 +560,20 @@ conf_webhook_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_str(webhook, url, jso_webhook);
 		cJSON *webhook_headers = hocon_get_obj("headers", jso_webhook);
 		cJSON *webhook_header  = NULL;
+		size_t cnt             = 0;
 		cJSON_ArrayForEach(webhook_header, webhook_headers)
 		{
-			conf_http_header *web_hook_http_header =
-			    NNI_ALLOC_STRUCT(web_hook_http_header);
-			web_hook_http_header->key =
+			cnt++;
+			webhook->headers = realloc(webhook->headers,
+			    cnt * sizeof(conf_http_header *));
+			webhook->headers[cnt - 1] =
+			    calloc(1, sizeof(conf_http_header));
+			webhook->headers[cnt - 1]->key =
 			    nng_strdup(webhook_header->string);
-			web_hook_http_header->value =
+			webhook->headers[cnt - 1]->value =
 			    nng_strdup(webhook_header->valuestring);
-			cvector_push_back(
-			    webhook->headers, web_hook_http_header);
 		}
-		webhook->header_count = cvector_size(webhook->headers);
+		webhook->header_count = cnt;
 
 		hocon_read_enum_base(webhook, encode_payload, "body.encoding",
 		    jso_webhook, webhook_encoding);
