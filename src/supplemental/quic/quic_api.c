@@ -1106,6 +1106,7 @@ quic_pipe_recv_cb(void *arg)
 			// PINGRESP/DISCONNECT
 			if (0 != nng_msg_alloc(&qstrm->rxmsg, 0)) {
 				qdebug("error in msg allocated.\n");
+				return;
 			}
 			nni_msg_header_append(
 			    qstrm->rxmsg, qstrm->rxbuf, 2);
@@ -1138,6 +1139,7 @@ quic_pipe_recv_cb(void *arg)
 		// Compose msg
 		if (0 != nng_msg_alloc(&qstrm->rxmsg, 4)) {
 			qdebug("error in msg allocated.\n");
+			return;
 		}
 
 		nni_msg_header_clear(qstrm->rxmsg);
