@@ -605,6 +605,7 @@ mqtt_quic_send_cb(void *arg)
 		nni_list_remove(&s->send_queue, aio);
 		msg = nni_aio_get_msg(aio);
 		int rv = 0;
+		// TODO >= or JUST > ???
 		if ((rv = mqtt_send_msg(aio, msg, s)) >= 0) {
 			nni_mtx_unlock(&s->mtx);
 			nni_aio_finish(aio, rv, 0);
