@@ -3,6 +3,23 @@
 #include <nuts.h>
 #include <stdio.h>
 
+static void test_pub_extra()
+{
+	pub_extra *extra;
+	extra = pub_extra_alloc(extra);
+	pub_extra_set_qos(extra, 0);
+	uint8_t qos = pub_extra_get_qos(extra);
+	NUTS_TRUE(qos == 0);
+	pub_extra_set_packet_id(extra, 12);
+	uint16_t pkt_id = pub_extra_get_packet_id(extra);
+	NUTS_TRUE(pkt_id == 12);
+	char *msg = "message";
+	pub_extra_set_msg(extra, msg);
+	char *m = (char *) pub_extra_get_msg(extra);
+	NUTS_TRUE(strcmp(msg, m) == 0);
+	pub_extra_free(extra);
+}
+
 static void
 test_utf8_check()
 {
@@ -46,6 +63,10 @@ test_copyn_utf8_str()
 	nng_free(ptr_rv, sizeof(ptr_rv));
 	// test for buffer overflow.
 	limit   = 1;
+	pos     = 0;
+	str_len = 0;
+	NUTS_ASSERT(copyn_utf8_str(src, &pos, &str_len, limit) == NULL);
+	limit   = 2;
 	pos     = 0;
 	str_len = 0;
 	NUTS_ASSERT(copyn_utf8_str(src, &pos, &str_len, limit) == NULL);
@@ -145,6 +166,7 @@ test_topic_filtern()
 }
 
 NUTS_TESTS = {
+	{ "mqtt_parser pub_extras", test_pub_extra },
 	{ "mqtt_parser utf8_check", test_utf8_check },
 	{ "mqtt_parser get_utf8_str", test_get_utf8_str },
 	{ "mqtt_parser copyn_utf8_str", test_copyn_utf8_str },
