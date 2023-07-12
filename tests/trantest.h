@@ -1400,7 +1400,7 @@ mqtt_trantest_test(const char *addr)
 
 		trantest_scheme(&tt);
 		trantest_mqtt_sub_pub(&tt);
-		// trantest_mqttv5_sub_pub(&tt);
+		trantest_mqttv5_sub_pub(&tt);
 	})
 }
 
