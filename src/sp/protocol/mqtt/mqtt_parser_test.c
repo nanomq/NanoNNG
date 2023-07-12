@@ -5,7 +5,7 @@
 
 static void test_pub_extra()
 {
-	pub_extra *extra;
+	pub_extra *extra = NULL;
 	extra = pub_extra_alloc(extra);
 	pub_extra_set_qos(extra, 0);
 	uint8_t qos = pub_extra_get_qos(extra);
@@ -24,13 +24,27 @@ static void
 test_utf8_check()
 {
 	uint8_t src[] = { 0x24, 0x4D, 0x51, 0x54, 0x54, '\0' };
-	// TODO more cases for failure.
+	uint8_t src_0[] = { 0x00, 0x4D, 0x51, 0x54, 0x54, '\0' };
+	uint8_t src_C0[] = { 0xC0, 0x4D, 0x51, 0x54, 0x54, '\0' };
+	uint8_t src_F6[] = { 0xF6, 0x4D, 0x51, 0x54, 0x54, '\0' };
+	uint8_t src_FF[] = { 0xFF, 0x4D, 0x51, 0x54, 0x54, '\0' };
+
 	NUTS_PASS(utf8_check((char *) src, strlen((char *) src) - 1));
-	// test oversize src.
+	// test oversize & NULL src.
 	NUTS_FAIL(utf8_check((char *) src, 65537), ERR_INVAL);
+	NUTS_FAIL(utf8_check(NULL, 0), ERR_INVAL);
 	// test control characters.
 	src[0] = 0x04;
 	NUTS_FAIL(utf8_check((char *) src, strlen((char *) src) - 1),
+	    ERR_MALFORMED_UTF8);
+	// test malformed utf8
+	NUTS_FAIL(utf8_check((char *) src_0, strlen((char *) src) - 1),
+	    ERR_MALFORMED_UTF8);
+	NUTS_FAIL(utf8_check((char *) src_C0, strlen((char *) src) - 1),
+	    ERR_MALFORMED_UTF8);
+	NUTS_FAIL(utf8_check((char *) src_F6, strlen((char *) src) - 1),
+	    ERR_MALFORMED_UTF8);
+	NUTS_FAIL(utf8_check((char *) src_FF, strlen((char *) src) - 1),
 	    ERR_MALFORMED_UTF8);
 }
 
@@ -128,20 +142,18 @@ test_ws_msg_adaptor()
 }
 
 static void
-test_DJBHash()
+test_hash()
 {
-	char *str = "test";
-
+	char *str  = "test";
+	char *str2 = "testTEST";
 	NUTS_ASSERT(DJBHash(str) == 2090756197);
-}
+	NUTS_ASSERT(DJBHashn(str, strlen(str)) == 2090756197);
+	NUTS_ASSERT(fnv1a_hashn(str, strlen(str)) == (uint32_t)-1345293851); 
+	NUTS_ASSERT(crc_hashn(str, strlen(str)) == 191);
+	NUTS_ASSERT(nano_hash(str) == 6385723493);
 
-static void
-test_DJBHashn()
-{
-	char    *str = "test";
-	uint16_t len = 2;
-
-	NUTS_ASSERT(DJBHashn(str, len) == 5863838);
+	NUTS_ASSERT(crc32_hashn(str2, strlen(str2)) == (uint32_t)-620996987);
+	NUTS_ASSERT(crc32c_hashn(str2, strlen(str2)) == 788723578);
 }
 
 static void
@@ -175,8 +187,7 @@ NUTS_TESTS = {
 	{ "mqtt_parser fixed_header_adaptor", test_fixed_header_adaptor },
 	{ "mqtt_parser ws_msg_adaptor", test_ws_msg_adaptor },
 	// TODO more tests needed.
-	{ "mqtt_parser DJBHash", test_DJBHash },
-	{ "mqtt_parser DJBHashn", test_DJBHashn },
+	{ "mqtt_parser hash", test_hash },
 	// TODO more tests needed.
 	{ "mqtt_parser topic_filter", test_topic_filter },
 	{ "mqtt_parser topic_filtern", test_topic_filtern },
