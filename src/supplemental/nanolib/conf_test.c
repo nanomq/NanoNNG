@@ -67,7 +67,8 @@ test_conf_parse(void)
 	conf *conf = get_test_conf(OLD_CONF_PATH);
 
 	conf_parse(conf);
-
+	NUTS_TRUE(conf->url != NULL);
+	
 	conf_fini(conf);
 }
 
@@ -77,6 +78,7 @@ test_conf_parse_ver2(void)
 	conf *conf = get_test_conf(CONF_PATH);
 
 	conf_parse_ver2(conf);
+	NUTS_TRUE(conf->url != NULL);
 
 	conf_fini(conf);
 }
