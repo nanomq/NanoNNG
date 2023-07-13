@@ -926,7 +926,8 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 {
 	mqtt_ctx_t * ctx = arg;
 	mqtt_sock_t *s   = ctx->mqtt_sock;
-	mqtt_pipe_t *p   = s->mqtt_pipe;
+	mqtt_pipe_t *p;
+
 	nni_msg *    msg;
 	uint8_t 	 qos;
 	uint16_t	 packet_id;
@@ -967,6 +968,7 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 		break;
 	}
 	nni_mqttv5_msg_encode(msg);
+	p = s->mqtt_pipe;
 	if (p == NULL) {
 		// connection is lost or not established yet
 #if defined(NNG_SUPP_SQLITE)
