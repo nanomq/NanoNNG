@@ -911,6 +911,7 @@ mqtt_quic_recv_cb(void *arg)
 	}
 	if (nni_atomic_get_bool(&s->closed) ||
 	    nni_atomic_get_bool(&p->closed)) {
+		log_warn("Stream/Socket is closed!");
 		//free msg and dont return data when pipe is closed.
 		if (msg) {
 			nni_msg_free(msg);
