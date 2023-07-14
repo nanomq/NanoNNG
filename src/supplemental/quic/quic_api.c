@@ -120,7 +120,7 @@ static void    quic_pipe_recv_start(void *arg);
 static int  quic_sock_reconnect(quic_sock_t *qsock);
 static void quic_sock_close_cb(void *arg);
 static void quic_sock_init(quic_sock_t *qsock);
-static void quic_sock_fini(quic_sock_t *qsock);
+// static void quic_sock_fini(quic_sock_t *qsock);
 
 static void quic_strm_init(quic_strm_t *qstrm, quic_sock_t *qsock);
 static void quic_strm_fini(quic_strm_t *qstrm);
@@ -325,6 +325,7 @@ quic_sock_close(void *qsock)
 	nni_mtx_unlock(&qs->mtx);
 }
 
+/*
 static void
 quic_sock_fini(quic_sock_t *qsock)
 {
@@ -338,6 +339,7 @@ quic_sock_fini(quic_sock_t *qsock)
 	// nni_aio_close(&qsock->close_aio);
 	// nni_aio_fini(&qsock->close_aio);
 }
+*/
 
 static void
 quic_strm_init(quic_strm_t *qstrm, quic_sock_t *qsock)
@@ -1455,6 +1457,7 @@ error:
 int
 quic_pipe_close(void *qpipe, uint8_t *code)
 {
+	(void) code;
 	if (!qpipe)
 		return -1;
 	quic_strm_t *qstrm = qpipe;
