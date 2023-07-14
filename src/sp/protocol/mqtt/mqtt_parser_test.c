@@ -6,7 +6,7 @@
 static void test_pub_extra()
 {
 	pub_extra *extra = NULL;
-	NUTS_TRUE(extra = pub_extra_alloc(extra) != NULL);
+	NUTS_TRUE((extra = pub_extra_alloc(extra)) != NULL);
 	pub_extra_set_qos(extra, 0);
 	uint8_t qos = pub_extra_get_qos(extra);
 	NUTS_TRUE(qos == 0);
@@ -38,8 +38,7 @@ test_utf8_check()
 	NUTS_FAIL(utf8_check((char *) src, strlen((char *) src) - 1),
 	    ERR_MALFORMED_UTF8);
 	// test malformed utf8
-	NUTS_FAIL(utf8_check((char *) src_0, strlen((char *) src_0) - 1),
-	    ERR_MALFORMED_UTF8);
+	NUTS_FAIL(utf8_check((char *) src_0, 4), ERR_MALFORMED_UTF8);
 	NUTS_FAIL(utf8_check((char *) src_C0, strlen((char *) src_C0) - 1),
 	    ERR_MALFORMED_UTF8);
 	NUTS_FAIL(utf8_check((char *) src_F6, strlen((char *) src_F6) - 1),
