@@ -10,7 +10,7 @@
 conf *
 get_test_conf(const char *conf_path)
 {
-	conf *nmq_conf  = nng_zalloc(sizeof(conf));
+	conf *nmq_conf = nng_zalloc(sizeof(conf));
 	conf_init(nmq_conf);
 	nmq_conf->conf_file = nng_strdup(conf_path);
 
@@ -20,9 +20,12 @@ get_test_conf(const char *conf_path)
 void
 test_get_size(void)
 {
-	char    *str_size1 = "3KB";
-	char    *str_size2 = "2MB";
-	char    *str_size3 = "1GB";
+	// char    cwd[1024];
+	// getcwd(cwd,strlen(cwd));
+	// printf("cwd:%s\n", cwd);
+	char    *str_size1   = "3KB";
+	char    *str_size2   = "2MB";
+	char    *str_size3   = "1GB";
 	char    *str_size_tb = "1TB";
 	char    *str_size_0  = "0s";
 	uint64_t size        = 0;
@@ -55,7 +58,7 @@ test_get_time(void)
 	NUTS_PASS(get_time(str_time_h, &second));
 	NUTS_TRUE(second == 6 * 3600);
 
-    // TODO: Should this be considered as fail?
+	// TODO: Should this be considered as fail?
 	NUTS_PASS(get_time(str_dflt, &second));
 
 	NUTS_FAIL(get_time(str_fail, &second), -1);
@@ -64,11 +67,16 @@ test_get_time(void)
 void
 test_conf_parse(void)
 {
+	// char    cwd[1024];
+	// getcwd(cwd,strlen(cwd));
+	// printf("cwd:%s\n", cwd);
 	conf *conf = get_test_conf(OLD_CONF_PATH);
+	// getcwd(cwd,strlen(cwd));
+	// printf("cwd:%s\n", cwd);
 
 	conf_parse(conf);
 	NUTS_TRUE(conf->url != NULL);
-	
+
 	conf_fini(conf);
 }
 
@@ -83,7 +91,7 @@ test_conf_parse_ver2(void)
 	conf_fini(conf);
 }
 
-TEST_LIST = {
+NUTS_TESTS = {
    {"get size", test_get_size},
    {"get time", test_get_time},
    {"conf parse", test_conf_parse},
