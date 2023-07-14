@@ -400,6 +400,8 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	uint8_t *rbuf;
 	nni_msg *smsg;
 	nni_aio *aio;
+	uint32_t count;
+	uint64_t total;
 
 	log_debug("quic_strm_cb triggered! %d", Event->Type);
 	switch (Event->Type) {
@@ -447,9 +449,8 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		break;
 	case QUIC_STREAM_EVENT_RECEIVE:
 		// Data was received from the peer on the stream.
-		rbuf = Event->RECEIVE.Buffers->Buffer;
-		rlen = Event->RECEIVE.Buffers->Length;
-		uint8_t count = Event->RECEIVE.BufferCount;
+		count = Event->RECEIVE.BufferCount;
+		total = 0;
 
 		log_debug("[strm][%p] Data received Flag: %d", stream, Event->RECEIVE.Flags);
 
@@ -460,22 +461,40 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			break;
 		}
 
+		for (uint32_t i=0; i<count; ++i) {
+			rlen = Event->RECEIVE.Buffers[i].Length;
+			if (rlen <= 0)
+				continue;
+			total += rlen;
+		}
+
 		nni_mtx_lock(&qstrm->mtx);
 		// Get all the buffers in quic stream
-		if (count == 0 || rlen <= 0) {
+		if (count == 0 || total == 0) {
 			nni_mtx_unlock(&qstrm->mtx);
 			return QUIC_STATUS_PENDING;
 		}
-		log_debug("Body is [%d]-[0x%x 0x%x].", rlen, *(rbuf), *(rbuf + 1));
 
-		if (rlen > qstrm->rrcap - qstrm->rrlen - qstrm->rrpos) {
-			qstrm->rrbuf = realloc(qstrm->rrbuf, rlen + qstrm->rrlen + qstrm->rrpos);
-			qstrm->rrcap = rlen + qstrm->rrlen + qstrm->rrpos;
+		if (total > qstrm->rrcap - qstrm->rrlen - qstrm->rrpos) {
+			qstrm->rrbuf = realloc(qstrm->rrbuf, total + qstrm->rrlen + qstrm->rrpos);
+			qstrm->rrcap = total + qstrm->rrlen + qstrm->rrpos;
 		}
-		// Copy data from quic stream to rrbuf
-		memcpy(qstrm->rrbuf + qstrm->rrpos + (int)qstrm->rrlen, rbuf, rlen);
-		qstrm->rrlen += rlen;
-		MsQuic->StreamReceiveComplete(qstrm->stream, rlen);
+
+		for (uint32_t i=0; i<count; ++i) {
+			rbuf = Event->RECEIVE.Buffers[i].Buffer;
+			rlen = Event->RECEIVE.Buffers[i].Length;
+
+			log_debug("Body is [%d]-[0x%x 0x%x].", rlen, *(rbuf), *(rbuf + 1));
+
+			if (rlen <= 0)
+				continue;
+
+			// Copy data from quic stream to rrbuf
+			memcpy(qstrm->rrbuf + qstrm->rrpos + (int)qstrm->rrlen, rbuf, rlen);
+			qstrm->rrlen += rlen;
+		}
+
+		MsQuic->StreamReceiveComplete(qstrm->stream, total);
 		if (!nni_list_empty(&qstrm->recvq) && qstrm->inrr == false) {
 			// We should not do executing now, Or circle calling occurs
 			// nng_aio_wait(&qstrm->rraio);
