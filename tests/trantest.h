@@ -693,7 +693,7 @@ trantest_mqttv5_sub_pub(trantest *tt)
 	Convey("mqttv5 pub and sub", {
 		const char *url   = tt->addr;
 		uint8_t     qos   = 2;
-		const char *topic = "myTopic";
+		const char *topic = "myTopic-nanomq-test";
 		const char *data  = "ping";
 		nng_dialer  subdialer;
 		nng_dialer  pubdialer;
