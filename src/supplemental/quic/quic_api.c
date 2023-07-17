@@ -1457,7 +1457,7 @@ error:
 int
 quic_pipe_close(void *qpipe, uint8_t *code)
 {
-	(void) code;
+	NNI_ARG_UNUSED(code);
 	if (!qpipe)
 		return -1;
 	quic_strm_t *qstrm = qpipe;
