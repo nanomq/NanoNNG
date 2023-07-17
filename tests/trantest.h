@@ -651,18 +651,30 @@ trantest_mqtt_sub_recv(nng_socket sock)
 }
 
 void
+trantest_mqtt_disconnect(nng_socket sock)
+{
+	nng_msg *msg;
+
+	nng_mqtt_msg_alloc(&msg, 0);
+	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_DISCONNECT);
+
+	So(nng_sendmsg(sock, msg, NNG_FLAG_NONBLOCK) == 0);
+}
+
+void
 trantest_mqtt_sub_pub(trantest *tt)
 {
 	Convey("mqtt pub and sub", {
-		const char *url   = tt->addr;
-		uint8_t     qos   = 2;
-		const char *topic = "myTopic-nanomq-test";
-		const char *data  = "ping";
-		nng_dialer  subdialer;
-		nng_dialer  pubdialer;
+		const char      *url    = tt->addr;
+		uint8_t          qos    = 2;
+		const char      *topic  = "myTopic-nanomq-test";
+		const char      *topic2 = "myTopic-nanomq-test2";
+		const char      *data   = "ping";
 		nng_mqtt_client *client = NULL;
-		conn_param      *cp1     = NULL; //cp in repsock
-		conn_param      *cp2     = NULL; //cp in reqsock
+		conn_param      *cp1    = NULL; // cp in repsock
+		conn_param      *cp2    = NULL; // cp in reqsock
+		nng_dialer       subdialer;
+		nng_dialer       pubdialer;
 
 		client_connect(&tt->reqsock, &subdialer, url, MQTT_PROTOCOL_VERSION_v311);
 		client_connect(&tt->repsock, &pubdialer, url, MQTT_PROTOCOL_VERSION_v311);
@@ -678,6 +690,11 @@ trantest_mqtt_sub_pub(trantest *tt)
 		cp1 = trantest_mqtt_pub(tt->repsock, true);
 		cp2 = trantest_mqtt_sub_recv(tt->reqsock);
 		trantest_mqtt_unsub_send(tt->reqsock, client, true);
+		// syn sub & unsub
+		params.topic = topic2;
+		trantest_mqtt_sub_send(tt->reqsock, client, false);
+		trantest_mqtt_unsub_send(tt->reqsock, client, false);
+		nng_mqtt_disconnect(&(tt->reqsock), 0, NULL);
 		nng_mqtt_client_free(client, true);
 		nng_close(tt->repsock);
 		nng_close(tt->reqsock);
@@ -691,15 +708,15 @@ void
 trantest_mqttv5_sub_pub(trantest *tt)
 {
 	Convey("mqttv5 pub and sub", {
-		const char *url   = tt->addr;
-		uint8_t     qos   = 2;
-		const char *topic = "myTopic-nanomq-test";
-		const char *data  = "ping";
-		nng_dialer  subdialer;
-		nng_dialer  pubdialer;
+		const char      *url    = tt->addr;
+		uint8_t          qos    = 2;
+		const char      *topic  = "myTopic-nanomq-test";
+		const char      *data   = "ping";
 		nng_mqtt_client *client = NULL;
-		conn_param      *cp1     = NULL; //cp in repsock
-		conn_param      *cp2     = NULL; //cp in reqsock
+		conn_param      *cp1    = NULL; // cp in repsock
+		conn_param      *cp2    = NULL; // cp in reqsock
+		nng_dialer       subdialer;
+		nng_dialer       pubdialer;
 
 		client_connect(&tt->reqsock, &subdialer, url, MQTT_PROTOCOL_VERSION_v5);
 		client_connect(&tt->repsock, &pubdialer, url, MQTT_PROTOCOL_VERSION_v5);
@@ -716,6 +733,7 @@ trantest_mqttv5_sub_pub(trantest *tt)
 		cp1 = trantest_mqtt_pub(tt->repsock, true);
 		cp2 = trantest_mqtt_sub_recv(tt->reqsock);
 		trantest_mqtt_unsub_send(tt->reqsock, client, true);
+		nng_mqtt_disconnect(&(tt->reqsock), 0, NULL);
 		nng_mqtt_client_free(client, true);
 		nng_close(tt->repsock);
 		nng_close(tt->reqsock);
