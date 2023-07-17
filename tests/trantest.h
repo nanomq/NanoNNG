@@ -1104,7 +1104,7 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 	Convey("mqtt broker pub and sub", {
 		const char      *url   = "mqtt-tcp://127.0.0.1:1883";
 		uint8_t          qos   = 0; // TODO: test for qos 2;
-		const char      *topic = "myTopic";
+		const char      *topic = "Topic-nanomq-test";
 		const char      *data  = "ping";
 		nng_dialer       dialer;
 		nng_mqtt_client *client = NULL; // will be used in sub and pub.
@@ -1168,6 +1168,110 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 		nng_ctx_recv(work->ctx, work->aio);
 		So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
 		So(nng_msg_get_type(rmsg) == CMD_PUBLISH);
+		nng_aio_set_msg(work->aio, rmsg);
+		nng_ctx_send(work->ctx, work->aio);
+
+		//client recv pub msg.
+		trantest_mqtt_sub_recv(tt->reqsock);
+
+		// client send unsub msg and server recv unsub msg.
+		trantest_mqtt_unsub_send(tt->reqsock, client, true);
+		nng_msleep(100);
+		nng_ctx_recv(work->ctx, work->aio);
+		So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
+		So(nng_msg_get_type(rmsg) == CMD_UNSUBSCRIBE);
+		So((work->unsub_pkt = nng_alloc(sizeof(packet_unsubscribe))) != NULL);
+		work->msg = rmsg;
+		So(decode_unsub_msg(work) == 0);
+		So(encode_unsuback_msg(rmsg, work) == 0);
+		nng_aio_set_msg(work->aio, rmsg);
+		nng_ctx_send(work->ctx, work->aio);
+
+		// nmq_broker will check connmsg when connection is
+		// about to close, so we close the socket in advance
+		// here to aviod heap-use-after-free.
+		nng_close(tt->repsock);
+		conn_param_free(rcp);
+		nng_msg_free(msg);
+		// for previously pub msg
+		conn_param_free(cp);
+		// for offline event msg
+		conn_param_free(cp);
+		nng_mqtt_client_free(client, true);
+	});
+}
+
+void
+trantest_mqttv5_broker_send_recv(trantest *tt)
+{
+	Convey("mqttv5 broker pub and sub", {
+		const char      *url   = "mqtt-tcp://127.0.0.1:1883";
+		uint8_t          qos   = 0; // TODO: test for qos 2;
+		const char      *topic = "Topic-nanomq-test";
+		const char      *data  = "ping";
+		nng_dialer       dialer;
+		nng_mqtt_client *client = NULL; // will be used in sub and pub.
+		nng_listener     listener;
+		nng_msg         *rmsg = NULL;
+		nng_msg         *msg  = NULL;
+		conn_param      *cp = NULL;
+		conn_param      *rcp  = NULL;
+
+		params.topic    = topic;
+		params.data     = (uint8_t *) data;
+		params.data_len = strlen(data);
+		params.qos      = qos;
+
+		trantest_broker_start(tt, listener);
+		// create client and send CONNECT msg to establish connection.
+		client_connect(&tt->reqsock, &dialer, url, MQTT_PROTOCOL_VERSION_v5);
+		So((client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true)) != NULL);
+
+		// recv aio may be slightly behind.
+		nng_msleep(100);
+
+		// server recv CONNECT msg.
+		nng_ctx_recv(work->ctx, work->aio);
+		So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
+		// we don't need conn_parm in trantest so we just free it.
+		So((cp = nng_msg_get_conn_param(rmsg)) != NULL);
+		// send CONNACK back to the client.
+		nng_aio_set_msg(work->aio, rmsg);
+		nng_ctx_send(work->ctx, work->aio);
+		// cp is cloned in protocol layer, so we free it here
+		conn_param_free(cp);
+
+		// client recv CONNACK msg.
+		So(nng_recvmsg(tt->reqsock, &msg, 0) == 0);
+		So(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNACK);
+		rcp = nng_msg_get_conn_param(msg);
+
+		// client send sub & server send suback.
+		trantest_mqtt_sub_send(tt->reqsock, client, true);
+		nng_msleep(100);
+		nng_ctx_recv(work->ctx, work->aio);
+		So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
+		So(nng_msg_get_type(rmsg) == CMD_SUBSCRIBE);
+		// decode sub msg and encode suback msg.
+		So((work->sub_pkt = nng_alloc(sizeof(packet_subscribe))) != NULL);
+		memset(work->sub_pkt, '\0', sizeof(packet_subscribe));
+		work->msg = rmsg;
+		work->pid       = nng_msg_get_pipe(work->msg);
+		work->cparam    = nng_msg_get_conn_param(work->msg);
+		work->proto_ver = conn_param_get_protover(work->cparam);
+		So(decode_sub_msg(work) == 0);
+		So(encode_suback_msg(rmsg, work) == 0);
+		nng_msg_set_cmd_type(rmsg, CMD_SUBACK);
+		nng_aio_set_msg(work->aio, rmsg);
+		nng_ctx_send(work->ctx, work->aio);
+
+		// client send pub msg & server send pub msg.
+		trantest_mqtt_pub(tt->reqsock, false);
+		nng_msleep(100);
+		nng_ctx_recv(work->ctx, work->aio);
+		So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
+		So(nng_msg_get_type(rmsg) == CMD_PUBLISH);
+		nng_msg_set_cmd_type(rmsg, CMD_PUBLISH_V5);
 		nng_aio_set_msg(work->aio, rmsg);
 		nng_ctx_send(work->ctx, work->aio);
 
@@ -1413,12 +1517,23 @@ mqtt_broker_trantest_test(const char *addr)
 	Convey("MQTT broker given transport", {
 		mqtt_broker_trantest_init(&tt, addr);
 
-		Reset({ trantest_fini(&tt); });
-
 		trantest_mqtt_broker_send_recv(&tt);
 	})
 }
 
+void
+mqttv5_broker_trantest_test(const char *addr)
+{
+	trantest tt;
+
+	memset(&tt, 0, sizeof(tt));
+	Convey("MQTTv5 broker given transport", {
+		Reset({ trantest_fini(&tt); });
+		mqtt_broker_trantest_init(&tt, addr);
+
+		trantest_mqttv5_broker_send_recv(&tt);
+	})
+}
 void
 trantest_test(trantest *tt)
 {
