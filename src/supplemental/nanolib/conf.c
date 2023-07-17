@@ -1117,7 +1117,7 @@ print_rule_engine_conf(conf_rule *rule_eng)
 		log_info("name:         %s", rule_eng->mysql_db);
 		rule *r = rule_eng->rules;
 		for (size_t i = 0; i < cvector_size(r); i++) {
-			if (r[i].forword_type == RULE_FORWORD_MYSOL) {
+			if (r[i].forword_type == RULE_FORWORD_MYSQL) {
 				rule_mysql *mysql = r[i].mysql;
 				log_info("[%d] sql:      %s", i, r[i].raw_sql);
 				log_info("[%d] table:    %s", i, mysql->table);
@@ -1582,7 +1582,7 @@ conf_rule_mysql_parse(conf_rule *cr, char *path)
 				           .mysql,
 				    mysql, sizeof(*mysql));
 				cr->rules[cvector_size(cr->rules) - 1]
-				    .forword_type = RULE_FORWORD_MYSOL;
+				    .forword_type = RULE_FORWORD_MYSQL;
 				cr->rules[cvector_size(cr->rules) - 1]
 				    .raw_sql = nng_strdup(++value);
 				cr->rules[cvector_size(cr->rules) - 1]

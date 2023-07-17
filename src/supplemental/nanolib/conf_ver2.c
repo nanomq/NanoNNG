@@ -1134,7 +1134,7 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 				cr->rules[cvector_size(cr->rules) - 1].mysql =
 				    mysql;
 				cr->rules[cvector_size(cr->rules) - 1]
-				    .forword_type = RULE_FORWORD_MYSOL;
+				    .forword_type = RULE_FORWORD_MYSQL;
 				cr->rules[cvector_size(cr->rules) - 1]
 				    .raw_sql = r.raw_sql;
 				cr->rules[cvector_size(cr->rules) - 1]

@@ -27,7 +27,7 @@ typedef enum {
 typedef enum {
 	RULE_FORWORD_SQLITE,
 	RULE_FORWORD_FDB,
-	RULE_FORWORD_MYSOL,
+	RULE_FORWORD_MYSQL,
 	RULE_FORWORD_REPUB
 } rule_forword_type;
 
