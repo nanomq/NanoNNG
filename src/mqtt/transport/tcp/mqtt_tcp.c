@@ -1137,13 +1137,15 @@ mqtt_tcptran_ep_fini(void *arg)
 
 	nni_mtx_lock(&ep->mtx);
 	ep->fini = true;
-	if (ep->connmsg)
-		nni_msg_free(ep->connmsg);
 	if (ep->refcnt != 0) {
 		nni_mtx_unlock(&ep->mtx);
 		return;
 	}
 	nni_mtx_unlock(&ep->mtx);
+	// Free connmsg once
+	if (ep->connmsg)
+		nni_msg_free(ep->connmsg);
+
 	nni_aio_stop(ep->timeaio);
 	nni_aio_stop(ep->connaio);
 	nng_stream_dialer_free(ep->dialer);
