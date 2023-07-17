@@ -232,12 +232,79 @@ void test_rule_sql_parse(void)
 	nng_free(cr.rules[0].topic, strlen(cr.rules[0].topic));
 	cvector_free(cr.rules);
 	NUTS_PASS(0);
+}
 
+void test_rule_cmp_type(void)
+{
+	conf_rule cr = { 0 };
+
+	memset(&cr, 0, sizeof(conf_rule));
+	char sql_a[128] = "SELECT payload.x.y as y FROM \"#\" WHERE y != 1";
+	NUTS_TRUE(rule_sql_parse(&cr, sql_a));
+	nng_free(cr.rules[0].topic, strlen(cr.rules[0].topic));
+	cvector_free(cr.rules);
+
+	memset(&cr, 0, sizeof(conf_rule));
+	char sql_b[128] = "SELECT payload.x.y as y FROM \"#\" WHERE y > 1";
+	NUTS_TRUE(rule_sql_parse(&cr, sql_b));
+	nng_free(cr.rules[0].topic, strlen(cr.rules[0].topic));
+	cvector_free(cr.rules);
+
+	memset(&cr, 0, sizeof(conf_rule));
+	char sql_c[128] = "SELECT payload.x.y as y FROM \"#\" WHERE y < 1";
+	NUTS_TRUE(rule_sql_parse(&cr, sql_c));
+	nng_free(cr.rules[0].topic, strlen(cr.rules[0].topic));
+	cvector_free(cr.rules);
+
+	memset(&cr, 0, sizeof(conf_rule));
+	char sql_d[128] = "SELECT payload.x.y as y FROM \"#\" WHERE y ? 1";
+	NUTS_TRUE(rule_sql_parse(&cr, sql_d));
+	nng_free(cr.rules[0].topic, strlen(cr.rules[0].topic));
+	cvector_free(cr.rules);
+}
+
+void test_rule_init_free(void)
+{
+	repub_t      *rpub_rule    = NULL;
+	rule_mysql   *mysql_rule   = NULL;
+	rule         *rule         = NULL;
+	rule_payload *rule_payload = NULL;
+
+	rule = NNI_ALLOC_STRUCT(rule);
+	rule_payload = NNI_ALLOC_STRUCT(rule_payload);
+	char *psa = nng_strdup("psa");
+	cvector_push_back(rule_payload->psa, psa);
+	rule_payload->pas    = nng_strdup("pas");
+	rule_payload->filter = nng_strdup("filter");
+
+	rule->topic   = nng_strdup("rule-topic");
+	rule->topic   = nng_strdup("rule-topic");
+	rule->raw_sql = nng_strdup("rule-raw_sql");
+	cvector_push_back(rule->payload, rule_payload);
+	rule_free(rule);
+
+	rpub_rule           = rule_repub_init();
+	rpub_rule->address  = nng_strdup("rp-address");
+	rpub_rule->clientid = nng_strdup("rp-clientid");
+	rpub_rule->username = nng_strdup("rp-usrname");
+	rpub_rule->password = nng_strdup("rp-pwd");
+	rpub_rule->topic    = nng_strdup("rp-topic");
+	rule_repub_free(rpub_rule);
+
+	mysql_rule           = rule_mysql_init();
+	mysql_rule->host     = nng_strdup("m-host");
+	mysql_rule->password = nng_strdup("m-pwd");
+	mysql_rule->username = nng_strdup("m-usrname");
+	mysql_rule->table    = nng_strdup("m-table");
+	NUTS_TRUE(rule_mysql_check(mysql_rule));
+	rule_mysql_free(mysql_rule);
 }
 
 NUTS_TESTS = {
 	{ "rule engine find key", test_rule_find_key },
 	{ "rule engine get key array", test_rule_get_key_arr },
 	{ "rule engine sql parse", test_rule_sql_parse },
+	{ "rule cmp type", test_rule_cmp_type },
+	{ "rule init free", test_rule_init_free },
 	{ NULL, NULL },
 };
