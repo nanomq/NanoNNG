@@ -1122,14 +1122,16 @@ mqtts_tcptran_ep_fini(void *arg)
 	mqtts_tcptran_ep *ep = arg;
 
 	nni_mtx_lock(&ep->mtx);
-	if (ep->connmsg)
-		nni_msg_free(ep->connmsg);
 	ep->fini = true;
 	if (ep->refcnt != 0) {
 		nni_mtx_unlock(&ep->mtx);
 		return;
 	}
 	nni_mtx_unlock(&ep->mtx);
+	// Free connmsg once
+	if (ep->connmsg)
+		nni_msg_free(ep->connmsg);
+
 	nni_aio_stop(ep->timeaio);
 	nni_aio_stop(ep->connaio);
 	nng_stream_dialer_free(ep->dialer);
