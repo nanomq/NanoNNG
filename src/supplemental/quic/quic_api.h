@@ -4,10 +4,16 @@
 #include "core/nng_impl.h"
 #include "nng/nng.h"
 
-typedef struct nni_quic_dialer nni_quic_dialer;
+typedef struct quic_dialer quic_dialer;
 
 extern int nni_quic_listener_alloc(nng_stream_listener **, const nni_url *);
 extern int nni_quic_dialer_alloc(nng_stream_dialer **, const nni_url *);
+
+typedef struct nni_quic_dialer nni_quic_dialer;
+
+extern int nni_quic_dialer_init(void *);
+extern void nni_quic_dial(void *, const char *, nni_aio *);
+extern void nni_quic_dialer_close(void *);
 
 /*
  * Note.
