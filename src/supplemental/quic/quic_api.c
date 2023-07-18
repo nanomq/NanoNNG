@@ -35,6 +35,8 @@ struct nni_quic_dialer {
 	char *            port;
 	nni_aio *         conaio;
 	nni_list          conaios; // TODO
+
+	void *            d; // dialer
 };
 
 int
@@ -42,13 +44,116 @@ nni_quic_listener_alloc(nng_stream_listener **lp, const nni_url *url)
 {
 	NNI_ARG_UNUSED(lp);
 	NNI_ARG_UNUSED(url);
+
+	return 0;
+}
+
+static void
+quic_dial_con_cb(void *arg)
+{
+	nni_quic_dialer *d = arg;
+}
+
+static int
+nni_quic_dialer_init(void *arg)
+{
+	NNI_ARG_UNUSED(arg);
+
+	return 0;
+}
+
+static void
+quic_dialer_close(void *arg)
+{
+	nni_quic_dialer *d = arg;
+}
+
+static void
+quic_dialer_dial(void *arg, nng_aio *aio)
+{
+	nni_quic_dialer *d = arg;
+}
+
+static int
+quic_dialer_get(void *arg, const char *name, const void *buf, size_t* szp, nni_type t)
+{
+	NNI_ARG_UNUSED(arg);
+	NNI_ARG_UNUSED(name);
+	NNI_ARG_UNUSED(buf);
+	NNI_ARG_UNUSED(szp);
+	NNI_ARG_UNUSED(t);
+
+	return 0;
+}
+
+static int
+quic_dialer_set(
+    void *arg, const char *name, const void *buf, size_t sz, nni_type t)
+{
+	NNI_ARG_UNUSED(arg);
+	NNI_ARG_UNUSED(name);
+	NNI_ARG_UNUSED(buf);
+	NNI_ARG_UNUSED(sz);
+	NNI_ARG_UNUSED(t);
+
+	return 0;
+}
+
+static void
+quic_dialer_free(void *arg)
+{
+	nni_quic_dialer *d = arg;
+
+	if (d == NULL)
+		return;
+
+	nni_aio_stop(d->conaio);
+	nni_aio_free(d->conaio);
+
+	nni_mtx_fini(&d->mtx);
+	nni_strfree(d->host);
+	nni_strfree(d->port);
+	NNI_FREE_STRUCT(d);
+}
+
+static int
+quic_dialer_alloc(nni_quic_dialer **dp)
+{
+	int              rv;
+	nni_quic_dialer *d;
+
+	if ((d = NNI_ALLOC_STRUCT(d)) == NULL) {
+		return (NNG_ENOMEM);
+	}
+
+	nni_mtx_init(&d->mtx);
+	nni_aio_list_init(&d->conaios);
+
+	if (((rv = nni_aio_alloc(&d->conaio, quic_dial_con_cb, d)) != 0) ||
+	    ((rv = nni_quic_dialer_init(&d->d)) != 0)) {
+		quic_dialer_free(d);
+		return (rv);
+	}
+
+	d->ops.sd_close = quic_dialer_close;
+	d->ops.sd_free  = quic_dialer_free;
+	d->ops.sd_dial  = quic_dialer_dial;
+	d->ops.sd_get   = quic_dialer_get;
+	d->ops.sd_set   = quic_dialer_set;
+
+	*dp = d;
+	return (0);
 }
 
 int
 nni_quic_dialer_alloc(nng_stream_dialer **dp, const nni_url *url)
 {
-	NNI_ARG_UNUSED(sdp);
-	NNI_ARG_UNUSED(url);
+	nni_quic_dialer *d;
+	int              rv;
+
+	rv = quic_dialer_alloc(&d);
+
+	return 0;
 }
 
 #define NNI_QUIC_KEEPALIVE 100
