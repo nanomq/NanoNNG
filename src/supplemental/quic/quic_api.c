@@ -69,14 +69,33 @@ static void
 quic_dial_con_cb(void *arg)
 {
 	quic_dialer *d = arg;
-}
+	nng_aio *   aio;
+	int         rv;
 
-static int
-nni_quic_dialer_init(void *arg)
-{
-	NNI_ARG_UNUSED(arg);
+	nni_mtx_lock(&d->mtx);
+	rv = nni_aio_result(d->conaio);
+	if ((d->closed) || ((aio = nni_list_first(&d->conaios)) == NULL)) {
+		if (rv == 0) {
+			// The type of this output is the nni_quic_conn.
+			// Make sure we discard the underlying connection.
+			nng_stream_free(nni_aio_get_output(d->conaio, 0));
+			nni_aio_set_output(d->conaio, 0, NULL);
+		}
+		nni_mtx_unlock(&d->mtx);
+		return;
+	}
+	nni_list_remove(&d->conaios, aio);
+	if (rv != 0) {
+		nni_aio_finish_error(aio, rv);
+	} else {
+		nni_aio_set_output(aio, 0, nni_aio_get_output(d->conaio, 0));
+		nni_aio_finish(aio, 0, 0);
+	}
 
-	return 0;
+	// Start next dialer if it exists
+	if (!nni_list_empty(&d->conaios))
+		nni_quic_dial(d->d, d->url, d->conaio);
+	nni_mtx_unlock(&d->mtx);
 }
 
 static void
