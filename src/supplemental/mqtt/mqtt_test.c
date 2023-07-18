@@ -1074,6 +1074,36 @@ test_packet_validate(void)
 	nni_msg_free(msg4);
 }
 
+void
+test_byte_number_for_var_len(void)
+{
+	NUTS_TRUE(byte_number_for_variable_length(127) == 1);
+	NUTS_TRUE(byte_number_for_variable_length(16383) == 2);
+	NUTS_TRUE(byte_number_for_variable_length(2097151) == 3);
+	NUTS_TRUE(byte_number_for_variable_length(268435455) == 4);
+	NUTS_TRUE(byte_number_for_variable_length(268435457) == 5);
+}
+
+void
+test_mqtt_msg_dump(void)
+{
+	nng_msg *connmsg;
+	nng_mqtt_msg_alloc(&connmsg, 0);
+	nng_mqtt_msg_set_packet_type(connmsg, NNG_MQTT_CONNECT);
+	nng_mqtt_msg_set_connect_proto_version(connmsg, 4);
+	nng_mqtt_msg_set_connect_keep_alive(connmsg, 60);
+	nng_mqtt_msg_set_connect_user_name(connmsg, "nng_mqtt_client");
+	nng_mqtt_msg_set_connect_password(connmsg, "secrets");
+	nng_mqtt_msg_set_connect_will_msg(
+	    connmsg, (uint8_t *) "bye-bye", strlen("bye-bye"));
+	nng_mqtt_msg_set_connect_will_topic(connmsg, "will_topic");
+	nng_mqtt_msg_set_connect_clean_session(connmsg, true);
+
+	uint8_t buff[1024] = { 0 };
+
+	nng_mqtt_msg_dump(connmsg, buff, sizeof(buff), true);
+}
+
 TEST_LIST = {
 	{ "alloc message", test_alloc },
 	{ "dup message", test_dup },
@@ -1110,5 +1140,7 @@ TEST_LIST = {
 	{ "encode connect v5", test_encode_connect_v5 },
 	{ "decode connack v5", test_decode_connack_v5 },
 	{ "validate packet", test_packet_validate },
+	{ "byte_number_for_var_len", test_byte_number_for_var_len },
+	{ "test mqtt msg dump", test_mqtt_msg_dump },
 	{ NULL, NULL },
 };
