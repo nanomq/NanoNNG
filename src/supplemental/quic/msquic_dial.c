@@ -9,16 +9,27 @@
 
 #if defined(NNG_ENABLE_QUIC) // && defined(NNG_QUIC_MSQUIC)
 
+int
+nni_quic_dialer_init(void *arg)
+{
+	nni_quic_dialer *d = arg;
+	NNI_ARG_UNUSED(d);
+
+	return 0;
+}
+
 void
 nni_quic_dial(void *arg, const char *url, nni_aio *aio)
 {
 	nni_quic_dialer *d = arg;
+	NNI_ARG_UNUSED(d);
 }
 
 void
 nni_quic_dialer_close(void *arg)
 {
 	nni_quic_dialer *d = arg;
+	NNI_ARG_UNUSED(d);
 }
 
 #endif
