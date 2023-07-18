@@ -14,7 +14,7 @@ if (NNG_ENABLE_QUIC)
     add_dependencies(nng msquic)
 
 
-    nng_sources(quic_api.c)
+    nng_sources(msquic_dial.c quic_api.c)
     nng_sources(quic_api.h)
 
     find_path(INTERNAL_MSQUIC_INCLUDE_DIR
