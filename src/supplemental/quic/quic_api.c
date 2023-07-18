@@ -31,6 +31,7 @@ struct quic_dialer {
 	nng_stream_dialer ops;
 	bool              closed;
 	nni_mtx           mtx;
+	char *            url;
 	char *            host;
 	char *            port;
 	nni_aio *         conaio;
@@ -185,7 +186,7 @@ quic_dialer_free(void *arg)
 }
 
 static int
-quic_dialer_alloc(uic_dialer **dp)
+quic_dialer_alloc(quic_dialer **dp)
 {
 	int          rv;
 	quic_dialer *d;
