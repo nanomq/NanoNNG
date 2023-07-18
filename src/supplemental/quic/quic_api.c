@@ -27,15 +27,25 @@
 #include <time.h>
 #include <unistd.h>
 
+struct nni_quic_dialer {
+	nng_stream_dialer ops;
+	bool              closed;
+	nni_mtx           mtx;
+	char *            host;
+	char *            port;
+	nni_aio *         conaio;
+	nni_list          conaios; // TODO
+};
+
 int
-nni_quic_listener_alloc(nng_stream_listener **slp, const nni_url *url)
+nni_quic_listener_alloc(nng_stream_listener **lp, const nni_url *url)
 {
-	NNI_ARG_UNUSED(slp);
+	NNI_ARG_UNUSED(lp);
 	NNI_ARG_UNUSED(url);
 }
 
 int
-nni_quic_dialer_all(nng_stream_dialer **sdp, const nni_url *url)
+nni_quic_dialer_alloc(nng_stream_dialer **dp, const nni_url *url)
 {
 	NNI_ARG_UNUSED(sdp);
 	NNI_ARG_UNUSED(url);
