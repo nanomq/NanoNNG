@@ -765,7 +765,7 @@ conf_bridge_conn_will_properties_parse_ver2(
 	    jso_prop, &prop->user_property_size);
 }
 
-static void
+void
 update_clientid(conf_bridge_node *node)
 {
 	FILE *fp = popen("getprop |grep vin", "r");
@@ -778,11 +778,15 @@ update_clientid(conf_bridge_node *node)
 		p = strchr(p, ']');
 		*p = '\0';
 		log_debug("vin: %s", p_b);
-		size_t cid_len = strlen(p_b) + strlen(node->clientid) + 1;
-		char *clientid = nng_alloc(cid_len);
-		snprintf(clientid, cid_len, "%s%s%c", node->clientid, p_b, '\0');
-		nng_strfree(node->clientid);
-		node->clientid = clientid;
+		if (node->clientid) {
+			size_t cid_len = strlen(p_b) + strlen(node->clientid) + 1;
+			char *clientid = nng_alloc(cid_len);
+			snprintf(clientid, cid_len, "%s%s%c", node->clientid, p_b, '\0');
+				nng_strfree(node->clientid);
+			node->clientid = clientid;
+		} else {
+			node->clientid = nng_strdup(p_b);
+		}
 	}
 
 	pclose(fp);

@@ -2671,6 +2671,7 @@ conf_bridge_node_parse_with_name(const char *path,const char *key_prefix, const 
 		free(line);
 	}
 	fclose(fp);
+	update_clientid(node);
 	if (node->will_topic != NULL && node->will_payload != NULL)
 			node->will_flag = true;
 
