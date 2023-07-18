@@ -178,6 +178,11 @@ quic_dialer_free(void *arg)
 	nni_aio_stop(d->conaio);
 	nni_aio_free(d->conaio);
 
+	if (d->d != NULL) {
+		nni_quic_dialer_close(d->d);
+		nni_quic_dialer_fini(d->d);
+	}
+
 	nni_strfree(d->host);
 	nni_strfree(d->port);
 

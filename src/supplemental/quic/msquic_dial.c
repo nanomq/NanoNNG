@@ -60,6 +60,15 @@ nni_quic_dialer_init(void *arg)
 }
 
 void
+nni_quic_dialer_fini(void *arg)
+{
+	nni_quic_dialer *d = arg;
+	NNI_ARG_UNUSED(d);
+
+	return;
+}
+
+void
 nni_quic_dial(void *arg, const char *url, nni_aio *aio)
 {
 	nni_quic_dialer *d = arg;
