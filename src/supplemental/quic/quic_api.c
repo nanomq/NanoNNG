@@ -27,6 +27,20 @@
 #include <time.h>
 #include <unistd.h>
 
+int
+nni_quic_listener_alloc(nng_stream_listener **slp, const nni_url *url)
+{
+	NNI_ARG_UNUSED(slp);
+	NNI_ARG_UNUSED(url);
+}
+
+int
+nni_quic_dialer_all(nng_stream_dialer **sdp, const nni_url *url)
+{
+	NNI_ARG_UNUSED(sdp);
+	NNI_ARG_UNUSED(url);
+}
+
 #define NNI_QUIC_KEEPALIVE 100
 #define NNI_QUIC_TIMER 1
 #define NNI_QUIC_MAX_RETRY 2

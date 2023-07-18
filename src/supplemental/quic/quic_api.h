@@ -4,6 +4,9 @@
 #include "core/nng_impl.h"
 #include "nng/nng.h"
 
+extern int nni_quic_listener_alloc(nng_stream_listener **, const nni_url *);
+extern int nni_quic_dialer_all(nng_stream_dialer **, const nni_url *);
+
 /*
  * Note.
  *
