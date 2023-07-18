@@ -18,6 +18,7 @@
 #include "core/tcp.h"
 #include "supplemental/tls/tls_api.h"
 #include "supplemental/websocket/websocket.h"
+#include "supplemental/quic/quic_api.h"
 
 static struct {
 	const char *scheme;
@@ -209,6 +210,14 @@ static struct {
 	    .dialer_alloc   = nni_ws_dialer_alloc,
 	    .listener_alloc = nni_ws_listener_alloc,
 	},
+// #ifdef NNG_HAVE_QUIC_SOCKETS
+#ifdef NNG_ENABLE_QUIC
+	{
+	    .scheme         = "quic",
+	    .dialer_alloc   = nni_quic_dialer_alloc,
+	    .listener_alloc = nni_quic_listener_alloc,
+	},
+#endif
 	{
 	    .scheme = NULL,
 	},
