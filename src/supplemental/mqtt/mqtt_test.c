@@ -674,6 +674,25 @@ test_decode_puback(void)
 }
 
 void
+test_decode_puback_v5(void)
+{
+	nng_msg *msg;
+
+	uint8_t puback[] = { 0x40, 0x02, 0x01, 0x20 };
+	size_t  sz       = sizeof(puback) / sizeof(uint8_t);
+	nng_mqtt_msg_alloc(&msg, 0);
+
+	nng_msg_header_append(msg, puback, sz - 2);
+
+	nng_msg_append(msg, puback + 2, sz - 2);
+
+	NUTS_PASS(nng_mqttv5_msg_decode(msg));
+
+	print_mqtt_msg(msg);
+	nng_msg_free(msg);
+}
+
+void
 test_decode_subscribe(void)
 {
 	nng_msg *msg;
@@ -700,6 +719,30 @@ test_decode_subscribe(void)
 	//     nng_mqtt_msg_get_subscribe_topics(msg, &count);
 
 	nng_msg_free(msg);
+}
+
+void
+test_decode_subscribe_v5(void)
+{
+	nng_msg *msg;
+
+	uint8_t subscribe[] = { 0x82, 0x11, 0x93, 0x60, 0x00, 0x00, 0x0b, 0x74,
+		0x65, 0x73, 0x74, 0x74, 0x6f, 0x70, 0x69, 0x63, 0x2f, 0x23,
+		0x00 };
+
+	size_t sz = sizeof(subscribe) / sizeof(uint8_t);
+	nng_mqtt_msg_alloc(&msg, 0);
+
+	nng_msg_header_append(msg, subscribe, 2);
+
+	nng_msg_append(msg, subscribe + 2, sz - 2);
+
+	NUTS_PASS(nng_mqttv5_msg_decode(msg));
+
+	print_mqtt_msg(msg);
+
+	nng_msg_free(msg);
+	
 }
 
 void
@@ -731,6 +774,32 @@ test_decode_unsubscribe(void)
 }
 
 void
+test_decode_unsubscribe_v5(void)
+{
+	nng_msg *msg;
+
+	uint8_t unsubscribe[] = { 0xa2, 0x10, 0x93, 0x73, 0x00, 0x00, 0x0b,
+		0x74, 0x65, 0x73, 0x74, 0x74, 0x6f, 0x70, 0x69, 0x63, 0x2f,
+		0x23 };
+
+	size_t sz = sizeof(unsubscribe) / sizeof(uint8_t);
+	nng_mqtt_msg_alloc(&msg, 0);
+
+	nng_msg_header_append(msg, unsubscribe, 2);
+	nng_msg_append(msg, unsubscribe + 2, sz - 2);
+
+	NUTS_PASS(nng_mqttv5_msg_decode(msg));
+
+	print_mqtt_msg(msg);
+
+	// uint32_t        count;
+	// nng_mqtt_topic *topics =
+	//     nng_mqtt_msg_get_unsubscribe_topics(msg, &count);
+
+	nng_msg_free(msg);
+}
+
+void
 test_decode_disconnect(void)
 {
 	nng_msg *msg;
@@ -742,6 +811,24 @@ test_decode_disconnect(void)
 	nng_msg_header_append(msg, disconnect, sz);
 
 	NUTS_PASS(nng_mqtt_msg_decode(msg));
+
+	print_mqtt_msg(msg);
+	nng_msg_free(msg);
+}
+
+void
+test_decode_disconnect_v5(void)
+{
+	nng_msg *msg;
+	uint8_t  disconnect[] = { 0xe0, 0x02, 0x00, 0x00 };
+
+	size_t sz = sizeof(disconnect) / sizeof(uint8_t);
+	nng_mqtt_msg_alloc(&msg, 0);
+
+	nng_msg_header_append(msg, disconnect, 2);
+	nng_msg_append(msg, disconnect + 2, sz - 2);
+
+	NUTS_PASS(nng_mqttv5_msg_decode(msg));
 
 	print_mqtt_msg(msg);
 	nng_msg_free(msg);
@@ -1011,10 +1098,14 @@ TEST_LIST = {
 	{ "encode unsuback v5", test_encode_unsuback_v5 },
 	{ "decode connect", test_decode_connect },
 	{ "decode subscribe", test_decode_subscribe },
+	{ "decode subscribe v5", test_decode_subscribe_v5 },
 	{ "decode unsubscribe", test_decode_unsubscribe },
+	{ "decode unsubscribe v5", test_decode_unsubscribe_v5 },
 	{ "decode disconnect", test_decode_disconnect },
+	{ "decode disconnect v5", test_decode_disconnect_v5 },
 	{ "decode publish", test_decode_publish },
 	{ "decode puback", test_decode_puback },
+	{ "decode puback v5", test_decode_puback_v5 },
 	{ "decode suback", test_decode_suback },
 	{ "encode connect v5", test_encode_connect_v5 },
 	{ "decode connack v5", test_decode_connack_v5 },
