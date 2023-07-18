@@ -766,6 +766,29 @@ conf_bridge_conn_will_properties_parse_ver2(
 }
 
 static void
+update_clientid(conf_bridge_node *node)
+{
+	FILE *fp = popen("getprop |grep vin", "r");
+	// FILE *fp = popen("echo \"[persist.vehicled.vin]: [DV_PV_TASK_ENABLE]\" | grep vin", "r");
+	char  line[100];
+	fgets(line, sizeof(line), fp);
+	char *p = strchr(line, ':');
+	if (p != NULL) {
+		char *p_b = strchr(p, '[') + 1;
+		p = strchr(p, ']');
+		*p = '\0';
+		log_debug("vin: %s", p_b);
+		size_t cid_len = strlen(p_b) + strlen(node->clientid) + 1;
+		char *clientid = nng_alloc(cid_len);
+		snprintf(clientid, cid_len, "%s%s%c", node->clientid, p_b, '\0');
+		nng_strfree(node->clientid);
+		node->clientid = clientid;
+	}
+
+	pclose(fp);
+}
+
+static void
 conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 {
 	if (!jso_connector) {
@@ -778,6 +801,9 @@ conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 	hocon_read_bool(node, clean_start, jso_connector);
 	hocon_read_str(node, username, jso_connector);
 	hocon_read_str(node, password, jso_connector);
+
+	update_clientid(node);
+
 
 	cJSON *   jso_tls         = hocon_get_obj("ssl", jso_connector);
 	conf_tls *bridge_node_tls = &(node->tls);
