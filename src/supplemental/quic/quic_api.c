@@ -1,5 +1,5 @@
 //
-// Copyright 2022 NanoMQ Team, Inc. <jaylin@emqx.io>
+// Copyright 2023 NanoMQ Team, Inc. <jaylin@emqx.io>
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -36,7 +36,7 @@ struct quic_dialer {
 	nni_aio *         conaio;
 	nni_list          conaios; // TODO
 
-	void *            d; // dialer
+	void *            d; // platform dialer
 };
 
 int
@@ -46,6 +46,23 @@ nni_quic_listener_alloc(nng_stream_listener **lp, const nni_url *url)
 	NNI_ARG_UNUSED(url);
 
 	return 0;
+}
+
+static void
+quic_dial_cancel(nni_aio *aio, void *arg, int rv)
+{
+	quic_dialer *d = arg;
+
+	nni_mtx_lock(&d->mtx);
+	if (nni_aio_list_active(aio)) {
+		nni_aio_list_remove(aio);
+		nni_aio_finish_error(aio, rv);
+
+		if (nni_list_empty(&d->conaios)) {
+			nni_aio_abort(d->conaio, NNG_ECANCELED);
+		}
+	}
+	nni_mtx_unlock(&d->mtx);
 }
 
 static void
@@ -66,12 +83,43 @@ static void
 quic_dialer_close(void *arg)
 {
 	quic_dialer *d = arg;
+	nni_aio *    aio;
+
+	nni_mtx_lock(&d->mtx);
+	d->closed = true;
+	while ((aio = nni_list_first(&d->conaios)) != NULL) {
+		nni_list_remove(&d->conaios, aio);
+		nni_aio_finish_error(aio, NNG_ECLOSED);
+	}
+	nni_quic_dialer_close(d->d);
+	nni_mtx_unlock(&d->mtx);
 }
 
 static void
 quic_dialer_dial(void *arg, nng_aio *aio)
 {
 	quic_dialer *d = arg;
+	int          rv;
+
+	if (nni_aio_begin(aio) != 0) {
+		return;
+	}
+	nni_mtx_lock(&d->mtx);
+	if (d->closed) {
+		nni_mtx_unlock(&d->mtx);
+		nni_aio_finish_error(aio, NNG_ECLOSED);
+		return;
+	}
+	if ((rv = nni_aio_schedule(aio, quic_dial_cancel, d)) != 0) {
+		nni_mtx_unlock(&d->mtx);
+		nni_aio_finish_error(aio, rv);
+		return;
+	}
+	nni_list_append(&d->conaios, aio);
+	if (nni_list_first(&d->conaios) == aio) {
+		nni_quic_dial(d->d, d->url, d->conaio);
+	}
+	nni_mtx_unlock(&d->mtx);
 }
 
 static int
