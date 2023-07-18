@@ -27,7 +27,7 @@
 #include <time.h>
 #include <unistd.h>
 
-struct nni_quic_dialer {
+struct quic_dialer {
 	nng_stream_dialer ops;
 	bool              closed;
 	nni_mtx           mtx;
@@ -51,7 +51,7 @@ nni_quic_listener_alloc(nng_stream_listener **lp, const nni_url *url)
 static void
 quic_dial_con_cb(void *arg)
 {
-	nni_quic_dialer *d = arg;
+	quic_dialer *d = arg;
 }
 
 static int
@@ -65,13 +65,13 @@ nni_quic_dialer_init(void *arg)
 static void
 quic_dialer_close(void *arg)
 {
-	nni_quic_dialer *d = arg;
+	quic_dialer *d = arg;
 }
 
 static void
 quic_dialer_dial(void *arg, nng_aio *aio)
 {
-	nni_quic_dialer *d = arg;
+	quic_dialer *d = arg;
 }
 
 static int
@@ -102,7 +102,7 @@ quic_dialer_set(
 static void
 quic_dialer_free(void *arg)
 {
-	nni_quic_dialer *d = arg;
+	quic_dialer *d = arg;
 
 	if (d == NULL)
 		return;
@@ -110,17 +110,18 @@ quic_dialer_free(void *arg)
 	nni_aio_stop(d->conaio);
 	nni_aio_free(d->conaio);
 
-	nni_mtx_fini(&d->mtx);
 	nni_strfree(d->host);
 	nni_strfree(d->port);
+
+	nni_mtx_fini(&d->mtx);
 	NNI_FREE_STRUCT(d);
 }
 
 static int
-quic_dialer_alloc(nni_quic_dialer **dp)
+quic_dialer_alloc(uic_dialer **dp)
 {
-	int              rv;
-	nni_quic_dialer *d;
+	int          rv;
+	quic_dialer *d;
 
 	if ((d = NNI_ALLOC_STRUCT(d)) == NULL) {
 		return (NNG_ENOMEM);
@@ -148,12 +149,33 @@ quic_dialer_alloc(nni_quic_dialer **dp)
 int
 nni_quic_dialer_alloc(nng_stream_dialer **dp, const nni_url *url)
 {
-	nni_quic_dialer *d;
-	int              rv;
+	quic_dialer *d;
+	int          rv;
+	const char  *p;
 
-	rv = quic_dialer_alloc(&d);
+	if ((rv = quic_dialer_alloc(&d)) != 0) {
+		return (rv);
+	}
 
-	return 0;
+	if (((p = url->u_port) == NULL) || (strlen(p) == 0)) {
+		quic_dialer_free(d);
+		return (NNG_EADDRINVAL);
+	}
+
+	if (strlen(url->u_hostname) == 0) {
+		// Dialer needs both a destination hostname and port.
+		quic_dialer_free(d);
+		return (NNG_EADDRINVAL);
+	}
+
+	if (((d->host = nng_strdup(url->u_hostname)) == NULL) ||
+	    ((d->port = nng_strdup(p)) == NULL)) {
+		quic_dialer_free(d);
+		return (NNG_ENOMEM);
+	}
+
+	*dp = (void *) d;
+	return (0);
 }
 
 #define NNI_QUIC_KEEPALIVE 100
