@@ -226,6 +226,9 @@ nni_quic_dialer_alloc(nng_stream_dialer **dp, const nni_url *url)
 	int          rv;
 	const char  *p;
 
+	// TODO ref inc when the connection to the `url` was established
+
+
 	if ((rv = quic_dialer_alloc(&d)) != 0) {
 		return (rv);
 	}
