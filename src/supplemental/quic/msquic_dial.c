@@ -50,7 +50,7 @@
 
 struct nni_quic_dialer {
 	nni_aio                *qconaio; // for quic connection
-	nni_aio                *qstrmaio; // for quic stream
+	nni_quic_conn          *currcon;
 	nni_list                connq;   // pending connections/quic streams
 	bool                    closed;
 	bool                    nodelay;
@@ -78,8 +78,8 @@ nni_quic_dialer_init(void **argp)
 
 	nni_mtx_init(&d->mtx);
 	d->closed = false;
+	d->currcon = NULL;
 	nni_aio_alloc(&d->qconaio, quic_dialer_cb, (void *)d);
-	nni_aio_alloc(&d->qconaio, quic_dialer_strm_cb, (void *)d);
 	nni_aio_list_init(&d->connq);
 	nni_atomic_init_bool(&d->fini);
 	nni_atomic_init64(&d->ref);
@@ -142,22 +142,14 @@ static void
 quic_dialer_cb(void *arg)
 {
 	nni_quic_dialer *d = arg;
+	int              rv;
 
 	if (nni_aio_result(d->qconaio) != 0) {
 		return;
 	}
 
 	// Connection was established. Nice. Then. Create the main quic stream.
-	if ((rv = nni_aio_schedule(d->qstrmaio, quic_dialer_strm_cancel, d)) != 0) {
-		goto error;
-	}
-
-	msquic_strm_connect(d->qconn, d);
-}
-
-static void
-quic_dialer_strm_cb()
-{
+	rv = msquic_strm_connect(d->qconn, d);
 }
 
 // Dial to the `url`. Finish `aio` when connected.
@@ -228,8 +220,12 @@ struct nni_quic_conn {
 	bool            closed;
 	nni_mtx         mtx;
 	nni_aio *       dial_aio;
+	nni_aio *       qstrmaio;
 	nni_quic_dialer *dialer;
 	nni_reap_node   reap;
+
+	// MsQuic
+	HQUIC           qstrm; // quic stream
 };
 
 static void
@@ -582,11 +578,48 @@ msquic_connect(const char *url, nni_quic_dialer *d)
 		goto error;
 	}
 
+	return 0;
 }
 
 static int
 msquic_strm_connect(HQUIC qconn, nni_quic_dialer *d)
 {
-	HQUIC strm = NULL;
-	nni_quic_conn *c = nni_aio_get_prov_data(d->qstrmaio);
+	HQUIC          strm = NULL;
+	QUIC_STATUS    rv;
+	nni_quic_conn *c;
+
+	nni_mtx_lock(&d->mtx);
+
+	c = d->currcon;
+	d->currcon = NULL;
+
+	rv = MsQuic->StreamOpen(qs->qconn, QUIC_STREAM_OPEN_FLAG_NONE,
+	        msquic_strm_cb, (void *)c, &strm);
+	if (QUIC_FAILED(rv)) {
+		log_error("StreamOpen failed, 0x%x!\n", rv);
+		goto error;
+	}
+
+	log_debug("[strm][%p] Starting...", strm);
+
+	if (QUIC_FAILED(rv = MsQuic->StreamStart(strm, QUIC_STREAM_START_FLAG_NONE))) {
+		log_error("quic stream start failed, 0x%x!\n", rv);
+		MsQuic->StreamClose(strm);
+		goto error;
+	}
+
+	// Not ready for receiving
+	MsQuic->StreamReceiveSetEnabled(qstrm->stream, FALSE);
+	c->qstrm = strm;
+
+	log_debug("[strm][%p] Done...\n", strm);
+
+	nni_mtx_unlock(&d->mtx);
+
+	return;
+error:
+
+	nng_free(qstrm, sizeof(quic_strm_t));
+
+	return (-2);
 }
