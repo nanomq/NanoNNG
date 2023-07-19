@@ -16,6 +16,13 @@ extern void nni_quic_dialer_fini(void *);
 extern void nni_quic_dial(void *, const char *, nni_aio *);
 extern void nni_quic_dialer_close(void *);
 
+typedef struct nni_quic_conn nni_quic_conn;
+
+extern int  nni_msquic_quic_alloc(nni_quic_conn **, nni_quic_dialer *);
+extern void nni_msquic_quic_init(nni_quic_conn *, nni_posix_pfd *);
+extern void nni_msquic_quic_start(nni_quic_conn *, int, int);
+// extern void nni_msquic_quic_dialer_rele(nni_quic_dialer *);
+
 /*
  * Note.
  *
