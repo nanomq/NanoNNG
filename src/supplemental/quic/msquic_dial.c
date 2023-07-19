@@ -211,6 +211,7 @@ error:
 
 }
 
+// Close the pending connection.
 void
 nni_quic_dialer_close(void *arg)
 {
@@ -218,4 +219,268 @@ nni_quic_dialer_close(void *arg)
 	NNI_ARG_UNUSED(d);
 }
 
-// #endif
+/**************************** MsQuic Connection ****************************/
+
+
+/***************************** MsQuic Bindings *****************************/
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_Function_class_(QUIC_CONNECTION_CALLBACK) QUIC_STATUS QUIC_API
+msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
+	_Inout_ QUIC_CONNECTION_EVENT *Event)
+{
+	nni_quic_dialer *d = Context;
+	HQUIC            qconn = Connection;
+	QUIC_STATUS      rv;
+
+	log_debug("msquic_connection_cb triggered! %d", Event->Type);
+	switch (Event->Type) {
+	case QUIC_CONNECTION_EVENT_CONNECTED:
+		// The handshake has completed for the connection.
+		// do not init any var here due to potential frequent reconnect
+		log_info("[conn][%p] is Connected. Resumed Session %d", qconn,
+		    Event->CONNECTED.SessionResumed);
+
+		nng_aio_finish(d->qconaio);
+
+		// only create main stream/pipe it there is none.
+		if (qsock->pipe == NULL) {
+			// First time to establish QUIC pipe
+			if ((qsock->pipe = nng_alloc(pipe_ops->pipe_size)) == NULL) {
+				log_error("Failed in allocating pipe.");
+				break;
+			}
+			mqtt_sock = nni_sock_proto_data(qsock->sock);
+			pipe_ops->pipe_init(
+			    qsock->pipe, (nni_pipe *) qsock, mqtt_sock);
+		}
+		pipe_ops->pipe_start(qsock->pipe);
+		break;
+	case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_TRANSPORT:
+		// The connection has been shut down by the transport.
+		// Generally, this is the expected way for the connection to
+		// shut down with this protocol, since we let idle timeout kill
+		// the connection.
+		if (Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status ==
+		    QUIC_STATUS_CONNECTION_IDLE) {
+			log_warn(
+			    "[conn][%p] Successfully shut down connection on idle.\n",
+			    qconn);
+		} else if (Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status ==
+		    QUIC_STATUS_CONNECTION_TIMEOUT) {
+			log_warn("[conn][%p] Successfully shut down on "
+			         "CONNECTION_TIMEOUT.\n",
+			    qconn);
+		}
+		log_warn("[conn][%p] Shut down by transport, 0x%x, Error Code "
+		         "%llu\n",
+		    qconn, Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status,
+		    (unsigned long long)
+		        Event->SHUTDOWN_INITIATED_BY_TRANSPORT.ErrorCode);
+		if (qsock->reason_code == 0)
+            	qsock->reason_code = SERVER_UNAVAILABLE;
+		break;
+	case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER:
+		// The connection was explicitly shut down by the peer.
+		log_warn("[conn][%p] "
+		         "QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER, "
+		         "0x%llu\n",
+		    qconn,
+		    (unsigned long long)
+		        Event->SHUTDOWN_INITIATED_BY_PEER.ErrorCode);
+		if (qsock->reason_code == 0)
+			qsock->reason_code = SERVER_SHUTTING_DOWN;
+		break;
+	case QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE:
+		// The connection has completed the shutdown process and is
+		// ready to be safely cleaned up.
+		log_info("[conn][%p] QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE: All done\n\n", qconn);
+		nni_mtx_lock(&qsock->mtx);
+		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
+			// explicitly shutdon on protocol layer.
+			MsQuic->ConnectionClose(qconn);
+		}
+
+		// Close and finite nng pipe ONCE disconnect
+		if (qsock->pipe) {
+			log_warn("Quic reconnect failed or disconnected!");
+			pipe_ops->pipe_stop(qsock->pipe);
+			pipe_ops->pipe_close(qsock->pipe);
+			pipe_ops->pipe_fini(qsock->pipe);
+			qsock->pipe = NULL;
+			// No bridge_node if NOT bridge mode
+			if (bridge_node && (bridge_node->hybrid || qsock->closed)) {
+				nni_mtx_unlock(&qsock->mtx);
+				break;
+			}
+		}
+
+		nni_mtx_unlock(&qsock->mtx);
+		if (qsock->closed == true) {
+			nni_sock_rele(qsock->sock);
+		} else {
+			nni_aio_finish(&qsock->close_aio, 0, 0);
+		}
+		/*
+		if (qstrm->rtt0_enable) {
+			// No rticket
+			log_warn("reconnect failed due to no resumption ticket.\n");
+			quic_strm_fini(qstrm);
+			nng_free(qstrm, sizeof(quic_strm_t));
+		}
+		*/
+
+		break;
+	case QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED:
+		// A resumption ticket (also called New Session Ticket or NST)
+		// was received from the server.
+		log_warn("[conn][%p] Resumption ticket received (%u bytes):\n",
+		    Connection, Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength);
+		if (qsock->enable_0rtt == false) {
+			log_warn("[conn][%p] Ignore ticket due to turn off the 0RTT");
+			break;
+		}
+		qsock->rticket_sz = Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength;
+		memcpy(qsock->rticket, Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicket,
+		        Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength);
+		break;
+	case QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED:
+		log_info("QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED");
+
+		// TODO Using mbedtls APIs to verify
+		/*
+		 * TODO
+		 * Does MsQuic ensure the connected event will happen after
+		 * peer_certificate_received event.?
+		 */
+		if (QUIC_FAILED(rv = verify_peer_cert_tls(
+				Event->PEER_CERTIFICATE_RECEIVED.Certificate,
+				Event->PEER_CERTIFICATE_RECEIVED.Chain, qsock->cacert))) {
+			log_error("[conn][%p] Invalid certificate file received from the peer");
+			return rv;
+		}
+		break;
+	case QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED:
+		log_info("QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED");
+		break;
+	case QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE:
+		log_info("QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE");
+		break;
+	case QUIC_CONNECTION_EVENT_IDEAL_PROCESSOR_CHANGED:
+		log_info("QUIC_CONNECTION_EVENT_IDEAL_PROCESSOR_CHANGED");
+		break;
+	default:
+		log_warn("Unknown event type %d!", Event->Type);
+		break;
+	}
+	return QUIC_STATUS_SUCCESS;
+}
+
+const QUIC_API_TABLE *MsQuic = NULL;
+
+// Config for msquic
+const QUIC_REGISTRATION_CONFIG quic_reg_config = {
+	"mqtt",
+	QUIC_EXECUTION_PROFILE_LOW_LATENCY
+};
+
+const QUIC_BUFFER quic_alpn = {
+	sizeof("mqtt") - 1,
+	(uint8_t *) "mqtt"
+};
+
+HQUIC registration;
+HQUIC configuration;
+
+static void
+msquic_close()
+{
+	if (MsQuic != NULL) {
+		if (configuration != NULL) {
+			MsQuic->ConfigurationClose(configuration);
+		}
+		if (registration != NULL) {
+			// This will block until all outstanding child objects
+			// have been closed.
+			MsQuic->RegistrationClose(registration);
+		}
+		MsQuicClose(MsQuic);
+	}
+}
+
+static int is_msquic_inited = 0;
+
+static void
+msquic_open()
+{
+	if (is_msquic_inited == 1)
+		return;
+
+	QUIC_STATUS rv = QUIC_STATUS_SUCCESS;
+	// only Open MsQUIC lib once, otherwise cause memleak
+	if (MsQuic == NULL)
+		if (QUIC_FAILED(rv = MsQuicOpen2(&MsQuic))) {
+			log_error("MsQuicOpen2 failed, 0x%x!\n", rv);
+			goto error;
+		}
+
+	// Create a registration for the app's connections.
+	rv = MsQuic->RegistrationOpen(&quic_reg_config, &registration);
+	if (QUIC_FAILED(rv)) {
+		log_error("RegistrationOpen failed, 0x%x!\n", rv);
+		goto error;
+	}
+
+	is_msquic_inited = 1;
+	log_info("Msquic is enabled");
+	return;
+
+error:
+	msquic_close();
+}
+
+static int
+msquic_connect(const char *url, nni_quic_dialer *d)
+{
+	QUIC_STATUS  rv;
+	HQUIC        conn = NULL;
+	nng_url     *url_s;
+
+	if (0 != msquic_open()) {
+		// so... close the quic connection
+		return (NNG_ECLOSED);
+	}
+
+	// Allocate a new connection object.
+	if (QUIC_FAILED(rv = MsQuic->ConnectionOpen(registration,
+	        msquic_connection_cb, (void *)d, &conn))) {
+		log_error("Failed in Quic ConnectionOpen, 0x%x!", rv);
+		goto error;
+	}
+
+	// TODO CA 0RTT Windows campatible interface index
+
+	nng_url_parse(&url_s, url);
+	// TODO maybe something wrong happened
+	for (size_t i = 0; i < strlen(url_s->u_host); ++i)
+		if (url_s->u_host[i] == ':') {
+			url_s->u_host[i] = '\0';
+			break;
+		}
+
+	log_info("Quic connecting... %s:%s", url_s->u_host, url_s->u_port);
+
+	if (QUIC_FAILED(rv = MsQuic->ConnectionStart(conn, configuration,
+	        QUIC_ADDRESS_FAMILY_UNSPEC, url_s->u_host, atoi(url_s->u_port)))) {
+		log_error("Failed in ConnectionStart, 0x%x!", rv);
+		goto error;
+	}
+
+}
+
+static int
+msquic_strm_connect(HQUIC qconn, nni_quic_dialer *d)
+{
+	HQUIC strm = NULL;
+	nni_quic_conn *c = nni_aio_get_prov_data(d->qstrmaio);
+}
