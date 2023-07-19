@@ -11,7 +11,8 @@ extern int nni_quic_dialer_alloc(nng_stream_dialer **, const nni_url *);
 
 typedef struct nni_quic_dialer nni_quic_dialer;
 
-extern int nni_quic_dialer_init(void *);
+extern int  nni_quic_dialer_init(void *);
+extern void nni_quic_dialer_fini(void *);
 extern void nni_quic_dial(void *, const char *, nni_aio *);
 extern void nni_quic_dialer_close(void *);
 
