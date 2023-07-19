@@ -485,6 +485,102 @@ test_encode_puback_v5(void)
 }
 
 void
+test_encode_pubrec(void)
+{
+	nng_msg *msg;
+
+	NUTS_PASS(nng_mqtt_msg_alloc(&msg, 0));
+
+	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_PUBREC);
+	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBREC);
+
+	NUTS_PASS(nng_mqtt_msg_encode(msg));
+
+	print_mqtt_msg(msg);
+	nng_msg_free(msg);
+}
+
+void
+test_encode_pubrec_v5(void)
+{
+	nng_msg *msg;
+
+	NUTS_PASS(nng_mqtt_msg_alloc(&msg, 0));
+
+	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_PUBREC);
+	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBREC);
+
+	NUTS_PASS(nng_mqttv5_msg_encode(msg));
+
+	print_mqtt_msg(msg);
+	nng_msg_free(msg);
+}
+
+void
+test_encode_pubrel(void)
+{
+	nng_msg *msg;
+
+	NUTS_PASS(nng_mqtt_msg_alloc(&msg, 0));
+
+	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_PUBREL);
+	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBREL);
+
+	NUTS_PASS(nng_mqtt_msg_encode(msg));
+
+	print_mqtt_msg(msg);
+	nng_msg_free(msg);
+}
+
+void
+test_encode_pubrel_v5(void)
+{
+	nng_msg *msg;
+
+	NUTS_PASS(nng_mqtt_msg_alloc(&msg, 0));
+
+	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_PUBREL);
+	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBREL);
+
+	NUTS_PASS(nng_mqttv5_msg_encode(msg));
+
+	print_mqtt_msg(msg);
+	nng_msg_free(msg);
+}
+
+void
+test_encode_pubcomp(void)
+{
+	nng_msg *msg;
+
+	NUTS_PASS(nng_mqtt_msg_alloc(&msg, 0));
+
+	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_PUBCOMP);
+	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBCOMP);
+
+	NUTS_PASS(nng_mqtt_msg_encode(msg));
+
+	print_mqtt_msg(msg);
+	nng_msg_free(msg);
+}
+
+void
+test_encode_pubcomp_v5(void)
+{
+	nng_msg *msg;
+
+	NUTS_PASS(nng_mqtt_msg_alloc(&msg, 0));
+
+	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_PUBCOMP);
+	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBCOMP);
+
+	NUTS_PASS(nng_mqttv5_msg_encode(msg));
+
+	print_mqtt_msg(msg);
+	nng_msg_free(msg);
+}
+
+void
 test_encode_unsubscribe(void)
 {
 	nng_msg *msg;
@@ -1104,6 +1200,87 @@ test_mqtt_msg_dump(void)
 	nng_mqtt_msg_dump(connmsg, buff, sizeof(buff), true);
 }
 
+void
+test_kv(void)
+{
+	mqtt_kv *kv1   = NULL;
+	mqtt_kv *kv2   = NULL;
+	char    *key   = "key-test";
+	char    *value = "value-test";
+
+	NUTS_TRUE((kv1 = NNI_ALLOC_STRUCT(kv1)) != NULL);
+	NUTS_TRUE((kv2 = NNI_ALLOC_STRUCT(kv2)) != NULL);
+
+	NUTS_PASS(mqtt_kv_create(kv1, key, strlen(key), value, strlen(value)));
+	NUTS_PASS(mqtt_kv_dup(kv2, kv1));
+	mqtt_kv_free(kv1);
+	mqtt_kv_free(kv2);
+
+	NNI_FREE_STRUCT(kv1);
+	NNI_FREE_STRUCT(kv2);
+}
+
+void
+test_write_read(void)
+{
+	int       length     = 50;
+	uint8_t   val8       = 8;
+	uint16_t  val16      = 16;
+	uint32_t  val32      = 32;
+	uint64_t  val64      = 64;
+	char     *bytes      = "bytes";
+	char     *str        = "mqtt_str";
+	mqtt_buf *mqtt_buf_1 = NULL;
+	mqtt_buf_1           = NNI_ALLOC_STRUCT(mqtt_buf_1);
+	NUTS_PASS(mqtt_buf_create(mqtt_buf_1, (uint *) str, strlen(str)));
+	uint8_t       *data = calloc(length, sizeof(char));
+	struct pos_buf buf;
+	buf.curpos = &data[0];
+	buf.endpos = &data[length];
+
+	NUTS_PASS(write_byte(val8, &buf));
+	NUTS_PASS(write_uint16(val16, &buf));
+	NUTS_PASS(write_uint32(val32, &buf));
+	NUTS_PASS(write_uint64(val64, &buf));
+	NUTS_PASS(write_bytes((uint *) bytes, sizeof(bytes), &buf));
+	NUTS_PASS(write_byte_string(mqtt_buf_1, &buf));
+
+	uint8_t   _val8      = 0;
+	uint16_t  _val16     = 0;
+	uint32_t  _val32     = 0;
+	uint64_t  _val64     = 0;
+	char     *strVal     = NULL;
+	mqtt_buf *mqtt_buf_2 = NULL;
+	mqtt_buf_2           = NNI_ALLOC_STRUCT(mqtt_buf_2);
+	buf.curpos           = &data[0];
+	NUTS_PASS(read_byte(&buf, &_val8));
+	NUTS_TRUE(_val8 == val8);
+	NUTS_PASS(read_uint16(&buf, &_val16));
+	NUTS_TRUE(_val16 == val16);
+	NUTS_PASS(read_uint32(&buf, &_val32));
+	NUTS_TRUE(_val32 == val32);
+	NUTS_PASS(read_uint64(&buf, &_val64));
+	NUTS_TRUE(_val64 == val64);
+	NUTS_PASS(read_bytes(&buf, &strVal, sizeof(bytes)));
+	NUTS_TRUE(strncmp(strVal, bytes, sizeof(bytes)) == 0);
+	NUTS_PASS(read_str_data(&buf, mqtt_buf_2));
+	NUTS_TRUE(mqtt_buf_2->length == mqtt_buf_1->length);
+	NUTS_TRUE(strncmp((char *) mqtt_buf_2->buf, (char *) mqtt_buf_2->buf,
+	              mqtt_buf_2->length) == 0);
+
+	NNI_FREE_STRUCT(mqtt_buf_1);
+	NNI_FREE_STRUCT(mqtt_buf_2);
+	free(data);
+}
+
+void
+test_msg_create_destroy(void)
+{
+	mqtt_msg *msg = NULL;
+	NUTS_TRUE((msg = mqtt_msg_create(NNG_MQTT_CONNECT)) != NULL);
+	NUTS_PASS(mqtt_msg_destroy(msg));
+}
+
 TEST_LIST = {
 	// TODO: there is still some encode & decode functions should be tested.
 	{ "alloc message", test_alloc },
@@ -1124,6 +1301,12 @@ TEST_LIST = {
 	{ "encode publish v5", test_encode_publish_v5 },
 	{ "encode puback", test_encode_puback },
 	{ "encode puback v5", test_encode_puback_v5 },
+	{ "encode pubrec", test_encode_pubrec },
+	{ "encode pubrec v5", test_encode_pubrec_v5 },
+	{ "encode pubrel", test_encode_pubrel },
+	{ "encode pubrel v5", test_encode_pubrel_v5 },
+	{ "encode pubcomp", test_encode_pubcomp },
+	{ "encode pubcomp v5", test_encode_pubcomp_v5 },
 	{ "encode unsubscribe", test_encode_unsubscribe },
 	{ "encode unsubscribe v5", test_encode_unsubscribe_v5 },
 	{ "encode unsuback", test_encode_unsuback },
@@ -1143,5 +1326,8 @@ TEST_LIST = {
 	{ "validate packet", test_packet_validate },
 	{ "byte_number_for_var_len", test_byte_number_for_var_len },
 	{ "test mqtt msg dump", test_mqtt_msg_dump },
+	{ "test kv", test_kv },
+	{ "test write & read", test_write_read },
+	{ "test create & destroy", test_msg_create_destroy },
 	{ NULL, NULL },
 };
