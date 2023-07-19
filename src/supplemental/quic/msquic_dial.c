@@ -66,7 +66,6 @@ struct nni_quic_dialer {
 };
 
 static void quic_dialer_cb();
-static void quic_dialer_strm_cb();
 
 int
 nni_quic_dialer_init(void **argp)
@@ -193,8 +192,8 @@ nni_quic_dial(void *arg, const char *url, nni_aio *aio)
 		goto error;
 	}
 
-	// pass c to the qstrmaio for getting it in quic_dialer_strm_cb
-	nni_aio_set_prov_data(d->qstrmaio, c);
+	// pass c to the dialer for getting it in msquic_strm_connect
+	d->currcon = c;
 
 	if (ismain) {
 		// Make a quic connection to the url.
