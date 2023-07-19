@@ -478,6 +478,208 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 	return QUIC_STATUS_SUCCESS;
 }
 
+// The clients's callback for stream events from MsQuic.
+// New recv cb of quic transport
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_Function_class_(QUIC_STREAM_CALLBACK) QUIC_STATUS QUIC_API
+quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
+	_Inout_ QUIC_STREAM_EVENT *Event)
+{
+	nni_quic_conn *c = Context;
+
+	uint32_t rlen;
+	uint8_t *rbuf;
+	nni_msg *smsg;
+	nni_aio *aio;
+	uint32_t count;
+	uint64_t total;
+
+	log_debug("quic_strm_cb triggered! %d", Event->Type);
+	switch (Event->Type) {
+	case QUIC_STREAM_EVENT_SEND_COMPLETE:
+		// A previous StreamSend call has completed, and the context is
+		// being returned back to the app.
+		log_debug("QUIC_STREAM_EVENT_SEND_COMPLETE!");
+		if (Event->SEND_COMPLETE.Canceled) {
+			log_warn("[strm][%p] Data sent Canceled: %d",
+					 stream, Event->SEND_COMPLETE.Canceled);
+		}
+		// Get aio from sendq and finish
+		nni_mtx_lock(&qstrm->mtx);
+		aio = Event->SEND_COMPLETE.ClientContext;
+		if (aio != NULL) {
+			// QoS messages send_cb
+			nni_aio_list_remove(aio);
+			// free the buf
+			QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
+			free(buf);
+			smsg = nni_aio_get_msg(aio);
+			nni_mtx_unlock(&qstrm->mtx);
+			nni_msg_free(smsg);
+			nni_aio_set_msg(aio, NULL);
+			//Process QoS ACK in Protocol layer
+			nni_aio_finish_sync(aio, 0, 0);
+			break;
+		}
+		if ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
+			// this is the send_aio in protocol layer
+			nni_aio_list_remove(aio);
+			QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
+			free(buf);
+			quic_pipe_send_start(qstrm);
+			nni_mtx_unlock(&qstrm->mtx);
+			smsg = nni_aio_get_msg(aio);
+			nni_msg_free(smsg);
+			nni_aio_set_msg(aio, NULL);
+			nni_aio_finish_sync(aio, 0, 0);
+			break;
+		} else {
+			log_error("AIO missing, potential msg leaking!");
+		}
+		nni_mtx_unlock(&qstrm->mtx);
+		break;
+	case QUIC_STREAM_EVENT_RECEIVE:
+		// Data was received from the peer on the stream.
+		count = Event->RECEIVE.BufferCount;
+		total = 0;
+
+		log_debug("[strm][%p] Data received Flag: %d", stream, Event->RECEIVE.Flags);
+
+		if (Event->RECEIVE.Flags & QUIC_RECEIVE_FLAG_FIN) {
+			if (qsock->reason_code == 0)
+				qsock->reason_code = CLIENT_IDENTIFIER_NOT_VALID;
+			log_warn("FIN received in QUIC stream");
+			break;
+		}
+
+		for (uint32_t i=0; i<count; ++i) {
+			rlen = Event->RECEIVE.Buffers[i].Length;
+			if (rlen <= 0)
+				continue;
+			total += rlen;
+		}
+
+		nni_mtx_lock(&qstrm->mtx);
+		// Get all the buffers in quic stream
+		if (count == 0 || total == 0) {
+			nni_mtx_unlock(&qstrm->mtx);
+			return QUIC_STATUS_PENDING;
+		}
+
+		if (total > qstrm->rrcap - qstrm->rrlen - qstrm->rrpos) {
+			qstrm->rrbuf = realloc(qstrm->rrbuf, total + qstrm->rrlen + qstrm->rrpos);
+			qstrm->rrcap = total + qstrm->rrlen + qstrm->rrpos;
+		}
+
+		for (uint32_t i=0; i<count; ++i) {
+			rbuf = Event->RECEIVE.Buffers[i].Buffer;
+			rlen = Event->RECEIVE.Buffers[i].Length;
+
+			log_debug("Body is [%d]-[0x%x 0x%x].", rlen, *(rbuf), *(rbuf + 1));
+
+			if (rlen <= 0)
+				continue;
+
+			// Copy data from quic stream to rrbuf
+			memcpy(qstrm->rrbuf + qstrm->rrpos + (int)qstrm->rrlen, rbuf, rlen);
+			qstrm->rrlen += rlen;
+		}
+
+		MsQuic->StreamReceiveComplete(qstrm->stream, total);
+		if (!nni_list_empty(&qstrm->recvq) && qstrm->inrr == false) {
+			// We should not do executing now, Or circle calling occurs
+			// nng_aio_wait(&qstrm->rraio);
+			qstrm->inrr = true;
+			nni_aio_finish(&qstrm->rraio, 0, 0);
+		}
+		nni_mtx_unlock(&qstrm->mtx);
+		log_debug("stream cb over\n");
+
+		return QUIC_STATUS_PENDING;
+	case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
+		// The peer gracefully shut down its send direction of the
+		// stream.
+		log_warn("[strm][%p] Peer SEND aborted\n", stream);
+		log_info("PEER_SEND_ABORTED Error Code: %llu",
+		    (unsigned long long) Event->PEER_SEND_ABORTED.ErrorCode);
+		if (qsock->reason_code == 0)
+			qsock->reason_code = SERVER_SHUTTING_DOWN;
+		break;
+	case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
+		// The peer aborted its send direction of the stream.
+		log_warn("[strm][%p] Peer send shut down\n", stream);
+		MsQuic->StreamShutdown(stream, QUIC_STREAM_SHUTDOWN_FLAG_GRACEFUL, 0);
+		break;
+	case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
+		log_warn("[strm][%p] QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE.", stream);
+		break;
+
+	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
+		// Both directions of the stream have been shut down and MsQuic
+		// is done with the stream. It can now be safely cleaned up.
+		log_warn("[strm][%p] QUIC_STREAM_EVENT shutdown: All done.",
+		    stream);
+		log_info("close stream with Error Code: %llu",
+		    (unsigned long long)
+		        Event->SHUTDOWN_COMPLETE.ConnectionErrorCode);
+		if (qstrm->sock->pipe != qstrm->pipe) {
+			// close data stream only
+			const nni_proto_pipe_ops *pipe_ops =
+			    g_quic_proto->proto_pipe_ops;
+			log_warn("close the data stream [%p]!", stream);
+			pipe_ops->pipe_stop(qstrm->pipe);
+			if (qstrm->closed != true)
+				MsQuic->StreamClose(stream);
+			break;
+		}
+		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
+			// only server close the main stream gonna trigger this
+			log_warn("close the main stream [%p]!", stream);
+			if (qstrm->closed != true) {
+				MsQuic->ConnectionShutdown(stream,
+				    QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
+				MsQuic->StreamClose(stream);
+			}
+			qstrm->stream = NULL;
+			// close stream here if in multi-stream mode?
+			// Conflic with quic_pipe_close
+			// qstrm->closed = true;
+		}
+		break;
+	case QUIC_STREAM_EVENT_START_COMPLETE:
+		log_info(
+		    "QUIC_STREAM_EVENT_START_COMPLETE [%p] ID: %ld Status: %d",
+		    stream, Event->START_COMPLETE.ID,
+		    Event->START_COMPLETE.Status);
+		if (!Event->START_COMPLETE.PeerAccepted) {
+			log_warn("Peer refused");
+			nni_aio_finish_error(c->qstrmaio, NNG_ECONNREFUSED);
+			break;
+		}
+
+		nni_aio_finish(c->qstrmaio, 0, 0);
+		break;
+	case QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE:
+		log_info("QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE");
+		break;
+	case QUIC_STREAM_EVENT_PEER_ACCEPTED:
+		log_info("QUIC_STREAM_EVENT_PEER_ACCEPTED");
+		break;
+	case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
+		// The peer has requested that we stop sending. Close abortively.
+		log_warn("[strm][%p] Peer RECEIVE aborted\n", stream);
+		log_warn("QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED Error Code: %llu",
+				 (unsigned long long) Event->PEER_RECEIVE_ABORTED.ErrorCode);
+		break;
+
+	default:
+		log_warn("Unknown Event Type %d", Event->Type);
+		break;
+	}
+	return QUIC_STATUS_SUCCESS;
+}
+
+
 const QUIC_API_TABLE *MsQuic = NULL;
 
 // Config for msquic
