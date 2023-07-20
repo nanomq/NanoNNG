@@ -336,73 +336,6 @@ quic_close2(void *arg)
 }
 
 static void
-quic_doread(nni_quic_conn *c)
-{
-	nni_aio *aio;
-	int      fd;
-
-	if (c->closed) {
-		return;
-	}
-
-	/*
-	while ((aio = nni_list_first(&c->readq)) != NULL) {
-		unsigned     i;
-		int          n;
-		int          niov;
-		unsigned     naiov;
-		nni_iov *    aiov;
-		struct iovec iovec[16];
-
-		nni_aio_get_iov(aio, &naiov, &aiov);
-		if (naiov > NNI_NUM_ELEMENTS(iovec)) {
-			nni_aio_list_remove(aio);
-			nni_aio_finish_error(aio, NNG_EINVAL);
-			continue;
-		}
-		for (niov = 0, i = 0; i < naiov; i++) {
-			if (aiov[i].iov_len != 0) {
-				iovec[niov].iov_len  = aiov[i].iov_len;
-				iovec[niov].iov_base = aiov[i].iov_buf;
-				niov++;
-			}
-		}
-
-		if ((n = readv(fd, iovec, niov)) < 0) {
-			switch (errno) {
-			case EINTR:
-				continue;
-			case EAGAIN:
-				return;
-			default:
-				nni_aio_list_remove(aio);
-				nni_aio_finish_error(
-				    aio, nni_plat_errno(errno));
-				return;
-			}
-		}
-
-		if (n == 0) {
-			// No bytes indicates a closed descriptor.
-			// This implicitly completes this (all!) aio.
-			nni_aio_list_remove(aio);
-			nni_aio_finish_error(aio, NNG_ECONNSHUT);
-			continue;
-		}
-
-		nni_aio_bump_count(aio, n);
-
-		// We completed the entire operation on this aio.
-		nni_aio_list_remove(aio);
-		nni_aio_finish(aio, 0, nni_aio_count(aio));
-
-		// Go back to start of loop to see if there is another
-		// aio ready for us to process.
-	}
-	*/
-}
-
-static void
 quic_cancel(nni_aio *aio, void *arg, int rv)
 {
 	nni_quic_conn *c = arg;
@@ -433,15 +366,11 @@ quic_recv(void *arg, nni_aio *aio)
 	}
 	nni_aio_list_append(&c->readq, aio);
 
-	// If we are only job on the list, go ahead and try to do an
-	// immediate transfer. This allows for faster completions in
-	// many cases.  We also need not arm a list if it was already
-	// armed.
+	// Receive start if there are only one aio in readq.
 	if (nni_list_first(&c->readq) == aio) {
-		quic_doread(c);
-		// If we are still the first thing on the list, that
-		// means we didn't finish the job, so arm the poller to
-		// complete us.
+		// In msquic. To avoid repeated memory copies. We just enable
+		// the receive. And doread in msquic_strm_cb. So there is
+		// only one copy from msquic to nanonng.
 		msquic_strm_recv_start(c->qstrm);
 	}
 	nni_mtx_unlock(&c->mtx);
@@ -728,13 +657,15 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	_Inout_ QUIC_STREAM_EVENT *Event)
 {
 	nni_quic_conn *c = Context;
+	nni_aio       *aio;
+	nni_iov *      aiov;
+	unsigned       naiov;
+	uint32_t       rlen, rlen2, rpos;
+	uint8_t       *rbuf;
+	uint64_t       total;
+	uint32_t       count;
 
-	uint32_t rlen;
-	uint8_t *rbuf;
 	nni_msg *smsg;
-	nni_aio *aio;
-	uint32_t count;
-	uint64_t total;
 
 	log_debug("quic_strm_cb triggered! %d", Event->Type);
 	switch (Event->Type) {
@@ -750,7 +681,6 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	case QUIC_STREAM_EVENT_RECEIVE:
 		// Data was received from the peer on the stream.
 		count = Event->RECEIVE.BufferCount;
-		total = 0;
 
 		log_debug("[strm][%p] Data received Flag: %d", stream, Event->RECEIVE.Flags);
 
@@ -761,40 +691,50 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			break;
 		}
 
-		for (uint32_t i=0; i<count; ++i) {
-			rlen = Event->RECEIVE.Buffers[i].Length;
-			if (rlen <= 0)
-				continue;
-			total += rlen;
-		}
-
 		nni_mtx_lock(&c->mtx);
 		// Get all the buffers in quic stream
-		if (count == 0 || total == 0) {
+		if (count == 0) {
 			nni_mtx_unlock(&c->mtx);
 			return QUIC_STATUS_PENDING;
 		}
 
-		if (total > c->rrcap - c->rrlen - c->rrpos) {
-			c->rrbuf = realloc(c->rrbuf, total + c->rrlen + c->rrpos);
-			c->rrcap = total + c->rrlen + c->rrpos;
+		rbuf = Event->RECEIVE.Buffers[0].Buffer;
+		rlen = Event->RECEIVE.Buffers[0].Length;
+
+		rpos = 0;
+		while ((aio = nni_list_first(&c->readq)) != NULL) {
+			nni_aio_get_iov(aio, &naiov, &aiov);
+			int n = 0;
+			for (int i=0; i<naiov; ++i) {
+				if (aiov[i].iov_len == 0)
+					continue;
+				rlen2 = rlen - rpos;
+				if (rlen2 == 0)
+					break;
+				if (rlen2 - aiov[i].iov_len >= 0) {
+					memcpy(aiov[i].iov_buf, rbuf+rpos, aiov[i].iov_len);
+					rpos += aiov[i].iov_len;
+					n += aiov[i].iov_len;
+				} else {
+					memcpy(aiov[i].iov_buf, rbuf+rpos, rlen2);
+					rpos += rlen2;
+					n += rlen2;
+				}
+			}
+			if (n == 0) { // rbuf run out
+				break;
+			}
+			nni_aio_bump_count(aio, n);
+
+			// We completed the entire operation on this aio.
+			nni_aio_list_remove(aio);
+			nni_aio_finish(aio, 0, nni_aio_count(aio));
+
+			// Go back to start of loop to see if there is another
+			// aio ready for us to process.
 		}
 
-		for (uint32_t i=0; i<count; ++i) {
-			rbuf = Event->RECEIVE.Buffers[i].Buffer;
-			rlen = Event->RECEIVE.Buffers[i].Length;
-
-			log_debug("Body is [%d]-[0x%x 0x%x].", rlen, *(rbuf), *(rbuf + 1));
-
-			if (rlen <= 0)
-				continue;
-
-			// Copy data from quic stream to rrbuf
-			memcpy(c->rrbuf + c->rrpos + (int)c->rrlen, rbuf, rlen);
-			c->rrlen += rlen;
-		}
-
-		MsQuic->StreamReceiveComplete(c->qstrm, total);
+		MsQuic->StreamReceiveComplete(c->qstrm, rpos);
 		nni_mtx_unlock(&c->mtx);
 		// Expose RECEIVE event
 		// Finish aio from upper layer would be done in quic_cb.
