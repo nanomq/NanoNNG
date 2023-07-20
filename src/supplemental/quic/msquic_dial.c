@@ -78,7 +78,7 @@ struct nni_quic_conn {
 	bool            closed;
 	nni_mtx         mtx;
 	nni_aio *       dial_aio;
-	nni_aio *       qstrmaio;
+	// nni_aio *       qstrmaio; // Link to msquic_strm_cb
 	nni_quic_dialer *dialer;
 	nni_reap_node   reap;
 
@@ -246,7 +246,7 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 		}
 	}
 
-	nni_list_append(d->connq, aio);
+	nni_list_append(&d->connq, aio);
 
 	nni_mtx_unlock(&d->mtx);
 
@@ -547,6 +547,7 @@ nni_msquic_quic_alloc(nni_quic_conn **cp, nni_quic_dialer *d)
 	nni_mtx_init(&c->mtx);
 	nni_aio_list_init(&c->readq);
 	nni_aio_list_init(&c->writeq);
+	// nni_aio_alloc(&c->qstrmaio, quic_cb, );
 
 	c->stream.s_free  = quic_free;
 	c->stream.s_close = quic_close2;
@@ -567,13 +568,7 @@ nni_msquic_quic_init(nni_quic_conn *c)
 void
 nni_msquic_quic_start(nni_quic_conn *c, int nodelay, int keepalive)
 {
-	// Configure the initial quic connection.
-	// ...TODO
-
-	// nni_posix_pfd_set_cb(c->pfd, quic_cb, c);
 }
-
-
 
 /***************************** MsQuic Bindings *****************************/
 
@@ -819,11 +814,13 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		    Event->START_COMPLETE.Status);
 		if (!Event->START_COMPLETE.PeerAccepted) {
 			log_warn("Peer refused");
-			nni_aio_finish_error(c->qstrmaio, NNG_ECONNREFUSED);
+			quic_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c);
+			// nni_aio_finish_error(c->qstrmaio, NNG_ECONNREFUSED);
 			break;
 		}
 
-		nni_aio_finish(c->qstrmaio, 0, 0);
+		quic_cb(QUIC_STREAM_EVENT_START_COMPLETE, c);
+		// nni_aio_finish(c->qstrmaio, 0, 0);
 		break;
 	case QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE:
 		log_info("QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE");
