@@ -508,7 +508,7 @@ nni_mqtt_msg_set_unsubscribe_topics(
 	for (size_t i = 0; i < topic_count; i++) {
 		nni_mqtt_topic_array_set(
 		    proto_data->payload.unsubscribe.topic_arr, i,
-		    (const char *) topics[i].buf);
+		    (const char *) topics[i].buf, topics[i].length);
 	}
 }
 
@@ -845,10 +845,10 @@ nni_mqtt_topic_array_create(size_t n)
 
 void
 nni_mqtt_topic_array_set(
-    nni_mqtt_topic *topic, size_t index, const char *topic_name)
+    nni_mqtt_topic *topic, size_t index, const char *topic_name, uint32_t len)
 {
 	topic[index].buf    = (uint8_t *) nni_strdup(topic_name);
-	topic[index].length = (uint32_t) strlen(topic_name);
+	topic[index].length = len;
 }
 
 void

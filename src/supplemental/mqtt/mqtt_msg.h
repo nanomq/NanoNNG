@@ -471,7 +471,7 @@ NNG_DECL void nni_mqtt_msg_set_disconnect_property(nng_msg *msg, property *prop)
 NNG_DECL void nni_mqtt_msg_dump(nni_msg *, uint8_t *, uint32_t, bool);
 // mqtt topic create/free
 NNG_DECL nni_mqtt_topic *nni_mqtt_topic_array_create(size_t n);
-NNG_DECL void nni_mqtt_topic_array_set(nni_mqtt_topic *, size_t, const char *);
+NNG_DECL void nni_mqtt_topic_array_set(nni_mqtt_topic *, size_t, const char *, uint32_t);
 NNG_DECL void nni_mqtt_topic_array_free(nni_mqtt_topic *, size_t);
 
 // mqtt topic_qos create/free/set
