@@ -31,7 +31,6 @@ struct quic_dialer {
 	nng_stream_dialer ops;
 	bool              closed;
 	nni_mtx           mtx;
-	char *            url;
 	char *            host;
 	char *            port;
 	nni_aio *         conaio;
@@ -95,7 +94,7 @@ quic_dial_con_cb(void *arg)
 
 	// Start next dialer if it exists
 	if (!nni_list_empty(&d->conaios))
-		nni_quic_dial(d->d, d->url, d->conaio);
+		nni_quic_dial(d->d, d->host, d->port, d->conaio);
 	nni_mtx_unlock(&d->mtx);
 }
 
@@ -137,7 +136,7 @@ quic_dialer_dial(void *arg, nng_aio *aio)
 	}
 	nni_list_append(&d->conaios, aio);
 	if (nni_list_first(&d->conaios) == aio) {
-		nni_quic_dial(d->d, d->url, d->conaio);
+		nni_quic_dial(d->d, d->host, d->port, d->conaio);
 	}
 	nni_mtx_unlock(&d->mtx);
 }
