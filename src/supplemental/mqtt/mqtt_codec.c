@@ -633,7 +633,8 @@ dup_unsubscribe(nni_mqtt_proto_data *dest, nni_mqtt_proto_data *src)
 	for (size_t i = 0; i < src->payload.unsubscribe.topic_count; i++) {
 		nni_mqtt_topic_array_set(dest->payload.unsubscribe.topic_arr,
 		    i,
-		    (const char *) src->payload.unsubscribe.topic_arr[i].buf);
+		    (const char *) src->payload.unsubscribe.topic_arr[i].buf,
+		    src->payload.unsubscribe.topic_arr[i].length);
 	}
 }
 

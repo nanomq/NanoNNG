@@ -626,7 +626,7 @@ void
 nng_mqtt_topic_array_set(
     nng_mqtt_topic *topic, size_t n, const char *topic_name)
 {
-	nni_mqtt_topic_array_set(topic, n, topic_name);
+	nni_mqtt_topic_array_set(topic, n, topic_name, strlen(topic));
 }
 
 void
