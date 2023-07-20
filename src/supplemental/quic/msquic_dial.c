@@ -279,9 +279,89 @@ quic_free(void *arg)
 }
 
 static void
-quic_close(void *arg)
+quic_close2(void *arg)
 {
 	nni_quic_conn *c = arg;
+}
+
+static void
+quic_doread(nni_quic_conn *c)
+{
+	nni_aio *aio;
+	int      fd;
+
+	if (c->closed) {
+		return;
+	}
+
+	/*
+	while ((aio = nni_list_first(&c->readq)) != NULL) {
+		unsigned     i;
+		int          n;
+		int          niov;
+		unsigned     naiov;
+		nni_iov *    aiov;
+		struct iovec iovec[16];
+
+		nni_aio_get_iov(aio, &naiov, &aiov);
+		if (naiov > NNI_NUM_ELEMENTS(iovec)) {
+			nni_aio_list_remove(aio);
+			nni_aio_finish_error(aio, NNG_EINVAL);
+			continue;
+		}
+		for (niov = 0, i = 0; i < naiov; i++) {
+			if (aiov[i].iov_len != 0) {
+				iovec[niov].iov_len  = aiov[i].iov_len;
+				iovec[niov].iov_base = aiov[i].iov_buf;
+				niov++;
+			}
+		}
+
+		if ((n = readv(fd, iovec, niov)) < 0) {
+			switch (errno) {
+			case EINTR:
+				continue;
+			case EAGAIN:
+				return;
+			default:
+				nni_aio_list_remove(aio);
+				nni_aio_finish_error(
+				    aio, nni_plat_errno(errno));
+				return;
+			}
+		}
+
+		if (n == 0) {
+			// No bytes indicates a closed descriptor.
+			// This implicitly completes this (all!) aio.
+			nni_aio_list_remove(aio);
+			nni_aio_finish_error(aio, NNG_ECONNSHUT);
+			continue;
+		}
+
+		nni_aio_bump_count(aio, n);
+
+		// We completed the entire operation on this aio.
+		nni_aio_list_remove(aio);
+		nni_aio_finish(aio, 0, nni_aio_count(aio));
+
+		// Go back to start of loop to see if there is another
+		// aio ready for us to process.
+	}
+	*/
+}
+
+static void
+quic_cancel(nni_aio *aio, void *arg, int rv)
+{
+	nni_quic_conn *c = arg;
+
+	nni_mtx_lock(&c->mtx);
+	if (nni_aio_list_active(aio)) {
+		nni_aio_list_remove(aio);
+		nni_aio_finish_error(aio, rv);
+	}
+	nni_mtx_unlock(&c->mtx);
 }
 
 static void
@@ -293,6 +373,98 @@ quic_recv(void *arg, nni_aio *aio)
 	if (nni_aio_begin(aio) != 0) {
 		return;
 	}
+	nni_mtx_lock(&c->mtx);
+
+	if ((rv = nni_aio_schedule(aio, quic_cancel, c)) != 0) {
+		nni_mtx_unlock(&c->mtx);
+		nni_aio_finish_error(aio, rv);
+		return;
+	}
+	nni_aio_list_append(&c->readq, aio);
+
+	// If we are only job on the list, go ahead and try to do an
+	// immediate transfer. This allows for faster completions in
+	// many cases.  We also need not arm a list if it was already
+	// armed.
+	if (nni_list_first(&c->readq) == aio) {
+		quic_doread(c);
+		// If we are still the first thing on the list, that
+		// means we didn't finish the job, so arm the poller to
+		// complete us.
+		msquic_strm_recv_start(c->qstrm);
+	}
+	nni_mtx_unlock(&c->mtx);
+}
+
+static void
+quic_dowrite(nni_quic_conn *c)
+{
+	nni_aio *aio;
+	int      fd;
+
+	if (c->closed) {
+		return;
+	}
+
+	/*
+	while ((aio = nni_list_first(&c->writeq)) != NULL) {
+		unsigned      i;
+		int           n;
+		int           niov;
+		unsigned      naiov;
+		nni_iov *     aiov;
+		struct msghdr hdr;
+		struct iovec  iovec[16];
+
+		memset(&hdr, 0, sizeof(hdr));
+		nni_aio_get_iov(aio, &naiov, &aiov);
+
+		if (naiov > NNI_NUM_ELEMENTS(iovec)) {
+			nni_aio_list_remove(aio);
+			nni_aio_finish_error(aio, NNG_EINVAL);
+			continue;
+		}
+
+		for (niov = 0, i = 0; i < naiov; i++) {
+			if (aiov[i].iov_len > 0) {
+				iovec[niov].iov_len  = aiov[i].iov_len;
+				iovec[niov].iov_base = aiov[i].iov_buf;
+				niov++;
+			}
+		}
+
+		hdr.msg_iovlen = niov;
+		hdr.msg_iov    = iovec;
+
+		if ((n = sendmsg(fd, &hdr, MSG_NOSIGNAL)) < 0) {
+			switch (errno) {
+			case EINTR:
+				continue;
+			case EAGAIN:
+#ifdef EWOULDBLOCK
+#if EWOULDBLOCK != EAGAIN
+			case EWOULDBLOCK:
+#endif
+#endif
+				return;
+			default:
+				nni_aio_list_remove(aio);
+				nni_aio_finish_error(
+				    aio, nni_plat_errno(errno));
+				return;
+			}
+		}
+
+		nni_aio_bump_count(aio, n);
+		// We completed the entire operation on this aio.
+		// (Sendmsg never returns a partial result.)
+		nni_aio_list_remove(aio);
+		nni_aio_finish(aio, 0, nni_aio_count(aio));
+
+		// Go back to start of loop to see if there is another
+		// aio ready for us to process.
+	}
+	*/
 }
 
 static void
@@ -404,22 +576,17 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		// the connection.
 		if (Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status ==
 		    QUIC_STATUS_CONNECTION_IDLE) {
-			log_warn(
-			    "[conn][%p] Successfully shut down connection on idle.\n",
-			    qconn);
+			log_warn("[conn][%p] Connection shutdown on idle.\n", qconn);
 		} else if (Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status ==
 		    QUIC_STATUS_CONNECTION_TIMEOUT) {
-			log_warn("[conn][%p] Successfully shut down on "
-			         "CONNECTION_TIMEOUT.\n",
-			    qconn);
+			log_warn("[conn][%p] Shutdown on CONNECTION_TIMEOUT.\n", qconn);
 		}
-		log_warn("[conn][%p] Shut down by transport, 0x%x, Error Code "
-		         "%llu\n",
+		log_warn("[conn][%p] Shutdown by transport, 0x%x, Error Code %llu\n",
 		    qconn, Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status,
 		    (unsigned long long)
 		        Event->SHUTDOWN_INITIATED_BY_TRANSPORT.ErrorCode);
-		if (qsock->reason_code == 0)
-            	qsock->reason_code = SERVER_UNAVAILABLE;
+		if (d->reason_code == 0)
+            	d->reason_code = SERVER_UNAVAILABLE;
 		break;
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER:
 		// The connection was explicitly shut down by the peer.
@@ -615,29 +782,8 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		log_info("close stream with Error Code: %llu",
 		    (unsigned long long)
 		        Event->SHUTDOWN_COMPLETE.ConnectionErrorCode);
-		if (qstrm->sock->pipe != qstrm->pipe) {
-			// close data stream only
-			const nni_proto_pipe_ops *pipe_ops =
-			    g_quic_proto->proto_pipe_ops;
-			log_warn("close the data stream [%p]!", stream);
-			pipe_ops->pipe_stop(qstrm->pipe);
-			if (qstrm->closed != true)
-				MsQuic->StreamClose(stream);
-			break;
-		}
-		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
-			// only server close the main stream gonna trigger this
-			log_warn("close the main stream [%p]!", stream);
-			if (qstrm->closed != true) {
-				MsQuic->ConnectionShutdown(stream,
-				    QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
-				MsQuic->StreamClose(stream);
-			}
-			qstrm->stream = NULL;
-			// close stream here if in multi-stream mode?
-			// Conflic with quic_pipe_close
-			// qstrm->closed = true;
-		}
+		c->closed = true;
+		quic_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c);
 		break;
 	case QUIC_STREAM_EVENT_START_COMPLETE:
 		log_info(
