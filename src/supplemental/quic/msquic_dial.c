@@ -69,7 +69,6 @@ struct nni_quic_dialer {
 	uint16_t                rticket_sz;
 	// CertificateFile
 	char *                  cacert;
-	
 };
 
 struct nni_quic_conn {
@@ -112,7 +111,7 @@ HQUIC configuration;
 
 static int  msquic_open();
 static void msquic_close();
-static int  msquic_connect(const char *url, nni_quic_dialer *d);
+static int  msquic_connect(const char *host, const char *port, nni_quic_dialer *d);
 static int  msquic_strm_connect(HQUIC qconn, nni_quic_dialer *d);
 static void msquic_strm_recv_start(HQUIC qstrm);
 
@@ -208,10 +207,10 @@ quic_dialer_cb(void *arg)
 // This nng stream is linked to main quic stream.
 // Or it will link to a sub quic stream.
 void
-nni_quic_dial(void *arg, const char *url, nni_aio *aio)
+nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 {
-	nni_quic_dialer *d = arg;
 	nni_quic_conn *  c;
+	nni_quic_dialer *d = arg;
 	bool             ismain = false;
 	int              rv;
 
@@ -242,7 +241,7 @@ nni_quic_dial(void *arg, const char *url, nni_aio *aio)
 	if (ismain) {
 		// Make a quic connection to the url.
 		// Create stream after connection is established.
-		msquic_connect(url, d);
+		msquic_connect(host, port, d);
 	} else {
 		msquic_strm_connect(d->qconn, d);
 	}
@@ -867,11 +866,10 @@ error:
 }
 
 static int
-msquic_connect(const char *url, nni_quic_dialer *d)
+msquic_connect(const char *host, const char *port, nni_quic_dialer *d)
 {
 	QUIC_STATUS  rv;
 	HQUIC        conn = NULL;
-	nni_url     *url_s;
 
 	if (0 != msquic_open()) {
 		// so... close the quic connection
@@ -887,18 +885,10 @@ msquic_connect(const char *url, nni_quic_dialer *d)
 
 	// TODO CA 0RTT Windows campatible interface index
 
-	nni_url_parse(&url_s, url);
-	// TODO maybe something wrong happened
-	for (size_t i = 0; i < strlen(url_s->u_host); ++i)
-		if (url_s->u_host[i] == ':') {
-			url_s->u_host[i] = '\0';
-			break;
-		}
-
-	log_info("Quic connecting... %s:%s", url_s->u_host, url_s->u_port);
+	log_info("Quic connecting... %s:%s", host, port);
 
 	if (QUIC_FAILED(rv = MsQuic->ConnectionStart(conn, configuration,
-	        QUIC_ADDRESS_FAMILY_UNSPEC, url_s->u_host, atoi(url_s->u_port)))) {
+	        QUIC_ADDRESS_FAMILY_UNSPEC, host, atoi(port)))) {
 		log_error("Failed in ConnectionStart, 0x%x!", rv);
 		goto error;
 	}
