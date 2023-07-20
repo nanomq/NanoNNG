@@ -417,8 +417,8 @@ test_encode_suback(void)
 
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_SUBACK);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_SUBACK);
-	nng_mqtt_msg_set_subscribe_packet_id(msg, pkt_id);
-	NUTS_TRUE(nng_mqtt_msg_get_subscribe_packet_id(msg) == pkt_id);
+	nng_mqtt_msg_set_suback_packet_id(msg, pkt_id);
+	NUTS_TRUE(nng_mqtt_msg_get_suback_packet_id(msg) == pkt_id);
 
 	property *plist1  = mqtt_property_alloc();
 	property *p1 = mqtt_property_set_value_u32(MAXIMUM_PACKET_SIZE, 120);
@@ -588,11 +588,14 @@ void
 test_encode_pubrec(void)
 {
 	nng_msg *msg;
+	uint16_t pkt_id = 2;
 
 	NUTS_PASS(nng_mqtt_msg_alloc(&msg, 0));
 
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_PUBREC);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBREC);
+	nng_mqtt_msg_set_pubrec_packet_id(msg, pkt_id);
+	NUTS_TRUE(nng_mqtt_msg_get_pubrec_packet_id(msg) == pkt_id);
 
 	property *plist1  = mqtt_property_alloc();
 	property *p1 = mqtt_property_set_value_u32(MAXIMUM_PACKET_SIZE, 120);
@@ -628,11 +631,14 @@ void
 test_encode_pubrel(void)
 {
 	nng_msg *msg;
+	uint16_t pkt_id = 2;
 
 	NUTS_PASS(nng_mqtt_msg_alloc(&msg, 0));
 
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_PUBREL);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBREL);
+	nng_mqtt_msg_set_pubrel_packet_id(msg, pkt_id);
+	NUTS_TRUE(nng_mqtt_msg_get_pubrel_packet_id(msg) == pkt_id);
 
 	property *plist1  = mqtt_property_alloc();
 	property *p1 = mqtt_property_set_value_u32(MAXIMUM_PACKET_SIZE, 120);
@@ -668,11 +674,14 @@ void
 test_encode_pubcomp(void)
 {
 	nng_msg *msg;
+	uint16_t pkt_id = 2;
 
 	NUTS_PASS(nng_mqtt_msg_alloc(&msg, 0));
 
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_PUBCOMP);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBCOMP);
+	nng_mqtt_msg_set_pubcomp_packet_id(msg, pkt_id);
+	NUTS_TRUE(nng_mqtt_msg_get_pubcomp_packet_id(msg) == pkt_id);
 
 	property *plist1  = mqtt_property_alloc();
 	property *p1 = mqtt_property_set_value_u32(MAXIMUM_PACKET_SIZE, 120);
@@ -1498,6 +1507,49 @@ test_topic_qos_array_create_free(void)
 	nng_mqtt_topic_qos_array_free(tq, size);
 }
 
+void
+test_property_cb(property *prop)
+{
+	NNI_ARG_UNUSED(prop);
+	return;
+}
+
+void
+test_property_api(void)
+{
+	property *plist = mqtt_property_alloc();
+	property *p1 = mqtt_property_set_value_u8(PAYLOAD_FORMAT_INDICATOR, 1);
+	mqtt_property_append(plist, p1);
+	property *p2 = mqtt_property_set_value_u16(TOPIC_ALIAS, 10);
+	mqtt_property_append(plist, p2);
+	property *p3 = mqtt_property_set_value_u32(MESSAGE_EXPIRY_INTERVAL, 10);
+	mqtt_property_append(plist, p3);
+	property *p4 = mqtt_property_set_value_str(RESPONSE_TOPIC, "aaaaaa", strlen("aaaaaa"), true);
+	mqtt_property_append(plist, p4);
+	property *p5 = mqtt_property_set_value_binary(
+	    CORRELATION_DATA, (uint8_t *) "aaaaaa", strlen("aaaaaa"), true);
+	mqtt_property_append(plist, p5);
+	property *p6 = mqtt_property_set_value_strpair(USER_PROPERTY, "aaaaaa", strlen("aaaaaa"), "aaaaaa", strlen("aaaaaa"), true);
+	mqtt_property_append(plist, p6);
+	property *p7 = mqtt_property_set_value_str(CONTENT_TYPE, "aaaaaa", strlen("aaaaaa"), true);
+	mqtt_property_append(plist, p7);
+
+	NUTS_TRUE(mqtt_property_get_value_type(PAYLOAD_FORMAT_INDICATOR) == U8);
+
+	property_data *p_data =
+	    mqtt_property_get_value(plist, PAYLOAD_FORMAT_INDICATOR);
+	NUTS_TRUE(p_data->p_value.u8 == 1);
+
+	NUTS_TRUE(get_mqtt_properties_len(plist) == 54);
+
+	property *_plist = NULL;
+	NUTS_PASS(mqtt_property_dup(&_plist, plist));
+	NUTS_TRUE(get_mqtt_properties_len(_plist) == 54);
+
+	mqtt_property_foreach(plist, test_property_cb);
+	NUTS_PASS(mqtt_property_free(plist));
+}
+
 TEST_LIST = {
 	// TODO: there is still some encode & decode functions should be tested.
 	{ "alloc message", test_alloc },
@@ -1548,5 +1600,6 @@ TEST_LIST = {
 	{ "test msg create & destroy", test_msg_create_destroy },
 	{ "test topic_qos create & free", test_topic_qos_array_create_free },
 	{ "test topic create & free", test_topic_array_create_free },
+	{ "test property api", test_property_api },
 	{ NULL, NULL },
 };
