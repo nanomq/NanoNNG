@@ -1463,6 +1463,41 @@ test_msg_create_destroy(void)
 	NUTS_PASS(mqtt_msg_destroy(msg));
 }
 
+void
+test_topic_array_create_free(void)
+{
+	size_t  size        = 2;
+	char   *topic_name1 = "/nanomq/mqtt/msg/0";
+	char *topic_name2 = "/nanomq/mqtt/msg/1";
+
+	nng_mqtt_topic *tq = NULL;
+
+	tq = nng_mqtt_topic_array_create(size);
+	nng_mqtt_topic_array_set(tq, 0, topic_name1);
+	nng_mqtt_topic_array_set(tq, 1, topic_name2);
+	nng_mqtt_topic_array_free(tq, size);
+}
+
+void
+test_topic_qos_array_create_free(void)
+{
+	size_t  size        = 2;
+	char   *topic_name1 = "/nanomq/mqtt/msg/0";
+	char *topic_name2 = "/nanomq/mqtt/msg/1";
+	uint8_t qos1        = 0;
+	uint8_t qos2        = 1;
+	uint8_t nolocal     = 1;
+	uint8_t rap         = 0;
+	uint8_t rh          = 0;
+
+	nng_mqtt_topic_qos *tq = NULL;
+
+	tq = nng_mqtt_topic_qos_array_create(size);
+	nng_mqtt_topic_qos_array_set(tq, 0, topic_name1, qos1, nolocal, rap, rh);
+	nng_mqtt_topic_qos_array_set(tq, 1, topic_name2, qos2, nolocal, rap, rh);
+	nng_mqtt_topic_qos_array_free(tq, size);
+}
+
 TEST_LIST = {
 	// TODO: there is still some encode & decode functions should be tested.
 	{ "alloc message", test_alloc },
@@ -1510,6 +1545,8 @@ TEST_LIST = {
 	{ "test mqtt msg dump", test_mqtt_msg_dump },
 	{ "test kv", test_kv },
 	{ "test write & read", test_write_read },
-	{ "test create & destroy", test_msg_create_destroy },
+	{ "test msg create & destroy", test_msg_create_destroy },
+	{ "test topic_qos create & free", test_topic_qos_array_create_free },
+	{ "test topic create & free", test_topic_array_create_free },
 	{ NULL, NULL },
 };
