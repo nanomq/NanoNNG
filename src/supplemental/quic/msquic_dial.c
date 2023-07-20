@@ -177,13 +177,34 @@ quic_dialer_cb(void *arg)
 {
 	nni_quic_dialer *d = arg;
 	int              rv;
+	nni_aio *        aio;
 
 	if (nni_aio_result(d->qconaio) != 0) {
 		return;
 	}
 
+	nni_mtx_lock(&d->mtx);
+	aio = d->dial_aio;
+	if ((aio == NULL) || (!nni_aio_list_active(aio))) {
+		nni_mtx_unlock(&d->mtx);
+		return;
+	}
+
+	c->dial_aio = NULL;
+	nni_aio_list_remove(aio);
+
 	// Connection was established. Nice. Then. Create the main quic stream.
 	rv = msquic_strm_connect(d->qconn, d);
+
+	nni_mtx_unlock(&d->mtx);
+
+	if (rv != 0) {
+		// XXX data race ???
+		d->currcon = NULL;
+
+		nng_stream_free(&c->stream);
+		nni_aio_finish_error(aio, rv);
+	}
 }
 
 // Dial to the `url`. Finish `aio` when connected.
@@ -226,6 +247,7 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 
 	// pass c to the dialer for getting it in msquic_strm_connect
 	d->currcon = c;
+	c->dial_aio = aio;
 
 	if (ismain) {
 		// Make a quic connection to the url.
@@ -254,7 +276,9 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 
 error:
 	d->currcon = NULL;
+	d->dial_aio = NULL;
 	nni_mtx_unlock(&d->mtx);
+	nng_stream_free(&c->stream);
 	nni_aio_finish_error(aio, rv);
 }
 
@@ -294,7 +318,7 @@ nni_msquic_quic_dialer_rele(nni_quic_dialer *d)
 /**************************** MsQuic Connection ****************************/
 
 static void
-quic_cb(unsigned events, void *arg)
+quic_cb(int events, void *arg)
 {
 }
 
