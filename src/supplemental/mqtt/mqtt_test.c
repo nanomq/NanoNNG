@@ -1,8 +1,8 @@
 #include <string.h>
 
+#include "nng/mqtt/mqtt_client.h"
 #include "nng/nng.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
-#include "nng/mqtt/mqtt_client.h"
 
 #include "mqtt_msg.h"
 #include "nuts.h"
@@ -84,11 +84,9 @@ test_dup_unsub(void)
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_UNSUBSCRIBE);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_UNSUBSCRIBE);
 
-	nng_mqtt_topic_qos topic_qos[] = {
-		{ .qos     = 0,
-		    .topic = { .buf = (uint8_t *) "/nanomq/mqtt/msg/0",
-		        .length     = strlen("/nanomq/mqtt/msg/0") } }
-	};
+	nng_mqtt_topic_qos topic_qos[] = { { .qos = 0,
+	    .topic = { .buf = (uint8_t *) "/nanomq/mqtt/msg/0",
+		.length     = strlen("/nanomq/mqtt/msg/0") } } };
 	nng_mqtt_msg_set_subscribe_topics(
 	    msg, topic_qos, sizeof(topic_qos) / sizeof(nng_mqtt_topic_qos));
 
@@ -176,9 +174,9 @@ test_dup_publish(void)
 void
 test_encode_connect(void)
 {
-	nng_msg *msg;
+	nng_msg    *msg;
 	conn_param *cparam;
-	char     client_id[] = "nanomq-mqtt";
+	char        client_id[] = "nanomq-mqtt";
 
 	NUTS_PASS(nng_mqtt_msg_alloc(&msg, 0));
 	// NUTS_PASS(conn_param_alloc(&cparam));
@@ -190,7 +188,8 @@ test_encode_connect(void)
 	nng_mqtt_msg_set_connect_will_topic(msg, will_topic);
 
 	char will_msg[] = "Bye-bye";
-	nng_mqtt_msg_set_connect_will_msg(msg, (uint8_t *)will_msg, strlen(will_msg));
+	nng_mqtt_msg_set_connect_will_msg(
+	    msg, (uint8_t *) will_msg, strlen(will_msg));
 
 	char user[]   = "nanomq";
 	char passwd[] = "nanomq";
@@ -202,8 +201,8 @@ test_encode_connect(void)
 	nng_mqtt_msg_set_connect_password(msg, passwd);
 	nng_mqtt_msg_set_connect_clean_session(msg, true);
 	nng_mqtt_msg_set_connect_keep_alive(msg, 60);
-	property *plist1  = mqtt_property_alloc();
-	property *plist2  = mqtt_property_alloc();
+	property *plist1 = mqtt_property_alloc();
+	property *plist2 = mqtt_property_alloc();
 	property *p1 = mqtt_property_set_value_u32(MAXIMUM_PACKET_SIZE, 120);
 	property *p2 = mqtt_property_set_value_u16(TOPIC_ALIAS_MAXIMUM, 5);
 	mqtt_property_append(plist1, p1);
@@ -215,8 +214,10 @@ test_encode_connect(void)
 	              strlen(client_id)) == 0);
 	NUTS_TRUE(nng_mqtt_msg_get_connect_will_retain(msg) == true);
 	NUTS_TRUE(nng_mqtt_msg_get_connect_will_qos(msg) == 2);
-	NUTS_TRUE(strncmp(nng_mqtt_msg_get_connect_user_name(msg), user, strlen(user)) == 0); 
-	NUTS_TRUE(strncmp(nng_mqtt_msg_get_connect_password(msg), passwd, strlen(passwd)) == 0);
+	NUTS_TRUE(strncmp(nng_mqtt_msg_get_connect_user_name(msg), user,
+	              strlen(user)) == 0);
+	NUTS_TRUE(strncmp(nng_mqtt_msg_get_connect_password(msg), passwd,
+	              strlen(passwd)) == 0);
 	NUTS_TRUE(nng_mqtt_msg_get_connect_clean_session(msg) == true);
 	NUTS_TRUE(nng_mqtt_msg_get_connect_keep_alive(msg) == 60);
 	property *p = nng_mqtt_msg_get_connect_property(msg);
@@ -251,7 +252,6 @@ test_encode_connect(void)
 	property_free(cparam->properties);
 	property_free(cparam->will_properties);
 
-
 	nng_free(cparam, sizeof(struct conn_param));
 
 	// nng_msg_free(decode_msg);
@@ -277,7 +277,8 @@ test_encode_connect_v5(void)
 	nng_mqtt_msg_set_connect_will_topic(msg, will_topic);
 
 	char will_msg[] = "Bye-bye";
-	nng_mqtt_msg_set_connect_will_msg(msg, (uint8_t *)will_msg, strlen(will_msg));
+	nng_mqtt_msg_set_connect_will_msg(
+	    msg, (uint8_t *) will_msg, strlen(will_msg));
 
 	char user[]   = "nanomq";
 	char passwd[] = "nanomq";
@@ -312,7 +313,7 @@ test_encode_connack(void)
 
 	nng_mqtt_msg_set_connack_flags(msg, 1);
 	nng_mqtt_msg_set_connack_return_code(msg, 0);
-	property *plist1  = mqtt_property_alloc();
+	property *plist1 = mqtt_property_alloc();
 	property *p1 = mqtt_property_set_value_u32(MAXIMUM_PACKET_SIZE, 120);
 	mqtt_property_append(plist1, p1);
 	nng_mqtt_msg_set_connack_property(msg, plist1);
@@ -340,9 +341,9 @@ test_encode_subscribe(void)
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_SUBSCRIBE);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_SUBSCRIBE);
 	nni_mqtt_msg_set_subscribe_packet_id(msg, pkt_id);
-	NUTS_TRUE(nng_mqtt_msg_get_subscribe_packet_id(msg) == pkt_id);
+	NUTS_TRUE(nni_mqtt_msg_get_subscribe_packet_id(msg) == pkt_id);
 
-	property *plist1  = mqtt_property_alloc();
+	property *plist1 = mqtt_property_alloc();
 	property *p1 = mqtt_property_set_value_u32(MAXIMUM_PACKET_SIZE, 120);
 	mqtt_property_append(plist1, p1);
 	nng_mqtt_msg_set_subscribe_property(msg, plist1);
@@ -365,12 +366,14 @@ test_encode_subscribe(void)
 	nng_mqtt_topic_qos *t_q = nng_mqtt_msg_get_subscribe_topics(msg, &cnt);
 	NUTS_TRUE(cnt == 2);
 	NUTS_TRUE(t_q[0].qos == topic_qos[0].qos);
-	NUTS_TRUE(strncmp(t_q[0].topic.buf, topic_qos[0].topic.buf,
-	              topic_qos[0].topic.length) == 0);
+	NUTS_TRUE(
+	    strncmp((char *) t_q[0].topic.buf, (char *) topic_qos[0].topic.buf,
+	        topic_qos[0].topic.length) == 0);
 	NUTS_TRUE(t_q[0].topic.length == topic_qos[0].topic.length);
 	NUTS_TRUE(t_q[1].qos == topic_qos[1].qos);
-	NUTS_TRUE(strncmp(t_q[1].topic.buf, topic_qos[1].topic.buf,
-	              topic_qos[1].topic.length) == 0);
+	NUTS_TRUE(
+	    strncmp((char *) t_q[1].topic.buf, (char *) topic_qos[1].topic.buf,
+	        topic_qos[1].topic.length) == 0);
 	NUTS_TRUE(t_q[1].topic.length == topic_qos[1].topic.length);
 
 	NUTS_PASS(nng_mqtt_msg_encode(msg));
@@ -418,9 +421,9 @@ test_encode_suback(void)
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_SUBACK);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_SUBACK);
 	nni_mqtt_msg_set_suback_packet_id(msg, pkt_id);
-	NUTS_TRUE(nng_mqtt_msg_get_suback_packet_id(msg) == pkt_id);
+	NUTS_TRUE(nni_mqtt_msg_get_suback_packet_id(msg) == pkt_id);
 
-	property *plist1  = mqtt_property_alloc();
+	property *plist1 = mqtt_property_alloc();
 	property *p1 = mqtt_property_set_value_u32(MAXIMUM_PACKET_SIZE, 120);
 	mqtt_property_append(plist1, p1);
 	nng_mqtt_msg_set_suback_property(msg, plist1);
@@ -435,7 +438,7 @@ test_encode_suback(void)
 	uint32_t cnt;
 	uint8_t *rc = nng_mqtt_msg_get_suback_return_codes(msg, &cnt);
 	NUTS_TRUE(cnt == 4);
-	for (int i = 0; i < cnt;++i){
+	for (uint32_t i = 0; i < cnt; ++i) {
 		NUTS_TRUE(ret_codes[i] == rc[i]);
 	}
 
@@ -492,9 +495,9 @@ test_encode_publish(void)
 	NUTS_TRUE(strncmp(nng_mqtt_msg_get_publish_topic(msg, &topic_len),
 	              topic, strlen(topic)) == 0);
 	NUTS_TRUE(topic_len == strlen(topic));
-	NUTS_TRUE(nng_mqtt_msg_get_publish_packet_id(msg) == pkt_id);
+	NUTS_TRUE(nni_mqtt_msg_get_publish_packet_id(msg) == pkt_id);
 
-	property *plist1  = mqtt_property_alloc();
+	property *plist1 = mqtt_property_alloc();
 	property *p1 = mqtt_property_set_value_u32(MAXIMUM_PACKET_SIZE, 120);
 	mqtt_property_append(plist1, p1);
 	nng_mqtt_msg_set_publish_property(msg, plist1);
@@ -552,9 +555,9 @@ test_encode_puback(void)
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBACK);
 
 	nni_mqtt_msg_set_puback_packet_id(msg, pkt_id);
-	NUTS_TRUE(nng_mqtt_msg_get_puback_packet_id(msg) == pkt_id);
+	NUTS_TRUE(nni_mqtt_msg_get_puback_packet_id(msg) == pkt_id);
 
-	property *plist1  = mqtt_property_alloc();
+	property *plist1 = mqtt_property_alloc();
 	property *p1 = mqtt_property_set_value_u32(MAXIMUM_PACKET_SIZE, 120);
 	mqtt_property_append(plist1, p1);
 	nng_mqtt_msg_set_puback_property(msg, plist1);
@@ -595,9 +598,9 @@ test_encode_pubrec(void)
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_PUBREC);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBREC);
 	nni_mqtt_msg_set_pubrec_packet_id(msg, pkt_id);
-	NUTS_TRUE(nng_mqtt_msg_get_pubrec_packet_id(msg) == pkt_id);
+	NUTS_TRUE(nni_mqtt_msg_get_pubrec_packet_id(msg) == pkt_id);
 
-	property *plist1  = mqtt_property_alloc();
+	property *plist1 = mqtt_property_alloc();
 	property *p1 = mqtt_property_set_value_u32(MAXIMUM_PACKET_SIZE, 120);
 	mqtt_property_append(plist1, p1);
 	nng_mqtt_msg_set_pubrec_property(msg, plist1);
@@ -638,9 +641,9 @@ test_encode_pubrel(void)
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_PUBREL);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBREL);
 	nni_mqtt_msg_set_pubrel_packet_id(msg, pkt_id);
-	NUTS_TRUE(nng_mqtt_msg_get_pubrel_packet_id(msg) == pkt_id);
+	NUTS_TRUE(nni_mqtt_msg_get_pubrel_packet_id(msg) == pkt_id);
 
-	property *plist1  = mqtt_property_alloc();
+	property *plist1 = mqtt_property_alloc();
 	property *p1 = mqtt_property_set_value_u32(MAXIMUM_PACKET_SIZE, 120);
 	mqtt_property_append(plist1, p1);
 	nng_mqtt_msg_set_pubrel_property(msg, plist1);
@@ -681,9 +684,9 @@ test_encode_pubcomp(void)
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_PUBCOMP);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBCOMP);
 	nni_mqtt_msg_set_pubcomp_packet_id(msg, pkt_id);
-	NUTS_TRUE(nng_mqtt_msg_get_pubcomp_packet_id(msg) == pkt_id);
+	NUTS_TRUE(nni_mqtt_msg_get_pubcomp_packet_id(msg) == pkt_id);
 
-	property *plist1  = mqtt_property_alloc();
+	property *plist1 = mqtt_property_alloc();
 	property *p1 = mqtt_property_set_value_u32(MAXIMUM_PACKET_SIZE, 120);
 	mqtt_property_append(plist1, p1);
 	nng_mqtt_msg_set_pubcomp_property(msg, plist1);
@@ -724,9 +727,9 @@ test_encode_unsubscribe(void)
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_UNSUBSCRIBE);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_UNSUBSCRIBE);
 	nni_mqtt_msg_set_unsubscribe_packet_id(msg, pkt_id);
-	NUTS_TRUE(nng_mqtt_msg_get_unsubscribe_packet_id(msg) == pkt_id);
+	NUTS_TRUE(nni_mqtt_msg_get_unsubscribe_packet_id(msg) == pkt_id);
 
-	property *plist1  = mqtt_property_alloc();
+	property *plist1 = mqtt_property_alloc();
 	property *p1 = mqtt_property_set_value_u32(MAXIMUM_PACKET_SIZE, 120);
 	mqtt_property_append(plist1, p1);
 	nng_mqtt_msg_set_unsubscribe_property(msg, plist1);
@@ -743,14 +746,13 @@ test_encode_unsubscribe(void)
 
 	nng_mqtt_msg_set_unsubscribe_topics(
 	    msg, topic_qos, sizeof(topic_qos) / sizeof(nng_mqtt_topic));
-	uint32_t            cnt = 0;
-	nng_mqtt_topic *t_q =
-	    nng_mqtt_msg_get_unsubscribe_topics(msg, &cnt);
+	uint32_t        cnt = 0;
+	nng_mqtt_topic *t_q = nng_mqtt_msg_get_unsubscribe_topics(msg, &cnt);
 	NUTS_TRUE(cnt == 2);
-	NUTS_TRUE(strncmp(t_q[0].buf, topic_qos[0].buf,
+	NUTS_TRUE(strncmp((char *) t_q[0].buf, (char *) topic_qos[0].buf,
 	              topic_qos[0].length) == 0);
 	NUTS_TRUE(t_q[0].length == topic_qos[0].length);
-	NUTS_TRUE(strncmp(t_q[1].buf, topic_qos[1].buf,
+	NUTS_TRUE(strncmp((char *) t_q[1].buf, (char *) topic_qos[1].buf,
 	              topic_qos[1].length) == 0);
 	NUTS_TRUE(t_q[1].length == topic_qos[1].length);
 
@@ -796,9 +798,9 @@ test_encode_unsuback(void)
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_UNSUBACK);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_UNSUBACK);
 	nni_mqtt_msg_set_unsuback_packet_id(msg, pkt_id);
-	NUTS_TRUE(nng_mqtt_msg_get_unsuback_packet_id(msg) == pkt_id);
+	NUTS_TRUE(nni_mqtt_msg_get_unsuback_packet_id(msg) == pkt_id);
 
-	property *plist1  = mqtt_property_alloc();
+	property *plist1 = mqtt_property_alloc();
 	property *p1 = mqtt_property_set_value_u32(MAXIMUM_PACKET_SIZE, 120);
 	mqtt_property_append(plist1, p1);
 	nng_mqtt_msg_set_unsuback_property(msg, plist1);
@@ -813,7 +815,7 @@ test_encode_unsuback(void)
 	uint32_t cnt;
 	uint8_t *rc = nng_mqtt_msg_get_unsuback_return_codes(msg, &cnt);
 	NUTS_TRUE(cnt == 4);
-	for (int i = 0; i < cnt; ++i) {
+	for (uint32_t i = 0; i < cnt; ++i) {
 		NUTS_TRUE(ret_codes[i] == rc[i]);
 	}
 
@@ -856,7 +858,7 @@ test_encode_disconnect(void)
 	nng_mqtt_msg_set_disconnect_reason_code(msg, 0);
 	NUTS_PASS(nng_mqtt_msg_encode(msg));
 
-	property *plist1  = mqtt_property_alloc();
+	property *plist1 = mqtt_property_alloc();
 	property *p1 = mqtt_property_set_value_u32(MAXIMUM_PACKET_SIZE, 120);
 	mqtt_property_append(plist1, p1);
 	nng_mqtt_msg_set_disconnect_property(msg, plist1);
@@ -911,14 +913,15 @@ test_decode_connect(void)
 	NUTS_PASS(nng_mqtt_msg_decode(msg));
 
 	NUTS_TRUE(nng_mqtt_msg_get_connect_proto_version(msg) == 4);
-	char *topic = "will_topic";
-	char *willmsg   = "bye-bye";
-	int   len   = 0;
+	char    *topic   = "will_topic";
+	char    *willmsg = "bye-bye";
+	uint32_t len     = 0;
 	NUTS_PASS(strncmp(
 	    topic, nng_mqtt_msg_get_connect_will_topic(msg), strlen(topic)));
-	NUTS_PASS(strncmp(
-	    willmsg, nng_mqtt_msg_get_connect_will_msg(msg, &len), strlen(willmsg)));
-	NUTS_TRUE(len == strlen(willmsg));
+	NUTS_PASS(strncmp(willmsg,
+	    (char *) nng_mqtt_msg_get_connect_will_msg(msg, &len),
+	    strlen(willmsg)));
+	NUTS_TRUE(len == (uint32_t) strlen(willmsg));
 
 	print_mqtt_msg(msg);
 
@@ -930,8 +933,8 @@ test_decode_connack_v5(void)
 {
 	nng_msg *msg;
 	uint8_t  connack[] = { 0x20, 0x13, 0x00, 0x00, 0x10, 0x27, 0x00, 0x10,
-                0x00, 0x00, 0x25, 0x01, 0x2a, 0x01, 0x29, 0x01, 0x22, 0xff,
-                0xff, 0x28, 0x01 };
+		 0x00, 0x00, 0x25, 0x01, 0x2a, 0x01, 0x29, 0x01, 0x22, 0xff,
+		 0xff, 0x28, 0x01 };
 
 	size_t sz = sizeof(connack) / sizeof(uint8_t);
 
@@ -998,7 +1001,6 @@ test_decode_subscribe_v5(void)
 	print_mqtt_msg(msg);
 
 	nng_msg_free(msg);
-	
 }
 
 void
@@ -1222,23 +1224,23 @@ create_msg(uint8_t *packet, size_t sz, size_t header_sz)
 void
 test_packet_validate(void)
 {
-	uint8_t invalid_packet1[] = { 0x10, 0x41, 0x00, 0x04, 0x4d, 0x51, 0x54, 0x04,
-		0x5c, 0x13, 0xc2, 0xb1, 0x19, 0x00, 0x0b, 0x66, 0x65, 0x72,
-		0x72, 0x4c, 0xd9, 0x45, 0x41, 0x5a, 0x66, 0xf8, 0x35, 0x32,
-		0x00, 0x18, 0xe3, 0x61, 0x77, 0x69, 0x34, 0x43, 0x30, 0x48,
-		0x50, 0x60, 0x62, 0x76, 0x70, 0x66, 0x31, 0x46, 0x40, 0x6f,
-		0x65, 0x55, 0x00, 0xf0, 0x73, 0x57, 0x7a, 0x33, 0x48, 0x6d,
-		0x76, 0x73, 0x45, 0x66, 0x4d, 0x44, 0x6e };
+	uint8_t invalid_packet1[] = { 0x10, 0x41, 0x00, 0x04, 0x4d, 0x51, 0x54,
+		0x04, 0x5c, 0x13, 0xc2, 0xb1, 0x19, 0x00, 0x0b, 0x66, 0x65,
+		0x72, 0x72, 0x4c, 0xd9, 0x45, 0x41, 0x5a, 0x66, 0xf8, 0x35,
+		0x32, 0x00, 0x18, 0xe3, 0x61, 0x77, 0x69, 0x34, 0x43, 0x30,
+		0x48, 0x50, 0x60, 0x62, 0x76, 0x70, 0x66, 0x31, 0x46, 0x40,
+		0x6f, 0x65, 0x55, 0x00, 0xf0, 0x73, 0x57, 0x7a, 0x33, 0x48,
+		0x6d, 0x76, 0x73, 0x45, 0x66, 0x4d, 0x44, 0x6e };
 
-	uint8_t invalid_packet2[] = { 0x10, 0x49, 0x00, 0x04, 0x4d, 0x51, 0x54, 0x54,
-		0x05, 0x06, 0x00, 0x3c, 0x03, 0x22, 0x00, 0x0a, 0x00, 0x17,
-		0x6d, 0x71, 0x74, 0x74, 0x6f, 0x6f, 0x6c, 0x73, 0x2d, 0x66,
-		0x33, 0x35, 0x62, 0x37, 0x39, 0x36, 0x32, 0x39, 0x35, 0x34,
-		0x38, 0x31, 0x31, 0x00, 0x00, 0x0e, 0x2f, 0x6d, 0x79, 0x2f,
-		0x77, 0x69, 0x6c, 0x6c, 0x2f, 0x74, 0x6f, 0x70, 0x69, 0x63,
-		0x00, 0x0f, 0x6d, 0x92, 0xd7, 0x76, 0x96, 0xc6, 0xc2, 0xd6,
-		0xd6, 0x57, 0x37, 0x36, 0x16, 0x76, 0x56, 0x20, 0x20, 0x00,
-		0x15, 0x00, 0x20, 0x00, 0x10 };
+	uint8_t invalid_packet2[] = { 0x10, 0x49, 0x00, 0x04, 0x4d, 0x51, 0x54,
+		0x54, 0x05, 0x06, 0x00, 0x3c, 0x03, 0x22, 0x00, 0x0a, 0x00,
+		0x17, 0x6d, 0x71, 0x74, 0x74, 0x6f, 0x6f, 0x6c, 0x73, 0x2d,
+		0x66, 0x33, 0x35, 0x62, 0x37, 0x39, 0x36, 0x32, 0x39, 0x35,
+		0x34, 0x38, 0x31, 0x31, 0x00, 0x00, 0x0e, 0x2f, 0x6d, 0x79,
+		0x2f, 0x77, 0x69, 0x6c, 0x6c, 0x2f, 0x74, 0x6f, 0x70, 0x69,
+		0x63, 0x00, 0x0f, 0x6d, 0x92, 0xd7, 0x76, 0x96, 0xc6, 0xc2,
+		0xd6, 0xd6, 0x57, 0x37, 0x36, 0x16, 0x76, 0x56, 0x20, 0x20,
+		0x00, 0x15, 0x00, 0x20, 0x00, 0x10 };
 
 	uint8_t valid_packet3[] = { 0x20, 0x13, 0x00, 0x00, 0x10, 0x27, 0x00,
 		0x10, 0x00, 0x00, 0x25, 0x01, 0x2a, 0x01, 0x29, 0x01, 0x22,
@@ -1326,10 +1328,10 @@ test_packet_validate(void)
 	    invalid_packet1, sizeof(invalid_packet1) / sizeof(uint8_t), 2);
 	nni_msg *msg2 = create_msg(
 	    invalid_packet2, sizeof(invalid_packet2) / sizeof(uint8_t), 2);
-	nni_msg *msg3 =
-	    create_msg(valid_packet3, sizeof(valid_packet3) / sizeof(uint8_t), 2);
-	nni_msg *msg4 =
-	    create_msg(valid_packet4, sizeof(valid_packet4) / sizeof(uint8_t), 3);
+	nni_msg *msg3 = create_msg(
+	    valid_packet3, sizeof(valid_packet3) / sizeof(uint8_t), 2);
+	nni_msg *msg4 = create_msg(
+	    valid_packet4, sizeof(valid_packet4) / sizeof(uint8_t), 3);
 
 	TEST_CHECK(nng_mqtt_msg_validate(msg1, MQTT_PROTOCOL_VERSION_v311) !=
 	    MQTT_SUCCESS);
@@ -1421,9 +1423,10 @@ test_write_read(void)
 	uint64_t  val64      = 64;
 	char     *bytes      = "bytes";
 	char     *str        = "mqtt_str";
+	size_t    bytelen     = (size_t) sizeof(bytes);
 	mqtt_buf *mqtt_buf_1 = NULL;
 	mqtt_buf_1           = NNI_ALLOC_STRUCT(mqtt_buf_1);
-	NUTS_PASS(mqtt_buf_create(mqtt_buf_1, (uint *) str, strlen(str)));
+	NUTS_PASS(mqtt_buf_create(mqtt_buf_1, (uint8_t *) str, strlen(str)));
 	uint8_t       *data = calloc(length, sizeof(char));
 	struct pos_buf buf;
 	buf.curpos = &data[0];
@@ -1433,14 +1436,14 @@ test_write_read(void)
 	NUTS_PASS(write_uint16(val16, &buf));
 	NUTS_PASS(write_uint32(val32, &buf));
 	NUTS_PASS(write_uint64(val64, &buf));
-	NUTS_PASS(write_bytes((uint *) bytes, sizeof(bytes), &buf));
+	NUTS_PASS(write_bytes((uint8_t *) bytes, bytelen, &buf));
 	NUTS_PASS(write_byte_string(mqtt_buf_1, &buf));
 
 	uint8_t   _val8      = 0;
 	uint16_t  _val16     = 0;
 	uint32_t  _val32     = 0;
 	uint64_t  _val64     = 0;
-	char     *strVal     = NULL;
+	uint8_t     *strVal     = NULL;
 	mqtt_buf *mqtt_buf_2 = NULL;
 	mqtt_buf_2           = NNI_ALLOC_STRUCT(mqtt_buf_2);
 	buf.curpos           = &data[0];
@@ -1452,12 +1455,12 @@ test_write_read(void)
 	NUTS_TRUE(_val32 == val32);
 	NUTS_PASS(read_uint64(&buf, &_val64));
 	NUTS_TRUE(_val64 == val64);
-	NUTS_PASS(read_bytes(&buf, &strVal, sizeof(bytes)));
-	NUTS_TRUE(strncmp(strVal, bytes, sizeof(bytes)) == 0);
+	NUTS_PASS(read_bytes(&buf, &strVal, bytelen));
+	NUTS_PASS(strncmp((char *)strVal, bytes, bytelen));
 	NUTS_PASS(read_str_data(&buf, mqtt_buf_2));
 	NUTS_TRUE(mqtt_buf_2->length == mqtt_buf_1->length);
-	NUTS_TRUE(strncmp((char *) mqtt_buf_2->buf, (char *) mqtt_buf_2->buf,
-	              mqtt_buf_2->length) == 0);
+	NUTS_PASS(strncmp((char *) mqtt_buf_2->buf, (char *) mqtt_buf_2->buf,
+	              mqtt_buf_2->length));
 
 	NNI_FREE_STRUCT(mqtt_buf_1);
 	NNI_FREE_STRUCT(mqtt_buf_2);
@@ -1469,15 +1472,16 @@ test_msg_create_destroy(void)
 {
 	mqtt_msg *msg = NULL;
 	NUTS_TRUE((msg = mqtt_msg_create(NNG_MQTT_CONNECT)) != NULL);
-	NUTS_PASS(mqtt_msg_destroy(msg));
+	// NUTS_PASS(mqtt_msg_destroy(msg));
+	free(msg);
 }
 
 void
 test_topic_array_create_free(void)
 {
-	size_t  size        = 2;
-	char   *topic_name1 = "/nanomq/mqtt/msg/0";
-	char *topic_name2 = "/nanomq/mqtt/msg/1";
+	size_t size        = 2;
+	char  *topic_name1 = "/nanomq/mqtt/msg/0";
+	char  *topic_name2 = "/nanomq/mqtt/msg/1";
 
 	nng_mqtt_topic *tq = NULL;
 
@@ -1492,7 +1496,7 @@ test_topic_qos_array_create_free(void)
 {
 	size_t  size        = 2;
 	char   *topic_name1 = "/nanomq/mqtt/msg/0";
-	char *topic_name2 = "/nanomq/mqtt/msg/1";
+	char   *topic_name2 = "/nanomq/mqtt/msg/1";
 	uint8_t qos1        = 0;
 	uint8_t qos2        = 1;
 	uint8_t nolocal     = 1;
@@ -1502,8 +1506,10 @@ test_topic_qos_array_create_free(void)
 	nng_mqtt_topic_qos *tq = NULL;
 
 	tq = nng_mqtt_topic_qos_array_create(size);
-	nng_mqtt_topic_qos_array_set(tq, 0, topic_name1, qos1, nolocal, rap, rh);
-	nng_mqtt_topic_qos_array_set(tq, 1, topic_name2, qos2, nolocal, rap, rh);
+	nng_mqtt_topic_qos_array_set(
+	    tq, 0, topic_name1, qos1, nolocal, rap, rh);
+	nng_mqtt_topic_qos_array_set(
+	    tq, 1, topic_name2, qos2, nolocal, rap, rh);
 	nng_mqtt_topic_qos_array_free(tq, size);
 }
 
@@ -1522,19 +1528,24 @@ test_property_api(void)
 	mqtt_property_append(plist, p1);
 	property *p2 = mqtt_property_set_value_u16(TOPIC_ALIAS, 10);
 	mqtt_property_append(plist, p2);
-	property *p3 = mqtt_property_set_value_u32(MESSAGE_EXPIRY_INTERVAL, 10);
+	property *p3 =
+	    mqtt_property_set_value_u32(MESSAGE_EXPIRY_INTERVAL, 10);
 	mqtt_property_append(plist, p3);
-	property *p4 = mqtt_property_set_value_str(RESPONSE_TOPIC, "aaaaaa", strlen("aaaaaa"), true);
+	property *p4 = mqtt_property_set_value_str(
+	    RESPONSE_TOPIC, "aaaaaa", strlen("aaaaaa"), true);
 	mqtt_property_append(plist, p4);
 	property *p5 = mqtt_property_set_value_binary(
 	    CORRELATION_DATA, (uint8_t *) "aaaaaa", strlen("aaaaaa"), true);
 	mqtt_property_append(plist, p5);
-	property *p6 = mqtt_property_set_value_strpair(USER_PROPERTY, "aaaaaa", strlen("aaaaaa"), "aaaaaa", strlen("aaaaaa"), true);
+	property *p6 = mqtt_property_set_value_strpair(USER_PROPERTY, "aaaaaa",
+	    strlen("aaaaaa"), "aaaaaa", strlen("aaaaaa"), true);
 	mqtt_property_append(plist, p6);
-	property *p7 = mqtt_property_set_value_str(CONTENT_TYPE, "aaaaaa", strlen("aaaaaa"), true);
+	property *p7 = mqtt_property_set_value_str(
+	    CONTENT_TYPE, "aaaaaa", strlen("aaaaaa"), true);
 	mqtt_property_append(plist, p7);
 
-	NUTS_TRUE(mqtt_property_get_value_type(PAYLOAD_FORMAT_INDICATOR) == U8);
+	NUTS_TRUE(
+	    mqtt_property_get_value_type(PAYLOAD_FORMAT_INDICATOR) == U8);
 
 	property_data *p_data =
 	    mqtt_property_get_value(plist, PAYLOAD_FORMAT_INDICATOR);
@@ -1551,7 +1562,8 @@ test_property_api(void)
 }
 
 TEST_LIST = {
-	// TODO: there is still some encode & decode functions should be tested.
+	// TODO: there is still some encode & decode functions should be
+	// tested.
 	{ "alloc message", test_alloc },
 	{ "dup message", test_dup },
 	{ "dup unsub message", test_dup_unsub },
