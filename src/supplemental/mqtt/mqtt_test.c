@@ -2,6 +2,7 @@
 
 #include "nng/nng.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
+#include "nng/mqtt/mqtt_client.h"
 
 #include "mqtt_msg.h"
 #include "nuts.h"
@@ -153,6 +154,9 @@ test_dup_publish(void)
 
 	NUTS_PASS(nng_mqtt_msg_encode(msg));
 
+	nng_mqtt_msg_set_publish_dup(msg, true);
+	NUTS_TRUE(nng_mqtt_msg_get_publish_dup(msg));
+
 	nng_msg *msg2;
 	NUTS_PASS(nng_msg_dup(&msg2, msg));
 
@@ -182,11 +186,6 @@ test_encode_connect(void)
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_CONNECT);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNECT);
 
-	nng_mqtt_msg_set_connect_client_id(msg, client_id);
-
-	NUTS_TRUE(strncmp(nng_mqtt_msg_get_connect_client_id(msg), client_id,
-	              strlen(client_id)) == 0);
-
 	char will_topic[] = "/nanomq/will_msg";
 	nng_mqtt_msg_set_connect_will_topic(msg, will_topic);
 
@@ -196,10 +195,22 @@ test_encode_connect(void)
 	char user[]   = "nanomq";
 	char passwd[] = "nanomq";
 
+	nng_mqtt_msg_set_connect_client_id(msg, client_id);
+	nng_mqtt_msg_set_connect_will_retain(msg, true);
+	nng_mqtt_msg_set_connect_will_qos(msg, 2);
 	nng_mqtt_msg_set_connect_user_name(msg, user);
 	nng_mqtt_msg_set_connect_password(msg, passwd);
 	nng_mqtt_msg_set_connect_clean_session(msg, true);
 	nng_mqtt_msg_set_connect_keep_alive(msg, 60);
+
+	NUTS_TRUE(strncmp(nng_mqtt_msg_get_connect_client_id(msg), client_id,
+	              strlen(client_id)) == 0);
+	NUTS_TRUE(nng_mqtt_msg_get_connect_will_retain(msg) == true);
+	NUTS_TRUE(nng_mqtt_msg_get_connect_will_qos(msg) == 2);
+	NUTS_TRUE(strncmp(nng_mqtt_msg_get_connect_user_name(msg), user, strlen(user)) == 0); 
+	NUTS_TRUE(strncmp(nng_mqtt_msg_get_connect_password(msg), passwd, strlen(passwd)) == 0);
+	NUTS_TRUE(nng_mqtt_msg_get_connect_clean_session(msg) == true);
+	NUTS_TRUE(nng_mqtt_msg_get_connect_keep_alive(msg) == 60);
 
 	cparam = nng_get_conn_param_from_msg(msg);
 
@@ -291,8 +302,10 @@ test_encode_connack(void)
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNACK);
 
 	nng_mqtt_msg_set_connack_flags(msg, 1);
-
 	nng_mqtt_msg_set_connack_return_code(msg, 0);
+
+	NUTS_TRUE(nng_mqtt_msg_get_connack_flags(msg) == 1);
+	NUTS_TRUE(nng_mqtt_msg_get_connack_return_code(msg) == 0);
 
 	NUTS_PASS(nng_mqtt_msg_encode(msg));
 
@@ -402,6 +415,7 @@ void
 test_encode_publish(void)
 {
 	nng_msg *msg;
+	uint16_t pkt_id = 6;
 
 	NUTS_PASS(nng_mqtt_msg_alloc(&msg, 0));
 
@@ -411,8 +425,19 @@ test_encode_publish(void)
 	nng_mqtt_msg_set_publish_qos(msg, 2);
 	nng_mqtt_msg_set_publish_retain(msg, true);
 
+	NUTS_TRUE(nng_mqtt_msg_get_publish_qos(msg) == 2);
+	NUTS_TRUE(nng_mqtt_msg_get_publish_retain(msg) == true);
+
 	char *topic = "/nanomq/msg/18234";
 	nng_mqtt_msg_set_publish_topic(msg, topic);
+	nng_mqtt_msg_set_publish_topic_len(msg, strlen(topic));
+	nng_mqtt_msg_set_publish_packet_id(msg, pkt_id);
+
+	uint32_t topic_len = 0;
+	NUTS_TRUE(strncmp(nng_mqtt_msg_get_publish_topic(msg, &topic_len),
+	              topic, strlen(topic)) == 0);
+	NUTS_TRUE(topic_len == strlen(topic));
+	NUTS_TRUE(nng_mqtt_msg_get_publish_packet_id(msg) == pkt_id);
 
 	char *payload = "hello";
 	nng_mqtt_msg_set_publish_payload(
@@ -456,11 +481,15 @@ void
 test_encode_puback(void)
 {
 	nng_msg *msg;
+	uint16_t pkt_id = 2;
 
 	NUTS_PASS(nng_mqtt_msg_alloc(&msg, 0));
 
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_PUBACK);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBACK);
+
+	nng_mqtt_msg_set_puback_packet_id(msg, pkt_id);
+	NUTS_TRUE(nng_mqtt_msg_get_puback_packet_id(msg) == pkt_id);
 
 	NUTS_PASS(nng_mqtt_msg_encode(msg));
 
@@ -681,6 +710,7 @@ test_encode_disconnect(void)
 
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_DISCONNECT);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_DISCONNECT);
+	nng_mqtt_msg_set_disconnect_reason_code(msg, 0);
 	NUTS_PASS(nng_mqtt_msg_encode(msg));
 
 	print_mqtt_msg(msg);
@@ -1140,34 +1170,34 @@ test_packet_validate(void)
 	nni_msg *msg4 =
 	    create_msg(valid_packet4, sizeof(valid_packet4) / sizeof(uint8_t), 3);
 
-	TEST_CHECK(nni_mqtt_msg_validate(msg1, MQTT_PROTOCOL_VERSION_v311) !=
+	TEST_CHECK(nng_mqtt_msg_validate(msg1, MQTT_PROTOCOL_VERSION_v311) !=
 	    MQTT_SUCCESS);
 
-	TEST_CHECK(nni_mqtt_msg_validate(msg1, MQTT_PROTOCOL_VERSION_v5) !=
+	TEST_CHECK(nng_mqtt_msg_validate(msg1, MQTT_PROTOCOL_VERSION_v5) !=
 	    MQTT_SUCCESS);
 
-	TEST_CHECK(nni_mqtt_msg_validate(msg2, MQTT_PROTOCOL_VERSION_v311) !=
+	TEST_CHECK(nng_mqtt_msg_validate(msg2, MQTT_PROTOCOL_VERSION_v311) !=
 	    MQTT_SUCCESS);
 
-	TEST_CHECK(nni_mqtt_msg_validate(msg2, MQTT_PROTOCOL_VERSION_v5) ==
+	TEST_CHECK(nng_mqtt_msg_validate(msg2, MQTT_PROTOCOL_VERSION_v5) ==
 	    MQTT_SUCCESS);
 
-	TEST_CHECK(nni_mqtt_msg_validate(msg3, MQTT_PROTOCOL_VERSION_v311) ==
+	TEST_CHECK(nng_mqtt_msg_validate(msg3, MQTT_PROTOCOL_VERSION_v311) ==
 	    MQTT_SUCCESS);
 
-	TEST_CHECK(nni_mqtt_msg_validate(msg3, MQTT_PROTOCOL_VERSION_v5) ==
+	TEST_CHECK(nng_mqtt_msg_validate(msg3, MQTT_PROTOCOL_VERSION_v5) ==
 	    MQTT_SUCCESS);
 
-	TEST_CHECK(nni_mqtt_msg_validate(msg4, MQTT_PROTOCOL_VERSION_v311) ==
+	TEST_CHECK(nng_mqtt_msg_validate(msg4, MQTT_PROTOCOL_VERSION_v311) ==
 	    MQTT_SUCCESS);
 
-	TEST_CHECK(nni_mqtt_msg_validate(msg4, MQTT_PROTOCOL_VERSION_v5) ==
+	TEST_CHECK(nng_mqtt_msg_validate(msg4, MQTT_PROTOCOL_VERSION_v5) ==
 	    MQTT_SUCCESS);
 
-	nni_msg_free(msg1);
-	nni_msg_free(msg2);
-	nni_msg_free(msg3);
-	nni_msg_free(msg4);
+	nng_msg_free(msg1);
+	nng_msg_free(msg2);
+	nng_msg_free(msg3);
+	nng_msg_free(msg4);
 }
 
 void
