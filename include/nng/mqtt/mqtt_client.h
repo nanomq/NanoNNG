@@ -483,6 +483,8 @@ NNG_DECL void      nng_mqtt_msg_set_unsubscribe_property(nng_msg *, property *);
 NNG_DECL void nng_mqtt_msg_set_unsuback_return_codes(
     nng_msg *, uint8_t *, uint32_t);
 NNG_DECL uint8_t *nng_mqtt_msg_get_unsuback_return_codes(nng_msg *, uint32_t *);
+NNG_DECL property *nng_mqtt_msg_get_unsuback_property(nng_msg *);
+NNG_DECL void      nng_mqtt_msg_set_unsuback_property(nng_msg *, property *);
 
 NNG_DECL property   *nng_mqtt_msg_get_disconnect_property(nng_msg *);
 NNG_DECL void        nng_mqtt_msg_set_disconnect_property(nng_msg *, property *);
