@@ -150,8 +150,8 @@ nni_quic_dialer_fini(void *arg)
 static void
 quic_dialer_strm_cancel(nni_aio *aio, void *arg, int rv)
 {
-	nni_tcp_dialer *d = arg;
-	nni_tcp_conn *  c;
+	nni_quic_dialer *d = arg;
+	nni_quic_conn *  c;
 
 	nni_mtx_lock(&d->mtx);
 	if ((!nni_aio_list_active(aio)) ||
@@ -171,8 +171,8 @@ quic_dialer_strm_cancel(nni_aio *aio, void *arg, int rv)
 static void
 quic_dialer_cancel(nni_aio *aio, void *arg, int rv)
 {
-	nni_tcp_dialer *d = arg;
-	nni_tcp_conn *  c;
+	nni_quic_dialer *d = arg;
+	nni_quic_conn *  c;
 
 	nni_mtx_lock(&d->mtx);
 	if ((!nni_aio_list_active(aio)) ||
@@ -213,6 +213,7 @@ nni_quic_dial(void *arg, const char *url, nni_aio *aio)
 	nni_quic_dialer *d = arg;
 	nni_quic_conn *  c;
 	bool             ismain = false;
+	int              rv;
 
 	if (nni_aio_begin(aio) != 0) {
 		return;
@@ -223,7 +224,7 @@ nni_quic_dial(void *arg, const char *url, nni_aio *aio)
 	// Create a connection whenever dial. So it's okey. right?
 	if ((rv = nni_msquic_quic_alloc(&c, d)) != 0) {
 		nni_aio_finish_error(aio, rv);
-		nni_msquic_quic_dialer_rele(d);
+		// nni_msquic_quic_dialer_rele(d);
 		return;
 	}
 
@@ -251,6 +252,8 @@ nni_quic_dial(void *arg, const char *url, nni_aio *aio)
 	return;
 error:
 
+	nni_mtx_unlock(&d->mtx);
+	return;
 }
 
 // Close the pending connection.
@@ -301,6 +304,20 @@ quic_send(void *arg, nni_aio *aio)
 	if (nni_aio_begin(aio) != 0) {
 		return;
 	}
+
+	if ((rv = nni_aio_schedule(aio, quic_cancel, c)) != 0) {
+		nni_mtx_unlock(&c->mtx);
+		nni_aio_finish_error(aio, rv);
+		return;
+	}
+	nni_aio_list_append(&c->writeq, aio);
+
+	if (nni_list_first(&c->writeq) == aio) {
+		quic_dowrite(c);
+		// In msquic. Write can be done at any time.
+	}
+	nni_mtx_unlock(&c->mtx);
+
 }
 
 static int
@@ -378,20 +395,7 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		log_info("[conn][%p] is Connected. Resumed Session %d", qconn,
 		    Event->CONNECTED.SessionResumed);
 
-		nng_aio_finish(d->qconaio);
-
-		// only create main stream/pipe it there is none.
-		if (qsock->pipe == NULL) {
-			// First time to establish QUIC pipe
-			if ((qsock->pipe = nng_alloc(pipe_ops->pipe_size)) == NULL) {
-				log_error("Failed in allocating pipe.");
-				break;
-			}
-			mqtt_sock = nni_sock_proto_data(qsock->sock);
-			pipe_ops->pipe_init(
-			    qsock->pipe, (nni_pipe *) qsock, mqtt_sock);
-		}
-		pipe_ops->pipe_start(qsock->pipe);
+		nni_aio_finish(d->qconaio, 0, 0);
 		break;
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_TRANSPORT:
 		// The connection has been shut down by the transport.
@@ -425,40 +429,28 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		    qconn,
 		    (unsigned long long)
 		        Event->SHUTDOWN_INITIATED_BY_PEER.ErrorCode);
-		if (qsock->reason_code == 0)
-			qsock->reason_code = SERVER_SHUTTING_DOWN;
+		if (d->reason_code == 0)
+			d->reason_code = SERVER_SHUTTING_DOWN;
 		break;
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE:
 		// The connection has completed the shutdown process and is
 		// ready to be safely cleaned up.
 		log_info("[conn][%p] QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE: All done\n\n", qconn);
-		nni_mtx_lock(&qsock->mtx);
+		nni_mtx_lock(&d->mtx);
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
 			// explicitly shutdon on protocol layer.
 			MsQuic->ConnectionClose(qconn);
 		}
 
-		// Close and finite nng pipe ONCE disconnect
-		if (qsock->pipe) {
-			log_warn("Quic reconnect failed or disconnected!");
-			pipe_ops->pipe_stop(qsock->pipe);
-			pipe_ops->pipe_close(qsock->pipe);
-			pipe_ops->pipe_fini(qsock->pipe);
-			qsock->pipe = NULL;
-			// No bridge_node if NOT bridge mode
-			if (bridge_node && (bridge_node->hybrid || qsock->closed)) {
-				nni_mtx_unlock(&qsock->mtx);
-				break;
-			}
-		}
+		// TODO Decrement refcnt of all quic streams in this dialer
 
-		nni_mtx_unlock(&qsock->mtx);
-		if (qsock->closed == true) {
+		nni_mtx_unlock(&d->mtx);
+		/*
+		if (d->closed == true) {
 			nni_sock_rele(qsock->sock);
 		} else {
 			nni_aio_finish(&qsock->close_aio, 0, 0);
 		}
-		/*
 		if (qstrm->rtt0_enable) {
 			// No rticket
 			log_warn("reconnect failed due to no resumption ticket.\n");
@@ -473,12 +465,12 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		// was received from the server.
 		log_warn("[conn][%p] Resumption ticket received (%u bytes):\n",
 		    Connection, Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength);
-		if (qsock->enable_0rtt == false) {
+		if (d->enable_0rtt == false) {
 			log_warn("[conn][%p] Ignore ticket due to turn off the 0RTT");
 			break;
 		}
-		qsock->rticket_sz = Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength;
-		memcpy(qsock->rticket, Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicket,
+		d->rticket_sz = Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength;
+		memcpy(d->rticket, Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicket,
 		        Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength);
 		break;
 	case QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED:
@@ -563,16 +555,16 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			total += rlen;
 		}
 
-		nni_mtx_lock(&qstrm->mtx);
+		nni_mtx_lock(&c->mtx);
 		// Get all the buffers in quic stream
 		if (count == 0 || total == 0) {
-			nni_mtx_unlock(&qstrm->mtx);
+			nni_mtx_unlock(&c->mtx);
 			return QUIC_STATUS_PENDING;
 		}
 
-		if (total > qstrm->rrcap - qstrm->rrlen - qstrm->rrpos) {
-			qstrm->rrbuf = realloc(qstrm->rrbuf, total + qstrm->rrlen + qstrm->rrpos);
-			qstrm->rrcap = total + qstrm->rrlen + qstrm->rrpos;
+		if (total > c->rrcap - c->rrlen - c->rrpos) {
+			c->rrbuf = realloc(c->rrbuf, total + c->rrlen + c->rrpos);
+			c->rrcap = total + c->rrlen + c->rrpos;
 		}
 
 		for (uint32_t i=0; i<count; ++i) {
@@ -585,18 +577,15 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 				continue;
 
 			// Copy data from quic stream to rrbuf
-			memcpy(qstrm->rrbuf + qstrm->rrpos + (int)qstrm->rrlen, rbuf, rlen);
-			qstrm->rrlen += rlen;
+			memcpy(c->rrbuf + c->rrpos + (int)c->rrlen, rbuf, rlen);
+			c->rrlen += rlen;
 		}
 
-		MsQuic->StreamReceiveComplete(qstrm->stream, total);
-		if (!nni_list_empty(&qstrm->recvq) && qstrm->inrr == false) {
-			// We should not do executing now, Or circle calling occurs
-			// nng_aio_wait(&qstrm->rraio);
-			qstrm->inrr = true;
-			nni_aio_finish(&qstrm->rraio, 0, 0);
-		}
-		nni_mtx_unlock(&qstrm->mtx);
+		MsQuic->StreamReceiveComplete(c->qstrm, total);
+		nni_mtx_unlock(&c->mtx);
+		// Expose RECEIVE event
+		// Finish aio from upper layer would be done in quic_cb.
+		quic_cb(QUIC_STREAM_EVENT_RECEIVE, c);
 		log_debug("stream cb over\n");
 
 		return QUIC_STATUS_PENDING;
@@ -606,8 +595,8 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		log_warn("[strm][%p] Peer SEND aborted\n", stream);
 		log_info("PEER_SEND_ABORTED Error Code: %llu",
 		    (unsigned long long) Event->PEER_SEND_ABORTED.ErrorCode);
-		if (qsock->reason_code == 0)
-			qsock->reason_code = SERVER_SHUTTING_DOWN;
+		if (c->reason_code == 0)
+			c->reason_code = SERVER_SHUTTING_DOWN;
 		break;
 	case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
 		// The peer aborted its send direction of the stream.
