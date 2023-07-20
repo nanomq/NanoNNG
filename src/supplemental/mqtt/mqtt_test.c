@@ -268,7 +268,7 @@ test_encode_connect_v5(void)
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_CONNECT);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNECT);
 
-	nng_mqtt_msg_set_connect_client_id(msg, client_id);
+	nni_mqtt_msg_set_connect_client_id(msg, client_id);
 
 	NUTS_TRUE(strncmp(nng_mqtt_msg_get_connect_client_id(msg), client_id,
 	              strlen(client_id)) == 0);
@@ -339,7 +339,7 @@ test_encode_subscribe(void)
 
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_SUBSCRIBE);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_SUBSCRIBE);
-	nng_mqtt_msg_set_subscribe_packet_id(msg, pkt_id);
+	nni_mqtt_msg_set_subscribe_packet_id(msg, pkt_id);
 	NUTS_TRUE(nng_mqtt_msg_get_subscribe_packet_id(msg) == pkt_id);
 
 	property *plist1  = mqtt_property_alloc();
@@ -417,7 +417,7 @@ test_encode_suback(void)
 
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_SUBACK);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_SUBACK);
-	nng_mqtt_msg_set_suback_packet_id(msg, pkt_id);
+	nni_mqtt_msg_set_suback_packet_id(msg, pkt_id);
 	NUTS_TRUE(nng_mqtt_msg_get_suback_packet_id(msg) == pkt_id);
 
 	property *plist1  = mqtt_property_alloc();
@@ -486,7 +486,7 @@ test_encode_publish(void)
 	char *topic = "/nanomq/msg/18234";
 	nng_mqtt_msg_set_publish_topic(msg, topic);
 	nng_mqtt_msg_set_publish_topic_len(msg, strlen(topic));
-	nng_mqtt_msg_set_publish_packet_id(msg, pkt_id);
+	nni_mqtt_msg_set_publish_packet_id(msg, pkt_id);
 
 	uint32_t topic_len = 0;
 	NUTS_TRUE(strncmp(nng_mqtt_msg_get_publish_topic(msg, &topic_len),
@@ -551,7 +551,7 @@ test_encode_puback(void)
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_PUBACK);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBACK);
 
-	nng_mqtt_msg_set_puback_packet_id(msg, pkt_id);
+	nni_mqtt_msg_set_puback_packet_id(msg, pkt_id);
 	NUTS_TRUE(nng_mqtt_msg_get_puback_packet_id(msg) == pkt_id);
 
 	property *plist1  = mqtt_property_alloc();
@@ -594,7 +594,7 @@ test_encode_pubrec(void)
 
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_PUBREC);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBREC);
-	nng_mqtt_msg_set_pubrec_packet_id(msg, pkt_id);
+	nni_mqtt_msg_set_pubrec_packet_id(msg, pkt_id);
 	NUTS_TRUE(nng_mqtt_msg_get_pubrec_packet_id(msg) == pkt_id);
 
 	property *plist1  = mqtt_property_alloc();
@@ -637,7 +637,7 @@ test_encode_pubrel(void)
 
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_PUBREL);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBREL);
-	nng_mqtt_msg_set_pubrel_packet_id(msg, pkt_id);
+	nni_mqtt_msg_set_pubrel_packet_id(msg, pkt_id);
 	NUTS_TRUE(nng_mqtt_msg_get_pubrel_packet_id(msg) == pkt_id);
 
 	property *plist1  = mqtt_property_alloc();
@@ -680,7 +680,7 @@ test_encode_pubcomp(void)
 
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_PUBCOMP);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBCOMP);
-	nng_mqtt_msg_set_pubcomp_packet_id(msg, pkt_id);
+	nni_mqtt_msg_set_pubcomp_packet_id(msg, pkt_id);
 	NUTS_TRUE(nng_mqtt_msg_get_pubcomp_packet_id(msg) == pkt_id);
 
 	property *plist1  = mqtt_property_alloc();
@@ -723,7 +723,7 @@ test_encode_unsubscribe(void)
 
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_UNSUBSCRIBE);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_UNSUBSCRIBE);
-	nng_mqtt_msg_set_unsubscribe_packet_id(msg, pkt_id);
+	nni_mqtt_msg_set_unsubscribe_packet_id(msg, pkt_id);
 	NUTS_TRUE(nng_mqtt_msg_get_unsubscribe_packet_id(msg) == pkt_id);
 
 	property *plist1  = mqtt_property_alloc();
@@ -795,7 +795,7 @@ test_encode_unsuback(void)
 
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_UNSUBACK);
 	NUTS_TRUE(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_UNSUBACK);
-	nng_mqtt_msg_set_unsuback_packet_id(msg, pkt_id);
+	nni_mqtt_msg_set_unsuback_packet_id(msg, pkt_id);
 	NUTS_TRUE(nng_mqtt_msg_get_unsuback_packet_id(msg) == pkt_id);
 
 	property *plist1  = mqtt_property_alloc();
