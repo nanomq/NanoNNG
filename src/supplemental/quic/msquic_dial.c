@@ -230,7 +230,8 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 	if (ismain) {
 		// Make a quic connection to the url.
 		// Create stream after connection is established.
-		if ((rv = nni_aio_schedule(aio, quic_dialer_cancel, d)) != 0) {
+		if ((rv = nni_aio_schedule(d->qconaio, quic_dialer_cancel, d)) != 0) {
+			rv = NNG_ECLOSED;
 			goto error;
 		}
 
@@ -239,7 +240,10 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 			goto error;
 		}
 	} else {
-		msquic_strm_connect(d->qconn, d);
+		if ((rv = msquic_strm_connect(d->qconn, d)) != 0) {
+			rv = NNG_ECLOSED;
+			goto error;
+		}
 	}
 
 	nni_list_append(d->connq, aio);
@@ -251,7 +255,7 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 error:
 	d->currcon = NULL;
 	nni_mtx_unlock(&d->mtx);
-	return;
+	nni_aio_finish_error(aio, rv);
 }
 
 // Close the pending connection.
@@ -935,6 +939,8 @@ msquic_strm_connect(HQUIC qconn, nni_quic_dialer *d)
 
 	nni_mtx_lock(&d->mtx);
 
+	log_debug("[strm][%p] Starting...", strm);
+
 	c = d->currcon;
 	d->currcon = NULL;
 
@@ -945,10 +951,9 @@ msquic_strm_connect(HQUIC qconn, nni_quic_dialer *d)
 		goto error;
 	}
 
-	log_debug("[strm][%p] Starting...", strm);
-
-	if (QUIC_FAILED(rv = MsQuic->StreamStart(strm, QUIC_STREAM_START_FLAG_NONE))) {
-		log_error("quic stream start failed, 0x%x!\n", rv);
+	rv = MsQuic->StreamStart(strm, QUIC_STREAM_START_FLAG_NONE);
+	if (QUIC_FAILED(rv)) {
+		log_error("StreamStart failed, 0x%x!\n", rv);
 		MsQuic->StreamClose(strm);
 		goto error;
 	}
@@ -964,7 +969,7 @@ msquic_strm_connect(HQUIC qconn, nni_quic_dialer *d)
 	return 0;
 error:
 
-	return (-2);
+	return (NNG_ECLOSED);
 }
 
 static void
