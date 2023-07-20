@@ -9,7 +9,6 @@
 
 // #if defined(NNG_ENABLE_QUIC) // && defined(NNG_QUIC_MSQUIC)
 
-#include "core/defs.h"
 #include "quic_api.h"
 #include "core/nng_impl.h"
 #include "msquic.h"
@@ -63,7 +62,59 @@ struct nni_quic_dialer {
 
 	// MsQuic
 	HQUIC                   qconn; // quic connection
+	bool                    enable_0rtt;
+	uint8_t                 reason_code;
+	// ResumptionTicket
+	char *                  rticket;
+	uint16_t                rticket_sz;
+	// CertificateFile
+	char *                  cacert;
+	
 };
+
+struct nni_quic_conn {
+	nng_stream      stream;
+	nni_list        readq;
+	nni_list        writeq;
+	bool            closed;
+	nni_mtx         mtx;
+	nni_aio *       dial_aio;
+	nni_aio *       qstrmaio;
+	nni_quic_dialer *dialer;
+	nni_reap_node   reap;
+
+	// MsQuic
+	HQUIC           qstrm; // quic stream
+	// A buffer for cache msg from msquic
+	uint32_t        rrcap;
+	uint32_t        rrlen;
+	uint32_t        rrpos;
+	char *          rrbuf;
+	uint8_t         reason_code;
+};
+
+static const QUIC_API_TABLE *MsQuic = NULL;
+
+// Config for msquic
+static const QUIC_REGISTRATION_CONFIG quic_reg_config = {
+	"mqtt",
+	QUIC_EXECUTION_PROFILE_LOW_LATENCY
+};
+
+static const QUIC_BUFFER quic_alpn = {
+	sizeof("mqtt") - 1,
+	(uint8_t *) "mqtt"
+};
+
+HQUIC registration;
+HQUIC configuration;
+
+
+static int  msquic_open();
+static void msquic_close();
+static int  msquic_connect(const char *url, nni_quic_dialer *d);
+static int  msquic_strm_connect(HQUIC qconn, nni_quic_dialer *d);
+static void msquic_strm_recv_start(HQUIC qstrm);
 
 static void quic_dialer_cb();
 
@@ -212,24 +263,8 @@ nni_quic_dialer_close(void *arg)
 
 /**************************** MsQuic Connection ****************************/
 
-struct nni_quic_conn {
-	nng_stream      stream;
-	nni_posix_pfd * pfd;
-	nni_list        readq;
-	nni_list        writeq;
-	bool            closed;
-	nni_mtx         mtx;
-	nni_aio *       dial_aio;
-	nni_aio *       qstrmaio;
-	nni_quic_dialer *dialer;
-	nni_reap_node   reap;
-
-	// MsQuic
-	HQUIC           qstrm; // quic stream
-};
-
 static void
-quic_cb(nni_posix_pfd *pfd, unsigned events, void *arg)
+quic_cb(unsigned events, void *arg)
 {
 }
 
@@ -298,7 +333,7 @@ nni_msquic_quic_alloc(nni_quic_conn **cp, nni_quic_dialer *d)
 	nni_aio_list_init(&c->writeq);
 
 	c->stream.s_free  = quic_free;
-	c->stream.s_close = quic_close;
+	c->stream.s_close = quic_close2;
 	c->stream.s_recv  = quic_recv;
 	c->stream.s_send  = quic_send;
 	c->stream.s_get   = quic_get;
@@ -309,7 +344,7 @@ nni_msquic_quic_alloc(nni_quic_conn **cp, nni_quic_dialer *d)
 }
 
 void
-nni_msquic_quic_init(nni_quic_conn *c, nni_posix_pfd *pfd)
+nni_msquic_quic_init(nni_quic_conn *c)
 {
 }
 
@@ -455,12 +490,14 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		 * Does MsQuic ensure the connected event will happen after
 		 * peer_certificate_received event.?
 		 */
+		/*
 		if (QUIC_FAILED(rv = verify_peer_cert_tls(
 				Event->PEER_CERTIFICATE_RECEIVED.Certificate,
-				Event->PEER_CERTIFICATE_RECEIVED.Chain, qsock->cacert))) {
+				Event->PEER_CERTIFICATE_RECEIVED.Chain, d->cacert))) {
 			log_error("[conn][%p] Invalid certificate file received from the peer");
 			return rv;
 		}
+		*/
 		break;
 	case QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED:
 		log_info("QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED");
@@ -482,7 +519,7 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 // New recv cb of quic transport
 _IRQL_requires_max_(DISPATCH_LEVEL)
 _Function_class_(QUIC_STREAM_CALLBACK) QUIC_STATUS QUIC_API
-quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
+msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	_Inout_ QUIC_STREAM_EVENT *Event)
 {
 	nni_quic_conn *c = Context;
@@ -504,39 +541,6 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			log_warn("[strm][%p] Data sent Canceled: %d",
 					 stream, Event->SEND_COMPLETE.Canceled);
 		}
-		// Get aio from sendq and finish
-		nni_mtx_lock(&qstrm->mtx);
-		aio = Event->SEND_COMPLETE.ClientContext;
-		if (aio != NULL) {
-			// QoS messages send_cb
-			nni_aio_list_remove(aio);
-			// free the buf
-			QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
-			free(buf);
-			smsg = nni_aio_get_msg(aio);
-			nni_mtx_unlock(&qstrm->mtx);
-			nni_msg_free(smsg);
-			nni_aio_set_msg(aio, NULL);
-			//Process QoS ACK in Protocol layer
-			nni_aio_finish_sync(aio, 0, 0);
-			break;
-		}
-		if ((aio = nni_list_first(&qstrm->sendq)) != NULL) {
-			// this is the send_aio in protocol layer
-			nni_aio_list_remove(aio);
-			QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
-			free(buf);
-			quic_pipe_send_start(qstrm);
-			nni_mtx_unlock(&qstrm->mtx);
-			smsg = nni_aio_get_msg(aio);
-			nni_msg_free(smsg);
-			nni_aio_set_msg(aio, NULL);
-			nni_aio_finish_sync(aio, 0, 0);
-			break;
-		} else {
-			log_error("AIO missing, potential msg leaking!");
-		}
-		nni_mtx_unlock(&qstrm->mtx);
 		break;
 	case QUIC_STREAM_EVENT_RECEIVE:
 		// Data was received from the peer on the stream.
@@ -546,8 +550,8 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		log_debug("[strm][%p] Data received Flag: %d", stream, Event->RECEIVE.Flags);
 
 		if (Event->RECEIVE.Flags & QUIC_RECEIVE_FLAG_FIN) {
-			if (qsock->reason_code == 0)
-				qsock->reason_code = CLIENT_IDENTIFIER_NOT_VALID;
+			if (c->reason_code == 0)
+				c->reason_code = CLIENT_IDENTIFIER_NOT_VALID;
 			log_warn("FIN received in QUIC stream");
 			break;
 		}
@@ -679,23 +683,6 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	return QUIC_STATUS_SUCCESS;
 }
 
-
-const QUIC_API_TABLE *MsQuic = NULL;
-
-// Config for msquic
-const QUIC_REGISTRATION_CONFIG quic_reg_config = {
-	"mqtt",
-	QUIC_EXECUTION_PROFILE_LOW_LATENCY
-};
-
-const QUIC_BUFFER quic_alpn = {
-	sizeof("mqtt") - 1,
-	(uint8_t *) "mqtt"
-};
-
-HQUIC registration;
-HQUIC configuration;
-
 static void
 msquic_close()
 {
@@ -714,11 +701,11 @@ msquic_close()
 
 static int is_msquic_inited = 0;
 
-static void
+static int
 msquic_open()
 {
 	if (is_msquic_inited == 1)
-		return;
+		return 0;
 
 	QUIC_STATUS rv = QUIC_STATUS_SUCCESS;
 	// only Open MsQUIC lib once, otherwise cause memleak
@@ -737,10 +724,11 @@ msquic_open()
 
 	is_msquic_inited = 1;
 	log_info("Msquic is enabled");
-	return;
+	return 0;
 
 error:
 	msquic_close();
+	return -1;
 }
 
 static int
@@ -748,7 +736,7 @@ msquic_connect(const char *url, nni_quic_dialer *d)
 {
 	QUIC_STATUS  rv;
 	HQUIC        conn = NULL;
-	nng_url     *url_s;
+	nni_url     *url_s;
 
 	if (0 != msquic_open()) {
 		// so... close the quic connection
@@ -764,7 +752,7 @@ msquic_connect(const char *url, nni_quic_dialer *d)
 
 	// TODO CA 0RTT Windows campatible interface index
 
-	nng_url_parse(&url_s, url);
+	nni_url_parse(&url_s, url);
 	// TODO maybe something wrong happened
 	for (size_t i = 0; i < strlen(url_s->u_host); ++i)
 		if (url_s->u_host[i] == ':') {
@@ -781,6 +769,9 @@ msquic_connect(const char *url, nni_quic_dialer *d)
 	}
 
 	return 0;
+error:
+
+	return 0;
 }
 
 static int
@@ -795,7 +786,7 @@ msquic_strm_connect(HQUIC qconn, nni_quic_dialer *d)
 	c = d->currcon;
 	d->currcon = NULL;
 
-	rv = MsQuic->StreamOpen(qs->qconn, QUIC_STREAM_OPEN_FLAG_NONE,
+	rv = MsQuic->StreamOpen(qconn, QUIC_STREAM_OPEN_FLAG_NONE,
 	        msquic_strm_cb, (void *)c, &strm);
 	if (QUIC_FAILED(rv)) {
 		log_error("StreamOpen failed, 0x%x!\n", rv);
@@ -811,17 +802,21 @@ msquic_strm_connect(HQUIC qconn, nni_quic_dialer *d)
 	}
 
 	// Not ready for receiving
-	MsQuic->StreamReceiveSetEnabled(qstrm->stream, FALSE);
+	MsQuic->StreamReceiveSetEnabled(strm, FALSE);
 	c->qstrm = strm;
 
 	log_debug("[strm][%p] Done...\n", strm);
 
 	nni_mtx_unlock(&d->mtx);
 
-	return;
+	return 0;
 error:
 
-	nng_free(qstrm, sizeof(quic_strm_t));
-
 	return (-2);
+}
+
+static void
+msquic_strm_recv_start(HQUIC qstrm)
+{
+	MsQuic->StreamReceiveSetEnabled(qstrm, TRUE);
 }
