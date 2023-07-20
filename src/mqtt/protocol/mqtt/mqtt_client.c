@@ -613,14 +613,12 @@ mqtt_timer_cb(void *arg)
 		nni_mqtt_sqlite_option *sqlite =
 		    mqtt_sock_get_sqlite_option(s);
 		if (sqlite_is_enabled(sqlite)) {
-			log_info("check sqlite msg!!!");
 			if (!nni_lmq_empty(&sqlite->offline_cache)) {
 				sqlite_flush_offline_cache(sqlite);
 			}
 			if (NULL != (msg = sqlite_get_cache_msg(sqlite))) {
 				p->busy = true;
 				nni_aio_set_msg(&p->send_aio, msg);
-				log_info("send sqlite msg!!!");
 				nni_pipe_send(p->pipe, &p->send_aio);
 				nni_mtx_unlock(&s->mtx);
 				nni_sleep_aio(s->retry, &p->time_aio);
