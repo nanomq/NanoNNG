@@ -164,21 +164,12 @@ static void
 quic_dialer_cancel(nni_aio *aio, void *arg, int rv)
 {
 	nni_quic_dialer *d = arg;
-	nni_quic_conn *  c;
 
 	nni_mtx_lock(&d->mtx);
-	if ((!nni_aio_list_active(aio)) ||
-	    ((c = nni_aio_get_prov_data(aio)) == NULL)) {
-		nni_mtx_unlock(&d->mtx);
-		return;
-	}
-	nni_aio_list_remove(aio);
-	c->dial_aio = NULL;
-	nni_aio_set_prov_data(aio, NULL);
+	d->currcon = NULL;
 	nni_mtx_unlock(&d->mtx);
 
 	nni_aio_finish_error(aio, rv);
-	nng_stream_free(&c->stream);
 }
 
 static void
@@ -229,7 +220,7 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 	// TODO check if there are any quic streams to the url.
 	ismain = true;
 
-	if ((rv = nni_aio_schedule(aio, quic_dialer_cancel, d)) != 0) {
+	if ((rv = nni_aio_schedule(aio, quic_dialer_strm_cancel, d)) != 0) {
 		goto error;
 	}
 
@@ -239,6 +230,10 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 	if (ismain) {
 		// Make a quic connection to the url.
 		// Create stream after connection is established.
+		if ((rv = nni_aio_schedule(aio, quic_dialer_cancel, d)) != 0) {
+			goto error;
+		}
+
 		if (0 != msquic_connect(host, port, d)) {
 			rv = NNG_ECLOSED;
 			goto error;
@@ -246,6 +241,8 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 	} else {
 		msquic_strm_connect(d->qconn, d);
 	}
+
+	nni_list_append(d->connq, aio);
 
 	nni_mtx_unlock(&d->mtx);
 
@@ -844,6 +841,8 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	return QUIC_STATUS_SUCCESS;
 }
 
+static int is_msquic_inited = 0;
+
 static void
 msquic_close()
 {
@@ -857,10 +856,9 @@ msquic_close()
 			MsQuic->RegistrationClose(registration);
 		}
 		MsQuicClose(MsQuic);
+		is_msquic_inited = 0;
 	}
 }
-
-static int is_msquic_inited = 0;
 
 static int
 msquic_open()
@@ -919,6 +917,8 @@ msquic_connect(const char *host, const char *port, nni_quic_dialer *d)
 		log_error("Failed in ConnectionStart, 0x%x!", rv);
 		goto error;
 	}
+
+	d->qconn = conn;
 
 	return 0;
 error:
