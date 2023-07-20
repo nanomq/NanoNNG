@@ -139,13 +139,6 @@ nni_quic_dialer_init(void **argp)
 	return 0;
 }
 
-void
-nni_quic_dialer_fini(void *arg)
-{
-	nni_quic_dialer *d = arg;
-	NNI_ARG_UNUSED(d);
-}
-
 static void
 quic_dialer_strm_cancel(nni_aio *aio, void *arg, int rv)
 {
@@ -223,11 +216,16 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 	// Create a connection whenever dial. So it's okey. right?
 	if ((rv = nni_msquic_quic_alloc(&c, d)) != 0) {
 		nni_aio_finish_error(aio, rv);
-		// nni_msquic_quic_dialer_rele(d);
+		nni_msquic_quic_dialer_rele(d);
 		return;
 	}
 
 	nni_mtx_lock(&d->mtx);
+	if (d->closed) {
+		rv = NNG_ECLOSED;
+		goto error;
+	}
+
 	// TODO check if there are any quic streams to the url.
 	ismain = true;
 
@@ -241,7 +239,10 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 	if (ismain) {
 		// Make a quic connection to the url.
 		// Create stream after connection is established.
-		msquic_connect(host, port, d);
+		if (0 != msquic_connect(host, port, d)) {
+			rv = NNG_ECLOSED;
+			goto error;
+		}
 	} else {
 		msquic_strm_connect(d->qconn, d);
 	}
@@ -249,8 +250,9 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 	nni_mtx_unlock(&d->mtx);
 
 	return;
-error:
 
+error:
+	d->currcon = NULL;
 	nni_mtx_unlock(&d->mtx);
 	return;
 }
@@ -261,6 +263,31 @@ nni_quic_dialer_close(void *arg)
 {
 	nni_quic_dialer *d = arg;
 	NNI_ARG_UNUSED(d);
+}
+
+static void
+quic_dialer_fini(nni_quic_dialer *d)
+{
+	nni_mtx_fini(&d->mtx);
+	NNI_FREE_STRUCT(d);
+}
+
+void
+nni_quic_dialer_fini(nni_quic_dialer *d)
+{
+	nni_quic_dialer_close(d);
+	nni_atomic_set_bool(&d->fini, true);
+	nni_msquic_quic_dialer_rele(d);
+}
+
+void
+nni_msquic_quic_dialer_rele(nni_quic_dialer *d)
+{
+	if (((nni_atomic_dec64_nv(&d->ref) != 0)) ||
+	    (!nni_atomic_get_bool(&d->fini))) {
+		return;
+	}
+	quic_dialer_fini(d);
 }
 
 /**************************** MsQuic Connection ****************************/
@@ -896,7 +923,7 @@ msquic_connect(const char *host, const char *port, nni_quic_dialer *d)
 	return 0;
 error:
 
-	return 0;
+	return (NNG_ECLOSED);
 }
 
 static int
