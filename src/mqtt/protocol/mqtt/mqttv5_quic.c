@@ -401,13 +401,13 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 	if (s->qos_first) {
 		if (ptype == NNG_MQTT_SUBSCRIBE ||
 		    ptype == NNG_MQTT_UNSUBSCRIBE) {
-			nni_mqtt_msg_encode(msg);
+			nni_mqttv5_msg_encode(msg);
 			log_info("Sending Sub/UnSub msg in high priority");
 			quic_aio_send(p->qpipe, aio);
 			return -1;
 		}
 		if (qos > 0 && ptype == NNG_MQTT_PUBLISH) {
-			nni_mqtt_msg_encode(msg);
+			nni_mqttv5_msg_encode(msg);
 			uint32_t topic_len;
 			uint32_t plen;
 			char    *topic;
