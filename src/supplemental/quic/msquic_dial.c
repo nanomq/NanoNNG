@@ -178,20 +178,19 @@ quic_dialer_cb(void *arg)
 	nni_quic_dialer *d = arg;
 	int              rv;
 	nni_aio *        aio;
+	nni_quic_conn *  c;
 
 	if (nni_aio_result(d->qconaio) != 0) {
 		return;
 	}
 
 	nni_mtx_lock(&d->mtx);
-	aio = d->dial_aio;
+	c = d->currcon;
+	aio = c->dial_aio;
 	if ((aio == NULL) || (!nni_aio_list_active(aio))) {
 		nni_mtx_unlock(&d->mtx);
 		return;
 	}
-
-	c->dial_aio = NULL;
-	nni_aio_list_remove(aio);
 
 	// Connection was established. Nice. Then. Create the main quic stream.
 	rv = msquic_strm_connect(d->qconn, d);
@@ -201,6 +200,9 @@ quic_dialer_cb(void *arg)
 	if (rv != 0) {
 		// XXX data race ???
 		d->currcon = NULL;
+		c->dial_aio = NULL;
+
+		nni_aio_list_remove(aio);
 
 		nng_stream_free(&c->stream);
 		nni_aio_finish_error(aio, rv);
@@ -276,7 +278,7 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 
 error:
 	d->currcon = NULL;
-	d->dial_aio = NULL;
+	c->dial_aio = NULL;
 	nni_mtx_unlock(&d->mtx);
 	nng_stream_free(&c->stream);
 	nni_aio_finish_error(aio, rv);
