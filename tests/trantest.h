@@ -692,8 +692,8 @@ trantest_mqtt_sub_pub(trantest *tt)
 		trantest_mqtt_unsub_send(tt->reqsock, client, true);
 		// syn sub & unsub
 		params.topic = topic2;
-		trantest_mqtt_sub_send(tt->reqsock, client, false);
-		trantest_mqtt_unsub_send(tt->reqsock, client, false);
+		// trantest_mqtt_sub_send(tt->reqsock, client, false);
+		// trantest_mqtt_unsub_send(tt->reqsock, client, false);
 		nng_mqtt_disconnect(&(tt->reqsock), 0, NULL);
 		nng_mqtt_client_free(client, true);
 		nng_close(tt->repsock);

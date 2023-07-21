@@ -241,24 +241,56 @@ void test_rule_cmp_type(void)
 	memset(&cr, 0, sizeof(conf_rule));
 	char sql_a[128] = "SELECT payload.x.y as y FROM \"#\" WHERE y != 1";
 	NUTS_TRUE(rule_sql_parse(&cr, sql_a));
+	nng_free(cr.rules[0].payload[0]->filter, strlen(cr.rules[0].payload[0]->filter));
+	nng_free(cr.rules[0].payload[0]->psa[0], strlen(cr.rules[0].payload[0]->psa[0]));
+	nng_free(cr.rules[0].payload[0]->psa[1], strlen(cr.rules[0].payload[0]->psa[1]));
+	nng_free(cr.rules[0].payload[0]->pas, strlen(cr.rules[0].payload[0]->pas));
+	cvector_free(cr.rules[0].payload[0]->psa);
+	nng_free(cr.rules[0].payload[0], sizeof(rule_payload));
+	cvector_free(cr.rules[0].payload);
+	nng_free(cr.rules[0].filter, sizeof(char *) * 8);
 	nng_free(cr.rules[0].topic, strlen(cr.rules[0].topic));
 	cvector_free(cr.rules);
 
 	memset(&cr, 0, sizeof(conf_rule));
 	char sql_b[128] = "SELECT payload.x.y as y FROM \"#\" WHERE y > 1";
 	NUTS_TRUE(rule_sql_parse(&cr, sql_b));
+	nng_free(cr.rules[0].payload[0]->filter, strlen(cr.rules[0].payload[0]->filter));
+	nng_free(cr.rules[0].payload[0]->psa[0], strlen(cr.rules[0].payload[0]->psa[0]));
+	nng_free(cr.rules[0].payload[0]->psa[1], strlen(cr.rules[0].payload[0]->psa[1]));
+	nng_free(cr.rules[0].payload[0]->pas, strlen(cr.rules[0].payload[0]->pas));
+	cvector_free(cr.rules[0].payload[0]->psa);
+	nng_free(cr.rules[0].payload[0], sizeof(rule_payload));
+	cvector_free(cr.rules[0].payload);
+	nng_free(cr.rules[0].filter, sizeof(char *) * 8);
 	nng_free(cr.rules[0].topic, strlen(cr.rules[0].topic));
 	cvector_free(cr.rules);
 
 	memset(&cr, 0, sizeof(conf_rule));
 	char sql_c[128] = "SELECT payload.x.y as y FROM \"#\" WHERE y < 1";
 	NUTS_TRUE(rule_sql_parse(&cr, sql_c));
+	nng_free(cr.rules[0].payload[0]->filter, strlen(cr.rules[0].payload[0]->filter));
+	nng_free(cr.rules[0].payload[0]->psa[0], strlen(cr.rules[0].payload[0]->psa[0]));
+	nng_free(cr.rules[0].payload[0]->psa[1], strlen(cr.rules[0].payload[0]->psa[1]));
+	nng_free(cr.rules[0].payload[0]->pas, strlen(cr.rules[0].payload[0]->pas));
+	cvector_free(cr.rules[0].payload[0]->psa);
+	nng_free(cr.rules[0].payload[0], sizeof(rule_payload));
+	cvector_free(cr.rules[0].payload);
+	nng_free(cr.rules[0].filter, sizeof(char *) * 8);
 	nng_free(cr.rules[0].topic, strlen(cr.rules[0].topic));
 	cvector_free(cr.rules);
 
 	memset(&cr, 0, sizeof(conf_rule));
 	char sql_d[128] = "SELECT payload.x.y as y FROM \"#\" WHERE y ? 1";
 	NUTS_TRUE(rule_sql_parse(&cr, sql_d));
+	nng_free(cr.rules[0].payload[0]->filter, strlen(cr.rules[0].payload[0]->filter));
+	nng_free(cr.rules[0].payload[0]->psa[0], strlen(cr.rules[0].payload[0]->psa[0]));
+	nng_free(cr.rules[0].payload[0]->psa[1], strlen(cr.rules[0].payload[0]->psa[1]));
+	nng_free(cr.rules[0].payload[0]->pas, strlen(cr.rules[0].payload[0]->pas));
+	cvector_free(cr.rules[0].payload[0]->psa);
+	nng_free(cr.rules[0].payload[0], sizeof(rule_payload));
+	cvector_free(cr.rules[0].payload);
+	nng_free(cr.rules[0].filter, sizeof(char *) * 8);
 	nng_free(cr.rules[0].topic, strlen(cr.rules[0].topic));
 	cvector_free(cr.rules);
 }
@@ -278,10 +310,10 @@ void test_rule_init_free(void)
 	rule_payload->filter = nng_strdup("filter");
 
 	rule->topic   = nng_strdup("rule-topic");
-	rule->topic   = nng_strdup("rule-topic");
 	rule->raw_sql = nng_strdup("rule-raw_sql");
 	cvector_push_back(rule->payload, rule_payload);
 	rule_free(rule);
+	NNI_FREE_STRUCT(rule);
 
 	rpub_rule           = rule_repub_init();
 	rpub_rule->address  = nng_strdup("rp-address");
