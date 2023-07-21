@@ -1589,6 +1589,7 @@ conf_rule_mysql_parse(conf_rule *cr, char *path)
 				    .enabled = true;
 				cr->rules[cvector_size(cr->rules) - 1]
 				    .rule_id = rule_generate_rule_id();
+
 			}
 		
 		} else if (0 ==
@@ -2920,7 +2921,7 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		log_info("%sbridge.mqtt.%s.tls.enable:                 %s", prefix,
 		    node->name, node->tls.enable ? "true" : "false");
 		if (node->tls.enable) {
-			log_info("bridge.mqtt.%s.tls:", node->name);
+			log_info("%sbridge.mqtt.%s.tls:", prefix, node->name);
 			log_info("	key file:         %s", node->tls.keyfile);
 			log_info("	cert file:        %s", node->tls.certfile);
 			log_info("	cacert file:      %s", node->tls.cafile);

@@ -968,6 +968,8 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 	cJSON_ArrayForEach(bridge_aws_node, bridge_aws_nodes)
 	{
 		conf_bridge_node *node = NNI_ALLOC_STRUCT(node);
+		nng_mtx_alloc(&node->mtx);
+		conf_bridge_node_init(node);
 		node->name = nng_strdup(bridge_aws_node->string);
 		node->enable = true;
 		config->bridge_mode |= node->enable;
@@ -1006,10 +1008,6 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 
 		hocon_read_num_base(
 		    node, parallel, "max_parallel_processes", bridge_aws_node);
-		cJSON *bridge_aws_node_tls =
-		    hocon_get_obj("ssl", bridge_aws_node);
-		conf_tls *bridge_node_tls = &(node->tls);
-		conf_tls_parse_ver2_base(bridge_node_tls, bridge_aws_node_tls);
 		cvector_push_back(config->aws_bridge.nodes, node);
 	}
 
