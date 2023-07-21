@@ -612,6 +612,10 @@ rule_free(rule *r)
 		}
 
 		if (r->filter) {
+			for (size_t i = 0; i < 8; i++) {
+				if (r->filter[i])
+					nng_strfree(r->filter[i]);
+			}
 			nng_free(r->filter, sizeof(char *) * 8);
 		}
 
