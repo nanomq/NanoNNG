@@ -174,9 +174,8 @@ test_dup_publish(void)
 void
 test_encode_connect(void)
 {
-	nng_msg    *msg;
-	conn_param *cparam;
-	char        client_id[] = "nanomq-mqtt";
+	nng_msg *msg;
+	char     client_id[] = "nanomq-mqtt";
 
 	NUTS_PASS(nng_mqtt_msg_alloc(&msg, 0));
 	// NUTS_PASS(conn_param_alloc(&cparam));
@@ -227,34 +226,10 @@ test_encode_connect(void)
 	NUTS_TRUE(p->next->id == p2->id);
 	NUTS_TRUE(p->next->data.p_type == p2->data.p_type);
 
-	cparam = nng_get_conn_param_from_msg(msg);
-
 	nng_mqtt_msg_encode(msg);
 	print_mqtt_msg(msg);
 
-	nng_msg *decode_msg;
-	nng_msg_dup(&decode_msg, msg);
-	// nng_msg_free(msg);
-
-	nng_mqtt_msg_decode(decode_msg);
-	print_mqtt_msg(decode_msg);
-
-	if (nni_atomic_dec_nv(&cparam->refcnt) != 0) {
-		return;
-	}
-	nng_free(cparam->pro_name.body, cparam->pro_name.len);
-	nng_free(cparam->clientid.body, cparam->clientid.len);
-	nng_free(cparam->will_topic.body, cparam->will_topic.len);
-	nng_free(cparam->will_msg.body, cparam->will_msg.len);
-	nng_free(cparam->username.body, cparam->username.len);
-	nng_free(cparam->password.body, cparam->password.len);
-
-	property_free(cparam->properties);
-	property_free(cparam->will_properties);
-
-	nng_free(cparam, sizeof(struct conn_param));
-
-	// nng_msg_free(decode_msg);
+	nng_msg_free(msg);
 }
 
 void
@@ -1389,8 +1364,10 @@ test_mqtt_msg_dump(void)
 	nng_mqtt_msg_set_connect_clean_session(connmsg, true);
 
 	uint8_t buff[1024] = { 0 };
+	nng_mqtt_msg_dump(connmsg, buff, 1024, true);
 
-	nng_mqtt_msg_dump(connmsg, buff, sizeof(buff), true);
+	nng_mqtt_msg_encode(connmsg);
+	nng_msg_free(connmsg);
 }
 
 void
@@ -1423,7 +1400,7 @@ test_write_read(void)
 	uint64_t  val64      = 64;
 	char     *bytes      = "bytes";
 	char     *str        = "mqtt_str";
-	size_t    bytelen     = (size_t) sizeof(bytes);
+	size_t    bytelen    = (size_t) strlen(bytes);
 	mqtt_buf *mqtt_buf_1 = NULL;
 	mqtt_buf_1           = NNI_ALLOC_STRUCT(mqtt_buf_1);
 	NUTS_PASS(mqtt_buf_create(mqtt_buf_1, (uint8_t *) str, strlen(str)));
@@ -1443,7 +1420,7 @@ test_write_read(void)
 	uint16_t  _val16     = 0;
 	uint32_t  _val32     = 0;
 	uint64_t  _val64     = 0;
-	uint8_t     *strVal     = NULL;
+	uint8_t  *strVal     = NULL;
 	mqtt_buf *mqtt_buf_2 = NULL;
 	mqtt_buf_2           = NNI_ALLOC_STRUCT(mqtt_buf_2);
 	buf.curpos           = &data[0];
@@ -1456,12 +1433,13 @@ test_write_read(void)
 	NUTS_PASS(read_uint64(&buf, &_val64));
 	NUTS_TRUE(_val64 == val64);
 	NUTS_PASS(read_bytes(&buf, &strVal, bytelen));
-	NUTS_PASS(strncmp((char *)strVal, bytes, bytelen));
+	NUTS_PASS(strncmp((char *) strVal, bytes, bytelen));
 	NUTS_PASS(read_str_data(&buf, mqtt_buf_2));
 	NUTS_TRUE(mqtt_buf_2->length == mqtt_buf_1->length);
 	NUTS_PASS(strncmp((char *) mqtt_buf_2->buf, (char *) mqtt_buf_2->buf,
-	              mqtt_buf_2->length));
+	    mqtt_buf_2->length));
 
+	mqtt_buf_free(mqtt_buf_1);
 	NNI_FREE_STRUCT(mqtt_buf_1);
 	NNI_FREE_STRUCT(mqtt_buf_2);
 	free(data);
@@ -1559,6 +1537,7 @@ test_property_api(void)
 
 	mqtt_property_foreach(plist, test_property_cb);
 	NUTS_PASS(mqtt_property_free(plist));
+	NUTS_PASS(mqtt_property_free(_plist));
 }
 
 TEST_LIST = {
