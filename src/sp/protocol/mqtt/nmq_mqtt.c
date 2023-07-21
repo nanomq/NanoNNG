@@ -1001,7 +1001,9 @@ nano_pipe_recv_cb(void *arg)
 
 	if ((rv = nni_aio_result(&p->aio_recv)) != 0) {
 		// unexpected disconnect
+		nni_mtx_lock(&p->lk);
 		p->reason_code = rv;
+		nni_mtx_unlock(&p->lk);
 		nni_pipe_close(p->pipe);
 		return;
 	}
