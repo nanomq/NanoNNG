@@ -2838,8 +2838,8 @@ write_byte_string(mqtt_buf *str, struct pos_buf *buf)
 	write_uint16(str->length, buf);
 
 	memcpy(buf->curpos, str->buf, str->length);
-	str->buf = buf->curpos; /* reset data position to indicate data in raw
-	                           data block */
+	// str->buf = buf->curpos; /* reset data position to indicate data in raw
+	//                            data block */ <-- /* but this will lead to a memleak*/
 	buf->curpos += str->length;
 
 	return 0;
