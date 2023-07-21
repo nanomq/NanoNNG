@@ -380,71 +380,44 @@ static void
 quic_dowrite(nni_quic_conn *c)
 {
 	nni_aio *aio;
-	int      fd;
+	int      rv;
 
 	if (c->closed) {
 		return;
 	}
 
-	/*
 	while ((aio = nni_list_first(&c->writeq)) != NULL) {
-		unsigned      i;
-		int           n;
-		int           niov;
 		unsigned      naiov;
 		nni_iov *     aiov;
-		struct msghdr hdr;
-		struct iovec  iovec[16];
+		size_t        n = 0;
 
-		memset(&hdr, 0, sizeof(hdr));
 		nni_aio_get_iov(aio, &naiov, &aiov);
 
-		if (naiov > NNI_NUM_ELEMENTS(iovec)) {
+		QUIC_BUFFER *buf=(QUIC_BUFFER*)malloc(sizeof(QUIC_BUFFER)*naiov);
+		for (int i=0; i<naiov; ++i) {
+			log_debug("buf%d sz %d", i, aiov[i].iov_len);
+			buf[i].Buffer = aiov[i].iov_buf;
+			buf[i].Length = aiov[i].iov_len;
+			n += aiov[i].iov_len;
+		}
+		nni_aio_set_input(aio, 0, buf);
+
+		if (QUIC_FAILED(rv = MsQuic->StreamSend(c->qstrm, buf,
+		                naiov, QUIC_SEND_FLAG_NONE, aio))) {
+			log_error("Failed in StreamSend, 0x%x!", rv);
 			nni_aio_list_remove(aio);
-			nni_aio_finish_error(aio, NNG_EINVAL);
-			continue;
-		}
-
-		for (niov = 0, i = 0; i < naiov; i++) {
-			if (aiov[i].iov_len > 0) {
-				iovec[niov].iov_len  = aiov[i].iov_len;
-				iovec[niov].iov_base = aiov[i].iov_buf;
-				niov++;
-			}
-		}
-
-		hdr.msg_iovlen = niov;
-		hdr.msg_iov    = iovec;
-
-		if ((n = sendmsg(fd, &hdr, MSG_NOSIGNAL)) < 0) {
-			switch (errno) {
-			case EINTR:
-				continue;
-			case EAGAIN:
-#ifdef EWOULDBLOCK
-#if EWOULDBLOCK != EAGAIN
-			case EWOULDBLOCK:
-#endif
-#endif
-				return;
-			default:
-				nni_aio_list_remove(aio);
-				nni_aio_finish_error(
-				    aio, nni_plat_errno(errno));
-				return;
-			}
+			free(buf);
+			nni_aio_finish_error(aio, NNG_ECLOSED);
+			return;
 		}
 
 		nni_aio_bump_count(aio, n);
-		// We completed the entire operation on this aio.
-		// (Sendmsg never returns a partial result.)
 		nni_aio_list_remove(aio);
 		nni_aio_finish(aio, 0, nni_aio_count(aio));
 
 		// Go back to start of loop to see if there is another
 		// aio ready for us to process.
 	}
-	*/
 }
 
 static void
