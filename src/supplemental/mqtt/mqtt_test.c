@@ -1522,22 +1522,60 @@ test_property_api(void)
 	    CONTENT_TYPE, "aaaaaa", strlen("aaaaaa"), true);
 	mqtt_property_append(plist, p7);
 
+	// get value type
 	NUTS_TRUE(
 	    mqtt_property_get_value_type(PAYLOAD_FORMAT_INDICATOR) == U8);
 
-	property_data *p_data =
-	    mqtt_property_get_value(plist, PAYLOAD_FORMAT_INDICATOR);
+	// get value
+	property_data *p_data = NULL;
+	p_data = mqtt_property_get_value(plist, PAYLOAD_FORMAT_INDICATOR);
 	NUTS_TRUE(p_data->p_value.u8 == 1);
 
+	// len
 	NUTS_TRUE(get_mqtt_properties_len(plist) == 54);
 
+	// dup
 	property *_plist = NULL;
 	NUTS_PASS(mqtt_property_dup(&_plist, plist));
 	NUTS_TRUE(get_mqtt_properties_len(_plist) == 54);
-
-	mqtt_property_foreach(plist, test_property_cb);
-	NUTS_PASS(mqtt_property_free(plist));
 	NUTS_PASS(mqtt_property_free(_plist));
+
+	// foreach
+	mqtt_property_foreach(plist, test_property_cb);
+
+	// pub by will
+	property *_p1 = NULL;
+	_p1    = mqtt_property_pub_by_will(plist);
+	p_data = mqtt_property_get_value(_p1, PAYLOAD_FORMAT_INDICATOR);
+	NUTS_TRUE(p_data->p_value.u8 == 1);
+	NUTS_PASS(mqtt_property_free(_p1));
+
+	// value copy
+	property *_p2 = NULL;
+	_p2           = property_alloc();
+	NUTS_PASS(mqtt_property_value_copy(_p2, p1));
+	NUTS_TRUE(_p2->data.p_value.u8 == 1);
+	memset(_p2, 0, sizeof(property));
+	NUTS_PASS(mqtt_property_value_copy(_p2, p2));
+	NUTS_TRUE(_p2->data.p_value.u16 == 10);
+	memset(_p2, 0, sizeof(property));
+	NUTS_PASS(mqtt_property_value_copy(_p2, p3));
+	NUTS_TRUE(_p2->data.p_value.u32 == 10);
+	memset(_p2, 0, sizeof(property));
+	NUTS_PASS(mqtt_property_value_copy(_p2, p4));
+	NUTS_PASS(strncmp((char *) _p2->data.p_value.str.buf, "aaaaaa", 6));
+	NUTS_PASS(property_free(_p2));
+	_p2           = property_alloc();
+	NUTS_PASS(mqtt_property_value_copy(_p2, p5));
+	NUTS_PASS(strncmp((char *) _p2->data.p_value.binary.buf, "aaaaaa", 6));
+	NUTS_PASS(property_free(_p2));
+	_p2           = property_alloc();
+	NUTS_PASS(mqtt_property_value_copy(_p2, p6));
+	NUTS_PASS(strncmp((char *) _p2->data.p_value.strpair.key.buf, "aaaaaa", 6));
+	NUTS_PASS(strncmp((char *) _p2->data.p_value.strpair.value.buf, "aaaaaa", 6));
+	NUTS_PASS(property_free(_p2));
+
+	NUTS_PASS(mqtt_property_free(plist));
 }
 
 TEST_LIST = {
