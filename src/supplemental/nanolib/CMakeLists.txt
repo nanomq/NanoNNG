@@ -31,6 +31,7 @@ nng_test(hash_test)
 nng_test(dbtree_test)
 nng_test(conf_test)
 nng_test(rule_test)
+nng_test(lib_base64_test)
 
 if (SUPP_RULE_ENGINE)
   nng_sources(rule.c)
