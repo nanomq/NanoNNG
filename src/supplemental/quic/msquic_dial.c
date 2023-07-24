@@ -946,8 +946,6 @@ msquic_strm_connect(HQUIC qconn, nni_quic_dialer *d)
 	QUIC_STATUS    rv;
 	nni_quic_conn *c;
 
-	nni_mtx_lock(&d->mtx);
-
 	log_debug("[strm][%p] Starting...", strm);
 
 	c = d->currcon;
@@ -973,11 +971,8 @@ msquic_strm_connect(HQUIC qconn, nni_quic_dialer *d)
 
 	log_debug("[strm][%p] Done...\n", strm);
 
-	nni_mtx_unlock(&d->mtx);
-
 	return 0;
 error:
-
 	return (NNG_ECLOSED);
 }
 
