@@ -321,6 +321,29 @@ nni_msquic_quic_dialer_rele(nni_quic_dialer *d)
 static void
 quic_cb(int events, void *arg)
 {
+	printf("[quic cb] start %d\n", events);
+	nni_quic_conn *c = arg;
+	nni_quic_dialer *d;
+
+	if (!c)
+		return;
+
+	d = c->dialer;
+
+	switch (events) {
+	case QUIC_STREAM_EVENT_START_COMPLETE:
+		nni_mtx_lock(&d->mtx);
+		if (c->dial_aio) {
+			nni_aio_list_remove(c->dial_aio);
+			nni_aio_finish(c->dial_aio, 0, 0);
+			c->dial_aio = NULL;
+		}
+		nni_mtx_unlock(&d->mtx);
+		break;
+	default:
+		break;
+	}
+	printf("[quic cb] end\n");
 }
 
 static void
