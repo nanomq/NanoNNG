@@ -259,8 +259,7 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 			goto error;
 		}
 
-		if (0 != msquic_connect(host, port, d)) {
-			rv = NNG_ECLOSED;
+		if (0 != (rv = msquic_connect(host, port, d))) {
 			goto error;
 		}
 	} else {
