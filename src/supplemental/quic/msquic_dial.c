@@ -180,16 +180,22 @@ quic_dialer_cb(void *arg)
 	nni_aio *        aio;
 	nni_quic_conn *  c;
 
-	if (nni_aio_result(d->qconaio) != 0) {
-		return;
-	}
+	// pass rv to upper aio if error happened in connecting
+	rv = nni_aio_result(d->qconaio);
 
 	nni_mtx_lock(&d->mtx);
 	c = d->currcon;
 	aio = c->dial_aio;
 	if ((aio == NULL) || (!nni_aio_list_active(aio))) {
+		// This should never happened
 		nni_mtx_unlock(&d->mtx);
 		return;
+	}
+
+	if (rv != 0) {
+		// Pass rv
+		nni_mtx_unlock(&d->mtx);
+		goto error;
 	}
 
 	// Connection was established. Nice. Then. Create the main quic stream.
@@ -197,6 +203,7 @@ quic_dialer_cb(void *arg)
 
 	nni_mtx_unlock(&d->mtx);
 
+error:
 	if (rv != 0) {
 		// XXX data race ???
 		d->currcon = NULL;
@@ -546,12 +553,20 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		// Generally, this is the expected way for the connection to
 		// shut down with this protocol, since we let idle timeout kill
 		// the connection.
-		if (Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status ==
-		    QUIC_STATUS_CONNECTION_IDLE) {
+		printf("[conn] Quic status %d\n", Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status);
+		switch (Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status) {
+		case QUIC_STATUS_CONNECTION_IDLE:
 			log_warn("[conn][%p] Connection shutdown on idle.\n", qconn);
-		} else if (Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status ==
-		    QUIC_STATUS_CONNECTION_TIMEOUT) {
+			break;
+		case QUIC_STATUS_CONNECTION_TIMEOUT:
 			log_warn("[conn][%p] Shutdown on CONNECTION_TIMEOUT.\n", qconn);
+			break;
+		case QUIC_STATUS_UNREACHABLE:
+			log_warn("[conn][%p] Host unreachable.\n", qconn);
+			nni_aio_finish_error(d->qconaio, NNG_ECONNREFUSED);
+			break;
+		default:
+			break;
 		}
 		log_warn("[conn][%p] Shutdown by transport, 0x%x, Error Code %llu\n",
 		    qconn, Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status,
