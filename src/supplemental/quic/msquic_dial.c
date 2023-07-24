@@ -852,6 +852,52 @@ error:
 	return -1;
 }
 
+// Helper function to load a client configuration.
+static BOOLEAN
+msquic_load_config()
+{
+	QUIC_SETTINGS          Settings = { 0 };
+	QUIC_CREDENTIAL_CONFIG CredConfig;
+
+	// Configures the QUIC params of client
+	Settings.IsSet.IdleTimeoutMs       = TRUE;
+	Settings.IdleTimeoutMs             = 90 * 1000;
+	Settings.IsSet.KeepAliveIntervalMs = TRUE;
+	Settings.KeepAliveIntervalMs       = 60 * 1000;
+
+there:
+
+	// Configures a default client configuration, optionally disabling
+	// server certificate validation.
+	memset(&CredConfig, 0, sizeof(CredConfig));
+	// Unsecure by default
+	CredConfig.Type  = QUIC_CREDENTIAL_TYPE_NONE;
+	// CredConfig.Flags = QUIC_CREDENTIAL_FLAG_CLIENT | QUIC_CREDENTIAL_FLAG_USE_PORTABLE_CERTIFICATES;
+	CredConfig.Flags = QUIC_CREDENTIAL_FLAG_CLIENT;
+	CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION;
+	log_warn("No quic TLS/SSL credentials was specified.");
+
+	// Allocate/initialize the configuration object, with the configured
+	// ALPN and settings.
+	QUIC_STATUS rv = QUIC_STATUS_SUCCESS;
+	if (QUIC_FAILED(rv = MsQuic->ConfigurationOpen(registration,
+	    &quic_alpn, 1, &Settings, sizeof(Settings), NULL, &configuration))) {
+		log_error("ConfigurationOpen failed, 0x%x!\n", rv);
+		return FALSE;
+	}
+
+	// Loads the TLS credential part of the configuration. This is required
+	// even on client side, to indicate if a certificate is required or
+	// not.
+	if (QUIC_FAILED(rv = MsQuic->ConfigurationLoadCredential(
+	                    configuration, &CredConfig))) {
+		log_error("Configuration Load Credential failed, 0x%x!\n", rv);
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
 static int
 msquic_connect(const char *host, const char *port, nni_quic_dialer *d)
 {
@@ -860,7 +906,12 @@ msquic_connect(const char *host, const char *port, nni_quic_dialer *d)
 
 	if (0 != msquic_open()) {
 		// so... close the quic connection
-		return (NNG_ECLOSED);
+		return (NNG_ESYSERR);
+	}
+
+	if (TRUE != msquic_load_config()) {
+		// error in configuration so... close the quic connection
+		return (NNG_EINVAL);
 	}
 
 	// Allocate a new connection object.
@@ -885,7 +936,7 @@ msquic_connect(const char *host, const char *port, nni_quic_dialer *d)
 	return 0;
 error:
 
-	return (NNG_ECLOSED);
+	return (NNG_ECONNREFUSED);
 }
 
 static int
