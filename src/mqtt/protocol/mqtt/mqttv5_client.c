@@ -273,6 +273,14 @@ mqtt_sock_get_next_packet_id(mqtt_sock_t *s)
 	int packet_id;
 	do {
 		packet_id = nni_atomic_get(&s->next_packet_id);
+		/* PROTOCOL ERROR: When the expression is 0 */
+		while ((uint16_t)(packet_id & 0xFFFF) == 0) {
+			while(!nni_atomic_cas(&s->next_packet_id,
+								  packet_id,
+								  packet_id + 1)) {
+				packet_id = nni_atomic_get(&s->next_packet_id);
+			}
+		}
 	} while (
 	    !nni_atomic_cas(&s->next_packet_id, packet_id, packet_id + 1));
 	return packet_id & 0xFFFF;
