@@ -13,9 +13,13 @@ if (NNG_ENABLE_QUIC)
     add_subdirectory(msquic)
     add_dependencies(nng msquic)
 
+    add_dependencies(nng_testing nng msquic)
 
-    nng_sources(msquic_dial.c quic_api.c)
+    nng_test(quic_api_test)
+
+    nng_sources(quic_api.c)
     nng_sources(quic_api.h)
+    nng_sources(msquic_dial.c)
 
     find_path(INTERNAL_MSQUIC_INCLUDE_DIR
     NAMES msquic.h
