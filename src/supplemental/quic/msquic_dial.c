@@ -465,6 +465,7 @@ quic_send(void *arg, nni_aio *aio)
 		return;
 	}
 
+	nni_mtx_lock(&c->mtx);
 	if ((rv = nni_aio_schedule(aio, quic_cancel, c)) != 0) {
 		nni_mtx_unlock(&c->mtx);
 		nni_aio_finish_error(aio, rv);
