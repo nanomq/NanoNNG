@@ -341,10 +341,14 @@ quic_cb(int events, void *arg)
 	case QUIC_STREAM_EVENT_START_COMPLETE:
 		nni_mtx_lock(&d->mtx);
 		if (c->dial_aio) {
+			// For testing
+			nni_aio_set_output(c->dial_aio, 0, c);
+
 			nni_aio_list_remove(c->dial_aio);
 			nni_aio_finish(c->dial_aio, 0, 0);
 			c->dial_aio = NULL;
 		}
+
 		nni_mtx_unlock(&d->mtx);
 		break;
 	default:
