@@ -355,6 +355,15 @@ quic_cb(int events, void *arg)
 
 		nni_mtx_unlock(&d->mtx);
 		break;
+	case QUIC_STREAM_EVENT_RECEIVE: // get a fin from stream
+	// TODO Need more talk about those cases
+	// case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
+	// case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
+	// case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
+	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
+	// case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
+		quic_error(c, NNG_ECONNSHUT);
+		break;
 	default:
 		break;
 	}
@@ -384,6 +393,7 @@ quic_free(void *arg)
 
 // Notify upper layer that something happened.
 // Includes closed by peer or transport layer.
+// Or get a FIN from quic stream.
 static void
 quic_error(void *arg, int err)
 {
