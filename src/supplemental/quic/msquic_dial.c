@@ -108,7 +108,6 @@ static const QUIC_BUFFER quic_alpn = {
 HQUIC registration;
 HQUIC configuration;
 
-
 static int  msquic_open();
 static void msquic_close();
 static int  msquic_connect(const char *host, const char *port, nni_quic_dialer *d);
@@ -725,10 +724,10 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			for (int i=0; i<naiov; ++i) {
 				if (aiov[i].iov_len == 0)
 					continue;
-				rlen2 = rlen - rpos;
+				rlen2 = rlen - rpos; // remain
 				if (rlen2 == 0)
 					break;
-				if (rlen2 - aiov[i].iov_len >= 0) {
+				if (rlen2 >= aiov[i].iov_len) {
 					memcpy(aiov[i].iov_buf, rbuf+rpos, aiov[i].iov_len);
 					rpos += aiov[i].iov_len;
 					n += aiov[i].iov_len;
