@@ -118,7 +118,8 @@ static void msquic_strm_close(HQUIC qstrm);
 static void msquic_strm_fini(HQUIC qstrm);
 static void msquic_strm_recv_start(HQUIC qstrm);
 
-static void quic_dialer_cb();
+static void quic_dialer_cb(void *arg);
+static void quic_error(void *arg, int err);
 
 int
 nni_quic_dialer_init(void **argp)
@@ -381,10 +382,38 @@ quic_free(void *arg)
 	nni_reap(&quic_reap_list, c);
 }
 
+// Notify upper layer that something happened.
+// Includes closed by peer or transport layer.
+static void
+quic_error(void *arg, int err)
+{
+	nni_quic_conn *c = arg;
+	nni_aio *      aio;
+
+	nni_mtx_lock(&c->mtx);
+	while (((aio = nni_list_first(&c->readq)) != NULL) ||
+	    ((aio = nni_list_first(&c->writeq)) != NULL)) {
+		nni_aio_list_remove(aio);
+		nni_aio_finish_error(aio, err);
+	}
+	nni_mtx_unlock(&c->mtx);
+}
+
 static void
 quic_close2(void *arg)
 {
 	nni_quic_conn *c = arg;
+	nni_mtx_lock(&c->mtx);
+	if (!c->closed) {
+		nni_aio *aio;
+		c->closed = true;
+		while (((aio = nni_list_first(&c->readq)) != NULL) ||
+		    ((aio = nni_list_first(&c->writeq)) != NULL)) {
+			nni_aio_list_remove(aio);
+			nni_aio_finish_error(aio, NNG_ECLOSED);
+		}
+	}
+	nni_mtx_unlock(&c->mtx);
 }
 
 static void
@@ -726,6 +755,11 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		}
 
 		nni_mtx_lock(&c->mtx);
+		if (c->closed) {
+			// Actively closed the quic stream by upper layer. So ignore.
+			nni_mtx_unlock(&c->mtx);
+			return QUIC_STATUS_PENDING;
+		}
 		// Get all the buffers in quic stream
 		if (count == 0) {
 			nni_mtx_unlock(&c->mtx);
@@ -802,7 +836,6 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		log_info("close stream with Error Code: %llu",
 		    (unsigned long long)
 		        Event->SHUTDOWN_COMPLETE.ConnectionErrorCode);
-		c->closed = true;
 		quic_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c);
 		break;
 	case QUIC_STREAM_EVENT_START_COMPLETE:
