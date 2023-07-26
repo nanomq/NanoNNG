@@ -761,6 +761,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			if (c->reason_code == 0)
 				c->reason_code = CLIENT_IDENTIFIER_NOT_VALID;
 			log_warn("FIN received in QUIC stream");
+			quic_cb(QUIC_STREAM_EVENT_RECEIVE, c);
 			break;
 		}
 
@@ -814,9 +815,6 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 
 		MsQuic->StreamReceiveComplete(c->qstrm, rpos);
 		nni_mtx_unlock(&c->mtx);
-		// Expose RECEIVE event
-		// Finish aio from upper layer would be done in quic_cb.
-		quic_cb(QUIC_STREAM_EVENT_RECEIVE, c);
 		log_debug("stream cb over\n");
 
 		return QUIC_STATUS_PENDING;
@@ -828,14 +826,19 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		    (unsigned long long) Event->PEER_SEND_ABORTED.ErrorCode);
 		if (c->reason_code == 0)
 			c->reason_code = SERVER_SHUTTING_DOWN;
+
+		quic_cb(QUIC_STREAM_EVENT_PEER_SEND_ABORTED, c);
 		break;
 	case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
 		// The peer aborted its send direction of the stream.
 		log_warn("[strm][%p] Peer send shut down\n", stream);
-		MsQuic->StreamShutdown(stream, QUIC_STREAM_SHUTDOWN_FLAG_GRACEFUL, 0);
+
+		quic_cb(QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN, c);
 		break;
 	case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
 		log_warn("[strm][%p] QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE.", stream);
+
+		quic_cb(QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE, c);
 		break;
 
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
@@ -846,6 +849,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		log_info("close stream with Error Code: %llu",
 		    (unsigned long long)
 		        Event->SHUTDOWN_COMPLETE.ConnectionErrorCode);
+
 		quic_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c);
 		break;
 	case QUIC_STREAM_EVENT_START_COMPLETE:
@@ -873,7 +877,9 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		// The peer has requested that we stop sending. Close abortively.
 		log_warn("[strm][%p] Peer RECEIVE aborted\n", stream);
 		log_warn("QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED Error Code: %llu",
-				 (unsigned long long) Event->PEER_RECEIVE_ABORTED.ErrorCode);
+		    (unsigned long long) Event->PEER_RECEIVE_ABORTED.ErrorCode);
+
+		quic_cb(QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED, c);
 		break;
 
 	default:
