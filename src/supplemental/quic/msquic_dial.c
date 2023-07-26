@@ -90,6 +90,8 @@ struct nni_quic_conn {
 	uint32_t        rrpos;
 	char *          rrbuf;
 	uint8_t         reason_code;
+
+	nni_reap_node   reap;
 };
 
 static const QUIC_API_TABLE *MsQuic = NULL;
@@ -112,6 +114,8 @@ static int  msquic_open();
 static void msquic_close();
 static int  msquic_connect(const char *host, const char *port, nni_quic_dialer *d);
 static int  msquic_strm_connect(HQUIC qconn, nni_quic_dialer *d);
+static void msquic_strm_close(HQUIC qstrm);
+static void msquic_strm_fini(HQUIC qstrm);
 static void msquic_strm_recv_start(HQUIC qstrm);
 
 static void quic_dialer_cb();
@@ -357,10 +361,24 @@ quic_cb(int events, void *arg)
 }
 
 static void
+quic_fini(void *arg)
+{
+	nni_quic_conn *c = arg;
+	quic_close2(c);
+
+	msquic_strm_fini(c->qstrm);
+	NNI_FREE_STRUCT(c);
+}
+
+static nni_reap_list quic_reap_list = {
+	.rl_offset = offsetof(nni_quic_conn, reap),
+	.rl_func   = quic_fini,
+};
+static void
 quic_free(void *arg)
 {
 	nni_quic_conn *c = arg;
-	// nni_reap(&tcp_reap_list, c);
+	nni_reap(&quic_reap_list, c);
 }
 
 static void
@@ -993,6 +1011,19 @@ msquic_strm_connect(HQUIC qconn, nni_quic_dialer *d)
 	return 0;
 error:
 	return (NNG_ECLOSED);
+}
+
+static void
+msquic_strm_close(HQUIC qstrm)
+{
+	MsQuic->StreamShutdown(
+	    qstrm->stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, NNG_ECONNSHUT);
+}
+
+static void
+msquic_strm_fini(HQUIC qstrm)
+{
+	MsQuic->StreamClose(qstrm);
 }
 
 static void
