@@ -2,10 +2,18 @@
 
 #include "nuts.h"
 
+#if defined(ENABLE_NANOMQ_TESTS)
+#define OLD_CONF_PATH                                            \
+	"../../../../../nng/src/supplemental/nanolib/test_conf/" \
+	"nmq_old_test.conf"
+#define CONF_PATH \
+	"../../../../../nng/src/supplemental/nanolib/test_conf/nmq_test.conf"
+#else
 #define OLD_CONF_PATH \
 	"../../../../src/supplemental/nanolib/test_conf/nmq_old_test.conf"
 #define CONF_PATH \
 	"../../../../src/supplemental/nanolib/test_conf/nmq_test.conf"
+#endif
 
 conf *
 get_test_conf(const char *conf_path)
@@ -20,9 +28,6 @@ get_test_conf(const char *conf_path)
 void
 test_get_size(void)
 {
-	// char    cwd[1024];
-	// getcwd(cwd,strlen(cwd));
-	// printf("cwd:%s\n", cwd);
 	char    *str_size1   = "3KB";
 	char    *str_size2   = "2MB";
 	char    *str_size3   = "1GB";
@@ -67,12 +72,7 @@ test_get_time(void)
 void
 test_conf_parse(void)
 {
-	// char    cwd[1024];
-	// getcwd(cwd,strlen(cwd));
-	// printf("cwd:%s\n", cwd);
 	conf *conf = get_test_conf(OLD_CONF_PATH);
-	// getcwd(cwd,strlen(cwd));
-	// printf("cwd:%s\n", cwd);
 
 	conf_parse(conf);
 	NUTS_TRUE(conf->url != NULL);
