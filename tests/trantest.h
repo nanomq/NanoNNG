@@ -437,6 +437,7 @@ disconnect_cb(nng_pipe p, nng_pipe_ev ev, void *arg)
 
 	NNI_ARG_UNUSED(p);
 	NNI_ARG_UNUSED(ev);
+	NNI_ARG_UNUSED(msg);
 
 	// int reason;
 	// get connect reason
