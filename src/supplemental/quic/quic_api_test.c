@@ -29,7 +29,7 @@ test_quic_conn_refused(void)
 }
 
 void
-test_quic_send_large_message(void)
+test_quic_send_message(void)
 {
 	nng_stream_dialer *dialer;
 	nng_aio *          aio;
@@ -64,17 +64,27 @@ test_quic_send_large_message(void)
 }
 
 void
-test_quic_recv_large_message(void)
+test_quic_recv_message(void)
 {
 	nng_stream_dialer *dialer;
 	nng_aio *          aio;
 	nng_stream *       s;
 	void *             t;
 	uint8_t *          buf;
-	size_t             size = 450001;
+	size_t             size = 4;
 
 	// allocate messages
 	NUTS_ASSERT((buf = nng_alloc(size)) != NULL);
+	uint8_t connect[] = {
+		0x10, 0x3f, 0x00, 0x04, 0x4d, 0x51, 0x54, 0x54, 0x04, 0xc6,
+		0x00, 0x3c, 0x00, 0x0c, 0x54, 0x65, 0x73, 0x74, 0x2d, 0x43,
+		0x6c, 0x69, 0x65, 0x6e, 0x74, 0x31, 0x00, 0x0a, 0x77, 0x69,
+		0x6c, 0x6c, 0x5f, 0x74, 0x6f, 0x70, 0x69, 0x63, 0x00, 0x07,
+		0x62, 0x79, 0x65, 0x2d, 0x62, 0x79, 0x65, 0x00, 0x05, 0x61,
+		0x6c, 0x76, 0x69, 0x6e, 0x00, 0x09, 0x48, 0x48, 0x48, 0x31,
+		0x32, 0x33, 0x34, 0x35, 0x36
+	};
+	size_t sz_connect = sizeof(connect) / sizeof(uint8_t);
 
 	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
 	nng_aio_set_timeout(aio, 5000); // 5 sec
@@ -86,6 +96,12 @@ test_quic_recv_large_message(void)
 	NUTS_PASS(nng_aio_result(aio));
 
 	NUTS_TRUE((s = nng_aio_get_output(aio, 0)) != NULL);
+	printf("%p", s);
+
+	// Instead of quic echo server. We test a mqtt quic server.
+	// To get some data from mqtt quic server. We need to send a connect msg first.
+	t = nuts_stream_send_start(s, connect, sz_connect);
+	NUTS_PASS(nuts_stream_wait(t));
 
 	t = nuts_stream_recv_start(s, buf, size);
 	NUTS_PASS(nuts_stream_wait(t));
@@ -98,7 +114,7 @@ test_quic_recv_large_message(void)
 
 TEST_LIST = {
 	{ "quic conn refused", test_quic_conn_refused },
-	{ "quic send large message", test_quic_send_large_message },
-	{ "quic recv large message", test_quic_recv_large_message },
+	{ "quic send message", test_quic_send_message },
+	{ "quic recv message", test_quic_recv_message },
 	{ NULL, NULL },
 };
