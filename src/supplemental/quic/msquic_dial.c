@@ -80,7 +80,6 @@ struct nni_quic_conn {
 	nni_aio *       dial_aio;
 	// nni_aio *       qstrmaio; // Link to msquic_strm_cb
 	nni_quic_dialer *dialer;
-	nni_reap_node   reap;
 
 	// MsQuic
 	HQUIC           qstrm; // quic stream
@@ -120,6 +119,7 @@ static void msquic_strm_recv_start(HQUIC qstrm);
 
 static void quic_dialer_cb(void *arg);
 static void quic_error(void *arg, int err);
+static void quic_close2(void *arg);
 
 int
 nni_quic_dialer_init(void **argp)
@@ -1066,7 +1066,7 @@ static void
 msquic_strm_close(HQUIC qstrm)
 {
 	MsQuic->StreamShutdown(
-	    qstrm->stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, NNG_ECONNSHUT);
+	    qstrm, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, NNG_ECONNSHUT);
 }
 
 static void
