@@ -157,9 +157,58 @@ test_quic_mqtt_connection(void)
 	nng_aio_free(aio);
 }
 
+// One main stream Two sub stream
+void
+test_quic_multi_stream(void)
+{
+	nng_stream_dialer *dialer;
+	nng_aio *          aio, *aio2, *aio3;
+	nng_stream *       s, *s2, *s3;
+
+	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
+	NUTS_PASS(nng_aio_alloc(&aio2, NULL, NULL));
+	NUTS_PASS(nng_aio_alloc(&aio3, NULL, NULL));
+	nng_aio_set_timeout(aio, 5000); // 5 sec
+	nng_aio_set_timeout(aio2, 5000); // 5 sec
+	nng_aio_set_timeout(aio3, 5000); // 5 sec
+
+	NUTS_PASS(nng_stream_dialer_alloc(&dialer, "quic://127.0.0.1:14567"));
+
+	nng_stream_dialer_dial(dialer, aio);
+	nng_aio_wait(aio);
+	NUTS_PASS(nng_aio_result(aio));
+
+	NUTS_TRUE((s = nng_aio_get_output(aio, 0)) != NULL);
+	nng_stream_close(s);
+	nng_stream_free(s);
+
+	nng_stream_dialer_dial(dialer, aio2);
+	nng_aio_wait(aio2);
+	NUTS_PASS(nng_aio_result(aio2));
+
+	NUTS_TRUE((s2 = nng_aio_get_output(aio2, 0)) != NULL);
+	nng_stream_close(s2);
+	nng_stream_free(s2);
+
+	nng_stream_dialer_dial(dialer, aio3);
+	nng_aio_wait(aio3);
+	NUTS_PASS(nng_aio_result(aio3));
+
+	NUTS_TRUE((s3 = nng_aio_get_output(aio3, 0)) != NULL);
+	nng_stream_close(s3);
+	nng_stream_free(s3);
+
+	nng_aio_free(aio);
+	nng_aio_free(aio2);
+	nng_aio_free(aio3);
+	nng_stream_dialer_free(dialer);
+}
+
 TEST_LIST = {
 	{ "quic conn refused", test_quic_conn_refused },
 	{ "quic send message", test_quic_send_message },
 	{ "quic recv message", test_quic_recv_message },
+	{ "quic mqtt connection", test_quic_mqtt_connection },
+	{ "quic multi-stream", test_quic_multi_stream },
 	{ NULL, NULL },
 };
