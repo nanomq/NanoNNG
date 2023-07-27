@@ -246,6 +246,7 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 {
 	nni_quic_conn *  c;
 	nni_quic_dialer *d = arg;
+	int              cnt;
 	bool             ismain = false;
 	int              rv;
 
@@ -268,8 +269,9 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 		goto error;
 	}
 
-	// TODO check if there are any quic streams to the url.
-	ismain = true;
+	cnt = nni_atomic_get64(&d->ref);
+
+	ismain = (cnt == 1 ? true : false);
 
 	if ((rv = nni_aio_schedule(aio, quic_dialer_strm_cancel, d)) != 0) {
 		goto error;
@@ -342,6 +344,8 @@ nni_quic_dialer_close(void *arg)
 static void
 quic_dialer_fini(nni_quic_dialer *d)
 {
+	msquic_conn_close(d->qconn);
+	msquic_conn_fini(d->qconn);
 	nni_mtx_fini(&d->mtx);
 	NNI_FREE_STRUCT(d);
 }
