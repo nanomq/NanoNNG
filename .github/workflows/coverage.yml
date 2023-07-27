@@ -43,9 +43,6 @@ jobs:
       - name: Install ninja
         run: brew install ninja
 
-      - name: Install lcov
-        run: brew install lcov
-
       - name: Configure
         run:  mkdir build && cd build && cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DNNG_ENABLE_COVERAGE=ON -DNNG_ENABLE_TLS=ON ..
 
@@ -54,9 +51,6 @@ jobs:
 
       - name: Test
         run: cd build && ctest --output-on-failure
-
-      - name: Preprocess
-        run: cd build && lcov -c -d . -o lcov.info
 
       - name: Upload report
         uses: codecov/codecov-action@v1
