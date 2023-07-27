@@ -112,6 +112,8 @@ HQUIC configuration;
 static int  msquic_open();
 static void msquic_close();
 static int  msquic_conn_open(const char *host, const char *port, nni_quic_dialer *d);
+static void msquic_conn_close(HQUIC qconn, int rv);
+static void msquic_conn_fini(HQUIC qconn);
 static int  msquic_strm_open(HQUIC qconn, nni_quic_dialer *d);
 static void msquic_strm_close(HQUIC qstrm);
 static void msquic_strm_fini(HQUIC qstrm);
@@ -1058,6 +1060,18 @@ msquic_conn_open(const char *host, const char *port, nni_quic_dialer *d)
 error:
 
 	return (NNG_ECONNREFUSED);
+}
+
+static void
+msquic_conn_close(HQUIC qconn, int rv)
+{
+	MsQuic->ConnectionShutdown(qconn, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, (QUIC_UINT62)rv);
+}
+
+static void
+msquic_conn_fini(HQUIC qconn)
+{
+	MsQuic->ConnectionClose(qconn);
 }
 
 static int
