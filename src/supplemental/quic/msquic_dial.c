@@ -344,7 +344,7 @@ nni_quic_dialer_close(void *arg)
 static void
 quic_dialer_fini(nni_quic_dialer *d)
 {
-	msquic_conn_close(d->qconn);
+	msquic_conn_close(d->qconn, 0);
 	msquic_conn_fini(d->qconn);
 	nni_mtx_fini(&d->mtx);
 	NNI_FREE_STRUCT(d);
@@ -386,7 +386,7 @@ quic_cb(int events, void *arg)
 	case QUIC_STREAM_EVENT_START_COMPLETE:
 		nni_mtx_lock(&d->mtx);
 		if (c->dial_aio) {
-			// For testing
+			// For upper layer to get the stream handle
 			nni_aio_set_output(c->dial_aio, 0, c);
 
 			nni_aio_list_remove(c->dial_aio);
@@ -418,6 +418,9 @@ quic_fini(void *arg)
 	quic_close2(c);
 
 	msquic_strm_fini(c->qstrm);
+	if (c->dialer) {
+		nni_msquic_quic_dialer_rele(c->dialer);
+	}
 	NNI_FREE_STRUCT(c);
 }
 
