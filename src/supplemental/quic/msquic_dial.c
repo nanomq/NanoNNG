@@ -121,6 +121,8 @@ static void quic_dialer_cb(void *arg);
 static void quic_error(void *arg, int err);
 static void quic_close2(void *arg);
 
+/***************************** MsQuic Dialer ******************************/
+
 int
 nni_quic_dialer_init(void **argp)
 {
@@ -168,11 +170,21 @@ static void
 quic_dialer_cancel(nni_aio *aio, void *arg, int rv)
 {
 	nni_quic_dialer *d = arg;
+	nni_quic_conn *  c;
+	nni_aio *        cdaio = NULL;
 
 	nni_mtx_lock(&d->mtx);
-	d->currcon = NULL;
+	if ((c = d->currcon) != NULL) {
+		d->currcon = NULL;
+		cdaio = c->dial_aio;
+		c->dial_aio = NULL;
+		nni_aio_set_prov_data(cdaio, NULL);
+	}
 	nni_mtx_unlock(&d->mtx);
 
+	if (cdaio) {
+		nni_aio_finish_error(cdaio, rv);
+	}
 	nni_aio_finish_error(aio, rv);
 }
 
@@ -198,23 +210,26 @@ quic_dialer_cb(void *arg)
 
 	if (rv != 0) {
 		// Pass rv
-		nni_mtx_unlock(&d->mtx);
 		goto error;
 	}
 
 	// Connection was established. Nice. Then. Create the main quic stream.
 	rv = msquic_strm_connect(d->qconn, d);
 
-	nni_mtx_unlock(&d->mtx);
-
 error:
+
 	if (rv != 0) {
-		// XXX data race ???
 		d->currcon = NULL;
 		c->dial_aio = NULL;
 
+		nni_aio_set_prov_data(aio, NULL);
 		nni_aio_list_remove(aio);
+	}
 
+	nni_mtx_unlock(&d->mtx);
+
+	if (rv != 0) {
+		nng_stream_close(&c->stream);
 		nng_stream_free(&c->stream);
 		nni_aio_finish_error(aio, rv);
 	}
@@ -260,6 +275,8 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 
 	// pass c to the dialer for getting it in msquic_strm_connect
 	d->currcon = c;
+	// set c to provdata. Which is helpful for quic dialer close.
+	nni_aio_set_prov_data(aio, c);
 	c->dial_aio = aio;
 
 	if (ismain) {
@@ -289,6 +306,7 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 error:
 	d->currcon = NULL;
 	c->dial_aio = NULL;
+	nni_aio_set_prov_data(aio, NULL);
 	nni_mtx_unlock(&d->mtx);
 	nng_stream_free(&c->stream);
 	nni_aio_finish_error(aio, rv);
@@ -299,7 +317,24 @@ void
 nni_quic_dialer_close(void *arg)
 {
 	nni_quic_dialer *d = arg;
-	NNI_ARG_UNUSED(d);
+
+	nni_mtx_lock(&d->mtx);
+	if (!d->closed) {
+		nni_aio *aio;
+		d->closed = true;
+		while ((aio = nni_list_first(&d->connq)) != NULL) {
+			nni_quic_conn *c;
+			nni_list_remove(&d->connq, aio);
+			if ((c = nni_aio_get_prov_data(aio)) != NULL) {
+				c->dial_aio = NULL;
+				nni_aio_set_prov_data(aio, NULL);
+				nng_stream_close(&c->stream);
+				nng_stream_free(&c->stream);
+			}
+			nni_aio_finish_error(aio, NNG_ECLOSED);
+		}
+	}
+	nni_mtx_unlock(&d->mtx);
 }
 
 static void
