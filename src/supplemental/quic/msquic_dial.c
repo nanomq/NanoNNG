@@ -271,7 +271,7 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 
 	cnt = nni_atomic_get64(&d->ref);
 
-	ismain = (cnt == 1 ? true : false);
+	ismain = (cnt == 2 ? true : false);
 
 	if ((rv = nni_aio_schedule(aio, quic_dialer_strm_cancel, d)) != 0) {
 		goto error;
