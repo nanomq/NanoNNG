@@ -19,6 +19,9 @@ conf *
 get_test_conf(const char *conf_path)
 {
 	conf *nmq_conf = nng_zalloc(sizeof(conf));
+	if(nmq_conf == NULL) {
+		return NULL;
+	}
 	conf_init(nmq_conf);
 	nmq_conf->conf_file = nng_strdup(conf_path);
 
@@ -73,7 +76,7 @@ void
 test_conf_parse(void)
 {
 	conf *conf = get_test_conf(OLD_CONF_PATH);
-
+	NUTS_TRUE(conf != NULL);
 	conf_parse(conf);
 	NUTS_TRUE(conf->url != NULL);
 
@@ -84,7 +87,7 @@ void
 test_conf_parse_ver2(void)
 {
 	conf *conf = get_test_conf(CONF_PATH);
-
+	NUTS_TRUE(conf != NULL);
 	conf_parse_ver2(conf);
 	NUTS_TRUE(conf->url != NULL);
 
@@ -94,7 +97,7 @@ test_conf_parse_ver2(void)
 NUTS_TESTS = {
    {"get size", test_get_size},
    {"get time", test_get_time},
-   {"conf parse", test_conf_parse},
    {"conf parse v2", test_conf_parse_ver2},
+   {"conf parse", test_conf_parse},
    {NULL, NULL} 
 };
