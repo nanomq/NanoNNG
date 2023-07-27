@@ -111,8 +111,8 @@ HQUIC configuration;
 
 static int  msquic_open();
 static void msquic_close();
-static int  msquic_connect(const char *host, const char *port, nni_quic_dialer *d);
-static int  msquic_strm_connect(HQUIC qconn, nni_quic_dialer *d);
+static int  msquic_conn_open(const char *host, const char *port, nni_quic_dialer *d);
+static int  msquic_strm_open(HQUIC qconn, nni_quic_dialer *d);
 static void msquic_strm_close(HQUIC qstrm);
 static void msquic_strm_fini(HQUIC qstrm);
 static void msquic_strm_recv_start(HQUIC qstrm);
@@ -214,7 +214,7 @@ quic_dialer_cb(void *arg)
 	}
 
 	// Connection was established. Nice. Then. Create the main quic stream.
-	rv = msquic_strm_connect(d->qconn, d);
+	rv = msquic_strm_open(d->qconn, d);
 
 error:
 
@@ -273,7 +273,7 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 		goto error;
 	}
 
-	// pass c to the dialer for getting it in msquic_strm_connect
+	// pass c to the dialer for getting it in msquic_strm_open
 	d->currcon = c;
 	// set c to provdata. Which is helpful for quic dialer close.
 	nni_aio_set_prov_data(aio, c);
@@ -287,11 +287,11 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 			goto error;
 		}
 
-		if (0 != (rv = msquic_connect(host, port, d))) {
+		if (0 != (rv = msquic_conn_open(host, port, d))) {
 			goto error;
 		}
 	} else {
-		if ((rv = msquic_strm_connect(d->qconn, d)) != 0) {
+		if ((rv = msquic_strm_open(d->qconn, d)) != 0) {
 			rv = NNG_ECLOSED;
 			goto error;
 		}
@@ -1020,7 +1020,7 @@ there:
 }
 
 static int
-msquic_connect(const char *host, const char *port, nni_quic_dialer *d)
+msquic_conn_open(const char *host, const char *port, nni_quic_dialer *d)
 {
 	QUIC_STATUS  rv;
 	HQUIC        conn = NULL;
@@ -1061,7 +1061,7 @@ error:
 }
 
 static int
-msquic_strm_connect(HQUIC qconn, nni_quic_dialer *d)
+msquic_strm_open(HQUIC qconn, nni_quic_dialer *d)
 {
 	HQUIC          strm = NULL;
 	QUIC_STATUS    rv;
