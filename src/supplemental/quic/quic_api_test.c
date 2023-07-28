@@ -135,13 +135,12 @@ test_quic_mqtt_connection(void)
 	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
 	nng_aio_set_timeout(aio, 5000); // 5 sec
 
-	NUTS_PASS(nng_stream_dialer_alloc(&dialer, "quic://127.0.0.1:14567"));
+	NUTS_PASS(nng_stream_dialer_alloc(&dialer, "mqtt-quic://127.0.0.1:14567"));
 	nng_stream_dialer_dial(dialer, aio);
 	nng_aio_wait(aio);
 	NUTS_PASS(nng_aio_result(aio));
 
 	NUTS_TRUE((s = nng_aio_get_output(aio, 0)) != NULL);
-	printf("%p", s);
 
 	// Instead of quic echo server. We test a mqtt quic server.
 	// To get some data from mqtt quic server. We need to send a connect msg first.
