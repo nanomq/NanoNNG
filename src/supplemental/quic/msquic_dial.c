@@ -8,6 +8,15 @@
 //
 
 // #if defined(NNG_ENABLE_QUIC) // && defined(NNG_QUIC_MSQUIC)
+//
+// Note.
+// Quic connection is only visible in nng stream.
+// Each nng stream is linked to a quic stream.
+// nng dialer is linked to quic connection.
+// The quic connection would be established when the first
+// nng stream with same URL is created.
+// The quic connection would be free if all nng streams
+// closed.
 
 #include "quic_api.h"
 #include "core/nng_impl.h"
