@@ -211,13 +211,22 @@ static struct {
 	    .listener_alloc = nni_ws_listener_alloc,
 	},
 // #ifdef NNG_HAVE_QUIC_SOCKETS
-#ifdef NNG_ENABLE_QUIC
 	{
 	    .scheme         = "quic",
 	    .dialer_alloc   = nni_quic_dialer_alloc,
 	    .listener_alloc = nni_quic_listener_alloc,
 	},
-#endif
+	{
+	    .scheme         = "mqtt-quic",
+	    .dialer_alloc   = nni_quic_dialer_alloc,
+	    .listener_alloc = nni_quic_listener_alloc,
+	},
+	{
+	    .scheme         = "nmq-quic",
+	    .dialer_alloc   = nni_quic_dialer_alloc,
+	    .listener_alloc = nni_quic_listener_alloc,
+	},
+// #endif
 	{
 	    .scheme = NULL,
 	},
