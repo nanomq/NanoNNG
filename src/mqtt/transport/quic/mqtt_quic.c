@@ -1394,7 +1394,7 @@ mqtt_quictran_dialer_init(void **dp, nng_url *url, nni_dialer *ndialer)
 {
 	mqtt_quictran_ep *ep;
 	int              rv;
-	nng_sockaddr     srcsa;
+	// nng_sockaddr     srcsa;
 	nni_sock *       sock = nni_dialer_sock(ndialer);
 	nng_url          myurl;
 
