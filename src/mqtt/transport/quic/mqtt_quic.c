@@ -1408,9 +1408,10 @@ mqtt_quictran_dialer_init(void **dp, nng_url *url, nni_dialer *ndialer)
 		return (NNG_EADDRINVAL);
 	}
 
-	if ((rv = mqtt_quictran_url_parse_source(&myurl, &srcsa, url)) != 0) {
-		return (rv);
-	}
+	// It seems that no error in nni_url_parse so here we ignore this function
+	//if ((rv = mqtt_quictran_url_parse_source(&myurl, &srcsa, url)) != 0) {
+	//	return (rv);
+	//}
 
 	if ((rv = mqtt_quictran_ep_init(&ep, url, sock)) != 0) {
 		return (rv);
@@ -1424,12 +1425,13 @@ mqtt_quictran_dialer_init(void **dp, nng_url *url, nni_dialer *ndialer)
 		mqtt_quictran_ep_fini(ep);
 		return (rv);
 	}
-	if ((srcsa.s_family != NNG_AF_UNSPEC) &&
-	    ((rv = nni_stream_dialer_set(ep->dialer, NNG_OPT_LOCADDR, &srcsa,
-	          sizeof(srcsa), NNI_TYPE_SOCKADDR)) != 0)) {
-		mqtt_quictran_ep_fini(ep);
-		return (rv);
-	}
+	// TODO srcsa will be got from nni quic dialer option. Which is not supported yet.
+	//if ((srcsa.s_family != NNG_AF_UNSPEC) &&
+	//    ((rv = nni_stream_dialer_set(ep->dialer, NNG_OPT_LOCADDR, &srcsa,
+	//          sizeof(srcsa), NNI_TYPE_SOCKADDR)) != 0)) {
+	//	mqtt_quictran_ep_fini(ep);
+	//	return (rv);
+	//}
 #ifdef NNG_ENABLE_STATS
 #endif
 	*dp = ep;
