@@ -147,6 +147,10 @@ mark_as_advanced(NNG_TRANSPORT_IPC)
 option (NNG_TRANSPORT_TCP "Enable TCP transport." ON)
 mark_as_advanced(NNG_TRANSPORT_TCP)
 
+# MQTT QUIC transport
+option (NNG_TRANSPORT_MQTT_QUIC "Enable MQTT TCP transport." ON)
+mark_as_advanced(NNG_TRANSPORT_MQTT_QUIC)
+
 # MQTT TCP transport
 option (NNG_TRANSPORT_MQTT_TCP "Enable MQTT TCP transport." ON)
 mark_as_advanced(NNG_TRANSPORT_MQTT_TCP)
