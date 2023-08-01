@@ -92,7 +92,7 @@ struct conn_propt {
 struct pipe_db {
 	// uint32_t           p_id;
 	uint8_t qos;
-	char *  topic;
+	char   *topic;
 	// conn_param *       conn_param;
 	// TODO MQTT5 property
 	struct pipe_db *next;
@@ -102,15 +102,26 @@ struct pipe_db {
 
 // TODO use ZALLOC later
 struct conn_param {
+	nng_time           will_delay_interval;
+	nng_time           msg_expiry_interval;
 	nni_atomic_int     refcnt;
+	char			   ip_addr_v4[16];
+	uint32_t           session_expiry_interval;
+	uint32_t           max_packet_size;
+	uint32_t           pipeid;
+	uint16_t           rx_max;
+	uint16_t           keepalive_mqtt;
+	uint16_t           topic_alias_max;
 	uint8_t            pro_ver;
 	uint8_t            con_flag;
-	uint16_t           keepalive_mqtt;
 	uint8_t            clean_start;
 	uint8_t            will_flag;
 	uint8_t            will_retain;
 	uint8_t            will_qos;
-	void *             nano_qos_db; // 'sqlite' or 'nni_id_hash_map'
+	uint8_t            req_resp_info;
+	uint8_t            req_problem_info;
+	uint8_t            payload_format_indicator;
+	void              *nano_qos_db; // 'sqlite' or 'nni_id_hash_map'
 	bool               assignedid;
 	struct mqtt_string pro_name;
 	struct mqtt_string clientid;
@@ -120,25 +131,17 @@ struct conn_param {
 	struct mqtt_binary password;
 	// conn_propt    ppt;
 	// mqtt_v5
-	//nni_time ntime;	// reserve for will msg expiry/delay interval
+	// nni_time ntime;	// reserve for will msg expiry/delay interval
 	// variable header
-	uint32_t             session_expiry_interval;
-	uint16_t             rx_max;
-	uint32_t             max_packet_size;
-	uint16_t             topic_alias_max;
-	uint8_t              req_resp_info;
-	uint8_t              req_problem_info;
-	mqtt_buf *           auth_method;
-	mqtt_buf *           auth_data;
-	mqtt_kv *            user_property;
 
-	nng_time  will_delay_interval;
-	uint8_t   payload_format_indicator;
-	nng_time  msg_expiry_interval;
+	mqtt_buf *auth_method;
+	mqtt_buf *auth_data;
 	mqtt_buf *content_type;
 	mqtt_buf *resp_topic;
 	mqtt_buf *corr_data;
-	mqtt_kv * payload_user_property;
+	mqtt_kv  *user_property;
+
+	mqtt_kv *payload_user_property;
 
 	uint32_t  prop_len;
 	property *properties;
