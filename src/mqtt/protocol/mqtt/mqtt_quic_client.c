@@ -1982,9 +1982,8 @@ nng_mqtt_quic_client_open(nng_socket *sock, const char *url)
 {
 	return nng_mqtt_quic_open_conf(sock, url, NULL);
 }
-/**
- * open mqtt quic transport with self-defined conf params
-*/
+
+// open mqtt quic transport with self-defined conf params
 int
 nng_mqtt_quic_open_conf(nng_socket *sock, const char *url, void *node)
 {
@@ -2043,12 +2042,10 @@ nng_mqtt_quic_client_close(nng_socket *sock)
 	return -2;
 }
 
-/**
- * init an AIO for Acknoledgement message only, in order to make QoS/connect truly asychrounous
- * For QoS 0 message, we do not care the result of sending
- * valid with Connack + puback + pubcomp
- * return 0 if set callback sucessfully
-*/
+// init an AIO for Acknoledgement message only, in order to make QoS/connect truly asychrounous
+// For QoS 0 message, we do not care the result of sending
+// valid with Connack + puback + pubcomp
+// return 0 if set callback sucessfully
 int
 nng_mqtt_quic_ack_callback_set(nng_socket *sock, void (*cb)(void *), void *arg)
 {
@@ -2172,3 +2169,4 @@ nng_mqtt_quic_set_msg_send_cb(nng_socket *sock, int (*cb)(void *, void *), void 
 	nni_sock_rele(nsock);
 	return 0;
 }
+*/
