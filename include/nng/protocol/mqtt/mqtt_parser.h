@@ -18,7 +18,7 @@
 #define CONNECT_MSG                                                           \
 	"{\"username\":\"%s\", "                                              \
 	"\"ts\":%llu,\"proto_name\":\"%s\",\"keepalive\":%d,\"return_code\":" \
-	"\"%x\",\"proto_ver\":%d,\"client_id\":\"%s\", \"clean_start\":%d}"
+	"\"%x\",\"proto_ver\":%d,\"client_id\":\"%s\",\"clean_start\":%d, \"IPv4\":\"%s\"}"
 
 #define DISCONNECT_TOPIC "$SYS/brokers/disconnected"
 
