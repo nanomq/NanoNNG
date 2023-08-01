@@ -809,6 +809,8 @@ conn_param_init(conn_param *cparam)
 	cparam->password.len    = 0;
 	cparam->assignedid      = false;
 
+	memset(cparam->ip_addr_v4, '\0', 16);
+
 	// MQTT_v5 Variable header
 	cparam->session_expiry_interval = 0;
 	cparam->rx_max                  = 65535;
@@ -1286,8 +1288,9 @@ nano_msg_notify_connect(conn_param *cparam, uint8_t code)
 
 	snprintf(buff, 256, CONNECT_MSG, cparam->username.body,
 	    nni_timestamp(), cparam->pro_name.body, cparam->keepalive_mqtt,
-	    code, cparam->pro_ver, cparam->clientid.body, cparam->clean_start);
-	string.body = buff;
+	    code, cparam->pro_ver, cparam->clientid.body, cparam->clean_start, cparam->ip_addr_v4);
+
+    string.body = buff;
 	string.len  = strlen(string.body);
 	topic.body  = CONNECT_TOPIC;
 	topic.len   = strlen(CONNECT_TOPIC);
