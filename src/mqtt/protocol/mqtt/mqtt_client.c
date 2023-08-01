@@ -738,6 +738,26 @@ mqtt_recv_cb(void *arg)
 		// add connack msg to app layer only for notify in broker
 		// bridge
 		if (s->cparam != NULL) {
+			// Get IPv4 ADDR of client
+			nng_sockaddr addr;
+			uint8_t     *arr;
+			nng_pipe     nng_pipe;
+			nng_pipe.id = nni_pipe_id(p->pipe);
+
+			rv = nng_pipe_getopt_sockaddr(
+			    nng_pipe, NNG_OPT_REMADDR, &addr);
+			arr = (uint8_t *) &addr.s_in.sa_addr;
+
+			if (arr == NULL) {
+				log_warn("Fail to get IP addr from client pipe!");
+			} else {
+				sprintf(s->cparam->ip_addr_v4,
+				    "%d.%d.%d.%d", arr[0], arr[1], arr[2],
+				    arr[3]);
+				log_debug("client connected! addr [%s]\n",
+				    s->cparam->ip_addr_v4);
+			}
+
 			nni_mqtt_msg_set_packet_type(msg, NNG_MQTT_CONNACK);
 			nni_mqtt_msg_encode(msg);
 			conn_param_clone(s->cparam);
