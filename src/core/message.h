@@ -108,7 +108,6 @@ struct conn_param {
 	char			   ip_addr_v4[16];
 	uint32_t           session_expiry_interval;
 	uint32_t           max_packet_size;
-	uint32_t           pipeid;
 	uint16_t           rx_max;
 	uint16_t           keepalive_mqtt;
 	uint16_t           topic_alias_max;
