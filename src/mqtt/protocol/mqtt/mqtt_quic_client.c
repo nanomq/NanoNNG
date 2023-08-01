@@ -1959,7 +1959,7 @@ static nni_proto_sock_ops mqtt_quic_sock_ops = {
 	.sock_recv    = mqtt_quic_sock_recv,
 };
 
-static nni_proto mqtt_msquic_proto = {
+static nni_proto mqtt_quic_proto = {
 	.proto_version  = NNI_PROTOCOL_VERSION,
 	.proto_self     = { NNG_MQTT_SELF, NNG_MQTT_SELF_NAME },
 	.proto_peer     = { NNG_MQTT_PEER, NNG_MQTT_PEER_NAME },
@@ -1969,6 +1969,13 @@ static nni_proto mqtt_msquic_proto = {
 	.proto_ctx_ops  = &mqtt_quic_ctx_ops,
 };
 
+int
+nng_mqtt_quic_client_open(nng_socket *sock)
+{
+	return (nni_proto_open(sock, &mqtt_quic_proto));
+}
+
+/*
 // As taking msquic as tranport, we exclude the dialer for now.
 int
 nng_mqtt_quic_client_open(nng_socket *sock, const char *url)
