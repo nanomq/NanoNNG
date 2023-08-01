@@ -630,13 +630,13 @@ static int
 nano_pipe_start(void *arg)
 {
 	nano_pipe *p = arg;
+	nano_pipe *old = NULL;
 	nano_sock *s = p->broker;
 	nni_msg   *msg;
 	uint8_t    rv; // reason code of CONNACK
 	nni_pipe  *npipe = p->pipe;
 	char      *clientid;
 	uint32_t   clientid_key;
-	nano_pipe *old = NULL;
 
 	bool is_sqlite = s->conf->sqlite.enable;
 
@@ -650,6 +650,24 @@ nano_pipe_start(void *arg)
 		p->nano_qos_db     = s->sqlite_db;
 	}
 #endif
+	// Get IPv4 ADDR of client
+	nng_sockaddr  addr;
+	uint8_t      *arr;
+	nng_pipe 	  nng_pipe;
+	nng_pipe.id = npipe->p_id;
+
+	rv = nng_pipe_getopt_sockaddr(nng_pipe, NNG_OPT_REMADDR, &addr);
+	arr = (uint8_t *)&addr.s_in.sa_addr;
+
+	if (arr == NULL) {
+		log_warn("Fail to get IP addr from client pipe!");
+		goto session_keeping;
+	}
+
+	sprintf(p->conn_param->ip_addr_v4, "%d.%d.%d.%d", arr[0], arr[1], arr[2], arr[3]);
+	log_debug("client connected! addr [%s]\n", p->conn_param->ip_addr_v4);
+
+session_keeping:
 	// Clientid should not be NULL since broker will assign one
 	clientid = (char *) conn_param_get_clientid(p->conn_param);
 	if (!clientid) {
@@ -660,6 +678,7 @@ nano_pipe_start(void *arg)
 
 	clientid_key = DJBHashn(clientid, strlen(clientid));
 	// restore session according to clientid
+
 	if (p->conn_param->clean_start == 0) {
 		old = nni_id_get(&s->cached_sessions, clientid_key);
 		if (old != NULL) {
