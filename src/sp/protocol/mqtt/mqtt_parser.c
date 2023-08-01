@@ -1268,7 +1268,7 @@ nano_msg_notify_disconnect(conn_param *cparam, uint8_t code)
 	mqtt_string string, topic;
 	char        buff[256];
 	snprintf(buff, 256, DISCONNECT_MSG, (char *) cparam->username.body,
-	    nni_timestamp(), code, (char *) cparam->clientid.body);
+	    nni_timestamp(), code, (char *) cparam->clientid.body, cparam->ip_addr_v4);
 	string.body = buff;
 	string.len  = strlen(string.body);
 	topic.body  = DISCONNECT_TOPIC;

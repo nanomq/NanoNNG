@@ -13,7 +13,7 @@
 // Do not change to %lu! just supress the warning of compiler!
 #define DISCONNECT_MSG          \
 	"{\"username\":\"%s\"," \
-	"\"ts\":%llu,\"reason_code\":\"%x\",\"client_id\":\"%s\"}"
+	"\"ts\":%llu,\"reason_code\":\"%x\",\"client_id\":\"%s\",\"IPv4\":\"%s\"}"
 
 #define CONNECT_MSG                                                           \
 	"{\"username\":\"%s\", "                                              \
