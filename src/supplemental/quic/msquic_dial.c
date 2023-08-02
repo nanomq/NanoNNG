@@ -383,8 +383,9 @@ static void
 quic_cb(int events, void *arg)
 {
 	printf("[quic cb] start %d\n", events);
-	nni_quic_conn *c = arg;
+	nni_quic_conn   *c = arg;
 	nni_quic_dialer *d;
+	nni_aio         *aio;
 
 	if (!c)
 		return;
@@ -628,6 +629,19 @@ quic_send(void *arg, nni_aio *aio)
 		nni_aio_finish_error(aio, rv);
 		return;
 	}
+
+	// QUIC_HIGH_PRIOR_MSG Feature!
+	int *flags = nni_aio_get_prov_data(aio);
+	nni_aio_set_prov_data(aio, NULL);
+
+	if (flags) {
+		if (*flags & QUIC_HIGH_PRIOR_MSG) {
+			quic_dowrite_prior(c, aio);
+			nni_mtx_unlock(&c->mtx);
+			return;
+		}
+	}
+
 	nni_aio_list_append(&c->writeq, aio);
 
 	if (nni_list_first(&c->writeq) == aio) {
@@ -850,7 +864,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			    stream, Event->SEND_COMPLETE.Canceled);
 		}
 		// Advanced send
-		if (aio = Event->SEND_COMPLETE.ClientContext) {
+		if ((aio = Event->SEND_COMPLETE.ClientContext) != NULL) {
 			Event->SEND_COMPLETE.ClientContext = NULL;
 			nni_aio_finish(aio, 0, nni_aio_count(aio));
 			break;
