@@ -838,6 +838,69 @@ recv_error:
 }
 
 static void
+mqtt_quictran_pipe_send_prior_cancel(nni_aio *aio, void *arg, int rv)
+{
+	mqtt_quictran_pipe *p = arg;
+
+	nni_mtx_lock(&p->mtx);
+	nni_aio_abort(aio, rv);
+	nni_mtx_unlock(&p->mtx);
+
+	nni_aio_finish_error(aio, rv);
+	return;
+}
+
+static void
+mqtt_quictran_pipe_send_prior(mqtt_quictran_pipe *p, nni_aio *aio)
+{
+	nni_msg *msg;
+	int      niov;
+	nni_iov  iov[3];
+
+	if (p->closed) {
+		nni_aio_finish_error(aio, SERVER_SHUTTING_DOWN);
+		return;
+	}
+
+	// This runs to send the message.
+	msg = nni_aio_get_msg(aio);
+
+	if (msg != NULL && p->proto == MQTT_PROTOCOL_VERSION_v5) {
+		uint8_t *header = nni_msg_header(msg);
+		if ((*header & 0XF0) == CMD_PUBLISH) {
+			// check max qos
+			uint8_t qos = nni_mqtt_msg_get_publish_qos(msg);
+			if (qos > 0)
+				p->sndmax --;
+			if (qos > p->qosmax) {
+				p->qosmax == 1? (*header &= 0XF9) & (*header |= 0X02): NNI_ARG_UNUSED(*header);
+				p->qosmax == 0? *header &= 0XF9: NNI_ARG_UNUSED(*header);
+			}
+		}
+		// check max packet size
+		if (nni_msg_header_len(msg) + nni_msg_len(msg) > p->packmax) {
+			nni_aio_finish_error(aio, UNSPECIFIED_ERROR);
+			return;
+		}
+	}
+
+	niov  = 0;
+
+	if (nni_msg_header_len(msg) > 0) {
+		iov[niov].iov_buf = nni_msg_header(msg);
+		iov[niov].iov_len = nni_msg_header_len(msg);
+		niov++;
+	}
+	if (nni_msg_len(msg) > 0) {
+		iov[niov].iov_buf = nni_msg_body(msg);
+		iov[niov].iov_len = nni_msg_len(msg);
+		niov++;
+	}
+	nni_aio_set_iov(aio, niov, iov);
+	nng_stream_send(p->conn, aio);
+}
+
+static void
 mqtt_quictran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 {
 	mqtt_quictran_pipe *p = arg;
