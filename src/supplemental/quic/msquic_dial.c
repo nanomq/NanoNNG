@@ -584,20 +584,19 @@ quic_dowrite(nni_quic_conn *c)
 		nni_aio_set_input(aio, 0, buf);
 
 		if (QUIC_FAILED(rv = MsQuic->StreamSend(c->qstrm, buf,
-		                naiov, QUIC_SEND_FLAG_NONE, aio))) {
+		                naiov, QUIC_SEND_FLAG_NONE, NULL))) {
 			log_error("Failed in StreamSend, 0x%x!", rv);
-			nni_aio_list_remove(aio);
 			free(buf);
-			nni_aio_finish_error(aio, NNG_ECLOSED);
+			// nni_aio_list_remove(aio);
+			// nni_aio_finish_error(aio, NNG_ECLOSED);
 			return;
 		}
 
 		nni_aio_bump_count(aio, n);
-		nni_aio_list_remove(aio);
-		nni_aio_finish(aio, 0, nni_aio_count(aio));
 
-		// Go back to start of loop to see if there is another
-		// aio ready for us to process.
+		break;
+		// Different from tcp.
+		// Here we just send one msg at once.
 	}
 }
 
