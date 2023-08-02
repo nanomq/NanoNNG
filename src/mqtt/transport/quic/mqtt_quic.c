@@ -16,6 +16,7 @@
 #include "nng/mqtt/mqtt_client.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
+#include "supplemental/quic/quic_api.h"
 
 // QUIC transport.   Platform specific QUIC operations must be
 // supplied as well.
@@ -443,7 +444,6 @@ mqtt_quictran_pipe_nego_cb(void *arg)
 		}
 		ep->reason_code = nni_mqtt_msg_get_connack_return_code(p->rxmsg);
 	}
-	// put 
 #ifdef NNG_HAVE_MQTT_BROKER
 	nni_msg_clone(p->rxmsg);
 	p->connack = p->rxmsg;
@@ -932,12 +932,28 @@ mqtt_quictran_pipe_send(void *arg, nni_aio *aio)
 		return;
 	}
 	nni_mtx_lock(&p->mtx);
+	// Priority msg
+	int *flags = nni_aio_get_prov_data(aio);
+	// if (flags && (*flags & QUIC_HIGH_PRIOR_MSG)) {
+	if (flags && (*flags & 0x01)) {
+		if ((rv = nni_aio_schedule(aio,
+		      mqtt_quictran_pipe_send_prior_cancel, p)) != 0) {
+			nni_mtx_unlock(&p->mtx);
+			nni_aio_finish_error(aio, rv);
+			return;
+		}
+
+		mqtt_quictran_pipe_send_prior(p, aio);
+		nni_mtx_unlock(&p->mtx);
+		return;
+	}
 	if ((rv = nni_aio_schedule(aio, mqtt_quictran_pipe_send_cancel, p)) !=
 	    0) {
 		nni_mtx_unlock(&p->mtx);
 		nni_aio_finish_error(aio, rv);
 		return;
 	}
+
 	nni_list_append(&p->sendq, aio);
 	if (nni_list_first(&p->sendq) == aio) {
 		mqtt_quictran_pipe_send_start(p);
