@@ -52,7 +52,11 @@ endmacro()
 # nng_link_libraries adds link dependencies to the libraries.
 function(nng_link_libraries)
     target_link_libraries(nng PRIVATE ${ARGN})
-    target_link_libraries(nng_testing PRIVATE ${ARGN})
+    if(NNG_ENABLE_QUIC)
+        target_link_libraries(nng_testing PRIVATE ${ARGN} msquic OpenSSLQuic)
+    else()
+        target_link_libraries(nng_testing PRIVATE ${ARGN})
+    endif()
 endfunction()
 
 # nng_include_directories adds include directories.
