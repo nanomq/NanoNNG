@@ -850,10 +850,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	unsigned       naiov;
 	uint32_t       rlen, rlen2, rpos;
 	uint8_t       *rbuf;
-	uint64_t       total;
 	uint32_t       count;
-
-	nni_msg *smsg;
 
 	log_debug("quic_strm_cb triggered! %d", Event->Type);
 	switch (Event->Type) {
@@ -863,7 +860,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			log_warn("[strm][%p] Data sent Canceled: %d",
 			    stream, Event->SEND_COMPLETE.Canceled);
 		}
-		// Advanced send
+		// Priority msg send
 		if ((aio = Event->SEND_COMPLETE.ClientContext) != NULL) {
 			Event->SEND_COMPLETE.ClientContext = NULL;
 			nni_aio_finish(aio, 0, nni_aio_count(aio));
