@@ -657,6 +657,7 @@ nano_pipe_start(void *arg)
 	nng_pipe.id = npipe->p_id;
 
 	rv = nng_pipe_getopt_sockaddr(nng_pipe, NNG_OPT_REMADDR, &addr);
+	//TODO: add port by nng_pipe_getopt_sockaddr(p, NNG_OPT_LOCADDR, &addr);
 	if (addr.s_family == NNG_AF_INET) {
 		arr = (uint8_t *) &addr.s_in.sa_addr;
 		if (arr == NULL) {
