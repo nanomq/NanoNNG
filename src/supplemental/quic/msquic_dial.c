@@ -521,6 +521,43 @@ quic_recv(void *arg, nni_aio *aio)
 }
 
 static void
+quic_dowrite_prior(nni_quic_conn *c, nni_aio *aio)
+{
+	printf("[quic dowrite adv] start\n");
+	int       rv;
+	unsigned  naiov;
+	nni_iov * aiov;
+	size_t    n = 0;
+
+	if (c->closed) {
+		return;
+	}
+
+	nni_aio_get_iov(aio, &naiov, &aiov);
+
+	QUIC_BUFFER *buf=(QUIC_BUFFER*)malloc(sizeof(QUIC_BUFFER)*naiov);
+	for (int i=0; i<naiov; ++i) {
+		log_debug("buf%d sz %d", i, aiov[i].iov_len);
+		printf("buf%d sz %d\n", i, aiov[i].iov_len);
+		buf[i].Buffer = aiov[i].iov_buf;
+		buf[i].Length = aiov[i].iov_len;
+		n += aiov[i].iov_len;
+	}
+	nni_aio_set_input(aio, 0, buf);
+
+	if (QUIC_FAILED(rv = MsQuic->StreamSend(c->qstrm, buf,
+	                naiov, QUIC_SEND_FLAG_NONE, aio))) {
+		log_error("Failed in StreamSend, 0x%x!", rv);
+		printf("Failed in StreamSend, 0x%x!", rv);
+		free(buf);
+		return;
+	}
+
+	nni_aio_bump_count(aio, n);
+	printf("[quic dowrite adv] end\n");
+}
+
+static void
 quic_dowrite(nni_quic_conn *c)
 {
 	nni_aio *aio;
