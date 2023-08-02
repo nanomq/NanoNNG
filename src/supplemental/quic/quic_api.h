@@ -1,6 +1,8 @@
 #ifndef NNG_SUPP_QUIC_API_H
 #define NNG_SUPP_QUIC_API_H
 
+#define QUIC_HIGH_PRIOR_MSG (0x01)
+
 #include "core/nng_impl.h"
 #include "nng/nng.h"
 
