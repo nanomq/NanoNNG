@@ -131,6 +131,7 @@ static void msquic_strm_recv_start(HQUIC qstrm);
 static void quic_dialer_cb(void *arg);
 static void quic_error(void *arg, int err);
 static void quic_close2(void *arg);
+static void quic_dowrite(nni_quic_conn *c);
 
 /***************************** MsQuic Dialer ******************************/
 
@@ -403,6 +404,9 @@ quic_cb(int events, void *arg)
 		nni_aio_list_remove(aio);
 		nni_aio_finish(aio, 0, nni_aio_count(aio));
 
+		// Start next send only after finished the last send
+		quic_dowrite(c);
+
 		nni_mtx_unlock(&d->mtx);
 		break;
 	case QUIC_STREAM_EVENT_START_COMPLETE:
@@ -618,6 +622,7 @@ quic_send(void *arg, nni_aio *aio)
 {
 	nni_quic_conn *c = arg;
 	int            rv;
+	nni_aio        fstaio;
 
 	if (nni_aio_begin(aio) != 0) {
 		return;
