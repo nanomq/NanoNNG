@@ -997,8 +997,7 @@ mqtt_quictran_pipe_send(void *arg, nni_aio *aio)
 	nni_mtx_lock(&p->mtx);
 	// Priority msg
 	int *flags = nni_aio_get_prov_data(aio);
-	// if (flags && (*flags & QUIC_HIGH_PRIOR_MSG)) {
-	if (flags && (*flags & 0x01)) {
+	if (flags && (*flags & QUIC_HIGH_PRIOR_MSG)) {
 		if ((rv = nni_aio_schedule(aio,
 		      mqtt_quictran_pipe_send_prior_cancel, p)) != 0) {
 			nni_mtx_unlock(&p->mtx);
