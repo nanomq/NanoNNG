@@ -392,6 +392,18 @@ quic_cb(int events, void *arg)
 	d = c->dialer;
 
 	switch (events) {
+	case QUIC_STREAM_EVENT_SEND_COMPLETE:
+		nni_mtx_lock(&d->mtx);
+		if ((aio = nni_list_first(&c->writeq)) == NULL) {
+			log_error("Aio lost after sending: conn %p", c);
+			nni_mtx_unlock(&d->mtx);
+			break;
+		}
+		nni_aio_list_remove(aio);
+		nni_aio_finish(aio, 0, nni_aio_count(aio));
+
+		nni_mtx_unlock(&d->mtx);
+		break;
 	case QUIC_STREAM_EVENT_START_COMPLETE:
 		nni_mtx_lock(&d->mtx);
 		if (c->dial_aio) {
@@ -832,13 +844,19 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	log_debug("quic_strm_cb triggered! %d", Event->Type);
 	switch (Event->Type) {
 	case QUIC_STREAM_EVENT_SEND_COMPLETE:
-		// A previous StreamSend call has completed, and the context is
-		// being returned back to the app.
 		log_debug("QUIC_STREAM_EVENT_SEND_COMPLETE!");
 		if (Event->SEND_COMPLETE.Canceled) {
 			log_warn("[strm][%p] Data sent Canceled: %d",
-					 stream, Event->SEND_COMPLETE.Canceled);
+			    stream, Event->SEND_COMPLETE.Canceled);
 		}
+		// Advanced send
+		if (aio = Event->SEND_COMPLETE.ClientContext) {
+			Event->SEND_COMPLETE.ClientContext = NULL;
+			nni_aio_finish(aio, 0, nni_aio_count(aio));
+			break;
+		}
+		// Ordinary send
+		quic_cb(QUIC_STREAM_EVENT_SEND_COMPLETE, c);
 		break;
 	case QUIC_STREAM_EVENT_RECEIVE:
 		// Data was received from the peer on the stream.
