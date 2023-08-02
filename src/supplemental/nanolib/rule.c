@@ -622,6 +622,10 @@ rule_free(rule *r)
 		if (r->raw_sql) {
 			nng_strfree(r->raw_sql);
 		}
+
+		if (r->sqlite_table) {
+			nng_strfree(r->sqlite_table);
+		}
 	}
 }
 

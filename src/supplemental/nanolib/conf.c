@@ -3548,7 +3548,14 @@ conf_sqlite_destroy(conf_sqlite *sqlite)
 static void
 conf_rule_destroy(conf_rule *re)
 {
-	if (re) { }
+	nng_strfree(re->sqlite_db);
+	nng_strfree(re->mysql_db);
+	for (int i = 0; i < cvector_size(re->rules); ++i) {
+		rule_repub_free(re->rules[i].repub);
+		rule_mysql_free(re->rules[i].mysql);
+		rule_free(&(re->rules[i]));
+	}
+	cvector_free(re->rules);
 }
 #endif
 
