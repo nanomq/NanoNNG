@@ -1616,14 +1616,14 @@ quic_mqtt_pipe_start(void *arg)
 		if ((rv = mqtt_send_msg(aio, msg, s)) >= 0) {
 			nni_mtx_unlock(&s->mtx);
 			nni_aio_finish(aio, rv, 0);
-			nni_pipe_recv(p->qsock, &p->recv_aio);
+			nni_pipe_recv(p->qpipe, &p->recv_aio);
 			return 0;
 		}
 	}
 
 	nni_mtx_unlock(&s->mtx);
 	/* rhack: qsock is nni_pipe with transport */
-	nni_pipe_recv(p->qsock, &p->recv_aio);
+	nni_pipe_recv(p->qpipe, &p->recv_aio);
 	return 0;
 }
 
