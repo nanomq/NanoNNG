@@ -139,11 +139,13 @@ quic_dialer_dial(void *arg, nng_aio *aio)
 		nni_quic_dial(d->d, d->host, d->port, d->conaio);
 	}
 	nni_mtx_unlock(&d->mtx);
+	printf("[quic dialer dial] end\n");
 }
 
 static int
 quic_dialer_get(void *arg, const char *name, const void *buf, size_t* szp, nni_type t)
 {
+	return (NNG_ENOTSUP);
 	NNI_ARG_UNUSED(arg);
 	NNI_ARG_UNUSED(name);
 	NNI_ARG_UNUSED(buf);
@@ -157,6 +159,8 @@ static int
 quic_dialer_set(
     void *arg, const char *name, const void *buf, size_t sz, nni_type t)
 {
+	return (NNG_ENOTSUP);
+	quic_dialer *d = arg;
 	NNI_ARG_UNUSED(arg);
 	NNI_ARG_UNUSED(name);
 	NNI_ARG_UNUSED(buf);
