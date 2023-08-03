@@ -89,8 +89,6 @@ struct mqtt_sock_s {
 	nni_list      recv_queue; // aio pending to receive
 	nni_list      send_queue; // aio pending to send
 
-	void    *qsock;         // The matrix of quic sock. Which only be allow to use when disconnect.
-	                        // Or lock first.
 	nni_lmq  send_messages; // send messages queue (only for major stream)
 	nni_lmq *ack_lmq;
 	nni_id_map  *streams; // pipes, only effective in multi-stream mode
@@ -113,7 +111,6 @@ struct mqtt_sock_s {
 struct mqtt_pipe_s {
 	nni_mtx         lk;
 	void           *qconnection;
-	void           *qsock; // quic socket for MSQUIC/etc transport usage
 	nni_pipe	   *npipe; // each pipe has their own QUIC stream
 	nni_atomic_bool closed;
 	bool            busy;
@@ -185,7 +182,7 @@ nng_mqtt_quic_open_topic_stream(mqtt_sock_t *mqtt_sock, const char *topic, uint3
 		log_error("error in alloc pipe.\n");
 		return NULL;
 	}
-	if (0 != quic_mqtt_stream_init(new_pipe, p->qsock, mqtt_sock)) {
+	if (0 != quic_mqtt_stream_init(new_pipe, NULL, mqtt_sock)) {
 		log_warn("Failed in open the topic-stream pair.");
 		return NULL;
 	}
@@ -239,7 +236,7 @@ mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 				return -1;
 			}
 			if (0 != quic_mqtt_stream_init(
-			        new_pipe, p->qsock, p->mqtt_sock)) {
+			        new_pipe, NULL, p->mqtt_sock)) {
 				log_warn(
 				    "Failed in open the topic-stream pair.");
 				return -1;
@@ -1211,7 +1208,6 @@ mqtt_timer_cb(void *arg)
 			log_warn("Close the quic connection due to timeout");
 			s->pingcnt = 0; // restore pingcnt
 			p->reason_code = KEEP_ALIVE_TIMEOUT;
-			quic_disconnect(p->qsock, p->qpipe);
 			log_warn("connection shutting down");
 			nni_mtx_unlock(&s->mtx);
 			return;
@@ -1410,8 +1406,6 @@ mqtt_quic_sock_close(void *arg)
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
 	// need to disconnect connection before sock fini
-	quic_disconnect(p->qsock, p->qpipe);
-	quic_sock_close(p->qsock);
 	if (s->multi_stream) {
 		nni_id_map_foreach(s->streams,mqtt_quic_pipe_close);
 	}
@@ -1469,11 +1463,10 @@ mqtt_quic_sock_set_sqlite_option(
  ******************************************************************************/
 // allocate main stream with pipe
 static int
-quic_mqtt_stream_init(void *arg, nni_pipe *qsock, void *sock)
+quic_mqtt_stream_init(void *arg, nni_pipe *pipe, void *sock)
 {
 	bool         major = false;
 	mqtt_pipe_t *p     = arg;
-	p->qsock           = qsock;
 	p->mqtt_sock       = sock;
 	p->cparam          = NULL;
 
@@ -1565,9 +1558,7 @@ quic_mqtt_stream_fini(void *arg)
 		return;
 	}
 
-	p->reason_code == 0
-	    ? p->reason_code = quic_sock_disconnect_code(p->qsock)
-	    : p->reason_code;
+	p->reason_code == p->reason_code;
 	nni_msg *tmsg = nano_msg_notify_disconnect(p->cparam, p->reason_code);
 	nni_msg_set_cmd_type(tmsg, CMD_DISCONNECT_EV);
 	// clone once for pub DISCONNECT_EV
@@ -2006,9 +1997,6 @@ nng_mqtt_quic_open_conf(nng_socket *sock, const char *url, void *node)
 {
 	int       rv = 0;
 	nni_sock *nsock = NULL;
-	void     *qsock = NULL;
-
-	mqtt_sock_t *msock = NULL;
 
 	// Quic settings
 	if ((rv = nni_proto_open(sock, &mqtt_msquic_proto)) == 0) {
@@ -2019,11 +2007,6 @@ nng_mqtt_quic_open_conf(nng_socket *sock, const char *url, void *node)
 			quic_open();
 			quic_proto_open(&mqtt_msquic_proto);
 			quic_proto_set_bridge_conf(node);
-			rv = quic_connect_ipv4(url, nsock, NULL, &qsock);
-			if (rv == 0) {
-				msock = nni_sock_proto_data(nsock);
-				msock->qsock = qsock;
-			}
 		} else {
 			rv = -1;
 		}
@@ -2043,11 +2026,6 @@ nng_mqtt_quic_client_close(nng_socket *sock)
 		s= nni_sock_proto_data(nsock);
 		if (!s)
 			return -1;
-		if (s->pipe && s->pipe->qpipe) {
-			quic_disconnect(s->qsock, s->pipe->qpipe);
-		} else {
-			quic_disconnect(s->qsock, NULL);
-		}
 
 		// nni_sock_close(nsock);
 		nni_sock_rele(nsock);
