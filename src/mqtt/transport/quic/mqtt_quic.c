@@ -101,7 +101,7 @@ static void mqtt_quictran_pipe_send_cb(void *);
 static void mqtt_quictran_pipe_qos_send_cb(void *);
 static void mqtt_quictran_pipe_recv_cb(void *);
 static void mqtt_quictran_pipe_nego_cb(void *);
-//static void mqtt_quictran_ep_fini(void *);
+static void mqtt_quictran_ep_fini(void *);
 static void mqtt_quictran_pipe_fini(void *);
 
 static nni_reap_list quictran_ep_reap_list = {
@@ -124,7 +124,7 @@ mqtt_quictran_fini(void)
 {
 }
 
-atic void
+static void
 mqtt_quictran_pipe_close(void *arg)
 {
 	mqtt_quictran_pipe *p = arg;
@@ -1499,7 +1499,7 @@ mqtt_quictran_dialer_init(void **dp, nng_url *url, nni_dialer *ndialer)
 	if ((rv != 0) ||
 	    ((rv = nni_aio_alloc(&ep->connaio, mqtt_quictran_dial_cb, ep)) !=
 	        0) ||
-	    ((rv = nng_stream_dialer_alloc_url(&ep->dialer, &myurl)) != 0)) {
+	    ((rv = nng_stream_dialer_alloc_url(&ep->dialer, url)) != 0)) {
 		mqtt_quictran_ep_fini(ep);
 		return (rv);
 	}
@@ -1514,6 +1514,18 @@ mqtt_quictran_dialer_init(void **dp, nng_url *url, nni_dialer *ndialer)
 #endif
 	*dp = ep;
 	return (0);
+}
+
+static void
+mqtt_quictran_ep_cancel(nni_aio *aio, void *arg, int rv)
+{
+	mqtt_quictran_ep *ep = arg;
+	nni_mtx_lock(&ep->mtx);
+	if (ep->useraio == aio) {
+		ep->useraio = NULL;
+		nni_aio_finish_error(aio, rv);
+	}
+	nni_mtx_unlock(&ep->mtx);
 }
 
 // called by dialer
@@ -1770,6 +1782,7 @@ static nni_sp_dialer_ops mqtt_quictran_dialer_ops = {
 };
 
 // TODO Remove: MQTT SDK has no listener though
+/*
 static nni_sp_listener_ops mqtt_quictran_listener_ops = {
 	.l_init   = mqtt_quictran_listener_init,
 	.l_fini   = mqtt_quictran_ep_fini,
@@ -1779,6 +1792,7 @@ static nni_sp_listener_ops mqtt_quictran_listener_ops = {
 	.l_getopt = mqtt_quictran_listener_getopt,
 	.l_setopt = mqtt_quictran_listener_setopt,
 };
+*/
 
 static nni_sp_tran mqtt_quic_tran = {
 	.tran_scheme   = "mqtt-quic",
