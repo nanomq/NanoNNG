@@ -399,7 +399,8 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		    ptype == NNG_MQTT_UNSUBSCRIBE) {
 			nni_mqtt_msg_encode(msg);
 			log_info("Sending Sub/UnSub msg in high priority");
-			quic_aio_send(p->qpipe, aio);
+			/* rhack: Send directly with quic */
+			//quic_aio_send(p->qpipe, aio);
 			return -1;
 		}
 		if (qos > 0 && ptype == NNG_MQTT_PUBLISH) {
@@ -415,7 +416,8 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 			         "parallel %ld payload %.*s",
 			    qos, topic_len, topic, nni_clock(), plen, payload);
 			nni_aio_set_msg(aio, msg);
-			quic_aio_send(p->qpipe, aio);
+			/* rhack: Send directly with quic */
+			//quic_aio_send(p->qpipe, aio);
 			return -1;
 		}
 	}
