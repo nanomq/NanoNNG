@@ -20,7 +20,8 @@ extern "C" {
 #if defined(SUPP_QUIC)
 
 NNG_DECL int nng_mqttv5_quic_client_open(nng_socket *, const char *url);
-NNG_DECL int nng_mqtt_quic_client_open(nng_socket *, const char *url);
+NNG_DECL int nng_mqtt_quic_client_open(nng_socket *);
+/*
 NNG_DECL int nng_mqtt_quic_client_close(nng_socket *);
 NNG_DECL int nng_mqtt_quic_open_conf(
     nng_socket *sock, const char *url, void *node);
@@ -38,6 +39,7 @@ NNG_DECL int nng_mqtt_quic_set_msg_send_cb(
 NNG_DECL int nng_mqtt_quic_ack_callback_set(
     nng_socket *sock, void (*cb)(void *), void *arg);
 NNG_DECL int nng_mqtt_quic_set_config(nng_socket *sock, void *node);
+*/
 #endif
 #ifdef __cplusplus
 }
