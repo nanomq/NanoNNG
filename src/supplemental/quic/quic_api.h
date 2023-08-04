@@ -5,6 +5,7 @@
 
 #include "core/nng_impl.h"
 #include "nng/nng.h"
+#include "msquic.h"
 
 typedef struct quic_dialer quic_dialer;
 
@@ -24,6 +25,31 @@ extern int  nni_msquic_quic_alloc(nni_quic_conn **, nni_quic_dialer *);
 extern void nni_msquic_quic_init(nni_quic_conn *);
 extern void nni_msquic_quic_start(nni_quic_conn *, int, int);
 extern void nni_msquic_quic_dialer_rele(nni_quic_dialer *);
+
+struct nni_quic_dialer {
+	nni_aio                *qconaio; // for quic connection
+	nni_quic_conn          *currcon;
+	nni_list                connq;   // pending connections/quic streams
+	bool                    closed;
+	bool                    nodelay;
+	bool                    keepalive;
+	struct sockaddr_storage src;
+	size_t                  srclen;
+	nni_mtx                 mtx;
+	nni_atomic_u64          ref;
+	nni_atomic_bool         fini;
+
+	// MsQuic
+	HQUIC                   qconn; // quic connection
+	bool                    enable_0rtt;
+	uint8_t                 reason_code;
+	// ResumptionTicket
+	char *                  rticket;
+	uint16_t                rticket_sz;
+	// CertificateFile
+	char *                  cacert;
+};
+
 
 /*
  * Note.
