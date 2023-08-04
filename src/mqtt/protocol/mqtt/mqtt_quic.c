@@ -10,6 +10,7 @@
 #include "nng/mqtt/mqtt_quic.h"
 #include "sqlite_handler.h"
 #include "core/nng_impl.h"
+#include "core/sockimpl.h"
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/supplemental/nanolib/conf.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
@@ -23,11 +24,13 @@
 #define NNG_MQTT_PEER_NAME "mqtt-server"
 #define MQTT_QUIC_RETRTY 5  // 5 seconds as default minimum timer 
 #define MQTT_QUIC_KEEPALIVE 5  // 5 seconds as default 
+#define MQTT_PIPE_DIALER(p) ((p)->npipe->p_dialer)
 
 typedef struct mqtt_sock_s   mqtt_sock_t;
 typedef struct mqtt_pipe_s   mqtt_pipe_t;
 typedef struct mqtt_quic_ctx mqtt_quic_ctx;
 typedef nni_mqtt_packet_type packet_type_t;
+typedef struct wait_stream   wait_stream;
 
 static void mqtt_quic_sock_init(void *arg, nni_sock *sock);
 static void mqtt_quic_sock_fini(void *arg);
@@ -74,6 +77,10 @@ struct mqtt_quic_ctx {
 	nni_list_node rqnode;
 };
 
+struct wait_stream {
+	mqtt_pipe_t *pipe;
+	void *list_node;
+};
 // A mqtt_sock_s is our per-socket protocol private structure.
 struct mqtt_sock_s {
 	bool            multi_stream;
@@ -88,6 +95,7 @@ struct mqtt_sock_s {
 	mqtt_quic_ctx master;     // to which we delegate send/recv calls
 	nni_list      recv_queue; // aio pending to receive
 	nni_list      send_queue; // aio pending to send
+	nni_list	  wait_streams_queue; // new data stream wait for bind
 
 	nni_lmq  send_messages; // send messages queue (only for major stream)
 	nni_lmq *ack_lmq;
@@ -177,15 +185,26 @@ nng_mqtt_quic_open_topic_stream(mqtt_sock_t *mqtt_sock, const char *topic, uint3
 	mqtt_pipe_t *new_pipe   = NULL;
 	uint32_t     hash;
 
+	nni_dialer_start(MQTT_PIPE_DIALER(p), 0);
 	// create a pipe/stream here
-	if ((new_pipe = nng_alloc(sizeof(mqtt_pipe_t))) == NULL) {
-		log_error("error in alloc pipe.\n");
-		return NULL;
+	int times = 0;
+	wait_stream *new_stream = NULL;
+	/* waiting dialer connect finished */
+	while ((new_stream = nni_list_first(&mqtt_sock->wait_streams_queue)) == NULL) {
+		if (times % 200 == 0) {
+			printf("rhack: %s: %d: wait for streams initial done... times: %d\n", times);
+		}
+		if (times >= 2000) {
+			printf("rhack: too long to wait just break...\n");
+			return NULL;
+		}
+		times++;
+		nng_msleep(50);
 	}
-	if (0 != quic_mqtt_stream_init(new_pipe, NULL, mqtt_sock)) {
-		log_warn("Failed in open the topic-stream pair.");
-		return NULL;
-	}
+	new_pipe = new_stream->pipe;
+	nni_list_remove(&mqtt_sock->wait_streams_queue, new_stream);
+	free(new_stream);
+
 	hash = DJBHashn((char *) topic, len);
 	nni_id_set(mqtt_sock->streams, hash, new_pipe);
 	new_pipe->stream_id = hash;
@@ -231,16 +250,25 @@ mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 			// create pipe here & set stream id
 			log_debug("topic %s qos %d", topics[i].topic.buf, topics[i].qos);
 			// create a pipe/stream here
-			if ((new_pipe = nng_alloc(sizeof(mqtt_pipe_t))) == NULL) {
-				log_error("error in alloc pipe.\n");
-				return -1;
+			nni_dialer_start(MQTT_PIPE_DIALER(p), 0);
+			int times = 0;
+			wait_stream *new_stream = NULL;
+			/* waiting dialer connect finished */
+			while ((new_stream = nni_list_first(&sock->wait_streams_queue)) == NULL) {
+				if (times % 200 == 0) {
+					printf("rhack: %s: %d: wait for streams initial done... times: %d\n", times);
+				}
+				if (times >= 2000) {
+					printf("rhack: too long to wait just break...\n");
+					return NULL;
+				}
+				times++;
+				nng_msleep(50);
 			}
-			if (0 != quic_mqtt_stream_init(
-			        new_pipe, NULL, p->mqtt_sock)) {
-				log_warn(
-				    "Failed in open the topic-stream pair.");
-				return -1;
-			}
+			new_pipe = new_stream->pipe;
+			nni_list_remove(&sock->wait_streams_queue, new_stream);
+			free(new_stream);
+
 			nni_id_set(sock->streams, hash, new_pipe);
 			new_pipe->stream_id = hash;
 
@@ -1293,7 +1321,9 @@ static void mqtt_quic_sock_init(void *arg, nni_sock *sock)
 	    s->sqlite_db, s->bridge_conf->name);
 #endif
 	*/
+
 	nni_lmq_init(&s->send_messages, NNG_MAX_SEND_LMQ);
+	NNI_LIST_INIT(&s->wait_streams_queue, wait_stream, list_node);
 	nni_aio_list_init(&s->send_queue);
 	nni_aio_list_init(&s->recv_queue);
 	nni_aio_init(&s->time_aio, mqtt_timer_cb, s);
@@ -1363,6 +1393,7 @@ mqtt_quic_sock_fini(void *arg)
 	}
 	mqtt_quic_ctx_fini(&s->master);
 	nni_lmq_fini(&s->send_messages);
+	/* TODO: close streams for each */
 	nni_aio_fini(&s->time_aio);
 	nni_msg_free(s->ping_msg);
 	// potential memleak here. need to adapt to MsQUIC finit
@@ -1412,7 +1443,11 @@ mqtt_quic_sock_close(void *arg)
 		nni_id_map_foreach(s->streams,mqtt_quic_pipe_close);
 	}
 	nni_lmq_flush(&s->send_messages);
-
+	wait_stream *stream;
+	NNI_LIST_FOREACH(&s->wait_streams_queue, stream) {
+		/* TODO: close nni_pipes*/
+		quic_mqtt_stream_stop(stream->pipe);
+	}
 	nni_sock_rele(s->nsock);
 	nni_mtx_unlock(&s->mtx);
 }
@@ -1471,18 +1506,22 @@ quic_mqtt_stream_init(void *arg, nni_pipe *pipe, void *sock)
 	mqtt_pipe_t *p     = arg;
 	p->mqtt_sock       = sock;
 	p->cparam          = NULL;
+	wait_stream	*stream = NULL;
 
-	if (pipe != NULL) {
+	if (p->mqtt_sock->pipe == NULL) {
 		/* control stream */
 		p->mqtt_sock->pipe = p;
-		p->npipe = pipe
 		major = true;
 	} else {
 		/* data stream */
-		// rhack: dialer_start ? Initial the pipe to transport layer
-		//nni_dialer_start(d, 0);
-		//p->npipe = d->d_pipes? // How to get pipe in d_pipes
+		stream = nni_alloc(sizeof(wait_stream));
+		if (stream == NULL) {
+			return -1;
+		}
+		stream->pipe = p;
+		nni_list_append(&p->mqtt_sock->wait_streams_queue, stream);
 	}
+	p->npipe = pipe;
 	p->rid = 1;
 	p->reason_code = 0;
 	nni_atomic_init_bool(&p->closed);
@@ -1645,15 +1684,15 @@ quic_mqtt_stream_stop(void *arg)
 	nni_msg *msg;
 
 	log_info("Stopping MQTT over QUIC Stream");
-	if (!nni_atomic_get_bool(&p->closed))
-		if (nni_pipe_close(p->npipe, &p->reason_code) == 0) {
-			nni_aio_stop(&p->send_aio);
-			nni_aio_stop(&p->recv_aio);
-			nni_aio_abort(&p->rep_aio, NNG_ECANCELED);
-			nni_aio_finish_error(&p->rep_aio, NNG_ECANCELED);
-			nni_aio_stop(&p->rep_aio);
-			// nni_aio_stop(&s->time_aio);
-		}
+	if (!nni_atomic_get_bool(&p->closed)) {
+		nni_pipe_close(p->npipe);
+		nni_aio_stop(&p->send_aio);
+		nni_aio_stop(&p->recv_aio);
+		nni_aio_abort(&p->rep_aio, NNG_ECANCELED);
+		nni_aio_finish_error(&p->rep_aio, NNG_ECANCELED);
+		nni_aio_stop(&p->rep_aio);
+		// nni_aio_stop(&s->time_aio);
+	}
 	if (p != s->pipe) {
 		// close & finit data stream
 		log_warn("close data stream of topic");
