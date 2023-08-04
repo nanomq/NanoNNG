@@ -184,14 +184,16 @@ static const nni_option quic_dialer_options[] = {
 static int
 quic_dialer_get(void *arg, const char *name, const void *buf, size_t* szp, nni_type t)
 {
-	return(nni_getopt(quic_dialer_options, arg, name, buf, szp, t));
+	quic_dialer *d = arg;
+	return(nni_getopt(quic_dialer_options, name, d, buf, szp, t));
 }
 
 static int
 quic_dialer_set(
     void *arg, const char *name, const void *buf, size_t sz, nni_type t)
 {
-	return(nni_setopt(quic_dialer_options, arg, name, buf, sz, t));
+	quic_dialer *d = arg;
+	return(nni_setopt(quic_dialer_options, name, d->d, buf, sz, t));
 }
 
 static void
