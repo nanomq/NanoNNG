@@ -727,6 +727,9 @@ NNG_DECL nng_listener nng_pipe_listener(nng_pipe);
 // NNG-MQTT
 #define NNG_OPT_MQTT_CONNMSG "mqtt-connect-msg"
 
+// NNG-QUIC
+#define NNG_OPT_QUIC_ENABLE_0RTT "quic-0rtt"
+
 // TLS options are only used when the underlying transport supports TLS.
 
 // NNG_OPT_TLS_CONFIG is a pointer to an nng_tls_config object.  Generally
