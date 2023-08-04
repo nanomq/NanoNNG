@@ -383,7 +383,7 @@ nni_msquic_quic_dialer_rele(nni_quic_dialer *d)
 static void
 quic_cb(int events, void *arg)
 {
-	printf("[quic cb] start %d\n", events);
+	log_debug("[quic cb] start %d\n", events);
 	nni_quic_conn   *c = arg;
 	nni_quic_dialer *d;
 	nni_aio         *aio;
@@ -434,7 +434,7 @@ quic_cb(int events, void *arg)
 	default:
 		break;
 	}
-	printf("[quic cb] end\n");
+	log_debug("[quic cb] end\n");
 }
 
 static void
@@ -540,7 +540,7 @@ quic_recv(void *arg, nni_aio *aio)
 static void
 quic_dowrite_prior(nni_quic_conn *c, nni_aio *aio)
 {
-	printf("[quic dowrite adv] start\n");
+	log_debug("[quic dowrite adv] start\n");
 	int       rv;
 	unsigned  naiov;
 	nni_iov * aiov;
@@ -555,7 +555,6 @@ quic_dowrite_prior(nni_quic_conn *c, nni_aio *aio)
 	QUIC_BUFFER *buf=(QUIC_BUFFER*)malloc(sizeof(QUIC_BUFFER)*naiov);
 	for (int i=0; i<naiov; ++i) {
 		log_debug("buf%d sz %d", i, aiov[i].iov_len);
-		printf("buf%d sz %d\n", i, aiov[i].iov_len);
 		buf[i].Buffer = aiov[i].iov_buf;
 		buf[i].Length = aiov[i].iov_len;
 		n += aiov[i].iov_len;
@@ -565,13 +564,12 @@ quic_dowrite_prior(nni_quic_conn *c, nni_aio *aio)
 	if (QUIC_FAILED(rv = MsQuic->StreamSend(c->qstrm, buf,
 	                naiov, QUIC_SEND_FLAG_NONE, aio))) {
 		log_error("Failed in StreamSend, 0x%x!", rv);
-		printf("Failed in StreamSend, 0x%x!", rv);
 		free(buf);
 		return;
 	}
 
 	nni_aio_bump_count(aio, n);
-	printf("[quic dowrite adv] end\n");
+	log_debug("[quic dowrite adv] end\n");
 }
 
 static void
@@ -734,7 +732,7 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		// Generally, this is the expected way for the connection to
 		// shut down with this protocol, since we let idle timeout kill
 		// the connection.
-		printf("[conn] Quic status %d\n", Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status);
+		log_info("[conn] Quic status %d\n", Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status);
 		switch (Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status) {
 		case QUIC_STATUS_CONNECTION_IDLE:
 			log_warn("[conn][%p] Connection shutdown on idle.\n", qconn);
