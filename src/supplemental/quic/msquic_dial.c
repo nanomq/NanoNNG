@@ -782,6 +782,10 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 			break;
 		}
 		d->rticket_sz = Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength;
+		if (d->rticket_sz > 4096) {
+			log_error("rticket is too long.");
+			break;
+		}
 		memcpy(d->rticket, Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicket,
 		        Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength);
 		break;
