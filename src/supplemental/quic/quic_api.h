@@ -5,6 +5,9 @@
 
 #include "core/nng_impl.h"
 #include "nng/nng.h"
+
+#ifdef NNG_HAVE_QUIC_SOCKETS
+
 #include "msquic.h"
 
 typedef struct quic_dialer quic_dialer;
@@ -50,7 +53,7 @@ struct nni_quic_dialer {
 	// CertificateFile
 	char *    cacert;
 };
-
+#endif
 
 /*
  * Note.

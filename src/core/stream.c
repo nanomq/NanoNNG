@@ -210,7 +210,7 @@ static struct {
 	    .dialer_alloc   = nni_ws_dialer_alloc,
 	    .listener_alloc = nni_ws_listener_alloc,
 	},
-// #ifdef NNG_HAVE_QUIC_SOCKETS
+#ifdef NNG_HAVE_QUIC_SOCKETS
 	{
 	    .scheme         = "quic",
 	    .dialer_alloc   = nni_quic_dialer_alloc,
@@ -226,7 +226,7 @@ static struct {
 	    .dialer_alloc   = nni_quic_dialer_alloc,
 	    .listener_alloc = nni_quic_listener_alloc,
 	},
-// #endif
+#endif
 	{
 	    .scheme = NULL,
 	},

@@ -27,6 +27,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#if 0
 struct quic_dialer {
 	nng_stream_dialer ops;
 	bool              closed;
@@ -282,6 +283,7 @@ nni_quic_dialer_alloc(nng_stream_dialer **dp, const nni_url *url)
 	*dp = (void *) d;
 	return (0);
 }
+#endif
 
 #define NNI_QUIC_KEEPALIVE 100
 #define NNI_QUIC_TIMER 1
