@@ -56,30 +56,6 @@
 #include <time.h>
 #include <unistd.h>
 
-struct nni_quic_dialer {
-	nni_aio                *qconaio; // for quic connection
-	nni_quic_conn          *currcon;
-	nni_list                connq;   // pending connections/quic streams
-	bool                    closed;
-	bool                    nodelay;
-	bool                    keepalive;
-	struct sockaddr_storage src;
-	size_t                  srclen;
-	nni_mtx                 mtx;
-	nni_atomic_u64          ref;
-	nni_atomic_bool         fini;
-
-	// MsQuic
-	HQUIC                   qconn; // quic connection
-	bool                    enable_0rtt;
-	uint8_t                 reason_code;
-	// ResumptionTicket
-	char *                  rticket;
-	uint16_t                rticket_sz;
-	// CertificateFile
-	char *                  cacert;
-};
-
 struct nni_quic_conn {
 	nng_stream      stream;
 	nni_list        readq;
