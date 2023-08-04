@@ -40,14 +40,15 @@ struct nni_quic_dialer {
 	nni_atomic_bool         fini;
 
 	// MsQuic
-	HQUIC                   qconn; // quic connection
-	bool                    enable_0rtt;
-	uint8_t                 reason_code;
+	HQUIC    qconn; // quic connection
+	bool     enable_0rtt;
+	uint8_t  reason_code;
 	// ResumptionTicket
-	char *                  rticket;
-	uint16_t                rticket_sz;
+	char      rticket[4096]; // Ususally it would be within 4096.
+	                         // But in msquic. The maximum size is 65535.
+	uint16_t  rticket_sz;
 	// CertificateFile
-	char *                  cacert;
+	char *    cacert;
 };
 
 
