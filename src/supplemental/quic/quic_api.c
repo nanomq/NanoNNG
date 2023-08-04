@@ -333,8 +333,8 @@ const QUIC_BUFFER quic_alpn = {
 	(uint8_t *) "mqtt"
 };
 
-HQUIC registration;
-HQUIC configuration;
+static HQUIC registration;
+static HQUIC configuration;
 
 // move this to quic_sock
 static conf_bridge_node *bridge_node;
