@@ -1089,7 +1089,6 @@ nni_mqtt_msg_encode_subscribe(nni_msg *msg)
 	}
 
 	mqtt->fixed_header.remaining_length = (uint32_t) poslength;
-	mqtt->fixed_header.common.bit_1     = 1;
 	nni_mqtt_msg_encode_fixed_header(msg, mqtt);
 
 	mqtt_subscribe_vhdr *var_header = &mqtt->var_header.subscribe;
@@ -1147,7 +1146,6 @@ nni_mqttv5_msg_encode_subscribe(nni_msg *msg)
 
 	/* Fixed header */
 	mqtt->fixed_header.remaining_length = (uint32_t) nni_msg_len(msg);
-	mqtt->fixed_header.common.bit_1     = 1;
 	nni_mqtt_msg_encode_fixed_header(msg, mqtt);
 
 	return MQTT_SUCCESS;
