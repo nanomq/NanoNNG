@@ -129,6 +129,9 @@ nni_quic_dialer_init(void **argp)
 	nni_atomic_init64(&d->ref);
 	nni_atomic_inc64(&d->ref);
 
+	// 0RTT is disabled by default
+	d->enable_0rtt = false;
+
 	*argp = d;
 	return 0;
 }
