@@ -651,13 +651,13 @@ nano_pipe_start(void *arg)
 	}
 #endif
 	// Get IPv4 ADDR of client
-	nng_sockaddr  addr;
-	uint8_t      *arr;
-	nng_pipe      nng_pipe;
+	nng_sockaddr addr;
+	uint8_t     *arr;
+	nng_pipe     nng_pipe;
 	nng_pipe.id = npipe->p_id;
 
-	rv = nng_pipe_getopt_sockaddr(nng_pipe, NNG_OPT_REMADDR, &addr);
-	//TODO: add port by nng_pipe_getopt_sockaddr(p, NNG_OPT_LOCADDR, &addr);
+	rv = nng_pipe_get_addr(nng_pipe, NNG_OPT_REMADDR, &addr);
+	// TODO: addr.s_in.sa_port
 	if (addr.s_family == NNG_AF_INET) {
 		arr = (uint8_t *) &addr.s_in.sa_addr;
 		if (arr == NULL) {
@@ -666,10 +666,13 @@ nano_pipe_start(void *arg)
 		}
 		sprintf(p->conn_param->ip_addr_v4, "%d.%d.%d.%d", arr[0],
 		    arr[1], arr[2], arr[3]);
-	} else if (addr.s_family == NNG_AF_INET6)
-		arr = (uint8_t *)&addr.s_in6.sa_addr;
+	} else if (addr.s_family == NNG_AF_INET6) {
+		arr = (uint8_t *) &addr.s_in6.sa_addr;
+		log_warn("IPv6 address is not supported in event msg yet");
+	}
 
-	log_debug("client connected! addr [%s]\n", p->conn_param->ip_addr_v4);
+	log_debug("client connected! addr [%s port [%d]\n",
+	    p->conn_param->ip_addr_v4, addr.s_in.sa_port);
 
 session_keeping:
 	// Clientid should not be NULL since broker will assign one
