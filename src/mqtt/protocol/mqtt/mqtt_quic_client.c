@@ -22,8 +22,8 @@
 #define NNG_MQTT_SELF_NAME "mqtt-client"
 #define NNG_MQTT_PEER 0
 #define NNG_MQTT_PEER_NAME "mqtt-server"
-#define MQTT_QUIC_RETRTY 5  // 5 seconds as default minimum timer 
-#define MQTT_QUIC_KEEPALIVE 5  // 5 seconds as default 
+#define MQTT_QUIC_RETRTY 5  // 5 seconds as default minimum timer
+#define MQTT_QUIC_KEEPALIVE 5  // 5 seconds as default
 
 typedef struct mqtt_sock_s   mqtt_sock_t;
 typedef struct mqtt_pipe_s   mqtt_pipe_t;
@@ -87,7 +87,9 @@ struct mqtt_sock_s {
 	bool            multi_stream;
 	bool            qos_first;
 	nni_atomic_bool closed;
-	nni_atomic_int  next_packet_id; // next packet id to use, shared by multiple pipes
+	nni_atomic_int  next_packet_id; // next packet id to use
+	                                // shared by multiple pipes
+
 	uint16_t      counter;   // counter for elapsed time
 	uint16_t      pingcnt;   // count how many ping msg is lost
 	uint16_t      keepalive; // MQTT keepalive
@@ -98,21 +100,23 @@ struct mqtt_sock_s {
 	nni_list      send_queue; // aio pending to send
 	nni_list	  wait_streams_queue; // new data stream wait for bind
 
-	nni_lmq  send_messages; // send messages queue (only for major stream)
-	nni_lmq *ack_lmq;
-	nni_id_map  *streams; // pipes, only effective in multi-stream mode
-	mqtt_pipe_t *pipe;    // the major pipe (control stream)
-	                      // main quic pipe, others needs a map to store the
-	                      // relationship between MQTT topics and quic pipes
-	nni_aio   time_aio; // timer aio to resend unack msg
-	nni_aio  *ack_aio;  // set by user, expose puback/pubcomp
-	nni_msg  *ping_msg, *connmsg;
-	nni_sock *nsock;
+	void         *qsock; // The matrix of quic sock. Which only be allow
+	                     // to use when disconnect. Or lock first.
+	nni_lmq       send_messages; // send messages queue (only for major stream)
+	nni_lmq      *ack_lmq;
+	nni_id_map   *streams; // pipes, only effective in multi-stream mode
+	mqtt_pipe_t  *pipe;  // the major pipe (control stream)
+	                     // main quic pipe, others needs a map to store the
+	                     // relationship between MQTT topics and quic pipes
+	nni_aio       time_aio; // timer aio to resend unack msg
+	nni_aio      *ack_aio;  // set by user, expose puback/pubcomp
+	nni_msg      *ping_msg, *connmsg;
+	nni_sock     *nsock;
 
 	nni_mqtt_sqlite_option *sqlite_opt;
 	conf_bridge_node       *bridge_conf;
 
-	struct mqtt_client_cb cb; // user cb
+	struct mqtt_client_cb    cb; // user cb
 	nni_pollable			*readable;
 	nni_pollable			*writeable;
 };
@@ -1280,7 +1284,8 @@ mqtt_timer_cb(void *arg)
  *                            Socket Implementation                           *
  ******************************************************************************/
 
-static void mqtt_quic_sock_init(void *arg, nni_sock *sock)
+static void
+mqtt_quic_sock_init(void *arg, nni_sock *sock)
 {
 	mqtt_sock_t *s = arg;
 	s->nsock       = sock;
