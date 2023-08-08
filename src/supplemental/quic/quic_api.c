@@ -219,7 +219,7 @@ static int
 quic_dialer_get(void *arg, const char *name, const void *buf, size_t* szp, nni_type t)
 {
 	quic_dialer *d = arg;
-	return(nni_getopt(quic_dialer_options, name, d, buf, szp, t));
+	return(nni_getopt(quic_dialer_options, name, d->d, buf, szp, t));
 }
 
 static int
@@ -599,7 +599,7 @@ quic_sock_init(quic_sock_t *qsock)
 	qsock->url_s       = NULL;
 	qsock->rticket_sz  = 0;
 	qsock->cacert      = NULL;
-	qsock->enable_0rtt = true;
+	qsock->enable_0rtt = false;
 	qsock->closed      = false;
 	qsock->reason_code = 0;
 }
