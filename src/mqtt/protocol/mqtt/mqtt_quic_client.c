@@ -24,7 +24,7 @@
 #define NNG_MQTT_PEER_NAME "mqtt-server"
 #define MQTT_QUIC_RETRTY 5  // 5 seconds as default minimum timer 
 #define MQTT_QUIC_KEEPALIVE 5  // 5 seconds as default 
-#define MQTT_PIPE_DIALER(p) ((p)->npipe->p_dialer)
+#define QUIC_DIALER_START(p, flags) (nni_dialer_start((p)->npipe->p_dialer, (flags)))
 
 typedef struct mqtt_sock_s   mqtt_sock_t;
 typedef struct mqtt_pipe_s   mqtt_pipe_t;
@@ -80,8 +80,8 @@ struct mqtt_quic_ctx {
 };
 
 struct wait_stream {
-	mqtt_pipe_t *pipe;
-	void *list_node;
+	mqtt_pipe_t    *pipe;
+	nni_list_node  list_node;
 };
 // A mqtt_sock_s is our per-socket protocol private structure.
 struct mqtt_sock_s {
@@ -189,14 +189,14 @@ nng_mqtt_quic_open_topic_stream(mqtt_sock_t *mqtt_sock, const char *topic, uint3
 	mqtt_pipe_t *new_pipe   = NULL;
 	uint32_t     hash;
 
-	nni_dialer_start(MQTT_PIPE_DIALER(p), 0);
 	// create a pipe/stream here
+	QUIC_DIALER_START(p, 0);
 	int times = 0;
 	wait_stream *new_stream = NULL;
 	/* waiting dialer connect finished */
 	while ((new_stream = nni_list_first(&mqtt_sock->wait_streams_queue)) == NULL) {
 		if (times % 200 == 0) {
-			printf("rhack: %s: %d: wait for streams initial done... times: %d\n", times);
+			printf("rhack: %s: %d: wait for streams initial done... times: %d\n", __func__, __LINE__, times);
 		}
 		if (times >= 2000) {
 			printf("rhack: too long to wait just break...\n");
@@ -254,13 +254,13 @@ mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 			// create pipe here & set stream id
 			log_debug("topic %s qos %d", topics[i].topic.buf, topics[i].qos);
 			// create a pipe/stream here
-			nni_dialer_start(MQTT_PIPE_DIALER(p), 0);
+			QUIC_DIALER_START(p, 0);
 			int times = 0;
 			wait_stream *new_stream = NULL;
 			/* waiting dialer connect finished */
 			while ((new_stream = nni_list_first(&sock->wait_streams_queue)) == NULL) {
 				if (times % 200 == 0) {
-					printf("rhack: %s: %d: wait for streams initial done... times: %d\n", times);
+					printf("rhack: %s: %d: wait for streams initial done... times: %d\n", __func__, __LINE__, times);
 				}
 				if (times >= 2000) {
 					printf("rhack: too long to wait just break...\n");
@@ -1503,6 +1503,8 @@ quic_mqtt_pipe_init(void *arg, nni_pipe *pipe, void *sock)
 			return -1;
 		}
 		stream->pipe = p;
+		NNI_LIST_NODE_INIT(&stream->list_node);
+		printf("rhack: %s: %d: stream_queue: %p stream: %p\n", __func__, __LINE__, &p->mqtt_sock->wait_streams_queue, stream);
 		nni_list_append(&p->mqtt_sock->wait_streams_queue, stream);
 	}
 	p->npipe = pipe;
@@ -2157,9 +2159,16 @@ nng_mqtt_quic_set_config(nng_socket *sock, void *node)
 	if (nsock) {
 		mqtt_sock              = nni_sock_proto_data(nsock);
 		mqtt_sock->bridge_conf = node;
+		/* TODO: node is NULL now, hack it */
 		if (node == NULL) {
-			mqtt_sock->multi_stream = false;
+			mqtt_sock->multi_stream = true;
 			mqtt_sock->qos_first    = false;
+			if (mqtt_sock->multi_stream) {
+				mqtt_sock->streams =
+				    nng_alloc(sizeof(nni_id_map));
+				nni_id_map_init(mqtt_sock->streams, 0x0000u,
+				    0xffffu, true);
+			}
 		} else {
 			mqtt_sock->multi_stream = conf_node->multi_stream;
 			mqtt_sock->qos_first    = conf_node->qos_first;
