@@ -1601,8 +1601,22 @@ quic_mqtt_pipe_start(void *arg)
 	mqtt_sock_t *s = p->mqtt_sock;
 	nni_aio     *aio;
 	nni_msg     *msg;
+	nni_pipe    *npipe = p->qpipe;
 
 	nni_mtx_lock(&s->mtx);
+
+	// p_dialer is unavailable when pipe init and sock init. So we put here.
+	if (p->mqtt_sock->streams == NULL) {
+		size_t sz;
+		nni_dialer_getopt(npipe->p_dialer, NNG_OPT_QUIC_ENABLE_MULTISTREAM,
+		        &(p->mqtt_sock->multi_stream), &sz, NNI_TYPE_BOOL);
+		if (p->mqtt_sock->multi_stream == true) {
+			log_info("Quic Multistream is enabled");
+			mqtt_sock->streams = nng_alloc(sizeof(nni_id_map));
+			nni_id_map_init(mqtt_sock->streams, 0x0000u, 0xffffu, true);
+		}
+	}
+
 	if (s->connmsg!= NULL) {
 		nni_msg_clone(s->connmsg);
 		mqtt_send_msg(NULL, s->connmsg, s);
