@@ -102,6 +102,7 @@ struct mqtt_sock_s {
 	mqtt_pipe_t  *pipe;  // the major pipe (control stream)
 	                     // main quic pipe, others needs a map to store the
 	                     // relationship between MQTT topics and quic pipes
+	nni_lmq      *topicq;   // Topics wait to be bind to stream.
 	nni_aio       time_aio; // timer aio to resend unack msg
 	nni_aio      *ack_aio;  // set by user, expose puback/pubcomp
 	nni_msg      *ping_msg, *connmsg;
@@ -231,7 +232,7 @@ mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 	mqtt_pipe_t *new_pipe   = NULL;
 	nni_mqtt_topic_qos *topics;
 
-	// check topic/stream pair exsitence
+	// check topic/stream pair existence
 	topics = nni_mqtt_msg_get_subscribe_topics(msg, &count);
 	// there is only one topic in Sub msg if multi-stream is enabled
 	for (uint32_t i = 0; i < count; i++) {
@@ -1277,6 +1278,13 @@ mqtt_quic_sock_init(void *arg, nni_sock *sock)
 	    s->sqlite_db, s->bridge_conf->name);
 #endif
 	*/
+
+	s->ack_lmq = nni_alloc(sizeof(nni_lmq));
+	nni_lmq_init(s->ack_lmq, NNG_MAX_RECV_LMQ);
+
+	s->topicq = nni_alloc(sizeof(nni_lmq));
+	nni_lmq_init(s->topicq, NNG_MAX_RECV_LMQ);
+
 	nni_lmq_init(&s->send_messages, NNG_MAX_SEND_LMQ);
 	nni_aio_list_init(&s->send_queue);
 	nni_aio_list_init(&s->recv_queue);
@@ -1320,6 +1328,11 @@ mqtt_quic_sock_fini(void *arg)
 		nni_lmq_fini(s->ack_lmq);
 		nng_free(s->ack_lmq, sizeof(nni_lmq));
 	}
+	if (s->topicq != NULL) {
+		nni_lmq_fini(s->topicq);
+		nng_free(s->topicq, sizeof(nni_lmq));
+	}
+
 	// emulate disconnect notify msg as a normal publish
 	while ((aio = nni_list_first(&s->recv_queue)) != NULL) {
 		// Pipe was closed.  just push an error back to the
@@ -1616,8 +1629,8 @@ quic_mqtt_pipe_start(void *arg)
 		        &(p->mqtt_sock->multi_stream), &sz, NNI_TYPE_BOOL);
 		if (p->mqtt_sock->multi_stream == true) {
 			log_info("Quic Multistream is enabled");
-			mqtt_sock->streams = nng_alloc(sizeof(nni_id_map));
-			nni_id_map_init(mqtt_sock->streams, 0x0000u, 0xffffu, true);
+			p->mqtt_sock->streams = nng_alloc(sizeof(nni_id_map));
+			nni_id_map_init(p->mqtt_sock->streams, 0x0000u, 0xffffu, true);
 		}
 	}
 
@@ -1642,6 +1655,8 @@ quic_mqtt_pipe_start(void *arg)
 			return 0;
 		}
 	}
+
+	// new_pipe->cparam = p->cparam;
 
 	nni_mtx_unlock(&s->mtx);
 	/* rhack: qsock is nni_pipe with transport */
