@@ -1488,7 +1488,6 @@ mqtt_quic_sock_set_sqlite_option(
 	return NNG_EUNREACHABLE;
 }
 
-/*TODO: Move Stream to transfer layer*/
 /******************************************************************************
  *                          Stream(PIPE) Implementation                       *
  ******************************************************************************/
@@ -1502,30 +1501,30 @@ quic_mqtt_pipe_init(void *arg, nni_pipe *pipe, void *sock)
 	p->cparam          = NULL;
 	wait_stream	*stream = NULL;
 
+	// The first quic stream (main pipe) would be assigned to sock->pipe.
+	// If multi_stream is enabled. The rest of streams would be cached
+	// to sock->streams.
+	// If multi_stream is disabled. More than one pipe init is not allowed.
 	if (p->mqtt_sock->pipe == NULL) {
 		/* control stream */
 		p->mqtt_sock->pipe = p;
 		major = true;
 	} else {
-		/* data stream */
-		stream = nni_alloc(sizeof(wait_stream));
-		if (stream == NULL) {
-			return -1;
+		// multi stream
+		if (p->mqtt_sock->streams == NULL) {
+			// Error? Disabled multi_stream but got second pipe init.
+			log_error("Got new sub quic stream without multi_stream enabled.");
+			nni_pipe_close(pipe);
+			nng_free(p);
 		}
-		stream->pipe = p;
-		NNI_LIST_NODE_INIT(&stream->list_node);
-		printf("rhack: %s: %d: stream_queue: %p stream: %p\n", __func__, __LINE__, &p->mqtt_sock->wait_streams_queue, stream);
-		nni_list_append(&p->mqtt_sock->wait_streams_queue, stream);
 	}
-	p->npipe = pipe;
+
 	p->rid = 1;
 	p->reason_code = 0;
 	nni_atomic_init_bool(&p->closed);
 	nni_atomic_set_bool(&p->closed, true);
 	p->busy  = false;
 	p->ready = false;
-
-	// QUIC stream init
 
 	nni_aio_init(&p->rep_aio, NULL, p);
 	major == true
@@ -1640,7 +1639,7 @@ quic_mqtt_pipe_start(void *arg)
 
 	nni_mtx_lock(&s->mtx);
 
-	// p_dialer is unavailable when pipe init and sock init. So we put here.
+	// p_dialer is not available when pipe init and sock init. Until pipe start.
 	if (p->mqtt_sock->streams == NULL) {
 		size_t sz;
 		nni_dialer_getopt(npipe->p_dialer, NNG_OPT_QUIC_ENABLE_MULTISTREAM,
