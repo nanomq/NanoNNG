@@ -42,6 +42,7 @@ struct nni_quic_dialer {
 	// MsQuic
 	HQUIC    qconn; // quic connection
 	bool     enable_0rtt;
+	bool     enable_mltstrm;
 	uint8_t  reason_code;
 	// ResumptionTicket
 	char      rticket[4096]; // Ususally it would be within 4096.
