@@ -144,6 +144,34 @@ quic_dialer_dial(void *arg, nng_aio *aio)
 }
 
 static int
+quic_dialer_get_enable_multistream(void *arg, void *buf, size_t *szp, nni_type t)
+{
+	bool             b;
+	nni_quic_dialer *d = arg;
+	nni_mtx_lock(&d->mtx);
+	b = d->enable_mltstrm;
+	nni_mtx_unlock(&d->mtx);
+	return nni_copyout_bool(b, buf, szp, t);
+}
+
+static int
+quic_dialer_set_enable_multistream(void *arg, void *buf, size_t sz, nni_type t)
+{
+	nni_quic_dialer *d = arg;
+	int              rv;
+	bool             b;
+
+	if (((rv = nni_copyin_bool(&b, buf, sz, t)) != 0) || (d == NULL)) {
+		return rv;
+	}
+
+	nni_mtx_lock(&d->mtx);
+	d->enable_mltstrm = b;
+	nni_mtx_unlock(&d->mtx);
+	return 0;
+}
+
+static int
 quic_dialer_get_enable_0rtt(void *arg, void *buf, size_t *szp, nni_type t)
 {
 	bool             b;
@@ -176,6 +204,11 @@ static const nni_option quic_dialer_options[] = {
 		.o_name = NNG_OPT_QUIC_ENABLE_0RTT,
 		.o_get = quic_dialer_get_enable_0rtt,
 		.o_set = quic_dialer_set_enable_0rtt,
+	},
+	{
+		.o_name = NNG_OPT_QUIC_ENABLE_MULTISTREAM,
+		.o_get = quic_dialer_get_enable_multistream,
+		.o_set = quic_dialer_set_enable_multistream,
 	},
 	{
 		.o_name = NULL,

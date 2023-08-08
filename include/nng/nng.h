@@ -729,6 +729,7 @@ NNG_DECL nng_listener nng_pipe_listener(nng_pipe);
 
 // NNG-QUIC
 #define NNG_OPT_QUIC_ENABLE_0RTT "quic-0rtt"
+#define NNG_OPT_QUIC_ENABLE_MULTISTREAM "quic-multistream"
 
 // TLS options are only used when the underlying transport supports TLS.
 
