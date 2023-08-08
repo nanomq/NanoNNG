@@ -1528,8 +1528,25 @@ quic_mqtt_pipe_init(void *arg, nni_pipe *pipe, void *sock)
 			// Error? Disabled multi_stream but got second pipe init.
 			log_error("Got new sub quic stream without multi_stream enabled.");
 			nni_pipe_close(pipe);
-			nng_free(p);
+			nng_free(p, sizeof(*p));
+			return 0;
 		}
+		uint32_t *topicode;
+		if (nni_lmq_get(p->mqtt_sock->topicq, (nng_msg **)&topicode) != 0) {
+			// No pending hash code.
+			log_error("No pending topic.");
+			nni_pipe_close(pipe);
+			nng_free(p, sizeof(*p));
+			return 0;
+		}
+		if (nni_id_set(p->mqtt_sock->streams, *topicode, p) != 0) {
+			log_error("Error in setting s->streams.");
+			nni_pipe_close(pipe);
+			nng_free(p, sizeof(*p));
+			return 0;
+		}
+		log_info("New pipe has been bind to topic (code %ld)", *topicode);
+		p->stream_id = *topicode;
 	}
 
 	p->rid = 1;
