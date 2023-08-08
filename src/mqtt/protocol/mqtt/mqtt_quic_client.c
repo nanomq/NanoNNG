@@ -365,6 +365,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 	uint16_t     ptype, packet_id;
 	uint32_t     topic_len = 0;
 	uint8_t      qos = 0;
+	nni_pipe    *npipe = p->qpipe;
 
 	ptype = nni_mqtt_msg_get_packet_type(msg);
 	switch (ptype) {
@@ -398,8 +399,11 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 			pub_pipe =
 			    nni_id_get(s->streams, DJBHashn(topic, topic_len));
 			if (pub_pipe == NULL) {
-				pub_pipe = nng_mqtt_quic_open_topic_stream(
-				    s, topic, topic_len);
+				uint32_t *topicode = nng_alloc(sizeof(uint32_t));
+				*topicode = DJBHashn(topic, topic_len);
+				nni_lmq_put(s->topicq, topicode);
+				nni_dialer_start(npipe->p_dialer, NNG_FLAG_NONBLOCK);
+				// pub_pipe = nng_mqtt_quic_open_topic_stream(s, topic, topic_len);
 			}
 			p = pub_pipe;
 		}
