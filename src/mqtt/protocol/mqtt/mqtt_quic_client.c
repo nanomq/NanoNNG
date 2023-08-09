@@ -24,7 +24,6 @@
 #define NNG_MQTT_PEER_NAME "mqtt-server"
 #define MQTT_QUIC_RETRTY 5  // 5 seconds as default minimum timer 
 #define MQTT_QUIC_KEEPALIVE 5  // 5 seconds as default 
-#define QUIC_DIALER_START(p, flags) (nni_dialer_start((p)->npipe->p_dialer, (flags)))
 
 typedef struct mqtt_sock_s   mqtt_sock_t;
 typedef struct mqtt_pipe_s   mqtt_pipe_t;
@@ -188,9 +187,14 @@ nng_mqtt_quic_open_topic_stream(mqtt_sock_t *mqtt_sock, const char *topic, uint3
 	mqtt_pipe_t *p          = mqtt_sock->pipe;
 	mqtt_pipe_t *new_pipe   = NULL;
 	uint32_t     hash;
+	int          rv;
+	nni_dialer  *ndialer = p->npipe->p_dialer;
 
 	// create a pipe/stream here
-	QUIC_DIALER_START(p, 0);
+	if (0 != (rv = nni_dialer_start(ndialer, NNG_FLAG_NONBLOCK))) {
+		log_error("Dialer start error rv %d", rv);
+		return NULL;
+	}
 	int times = 0;
 	wait_stream *new_stream = NULL;
 	/* waiting dialer connect finished */
@@ -243,6 +247,8 @@ mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 	mqtt_sock_t *sock = p->mqtt_sock;
 	mqtt_pipe_t *new_pipe   = NULL;
 	nni_mqtt_topic_qos *topics;
+	int rv;
+	nni_dialer *ndialer = p->npipe->p_dialer;
 
 	// check topic/stream pair exsitence
 	topics = nni_mqtt_msg_get_subscribe_topics(msg, &count);
@@ -254,7 +260,10 @@ mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 			// create pipe here & set stream id
 			log_debug("topic %s qos %d", topics[i].topic.buf, topics[i].qos);
 			// create a pipe/stream here
-			QUIC_DIALER_START(p, 0);
+			if (0 != (rv = nni_dialer_start(ndialer, NNG_FLAG_NONBLOCK))) {
+				log_error("Dialer start error rv %d", rv);
+				return NULL;
+			}
 			int times = 0;
 			wait_stream *new_stream = NULL;
 			/* waiting dialer connect finished */
