@@ -24,7 +24,6 @@
 #define NNG_MQTT_PEER_NAME "mqtt-server"
 #define MQTT_QUIC_RETRTY 5  // 5 seconds as default minimum timer 
 #define MQTT_QUIC_KEEPALIVE 5  // 5 seconds as default 
-#define QUIC_DIALER_START(p, flags) (nni_dialer_start((p)->npipe->p_dialer, (flags)))
 
 typedef struct mqtt_sock_s   mqtt_sock_t;
 typedef struct mqtt_pipe_s   mqtt_pipe_t;
@@ -188,9 +187,14 @@ nng_mqtt_quic_open_topic_stream(mqtt_sock_t *mqtt_sock, const char *topic, uint3
 	mqtt_pipe_t *p          = mqtt_sock->pipe;
 	mqtt_pipe_t *new_pipe   = NULL;
 	uint32_t     hash;
+	int          rv;
+	nni_dialer  *ndialer = p->npipe->p_dialer;
 
 	// create a pipe/stream here
-	QUIC_DIALER_START(p, 0);
+	if (0 != (rv = nni_dialer_start(ndialer, NNG_FLAG_NONBLOCK))) {
+		log_error("Dialer start error rv %d", rv);
+		return NULL;
+	}
 	int times = 0;
 	wait_stream *new_stream = NULL;
 	/* waiting dialer connect finished */
@@ -243,6 +247,8 @@ mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 	mqtt_sock_t *sock = p->mqtt_sock;
 	mqtt_pipe_t *new_pipe   = NULL;
 	nni_mqtt_topic_qos *topics;
+	int rv;
+	nni_dialer *ndialer = p->npipe->p_dialer;
 
 	// check topic/stream pair exsitence
 	topics = nni_mqtt_msg_get_subscribe_topics(msg, &count);
@@ -254,7 +260,10 @@ mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 			// create pipe here & set stream id
 			log_debug("topic %s qos %d", topics[i].topic.buf, topics[i].qos);
 			// create a pipe/stream here
-			QUIC_DIALER_START(p, 0);
+			if (0 != (rv = nni_dialer_start(ndialer, NNG_FLAG_NONBLOCK))) {
+				log_error("Dialer start error rv %d", rv);
+				return NULL;
+			}
 			int times = 0;
 			wait_stream *new_stream = NULL;
 			/* waiting dialer connect finished */
@@ -1582,7 +1591,7 @@ quic_mqtt_pipe_fini(void *arg)
 		return;
 	}
 
-	p->reason_code == p->reason_code;
+	// p->reason_code == p->reason_code;
 	nni_msg *tmsg = nano_msg_notify_disconnect(p->cparam, p->reason_code);
 	nni_msg_set_cmd_type(tmsg, CMD_DISCONNECT_EV);
 	// clone once for pub DISCONNECT_EV
@@ -2007,6 +2016,9 @@ static nni_proto mqtt_msquic_proto = {
 	.proto_ctx_ops  = &mqtt_quic_ctx_ops,
 };
 
+static int nng_mqtt_quic_set_config(nng_socket *sock, void *node);
+static int nng_mqtt_quic_open_conf(nng_socket *sock, const char *url, void *node);
+
 // As taking msquic as tranport, we exclude the dialer for now.
 int
 nng_mqtt_quic_client_open(nng_socket *sock)
@@ -2016,7 +2028,7 @@ nng_mqtt_quic_client_open(nng_socket *sock)
 /**
  * open mqtt quic transport with self-defined conf params
 */
-int
+static int
 nng_mqtt_quic_open_conf(nng_socket *sock, const char *url, void *node)
 {
 	int       rv = 0;
@@ -2143,7 +2155,7 @@ nng_mqtt_quic_set_msg_recv_cb(nng_socket *sock, int (*cb)(void *, void *), void 
 	return 0;
 }
 
-int
+static int
 nng_mqtt_quic_set_config(nng_socket *sock, void *node)
 {
 	nni_sock         *nsock = NULL;
