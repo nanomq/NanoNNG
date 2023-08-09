@@ -226,6 +226,9 @@ error:
 	}
 }
 
+static const int flags_main_stream = QUIC_MAIN_STREAM;
+static const int flags_sub_stream  = QUIC_SUB_STREAM;
+
 // Dial to the `url`. Finish `aio` when connected.
 // For quic. If the connection is not established.
 // This nng stream is linked to main quic stream.
@@ -261,6 +264,9 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 	cnt = nni_atomic_get64(&d->ref);
 
 	ismain = (cnt == 2 ? true : false);
+
+	nni_aio_set_output(aio, 1,
+	        (void *)(ismain ? &flags_main_stream : &flags_sub_stream));
 
 	if ((rv = nni_aio_schedule(aio, quic_dialer_strm_cancel, d)) != 0) {
 		goto error;
