@@ -1591,7 +1591,7 @@ quic_mqtt_pipe_fini(void *arg)
 		return;
 	}
 
-	p->reason_code == p->reason_code;
+	// p->reason_code == p->reason_code;
 	nni_msg *tmsg = nano_msg_notify_disconnect(p->cparam, p->reason_code);
 	nni_msg_set_cmd_type(tmsg, CMD_DISCONNECT_EV);
 	// clone once for pub DISCONNECT_EV
@@ -2016,6 +2016,9 @@ static nni_proto mqtt_msquic_proto = {
 	.proto_ctx_ops  = &mqtt_quic_ctx_ops,
 };
 
+static int nng_mqtt_quic_set_config(nng_socket *sock, void *node);
+static int nng_mqtt_quic_open_conf(nng_socket *sock, const char *url, void *node);
+
 // As taking msquic as tranport, we exclude the dialer for now.
 int
 nng_mqtt_quic_client_open(nng_socket *sock)
@@ -2025,7 +2028,7 @@ nng_mqtt_quic_client_open(nng_socket *sock)
 /**
  * open mqtt quic transport with self-defined conf params
 */
-int
+static int
 nng_mqtt_quic_open_conf(nng_socket *sock, const char *url, void *node)
 {
 	int       rv = 0;
@@ -2152,7 +2155,7 @@ nng_mqtt_quic_set_msg_recv_cb(nng_socket *sock, int (*cb)(void *, void *), void 
 	return 0;
 }
 
-int
+static int
 nng_mqtt_quic_set_config(nng_socket *sock, void *node)
 {
 	nni_sock         *nsock = NULL;
