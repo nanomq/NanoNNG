@@ -1124,6 +1124,47 @@ mqtt_quictran_pipe_getopt(
 	return (nni_stream_get(p->conn, name, buf, szp, t));
 }
 
+// No connect request needed. No negotiating needed.
+static void
+mqtt_quictran_sub_pipe_start(
+    mqtt_quictran_pipe *p, nng_stream *conn, mqtt_quictran_ep *ep)
+{
+	nni_iov  iov[2];
+	nni_msg *connmsg = NULL;
+	uint8_t mqtt_version;
+	int      niov = 0;
+	int      rv;
+
+	ep->refcnt++;
+
+	p->conn   = conn;
+	p->ep     = ep;
+	p->rcvmax = 0;
+	p->sndmax = 65535;
+#ifdef NNG_HAVE_MQTT_BROKER
+	p->cparam = NULL;
+#endif
+	nni_dialer_getopt(ep->ndialer, NNG_OPT_MQTT_CONNMSG, &connmsg, NULL,
+	    NNI_TYPE_POINTER);
+
+	if (connmsg == NULL) {
+		mqtt_version = 0;
+		log_error("No connmsg in dialer.");
+		return;
+	}
+
+	mqtt_version = nni_mqtt_msg_get_connect_proto_version(connmsg);
+
+	p->rxmsg      = NULL;
+	p->keepalive  = nni_mqtt_msg_get_connect_keep_alive(connmsg) * 1000;
+	p->proto      = mqtt_version;
+
+	// Pass the process of nego
+	nni_list_append(&ep->waitpipes, p);
+
+	mqtt_quictran_ep_match(ep);
+}
+
 static void
 mqtt_quictran_pipe_start(
     mqtt_quictran_pipe *p, nng_stream *conn, mqtt_quictran_ep *ep)
@@ -1396,7 +1437,7 @@ mqtt_quictran_dial_cb(void *arg)
 	mqtt_quictran_ep *  ep  = arg;
 	nni_aio *          aio = ep->connaio;
 	mqtt_quictran_pipe *p;
-	int                rv;
+	int                rv, ismain;
 	nng_stream *       conn;
 
 	if ((rv = nni_aio_result(aio)) != 0) {
@@ -1404,6 +1445,9 @@ mqtt_quictran_dial_cb(void *arg)
 	}
 
 	conn = nni_aio_get_output(aio, 0);
+	ismain = *(int *)nni_aio_get_output(aio, 1);
+	log_info("%s pipe %p", (ismain ? "main":"sub"), conn);
+
 	if ((rv = mqtt_quictran_pipe_alloc(&p)) != 0) {
 		nng_stream_free(conn);
 		goto error;
@@ -1416,7 +1460,10 @@ mqtt_quictran_dial_cb(void *arg)
 		nni_mtx_unlock(&ep->mtx);
 		goto error;
 	} else {
-		mqtt_quictran_pipe_start(p, conn, ep);
+		if (ismain)
+			mqtt_quictran_pipe_start(p, conn, ep);
+		else
+			mqtt_quictran_sub_pipe_start(p, conn, ep);
 	}
 	nni_mtx_unlock(&ep->mtx);
 	return;
