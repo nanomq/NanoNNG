@@ -89,6 +89,7 @@ quic_dial_con_cb(void *arg)
 		nni_aio_finish_error(aio, rv);
 	} else {
 		nni_aio_set_output(aio, 0, nni_aio_get_output(d->conaio, 0));
+		nni_aio_set_output(aio, 1, nni_aio_get_output(d->conaio, 1));
 		nni_aio_finish(aio, 0, 0);
 	}
 

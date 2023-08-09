@@ -3,6 +3,9 @@
 
 #define QUIC_HIGH_PRIOR_MSG (0x01)
 
+#define QUIC_MAIN_STREAM (1)
+#define QUIC_SUB_STREAM (0)
+
 #include "core/nng_impl.h"
 #include "nng/nng.h"
 #include "msquic.h"
