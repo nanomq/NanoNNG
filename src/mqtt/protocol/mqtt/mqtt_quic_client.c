@@ -223,7 +223,6 @@ nng_mqtt_quic_open_topic_stream(mqtt_sock_t *mqtt_sock, const char *topic, uint3
 	new_pipe->cparam = p->cparam;
 	// there is no aio in send_queue, because this is a newly established stream
 	// for now, pub stream is also bidirectional
-	nni_pipe_recv(new_pipe->npipe, &new_pipe->recv_aio);
 	return new_pipe;
 }
 
@@ -292,7 +291,6 @@ mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 			new_pipe->cparam = p->cparam;
 			// there is no aio in send_queue, because this is a
 			// newly established stream
-			nni_pipe_recv(new_pipe->npipe, &new_pipe->recv_aio);
 		} else {
 			log_info("topic-stream already existed");
 		}
@@ -1646,8 +1644,8 @@ quic_mqtt_pipe_start(void *arg)
 		mqtt_send_msg(NULL, s->connmsg, s);
 	}
 
-	if (!nni_aio_list_active(&s->time_aio))
-		nni_sleep_aio(s->retry * NNI_SECOND, &s->time_aio);
+	// if (!nni_aio_list_active(&s->time_aio))
+	//	nni_sleep_aio(s->retry * NNI_SECOND, &s->time_aio);
 
 	p->ready = true;
 	nni_atomic_set_bool(&p->closed, false);
