@@ -1403,6 +1403,9 @@ mqtt_quictran_dial_cb(void *arg)
 		goto error;
 	}
 
+	// XXX Dialing is successful. Reset the d_started flag.
+	nni_atomic_flag_reset(&ep->ndialer->d_started);
+
 	conn = nni_aio_get_output(aio, 0);
 	if ((rv = mqtt_quictran_pipe_alloc(&p)) != 0) {
 		nng_stream_free(conn);
