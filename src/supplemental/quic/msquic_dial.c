@@ -290,13 +290,6 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 	nni_aio_set_output(aio, 1,
 	        (void *)(ismain ? &flags_main_stream : &flags_sub_stream));
 
-	// XXX Which should be uncommented when debug is finished
-	//if (d->enable_mltstrm == false && ismain == false) {
-	//	log_error("Please enable multistream first");
-	//	rv = NNG_EINVAL;
-	//	goto error;
-	//}
-
 	if ((rv = nni_aio_schedule(aio, quic_dialer_strm_cancel, d)) != 0) {
 		goto error;
 	}
