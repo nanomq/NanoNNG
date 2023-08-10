@@ -270,6 +270,13 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 	nni_aio_set_output(aio, 1,
 	        (void *)(ismain ? &flags_main_stream : &flags_sub_stream));
 
+	// XXX Which should be uncommented when debug is finished
+	//if (d->enable_mltstrm == false && ismain == false) {
+	//	log_error("Please enable multistream first");
+	//	rv = NNG_EINVAL;
+	//	goto error;
+	//}
+
 	if ((rv = nni_aio_schedule(aio, quic_dialer_strm_cancel, d)) != 0) {
 		goto error;
 	}
@@ -575,6 +582,8 @@ quic_dowrite(nni_quic_conn *c)
 		size_t        n = 0;
 
 		nni_aio_get_iov(aio, &naiov, &aiov);
+		if (naiov == 0)
+			log_warn("A msg without content?");
 
 		QUIC_BUFFER *buf=(QUIC_BUFFER*)malloc(sizeof(QUIC_BUFFER)*naiov);
 		for (int i=0; i<naiov; ++i) {
@@ -933,8 +942,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
 		// The peer gracefully shut down its send direction of the
 		// stream.
-		log_warn("[strm][%p] Peer SEND aborted\n", stream);
-		log_info("PEER_SEND_ABORTED Error Code: %llu",
+		log_warn("[strm][%p] PEER_SEND_ABORTED errorcode%llu\n", stream,
 		    (unsigned long long) Event->PEER_SEND_ABORTED.ErrorCode);
 		if (c->reason_code == 0)
 			c->reason_code = SERVER_SHUTTING_DOWN;
