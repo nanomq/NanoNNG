@@ -1,6 +1,7 @@
 #ifndef RULE_H
 #define RULE_H
 #include <stdint.h>
+#include "nng/supplemental/util/platform.h"
 
 typedef enum {
 	RULE_QOS,
@@ -119,6 +120,7 @@ typedef struct {
 	rule *rules;
 	char *sqlite_db;
 	char *mysql_db;
+	nng_mtx *rule_mutex;
 } conf_rule;
 
 int         rule_find_key(const char *str, size_t len);

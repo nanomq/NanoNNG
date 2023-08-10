@@ -1838,6 +1838,7 @@ conf_rule_parse(conf_rule *rule, const char *path)
 		log_error("File %s open failed\n", path);
 		return;
 	}
+	nng_mtx_alloc(&(rule->rule_mutex));
 
 	char *value;
 	while (nano_getline(&line, &sz, fp) != -1) {
@@ -3556,6 +3557,7 @@ conf_rule_destroy(conf_rule *re)
 		rule_free(&(re->rules[i]));
 	}
 	cvector_free(re->rules);
+	nng_mtx_free(re->rule_mutex);
 }
 #endif
 
