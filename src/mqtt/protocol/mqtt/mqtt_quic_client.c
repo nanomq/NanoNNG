@@ -1433,7 +1433,7 @@ mqtt_quic_sock_close(void *arg)
 	wait_stream *stream;
 	NNI_LIST_FOREACH(&s->wait_streams_queue, stream) {
 		/* TODO: close nni_pipes*/
-		quic_mqtt_pipe_stop(stream->pipe);
+	//	quic_mqtt_pipe_stop(stream->pipe);
 	}
 	nni_sock_rele(s->nsock);
 	nni_mtx_unlock(&s->mtx);
