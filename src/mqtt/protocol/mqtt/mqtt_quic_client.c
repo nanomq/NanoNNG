@@ -745,8 +745,8 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 	s->pingcnt = 0;
 	switch (packet_type) {
 	case NNG_MQTT_CONNACK:
-		nni_println("ERROR: CONNACK received in data stream!");
-		nni_msg_free(msg);
+//		nni_println("ERROR: CONNACK received in data stream!");
+//		nni_msg_free(msg);
 		break;
 	case NNG_MQTT_PUBACK:
 		// we have received a PUBACK, successful delivery of a QoS 1
