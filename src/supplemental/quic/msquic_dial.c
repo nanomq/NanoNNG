@@ -131,6 +131,8 @@ nni_quic_dialer_init(void **argp)
 
 	// 0RTT is disabled by default
 	d->enable_0rtt = false;
+	// multi_stream is disabled by default
+	d->enable_mltstrm = false;
 
 	*argp = d;
 	return 0;
