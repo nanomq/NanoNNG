@@ -1557,25 +1557,29 @@ quic_mqtt_pipe_fini(void *arg)
 		nni_aio_set_msg(&p->send_aio, NULL);
 		nni_msg_free(msg);
 	}
-	// hold nni_sock twice for thread safety
-	nni_sock_hold(s->nsock);
-	nni_sock_hold(s->nsock);
-	nni_mtx_lock(&s->mtx);
-	nni_aio_fini(&p->send_aio);
-	nni_aio_fini(&p->recv_aio);
-	nni_aio_fini(&p->rep_aio);
-	nni_aio_abort(&s->time_aio, 0);
-	/*
-#if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
-	nni_id_map_fini(&p->sent_unack);
-#endif
-	*/
-	nni_id_map_fini(&p->recv_unack);
-	nni_id_map_fini(&p->sent_unack);
-	if (p->mqtt_sock->multi_stream)
-		nni_lmq_fini(&p->send_inflight);
-	nni_lmq_fini(&p->recv_messages);
-	nni_mtx_fini(&p->lk);
+	if (p == s->pipe) {
+		/* for major stream */
+		// hold nni_sock twice for thread safety
+		nni_sock_hold(s->nsock);
+		nni_sock_hold(s->nsock);
+		nni_mtx_lock(&s->mtx);
+		nni_aio_fini(&p->send_aio);
+		printf("rhack: %s: %d\n", __func__, __LINE__);
+		nni_aio_fini(&p->recv_aio);
+		nni_aio_fini(&p->rep_aio);
+		nni_aio_abort(&s->time_aio, 0);
+		/*
+	#if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
+		nni_id_map_fini(&p->sent_unack);
+	#endif
+		*/
+		nni_id_map_fini(&p->recv_unack);
+		nni_id_map_fini(&p->sent_unack);
+		if (p->mqtt_sock->multi_stream)
+			nni_lmq_fini(&p->send_inflight);
+		nni_lmq_fini(&p->recv_messages);
+		nni_mtx_fini(&p->lk);
+	}
 
 	// only report disconnect when major pipe is closed
 	if (s->pipe == p && s->cb.disconnect_cb != NULL) {
