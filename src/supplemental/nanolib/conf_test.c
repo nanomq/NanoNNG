@@ -80,6 +80,8 @@ test_conf_parse(void)
 	conf_parse(conf);
 	NUTS_TRUE(conf->url != NULL);
 
+	print_conf(conf);
+
 	conf_fini(conf);
 }
 
@@ -90,6 +92,8 @@ test_conf_parse_ver2(void)
 	NUTS_TRUE(conf != NULL);
 	conf_parse_ver2(conf);
 	NUTS_TRUE(conf->url != NULL);
+
+	print_conf(conf);
 
 	conf_fini(conf);
 }
