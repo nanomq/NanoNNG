@@ -1025,6 +1025,8 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 	cJSON *jso_rules = NULL;
 	cJSON *jso_rule = NULL;
 
+	nng_mtx_alloc(&(cr->rule_mutex));
+
 	if (jso_rule_sqlite) {
 #ifndef NNG_SUPP_SQLITE
 		log_error("If you want use sqlite rule, recompile nanomq with option `-DNNG_ENABLE_SQLITE=ON`");
