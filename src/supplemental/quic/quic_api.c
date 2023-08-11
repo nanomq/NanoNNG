@@ -11,6 +11,7 @@
 #include "msquic.h"
 
 #include "nng/mqtt/mqtt_client.h"
+#include "nng/nng.h"
 #include "nng/supplemental/nanolib/conf.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "supplemental/mqtt/mqtt_msg.h"
@@ -268,6 +269,8 @@ quic_dialer_set_max_ack_delay_ms(void *arg, void *buf, size_t sz, nni_type t)
 
 	nni_mtx_lock(&d->mtx);
 	d->qmax_ack_delay_ms = n;
+	d->settings.IsSet.MaxAckDelayMs = TRUE;
+	d->settings.MaxAckDelayMs = n;
 	nni_mtx_unlock(&d->mtx);
 	return 0;
 }
@@ -286,6 +289,8 @@ quic_dialer_set_initial_rtt_ms(void *arg, void *buf, size_t sz, nni_type t)
 
 	nni_mtx_lock(&d->mtx);
 	d->qinitial_rtt_ms = n;
+	d->settings.IsSet.InitialRttMs = TRUE;
+	d->settings.InitialRttMs = n;
 	nni_mtx_unlock(&d->mtx);
 	return 0;
 }
@@ -304,6 +309,8 @@ quic_dialer_set_send_idle_timeout(void *arg, void *buf, size_t sz, nni_type t)
 
 	nni_mtx_lock(&d->mtx);
 	d->qsend_idle_timeout = n;
+	d->settings.IsSet.SendIdleTimeoutMs = TRUE;
+	d->settings.SendIdleTimeoutMs = n * 1000;
 	nni_mtx_unlock(&d->mtx);
 	return 0;
 }
@@ -322,6 +329,8 @@ quic_dialer_set_disconnect_timeout(void *arg, void *buf, size_t sz, nni_type t)
 
 	nni_mtx_lock(&d->mtx);
 	d->qdiscon_timeout = n;
+	d->settings.IsSet.DisconnectTimeoutMs = TRUE;
+	d->settings.DisconnectTimeoutMs = n * 1000;
 	nni_mtx_unlock(&d->mtx);
 	return 0;
 }
@@ -339,6 +348,8 @@ quic_dialer_set_connect_timeout(void *arg, void *buf, size_t sz, nni_type t)
 
 	nni_mtx_lock(&d->mtx);
 	d->qconnect_timeout = n;
+	d->settings.IsSet.HandshakeIdleTimeoutMs = TRUE;
+	d->settings.HandshakeIdleTimeoutMs = n * 1000;
 	nni_mtx_unlock(&d->mtx);
 	return 0;
 }
@@ -357,6 +368,8 @@ quic_dialer_set_keepalive(void *arg, void *buf, size_t sz, nni_type t)
 
 	nni_mtx_lock(&d->mtx);
 	d->qkeepalive = n;
+	d->settings.IsSet.KeepAliveIntervalMs = TRUE;
+	d->settings.KeepAliveIntervalMs = n * 1000;
 	nni_mtx_unlock(&d->mtx);
 	return 0;
 }
@@ -374,6 +387,8 @@ quic_dialer_set_idle_timeout(void *arg, void *buf, size_t sz, nni_type t)
 
 	nni_mtx_lock(&d->mtx);
 	d->qidle_timeout = n;
+	d->settings.IsSet.IdleTimeoutMs = TRUE;
+	d->settings.IdleTimeoutMs = n * 1000;
 	nni_mtx_unlock(&d->mtx);
 	return 0;
 }
