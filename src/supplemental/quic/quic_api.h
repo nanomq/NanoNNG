@@ -6,6 +6,9 @@
 #define QUIC_MAIN_STREAM (1)
 #define QUIC_SUB_STREAM (0)
 
+#define QUIC_IDLE_TIMEOUT_DEFAULT (90)
+#define QUIC_KEEPALIVE_DEFAULT (60)
+
 #include "core/nng_impl.h"
 #include "nng/nng.h"
 #include "msquic.h"
