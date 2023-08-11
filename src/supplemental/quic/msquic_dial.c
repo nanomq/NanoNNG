@@ -136,11 +136,11 @@ nni_quic_dialer_init(void **argp)
 
 	memset(&d->settings, 0, sizeof(QUIC_SETTINGS));
 
-	d->qidle_timeout = 90;
+	d->qidle_timeout = QUIC_IDLE_TIMEOUT_DEFAULT;
 	d->settings.IsSet.IdleTimeoutMs = TRUE;
 	d->settings.IdleTimeoutMs = d->qidle_timeout * 1000;
 
-	d->qkeepalive = 60;
+	d->qkeepalive = QUIC_KEEPALIVE_DEFAULT;
 	d->settings.IsSet.KeepAliveIntervalMs = TRUE;
 	d->settings.KeepAliveIntervalMs = d->qkeepalive * 1000;
 
