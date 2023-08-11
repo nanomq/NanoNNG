@@ -1,6 +1,7 @@
 #ifndef RULE_H
 #define RULE_H
 #include <stdint.h>
+#include "nng/nng.h"
 #include "nng/supplemental/util/platform.h"
 
 typedef enum {
