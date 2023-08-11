@@ -134,6 +134,20 @@ nni_quic_dialer_init(void **argp)
 	// multi_stream is disabled by default
 	d->enable_mltstrm = false;
 
+	memset(&d->settings, 0, sizeof(QUIC_SETTINGS));
+
+	d->qidle_timeout = 90;
+	d->settings.IsSet.IdleTimeoutMs = TRUE;
+	d->settings.IdleTimeoutMs = d->qidle_timeout * 1000;
+
+	d->qkeepalive = 60;
+	d->settings.IsSet.KeepAliveIntervalMs = TRUE;
+	d->settings.KeepAliveIntervalMs = d->qkeepalive * 1000;
+
+	// No other choice now
+	d->settings.IsSet.CongestionControlAlgorithm = TRUE;
+	d->settings.CongestionControlAlgorithm       = QUIC_CONGESTION_CONTROL_ALGORITHM_CUBIC;
+
 	*argp = d;
 	return 0;
 }
@@ -563,12 +577,13 @@ quic_dowrite_prior(nni_quic_conn *c, nni_aio *aio)
 	}
 
 	nni_aio_bump_count(aio, n);
-	log_debug("[quic dowrite adv] end\n");
+	log_debug("[quic dowrite adv] end");
 }
 
 static void
 quic_dowrite(nni_quic_conn *c)
 {
+	log_debug("[quic dowrite] start %p", c->qstrm);
 	nni_aio *aio;
 	int      rv;
 
@@ -1060,16 +1075,9 @@ error:
 
 // Helper function to load a client configuration.
 static BOOLEAN
-msquic_load_config()
+msquic_load_config(QUIC_SETTINGS *settings)
 {
-	QUIC_SETTINGS          Settings = { 0 };
 	QUIC_CREDENTIAL_CONFIG CredConfig;
-
-	// Configures the QUIC params of client
-	Settings.IsSet.IdleTimeoutMs       = TRUE;
-	Settings.IdleTimeoutMs             = 90 * 1000;
-	Settings.IsSet.KeepAliveIntervalMs = TRUE;
-	Settings.KeepAliveIntervalMs       = 60 * 1000;
 
 there:
 
@@ -1087,7 +1095,7 @@ there:
 	// ALPN and settings.
 	QUIC_STATUS rv = QUIC_STATUS_SUCCESS;
 	if (QUIC_FAILED(rv = MsQuic->ConfigurationOpen(registration,
-	    &quic_alpn, 1, &Settings, sizeof(Settings), NULL, &configuration))) {
+	    &quic_alpn, 1, settings, sizeof(*settings), NULL, &configuration))) {
 		log_error("ConfigurationOpen failed, 0x%x!\n", rv);
 		return FALSE;
 	}
@@ -1115,7 +1123,7 @@ msquic_conn_open(const char *host, const char *port, nni_quic_dialer *d)
 		return (NNG_ESYSERR);
 	}
 
-	if (TRUE != msquic_load_config()) {
+	if (TRUE != msquic_load_config(&d->settings)) {
 		// error in configuration so... close the quic connection
 		return (NNG_EINVAL);
 	}
