@@ -1385,6 +1385,7 @@ mqtt_quic_sock_fini(void *arg)
 	mqtt_quic_ctx_fini(&s->master);
 	nni_lmq_fini(&s->send_messages);
 	/* TODO: close streams for each */
+	nni_aio_abort(&s->time_aio, 0);
 	nni_aio_fini(&s->time_aio);
 	nni_msg_free(s->ping_msg);
 	// potential memleak here. need to adapt to MsQUIC finit
@@ -1431,14 +1432,10 @@ mqtt_quic_sock_close(void *arg)
 	}
 	// need to disconnect connection before sock fini
 	if (s->multi_stream) {
-		nni_id_map_foreach(s->streams,mqtt_quic_pipe_close);
+		/* dialer will close each s->streams */
+	//	nni_id_map_foreach(s->streams,mqtt_quic_pipe_close);
 	}
 	nni_lmq_flush(&s->send_messages);
-	wait_stream *stream;
-	NNI_LIST_FOREACH(&s->wait_streams_queue, stream) {
-		/* TODO: close nni_pipes*/
-	//	quic_mqtt_pipe_stop(stream->pipe);
-	}
 	nni_sock_rele(s->nsock);
 	nni_mtx_unlock(&s->mtx);
 }
