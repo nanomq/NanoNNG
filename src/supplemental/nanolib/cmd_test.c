@@ -5,6 +5,7 @@
 void
 test_nano_cmd(void)
 {
+#ifndef NNG_PLATFORM_WINDOWS
 	char *cmd_null = NULL;
 	NUTS_FAIL(nano_cmd_run(cmd_null), -1);
 
@@ -15,6 +16,7 @@ test_nano_cmd(void)
 	NUTS_PASS(nano_cmd_frun(cmd));
 
 	nano_cmd_cleanup();
+#endif
 }
 
 NUTS_TESTS = {
