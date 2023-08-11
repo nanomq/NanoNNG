@@ -53,6 +53,15 @@ struct nni_quic_dialer {
 	uint16_t  rticket_sz;
 	// CertificateFile
 	char *    cacert;
+
+	// Quic settings
+	uint64_t  qidle_timeout;
+	uint32_t  qkeepalive;
+	uint64_t  qconnect_timeout;
+	uint32_t  qdiscon_timeout;
+	uint32_t  qsend_idle_timeout;
+	uint32_t  qinitial_rtt_ms;
+	uint32_t  qmax_ack_delay_ms;
 };
 
 

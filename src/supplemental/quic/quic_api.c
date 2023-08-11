@@ -140,7 +140,131 @@ quic_dialer_dial(void *arg, nng_aio *aio)
 		nni_quic_dial(d->d, d->host, d->port, d->conaio);
 	}
 	nni_mtx_unlock(&d->mtx);
-	printf("[quic dialer dial] end\n");
+	log_debug("[quic dialer dial] end");
+}
+
+static int
+quic_dialer_set_max_ack_delay_ms(void *arg, void *buf, size_t sz, nni_type t)
+{
+	nni_quic_dialer *d = arg;
+	int              rv;
+	uint32_t         n;
+
+	// range from 0 to 600000 ms
+	if (((rv = nni_copyin_int((int *)&n, buf, sz, 0, 600000, t)) != 0) || (d == NULL)) {
+		return rv;
+	}
+
+	nni_mtx_lock(&d->mtx);
+	d->qmax_ack_delay_ms = n;
+	nni_mtx_unlock(&d->mtx);
+	return 0;
+}
+
+static int
+quic_dialer_set_initial_rtt_ms(void *arg, void *buf, size_t sz, nni_type t)
+{
+	nni_quic_dialer *d = arg;
+	int              rv;
+	uint32_t         n;
+
+	// range from 0 to 600000 ms
+	if (((rv = nni_copyin_int((int *)&n, buf, sz, 0, 600000, t)) != 0) || (d == NULL)) {
+		return rv;
+	}
+
+	nni_mtx_lock(&d->mtx);
+	d->qinitial_rtt_ms = n;
+	nni_mtx_unlock(&d->mtx);
+	return 0;
+}
+
+static int
+quic_dialer_set_send_idle_timeout(void *arg, void *buf, size_t sz, nni_type t)
+{
+	nni_quic_dialer *d = arg;
+	int              rv;
+	uint32_t         n;
+
+	// range from 0 to 60 seconds
+	if (((rv = nni_copyin_int((int *)&n, buf, sz, 0, 60, t)) != 0) || (d == NULL)) {
+		return rv;
+	}
+
+	nni_mtx_lock(&d->mtx);
+	d->qsend_idle_timeout = n;
+	nni_mtx_unlock(&d->mtx);
+	return 0;
+}
+
+static int
+quic_dialer_set_disconnect_timeout(void *arg, void *buf, size_t sz, nni_type t)
+{
+	nni_quic_dialer *d = arg;
+	int              rv;
+	uint32_t         n;
+
+	// range from 0 to 600 seconds
+	if (((rv = nni_copyin_int((int *)&n, buf, sz, 0, 600, t)) != 0) || (d == NULL)) {
+		return rv;
+	}
+
+	nni_mtx_lock(&d->mtx);
+	d->qdiscon_timeout = n;
+	nni_mtx_unlock(&d->mtx);
+	return 0;
+}
+
+static int
+quic_dialer_set_connect_timeout(void *arg, void *buf, size_t sz, nni_type t)
+{
+	nni_quic_dialer *d = arg;
+	int              rv;
+	uint64_t         n;
+
+	if (((rv = nni_copyin_u64(&n, buf, sz, t)) != 0) || (d == NULL)) {
+		return rv;
+	}
+
+	nni_mtx_lock(&d->mtx);
+	d->qconnect_timeout = n;
+	nni_mtx_unlock(&d->mtx);
+	return 0;
+}
+
+static int
+quic_dialer_set_keepalive(void *arg, void *buf, size_t sz, nni_type t)
+{
+	nni_quic_dialer *d = arg;
+	int              rv;
+	uint32_t         n;
+
+	// range from 0 to 1800 seconds
+	if (((rv = nni_copyin_int((int *)&n, buf, sz, 0, 1800, t)) != 0) || (d == NULL)) {
+		return rv;
+	}
+
+	nni_mtx_lock(&d->mtx);
+	d->qkeepalive = n;
+	nni_mtx_unlock(&d->mtx);
+	return 0;
+}
+
+static int
+quic_dialer_set_idle_timeout(void *arg, void *buf, size_t sz, nni_type t)
+{
+	nni_quic_dialer *d = arg;
+	int              rv;
+	uint64_t         n;
+
+	if (((rv = nni_copyin_u64(&n, buf, sz, t)) != 0) || (d == NULL)) {
+		return rv;
+	}
+
+	nni_mtx_lock(&d->mtx);
+	d->qidle_timeout = n;
+	nni_mtx_unlock(&d->mtx);
+	return 0;
 }
 
 static int
@@ -209,6 +333,41 @@ static const nni_option quic_dialer_options[] = {
 		.o_name = NNG_OPT_QUIC_ENABLE_MULTISTREAM,
 		.o_get = quic_dialer_get_enable_multistream,
 		.o_set = quic_dialer_set_enable_multistream,
+	},
+	{
+		.o_name = NNG_OPT_QUIC_IDLE_TIMEOUT,
+		.o_get = NULL,
+		.o_set = quic_dialer_set_idle_timeout,
+	},
+	{
+		.o_name = NNG_OPT_QUIC_KEEPALIVE,
+		.o_get = NULL,
+		.o_set = quic_dialer_set_keepalive,
+	},
+	{
+		.o_name = NNG_OPT_QUIC_CONNECT_TIMEOUT,
+		.o_get = NULL,
+		.o_set = quic_dialer_set_connect_timeout,
+	},
+	{
+		.o_name = NNG_OPT_QUIC_DISCONNECT_TIMEOUT,
+		.o_get = NULL,
+		.o_set = quic_dialer_set_disconnect_timeout,
+	},
+	{
+		.o_name = NNG_OPT_QUIC_SEND_IDLE_TIMEOUT,
+		.o_get = NULL,
+		.o_set = quic_dialer_set_send_idle_timeout,
+	},
+	{
+		.o_name = NNG_OPT_QUIC_INITIAL_RTT_MS,
+		.o_get = NULL,
+		.o_set = quic_dialer_set_initial_rtt_ms,
+	},
+	{
+		.o_name = NNG_OPT_QUIC_MAX_ACK_DELAY_MS,
+		.o_get = NULL,
+		.o_set = quic_dialer_set_max_ack_delay_ms,
 	},
 	{
 		.o_name = NULL,
