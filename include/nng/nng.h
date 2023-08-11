@@ -730,6 +730,13 @@ NNG_DECL nng_listener nng_pipe_listener(nng_pipe);
 // NNG-QUIC
 #define NNG_OPT_QUIC_ENABLE_0RTT "quic-0rtt"
 #define NNG_OPT_QUIC_ENABLE_MULTISTREAM "quic-multistream"
+#define NNG_OPT_QUIC_IDLE_TIMEOUT "quic-idle-timeout"
+#define NNG_OPT_QUIC_KEEPALIVE "quic-keepalive"
+#define NNG_OPT_QUIC_CONNECT_TIMEOUT "quic-connect-timeout"
+#define NNG_OPT_QUIC_DISCONNECT_TIMEOUT "quic-disconnect-timeout"
+#define NNG_OPT_QUIC_SEND_IDLE_TIMEOUT "quic-send-idle-timeout"
+#define NNG_OPT_QUIC_INITIAL_RTT_MS "quic-initial-ms"
+#define NNG_OPT_QUIC_MAX_ACK_DELAY_MS "quic-max-ack-delay-ms"
 
 // TLS options are only used when the underlying transport supports TLS.
 
