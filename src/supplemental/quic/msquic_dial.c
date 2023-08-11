@@ -144,10 +144,6 @@ nni_quic_dialer_init(void **argp)
 	d->settings.IsSet.KeepAliveIntervalMs = TRUE;
 	d->settings.KeepAliveIntervalMs = d->qkeepalive * 1000;
 
-	// No other choice now
-	d->settings.IsSet.CongestionControlAlgorithm = TRUE;
-	d->settings.CongestionControlAlgorithm       = QUIC_CONGESTION_CONTROL_ALGORITHM_CUBIC;
-
 	*argp = d;
 	return 0;
 }
@@ -1074,21 +1070,9 @@ error:
 
 // Helper function to load a client configuration.
 static BOOLEAN
-msquic_load_config(QUIC_SETTINGS *settings)
+msquic_load_config(QUIC_SETTINGS *settings, nni_quic_dialer *d)
 {
 	QUIC_CREDENTIAL_CONFIG CredConfig;
-
-there:
-
-	// Configures a default client configuration, optionally disabling
-	// server certificate validation.
-	memset(&CredConfig, 0, sizeof(CredConfig));
-	// Unsecure by default
-	CredConfig.Type  = QUIC_CREDENTIAL_TYPE_NONE;
-	// CredConfig.Flags = QUIC_CREDENTIAL_FLAG_CLIENT | QUIC_CREDENTIAL_FLAG_USE_PORTABLE_CERTIFICATES;
-	CredConfig.Flags = QUIC_CREDENTIAL_FLAG_CLIENT;
-	CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION;
-	log_warn("No quic TLS/SSL credentials was specified.");
 
 	// Allocate/initialize the configuration object, with the configured
 	// ALPN and settings.
@@ -1099,6 +1083,57 @@ there:
 		return FALSE;
 	}
 
+	// TLS/SSL
+	memset(&CredConfig, 0, sizeof(CredConfig));
+	// Unsecure by default
+	CredConfig.Type  = QUIC_CREDENTIAL_TYPE_NONE;
+	// CredConfig.Flags = QUIC_CREDENTIAL_FLAG_CLIENT | QUIC_CREDENTIAL_FLAG_USE_PORTABLE_CERTIFICATES;
+	CredConfig.Flags = QUIC_CREDENTIAL_FLAG_CLIENT;
+
+	// Start tls need cacert and key at least
+	if (!d->cacert || !d->key) {
+		CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION;
+		log_warn("No quic TLS/SSL credentials (cacert and key) was specified.");
+		goto settls;
+	}
+
+	char *cert_path = d->cacert;
+	char *key_path  = d->key;
+	char *password  = d->password;
+	BOOLEAN verify = (d->verify_peer == true ? 1 : 0);
+	BOOLEAN has_ca_cert = (d->ca != NULL ? 1 : 0);
+
+	if (password) {
+		QUIC_CERTIFICATE_FILE_PROTECTED *CertFile =
+		    (QUIC_CERTIFICATE_FILE_PROTECTED *) malloc(sizeof(QUIC_CERTIFICATE_FILE_PROTECTED));
+		CertFile->CertificateFile           = cert_path;
+		CertFile->PrivateKeyFile            = key_path;
+		CertFile->PrivateKeyPassword        = password;
+		CredConfig.CertificateFileProtected = CertFile;
+		CredConfig.Type =
+		    QUIC_CREDENTIAL_TYPE_CERTIFICATE_FILE_PROTECTED;
+	} else {
+		QUIC_CERTIFICATE_FILE *CertFile =
+		    (QUIC_CERTIFICATE_FILE_PROTECTED *) malloc(sizeof(QUIC_CERTIFICATE_FILE_PROTECTED));
+		CertFile->CertificateFile  = cert_path;
+		CertFile->PrivateKeyFile   = key_path;
+		CredConfig.CertificateFile = CertFile;
+		CredConfig.Type =
+		    QUIC_CREDENTIAL_TYPE_CERTIFICATE_FILE;
+	}
+
+	if (!verify) {
+		CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION;
+	} else if (has_ca_cert) {
+		// Do own validation instead against provided ca certs in cacertfile
+		CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_INDICATE_CERTIFICATE_RECEIVED;
+		CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION;
+	}
+
+	CredConfig.Type = QUIC_CREDENTIAL_TYPE_CERTIFICATE_FILE;
+	CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_INDICATE_CERTIFICATE_RECEIVED;
+
+settls:
 	// Loads the TLS credential part of the configuration. This is required
 	// even on client side, to indicate if a certificate is required or
 	// not.
@@ -1122,7 +1157,7 @@ msquic_conn_open(const char *host, const char *port, nni_quic_dialer *d)
 		return (NNG_ESYSERR);
 	}
 
-	if (TRUE != msquic_load_config(&d->settings)) {
+	if (TRUE != msquic_load_config(&d->settings, d)) {
 		// error in configuration so... close the quic connection
 		return (NNG_EINVAL);
 	}
