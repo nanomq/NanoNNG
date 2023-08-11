@@ -994,6 +994,7 @@ mqtt_quic_recv_cb(void *arg)
 		if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
 			// No one waiting to receive yet, putting msg
 			// into lmq
+			// TODO: PUBLISH: No client turn into RECV state, which will cause mem leak.
 			if (0 != mqtt_pipe_recv_msgq_putq(p, msg)) {
 				nni_msg_free(msg);
 				msg = NULL;
