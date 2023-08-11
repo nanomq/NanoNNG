@@ -144,6 +144,117 @@ quic_dialer_dial(void *arg, nng_aio *aio)
 }
 
 static int
+quic_dialer_set_tls_ca(void *arg, void *buf, size_t sz, nni_type t)
+{
+	nni_quic_dialer *d = arg;
+	int              rv;
+	char *           str;
+
+	str = nng_alloc(sz + 1);
+
+	if (((rv = nni_copyin_str(&str, buf, sz, sz, t)) != 0) || (d == NULL)) {
+		return rv;
+	}
+
+	nni_mtx_lock(&d->mtx);
+	d->ca = str;
+	nni_mtx_unlock(&d->mtx);
+	return 0;
+}
+
+static int
+quic_dialer_set_tls_verify(void *arg, void *buf, size_t sz, nni_type t)
+{
+	nni_quic_dialer *d = arg;
+	int              rv;
+	bool             b;
+
+	if (((rv = nni_copyin_bool(&b, buf, sz, t)) != 0) || (d == NULL)) {
+		return rv;
+	}
+
+	nni_mtx_lock(&d->mtx);
+	d->verify_peer = b;
+	nni_mtx_unlock(&d->mtx);
+	return 0;
+}
+
+static int
+quic_dialer_set_tls_pwd(void *arg, void *buf, size_t sz, nni_type t)
+{
+	nni_quic_dialer *d = arg;
+	int              rv;
+	char *           str;
+
+	str = nng_alloc(sz + 1);
+
+	if (((rv = nni_copyin_str(&str, buf, sz, sz, t)) != 0) || (d == NULL)) {
+		return rv;
+	}
+
+	nni_mtx_lock(&d->mtx);
+	d->password = str;
+	nni_mtx_unlock(&d->mtx);
+	return 0;
+}
+
+static int
+quic_dialer_set_tls_key(void *arg, void *buf, size_t sz, nni_type t)
+{
+	nni_quic_dialer *d = arg;
+	int              rv;
+	char *           str;
+
+	str = nng_alloc(sz + 1);
+
+	if (((rv = nni_copyin_str(&str, buf, sz, sz, t)) != 0) || (d == NULL)) {
+		return rv;
+	}
+
+	nni_mtx_lock(&d->mtx);
+	d->key = str;
+	nni_mtx_unlock(&d->mtx);
+	return 0;
+}
+
+static int
+quic_dialer_set_tls_cacert(void *arg, void *buf, size_t sz, nni_type t)
+{
+	nni_quic_dialer *d = arg;
+	int              rv;
+	char *           str;
+
+	str = nng_alloc(sz + 1);
+
+	if (((rv = nni_copyin_str(&str, buf, sz, sz, t)) != 0) || (d == NULL)) {
+		return rv;
+	}
+
+	nni_mtx_lock(&d->mtx);
+	d->cacert = str;
+	nni_mtx_unlock(&d->mtx);
+	return 0;
+}
+
+static int
+quic_dialer_set_congestion_ctl_cubic(void *arg, void *buf, size_t sz, nni_type t)
+{
+	nni_quic_dialer *d = arg;
+	int              rv;
+	bool             b;
+
+	if (((rv = nni_copyin_bool(&b, buf, sz, t)) != 0) || (d == NULL)) {
+		return rv;
+	}
+
+	nni_mtx_lock(&d->mtx);
+	d->settings.IsSet.CongestionControlAlgorithm = TRUE;
+	d->settings.CongestionControlAlgorithm = QUIC_CONGESTION_CONTROL_ALGORITHM_CUBIC;
+	nni_mtx_unlock(&d->mtx);
+	return 0;
+}
+
+static int
 quic_dialer_set_max_ack_delay_ms(void *arg, void *buf, size_t sz, nni_type t)
 {
 	nni_quic_dialer *d = arg;
@@ -368,6 +479,36 @@ static const nni_option quic_dialer_options[] = {
 		.o_name = NNG_OPT_QUIC_MAX_ACK_DELAY_MS,
 		.o_get = NULL,
 		.o_set = quic_dialer_set_max_ack_delay_ms,
+	},
+	{
+		.o_name = NNG_OPT_QUIC_CONGESTION_CTL_CUBIC,
+		.o_get = NULL,
+		.o_set = quic_dialer_set_congestion_ctl_cubic,
+	},
+	{
+		.o_name = NNG_OPT_QUIC_TLS_CACERT_PATH,
+		.o_get = NULL,
+		.o_set = quic_dialer_set_tls_cacert,
+	},
+	{
+		.o_name = NNG_OPT_QUIC_TLS_KEY_PATH,
+		.o_get = NULL,
+		.o_set = quic_dialer_set_tls_key,
+	},
+	{
+		.o_name = NNG_OPT_QUIC_TLS_KEY_PASSWORD,
+		.o_get = NULL,
+		.o_set = quic_dialer_set_tls_pwd,
+	},
+	{
+		.o_name = NNG_OPT_QUIC_TLS_VERIFY_PEER,
+		.o_get = NULL,
+		.o_set = quic_dialer_set_tls_verify,
+	},
+	{
+		.o_name = NNG_OPT_QUIC_TLS_CA_PATH,
+		.o_get = NULL,
+		.o_set = quic_dialer_set_tls_ca,
 	},
 	{
 		.o_name = NULL,
