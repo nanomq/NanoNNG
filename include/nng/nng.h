@@ -738,6 +738,14 @@ NNG_DECL nng_listener nng_pipe_listener(nng_pipe);
 #define NNG_OPT_QUIC_INITIAL_RTT_MS "quic-initial-ms"
 #define NNG_OPT_QUIC_MAX_ACK_DELAY_MS "quic-max-ack-delay-ms"
 
+#define NNG_OPT_QUIC_CONGESTION_CTL_CUBIC "quic-congestion-cubic"
+
+#define NNG_OPT_QUIC_TLS_CACERT_PATH "quic-tls-cacert"
+#define NNG_OPT_QUIC_TLS_KEY_PATH "quic-tls-key"
+#define NNG_OPT_QUIC_TLS_KEY_PASSWORD "quic-tls-pwd"
+#define NNG_OPT_QUIC_TLS_VERIFY_PEER "quic-tls-verify"
+#define NNG_OPT_QUIC_TLS_CA_PATH "quic-tls-ca"
+
 // TLS options are only used when the underlying transport supports TLS.
 
 // NNG_OPT_TLS_CONFIG is a pointer to an nng_tls_config object.  Generally
