@@ -22,6 +22,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "nng/nng.h"
 
 #ifdef __cplusplus
 extern "C" {
