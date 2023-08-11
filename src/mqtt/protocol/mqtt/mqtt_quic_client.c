@@ -293,6 +293,7 @@ mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 			// newly established stream
 		} else {
 			log_info("topic-stream already existed");
+			return 0;
 		}
 	}
 
