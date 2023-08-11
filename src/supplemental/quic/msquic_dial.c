@@ -389,10 +389,10 @@ quic_cb(int events, void *arg)
 
 	switch (events) {
 	case QUIC_STREAM_EVENT_SEND_COMPLETE:
-		nni_mtx_lock(&d->mtx);
+		nni_mtx_lock(&c->mtx);
 		if ((aio = nni_list_first(&c->writeq)) == NULL) {
 			log_error("Aio lost after sending: conn %p", c);
-			nni_mtx_unlock(&d->mtx);
+			nni_mtx_unlock(&c->mtx);
 			break;
 		}
 		nni_aio_list_remove(aio);
@@ -401,7 +401,7 @@ quic_cb(int events, void *arg)
 		// Start next send only after finished the last send
 		quic_dowrite(c);
 
-		nni_mtx_unlock(&d->mtx);
+		nni_mtx_unlock(&c->mtx);
 		break;
 	case QUIC_STREAM_EVENT_START_COMPLETE:
 		nni_mtx_lock(&d->mtx);
@@ -648,7 +648,6 @@ quic_send(void *arg, nni_aio *aio)
 		// In msquic. Write can be done at any time.
 	}
 	nni_mtx_unlock(&c->mtx);
-
 }
 
 static int
