@@ -2173,8 +2173,8 @@ nng_mqtt_quic_set_config(nng_socket *sock, void *node)
 		mqtt_sock->bridge_conf = node;
 		/* TODO: node is NULL now, hack it */
 		if (node == NULL) {
-			mqtt_sock->multi_stream = true;
 			mqtt_sock->qos_first    = false;
+			mqtt_sock->multi_stream = true;
 			if (mqtt_sock->multi_stream) {
 				mqtt_sock->streams =
 				    nng_alloc(sizeof(nni_id_map));
