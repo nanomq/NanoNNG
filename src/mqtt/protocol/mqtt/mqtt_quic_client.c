@@ -990,7 +990,7 @@ mqtt_quic_recv_cb(void *arg)
 
 	if (nni_aio_result(&p->recv_aio) != 0) {
 		// stream is closed in transport layer
-		nni_pipe_close(p->qpipe);
+		nni_pipe_close(p->npipe);
 		return;
 	}
 
