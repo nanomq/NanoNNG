@@ -856,7 +856,7 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 					nni_msg_free(msg);
 					msg = NULL;
 				}
-				nni_mtx_unlock(&s->mtx);
+				nni_mtx_lock(&s->mtx);
 				// nni_println("ERROR: no ctx found!! create
 				// more ctxs!");
 				break;
