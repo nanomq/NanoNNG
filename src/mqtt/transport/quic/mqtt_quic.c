@@ -58,6 +58,7 @@ struct mqtt_quictran_pipe {
 	nni_mtx          mtx;
 	bool             closed;
 	bool             busy;
+	bool             ismain;
 #ifdef NNG_HAVE_MQTT_BROKER
 	nni_msg         *connack;
 	conn_param *     cparam;
@@ -149,6 +150,11 @@ mqtt_pipe_timer_cb(void *arg)
 {
 	mqtt_quictran_pipe *p = arg;
 	uint8_t            buf[2];
+
+	if (p->ismain == false) {
+		// Ping request and response only be sent and received in main stream
+		return;
+	}
 
 	if (nng_aio_result(&p->tmaio) != 0) {
 		// log_error("Timer error!");
@@ -1455,6 +1461,7 @@ mqtt_quictran_dial_cb(void *arg)
 		nng_stream_free(conn);
 		goto error;
 	}
+	p->ismain = ismain;
 	nni_mtx_lock(&ep->mtx);
 	if (ep->closed) {
 		mqtt_quictran_pipe_fini(p);
