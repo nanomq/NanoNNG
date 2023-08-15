@@ -447,7 +447,6 @@ quic_fini(void *arg)
 	nni_quic_conn *c = arg;
 	quic_close2(c);
 
-	msquic_strm_fini(c->qstrm);
 	if (c->dialer) {
 		nni_msquic_quic_dialer_rele(c->dialer);
 	}
@@ -497,6 +496,7 @@ quic_close2(void *arg)
 			nni_aio_list_remove(aio);
 			nni_aio_finish_error(aio, NNG_ECLOSED);
 		}
+		msquic_strm_fini(c->qstrm);
 	}
 	nni_mtx_unlock(&c->mtx);
 }
