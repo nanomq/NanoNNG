@@ -553,6 +553,7 @@ nano_pipe_stop(void *arg)
 		return; // your time is yet to come
 
 	log_trace(" ########## nano_pipe_stop ########## ");
+	nni_aio_abort(&p->aio_send, NNG_ECANCELED);
 	nni_aio_stop(&p->aio_send);
 	nni_aio_stop(&p->aio_timer);
 	nni_aio_stop(&p->aio_recv);
@@ -575,7 +576,6 @@ nano_pipe_fini(void *arg)
 		nni_aio_set_msg(&p->aio_send, NULL);
 		nni_msg_free(msg);
 	}
-
 	void *nano_qos_db = p->pipe->nano_qos_db;
 
 	//Safely free the msgs in qos_db
@@ -1026,10 +1026,8 @@ nano_pipe_recv_cb(void *arg)
 	bool is_sqlite = s->conf->sqlite.enable;
 
 	if ((rv = nni_aio_result(&p->aio_recv)) != 0) {
-		// unexpected disconnect
-		nni_mtx_lock(&p->lk);
+		// unexpected disconnect, dont mind the TSAN here
 		p->reason_code = rv;
-		nni_mtx_unlock(&p->lk);
 		nni_pipe_close(p->pipe);
 		return;
 	}

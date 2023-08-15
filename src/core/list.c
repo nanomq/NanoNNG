@@ -153,6 +153,7 @@ int
 nni_list_empty(nni_list *list)
 {
 	// The first check ensures that we treat an uninitialized list
+
 	// as empty.  This use useful for statically initialized lists.
 	return ((list->ll_head.ln_next == NULL) ||
 	    (list->ll_head.ln_next == &list->ll_head));
