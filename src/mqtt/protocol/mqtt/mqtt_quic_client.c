@@ -1563,31 +1563,50 @@ quic_mqtt_pipe_init(void *arg, nni_pipe *pipe, void *sock)
 		major = true;
 	} else {
 		// multi stream
-		if (p->mqtt_sock->streams == NULL) {
-			// Error? Disabled multi_stream but got second pipe init.
-			log_error("Got new sub quic stream without multi_stream enabled.");
-			nni_pipe_close(pipe);
-			nng_free(p, sizeof(*p));
-			return 0;
-		}
-		uint32_t *topicode;
-		if (nni_lmq_get(p->mqtt_sock->topicq, (nng_msg **)&topicode) != 0) {
+//		if (p->mqtt_sock->streams == NULL) {
+//			// Error? Disabled multi_stream but got second pipe init.
+//			log_error("Got new sub quic stream without multi_stream enabled.");
+//			nni_pipe_close(pipe);
+//			nng_free(p, sizeof(*p));
+//			return 0;
+//		}
+
+		uint32_t topicode;
+		topic = nni_list_first(&p->mqtt_sock->topicq);
+		if (topic == NULL) {
 			// No pending hash code.
 			log_error("No pending topic.");
-			nni_pipe_close(pipe);
-			nng_free(p, sizeof(*p));
+			/* finish mqtt pipe and nni pipe */
+			//nni_pipe_close(pipe);
+			//nng_free(p, sizeof(*p));
 			return 0;
 		}
-		if (nni_id_set(p->mqtt_sock->streams, *topicode, p) != 0) {
+
+		int topicLen = 0;
+		char *topicStr = NULL;
+		if (topic->pipeType == PIPE_TYPE_SUB) {
+			nni_mqtt_topic_qos *topics;
+			int count = 0;
+			topics = nni_mqtt_msg_get_subscribe_topics(topic->msg, &count);
+			for (uint32_t i = 0; i < count; i++) {
+				topicStr = topics[i].topic.buf;
+				topicLen = topics[i].topic.length;
+				printf("rhack: %s: %d data stream init: get topic from topicq topiccode: %d, pipeType: %d topicStr: %s hash: %d\n",
+														__func__, __LINE__, topic->topicode, topic->pipeType, topicStr, topic->topicode);
+			}
+		}
+		topicode = topic->topicode;
+		if (nni_id_set(p->mqtt_sock->streams, topicode, p) != 0) {
 			log_error("Error in setting s->streams.");
 			nni_pipe_close(pipe);
 			nng_free(p, sizeof(*p));
 			return 0;
 		}
-		log_info("New pipe has been bind to topic (code %ld)", *topicode);
-		p->stream_id = *topicode;
+		log_info("New pipe has been bind to topic (code %ld)", topicode);
+		p->stream_id = topicode;
 	}
 
+	p->npipe = pipe;
 	p->rid = 1;
 	p->reason_code = 0;
 	nni_atomic_init_bool(&p->closed);
@@ -1610,6 +1629,21 @@ quic_mqtt_pipe_init(void *arg, nni_pipe *pipe, void *sock)
 	if (p->mqtt_sock->multi_stream)
 		nni_lmq_init(&p->send_inflight, NNG_MAX_RECV_LMQ);
 	nni_mtx_init(&p->lk);
+
+	if (!major && topic != NULL && topic->pipeType == PIPE_TYPE_SUB) {
+		printf("rhack: %s: %d: ready to start sub_stream\n", __func__, __LINE__);
+		p->ready = true;
+		nni_atomic_set_bool(&p->closed, false);
+		mqtt_sub_stream_start(p, topic->msg, topic->packetid, topic->aio);
+		nni_list_remove(&p->mqtt_sock->topicq, topic);
+	} else if (!major && topic != NULL && topic->pipeType == PIPE_TYPE_PUB) {
+		printf("rhack: %s: %d: ready to start pub_stream\n", __func__, __LINE__);
+		int topicLen = 0;
+		char *topicStr = (char *) nni_mqtt_msg_get_publish_topic(
+			    topic->msg, &topicLen);
+		mqtt_pub_stream_start(p, topic->msg, topic->aio);
+		nni_list_remove(&p->mqtt_sock->topicq, topic);
+	}
 
 	return (0);
 }
@@ -1704,7 +1738,7 @@ quic_mqtt_pipe_start(void *arg)
 	mqtt_sock_t *s = p->mqtt_sock;
 	nni_aio     *aio;
 	nni_msg     *msg;
-	nni_pipe    *npipe = p->qpipe;
+	nni_pipe    *npipe = p->npipe;
 
 	nni_mtx_lock(&s->mtx);
 
