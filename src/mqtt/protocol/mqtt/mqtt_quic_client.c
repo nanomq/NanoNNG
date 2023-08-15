@@ -31,7 +31,7 @@ typedef struct mqtt_quic_ctx mqtt_quic_ctx;
 typedef nni_mqtt_packet_type packet_type_t;
 
 static int prior_flags = QUIC_HIGH_PRIOR_MSG;
-typedef struct wait_stream   wait_stream;
+typedef struct wait_topic    wait_topic;
 
 static void mqtt_quic_sock_init(void *arg, nni_sock *sock);
 static void mqtt_quic_sock_fini(void *arg);
@@ -78,8 +78,15 @@ struct mqtt_quic_ctx {
 	nni_list_node rqnode;
 };
 
-struct wait_stream {
-	mqtt_pipe_t    *pipe;
+#define PIPE_TYPE_SUB         0
+#define PIPE_TYPE_PUB         1
+
+struct wait_topic {
+	uint32_t       topicode;
+	void           *msg;
+	int            pipeType;
+	nni_aio        *aio;
+	int            packetid;
 	nni_list_node  list_node;
 };
 // A mqtt_sock_s is our per-socket protocol private structure.
@@ -98,7 +105,6 @@ struct mqtt_sock_s {
 	mqtt_quic_ctx master;     // to which we delegate send/recv calls
 	nni_list      recv_queue; // aio pending to receive
 	nni_list      send_queue; // aio pending to send
-	nni_list	  wait_streams_queue; // new data stream wait for bind
 
 	void         *qsock; // The matrix of quic sock. Which only be allow
 	                     // to use when disconnect. Or lock first.
@@ -108,7 +114,7 @@ struct mqtt_sock_s {
 	mqtt_pipe_t  *pipe;  // the major pipe (control stream)
 	                     // main quic pipe, others needs a map to store the
 	                     // relationship between MQTT topics and quic pipes
-	nni_lmq      *topicq;   // Topics wait to be bind to stream.
+	nni_list     topicq;   // Topics wait to be bind to stream.
 	nni_aio       time_aio; // timer aio to resend unack msg
 	nni_aio      *ack_aio;  // set by user, expose puback/pubcomp
 	nni_msg      *ping_msg, *connmsg;
