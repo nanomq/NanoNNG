@@ -739,7 +739,11 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		// Generally, this is the expected way for the connection to
 		// shut down with this protocol, since we let idle timeout kill
 		// the connection.
-		log_info("[conn] Quic status %d\n", Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status);
+		log_warn("[conn][%p] Shutdown by transport, 0x%x, Error Code %llu\n",
+		    qconn, Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status,
+		    (unsigned long long)
+		        Event->SHUTDOWN_INITIATED_BY_TRANSPORT.ErrorCode);
+
 		switch (Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status) {
 		case QUIC_STATUS_CONNECTION_IDLE:
 			log_warn("[conn][%p] Connection shutdown on idle.\n", qconn);
@@ -754,10 +758,6 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 			log_warn("No network availiable. Random errcode is used");
 			break;
 		}
-		log_warn("[conn][%p] Shutdown by transport, 0x%x, Error Code %llu\n",
-		    qconn, Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status,
-		    (unsigned long long)
-		        Event->SHUTDOWN_INITIATED_BY_TRANSPORT.ErrorCode);
 		if (d->reason_code == 0)
             	d->reason_code = SERVER_UNAVAILABLE;
 		break;
@@ -865,7 +865,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	uint8_t       *rbuf;
 	uint32_t       count;
 
-	log_debug("quic_strm_cb triggered! %d", Event->Type);
+	log_debug("quic_strm_cb triggered! %d conn %p strm %p", Event->Type, c, stream);
 	switch (Event->Type) {
 	case QUIC_STREAM_EVENT_SEND_COMPLETE:
 		log_debug("QUIC_STREAM_EVENT_SEND_COMPLETE!");
@@ -946,7 +946,6 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 
 		MsQuic->StreamReceiveComplete(c->qstrm, rpos);
 		nni_mtx_unlock(&c->mtx);
-		log_debug("stream cb over\n");
 
 		return QUIC_STATUS_PENDING;
 	case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
@@ -1238,6 +1237,7 @@ error:
 static void
 msquic_strm_close(HQUIC qstrm)
 {
+	log_info("stream %p shutdown", qstrm);
 	MsQuic->StreamShutdown(
 	    qstrm, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, NNG_ECONNSHUT);
 }
@@ -1245,6 +1245,7 @@ msquic_strm_close(HQUIC qstrm)
 static void
 msquic_strm_fini(HQUIC qstrm)
 {
+	log_info("stream %p fini", qstrm);
 	MsQuic->StreamClose(qstrm);
 }
 
