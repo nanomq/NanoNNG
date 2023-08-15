@@ -76,6 +76,7 @@ struct nni_quic_conn {
 	uint8_t         reason_code;
 
 	nni_reap_node   reap;
+	nni_aio         erraio;
 };
 
 static const QUIC_API_TABLE *MsQuic = NULL;
@@ -233,6 +234,7 @@ error:
 
 	if (rv != 0) {
 		nng_stream_close(&c->stream);
+		// Decement reference of dialer
 		nng_stream_free(&c->stream);
 		nni_aio_finish_error(aio, rv);
 	}
@@ -358,6 +360,7 @@ nni_quic_dialer_close(void *arg)
 static void
 quic_dialer_fini(nni_quic_dialer *d)
 {
+	log_info("connection %p fini", d->qconn);
 	msquic_conn_close(d->qconn, 0);
 	msquic_conn_fini(d->qconn);
 	nni_mtx_fini(&d->mtx);
@@ -433,7 +436,7 @@ quic_cb(int events, void *arg)
 	// case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 	// case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
-		quic_error(c, NNG_ECONNSHUT);
+		nni_aio_finish(&c->erraio, 0, NNG_ECONNSHUT);
 		break;
 	default:
 		break;
@@ -481,6 +484,17 @@ quic_error(void *arg, int err)
 		nni_aio_finish_error(aio, err);
 	}
 	nni_mtx_unlock(&c->mtx);
+}
+
+static void
+quic_error2(void *arg)
+{
+	int rv;
+	nni_quic_conn *c = arg;
+
+	rv = nni_aio_result(&c->erraio);
+
+	quic_error(arg, rv);
 }
 
 static void
@@ -690,6 +704,7 @@ nni_msquic_quic_alloc(nni_quic_conn **cp, nni_quic_dialer *d)
 	nni_mtx_init(&c->mtx);
 	nni_aio_list_init(&c->readq);
 	nni_aio_list_init(&c->writeq);
+	nni_aio_init(&c->erraio, quic_error2, c);
 	// nni_aio_alloc(&c->qstrmaio, quic_cb, );
 
 	c->stream.s_free  = quic_free;
