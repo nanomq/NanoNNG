@@ -193,50 +193,127 @@ mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
  * This stream is unidirecitional by default
 */
 static mqtt_pipe_t*
-nng_mqtt_quic_open_topic_stream(mqtt_sock_t *mqtt_sock, const char *topic, uint32_t len)
+mqtt_pub_stream_start(mqtt_pipe_t *p, nni_msg *msg, nni_aio *aio)
 {
-	mqtt_pipe_t *p          = mqtt_sock->pipe;
-	mqtt_pipe_t *new_pipe   = NULL;
-	uint32_t     hash;
-	int          rv;
-	nni_dialer  *ndialer = p->npipe->p_dialer;
+	int qos = nni_mqtt_msg_get_publish_qos(msg);
+	nni_msg *tmsg;
+	mqtt_sock_t *s = p->mqtt_sock;
+	int ptype = nni_mqtt_msg_get_packet_type(msg);
 
-	// create a pipe/stream here
-	if (0 != (rv = nni_dialer_start(ndialer, NNG_FLAG_NONBLOCK))) {
-		log_error("Dialer start error rv %d", rv);
-		return NULL;
-	}
-	int times = 0;
-	wait_stream *new_stream = NULL;
-	/* waiting dialer connect finished */
-	while ((new_stream = nni_list_first(&mqtt_sock->wait_streams_queue)) == NULL) {
-		if (times % 200 == 0) {
-			printf("rhack: %s: %d: wait for streams initial done... times: %d\n", __func__, __LINE__, times);
+	int len = 0;
+	char *topic = (char *) nni_mqtt_msg_get_publish_topic(msg, &len);
+
+	if (s->qos_first) {
+		if (qos > 0 && ptype == NNG_MQTT_PUBLISH) {
+			nni_mqtt_msg_encode(msg);
+			nni_aio_set_msg(aio, msg);
+			nni_aio_set_prov_data(aio, &prior_flags);
+			nni_pipe_send(p->npipe, aio);
+			log_debug("sending highpriority QoS msg in parallel");
+			return -1;
 		}
-		if (times >= 2000) {
-			printf("rhack: too long to wait just break...\n");
-			return NULL;
-		}
-		times++;
-		nng_msleep(50);
 	}
-	new_pipe = new_stream->pipe;
-	nni_list_remove(&mqtt_sock->wait_streams_queue, new_stream);
-	free(new_stream);
 
-	hash = DJBHashn((char *) topic, len);
-	nni_id_set(mqtt_sock->streams, hash, new_pipe);
-	new_pipe->stream_id = hash;
-	log_debug("create new pipe %p for topic %.*s", new_pipe, len, topic);
+	if (!p->busy) {
+		nni_aio_set_msg(&p->send_aio, msg);
+		p->busy = true;
+		nni_pipe_send(p->npipe, &p->send_aio);
+	} else {
+		if (nni_lmq_full(&s->send_messages)) {
+			size_t max_que_len = p->mqtt_sock->bridge_conf != NULL
+			    ? p->mqtt_sock->bridge_conf->max_send_queue_len
+			    : NNG_TRAN_MAX_LMQ_SIZE;
 
-	new_pipe->ready = true;
-	nni_atomic_set_bool(&new_pipe->closed, false);
-	new_pipe->cparam = p->cparam;
-	// there is no aio in send_queue, because this is a newly established stream
-	// for now, pub stream is also bidirectional
-	return new_pipe;
+			if (max_que_len > nni_lmq_cap(&s->send_messages)) {
+				size_t double_que_cap =
+				    nni_lmq_cap(&s->send_messages) * 2;
+				size_t resize_que_len =
+				    double_que_cap < max_que_len
+				    ? double_que_cap
+				    : max_que_len;
+
+				if (0 !=
+				    nni_lmq_resize(
+				        &s->send_messages, resize_que_len)) {
+					(void) nni_lmq_get(
+					    &s->send_messages, &tmsg);
+					log_debug(
+					    "Max send queue capacity is %d",
+					    nni_lmq_cap(&s->send_messages));
+					log_debug("Max send queue len is %d",
+					    nni_lmq_len(&s->send_messages));
+					log_warn("msg lost due to flight "
+					         "window is full");
+					nni_msg_free(tmsg);
+				}
+
+				log_info("Resize max send queue to %d",
+				    nni_lmq_cap(&s->send_messages));
+
+			} else {
+				(void) nni_lmq_get(&s->send_messages, &tmsg);
+				log_warn(
+				    "msg lost due to flight window is full");
+				nni_msg_free(tmsg);
+			}
+		}
+		if (0 != nni_lmq_put(&s->send_messages, msg)) {
+			log_warn(
+			    "Warning! msg send failed due to busy socket");
+			nni_msg_free(msg);
+		}
+	}
+	return -1;
+
 }
 
+static int
+mqtt_sub_stream_start(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
+{
+	uint32_t count, hash;
+	nni_msg *tmsg;
+	mqtt_sock_t *sock = p->mqtt_sock;
+	int rv;
+	nni_dialer *ndialer = p->npipe->p_dialer;
+
+	nni_mqtt_msg_set_packet_id(msg, packet_id);
+	nni_mqtt_msg_set_aio(msg, aio);
+	tmsg = nni_id_get(&p->sent_unack, packet_id);
+	if (tmsg != NULL) {
+		log_warn("Warning : msg %d lost due to "
+		         "packetID duplicated!",
+		    packet_id);
+		nni_aio *m_aio = nni_mqtt_msg_get_aio(tmsg);
+		if (m_aio && nni_msg_get_type(tmsg) != CMD_PUBLISH) {
+			nni_aio_finish_error(m_aio, UNSPECIFIED_ERROR);
+		}
+		nni_msg_free(tmsg);
+		nni_id_remove(&p->sent_unack, packet_id);
+	}
+	nni_msg_clone(msg);
+	if (0 != nni_id_set(&p->sent_unack, packet_id, msg)) {
+		nni_println("Warning! Cache QoS msg failed");
+		nni_msg_free(msg);
+		nni_aio_finish_error(aio, UNSPECIFIED_ERROR);
+	}
+
+	if (!p->busy) {
+		nni_aio_set_msg(&p->send_aio, msg);
+		p->busy = true;
+		nni_pipe_send(p->npipe, &p->send_aio);
+	} else {
+		if (nni_lmq_full(&p->send_inflight)) {
+			(void) nni_lmq_get(&p->send_inflight, &tmsg);
+			log_warn("msg lost due to flight window is full");
+			nni_msg_free(tmsg);
+		}
+		if (0 != nni_lmq_put(&p->send_inflight, msg)) {
+			nni_println(
+			    "Warning! msg send failed due to busy socket");
+		}
+	}
+	return 0;
+}
 /***
  * create a unidirectional stream and pub msg to it.
  * mapping sub topics (if >1) with the new stream.
@@ -266,82 +343,25 @@ mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 	for (uint32_t i = 0; i < count; i++) {
 		hash = DJBHashn(
 		    (char *) topics[i].topic.buf, topics[i].topic.length);
+	printf("rhack: %s: %d: &s->topicq: %p topic: %s, hash: %d\n", __func__, __LINE__, &sock->topicq, topics[i].topic.buf, hash);
 		if ((new_pipe = nni_id_get(sock->streams, hash)) == NULL) {
 			// create pipe here & set stream id
 			log_debug("topic %s qos %d", topics[i].topic.buf, topics[i].qos);
 			// create a pipe/stream here
+			wait_topic *topic = malloc(sizeof(wait_topic));
+			topic->topicode = hash;
+			topic->msg = msg;
+			topic->pipeType = PIPE_TYPE_SUB;
+			topic->aio = aio;
+			NNI_LIST_NODE_INIT(&topic->list_node);
+			nni_list_append(&sock->topicq, topic);
 			if (0 != (rv = nni_dialer_start(ndialer, NNG_FLAG_NONBLOCK))) {
 				log_error("Dialer start error rv %d", rv);
 				return NULL;
 			}
-			int times = 0;
-			wait_stream *new_stream = NULL;
-			/* waiting dialer connect finished */
-			while ((new_stream = nni_list_first(&sock->wait_streams_queue)) == NULL) {
-				if (times % 200 == 0) {
-					printf("rhack: %s: %d: wait for streams initial done... times: %d\n", __func__, __LINE__, times);
-				}
-				if (times >= 2000) {
-					printf("rhack: too long to wait just break...\n");
-					return NULL;
-				}
-				times++;
-				nng_msleep(50);
-			}
-			new_pipe = new_stream->pipe;
-			nni_list_remove(&sock->wait_streams_queue, new_stream);
-			free(new_stream);
-
-			nni_id_set(sock->streams, hash, new_pipe);
-			new_pipe->stream_id = hash;
-
-			log_debug("create new pipe %p for topic %s", new_pipe,
-			    (char *) topics[0].topic.buf);
-			new_pipe->ready = true;
-			nni_atomic_set_bool(&new_pipe->closed, false);
-			new_pipe->cparam = p->cparam;
-			// there is no aio in send_queue, because this is a
-			// newly established stream
 		} else {
 			log_info("topic-stream already existed");
 			return 0;
-		}
-	}
-
-	nni_mqtt_msg_set_packet_id(msg, packet_id);
-	nni_mqtt_msg_set_aio(msg, aio);
-	tmsg = nni_id_get(&new_pipe->sent_unack, packet_id);
-	if (tmsg != NULL) {
-		log_warn("Warning : msg %d lost due to "
-		         "packetID duplicated!",
-		    packet_id);
-		nni_aio *m_aio = nni_mqtt_msg_get_aio(tmsg);
-		if (m_aio && nni_msg_get_type(tmsg) != CMD_PUBLISH) {
-			nni_aio_finish_error(m_aio, UNSPECIFIED_ERROR);
-		}
-		nni_msg_free(tmsg);
-		nni_id_remove(&new_pipe->sent_unack, packet_id);
-	}
-	nni_msg_clone(msg);
-	if (0 != nni_id_set(&new_pipe->sent_unack, packet_id, msg)) {
-		nni_println("Warning! Cache QoS msg failed");
-		nni_msg_free(msg);
-		nni_aio_finish_error(aio, UNSPECIFIED_ERROR);
-	}
-
-	if (!new_pipe->busy) {
-		nni_aio_set_msg(&new_pipe->send_aio, msg);
-		p->busy = true;
-		nni_pipe_send(new_pipe->npipe, &new_pipe->send_aio);
-	} else {
-		if (nni_lmq_full(&new_pipe->send_inflight)) {
-			(void) nni_lmq_get(&new_pipe->send_inflight, &tmsg);
-			log_warn("msg lost due to flight window is full");
-			nni_msg_free(tmsg);
-		}
-		if (0 != nni_lmq_put(&new_pipe->send_inflight, msg)) {
-			nni_println(
-			    "Warning! msg send failed due to busy socket");
 		}
 	}
 	return 0;
@@ -371,7 +391,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 	uint16_t     ptype, packet_id;
 	uint32_t     topic_len = 0;
 	uint8_t      qos = 0;
-	nni_pipe    *npipe = p->qpipe;
+	nni_pipe    *npipe = p->npipe;
 
 	ptype = nni_mqtt_msg_get_packet_type(msg);
 	switch (ptype) {
@@ -405,13 +425,28 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 			pub_pipe =
 			    nni_id_get(s->streams, DJBHashn(topic, topic_len));
 			if (pub_pipe == NULL) {
-				uint32_t *topicode = nng_alloc(sizeof(uint32_t));
-				*topicode = DJBHashn(topic, topic_len);
-				nni_lmq_put(s->topicq, topicode);
+				wait_topic *topicItem = malloc(sizeof(wait_topic));
+				topicItem->topicode = DJBHashn(topic, topic_len);
+				topicItem->msg = msg;
+				topicItem->pipeType = PIPE_TYPE_PUB;
+				topicItem->aio = aio;
+
+				NNI_LIST_NODE_INIT(&topicItem->list_node);
+				nni_list_append(&s->topicq, topicItem);
 				nni_dialer_start(npipe->p_dialer, NNG_FLAG_NONBLOCK);
 				// pub_pipe = nng_mqtt_quic_open_topic_stream(s, topic, topic_len);
+				/* cache the msg, wating pipe ready */
+				printf("rhack: %s: %d publish dialer_start\n", __func__, __LINE__);
+				while (!nni_list_empty(&s->topicq)) {
+						nng_msleep(1 * 1000);
+						printf("rhack: %s: %d wait publish send finished\n", __func__, __LINE__);
+				}
+				nng_msleep(5 * 1000);
+				printf("rhack: %s: %d publish send finished\n", __func__, __LINE__);
+				//nng_msleep(10 * 1000);
+				return 0;
 			}
-			p = pub_pipe;
+			//p = pub_pipe;
 		}
 
 		qos = nni_mqtt_msg_get_publish_qos(msg);
@@ -1332,11 +1367,8 @@ mqtt_quic_sock_init(void *arg, nni_sock *sock)
 	s->ack_lmq = nni_alloc(sizeof(nni_lmq));
 	nni_lmq_init(s->ack_lmq, NNG_MAX_RECV_LMQ);
 
-	s->topicq = nni_alloc(sizeof(nni_lmq));
-	nni_lmq_init(s->topicq, NNG_MAX_RECV_LMQ);
-
 	nni_lmq_init(&s->send_messages, NNG_MAX_SEND_LMQ);
-	NNI_LIST_INIT(&s->wait_streams_queue, wait_stream, list_node);
+	NNI_LIST_INIT(&s->topicq, wait_topic, list_node);
 	nni_aio_list_init(&s->send_queue);
 	nni_aio_list_init(&s->recv_queue);
 	nni_aio_init(&s->time_aio, mqtt_timer_cb, s);
@@ -1379,9 +1411,8 @@ mqtt_quic_sock_fini(void *arg)
 		nni_lmq_fini(s->ack_lmq);
 		nng_free(s->ack_lmq, sizeof(nni_lmq));
 	}
-	if (s->topicq != NULL) {
-		nni_lmq_fini(s->topicq);
-		nng_free(s->topicq, sizeof(nni_lmq));
+	if (&s->topicq != NULL) {
+//		nng_free(s->topicq, sizeof(nni_lmq));
 	}
 
 	// emulate disconnect notify msg as a normal publish
@@ -1521,8 +1552,7 @@ quic_mqtt_pipe_init(void *arg, nni_pipe *pipe, void *sock)
 	mqtt_pipe_t *p     = arg;
 	p->mqtt_sock       = sock;
 	p->cparam          = NULL;
-	wait_stream	*stream = NULL;
-
+	wait_topic *topic = NULL;
 	// The first quic stream (main pipe) would be assigned to sock->pipe.
 	// If multi_stream is enabled. The rest of streams would be cached
 	// to sock->streams.
