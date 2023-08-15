@@ -233,6 +233,8 @@ error:
 	nni_mtx_unlock(&d->mtx);
 
 	if (rv != 0) {
+		// if (rv = NNG_ECLOSED)
+			// return;
 		nng_stream_close(&c->stream);
 		// Decement reference of dialer
 		nng_stream_free(&c->stream);
@@ -363,6 +365,8 @@ quic_dialer_fini(nni_quic_dialer *d)
 	log_info("connection %p fini", d->qconn);
 	msquic_conn_close(d->qconn, 0);
 	msquic_conn_fini(d->qconn);
+	nni_aio_abort(d->qconaio, NNG_ECLOSED);
+	nni_aio_wait(d->qconaio);
 	nni_mtx_fini(&d->mtx);
 	NNI_FREE_STRUCT(d);
 }

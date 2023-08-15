@@ -1348,8 +1348,8 @@ mqtt_quic_sock_fini(void *arg)
 	nni_msg_free(s->ping_msg);
 	// potential memleak here. need to adapt to MsQUIC finit
 	// quic_close();
-	nni_pollable_init(&s->writeable);
-	nni_pollable_init(&s->readable);
+	// nni_pollable_init(&s->writeable);
+	// nni_pollable_init(&s->readable);
 }
 
 static void
@@ -1545,6 +1545,8 @@ quic_mqtt_pipe_fini(void *arg)
 	uint16_t count = 0;
 	// connect failed also triggered stream finit, ignore it
 	if (p->cparam == NULL) {
+		nni_sock_rele(s->nsock);
+		nni_sock_rele(s->nsock);
 		return;
 	}
 
