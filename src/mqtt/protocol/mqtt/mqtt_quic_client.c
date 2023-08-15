@@ -903,6 +903,7 @@ mqtt_quic_recv_cb(void *arg)
 
 	if (nni_aio_result(&p->recv_aio) != 0) {
 		// stream is closed in transport layer
+		nni_pipe_close(p->qpipe);
 		return;
 	}
 
@@ -1583,7 +1584,6 @@ quic_mqtt_pipe_fini(void *arg)
 		// sock closed
 		s->pipe = NULL;
 	}
-	nng_free(p, sizeof(p));
 	nni_mtx_unlock(&s->mtx);
 	nni_sock_rele(s->nsock);
 	nni_sock_rele(s->nsock);
