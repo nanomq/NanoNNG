@@ -36,6 +36,9 @@ pipe_destroy(void *arg)
 	if (p == NULL || p->cache) {
 		return;
 	}
+	// for a reaper bug
+	// if(p->guard != 1)
+	// 	return;
 
 	nni_pipe_run_cb(p, NNG_PIPE_EV_REM_POST);
 
@@ -59,14 +62,17 @@ pipe_destroy(void *arg)
 	}
 
 	// Freed here
-	struct subinfo * s = NULL;
+	struct subinfo *s = NULL;
 	while (!nni_list_empty(p->subinfol)) {
 		s = nni_list_last(p->subinfol);
-		nni_list_remove(p->subinfol, s);
-		nng_free(s->topic, strlen(s->topic));
-		nng_free(s, sizeof(*s));
+		if (s && s->topic != NULL) {
+			nni_list_remove(p->subinfol, s);
+			nng_free(s->topic, strlen(s->topic));
+			nng_free(s, sizeof(*s));
+		}
 	}
-	nni_free(p->subinfol, sizeof(nni_list));
+	if (p->subinfol != NULL)
+		nni_free(p->subinfol, sizeof(nni_list));
 
 #ifdef NNG_ENABLE_STATS
 	nni_stat_unregister(&p->st_root);
@@ -255,6 +261,7 @@ pipe_create(nni_pipe **pp, nni_sock *sock, nni_sp_tran *tran, void *tran_data)
 		return (NNG_ENOMEM);
 	}
 
+	// p->guard = 1;
 	p->p_size       = sz;
 	p->p_proto_data = p + 1;
 	p->p_tran_ops   = *tran->tran_pipe;
