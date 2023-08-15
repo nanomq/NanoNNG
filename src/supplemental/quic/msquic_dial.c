@@ -257,7 +257,7 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 	if (nni_aio_begin(aio) != 0) {
 		return;
 	}
-
+	log_info("begin dialing!");
 	nni_atomic_inc64(&d->ref);
 
 	// Create a connection whenever dial. So it's okey. right?
@@ -475,6 +475,7 @@ quic_error(void *arg, int err)
 	nni_aio *      aio;
 
 	nni_mtx_lock(&c->mtx);
+	// only close aio of this stream
 	while (((aio = nni_list_first(&c->readq)) != NULL) ||
 	    ((aio = nni_list_first(&c->writeq)) != NULL)) {
 		nni_aio_list_remove(aio);
@@ -748,9 +749,9 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 			break;
 		case QUIC_STATUS_UNREACHABLE:
 			log_warn("[conn][%p] Host unreachable.\n", qconn);
-			nni_aio_finish_error(d->qconaio, NNG_ECONNREFUSED);
 			break;
 		default:
+			log_warn("No network availiable. Random errcode is used");
 			break;
 		}
 		log_warn("[conn][%p] Shutdown by transport, 0x%x, Error Code %llu\n",
@@ -780,10 +781,9 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 			// explicitly shutdon on protocol layer.
 			MsQuic->ConnectionClose(qconn);
 		}
-
-		// TODO Decrement refcnt of all quic streams in this dialer
-
+		// reconnect here
 		nni_mtx_unlock(&d->mtx);
+		nni_aio_finish_error(d->qconaio, NNG_ECONNREFUSED);
 		/*
 		if (d->closed == true) {
 			nni_sock_rele(qsock->sock);
@@ -1209,7 +1209,6 @@ msquic_strm_open(HQUIC qconn, nni_quic_dialer *d)
 	log_debug("[strm][%p] Starting...", strm);
 
 	c = d->currcon;
-	d->currcon = NULL;
 
 	rv = MsQuic->StreamOpen(qconn, QUIC_STREAM_OPEN_FLAG_NONE,
 	        msquic_strm_cb, (void *)c, &strm);
