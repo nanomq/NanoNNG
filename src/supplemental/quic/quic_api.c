@@ -422,34 +422,6 @@ quic_dialer_set_enable_multistream(void *arg, void *buf, size_t sz, nni_type t)
 }
 
 static int
-quic_dialer_get_enable_multistream(void *arg, void *buf, size_t *szp, nni_type t)
-{
-	bool             b;
-	nni_quic_dialer *d = arg;
-	nni_mtx_lock(&d->mtx);
-	b = d->enable_mltstrm;
-	nni_mtx_unlock(&d->mtx);
-	return nni_copyout_bool(b, buf, szp, t);
-}
-
-static int
-quic_dialer_set_enable_multistream(void *arg, void *buf, size_t sz, nni_type t)
-{
-	nni_quic_dialer *d = arg;
-	int              rv;
-	bool             b;
-
-	if (((rv = nni_copyin_bool(&b, buf, sz, t)) != 0) || (d == NULL)) {
-		return rv;
-	}
-
-	nni_mtx_lock(&d->mtx);
-	d->enable_mltstrm = b;
-	nni_mtx_unlock(&d->mtx);
-	return 0;
-}
-
-static int
 quic_dialer_get_enable_0rtt(void *arg, void *buf, size_t *szp, nni_type t)
 {
 	bool             b;
