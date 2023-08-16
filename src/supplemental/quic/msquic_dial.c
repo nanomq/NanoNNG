@@ -204,6 +204,12 @@ quic_dialer_cb(void *arg)
 	rv = nni_aio_result(d->qconaio);
 
 	nni_mtx_lock(&d->mtx);
+
+	if (d->closed) {
+		nni_mtx_unlock(&d->mtx);
+		return;
+	}
+
 	c = d->currcon;
 	aio = c->dial_aio;
 	if ((aio == NULL) || (!nni_aio_list_active(aio))) {
