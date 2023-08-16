@@ -353,6 +353,7 @@ mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 			topic->msg = msg;
 			topic->pipeType = PIPE_TYPE_SUB;
 			topic->aio = aio;
+			topic->packetid = packet_id;
 			NNI_LIST_NODE_INIT(&topic->list_node);
 			nni_list_append(&sock->topicq, topic);
 			if (0 != (rv = nni_dialer_start(ndialer, NNG_FLAG_NONBLOCK))) {
