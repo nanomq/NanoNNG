@@ -786,6 +786,7 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 				nni_msg_free(cached_msg);
 				cached_msg = NULL;
 			}
+			nni_mtx_unlock(&s->mtx);
 			break;
 		}
 		nni_list_remove(&s->recv_queue, aio);
@@ -819,6 +820,7 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 					nni_msg_free(msg);
 					msg = NULL;
 				}
+				nni_mtx_unlock(&s->mtx);
 				// nni_println("ERROR: no ctx found!! create
 				// more ctxs!");
 				break;
@@ -1545,6 +1547,7 @@ quic_mqtt_pipe_fini(void *arg)
 	uint16_t count = 0;
 	// connect failed also triggered stream finit, ignore it
 	if (p->cparam == NULL) {
+		nni_mtx_unlock(&s->mtx);
 		nni_sock_rele(s->nsock);
 		nni_sock_rele(s->nsock);
 		return;
