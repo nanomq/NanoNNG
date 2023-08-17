@@ -1437,6 +1437,9 @@ conf_dds_gateway_dds_parse_ver2(dds_gateway_dds *dds, cJSON *jso)
 
 	hocon_read_str(dds, idl_type, jso_dds);
 	hocon_read_num(dds, domain_id, jso_dds);
+	hocon_read_str(dds, subscriber_partition, jso_dds);
+	hocon_read_str(dds, publisher_partition, jso_dds);
+
 	cJSON *jso_shm = hocon_get_obj("shared_memory", jso_dds);
 	hocon_read_bool_base(dds, shm_mode, "enable", jso_shm);
 	hocon_read_str_base(dds, shm_log_level, "log_level", jso_shm);
@@ -1470,6 +1473,9 @@ conf_dds_gateway_init(dds_gateway_conf *config)
 	dds->domain_id     = 0;
 	dds->shm_mode      = false;
 	dds->shm_log_level = NULL;
+
+	dds->subscriber_partition = NULL;
+	dds->publisher_partition = NULL;
 
 	forward->dds2mqtt.from        = NULL;
 	forward->dds2mqtt.to          = NULL;
@@ -1542,6 +1548,12 @@ conf_dds_gateway_destory(dds_gateway_conf *config)
 
 	if (dds->idl_type) {
 		free(dds->idl_type);
+	}
+	if (dds->subscriber_partition) {
+		free(dds->subscriber_partition);
+	}
+	if (dds->publisher_partition) {
+		free(dds->publisher_partition);
 	}
 	if (dds->shm_log_level) {
 		free(dds->shm_log_level);
