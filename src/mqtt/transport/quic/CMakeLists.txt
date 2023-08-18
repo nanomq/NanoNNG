@@ -12,6 +12,10 @@
 ### Testing ???
 # nng_directory(mqtt)
 
-nng_sources_if(NNG_TRANSPORT_MQTT_QUIC mqtt_quic.c)
-nng_headers_if(NNG_TRANSPORT_MQTT_QUIC nng/mqtt/transport/quic/mqtt_quic.h)
-nng_defines_if(NNG_TRANSPORT_MQTT_QUIC NNG_TRANSPORT_MQTT_QUIC)
+message(" Check MQTT_QUIC_TRANSPORT support: ${NNG_TRANSPORT_MQTT_QUIC} ")
+
+if (NNG_TRANSPORT_MQTT_QUIC)
+    nng_sources_if(NNG_TRANSPORT_MQTT_QUIC mqtt_quic.c)
+    nng_headers_if(NNG_TRANSPORT_MQTT_QUIC nng/mqtt/transport/quic/mqtt_quic.h)
+    nng_defines_if(NNG_TRANSPORT_MQTT_QUIC NNG_TRANSPORT_MQTT_QUIC)
+endif()
