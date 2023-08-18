@@ -14,6 +14,9 @@ if (NNG_ENABLE_NNGCAT)
     add_executable(nngcat nngcat.c)
     target_include_directories(nngcat PUBLIC ${PROJECT_SOURCE_DIR}/src)
     target_link_libraries(nngcat nng nng_private)
+    if(NNG_ENABLE_QUIC)
+        target_link_libraries(nngcat msquic OpenSSLQuic)
+    endif(NNG_ENABLE_QUIC)
     install(TARGETS nngcat RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
             COMPONENT Tools)
 
