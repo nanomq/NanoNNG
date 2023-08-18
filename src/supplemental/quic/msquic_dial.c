@@ -419,6 +419,8 @@ quic_cb(int events, void *arg)
 			break;
 		}
 		nni_aio_list_remove(aio);
+		QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
+		free(buf);
 		nni_aio_finish(aio, 0, nni_aio_count(aio));
 
 		// Start next send only after finished the last send
@@ -887,6 +889,8 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		}
 		// Priority msg send
 		if ((aio = Event->SEND_COMPLETE.ClientContext) != NULL) {
+			QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
+			free(buf);
 			Event->SEND_COMPLETE.ClientContext = NULL;
 			nni_aio_finish(aio, 0, nni_aio_count(aio));
 			break;
