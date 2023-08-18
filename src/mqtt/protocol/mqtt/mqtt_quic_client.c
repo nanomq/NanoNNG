@@ -7,7 +7,7 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
-#include "nng/mqtt/mqtt_quic.h"
+#include "nng/mqtt/mqtt_quic_client.h"
 #include "sqlite_handler.h"
 #include "core/nng_impl.h"
 #include "nng/protocol/mqtt/mqtt.h"
