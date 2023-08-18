@@ -13,7 +13,6 @@ if (NNG_ENABLE_QUIC)
     add_subdirectory(msquic)
     add_dependencies(nng msquic)
 
-
     nng_sources(quic_api.c)
     nng_sources(quic_api.h)
     nng_sources(msquic_dial.c)
