@@ -950,8 +950,10 @@ mqtt_quic_recv_cb(void *arg)
 		nng_msg_set_cmd_type(msg, CMD_CONNACK);
 		// turn to publish msg and free in WAIT state
 		conn_param_clone(p->cparam);
-		// Clone CONNACK for connect_cb & aio_cb
-		nni_msg_clone(msg);
+		// Clone CONNACK for connect_cb & user aio cb
+		if (s->cb.connect_cb) {
+			nni_msg_clone(msg);
+		}
 		if (s->ack_aio != NULL && !nni_aio_busy(s->ack_aio)) {
 			nni_msg_clone(msg);
 			nni_aio_finish_msg(s->ack_aio, msg);
