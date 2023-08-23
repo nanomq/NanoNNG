@@ -1127,8 +1127,8 @@ wstran_accept_cb(void *arg)
 				nni_aio_finish_error(uaio, rv);
 			} else {
 				p->peer = l->peer;
-				ws_pipe_start(p, p->ws, l);
 				p->ep_aio = uaio;
+				ws_pipe_start(p, p->ws, l);
 			}
 		}
 	}
