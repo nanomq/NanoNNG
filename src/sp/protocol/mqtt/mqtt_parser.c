@@ -700,7 +700,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		cparam->username.body =
 		    (char *) copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
 		cparam->username.len = len_of_str;
-		rv                   = len_of_str <= 0 ? PAYLOAD_FORMAT_INVALID : 0;
+		rv                   = len_of_str < 0 ? PAYLOAD_FORMAT_INVALID : 0;
 		if (rv != 0) {
 			return rv;
 		}
@@ -713,7 +713,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		cparam->password.body =
 		    copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
 		cparam->password.len = len_of_str;
-		rv                   = len_of_str <= 0 ? PAYLOAD_FORMAT_INVALID : 0;
+		rv                   = len_of_str < 0 ? PAYLOAD_FORMAT_INVALID : 0;
 		if (rv != 0) {
 			log_warn("MQTT Packet parsing error!");
 			return rv;
