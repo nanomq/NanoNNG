@@ -353,6 +353,15 @@ done:
 	nni_aio_finish(uaio, 0, nni_msg_len(smsg));
 	return;
 reset:
+	// If the connection is closed, we need to pass back a different
+	// error code.  This is necessary to avoid a problem where the
+	// closed status is confused with the accept file descriptor
+	// being closed.
+	// When Listener's accept_cb received NNG_ECLOSED, listerner will be closed...
+	if (rv == NNG_ECLOSED) {
+		rv = SERVER_SHUTTING_DOWN;
+	}
+
 	p->gotrxhead  = 0;
 	p->wantrxhead = 0;
 	// a potential memleak case here
