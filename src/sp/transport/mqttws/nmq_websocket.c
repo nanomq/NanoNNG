@@ -182,6 +182,7 @@ recv:
 	return;
 done:
 	if (uaio == NULL) {
+		// Processing CONNECT
 		uaio = p->ep_aio;
 	}
 	if (uaio != NULL) {
@@ -347,30 +348,27 @@ done:
 		nni_aio_set_msg(uaio, smsg);
 		nni_aio_set_output(uaio, 0, p);
 	} else {
+		log_warn("No AIO waitting, unable to process websocket packet");
 		goto reset;
 	}
 	nni_mtx_unlock(&p->mtx);
 	nni_aio_finish(uaio, 0, nni_msg_len(smsg));
 	return;
 reset:
-	// If the connection is closed, we need to pass back a different
-	// error code.  This is necessary to avoid a problem where the
-	// closed status is confused with the accept file descriptor
-	// being closed.
-	// When Listener's accept_cb received NNG_ECLOSED, listerner will be closed...
-	if (rv == NNG_ECLOSED) {
-		rv = SERVER_SHUTTING_DOWN;
-	}
-
 	p->gotrxhead  = 0;
 	p->wantrxhead = 0;
 	// a potential memleak case here
 	nng_stream_close(p->ws);
-	if (uaio != NULL) {
+	if (p->ep_aio != NULL) {
+	// If the connection is closed during MQTT Connect, we need to pass back a fixed
+	// error code to nng_listener which is NNG_ECONNABORTED. Otherwise it is confused 
+	// with the accept file descriptor being closed.
+	// listener will treat this errorcode as TCP err. so NNG_ECLOSED shall not be used.
+		rv = NNG_ECONNABORTED;
+		nni_aio_finish_error(p->ep_aio, rv);
+	} else if (uaio != NULL) {
 		nni_aio_set_msg(uaio, NULL);
 		nni_aio_finish_error(uaio, rv);
-	} else if (p->ep_aio != NULL) {
-		nni_aio_finish_error(p->ep_aio, rv);
 	}
 	nni_mtx_unlock(&p->mtx);
 	if (smsg != NULL)
