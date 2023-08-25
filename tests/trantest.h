@@ -864,8 +864,8 @@ decode_sub_msg(nano_work *work)
 			return PROTOCOL_ERROR;
 		}
 
-next:
-		if (bpos < remaining_len - vpos) {
+	next:
+		if (bpos < (int) (remaining_len - vpos)) {
 			if (NULL == (tn = nng_zalloc(sizeof(topic_node)))) {
 				log_error("nng_zalloc");
 				return NNG_ENOMEM;
@@ -978,7 +978,7 @@ decode_unsub_msg(nano_work *work)
 
 	// uint32_t len_of_varint = 0, len_of_property = 0, len_of_properties = 0;
 	// uint32_t len_of_str = 0;
-	uint32_t len_of_topic;
+	int len_of_topic;
 
 	packet_unsubscribe *unsub_pkt     = work->unsub_pkt;
 	nng_msg *           msg           = work->msg;
