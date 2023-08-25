@@ -1393,23 +1393,40 @@ static void
 conf_dds_gateway_forward_parse_ver2(dds_gateway_forward *forward, cJSON *json)
 {
 	cJSON *rules = hocon_get_obj("forward_rules", json);
+	cJSON *jso_item = NULL;
 
 	if (rules == NULL) {
 		return;
 	}
 
-	dds_gateway_topic *dds2mqtt = &forward->dds2mqtt;
-	dds_gateway_topic *mqtt2dds = &forward->mqtt2dds;
+	dds_gateway_topic **dds2mqtt = NULL;
+	dds_gateway_topic **mqtt2dds = NULL;
+
+	dds_gateway_topic *ddstopic;
 
 	cJSON *jso_dds2mqtt = hocon_get_obj("dds_to_mqtt", rules);
-	hocon_read_str_base(dds2mqtt, from, "from_dds", jso_dds2mqtt);
-	hocon_read_str_base(dds2mqtt, to, "to_mqtt", jso_dds2mqtt);
-	hocon_read_str(dds2mqtt, struct_name, jso_dds2mqtt);
+	cJSON_ArrayForEach(jso_item, jso_dds2mqtt)
+	{
+		ddstopic = NNI_ALLOC_STRUCT(ddstopic);
+		hocon_read_str_base(ddstopic, from, "from_dds", jso_item);
+		hocon_read_str_base(ddstopic, to, "to_mqtt", jso_item);
+		hocon_read_str(ddstopic, struct_name, jso_item);
+		cvector_push_back(dds2mqtt, ddstopic);
+	}
+	forward->dds2mqtt = dds2mqtt;
+	forward->dds2mqtt_sz = cvector_size(dds2mqtt);
 
 	cJSON *jso_mqtt2dds = hocon_get_obj("mqtt_to_dds", rules);
-	hocon_read_str_base(mqtt2dds, from, "from_mqtt", jso_mqtt2dds);
-	hocon_read_str_base(mqtt2dds, to, "to_dds", jso_mqtt2dds);
-	hocon_read_str(mqtt2dds, struct_name, jso_mqtt2dds);
+	cJSON_ArrayForEach(jso_item, jso_mqtt2dds)
+	{
+		ddstopic = NNI_ALLOC_STRUCT(ddstopic);
+		hocon_read_str_base(ddstopic, from, "from_mqtt", jso_item);
+		hocon_read_str_base(ddstopic, to, "to_dds", jso_item);
+		hocon_read_str(ddstopic, struct_name, jso_item);
+		cvector_push_back(mqtt2dds, ddstopic);
+	}
+	forward->mqtt2dds = mqtt2dds;
+	forward->mqtt2dds_sz = cvector_size(mqtt2dds);
 }
 
 static void
@@ -1477,13 +1494,10 @@ conf_dds_gateway_init(dds_gateway_conf *config)
 	dds->subscriber_partition = NULL;
 	dds->publisher_partition = NULL;
 
-	forward->dds2mqtt.from        = NULL;
-	forward->dds2mqtt.to          = NULL;
-	forward->dds2mqtt.struct_name = NULL;
-
-	forward->mqtt2dds.from        = NULL;
-	forward->mqtt2dds.to          = NULL;
-	forward->dds2mqtt.struct_name = NULL;
+	forward->dds2mqtt_sz          = 0;
+	forward->dds2mqtt             = NULL;
+	forward->mqtt2dds_sz          = 0;
+	forward->mqtt2dds             = NULL;
 }
 
 void
@@ -1559,24 +1573,29 @@ conf_dds_gateway_destory(dds_gateway_conf *config)
 		free(dds->shm_log_level);
 	}
 
-	dds_gateway_topic *dds2mqtt_tp = &forward->dds2mqtt;
-	dds_gateway_topic *mqtt2dds_tp = &forward->mqtt2dds;
+	for (size_t i=0; i<forward->dds2mqtt_sz; ++i) {
+		dds_gateway_topic *dds2mqtt_tp = forward->dds2mqtt[i];
 
-	if (dds2mqtt_tp->from) {
-		free(dds2mqtt_tp->from);
-	}
-	if (dds2mqtt_tp->to) {
-		free(dds2mqtt_tp->to);
-	}
+		if (dds2mqtt_tp->from) {
+			free(dds2mqtt_tp->from);
+		}
+		if (dds2mqtt_tp->to) {
+			free(dds2mqtt_tp->to);
+		}
 
-	nng_strfree(dds2mqtt_tp->struct_name);
-
-	if (mqtt2dds_tp->from) {
-		free(mqtt2dds_tp->from);
-	}
-	if (mqtt2dds_tp->to) {
-		free(mqtt2dds_tp->to);
+		nng_strfree(dds2mqtt_tp->struct_name);
 	}
 
-	nng_strfree(mqtt2dds_tp->struct_name);
+	for (size_t i=0; i<forward->mqtt2dds_sz; ++i) {
+		dds_gateway_topic *mqtt2dds_tp = forward->mqtt2dds;
+
+		if (mqtt2dds_tp->from) {
+			free(mqtt2dds_tp->from);
+		}
+		if (mqtt2dds_tp->to) {
+			free(mqtt2dds_tp->to);
+		}
+
+		nng_strfree(mqtt2dds_tp->struct_name);
+	}
 }

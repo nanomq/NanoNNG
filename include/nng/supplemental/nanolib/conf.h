@@ -353,8 +353,10 @@ typedef struct {
 } dds_gateway_topic;
 
 typedef struct {
-	dds_gateway_topic dds2mqtt;
-	dds_gateway_topic mqtt2dds;
+	dds_gateway_topic **dds2mqtt;
+	size_t              dds2mqtt_sz;
+	dds_gateway_topic **mqtt2dds;
+	size_t              mqtt2dds_sz;
 } dds_gateway_forward;
 
 typedef struct {
