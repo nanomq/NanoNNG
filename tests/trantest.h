@@ -687,7 +687,7 @@ trantest_mqtt_sub_pub(trantest *tt)
 
 		So((client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true)) != NULL);
 		trantest_mqtt_sub_send(tt->reqsock, client, true);
-		nng_msleep(200);// make sure the server recv sub msg before we send pub msg.
+		nng_msleep(2000);// make sure the server recv sub msg before we send pub msg.
 		cp1 = trantest_mqtt_pub(tt->repsock, true);
 		cp2 = trantest_mqtt_sub_recv(tt->reqsock);
 		trantest_mqtt_unsub_send(tt->reqsock, client, true);
@@ -733,7 +733,7 @@ trantest_mqttv5_sub_pub(trantest *tt)
 		So((client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true)) != NULL);
 
 		trantest_mqtt_sub_send(tt->reqsock, client, true);
-		nng_msleep(200);// make sure the server recv sub msg before we send pub msg.
+		nng_msleep(2000);// make sure the server recv sub msg before we send pub msg.
 		cp1 = trantest_mqtt_pub(tt->repsock, true);
 		cp2 = trantest_mqtt_sub_recv(tt->reqsock);
 		trantest_mqtt_unsub_send(tt->reqsock, client, true);
