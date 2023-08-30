@@ -131,7 +131,11 @@ mqtt_quictran_pipe_close(void *arg)
 	mqtt_quictran_pipe *p = arg;
 
 	nni_mtx_lock(&p->mtx);
-
+	if (p->closed == true) {
+		nni_mtx_unlock(&p->mtx);
+		return;
+	}
+	log_info("mqtt quic pipe close");
 	p->closed = true;
 	// nni_lmq_flush(&p->rslmq);
 	nni_mtx_unlock(&p->mtx);
@@ -146,7 +150,7 @@ mqtt_quictran_pipe_close(void *arg)
 }
 
 static void
-mqtt_pipe_timer_cb(void *arg)
+mqtt_quic_pipe_timer_cb(void *arg)
 {
 	mqtt_quictran_pipe *p = arg;
 	uint8_t            buf[2];
@@ -243,9 +247,9 @@ mqtt_quictran_pipe_fini(void *arg)
 	// nni_lmq_fini(&p->rslmq);
 	nni_mtx_fini(&p->mtx);
 	nni_aio_fini(&p->tmaio);
-#ifdef NNG_HAVE_MQTT_BROKER
-	conn_param_free(p->cparam);
-#endif
+// #ifdef NNG_HAVE_MQTT_BROKER
+// 	conn_param_free(p->cparam);
+// #endif
 	NNI_FREE_STRUCT(p);
 }
 
@@ -271,7 +275,7 @@ mqtt_quictran_pipe_alloc(mqtt_quictran_pipe **pipep)
 	}
 	nni_mtx_init(&p->mtx);
 	// alloc timer aio first, but only start it when nego is completed
-	nni_aio_init(&p->tmaio, mqtt_pipe_timer_cb, p);
+	nni_aio_init(&p->tmaio, mqtt_quic_pipe_timer_cb, p);
 	if (((rv = nni_aio_alloc(&p->txaio, mqtt_quictran_pipe_send_cb, p)) !=
 	        0) ||
 	    ((rv = nni_aio_alloc(&p->rxaio, mqtt_quictran_pipe_recv_cb, p)) !=
