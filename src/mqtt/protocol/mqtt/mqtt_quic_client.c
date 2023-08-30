@@ -10,6 +10,7 @@
 #include "nng/mqtt/mqtt_quic_client.h"
 #include "sqlite_handler.h"
 #include "core/nng_impl.h"
+#include "core/sockimpl.h"
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/supplemental/nanolib/conf.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
@@ -21,8 +22,8 @@
 #define NNG_MQTT_SELF_NAME "mqtt-client"
 #define NNG_MQTT_PEER 0
 #define NNG_MQTT_PEER_NAME "mqtt-server"
-#define MQTT_QUIC_RETRTY 5  // 5 seconds as default minimum timer 
-#define MQTT_QUIC_KEEPALIVE 5  // 5 seconds as default 
+#define MQTT_QUIC_RETRTY 5  // 5 seconds as default minimum timer
+#define MQTT_QUIC_KEEPALIVE 5  // 5 seconds as default
 
 typedef struct mqtt_sock_s   mqtt_sock_t;
 typedef struct mqtt_pipe_s   mqtt_pipe_t;
@@ -228,7 +229,7 @@ mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
 	mqtt_pipe_t *new_pipe   = NULL;
 	nni_mqtt_topic_qos *topics;
 
-	// check topic/stream pair exsitence
+	// check topic/stream pair existence
 	topics = nni_mqtt_msg_get_subscribe_topics(msg, &count);
 	// there is only one topic in Sub msg if multi-stream is enabled
 	for (uint32_t i = 0; i < count; i++) {
@@ -949,7 +950,7 @@ mqtt_quic_recv_cb(void *arg)
 	case NNG_MQTT_CONNACK:
 		nng_msg_set_cmd_type(msg, CMD_CONNACK);
 		// turn to publish msg and free in WAIT state
-		p->cparam  = nni_get_conn_param_from_msg(msg);
+		p->cparam  = nng_msg_get_conn_param(msg);
 		conn_param_clone(p->cparam);
 		// Clone CONNACK for connect_cb & user aio cb
 		if (s->cb.connect_cb) {
@@ -1477,14 +1478,6 @@ quic_mqtt_pipe_init(void *arg, nni_pipe *pipe, void *sock)
 	p->busy  = false;
 	p->ready = false;
 
-	/* rhack: do in pipe_start
-	// QUIC stream init
-	if (0 != quic_pipe_open(qsock, &p->qpipe, p)) {
-		log_warn("Failed in open the main quic pipe.");
-		return -1;
-	}
-	*/
-
 	nni_aio_init(&p->rep_aio, NULL, p);
 	major == true
 	    ? nni_aio_init(&p->send_aio, mqtt_quic_send_cb, p)
@@ -1500,6 +1493,16 @@ quic_mqtt_pipe_init(void *arg, nni_pipe *pipe, void *sock)
 	if (p->mqtt_sock->multi_stream)
 		nni_lmq_init(&p->send_inflight, NNG_MAX_RECV_LMQ);
 	nni_mtx_init(&p->lk);
+
+	// if (!major && topic != NULL && topic->pipeType == PIPE_TYPE_SUB) {
+	// 	p->ready = true;
+	// 	nni_atomic_set_bool(&p->closed, false);
+	// 	mqtt_sub_stream_start(p, topic->msg, topic->packetid, topic->aio);
+	// 	nni_list_remove(&p->mqtt_sock->topicq, topic);
+	// } else if (!major && topic != NULL && topic->pipeType == PIPE_TYPE_PUB) {
+	// 	mqtt_pub_stream_start(p, topic->msg, topic->aio);
+	// 	nni_list_remove(&p->mqtt_sock->topicq, topic);
+	// }
 
 	return (0);
 }
@@ -1603,10 +1606,23 @@ quic_mqtt_pipe_start(void *arg)
 {
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
+	// nni_pipe    *npipe = p->npipe;
 	nni_aio     *aio;
 	nni_msg     *msg;
 
 	nni_mtx_lock(&s->mtx);
+	// p_dialer is not available when pipe init and sock init. Until pipe start.
+	// if (p->mqtt_sock->streams == NULL) {
+	// 	size_t sz;
+	// 	nni_dialer_getopt(npipe->p_dialer, NNG_OPT_QUIC_ENABLE_MULTISTREAM,
+	// 	        &(p->mqtt_sock->multi_stream), &sz, NNI_TYPE_BOOL);
+	// 	if (p->mqtt_sock->multi_stream == true) {
+	// 		log_info("Quic Multistream is enabled");
+	// 		p->mqtt_sock->streams = nng_alloc(sizeof(nni_id_map));
+	// 		nni_id_map_init(p->mqtt_sock->streams, 0x0000u, 0xffffu, true);
+	// 	}
+	// }
+
 	if (s->connmsg!= NULL) {
 		nni_msg_clone(s->connmsg);
 		mqtt_send_msg(NULL, s->connmsg, s);
