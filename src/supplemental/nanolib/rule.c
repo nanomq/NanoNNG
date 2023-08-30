@@ -283,12 +283,12 @@ parse_select(const char *select, rule *info)
 static int
 parse_from(char *from, rule *info)
 {
-	while (*from != '\0' && *from == ' ')
+	while (*from != '\0' && (*from == ' ' || *from == '\\'))
 		from++;
 	if (from[0] == '\"') {
 		from++;
 		char *p = from;
-		while (*p != '\"' && *p != '\0')
+		while ((*p != '\"' && *p != '\\') && *p != '\0')
 			p++;
 		*p = '\0';
 	}

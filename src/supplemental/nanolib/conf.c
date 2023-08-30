@@ -1463,7 +1463,7 @@ conf_rule_parse(conf_rule *rule, const char *path)
 		} else if ((value = get_conf_value(line, sz,
 		                "rule_option.sqlite.conf.path")) != NULL) {
 			if (RULE_ENG_SDB & rule->option) {
-				conf_rule_sqlite_parse(&cr, value);
+				conf_rule_sqlite_parse(rule, value);
 			}
 			free(value);
 			// repub
@@ -1485,7 +1485,7 @@ conf_rule_parse(conf_rule *rule, const char *path)
 		} else if ((value = get_conf_value(line, sz,
 		                "rule_option.repub.conf.path")) != NULL) {
 			if (RULE_ENG_RPB & rule->option) {
-				conf_rule_repub_parse(&cr, value);
+				conf_rule_repub_parse(&rule, value);
 			}
 			free(value);
 			// mysql
@@ -1507,7 +1507,7 @@ conf_rule_parse(conf_rule *rule, const char *path)
 		} else if ((value = get_conf_value(line, sz,
 		                "rule_option.mysql.conf.path")) != NULL) {
 			if (RULE_ENG_MDB & rule->option) {
-				conf_rule_mysql_parse(&cr, value);
+				conf_rule_mysql_parse(&rule, value);
 			}
 			free(value);
 			// fdb
