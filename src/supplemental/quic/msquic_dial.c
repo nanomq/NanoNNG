@@ -76,7 +76,7 @@ struct nni_quic_conn {
 	uint8_t         reason_code;
 
 	nni_reap_node   reap;
-	nni_aio         erraio;
+	// nni_aio         erraio;
 };
 
 static const QUIC_API_TABLE *MsQuic = NULL;
@@ -448,7 +448,7 @@ quic_cb(int events, void *arg)
 	// case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 	// case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
-		nni_aio_finish(&c->erraio, 0, NNG_ECONNSHUT);
+		quic_error(arg, NNG_ECONNSHUT);
 		break;
 	default:
 		break;
@@ -490,24 +490,27 @@ quic_error(void *arg, int err)
 
 	nni_mtx_lock(&c->mtx);
 	// only close aio of this stream
-	while (((aio = nni_list_first(&c->readq)) != NULL) ||
-	    ((aio = nni_list_first(&c->writeq)) != NULL)) {
+	while ((aio = nni_list_first(&c->writeq)) != NULL) {
+		nni_aio_list_remove(aio);
+		nni_aio_finish_error(aio, err);
+	}
+	while ((aio = nni_list_first(&c->readq)) != NULL) {
 		nni_aio_list_remove(aio);
 		nni_aio_finish_error(aio, err);
 	}
 	nni_mtx_unlock(&c->mtx);
 }
 
-static void
-quic_error2(void *arg)
-{
-	int rv;
-	nni_quic_conn *c = arg;
+// static void
+// quic_error2(void *arg)
+// {
+// 	int rv;
+// 	nni_quic_conn *c = arg;
 
-	rv = nni_aio_result(&c->erraio);
+// 	rv = nni_aio_result(&c->erraio);
 
-	quic_error(arg, rv);
-}
+// 	quic_error(arg, rv);
+// }
 
 static void
 quic_close2(void *arg)
@@ -522,7 +525,7 @@ quic_close2(void *arg)
 			nni_aio_list_remove(aio);
 			nni_aio_finish_error(aio, NNG_ECLOSED);
 		}
-		msquic_strm_fini(c->qstrm);
+		// msquic_strm_fini(c->qstrm);
 	}
 	nni_mtx_unlock(&c->mtx);
 }
@@ -584,7 +587,7 @@ quic_dowrite_prior(nni_quic_conn *c, nni_aio *aio)
 	nni_aio_get_iov(aio, &naiov, &aiov);
 
 	QUIC_BUFFER *buf=(QUIC_BUFFER*)malloc(sizeof(QUIC_BUFFER)*naiov);
-	for (int i=0; i<naiov; ++i) {
+	for (uint8_t i = 0; i < naiov; ++i) {
 		log_debug("buf%d sz %d", i, aiov[i].iov_len);
 		buf[i].Buffer = aiov[i].iov_buf;
 		buf[i].Length = aiov[i].iov_len;
@@ -624,7 +627,7 @@ quic_dowrite(nni_quic_conn *c)
 			log_warn("A msg without content?");
 
 		QUIC_BUFFER *buf=(QUIC_BUFFER*)malloc(sizeof(QUIC_BUFFER)*naiov);
-		for (int i=0; i<naiov; ++i) {
+		for (uint8_t i = 0; i < naiov; ++i) {
 			log_debug("buf%d sz %d", i, aiov[i].iov_len);
 			buf[i].Buffer = aiov[i].iov_buf;
 			buf[i].Length = aiov[i].iov_len;
@@ -691,14 +694,14 @@ quic_send(void *arg, nni_aio *aio)
 static int
 quic_get(void *arg, const char *name, void *buf, size_t *szp, nni_type t)
 {
-	nni_quic_conn *c = arg;
+	// nni_quic_conn *c = arg;
 	// return (nni_getopt(tcp_options, name, c, buf, szp, t));
 }
 
 static int
 quic_set(void *arg, const char *name, const void *buf, size_t sz, nni_type t)
 {
-	nni_quic_conn *c = arg;
+	// nni_quic_conn *c = arg;
 	// return (nni_setopt(tcp_options, name, c, buf, sz, t));
 }
 
@@ -716,7 +719,7 @@ nni_msquic_quic_alloc(nni_quic_conn **cp, nni_quic_dialer *d)
 	nni_mtx_init(&c->mtx);
 	nni_aio_list_init(&c->readq);
 	nni_aio_list_init(&c->writeq);
-	nni_aio_init(&c->erraio, quic_error2, c);
+	// nni_aio_init(&c->erraio, quic_error2, c);
 	// nni_aio_alloc(&c->qstrmaio, quic_cb, );
 
 	c->stream.s_free  = quic_free;
@@ -931,7 +934,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		while ((aio = nni_list_first(&c->readq)) != NULL) {
 			nni_aio_get_iov(aio, &naiov, &aiov);
 			int n = 0;
-			for (int i=0; i<naiov; ++i) {
+			for (uint8_t i=0; i<naiov; ++i) {
 				if (aiov[i].iov_len == 0)
 					continue;
 				rlen2 = rlen - rpos; // remain
@@ -994,7 +997,9 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		log_info("close stream with Error Code: %llu",
 		    (unsigned long long)
 		        Event->SHUTDOWN_COMPLETE.ConnectionErrorCode);
-
+		if (c->closed != true) {
+			MsQuic->StreamClose(stream);
+		}
 		quic_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c);
 		break;
 	case QUIC_STREAM_EVENT_START_COMPLETE:
@@ -1255,7 +1260,7 @@ msquic_strm_close(HQUIC qstrm)
 {
 	log_info("stream %p shutdown", qstrm);
 	MsQuic->StreamShutdown(
-	    qstrm, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, NNG_ECONNSHUT);
+	    qstrm, QUIC_STREAM_SHUTDOWN_FLAG_ABORT | QUIC_STREAM_SHUTDOWN_FLAG_IMMEDIATE, NNG_ECONNSHUT);
 }
 
 static void
