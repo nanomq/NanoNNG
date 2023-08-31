@@ -368,11 +368,13 @@ nni_quic_dialer_close(void *arg)
 static void
 quic_dialer_fini(nni_quic_dialer *d)
 {
+	// dialer is bound to QUIC connection
 	log_info("connection %p fini", d->qconn);
 	msquic_conn_close(d->qconn, 0);
 	msquic_conn_fini(d->qconn);
 	nni_aio_abort(d->qconaio, NNG_ECLOSED);
 	nni_aio_wait(d->qconaio);
+	nni_aio_free(d->qconaio);
 	nni_mtx_fini(&d->mtx);
 	NNI_FREE_STRUCT(d);
 }
@@ -445,7 +447,7 @@ quic_cb(int events, void *arg)
 	// TODO Need more talk about those cases
 	// case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
 	// case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
-	// case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
+	case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 	// case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
 		quic_error(arg, NNG_ECONNSHUT);
@@ -465,6 +467,7 @@ quic_fini(void *arg)
 	if (c->dialer) {
 		nni_msquic_quic_dialer_rele(c->dialer);
 	}
+	// have to wait msquic cb
 	NNI_FREE_STRUCT(c);
 }
 
@@ -520,12 +523,12 @@ quic_close2(void *arg)
 	if (!c->closed) {
 		nni_aio *aio;
 		c->closed = true;
-		while (((aio = nni_list_first(&c->readq)) != NULL) ||
-		    ((aio = nni_list_first(&c->writeq)) != NULL)) {
-			nni_aio_list_remove(aio);
-			nni_aio_finish_error(aio, NNG_ECLOSED);
-		}
-		// msquic_strm_fini(c->qstrm);
+		// while (((aio = nni_list_first(&c->readq)) != NULL) ||
+		//     ((aio = nni_list_first(&c->writeq)) != NULL)) {
+		// 	nni_aio_list_remove(aio);
+		// 	nni_aio_finish_error(aio, NNG_ECLOSED);
+		// }
+		msquic_strm_close(c->qstrm);
 	}
 	nni_mtx_unlock(&c->mtx);
 }
@@ -980,7 +983,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
 		// The peer aborted its send direction of the stream.
 		log_warn("[strm][%p] Peer send shut down\n", stream);
-
+		MsQuic->StreamShutdown(stream, QUIC_STREAM_SHUTDOWN_FLAG_GRACEFUL, 0);
 		quic_cb(QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN, c);
 		break;
 	case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
@@ -999,6 +1002,8 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		        Event->SHUTDOWN_COMPLETE.ConnectionErrorCode);
 		if (c->closed != true) {
 			MsQuic->StreamClose(stream);
+			// Marked it as closed, prevent explicit shutdown
+			c->closed = true;
 		}
 		quic_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c);
 		break;
