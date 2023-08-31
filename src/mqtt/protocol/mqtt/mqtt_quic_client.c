@@ -892,31 +892,39 @@ mqtt_quic_recv_cb(void *arg)
 	mqtt_sock_t *s = p->mqtt_sock;
 	nni_aio * user_aio = NULL;
 	nni_msg * cached_msg = NULL;
+	nni_msg * msg = NULL;
 	nni_aio *aio;
 
-	if (nni_aio_result(&p->recv_aio) != 0) {
-		// stream is closed in transport layer
-		nni_pipe_close(p->qpipe);
+	if (nni_atomic_get_bool(&s->closed) ||
+	    nni_atomic_get_bool(&p->closed)) {
+		// pipe is already closed somewhere
+		// free msg and dont return data when pipe is closed.
+		msg = nni_aio_get_msg(&p->recv_aio);
+		if (msg) {
+			nni_msg_free(msg);
+		}
 		return;
 	}
 
 	nni_mtx_lock(&s->mtx);
-	nni_msg *msg = nni_aio_get_msg(&p->recv_aio);
+	if (nni_aio_result(&p->recv_aio) != 0 && !nni_atomic_get_bool(&p->closed)){
+		// stream is closed in transport layer
+		if (p->qpipe != NULL) {
+			nni_mtx_unlock(&s->mtx);
+			nni_pipe_close(p->qpipe);
+			return;
+		}
+		nni_mtx_unlock(&s->mtx);
+		return;
+	}
+	msg = nni_aio_get_msg(&p->recv_aio);
 	nni_aio_set_msg(&p->recv_aio, NULL);
 	if (msg == NULL) {
 		nni_mtx_unlock(&s->mtx);
 		nni_pipe_recv(p->qpipe, &p->recv_aio);
 		return;
 	}
-	if (nni_atomic_get_bool(&s->closed) ||
-	    nni_atomic_get_bool(&p->closed)) {
-		//free msg and dont return data when pipe is closed.
-		nni_mtx_unlock(&s->mtx);
-		if (msg) {
-			nni_msg_free(msg);
-		}
-		return;
-	}
+
 	// nni_msg_set_pipe(msg, nni_pipe_id(p->pipe));
 	nni_mqtt_msg_proto_data_alloc(msg);
 	nni_mqtt_msg_decode(msg);
@@ -1674,7 +1682,7 @@ quic_mqtt_pipe_stop(void *arg)
 	nni_msg *msg;
 
 	log_info("Stopping MQTT over QUIC Stream");
-	if (!nni_atomic_get_bool(&p->closed))
+	if (!nni_atomic_get_bool(&p->closed)) {
 		// if (quic_pipe_close(p->qpipe, &p->reason_code) == 0) {
 			nni_aio_stop(&p->send_aio);
 			nni_aio_stop(&p->recv_aio);
@@ -1683,6 +1691,7 @@ quic_mqtt_pipe_stop(void *arg)
 			nni_aio_stop(&p->rep_aio);
 			// nni_aio_stop(&s->time_aio);
 		// }
+		}
 	if (p != s->pipe) {
 		// close & finit data stream
 		log_warn("close data stream of topic");
