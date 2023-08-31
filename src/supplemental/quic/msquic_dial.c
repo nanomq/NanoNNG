@@ -211,6 +211,11 @@ quic_dialer_cb(void *arg)
 	}
 
 	c = d->currcon;
+	if (c == NULL) {
+		// abort this cb
+		nni_mtx_unlock(&d->mtx);
+		return;
+	}
 	aio = c->dial_aio;
 	if ((aio == NULL) || (!nni_aio_list_active(aio))) {
 		// This should never happened
