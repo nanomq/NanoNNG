@@ -906,17 +906,17 @@ mqtt_quic_recv_cb(void *arg)
 		return;
 	}
 
-	nni_mtx_lock(&s->mtx);
+
 	if (nni_aio_result(&p->recv_aio) != 0 && !nni_atomic_get_bool(&p->closed)){
 		// stream is closed in transport layer
 		if (p->qpipe != NULL) {
-			nni_mtx_unlock(&s->mtx);
+			log_info("nni pipe close!");
 			nni_pipe_close(p->qpipe);
 			return;
 		}
-		nni_mtx_unlock(&s->mtx);
 		return;
 	}
+	nni_mtx_lock(&s->mtx);
 	msg = nni_aio_get_msg(&p->recv_aio);
 	nni_aio_set_msg(&p->recv_aio, NULL);
 	if (msg == NULL) {
@@ -1705,7 +1705,7 @@ quic_mqtt_pipe_stop(void *arg)
 		nni_lmq_flush(&p->send_inflight);
 		nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
 		nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
-		p->qpipe = NULL;
+
 		p->ready = false;
 
 		if ((msg = nni_aio_get_msg(&p->recv_aio)) != NULL) {
@@ -1765,7 +1765,6 @@ quic_mqtt_pipe_close(void *arg)
 		nni_lmq_flush(&p->send_inflight);
 	// nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
 	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
-	p->qpipe = NULL;
 	p->ready = false;
 	nni_mtx_unlock(&s->mtx);
 }
