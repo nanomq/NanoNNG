@@ -362,7 +362,7 @@ nni_quic_dialer_close(void *arg)
 				c->dial_aio = NULL;
 				nni_aio_set_prov_data(aio, NULL);
 				nng_stream_close(&c->stream);
-				nng_stream_free(&c->stream);
+				// nng_stream_free(&c->stream);
 			}
 			nni_aio_finish_error(aio, NNG_ECLOSED);
 		}
@@ -448,11 +448,11 @@ quic_cb(int events, void *arg)
 
 		nni_mtx_unlock(&d->mtx);
 		break;
-	case QUIC_STREAM_EVENT_RECEIVE: // get a fin from stream
+	// case QUIC_STREAM_EVENT_RECEIVE: // get a fin from stream
 	// TODO Need more talk about those cases
 	// case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
 	// case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
-	case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
+	// case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 	// case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
 		quic_error(arg, NNG_ECONNSHUT);
@@ -473,7 +473,7 @@ quic_fini(void *arg)
 		nni_msquic_quic_dialer_rele(c->dialer);
 	}
 	// have to wait msquic cb
-	NNI_FREE_STRUCT(c);
+	// NNI_FREE_STRUCT(c);
 }
 
 static nni_reap_list quic_reap_list = {
@@ -484,7 +484,8 @@ static void
 quic_free(void *arg)
 {
 	nni_quic_conn *c = arg;
-	nni_reap(&quic_reap_list, c);
+	NNI_FREE_STRUCT(c);
+	// nni_reap(&quic_reap_list, c);
 }
 
 // Notify upper layer that something happened.
@@ -994,7 +995,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
 		log_warn("[strm][%p] QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE.", stream);
 
-		quic_cb(QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE, c);
+		// quic_cb(QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE, c);
 		break;
 
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
