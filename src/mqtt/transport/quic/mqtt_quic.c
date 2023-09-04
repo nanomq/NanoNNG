@@ -131,7 +131,9 @@ mqtt_quictran_pipe_close(void *arg)
 	mqtt_quictran_pipe *p = arg;
 
 	nni_mtx_lock(&p->mtx);
-	if (p->closed == true) {
+	if (p->closed != true) {
+		// close the stream first
+		nng_stream_close(p->conn);
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
@@ -140,13 +142,11 @@ mqtt_quictran_pipe_close(void *arg)
 	// nni_lmq_flush(&p->rslmq);
 	nni_mtx_unlock(&p->mtx);
 
-	nni_aio_close(p->rxaio);
 	nni_aio_close(p->qsaio);
 	nni_aio_close(p->txaio);
 	nni_aio_close(p->negoaio);
 	nni_aio_close(p->rpaio);
 	nni_aio_close(&p->tmaio);
-	nng_stream_close(p->conn);
 }
 
 static uint8_t pingbuf[2];
@@ -198,7 +198,8 @@ mqtt_quictran_pipe_stop(void *arg)
 {
 	mqtt_quictran_pipe *p = arg;
 
-	nni_aio_stop(p->rxaio);
+	// leave rxaio to pipe_fini
+	// nni_aio_stop(p->rxaio);
 	nni_aio_stop(p->qsaio);
 	nni_aio_stop(p->txaio);
 	nni_aio_stop(p->negoaio);
@@ -214,6 +215,7 @@ mqtt_quictran_pipe_init(void *arg, nni_pipe *npipe)
 	p->npipe = npipe;
 	// nni_lmq_init(&p->rslmq, 10240);
 	p->busy = false;
+	p->closed = false;
 	p->packmax = 0xFFFF;
 	p->qosmax  = 2;
 	p->pingcnt = 0;
@@ -227,7 +229,6 @@ mqtt_quictran_pipe_fini(void *arg)
 	mqtt_quictran_pipe *p = arg;
 	mqtt_quictran_ep *  ep;
 
-	mqtt_quictran_pipe_stop(p);
 	if ((ep = p->ep) != NULL) {
 		nni_mtx_lock(&ep->mtx);
 		nni_list_node_remove(&p->node);
@@ -238,6 +239,7 @@ mqtt_quictran_pipe_fini(void *arg)
 		nni_mtx_unlock(&ep->mtx);
 	}
 
+	nni_aio_wait(p->rxaio);
 	nni_aio_free(p->rxaio);
 	nni_aio_free(p->txaio);
 	nni_aio_free(p->qsaio);
@@ -248,9 +250,6 @@ mqtt_quictran_pipe_fini(void *arg)
 	// nni_lmq_fini(&p->rslmq);
 	nni_mtx_fini(&p->mtx);
 	nni_aio_fini(&p->tmaio);
-// #ifdef NNG_HAVE_MQTT_BROKER
-// 	conn_param_free(p->cparam);
-// #endif
 	NNI_FREE_STRUCT(p);
 }
 
@@ -625,7 +624,8 @@ mqtt_quictran_pipe_recv_cb(void *arg)
 	aio = nni_list_first(&p->recvq);
 
 	if ((rv = nni_aio_result(rxaio)) != 0) {
-		rv = SERVER_UNAVAILABLE;
+		p->closed = true;
+		// close the pipe
 		goto recv_error;
 	}
 
@@ -841,7 +841,6 @@ recv_error:
 	nni_aio_list_remove(aio);
 	msg      = p->rxmsg;
 	p->rxmsg = NULL;
-	nni_pipe_bump_error(p->npipe, rv);
 	nni_mtx_unlock(&p->mtx);
 
 	nni_msg_free(msg);
@@ -1048,7 +1047,8 @@ mqtt_quictran_pipe_recv_cancel(nni_aio *aio, void *arg, int rv)
 	// The callback on the rxaio will cause the user aio to
 	// be canceled too.
 	if (nni_list_first(&p->recvq) == aio) {
-		nni_aio_abort(p->rxaio, rv);
+		// should wait for stream layer
+		// nni_aio_abort(p->rxaio, rv);
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
