@@ -149,11 +149,12 @@ mqtt_quictran_pipe_close(void *arg)
 	nng_stream_close(p->conn);
 }
 
+static uint8_t pingbuf[2];
+
 static void
 mqtt_quic_pipe_timer_cb(void *arg)
 {
 	mqtt_quictran_pipe *p = arg;
-	uint8_t            buf[2];
 
 	if (p->ismain == false) {
 		// Ping request and response only be sent and received in main stream
@@ -175,12 +176,12 @@ mqtt_quic_pipe_timer_cb(void *arg)
 	nni_mtx_lock(&p->mtx);
 	if (!p->busy && !nni_aio_busy(p->qsaio)) {
 		// send pingreq
-		buf[0] = 0xC0;
-		buf[1] = 0x00;
+		pingbuf[0] = 0xC0;
+		pingbuf[1] = 0x00;
 
 		nni_iov iov;
 		iov.iov_len = 2;
-		iov.iov_buf = &buf;
+		iov.iov_buf = &pingbuf;
 		// send it down...
 		p->busy = true;
 		nni_aio_set_iov(p->qsaio, 1, &iov);
