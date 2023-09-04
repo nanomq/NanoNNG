@@ -106,7 +106,7 @@ static void msquic_strm_recv_start(HQUIC qstrm);
 
 static void quic_dialer_cb(void *arg);
 static void quic_error(void *arg, int err);
-static void quic_close(void *arg);
+static void quic_stream_close(void *arg);
 static void quic_dowrite(nni_quic_conn *c);
 
 /***************************** MsQuic Dialer ******************************/
@@ -466,7 +466,7 @@ static void
 quic_fini(void *arg)
 {
 	nni_quic_conn *c = arg;
-	quic_close(c);
+	quic_stream_close(c);
 
 	if (c->dialer) {
 		nni_msquic_quic_dialer_rele(c->dialer);
@@ -480,7 +480,7 @@ static nni_reap_list quic_reap_list = {
 	.rl_func   = quic_fini,
 };
 static void
-quic_free(void *arg)
+quic_stream_free(void *arg)
 {
 	nni_quic_conn *c = arg;
 	NNI_FREE_STRUCT(c);
@@ -510,7 +510,7 @@ quic_error(void *arg, int err)
 }
 
 static void
-quic_close(void *arg)
+quic_stream_close(void *arg)
 {
 	nni_quic_conn *c = arg;
 	nni_mtx_lock(&c->mtx);
@@ -535,7 +535,7 @@ quic_cancel(nni_aio *aio, void *arg, int rv)
 }
 
 static void
-quic_recv(void *arg, nni_aio *aio)
+quic_stream_recv(void *arg, nni_aio *aio)
 {
 	nni_quic_conn *c = arg;
 	int            rv;
@@ -644,7 +644,7 @@ quic_dowrite(nni_quic_conn *c)
 }
 
 static void
-quic_send(void *arg, nni_aio *aio)
+quic_stream_send(void *arg, nni_aio *aio)
 {
 	nni_quic_conn *c = arg;
 	int            rv;
@@ -683,14 +683,14 @@ quic_send(void *arg, nni_aio *aio)
 }
 
 static int
-quic_get(void *arg, const char *name, void *buf, size_t *szp, nni_type t)
+quic_stream_get(void *arg, const char *name, void *buf, size_t *szp, nni_type t)
 {
 	// nni_quic_conn *c = arg;
 	// return (nni_getopt(tcp_options, name, c, buf, szp, t));
 }
 
 static int
-quic_set(void *arg, const char *name, const void *buf, size_t sz, nni_type t)
+quic_stream_set(void *arg, const char *name, const void *buf, size_t sz, nni_type t)
 {
 	// nni_quic_conn *c = arg;
 	// return (nni_setopt(tcp_options, name, c, buf, sz, t));
@@ -712,12 +712,12 @@ nni_msquic_quic_alloc(nni_quic_conn **cp, nni_quic_dialer *d)
 	nni_aio_list_init(&c->writeq);
 	// nni_aio_alloc(&c->qstrmaio, quic_cb, );
 
-	c->stream.s_free  = quic_free;
-	c->stream.s_close = quic_close;
-	c->stream.s_recv  = quic_recv;
-	c->stream.s_send  = quic_send;
-	c->stream.s_get   = quic_get;
-	c->stream.s_set   = quic_set;
+	c->stream.s_free  = quic_stream_free;
+	c->stream.s_close = quic_stream_close;
+	c->stream.s_recv  = quic_stream_recv;
+	c->stream.s_send  = quic_stream_send;
+	c->stream.s_get   = quic_stream_get;
+	c->stream.s_set   = quic_stream_set;
 
 	*cp = c;
 	return (0);
