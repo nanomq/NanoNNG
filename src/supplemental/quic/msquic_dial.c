@@ -76,7 +76,6 @@ struct nni_quic_conn {
 	uint8_t         reason_code;
 
 	nni_reap_node   reap;
-	// nni_aio         erraio;
 };
 
 static const QUIC_API_TABLE *MsQuic = NULL;
@@ -107,7 +106,7 @@ static void msquic_strm_recv_start(HQUIC qstrm);
 
 static void quic_dialer_cb(void *arg);
 static void quic_error(void *arg, int err);
-static void quic_close2(void *arg);
+static void quic_close(void *arg);
 static void quic_dowrite(nni_quic_conn *c);
 
 /***************************** MsQuic Dialer ******************************/
@@ -467,7 +466,7 @@ static void
 quic_fini(void *arg)
 {
 	nni_quic_conn *c = arg;
-	quic_close2(c);
+	quic_close(c);
 
 	if (c->dialer) {
 		nni_msquic_quic_dialer_rele(c->dialer);
@@ -510,30 +509,13 @@ quic_error(void *arg, int err)
 	nni_mtx_unlock(&c->mtx);
 }
 
-// static void
-// quic_error2(void *arg)
-// {
-// 	int rv;
-// 	nni_quic_conn *c = arg;
-
-// 	rv = nni_aio_result(&c->erraio);
-
-// 	quic_error(arg, rv);
-// }
-
 static void
-quic_close2(void *arg)
+quic_close(void *arg)
 {
 	nni_quic_conn *c = arg;
 	nni_mtx_lock(&c->mtx);
 	if (!c->closed) {
-		nni_aio *aio;
 		c->closed = true;
-		// while (((aio = nni_list_first(&c->readq)) != NULL) ||
-		//     ((aio = nni_list_first(&c->writeq)) != NULL)) {
-		// 	nni_aio_list_remove(aio);
-		// 	nni_aio_finish_error(aio, NNG_ECLOSED);
-		// }
 		msquic_strm_close(c->qstrm);
 	}
 	nni_mtx_unlock(&c->mtx);
@@ -728,11 +710,10 @@ nni_msquic_quic_alloc(nni_quic_conn **cp, nni_quic_dialer *d)
 	nni_mtx_init(&c->mtx);
 	nni_aio_list_init(&c->readq);
 	nni_aio_list_init(&c->writeq);
-	// nni_aio_init(&c->erraio, quic_error2, c);
 	// nni_aio_alloc(&c->qstrmaio, quic_cb, );
 
 	c->stream.s_free  = quic_free;
-	c->stream.s_close = quic_close2;
+	c->stream.s_close = quic_close;
 	c->stream.s_recv  = quic_recv;
 	c->stream.s_send  = quic_send;
 	c->stream.s_get   = quic_get;
@@ -920,7 +901,6 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			if (c->reason_code == 0)
 				c->reason_code = CLIENT_IDENTIFIER_NOT_VALID;
 			log_warn("FIN received in QUIC stream");
-			quic_cb(QUIC_STREAM_EVENT_RECEIVE, c);
 			break;
 		}
 
