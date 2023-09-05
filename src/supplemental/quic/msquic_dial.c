@@ -472,7 +472,7 @@ quic_fini(void *arg)
 		nni_msquic_quic_dialer_rele(c->dialer);
 	}
 	// have to wait msquic cb
-	// NNI_FREE_STRUCT(c);
+	NNI_FREE_STRUCT(c);
 }
 
 static nni_reap_list quic_reap_list = {
@@ -483,8 +483,7 @@ static void
 quic_stream_free(void *arg)
 {
 	nni_quic_conn *c = arg;
-	NNI_FREE_STRUCT(c);
-	// nni_reap(&quic_reap_list, c);
+	quic_fini(c);
 }
 
 // Notify upper layer that something happened.
