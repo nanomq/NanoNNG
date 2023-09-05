@@ -1384,7 +1384,6 @@ mqtt_quic_sock_close(void *arg)
 
 	nni_mtx_lock(&s->mtx);
 	nni_sock_hold(s->nsock);
-	nni_aio_stop(&s->time_aio);
 	nni_aio_close(&s->time_aio);
 	nni_atomic_set_bool(&s->closed, true);
 
@@ -1683,11 +1682,12 @@ quic_mqtt_pipe_stop(void *arg)
 
 	log_info("Stopping MQTT over QUIC Stream");
 	if (!nni_atomic_get_bool(&p->closed)) {
-			nni_aio_stop(&p->send_aio);
-			nni_aio_stop(&p->recv_aio);
-			nni_aio_abort(&p->rep_aio, NNG_ECANCELED);
-			nni_aio_finish_error(&p->rep_aio, NNG_ECANCELED);
-			nni_aio_stop(&p->rep_aio);
+		nni_aio_stop(&p->send_aio);
+		nni_aio_stop(&p->recv_aio);
+		nni_aio_abort(&p->rep_aio, NNG_ECANCELED);
+		nni_aio_finish_error(&p->rep_aio, NNG_ECANCELED);
+		nni_aio_stop(&p->rep_aio);
+		nni_aio_stop(&s->time_aio);
 	}
 	if (p != s->pipe) {
 		// close & finit data stream
