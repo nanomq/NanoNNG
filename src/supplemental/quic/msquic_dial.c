@@ -105,9 +105,9 @@ static void msquic_strm_fini(HQUIC qstrm);
 static void msquic_strm_recv_start(HQUIC qstrm);
 
 static void quic_dialer_cb(void *arg);
-static void quic_error(void *arg, int err);
+static void quic_stream_error(void *arg, int err);
 static void quic_stream_close(void *arg);
-static void quic_dowrite(nni_quic_conn *c);
+static void quic_stream_dowrite(nni_quic_conn *c);
 
 /***************************** MsQuic Dialer ******************************/
 
@@ -404,7 +404,7 @@ nni_msquic_quic_dialer_rele(nni_quic_dialer *d)
 /**************************** MsQuic Connection ****************************/
 
 static void
-quic_cb(int events, void *arg)
+quic_stream_cb(int events, void *arg)
 {
 	log_debug("[quic cb] start %d\n", events);
 	nni_quic_conn   *c = arg;
@@ -430,7 +430,7 @@ quic_cb(int events, void *arg)
 		nni_aio_finish(aio, 0, nni_aio_count(aio));
 
 		// Start next send only after finished the last send
-		quic_dowrite(c);
+		quic_stream_dowrite(c);
 
 		nni_mtx_unlock(&c->mtx);
 		break;
@@ -454,7 +454,7 @@ quic_cb(int events, void *arg)
 	// case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 	// case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
-		quic_error(arg, NNG_ECONNSHUT);
+		quic_stream_error(arg, NNG_ECONNSHUT);
 		break;
 	default:
 		break;
@@ -463,7 +463,7 @@ quic_cb(int events, void *arg)
 }
 
 static void
-quic_fini(void *arg)
+quic_stream_fini(void *arg)
 {
 	nni_quic_conn *c = arg;
 	quic_stream_close(c);
@@ -471,26 +471,25 @@ quic_fini(void *arg)
 	if (c->dialer) {
 		nni_msquic_quic_dialer_rele(c->dialer);
 	}
-	// have to wait msquic cb
 	NNI_FREE_STRUCT(c);
 }
 
 static nni_reap_list quic_reap_list = {
 	.rl_offset = offsetof(nni_quic_conn, reap),
-	.rl_func   = quic_fini,
+	.rl_func   = quic_stream_fini,
 };
 static void
 quic_stream_free(void *arg)
 {
 	nni_quic_conn *c = arg;
-	quic_fini(c);
+	quic_stream_fini(c);
 }
 
 // Notify upper layer that something happened.
 // Includes closed by peer or transport layer.
 // Or get a FIN from quic stream.
 static void
-quic_error(void *arg, int err)
+quic_stream_error(void *arg, int err)
 {
 	nni_quic_conn *c = arg;
 	nni_aio *      aio;
@@ -521,7 +520,7 @@ quic_stream_close(void *arg)
 }
 
 static void
-quic_cancel(nni_aio *aio, void *arg, int rv)
+quic_stream_cancel(nni_aio *aio, void *arg, int rv)
 {
 	nni_quic_conn *c = arg;
 
@@ -544,7 +543,7 @@ quic_stream_recv(void *arg, nni_aio *aio)
 	}
 	nni_mtx_lock(&c->mtx);
 
-	if ((rv = nni_aio_schedule(aio, quic_cancel, c)) != 0) {
+	if ((rv = nni_aio_schedule(aio, quic_stream_cancel, c)) != 0) {
 		nni_mtx_unlock(&c->mtx);
 		nni_aio_finish_error(aio, rv);
 		return;
@@ -562,7 +561,7 @@ quic_stream_recv(void *arg, nni_aio *aio)
 }
 
 static void
-quic_dowrite_prior(nni_quic_conn *c, nni_aio *aio)
+quic_stream_dowrite_prior(nni_quic_conn *c, nni_aio *aio)
 {
 	log_debug("[quic dowrite adv] start\n");
 	int       rv;
@@ -597,7 +596,7 @@ quic_dowrite_prior(nni_quic_conn *c, nni_aio *aio)
 }
 
 static void
-quic_dowrite(nni_quic_conn *c)
+quic_stream_dowrite(nni_quic_conn *c)
 {
 	log_debug("[quic dowrite] start %p", c->qstrm);
 	nni_aio *aio;
@@ -654,7 +653,7 @@ quic_stream_send(void *arg, nni_aio *aio)
 	}
 
 	nni_mtx_lock(&c->mtx);
-	if ((rv = nni_aio_schedule(aio, quic_cancel, c)) != 0) {
+	if ((rv = nni_aio_schedule(aio, quic_stream_cancel, c)) != 0) {
 		nni_mtx_unlock(&c->mtx);
 		nni_aio_finish_error(aio, rv);
 		return;
@@ -666,7 +665,7 @@ quic_stream_send(void *arg, nni_aio *aio)
 
 	if (flags) {
 		if (*flags & QUIC_HIGH_PRIOR_MSG) {
-			quic_dowrite_prior(c, aio);
+			quic_stream_dowrite_prior(c, aio);
 			nni_mtx_unlock(&c->mtx);
 			return;
 		}
@@ -675,7 +674,7 @@ quic_stream_send(void *arg, nni_aio *aio)
 	nni_aio_list_append(&c->writeq, aio);
 
 	if (nni_list_first(&c->writeq) == aio) {
-		quic_dowrite(c);
+		quic_stream_dowrite(c);
 		// In msquic. Write can be done at any time.
 	}
 	nni_mtx_unlock(&c->mtx);
@@ -709,7 +708,6 @@ nni_msquic_quic_alloc(nni_quic_conn **cp, nni_quic_dialer *d)
 	nni_mtx_init(&c->mtx);
 	nni_aio_list_init(&c->readq);
 	nni_aio_list_init(&c->writeq);
-	// nni_aio_alloc(&c->qstrmaio, quic_cb, );
 
 	c->stream.s_free  = quic_stream_free;
 	c->stream.s_close = quic_stream_close;
@@ -888,7 +886,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			break;
 		}
 		// Ordinary send
-		quic_cb(QUIC_STREAM_EVENT_SEND_COMPLETE, c);
+		quic_stream_cb(QUIC_STREAM_EVENT_SEND_COMPLETE, c);
 		break;
 	case QUIC_STREAM_EVENT_RECEIVE:
 		// Data was received from the peer on the stream.
@@ -963,18 +961,16 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		if (c->reason_code == 0)
 			c->reason_code = SERVER_SHUTTING_DOWN;
 
-		quic_cb(QUIC_STREAM_EVENT_PEER_SEND_ABORTED, c);
+		quic_stream_cb(QUIC_STREAM_EVENT_PEER_SEND_ABORTED, c);
 		break;
 	case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
 		// The peer aborted its send direction of the stream.
 		log_warn("[strm][%p] Peer send shut down\n", stream);
 		MsQuic->StreamShutdown(stream, QUIC_STREAM_SHUTDOWN_FLAG_GRACEFUL, 0);
-		quic_cb(QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN, c);
+		quic_stream_cb(QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN, c);
 		break;
 	case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
 		log_warn("[strm][%p] QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE.", stream);
-
-		// quic_cb(QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE, c);
 		break;
 
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
@@ -990,7 +986,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			// Marked it as closed, prevent explicit shutdown
 			c->closed = true;
 		}
-		quic_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c);
+		quic_stream_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c);
 		break;
 	case QUIC_STREAM_EVENT_START_COMPLETE:
 		log_info(
@@ -999,13 +995,11 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		    Event->START_COMPLETE.Status);
 		if (!Event->START_COMPLETE.PeerAccepted) {
 			log_warn("Peer refused");
-			quic_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c);
-			// nni_aio_finish_error(c->qstrmaio, NNG_ECONNREFUSED);
+			quic_stream_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c);
 			break;
 		}
 
-		quic_cb(QUIC_STREAM_EVENT_START_COMPLETE, c);
-		// nni_aio_finish(c->qstrmaio, 0, 0);
+		quic_stream_cb(QUIC_STREAM_EVENT_START_COMPLETE, c);
 		break;
 	case QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE:
 		log_info("QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE");
@@ -1019,7 +1013,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		log_warn("QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED Error Code: %llu",
 		    (unsigned long long) Event->PEER_RECEIVE_ABORTED.ErrorCode);
 
-		quic_cb(QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED, c);
+		quic_stream_cb(QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED, c);
 		break;
 
 	default:
