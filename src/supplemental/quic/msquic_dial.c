@@ -361,7 +361,7 @@ nni_quic_dialer_close(void *arg)
 				c->dial_aio = NULL;
 				nni_aio_set_prov_data(aio, NULL);
 				nng_stream_close(&c->stream);
-				// nng_stream_free(&c->stream);
+				nng_stream_free(&c->stream);
 			}
 			nni_aio_finish_error(aio, NNG_ECLOSED);
 		}
