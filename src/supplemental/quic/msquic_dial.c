@@ -361,7 +361,11 @@ nni_quic_dialer_close(void *arg)
 				c->dial_aio = NULL;
 				nni_aio_set_prov_data(aio, NULL);
 				nng_stream_close(&c->stream);
-				nng_stream_free(&c->stream);
+				// We don't need to free the quic stream. Because it would be free
+				// in QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE state.
+				// QUIC_STREAM_EVENT_START_COMPLETE is not necessary to trigger
+				// QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE.
+				// nng_stream_free(&c->stream);
 			}
 			nni_aio_finish_error(aio, NNG_ECLOSED);
 		}
@@ -454,6 +458,13 @@ quic_stream_cb(int events, void *arg)
 	// case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 	// case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
+		nni_mtx_lock(&c->mtx);
+		if (c->closed != true) {
+			msquic_strm_fini(c->qstrm);
+			// Marked it as closed, prevent explicit shutdown
+			c->closed = true;
+		}
+		nni_mtx_unlock(&c->mtx);
 		quic_stream_error(arg, NNG_ECONNSHUT);
 		break;
 	default:
@@ -512,7 +523,7 @@ quic_stream_close(void *arg)
 {
 	nni_quic_conn *c = arg;
 	nni_mtx_lock(&c->mtx);
-	if (!c->closed) {
+	if (c->closed != true) {
 		c->closed = true;
 		msquic_strm_close(c->qstrm);
 	}
@@ -981,11 +992,6 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		log_info("close stream with Error Code: %llu",
 		    (unsigned long long)
 		        Event->SHUTDOWN_COMPLETE.ConnectionErrorCode);
-		if (c->closed != true) {
-			MsQuic->StreamClose(stream);
-			// Marked it as closed, prevent explicit shutdown
-			c->closed = true;
-		}
 		quic_stream_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c);
 		break;
 	case QUIC_STREAM_EVENT_START_COMPLETE:
