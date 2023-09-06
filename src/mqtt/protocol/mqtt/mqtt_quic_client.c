@@ -1612,6 +1612,13 @@ quic_mqtt_pipe_fini(void *arg)
 		// there should be no msg waiting
 		count++;
 	}
+	if (count == 0) {
+		log_warn("disconnect msg of bridging is lost due to no ctx "
+		            "on receving");
+		nni_msg_free(tmsg);
+		conn_param_free(p->cparam);
+	}
+
 	while ((aio = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, aio);
 		msg = nni_aio_get_msg(aio);
