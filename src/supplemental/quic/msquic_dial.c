@@ -431,6 +431,8 @@ quic_stream_cb(int events, void *arg)
 		nni_aio_list_remove(aio);
 		QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
 		free(buf);
+		nni_msg *msg = nni_aio_get_msg(aio);
+		nni_msg_free(msg);
 		nni_aio_finish(aio, 0, nni_aio_count(aio));
 
 		// Start next send only after finished the last send
@@ -458,13 +460,11 @@ quic_stream_cb(int events, void *arg)
 	// case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 	// case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
-		nni_mtx_lock(&c->mtx);
 		if (c->closed != true) {
 			msquic_strm_fini(c->qstrm);
 			// Marked it as closed, prevent explicit shutdown
 			c->closed = true;
 		}
-		nni_mtx_unlock(&c->mtx);
 		quic_stream_error(arg, NNG_ECONNSHUT);
 		break;
 	default:
@@ -893,6 +893,8 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
 			free(buf);
 			Event->SEND_COMPLETE.ClientContext = NULL;
+			nni_msg *msg = nni_aio_get_msg(aio);
+			nni_msg_free(msg);
 			nni_aio_finish(aio, 0, nni_aio_count(aio));
 			break;
 		}
