@@ -458,11 +458,10 @@ quic_stream_cb(int events, void *arg)
 	// case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 	// case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
-		if (c->closed != true) {
-			msquic_strm_fini(c->qstrm);
-			// Marked it as closed, prevent explicit shutdown
-			c->closed = true;
-		}
+		// Marked it as closed, prevent explicit shutdown
+		c->closed = true;
+		// It's the only place to free msquic stream
+		msquic_strm_fini(c->qstrm);
 		quic_stream_error(arg, NNG_ECONNSHUT);
 		break;
 	default:
