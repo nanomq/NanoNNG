@@ -167,7 +167,6 @@ nni_mqtt_msg_encode(nni_msg *msg)
 				mqtt->initialized = true;
 				mqtt->is_copied   = true;
 			}
-			mqtt->is_copied  = true;
 			mqtt->is_decoded = false;
 			return codec_handler[i].encode(msg);
 		}
@@ -193,7 +192,6 @@ nni_mqttv5_msg_encode(nni_msg *msg)
 				mqtt->is_copied   = true;
 			}
 			mqtt->is_copied  = true;
-			mqtt->is_decoded = false;
 			return codec_v5_handler[i].encode(msg);
 		}
 	}
