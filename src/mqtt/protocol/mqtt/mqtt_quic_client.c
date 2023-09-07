@@ -332,6 +332,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 	ptype = nni_mqtt_msg_get_packet_type(msg);
 	switch (ptype) {
 	case NNG_MQTT_CONNECT:
+	case NNG_MQTT_DISCONNECT:
 		// impossible to reach here
 	case NNG_MQTT_PUBACK:
 	case NNG_MQTT_PUBREC:
@@ -386,6 +387,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		}
 		break;
 	default:
+		log_error("Undefined type");
 		return NNG_EPROTO;
 	}
 	if (s->qos_first)
