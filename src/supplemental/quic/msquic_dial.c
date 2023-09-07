@@ -431,8 +431,6 @@ quic_stream_cb(int events, void *arg)
 		nni_aio_list_remove(aio);
 		QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
 		free(buf);
-		nni_msg *msg = nni_aio_get_msg(aio);
-		nni_msg_free(msg);
 		nni_aio_finish(aio, 0, nni_aio_count(aio));
 
 		// Start next send only after finished the last send
@@ -893,8 +891,9 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
 			free(buf);
 			Event->SEND_COMPLETE.ClientContext = NULL;
-			nni_msg *msg = nni_aio_get_msg(aio);
-			nni_msg_free(msg);
+			// TODO free by user cb or msquic layer???
+			// nni_msg *msg = nni_aio_get_msg(aio);
+			// nni_msg_free(msg);
 			nni_aio_finish(aio, 0, nni_aio_count(aio));
 			break;
 		}
