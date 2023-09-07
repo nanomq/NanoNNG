@@ -167,6 +167,7 @@ nni_mqtt_msg_encode(nni_msg *msg)
 				mqtt->initialized = true;
 				mqtt->is_copied   = true;
 			}
+			mqtt->is_copied  = true;
 			mqtt->is_decoded = false;
 			return codec_handler[i].encode(msg);
 		}
@@ -192,6 +193,7 @@ nni_mqttv5_msg_encode(nni_msg *msg)
 				mqtt->is_copied   = true;
 			}
 			mqtt->is_copied  = true;
+			mqtt->is_decoded = false;
 			return codec_v5_handler[i].encode(msg);
 		}
 	}
@@ -330,11 +332,6 @@ mqtt_msg_content_free(nni_mqtt_proto_data *mqtt)
 		if (mqtt->payload.connect.will_properties) {
 			property_free(mqtt->payload.connect.will_properties);
 		}
-		mqtt_buf_free(&mqtt->payload.connect.client_id);
-		mqtt_buf_free(&mqtt->payload.connect.password);
-		mqtt_buf_free(&mqtt->payload.connect.user_name);
-		mqtt_buf_free(&mqtt->payload.connect.will_msg);
-		mqtt_buf_free(&mqtt->payload.connect.will_topic);
 		break;
 	case NNG_MQTT_CONNACK:
 		if (mqtt->var_header.connack.properties) {
