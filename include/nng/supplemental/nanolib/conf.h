@@ -196,10 +196,13 @@ struct conf_websocket {
 typedef struct conf_websocket conf_websocket;
 
 typedef struct {
-	char *   topic;
+	char    *topic;
 	uint32_t topic_len;
 	uint8_t  qos;
-	uint32_t stream_id;	    // only effective when multi_stream is enabled
+	uint8_t  nolocal;
+	uint8_t  rap;
+	uint8_t  retain_handling;
+	uint32_t stream_id; // only effective when multi_stream is enabled
 } topics;
 
 typedef struct {

@@ -2271,9 +2271,13 @@ conf_bridge_node_parse_subs(
 	char    qos_key[128]   = "";
 	char *  topic          = NULL;
 	uint8_t qos            = 0;
+	uint8_t rap            = 0;   // only 1/0
+	uint8_t rhandling      = 0;   // only 0/1/2
 	size_t  sub_index      = 1;
 	bool    get_topic      = false;
 	bool    get_qos        = false;
+	bool    get_rap        = false;
+	bool    get_rhandling  = false;
 	char *  line           = NULL;
 	size_t  sz             = 0;
 	char *  value          = NULL;
@@ -2300,26 +2304,69 @@ conf_bridge_node_parse_subs(
 			goto check;
 		}
 
+		snprintf(topic_key, 128, "%s%s.subscription.%ld.retain_as_published", prefix,
+		    name, sub_index);
+		if (!get_qos &&
+		    (value = get_conf_value(line, sz, topic_key)) != NULL) {
+			rap = (uint8_t) atoi(value);
+			free(value);
+			get_rap = true;
+			goto check;
+		}
+
+		snprintf(topic_key, 128, "%s%s.subscription.%ld.retain_handling", prefix,
+		    name, sub_index);
+		if (!get_qos &&
+		    (value = get_conf_value(line, sz, topic_key)) != NULL) {
+			rhandling = (uint8_t) atoi(value);
+			free(value);
+			get_rhandling = true;
+			goto check;
+		}
 		free(line);
 		line = NULL;
 
 	check:
-		if (get_topic && get_qos) {
-			sub_index++;
-			node->sub_count++;
-			topics *s    = NNI_ALLOC_STRUCT(s);
-			s->stream_id = 0;
-			s->topic     = topic;
-			s->topic_len = strlen(topic);
-			s->qos       = qos;
+		if (node->proto_ver == MQTT_PROTOCOL_VERSION_v5) {
+			if (get_topic && get_qos && get_rap && get_rhandling) {
+				sub_index++;
+				node->sub_count++;
+				topics *s          = NNI_ALLOC_STRUCT(s);
+				s->stream_id       = 0;
+				s->topic           = topic;
+				s->topic_len       = strlen(topic);
+				s->qos             = qos;
+				s->rap             = rap;
+				s->retain_handling = rhandling;
 
 #if defined(SUPP_QUIC)
-			if (node->stream_auto_genid)
-				s->stream_id = sub_index;
+				if (node->stream_auto_genid)
+					s->stream_id = sub_index;
 #endif
-			cvector_push_back(node->sub_list, s);
-			get_topic = false;
-			get_qos   = false;
+				cvector_push_back(node->sub_list, s);
+				get_topic     = false;
+				get_qos       = false;
+				get_rap       = false;
+				get_rhandling = false;
+			}
+		} else {
+			if (get_topic && get_qos) {
+				sub_index++;
+				node->sub_count++;
+				topics *s    = NNI_ALLOC_STRUCT(s);
+				s->stream_id = 0;
+				s->topic     = topic;
+				s->topic_len = strlen(topic);
+				s->qos       = qos;
+
+#if defined(SUPP_QUIC)
+				if (node->stream_auto_genid)
+					s->stream_id = sub_index;
+#endif
+				cvector_push_back(node->sub_list, s);
+				get_topic = false;
+				get_qos   = false;
+			}
 		}
 	}
 
