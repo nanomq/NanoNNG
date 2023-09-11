@@ -902,6 +902,8 @@ conf_bridge_node_parse(
 		topics *s = NNI_ALLOC_STRUCT(s);
 		hocon_read_str(s, topic, subscription);
 		hocon_read_num(s, qos, subscription);
+		hocon_read_num(s, retain_as_published, subscription);
+		hocon_read_num(s, retain_handling, subscription);
 		s->topic_len = strlen(s->topic);
 		s->stream_id = 0;
 		hocon_read_num(s, stream_id, subscription);
