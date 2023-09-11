@@ -2330,13 +2330,13 @@ conf_bridge_node_parse_subs(
 			if (get_topic && get_qos && get_rap && get_rhandling) {
 				sub_index++;
 				node->sub_count++;
-				topics *s          = NNI_ALLOC_STRUCT(s);
-				s->stream_id       = 0;
-				s->topic           = topic;
-				s->topic_len       = strlen(topic);
-				s->qos             = qos;
-				s->rap             = rap;
-				s->retain_handling = rhandling;
+				topics *s              = NNI_ALLOC_STRUCT(s);
+				s->stream_id           = 0;
+				s->topic               = topic;
+				s->topic_len           = strlen(topic);
+				s->qos                 = qos;
+				s->retain_as_published = rap;
+				s->retain_handling     = rhandling;
 
 #if defined(SUPP_QUIC)
 				if (node->stream_auto_genid)
