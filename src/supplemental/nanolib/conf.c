@@ -2266,8 +2266,7 @@ conf_bridge_node_parse_subs(
 		return;
 	}
 
-	char    topic_key[128] = "";
-	char    qos_key[128]   = "";
+	char    key[128] = "";
 	char *  topic          = NULL;
 	uint8_t qos            = 0;
 	uint8_t rap            = 0;   // only 1/0
@@ -2283,40 +2282,41 @@ conf_bridge_node_parse_subs(
 
 	node->sub_count = 0;
 	while (nano_getline(&line, &sz, fp) != -1) {
-		snprintf(topic_key, 128,
+		snprintf(key, 128,
 		    "%s%s.subscription.%ld.topic", prefix, name,
 		    sub_index);
 		if (!get_topic &&
-		    (value = get_conf_value(line, sz, topic_key)) != NULL) {
+		    (value = get_conf_value(line, sz, key)) != NULL) {
+			// a potential memleak here
 			topic     = value;
 			get_topic = true;
 			goto check;
 		}
 
-		snprintf(qos_key, 128, "%s%s.subscription.%ld.qos", prefix,
+		snprintf(key, 128, "%s%s.subscription.%ld.qos", prefix,
 		    name, sub_index);
 		if (!get_qos &&
-		    (value = get_conf_value(line, sz, qos_key)) != NULL) {
+		    (value = get_conf_value(line, sz, key)) != NULL) {
 			qos = (uint8_t) atoi(value);
 			free(value);
 			get_qos = true;
 			goto check;
 		}
 
-		snprintf(topic_key, 128, "%s%s.subscription.%ld.retain_as_published", prefix,
+		snprintf(key, 128, "%s%s.subscription.%ld.retain_as_published", prefix,
 		    name, sub_index);
-		if (!get_qos &&
-		    (value = get_conf_value(line, sz, topic_key)) != NULL) {
+		if (!get_rap &&
+		    (value = get_conf_value(line, sz, key)) != NULL) {
 			rap = (uint8_t) atoi(value);
 			free(value);
 			get_rap = true;
 			goto check;
 		}
 
-		snprintf(topic_key, 128, "%s%s.subscription.%ld.retain_handling", prefix,
+		snprintf(key, 128, "%s%s.subscription.%ld.retain_handling", prefix,
 		    name, sub_index);
-		if (!get_qos &&
-		    (value = get_conf_value(line, sz, topic_key)) != NULL) {
+		if (!get_rhandling &&
+		    (value = get_conf_value(line, sz, key)) != NULL) {
 			rhandling = (uint8_t) atoi(value);
 			free(value);
 			get_rhandling = true;
