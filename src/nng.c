@@ -2445,6 +2445,12 @@ conn_param_get_qos_db(conn_param *cparam)
 	return (void *) (cparam->nano_qos_db);
 }
 
+void *
+conn_param_get_ip_addr_v4(conn_param *cparam)
+{
+	return cparam->ip_addr_v4;
+}
+
 void
 conn_param_set_qos_db(conn_param *cparam, void *qos)
 {
