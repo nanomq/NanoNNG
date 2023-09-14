@@ -887,13 +887,26 @@ conf_bridge_node_parse(
 {
 	node->name = nng_strdup(obj->string);
 	conf_bridge_connector_parse_ver2(node, obj);
-	hocon_read_str_arr(node, forwards, obj);
-	node->forwards_count = cvector_size(node->forwards);
 	node->sqlite         = bridge_sqlite;
 	node->enable         = true;
 #if defined(SUPP_QUIC)
 	conf_bridge_quic_parse_ver2(node, obj);
 #endif
+
+	cJSON *forwards = hocon_get_obj("forwards", obj);
+
+	cJSON *forward = NULL;
+	cJSON_ArrayForEach(forward, forwards)
+	{
+		topics *s = NNI_ALLOC_STRUCT(s);
+		hocon_read_str(s, remote_topic, forward);
+		hocon_read_str(s, local_topic, forward);
+		s->remote_topic_len = strlen(s->remote_topic);
+		s->local_topic_len = strlen(s->local_topic);
+		cvector_push_back(node->forwards_list, s);
+	}
+	node->forwards_count = cvector_size(node->forwards_list);
+
 	cJSON *subscriptions = hocon_get_obj("subscription", obj);
 	
 	cJSON *subscription = NULL;
