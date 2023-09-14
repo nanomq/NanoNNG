@@ -1003,8 +1003,19 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 			}
 		}
 
-		hocon_read_str_arr(node, forwards, bridge_aws_node);
-		node->forwards_count = cvector_size(node->forwards);
+		cJSON *forwards = hocon_get_obj("forwards", bridge_aws_node);
+
+		cJSON *forward = NULL;
+		cJSON_ArrayForEach(forward, forwards)
+		{
+			topics *s = NNI_ALLOC_STRUCT(s);
+			hocon_read_str(s, remote_topic, forward);
+			hocon_read_str(s, local_topic, forward);
+			s->remote_topic_len = strlen(s->remote_topic);
+			s->local_topic_len = strlen(s->local_topic);
+			cvector_push_back(node->forwards_list, s);
+		}
+		node->forwards_count = cvector_size(node->forwards_list);
 
 		cJSON *subscriptions =
 		    hocon_get_obj("subscription", bridge_aws_node);
