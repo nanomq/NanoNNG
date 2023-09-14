@@ -2762,15 +2762,6 @@ conf_bridge_node_parse_with_name(const char *path,const char *key_prefix, const 
 		                key_prefix, name, ".will.qos")) != NULL) {
 			node->will_qos = (uint8_t) atoi(value);
 			free(value);
-		} else if ((value = get_conf_value_with_prefix2(line, sz,
-		                key_prefix, name, ".forwards")) != NULL) {
-			char *tk = strtok(value, ",");
-			while (tk != NULL) {
-				node->forwards_count++;
-				cvector_push_back(node->forwards, nng_strdup(tk));
-				tk = strtok(NULL, ",");
-			}
-			free(value);
 		}
 
 		free(line);
@@ -2796,6 +2787,7 @@ conf_bridge_node_parse_with_name(const char *path,const char *key_prefix, const 
 	}
 
 	conf_bridge_node_parse_subs(node, path, key_prefix, name);
+	conf_bridge_node_parse_forwards(node, path, key_prefix, name);
 
 	sz            = strlen(name) + 2;
 	char *prefix2 = nng_zalloc(sz);
