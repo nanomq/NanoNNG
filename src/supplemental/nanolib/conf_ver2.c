@@ -896,15 +896,17 @@ conf_bridge_node_parse(
 #endif
 	cJSON *subscriptions = hocon_get_obj("subscription", obj);
 	
-	cJSON * subscription = NULL;
+	cJSON *subscription = NULL;
 	cJSON_ArrayForEach(subscription, subscriptions)
 	{
 		topics *s = NNI_ALLOC_STRUCT(s);
-		hocon_read_str(s, topic, subscription);
+		hocon_read_str(s, remote_topic, subscription);
+		hocon_read_str(s, local_topic, subscription);
 		hocon_read_num(s, qos, subscription);
 		hocon_read_num(s, retain_as_published, subscription);
 		hocon_read_num(s, retain_handling, subscription);
-		s->topic_len = strlen(s->topic);
+		s->remote_topic_len = strlen(s->remote_topic);
+		s->local_topic_len = strlen(s->local_topic);
 		s->stream_id = 0;
 		hocon_read_num(s, stream_id, subscription);
 		cvector_push_back(node->sub_list, s);
@@ -998,9 +1000,11 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 		cJSON_ArrayForEach(subscription, subscriptions)
 		{
 			topics *s = NNI_ALLOC_STRUCT(s);
-			hocon_read_str(s, topic, subscription);
+			hocon_read_str(s, remote_topic, subscription);
+			hocon_read_str(s, local_topic, subscription);
 			hocon_read_num(s, qos, subscription);
-			s->topic_len = strlen(s->topic);
+			s->remote_topic_len = strlen(s->remote_topic);
+			s->local_topic_len = strlen(s->local_topic);
 			s->stream_id = 0;
 			hocon_read_num(s, stream_id, subscription);
 			cvector_push_back(node->sub_list, s);
