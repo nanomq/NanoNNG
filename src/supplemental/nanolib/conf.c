@@ -3006,9 +3006,12 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		log_info(
 		    "%sbridge.mqtt.%s.subscription: ", prefix, node->name);
 		for (size_t k = 0; k < node->sub_count; k++) {
-			log_info("\t[%ld] topic:        %.*s", k + 1,
-			    node->sub_list[k]->topic_len,
-			    node->sub_list[k]->topic);
+			log_info("\t[%ld] remote topic:        %.*s", k + 1,
+			    node->sub_list[k]->remote_topic_len,
+			    node->sub_list[k]->remote_topic);
+			log_info("\t[%ld] local topic:        %.*s", k + 1,
+			    node->sub_list[k]->local_topic_len,
+			    node->sub_list[k]->local_topic);
 			log_info("\t[%ld] qos:          %d", k + 1,
 			    node->sub_list[k]->qos);
 		}
