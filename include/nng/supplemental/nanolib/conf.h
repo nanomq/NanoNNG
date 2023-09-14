@@ -196,8 +196,10 @@ struct conf_websocket {
 typedef struct conf_websocket conf_websocket;
 
 typedef struct {
-	char    *topic;
-	uint32_t topic_len;
+	char *   remote_topic;
+	uint32_t remote_topic_len;
+	char *   local_topic;
+	uint32_t local_topic_len;
 	uint8_t  qos;
 	uint8_t  nolocal;
 	uint8_t  retain_as_published;
@@ -256,7 +258,7 @@ struct conf_bridge_node {
 	char        *clientid;
 	char        *username;
 	char        *password;
-	char       **forwards;
+	topics     **forwards_list;
 	uint64_t     parallel;
 	topics     **sub_list;
 	conf_tls     tls;
