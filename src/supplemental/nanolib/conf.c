@@ -2396,6 +2396,73 @@ conf_bridge_node_parse_subs(
 	fclose(fp);
 }
 
+static void
+conf_bridge_node_parse_forwards(
+    conf_bridge_node *node, const char *path, const char *prefix, const char *name)
+{
+	FILE *fp;
+	if ((fp = fopen(path, "r")) == NULL) {
+		log_error("File %s open failed", path);
+		return;
+	}
+
+	char    key[128] = "";
+	char *  remote_topic     = NULL;
+	char *  local_topic      = NULL;
+	bool    get_remote_topic = false;
+	bool    get_local_topic  = false;
+	char *  line             = NULL;
+	size_t  sz               = 0;
+	char *  value            = NULL;
+	size_t  fwd_index        = 1;
+
+	node->forwards_count = 0;
+	while (nano_getline(&line, &sz, fp) != -1) {
+		snprintf(key, 128,
+		    "%s%s.forwards.%ld.remote_topic", prefix, name,
+		    fwd_index);
+		if (!get_remote_topic &&
+		    (value = get_conf_value(line, sz, key)) != NULL) {
+			remote_topic     = value;
+			get_remote_topic = true;
+			goto check;
+		}
+
+		snprintf(key, 128,
+		    "%s%s.forwards.%ld.local_topic", prefix, name,
+		    fwd_index);
+		if (!get_local_topic &&
+		    (value = get_conf_value(line, sz, key)) != NULL) {
+			local_topic     = value;
+			get_local_topic = true;
+			goto check;
+		}
+
+		free(line);
+		line = NULL;
+
+	check:
+		if (get_remote_topic && get_local_topic) {
+			fwd_index++;
+			node->forwards_count++;
+			topics *s    = NNI_ALLOC_STRUCT(s);
+			s->remote_topic     = remote_topic;
+			s->local_topic      = local_topic;
+			s->remote_topic_len = strlen(remote_topic);
+			s->local_topic_len  = strlen(local_topic);
+
+			cvector_push_back(node->forwards_list, s);
+			get_remote_topic = false;
+			get_local_topic  = false;
+		}
+	}
+
+	if (line) {
+		free(line);
+	}
+
+	fclose(fp);
+}
 void
 conf_bridge_sub_properties_init(conf_bridge_sub_properties *prop)
 {
