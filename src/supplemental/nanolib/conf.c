@@ -2268,29 +2268,42 @@ conf_bridge_node_parse_subs(
 	}
 
 	char    key[128] = "";
-	char *  topic          = NULL;
-	uint8_t qos            = 0;
-	uint8_t rap            = 0;   // only 1/0
-	uint8_t rhandling      = 0;   // only 0/1/2
-	size_t  sub_index      = 1;
-	bool    get_topic      = false;
-	bool    get_qos        = false;
-	bool    get_rap        = false;
-	bool    get_rhandling  = false;
-	char *  line           = NULL;
-	size_t  sz             = 0;
-	char *  value          = NULL;
+	char *  remote_topic     = NULL;
+	char *  local_topic      = NULL;
+	uint8_t qos              = 0;
+	uint8_t rap              = 0;   // only 1/0
+	uint8_t rhandling        = 0;   // only 0/1/2
+	size_t  sub_index        = 1;
+	bool    get_remote_topic = false;
+	bool    get_local_topic  = false;
+	bool    get_qos          = false;
+	bool    get_rap          = false;
+	bool    get_rhandling    = false;
+	char *  line             = NULL;
+	size_t  sz               = 0;
+	char *  value            = NULL;
 
 	node->sub_count = 0;
 	while (nano_getline(&line, &sz, fp) != -1) {
 		snprintf(key, 128,
-		    "%s%s.subscription.%ld.topic", prefix, name,
+		    "%s%s.subscription.%ld.remote_topic", prefix, name,
 		    sub_index);
-		if (!get_topic &&
+		if (!get_remote_topic &&
 		    (value = get_conf_value(line, sz, key)) != NULL) {
 			// a potential memleak here
-			topic     = value;
-			get_topic = true;
+			remote_topic     = value;
+			get_remote_topic = true;
+			goto check;
+		}
+
+		snprintf(key, 128,
+		    "%s%s.subscription.%ld.local_topic", prefix, name,
+		    sub_index);
+		if (!get_local_topic &&
+		    (value = get_conf_value(line, sz, key)) != NULL) {
+			// a potential memleak here
+			local_topic     = value;
+			get_local_topic = true;
 			goto check;
 		}
 
@@ -2328,13 +2341,15 @@ conf_bridge_node_parse_subs(
 
 	check:
 		if (node->proto_ver == MQTT_PROTOCOL_VERSION_v5) {
-			if (get_topic && get_qos && get_rap && get_rhandling) {
+			if (get_remote_topic && get_local_topic && get_qos && get_rap && get_rhandling) {
 				sub_index++;
 				node->sub_count++;
 				topics *s              = NNI_ALLOC_STRUCT(s);
 				s->stream_id           = 0;
-				s->topic               = topic;
-				s->topic_len           = strlen(topic);
+				s->remote_topic        = remote_topic;
+				s->remote_topic_len    = strlen(remote_topic);
+				s->local_topic         = local_topic;
+				s->local_topic_len     = strlen(local_topic);
 				s->qos                 = qos;
 				s->retain_as_published = rap;
 				s->retain_handling     = rhandling;
@@ -2344,19 +2359,22 @@ conf_bridge_node_parse_subs(
 					s->stream_id = sub_index;
 #endif
 				cvector_push_back(node->sub_list, s);
-				get_topic     = false;
+				get_remote_topic    = false;
+				get_local_topic     = false;
 				get_qos       = false;
 				get_rap       = false;
 				get_rhandling = false;
 			}
 		} else {
-			if (get_topic && get_qos) {
+			if (get_remote_topic && get_local_topic && get_qos) {
 				sub_index++;
 				node->sub_count++;
 				topics *s    = NNI_ALLOC_STRUCT(s);
 				s->stream_id = 0;
-				s->topic     = topic;
-				s->topic_len = strlen(topic);
+				s->remote_topic     = remote_topic;
+				s->local_topic      = local_topic;
+				s->remote_topic_len = strlen(remote_topic);
+				s->local_topic_len  = strlen(local_topic);
 				s->qos       = qos;
 
 #if defined(SUPP_QUIC)
@@ -2364,7 +2382,8 @@ conf_bridge_node_parse_subs(
 					s->stream_id = sub_index;
 #endif
 				cvector_push_back(node->sub_list, s);
-				get_topic = false;
+				get_remote_topic = false;
+				get_local_topic  = false;
 				get_qos   = false;
 			}
 		}
