@@ -2521,7 +2521,7 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->proto_ver      = 4;
 	node->keepalive      = 60;
 	node->forwards_count = 0;
-	node->forwards       = NULL;
+	node->forwards_list  = NULL;
 	node->sub_count      = 0;
 	node->sub_list       = NULL;
 
