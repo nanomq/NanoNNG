@@ -3068,7 +3068,13 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 
 		for (size_t j = 0; j < node->forwards_count; j++) {
 			log_info(
-			    "\t[%ld] topic:        %s", j, node->forwards[j]);
+			    "\t[%ld] remote topic:        %.*s", j,
+										node->forwards_list[j]->remote_topic_len,
+										node->forwards_list[j]->remote_topic);
+			log_info(
+			    "\t[%ld] local topic:        %.*s", j,
+										node->forwards_list[j]->local_topic_len,
+										node->forwards_list[j]->local_topic);
 		}
 		log_info(
 		    "%sbridge.mqtt.%s.subscription: ", prefix, node->name);
