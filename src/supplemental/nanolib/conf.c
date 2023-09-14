@@ -2915,15 +2915,23 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 		free(node->will_payload);
 		node->will_payload = NULL;
 	}
-	if (node->forwards_count > 0 && node->forwards) {
+	if (node->forwards_count > 0 && node->forwards_list) {
 		for (size_t i = 0; i < node->forwards_count; i++) {
-			if (node->forwards[i]) {
-				free(node->forwards[i]);
-				node->forwards[i] = NULL;
+			topics *s = node->forwards_list[i];
+			if (s->remote_topic) {
+				free(s->remote_topic);
+				s->remote_topic = NULL;
 			}
+			if (s->local_topic) {
+				free(s->local_topic);
+				s->local_topic = NULL;
+			}
+			NNI_FREE_STRUCT(s);
+
 		}
-		cvector_free(node->forwards);
-		node->forwards = NULL;
+		node->forwards_count = 0;
+		cvector_free(node->forwards_list);
+		node->forwards_list = NULL;
 	}
 	if (node->sub_count > 0 && node->sub_list) {
 		for (size_t i = 0; i < node->sub_count; i++) {
