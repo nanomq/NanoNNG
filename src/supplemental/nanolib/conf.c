@@ -2869,9 +2869,13 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 	if (node->sub_count > 0 && node->sub_list) {
 		for (size_t i = 0; i < node->sub_count; i++) {
 			topics *s = node->sub_list[i];
-			if (s->topic) {
-				free(s->topic);
-				s->topic = NULL;
+			if (s->remote_topic) {
+				free(s->remote_topic);
+				s->remote_topic = NULL;
+			}
+			if (s->local_topic) {
+				free(s->local_topic);
+				s->local_topic = NULL;
 			}
 			NNI_FREE_STRUCT(s);
 		}
