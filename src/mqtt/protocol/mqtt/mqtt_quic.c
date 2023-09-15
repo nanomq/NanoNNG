@@ -1131,6 +1131,7 @@ mqtt_quic_recv_cb(void *arg)
 		// PINGRESP is ignored in protocol layer
 		// Rely on health checker of Quic stream
 		// free msg
+		s->pingcnt = 0;
 		nni_msg_free(msg);
 		nni_mtx_unlock(&s->mtx);
 		return;
