@@ -3087,6 +3087,10 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 			    node->sub_list[k]->local_topic);
 			log_info("\t[%ld] qos:          %d", k + 1,
 			    node->sub_list[k]->qos);
+			log_info("\t[%ld] rap:          %d", k + 1,
+			    node->sub_list[k]->retain_as_published);
+			log_info("\t[%ld] rh:           %d", k + 1,
+			    node->sub_list[k]->retain_handling);
 		}
 	}
 
