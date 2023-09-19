@@ -1617,7 +1617,7 @@ conf_dds_gateway_destory(dds_gateway_conf *config)
 	}
 
 	for (size_t i=0; i<forward->mqtt2dds_sz; ++i) {
-		dds_gateway_topic *mqtt2dds_tp = forward->mqtt2dds;
+		dds_gateway_topic *mqtt2dds_tp = forward->mqtt2dds[i];
 
 		if (mqtt2dds_tp->from) {
 			free(mqtt2dds_tp->from);
