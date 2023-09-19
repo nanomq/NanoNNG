@@ -2,6 +2,7 @@
 
 #include "nuts.h"
 
+#ifndef NNG_PLATFORM_WINDOWS
 #if defined(ENABLE_NANOMQ_TESTS)
 #define OLD_CONF_PATH                                            \
 	"../../../../../nng/src/supplemental/nanolib/test_conf/" \
@@ -14,6 +15,21 @@
 #define CONF_PATH \
 	"../../../../src/supplemental/nanolib/test_conf/nmq_test.conf"
 #endif
+#else
+#if defined(ENABLE_NANOMQ_TESTS)
+#define OLD_CONF_PATH                                            \
+	"..\\..\\..\\..\\..\\nng\\src\\supplemental\\nanolib\\test_conf\\" \
+	"nmq_old_test.conf"
+#define CONF_PATH \
+	"..\\..\\..\\..\\..\\nng\\src\\supplemental\\nanolib\\test_conf\\nmq_test.conf"
+#else
+#define OLD_CONF_PATH \
+	"..\\..\\..\\..\\src\\supplemental\\nanolib\\test_conf\\nmq_old_test.conf"
+#define CONF_PATH \
+	"..\\..\\..\\..\\src\\supplemental\\nanolib\\test_conf\\nmq_test.conf"
+#endif
+#endif
+
 
 conf *
 get_test_conf(const char *conf_path)
@@ -75,7 +91,6 @@ test_get_time(void)
 void
 test_conf_parse(void)
 {
-#ifndef NNG_PLATFORM_WINDOWS // there is a bug in conf_parse in windows
 	conf *conf = get_test_conf(OLD_CONF_PATH);
 	NUTS_TRUE(conf != NULL);
 	conf_parse(conf);
@@ -84,7 +99,6 @@ test_conf_parse(void)
 	print_conf(conf);
 
 	conf_fini(conf);
-#endif
 }
 
 void
