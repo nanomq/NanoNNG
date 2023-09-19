@@ -1140,11 +1140,8 @@ static void
 mqtt_quictran_sub_pipe_start(
     mqtt_quictran_pipe *p, nng_stream *conn, mqtt_quictran_ep *ep)
 {
-	nni_iov  iov[2];
 	nni_msg *connmsg = NULL;
 	uint8_t mqtt_version;
-	int      niov = 0;
-	int      rv;
 
 	ep->refcnt++;
 
@@ -1323,6 +1320,7 @@ mqtt_quictran_ep_close(void *arg)
 // This parses off the optional source address that this transport uses.
 // The special handling of this URL format is quite honestly an historical
 // mistake, which we would remove if we could.
+/*
 static int
 mqtt_quictran_url_parse_source(
     nng_url *url, nng_sockaddr *sa, const nng_url *surl)
@@ -1441,6 +1439,7 @@ error:
 	}
 	nni_mtx_unlock(&ep->mtx);
 }
+*/
 
 static void
 mqtt_quictran_dial_cb(void *arg)
@@ -1536,7 +1535,6 @@ mqtt_quictran_dialer_init(void **dp, nng_url *url, nni_dialer *ndialer)
 	int              rv;
 	// nng_sockaddr     srcsa;
 	nni_sock *       sock = nni_dialer_sock(ndialer);
-	nng_url          myurl;
 
 	// Check for invalid URL components. only one dialer is allowed
 	if ((strlen(url->u_path) != 0) && (strcmp(url->u_path, "/") != 0)) {
@@ -1548,6 +1546,7 @@ mqtt_quictran_dialer_init(void **dp, nng_url *url, nni_dialer *ndialer)
 		return (NNG_EADDRINVAL);
 	}
 
+	//nng_url          myurl;
 	// It seems that no error in nni_url_parse so here we ignore this function
 	//if ((rv = mqtt_quictran_url_parse_source(&myurl, &srcsa, url)) != 0) {
 	//	return (rv);
@@ -1603,7 +1602,7 @@ mqtt_quictran_ep_connect(void *arg, nni_aio *aio)
 	if (ep->backoff != 0) {
 		ep->backoff = ep->backoff * 2;
 		ep->backoff = ep->backoff > ep->backoff_max
-		    ? nni_random() % 2000
+		    ? (nni_duration) (nni_random() % 2000)
 		    : ep->backoff;
 		log_debug("reconnect in %ld", ep->backoff);
 		nni_msleep(ep->backoff);
@@ -1719,6 +1718,7 @@ mqtt_quictran_ep_set_reconnect_backoff(void *arg, const void *v, size_t sz, nni_
 	return (rv);
 }
 
+/*
 static int
 mqtt_quictran_ep_bind(void *arg)
 {
@@ -1766,6 +1766,7 @@ mqtt_quictran_ep_accept(void *arg, nni_aio *aio)
 	}
 	nni_mtx_unlock(&ep->mtx);
 }
+*/
 
 static nni_sp_pipe_ops mqtt_quictran_pipe_ops = {
 	.p_init   = mqtt_quictran_pipe_init,
