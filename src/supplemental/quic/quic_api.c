@@ -145,7 +145,7 @@ quic_dialer_dial(void *arg, nng_aio *aio)
 }
 
 static int
-quic_dialer_set_tls_ca(void *arg, void *buf, size_t sz, nni_type t)
+quic_dialer_set_tls_ca(void *arg, const void *buf, size_t sz, nni_type t)
 {
 	nni_quic_dialer *d = arg;
 	int              rv;
@@ -153,7 +153,7 @@ quic_dialer_set_tls_ca(void *arg, void *buf, size_t sz, nni_type t)
 
 	str = nng_alloc(sz + 1);
 
-	if (((rv = nni_copyin_str(&str, buf, sz, sz, t)) != 0) || (d == NULL)) {
+	if (((rv = nni_copyin_str(str, buf, sz, sz, t)) != 0) || (d == NULL)) {
 		return rv;
 	}
 
@@ -164,7 +164,7 @@ quic_dialer_set_tls_ca(void *arg, void *buf, size_t sz, nni_type t)
 }
 
 static int
-quic_dialer_set_tls_verify(void *arg, void *buf, size_t sz, nni_type t)
+quic_dialer_set_tls_verify(void *arg, const void *buf, size_t sz, nni_type t)
 {
 	nni_quic_dialer *d = arg;
 	int              rv;
@@ -181,7 +181,7 @@ quic_dialer_set_tls_verify(void *arg, void *buf, size_t sz, nni_type t)
 }
 
 static int
-quic_dialer_set_tls_pwd(void *arg, void *buf, size_t sz, nni_type t)
+quic_dialer_set_tls_pwd(void *arg, const void *buf, size_t sz, nni_type t)
 {
 	nni_quic_dialer *d = arg;
 	int              rv;
@@ -189,7 +189,7 @@ quic_dialer_set_tls_pwd(void *arg, void *buf, size_t sz, nni_type t)
 
 	str = nng_alloc(sz + 1);
 
-	if (((rv = nni_copyin_str(&str, buf, sz, sz, t)) != 0) || (d == NULL)) {
+	if (((rv = nni_copyin_str(str, buf, sz, sz, t)) != 0) || (d == NULL)) {
 		return rv;
 	}
 
@@ -200,7 +200,7 @@ quic_dialer_set_tls_pwd(void *arg, void *buf, size_t sz, nni_type t)
 }
 
 static int
-quic_dialer_set_tls_key(void *arg, void *buf, size_t sz, nni_type t)
+quic_dialer_set_tls_key(void *arg, const void *buf, size_t sz, nni_type t)
 {
 	nni_quic_dialer *d = arg;
 	int              rv;
@@ -208,7 +208,7 @@ quic_dialer_set_tls_key(void *arg, void *buf, size_t sz, nni_type t)
 
 	str = nng_alloc(sz + 1);
 
-	if (((rv = nni_copyin_str(&str, buf, sz, sz, t)) != 0) || (d == NULL)) {
+	if (((rv = nni_copyin_str(str, buf, sz, sz, t)) != 0) || (d == NULL)) {
 		return rv;
 	}
 
@@ -219,7 +219,7 @@ quic_dialer_set_tls_key(void *arg, void *buf, size_t sz, nni_type t)
 }
 
 static int
-quic_dialer_set_tls_cacert(void *arg, void *buf, size_t sz, nni_type t)
+quic_dialer_set_tls_cacert(void *arg, const void *buf, size_t sz, nni_type t)
 {
 	nni_quic_dialer *d = arg;
 	int              rv;
@@ -227,7 +227,7 @@ quic_dialer_set_tls_cacert(void *arg, void *buf, size_t sz, nni_type t)
 
 	str = nng_alloc(sz + 1);
 
-	if (((rv = nni_copyin_str(&str, buf, sz, sz, t)) != 0) || (d == NULL)) {
+	if (((rv = nni_copyin_str(str, buf, sz, sz, t)) != 0) || (d == NULL)) {
 		return rv;
 	}
 
@@ -238,7 +238,7 @@ quic_dialer_set_tls_cacert(void *arg, void *buf, size_t sz, nni_type t)
 }
 
 static int
-quic_dialer_set_congestion_ctl_cubic(void *arg, void *buf, size_t sz, nni_type t)
+quic_dialer_set_congestion_ctl_cubic(void *arg, const void *buf, size_t sz, nni_type t)
 {
 	nni_quic_dialer *d = arg;
 	int              rv;
@@ -256,7 +256,7 @@ quic_dialer_set_congestion_ctl_cubic(void *arg, void *buf, size_t sz, nni_type t
 }
 
 static int
-quic_dialer_set_max_ack_delay_ms(void *arg, void *buf, size_t sz, nni_type t)
+quic_dialer_set_max_ack_delay_ms(void *arg, const void *buf, size_t sz, nni_type t)
 {
 	nni_quic_dialer *d = arg;
 	int              rv;
@@ -276,7 +276,7 @@ quic_dialer_set_max_ack_delay_ms(void *arg, void *buf, size_t sz, nni_type t)
 }
 
 static int
-quic_dialer_set_initial_rtt_ms(void *arg, void *buf, size_t sz, nni_type t)
+quic_dialer_set_initial_rtt_ms(void *arg, const void *buf, size_t sz, nni_type t)
 {
 	nni_quic_dialer *d = arg;
 	int              rv;
@@ -296,7 +296,7 @@ quic_dialer_set_initial_rtt_ms(void *arg, void *buf, size_t sz, nni_type t)
 }
 
 static int
-quic_dialer_set_send_idle_timeout(void *arg, void *buf, size_t sz, nni_type t)
+quic_dialer_set_send_idle_timeout(void *arg, const void *buf, size_t sz, nni_type t)
 {
 	nni_quic_dialer *d = arg;
 	int              rv;
@@ -316,7 +316,7 @@ quic_dialer_set_send_idle_timeout(void *arg, void *buf, size_t sz, nni_type t)
 }
 
 static int
-quic_dialer_set_disconnect_timeout(void *arg, void *buf, size_t sz, nni_type t)
+quic_dialer_set_disconnect_timeout(void *arg, const void *buf, size_t sz, nni_type t)
 {
 	nni_quic_dialer *d = arg;
 	int              rv;
@@ -336,7 +336,7 @@ quic_dialer_set_disconnect_timeout(void *arg, void *buf, size_t sz, nni_type t)
 }
 
 static int
-quic_dialer_set_connect_timeout(void *arg, void *buf, size_t sz, nni_type t)
+quic_dialer_set_connect_timeout(void *arg, const void *buf, size_t sz, nni_type t)
 {
 	nni_quic_dialer *d = arg;
 	int              rv;
@@ -355,7 +355,7 @@ quic_dialer_set_connect_timeout(void *arg, void *buf, size_t sz, nni_type t)
 }
 
 static int
-quic_dialer_set_keepalive(void *arg, void *buf, size_t sz, nni_type t)
+quic_dialer_set_keepalive(void *arg, const void *buf, size_t sz, nni_type t)
 {
 	nni_quic_dialer *d = arg;
 	int              rv;
@@ -375,7 +375,7 @@ quic_dialer_set_keepalive(void *arg, void *buf, size_t sz, nni_type t)
 }
 
 static int
-quic_dialer_set_idle_timeout(void *arg, void *buf, size_t sz, nni_type t)
+quic_dialer_set_idle_timeout(void *arg, const void *buf, size_t sz, nni_type t)
 {
 	nni_quic_dialer *d = arg;
 	int              rv;
@@ -405,7 +405,7 @@ quic_dialer_get_enable_multistream(void *arg, void *buf, size_t *szp, nni_type t
 }
 
 static int
-quic_dialer_set_enable_multistream(void *arg, void *buf, size_t sz, nni_type t)
+quic_dialer_set_enable_multistream(void *arg, const void *buf, size_t sz, nni_type t)
 {
 	nni_quic_dialer *d = arg;
 	int              rv;
@@ -433,7 +433,7 @@ quic_dialer_get_enable_0rtt(void *arg, void *buf, size_t *szp, nni_type t)
 }
 
 static int
-quic_dialer_set_enable_0rtt(void *arg, void *buf, size_t sz, nni_type t)
+quic_dialer_set_enable_0rtt(void *arg, const void *buf, size_t sz, nni_type t)
 {
 	nni_quic_dialer *d = arg;
 	int              rv;
@@ -531,7 +531,7 @@ static const nni_option quic_dialer_options[] = {
 };
 
 static int
-quic_dialer_get(void *arg, const char *name, const void *buf, size_t* szp, nni_type t)
+quic_dialer_get(void *arg, const char *name, void *buf, size_t* szp, nni_type t)
 {
 	quic_dialer *d = arg;
 	return(nni_getopt(quic_dialer_options, name, d->d, buf, szp, t));

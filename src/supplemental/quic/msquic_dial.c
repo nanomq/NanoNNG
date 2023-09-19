@@ -482,10 +482,10 @@ quic_stream_fini(void *arg)
 	NNI_FREE_STRUCT(c);
 }
 
-static nni_reap_list quic_reap_list = {
-	.rl_offset = offsetof(nni_quic_conn, reap),
-	.rl_func   = quic_stream_fini,
-};
+//static nni_reap_list quic_reap_list = {
+//	.rl_offset = offsetof(nni_quic_conn, reap),
+//	.rl_func   = quic_stream_fini,
+//};
 static void
 quic_stream_free(void *arg)
 {
@@ -654,7 +654,6 @@ quic_stream_send(void *arg, nni_aio *aio)
 {
 	nni_quic_conn *c = arg;
 	int            rv;
-	nni_aio        fstaio;
 
 	if (nni_aio_begin(aio) != 0) {
 		return;
@@ -691,6 +690,13 @@ quic_stream_send(void *arg, nni_aio *aio)
 static int
 quic_stream_get(void *arg, const char *name, void *buf, size_t *szp, nni_type t)
 {
+	NNI_ARG_UNUSED(arg);
+	NNI_ARG_UNUSED(name);
+	NNI_ARG_UNUSED(buf);
+	NNI_ARG_UNUSED(szp);
+	NNI_ARG_UNUSED(t);
+	return 0;
+
 	// nni_quic_conn *c = arg;
 	// return (nni_getopt(tcp_options, name, c, buf, szp, t));
 }
@@ -698,6 +704,13 @@ quic_stream_get(void *arg, const char *name, void *buf, size_t *szp, nni_type t)
 static int
 quic_stream_set(void *arg, const char *name, const void *buf, size_t sz, nni_type t)
 {
+	NNI_ARG_UNUSED(arg);
+	NNI_ARG_UNUSED(name);
+	NNI_ARG_UNUSED(buf);
+	NNI_ARG_UNUSED(sz);
+	NNI_ARG_UNUSED(t);
+	return 0;
+
 	// nni_quic_conn *c = arg;
 	// return (nni_setopt(tcp_options, name, c, buf, sz, t));
 }
@@ -728,16 +741,6 @@ nni_msquic_quic_alloc(nni_quic_conn **cp, nni_quic_dialer *d)
 	return (0);
 }
 
-void
-nni_msquic_quic_init(nni_quic_conn *c)
-{
-}
-
-void
-nni_msquic_quic_start(nni_quic_conn *c, int nodelay, int keepalive)
-{
-}
-
 /***************************** MsQuic Bindings *****************************/
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
@@ -747,7 +750,7 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 {
 	nni_quic_dialer *d = Context;
 	HQUIC            qconn = Connection;
-	QUIC_STATUS      rv;
+	// QUIC_STATUS      rv;
 
 	log_debug("msquic_connection_cb triggered! %d", Event->Type);
 	switch (Event->Type) {
