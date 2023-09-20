@@ -607,14 +607,6 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 			break;
 		}
 		nni_id_remove(&p->recv_unack, packet_id);
-
-		// return PUBCOMP
-		nni_mqtt_msg_alloc(&ack, 0);
-		nni_mqtt_msg_set_packet_type(ack, NNG_MQTT_PUBCOMP);
-		nni_mqtt_msg_set_puback_packet_id(ack, packet_id);
-		nni_mqtt_msg_encode(ack);
-		// ignore result of this send ?
-		mqtt_pipe_send_msg(NULL, ack, p, mqtt_pipe_get_next_packet_id(p->mqtt_sock));
 		// return msg to user
 		nni_mtx_lock(&s->mtx);
 		if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
@@ -639,20 +631,6 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 		qos = nni_mqtt_msg_get_publish_qos(msg);
 		nng_msg_set_cmd_type(msg, CMD_PUBLISH);
 		if (2 > qos) {
-			if (qos == 1) {
-				// QoS 1 return PUBACK
-				nni_mqtt_msg_alloc(&ack, 0);
-				/*
-				uint8_t *payload;
-				uint32_t payload_len;
-				payload = nng_mqtt_msg_get_publish_payload(msg, &payload_len);
-				*/
-				packet_id = nni_mqtt_msg_get_publish_packet_id(msg);
-				nni_mqtt_msg_set_packet_type(ack, NNG_MQTT_PUBACK);
-				nni_mqtt_msg_set_puback_packet_id(ack, packet_id);
-				nni_mqtt_msg_encode(ack);
-				mqtt_pipe_send_msg(NULL, ack, p, mqtt_pipe_get_next_packet_id(p->mqtt_sock));
-			}
 			nni_mtx_lock(&s->mtx);
 			// TODO aio should be placed in p->recv_queue to achieve parallel
 			if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
@@ -681,16 +659,8 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 				    "ERROR: packet id %d duplicates in",
 				    packet_id);
 				nni_msg_free(cached_msg);
-				// nni_id_remove(&pipe->nano_qos_db,
-				// pid);
 			}
 			nni_id_set(&p->recv_unack, packet_id, msg);
-			// return PUBREC
-			nni_mqtt_msg_alloc(&ack, 0);
-			nni_mqtt_msg_set_packet_type(ack, NNG_MQTT_PUBREC);
-			nni_mqtt_msg_set_puback_packet_id(ack, packet_id);
-			nni_mqtt_msg_encode(ack);
-			mqtt_pipe_send_msg(NULL, ack, p, 0);
 		}
 		break;
 	case NNG_MQTT_PINGRESP:
@@ -700,14 +670,6 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 		nni_mtx_unlock(&p->lk);
 		return;
 	case NNG_MQTT_PUBREC:
-		// return PUBREL
-		packet_id = nni_mqtt_msg_get_pubrec_packet_id(msg);
-		nni_mqtt_msg_alloc(&ack, 0);
-		nni_mqtt_msg_set_packet_type(ack, NNG_MQTT_PUBREL);
-		nni_mqtt_msg_set_puback_packet_id(ack, packet_id);
-		nni_mqtt_msg_encode(ack);
-		// ignore result of this send ?
-		mqtt_pipe_send_msg(NULL, ack, p, 0);
 		nni_msg_free(msg);
 		nni_mtx_unlock(&p->lk);
 		return;
@@ -917,7 +879,6 @@ mqtt_quic_recv_cb(void *arg)
 				    "ERROR: packet id %d duplicates in",
 				    packet_id);
 				nni_msg_free(cached_msg);
-				// nni_id_remove(&pipe->nano_qos_db, pid);
 			}
 			nni_id_set(&p->recv_unack, packet_id, msg);
 		}
@@ -925,7 +886,6 @@ mqtt_quic_recv_cb(void *arg)
 	case NNG_MQTT_PINGRESP:
 		// PINGRESP is ignored in protocol layer
 		// Rely on health checker of Quic stream
-		// free msg
 		nni_msg_free(msg);
 		nni_mtx_unlock(&s->mtx);
 		return;
@@ -1269,37 +1229,47 @@ mqtt_quic_sock_set_sqlite_option(
 static inline int
 quic_mqtt_stream_bind(mqtt_sock_t *s, mqtt_pipe_t *p, nni_pipe *npipe)
 {
-		nni_msg            *msg = NULL;
-		nni_mqtt_topic_qos *topics;
-		uint32_t            count, hash;
-		// deal with data stream
-		if (nni_lmq_get(s->topic_lmq, &msg) != 0) {
-			log_warn("An unexpected data stream is created!");
+	nni_msg            *msg = NULL;
+	nni_mqtt_topic_qos *topics;
+	uint32_t            count, hash;
+	// deal with data stream
+	if (nni_lmq_get(s->topic_lmq, &msg) != 0) {
+		log_warn("An unexpected data stream is created!");
+		nni_pipe_close(npipe);
+		return -1;
+	}
+	if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_SUBSCRIBE) {
+		// packet id is already encoded
+		topics = nni_mqtt_msg_get_subscribe_topics(msg, &count);
+		// Create a new stream no matter how many topics in Sub
+		for (uint32_t i = 0; i < count; i++) {
+			// Sub on same topic twice gonna replace old pipe with
+			// new This may result in potentioal memleak
+			hash = DJBHashn((char *) topics[i].topic.buf,
+			    topics[i].topic.length);
+			if (nni_id_set(s->sub_streams, hash, p) != 0) {
+				log_error("Error in setting sub streams.");
+				nni_pipe_close(npipe);
+				return -1;
+			}
+			log_info("New Sub Stream has been bound to topic (code %ld)", hash);
+		}
+		mqtt_pipe_send_msg(nni_mqtt_msg_get_aio(msg), msg, p, 0);
+	} else if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBLISH) {
+		uint32_t topic_len;
+		char    *topic =
+		    (char *) nni_mqtt_msg_get_publish_topic(msg, &topic_len);
+		hash = DJBHashn(topic, topic_len);
+		if (nni_id_set(s->pub_streams, hash, p) != 0) {
+			log_error("Error in setting sub streams.");
 			nni_pipe_close(npipe);
 			return -1;
 		}
-		if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_SUBSCRIBE) {
-			// packet id is already encoded
-			topics = nni_mqtt_msg_get_subscribe_topics(msg, &count);
-			// Create a new stream no matter how many topics in Sub
-			for (uint32_t i = 0; i < count; i++) {
-				// Sub on same topic twice gonna replace old pipe with new
-				// This may result in potentioal memleak
-				hash = DJBHashn((char *) topics[i].topic.buf,
-				    topics[i].topic.length);
-				if (nni_id_set(s->sub_streams, hash, p) != 0) {
-					log_error("Error in setting sub streams.");
-					nni_pipe_close(npipe);
-					return -1;
-				}
-				log_info("New pipe has been bound to topic (code %ld)", hash);
-			}
-			mqtt_pipe_send_msg(nni_mqtt_msg_get_aio(msg), msg, p, 0);
-		} else if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBLISH) {
-			// must be a new pub stream
-			mqtt_pipe_send_msg(nni_mqtt_msg_get_aio(msg), msg, p, 0);
-		}
-		return 0;
+		log_info("New Pub Stream has been bound to topic (code %ld)", hash);
+		// must be a new pub stream
+		mqtt_pipe_send_msg(nni_mqtt_msg_get_aio(msg), msg, p, 0);
+	}
+	return 0;
 }
 // end of Multi-stream API
 
@@ -1733,6 +1703,7 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 			mqtt_pipe_t *pub_pipe;
 			pub_pipe = nni_id_get(s->pub_streams, DJBHashn(topic, topic_len));
 			if (pub_pipe == NULL) {
+				log_info("create new pub stream");
 				nni_lmq_put(s->topic_lmq, msg);
 				nni_dialer_start(npipe->p_dialer, NNG_FLAG_NONBLOCK);
 			} else {
