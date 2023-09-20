@@ -970,7 +970,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
 		// The peer gracefully shut down its send direction of the
 		// stream.
-		log_warn("[strm][%p] PEER_SEND_ABORTED errorcode%llu\n", stream,
+		log_warn("[strm][%p] PEER_SEND_ABORTED errorcode %llu\n", stream,
 		    (unsigned long long) Event->PEER_SEND_ABORTED.ErrorCode);
 		if (c->reason_code == 0)
 			c->reason_code = SERVER_SHUTTING_DOWN;
