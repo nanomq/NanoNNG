@@ -155,42 +155,37 @@ static void
 mqtt_quic_pipe_timer_cb(void *arg)
 {
 	mqtt_quictran_pipe *p = arg;
+	int rv;
 
-	if (p->ismain == false) {
-		// Ping request and response only be sent and received in main stream
-		return;
-	}
-
-	if (nng_aio_result(&p->tmaio) != 0) {
-		// log_error("Timer error!");
-		return;
-	}
-
-	if (p->pingcnt > 1) {
+	rv = nng_aio_result(&p->tmaio);
+	if ( rv != 0 ) {
+		log_error("keepalive error! aio result: %d", rv);
 		p->ep->reason_code = KEEP_ALIVE_TIMEOUT;
 		mqtt_quictran_pipe_close(p);
 		return;
 	}
-	// send PINGREQ with tmaio itself?
-	// nng_msleep(p->keepalive);
-	nni_mtx_lock(&p->mtx);
-	if (!p->busy && !nni_aio_busy(p->qsaio)) {
-		// send pingreq
-		pingbuf[0] = 0xC0;
-		pingbuf[1] = 0x00;
 
-		nni_iov iov;
-		iov.iov_len = 2;
-		iov.iov_buf = &pingbuf;
-		// send it down...
-		p->busy = true;
-		nni_aio_set_iov(p->qsaio, 1, &iov);
-		nng_stream_send(p->conn, p->qsaio);
-		p->pingcnt ++;
+	if (p->pingcnt == 0){
+		p->pingcnt++;
+		log_trace("skip PINGREQ wait for next time!");
+		nni_sleep_aio(p->keepalive, &p->tmaio);
+		return;
 	}
+	nni_mtx_lock(&p->mtx);
+	// send pingreq
+	pingbuf[0] = 0xC0;
+	pingbuf[1] = 0x00;
+
+	nni_iov iov;
+	iov.iov_len = 2;
+	iov.iov_buf = &pingbuf;
+	// send it down...
+	nni_aio_set_iov(&p->tmaio, 1, &iov);
+	nng_stream_send(p->conn, &p->tmaio);
+	p->pingcnt = 0;
 	log_info("send pingreq!");
 	nni_mtx_unlock(&p->mtx);
-	nni_sleep_aio(p->keepalive, &p->tmaio);
+	return;
 }
 
 static void
@@ -218,8 +213,10 @@ mqtt_quictran_pipe_init(void *arg, nni_pipe *npipe)
 	p->closed = false;
 	p->packmax = 0xFFFF;
 	p->qosmax  = 2;
-	p->pingcnt = 0;
-	nni_sleep_aio(p->keepalive, &p->tmaio);
+	p->pingcnt = 1;
+	if (p->ismain == true) {
+		nni_sleep_aio(p->keepalive, &p->tmaio);
+	}
 	return (0);
 }
 
@@ -533,6 +530,7 @@ mqtt_quictran_pipe_qos_send_cb(void *arg)
 		return;
 	}
 	nni_mtx_lock(&p->mtx);
+	p->pingcnt = 0;
 
 	msg = nni_aio_get_msg(p->qsaio);
 	if (msg != NULL)
@@ -584,6 +582,7 @@ mqtt_quictran_pipe_send_cb(void *arg)
 		nni_pipe_bump_error(p->npipe, rv);
 		return;
 	}
+	p->pingcnt = 0;
 
 	n = nni_aio_count(txaio);
 	nni_aio_iov_advance(txaio, n);
@@ -794,8 +793,10 @@ mqtt_quictran_pipe_recv_cb(void *arg)
 			nni_aio_set_iov(p->qsaio, 2, iov);
 			nng_stream_send(p->conn, p->qsaio);
 		} else {
+			log_warn("ACK msg lost!");
 			nni_msg_free(qmsg);
 		}
+		// caching msg in lmq cause malformed packets
 		// else {
 		// 	if (nni_lmq_full(&p->rslmq)) {
 		// 		// Make space for the new message. TODO add max
@@ -832,7 +833,6 @@ mqtt_quictran_pipe_recv_cb(void *arg)
 	nni_msg_set_conn_param(msg, p->cparam);
 #endif
 	nni_aio_set_msg(aio, msg);
-	p->pingcnt = 0;
 	nni_mtx_unlock(&p->mtx);
 	nni_aio_finish_sync(aio, 0, n);
 	return;
@@ -1137,7 +1137,7 @@ mqtt_quictran_pipe_getopt(
 
 // No connect request needed. No negotiating needed.
 static void
-mqtt_quictran_sub_pipe_start(
+mqtt_quictran_data_pipe_start(
     mqtt_quictran_pipe *p, nng_stream *conn, mqtt_quictran_ep *ep)
 {
 	nni_iov  iov[2];
@@ -1478,7 +1478,7 @@ mqtt_quictran_dial_cb(void *arg)
 		if (ismain)
 			mqtt_quictran_pipe_start(p, conn, ep);
 		else
-			mqtt_quictran_sub_pipe_start(p, conn, ep);
+			mqtt_quictran_data_pipe_start(p, conn, ep);
 	}
 	nni_mtx_unlock(&ep->mtx);
 	return;
