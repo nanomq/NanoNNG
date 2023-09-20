@@ -124,8 +124,8 @@ struct mqtt_pipe_s {
 	nni_aio         rep_aio;       // aio for resending qos msg and PINGREQ
 	nni_lmq 		send_inflight; // only used in multi-stream mode
 	nni_lmq         recv_messages; // recv messages queue
+	nni_msg        *idmsg;
 	conn_param     *cparam;
-	uint32_t        stream_id;	   // only for multi-stream
 	uint16_t        rid;           // index of resending packet id
 	uint8_t         reason_code;   // MQTTV5 reason code
 };
@@ -1254,6 +1254,8 @@ quic_mqtt_stream_bind(mqtt_sock_t *s, mqtt_pipe_t *p, nni_pipe *npipe)
 			}
 			log_info("New Sub Stream has been bound to topic (code %ld)", hash);
 		}
+		nni_msg_clone(msg);
+		p->idmsg = msg;
 		mqtt_pipe_send_msg(nni_mqtt_msg_get_aio(msg), msg, p, 0);
 	} else if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBLISH) {
 		uint32_t topic_len;
@@ -1265,6 +1267,8 @@ quic_mqtt_stream_bind(mqtt_sock_t *s, mqtt_pipe_t *p, nni_pipe *npipe)
 			nni_pipe_close(npipe);
 			return -1;
 		}
+		nni_msg_clone(msg);
+		p->idmsg = msg;
 		log_info("New Pub Stream has been bound to topic (code %ld)", hash);
 		// must be a new pub stream
 		mqtt_pipe_send_msg(nni_mqtt_msg_get_aio(msg), msg, p, 0);
@@ -1514,22 +1518,13 @@ quic_mqtt_pipe_stop(void *arg)
 		nni_aio_fini(&p->send_aio);
 		nni_aio_fini(&p->recv_aio);
 		nni_aio_fini(&p->rep_aio);
-
-		/*
-	#if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
-		nni_id_map_fini(&p->sent_unack);
-	#endif
-		*/
+#if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
+#endif
 		nni_id_map_fini(&p->recv_unack);
 		nni_id_map_fini(&p->sent_unack);
-		if (p->mqtt_sock->multi_stream)
-			nni_lmq_fini(&p->send_inflight);
+		nni_lmq_fini(&p->send_inflight);
 		nni_lmq_fini(&p->recv_messages);
 		nni_mtx_fini(&p->lk);
-
-		// Free the mqtt_pipe
-		// FIXME remove all id of this streams
-		// nni_id_remove(s->streams, p->stream_id);
 
 		nni_mtx_unlock(&s->mtx);
 	}
@@ -1559,6 +1554,29 @@ quic_mqtt_pipe_close(void *arg)
 	// nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
 	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
 	p->ready = false;
+
+	if (nni_mqtt_msg_get_packet_type(p->idmsg) == NNG_MQTT_SUBSCRIBE) {
+		// packet id is already encoded
+		nni_mqtt_topic_qos *topics;
+		uint32_t            count;
+		topics = nni_mqtt_msg_get_subscribe_topics(p->idmsg, &count);
+		// Create a new stream no matter how many topics in Sub
+		for (uint32_t i = 0; i < count; i++) {
+			// Sub on same topic twice gonna replace old pipe with
+			// new This may result in potentioal memleak
+			nni_id_remove(s->sub_streams,
+			    DJBHashn((char *) topics[i].topic.buf,
+			        topics[i].topic.length));
+		}
+		nni_msg_free(p->idmsg);
+	} else if (nni_mqtt_msg_get_packet_type(p->idmsg) ==
+	    NNG_MQTT_PUBLISH) {
+		uint32_t topic_len;
+		char    *topic = (char *) nni_mqtt_msg_get_publish_topic(
+                    p->idmsg, &topic_len);
+		nni_id_remove(s->sub_streams, DJBHashn(topic, topic_len));
+		nni_msg_free(p->idmsg);
+	}
 	nni_mtx_unlock(&s->mtx);
 }
 
