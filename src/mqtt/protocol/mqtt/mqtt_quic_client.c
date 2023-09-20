@@ -52,7 +52,8 @@ static void mqtt_quic_ctx_fini(void *arg);
 static void mqtt_quic_ctx_recv(void *arg, nni_aio *aio);
 static void mqtt_quic_ctx_send(void *arg, nni_aio *aio);
 
-static int mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio);
+static int
+mqtt_pipe_send_msg(nni_aio *aio, nni_msg *msg, mqtt_pipe_t *p, uint16_t packet_id);
 
 #if defined(NNG_SUPP_SQLITE)
 static void *mqtt_quic_sock_get_sqlite_option(mqtt_sock_t *s);
@@ -81,25 +82,26 @@ struct mqtt_quic_ctx {
 struct mqtt_sock_s {
 	bool            multi_stream;
 	bool            qos_first;
+	nni_mtx         mtx; // more fine grained mutual exclusion
 	nni_atomic_bool closed;
 	nni_atomic_int  next_packet_id; // next packet id to use, shared by multiple pipes
 	uint16_t      counter;   // counter for elapsed time
 	uint16_t      pingcnt;   // count how many ping msg is lost
 	uint16_t      keepalive; // MQTT keepalive
 	nni_duration  retry;
-	nni_mtx       mtx;        // more fine grained mutual exclusion
 	mqtt_quic_ctx master;     // to which we delegate send/recv calls
 	nni_list      recv_queue; // aio pending to receive
 	nni_list      send_queue; // aio pending to send
 
-	void    *qsock;         // delete this The matrix of quic sock. Which only be allow to use when disconnect.
-	                        // Or lock first.
+	void *qsock; // delete this The matrix of quic sock. Which only be
+	             // allow to use when disconnect. Or lock first.
 	nni_lmq  send_messages; // send messages queue (only for major stream)
-	nni_lmq *ack_lmq;
+	nni_lmq *ack_lmq;       // created for ack aio callback
+	nni_lmq *topic_lmq; // queued msg waiting to be send as first in new stream
 	nni_id_map  *streams; // pipes, only effective in multi-stream mode
 	mqtt_pipe_t *pipe;    // the major pipe (control stream)
-	                      // main quic pipe, others needs a map to store the
-	                      // relationship between MQTT topics and quic pipes
+	                   // main quic pipe, others needs a map to store the
+	                   // relationship between MQTT topics and quic pipes
 	nni_aio   time_aio; // timer aio to resend unack msg
 	nni_aio  *ack_aio;  // set by user, expose puback/pubcomp
 	nni_msg  *ping_msg, *connmsg;
@@ -109,15 +111,14 @@ struct mqtt_sock_s {
 	conf_bridge_node       *bridge_conf;
 
 	struct mqtt_client_cb cb; // user cb
-	nni_pollable			*readable;
-	nni_pollable			*writeable;
+	nni_pollable         *readable;
+	nni_pollable         *writeable;
 };
 
 // A mqtt_pipe_s is our per-stream protocol private structure.
 // equal to self-defined pipe in other protocols
 struct mqtt_pipe_s {
 	nni_mtx         lk;
-	void           *qconnection;
 	void           *qsock; // delete this quic socket for MSQUIC/etc transport usage
 	void           *qpipe; // QUIC version of nni_pipe
 	nni_atomic_bool closed;
@@ -172,139 +173,6 @@ mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
 	}
 }
 
-// Multi-stream API
-/**
- * Create independent & seperated stream for specific topic.
- * Only effective on Publish
- * This stream is unidirecitional by default
-*/
-static mqtt_pipe_t*
-nng_mqtt_quic_open_topic_stream(mqtt_sock_t *mqtt_sock, const char *topic, uint32_t len)
-{
-	mqtt_pipe_t *p          = mqtt_sock->pipe;
-	mqtt_pipe_t *new_pipe   = NULL;
-	uint32_t     hash;
-
-	// create a pipe/stream here
-	if ((new_pipe = nng_alloc(sizeof(mqtt_pipe_t))) == NULL) {
-		log_error("error in alloc pipe.\n");
-		return NULL;
-	}
-	if (0 != quic_mqtt_pipe_init(new_pipe, p->qsock, mqtt_sock)) {
-		log_warn("Failed in open the topic-stream pair.");
-		return NULL;
-	}
-	hash = DJBHashn((char *) topic, len);
-	nni_id_set(mqtt_sock->streams, hash, new_pipe);
-	new_pipe->stream_id = hash;
-	log_debug("create new pipe %p for topic %.*s", new_pipe, len, topic);
-
-	new_pipe->ready = true;
-	nni_atomic_set_bool(&new_pipe->closed, false);
-	new_pipe->cparam = p->cparam;
-	// there is no aio in send_queue, because this is a newly established stream
-	// for now, pub stream is also bidirectional
-	nni_pipe_recv(new_pipe->qpipe, &new_pipe->recv_aio);
-	return new_pipe;
-}
-
-/***
- * create a unidirectional stream and pub msg to it.
- * mapping sub topics (if >1) with the new stream.
-*/
-// static int
-// mqtt_pub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
-
-/***
- * create a unidirectional stream and send SUB/UNSUB packet
- * receving msg only from a unique topic
- * mapping sub topics (if >1) with the new stream.
-*/
-static int
-mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
-{
-	uint32_t count, hash;
-	nni_msg *tmsg;
-	mqtt_sock_t *sock = p->mqtt_sock;
-	mqtt_pipe_t *new_pipe   = NULL;
-	nni_mqtt_topic_qos *topics;
-
-	// check topic/stream pair existence
-	topics = nni_mqtt_msg_get_subscribe_topics(msg, &count);
-	// there is only one topic in Sub msg if multi-stream is enabled
-	for (uint32_t i = 0; i < count; i++) {
-		hash = DJBHashn(
-		    (char *) topics[i].topic.buf, topics[i].topic.length);
-		if ((new_pipe = nni_id_get(sock->streams, hash)) == NULL) {
-			// create pipe here & set stream id
-			log_debug("topic %s qos %d", topics[i].topic.buf, topics[i].qos);
-			// create a pipe/stream here
-			if ((new_pipe = nng_alloc(sizeof(mqtt_pipe_t))) == NULL) {
-				log_error("error in alloc pipe.\n");
-				return -1;
-			}
-			if (0 != quic_mqtt_pipe_init(
-			        new_pipe, p->qsock, p->mqtt_sock)) {
-				log_warn(
-				    "Failed in open the topic-stream pair.");
-				return -1;
-			}
-			nni_id_set(sock->streams, hash, new_pipe);
-			new_pipe->stream_id = hash;
-
-			log_debug("create new pipe %p for topic %s", new_pipe,
-			    (char *) topics[0].topic.buf);
-			new_pipe->ready = true;
-			nni_atomic_set_bool(&new_pipe->closed, false);
-			new_pipe->cparam = p->cparam;
-			// there is no aio in send_queue, because this is a
-			// newly established stream
-			nni_pipe_recv(new_pipe->qpipe, &new_pipe->recv_aio);
-		} else {
-			log_info("topic-stream already existed");
-		}
-	}
-
-	nni_mqtt_msg_set_packet_id(msg, packet_id);
-	nni_mqtt_msg_set_aio(msg, aio);
-	tmsg = nni_id_get(&new_pipe->sent_unack, packet_id);
-	if (tmsg != NULL) {
-		log_warn("Warning : msg %d lost due to "
-		         "packetID duplicated!",
-		    packet_id);
-		nni_aio *m_aio = nni_mqtt_msg_get_aio(tmsg);
-		if (m_aio && nni_msg_get_type(tmsg) != CMD_PUBLISH) {
-			nni_aio_finish_error(m_aio, UNSPECIFIED_ERROR);
-		}
-		nni_msg_free(tmsg);
-		nni_id_remove(&new_pipe->sent_unack, packet_id);
-	}
-	nni_msg_clone(msg);
-	if (0 != nni_id_set(&new_pipe->sent_unack, packet_id, msg)) {
-		nni_println("Warning! Cache QoS msg failed");
-		nni_msg_free(msg);
-		nni_aio_finish_error(aio, UNSPECIFIED_ERROR);
-	}
-
-	if (!new_pipe->busy) {
-		nni_aio_set_msg(&new_pipe->send_aio, msg);
-		p->busy = true;
-		nni_pipe_send(new_pipe->qpipe, &new_pipe->send_aio);
-	} else {
-		if (nni_lmq_full(&new_pipe->send_inflight)) {
-			(void) nni_lmq_get(&new_pipe->send_inflight, &tmsg);
-			log_warn("msg lost due to flight window is full");
-			nni_msg_free(tmsg);
-		}
-		if (0 != nni_lmq_put(&new_pipe->send_inflight, msg)) {
-			nni_println(
-			    "Warning! msg send failed due to busy socket");
-		}
-	}
-	return 0;
-}
-// end of Multi-stream API
-
 static uint16_t
 mqtt_pipe_get_next_packet_id(mqtt_sock_t *s)
 {
@@ -315,8 +183,6 @@ mqtt_pipe_get_next_packet_id(mqtt_sock_t *s)
 	    !nni_atomic_cas(&s->next_packet_id, packet_id, packet_id + 1));
 	return packet_id & 0xFFFF;
 }
-
-
 
 // Should be called with mutex lock hold after pipe is secured
 // return rv>0 when aio should be finished (error or successed)
@@ -344,21 +210,6 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		break;
 
 	case NNG_MQTT_PUBLISH:
-		if (s->multi_stream) {
-			// check if topic-stream pair exist
-			mqtt_pipe_t *pub_pipe;
-
-			char *topic = (char *) nni_mqtt_msg_get_publish_topic(
-			    msg, &topic_len);
-			pub_pipe =
-			    nni_id_get(s->streams, DJBHashn(topic, topic_len));
-			if (pub_pipe == NULL) {
-				pub_pipe = nng_mqtt_quic_open_topic_stream(
-				    s, topic, topic_len);
-			}
-			p = pub_pipe;
-		}
-
 		qos = nni_mqtt_msg_get_publish_qos(msg);
 		if (qos == 0) {
 			break; // QoS 0 need no packet id
@@ -456,8 +307,9 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 	return -1;
 }
 
-// send msg with specific pipe/stream for only Pub
-static inline int
+// send msg with specific pipe/stream for only Pub/SUb/UnSub
+// aio is from user space for tracking the result
+static int
 mqtt_pipe_send_msg(nni_aio *aio, nni_msg *msg, mqtt_pipe_t *p, uint16_t packet_id)
 {
 	nni_msg     *tmsg;
@@ -481,7 +333,9 @@ mqtt_pipe_send_msg(nni_aio *aio, nni_msg *msg, mqtt_pipe_t *p, uint16_t packet_i
 		if (qos == 0) {
 			break; // QoS 0 need no packet id
 		}
-		nni_mqtt_msg_set_packet_id(msg, packet_id);
+	case NNG_MQTT_SUBSCRIBE:
+	case NNG_MQTT_UNSUBSCRIBE:
+		packet_id = nni_mqtt_msg_get_packet_id(msg);
 		nni_mqtt_msg_set_aio(msg, aio);
 		tmsg = nni_id_get(&p->sent_unack, packet_id);
 		if (tmsg != NULL) {
@@ -507,6 +361,7 @@ mqtt_pipe_send_msg(nni_aio *aio, nni_msg *msg, mqtt_pipe_t *p, uint16_t packet_i
 		return NNG_EPROTO;
 	}
 	if (!p->busy) {
+		// TODO: qos_first
 		nni_aio_set_msg(&p->send_aio, msg);
 		p->busy = true;
 		nni_pipe_send(p->qpipe, &p->send_aio);
@@ -550,7 +405,7 @@ mqtt_quic_data_strm_send_cb(void *arg)
 		return;
 	}
 	s->counter = 0;
-	// Check cached aio first in s->send_queue? or p->sendqueue?
+	// ignore msg in s->send_queue, I am a data stream
 	// Check cached msg in lmq
 	// this msg is already proessed by mqtt_send_msg
 	if (nni_lmq_get(&p->send_inflight, &msg) == 0) {
@@ -573,6 +428,7 @@ mqtt_quic_data_strm_send_cb(void *arg)
 
 	return;
 }
+
 // main stream send_cb
 static void
 mqtt_quic_send_cb(void *arg)
@@ -1324,6 +1180,11 @@ mqtt_quic_sock_fini(void *arg)
 		nni_lmq_fini(s->ack_lmq);
 		nng_free(s->ack_lmq, sizeof(nni_lmq));
 	}
+
+	if (s->topic_lmq != NULL) {
+		nni_lmq_fini(s->topic_lmq);
+		nng_free(s->topic_lmq, sizeof(nni_lmq));
+	}
 	// emulate disconnect notify msg as a normal publish
 	while ((aio = nni_list_first(&s->recv_queue)) != NULL) {
 		// Pipe was closed.  just push an error back to the
@@ -1353,8 +1214,6 @@ mqtt_quic_sock_fini(void *arg)
 	nni_lmq_fini(&s->send_messages);
 	nni_aio_fini(&s->time_aio);
 	nni_msg_free(s->ping_msg);
-	// potential memleak here. need to adapt to MsQUIC finit
-	// quic_close();
 	// nni_pollable_init(&s->writeable);
 	// nni_pollable_init(&s->readable);
 }
@@ -1442,6 +1301,15 @@ mqtt_quic_sock_set_multi_stream(void *arg, const void *buf, size_t sz, nni_type 
 	}
 	nni_mtx_lock(&s->mtx);
 	s->multi_stream = b;
+	if (s->streams == NULL && s->multi_stream) {
+		log_info("Quic Multistream bridging is enabled");
+		s->streams = nng_alloc(sizeof(nni_id_map));
+		nni_id_map_init(s->streams, 0x0000u, 0xffffu, true);
+	}
+	if (s->multi_stream && s->topic_lmq == NULL) {
+		s->topic_lmq = nni_alloc(sizeof(nni_lmq));
+		nni_lmq_init(s->topic_lmq, NNG_MAX_RECV_LMQ);
+	}
 	nni_mtx_unlock(&s->mtx);
 	return (0);
 }
@@ -1467,7 +1335,133 @@ mqtt_quic_sock_set_sqlite_option(
 	return NNG_EUNREACHABLE;
 }
 
-/*TODO: Move Stream to transfer layer*/
+// Multi-stream API
+/**
+ * Create independent & seperated stream for specific topic.
+ * Only effective on Publish
+ * This stream is unidirecitional by default
+*/
+
+/***
+ * create a unidirectional stream and pub msg to it.
+ * mapping sub topics (if >1) with the new stream.
+*/
+// static int
+// mqtt_pub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
+
+/***
+ * create a unidirectional stream and send SUB/UNSUB packet
+ * receving msg only from a unique topic
+ * mapping sub topics with the new stream.
+*/
+static int
+mqtt_sub_stream(mqtt_pipe_t *p, nni_msg *msg, uint16_t packet_id, nni_aio *aio)
+{
+	uint32_t count, hash;
+	nni_msg *tmsg;
+	mqtt_sock_t *sock = p->mqtt_sock;
+	nni_pipe *npipe = p->qpipe;
+	nni_mqtt_topic_qos *topics;
+
+
+	topics = nni_mqtt_msg_get_subscribe_topics(msg, &count);
+	// Create a new stream no matter hom many topics in Sub msg
+	for (uint32_t i = 0; i < count; i++) {
+		hash = DJBHashn(
+		    (char *) topics[i].topic.buf, topics[i].topic.length);
+
+		// if ((new_pipe = nni_id_get(sock->streams, hash)) == NULL) {
+		// 	// create pipe here & set stream id
+		// 	log_debug("topic %s qos %d", topics[i].topic.buf, topics[i].qos);
+		// 	// create a new sub msg
+			
+			
+
+
+
+		// 	// there is no aio in send_queue, because this is a
+		// 	// newly established stream
+		// 	nni_pipe_recv(new_pipe->qpipe, &new_pipe->recv_aio);
+		// else {
+		// 	log_info("topic-stream already existed");
+		// }
+		// need to set them one by one if there are multiple topics
+		//nni_id_set(sock->streams, hash, new_pipe);
+	}
+
+	// nni_mqtt_msg_set_packet_id(msg, packet_id);
+	// nni_mqtt_msg_set_aio(msg, aio);
+	// tmsg = nni_id_get(&new_pipe->sent_unack, packet_id);
+	// if (tmsg != NULL) {
+	// 	log_warn("Warning : msg %d lost due to "
+	// 	         "packetID duplicated!",
+	// 	    packet_id);
+	// 	nni_aio *m_aio = nni_mqtt_msg_get_aio(tmsg);
+	// 	if (m_aio && nni_msg_get_type(tmsg) != CMD_PUBLISH) {
+	// 		nni_aio_finish_error(m_aio, UNSPECIFIED_ERROR);
+	// 	}
+	// 	nni_msg_free(tmsg);
+	// 	nni_id_remove(&new_pipe->sent_unack, packet_id);
+	// }
+	// nni_msg_clone(msg);
+	// if (0 != nni_id_set(&new_pipe->sent_unack, packet_id, msg)) {
+	// 	nni_println("Warning! Cache QoS msg failed");
+	// 	nni_msg_free(msg);
+	// 	nni_aio_finish_error(aio, UNSPECIFIED_ERROR);
+	// }
+
+	// if (!new_pipe->busy) {
+	// 	nni_aio_set_msg(&new_pipe->send_aio, msg);
+	// 	p->busy = true;
+	// 	nni_pipe_send(new_pipe->qpipe, &new_pipe->send_aio);
+	// } else {
+	// 	if (nni_lmq_full(&new_pipe->send_inflight)) {
+	// 		(void) nni_lmq_get(&new_pipe->send_inflight, &tmsg);
+	// 		log_warn("msg lost due to flight window is full");
+	// 		nni_msg_free(tmsg);
+	// 	}
+	// 	if (0 != nni_lmq_put(&new_pipe->send_inflight, msg)) {
+	// 		nni_println(
+	// 		    "Warning! msg send failed due to busy socket");
+	// 	}
+	// }
+	return 0;
+}
+
+static inline int
+quic_mqtt_stream_bind(mqtt_sock_t *s, mqtt_pipe_t *p, nni_pipe *npipe)
+{
+		nni_msg            *msg = NULL;
+		nni_mqtt_topic_qos *topics;
+		uint32_t            count, hash, topic_len;
+		// deal with data stream
+		if (nni_lmq_get(s->topic_lmq, &msg) != 0) {
+			log_warn("An unexpected data stream is created!");
+			nni_pipe_close(p);
+			return -1;
+		}
+		mqtt_pipe_send_msg(nni_mqtt_msg_get_aio(msg), msg, p, 0);
+		if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_SUBSCRIBE) {
+			// packet id is already encoded
+			topics = nni_mqtt_msg_get_subscribe_topics(msg, &count);
+			// Create a new stream no matter hom many topics in Sub
+			for (uint32_t i = 0; i < count; i++) {
+				hash = DJBHashn((char *) topics[i].topic.buf,
+				    topics[i].topic.length);
+				if (nni_id_set(s->streams, hash, p) != 0) {
+					log_error("Error in setting s->streams.");
+					nni_pipe_close(pipe);
+					return 0;
+				}
+				log_info("New pipe has been bind to topic "
+				         "(code %ld)", hash);
+			}
+		} else if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBLISH) {
+		}
+}
+// end of Multi-stream API
+
+
 /******************************************************************************
  *                          Stream(PIPE) Implementation                       *
  ******************************************************************************/
@@ -1483,30 +1477,9 @@ quic_mqtt_pipe_init(void *arg, nni_pipe *pipe, void *sock)
 	if (p->mqtt_sock->pipe == NULL) {
 		p->mqtt_sock->pipe = p;
 		major = true;
+	} else {
+		p->cparam = p->mqtt_sock->pipe->cparam;
 	}
-	// data stream?
-	// else {
-	// 	uint32_t topicode;
-	// 	topic = nni_list_first(&p->mqtt_sock->topicq);
-	// 	if (topic == NULL) {
-	// 		// No pending hash code.
-	// 		log_error("No pending topic.");
-	// 		/* finish mqtt pipe and nni pipe */
-	// 		nni_pipe_close(pipe);
-	// 		nng_free(p, sizeof(*p));
-	// 		return 0;
-	// 	}
-
-	// 	topicode = topic->topicode;
-	// 	if (nni_id_set(p->mqtt_sock->streams, topicode, p) != 0) {
-	// 		log_error("Error in setting s->streams.");
-	// 		nni_pipe_close(pipe);
-	// 		nng_free(p, sizeof(*p));
-	// 		return 0;
-	// 	}
-	// 	log_info("New pipe has been bind to topic (code %ld)", topicode);
-	// 	p->stream_id = topicode;
-	// }
 
 	p->qpipe = pipe;
 	p->rid = 1;
@@ -1528,9 +1501,13 @@ quic_mqtt_pipe_init(void *arg, nni_pipe *pipe, void *sock)
 	nni_id_map_init(&p->sent_unack, 0x0000u, 0xffffu, true);
 	nni_id_map_init(&p->recv_unack, 0x0000u, 0xffffu, true);
 	nni_lmq_init(&p->recv_messages, NNG_MAX_RECV_LMQ);
+	// only data stream has send inflight?
 	if (p->mqtt_sock->multi_stream)
 		nni_lmq_init(&p->send_inflight, NNG_MAX_RECV_LMQ);
 	nni_mtx_init(&p->lk);
+
+	if (!nni_aio_list_active(&p->mqtt_sock->time_aio) && major)
+		nni_sleep_aio(p->mqtt_sock->retry * NNI_SECOND, &p->mqtt_sock->time_aio);
 
 	// if (!major && topic != NULL && topic->pipeType == PIPE_TYPE_SUB) {
 	// 	p->ready = true;
@@ -1586,16 +1563,19 @@ quic_mqtt_pipe_fini(void *arg)
 	if (s->pipe == p && s->cb.disconnect_cb != NULL) {
 		s->cb.disconnect_cb(NULL, s->cb.discarg);
 	}
-	s->pipe = NULL;
-
-	uint16_t count = 0;
-	// connect failed also triggered stream finit, ignore it
-	if (p->cparam == NULL) {
+	if (p->cparam == NULL || p != s->pipe) {
+		// connect failed or data stream close 
+		// also triggered stream finit, ignore it
 		nni_mtx_unlock(&s->mtx);
 		nni_sock_rele(s->nsock);
 		nni_sock_rele(s->nsock);
 		return;
 	}
+
+	s->pipe = NULL;
+
+	uint16_t count = 0;
+	
 
 	nni_msg *tmsg = nano_msg_notify_disconnect(p->cparam, p->reason_code);
 	nni_msg_set_cmd_type(tmsg, CMD_DISCONNECT_EV);
@@ -1632,56 +1612,51 @@ quic_mqtt_pipe_fini(void *arg)
 	}
 
 	conn_param_free(p->cparam);
-	// Free the mqtt_pipe
-	if (p == s->pipe) {
-		// sock closed
-		s->pipe = NULL;
-	}
 	nni_mtx_unlock(&s->mtx);
 	nni_sock_rele(s->nsock);
 	nni_sock_rele(s->nsock);
 }
 
-// only work for main stream
+/**
+ * If main stream: deal with cached aio in send_queue
+ * If Data stream: send first msg in topic_lmq then bind
+*/
+// 
 static int
 quic_mqtt_pipe_start(void *arg)
 {
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
-	nni_pipe    *npipe = p->qpipe;
+	nni_pipe *   npipe = p->qpipe;
 	nni_aio     *aio;
 	nni_msg     *msg;
 
 	nni_mtx_lock(&s->mtx);
 	// p_dialer is not available when pipe init and sock init. Until pipe start.
-	// set opt
-	if (s->streams == NULL && s->multi_stream) {
-		log_info("Quic Multistream is enabled");
-		s->streams = nng_alloc(sizeof(nni_id_map));
-		nni_id_map_init(p->mqtt_sock->streams, 0x0000u, 0xffffu, true);
-	}
-
 	p->ready = true;
 	nni_atomic_set_bool(&p->closed, false);
-	// deal with cached send aio
-	if ((aio = nni_list_first(&s->send_queue)) != NULL) {
-		nni_list_remove(&s->send_queue, aio);
-		msg    = nni_aio_get_msg(aio);
-		int rv = 0;
-		if ((rv = mqtt_send_msg(aio, msg, s)) >= 0) {
-			nni_mtx_unlock(&s->mtx);
-			nni_aio_finish(aio, rv, 0);
-			nni_pipe_recv(p->qpipe, &p->recv_aio);
-			return 0;
+	if (p == s->pipe) {
+		// It is main stream, deal with cached send aio
+		if ((aio = nni_list_first(&s->send_queue)) != NULL) {
+			nni_list_remove(&s->send_queue, aio);
+			msg    = nni_aio_get_msg(aio);
+			int rv = 0;
+			if ((rv = mqtt_send_msg(aio, msg, s)) >= 0) {
+				nni_mtx_unlock(&s->mtx);
+				nni_aio_finish(aio, rv, 0);
+				nni_pipe_recv(p->qpipe, &p->recv_aio);
+				return 0;
+			}
 		}
+	} else {
+		quic_mqtt_stream_bind(s, p, npipe);
 	}
 
 	nni_mtx_unlock(&s->mtx);
-	if (!nni_aio_list_active(&s->time_aio))
-		nni_sleep_aio(s->retry * NNI_SECOND, &s->time_aio);
 	nni_pipe_recv(p->qpipe, &p->recv_aio);
 	return 0;
 }
+
 
 static void
 quic_mqtt_pipe_stop(void *arg)
@@ -1803,6 +1778,7 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 	mqtt_quic_ctx *ctx = arg;
 	mqtt_sock_t   *s   = ctx->mqtt_sock;
 	mqtt_pipe_t   *p;
+	nni_pipe      *npipe;
 	nni_msg       *msg;
 	uint16_t       packet_id;
 	uint8_t        qos;
@@ -1814,6 +1790,7 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 
 	nni_mtx_lock(&s->mtx);
 	p = s->pipe;
+	npipe = p->qpipe;
 
 	msg = nni_aio_get_msg(aio);
 	if (msg == NULL) {
@@ -1852,8 +1829,7 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 			nni_mqtt_sqlite_option *sqlite =
 			    mqtt_quic_sock_get_sqlite_option(s);
 			if (sqlite_is_enabled(sqlite)) {
-				// the msg order is exactly as same as the ctx
-				// in send_queue
+				// the msg order is exactly as same as the ctx in send_queue
 				nni_lmq_put(&sqlite->offline_cache, msg);
 				if (nni_lmq_full(&sqlite->offline_cache)) {
 					sqlite_flush_offline_cache(sqlite);
@@ -1900,16 +1876,19 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 		return;
 	}
 
-	if (s->multi_stream &&
-	    nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_SUBSCRIBE) {
-		mqtt_sub_stream(p, msg, packet_id, aio);
-	} else if ((rv = mqtt_send_msg(aio, msg, s)) >= 0) {
-		nni_mtx_unlock(&s->mtx);
-		nni_aio_finish(aio, rv, 0);
-		return;
-	} else if (s->multi_stream &&
-	    nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBLISH) {
-		//mqtt_pub_stream
+	if (s->multi_stream == false) {
+		if ((rv = mqtt_send_msg(aio, msg, s)) >= 0) {
+			nni_mtx_unlock(&s->mtx);
+			nni_aio_finish(aio, rv, 0);
+			return;
+		}
+	} else {
+		if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_SUBSCRIBE ||
+		    nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBLISH) {
+			nni_mqtt_msg_set_aio(msg, aio);
+			nni_lmq_put(s->topic_lmq, msg);
+			nni_dialer_start(npipe->p_dialer, NNG_FLAG_NONBLOCK);
+		}
 	}
 	nni_mtx_unlock(&s->mtx);
 	return;
@@ -2182,37 +2161,6 @@ nng_mqtt_quic_set_msg_recv_cb(nng_socket *sock, int (*cb)(void *, void *), void 
 		mqtt_sock_t *mqtt_sock = nni_sock_proto_data(nsock);
 		mqtt_sock->cb.msg_recv_cb = cb;
 		mqtt_sock->cb.recvarg = arg;
-	} else {
-		return -1;
-	}
-	nni_sock_rele(nsock);
-	return 0;
-}
-
-int
-nng_mqtt_quic_set_config(nng_socket *sock, void *node)
-{
-	nni_sock         *nsock = NULL;
-	conf_bridge_node *conf_node = node;
-	mqtt_sock_t      *mqtt_sock;
-
-	nni_sock_find(&nsock, sock->id);
-	if (nsock) {
-		mqtt_sock              = nni_sock_proto_data(nsock);
-		mqtt_sock->bridge_conf = node;
-		if (node == NULL) {
-			mqtt_sock->multi_stream = false;
-			mqtt_sock->qos_first    = false;
-		} else {
-			mqtt_sock->multi_stream = conf_node->multi_stream;
-			mqtt_sock->qos_first    = conf_node->qos_first;
-			if (mqtt_sock->multi_stream) {
-				mqtt_sock->streams =
-				    nng_alloc(sizeof(nni_id_map));
-				nni_id_map_init(mqtt_sock->streams, 0x0000u,
-				    0xffffu, true);
-			}
-		}
 	} else {
 		return -1;
 	}
