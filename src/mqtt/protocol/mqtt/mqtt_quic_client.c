@@ -870,14 +870,6 @@ mqtt_quic_recv_cb(void *arg)
 			break;
 		}
 		nni_id_remove(&p->recv_unack, packet_id);
-
-		// return PUBCOMP
-		nni_mqtt_msg_alloc(&ack, 0);
-		nni_mqtt_msg_set_packet_type(ack, NNG_MQTT_PUBCOMP);
-		nni_mqtt_msg_set_puback_packet_id(ack, packet_id);
-		nni_mqtt_msg_encode(ack);
-		// ignore result of this send ?
-		mqtt_send_msg(NULL, ack, s);
 		// return msg to user
 		if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
 			// No one waiting to receive yet, putting msg
@@ -899,32 +891,15 @@ mqtt_quic_recv_cb(void *arg)
 		qos = nni_mqtt_msg_get_publish_qos(msg);
 		nng_msg_set_cmd_type(msg, CMD_PUBLISH);
 		if (2 > qos) {
-			if (qos == 1) {
-				// QoS 1 return PUBACK
-				nni_mqtt_msg_alloc(&ack, 0);
-				/*
-				uint8_t *payload;
-				uint32_t payload_len;
-				payload = nng_mqtt_msg_get_publish_payload(msg, &payload_len);
-				*/
-				packet_id = nni_mqtt_msg_get_publish_packet_id(msg);
-				nni_mqtt_msg_set_packet_type(ack, NNG_MQTT_PUBACK);
-				nni_mqtt_msg_set_puback_packet_id(ack, packet_id);
-				nni_mqtt_msg_encode(ack);
-				// ignore result of this send ?
-				mqtt_send_msg(NULL, ack, s);
-			}
-			if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
-				// No one waiting to receive yet, putting msg
-				// into lmq
+			// No one waiting to receive yet, putting msginto lmq
+			if ((aio = nni_list_first(&s->recv_queue)) == NULL) {	
 				if (s->cb.msg_recv_cb)
 					break;
 				if (0 != mqtt_pipe_recv_msgq_putq(p, msg)) {
 					nni_msg_free(msg);
 					msg = NULL;
 				}
-				// nni_println("ERROR: no ctx found!! create
-				// more ctxs!");
+				log_debug("ERROR: no ctx found!! create more ctxs!");
 				break;
 			}
 			nni_list_remove(&s->recv_queue, aio);
@@ -945,13 +920,6 @@ mqtt_quic_recv_cb(void *arg)
 				// nni_id_remove(&pipe->nano_qos_db, pid);
 			}
 			nni_id_set(&p->recv_unack, packet_id, msg);
-			// return PUBREC
-			nni_mqtt_msg_alloc(&ack, 0);
-			nni_mqtt_msg_set_packet_type(ack, NNG_MQTT_PUBREC);
-			nni_mqtt_msg_set_puback_packet_id(ack, packet_id);
-			nni_mqtt_msg_encode(ack);
-			// ignore result of this send ?
-			mqtt_send_msg(NULL, ack, s);
 		}
 		break;
 	case NNG_MQTT_PINGRESP:
@@ -963,13 +931,6 @@ mqtt_quic_recv_cb(void *arg)
 		return;
 	case NNG_MQTT_PUBREC:
 		// return PUBREL
-		packet_id = nni_mqtt_msg_get_pubrec_packet_id(msg);
-		nni_mqtt_msg_alloc(&ack, 0);
-		nni_mqtt_msg_set_packet_type(ack, NNG_MQTT_PUBREL);
-		nni_mqtt_msg_set_puback_packet_id(ack, packet_id);
-		nni_mqtt_msg_encode(ack);
-		// ignore result of this send ?
-		mqtt_send_msg(NULL, ack, s);
 		nni_msg_free(msg);
 		nni_mtx_unlock(&s->mtx);
 		return;

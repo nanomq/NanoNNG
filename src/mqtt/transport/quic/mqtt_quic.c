@@ -793,7 +793,7 @@ mqtt_quictran_pipe_recv_cb(void *arg)
 			nni_aio_set_iov(p->qsaio, 2, iov);
 			nng_stream_send(p->conn, p->qsaio);
 		} else {
-			log_warn("ACK msg %x lost!", ack);
+			log_warn("ACK msg %x lost!", ack_cmd);
 			nni_msg_free(qmsg);
 		}
 		// caching msg in lmq cause malformed packets
