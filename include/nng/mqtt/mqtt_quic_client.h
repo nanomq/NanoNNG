@@ -19,7 +19,7 @@ extern "C" {
 #endif
 #if defined(SUPP_QUIC)
 
-// NNG_DECL int nng_mqttv5_quic_client_open(nng_socket *, const char *url);
+NNG_DECL int nng_mqttv5_quic_client_open(nng_socket *);
 NNG_DECL int nng_mqtt_quic_client_open(nng_socket *);
 #endif
 #ifdef __cplusplus
