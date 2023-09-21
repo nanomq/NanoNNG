@@ -1862,6 +1862,74 @@ nng_mqtt_quic_client_open(nng_socket *sock)
 	return (nni_proto_open(sock, &mqtt_quic_proto));
 }
 
+int
+nng_mqtt_quic_set_connect_cb(nng_socket *sock, int (*cb)(void *, void *), void *arg)
+{
+	nni_sock *nsock = NULL;
+
+	nni_sock_find(&nsock, sock->id);
+	if (nsock) {
+		mqtt_sock_t *mqtt_sock = nni_sock_proto_data(nsock);
+		mqtt_sock->cb.connect_cb = cb;
+		mqtt_sock->cb.connarg = arg;
+	} else {
+		return -1;
+	}
+	nni_sock_rele(nsock);
+	return 0;
+}
+
+int
+nng_mqtt_quic_set_msg_send_cb(nng_socket *sock, int (*cb)(void *, void *), void *arg)
+{
+	nni_sock *nsock = NULL;
+
+	nni_sock_find(&nsock, sock->id);
+	if (nsock) {
+		mqtt_sock_t *mqtt_sock = nni_sock_proto_data(nsock);
+		mqtt_sock->cb.msg_send_cb = cb;
+		mqtt_sock->cb.sendarg = arg;
+	} else {
+		return -1;
+	}
+	nni_sock_rele(nsock);
+	return 0;
+}
+
+int
+nng_mqtt_quic_set_msg_recv_cb(nng_socket *sock, int (*cb)(void *, void *), void *arg)
+{
+	nni_sock *nsock = NULL;
+
+	nni_sock_find(&nsock, sock->id);
+	if (nsock) {
+		mqtt_sock_t *mqtt_sock = nni_sock_proto_data(nsock);
+		mqtt_sock->cb.msg_recv_cb = cb;
+		mqtt_sock->cb.recvarg = arg;
+	} else {
+		return -1;
+	}
+	nni_sock_rele(nsock);
+	return 0;
+}
+
+int
+nng_mqtt_quic_set_disconnect_cb(nng_socket *sock, int (*cb)(void *, void *), void *arg)
+{
+	nni_sock *nsock = NULL;
+
+	nni_sock_find(&nsock, sock->id);
+	if (nsock) {
+		mqtt_sock_t *mqtt_sock = nni_sock_proto_data(nsock);
+		mqtt_sock->cb.disconnect_cb = cb;
+		mqtt_sock->cb.discarg = arg;
+	} else {
+		return -1;
+	}
+	nni_sock_rele(nsock);
+	return 0;
+}
+
 /*
 // As taking msquic as tranport, we exclude the dialer for now.
 int
