@@ -1408,6 +1408,8 @@ conf_vsomeip_gateway_parse_ver2(vsomeip_gateway_conf *config)
 	hocon_read_hex_str(config, service_id, jso_vsomeip);
 	hocon_read_hex_str(config, service_instance_id, jso_vsomeip);
 	hocon_read_hex_str(config, service_method_id, jso_vsomeip);
+	hocon_read_hex_str(config, service_event_id, jso_vsomeip);
+	hocon_read_hex_str(config, service_eventgroup_id, jso_vsomeip);
 	hocon_read_str(config, conf_path, jso_vsomeip);
 
 	// Parse http server 

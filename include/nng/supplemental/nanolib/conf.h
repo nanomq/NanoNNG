@@ -348,6 +348,8 @@ typedef struct {
 	uint16_t    service_id;
 	uint16_t    service_instance_id;
 	uint16_t    service_method_id;
+	uint16_t    service_event_id;
+	uint16_t    service_eventgroup_id;
 	char       *conf_path;
 } vsomeip_gateway_conf;
 
