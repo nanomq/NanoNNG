@@ -901,6 +901,11 @@ conf_bridge_node_parse(
 		topics *s = NNI_ALLOC_STRUCT(s);
 		hocon_read_str(s, remote_topic, forward);
 		hocon_read_str(s, local_topic, forward);
+		if (!s->remote_topic || !s->local_topic) {
+			log_warn("remote_topic/local_topic not found");
+			NNI_FREE_STRUCT(s);
+			continue;
+		}
 		s->remote_topic_len = strlen(s->remote_topic);
 		s->local_topic_len = strlen(s->local_topic);
 		cvector_push_back(node->forwards_list, s);
@@ -918,6 +923,11 @@ conf_bridge_node_parse(
 		hocon_read_num(s, qos, subscription);
 		hocon_read_num(s, retain_as_published, subscription);
 		hocon_read_num(s, retain_handling, subscription);
+		if (!s->remote_topic || !s->local_topic) {
+			log_warn("remote_topic/local_topic not found");
+			NNI_FREE_STRUCT(s);
+			continue;
+		}
 		s->remote_topic_len = strlen(s->remote_topic);
 		s->local_topic_len = strlen(s->local_topic);
 		s->stream_id = 0;
