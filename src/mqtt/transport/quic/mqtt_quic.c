@@ -158,7 +158,7 @@ mqtt_quic_pipe_timer_cb(void *arg)
 	int rv;
 
 	rv = nng_aio_result(&p->tmaio);
-	if ( rv != 0 ) {
+	if (rv != 0) {
 		log_error("keepalive error! aio result: %d", rv);
 		p->ep->reason_code = KEEP_ALIVE_TIMEOUT;
 		mqtt_quictran_pipe_close(p);

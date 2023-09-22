@@ -1006,8 +1006,8 @@ static void mqtt_quic_sock_init(void *arg, nni_sock *sock)
 	nni_atomic_set(&s->next_packet_id, 1);
 
 	s->bridge_conf = NULL;
-	s->pub_streams     = NULL;
-	s->sub_streams     = NULL;
+	s->pub_streams = NULL;
+	s->sub_streams = NULL;
 
 	/*
 #if defined(NNG_HAVE_MQTT_BROKER) && defined(NNG_SUPP_SQLITE)
