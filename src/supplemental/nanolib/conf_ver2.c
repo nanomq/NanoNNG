@@ -834,6 +834,8 @@ conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 			conf_bridge_conn_will_properties_parse_ver2(
 			    node, jso_prop);
 		}
+	} else {
+		node->will_flag = false;
 	}
 }
 
