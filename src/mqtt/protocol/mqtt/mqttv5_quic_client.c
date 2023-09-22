@@ -704,6 +704,7 @@ mqtt_quic_recv_cb(void *arg)
 	nni_msg * cached_msg = NULL;
 	nni_msg * msg = NULL;
 	nni_aio *aio;
+	int rv = 0;
 
 	if (nni_atomic_get_bool(&s->closed) ||
 	    nni_atomic_get_bool(&p->closed)) {
@@ -738,7 +739,37 @@ mqtt_quic_recv_cb(void *arg)
 
 	// nni_msg_set_pipe(msg, nni_pipe_id(p->pipe));
 	nni_mqtt_msg_proto_data_alloc(msg);
-	nni_mqttv5_msg_decode(msg);
+	if ((rv = nni_mqttv5_msg_decode(msg)) != MQTT_SUCCESS) {
+		// Msg should be clear if decode failed. We reuse it to send disconnect.
+		// Or it would encode a malformed packet.
+		nni_mqtt_msg_set_packet_type(msg, NNG_MQTT_DISCONNECT);
+		nni_mqtt_msg_set_disconnect_reason_code(msg, rv);
+		nni_mqtt_msg_set_disconnect_property(msg, NULL);
+		// Composed a disconnect msg
+		if ((rv = nni_mqttv5_msg_encode(msg)) != MQTT_SUCCESS) {
+			nni_plat_printf("Error in encoding disconnect.\n");
+		}
+		if (!p->busy) {
+			// TODO: qos_first
+			p->busy = true;
+			nni_aio_set_msg(&p->send_aio, msg);
+			nni_pipe_send(p->qpipe, &p->send_aio);
+			nni_mtx_unlock(&s->mtx);
+			return;
+		}
+		if (nni_lmq_full(&p->send_inflight)) {
+			nni_msg     *tmsg;
+			(void) nni_lmq_get(&p->send_inflight, &tmsg);
+			log_warn("msg lost due to flight window is full");
+			nni_msg_free(tmsg);
+		}
+		if (0 != nni_lmq_put(&p->send_inflight, msg)) {
+			nni_println(
+			    "Warning! msg send failed due to busy socket");
+		}
+		nni_mtx_unlock(&s->mtx);
+		return;
+	}
 
 	packet_type_t packet_type = nni_mqtt_msg_get_packet_type(msg);
 
