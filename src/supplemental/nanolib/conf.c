@@ -616,6 +616,7 @@ conf_parse(conf *nanomq_conf)
 	conf_auth_http_parse(&config->auth_http, conf_path);
 }
 
+#if defined(ENABLE_LOG)
 static void
 conf_log_init(conf_log *log)
 {
@@ -720,6 +721,7 @@ conf_log_parse(conf_log *log, const char *path)
 
 	log->type = log_type;
 }
+#endif
 
 void
 conf_tls_init(conf_tls *tls)
