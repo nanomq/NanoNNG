@@ -2368,19 +2368,6 @@ conf_bridge_node_parse_subs(
 				get_qos       = false;
 				get_rap       = false;
 				get_rhandling = false;
-			} else {
-				// get an incomplete node, free it.
-				if(get_remote_topic) {
-					nng_strfree(remote_topic);
-				}
-				if(get_local_topic) {
-					nng_strfree(local_topic);
-				}
-				get_remote_topic    = false;
-				get_local_topic     = false;
-				get_qos       = false;
-				get_rap       = false;
-				get_rhandling = false;
 			}
 		} else {
 			if (get_remote_topic && get_local_topic && get_qos) {
@@ -2402,21 +2389,15 @@ conf_bridge_node_parse_subs(
 				get_remote_topic = false;
 				get_local_topic  = false;
 				get_qos   = false;
-			} else {
-				// get an incomplete node, free it.
-				if(get_remote_topic) {
-					nng_strfree(remote_topic);
-				}
-				if(get_local_topic) {
-					nng_strfree(local_topic);
-				}
-				get_remote_topic    = false;
-				get_local_topic     = false;
-				get_qos       = false;
 			}
 		}
 	}
-
+	if (get_remote_topic) {
+		nng_strfree(remote_topic);
+	}
+	if (get_local_topic) {
+		nng_strfree(local_topic);
+	}
 	if (line) {
 		free(line);
 	}
