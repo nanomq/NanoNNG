@@ -1330,24 +1330,6 @@ conf_auth_destroy(conf_auth *auth)
 	auth->count = 0;
 }
 
-static void
-printf_gateway_conf(zmq_gateway_conf *gateway)
-{
-	log_info("zmq sub url: %s", gateway->zmq_sub_url);
-	log_info("zmq pub url: %s", gateway->zmq_pub_url);
-	log_info("zmq sub pre: %s", gateway->zmq_sub_pre);
-	log_info("zmq pub pre: %s", gateway->zmq_pub_pre);
-	log_info("mqtt url: %s", gateway->mqtt_url);
-	log_info("mqtt sub url: %s", gateway->sub_topic);
-	log_info("mqtt pub url: %s", gateway->pub_topic);
-	log_info("mqtt username: %s", gateway->username);
-	log_info("mqtt password: %s", gateway->password);
-	log_info("mqtt proto version: %d", gateway->proto_ver);
-	log_info("mqtt keepalive: %d", gateway->keepalive);
-	log_info("mqtt clean start: %d", gateway->clean_start);
-	log_info("mqtt parallel: %d", gateway->parallel);
-}
-
 #if defined(SUPP_RULE_ENGINE)
 static void
 conf_rule_repub_parse(conf_rule *cr, char *path)
@@ -1930,6 +1912,25 @@ conf_rule_parse(conf_rule *rule, const char *path)
 }
 #endif
 
+#if defined(SUPP_ZMQ_GATEWAY)
+static void
+printf_gateway_conf(zmq_gateway_conf *gateway)
+{
+	log_info("zmq sub url: %s", gateway->zmq_sub_url);
+	log_info("zmq pub url: %s", gateway->zmq_pub_url);
+	log_info("zmq sub pre: %s", gateway->zmq_sub_pre);
+	log_info("zmq pub pre: %s", gateway->zmq_pub_pre);
+	log_info("mqtt url: %s", gateway->mqtt_url);
+	log_info("mqtt sub url: %s", gateway->sub_topic);
+	log_info("mqtt pub url: %s", gateway->pub_topic);
+	log_info("mqtt username: %s", gateway->username);
+	log_info("mqtt password: %s", gateway->password);
+	log_info("mqtt proto version: %d", gateway->proto_ver);
+	log_info("mqtt keepalive: %d", gateway->keepalive);
+	log_info("mqtt clean start: %d", gateway->clean_start);
+	log_info("mqtt parallel: %d", gateway->parallel);
+}
+
 void
 conf_gateway_parse(zmq_gateway_conf *gateway)
 {
@@ -2020,6 +2021,7 @@ conf_gateway_parse(zmq_gateway_conf *gateway)
 
 	fclose(fp);
 }
+#endif
 
 static conf_user_property **
 conf_bridge_user_property_parse_ver2(

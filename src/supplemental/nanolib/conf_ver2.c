@@ -1312,6 +1312,7 @@ conf_parse_ver2(conf *config)
 	return;
 }
 
+#if defined(SUPP_ZMQ_GATEWAY)
 void printf_zmq_gateway_conf(zmq_gateway_conf *config)
 {
 	printf("zmq gateway conf zmq_sub_url:            %s\n",
@@ -1387,7 +1388,9 @@ conf_gateway_parse_ver2(zmq_gateway_conf *config)
 
 	return;
 }
+#endif
 
+#if defined(SUPP_VSOMEIP_GATEWAY)
 void
 conf_vsomeip_gateway_parse_ver2(vsomeip_gateway_conf *config)
 {
@@ -1437,7 +1440,9 @@ conf_vsomeip_gateway_parse_ver2(vsomeip_gateway_conf *config)
 
 	return;
 }
+#endif
 
+#if defined(SUPP_DDS_PROXY)
 static void
 conf_dds_gateway_forward_parse_ver2(dds_gateway_forward *forward, cJSON *json)
 {
@@ -1648,3 +1653,4 @@ conf_dds_gateway_destory(dds_gateway_conf *config)
 		nng_strfree(mqtt2dds_tp->struct_name);
 	}
 }
+#endif
