@@ -905,6 +905,11 @@ conf_bridge_node_parse(
 		hocon_read_str(s, local_topic, forward);
 		if (!s->remote_topic || !s->local_topic) {
 			log_warn("remote_topic/local_topic not found");
+			if(s->remote_topic) {
+				nng_strfree(s->remote_topic);
+			} else if(s->local_topic){
+				nng_strfree(s->local_topic);
+			}
 			NNI_FREE_STRUCT(s);
 			continue;
 		}
