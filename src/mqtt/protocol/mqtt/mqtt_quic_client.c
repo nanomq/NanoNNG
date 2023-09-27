@@ -1622,7 +1622,6 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 
 	nni_mtx_lock(&s->mtx);
 	p = s->pipe;
-	npipe = p->qpipe;
 
 	msg = nni_aio_get_msg(aio);
 	if (msg == NULL) {
@@ -1714,6 +1713,7 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 			return;
 		}
 	} else {
+		npipe = p->qpipe;
 		nni_mqtt_msg_set_aio(msg, aio);
 		if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_SUBSCRIBE) {
 			nni_lmq_put(s->topic_lmq, msg);
@@ -1732,7 +1732,7 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 				mqtt_pipe_send_msg(aio, msg, pub_pipe, 0);
 			}
 		} else {
-			log_warn("invalid msg type");
+			log_warn("invalid msg type 0x%x", nni_mqtt_msg_get_packet_type(msg));
 		}
 	}
 	nni_mtx_unlock(&s->mtx);
