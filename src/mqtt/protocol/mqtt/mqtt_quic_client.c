@@ -1555,6 +1555,10 @@ quic_mqtt_pipe_close(void *arg)
 	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
 	p->ready = false;
 
+	if (p->idmsg == NULL) {
+		nni_mtx_unlock(&s->mtx);
+		return;
+	}
 	if (nni_mqtt_msg_get_packet_type(p->idmsg) == NNG_MQTT_SUBSCRIBE) {
 		// packet id is already encoded
 		nni_mqtt_topic_qos *topics;
@@ -1568,15 +1572,15 @@ quic_mqtt_pipe_close(void *arg)
 			    DJBHashn((char *) topics[i].topic.buf,
 			        topics[i].topic.length));
 		}
-		nni_msg_free(p->idmsg);
 	} else if (nni_mqtt_msg_get_packet_type(p->idmsg) ==
 	    NNG_MQTT_PUBLISH) {
 		uint32_t topic_len;
 		char    *topic = (char *) nni_mqtt_msg_get_publish_topic(
                     p->idmsg, &topic_len);
 		nni_id_remove(s->sub_streams, DJBHashn(topic, topic_len));
-		nni_msg_free(p->idmsg);
 	}
+	nni_msg_free(p->idmsg);
+	p->idmsg = NULL;
 	nni_mtx_unlock(&s->mtx);
 }
 
