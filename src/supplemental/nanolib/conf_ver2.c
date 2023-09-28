@@ -343,7 +343,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 
 		cJSON *jso_websocket = hocon_get_obj("listeners.ws", jso);
 		if (NULL == jso_websocket) {
-			log_error("Read config nanomq sqlite failed!");
+			log_error("Read config nanomq ws failed!");
 			return;
 		}
 
