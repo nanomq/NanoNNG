@@ -905,9 +905,9 @@ conf_bridge_node_parse(
 		hocon_read_str(s, local_topic, forward);
 		if (!s->remote_topic || !s->local_topic) {
 			log_warn("remote_topic/local_topic not found");
-			if(s->remote_topic) {
+			if (s->remote_topic) {
 				nng_strfree(s->remote_topic);
-			} else if(s->local_topic){
+			} else if (s->local_topic) {
 				nng_strfree(s->local_topic);
 			}
 			NNI_FREE_STRUCT(s);
@@ -932,6 +932,11 @@ conf_bridge_node_parse(
 		hocon_read_num(s, retain_handling, subscription);
 		if (!s->remote_topic || !s->local_topic) {
 			log_warn("remote_topic/local_topic not found");
+			if (s->remote_topic) {
+				nng_strfree(s->remote_topic);
+			} else if (s->local_topic) {
+				nng_strfree(s->local_topic);
+			}
 			NNI_FREE_STRUCT(s);
 			continue;
 		}
@@ -1028,6 +1033,16 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 			topics *s = NNI_ALLOC_STRUCT(s);
 			hocon_read_str(s, remote_topic, forward);
 			hocon_read_str(s, local_topic, forward);
+			if (!s->remote_topic || !s->local_topic) {
+				log_warn("remote_topic/local_topic not found");
+				if (s->remote_topic) {
+					nng_strfree(s->remote_topic);
+				} else if (s->local_topic) {
+					nng_strfree(s->local_topic);
+				}
+				NNI_FREE_STRUCT(s);
+				continue;
+			}
 			s->remote_topic_len = strlen(s->remote_topic);
 			s->local_topic_len = strlen(s->local_topic);
 			cvector_push_back(node->forwards_list, s);
@@ -1044,6 +1059,16 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 			hocon_read_str(s, remote_topic, subscription);
 			hocon_read_str(s, local_topic, subscription);
 			hocon_read_num(s, qos, subscription);
+			if (!s->remote_topic || !s->local_topic) {
+				log_warn("remote_topic/local_topic not found");
+				if (s->remote_topic) {
+					nng_strfree(s->remote_topic);
+				} else if (s->local_topic) {
+					nng_strfree(s->local_topic);
+				}
+				NNI_FREE_STRUCT(s);
+				continue;
+			}
 			s->remote_topic_len = strlen(s->remote_topic);
 			s->local_topic_len = strlen(s->local_topic);
 			s->stream_id = 0;
