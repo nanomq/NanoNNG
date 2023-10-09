@@ -157,6 +157,7 @@ nni_pipe_close(nni_pipe *p)
 	}
 	//MQTT Session reserved
 	if (p->cache) {
+		nni_atomic_swap_bool(&p->p_closed, false);
 		return;
 	}
 	nni_reap(&pipe_reap_list, p);

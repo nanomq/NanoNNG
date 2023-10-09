@@ -820,7 +820,7 @@ nano_pipe_close(void *arg)
 	log_trace(" ############## nano_pipe_close ############## ");
 	if (npipe->cache == true) {
 		// not first time we trying to close stored session pipe
-		nni_atomic_swap_bool(&npipe->p_closed, false);
+		//nni_atomic_swap_bool(&npipe->p_closed, false);
 		return;
 	}
 	nni_mtx_lock(&s->lk);
@@ -838,7 +838,7 @@ nano_pipe_close(void *arg)
 		p->event                   = false;
 		npipe->cache               = true;
 		p->conn_param->clean_start = 1;
-		nni_atomic_swap_bool(&npipe->p_closed, false);
+		//nni_atomic_swap_bool(&npipe->p_closed, false);
 		if (nni_list_active(&s->recvpipes, p)) {
 			nni_list_remove(&s->recvpipes, p);
 		}
