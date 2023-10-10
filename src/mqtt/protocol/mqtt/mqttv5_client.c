@@ -43,7 +43,7 @@ static int  mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s);
 static void mqtt_pipe_fini(void *arg);
 static int  mqtt_pipe_start(void *arg);
 static void mqtt_pipe_stop(void *arg);
-static void mqtt_pipe_close(void *arg);
+static int  mqtt_pipe_close(void *arg);
 
 static void mqtt_ctx_init(void *arg, void *sock);
 static void mqtt_ctx_fini(void *arg);
@@ -470,7 +470,7 @@ mqtt_pipe_stop(void *arg)
 	nni_aio_stop(&p->time_aio);
 }
 
-static void
+static int
 mqtt_pipe_close(void *arg)
 {
 	mqtt_pipe_t *p = arg;
@@ -499,7 +499,7 @@ mqtt_pipe_close(void *arg)
 #ifdef NNG_HAVE_MQTT_BROKER
 	if (s->cparam == NULL) {
 		nni_mtx_unlock(&s->mtx);
-		return;
+		return 0;
 	}
 	// Return disconnect event to broker
 	uint16_t count = 0;
@@ -532,6 +532,8 @@ mqtt_pipe_close(void *arg)
 	nni_lmq_flush_cp(&p->recv_messages, true);
 #endif
 	nni_mtx_unlock(&s->mtx);
+
+	return 0;
 }
 
 // Timer callback, we use it for retransmitting.

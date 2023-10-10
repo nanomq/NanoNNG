@@ -319,7 +319,7 @@ resp0_pipe_start(void *arg)
 	return (rv);
 }
 
-static void
+static int
 resp0_pipe_close(void *arg)
 {
 	resp0_pipe *p = arg;
@@ -349,6 +349,8 @@ resp0_pipe_close(void *arg)
 	}
 	nni_id_remove(&s->pipes, p->id);
 	nni_mtx_unlock(&s->mtx);
+
+	return 0;
 }
 
 static void

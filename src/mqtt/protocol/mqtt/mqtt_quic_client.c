@@ -45,7 +45,7 @@ static int  quic_mqtt_pipe_init(void *arg, nni_pipe *qstrm, void *sock);
 static void quic_mqtt_pipe_fini(void *arg);
 static int  quic_mqtt_pipe_start(void *arg);
 static void quic_mqtt_pipe_stop(void *arg);
-static void quic_mqtt_pipe_close(void *arg);
+static int  quic_mqtt_pipe_close(void *arg);
 
 static void mqtt_quic_ctx_init(void *arg, void *sock);
 static void mqtt_quic_ctx_fini(void *arg);
@@ -1530,7 +1530,7 @@ quic_mqtt_pipe_stop(void *arg)
 	}
 }
 // main stream close
-static void
+static int
 quic_mqtt_pipe_close(void *arg)
 {
 	mqtt_pipe_t *p = arg;
@@ -1557,7 +1557,7 @@ quic_mqtt_pipe_close(void *arg)
 
 	if (p->idmsg == NULL) {
 		nni_mtx_unlock(&s->mtx);
-		return;
+		return 0;
 	}
 	if (nni_mqtt_msg_get_packet_type(p->idmsg) == NNG_MQTT_SUBSCRIBE) {
 		// packet id is already encoded
@@ -1582,6 +1582,8 @@ quic_mqtt_pipe_close(void *arg)
 	nni_msg_free(p->idmsg);
 	p->idmsg = NULL;
 	nni_mtx_unlock(&s->mtx);
+
+	return 0;
 }
 
 /******************************************************************************
