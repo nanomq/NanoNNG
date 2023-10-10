@@ -143,20 +143,22 @@ nni_pipe_send(nni_pipe *p, nni_aio *aio)
 void
 nni_pipe_close(nni_pipe *p)
 {
+	int rv = 0;
 	if (nni_atomic_swap_bool(&p->p_closed, true)) {
 		return; // We already did a close.
 	}
 
 	if (p->p_proto_data != NULL) {
-		p->p_proto_ops.pipe_close(p->p_proto_data);
+		rv = p->p_proto_ops.pipe_close(p->p_proto_data);
 	}
 
 	// Close the underlying transport.
 	if (p->p_tran_data != NULL) {
 		p->p_tran_ops.p_close(p->p_tran_data);
 	}
-	//MQTT Session reserved
-	if (p->cache) {
+	if (rv == -1) {
+		//-1 : Pipe cached, MQTT Session reserved
+		//0 : Normal disclose
 		return;
 	}
 	nni_reap(&pipe_reap_list, p);
