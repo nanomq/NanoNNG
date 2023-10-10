@@ -13,11 +13,11 @@
 // Do not change to %lu! just supress the warning of compiler!
 #define DISCONNECT_MSG          \
 	"{\"username\":\"%s\"," \
-	"\"ts\":%llu,\"reason_code\":\"%x\",\"client_id\":\"%s\",\"IPv4\":\"%s\"}"
+	"\"ts\":%lu,\"reason_code\":\"%x\",\"client_id\":\"%s\",\"IPv4\":\"%s\"}"
 
 #define CONNECT_MSG                                                           \
 	"{\"username\":\"%s\", "                                              \
-	"\"ts\":%llu,\"proto_name\":\"%s\",\"keepalive\":%d,\"return_code\":" \
+	"\"ts\":%lu,\"proto_name\":\"%s\",\"keepalive\":%d,\"return_code\":" \
 	"\"%x\",\"proto_ver\":%d,\"client_id\":\"%s\",\"clean_start\":%d, \"IPv4\":\"%s\"}"
 
 #define DISCONNECT_TOPIC "$SYS/brokers/disconnected"
