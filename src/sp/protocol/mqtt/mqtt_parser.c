@@ -1266,7 +1266,7 @@ nano_msg_notify_disconnect(conn_param *cparam, uint8_t code)
 {
 	nni_msg *   msg = NULL;
 	mqtt_string string, topic;
-	char        buff[256];
+	char        buff[512];
 	snprintf(buff, 256, DISCONNECT_MSG, (char *) cparam->username.body,
 	    nni_timestamp(), code, (char *) cparam->clientid.body, cparam->ip_addr_v4);
 	string.body = buff;
@@ -1284,7 +1284,7 @@ nano_msg_notify_connect(conn_param *cparam, uint8_t code)
 {
 	nni_msg *   msg = NULL;
 	mqtt_string string, topic;
-	char        buff[256];
+	char        buff[512];
 
 	snprintf(buff, 256, CONNECT_MSG, cparam->username.body,
 	    nni_timestamp(), cparam->pro_name.body, cparam->keepalive_mqtt,
