@@ -199,7 +199,7 @@ req0_pipe_start(void *arg)
 	return (0);
 }
 
-static void
+static int
 req0_pipe_close(void *arg)
 {
 	req0_pipe *p = arg;
@@ -245,6 +245,8 @@ req0_pipe_close(void *arg)
 		}
 	}
 	nni_mtx_unlock(&s->mtx);
+
+	return 0;
 }
 
 // For cooked mode, we use a context, and send out that way.  This

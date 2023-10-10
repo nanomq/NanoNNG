@@ -382,7 +382,7 @@ surv0_pipe_start(void *arg)
 	return (0);
 }
 
-static void
+static int
 surv0_pipe_close(void *arg)
 {
 	surv0_pipe *p = arg;
@@ -398,6 +398,8 @@ surv0_pipe_close(void *arg)
 		nni_list_remove(&s->pipes, p);
 	}
 	nni_mtx_unlock(&s->mtx);
+
+	return 0;
 }
 
 static void

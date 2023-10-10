@@ -45,7 +45,7 @@ static int  quic_mqtt_pipe_init(void *arg, nni_pipe *qstrm, void *sock);
 static void quic_mqtt_pipe_fini(void *arg);
 static int  quic_mqtt_pipe_start(void *arg);
 static void quic_mqtt_pipe_stop(void *arg);
-static void quic_mqtt_pipe_close(void *arg);
+static int  quic_mqtt_pipe_close(void *arg);
 
 static void mqtt_quic_ctx_init(void *arg, void *sock);
 static void mqtt_quic_ctx_fini(void *arg);
@@ -1561,7 +1561,7 @@ quic_mqtt_pipe_stop(void *arg)
 	}
 }
 // main stream close
-static void
+static int
 quic_mqtt_pipe_close(void *arg)
 {
 	mqtt_pipe_t *p = arg;
@@ -1609,6 +1609,8 @@ quic_mqtt_pipe_close(void *arg)
 		nni_msg_free(p->idmsg);
 	}
 	nni_mtx_unlock(&s->mtx);
+
+	return 0;
 }
 
 /******************************************************************************
