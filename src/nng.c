@@ -291,9 +291,7 @@ int
 nng_sock_replace(nng_socket s, nng_socket d)
 {
 	nni_sock *olds, *news;
-	nni_ctx  *ctx;
 	int       rv;
-	nng_ctx   c;
 
 	if ((rv = nni_sock_find(&olds, s.id)) != 0) {
 		return (rv);

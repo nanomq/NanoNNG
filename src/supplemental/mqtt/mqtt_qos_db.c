@@ -1254,6 +1254,7 @@ nni_mqtt_qos_db_set_client_info(sqlite3 *db, const char *config_name,
 static uint8_t *
 nni_mqtt_msg_serialize(nni_msg *msg, size_t *out_len, uint8_t proto_ver)
 {
+	NNI_ARG_UNUSED(proto_ver);
 
 	size_t len = nni_msg_header_len(msg) + nni_msg_len(msg) +
 	    (sizeof(uint32_t) * 2) + sizeof(nni_time) + sizeof(nni_aio *);

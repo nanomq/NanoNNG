@@ -542,9 +542,9 @@ mqtt_timer_cb(void *arg)
 {
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
-	nni_msg *  msg;
-	nni_aio *  aio;
-	uint16_t   pid = p->rid;
+	// nni_msg *  msg;
+	// nni_aio *  aio;
+	// uint16_t   pid = p->rid;
 
 	if (nng_aio_result(&p->time_aio) != 0) {
 		return;
