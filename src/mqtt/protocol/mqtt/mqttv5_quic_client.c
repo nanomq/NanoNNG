@@ -537,7 +537,6 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 
 	int32_t       packet_id;
 	uint8_t       qos;
-	nni_msg      *ack;
 
 	// schedule another receive
 	nni_pipe_recv(p->qpipe, &p->recv_aio);
@@ -775,7 +774,6 @@ mqtt_quic_recv_cb(void *arg)
 
 	int32_t       packet_id;
 	uint8_t       qos;
-	nni_msg      *ack;
 
 	// schedule another receive
 	nni_pipe_recv(p->qpipe, &p->recv_aio);
@@ -1129,6 +1127,7 @@ static void
 mqtt_quic_sock_open(void *arg)
 {
 	mqtt_sock_t *s = arg;
+	NNI_ARG_UNUSED(s);
 }
 
 static void
