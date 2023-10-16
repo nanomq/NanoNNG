@@ -668,11 +668,9 @@ nni_sock_open(nni_sock **sockp, const nni_proto *proto)
 }
 
 // a temp API for hybrid bridging only
+int
 nni_sock_replace(nni_sock *sock, nni_sock *new)
 {
-	nni_pipe     *pipe;
-	nni_dialer   *d;
-	nni_listener *l;
 	nni_ctx      *ctx;
 	nni_ctx      *nctx;
 	size_t   sz;
@@ -711,6 +709,7 @@ nni_sock_replace(nni_sock *sock, nni_sock *new)
 		nni_list_append(&new->s_ctxs, ctx);
 	}
 	nni_mtx_unlock(&sock_lk);
+	return (0);
 }
 
 
