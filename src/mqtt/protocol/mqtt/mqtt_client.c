@@ -616,6 +616,7 @@ mqtt_timer_cb(void *arg)
 	// }
 #if defined(NNG_SUPP_SQLITE)
 	if (!p->busy) {
+		nni_msg     *msg = NULL;
 		nni_mqtt_sqlite_option *sqlite =
 		    mqtt_sock_get_sqlite_option(s);
 		if (sqlite_is_enabled(sqlite)) {
