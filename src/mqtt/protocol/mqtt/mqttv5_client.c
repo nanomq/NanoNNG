@@ -542,8 +542,6 @@ mqtt_timer_cb(void *arg)
 {
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
-	// nni_msg *  msg;
-	// nni_aio *  aio;
 	// uint16_t   pid = p->rid;
 
 	if (nng_aio_result(&p->time_aio) != 0) {
@@ -586,6 +584,7 @@ mqtt_timer_cb(void *arg)
 
 #if defined(NNG_SUPP_SQLITE)
 	if (!p->busy) {
+		nni_msg     *msg = NULL;
 		nni_mqtt_sqlite_option *sqlite =
 		    mqtt_sock_get_sqlite_option(s);
 		if (sqlite_is_enabled(sqlite)) {
