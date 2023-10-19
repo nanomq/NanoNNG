@@ -23,11 +23,5 @@
 // MQTT-TCP tests.
 
 TestMain("MQTT-TCP Transport", {
-	// iot-platform:116.205.141.0
-	// 432121.xyz:116.205.239.134
-
-	// mqtt_trantest_test("mqtt-tcp://127.0.0.1:");
-	// mqtt_trantest_test("mqtt-tcp://116.205.239.134:");
-	// mqtt_trantest_test("mqtt-tcp://broker-cn.emqx.io:");
 	mqtt_trantest_test("mqtt-tcp://broker.emqx.io:");
 })
