@@ -1088,6 +1088,7 @@ nni_mqtt_msg_encode_subscribe(nni_msg *msg)
 		                // encoded as UTF-8 encoded strings */
 	}
 
+	mqtt->fixed_header.common.bit_1 = 1;
 	mqtt->fixed_header.remaining_length = (uint32_t) poslength;
 	nni_mqtt_msg_encode_fixed_header(msg, mqtt);
 
@@ -1145,6 +1146,7 @@ nni_mqttv5_msg_encode_subscribe(nni_msg *msg)
 	}
 
 	/* Fixed header */
+	mqtt->fixed_header.common.bit_1 = 1;
 	mqtt->fixed_header.remaining_length = (uint32_t) nni_msg_len(msg);
 	nni_mqtt_msg_encode_fixed_header(msg, mqtt);
 
