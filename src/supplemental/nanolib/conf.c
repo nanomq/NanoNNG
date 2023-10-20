@@ -271,6 +271,8 @@ get_conf_value(char *line, size_t len, const char *key)
 	char *line_key = strtrim_head_tail(prefix, strlen(prefix));
 	if (match == 2 && strcmp(line_key, key) == 0) {
 		res = strtrim_head_tail(value, strlen(value));
+	} else if (match == 1 && strcmp(line_key, key) == 0) {
+		res = strdup("");
 	}
 	nni_strfree(value);
 
