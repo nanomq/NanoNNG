@@ -500,7 +500,7 @@ pair1_pipe_send(pair1_pipe *p, nni_msg *m)
 	// assumption: we have unique access to the message at this point.
 	NNI_ASSERT(!nni_msg_shared(m));
 
-#if NNG_TEST_LIB
+#ifdef NNG_TEST_LIB
 	if (s->inject_header) {
 		goto inject;
 	}
@@ -508,7 +508,7 @@ pair1_pipe_send(pair1_pipe *p, nni_msg *m)
 	NNI_ASSERT(nni_msg_header_len(m) == sizeof(uint32_t));
 	nni_msg_header_poke_u32(m, nni_msg_header_peek_u32(m) + 1);
 
-#if NNG_TEST_LIB
+#ifdef NNG_TEST_LIB
 inject:
 #endif
 
@@ -533,7 +533,7 @@ pair1_sock_send(void *arg, nni_aio *aio)
 		return;
 	}
 
-#if NNG_TEST_LIB
+#ifdef NNG_TEST_LIB
 	if (s->inject_header) {
 		goto inject;
 	}
@@ -556,7 +556,7 @@ pair1_sock_send(void *arg, nni_aio *aio)
 		nni_msg_header_append_u32(m, 0);
 	}
 
-#if NNG_TEST_LIB
+#ifdef NNG_TEST_LIB
 inject:
 #endif
 
