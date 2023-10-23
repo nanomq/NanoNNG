@@ -2364,6 +2364,14 @@ conf_bridge_node_parse_subs(
 				s->retain_as_published = rap;
 				s->retain_handling     = rhandling;
 
+				for (int i=0; i<(int)s->local_topic_len; ++i)
+					if (s->local_topic[i] == '+' || s->local_topic[i] == '#') {
+						log_error("No wildcard +/#"
+							" should be contained in"
+							" local topic in subscription rules");
+						break;
+					}
+
 #if defined(SUPP_QUIC)
 				if (node->stream_auto_genid)
 					s->stream_id = sub_index;
@@ -2386,6 +2394,14 @@ conf_bridge_node_parse_subs(
 				s->remote_topic_len = strlen(remote_topic);
 				s->local_topic_len  = strlen(local_topic);
 				s->qos       = qos;
+
+				for (int i=0; i<(int)s->local_topic_len; ++i)
+					if (s->local_topic[i] == '+' || s->local_topic[i] == '#') {
+						log_error("No wildcard +/#"
+							" should be contained in"
+							" local topic in subscription rules\n");
+						break;
+					}
 
 #if defined(SUPP_QUIC)
 				if (node->stream_auto_genid)
@@ -2465,6 +2481,14 @@ conf_bridge_node_parse_forwards(
 			s->local_topic      = local_topic;
 			s->remote_topic_len = strlen(remote_topic);
 			s->local_topic_len  = strlen(local_topic);
+
+			for (int i=0; i<(int)s->remote_topic_len; ++i)
+				if (s->remote_topic[i] == '+' || s->remote_topic[i] == '#') {
+					log_error("No wildcard +/# should be"
+						" contained in remote topic"
+						" in forward rules.\n");
+					break;
+				}
 
 			cvector_push_back(node->forwards_list, s);
 			get_remote_topic = false;
