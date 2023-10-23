@@ -915,6 +915,11 @@ conf_bridge_node_parse(
 		}
 		s->remote_topic_len = strlen(s->remote_topic);
 		s->local_topic_len = strlen(s->local_topic);
+		for (int i=0; i<(int)s->remote_topic_len; ++i)
+			if (s->remote_topic[i] == '+' || s->remote_topic[i] == '#') {
+				log_error("No wildcard +/# should be contained in remote topic in forward rules.");
+				break;
+			}
 		cvector_push_back(node->forwards_list, s);
 	}
 	node->forwards_count = cvector_size(node->forwards_list);
@@ -942,6 +947,11 @@ conf_bridge_node_parse(
 		}
 		s->remote_topic_len = strlen(s->remote_topic);
 		s->local_topic_len = strlen(s->local_topic);
+		for (int i=0; i<(int)s->local_topic_len; ++i)
+			if (s->local_topic[i] == '+' || s->local_topic[i] == '#') {
+				log_error("No wildcard +/# should be contained in local topic in subscription rules");
+				break;
+			}
 		s->stream_id = 0;
 		hocon_read_num(s, stream_id, subscription);
 		cvector_push_back(node->sub_list, s);
