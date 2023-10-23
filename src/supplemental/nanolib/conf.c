@@ -582,11 +582,12 @@ conf_basic_parse(conf *config, const char *path)
 void
 conf_parse(conf *nanomq_conf)
 {
+	log_add_console(NNG_LOG_INFO, NULL);
 	const char *conf_path = nanomq_conf->conf_file;
 
 	if (conf_path == NULL || !nano_file_exists(conf_path)) {
 		if (!nano_file_exists(CONF_PATH_NAME)) {
-			log_debug("Configure file [%s] or [%s] not found or "
+			log_warn("Configure file [%s] or [%s] not found or "
 			          "unreadable",
 			    conf_path, CONF_PATH_NAME);
 			return;
@@ -616,6 +617,9 @@ conf_parse(conf *nanomq_conf)
 
 	conf_auth_parse(&config->auths, conf_path);
 	conf_auth_http_parse(&config->auth_http, conf_path);
+
+	log_clear_callback();
+
 }
 
 #if defined(ENABLE_LOG)
