@@ -829,11 +829,12 @@ mqtt_recv_cb(void *arg)
 			// into lmq
 			if (0 != nni_lmq_put(&p->recv_messages, cached_msg)) {
 				nni_msg_free(cached_msg);
+#ifdef NNG_HAVE_MQTT_BROKER
 				conn_param_free(s->cparam);
+#endif
 			}
 			nni_mtx_unlock(&s->mtx);
-			// nni_println("ERROR: no ctx found!! create more
-			// ctxs!");
+			log_warn("ERROR: no ctx found! msg queue full! QoS2 msg lost!");
 			return;
 		}
 		nni_list_remove(&s->recv_queue, ctx);
@@ -847,7 +848,9 @@ mqtt_recv_cb(void *arg)
 	case NNG_MQTT_PUBLISH:
 		// we have received a PUBLISH
 		qos = nni_mqtt_msg_get_publish_qos(msg);
+#ifdef NNG_HAVE_MQTT_BROKER
 		conn_param_clone(s->cparam);
+#endif
 		nng_msg_set_cmd_type(msg, CMD_PUBLISH);
 		if (2 > qos) {
 			// QoS 0, successful receipt
@@ -857,7 +860,9 @@ mqtt_recv_cb(void *arg)
 				// into lmq
 				if (0 != nni_lmq_put(&p->recv_messages, msg)) {
 					nni_msg_free(msg);
+#ifdef NNG_HAVE_MQTT_BROKER
 					conn_param_free(s->cparam);
+#endif
 				}
 				nni_mtx_unlock(&s->mtx);
 				// nni_println("ERROR: no ctx found!! create
@@ -876,16 +881,18 @@ mqtt_recv_cb(void *arg)
 			packet_id = nni_mqtt_msg_get_publish_packet_id(msg);
 			if ((cached_msg = nni_id_get(
 				         &p->recv_unack, packet_id)) != NULL) {
-					// packetid already exists.
-					// sth wrong with the broker
-					// replace old with new
-					log_error(
-					    "packet id %d duplicates in", packet_id);
-					nni_msg_free(cached_msg);
-					conn_param_free(s->cparam);
-					// nni_id_remove(&pipe->nano_qos_db,
-					// pid);
-				}
+				// packetid already exists.
+				// sth wrong with the broker
+				// replace old with new
+				log_error(
+				    "packet id %d duplicates in", packet_id);
+				nni_msg_free(cached_msg);
+#ifdef NNG_HAVE_MQTT_BROKER
+				conn_param_free(s->cparam);
+#endif
+				// nni_id_remove(&pipe->nano_qos_db,
+				// pid);
+			}
 			nni_id_set(&p->recv_unack, packet_id, msg);
 		}
 		break;

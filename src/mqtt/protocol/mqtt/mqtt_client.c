@@ -828,12 +828,16 @@ mqtt_recv_cb(void *arg)
 		if ((ctx = nni_list_first(&s->recv_queue)) == NULL) {
 			// No one waiting to receive yet, putting msg
 			// into lmq
-			if (mqtt_pipe_recv_msgq_putq(p, cached_msg) != 0)
+			if (mqtt_pipe_recv_msgq_putq(p, cached_msg) != 0) {
+#ifdef NNG_HAVE_MQTT_BROKER
 				conn_param_free(s->cparam);
+#endif
+			}
 			nni_mtx_unlock(&s->mtx);
 			log_warn("ERROR: no ctx found! msg queue full! QoS2 msg lost!");
 			return;
 		}
+
 		nni_list_remove(&s->recv_queue, ctx);
 		user_aio  = ctx->raio;
 		ctx->raio = NULL;
@@ -846,7 +850,9 @@ mqtt_recv_cb(void *arg)
 		// we have received a PUBLISH
 		qos = nni_mqtt_msg_get_publish_qos(msg);
 		// clone for bridging
+#ifdef NNG_HAVE_MQTT_BROKER
 		conn_param_clone(s->cparam);
+#endif
 		nng_msg_set_cmd_type(msg, CMD_PUBLISH);
 		if (2 > qos) {
 			// QoS 0, successful receipt
@@ -854,8 +860,11 @@ mqtt_recv_cb(void *arg)
 			if ((ctx = nni_list_first(&s->recv_queue)) == NULL) {
 				// No one waiting to receive yet, putting msg
 				// into lmq
-				if (mqtt_pipe_recv_msgq_putq(p, msg) != 0)
+				if (mqtt_pipe_recv_msgq_putq(p, msg) != 0) {
+#ifdef NNG_HAVE_MQTT_BROKER
 					conn_param_free(s->cparam);
+#endif
+				}
 				nni_mtx_unlock(&s->mtx);
 				// nni_println("ERROR: no ctx found!! create more ctxs!");
 				return;
@@ -877,7 +886,9 @@ mqtt_recv_cb(void *arg)
 				log_error(
 				    "packet id %d duplicates in", packet_id);
 				nni_msg_free(cached_msg);
+#ifdef NNG_HAVE_MQTT_BROKER
 				conn_param_free(s->cparam);
+#endif
 				// nni_id_remove(&pipe->nano_qos_db,
 				// pid);
 			}
