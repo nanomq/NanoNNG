@@ -451,7 +451,13 @@ tlstran_pipe_qos_send_cb(void *arg)
 		return;
 	}
 	msg  = nni_aio_get_msg(p->qsaio);
-	type = nni_msg_cmd_type(msg);
+	if (msg != NULL)
+		type = nni_msg_cmd_type(msg);
+	else {
+		log_warn("NULL msg detected in send_cb");
+		nni_mtx_unlock(&p->mtx);
+		return;
+	}
 
 	if (p->tcp_cparam->pro_ver == 5) {
 		(type == CMD_PUBCOMP || type == PUBACK) ? p->qrecv_quota++
