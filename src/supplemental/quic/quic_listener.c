@@ -30,17 +30,32 @@
 
 struct quic_listener {
 	nng_stream_listener ops;
-	char *              host;
-	char *              port;
+	const char *        host;
+	const char *        port;
 	void *              l; // platform listener
 };
 
 int
 nni_quic_listener_alloc(nng_stream_listener **lp, const nni_url *url)
 {
-	NNI_ARG_UNUSED(lp);
-	NNI_ARG_UNUSED(url);
+	int          rv;
+	const char * h, *p;
 
-	return 0;
+	if ((rv = nni_init()) != 0) {
+		return (rv);
+	}
+
+	h = url->u_hostname;
+	// Wildcard special case, which means bind to INADDR_ANY.
+	if ((h != NULL) && ((strcmp(h, "*") == 0) || (strcmp(h, "") == 0))) {
+		h = NULL;
+	}
+
+	p = url->u_port;
+	if (p == NULL) {
+		return NNG_EADDRINVAL;
+	}
+
+	return (quic_listener_alloc_addr(lp, h, p));
 }
 
