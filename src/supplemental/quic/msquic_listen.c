@@ -107,7 +107,7 @@ nni_quic_listener_init(void **argp)
 
 	l->ql      = NULL;
 
-	nni_aio_alloc(&l->qconaio, quic_dialer_cb, (void *)l);
+	// nni_aio_alloc(&l->qconaio, quic_listener_cb, (void *)l);
 	nni_aio_list_init(&l->acceptq);
 	nni_atomic_init_bool(&l->fini);
 	nni_atomic_init64(&l->ref);
@@ -124,3 +124,66 @@ nni_quic_listener_init(void **argp)
 	return 0;
 }
 
+int
+nni_quic_listener_listen(nni_quic_listener *l, const char *h, const char *p)
+{
+	socklen_t               len;
+	int                     rv;
+	int                     fd;
+	nni_posix_pfd *         pfd;
+
+	nni_mtx_lock(&l->mtx);
+	if (l->started) {
+		nni_mtx_unlock(&l->mtx);
+		return (NNG_ESTATE);
+	}
+	if (l->closed) {
+		nni_mtx_unlock(&l->mtx);
+		return (NNG_ECLOSED);
+	}
+
+	msquic_listen(l->ql, h, p);
+
+	l->started = true;
+	nni_mtx_unlock(&l->mtx);
+
+	return (0);
+}
+
+/***************************** MsQuic Bindings *****************************/
+
+static void
+msquic_load_listener_config()
+{
+	return;
+}
+
+static int
+msquic_listen(HQUIC ql, const char *h, const char *p)
+{
+	HQUIC addr;
+	QUIC_STATUS rv = 0;
+
+	QuicAddrSetFamily(&addr, QUIC_ADDRESS_FAMILY_UNSPEC);
+	QuicAddrSetPort(&addr, atoi(p));
+
+	msquic_load_listener_config();
+
+	if (QUIC_FAILED(rv = MsQuic->ListenerOpen(registration, msquic_listener_cb, NULL, &ql))) {
+		log_error("error in listen open %ld", rv);
+		goto error;
+	}
+
+	if (QUIC_FAILED(rv = MsQuic->ListenerStart(ql, alpn, 1, &addr))) {
+		log_error("error in listen start %ld", rv);
+		goto error;
+	}
+
+	return rv;
+
+error:
+	if (ql != NULL) {
+		MsQuic->ListenerClose(ql);
+	}
+	return rv;
+}
