@@ -57,8 +57,8 @@ quic_listener_listen(void *arg)
 static void
 quic_listener_accept(void *arg, nng_aio *aio)
 {
-	NNI_ARG_UNUSED(aio);
-	NNI_ARG_UNUSED(arg);
+	quic_listener *l = arg;
+	nni_quic_listener_accept(l->l, aio);
 }
 
 /*
