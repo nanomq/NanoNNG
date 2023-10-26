@@ -14,9 +14,10 @@
 #include "msquic.h"
 
 typedef struct quic_dialer quic_dialer;
+typedef struct quic_listener quic_listener;
 
-extern int nni_quic_listener_alloc(nng_stream_listener **, const nni_url *);
 extern int nni_quic_dialer_alloc(nng_stream_dialer **, const nni_url *);
+extern int nni_quic_listener_alloc(nng_stream_listener **, const nni_url *);
 
 typedef struct nni_quic_dialer nni_quic_dialer;
 
@@ -24,6 +25,8 @@ extern int  nni_quic_dialer_init(void **);
 extern void nni_quic_dialer_fini(nni_quic_dialer *d);
 extern void nni_quic_dial(void *, const char *, const char *, nni_aio *);
 extern void nni_quic_dialer_close(void *);
+
+typedef struct nni_quic_listener nni_quic_listener;
 
 typedef struct nni_quic_conn nni_quic_conn;
 
@@ -73,4 +76,21 @@ struct nni_quic_dialer {
 	QUIC_SETTINGS settings;
 };
 
+struct nni_quic_listener {
+	nni_mtx                 mtx;
+	nni_atomic_u64          ref;
+	nni_atomic_bool         fini;
+	bool                    closed;
+	bool                    started;
+	nni_list                acceptq;
+
+	// MsQuic
+	HQUIC    ql; // Quic Listener
+
+	// Quic Settings
+	bool     enable_0rtt;
+	bool     enable_mltstrm;
+
+	QUIC_SETTINGS settings;
+};
 #endif
