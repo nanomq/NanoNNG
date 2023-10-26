@@ -110,6 +110,7 @@ nni_quic_listener_init(void **argp)
 
 	// nni_aio_alloc(&l->qconaio, quic_listener_cb, (void *)l);
 	nni_aio_list_init(&l->acceptq);
+	nni_aio_list_init(&l->incomings);
 	nni_atomic_init_bool(&l->fini);
 	nni_atomic_init64(&l->ref);
 	nni_atomic_inc64(&l->ref);
@@ -178,29 +179,28 @@ quic_listener_doaccept(nni_quic_listener *l)
 		int            rv;
 		int            nd;
 		int            ka;
+		HQUIC           qconn;
+		nni_aio *       aioc;
 		nni_quic_conn * c;
 
+		// Get the connection 
+		if ((aioc == nni_list_first(&l->incomings)) == NULL) {
+			// No wait and return immediately
+			return;
+		}
+		qconn = nni_aio_get_prov_data(aioc); // Must exists
+		nni_aio_list_remove(aioc);
+		nni_aio_free(aioc);
+
+		// Create a nni quic connection
 		if ((rv = nni_msquic_quic_alloc(&c, NULL)) != 0) {
-			close(newfd);
+			msquic_conn_fini(qconn);
 			nni_aio_list_remove(aio);
 			nni_aio_finish_error(aio, rv);
 			continue;
 		}
 
-		if ((rv = nni_posix_pfd_init(&pfd, newfd)) != 0) {
-			close(newfd);
-			nng_stream_free(&c->stream);
-			nni_aio_list_remove(aio);
-			nni_aio_finish_error(aio, rv);
-			continue;
-		}
-
-		nni_posix_tcp_init(c, pfd);
-
-		ka = l->keepalive ? 1 : 0;
-		nd = l->nodelay ? 1 : 0;
 		nni_aio_list_remove(aio);
-		nni_posix_tcp_start(c, nd, ka);
 		nni_aio_set_output(aio, 0, c);
 		nni_aio_finish(aio, 0, 0);
 	}
@@ -321,6 +321,7 @@ msquic_listener_cb(_In_ HQUIC ql, _In_opt_ void *arg, _Inout_ QUIC_LISTENER_EVEN
 	QUIC_NEW_CONNECTION_INFO *qinfo;
 	QUIC_STATUS rv = QUIC_STATUS_NOT_SUPPORTED;
 	nni_quic_listener *l = arg;
+	nni_aio *aio;
 
 	switch (ev->Type) {
 	case QUIC_LISTENER_EVENT_NEW_CONNECTION:
@@ -331,6 +332,12 @@ msquic_listener_cb(_In_ HQUIC ql, _In_opt_ void *arg, _Inout_ QUIC_LISTENER_EVEN
 		rv = MsQuic->ConnectionSetConfiguration(qconn, configuration);
 
 		nni_mtx_lock(&l->mtx);
+
+		// Push connection to incomings
+		nni_aio_alloc(&aio, NULL, NULL);
+		nni_aio_set_prov_data(aio, (void *)qconn);
+		nni_aio_list_append(&l->incomings, aio);
+
 		quic_listener_doaccept(l);
 		nni_mtx_unlock(&l->mtx);
 		break;
