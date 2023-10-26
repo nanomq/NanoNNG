@@ -143,12 +143,103 @@ nni_quic_listener_listen(nni_quic_listener *l, const char *h, const char *p)
 		return (NNG_ECLOSED);
 	}
 
-	msquic_listen(l->ql, h, p);
+	msquic_listen(l->ql, h, p, l);
 
 	l->started = true;
 	nni_mtx_unlock(&l->mtx);
 
 	return (0);
+}
+
+static void
+quic_listener_cancel(nni_aio *aio, void *arg, int rv)
+{
+	nni_quic_listener *l = arg;
+
+	// This is dead easy, because we'll ignore the completion if there
+	// isn't anything to do the accept on!
+	NNI_ASSERT(rv != 0);
+	nni_mtx_lock(&l->mtx);
+	if (nni_aio_list_active(aio)) {
+		nni_aio_list_remove(aio);
+		nni_aio_finish_error(aio, rv);
+	}
+	nni_mtx_unlock(&l->mtx);
+}
+
+static void
+quic_listener_doaccept(nni_quic_listener *l)
+{
+	nni_aio *aio;
+
+	while ((aio = nni_list_first(&l->acceptq)) != NULL) {
+		int            newfd;
+		int            fd;
+		int            rv;
+		int            nd;
+		int            ka;
+		nni_quic_conn * c;
+
+		if ((rv = nni_msquic_quic_alloc(&c, NULL)) != 0) {
+			close(newfd);
+			nni_aio_list_remove(aio);
+			nni_aio_finish_error(aio, rv);
+			continue;
+		}
+
+		if ((rv = nni_posix_pfd_init(&pfd, newfd)) != 0) {
+			close(newfd);
+			nng_stream_free(&c->stream);
+			nni_aio_list_remove(aio);
+			nni_aio_finish_error(aio, rv);
+			continue;
+		}
+
+		nni_posix_tcp_init(c, pfd);
+
+		ka = l->keepalive ? 1 : 0;
+		nd = l->nodelay ? 1 : 0;
+		nni_aio_list_remove(aio);
+		nni_posix_tcp_start(c, nd, ka);
+		nni_aio_set_output(aio, 0, c);
+		nni_aio_finish(aio, 0, 0);
+	}
+}
+
+
+void
+nni_quic_listener_accept(nni_quic_listener *l, nni_aio *aio)
+{
+	int rv;
+
+	if (nni_aio_begin(aio)) {
+		return;
+	}
+	nni_mtx_lock(&l->mtx);
+
+	if (!l->started) {
+		nni_mtx_unlock(&l->mtx);
+		nni_aio_finish_error(aio, NNG_ESTATE);
+		return;
+	}
+
+	if (l->closed) {
+		nni_mtx_unlock(&l->mtx);
+		nni_aio_finish_error(aio, NNG_ECLOSED);
+		return;
+	}
+
+	if ((rv = nni_aio_schedule(aio, quic_listener_cancel, l)) != 0) {
+		nni_mtx_unlock(&l->mtx);
+		nni_aio_finish_error(aio, rv);
+		return;
+	}
+	nni_aio_list_append(&l->acceptq, aio);
+	if (nni_list_first(&l->acceptq) == aio) {
+		quic_listener_doaccept(l);
+	}
+
+	nni_mtx_unlock(&l->mtx);
 }
 
 /***************************** MsQuic Bindings *****************************/
@@ -229,6 +320,7 @@ msquic_listener_cb(_In_ HQUIC ql, _In_opt_ void *arg, _Inout_ QUIC_LISTENER_EVEN
 	HQUIC *qconn;
 	QUIC_NEW_CONNECTION_INFO *qinfo;
 	QUIC_STATUS rv = QUIC_STATUS_NOT_SUPPORTED;
+	nni_quic_listener *l = arg;
 
 	switch (ev->Type) {
 	case QUIC_LISTENER_EVENT_NEW_CONNECTION:
@@ -237,6 +329,10 @@ msquic_listener_cb(_In_ HQUIC ql, _In_opt_ void *arg, _Inout_ QUIC_LISTENER_EVEN
 
 		MsQuic->SetCallbackHandler(qconn, msquic_connection_cb, ql);
 		rv = MsQuic->ConnectionSetConfiguration(qconn, configuration);
+
+		nni_mtx_lock(&l->mtx);
+		quic_listener_doaccept(l);
+		nni_mtx_unlock(&l->mtx);
 		break;
 	case QUIC_LISTENER_EVENT_STOP_COMPLETE:
 		break;
@@ -248,7 +344,7 @@ msquic_listener_cb(_In_ HQUIC ql, _In_opt_ void *arg, _Inout_ QUIC_LISTENER_EVEN
 }
 
 static int
-msquic_listen(HQUIC ql, const char *h, const char *p)
+msquic_listen(HQUIC ql, const char *h, const char *p, nni_quic_listener *l)
 {
 	HQUIC addr;
 	QUIC_STATUS rv = 0;
@@ -258,7 +354,7 @@ msquic_listen(HQUIC ql, const char *h, const char *p)
 
 	msquic_load_listener_config();
 
-	if (QUIC_FAILED(rv = MsQuic->ListenerOpen(registration, msquic_listener_cb, NULL, &ql))) {
+	if (QUIC_FAILED(rv = MsQuic->ListenerOpen(registration, msquic_listener_cb, (void *)l, &ql))) {
 		log_error("error in listen open %ld", rv);
 		goto error;
 	}
