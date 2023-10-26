@@ -30,6 +30,7 @@ typedef struct nni_quic_listener nni_quic_listener;
 
 extern int  nni_quic_listener_init(void **);
 extern void nni_quic_listener_listen(nni_quic_listener *, const char *, const char *);
+extern void nni_quic_listener_accept(nni_quic_listener *, nng_aio *aio);
 
 typedef struct nni_quic_conn nni_quic_conn;
 
