@@ -68,11 +68,6 @@ struct nni_quic_conn {
 
 	// MsQuic
 	HQUIC           qstrm; // quic stream
-	// A buffer for cache msg from msquic
-	uint32_t        rrcap;
-	uint32_t        rrlen;
-	uint32_t        rrpos;
-	char *          rrbuf;
 	uint8_t         reason_code;
 
 	nni_reap_node   reap;
