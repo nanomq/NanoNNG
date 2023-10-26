@@ -87,6 +87,7 @@ struct nni_quic_listener {
 	bool                    closed;
 	bool                    started;
 	nni_list                acceptq;
+	nni_list                incomings;
 
 	// MsQuic
 	HQUIC    ql; // Quic Listener
