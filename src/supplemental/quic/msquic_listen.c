@@ -18,6 +18,7 @@
 // The quic connection would be free if all nng streams
 // closed.
 
+#include "msquic_posix.h"
 #include "quic_api.h"
 #include "core/nng_impl.h"
 #include "msquic.h"
@@ -156,6 +157,31 @@ static void
 msquic_load_listener_config()
 {
 	return;
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Function_class_(QUIC_LISTENER_CALLBACK) QUIC_STATUS QUIC_API
+msquic_listener_cb(_In_ HQUIC ql, _In_opt_ void *arg, _Inout_ QUIC_LISTENER_EVENT *ev)
+{
+	HQUIC *qconn;
+	QUIC_NEW_CONNECTION_INFO *qinfo;
+	QUIC_STATUS rv = QUIC_STATUS_NOT_SUPPORTED;
+
+	switch (ev->Type) {
+	case QUIC_LISTENER_EVENT_NEW_CONNECTION:
+		qconn = ev->NEW_CONNECTION.Connection;
+		qinfo = ev->NEW_CONNECTION.Info;
+
+		MsQuic->SetCallbackHandler(qconn, msquic_connection_cb, NULL);
+		rv = MsQuic->ConnectionSetConfiguration(qconn, configuration);
+		break;
+	case QUIC_LISTENER_EVENT_STOP_COMPLETE:
+		break;
+	default:
+		break;
+	}
+
+	return rv;
 }
 
 static int
