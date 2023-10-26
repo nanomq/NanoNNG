@@ -159,6 +159,69 @@ msquic_load_listener_config()
 	return;
 }
 
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_Function_class_(QUIC_CONNECTION_CALLBACK) QUIC_STATUS QUIC_API
+msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
+	_Inout_ QUIC_CONNECTION_EVENT *ev)
+{
+	nni_quic_listener *l     = Context;
+	HQUIC              qconn = Connection;
+
+	log_debug("msquic_connection_cb triggered! %d", ev->Type);
+	switch (ev->Type) {
+	case QUIC_CONNECTION_EVENT_CONNECTED:
+		// The handshake has completed for the connection.
+		// do not init any var here due to potential frequent reconnect
+		log_info("[conn][%p] is Connected. Resumed Session %d", qconn,
+		    ev->CONNECTED.SessionResumed);
+
+		if (l->enable_0rtt) {
+			MsQuic->ConnectionSendResumptionTicket(qconn, QUIC_SEND_RESUMPTION_FLAG_NONE, 0, NULL);
+		}
+
+		nni_aio_finish(d->qconaio, 0, 0);
+		break;
+	case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_TRANSPORT:
+		log_warn("[conn][%p] Shutdown by transport, 0x%x, Error Code %llu\n",
+		    qconn, ev->SHUTDOWN_INITIATED_BY_TRANSPORT.Status,
+		    (unsigned long long)
+		        ev->SHUTDOWN_INITIATED_BY_TRANSPORT.ErrorCode);
+		break;
+	case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER:
+		// The connection was explicitly shut down by the peer.
+		log_warn("[conn][%p] "
+		         "QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER, "
+		         "0x%llu\n",
+		    qconn,
+		    (unsigned long long)ev->SHUTDOWN_INITIATED_BY_PEER.ErrorCode);
+		break;
+	case QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE:
+		log_info("[conn][%p] QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE: All done\n\n", qconn);
+		break;
+	case QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED:
+		log_warn("[conn][%p] Resumption ticket received (%u bytes):\n",
+		    Connection, ev->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength);
+		break;
+	case QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED:
+		log_info("QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED");
+		break;
+	case QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED:
+		log_info("QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED");
+		break;
+	case QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE:
+		log_info("QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE");
+		break;
+	case QUIC_CONNECTION_EVENT_IDEAL_PROCESSOR_CHANGED:
+		log_info("QUIC_CONNECTION_EVENT_IDEAL_PROCESSOR_CHANGED");
+		break;
+	default:
+		log_warn("Unknown event type %d!", ev->Type);
+		break;
+	}
+	return QUIC_STATUS_SUCCESS;
+}
+
+
 _IRQL_requires_max_(PASSIVE_LEVEL)
 _Function_class_(QUIC_LISTENER_CALLBACK) QUIC_STATUS QUIC_API
 msquic_listener_cb(_In_ HQUIC ql, _In_opt_ void *arg, _Inout_ QUIC_LISTENER_EVENT *ev)
@@ -172,7 +235,7 @@ msquic_listener_cb(_In_ HQUIC ql, _In_opt_ void *arg, _Inout_ QUIC_LISTENER_EVEN
 		qconn = ev->NEW_CONNECTION.Connection;
 		qinfo = ev->NEW_CONNECTION.Info;
 
-		MsQuic->SetCallbackHandler(qconn, msquic_connection_cb, NULL);
+		MsQuic->SetCallbackHandler(qconn, msquic_connection_cb, ql);
 		rv = MsQuic->ConnectionSetConfiguration(qconn, configuration);
 		break;
 	case QUIC_LISTENER_EVENT_STOP_COMPLETE:
