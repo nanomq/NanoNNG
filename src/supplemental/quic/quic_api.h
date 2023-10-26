@@ -28,6 +28,9 @@ extern void nni_quic_dialer_close(void *);
 
 typedef struct nni_quic_listener nni_quic_listener;
 
+extern int  nni_quic_listener_init(void **);
+extern void nni_quic_listener_listen(nni_quic_listener *, const char *, const char *);
+
 typedef struct nni_quic_conn nni_quic_conn;
 
 extern int  nni_msquic_quic_alloc(nni_quic_conn **, nni_quic_dialer *);

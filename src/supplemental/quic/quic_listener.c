@@ -50,9 +50,8 @@ quic_listener_close(void *arg)
 static int
 quic_listener_listen(void *arg)
 {
-	NNI_ARG_UNUSED(arg);
-
-	return 0;
+	quic_listener *l = arg;
+	return (nni_quic_listener_listen(l->l, &l->sa));
 }
 
 static void
