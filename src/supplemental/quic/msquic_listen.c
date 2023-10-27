@@ -90,7 +90,8 @@ static const QUIC_BUFFER quic_alpn = {
 HQUIC registration;
 HQUIC configuration
 
-static void msquic_listener_close(HQUIC ql);
+static void msquic_listener_fini(HQUIC ql);
+static void msquic_listener_stop(HQUIC ql);
 static int  msquic_listen(HQUIC ql, const char *h, const char *p, nni_quic_listener *l);
 
 /***************************** MsQuic Listener ******************************/
@@ -149,7 +150,7 @@ nni_quic_listener_close(nni_quic_listener *l)
 		msquic_conn_fini(qconn);
 	}
 	if (l->ql != NULL) {
-		msquic_listener_close(l->ql);
+		msquic_listener_fini(l->ql);
 	}
 
 	nni_mtx_unlock(&l->mtx);
@@ -405,13 +406,19 @@ msquic_listen(HQUIC ql, const char *h, const char *p, nni_quic_listener *l)
 
 error:
 	if (ql != NULL) {
-		msquic_listener_close(ql);
+		msquic_listener_fini(ql);
 	}
 	return rv;
 }
 
 static void
-msquic_listener_close(HQUIC ql)
+msquic_listener_stop(HQUIC ql)
+{
+	MsQuic->ListenerStop(ql);
+}
+
+static void
+msquic_listener_fini(HQUIC ql)
 {
 	MsQuic->ListenerClose(ql);
 }
