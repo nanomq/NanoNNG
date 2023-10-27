@@ -405,7 +405,14 @@ msquic_listen(HQUIC ql, const char *h, const char *p, nni_quic_listener *l)
 
 error:
 	if (ql != NULL) {
-		MsQuic->ListenerClose(ql);
+		msquic_listener_close(ql);
 	}
 	return rv;
 }
+
+static void
+msquic_listener_close(HQUIC ql)
+{
+	MsQuic->ListenerClose(ql);
+}
+
