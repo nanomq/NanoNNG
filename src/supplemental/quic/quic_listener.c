@@ -38,13 +38,16 @@ struct quic_listener {
 static void
 quic_listener_free(void *arg)
 {
-	NNI_ARG_UNUSED(arg);
+	quic_listener *l = arg;
+	nni_quic_listener_fini(l->l);
+	NNI_FREE_STRUCT(l);
 }
 
 static void
 quic_listener_close(void *arg)
 {
-	NNI_ARG_UNUSED(arg);
+	quic_listener *l = arg;
+	nni_quic_listener_close(l->l);
 }
 
 static int
