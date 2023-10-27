@@ -10,21 +10,21 @@
 #include "nng/nng.h"
 #include <stdlib.h>
 
-// Do not change to %lu! just supress the warning of compiler!
+// Do not change to %lu! just suppress the warning of the compiler!
 #define DISCONNECT_MSG          \
 	"{\"username\":\"%s\"," \
-	"\"ts\":%lu,\"reason_code\":\"%x\",\"client_id\":\"%s\",\"IPv4\":\"%s\"}"
+	"\"ts\":%llu,\"reason_code\":\"%x\",\"client_id\":\"%s\",\"IPv4\":\"%s\"}"
 
 #define CONNECT_MSG                                                           \
 	"{\"username\":\"%s\", "                                              \
-	"\"ts\":%lu,\"proto_name\":\"%s\",\"keepalive\":%d,\"return_code\":" \
+	"\"ts\":%llu,\"proto_name\":\"%s\",\"keepalive\":%d,\"return_code\":" \
 	"\"%x\",\"proto_ver\":%d,\"client_id\":\"%s\",\"clean_start\":%d, \"IPv4\":\"%s\"}"
 
 #define DISCONNECT_TOPIC "$SYS/brokers/disconnected"
 
 #define CONNECT_TOPIC "$SYS/brokers/connected"
 
-// strip off and return the QoS bits
+//Strip off and return the QoS bits
 #define NANO_NNI_LMQ_GET_QOS_BITS(msg) ((size_t) (msg) &0x03)
 
 // strip off and return the msg pointer
@@ -136,9 +136,5 @@ NNG_DECL bool topic_filter(const char *origin, const char *input);
 NNG_DECL bool topic_filtern(const char *origin, const char *input, size_t n);
 
 NNG_DECL int nmq_auth_http_connect(conn_param *cparam, conf_auth_http *conf);
-// NNG_DECL int nmq_auth_http_publish(
-//     conn_param *cparam, bool is_sub, const char *topic, conf_auth_http *conf);
-// NNG_DECL int nmq_auth_http_subscribe(conn_param *cparam, bool is_sub,
-//     topic_queue *topics, conf_auth_http *conf);
 
 #endif // NNG_MQTT_H
