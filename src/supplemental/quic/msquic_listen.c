@@ -130,6 +130,8 @@ nni_quic_listener_init(void **argp)
 	return 0;
 }
 
+// All the instructments here should be done within guard of lock of listener.
+// And also could be done repeatly.
 static void
 quic_listener_doclose(nni_quic_listener *l)
 {
@@ -279,6 +281,24 @@ nni_quic_listener_accept(nni_quic_listener *l, nni_aio *aio)
 
 	nni_mtx_unlock(&l->mtx);
 }
+
+void
+nni_quic_listener_fini(nni_quic_listener *l)
+{
+	HQUIC ql;
+
+	nni_mtx_lock(&l->mtx);
+	quic_listener_doclose(l);
+	ql = l->ql;
+	nni_mtx_unlock(&l->mtx);
+
+	if (ql != NULL) {
+		msquic_listener_fini(ql);
+	}
+	nni_mtx_fini(&l->mtx);
+	NNI_FREE_STRUCT(l);
+}
+
 
 /***************************** MsQuic Bindings *****************************/
 
