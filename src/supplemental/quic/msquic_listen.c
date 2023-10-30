@@ -130,13 +130,11 @@ nni_quic_listener_init(void **argp)
 	return 0;
 }
 
-void
-nni_quic_listener_close(nni_quic_listener *l)
+static void
+quic_listener_doclose(nni_quic_listener *l)
 {
 	nni_aio *aio;
-	HQUIC qconn;
 
-	nni_mtx_lock(&l->mtx);
 	l->closed = true;
 
 	while ((aio = nni_list_first(&l->acceptq)) != NULL) {
@@ -152,7 +150,16 @@ nni_quic_listener_close(nni_quic_listener *l)
 	if (l->ql != NULL) {
 		msquic_listener_fini(l->ql);
 	}
+}
 
+void
+nni_quic_listener_close(nni_quic_listener *l)
+{
+	nni_aio *aio;
+	HQUIC qconn;
+
+	nni_mtx_lock(&l->mtx);
+	quic_listener_doclose(l);
 	nni_mtx_unlock(&l->mtx);
 }
 
