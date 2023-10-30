@@ -148,7 +148,7 @@ quic_listener_doclose(nni_quic_listener *l)
 		msquic_conn_fini(qconn);
 	}
 	if (l->ql != NULL) {
-		msquic_listener_fini(l->ql);
+		msquic_listener_stop(l->ql);
 	}
 }
 
