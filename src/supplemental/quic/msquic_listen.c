@@ -40,23 +40,6 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "nng/mqtt/mqtt_client.h"
-#include "nng/supplemental/nanolib/conf.h"
-#include "nng/protocol/mqtt/mqtt_parser.h"
-#include "supplemental/mqtt/mqtt_msg.h"
-
-#include "openssl/pem.h"
-#include "openssl/x509.h"
-
-#include <assert.h>
-#include <errno.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
-#include <unistd.h>
-
 struct nni_quic_conn {
 	nng_stream      stream;
 	nni_list        readq;
