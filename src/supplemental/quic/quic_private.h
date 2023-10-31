@@ -45,6 +45,16 @@ int  nni_msquic_quic_listener_conn_alloc(nni_quic_conn **, nni_quic_listener *);
 void nni_msquic_quic_dialer_rele(nni_quic_dialer *);
 
 
+// MsQuic bindings
+
+void msquic_conn_close(HQUIC qconn, int rv);
+void msquic_conn_fini(HQUIC qconn);
+
+void msquic_strm_close(HQUIC qstrm);
+void msquic_strm_fini(HQUIC qstrm);
+void msquic_strm_recv_start(HQUIC qstrm);
+
+
 struct nni_quic_dialer {
 	nni_aio                *qconaio; // for quic connection
 	nni_quic_conn          *currcon;
