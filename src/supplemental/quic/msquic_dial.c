@@ -219,7 +219,7 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 	nni_atomic_inc64(&d->ref);
 
 	// Create a connection whenever dial. So it's okey. right?
-	if ((rv = nni_msquic_quic_alloc(&c, d)) != 0) {
+	if ((rv = nni_msquic_quic_dialer_conn_alloc(&c, d)) != 0) {
 		nni_aio_finish_error(aio, rv);
 		nni_msquic_quic_dialer_rele(d);
 		return;
@@ -660,7 +660,7 @@ quic_stream_set(void *arg, const char *name, const void *buf, size_t sz, nni_typ
 }
 
 int
-nni_msquic_quic_alloc(nni_quic_conn **cp, nni_quic_dialer *d)
+nni_msquic_quic_dialer_conn_alloc(nni_quic_conn **cp, nni_quic_dialer *d)
 {
 	nni_quic_conn *c;
 	if ((c = NNI_ALLOC_STRUCT(c)) == NULL) {

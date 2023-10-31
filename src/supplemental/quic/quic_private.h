@@ -39,9 +39,9 @@ void nni_quic_listener_accept(nni_quic_listener *, nng_aio *aio);
 
 typedef struct nni_quic_conn nni_quic_conn;
 
-int  nni_msquic_quic_alloc(nni_quic_conn **, nni_quic_dialer *);
-void nni_msquic_quic_init(nni_quic_conn *);
-void nni_msquic_quic_start(nni_quic_conn *, int, int);
+// Might no different TODO
+int  nni_msquic_quic_dialer_conn_alloc(nni_quic_conn **, nni_quic_dialer *);
+int  nni_msquic_quic_listener_conn_alloc(nni_quic_conn **, nni_quic_listener *);
 void nni_msquic_quic_dialer_rele(nni_quic_dialer *);
 
 

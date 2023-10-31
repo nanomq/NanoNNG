@@ -200,7 +200,7 @@ quic_listener_doaccept(nni_quic_listener *l)
 		nni_aio_free(aioc);
 
 		// Create a nni quic connection
-		if ((rv = nni_msquic_quic_alloc(&c, NULL)) != 0) {
+		if ((rv = nni_msquic_quic_listener_conn_alloc(&c, l)) != 0) {
 			msquic_conn_fini(qconn);
 			nni_aio_list_remove(aio);
 			nni_aio_finish_error(aio, rv);
