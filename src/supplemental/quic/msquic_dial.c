@@ -40,23 +40,6 @@
 #include <time.h>
 #include <unistd.h>
 
-struct nni_quic_conn {
-	nng_stream      stream;
-	nni_list        readq;
-	nni_list        writeq;
-	bool            closed;
-	nni_mtx         mtx;
-	nni_aio *       dial_aio;
-	// nni_aio *       qstrmaio; // Link to msquic_strm_cb
-	nni_quic_dialer *dialer;
-
-	// MsQuic
-	HQUIC           qstrm; // quic stream
-	uint8_t         reason_code;
-
-	nni_reap_node   reap;
-};
-
 static int  msquic_conn_open(const char *host, const char *port, nni_quic_dialer *d);
 static void msquic_conn_close(HQUIC qconn, int rv);
 static void msquic_conn_fini(HQUIC qconn);
