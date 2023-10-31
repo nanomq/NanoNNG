@@ -993,55 +993,6 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	return QUIC_STATUS_SUCCESS;
 }
 
-static int is_msquic_inited = 0;
-
-static void
-msquic_close()
-{
-	if (MsQuic != NULL) {
-		if (configuration != NULL) {
-			MsQuic->ConfigurationClose(configuration);
-		}
-		if (registration != NULL) {
-			// This will block until all outstanding child objects
-			// have been closed.
-			MsQuic->RegistrationClose(registration);
-		}
-		MsQuicClose(MsQuic);
-		is_msquic_inited = 0;
-	}
-}
-
-static int
-msquic_open()
-{
-	if (is_msquic_inited == 1)
-		return 0;
-
-	QUIC_STATUS rv = QUIC_STATUS_SUCCESS;
-	// only Open MsQUIC lib once, otherwise cause memleak
-	if (MsQuic == NULL)
-		if (QUIC_FAILED(rv = MsQuicOpen2(&MsQuic))) {
-			log_error("MsQuicOpen2 failed, 0x%x!\n", rv);
-			goto error;
-		}
-
-	// Create a registration for the app's connections.
-	rv = MsQuic->RegistrationOpen(&quic_reg_config, &registration);
-	if (QUIC_FAILED(rv)) {
-		log_error("RegistrationOpen failed, 0x%x!\n", rv);
-		goto error;
-	}
-
-	is_msquic_inited = 1;
-	log_info("Msquic is enabled");
-	return 0;
-
-error:
-	msquic_close();
-	return -1;
-}
-
 // Helper function to load a client configuration.
 static BOOLEAN
 msquic_load_config(QUIC_SETTINGS *settings, nni_quic_dialer *d)
