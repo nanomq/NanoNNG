@@ -662,8 +662,9 @@ nni_msquic_quic_dialer_conn_alloc(nni_quic_conn **cp, nni_quic_dialer *d)
 		return (NNG_ENOMEM);
 	}
 
-	c->closed = false;
-	c->dialer = d;
+	c->closed   = false;
+	c->dialer   = d;
+	c->listener = NULL;
 
 	nni_mtx_init(&c->mtx);
 	nni_aio_list_init(&c->readq);

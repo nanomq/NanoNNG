@@ -123,7 +123,9 @@ struct nni_quic_conn {
 	nni_mtx         mtx;
 	nni_aio *       dial_aio;
 	// nni_aio *       qstrmaio; // Link to msquic_strm_cb
-	nni_quic_dialer *dialer;
+
+	nni_quic_dialer   *dialer;
+	nni_quic_listener *listener;
 
 	// MsQuic
 	HQUIC           qstrm; // quic stream

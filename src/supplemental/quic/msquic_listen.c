@@ -266,6 +266,35 @@ nni_quic_listener_fini(nni_quic_listener *l)
 	NNI_FREE_STRUCT(l);
 }
 
+/**************************** MsQuic Connection ****************************/
+
+
+int
+nni_msquic_quic_listener_conn_alloc(nni_quic_conn **cp, nni_quic_listener *l)
+{
+	nni_quic_conn *c;
+	if ((c = NNI_ALLOC_STRUCT(c)) == NULL) {
+		return (NNG_ENOMEM);
+	}
+
+	c->closed   = false;
+	c->dialer   = NULL;
+	c->listener = l;
+
+	nni_mtx_init(&c->mtx);
+	nni_aio_list_init(&c->readq);
+	nni_aio_list_init(&c->writeq);
+
+	c->stream.s_free  = quic_stream_free;
+	c->stream.s_close = quic_stream_close;
+	c->stream.s_recv  = quic_stream_recv;
+	c->stream.s_send  = quic_stream_send;
+	c->stream.s_get   = quic_stream_get;
+	c->stream.s_set   = quic_stream_set;
+
+	*cp = c;
+	return (0);
+}
 
 /***************************** MsQuic Bindings *****************************/
 
