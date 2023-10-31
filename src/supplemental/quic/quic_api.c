@@ -7,6 +7,7 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 #include "quic_api.h"
+#include "quic_private.h"
 #include "core/nng_impl.h"
 
 #include "nng/mqtt/mqtt_client.h"
