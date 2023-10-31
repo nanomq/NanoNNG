@@ -18,8 +18,8 @@
 // The quic connection would be free if all nng streams
 // closed.
 
-#include "msquic_posix.h"
 #include "quic_api.h"
+#include "quic_private.h"
 #include "core/nng_impl.h"
 #include "msquic.h"
 
@@ -56,22 +56,6 @@ struct nni_quic_conn {
 
 	nni_reap_node   reap;
 };
-
-static const QUIC_API_TABLE *MsQuic = NULL;
-
-// Config for msquic
-static const QUIC_REGISTRATION_CONFIG quic_reg_config = {
-	"mqtt_listener",
-	QUIC_EXECUTION_PROFILE_LOW_LATENCY
-};
-
-static const QUIC_BUFFER quic_alpn = {
-	sizeof("mqtt") - 1,
-	(uint8_t *) "mqtt"
-};
-
-HQUIC registration;
-HQUIC configuration
 
 static void msquic_listener_fini(HQUIC ql);
 static void msquic_listener_stop(HQUIC ql);
