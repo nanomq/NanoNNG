@@ -805,8 +805,6 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 	return QUIC_STATUS_SUCCESS;
 }
 
-// The clients's callback for stream events from MsQuic.
-// New recv cb of quic transport
 _IRQL_requires_max_(DISPATCH_LEVEL)
 _Function_class_(QUIC_STREAM_CALLBACK) QUIC_STATUS QUIC_API
 msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
