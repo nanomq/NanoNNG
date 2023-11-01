@@ -44,6 +44,10 @@ static void msquic_listener_fini(HQUIC ql);
 static void msquic_listener_stop(HQUIC ql);
 static int  msquic_listen(HQUIC ql, const char *h, const char *p, nni_quic_listener *l);
 
+static void quic_stream_error(void *arg, int err);
+static void quic_stream_close(void *arg);
+static void quic_stream_dowrite(nni_quic_conn *c);
+
 /***************************** MsQuic Listener ******************************/
 
 int
@@ -162,7 +166,6 @@ quic_listener_doaccept(nni_quic_listener *l)
 	nni_aio *aio;
 
 	while ((aio = nni_list_first(&l->acceptq)) != NULL) {
-		int             rv;
 		nni_aio *       aioc;
 		nni_quic_conn * c;
 
@@ -242,6 +245,7 @@ quic_stream_cb(int events, void *arg)
 	log_debug("[quic cb] start %d\n", events);
 	nni_quic_conn     *c = arg;
 	nni_quic_listener *l;
+	nni_quic_session  *ss;
 	nni_aio           *aio;
 
 	if (!c)
@@ -801,8 +805,6 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		if ((rv = nni_msquic_quic_listener_conn_alloc(&c, ss)) != 0) {
 			log_warn("Error in alloc new quic stream.");
 			// msquic_conn_fini(qconn);
-			nni_aio_list_remove(aio);
-			nni_aio_finish_error(aio, rv);
 			break;
 		}
 
@@ -859,7 +861,6 @@ _IRQL_requires_max_(PASSIVE_LEVEL)
 _Function_class_(QUIC_LISTENER_CALLBACK) QUIC_STATUS QUIC_API
 msquic_listener_cb(_In_ HQUIC ql, _In_opt_ void *arg, _Inout_ QUIC_LISTENER_EVENT *ev)
 {
-	int rv;
 	HQUIC qconn;
 	const QUIC_NEW_CONNECTION_INFO *qinfo;
 	QUIC_STATUS rv = QUIC_STATUS_NOT_SUPPORTED;
@@ -872,8 +873,8 @@ msquic_listener_cb(_In_ HQUIC ql, _In_opt_ void *arg, _Inout_ QUIC_LISTENER_EVEN
 		qconn = ev->NEW_CONNECTION.Connection;
 		qinfo = ev->NEW_CONNECTION.Info;
 
-		rv = quic_listener_session_alloc(&ss, l, qconn);
-		if (rv != 0) {
+		int rc = quic_listener_session_alloc(&ss, l, qconn);
+		if (rc != 0) {
 			log_error("error in alloc session");
 			break;
 		}

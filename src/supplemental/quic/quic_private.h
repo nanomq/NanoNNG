@@ -32,6 +32,7 @@ void nni_quic_dial(void *, const char *, const char *, nni_aio *);
 void nni_quic_dialer_close(void *);
 
 typedef struct nni_quic_listener nni_quic_listener;
+typedef struct nni_quic_session nni_quic_session;
 
 int  nni_quic_listener_init(void **);
 int  nni_quic_listener_listen(nni_quic_listener *, const char *, const char *);
@@ -41,10 +42,8 @@ typedef struct nni_quic_conn nni_quic_conn;
 
 // Might no different TODO
 int  nni_msquic_quic_dialer_conn_alloc(nni_quic_conn **, nni_quic_dialer *);
-int  nni_msquic_quic_listener_conn_alloc(nni_quic_conn **, nni_quic_listener *);
+int  nni_msquic_quic_listener_conn_alloc(nni_quic_conn **, nni_quic_session *);
 void nni_msquic_quic_dialer_rele(nni_quic_dialer *);
-
-typedef struct nni_quic_session nni_quic_session;
 
 // MsQuic bindings
 
@@ -120,7 +119,7 @@ struct nni_quic_session {
 	// MsQuic
 	HQUIC          qconn; // quic connection
 
-	nni_list      *conns; // The quic streams in this quic connection
+	nni_list       conns; // The quic streams in this quic connection
 
 	nni_quic_listener *listener;
 
