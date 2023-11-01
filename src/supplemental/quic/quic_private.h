@@ -37,6 +37,8 @@ typedef struct nni_quic_session nni_quic_session;
 int  nni_quic_listener_init(void **);
 int  nni_quic_listener_listen(nni_quic_listener *, const char *, const char *);
 void nni_quic_listener_accept(nni_quic_listener *, nng_aio *aio);
+void nni_quic_listener_close(nni_quic_listener *l);
+void nni_quic_listener_fini(nni_quic_listener *l);
 
 typedef struct nni_quic_conn nni_quic_conn;
 

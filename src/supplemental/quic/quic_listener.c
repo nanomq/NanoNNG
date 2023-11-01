@@ -55,7 +55,7 @@ static int
 quic_listener_listen(void *arg)
 {
 	quic_listener *l = arg;
-	return (nni_quic_listener_listen(l->l, &l->sa));
+	return (nni_quic_listener_listen(l->l, l->host, l->port));
 }
 
 static void
@@ -65,7 +65,6 @@ quic_listener_accept(void *arg, nng_aio *aio)
 	nni_quic_listener_accept(l->l, aio);
 }
 
-/*
 static int
 quic_listener_get(
     void *arg, const char *name, void *buf, size_t *szp, nni_type t)
@@ -84,7 +83,6 @@ quic_listener_set(
 	quic_listener *l = arg;
 	return (nni_quic_listener_set(l->l, name, buf, sz, t));
 }
-*/
 
 static int
 quic_listener_alloc_addr(nng_stream_listener **lp, const char *h, const char *p)
