@@ -34,7 +34,7 @@ void nni_quic_dialer_close(void *);
 typedef struct nni_quic_listener nni_quic_listener;
 
 int  nni_quic_listener_init(void **);
-void nni_quic_listener_listen(nni_quic_listener *, const char *, const char *);
+int  nni_quic_listener_listen(nni_quic_listener *, const char *, const char *);
 void nni_quic_listener_accept(nni_quic_listener *, nng_aio *aio);
 
 typedef struct nni_quic_conn nni_quic_conn;

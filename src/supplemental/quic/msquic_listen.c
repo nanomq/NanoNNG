@@ -40,23 +40,6 @@
 #include <time.h>
 #include <unistd.h>
 
-struct nni_quic_conn {
-	nng_stream      stream;
-	nni_list        readq;
-	nni_list        writeq;
-	bool            closed;
-	nni_mtx         mtx;
-	nni_aio *       dial_aio;
-	// nni_aio *       qstrmaio; // Link to msquic_strm_cb
-	nni_quic_dialer *dialer;
-
-	// MsQuic
-	HQUIC           qstrm; // quic stream
-	uint8_t         reason_code;
-
-	nni_reap_node   reap;
-};
-
 static void msquic_listener_fini(HQUIC ql);
 static void msquic_listener_stop(HQUIC ql);
 static int  msquic_listen(HQUIC ql, const char *h, const char *p, nni_quic_listener *l);
@@ -111,7 +94,7 @@ quic_listener_doclose(nni_quic_listener *l)
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
 	while ((aio = nni_list_first(&l->incomings)) != NULL) {
-		qconn = nni_aio_get_prov_data(aio);
+		HQUIC qconn = nni_aio_get_prov_data(aio);
 		nni_aio_list_remove(aio);
 		nni_aio_free(aio);
 		msquic_conn_fini(qconn);
@@ -124,9 +107,6 @@ quic_listener_doclose(nni_quic_listener *l)
 void
 nni_quic_listener_close(nni_quic_listener *l)
 {
-	nni_aio *aio;
-	HQUIC qconn;
-
 	nni_mtx_lock(&l->mtx);
 	quic_listener_doclose(l);
 	nni_mtx_unlock(&l->mtx);
@@ -136,10 +116,7 @@ nni_quic_listener_close(nni_quic_listener *l)
 int
 nni_quic_listener_listen(nni_quic_listener *l, const char *h, const char *p)
 {
-	socklen_t               len;
-	int                     rv;
-	int                     fd;
-	nni_posix_pfd *         pfd;
+	int rv;
 
 	nni_mtx_lock(&l->mtx);
 	if (l->started) {
@@ -151,7 +128,11 @@ nni_quic_listener_listen(nni_quic_listener *l, const char *h, const char *p)
 		return (NNG_ECLOSED);
 	}
 
-	msquic_listen(l->ql, h, p, l);
+	rv = msquic_listen(l->ql, h, p, l);
+	if (rv != 0) {
+		nni_mtx_unlock(&l->mtx);
+		return rv;
+	}
 
 	l->started = true;
 	nni_mtx_unlock(&l->mtx);
@@ -181,17 +162,13 @@ quic_listener_doaccept(nni_quic_listener *l)
 	nni_aio *aio;
 
 	while ((aio = nni_list_first(&l->acceptq)) != NULL) {
-		int            newfd;
-		int            fd;
-		int            rv;
-		int            nd;
-		int            ka;
+		int             rv;
 		HQUIC           qconn;
 		nni_aio *       aioc;
 		nni_quic_conn * c;
 
 		// Get the connection 
-		if ((aioc == nni_list_first(&l->incomings)) == NULL) {
+		if ((aioc = nni_list_first(&l->incomings)) == NULL) {
 			// No wait and return immediately
 			return;
 		}
@@ -324,7 +301,7 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 			MsQuic->ConnectionSendResumptionTicket(qconn, QUIC_SEND_RESUMPTION_FLAG_NONE, 0, NULL);
 		}
 
-		nni_aio_finish(d->qconaio, 0, 0);
+		// nni_aio_finish(d->qconaio, 0, 0);
 		break;
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_TRANSPORT:
 		log_warn("[conn][%p] Shutdown by transport, 0x%x, Error Code %llu\n",
@@ -371,8 +348,8 @@ _IRQL_requires_max_(PASSIVE_LEVEL)
 _Function_class_(QUIC_LISTENER_CALLBACK) QUIC_STATUS QUIC_API
 msquic_listener_cb(_In_ HQUIC ql, _In_opt_ void *arg, _Inout_ QUIC_LISTENER_EVENT *ev)
 {
-	HQUIC *qconn;
-	QUIC_NEW_CONNECTION_INFO *qinfo;
+	HQUIC qconn;
+	const QUIC_NEW_CONNECTION_INFO *qinfo;
 	QUIC_STATUS rv = QUIC_STATUS_NOT_SUPPORTED;
 	nni_quic_listener *l = arg;
 	nni_aio *aio;
@@ -407,7 +384,7 @@ msquic_listener_cb(_In_ HQUIC ql, _In_opt_ void *arg, _Inout_ QUIC_LISTENER_EVEN
 static int
 msquic_listen(HQUIC ql, const char *h, const char *p, nni_quic_listener *l)
 {
-	HQUIC addr;
+	QUIC_ADDR addr;
 	QUIC_STATUS rv = 0;
 
 	QuicAddrSetFamily(&addr, QUIC_ADDRESS_FAMILY_UNSPEC);
@@ -420,7 +397,7 @@ msquic_listen(HQUIC ql, const char *h, const char *p, nni_quic_listener *l)
 		goto error;
 	}
 
-	if (QUIC_FAILED(rv = MsQuic->ListenerStart(ql, alpn, 1, &addr))) {
+	if (QUIC_FAILED(rv = MsQuic->ListenerStart(ql, &quic_alpn, 1, &addr))) {
 		log_error("error in listen start %ld", rv);
 		goto error;
 	}
