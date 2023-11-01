@@ -115,6 +115,17 @@ struct nni_quic_listener {
 	QUIC_SETTINGS settings;
 };
 
+struct nni_quic_session {
+	// MsQuic
+	HQUIC          qconn; // quic connection
+
+	nni_quic_conn *conns; // The quic streams in this quic connection
+
+	bool           closed;
+	nni_mtx        mtx;
+};
+
+
 struct nni_quic_conn {
 	nng_stream      stream;
 	nni_list        readq;
