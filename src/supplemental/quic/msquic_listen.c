@@ -163,7 +163,6 @@ quic_listener_doaccept(nni_quic_listener *l)
 
 	while ((aio = nni_list_first(&l->acceptq)) != NULL) {
 		int             rv;
-		HQUIC           qconn;
 		nni_aio *       aioc;
 		nni_quic_conn * c;
 
@@ -172,17 +171,9 @@ quic_listener_doaccept(nni_quic_listener *l)
 			// No wait and return immediately
 			return;
 		}
-		qconn = nni_aio_get_prov_data(aioc); // Must exists
+		c = nni_aio_get_prov_data(aioc); // Must exists
 		nni_aio_list_remove(aioc);
 		nni_aio_free(aioc);
-
-		// Create a nni quic connection
-		if ((rv = nni_msquic_quic_listener_conn_alloc(&c, l)) != 0) {
-			msquic_conn_fini(qconn);
-			nni_aio_list_remove(aio);
-			nni_aio_finish_error(aio, rv);
-			continue;
-		}
 
 		nni_aio_list_remove(aio);
 		nni_aio_set_output(aio, 0, c);
@@ -249,14 +240,15 @@ static void
 quic_stream_cb(int events, void *arg)
 {
 	log_debug("[quic cb] start %d\n", events);
-	nni_quic_conn   *c = arg;
-	nni_quic_dialer *d;
-	nni_aio         *aio;
+	nni_quic_conn     *c = arg;
+	nni_quic_listener *l;
+	nni_aio           *aio;
 
 	if (!c)
 		return;
 
-	d = c->listener;
+	ss = c->session;
+	l = c->listener;
 
 	switch (events) {
 	case QUIC_STREAM_EVENT_SEND_COMPLETE:
@@ -281,12 +273,12 @@ quic_stream_cb(int events, void *arg)
 
 		// Push connection to incomings
 		nni_aio_alloc(&aio, NULL, NULL);
-		nni_aio_set_prov_data(aio, (void *)qconn);
+		nni_aio_set_prov_data(aio, (void *)c);
 		nni_aio_list_append(&l->incomings, aio);
 
 		quic_listener_doaccept(l);
 
-		nni_mtx_unlock(&l->mtx);
+		nni_mtx_unlock(&ss->mtx);
 		/*
 		if (c->dial_aio) {
 			// For upper layer to get the stream handle
@@ -319,7 +311,7 @@ quic_stream_cb(int events, void *arg)
 
 
 int
-nni_msquic_quic_listener_conn_alloc(nni_quic_conn **cp, nni_quic_listener *l)
+nni_msquic_quic_listener_conn_alloc(nni_quic_conn **cp, nni_quic_session *ss)
 {
 	nni_quic_conn *c;
 	if ((c = NNI_ALLOC_STRUCT(c)) == NULL) {
@@ -328,7 +320,8 @@ nni_msquic_quic_listener_conn_alloc(nni_quic_conn **cp, nni_quic_listener *l)
 
 	c->closed   = false;
 	c->dialer   = NULL;
-	c->listener = l;
+	c->listener = ss->listener;
+	c->session  = ss;
 
 	nni_mtx_init(&c->mtx);
 	nni_aio_list_init(&c->readq);
@@ -344,6 +337,26 @@ nni_msquic_quic_listener_conn_alloc(nni_quic_conn **cp, nni_quic_listener *l)
 	*cp = c;
 	return (0);
 }
+
+static int
+quic_listener_session_alloc(nni_quic_session **ss, nni_quic_listener *l, HQUIC qconn)
+{
+	nni_quic_session *s;
+	if ((s = NNI_ALLOC_STRUCT(s)) == NULL) {
+		return (NNG_ENOMEM);
+	}
+
+	s->closed   = false;
+	s->qconn    = qconn;
+	s->listener = l;
+
+	nni_aio_list_init(&s->conns);
+	nni_mtx_init(&s->mtx);
+
+	*ss = s;
+	return (0);
+}
+
 
 /***************************** MsQuic Bindings *****************************/
 
@@ -495,6 +508,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		}
 
 		quic_stream_cb(QUIC_STREAM_EVENT_START_COMPLETE, c);
+
 		break;
 	case QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE:
 		log_info("QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE");
@@ -524,8 +538,8 @@ _Function_class_(QUIC_CONNECTION_CALLBACK) QUIC_STATUS QUIC_API
 msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 	_Inout_ QUIC_CONNECTION_EVENT *ev)
 {
-	nni_quic_listener *l     = Context;
-	HQUIC              qconn = Connection;
+	nni_quic_session *ss    = Context;
+	HQUIC             qconn = Connection;
 
 	log_debug("msquic_connection_cb triggered! %d", ev->Type);
 	switch (ev->Type) {
@@ -535,7 +549,7 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		log_info("[conn][%p] is Connected. Resumed Session %d", qconn,
 		    ev->CONNECTED.SessionResumed);
 
-		if (l->enable_0rtt) {
+		if (ss->listener->enable_0rtt) {
 			MsQuic->ConnectionSendResumptionTicket(qconn, QUIC_SEND_RESUMPTION_FLAG_NONE, 0, NULL);
 		}
 		break;
@@ -543,8 +557,20 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		HQUIC qstrm = ev->PEER_STREAM_STARTED.Stream;
 		QUIC_STREAM_OPEN_FLAGS flags = ev->PEER_STREAM_STARTED.Flags;
 
+		int rv;
+		nni_quic_conn *c;
+
+		// Create a nni quic connection
+		if ((rv = nni_msquic_quic_listener_conn_alloc(&c, ss)) != 0) {
+			log_warn("Error in alloc new quic stream.");
+			// msquic_conn_fini(qconn);
+			nni_aio_list_remove(aio);
+			nni_aio_finish_error(aio, rv);
+			break;
+		}
+
 		log_info("[conn][%p] Peer stream %p started. flags %d.", qconn, qstrm, flags);
-		MsQuic->SetCallbackHandler(qstrm, (void *)msquic_strm_cb, NULL);
+		MsQuic->SetCallbackHandler(qstrm, (void *)msquic_strm_cb, c);
 
 		break;
 	case QUIC_CONNECTION_EVENT_RESUMED:
@@ -596,18 +622,26 @@ _IRQL_requires_max_(PASSIVE_LEVEL)
 _Function_class_(QUIC_LISTENER_CALLBACK) QUIC_STATUS QUIC_API
 msquic_listener_cb(_In_ HQUIC ql, _In_opt_ void *arg, _Inout_ QUIC_LISTENER_EVENT *ev)
 {
+	int rv;
 	HQUIC qconn;
 	const QUIC_NEW_CONNECTION_INFO *qinfo;
 	QUIC_STATUS rv = QUIC_STATUS_NOT_SUPPORTED;
 	nni_quic_listener *l = arg;
 	nni_aio *aio;
+	nni_quic_session *ss;
 
 	switch (ev->Type) {
 	case QUIC_LISTENER_EVENT_NEW_CONNECTION:
 		qconn = ev->NEW_CONNECTION.Connection;
 		qinfo = ev->NEW_CONNECTION.Info;
 
-		MsQuic->SetCallbackHandler(qconn, msquic_connection_cb, ql);
+		rv = quic_listener_session_alloc(&ss, l, qconn);
+		if (rv != 0) {
+			log_error("error in alloc session");
+			break;
+		}
+
+		MsQuic->SetCallbackHandler(qconn, msquic_connection_cb, ss);
 		rv = MsQuic->ConnectionSetConfiguration(qconn, configuration);
 		break;
 	case QUIC_LISTENER_EVENT_STOP_COMPLETE:

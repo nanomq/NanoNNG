@@ -44,6 +44,7 @@ int  nni_msquic_quic_dialer_conn_alloc(nni_quic_conn **, nni_quic_dialer *);
 int  nni_msquic_quic_listener_conn_alloc(nni_quic_conn **, nni_quic_listener *);
 void nni_msquic_quic_dialer_rele(nni_quic_dialer *);
 
+typedef struct nni_quic_session nni_quic_session;
 
 // MsQuic bindings
 
@@ -119,7 +120,9 @@ struct nni_quic_session {
 	// MsQuic
 	HQUIC          qconn; // quic connection
 
-	nni_quic_conn *conns; // The quic streams in this quic connection
+	nni_list      *conns; // The quic streams in this quic connection
+
+	nni_quic_listener *listener;
 
 	bool           closed;
 	nni_mtx        mtx;
@@ -137,6 +140,7 @@ struct nni_quic_conn {
 
 	nni_quic_dialer   *dialer;
 	nni_quic_listener *listener;
+	nni_quic_session  *session;
 
 	// MsQuic
 	HQUIC           qstrm; // quic stream
