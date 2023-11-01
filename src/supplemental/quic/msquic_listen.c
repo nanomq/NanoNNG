@@ -279,16 +279,6 @@ quic_stream_cb(int events, void *arg)
 		quic_listener_doaccept(l);
 
 		nni_mtx_unlock(&ss->mtx);
-		/*
-		if (c->dial_aio) {
-			// For upper layer to get the stream handle
-			nni_aio_set_output(c->dial_aio, 0, c);
-
-			nni_aio_list_remove(c->dial_aio);
-			nni_aio_finish(c->dial_aio, 0, 0);
-			c->dial_aio = NULL;
-		}
-		*/
 		break;
 	// case QUIC_STREAM_EVENT_RECEIVE: // get a fin from stream
 	// TODO Need more talk about those cases
@@ -467,12 +457,13 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 
 		return QUIC_STATUS_PENDING;
 	case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
-		// The peer gracefully shut down its send direction of the
-		// stream.
+		// The peer abort its send direction of the stream.
 		log_warn("[strm][%p] PEER_SEND_ABORTED errorcode %llu\n", stream,
 		    (unsigned long long) Event->PEER_SEND_ABORTED.ErrorCode);
 		if (c->reason_code == 0)
 			c->reason_code = SERVER_SHUTTING_DOWN;
+
+		msquic_strm_close(c->qstrm);
 
 		quic_stream_cb(QUIC_STREAM_EVENT_PEER_SEND_ABORTED, c);
 		break;
@@ -483,6 +474,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		quic_stream_cb(QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN, c);
 		break;
 	case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
+		// The peer gracefully shut down its send direction of the stream.
 		log_warn("[strm][%p] QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE.", stream);
 		break;
 

@@ -906,8 +906,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 
 		return QUIC_STATUS_PENDING;
 	case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
-		// The peer gracefully shut down its send direction of the
-		// stream.
+		// The peer aborted its send direction of the stream.
 		log_warn("[strm][%p] PEER_SEND_ABORTED errorcode %llu\n", stream,
 		    (unsigned long long) Event->PEER_SEND_ABORTED.ErrorCode);
 		if (c->reason_code == 0)
@@ -916,7 +915,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		quic_stream_cb(QUIC_STREAM_EVENT_PEER_SEND_ABORTED, c);
 		break;
 	case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
-		// The peer aborted its send direction of the stream.
+		// The peer gracefully shut down its send direction of the stream.
 		log_warn("[strm][%p] Peer send shut down\n", stream);
 		MsQuic->StreamShutdown(stream, QUIC_STREAM_SHUTDOWN_FLAG_GRACEFUL, 0);
 		quic_stream_cb(QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN, c);
