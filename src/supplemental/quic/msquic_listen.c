@@ -245,6 +245,78 @@ nni_quic_listener_fini(nni_quic_listener *l)
 
 /**************************** MsQuic Connection ****************************/
 
+static void
+quic_stream_cb(int events, void *arg)
+{
+	log_debug("[quic cb] start %d\n", events);
+	nni_quic_conn   *c = arg;
+	nni_quic_dialer *d;
+	nni_aio         *aio;
+
+	if (!c)
+		return;
+
+	d = c->listener;
+
+	switch (events) {
+	case QUIC_STREAM_EVENT_SEND_COMPLETE:
+		nni_mtx_lock(&c->mtx);
+		if ((aio = nni_list_first(&c->writeq)) == NULL) {
+			log_error("Aio lost after sending: conn %p", c);
+			nni_mtx_unlock(&c->mtx);
+			break;
+		}
+		nni_aio_list_remove(aio);
+		QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
+		free(buf);
+		nni_aio_finish(aio, 0, nni_aio_count(aio));
+
+		// Start next send only after finished the last send
+		quic_stream_dowrite(c);
+
+		nni_mtx_unlock(&c->mtx);
+		break;
+	case QUIC_STREAM_EVENT_START_COMPLETE:
+		nni_mtx_lock(&l->mtx);
+
+		// Push connection to incomings
+		nni_aio_alloc(&aio, NULL, NULL);
+		nni_aio_set_prov_data(aio, (void *)qconn);
+		nni_aio_list_append(&l->incomings, aio);
+
+		quic_listener_doaccept(l);
+
+		nni_mtx_unlock(&l->mtx);
+		/*
+		if (c->dial_aio) {
+			// For upper layer to get the stream handle
+			nni_aio_set_output(c->dial_aio, 0, c);
+
+			nni_aio_list_remove(c->dial_aio);
+			nni_aio_finish(c->dial_aio, 0, 0);
+			c->dial_aio = NULL;
+		}
+		*/
+		break;
+	// case QUIC_STREAM_EVENT_RECEIVE: // get a fin from stream
+	// TODO Need more talk about those cases
+	// case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
+	// case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
+	// case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
+	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
+	// case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
+		// Marked it as closed, prevent explicit shutdown
+		c->closed = true;
+		// It's the only place to free msquic stream
+		msquic_strm_fini(c->qstrm);
+		quic_stream_error(arg, NNG_ECONNSHUT);
+		break;
+	default:
+		break;
+	}
+	log_debug("[quic cb] end\n");
+}
+
 
 int
 nni_msquic_quic_listener_conn_alloc(nni_quic_conn **cp, nni_quic_listener *l)
@@ -537,16 +609,6 @@ msquic_listener_cb(_In_ HQUIC ql, _In_opt_ void *arg, _Inout_ QUIC_LISTENER_EVEN
 
 		MsQuic->SetCallbackHandler(qconn, msquic_connection_cb, ql);
 		rv = MsQuic->ConnectionSetConfiguration(qconn, configuration);
-
-		nni_mtx_lock(&l->mtx);
-
-		// Push connection to incomings
-		nni_aio_alloc(&aio, NULL, NULL);
-		nni_aio_set_prov_data(aio, (void *)qconn);
-		nni_aio_list_append(&l->incomings, aio);
-
-		quic_listener_doaccept(l);
-		nni_mtx_unlock(&l->mtx);
 		break;
 	case QUIC_LISTENER_EVENT_STOP_COMPLETE:
 		break;
