@@ -299,6 +299,250 @@ quic_stream_cb(int events, void *arg)
 	log_debug("[quic cb] end\n");
 }
 
+static void
+quic_stream_fini(void *arg)
+{
+	nni_quic_conn *c = arg;
+	quic_stream_close(c);
+
+	if (c->dialer) {
+		nni_msquic_quic_dialer_rele(c->dialer);
+	}
+	NNI_FREE_STRUCT(c);
+}
+
+//static nni_reap_list quic_reap_list = {
+//	.rl_offset = offsetof(nni_quic_conn, reap),
+//	.rl_func   = quic_stream_fini,
+//};
+static void
+quic_stream_free(void *arg)
+{
+	nni_quic_conn *c = arg;
+	quic_stream_fini(c);
+}
+
+// Notify upper layer that something happened.
+// Includes closed by peer or transport layer.
+// Or get a FIN from quic stream.
+static void
+quic_stream_error(void *arg, int err)
+{
+	nni_quic_conn *c = arg;
+	nni_aio *      aio;
+
+	nni_mtx_lock(&c->mtx);
+	// only close aio of this stream
+	while ((aio = nni_list_first(&c->writeq)) != NULL) {
+		nni_aio_list_remove(aio);
+		nni_aio_finish_error(aio, err);
+	}
+	while ((aio = nni_list_first(&c->readq)) != NULL) {
+		nni_aio_list_remove(aio);
+		nni_aio_finish_error(aio, err);
+	}
+	nni_mtx_unlock(&c->mtx);
+}
+
+static void
+quic_stream_close(void *arg)
+{
+	nni_quic_conn *c = arg;
+	nni_mtx_lock(&c->mtx);
+	if (c->closed != true) {
+		c->closed = true;
+		msquic_strm_close(c->qstrm);
+	}
+	nni_mtx_unlock(&c->mtx);
+}
+
+static void
+quic_stream_cancel(nni_aio *aio, void *arg, int rv)
+{
+	nni_quic_conn *c = arg;
+
+	nni_mtx_lock(&c->mtx);
+	if (nni_aio_list_active(aio)) {
+		nni_aio_list_remove(aio);
+		nni_aio_finish_error(aio, rv);
+	}
+	nni_mtx_unlock(&c->mtx);
+}
+
+static void
+quic_stream_recv(void *arg, nni_aio *aio)
+{
+	nni_quic_conn *c = arg;
+	int            rv;
+
+	if (nni_aio_begin(aio) != 0) {
+		return;
+	}
+	nni_mtx_lock(&c->mtx);
+
+	if ((rv = nni_aio_schedule(aio, quic_stream_cancel, c)) != 0) {
+		nni_mtx_unlock(&c->mtx);
+		nni_aio_finish_error(aio, rv);
+		return;
+	}
+	nni_aio_list_append(&c->readq, aio);
+
+	// Receive start if there are only one aio in readq.
+	if (nni_list_first(&c->readq) == aio) {
+		// In msquic. To avoid repeated memory copies. We just enable
+		// the receive. And doread in msquic_strm_cb. So there is
+		// only one copy from msquic to nanonng.
+		msquic_strm_recv_start(c->qstrm);
+	}
+	nni_mtx_unlock(&c->mtx);
+}
+
+static void
+quic_stream_dowrite_prior(nni_quic_conn *c, nni_aio *aio)
+{
+	log_debug("[quic dowrite adv] start\n");
+	int       rv;
+	unsigned  naiov;
+	nni_iov * aiov;
+	size_t    n = 0;
+
+	if (c->closed) {
+		return;
+	}
+
+	nni_aio_get_iov(aio, &naiov, &aiov);
+
+	QUIC_BUFFER *buf=(QUIC_BUFFER*)malloc(sizeof(QUIC_BUFFER)*naiov);
+	for (uint8_t i = 0; i < naiov; ++i) {
+		log_debug("buf%d sz %d", i, aiov[i].iov_len);
+		buf[i].Buffer = aiov[i].iov_buf;
+		buf[i].Length = aiov[i].iov_len;
+		n += aiov[i].iov_len;
+	}
+	nni_aio_set_input(aio, 0, buf);
+
+	if (QUIC_FAILED(rv = MsQuic->StreamSend(c->qstrm, buf,
+	                naiov, QUIC_SEND_FLAG_NONE, aio))) {
+		log_error("Failed in StreamSend, 0x%x!", rv);
+		free(buf);
+		return;
+	}
+
+	nni_aio_bump_count(aio, n);
+	log_debug("[quic dowrite adv] end");
+}
+
+static void
+quic_stream_dowrite(nni_quic_conn *c)
+{
+	log_debug("[quic dowrite] start %p", c->qstrm);
+	nni_aio *aio;
+	int      rv;
+
+	if (c->closed) {
+		return;
+	}
+
+	while ((aio = nni_list_first(&c->writeq)) != NULL) {
+		unsigned      naiov;
+		nni_iov *     aiov;
+		size_t        n = 0;
+
+		nni_aio_get_iov(aio, &naiov, &aiov);
+		if (naiov == 0)
+			log_warn("A msg without content?");
+
+		QUIC_BUFFER *buf=(QUIC_BUFFER*)malloc(sizeof(QUIC_BUFFER)*naiov);
+		for (uint8_t i = 0; i < naiov; ++i) {
+			log_debug("buf%d sz %d", i, aiov[i].iov_len);
+			buf[i].Buffer = aiov[i].iov_buf;
+			buf[i].Length = aiov[i].iov_len;
+			n += aiov[i].iov_len;
+		}
+		nni_aio_set_input(aio, 0, buf);
+
+		if (QUIC_FAILED(rv = MsQuic->StreamSend(c->qstrm, buf,
+		                naiov, QUIC_SEND_FLAG_NONE, NULL))) {
+			log_error("Failed in StreamSend, 0x%x!", rv);
+			free(buf);
+			// nni_aio_list_remove(aio);
+			// nni_aio_finish_error(aio, NNG_ECLOSED);
+			return;
+		}
+
+		nni_aio_bump_count(aio, n);
+
+		break;
+		// Different from tcp.
+		// Here we just send one msg at once.
+	}
+}
+
+static void
+quic_stream_send(void *arg, nni_aio *aio)
+{
+	nni_quic_conn *c = arg;
+	int            rv;
+
+	if (nni_aio_begin(aio) != 0) {
+		return;
+	}
+
+	nni_mtx_lock(&c->mtx);
+	if ((rv = nni_aio_schedule(aio, quic_stream_cancel, c)) != 0) {
+		nni_mtx_unlock(&c->mtx);
+		nni_aio_finish_error(aio, rv);
+		return;
+	}
+
+	// QUIC_HIGH_PRIOR_MSG Feature!
+	int *flags = nni_aio_get_prov_data(aio);
+	nni_aio_set_prov_data(aio, NULL);
+
+	if (flags) {
+		if (*flags & QUIC_HIGH_PRIOR_MSG) {
+			quic_stream_dowrite_prior(c, aio);
+			nni_mtx_unlock(&c->mtx);
+			return;
+		}
+	}
+
+	nni_aio_list_append(&c->writeq, aio);
+
+	if (nni_list_first(&c->writeq) == aio) {
+		quic_stream_dowrite(c);
+		// In msquic. Write can be done at any time.
+	}
+	nni_mtx_unlock(&c->mtx);
+}
+
+static int
+quic_stream_get(void *arg, const char *name, void *buf, size_t *szp, nni_type t)
+{
+	NNI_ARG_UNUSED(arg);
+	NNI_ARG_UNUSED(name);
+	NNI_ARG_UNUSED(buf);
+	NNI_ARG_UNUSED(szp);
+	NNI_ARG_UNUSED(t);
+	return 0;
+
+	// nni_quic_conn *c = arg;
+	// return (nni_getopt(tcp_options, name, c, buf, szp, t));
+}
+
+static int
+quic_stream_set(void *arg, const char *name, const void *buf, size_t sz, nni_type t)
+{
+	NNI_ARG_UNUSED(arg);
+	NNI_ARG_UNUSED(name);
+	NNI_ARG_UNUSED(buf);
+	NNI_ARG_UNUSED(sz);
+	NNI_ARG_UNUSED(t);
+	return 0;
+
+	// nni_quic_conn *c = arg;
+	// return (nni_setopt(tcp_options, name, c, buf, sz, t));
+}
 
 int
 nni_msquic_quic_listener_conn_alloc(nni_quic_conn **cp, nni_quic_session *ss)
@@ -476,6 +720,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
 		// The peer gracefully shut down its send direction of the stream.
 		log_warn("[strm][%p] QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE.", stream);
+		// TODO The next msg would better to be sent with a FIN flag.
 		break;
 
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
