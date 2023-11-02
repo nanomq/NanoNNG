@@ -284,6 +284,11 @@ quic_stream_cb(int events, void *arg)
 	case QUIC_STREAM_EVENT_START_COMPLETE:
 		nni_mtx_lock(&l->mtx);
 
+		if (c->started == true) {
+			nni_mtx_unlock(&l->mtx);
+			break;
+		}
+
 		// Push connection to incomings
 		nni_aio_alloc(&aio, NULL, NULL);
 		nni_aio_set_prov_data(aio, (void *)c);
@@ -291,7 +296,10 @@ quic_stream_cb(int events, void *arg)
 
 		quic_listener_doaccept(l);
 
-		nni_mtx_unlock(&ss->mtx);
+		// This stream is started from now.
+		c->started = true;
+
+		nni_mtx_unlock(&l->mtx);
 		break;
 	// case QUIC_STREAM_EVENT_RECEIVE: // get a fin from stream
 	// TODO Need more talk about those cases
@@ -569,6 +577,7 @@ nni_msquic_quic_listener_conn_alloc(nni_quic_conn **cp, nni_quic_session *ss)
 	c->dialer   = NULL;
 	c->listener = ss->listener;
 	c->session  = ss;
+	c->started  = false;
 
 	nni_mtx_init(&c->mtx);
 	nni_aio_list_init(&c->readq);
@@ -935,6 +944,8 @@ msquic_connection_listener_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 
 		log_info("[conn][%p] Peer stream %p started. flags %d.", qconn, qstrm, flags);
 		MsQuic->SetCallbackHandler(qstrm, (void *)msquic_strm_listener_cb, c);
+
+		quic_stream_cb(QUIC_STREAM_EVENT_START_COMPLETE, c);
 
 		break;
 	case QUIC_CONNECTION_EVENT_RESUMED:

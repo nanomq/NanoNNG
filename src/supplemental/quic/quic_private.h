@@ -137,6 +137,7 @@ struct nni_quic_conn {
 	bool            closed;
 	nni_mtx         mtx;
 	nni_aio *       dial_aio;
+	bool            started;
 	// nni_aio *       qstrmaio; // Link to msquic_strm_cb
 
 	nni_quic_dialer   *dialer;
