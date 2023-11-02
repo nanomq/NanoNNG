@@ -97,8 +97,8 @@ quic_listener_alloc_addr(nng_stream_listener **lp, const char *h, const char *p)
 		NNI_FREE_STRUCT(l);
 		return (rv);
 	}
-	l->host = h;
-	l->port = p;
+	l->host = strdup(h);
+	l->port = strdup(p);
 
 	l->ops.sl_free   = quic_listener_free;
 	l->ops.sl_close  = quic_listener_close;

@@ -18,11 +18,8 @@ static const QUIC_BUFFER quic_alpn = {
 
 static const QUIC_API_TABLE *MsQuic = NULL;
 
-static HQUIC registration;
-static HQUIC configuration;
-
-int  msquic_open();
-void msquic_close();
+int  msquic_open(HQUIC registration);
+void msquic_close(HQUIC registration, HQUIC configuration);
 
 typedef struct nni_quic_dialer nni_quic_dialer;
 

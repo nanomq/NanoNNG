@@ -4,7 +4,7 @@
 static int is_msquic_inited = 0;
 
 void
-msquic_close()
+msquic_close(HQUIC registration, HQUIC configuration)
 {
 	if (MsQuic != NULL) {
 		if (configuration != NULL) {
@@ -21,7 +21,7 @@ msquic_close()
 }
 
 int
-msquic_open()
+msquic_open(HQUIC registration)
 {
 	if (is_msquic_inited == 1)
 		return 0;
@@ -46,7 +46,7 @@ msquic_open()
 	return 0;
 
 error:
-	msquic_close();
+	msquic_close(registration, NULL);
 	return -1;
 }
 

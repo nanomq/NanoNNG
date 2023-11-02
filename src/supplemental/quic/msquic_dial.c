@@ -40,6 +40,10 @@
 #include <time.h>
 #include <unistd.h>
 
+// The registration and configuration for dialer
+static HQUIC registration;
+static HQUIC configuration;
+
 static int  msquic_conn_open(const char *host, const char *port, nni_quic_dialer *d);
 static int  msquic_strm_open(HQUIC qconn, nni_quic_dialer *d);
 
@@ -1053,7 +1057,7 @@ msquic_conn_open(const char *host, const char *port, nni_quic_dialer *d)
 	QUIC_STATUS  rv;
 	HQUIC        conn = NULL;
 
-	if (0 != msquic_open()) {
+	if (0 != msquic_open(registration)) {
 		// so... close the quic connection
 		return (NNG_ESYSERR);
 	}

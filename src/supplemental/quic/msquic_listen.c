@@ -40,6 +40,10 @@
 #include <time.h>
 #include <unistd.h>
 
+// The registration and configuration for listener
+static HQUIC registration;
+static HQUIC configuration;
+
 static void msquic_listener_fini(HQUIC ql);
 static void msquic_listener_stop(HQUIC ql);
 static int  msquic_listen(HQUIC ql, const char *h, const char *p, nni_quic_listener *l);
@@ -901,6 +905,11 @@ msquic_listen(HQUIC ql, const char *h, const char *p, nni_quic_listener *l)
 	addr.Ipv4.sin_port = htons(atol(p));
 	// QuicAddrSetFamily(&addr, QUIC_ADDRESS_FAMILY_UNSPEC);
 	// QuicAddrSetPort(&addr, atoi(p));
+
+	if (0 != msquic_open(registration)) {
+		// so... close the quic connection
+		return (NNG_ESYSERR);
+	}
 
 	msquic_load_listener_config();
 
