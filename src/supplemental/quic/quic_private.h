@@ -106,6 +106,14 @@ struct nni_quic_listener {
 	bool     enable_0rtt;
 	bool     enable_mltstrm;
 
+	// option 1
+	char *   cert_hash;
+
+	// option 2
+	char *   cert_fpath;
+	char *   key_fpath;
+	char *   pwd;
+
 	QUIC_SETTINGS settings;
 };
 

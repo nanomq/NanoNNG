@@ -607,10 +607,126 @@ quic_listener_session_alloc(nni_quic_session **ss, nni_quic_listener *l, HQUIC q
 
 /***************************** MsQuic Bindings *****************************/
 
-static void
-msquic_load_listener_config()
+typedef struct QUIC_CREDENTIAL_CONFIG_HELPER {
+    QUIC_CREDENTIAL_CONFIG CredConfig;
+    union {
+        QUIC_CERTIFICATE_HASH CertHash;
+        QUIC_CERTIFICATE_HASH_STORE CertHashStore;
+        QUIC_CERTIFICATE_FILE CertFile;
+        QUIC_CERTIFICATE_FILE_PROTECTED CertFileProtected;
+    };
+} QUIC_CREDENTIAL_CONFIG_HELPER;
+
+uint8_t
+DecodeHexChar(
+    _In_ char c
+    )
 {
-	return;
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'A' && c <= 'F') return 10 + c - 'A';
+    if (c >= 'a' && c <= 'f') return 10 + c - 'a';
+    return 0;
+}
+
+uint32_t
+DecodeHexBuffer(
+    _In_z_ const char* HexBuffer,
+    _In_ uint32_t OutBufferLen,
+    _Out_writes_to_(OutBufferLen, return)
+        uint8_t* OutBuffer
+    )
+{
+    uint32_t HexBufferLen = (uint32_t)strlen(HexBuffer) / 2;
+    if (HexBufferLen > OutBufferLen) {
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < HexBufferLen; i++) {
+        OutBuffer[i] =
+            (DecodeHexChar(HexBuffer[i * 2]) << 4) |
+            DecodeHexChar(HexBuffer[i * 2 + 1]);
+    }
+
+    return HexBufferLen;
+}
+
+static BOOLEAN
+msquic_load_listener_config(QUIC_SETTINGS *s, nni_quic_listener *l)
+{
+    QUIC_SETTINGS Settings = *s;
+
+    // Configures the server's idle timeout.
+    Settings.IdleTimeoutMs = QUIC_IDLE_TIMEOUT_DEFAULT;
+    Settings.IsSet.IdleTimeoutMs = TRUE;
+
+    // Configures the server's resumption level to allow for resumption and 0-RTT.
+    Settings.ServerResumptionLevel = QUIC_SERVER_RESUME_AND_ZERORTT;
+    Settings.IsSet.ServerResumptionLevel = TRUE;
+
+    // Configures the server's settings to allow for the peer to open a single
+    // bidirectional stream. By default connections are not configured to allow
+    // any streams from the peer.
+    Settings.PeerBidiStreamCount = 1;
+    Settings.IsSet.PeerBidiStreamCount = TRUE;
+
+    QUIC_CREDENTIAL_CONFIG_HELPER Config;
+    memset(&Config, 0, sizeof(Config));
+    Config.CredConfig.Flags = QUIC_CREDENTIAL_FLAG_NONE;
+
+    const char* Cert;
+    const char* KeyFile;
+    if ((Cert = l->cert_hash) != NULL) {
+        // Load the server's certificate from the default certificate store,
+        // using the provided certificate hash.
+        uint32_t CertHashLen =
+            DecodeHexBuffer(
+                Cert,
+                sizeof(Config.CertHash.ShaHash),
+                Config.CertHash.ShaHash);
+        if (CertHashLen != sizeof(Config.CertHash.ShaHash)) {
+            return FALSE;
+        }
+        Config.CredConfig.Type = QUIC_CREDENTIAL_TYPE_CERTIFICATE_HASH;
+        Config.CredConfig.CertificateHash = &Config.CertHash;
+
+    } else if ((Cert = l->cert_fpath) != NULL &&
+               (KeyFile = l->key_fpath) != NULL) {
+        // Loads the server's certificate from the file.
+        const char* Password = l->pwd;
+        if (Password != NULL) {
+            Config.CertFileProtected.CertificateFile = (char*)Cert;
+            Config.CertFileProtected.PrivateKeyFile = (char*)KeyFile;
+            Config.CertFileProtected.PrivateKeyPassword = (char*)Password;
+            Config.CredConfig.Type = QUIC_CREDENTIAL_TYPE_CERTIFICATE_FILE_PROTECTED;
+            Config.CredConfig.CertificateFileProtected = &Config.CertFileProtected;
+        } else {
+            Config.CertFile.CertificateFile = (char*)Cert;
+            Config.CertFile.PrivateKeyFile = (char*)KeyFile;
+            Config.CredConfig.Type = QUIC_CREDENTIAL_TYPE_CERTIFICATE_FILE;
+            Config.CredConfig.CertificateFile = &Config.CertFile;
+        }
+
+    } else {
+        log_error("Must specify ['-cert_hash'] or ['cert_file' and 'key_file' (and optionally 'password')]!\n");
+        return FALSE;
+    }
+
+    // Allocate/initialize the configuration object, with the configured ALPN
+    // and settings.
+    QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
+    if (QUIC_FAILED(Status = MsQuic->ConfigurationOpen(registration,
+		&quic_alpn, 1, &Settings, sizeof(Settings), NULL, &configuration))) {
+        log_error("ConfigurationOpen failed, 0x%x!\n", Status);
+        return FALSE;
+    }
+
+    // Loads the TLS credential part of the configuration.
+    if (QUIC_FAILED(Status = MsQuic->ConfigurationLoadCredential(configuration, &Config.CredConfig))) {
+        log_error("ConfigurationLoadCredential failed, 0x%x!\n", Status);
+        return FALSE;
+    }
+
+    return TRUE;
 }
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
@@ -874,8 +990,9 @@ msquic_listener_cb(_In_ HQUIC ql, _In_opt_ void *arg, _Inout_ QUIC_LISTENER_EVEN
 	const QUIC_NEW_CONNECTION_INFO *qinfo;
 	QUIC_STATUS rv = QUIC_STATUS_NOT_SUPPORTED;
 	nni_quic_listener *l = arg;
-	nni_aio *aio;
 	nni_quic_session *ss;
+
+	NNI_ARG_UNUSED(ql);
 
 	switch (ev->Type) {
 	case QUIC_LISTENER_EVENT_NEW_CONNECTION:
@@ -887,6 +1004,7 @@ msquic_listener_cb(_In_ HQUIC ql, _In_opt_ void *arg, _Inout_ QUIC_LISTENER_EVEN
 			log_error("error in alloc session");
 			break;
 		}
+		log_info("new connection incoming %p %*.s", qconn, qinfo->ClientAlpnListLength, qinfo->ClientAlpnList);
 
 		MsQuic->SetCallbackHandler(qconn, msquic_connection_listener_cb, ss);
 		rv = MsQuic->ConnectionSetConfiguration(qconn, configuration);
