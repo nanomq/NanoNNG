@@ -7,6 +7,7 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 #include "quic_api.h"
+#include "quic_private.h"
 #include "core/nng_impl.h"
 #include "msquic.h"
 
@@ -54,7 +55,7 @@ static int
 quic_listener_listen(void *arg)
 {
 	quic_listener *l = arg;
-	return (nni_quic_listener_listen(l->l, &l->sa));
+	return (nni_quic_listener_listen(l->l, l->host, l->port));
 }
 
 static void
@@ -64,26 +65,28 @@ quic_listener_accept(void *arg, nng_aio *aio)
 	nni_quic_listener_accept(l->l, aio);
 }
 
-/*
 static int
 quic_listener_get(
     void *arg, const char *name, void *buf, size_t *szp, nni_type t)
 {
+	/*
 	quic_listener *l = arg;
 	if (strcmp(name, NNG_OPT_TCP_BOUND_PORT) == 0) {
 		return (quic_listener_get_port(l, buf, szp, t));
 	}
 	return (nni_quic_listener_get(l->l, name, buf, szp, t));
+	*/
 }
 
 static int
 quic_listener_set(
     void *arg, const char *name, const void *buf, size_t sz, nni_type t)
 {
+	/*
 	quic_listener *l = arg;
 	return (nni_quic_listener_set(l->l, name, buf, sz, t));
+	*/
 }
-*/
 
 static int
 quic_listener_alloc_addr(nng_stream_listener **lp, const char *h, const char *p)
@@ -98,8 +101,8 @@ quic_listener_alloc_addr(nng_stream_listener **lp, const char *h, const char *p)
 		NNI_FREE_STRUCT(l);
 		return (rv);
 	}
-	l->host = h;
-	l->port = p;
+	l->host = strdup(h);
+	l->port = strdup(p);
 
 	l->ops.sl_free   = quic_listener_free;
 	l->ops.sl_close  = quic_listener_close;

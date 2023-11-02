@@ -19,6 +19,7 @@
 // closed.
 
 #include "quic_api.h"
+#include "quic_private.h"
 #include "core/nng_impl.h"
 #include "msquic.h"
 
@@ -39,65 +40,17 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "nng/mqtt/mqtt_client.h"
-#include "nng/supplemental/nanolib/conf.h"
-#include "nng/protocol/mqtt/mqtt_parser.h"
-#include "supplemental/mqtt/mqtt_msg.h"
-
-#include "openssl/pem.h"
-#include "openssl/x509.h"
-
-#include <assert.h>
-#include <errno.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
-#include <unistd.h>
-
-struct nni_quic_conn {
-	nng_stream      stream;
-	nni_list        readq;
-	nni_list        writeq;
-	bool            closed;
-	nni_mtx         mtx;
-	nni_aio *       dial_aio;
-	// nni_aio *       qstrmaio; // Link to msquic_strm_cb
-	nni_quic_dialer *dialer;
-
-	// MsQuic
-	HQUIC           qstrm; // quic stream
-	uint8_t         reason_code;
-
-	nni_reap_node   reap;
-};
-
 static const QUIC_API_TABLE *MsQuic = NULL;
 
-// Config for msquic
-static const QUIC_REGISTRATION_CONFIG quic_reg_config = {
-	"mqtt",
-	QUIC_EXECUTION_PROFILE_LOW_LATENCY
-};
-
-static const QUIC_BUFFER quic_alpn = {
-	sizeof("mqtt") - 1,
-	(uint8_t *) "mqtt"
-};
-
-HQUIC registration;
-HQUIC configuration;
+// The registration and configuration for dialer
+static HQUIC registration;
+static HQUIC configuration;
 
 static int  msquic_open();
 static void msquic_close();
+
 static int  msquic_conn_open(const char *host, const char *port, nni_quic_dialer *d);
-static void msquic_conn_close(HQUIC qconn, int rv);
-static void msquic_conn_fini(HQUIC qconn);
 static int  msquic_strm_open(HQUIC qconn, nni_quic_dialer *d);
-static void msquic_strm_close(HQUIC qstrm);
-static void msquic_strm_fini(HQUIC qstrm);
-static void msquic_strm_recv_start(HQUIC qstrm);
 
 static void quic_dialer_cb(void *arg);
 static void quic_stream_error(void *arg, int err);
@@ -270,7 +223,7 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 	nni_atomic_inc64(&d->ref);
 
 	// Create a connection whenever dial. So it's okey. right?
-	if ((rv = nni_msquic_quic_alloc(&c, d)) != 0) {
+	if ((rv = nni_msquic_quic_dialer_conn_alloc(&c, d)) != 0) {
 		nni_aio_finish_error(aio, rv);
 		nni_msquic_quic_dialer_rele(d);
 		return;
@@ -711,15 +664,16 @@ quic_stream_set(void *arg, const char *name, const void *buf, size_t sz, nni_typ
 }
 
 int
-nni_msquic_quic_alloc(nni_quic_conn **cp, nni_quic_dialer *d)
+nni_msquic_quic_dialer_conn_alloc(nni_quic_conn **cp, nni_quic_dialer *d)
 {
 	nni_quic_conn *c;
 	if ((c = NNI_ALLOC_STRUCT(c)) == NULL) {
 		return (NNG_ENOMEM);
 	}
 
-	c->closed = false;
-	c->dialer = d;
+	c->closed   = false;
+	c->dialer   = d;
+	c->listener = NULL;
 
 	nni_mtx_init(&c->mtx);
 	nni_aio_list_init(&c->readq);
@@ -860,8 +814,6 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 	return QUIC_STATUS_SUCCESS;
 }
 
-// The clients's callback for stream events from MsQuic.
-// New recv cb of quic transport
 _IRQL_requires_max_(DISPATCH_LEVEL)
 _Function_class_(QUIC_STREAM_CALLBACK) QUIC_STATUS QUIC_API
 msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
@@ -963,8 +915,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 
 		return QUIC_STATUS_PENDING;
 	case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
-		// The peer gracefully shut down its send direction of the
-		// stream.
+		// The peer aborted its send direction of the stream.
 		log_warn("[strm][%p] PEER_SEND_ABORTED errorcode %llu\n", stream,
 		    (unsigned long long) Event->PEER_SEND_ABORTED.ErrorCode);
 		if (c->reason_code == 0)
@@ -973,7 +924,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		quic_stream_cb(QUIC_STREAM_EVENT_PEER_SEND_ABORTED, c);
 		break;
 	case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
-		// The peer aborted its send direction of the stream.
+		// The peer gracefully shut down its send direction of the stream.
 		log_warn("[strm][%p] Peer send shut down\n", stream);
 		MsQuic->StreamShutdown(stream, QUIC_STREAM_SHUTDOWN_FLAG_GRACEFUL, 0);
 		quic_stream_cb(QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN, c);
@@ -1025,55 +976,6 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		break;
 	}
 	return QUIC_STATUS_SUCCESS;
-}
-
-static int is_msquic_inited = 0;
-
-static void
-msquic_close()
-{
-	if (MsQuic != NULL) {
-		if (configuration != NULL) {
-			MsQuic->ConfigurationClose(configuration);
-		}
-		if (registration != NULL) {
-			// This will block until all outstanding child objects
-			// have been closed.
-			MsQuic->RegistrationClose(registration);
-		}
-		MsQuicClose(MsQuic);
-		is_msquic_inited = 0;
-	}
-}
-
-static int
-msquic_open()
-{
-	if (is_msquic_inited == 1)
-		return 0;
-
-	QUIC_STATUS rv = QUIC_STATUS_SUCCESS;
-	// only Open MsQUIC lib once, otherwise cause memleak
-	if (MsQuic == NULL)
-		if (QUIC_FAILED(rv = MsQuicOpen2(&MsQuic))) {
-			log_error("MsQuicOpen2 failed, 0x%x!\n", rv);
-			goto error;
-		}
-
-	// Create a registration for the app's connections.
-	rv = MsQuic->RegistrationOpen(&quic_reg_config, &registration);
-	if (QUIC_FAILED(rv)) {
-		log_error("RegistrationOpen failed, 0x%x!\n", rv);
-		goto error;
-	}
-
-	is_msquic_inited = 1;
-	log_info("Msquic is enabled");
-	return 0;
-
-error:
-	msquic_close();
-	return -1;
 }
 
 // Helper function to load a client configuration.
@@ -1195,18 +1097,6 @@ error:
 	return (NNG_ECONNREFUSED);
 }
 
-static void
-msquic_conn_close(HQUIC qconn, int rv)
-{
-	MsQuic->ConnectionShutdown(qconn, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, (QUIC_UINT62)rv);
-}
-
-static void
-msquic_conn_fini(HQUIC qconn)
-{
-	MsQuic->ConnectionClose(qconn);
-}
-
 static int
 msquic_strm_open(HQUIC qconn, nni_quic_dialer *d)
 {
@@ -1243,23 +1133,53 @@ error:
 	return (NNG_ECLOSED);
 }
 
-static void
-msquic_strm_close(HQUIC qstrm)
-{
-	log_info("stream %p shutdown", qstrm);
-	MsQuic->StreamShutdown(
-	    qstrm, QUIC_STREAM_SHUTDOWN_FLAG_ABORT | QUIC_STREAM_SHUTDOWN_FLAG_IMMEDIATE, NNG_ECONNSHUT);
-}
+static int is_msquic_inited = 0;
 
 static void
-msquic_strm_fini(HQUIC qstrm)
+msquic_close()
 {
-	log_info("stream %p fini", qstrm);
-	MsQuic->StreamClose(qstrm);
+	if (MsQuic != NULL) {
+		if (configuration != NULL) {
+			MsQuic->ConfigurationClose(configuration);
+		}
+		if (registration != NULL) {
+			// This will block until all outstanding child objects
+			// have been closed.
+			MsQuic->RegistrationClose(registration);
+		}
+		MsQuicClose(MsQuic);
+		is_msquic_inited = 0;
+	}
 }
 
-static void
-msquic_strm_recv_start(HQUIC qstrm)
+static int
+msquic_open()
 {
-	MsQuic->StreamReceiveSetEnabled(qstrm, TRUE);
+	if (is_msquic_inited == 1)
+		return 0;
+
+	QUIC_STATUS rv = QUIC_STATUS_SUCCESS;
+	// only Open MsQUIC lib once, otherwise cause memleak
+	if (MsQuic == NULL)
+		if (QUIC_FAILED(rv = MsQuicOpen2(&MsQuic))) {
+			log_error("MsQuicOpen2 failed, 0x%x!\n", rv);
+			goto error;
+		}
+	msquic_set_api_table(MsQuic);
+
+	// Create a registration for the app's connections.
+	rv = MsQuic->RegistrationOpen(&quic_reg_config, &registration);
+	if (QUIC_FAILED(rv)) {
+		log_error("RegistrationOpen failed, 0x%x!\n", rv);
+		goto error;
+	}
+
+	is_msquic_inited = 1;
+	log_info("Msquic is enabled");
+	return 0;
+
+error:
+	msquic_close(registration, NULL);
+	return -1;
 }
+

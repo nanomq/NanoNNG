@@ -7,17 +7,14 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 #include "quic_api.h"
+#include "quic_private.h"
 #include "core/nng_impl.h"
-#include "msquic.h"
 
 #include "nng/mqtt/mqtt_client.h"
 #include "nng/nng.h"
 #include "nng/supplemental/nanolib/conf.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "supplemental/mqtt/mqtt_msg.h"
-
-#include "openssl/pem.h"
-#include "openssl/x509.h"
 
 #include <assert.h>
 #include <errno.h>
@@ -40,6 +37,7 @@ struct quic_dialer {
 	void *            d; // platform dialer
 };
 
+/*
 int
 nni_quic_listener_alloc(nng_stream_listener **lp, const nni_url *url)
 {
@@ -48,6 +46,7 @@ nni_quic_listener_alloc(nng_stream_listener **lp, const nni_url *url)
 
 	return 0;
 }
+*/
 
 static void
 quic_dial_cancel(nni_aio *aio, void *arg, int rv)
