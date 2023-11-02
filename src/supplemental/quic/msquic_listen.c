@@ -178,7 +178,7 @@ quic_listener_doaccept(nni_quic_listener *l)
 		nni_aio *       aioc;
 		nni_quic_conn * c;
 
-		// Get the connection 
+		// Get the connection
 		if ((aioc = nni_list_first(&l->incomings)) == NULL) {
 			// No wait and return immediately
 			return;
@@ -1029,12 +1029,16 @@ msquic_listen(HQUIC ql, const char *h, const char *p, nni_quic_listener *l)
 	// QuicAddrSetFamily(&addr, QUIC_ADDRESS_FAMILY_UNSPEC);
 	// QuicAddrSetPort(&addr, atoi(p));
 
-	if (0 != msquic_open(registration)) {
+	NNI_ARG_UNUSED(h); // Listen all interfaces
+
+	if (0 != msquic_open()) {
 		// so... close the quic connection
 		return (NNG_ESYSERR);
 	}
 
-	msquic_load_listener_config();
+	if (FALSE == msquic_load_listener_config(&l->settings, l)) {
+		return (NNG_EINVAL);
+	}
 
 	if (QUIC_FAILED(rv = MsQuic->ListenerOpen(registration, msquic_listener_cb, (void *)l, &ql))) {
 		log_error("error in listen open %ld", rv);
