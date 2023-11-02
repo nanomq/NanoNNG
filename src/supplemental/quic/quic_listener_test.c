@@ -53,7 +53,7 @@ test_quic_echo(void)
 	NUTS_TRUE((sd = nng_aio_get_output(aiod, 0)) != NULL);
 
 	td = nuts_stream_send_start(sd, bufs, size);
-	tl = nuts_stream_send_start(sl, bufr, size);
+	tl = nuts_stream_recv_start(sl, bufr, size);
 
 	NUTS_PASS(nuts_stream_wait(td));
 	NUTS_PASS(nuts_stream_wait(tl));

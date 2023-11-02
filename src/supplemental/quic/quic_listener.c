@@ -69,19 +69,23 @@ static int
 quic_listener_get(
     void *arg, const char *name, void *buf, size_t *szp, nni_type t)
 {
+	/*
 	quic_listener *l = arg;
 	if (strcmp(name, NNG_OPT_TCP_BOUND_PORT) == 0) {
 		return (quic_listener_get_port(l, buf, szp, t));
 	}
 	return (nni_quic_listener_get(l->l, name, buf, szp, t));
+	*/
 }
 
 static int
 quic_listener_set(
     void *arg, const char *name, const void *buf, size_t sz, nni_type t)
 {
+	/*
 	quic_listener *l = arg;
 	return (nni_quic_listener_set(l->l, name, buf, sz, t));
+	*/
 }
 
 static int
