@@ -606,7 +606,7 @@ msquic_load_listener_config()
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
 _Function_class_(QUIC_STREAM_CALLBACK) QUIC_STATUS QUIC_API
-msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
+msquic_strm_listener_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	_Inout_ QUIC_STREAM_EVENT *Event)
 {
 	nni_quic_conn *c = Context;
@@ -776,13 +776,13 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
 _Function_class_(QUIC_CONNECTION_CALLBACK) QUIC_STATUS QUIC_API
-msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
+msquic_connection_listener_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 	_Inout_ QUIC_CONNECTION_EVENT *ev)
 {
 	nni_quic_session *ss    = Context;
 	HQUIC             qconn = Connection;
 
-	log_debug("msquic_connection_cb triggered! %d", ev->Type);
+	log_debug("msquic_connection_listener_cb triggered! %d", ev->Type);
 	switch (ev->Type) {
 	case QUIC_CONNECTION_EVENT_CONNECTED:
 		// The handshake has completed for the connection.
@@ -809,7 +809,7 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		}
 
 		log_info("[conn][%p] Peer stream %p started. flags %d.", qconn, qstrm, flags);
-		MsQuic->SetCallbackHandler(qstrm, (void *)msquic_strm_cb, c);
+		MsQuic->SetCallbackHandler(qstrm, (void *)msquic_strm_listener_cb, c);
 
 		break;
 	case QUIC_CONNECTION_EVENT_RESUMED:
@@ -879,7 +879,7 @@ msquic_listener_cb(_In_ HQUIC ql, _In_opt_ void *arg, _Inout_ QUIC_LISTENER_EVEN
 			break;
 		}
 
-		MsQuic->SetCallbackHandler(qconn, msquic_connection_cb, ss);
+		MsQuic->SetCallbackHandler(qconn, msquic_connection_listener_cb, ss);
 		rv = MsQuic->ConnectionSetConfiguration(qconn, configuration);
 		break;
 	case QUIC_LISTENER_EVENT_STOP_COMPLETE:
@@ -897,8 +897,10 @@ msquic_listen(HQUIC ql, const char *h, const char *p, nni_quic_listener *l)
 	QUIC_ADDR addr;
 	QUIC_STATUS rv = 0;
 
-	QuicAddrSetFamily(&addr, QUIC_ADDRESS_FAMILY_UNSPEC);
-	QuicAddrSetPort(&addr, atoi(p));
+	addr.Ip.sa_family = QUIC_ADDRESS_FAMILY_UNSPEC;
+	addr.Ipv4.sin_port = htons(atol(p));
+	// QuicAddrSetFamily(&addr, QUIC_ADDRESS_FAMILY_UNSPEC);
+	// QuicAddrSetPort(&addr, atoi(p));
 
 	msquic_load_listener_config();
 

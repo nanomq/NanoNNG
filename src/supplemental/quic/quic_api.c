@@ -37,6 +37,7 @@ struct quic_dialer {
 	void *            d; // platform dialer
 };
 
+/*
 int
 nni_quic_listener_alloc(nng_stream_listener **lp, const nni_url *url)
 {
@@ -45,6 +46,7 @@ nni_quic_listener_alloc(nng_stream_listener **lp, const nni_url *url)
 
 	return 0;
 }
+*/
 
 static void
 quic_dial_cancel(nni_aio *aio, void *arg, int rv)
