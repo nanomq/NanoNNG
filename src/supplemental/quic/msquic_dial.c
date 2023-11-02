@@ -40,9 +40,14 @@
 #include <time.h>
 #include <unistd.h>
 
+static const QUIC_API_TABLE *MsQuic = NULL;
+
 // The registration and configuration for dialer
 static HQUIC registration;
 static HQUIC configuration;
+
+static int  msquic_open();
+static void msquic_close();
 
 static int  msquic_conn_open(const char *host, const char *port, nni_quic_dialer *d);
 static int  msquic_strm_open(HQUIC qconn, nni_quic_dialer *d);
@@ -1057,7 +1062,7 @@ msquic_conn_open(const char *host, const char *port, nni_quic_dialer *d)
 	QUIC_STATUS  rv;
 	HQUIC        conn = NULL;
 
-	if (0 != msquic_open(registration)) {
+	if (0 != msquic_open()) {
 		// so... close the quic connection
 		return (NNG_ESYSERR);
 	}
@@ -1126,5 +1131,55 @@ msquic_strm_open(HQUIC qconn, nni_quic_dialer *d)
 	return 0;
 error:
 	return (NNG_ECLOSED);
+}
+
+static int is_msquic_inited = 0;
+
+static void
+msquic_close()
+{
+	if (MsQuic != NULL) {
+		if (configuration != NULL) {
+			MsQuic->ConfigurationClose(configuration);
+		}
+		if (registration != NULL) {
+			// This will block until all outstanding child objects
+			// have been closed.
+			MsQuic->RegistrationClose(registration);
+		}
+		MsQuicClose(MsQuic);
+		is_msquic_inited = 0;
+	}
+}
+
+static int
+msquic_open()
+{
+	if (is_msquic_inited == 1)
+		return 0;
+
+	QUIC_STATUS rv = QUIC_STATUS_SUCCESS;
+	// only Open MsQUIC lib once, otherwise cause memleak
+	if (MsQuic == NULL)
+		if (QUIC_FAILED(rv = MsQuicOpen2(&MsQuic))) {
+			log_error("MsQuicOpen2 failed, 0x%x!\n", rv);
+			goto error;
+		}
+	msquic_set_api_table(MsQuic);
+
+	// Create a registration for the app's connections.
+	rv = MsQuic->RegistrationOpen(&quic_reg_config, &registration);
+	if (QUIC_FAILED(rv)) {
+		log_error("RegistrationOpen failed, 0x%x!\n", rv);
+		goto error;
+	}
+
+	is_msquic_inited = 1;
+	log_info("Msquic is enabled");
+	return 0;
+
+error:
+	msquic_close(registration, NULL);
+	return -1;
 }
 

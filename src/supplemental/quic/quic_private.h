@@ -16,11 +16,6 @@ static const QUIC_BUFFER quic_alpn = {
 	(uint8_t *) "mqtt"
 };
 
-static const QUIC_API_TABLE *MsQuic = NULL;
-
-int  msquic_open(HQUIC registration);
-void msquic_close(HQUIC registration, HQUIC configuration);
-
 typedef struct nni_quic_dialer nni_quic_dialer;
 
 int  nni_quic_dialer_init(void **);
@@ -44,7 +39,8 @@ int  nni_msquic_quic_dialer_conn_alloc(nni_quic_conn **, nni_quic_dialer *);
 int  nni_msquic_quic_listener_conn_alloc(nni_quic_conn **, nni_quic_session *);
 void nni_msquic_quic_dialer_rele(nni_quic_dialer *);
 
-// MsQuic bindings
+// MsQuic binding
+void msquic_set_api_table(const QUIC_API_TABLE *table);
 
 void msquic_conn_close(HQUIC qconn, int rv);
 void msquic_conn_fini(HQUIC qconn);
@@ -52,7 +48,6 @@ void msquic_conn_fini(HQUIC qconn);
 void msquic_strm_close(HQUIC qstrm);
 void msquic_strm_fini(HQUIC qstrm);
 void msquic_strm_recv_start(HQUIC qstrm);
-
 
 struct nni_quic_dialer {
 	nni_aio                *qconaio; // for quic connection
