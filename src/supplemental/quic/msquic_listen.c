@@ -83,7 +83,7 @@ nni_quic_listener_init(void **argp)
 	nni_atomic_inc64(&l->ref);
 
 	// 0RTT is disabled by default
-	l->enable_0rtt = false;
+	l->enable_0rtt = true;
 	// multi_stream is disabled by default
 	l->enable_mltstrm = false;
 
@@ -656,7 +656,7 @@ msquic_load_listener_config(QUIC_SETTINGS *s, nni_quic_listener *l)
     QUIC_SETTINGS Settings = *s;
 
     // Configures the server's idle timeout.
-    Settings.IdleTimeoutMs = QUIC_IDLE_TIMEOUT_DEFAULT;
+    Settings.IdleTimeoutMs = QUIC_IDLE_TIMEOUT_DEFAULT * 1000;
     Settings.IsSet.IdleTimeoutMs = TRUE;
 
     // Configures the server's resumption level to allow for resumption and 0-RTT.
