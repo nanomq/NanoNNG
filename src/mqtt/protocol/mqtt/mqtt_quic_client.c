@@ -1279,8 +1279,25 @@ quic_mqtt_stream_bind(mqtt_sock_t *s, mqtt_pipe_t *p, nni_pipe *npipe)
 		nni_msg_clone(msg);
 		p->idmsg = msg;
 		log_info("New Pub Stream has been bound to topic (code %ld)", hash);
+
 		// must be a new pub stream
 		mqtt_pipe_send_msg(nni_mqtt_msg_get_aio(msg), msg, p, 0);
+
+		for (int i=0; i<nni_lmq_len(s->topic_lmq); ++i) {
+			nng_msg *lm;
+			nni_lmq_get(s->topic_lmq, &lm);
+			if (lm == NULL)
+				continue;
+			if (nni_mqtt_msg_get_packet_type(lm) != NNG_MQTT_PUBLISH) {
+				nni_lmq_put(s->topic_lmq, lm);
+				continue;
+			}
+			uint32_t tpl;
+			char *tp = (char *) nni_mqtt_msg_get_publish_topic(lm, &tpl);
+			if (tpl == topic_len && 0 == strncmp(tp, topic, tpl))
+				mqtt_pipe_send_msg(nni_mqtt_msg_get_aio(lm), lm, p, 0);
+			nni_lmq_put(s->topic_lmq, lm);
+		}
 	}
 	return 0;
 }
@@ -1726,14 +1743,30 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 			nni_dialer_start(npipe->p_dialer, NNG_FLAG_NONBLOCK);
 		} else if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBLISH) {
 			// check if pub stream already exist
+			bool is_cached = false;
 			uint32_t topic_len;
 			char *topic = (char *) nni_mqtt_msg_get_publish_topic(msg, &topic_len);
 			mqtt_pipe_t *pub_pipe;
 			pub_pipe = nni_id_get(s->pub_streams, DJBHashn(topic, topic_len));
 			if (pub_pipe == NULL) {
-				log_info("create new pub stream");
+				for (int i=0; i<nni_lmq_len(s->topic_lmq); ++i) {
+					nng_msg *lm;
+					nni_lmq_get(s->topic_lmq, &lm);
+					if (lm == NULL) {
+						nni_lmq_put(s->topic_lmq, lm);
+						continue;
+					}
+					uint32_t tpl;
+					char *tp = (char *) nni_mqtt_msg_get_publish_topic(lm, &tpl);
+					if (tpl == topic_len && 0 == strncmp(tp, topic, tpl))
+						is_cached = true;
+					nni_lmq_put(s->topic_lmq, lm);
+				}
+				if (!is_cached) {
+					log_info("create new pub stream");
+					nni_dialer_start(npipe->p_dialer, NNG_FLAG_NONBLOCK);
+				}
 				nni_lmq_put(s->topic_lmq, msg);
-				nni_dialer_start(npipe->p_dialer, NNG_FLAG_NONBLOCK);
 			} else {
 				mqtt_pipe_send_msg(aio, msg, pub_pipe, 0);
 			}
