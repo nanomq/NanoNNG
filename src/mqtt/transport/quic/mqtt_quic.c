@@ -1001,9 +1001,7 @@ mqtt_quictran_pipe_send(void *arg, nni_aio *aio)
 	mqtt_quictran_pipe *p = arg;
 	int                rv;
 
-	if (nni_aio_begin(aio) != 0) {
-		return;
-	}
+	// Is this lock necessary???? TODO
 	nni_mtx_lock(&p->mtx);
 	// Priority msg
 	int *flags = nni_aio_get_prov_data(aio);
@@ -1019,6 +1017,13 @@ mqtt_quictran_pipe_send(void *arg, nni_aio *aio)
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
+	nni_mtx_unlock(&p->mtx);
+
+	if (nni_aio_begin(aio) != 0) {
+		return;
+	}
+
+	nni_mtx_lock(&p->mtx);
 	if ((rv = nni_aio_schedule(aio, mqtt_quictran_pipe_send_cancel, p)) !=
 	    0) {
 		nni_mtx_unlock(&p->mtx);

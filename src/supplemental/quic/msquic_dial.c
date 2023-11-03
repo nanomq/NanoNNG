@@ -650,16 +650,7 @@ quic_stream_send(void *arg, nni_aio *aio)
 	nni_quic_conn *c = arg;
 	int            rv;
 
-	if (nni_aio_begin(aio) != 0) {
-		return;
-	}
-
 	nni_mtx_lock(&c->mtx);
-	if ((rv = nni_aio_schedule(aio, quic_stream_cancel, c)) != 0) {
-		nni_mtx_unlock(&c->mtx);
-		nni_aio_finish_error(aio, rv);
-		return;
-	}
 
 	// QUIC_HIGH_PRIOR_MSG Feature!
 	int *flags = nni_aio_get_prov_data(aio);
@@ -671,6 +662,20 @@ quic_stream_send(void *arg, nni_aio *aio)
 			nni_mtx_unlock(&c->mtx);
 			return;
 		}
+	}
+
+	nni_mtx_unlock(&c->mtx);
+
+	if (nni_aio_begin(aio) != 0) {
+		return;
+	}
+
+	nni_mtx_lock(&c->mtx);
+
+	if ((rv = nni_aio_schedule(aio, quic_stream_cancel, c)) != 0) {
+		nni_mtx_unlock(&c->mtx);
+		nni_aio_finish_error(aio, rv);
+		return;
 	}
 
 	nni_aio_list_append(&c->writeq, aio);
