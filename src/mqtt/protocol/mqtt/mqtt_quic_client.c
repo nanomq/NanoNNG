@@ -559,6 +559,7 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 		cached_msg = nni_id_get(&p->sent_unack, packet_id);
 		if (cached_msg != NULL) {
 			nni_id_remove(&p->sent_unack, packet_id);
+			user_aio = nni_mqtt_msg_get_aio(cached_msg);
 			nni_msg_free(cached_msg);
 		}
 		if (s->ack_aio == NULL) {
