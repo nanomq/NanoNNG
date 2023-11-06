@@ -848,19 +848,6 @@ recv_error:
 }
 
 static void
-mqtt_quictran_pipe_send_prior_cancel(nni_aio *aio, void *arg, int rv)
-{
-	mqtt_quictran_pipe *p = arg;
-
-	nni_mtx_lock(&p->mtx);
-	nni_aio_abort(aio, rv);
-	nni_mtx_unlock(&p->mtx);
-
-	nni_aio_finish_error(aio, rv);
-	return;
-}
-
-static void
 mqtt_quictran_pipe_send_prior(mqtt_quictran_pipe *p, nni_aio *aio)
 {
 	nni_msg *msg;
@@ -1006,13 +993,6 @@ mqtt_quictran_pipe_send(void *arg, nni_aio *aio)
 	// Priority msg
 	int *flags = nni_aio_get_prov_data(aio);
 	if (flags && (*flags & QUIC_HIGH_PRIOR_MSG)) {
-		if ((rv = nni_aio_schedule(aio,
-		      mqtt_quictran_pipe_send_prior_cancel, p)) != 0) {
-			nni_mtx_unlock(&p->mtx);
-			nni_aio_finish_error(aio, rv);
-			return;
-		}
-
 		mqtt_quictran_pipe_send_prior(p, aio);
 		nni_mtx_unlock(&p->mtx);
 		return;
