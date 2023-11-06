@@ -403,7 +403,7 @@ nni_msquic_quic_dialer_rele(nni_quic_dialer *d)
 /**************************** MsQuic Connection ****************************/
 
 static void
-quic_stream_cb(int events, void *arg)
+quic_stream_cb(int events, void *arg, int rc)
 {
 	log_debug("[quic cb] start %d\n", events);
 	nni_quic_conn   *c = arg;
@@ -426,7 +426,10 @@ quic_stream_cb(int events, void *arg)
 		nni_aio_list_remove(aio);
 		QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
 		free(buf);
-		nni_aio_finish(aio, 0, nni_aio_count(aio));
+		if (rc != 0)
+			nni_aio_finish_error(aio, rc);
+		else
+			nni_aio_finish(aio, 0, nni_aio_count(aio));
 
 		// Start next send only after finished the last send
 		quic_stream_dowrite(c);
@@ -591,6 +594,7 @@ quic_stream_dowrite_prior(nni_quic_conn *c, nni_aio *aio)
 	                naiov, QUIC_SEND_FLAG_NONE, aio))) {
 		log_error("Failed in StreamSend, 0x%x!", rv);
 		free(buf);
+		nni_aio_finish_error(aio, NNG_ECANCELED);
 		return;
 	}
 
@@ -879,14 +883,17 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	uint32_t       rlen, rlen2, rpos;
 	uint8_t       *rbuf;
 	uint32_t       count;
+	bool           canceled;
 
 	log_debug("quic_strm_cb triggered! %d conn %p strm %p", Event->Type, c, stream);
 	switch (Event->Type) {
 	case QUIC_STREAM_EVENT_SEND_COMPLETE:
 		log_debug("QUIC_STREAM_EVENT_SEND_COMPLETE!");
+		canceled = false;
 		if (Event->SEND_COMPLETE.Canceled) {
 			log_warn("[strm][%p] Data sent Canceled: %d",
 			    stream, Event->SEND_COMPLETE.Canceled);
+			canceled = true;
 		}
 		// Priority msg send
 		if ((aio = Event->SEND_COMPLETE.ClientContext) != NULL) {
@@ -896,11 +903,17 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			// TODO free by user cb or msquic layer???
 			// nni_msg *msg = nni_aio_get_msg(aio);
 			// nni_msg_free(msg);
-			nni_aio_finish(aio, 0, nni_aio_count(aio));
+			if (canceled)
+				nni_aio_finish_error(aio, NNG_ECANCELED);
+			else
+				nni_aio_finish(aio, 0, nni_aio_count(aio));
 			break;
 		}
 		// Ordinary send
-		quic_stream_cb(QUIC_STREAM_EVENT_SEND_COMPLETE, c);
+		if (canceled)
+			quic_stream_cb(QUIC_STREAM_EVENT_SEND_COMPLETE, c, NNG_ECANCELED);
+		else
+			quic_stream_cb(QUIC_STREAM_EVENT_SEND_COMPLETE, c, 0);
 		break;
 	case QUIC_STREAM_EVENT_RECEIVE:
 		// Data was received from the peer on the stream.
@@ -975,13 +988,13 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		if (c->reason_code == 0)
 			c->reason_code = SERVER_SHUTTING_DOWN;
 
-		quic_stream_cb(QUIC_STREAM_EVENT_PEER_SEND_ABORTED, c);
+		quic_stream_cb(QUIC_STREAM_EVENT_PEER_SEND_ABORTED, c, 0);
 		break;
 	case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
 		// The peer aborted its send direction of the stream.
 		log_warn("[strm][%p] Peer send shut down\n", stream);
 		MsQuic->StreamShutdown(stream, QUIC_STREAM_SHUTDOWN_FLAG_GRACEFUL, 0);
-		quic_stream_cb(QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN, c);
+		quic_stream_cb(QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN, c, 0);
 		break;
 	case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
 		log_warn("[strm][%p] QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE.", stream);
@@ -995,7 +1008,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		log_info("close stream with Error Code: %llu",
 		    (unsigned long long)
 		        Event->SHUTDOWN_COMPLETE.ConnectionErrorCode);
-		quic_stream_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c);
+		quic_stream_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c, 0);
 		break;
 	case QUIC_STREAM_EVENT_START_COMPLETE:
 		log_info(
@@ -1004,11 +1017,11 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		    Event->START_COMPLETE.Status);
 		if (!Event->START_COMPLETE.PeerAccepted) {
 			log_warn("Peer refused");
-			quic_stream_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c);
+			quic_stream_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c, 0);
 			break;
 		}
 
-		quic_stream_cb(QUIC_STREAM_EVENT_START_COMPLETE, c);
+		quic_stream_cb(QUIC_STREAM_EVENT_START_COMPLETE, c, 0);
 		break;
 	case QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE:
 		log_info("QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE");
@@ -1022,7 +1035,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		log_warn("QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED Error Code: %llu",
 		    (unsigned long long) Event->PEER_RECEIVE_ABORTED.ErrorCode);
 
-		quic_stream_cb(QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED, c);
+		quic_stream_cb(QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED, c, 0);
 		break;
 
 	default:
