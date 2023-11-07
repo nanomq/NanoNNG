@@ -373,7 +373,7 @@ mqtt_pipe_send_msg(nni_aio *aio, nni_msg *msg, mqtt_pipe_t *p, uint16_t packet_i
 		}
 	}
 	nni_mtx_unlock(&p->lk);
-	if (ptype == NNG_MQTT_PUBLISH ) {
+	if (ptype == NNG_MQTT_PUBLISH && qos == 0) {
 		return 0;
 	}
 	return -1;
@@ -1749,7 +1749,11 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 				nni_lmq_put(s->topic_lmq, msg);
 				nni_dialer_start(npipe->p_dialer, NNG_FLAG_NONBLOCK);
 			} else {
-				mqtt_pipe_send_msg(aio, msg, pub_pipe, 0);
+				if (mqtt_pipe_send_msg(aio, msg, pub_pipe, 0) >= 0) {
+					nni_mtx_unlock(&s->mtx);
+					nni_aio_finish(aio, rv, 0);
+					return;
+				}
 			}
 		} else {
 			log_warn("invalid msg type 0x%x", nni_mqtt_msg_get_packet_type(msg));
