@@ -1459,9 +1459,6 @@ mqtt_quictran_dial_cb(void *arg)
 		goto error;
 	}
 
-	// XXX Dialing is successful. Reset the d_started flag.
-	nni_atomic_flag_reset(&ep->ndialer->d_started);
-
 	conn = nni_aio_get_output(aio, 0);
 	ismain = *(int *)nni_aio_get_output(aio, 1);
 	log_info("%s pipe %p", (ismain ? "main":"sub"), conn);
@@ -1600,6 +1597,9 @@ mqtt_quictran_ep_connect(void *arg, nni_aio *aio)
 {
 	mqtt_quictran_ep *ep = arg;
 	int              rv;
+
+	// XXX Reset the d_started flag to allow eatablish multistream fast
+	nni_atomic_flag_reset(&ep->ndialer->d_started);
 
 	if (nni_aio_begin(aio) != 0) {
 		return;
