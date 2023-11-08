@@ -311,6 +311,7 @@ mqtt_pipe_send_msg(nni_aio *aio, nni_msg *msg, mqtt_pipe_t *p, uint16_t packet_i
 	uint16_t     ptype;
 	uint8_t      qos = 0;
 
+	nni_mtx_lock(&p->lk);
 	ptype = nni_mqtt_msg_get_packet_type(msg);
 	switch (ptype) {
 	case NNG_MQTT_CONNECT:
@@ -353,6 +354,7 @@ mqtt_pipe_send_msg(nni_aio *aio, nni_msg *msg, mqtt_pipe_t *p, uint16_t packet_i
 		}
 		break;
 	default:
+		nni_mtx_unlock(&p->lk);
 		return NNG_EPROTO;
 	}
 	if (!p->busy) {
@@ -371,6 +373,7 @@ mqtt_pipe_send_msg(nni_aio *aio, nni_msg *msg, mqtt_pipe_t *p, uint16_t packet_i
 			    "Warning! msg send failed due to busy socket");
 		}
 	}
+	nni_mtx_unlock(&p->lk);
 	if (ptype == NNG_MQTT_PUBLISH ) {
 		return 0;
 	}
