@@ -712,6 +712,7 @@ mqtt_quic_recv_cb(void *arg)
 	nni_aio *aio;
 	int rv = 0;
 
+	nni_mtx_lock(&p->lk);
 	if (nni_atomic_get_bool(&s->closed) ||
 	    nni_atomic_get_bool(&p->closed)) {
 		// pipe is already closed somewhere
@@ -720,6 +721,7 @@ mqtt_quic_recv_cb(void *arg)
 		if (msg) {
 			nni_msg_free(msg);
 		}
+		nni_mtx_unlock(&p->lk);
 		return;
 	}
 
@@ -730,8 +732,8 @@ mqtt_quic_recv_cb(void *arg)
 		if (p->qpipe != NULL) {
 			log_info("nni pipe close!");
 			nni_pipe_close(p->qpipe);
-			return;
 		}
+		nni_mtx_unlock(&p->lk);
 		return;
 	}
 	nni_mtx_lock(&s->mtx);
@@ -740,6 +742,7 @@ mqtt_quic_recv_cb(void *arg)
 	if (msg == NULL) {
 		nni_mtx_unlock(&s->mtx);
 		nni_pipe_recv(p->qpipe, &p->recv_aio);
+		nni_mtx_unlock(&p->lk);
 		return;
 	}
 
@@ -757,6 +760,7 @@ mqtt_quic_recv_cb(void *arg)
 			nni_msg_free(msg);
 			nni_pipe_close(p->qpipe);
 			nni_mtx_unlock(&s->mtx);
+			nni_mtx_unlock(&p->lk);
 			return;
 		}
 		if (!p->busy) {
@@ -764,6 +768,7 @@ mqtt_quic_recv_cb(void *arg)
 			nni_aio_set_msg(&p->send_aio, msg);
 			nni_pipe_send(p->qpipe, &p->send_aio);
 			nni_mtx_unlock(&s->mtx);
+			nni_mtx_unlock(&p->lk);
 			return;
 		}
 		if (nni_lmq_full(&p->send_inflight)) {
@@ -777,6 +782,7 @@ mqtt_quic_recv_cb(void *arg)
 			    "Warning! msg send failed due to busy socket");
 		}
 		nni_mtx_unlock(&s->mtx);
+		nni_mtx_unlock(&p->lk);
 		return;
 	}
 
@@ -927,11 +933,13 @@ mqtt_quic_recv_cb(void *arg)
 		// Rely on health checker of Quic stream
 		nni_msg_free(msg);
 		nni_mtx_unlock(&s->mtx);
+		nni_mtx_unlock(&p->lk);
 		return;
 	case NNG_MQTT_PUBREC:
 		// return PUBREL
 		nni_msg_free(msg);
 		nni_mtx_unlock(&s->mtx);
+		nni_mtx_unlock(&p->lk);
 		return;
 	case NNG_MQTT_DISCONNECT:
 		log_debug("Broker disconnect QUIC actively");
@@ -941,6 +949,7 @@ mqtt_quic_recv_cb(void *arg)
 		// we wait for other side to close the stream
 		nni_msg_free(msg);
 		nni_mtx_unlock(&s->mtx);
+		nni_mtx_unlock(&p->lk);
 		return;
 
 	default:
@@ -949,8 +958,10 @@ mqtt_quic_recv_cb(void *arg)
 		nni_mtx_unlock(&s->mtx);
 		// close quic stream
 		nni_pipe_close(p->qpipe);
+		nni_mtx_unlock(&p->lk);
 		return;
 	}
+	nni_mtx_unlock(&p->lk);
 	nni_mtx_unlock(&s->mtx);
 
 	if (user_aio) {

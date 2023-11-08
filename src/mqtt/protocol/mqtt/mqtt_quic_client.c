@@ -833,7 +833,6 @@ mqtt_quic_recv_cb(void *arg)
 		break;
 	case NNG_MQTT_PUBREL:
 		packet_id = nni_mqtt_msg_get_pubrel_packet_id(msg);
-		nni_mtx_lock(&p->lk);
 		cached_msg = nni_id_get(&p->recv_unack, packet_id);
 		nni_msg_free(msg);
 		if (cached_msg == NULL) {
@@ -841,7 +840,6 @@ mqtt_quic_recv_cb(void *arg)
 			break;
 		}
 		nni_id_remove(&p->recv_unack, packet_id);
-		nni_mtx_unlock(&p->lk);
 		// return msg to user
 		if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
 			// No one waiting to receive yet, putting msg
