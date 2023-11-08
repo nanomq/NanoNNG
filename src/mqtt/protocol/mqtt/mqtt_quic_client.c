@@ -186,6 +186,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 	uint16_t     ptype, packet_id;
 	uint8_t      qos = 0;
 
+	nni_mtx_lock(&p->lk);
 	ptype = nni_mqtt_msg_get_packet_type(msg);
 	switch (ptype) {
 	case NNG_MQTT_CONNECT:
@@ -230,6 +231,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		break;
 	default:
 		log_error("Undefined type");
+		nni_mtx_unlock(&p->lk);
 		return NNG_EPROTO;
 	}
 	if (s->qos_first)
@@ -240,6 +242,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 			nni_aio_set_prov_data(aio, &prior_flags);
 			nni_pipe_send(p->qpipe, aio);
 			log_debug("sending highpriority QoS msg in parallel");
+			nni_mtx_unlock(&p->lk);
 			return -1;
 		}
 	if (!p->busy) {
@@ -291,6 +294,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 			nni_msg_free(msg);
 		}
 	}
+	nni_mtx_unlock(&p->lk);
 	if (ptype != NNG_MQTT_SUBSCRIBE &&
 	    ptype != NNG_MQTT_UNSUBSCRIBE) {
 		return 0;
