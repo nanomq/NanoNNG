@@ -354,6 +354,7 @@ mqtt_pipe_send_msg(nni_aio *aio, nni_msg *msg, mqtt_pipe_t *p, uint16_t packet_i
 		}
 		break;
 	default:
+		nni_mtx_unlock(&p->lk);
 		return NNG_EPROTO;
 	}
 	if (!p->busy) {
@@ -373,6 +374,7 @@ mqtt_pipe_send_msg(nni_aio *aio, nni_msg *msg, mqtt_pipe_t *p, uint16_t packet_i
 		}
 	}
 	nni_mtx_unlock(&p->lk);
+
 	if (ptype == NNG_MQTT_PUBLISH && qos == 0) {
 		return 0;
 	}
