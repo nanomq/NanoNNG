@@ -1254,6 +1254,7 @@ mqtt_quic_sock_set_sqlite_option(
 static inline int
 quic_mqtt_stream_bind(mqtt_sock_t *s, mqtt_pipe_t *p, nni_pipe *npipe)
 {
+	int                 rv;
 	nni_msg            *msg = NULL;
 	nni_mqtt_topic_qos *topics;
 	uint32_t            count, hash;
@@ -1281,7 +1282,9 @@ quic_mqtt_stream_bind(mqtt_sock_t *s, mqtt_pipe_t *p, nni_pipe *npipe)
 		}
 		nni_msg_clone(msg);
 		p->idmsg = msg;
-		mqtt_pipe_send_msg(nni_mqtt_msg_get_aio(msg), msg, p, 0);
+		if ((rv = mqtt_pipe_send_msg(nni_mqtt_msg_get_aio(msg), msg, p, 0)) >= 0) {
+			nni_aio_finish(nni_mqtt_msg_get_aio(msg), rv, 0);
+		}
 	} else if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBLISH) {
 		uint32_t topic_len;
 		char    *topic =
@@ -1751,7 +1754,7 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 				nni_lmq_put(s->topic_lmq, msg);
 				nni_dialer_start(npipe->p_dialer, NNG_FLAG_NONBLOCK);
 			} else {
-				if (mqtt_pipe_send_msg(aio, msg, pub_pipe, 0) >= 0) {
+				if ((rv = mqtt_pipe_send_msg(aio, msg, pub_pipe, 0)) >= 0) {
 					nni_mtx_unlock(&s->mtx);
 					nni_aio_finish(aio, rv, 0);
 					return;
