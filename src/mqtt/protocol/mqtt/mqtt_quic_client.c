@@ -1752,6 +1752,12 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 			if (pub_pipe == NULL) {
 				log_info("create new pub stream");
 				nni_lmq_put(s->topic_lmq, msg);
+				/*
+				 * You can set dialer quic priority before
+				 * dialer_start to create a stream with the
+				 * specified priority.
+				 */
+				//nni_dialer_setopt(npipe->p_dialer, NNG_OPT_MQTT_QUIC_PRIORITY, &val, sizeof(int), NNI_TYPE_INT32);
 				nni_dialer_start(npipe->p_dialer, NNG_FLAG_NONBLOCK);
 			} else {
 				if ((rv = mqtt_pipe_send_msg(aio, msg, pub_pipe, 0)) >= 0) {
