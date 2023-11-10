@@ -375,6 +375,19 @@ quic_dialer_set_keepalive(void *arg, const void *buf, size_t sz, nni_type t)
 }
 
 static int
+quic_dialer_set_priority(void *arg, const void *buf, size_t sz, nni_type t)
+{
+	nni_quic_dialer *d = arg;
+	int *_buf = (int *)buf;
+
+	nni_mtx_lock(&d->mtx);
+	d->priority = *_buf;
+	nni_mtx_unlock(&d->mtx);
+
+	return 0;
+}
+
+static int
 quic_dialer_set_idle_timeout(void *arg, const void *buf, size_t sz, nni_type t)
 {
 	nni_quic_dialer *d = arg;
@@ -524,6 +537,11 @@ static const nni_option quic_dialer_options[] = {
 		.o_name = NNG_OPT_QUIC_TLS_CA_PATH,
 		.o_get = NULL,
 		.o_set = quic_dialer_set_tls_ca,
+	},
+	{
+		.o_name = NNG_OPT_QUIC_PRIORITY,
+		.o_get = NULL,
+		.o_set = quic_dialer_set_priority,
 	},
 	{
 		.o_name = NULL,
