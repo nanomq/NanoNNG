@@ -1750,7 +1750,11 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 		nni_mqtt_msg_set_aio(msg, aio);
 		if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_SUBSCRIBE) {
 			nni_lmq_put(s->topic_lmq, msg);
-			nni_dialer_start(npipe->p_dialer, NNG_FLAG_NONBLOCK);
+			rv = nni_dialer_start(npipe->p_dialer, NNG_FLAG_NONBLOCK);
+			if (rv != 0) {
+				nni_aio_finish_error(aio, rv);
+				log_error("Error in dialer start (sub) %d", rv);
+			}
 		} else if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBLISH) {
 			// check if pub stream already exist
 			uint32_t topic_len;
@@ -1760,13 +1764,24 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 			if (pub_pipe == NULL) {
 				log_info("create new pub stream");
 				nni_lmq_put(s->topic_lmq, msg);
-				/*
-				 * You can set dialer quic priority before
-				 * dialer_start to create a stream with the
-				 * specified priority.
-				 */
-				//nni_dialer_setopt(npipe->p_dialer, NNG_OPT_MQTT_QUIC_PRIORITY, &val, sizeof(int), NNI_TYPE_INT32);
-				nni_dialer_start(npipe->p_dialer, NNG_FLAG_NONBLOCK);
+				// check if the stream is already dialing
+				if (NULL == (num_ptr = nni_id_get(s->topic_map, hash))) {
+					nni_id_set(s->topic_map, hash, (void *)s);
+					/*
+					 * You can set dialer quic priority before
+					 * dialer_start to create a stream with the
+					 * specified priority.
+					 */
+					//nni_dialer_setopt(npipe->p_dialer, NNG_OPT_MQTT_QUIC_PRIORITY, &val, sizeof(int), NNI_TYPE_INT32);
+					rv = nni_dialer_start(npipe->p_dialer, NNG_FLAG_NONBLOCK);
+					if (rv != 0) {
+						nni_aio_finish_error(aio, rv);
+						log_error("Error in dialer start (pub) %d", rv);
+					}
+				} else {
+					nni_id_set(s->topic_map, hash, (void *)(num_ptr + 1));
+				}
+>>>>>>> e7f708c6 (* FIX [quic/proto] Add error handler when alloc a quic stream failed.)
 			} else {
 				if ((rv = mqtt_pipe_send_msg(aio, msg, pub_pipe, 0)) >= 0) {
 					nni_mtx_unlock(&s->mtx);
