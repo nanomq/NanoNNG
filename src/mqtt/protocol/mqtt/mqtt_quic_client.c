@@ -92,7 +92,8 @@ struct mqtt_sock_s {
 	nni_list      send_queue; // aio pending to send
 	nni_lmq  send_messages; // send messages queue (only for major stream)
 	nni_lmq *ack_lmq;       // created for ack aio callback
-	nni_lmq *topic_lmq; // queued msg waiting to be send as first in new stream
+	nni_lmq *topic_lmq;  // queued msg waiting to be send as first in new stream
+	nni_id_map  *topic_map;  // Cache the topics that of msg in topic_lmq
 	nni_id_map  *sub_streams; // sub (bidirectional) pipes, only for multi-stream mode
 	nni_id_map  *pub_streams; // pub pipes, unidirectional stream
 	mqtt_pipe_t *pipe;        // the major pipe (control stream)
@@ -1087,6 +1088,8 @@ mqtt_quic_sock_fini(void *arg)
 	if (s->topic_lmq != NULL) {
 		nni_lmq_fini(s->topic_lmq);
 		nng_free(s->topic_lmq, sizeof(nni_lmq));
+		nni_id_map_fini(s->topic_map);
+		nng_free(s->topic_map, sizeof(nni_id_map));
 	}
 	// emulate disconnect notify msg as a normal publish
 	while ((aio = nni_list_first(&s->recv_queue)) != NULL) {
@@ -1211,6 +1214,8 @@ mqtt_quic_sock_set_multi_stream(void *arg, const void *buf, size_t sz, nni_type 
 	if (s->multi_stream && s->topic_lmq == NULL) {
 		s->topic_lmq = nni_alloc(sizeof(nni_lmq));
 		nni_lmq_init(s->topic_lmq, NNG_MAX_RECV_LMQ);
+		s->topic_map = nni_alloc(sizeof(nni_id_map));
+		nni_id_map_init(s->topic_map, 0x0000u, 0xffffu, true);
 	}
 	nni_mtx_unlock(&s->mtx);
 	return (0);
