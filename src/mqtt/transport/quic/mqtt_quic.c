@@ -1723,6 +1723,25 @@ mqtt_quictran_ep_set_reconnect_backoff(void *arg, const void *v, size_t sz, nni_
 	return (rv);
 }
 
+static int
+mqtt_quictran_ep_set_priority(void *arg, const void *v, size_t sz, nni_opt_type t)
+{
+	mqtt_quictran_ep *ep = arg;
+	int rv;
+	int tmp;
+
+	nni_mtx_lock(&ep->mtx);
+	if(rv = nni_copyin_int(&tmp, v, sizeof(int), 0, 65535, t) != 0) {
+		nni_stream_dialer_set(ep->dialer, NNG_OPT_QUIC_PRIORITY, -1, sizeof(int), NNI_TYPE_INT32);
+		return rv;
+	}
+
+	nni_stream_dialer_set(ep->dialer, NNG_OPT_QUIC_PRIORITY, &tmp, sizeof(int), NNI_TYPE_INT32);
+	nni_mtx_unlock(&ep->mtx);
+
+	return (rv);
+}
+
 /*
 static int
 mqtt_quictran_ep_bind(void *arg)
@@ -1806,6 +1825,11 @@ static const nni_option mqtt_quictran_ep_opts[] = {
 	    .o_name = NNG_OPT_URL,
 	    .o_get  = mqtt_quictran_ep_get_url,
 	},
+	{
+	    .o_name = NNG_OPT_MQTT_QUIC_PRIORITY,
+	    .o_set  = mqtt_quictran_ep_set_priority,
+	},
+
 	// terminate list
 	{
 	    .o_name = NULL,
