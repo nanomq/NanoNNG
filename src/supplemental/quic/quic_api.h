@@ -76,7 +76,7 @@ struct nni_quic_dialer {
 	uint32_t  qsend_idle_timeout;
 	uint32_t  qinitial_rtt_ms;
 	uint32_t  qmax_ack_delay_ms;
-
+	int       priority;
 	QUIC_SETTINGS settings;
 };
 
