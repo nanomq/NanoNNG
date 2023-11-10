@@ -131,6 +131,7 @@ nni_quic_dialer_init(void **argp)
 
 	memset(&d->settings, 0, sizeof(QUIC_SETTINGS));
 
+	d->priority = -1;
 	d->qidle_timeout = QUIC_IDLE_TIMEOUT_DEFAULT;
 	d->settings.IsSet.IdleTimeoutMs = TRUE;
 	d->settings.IdleTimeoutMs = d->qidle_timeout * 1000;
@@ -1228,6 +1229,11 @@ msquic_strm_open(HQUIC qconn, nni_quic_dialer *d)
 	if (QUIC_FAILED(rv)) {
 		log_error("StreamOpen failed, 0x%x!\n", rv);
 		goto error;
+	}
+
+	if (d->priority != -1) {
+		printf("Ready to create a quic stream with priority: %d\n", d->priority);
+		MsQuic->SetParam(strm, QUIC_PARAM_STREAM_PRIORITY, sizeof(int), &d->priority);
 	}
 
 	rv = MsQuic->StreamStart(strm, QUIC_STREAM_START_FLAG_NONE);
