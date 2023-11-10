@@ -737,6 +737,8 @@ NNG_DECL nng_listener nng_pipe_listener(nng_pipe);
 #define NNG_OPT_QUIC_SEND_IDLE_TIMEOUT "quic-send-idle-timeout"
 #define NNG_OPT_QUIC_INITIAL_RTT_MS "quic-initial-ms"
 #define NNG_OPT_QUIC_MAX_ACK_DELAY_MS "quic-max-ack-delay-ms"
+#define NNG_OPT_MQTT_QUIC_PRIORITY "quic-mqtt-stream-priority"
+#define NNG_OPT_QUIC_PRIORITY "quic-stream-priority"
 
 #define NNG_OPT_QUIC_CONGESTION_CTL_CUBIC "quic-congestion-cubic"
 
