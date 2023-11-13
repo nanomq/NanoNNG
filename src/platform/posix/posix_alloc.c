@@ -17,13 +17,26 @@
 void *
 nni_alloc(size_t sz)
 {
-	return (sz > 0 ? malloc(sz) : NULL);
+	void *ret;
+
+	ret = (sz > 0 ? malloc(sz) : NULL);
+	if (ret == NULL) {
+		log_error("malloc failed sz: %lu\n", sz);
+	}
+
+	return ret;
 }
 
 void *
 nni_zalloc(size_t sz)
 {
-	return (sz > 0 ? calloc(1, sz) : NULL);
+	void *ret;
+	ret = (sz > 0 ? calloc(1, sz) : NULL);
+	if (ret == NULL) {
+		log_error("calloc failed sz: %lu\n", sz);
+	}
+
+	return ret;
 }
 
 void
