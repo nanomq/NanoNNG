@@ -830,6 +830,116 @@ conf_bridge_conn_will_properties_parse_ver2(
 	    jso_prop, &prop->user_property_size);
 }
 
+static char *split_vin(char *str)
+{
+	char *after = strstr(str, "${VIN}");
+	if (after) {
+		*after = '\0';
+		after += strlen("${VIN}");
+	}
+	return after;
+}
+
+static char *concat_str(char *b, char *m, char *a)
+{
+	size_t new_len = strlen(b) + strlen(m) + strlen(a) + 1;
+	char *new      = nng_alloc(new_len);
+	snprintf(new, new_len, "%s%s%s%c", b, m, a, '\0');
+	return new;
+}
+
+static char *check_and_replace_vin(char *origin, char *replace)
+{
+	char *new = origin;
+	char *vin_before = origin;
+	char *vin_after = NULL;
+
+	if ((vin_after = split_vin(origin)) != NULL) {
+		new = concat_str(vin_before, replace, vin_after);
+		nng_strfree(origin);
+	}
+
+	return new;
+}
+
+static void
+update_clientid_vin(conf_bridge_node *node, char *vin)
+{
+	if (node->clientid) {
+		size_t cid_len  = strlen(vin) + strlen(node->clientid) + 1;
+		char  *clientid = nng_alloc(cid_len);
+		snprintf(
+		    clientid, cid_len, "%s%s%c", node->clientid, vin, '\0');
+		nng_strfree(node->clientid);
+		node->clientid = clientid;
+	} else {
+		node->clientid = nng_strdup(vin);
+	}
+}
+
+static void
+update_forward_vin(conf_bridge_node *node, char *vin)
+{
+	if (node->forwards) {
+		for (size_t i = 0; i < node->forwards_count; i++) {
+			node->forwards[i] =
+			    check_and_replace_vin(node->forwards[i], vin);
+		}
+	}
+}
+
+static void
+update_subscription_vin(conf_bridge_node *node, char *vin)
+{
+	if (node->sub_list) {
+		for (size_t i = 0; i < node->sub_count; i++) {
+			node->sub_list[i]->topic = check_and_replace_vin(
+			    node->sub_list[i]->topic, vin);
+			node->sub_list[i]->topic_len =
+			    strlen(node->sub_list[i]->topic);
+		}
+	}
+}
+
+#define CONF_NODE_CLIENTID 0
+#define CONF_NODE_SUBSCRIPTION 1
+#define CONF_NODE_FORWARD 2
+
+
+static void
+update_bridge_node_vin(conf_bridge_node *node, int type)
+{
+	FILE *fp = popen("getprop |grep vin", "r");
+	// FILE *fp = popen("echo \"[persist.vehicled.vin]: [DV_PV_TASK_ENABLE]\" | grep vin", "r");
+	char  line[100];
+	fgets(line, sizeof(line), fp);
+	char *p = strchr(line, ':');
+	if (p != NULL) {
+		char *p_b = strchr(p, '[') + 1;
+		p = strchr(p, ']');
+		*p = '\0';
+		log_debug("vin: %s", p_b);
+
+		switch (type)
+		{
+		case CONF_NODE_CLIENTID:
+			update_clientid_vin(node, p_b);
+			break;
+		case CONF_NODE_SUBSCRIPTION:
+			update_subscription_vin(node, p_b);
+			break;
+		case CONF_NODE_FORWARD:
+			update_forward_vin(node, p_b);
+		default:
+			break;
+		}
+
+	}
+
+	pclose(fp);
+}
+
+
 static void
 conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 {
@@ -844,6 +954,7 @@ conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 	hocon_read_bool(node, clean_start, jso_connector);
 	hocon_read_str(node, username, jso_connector);
 	hocon_read_str(node, password, jso_connector);
+	update_bridge_node_vin(node, CONF_NODE_CLIENTID);
 
 	cJSON *   jso_tls         = hocon_get_obj("ssl", jso_connector);
 	conf_tls *bridge_node_tls = &(node->tls);
@@ -920,6 +1031,8 @@ conf_bridge_quic_parse_ver2(conf_bridge_node *node, cJSON *jso_bridge_node)
 	// }
 }
 #endif
+
+
 
 void
 conf_bridge_node_parse(
@@ -1014,6 +1127,9 @@ conf_bridge_node_parse(
 	}
 
 	hocon_read_num_base(node, parallel, "max_parallel_processes", obj);
+	update_bridge_node_vin(node, CONF_NODE_SUBSCRIPTION);
+	update_bridge_node_vin(node, CONF_NODE_FORWARD);
+
 	hocon_read_num(node, max_recv_queue_len, obj);
 	hocon_read_num(node, max_send_queue_len, obj);
 }
