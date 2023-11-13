@@ -425,9 +425,12 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
 			free(buf);
 			smsg = nni_aio_get_msg(aio);
+			nni_mqtt_packet_type t = nni_mqtt_msg_get_packet_type(smsg);
 			nni_mtx_unlock(&qstrm->mtx);
 			nni_msg_free(smsg);
 			nni_aio_set_msg(aio, NULL);
+			if (t == NNG_MQTT_SUBSCRIBE || t == NNG_MQTT_UNSUBSCRIBE)
+				break;
 			//Process QoS ACK in Protocol layer
 			nni_aio_finish_sync(aio, 0, 0);
 			break;
