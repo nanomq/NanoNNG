@@ -994,6 +994,7 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 		if (qos == 0) {
 			break;
 		}
+		// fall through
 	case NNG_MQTT_SUBSCRIBE:
 	case NNG_MQTT_UNSUBSCRIBE:
 		packet_id = mqtt_sock_get_next_packet_id(s);

@@ -1811,7 +1811,6 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 				} else {
 					nni_id_set(s->topic_map, hash, (void *)(num_ptr + 1));
 				}
->>>>>>> e7f708c6 (* FIX [quic/proto] Add error handler when alloc a quic stream failed.)
 			} else {
 				if ((rv = mqtt_pipe_send_msg(aio, msg, pub_pipe, 0)) >= 0) {
 					nni_mtx_unlock(&s->mtx);
