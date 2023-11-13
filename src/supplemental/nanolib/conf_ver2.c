@@ -880,10 +880,14 @@ update_clientid_vin(conf_bridge_node *node, char *vin)
 static void
 update_forward_vin(conf_bridge_node *node, char *vin)
 {
-	if (node->forwards) {
+	if (node->forwards_list) {
 		for (size_t i = 0; i < node->forwards_count; i++) {
-			node->forwards[i] =
-			    check_and_replace_vin(node->forwards[i], vin);
+			node->forwards_list[i]->remote_topic =
+			    check_and_replace_vin(node->forwards_list[i]->remote_topic, vin);
+			node->forwards_list[i]->remote_topic_len = strlen(node->forwards_list[i]->remote_topic);
+			node->forwards_list[i]->local_topic =
+			    check_and_replace_vin(node->forwards_list[i]->local_topic, vin);
+			node->forwards_list[i]->local_topic_len = strlen(node->forwards_list[i]->local_topic);
 		}
 	}
 }
@@ -893,10 +897,15 @@ update_subscription_vin(conf_bridge_node *node, char *vin)
 {
 	if (node->sub_list) {
 		for (size_t i = 0; i < node->sub_count; i++) {
-			node->sub_list[i]->topic = check_and_replace_vin(
-			    node->sub_list[i]->topic, vin);
-			node->sub_list[i]->topic_len =
-			    strlen(node->sub_list[i]->topic);
+			node->sub_list[i]->local_topic = check_and_replace_vin(
+			    node->sub_list[i]->local_topic, vin);
+			node->sub_list[i]->local_topic_len =
+			    strlen(node->sub_list[i]->local_topic);
+			node->sub_list[i]->remote_topic =
+			    check_and_replace_vin(
+			        node->sub_list[i]->remote_topic, vin);
+			node->sub_list[i]->remote_topic_len =
+			    strlen(node->sub_list[i]->remote_topic);
 		}
 	}
 }
