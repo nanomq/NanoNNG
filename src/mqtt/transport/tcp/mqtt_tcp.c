@@ -936,6 +936,7 @@ mqtt_tcptran_pipe_send(void *arg, nni_aio *aio)
 {
 	mqtt_tcptran_pipe *p = arg;
 	int                rv;
+	log_error("rhack: %s: %d: msg send!!!\n", __func__, __LINE__);
 
 	if (nni_aio_begin(aio) != 0) {
 		return;
