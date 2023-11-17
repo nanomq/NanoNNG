@@ -166,17 +166,6 @@ mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
 	}
 }
 
-static uint16_t
-mqtt_pipe_get_next_packet_id(mqtt_sock_t *s)
-{
-	int packet_id;
-	do {
-		packet_id = nni_atomic_get(&s->next_packet_id);
-	} while (
-	    !nni_atomic_cas(&s->next_packet_id, packet_id, packet_id + 1));
-	return packet_id & 0xFFFF;
-}
-
 // Should be called with mutex lock hold after pipe is secured
 // return rv>0 when aio should be finished (error or successed)
 static int
@@ -1706,7 +1695,7 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 		// fall through
 	case NNG_MQTT_SUBSCRIBE:
 	case NNG_MQTT_UNSUBSCRIBE:
-		packet_id = mqtt_pipe_get_next_packet_id(s);
+		packet_id = mqtt_get_next_packet_id(&s->next_packet_id);
 		nni_mqtt_msg_set_packet_id(msg, packet_id);
 		break;
 	default:

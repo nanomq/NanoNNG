@@ -268,25 +268,6 @@ mqtt_sock_recv(void *arg, nni_aio *aio)
  *                              Pipe Implementation                           *
  ******************************************************************************/
 
-static uint16_t
-mqtt_sock_get_next_packet_id(mqtt_sock_t *s)
-{
-	int packet_id;
-	do {
-		packet_id = nni_atomic_get(&s->next_packet_id);
-		/* PROTOCOL ERROR: When the expression is 0 */
-		while ((uint16_t)(packet_id & 0xFFFF) == 0) {
-			while(!nni_atomic_cas(&s->next_packet_id,
-								  packet_id,
-								  packet_id + 1)) {
-				packet_id = nni_atomic_get(&s->next_packet_id);
-			}
-		}
-	} while (
-	    !nni_atomic_cas(&s->next_packet_id, packet_id, packet_id + 1));
-	return packet_id & 0xFFFF;
-}
-
 static int
 mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s)
 {
@@ -998,7 +979,7 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 		// fall through
 	case NNG_MQTT_SUBSCRIBE:
 	case NNG_MQTT_UNSUBSCRIBE:
-		packet_id = mqtt_sock_get_next_packet_id(s);
+		packet_id = mqtt_get_next_packet_id(&s->next_packet_id);
 		nni_mqtt_msg_set_packet_id(msg, packet_id);
 		break;
 	default:
