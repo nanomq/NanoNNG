@@ -689,7 +689,7 @@ trantest_mqtt_sub_pub(trantest *tt)
 		trantest_mqtt_sub_send(tt->reqsock, client, true);
 		nng_msleep(1000);// make sure the server recv sub msg before we send pub msg.
 		cp1 = trantest_mqtt_pub(tt->repsock, true);
-		nng_msleep(1000);
+		nng_msleep(2000);
 		cp2 = trantest_mqtt_sub_recv(tt->reqsock);
 		trantest_mqtt_unsub_send(tt->reqsock, client, true);
 		// syn sub & unsub
@@ -736,7 +736,7 @@ trantest_mqttv5_sub_pub(trantest *tt)
 		trantest_mqtt_sub_send(tt->reqsock, client, true);
 		nng_msleep(1000);// make sure the server recv sub msg before we send pub msg.
 		cp1 = trantest_mqtt_pub(tt->repsock, true);
-		nng_msleep(1000);
+		nng_msleep(2000);
 		cp2 = trantest_mqtt_sub_recv(tt->reqsock);
 		trantest_mqtt_unsub_send(tt->reqsock, client, true);
 		nng_mqtt_disconnect(&(tt->reqsock), 0, NULL);
