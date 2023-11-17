@@ -605,7 +605,7 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 	uint8_t            type, pos, flags;
 	uint32_t           len = 0, rv;
 	size_t             n;
-	nni_msg *          msg, *qmsg;
+	nni_msg *          msg;
 	mqtt_tcptran_pipe *p     = arg;
 	nni_aio *          rxaio = p->rxaio;
 	bool               ack   = false;
@@ -760,6 +760,7 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 	if (ack == true) {
 		// alloc a msg here costs memory. However we must do it for the
 		// sake of compatibility with nng.
+		nni_msg *qmsg;
 		if ((rv = nni_msg_alloc(&qmsg, 0)) != 0) {
 			ack = false;
 			rv  = UNSPECIFIED_ERROR;
@@ -784,7 +785,8 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 			nni_aio_set_iov(p->qsaio, 2, iov);
 			nng_stream_send(p->conn, p->qsaio);
 		} else {
-			nni_msg_free(qmsg);
+			// let protocol layer handle ack msg for us
+			nni_aio_set_prov_data(aio, qmsg);
 		}
 		// else {
 		// 	if (nni_lmq_full(&p->rslmq)) {
