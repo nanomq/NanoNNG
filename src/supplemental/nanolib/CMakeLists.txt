@@ -40,5 +40,4 @@ if (SUPP_RULE_ENGINE)
   nng_test(rule_test)
 endif (SUPP_RULE_ENGINE)
 
-
-  
+add_subdirectory(linkedlist)
