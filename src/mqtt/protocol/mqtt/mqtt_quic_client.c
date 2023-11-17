@@ -92,7 +92,8 @@ struct mqtt_sock_s {
 	nni_list      send_queue; // aio pending to send
 	nni_lmq  send_messages; // send messages queue (only for major stream)
 	nni_lmq *ack_lmq;       // created for ack aio callback
-	nni_lmq *topic_lmq; // queued msg waiting to be send as first in new stream
+	nni_lmq *topic_lmq;  // queued msg waiting to be send as first in new stream
+	nni_id_map  *topic_map;  // Cache the topics that of msg in topic_lmq
 	nni_id_map  *sub_streams; // sub (bidirectional) pipes, only for multi-stream mode
 	nni_id_map  *pub_streams; // pub pipes, unidirectional stream
 	mqtt_pipe_t *pipe;        // the major pipe (control stream)
@@ -165,17 +166,6 @@ mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
 	}
 }
 
-static uint16_t
-mqtt_pipe_get_next_packet_id(mqtt_sock_t *s)
-{
-	int packet_id;
-	do {
-		packet_id = nni_atomic_get(&s->next_packet_id);
-	} while (
-	    !nni_atomic_cas(&s->next_packet_id, packet_id, packet_id + 1));
-	return packet_id & 0xFFFF;
-}
-
 // Should be called with mutex lock hold after pipe is secured
 // return rv>0 when aio should be finished (error or successed)
 static int
@@ -205,6 +195,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		if (qos == 0) {
 			break; // QoS 0 need no packet id
 		}
+		// fall through
 	case NNG_MQTT_SUBSCRIBE:
 	case NNG_MQTT_UNSUBSCRIBE:
 		packet_id = nni_mqtt_msg_get_packet_id(msg);
@@ -329,6 +320,7 @@ mqtt_pipe_send_msg(nni_aio *aio, nni_msg *msg, mqtt_pipe_t *p, uint16_t packet_i
 		if (qos == 0) {
 			break; // QoS 0 need no packet id
 		}
+		// fall through
 	case NNG_MQTT_SUBSCRIBE:
 	case NNG_MQTT_UNSUBSCRIBE:
 		packet_id = nni_mqtt_msg_get_packet_id(msg);
@@ -1085,6 +1077,8 @@ mqtt_quic_sock_fini(void *arg)
 	if (s->topic_lmq != NULL) {
 		nni_lmq_fini(s->topic_lmq);
 		nng_free(s->topic_lmq, sizeof(nni_lmq));
+		nni_id_map_fini(s->topic_map);
+		nng_free(s->topic_map, sizeof(nni_id_map));
 	}
 	// emulate disconnect notify msg as a normal publish
 	while ((aio = nni_list_first(&s->recv_queue)) != NULL) {
@@ -1209,6 +1203,8 @@ mqtt_quic_sock_set_multi_stream(void *arg, const void *buf, size_t sz, nni_type 
 	if (s->multi_stream && s->topic_lmq == NULL) {
 		s->topic_lmq = nni_alloc(sizeof(nni_lmq));
 		nni_lmq_init(s->topic_lmq, NNG_MAX_RECV_LMQ);
+		s->topic_map = nni_alloc(sizeof(nni_id_map));
+		nni_id_map_init(s->topic_map, 0x0000u, 0xffffu, true);
 	}
 	nni_mtx_unlock(&s->mtx);
 	return (0);
@@ -1297,9 +1293,38 @@ quic_mqtt_stream_bind(mqtt_sock_t *s, mqtt_pipe_t *p, nni_pipe *npipe)
 		}
 		nni_msg_clone(msg);
 		p->idmsg = msg;
-		log_info("New Pub Stream has been bound to topic (code %ld)", hash);
+		log_info("New Pub Stream has been bound to %.*s (code %ld)", topic_len, topic, hash);
 		// must be a new pub stream
-		mqtt_pipe_send_msg(nni_mqtt_msg_get_aio(msg), msg, p, 0);
+		if ((rv = mqtt_pipe_send_msg(nni_mqtt_msg_get_aio(msg), msg, p, 0)) >= 0) {
+			nni_aio_finish(nni_mqtt_msg_get_aio(msg), rv, 0);
+		}
+		char *num_ptr;
+		if (NULL != (num_ptr = nni_id_get(s->topic_map, hash))) {
+			// Iterate topic lmq and send
+			size_t lmqsz = nni_lmq_len(s->topic_lmq);
+			log_debug("topic_lmq sz%ld Cached msg number%d", lmqsz, (int)(num_ptr - (char *)s));
+			for (int i=0; i<(int)lmqsz && (void *)num_ptr != s; ++i) {
+				nng_msg *lm;
+				nni_lmq_get(s->topic_lmq, &lm);
+				if (lm == NULL)
+					continue;
+				if (nni_mqtt_msg_get_packet_type(lm) != NNG_MQTT_PUBLISH) {
+					nni_lmq_put(s->topic_lmq, lm);
+					continue;
+				}
+				uint32_t tpl;
+				char *tp = (char *) nni_mqtt_msg_get_publish_topic(lm, &tpl);
+				if (tpl == topic_len && 0 == strncmp(tp, topic, tpl)) {
+					if ((rv = mqtt_pipe_send_msg(nni_mqtt_msg_get_aio(lm), lm, p, 0)) >= 0) {
+						nni_aio_finish(nni_mqtt_msg_get_aio(lm), rv, 0);
+					}
+					num_ptr --;
+					continue;
+				}
+				nni_lmq_put(s->topic_lmq, lm);
+			}
+			nni_id_set(s->topic_map, hash, NULL);
+		}
 	}
 	return 0;
 }
@@ -1667,9 +1692,10 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 		if (nni_mqtt_msg_get_publish_qos(msg) == 0) {
 			break;
 		}
+		// fall through
 	case NNG_MQTT_SUBSCRIBE:
 	case NNG_MQTT_UNSUBSCRIBE:
-		packet_id = mqtt_pipe_get_next_packet_id(s);
+		packet_id = mqtt_get_next_packet_id(&s->next_packet_id);
 		nni_mqtt_msg_set_packet_id(msg, packet_id);
 		break;
 	default:
@@ -1742,23 +1768,38 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 		nni_mqtt_msg_set_aio(msg, aio);
 		if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_SUBSCRIBE) {
 			nni_lmq_put(s->topic_lmq, msg);
-			nni_dialer_start(npipe->p_dialer, NNG_FLAG_NONBLOCK);
+			rv = nni_dialer_start(npipe->p_dialer, NNG_FLAG_NONBLOCK);
+			if (rv != 0) {
+				nni_aio_finish_error(aio, rv);
+				log_error("Error in dialer start (sub) %d", rv);
+			}
 		} else if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBLISH) {
-			// check if pub stream already exist
-			uint32_t topic_len;
-			char *topic = (char *) nni_mqtt_msg_get_publish_topic(msg, &topic_len);
+			char *       num_ptr;
+			uint32_t     topic_len;
+			char *       topic = (char *) nni_mqtt_msg_get_publish_topic(msg, &topic_len);
 			mqtt_pipe_t *pub_pipe;
-			pub_pipe = nni_id_get(s->pub_streams, DJBHashn(topic, topic_len));
+			uint32_t     hash = DJBHashn(topic, topic_len);
+			pub_pipe = nni_id_get(s->pub_streams, hash);
+			// check if pub stream already exist
 			if (pub_pipe == NULL) {
-				log_info("create new pub stream");
 				nni_lmq_put(s->topic_lmq, msg);
-				/*
-				 * You can set dialer quic priority before
-				 * dialer_start to create a stream with the
-				 * specified priority.
-				 */
-				//nni_dialer_setopt(npipe->p_dialer, NNG_OPT_MQTT_QUIC_PRIORITY, &val, sizeof(int), NNI_TYPE_INT32);
-				nni_dialer_start(npipe->p_dialer, NNG_FLAG_NONBLOCK);
+				// check if the stream is already dialing
+				if (NULL == (num_ptr = nni_id_get(s->topic_map, hash))) {
+					nni_id_set(s->topic_map, hash, (void *)s);
+					/*
+					 * You can set dialer quic priority before
+					 * dialer_start to create a stream with the
+					 * specified priority.
+					 */
+					//nni_dialer_setopt(npipe->p_dialer, NNG_OPT_MQTT_QUIC_PRIORITY, &val, sizeof(int), NNI_TYPE_INT32);
+					rv = nni_dialer_start(npipe->p_dialer, NNG_FLAG_NONBLOCK);
+					if (rv != 0) {
+						nni_aio_finish_error(aio, rv);
+						log_error("Error in dialer start (pub) %d", rv);
+					}
+				} else {
+					nni_id_set(s->topic_map, hash, (void *)(num_ptr + 1));
+				}
 			} else {
 				if ((rv = mqtt_pipe_send_msg(aio, msg, pub_pipe, 0)) >= 0) {
 					nni_mtx_unlock(&s->mtx);

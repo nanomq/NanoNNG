@@ -41,3 +41,4 @@ if (SUPP_RULE_ENGINE)
 endif (SUPP_RULE_ENGINE)
 
 add_subdirectory(linkedlist)
+add_subdirectory(ringbuffer)
