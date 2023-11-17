@@ -5,7 +5,7 @@ int linkedList_replace_head(struct linkedList *list,
 							unsigned long long expiredAt)
 {
 	if (list->size == 0) {
-		printf("linkedList_replace_head failed list is empty!\n");
+		log_error("linkedList_replace_head failed list is empty!\n");
 		return -1;
 	}
 
@@ -25,9 +25,9 @@ int linkedList_init(struct linkedList **list,
 {
 	struct linkedList *newList;
 
-	newList = (struct linkedList *)malloc(sizeof(struct linkedList));
+	newList = (struct linkedList *)nni_alloc(sizeof(struct linkedList));
 	if (newList == NULL) {
-		printf("alloc new linkedList failed\n");
+		log_error("alloc new linkedList failed\n");
 		return -1;
 	}
 
@@ -49,7 +49,7 @@ int linkedList_enqueue(struct linkedList *list,
 {
 	if (list->size == list->cap) {
 		if (list->overWrite == 0) {
-			printf("Linked list is full, and do not allow to overwrite!\n");
+			log_error("Linked list is full, and do not allow to overwrite!\n");
 			return -1;
 		} else {
 			return linkedList_replace_head(list, data, expiredAt);
@@ -57,9 +57,9 @@ int linkedList_enqueue(struct linkedList *list,
 	}
 
 	struct linkedListNode *newNode = NULL;
-	newNode = (struct linkedListNode *)malloc(sizeof(struct linkedListNode));
+	newNode = (struct linkedListNode *)nni_alloc(sizeof(struct linkedListNode));
 	if (newNode == NULL) {
-		printf("Linked list alloc new node failed!\n");
+		log_error("Linked list alloc new node failed!\n");
 		return -1;
 	}
 	newNode->data = data;
@@ -85,7 +85,7 @@ int linkedList_dequeue(struct linkedList *list,
 					   void **data)
 {
 	if (list->size == 0) {
-		printf("Linked list is empty, dequeue failed!\n");
+		log_error("Linked list is empty, dequeue failed!\n");
 		return -1;
 	}
 	struct linkedListNode *node = list->head;
@@ -126,7 +126,7 @@ int linkedList_release(struct linkedList *list)
 		void *data;
 		ret = linkedList_dequeue(list, &data);
 		if (ret != 0) {
-			printf("linkedList_dequeue failed!\n");
+			log_error("linkedList_dequeue failed!\n");
 			return -1;
 		}
 		free(data);
