@@ -670,12 +670,12 @@ mqtt_send_cb(void *arg)
 static void
 mqtt_recv_cb(void *arg)
 {
-	mqtt_pipe_t *    p          = arg;
-	mqtt_sock_t *    s          = p->mqtt_sock;
-	nni_aio *        user_aio   = NULL;
-	nni_msg *        cached_msg = NULL;
-	mqtt_ctx_t *     ctx;
-	int		 rv;
+	mqtt_pipe_t *p          = arg;
+	mqtt_sock_t *s          = p->mqtt_sock;
+	nni_aio     *user_aio   = NULL;
+	nni_msg     *cached_msg = NULL;
+	mqtt_ctx_t  *ctx;
+	int          rv;
 
 	if ((rv = nni_aio_result(&p->recv_aio)) != 0) {
 		log_warn("MQTT client recv error %d!", rv);
@@ -685,7 +685,22 @@ mqtt_recv_cb(void *arg)
 	}
 
 	nni_mtx_lock(&s->mtx);
-	nni_msg *msg = nni_aio_get_msg(&p->recv_aio);
+	nni_msg *msg     = nni_aio_get_msg(&p->recv_aio);
+	nni_msg *ack_msg = NULL;
+	if ((ack_msg = nni_aio_get_prov_data(&p->recv_aio)) != NULL) {
+		nni_aio_set_prov_data(&p->recv_aio, NULL);
+		if (!p->busy) {
+			p->busy = true;
+			nni_aio_set_msg(&p->send_aio, ack_msg);
+			nni_pipe_send(p->pipe, &p->send_aio);
+		} else {
+			if (0 != nni_lmq_put(&p->send_messages, ack_msg)) {
+				nni_println(
+				    "Warning! ack msg lost due to busy socket");
+				nni_msg_free(ack_msg);
+			}
+		}
+	}
 	nni_aio_set_msg(&p->recv_aio, NULL);
 	if (nni_atomic_get_bool(&s->closed) ||
 	    nni_atomic_get_bool(&p->closed)) {
@@ -813,9 +828,9 @@ mqtt_recv_cb(void *arg)
 #ifdef NNG_HAVE_MQTT_BROKER
 				conn_param_free(s->cparam);
 #endif
+				log_warn("ERROR: no ctx found! msg queue full! QoS2 msg lost!");
 			}
 			nni_mtx_unlock(&s->mtx);
-			log_warn("ERROR: no ctx found! msg queue full! QoS2 msg lost!");
 			return;
 		}
 
