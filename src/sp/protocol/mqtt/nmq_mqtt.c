@@ -192,7 +192,7 @@ nano_pipe_timer_cb(void *arg)
 		nng_time will_intval = p->conn_param->will_delay_interval;
 		nng_time session_int = p->conn_param->session_expiry_interval;
 		p->ka_refresh++;
-		time = p->ka_refresh * (qos_duration);
+		time = (uint64_t)(p->ka_refresh * (qos_duration));
 		rv += will_intval > 0 ? (nng_clock() > will_intval ? 1 : 0) : 0;
 		rv += session_int > 0 ? (time > session_int ? 1 : 0) : 0;
 		// check session expiry interval
