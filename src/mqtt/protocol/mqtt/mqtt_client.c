@@ -304,6 +304,10 @@ mqtt_pipe_fini(void *arg)
 		nni_aio_set_msg(&p->recv_aio, NULL);
 		nni_msg_free(msg);
 	}
+	if ((msg = nni_aio_get_prov_data(&p->recv_aio)) != NULL) {
+		nni_aio_set_prov_data(&p->recv_aio, NULL);
+		nni_msg_free(msg);
+	}
 	if ((msg = nni_aio_get_msg(&p->send_aio)) != NULL) {
 		nni_aio_set_msg(&p->send_aio, NULL);
 		nni_msg_free(msg);
@@ -686,6 +690,16 @@ mqtt_recv_cb(void *arg)
 
 	nni_mtx_lock(&s->mtx);
 	nni_msg *msg     = nni_aio_get_msg(&p->recv_aio);
+	nni_aio_set_msg(&p->recv_aio, NULL);
+	if (nni_atomic_get_bool(&s->closed) ||
+	    nni_atomic_get_bool(&p->closed)) {
+		//free msg and dont return data when pipe is closed.
+		if (msg) {
+			nni_msg_free(msg);
+		}
+		nni_mtx_unlock(&s->mtx);
+		return;
+	}
 	nni_msg *ack_msg = NULL;
 	if ((ack_msg = nni_aio_get_prov_data(&p->recv_aio)) != NULL) {
 		nni_aio_set_prov_data(&p->recv_aio, NULL);
@@ -700,16 +714,6 @@ mqtt_recv_cb(void *arg)
 				nni_msg_free(ack_msg);
 			}
 		}
-	}
-	nni_aio_set_msg(&p->recv_aio, NULL);
-	if (nni_atomic_get_bool(&s->closed) ||
-	    nni_atomic_get_bool(&p->closed)) {
-		//free msg and dont return data when pipe is closed.
-		if (msg) {
-			nni_msg_free(msg);
-		}
-		nni_mtx_unlock(&s->mtx);
-		return;
 	}
 	nni_msg_set_pipe(msg, nni_pipe_id(p->pipe));
 	nni_mqtt_msg_proto_data_alloc(msg);
@@ -859,10 +863,10 @@ mqtt_recv_cb(void *arg)
 				if (mqtt_pipe_recv_msgq_putq(p, msg) != 0) {
 #ifdef NNG_HAVE_MQTT_BROKER
 					conn_param_free(s->cparam);
+					log_warn("Warning: no ctx found!! PUB msg lost!");
 #endif
 				}
 				nni_mtx_unlock(&s->mtx);
-				// nni_println("ERROR: no ctx found!! create more ctxs!");
 				return;
 			}
 			nni_list_remove(&s->recv_queue, ctx);
