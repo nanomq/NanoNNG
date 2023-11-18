@@ -1159,7 +1159,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	// never modify the original msg
 
 	uint8_t *     body, *header, qos_pac;
-	target_prover target_prover;
+	target_prover target_prover = 0;
 	int           len_offset = 0, sub_id = 0, qos = 0;
 	uint16_t      pid;
 	uint32_t tprop_bytes, prop_bytes = 0, id_bytes = 0, property_len = 0;
