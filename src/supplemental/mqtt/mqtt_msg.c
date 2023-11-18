@@ -915,17 +915,20 @@ mqtt_close_unack_msg_cb(void *key, void *val)
 
 	nni_msg * msg = val;
 	nni_aio * aio = NULL;
-	conn_param *cparam = NULL;
 
 	aio = nni_mqtt_msg_get_aio(msg);
 	if (aio) {
 		// could be incompatible with nng_close(quic_socket)
 		nni_aio_abort(aio, NNG_ECLOSED);
 	}
+#ifdef NNG_HAVE_MQTT_BROKER
+	conn_param *cparam = NULL;
 	cparam = nni_msg_get_conn_param(msg);
-	nni_msg_free(msg);
 	if (cparam)
 		conn_param_free(cparam);
+#endif
+	nni_msg_free(msg);
+
 }
 
 void
