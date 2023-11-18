@@ -319,6 +319,7 @@ done:
 				uint8_t buf[2] = { CMD_PINGRESP, 0x00 };
 				nni_msg_set_cmd_type(qmsg, CMD_PINGRESP);
 				nni_msg_header_append(qmsg, buf, 2);
+				// we sacrifice performance for safety in WebSocket
 				nng_aio_wait(p->qsaio);
 				iov[0].iov_len = nni_msg_header_len(qmsg);
 				iov[0].iov_buf = nni_msg_header(qmsg);
