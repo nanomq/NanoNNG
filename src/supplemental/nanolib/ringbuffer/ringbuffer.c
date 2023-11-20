@@ -1,4 +1,5 @@
 #include "nng/supplemental/nanolib/ringbuffer.h"
+#include "core/nng_impl.h"
 
 int ringBuffer_init(struct ringBuffer **rb,
 					unsigned int cap,
