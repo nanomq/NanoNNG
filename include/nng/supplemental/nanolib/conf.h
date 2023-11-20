@@ -248,6 +248,7 @@ struct conf_bridge_node {
 	uint8_t      proto_ver;
 	uint16_t     port;
 	uint16_t     keepalive;
+	uint16_t     backoff_max;
 	size_t       sub_count;
 	size_t       forwards_count;
 	size_t       max_recv_queue_len;
