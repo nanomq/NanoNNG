@@ -69,6 +69,8 @@ struct mqtts_tcptran_ep {
 	nni_mtx              mtx;
 	uint16_t             proto;
 	size_t               rcvmax;
+	nni_duration         backoff;
+	nni_duration         backoff_max;
 	bool                 fini;
 	bool                 started;
 	bool                 closed;
@@ -1362,6 +1364,7 @@ mqtts_tcptran_ep_init(mqtts_tcptran_ep **epp, nng_url *url, nni_sock *sock)
 	ep->connmsg     = NULL;
 	ep->reason_code = 0;
 	ep->property    = NULL;
+	ep->backoff     = 0;
 
 #ifdef NNG_ENABLE_STATS
 	static const nni_stat_info rcv_max_info = {
@@ -1521,6 +1524,16 @@ mqtts_tcptran_ep_connect(void *arg, nni_aio *aio)
 	if (nni_aio_begin(aio) != 0) {
 		return;
 	}
+	if (ep->backoff != 0) {
+		ep->backoff = ep->backoff * 2;
+		ep->backoff = ep->backoff > ep->backoff_max
+		    ? (nni_duration) (nni_random() % 1000)
+		    : ep->backoff;
+		log_debug("reconnect in %ld", ep->backoff);
+		nni_msleep(ep->backoff);
+	} else {
+		ep->backoff = nni_random()%2000;
+	}
 	nni_mtx_lock(&ep->mtx);
 	if (ep->closed) {
 		nni_mtx_unlock(&ep->mtx);
@@ -1609,6 +1622,25 @@ mqtts_tcptran_ep_get_property(void *arg, void *v, size_t *szp, nni_opt_type t)
 	int              rv;
 
 	rv = nni_copyout_ptr(ep->property, v, szp, t);
+	return (rv);
+}
+
+// NanoSDK use exponential backoff strategy as default
+// Backoff for random time that exponentially curving
+static int
+mqtt_tcptran_ep_set_reconnect_backoff(void *arg, const void *v, size_t sz, nni_opt_type t)
+{
+	mqtts_tcptran_ep *ep = arg;
+	nni_duration      tmp;
+	int rv;
+
+	// max backoff time cannot exceed 10min
+
+	if ((rv = nni_copyin_ms(&tmp, v, sz, t)) == 0) {
+		nni_mtx_lock(&ep->mtx);
+		ep->backoff_max = tmp > 600000 ? 360000 : tmp;
+		nni_mtx_unlock(&ep->mtx);
+	}
 	return (rv);
 }
 
