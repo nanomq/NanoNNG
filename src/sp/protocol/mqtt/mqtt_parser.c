@@ -762,8 +762,8 @@ nmq_connack_encode(nng_msg *msg, conn_param *cparam, uint8_t reason)
 	nni_msg_append(msg, &reason, 1);
 
 	if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
-		// TODO set properties if necessary
-		encode_properties(msg, cparam->properties, CMD_CONNACK);
+		// TODO set properties if necessary. Null by default.
+		encode_properties(msg, NULL, CMD_CONNACK);
 	}
 
 	size_t         msg_len    = nng_msg_len(msg);
