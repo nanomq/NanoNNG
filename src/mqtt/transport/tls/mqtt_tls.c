@@ -1628,7 +1628,7 @@ mqtts_tcptran_ep_get_property(void *arg, void *v, size_t *szp, nni_opt_type t)
 // NanoSDK use exponential backoff strategy as default
 // Backoff for random time that exponentially curving
 static int
-mqtt_tcptran_ep_set_reconnect_backoff(void *arg, const void *v, size_t sz, nni_opt_type t)
+mqtts_tcptran_ep_set_reconnect_backoff(void *arg, const void *v, size_t sz, nni_opt_type t)
 {
 	mqtts_tcptran_ep *ep = arg;
 	nni_duration      tmp;
@@ -1716,6 +1716,10 @@ static const nni_option mqtts_tcptran_ep_opts[] = {
 	    .o_name = NNG_OPT_MQTT_CONNMSG,
 	    .o_get  = mqtts_tcptran_ep_get_connmsg,
 	    .o_set  = mqtts_tcptran_ep_set_connmsg,
+	},
+	{
+	    .o_name = NNG_OPT_MQTT_RECONNECT_BACKOFF_MAX,
+	    .o_set  = mqtts_tcptran_ep_set_reconnect_backoff,
 	},
 	{
 	    .o_name = NNG_OPT_URL,
