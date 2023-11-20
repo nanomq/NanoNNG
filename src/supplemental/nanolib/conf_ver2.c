@@ -379,11 +379,11 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 
 		if (NULL == tls->keyfile ||
 		    0 == file_load_data(tls->keyfile, (void **) &tls->key)) {
-			log_error("Read keyfile %s failed!", tls->keyfile);
+			log_warn("Read keyfile %s failed!", tls->keyfile);
 		}
 		if (NULL == tls->certfile ||
 		    0 == file_load_data(tls->certfile, (void **) &tls->cert)) {
-			log_error("Read certfile %s failed!", tls->certfile);
+			log_warn("Read certfile %s failed!", tls->certfile);
 		}
 		if (NULL == tls->cafile ||
 		    0 == file_load_data(tls->cafile, (void **) &tls->ca)) {
