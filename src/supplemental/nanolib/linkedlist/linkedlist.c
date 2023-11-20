@@ -1,4 +1,5 @@
 #include "nng/supplemental/nanolib/linkedlist.h"
+#include "core/nng_impl.h"
 
 int linkedList_replace_head(struct linkedList *list,
 							void *data,
