@@ -69,7 +69,7 @@ void test_linkedList_dequeue(void)
 	NUTS_TRUE(list != NULL);
 
 	/* linked list is empty, dequeue failed */
-	NUTS_TRUE(linkedList_dequeue(list, &tmp) != 0);
+	NUTS_TRUE(linkedList_dequeue(list, (void **)&tmp) != 0);
 
 	/* Enqueue and dequeue normally */
 	for (int i = 0; i < 10; i++) {
@@ -80,13 +80,13 @@ void test_linkedList_dequeue(void)
 	}
 
 	for (int i = 0; i < 10; i++) {
-		NUTS_TRUE(linkedList_dequeue(list, &tmp) == 0);
+		NUTS_TRUE(linkedList_dequeue(list, (void **)&tmp) == 0);
 		NUTS_TRUE(tmp != NULL);
 		NUTS_TRUE(*tmp == i);
 		nng_free(tmp, sizeof(int));
 	}
 
-	NUTS_TRUE(linkedList_dequeue(list, &tmp) != 0);
+	NUTS_TRUE(linkedList_dequeue(list, (void **)&tmp) != 0);
 
 	/* Enqueue and dequeue abnormally */
 	for (int i = 0; i < 12; i++) {
@@ -104,7 +104,7 @@ void test_linkedList_dequeue(void)
 	NUTS_TRUE(list->size == 10);
 
 	for (int i = 0; i < 3; i++) {
-		NUTS_TRUE(linkedList_dequeue(list, &tmp) == 0);
+		NUTS_TRUE(linkedList_dequeue(list, (void **)&tmp) == 0);
 		NUTS_TRUE(tmp != NULL);
 		nng_free(tmp, sizeof(int));
 	}

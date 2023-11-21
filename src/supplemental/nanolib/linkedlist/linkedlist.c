@@ -14,6 +14,7 @@ int linkedList_replace_head(struct linkedList *list,
 	nng_free(list->head->data, sizeof(*(list->head->data)));
 
 	list->head->data = data;
+	list->head->expiredAt = expiredAt;
 	list->head = list->head->next;
 	list->tail = list->tail->next;
 
