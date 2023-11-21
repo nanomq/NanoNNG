@@ -1,3 +1,4 @@
+#include "nng/supplemental/nanolib/log.h"
 #include "nng/supplemental/nanolib/linkedlist.h"
 #include "core/nng_impl.h"
 
@@ -10,7 +11,7 @@ int linkedList_replace_head(struct linkedList *list,
 		return -1;
 	}
 
-	free(list->head->data);
+	nng_free(list->head->data, sizeof(*(list->head->data)));
 
 	list->head->data = data;
 	list->head = list->head->next;
@@ -24,9 +25,9 @@ int linkedList_init(struct linkedList **list,
 					unsigned int overWrite,
 					unsigned long long expiredAt)
 {
-	struct linkedList *newList;
+	struct linkedList *newList = NULL;
 
-	newList = (struct linkedList *)nni_alloc(sizeof(struct linkedList));
+	newList = (struct linkedList *)nng_alloc(sizeof(struct linkedList));
 	if (newList == NULL) {
 		log_error("alloc new linkedList failed\n");
 		return -1;
@@ -58,7 +59,7 @@ int linkedList_enqueue(struct linkedList *list,
 	}
 
 	struct linkedListNode *newNode = NULL;
-	newNode = (struct linkedListNode *)nni_alloc(sizeof(struct linkedListNode));
+	newNode = (struct linkedListNode *)nng_alloc(sizeof(struct linkedListNode));
 	if (newNode == NULL) {
 		log_error("Linked list alloc new node failed!\n");
 		return -1;
@@ -96,7 +97,7 @@ int linkedList_dequeue(struct linkedList *list,
 	struct linkedListNode *tmp;
 	if (list->size == 1) {
 		tmp = list->head;
-		free(tmp);
+		nng_free(tmp, sizeof(*tmp));
 		list->head = NULL;
 		list->tail = NULL;
 		list->size = 0;
@@ -109,7 +110,7 @@ int linkedList_dequeue(struct linkedList *list,
 	list->head->next->prev = list->tail;
 	list->head = list->head->next;
 
-	free(tmp);
+	nng_free(tmp, sizeof(*tmp));
 
 	list->size--;
 
@@ -130,10 +131,10 @@ int linkedList_release(struct linkedList *list)
 			log_error("linkedList_dequeue failed!\n");
 			return -1;
 		}
-		free(data);
+		nng_free(data, sizeof(*data));
 	}
 
-	free(list);
+	nng_free(list, sizeof(*list));
 
 	return 0;
 }
