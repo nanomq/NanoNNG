@@ -1609,6 +1609,7 @@ mqtt_tcptran_ep_set_reconnect_backoff(void *arg, const void *v, size_t sz, nni_o
 	if ((rv = nni_copyin_ms(&tmp, v, sz, t)) == 0) {
 		nni_mtx_lock(&ep->mtx);
 		ep->backoff_max = tmp > 600000 ? 360000 : tmp;
+		log_debug("tcp backoff max is %dms", ep->backoff_max);
 		nni_mtx_unlock(&ep->mtx);
 	}
 	return (rv);

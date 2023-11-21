@@ -2433,6 +2433,7 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->password       = NULL;
 	node->proto_ver      = 4;
 	node->keepalive      = 60;
+	node->backoff_max    = 60;
 	node->forwards_count = 0;
 	node->forwards       = NULL;
 	node->sub_count      = 0;
@@ -2565,6 +2566,10 @@ conf_bridge_node_parse_with_name(const char *path,const char *key_prefix, const 
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".keepalive")) != NULL) {
 			node->keepalive = atoi(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".backoff_max")) != NULL) {
+			node->backoff_max = atoi(value);
 			free(value);
 #if defined(SUPP_QUIC)
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
@@ -2939,6 +2944,8 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		    node->name, node->password);
 		log_info("%sbridge.mqtt.%s.keepalive:                  %d", prefix,
 		    node->name, node->keepalive);
+		log_info("%sbridge.mqtt.%s.backoff_max:                %d", prefix,
+		    node->name, node->backoff_max);
 		log_info("%sbridge.mqtt.%s.max_parallel_processes:     %ld", prefix,
 		    node->name, node->parallel);
 
