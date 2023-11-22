@@ -159,6 +159,24 @@ int ringBuffer_dequeue(struct ringBuffer *rb, void **data)
 	return 0;
 }
 
+static inline void ringBufferRuleList_release(struct ringBufferRule **list, unsigned int len)
+{
+	unsigned int i = 0;
+
+	if (list == NULL) {
+		return;
+	}
+
+	for (i = 0; i < len; i++) {
+		if (list[i] != NULL) {
+			nng_free(list[i], sizeof(sizeof(struct ringBufferRule)));
+			list[i] = NULL;
+		}
+	}
+
+	return;
+}
+
 int ringBuffer_release(struct ringBuffer *rb)
 {
 	unsigned int i = 0;
@@ -180,6 +198,12 @@ int ringBuffer_release(struct ringBuffer *rb)
 		}
 		nng_free(rb->msgs, sizeof(*rb->msgs));
 	}
+
+	ringBufferRuleList_release(rb->enqinRuleList, rb->enqinRuleListLen);
+	ringBufferRuleList_release(rb->deqinRuleList, rb->deqinRuleListLen);
+	ringBufferRuleList_release(rb->enqoutRuleList, rb->enqoutRuleListLen);
+	ringBufferRuleList_release(rb->deqoutRuleList, rb->deqoutRuleListLen);
+
 	nng_free(rb, sizeof(*rb));
 
 	return 0;
