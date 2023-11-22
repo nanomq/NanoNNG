@@ -11,7 +11,11 @@ int linkedList_replace_head(struct linkedList *list,
 		return -1;
 	}
 
-	nng_free(list->head->data, sizeof(*(list->head->data)));
+	/*
+	 * sizeof(*(void *)) can not compile on windows,
+	 * and sz of nng_free is unused.
+	 */
+	nng_free(list->head->data, 0);
 
 	list->head->data = data;
 	list->head->expiredAt = expiredAt;
@@ -132,7 +136,12 @@ int linkedList_release(struct linkedList *list)
 			log_error("linkedList_dequeue failed!\n");
 			return -1;
 		}
-		nng_free(data, sizeof(*data));
+
+		/*
+		 * sizeof(*(void *)) can not compile on windows,
+		 * and sz of nng_free is unused.
+		 */
+		nng_free(data, 0);
 	}
 
 	nng_free(list, sizeof(*list));

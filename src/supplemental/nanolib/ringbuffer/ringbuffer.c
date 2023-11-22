@@ -111,7 +111,11 @@ int ringBuffer_enqueue(struct ringBuffer *rb,
 
 	if (rb->size == rb->cap) {
 		if (rb->overWrite) {
-			nng_free(rb->msgs[rb->head].data, sizeof(*rb->msgs[rb->head].data));
+			/*
+			 * sizeof(*(void *)) can not compile on windows,
+			 * and sz of nng_free is unused.
+			 */
+			nng_free(rb->msgs[rb->head].data, 0);
 			rb->msgs[rb->head].data = data;
 			rb->msgs[rb->head].expiredAt = expiredAt;
 			rb->head = (rb->head + 1) % rb->cap;
@@ -191,7 +195,11 @@ int ringBuffer_release(struct ringBuffer *rb)
 			i = rb->head;
 			count = 0;
 			while (count < rb->size) {
-				nng_free(rb->msgs[i].data, sizeof(*(rb->msgs[i].data)));
+				/*
+				 * sizeof(*(void *)) can not compile on windows,
+				 * and sz of nng_free is unused.
+				 */
+				nng_free(rb->msgs[i].data, 0);
 				i = (i + 1) % rb->cap;
 				count++;
 			}
