@@ -44,6 +44,61 @@ int ringBuffer_init(struct ringBuffer **rb,
 	return 0;
 }
 
+static inline int ringBufferRule_check(struct ringBuffer *rb,
+									   struct ringBufferRule **list,
+									   unsigned int len,
+									   void *data,
+									   int flag)
+{
+	int ret = 0;
+	unsigned int i = 0;
+
+	for (i = 0; i < len; i++) {
+		ret = list[i]->match(rb, data, flag);
+		if (ret != 0) {
+			continue;
+		}
+		ret = list[i]->target(rb, data, flag);
+		if (ret != 0) {
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+static inline int ringBuffer_rule_check(struct ringBuffer *rb, void *data, int flag)
+{
+	int ret;
+
+	if (flag & ENQUEUE_IN_HOOK) {
+		ret = ringBufferRule_check(rb, rb->enqinRuleList, rb->enqinRuleListLen, data, ENQUEUE_IN_HOOK);
+		if (ret != 0) {
+			return -1;
+		}
+	}
+	if (flag & ENQUEUE_OUT_HOOK) {
+		ret = ringBufferRule_check(rb, rb->enqoutRuleList, rb->enqoutRuleListLen, data, ENQUEUE_OUT_HOOK);
+		if (ret != 0) {
+			return -1;
+		}
+	}
+	if (flag & DEQUEUE_IN_HOOK) {
+		ret = ringBufferRule_check(rb, rb->deqinRuleList, rb->deqinRuleListLen, data, DEQUEUE_IN_HOOK);
+		if (ret != 0) {
+			return -1;
+		}
+	}
+	if (flag & DEQUEUE_OUT_HOOK) {
+		ret = ringBufferRule_check(rb, rb->deqoutRuleList, rb->deqoutRuleListLen, data, DEQUEUE_OUT_HOOK);
+		if (ret != 0) {
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
 int ringBuffer_enqueue(struct ringBuffer *rb,
 					   void *data,
 					   unsigned long long expiredAt)
