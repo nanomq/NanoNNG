@@ -13,16 +13,16 @@ int ringBuffer_init(struct ringBuffer **rb,
 		return -1;
 	}
 
-	newRB = (struct ringBuffer *)nni_alloc(sizeof(struct ringBuffer));
+	newRB = (struct ringBuffer *)nng_alloc(sizeof(struct ringBuffer));
 	if (newRB == NULL) {
 		log_error("New ring buffer alloc failed\n");
 		return -1;
 	}
 
-	newRB->msgs = (struct ringBufferMsg *)nni_alloc(sizeof(struct ringBufferMsg) * cap);
+	newRB->msgs = (struct ringBufferMsg *)nng_alloc(sizeof(struct ringBufferMsg) * cap);
 	if (newRB->msgs == NULL) {
 		log_error("New ringbuffer messages alloc failed\n");
-		free(newRB);
+		nng_free(newRB, sizeof(*newRB));
 		return -1;
 	}
 
@@ -45,7 +45,7 @@ int ringBuffer_enqueue(struct ringBuffer *rb,
 {
 	if (rb->size == rb->cap) {
 		if (rb->overWrite) {
-			free(rb->msgs[rb->head].data);
+			nng_free(rb->msgs[rb->head].data, sizeof(*rb->msgs[rb->head].data));
 			rb->msgs[rb->head].data = data;
 			rb->msgs[rb->head].expiredAt = expiredAt;
 			rb->head = (rb->head + 1) % rb->cap;
@@ -85,19 +85,22 @@ int ringBuffer_dequeue(struct ringBuffer *rb, void **data)
 
 int ringBuffer_release(struct ringBuffer *rb)
 {
-	if (rb != NULL) {
-		if (rb->msgs != NULL) {
-			if (rb->size != 0) {
-				int i = rb->head;
-				while (i != rb->tail) {
-					free(rb->msgs[i].data);
-					i = (i + 1) % rb->cap;
-				}
-			}
-			free(rb->msgs);
-		}
-		free(rb);
+	if (rb == NULL) {
+		return -1;
+
 	}
+
+	if (rb->msgs != NULL) {
+		if (rb->size != 0) {
+			unsigned int i = rb->head;
+			while (i != rb->tail) {
+				nng_free(rb->msgs[i].data, sizeof(*(rb->msgs[i].data)));
+				i = (i + 1) % rb->cap;
+			}
+		}
+		nng_free(rb->msgs, sizeof(*rb->msgs));
+	}
+	nng_free(rb, sizeof(*rb));
 
 	return 0;
 }
