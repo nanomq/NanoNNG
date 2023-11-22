@@ -85,17 +85,21 @@ int ringBuffer_dequeue(struct ringBuffer *rb, void **data)
 
 int ringBuffer_release(struct ringBuffer *rb)
 {
+	unsigned int i = 0;
+	unsigned int count = 0;
+
 	if (rb == NULL) {
 		return -1;
-
 	}
 
 	if (rb->msgs != NULL) {
 		if (rb->size != 0) {
-			unsigned int i = rb->head;
-			while (i != rb->tail) {
+			i = rb->head;
+			count = 0;
+			while (count < rb->size) {
 				nng_free(rb->msgs[i].data, sizeof(*(rb->msgs[i].data)));
 				i = (i + 1) % rb->cap;
+				count++;
 			}
 		}
 		nng_free(rb->msgs, sizeof(*rb->msgs));
