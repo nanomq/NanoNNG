@@ -1,6 +1,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define RINGBUFFER_MAX_SIZE	0xffff
+#define RBRULELIST_MAX_SIZE	0xff
+
+#define ENQUEUE_IN_HOOK     0x0001
+#define ENQUEUE_OUT_HOOK    0x0010
+#define DEQUEUE_IN_HOOK     0x0100
+#define DEQUEUE_OUT_HOOK    0x1000
+#define HOOK_MASK           ((ENQUEUE_IN_HOOK) | (ENQUEUE_OUT_HOOK) | (DEQUEUE_IN_HOOK) | (DEQUEUE_OUT_HOOK))
+
 struct ringBufferMsg {
 	void *data;
 	/* TTL of each message */
