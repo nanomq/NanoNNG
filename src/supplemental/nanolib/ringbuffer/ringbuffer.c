@@ -34,6 +34,11 @@ int ringBuffer_init(struct ringBuffer **rb,
 	newRB->expiredAt = expiredAt;
 	newRB->overWrite = overWrite;
 
+	newRB->enqinRuleListLen = 0;
+	newRB->enqoutRuleListLen = 0;
+	newRB->deqinRuleListLen = 0;
+	newRB->deqoutRuleListLen = 0;
+
 	*rb = newRB;
 
 	return 0;
@@ -105,6 +110,71 @@ int ringBuffer_release(struct ringBuffer *rb)
 		nng_free(rb->msgs, sizeof(*rb->msgs));
 	}
 	nng_free(rb, sizeof(*rb));
+
+	return 0;
+}
+
+static inline int ringBufferRuleList_add(struct ringBufferRule **list, unsigned int *len,
+										 int (*match)(struct ringBuffer *rb, void *data, int flag),
+										 int (*target)(struct ringBuffer *rb, void *data, int flag))
+{
+	struct ringBufferRule *newRule = NULL;
+	if (*len == RBRULELIST_MAX_SIZE) {
+		log_error("Rule Buffer enqueue rule list is full!\n");
+		return -1;
+	}
+
+	newRule = nng_alloc(sizeof(struct ringBufferRule));
+	if (newRule == NULL) {
+		log_error("alloc new rule failed! no memory!\n");
+		return -1;
+	}
+
+	newRule->match = match;
+	newRule->target = target;
+	list[*len] = newRule;
+	*len = *len + 1;
+	return 0;
+}
+
+int ringBuffer_add_rule(struct ringBuffer *rb,
+						int (*match)(struct ringBuffer *rb, void *data, int flag),
+						int (*target)(struct ringBuffer *rb, void *data, int flag),
+						int flag)
+{
+	int ret;
+
+	if (rb == NULL || match == NULL || target == NULL || (flag & HOOK_MASK) == 0) {
+		return -1;
+	}
+
+	if (flag & ENQUEUE_IN_HOOK) {
+		ret = ringBufferRuleList_add(rb->enqinRuleList, &rb->enqinRuleListLen, match, target);
+		if (ret != 0) {
+			return -1;
+		}
+	}
+
+	if (flag & ENQUEUE_OUT_HOOK) {
+		ret = ringBufferRuleList_add(rb->enqoutRuleList, &rb->enqoutRuleListLen, match, target);
+		if (ret != 0) {
+			return -1;
+		}
+	}
+
+	if (flag & DEQUEUE_IN_HOOK) {
+		ret = ringBufferRuleList_add(rb->deqinRuleList, &rb->deqinRuleListLen, match, target);
+		if (ret != 0) {
+			return -1;
+		}
+	}
+
+	if (flag & DEQUEUE_OUT_HOOK) {
+		ret = ringBufferRuleList_add(rb->deqoutRuleList, &rb->deqoutRuleListLen, match, target);
+		if (ret != 0) {
+			return -1;
+		}
+	}
 
 	return 0;
 }
