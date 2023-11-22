@@ -103,6 +103,12 @@ int ringBuffer_enqueue(struct ringBuffer *rb,
 					   void *data,
 					   unsigned long long expiredAt)
 {
+	int ret;
+	ret = ringBuffer_rule_check(rb, data, ENQUEUE_IN_HOOK);
+	if (ret != 0) {
+		return -1;
+	}
+
 	if (rb->size == rb->cap) {
 		if (rb->overWrite) {
 			nng_free(rb->msgs[rb->head].data, sizeof(*rb->msgs[rb->head].data));
@@ -126,11 +132,19 @@ int ringBuffer_enqueue(struct ringBuffer *rb,
 	rb->tail = (rb->tail + 1) % rb->cap;
 	rb->size++;
 
+	(void)ringBuffer_rule_check(rb, data, ENQUEUE_OUT_HOOK);
+
 	return 0;
 }
 
 int ringBuffer_dequeue(struct ringBuffer *rb, void **data)
 {
+	int ret;
+	ret = ringBuffer_rule_check(rb, NULL, DEQUEUE_IN_HOOK);
+	if (ret != 0) {
+		return -1;
+	}
+
 	if (rb->size == 0) {
 		log_error("Ring buffer is NULL dequeue failed\n");
 		return -1;
@@ -139,6 +153,8 @@ int ringBuffer_dequeue(struct ringBuffer *rb, void **data)
 	*data = rb->msgs[rb->head].data;
 	rb->head = (rb->head + 1) % rb->cap;
 	rb->size = rb->size - 1;
+
+	(void)ringBuffer_rule_check(rb, *data, DEQUEUE_OUT_HOOK);
 
 	return 0;
 }
