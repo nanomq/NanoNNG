@@ -13,6 +13,7 @@ typedef struct exchange_node_s exchange_node_t;
 
 struct exchange_node_s {
 	exchange_t      *ex;
+	exchange_sock_t *sock;
 	nni_aio         saio;
 	nni_lmq         send_messages;
 	nni_list_node   exnode;
@@ -22,6 +23,7 @@ struct exchange_node_s {
 
 struct exchange_sock_s {
 	nni_mtx         mtx;
+	nni_atomic_bool closed;
 	nni_list        ex_queue;
 };
 
