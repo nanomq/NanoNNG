@@ -2,17 +2,41 @@
 #include "core/nng_impl.h"
 
 int
-exchange_init(exchange_t **ex, char *name)
+exchange_init(exchange_t **ex, char *name, char *topic,
+			  unsigned int *rbsCaps, char **rbsName, unsigned int rbsCount)
 {
+	int ret = 0;
 	exchange_t *newEx = NULL;
 
 	if (ex == NULL) {
+		return -1;
+	}
+	if (rbsCount >= RINGBUFFER_MAX) {
 		return -1;
 	}
 
 	if (name == NULL || strlen(name) > EXCHANGE_NAME_LEN) {
 		log_error("Exchange init failed, name invalid!\n");
 		return -1;
+	}
+
+	if (rbsName == NULL) {
+		return -1;
+	}
+
+	for (unsigned int i = 0; i < rbsCount; i++) {
+		if (rbsName[i] == NULL || strlen(rbsName[i]) >= RBNAME_LEN) {
+			return -1;
+		}
+	}
+
+	if (rbsCaps == NULL) {
+		return -1;
+	}
+	for (unsigned int i = 0; i < rbsCount; i++) {
+		if (rbsCaps[i] == NULL || rbsCaps[i] >= RINGBUFFER_MAX_SIZE) {
+			return -1;
+		}
 	}
 
 	newEx = (exchange_t *)nng_alloc(sizeof(exchange_t));
@@ -22,13 +46,30 @@ exchange_init(exchange_t **ex, char *name)
 	}
 
 	memset(newEx->name, 0, EXCHANGE_NAME_LEN);
+	memset(newEx->topic, 0, TOPIC_NAME_LEN);
 	(void)strcpy(newEx->name, name);
+	(void)strcpy(newEx->topic, topic);
 
-	for (int i = 0; i < PRODUCER_MAX; i++) {
-		newEx->prods[i] = NULL;
+	for (unsigned int i = 0; i < RINGBUFFER_MAX; i++) {
+		newEx->rbs[i] = NULL;
 	}
 
-	newEx->prods_count = 0;
+	newEx->rb_count = 0;
+
+	for (unsigned int i = 0; i < rbsCount; i++) {
+		ringBuffer_t *rb = NULL;
+		ret = ringBuffer_init(&rb, rbsCaps[i], 1, -1);
+		if (rb == NULL || ret != 0) {
+			for (unsigned int j = 0; j < newEx->rb_count; j++) {
+				ringBuffer_release(newEx->rbs[j]);
+			}
+			nng_free(newEx, sizeof(*newEx));
+			return -1;
+		}
+		(void)strcpy(rb->name, rbsName[i]);
+		newEx->rbs[i] = rb;
+		newEx->rb_count++;
+	}
 
 	*ex = newEx;
 
@@ -36,18 +77,18 @@ exchange_init(exchange_t **ex, char *name)
 }
 
 int
-exchange_add_prod(exchange_t *ex, producer_t *prod)
+exchange_add_rb(exchange_t *ex, ringBuffer_t *rb)
 {
-	if (ex == NULL || prod == NULL) {
+	if (ex == NULL || rb == NULL) {
 		return -1;
 	}
 
-	if (ex->prods_count == PRODUCER_MAX) {
-		log_error("Exchange add producer failed, producer list is full!\n");
+	if (ex->rb_count == RINGBUFFER_MAX) {
+		log_error("Exchange add ringBuffer failed, ringBuffer list is full!\n");
 		return -1;
 	}
 
-	ex->prods[ex->prods_count++] = prod;
+	ex->rbs[ex->rb_count++] = rb;
 
 	return 0;
 }
@@ -61,8 +102,8 @@ exchange_release(exchange_t *ex)
 		return -1;
 	}
 
-	for (i = 0; i < ex->prods_count; i++) {
-		(void)producer_release(ex->prods[i]);
+	for (i = 0; i < ex->rb_count; i++) {
+		(void)ringBuffer_release(ex->rbs[i]);
 	}
 
 	nng_free(ex, sizeof(*ex));
@@ -74,17 +115,17 @@ int
 exchange_handle_msg(exchange_t *ex, void *msg)
 {
 	unsigned int i = 0;
+	int ret = 0;
 
 	if (ex == NULL || msg == NULL) {
 		return -1;
 	}
 
-	for (i = 0; i < ex->prods_count; i++) {
-		if (ex->prods[i]->match(msg) == 0) {
-			if (ex->prods[i]->target(msg) != 0) {
-				/* stop and return */
-				return -1;
-			}
+	for (i = 0; i < ex->rb_count; i++) {
+		ret = ringBuffer_enqueue(ex->rbs[i], msg, -1);
+		if (ret != 0) {
+			log_error("Ring Buffer enqueue failed\n");
+			return -1;
 		}
 	}
 
