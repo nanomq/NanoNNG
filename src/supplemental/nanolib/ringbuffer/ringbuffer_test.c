@@ -1,11 +1,26 @@
 #include "nng/supplemental/nanolib/ringbuffer.h"
+#include "nng/mqtt/mqtt_client.h"
 #include <nuts.h>
 
 #define UNUSED(x) ((void) x)
 
+nng_msg *alloc_pub_msg(const char *topic)
+{
+	// create a PUBLISH message
+	nng_msg *pubmsg;
+	nng_mqtt_msg_alloc(&pubmsg, 0);
+	nng_mqtt_msg_set_packet_type(pubmsg, NNG_MQTT_PUBLISH);
+	nng_mqtt_msg_set_publish_dup(pubmsg, 0);
+	nng_mqtt_msg_set_publish_retain(pubmsg, 0);
+	nng_mqtt_msg_set_publish_topic(pubmsg, topic);
+	nng_mqtt_msg_set_publish_topic_len(pubmsg, strlen(topic));
+
+	return pubmsg;
+}
+
 void test_ringBuffer_init(void)
 {
-	struct ringBuffer *rb;
+	ringBuffer_t *rb;
 
 	NUTS_TRUE(ringBuffer_init(&rb, 10, 0, -1) == 0);
 	NUTS_TRUE(rb != NULL);
@@ -23,22 +38,22 @@ void test_ringBuffer_release(void)
 
 void test_ringBuffer_enqueue(void)
 {
-	struct ringBuffer *rb;
-	int *tmp;
+	ringBuffer_t *rb;
+	nng_msg *tmp;
 
 	NUTS_TRUE(ringBuffer_init(&rb, 10, 0, -1) == 0);
 	NUTS_TRUE(rb != NULL);
 
 	for (int i = 0; i < 10; i++) {
-		tmp = nng_alloc(sizeof(int));
+		tmp = alloc_pub_msg("topic1");
 		NUTS_TRUE(tmp != NULL);
 		NUTS_TRUE(ringBuffer_enqueue(rb, tmp, -1) == 0);
 	}
 
 	/* Ring buffer is full, enqueue failed */
-	tmp = nng_alloc(sizeof(int));
+	tmp = alloc_pub_msg("topic1");
 	NUTS_TRUE(ringBuffer_enqueue(rb, tmp, -1) != 0);
-	nng_free(tmp, sizeof(int));
+	nng_msg_free(tmp);
 
 	NUTS_TRUE(ringBuffer_release(rb) == 0);
 
@@ -48,13 +63,13 @@ void test_ringBuffer_enqueue(void)
 	NUTS_TRUE(rb != NULL);
 
 	for (int i = 0; i < 10; i++) {
-		tmp = nng_alloc(sizeof(int));
+		tmp = alloc_pub_msg("topic1");
 		NUTS_TRUE(tmp != NULL);
 		NUTS_TRUE(ringBuffer_enqueue(rb, tmp, -1) == 0);
 	}
 
 	/* Ring buffer is full, but overwrite is allowed, so it will be successful */
-	tmp = nng_alloc(sizeof(int));
+	tmp = alloc_pub_msg("topic1");
 	NUTS_TRUE(ringBuffer_enqueue(rb, tmp, -1) == 0);
 
 	NUTS_TRUE(ringBuffer_release(rb) == 0);
@@ -64,8 +79,8 @@ void test_ringBuffer_enqueue(void)
 
 void test_ringBuffer_dequeue(void)
 {
-	struct ringBuffer *rb;
-	int *tmp;
+	ringBuffer_t *rb;
+	nng_msg *tmp;
 
 	NUTS_TRUE(ringBuffer_init(&rb, 10, 0, -1) == 0);
 	NUTS_TRUE(rb != NULL);
@@ -75,31 +90,28 @@ void test_ringBuffer_dequeue(void)
 
 	/* Enqueue and dequeue normally */
 	for (int i = 0; i < 10; i++) {
-		tmp = nng_alloc(sizeof(int));
+		tmp = alloc_pub_msg("topic1");
 		NUTS_TRUE(tmp != NULL);
-		*tmp = i;
 		NUTS_TRUE(ringBuffer_enqueue(rb, tmp, -1) == 0);
 	}
 
 	for (int i = 0; i < 10; i++) {
 		NUTS_TRUE(ringBuffer_dequeue(rb, (void **)&tmp) == 0);
 		NUTS_TRUE(tmp != NULL);
-		NUTS_TRUE(*tmp == i);
-		nng_free(tmp, sizeof(int));
+		nng_msg_free(tmp);
 	}
 
 	NUTS_TRUE(ringBuffer_dequeue(rb, (void **)&tmp) != 0);
 
 	/* Enqueue and dequeue abnormally */
 	for (int i = 0; i < 12; i++) {
-		tmp = nng_alloc(sizeof(int));
+		tmp = alloc_pub_msg("topic1");
 		NUTS_TRUE(tmp != NULL);
-		*tmp = i;
 		if (i < 10) {
 			NUTS_TRUE(ringBuffer_enqueue(rb, tmp, -1) == 0);
 		} else {
 			NUTS_TRUE(ringBuffer_enqueue(rb, tmp, -1) != 0);
-			nng_free(tmp, sizeof(int));
+			nng_msg_free(tmp);
 		}
 	}
 
@@ -108,18 +120,17 @@ void test_ringBuffer_dequeue(void)
 	for (int i = 0; i < 3; i++) {
 		NUTS_TRUE(ringBuffer_dequeue(rb, (void **)&tmp) == 0);
 		NUTS_TRUE(tmp != NULL);
-		nng_free(tmp, sizeof(int));
+		nng_msg_free(tmp);
 	}
 
 	for (int i = 0; i < 5; i++) {
-		tmp = nng_alloc(sizeof(int));
+		tmp = alloc_pub_msg("topic1");
 		NUTS_TRUE(tmp != NULL);
-		*tmp = i;
 		if (i < 3) {
 			NUTS_TRUE(ringBuffer_enqueue(rb, tmp, -1) == 0);
 		} else {
 			NUTS_TRUE(ringBuffer_enqueue(rb, tmp, -1) != 0);
-			nng_free(tmp, sizeof(int));
+			nng_msg_free(tmp);
 		}
 	}
 
@@ -133,7 +144,7 @@ void test_ringBuffer_dequeue(void)
 static int matchTimes = 0;
 static int targetTimes = 0;
 
-static int match_cb(struct ringBuffer *rb, void *data, int flag)
+static int match_cb(ringBuffer_t *rb, void *data, int flag)
 {
 	UNUSED(rb);
 	UNUSED(data);
@@ -142,7 +153,7 @@ static int match_cb(struct ringBuffer *rb, void *data, int flag)
 	return 0;
 }
 
-static int match_fail_cb(struct ringBuffer *rb, void *data, int flag)
+static int match_fail_cb(ringBuffer_t *rb, void *data, int flag)
 {
 	UNUSED(rb);
 	UNUSED(data);
@@ -151,7 +162,7 @@ static int match_fail_cb(struct ringBuffer *rb, void *data, int flag)
 	return -1;
 }
 
-static int target_cb(struct ringBuffer *rb, void *data, int flag)
+static int target_cb(ringBuffer_t *rb, void *data, int flag)
 {
 	UNUSED(rb);
 	UNUSED(data);
@@ -160,7 +171,7 @@ static int target_cb(struct ringBuffer *rb, void *data, int flag)
 	return 0;
 }
 
-static int target_fail_cb(struct ringBuffer *rb, void *data, int flag)
+static int target_fail_cb(ringBuffer_t *rb, void *data, int flag)
 {
 	UNUSED(rb);
 	UNUSED(data);
@@ -171,8 +182,8 @@ static int target_fail_cb(struct ringBuffer *rb, void *data, int flag)
 
 void test_ringBuffer_rule()
 {
-	struct ringBuffer *rb;
-	int *tmp;
+	ringBuffer_t *rb;
+	nng_msg *tmp;
 
 	NUTS_TRUE(ringBuffer_init(&rb, 10, 0, -1) == 0);
 	NUTS_TRUE(rb != NULL);
@@ -184,9 +195,8 @@ void test_ringBuffer_rule()
 
 	NUTS_TRUE(ringBuffer_add_rule(rb, match_cb, target_cb, ENQUEUE_IN_HOOK) == 0);
 	for (int i = 0; i < 10; i++) {
-		tmp = nng_alloc(sizeof(int));
+		tmp = alloc_pub_msg("topic1");
 		NUTS_TRUE(tmp != NULL);
-		*tmp = i;
 		NUTS_TRUE(ringBuffer_enqueue(rb, tmp, -1) == 0);
 	}
 
@@ -196,8 +206,7 @@ void test_ringBuffer_rule()
 	for (int i = 0; i < 10; i++) {
 		NUTS_TRUE(ringBuffer_dequeue(rb, (void **)&tmp) == 0);
 		NUTS_TRUE(tmp != NULL);
-		NUTS_TRUE(*tmp == i);
-		nng_free(tmp, sizeof(int));
+		nng_msg_free(tmp);
 	}
 
 	NUTS_TRUE(matchTimes == 10);
@@ -205,9 +214,8 @@ void test_ringBuffer_rule()
 
 	NUTS_TRUE(ringBuffer_add_rule(rb, match_cb, target_cb, ENQUEUE_OUT_HOOK) == 0);
 	for (int i = 0; i < 10; i++) {
-		tmp = nng_alloc(sizeof(int));
+		tmp = alloc_pub_msg("topic1");
 		NUTS_TRUE(tmp != NULL);
-		*tmp = i;
 		NUTS_TRUE(ringBuffer_enqueue(rb, tmp, -1) == 0);
 	}
 
@@ -217,8 +225,7 @@ void test_ringBuffer_rule()
 	for (int i = 0; i < 10; i++) {
 		NUTS_TRUE(ringBuffer_dequeue(rb, (void **)&tmp) == 0);
 		NUTS_TRUE(tmp != NULL);
-		NUTS_TRUE(*tmp == i);
-		nng_free(tmp, sizeof(int));
+		nng_msg_free(tmp);
 	}
 
 	NUTS_TRUE(matchTimes == 30);
@@ -227,9 +234,8 @@ void test_ringBuffer_rule()
 
 	NUTS_TRUE(ringBuffer_add_rule(rb, match_cb, target_cb, DEQUEUE_IN_HOOK) == 0);
 	for (int i = 0; i < 10; i++) {
-		tmp = nng_alloc(sizeof(int));
+		tmp = alloc_pub_msg("topic1");
 		NUTS_TRUE(tmp != NULL);
-		*tmp = i;
 		NUTS_TRUE(ringBuffer_enqueue(rb, tmp, -1) == 0);
 	}
 
@@ -239,8 +245,7 @@ void test_ringBuffer_rule()
 	for (int i = 0; i < 10; i++) {
 		NUTS_TRUE(ringBuffer_dequeue(rb, (void **)&tmp) == 0);
 		NUTS_TRUE(tmp != NULL);
-		NUTS_TRUE(*tmp == i);
-		nng_free(tmp, sizeof(int));
+		nng_msg_free(tmp);
 	}
 
 	NUTS_TRUE(matchTimes == 60);
@@ -248,9 +253,8 @@ void test_ringBuffer_rule()
 
 	NUTS_TRUE(ringBuffer_add_rule(rb, match_cb, target_cb, DEQUEUE_OUT_HOOK) == 0);
 	for (int i = 0; i < 10; i++) {
-		tmp = nng_alloc(sizeof(int));
+		tmp = alloc_pub_msg("topic1");
 		NUTS_TRUE(tmp != NULL);
-		*tmp = i;
 		NUTS_TRUE(ringBuffer_enqueue(rb, tmp, -1) == 0);
 	}
 
@@ -260,8 +264,7 @@ void test_ringBuffer_rule()
 	for (int i = 0; i < 10; i++) {
 		NUTS_TRUE(ringBuffer_dequeue(rb, (void **)&tmp) == 0);
 		NUTS_TRUE(tmp != NULL);
-		NUTS_TRUE(*tmp == i);
-		nng_free(tmp, sizeof(int));
+		nng_msg_free(tmp);
 	}
 
 	NUTS_TRUE(matchTimes == 100);
@@ -269,9 +272,8 @@ void test_ringBuffer_rule()
 
 	NUTS_TRUE(ringBuffer_add_rule(rb, match_fail_cb, target_cb, ENQUEUE_IN_HOOK) == 0);
 	for (int i = 0; i < 10; i++) {
-		tmp = nng_alloc(sizeof(int));
+		tmp = alloc_pub_msg("topic1");
 		NUTS_TRUE(tmp != NULL);
-		*tmp = i;
 		NUTS_TRUE(ringBuffer_enqueue(rb, tmp, -1) == 0);
 	}
 
@@ -281,8 +283,7 @@ void test_ringBuffer_rule()
 	for (int i = 0; i < 10; i++) {
 		NUTS_TRUE(ringBuffer_dequeue(rb, (void **)&tmp) == 0);
 		NUTS_TRUE(tmp != NULL);
-		NUTS_TRUE(*tmp == i);
-		nng_free(tmp, sizeof(int));
+		nng_msg_free(tmp);
 	}
 
 	NUTS_TRUE(matchTimes == 150);
@@ -290,11 +291,10 @@ void test_ringBuffer_rule()
 
 	NUTS_TRUE(ringBuffer_add_rule(rb, match_cb, target_fail_cb, ENQUEUE_IN_HOOK) == 0);
 	for (int i = 0; i < 10; i++) {
-		tmp = nng_alloc(sizeof(int));
+		tmp = alloc_pub_msg("topic1");
 		NUTS_TRUE(tmp != NULL);
-		*tmp = i;
 		NUTS_TRUE(ringBuffer_enqueue(rb, tmp, -1) != 0);
-		nng_free(tmp, sizeof(int));
+		nng_msg_free(tmp);
 	}
 
 	NUTS_TRUE(matchTimes == 180);
