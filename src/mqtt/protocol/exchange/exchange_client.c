@@ -116,9 +116,21 @@ exchange_sock_send(void *arg, nni_aio *aio)
 	nni_msg *        msg  = NULL;
 	nni_msg *        tmsg  = NULL;
 	exchange_node_t *ex_node;
-
 	exchange_sock_t *s = arg;
-	/* TODO: Handle user aio */
+	uint32_t topic_len = 0;
+
+	msg = nni_aio_get_msg(aio);
+	if (msg == NULL) {
+		nni_aio_finish(aio, 0, 0);
+		return;
+	}
+
+	nni_mqtt_packet_type ptype = nni_mqtt_msg_get_packet_type(msg);
+	if (ptype != NNG_MQTT_PUBLISH) {
+		nni_aio_finish(aio, 0, 0);
+		return;
+	}
+
 	/* TODO: Remove this lock? */
 	nni_mtx_lock(&s->mtx);
 	if (nni_list_empty(&s->ex_queue)) {
@@ -128,14 +140,13 @@ exchange_sock_send(void *arg, nni_aio *aio)
 	}
 	nni_mtx_unlock(&s->mtx);
 
-	msg = nni_aio_get_msg(aio);
-	if (msg == NULL) {
-		nni_aio_finish(aio, 0, 0);
-		return;
-	}
-
 	NNI_LIST_FOREACH (&s->ex_queue, ex_node) {
 		nni_mtx_lock(&ex_node->mtx);
+		if (strncmp(nng_mqtt_msg_get_publish_topic(msg, &topic_len),
+					ex_node->ex->topic, strlen(ex_node->ex->topic)) != 0) {
+			continue;
+		}
+
 		if (!ex_node->isBusy) {
 			if (nni_aio_begin(&ex_node->saio) != 0) {
 				nni_mtx_unlock(&ex_node->mtx);
