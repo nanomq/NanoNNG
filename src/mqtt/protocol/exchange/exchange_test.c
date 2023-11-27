@@ -1,37 +1,49 @@
 #include "nng/exchange/exchange.h"
+#include "nng/mqtt/mqtt_client.h"
 #include <nuts.h>
 
 #define EX_NAME	"exchange1"
 #define UNUSED(x) ((void) x)
 
-static int match_times = 0;
-static int target_times = 0;
-
-static int match_cb(void *msg)
+nng_msg *alloc_pub_msg(const char *topic)
 {
-	UNUSED(msg);
-	match_times++;
-	return 0;
-}
+	// create a PUBLISH message
+	nng_msg *pubmsg;
+	nng_mqtt_msg_alloc(&pubmsg, 0);
+	nng_mqtt_msg_set_packet_type(pubmsg, NNG_MQTT_PUBLISH);
+	nng_mqtt_msg_set_publish_dup(pubmsg, 0);
+	nng_mqtt_msg_set_publish_retain(pubmsg, 0);
+	nng_mqtt_msg_set_publish_topic(pubmsg, topic);
+	nng_mqtt_msg_set_publish_topic_len(pubmsg, strlen(topic));
 
-static int target_cb(void *msg)
-{
-	UNUSED(msg);
-	target_times++;
-	return 0;
+	return pubmsg;
 }
 
 void test_exchange_init(void)
 {
 	exchange_t *ex = NULL;
+	char **ringBufferName;
+	int caps = 10000;
 
-	NUTS_TRUE(exchange_init(NULL, NULL) != 0);
-	NUTS_TRUE(exchange_init(&ex, NULL) != 0);
+	ringBufferName = nng_alloc(1 * sizeof(char *));
+	for (int i = 0; i < 1; i++) {
+		ringBufferName[i] = nng_alloc(100 * sizeof(char));
+	}
 
-	NUTS_TRUE(exchange_init(&ex, EX_NAME) == 0);
+	strcpy(ringBufferName[0], "ringBuffer1");
+
+	NUTS_TRUE(exchange_init(NULL, NULL, "topic1", &caps, ringBufferName, 1) != 0);
+	NUTS_TRUE(exchange_init(&ex, NULL, "topic1", &caps, ringBufferName, 1) != 0);
+
+	NUTS_TRUE(exchange_init(&ex, EX_NAME, "topic1", &caps, ringBufferName, 1) == 0);
 	NUTS_TRUE(ex != NULL);
-	NUTS_TRUE(ex->prods_count == 0);
+	NUTS_TRUE(ex->rb_count != 0);
 	NUTS_TRUE(exchange_release(ex) == 0);
+
+	for (int i = 0; i < 1; i++) {
+		nng_free(ringBufferName[i], *ringBufferName[i]);
+	}
+	nng_free(ringBufferName, strlen(ringBufferName));
 
 	return;
 }
@@ -43,37 +55,38 @@ void test_exchange_release(void)
 	return;
 }
 
-void test_exchange_producer(void)
+void test_exchange_ringBuffer(void)
 {
 	exchange_t *ex = NULL;
-	NUTS_TRUE(exchange_init(&ex, EX_NAME) == 0);
+	char **ringBufferName;
+	int caps = 1;
+
+	ringBufferName = nng_alloc(1 * sizeof(char *));
+	for (int i = 0; i < 1; i++) {
+		ringBufferName[i] = nng_alloc(100 * sizeof(char));
+	}
+	strcpy(ringBufferName[0], "ringBuffer1");
+
+	NUTS_TRUE(exchange_init(&ex, EX_NAME, "topic1", &caps, &ringBufferName, 1) == 0);
 	NUTS_TRUE(ex != NULL);
-	NUTS_TRUE(ex->prods_count == 0);
+	NUTS_TRUE(ex->rb_count == 1);
 
-	producer_t *p = NULL;
-	NUTS_TRUE(producer_init(&p, match_cb, target_cb) == 0);
-	NUTS_TRUE(p != NULL);
+	for (int i = 0; i < 1; i++) {
+		nng_free(ringBufferName[i], *ringBufferName[i]);
+	}
+	nng_free(ringBufferName, sizeof(ringBufferName));
 
-	NUTS_TRUE(exchange_add_prod(NULL, p) != 0);
-	NUTS_TRUE(exchange_add_prod(ex, NULL) != 0);
-	NUTS_TRUE(exchange_add_prod(ex, p) == 0);
-
-	int *msg = NULL;
-	msg = nng_alloc(sizeof(int));
+	nng_msg *msg = NULL;
+	msg = alloc_pub_msg("topic1");
 	NUTS_TRUE(msg != NULL);
 
-	NUTS_TRUE(exchange_handle_msg(ex, msg) == 0);
-	NUTS_TRUE(match_times == 1);
-	NUTS_TRUE(target_times == 1);
-
-	nng_free(msg, sizeof(*msg));
-
+	NUTS_TRUE(exchange_handle_msg(ex, (void *)msg) == 0);
 	NUTS_TRUE(exchange_release(ex) == 0);
 }
 
 NUTS_TESTS = {
 	{ "Exchange init test", test_exchange_init },
 	{ "Exchange release test", test_exchange_release },
-	{ "Exchange producer test", test_exchange_producer },
+	{ "Exchange ringBuffer test", test_exchange_ringBuffer },
 	{ NULL, NULL },
 };
