@@ -1,25 +1,25 @@
 #include "nng/supplemental/nanolib/ringbuffer.h"
 #include "core/nng_impl.h"
 
-int ringBuffer_init(struct ringBuffer **rb,
+int ringBuffer_init(ringBuffer_t **rb,
 					unsigned int cap,
 					unsigned int overWrite,
 					unsigned long long expiredAt)
 {
-	struct ringBuffer *newRB;
+	ringBuffer_t *newRB;
 
 	if (cap >= RINGBUFFER_MAX_SIZE) {
 		log_error("Want to init a ring buffer which is greater than MAX_SIZE: %u\n", RINGBUFFER_MAX_SIZE);
 		return -1;
 	}
 
-	newRB = (struct ringBuffer *)nng_alloc(sizeof(struct ringBuffer));
+	newRB = (ringBuffer_t *)nng_alloc(sizeof(ringBuffer_t));
 	if (newRB == NULL) {
 		log_error("New ring buffer alloc failed\n");
 		return -1;
 	}
 
-	newRB->msgs = (struct ringBufferMsg *)nng_alloc(sizeof(struct ringBufferMsg) * cap);
+	newRB->msgs = (ringBufferMsg_t *)nng_alloc(sizeof(ringBufferMsg_t) * cap);
 	if (newRB->msgs == NULL) {
 		log_error("New ringbuffer messages alloc failed\n");
 		nng_free(newRB, sizeof(*newRB));
@@ -34,6 +34,11 @@ int ringBuffer_init(struct ringBuffer **rb,
 	newRB->expiredAt = expiredAt;
 	newRB->overWrite = overWrite;
 
+	newRB->enqinRuleList[0] = NULL;
+	newRB->enqoutRuleList[0] = NULL;
+	newRB->deqinRuleList[0] = NULL;
+	newRB->deqoutRuleList[0] = NULL;
+
 	newRB->enqinRuleListLen = 0;
 	newRB->enqoutRuleListLen = 0;
 	newRB->deqinRuleListLen = 0;
@@ -44,8 +49,8 @@ int ringBuffer_init(struct ringBuffer **rb,
 	return 0;
 }
 
-static inline int ringBufferRule_check(struct ringBuffer *rb,
-									   struct ringBufferRule **list,
+static inline int ringBufferRule_check(ringBuffer_t *rb,
+									   ringBufferRule_t **list,
 									   unsigned int len,
 									   void *data,
 									   int flag)
@@ -67,7 +72,7 @@ static inline int ringBufferRule_check(struct ringBuffer *rb,
 	return 0;
 }
 
-static inline int ringBuffer_rule_check(struct ringBuffer *rb, void *data, int flag)
+static inline int ringBuffer_rule_check(ringBuffer_t *rb, void *data, int flag)
 {
 	int ret;
 
@@ -99,7 +104,7 @@ static inline int ringBuffer_rule_check(struct ringBuffer *rb, void *data, int f
 	return 0;
 }
 
-int ringBuffer_enqueue(struct ringBuffer *rb,
+int ringBuffer_enqueue(ringBuffer_t *rb,
 					   void *data,
 					   unsigned long long expiredAt)
 {
@@ -115,7 +120,8 @@ int ringBuffer_enqueue(struct ringBuffer *rb,
 			 * sizeof(*(void *)) can not compile on windows,
 			 * and sz of nng_free is unused.
 			 */
-			nng_free(rb->msgs[rb->head].data, 0);
+			/* For nng_msg now */
+			nng_msg_free(rb->msgs[rb->head].data);
 			rb->msgs[rb->head].data = data;
 			rb->msgs[rb->head].expiredAt = expiredAt;
 			rb->head = (rb->head + 1) % rb->cap;
@@ -128,7 +134,7 @@ int ringBuffer_enqueue(struct ringBuffer *rb,
 		}
 	}
 
-	struct ringBufferMsg *msg = &rb->msgs[rb->tail];
+	ringBufferMsg_t *msg = &rb->msgs[rb->tail];
 
 	msg->data = data;
 	msg->expiredAt = expiredAt;
@@ -141,7 +147,7 @@ int ringBuffer_enqueue(struct ringBuffer *rb,
 	return 0;
 }
 
-int ringBuffer_dequeue(struct ringBuffer *rb, void **data)
+int ringBuffer_dequeue(ringBuffer_t *rb, void **data)
 {
 	int ret;
 	ret = ringBuffer_rule_check(rb, NULL, DEQUEUE_IN_HOOK);
@@ -163,7 +169,7 @@ int ringBuffer_dequeue(struct ringBuffer *rb, void **data)
 	return 0;
 }
 
-static inline void ringBufferRuleList_release(struct ringBufferRule **list, unsigned int len)
+static inline void ringBufferRuleList_release(ringBufferRule_t **list, unsigned int len)
 {
 	unsigned int i = 0;
 
@@ -173,7 +179,7 @@ static inline void ringBufferRuleList_release(struct ringBufferRule **list, unsi
 
 	for (i = 0; i < len; i++) {
 		if (list[i] != NULL) {
-			nng_free(list[i], sizeof(sizeof(struct ringBufferRule)));
+			nng_free(list[i], sizeof(sizeof(ringBufferRule_t)));
 			list[i] = NULL;
 		}
 	}
@@ -181,7 +187,7 @@ static inline void ringBufferRuleList_release(struct ringBufferRule **list, unsi
 	return;
 }
 
-int ringBuffer_release(struct ringBuffer *rb)
+int ringBuffer_release(ringBuffer_t *rb)
 {
 	unsigned int i = 0;
 	unsigned int count = 0;
@@ -195,11 +201,11 @@ int ringBuffer_release(struct ringBuffer *rb)
 			i = rb->head;
 			count = 0;
 			while (count < rb->size) {
-				/*
-				 * sizeof(*(void *)) can not compile on windows,
-				 * and sz of nng_free is unused.
-				 */
-				nng_free(rb->msgs[i].data, 0);
+				if (rb->msgs[i].data != NULL) {
+					/* For nni_msg now */
+					nng_msg_free(rb->msgs[i].data);
+					rb->msgs[i].data = NULL;
+				}
 				i = (i + 1) % rb->cap;
 				count++;
 			}
@@ -217,17 +223,17 @@ int ringBuffer_release(struct ringBuffer *rb)
 	return 0;
 }
 
-static inline int ringBufferRuleList_add(struct ringBufferRule **list, unsigned int *len,
-										 int (*match)(struct ringBuffer *rb, void *data, int flag),
-										 int (*target)(struct ringBuffer *rb, void *data, int flag))
+static inline int ringBufferRuleList_add(ringBufferRule_t **list, unsigned int *len,
+										 int (*match)(ringBuffer_t *rb, void *data, int flag),
+										 int (*target)(ringBuffer_t *rb, void *data, int flag))
 {
-	struct ringBufferRule *newRule = NULL;
+	ringBufferRule_t *newRule = NULL;
 	if (*len == RBRULELIST_MAX_SIZE) {
 		log_error("Rule Buffer enqueue rule list is full!\n");
 		return -1;
 	}
 
-	newRule = nng_alloc(sizeof(struct ringBufferRule));
+	newRule = nng_alloc(sizeof(ringBufferRule_t));
 	if (newRule == NULL) {
 		log_error("alloc new rule failed! no memory!\n");
 		return -1;
@@ -240,9 +246,9 @@ static inline int ringBufferRuleList_add(struct ringBufferRule **list, unsigned 
 	return 0;
 }
 
-int ringBuffer_add_rule(struct ringBuffer *rb,
-						int (*match)(struct ringBuffer *rb, void *data, int flag),
-						int (*target)(struct ringBuffer *rb, void *data, int flag),
+int ringBuffer_add_rule(ringBuffer_t *rb,
+						int (*match)(ringBuffer_t *rb, void *data, int flag),
+						int (*target)(ringBuffer_t *rb, void *data, int flag),
 						int flag)
 {
 	int ret;
