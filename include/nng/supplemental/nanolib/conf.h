@@ -12,6 +12,7 @@
 #include "rule.h"
 #include "acl_conf.h"
 #include "nng/supplemental/util/platform.h"
+#include "nng/exchange/exchange.h"
 
 #define PID_PATH_NAME "/tmp/nanomq/nanomq.pid"
 #define CONF_PATH_NAME "/etc/nanomq.conf"
@@ -300,6 +301,14 @@ struct conf_bridge_node {
 
 typedef struct conf_bridge_node conf_bridge_node;
 
+typedef struct conf_exchange_client_node conf_exchange_client_node;
+struct conf_exchange_client_node {
+	void        *sock;
+	size_t      exchange_count;
+	exchange_t  **ex_list;
+	nng_mtx     *mtx;
+};
+
 struct conf_bridge {
 	size_t             count;
 	conf_bridge_node **nodes;
@@ -307,6 +316,12 @@ struct conf_bridge {
 };
 
 typedef struct conf_bridge conf_bridge;
+
+typedef struct conf_exchange conf_exchange;
+struct conf_exchange {
+	size_t             count;
+	conf_exchange_client_node **nodes;
+};
 
 typedef struct {
 	char *zmq_sub_url;
@@ -445,6 +460,20 @@ struct conf_web_hook {
 
 typedef struct conf_web_hook  conf_web_hook;
 
+typedef struct ringBuffer_node ringBuffer_node;
+typedef struct exchange_node exchange_node;
+
+struct ringBuffer_node {
+	char *name;
+	unsigned int cap;
+	unsigned int overWrite;
+};
+
+struct exchange_node {
+	char *name;
+	char *topic;
+};
+
 typedef enum {
 	memory,
 	sqlite,
@@ -478,6 +507,7 @@ struct conf {
 	conf_websocket   websocket;
 	conf_bridge      bridge;
 	conf_bridge      aws_bridge;
+	conf_exchange    exchange;
 	conf_web_hook    web_hook;
 #if defined(ENABLE_LOG)
 	conf_log         log;
