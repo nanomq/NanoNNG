@@ -13,6 +13,7 @@ client_publish(nng_socket sock, const char *topic, uint8_t *payload,
 {
 	int rv;
 
+	UNUSED(verbose);
 	// create a PUBLISH message
 	nng_msg *pubmsg;
 	nng_mqtt_msg_alloc(&pubmsg, 0);

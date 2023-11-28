@@ -23,7 +23,7 @@ void test_exchange_init(void)
 {
 	exchange_t *ex = NULL;
 	char **ringBufferName;
-	int caps = 10000;
+	unsigned int caps = 10000;
 
 	ringBufferName = nng_alloc(1 * sizeof(char *));
 	for (int i = 0; i < 1; i++) {
@@ -41,9 +41,9 @@ void test_exchange_init(void)
 	NUTS_TRUE(exchange_release(ex) == 0);
 
 	for (int i = 0; i < 1; i++) {
-		nng_free(ringBufferName[i], *ringBufferName[i]);
+		nng_free(ringBufferName[i], sizeof(*ringBufferName[i]));
 	}
-	nng_free(ringBufferName, strlen(ringBufferName));
+	nng_free(ringBufferName, sizeof(*ringBufferName));
 
 	return;
 }
@@ -59,7 +59,7 @@ void test_exchange_ringBuffer(void)
 {
 	exchange_t *ex = NULL;
 	char **ringBufferName;
-	int caps = 1;
+	unsigned int caps = 1;
 
 	ringBufferName = nng_alloc(1 * sizeof(char *));
 	for (int i = 0; i < 1; i++) {
@@ -78,7 +78,7 @@ void test_exchange_ringBuffer(void)
 	nng_free(ringBufferName, sizeof(ringBufferName));
 
 	nng_msg *msg = NULL;
-	msg = alloc_pub_msg(&topic);
+	msg = alloc_pub_msg((char *)&topic);
 	NUTS_TRUE(msg != NULL);
 
 	NUTS_TRUE(exchange_handle_msg(ex, (void *)msg) == 0);
