@@ -67,7 +67,8 @@ void test_exchange_ringBuffer(void)
 	}
 	strcpy(ringBufferName[0], "ringBuffer1");
 
-	NUTS_TRUE(exchange_init(&ex, EX_NAME, "topic1", &caps, &ringBufferName, 1) == 0);
+	char topic[100] = "topic1";
+	NUTS_TRUE(exchange_init(&ex, EX_NAME, "topic1", &caps, ringBufferName, 1) == 0);
 	NUTS_TRUE(ex != NULL);
 	NUTS_TRUE(ex->rb_count == 1);
 
@@ -77,7 +78,7 @@ void test_exchange_ringBuffer(void)
 	nng_free(ringBufferName, sizeof(ringBufferName));
 
 	nng_msg *msg = NULL;
-	msg = alloc_pub_msg("topic1");
+	msg = alloc_pub_msg(&topic);
 	NUTS_TRUE(msg != NULL);
 
 	NUTS_TRUE(exchange_handle_msg(ex, (void *)msg) == 0);

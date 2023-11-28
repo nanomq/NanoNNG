@@ -1,3 +1,5 @@
+#ifndef RINGBUFFER_H
+#define RINGBUFFER_H
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -72,3 +74,4 @@ int ringBuffer_enqueue(ringBuffer_t *rb,
 					   unsigned long long expiredAt);
 int ringBuffer_dequeue(ringBuffer_t *rb, void **data);
 int ringBuffer_release(ringBuffer_t *rb);
+#endif
