@@ -34,7 +34,7 @@ exchange_init(exchange_t **ex, char *name, char *topic,
 		return -1;
 	}
 	for (unsigned int i = 0; i < rbsCount; i++) {
-		if (rbsCaps[i] == NULL || rbsCaps[i] >= RINGBUFFER_MAX_SIZE) {
+		if (rbsCaps[i] >= RINGBUFFER_MAX_SIZE) {
 			return -1;
 		}
 	}
