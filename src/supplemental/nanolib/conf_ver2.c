@@ -969,6 +969,64 @@ conf_bridge_node_parse(
 	hocon_read_num(node, max_send_queue_len, obj);
 }
 
+void
+conf_exchange_client_node_parse(
+    conf_exchange_client_node *node, cJSON *obj)
+{
+	int ret;
+
+	cJSON *exchange = NULL;
+	cJSON_ArrayForEach(exchange, obj)
+	{
+		char **rbsName = NULL;
+		unsigned int *rbsCap = NULL;
+
+		exchange_node *ex_node = NNI_ALLOC_STRUCT(ex_node);
+		if (ex_node == NULL) {
+			continue;
+		}
+
+		hocon_read_str(ex_node, name, exchange);
+		hocon_read_str(ex_node, topic, exchange);
+		if (ex_node->name == NULL || ex_node->topic == NULL) {
+			continue;
+		}
+
+		cJSON *rbs = hocon_get_obj("ringbuffer", exchange);
+		cJSON *rb = NULL;
+		cJSON_ArrayForEach(rb, rbs)
+		{
+			ringBuffer_node *rb_node = NNI_ALLOC_STRUCT(rb_node);
+			if (rb_node == NULL) {
+				continue;
+			}
+			hocon_read_str(rb_node, name, rb);
+			hocon_read_num(rb_node, cap, rb);
+			hocon_read_num(rb_node, overWrite, rb);
+
+			if (rb_node->name == NULL || rb_node->cap == 0) {
+				log_error("exchange: ringbuffer: name/cap not found");
+				NNI_FREE_STRUCT(rb_node);
+				continue;
+			}
+
+			cvector_push_back(rbsName, rb_node->name);
+			cvector_push_back(rbsCap, rb_node->cap);
+			NNI_FREE_STRUCT(rb_node);
+		}
+
+		exchange_t *ex = NULL;
+		ret = exchange_init(&ex, ex_node->name, ex_node->topic, rbsCap, rbsName, cvector_size(rbsName));
+		if (ret != 0 || ex == NULL) {
+			NNI_FREE_STRUCT(ex_node);
+			continue;
+		}
+		NNI_FREE_STRUCT(ex_node);
+		cvector_push_back(node->ex_list, ex);
+	}
+	node->exchange_count = cvector_size(node->ex_list);
+}
+
 static void
 conf_bridge_parse_ver2(conf *config, cJSON *jso)
 {
@@ -1002,6 +1060,26 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 	}
 
 	config->bridge.count = cvector_size(config->bridge.nodes);
+
+	return;
+}
+
+static void
+conf_exchange_parse_ver2(conf *config, cJSON *jso)
+{
+	cJSON *node_array = hocon_get_obj("exchange_client", jso);
+	cJSON *node_item  = NULL;
+
+	cJSON_ArrayForEach(node_item, node_array)
+	{
+		conf_exchange_client_node *node = NNI_ALLOC_STRUCT(node);
+		nng_mtx_alloc(&node->mtx);
+		conf_exchange_client_node_init(node);
+		conf_exchange_client_node_parse(node, node_item);
+		cvector_push_back(config->exchange.nodes, node);
+	}
+
+	config->exchange.count = cvector_size(config->exchange.nodes);
 
 	return;
 }
@@ -1344,6 +1422,7 @@ conf_parse_ver2(conf *config)
 		conf_webhook_parse_ver2(config, jso);
 		conf_authorization_prase_ver2(config, jso);
 		conf_bridge_parse_ver2(config, jso);
+		conf_exchange_parse_ver2(config, jso);
 #if defined(SUPP_AWS_BRIDGE)
 		conf_aws_bridge_parse_ver2(config, jso);
 #endif
