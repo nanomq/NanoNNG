@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include "nng/supplemental/nanolib/ringbuffer.h"
+
 #define EXCHANGE_NAME_LEN 100
 #define TOPIC_NAME_LEN    100
 #define RINGBUFFER_MAX    100

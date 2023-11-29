@@ -13,6 +13,27 @@
 #include "nng/mqtt/mqtt_client.h"
 #include "nng/exchange/exchange_client.h"
 
+#include "nng/exchange/exchange.h"
+typedef struct exchange_sock_s exchange_sock_t;
+typedef struct exchange_node_s exchange_node_t;
+
+struct exchange_node_s {
+	exchange_t      *ex;
+	exchange_sock_t *sock;
+	nni_aio         saio;
+	nni_lmq         send_messages;
+	nni_list_node   exnode;
+	bool            isBusy;
+	nni_mtx         mtx;
+};
+
+struct exchange_sock_s {
+	nni_mtx         mtx;
+	nni_atomic_bool closed;
+	nni_list        ex_queue;
+};
+
+
 static void exchange_sock_init(void *arg, nni_sock *sock);
 static void exchange_sock_fini(void *arg);
 static void exchange_sock_open(void *arg);
@@ -144,6 +165,7 @@ exchange_sock_send(void *arg, nni_aio *aio)
 		nni_mtx_lock(&ex_node->mtx);
 		if (strncmp(nng_mqtt_msg_get_publish_topic(msg, &topic_len),
 					ex_node->ex->topic, strlen(ex_node->ex->topic)) != 0) {
+			nni_mtx_unlock(&ex_node->mtx);
 			continue;
 		}
 
@@ -185,6 +207,7 @@ exchange_send_cb(void *arg)
 		return;
 	}
 
+
 	exchange_sock_t *s = ex_node->sock;
 	if (nni_atomic_get_bool(&s->closed)) {
 		// This occurs if the mqtt_pipe_close has been called.
@@ -201,6 +224,7 @@ exchange_send_cb(void *arg)
 	if (nni_lmq_get(&ex_node->send_messages, &msg) == 0) {
 		nni_mtx_unlock(&ex_node->mtx);
 		(void)exchange_handle_msg(ex_node->ex, msg);
+		nni_aio_finish(&ex_node->saio, 0, 0);
 		return;
 	}
 	ex_node->isBusy = false;
