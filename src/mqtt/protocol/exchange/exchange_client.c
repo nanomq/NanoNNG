@@ -272,18 +272,17 @@ exchange_sock_get_ex_queue(void *arg, void *v, size_t *szp, nni_opt_type t)
 int
 exchange_queue_get_ringBuffer(nni_list *ex_queue, char *rbName, ringBuffer_t **rb)
 {
+	int ret = 0;
 	exchange_node_t *ex_node = NULL;
 	exchange_t      *ex = NULL;
 
 	NNI_LIST_FOREACH (ex_queue, ex_node) {
 		nni_mtx_lock(&ex_node->mtx);
 		ex = ex_node->ex;
-		for (int i = 0; i < ex->rb_count; i++) {
-			if (strcmp(ex->rbs[i]->name, rbName) == 0) {
-				*rb = ex->rbs[i];
-				nni_mtx_unlock(&ex_node->mtx);
-				return 0;
-			}
+		ret = exchange_get_ringBuffer(ex_node->ex, rbName, rb);
+		if (ret == 0){
+			nni_mtx_unlock(&ex_node->mtx);
+			return 0;
 		}
 		nni_mtx_unlock(&ex_node->mtx);
 	}
@@ -299,7 +298,6 @@ static nni_option exchange_sock_options[] = {
 	{
 		.o_name = NNG_OPT_EXCHANGE_GET_EX_QUEUE,
 		.o_get  = exchange_sock_get_ex_queue,
-
 	},
 	{
 	    .o_name = NULL,
