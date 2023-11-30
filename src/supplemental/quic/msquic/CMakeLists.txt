@@ -10,6 +10,7 @@ if(NNG_QUIC_LIB STREQUAL "msquic")
                         Taking MSQUIC as quic lib
         ************************************************************")
     set(_MSQUIC_ROOT_HINTS ${MSQUIC_ROOT_DIR} ENV MSQUIC_ROOT_DIR)
+    SET(QUIC_BUILD_SHARED OFF)
     add_subdirectory(${PROJECT_SOURCE_DIR}/extern/msquic msquic)
 
     nng_defines(QUIC_TLS_ENGINE_INIT=nng_quic_libs_init_msquic)
@@ -27,11 +28,14 @@ if(NNG_QUIC_LIB STREQUAL "msquic")
     PATHS /usr/local
     PATH_SUFFIXES include)
 
+    set(CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_STATIC_LIBRARY_SUFFIX})
     find_library(MSQUIC_LIBRARIES
         NAMES msquic
         HINTS ${_MSQUIC_ROOT_HINTS}
         PATHS /usr/local
         PATH_SUFFIXES lib)
+    
+    unset(CMAKE_FIND_LIBRARY_SUFFIXES)
 
     set(QUIC_LIBRARIES
         ${MSQUIC_LIBRARIES})
