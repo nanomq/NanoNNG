@@ -36,23 +36,27 @@ find_path(MBEDTLS_INCLUDE_DIR
         PATHS /usr/local
         PATH_SUFFIXES include)
 
+set(CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_STATIC_LIBRARY_SUFFIX})
+
 find_library(MBEDTLS_CRYPTO_LIBRARY
-        NAMES libmbedcrypto.a
+        NAMES mbedcrypto
         HINTS ${_MBEDTLS_ROOT_HINTS}
         PATHS /usr/local
         PATH_SUFFIXES lib)
 
 find_library(MBEDTLS_X509_LIBRARY
-        NAMES libmbedx509.a
+        NAMES mbedx509
         HINTS ${_MBEDTLS_ROOT_HINTS}
         PATHS /usr/local
         PATH_SUFFIXES lib)
 
 find_library(MBEDTLS_TLS_LIBRARY
-        NAMES libmbedtls.a
+        NAMES mbedtls
         HINTS ${_MBEDTLS_ROOT_HINTS}
         PATHS /usr/local
         PATH_SUFFIXES lib)
+
+unset(CMAKE_FIND_LIBRARY_SUFFIXES)
 
 set(MBEDTLS_LIBRARIES
         ${MBEDTLS_TLS_LIBRARY}
