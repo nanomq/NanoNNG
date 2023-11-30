@@ -257,11 +257,49 @@ exchange_sock_add_exchange(void *arg, const void *v, size_t sz, nni_opt_type t)
 	return (rv);
 }
 
+static int
+exchange_sock_get_ex_queue(void *arg, void *v, size_t *szp, nni_opt_type t)
+{
+	exchange_sock_t *s = arg;
+	int              rv;
+
+	nni_mtx_lock(&s->mtx);
+	rv = nni_copyout_ptr(&s->ex_queue, v, szp, t);
+	nni_mtx_unlock(&s->mtx);
+	return (rv);
+}
+
+int
+exchange_queue_get_ringBuffer(nni_list *ex_queue, char *rbName, ringBuffer_t **rb)
+{
+	exchange_node_t *ex_node = NULL;
+	exchange_t      *ex = NULL;
+
+	NNI_LIST_FOREACH (ex_queue, ex_node) {
+		nni_mtx_lock(&ex_node->mtx);
+		ex = ex_node->ex;
+		for (int i = 0; i < ex->rb_count; i++) {
+			if (strcmp(ex->rbs[i]->name, rbName) == 0) {
+				*rb = ex->rbs[i];
+				nni_mtx_unlock(&ex_node->mtx);
+				return 0;
+			}
+		}
+		nni_mtx_unlock(&ex_node->mtx);
+	}
+
+	return -1;
+}
 
 static nni_option exchange_sock_options[] = {
 	{
 	    .o_name = NNG_OPT_EXCHANGE_ADD,
 	    .o_set  = exchange_sock_add_exchange,
+	},
+	{
+		.o_name = NNG_OPT_EXCHANGE_GET_EX_QUEUE,
+		.o_get  = exchange_sock_get_ex_queue,
+
 	},
 	{
 	    .o_name = NULL,
