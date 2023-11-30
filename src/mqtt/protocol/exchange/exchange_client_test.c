@@ -34,8 +34,11 @@ client_publish(nng_socket sock, const char *topic, uint8_t *payload,
 void
 test_exchange_client(void)
 {
+	int rv = 0;
 	nng_socket sock;
-	exchange_t *ex;
+	exchange_t *ex = NULL;
+	nni_list *ex_queue = NULL;
+	ringBuffer_t *rb = NULL;
 
 	NUTS_TRUE(nng_exchange_client_open(&sock) == 0);
 
@@ -58,6 +61,15 @@ test_exchange_client(void)
 	nng_free(ringBufferName, sizeof(*ringBufferName));
 
 	nng_socket_set_ptr(sock, NNG_OPT_EXCHANGE_ADD, ex);
+	nng_socket_get_ptr(sock, NNG_OPT_EXCHANGE_GET_EX_QUEUE, &ex_queue);
+	NUTS_TRUE(ex_queue != NULL);
+
+	rv = exchange_queue_get_ringBuffer(ex_queue, "ringBuffer1", &rb);
+	NUTS_TRUE(rv == 0 && rb != NULL);
+
+	rb = NULL;
+	rv = exchange_queue_get_ringBuffer(ex_queue, "ringBuffer2", &rb);
+	NUTS_TRUE(rv != 0 && rb == NULL);
 
 	NUTS_TRUE(client_publish(sock, "topic1", NULL, 0, 0, 0) == 0);
 
