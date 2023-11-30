@@ -37,19 +37,19 @@ find_path(MBEDTLS_INCLUDE_DIR
         PATH_SUFFIXES include)
 
 find_library(MBEDTLS_CRYPTO_LIBRARY
-        NAMES mbedcrypto
+        NAMES libmbedcrypto.a
         HINTS ${_MBEDTLS_ROOT_HINTS}
         PATHS /usr/local
         PATH_SUFFIXES lib)
 
 find_library(MBEDTLS_X509_LIBRARY
-        NAMES mbedx509
+        NAMES libmbedx509.a
         HINTS ${_MBEDTLS_ROOT_HINTS}
         PATHS /usr/local
         PATH_SUFFIXES lib)
 
 find_library(MBEDTLS_TLS_LIBRARY
-        NAMES mbedtls
+        NAMES libmbedtls.a
         HINTS ${_MBEDTLS_ROOT_HINTS}
         PATHS /usr/local
         PATH_SUFFIXES lib)
