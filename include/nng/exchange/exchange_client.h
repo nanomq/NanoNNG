@@ -1,6 +1,7 @@
 #ifndef EXCHANGE_CLIENT_H
 #define EXCHANGE_CLIENT_H
 
+#include "core/nng_impl.h"
 #include "nng/exchange/exchange.h"
 #define nng_exchange_self                0
 #define nng_exchange_self_name           "exchange-client"

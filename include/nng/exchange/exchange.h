@@ -2,6 +2,7 @@
 #define EXCHANGE_H
 
 #include <stddef.h>
+#include "core/nng_impl.h"
 #include "nng/supplemental/nanolib/ringbuffer.h"
 
 #define EXCHANGE_NAME_LEN 100
