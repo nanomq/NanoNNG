@@ -12,7 +12,6 @@
 #include "rule.h"
 #include "acl_conf.h"
 #include "nng/supplemental/util/platform.h"
-#include "nng/exchange/exchange.h"
 
 #define PID_PATH_NAME "/tmp/nanomq/nanomq.pid"
 #define CONF_PATH_NAME "/etc/nanomq.conf"
@@ -305,7 +304,7 @@ typedef struct conf_exchange_client_node conf_exchange_client_node;
 struct conf_exchange_client_node {
 	void        *sock;
 	size_t      exchange_count;
-	exchange_t  **ex_list;
+	void        **ex_list;
 	nng_mtx     *mtx;
 };
 

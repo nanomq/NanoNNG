@@ -1015,7 +1015,7 @@ conf_exchange_client_node_parse(
 			NNI_FREE_STRUCT(rb_node);
 		}
 
-		exchange_t *ex = NULL;
+		void *ex = NULL;
 		ret = exchange_init(&ex, ex_node->name, ex_node->topic, rbsCap, rbsName, cvector_size(rbsName));
 		if (ret != 0 || ex == NULL) {
 			NNI_FREE_STRUCT(ex_node);

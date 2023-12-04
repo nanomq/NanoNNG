@@ -5,15 +5,13 @@
 // file was obtained (LICENSE.txt).  A copy of the license may also be
 // found online at https://opensource.org/licenses/MIT.
 //
-
 #include "core/nng_impl.h"
 #include "nng/protocol/mqtt/mqtt.h"
-#include "supplemental/mqtt/mqtt_msg.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "nng/mqtt/mqtt_client.h"
 #include "nng/exchange/exchange_client.h"
+#include "supplemental/mqtt/mqtt_msg.h"
 
-#include "nng/exchange/exchange.h"
 typedef struct exchange_sock_s exchange_sock_t;
 typedef struct exchange_node_s exchange_node_t;
 

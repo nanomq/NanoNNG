@@ -1,5 +1,5 @@
-#include "nng/exchange/exchange.h"
 #include "core/nng_impl.h"
+#include "nng/exchange/exchange.h"
 
 int
 exchange_init(exchange_t **ex, char *name, char *topic,
