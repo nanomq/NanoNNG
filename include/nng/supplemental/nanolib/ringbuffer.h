@@ -2,6 +2,7 @@
 #define RINGBUFFER_H
 #include <stdio.h>
 #include <stdlib.h>
+#include "core/nng_impl.h"
 
 #define RBNAME_LEN          100
 #define RINGBUFFER_MAX_SIZE	0xffff
@@ -42,7 +43,7 @@ struct ringBuffer_s {
 	ringBufferRule_t        *deqinRuleList[RBRULELIST_MAX_SIZE];
 	ringBufferRule_t        *deqoutRuleList[RBRULELIST_MAX_SIZE];
 
-	/* TODO: LOCK */
+	nni_mtx                 lock;
 
 	ringBufferMsg_t *msgs;
 };
