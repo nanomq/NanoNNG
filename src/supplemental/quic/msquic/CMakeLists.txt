@@ -11,7 +11,7 @@ if(NNG_QUIC_LIB STREQUAL "msquic")
         ************************************************************")
     set(_MSQUIC_ROOT_HINTS ${MSQUIC_ROOT_DIR} ENV MSQUIC_ROOT_DIR)
 
-    if(BUILD_WTIH_STATIC_LIBS)
+    if(BUILD_WITH_STATIC_LIBS)
         set(QUIC_BUILD_SHARED OFF)
     endif()
     
@@ -32,7 +32,7 @@ if(NNG_QUIC_LIB STREQUAL "msquic")
     PATHS /usr/local
     PATH_SUFFIXES include)
 
-    if(BUILD_WTIH_STATIC_LIBS)
+    if(BUILD_WITH_STATIC_LIBS)
         set(CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_STATIC_LIBRARY_SUFFIX})
     endif()
 
