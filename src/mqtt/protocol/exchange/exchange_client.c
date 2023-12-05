@@ -12,14 +12,22 @@
 #include "nng/exchange/exchange_client.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 
-typedef struct exchange_sock_s exchange_sock_t;
-typedef struct exchange_node_s exchange_node_t;
+typedef struct exchange_sock_s         exchange_sock_t;
+typedef struct exchange_node_s         exchange_node_t;
+typedef struct exchange_sendmessages_s exchange_sendmessages_t;
+
+struct exchange_sendmessages_s {
+	int   *key;
+	nni_msg *msg;
+	nni_list_node node;
+};
 
 struct exchange_node_s {
 	exchange_t      *ex;
 	exchange_sock_t *sock;
 	nni_aio         saio;
-	nni_lmq         send_messages;
+	nni_list        send_messages;
+	unsigned int    send_messages_num;
 	nni_list_node   exnode;
 	bool            isBusy;
 	nni_mtx         mtx;
