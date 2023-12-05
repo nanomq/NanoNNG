@@ -81,7 +81,7 @@ void test_exchange_ringBuffer(void)
 	msg = alloc_pub_msg((char *)&topic);
 	NUTS_TRUE(msg != NULL);
 
-	NUTS_TRUE(exchange_handle_msg(ex, (void *)msg) == 0);
+	NUTS_TRUE(exchange_handle_msg(ex, 1, (void *)msg) == 0);
 	NUTS_TRUE(exchange_release(ex) == 0);
 }
 

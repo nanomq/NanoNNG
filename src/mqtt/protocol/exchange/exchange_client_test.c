@@ -7,11 +7,13 @@
 #define UNUSED(x) ((void) x)
 //
 // Publish a message to the given topic and with the given QoS.
-int
+void
 client_publish(nng_socket sock, const char *topic, uint8_t *payload,
     uint32_t payload_len, uint8_t qos, bool verbose)
 {
 	int rv;
+	int *key = nng_alloc(sizeof(int));
+	*key = 1;
 
 	UNUSED(verbose);
 	// create a PUBLISH message
@@ -26,9 +28,15 @@ client_publish(nng_socket sock, const char *topic, uint8_t *payload,
 	nng_mqtt_msg_set_publish_topic(pubmsg, topic);
 	nng_mqtt_msg_set_publish_topic_len(pubmsg, strlen(topic));
 
-	rv = nng_sendmsg(sock, pubmsg, NNG_FLAG_NONBLOCK);
+	nni_aio *aio = NULL;
+	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
 
-	return rv;
+	nni_aio_set_prov_data(aio, key);
+	nni_aio_set_msg(aio, pubmsg);
+
+	nng_send_aio(sock, aio);
+	nng_aio_wait(aio);
+	nng_aio_free(aio);
 }
 
 void
@@ -71,7 +79,7 @@ test_exchange_client(void)
 	rv = exchange_queue_get_ringBuffer(ex_queue, "ringBuffer2", &rb);
 	NUTS_TRUE(rv != 0 && rb == NULL);
 
-	NUTS_TRUE(client_publish(sock, "topic1", NULL, 0, 0, 0) == 0);
+	client_publish(sock, "topic1", NULL, 0, 0, 0);
 
 	nng_msleep(200);
 
