@@ -289,3 +289,59 @@ int ringBuffer_add_rule(ringBuffer_t *rb,
 
 	return 0;
 }
+
+int ringBuffer_search_msg_by_key(ringBuffer_t *rb, int key, nni_msg **msg)
+{
+	int i = 0;
+
+	for (i = rb->head; i < rb->size; i++) {
+		i = i % rb->cap;
+		if (rb->msgs[i].key == key) {
+			*msg = rb->msgs[i].data;
+			return 0;
+		}
+	}
+
+	return -1;
+}
+
+int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, int key, int count, nni_list **list)
+{
+	int i = 0;
+	int j = 0;
+
+	if (count > rb->size) {
+		return -1;
+	}
+
+	nni_list *newList = nng_alloc(sizeof(nni_list));
+	if (newList == NULL) {
+		return -1;
+	}
+
+	NNI_LIST_INIT(newList, ringBuffer_msgs_t, node);
+
+	for (i = rb->head; i < rb->size; i++) {
+		i = i % rb->cap;
+		if (rb->msgs[i].key == key) {
+			for (j = 0; j < count; j++) {
+				ringBuffer_msgs_t *msg_node = nng_alloc(sizeof(ringBuffer_msgs_t));
+				if (msg_node == NULL) {
+					nng_free(newList, sizeof(nni_list));
+					return -1;
+				}
+				msg_node->key = rb->msgs[i].key;
+				msg_node->msg = rb->msgs[i].data;
+				NNI_LIST_NODE_INIT(&msg_node->node);
+				nni_list_append(newList, msg_node);
+
+				i = (i + 1) % rb->cap;
+			}
+			*list = newList;
+			return 0;
+		}
+	}
+
+	nng_free(newList, sizeof(nni_list));
+	return -1;
+}

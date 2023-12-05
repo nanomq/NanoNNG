@@ -17,6 +17,13 @@
 typedef struct ringBuffer_s ringBuffer_t;
 typedef struct ringBufferMsg_s ringBufferMsg_t;
 typedef struct ringBufferRule_s ringBufferRule_t;
+typedef struct ringBuffer_msgs_s ringBuffer_msgs_t;
+
+struct ringBuffer_msgs_s {
+	int key;
+	nni_msg *msg;
+	nni_list_node node;
+};
 
 struct ringBufferMsg_s {
 	int  key;
@@ -77,4 +84,7 @@ int ringBuffer_enqueue(ringBuffer_t *rb,
 					   unsigned long long expiredAt);
 int ringBuffer_dequeue(ringBuffer_t *rb, void **data);
 int ringBuffer_release(ringBuffer_t *rb);
+
+int ringBuffer_search_msg_by_key(ringBuffer_t *rb, int key, nni_msg **msg);
+int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, int key, int count, nni_list **list);
 #endif
