@@ -193,6 +193,42 @@ exchange_sock_close(void *arg)
 	return;
 }
 
+/* Check if the msg is already in rbmsgmap, if not, add it to rbmsgmap */
+static int inline
+exchange_client_handle_msg(exchange_node_t *ex_node, int *key, nni_msg *msg)
+{
+	int ret = 0;
+	nni_msg *tmsg = NULL;
+
+	nni_mtx_lock(&ex_node->sock->mtx);
+	tmsg = nni_id_get(&ex_node->sock->rbmsgmap, *key);
+	if (tmsg != NULL) {
+		log_error("msg already in rbmsgmap\n");
+		/* free key and msg here! */
+		nni_msg_free(msg);
+		nng_free(key, sizeof(int));
+		nni_mtx_unlock(&ex_node->sock->mtx);
+		return -1;
+	}
+
+	(void)exchange_handle_msg(ex_node->ex, *key, msg);
+
+	ret = nni_id_set(&ex_node->sock->rbmsgmap, *key, msg);
+	if (ret != 0) {
+		log_error("rbmsgmap set failed\n");
+		/* free key and msg here! */
+		nni_msg_free(msg);
+		nng_free(key, sizeof(int));
+		nni_mtx_unlock(&ex_node->sock->mtx);
+		return -1;
+	}
+	/* free key here! */
+	nng_free(key, sizeof(int));
+	nni_mtx_unlock(&ex_node->sock->mtx);
+
+	return 0;
+}
+
 static void
 exchange_sock_send(void *arg, nni_aio *aio)
 {
