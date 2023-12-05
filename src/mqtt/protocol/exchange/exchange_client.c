@@ -47,6 +47,59 @@ static void exchange_sock_open(void *arg);
 static void exchange_sock_send(void *arg, nni_aio *aio);
 static void exchange_send_cb(void *arg);
 
+/* lock ex_node before enqueue */
+static int
+exchange_node_send_messages_enqueue(exchange_node_t *ex_node, int *key, nni_msg *msg)
+{
+	exchange_sendmessages_t *send_msg = NULL;
+
+	send_msg = (exchange_sendmessages_t *)nng_alloc(sizeof(exchange_sendmessages_t));
+	if (send_msg == NULL) {
+		/* free key and msg here! */
+		nni_msg_free(msg);
+		nng_free(key, sizeof(int));
+		log_error("exchange_sendmessages_enqueue failed! No memory!\n");
+		return -1;
+	}
+
+	send_msg->key = key;
+	send_msg->msg = msg;
+
+	NNI_LIST_NODE_INIT(&send_msg->node);
+
+	if (ex_node->send_messages_num >= 1024) {
+		log_error("exchange_sendmessages_enqueue failed! send_messages_num >= 1024!\n");
+		/* free key and msg here! */
+		nni_msg_free(send_msg->msg);
+		nng_free(send_msg->key, sizeof(int));
+		nng_free(send_msg, sizeof(*send_msg));
+		return -1;
+	}
+	nni_list_append(&ex_node->send_messages, send_msg);
+	ex_node->send_messages_num++;
+
+	return 0;
+}
+
+/* lock ex_node before dequeue */
+static int
+exchange_node_send_messages_dequeue(exchange_node_t *ex_node, int **key, nni_msg **msg)
+{
+	exchange_sendmessages_t *send_msg = NULL;
+
+	send_msg = nni_list_first(&ex_node->send_messages);
+	if (send_msg == NULL) {
+		return -1;
+	}
+
+	*key = send_msg->key;
+	*msg = send_msg->msg;
+	nni_list_remove(&ex_node->send_messages, send_msg);
+	ex_node->send_messages_num--;
+
+	return 0;
+}
+
 static int
 exchange_add_ex(exchange_sock_t *s, exchange_t *ex)
 {
