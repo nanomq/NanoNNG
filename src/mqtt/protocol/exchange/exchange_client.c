@@ -28,6 +28,7 @@ struct exchange_node_s {
 struct exchange_sock_s {
 	nni_mtx         mtx;
 	nni_atomic_bool closed;
+	nni_id_map      rbmsgmap;
 	nni_list        ex_queue;
 };
 
@@ -76,6 +77,7 @@ exchange_sock_init(void *arg, nni_sock *sock)
 	nni_atomic_init_bool(&s->closed);
 	nni_atomic_set_bool(&s->closed, false);
 	nni_mtx_init(&s->mtx);
+	nni_id_map_init(&s->rbmsgmap, 0, 0, true);
 	NNI_LIST_INIT(&s->ex_queue, exchange_node_t, exnode);
 
 	return;
@@ -104,6 +106,7 @@ exchange_sock_fini(void *arg)
 		}
 	}
 
+	nni_id_map_fini(&s->rbmsgmap);
 	nni_mtx_fini(&s->mtx);
 	return;
 }
@@ -288,6 +291,32 @@ exchange_queue_get_ringBuffer(nni_list *ex_queue, char *rbName, ringBuffer_t **r
 	return -1;
 }
 
+static int
+exchange_sock_get_rbmsgmap(void *arg, void *v, size_t *szp, nni_opt_type t)
+{
+	exchange_sock_t *s = arg;
+	int              rv;
+
+	nni_mtx_lock(&s->mtx);
+	rv = nni_copyout_ptr(&s->rbmsgmap, v, szp, t);
+	nni_mtx_unlock(&s->mtx);
+	return (rv);
+}
+
+int
+exchange_client_get_msg_by_key(nni_id_map *rbmsgmap, uint32_t key, nni_msg **msg)
+{
+	int ret = 0;
+	nni_msg *tmsg = NULL;
+
+	tmsg = nni_id_get(rbmsgmap, key);
+	if (tmsg != NULL) {
+		*msg = tmsg;
+	}
+
+	return ret;
+}
+
 static nni_option exchange_sock_options[] = {
 	{
 	    .o_name = NNG_OPT_EXCHANGE_ADD,
@@ -296,6 +325,10 @@ static nni_option exchange_sock_options[] = {
 	{
 		.o_name = NNG_OPT_EXCHANGE_GET_EX_QUEUE,
 		.o_get  = exchange_sock_get_ex_queue,
+	},
+	{
+		.o_name = NNG_OPT_EXCHANGE_GET_RBMSGMAP,
+		.o_get  = exchange_sock_get_rbmsgmap,
 	},
 	{
 	    .o_name = NULL,

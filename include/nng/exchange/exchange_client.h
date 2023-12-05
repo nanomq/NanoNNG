@@ -15,6 +15,7 @@
 #define NNG_EXCHANGE_PEER_NAME           "exchange-server"
 #define NNG_OPT_EXCHANGE_ADD             "exchange-client-add"
 #define NNG_OPT_EXCHANGE_GET_EX_QUEUE    "exchange-client-get-ex-queue"
+#define NNG_OPT_EXCHANGE_GET_RBMSGMAP    "exchange-client-get-rbmsgmap"
 
 int nng_exchange_client_open(nng_socket *sock);
 
