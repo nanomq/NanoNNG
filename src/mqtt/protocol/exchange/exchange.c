@@ -112,7 +112,7 @@ exchange_release(exchange_t *ex)
 }
 
 int
-exchange_handle_msg(exchange_t *ex, void *msg)
+exchange_handle_msg(exchange_t *ex, int key, void *msg)
 {
 	unsigned int i = 0;
 	int ret = 0;
@@ -122,7 +122,7 @@ exchange_handle_msg(exchange_t *ex, void *msg)
 	}
 
 	for (i = 0; i < ex->rb_count; i++) {
-		ret = ringBuffer_enqueue(ex->rbs[i], msg, -1);
+		ret = ringBuffer_enqueue(ex->rbs[i], key, msg, -1);
 		if (ret != 0) {
 			log_error("Ring Buffer enqueue failed\n");
 			return -1;
