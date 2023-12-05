@@ -115,9 +115,10 @@ exchange_add_ex(exchange_sock_t *s, exchange_t *ex)
 	node->isBusy = false;
 	node->ex = ex;
 	node->sock = s;
+	node->send_messages_num = 0;
 
 	nni_aio_init(&node->saio, exchange_send_cb, node);
-	nni_lmq_init(&node->send_messages, 1024);
+	NNI_LIST_INIT(&node->send_messages, exchange_sendmessages_t, node);
 
 	NNI_LIST_NODE_INIT(&node->exnode);
 	nni_list_append(&s->ex_queue, node);
@@ -149,10 +150,22 @@ exchange_sock_fini(void *arg)
 {
 	exchange_sock_t *s = arg;
 	exchange_node_t *ex_node;
+	exchange_sendmessages_t *send_message;
 
 	NNI_LIST_FOREACH (&s->ex_queue, ex_node) {
+		while (!nni_list_empty(&ex_node->send_messages)) {
+			send_message = nni_list_last(&ex_node->send_messages);
+			if (send_message) {
+				nni_list_remove(&ex_node->send_messages, send_message);
+				/* free key and msg here! */
+				nni_msg_free(send_message->msg);
+				nng_free(send_message->key, sizeof(int));
+				nng_free(send_message, sizeof(*send_message));
+				send_message = NULL;
+			}
+		}
+
 		nni_aio_fini(&ex_node->saio);
-		nni_lmq_fini(&ex_node->send_messages);
 		nni_mtx_fini(&ex_node->mtx);
 		exchange_release(ex_node->ex);
 	}
@@ -244,20 +257,24 @@ exchange_sock_send(void *arg, nni_aio *aio)
 		return;
 	}
 
+
 	nni_mqtt_packet_type ptype = nni_mqtt_msg_get_packet_type(msg);
 	if (ptype != NNG_MQTT_PUBLISH) {
 		nni_aio_finish(aio, 0, 0);
 		return;
 	}
 
-	/* TODO: Remove this lock? */
-	nni_mtx_lock(&s->mtx);
 	if (nni_list_empty(&s->ex_queue)) {
-		nni_mtx_unlock(&s->mtx);
 		nni_aio_finish(aio, 0, 0);
 		return;
 	}
-	nni_mtx_unlock(&s->mtx);
+
+	int *key = nni_aio_get_prov_data(aio);
+	if (key == NULL) {
+		log_error("key is NULL\n");
+		nni_aio_finish(aio, 0, 0);
+		return;
+	}
 
 	NNI_LIST_FOREACH (&s->ex_queue, ex_node) {
 		nni_mtx_lock(&ex_node->mtx);
@@ -274,18 +291,14 @@ exchange_sock_send(void *arg, nni_aio *aio)
 				return;
 			}
 			ex_node->isBusy = true;
+
+			(void)exchange_client_handle_msg(ex_node, key, msg);
+
 			nni_mtx_unlock(&ex_node->mtx);
-			(void)exchange_handle_msg(ex_node->ex, msg);
 			nni_aio_finish(&ex_node->saio, 0, 0);
 		} else {
-			if (nni_lmq_full(&ex_node->send_messages)) {
-				log_error("lmq is full, get oldest msg and free\n");
-				if (nni_lmq_get(&ex_node->send_messages, &tmsg) == 0) {
-					nni_msg_free(tmsg);
-				}
-			}
-			if (nni_lmq_put(&ex_node->send_messages, msg) != 0) {
-				log_error("Warning! exchange lost message!!\n");
+			if (exchange_node_send_messages_enqueue(ex_node, key, msg) != 0) {
+				log_error("exchange_node_send_messages_enqueue failed!\n");
 			}
 			nni_mtx_unlock(&ex_node->mtx);
 		}
@@ -299,7 +312,8 @@ static void
 exchange_send_cb(void *arg)
 {
 	exchange_node_t *ex_node = arg;
-	nni_msg *    msg = NULL;
+	nni_msg         *msg = NULL;
+	int             *key = NULL;
 
 	if (ex_node == NULL) {
 		return;
@@ -318,13 +332,13 @@ exchange_send_cb(void *arg)
 		nni_mtx_unlock(&ex_node->mtx);
 		return;
 	}
-
-	if (nni_lmq_get(&ex_node->send_messages, &msg) == 0) {
+	if (exchange_node_send_messages_dequeue(ex_node, &key, &msg) == 0) {
+		(void)exchange_client_handle_msg(ex_node, key, msg);
 		nni_mtx_unlock(&ex_node->mtx);
-		(void)exchange_handle_msg(ex_node->ex, msg);
 		nni_aio_finish(&ex_node->saio, 0, 0);
 		return;
 	}
+
 	ex_node->isBusy = false;
 	nni_mtx_unlock(&ex_node->mtx);
 
