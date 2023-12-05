@@ -19,6 +19,7 @@ typedef struct ringBufferMsg_s ringBufferMsg_t;
 typedef struct ringBufferRule_s ringBufferRule_t;
 
 struct ringBufferMsg_s {
+	int  key;
 	void *data;
 	/* TTL of each message */
 	unsigned long long expiredAt;
@@ -71,6 +72,7 @@ int ringBuffer_init(ringBuffer_t **rb,
 					unsigned int overWrite,
 					unsigned long long expiredAt);
 int ringBuffer_enqueue(ringBuffer_t *rb,
+					   int key,
 					   void *data,
 					   unsigned long long expiredAt);
 int ringBuffer_dequeue(ringBuffer_t *rb, void **data);

@@ -105,6 +105,7 @@ static inline int ringBuffer_rule_check(ringBuffer_t *rb, void *data, int flag)
 }
 
 int ringBuffer_enqueue(ringBuffer_t *rb,
+					   int key,
 					   void *data,
 					   unsigned long long expiredAt)
 {
@@ -122,6 +123,7 @@ int ringBuffer_enqueue(ringBuffer_t *rb,
 			 */
 			/* For nng_msg now */
 			nng_msg_free(rb->msgs[rb->head].data);
+			rb->msgs[rb->head].key = key;
 			rb->msgs[rb->head].data = data;
 			rb->msgs[rb->head].expiredAt = expiredAt;
 			rb->head = (rb->head + 1) % rb->cap;
