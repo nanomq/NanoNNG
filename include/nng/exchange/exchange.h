@@ -18,11 +18,11 @@ struct exchange_s {
 	unsigned int rb_count;
 };
 
-int exchange_init(exchange_t **ex, char *name, char *topic,
-				  unsigned int *rbsCaps, char **rbsName, unsigned int rbsCount);
-int exchange_add_rb(exchange_t *ex, ringBuffer_t *rb);
-int exchange_release(exchange_t *ex);
-int exchange_handle_msg(exchange_t *ex, int key, void *msg);
-int exchange_get_ringBuffer(exchange_t *ex, char *rbName, ringBuffer_t **rb);
+NNG_DECL int exchange_init(exchange_t **ex, char *name, char *topic,
+ 				  unsigned int *rbsCaps, char **rbsName, unsigned int rbsCount);
+NNG_DECL int exchange_add_rb(exchange_t *ex, ringBuffer_t *rb);
+NNG_DECL int exchange_release(exchange_t *ex);
+NNG_DECL int exchange_handle_msg(exchange_t *ex, int key, void *msg);
+NNG_DECL int exchange_get_ringBuffer(exchange_t *ex, char *rbName, ringBuffer_t **rb);
 
 #endif
