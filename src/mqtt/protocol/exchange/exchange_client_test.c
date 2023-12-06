@@ -8,12 +8,12 @@
 //
 // Publish a message to the given topic and with the given QoS.
 void
-client_publish(nng_socket sock, const char *topic, uint8_t *payload,
+client_publish(nng_socket sock, const char *topic, uint32_t key, uint8_t *payload,
     uint32_t payload_len, uint8_t qos, bool verbose)
 {
 	int rv;
-	int *key = nng_alloc(sizeof(int));
-	*key = 1;
+	int *_key = nng_alloc(sizeof(int));
+	*_key = key;
 
 	UNUSED(verbose);
 	// create a PUBLISH message
@@ -31,7 +31,7 @@ client_publish(nng_socket sock, const char *topic, uint8_t *payload,
 	nni_aio *aio = NULL;
 	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
 
-	nni_aio_set_prov_data(aio, key);
+	nni_aio_set_prov_data(aio, _key);
 	nni_aio_set_msg(aio, pubmsg);
 
 	nng_send_aio(sock, aio);
@@ -43,6 +43,7 @@ void
 test_exchange_client(void)
 {
 	int rv = 0;
+	uint32_t key = 0;
 	nng_socket sock;
 	exchange_t *ex = NULL;
 	nni_list *ex_queue = NULL;
@@ -79,7 +80,8 @@ test_exchange_client(void)
 	rv = exchange_queue_get_ringBuffer(ex_queue, "ringBuffer2", &rb);
 	NUTS_TRUE(rv != 0 && rb == NULL);
 
-	client_publish(sock, "topic1", NULL, 0, 0, 0);
+	key = 1;
+	client_publish(sock, "topic1", key, NULL, 0, 0, 0);
 
 	nng_msleep(200);
 
