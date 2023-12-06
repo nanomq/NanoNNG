@@ -208,7 +208,7 @@ exchange_sock_close(void *arg)
 
 /* Check if the msg is already in rbmsgmap, if not, add it to rbmsgmap */
 static int inline
-exchange_client_handle_msg(exchange_node_t *ex_node, int *key, nni_msg *msg)
+exchange_client_handle_msg(exchange_node_t *ex_node, uint32_t *key, nni_msg *msg)
 {
 	int ret = 0;
 	nni_msg *tmsg = NULL;
@@ -269,7 +269,7 @@ exchange_sock_send(void *arg, nni_aio *aio)
 		return;
 	}
 
-	int *key = nni_aio_get_prov_data(aio);
+	uint32_t *key = nni_aio_get_prov_data(aio);
 	if (key == NULL) {
 		log_error("key is NULL\n");
 		nni_aio_finish(aio, 0, 0);

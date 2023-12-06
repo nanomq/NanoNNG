@@ -138,6 +138,7 @@ int ringBuffer_enqueue(ringBuffer_t *rb,
 
 	ringBufferMsg_t *msg = &rb->msgs[rb->tail];
 
+	msg->key = key;
 	msg->data = data;
 	msg->expiredAt = expiredAt;
 
@@ -290,7 +291,7 @@ int ringBuffer_add_rule(ringBuffer_t *rb,
 	return 0;
 }
 
-int ringBuffer_search_msg_by_key(ringBuffer_t *rb, int key, nni_msg **msg)
+int ringBuffer_search_msg_by_key(ringBuffer_t *rb, uint32_t key, nni_msg **msg)
 {
 	int i = 0;
 
@@ -305,7 +306,7 @@ int ringBuffer_search_msg_by_key(ringBuffer_t *rb, int key, nni_msg **msg)
 	return -1;
 }
 
-int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, int key, int count, nni_list **list)
+int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint32_t key, int count, nni_list **list)
 {
 	int i = 0;
 	int j = 0;
