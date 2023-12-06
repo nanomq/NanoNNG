@@ -413,17 +413,19 @@ exchange_sock_get_rbmsgmap(void *arg, void *v, size_t *szp, nni_opt_type t)
 }
 
 int
-exchange_client_get_msg_by_key(nni_id_map *rbmsgmap, uint32_t key, nni_msg **msg)
+exchange_client_get_msg_by_key(void *arg, uint32_t key, nni_msg **msg)
 {
-	int ret = 0;
-	nni_msg *tmsg = NULL;
+	exchange_sock_t *s = arg;
+	nni_id_map *rbmsgmap = &s->rbmsgmap;
 
+	nni_msg *tmsg = NULL;
 	tmsg = nni_id_get(rbmsgmap, key);
-	if (tmsg != NULL) {
-		*msg = tmsg;
+	if (tmsg == NULL) {
+		return -1;
 	}
 
-	return ret;
+	*msg = tmsg;
+	return 0;
 }
 
 int
