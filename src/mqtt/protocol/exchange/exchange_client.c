@@ -418,6 +418,10 @@ exchange_client_get_msg_by_key(void *arg, uint32_t key, nni_msg **msg)
 	exchange_sock_t *s = arg;
 	nni_id_map *rbmsgmap = &s->rbmsgmap;
 
+	if (msg == NULL) {
+		return -1;
+	}
+
 	nni_msg *tmsg = NULL;
 	tmsg = nni_id_get(rbmsgmap, key);
 	if (tmsg == NULL) {
@@ -435,7 +439,6 @@ exchange_client_get_msgs_by_key(void *arg, uint32_t key, uint32_t count, nni_lis
 	int topic_len = 0;
 	exchange_sock_t *s = arg;
 	nni_msg *tmsg = NULL;
-	nni_list *new_list = NULL;
 	nni_id_map *rbmsgmap = &s->rbmsgmap;
 
 	nni_mtx_lock(&s->mtx);
@@ -453,9 +456,8 @@ exchange_client_get_msgs_by_key(void *arg, uint32_t key, uint32_t count, nni_lis
 			nni_mtx_unlock(&ex_node->mtx);
 			continue;
 		} else {
-			nni_list *list = NULL;
 			/* Only one exchange with one ringBuffer now */
-			ret = ringBuffer_search_msgs_by_key(ex_node->ex->rbs[0], key, count, &list);
+			ret = ringBuffer_search_msgs_by_key(ex_node->ex->rbs[0], key, count, list);
 			if (ret != 0 || list == NULL) {
 				log_error("ringBuffer_get_msgs_by_key failed!\n");
 				nni_mtx_unlock(&ex_node->mtx);
