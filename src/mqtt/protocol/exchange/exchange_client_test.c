@@ -83,7 +83,35 @@ test_exchange_client(void)
 	key = 1;
 	client_publish(sock, "topic1", key, NULL, 0, 0, 0);
 
-	nng_msleep(200);
+	nni_msg *msg = NULL;
+	nni_sock *nsock = NULL;
+
+	rv = nni_sock_find(&nsock, sock.id);
+	NUTS_TRUE(rv == 0 && nsock != NULL);
+	nni_sock_rele(nsock);
+
+	rv = exchange_client_get_msg_by_key(nni_sock_proto_data(nsock), key, &msg);
+	NUTS_TRUE(rv == 0 && msg != NULL);
+
+	nni_list *list = NULL;
+	rv = exchange_client_get_msgs_by_key(nni_sock_proto_data(nsock), key, 1, &list);
+	NUTS_TRUE(rv == 0 && list != NULL);
+
+	ringBuffer_msgs_t *rb_msg = NULL;
+	while (!nni_list_empty(list)) {
+		rb_msg = nni_list_last(list);
+		if (rb_msg != NULL) {
+			nni_list_remove(list, rb_msg);
+			nng_free(rb_msg, sizeof(*rb_msg));
+		}
+	}
+
+	nng_free(list, sizeof(*list));
+	list = NULL;
+
+	/* Only one element in ringbuffer */
+	rv = exchange_client_get_msgs_by_key(nni_sock_proto_data(nsock), key, 2, &list);
+	NUTS_TRUE(rv == -1 && list == NULL);
 
 	return;
 }
