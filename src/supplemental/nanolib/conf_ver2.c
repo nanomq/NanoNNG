@@ -8,6 +8,7 @@
 #include "nng/supplemental/nanolib/file.h"
 #include "nng/supplemental/nanolib/hocon.h"
 #include "nng/supplemental/nanolib/log.h"
+#include "nng/exchange/exchange.h"
 #include "nanolib.h"
 #include <ctype.h>
 #include <string.h>
@@ -1015,7 +1016,7 @@ conf_exchange_client_node_parse(
 			NNI_FREE_STRUCT(rb_node);
 		}
 
-		void *ex = NULL;
+		exchange_t *ex = NULL;
 		ret = exchange_init(&ex, ex_node->name, ex_node->topic, rbsCap, rbsName, cvector_size(rbsName));
 		if (ret != 0 || ex == NULL) {
 			NNI_FREE_STRUCT(ex_node);
