@@ -22,4 +22,7 @@ int nng_exchange_client_open(nng_socket *sock);
 int exchange_queue_get_ringBuffer(nni_list *ex_queue,
 								  char *rbName, ringBuffer_t **rb);
 
+int exchange_client_get_msg_by_key(void *arg, uint32_t key, nni_msg **msg);
+int exchange_client_get_msgs_by_key(void *arg, uint32_t key, uint32_t count, nni_list **list);
+
 #endif
