@@ -213,14 +213,12 @@ exchange_client_handle_msg(exchange_node_t *ex_node, uint32_t *key, nni_msg *msg
 	int ret = 0;
 	nni_msg *tmsg = NULL;
 
-	nni_mtx_lock(&ex_node->sock->mtx);
 	tmsg = nni_id_get(&ex_node->sock->rbmsgmap, *key);
 	if (tmsg != NULL) {
 		log_error("msg already in rbmsgmap\n");
 		/* free key and msg here! */
 		nni_msg_free(msg);
 		nng_free(key, sizeof(int));
-		nni_mtx_unlock(&ex_node->sock->mtx);
 		return -1;
 	}
 
@@ -232,12 +230,10 @@ exchange_client_handle_msg(exchange_node_t *ex_node, uint32_t *key, nni_msg *msg
 		/* free key and msg here! */
 		nni_msg_free(msg);
 		nng_free(key, sizeof(int));
-		nni_mtx_unlock(&ex_node->sock->mtx);
 		return -1;
 	}
 	/* free key here! */
 	nng_free(key, sizeof(int));
-	nni_mtx_unlock(&ex_node->sock->mtx);
 
 	return 0;
 }
@@ -257,15 +253,16 @@ exchange_sock_send(void *arg, nni_aio *aio)
 		return;
 	}
 
-
 	nni_mqtt_packet_type ptype = nni_mqtt_msg_get_packet_type(msg);
 	if (ptype != NNG_MQTT_PUBLISH) {
 		nni_aio_finish(aio, 0, 0);
 		return;
 	}
 
+	nni_mtx_lock(&s->mtx);
 	if (nni_list_empty(&s->ex_queue)) {
 		nni_aio_finish(aio, 0, 0);
+		nni_mtx_unlock(&s->mtx);
 		return;
 	}
 
@@ -273,6 +270,7 @@ exchange_sock_send(void *arg, nni_aio *aio)
 	if (key == NULL) {
 		log_error("key is NULL\n");
 		nni_aio_finish(aio, 0, 0);
+		nni_mtx_unlock(&s->mtx);
 		return;
 	}
 
@@ -288,6 +286,7 @@ exchange_sock_send(void *arg, nni_aio *aio)
 			if (nni_aio_begin(&ex_node->saio) != 0) {
 				nni_mtx_unlock(&ex_node->mtx);
 				nni_aio_finish(aio, 0, 0);
+				nni_mtx_unlock(&s->mtx);
 				return;
 			}
 			ex_node->isBusy = true;
@@ -303,6 +302,7 @@ exchange_sock_send(void *arg, nni_aio *aio)
 		}
 	}
 	nni_aio_finish(aio, 0, 0);
+	nni_mtx_unlock(&s->mtx);
 	return;
 }
 
