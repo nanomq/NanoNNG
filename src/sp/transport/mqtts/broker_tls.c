@@ -156,7 +156,10 @@ tlstran_pipe_stop(void *arg)
 {
 	tlstran_pipe *p = arg;
 	log_trace(" ###### tlstran_pipe_stop ###### ");
-	p->tcp_cparam = NULL;
+	if (p->tcp_cparam) {
+    		conn_param_free(p->tcp_cparam);
+    		p->tcp_cparam = NULL;
+  	}
 	nni_aio_stop(p->qsaio);
 	nni_aio_stop(p->rpaio);
 	nni_aio_stop(p->rxaio);
