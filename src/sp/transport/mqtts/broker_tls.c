@@ -156,10 +156,6 @@ tlstran_pipe_stop(void *arg)
 {
 	tlstran_pipe *p = arg;
 	log_trace(" ###### tlstran_pipe_stop ###### ");
-	if (p->tcp_cparam) {
-    		conn_param_free(p->tcp_cparam);
-    		p->tcp_cparam = NULL;
-  	}
 	nni_aio_stop(p->qsaio);
 	nni_aio_stop(p->rpaio);
 	nni_aio_stop(p->rxaio);
@@ -204,6 +200,11 @@ tlstran_pipe_fini(void *arg)
 		}
 		nni_mtx_unlock(&ep->mtx);
 	}
+
+	if (p->tcp_cparam) {
+    		conn_param_free(p->tcp_cparam);
+    		p->tcp_cparam = NULL;
+  	}
 
 	nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
 	nni_aio_free(p->qsaio);
