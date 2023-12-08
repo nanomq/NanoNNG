@@ -11,7 +11,7 @@
 
 include(CMakeDependentOption)
 
-if (CMAKE_CROSSCOMPILING)
+if (CMAKE_CROSSCOMPILING OR BUILD_WITH_STATIC_LIBS)
     set(NNG_NATIVE_BUILD OFF)
 else ()
     set(NNG_NATIVE_BUILD ON)
@@ -28,6 +28,10 @@ option(NNG_TESTS "Build and run tests." ${NNG_NATIVE_BUILD})
 option(NNG_TOOLS "Build extra tools." ${NNG_NATIVE_BUILD})
 option(NNG_ENABLE_NNGCAT "Enable building nngcat utility." ${NNG_TOOLS})
 option(NNG_ENABLE_COVERAGE "Enable coverage reporting." OFF)
+
+message(NNG_TESTS = "${NNG_TESTS}")
+message(NNG_TOOLS = "${NNG_TOOLS}")
+
 # Eliding deprecated functionality can be used to build a slimmed down
 # version of the library, or alternatively to test for application
 # preparedness for expected feature removals (in the next major release.)
