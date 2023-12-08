@@ -1,8 +1,19 @@
+//
+// Copyright 2023 NanoMQ Team, Inc.
+//
+// This software is supplied under the terms of the MIT License, a
+// copy of which should be located in the distribution where this
+// file was obtained (LICENSE.txt).  A copy of the license may also be
+// found online at https://opensource.org/licenses/MIT.
+//
+
 #ifndef EXCHANGE_CLIENT_H
 #define EXCHANGE_CLIENT_H
 
-#include "core/nng_impl.h"
-#include "nng/exchange/exchange.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define nng_exchange_self                0
 #define nng_exchange_self_name           "exchange-client"
 #define nng_exchange_peer                0
@@ -17,12 +28,15 @@
 #define NNG_OPT_EXCHANGE_GET_EX_QUEUE    "exchange-client-get-ex-queue"
 #define NNG_OPT_EXCHANGE_GET_RBMSGMAP    "exchange-client-get-rbmsgmap"
 
-int nng_exchange_client_open(nng_socket *sock);
+NNG_DECL int nng_exchange_client_open(nng_socket *sock);
 
-int exchange_queue_get_ringBuffer(nni_list *ex_queue,
-								  char *rbName, ringBuffer_t **rb);
-
-int exchange_client_get_msg_by_key(void *arg, uint32_t key, nni_msg **msg);
-int exchange_client_get_msgs_by_key(void *arg, uint32_t key, uint32_t count, nni_list **list);
-
+#ifndef nng_exchange_open
+#define nng_exchange_open nng_exchange_client_open
 #endif
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif // #define EXCHANGE_CLIENT_H
+
