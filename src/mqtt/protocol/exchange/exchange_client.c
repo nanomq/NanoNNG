@@ -10,6 +10,7 @@
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "nng/mqtt/mqtt_client.h"
 #include "nng/exchange/exchange_client.h"
+#include "nng/exchange/exchange.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 
 typedef struct exchange_sock_s         exchange_sock_t;

@@ -1,6 +1,7 @@
 #include "nng/nng.h"
 #include "core/nng_impl.h"
 #include "nng/exchange/exchange_client.h"
+#include "nng/exchange/exchange.h"
 #include "core/defs.h"
 #include <nuts.h>
 

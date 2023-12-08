@@ -302,9 +302,9 @@ typedef struct conf_bridge_node conf_bridge_node;
 
 typedef struct conf_exchange_client_node conf_exchange_client_node;
 struct conf_exchange_client_node {
-	void        *sock;
-	size_t      exchange_count;
 	void        **ex_list;
+	nng_socket        *sock;
+	size_t      exchange_count;
 	nng_mtx     *mtx;
 };
 
@@ -504,8 +504,8 @@ struct conf {
 	conf_tls         tls;
 	conf_http_server http_server;
 	conf_websocket   websocket;
-	conf_bridge      bridge;
-	conf_bridge      aws_bridge;
+	conf_bridge      bridge;		//standard MQTT
+	conf_bridge      aws_bridge;	// AWS IoT Core
 	conf_exchange    exchange;
 	conf_web_hook    web_hook;
 #if defined(ENABLE_LOG)
