@@ -1,6 +1,5 @@
 #ifndef NNG_NANOLIB_LOG_H
 #define NNG_NANOLIB_LOG_H
-#include "nng/nng.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -12,9 +11,27 @@ extern "C" {
 #include <stdint.h>
 #include <time.h>
 
-#include "conf.h"
+#include "nng/nng.h"
 
-#define LOG_VERSION "0.2.0"
+#define LOG_VERSION "0.2.1"
+
+/**
+ * 2023-12-08 move conf_log to log.h
+*/
+
+
+typedef struct conf_log conf_log;
+struct conf_log {
+	uint8_t  type;
+	int      level;
+	char    *dir;
+	char    *file;
+	FILE    *fp;
+	char    *abs_path;        // absolut path of log file
+	char    *rotation_sz_str; // 1000KB, 100MB, 10GB
+	uint64_t rotation_sz;     // unit: byte
+	size_t   rotation_count;  // rotation count
+};
 
 typedef struct {
 	va_list     ap;
