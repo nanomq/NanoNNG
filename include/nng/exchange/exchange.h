@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include "core/nng_impl.h"
 #include "nng/supplemental/nanolib/ringbuffer.h"
-
+#include "nng/supplemental/nanolib/conf.h"
 #define EXCHANGE_NAME_LEN 100
 #define TOPIC_NAME_LEN    100
 #define RINGBUFFER_MAX    100
@@ -17,7 +17,6 @@ struct exchange_s {
 	ringBuffer_t *rbs[RINGBUFFER_MAX];
 	unsigned int rb_count;
 };
-
 NNG_DECL int exchange_queue_get_ringBuffer(nni_list *ex_queue,
 								  char *rbName, ringBuffer_t **rb);
 NNG_DECL int exchange_client_get_msg_by_key(void *arg, uint32_t key, nni_msg **msg);

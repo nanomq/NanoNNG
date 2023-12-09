@@ -11,6 +11,7 @@
 #include "nng/nng.h"
 #include "rule.h"
 #include "acl_conf.h"
+// #include "ringbuffer.h"
 #include "nng/supplemental/util/platform.h"
 
 #define PID_PATH_NAME "/tmp/nanomq/nanomq.pid"

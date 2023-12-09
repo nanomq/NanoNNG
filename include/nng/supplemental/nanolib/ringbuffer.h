@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "core/nng_impl.h"
+#include "nng/supplemental/util/platform.h"
 
 #define RBNAME_LEN          100
 #define RINGBUFFER_MAX_SIZE	0xffff
@@ -21,8 +22,8 @@ typedef struct ringBuffer_msgs_s ringBuffer_msgs_t;
 
 struct ringBuffer_msgs_s {
 	int key;
-	nni_msg *msg;
-	nni_list_node node;
+	nng_msg *msg;
+	// nni_list_node node;
 };
 
 struct ringBufferMsg_s {
@@ -51,7 +52,7 @@ struct ringBuffer_s {
 	ringBufferRule_t        *deqinRuleList[RBRULELIST_MAX_SIZE];
 	ringBufferRule_t        *deqoutRuleList[RBRULELIST_MAX_SIZE];
 
-	nni_mtx                 lock;
+	nng_mtx                 *ring_lock;
 
 	ringBufferMsg_t *msgs;
 };
@@ -85,6 +86,6 @@ int ringBuffer_enqueue(ringBuffer_t *rb,
 int ringBuffer_dequeue(ringBuffer_t *rb, void **data);
 int ringBuffer_release(ringBuffer_t *rb);
 
-int ringBuffer_search_msg_by_key(ringBuffer_t *rb, uint32_t key, nni_msg **msg);
-int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint32_t key, int count, nni_list **list);
+int ringBuffer_search_msg_by_key(ringBuffer_t *rb, int key, nng_msg **msg);
+// int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint32_t key, int count, nni_list **list);
 #endif
