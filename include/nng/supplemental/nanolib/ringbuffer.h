@@ -2,7 +2,7 @@
 #define RINGBUFFER_H
 #include <stdio.h>
 #include <stdlib.h>
-#include "core/nng_impl.h"
+#include "nng/nng.h"
 #include "nng/supplemental/util/platform.h"
 
 #define RBNAME_LEN          100

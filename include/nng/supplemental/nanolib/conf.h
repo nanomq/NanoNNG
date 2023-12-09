@@ -11,7 +11,8 @@
 #include "nng/nng.h"
 #include "rule.h"
 #include "acl_conf.h"
-// #include "ringbuffer.h"
+#include "log.h"
+#include "ringbuffer.h"
 #include "nng/supplemental/util/platform.h"
 
 #define PID_PATH_NAME "/tmp/nanomq/nanomq.pid"
@@ -53,19 +54,20 @@
 #define LOG_TO_CONSOLE (1 << 1)
 #define LOG_TO_SYSLOG (1 << 2)
 
-struct conf_log {
-	uint8_t  type;
-	int      level;
-	char    *dir;
-	char    *file;
-	FILE    *fp;
-	char    *abs_path;        // absolut path of log file
-	char    *rotation_sz_str; // 1000KB, 100MB, 10GB
-	uint64_t rotation_sz;     // unit: byte
-	size_t   rotation_count;  // rotation count
-};
+#define EXCHANGE_NAME_LEN 100
+#define TOPIC_NAME_LEN    100
+#define RINGBUFFER_MAX    100
 
-typedef struct conf_log conf_log;
+typedef struct exchange_s exchange_t;
+
+struct exchange_s {
+	char name[EXCHANGE_NAME_LEN];
+	char topic[TOPIC_NAME_LEN];
+
+
+	ringBuffer_t *rbs[RINGBUFFER_MAX];
+	unsigned int rb_count;
+};
 
 struct conf_auth {
 	bool   enable;
