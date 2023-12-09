@@ -49,26 +49,6 @@
 		p = NULL; \
 	}
 
-// log type
-#define LOG_TO_FILE (1 << 0)
-#define LOG_TO_CONSOLE (1 << 1)
-#define LOG_TO_SYSLOG (1 << 2)
-
-#define EXCHANGE_NAME_LEN 100
-#define TOPIC_NAME_LEN    100
-#define RINGBUFFER_MAX    100
-
-typedef struct exchange_s exchange_t;
-
-struct exchange_s {
-	char name[EXCHANGE_NAME_LEN];
-	char topic[TOPIC_NAME_LEN];
-
-
-	ringBuffer_t *rbs[RINGBUFFER_MAX];
-	unsigned int rb_count;
-};
-
 struct conf_auth {
 	bool   enable;
 	size_t count;
@@ -303,14 +283,33 @@ struct conf_bridge_node {
 
 typedef struct conf_bridge_node conf_bridge_node;
 
+// Exchange MQ 
+#define EXCHANGE_NAME_LEN 32
+#define TOPIC_NAME_LEN    128
+#define RINGBUFFER_MAX    64
+
+typedef struct exchange_s exchange_t;
+
+struct exchange_s {
+	char name[EXCHANGE_NAME_LEN];
+	char topic[TOPIC_NAME_LEN];
+
+	ringBuffer_t *rbs[RINGBUFFER_MAX];
+	unsigned int rb_count;
+};
+
 typedef struct conf_exchange_client_node conf_exchange_client_node;
 struct conf_exchange_client_node {
-	void        **ex_list;
+	exchange_t        **ex_list;
 	nng_socket        *sock;
 	size_t      exchange_count;
 	nng_mtx     *mtx;
 };
-
+typedef struct conf_exchange conf_exchange;
+struct conf_exchange {
+	size_t             count;
+	conf_exchange_client_node **nodes;
+};
 struct conf_bridge {
 	size_t             count;
 	conf_bridge_node **nodes;
@@ -318,13 +317,6 @@ struct conf_bridge {
 };
 
 typedef struct conf_bridge conf_bridge;
-
-typedef struct conf_exchange conf_exchange;
-struct conf_exchange {
-	size_t             count;
-	conf_exchange_client_node **nodes;
-};
-
 typedef struct {
 	char *zmq_sub_url;
 	char *zmq_pub_url;
