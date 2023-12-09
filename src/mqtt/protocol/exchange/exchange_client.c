@@ -53,7 +53,7 @@ static int
 exchange_node_send_messages_enqueue(exchange_node_t *ex_node, int *key, nni_msg *msg)
 {
 	exchange_sendmessages_t *send_msg = NULL;
-
+	// isnt a lmq more approriate?
 	send_msg = (exchange_sendmessages_t *)nng_alloc(sizeof(exchange_sendmessages_t));
 	if (send_msg == NULL) {
 		/* free key and msg here! */
@@ -87,7 +87,7 @@ static int
 exchange_node_send_messages_dequeue(exchange_node_t *ex_node, int **key, nni_msg **msg)
 {
 	exchange_sendmessages_t *send_msg = NULL;
-
+	// nni_list can only be used inside the protocol layer
 	send_msg = nni_list_first(&ex_node->send_messages);
 	if (send_msg == NULL) {
 		return -1;
@@ -123,11 +123,9 @@ exchange_add_ex(exchange_sock_t *s, exchange_t *ex)
 
 	NNI_LIST_NODE_INIT(&node->exnode);
 	nni_list_append(&s->ex_queue, node);
-
 	nni_mtx_init(&node->mtx);
 
 	nni_mtx_unlock(&s->mtx);
-
 	return 0;
 }
 
@@ -254,8 +252,7 @@ exchange_sock_send(void *arg, nni_aio *aio)
 		return;
 	}
 
-	nni_mqtt_packet_type ptype = nni_mqtt_msg_get_packet_type(msg);
-	if (ptype != NNG_MQTT_PUBLISH) {
+	if (nni_msg_get_type(msg) != CMD_PUBLISH) {
 		nni_aio_finish(aio, 0, 0);
 		return;
 	}
@@ -277,13 +274,14 @@ exchange_sock_send(void *arg, nni_aio *aio)
 
 	NNI_LIST_FOREACH (&s->ex_queue, ex_node) {
 		nni_mtx_lock(&ex_node->mtx);
-		if (strncmp(nng_mqtt_msg_get_publish_topic(msg, &topic_len),
-					ex_node->ex->topic, strlen(ex_node->ex->topic)) != 0) {
-			nni_mtx_unlock(&ex_node->mtx);
-			continue;
-		}
+		// if (strncmp(nng_mqtt_msg_get_publish_topic(msg, &topic_len),
+		// 			ex_node->ex->topic, strlen(ex_node->ex->topic)) != 0) {
+		// 	nni_mtx_unlock(&ex_node->mtx);
+		// 	continue;
+		// }
 
 		if (!ex_node->isBusy) {
+			// FIX here
 			if (nni_aio_begin(&ex_node->saio) != 0) {
 				nni_mtx_unlock(&ex_node->mtx);
 				nni_aio_finish(aio, 0, 0);
@@ -317,7 +315,6 @@ exchange_send_cb(void *arg)
 	if (ex_node == NULL) {
 		return;
 	}
-
 
 	exchange_sock_t *s = ex_node->sock;
 	if (nni_atomic_get_bool(&s->closed)) {
