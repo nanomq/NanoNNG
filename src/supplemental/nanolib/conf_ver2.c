@@ -984,12 +984,14 @@ conf_exchange_client_node_parse(
 
 		exchange_node *ex_node = NNI_ALLOC_STRUCT(ex_node);
 		if (ex_node == NULL) {
+			log_error("memory error in parsing conf!");
 			continue;
 		}
 
 		hocon_read_str(ex_node, name, exchange);
 		hocon_read_str(ex_node, topic, exchange);
 		if (ex_node->name == NULL || ex_node->topic == NULL) {
+			log_error("invalid exchange configuration!");
 			continue;
 		}
 
