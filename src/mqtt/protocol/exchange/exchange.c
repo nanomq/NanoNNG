@@ -135,7 +135,7 @@ exchange_handle_msg(exchange_t *ex, int key, void *msg)
 int
 exchange_get_ringBuffer(exchange_t *ex, char *rbName, ringBuffer_t **rb)
 {
-	for (int i = 0; i < ex->rb_count; i++) {
+	for (uint i = 0; i < ex->rb_count; i++) {
 		if (strcmp(ex->rbs[i]->name, rbName) == 0) {
 			*rb = ex->rbs[i];
 			return 0;

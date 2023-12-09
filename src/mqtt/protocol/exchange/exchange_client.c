@@ -208,8 +208,8 @@ exchange_sock_close(void *arg)
 }
 
 /* Check if the msg is already in rbmsgmap, if not, add it to rbmsgmap */
-static int inline
-exchange_client_handle_msg(exchange_node_t *ex_node, uint32_t *key, nni_msg *msg)
+inline static int
+exchange_client_handle_msg(exchange_node_t *ex_node, int *key, nni_msg *msg)
 {
 	int ret = 0;
 	nni_msg *tmsg = NULL;
@@ -267,7 +267,7 @@ exchange_sock_send(void *arg, nni_aio *aio)
 		return;
 	}
 
-	uint32_t *key = nni_aio_get_prov_data(aio);
+	int *key = nni_aio_get_prov_data(aio);
 	if (key == NULL) {
 		log_error("key is NULL\n");
 		nni_aio_finish(aio, 0, 0);
@@ -433,47 +433,47 @@ exchange_client_get_msg_by_key(void *arg, uint32_t key, nni_msg **msg)
 	return 0;
 }
 
-int
-exchange_client_get_msgs_by_key(void *arg, uint32_t key, uint32_t count, nni_list **list)
-{
-	int ret = 0;
-	int topic_len = 0;
-	exchange_sock_t *s = arg;
-	nni_msg *tmsg = NULL;
-	nni_id_map *rbmsgmap = &s->rbmsgmap;
+// int
+// exchange_client_get_msgs_by_key(void *arg, uint32_t key, uint32_t count, nni_list **list)
+// {
+// 	int ret = 0;
+// 	int topic_len = 0;
+// 	exchange_sock_t *s = arg;
+// 	nni_msg *tmsg = NULL;
+// 	nni_id_map *rbmsgmap = &s->rbmsgmap;
 
-	nni_mtx_lock(&s->mtx);
-	tmsg = nni_id_get(rbmsgmap, key);
-	if (tmsg == NULL) {
-		nni_mtx_unlock(&s->mtx);
-		return -1;
-	}
+// 	nni_mtx_lock(&s->mtx);
+// 	tmsg = nni_id_get(rbmsgmap, key);
+// 	if (tmsg == NULL) {
+// 		nni_mtx_unlock(&s->mtx);
+// 		return -1;
+// 	}
 
-	exchange_node_t *ex_node = NULL;
-	NNI_LIST_FOREACH (&s->ex_queue, ex_node) {
-		nni_mtx_lock(&ex_node->mtx);
-		if (strncmp(nng_mqtt_msg_get_publish_topic(tmsg, &topic_len),
-					ex_node->ex->topic, strlen(ex_node->ex->topic)) != 0) {
-			nni_mtx_unlock(&ex_node->mtx);
-			continue;
-		} else {
-			/* Only one exchange with one ringBuffer now */
-			ret = ringBuffer_search_msgs_by_key(ex_node->ex->rbs[0], key, count, list);
-			if (ret != 0 || list == NULL) {
-				log_error("ringBuffer_get_msgs_by_key failed!\n");
-				nni_mtx_unlock(&ex_node->mtx);
-				nni_mtx_unlock(&s->mtx);
-				return -1;
-			}
-			nni_mtx_unlock(&ex_node->mtx);
-			nni_mtx_unlock(&s->mtx);
-			return 0;
-		}
-	}
+// 	exchange_node_t *ex_node = NULL;
+// 	NNI_LIST_FOREACH (&s->ex_queue, ex_node) {
+// 		nni_mtx_lock(&ex_node->mtx);
+// 		if (strncmp(nng_mqtt_msg_get_publish_topic(tmsg, &topic_len),
+// 					ex_node->ex->topic, strlen(ex_node->ex->topic)) != 0) {
+// 			nni_mtx_unlock(&ex_node->mtx);
+// 			continue;
+// 		} else {
+// 			/* Only one exchange with one ringBuffer now */
+// 			ret = ringBuffer_search_msgs_by_key(ex_node->ex->rbs[0], key, count, list);
+// 			if (ret != 0 || list == NULL) {
+// 				log_error("ringBuffer_get_msgs_by_key failed!\n");
+// 				nni_mtx_unlock(&ex_node->mtx);
+// 				nni_mtx_unlock(&s->mtx);
+// 				return -1;
+// 			}
+// 			nni_mtx_unlock(&ex_node->mtx);
+// 			nni_mtx_unlock(&s->mtx);
+// 			return 0;
+// 		}
+// 	}
 
-	nni_mtx_unlock(&s->mtx);
-	return ret;
-}
+// 	nni_mtx_unlock(&s->mtx);
+// 	return ret;
+// }
 
 static nni_option exchange_sock_options[] = {
 	{
