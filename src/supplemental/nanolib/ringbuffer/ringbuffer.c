@@ -321,7 +321,7 @@ int ringBuffer_add_rule(ringBuffer_t *rb,
 
 int ringBuffer_search_msg_by_key(ringBuffer_t *rb, int key, nng_msg **msg)
 {
-	uint i = 0;
+	unsigned int i = 0;
 
 	nng_mtx_lock(rb->ring_lock);
 	for (i = rb->head; i < rb->size; i++) {
