@@ -132,7 +132,7 @@ conf_update_var(const char *fpath, const char *key, uint8_t type, void *var)
 		break;
 	case 4:
 		// uint64
-		snprintf(varstr, 50, "%llu", *(uint64_t *) var);
+		snprintf(varstr, 50, "%lu", *(uint64_t *) var);
 		break;
 	case 5:
 		// long
@@ -3409,7 +3409,7 @@ get_time(const char *str, uint64_t *second)
 {
 	char     unit = 0;
 	uint64_t s    = 0;
-	if (2 == sscanf(str, "%lld%c", &s, &unit)) {
+	if (2 == sscanf(str, "%lu%c", &s, &unit)) {
 		switch (unit) {
 		case 's':
 			*second = s;
