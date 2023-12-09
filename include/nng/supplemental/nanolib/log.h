@@ -19,6 +19,10 @@ extern "C" {
  * 2023-12-08 move conf_log to log.h
 */
 
+// log type
+#define LOG_TO_FILE (1 << 0)
+#define LOG_TO_CONSOLE (1 << 1)
+#define LOG_TO_SYSLOG (1 << 2)
 
 typedef struct conf_log conf_log;
 struct conf_log {

@@ -66,20 +66,20 @@ static void conf_rule_fdb_parse(conf_rule *cr, char *path);
 static void conf_rule_parse(conf_rule *rule, const char *path);
 #endif
 
-static char *
-strtrim(char *str, size_t len)
-{
-	char * dest  = calloc(1, len);
-	size_t index = 0;
+// static char *
+// strtrim(char *str, size_t len)
+// {
+// 	char * dest  = calloc(1, len);
+// 	size_t index = 0;
 
-	for (size_t i = 0; i < len; i++) {
-		if (str[i] != ' ' && str[i] != '\t' && str[i] != '\n') {
-			dest[index] = str[i];
-			index++;
-		}
-	}
-	return dest;
-}
+// 	for (size_t i = 0; i < len; i++) {
+// 		if (str[i] != ' ' && str[i] != '\t' && str[i] != '\n') {
+// 			dest[index] = str[i];
+// 			index++;
+// 		}
+// 	}
+// 	return dest;
+// }
 
 char *
 strtrim_head_tail(char *str, size_t len)
@@ -979,7 +979,7 @@ static void
 print_auth_http_conf(conf_auth_http *auth_http)
 {
 	if (auth_http && auth_http->enable) {
-		conf_auth_http_req auth = auth_http->auth_req;
+		// conf_auth_http_req auth = auth_http->auth_req;
 		print_auth_http_req(&auth_http->auth_req, "auth");
 		print_auth_http_req(&auth_http->super_req, "super");
 		print_auth_http_req(&auth_http->acl_req, "acl");
