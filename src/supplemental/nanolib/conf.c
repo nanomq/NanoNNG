@@ -2599,8 +2599,7 @@ void
 conf_exchange_client_node_init(conf_exchange_client_node *node)
 {
 	node->sock           = NULL;
-	node->ex_list        = NULL;
-	node->exchange_count = 0;
+	node->exchange       = NULL;
 }
 
 static void
