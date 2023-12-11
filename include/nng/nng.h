@@ -1444,6 +1444,7 @@ NNG_DECL void        conn_param_set_proto_ver(conn_param *cparam, uint8_t ver);
 NNG_DECL uint64_t    conn_param_get_will_delay_timestamp(conn_param *cparam);
 NNG_DECL uint64_t    conn_param_get_will_mexp(conn_param *cparam);
 NNG_DECL void       *nng_msg_proto_get_property(nng_msg *m);
+NNG_DECL void       nng_msg_set_proto_data(nng_msg *m, void *ops, void *data);
 NNG_DECL void       *nng_msg_get_proto_data(nng_msg *m);
 NNG_DECL conn_param *nng_pipe_cparam(nng_pipe p);
 NNG_DECL bool        nng_pipe_status(nng_pipe p);
