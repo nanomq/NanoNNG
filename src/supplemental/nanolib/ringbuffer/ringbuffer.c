@@ -116,9 +116,11 @@ static inline int ringBuffer_rule_check(ringBuffer_t *rb, void *data, int flag)
 int ringBuffer_enqueue(ringBuffer_t *rb,
 					   int key,
 					   void *data,
-					   unsigned long long expiredAt)
+					   unsigned long long expiredAt,
+					   nng_aio *aio)
 {
 	int ret;
+	int *keyp;
 
 	nng_mtx_lock(rb->ring_lock);
 	ret = ringBuffer_rule_check(rb, data, ENQUEUE_IN_HOOK);
@@ -134,7 +136,18 @@ int ringBuffer_enqueue(ringBuffer_t *rb,
 			 * and sz of nng_free is unused.
 			 */
 			/* For nng_msg now */
-			nng_msg_free(rb->msgs[rb->head].data);
+			nng_msg *msg = rb->msgs[rb->head].data;
+			/* Put older msg to aio, send to user */
+			/* keyp will free by user */
+			keyp = nng_alloc(sizeof(int));
+			if (keyp == NULL) {
+				nng_mtx_unlock(rb->ring_lock);
+				log_error("alloc new key failed! no memory!\n");
+				return -1;
+			}
+			nng_msg_set_proto_data(msg, NULL, keyp);
+			nng_aio_set_msg(aio, msg);
+
 			rb->msgs[rb->head].key = key;
 			rb->msgs[rb->head].data = data;
 			rb->msgs[rb->head].expiredAt = expiredAt;

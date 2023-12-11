@@ -200,7 +200,7 @@ exchange_sock_close(void *arg)
 
 /* Check if the msg is already in rbmsgmap, if not, add it to rbmsgmap */
 inline static int
-exchange_client_handle_msg(exchange_node_t *ex_node, int *key, nni_msg *msg)
+exchange_client_handle_msg(exchange_node_t *ex_node, int *key, nni_msg *msg, nng_aio *aio)
 {
 	int ret = 0;
 	nni_msg *tmsg = NULL;
@@ -214,7 +214,7 @@ exchange_client_handle_msg(exchange_node_t *ex_node, int *key, nni_msg *msg)
 		return -1;
 	}
 
-	(void)exchange_handle_msg(ex_node->ex, *key, msg);
+	(void)exchange_handle_msg(ex_node->ex, *key, msg, aio);
 
 	ret = nni_id_set(&ex_node->sock->rbmsgmap, *key, msg);
 	if (ret != 0) {
@@ -275,7 +275,7 @@ exchange_sock_send(void *arg, nni_aio *aio)
 		}
 		ex_node->isBusy = true;
 
-		(void)exchange_client_handle_msg(ex_node, key, msg);
+		(void)exchange_client_handle_msg(ex_node, key, msg, aio);
 		nni_mtx_unlock(&ex_node->mtx);
 		nni_aio_finish(&ex_node->saio, 0, 0);
 	} else {
@@ -313,7 +313,8 @@ exchange_send_cb(void *arg)
 		return;
 	}
 	if (exchange_node_send_messages_dequeue(ex_node, &key, &msg) == 0) {
-		(void)exchange_client_handle_msg(ex_node, key, msg);
+		/* TODO set user aio with old msg if older msg is replaced */
+		(void)exchange_client_handle_msg(ex_node, key, msg, NULL);
 		nni_mtx_unlock(&ex_node->mtx);
 		nni_aio_finish(&ex_node->saio, 0, 0);
 		return;
