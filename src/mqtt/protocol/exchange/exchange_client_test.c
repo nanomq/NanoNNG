@@ -70,7 +70,7 @@ test_exchange_client(void)
 	}
 	nng_free(ringBufferName, sizeof(*ringBufferName));
 
-	nng_socket_set_ptr(sock, NNG_OPT_EXCHANGE_ADD, ex);
+	nng_socket_set_ptr(sock, NNG_OPT_EXCHANGE_BIND, ex);
 	nng_socket_get_ptr(sock, NNG_OPT_EXCHANGE_GET_EX_QUEUE, &ex_queue);
 	NUTS_TRUE(ex_queue != NULL);
 
