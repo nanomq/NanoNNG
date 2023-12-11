@@ -448,6 +448,10 @@ struct conf_web_hook {
 	uint16_t            rule_count;
 	conf_web_hook_rule **rules;
 
+	nng_lmq *ex_lmq; // Cached those msgs deleted by exchange and not in disk.
+	nng_mtx *ex_mtx; // mutex for lmq
+	nng_aio *ex_aio; // Await flush
+
 	// TODO not support yet
 	conf_tls tls;
 };
