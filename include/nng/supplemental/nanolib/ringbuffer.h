@@ -90,7 +90,8 @@ int ringBuffer_init(ringBuffer_t **rb,
 int ringBuffer_enqueue(ringBuffer_t *rb,
 					   int key,
 					   void *data,
-					   unsigned long long expiredAt);
+					   unsigned long long expiredAt,
+					   nng_aio *aio);
 int ringBuffer_dequeue(ringBuffer_t *rb, void **data);
 int ringBuffer_release(ringBuffer_t *rb);
 
