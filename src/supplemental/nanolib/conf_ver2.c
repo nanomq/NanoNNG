@@ -993,28 +993,24 @@ conf_exchange_client_node_parse(
 		return;
 	}
 
-	cJSON *rbs = hocon_get_obj("ringbuffer", exchange);
-	cJSON *rb = NULL;
-	cJSON_ArrayForEach(rb, rbs)
-	{
-		ringBuffer_node *rb_node = NNI_ALLOC_STRUCT(rb_node);
-		if (rb_node == NULL) {
-			return;
-		}
-		hocon_read_str(rb_node, name, rb);
-		hocon_read_num(rb_node, cap, rb);
-		hocon_read_num(rb_node, overWrite, rb);
-
-		if (rb_node->name == NULL || rb_node->cap == 0) {
-			log_error("exchange: ringbuffer: name/cap not found");
-			NNI_FREE_STRUCT(rb_node);
-			return;
-		}
-
-		cvector_push_back(rbsName, rb_node->name);
-		cvector_push_back(rbsCap, rb_node->cap);
-		NNI_FREE_STRUCT(rb_node);
+	cJSON *rb = hocon_get_obj("ringbuffer", exchange);
+	ringBuffer_node *rb_node = NNI_ALLOC_STRUCT(rb_node);
+	if (rb_node == NULL) {
+		return;
 	}
+	hocon_read_str(rb_node, name, rb);
+	hocon_read_num(rb_node, cap, rb);
+	hocon_read_num(rb_node, overWrite, rb);
+
+	if (rb_node->name == NULL || rb_node->cap == 0) {
+		log_error("exchange: ringbuffer: name/cap not found");
+		NNI_FREE_STRUCT(rb_node);
+		return;
+	}
+
+	cvector_push_back(rbsName, rb_node->name);
+	cvector_push_back(rbsCap, rb_node->cap);
+	NNI_FREE_STRUCT(rb_node);
 
 	exchange_t *ex = NULL;
 	ret = exchange_init(&ex, ex_node->name, ex_node->topic, rbsCap, rbsName, cvector_size(rbsName));
