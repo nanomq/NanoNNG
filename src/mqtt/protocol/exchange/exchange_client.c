@@ -29,7 +29,6 @@ struct exchange_node_s {
 	nni_aio         saio;
 	nni_list        send_messages;
 	unsigned int    send_messages_num;
-	nni_list_node   exnode;
 	bool            isBusy;
 	nni_mtx         mtx;
 };
@@ -38,7 +37,7 @@ struct exchange_sock_s {
 	nni_mtx         mtx;
 	nni_atomic_bool closed;
 	nni_id_map      rbmsgmap;
-	nni_list        ex_queue;
+	exchange_node_t *ex_node;
 };
 
 
@@ -105,6 +104,13 @@ static int
 exchange_add_ex(exchange_sock_t *s, exchange_t *ex)
 {
 	nni_mtx_lock(&s->mtx);
+
+	if (s->ex_node != NULL) {
+		log_error("exchange client add exchange failed! ex_node is not NULL!\n");
+		nni_mtx_unlock(&s->mtx);
+		return -1;
+	}
+
 	exchange_node_t *node;
 	node = (exchange_node_t *)nng_alloc(sizeof(exchange_node_t));
 	if (node == NULL) {
@@ -120,11 +126,9 @@ exchange_add_ex(exchange_sock_t *s, exchange_t *ex)
 
 	nni_aio_init(&node->saio, exchange_send_cb, node);
 	NNI_LIST_INIT(&node->send_messages, exchange_sendmessages_t, node);
-
-	NNI_LIST_NODE_INIT(&node->exnode);
-	nni_list_append(&s->ex_queue, node);
 	nni_mtx_init(&node->mtx);
 
+	s->ex_node = node;
 	nni_mtx_unlock(&s->mtx);
 	return 0;
 }
@@ -139,7 +143,6 @@ exchange_sock_init(void *arg, nni_sock *sock)
 	nni_atomic_set_bool(&s->closed, false);
 	nni_mtx_init(&s->mtx);
 	nni_id_map_init(&s->rbmsgmap, 0, 0, true);
-	NNI_LIST_INIT(&s->ex_queue, exchange_node_t, exnode);
 
 	return;
 }
@@ -151,33 +154,25 @@ exchange_sock_fini(void *arg)
 	exchange_node_t *ex_node;
 	exchange_sendmessages_t *send_message;
 
-	NNI_LIST_FOREACH (&s->ex_queue, ex_node) {
-		while (!nni_list_empty(&ex_node->send_messages)) {
-			send_message = nni_list_last(&ex_node->send_messages);
-			if (send_message) {
-				nni_list_remove(&ex_node->send_messages, send_message);
-				/* free key and msg here! */
-				nni_msg_free(send_message->msg);
-				nng_free(send_message->key, sizeof(int));
-				nng_free(send_message, sizeof(*send_message));
-				send_message = NULL;
-			}
+	ex_node = s->ex_node;
+	while (!nni_list_empty(&ex_node->send_messages)) {
+		send_message = nni_list_last(&ex_node->send_messages);
+		if (send_message) {
+			nni_list_remove(&ex_node->send_messages, send_message);
+			/* free key and msg here! */
+			nni_msg_free(send_message->msg);
+			nng_free(send_message->key, sizeof(int));
+			nng_free(send_message, sizeof(*send_message));
+			send_message = NULL;
 		}
-
-		nni_aio_fini(&ex_node->saio);
-		nni_mtx_fini(&ex_node->mtx);
-		exchange_release(ex_node->ex);
 	}
 
+	nni_aio_fini(&ex_node->saio);
+	nni_mtx_fini(&ex_node->mtx);
+	exchange_release(ex_node->ex);
+
+	nng_free(ex_node, sizeof(*ex_node));
 	ex_node = NULL;
-	while (!nni_list_empty(&s->ex_queue)) {
-		ex_node = nni_list_last(&s->ex_queue);
-		if (ex_node) {
-			nni_list_remove(&s->ex_queue, ex_node);
-			nng_free(ex_node, sizeof(*ex_node));
-			ex_node = NULL;
-		}
-	}
 
 	nni_id_map_fini(&s->rbmsgmap);
 	nni_mtx_fini(&s->mtx);
@@ -195,12 +190,10 @@ static void
 exchange_sock_close(void *arg)
 {
 	exchange_sock_t *s = arg;
-	exchange_node_t *ex_node;
+	exchange_node_t *ex_node = s->ex_node;
 
 	nni_atomic_set_bool(&s->closed, true);
-	NNI_LIST_FOREACH (&s->ex_queue, ex_node) {
-		nni_aio_close(&ex_node->saio);
-	}
+	nni_aio_close(&ex_node->saio);
 
 	return;
 }
@@ -241,10 +234,8 @@ static void
 exchange_sock_send(void *arg, nni_aio *aio)
 {
 	nni_msg *        msg  = NULL;
-	nni_msg *        tmsg  = NULL;
 	exchange_node_t *ex_node;
 	exchange_sock_t *s = arg;
-	uint32_t topic_len = 0;
 
 	msg = nni_aio_get_msg(aio);
 	if (msg == NULL) {
@@ -258,7 +249,7 @@ exchange_sock_send(void *arg, nni_aio *aio)
 	}
 
 	nni_mtx_lock(&s->mtx);
-	if (nni_list_empty(&s->ex_queue)) {
+	if (s->ex_node == NULL) {
 		nni_aio_finish(aio, 0, 0);
 		nni_mtx_unlock(&s->mtx);
 		return;
@@ -272,33 +263,26 @@ exchange_sock_send(void *arg, nni_aio *aio)
 		return;
 	}
 
-	NNI_LIST_FOREACH (&s->ex_queue, ex_node) {
-		nni_mtx_lock(&ex_node->mtx);
-		// if (strncmp(nng_mqtt_msg_get_publish_topic(msg, &topic_len),
-		// 			ex_node->ex->topic, strlen(ex_node->ex->topic)) != 0) {
-		// 	nni_mtx_unlock(&ex_node->mtx);
-		// 	continue;
-		// }
-
-		if (!ex_node->isBusy) {
-			// FIX here
-			if (nni_aio_begin(&ex_node->saio) != 0) {
-				nni_mtx_unlock(&ex_node->mtx);
-				nni_aio_finish(aio, 0, 0);
-				nni_mtx_unlock(&s->mtx);
-				return;
-			}
-			ex_node->isBusy = true;
-
-			(void)exchange_client_handle_msg(ex_node, key, msg);
+	ex_node = s->ex_node;
+	nni_mtx_lock(&ex_node->mtx);
+	if (!ex_node->isBusy) {
+		// FIX here
+		if (nni_aio_begin(&ex_node->saio) != 0) {
 			nni_mtx_unlock(&ex_node->mtx);
-			nni_aio_finish(&ex_node->saio, 0, 0);
-		} else {
-			if (exchange_node_send_messages_enqueue(ex_node, key, msg) != 0) {
-				log_error("exchange_node_send_messages_enqueue failed!\n");
-			}
-			nni_mtx_unlock(&ex_node->mtx);
+			nni_aio_finish(aio, 0, 0);
+			nni_mtx_unlock(&s->mtx);
+			return;
 		}
+		ex_node->isBusy = true;
+
+		(void)exchange_client_handle_msg(ex_node, key, msg);
+		nni_mtx_unlock(&ex_node->mtx);
+		nni_aio_finish(&ex_node->saio, 0, 0);
+	} else {
+		if (exchange_node_send_messages_enqueue(ex_node, key, msg) != 0) {
+			log_error("exchange_node_send_messages_enqueue failed!\n");
+		}
+		nni_mtx_unlock(&ex_node->mtx);
 	}
 	nni_aio_finish(aio, 0, 0);
 	nni_mtx_unlock(&s->mtx);
@@ -351,7 +335,7 @@ static nni_proto_pipe_ops exchange_pipe_ops = {
 };
 
 static int
-exchange_sock_add_exchange(void *arg, const void *v, size_t sz, nni_opt_type t)
+exchange_sock_bind_exchange(void *arg, const void *v, size_t sz, nni_opt_type t)
 {
 	exchange_sock_t *s = arg;
 	int rv;
@@ -441,12 +425,8 @@ exchange_client_get_msg_by_key(void *arg, uint32_t key, nni_msg **msg)
 
 static nni_option exchange_sock_options[] = {
 	{
-	    .o_name = NNG_OPT_EXCHANGE_ADD,
-	    .o_set  = exchange_sock_add_exchange,
-	},
-	{
-		.o_name = NNG_OPT_EXCHANGE_GET_EX_QUEUE,
-		.o_get  = exchange_sock_get_ex_queue,
+	    .o_name = NNG_OPT_EXCHANGE_BIND,
+	    .o_set  = exchange_sock_bind_exchange,
 	},
 	{
 		.o_name = NNG_OPT_EXCHANGE_GET_RBMSGMAP,
