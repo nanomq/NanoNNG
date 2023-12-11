@@ -366,39 +366,6 @@ exchange_sock_add_exchange(void *arg, const void *v, size_t sz, nni_opt_type t)
 }
 
 static int
-exchange_sock_get_ex_queue(void *arg, void *v, size_t *szp, nni_opt_type t)
-{
-	exchange_sock_t *s = arg;
-	int              rv;
-
-	nni_mtx_lock(&s->mtx);
-	rv = nni_copyout_ptr(&s->ex_queue, v, szp, t);
-	nni_mtx_unlock(&s->mtx);
-	return (rv);
-}
-
-int
-exchange_queue_get_ringBuffer(nni_list *ex_queue, char *rbName, ringBuffer_t **rb)
-{
-	int ret = 0;
-	exchange_node_t *ex_node = NULL;
-	exchange_t      *ex = NULL;
-
-	NNI_LIST_FOREACH (ex_queue, ex_node) {
-		nni_mtx_lock(&ex_node->mtx);
-		ex = ex_node->ex;
-		ret = exchange_get_ringBuffer(ex_node->ex, rbName, rb);
-		if (ret == 0){
-			nni_mtx_unlock(&ex_node->mtx);
-			return 0;
-		}
-		nni_mtx_unlock(&ex_node->mtx);
-	}
-
-	return -1;
-}
-
-static int
 exchange_sock_get_rbmsgmap(void *arg, void *v, size_t *szp, nni_opt_type t)
 {
 	exchange_sock_t *s = arg;
