@@ -382,7 +382,7 @@ exchange_client_get_msg_by_key(void *arg, uint32_t key, nni_msg **msg)
 }
 
 int
-exchange_client_get_msgs_by_key(void *arg, uint32_t key, uint32_t count, void ***list)
+exchange_client_get_msgs_by_key(void *arg, uint32_t key, uint32_t count, nng_msg ***list)
 {
 	int ret = 0;
 	int topic_len = 0;

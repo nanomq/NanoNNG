@@ -337,10 +337,11 @@ int ringBuffer_search_msg_by_key(ringBuffer_t *rb, int key, nng_msg **msg)
 	return -1;
 }
 
-int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint32_t key, int count, void ***list)
+int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint32_t key, int count, nng_msg ***list)
 {
 	int i = 0;
 	int j = 0;
+	int *keyp = NULL;
 
 	if (rb == NULL || count <= 0 || list == NULL) {
 		return -1;
@@ -350,7 +351,7 @@ int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint32_t key, int count, voi
 		return -1;
 	}
 
-	ringBuffer_msgs_t **newList = nng_alloc(count * sizeof(ringBuffer_msgs_t));
+	nng_msg **newList = nng_alloc(count * sizeof(nng_msg *));
 	if (newList == NULL) {
 		return -1;
 	}
@@ -360,15 +361,21 @@ int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint32_t key, int count, voi
 		i = i % rb->cap;
 		if (rb->msgs[i].key == key) {
 			for (j = 0; j < count; j++) {
-				ringBuffer_msgs_t *msg_node = nng_alloc(sizeof(ringBuffer_msgs_t));
-				if (msg_node == NULL) {
-					nng_free(newList, sizeof(nni_list));
+				nng_msg *msg = rb->msgs[i].data;
+
+				/* keyp will free by user */
+				keyp = nng_alloc(sizeof(int));
+				if (keyp == NULL) {
 					nng_mtx_unlock(rb->ring_lock);
+					nng_free(newList, sizeof(*newList));
+					log_error("alloc new key failed! no memory! Some memory may leak!\n");
 					return -1;
 				}
-				msg_node->key = rb->msgs[i].key;
-				msg_node->msg = rb->msgs[i].data;
-				newList[j] = msg_node;
+
+				*keyp = rb->msgs[i].key;
+				nng_msg_set_proto_data(msg, NULL, keyp);
+
+				newList[j] = msg;
 
 				i = (i + 1) % rb->cap;
 			}
@@ -379,6 +386,6 @@ int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint32_t key, int count, voi
 	}
 
 	nng_mtx_unlock(rb->ring_lock);
-	nng_free(newList, sizeof(nni_list));
+	nng_free(newList, sizeof(*newList));
 	return -1;
 }

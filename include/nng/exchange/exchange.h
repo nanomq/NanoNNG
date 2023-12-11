@@ -6,7 +6,7 @@
 #include "nng/supplemental/nanolib/conf.h"
 
 NNG_DECL int exchange_client_get_msg_by_key(void *arg, uint32_t key, nni_msg **msg);
-NNG_DECL int exchange_client_get_msgs_by_key(void *arg, uint32_t key, uint32_t count, void ***list);
+NNG_DECL int exchange_client_get_msgs_by_key(void *arg, uint32_t key, uint32_t count, nng_msg ***list);
 
 NNG_DECL int exchange_init(exchange_t **ex, char *name, char *topic,
  				  unsigned int *rbsCaps, char **rbsName, unsigned int rbsCount);
