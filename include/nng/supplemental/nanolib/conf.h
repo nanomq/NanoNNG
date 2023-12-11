@@ -300,10 +300,8 @@ struct exchange_s {
 
 typedef struct conf_exchange_client_node conf_exchange_client_node;
 struct conf_exchange_client_node {
-	// FIX: only one ringbus/MQ for one exchange node
-	exchange_t        **ex_list;
+	exchange_t        *exchange;
 	nng_socket        *sock;
-	size_t      exchange_count;
 	nng_mtx     *mtx;
 };
 typedef struct conf_exchange conf_exchange;
