@@ -381,47 +381,38 @@ exchange_client_get_msg_by_key(void *arg, uint32_t key, nni_msg **msg)
 	return 0;
 }
 
-// int
-// exchange_client_get_msgs_by_key(void *arg, uint32_t key, uint32_t count, nni_list **list)
-// {
-// 	int ret = 0;
-// 	int topic_len = 0;
-// 	exchange_sock_t *s = arg;
-// 	nni_msg *tmsg = NULL;
-// 	nni_id_map *rbmsgmap = &s->rbmsgmap;
+int
+exchange_client_get_msgs_by_key(void *arg, uint32_t key, uint32_t count, void ***list)
+{
+	int ret = 0;
+	int topic_len = 0;
+	exchange_sock_t *s = arg;
+	nni_msg *tmsg = NULL;
+	nni_id_map *rbmsgmap = &s->rbmsgmap;
 
-// 	nni_mtx_lock(&s->mtx);
-// 	tmsg = nni_id_get(rbmsgmap, key);
-// 	if (tmsg == NULL) {
-// 		nni_mtx_unlock(&s->mtx);
-// 		return -1;
-// 	}
+	nni_mtx_lock(&s->mtx);
 
-// 	exchange_node_t *ex_node = NULL;
-// 	NNI_LIST_FOREACH (&s->ex_queue, ex_node) {
-// 		nni_mtx_lock(&ex_node->mtx);
-// 		if (strncmp(nng_mqtt_msg_get_publish_topic(tmsg, &topic_len),
-// 					ex_node->ex->topic, strlen(ex_node->ex->topic)) != 0) {
-// 			nni_mtx_unlock(&ex_node->mtx);
-// 			continue;
-// 		} else {
-// 			/* Only one exchange with one ringBuffer now */
-// 			ret = ringBuffer_search_msgs_by_key(ex_node->ex->rbs[0], key, count, list);
-// 			if (ret != 0 || list == NULL) {
-// 				log_error("ringBuffer_get_msgs_by_key failed!\n");
-// 				nni_mtx_unlock(&ex_node->mtx);
-// 				nni_mtx_unlock(&s->mtx);
-// 				return -1;
-// 			}
-// 			nni_mtx_unlock(&ex_node->mtx);
-// 			nni_mtx_unlock(&s->mtx);
-// 			return 0;
-// 		}
-// 	}
+	tmsg = nni_id_get(rbmsgmap, key);
+	if (tmsg == NULL || list == NULL) {
+		nni_mtx_unlock(&s->mtx);
+		return -1;
+	}
 
-// 	nni_mtx_unlock(&s->mtx);
-// 	return ret;
-// }
+	exchange_node_t *ex_node = s->ex_node;
+	nni_mtx_lock(&ex_node->mtx);
+	/* Only one exchange with one ringBuffer now */
+	ret = ringBuffer_search_msgs_by_key(ex_node->ex->rbs[0], key, count, list);
+	if (ret != 0 || *list == NULL) {
+		log_error("ringBuffer_get_msgs_by_key failed!\n");
+		nni_mtx_unlock(&ex_node->mtx);
+		nni_mtx_unlock(&s->mtx);
+		return -1;
+	}
+
+	nni_mtx_unlock(&ex_node->mtx);
+	nni_mtx_unlock(&s->mtx);
+	return 0;
+}
 
 static nni_option exchange_sock_options[] = {
 	{

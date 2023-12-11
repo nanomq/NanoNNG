@@ -32,7 +32,6 @@ typedef struct ringBuffer_msgs_s ringBuffer_msgs_t;
 struct ringBuffer_msgs_s {
 	int key;
 	nng_msg *msg;
-	// nni_list_node node;
 };
 
 struct ringBufferMsg_s {
@@ -96,5 +95,5 @@ int ringBuffer_dequeue(ringBuffer_t *rb, void **data);
 int ringBuffer_release(ringBuffer_t *rb);
 
 int ringBuffer_search_msg_by_key(ringBuffer_t *rb, int key, nng_msg **msg);
-// int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint32_t key, int count, nni_list **list);
+int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint32_t key, int count, void ***list);
 #endif

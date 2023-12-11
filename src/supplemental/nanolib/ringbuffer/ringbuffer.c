@@ -337,51 +337,48 @@ int ringBuffer_search_msg_by_key(ringBuffer_t *rb, int key, nng_msg **msg)
 	return -1;
 }
 
-// int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint32_t key, int count, nni_list **list)
-// {
-// 	int i = 0;
-// 	int j = 0;
+int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint32_t key, int count, void ***list)
+{
+	int i = 0;
+	int j = 0;
 
-// 	if (rb == NULL || count <= 0 || list == NULL) {
-// 		return -1;
-// 	}
+	if (rb == NULL || count <= 0 || list == NULL) {
+		return -1;
+	}
 
-// 	if (count > rb->size) {
-// 		return -1;
-// 	}
+	if (count > rb->size) {
+		return -1;
+	}
 
-// 	nni_list *newList = nng_alloc(sizeof(nni_list));
-// 	if (newList == NULL) {
-// 		return -1;
-// 	}
+	ringBuffer_msgs_t **newList = nng_alloc(count * sizeof(ringBuffer_msgs_t));
+	if (newList == NULL) {
+		return -1;
+	}
 
-// 	NNI_LIST_INIT(newList, ringBuffer_msgs_t, node);
+	nng_mtx_lock(rb->ring_lock);
+	for (i = rb->head; i < rb->size; i++) {
+		i = i % rb->cap;
+		if (rb->msgs[i].key == key) {
+			for (j = 0; j < count; j++) {
+				ringBuffer_msgs_t *msg_node = nng_alloc(sizeof(ringBuffer_msgs_t));
+				if (msg_node == NULL) {
+					nng_free(newList, sizeof(nni_list));
+					nng_mtx_unlock(rb->ring_lock);
+					return -1;
+				}
+				msg_node->key = rb->msgs[i].key;
+				msg_node->msg = rb->msgs[i].data;
+				newList[j] = msg_node;
 
-// 	nng_mtx_lock(rb->ring_lock);
-// 	for (i = rb->head; i < rb->size; i++) {
-// 		i = i % rb->cap;
-// 		if (rb->msgs[i].key == key) {
-// 			for (j = 0; j < count; j++) {
-// 				ringBuffer_msgs_t *msg_node = nng_alloc(sizeof(ringBuffer_msgs_t));
-// 				if (msg_node == NULL) {
-// 					nng_free(newList, sizeof(nni_list));
-// 					nng_mtx_unlock(rb->ring_lock);
-// 					return -1;
-// 				}
-// 				msg_node->key = rb->msgs[i].key;
-// 				msg_node->msg = rb->msgs[i].data;
-// 				NNI_LIST_NODE_INIT(&msg_node->node);
-// 				nni_list_append(newList, msg_node);
+				i = (i + 1) % rb->cap;
+			}
+			*list = newList;
+			nng_mtx_unlock(rb->ring_lock);
+			return 0;
+		}
+	}
 
-// 				i = (i + 1) % rb->cap;
-// 			}
-// 			*list = newList;
-// 			nng_mtx_unlock(rb->ring_lock);
-// 			return 0;
-// 		}
-// 	}
-
-// 	nng_mtx_unlock(rb->ring_lock);
-// 	nng_free(newList, sizeof(nni_list));
-// 	return -1;
-// }
+	nng_mtx_unlock(rb->ring_lock);
+	nng_free(newList, sizeof(nni_list));
+	return -1;
+}
