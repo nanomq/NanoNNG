@@ -444,7 +444,7 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 	nni_aio      *qsaio = p->qsaio;
 	uint8_t       type;
 	size_t        n;
-	int			  rv;
+	int           rv;
 
 	if ((rv = nni_aio_result(qsaio)) != 0) {
 		log_warn(" send aio error %s", nng_strerror(rv));
