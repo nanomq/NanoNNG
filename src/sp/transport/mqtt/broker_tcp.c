@@ -31,7 +31,7 @@ typedef struct tcptran_ep   tcptran_ep;
 struct tcptran_pipe {
 	nng_stream *conn;
 	nni_pipe   *npipe; // for statitical
-	const conf *conf;
+	conf *conf;
 	// uint16_t        peer;		//reserved for MQTT sdk version
 	// uint16_t        proto;
 	size_t          rcvmax;	//duplicate with conf->max_packet_size
@@ -126,7 +126,6 @@ static void
 tcptran_pipe_close(void *arg)
 {
 	tcptran_pipe *p = arg;
-	// nni_pipe *    npipe = p->npipe;
 
 	if (p->npipe->cache) {
 		nng_stream_close(p->conn);
@@ -237,10 +236,8 @@ tcptran_pipe_alloc(tcptran_pipe **pipep)
 		return (NNG_ENOMEM);
 	}
 	nni_mtx_init(&p->mtx);
-	if (((rv = nni_aio_alloc(&p->txaio, nmq_tcptran_pipe_send_cb, p)) !=
-	        0) ||
-	    ((rv = nni_aio_alloc(
-	          &p->qsaio, nmq_tcptran_pipe_qos_send_cb, p)) != 0) ||
+	if (((rv = nni_aio_alloc(&p->txaio, nmq_tcptran_pipe_send_cb, p)) != 0) ||
+	    ((rv = nni_aio_alloc(&p->qsaio, nmq_tcptran_pipe_qos_send_cb, p)) != 0) ||
 	    ((rv = nni_aio_alloc(&p->rpaio, NULL, p)) != 0) ||
 	    ((rv = nni_aio_alloc(&p->rxaio, tcptran_pipe_recv_cb, p)) != 0) ||
 	    ((rv = nni_aio_alloc(&p->negoaio, tcptran_pipe_nego_cb, p)) !=
@@ -271,7 +268,7 @@ tcptran_ep_match(tcptran_ep *ep)
 	nni_list_append(&ep->busypipes, p);
 	ep->useraio = NULL;
 	p->rcvmax   = ep->rcvmax;
-
+	p->conf     = ep->conf;
 	nni_aio_set_output(aio, 0, p);
 	nni_aio_finish(aio, 0, 0);
 }
@@ -515,7 +512,7 @@ nmq_tcptran_pipe_send_cb(void *arg)
 	nni_mtx_lock(&p->mtx);
 	aio = nni_list_first(&p->sendq);
 
-	log_trace("################ nmq_tcptran_pipe_send_cb [%p] ################", p);
+	log_trace("############### nmq_tcptran_pipe_send_cb [%p] ################", p);
 
 	if ((rv = nni_aio_result(txaio)) != 0) {
 		log_warn(" send aio error %s", nng_strerror(rv));
@@ -540,6 +537,7 @@ nmq_tcptran_pipe_send_cb(void *arg)
 	}
 
 	msg = nni_aio_get_msg(aio);
+	
 	if (nni_aio_get_prov_data(txaio) != NULL) {
 		// msgs left behind due to multiple topics matched
 		if (p->pro_ver == 4)

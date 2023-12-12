@@ -31,7 +31,7 @@ typedef struct tlstran_ep   tlstran_ep;
 struct tlstran_pipe {
 	nng_stream *conn;
 	nni_pipe   *npipe; // for statitical
-	const conf *conf;
+	conf *conf;
 	// uint16_t        peer;		//reserved for MQTT sdk version
 	// uint16_t        proto;
 	size_t          rcvmax;	//duplicate with conf->max_packet_size
@@ -130,7 +130,6 @@ static void
 tlstran_pipe_close(void *arg)
 {
 	tlstran_pipe *p = arg;
-	// nni_pipe *    npipe = p->npipe;
 
 	if (p->npipe->cache) {
 		nng_stream_close(p->conn);
@@ -155,6 +154,7 @@ static void
 tlstran_pipe_stop(void *arg)
 {
 	tlstran_pipe *p = arg;
+	
 	nni_aio_stop(p->qsaio);
 	nni_aio_stop(p->rpaio);
 	nni_aio_stop(p->rxaio);
@@ -1315,7 +1315,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 				if (pid == 0) {
 					// first time send this msg
 					pid = nni_pipe_inc_packetid(pipe);
-					// store msg for qos retrying
+					// store msg for qos retry
 					nni_msg_clone(msg);
 					if ((old = nni_qos_db_get(is_sqlite,
 					         pipe->nano_qos_db, pipe->p_id,
