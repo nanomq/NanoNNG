@@ -469,7 +469,13 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 		return;
 	}
 	msg  = nni_aio_get_msg(qsaio);
-	type = nni_msg_cmd_type(msg);
+	if (msg != NULL)
+		type = nni_msg_cmd_type(msg);
+	else {
+		log_warn("NULL msg detected in send_cb");
+		nni_mtx_unlock(&p->mtx);
+		return;
+	}
 
 	if (p->pro_ver == 5) {
 		(type == CMD_PUBCOMP || type == CMD_PUBACK) ? p->qrecv_quota++
