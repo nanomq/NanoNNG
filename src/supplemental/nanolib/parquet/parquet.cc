@@ -82,3 +82,14 @@ parquet_object *parquet_object_alloc(uint32_t *keys, uint8_t **darray, uint32_t 
     elem->aio = aio;
     return elem;
 }
+
+void parquet_object_free(parquet_object *elem)
+{
+    if (elem) {
+        FREE_IF_NOT_NULL(elem->keys, elem->size);
+        FREE_IF_NOT_NULL(elem->darray, elem->size);
+        FREE_IF_NOT_NULL(elem->dsize, elem->size);
+        DO_IT_IF_NOT_NULL(nng_aio_finish, elem->aio, 0);
+        delete elem;
+    }
+}
