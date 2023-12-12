@@ -157,6 +157,7 @@ tcptran_pipe_stop(void *arg)
 	nni_aio_stop(p->rxaio);
 	nni_aio_stop(p->txaio);
 	nni_aio_stop(p->negoaio);
+	log_trace(" ###### tcptran_pipe_stop ###### ");
 }
 
 static int
@@ -184,7 +185,6 @@ tcptran_pipe_fini(void *arg)
 	tcptran_pipe *p = arg;
 	tcptran_ep   *ep;
 
-	log_trace(" ************ tcptran_pipe_finit [%p] ************ ", p);
 	tcptran_pipe_stop(p);
 	if ((ep = p->ep) != NULL) {
 		nni_mtx_lock(&ep->mtx);
@@ -213,6 +213,7 @@ tcptran_pipe_fini(void *arg)
 	nni_lmq_fini(&p->rslmq);
 	nni_mtx_fini(&p->mtx);
 	NNI_FREE_STRUCT(p);
+	log_trace(" ************ tcptran_pipe_finit [%p] ************ ", p);
 }
 
 static void
@@ -433,7 +434,7 @@ error:
 	}
 	nni_mtx_unlock(&ep->mtx);
 	tcptran_pipe_reap(p);
-	log_trace("connect nego error rv: %d!", rv);
+	log_error("connect nego error rv: %s(%d)", nng_strerror(rv), rv);
 	return;
 }
 
@@ -513,7 +514,7 @@ nmq_tcptran_pipe_send_cb(void *arg)
 	nni_mtx_lock(&p->mtx);
 	aio = nni_list_first(&p->sendq);
 
-	log_trace(" ################ nmq_tcptran_pipe_send_cb [%p] ################ ", p);
+	log_trace("################ nmq_tcptran_pipe_send_cb [%p] ################", p);
 
 	if ((rv = nni_aio_result(txaio)) != 0) {
 		log_warn(" send aio error %s", nng_strerror(rv));
@@ -547,7 +548,7 @@ nmq_tcptran_pipe_send_cb(void *arg)
 		else if (p->pro_ver == 3)
 			nmq_pipe_send_start_v4(p, msg, txaio);
 		else {
-			log_error("msg with pro_ver that neither 4 nor 5 should not happened.");
+			log_error("pro_ver of the msg is not 3, 4 or 5.");
 			nni_aio_finish_error(txaio, NNG_EPROTO);
 		}
 		nni_mtx_unlock(&p->mtx);
@@ -1072,9 +1073,8 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 					// TODO packetid already exists.
 					// do we need to replace old with new
 					// one ? print warning to users
-					nni_println(
-					    "ERROR: packet id duplicates in "
-					    "nano_qos_db");
+					log_error("packet id duplicates in "
+					          "nano_qos_db");
 
 					nni_qos_db_remove_msg(is_sqlite,
 					    pipe->nano_qos_db, old);
@@ -1465,7 +1465,7 @@ tcptran_pipe_send(void *arg, nni_aio *aio)
 	tcptran_pipe *p = arg;
 	int           rv;
 
-	log_trace(" ########### tcptran_pipe_send ########### ");
+	log_trace("########### tcptran_pipe_send ###########");
 	if (nni_aio_begin(aio) != 0) {
 		return;
 	}
@@ -1882,7 +1882,7 @@ tcptran_ep_set_conf(void *arg, const void *v, size_t sz, nni_opt_type t)
 	NNI_ARG_UNUSED(t);
 
 	nni_mtx_lock(&ep->mtx);
-	ep->conf = v;
+	ep->conf = (conf *) v;
 	nni_mtx_unlock(&ep->mtx);
 	return 0;
 }
