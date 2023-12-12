@@ -8,6 +8,99 @@
 #include "nng/supplemental/nanolib/ringbuffer.h"
 #include "core/nng_impl.h"
 
+static inline int ringBuffer_get_msgs(ringBuffer_t *rb, int count, nng_msg ***list)
+{
+	int i = 0;
+	int j = 0;
+	int *keyp = NULL;
+
+	nng_msg **newList = nng_alloc(count * sizeof(nng_msg *));
+	if (newList == NULL) {
+		return -1;
+	}
+
+	for (i = rb->head; i < rb->size; i++) {
+		i = i % rb->cap;
+		nng_msg *msg = rb->msgs[i].data;
+
+		/* keyp will free by user */
+		keyp = nng_alloc(sizeof(int));
+		if (keyp == NULL) {
+			nng_free(newList, sizeof(*newList));
+			log_error("alloc new key failed! no memory! Some memory may leak!\n");
+			return -1;
+		}
+
+		*keyp = rb->msgs[i].key;
+		nng_msg_set_proto_data(msg, NULL, keyp);
+
+		newList[j] = msg;
+
+		j++;
+		if (j == count) {
+			*list = newList;
+			return 0;
+		}
+	}
+
+	nng_free(newList, sizeof(*newList));
+	return -1;
+}
+
+static inline int ringBuffer_clean_msgs(ringBuffer_t *rb)
+{
+	int i = 0;
+	int count = 0;
+
+	if (rb->msgs != NULL) {
+		if (rb->size != 0) {
+			i = rb->head;
+			count = 0;
+			while (count < rb->size) {
+				if (rb->msgs[i].data != NULL) {
+					rb->msgs[i].data = NULL;
+				}
+				i = (i + 1) % rb->cap;
+				count++;
+			}
+		}
+	}
+
+	rb->head = 0;
+	rb->tail = 0;
+	rb->size = 0;
+
+	return 0;
+}
+
+static inline int ringBuffer_get_and_clean_msgs(ringBuffer_t *rb, int count, nng_msg ***list)
+{
+	int ret;
+
+	if (rb == NULL || count <= 0 || list == NULL) {
+		return -1;
+	}
+
+	if (count > rb->size) {
+		nng_mtx_unlock(rb->ring_lock);
+		return -1;
+	}
+
+	ret = ringBuffer_get_msgs(rb, count, list);
+	if (ret != 0) {
+		nng_mtx_unlock(rb->ring_lock);
+		return -1;
+	}
+
+	ret = ringBuffer_clean_msgs(rb);
+	if (ret != 0) {
+		nng_mtx_unlock(rb->ring_lock);
+		return -1;
+	}
+
+	return 0;
+}
+
 int ringBuffer_init(ringBuffer_t **rb,
 					unsigned int cap,
 					unsigned int overWrite,
