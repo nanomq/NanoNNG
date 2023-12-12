@@ -452,11 +452,18 @@ tlstran_pipe_qos_send_cb(void *arg)
 	nni_aio      *qsaio = p->qsaio;
 	uint8_t       type;
 	size_t        n;
+	int           rv;
 
-	if (nni_aio_result(qsaio) != 0) {
+	if ((rv = nni_aio_result(qsaio)) != 0) {
+		log_warn(" send aio error %s", nng_strerror(rv));
 		nni_msg_free(nni_aio_get_msg(qsaio));
 		nni_aio_set_msg(qsaio, NULL);
 		tlstran_pipe_close(p);
+		return;
+	}
+	if (p->closed) {
+		msg  = nni_aio_get_msg(qsaio);
+		nni_msg_free(msg);
 		return;
 	}
 	nni_mtx_lock(&p->mtx);
@@ -924,6 +931,7 @@ tlstran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
+	nni_aio_abort(p->qsaio, rv);
 	nni_aio_list_remove(aio);
 	nni_mtx_unlock(&p->mtx);
 
