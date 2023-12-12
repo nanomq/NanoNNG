@@ -448,9 +448,9 @@ struct conf_web_hook {
 	uint16_t            rule_count;
 	conf_web_hook_rule **rules;
 
-	nng_mtx *ex_mtx; // mutex for lmq
-	nng_aio *ex_aio; // Await flush
-	nng_aio *saio;   // Send message
+	nng_mtx  *ex_mtx; // mutex for saios
+	nng_aio  *ex_aio; // Await flush
+	nng_aio **saios;   // Aios for sending message
 
 	// TODO not support yet
 	conf_tls tls;
