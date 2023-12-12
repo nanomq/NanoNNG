@@ -141,3 +141,71 @@ int parquet_write(std::shared_ptr<parquet::ParquetFileWriter> file_writer, parqu
     return 0;
 }
 
+
+void parquet_write_loop(void *config)
+{
+    if (config == NULL) {
+        log_error("parquet conf is NULL");
+    }
+
+    parquet_conf *conf = (parquet_conf*) config;
+    if (!directory_exists(conf->dir)) {
+	    if (!create_directory(conf->dir)) {
+		    log_error("Failed to create directory %s", conf->dir);
+		    return;
+	    }
+    }
+
+    INIT_QUEUE(parquet_queue);
+
+    char *filename = get_file_name(conf);
+    if (filename == NULL) {
+	    log_error("Failed to get file name");
+	    return;
+    }
+
+    using FileClass = arrow::io::FileOutputStream;
+    shared_ptr<FileClass> out_file;
+    PARQUET_ASSIGN_OR_THROW(out_file, FileClass::Open(filename));
+
+    shared_ptr<parquet::WriterProperties> props =
+	parquet::WriterProperties::Builder()
+	    .created_by("NanoMQ")
+	    ->version(parquet::ParquetVersion::PARQUET_2_6)
+	    ->data_page_version(parquet::ParquetDataPageVersion::V2)
+	    ->compression(
+	        static_cast<arrow::Compression::type>(conf->comp_type))
+	    ->build();
+
+    shared_ptr<GroupNode> schema = setup_schema();
+
+    // Create a ParquetFileWriter instance
+    std::shared_ptr<parquet::ParquetFileWriter> file_writer =
+	parquet::ParquetFileWriter::Open(out_file, schema, props);
+
+    while (true) {
+
+	    // wait for mqtt messages to send method request
+	    pthread_mutex_lock(&parquet_queue_mutex);
+
+	    while (IS_EMPTY(parquet_queue)) {
+		    pthread_cond_wait(
+			&parquet_queue_not_empty, &parquet_queue_mutex);
+	    }
+
+	    log_debug("fetch element from parquet queue");
+	    puts("fetch element from parquet queue");
+	    parquet_object *ele = (parquet_object *) DEQUEUE(parquet_queue);
+	    pthread_mutex_unlock(&parquet_queue_mutex);
+	    parquet_write(file_writer, ele);
+        
+        // Close the ParquetFileWriter
+        // check file size if necessary and open new one
+        // file_writer->Close();
+
+        // Write the bytes to file
+        // DCHECK(out_file->Close().ok());
+    }
+
+    return;
+}
