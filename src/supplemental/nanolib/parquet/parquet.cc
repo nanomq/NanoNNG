@@ -28,6 +28,9 @@ using parquet::schema::PrimitiveNode;
 #define FREE_IF_NOT_NULL(free, size) \
     DO_IT_IF_NOT_NULL(nng_free, free, size)
 
+CircularQueue parquet_queue;
+pthread_mutex_t parquet_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t parquet_queue_not_empty = PTHREAD_COND_INITIALIZER;
 
 static bool directory_exists(const std::string& directory_path) {
     struct stat buffer;
@@ -37,4 +40,20 @@ static bool directory_exists(const std::string& directory_path) {
 static bool create_directory(const std::string& directory_path) {
     int status = mkdir(directory_path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     return (status == 0);
+}
+
+static char *get_file_name(parquet_conf *conf)
+{
+    char *dir = conf->dir;
+    char *prefix = conf->file_name_prefix;
+    uint8_t index = conf->file_index++;
+    if (index > conf->file_count) {
+        log_error("file count exceeds");
+        return NULL;
+    }
+
+    char *file_name = (char *)malloc(strlen(prefix) + strlen(dir) + 8);
+    sprintf(file_name, "%s/%s%d.parquet",dir, prefix, index);
+
+    return file_name;
 }
