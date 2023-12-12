@@ -537,7 +537,7 @@ nmq_tcptran_pipe_send_cb(void *arg)
 	}
 
 	msg = nni_aio_get_msg(aio);
-	
+
 	if (nni_aio_get_prov_data(txaio) != NULL) {
 		// msgs left behind due to multiple topics matched
 		if (p->pro_ver == 4)

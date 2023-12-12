@@ -360,8 +360,8 @@ tlstran_pipe_nego_cb(void *arg)
 	// CONNECT packet serialization
 
 	if (p->gotrxhead >= p->wantrxhead) {
-		if (p->tcp_cparam == NULL) {
-			conn_param_alloc(&p->tcp_cparam);
+		if (0 != conn_param_alloc(&p->tcp_cparam)) {
+			goto error;
 		}
 		if (conn_handler(p->conn_buf, p->tcp_cparam, p->wantrxhead) == 0) {
 			nng_free(p->conn_buf, p->wantrxhead);
@@ -372,6 +372,7 @@ tlstran_pipe_nego_cb(void *arg)
 
 			// connection packet handled successfully. clone it for protocol or app layer
 			conn_param_clone(p->tcp_cparam);
+
 			// Connection is accepted.
 
 			p->pro_ver = p->tcp_cparam->pro_ver;
