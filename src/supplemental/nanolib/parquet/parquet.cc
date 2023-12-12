@@ -93,3 +93,18 @@ void parquet_object_free(parquet_object *elem)
         delete elem;
     }
 }
+
+int
+parquet_write_batch_async(parquet_object *elem)
+{
+	pthread_mutex_lock(&parquet_queue_mutex);
+	if (IS_EMPTY(parquet_queue)) {
+		pthread_cond_broadcast(&parquet_queue_not_empty);
+	}
+	ENQUEUE(parquet_queue, elem);
+	log_debug("enqueue element.");
+	puts("enqueue element.");
+	pthread_mutex_unlock(&parquet_queue_mutex);
+
+	return 0;
+}
