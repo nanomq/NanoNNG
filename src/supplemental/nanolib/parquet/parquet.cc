@@ -57,3 +57,17 @@ static char *get_file_name(parquet_conf *conf)
 
     return file_name;
 }
+
+static shared_ptr<GroupNode> setup_schema()
+{
+    parquet::schema::NodeVector fields;
+    fields.push_back(parquet::schema::PrimitiveNode::Make(
+        "key", parquet::Repetition::OPTIONAL, parquet::Type::INT32,
+        parquet::ConvertedType::UINT_32));
+    fields.push_back(parquet::schema::PrimitiveNode::Make(
+        "data", parquet::Repetition::OPTIONAL, parquet::Type::BYTE_ARRAY,
+        parquet::ConvertedType::UTF8));
+ 
+    return static_pointer_cast<GroupNode>(
+      GroupNode::Make("schema", Repetition::REQUIRED, fields));
+}
