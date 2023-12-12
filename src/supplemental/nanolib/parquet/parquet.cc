@@ -28,7 +28,13 @@ using parquet::schema::PrimitiveNode;
 #define FREE_IF_NOT_NULL(free, size) \
     DO_IT_IF_NOT_NULL(nng_free, free, size)
 
+
 static bool directory_exists(const std::string& directory_path) {
     struct stat buffer;
     return (stat(directory_path.c_str(), &buffer) == 0 && S_ISDIR(buffer.st_mode));
+}
+
+static bool create_directory(const std::string& directory_path) {
+    int status = mkdir(directory_path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    return (status == 0);
 }
