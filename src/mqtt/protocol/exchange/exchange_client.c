@@ -20,6 +20,7 @@ typedef struct exchange_sendmessages_s exchange_sendmessages_t;
 struct exchange_sendmessages_s {
 	int   *key;
 	nni_msg *msg;
+	nng_aio *aio;
 	nni_list_node node;
 };
 
@@ -49,7 +50,7 @@ static void exchange_send_cb(void *arg);
 
 /* lock ex_node before enqueue */
 static int
-exchange_node_send_messages_enqueue(exchange_node_t *ex_node, int *key, nni_msg *msg)
+exchange_node_send_messages_enqueue(exchange_node_t *ex_node, int *key, nni_msg *msg, nng_aio *aio)
 {
 	exchange_sendmessages_t *send_msg = NULL;
 	// isnt a lmq more approriate?
@@ -64,6 +65,7 @@ exchange_node_send_messages_enqueue(exchange_node_t *ex_node, int *key, nni_msg 
 
 	send_msg->key = key;
 	send_msg->msg = msg;
+	send_msg->aio = aio;
 
 	NNI_LIST_NODE_INIT(&send_msg->node);
 
@@ -83,7 +85,7 @@ exchange_node_send_messages_enqueue(exchange_node_t *ex_node, int *key, nni_msg 
 
 /* lock ex_node before dequeue */
 static int
-exchange_node_send_messages_dequeue(exchange_node_t *ex_node, int **key, nni_msg **msg)
+exchange_node_send_messages_dequeue(exchange_node_t *ex_node, int **key, nni_msg **msg, nng_aio **aio)
 {
 	exchange_sendmessages_t *send_msg = NULL;
 	// nni_list can only be used inside the protocol layer
@@ -94,6 +96,7 @@ exchange_node_send_messages_dequeue(exchange_node_t *ex_node, int **key, nni_msg
 
 	*key = send_msg->key;
 	*msg = send_msg->msg;
+	*aio = send_msg->aio;
 	nni_list_remove(&ex_node->send_messages, send_msg);
 	ex_node->send_messages_num--;
 
@@ -237,18 +240,21 @@ exchange_sock_send(void *arg, nni_aio *aio)
 	exchange_node_t *ex_node;
 	exchange_sock_t *s = arg;
 
+	nni_mtx_lock(&s->mtx);
 	msg = nni_aio_get_msg(aio);
 	if (msg == NULL) {
 		nni_aio_finish(aio, 0, 0);
+		nni_mtx_unlock(&s->mtx);
 		return;
 	}
+	nng_aio_set_msg(aio, NULL);
 
 	if (nni_msg_get_type(msg) != CMD_PUBLISH) {
 		nni_aio_finish(aio, 0, 0);
+		nni_mtx_unlock(&s->mtx);
 		return;
 	}
 
-	nni_mtx_lock(&s->mtx);
 	if (s->ex_node == NULL) {
 		nni_aio_finish(aio, 0, 0);
 		nni_mtx_unlock(&s->mtx);
@@ -262,6 +268,7 @@ exchange_sock_send(void *arg, nni_aio *aio)
 		nni_mtx_unlock(&s->mtx);
 		return;
 	}
+	nng_aio_set_prov_data(aio, NULL);
 
 	ex_node = s->ex_node;
 	nni_mtx_lock(&ex_node->mtx);
@@ -269,22 +276,23 @@ exchange_sock_send(void *arg, nni_aio *aio)
 		// FIX here
 		if (nni_aio_begin(&ex_node->saio) != 0) {
 			nni_mtx_unlock(&ex_node->mtx);
-			nni_aio_finish(aio, 0, 0);
 			nni_mtx_unlock(&s->mtx);
+			nni_aio_finish(aio, 0, 0);
 			return;
 		}
 		ex_node->isBusy = true;
 
 		(void)exchange_client_handle_msg(ex_node, key, msg, aio);
-		nni_mtx_unlock(&ex_node->mtx);
 		nni_aio_finish(&ex_node->saio, 0, 0);
+		nni_mtx_unlock(&ex_node->mtx);
+		nni_aio_finish(aio, 0, 0);
 	} else {
-		if (exchange_node_send_messages_enqueue(ex_node, key, msg) != 0) {
+		if (exchange_node_send_messages_enqueue(ex_node, key, msg, aio) != 0) {
 			log_error("exchange_node_send_messages_enqueue failed!\n");
 		}
 		nni_mtx_unlock(&ex_node->mtx);
+		/* don't finish user aio here, finish user aio in send_cb */
 	}
-	nni_aio_finish(aio, 0, 0);
 	nni_mtx_unlock(&s->mtx);
 	return;
 }
@@ -295,6 +303,7 @@ exchange_send_cb(void *arg)
 	exchange_node_t *ex_node = arg;
 	nni_msg         *msg = NULL;
 	int             *key = NULL;
+	nng_aio         *user_aio = NULL;
 
 	if (ex_node == NULL) {
 		return;
@@ -312,14 +321,10 @@ exchange_send_cb(void *arg)
 		nni_mtx_unlock(&ex_node->mtx);
 		return;
 	}
-	if (exchange_node_send_messages_dequeue(ex_node, &key, &msg) == 0) {
-		/* TODO set user aio with old msg if older msg is replaced */
-		(void)exchange_client_handle_msg(ex_node, key, msg, NULL);
-		nni_mtx_unlock(&ex_node->mtx);
-		nni_aio_finish(&ex_node->saio, 0, 0);
-		return;
+	while (exchange_node_send_messages_dequeue(ex_node, &key, &msg, &user_aio) == 0) {
+		(void)exchange_client_handle_msg(ex_node, key, msg, user_aio);
+		nni_aio_finish(user_aio, 0, 0);
 	}
-
 	ex_node->isBusy = false;
 	nni_mtx_unlock(&ex_node->mtx);
 
