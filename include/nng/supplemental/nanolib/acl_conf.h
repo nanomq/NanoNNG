@@ -1,6 +1,7 @@
 #ifndef NANOLIB_ACL_CONF_H
 #define NANOLIB_ACL_CONF_H
 
+#include <string.h>
 #include "nng/nng.h"
 #include "nng/supplemental/nanolib/cJSON.h"
 
