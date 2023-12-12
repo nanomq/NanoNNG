@@ -209,3 +209,11 @@ void parquet_write_loop(void *config)
 
     return;
 }
+
+int
+parquet_write_launcher(parquet_conf *conf)
+{
+	nng_thread *thread;
+	INIT_QUEUE(parquet_queue);
+	nng_thread_create(&thread, parquet_write_loop, (void*) conf);
+}
