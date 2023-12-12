@@ -31,10 +31,10 @@ typedef struct tcptran_ep   tcptran_ep;
 struct tcptran_pipe {
 	nng_stream *conn;
 	nni_pipe   *npipe; // for statitical
-	conf *conf;
+	conf       *conf;
 	// uint16_t        peer;		//reserved for MQTT sdk version
 	// uint16_t        proto;
-	size_t          rcvmax;	//duplicate with conf->max_packet_size
+	size_t          rcvmax; // duplicate with conf->max_packet_size
 	size_t          gotrxhead;
 	size_t          wantrxhead;
 	bool            closed;
