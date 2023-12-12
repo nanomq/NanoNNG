@@ -31,6 +31,7 @@ typedef struct tcptran_ep   tcptran_ep;
 struct tcptran_pipe {
 	nng_stream *conn;
 	nni_pipe   *npipe; // for statitical
+	const conf *conf;
 	// uint16_t        peer;		//reserved for MQTT sdk version
 	// uint16_t        proto;
 	size_t          rcvmax;	//duplicate with conf->max_packet_size
@@ -52,7 +53,6 @@ struct tcptran_pipe {
 	nni_msg        *rxmsg, *cnmsg;
 	nni_mtx         mtx;
 	conn_param     *tcp_cparam;
-	const conf     *conf;
 	nni_list        recvq;
 	nni_list        sendq;
 	nni_list_node   node;
@@ -167,10 +167,10 @@ tcptran_pipe_init(void *arg, nni_pipe *npipe)
 	nni_pipe_set_conn_param(npipe, p->tcp_cparam);
 	p->npipe = npipe;
 	if (!p->conf->sqlite.enable) {
-		nni_qos_db_init_id_hash(p->npipe->nano_qos_db);
+		nni_qos_db_init_id_hash(npipe->nano_qos_db);
 	}
-	p->conn_buf   = NULL;
-	p->busy       = false;
+	p->conn_buf = NULL;
+	p->busy     = false;
 
 	nni_lmq_init(&p->rslmq, 16);
 	p->qos_buf = nng_zalloc(16 + NNI_NANO_MAX_PACKET_SIZE);
@@ -553,6 +553,7 @@ nmq_tcptran_pipe_send_cb(void *arg)
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
+
 	nni_aio_list_remove(aio);
 	tcptran_pipe_send_start(p);
 
@@ -597,11 +598,11 @@ tcptran_pipe_recv_cb(void *arg)
 	uint32_t      pos = 1;
 	uint64_t      len = 0;
 	size_t        n;
-	nni_msg      *msg = NULL, *qmsg;
+	nni_msg      *msg   = NULL, *qmsg;
 	tcptran_pipe *p     = arg;
 	nni_aio      *rxaio = p->rxaio;
 	conn_param   *cparam;
-	bool          ack   = false;
+	bool          ack = false;
 
 	log_trace("tcptran_pipe_recv_cb %p\n", p);
 	nni_mtx_lock(&p->mtx);
@@ -871,7 +872,9 @@ recv_error:
 	nni_aio_list_remove(aio);
 	if (msg != NULL)
 		nni_msg_free(msg);
-	nni_msg_free(p->rxmsg);
+	if (p->rxmsg != NULL)
+		nni_msg_free(p->rxmsg);
+	msg      = NULL;
 	p->rxmsg = NULL;
 	nni_mtx_unlock(&p->mtx);
 	nni_aio_set_msg(aio, NULL);
@@ -972,12 +975,12 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			break;
 		}
 
-		uint8_t      *body, *header, qos_pac;
-		uint8_t       var_extra[2], fixheader, tmp[4] = { 0 };
-		int           len_offset = 0;
-		uint32_t      pos        = 1;
-		nni_pipe     *pipe;
-		uint16_t      pid;
+		uint8_t  *body, *header, qos_pac;
+		uint8_t   var_extra[2], fixheader, tmp[4] = { 0 };
+		int       len_offset = 0;
+		uint32_t  pos        = 1;
+		nni_pipe *pipe;
+		uint16_t  pid;
 		uint32_t  property_bytes = 0, property_len = 0;
 		size_t    tlen, rlen, mlen, plength;
 
