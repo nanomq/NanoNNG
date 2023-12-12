@@ -108,3 +108,36 @@ parquet_write_batch_async(parquet_object *elem)
 
 	return 0;
 }
+
+int parquet_write(std::shared_ptr<parquet::ParquetFileWriter> file_writer, parquet_object *elem)
+{
+
+    // Append a RowGroup with a specific number of rows.
+    parquet::RowGroupWriter *rg_writer = file_writer->AppendRowGroup();
+
+    // Write the Int32 column
+    parquet::Int32Writer    *int32_writer =
+	static_cast<parquet::Int32Writer *>(rg_writer->NextColumn());
+    for (int i = 0; i < elem->size; i++) {
+      int32_t value = elem->keys[i];
+      int16_t definition_level = 1;
+      cout << value << endl;
+      int32_writer->WriteBatch(1, &definition_level, nullptr, &value);
+    }
+
+    // Write the ByteArray column. Make every alternate values NULL
+    parquet::ByteArrayWriter *ba_writer =
+	static_cast<parquet::ByteArrayWriter *>(rg_writer->NextColumn());
+    for (int i = 0; i < elem->size; i++) {
+	    parquet::ByteArray value;
+	    int16_t            definition_level = 1;
+	    value.ptr                           = elem->darray[i];
+	    value.len                           = elem->dsize[i];
+        cout << value.ptr << value.len << endl;
+	    ba_writer->WriteBatch(1, &definition_level, nullptr, &value);
+    }
+
+    parquet_object_free(elem);
+    return 0;
+}
+
