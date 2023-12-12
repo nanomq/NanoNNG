@@ -484,7 +484,7 @@ tlstran_pipe_qos_send_cb(void *arg)
 	}
 
 	if (p->pro_ver == 5) {
-		(type == CMD_PUBCOMP || type == PUBACK) ? p->qrecv_quota++
+		(type == CMD_PUBCOMP || type == CMD_PUBACK) ? p->qrecv_quota++
 		                                        : p->qrecv_quota;
 	}
 	nni_msg_free(msg);
@@ -494,9 +494,9 @@ tlstran_pipe_qos_send_cb(void *arg)
 		    msg, nni_msg_header(msg), nni_msg_header_len(msg));
 		iov.iov_len = nni_msg_len(msg);
 		iov.iov_buf = nni_msg_body(msg);
-		nni_aio_set_msg(p->qsaio, msg);
+		nni_aio_set_msg(qsaio, msg);
 		// send it down...
-		nni_aio_set_iov(p->qsaio, 1, &iov);
+		nni_aio_set_iov(qsaio, 1, &iov);
 		nng_stream_send(p->conn, p->qsaio);
 		p->busy = true;
 		nni_mtx_unlock(&p->mtx);
