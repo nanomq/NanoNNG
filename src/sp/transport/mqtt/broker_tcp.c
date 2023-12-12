@@ -370,10 +370,11 @@ tcptran_pipe_nego_cb(void *arg)
 			conn_param_clone(p->tcp_cparam);
 
 			// Connection is accepted.
-			if (p->tcp_cparam->pro_ver == 5) {
+
+			p->pro_ver = p->tcp_cparam->pro_ver;
+			if (p->pro_ver == 5) {
 				p->qsend_quota = p->tcp_cparam->rx_max;
 			}
-			p->pro_ver = p->tcp_cparam->pro_ver;
 			nni_list_remove(&ep->negopipes, p);
 			nni_list_append(&ep->waitpipes, p);
 			tcptran_ep_match(ep);
@@ -1733,6 +1734,7 @@ tcptran_accept_cb(void *arg)
 	nni_mtx_lock(&ep->mtx);
 
 	if ((rv = nni_aio_result(aio)) != 0) {
+		log_warn(" send aio error %s", nng_strerror(rv));
 		goto error;
 	}
 
