@@ -95,6 +95,6 @@ int ringBuffer_enqueue(ringBuffer_t *rb,
 int ringBuffer_dequeue(ringBuffer_t *rb, void **data);
 int ringBuffer_release(ringBuffer_t *rb);
 
-int ringBuffer_search_msg_by_key(ringBuffer_t *rb, int key, nng_msg **msg);
+int ringBuffer_search_msg_by_key(ringBuffer_t *rb, uint32_t key, nng_msg **msg);
 int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint32_t key, int count, nng_msg ***list);
 #endif

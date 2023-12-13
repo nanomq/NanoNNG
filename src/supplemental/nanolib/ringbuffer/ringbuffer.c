@@ -451,7 +451,7 @@ int ringBuffer_add_rule(ringBuffer_t *rb,
 	return 0;
 }
 
-int ringBuffer_search_msg_by_key(ringBuffer_t *rb, int key, nng_msg **msg)
+int ringBuffer_search_msg_by_key(ringBuffer_t *rb, uint32_t key, nng_msg **msg)
 {
 	unsigned int i = 0;
 
