@@ -224,6 +224,19 @@ parquet_write_loop(void *config)
 		pthread_mutex_unlock(&parquet_queue_mutex);
 		parquet_write(file_writer, ele);
 
+		if (need_new_one(filename, conf->file_size)) {
+			file_writer->Close();
+			free(filename);
+			filename = get_file_name(conf);
+			if (filename == NULL) {
+				log_error("Failed to get file name");
+				return;
+			}
+			PARQUET_ASSIGN_OR_THROW(
+			    out_file, FileClass::Open(filename));
+			file_writer = parquet::ParquetFileWriter::Open(
+			    out_file, schema, props);
+		}
 	}
 
 	return;
