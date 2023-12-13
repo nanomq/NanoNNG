@@ -99,6 +99,7 @@ exchange_node_send_messages_dequeue(exchange_node_t *ex_node, int **key, nni_msg
 	*aio = send_msg->aio;
 	nni_list_remove(&ex_node->send_messages, send_msg);
 	ex_node->send_messages_num--;
+	nng_free(send_msg, sizeof(*send_msg));
 
 	return 0;
 }
