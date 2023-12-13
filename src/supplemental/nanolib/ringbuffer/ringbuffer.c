@@ -223,6 +223,12 @@ int ringBuffer_enqueue(ringBuffer_t *rb,
 	}
 
 	if (rb->size == rb->cap) {
+		/* ringbuffer not allowed to overwrite */
+		if (rb->overWrite == 0) {
+			nng_mtx_unlock(rb->ring_lock);
+			log_error("Ring buffer is full enqueue failed!!!\n");
+			return -1;
+		}
 		/* get all msgs and clean ringbuffer */
 		nni_msg **list = NULL;
 		ret = ringBuffer_get_and_clean_msgs(rb, rb->cap, &list);
@@ -454,6 +460,10 @@ int ringBuffer_add_rule(ringBuffer_t *rb,
 int ringBuffer_search_msg_by_key(ringBuffer_t *rb, uint32_t key, nng_msg **msg)
 {
 	unsigned int i = 0;
+
+	if (rb == NULL || msg == NULL) {
+		return -1;
+	}
 
 	nng_mtx_lock(rb->ring_lock);
 	for (i = rb->head; i < rb->size; i++) {
