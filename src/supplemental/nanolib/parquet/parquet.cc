@@ -153,6 +153,18 @@ parquet_write(std::shared_ptr<parquet::ParquetFileWriter> file_writer,
 	return 0;
 }
 
+bool
+need_new_one(const char *file_name, size_t file_max)
+{
+	struct stat st;
+	if (stat(file_name, &st) != 0) {
+		log_error("Failed to open the file.");
+		return false;
+	}
+	// printf("File size: %d\n", st.st_size + PARQUET_END);
+	// printf("File max: %d\n", file_max);
+	return st.st_size >= file_max - PARQUET_END;
+}
 
 void
 parquet_write_loop(void *config)
