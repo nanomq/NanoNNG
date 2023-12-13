@@ -5,6 +5,27 @@
 #define EX_NAME	"exchange1"
 #define UNUSED(x) ((void) x)
 
+static inline void free_msg_list(nng_msg **msgList, nng_msg *msg, int *lenp, int freeMsg)
+{
+	for (int i = 0; i < *lenp; i++) {
+		int *keyp = nng_msg_get_proto_data(msgList[i]);
+		nng_free(keyp, sizeof(int));
+		if (freeMsg) {
+			nng_msg_free(msgList[i]);
+		}
+	}
+
+	if (msg != NULL) {
+		nng_msg_free(msg);
+	}
+	if (msgList != NULL) {
+		nng_free(msgList, sizeof(nng_msg *) * (*lenp));
+	}
+	if (lenp != NULL) {
+		nng_free(lenp, sizeof(int));
+	}
+}
+
 nng_msg *alloc_pub_msg(const char *topic)
 {
 	// create a PUBLISH message
@@ -59,7 +80,7 @@ void test_exchange_ringBuffer(void)
 {
 	exchange_t *ex = NULL;
 	char **ringBufferName;
-	unsigned int caps = 1;
+	unsigned int caps = 10;
 
 	ringBufferName = nng_alloc(1 * sizeof(char *));
 	for (int i = 0; i < 1; i++) {
@@ -78,10 +99,36 @@ void test_exchange_ringBuffer(void)
 	nng_free(ringBufferName, sizeof(ringBufferName));
 
 	nng_msg *msg = NULL;
+	for (int i = 0; i < 10; i++) {
+		msg = alloc_pub_msg((char *)&topic);
+		NUTS_TRUE(msg != NULL);
+		NUTS_TRUE(exchange_handle_msg(ex, i, (void *)msg, NULL) == 0);
+	}
+
+	nng_aio *aio = NULL;
+	nng_aio_alloc(&aio, NULL, NULL);
+	NUTS_TRUE(aio != NULL);
+	nng_aio_begin(aio);
+
 	msg = alloc_pub_msg((char *)&topic);
 	NUTS_TRUE(msg != NULL);
+	NUTS_TRUE(exchange_handle_msg(ex, 1, (void *)msg, aio) == 0);
 
-	NUTS_TRUE(exchange_handle_msg(ex, 1, (void *)msg) == 0);
+	/* when ringbuffer is full, get all msgs from ringbuffer and clean up */
+	nng_msg **msgList = nng_aio_get_prov_data(aio);
+	NUTS_TRUE(msgList != NULL);
+
+	msg = nng_aio_get_msg(aio);
+	NUTS_TRUE(msg != NULL);
+
+	int *listLen = nng_msg_get_proto_data(msg);
+	NUTS_TRUE(listLen != NULL);
+	NUTS_TRUE(*listLen == 10);
+
+	free_msg_list(msgList, msg, listLen, 1);
+
+	nng_aio_finish(aio, 0);
+	nng_aio_free(aio);
 	NUTS_TRUE(exchange_release(ex) == 0);
 }
 
