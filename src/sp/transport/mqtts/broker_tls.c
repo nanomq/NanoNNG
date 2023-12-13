@@ -377,7 +377,7 @@ tlstran_pipe_nego_cb(void *arg)
 			// Connection is accepted.
 
 			p->pro_ver = p->tcp_cparam->pro_ver;
-			if (p->pro_ver == 5) {
+			if (p->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 				p->qsend_quota = p->tcp_cparam->rx_max;
 			}
 			nni_list_remove(&ep->negopipes, p);
@@ -483,7 +483,7 @@ tlstran_pipe_qos_send_cb(void *arg)
 		return;
 	}
 
-	if (p->pro_ver == 5) {
+	if (p->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 		(type == CMD_PUBCOMP || type == CMD_PUBACK) ? p->qrecv_quota++
 		                                        : p->qrecv_quota;
 	}
@@ -557,12 +557,11 @@ tlstran_pipe_send_cb(void *arg)
 
 	if (nni_aio_get_prov_data(txaio) != NULL) {
 		// msgs left behind due to multiple topics matched
-		if (p->pro_ver == 4)
+		if (p->pro_ver == MQTT_PROTOCOL_VERSION_v311 ||
+		    p->pro_ver == MQTT_PROTOCOL_VERSION_v31)
 			tlstran_pipe_send_start_v4(p, msg, txaio);
-		else if (p->pro_ver == 5)
+		else if (p->pro_ver == MQTT_PROTOCOL_VERSION_v5)
 			tlstran_pipe_send_start_v5(p, msg, txaio);
-		else if (p->pro_ver == 3)
-			tlstran_pipe_send_start_v4(p, msg, txaio);
 		else {
 			log_error("pro_ver of the msg is not 3, 4 or 5.");
 			nni_aio_finish_error(txaio, NNG_EPROTO);
@@ -762,7 +761,7 @@ tlstran_pipe_recv_cb(void *arg)
 		if (qos_pac > 0) {
 			// flow control, check rx_max
 			// recv_quota as length of lmq
-			if (p->pro_ver == 5) {
+			if (p->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 				if (p->qrecv_quota > 0) {
 					p->qrecv_quota--;
 				} else {
@@ -810,7 +809,7 @@ tlstran_pipe_recv_cb(void *arg)
 			goto recv_error;
 		}
 		// MQTT V5 flow control
-		if (p->pro_ver == 5) {
+		if (p->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 			log_debug("free property & reduce send quota");
 			property_free(prop);
 			p->qsend_quota++;
@@ -1493,15 +1492,17 @@ tlstran_pipe_send_start(tlstran_pipe *p)
 		nni_aio_finish(aio, NNG_ECANCELED, 0);
 		return;
 	}
-	if (p->pro_ver == 4) {
+
+	if (p->pro_ver == MQTT_PROTOCOL_VERSION_v311 ||
+	    p->pro_ver == MQTT_PROTOCOL_VERSION_v31)
 		tlstran_pipe_send_start_v4(p, msg, aio);
-	} else if (p->pro_ver == 5) {
+	else if (p->pro_ver == MQTT_PROTOCOL_VERSION_v5)
 		tlstran_pipe_send_start_v5(p, msg, aio);
-	} else if (p->pro_ver == 3) {
-		tlstran_pipe_send_start_v4(p, msg, aio);
-	} else {
+	else {
+		log_error("pro_ver of the msg is not 3, 4 or 5.");
 		nni_aio_finish_error(aio, NNG_EPROTO);
 	}
+
 	return;
 }
 
@@ -1626,8 +1627,6 @@ tlstran_pipe_start(tlstran_pipe *p, nng_stream *conn, tlstran_ep *ep)
 
 	p->conn = conn;
 	p->ep   = ep;
-	p->conf = ep->conf;
-	// p->proto = ep->proto;
 
 	log_trace("tlstran_pipe_start!");
 	p->qrecv_quota = NANO_MAX_QOS_PACKET;
