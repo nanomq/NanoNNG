@@ -65,6 +65,23 @@ get_file_name(parquet_conf *conf)
 	return file_name;
 }
 
+static char *get_file_name_v2(parquet_conf *conf, parquet_object *object)
+{
+	uint32_t key_start = object->keys[0];
+	uint32_t key_end = object->keys[object->size-1];
+	char   *dir    = conf->dir;
+	char   *prefix = conf->file_name_prefix;
+	uint8_t index  = conf->file_index++;
+	if (index >= conf->file_count) {
+		index            = 0;
+		conf->file_index = 1;
+	}
+
+	char *file_name = (char *) malloc(strlen(prefix) + strlen(dir) + 16);
+	sprintf(file_name, "%s/%s%d-%d.parquet", dir, prefix, key_start, key_end);
+	return file_name;
+}
+
 static shared_ptr<GroupNode>
 setup_schema()
 {
@@ -181,8 +198,6 @@ parquet_write_loop(void *config)
 		}
 	}
 
-	INIT_QUEUE(parquet_queue);
-
 	char *filename = get_file_name(conf);
 	if (filename == NULL) {
 		log_error("Failed to get file name");
@@ -246,6 +261,6 @@ int
 parquet_write_launcher(parquet_conf *conf)
 {
 	INIT_QUEUE(parquet_queue);
-	thread write_loop(parquet_write_loop, conf);
+	thread write_loop(parquet_write_loop_v2, conf);
 	write_loop.detach();
 }
