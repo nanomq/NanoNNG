@@ -44,6 +44,16 @@ static enum_map http_server_auth_type[] = {
 	{ -1, NULL },
 };
 
+static enum_map compress_type[] = {
+	{ UNCOMPRESSED, "uncompressed" },
+	{ SNAPPY, "snappy" },
+	{ GZIP, "gzip" },
+	{ BROTLI, "brotli" },
+	{ ZSTD, "zstd" },
+	{ LZ4, "lz4" },
+	{ -1, NULL },
+};
+
 cJSON *hocon_get_obj(char *key, cJSON *jso);
 
 // Read json value into struct
@@ -1080,6 +1090,24 @@ conf_exchange_parse_ver2(conf *config, cJSON *jso)
 	return;
 }
 
+static void
+conf_parquet_parse_ver2(conf *config, cJSON *jso)
+{
+	cJSON *jso_parquet = cJSON_GetObjectItem(jso, "parquet");
+	// cJSON *jso_parquet = hocon_get_obj("parquet", jso);
+	if (jso_parquet) {
+		conf_parquet *parquet = &(config->parquet);
+		parquet->enable       = true;
+		hocon_read_num(parquet, file_count, jso_parquet);
+		hocon_read_str(parquet, dir, jso_parquet);
+		hocon_read_str(parquet, file_name_prefix, jso_parquet);
+		hocon_read_enum_base(parquet, comp_type, "compress",
+		        jso_parquet, compress_type);
+	}
+
+	return;
+}
+
 #if defined(SUPP_AWS_BRIDGE)
 static void
 conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
@@ -1419,6 +1447,7 @@ conf_parse_ver2(conf *config)
 		conf_authorization_prase_ver2(config, jso);
 		conf_bridge_parse_ver2(config, jso);
 		conf_exchange_parse_ver2(config, jso);
+		conf_parquet_parse_ver2(config, jso);
 #if defined(SUPP_AWS_BRIDGE)
 		conf_aws_bridge_parse_ver2(config, jso);
 #endif
