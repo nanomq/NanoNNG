@@ -113,7 +113,7 @@ exchange_sock_fini(void *arg)
 		}
 
 		if (aio != NULL) {
-			nng_aio_finish(aio, NNG_ECLOSED);
+			nng_aio_finish_error(aio, NNG_ECLOSED);
 		}
 
 		nng_msg_free(msg);
@@ -196,27 +196,28 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nng_aio *aio)
 static void
 exchange_sock_send(void *arg, nni_aio *aio)
 {
-	nni_msg *        msg  = NULL;
-	exchange_node_t *ex_node;
+	int             ret = 0;
+	nni_msg         *msg = NULL;
+	exchange_node_t *ex_node = NULL;
 	exchange_sock_t *s = arg;
 
 	nni_mtx_lock(&s->mtx);
 	msg = nni_aio_get_msg(aio);
 	if (msg == NULL) {
-		nni_aio_finish(aio, 0, 0);
+		nni_aio_finish_error(aio, NNG_EINVAL);
 		nni_mtx_unlock(&s->mtx);
 		return;
 	}
 	nng_aio_set_msg(aio, NULL);
 
 	if (nni_msg_get_type(msg) != CMD_PUBLISH) {
-		nni_aio_finish(aio, 0, 0);
+		nni_aio_finish_error(aio, NNG_EINVAL);
 		nni_mtx_unlock(&s->mtx);
 		return;
 	}
 
 	if (s->ex_node == NULL) {
-		nni_aio_finish(aio, 0, 0);
+		nni_aio_finish_error(aio, NNG_EINVAL);
 		nni_mtx_unlock(&s->mtx);
 		return;
 	}
@@ -228,16 +229,21 @@ exchange_sock_send(void *arg, nni_aio *aio)
 		if (nni_aio_begin(&ex_node->saio) != 0) {
 			nni_mtx_unlock(&ex_node->mtx);
 			nni_mtx_unlock(&s->mtx);
-			nni_aio_finish(aio, 0, 0);
+			nni_aio_finish_error(aio, NNG_EBUSY);
 			return;
 		}
 		ex_node->isBusy = true;
 
-		(void)exchange_client_handle_msg(ex_node, msg, aio);
+		ret = exchange_client_handle_msg(ex_node, msg, aio);
+		if (ret != 0) {
+			log_error("exchange_client_handle_msg failed!\n");
+			nni_aio_finish_error(aio, NNG_EINVAL);
+		} else {
+			nni_aio_finish(aio, 0, 0);
+		}
 
 		nni_aio_finish(&ex_node->saio, 0, 0);
 		nni_mtx_unlock(&ex_node->mtx);
-		nni_aio_finish(aio, 0, 0);
 	} else {
 		/* Store aio in msg proto data */
 		nng_msg_set_proto_data(msg, NULL, (void *)aio);
@@ -259,6 +265,7 @@ exchange_send_cb(void *arg)
 	nng_msg         *msg = NULL;
 	int             *key = NULL;
 	nng_aio         *user_aio = NULL;
+	int             ret = 0;
 
 	if (ex_node == NULL) {
 		return;
@@ -282,8 +289,13 @@ exchange_send_cb(void *arg)
 			log_error("user_aio is NULL\n");
 			break;
 		}
-		(void)exchange_client_handle_msg(ex_node, msg, user_aio);
-		nni_aio_finish(user_aio, 0, 0);
+		ret = exchange_client_handle_msg(ex_node, msg, user_aio);
+		if (ret != 0) {
+			log_error("exchange_client_handle_msg failed!\n");
+			nni_aio_finish_error(user_aio, NNG_EINVAL);
+		} else {
+			nni_aio_finish(user_aio, 0, 0);
+		}
 	}
 	ex_node->isBusy = false;
 	nni_mtx_unlock(&ex_node->mtx);
