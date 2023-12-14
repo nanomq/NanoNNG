@@ -257,6 +257,63 @@ parquet_write_loop(void *config)
 	return;
 }
 
+void
+parquet_write_loop_v2(void *config)
+{
+	if (config == NULL) {
+		log_error("parquet conf is NULL");
+	}
+
+	parquet_conf *conf = (parquet_conf *) config;
+	if (!directory_exists(conf->dir)) {
+		if (!create_directory(conf->dir)) {
+			log_error("Failed to create directory %s", conf->dir);
+			return;
+		}
+	}
+
+	using FileClass = arrow::io::FileOutputStream;
+
+	shared_ptr<parquet::WriterProperties> props =
+	    parquet::WriterProperties::Builder()
+	        .created_by("NanoMQ")
+	        ->version(parquet::ParquetVersion::PARQUET_2_6)
+	        ->data_page_version(parquet::ParquetDataPageVersion::V2)
+	        ->compression(
+	            static_cast<arrow::Compression::type>(conf->comp_type))
+	        ->build();
+
+	shared_ptr<GroupNode> schema = setup_schema();
+
+	while (true) {
+		// wait for mqtt messages to send method request
+		pthread_mutex_lock(&parquet_queue_mutex);
+
+		while (IS_EMPTY(parquet_queue)) {
+			pthread_cond_wait(
+			    &parquet_queue_not_empty, &parquet_queue_mutex);
+		}
+
+		log_debug("fetch element from parquet queue");
+		parquet_object *ele =
+		    (parquet_object *) DEQUEUE(parquet_queue);
+		pthread_mutex_unlock(&parquet_queue_mutex);
+
+		char *filename = get_file_name_v2(conf, ele);
+		if (filename == NULL) {
+			log_error("Failed to get file name");
+			return;
+		}
+		// Create a ParquetFileWriter instance
+		shared_ptr<FileClass> out_file;
+		PARQUET_ASSIGN_OR_THROW(out_file, FileClass::Open(filename));
+		std::shared_ptr<parquet::ParquetFileWriter> file_writer =
+		    parquet::ParquetFileWriter::Open(out_file, schema, props);
+
+		parquet_write(file_writer, ele);
+	}
+}
+
 int
 parquet_write_launcher(parquet_conf *conf)
 {
