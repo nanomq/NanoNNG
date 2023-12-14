@@ -22,7 +22,7 @@ typedef struct exchange_sendmessages_s exchange_sendmessages_t;
 struct exchange_sendmessages_s {
 	int   *key;
 	nni_msg *msg;
-	nng_aio *aio;
+	nni_aio *aio;
 	nni_list_node node;
 };
 
@@ -99,23 +99,22 @@ static void
 exchange_sock_fini(void *arg)
 {
 	int *keyp;
-	nng_msg *msg;
-	nng_aio *aio;
+	nni_msg *msg;
+	nni_aio *aio;
 	exchange_sock_t *s = arg;
 	exchange_node_t *ex_node;
-	exchange_sendmessages_t *send_message;
 
 	ex_node = s->ex_node;
-	while (nng_lmq_get(&ex_node->send_messages, &msg) == 0) {
-		aio = nng_msg_get_proto_data(msg);
+	while (nni_lmq_get(&ex_node->send_messages, &msg) == 0) {
+		aio = nni_msg_get_proto_data(msg);
 		keyp = nni_aio_get_prov_data(aio);
 
 		if (keyp != NULL) {
-			nng_free(keyp, sizeof(int));
+			nni_free(keyp, sizeof(int));
 		}
 
 		if (aio != NULL) {
-			nng_aio_finish_error(aio, NNG_ECLOSED);
+			nni_aio_finish_error(aio, NNG_ECLOSED);
 		}
 
 		nni_msg_free(msg);
@@ -126,7 +125,7 @@ exchange_sock_fini(void *arg)
 	nni_lmq_fini(&ex_node->send_messages);
 	exchange_release(ex_node->ex);
 
-	nng_free(ex_node, sizeof(*ex_node));
+	nni_free(ex_node, sizeof(*ex_node));
 	ex_node = NULL;
 
 	nni_id_map_fini(&s->rbmsgmap);
@@ -156,26 +155,26 @@ exchange_sock_close(void *arg)
 
 /* Check if the msg is already in rbmsgmap, if not, add it to rbmsgmap */
 inline static int
-exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nng_aio *aio)
+exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 {
 	int ret = 0;
 	int *key = NULL;
 	nni_msg *tmsg = NULL;
 
-	key = nng_aio_get_prov_data(aio);
+	key = nni_aio_get_prov_data(aio);
 	if (key == NULL) {
 		log_error("key is NULL\n");
 		nni_msg_free(msg);
 		return -1;
 	}
-	nng_aio_set_prov_data(aio, NULL);
+	nni_aio_set_prov_data(aio, NULL);
 
 	tmsg = nni_id_get(&ex_node->sock->rbmsgmap, *key);
 	if (tmsg != NULL) {
 		log_error("msg already in rbmsgmap, overwirte is not allowed");
 		/* free key and msg here! */
 		nni_msg_free(msg);
-		nng_free(key, sizeof(int));
+		nni_free(key, sizeof(int));
 		return -1;
 	}
 
@@ -184,13 +183,13 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nng_aio *aio)
 		log_error("rbmsgmap set failed");
 		/* free key and msg here! */
 		nni_msg_free(msg);
-		nng_free(key, sizeof(int));
+		nni_free(key, sizeof(int));
 		return -1;
 	}
 	(void)exchange_handle_msg(ex_node->ex, *key, msg, aio);
 
 	/* free key here! */
-	nng_free(key, sizeof(int));
+	nni_free(key, sizeof(int));
 
 	return 0;
 }
@@ -210,7 +209,7 @@ exchange_sock_send(void *arg, nni_aio *aio)
 		nni_mtx_unlock(&s->mtx);
 		return;
 	}
-	nng_aio_set_msg(aio, NULL);
+	nni_aio_set_msg(aio, NULL);
 
 	if (nni_msg_get_type(msg) != CMD_PUBLISH) {
 		nni_aio_finish_error(aio, NNG_EINVAL);
@@ -249,10 +248,10 @@ exchange_sock_send(void *arg, nni_aio *aio)
 		/* Store aio in msg proto data */
 		nni_msg_set_proto_data(msg, NULL, (void *)aio);
 		if (nni_lmq_put(&ex_node->send_messages, msg) != 0) {
-			log_error("nng_lmq_put failed! msg lost\n");
+			log_error("nni_lmq_put failed! msg lost\n");
 			int *key;
-			key = nng_aio_get_prov_data(aio);
-			nng_free(key, sizeof(int));
+			key = nni_aio_get_prov_data(aio);
+			nni_free(key, sizeof(int));
 			nni_msg_free(msg);
 		}
 
@@ -267,9 +266,8 @@ static void
 exchange_send_cb(void *arg)
 {
 	exchange_node_t *ex_node = arg;
-	nng_msg         *msg = NULL;
-	int             *key = NULL;
-	nng_aio         *user_aio = NULL;
+	nni_msg         *msg = NULL;
+	nni_aio         *user_aio = NULL;
 	int             ret = 0;
 
 	if (ex_node == NULL) {
@@ -288,8 +286,8 @@ exchange_send_cb(void *arg)
 		nni_mtx_unlock(&ex_node->mtx);
 		return;
 	}
-	while (nng_lmq_get(&ex_node->send_messages, &msg) == 0) {
-		user_aio = (nng_aio *)nng_msg_get_proto_data(msg);
+	while (nni_lmq_get(&ex_node->send_messages, &msg) == 0) {
+		user_aio = (nni_aio *)nni_msg_get_proto_data(msg);
 		if (user_aio == NULL) {
 			log_error("user_aio is NULL\n");
 			break;
@@ -369,7 +367,6 @@ int
 exchange_client_get_msgs_by_key(void *arg, uint32_t key, uint32_t count, nng_msg ***list)
 {
 	int ret = 0;
-	int topic_len = 0;
 	exchange_sock_t *s = arg;
 	nni_msg *tmsg = NULL;
 	nni_id_map *rbmsgmap = &s->rbmsgmap;
