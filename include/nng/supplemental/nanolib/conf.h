@@ -311,7 +311,6 @@ struct conf_exchange {
 	conf_exchange_client_node **nodes;
 };
 
-
 typedef enum {
 	UNCOMPRESSED,
 	SNAPPY,
@@ -322,6 +321,7 @@ typedef enum {
 } compression_type;
 
 struct conf_parquet {
+	bool             enable;
 	char            *dir;
 	char            *file_name_prefix;
 	compression_type comp_type;
@@ -527,6 +527,7 @@ struct conf {
 	conf_bridge      bridge;		//standard MQTT
 	conf_bridge      aws_bridge;	// AWS IoT Core
 	conf_exchange    exchange;
+	conf_parquet     parquet;
 	conf_web_hook    web_hook;
 #if defined(ENABLE_LOG)
 	conf_log         log;
