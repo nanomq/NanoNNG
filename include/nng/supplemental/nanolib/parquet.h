@@ -1,29 +1,14 @@
 #ifndef PARQUET_H
 #define PARQUET_H
 #include "nng/nng.h"
+#include "nng/supplemental/nanolib/conf.h"
 #include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef enum {
-	UNCOMPRESSED,
-	SNAPPY,
-	GZIP,
-	BROTLI,
-	ZSTD,
-	LZ4
-} compression_type;
-
-typedef struct {
-	char            *dir;
-	char            *file_name_prefix;
-	compression_type comp_type;
-	uint8_t          file_count;
-	uint8_t          file_index;
-	int32_t          file_size;
-} parquet_conf;
+typedef conf_parquet parquet_conf;
 
 typedef struct {
 	uint32_t *keys;
