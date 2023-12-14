@@ -909,6 +909,12 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->web_hook.rule_count     = 0;
 	conf_tls_init(&nanomq_conf->web_hook.tls);
 
+	nanomq_conf->parquet.enable           = false;
+	nanomq_conf->parquet.file_count       = 5;
+	nanomq_conf->parquet.comp_type        = UNCOMPRESSED;
+	nanomq_conf->parquet.file_name_prefix = NULL;
+	nanomq_conf->parquet.dir              = NULL;
+
 	conf_auth_init(&nanomq_conf->auths);
 	nanomq_conf->auth_http.enable = false;
 	conf_auth_http_req_init(&nanomq_conf->auth_http.auth_req);
