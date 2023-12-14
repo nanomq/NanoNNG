@@ -1060,6 +1060,28 @@ get_webhook_event_type(webhook_event type)
 	}
 }
 
+static char *
+get_compress_type(compression_type type)
+{
+	switch (type)
+	{
+	case UNCOMPRESSED:
+		return "uncompressed";
+	case SNAPPY:
+		return "snappy";
+	case GZIP:
+		return "gzip";
+	case BROTLI:
+		return "brotli";
+	case ZSTD:
+		return "zstd";
+	case LZ4:
+		return "lz4";
+	default:
+		return "error type";
+	}
+}
+
 
 static void
 print_webhook_conf(conf_web_hook *webhook)
@@ -1089,6 +1111,19 @@ print_webhook_conf(conf_web_hook *webhook)
 		}
 	}
 }
+
+static void
+print_parquet_conf(conf_parquet *parquet)
+{
+	if (!parquet->enable)
+		return;
+	log_info("parquet dir:              %s", parquet->dir);
+	const char *encode_type = get_compress_type(parquet->comp_type);
+	log_info("parquet compress:         %s", encode_type);
+	log_info("parquet file_name_prefix: %s", parquet->file_name_prefix);
+	log_info("parquet file_count:       %d", parquet->file_count);
+}
+
 
 #if defined(SUPP_RULE_ENGINE)
 static void
@@ -1242,9 +1277,11 @@ print_conf(conf *nanomq_conf)
 	conf_auth *auth = &(nanomq_conf->auths);
 	conf_auth_http *auth_http = &(nanomq_conf->auth_http);
 	conf_web_hook *webhook = &(nanomq_conf->web_hook);
+	conf_parquet *parquet = &(nanomq_conf->parquet);
 	print_auth_conf(auth);
 	print_auth_http_conf(auth_http);
 	print_webhook_conf(webhook);
+	print_parquet_conf(parquet);
 	print_bridge_conf(&nanomq_conf->bridge, "");
 #if defined(SUPP_AWS_BRIDGE)
 	print_bridge_conf(&nanomq_conf->aws_bridge, "aws.");
