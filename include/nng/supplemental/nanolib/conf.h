@@ -310,6 +310,27 @@ struct conf_exchange {
 	size_t             count;
 	conf_exchange_client_node **nodes;
 };
+
+
+typedef enum {
+	UNCOMPRESSED,
+	SNAPPY,
+	GZIP,
+	BROTLI,
+	ZSTD,
+	LZ4
+} compression_type;
+
+struct conf_parquet {
+	char            *dir;
+	char            *file_name_prefix;
+	compression_type comp_type;
+	uint8_t          file_count;
+	uint8_t          file_index;
+	int32_t          file_size;
+};
+typedef struct conf_parquet conf_parquet;
+
 struct conf_bridge {
 	size_t             count;
 	conf_bridge_node **nodes;
