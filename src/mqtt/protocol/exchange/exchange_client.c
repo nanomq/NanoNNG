@@ -28,10 +28,9 @@ struct exchange_node_s {
 	exchange_t      *ex;
 	exchange_sock_t *sock;
 	nni_aio         saio;
-	nni_list        send_messages;
-	unsigned int    send_messages_num;
 	bool            isBusy;
 	nni_mtx         mtx;
+	nng_lmq         send_messages;
 };
 
 struct exchange_sock_s {
@@ -47,62 +46,6 @@ static void exchange_sock_fini(void *arg);
 static void exchange_sock_open(void *arg);
 static void exchange_sock_send(void *arg, nni_aio *aio);
 static void exchange_send_cb(void *arg);
-
-/* lock ex_node before enqueue */
-static int
-exchange_node_send_messages_enqueue(exchange_node_t *ex_node, int *key, nni_msg *msg, nng_aio *aio)
-{
-	exchange_sendmessages_t *send_msg = NULL;
-	// isnt a lmq more approriate?
-	send_msg = (exchange_sendmessages_t *)nng_alloc(sizeof(exchange_sendmessages_t));
-	if (send_msg == NULL) {
-		/* free key and msg here! */
-		nni_msg_free(msg);
-		nng_free(key, sizeof(int));
-		log_error("exchange_sendmessages_enqueue failed! No memory!\n");
-		return -1;
-	}
-
-	send_msg->key = key;
-	send_msg->msg = msg;
-	send_msg->aio = aio;
-
-	NNI_LIST_NODE_INIT(&send_msg->node);
-
-	if (ex_node->send_messages_num >= 1024) {
-		log_error("exchange_sendmessages_enqueue failed! send_messages_num >= 1024!\n");
-		/* free key and msg here! */
-		nni_msg_free(send_msg->msg);
-		nng_free(send_msg->key, sizeof(int));
-		nng_free(send_msg, sizeof(*send_msg));
-		return -1;
-	}
-	nni_list_append(&ex_node->send_messages, send_msg);
-	ex_node->send_messages_num++;
-
-	return 0;
-}
-
-/* lock ex_node before dequeue */
-static int
-exchange_node_send_messages_dequeue(exchange_node_t *ex_node, int **key, nni_msg **msg, nng_aio **aio)
-{
-	exchange_sendmessages_t *send_msg = NULL;
-	// nni_list can only be used inside the protocol layer
-	send_msg = nni_list_first(&ex_node->send_messages);
-	if (send_msg == NULL) {
-		return -1;
-	}
-
-	*key = send_msg->key;
-	*msg = send_msg->msg;
-	*aio = send_msg->aio;
-	nni_list_remove(&ex_node->send_messages, send_msg);
-	ex_node->send_messages_num--;
-	nng_free(send_msg, sizeof(*send_msg));
-
-	return 0;
-}
 
 static int
 exchange_add_ex(exchange_sock_t *s, exchange_t *ex)
@@ -126,11 +69,10 @@ exchange_add_ex(exchange_sock_t *s, exchange_t *ex)
 	node->isBusy = false;
 	node->ex = ex;
 	node->sock = s;
-	node->send_messages_num = 0;
 
 	nni_aio_init(&node->saio, exchange_send_cb, node);
-	NNI_LIST_INIT(&node->send_messages, exchange_sendmessages_t, node);
 	nni_mtx_init(&node->mtx);
+	nni_lmq_init(&node->send_messages, 1024);
 
 	s->ex_node = node;
 	nni_mtx_unlock(&s->mtx);
@@ -154,25 +96,32 @@ exchange_sock_init(void *arg, nni_sock *sock)
 static void
 exchange_sock_fini(void *arg)
 {
+	int *keyp;
+	nng_msg *msg;
+	nng_aio *aio;
 	exchange_sock_t *s = arg;
 	exchange_node_t *ex_node;
 	exchange_sendmessages_t *send_message;
 
 	ex_node = s->ex_node;
-	while (!nni_list_empty(&ex_node->send_messages)) {
-		send_message = nni_list_last(&ex_node->send_messages);
-		if (send_message) {
-			nni_list_remove(&ex_node->send_messages, send_message);
-			/* free key and msg here! */
-			nni_msg_free(send_message->msg);
-			nng_free(send_message->key, sizeof(int));
-			nng_free(send_message, sizeof(*send_message));
-			send_message = NULL;
+	while (nng_lmq_get(&ex_node->send_messages, &msg) == 0) {
+		aio = nng_msg_get_proto_data(msg);
+		keyp = nni_aio_get_prov_data(aio);
+
+		if (keyp != NULL) {
+			nng_free(keyp, sizeof(int));
 		}
+
+		if (aio != NULL) {
+			nng_aio_finish(aio, NNG_ECLOSED);
+		}
+
+		nng_msg_free(msg);
 	}
 
 	nni_aio_fini(&ex_node->saio);
 	nni_mtx_fini(&ex_node->mtx);
+	nni_lmq_fini(&ex_node->send_messages);
 	exchange_release(ex_node->ex);
 
 	nng_free(ex_node, sizeof(*ex_node));
@@ -180,6 +129,7 @@ exchange_sock_fini(void *arg)
 
 	nni_id_map_fini(&s->rbmsgmap);
 	nni_mtx_fini(&s->mtx);
+
 	return;
 }
 
@@ -289,9 +239,12 @@ exchange_sock_send(void *arg, nni_aio *aio)
 		nni_mtx_unlock(&ex_node->mtx);
 		nni_aio_finish(aio, 0, 0);
 	} else {
-		if (exchange_node_send_messages_enqueue(ex_node, key, msg, aio) != 0) {
-			log_error("exchange_node_send_messages_enqueue failed!\n");
+		/* Store aio in msg proto data */
+		nng_msg_set_proto_data(msg, NULL, (void *)aio);
+		if (nng_lmq_put(&ex_node->send_messages, msg) != 0) {
+			log_error("nng_lmq_put failed!\n");
 		}
+
 		nni_mtx_unlock(&ex_node->mtx);
 		/* don't finish user aio here, finish user aio in send_cb */
 	}
@@ -323,8 +276,13 @@ exchange_send_cb(void *arg)
 		nni_mtx_unlock(&ex_node->mtx);
 		return;
 	}
-	while (exchange_node_send_messages_dequeue(ex_node, &key, &msg, &user_aio) == 0) {
-		(void)exchange_client_handle_msg(ex_node, key, msg, user_aio);
+	while (nng_lmq_get(&ex_node->send_messages, &msg) == 0) {
+		user_aio = (nng_aio *)nng_msg_get_proto_data(msg);
+		if (user_aio == NULL) {
+			log_error("user_aio is NULL\n");
+			break;
+		}
+		(void)exchange_client_handle_msg(ex_node, msg, user_aio);
 		nni_aio_finish(user_aio, 0, 0);
 	}
 	ex_node->isBusy = false;
