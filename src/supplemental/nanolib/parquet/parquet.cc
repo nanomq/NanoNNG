@@ -30,6 +30,7 @@ using parquet::schema::PrimitiveNode;
 #define FREE_IF_NOT_NULL(free, size) DO_IT_IF_NOT_NULL(nng_free, free, size)
 
 CircularQueue   parquet_queue;
+CircularQueue   parquet_file_queue;
 pthread_mutex_t parquet_queue_mutex     = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t  parquet_queue_not_empty = PTHREAD_COND_INITIALIZER;
 
@@ -65,21 +66,39 @@ get_file_name(parquet_conf *conf)
 	return file_name;
 }
 
-static char *get_file_name_v2(parquet_conf *conf, parquet_object *object)
+static char *
+get_file_name_v2(parquet_conf *conf, parquet_object *object)
 {
 	uint32_t key_start = object->keys[0];
-	uint32_t key_end = object->keys[object->size-1];
-	char   *dir    = conf->dir;
-	char   *prefix = conf->file_name_prefix;
-	uint8_t index  = conf->file_index++;
+	uint32_t key_end   = object->keys[object->size - 1];
+	char    *dir       = conf->dir;
+	char    *prefix    = conf->file_name_prefix;
+	uint8_t  index     = conf->file_index++;
 	if (index >= conf->file_count) {
 		index            = 0;
 		conf->file_index = 1;
 	}
 
 	char *file_name = (char *) malloc(strlen(prefix) + strlen(dir) + 16);
-	sprintf(file_name, "%s/%s%d-%d.parquet", dir, prefix, key_start, key_end);
+	sprintf(
+	    file_name, "%s/%s%d-%d.parquet", dir, prefix, key_start, key_end);
+	ENQUEUE(parquet_file_queue, file_name);
 	return file_name;
+}
+
+static int
+remove_old_file(void)
+{
+	char *filename = (char *) DEQUEUE(parquet_file_queue);
+	if (remove(filename) == 0) {
+		log_debug("File '%s' removed successfully.\n", filename);
+	} else {
+		log_error("Error removing the file %s", filename);
+		return -1;
+	}
+
+	free(filename);
+	return 0;
 }
 
 static shared_ptr<GroupNode>
@@ -148,7 +167,7 @@ parquet_write(std::shared_ptr<parquet::ParquetFileWriter> file_writer,
 	// Write the Int32 column
 	parquet::Int32Writer *int32_writer =
 	    static_cast<parquet::Int32Writer *>(rg_writer->NextColumn());
-	for (int i = 0; i < elem->size; i++) {
+	for (uint32_t i = 0; i < elem->size; i++) {
 		int32_t value            = elem->keys[i];
 		int16_t definition_level = 1;
 		int32_writer->WriteBatch(
@@ -158,7 +177,7 @@ parquet_write(std::shared_ptr<parquet::ParquetFileWriter> file_writer,
 	// Write the ByteArray column. Make every alternate values NULL
 	parquet::ByteArrayWriter *ba_writer =
 	    static_cast<parquet::ByteArrayWriter *>(rg_writer->NextColumn());
-	for (int i = 0; i < elem->size; i++) {
+	for (uint32_t i = 0; i < elem->size; i++) {
 		parquet::ByteArray value;
 		int16_t            definition_level = 1;
 		value.ptr                           = elem->darray[i];
@@ -180,7 +199,7 @@ need_new_one(const char *file_name, size_t file_max)
 	}
 	// printf("File size: %d\n", st.st_size + PARQUET_END);
 	// printf("File max: %d\n", file_max);
-	return st.st_size >= file_max - PARQUET_END;
+	return st.st_size >= (__off_t)(file_max - PARQUET_END);
 }
 
 void
@@ -300,9 +319,14 @@ parquet_write_loop_v2(void *config)
 		pthread_mutex_unlock(&parquet_queue_mutex);
 
 		char *filename = get_file_name_v2(conf, ele);
+
 		if (filename == NULL) {
 			log_error("Failed to get file name");
 			return;
+		}
+
+		if (QUEUE_SIZE(parquet_file_queue) > conf->file_count) {
+			remove_old_file();
 		}
 		// Create a ParquetFileWriter instance
 		shared_ptr<FileClass> out_file;
@@ -318,6 +342,8 @@ int
 parquet_write_launcher(parquet_conf *conf)
 {
 	INIT_QUEUE(parquet_queue);
+	INIT_QUEUE(parquet_file_queue);
 	thread write_loop(parquet_write_loop_v2, conf);
 	write_loop.detach();
+	return 0;
 }
