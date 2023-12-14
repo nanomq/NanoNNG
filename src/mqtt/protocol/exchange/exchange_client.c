@@ -13,6 +13,8 @@
 #include "nng/exchange/exchange.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 
+#define NANO_MAX_MQ_BUFFER_LEN 1024
+
 typedef struct exchange_sock_s         exchange_sock_t;
 typedef struct exchange_node_s         exchange_node_t;
 typedef struct exchange_sendmessages_s exchange_sendmessages_t;
@@ -30,7 +32,7 @@ struct exchange_node_s {
 	nni_aio         saio;
 	bool            isBusy;
 	nni_mtx         mtx;
-	nng_lmq         send_messages;
+	nni_lmq         send_messages;
 };
 
 struct exchange_sock_s {
@@ -72,7 +74,7 @@ exchange_add_ex(exchange_sock_t *s, exchange_t *ex)
 
 	nni_aio_init(&node->saio, exchange_send_cb, node);
 	nni_mtx_init(&node->mtx);
-	nni_lmq_init(&node->send_messages, 1024);
+	nni_lmq_init(&node->send_messages, NANO_MAX_MQ_BUFFER_LEN);
 
 	s->ex_node = node;
 	nni_mtx_unlock(&s->mtx);
@@ -116,7 +118,7 @@ exchange_sock_fini(void *arg)
 			nng_aio_finish_error(aio, NNG_ECLOSED);
 		}
 
-		nng_msg_free(msg);
+		nni_msg_free(msg);
 	}
 
 	nni_aio_fini(&ex_node->saio);
@@ -163,30 +165,30 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nng_aio *aio)
 	key = nng_aio_get_prov_data(aio);
 	if (key == NULL) {
 		log_error("key is NULL\n");
-		nng_msg_free(msg);
+		nni_msg_free(msg);
 		return -1;
 	}
 	nng_aio_set_prov_data(aio, NULL);
 
 	tmsg = nni_id_get(&ex_node->sock->rbmsgmap, *key);
 	if (tmsg != NULL) {
-		log_error("msg already in rbmsgmap\n");
+		log_error("msg already in rbmsgmap, overwirte is not allowed");
 		/* free key and msg here! */
-		nng_msg_free(msg);
+		nni_msg_free(msg);
 		nng_free(key, sizeof(int));
 		return -1;
 	}
-
-	(void)exchange_handle_msg(ex_node->ex, *key, msg, aio);
 
 	ret = nni_id_set(&ex_node->sock->rbmsgmap, *key, msg);
 	if (ret != 0) {
-		log_error("rbmsgmap set failed\n");
+		log_error("rbmsgmap set failed");
 		/* free key and msg here! */
-		nng_msg_free(msg);
+		nni_msg_free(msg);
 		nng_free(key, sizeof(int));
 		return -1;
 	}
+	(void)exchange_handle_msg(ex_node->ex, *key, msg, aio);
+
 	/* free key here! */
 	nng_free(key, sizeof(int));
 
@@ -235,20 +237,23 @@ exchange_sock_send(void *arg, nni_aio *aio)
 		ex_node->isBusy = true;
 
 		ret = exchange_client_handle_msg(ex_node, msg, aio);
+		nni_mtx_unlock(&ex_node->mtx);
 		if (ret != 0) {
 			log_error("exchange_client_handle_msg failed!\n");
 			nni_aio_finish_error(aio, NNG_EINVAL);
 		} else {
 			nni_aio_finish(aio, 0, 0);
 		}
-
 		nni_aio_finish(&ex_node->saio, 0, 0);
-		nni_mtx_unlock(&ex_node->mtx);
 	} else {
 		/* Store aio in msg proto data */
-		nng_msg_set_proto_data(msg, NULL, (void *)aio);
-		if (nng_lmq_put(&ex_node->send_messages, msg) != 0) {
-			log_error("nng_lmq_put failed!\n");
+		nni_msg_set_proto_data(msg, NULL, (void *)aio);
+		if (nni_lmq_put(&ex_node->send_messages, msg) != 0) {
+			log_error("nng_lmq_put failed! msg lost\n");
+			int *key;
+			key = nng_aio_get_prov_data(aio);
+			nng_free(key, sizeof(int));
+			nni_msg_free(msg);
 		}
 
 		nni_mtx_unlock(&ex_node->mtx);
@@ -289,6 +294,7 @@ exchange_send_cb(void *arg)
 			log_error("user_aio is NULL\n");
 			break;
 		}
+		// make sure msg is in order
 		ret = exchange_client_handle_msg(ex_node, msg, user_aio);
 		if (ret != 0) {
 			log_error("exchange_client_handle_msg failed!\n");
