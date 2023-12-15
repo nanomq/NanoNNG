@@ -387,3 +387,40 @@ parquet_find(uint32_t key)
 	pthread_mutex_unlock(&parquet_queue_mutex);
 	return value;
 }
+
+const char **
+parquet_find_span(uint32_t key, uint32_t offset, uint32_t *size)
+{
+	if (offset <= 0 || offset > key) {
+		log_error("offset can't be negative or greater than key.");
+		*size = 0;
+		return NULL;
+	}
+
+	uint32_t low = key - offset;
+	uint32_t high = key + offset;
+	uint32_t local_size = 0;
+	const char *value = NULL;
+	const char **array = NULL;
+	const char **ret = NULL;
+	void *elem = NULL;
+
+	pthread_mutex_lock(&parquet_queue_mutex);
+	array = (const char **) nng_alloc(
+	    sizeof(char *) * parquet_file_queue.size);
+
+	ret = array;
+	FOREACH_QUEUE(parquet_file_queue, elem)
+	{
+		if (elem) {
+			if (compare_callback_span(elem, low, high)) {
+				++local_size;
+				value    = nng_strdup((char *) elem);
+				*array++ = value;
+			}
+		}
+	}
+	pthread_mutex_unlock(&parquet_queue_mutex);
+	(*size) = local_size;
+	return ret;
+}
