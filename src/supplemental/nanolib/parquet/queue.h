@@ -72,6 +72,10 @@ typedef struct {
         dequeued_element; \
     })
 
+
+#define FOREACH_QUEUE(queue, elem) \
+    for (int i = (queue).front; elem = (queue).array[i], (queue).size != 0 && i != NEXT_INDEX((queue).rear, (queue).capacity); i = NEXT_INDEX(i, (queue).capacity))
+
 #define DESTROY_QUEUE(queue) free((queue).array)
 
 #endif
