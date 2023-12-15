@@ -363,3 +363,11 @@ compare_callback(void *name, uint32_t key)
 	get_range((const char *)name, range);
 	return (key >= range[0] && key <= range[1]);
 }
+
+static bool
+compare_callback_span(void *name, uint32_t low, uint32_t high)
+{
+	uint32_t range[2] = { 0 };
+	get_range((const char *)name, range);
+	return !(low > range[1] || high < range[0]);
+}
