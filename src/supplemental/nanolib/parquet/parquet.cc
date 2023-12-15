@@ -51,7 +51,7 @@ create_directory(const std::string &directory_path)
 }
 
 static char *
-get_file_name(parquet_conf *conf)
+get_file_name(conf_parquet *conf)
 {
 	char   *dir    = conf->dir;
 	char   *prefix = conf->file_name_prefix;
@@ -67,7 +67,7 @@ get_file_name(parquet_conf *conf)
 }
 
 static char *
-get_file_name_v2(parquet_conf *conf, parquet_object *object)
+get_file_name_v2(conf_parquet *conf, parquet_object *object)
 {
 	uint32_t key_start = object->keys[0];
 	uint32_t key_end   = object->keys[object->size - 1];
@@ -209,7 +209,7 @@ parquet_write_loop(void *config)
 		log_error("parquet conf is NULL");
 	}
 
-	parquet_conf *conf = (parquet_conf *) config;
+	conf_parquet *conf = (conf_parquet *) config;
 	if (!directory_exists(conf->dir)) {
 		if (!create_directory(conf->dir)) {
 			log_error("Failed to create directory %s", conf->dir);
@@ -283,7 +283,7 @@ parquet_write_loop_v2(void *config)
 		log_error("parquet conf is NULL");
 	}
 
-	parquet_conf *conf = (parquet_conf *) config;
+	conf_parquet *conf = (conf_parquet *) config;
 	if (!directory_exists(conf->dir)) {
 		if (!create_directory(conf->dir)) {
 			log_error("Failed to create directory %s", conf->dir);
@@ -339,7 +339,7 @@ parquet_write_loop_v2(void *config)
 }
 
 int
-parquet_write_launcher(parquet_conf *conf)
+parquet_write_launcher(conf_parquet *conf)
 {
 	INIT_QUEUE(parquet_queue);
 	INIT_QUEUE(parquet_file_queue);
