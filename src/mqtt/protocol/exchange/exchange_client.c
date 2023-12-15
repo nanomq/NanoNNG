@@ -154,7 +154,7 @@ exchange_sock_close(void *arg)
 }
 
 /* Check if the msg is already in rbmsgmap, if not, add it to rbmsgmap */
-inline static int
+static inline int
 exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 {
 	int ret = 0;
@@ -178,6 +178,31 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 		return -1;
 	}
 
+	ret = exchange_handle_msg(ex_node->ex, *key, msg, aio);
+	if (ret != 0) {
+		log_error("exchange_handle_msg failed!\n");
+		/* free key and msg here! */
+		nni_msg_free(msg);
+		nni_free(key, sizeof(int));
+		return -1;
+	}
+	nng_msg **msgs = nng_aio_get_prov_data(aio);
+	if (msgs != NULL) {
+		/* Clean up rbmsgmap */
+		nng_msg *tmsg = nng_aio_get_msg(aio);
+		int *msgs_lenp = (int *)nng_msg_get_proto_data(tmsg);
+		if (msgs_lenp != NULL) {
+			for (int i = 0; i < *msgs_lenp; i++) {
+				if (msgs[i] != NULL) {
+					int *tkey = nng_msg_get_proto_data(msgs[i]);
+					if (tkey != NULL) {
+						nni_id_remove(&ex_node->sock->rbmsgmap, *tkey);
+					}
+				}
+			}
+		}
+	}
+
 	ret = nni_id_set(&ex_node->sock->rbmsgmap, *key, msg);
 	if (ret != 0) {
 		log_error("rbmsgmap set failed");
@@ -186,7 +211,6 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 		nni_free(key, sizeof(int));
 		return -1;
 	}
-	(void)exchange_handle_msg(ex_node->ex, *key, msg, aio);
 
 	/* free key here! */
 	nni_free(key, sizeof(int));
