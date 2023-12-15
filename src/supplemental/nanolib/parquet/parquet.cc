@@ -371,3 +371,19 @@ compare_callback_span(void *name, uint32_t low, uint32_t high)
 	get_range((const char *)name, range);
 	return !(low > range[1] || high < range[0]);
 }
+
+const char *
+parquet_find(uint32_t key)
+{
+	const char *value = NULL;
+	void *elem = NULL;
+	pthread_mutex_lock(&parquet_queue_mutex);
+	FOREACH_QUEUE(parquet_file_queue, elem) {
+		if (elem && compare_callback(elem, key)) {
+			value = nng_strdup((char *) elem);
+			break;
+		}
+	}
+	pthread_mutex_unlock(&parquet_queue_mutex);
+	return value;
+}
