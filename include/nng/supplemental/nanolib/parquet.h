@@ -23,9 +23,8 @@ parquet_object *parquet_object_alloc(uint32_t *keys, uint8_t **darray,
 int             parquet_write_batch_async(parquet_object *elem);
 int             parquet_write_launcher(parquet_conf *conf);
 
-// TODO: unsupport now
-char  *parquetFind(uint32_t key);
-char **parquetFindSpan(uint32_t key, uint32_t span);
+const char  *parquet_find(uint32_t key);
+const char **parquet_find_span(uint32_t key, uint32_t offset, uint32_t *size);
 
 #ifdef __cplusplus
 }
