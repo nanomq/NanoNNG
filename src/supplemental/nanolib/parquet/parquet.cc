@@ -355,3 +355,11 @@ get_range(const char *name, uint32_t range[2])
 	sscanf(start, "-%d~%d.parquet", &range[0], &range[1]);
 	return;
 }
+
+static bool
+compare_callback(void *name, uint32_t key)
+{
+	uint32_t range[2] = { 0 };
+	get_range((const char *)name, range);
+	return (key >= range[0] && key <= range[1]);
+}
