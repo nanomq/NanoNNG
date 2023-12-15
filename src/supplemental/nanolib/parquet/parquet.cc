@@ -79,9 +79,9 @@ get_file_name_v2(parquet_conf *conf, parquet_object *object)
 		conf->file_index = 1;
 	}
 
-	char *file_name = (char *) malloc(strlen(prefix) + strlen(dir) + 16);
+	char *file_name = (char *) malloc(strlen(prefix) + strlen(dir) + 32);
 	sprintf(
-	    file_name, "%s/%s%d-%d.parquet", dir, prefix, key_start, key_end);
+	    file_name, "%s/%s-%d~%d.parquet", dir, prefix, key_start, key_end);
 	ENQUEUE(parquet_file_queue, file_name);
 	return file_name;
 }
@@ -346,4 +346,12 @@ parquet_write_launcher(parquet_conf *conf)
 	thread write_loop(parquet_write_loop_v2, conf);
 	write_loop.detach();
 	return 0;
+}
+
+static void
+get_range(const char *name, uint32_t range[2])
+{
+	const char *start = strrchr(name, '-');
+	sscanf(start, "-%d~%d.parquet", &range[0], &range[1]);
+	return;
 }
