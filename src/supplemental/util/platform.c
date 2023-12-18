@@ -179,6 +179,13 @@ nng_random(void)
 }
 
 int
+nng_socket_pair(int *fds)
+{
+	return (nni_socket_pair(fds));
+}
+
+// Added by NanoMQ/NanoNNG
+int
 nng_atomic_alloc_bool(nng_atomic_bool **b)
 {
 	if ((*b = nng_alloc(sizeof(nng_atomic_bool))) == NULL) {
