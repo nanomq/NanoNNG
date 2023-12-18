@@ -1,5 +1,5 @@
 //
-// Copyright 2021 Staysail Systems, Inc. <info@staysail.tech>
+// Copyright 2023 Staysail Systems, Inc. <info@staysail.tech>
 // Copyright 2018 Capitar IT Group BV <info@capitar.com>
 // Copyright 2019 Devolutions <info@devolutions.net>
 //
@@ -83,6 +83,9 @@ extern void nni_nmq_wss_register(void);
 #ifdef NNG_TRANSPORT_ZEROTIER
 extern void nni_sp_zt_register(void);
 #endif
+#ifdef NNG_TRANSPORT_FDC
+extern void nni_sp_sfd_register(void);
+#endif
 
 void
 nni_sp_tran_sys_init(void)
@@ -119,6 +122,9 @@ nni_sp_tran_sys_init(void)
 #endif
 #ifdef NNG_TRANSPORT_ZEROTIER
 	nni_sp_zt_register();
+#endif
+#ifdef NNG_TRANSPORT_FDC
+	nni_sp_sfd_register();
 #endif
 }
 
