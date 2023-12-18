@@ -14,10 +14,11 @@ typedef struct {
 	uint32_t *dsize;
 	uint32_t  size;
 	nng_aio  *aio;
+	void     *arg;
 } parquet_object;
 
 parquet_object *parquet_object_alloc(uint32_t *keys, uint8_t **darray,
-    uint32_t *dsize, uint32_t size, nng_aio *aio);
+    uint32_t *dsize, uint32_t size, nng_aio *aio, void *arg);
 int             parquet_write_batch_async(parquet_object *elem);
 int             parquet_write_launcher(conf_parquet *conf);
 

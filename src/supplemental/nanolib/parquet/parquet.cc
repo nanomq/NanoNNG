@@ -118,7 +118,7 @@ setup_schema()
 
 parquet_object *
 parquet_object_alloc(uint32_t *keys, uint8_t **darray, uint32_t *dsize,
-    uint32_t size, nng_aio *aio)
+    uint32_t size, nng_aio *aio, void *arg)
 {
 	parquet_object *elem = new parquet_object;
 	elem->keys           = keys;
@@ -126,6 +126,7 @@ parquet_object_alloc(uint32_t *keys, uint8_t **darray, uint32_t *dsize,
 	elem->dsize          = dsize;
 	elem->size           = size;
 	elem->aio            = aio;
+	elem->arg            = arg;
 	return elem;
 }
 
