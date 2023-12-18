@@ -137,7 +137,11 @@ parquet_object_free(parquet_object *elem)
 		FREE_IF_NOT_NULL(elem->keys, elem->size);
 		FREE_IF_NOT_NULL(elem->darray, elem->size);
 		FREE_IF_NOT_NULL(elem->dsize, elem->size);
-		DO_IT_IF_NOT_NULL(nng_aio_finish, elem->aio, 0);
+		nng_aio_set_prov_data(elem->aio, elem->arg);
+		uint32_t *szp = (uint32_t *)malloc(sizeof(uint32_t));
+		*szp = elem->size;
+		nng_aio_set_msg(elem->aio, (nng_msg *)szp);
+		DO_IT_IF_NOT_NULL(nng_aio_finish_sync, elem->aio, 0);
 		delete elem;
 	}
 }
