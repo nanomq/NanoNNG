@@ -281,6 +281,24 @@ parquet_write_loop(void *config)
 	return;
 }
 
+shared_ptr<parquet::FileEncryptionProperties>
+parquet_set_encryption(conf_parquet *conf)
+{
+	// const char *kFooterEncryptionKey = "0123456789012345"; // 128bit/16
+	shared_ptr<parquet::FileEncryptionProperties> encryption_configurations;
+
+	// Encryption configuration 1: Encrypt all columns and the footer with
+	// the same key. (uniform encryption)
+	parquet::FileEncryptionProperties::Builder file_encryption_builder(
+	    conf->encryption.key);
+	encryption_configurations =
+	    file_encryption_builder.footer_key_metadata(conf->encryption.key_id)
+								->algorithm(static_cast<parquet::ParquetCipher::type>(conf->encryption.type))
+								->build();
+
+	return encryption_configurations;
+}
+
 void
 parquet_write_loop_v2(void *config)
 {
