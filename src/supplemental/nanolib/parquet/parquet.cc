@@ -284,17 +284,19 @@ parquet_write_loop(void *config)
 shared_ptr<parquet::FileEncryptionProperties>
 parquet_set_encryption(conf_parquet *conf)
 {
-	// const char *kFooterEncryptionKey = "0123456789012345"; // 128bit/16
-	shared_ptr<parquet::FileEncryptionProperties> encryption_configurations;
+	shared_ptr<parquet::FileEncryptionProperties>
+	    encryption_configurations;
 
-	// Encryption configuration 1: Encrypt all columns and the footer with
+	// Encrypt all columns and the footer with
 	// the same key. (uniform encryption)
 	parquet::FileEncryptionProperties::Builder file_encryption_builder(
 	    conf->encryption.key);
 	encryption_configurations =
-	    file_encryption_builder.footer_key_metadata(conf->encryption.key_id)
-								->algorithm(static_cast<parquet::ParquetCipher::type>(conf->encryption.type))
-								->build();
+	    file_encryption_builder
+	        .footer_key_metadata(conf->encryption.key_id)
+	        ->algorithm(static_cast<parquet::ParquetCipher::type>(
+	            conf->encryption.type))
+	        ->build();
 
 	return encryption_configurations;
 }
@@ -307,6 +309,9 @@ parquet_write_loop_v2(void *config)
 	}
 
 	conf_parquet *conf = (conf_parquet *) config;
+	conf->encryption.key = "0123456789012345";
+	conf->encryption.key_id = "kf";
+	conf->encryption.type = AES_GCM_CTR_V1;
 	if (!directory_exists(conf->dir)) {
 		if (!create_directory(conf->dir)) {
 			log_error("Failed to create directory %s", conf->dir);
@@ -315,15 +320,6 @@ parquet_write_loop_v2(void *config)
 	}
 
 	using FileClass = arrow::io::FileOutputStream;
-
-	shared_ptr<parquet::WriterProperties> props =
-	    parquet::WriterProperties::Builder()
-	        .created_by("NanoMQ")
-	        ->version(parquet::ParquetVersion::PARQUET_2_6)
-	        ->data_page_version(parquet::ParquetDataPageVersion::V2)
-	        ->compression(
-	            static_cast<arrow::Compression::type>(conf->comp_type))
-	        ->build();
 
 	shared_ptr<GroupNode> schema = setup_schema();
 
@@ -352,6 +348,22 @@ parquet_write_loop_v2(void *config)
 			remove_old_file();
 		}
 		// Create a ParquetFileWriter instance
+
+		shared_ptr<parquet::FileEncryptionProperties>
+		    encryption_configurations;
+		encryption_configurations = parquet_set_encryption(conf);
+
+		shared_ptr<parquet::WriterProperties> props =
+		    parquet::WriterProperties::Builder()
+		        .created_by("NanoMQ")
+		        ->version(parquet::ParquetVersion::PARQUET_2_6)
+		        ->data_page_version(
+		            parquet::ParquetDataPageVersion::V2)
+		        ->compression(static_cast<arrow::Compression::type>(
+		            conf->comp_type))
+		        ->encryption(encryption_configurations)
+		        ->build();
+
 		shared_ptr<FileClass> out_file;
 		PARQUET_ASSIGN_OR_THROW(out_file, FileClass::Open(filename));
 		std::shared_ptr<parquet::ParquetFileWriter> file_writer =
