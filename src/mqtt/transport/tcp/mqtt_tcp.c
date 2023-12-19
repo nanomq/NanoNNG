@@ -203,7 +203,7 @@ mqtt_tcptran_pipe_init(void *arg, nni_pipe *npipe)
 	p->npipe = npipe;
 	// nni_lmq_init(&p->rslmq, 10240);
 	p->busy = false;
-	p->packmax = 0xFFFF;
+	p->packmax = 0xFFFFFFFF;
 	p->qosmax  = 2;
 	p->pingcnt = 0;
 	nni_sleep_aio(p->keepalive, &p->tmaio);
@@ -936,7 +936,6 @@ mqtt_tcptran_pipe_send(void *arg, nni_aio *aio)
 {
 	mqtt_tcptran_pipe *p = arg;
 	int                rv;
-	log_error("rhack: %s: %d: msg send!!!\n", __func__, __LINE__);
 
 	if (nni_aio_begin(aio) != 0) {
 		return;
