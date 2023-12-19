@@ -284,6 +284,7 @@ parquet_write_loop(void *config)
 shared_ptr<parquet::FileEncryptionProperties>
 parquet_set_encryption(conf_parquet *conf)
 {
+
 	shared_ptr<parquet::FileEncryptionProperties>
 	    encryption_configurations;
 
@@ -309,9 +310,6 @@ parquet_write_loop_v2(void *config)
 	}
 
 	conf_parquet *conf = (conf_parquet *) config;
-	conf->encryption.key = "0123456789012345";
-	conf->encryption.key_id = "kf";
-	conf->encryption.type = AES_GCM_CTR_V1;
 	if (!directory_exists(conf->dir)) {
 		if (!create_directory(conf->dir)) {
 			log_error("Failed to create directory %s", conf->dir);
@@ -349,20 +347,21 @@ parquet_write_loop_v2(void *config)
 		}
 		// Create a ParquetFileWriter instance
 
-		shared_ptr<parquet::FileEncryptionProperties>
-		    encryption_configurations;
-		encryption_configurations = parquet_set_encryption(conf);
+		parquet::WriterProperties::Builder builder;
 
-		shared_ptr<parquet::WriterProperties> props =
-		    parquet::WriterProperties::Builder()
-		        .created_by("NanoMQ")
-		        ->version(parquet::ParquetVersion::PARQUET_2_6)
-		        ->data_page_version(
-		            parquet::ParquetDataPageVersion::V2)
-		        ->compression(static_cast<arrow::Compression::type>(
-		            conf->comp_type))
-		        ->encryption(encryption_configurations)
-		        ->build();
+		builder.created_by("NanoMQ")
+		    ->version(parquet::ParquetVersion::PARQUET_2_6)
+		    ->data_page_version(parquet::ParquetDataPageVersion::V2)
+		    ->compression(
+		        static_cast<arrow::Compression::type>(conf->comp_type));
+
+		if (conf->encryption.enable) {
+			shared_ptr<parquet::FileEncryptionProperties>
+			    encryption_configurations;
+			encryption_configurations = parquet_set_encryption(conf);
+			builder.encryption(encryption_configurations);
+		}
+		shared_ptr<parquet::WriterProperties> props = builder.build();
 
 		shared_ptr<FileClass> out_file;
 		PARQUET_ASSIGN_OR_THROW(out_file, FileClass::Open(filename));

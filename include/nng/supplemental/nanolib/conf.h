@@ -326,8 +326,9 @@ typedef enum {
 } cipher_type;
 
 struct conf_parquet_encrypt {
-	const char * key_id;
-	const char * key;
+	bool        enable;
+	const char *key_id;
+	const char *key;
 	cipher_type type;
 };
 
