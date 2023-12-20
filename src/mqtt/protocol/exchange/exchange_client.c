@@ -17,14 +17,6 @@
 
 typedef struct exchange_sock_s         exchange_sock_t;
 typedef struct exchange_node_s         exchange_node_t;
-typedef struct exchange_sendmessages_s exchange_sendmessages_t;
-
-struct exchange_sendmessages_s {
-	int   *key;
-	nni_msg *msg;
-	nni_aio *aio;
-	nni_list_node node;
-};
 
 struct exchange_node_s {
 	exchange_t      *ex;
