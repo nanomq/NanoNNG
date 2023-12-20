@@ -112,7 +112,7 @@ exchange_release(exchange_t *ex)
 }
 
 int
-exchange_handle_msg(exchange_t *ex, int key, void *msg, nng_aio *aio)
+exchange_handle_msg(exchange_t *ex, uint32_t key, void *msg, nng_aio *aio)
 {
 	unsigned int i = 0;
 	int ret = 0;

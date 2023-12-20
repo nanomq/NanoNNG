@@ -207,7 +207,7 @@ static inline int ringBuffer_rule_check(ringBuffer_t *rb, void *data, int flag)
 }
 
 int ringBuffer_enqueue(ringBuffer_t *rb,
-					   int key,
+					   uint32_t key,
 					   void *data,
 					   unsigned long long expiredAt,
 					   nng_aio *aio)
