@@ -10,9 +10,6 @@
 static inline void free_msg_list(nng_msg **msgList, nng_msg *msg, int *lenp, int freeMsg)
 {
 	for (int i = 0; i < *lenp; i++) {
-		int *keyp = nng_msg_get_proto_data(msgList[i]);
-		printf("keyp: %d is freed!\n", *keyp);
-		nng_free(keyp, sizeof(int));
 		if (freeMsg) {
 			nng_msg_free(msgList[i]);
 		}
@@ -35,9 +32,6 @@ void
 client_publish(nng_socket sock, const char *topic, uint32_t key, uint8_t *payload,
     uint32_t payload_len, uint8_t qos, bool verbose)
 {
-	int *_key = nng_alloc(sizeof(int));
-	*_key = key;
-
 	UNUSED(verbose);
 	// create a PUBLISH message
 	nng_msg *pubmsg;
@@ -58,7 +52,7 @@ client_publish(nng_socket sock, const char *topic, uint32_t key, uint8_t *payloa
 	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
 	nng_aio_begin(aio);
 
-	nni_aio_set_prov_data(aio, _key);
+	nni_aio_set_prov_data(aio, (void *)key);
 	nni_aio_set_msg(aio, pubmsg);
 
 	nng_send_aio(sock, aio);
