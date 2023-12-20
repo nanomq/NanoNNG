@@ -88,7 +88,7 @@ int ringBuffer_init(ringBuffer_t **rb,
 					unsigned int overWrite,
 					unsigned long long expiredAt);
 int ringBuffer_enqueue(ringBuffer_t *rb,
-					   int key,
+					   uint32_t key,
 					   void *data,
 					   unsigned long long expiredAt,
 					   nng_aio *aio);
