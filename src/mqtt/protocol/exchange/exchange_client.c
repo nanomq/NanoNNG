@@ -157,6 +157,14 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 		return -1;
 	}
 
+	ret = nni_id_set(&ex_node->sock->rbmsgmap, key, msg);
+	if (ret != 0) {
+		log_error("rbmsgmap set failed");
+		/* free msg here! */
+		nni_msg_free(msg);
+		return -1;
+	}
+
 	ret = exchange_handle_msg(ex_node->ex, key, msg, aio);
 	if (ret != 0) {
 		log_error("exchange_handle_msg failed!\n");
@@ -172,19 +180,11 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 		if (msgs_lenp != NULL) {
 			for (int i = 0; i < *msgs_lenp; i++) {
 				if (msgs[i] != NULL) {
-					uint32_t tkey = (uint32_t)nng_msg_get_proto_data(msgs[i]);
+					uint32_t tkey = (uintptr_t)nng_msg_get_proto_data(msgs[i]);
 					nni_id_remove(&ex_node->sock->rbmsgmap, tkey);
 				}
 			}
 		}
-	}
-
-	ret = nni_id_set(&ex_node->sock->rbmsgmap, key, msg);
-	if (ret != 0) {
-		log_error("rbmsgmap set failed");
-		/* free msg here! */
-		nni_msg_free(msg);
-		return -1;
 	}
 
 	return 0;
@@ -199,7 +199,7 @@ exchange_sock_send(void *arg, nni_aio *aio)
 	exchange_sock_t *s = arg;
 
 	if (nni_aio_begin(aio) != 0) {
-		log_error("reuse of aio in exchange!");
+		log_error("reuse aio in exchanging!");
 		return;
 	}
 
@@ -221,7 +221,7 @@ exchange_sock_send(void *arg, nni_aio *aio)
 	}
 
 	ex_node = s->ex_node;
-	nni_mtx_lock(&ex_node->mtx);
+	nni_mtx_lock(&ex_node->mtx);  // Too complex lock, performance lost
 	if (!ex_node->isBusy) {
 		ex_node->isBusy = true;
 		ret = exchange_client_handle_msg(ex_node, msg, aio);
@@ -232,6 +232,7 @@ exchange_sock_send(void *arg, nni_aio *aio)
 		} else {
 			nni_aio_finish(aio, 0, 0);
 		}
+		// msg misordering + unsafe FIX
 		nni_aio_finish(&ex_node->saio, 0, 0);
 	} else {
 		/* Store aio in msg proto data */
