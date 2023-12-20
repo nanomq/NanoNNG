@@ -243,6 +243,7 @@ int ringBuffer_enqueue(ringBuffer_t *rb,
 			log_error("alloc new msg failed! no memory!\n");
 			return -1;
 		}
+		// just use aio count : nni_aio_count(nni_aio *aio)
 		nng_msg_set_proto_data(tmsg, NULL, (void *)list_len);
 		nng_aio_set_msg(aio, tmsg);
 		nng_aio_set_prov_data(aio, (void *)list);
