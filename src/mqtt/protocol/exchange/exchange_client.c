@@ -90,7 +90,6 @@ exchange_sock_init(void *arg, nni_sock *sock)
 static void
 exchange_sock_fini(void *arg)
 {
-	int *keyp;
 	nni_msg *msg;
 	nni_aio *aio;
 	exchange_sock_t *s = arg;
@@ -99,12 +98,6 @@ exchange_sock_fini(void *arg)
 	ex_node = s->ex_node;
 	while (nni_lmq_get(&ex_node->send_messages, &msg) == 0) {
 		aio = nni_msg_get_proto_data(msg);
-		keyp = nni_aio_get_prov_data(aio);
-
-		if (keyp != NULL) {
-			nni_free(keyp, sizeof(int));
-		}
-
 		if (aio != NULL) {
 			nni_aio_finish_error(aio, NNG_ECLOSED);
 		}
@@ -150,32 +143,25 @@ static inline int
 exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 {
 	int ret = 0;
-	int *key = NULL;
+	uint32_t key;
 	nni_msg *tmsg = NULL;
 
-	key = nni_aio_get_prov_data(aio);
-	if (key == NULL) {
-		log_error("key is NULL\n");
-		nni_msg_free(msg);
-		return -1;
-	}
+	key = (uint32_t)nni_aio_get_prov_data(aio);
 	nni_aio_set_prov_data(aio, NULL);
 
-	tmsg = nni_id_get(&ex_node->sock->rbmsgmap, *key);
+	tmsg = nni_id_get(&ex_node->sock->rbmsgmap, key);
 	if (tmsg != NULL) {
 		log_error("msg already in rbmsgmap, overwirte is not allowed");
-		/* free key and msg here! */
+		/* free msg here! */
 		nni_msg_free(msg);
-		nni_free(key, sizeof(int));
 		return -1;
 	}
 
-	ret = exchange_handle_msg(ex_node->ex, *key, msg, aio);
+	ret = exchange_handle_msg(ex_node->ex, key, msg, aio);
 	if (ret != 0) {
 		log_error("exchange_handle_msg failed!\n");
-		/* free key and msg here! */
+		/* free msg here! */
 		nni_msg_free(msg);
-		nni_free(key, sizeof(int));
 		return -1;
 	}
 	nng_msg **msgs = nng_aio_get_prov_data(aio);
@@ -186,26 +172,20 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 		if (msgs_lenp != NULL) {
 			for (int i = 0; i < *msgs_lenp; i++) {
 				if (msgs[i] != NULL) {
-					int *tkey = nng_msg_get_proto_data(msgs[i]);
-					if (tkey != NULL) {
-						nni_id_remove(&ex_node->sock->rbmsgmap, *tkey);
-					}
+					uint32_t tkey = (uint32_t)nng_msg_get_proto_data(msgs[i]);
+					nni_id_remove(&ex_node->sock->rbmsgmap, tkey);
 				}
 			}
 		}
 	}
 
-	ret = nni_id_set(&ex_node->sock->rbmsgmap, *key, msg);
+	ret = nni_id_set(&ex_node->sock->rbmsgmap, key, msg);
 	if (ret != 0) {
 		log_error("rbmsgmap set failed");
-		/* free key and msg here! */
+		/* free msg here! */
 		nni_msg_free(msg);
-		nni_free(key, sizeof(int));
 		return -1;
 	}
-
-	/* free key here! */
-	nni_free(key, sizeof(int));
 
 	return 0;
 }
@@ -265,9 +245,6 @@ exchange_sock_send(void *arg, nni_aio *aio)
 		nni_msg_set_proto_data(msg, NULL, (void *)aio);
 		if (nni_lmq_put(&ex_node->send_messages, msg) != 0) {
 			log_error("nni_lmq_put failed! msg lost\n");
-			int *key;
-			key = nni_aio_get_prov_data(aio);
-			nni_free(key, sizeof(int));
 			nni_msg_free(msg);
 		}
 
