@@ -8,8 +8,6 @@
 static inline void free_msg_list(nng_msg **msgList, nng_msg *msg, int *lenp, int freeMsg)
 {
 	for (int i = 0; i < *lenp; i++) {
-		int *keyp = nng_msg_get_proto_data(msgList[i]);
-		nng_free(keyp, sizeof(int));
 		if (freeMsg) {
 			nng_msg_free(msgList[i]);
 		}
