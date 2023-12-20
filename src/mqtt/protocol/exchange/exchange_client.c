@@ -146,7 +146,7 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 	uint32_t key;
 	nni_msg *tmsg = NULL;
 
-	key = (uint32_t)nni_aio_get_prov_data(aio);
+	key = (uintptr_t)nni_aio_get_prov_data(aio);
 	nni_aio_set_prov_data(aio, NULL);
 
 	tmsg = nni_id_get(&ex_node->sock->rbmsgmap, key);
@@ -198,21 +198,22 @@ exchange_sock_send(void *arg, nni_aio *aio)
 	exchange_node_t *ex_node = NULL;
 	exchange_sock_t *s = arg;
 
-	nni_mtx_lock(&s->mtx);
+	if (nni_aio_begin(aio) != 0) {
+		log_error("reuse of aio in exchange!");
+		return;
+	}
+
 	msg = nni_aio_get_msg(aio);
+	nni_aio_set_msg(aio, NULL);
 	if (msg == NULL) {
 		nni_aio_finish_error(aio, NNG_EINVAL);
-		nni_mtx_unlock(&s->mtx);
 		return;
 	}
-	nni_aio_set_msg(aio, NULL);
-
 	if (nni_msg_get_type(msg) != CMD_PUBLISH) {
 		nni_aio_finish_error(aio, NNG_EINVAL);
-		nni_mtx_unlock(&s->mtx);
 		return;
 	}
-
+	nni_mtx_lock(&s->mtx);
 	if (s->ex_node == NULL) {
 		nni_aio_finish_error(aio, NNG_EINVAL);
 		nni_mtx_unlock(&s->mtx);
@@ -222,15 +223,7 @@ exchange_sock_send(void *arg, nni_aio *aio)
 	ex_node = s->ex_node;
 	nni_mtx_lock(&ex_node->mtx);
 	if (!ex_node->isBusy) {
-		// FIX here
-		if (nni_aio_begin(&ex_node->saio) != 0) {
-			nni_mtx_unlock(&ex_node->mtx);
-			nni_mtx_unlock(&s->mtx);
-			nni_aio_finish_error(aio, NNG_EBUSY);
-			return;
-		}
 		ex_node->isBusy = true;
-
 		ret = exchange_client_handle_msg(ex_node, msg, aio);
 		nni_mtx_unlock(&ex_node->mtx);
 		if (ret != 0) {
