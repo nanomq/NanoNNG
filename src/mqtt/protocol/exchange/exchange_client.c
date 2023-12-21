@@ -193,7 +193,6 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 static void
 exchange_sock_send(void *arg, nni_aio *aio)
 {
-	int             ret = 0;
 	nni_msg         *msg = NULL;
 	exchange_node_t *ex_node = NULL;
 	exchange_sock_t *s = arg;
@@ -222,26 +221,19 @@ exchange_sock_send(void *arg, nni_aio *aio)
 
 	ex_node = s->ex_node;
 	nni_mtx_lock(&ex_node->mtx);  // Too complex lock, performance lost
+	/* Store aio in msg proto data */
+    nni_msg_set_proto_data(msg, NULL, (void *)aio);
 	if (!ex_node->isBusy) {
 		ex_node->isBusy = true;
-		ret = exchange_client_handle_msg(ex_node, msg, aio);
+		nni_aio_set_msg(&ex_node->saio, msg);
 		nni_mtx_unlock(&ex_node->mtx);
-		if (ret != 0) {
-			log_error("exchange_client_handle_msg failed!\n");
-			nni_aio_finish_error(aio, NNG_EINVAL);
-		} else {
-			nni_aio_finish(aio, 0, 0);
-		}
-		// msg misordering + unsafe FIX
-		nni_aio_finish(&ex_node->saio, 0, 0);
+		// kick off
+		nni_aio_finish(&ex_node->saio, 0, nni_msg_len(msg));
 	} else {
-		/* Store aio in msg proto data */
-		nni_msg_set_proto_data(msg, NULL, (void *)aio);
 		if (nni_lmq_put(&ex_node->send_messages, msg) != 0) {
 			log_error("nni_lmq_put failed! msg lost\n");
 			nni_msg_free(msg);
 		}
-
 		nni_mtx_unlock(&ex_node->mtx);
 		/* don't finish user aio here, finish user aio in send_cb */
 	}
@@ -268,19 +260,36 @@ exchange_send_cb(void *arg)
 		return;
 	}
 
-	nni_mtx_lock(&ex_node->mtx);
 	if (nni_aio_result(&ex_node->saio) != 0) {
 		nni_mtx_unlock(&ex_node->mtx);
 		return;
 	}
+
+	nni_mtx_lock(&ex_node->mtx);
+	// send cached msg first
 	while (nni_lmq_get(&ex_node->send_messages, &msg) == 0) {
-		user_aio = (nni_aio *)nni_msg_get_proto_data(msg);
+		user_aio = (nni_aio *) nni_msg_get_proto_data(msg);
 		if (user_aio == NULL) {
 			log_error("user_aio is NULL\n");
 			break;
 		}
 		// make sure msg is in order
 		ret = exchange_client_handle_msg(ex_node, msg, user_aio);
+		log_info("enqueue in lmq");
+		if (ret != 0) {
+			log_error(
+			    "exchange_client_handle cached msg failed!\n");
+			nni_aio_finish_error(user_aio, NNG_EINVAL);
+		} else {
+			nni_aio_finish(user_aio, 0, 0);
+		}
+	}
+	// check msg in aio & send
+	if ((msg = nni_aio_get_msg(&ex_node->saio)) != NULL) {
+		user_aio = (nni_aio *) nni_msg_get_proto_data(msg);
+		nni_aio_set_msg(&ex_node->saio, NULL);
+		ret = exchange_client_handle_msg(ex_node, msg, user_aio);
+		log_info("enqueue in cb");
 		if (ret != 0) {
 			log_error("exchange_client_handle_msg failed!\n");
 			nni_aio_finish_error(user_aio, NNG_EINVAL);
@@ -288,9 +297,8 @@ exchange_send_cb(void *arg)
 			nni_aio_finish(user_aio, 0, 0);
 		}
 	}
-	ex_node->isBusy = false;
 	nni_mtx_unlock(&ex_node->mtx);
-
+	ex_node->isBusy = false;
 	return;
 }
 
