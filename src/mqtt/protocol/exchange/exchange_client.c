@@ -297,8 +297,8 @@ exchange_send_cb(void *arg)
 			nni_aio_finish(user_aio, 0, 0);
 		}
 	}
-	nni_mtx_unlock(&ex_node->mtx);
 	ex_node->isBusy = false;
+	nni_mtx_unlock(&ex_node->mtx);
 	return;
 }
 
