@@ -350,6 +350,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 		if (jso_tcp) {
 			hocon_read_address_base(config, url, "bind", "nmq-tcp://", jso_tcp);
 			config->enable = true;
+			hocon_read_bool_base(config, enable, "enable", jso_tcp);
 		}
 
 		cJSON *jso_websocket = hocon_get_obj("listeners.ws", jso);
