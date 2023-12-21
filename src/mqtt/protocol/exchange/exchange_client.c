@@ -354,11 +354,11 @@ int
 exchange_client_get_msgs_by_key(void *arg, uint32_t key, uint32_t count, nng_msg ***list)
 {
 	int ret = 0;
-	exchange_sock_t *s = arg;
 	nni_msg *tmsg = NULL;
-	nni_id_map *rbmsgmap = &s->rbmsgmap;
+	exchange_sock_t *s = arg;
 
 	nni_mtx_lock(&s->mtx);
+	nni_id_map *rbmsgmap = &s->rbmsgmap;
 
 	tmsg = nni_id_get(rbmsgmap, key);
 	if (tmsg == NULL || list == NULL) {
@@ -366,18 +366,25 @@ exchange_client_get_msgs_by_key(void *arg, uint32_t key, uint32_t count, nng_msg
 		return -1;
 	}
 
-	exchange_node_t *ex_node = s->ex_node;
-	nni_mtx_lock(&ex_node->mtx);
-	/* Only one exchange with one ringBuffer now */
-	ret = ringBuffer_search_msgs_by_key(ex_node->ex->rbs[0], key, count, list);
-	if (ret != 0 || *list == NULL) {
-		log_error("ringBuffer_get_msgs_by_key failed!\n");
-		nni_mtx_unlock(&ex_node->mtx);
-		nni_mtx_unlock(&s->mtx);
-		return -1;
+	if (count == 1) {
+		nng_msg **newList = nng_alloc(sizeof(nng_msg *));
+		if (newList == NULL) {
+			nni_mtx_unlock(&s->mtx);
+			return -1;
+		}
+
+		newList[0] = tmsg;
+		*list = newList;
+	} else {
+		/* Only one exchange with one ringBuffer now */
+		ret = ringBuffer_search_msgs_by_key(s->ex_node->ex->rbs[0], key, count, list);
+		if (ret != 0 || *list == NULL) {
+			log_error("ringBuffer_get_msgs_by_key failed!\n");
+			nni_mtx_unlock(&s->mtx);
+			return -1;
+		}
 	}
 
-	nni_mtx_unlock(&ex_node->mtx);
 	nni_mtx_unlock(&s->mtx);
 	return 0;
 }
