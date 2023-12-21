@@ -26,6 +26,23 @@ static inline void free_msg_list(nng_msg **msgList, nng_msg *msg, int *lenp, int
 	}
 }
 
+static inline void client_get_msgs(nng_socket sock, uint32_t key, int count, int *lenp, nng_msg ***msgList)
+{
+	nni_aio *aio = NULL;
+	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
+
+	nni_aio_set_prov_data(aio, (void *)(uintptr_t)key);
+	nni_aio_set_msg(aio, (nni_msg *)(uintptr_t)count);
+
+	nng_recv_aio(sock, aio);
+	nng_aio_wait(aio);
+
+	*msgList = (nng_msg **)nng_aio_get_msg(aio);
+	*lenp = (uintptr_t)nng_aio_get_prov_data(aio);
+
+	nng_aio_free(aio);
+}
+
 //
 // Publish a message to the given topic and with the given QoS.
 void
@@ -51,7 +68,7 @@ client_publish(nng_socket sock, const char *topic, uint32_t key, uint8_t *payloa
 	nni_aio *aio = NULL;
 	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
 
-	nni_aio_set_prov_data(aio, (void *)key);
+	nni_aio_set_prov_data(aio, (void *)(uintptr_t)key);
 	nni_aio_set_msg(aio, pubmsg);
 
 	nng_send_aio(sock, aio);
@@ -118,6 +135,14 @@ test_exchange_client(void)
 	lenp = nng_alloc(sizeof(int));
 	*lenp = 1;
 	free_msg_list(msgList, NULL, lenp, 0);
+	msgList = NULL;
+
+	/* Use aio recv to get msgs by key */
+	lenp = nng_alloc(sizeof(int));
+	*lenp = 0;
+	client_get_msgs(sock, key, 1, lenp, &msgList);
+	NUTS_TRUE(*lenp == 1 && msgList != NULL);
+	free_msg_list(msgList, NULL, lenp, 0);
 
 	/* Only one element in ringbuffer */
 	msgList = NULL;
@@ -128,6 +153,14 @@ test_exchange_client(void)
 		key = i;
 		client_publish(sock, "topic1", key, NULL, 0, 0, 0);
 	}
+
+	/* Use aio recv to get msgs by key */
+	lenp = nng_alloc(sizeof(int));
+	*lenp = 0;
+	client_get_msgs(sock, key, 10, lenp, &msgList);
+	NUTS_TRUE(*lenp == 10 && msgList != NULL);
+	free_msg_list(msgList, NULL, lenp, 0);
+
 
 	/* Ringbuffer is full and msgs returned need to free */
 	client_publish(sock, "topic1", 10, NULL, 0, 0, 0);
