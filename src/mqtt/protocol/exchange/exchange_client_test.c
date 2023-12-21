@@ -50,7 +50,6 @@ client_publish(nng_socket sock, const char *topic, uint32_t key, uint8_t *payloa
 
 	nni_aio *aio = NULL;
 	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
-	nng_aio_begin(aio);
 
 	nni_aio_set_prov_data(aio, (void *)key);
 	nni_aio_set_msg(aio, pubmsg);
