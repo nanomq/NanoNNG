@@ -10,7 +10,7 @@
 
 static inline int ringBuffer_get_msgs(ringBuffer_t *rb, int count, nng_msg ***list)
 {
-	int i = 0;
+	unsigned int i = 0;
 	int j = 0;
 
 	nng_msg **newList = nng_alloc(count * sizeof(nng_msg *));
@@ -21,7 +21,7 @@ static inline int ringBuffer_get_msgs(ringBuffer_t *rb, int count, nng_msg ***li
 	for (i = rb->head; i < rb->size; i++) {
 		i = i % rb->cap;
 		nng_msg *msg = rb->msgs[i].data;
-		nng_msg_set_proto_data(msg, NULL, (void *)rb->msgs[i].key);
+		nng_msg_set_proto_data(msg, NULL, (void *)(uintptr_t)rb->msgs[i].key);
 
 		newList[j] = msg;
 
@@ -38,8 +38,8 @@ static inline int ringBuffer_get_msgs(ringBuffer_t *rb, int count, nng_msg ***li
 
 static inline int ringBuffer_clean_msgs(ringBuffer_t *rb)
 {
-	int i = 0;
-	int count = 0;
+	unsigned int i = 0;
+	unsigned int count = 0;
 
 	if (rb->msgs != NULL) {
 		if (rb->size != 0) {
@@ -63,7 +63,7 @@ static inline int ringBuffer_clean_msgs(ringBuffer_t *rb)
 	return 0;
 }
 
-static inline int ringBuffer_get_and_clean_msgs(ringBuffer_t *rb, int count, nng_msg ***list)
+static inline int ringBuffer_get_and_clean_msgs(ringBuffer_t *rb, unsigned int count, nng_msg ***list)
 {
 	int ret;
 
@@ -470,10 +470,10 @@ int ringBuffer_search_msg_by_key(ringBuffer_t *rb, uint32_t key, nng_msg **msg)
 	return -1;
 }
 
-int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint32_t key, int count, nng_msg ***list)
+int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint32_t key, uint32_t count, nng_msg ***list)
 {
-	int i = 0;
-	int j = 0;
+	unsigned int i = 0;
+	unsigned int j = 0;
 
 	if (rb == NULL || count <= 0 || list == NULL) {
 		return -1;
@@ -495,7 +495,7 @@ int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint32_t key, int count, nng
 			for (j = 0; j < count; j++) {
 				nng_msg *msg = rb->msgs[i].data;
 
-				nng_msg_set_proto_data(msg, NULL, (void *)rb->msgs[i].key);
+				nng_msg_set_proto_data(msg, NULL, (void *)(uintptr_t)rb->msgs[i].key);
 
 				newList[j] = msg;
 
