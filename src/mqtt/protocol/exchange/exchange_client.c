@@ -39,6 +39,7 @@ static void exchange_sock_init(void *arg, nni_sock *sock);
 static void exchange_sock_fini(void *arg);
 static void exchange_sock_open(void *arg);
 static void exchange_sock_send(void *arg, nni_aio *aio);
+static void exchange_sock_recv(void *arg, nni_aio *aio);
 static void exchange_send_cb(void *arg);
 
 static int
@@ -250,6 +251,40 @@ exchange_sock_send(void *arg, nni_aio *aio)
 }
 
 static void
+exchange_sock_recv(void *arg, nni_aio *aio)
+{
+	int ret = 0;
+	exchange_sock_t *s = arg;
+
+	if (nni_aio_begin(aio) != 0) {
+		log_error("reuse aio in exchanging!");
+		return;
+	}
+
+	uint32_t key = (uintptr_t)nni_aio_get_prov_data(aio);
+	uint32_t count = (uintptr_t)nni_aio_get_msg(aio);
+
+	nni_aio_set_prov_data(aio, NULL);
+	nni_aio_set_msg(aio, NULL);
+
+	nng_msg **list = NULL;
+
+	ret = exchange_client_get_msgs_by_key(s, key, count, &list);
+	if (ret != 0) {
+		log_error("exchange_client_get_msgs_by_key failed!\n");
+		nni_aio_finish_error(aio, NNG_EINVAL);
+		return;
+	}
+
+	nni_aio_set_msg(aio, (void *)list);
+	nni_aio_set_prov_data(aio, (void *)(uintptr_t)count);
+	nni_aio_finish(aio, 0, 0);
+
+	return;
+}
+
+
+static void
 exchange_send_cb(void *arg)
 {
 	exchange_node_t *ex_node = arg;
@@ -419,14 +454,13 @@ static nni_proto_sock_ops exchange_sock_ops = {
 	.sock_close   = exchange_sock_close,
 	.sock_options = exchange_sock_options,
 	.sock_send    = exchange_sock_send,
-	.sock_recv    = NULL,
+	.sock_recv    = exchange_sock_recv,
 };
 
 static nni_proto exchange_proto = {
 	.proto_version  = NNI_PROTOCOL_VERSION,
 	.proto_self     = { NNG_EXCHANGE_SELF, NNG_EXCHANGE_SELF_NAME },
 	.proto_peer     = { NNG_EXCHANGE_PEER, NNG_EXCHANGE_PEER_NAME },
-	/* TODO: send only */
 	.proto_flags    = NNI_PROTO_FLAG_SNDRCV,
 	.proto_sock_ops = &exchange_sock_ops,
 	.proto_pipe_ops = &exchange_pipe_ops,
