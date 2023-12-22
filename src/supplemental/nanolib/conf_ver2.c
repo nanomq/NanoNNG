@@ -54,6 +54,11 @@ static enum_map compress_type[] = {
 	{ -1, NULL },
 };
 
+static enum_map encryption_type[] = {
+	{AES_GCM_V1, "aes_gcm_v1" },
+	{AES_GCM_CTR_V1, "aes_gcm_ctr_v1"}
+};
+
 cJSON *hocon_get_obj(char *key, cJSON *jso);
 
 // Read json value into struct
@@ -1097,7 +1102,6 @@ static void
 conf_parquet_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *jso_parquet = cJSON_GetObjectItem(jso, "parquet");
-	// cJSON *jso_parquet = hocon_get_obj("parquet", jso);
 	if (jso_parquet) {
 		conf_parquet *parquet = &(config->parquet);
 		parquet->enable       = true;
@@ -1106,7 +1110,20 @@ conf_parquet_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_str(parquet, dir, jso_parquet);
 		hocon_read_str(parquet, file_name_prefix, jso_parquet);
 		hocon_read_enum_base(parquet, comp_type, "compress",
-		        jso_parquet, compress_type);
+		    jso_parquet, compress_type);
+		cJSON *jso_parquet_encryption =
+		    cJSON_GetObjectItem(jso_parquet, "encryption");
+		if (jso_parquet_encryption) {
+			conf_parquet_encryption *encryption =
+			    &(parquet->encryption);
+			encryption->enable = true;
+			hocon_read_str(
+			    encryption, key_id, jso_parquet_encryption);
+			hocon_read_str(
+			    encryption, key, jso_parquet_encryption);
+			hocon_read_enum(encryption, type,
+			    jso_parquet_encryption, encryption_type);
+		}
 	}
 
 	return;
