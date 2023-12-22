@@ -915,10 +915,16 @@ conf_init(conf *nanomq_conf)
 	conf_tls_init(&nanomq_conf->web_hook.tls);
 
 	nanomq_conf->parquet.enable           = false;
+	nanomq_conf->parquet.encryption.enable= false;
+	nanomq_conf->parquet.encryption.key   = NULL;
+	nanomq_conf->parquet.encryption.key_id= NULL;
+	nanomq_conf->parquet.encryption.type  = AES_GCM_V1;
+
 	nanomq_conf->parquet.file_count       = 5;
 	nanomq_conf->parquet.comp_type        = UNCOMPRESSED;
 	nanomq_conf->parquet.file_name_prefix = NULL;
 	nanomq_conf->parquet.dir              = NULL;
+
 
 	conf_auth_init(&nanomq_conf->auths);
 	nanomq_conf->auth_http.enable = false;
