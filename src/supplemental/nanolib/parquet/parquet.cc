@@ -13,6 +13,8 @@
 #include <sys/stat.h>
 #include <thread>
 #include <vector>
+#include <atomic>
+
 
 using namespace std;
 using parquet::ConvertedType;
@@ -28,6 +30,11 @@ using parquet::schema::PrimitiveNode;
 	}
 
 #define FREE_IF_NOT_NULL(free, size) DO_IT_IF_NOT_NULL(nng_free, free, size)
+
+
+#define _Atomic(X) std::atomic< X >
+atomic_bool is_available = false;
+#define WAIT_FOR_AVAILABLE	while (!is_available) nng_msleep(10);
 
 CircularQueue   parquet_queue;
 CircularQueue   parquet_file_queue;
@@ -149,6 +156,7 @@ parquet_object_free(parquet_object *elem)
 int
 parquet_write_batch_async(parquet_object *elem)
 {
+	WAIT_FOR_AVAILABLE
 	pthread_mutex_lock(&parquet_queue_mutex);
 	if (IS_EMPTY(parquet_queue)) {
 		pthread_cond_broadcast(&parquet_queue_not_empty);
@@ -377,6 +385,7 @@ parquet_write_launcher(conf_parquet *conf)
 {
 	INIT_QUEUE(parquet_queue);
 	INIT_QUEUE(parquet_file_queue);
+	is_available = true;
 	thread write_loop(parquet_write_loop_v2, conf);
 	write_loop.detach();
 	return 0;
@@ -409,6 +418,7 @@ compare_callback_span(void *name, uint32_t low, uint32_t high)
 const char *
 parquet_find(uint32_t key)
 {
+	WAIT_FOR_AVAILABLE
 	const char *value = NULL;
 	void *elem = NULL;
 	pthread_mutex_lock(&parquet_queue_mutex);
@@ -430,6 +440,8 @@ parquet_find_span(uint32_t key, uint32_t offset, uint32_t *size)
 		*size = 0;
 		return NULL;
 	}
+
+	WAIT_FOR_AVAILABLE
 
 	uint32_t low = key - offset;
 	uint32_t high = key + offset;
