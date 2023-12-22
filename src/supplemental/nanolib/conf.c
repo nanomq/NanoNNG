@@ -1125,6 +1125,15 @@ print_parquet_conf(conf_parquet *parquet)
 	log_info("parquet dir:              %s", parquet->dir);
 	const char *encode_type = get_compress_type(parquet->comp_type);
 	log_info("parquet compress:         %s", encode_type);
+	conf_parquet_encryption *encryption = &(parquet->encryption);
+	log_info("parquet encryption:       %s",
+	    encryption->enable ? "enable" : "disable");
+	if (encryption->enable) {
+		log_info("parquet encryption key:   %s", encryption->key);
+		log_info("parquet encryption key_id:%s", encryption->key_id);
+		log_info("parquet encryption type:  %s",
+		    encryption->type == 0 ? "AES_GCM_V1" : "AES_GCM_CTR_V1");
+	}
 	log_info("parquet file_name_prefix: %s", parquet->file_name_prefix);
 	log_info("parquet file_count:       %d", parquet->file_count);
 }
