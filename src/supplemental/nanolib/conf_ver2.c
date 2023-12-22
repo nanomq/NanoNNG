@@ -989,7 +989,7 @@ conf_exchange_client_node_parse(
 {
 	int ret;
 
-	cJSON *exchange = obj;
+	cJSON *exchange = hocon_get_obj("exchange", obj);;
 	char **rbsName = NULL;
 	unsigned int *rbsCap = NULL;
 
@@ -1085,13 +1085,9 @@ conf_exchange_parse_ver2(conf *config, cJSON *jso)
 		conf_exchange_client_node *node = NNI_ALLOC_STRUCT(node);
 		nng_mtx_alloc(&node->mtx);
 		conf_exchange_client_node_init(node);
-
-		cJSON *exchange_node = hocon_get_obj("exchange", node_item);
-		conf_exchange_client_node_parse(node, exchange_node);
-
-		cvector_push_back(config->exchange.nodes, exchange_node);
+		conf_exchange_client_node_parse(node, node_item);
+		cvector_push_back(config->exchange.nodes, node);
 	}
-
 	config->exchange.count = cvector_size(config->exchange.nodes);
 
 	return;
