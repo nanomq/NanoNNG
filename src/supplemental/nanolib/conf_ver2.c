@@ -1006,7 +1006,7 @@ conf_exchange_client_node_parse(
 		return;
 	}
 
-	cJSON *rb = hocon_get_obj("ringbuffer", exchange);
+	cJSON *rb = hocon_get_obj("ringbus", exchange);
 	ringBuffer_node *rb_node = NNI_ALLOC_STRUCT(rb_node);
 	if (rb_node == NULL) {
 		return;
@@ -1026,7 +1026,8 @@ conf_exchange_client_node_parse(
 	NNI_FREE_STRUCT(rb_node);
 
 	exchange_t *ex = NULL;
-	ret = exchange_init(&ex, ex_node->name, ex_node->topic, rbsCap, rbsName, cvector_size(rbsName));
+	ret = exchange_init(&ex, ex_node->name, ex_node->topic, rbsCap,
+						rbsName, cvector_size(rbsName));
 	if (ret != 0 || ex == NULL) {
 		NNI_FREE_STRUCT(ex_node);
 		return;
@@ -1104,6 +1105,7 @@ conf_parquet_parse_ver2(conf *config, cJSON *jso)
 	if (jso_parquet) {
 		conf_parquet *parquet = &(config->parquet);
 		parquet->enable       = true;
+		hocon_read_bool_base(parquet, enable, "enable", jso_parquet);
 		hocon_read_num(parquet, file_count, jso_parquet);
 		hocon_read_str(parquet, dir, jso_parquet);
 		hocon_read_str(parquet, file_name_prefix, jso_parquet);
