@@ -341,7 +341,6 @@ parquet_write_loop_v2(void *config)
 		log_debug("fetch element from parquet queue");
 		parquet_object *ele =
 		    (parquet_object *) DEQUEUE(parquet_queue);
-		pthread_mutex_unlock(&parquet_queue_mutex);
 
 		char *filename = get_file_name_v2(conf, ele);
 
@@ -353,8 +352,9 @@ parquet_write_loop_v2(void *config)
 		if (QUEUE_SIZE(parquet_file_queue) > conf->file_count) {
 			remove_old_file();
 		}
-		// Create a ParquetFileWriter instance
+		pthread_mutex_unlock(&parquet_queue_mutex);
 
+		// Create a ParquetFileWriter instance
 		parquet::WriterProperties::Builder builder;
 
 		builder.created_by("NanoMQ")
