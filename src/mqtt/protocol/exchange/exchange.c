@@ -127,7 +127,7 @@ exchange_handle_msg(exchange_t *ex, uint32_t key, void *msg, nng_aio *aio)
 			log_error("Ring Buffer enqueue failed\n");
 			return -1;
 		} else {
-			log_info("msg enqueued! msg %p key: %d", msg, key);
+			log_debug("msg enqueued! msg %p key: %d", msg, key);
 		}
 	}
 

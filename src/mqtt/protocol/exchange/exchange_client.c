@@ -263,7 +263,7 @@ exchange_sock_recv(void *arg, nni_aio *aio)
 
 	ret = exchange_client_get_msgs_by_key(s, key, count, &list);
 	if (ret != 0) {
-		log_error("exchange_client_get_msgs_by_key failed!\n");
+		log_warn("exchange_client_get_msgs_by_key failed!");
 		nni_aio_finish_error(aio, NNG_EINVAL);
 		return;
 	}
