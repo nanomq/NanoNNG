@@ -144,13 +144,15 @@ static inline int
 exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 {
 	int ret = 0;
-	uint32_t key;
+	uint64_t key;
+	uint32_t key2;
 	nni_msg *tmsg = NULL;
 
-	key = (uintptr_t)nni_aio_get_prov_data(aio);
+	key  = nni_msg_get_timestamp(msg);
+	key2 = key & 0XFFFFFFFF;
 	nni_aio_set_prov_data(aio, NULL);
 
-	tmsg = nni_id_get(&ex_node->sock->rbmsgmap, key);
+	tmsg = nni_id_get(&ex_node->sock->rbmsgmap, key2);
 	if (tmsg != NULL) {
 		log_error("msg already in rbmsgmap, overwirte is not allowed");
 		/* free msg here! */
@@ -158,7 +160,7 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 		return -1;
 	}
 
-	ret = nni_id_set(&ex_node->sock->rbmsgmap, key, msg);
+	ret = nni_id_set(&ex_node->sock->rbmsgmap, key2, msg);
 	if (ret != 0) {
 		log_error("rbmsgmap set failed");
 		/* free msg here! */
@@ -181,7 +183,7 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 		if (msgs_lenp != NULL) {
 			for (int i = 0; i < *msgs_lenp; i++) {
 				if (msgs[i] != NULL) {
-					uint32_t tkey = (uintptr_t)nng_msg_get_proto_data(msgs[i]);
+					uint32_t tkey = (uint32_t)(nni_msg_get_timestamp(msgs[i]) & 0XFFFFFFFF);
 					nni_id_remove(&ex_node->sock->rbmsgmap, tkey);
 				}
 			}
@@ -246,15 +248,23 @@ static void
 exchange_sock_recv(void *arg, nni_aio *aio)
 {
 	int ret = 0;
+	nni_msg *msg;
 	exchange_sock_t *s = arg;
 
 	if (nni_aio_begin(aio) != 0) {
 		log_error("reuse aio in exchanging!");
 		return;
 	}
-
-	uint32_t key = (uintptr_t)nni_aio_get_prov_data(aio);
-	uint32_t count = (uintptr_t)nni_aio_get_msg(aio);
+	nni_mtx_lock(&s->mtx);
+	msg = nni_aio_get_msg(aio);
+	if (msg == NULL) {
+		log_error("NUll Commanding msg!");
+		nni_mtx_unlock(&s->mtx);
+		nni_aio_finish_error(aio, NNG_EINVAL);
+		return;
+	}
+	uint64_t key = nni_msg_get_timestamp;
+	uint32_t count = (uintptr_t)nni_msg_get_proto_data(msg);
 
 	nni_aio_set_prov_data(aio, NULL);
 	nni_aio_set_msg(aio, NULL);
@@ -270,6 +280,7 @@ exchange_sock_recv(void *arg, nni_aio *aio)
 
 	nni_aio_set_msg(aio, (void *)list);
 	nni_aio_set_prov_data(aio, (void *)(uintptr_t)count);
+	nni_mtx_unlock(&s->mtx);
 	nni_aio_finish(aio, 0, 0);
 
 	return;
@@ -374,7 +385,7 @@ exchange_sock_get_rbmsgmap(void *arg, void *v, size_t *szp, nni_opt_type t)
 }
 
 int
-exchange_client_get_msg_by_key(void *arg, uint32_t key, nni_msg **msg)
+exchange_client_get_msg_by_key(void *arg, uint64_t key, nni_msg **msg)
 {
 	exchange_sock_t *s = arg;
 	nni_id_map *rbmsgmap = &s->rbmsgmap;
@@ -384,7 +395,8 @@ exchange_client_get_msg_by_key(void *arg, uint32_t key, nni_msg **msg)
 	}
 
 	nni_msg *tmsg = NULL;
-	tmsg = nni_id_get(rbmsgmap, key);
+	uint32_t key2 = key & 0XFFFFFFFF;
+	tmsg = nni_id_get(rbmsgmap, key2);
 	if (tmsg == NULL) {
 		return -1;
 	}
@@ -394,7 +406,7 @@ exchange_client_get_msg_by_key(void *arg, uint32_t key, nni_msg **msg)
 }
 
 int
-exchange_client_get_msgs_by_key(void *arg, uint32_t key, uint32_t count, nng_msg ***list)
+exchange_client_get_msgs_by_key(void *arg, uint64_t key, uint32_t count, nng_msg ***list)
 {
 	int ret = 0;
 	nni_msg *tmsg = NULL;
@@ -402,8 +414,8 @@ exchange_client_get_msgs_by_key(void *arg, uint32_t key, uint32_t count, nng_msg
 
 	nni_mtx_lock(&s->mtx);
 	nni_id_map *rbmsgmap = &s->rbmsgmap;
-
-	tmsg = nni_id_get(rbmsgmap, key);
+	uint32_t key2 = key & 0XFFFFFFFF;
+	tmsg = nni_id_get(rbmsgmap, key2);
 	if (tmsg == NULL || list == NULL) {
 		nni_mtx_unlock(&s->mtx);
 		return -1;
