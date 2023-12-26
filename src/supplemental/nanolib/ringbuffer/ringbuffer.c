@@ -197,7 +197,7 @@ static inline int ringBuffer_rule_check(ringBuffer_t *rb, void *data, int flag)
 }
 
 int ringBuffer_enqueue(ringBuffer_t *rb,
-					   uint32_t key,
+					   uint64_t key,
 					   void *data,
 					   unsigned long long expiredAt,
 					   nng_aio *aio)
@@ -448,7 +448,7 @@ int ringBuffer_add_rule(ringBuffer_t *rb,
 	return 0;
 }
 
-int ringBuffer_search_msg_by_key(ringBuffer_t *rb, uint32_t key, nng_msg **msg)
+int ringBuffer_search_msg_by_key(ringBuffer_t *rb, uint64_t key, nng_msg **msg)
 {
 	unsigned int i = 0;
 
@@ -470,7 +470,7 @@ int ringBuffer_search_msg_by_key(ringBuffer_t *rb, uint32_t key, nng_msg **msg)
 	return -1;
 }
 
-int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint32_t key, uint32_t count, nng_msg ***list)
+int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint64_t key, uint32_t count, nng_msg ***list)
 {
 	unsigned int i = 0;
 	unsigned int j = 0;
