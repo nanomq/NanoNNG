@@ -113,8 +113,8 @@ setup_schema()
 {
 	parquet::schema::NodeVector fields;
 	fields.push_back(parquet::schema::PrimitiveNode::Make("key",
-	    parquet::Repetition::OPTIONAL, parquet::Type::INT32,
-	    parquet::ConvertedType::UINT_32));
+	    parquet::Repetition::OPTIONAL, parquet::Type::INT64,
+	    parquet::ConvertedType::UINT_64));
 	fields.push_back(parquet::schema::PrimitiveNode::Make("data",
 	    parquet::Repetition::OPTIONAL, parquet::Type::BYTE_ARRAY,
 	    parquet::ConvertedType::UTF8));
@@ -124,7 +124,7 @@ setup_schema()
 }
 
 parquet_object *
-parquet_object_alloc(uint32_t *keys, uint8_t **darray, uint32_t *dsize,
+parquet_object_alloc(uint64_t *keys, uint8_t **darray, uint32_t *dsize,
     uint32_t size, nng_aio *aio, void *arg)
 {
 	parquet_object *elem = new parquet_object;
@@ -392,31 +392,31 @@ parquet_write_launcher(conf_parquet *conf)
 }
 
 static void
-get_range(const char *name, uint32_t range[2])
+get_range(const char *name, uint64_t range[2])
 {
 	const char *start = strrchr(name, '-');
-	sscanf(start, "-%d~%d.parquet", &range[0], &range[1]);
+	sscanf(start, "-%ld~%ld.parquet", &range[0], &range[1]);
 	return;
 }
 
 static bool
-compare_callback(void *name, uint32_t key)
+compare_callback(void *name, uint64_t key)
 {
-	uint32_t range[2] = { 0 };
+	uint64_t range[2] = { 0 };
 	get_range((const char *)name, range);
 	return (key >= range[0] && key <= range[1]);
 }
 
 static bool
-compare_callback_span(void *name, uint32_t low, uint32_t high)
+compare_callback_span(void *name, uint64_t low, uint64_t high)
 {
-	uint32_t range[2] = { 0 };
+	uint64_t range[2] = { 0 };
 	get_range((const char *)name, range);
 	return !(low > range[1] || high < range[0]);
 }
 
 const char *
-parquet_find(uint32_t key)
+parquet_find(uint64_t key)
 {
 	WAIT_FOR_AVAILABLE
 	const char *value = NULL;
@@ -433,7 +433,7 @@ parquet_find(uint32_t key)
 }
 
 const char **
-parquet_find_span(uint32_t key, uint32_t offset, uint32_t *size)
+parquet_find_span(uint64_t key, uint32_t offset, uint32_t *size)
 {
 	if (offset <= 0 || offset > key) {
 		log_error("offset can't be negative or greater than key.");
@@ -443,8 +443,8 @@ parquet_find_span(uint32_t key, uint32_t offset, uint32_t *size)
 
 	WAIT_FOR_AVAILABLE
 
-	uint32_t low = key - offset;
-	uint32_t high = key + offset;
+	uint64_t low = key - offset;
+	uint64_t high = key + offset;
 	uint32_t local_size = 0;
 	const char *value = NULL;
 	const char **array = NULL;
