@@ -31,8 +31,12 @@ static inline void client_get_msgs(nng_socket sock, uint64_t key, int count, int
 	nni_aio *aio = NULL;
 	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
 
-	nni_aio_set_prov_data(aio, (void *)(uintptr_t)key);
-	nni_aio_set_msg(aio, (nni_msg *)(uintptr_t)count);
+	nng_msg *msg;
+	nng_msg_alloc(&msg, 0);
+	nng_msg_set_timestamp(msg, key);
+	nni_msg_set_proto_data(msg, NULL, (void *)(uintptr_t)count);
+
+	nni_aio_set_msg(aio, msg);
 
 	nng_recv_aio(sock, aio);
 	nng_aio_wait(aio);
@@ -69,7 +73,8 @@ client_publish(nng_socket sock, const char *topic, uint64_t key, uint8_t *payloa
 	nni_aio *aio = NULL;
 	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
 
-	nni_aio_set_prov_data(aio, (void *)(uintptr_t)key);
+
+	nng_msg_set_timestamp(pubmsg, key);
 	nni_aio_set_msg(aio, pubmsg);
 
 	nng_send_aio(sock, aio);
