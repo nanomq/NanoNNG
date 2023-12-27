@@ -26,7 +26,7 @@ static inline void free_msg_list(nng_msg **msgList, nng_msg *msg, int *lenp, int
 	}
 }
 
-static inline void client_get_msgs(nng_socket sock, uint32_t key, int count, int *lenp, nng_msg ***msgList)
+static inline void client_get_msgs(nng_socket sock, uint64_t key, int count, int *lenp, nng_msg ***msgList)
 {
 	nni_aio *aio = NULL;
 	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
@@ -40,13 +40,14 @@ static inline void client_get_msgs(nng_socket sock, uint32_t key, int count, int
 	*msgList = (nng_msg **)nng_aio_get_msg(aio);
 	*lenp = (uintptr_t)nng_aio_get_prov_data(aio);
 
+	nng_msg_free(msg);
 	nng_aio_free(aio);
 }
 
 //
 // Publish a message to the given topic and with the given QoS.
 void
-client_publish(nng_socket sock, const char *topic, uint32_t key, uint8_t *payload,
+client_publish(nng_socket sock, const char *topic, uint64_t key, uint8_t *payload,
     uint32_t payload_len, uint8_t qos, bool verbose)
 {
 	UNUSED(verbose);
@@ -89,7 +90,7 @@ void
 test_exchange_client(void)
 {
 	int rv = 0;
-	uint32_t key = 0;
+	uint64_t key = 0;
 	nng_socket sock;
 	exchange_t *ex = NULL;
 
