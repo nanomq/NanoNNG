@@ -263,7 +263,7 @@ exchange_sock_recv(void *arg, nni_aio *aio)
 		nni_aio_finish_error(aio, NNG_EINVAL);
 		return;
 	}
-	uint64_t key = nni_msg_get_timestamp;
+	uint64_t key = nni_msg_get_timestamp(msg);
 	uint32_t count = (uintptr_t)nni_msg_get_proto_data(msg);
 
 	nni_aio_set_prov_data(aio, NULL);
@@ -274,6 +274,7 @@ exchange_sock_recv(void *arg, nni_aio *aio)
 	ret = exchange_client_get_msgs_by_key(s, key, count, &list);
 	if (ret != 0) {
 		log_warn("exchange_client_get_msgs_by_key failed!");
+		nni_mtx_unlock(&s->mtx);
 		nni_aio_finish_error(aio, NNG_EINVAL);
 		return;
 	}
