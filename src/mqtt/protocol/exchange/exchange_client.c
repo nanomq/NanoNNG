@@ -322,7 +322,6 @@ exchange_send_cb(void *arg)
 		}
 		// make sure msg is in order
 		ret = exchange_client_handle_msg(ex_node, msg, user_aio);
-		log_info("enqueue in lmq");
 		if (ret != 0) {
 			log_error(
 			    "exchange_client_handle cached msg failed!\n");
@@ -336,7 +335,6 @@ exchange_send_cb(void *arg)
 		user_aio = (nni_aio *) nni_msg_get_proto_data(msg);
 		nni_aio_set_msg(&ex_node->saio, NULL);
 		ret = exchange_client_handle_msg(ex_node, msg, user_aio);
-		log_info("enqueue in cb");
 		if (ret != 0) {
 			log_error("exchange_client_handle_msg failed!\n");
 			nni_aio_finish_error(user_aio, NNG_EINVAL);
