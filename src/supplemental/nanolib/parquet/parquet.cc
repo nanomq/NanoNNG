@@ -76,8 +76,8 @@ get_file_name(conf_parquet *conf)
 static char *
 get_file_name_v2(conf_parquet *conf, parquet_object *object)
 {
-	uint32_t key_start = object->keys[0];
-	uint32_t key_end   = object->keys[object->size - 1];
+	uint64_t key_start = object->keys[0];
+	uint64_t key_end   = object->keys[object->size - 1];
 	char    *dir       = conf->dir;
 	char    *prefix    = conf->file_name_prefix;
 	uint8_t  index     = conf->file_index++;
@@ -86,9 +86,9 @@ get_file_name_v2(conf_parquet *conf, parquet_object *object)
 		conf->file_index = 1;
 	}
 
-	char *file_name = (char *) malloc(strlen(prefix) + strlen(dir) + 32);
+	char *file_name = (char *) malloc(strlen(prefix) + strlen(dir) + 20 + 20 + 16);
 	sprintf(
-	    file_name, "%s/%s-%d~%d.parquet", dir, prefix, key_start, key_end);
+	    file_name, "%s/%s-%llu~%llu.parquet", dir, prefix, key_start, key_end);
 	ENQUEUE(parquet_file_queue, file_name);
 	return file_name;
 }
