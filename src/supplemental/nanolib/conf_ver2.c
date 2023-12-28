@@ -911,10 +911,32 @@ update_subscription_vin(conf_bridge_node *node, char *vin)
 	}
 }
 
+static void
+update_parquet_vin(conf_parquet *parquet)
+{
+	if (parquet->file_name_prefix && 0 == nng_strcasecmp(parquet->file_name_prefix, "${VIN}"))
+	{
+		FILE *fp = popen("getprop |grep vin", "r");
+		// FILE *fp = popen("echo \"[persist.vehicled.vin]: [DV_PV_TASK_ENABLE]\" | grep vin", "r");
+		char  line[100];
+		fgets(line, sizeof(line), fp);
+		char *p = strchr(line, ':');
+		if (p != NULL) {
+			char *p_b = strchr(p, '[') + 1;
+			p = strchr(p, ']');
+			*p = '\0';
+			log_debug("vin: %s", p_b);
+			nng_strfree(parquet->file_name_prefix);
+			parquet->file_name_prefix = strdup(p_b);
+		}
+		pclose(fp);
+
+	}
+}
+
 #define CONF_NODE_CLIENTID 0
 #define CONF_NODE_SUBSCRIPTION 1
 #define CONF_NODE_FORWARD 2
-
 
 static void
 update_bridge_node_vin(conf_bridge_node *node, int type)
@@ -943,7 +965,6 @@ update_bridge_node_vin(conf_bridge_node *node, int type)
 		default:
 			break;
 		}
-
 	}
 
 	pclose(fp);
@@ -1287,6 +1308,7 @@ conf_parquet_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_size(parquet, file_size, jso_parquet);
 		hocon_read_str(parquet, dir, jso_parquet);
 		hocon_read_str(parquet, file_name_prefix, jso_parquet);
+		update_parquet_vin(parquet);
 		hocon_read_enum_base(parquet, comp_type, "compress",
 		    jso_parquet, compress_type);
 		cJSON *jso_parquet_encryption =
