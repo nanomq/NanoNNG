@@ -879,13 +879,8 @@ update_subscription_vin(conf_bridge_node *node, char *vin)
 {
 	if (node->sub_list) {
 		for (size_t i = 0; i < node->sub_count; i++) {
-			node->sub_list[i]->local_topic = check_and_replace_vin(
-			    node->sub_list[i]->local_topic, vin);
-			node->sub_list[i]->local_topic_len =
-			    strlen(node->sub_list[i]->local_topic);
-			node->sub_list[i]->remote_topic =
-			    check_and_replace_vin(
-			        node->sub_list[i]->remote_topic, vin);
+			node->sub_list[i]->remote_topic = check_and_replace_vin(
+			    node->sub_list[i]->remote_topic, vin);
 			node->sub_list[i]->remote_topic_len =
 			    strlen(node->sub_list[i]->remote_topic);
 		}
@@ -1019,8 +1014,6 @@ conf_bridge_quic_parse_ver2(conf_bridge_node *node, cJSON *jso_bridge_node)
 }
 #endif
 
-
-
 void
 conf_bridge_node_parse(
     conf_bridge_node *node, conf_sqlite *bridge_sqlite, cJSON *obj)
@@ -1116,7 +1109,6 @@ conf_bridge_node_parse(
 	hocon_read_num_base(node, parallel, "max_parallel_processes", obj);
 	update_bridge_node_vin(node, CONF_NODE_SUBSCRIPTION);
 	update_bridge_node_vin(node, CONF_NODE_FORWARD);
-
 	hocon_read_num(node, max_recv_queue_len, obj);
 	hocon_read_num(node, max_send_queue_len, obj);
 }
