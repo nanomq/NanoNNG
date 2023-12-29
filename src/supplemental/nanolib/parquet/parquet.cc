@@ -14,6 +14,7 @@
 #include <thread>
 #include <vector>
 #include <atomic>
+#include <inttypes.h>
 
 
 using namespace std;
@@ -35,6 +36,8 @@ using parquet::schema::PrimitiveNode;
 #define _Atomic(X) std::atomic< X >
 atomic_bool is_available = false;
 #define WAIT_FOR_AVAILABLE	while (!is_available) nng_msleep(10);
+
+#define UINT64_MAX_DIGITS 20
 
 CircularQueue   parquet_queue;
 CircularQueue   parquet_file_queue;
@@ -78,6 +81,7 @@ get_file_name_v2(conf_parquet *conf, parquet_object *object)
 {
 	uint64_t key_start = object->keys[0];
 	uint64_t key_end   = object->keys[object->size - 1];
+	char    *file_name = NULL;
 	char    *dir       = conf->dir;
 	char    *prefix    = conf->file_name_prefix;
 	uint8_t  index     = conf->file_index++;
@@ -86,9 +90,14 @@ get_file_name_v2(conf_parquet *conf, parquet_object *object)
 		conf->file_index = 1;
 	}
 
-	char *file_name = (char *) malloc(strlen(prefix) + strlen(dir) + 20 + 20 + 16);
+	file_name = (char *)malloc(strlen(prefix) + strlen(dir) + UINT64_MAX_DIGITS + UINT64_MAX_DIGITS + 16);
+	if (file_name == NULL) {
+		log_error("Failed to allocate memory for file name.");
+		return NULL;
+	}
+
 	sprintf(
-	    file_name, "%s/%s-%llu~%llu.parquet", dir, prefix, key_start, key_end);
+	    file_name, "%s/%s-%" PRIu64 "~%" PRIu64 ".parquet", dir, prefix, key_start, key_end);
 	ENQUEUE(parquet_file_queue, file_name);
 	return file_name;
 }
@@ -343,7 +352,6 @@ parquet_write_loop_v2(void *config)
 		    (parquet_object *) DEQUEUE(parquet_queue);
 
 		char *filename = get_file_name_v2(conf, ele);
-
 		if (filename == NULL) {
 			log_error("Failed to get file name");
 			return;
