@@ -923,6 +923,7 @@ conf_bridge_node_parse(
 		topics *s = NNI_ALLOC_STRUCT(s);
 		hocon_read_str(s, remote_topic, forward);
 		hocon_read_str(s, local_topic, forward);
+		hocon_read_num(s, retain, forward);
 		if (!s->remote_topic || !s->local_topic) {
 			log_warn("remote_topic/local_topic not found");
 			if (s->remote_topic) {
@@ -953,6 +954,7 @@ conf_bridge_node_parse(
 		hocon_read_str(s, remote_topic, subscription);
 		hocon_read_str(s, local_topic, subscription);
 		hocon_read_num(s, qos, subscription);
+		hocon_read_num(s, retain, forward);
 		hocon_read_num(s, retain_as_published, subscription);
 		hocon_read_num(s, retain_handling, subscription);
 		if (!s->remote_topic || !s->local_topic) {
