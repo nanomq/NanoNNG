@@ -178,6 +178,8 @@ struct conf_websocket {
 
 typedef struct conf_websocket conf_websocket;
 
+#define NORETAIN 2 // default retain flag value, none 0, 1
+
 typedef struct {
 	char *   remote_topic;
 	uint32_t remote_topic_len;
@@ -185,7 +187,7 @@ typedef struct {
 	uint32_t local_topic_len;
 	uint8_t  qos;
 	uint8_t  nolocal;
-	uint8_t  retain;
+	uint8_t  retain; // override for retain
 	uint8_t  retain_as_published;
 	uint8_t  retain_handling;
 	uint32_t stream_id; // only effective when multi_stream is enabled

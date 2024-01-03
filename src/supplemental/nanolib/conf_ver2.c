@@ -921,6 +921,7 @@ conf_bridge_node_parse(
 	cJSON_ArrayForEach(forward, forwards)
 	{
 		topics *s = NNI_ALLOC_STRUCT(s);
+		s->retain = NORETAIN;
 		hocon_read_str(s, remote_topic, forward);
 		hocon_read_str(s, local_topic, forward);
 		hocon_read_num(s, retain, forward);
@@ -951,6 +952,7 @@ conf_bridge_node_parse(
 	cJSON_ArrayForEach(subscription, subscriptions)
 	{
 		topics *s = NNI_ALLOC_STRUCT(s);
+		s->retain = NORETAIN;
 		hocon_read_str(s, remote_topic, subscription);
 		hocon_read_str(s, local_topic, subscription);
 		hocon_read_num(s, qos, subscription);
