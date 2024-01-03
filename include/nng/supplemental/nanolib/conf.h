@@ -178,7 +178,7 @@ struct conf_websocket {
 
 typedef struct conf_websocket conf_websocket;
 
-#define NORETAIN 2 // default retain flag value, none 0, 1
+#define NO_RETAIN 2 // default retain flag value, none 0, 1
 
 typedef struct {
 	char *   remote_topic;
