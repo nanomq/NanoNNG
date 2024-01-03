@@ -921,10 +921,14 @@ conf_bridge_node_parse(
 	cJSON_ArrayForEach(forward, forwards)
 	{
 		topics *s = NNI_ALLOC_STRUCT(s);
-		s->retain = NORETAIN;
+		s->retain = NO_RETAIN;
 		hocon_read_str(s, remote_topic, forward);
 		hocon_read_str(s, local_topic, forward);
-		hocon_read_num(s, retain, forward);
+		cJSON *jso_key = cJSON_GetObjectItem(forward, "retain");
+		if (cJSON_IsNumber(jso_key) &&
+		    (jso_key->valuedouble == 0 || jso_key->valuedouble == 1)) {
+			s->retain = jso_key->valuedouble;
+		}
 		if (!s->remote_topic || !s->local_topic) {
 			log_warn("remote_topic/local_topic not found");
 			if (s->remote_topic) {
@@ -952,11 +956,15 @@ conf_bridge_node_parse(
 	cJSON_ArrayForEach(subscription, subscriptions)
 	{
 		topics *s = NNI_ALLOC_STRUCT(s);
-		s->retain = NORETAIN;
+		s->retain = NO_RETAIN;
 		hocon_read_str(s, remote_topic, subscription);
 		hocon_read_str(s, local_topic, subscription);
 		hocon_read_num(s, qos, subscription);
-		hocon_read_num(s, retain, forward);
+		cJSON *jso_key = cJSON_GetObjectItem(subscription, "retain");
+		if (cJSON_IsNumber(jso_key) &&
+		    (jso_key->valuedouble == 0 || jso_key->valuedouble == 1)) {
+			s->retain = jso_key->valuedouble;
+		}
 		hocon_read_num(s, retain_as_published, subscription);
 		hocon_read_num(s, retain_handling, subscription);
 		if (!s->remote_topic || !s->local_topic) {
