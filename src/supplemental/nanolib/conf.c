@@ -2387,7 +2387,8 @@ conf_bridge_node_parse_subs(
 		    sub_index);
 		if (!get_retain &&
 		    (value = get_conf_value(line, sz, key)) != NULL) {
-			retain     = value;
+			retain = (uint8_t) atoi(value);
+			free(value);
 			get_retain = true;
 			goto check;
 		}
@@ -2556,7 +2557,8 @@ conf_bridge_node_parse_forwards(
 		    fwd_index);
 		if (!get_retain &&
 		    (value = get_conf_value(line, sz, key)) != NULL) {
-			retain     = value;
+			retain = (uint8_t) atoi(value);
+			free(value);
 			get_retain = true;
 			goto check;
 		}
