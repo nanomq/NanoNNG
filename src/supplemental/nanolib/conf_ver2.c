@@ -633,20 +633,24 @@ conf_auth_http_req_parse_ver2(conf_auth_http_req *config, cJSON *jso)
 	hocon_read_str(config, method, jso);
 	cJSON *jso_headers = hocon_get_obj("headers", jso);
 	cJSON *jso_header  = NULL;
+	size_t cnt         = 0;
 	cJSON_ArrayForEach(jso_header, jso_headers)
 	{
-		conf_http_header *config_header =
-		    NNI_ALLOC_STRUCT(config_header);
-		config_header->key   = nng_strdup(jso_header->string);
-		config_header->value = nng_strdup(jso_header->valuestring);
-		cvector_push_back(config->headers, config_header);
+		cnt++;
+		config->headers =
+		    realloc(config->headers, cnt * sizeof(conf_http_header *));
+		config->headers[cnt - 1] = calloc(1, sizeof(conf_http_header));
+		config->headers[cnt - 1]->key = nng_strdup(jso_header->string);
+		config->headers[cnt - 1]->value = nng_strdup(jso_header->valuestring);
 	}
-	config->header_count = cvector_size(config->headers);
+	config->header_count = cnt;
 
 	cJSON *jso_params = hocon_get_obj("params", jso);
 	cJSON *jso_param  = NULL;
+	cnt               = 0;
 	cJSON_ArrayForEach(jso_param, jso_params)
 	{
+		cnt++;
 		conf_http_param *param = NNI_ALLOC_STRUCT(param);
 		param->name            = nng_strdup(jso_param->string);
 		char c                 = 0;
@@ -688,13 +692,15 @@ conf_auth_http_req_parse_ver2(conf_auth_http_req *config, cJSON *jso)
 			default:
 				break;
 			}
-			cvector_push_back(config->params, param);
+			config->params = realloc(
+			    config->params, cnt * sizeof(conf_http_param *));
+			config->params[cnt - 1] = param;
 		} else {
 			nng_strfree(param->name);
 			NNI_FREE_STRUCT(param);
 		}
 	}
-	config->param_count = cvector_size(config->params);
+	config->param_count = cnt;
 
 	cJSON *   jso_http_req_tls = hocon_get_obj("ssl", jso);
 	conf_tls *http_req_tls     = &(config->tls);
