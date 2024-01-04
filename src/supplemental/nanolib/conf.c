@@ -2340,21 +2340,23 @@ conf_bridge_node_parse_subs(
 		return;
 	}
 
-	char    key[128] = "";
-	char *  remote_topic     = NULL;
-	char *  local_topic      = NULL;
+	char    key[128]         = "";
+	char   *remote_topic     = NULL;
+	char   *local_topic      = NULL;
 	uint8_t qos              = 0;
-	uint8_t rap              = 0;   // only 1/0
-	uint8_t rhandling        = 0;   // only 0/1/2
+	uint8_t rap              = 0;         // only 1/0
+	uint8_t rhandling        = 0;         // only 0/1/2
+	uint8_t retain           = NO_RETAIN; // only 0|1|2
 	size_t  sub_index        = 1;
 	bool    get_remote_topic = false;
 	bool    get_local_topic  = false;
 	bool    get_qos          = false;
 	bool    get_rap          = false;
 	bool    get_rhandling    = false;
-	char *  line             = NULL;
+	bool    get_retain       = false;
+	char   *line             = NULL;
 	size_t  sz               = 0;
-	char *  value            = NULL;
+	char   *value            = NULL;
 
 	node->sub_count = 0;
 	while (nano_getline(&line, &sz, fp) != -1) {
@@ -2377,6 +2379,16 @@ conf_bridge_node_parse_subs(
 			// a potential memleak here
 			local_topic     = value;
 			get_local_topic = true;
+			goto check;
+		}
+
+		snprintf(key, 128,
+		    "%s%s.subscription.%ld.retain", prefix, name,
+		    sub_index);
+		if (!get_retain &&
+		    (value = get_conf_value(line, sz, key)) != NULL) {
+			retain     = value;
+			get_retain = true;
 			goto check;
 		}
 
@@ -2414,7 +2426,8 @@ conf_bridge_node_parse_subs(
 
 	check:
 		if (node->proto_ver == MQTT_PROTOCOL_VERSION_v5) {
-			if (get_remote_topic && get_local_topic && get_qos && get_rap && get_rhandling) {
+			if (get_remote_topic && get_local_topic && get_qos &&
+			    get_rap && get_rhandling && get_retain) {
 				sub_index++;
 				node->sub_count++;
 				topics *s              = NNI_ALLOC_STRUCT(s);
@@ -2426,6 +2439,7 @@ conf_bridge_node_parse_subs(
 				s->qos                 = qos;
 				s->retain_as_published = rap;
 				s->retain_handling     = rhandling;
+				s->retain              = retain;
 
 				for (int i=0; i<(int)s->local_topic_len; ++i)
 					if (s->local_topic[i] == '+' || s->local_topic[i] == '#') {
@@ -2440,23 +2454,25 @@ conf_bridge_node_parse_subs(
 					s->stream_id = sub_index;
 #endif
 				cvector_push_back(node->sub_list, s);
-				get_remote_topic    = false;
-				get_local_topic     = false;
-				get_qos       = false;
-				get_rap       = false;
-				get_rhandling = false;
+				get_remote_topic = false;
+				get_local_topic  = false;
+				get_qos          = false;
+				get_rap          = false;
+				get_rhandling    = false;
+				get_retain       = false;
 			}
 		} else {
-			if (get_remote_topic && get_local_topic && get_qos) {
+			if (get_remote_topic && get_local_topic && get_qos && get_retain) {
 				sub_index++;
 				node->sub_count++;
-				topics *s    = NNI_ALLOC_STRUCT(s);
-				s->stream_id = 0;
+				topics *s           = NNI_ALLOC_STRUCT(s);
+				s->stream_id        = 0;
 				s->remote_topic     = remote_topic;
 				s->local_topic      = local_topic;
 				s->remote_topic_len = strlen(remote_topic);
 				s->local_topic_len  = strlen(local_topic);
-				s->qos       = qos;
+				s->qos              = qos;
+				s->retain           = retain;
 
 				for (int i=0; i<(int)s->local_topic_len; ++i)
 					if (s->local_topic[i] == '+' || s->local_topic[i] == '#') {
@@ -2473,7 +2489,8 @@ conf_bridge_node_parse_subs(
 				cvector_push_back(node->sub_list, s);
 				get_remote_topic = false;
 				get_local_topic  = false;
-				get_qos   = false;
+				get_qos          = false;
+				get_retain       = false;
 			}
 		}
 	}
@@ -2500,14 +2517,16 @@ conf_bridge_node_parse_forwards(
 		return;
 	}
 
-	char    key[128] = "";
-	char *  remote_topic     = NULL;
-	char *  local_topic      = NULL;
+	char    key[128]         = "";
+	char   *remote_topic     = NULL;
+	char   *local_topic      = NULL;
+	uint8_t retain           = NO_RETAIN;
 	bool    get_remote_topic = false;
 	bool    get_local_topic  = false;
-	char *  line             = NULL;
+	bool    get_retain       = false;
+	char   *line             = NULL;
 	size_t  sz               = 0;
-	char *  value            = NULL;
+	char   *value            = NULL;
 	size_t  fwd_index        = 1;
 
 	node->forwards_count = 0;
@@ -2532,18 +2551,29 @@ conf_bridge_node_parse_forwards(
 			goto check;
 		}
 
+		snprintf(key, 128,
+		    "%s%s.forwards.%ld.retain", prefix, name,
+		    fwd_index);
+		if (!get_retain &&
+		    (value = get_conf_value(line, sz, key)) != NULL) {
+			retain     = value;
+			get_retain = true;
+			goto check;
+		}
+
 		free(line);
 		line = NULL;
 
 	check:
-		if (get_remote_topic && get_local_topic) {
+		if (get_remote_topic && get_local_topic && get_retain) {
 			fwd_index++;
 			node->forwards_count++;
-			topics *s    = NNI_ALLOC_STRUCT(s);
+			topics *s           = NNI_ALLOC_STRUCT(s);
 			s->remote_topic     = remote_topic;
 			s->local_topic      = local_topic;
 			s->remote_topic_len = strlen(remote_topic);
 			s->local_topic_len  = strlen(local_topic);
+			s->retain           = retain;
 
 			for (int i=0; i<(int)s->remote_topic_len; ++i)
 				if (s->remote_topic[i] == '+' || s->remote_topic[i] == '#') {
@@ -2556,6 +2586,7 @@ conf_bridge_node_parse_forwards(
 			cvector_push_back(node->forwards_list, s);
 			get_remote_topic = false;
 			get_local_topic  = false;
+			get_retain       = false;
 		}
 	}
 
