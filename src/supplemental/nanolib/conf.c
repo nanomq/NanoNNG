@@ -1127,6 +1127,21 @@ print_webhook_conf(conf_web_hook *webhook)
 }
 
 static void
+print_exchange_conf(conf_exchange_client *exchange)
+{
+	for (int i=0; i < (int) exchange->count; ++i) {
+		conf_exchange_node *n = exchange->nodes[i];
+		log_info("exchange name            %s", n->name);
+		log_info("exchange topic          %s", n->topic);
+		for (int j=0; j< (int) n->rbufs_sz; j++) {
+			ringBuffer_node *r = n->rbufs[j];
+			log_info("exchange ringbus name       %s", r->name);
+			log_info("exchange ringbus cap        %d", r->cap);
+		}
+	}
+}
+
+static void
 print_parquet_conf(conf_parquet *parquet)
 {
 	if (!parquet->enable)
@@ -1301,9 +1316,11 @@ print_conf(conf *nanomq_conf)
 	conf_auth_http *auth_http = &(nanomq_conf->auth_http);
 	conf_web_hook *webhook = &(nanomq_conf->web_hook);
 	conf_parquet *parquet = &(nanomq_conf->parquet);
+	conf_exchange_client *exchange = &(nanomq_conf->exchange);
 	print_auth_conf(auth);
 	print_auth_http_conf(auth_http);
 	print_webhook_conf(webhook);
+	print_exchange_conf(exchange);
 	print_parquet_conf(parquet);
 	print_bridge_conf(&nanomq_conf->bridge, "");
 #if defined(SUPP_AWS_BRIDGE)
