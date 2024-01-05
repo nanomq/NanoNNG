@@ -15,12 +15,35 @@
 
 #define NANO_MAX_MQ_BUFFER_LEN 1024
 
+#ifndef NNI_PROTO_EXCHANGE_V0
+#define NNI_PROTO_EXCHANGE_V0 NNI_PROTO(15, 0)
+#endif
+
 typedef struct exchange_sock_s         exchange_sock_t;
 typedef struct exchange_node_s         exchange_node_t;
+typedef struct exchange_pipe_s         exchange_pipe_t;
 
+// one MQ, one Sock(TBD), one PIPE
+struct exchange_pipe_s {
+	nni_pipe        *pipe;
+	exchange_sock_t *sock;
+	nni_aio          ex_aio;
+	nni_lmq          lmq;
+};
+
+// struct exchange_ctx {
+// 	nni_list_node    node;
+// 	sub0_sock       *sock;
+// 	exchange_pipe_t *pipe;
+// 	nni_list         topics;     // TODO: Consider patricia trie
+// 	nni_list         recv_queue; // can have multiple pending receives
+// };
+
+//TODO replace it with pipe
 struct exchange_node_s {
 	exchange_t      *ex;
 	exchange_sock_t *sock;
+	exchange_pipe_t *pipe;
 	nni_aio         saio;
 	bool            isBusy;
 	nni_mtx         mtx;
@@ -244,6 +267,9 @@ exchange_sock_send(void *arg, nni_aio *aio)
 	return;
 }
 
+/**
+ * For exchanger, sock_recv is meant for consuming msg from MQ actively
+*/
 static void
 exchange_sock_recv(void *arg, nni_aio *aio)
 {
@@ -347,15 +373,6 @@ exchange_send_cb(void *arg)
 	return;
 }
 
-static nni_proto_pipe_ops exchange_pipe_ops = {
-	.pipe_size  = 0,
-	.pipe_init  = NULL,
-	.pipe_fini  = NULL,
-	.pipe_start = NULL,
-	.pipe_close = NULL,
-	.pipe_stop  = NULL,
-};
-
 static int
 exchange_sock_bind_exchange(void *arg, const void *v, size_t sz, nni_opt_type t)
 {
@@ -438,6 +455,60 @@ exchange_client_get_msgs_by_key(void *arg, uint64_t key, uint32_t count, nng_msg
 	return 0;
 }
 
+/**
+ * For exchanger, recv_cb is a consumer SDK
+ * TCP/QUIC/IPC/InPROC is at your disposal
+*/
+static void
+exchange_recv_cb(void *arg)
+{
+
+}
+
+static int
+exchange_pipe_init(void *arg, nni_pipe *pipe, void *s)
+{
+	exchange_pipe_t *p = arg;
+
+	nni_aio_init(&p->ex_aio, exchange_recv_cb, p);
+
+	p->pipe = pipe;
+	return (0);
+}
+
+static int
+exchange_pipe_start(void *arg)
+{
+	exchange_pipe_t *p = arg;
+
+	// might be useful in MQ switching
+	// if (nni_pipe_peer(p->pipe) != NNI_PROTO_EXCHANGE_V0) {
+	// 	// Peer protocol mismatch.
+	// 	return (NNG_EPROTO);
+	// }
+
+	nni_pipe_recv(p->pipe, &p->ex_aio);
+	return (0);
+}
+
+static nni_proto_pipe_ops exchange_pipe_ops = {
+	.pipe_size  = sizeof(exchange_pipe_t),
+	.pipe_init  = exchange_pipe_init,
+	.pipe_fini  = NULL,
+	.pipe_start = exchange_pipe_start,
+	.pipe_close = NULL,
+	.pipe_stop  = NULL,
+};
+
+static nni_proto_ctx_ops exchange_ctx_ops = {
+	.ctx_size    = 0,
+	.ctx_init    = NULL,
+	.ctx_fini    = NULL,
+	.ctx_recv    = NULL,
+	.ctx_send    = NULL,
+	.ctx_options = NULL,
+};
+
 static nni_option exchange_sock_options[] = {
 	{
 	    .o_name = NNG_OPT_EXCHANGE_BIND,
@@ -450,14 +521,6 @@ static nni_option exchange_sock_options[] = {
 	{
 	    .o_name = NULL,
 	},
-};
-static nni_proto_ctx_ops exchange_ctx_ops = {
-	.ctx_size    = 0,
-	.ctx_init    = NULL,
-	.ctx_fini    = NULL,
-	.ctx_recv    = NULL,
-	.ctx_send    = NULL,
-	.ctx_options = NULL,
 };
 
 static nni_proto_sock_ops exchange_sock_ops = {
