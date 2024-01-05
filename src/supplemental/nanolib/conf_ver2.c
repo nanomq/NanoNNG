@@ -1036,8 +1036,6 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 void
 conf_exchange_node_parse(conf_exchange_node *node, cJSON *obj)
 {
-	int ret;
-
 	cJSON *exchange = hocon_get_obj("exchange", obj);;
 
 	hocon_read_str(node, name, exchange);
@@ -1076,10 +1074,13 @@ conf_exchange_parse_ver2(conf *config, cJSON *jso)
 	cJSON_ArrayForEach(node_item, node_array)
 	{
 		conf_exchange_node *node = NNI_ALLOC_STRUCT(node);
-		nng_mtx_alloc(&node->mtx);
 		node->sock     = NULL;
-		node->exchange = NULL;
+		node->topic    = NULL;
+		node->name     = NULL;
+		node->rbufs    = NULL;
+		node->rbufs_sz = 0;
 		conf_exchange_node_parse(node, node_item);
+		nng_mtx_alloc(&node->mtx);
 		cvector_push_back(config->exchange.nodes, node);
 	}
 	config->exchange.count = cvector_size(config->exchange.nodes);
