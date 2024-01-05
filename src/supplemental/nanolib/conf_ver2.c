@@ -996,6 +996,43 @@ conf_bridge_node_parse(
 	hocon_read_num(node, max_send_queue_len, obj);
 }
 
+static void
+conf_bridge_parse_ver2(conf *config, cJSON *jso)
+{
+	cJSON *node_array = hocon_get_obj("bridges.mqtt", jso);
+	cJSON *node_item  = NULL;
+
+	conf_sqlite *bridge_sqlite = &(config->bridge.sqlite);
+	config->bridge.nodes = NULL;
+	cJSON_ArrayForEach(node_item, node_array)
+	{
+		if (nng_strcasecmp(node_item->string, "cache") == 0) {
+			bridge_sqlite->enable      = true;
+			hocon_read_num(
+			    bridge_sqlite, disk_cache_size, node_item);
+			hocon_read_num(
+			    bridge_sqlite, flush_mem_threshold, node_item);
+			hocon_read_num(
+			    bridge_sqlite, resend_interval, node_item);
+			hocon_read_str(
+			    bridge_sqlite, mounted_file_path, node_item);
+
+		} else {
+			conf_bridge_node *node = NNI_ALLOC_STRUCT(node);
+			nng_mtx_alloc(&node->mtx);
+			conf_bridge_node_init(node);
+			conf_bridge_node_parse(node, bridge_sqlite, node_item);
+			cvector_push_back(config->bridge.nodes, node);
+			config->bridge_mode |= node->enable;
+
+		}
+	}
+
+	config->bridge.count = cvector_size(config->bridge.nodes);
+
+	return;
+}
+
 void
 conf_exchange_client_node_parse(
     conf_exchange_client_node *node, cJSON *obj)
@@ -1047,43 +1084,6 @@ conf_exchange_client_node_parse(
 	}
 	NNI_FREE_STRUCT(ex_node);
 	node->exchange = ex;
-	return;
-}
-
-static void
-conf_bridge_parse_ver2(conf *config, cJSON *jso)
-{
-	cJSON *node_array = hocon_get_obj("bridges.mqtt", jso);
-	cJSON *node_item  = NULL;
-
-	conf_sqlite *bridge_sqlite = &(config->bridge.sqlite);
-	config->bridge.nodes = NULL;
-	cJSON_ArrayForEach(node_item, node_array)
-	{
-		if (nng_strcasecmp(node_item->string, "cache") == 0) {
-			bridge_sqlite->enable      = true;
-			hocon_read_num(
-			    bridge_sqlite, disk_cache_size, node_item);
-			hocon_read_num(
-			    bridge_sqlite, flush_mem_threshold, node_item);
-			hocon_read_num(
-			    bridge_sqlite, resend_interval, node_item);
-			hocon_read_str(
-			    bridge_sqlite, mounted_file_path, node_item);
-
-		} else {
-			conf_bridge_node *node = NNI_ALLOC_STRUCT(node);
-			nng_mtx_alloc(&node->mtx);
-			conf_bridge_node_init(node);
-			conf_bridge_node_parse(node, bridge_sqlite, node_item);
-			cvector_push_back(config->bridge.nodes, node);
-			config->bridge_mode |= node->enable;
-
-		}
-	}
-
-	config->bridge.count = cvector_size(config->bridge.nodes);
-
 	return;
 }
 
