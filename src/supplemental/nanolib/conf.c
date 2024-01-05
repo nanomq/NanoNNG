@@ -914,6 +914,9 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->web_hook.rule_count     = 0;
 	conf_tls_init(&nanomq_conf->web_hook.tls);
 
+	nanomq_conf->exchange.count           = 0;
+	nanomq_conf->exchange.nodes           = NULL;
+
 	nanomq_conf->parquet.enable           = false;
 	nanomq_conf->parquet.encryption.enable= false;
 	nanomq_conf->parquet.encryption.key   = NULL;
