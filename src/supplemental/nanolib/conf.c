@@ -3467,7 +3467,7 @@ conf_web_hook_destroy(conf_web_hook *web_hook)
 			free(web_hook->headers[i]->value);
 			free(web_hook->headers[i]);
 		}
-		free(web_hook->headers);
+		cvector_free(web_hook->headers);
 	}
 
 	if (web_hook->rule_count > 0 && web_hook->rules != NULL) {
@@ -3777,7 +3777,7 @@ conf_auth_http_req_destroy(conf_auth_http_req *req)
 			free(req->headers[i]->value);
 			free(req->headers[i]);
 		}
-		free(req->headers);
+		cvector_free(req->headers);
 	}
 
 	if (req->param_count > 0 && req->params != NULL) {
@@ -3785,7 +3785,7 @@ conf_auth_http_req_destroy(conf_auth_http_req *req)
 			free(req->params[i]->name);
 			free(req->params[i]);
 		}
-		free(req->params);
+		cvector_free(req->params);
 	}
 	conf_tls_destroy(&req->tls);
 }
