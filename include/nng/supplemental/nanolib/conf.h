@@ -304,8 +304,8 @@ struct conf_exchange_node {
 	nng_mtx          *mtx;
 };
 
-typedef struct conf_exchange_client conf_exchange_client;
-struct conf_exchange_client {
+typedef struct conf_exchange conf_exchange;
+struct conf_exchange {
 	size_t               count;
 	conf_exchange_node **nodes;
 };
@@ -526,7 +526,7 @@ struct conf {
 	conf_websocket       websocket;
 	conf_bridge          bridge;		//standard MQTT
 	conf_bridge          aws_bridge;	// AWS IoT Core
-	conf_exchange_client exchange;
+	conf_exchange        exchange;
 	conf_parquet         parquet;
 	conf_web_hook        web_hook;
 #if defined(ENABLE_LOG)

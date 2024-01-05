@@ -1127,7 +1127,7 @@ print_webhook_conf(conf_web_hook *webhook)
 }
 
 static void
-print_exchange_conf(conf_exchange_client *exchange)
+print_exchange_conf(conf_exchange *exchange)
 {
 	for (int i=0; i < (int) exchange->count; ++i) {
 		conf_exchange_node *n = exchange->nodes[i];
@@ -1316,7 +1316,7 @@ print_conf(conf *nanomq_conf)
 	conf_auth_http *auth_http = &(nanomq_conf->auth_http);
 	conf_web_hook *webhook = &(nanomq_conf->web_hook);
 	conf_parquet *parquet = &(nanomq_conf->parquet);
-	conf_exchange_client *exchange = &(nanomq_conf->exchange);
+	conf_exchange *exchange = &(nanomq_conf->exchange);
 	print_auth_conf(auth);
 	print_auth_http_conf(auth_http);
 	print_webhook_conf(webhook);
