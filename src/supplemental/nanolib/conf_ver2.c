@@ -1034,29 +1034,21 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 }
 
 void
-conf_exchange_client_node_parse(
-    conf_exchange_client_node *node, cJSON *obj)
+conf_exchange_node_parse(conf_exchange_node *node, cJSON *obj)
 {
 	int ret;
 
 	cJSON *exchange = hocon_get_obj("exchange", obj);;
-	char **rbsName = NULL;
-	unsigned int *rbsCap = NULL;
 
-	exchange_node *ex_node = NNI_ALLOC_STRUCT(ex_node);
-	if (ex_node == NULL) {
-		log_error("memory error in parsing conf!");
-		return;
-	}
-
-	hocon_read_str(ex_node, name, exchange);
-	hocon_read_str(ex_node, topic, exchange);
-	if (ex_node->name == NULL || ex_node->topic == NULL) {
+	hocon_read_str(node, name, exchange);
+	hocon_read_str(node, topic, exchange);
+	if (node->name == NULL || node->topic == NULL) {
 		log_error("invalid exchange configuration!");
 		return;
 	}
 
 	cJSON *rb = hocon_get_obj("ringbus", exchange);
+
 	ringBuffer_node *rb_node = NNI_ALLOC_STRUCT(rb_node);
 	if (rb_node == NULL) {
 		return;
@@ -1071,20 +1063,8 @@ conf_exchange_client_node_parse(
 		return;
 	}
 
-	cvector_push_back(rbsName, rb_node->name);
-	cvector_push_back(rbsCap, rb_node->cap);
-	NNI_FREE_STRUCT(rb_node);
-
-	exchange_t *ex = NULL;
-	ret = exchange_init(&ex, ex_node->name, ex_node->topic, rbsCap,
-						rbsName, cvector_size(rbsName));
-	if (ret != 0 || ex == NULL) {
-		NNI_FREE_STRUCT(ex_node);
-		return;
-	}
-	NNI_FREE_STRUCT(ex_node);
-	node->exchange = ex;
-	return;
+	cvector_push_back(node->rbufs, rb_node);
+	node->rbufs_sz = cvector_size(node->rbufs);
 }
 
 static void
@@ -1095,11 +1075,11 @@ conf_exchange_parse_ver2(conf *config, cJSON *jso)
 
 	cJSON_ArrayForEach(node_item, node_array)
 	{
-		conf_exchange_client_node *node = NNI_ALLOC_STRUCT(node);
+		conf_exchange_node *node = NNI_ALLOC_STRUCT(node);
 		nng_mtx_alloc(&node->mtx);
 		node->sock     = NULL;
 		node->exchange = NULL;
-		conf_exchange_client_node_parse(node, node_item);
+		conf_exchange_node_parse(node, node_item);
 		cvector_push_back(config->exchange.nodes, node);
 	}
 	config->exchange.count = cvector_size(config->exchange.nodes);
