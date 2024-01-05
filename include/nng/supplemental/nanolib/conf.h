@@ -298,6 +298,7 @@ struct conf_exchange_node {
 	char             *name;
 	char             *topic;
 	ringBuffer_node **rbufs;
+	size_t            rbufs_sz;
 
 	nng_socket       *sock;
 	nng_mtx          *mtx;
