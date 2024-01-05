@@ -5,6 +5,20 @@
 #include "core/nng_impl.h"
 #include "nng/supplemental/nanolib/conf.h"
 
+// Exchange MQ 
+#define EXCHANGE_NAME_LEN 32
+#define TOPIC_NAME_LEN    128
+#define RINGBUFFER_MAX    64
+
+typedef struct exchange_s exchange_t;
+struct exchange_s {
+	char name[EXCHANGE_NAME_LEN];
+	char topic[TOPIC_NAME_LEN];
+
+	ringBuffer_t *rbs[RINGBUFFER_MAX];
+	unsigned int rb_count;
+};
+
 NNG_DECL int exchange_client_get_msg_by_key(void *arg, uint64_t key, nni_msg **msg);
 NNG_DECL int exchange_client_get_msgs_by_key(void *arg, uint64_t key, uint32_t count, nng_msg ***list);
 
