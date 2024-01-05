@@ -1097,7 +1097,8 @@ conf_exchange_parse_ver2(conf *config, cJSON *jso)
 	{
 		conf_exchange_client_node *node = NNI_ALLOC_STRUCT(node);
 		nng_mtx_alloc(&node->mtx);
-		conf_exchange_client_node_init(node);
+		node->sock     = NULL;
+		node->exchange = NULL;
 		conf_exchange_client_node_parse(node, node_item);
 		cvector_push_back(config->exchange.nodes, node);
 	}

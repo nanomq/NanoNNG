@@ -2697,13 +2697,6 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->sub_properties  = NULL;
 }
 
-void
-conf_exchange_client_node_init(conf_exchange_client_node *node)
-{
-	node->sock           = NULL;
-	node->exchange       = NULL;
-}
-
 static void
 free_bridge_group_names(char **group_names, size_t n)
 {
