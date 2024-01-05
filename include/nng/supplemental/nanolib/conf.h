@@ -286,32 +286,27 @@ struct conf_bridge_node {
 
 typedef struct conf_bridge_node conf_bridge_node;
 
-// Exchange MQ 
-#define EXCHANGE_NAME_LEN 32
-#define TOPIC_NAME_LEN    128
-#define RINGBUFFER_MAX    64
-
-typedef struct exchange_s exchange_t;
-
-struct exchange_s {
-	char name[EXCHANGE_NAME_LEN];
-	char topic[TOPIC_NAME_LEN];
-
-	ringBuffer_t *rbs[RINGBUFFER_MAX];
-	unsigned int rb_count;
+typedef struct ringBuffer_node ringBuffer_node;
+struct ringBuffer_node {
+	char    *name;
+	uint32_t cap;
+	uint32_t overWrite;
 };
 
-typedef struct conf_exchange_client_node conf_exchange_client_node;
-struct conf_exchange_client_node {
-	exchange_t        *exchange;
-	nng_socket        *sock;
-	nng_mtx     *mtx;
+typedef struct conf_exchange_node conf_exchange_node;
+struct conf_exchange_node {
+	char             *name;
+	char             *topic;
+	ringBuffer_node **rbufs;
+
+	nng_socket       *sock;
+	nng_mtx          *mtx;
 };
-typedef struct conf_exchange conf_exchange;
-// exchange client for multiple MQ
-struct conf_exchange {
-	size_t             count;
-	conf_exchange_client_node **nodes;
+
+typedef struct conf_exchange_client conf_exchange_client;
+struct conf_exchange_client {
+	size_t               count;
+	conf_exchange_node **nodes;
 };
 
 typedef enum {
@@ -497,20 +492,6 @@ struct conf_web_hook {
 
 typedef struct conf_web_hook  conf_web_hook;
 
-typedef struct ringBuffer_node ringBuffer_node;
-typedef struct exchange_node exchange_node;
-
-struct ringBuffer_node {
-	char *name;
-	unsigned int cap;
-	unsigned int overWrite;
-};
-
-struct exchange_node {
-	char *name;
-	char *topic;
-};
-
 typedef enum {
 	memory,
 	sqlite,
@@ -538,17 +519,17 @@ struct conf {
 	bool       ipc_internal;
 	bool       bridge_mode;
 
-	conf_sqlite      sqlite;
-	conf_tls         tls;
-	conf_http_server http_server;
-	conf_websocket   websocket;
-	conf_bridge      bridge;		//standard MQTT
-	conf_bridge      aws_bridge;	// AWS IoT Core
-	conf_exchange    exchange;
-	conf_parquet     parquet;
-	conf_web_hook    web_hook;
+	conf_sqlite          sqlite;
+	conf_tls             tls;
+	conf_http_server     http_server;
+	conf_websocket       websocket;
+	conf_bridge          bridge;		//standard MQTT
+	conf_bridge          aws_bridge;	// AWS IoT Core
+	conf_exchange_client exchange;
+	conf_parquet         parquet;
+	conf_web_hook        web_hook;
 #if defined(ENABLE_LOG)
-	conf_log         log;
+	conf_log  log;
 #endif
 #if defined(SUPP_RULE_ENGINE)
 	conf_rule rule_eng;
