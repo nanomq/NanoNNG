@@ -397,7 +397,7 @@ exchange_sock_bind_exchange(void *arg, const void *v, size_t sz, nni_opt_type t)
 	NNI_ARG_UNUSED(sz);
 	NNI_ARG_UNUSED(t);
 
-	conf_exchange_node * node = (conf_exchange_node *) v;
+	conf_exchange_node * node = *(conf_exchange_node **) v;
 
 	char    **rbsName = NULL;
 	uint32_t *rbsCap = NULL;
@@ -409,6 +409,9 @@ exchange_sock_bind_exchange(void *arg, const void *v, size_t sz, nni_opt_type t)
 	exchange_t *ex = NULL;
 	rv = exchange_init(&ex, node->name, node->topic,
 			rbsCap, rbsName, cvector_size(rbsName));
+
+	cvector_free(rbsName);
+	cvector_free(rbsCap);
 	if (rv != 0) {
 		log_error("Failed to exchange_init %d", rv);
 		return rv;
