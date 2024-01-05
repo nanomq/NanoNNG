@@ -579,20 +579,16 @@ conf_webhook_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_str(webhook, url, jso_webhook);
 		cJSON *webhook_headers = hocon_get_obj("headers", jso_webhook);
 		cJSON *webhook_header  = NULL;
-		size_t cnt             = 0;
 		cJSON_ArrayForEach(webhook_header, webhook_headers)
 		{
-			cnt++;
-			webhook->headers = realloc(webhook->headers,
-			    cnt * sizeof(conf_http_header *));
-			webhook->headers[cnt - 1] =
-			    calloc(1, sizeof(conf_http_header));
-			webhook->headers[cnt - 1]->key =
-			    nng_strdup(webhook_header->string);
-			webhook->headers[cnt - 1]->value =
+			conf_http_header *config_header =
+			    NNI_ALLOC_STRUCT(config_header);
+			config_header->key = nng_strdup(webhook_header->string);
+			config_header->value =
 			    nng_strdup(webhook_header->valuestring);
+			cvector_push_back(webhook->headers, config_header);
 		}
-		webhook->header_count = cnt;
+		webhook->header_count = cvector_size(webhook->headers);
 
 		hocon_read_enum_base(webhook, encode_payload, "body.encoding",
 		    jso_webhook, webhook_encoding);
@@ -633,24 +629,20 @@ conf_auth_http_req_parse_ver2(conf_auth_http_req *config, cJSON *jso)
 	hocon_read_str(config, method, jso);
 	cJSON *jso_headers = hocon_get_obj("headers", jso);
 	cJSON *jso_header  = NULL;
-	size_t cnt         = 0;
 	cJSON_ArrayForEach(jso_header, jso_headers)
 	{
-		cnt++;
-		config->headers =
-		    realloc(config->headers, cnt * sizeof(conf_http_header *));
-		config->headers[cnt - 1] = calloc(1, sizeof(conf_http_header));
-		config->headers[cnt - 1]->key = nng_strdup(jso_header->string);
-		config->headers[cnt - 1]->value = nng_strdup(jso_header->valuestring);
+		conf_http_header *config_header =
+		    NNI_ALLOC_STRUCT(config_header);
+		config_header->key   = nng_strdup(jso_header->string);
+		config_header->value = nng_strdup(jso_header->valuestring);
+		cvector_push_back(config->headers, config_header);
 	}
-	config->header_count = cnt;
+	config->header_count = cvector_size(config->headers);
 
 	cJSON *jso_params = hocon_get_obj("params", jso);
 	cJSON *jso_param  = NULL;
-	cnt               = 0;
 	cJSON_ArrayForEach(jso_param, jso_params)
 	{
-		cnt++;
 		conf_http_param *param = NNI_ALLOC_STRUCT(param);
 		param->name            = nng_strdup(jso_param->string);
 		char c                 = 0;
@@ -692,15 +684,13 @@ conf_auth_http_req_parse_ver2(conf_auth_http_req *config, cJSON *jso)
 			default:
 				break;
 			}
-			config->params = realloc(
-			    config->params, cnt * sizeof(conf_http_param *));
-			config->params[cnt - 1] = param;
+			cvector_push_back(config->params, param);
 		} else {
 			nng_strfree(param->name);
 			NNI_FREE_STRUCT(param);
 		}
 	}
-	config->param_count = cnt;
+	config->param_count = cvector_size(config->params);
 
 	cJSON *   jso_http_req_tls = hocon_get_obj("ssl", jso);
 	conf_tls *http_req_tls     = &(config->tls);
