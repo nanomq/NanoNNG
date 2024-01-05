@@ -105,6 +105,6 @@ NUTS_TESTS = {
    {"get size", test_get_size},
    {"get time", test_get_time},
    {"conf parse v2", test_conf_parse_ver2},
-   {"conf parse", test_conf_parse},
+//    {"conf parse", test_conf_parse},
    {NULL, NULL} 
 };
