@@ -28,6 +28,7 @@ typedef struct exchange_pipe_s         exchange_pipe_t;
 struct exchange_pipe_s {
 	nni_pipe        *pipe;
 	exchange_sock_t *sock;
+	bool             closed;
 	uint32_t         id;
 	nni_aio          ex_aio;	// recv cmd from Consumer
 	nni_aio          rp_aio;	// send msg to consumer
@@ -57,9 +58,10 @@ struct exchange_sock_s {
 	nni_mtx         mtx;
 	nni_atomic_bool closed;
 	nni_id_map      rbmsgmap;
+	nni_id_map      pipes;		//pipe = consumer client
 	exchange_node_t *ex_node;
-	nni_pollable   readable;
-	nni_pollable   writable;
+	nni_pollable    readable;
+	nni_pollable    writable;
 };
 
 
@@ -112,6 +114,7 @@ exchange_sock_init(void *arg, nni_sock *sock)
 	nni_atomic_set_bool(&s->closed, false);
 	nni_mtx_init(&s->mtx);
 	nni_id_map_init(&s->rbmsgmap, 0, 0, true);
+	nni_id_map_init(&s->pipes, 0, 0, false);
 
 	nni_pollable_init(&s->writable);
 	nni_pollable_init(&s->readable);
@@ -139,11 +142,15 @@ exchange_sock_fini(void *arg)
 	nni_aio_fini(&ex_node->saio);
 	nni_mtx_fini(&ex_node->mtx);
 	nni_lmq_fini(&ex_node->send_messages);
+
+	nni_pollable_fini(&s->writable);
+	nni_pollable_fini(&s->readable);
 	exchange_release(ex_node->ex);
 
 	nni_free(ex_node, sizeof(*ex_node));
 	ex_node = NULL;
 
+	nni_id_map_fini(&s->pipes);
 	nni_id_map_fini(&s->rbmsgmap);
 	nni_mtx_fini(&s->mtx);
 
@@ -523,39 +530,67 @@ static int
 exchange_pipe_start(void *arg)
 {
 	exchange_pipe_t *p = arg;
+	exchange_sock_t *s = p->sock;
 
 	// might be useful in MQ switching
 	// if (nni_pipe_peer(p->pipe) != NNI_PROTO_EXCHANGE_V0) {
 	// 	// Peer protocol mismatch.
 	// 	return (NNG_EPROTO);
 	// }
-	// rv = nni_id_set(&s->pipes, nni_pipe_id(p->pipe), p);
+
+	nni_mtx_lock(&s->mtx);
+	int rv = nni_id_set(&s->pipes, nni_pipe_id(p->pipe), p);
+	nni_mtx_unlock(&s->mtx);
+	if (rv != 0) {
+		return (rv);
+	}
 	nni_pipe_recv(p->pipe, &p->ex_aio);
 	return (0);
 }
 
-static int
-exchange_pipe_stop(void *arg, nni_pipe *pipe, void *s)
+static void
+exchange_pipe_stop(void *arg)
 {
 	exchange_pipe_t *p = arg;
+
+	nni_aio_stop(&p->ex_aio);
+	nni_aio_stop(&p->rp_aio);
+	return;
+}
+
+static int
+exchange_pipe_close(void *arg)
+{
+	exchange_pipe_t *p = arg;
+	exchange_sock_t *s = p->sock;
+
+	nni_aio_close(&p->ex_aio);
+	nni_aio_close(&p->rp_aio);
+
+	nni_mtx_lock(&s->mtx);
+	p->closed = true;
+
+	nni_id_remove(&s->pipes, nni_pipe_id(p->pipe));
+	nni_mtx_unlock(&s->mtx);
 
 	return (0);
 }
 
-static int
-exchange_pipe_close(void *arg, nni_pipe *pipe, void *s)
+static void
+exchange_pipe_fini(void *arg)
 {
 	exchange_pipe_t *p = arg;
 
-	return (0);
-}
+	nng_msg *  msg;
 
-static int
-exchange_pipe_fini(void *arg, nni_pipe *pipe, void *s)
-{
-	exchange_pipe_t *p = arg;
+	if ((msg = nni_aio_get_msg(&p->ex_aio)) != NULL) {
+		nni_aio_set_msg(&p->ex_aio, NULL);
+		nni_msg_free(msg);
+	}
 
-	return (0);
+	nni_aio_fini(&p->ex_aio);
+	nni_aio_fini(&p->rp_aio);
+	return;
 }
 
 static nni_proto_pipe_ops exchange_pipe_ops = {
