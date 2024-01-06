@@ -348,7 +348,6 @@ exchange_send_cb(void *arg)
 	}
 
 	if (nni_aio_result(&ex_node->saio) != 0) {
-		nni_mtx_unlock(&ex_node->mtx);
 		return;
 	}
 
@@ -474,7 +473,7 @@ exchange_client_get_msgs_by_key(void *arg, uint64_t key, uint32_t count, nng_msg
  * TCP/QUIC/IPC/InPROC is at your disposal
 */
 static void
-exchange_recv_cb(void *arg)
+ex_query_recv_cb(void *arg)
 {
 	exchange_pipe_t       *p    = arg;
 	exchange_sock_t       *sock = p->sock;
@@ -483,7 +482,8 @@ exchange_recv_cb(void *arg)
 	size_t              len;
 	uint8_t            *body;
 	nng_aio            *aio;
-	nni_msg            *dup_msg;
+	nni_msg            *tar_msg = NULL;
+	int ret;
 
 
 	if (nni_aio_result(&p->ex_aio) != 0) {
@@ -498,16 +498,45 @@ exchange_recv_cb(void *arg)
 
 	body    = nni_msg_body(msg);
 	len     = nni_msg_len(msg);
-	dup_msg = NULL;
 
-	nni_aio_set_msg(&p->rp_aio, msg);
-	nni_pipe_send(p->pipe, &p->rp_aio);
 	nni_mtx_lock(&sock->mtx);
 	// process query
+	char *keystr = (char *) (body + 4);
+	uint64_t key;
+	if (keystr) {
+		ret = sscanf(keystr, "%" SCNu64, &key);
+		if (ret == 0) {
+			log_error("error in read key to number %s", keystr);
+			key = 0;
+		}
+		// sscanf(keystr, "%I64x", &key);
+	} else {
+		log_error("error in paring key in json");
+		key = 0;
+	}
+	ret = exchange_client_get_msg_by_key(sock, key, &tar_msg);
+	if (ret != 0) {
+		log_warn("exchange_client_get_msgs_by_key failed!");
+		// echo query msg back
+		tar_msg = msg;
+	}
+	nni_aio_wait(&p->rp_aio);
+	nni_time time = 3000;
+	nni_aio_set_expire(&p->rp_aio, time);
+	nni_aio_set_msg(&p->rp_aio, tar_msg);
+	nni_pipe_send(p->pipe, &p->rp_aio);
+
 
 	nni_mtx_unlock(&sock->mtx);
 
 	nni_pipe_recv(p->pipe, &p->ex_aio);
+}
+
+static void
+ex_query_send_cb(void *arg)
+{
+	exchange_pipe_t       *p    = arg;
+	exchange_sock_t       *sock = p->sock;
 }
 
 static int
@@ -515,8 +544,8 @@ exchange_pipe_init(void *arg, nni_pipe *pipe, void *s)
 {
 	exchange_pipe_t *p = arg;
 
-	nni_aio_init(&p->ex_aio, exchange_recv_cb, p);
-	nni_aio_init(&p->rp_aio, exchange_send_cb, p);
+	nni_aio_init(&p->ex_aio, ex_query_recv_cb, p);
+	nni_aio_init(&p->rp_aio, ex_query_send_cb, p);
 	nni_lmq_init(&p->lmq, 256);
 
 	p->pipe = pipe;
