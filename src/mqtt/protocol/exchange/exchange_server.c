@@ -12,6 +12,7 @@
 #include "nng/exchange/exchange_client.h"
 #include "nng/exchange/exchange.h"
 #include "supplemental/mqtt/mqtt_msg.h"
+#include "nng/protocol/reqrep0/rep.h"
 
 #define NANO_MAX_MQ_BUFFER_LEN 1024
 
@@ -27,7 +28,9 @@ typedef struct exchange_pipe_s         exchange_pipe_t;
 struct exchange_pipe_s {
 	nni_pipe        *pipe;
 	exchange_sock_t *sock;
-	nni_aio          ex_aio;
+	uint32_t         id;
+	nni_aio          ex_aio;	// recv cmd from Consumer
+	nni_aio          rp_aio;	// send msg to consumer
 	nni_lmq          lmq;
 };
 
@@ -55,6 +58,8 @@ struct exchange_sock_s {
 	nni_atomic_bool closed;
 	nni_id_map      rbmsgmap;
 	exchange_node_t *ex_node;
+	nni_pollable   readable;
+	nni_pollable   writable;
 };
 
 
@@ -108,6 +113,8 @@ exchange_sock_init(void *arg, nni_sock *sock)
 	nni_mtx_init(&s->mtx);
 	nni_id_map_init(&s->rbmsgmap, 0, 0, true);
 
+	nni_pollable_init(&s->writable);
+	nni_pollable_init(&s->readable);
 	return;
 }
 
@@ -462,7 +469,38 @@ exchange_client_get_msgs_by_key(void *arg, uint64_t key, uint32_t count, nng_msg
 static void
 exchange_recv_cb(void *arg)
 {
+	exchange_pipe_t       *p    = arg;
+	exchange_sock_t       *sock = p->sock;
 
+	nni_msg            *msg;
+	size_t              len;
+	uint8_t            *body;
+	nng_aio            *aio;
+	nni_msg            *dup_msg;
+
+
+	if (nni_aio_result(&p->ex_aio) != 0) {
+		nni_pipe_close(p->pipe);
+		return;
+	}
+
+
+	msg = nni_aio_get_msg(&p->ex_aio);
+	nni_aio_set_msg(&p->ex_aio, NULL);
+	nni_msg_set_pipe(msg, nni_pipe_id(p->pipe));
+
+	body    = nni_msg_body(msg);
+	len     = nni_msg_len(msg);
+	dup_msg = NULL;
+
+	nni_aio_set_msg(&p->rp_aio, msg);
+	nni_pipe_send(p->pipe, &p->rp_aio);
+	nni_mtx_lock(&sock->mtx);
+	// process query
+
+	nni_mtx_unlock(&sock->mtx);
+
+	nni_pipe_recv(p->pipe, &p->ex_aio);
 }
 
 static int
@@ -471,8 +509,13 @@ exchange_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	exchange_pipe_t *p = arg;
 
 	nni_aio_init(&p->ex_aio, exchange_recv_cb, p);
+	nni_aio_init(&p->rp_aio, exchange_send_cb, p);
+	nni_lmq_init(&p->lmq, 256);
 
 	p->pipe = pipe;
+	p->id   = nni_pipe_id(pipe);
+	p->pipe = pipe;
+	p->sock = s;
 	return (0);
 }
 
@@ -486,18 +529,42 @@ exchange_pipe_start(void *arg)
 	// 	// Peer protocol mismatch.
 	// 	return (NNG_EPROTO);
 	// }
-
+	// rv = nni_id_set(&s->pipes, nni_pipe_id(p->pipe), p);
 	nni_pipe_recv(p->pipe, &p->ex_aio);
+	return (0);
+}
+
+static int
+exchange_pipe_stop(void *arg, nni_pipe *pipe, void *s)
+{
+	exchange_pipe_t *p = arg;
+
+	return (0);
+}
+
+static int
+exchange_pipe_close(void *arg, nni_pipe *pipe, void *s)
+{
+	exchange_pipe_t *p = arg;
+
+	return (0);
+}
+
+static int
+exchange_pipe_fini(void *arg, nni_pipe *pipe, void *s)
+{
+	exchange_pipe_t *p = arg;
+
 	return (0);
 }
 
 static nni_proto_pipe_ops exchange_pipe_ops = {
 	.pipe_size  = sizeof(exchange_pipe_t),
 	.pipe_init  = exchange_pipe_init,
-	.pipe_fini  = NULL,
+	.pipe_fini  = exchange_pipe_fini,
 	.pipe_start = exchange_pipe_start,
-	.pipe_close = NULL,
-	.pipe_stop  = NULL,
+	.pipe_close = exchange_pipe_close,
+	.pipe_stop  = exchange_pipe_stop,
 };
 
 static nni_proto_ctx_ops exchange_ctx_ops = {
@@ -536,8 +603,9 @@ static nni_proto_sock_ops exchange_sock_ops = {
 
 static nni_proto exchange_proto = {
 	.proto_version  = NNI_PROTOCOL_VERSION,
-	.proto_self     = { NNG_EXCHANGE_SELF, NNG_EXCHANGE_SELF_NAME },
-	.proto_peer     = { NNG_EXCHANGE_PEER, NNG_EXCHANGE_PEER_NAME },
+	// necessary for compatbility with req of NNG-SP 
+	.proto_self     = { NNG_REP0_SELF, NNG_REP0_SELF_NAME },
+	.proto_peer     = { NNG_REP0_PEER, NNG_REP0_PEER_NAME },
 	.proto_flags    = NNI_PROTO_FLAG_SNDRCV,
 	.proto_sock_ops = &exchange_sock_ops,
 	.proto_pipe_ops = &exchange_pipe_ops,
