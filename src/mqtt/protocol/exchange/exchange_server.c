@@ -5,6 +5,8 @@
 // file was obtained (LICENSE.txt).  A copy of the license may also be
 // found online at https://opensource.org/licenses/MIT.
 //
+#include <inttypes.h>
+
 #include "core/nng_impl.h"
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
@@ -504,7 +506,7 @@ ex_query_recv_cb(void *arg)
 	char *keystr = (char *) (body + 4);
 	uint64_t key;
 	if (keystr) {
-		ret = sscanf(keystr, "%" SCNu64, &key);
+		ret = sscanf(keystr, "%"SCNu64, &key);
 		if (ret == 0) {
 			log_error("error in read key to number %s", keystr);
 			key = 0;
