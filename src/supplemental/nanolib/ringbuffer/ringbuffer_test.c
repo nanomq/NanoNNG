@@ -404,6 +404,46 @@ void test_ringBuffer_search_msgs_by_key()
 	NUTS_TRUE(ringBuffer_release(rb) == 0);
 }
 
+void test_ringBuffer_search_msgs_fuzz()
+{
+	ringBuffer_t *rb = NULL;
+	nng_msg *tmp = NULL;
+	nng_msg **msgList = NULL;
+
+	NUTS_TRUE(ringBuffer_init(&rb, 10, 0, -1) == 0);
+	NUTS_TRUE(rb != NULL);
+	for (int i = 0; i < 10; i++) {
+		tmp = alloc_pub_msg("topic1");
+		NUTS_TRUE(tmp != NULL);
+		NUTS_TRUE(ringBuffer_enqueue(rb, i * 10, tmp, -1, NULL) == 0);
+	}
+
+	for (int i = 0; i < 100; i++) {
+		int start = nng_random() % 100;
+		int end = nng_random() % 100;
+		if (start > end) {
+			int tmpstart = start;
+			start = end;
+			end = tmpstart;
+		}
+		uint32_t *lenp = nng_alloc(sizeof(uint32_t));
+		int ret;
+		ret = ringBuffer_search_msgs_fuzz(rb, start, end, lenp, &msgList);
+		if (start / 10 == end / 10 && start % 10 != 0 && end % 10 != 0) {
+			NUTS_TRUE(ret == -1);
+			nng_free(lenp, sizeof(int));
+			continue;
+		} else {
+			NUTS_TRUE(ret == 0);
+		}
+		NUTS_TRUE(*lenp == ((end / 10  - (start % 10 == 0 ? start / 10 : start / 10 + 1)) + 1));
+		free_msg_list(msgList, NULL, lenp, 0);
+	}
+
+	NUTS_TRUE(ringBuffer_release(rb) == 0);
+
+}
+
 NUTS_TESTS = {
 	{ "Ring buffer init test", test_ringBuffer_init },
 	{ "Ring buffer release test", test_ringBuffer_release },
@@ -412,5 +452,6 @@ NUTS_TESTS = {
 	{ "Ring buffer rule test", test_ringBuffer_rule },
 	{ "Ring buffer search msg by key", test_ringBuffer_search_msg_by_key },
 	{ "Ring buffer search msgs by key", test_ringBuffer_search_msgs_by_key },
+	{ "Ring buffer search msgs fuzz", test_ringBuffer_search_msgs_fuzz },
 	{ NULL, NULL },
 };
