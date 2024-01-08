@@ -155,6 +155,18 @@ test_exchange_client(void)
 	rv = exchange_client_get_msgs_by_key(nni_sock_proto_data(nsock), key, 2, &msgList);
 	NUTS_TRUE(rv == -1 && msgList == NULL);
 
+	/* fuzz search start */
+	lenp = nng_alloc(sizeof(int));
+	rv = exchange_client_get_msgs_fuzz(nni_sock_proto_data(nsock), 0, 3, lenp, &msgList);
+	NUTS_TRUE(rv == 0 && *lenp == 1 && msgList != NULL);
+	free_msg_list(msgList, NULL, lenp, 0);
+
+	msgList = NULL;
+	int len = 0;
+	rv = exchange_client_get_msgs_fuzz(nni_sock_proto_data(nsock), 2, 3, &len, &msgList);
+	NUTS_TRUE(rv != 0 && len == 0 && msgList == NULL);
+	/* fuzz search end */
+
 	for (int i = 1; i < 10; i++) {
 		key = i;
 		client_publish(sock, "topic1", key, NULL, 0, 0, 0);
