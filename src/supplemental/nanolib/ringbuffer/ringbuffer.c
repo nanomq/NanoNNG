@@ -470,6 +470,89 @@ int ringBuffer_search_msg_by_key(ringBuffer_t *rb, uint64_t key, nng_msg **msg)
 	return -1;
 }
 
+/*
+ * binary search, only for ringbuffer head is 0
+ */
+int ringBuffer_search_msgs_fuzz(ringBuffer_t *rb,
+								uint64_t start,
+								uint64_t end,
+								uint32_t *count,
+								nng_msg ***list)
+{
+	uint32_t low = 0;
+	uint32_t high = 0;
+	uint32_t mid = 0;
+	uint32_t start_index = 0;
+	uint32_t end_index = 0;
+
+	nng_mtx_lock(rb->ring_lock);
+	if (start > end ||
+		start > rb->msgs[rb->head + rb->size - 1].key ||
+		end < rb->msgs[rb->head].key) {
+		nng_mtx_unlock(rb->ring_lock);
+		return -1;
+	}
+
+	if (rb->head != 0) {
+		log_error("Ringbuffer head is not 0, can not use binary search\n");
+		nng_mtx_unlock(rb->ring_lock);
+		return -1;
+	}
+
+	low	= rb->head;
+	high = rb->tail + rb->size - 1;
+	while (low < high) {
+		mid = (low + high) / 2;
+		if (rb->msgs[mid].key < start) {
+			low = mid + 1;
+		} else {
+			high = mid;
+		}
+	}
+
+	if (rb->msgs[high].key >= start) {
+		start_index = high;
+	} else {
+		nng_mtx_unlock(rb->ring_lock);
+		return -1;
+	}
+
+	low	= rb->head;
+	high = rb->tail + rb->size - 1;
+	while (low < high) {
+		mid = (low + high + 1) / 2;
+		if (rb->msgs[mid].key <= end) {
+			low = mid;
+		} else {
+			high = mid - 1;
+		}
+	}
+
+	if (rb->msgs[low].key > end) {
+		nng_mtx_unlock(rb->ring_lock);
+		return -1;
+	} else {
+		end_index = low;
+	}
+
+	*count = end_index - start_index + 1;
+	nng_msg **newList = nng_alloc((*count) * sizeof(nng_msg *));
+	if (newList == NULL) {
+		nng_mtx_unlock(rb->ring_lock);
+		return -1;
+	}
+
+	for (uint32_t i = start_index; i <= end_index; i++) {
+		nng_msg *msg = rb->msgs[i].data;
+		nng_msg_set_proto_data(msg, NULL, (void *)(uintptr_t)rb->msgs[i].key);
+		newList[i - start_index] = msg;
+	}
+
+	*list = newList;
+	nng_mtx_unlock(rb->ring_lock);
+	return 0;
+}
+
 int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint64_t key, uint32_t count, nng_msg ***list)
 {
 	unsigned int i = 0;
@@ -479,16 +562,18 @@ int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint64_t key, uint32_t count
 		return -1;
 	}
 
+	nng_mtx_lock(rb->ring_lock);
 	if (count > rb->size) {
+		nng_mtx_unlock(rb->ring_lock);
 		return -1;
 	}
 
 	nng_msg **newList = nng_alloc(count * sizeof(nng_msg *));
 	if (newList == NULL) {
+		nng_mtx_unlock(rb->ring_lock);
 		return -1;
 	}
 
-	nng_mtx_lock(rb->ring_lock);
 	for (i = rb->head; i < rb->size; i++) {
 		i = i % rb->cap;
 		if (rb->msgs[i].key == key) {
