@@ -470,6 +470,22 @@ exchange_client_get_msgs_by_key(void *arg, uint64_t key, uint32_t count, nng_msg
 	return 0;
 }
 
+int
+exchange_client_get_msgs_fuzz(void *arg, uint64_t start, uint64_t end, uint32_t *count, nng_msg ***list)
+{
+	int ret = 0;
+	exchange_sock_t *s = arg;
+
+	/* Only one exchange with one ringBuffer now */
+	ret = ringBuffer_search_msgs_fuzz(s->ex_node->ex->rbs[0], start, end, count, list);
+	if (ret != 0 || *list == NULL) {
+		log_error("ringBuffer_get_msgs_fuzz failed!\n");
+		return -1;
+	}
+
+	return 0;
+}
+
 /**
  * For exchanger, recv_cb is a consumer SDK
  * TCP/QUIC/IPC/InPROC is at your disposal
