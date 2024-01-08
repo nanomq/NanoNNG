@@ -8,6 +8,8 @@
 NNG_DECL int exchange_client_get_msg_by_key(void *arg, uint64_t key, nni_msg **msg);
 NNG_DECL int exchange_client_get_msgs_by_key(void *arg, uint64_t key, uint32_t count, nng_msg ***list);
 
+NNG_DECL int exchange_client_get_msgs_fuzz(void *arg, uint64_t start, uint64_t end, uint32_t *count, nng_msg ***list);
+
 NNG_DECL int exchange_init(exchange_t **ex, char *name, char *topic,
  				  unsigned int *rbsCaps, char **rbsName, unsigned int rbsCount);
 NNG_DECL int exchange_add_rb(exchange_t *ex, ringBuffer_t *rb);
