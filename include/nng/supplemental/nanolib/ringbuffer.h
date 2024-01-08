@@ -91,4 +91,9 @@ int ringBuffer_release(ringBuffer_t *rb);
 
 int ringBuffer_search_msg_by_key(ringBuffer_t *rb, uint64_t key, nng_msg **msg);
 int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint64_t key, uint32_t count, nng_msg ***list);
+int ringBuffer_search_msgs_fuzz(ringBuffer_t *rb,
+								uint64_t start,
+								uint64_t end,
+								uint32_t *count,
+								nng_msg ***list);
 #endif
