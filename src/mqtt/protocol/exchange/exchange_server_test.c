@@ -2,6 +2,7 @@
 #include "core/nng_impl.h"
 #include "nng/exchange/exchange_client.h"
 #include "nng/exchange/exchange.h"
+#include "nng/supplemental/nanolib/cvector.h"
 #include "core/defs.h"
 #include <nuts.h>
 
@@ -97,29 +98,27 @@ test_exchange_client(void)
 	int rv = 0;
 	uint64_t key = 0;
 	nng_socket sock;
-	exchange_t *ex = NULL;
 
 	NUTS_TRUE(nng_exchange_client_open(&sock) == 0);
 
-	char **ringBufferName;
-	ringBufferName = nng_alloc(1 * sizeof(char *));
-	for (int i = 0; i < 1; i++) {
-		ringBufferName[i] = nng_alloc(100 * sizeof(char));
-	}
+	conf_exchange_node *conf = NULL;
+	conf = nng_alloc(sizeof(conf_exchange_node));
+	NUTS_TRUE(conf != NULL);
+	conf->name = "exchange1";
+	conf->topic = "topic1";
 
-	strcpy(ringBufferName[0], "ringBuffer1");
+	ringBuffer_node *rb_node = NNI_ALLOC_STRUCT(rb_node);
+	NUTS_TRUE(rb_node != NULL);
+	rb_node->name = "ringBuffer1";
+	rb_node->cap = 10;
+	rb_node->overWrite = 0;
 
-	int caps = 10;
+	conf->rbufs = NULL;
 
-	NUTS_TRUE(exchange_init(&ex, "exchange1", "topic1", (void *)&caps, ringBufferName, 1) == 0);
-	NUTS_TRUE(ex != NULL);
+	cvector_push_back(conf->rbufs, rb_node);
+	conf->rbufs_sz = cvector_size(conf->rbufs);
 
-	for (int i = 0; i < 1; i++) {
-		nng_free(ringBufferName[i], sizeof(*ringBufferName[i]));
-	}
-	nng_free(ringBufferName, sizeof(*ringBufferName));
-
-	nng_socket_set_ptr(sock, NNG_OPT_EXCHANGE_BIND, ex);
+	nng_socket_set_ptr(sock, NNG_OPT_EXCHANGE_BIND, conf);
 
 	key = 0;
 	client_publish(sock, "topic1", key, NULL, 0, 0, 0);
@@ -182,6 +181,10 @@ test_exchange_client(void)
 
 	/* Ringbuffer is full and msgs returned need to free */
 	client_publish(sock, "topic1", 10, NULL, 0, 0, 0);
+
+	cvector_free(conf->rbufs);
+	nng_free(conf, sizeof(conf_exchange_node));
+	nng_free(rb_node, sizeof(ringBuffer_node));
 
 	return;
 }
