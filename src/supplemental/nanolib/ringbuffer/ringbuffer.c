@@ -486,6 +486,12 @@ int ringBuffer_search_msgs_fuzz(ringBuffer_t *rb,
 	uint32_t end_index = 0;
 
 	nng_mtx_lock(rb->ring_lock);
+	if (rb == NULL || rb->size == 0 || count == NULL || list == NULL) {
+		nng_mtx_unlock(rb->ring_lock);
+		log_error("ringbuffer is NULL or count is NULL or list is NULL\n");
+		return -1;
+	}
+
 	if (start > end ||
 		start > rb->msgs[rb->head + rb->size - 1].key ||
 		end < rb->msgs[rb->head].key) {
@@ -500,7 +506,7 @@ int ringBuffer_search_msgs_fuzz(ringBuffer_t *rb,
 	}
 
 	low	= rb->head;
-	high = rb->tail + rb->size - 1;
+	high = rb->head + rb->size - 1;
 	while (low < high) {
 		mid = (low + high) / 2;
 		if (rb->msgs[mid].key < start) {
@@ -518,7 +524,7 @@ int ringBuffer_search_msgs_fuzz(ringBuffer_t *rb,
 	}
 
 	low	= rb->head;
-	high = rb->tail + rb->size - 1;
+	high = rb->head + rb->size - 1;
 	while (low < high) {
 		mid = (low + high + 1) / 2;
 		if (rb->msgs[mid].key <= end) {
@@ -544,6 +550,12 @@ int ringBuffer_search_msgs_fuzz(ringBuffer_t *rb,
 
 	for (uint32_t i = start_index; i <= end_index; i++) {
 		nng_msg *msg = rb->msgs[i].data;
+		if (msg == NULL) {
+			nng_free(newList, sizeof(*newList));
+			nng_mtx_unlock(rb->ring_lock);
+			log_error("msg is NULL and some error occured\n");
+			return -1;
+		}
 		nng_msg_set_proto_data(msg, NULL, (void *)(uintptr_t)rb->msgs[i].key);
 		newList[i - start_index] = msg;
 	}
