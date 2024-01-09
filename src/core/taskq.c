@@ -256,19 +256,6 @@ nni_taskq_setter(int num_taskq_threads, int max_taskq_threads)
 	    var_num_taskq_threads, var_max_taskq_threads);
 }
 
-static int
-nni_taskq_getter(void)
-{
-	if (var_num_taskq_threads && var_max_taskq_threads) {
-		if (var_num_taskq_threads >= var_max_taskq_threads)
-			return var_max_taskq_threads;
-	}
-	log_debug("command line given: tq [%d], max_tq [%d]",
-	    var_num_taskq_threads, var_max_taskq_threads);
-	return var_num_taskq_threads ? var_num_taskq_threads
-	                             : var_max_taskq_threads;
-}
-
 int
 nni_taskq_sys_init(void)
 {
