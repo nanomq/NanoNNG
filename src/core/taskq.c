@@ -279,33 +279,25 @@ nni_taskq_sys_init(void)
 #define NNG_NUM_TASKQ_THREADS (nni_plat_ncpu() * 2)
 #endif
 
-	int result = nni_taskq_getter();
-	num_thr = NNG_NUM_TASKQ_THREADS;
-	log_error("Create %d taskq threads!", result);
-	if (result) {
-		num_thr = result;
+#ifndef NNG_MAX_TASKQ_THREADS
+#define NNG_MAX_TASKQ_THREADS 16
+#endif
+
+	max_thr = (int) nni_init_get_param(
+	    NNG_INIT_MAX_TASK_THREADS, NNG_MAX_TASKQ_THREADS);
+
+	num_thr = (int) nni_init_get_param(
+	    NNG_INIT_NUM_TASK_THREADS, NNG_NUM_TASKQ_THREADS);
+
+	if ((max_thr > 0) && (num_thr > max_thr)) {
+		num_thr = max_thr;
 	}
+	if (num_thr < 2) {
+		num_thr = 2;
+	}
+	nni_init_set_effective(NNG_INIT_NUM_TASK_THREADS, num_thr);
 
 	return (nni_taskq_init(&nni_taskq_systq, num_thr));
-// #ifndef NNG_MAX_TASKQ_THREADS
-// #define NNG_MAX_TASKQ_THREADS 16
-// #endif
-
-// 	max_thr = (int) nni_init_get_param(
-// 	    NNG_INIT_MAX_TASK_THREADS, NNG_MAX_TASKQ_THREADS);
-
-// 	num_thr = (int) nni_init_get_param(
-// 	    NNG_INIT_NUM_TASK_THREADS, NNG_NUM_TASKQ_THREADS);
-
-// 	if ((max_thr > 0) && (num_thr > max_thr)) {
-// 		num_thr = max_thr;
-// 	}
-// 	if (num_thr < 2) {
-// 		num_thr = 2;
-// 	}
-// 	nni_init_set_effective(NNG_INIT_NUM_TASK_THREADS, num_thr);
-
-// 	return (nni_taskq_init(&nni_taskq_systq, num_thr));
 }
 
 void

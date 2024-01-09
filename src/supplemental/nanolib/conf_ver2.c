@@ -1449,6 +1449,7 @@ conf_parse_ver2(conf *config)
 	cJSON *jso = hocon_parse_file(conf_path);
 	if (NULL != jso) {
 		conf_basic_parse_ver2(config, jso);
+		conf_set_threads(config);
 		conf_sqlite_parse_ver2(config, jso);
 		conf_tls_parse_ver2(config, jso);
 #if defined(ENABLE_LOG)

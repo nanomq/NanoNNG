@@ -585,6 +585,25 @@ conf_basic_parse(conf *config, const char *path)
 }
 
 void
+conf_set_threads(conf *nanomq_conf)
+{
+	nng_init_set_parameter(NNG_INIT_NUM_RESOLVER_THREADS, 1);
+	// taskq and max_taskq
+	if (nanomq_conf->num_taskq_thread) {
+		nng_init_set_parameter(
+		    NNG_INIT_NUM_TASK_THREADS, nanomq_conf->num_taskq_thread);
+		nng_init_set_parameter(NNG_INIT_NUM_EXPIRE_THREADS,
+		    nanomq_conf->num_taskq_thread);
+	}
+	if (nanomq_conf->max_taskq_thread) {
+		nng_init_set_parameter(
+		    NNG_INIT_MAX_TASK_THREADS, nanomq_conf->max_taskq_thread);
+		nng_init_set_parameter(NNG_INIT_MAX_EXPIRE_THREADS,
+		    nanomq_conf->max_taskq_thread);
+	}
+}
+
+void
 conf_parse(conf *nanomq_conf)
 {
 	log_add_console(NNG_LOG_INFO, NULL);
@@ -604,6 +623,7 @@ conf_parse(conf *nanomq_conf)
 
 	conf *config = nanomq_conf;
 	conf_basic_parse(config, conf_path);
+	conf_set_threads(config);
 #ifdef ACL_SUPP
 	conf_acl_parse(&config->acl, conf_path);
 #endif
