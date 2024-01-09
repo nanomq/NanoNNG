@@ -60,3 +60,16 @@ nng_id_alloc(nng_id_map *map, uint64_t *id, void *val)
 {
 	return (nni_id_alloc(&map->m, id, val));
 }
+
+void
+nng_id_map_foreach(nng_id_map *map, void (*cb)(void *id, void *value))
+{
+	nni_id_map_foreach(map, cb);
+}
+
+void
+nng_id_map_foreach2(nng_id_map *map,
+    void (*cb)(void *id, void *value, void *arg), void *user_arg)
+{
+	nni_id_map_foreach2(map, cb, user_arg);
+}
