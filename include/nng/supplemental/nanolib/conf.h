@@ -563,6 +563,7 @@ NNG_DECL void conf_dds_gateway_parse_ver2(dds_gateway_conf *config);
 NNG_DECL void conf_dds_gateway_destory(dds_gateway_conf *config);
 NNG_DECL void conf_init(conf *nanomq_conf);
 NNG_DECL void print_conf(conf *nanomq_conf);
+NNG_DECL void conf_set_threads(conf *nanomq_conf);
 NNG_DECL void conf_fini(conf *nanomq_conf);
 NNG_DECL void conf_update(const char *fpath, const char *key, char *value);
 NNG_DECL void conf_update2(const char *fpath, const char *key1,
