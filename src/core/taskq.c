@@ -280,7 +280,8 @@ nni_taskq_sys_init(void)
 #endif
 
 	int result = nni_taskq_getter();
-	log_trace("Create %d taskq threads!", result);
+	num_thr = NNG_NUM_TASKQ_THREADS;
+	log_error("Create %d taskq threads!", result);
 	if (result) {
 		num_thr = result;
 	}
