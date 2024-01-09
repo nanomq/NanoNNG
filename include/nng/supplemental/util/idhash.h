@@ -23,5 +23,9 @@ NNG_DECL void *nng_id_get(nng_id_map *, uint64_t);
 NNG_DECL int   nng_id_set(nng_id_map *, uint64_t, void *);
 NNG_DECL int   nng_id_alloc(nng_id_map *, uint64_t *, void *);
 NNG_DECL int   nng_id_remove(nng_id_map *, uint64_t);
+NNG_DECL void  nng_id_map_foreach(
+     nng_id_map *, void (*)(void *, void *));
+NNG_DECL void nng_id_map_foreach2(nng_id_map *,
+    void (*)(void *, void *, void *), void *);
 
 #endif // NNG_SUPPLEMENTAL_IDHASH_IDHASH_H
