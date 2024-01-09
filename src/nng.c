@@ -2522,11 +2522,6 @@ nng_file_is_dir(const char *path)
 }
 
 void
-nng_taskq_setter(int num_taskq_threads, int max_taskq_threads)
-{
-	nni_taskq_setter(num_taskq_threads, max_taskq_threads);
-}
-void
 nng_init_set_parameter(nng_init_parameter p, uint64_t value)
 {
 	nni_init_set_param(p, value);
