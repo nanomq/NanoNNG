@@ -15,6 +15,9 @@
 #include "nng/exchange/exchange.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 #include "nng/protocol/reqrep0/rep.h"
+#ifdef SUPP_PARQUET
+#include "nng/supplemental/nanolib/parquet.h"
+#endif
 
 #define NANO_MAX_MQ_BUFFER_LEN 1024
 
@@ -486,6 +489,140 @@ exchange_client_get_msgs_fuzz(void *arg, uint64_t start, uint64_t end, uint32_t 
 	return 0;
 }
 
+static char *
+get_file_bname(char *fpath)
+{
+	char *bname;
+#ifdef _WIN32
+	if ((bname = nng_alloc(strlen(fpath) + 16)) == NULL) return NULL;
+	char ext[16];
+	_splitpath_s(fpath,
+		NULL, 0,    // Don't need drive
+		NULL, 0,    // Don't need directory
+		bname, strlen(fpath) + 15,  // just the filename
+		ext, 15);
+	strncpy(bname + strlen(bname), ext, 15);
+#else
+	#include <libgen.h>
+	bname = basename(fpath);
+#endif
+	return bname;
+}
+
+#ifdef SUPP_PARQUET
+static int
+get_parquet_files_raw(uint32_t sz, char **fnames, char ***file_raws)
+{
+
+	int ret = 0;
+	long file_size = 0L;
+	FILE *fp = NULL;
+	char *payload = NULL;
+
+	if (file_raws == NULL || fnames == NULL || sz == 0) {
+		return -1;
+	}
+
+	*file_raws = nng_alloc(sz * sizeof(char *));
+	if (*file_raws == NULL) {
+		log_warn("Failed to allocate memory for file payload\n");
+		return -1;
+	}
+
+	for (int i = 0; i < sz; i++) {
+		fp = fopen(fnames[i], "rb");
+		if (fp == NULL) {
+			log_warn("Failed to open file\n");
+			nng_free(*file_raws, sz * sizeof(char *));
+			return -1;
+		}
+		fseek(fp, 0L, SEEK_END);
+		file_size = ftell(fp);
+		rewind(fp);
+
+		payload = (char *)nng_alloc(file_size);
+		if (payload == NULL) {
+			log_warn("Failed to allocate memory for file payload\n");
+			nng_free(*file_raws, sz * sizeof(char *));
+			return -1;
+		}
+
+		ret = fread(payload, 1, file_size, fp);
+		if (ret <= 0) {
+			log_warn("Failed to read file\n");
+			nng_free(payload, file_size);
+			return -1;
+		}
+		fclose(fp);
+
+		(*file_raws)[i] = nng_alloc(file_size * 2 + 1);
+		if ((*file_raws)[i] == NULL) {
+			log_warn("Failed to allocate memory for file payload\n");
+			nng_free(payload, file_size);
+			return -1;
+		}
+
+		for (int j = 0; j < file_size; ++j) {
+			if (j == 0) {
+				sprintf((*file_raws)[i], "%02x", payload[j] & 0xff);
+			} else {
+				sprintf((*file_raws)[i], "%s%02x", (*file_raws)[i], payload[j] & 0xff);
+			}
+		}
+		nng_free(payload, file_size);
+	}
+
+	return 0;
+}
+
+static int
+get_parquet_files(uint32_t sz, char **fnames, cJSON *obj)
+{
+	int ret;
+
+	log_info("Ask parquet and found.");
+	const char ** filenames = nng_alloc(sizeof(char *) * sz);
+	for (int i = 0; i < sz; ++i) {
+		filenames[i] = get_file_bname((char *)fnames[i]);
+	}
+
+	cJSON *files_obj = cJSON_CreateStringArray(fnames, sz);
+	cJSON_AddItemToObject(obj, "files", files_obj);
+	if (!files_obj) {
+		return -1;
+	}
+
+	cJSON *filenames_obj = cJSON_CreateStringArray(filenames, sz);
+	if (!filenames_obj) {
+		return -1;
+	}
+	cJSON_AddItemToObject(obj, "filenames", filenames_obj);
+
+	char **file_raws = NULL;
+	ret = get_parquet_files_raw(sz, fnames, &file_raws);
+	if (ret != 0) {
+		return -1;
+	}
+
+	cJSON *fileraws_obj = cJSON_CreateStringArray(file_raws, sz);
+	if (!fileraws_obj) {
+		return -1;
+	}
+	cJSON_AddItemToObject(obj, "fileraws", fileraws_obj);
+
+	for (int i = 0; i < sz; ++i) {
+		filenames[i];
+	}
+	nng_free(filenames, sizeof(char *) * sz);
+
+	for (int i = 0; i<(int)sz; ++i) {
+		nng_free((void *)fnames[i], 0);
+	}
+	nng_free(fnames, sz);
+
+	return 0;
+}
+#endif
 /**
  * For exchanger, recv_cb is a consumer SDK
  * TCP/QUIC/IPC/InPROC is at your disposal
