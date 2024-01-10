@@ -1568,9 +1568,9 @@ tlstran_pipe_recv(void *arg, nni_aio *aio)
 		return;
 	}
 
-	// if (nni_aio_list_active(aio) == 0) {
-	nni_list_append(&p->recvq, aio);
-	// }
+	if (nni_aio_list_active(aio) == 0) {
+		nni_list_append(&p->recvq, aio);
+	}
 
 	if (nni_list_first(&p->recvq) == aio) {
 		tlstran_pipe_recv_start(p);
