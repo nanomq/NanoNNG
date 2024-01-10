@@ -353,10 +353,10 @@ nng_mqtt_msg_get_publish_packet_id(nng_msg *msg)
 	return nni_mqtt_msg_get_publish_packet_id(msg);
 }
 
-void
+int
 nng_mqtt_msg_set_publish_payload(nng_msg *msg, uint8_t *payload, uint32_t len)
 {
-	nni_mqtt_msg_set_publish_payload(msg, payload, len);
+	return nni_mqtt_msg_set_publish_payload(msg, payload, len);
 }
 
 // payload & topic must be set together!

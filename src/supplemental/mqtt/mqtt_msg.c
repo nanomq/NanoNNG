@@ -239,11 +239,11 @@ nni_mqtt_msg_get_publish_topic(nni_msg *msg, uint32_t *topic_len)
 	return (const char *) proto_data->var_header.publish.topic_name.buf;
 }
 
-void
+int
 nni_mqtt_msg_set_publish_payload(nni_msg *msg, uint8_t *payload, uint32_t len)
 {
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
-	mqtt_buf_create(
+	return mqtt_buf_create(
 	    &proto_data->payload.publish.payload, payload, (uint32_t) len);
 }
 
