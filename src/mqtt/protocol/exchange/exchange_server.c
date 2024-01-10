@@ -624,7 +624,6 @@ get_parquet_files(uint32_t sz, char **fnames, cJSON *obj)
 }
 #endif
 
-
 static int
 fuzz_search_result_cat(nng_msg **msgList, uint32_t count, cJSON *obj)
 {
@@ -662,7 +661,7 @@ fuzz_search_result_cat(nng_msg **msgList, uint32_t count, cJSON *obj)
 				return -1;
 			}
 			for (int j = 0; j < diff; ++j) {
-				char *tmpch = nng_msg_payload_ptr(msgList[i]);
+				char *tmpch = (char *)nng_msg_payload_ptr(msgList[i]);
 				if (j == 0) {
 					sprintf(mqdata[i], "%02x", tmpch[j] & 0xff);
 				} else {
@@ -705,16 +704,13 @@ ex_query_recv_cb(void *arg)
 	nni_msg            *msg;
 	size_t              len;
 	uint8_t            *body;
-	nng_aio            *aio;
 	nni_msg            *tar_msg = NULL;
 	int ret;
-
 
 	if (nni_aio_result(&p->ex_aio) != 0) {
 		nni_pipe_close(p->pipe);
 		return;
 	}
-
 
 	msg = nni_aio_get_msg(&p->ex_aio);
 	nni_aio_set_msg(&p->ex_aio, NULL);
@@ -724,6 +720,7 @@ ex_query_recv_cb(void *arg)
 	len     = nni_msg_len(msg);
 
 	nni_mtx_lock(&sock->mtx);
+
 	// process query
 	char *keystr = (char *) (body + 4);
 	if (keystr == NULL) {
@@ -757,7 +754,7 @@ ex_query_recv_cb(void *arg)
 				nni_mtx_unlock(&sock->mtx);
 				return;
 			}
-			for (int j = 0; j < diff; ++j) {
+			for (uint32_t j = 0; j < diff; ++j) {
 				char *tmpch = nng_msg_payload_ptr(tar_msg);
 				if (j == 0) {
 					sprintf(mqdata, "%02x", tmpch[j] & 0xff);
@@ -767,7 +764,7 @@ ex_query_recv_cb(void *arg)
 			}
 			cJSON *mqs_obj = cJSON_CreateString(mqdata);
 			if (!mqs_obj) {
-				return -1;
+				return;
 			}
 			cJSON_AddItemToObject(obj, "mq", mqs_obj);
 			nng_free(mqdata, diff * 2 + 1);
@@ -838,7 +835,6 @@ ex_query_recv_cb(void *arg)
 	nni_aio_set_expire(&p->rp_aio, time);
 	nni_aio_set_msg(&p->rp_aio, tar_msg);
 	nni_pipe_send(p->pipe, &p->rp_aio);
-
 
 	nni_mtx_unlock(&sock->mtx);
 
