@@ -397,7 +397,7 @@ NNG_DECL int         nni_mqtt_msg_set_publish_topic_len(nni_msg *, uint32_t);
 NNG_DECL const char *nni_mqtt_msg_get_publish_topic(nni_msg *, uint32_t *);
 NNG_DECL void        nni_mqtt_msg_set_publish_packet_id(nni_msg *, uint16_t);
 NNG_DECL uint16_t    nni_mqtt_msg_get_publish_packet_id(nni_msg *);
-NNG_DECL void        nni_mqtt_msg_set_publish_payload(nni_msg *, uint8_t *, uint32_t);
+NNG_DECL int         nni_mqtt_msg_set_publish_payload(nni_msg *, uint8_t *, uint32_t);
 NNG_DECL uint8_t    *nni_mqtt_msg_get_publish_payload(nni_msg *, uint32_t *);
 
 // mqtt puback
