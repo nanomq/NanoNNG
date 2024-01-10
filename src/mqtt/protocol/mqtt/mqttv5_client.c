@@ -755,6 +755,9 @@ mqtt_recv_cb(void *arg)
 
 			nni_mqtt_msg_set_packet_type(msg, NNG_MQTT_CONNACK);
 			nni_mqttv5_msg_encode(msg);
+			// if ((rv = nni_mqttv5_msg_encode(msg)) != MQTT_SUCCESS) {
+			// 	nni_plat_printf("Error in encoding CONNACK.\n");
+			// }
 			// only clone CP when pass msg to APP
 			conn_param_clone(s->cparam);
 			if ((ctx = nni_list_first(&s->recv_queue)) == NULL) {
@@ -1005,7 +1008,15 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 	default:
 		break;
 	}
-	nni_mqttv5_msg_encode(msg);
+	// check return
+	if (nni_mqttv5_msg_encode(msg) != MQTT_SUCCESS) {
+		nni_mtx_unlock(&s->mtx);
+		log_error("MQTTv5 client encoding msg failed!");
+		nni_msg_free(msg);
+		nni_aio_set_msg(aio, NULL);
+		nni_aio_finish_error(aio, NNG_EPROTO);
+		return;
+	}
 	p = s->mqtt_pipe;
 	if (p == NULL) {
 		// connection is lost or not established yet

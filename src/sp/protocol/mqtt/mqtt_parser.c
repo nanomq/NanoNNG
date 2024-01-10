@@ -673,6 +673,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		rv                     = len_of_str <= 0 ? 1 : 0;
 
 		if (cparam->will_topic.body == NULL || rv != 0) {
+			log_trace("NULL will topic detected!");
 			return PROTOCOL_ERROR;
 		}
 		log_trace("will_topic: %s %d", cparam->will_topic.body, rv);

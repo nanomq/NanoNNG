@@ -757,7 +757,9 @@ mqtt_recv_cb(void *arg)
 			}
 
 			nni_mqtt_msg_set_packet_type(msg, NNG_MQTT_CONNACK);
-			nni_mqtt_msg_encode(msg);
+			if ((rv = nni_mqtt_msg_encode(msg)) != MQTT_SUCCESS) {
+				nni_plat_printf("Error in encoding CONNACK.\n");
+			}
 			conn_param_clone(s->cparam);
 			if ((ctx = nni_list_first(&s->recv_queue)) == NULL) {
 				// No one waiting to receive yet, putting msg
@@ -1003,7 +1005,15 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 	default:
 		break;
 	}
-	nni_mqtt_msg_encode(msg);
+	// check return
+	if (nni_mqtt_msg_encode(msg) != MQTT_SUCCESS) {
+		nni_mtx_unlock(&s->mtx);
+		log_error("MQTT client encoding msg failed!");
+		nni_msg_free(msg);
+		nni_aio_set_msg(aio, NULL);
+		nni_aio_finish_error(aio, NNG_EPROTO);
+		return;
+	}
 	p = s->mqtt_pipe;
 	if (p == NULL) {
 		// connection is lost or not established yet
