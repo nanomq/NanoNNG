@@ -634,9 +634,11 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		cparam->clientid.len  = strlen(clientid_r);
 		cparam->assignedid    = true;
 	} else if (len_of_str < 0) {
+		log_trace("PROTOCOL_ERROR: No clientid is found!");
 		return (PROTOCOL_ERROR);
 	} else if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v31 &&
 	    len_of_str > 23) {
+		log_trace("CLIENT_IDENTIFIER_NOT_VALID: clientid invalid!");
 		return (CLIENT_IDENTIFIER_NOT_VALID);
 	}
 	log_trace("clientid: [%s] [%d]", cparam->clientid.body, len_of_str);
