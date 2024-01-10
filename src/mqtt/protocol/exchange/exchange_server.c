@@ -726,24 +726,113 @@ ex_query_recv_cb(void *arg)
 	nni_mtx_lock(&sock->mtx);
 	// process query
 	char *keystr = (char *) (body + 4);
-	uint64_t key;
-	if (keystr) {
+	if (keystr == NULL) {
+		log_error("error in paring keystr");
+		nni_mtx_unlock(&sock->mtx);
+		return;
+	}
+
+	cJSON *obj = cJSON_CreateObject();
+	if (strstr(keystr, "-" ) == NULL) {
+		/* single key */
+		uint64_t key;
 		ret = sscanf(keystr, "%"SCNu64, &key);
 		if (ret == 0) {
-			log_error("error in read key to number %s", keystr);
-			key = 0;
+			nni_mtx_unlock(&sock->mtx);
+			return;
 		}
-		// sscanf(keystr, "%I64x", &key);
+		ret = exchange_client_get_msg_by_key(sock, key, &tar_msg);
+		if (ret == 0) {
+			/*
+			 * req will check req id which store in msg body,
+			 * so append tar_msg body to msg which is from req
+			 */
+			uint32_t diff;
+			diff = nng_msg_len(tar_msg) -
+				((uintptr_t)nng_msg_payload_ptr(tar_msg) - (uintptr_t) nng_msg_body(tar_msg));
+
+			char *mqdata = nng_alloc(diff * 2 + 1);
+			if (mqdata == NULL) {
+				log_warn("Failed to allocate memory for file payload\n");
+				nni_mtx_unlock(&sock->mtx);
+				return;
+			}
+			for (int j = 0; j < diff; ++j) {
+				char *tmpch = nng_msg_payload_ptr(tar_msg);
+				if (j == 0) {
+					sprintf(mqdata, "%02x", tmpch[j] & 0xff);
+				} else {
+					sprintf(mqdata, "%s%02x", mqdata, tmpch[j] & 0xff);
+				}
+			}
+			cJSON *mqs_obj = cJSON_CreateString(mqdata);
+			if (!mqs_obj) {
+				return -1;
+			}
+			cJSON_AddItemToObject(obj, "mq", mqs_obj);
+			nng_free(mqdata, diff * 2 + 1);
+		}
+#ifdef SUPP_PARQUET
+		const char **fnames = NULL;
+		uint32_t sz = 1;
+		const char *fname = parquet_find(key);
+		if (fname && sz > 0) {
+			fnames = nng_alloc(sizeof(char *) * sz);
+			if (fnames == NULL) {
+				log_warn("Failed to allocate memory for file payload\n");
+				nni_mtx_unlock(&sock->mtx);
+				return;
+			}
+			fnames[0] = fname;
+
+			ret = get_parquet_files(sz, (char **)fnames, obj);
+			if (ret != 0) {
+				log_error("get_parquet_files failed!");
+			}
+		}
+#endif
 	} else {
-		log_error("error in paring key in json");
-		key = 0;
+		/* fuzz search */
+		uint64_t startKey;
+		uint64_t endKey;
+		uint32_t count = 0;
+		nng_msg **msgList = NULL;
+
+		ret = sscanf(keystr, "%"SCNu64"-%"SCNu64, &startKey, &endKey);
+		if (ret == 0) {
+			log_error("error in read key to number %s", keystr);
+			nni_mtx_unlock(&sock->mtx);
+			return;
+		}
+
+		ret = exchange_client_get_msgs_fuzz(sock, startKey, endKey, &count, &msgList);
+		if (ret == 0 && count != 0 && msgList != NULL) {
+			ret = fuzz_search_result_cat(msgList, count, obj);
+			if (ret != 0) {
+				log_error("fuzz_search_result_cat failed!");
+			}
+		}
+#ifdef SUPP_PARQUET
+		const char **fnames = NULL;
+		uint32_t sz = 0;
+		/* parquet not support fuzz search now, offset means endKey-startKey */
+		fnames = parquet_find_span(startKey, endKey - startKey, &sz);
+		if (fnames && sz > 0) {
+			ret = get_parquet_files(sz, (char **)fnames, obj);
+			if (ret != 0) {
+				log_error("get_parquet_files failed!");
+			}
+		}
+#endif
 	}
-	ret = exchange_client_get_msg_by_key(sock, key, &tar_msg);
-	if (ret != 0) {
-		log_warn("exchange_client_get_msgs_by_key failed!");
-		// echo query msg back
-		tar_msg = msg;
+	char *buf = cJSON_PrintUnformatted(obj);
+	cJSON_Delete(obj);
+	if (buf != NULL) {
+		nni_msg_append(msg, buf, strlen(buf));
+		nng_free(buf, strlen(buf));
 	}
+
+	tar_msg = msg;
 	nni_aio_wait(&p->rp_aio);
 	nni_time time = 3000;
 	nni_aio_set_expire(&p->rp_aio, time);
