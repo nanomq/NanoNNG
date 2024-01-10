@@ -18,8 +18,8 @@
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "nng/supplemental/nanolib/conf.h"
 #include "nng/supplemental/tls/tls.h"
-#include "supplemental/mqtt/mqtt_qos_db_api.h"
 #include "supplemental/mqtt/mqtt_msg.h"
+#include "supplemental/mqtt/mqtt_qos_db_api.h"
 
 // TLS over TCP transport.   Platform specific TLS Over TCP operations must be
 // supplied as well.
@@ -46,9 +46,9 @@ struct tlstran_pipe {
 	uint8_t        *qos_buf; // msg trunk for qos & V4/V5 conversion
 	nni_aio        *txaio;
 	nni_aio        *rxaio;
-	nni_aio        *qsaio;	// send qos ack/rel
-	nni_aio        *rpaio;  // reply DISCONNECT/PING
-	nni_aio        *negoaio;// deal with connect
+	nni_aio        *qsaio;   // send qos ack/rel
+	nni_aio        *rpaio;   // reply DISCONNECT/PING
+	nni_aio        *negoaio; // deal with connect
 	nni_lmq         rslmq;
 	nni_msg        *rxmsg, *cnmsg;
 	nni_mtx         mtx;
@@ -342,7 +342,6 @@ tlstran_pipe_nego_cb(void *arg)
 
 	// we have finished the fixed header
 	if (p->gotrxhead < p->wantrxhead) {
-		nni_iov iov;
 		iov.iov_len = p->wantrxhead - p->gotrxhead;
 		if (p->conn_buf == NULL) {
 			p->conn_buf = nng_alloc(p->wantrxhead);
@@ -462,7 +461,7 @@ tlstran_pipe_qos_send_cb(void *arg)
 		return;
 	}
 	if (p->closed) {
-		msg  = nni_aio_get_msg(qsaio);
+		msg = nni_aio_get_msg(qsaio);
 		nni_msg_free(msg);
 		return;
 	}
@@ -474,7 +473,7 @@ tlstran_pipe_qos_send_cb(void *arg)
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
-	msg  = nni_aio_get_msg(qsaio);
+	msg = nni_aio_get_msg(qsaio);
 	if (msg != NULL)
 		type = nni_msg_cmd_type(msg);
 	else {
@@ -783,7 +782,7 @@ tlstran_pipe_recv_cb(void *arg)
 				rv = PROTOCOL_ERROR;
 				goto recv_error;
 			}
-			ack       = true;
+			ack = true;
 		}
 	} else if (type == CMD_PUBREC) {
 		if ((rv = nni_mqtt_pubres_decode(msg, &packet_id, &reason_code, &prop,
@@ -881,6 +880,7 @@ tlstran_pipe_recv_cb(void *arg)
 	if (!nni_list_empty(&p->recvq)) {
 		tlstran_pipe_recv_start(p);
 	}
+
 	nni_mtx_unlock(&p->mtx);
 
 	nni_aio_set_msg(aio, msg);
@@ -951,7 +951,7 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	nni_iov  iov[8];
 	nni_msg  *tmsg;
 	// qos default to 0 if the msg is not PUBLISH
-	uint8_t  qos = 0;
+	uint8_t qos = 0;
 
 	if (nni_msg_header_len(msg) <= 0 ||
 	    nni_msg_get_type(msg) != CMD_PUBLISH) {
@@ -1002,9 +1002,9 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 		uint32_t  property_bytes = 0, property_len = 0;
 		size_t    tlen, rlen, mlen, plength;
 
-		pipe    = p->npipe;
-		body    = nni_msg_body(msg);
-		header  = nni_msg_header(msg);
+		pipe   = p->npipe;
+		body   = nni_msg_body(msg);
+		header = nni_msg_header(msg);
 
 		plength = 0;
 		mlen    = nni_msg_len(msg);
@@ -1059,26 +1059,26 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 				fixheader = fixheader | 0x02;
 			} else {
 				// set qos to 0
-				fixheader = fixheader & 0xF9;
-				len_offset   = len_offset - 2;
+				fixheader  = fixheader & 0xF9;
+				len_offset = len_offset - 2;
 			}
 		}
 		// copy remaining length
 		rlen = put_var_integer(
 		    tmp, get_var_integer(header, &pos) + len_offset - plength);
 		*(p->qos_buf + qlen) = fixheader;
-		//rlen : max 4 bytes
-		memcpy(p->qos_buf+1+qlen, tmp, rlen);
+		// rlen : max 4 bytes
+		memcpy(p->qos_buf + 1 + qlen, tmp, rlen);
 
 		// 1st part of variable header: topic
-		len_offset = 0;      // now use it to indicates the pid length
+		len_offset = 0; // now use it to indicates the pid length
 		// packet id
 		if (qos > 0) {
 			// set pid
 			len_offset = 2;
 			nni_msg *old;
 			// to differ resend msg
-			pid = (uint16_t)(size_t) nni_aio_get_prov_data(aio);
+			pid = (uint16_t) (size_t) nni_aio_get_prov_data(aio);
 			if (pid == 0) {
 				// first time send this msg
 				pid = nni_pipe_inc_packetid(pipe);
@@ -1232,21 +1232,21 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			    get_var_integer(body + 2 + tlen, &prop_bytes);
 		}
 		target_prover = MQTTV5;
-		tprop_bytes = prop_bytes;
+		tprop_bytes   = prop_bytes;
 	}
 	// subid
 	subinfo *info, *tinfo;
 	tinfo = nni_aio_get_prov_data(txaio);
 	nni_aio_set_prov_data(txaio, NULL);
 	NNI_LIST_FOREACH (p->npipe->subinfol, info) {
-		if (tinfo != NULL && info != tinfo ) {
+		if (tinfo != NULL && info != tinfo) {
 			continue;
 		}
 		if (info->no_local == 1 && p->npipe->p_id == nni_msg_get_pipe(msg)) {
 			continue;
 		}
-		tinfo = NULL;
-		len_offset=0;
+		tinfo           = NULL;
+		len_offset      = 0;
 		char *sub_topic = info->topic;
 		if (sub_topic[0] == '$') {
 			if (0 == strncmp(sub_topic, "$share/", strlen("$share/"))) {
@@ -1256,7 +1256,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 				sub_topic++;
 			}
 		}
-		if (topic_filtern(sub_topic, (char*)(body + 2), tlen)) {
+		if (topic_filtern(sub_topic, (char *)(body + 2), tlen)) {
 			if (niov >= 8) {
 				// nng aio only allow 2 msgs at a time
 				nni_aio_set_prov_data(txaio, info);
@@ -1296,12 +1296,12 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 					fixheader = fixheader | 0x02;
 				} else {
 					// set qos to 0
-					fixheader = fixheader & 0xF9;
-					len_offset   = len_offset - 2;
+					fixheader  = fixheader & 0xF9;
+					len_offset = len_offset - 2;
 				}
 			}
 			// fixed header + remaining length
-			pos=1;
+			pos  = 1;
 			rlen = put_var_integer(
 			    tmp, get_var_integer(header, &pos) + len_offset);
 			// or just copy to qosbuf directly?
@@ -1313,11 +1313,11 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			qlength += rlen + 1;
 			// 1st part of variable header: topic + topic len
 			iov[niov].iov_buf = body;
-			iov[niov].iov_len = tlen+2;
+			iov[niov].iov_len = tlen + 2;
 			niov++;
 			// len to indicate the offset in packet
 			len_offset = 0;
-			plength = 0;
+			plength    = 0;
 			if (qos > 0) {
 				// set pid
 				len_offset = 2;
@@ -1494,15 +1494,14 @@ tlstran_pipe_send_start(tlstran_pipe *p)
 	}
 
 	if (p->pro_ver == MQTT_PROTOCOL_VERSION_v311 ||
-	    p->pro_ver == MQTT_PROTOCOL_VERSION_v31)
+	    p->pro_ver == MQTT_PROTOCOL_VERSION_v31) {
 		tlstran_pipe_send_start_v4(p, msg, aio);
-	else if (p->pro_ver == MQTT_PROTOCOL_VERSION_v5)
+	} else if (p->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 		tlstran_pipe_send_start_v5(p, msg, aio);
-	else {
+	} else {
 		log_error("pro_ver of the msg is not 3, 4 or 5.");
 		nni_aio_finish_error(aio, NNG_EPROTO);
 	}
-
 	return;
 }
 
