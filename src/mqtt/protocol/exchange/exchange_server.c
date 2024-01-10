@@ -642,6 +642,75 @@ get_parquet_files(uint32_t sz, char **fnames, cJSON *obj)
 	return 0;
 }
 #endif
+
+
+static int
+fuzz_search_result_cat(nng_msg **msgList, uint32_t count, cJSON *obj)
+{
+	char *buf = NULL;
+	uint32_t sz = 0;
+	uint32_t pos = 0;
+	uint32_t diff = 0;
+
+	if (msgList == NULL || count == 0) {
+		return -1;
+	}
+
+	for (uint32_t i = 0; i < count; i++) {
+		diff = nng_msg_len(msgList[i]) -
+			((uintptr_t)nng_msg_payload_ptr(msgList[i]) - (uintptr_t)nng_msg_body(msgList[i]));
+		sz += diff;
+	}
+
+	buf = nng_alloc(sizeof(char) * sz);
+	if (buf == NULL) {
+		return -1;
+	}
+
+	char **mqdata = nng_alloc(sizeof(char *) * count);
+	for (uint32_t i = 0; i < count; i++) {
+		diff = nng_msg_len(msgList[i]) -
+			((uintptr_t)nng_msg_payload_ptr(msgList[i]) - (uintptr_t)nng_msg_body(msgList[i]));
+		if (sz >= pos + diff) {
+			memcpy(buf + pos, nng_msg_payload_ptr(msgList[i]), diff);
+
+			mqdata[i] = nng_alloc(diff * 2 + 1);
+			if (mqdata[i] == NULL) {
+				log_warn("Failed to allocate memory for file payload\n");
+				nng_free(buf, sz);
+				return -1;
+			}
+			for (int j = 0; j < diff; ++j) {
+				char *tmpch = nng_msg_payload_ptr(msgList[i]);
+				if (j == 0) {
+					sprintf(mqdata[i], "%02x", tmpch[j] & 0xff);
+				} else {
+					sprintf(mqdata[i], "%s%02x", mqdata[i], tmpch[j] & 0xff);
+				}
+			}
+
+		} else {
+			log_error("buffer overflow!");
+			nng_free(buf, sz);
+			return -1;
+		}
+		pos += diff;
+	}
+
+	cJSON *mqs_obj = cJSON_CreateStringArray(mqdata, count);
+	if (!mqs_obj) {
+		return -1;
+	}
+	cJSON_AddItemToObject(obj, "mq", mqs_obj);
+
+	nng_free(buf, sz);
+	for (int i = 0; i < count; ++i) {
+		nng_free(mqdata[i], 0);
+	}
+	nng_free(mqdata, sizeof(char *) * count);
+
+	return 0;
+}
 /**
  * For exchanger, recv_cb is a consumer SDK
  * TCP/QUIC/IPC/InPROC is at your disposal
