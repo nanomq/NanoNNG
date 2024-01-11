@@ -8,6 +8,7 @@
 add_subdirectory(mqtt)
 add_subdirectory(mqtt_async)
 add_subdirectory(mqttv5)
+add_subdirectory(exchange_consumer)
 
 if(NNG_ENABLE_QUIC)
     add_subdirectory(quic)
