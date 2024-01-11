@@ -293,7 +293,12 @@ static void
 exchange_sock_recv(void *arg, nni_aio *aio)
 {
 	int ret = 0;
-	nni_msg *msg;
+	uint64_t key = 0;
+	uint64_t startKey = 0;
+	uint64_t endKey = 0;
+	uint32_t count = 0;
+	nni_msg *msg = NULL;
+	nng_msg **list = NULL;
 	exchange_sock_t *s = arg;
 
 	if (nni_aio_begin(aio) != 0) {
@@ -308,20 +313,34 @@ exchange_sock_recv(void *arg, nni_aio *aio)
 		nni_aio_finish_error(aio, NNG_EINVAL);
 		return;
 	}
-	uint64_t key = nni_msg_get_timestamp(msg);
-	uint32_t count = (uintptr_t)nni_msg_get_proto_data(msg);
 
 	nni_aio_set_prov_data(aio, NULL);
 	nni_aio_set_msg(aio, NULL);
 
-	nng_msg **list = NULL;
+	nng_time *tss = (nng_time *)nni_msg_get_proto_data(msg);
+	if (tss == NULL) {
+		key = nni_msg_get_timestamp(msg);
 
-	ret = exchange_client_get_msgs_by_key(s, key, count, &list);
-	if (ret != 0) {
-		log_warn("exchange_client_get_msgs_by_key failed!");
-		nni_mtx_unlock(&s->mtx);
-		nni_aio_finish_error(aio, NNG_EINVAL);
-		return;
+		count = 1;
+		ret = exchange_client_get_msgs_by_key(s, key, count, &list);
+		if (ret != 0) {
+			log_warn("exchange_client_get_msgs_by_key failed!");
+			nni_mtx_unlock(&s->mtx);
+			nni_aio_finish_error(aio, NNG_EINVAL);
+			return;
+		}
+	} else {
+		/* fuzz search */
+		startKey = tss[0];
+		endKey = tss[1];
+
+		ret = exchange_client_get_msgs_fuzz(s, startKey, endKey, &count, &list);
+		if (ret != 0) {
+			log_warn("exchange_client_get_msgs_fuzz failed!");
+			nni_mtx_unlock(&s->mtx);
+			nni_aio_finish_error(aio, NNG_EINVAL);
+			return;
+		}
 	}
 
 	nni_aio_set_msg(aio, (void *)list);
@@ -469,12 +488,14 @@ exchange_client_get_msgs_by_key(void *arg, uint64_t key, uint32_t count, nng_msg
 	uint32_t key2 = key & 0XFFFFFFFF;
 	tmsg = nni_id_get(rbmsgmap, key2);
 	if (tmsg == NULL || list == NULL) {
+		log_error("tmsg is NULL or list is NULL\n");
 		return -1;
 	}
 
 	if (count == 1) {
 		nng_msg **newList = nng_alloc(sizeof(nng_msg *));
 		if (newList == NULL) {
+			log_error("Failed to allocate memory for newList\n");
 			return -1;
 		}
 
