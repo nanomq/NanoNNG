@@ -27,23 +27,34 @@ static inline void free_msg_list(nng_msg **msgList, nng_msg *msg, int *lenp, int
 	}
 }
 
-static inline void client_get_msgs(nng_socket sock, uint64_t key, int count, int *lenp, nng_msg ***msgList)
+static inline void client_get_msgs(nng_socket sock, uint64_t startKey, uint64_t endKey, int *lenp, nng_msg ***msgList)
 {
 	nni_aio *aio = NULL;
 	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
 
 	nng_msg *msg;
+	nng_time *tss = NULL;
 	nng_msg_alloc(&msg, 0);
-	nng_msg_set_timestamp(msg, key);
-	nni_msg_set_proto_data(msg, NULL, (void *)(uintptr_t)count);
 
+	if (endKey == 0) {
+		nng_msg_set_timestamp(msg, startKey);
+		nng_msg_set_proto_data(msg, NULL, NULL);
+	} else {
+		tss = nng_alloc(sizeof(nng_time) * 2);
+		tss[0] = startKey;
+		tss[1] = endKey;
+		nng_msg_set_proto_data(msg, NULL, (void *)tss);
+	}
 	nni_aio_set_msg(aio, msg);
-
 	nng_recv_aio(sock, aio);
 	nng_aio_wait(aio);
 
 	*msgList = (nng_msg **)nng_aio_get_msg(aio);
 	*lenp = (uintptr_t)nng_aio_get_prov_data(aio);
+
+	if (tss != NULL) {
+		nng_free(tss, sizeof(nng_time) * 2);
+	}
 
 	nng_msg_free(msg);
 	nng_aio_free(aio);
@@ -145,7 +156,7 @@ test_exchange_client(void)
 	/* Use aio recv to get msgs by key */
 	lenp = nng_alloc(sizeof(int));
 	*lenp = 0;
-	client_get_msgs(sock, key, 1, lenp, &msgList);
+	client_get_msgs(sock, key, 0, lenp, &msgList);
 	NUTS_TRUE(*lenp == 1 && msgList != NULL);
 	free_msg_list(msgList, NULL, lenp, 0);
 
@@ -174,8 +185,8 @@ test_exchange_client(void)
 	/* Use aio recv to get msgs by key */
 	lenp = nng_alloc(sizeof(int));
 	*lenp = 0;
-	client_get_msgs(sock, key, 10, lenp, &msgList);
-	NUTS_TRUE(*lenp == 10 && msgList != NULL);
+	client_get_msgs(sock, 1, 10, lenp, &msgList);
+	NUTS_TRUE(*lenp == 9 && msgList != NULL);
 	free_msg_list(msgList, NULL, lenp, 0);
 
 
