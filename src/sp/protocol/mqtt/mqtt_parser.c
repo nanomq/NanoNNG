@@ -605,10 +605,12 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		if (pos >= max)
 			return PROTOCOL_ERROR;
 		len_of_var = 0;
-		cparam->prop_len = (uint32_t) get_var_integer(packet + pos, &len_of_var);
+		cparam->prop_len = (uint32_t) get_var_integer(packet + pos,
+													  &len_of_var);
 		if (cparam->prop_len > (max - pos - 1 - cparam->will_flag*2 ))
 			return PROTOCOL_ERROR;
-		log_debug("remain len %d max len %d prop len %d pos %d", len, max, cparam->prop_len, pos);
+		log_debug("remain len %d max len %d prop len %d pos %d",
+				   len, max, cparam->prop_len, pos);
 		cparam->properties = decode_buf_properties(
 		    packet, len, &pos, &cparam->prop_len, true);
 		if (cparam->properties) {
