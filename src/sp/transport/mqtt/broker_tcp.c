@@ -386,6 +386,10 @@ tcptran_pipe_nego_cb(void *arg)
 				    p->conf == NULL
 				    ? NANO_MAX_RECV_PACKET_SIZE
 				    : p->conf->client_max_packet_size;
+				property_remove(p->tcp_cparam->properties,
+				    MAXIMUM_PACKET_SIZE);
+				property_set_value_u32(MAXIMUM_PACKET_SIZE,
+				    p->tcp_cparam->max_packet_size);
 			}
 			nni_mtx_unlock(&ep->mtx);
 			return;
