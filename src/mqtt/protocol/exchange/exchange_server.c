@@ -682,22 +682,14 @@ fuzz_search_result_cat(nng_msg **msgList, uint32_t count, cJSON *obj)
 		sz += diff;
 	}
 
-	buf = nng_alloc(sizeof(char) * sz);
-	if (buf == NULL) {
-		return -1;
-	}
-
 	char **mqdata = nng_alloc(sizeof(char *) * count);
 	for (uint32_t i = 0; i < count; i++) {
 		diff = nng_msg_len(msgList[i]) -
 			((uintptr_t)nng_msg_payload_ptr(msgList[i]) - (uintptr_t)nng_msg_body(msgList[i]));
 		if (sz >= pos + diff) {
-			memcpy(buf + pos, nng_msg_payload_ptr(msgList[i]), diff);
-
 			mqdata[i] = nng_alloc(diff * 2 + 1);
 			if (mqdata[i] == NULL) {
 				log_warn("Failed to allocate memory for file payload\n");
-				nng_free(buf, sz);
 				return -1;
 			}
 			for (int j = 0; j < diff; ++j) {
@@ -711,7 +703,6 @@ fuzz_search_result_cat(nng_msg **msgList, uint32_t count, cJSON *obj)
 
 		} else {
 			log_error("buffer overflow!");
-			nng_free(buf, sz);
 			return -1;
 		}
 		pos += diff;
@@ -723,7 +714,6 @@ fuzz_search_result_cat(nng_msg **msgList, uint32_t count, cJSON *obj)
 	}
 	cJSON_AddItemToObject(obj, "mq", mqs_obj);
 
-	nng_free(buf, sz);
 	for (int i = 0; i < count; ++i) {
 		nng_free(mqdata[i], 0);
 	}
@@ -859,6 +849,8 @@ ex_query_recv_cb(void *arg)
 			if (ret != 0) {
 				log_error("get_parquet_files failed!");
 			}
+		} else {
+			log_error("parquet_find_span failed! sz: %d", sz);
 		}
 #endif
 	}
