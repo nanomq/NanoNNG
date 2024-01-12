@@ -151,7 +151,7 @@ mqtt_pipe_timer_cb(void *arg)
 	uint8_t            buf[2];
 
 	if (nng_aio_result(&p->tmaio) != 0) {
-		// log_error("Timer error!");
+		log_info("Timer aio error!");
 		return;
 	}
 
@@ -430,7 +430,7 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 					goto mqtt_error;
 				} else {
 					p->packmax = data->p_value.u32;
-					log_error("Set max packet size as %ld", p->packmax);
+					log_info("Set max packet size as %ld", p->packmax);
 				}
 			}
 			data = property_get_value(ep->property, PUBLISH_MAXIMUM_QOS);
