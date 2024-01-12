@@ -4079,6 +4079,7 @@ encode_properties(nni_msg *msg, property *prop, uint8_t cmd)
 
 	uint32_t prop_len = get_properties_len(prop);
 	int      bytes    = write_variable_length_value(prop_len, &buf);
+
 	if (bytes < 0)
 		return -1;
 	nni_msg_append(msg, rlen, bytes);
@@ -4086,7 +4087,7 @@ encode_properties(nni_msg *msg, property *prop, uint8_t cmd)
 		return 0;
 	}
 	if (cmd == CMD_PUBLISH) {
-		/* TODO  check msg expiry
+		/* TODO  check msg expiry, return -1 to stop publishing
 		nni_time       rtime = nni_msg_get_timestamp(msg);
 		nni_time       ntime = nni_clock();
 		property_data *data =
@@ -4101,6 +4102,12 @@ encode_properties(nni_msg *msg, property *prop, uint8_t cmd)
 	}
 
 	for (property *p = prop->next; p != NULL; p = p->next) {
+		if (cmd == CMD_CONNACK)
+		    if (p->id == REASON_STRING || p->id == USER_PROPERTY ||
+		        p->id == RESPONSE_INFORMATION ||
+		        p->id == REQUEST_PROBLEM_INFORMATION ||
+		        p->id == REQUEST_RESPONSE_INFORMATION)
+			continue;
 		nni_mqtt_msg_append_u8(msg, p->id);
 		property_type_enum type = property_get_value_type(p->id);
 		switch (type) {

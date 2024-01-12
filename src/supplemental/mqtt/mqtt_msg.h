@@ -504,6 +504,7 @@ NNG_DECL int       property_free(property *prop);
 NNG_DECL void      property_foreach(property *prop, void (*cb)(property *));
 NNG_DECL int       property_dup(property **dup, const property *src);
 NNG_DECL property *property_pub_by_will(property *will_prop);
+NNG_DECL void      property_remove(property *prop_list, uint8_t prop_id);
 
 NNG_DECL property *property_alloc(void);
 NNG_DECL property *property_set_value_u8(uint8_t prop_id, uint8_t value);
