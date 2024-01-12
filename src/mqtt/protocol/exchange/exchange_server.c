@@ -603,11 +603,14 @@ get_parquet_files_raw(uint32_t sz, char **fnames, char ***file_raws)
 		}
 
 		for (int j = 0; j < file_size; ++j) {
-			if (j == 0) {
-				sprintf((*file_raws)[i], "%02x", payload[j] & 0xff);
-			} else {
-				sprintf((*file_raws)[i], "%s%02x", (*file_raws)[i], payload[j] & 0xff);
-			}
+			char hex[2];
+			hex[0] = '0';
+			hex[1] = '0';
+
+			decToHex(payload[j] & 0xff, hex);
+
+			(*file_raws)[i][j * 2] = hex[0];
+			(*file_raws)[i][j * 2 + 1] = hex[1];
 		}
 		nng_free(payload, file_size);
 	}
@@ -664,6 +667,30 @@ get_parquet_files(uint32_t sz, char **fnames, cJSON *obj)
 }
 #endif
 
+void
+decToHex(unsigned char decimal, char *hexadecimal)
+{
+	unsigned char remainder = 0;
+	if (decimal > 0) {
+		remainder = decimal % 16;
+		if (remainder < 10) {
+			hexadecimal[1] = remainder + '0';
+		} else {
+			hexadecimal[1] = remainder + 'a' - 10;
+		}
+
+		decimal /= 16;
+		remainder = decimal % 16;
+		if (remainder < 10) {
+			hexadecimal[0] = remainder + '0';
+		} else {
+			hexadecimal[0] = remainder + 'a' - 10;
+		}
+	}
+
+	return;
+}
+
 static int
 fuzz_search_result_cat(nng_msg **msgList, uint32_t count, cJSON *obj)
 {
@@ -694,13 +721,15 @@ fuzz_search_result_cat(nng_msg **msgList, uint32_t count, cJSON *obj)
 			}
 			for (int j = 0; j < diff; ++j) {
 				char *tmpch = (char *)nng_msg_payload_ptr(msgList[i]);
-				if (j == 0) {
-					sprintf(mqdata[i], "%02x", tmpch[j] & 0xff);
-				} else {
-					sprintf(mqdata[i], "%s%02x", mqdata[i], tmpch[j] & 0xff);
-				}
-			}
+				char hex[2];
+				hex[0] = '0';
+				hex[1] = '0';
 
+				decToHex(tmpch[j] & 0xff, hex);
+
+				mqdata[i][j * 2] = hex[0];
+				mqdata[i][j * 2 + 1] = hex[1];
+			}
 		} else {
 			log_error("buffer overflow!");
 			return -1;
