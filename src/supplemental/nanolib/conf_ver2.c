@@ -552,19 +552,14 @@ conf_web_hook_parse_rules_ver2(conf *config, cJSON *jso)
 
 	conf_web_hook *webhook = &(config->web_hook);
 	webhook->rules         = NULL;
-	size_t cnt             = 0;
 
 	cJSON_ArrayForEach(jso_webhook_rule, jso_webhook_rules)
 	{
-		cnt++;
-		webhook->rules = realloc(
-		    webhook->rules, cnt * sizeof(conf_web_hook_rule *));
-		webhook->rules[cnt - 1] =
-		    calloc(1, sizeof(conf_web_hook_rule));
-		webhook_action_parse_ver2(
-		    jso_webhook_rule, webhook->rules[cnt - 1]);
+		conf_web_hook_rule *hook_rule = NNI_ALLOC_STRUCT(hook_rule);
+		webhook_action_parse_ver2(jso_webhook_rule, hook_rule);
+		cvector_push_back(webhook->rules, hook_rule);
+		webhook->rule_count = cvector_size(webhook->rules);
 	}
-	webhook->rule_count = cnt;
 
 	return;
 }

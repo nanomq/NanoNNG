@@ -3396,18 +3396,14 @@ conf_web_hook_parse_rules(conf_web_hook *webhook, const char *path)
 			}
 		}
 		if (match) {
-			webhook->rule_count++;
-			webhook->rules = realloc(webhook->rules,
-			    webhook->rule_count *
-			        (sizeof(conf_web_hook_rule *)));
-			webhook->rules[webhook->rule_count - 1] =
-			    calloc(1, sizeof(conf_web_hook_rule));
-			webhook->rules[webhook->rule_count - 1]->event =
+			conf_web_hook_rule *hook_rule =
+			    NNI_ALLOC_STRUCT(hook_rule);
+			hook_rule->event =
 			    get_webhook_event(hooktype, hookname);
-			webhook->rules[webhook->rule_count - 1]->rule_num =
-			    num;
-			webhook_action_parse(value_trimmed,
-			    webhook->rules[webhook->rule_count - 1]);
+			hook_rule->rule_num = num;
+			webhook_action_parse(value_trimmed, hook_rule);
+			cvector_push_back(webhook->rules, hook_rule);
+			webhook->rule_count = cvector_size(webhook->rules);
 		}
 		if (key) {
 			free(key);
@@ -3509,7 +3505,7 @@ conf_web_hook_destroy(conf_web_hook *web_hook)
 			free(web_hook->rules[i]->topic);
 			free(web_hook->rules[i]);
 		}
-		free(web_hook->rules);
+		cvector_free(web_hook->rules);
 	}
 
 	conf_tls_destroy(&web_hook->tls);
