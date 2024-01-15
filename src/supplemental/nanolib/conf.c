@@ -3581,7 +3581,6 @@ conf_parse_http_headers(
 	char * pattern = nni_zalloc(len);
 	snprintf(pattern, len, "%s.headers.%%[^=]=%%[^\n]", key_prefix);
 
-	size_t header_count = 0;
 	while (nano_getline(&line, &sz, fp) != -1) {
 		if (sz <= 16) {
 			goto next;
@@ -3623,7 +3622,6 @@ static conf_http_param **
 get_params(const char *value, size_t *count)
 {
 	conf_http_param **params      = NULL;
-	size_t            param_count = 0;
 
 	char *line = nng_strdup(value);
 	char *tk   = strtok(line, ",");
