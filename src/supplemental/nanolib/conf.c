@@ -3592,15 +3592,11 @@ conf_parse_http_headers(
 		int   res   = sscanf(str, pattern, key, value);
 		free(str);
 		if (res == 2) {
-			header_count++;
-			headers = realloc(headers,
-			    header_count * sizeof(conf_http_header *));
-			headers[header_count - 1] =
-			    calloc(1, sizeof(conf_http_header));
-			headers[header_count - 1]->key =
-			    strtrim_head_tail(key, strlen(key));
-			headers[header_count - 1]->value =
-			    strtrim_head_tail(value, strlen(value));
+			conf_http_header *config_header =
+		    NNI_ALLOC_STRUCT(config_header);
+			config_header->key = nng_strdup(key);
+			config_header->value = nng_strdup(value);
+			cvector_push_back(headers, config_header);
 		}
 		if (key) {
 			free(key);
@@ -3619,7 +3615,7 @@ conf_parse_http_headers(
 	}
 	nng_strfree(pattern);
 	fclose(fp);
-	*count = header_count;
+	*count = cvector_size(headers);
 	return headers;
 }
 
@@ -3632,67 +3628,63 @@ get_params(const char *value, size_t *count)
 	char *line = nng_strdup(value);
 	char *tk   = strtok(line, ",");
 	while (tk != NULL) {
-		param_count++;
-		params =
-		    realloc(params, sizeof(conf_http_param *) * param_count);
 		char *str = nng_strdup(tk);
 		char *key = calloc(1, strlen(str));
+		conf_http_param *param = NNI_ALLOC_STRUCT(param);
+		param->name            = nng_strdup(key);
 		char  c   = 0;
 		int   res = sscanf(str, "%[^=]=%%%c", key, &c);
 		if (res == 2) {
-			params[param_count - 1] =
-			    calloc(1, sizeof(conf_http_param));
-			params[param_count - 1]->name = key;
 			switch (c) {
 			case 'A':
-				params[param_count - 1]->type = ACCESS;
+				param->type = ACCESS;
 				break;
 			case 'u':
-				params[param_count - 1]->type = USERNAME;
+				param->type = USERNAME;
 				break;
 			case 'c':
-				params[param_count - 1]->type = CLIENTID;
+				param->type = CLIENTID;
 				break;
 			case 'a':
-				params[param_count - 1]->type = IPADDRESS;
+				param->type = IPADDRESS;
 				break;
 			case 'P':
-				params[param_count - 1]->type = PASSWORD;
+				param->type = PASSWORD;
 				break;
 			case 'p':
-				params[param_count - 1]->type = SOCKPORT;
+				param->type = SOCKPORT;
 				break;
 			case 'C':
-				params[param_count - 1]->type = COMMON_NAME;
+				param->type = COMMON_NAME;
 				break;
 			case 'd':
-				params[param_count - 1]->type = SUBJECT;
+				param->type = SUBJECT;
 				break;
 			case 't':
-				params[param_count - 1]->type = TOPIC;
+				param->type = TOPIC;
 				break;
 			case 'm':
-				params[param_count - 1]->type = MOUNTPOINT;
+				param->type = MOUNTPOINT;
 				break;
 			case 'r':
-				params[param_count - 1]->type = PROTOCOL;
+				param->type = PROTOCOL;
 				break;
 			default:
 				break;
 			}
+			cvector_push_back(params, param);
 		} else {
-			param_count--;
-			if (key) {
-				free(key);
-			}
+			nng_strfree(param->name);
+			NNI_FREE_STRUCT(param);
 		}
+		free(key);
 		free(str);
 		tk = strtok(NULL, ",");
 	}
 	if (line) {
 		free(line);
 	}
-	*count = param_count;
+	*count = cvector_size(params);
 
 	return params;
 }
