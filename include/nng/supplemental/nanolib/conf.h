@@ -310,6 +310,12 @@ struct conf_exchange {
 	conf_exchange_node **nodes;
 };
 
+typedef struct conf_plugin conf_plugin;
+struct conf_plugin {
+	char **path;
+	size_t path_sz;
+};
+
 typedef enum {
 	UNCOMPRESSED,
 	SNAPPY,
@@ -528,6 +534,9 @@ struct conf {
 	conf_bridge          aws_bridge;	// AWS IoT Core
 	conf_exchange        exchange;
 	conf_parquet         parquet;
+#if defined(SUPP_PLUGIN)
+	conf_plugin          plugin;
+#endif
 	conf_web_hook        web_hook;
 #if defined(ENABLE_LOG)
 	conf_log  log;
