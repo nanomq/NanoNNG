@@ -186,13 +186,13 @@ parquet_write(std::shared_ptr<parquet::ParquetFileWriter> file_writer,
 	// Append a RowGroup with a specific number of rows.
 	parquet::RowGroupWriter *rg_writer = file_writer->AppendRowGroup();
 
-	// Write the Int32 column
-	parquet::Int32Writer *int32_writer =
-	    static_cast<parquet::Int32Writer *>(rg_writer->NextColumn());
+	// Write the Int64 column
+	parquet::Int64Writer *int64_writer =
+	    static_cast<parquet::Int64Writer *>(rg_writer->NextColumn());
 	for (uint32_t i = 0; i < elem->size; i++) {
-		int32_t value            = elem->keys[i];
+		int64_t value            = elem->keys[i];
 		int16_t definition_level = 1;
-		int32_writer->WriteBatch(
+		int64_writer->WriteBatch(
 		    1, &definition_level, nullptr, &value);
 	}
 
