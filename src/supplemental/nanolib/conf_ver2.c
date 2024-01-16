@@ -1028,10 +1028,45 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 	return;
 }
 
+#if defined(SUPP_PLUGIN)
+static void
+conf_plugin_parse_ver2(conf *config, cJSON *jso)
+{
+	cJSON *plugin = hocon_get_obj("plugin", jso);
+	cJSON *libs	      = NULL;
+	cJSON *lib	      = NULL;
+
+	config->plugin.path     = NULL;
+	config->plugin.path_sz  = 0;
+
+	libs = hocon_get_obj("libs", plugin);
+
+	cJSON_ArrayForEach(lib, libs) {
+		cJSON *jso_path = cJSON_GetObjectItem(lib, "path");
+		if (jso_path) {
+			if (cJSON_IsString(jso_path)) {
+				if (jso_path->valuestring != NULL) {
+					log_error("jso_path->valuestring: %s", jso_path->valuestring);
+					char *newStr = nng_strdup(jso_path->valuestring);
+					if (newStr != NULL) {
+						cvector_push_back(config->plugin.path, newStr);
+					} else {
+						log_error("nng_strdup failed");
+					}
+				}
+			}
+		}
+	}
+	config->plugin.path_sz = cvector_size(config->plugin.path);
+
+	return;
+}
+#endif
+
 void
 conf_exchange_node_parse(conf_exchange_node *node, cJSON *obj)
 {
-	cJSON *exchange = hocon_get_obj("exchange", obj);;
+	cJSON *exchange = hocon_get_obj("exchange", obj);
 
 	hocon_read_str(node, name, exchange);
 	hocon_read_str(node, topic, exchange);
@@ -1455,6 +1490,9 @@ conf_parse_ver2(conf *config)
 		conf_bridge_parse_ver2(config, jso);
 		conf_exchange_parse_ver2(config, jso);
 		conf_parquet_parse_ver2(config, jso);
+#if defined(SUPP_PLUGIN)
+		conf_plugin_parse_ver2(config, jso);
+#endif
 #if defined(SUPP_AWS_BRIDGE)
 		conf_aws_bridge_parse_ver2(config, jso);
 #endif
