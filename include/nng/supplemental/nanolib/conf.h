@@ -310,11 +310,13 @@ struct conf_exchange {
 	conf_exchange_node **nodes;
 };
 
+#if defined(SUPP_PLUGIN)
 typedef struct conf_plugin conf_plugin;
 struct conf_plugin {
 	char **path;
 	size_t path_sz;
 };
+#endif
 
 typedef enum {
 	UNCOMPRESSED,
