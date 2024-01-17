@@ -414,6 +414,24 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 }
 
 static void
+conf_tcp_parse_ver2_base(conf_tcp *tcp, cJSON *jso_tcp)
+{
+	if (jso_tcp) {
+		hocon_read_bool(tcp, nodelay, jso_tcp);
+		hocon_read_bool(tcp, keepalive, jso_tcp);
+		hocon_read_num(tcp, quickack, jso_tcp);
+		hocon_read_time(tcp, keepidle, jso_tcp);
+		hocon_read_time(tcp, keepintvl, jso_tcp);
+		hocon_read_time(tcp, keepcnt, jso_tcp);
+		hocon_read_time(tcp, sendtimeo, jso_tcp);
+		hocon_read_time(tcp, recvtimeo, jso_tcp);
+		// TODO: handle error
+	}
+
+	return;
+}
+
+static void
 conf_tls_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *jso_tls = hocon_get_obj("listeners.ssl", jso);
@@ -825,6 +843,17 @@ conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 	cJSON *   jso_tls         = hocon_get_obj("ssl", jso_connector);
 	conf_tls *bridge_node_tls = &(node->tls);
 	conf_tls_parse_ver2_base(bridge_node_tls, jso_tls);
+
+	cJSON    *jso_tcp         = hocon_get_obj("tcp", jso_connector);
+	conf_tcp *bridge_node_tcp = &(node->tcp);
+	conf_tcp_parse_ver2_base(bridge_node_tcp, jso_tcp);
+
+	printf("nodelay:%d, keepalive:%d, quickack:%d, keepidle:%d, "
+	       "keepintvl:%d, keepcnt:%d, sendtimeo:%d, recvtimep:%d\n",
+	    bridge_node_tcp->nodelay, bridge_node_tcp->keepalive,
+	    bridge_node_tcp->quickack, bridge_node_tcp->keepidle,
+	    bridge_node_tcp->keepintvl, bridge_node_tcp->keepcnt,
+	    bridge_node_tcp->sendtimeo, bridge_node_tcp->recvtimeo);
 
 	cJSON *jso_prop = hocon_get_obj("conn_properties", jso_connector);
 	if (jso_prop != NULL) {
