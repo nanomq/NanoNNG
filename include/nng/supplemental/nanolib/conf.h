@@ -74,6 +74,20 @@ struct conf_tls {
 
 typedef struct conf_tls conf_tls;
 
+typedef struct {
+	uint8_t nodelay;
+	uint8_t keepalive;
+	uint8_t quickack;
+	uint16_t keepidle;
+	uint16_t keepintvl;
+	uint16_t keepcnt;
+	uint16_t sendtimeo;
+	uint16_t recvtimeo;
+	// TODO: use timeval for send/recvtimeo
+	// struct timeval sendtimeo;
+	// struct timeval recvtimeo;
+} conf_tcp;
+
 struct conf_sqlite {
 	bool   enable;
 	size_t disk_cache_size;   // specify the max rows of sqlite table
@@ -249,6 +263,7 @@ struct conf_bridge_node {
 	uint64_t     parallel;
 	topics     **sub_list;
 	conf_tls     tls;
+	conf_tcp     tcp;
 	conf_sqlite *sqlite;
 	nng_aio    **bridge_aio;
 	void        *bridge_arg;	// for reloading bridge case
