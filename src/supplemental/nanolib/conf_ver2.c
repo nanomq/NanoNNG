@@ -1035,7 +1035,7 @@ conf_plugin_parse_ver2(conf *config, cJSON *jso)
 	cJSON *libs = hocon_get_obj("plugin.libs", jso);
 	cJSON *lib	      = NULL;
 
-	config->plugin.path     = NULL;
+	config->plugin.libs     = NULL;
 	config->plugin.path_sz  = 0;
 
 	cJSON_ArrayForEach(lib, libs) {
@@ -1043,18 +1043,19 @@ conf_plugin_parse_ver2(conf *config, cJSON *jso)
 		if (jso_path) {
 			if (cJSON_IsString(jso_path)) {
 				if (jso_path->valuestring != NULL) {
-					log_error("jso_path->valuestring: %s", jso_path->valuestring);
-					char *newStr = nng_strdup(jso_path->valuestring);
-					if (newStr != NULL) {
-						cvector_push_back(config->plugin.path, newStr);
+					conf_plugin_lib *lib = NNI_ALLOC_STRUCT(lib);
+					lib->path = nng_strdup(jso_path->valuestring);
+					if (lib->path != NULL) {
+						cvector_push_back(config->plugin.libs, lib);
 					} else {
+						NNI_FREE_STRUCT(lib);
 						log_error("nng_strdup failed");
 					}
 				}
 			}
 		}
 	}
-	config->plugin.path_sz = cvector_size(config->plugin.path);
+	config->plugin.path_sz = cvector_size(config->plugin.libs);
 
 	return;
 }

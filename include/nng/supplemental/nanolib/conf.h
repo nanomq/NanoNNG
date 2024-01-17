@@ -311,9 +311,14 @@ struct conf_exchange {
 };
 
 #if defined(SUPP_PLUGIN)
+typedef struct conf_plugin_lib conf_plugin_lib;
+struct conf_plugin_lib {
+	char *path;
+};
+
 typedef struct conf_plugin conf_plugin;
 struct conf_plugin {
-	char **path;
+	struct conf_plugin_lib **libs;
 	size_t path_sz;
 };
 #endif
