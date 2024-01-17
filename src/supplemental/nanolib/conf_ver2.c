@@ -1032,14 +1032,11 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 static void
 conf_plugin_parse_ver2(conf *config, cJSON *jso)
 {
-	cJSON *plugin = hocon_get_obj("plugin", jso);
-	cJSON *libs	      = NULL;
+	cJSON *libs = hocon_get_obj("plugin.libs", jso);
 	cJSON *lib	      = NULL;
 
 	config->plugin.path     = NULL;
 	config->plugin.path_sz  = 0;
-
-	libs = hocon_get_obj("libs", plugin);
 
 	cJSON_ArrayForEach(lib, libs) {
 		cJSON *jso_path = cJSON_GetObjectItem(lib, "path");
