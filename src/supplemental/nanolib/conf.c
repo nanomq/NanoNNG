@@ -1161,6 +1161,16 @@ print_exchange_conf(conf_exchange *exchange)
 	}
 }
 
+#if defined(SUPP_RULE_ENGINE)
+static void
+print_plugin_conf(conf_plugin *plugin)
+{
+	for (int i = 0; i < (int)plugin->path_sz; i++) {
+		log_info("plugin path: %s", plugin->libs[i]->path);
+	}
+}
+#endif
+
 static void
 print_parquet_conf(conf_parquet *parquet)
 {
@@ -1346,7 +1356,9 @@ print_conf(conf *nanomq_conf)
 #if defined(SUPP_AWS_BRIDGE)
 	print_bridge_conf(&nanomq_conf->aws_bridge, "aws.");
 #endif
-
+#if defined(SUPP_PLUGIN)
+	print_plugin_conf(&nanomq_conf->plugin);
+#endif
 #if defined(SUPP_RULE_ENGINE)
 	conf_rule *rule_eng = &(nanomq_conf->rule_eng);
 	print_rule_engine_conf(rule_eng);
