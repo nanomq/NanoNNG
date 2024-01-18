@@ -716,7 +716,7 @@ fuzz_search_result_cat(nng_msg **msgList, uint32_t count, cJSON *obj)
 			((uintptr_t)nng_msg_payload_ptr(msgList[i]) - (uintptr_t)nng_msg_body(msgList[i]));
 		if (sz >= pos + diff) {
 			mqdata[i] = nng_alloc(diff * 2 + 1);
-			memset(mqdata[i], 0, diff * 2 + 1);
+			memset(mqdata[i], '\0', diff * 2 + 1);
 			if (mqdata[i] == NULL) {
 				log_warn("Failed to allocate memory for file payload\n");
 				return -1;
