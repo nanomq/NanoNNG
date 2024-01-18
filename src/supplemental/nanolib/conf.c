@@ -1161,7 +1161,7 @@ print_exchange_conf(conf_exchange *exchange)
 	}
 }
 
-#if defined(SUPP_RULE_ENGINE)
+#if defined(SUPP_PLUGIN)
 static void
 print_plugin_conf(conf_plugin *plugin)
 {
