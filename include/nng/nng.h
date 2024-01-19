@@ -843,6 +843,16 @@ NNG_DECL nng_listener nng_pipe_listener(nng_pipe);
 // TODO: more notes
 #define NNG_OPT_TCP_QUICKACK "tcp-quickack"
 
+#define NNG_OPT_TCP_KEEPIDLE "tcp-keepidle"
+
+#define NNG_OPT_TCP_KEEPINTVL "tcp-keepintvl"
+
+#define NNG_OPT_TCP_KEEPCNT "tcp-keepcnt"
+
+#define NNG_OPT_TCP_SENDTIMEO "tcp-sendtimeo"
+
+#define NNG_OPT_TCP_RECVTIMEO "tcp-recvtimeo"
+
 // Local TCP port number.  This is used on a listener, and is intended
 // to be used after starting the listener in combination with a wildcard
 // (0) local port.  This determines the actual ephemeral port that was

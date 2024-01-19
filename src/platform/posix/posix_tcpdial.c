@@ -114,10 +114,45 @@ tcp_dialer_cancel(nni_aio *aio, void *arg, int rv)
 static void
 tcp_params_set(nni_posix_pfd *pfd, nni_tcp_dialer *d)
 {
-	log_error("set\n");
-	int quickack = d->quickack ? 1 : 0;
+	
+	int nodelay   = d->nodelay ? 1 : 0;
+	int keepalive = d->keepalive ? 1 : 0;
+
 	(void) setsockopt(nni_posix_pfd_fd(pfd), IPPROTO_TCP, TCP_NODELAY,
-	    &quickack, sizeof(int));
+	    &nodelay, sizeof(int));
+	(void) setsockopt(nni_posix_pfd_fd(pfd), SOL_SOCKET, SO_KEEPALIVE,
+	    &keepalive, sizeof(int));
+
+	if (d->keepalive) {
+		int quickack = d->quickack ? 1 : 0;
+		int keepidle = d->keepidle;
+		int keepintvl = d->keepintvl;
+		int keepcnt   = d->keepcnt;
+		struct timeval sendtimeo;
+		struct timeval recvtimeo;
+		sendtimeo.tv_sec = d->sendtimeo;
+		recvtimeo.tv_sec = d->recvtimeo;
+
+		(void) setsockopt(nni_posix_pfd_fd(pfd), IPPROTO_TCP,
+		    TCP_NODELAY, &quickack, sizeof(int));
+		(void) setsockopt(nni_posix_pfd_fd(pfd), IPPROTO_TCP,
+		    TCP_NODELAY, &quickack, sizeof(int));
+		(void) setsockopt(nni_posix_pfd_fd(pfd), IPPROTO_TCP,
+		    TCP_NODELAY, &quickack, sizeof(int));
+		(void) setsockopt(nni_posix_pfd_fd(pfd), IPPROTO_TCP,
+		    TCP_NODELAY, &quickack, sizeof(int));
+		(void) setsockopt(nni_posix_pfd_fd(pfd), SOL_SOCKET,
+		    SO_SNDTIMEO, (char *) &sendtimeo, sizeof(struct timeval));
+		(void) setsockopt(nni_posix_pfd_fd(pfd), SOL_SOCKET,
+		    SO_RCVTIMEO, (char *) &recvtimeo, sizeof(struct timeval));
+
+		log_trace(
+		    "tcp options setting: nodelay:%d, keepalive:%d, "
+		    "quickack:%d, keepidle:%d, keepintvl:%d,"
+			"keepcnt:%d, sendtimeo:%d, recvtimep:%d\n",
+		    d->nodelay, d->keepalive, d->quickack, d->keepidle,
+		    d->keepintvl, d->keepcnt, d->sendtimeo, d->recvtimeo);
+	}
 }
 
 static void
@@ -337,6 +372,7 @@ tcp_dialer_set_quickack(void *arg, const void *buf, size_t sz, nni_type t)
 	nni_mtx_lock(&d->mtx);
 	d->quickack = (*quickack == 1);
 	nni_mtx_unlock(&d->mtx);
+
 	return (0);
 }
 
@@ -345,10 +381,147 @@ tcp_dialer_get_quickack(void *arg, void *buf, size_t *szp, nni_type t)
 {
 	bool            b;
 	nni_tcp_dialer *d = arg;
+
 	nni_mtx_lock(&d->mtx);
 	b = d->quickack;
 	nni_mtx_unlock(&d->mtx);
+
 	return (nni_copyout_bool(b, buf, szp, t));
+}
+
+static int
+tcp_dialer_set_keepidle(void *arg, const void *buf, size_t sz, nni_type t)
+{
+	nni_tcp_dialer *d = arg;
+	int             rv;
+	uint16_t        *keepidle = (uint16_t *) buf;
+
+	nni_mtx_lock(&d->mtx);
+	d->keepidle = (*keepidle);
+	nni_mtx_unlock(&d->mtx);
+
+	return (0);
+}
+
+static int
+tcp_dialer_get_keepidle(void *arg, void *buf, size_t *szp, nni_type t)
+{
+	uint16_t            keepidle;
+	nni_tcp_dialer *d = arg;
+
+	nni_mtx_lock(&d->mtx);
+	keepidle = d->keepidle;
+	nni_mtx_unlock(&d->mtx);
+
+	return (nni_copyout_int(keepidle, buf, szp, t));
+}
+
+static int
+tcp_dialer_set_keepintvl(void *arg, const void *buf, size_t sz, nni_type t)
+{
+	nni_tcp_dialer *d = arg;
+	int             rv;
+	uint16_t        *keepintvl = (uint16_t *) buf;
+
+	nni_mtx_lock(&d->mtx);
+	d->keepintvl = (*keepintvl);
+	nni_mtx_unlock(&d->mtx);
+
+	return (0);
+}
+
+static int
+tcp_dialer_get_keepintvl(void *arg, void *buf, size_t *szp, nni_type t)
+{
+	uint16_t            keepintvl;
+	nni_tcp_dialer *d = arg;
+
+	nni_mtx_lock(&d->mtx);
+	keepintvl = d->keepintvl;
+	nni_mtx_unlock(&d->mtx);
+	
+	return (nni_copyout_int(keepintvl, buf, szp, t));
+}
+
+static int
+tcp_dialer_set_keepcnt(void *arg, const void *buf, size_t sz, nni_type t)
+{
+	nni_tcp_dialer *d = arg;
+	int             rv;
+	uint16_t        *keepcnt = (uint16_t *) buf;
+
+	nni_mtx_lock(&d->mtx);
+	d->keepcnt = (*keepcnt);
+	nni_mtx_unlock(&d->mtx);
+
+	return (0);
+}
+
+static int
+tcp_dialer_get_keepcnt(void *arg, void *buf, size_t *szp, nni_type t)
+{
+	uint16_t            keepcnt;
+	nni_tcp_dialer *d = arg;
+
+	nni_mtx_lock(&d->mtx);
+	keepcnt = d->keepcnt;
+	nni_mtx_unlock(&d->mtx);
+	
+	return (nni_copyout_int(keepcnt, buf, szp, t));
+}
+
+static int
+tcp_dialer_set_sendtimeo(void *arg, const void *buf, size_t sz, nni_type t)
+{
+	nni_tcp_dialer *d = arg;
+	int             rv;
+	uint16_t        *sendtimeo = (uint16_t *) buf;
+
+	nni_mtx_lock(&d->mtx);
+	d->sendtimeo = (*sendtimeo);
+	nni_mtx_unlock(&d->mtx);
+
+	return (0);
+}
+
+static int
+tcp_dialer_get_sendtimeo(void *arg, void *buf, size_t *szp, nni_type t)
+{
+	uint16_t            sendtimeo;
+	nni_tcp_dialer *d = arg;
+
+	nni_mtx_lock(&d->mtx);
+	sendtimeo = d->sendtimeo;
+	nni_mtx_unlock(&d->mtx);
+	
+	return (nni_copyout_int(sendtimeo, buf, szp, t));
+}
+
+static int
+tcp_dialer_set_recvtimeo(void *arg, const void *buf, size_t sz, nni_type t)
+{
+	nni_tcp_dialer *d = arg;
+	int             rv;
+	uint16_t        *recvtimeo = (uint16_t *) buf;
+
+	nni_mtx_lock(&d->mtx);
+	d->recvtimeo = (*recvtimeo);
+	nni_mtx_unlock(&d->mtx);
+
+	return (0);
+}
+
+static int
+tcp_dialer_get_recvtimeo(void *arg, void *buf, size_t *szp, nni_type t)
+{
+	uint16_t            recvtimeo;
+	nni_tcp_dialer *d = arg;
+
+	nni_mtx_lock(&d->mtx);
+	recvtimeo = d->recvtimeo;
+	nni_mtx_unlock(&d->mtx);
+	
+	return (nni_copyout_int(recvtimeo, buf, szp, t));
 }
 
 static int
@@ -433,6 +606,31 @@ static const nni_option tcp_dialer_options[] = {
 	    .o_name = NNG_OPT_TCP_QUICKACK,
 	    .o_get  = tcp_dialer_get_quickack,
 	    .o_set  = tcp_dialer_set_quickack
+	},
+	{
+	    .o_name = NNG_OPT_TCP_KEEPIDLE,
+	    .o_get  = tcp_dialer_get_keepidle,
+	    .o_set  = tcp_dialer_set_keepidle
+	},
+	{
+	    .o_name = NNG_OPT_TCP_KEEPINTVL,
+	    .o_get  = tcp_dialer_get_keepintvl,
+	    .o_set  = tcp_dialer_set_keepintvl
+	},
+	{
+	    .o_name = NNG_OPT_TCP_KEEPCNT,
+	    .o_get  = tcp_dialer_get_keepcnt,
+	    .o_set  = tcp_dialer_set_keepcnt
+	},
+	{
+	    .o_name = NNG_OPT_TCP_SENDTIMEO,
+	    .o_get  = tcp_dialer_get_sendtimeo,
+	    .o_set  = tcp_dialer_set_sendtimeo
+	},
+	{
+	    .o_name = NNG_OPT_TCP_RECVTIMEO,
+	    .o_get  = tcp_dialer_get_recvtimeo,
+	    .o_set  = tcp_dialer_set_recvtimeo
 	},
 	{
 	    .o_name = NULL,

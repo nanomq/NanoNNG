@@ -848,13 +848,6 @@ conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 	conf_tcp *bridge_node_tcp = &(node->tcp);
 	conf_tcp_parse_ver2_base(bridge_node_tcp, jso_tcp);
 
-	printf("nodelay:%d, keepalive:%d, quickack:%d, keepidle:%d, "
-	       "keepintvl:%d, keepcnt:%d, sendtimeo:%d, recvtimep:%d\n",
-	    bridge_node_tcp->nodelay, bridge_node_tcp->keepalive,
-	    bridge_node_tcp->quickack, bridge_node_tcp->keepidle,
-	    bridge_node_tcp->keepintvl, bridge_node_tcp->keepcnt,
-	    bridge_node_tcp->sendtimeo, bridge_node_tcp->recvtimeo);
-
 	cJSON *jso_prop = hocon_get_obj("conn_properties", jso_connector);
 	if (jso_prop != NULL) {
 		conf_bridge_conn_properties_parse_ver2(node, jso_prop);
