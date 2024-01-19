@@ -873,8 +873,8 @@ ex_query_recv_cb(void *arg)
 #ifdef SUPP_PARQUET
 		const char **fnames = NULL;
 		uint32_t sz = 0;
-		/* parquet not support fuzz search now, offset means endKey-startKey */
-		fnames = parquet_find_span(startKey, endKey - startKey, &sz);
+		/* parquet not support fuzz search now */
+		fnames = parquet_find_span(startKey, endKey, &sz);
 		if (fnames && sz > 0) {
 			ret = get_parquet_files(sz, (char **)fnames, obj);
 			if (ret != 0) {
