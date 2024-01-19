@@ -134,13 +134,13 @@ tcp_params_set(nni_posix_pfd *pfd, nni_tcp_dialer *d)
 		recvtimeo.tv_sec = d->recvtimeo;
 
 		(void) setsockopt(nni_posix_pfd_fd(pfd), IPPROTO_TCP,
-		    TCP_NODELAY, &quickack, sizeof(int));
+		    TCP_QUICKACK, &quickack, sizeof(int));
 		(void) setsockopt(nni_posix_pfd_fd(pfd), IPPROTO_TCP,
-		    TCP_NODELAY, &quickack, sizeof(int));
+		    TCP_KEEPIDLE, &keepidle, sizeof(int));
 		(void) setsockopt(nni_posix_pfd_fd(pfd), IPPROTO_TCP,
-		    TCP_NODELAY, &quickack, sizeof(int));
+		    TCP_KEEPINTVL, &keepintvl, sizeof(int));
 		(void) setsockopt(nni_posix_pfd_fd(pfd), IPPROTO_TCP,
-		    TCP_NODELAY, &quickack, sizeof(int));
+		    TCP_KEEPCNT, &keepcnt, sizeof(int));
 		(void) setsockopt(nni_posix_pfd_fd(pfd), SOL_SOCKET,
 		    SO_SNDTIMEO, (char *) &sendtimeo, sizeof(struct timeval));
 		(void) setsockopt(nni_posix_pfd_fd(pfd), SOL_SOCKET,
