@@ -43,6 +43,7 @@ void test_exchange_init(void)
 	exchange_t *ex = NULL;
 	char **ringBufferName;
 	unsigned int caps = 10000;
+	uint8_t fullOps = RB_FULL_NONE;
 
 	ringBufferName = nng_alloc(1 * sizeof(char *));
 	for (int i = 0; i < 1; i++) {
@@ -51,10 +52,10 @@ void test_exchange_init(void)
 
 	strcpy(ringBufferName[0], "ringBuffer1");
 
-	NUTS_TRUE(exchange_init(NULL, NULL, "topic1", &caps, ringBufferName, 1) != 0);
-	NUTS_TRUE(exchange_init(&ex, NULL, "topic1", &caps, ringBufferName, 1) != 0);
+	NUTS_TRUE(exchange_init(NULL, NULL, "topic1", &caps, ringBufferName, &fullOps, 1) != 0);
+	NUTS_TRUE(exchange_init(&ex, NULL, "topic1", &caps, ringBufferName, &fullOps, 1) != 0);
 
-	NUTS_TRUE(exchange_init(&ex, EX_NAME, "topic1", &caps, ringBufferName, 1) == 0);
+	NUTS_TRUE(exchange_init(&ex, EX_NAME, "topic1", &caps, ringBufferName, &fullOps, 1) == 0);
 	NUTS_TRUE(ex != NULL);
 	NUTS_TRUE(ex->rb_count != 0);
 	NUTS_TRUE(exchange_release(ex) == 0);
@@ -87,7 +88,8 @@ void test_exchange_ringBuffer(void)
 	strcpy(ringBufferName[0], "ringBuffer1");
 
 	char topic[100] = "topic1";
-	NUTS_TRUE(exchange_init(&ex, EX_NAME, "topic1", &caps, ringBufferName, 1) == 0);
+	uint8_t fullOps = RB_FULL_RETURN;
+	NUTS_TRUE(exchange_init(&ex, EX_NAME, "topic1", &caps, ringBufferName, &fullOps, 1) == 0);
 	NUTS_TRUE(ex != NULL);
 	NUTS_TRUE(ex->rb_count == 1);
 
