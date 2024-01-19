@@ -33,12 +33,18 @@ struct nni_tcp_dialer {
 	bool                    closed;
 	bool                    nodelay;
 	bool                    keepalive;
-	bool                    quickack;
 	struct sockaddr_storage src;
 	size_t                  srclen;
 	nni_mtx                 mtx;
 	nni_atomic_u64          ref;
 	nni_atomic_bool         fini;
+
+	bool quickack;
+	int  keepidle;
+	int  keepintvl;
+	int  keepcnt;
+	int  sendtimeo;
+	int  recvtimeo;
 };
 
 extern int  nni_posix_tcp_alloc(nni_tcp_conn **, nni_tcp_dialer *);
