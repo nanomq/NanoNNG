@@ -23,7 +23,7 @@ int             parquet_write_batch_async(parquet_object *elem);
 int             parquet_write_launcher(conf_parquet *conf);
 
 const char  *parquet_find(uint64_t key);
-const char **parquet_find_span(uint64_t key, uint32_t offset, uint32_t *size);
+const char **parquet_find_span(uint64_t start_key, uint64_t end_key, uint32_t *size);
 
 #ifdef __cplusplus
 }

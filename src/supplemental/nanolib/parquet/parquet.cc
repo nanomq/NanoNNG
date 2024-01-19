@@ -441,18 +441,18 @@ parquet_find(uint64_t key)
 }
 
 const char **
-parquet_find_span(uint64_t key, uint32_t offset, uint32_t *size)
+parquet_find_span(uint64_t start_key, uint64_t end_key, uint32_t *size)
 {
-	if (offset <= 0 || offset > key) {
-		log_error("offset can't be negative or greater than key.");
+	if (start_key > end_key) {
+		log_error("Start key can't be greater than end_key.");
 		*size = 0;
 		return NULL;
 	}
 
 	WAIT_FOR_AVAILABLE
 
-	uint64_t low = key - offset;
-	uint64_t high = key + offset;
+	uint64_t low = start_key;
+	uint64_t high = end_key;
 	uint32_t local_size = 0;
 	const char *value = NULL;
 	const char **array = NULL;
