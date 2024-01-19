@@ -296,7 +296,6 @@ int ringBuffer_enqueue(ringBuffer_t *rb,
 					   nng_aio *aio)
 {
 	int ret;
-	int *list_len;
 
 	nng_mtx_lock(rb->ring_lock);
 	ret = ringBuffer_rule_check(rb, data, ENQUEUE_IN_HOOK);
@@ -306,72 +305,32 @@ int ringBuffer_enqueue(ringBuffer_t *rb,
 	}
 
 	if (rb->size == rb->cap) {
-		/* ringbuffer not allowed to overwrite */
-		if (rb->overWrite == 0) {
-			nng_mtx_unlock(rb->ring_lock);
+		if (rb->fullOp == RB_FULL_NONE) {
 			log_error("Ring buffer is full enqueue failed!!!\n");
-			return -1;
-		}
-		/* get all msgs and clean ringbuffer */
-		nni_msg **list = NULL;
-		ret = ringBuffer_get_and_clean_msgs(rb, rb->cap, &list);
-		if (ret != 0 || list == NULL) {
-			log_error("Ring buffer is full and clean ringbuffer failed!\n");
 			nng_mtx_unlock(rb->ring_lock);
 			return -1;
 		}
-		/* Put list len in msg proto data */
-		list_len = nng_alloc(sizeof(int));
-		if (list_len == NULL) {
-			nng_mtx_unlock(rb->ring_lock);
-			log_error("alloc new list_len failed! no memory!\n");
-			return -1;
+		if (rb->fullOp == RB_FULL_DROP) {
+			ringBuffer_clean_msgs(rb, 1);
 		}
-		*list_len = rb->cap;
-
-		nng_msg *tmsg;
-		ret = nng_msg_alloc(&tmsg, 0);
-		if (ret != 0 || tmsg == NULL) {
-			nng_mtx_unlock(rb->ring_lock);
-			log_error("alloc new msg failed! no memory!\n");
-			return -1;
+		if (rb->fullOp == RB_FULL_RETURN) {
+			ret = put_msgs_to_aio(rb, aio);
+			if (ret != 0) {
+				log_error("Ring buffer is full and put msgs to aio failed!\n");
+				nng_mtx_unlock(rb->ring_lock);
+				return -1;
+			}
 		}
-		// just use aio count : nni_aio_count(nni_aio *aio)
-		nng_msg_set_proto_data(tmsg, NULL, (void *)list_len);
-		nng_aio_set_msg(aio, tmsg);
-		nng_aio_set_prov_data(aio, (void *)list);
-//		if (rb->overWrite) {
-//			/*
-//			 * sizeof(*(void *)) can not compile on windows,
-//			 * and sz of nng_free is unused.
-//			 */
-//			/* For nng_msg now */
-//			nng_msg *msg = rb->msgs[rb->head].data;
-//			/* Put older msg to aio, send to user */
-//			/* keyp will free by user */
-//			keyp = nng_alloc(sizeof(int));
-//			if (keyp == NULL) {
-//				nng_mtx_unlock(rb->ring_lock);
-//				log_error("alloc new key failed! no memory!\n");
-//				return -1;
-//			}
-//			nng_msg_set_proto_data(msg, NULL, keyp);
-//			nng_aio_set_msg(aio, msg);
-//
-//			rb->msgs[rb->head].key = key;
-//			rb->msgs[rb->head].data = data;
-//			rb->msgs[rb->head].expiredAt = expiredAt;
-//			rb->head = (rb->head + 1) % rb->cap;
-//			rb->tail = (rb->tail + 1) % rb->cap;
-//			nng_mtx_unlock(rb->ring_lock);
-//			log_error("Ring buffer is full but overwrite the old data\n");
-//			return 0;
-//		} else {
-//			nng_mtx_unlock(rb->ring_lock);
-//			log_error("Ring buffer is full enqueue failed!!!\n");
-//			return -1;
-//		}
+		if (rb->fullOp == RB_FULL_FILE) {
+			ret = write_msgs_to_file(rb);
+			if (ret != 0) {
+				log_error("Ring buffer is full and write msgs to file failed!\n");
+				nng_mtx_unlock(rb->ring_lock);
+				return -1;
+			}
+		}
 	}
+
 	ringBufferMsg_t *msg = &rb->msgs[rb->tail];
 
 	msg->key = key;

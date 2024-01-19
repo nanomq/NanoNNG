@@ -100,7 +100,7 @@ int ringBuffer_add_rule(ringBuffer_t *rb,
 
 int ringBuffer_init(ringBuffer_t **rb,
 					unsigned int cap,
-					unsigned int overWrite,
+					enum fullOption fullOp,
 					unsigned long long expiredAt);
 int ringBuffer_enqueue(ringBuffer_t *rb,
 					   uint64_t key,
