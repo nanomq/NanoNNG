@@ -1157,6 +1157,7 @@ print_exchange_conf(conf_exchange *exchange)
 			ringBuffer_node *r = n->rbufs[j];
 			log_info("exchange ringbus name      %s", r->name);
 			log_info("exchange ringbus cap       %d", r->cap);
+			log_info("exchange ringbus fullOp    %d", r->fullOp);
 		}
 	}
 }
