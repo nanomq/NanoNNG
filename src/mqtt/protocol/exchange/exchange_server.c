@@ -423,17 +423,20 @@ exchange_sock_bind_exchange(void *arg, const void *v, size_t sz, nni_opt_type t)
 
 	char    **rbsName = NULL;
 	uint32_t *rbsCap = NULL;
+	uint8_t  *rbsFullOp = NULL;
 	for (int i=0; i<(int)node->rbufs_sz; ++i) {
 		cvector_push_back(rbsName, node->rbufs[i]->name);
 		cvector_push_back(rbsCap, node->rbufs[i]->cap);
+		cvector_push_back(rbsFullOp, node->rbufs[i]->fullOp);
 	}
 
 	exchange_t *ex = NULL;
 	rv = exchange_init(&ex, node->name, node->topic,
-			rbsCap, rbsName, cvector_size(rbsName));
+			rbsCap, rbsName, rbsFullOp, cvector_size(rbsName));
 
 	cvector_free(rbsName);
 	cvector_free(rbsCap);
+	cvector_free(rbsFullOp);
 	if (rv != 0) {
 		log_error("Failed to exchange_init %d", rv);
 		return rv;
