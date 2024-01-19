@@ -200,6 +200,56 @@ static inline int ringBuffer_rule_check(ringBuffer_t *rb, void *data, int flag)
 	return 0;
 }
 
+static int write_msgs_to_file(ringBuffer_t *rb)
+{
+	int ret = 0;
+	/* TODO: use parquet to write file */
+
+	if (ret != 0) {
+		log_error("write msgs to file failed! msg will be freed\n");
+		ringBuffer_clean_msgs(rb, 1);
+		return -1;
+	}
+
+	ringBufferFile_t *file = nng_alloc(sizeof(ringBufferFile_t));
+	if (file == NULL) {
+		log_error("alloc new file failed! no memory! msg will be freed\n");
+		ringBuffer_clean_msgs(rb, 1);
+		return -1;
+	}
+
+	file->keys = nng_alloc(sizeof(uint64_t) * rb->cap);
+	if (file->keys == NULL) {
+		log_error("alloc new file keys failed! no memory! msg will be freed\n");
+		ringBuffer_clean_msgs(rb, 1);
+		nng_free(file, sizeof(ringBufferFile_t));
+		return -1;
+	}
+	for (int i = 0; i < rb->cap; i++) {
+		file->keys[i] = rb->msgs[i].key;
+	}
+
+	file->path = nng_alloc(sizeof(char) * 256);
+	if (file->path == NULL) {
+		log_error("alloc new file path failed! no memory! msg will be freed\n");
+		ringBuffer_clean_msgs(rb, 1);
+		nng_free(file->keys, sizeof(uint64_t) * rb->cap);
+		nng_free(file, sizeof(ringBufferFile_t));
+		return -1;
+	}
+
+	/* TODO: Path will return by parquet */
+	sprintf(file->path, "/tmp/nanomq/RB%d", nng_timestamp());
+
+	cvector_push_back(rb->files, file);
+
+	log_info("RB msgs write to : %s\n", file->path);
+
+	ringBuffer_clean_msgs(rb, 1);
+
+	return 0;
+}
+
 int ringBuffer_enqueue(ringBuffer_t *rb,
 					   uint64_t key,
 					   void *data,
