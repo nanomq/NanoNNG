@@ -413,27 +413,6 @@ tcp_set_keepalive(void *arg, const void *buf, size_t sz, nni_type t)
 }
 
 static int
-tcp_set_quickack(void *arg, const void *buf, size_t sz, nni_type t)
-{
-	nni_tcp_conn *c = arg;
-	int           fd;
-	bool          b;
-	int           val;
-	int           rv;
-
-	// TODO: better check its validation.
-	if (((rv = nni_copyin_bool(&b, buf, sz, t)) != 0) || (c == NULL)) {
-		return (rv);
-	}
-	val = b ? 1 : 0;
-	fd  = nni_posix_pfd_fd(c->pfd);
-	if (setsockopt(fd, IPPROTO_TCP, TCP_QUICKACK, &val, sizeof(val)) != 0) {
-		return (nni_plat_errno(errno));
-	}
-	return (0);
-}
-
-static int
 tcp_get_nodelay(void *arg, void *buf, size_t *szp, nni_type t)
 {
 	nni_tcp_conn *c     = arg;
@@ -463,21 +442,6 @@ tcp_get_keepalive(void *arg, void *buf, size_t *szp, nni_type t)
 	return (nni_copyout_bool(val, buf, szp, t));
 }
 
-static int
-tcp_get_quickack(void *arg, void *buf, size_t *szp, nni_type t)
-{
-	nni_tcp_conn *c     = arg;
-	int           fd    = nni_posix_pfd_fd(c->pfd);
-	int           val   = 0;
-	socklen_t     valsz = sizeof(val);
-
-	if (getsockopt(fd, IPPROTO_TCP, TCP_QUICKACK, &val, &valsz) != 0) {
-		return (nni_plat_errno(errno));
-	}
-
-	return (nni_copyout_bool(val, buf, szp, t));
-}
-
 static const nni_option tcp_options[] = {
 	{
 	    .o_name = NNG_OPT_REMADDR,
@@ -491,16 +455,6 @@ static const nni_option tcp_options[] = {
 	    .o_name = NNG_OPT_TCP_NODELAY,
 	    .o_get  = tcp_get_nodelay,
 	    .o_set  = tcp_set_nodelay,
-	},
-	{
-	    .o_name = NNG_OPT_TCP_KEEPALIVE,
-	    .o_get  = tcp_get_keepalive,
-	    .o_set  = tcp_set_keepalive,
-	},
-	{
-	    .o_name = NNG_OPT_TCP_QUICKACK,
-	    .o_get  = tcp_get_quickack,
-	    .o_set  = tcp_set_quickack,
 	},
 	{
 	    .o_name = NULL,
