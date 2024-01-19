@@ -133,10 +133,18 @@ tcp_params_set(nni_posix_pfd *pfd, nni_tcp_dialer *d)
 		sendtimeo.tv_sec = d->sendtimeo;
 		recvtimeo.tv_sec = d->recvtimeo;
 
+#if (!NNG_PLATFORM_DARWIN)
 		(void) setsockopt(nni_posix_pfd_fd(pfd), IPPROTO_TCP,
 		    TCP_QUICKACK, &quickack, sizeof(int));
 		(void) setsockopt(nni_posix_pfd_fd(pfd), IPPROTO_TCP,
 		    TCP_KEEPIDLE, &keepidle, sizeof(int));
+#else
+		// TCP_QUICKACK is not supported in darwin
+		// (void) setsockopt(nni_posix_pfd_fd(pfd), IPPROTO_TCP,
+		//     TCP_QUICKACK, &quickack, sizeof(int));
+		(void) setsockopt(nni_posix_pfd_fd(pfd), IPPROTO_TCP,
+		    TCP_KEEPALIVE, &keepidle, sizeof(int));
+#endif
 		(void) setsockopt(nni_posix_pfd_fd(pfd), IPPROTO_TCP,
 		    TCP_KEEPINTVL, &keepintvl, sizeof(int));
 		(void) setsockopt(nni_posix_pfd_fd(pfd), IPPROTO_TCP,
