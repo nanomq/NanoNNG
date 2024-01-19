@@ -1079,9 +1079,13 @@ conf_exchange_node_parse(conf_exchange_node *node, cJSON *obj)
 	if (rb_node == NULL) {
 		return;
 	}
+
+	rb_node->cap = 0;
+	rb_node->fullOp = 0;
+
 	hocon_read_str(rb_node, name, rb);
 	hocon_read_num(rb_node, cap, rb);
-	hocon_read_num(rb_node, overWrite, rb);
+	hocon_read_num(rb_node, fullOp, rb);
 
 	if (rb_node->name == NULL || rb_node->cap == 0) {
 		log_error("exchange: ringbuffer: name/cap not found");
