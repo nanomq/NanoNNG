@@ -3,7 +3,7 @@
 
 int
 exchange_init(exchange_t **ex, char *name, char *topic,
-			  unsigned int *rbsCaps, char **rbsName, unsigned int rbsCount)
+			  unsigned int *rbsCaps, char **rbsName, uint8_t *rbsFullOp, unsigned int rbsCount)
 {
 	int ret = 0;
 	exchange_t *newEx = NULL;
@@ -58,7 +58,7 @@ exchange_init(exchange_t **ex, char *name, char *topic,
 
 	for (unsigned int i = 0; i < rbsCount; i++) {
 		ringBuffer_t *rb = NULL;
-		ret = ringBuffer_init(&rb, rbsCaps[i], 1, -1);
+		ret = ringBuffer_init(&rb, rbsCaps[i], rbsFullOp[i], -1);
 		if (rb == NULL || ret != 0) {
 			for (unsigned int j = 0; j < newEx->rb_count; j++) {
 				ringBuffer_release(newEx->rbs[j]);
