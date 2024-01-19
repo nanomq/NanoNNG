@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include "nng/nng.h"
 #include "nng/supplemental/util/platform.h"
+#include "nng/supplemental/nanolib/cvector.h"
 
 #define RBNAME_LEN          100
 #define RINGBUFFER_MAX_SIZE	0xffff
@@ -28,11 +29,28 @@ typedef struct ringBuffer_s ringBuffer_t;
 typedef struct ringBufferMsg_s ringBufferMsg_t;
 typedef struct ringBufferRule_s ringBufferRule_t;
 
+/* For RB_FULL_FILE */
+typedef struct ringBufferFile_s ringBufferFile_t;
+
 struct ringBufferMsg_s {
 	uint64_t  key;
 	void *data;
 	/* TTL of each message */
 	unsigned long long expiredAt;
+};
+
+enum fullOption {
+	RB_FULL_NONE,
+	RB_FULL_DROP,
+	RB_FULL_RETURN,
+	RB_FULL_FILE,
+
+	RB_FULL_MAX
+};
+
+struct ringBufferFile_s {
+	uint64_t *keys;
+	char *path;
 };
 
 struct ringBuffer_s {
@@ -41,8 +59,6 @@ struct ringBuffer_s {
 	unsigned int            tail;
 	unsigned int            size;
 	unsigned int            cap;
-	/* Whether to allow overwriting of old data when the queue is full */
-	unsigned int            overWrite;
 	/* TTL of all messages in ringbuffer */
 	unsigned long long      expiredAt;
 	unsigned int            enqinRuleListLen;
@@ -53,6 +69,11 @@ struct ringBuffer_s {
 	ringBufferRule_t        *enqoutRuleList[RBRULELIST_MAX_SIZE];
 	ringBufferRule_t        *deqinRuleList[RBRULELIST_MAX_SIZE];
 	ringBufferRule_t        *deqoutRuleList[RBRULELIST_MAX_SIZE];
+
+	enum fullOption         fullOp;
+
+	/* FOR RB_FULL_FILE */
+	ringBufferFile_t        **files;
 
 	nng_mtx                 *ring_lock;
 
