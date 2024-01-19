@@ -36,7 +36,7 @@ static inline int ringBuffer_get_msgs(ringBuffer_t *rb, int count, nng_msg ***li
 	return -1;
 }
 
-static inline int ringBuffer_clean_msgs(ringBuffer_t *rb)
+static inline void ringBuffer_clean_msgs(ringBuffer_t *rb, int needFree)
 {
 	unsigned int i = 0;
 	unsigned int count = 0;
@@ -47,6 +47,10 @@ static inline int ringBuffer_clean_msgs(ringBuffer_t *rb)
 			count = 0;
 			while (count < rb->size) {
 				if (rb->msgs[i].data != NULL) {
+					if (needFree) {
+						/* For nni_msg now */
+						nng_msg_free(rb->msgs[i].data);
+					}
 					rb->msgs[i].data = NULL;
 				}
 
@@ -60,7 +64,7 @@ static inline int ringBuffer_clean_msgs(ringBuffer_t *rb)
 	rb->tail = 0;
 	rb->size = 0;
 
-	return 0;
+	return;
 }
 
 static inline int ringBuffer_get_and_clean_msgs(ringBuffer_t *rb, unsigned int count, nng_msg ***list)
@@ -72,21 +76,15 @@ static inline int ringBuffer_get_and_clean_msgs(ringBuffer_t *rb, unsigned int c
 	}
 
 	if (count > rb->size) {
-		nng_mtx_unlock(rb->ring_lock);
 		return -1;
 	}
 
 	ret = ringBuffer_get_msgs(rb, count, list);
 	if (ret != 0) {
-		nng_mtx_unlock(rb->ring_lock);
 		return -1;
 	}
 
-	ret = ringBuffer_clean_msgs(rb);
-	if (ret != 0) {
-		nng_mtx_unlock(rb->ring_lock);
-		return -1;
-	}
+	ringBuffer_clean_msgs(rb, 0);
 
 	return 0;
 }
