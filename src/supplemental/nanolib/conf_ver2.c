@@ -417,6 +417,7 @@ static void
 conf_tcp_parse_ver2_base(conf_tcp *tcp, cJSON *jso_tcp)
 {
 	if (jso_tcp) {
+		tcp->enable = true;
 		hocon_read_bool(tcp, nodelay, jso_tcp);
 		hocon_read_bool(tcp, keepalive, jso_tcp);
 		hocon_read_bool(tcp, quickack, jso_tcp);
