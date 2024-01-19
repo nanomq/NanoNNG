@@ -91,13 +91,18 @@ static inline int ringBuffer_get_and_clean_msgs(ringBuffer_t *rb, unsigned int c
 
 int ringBuffer_init(ringBuffer_t **rb,
 					unsigned int cap,
-					unsigned int overWrite,
+					enum fullOption fullOp,
 					unsigned long long expiredAt)
 {
 	ringBuffer_t *newRB;
 
 	if (cap >= RINGBUFFER_MAX_SIZE) {
 		log_error("Want to init a ring buffer which is greater than MAX_SIZE: %u\n", RINGBUFFER_MAX_SIZE);
+		return -1;
+	}
+
+	if (fullOp >= RB_FULL_MAX) {
+		log_error("fullOp is not valid: %d\n", fullOp);
 		return -1;
 	}
 
@@ -120,7 +125,8 @@ int ringBuffer_init(ringBuffer_t **rb,
 	newRB->cap = cap;
 
 	newRB->expiredAt = expiredAt;
-	newRB->overWrite = overWrite;
+	newRB->fullOp = fullOp;
+	newRB->files = NULL;
 
 	newRB->enqinRuleList[0] = NULL;
 	newRB->enqoutRuleList[0] = NULL;
