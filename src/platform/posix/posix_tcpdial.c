@@ -366,7 +366,6 @@ static int
 tcp_dialer_set_quickack(void *arg, const void *buf, size_t sz, nni_type t)
 {
 	nni_tcp_dialer *d = arg;
-	int             rv;
 	uint8_t        *quickack = (uint8_t *) buf;
 
 	nni_mtx_lock(&d->mtx);
@@ -393,7 +392,6 @@ static int
 tcp_dialer_set_keepidle(void *arg, const void *buf, size_t sz, nni_type t)
 {
 	nni_tcp_dialer *d = arg;
-	int             rv;
 	uint16_t        *keepidle = (uint16_t *) buf;
 
 	nni_mtx_lock(&d->mtx);
@@ -420,7 +418,6 @@ static int
 tcp_dialer_set_keepintvl(void *arg, const void *buf, size_t sz, nni_type t)
 {
 	nni_tcp_dialer *d = arg;
-	int             rv;
 	uint16_t        *keepintvl = (uint16_t *) buf;
 
 	nni_mtx_lock(&d->mtx);
@@ -447,7 +444,6 @@ static int
 tcp_dialer_set_keepcnt(void *arg, const void *buf, size_t sz, nni_type t)
 {
 	nni_tcp_dialer *d = arg;
-	int             rv;
 	uint16_t        *keepcnt = (uint16_t *) buf;
 
 	nni_mtx_lock(&d->mtx);
@@ -474,7 +470,6 @@ static int
 tcp_dialer_set_sendtimeo(void *arg, const void *buf, size_t sz, nni_type t)
 {
 	nni_tcp_dialer *d = arg;
-	int             rv;
 	uint16_t        *sendtimeo = (uint16_t *) buf;
 
 	nni_mtx_lock(&d->mtx);
@@ -501,7 +496,6 @@ static int
 tcp_dialer_set_recvtimeo(void *arg, const void *buf, size_t sz, nni_type t)
 {
 	nni_tcp_dialer *d = arg;
-	int             rv;
 	uint16_t        *recvtimeo = (uint16_t *) buf;
 
 	nni_mtx_lock(&d->mtx);
