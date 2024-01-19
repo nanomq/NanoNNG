@@ -290,7 +290,7 @@ typedef struct ringBuffer_node ringBuffer_node;
 struct ringBuffer_node {
 	char    *name;
 	uint32_t cap;
-	uint32_t overWrite;
+	uint32_t fullOp;
 };
 
 typedef struct conf_exchange_node conf_exchange_node;
