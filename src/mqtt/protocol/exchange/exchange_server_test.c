@@ -122,7 +122,7 @@ test_exchange_client(void)
 	NUTS_TRUE(rb_node != NULL);
 	rb_node->name = "ringBuffer1";
 	rb_node->cap = 10;
-	rb_node->overWrite = 0;
+	rb_node->fullOp = RB_FULL_NONE;
 
 	conf->rbufs = NULL;
 
