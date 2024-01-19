@@ -369,6 +369,15 @@ int ringBuffer_release(ringBuffer_t *rb)
 		nng_free(rb->msgs, sizeof(*rb->msgs));
 	}
 
+	if (rb->files != NULL) {
+		for (int i = 0; i < cvector_size(rb->files); i++) {
+			nng_free(rb->files[i]->keys, sizeof(uint64_t) * rb->cap);
+			nng_free(rb->files[i]->path, sizeof(char) * 256);
+			nng_free(rb->files[i], sizeof(ringBufferFile_t));
+		}
+		cvector_free(rb->files);
+	}
+
 	ringBufferRuleList_release(rb->enqinRuleList, rb->enqinRuleListLen);
 	ringBufferRuleList_release(rb->deqinRuleList, rb->deqinRuleListLen);
 	ringBufferRuleList_release(rb->enqoutRuleList, rb->enqoutRuleListLen);
