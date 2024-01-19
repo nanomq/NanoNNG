@@ -22,7 +22,7 @@ void test_ringBuffer_init(void)
 {
 	ringBuffer_t *rb;
 
-	NUTS_TRUE(ringBuffer_init(&rb, 10, 0, -1) == 0);
+	NUTS_TRUE(ringBuffer_init(&rb, 10, RB_FULL_NONE, -1) == 0);
 	NUTS_TRUE(rb != NULL);
 	NUTS_TRUE(ringBuffer_release(rb) == 0);
 
@@ -60,7 +60,7 @@ void test_ringBuffer_enqueue(void)
 	ringBuffer_t *rb;
 	nng_msg *tmp;
 
-	NUTS_TRUE(ringBuffer_init(&rb, 10, 0, -1) == 0);
+	NUTS_TRUE(ringBuffer_init(&rb, 10, RB_FULL_NONE, -1) == 0);
 	NUTS_TRUE(rb != NULL);
 
 	for (int i = 0; i < 10; i++) {
@@ -76,9 +76,43 @@ void test_ringBuffer_enqueue(void)
 
 	NUTS_TRUE(ringBuffer_release(rb) == 0);
 
-	/* Allow overwrite */
+	/* RB_FULL_DROP */
+	NUTS_TRUE(ringBuffer_init(&rb, 10, RB_FULL_DROP, -1) == 0);
+	NUTS_TRUE(rb != NULL);
 
-	NUTS_TRUE(ringBuffer_init(&rb, 10, 1, -1) == 0);
+	for (int i = 0; i < 10; i++) {
+		tmp = alloc_pub_msg("topic1");
+		NUTS_TRUE(tmp != NULL);
+		NUTS_TRUE(ringBuffer_enqueue(rb, 1, tmp, -1, NULL) == 0);
+	}
+
+	/* ring buffer is full, drop all msgs and enqueue new */
+	tmp = alloc_pub_msg("topic1");
+	NUTS_TRUE(ringBuffer_enqueue(rb, 1, tmp, -1, NULL) == 0);
+	NUTS_TRUE(rb->size == 1);
+
+	NUTS_TRUE(ringBuffer_release(rb) == 0);
+
+	/* RB_FULL_FILE */
+	NUTS_TRUE(ringBuffer_init(&rb, 10, RB_FULL_FILE, -1) == 0);
+	NUTS_TRUE(rb != NULL);
+
+	for (int i = 0; i < 10; i++) {
+		tmp = alloc_pub_msg("topic1");
+		NUTS_TRUE(tmp != NULL);
+		NUTS_TRUE(ringBuffer_enqueue(rb, 1, tmp, -1, NULL) == 0);
+	}
+
+	/* ring buffer is full, write msgs to file and enqueue new */
+	tmp = alloc_pub_msg("topic1");
+	NUTS_TRUE(ringBuffer_enqueue(rb, 1, tmp, -1, NULL) == 0);
+	NUTS_TRUE(rb->size == 1);
+	NUTS_TRUE(rb->files != NULL);
+
+	NUTS_TRUE(ringBuffer_release(rb) == 0);
+
+	/* RB_FULL_RETURN */
+	NUTS_TRUE(ringBuffer_init(&rb, 10, RB_FULL_RETURN, -1) == 0);
 	NUTS_TRUE(rb != NULL);
 
 	for (int i = 0; i < 10; i++) {
