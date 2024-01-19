@@ -13,6 +13,7 @@
 
 #include <errno.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -111,6 +112,15 @@ tcp_dialer_cancel(nni_aio *aio, void *arg, int rv)
 }
 
 static void
+tcp_params_set(nni_posix_pfd *pfd, nni_tcp_dialer *d)
+{
+	log_error("set\n");
+	int quickack = d->quickack ? 1 : 0;
+	(void) setsockopt(nni_posix_pfd_fd(pfd), IPPROTO_TCP, TCP_NODELAY,
+	    &quickack, sizeof(int));
+}
+
+static void
 tcp_dialer_cb(nni_posix_pfd *pfd, unsigned ev, void *arg)
 {
 	nni_tcp_conn *  c = arg;
@@ -162,6 +172,7 @@ tcp_dialer_cb(nni_posix_pfd *pfd, unsigned ev, void *arg)
 	}
 
 	nni_posix_tcp_start(c, nd, ka);
+	tcp_params_set(pfd, d);
 	nni_aio_set_output(aio, 0, c);
 	nni_aio_finish(aio, 0, 0);
 }
@@ -317,6 +328,30 @@ tcp_dialer_get_keepalive(void *arg, void *buf, size_t *szp, nni_type t)
 }
 
 static int
+tcp_dialer_set_quickack(void *arg, const void *buf, size_t sz, nni_type t)
+{
+	nni_tcp_dialer *d = arg;
+	int             rv;
+	uint8_t        *quickack = (uint8_t *) buf;
+
+	nni_mtx_lock(&d->mtx);
+	d->quickack = (*quickack == 1);
+	nni_mtx_unlock(&d->mtx);
+	return (0);
+}
+
+static int
+tcp_dialer_get_quickack(void *arg, void *buf, size_t *szp, nni_type t)
+{
+	bool            b;
+	nni_tcp_dialer *d = arg;
+	nni_mtx_lock(&d->mtx);
+	b = d->quickack;
+	nni_mtx_unlock(&d->mtx);
+	return (nni_copyout_bool(b, buf, szp, t));
+}
+
+static int
 tcp_dialer_get_locaddr(void *arg, void *buf, size_t *szp, nni_type t)
 {
 	nni_tcp_dialer *d = arg;
@@ -393,6 +428,11 @@ static const nni_option tcp_dialer_options[] = {
 	    .o_name = NNG_OPT_TCP_KEEPALIVE,
 	    .o_get  = tcp_dialer_get_keepalive,
 	    .o_set  = tcp_dialer_set_keepalive,
+	},
+	{
+	    .o_name = NNG_OPT_TCP_QUICKACK,
+	    .o_get  = tcp_dialer_get_quickack,
+	    .o_set  = tcp_dialer_set_quickack
 	},
 	{
 	    .o_name = NULL,

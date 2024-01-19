@@ -457,6 +457,11 @@ static const nni_option tcp_options[] = {
 	    .o_set  = tcp_set_nodelay,
 	},
 	{
+	    .o_name = NNG_OPT_TCP_KEEPALIVE,
+	    .o_get  = tcp_get_keepalive,
+	    .o_set  = tcp_set_keepalive,
+	},
+	{
 	    .o_name = NULL,
 	},
 };
