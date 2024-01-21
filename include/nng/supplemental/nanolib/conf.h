@@ -519,7 +519,8 @@ struct conf {
 	int        max_taskq_thread;
 	int        property_size;
 	int        msq_len;
-	uint32_t   parallel;
+	uint32_t   parallel;				// broker ctx
+	uint64_t   total_ctx;		// Total ctx of work (bridge + AWS + broker + HTTP)
 	uint64_t   max_packet_size;        // byte
 	uint32_t   client_max_packet_size; // byte
 	uint32_t   max_inflight_window;
