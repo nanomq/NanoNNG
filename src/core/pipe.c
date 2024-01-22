@@ -36,9 +36,6 @@ pipe_destroy(void *arg)
 	if (p == NULL || p->cache) {
 		return;
 	}
-	// for a reaper bug
-	// if(p->guard != 1)
-	// 	return;
 
 	nni_pipe_run_cb(p, NNG_PIPE_EV_REM_POST);
 
@@ -263,7 +260,6 @@ pipe_create(nni_pipe **pp, nni_sock *sock, nni_sp_tran *tran, void *tran_data)
 		return (NNG_ENOMEM);
 	}
 
-	// p->guard = 1;
 	p->p_size       = sz;
 	p->p_proto_data = p + 1;
 	p->p_tran_ops   = *tran->tran_pipe;
@@ -489,4 +485,28 @@ nni_pipe_id_swap(uint32_t old_id, uint32_t new_id)
 		p->p_id = new_id;
 		q->p_id = old_id;
 	}
+}
+
+/**
+ * replace pid with uint32 value
+ * return 0: successed no pipe is closed
+ * 		  1: successed old pipe is closed
+ * 		 -1: failed
+*/
+int
+nni_pipe_set_pid(nni_pipe *new_pipe, uint32_t id)
+{
+	int rv = 0;
+	nni_pipe *p;
+	nni_id_remove(&pipes, new_pipe->p_id);
+	if ((p = nni_id_get(&pipes, id)) != NULL) {
+		nni_id_remove(&pipes, id);
+		nni_pipe_close(p);
+		log_error("kick %p %d", p, id);
+		rv = 1;
+	}
+	new_pipe->p_id = id;
+	nni_stat_set_id(&new_pipe->st_root, (int) new_pipe->p_id);
+	nni_stat_set_id(&new_pipe->st_id, (int) new_pipe->p_id);
+	return nni_id_set(&pipes, id, new_pipe);
 }

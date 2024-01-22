@@ -67,6 +67,7 @@ extern void *   nni_pipe_get_conn_param(nni_pipe *p);
 extern bool     nni_pipe_get_status(nni_pipe *p);
 extern uint16_t nni_pipe_inc_packetid(nni_pipe *p);
 extern void     nni_pipe_id_swap(uint32_t old_id, uint32_t new_id);
+extern int      nni_pipe_set_pid(nni_pipe *new_pipe, uint32_t id);
 // extern nni_id_map* nni_pipe_get_idhash(nni_pipe *p);
 
 #endif // CORE_PIPE_H
