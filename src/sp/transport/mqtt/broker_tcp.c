@@ -162,9 +162,15 @@ tcptran_pipe_stop(void *arg)
 static int
 tcptran_pipe_init(void *arg, nni_pipe *npipe)
 {
+	int rv;
+	char         *cid;
 	tcptran_pipe *p = arg;
+	uint32_t      clientid_key = 0;
 
 	nni_pipe_set_conn_param(npipe, p->tcp_cparam);
+	cid = (char *) conn_param_get_clientid(p->tcp_cparam);
+	clientid_key = DJBHashn(cid, strlen(cid));
+	rv = nni_pipe_set_pid(npipe, clientid_key);
 	p->npipe = npipe;
 	if (!p->conf->sqlite.enable) {
 		nni_qos_db_init_id_hash(npipe->nano_qos_db);
@@ -366,19 +372,17 @@ tcptran_pipe_nego_cb(void *arg)
 		         p->conn_buf, p->tcp_cparam, p->wantrxhead)) == 0) {
 			nng_free(p->conn_buf, p->wantrxhead);
 			p->conn_buf = NULL;
-
 			// connection packet handled successfully. clone it for
 			// protocol or app layer
 			conn_param_clone(p->tcp_cparam);
-
 			// Connection is accepted.
-
 			p->pro_ver = p->tcp_cparam->pro_ver;
 			if (p->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 				p->qsend_quota = p->tcp_cparam->rx_max;
 			}
 			nni_list_remove(&ep->negopipes, p);
 			nni_list_append(&ep->waitpipes, p);
+			// Match happens before accept_cb. Make pipe id ready
 			tcptran_ep_match(ep);
 			if (p->tcp_cparam->max_packet_size == 0) {
 				// set default max packet size for client
@@ -1627,8 +1631,8 @@ tcptran_pipe_start(tcptran_pipe *p, nng_stream *conn, tcptran_ep *ep)
 	nni_aio_set_iov(p->negoaio, 1, &iov);
 	nni_list_append(&ep->negopipes, p);
 
-	nni_aio_set_timeout(p->negoaio,
-	    15 * 1000); // 15 sec timeout to negotiate abide with emqx
+	// 15 sec timeout to negotiate abide with emqx
+	nni_aio_set_timeout(p->negoaio, 15 * 1000);
 
 	nng_stream_recv(p->conn, p->negoaio);
 }
@@ -2002,7 +2006,7 @@ tcptran_ep_accept(void *arg, nni_aio *aio)
 		ep->started = true;
 		nng_stream_listener_accept(ep->listener, ep->connaio);
 	} else {
-		tcptran_ep_match(ep);
+		tcptran_ep_match(ep);	// not necessary now.
 	}
 	nni_mtx_unlock(&ep->mtx);
 }
