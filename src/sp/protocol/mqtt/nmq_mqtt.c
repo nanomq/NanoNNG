@@ -641,6 +641,7 @@ nano_pipe_start(void *arg)
 	bool is_sqlite = s->conf->sqlite.enable;
 
 	log_trace(" ########## nano_pipe_start ########## ");
+
 	nni_msg_alloc(&msg, 0);
 	nni_mtx_lock(&s->lk);
 
@@ -676,6 +677,7 @@ nano_pipe_start(void *arg)
 
 session_keeping:
 	// Clientid should not be NULL since broker will assign one
+	// TODO use p_id
 	clientid = (char *) conn_param_get_clientid(p->conn_param);
 	if (!clientid) {
 		log_warn("NULL clientid found when try to restore session.");
@@ -735,7 +737,6 @@ session_keeping:
 	}
 #endif
 	// pipe_id is just random value of id_dyn_val with self-increment.
-	// nni_id_set(&s->pipes, nni_pipe_id(p->pipe), p);
 	nni_id_set(&s->pipes, p->id, p);
 	p->conn_param->nano_qos_db = p->pipe->nano_qos_db;
 	p->nano_qos_db             = p->pipe->nano_qos_db;
@@ -831,21 +832,28 @@ nano_pipe_close(void *arg)
 		clientid = (char *) conn_param_get_clientid(p->conn_param);
 	}
 	if (clientid) {
+		nni_pipe *new_pipe;
 		clientid_key = DJBHashn(clientid, strlen(clientid));
-		nni_id_set(&s->cached_sessions, clientid_key, p);
-		nni_mtx_lock(&p->lk);
-		// set event to false avoid of sending the disconnecting msg
-		p->event                   = false;
-		npipe->cache               = true;
-		p->conn_param->clean_start = 1;
-		nni_atomic_swap_bool(&npipe->p_closed, false);
-		if (nni_list_active(&s->recvpipes, p)) {
-			nni_list_remove(&s->recvpipes, p);
+		nni_pipe_find(&new_pipe, npipe->p_id);
+		if (new_pipe == npipe) {
+			nni_id_set(&s->cached_sessions, clientid_key, p);
+			nni_mtx_lock(&p->lk);
+			// set event to false avoid of sending the
+			// disconnecting msg
+			p->event                   = false;
+			npipe->cache               = true;
+			p->conn_param->clean_start = 1;
+			nni_atomic_swap_bool(&npipe->p_closed, false);
+			if (nni_list_active(&s->recvpipes, p)) {
+				nni_list_remove(&s->recvpipes, p);
+			}
+			nano_nni_lmq_flush(&p->rlmq, false);
+			nni_mtx_unlock(&s->lk);
+			nni_mtx_unlock(&p->lk);
+			return -1;
 		}
-		nano_nni_lmq_flush(&p->rlmq, false);
-		nni_mtx_unlock(&s->lk);
-		nni_mtx_unlock(&p->lk);
-		return -1;
+		// TODO restore seesion
+		log_info("client kick itself while keeping session!");
 	}
 	close_pipe(p);
 
