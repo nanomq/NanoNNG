@@ -106,7 +106,6 @@ struct subinfo {
 
 struct nni_pipe {
 	uint32_t           p_id;
-	// uint32_t           guard;
 	nni_sp_pipe_ops    p_tran_ops;
 	nni_proto_pipe_ops p_proto_ops;
 	size_t             p_size;
