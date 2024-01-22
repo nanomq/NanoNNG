@@ -795,7 +795,6 @@ close_pipe(nano_pipe *p)
 
 	nni_aio_close(&p->aio_send);
 	nni_aio_close(&p->aio_recv);
-	nni_aio_close(&p->aio_timer);
 	nni_mtx_lock(&p->lk);
 	p->closed = true;
 	if (nni_list_active(&s->recvpipes, p)) {
@@ -824,6 +823,9 @@ nano_pipe_close(void *arg)
 		nni_atomic_swap_bool(&npipe->p_closed, false);
 		return -1;
 	}
+	// have to stop aio timer first, otherwise we hit null qos_db
+	nni_aio_close(&p->aio_timer);
+
 	nni_mtx_lock(&s->lk);
 	// we freed the conn_param when restoring pipe
 	// so check status of conn_param. just let it close silently
@@ -855,11 +857,12 @@ nano_pipe_close(void *arg)
 		// take params from npipe to new pipe
 		new_pipe->packet_id = npipe->packet_id;
 		// there should be no msg in this map
-		bool is_sqlite = s->conf->sqlite.enable;
 		new_pipe->nano_qos_db = npipe->nano_qos_db;
 		npipe->nano_qos_db = NULL;
-		new_pipe->subinfol    = npipe->subinfol;
-		npipe->subinfol = NULL;
+
+		nni_list *l        = new_pipe->subinfol;
+		new_pipe->subinfol = npipe->subinfol;
+		npipe->subinfol    = l;
 		log_info("client kick itself while keeping session!");
 	}
 	close_pipe(p);
