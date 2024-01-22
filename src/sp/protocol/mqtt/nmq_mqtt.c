@@ -578,9 +578,9 @@ nano_pipe_fini(void *arg)
 	}
 	void *nano_qos_db = p->pipe->nano_qos_db;
 
-	//Safely free the msgs in qos_db
+	//Safely free the msgs in qos_db, only when nano_qos_db is not taken by new pipe
 	if (p->event == true) {
-		if (!p->broker->conf->sqlite.enable) {
+		if (!p->broker->conf->sqlite.enable && nano_qos_db != NULL) {
 			nni_qos_db_remove_all_msg(false,
 				nano_qos_db, nmq_close_unack_msg_cb);
 			nni_qos_db_fini_id_hash(nano_qos_db);
@@ -695,7 +695,7 @@ session_keeping:
 			p->pipe->packet_id = old->pipe->packet_id;
 			// there should be no msg in this map
 
-			if (!is_sqlite) {
+			if (!is_sqlite && p->pipe->nano_qos_db!= NULL) {
 				nni_qos_db_fini_id_hash(p->pipe->nano_qos_db);
 			}
 
@@ -852,7 +852,14 @@ nano_pipe_close(void *arg)
 			nni_mtx_unlock(&p->lk);
 			return -1;
 		}
-		// TODO restore seesion
+		// take params from npipe to new pipe
+		new_pipe->packet_id = npipe->packet_id;
+		// there should be no msg in this map
+		bool is_sqlite = s->conf->sqlite.enable;
+		new_pipe->nano_qos_db = npipe->nano_qos_db;
+		npipe->nano_qos_db = NULL;
+		new_pipe->subinfol    = npipe->subinfol;
+		npipe->subinfol = NULL;
 		log_info("client kick itself while keeping session!");
 	}
 	close_pipe(p);
