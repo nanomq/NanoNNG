@@ -42,7 +42,9 @@ pipe_destroy(void *arg)
 	// Make sure any unlocked holders are done with this.
 	// This happens during initialization for example.
 	nni_mtx_lock(&pipes_lk);
-	if (p->p_id != 0) {
+	// This is a change for NanoMQ only
+	// NNG always remove the pipe with a matching p_id
+	if (p->p_id != 0 && nni_id_get(&pipes, p->p_id) == p) {
 		nni_id_remove(&pipes, p->p_id);
 	}
 	// This wait guarantees that all callers are done with us.
@@ -489,24 +491,32 @@ nni_pipe_id_swap(uint32_t old_id, uint32_t new_id)
 
 /**
  * replace pid with uint32 value
- * return 0: successed no pipe is closed
- * 		  1: successed old pipe is closed
- * 		 -1: failed
+ * return 0     : successed
+ * 		  others: failed
+ *
 */
 int
 nni_pipe_set_pid(nni_pipe *new_pipe, uint32_t id)
 {
-	int rv = 0;
+	int rv;
 	nni_pipe *p;
+	// remove the id set by NNG
+	nni_mtx_lock(&pipes_lk);
 	nni_id_remove(&pipes, new_pipe->p_id);
-	if ((p = nni_id_get(&pipes, id)) != NULL) {
-		nni_id_remove(&pipes, id);
-		nni_pipe_close(p);
-		log_error("kick %p %d", p, id);
-		rv = 1;
-	}
 	new_pipe->p_id = id;
 	nni_stat_set_id(&new_pipe->st_root, (int) new_pipe->p_id);
 	nni_stat_set_id(&new_pipe->st_id, (int) new_pipe->p_id);
-	return nni_id_set(&pipes, id, new_pipe);
+	if ((p = nni_id_get(&pipes, id)) != NULL) {
+		rv = nni_id_set(&pipes, id, new_pipe);
+		log_error("set rv for pipe found %d", rv);
+		nni_mtx_unlock(&pipes_lk);
+		nni_pipe_close(p);
+		log_error("kick old client %p hash %d", p, id);
+		return rv;
+	}
+// todo fix lock
+	rv = nni_id_set(&pipes, id, new_pipe);
+	log_error("set rv %d", rv);
+	nni_mtx_unlock(&pipes_lk);
+	return rv;
 }
