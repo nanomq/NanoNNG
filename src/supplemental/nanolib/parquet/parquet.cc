@@ -478,3 +478,8 @@ parquet_find_span(uint64_t start_key, uint64_t end_key, uint32_t *size)
 	(*size) = local_size;
 	return ret;
 }
+
+void parquet_object_set_cb(parquet_object *obj, parquet_cb cb)
+{
+	obj->cb = cb;
+}
