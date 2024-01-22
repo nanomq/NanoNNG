@@ -62,16 +62,18 @@ pipe_destroy(void *arg)
 
 	// Freed here
 	struct subinfo *s = NULL;
-	while (!nni_list_empty(p->subinfol)) {
-		s = nni_list_last(p->subinfol);
-		if (s && s->topic != NULL) {
-			nni_list_remove(p->subinfol, s);
-			nng_free(s->topic, strlen(s->topic));
-			nng_free(s, sizeof(*s));
+	if (p->subinfol != NULL) {
+		while (!nni_list_empty(p->subinfol)) {
+			s = nni_list_last(p->subinfol);
+			if (s && s->topic != NULL) {
+				nni_list_remove(p->subinfol, s);
+				nng_free(s->topic, strlen(s->topic));
+				nng_free(s, sizeof(*s));
+			}
 		}
-	}
-	if (p->subinfol != NULL)
 		nni_free(p->subinfol, sizeof(nni_list));
+	}
+
 
 #ifdef NNG_ENABLE_STATS
 	nni_stat_unregister(&p->st_root);
@@ -490,7 +492,7 @@ nni_pipe_id_swap(uint32_t old_id, uint32_t new_id)
 }
 
 /**
- * replace pid with uint32 value
+ * replace pid with input uint32 value
  * return 0     : successed
  * 		  others: failed
  *
@@ -514,7 +516,7 @@ nni_pipe_set_pid(nni_pipe *new_pipe, uint32_t id)
 		log_error("kick old client %p hash %d", p, id);
 		return rv;
 	}
-// todo fix lock
+
 	rv = nni_id_set(&pipes, id, new_pipe);
 	log_error("set rv %d", rv);
 	nni_mtx_unlock(&pipes_lk);
