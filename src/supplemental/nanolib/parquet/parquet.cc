@@ -136,6 +136,9 @@ parquet_object_alloc(uint64_t *keys, uint8_t **darray, uint32_t *dsize,
 	elem->size           = size;
 	elem->aio            = aio;
 	elem->arg            = arg;
+	elem->result         = PARQUET_WRITE_FAILURE;
+	elem->file_size      = 0;
+	elem->file_list      = NULL;
 	return elem;
 }
 
@@ -151,6 +154,9 @@ parquet_object_free(parquet_object *elem)
 		*szp = elem->size;
 		nng_aio_set_msg(elem->aio, (nng_msg *)szp);
 		DO_IT_IF_NOT_NULL(nng_aio_finish_sync, elem->aio, 0);
+		for (int i = 0; i < elem->file_size && elem->file_list; i++) {
+			FREE_IF_NOT_NULL(elem->file_list[i], strlen(elem->file_list[i]));
+		}
 		delete elem;
 	}
 }
