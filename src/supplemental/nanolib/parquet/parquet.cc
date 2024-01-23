@@ -6,16 +6,15 @@
 #include "nng/supplemental/nanolib/parquet.h"
 #include "queue.h"
 #include <assert.h>
+#include <atomic>
 #include <dirent.h>
 #include <fstream>
+#include <inttypes.h>
 #include <iostream>
 #include <string>
 #include <sys/stat.h>
 #include <thread>
 #include <vector>
-#include <atomic>
-#include <inttypes.h>
-
 
 using namespace std;
 using parquet::ConvertedType;
@@ -32,10 +31,11 @@ using parquet::schema::PrimitiveNode;
 
 #define FREE_IF_NOT_NULL(free, size) DO_IT_IF_NOT_NULL(nng_free, free, size)
 
-
-#define _Atomic(X) std::atomic< X >
+#define _Atomic(X) std::atomic<X>
 atomic_bool is_available = false;
-#define WAIT_FOR_AVAILABLE	while (!is_available) nng_msleep(10);
+#define WAIT_FOR_AVAILABLE    \
+	while (!is_available) \
+		nng_msleep(10);
 
 #define UINT64_MAX_DIGITS 20
 
@@ -61,36 +61,21 @@ create_directory(const std::string &directory_path)
 }
 
 static char *
-get_file_name(conf_parquet *conf)
+get_file_name(conf_parquet *conf, uint64_t key_start, uint64_t key_end)
 {
-	char   *dir    = conf->dir;
-	char   *prefix = conf->file_name_prefix;
-	uint8_t index  = conf->file_index++;
-	if (index >= conf->file_count) {
-		index            = 0;
-		conf->file_index = 1;
-	}
+	char *file_name = NULL;
+	char *dir       = conf->dir;
+	char *prefix    = conf->file_name_prefix;
 
-	char *file_name = (char *) malloc(strlen(prefix) + strlen(dir) + 16);
-	sprintf(file_name, "%s/%s%d.parquet", dir, prefix, index);
-	return file_name;
-}
-
-static char *
-get_file_name_v2(conf_parquet *conf, uint64_t key_start, uint64_t key_end)
-{
-	char    *file_name = NULL;
-	char    *dir       = conf->dir;
-	char    *prefix    = conf->file_name_prefix;
-
-	file_name = (char *)malloc(strlen(prefix) + strlen(dir) + UINT64_MAX_DIGITS + UINT64_MAX_DIGITS + 16);
+	file_name = (char *) malloc(strlen(prefix) + strlen(dir) +
+	    UINT64_MAX_DIGITS + UINT64_MAX_DIGITS + 16);
 	if (file_name == NULL) {
 		log_error("Failed to allocate memory for file name.");
 		return NULL;
 	}
 
-	sprintf(
-	    file_name, "%s/%s-%" PRIu64 "~%" PRIu64 ".parquet", dir, prefix, key_start, key_end);
+	sprintf(file_name, "%s/%s-%" PRIu64 "~%" PRIu64 ".parquet", dir,
+	    prefix, key_start, key_end);
 	ENQUEUE(parquet_file_queue, file_name);
 	return file_name;
 }
@@ -150,12 +135,13 @@ parquet_object_free(parquet_object *elem)
 		FREE_IF_NOT_NULL(elem->darray, elem->size);
 		FREE_IF_NOT_NULL(elem->dsize, elem->size);
 		nng_aio_set_prov_data(elem->aio, elem->arg);
-		uint32_t *szp = (uint32_t *)malloc(sizeof(uint32_t));
-		*szp = elem->size;
-		nng_aio_set_msg(elem->aio, (nng_msg *)szp);
+		uint32_t *szp = (uint32_t *) malloc(sizeof(uint32_t));
+		*szp          = elem->size;
+		nng_aio_set_msg(elem->aio, (nng_msg *) szp);
 		DO_IT_IF_NOT_NULL(nng_aio_finish_sync, elem->aio, 0);
 		for (int i = 0; i < elem->file_size && elem->file_list; i++) {
-			FREE_IF_NOT_NULL(elem->file_list[i], strlen(elem->file_list[i]));
+			FREE_IF_NOT_NULL(
+			    elem->file_list[i], strlen(elem->file_list[i]));
 		}
 		delete elem;
 	}
@@ -177,7 +163,6 @@ parquet_write_batch_async(parquet_object *elem)
 	return 0;
 }
 
-
 bool
 need_new_one(const char *file_name, size_t file_max)
 {
@@ -188,81 +173,7 @@ need_new_one(const char *file_name, size_t file_max)
 	}
 	// printf("File size: %d\n", st.st_size + PARQUET_END);
 	// printf("File max: %d\n", file_max);
-	return st.st_size >= (__off_t)(file_max - PARQUET_END);
-}
-
-void
-parquet_write_loop(void *config)
-{
-	if (config == NULL) {
-		log_error("parquet conf is NULL");
-	}
-
-	conf_parquet *conf = (conf_parquet *) config;
-	if (!directory_exists(conf->dir)) {
-		if (!create_directory(conf->dir)) {
-			log_error("Failed to create directory %s", conf->dir);
-			return;
-		}
-	}
-
-	char *filename = get_file_name(conf);
-	if (filename == NULL) {
-		log_error("Failed to get file name");
-		return;
-	}
-
-	using FileClass = arrow::io::FileOutputStream;
-	shared_ptr<FileClass> out_file;
-	PARQUET_ASSIGN_OR_THROW(out_file, FileClass::Open(filename));
-
-	shared_ptr<parquet::WriterProperties> props =
-	    parquet::WriterProperties::Builder()
-	        .created_by("NanoMQ")
-	        ->version(parquet::ParquetVersion::PARQUET_2_6)
-	        ->data_page_version(parquet::ParquetDataPageVersion::V2)
-	        ->compression(
-	            static_cast<arrow::Compression::type>(conf->comp_type))
-	        ->build();
-
-	shared_ptr<GroupNode> schema = setup_schema();
-
-	// Create a ParquetFileWriter instance
-	std::shared_ptr<parquet::ParquetFileWriter> file_writer =
-	    parquet::ParquetFileWriter::Open(out_file, schema, props);
-
-	while (true) {
-
-		// wait for mqtt messages to send method request
-		pthread_mutex_lock(&parquet_queue_mutex);
-
-		while (IS_EMPTY(parquet_queue)) {
-			pthread_cond_wait(
-			    &parquet_queue_not_empty, &parquet_queue_mutex);
-		}
-
-		log_debug("fetch element from parquet queue");
-		parquet_object *ele =
-		    (parquet_object *) DEQUEUE(parquet_queue);
-		pthread_mutex_unlock(&parquet_queue_mutex);
-		parquet_write(file_writer, ele);
-
-		if (need_new_one(filename, conf->file_size)) {
-			file_writer->Close();
-			free(filename);
-			filename = get_file_name(conf);
-			if (filename == NULL) {
-				log_error("Failed to get file name");
-				return;
-			}
-			PARQUET_ASSIGN_OR_THROW(
-			    out_file, FileClass::Open(filename));
-			file_writer = parquet::ParquetFileWriter::Open(
-			    out_file, schema, props);
-		}
-	}
-
-	return;
+	return st.st_size >= (__off_t) (file_max - PARQUET_END);
 }
 
 shared_ptr<parquet::FileEncryptionProperties>
@@ -286,7 +197,6 @@ parquet_set_encryption(conf_parquet *conf)
 	return encryption_configurations;
 }
 
-
 static int
 compute_new_index(parquet_object *obj, uint32_t index, uint32_t file_size)
 {
@@ -300,17 +210,18 @@ compute_new_index(parquet_object *obj, uint32_t index, uint32_t file_size)
 }
 
 int
-parquet_write(conf_parquet *conf, shared_ptr<GroupNode> schema, parquet_object *elem)
+parquet_write(
+    conf_parquet *conf, shared_ptr<GroupNode> schema, parquet_object *elem)
 {
 	uint32_t old_index = 0;
 	uint32_t new_index = 0;
 again:
 	new_index = compute_new_index(elem, old_index, conf->file_size);
 	uint64_t key_start = elem->keys[old_index];
-	uint64_t key_end = elem->keys[new_index];
+	uint64_t key_end   = elem->keys[new_index];
 
 	pthread_mutex_lock(&parquet_queue_mutex);
-	char *filename = get_file_name_v2(conf, key_start, key_end);
+	char *filename = get_file_name(conf, key_start, key_end);
 	if (filename == NULL) {
 		pthread_mutex_unlock(&parquet_queue_mutex);
 		log_error("Failed to get file name");
@@ -324,7 +235,8 @@ again:
 
 	{
 
-		elem->file_list = (char**) realloc(elem->file_list, sizeof(char*) * (++elem->file_size));
+		elem->file_list = (char **) realloc(
+		    elem->file_list, sizeof(char *) * (++elem->file_size));
 		*(elem->file_list + elem->file_size - 1) =
 		    nng_strdup(filename);
 		// Create a ParquetFileWriter instance
@@ -381,7 +293,8 @@ again:
 
 		old_index = new_index;
 
-		if (new_index != elem->size-1) goto again;
+		if (new_index != elem->size - 1)
+			goto again;
 	}
 
 	elem->result = PARQUET_WRITE_SUCCESS;
@@ -426,7 +339,6 @@ parquet_write_loop_v2(void *config)
 		pthread_mutex_unlock(&parquet_queue_mutex);
 
 		parquet_write(conf, schema, ele);
-
 	}
 }
 
@@ -453,7 +365,7 @@ static bool
 compare_callback(void *name, uint64_t key)
 {
 	uint64_t range[2] = { 0 };
-	get_range((const char *)name, range);
+	get_range((const char *) name, range);
 	return (key >= range[0] && key <= range[1]);
 }
 
@@ -461,7 +373,7 @@ static bool
 compare_callback_span(void *name, uint64_t low, uint64_t high)
 {
 	uint64_t range[2] = { 0 };
-	get_range((const char *)name, range);
+	get_range((const char *) name, range);
 	return !(low > range[1] || high < range[0]);
 }
 
@@ -470,9 +382,10 @@ parquet_find(uint64_t key)
 {
 	WAIT_FOR_AVAILABLE
 	const char *value = NULL;
-	void *elem = NULL;
+	void       *elem  = NULL;
 	pthread_mutex_lock(&parquet_queue_mutex);
-	FOREACH_QUEUE(parquet_file_queue, elem) {
+	FOREACH_QUEUE(parquet_file_queue, elem)
+	{
 		if (elem && compare_callback(elem, key)) {
 			value = nng_strdup((char *) elem);
 			break;
@@ -493,13 +406,13 @@ parquet_find_span(uint64_t start_key, uint64_t end_key, uint32_t *size)
 
 	WAIT_FOR_AVAILABLE
 
-	uint64_t low = start_key;
-	uint64_t high = end_key;
-	uint32_t local_size = 0;
-	const char *value = NULL;
-	const char **array = NULL;
-	const char **ret = NULL;
-	void *elem = NULL;
+	uint64_t     low        = start_key;
+	uint64_t     high       = end_key;
+	uint32_t     local_size = 0;
+	const char  *value      = NULL;
+	const char **array      = NULL;
+	const char **ret        = NULL;
+	void        *elem       = NULL;
 
 	pthread_mutex_lock(&parquet_queue_mutex);
 	array = (const char **) nng_alloc(
@@ -521,7 +434,8 @@ parquet_find_span(uint64_t start_key, uint64_t end_key, uint32_t *size)
 	return ret;
 }
 
-void parquet_object_set_cb(parquet_object *obj, parquet_cb cb)
+void
+parquet_object_set_cb(parquet_object *obj, parquet_cb cb)
 {
 	obj->cb = cb;
 }
