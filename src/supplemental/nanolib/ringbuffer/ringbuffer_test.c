@@ -36,9 +36,9 @@ void test_ringBuffer_release(void)
 	return;
 }
 
-static inline void free_msg_list(nng_msg **msgList, nng_msg *msg, int *lenp, int freeMsg)
+static inline void free_msg_list(nng_msg **msgList, nng_msg *msg, uint32_t *lenp, int freeMsg)
 {
-	for (int i = 0; i < *lenp; i++) {
+	for (uint32_t i = 0; i < *lenp; i++) {
 		if (freeMsg) {
 			nng_msg_free(msgList[i]);
 		}
@@ -51,7 +51,7 @@ static inline void free_msg_list(nng_msg **msgList, nng_msg *msg, int *lenp, int
 		nng_free(msgList, sizeof(nng_msg *) * (*lenp));
 	}
 	if (lenp != NULL) {
-		nng_free(lenp, sizeof(int));
+		nng_free(lenp, sizeof(uint32_t));
 	}
 }
 
@@ -137,7 +137,7 @@ void test_ringBuffer_enqueue(void)
 	nng_msg *msg = nng_aio_get_msg(aio);
 	NUTS_TRUE(msg != NULL);
 
-	int *listLen = nng_msg_get_proto_data(msg);
+	uint32_t *listLen = nng_msg_get_proto_data(msg);
 	NUTS_TRUE(listLen != NULL);
 	NUTS_TRUE(*listLen == 10);
 
@@ -423,15 +423,15 @@ void test_ringBuffer_search_msgs_by_key()
 	NUTS_TRUE(ringBuffer_search_msgs_by_key(rb, 0, -1, &msgList) == -1);
 	NUTS_TRUE(ringBuffer_search_msgs_by_key(rb, 0, 10, NULL) == -1);
 
-	int *lenp = NULL;
-	lenp = nng_alloc(sizeof(int));
+	uint32_t *lenp = NULL;
+	lenp = nng_alloc(sizeof(uint32_t));
 	NUTS_TRUE(ringBuffer_search_msgs_by_key(rb, 0, 10, &msgList) == 0);
 	*lenp = 10;
 	free_msg_list(msgList, NULL, lenp, 0);
 
 
 	NUTS_TRUE(ringBuffer_search_msgs_by_key(rb, 5, 10, &msgList) == 0);
-	lenp = nng_alloc(sizeof(int));
+	lenp = nng_alloc(sizeof(uint32_t));
 	*lenp = 10;
 	free_msg_list(msgList, NULL, lenp, 0);
 
@@ -465,12 +465,12 @@ void test_ringBuffer_search_msgs_fuzz()
 		ret = ringBuffer_search_msgs_fuzz(rb, start, end, lenp, &msgList);
 		if (start / 10 == end / 10 && start % 10 != 0 && end % 10 != 0) {
 			NUTS_TRUE(ret == -1);
-			nng_free(lenp, sizeof(int));
+			nng_free(lenp, sizeof(uint32_t));
 			continue;
 		} else {
 			NUTS_TRUE(ret == 0);
 		}
-		NUTS_TRUE(*lenp == ((end / 10  - (start % 10 == 0 ? start / 10 : start / 10 + 1)) + 1));
+		NUTS_TRUE(*lenp == (uint32_t)((end / 10  - (start % 10 == 0 ? start / 10 : start / 10 + 1)) + 1));
 		free_msg_list(msgList, NULL, lenp, 0);
 	}
 
