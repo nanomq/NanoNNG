@@ -206,6 +206,9 @@ parquet_write(std::shared_ptr<parquet::ParquetFileWriter> file_writer,
 		ba_writer->WriteBatch(1, &definition_level, nullptr, &value);
 	}
 
+	if (elem->cb) {
+		elem->cb(elem);
+	}
 	parquet_object_free(elem);
 	return 0;
 }
@@ -386,6 +389,19 @@ parquet_write_loop_v2(void *config)
 		parquet_write(file_writer, ele);
 	}
 }
+
+static int
+compute_new_index(parquet_object *obj, uint32_t index, uint32_t file_size)
+{
+	uint64_t size = 0;
+	uint32_t new_index;
+	for (new_index = index; size < file_size && new_index < obj->size - 1;
+	     new_index++) {
+		size += obj->dsize[new_index];
+	}
+	return new_index;
+}
+
 
 int
 parquet_write_launcher(conf_parquet *conf)
