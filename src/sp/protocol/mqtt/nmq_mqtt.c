@@ -622,14 +622,13 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 static int
 nano_pipe_start(void *arg)
 {
+	char      *clientid;
 	nano_pipe *p = arg;
 	nano_pipe *old = NULL;
 	nano_sock *s = p->broker;
 	nni_msg   *msg;
 	uint8_t    rv; // reason code of CONNACK
 	nni_pipe  *npipe = p->pipe;
-	char      *clientid;
-	uint32_t   clientid_key;
 
 	bool is_sqlite = s->conf->sqlite.enable;
 
@@ -699,11 +698,11 @@ session_keeping:
 			// set event of old pipe to false and discard it.
 			old->event       = false;
 			old->pipe->cache = false;
-			nni_id_remove(&s->cached_sessions, clientid_key);
+			nni_id_remove(&s->cached_sessions, p->pipe->p_id);
 		}
 	} else {
 		// clean previous session
-		old = nni_id_get(&s->cached_sessions, clientid_key);
+		old = nni_id_get(&s->cached_sessions, p->pipe->p_id);
 		if (old != NULL) {
 			old->event       = true;
 			old->pipe->cache = false;
@@ -717,7 +716,7 @@ session_keeping:
 #endif
 			nni_qos_db_remove_all_msg(is_sqlite, old->nano_qos_db,
 			    nmq_close_unack_msg_cb);
-			nni_id_remove(&s->cached_sessions, clientid_key);
+			nni_id_remove(&s->cached_sessions, p->pipe->p_id);
 		}
 	}
 #ifdef NNG_SUPP_SQLITE
