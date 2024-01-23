@@ -447,7 +447,7 @@ extern int nni_plat_udp_sockname(nni_plat_udp *, nni_sockaddr *);
 // in APIs to transport file descriptors, or across a fork/exec boundary (so
 // that child processes may use these with socket to inherit a socket that is
 // connected to the parent.)
-extern int nni_socket_pair(int *);
+extern int nni_socket_pair(int[2]);
 
 //
 // File/Store Support
