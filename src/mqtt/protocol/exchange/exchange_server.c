@@ -532,6 +532,7 @@ exchange_client_get_msgs_fuzz(void *arg, uint64_t start, uint64_t end, uint32_t 
 	return 0;
 }
 
+#ifdef SUPP_PARQUET
 static char *
 get_file_bname(char *fpath)
 {
@@ -552,7 +553,6 @@ get_file_bname(char *fpath)
 	return bname;
 }
 
-#ifdef SUPP_PARQUET
 static int
 get_parquet_files_raw(uint32_t sz, char **fnames, char ***file_raws)
 {
@@ -697,7 +697,6 @@ decToHex(unsigned char decimal, char *hexadecimal)
 static int
 fuzz_search_result_cat(nng_msg **msgList, uint32_t count, cJSON *obj)
 {
-	char *buf = NULL;
 	uint32_t sz = 0;
 	uint32_t pos = 0;
 	uint32_t diff = 0;
@@ -724,7 +723,7 @@ fuzz_search_result_cat(nng_msg **msgList, uint32_t count, cJSON *obj)
 				log_warn("Failed to allocate memory for file payload\n");
 				return -1;
 			}
-			for (int j = 0; j < diff; ++j) {
+			for (uint32_t j = 0; j < diff; ++j) {
 				char *tmpch = (char *)nng_msg_payload_ptr(msgList[i]);
 				char hex[2];
 				hex[0] = '0';
@@ -742,13 +741,13 @@ fuzz_search_result_cat(nng_msg **msgList, uint32_t count, cJSON *obj)
 		pos += diff;
 	}
 
-	cJSON *mqs_obj = cJSON_CreateStringArray(mqdata, count);
+	cJSON *mqs_obj = cJSON_CreateStringArray((const char * const*)mqdata, count);
 	if (!mqs_obj) {
 		return -1;
 	}
 	cJSON_AddItemToObject(obj, "mq", mqs_obj);
 
-	for (int i = 0; i < count; ++i) {
+	for (uint32_t i = 0; i < count; ++i) {
 		nng_free(mqdata[i], 0);
 	}
 	nng_free(mqdata, sizeof(char *) * count);
@@ -766,7 +765,6 @@ ex_query_recv_cb(void *arg)
 	exchange_sock_t       *sock = p->sock;
 
 	nni_msg            *msg;
-	size_t              len;
 	uint8_t            *body;
 	nni_msg            *tar_msg = NULL;
 	int ret;
@@ -781,7 +779,6 @@ ex_query_recv_cb(void *arg)
 	nni_msg_set_pipe(msg, nni_pipe_id(p->pipe));
 
 	body    = nni_msg_body(msg);
-	len     = nni_msg_len(msg);
 
 	nni_mtx_lock(&sock->mtx);
 
@@ -819,11 +816,11 @@ ex_query_recv_cb(void *arg)
 				return;
 			}
 			for (uint32_t j = 0; j < diff; ++j) {
-				char *tmpch = nng_msg_payload_ptr(tar_msg);
+				char *tmpch = (char *)nng_msg_payload_ptr(tar_msg);
 				if (j == 0) {
-					sprintf(mqdata, "%02x", tmpch[j] & 0xff);
+					sprintf(mqdata, "%02x", (unsigned char)(tmpch[j] & 0xff));
 				} else {
-					sprintf(mqdata, "%s%02x", mqdata, tmpch[j] & 0xff);
+					sprintf(mqdata, "%s%02x", mqdata, (unsigned char)(tmpch[j] & 0xff));
 				}
 			}
 			cJSON *mqs_obj = cJSON_CreateString(mqdata);
@@ -912,6 +909,8 @@ ex_query_send_cb(void *arg)
 {
 	exchange_pipe_t       *p    = arg;
 	exchange_sock_t       *sock = p->sock;
+
+	NNI_ARG_UNUSED(sock);
 }
 
 static int
