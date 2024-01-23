@@ -791,6 +791,7 @@ session_keeping:
 static inline void
 close_pipe(nano_pipe *p)
 {
+	nano_pipe *t = NULL;
 	nano_sock *s = p->broker;
 
 	nni_aio_close(&p->aio_send);
@@ -802,7 +803,10 @@ close_pipe(nano_pipe *p)
 	}
 	nano_nni_lmq_flush(&p->rlmq, false);
 	nni_mtx_unlock(&p->lk);
-	nni_id_remove(&s->pipes, nni_pipe_id(p->pipe));
+	// only remove matched pipe, could have been overwritten
+	t = nni_id_get(&s->pipes, nni_pipe_id(p->pipe));
+	if (t == p)
+		nni_id_remove(&s->pipes, nni_pipe_id(p->pipe));
 }
 
 static int
