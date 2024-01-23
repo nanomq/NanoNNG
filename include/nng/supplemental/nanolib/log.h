@@ -12,7 +12,6 @@ extern "C" {
 #include <time.h>
 
 #include "nng/nng.h"
-#include "core/defs.h"
 
 #define LOG_VERSION "0.2.1"
 
