@@ -785,6 +785,7 @@ close_pipe(nano_pipe *p)
 
 	nni_aio_close(&p->aio_send);
 	nni_aio_close(&p->aio_recv);
+	nni_aio_close(&p->aio_timer);
 	nni_mtx_lock(&p->lk);
 	p->closed = true;
 	if (nni_list_active(&s->recvpipes, p)) {
@@ -815,8 +816,6 @@ nano_pipe_close(void *arg)
 		nni_atomic_swap_bool(&npipe->p_closed, false);
 		return -1;
 	}
-	// have to stop aio timer first, otherwise we hit null qos_db
-	nni_aio_close(&p->aio_timer);
 
 	nni_mtx_lock(&s->lk);
 	// we freed the conn_param when restoring pipe
@@ -845,6 +844,8 @@ nano_pipe_close(void *arg)
 			nni_mtx_unlock(&p->lk);
 			return -1;
 		}
+		// have to stop aio timer first, otherwise we hit null qos_db
+		nni_aio_stop(&p->aio_timer);
 		// take params from npipe to new pipe
 		new_pipe->packet_id = npipe->packet_id;
 		// there should be no msg in this map
