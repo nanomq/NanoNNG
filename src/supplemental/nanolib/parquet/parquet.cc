@@ -393,6 +393,42 @@ again:
 	return 0;
 }
 
+void
+parquet_write_loop_v2(void *config)
+{
+	if (config == NULL) {
+		log_error("parquet conf is NULL");
+	}
+
+	conf_parquet *conf = (conf_parquet *) config;
+	if (!directory_exists(conf->dir)) {
+		if (!create_directory(conf->dir)) {
+			log_error("Failed to create directory %s", conf->dir);
+			return;
+		}
+	}
+
+	shared_ptr<GroupNode> schema = setup_schema();
+
+	while (true) {
+		// wait for mqtt messages to send method request
+		pthread_mutex_lock(&parquet_queue_mutex);
+
+		while (IS_EMPTY(parquet_queue)) {
+			pthread_cond_wait(
+			    &parquet_queue_not_empty, &parquet_queue_mutex);
+		}
+
+		log_debug("fetch element from parquet queue");
+		parquet_object *ele =
+		    (parquet_object *) DEQUEUE(parquet_queue);
+
+		pthread_mutex_unlock(&parquet_queue_mutex);
+
+		parquet_write(conf, schema, ele);
+
+	}
+}
 
 int
 parquet_write_launcher(conf_parquet *conf)
