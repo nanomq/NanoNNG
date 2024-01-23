@@ -15,6 +15,7 @@
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "nng/protocol/mqtt/nmq_mqtt.h"
+#include "supplemental/mqtt/mqtt_msg.h"
 #include "nng/supplemental/nanolib/conf.h"
 #include "nng/supplemental/nanolib/file.h"
 #include "nng/supplemental/nanolib/hash_table.h"
@@ -834,6 +835,7 @@ nano_pipe_close(void *arg)
 			// disconnecting msg
 			p->event                   = false;
 			npipe->cache               = true;
+			// set clean start to 1, prevent caching session twice
 			p->conn_param->clean_start = 1;
 			nni_atomic_swap_bool(&npipe->p_closed, false);
 			if (nni_list_active(&s->recvpipes, p)) {
@@ -1032,7 +1034,7 @@ nano_pipe_recv_cb(void *arg)
 	nni_msg    *msg, *qos_msg = NULL;
 	nni_aio    *aio;
 	nni_pipe   *npipe = p->pipe;
-	int         rv;
+	int         rv = 0;
 
 	bool is_sqlite = s->conf->sqlite.enable;
 
@@ -1110,8 +1112,31 @@ nano_pipe_recv_cb(void *arg)
 	case CMD_DISCONNECT:
 		if (p->conn_param) {
 			p->conn_param->will_flag = 0;
+		} else {
+			nni_pipe_close(p->pipe);
+			break;
 		}
-		p->reason_code = 0x00;
+		if (p->conn_param->pro_ver == MQTT_VERSION_V5) {
+			rv |= nni_mqtt_msg_proto_data_alloc(msg);
+			rv |= nni_mqttv5_msg_decode(msg);
+			if (rv == 0) {
+				nni_mqtt_proto_data *mqtt =
+				    nni_msg_get_proto_data(msg);
+				property *prop =
+				    mqtt->var_header.disconnect.properties;
+				property_data *prop_data = property_get_value(
+				    prop, SESSION_EXPIRY_INTERVAL);
+				if (prop_data) {
+					p->conn_param
+					    ->session_expiry_interval =
+					    prop_data->p_value.u32;
+				}
+			} else {
+				p->reason_code = MQTT_ERR_MALFORMED;
+			}
+		} else {
+			p->reason_code = 0x00;
+		}
 		nni_pipe_close(p->pipe);
 		break;
 	case CMD_CONNACK:
