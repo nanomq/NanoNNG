@@ -225,7 +225,7 @@ static int write_msgs_to_file(ringBuffer_t *rb)
 		nng_free(file, sizeof(ringBufferFile_t));
 		return -1;
 	}
-	for (int i = 0; i < rb->cap; i++) {
+	for (unsigned int i = 0; i < rb->cap; i++) {
 		file->keys[i] = rb->msgs[i].key;
 	}
 
@@ -239,7 +239,7 @@ static int write_msgs_to_file(ringBuffer_t *rb)
 	}
 
 	/* TODO: Path will return by parquet */
-	sprintf(file->path, "/tmp/nanomq/RB%d", nng_timestamp());
+	sprintf(file->path, "/tmp/nanomq/RB%ld", nng_timestamp());
 
 	cvector_push_back(rb->files, file);
 
@@ -418,7 +418,7 @@ int ringBuffer_release(ringBuffer_t *rb)
 	}
 
 	if (rb->files != NULL) {
-		for (int i = 0; i < cvector_size(rb->files); i++) {
+		for (int i = 0; i < (int)cvector_size(rb->files); i++) {
 			nng_free(rb->files[i]->keys, sizeof(uint64_t) * rb->cap);
 			nng_free(rb->files[i]->path, sizeof(char) * 256);
 			nng_free(rb->files[i], sizeof(ringBufferFile_t));
