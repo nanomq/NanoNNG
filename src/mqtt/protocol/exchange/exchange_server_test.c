@@ -8,9 +8,9 @@
 
 #define UNUSED(x) ((void) x)
 
-static inline void free_msg_list(nng_msg **msgList, nng_msg *msg, int *lenp, int freeMsg)
+static inline void free_msg_list(nng_msg **msgList, nng_msg *msg, uint32_t *lenp, int freeMsg)
 {
-	for (int i = 0; i < *lenp; i++) {
+	for (uint32_t i = 0; i < *lenp; i++) {
 		if (freeMsg) {
 			nng_msg_free(msgList[i]);
 		}
@@ -23,11 +23,11 @@ static inline void free_msg_list(nng_msg **msgList, nng_msg *msg, int *lenp, int
 		nng_free(msgList, sizeof(nng_msg *) * (*lenp));
 	}
 	if (lenp != NULL) {
-		nng_free(lenp, sizeof(int));
+		nng_free(lenp, sizeof(uint32_t));
 	}
 }
 
-static inline void client_get_msgs(nng_socket sock, uint64_t startKey, uint64_t endKey, int *lenp, nng_msg ***msgList)
+static inline void client_get_msgs(nng_socket sock, uint64_t startKey, uint64_t endKey, uint32_t *lenp, nng_msg ***msgList)
 {
 	nni_aio *aio = NULL;
 	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
@@ -92,7 +92,7 @@ client_publish(nng_socket sock, const char *topic, uint64_t key, uint8_t *payloa
 	nng_send_aio(sock, aio);
 	nng_aio_wait(aio);
 
-	int *lenp = NULL;
+	uint32_t *lenp = NULL;
 	nng_msg **msgList = (nng_msg **)nng_aio_get_prov_data(aio);
 	nng_msg *msg = nng_aio_get_msg(aio);
 	if (msgList != NULL && msg != NULL) {
@@ -144,17 +144,17 @@ test_exchange_client(void)
 	rv = exchange_client_get_msg_by_key(nni_sock_proto_data(nsock), key, &msg);
 	NUTS_TRUE(rv == 0 && msg != NULL);
 
-	int *lenp;
+	uint32_t *lenp;
 	nng_msg **msgList = NULL;
 	rv = exchange_client_get_msgs_by_key(nni_sock_proto_data(nsock), key, 1, &msgList);
 	NUTS_TRUE(rv == 0 && msgList != NULL);
-	lenp = nng_alloc(sizeof(int));
+	lenp = nng_alloc(sizeof(uint32_t));
 	*lenp = 1;
 	free_msg_list(msgList, NULL, lenp, 0);
 	msgList = NULL;
 
 	/* Use aio recv to get msgs by key */
-	lenp = nng_alloc(sizeof(int));
+	lenp = nng_alloc(sizeof(uint32_t));
 	*lenp = 0;
 	client_get_msgs(sock, key, 0, lenp, &msgList);
 	NUTS_TRUE(*lenp == 1 && msgList != NULL);
@@ -166,13 +166,13 @@ test_exchange_client(void)
 	NUTS_TRUE(rv == -1 && msgList == NULL);
 
 	/* fuzz search start */
-	lenp = nng_alloc(sizeof(int));
+	lenp = nng_alloc(sizeof(uint32_t));
 	rv = exchange_client_get_msgs_fuzz(nni_sock_proto_data(nsock), 0, 3, lenp, &msgList);
 	NUTS_TRUE(rv == 0 && *lenp == 1 && msgList != NULL);
 	free_msg_list(msgList, NULL, lenp, 0);
 
 	msgList = NULL;
-	int len = 0;
+	uint32_t len = 0;
 	rv = exchange_client_get_msgs_fuzz(nni_sock_proto_data(nsock), 2, 3, &len, &msgList);
 	NUTS_TRUE(rv != 0 && len == 0 && msgList == NULL);
 	/* fuzz search end */
@@ -183,7 +183,7 @@ test_exchange_client(void)
 	}
 
 	/* Use aio recv to get msgs by key */
-	lenp = nng_alloc(sizeof(int));
+	lenp = nng_alloc(sizeof(uint32_t));
 	*lenp = 0;
 	client_get_msgs(sock, 1, 10, lenp, &msgList);
 	NUTS_TRUE(*lenp == 9 && msgList != NULL);
