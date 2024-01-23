@@ -77,18 +77,11 @@ get_file_name(conf_parquet *conf)
 }
 
 static char *
-get_file_name_v2(conf_parquet *conf, parquet_object *object)
+get_file_name_v2(conf_parquet *conf, uint64_t key_start, uint64_t key_end)
 {
-	uint64_t key_start = object->keys[0];
-	uint64_t key_end   = object->keys[object->size - 1];
 	char    *file_name = NULL;
 	char    *dir       = conf->dir;
 	char    *prefix    = conf->file_name_prefix;
-	uint8_t  index     = conf->file_index++;
-	if (index >= conf->file_count) {
-		index            = 0;
-		conf->file_index = 1;
-	}
 
 	file_name = (char *)malloc(strlen(prefix) + strlen(dir) + UINT64_MAX_DIGITS + UINT64_MAX_DIGITS + 16);
 	if (file_name == NULL) {
@@ -351,7 +344,7 @@ parquet_write_loop_v2(void *config)
 		parquet_object *ele =
 		    (parquet_object *) DEQUEUE(parquet_queue);
 
-		char *filename = get_file_name_v2(conf, ele);
+		char *filename = get_file_name_v2(conf, ele->keys[0], ele->keys[ele->size-1]);
 		if (filename == NULL) {
 			log_error("Failed to get file name");
 			return;
