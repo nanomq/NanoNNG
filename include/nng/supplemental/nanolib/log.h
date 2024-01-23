@@ -12,6 +12,7 @@ extern "C" {
 #include <time.h>
 
 #include "nng/nng.h"
+#include "core/defs.h"
 
 #define LOG_VERSION "0.2.1"
 
@@ -94,7 +95,6 @@ NNG_DECL void log_clear_callback();
 #define log_warn(...)
 #define log_error(...)
 #define log_fatal(...)
-
 #endif
 
 
