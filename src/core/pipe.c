@@ -511,7 +511,7 @@ nni_pipe_set_pid(nni_pipe *new_pipe, uint32_t id)
 	if ((p = nni_id_get(&pipes, id)) != NULL) {
 		rv = nni_id_set(&pipes, id, new_pipe);
 		nni_mtx_unlock(&pipes_lk);
-		if (!p->cache) {
+		if (!p->cache || rv != 0) {
 			nni_pipe_close(p);
 		}
 		return rv;
