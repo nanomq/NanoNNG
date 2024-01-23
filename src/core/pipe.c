@@ -518,7 +518,6 @@ nni_pipe_set_pid(nni_pipe *new_pipe, uint32_t id)
 	}
 
 	rv = nni_id_set(&pipes, id, new_pipe);
-	log_error("set rv %d", rv);
 	nni_mtx_unlock(&pipes_lk);
 	return rv;
 }
