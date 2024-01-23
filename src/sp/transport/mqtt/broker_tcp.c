@@ -73,7 +73,7 @@ struct tcptran_ep {
 	bool                 closed;
 	nng_url             *url;
 	nng_sockaddr         src;
-	const conf          *conf;
+	conf          *conf;
 	int                  refcnt; // active pipes
 	nni_aio             *useraio;
 	nni_aio             *connaio;
