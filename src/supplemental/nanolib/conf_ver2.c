@@ -1463,6 +1463,9 @@ conf_acl_parse_ver2(conf *config, cJSON *jso)
 			}
 		}
 	}
+#else
+	NNI_ARG_UNUSED(config);
+	NNI_ARG_UNUSED(jso);
 #endif
 }
 

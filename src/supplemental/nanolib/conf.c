@@ -50,9 +50,11 @@ static void conf_sqlite_destroy(conf_sqlite *sqlite);
 static void conf_web_hook_parse(conf_web_hook *webhook, const char *path);
 static void conf_web_hook_destroy(conf_web_hook *web_hook);
 
+#if defined(ENABLE_LOG)
 static void conf_log_init(conf_log *log);
 static void conf_log_destroy(conf_log *log);
 static void conf_log_parse(conf_log *log, const char *path);
+#endif
 
 #if defined(SUPP_RULE_ENGINE)
 static void conf_rule_repub_parse(conf_rule *cr, char *path);
