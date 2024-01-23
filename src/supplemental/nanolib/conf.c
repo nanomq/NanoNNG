@@ -946,6 +946,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->parquet.encryption.type  = AES_GCM_V1;
 
 	nanomq_conf->parquet.file_count       = 5;
+	nanomq_conf->parquet.file_size       = (10240 * 1024);
 	nanomq_conf->parquet.comp_type        = UNCOMPRESSED;
 	nanomq_conf->parquet.file_name_prefix = NULL;
 	nanomq_conf->parquet.dir              = NULL;
@@ -1193,6 +1194,7 @@ print_parquet_conf(conf_parquet *parquet)
 	}
 	log_info("parquet file_name_prefix: %s", parquet->file_name_prefix);
 	log_info("parquet file_count:       %d", parquet->file_count);
+	log_info("parquet file_size:        %d", parquet->file_size);
 }
 
 
