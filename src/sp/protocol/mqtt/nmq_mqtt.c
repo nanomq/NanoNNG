@@ -202,15 +202,8 @@ nano_pipe_timer_cb(void *arg)
 			//  clean previous session
 			nano_pipe *old;
 			nano_sock *s = p->broker;
-			char      *clientid;
-			uint32_t   clientid_key = 0;
-			clientid =
-			    (char *) conn_param_get_clientid(p->conn_param);
 
-			if (clientid)
-				clientid_key =
-				    DJBHashn(clientid, strlen(clientid));
-			old = nni_id_get(&s->cached_sessions, clientid_key);
+			old = nni_id_get(&s->cached_sessions, p->pipe->p_id);
 			if (old != NULL) {
 				old->event       = true;
 				old->pipe->cache = false;
@@ -225,7 +218,7 @@ nano_pipe_timer_cb(void *arg)
 				nni_qos_db_remove_all_msg(is_sqlite,
 				    old->nano_qos_db, nmq_close_unack_msg_cb);
 				nni_id_remove(
-				    &s->cached_sessions, clientid_key);
+				    &s->cached_sessions, p->pipe->p_id);
 			}
 			p->reason_code = 0x8E;
 			nni_mtx_unlock(&p->lk);
@@ -685,11 +678,8 @@ session_keeping:
 		return NNG_ECONNSHUT;
 	}
 
-	clientid_key = DJBHashn(clientid, strlen(clientid));
-	// restore session according to clientid
-
 	if (p->conn_param->clean_start == 0) {
-		old = nni_id_get(&s->cached_sessions, clientid_key);
+		old = nni_id_get(&s->cached_sessions, p->pipe->p_id);
 		if (old != NULL) {
 			// replace nano_qos_db and pid with old one.
 			p->pipe->packet_id = old->pipe->packet_id;
@@ -819,7 +809,6 @@ nano_pipe_close(void *arg)
 	nni_msg   *msg;
 	nni_pipe  *npipe        = p->pipe;
 	char      *clientid     = NULL;
-	uint32_t   clientid_key = 0;
 
 	log_trace(" ############## nano_pipe_close ############## ");
 	if (npipe->cache == true) {
@@ -839,10 +828,9 @@ nano_pipe_close(void *arg)
 	}
 	if (clientid) {
 		nni_pipe *new_pipe;
-		clientid_key = DJBHashn(clientid, strlen(clientid));
 		nni_pipe_find(&new_pipe, npipe->p_id);
 		if (new_pipe == npipe) {
-			nni_id_set(&s->cached_sessions, clientid_key, p);
+			nni_id_set(&s->cached_sessions, npipe->p_id, p);
 			nni_mtx_lock(&p->lk);
 			// set event to false avoid of sending the
 			// disconnecting msg

@@ -171,6 +171,7 @@ tcptran_pipe_init(void *arg, nni_pipe *npipe)
 	cid = (char *) conn_param_get_clientid(p->tcp_cparam);
 	clientid_key = DJBHashn(cid, strlen(cid));
 	rv = nni_pipe_set_pid(npipe, clientid_key);
+	log_debug("change p_id by hashing %d rv %d", clientid_key, rv);
 	p->npipe = npipe;
 	if (!p->conf->sqlite.enable && npipe->nano_qos_db == NULL) {
 		nni_qos_db_init_id_hash(npipe->nano_qos_db);
