@@ -75,7 +75,7 @@ struct tlstran_ep {
 	bool                 closed;
 	nng_url             *url;
 	nng_sockaddr         src;
-	const conf          *conf;
+	conf                *conf;
 	nng_sockaddr         sa;
 	int                  refcnt; // active pipes
 	int                  authmode;
