@@ -1088,7 +1088,7 @@ collect_retain_well(void **vec, dbtree_node *node)
 		nodes_t = NULL;
 	}
 
-	return vec;
+	return (struct nng_msg **)vec;
 }
 
 /**
@@ -1118,7 +1118,7 @@ collect_retains(void **vec, dbtree_node **nodes,
 		dbtree_node **child = node_t->child;
 
 		if (is_well(*topic_queue)) {
-			vec = collect_retain_well(vec, node_t);
+			vec = (void **)collect_retain_well(vec, node_t);
 			break;
 		} else if (is_plus(*topic_queue)) {
 			if (*(topic_queue + 1) == NULL) {
@@ -1177,7 +1177,7 @@ collect_retains(void **vec, dbtree_node **nodes,
 		}
 	}
 
-	return vec;
+	return (struct nng_msg **)vec;
 }
 
 nng_msg **
@@ -1203,12 +1203,12 @@ dbtree_find_retain(dbtree *db, char *topic)
 
 	while (*topic_queue && (!cvector_empty(nodes))) {
 
-		rets = collect_retains(rets, nodes, &nodes_t, topic_queue);
+		rets = collect_retains((void **)rets, nodes, &nodes_t, topic_queue);
 		topic_queue++;
 		if (*topic_queue == NULL) {
 			break;
 		}
-		rets = collect_retains(rets, nodes_t, &nodes, topic_queue);
+		rets = collect_retains((void **)rets, nodes_t, &nodes, topic_queue);
 		topic_queue++;
 	}
 
