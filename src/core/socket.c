@@ -674,7 +674,7 @@ nni_sock_replace(nni_sock *sock, nni_sock *new)
 {
 	nni_ctx      *ctx;
 	nni_ctx      *nctx;
-	size_t   sz;
+	size_t   sz = 0;
 
 	nni_mtx_lock(&sock_lk);
 
