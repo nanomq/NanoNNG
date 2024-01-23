@@ -510,10 +510,10 @@ nni_pipe_set_pid(nni_pipe *new_pipe, uint32_t id)
 	nni_stat_set_id(&new_pipe->st_id, (int) new_pipe->p_id);
 	if ((p = nni_id_get(&pipes, id)) != NULL) {
 		rv = nni_id_set(&pipes, id, new_pipe);
-		log_error("set rv for pipe found %d", rv);
 		nni_mtx_unlock(&pipes_lk);
-		nni_pipe_close(p);
-		log_error("kick old client %p hash %d", p, id);
+		if (!p->cache) {
+			nni_pipe_close(p);
+		}
 		return rv;
 	}
 
