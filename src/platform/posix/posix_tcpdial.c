@@ -346,6 +346,7 @@ tcp_dialer_get_nodelay(void *arg, void *buf, size_t *szp, nni_type t)
 static int
 tcp_dialer_set_keepalive(void *arg, const void *buf, size_t sz, nni_type t)
 {
+	NNI_ARG_UNUSED(sz);
 	nni_tcp_dialer *d = arg;
 	int             rv;
 	bool            b;
@@ -373,6 +374,7 @@ tcp_dialer_get_keepalive(void *arg, void *buf, size_t *szp, nni_type t)
 static int
 tcp_dialer_set_quickack(void *arg, const void *buf, size_t sz, nni_type t)
 {
+	NNI_ARG_UNUSED(sz);
 	nni_tcp_dialer *d = arg;
 	uint8_t        *quickack = (uint8_t *) buf;
 
@@ -399,6 +401,7 @@ tcp_dialer_get_quickack(void *arg, void *buf, size_t *szp, nni_type t)
 static int
 tcp_dialer_set_keepidle(void *arg, const void *buf, size_t sz, nni_type t)
 {
+	NNI_ARG_UNUSED(sz);
 	nni_tcp_dialer *d = arg;
 	uint16_t        *keepidle = (uint16_t *) buf;
 
@@ -425,6 +428,7 @@ tcp_dialer_get_keepidle(void *arg, void *buf, size_t *szp, nni_type t)
 static int
 tcp_dialer_set_keepintvl(void *arg, const void *buf, size_t sz, nni_type t)
 {
+	NNI_ARG_UNUSED(sz);
 	nni_tcp_dialer *d = arg;
 	uint16_t        *keepintvl = (uint16_t *) buf;
 
@@ -451,6 +455,7 @@ tcp_dialer_get_keepintvl(void *arg, void *buf, size_t *szp, nni_type t)
 static int
 tcp_dialer_set_keepcnt(void *arg, const void *buf, size_t sz, nni_type t)
 {
+	NNI_ARG_UNUSED(sz);
 	nni_tcp_dialer *d = arg;
 	uint16_t        *keepcnt = (uint16_t *) buf;
 
@@ -477,6 +482,7 @@ tcp_dialer_get_keepcnt(void *arg, void *buf, size_t *szp, nni_type t)
 static int
 tcp_dialer_set_sendtimeo(void *arg, const void *buf, size_t sz, nni_type t)
 {
+	NNI_ARG_UNUSED(sz);
 	nni_tcp_dialer *d = arg;
 	uint16_t        *sendtimeo = (uint16_t *) buf;
 
