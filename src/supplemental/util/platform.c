@@ -179,7 +179,7 @@ nng_random(void)
 }
 
 int
-nng_socket_pair(int fds[2])
+nng_socket_pair(int *fds)
 {
 	return (nni_socket_pair(fds));
 }
