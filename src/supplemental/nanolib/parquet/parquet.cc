@@ -112,7 +112,7 @@ setup_schema()
 
 parquet_object *
 parquet_object_alloc(uint64_t *keys, uint8_t **darray, uint32_t *dsize,
-    uint32_t size, nng_aio *aio, void *arg)
+    uint32_t size, nng_aio *aio, void *arg, parquet_write_type type)
 {
 	parquet_object *elem = new parquet_object;
 	elem->keys           = keys;
@@ -121,9 +121,8 @@ parquet_object_alloc(uint64_t *keys, uint8_t **darray, uint32_t *dsize,
 	elem->size           = size;
 	elem->aio            = aio;
 	elem->arg            = arg;
-	elem->result         = PARQUET_WRITE_FAILURE;
+	elem->type           = type;
 	elem->file_size      = 0;
-	elem->file_list      = NULL;
 	return elem;
 }
 
@@ -134,14 +133,31 @@ parquet_object_free(parquet_object *elem)
 		FREE_IF_NOT_NULL(elem->keys, elem->size);
 		FREE_IF_NOT_NULL(elem->darray, elem->size);
 		FREE_IF_NOT_NULL(elem->dsize, elem->size);
-		nng_aio_set_prov_data(elem->aio, elem->arg);
-		uint32_t *szp = (uint32_t *) malloc(sizeof(uint32_t));
-		*szp          = elem->size;
-		nng_aio_set_msg(elem->aio, (nng_msg *) szp);
+		switch (elem->type)
+		{
+		case HOOK_WRITE:
+		{
+			nng_aio_set_prov_data(elem->aio, elem->arg);
+			uint32_t *szp = (uint32_t *) malloc(sizeof(uint32_t));
+			*szp          = elem->size;
+			nng_aio_set_msg(elem->aio, (nng_msg *) szp);
+			break;
+
+		}
+		case EXCHANGE_WRITE:
+		{
+			nng_aio_set_prov_data(elem->aio, elem->file_ranges);
+			uint32_t *szp = (uint32_t *) malloc(sizeof(uint32_t));
+			*szp          = elem->file_size;
+			nng_aio_set_msg(elem->aio, (nng_msg *) szp);
+			break;
+		}
+		default:
+			break;
+		}
 		DO_IT_IF_NOT_NULL(nng_aio_finish_sync, elem->aio, 0);
-		for (int i = 0; i < elem->file_size && elem->file_list; i++) {
-			FREE_IF_NOT_NULL(
-			    elem->file_list[i], strlen(elem->file_list[i]));
+		for (int i = 0; i < elem->file_size && elem->file_ranges; i++) {
+			parquet_file_range_free(elem->file_ranges[i]);
 		}
 		delete elem;
 	}
@@ -216,10 +232,10 @@ parquet_write(
 	uint32_t old_index = 0;
 	uint32_t new_index = 0;
 again:
+
 	new_index = compute_new_index(elem, old_index, conf->file_size);
 	uint64_t key_start = elem->keys[old_index];
 	uint64_t key_end   = elem->keys[new_index];
-
 	pthread_mutex_lock(&parquet_queue_mutex);
 	char *filename = get_file_name(conf, key_start, key_end);
 	if (filename == NULL) {
@@ -234,11 +250,10 @@ again:
 	pthread_mutex_unlock(&parquet_queue_mutex);
 
 	{
+		parquet_file_range *range = parquet_file_range_alloc(old_index, new_index, filename);
 
-		elem->file_list = (char **) realloc(
-		    elem->file_list, sizeof(char *) * (++elem->file_size));
-		*(elem->file_list + elem->file_size - 1) =
-		    nng_strdup(filename);
+		elem->file_ranges = (parquet_file_range **) realloc(
+		    elem->file_ranges, sizeof(parquet_file_range*) * (++elem->file_size));
 		// Create a ParquetFileWriter instance
 		parquet::WriterProperties::Builder builder;
 
@@ -297,11 +312,6 @@ again:
 			goto again;
 	}
 
-	elem->result = PARQUET_WRITE_SUCCESS;
-
-	if (elem->cb) {
-		elem->cb(elem);
-	}
 	parquet_object_free(elem);
 	return 0;
 }
@@ -432,10 +442,4 @@ parquet_find_span(uint64_t start_key, uint64_t end_key, uint32_t *size)
 	pthread_mutex_unlock(&parquet_queue_mutex);
 	(*size) = local_size;
 	return ret;
-}
-
-void
-parquet_object_set_cb(parquet_object *obj, parquet_cb cb)
-{
-	obj->cb = cb;
 }
