@@ -162,9 +162,9 @@ tcptran_pipe_stop(void *arg)
 static int
 tcptran_pipe_init(void *arg, nni_pipe *npipe)
 {
-	int rv;
+	int           rv;
 	char         *cid;
-	tcptran_pipe *p = arg;
+	tcptran_pipe *p            = arg;
 	uint32_t      clientid_key = 0;
 
 	nni_pipe_set_conn_param(npipe, p->tcp_cparam);
