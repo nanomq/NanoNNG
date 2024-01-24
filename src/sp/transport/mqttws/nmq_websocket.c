@@ -941,13 +941,24 @@ wstran_pipe_stop(void *arg)
 static int
 wstran_pipe_init(void *arg, nni_pipe *pipe)
 {
-	log_trace("************wstran_pipe_init************");
-	ws_pipe *p = arg;
+	log_trace(" ************ wstran_pipe_init [%p] ************ ", arg);
+
+	int      rv, id;
+	char    *cid;
+	ws_pipe *p            = arg;
+	uint32_t clientid_key = 0;
 
 	nni_pipe_set_conn_param(pipe, p->ws_param);
+	cid = (char *) conn_param_get_clientid(p->ws_param);
+	clientid_key = DJBHashn(cid, strlen(cid));
+	id = nni_pipe_id(pipe);
+	rv = nni_pipe_set_pid(pipe, clientid_key);
+	log_debug("change p_id by hashing from %d to %d rv %d",
+			   id, clientid_key, rv);
+
 	p->npipe      = pipe;
 
-	if (!p->conf->sqlite.enable) {
+	if (!p->conf->sqlite.enable && pipe->nano_qos_db == NULL) {
 		nni_qos_db_init_id_hash(pipe->nano_qos_db);
 	}
 
