@@ -166,11 +166,18 @@ tlstran_pipe_stop(void *arg)
 static int
 tlstran_pipe_init(void *arg, nni_pipe *npipe)
 {
+	int           rv;
+	char         *cid;
 	tlstran_pipe *p = arg;
+	uint32_t      clientid_key = 0;
 
 	nni_pipe_set_conn_param(npipe, p->tcp_cparam);
+	cid = (char *) conn_param_get_clientid(p->tcp_cparam);
+	clientid_key = DJBHashn(cid, strlen(cid));
+	rv = nni_pipe_set_pid(npipe, clientid_key);
+	log_debug("change p_id by hashing %d rv %d", clientid_key, rv);
 	p->npipe = npipe;
-	if (!p->conf->sqlite.enable) {
+	if (!p->conf->sqlite.enable && npipe->nano_qos_db == NULL) {
 		nni_qos_db_init_id_hash(npipe->nano_qos_db);
 	}
 	p->conn_buf = NULL;
