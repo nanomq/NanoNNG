@@ -618,13 +618,11 @@ tlstran_pipe_recv_cb(void *arg)
 	nni_aio      *aio;
 	nni_iov       iov[2];
 	uint8_t       type, rv;
-	uint32_t      pos = 1;
-	uint64_t      len = 0;
-	size_t        n;
+	uint8_t       pos = 0;
+	uint32_t      len = 0;
 	nni_msg      *msg   = NULL, *qmsg;
 	tlstran_pipe *p     = arg;
 	nni_aio      *rxaio = p->rxaio;
-	conn_param   *cparam;
 	bool          ack = false;
 
 	log_trace("tlstran_pipe_recv_cb %p\n", p);
@@ -646,16 +644,12 @@ tlstran_pipe_recv_cb(void *arg)
 		goto recv_error;
 	}
 
-	n = nni_aio_count(rxaio);
-	p->gotrxhead += n;
+	p->gotrxhead += nni_aio_count(rxaio);
 
-	nni_aio_iov_advance(rxaio, n);
+	nni_aio_iov_advance(rxaio, nni_aio_count(rxaio));
+	log_trace("newly recevied %ld totoal received: %ld",
+	    nni_aio_count(rxaio), p->gotrxhead);
 	// not receive enough bytes, deal with remaining length
-	len = get_var_integer(p->rxlen, &pos);
-	log_trace("newly recevied %ld totoal received: %ld  pos: %d len : %ld", n,
-	    p->gotrxhead, pos, len);
-	log_trace("still need byte count:%ld > 0\n", nni_aio_iov_count(rxaio));
-
 	if (nni_aio_iov_count(rxaio) > 0) {
 		log_trace("got: %x %x, %ld!!\n", p->rxlen[0], p->rxlen[1],
 		    strlen((char *) p->rxlen));
@@ -677,7 +671,8 @@ tlstran_pipe_recv_cb(void *arg)
 		nng_stream_recv(p->conn, rxaio);
 		nni_mtx_unlock(&p->mtx);
 		return;
-	} else if (len == 0 && n == 2) {
+	}
+	if (p->gotrxhead == 2) {
 		if ((p->rxlen[0] & 0XFF) == CMD_PINGREQ) {
 			nng_aio_wait(p->rpaio);
 			p->txlen[0]    = CMD_PINGRESP;
@@ -691,11 +686,15 @@ tlstran_pipe_recv_cb(void *arg)
 		}
 	}
 
-	// finish fixed header
-	p->wantrxhead = len + p->gotrxhead;
-	cparam        = p->tcp_cparam;
-
 	if (p->rxmsg == NULL) {
+		if ((rv = mqtt_get_remaining_length(
+		         p->rxlen, p->gotrxhead, &len, &pos)) != 0) {
+			rv = PAYLOAD_FORMAT_INVALID;
+			goto recv_error;
+		}
+
+		// finish fixed header
+		p->wantrxhead = len + p->gotrxhead;
 		// We should have gotten a message header. len -> remaining
 		// length to define how many bytes left
 		log_trace("pipe %p header got: %x %x %x %x %x, %ld!!\n", p,
@@ -715,6 +714,11 @@ tlstran_pipe_recv_cb(void *arg)
 			goto recv_error;
 		}
 
+		nni_msg_set_remaining_len(p->rxmsg, len);
+		if ((rv = nni_msg_header_append(p->rxmsg, p->rxlen, pos)) != 0) {
+			rv = NMQ_SERVER_UNAVAILABLE;
+			goto recv_error;
+		}
 		// Submit the rest of the data for a read -- seperate Fixed
 		// header with variable header and so on
 		//  we want to read the entire message now.
@@ -734,11 +738,10 @@ tlstran_pipe_recv_cb(void *arg)
 	// as application message callback of users
 	nni_aio_list_remove(aio);
 	msg      = p->rxmsg;
-	n        = nni_msg_len(msg);
 	type     = p->rxlen[0] & 0xf0;
 	p->rxmsg = NULL;
 
-	if (len <= 0 &&
+	if (nni_msg_len(msg) == 0 &&
 	    (type == CMD_SUBSCRIBE || type == CMD_PUBLISH ||
 	        type == CMD_UNSUBSCRIBE)) {
 		log_warn("Invalid Packet Type: Connection closed.");
@@ -746,14 +749,8 @@ tlstran_pipe_recv_cb(void *arg)
 		goto recv_error;
 	}
 
-	fixed_header_adaptor(p->rxlen, msg);
-	nni_msg_set_conn_param(msg, cparam);
-	// duplicated with fixed_header_adaptor
-	nni_msg_set_remaining_len(msg, len);
+	nni_msg_set_conn_param(msg, p->tcp_cparam);
 	nni_msg_set_cmd_type(msg, type);
-	log_trace("remain_len %ld cparam %p clientid %s username %s proto %d\n", len,
-	    cparam, cparam->clientid.body, cparam->username.body,
-	    cparam->pro_ver);
 
 	// set the payload pointer of msg according to packet_type
 	log_trace("The type of msg is %x", type);
@@ -891,7 +888,7 @@ tlstran_pipe_recv_cb(void *arg)
 	nni_mtx_unlock(&p->mtx);
 
 	nni_aio_set_msg(aio, msg);
-	nni_aio_finish_sync(aio, 0, n);
+	nni_aio_finish_sync(aio, 0, nni_msg_len(msg));
 	log_trace("end of tlstran_pipe_recv_cb: synch! %p\n", p);
 	return;
 
