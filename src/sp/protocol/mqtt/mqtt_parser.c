@@ -411,7 +411,7 @@ fixed_header_adaptor(uint8_t *packet, nng_msg *dst)
 	size_t   pos = 1;
 
 	m   = (nni_msg *) dst;
-	len = get_var_integer(packet, (uint32_t *) &pos);
+	len = get_var_integer(packet, &pos);
 	nni_msg_set_remaining_len(m, len);
 	rv = nni_msg_header_append(m, packet, pos);
 	return rv;
