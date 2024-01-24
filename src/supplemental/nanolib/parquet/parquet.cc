@@ -142,6 +142,7 @@ parquet_object_alloc(uint64_t *keys, uint8_t **darray, uint32_t *dsize,
 	elem->aio            = aio;
 	elem->arg            = arg;
 	elem->type           = type;
+	elem->file_ranges    = NULL;
 	elem->file_size      = 0;
 	return elem;
 }
@@ -274,6 +275,7 @@ again:
 
 		elem->file_ranges = (parquet_file_range **) realloc(
 		    elem->file_ranges, sizeof(parquet_file_range*) * (++elem->file_size));
+		*elem->file_ranges = range;
 		// Create a ParquetFileWriter instance
 		parquet::WriterProperties::Builder builder;
 
@@ -306,7 +308,7 @@ again:
 		parquet::Int64Writer *int64_writer =
 		    static_cast<parquet::Int64Writer *>(
 		        rg_writer->NextColumn());
-		for (uint32_t i = old_index; i < new_index; i++) {
+		for (uint32_t i = old_index; i <= new_index; i++) {
 			int64_t value            = elem->keys[i];
 			int16_t definition_level = 1;
 			int64_writer->WriteBatch(
@@ -317,7 +319,7 @@ again:
 		parquet::ByteArrayWriter *ba_writer =
 		    static_cast<parquet::ByteArrayWriter *>(
 		        rg_writer->NextColumn());
-		for (uint32_t i = old_index; i < new_index; i++) {
+		for (uint32_t i = old_index; i <= new_index; i++) {
 			parquet::ByteArray value;
 			int16_t            definition_level = 1;
 			value.ptr                           = elem->darray[i];
