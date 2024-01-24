@@ -3040,7 +3040,12 @@ read_packet_length(struct pos_buf *buf, uint32_t *length)
 
 	return 0;
 }
-
+/**
+ * packet: orginal buffer
+ * len: max len to decode
+ * remainning_length: result
+ * used_bytes: bits used
+*/
 int
 mqtt_get_remaining_length(uint8_t *packet, uint32_t len,
     uint32_t *remainning_length, uint8_t *used_bytes)
