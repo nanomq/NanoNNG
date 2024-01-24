@@ -4074,11 +4074,17 @@ int
 encode_properties(nni_msg *msg, property *prop, uint8_t cmd)
 {
 	uint8_t        rlen[4] = { 0 };
+	uint32_t       prop_len;
 	struct pos_buf buf     = { .curpos = &rlen[0],
                 .endpos                = &rlen[sizeof(rlen)] };
 
-	uint32_t prop_len = get_properties_len(prop);
-	int      bytes    = write_variable_length_value(prop_len, &buf);
+	if (cmd == CMD_CONNACK)
+		// return 3 available flag by default, costs 6 bytes
+		prop_len = get_properties_len(prop) + 6;
+	else
+		prop_len = get_properties_len(prop);
+
+	int bytes    = write_variable_length_value(prop_len, &buf);
 
 	if (bytes < 0)
 		return -1;
@@ -4100,14 +4106,33 @@ encode_properties(nni_msg *msg, property *prop, uint8_t cmd)
 		}
 		*/
 	}
-
+	if (cmd == CMD_CONNACK){
+		uint8_t var = 0x01;
+		nni_mqtt_msg_append_u8(msg, SHARED_SUBSCRIPTION_AVAILABLE);
+		nni_mqtt_msg_append_u8(msg, var);
+		nni_mqtt_msg_append_u8(msg, SUBSCRIPTION_IDENTIFIER_AVAILABLE);
+		nni_mqtt_msg_append_u8(msg, var);
+		nni_mqtt_msg_append_u8(msg, WILDCARD_SUBSCRIPTION_AVAILABLE);
+		nni_mqtt_msg_append_u8(msg, var);
+	}
+	if (prop == NULL)
+		return 0;
 	for (property *p = prop->next; p != NULL; p = p->next) {
 		if (cmd == CMD_CONNACK)
-		    if (p->id == REASON_STRING || p->id == USER_PROPERTY ||
-		        p->id == RESPONSE_INFORMATION ||
-		        p->id == REQUEST_PROBLEM_INFORMATION ||
-		        p->id == REQUEST_RESPONSE_INFORMATION)
-			continue;
+		// Only allows following property in CONNACK
+			if (p->id != SESSION_EXPIRY_INTERVAL &&
+			    p->id != RECEIVE_MAXIMUM &&
+			    p->id != PUBLISH_MAXIMUM_QOS &&
+			    p->id != RETAIN_AVAILABLE &&
+			    p->id != MAXIMUM_PACKET_SIZE &&
+			    p->id != ASSIGNED_CLIENT_IDENTIFIER &&
+			    p->id != TOPIC_ALIAS_MAXIMUM &&
+			    p->id != USER_PROPERTY &&
+				p->id != REASON_STRING &&
+				// More TODO:
+				// Response Information
+			    p->id != SERVER_KEEP_ALIVE)
+				continue;
 		nni_mqtt_msg_append_u8(msg, p->id);
 		property_type_enum type = property_get_value_type(p->id);
 		switch (type) {
