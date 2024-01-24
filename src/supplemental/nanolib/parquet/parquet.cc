@@ -110,6 +110,26 @@ setup_schema()
 	    GroupNode::Make("schema", Repetition::REQUIRED, fields));
 }
 
+parquet_file_range *
+parquet_file_range_alloc(uint32_t start_idx, uint32_t end_idx, char *filename)
+{
+	parquet_file_range *range = new parquet_file_range;
+	range->start_idx          = start_idx;
+	range->end_idx            = end_idx;
+	range->filename           = nng_strdup(filename);
+	return range;
+}
+
+void
+parquet_file_range_free(parquet_file_range *range)
+{
+	if (range) {
+		FREE_IF_NOT_NULL(
+		    range->filename, strlen(range->filename));
+		delete range;
+	}
+}
+
 parquet_object *
 parquet_object_alloc(uint64_t *keys, uint8_t **darray, uint32_t *dsize,
     uint32_t size, nng_aio *aio, void *arg, parquet_write_type type)
