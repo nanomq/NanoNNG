@@ -1711,7 +1711,7 @@ mqtt_quictran_ep_set_priority(void *arg, const void *v, size_t sz, nni_opt_type 
 	int tmp;
 
 	nni_mtx_lock(&ep->mtx);
-	if(rv = nni_copyin_int(&tmp, v, sizeof(int), 0, 65535, t) != 0) {
+	if((rv = nni_copyin_int(&tmp, v, sizeof(int), 0, 65535, t)) != 0) {
 		nni_stream_dialer_set(ep->dialer, NNG_OPT_QUIC_PRIORITY, -1, sizeof(int), NNI_TYPE_INT32);
 		return rv;
 	}

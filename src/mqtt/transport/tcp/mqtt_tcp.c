@@ -870,7 +870,7 @@ static void
 mqtt_tcptran_pipe_send_start(mqtt_tcptran_pipe *p)
 {
 	uint32_t len;
-	uint32_t len_of_var = 0;
+	uint8_t  len_of_var = 0;
 	uint8_t *header;
 	nni_aio *aio;
 	nni_aio *txaio;
