@@ -300,8 +300,9 @@ tlstran_pipe_nego_cb(void *arg)
 	nni_aio      *aio = p->negoaio;
 	nni_aio      *uaio;
 	nni_iov       iov;
+	uint8_t       len_of_varint = 0;
 	uint32_t      len;
-	int           rv, len_of_varint = 0;
+	int           rv;
 
 	log_trace("start tlstran_pipe_nego_cb max len %ld pipe_addr %p gotrx %d wantrx %d\n",
 	    NANO_CONNECT_PACKET_LEN, p, p->gotrxhead, p->wantrxhead);
@@ -338,7 +339,7 @@ tlstran_pipe_nego_cb(void *arg)
 			goto error;
 		}
 		len =
-		    get_var_integer(p->rxlen + 1, (uint32_t *) &len_of_varint);
+		    get_var_integer(p->rxlen + 1, &len_of_varint);
 		p->wantrxhead = len + 1 + len_of_varint;
 		rv            = (p->wantrxhead >= NANO_CONNECT_PACKET_LEN) ? 0
 		                                                           : NNG_EPROTO;
@@ -997,13 +998,12 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			break;
 		}
 
-		uint8_t  *body, *header, qos_pac;
+		uint8_t  *body, *header, qos_pac, property_bytes = 0, pos = 1;
 		uint8_t   var_extra[2], fixheader, tmp[4] = { 0 };
 		int       len_offset = 0;
-		uint32_t  pos        = 1;
+		uint32_t  property_len = 0;;
 		nni_pipe *pipe;
 		uint16_t  pid;
-		uint32_t  property_bytes = 0, property_len = 0;
 		size_t    tlen, rlen, mlen, plength;
 
 		pipe   = p->npipe;
@@ -1196,11 +1196,11 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 		goto send;
 	// never modify the original msg
 
-	uint8_t *     body, *header, qos_pac;
+	uint8_t *     body, *header, qos_pac, prop_bytes = 0;
 	target_prover target_prover = 0;
 	int           len_offset = 0, sub_id = 0, qos = 0;
 	uint16_t      pid;
-	uint32_t tprop_bytes, prop_bytes = 0, id_bytes = 0, property_len = 0;
+	uint32_t tprop_bytes, id_bytes = 0, property_len = 0;
 	size_t   tlen, rlen, mlen, hlen, qlength, plength;
 
 	bool is_sqlite = p->conf->sqlite.enable;
@@ -1266,9 +1266,8 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 				nni_aio_set_prov_data(txaio, info);
 				break;
 			}
-			uint8_t  var_extra[2], fixheader, tmp[4] = { 0 };
+			uint8_t  var_extra[2], fixheader, tmp[4] = { 0 }, pos = 1;
 			uint8_t  proplen[4] = { 0 }, var_subid[5] = { 0 };
-			uint32_t pos = 1;
 			sub_id       = info->subid;
 			qos          = info->qos;
 

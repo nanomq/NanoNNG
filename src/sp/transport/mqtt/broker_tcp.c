@@ -1002,14 +1002,12 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			nni_aio_set_prov_data(txaio, info);
 			break;
 		}
-
-		uint8_t  *body, *header, qos_pac;
-		uint8_t   var_extra[2], fixheader, tmp[4] = { 0 };
 		int       len_offset = 0;
-		uint32_t  pos        = 1;
-		nni_pipe *pipe;
+		uint8_t  *body, *header, qos_pac, property_bytes = 0;
+		uint8_t   var_extra[2], fixheader, tmp[4] = { 0 }, pos = 1;
 		uint16_t  pid;
-		uint32_t  property_bytes = 0, property_len = 0;
+		uint32_t  property_len = 0;
+		nni_pipe *pipe;
 		size_t    tlen, rlen, mlen, plength;
 
 		pipe   = p->npipe;
@@ -1190,11 +1188,11 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		goto send;
 	// never modify the original msg
 
-	uint8_t      *body, *header, qos_pac;
+	uint8_t      *body, *header, qos_pac, prop_bytes = 0;
 	target_prover target_prover = 0;
 	int           len_offset = 0, sub_id = 0, qos = 0;
 	uint16_t      pid;
-	uint32_t tprop_bytes, prop_bytes = 0, id_bytes = 0, property_len = 0;
+	uint32_t tprop_bytes, id_bytes = 0, property_len = 0;
 	size_t   tlen, rlen, mlen, hlen, qlength, plength;
 
 	bool is_sqlite = p->conf->sqlite.enable;
@@ -1262,9 +1260,8 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				nni_aio_set_prov_data(txaio, info);
 				break;
 			}
-			uint8_t  var_extra[2], fixheader, tmp[4] = { 0 };
+			uint8_t  pos = 1, var_extra[2], fixheader, tmp[4] = { 0 };
 			uint8_t  proplen[4] = { 0 }, var_subid[5] = { 0 };
-			uint32_t pos = 1;
 			sub_id       = info->subid;
 			qos          = info->qos;
 

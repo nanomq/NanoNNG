@@ -722,10 +722,10 @@ mqtt_recv_cb(void *arg)
 		log_warn("MQTT client decode error %d!", rv);
 		nni_mtx_unlock(&s->mtx);
 		nni_msg_free(msg);
+		// close pipe directly, no DISCONNECT for MQTTv3.1.1
 		nni_pipe_close(p->pipe);
 		return;
 	}
-		
 
 	packet_type_t packet_type = nni_mqtt_msg_get_packet_type(msg);
 	int32_t       packet_id;
