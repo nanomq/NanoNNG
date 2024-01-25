@@ -720,7 +720,7 @@ tcptran_pipe_recv_cb(void *arg)
 		}
 
 		nni_msg_set_remaining_len(p->rxmsg, len);
-		if ((rv = nni_msg_header_append(p->rxmsg, p->rxlen, pos)) != 0) {
+		if ((rv = nni_msg_header_append(p->rxmsg, p->rxlen, pos+1)) != 0) {
 			rv = NMQ_SERVER_UNAVAILABLE;
 			goto recv_error;
 		}
@@ -753,6 +753,8 @@ tcptran_pipe_recv_cb(void *arg)
 		rv = MALFORMED_PACKET;
 		goto recv_error;
 	}
+	// fixed_header_adaptor(p->rxlen, msg);
+	nni_msg_set_remaining_len(msg, nni_msg_len(msg));
 	nni_msg_set_conn_param(msg, p->tcp_cparam);
 	nni_msg_set_cmd_type(msg, type);
 
