@@ -11,9 +11,6 @@ extern "C" {
 typedef struct parquet_object parquet_object;
 typedef void (*parquet_cb)(parquet_object *arg);
 
-#define PARQUET_WRITE_SUCCESS 1
-#define PARQUET_WRITE_FAILURE 0
-
 typedef struct {
 	uint32_t start_idx;
 	uint32_t end_idx;
@@ -24,6 +21,11 @@ typedef struct {
 	parquet_file_range **range;
 	int                  size;
 } parquet_file_ranges;
+
+typedef struct {
+	uint8_t *data;
+	uint32_t size;
+} parquet_data_packet;
 
 struct parquet_object {
 	uint64_t            *keys;
@@ -47,6 +49,9 @@ const char  *parquet_find(uint64_t key);
 const char **parquet_find_span(
     uint64_t start_key, uint64_t end_key, uint32_t *size);
 
+parquet_data_packet *parquet_find_data_packet(conf_parquet *conf, char *filename, uint64_t key);
+
+parquet_data_packet **parquet_find_data_packets(conf_parquet *conf, char **filenames, uint64_t *keys, uint32_t len);
 
 #ifdef __cplusplus
 }
