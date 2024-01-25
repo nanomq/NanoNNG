@@ -420,7 +420,6 @@ int ringBuffer_release(ringBuffer_t *rb)
 	if (rb->files != NULL) {
 		for (int i = 0; i < (int)cvector_size(rb->files); i++) {
 			nng_free(rb->files[i]->keys, sizeof(uint64_t) * rb->cap);
-			nng_free(rb->files[i]->path, sizeof(char) * 256);
 			nng_free(rb->files[i], sizeof(ringBufferFile_t));
 		}
 		cvector_free(rb->files);

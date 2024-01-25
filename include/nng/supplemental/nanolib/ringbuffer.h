@@ -31,6 +31,7 @@ typedef struct ringBufferRule_s ringBufferRule_t;
 
 /* For RB_FULL_FILE */
 typedef struct ringBufferFile_s ringBufferFile_t;
+typedef struct ringBufferFileRange_s ringBufferFileRange_t;
 
 struct ringBufferMsg_s {
 	uint64_t  key;
@@ -48,9 +49,16 @@ enum fullOption {
 	RB_FULL_MAX
 };
 
+struct ringBufferFileRange_s {
+	uint64_t startidx;
+	uint64_t endidx;
+	char *filename;
+};
+
 struct ringBufferFile_s {
 	uint64_t *keys;
-	char *path;
+	nng_aio *aio;
+	ringBufferFileRange_t **ranges;
 };
 
 struct ringBuffer_s {
