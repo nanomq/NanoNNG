@@ -401,21 +401,6 @@ get_variable_binary(uint8_t **dest, const uint8_t *src)
 	return len;
 }
 
-// set header & remaining length of msg
-int
-fixed_header_adaptor(uint8_t *packet, nng_msg *dst)
-{
-	nni_msg *m;
-	int      rv;
-	uint32_t len;
-	size_t   pos = 1;
-
-	m   = (nni_msg *) dst;
-	len = get_var_integer(packet, &pos);
-	nni_msg_set_remaining_len(m, len);
-	rv = nni_msg_header_append(m, packet, pos);
-	return rv;
-}
 /**
  * @brief copy packet (original msg suppose have full MQTT bytes in payload) to
  * dst msg (new empty one)
@@ -551,7 +536,7 @@ conn_param_set_will_property(conn_param *cparam, property *prop)
 int32_t
 conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 {
-	uint32_t len, tmp, pos = 0, len_of_var = 0;
+	uint32_t len, tmp, pos = 0, rm_len = 0, len_of_var = 0;
 	int      len_of_str = 0;
 	int32_t  rv         = 0;
 
@@ -562,8 +547,8 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	}
 
 	// remaining length
-	len = (uint32_t) get_var_integer(packet + pos, &len_of_var);
-	pos += len_of_var;
+	len = (uint32_t) get_var_integer(packet + pos, &rm_len);
+	pos += rm_len;
 	log_trace("remaining length: %d", len);
 	// protocol name
 	cparam->pro_name.body =
@@ -604,7 +589,6 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		log_trace("Decoding MQTT V5 Properties");
 		if (pos >= max)
 			return PROTOCOL_ERROR;
-		len_of_var = 0;
 		cparam->prop_len = (uint32_t) get_var_integer(packet + pos,
 													  &len_of_var);
 		if (cparam->prop_len > (max - pos - 1 - cparam->will_flag*2 ))
@@ -728,7 +712,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		log_trace("pos after password: [%d]", pos);
 	}
 	log_trace("pos: [%d] len: [%d]", pos, len);
-	if (len + len_of_var + 1 != pos) {
+	if (len + rm_len + 1 != pos) {
 		log_error("Protocol error in connect handler");
 		rv = PROTOCOL_ERROR;
 	}
