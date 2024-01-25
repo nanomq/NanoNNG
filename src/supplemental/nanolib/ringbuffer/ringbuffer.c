@@ -201,6 +201,7 @@ static inline int ringBuffer_rule_check(ringBuffer_t *rb, void *data, int flag)
 	return 0;
 }
 
+#ifdef SUPP_PARQUET
 void ringbuffer_parquet_cb(void *arg)
 {
 	ringBufferFile_t *file = (ringBufferFile_t *)arg;
@@ -238,13 +239,14 @@ void ringbuffer_parquet_cb(void *arg)
 
 		range->startidx = file_range[i]->start_idx;
 		range->endidx = file_range[i]->end_idx;
-		range->filename = nng_alloc(sizeof(char) * strlen(file_range[i]->filename));
+		range->filename = nng_alloc(sizeof(char) * strlen(file_range[i]->filename) + 1);
 		if (range->filename == NULL) {
 			log_error("alloc new file range filename failed! no memory! msg will be freed\n");
 			nng_free(range, sizeof(ringBufferFileRange_t));
 			range = NULL;
 			return;
 		}
+		range->filename[strlen(file_range[i]->filename)] = '\0';
 
 		(void)strncpy(range->filename, file_range[i]->filename, strlen(file_range[i]->filename));
 
@@ -329,10 +331,11 @@ static parquet_object *init_parquet_object(ringBuffer_t *rb, ringBufferFile_t *f
 
 	return newObj;
 }
+#endif
 
 static int write_msgs_to_file(ringBuffer_t *rb)
 {
-
+#ifdef SUPP_PARQUET
 	ringBufferFile_t *file = nng_alloc(sizeof(ringBufferFile_t));
 	if (file == NULL) {
 		log_error("alloc new file failed! no memory! msg will be freed\n");
@@ -368,6 +371,11 @@ static int write_msgs_to_file(ringBuffer_t *rb)
 	ringBuffer_clean_msgs(rb, 0);
 
 	return 0;
+#else
+	log_error("parquet is not enable, msg will be freed\n");
+	ringBuffer_clean_msgs(rb, 1);
+	return -1;
+#endif
 }
 
 static int put_msgs_to_aio(ringBuffer_t *rb, nng_aio *aio)
