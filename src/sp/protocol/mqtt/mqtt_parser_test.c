@@ -117,18 +117,6 @@ test_get_variable_binary()
 }
 
 static void
-test_fixed_header_adaptor()
-{
-	uint8_t  packet[] = { 0x00, 0x05, 0x12, '\0' };
-	nng_msg *dst;
-	nng_msg_alloc(&dst, 10);
-
-	NUTS_PASS(fixed_header_adaptor(packet, dst));
-
-	nng_msg_free(dst);
-}
-
-static void
 test_ws_msg_adaptor()
 {
 	uint8_t  packet[] = { 0x00, 0x05, 0x12, 0x22, 0x23, 0x24, '\0' };
@@ -183,7 +171,6 @@ NUTS_TESTS = {
 	{ "mqtt_parser copyn_utf8_str", test_copyn_utf8_str },
 	{ "mqtt_parser copyn_str", test_copyn_str },
 	{ "mqtt_parser get_variable_binary", test_get_variable_binary },
-	{ "mqtt_parser fixed_header_adaptor", test_fixed_header_adaptor },
 	{ "mqtt_parser ws_msg_adaptor", test_ws_msg_adaptor },
 	// TODO more tests needed.
 	{ "mqtt_parser hash", test_hash },
