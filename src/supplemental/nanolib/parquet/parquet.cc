@@ -132,7 +132,7 @@ parquet_file_range_free(parquet_file_range *range)
 
 parquet_object *
 parquet_object_alloc(uint64_t *keys, uint8_t **darray, uint32_t *dsize,
-    uint32_t size, nng_aio *aio, void *arg, parquet_write_type type)
+    uint32_t size, nng_aio *aio, void *arg)
 {
 	parquet_object *elem = new parquet_object;
 	elem->keys           = keys;
@@ -141,9 +141,9 @@ parquet_object_alloc(uint64_t *keys, uint8_t **darray, uint32_t *dsize,
 	elem->size           = size;
 	elem->aio            = aio;
 	elem->arg            = arg;
-	elem->type           = type;
-	elem->file_ranges    = NULL;
-	elem->file_size      = 0;
+	elem->ranges         = new parquet_file_ranges;
+	elem->ranges->range  = NULL;
+	elem->ranges->size   = 0;
 	return elem;
 }
 
@@ -154,32 +154,16 @@ parquet_object_free(parquet_object *elem)
 		FREE_IF_NOT_NULL(elem->keys, elem->size);
 		FREE_IF_NOT_NULL(elem->darray, elem->size);
 		FREE_IF_NOT_NULL(elem->dsize, elem->size);
-		switch (elem->type)
-		{
-		case HOOK_WRITE:
-		{
-			nng_aio_set_prov_data(elem->aio, elem->arg);
-			uint32_t *szp = (uint32_t *) malloc(sizeof(uint32_t));
-			*szp          = elem->size;
-			nng_aio_set_msg(elem->aio, (nng_msg *) szp);
-			break;
-
-		}
-		case EXCHANGE_WRITE:
-		{
-			nng_aio_set_prov_data(elem->aio, elem->file_ranges);
-			uint32_t *szp = (uint32_t *) malloc(sizeof(uint32_t));
-			*szp          = elem->file_size;
-			nng_aio_set_msg(elem->aio, (nng_msg *) szp);
-			break;
-		}
-		default:
-			break;
-		}
+		nng_aio_set_prov_data(elem->aio, elem->arg);
+		nng_aio_set_output(elem->aio, 1, elem->ranges);
+		uint32_t *szp = (uint32_t *) malloc(sizeof(uint32_t));
+		*szp          = elem->size;
+		nng_aio_set_msg(elem->aio, (nng_msg *) szp);
 		DO_IT_IF_NOT_NULL(nng_aio_finish_sync, elem->aio, 0);
-		for (int i = 0; i < elem->file_size && elem->file_ranges; i++) {
-			parquet_file_range_free(elem->file_ranges[i]);
+		for (int i = 0; i < elem->ranges->size; i++) {
+			parquet_file_range_free(elem->ranges->range[i]);
 		}
+		delete elem->ranges;
 		delete elem;
 	}
 }
@@ -273,9 +257,9 @@ again:
 	{
 		parquet_file_range *range = parquet_file_range_alloc(old_index, new_index, filename);
 
-		elem->file_ranges = (parquet_file_range **) realloc(
-		    elem->file_ranges, sizeof(parquet_file_range*) * (++elem->file_size));
-		*elem->file_ranges = range;
+		elem->ranges->range = (parquet_file_range **) realloc(
+		    elem->ranges->range, sizeof(parquet_file_range*) * (++elem->ranges->size));
+		*elem->ranges->range = range;
 		// Create a ParquetFileWriter instance
 		parquet::WriterProperties::Builder builder;
 
