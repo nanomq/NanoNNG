@@ -717,7 +717,15 @@ mqtt_recv_cb(void *arg)
 	}
 	nni_msg_set_pipe(msg, nni_pipe_id(p->pipe));
 	nni_mqtt_msg_proto_data_alloc(msg);
-	nni_mqtt_msg_decode(msg);
+	rv = nni_mqtt_msg_decode(msg);
+	if (rv != MQTT_SUCCESS) {
+		log_warn("MQTT client decode error %d!", rv);
+		nni_mtx_unlock(&s->mtx);
+		nni_msg_free(msg);
+		nni_pipe_close(p->pipe);
+		return;
+	}
+		
 
 	packet_type_t packet_type = nni_mqtt_msg_get_packet_type(msg);
 	int32_t       packet_id;
