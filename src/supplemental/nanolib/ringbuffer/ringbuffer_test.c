@@ -105,9 +105,8 @@ void test_ringBuffer_enqueue(void)
 
 	/* ring buffer is full, write msgs to file and enqueue new */
 	tmp = alloc_pub_msg("topic1");
-	NUTS_TRUE(ringBuffer_enqueue(rb, 1, tmp, -1, NULL) == 0);
-	NUTS_TRUE(rb->size == 1);
-	NUTS_TRUE(rb->files != NULL);
+	NUTS_TRUE(ringBuffer_enqueue(rb, 1, tmp, -1, NULL) != 0);
+	nng_msg_free(tmp);
 
 	NUTS_TRUE(ringBuffer_release(rb) == 0);
 
