@@ -55,7 +55,6 @@ NNG_DECL int32_t conn_handler(uint8_t *packet, conn_param *conn_param, size_t ma
 NNG_DECL int     conn_param_alloc(conn_param **cparam);
 NNG_DECL void    conn_param_free(conn_param *cparam);
 NNG_DECL void    conn_param_clone(conn_param *cparam);
-NNG_DECL int     fixed_header_adaptor(uint8_t *packet, nng_msg *dst);
 NNG_DECL int     ws_msg_adaptor(uint8_t *packet, nng_msg *dst);
 
 // parser
