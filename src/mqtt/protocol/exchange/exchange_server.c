@@ -572,7 +572,7 @@ get_parquet_files_raw(uint32_t sz, char **fnames, char ***file_raws)
 		return -1;
 	}
 
-	for (int i = 0; i < sz; i++) {
+	for (uint32_t i = 0; i < sz; i++) {
 		fp = fopen(fnames[i], "rb");
 		if (fp == NULL) {
 			log_warn("Failed to open file\n");
@@ -598,12 +598,13 @@ get_parquet_files_raw(uint32_t sz, char **fnames, char ***file_raws)
 		}
 		fclose(fp);
 
-		(*file_raws)[i] = nng_alloc(file_size * 2 + 1);
+		(*file_raws)[i] = nng_alloc(file_size * 2 + 1 + 1);
 		if ((*file_raws)[i] == NULL) {
 			log_warn("Failed to allocate memory for file payload\n");
 			nng_free(payload, file_size);
 			return -1;
 		}
+		(*file_raws)[i][file_size * 2 + 1] = '\0';
 
 		for (int j = 0; j < file_size; ++j) {
 			char hex[2];
@@ -628,7 +629,7 @@ get_parquet_files(uint32_t sz, char **fnames, cJSON *obj)
 
 	log_info("Ask parquet and found.");
 	const char ** filenames = nng_alloc(sizeof(char *) * sz);
-	for (int i = 0; i < sz; ++i) {
+	for (uint32_t i = 0; i < sz; ++i) {
 		filenames[i] = get_file_bname((char *)fnames[i]);
 	}
 
@@ -656,14 +657,14 @@ get_parquet_files(uint32_t sz, char **fnames, cJSON *obj)
 	}
 	cJSON_AddItemToObject(obj, "fileraws", fileraws_obj);
 
-	for (int i = 0; i < sz; ++i) {
-		filenames[i];
-	}
 	nng_free(filenames, sizeof(char *) * sz);
 
 	for (int i = 0; i<(int)sz; ++i) {
 		nng_free((void *)fnames[i], 0);
+		nng_free(file_raws[i], 0);
 	}
+
+	nng_free(file_raws, sizeof(char *) * sz);
 	nng_free(fnames, sz);
 
 	return 0;
@@ -953,7 +954,9 @@ ex_query_recv_cb(void *arg)
 			if (ret != 0) {
 				log_error("fuzz_search_result_cat failed!");
 			}
+			nng_free(msgList, sizeof(nng_msg *) * count);
 		}
+
 #ifdef SUPP_PARQUET
 		const char **fnames = NULL;
 		uint32_t sz = 0;
