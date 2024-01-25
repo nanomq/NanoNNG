@@ -939,12 +939,14 @@ wstran_pipe_stop(void *arg)
 static int
 wstran_pipe_init(void *arg, nni_pipe *pipe)
 {
-	log_trace(" ************ wstran_pipe_init [%p] ************ ", arg);
 
+	int      rv, id;
+	NNI_ARG_UNUSED(rv);
+	NNI_ARG_UNUSED(id);
 	char    *cid;
 	ws_pipe *p            = arg;
 	uint32_t clientid_key = 0;
-
+	log_trace(" ************ wstran_pipe_init [%p] ************ ", arg);
 	nni_pipe_set_conn_param(pipe, p->ws_param);
 	cid = (char *) conn_param_get_clientid(p->ws_param);
 	clientid_key = DJBHashn(cid, strlen(cid));
