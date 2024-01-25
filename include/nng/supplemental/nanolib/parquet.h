@@ -20,10 +20,10 @@ typedef struct {
 	char    *filename;
 } parquet_file_range;
 
-typedef enum {
-	HOOK_WRITE,
-	EXCHANGE_WRITE
-} parquet_write_type;
+typedef struct {
+	parquet_file_range **range;
+	int                  size;
+} parquet_file_ranges;
 
 struct parquet_object {
 	uint64_t            *keys;
@@ -32,13 +32,11 @@ struct parquet_object {
 	uint32_t             size;
 	nng_aio             *aio;
 	void	        	*arg;
-	parquet_write_type   type;
-	int                  file_size;
-	parquet_file_range **file_ranges;
+	parquet_file_ranges *ranges;
 };
 
 parquet_object *parquet_object_alloc(uint64_t *keys, uint8_t **darray,
-    uint32_t *dsize, uint32_t size, nng_aio *aio, void *arg, parquet_write_type type);
+    uint32_t *dsize, uint32_t size, nng_aio *aio, void *arg);
 void            parquet_object_free(parquet_object *elem);
 
 void parquet_object_set_cb(parquet_object *obj, parquet_cb cb);
