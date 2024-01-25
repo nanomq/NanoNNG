@@ -720,10 +720,14 @@ conf_auth_http_parse_ver2(conf *config, cJSON *jso)
 		auth_http->enable = true;
 		char *timeout =
 		    cJSON_GetStringValue(hocon_get_obj("timeout", jso));
+		if (timeout)
+			get_time(timeout, &auth_http->timeout);
+
 		char *connect_timeout = cJSON_GetStringValue(
 		    hocon_get_obj("connect_timeout", jso));
-		get_time(timeout, &auth_http->timeout);
-		get_time(connect_timeout, &auth_http->timeout);
+		if (connect_timeout)
+			get_time(connect_timeout, &auth_http->connect_timeout);
+
 		hocon_read_num(auth_http, pool_size, jso);
 
 		conf_auth_http_req *auth_http_req = &(auth_http->auth_req);
