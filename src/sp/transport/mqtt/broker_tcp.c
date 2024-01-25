@@ -298,8 +298,9 @@ tcptran_pipe_nego_cb(void *arg)
 	nni_aio      *aio = p->negoaio;
 	nni_aio      *uaio;
 	nni_iov       iov;
+	uint8_t       len_of_varint = 0;
 	uint32_t      len;
-	int           rv, len_of_varint = 0;
+	int           rv;
 
 	log_trace("start tcptran_pipe_nego_cb max len %ld pipe_addr %p gotrx "
 	          "%d wantrx %d\n",
@@ -337,8 +338,11 @@ tcptran_pipe_nego_cb(void *arg)
 			rv = NNG_EPROTO;
 			goto error;
 		}
-		len =
-		    get_var_integer(p->rxlen + 1, (uint32_t *) &len_of_varint);
+		if ((rv = mqtt_get_remaining_length(
+		         p->rxlen, p->gotrxhead, &len, &len_of_varint)) != 0) {
+			rv = PAYLOAD_FORMAT_INVALID;
+			goto error;
+		}
 		p->wantrxhead = len + 1 + len_of_varint;
 		rv            = (p->wantrxhead >= NANO_CONNECT_PACKET_LEN) ? 0
 		                                                           : NNG_EPROTO;
@@ -413,7 +417,7 @@ tcptran_pipe_nego_cb(void *arg)
 	}
 
 	nni_mtx_unlock(&ep->mtx);
-	log_trace("^^^^^^^^^^ end of tcptran_pipe_nego_cb ^^^^^^^^^^\n");
+	log_trace(" ^^^^^^^^^^ end of tcptran_pipe_nego_cb ^^^^^^^^^^ \n");
 	return;
 
 close:
