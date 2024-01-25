@@ -566,3 +566,34 @@ parquet_read(conf_parquet *conf, char *filename, uint64_t key, uint32_t *len)
 
 	return NULL;
 }
+
+parquet_data_packet *parquet_find_data_packet(conf_parquet *conf, char *filename, uint64_t key)
+{
+	WAIT_FOR_AVAILABLE
+	void *elem = NULL;
+	pthread_mutex_lock(&parquet_queue_mutex);
+	FOREACH_QUEUE(parquet_file_queue, elem)
+	{
+		if (elem && nng_strcasecmp((char*)elem, filename) == 0) {
+			goto find;
+		}
+	}
+
+find:
+	pthread_mutex_unlock(&parquet_queue_mutex);
+
+	if (elem) {
+		uint32_t size = 0;
+		uint8_t *data = parquet_read(conf, (char*) elem, key, &size);
+		if (size) {
+			parquet_data_packet *pack = (parquet_data_packet *)malloc(sizeof(parquet_data_packet));
+			pack->data = data;
+			pack->size = size;
+			return pack;
+		} else {
+			log_debug("No key %ld in file: %s", key, (char*) elem);
+		}
+	}
+	log_debug("Not find file %s in file queue", (char*) elem);
+	return NULL;
+}
