@@ -209,6 +209,10 @@ void ringbuffer_parquet_cb(void *arg)
 		log_error("parquet callback arg is NULL\n");
 		return;
 	}
+	if (nng_aio_result(file->aio) != 0) {
+		log_error("parquet write file failed\n");
+		return;
+	}
 
 	nng_msg **smsgs = (nng_msg **)nng_aio_get_prov_data(file->aio);
 	if (smsgs == NULL) {
