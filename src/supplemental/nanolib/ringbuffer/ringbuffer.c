@@ -5,6 +5,7 @@
 // file was obtained (LICENSE.txt).  A copy of the license may also be
 // found online at https://opensource.org/licenses/MIT.
 //
+#include "nng/supplemental/nanolib/parquet.h"
 #include "nng/supplemental/nanolib/ringbuffer.h"
 #include "core/nng_impl.h"
 
@@ -211,6 +212,69 @@ static int write_msgs_to_file(ringBuffer_t *rb)
 		return -1;
 	}
 
+static parquet_object *init_parquet_object(ringBuffer_t *rb, ringBufferFile_t *file)
+{
+	if (rb == NULL || file == NULL) {
+		log_error("parquet object or ringbuffer is NULL\n");
+		return NULL;
+	}
+
+	uint8_t **darray = nng_alloc(sizeof(uint8_t *) * rb->size);
+	uint32_t *dsize = nng_alloc(sizeof(uint32_t) * rb->size);
+	uint64_t *keys = nng_alloc(sizeof(uint64_t) * rb->size);
+
+	if (keys == NULL || darray == NULL || dsize == NULL) {
+		log_error("alloc new keys darray dsize failed! no memory! msg will be freed\n");
+
+		if (keys != NULL) {
+			nng_free(keys, sizeof(uint64_t) * rb->size);
+		}
+		if (darray != NULL) {
+			nng_free(darray, sizeof(uint8_t *) * rb->size);
+		}
+		if (dsize != NULL) {
+			nng_free(dsize, sizeof(uint32_t) * rb->size);
+		}
+
+		return NULL;
+	}
+
+	nng_msg **smsgs = nng_alloc(sizeof(nng_msg *) * rb->size);
+	for (unsigned int i = 0; i < rb->size; i++) {
+		keys[i] = rb->msgs[i].key;
+		smsgs[i] = rb->msgs[i].data;
+		darray[i] = nng_msg_payload_ptr((nng_msg *)rb->msgs[i].data);
+		dsize[i] = nng_msg_len((nng_msg *)rb->msgs[i].data) -
+		        (nng_msg_payload_ptr((nng_msg *)rb->msgs[i].data) -
+				(uint8_t *)nng_msg_body((nng_msg *)rb->msgs[i].data));
+	}
+
+	nng_aio *aio;
+	nng_aio_alloc(&aio, ringbuffer_parquet_cb, file);
+	if(aio == NULL) {
+		log_error("alloc new aio failed! no memory! msg will be freed\n");
+		nng_free(keys, sizeof(uint64_t) * rb->size);
+		nng_free(darray, sizeof(uint8_t *) * rb->size);
+		nng_free(dsize, sizeof(uint32_t) * rb->size);
+		return NULL;
+	}
+
+	file->aio = aio;
+	file->ranges = NULL;
+
+	nng_aio_begin(aio);
+
+	parquet_object *newObj = parquet_object_alloc(keys, darray, dsize, rb->size, aio, smsgs);
+	if (newObj == NULL) {
+		log_error("alloc new parquet object failed! no memory! msg will be freed\n");
+		nng_free(keys, sizeof(uint64_t) * rb->size);
+		nng_free(darray, sizeof(uint8_t *) * rb->size);
+		nng_free(dsize, sizeof(uint32_t) * rb->size);
+		return NULL;
+	}
+
+	return newObj;
+}
 	ringBufferFile_t *file = nng_alloc(sizeof(ringBufferFile_t));
 	if (file == NULL) {
 		log_error("alloc new file failed! no memory! msg will be freed\n");
