@@ -695,6 +695,62 @@ decToHex(unsigned char decimal, char *hexadecimal)
 }
 
 static int
+dump_file_result_cat(char **msgList, int *msgLen, uint32_t count, cJSON *obj)
+{
+	uint32_t sz = 0;
+	uint32_t pos = 0;
+
+	if (msgList == NULL || msgLen == NULL || count == 0) {
+		return -1;
+	}
+
+	for (uint32_t i = 0; i < count; i++) {
+		sz += msgLen[i];
+	}
+
+	char **mqdata = nng_alloc(sizeof(char *) * count);
+	memset(mqdata, 0, sizeof(char *) * count);
+	for (uint32_t i = 0; i < count; i++) {
+		if (sz >= pos + msgLen[i]) {
+			mqdata[i] = nng_alloc(msgLen[i] * 2 + 1);
+			memset(mqdata[i], '\0', msgLen[i] * 2 + 1);
+			if (mqdata[i] == NULL) {
+				log_warn("Failed to allocate memory for file payload\n");
+				return -1;
+			}
+			for (int j = 0; j < msgLen[i]; ++j) {
+				char *tmpch = (char *)msgList[i];
+				char hex[2];
+				hex[0] = '0';
+				hex[1] = '0';
+
+				decToHex(tmpch[j] & 0xff, hex);
+
+				mqdata[i][j * 2] = hex[0];
+				mqdata[i][j * 2 + 1] = hex[1];
+			}
+		} else {
+			log_error("buffer overflow!");
+			return -1;
+		}
+		pos += msgLen[i];
+	}
+
+	cJSON *files_obj = cJSON_CreateStringArray((const char * const*)mqdata, count);
+	if (!files_obj) {
+		return -1;
+	}
+	cJSON_AddItemToObject(obj, "file", files_obj);
+
+	for (uint32_t i = 0; i < count; ++i) {
+		nng_free(mqdata[i], 0);
+	}
+	nng_free(mqdata, sizeof(char *) * count);
+
+	return 0;
+}
+
+static int
 fuzz_search_result_cat(nng_msg **msgList, uint32_t count, cJSON *obj)
 {
 	uint32_t sz = 0;
