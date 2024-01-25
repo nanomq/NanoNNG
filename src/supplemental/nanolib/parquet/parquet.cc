@@ -43,6 +43,7 @@ CircularQueue   parquet_queue;
 CircularQueue   parquet_file_queue;
 pthread_mutex_t parquet_queue_mutex     = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t  parquet_queue_not_empty = PTHREAD_COND_INITIALIZER;
+static conf_parquet *g_conf = NULL;
 
 static bool
 directory_exists(const std::string &directory_path)
@@ -361,6 +362,8 @@ parquet_write_loop_v2(void *config)
 int
 parquet_write_launcher(conf_parquet *conf)
 {
+	// Using a global variable g_conf temporarily, because it is inconvenient to access conf in exchange.
+	g_conf = conf;
 	INIT_QUEUE(parquet_queue);
 	INIT_QUEUE(parquet_file_queue);
 	is_available = true;
@@ -449,3 +452,163 @@ parquet_find_span(uint64_t start_key, uint64_t end_key, uint32_t *size)
 	(*size) = local_size;
 	return ret;
 }
+
+static uint8_t *
+parquet_read(conf_parquet *conf, char *filename, uint64_t key, uint32_t *len)
+{
+	conf = g_conf;
+	std::string path_int64 = "key";
+	std::string path_str   = "data";
+	parquet::ReaderProperties reader_properties =
+	    parquet::default_reader_properties();
+
+	if (conf->encryption.enable) {
+		std::map<std::string,
+		    std::shared_ptr<parquet::ColumnDecryptionProperties>>
+		                                             decryption_cols;
+		parquet::ColumnDecryptionProperties::Builder decryption_col_builder31(
+		    path_int64);
+		parquet::ColumnDecryptionProperties::Builder decryption_col_builder32(
+		    path_str);
+
+		parquet::FileDecryptionProperties::Builder file_decryption_builder_3;
+		std::shared_ptr<parquet::FileDecryptionProperties>
+		    decryption_configuration =
+		        file_decryption_builder_3.footer_key(conf->encryption.key)
+		            ->column_keys(decryption_cols)
+		            ->build();
+
+		// Add the current decryption configuration to ReaderProperties.
+		reader_properties.file_decryption_properties(
+		    decryption_configuration->DeepClone());
+
+	}
+
+	// Create a ParquetReader instance
+	std::string exception_msg = "";
+	try {
+		std::unique_ptr<parquet::ParquetFileReader> parquet_reader =
+		    parquet::ParquetFileReader::OpenFile(
+		        filename, false, reader_properties);
+
+		// Get the File MetaData
+		std::shared_ptr<parquet::FileMetaData> file_metadata =
+		    parquet_reader->metadata();
+
+		int num_row_groups =
+		    file_metadata
+		        ->num_row_groups(); // Get the number of RowGroups
+		int num_columns =
+		    file_metadata->num_columns(); // Get the number of Columns
+		assert(num_columns == 2);
+
+		for (int r = 0; r < num_row_groups; ++r) {
+
+			std::shared_ptr<parquet::RowGroupReader>
+			    row_group_reader = parquet_reader->RowGroup(
+			        r); // Get the RowGroup Reader
+			string  strCont;
+			int64_t values_read = 0;
+			int64_t rows_read   = 0;
+			int16_t definition_level;
+			int16_t repetition_level;
+			std::shared_ptr<parquet::ColumnReader> column_reader;
+
+			// Get the Column Reader for the Int64 column
+			column_reader = row_group_reader->Column(0);
+			parquet::Int64Reader *int64_reader =
+			    static_cast<parquet::Int64Reader *>(
+			        column_reader.get());
+
+			int i = 0;
+			while (int64_reader->HasNext()) {
+				int64_t value;
+				rows_read = int64_reader->ReadBatch(1,
+				    &definition_level, &repetition_level,
+				    &value, &values_read);
+				if (1 == rows_read && 1 == values_read) {
+					if (value == key)
+						break;
+				}
+				i++;
+			}
+
+			// Get the Column Reader for the ByteArray column
+			column_reader = row_group_reader->Column(1);
+			parquet::ByteArrayReader *ba_reader =
+			    static_cast<parquet::ByteArrayReader *>(
+			        column_reader.get());
+
+			int j = 0;
+			while (ba_reader->HasNext()) {
+				parquet::ByteArray value;
+				rows_read =
+				    ba_reader->ReadBatch(1, &definition_level,
+				        nullptr, &value, &values_read);
+				if (1 == rows_read && 1 == values_read) {
+					string strTemp = string(
+					    (char *) value.ptr, value.len);
+					if (j == i) {
+						uint8_t *ret =
+						    (uint8_t *) malloc(
+						        value.len *
+						        sizeof(uint8_t));
+						memcpy(
+						    ret, value.ptr, value.len);
+						*len = value.len;
+						return ret;
+					}
+				}
+				j++;
+			}
+		}
+
+	} catch (const std::exception &e) {
+		exception_msg = e.what();
+		log_error("exception_msg=[%s]", exception_msg.c_str());
+	}
+
+	return NULL;
+}
+
+parquet_data_packet *parquet_find_data_packet(conf_parquet *conf, char *filename, uint64_t key)
+{
+	WAIT_FOR_AVAILABLE
+	void *elem = NULL;
+	pthread_mutex_lock(&parquet_queue_mutex);
+	FOREACH_QUEUE(parquet_file_queue, elem)
+	{
+		if (elem && nng_strcasecmp((char*)elem, filename) == 0) {
+			goto find;
+		}
+	}
+
+find:
+	pthread_mutex_unlock(&parquet_queue_mutex);
+
+	if (elem) {
+		uint32_t size = 0;
+		uint8_t *data = parquet_read(conf, (char*) elem, key, &size);
+		if (size) {
+			parquet_data_packet *pack = (parquet_data_packet *)malloc(sizeof(parquet_data_packet));
+			pack->data = data;
+			pack->size = size;
+			return pack;
+		} else {
+			log_debug("No key %ld in file: %s", key, (char*) elem);
+		}
+	}
+	log_debug("Not find file %s in file queue", (char*) elem);
+	return NULL;
+}
+
+
+parquet_data_packet **parquet_find_data_packets(conf_parquet *conf, char **filenames, uint64_t *keys, uint32_t len)
+{
+	parquet_data_packet ** packets = (parquet_data_packet **) malloc(sizeof(parquet_data_packet*)*len);
+	for (uint32_t i = 0; i < len; i++) {
+		packets[i] = parquet_find_data_packet(conf, filenames[i], keys[i]);
+	}
+	return packets;
+}
+
