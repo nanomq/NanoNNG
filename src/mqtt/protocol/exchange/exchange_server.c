@@ -847,7 +847,35 @@ ex_query_recv_cb(void *arg)
 	}
 
 	cJSON *obj = cJSON_CreateObject();
-	if (strstr(keystr, "-" ) == NULL) {
+	if (strstr(keystr, "dumpfile") != NULL) {
+#ifdef SUPP_PARQUET
+		char **msgs = NULL;
+		int *msgLen = NULL;
+		int msgCount = 0;
+
+		/* Only one exchange with one ringBuffer now */
+		msgCount = ringBuffer_get_msgs_from_file(sock->ex_node->ex->rbs[0], (void ***)&msgs, &msgLen);
+		if (msgCount <= 0 || msgs == NULL || msgLen == NULL) {
+			log_error("not found msgs in file!");
+		} else {
+			ret = dump_file_result_cat(msgs, msgLen, msgCount, obj);
+
+			for(int i = 0; i < msgCount; ++i) {
+				nng_free(msgs[i], 0);
+			}
+			nng_free(msgs, sizeof(char *) * msgCount);
+			nng_free(msgLen, sizeof(int) * msgCount);
+
+			if (ret != 0) {
+				nni_mtx_unlock(&sock->mtx);
+				log_error("dump_file_result_cat failed!");
+				return;
+			}
+		}
+#else
+		log_error("dumpfile: parquet not enable!");
+#endif
+	} else if (strstr(keystr, "-" ) == NULL) {
 		/* single key */
 		uint64_t key;
 		ret = sscanf(keystr, "%"SCNu64, &key);
