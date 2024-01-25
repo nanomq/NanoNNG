@@ -16,11 +16,11 @@
 #include "core/sockimpl.h"
 #include "supplemental/websocket/websocket.h"
 
-#include "nng/supplemental/tls/tls.h"
 #include "nng/transport/mqttws/nmq_websocket.h"
-
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
+
+#include "nng/supplemental/tls/tls.h"
 #include "nng/supplemental/nanolib/mqtt_db.h"
 #include "nng/supplemental/nanolib/conf.h"
 #include "supplemental/mqtt/mqtt_qos_db_api.h"
@@ -113,8 +113,7 @@ wstran_pipe_recv_cb(void *arg)
 {
 	ws_pipe *p = arg;
 	nni_iov  iov[2];
-	uint8_t  rv;
-	uint32_t pos = 1;
+	uint8_t  rv, pos = 1;
 	uint64_t len = 0;
 	uint8_t *ptr;
 	nni_msg *smsg = NULL, *msg = NULL;
@@ -454,10 +453,10 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 		goto send;
 
 	// never modify the original msg
-	uint8_t *     body, *header, qos_pac;
 	int           len_offset = 0;
+	uint8_t *     body, *header, qos_pac, prop_bytes = 0;
 	uint16_t      pid;
-	uint32_t      prop_bytes = 0, property_len = 0;
+	uint32_t      property_len = 0;
 	size_t        tlen, rlen, mlen, qlength, plength;
 	bool          is_sqlite = p->conf->sqlite.enable;
 
@@ -502,11 +501,11 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 				sub_topic++;
 			}
 		}
-		if (topic_filtern(sub_topic, (char*)(body + 2), tlen)) {
-			uint8_t  var_extra[2], fixheader, tmp[4] = { 0 };
-			uint32_t pos = 1;
-			qos          = info->qos;
-			fixheader    = *header;
+		if (topic_filtern(sub_topic, (char *) (body + 2), tlen)) {
+			uint8_t pos    = 1, var_extra[2], fixheader,
+			        tmp[4] = { 0 };
+			qos            = info->qos;
+			fixheader      = *header;
 
 			// get final qos
 			qos = qos_pac > qos ? qos : qos_pac;
@@ -638,11 +637,11 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 		goto send;
 
 	// never modify the original msg
-	uint8_t *     body, *header, qos_pac;
+	uint8_t *     body, *header, qos_pac, tprop_bytes = 0, prop_bytes = 0;
 	target_prover target_prover;
 	int           len_offset = 0, sub_id = 0;
 	uint16_t      pid;
-	uint32_t tprop_bytes = 0, prop_bytes = 0, id_bytes = 0, property_len = 0;
+	uint32_t      id_bytes = 0, property_len = 0;
 	size_t        tlen, rlen, mlen, hlen, qlength, plength;
 	bool          is_sqlite = p->conf->sqlite.enable;
 
@@ -705,9 +704,8 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			}
 		}
 		if (topic_filtern(sub_topic, (char *) (body + 2), tlen)) {
-			uint8_t  var_extra[2], fixheader, tmp[4] = { 0 };
+			uint8_t  var_extra[2], fixheader, tmp[4] = { 0 }, pos = 1;
 			uint8_t  proplen[4] = { 0 }, var_subid[5] = { 0 };
-			uint32_t pos = 1;
 			sub_id       = info->subid;
 			qos          = info->qos;
 
@@ -943,7 +941,6 @@ wstran_pipe_init(void *arg, nni_pipe *pipe)
 {
 	log_trace(" ************ wstran_pipe_init [%p] ************ ", arg);
 
-	int      rv, id;
 	char    *cid;
 	ws_pipe *p            = arg;
 	uint32_t clientid_key = 0;

@@ -1023,9 +1023,9 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 static void
 nano_pipe_recv_cb(void *arg)
 {
-	uint32_t    len, len_of_varint = 0;
+	uint32_t    len;
 	uint16_t    ackid;
-	uint8_t     type;
+	uint8_t     type, len_of_varint = 0;
 	uint8_t    *ptr;
 	nano_pipe  *p      = arg;
 	nano_sock  *s      = p->broker;

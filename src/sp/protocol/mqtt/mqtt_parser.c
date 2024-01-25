@@ -162,7 +162,7 @@ put_var_integer(uint8_t *dest, uint32_t value)
  * @return Integer value
  */
 uint32_t
-get_var_integer(const uint8_t *buf, uint32_t *pos)
+get_var_integer(const uint8_t *buf, uint8_t *pos)
 {
 	uint8_t  temp;
 	uint32_t result = 0;
@@ -418,7 +418,7 @@ ws_msg_adaptor(uint8_t *packet, nng_msg *dst)
 	size_t   pos = 1;
 
 	m   = (nni_msg *) dst;
-	len = get_var_integer(packet, (uint32_t *) &pos);
+	len = get_var_integer(packet, &pos);
 	nni_msg_set_cmd_type(m, *packet & 0xf0);
 	nni_msg_set_remaining_len(m, len);
 	rv = nni_msg_header_append(m, packet, pos);
@@ -536,7 +536,8 @@ conn_param_set_will_property(conn_param *cparam, property *prop)
 int32_t
 conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 {
-	uint32_t len, tmp, pos = 0, rm_len = 0, len_of_var = 0;
+	uint32_t len, tmp, pos = 0;
+	uint8_t  rm_len = 0, len_of_var = 0;
 	int      len_of_str = 0;
 	int32_t  rv         = 0;
 
@@ -547,7 +548,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	}
 
 	// remaining length
-	len = (uint32_t) get_var_integer(packet + pos, &rm_len);
+	len = get_var_integer(packet + pos, &rm_len);
 	pos += rm_len;
 	log_trace("remaining length: %d", len);
 	// protocol name
@@ -1302,8 +1303,8 @@ nano_msg_get_subtopic(nni_msg *msg, nano_pipe_db *root, conn_param *cparam)
 {
 	char *        topic;
 	nano_pipe_db *db = NULL, *tmp = NULL, *iter = NULL;
-	uint8_t       len_of_topic = 0, *payload_ptr;
-	uint32_t      len, len_of_varint = 0;
+	uint8_t       len_of_topic = 0, len_of_varint = 0, *payload_ptr;
+	uint32_t      len;
 	size_t        bpos = 0, remain = 0;
 	bool          repeat = false;
 
@@ -1484,8 +1485,8 @@ int
 nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 {
 	char           *topic;
-	uint8_t         *payload_ptr, *var_ptr;
-	uint32_t        num = 0, len, len_of_varint = 0, len_of_str = 0, subid = 0;
+	uint8_t         *payload_ptr, len_of_varint = 0, *var_ptr;
+	uint32_t        num = 0, len, len_of_str = 0, subid = 0;
 	uint16_t        len_of_topic = 0;
 	size_t          bpos = 0, remain = 0;
 	struct subinfo *sn = NULL;
@@ -1604,10 +1605,10 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 int
 nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 {
-	char           *topic;
-	uint8_t         len_of_topic = 0, *payload_ptr, *var_ptr;
-	uint32_t        num = 0, len, len_of_varint = 0, len_of_str = 0;
-	size_t          bpos = 0, remain = 0;
+	char    *topic;
+	uint8_t  len_of_topic = 0, len_of_varint = 0, *payload_ptr, *var_ptr;
+	uint32_t num = 0, len, len_of_str = 0;
+	size_t   bpos = 0, remain = 0;
 	struct subinfo *sn = NULL, *sn2, snode;
 	nni_list       *ll = l;
 
