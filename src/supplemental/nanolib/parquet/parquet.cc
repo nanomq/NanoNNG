@@ -597,3 +597,13 @@ find:
 	log_debug("Not find file %s in file queue", (char*) elem);
 	return NULL;
 }
+
+parquet_data_packet **parquet_find_data_packets(conf_parquet *conf, char **filenames, uint64_t *keys, uint32_t len)
+{
+	parquet_data_packet ** packets = (parquet_data_packet **) malloc(sizeof(parquet_data_packet*)*len);
+	for (uint32_t i = 0; i < len; i++) {
+		packets[i] = parquet_find_data_packet(conf, filenames[i], keys[i]);
+	}
+	return packets;
+}
+
