@@ -43,6 +43,7 @@ CircularQueue   parquet_queue;
 CircularQueue   parquet_file_queue;
 pthread_mutex_t parquet_queue_mutex     = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t  parquet_queue_not_empty = PTHREAD_COND_INITIALIZER;
+static conf_parquet *g_conf = NULL;
 
 static bool
 directory_exists(const std::string &directory_path)
@@ -361,6 +362,8 @@ parquet_write_loop_v2(void *config)
 int
 parquet_write_launcher(conf_parquet *conf)
 {
+	// Using a global variable g_conf temporarily, because it is inconvenient to access conf in exchange.
+	g_conf = conf;
 	INIT_QUEUE(parquet_queue);
 	INIT_QUEUE(parquet_file_queue);
 	is_available = true;
@@ -453,6 +456,7 @@ parquet_find_span(uint64_t start_key, uint64_t end_key, uint32_t *size)
 static uint8_t *
 parquet_read(conf_parquet *conf, char *filename, uint64_t key, uint32_t *len)
 {
+	conf = g_conf;
 	std::string path_int64 = "key";
 	std::string path_str   = "data";
 	parquet::ReaderProperties reader_properties =
@@ -597,6 +601,7 @@ find:
 	log_debug("Not find file %s in file queue", (char*) elem);
 	return NULL;
 }
+
 
 parquet_data_packet **parquet_find_data_packets(conf_parquet *conf, char **filenames, uint64_t *keys, uint32_t len)
 {
