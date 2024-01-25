@@ -201,16 +201,70 @@ static inline int ringBuffer_rule_check(ringBuffer_t *rb, void *data, int flag)
 	return 0;
 }
 
-static int write_msgs_to_file(ringBuffer_t *rb)
+void ringbuffer_parquet_cb(void *arg)
 {
-	int ret = 0;
-	/* TODO: use parquet to write file */
-
-	if (ret != 0) {
-		log_error("write msgs to file failed! msg will be freed\n");
-		ringBuffer_clean_msgs(rb, 1);
-		return -1;
+	ringBufferFile_t *file = (ringBufferFile_t *)arg;
+	if (file == NULL) {
+		log_error("parquet callback arg is NULL\n");
+		return;
 	}
+
+	nng_msg **smsgs = (nng_msg **)nng_aio_get_prov_data(file->aio);
+	if (smsgs == NULL) {
+		log_error("parquet callback smsgs is NULL\n");
+		return;
+	}
+
+	parquet_file_ranges *file_ranges = (parquet_file_ranges *)nng_aio_get_output(file->aio, 1);
+	if (file_ranges == NULL) {
+		log_error("parquet file range is NULL\n");
+		return;
+	}
+
+	uint32_t *szp = (uint32_t *)nng_aio_get_msg(file->aio);
+	if (szp == NULL) {
+		log_error("parquet file size is NULL\n");
+		return;
+	}
+
+	for (int i = 0; i < file_ranges->size; i++) {
+		parquet_file_range **file_range = file_ranges->range;
+
+		ringBufferFileRange_t *range = nng_alloc(sizeof(ringBufferFileRange_t));
+		if (range == NULL) {
+			log_error("alloc new file range failed! no memory! msg will be freed\n");
+			return;
+		}
+
+		range->startidx = file_range[i]->start_idx;
+		range->endidx = file_range[i]->end_idx;
+		range->filename = nng_alloc(sizeof(char) * strlen(file_range[i]->filename));
+		if (range->filename == NULL) {
+			log_error("alloc new file range filename failed! no memory! msg will be freed\n");
+			nng_free(range, sizeof(ringBufferFileRange_t));
+			range = NULL;
+			return;
+		}
+
+		(void)strncpy(range->filename, file_range[i]->filename, strlen(file_range[i]->filename));
+
+		cvector_push_back(file->ranges, range);
+		log_warn("ringbus: parquet write to file: %s success\n", file_range[i]->filename);
+	}
+	for (uint32_t i = 0; i < *szp; i++) {
+		if (smsgs[i] != NULL) {
+			nng_msg_free(smsgs[i]);
+			smsgs[i] = NULL;
+		}
+	}
+
+	if (smsgs != NULL) {
+		nng_free(smsgs, sizeof(nng_msg *) * *szp);
+		smsgs = NULL;
+	}
+
+	return;
+}
 
 static parquet_object *init_parquet_object(ringBuffer_t *rb, ringBufferFile_t *file)
 {
