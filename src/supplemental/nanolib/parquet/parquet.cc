@@ -260,7 +260,7 @@ again:
 
 		elem->ranges->range = (parquet_file_range **) realloc(
 		    elem->ranges->range, sizeof(parquet_file_range*) * (++elem->ranges->size));
-		*elem->ranges->range = range;
+		elem->ranges->range[elem->ranges->size - 1] = range;
 		// Create a ParquetFileWriter instance
 		parquet::WriterProperties::Builder builder;
 
