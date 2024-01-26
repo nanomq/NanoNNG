@@ -811,6 +811,48 @@ fuzz_search_result_cat(nng_msg **msgList, uint32_t count, cJSON *obj)
 
 	return 0;
 }
+
+static inline int splitstr(char *str, char *delim, char *result[], int max_num)
+{
+	char *p;
+	int count = 0;
+	p = strtok(str, delim);
+	while (p != NULL && count < max_num) {
+		result[count++] = p;
+		p = strtok(NULL, delim);
+	}
+	return count;
+}
+
+static inline int find_keys_in_file(ringBuffer_t *rb, uint64_t *keys, uint32_t count, cJSON *obj)
+{
+	int ret = 0;
+	int msgCount = 0;
+	int *msgLen = NULL;
+	char **msgs = NULL;
+
+	/* Only one exchange with one ringBuffer now */
+	msgCount = ringBuffer_get_msgs_from_file_by_keys(rb, keys, count, (void ***)&msgs, &msgLen);
+	if (msgCount <= 0 || msgs == NULL || msgLen == NULL) {
+		log_error("not found msgs in file!");
+	} else {
+		ret = dump_file_result_cat(msgs, msgLen, msgCount, obj);
+
+		for(int i = 0; i < msgCount; ++i) {
+			nng_free(msgs[i], 0);
+		}
+		nng_free(msgs, sizeof(char *) * msgCount);
+		nng_free(msgLen, sizeof(int) * msgCount);
+
+		if (ret != 0) {
+			log_error("dump_file_result_cat failed!");
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
 /**
  * For exchanger, recv_cb is a consumer SDK
  * TCP/QUIC/IPC/InPROC is at your disposal
