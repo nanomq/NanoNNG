@@ -20,6 +20,7 @@ typedef struct {
 typedef struct {
 	parquet_file_range **range;
 	int                  size;
+	int                  start;
 } parquet_file_ranges;
 
 typedef struct {

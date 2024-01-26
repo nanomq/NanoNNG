@@ -144,6 +144,7 @@ parquet_object_alloc(uint64_t *keys, uint8_t **darray, uint32_t *dsize,
 	elem->arg            = arg;
 	elem->ranges         = new parquet_file_ranges;
 	elem->ranges->range  = NULL;
+	elem->ranges->start  = 0;
 	elem->ranges->size   = 0;
 	return elem;
 }
@@ -231,6 +232,26 @@ compute_new_index(parquet_object *obj, uint32_t index, uint32_t file_size)
 	return new_index;
 }
 
+void
+update_parquet_file_ranges(
+    conf_parquet *conf, parquet_object *elem, parquet_file_range *range)
+{
+	if (elem->ranges->size != conf->file_count) {
+		elem->ranges->range =
+		    (parquet_file_range **) realloc(elem->ranges->range,
+		        sizeof(parquet_file_range *) * (++elem->ranges->size));
+		elem->ranges->range[elem->ranges->size - 1] = range;
+	} else {
+		// Free old ranges and insert new ranges
+		// update start index
+		parquet_file_range_free(
+		    elem->ranges->range[elem->ranges->start]);
+		elem->ranges->range[elem->ranges->start] = range;
+		elem->ranges->start = (++elem->ranges->start)%elem->ranges->size;
+
+	}
+}
+
 int
 parquet_write(
     conf_parquet *conf, shared_ptr<GroupNode> schema, parquet_object *elem)
@@ -257,10 +278,8 @@ again:
 
 	{
 		parquet_file_range *range = parquet_file_range_alloc(old_index, new_index, filename);
+		update_parquet_file_ranges(conf, elem, range);
 
-		elem->ranges->range = (parquet_file_range **) realloc(
-		    elem->ranges->range, sizeof(parquet_file_range*) * (++elem->ranges->size));
-		elem->ranges->range[elem->ranges->size - 1] = range;
 		// Create a ParquetFileWriter instance
 		parquet::WriterProperties::Builder builder;
 
