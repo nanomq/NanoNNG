@@ -78,11 +78,12 @@ NNG_DECL uint16_t get_variable_binary(uint8_t **dest, const uint8_t *src);
 
 NNG_DECL uint32_t DJBHash(char *str);
 NNG_DECL uint32_t DJBHashn(char *str, uint16_t len);
+NNG_DECL uint64_t DJBHash64(char *str);
+NNG_DECL uint64_t DJBHash64n(uint8_t* str, uint32_t len);
 NNG_DECL uint32_t fnv1a_hashn(char *str, size_t n);
 NNG_DECL uint8_t  crc_hashn(char *str, size_t n);
 NNG_DECL uint32_t crc32_hashn(char *str, size_t n);
 NNG_DECL uint32_t crc32c_hashn(char *str, size_t n);
-NNG_DECL uint64_t nano_hash(char *str);
 NNG_DECL uint8_t  verify_connect(conn_param *cparam, conf *conf);
 
 // repack

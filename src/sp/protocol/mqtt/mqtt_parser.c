@@ -900,6 +900,31 @@ DJBHashn(char *str, uint16_t len)
 	return hash;
 }
 
+uint64_t
+DJBHash64n(uint8_t* str, uint32_t len)
+{
+    uint64_t hash = 5381;
+    uint64_t i    = 0;
+
+    for(i = 0; i < len; str++, i++) {
+        hash = ((hash << 5) + hash) + (*str);
+    }
+
+    return hash;
+}
+
+uint64_t
+DJBHash64(char *str)
+{
+	uint64_t hash = 5381;
+	int      c;
+
+	while ((c = *str++))
+		hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+	                                         // hash = hash * 33 + c;
+	return hash;
+}
+
 /* Fowler/Noll/Vo (FNV) hash function, variant 1a */
 uint32_t
 fnv1a_hashn(char *str, size_t n)
@@ -1084,18 +1109,6 @@ crc32c_hashn(char *str, size_t n)
 	}
 
 	return crc32c_sw(0, (void *)str, n);
-}
-
-uint64_t
-nano_hash(char *str)
-{
-	uint64_t hash = 5381;
-	int      c;
-
-	while ((c = *str++))
-		hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
-	                                         // hash = hash * 33 + c;
-	return hash;
 }
 
 inline void
