@@ -413,6 +413,49 @@ static inline int ringBuffer_get_filenames_with_keys(ringBuffer_t *rb, char ***f
 
 	return file_count;
 }
+
+static inline int init_newList_with_packet(void ***newList, int **newmsgLen,
+										   parquet_data_packet **packet,
+										   uint32_t packet_count, uint32_t request_count)
+{
+	char **list = nng_alloc(sizeof(char *) * packet_count);
+	if (list == NULL) {
+		log_error("alloc new list failed! no memory! msg will be freed\n");
+		return -1;
+	}
+
+	int *msgLen = nng_alloc(sizeof(int) * packet_count);
+	if (msgLen == NULL) {
+		log_error("alloc new msgLen failed! no memory! msg will be freed\n");
+		nng_free(list, sizeof(char *) * packet_count);
+		return -1;
+	}
+
+	int msgidx = 0;
+	for (long unsigned int i = 0; i < request_count; i++) {
+		if(packet[i] == NULL) {
+			continue;
+		}
+
+		char *msg = nng_alloc(packet[i]->size);
+		if (msg == NULL) {
+			log_error("alloc new msg failed! no memory! msg will be freed\n");
+			nng_free(list, sizeof(char *) * packet_count);
+			nng_free(msgLen, sizeof(int) * packet_count);
+			return -1;
+		}
+
+		memcpy(msg, packet[i]->data, packet[i]->size);
+
+		msgLen[msgidx] = packet[i]->size;
+		list[msgidx++] = msg;
+	}
+
+	*newList = (void **)list;
+	*newmsgLen = msgLen;
+
+	return 0;
+}
 int ringBuffer_get_msgs_from_file(ringBuffer_t *rb, void ***msgs, int **msgLen)
 {
 	int ret = 0;
