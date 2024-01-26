@@ -456,6 +456,61 @@ static inline int init_newList_with_packet(void ***newList, int **newmsgLen,
 
 	return 0;
 }
+
+int ringBuffer_get_msgs_from_file_by_keys(ringBuffer_t *rb, uint64_t *keys, uint32_t count,
+										  void ***msgs, int **msgLen)
+{
+	if (rb == NULL || rb->files == NULL || keys == NULL || msgs == NULL || msgLen == NULL) {
+		log_error("ringbuffer is NULL or files is NULL or keys is NULL or msg is NULL or msgLen is NULL\n");
+		return -1;
+	}
+
+	char **filenames = NULL;
+	int ret = ringBuffer_get_filenames_with_keys(rb, &filenames, keys, count);
+	if (ret <= 0 || filenames == NULL) {
+		log_error("get filenames failed\n");
+		return -1;
+	}
+
+	parquet_data_packet **packet = parquet_find_data_packets(NULL, filenames, keys, count);
+	if (packet == NULL) {
+		log_error("packet is NULL\n");
+		nng_free(filenames, sizeof(char *) * count);
+
+		return -1;
+	}
+
+	int packet_count = 0;
+	for (long unsigned int i = 0; i < count; i++) {
+		if (packet[i] != NULL) {
+			packet_count++;
+		}
+		/* todo: Cleaning up or update outdated messages */
+	}
+
+	if (packet_count == 0) {
+		log_error("packet count is 0\n");
+		nng_free(filenames, sizeof(char *) * count);
+
+		return -1;
+	}
+
+	ret = init_newList_with_packet(msgs, msgLen, packet, packet_count, count);
+	if (ret != 0) {
+		log_error("init new list with packet failed\n");
+		free_msgs_from_file(NULL, filenames, NULL, NULL,
+							packet, packet_count, count);
+
+		return -1;
+	}
+
+	free_msgs_from_file(NULL, filenames, NULL, NULL,
+						packet, packet_count, count);
+
+	return packet_count;
+
+}
+
 int ringBuffer_get_msgs_from_file(ringBuffer_t *rb, void ***msgs, int **msgLen)
 {
 	int ret = 0;
