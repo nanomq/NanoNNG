@@ -824,6 +824,7 @@ static inline int splitstr(char *str, char *delim, char *result[], int max_num)
 	return count;
 }
 
+#ifdef SUPP_PARQUET
 static inline int find_keys_in_file(ringBuffer_t *rb, uint64_t *keys, uint32_t count, cJSON *obj)
 {
 	int ret = 0;
@@ -832,7 +833,7 @@ static inline int find_keys_in_file(ringBuffer_t *rb, uint64_t *keys, uint32_t c
 	char **msgs = NULL;
 
 	/* Only one exchange with one ringBuffer now */
-	msgCount = ringBuffer_get_msgs_from_file_by_keys(rb, keys, count, (void ***)&msgs, &msgLen);
+	msgCount = ringBuffer_get_msgs_from_file_by_keys(rb, keys, count, &msgs, &msgLen);
 	if (msgCount <= 0 || msgs == NULL || msgLen == NULL) {
 		log_error("not found msgs in file!");
 	} else {
@@ -852,6 +853,7 @@ static inline int find_keys_in_file(ringBuffer_t *rb, uint64_t *keys, uint32_t c
 
 	return 0;
 }
+#endif
 
 /**
  * For exchanger, recv_cb is a consumer SDK
