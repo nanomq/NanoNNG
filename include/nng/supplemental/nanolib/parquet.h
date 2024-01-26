@@ -20,7 +20,7 @@ typedef struct {
 typedef struct {
 	parquet_file_range **range;
 	int                  size;
-	int                  start;
+	int                  start; // file range start index
 } parquet_file_ranges;
 
 typedef struct {
@@ -41,6 +41,9 @@ struct parquet_object {
 parquet_object *parquet_object_alloc(uint64_t *keys, uint8_t **darray,
     uint32_t *dsize, uint32_t size, nng_aio *aio, void *arg);
 void            parquet_object_free(parquet_object *elem);
+
+parquet_file_range *parquet_file_range_alloc(uint32_t start_idx, uint32_t end_idx, char *filename);
+void parquet_file_range_free(parquet_file_range *range);
 
 void parquet_object_set_cb(parquet_object *obj, parquet_cb cb);
 int  parquet_write_batch_async(parquet_object *elem);
