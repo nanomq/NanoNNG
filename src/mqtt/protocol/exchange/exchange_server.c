@@ -918,6 +918,44 @@ ex_query_recv_cb(void *arg)
 #else
 		log_error("dumpfile: parquet not enable!");
 #endif
+	} else if (strstr(keystr, "dumpkey:") != NULL) {
+#ifdef SUPP_PARQUET
+		uint64_t key;
+
+		ret = sscanf(keystr, "dumpkey:%"SCNu64, &key);
+		if (ret == 0) {
+			nni_mtx_unlock(&sock->mtx);
+			return;
+		}
+
+		ret = find_keys_in_file(sock->ex_node->ex->rbs[0], &key, 1, obj);
+		if (ret != 0) {
+			log_error("find_keys_in_file failed!");
+			nni_mtx_unlock(&sock->mtx);
+			return;
+		}
+#else
+		log_error("dumpkey: parquet not enable!");
+#endif
+	} else if (strstr(keystr, "dumpkeys:") != NULL) {
+#ifdef SUPP_PARQUET
+		/* Only lookups of up to 100 keys are supported */
+		char *result[100];
+		uint64_t keys[100];
+
+		int count = splitstr(keystr + strlen("dumpkeys:"), ",", result, 100);
+		for (int i = 0; i < count; i++) {
+			sscanf(result[i], "%"SCNu64, &keys[i]);
+		}
+		ret = find_keys_in_file(sock->ex_node->ex->rbs[0], keys, count, obj);
+		if (ret != 0) {
+			log_error("find_keys_in_file failed!");
+			nni_mtx_unlock(&sock->mtx);
+			return;
+		}
+#else
+		log_error("dumpkeys: parquet not enable!");
+#endif
 	} else if (strstr(keystr, "-" ) == NULL) {
 		/* single key */
 		uint64_t key;
