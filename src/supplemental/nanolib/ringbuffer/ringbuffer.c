@@ -232,7 +232,11 @@ void ringbuffer_parquet_cb(void *arg)
 		return;
 	}
 
-	for (int i = 0; i < file_ranges->size; i++) {
+	int count = 0;
+	for (int i = file_ranges->start; count < file_ranges->size; count++, i++) {
+		if (i >= file_ranges->size) {
+			i = 0;
+		}
 		parquet_file_range **file_range = file_ranges->range;
 
 		ringBufferFileRange_t *range = nng_alloc(sizeof(ringBufferFileRange_t));
