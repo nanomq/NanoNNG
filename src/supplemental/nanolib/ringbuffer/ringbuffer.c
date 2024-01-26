@@ -524,57 +524,56 @@ int ringBuffer_get_msgs_from_file(ringBuffer_t *rb, void ***msgs, int **msgLen)
 		return -1;
 	}
 
-	uint64_t *keys = nng_alloc(sizeof(uint64_t) * rb->cap * cvector_size(rb->files));
+	int count = 0;
+	for (int i = 0; i < cvector_size(rb->files); i++) {
+		for (int j = 0; j < cvector_size(rb->files[i]->ranges); j++) {
+			count += rb->files[i]->ranges[j]->endidx - rb->files[i]->ranges[j]->startidx + 1;
+		}
+	}
+
+	uint64_t *keys = nng_alloc(sizeof(uint64_t) * count);
 	if (keys == NULL) {
 		log_error("alloc new keys failed! no memory! msg will be freed\n");
 		return -1;
 	}
 
-	char **filenames = nng_alloc(sizeof(char *) * rb->cap * cvector_size(rb->files));
+	char **filenames = nng_alloc(sizeof(char *) * count);
 	if (filenames == NULL) {
 		log_error("alloc new filenames failed! no memory! msg will be freed\n");
 		free_msgs_from_file(keys, NULL, NULL, NULL,
-							NULL, 0, rb->cap * cvector_size(rb->files));
+							NULL, 0, count);
 		return -1;
 	}
 
-	int rangeidx = 0;
 	int tmpidx = 0;
 	for(long unsigned int i = 0; i < cvector_size(rb->files); i++) {
 		ringBufferFile_t *file = rb->files[i];
 		if (file == NULL || file->ranges == NULL) {
 			log_error("file is NULL or file ranges is NULL\n");
 			free_msgs_from_file(keys, filenames, NULL, NULL,
-								NULL, 0, rb->cap * cvector_size(rb->files));
+								NULL, 0, count);
 			return -1;
 		}
 
-		for (unsigned int j = 0; j < rb->cap; j++) {
-			if (j > file->ranges[rangeidx]->endidx) {
-				rangeidx++;
-				if (file->ranges[rangeidx] == NULL) {
-					log_error("file range is NULL\n");
-					free_msgs_from_file(keys, filenames, NULL, NULL,
-										NULL, 0, rb->cap * cvector_size(rb->files));
-					return -1;
-				}
+		for (int j = 0; j < cvector_size(file->ranges); j++) {
+			for (unsigned int k = file->ranges[j]->startidx; k <= file->ranges[j]->endidx; k++) {
+				keys[tmpidx] = file->keys[k];
+				filenames[tmpidx++] = file->ranges[j]->filename;
 			}
-			keys[tmpidx] = file->keys[j];
-			filenames[tmpidx++] = file->ranges[rangeidx]->filename;
 		}
 	}
 
 	int packet_count = 0;
-	parquet_data_packet **packet = parquet_find_data_packets(NULL, filenames, keys, rb->cap * cvector_size(rb->files));
+	parquet_data_packet **packet = parquet_find_data_packets(NULL, filenames, keys, count);
 	if (packet == NULL) {
 		log_error("packet is NULL\n");
 		free_msgs_from_file(keys, filenames, NULL, NULL,
-							NULL, 0, rb->cap * cvector_size(rb->files));
+							NULL, 0, count);
 
 		return -1;
 	}
 
-	for (long unsigned int i = 0; i < rb->cap * cvector_size(rb->files); i++) {
+	for (long unsigned int i = 0; i < count; i++) {
 		if (packet[i] != NULL) {
 			packet_count++;
 		}
@@ -584,22 +583,22 @@ int ringBuffer_get_msgs_from_file(ringBuffer_t *rb, void ***msgs, int **msgLen)
 	if (packet_count == 0) {
 		log_error("packet count is 0\n");
 		free_msgs_from_file(keys, filenames, NULL, NULL,
-							packet, packet_count, rb->cap * cvector_size(rb->files));
+							packet, packet_count, count);
 
 		return -1;
 	}
 
-	ret = init_newList_with_packet(msgs, msgLen, packet, packet_count, rb->cap * cvector_size(rb->files));
+	ret = init_newList_with_packet(msgs, msgLen, packet, packet_count, count);
 	if (ret != 0) {
 		log_error("init new list with packet failed\n");
 		free_msgs_from_file(keys, filenames, NULL, NULL,
-							packet, packet_count, rb->cap * cvector_size(rb->files));
+							packet, packet_count, count);
 
 		return -1;
 	}
 
 	free_msgs_from_file(keys, filenames, NULL, NULL,
-						packet, packet_count, rb->cap * cvector_size(rb->files));
+						packet, packet_count, count);
 
 	return packet_count;
 }
