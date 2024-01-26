@@ -375,6 +375,44 @@ static inline void free_msgs_from_file(uint64_t *keys, char **filenames,
 		nng_free(packet, sizeof(parquet_data_packet *) * request_count);
 	}
 }
+
+static inline int ringBuffer_get_filenames_with_keys(ringBuffer_t *rb, char ***filenames, uint64_t *keys, uint32_t count)
+{
+	int file_count = 0;
+	if (rb == NULL || rb->files == NULL || filenames == NULL || keys == NULL) {
+		log_error("ringbuffer is NULL or files is NULL or filenames is NULL or keys is NULL\n");
+		return -1;
+	}
+	char **fnames = nng_alloc(sizeof(char *) * count);
+	if (fnames == NULL) {
+		log_error("alloc new fnames failed! no memory! msg will be freed\n");
+		return -1;
+	}
+
+	for (uint32_t i = 0; i < count; i++) {
+		fnames[i] = NULL;
+		for (uint32_t j = 0; j < cvector_size(rb->files); j++) {
+			ringBufferFile_t *file = rb->files[j];
+			if (file == NULL || file->keys == NULL) {
+				log_error("file is NULL or file keys is NULL\n");
+				nng_free(fnames, sizeof(char *) * count);
+				return -1;
+			}
+
+			for (uint32_t k = 0; k < rb->cap; k++) {
+				if (file->keys[k] == keys[i]) {
+					fnames[i] = file->ranges[0]->filename;
+					file_count++;
+					break;
+				}
+			}
+		}
+	}
+
+	*filenames = fnames;
+
+	return file_count;
+}
 int ringBuffer_get_msgs_from_file(ringBuffer_t *rb, void ***msgs, int **msgLen)
 {
 	int ret = 0;
