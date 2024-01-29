@@ -710,7 +710,7 @@ mqtt_recv_cb(void *arg)
 			nni_msg_free(tmsg);
 		}
 		if (0 != nni_lmq_put(&p->send_messages, msg)) {
-			nni_println("Warning! msg lost due to busy socket");
+			nni_println("Warning! DISCONNECT msg lost due to busy socket");
 		}
 		nni_mtx_unlock(&s->mtx);
 		return;
