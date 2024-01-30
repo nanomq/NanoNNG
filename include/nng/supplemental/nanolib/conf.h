@@ -618,6 +618,8 @@ NNG_DECL void conf_update_var(
     const char *fpath, const char *key, uint8_t type, void *var);
 NNG_DECL void conf_update_var2(const char *fpath, const char *key1,
     const char *key2, const char *key3, uint8_t type, void *var);
+NNG_DECL const char* conf_get_vin(void); 
+NNG_DECL void conf_free_vin();
 
 #define conf_update_int(path, key, var) \
 	conf_update_var(path, key, 0, (void *) &(var))
