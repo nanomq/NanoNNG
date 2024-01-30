@@ -1224,6 +1224,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 		log_warn("msg dropped due to overceed max packet size!");
 		nni_msg_free(msg);
 		nni_aio_set_msg(aio, NULL);
+		nni_aio_list_remove(aio);
 		nni_aio_finish(aio, 0, 0);
 		return;
 	}
