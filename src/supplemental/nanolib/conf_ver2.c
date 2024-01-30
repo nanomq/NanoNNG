@@ -13,6 +13,8 @@
 #include <ctype.h>
 #include <string.h>
 
+static const char *gvin = NULL;
+
 typedef struct {
 	uint8_t enumerate;
 	char *  desc;
@@ -941,8 +943,8 @@ update_parquet_vin(conf_parquet *parquet)
 static void
 update_bridge_node_vin(conf_bridge_node *node, int type)
 {
-	FILE *fp = popen("getprop |grep vin", "r");
 	// FILE *fp = popen("echo \"[persist.vehicled.vin]: [DV_PV_TASK_ENABLE]\" | grep vin", "r");
+	FILE *fp = popen("getprop |grep vin", "r");
 	char  line[100];
 	fgets(line, sizeof(line), fp);
 	char *p = strchr(line, ':');
@@ -951,6 +953,7 @@ update_bridge_node_vin(conf_bridge_node *node, int type)
 		p = strchr(p, ']');
 		*p = '\0';
 		log_debug("vin: %s", p_b);
+		gvin = nng_strdup(p_b);
 
 		switch (type)
 		{
@@ -970,6 +973,15 @@ update_bridge_node_vin(conf_bridge_node *node, int type)
 	pclose(fp);
 }
 
+const char* conf_get_vin(void)
+{
+	return gvin;
+}
+
+void conf_free_vin()
+{
+	nng_strfree((char*) gvin);
+}
 
 static void
 conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
