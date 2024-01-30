@@ -232,8 +232,10 @@ nano_pipe_timer_cb(void *arg)
 	}
 	qos_backoff = p->ka_refresh * (qos_duration) *1000 -
 	    p->keepalive * qos_backoff * 1000;
+	log_debug("check pipe keepalive interval %d backoff %f, ka %d",
+			  p->keepalive, qos_backoff, p->ka_refresh);
 	if (qos_backoff > 0) {
-		nni_println(
+		log_warn(
 		    "Warning: close pipe & kick client due to KeepAlive "
 		    "timeout!");
 		p->reason_code = NMQ_KEEP_ALIVE_TIMEOUT;
