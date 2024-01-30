@@ -341,7 +341,6 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 		    config, qos_duration, "retry_interval", jso_mqtt);
 		hocon_read_num_base(
 		    config, backoff, "keepalive_multiplier", jso_mqtt);
-		config->backoff *= 1000;
 
 		hocon_read_num(config, max_inflight_window, jso_mqtt);
 		hocon_read_time(config, max_awaiting_rel, jso_mqtt);
