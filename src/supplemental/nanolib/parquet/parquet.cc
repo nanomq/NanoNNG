@@ -454,20 +454,23 @@ parquet_find_span(uint64_t start_key, uint64_t end_key, uint32_t *size)
 	void        *elem       = NULL;
 
 	pthread_mutex_lock(&parquet_queue_mutex);
-	array = (const char **) nng_alloc(
-	    sizeof(char *) * parquet_file_queue.size);
+	if (parquet_file_queue.size != 0) {
+		array = (const char **) nng_alloc(
+		    sizeof(char *) * parquet_file_queue.size);
 
-	ret = array;
-	FOREACH_QUEUE(parquet_file_queue, elem)
-	{
-		if (elem) {
-			if (compare_callback_span(elem, low, high)) {
-				++local_size;
-				value    = nng_strdup((char *) elem);
-				*array++ = value;
+		ret = array;
+		FOREACH_QUEUE(parquet_file_queue, elem)
+		{
+			if (elem) {
+				if (compare_callback_span(elem, low, high)) {
+					++local_size;
+					value    = nng_strdup((char *) elem);
+					*array++ = value;
+				}
 			}
 		}
 	}
+
 	pthread_mutex_unlock(&parquet_queue_mutex);
 	(*size) = local_size;
 	return ret;
