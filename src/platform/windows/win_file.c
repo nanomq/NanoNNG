@@ -35,7 +35,7 @@ nni_plat_find_pathsep(char *path)
 	return (NULL);
 }
 
-static int
+int
 nni_plat_make_parent_dirs(const char *path)
 {
 	char *dup;
