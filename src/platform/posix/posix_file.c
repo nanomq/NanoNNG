@@ -29,7 +29,7 @@
 
 // File support.
 
-static int
+int
 nni_plat_make_parent_dirs(const char *path)
 {
 	char *dup;

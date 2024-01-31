@@ -11,6 +11,12 @@
 #include "core/nng_impl.h"
 
 int
+nni_make_parent_dirs(const char *path)
+{
+	return nni_plat_make_parent_dirs(path);
+}
+
+int
 nni_file_put(const char *name, const void *data, size_t sz)
 {
 	return (nni_plat_file_put(name, data, sz));

@@ -31,6 +31,10 @@
 // possible.
 extern int nni_file_put(const char *, const void *, size_t);
 
+// NanoMQ exposing the nni_make_parent_dirs func for just 
+// creating folders according to logging request
+extern int nni_make_parent_dirs(const char *path);
+
 // nni_plat_file_get reads the entire named file, allocating storage
 // to receive the data and returning the data and the size in the
 // reference arguments.  The data pointer should be freed with nni_free

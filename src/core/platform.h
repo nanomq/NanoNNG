@@ -471,6 +471,7 @@ extern int nni_socket_pair(int [2]);
 // access by the entity running the application only.
 extern int nni_plat_file_put(const char *, const void *, size_t);
 
+extern int nni_plat_make_parent_dirs(const char *path);
 // nni_plat_file_get reads the entire named file, allocating storage
 // to receive the data and returning the data and the size in the
 // reference arguments.  The data pointer should be freed with nni_free

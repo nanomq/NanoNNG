@@ -2497,6 +2497,13 @@ nng_aio_finish_sync(nng_aio *aio, int rv)
 	nni_aio_finish_sync(aio, rv, 0);
 }
 
+int 
+nng_make_parent_dirs(const char *path)
+{
+	
+	return nni_make_parent_dirs(path);
+}
+
 int
 nng_file_put(const char *name, const void *data, size_t sz)
 {
