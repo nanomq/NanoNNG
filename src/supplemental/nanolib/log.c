@@ -207,6 +207,15 @@ file_rotation(FILE *fp, conf_log *config)
 	if ((rv = nni_plat_file_size(config->abs_path, &sz)) != 0) {
 		fprintf(stderr, "get file %s size failed: %s\n",
 		    config->abs_path, nng_strerror(rv));
+		if (!nni_plat_file_exists(config->abs_path)) {
+			// file missing, recreate one
+			fclose(fp);
+			if (nng_file_put(config->abs_path, "\n", 1) != 0)
+				fprintf(stderr, "create file %s failed: %s\n",
+				    config->abs_path, nng_strerror(rv));
+			config->fp = fopen(config->abs_path, "a");
+			fp             = config->fp;
+		}
 		return;
 	}
 
