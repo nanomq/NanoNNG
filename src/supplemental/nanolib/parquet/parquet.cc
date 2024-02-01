@@ -81,6 +81,20 @@ get_file_name(conf_parquet *conf, uint64_t key_start, uint64_t key_end)
 	return file_name;
 }
 
+string gen_random(const int len) {
+    static const char alphanum[] =
+        "0123456789"
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "abcdefghijklmnopqrstuvwxyz";
+    std::string tmp_s;
+    tmp_s.reserve(len);
+
+    for (int i = 0; i < len; ++i) {
+        tmp_s += alphanum[rand() % (sizeof(alphanum) - 1)];
+    }
+    return tmp_s;
+}
+
 static int
 remove_old_file(void)
 {
@@ -174,6 +188,7 @@ parquet_object_free(parquet_object *elem)
 int
 parquet_write_batch_async(parquet_object *elem)
 {
+	elem->type = WRITE_TO_NORMAL;
 	WAIT_FOR_AVAILABLE
 	pthread_mutex_lock(&parquet_queue_mutex);
 	if (IS_EMPTY(parquet_queue)) {
@@ -252,6 +267,7 @@ update_parquet_file_ranges(
 
 	}
 }
+
 
 int
 parquet_write(
@@ -375,7 +391,17 @@ parquet_write_loop_v2(void *config)
 
 		pthread_mutex_unlock(&parquet_queue_mutex);
 
-		parquet_write(conf, schema, ele);
+		switch (ele->type) {
+		case WRITE_TO_NORMAL:
+			parquet_write(conf, schema, ele);
+			break;
+		case WRITE_TO_TEMP:
+			parquet_write_tmp(conf, schema, ele);
+			break;
+		default:
+			break;
+		}
+
 	}
 }
 
