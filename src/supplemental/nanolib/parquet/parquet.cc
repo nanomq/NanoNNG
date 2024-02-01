@@ -202,6 +202,23 @@ parquet_write_batch_async(parquet_object *elem)
 	return 0;
 }
 
+int  parquet_write_batch_tmp_async(parquet_object *elem)
+{
+	elem->type = WRITE_TO_TEMP;
+	WAIT_FOR_AVAILABLE
+	pthread_mutex_lock(&parquet_queue_mutex);
+	if (IS_EMPTY(parquet_queue)) {
+		pthread_cond_broadcast(&parquet_queue_not_empty);
+	}
+	ENQUEUE(parquet_queue, elem);
+	log_debug("enqueue element.");
+
+	pthread_mutex_unlock(&parquet_queue_mutex);
+
+	return 0;
+}
+
+
 bool
 need_new_one(const char *file_name, size_t file_max)
 {
