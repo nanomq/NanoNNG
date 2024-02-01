@@ -8,6 +8,7 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
+#include <ctype.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -711,10 +712,22 @@ nni_http_req_set_uri(nni_http_req *req, const char *uri)
 int
 nni_http_req_set_method(nni_http_req *req, const char *meth)
 {
-	if ((meth != NULL) && (strcmp(meth, "GET") == 0)) {
+	int string_set_status;
+
+	if ((meth != NULL) && (nni_strcasecmp(meth, "GET") == 0)) {
 		meth = NULL;
 	}
-	return (http_set_string(&req->meth, meth));
+	if ((string_set_status = http_set_string(&req->meth, meth)) == 0) {
+		char * meth_ch = req->meth;
+
+		// Make sure the method is always in upper case since that is
+		// the only valid representation of a http method
+		while (*meth_ch) {
+			*meth_ch = toupper((unsigned char) *meth_ch);
+			meth_ch++;
+		}
+	}
+	return string_set_status;
 }
 
 int
