@@ -267,6 +267,14 @@ nni_http_handler_set_method(nni_http_handler *h, const char *method)
 	}
 	nni_strfree(h->method);
 	h->method = dup;
+
+	// Make sure the method is always in upper case since that is
+	// the only valid representation of a http method
+	while (*dup) {
+		*dup = toupper((unsigned char) *dup);
+		dup++;
+	}
+
 	return (0);
 }
 
