@@ -95,6 +95,26 @@ string gen_random(const int len) {
     return tmp_s;
 }
 
+
+static char *
+get_random_file_name(char *prefix, uint64_t key_start, uint64_t key_end)
+{
+	char *file_name = NULL;
+	char *dir       = "/tmp";
+
+	file_name = (char *) malloc(strlen(prefix) + strlen(dir) +
+	    UINT64_MAX_DIGITS + UINT64_MAX_DIGITS + 16);
+	if (file_name == NULL) {
+		log_error("Failed to allocate memory for file name.");
+		return NULL;
+	}
+
+	sprintf(file_name, "%s/%s-%" PRIu64 "~%" PRIu64 ".parquet", dir,
+	    prefix, key_start, key_end);
+	log_error("file_name: %s", file_name);
+	return file_name;
+}
+
 static int
 remove_old_file(void)
 {
