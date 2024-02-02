@@ -682,7 +682,6 @@ parquet_read(conf_parquet *conf, char *filename, uint64_t key, uint32_t *len)
 			std::shared_ptr<parquet::RowGroupReader>
 			    row_group_reader = parquet_reader->RowGroup(
 			        r); // Get the RowGroup Reader
-			string  strCont;
 			int64_t values_read = 0;
 			int64_t rows_read   = 0;
 			int16_t definition_level;
@@ -702,7 +701,7 @@ parquet_read(conf_parquet *conf, char *filename, uint64_t key, uint32_t *len)
 				    &definition_level, &repetition_level,
 				    &value, &values_read);
 				if (1 == rows_read && 1 == values_read) {
-					if (value == key)
+					if (((uint64_t) value) == key)
 						break;
 				}
 				i++;
@@ -714,28 +713,24 @@ parquet_read(conf_parquet *conf, char *filename, uint64_t key, uint32_t *len)
 			    static_cast<parquet::ByteArrayReader *>(
 			        column_reader.get());
 
-			int j = 0;
-			while (ba_reader->HasNext()) {
+			if (ba_reader->HasNext()) {
+				ba_reader->Skip(i);
+			}
+
+			if (ba_reader->HasNext()) {
 				parquet::ByteArray value;
 				rows_read =
 				    ba_reader->ReadBatch(1, &definition_level,
 				        nullptr, &value, &values_read);
 				if (1 == rows_read && 1 == values_read) {
-					string strTemp = string(
-					    (char *) value.ptr, value.len);
-					if (j == i) {
-						uint8_t *ret =
-						    (uint8_t *) malloc(
-						        value.len *
-						        sizeof(uint8_t));
-						memcpy(
-						    ret, value.ptr, value.len);
-						*len = value.len;
-						return ret;
-					}
+					uint8_t *ret = (uint8_t *) malloc(
+					    value.len * sizeof(uint8_t));
+					memcpy(ret, value.ptr, value.len);
+					*len = value.len;
+					return ret;
 				}
-				j++;
 			}
+
 		}
 
 	} catch (const std::exception &e) {
