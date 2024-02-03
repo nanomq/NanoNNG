@@ -1,4 +1,4 @@
-//
+	//
 // Copyright 2019 Staysail Systems, Inc. <info@staysail.tech>
 // Copyright 2018 Capitar IT Group BV <info@capitar.com>
 //
@@ -717,7 +717,7 @@ nni_http_req_set_method(nni_http_req *req, const char *meth)
 	if ((meth != NULL) && (nni_strcasecmp(meth, "GET") == 0)) {
 		meth = NULL;
 	}
-	if ((string_set_status = http_set_string(&req->meth, meth)) == 0) {
+	if ((string_set_status = http_set_string(&req->meth, meth)) == 0 && req->meth != NULL) {
 		char * meth_ch = req->meth;
 
 		// Make sure the method is always in upper case since that is
