@@ -345,13 +345,16 @@ exchange_sock_recv(void *arg, nni_aio *aio)
 		} else {
 			/* clean up and return */
 			/* Only one exchange with one ringBuffer now */
+			nng_mtx_lock(s->ex_node->ex->rbs[0]->ring_lock);
 			ret = ringBuffer_get_and_clean_msgs(s->ex_node->ex->rbs[0], &count, &list);
 			if (ret != 0) {
 				log_warn("ringBuffer_get_and_clean_msgs failed!");
+				nng_mtx_unlock(s->ex_node->ex->rbs[0]->ring_lock);
 				nni_mtx_unlock(&s->mtx);
 				nni_aio_finish_error(aio, NNG_EINVAL);
 				return;
 			}
+			nng_mtx_unlock(s->ex_node->ex->rbs[0]->ring_lock);
 		}
 	}
 
