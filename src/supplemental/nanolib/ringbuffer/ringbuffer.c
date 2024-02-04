@@ -14,7 +14,14 @@ static inline int ringBuffer_get_msgs(ringBuffer_t *rb, unsigned int *count, nng
 	unsigned int i = 0;
 	int j = 0;
 
-	nng_msg **newList = nng_alloc(count * sizeof(nng_msg *));
+	nng_msg **newList = NULL;
+
+	if (*count == 0 || *count > rb->size) {
+		newList = nng_alloc(rb->size * sizeof(nng_msg *));
+		*count = rb->size;
+	} else {
+		newList = nng_alloc((*count) * sizeof(nng_msg *));
+	}
 	if (newList == NULL) {
 		return -1;
 	}
