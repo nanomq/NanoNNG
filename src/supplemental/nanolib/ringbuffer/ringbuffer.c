@@ -9,7 +9,7 @@
 #include "nng/supplemental/nanolib/ringbuffer.h"
 #include "core/nng_impl.h"
 
-static inline int ringBuffer_get_msgs(ringBuffer_t *rb, int count, nng_msg ***list)
+static inline int ringBuffer_get_msgs(ringBuffer_t *rb, unsigned int *count, nng_msg ***list)
 {
 	unsigned int i = 0;
 	int j = 0;
@@ -27,7 +27,7 @@ static inline int ringBuffer_get_msgs(ringBuffer_t *rb, int count, nng_msg ***li
 		newList[j] = msg;
 
 		j++;
-		if (j == count) {
+		if (j == *count) {
 			*list = newList;
 			return 0;
 		}
@@ -68,11 +68,12 @@ static inline void ringBuffer_clean_msgs(ringBuffer_t *rb, int needFree)
 	return;
 }
 
-static inline int ringBuffer_get_and_clean_msgs(ringBuffer_t *rb, unsigned int count, nng_msg ***list)
+int ringBuffer_get_and_clean_msgs(ringBuffer_t *rb,
+								  unsigned int *count, nng_msg ***list)
 {
 	int ret;
 
-	if (rb == NULL || count <= 0 || list == NULL) {
+	if (rb == NULL || list == NULL || count == NULL) {
 		return -1;
 	}
 
@@ -656,7 +657,7 @@ static int put_msgs_to_aio(ringBuffer_t *rb, nng_aio *aio)
 
 	/* get all msgs and clean ringbuffer */
 	nni_msg **list = NULL;
-	ret = ringBuffer_get_and_clean_msgs(rb, rb->cap, &list);
+	ret = ringBuffer_get_and_clean_msgs(rb, &rb->cap, &list);
 	if (ret != 0 || list == NULL) {
 		log_error("Ring buffer is full and clean ringbuffer failed!\n");
 		nng_mtx_unlock(rb->ring_lock);
