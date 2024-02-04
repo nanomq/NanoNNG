@@ -669,14 +669,12 @@ static int put_msgs_to_aio(ringBuffer_t *rb, nng_aio *aio)
 	ret = ringBuffer_get_and_clean_msgs(rb, &rb->cap, &list);
 	if (ret != 0 || list == NULL) {
 		log_error("Ring buffer is full and clean ringbuffer failed!\n");
-		nng_mtx_unlock(rb->ring_lock);
 		return -1;
 	}
 
 	/* Put list len in msg proto data */
 	list_len = nng_alloc(sizeof(int));
 	if (list_len == NULL) {
-		nng_mtx_unlock(rb->ring_lock);
 		log_error("alloc new list_len failed! no memory!\n");
 		return -1;
 	}
@@ -685,7 +683,6 @@ static int put_msgs_to_aio(ringBuffer_t *rb, nng_aio *aio)
 	nng_msg *tmsg;
 	ret = nng_msg_alloc(&tmsg, 0);
 	if (ret != 0 || tmsg == NULL) {
-		nng_mtx_unlock(rb->ring_lock);
 		log_error("alloc new msg failed! no memory!\n");
 		return -1;
 	}
