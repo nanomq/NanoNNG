@@ -27,6 +27,34 @@ static inline void free_msg_list(nng_msg **msgList, nng_msg *msg, uint32_t *lenp
 	}
 }
 
+static inline void client_get_and_clean_msgs(nng_socket sock, uint32_t *lenp, nng_msg ***msgList)
+{
+	nni_aio *aio = NULL;
+	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
+
+	nng_msg *msg;
+	nng_time *tss = NULL;
+	nng_msg_alloc(&msg, 0);
+
+	tss = nng_alloc(sizeof(nng_time) * 3);
+	tss[2] = 1;
+	nng_msg_set_proto_data(msg, NULL, (void *)tss);
+
+	nni_aio_set_msg(aio, msg);
+	nng_recv_aio(sock, aio);
+	nng_aio_wait(aio);
+
+	*msgList = (nng_msg **)nng_aio_get_msg(aio);
+	*lenp = (uintptr_t)nng_aio_get_prov_data(aio);
+
+	if (tss != NULL) {
+		nng_free(tss, sizeof(nng_time) * 3);
+	}
+
+	nng_msg_free(msg);
+	nng_aio_free(aio);
+}
+
 static inline void client_get_msgs(nng_socket sock, uint64_t startKey, uint64_t endKey, uint32_t *lenp, nng_msg ***msgList)
 {
 	nni_aio *aio = NULL;
@@ -40,9 +68,10 @@ static inline void client_get_msgs(nng_socket sock, uint64_t startKey, uint64_t 
 		nng_msg_set_timestamp(msg, startKey);
 		nng_msg_set_proto_data(msg, NULL, NULL);
 	} else {
-		tss = nng_alloc(sizeof(nng_time) * 2);
+		tss = nng_alloc(sizeof(nng_time) * 3);
 		tss[0] = startKey;
 		tss[1] = endKey;
+		tss[2] = (nng_time *)NULL;
 		nng_msg_set_proto_data(msg, NULL, (void *)tss);
 	}
 	nni_aio_set_msg(aio, msg);
@@ -53,7 +82,7 @@ static inline void client_get_msgs(nng_socket sock, uint64_t startKey, uint64_t 
 	*lenp = (uintptr_t)nng_aio_get_prov_data(aio);
 
 	if (tss != NULL) {
-		nng_free(tss, sizeof(nng_time) * 2);
+		nng_free(tss, sizeof(nng_time) * 3);
 	}
 
 	nng_msg_free(msg);
@@ -141,11 +170,12 @@ test_exchange_client(void)
 	NUTS_TRUE(rv == 0 && nsock != NULL);
 	nni_sock_rele(nsock);
 
+	uint32_t *lenp;
+	nng_msg **msgList = NULL;
+
 	rv = exchange_client_get_msg_by_key(nni_sock_proto_data(nsock), key, &msg);
 	NUTS_TRUE(rv == 0 && msg != NULL);
 
-	uint32_t *lenp;
-	nng_msg **msgList = NULL;
 	rv = exchange_client_get_msgs_by_key(nni_sock_proto_data(nsock), key, 1, &msgList);
 	NUTS_TRUE(rv == 0 && msgList != NULL);
 	lenp = nng_alloc(sizeof(uint32_t));
@@ -189,9 +219,15 @@ test_exchange_client(void)
 	NUTS_TRUE(*lenp == 9 && msgList != NULL);
 	free_msg_list(msgList, NULL, lenp, 0);
 
-
 	/* Ringbuffer is full and msgs returned need to free */
 	client_publish(sock, "topic1", 10, NULL, 0, 0, 0);
+
+	/* get and clean up msgs */
+	lenp = nng_alloc(sizeof(uint32_t));
+	*lenp = 0;
+	client_get_and_clean_msgs(sock, lenp, &msgList);
+	NUTS_TRUE(*lenp == 10 && msgList != NULL);
+	free_msg_list(msgList, NULL, lenp, 1);
 
 	cvector_free(conf->rbufs);
 	nng_free(conf, sizeof(conf_exchange_node));
