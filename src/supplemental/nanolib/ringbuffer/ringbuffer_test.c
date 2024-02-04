@@ -477,6 +477,58 @@ void test_ringBuffer_search_msgs_fuzz()
 
 }
 
+void test_ringBuffer_get_and_clean_up()
+{
+	ringBuffer_t *rb = NULL;
+	nng_msg *tmp = NULL;
+	nng_msg **msgList = NULL;
+
+	NUTS_TRUE(ringBuffer_init(&rb, 10, 0, -1) == 0);
+	NUTS_TRUE(rb != NULL);
+	for (int i = 0; i < 10; i++) {
+		tmp = alloc_pub_msg("topic1");
+		NUTS_TRUE(tmp != NULL);
+		NUTS_TRUE(ringBuffer_enqueue(rb, i * 10, tmp, -1, NULL) == 0);
+	}
+
+	unsigned int *lenp = nng_alloc(sizeof(unsigned int));
+	int ret;
+	*lenp = 10;
+	ret = ringBuffer_get_and_clean_msgs(rb, lenp, &msgList);
+	NUTS_TRUE(ret == 0);
+	NUTS_TRUE(*lenp == 10);
+	free_msg_list(msgList, NULL, lenp, 1);
+
+	for (int i = 0; i < 10; i++) {
+		tmp = alloc_pub_msg("topic1");
+		NUTS_TRUE(tmp != NULL);
+		NUTS_TRUE(ringBuffer_enqueue(rb, i * 20, tmp, -1, NULL) == 0);
+	}
+
+	lenp = nng_alloc(sizeof(unsigned int));
+	*lenp = 0;
+	ret = ringBuffer_get_and_clean_msgs(rb, lenp, &msgList);
+	NUTS_TRUE(ret == 0);
+	NUTS_TRUE(*lenp == 10);
+	free_msg_list(msgList, NULL, lenp, 1);
+
+	for (int i = 0; i < 10; i++) {
+		tmp = alloc_pub_msg("topic1");
+		NUTS_TRUE(tmp != NULL);
+		NUTS_TRUE(ringBuffer_enqueue(rb, i * 30, tmp, -1, NULL) == 0);
+	}
+
+	lenp = nng_alloc(sizeof(unsigned int));
+	*lenp = 0;
+	ret = ringBuffer_get_and_clean_msgs(rb, lenp, &msgList);
+	NUTS_TRUE(ret == 0);
+	NUTS_TRUE(*lenp == 10);
+	free_msg_list(msgList, NULL, lenp, 1);
+
+	NUTS_TRUE(ringBuffer_release(rb) == 0);
+
+}
+
 NUTS_TESTS = {
 	{ "Ring buffer init test", test_ringBuffer_init },
 	{ "Ring buffer release test", test_ringBuffer_release },
@@ -486,5 +538,6 @@ NUTS_TESTS = {
 	{ "Ring buffer search msg by key", test_ringBuffer_search_msg_by_key },
 	{ "Ring buffer search msgs by key", test_ringBuffer_search_msgs_by_key },
 	{ "Ring buffer search msgs fuzz", test_ringBuffer_search_msgs_fuzz },
+	{ "Ring buffer get and clean up test", test_ringBuffer_get_and_clean_up},
 	{ NULL, NULL },
 };
