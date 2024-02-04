@@ -330,16 +330,28 @@ exchange_sock_recv(void *arg, nni_aio *aio)
 			return;
 		}
 	} else {
-		/* fuzz search */
-		startKey = tss[0];
-		endKey = tss[1];
+		if (tss[2] == NULL || tss[2] == 0) {
+			/* fuzz search */
+			startKey = tss[0];
+			endKey = tss[1];
 
-		ret = exchange_client_get_msgs_fuzz(s, startKey, endKey, &count, &list);
-		if (ret != 0) {
-			log_warn("exchange_client_get_msgs_fuzz failed!");
-			nni_mtx_unlock(&s->mtx);
-			nni_aio_finish_error(aio, NNG_EINVAL);
-			return;
+			ret = exchange_client_get_msgs_fuzz(s, startKey, endKey, &count, &list);
+			if (ret != 0) {
+				log_warn("exchange_client_get_msgs_fuzz failed!");
+				nni_mtx_unlock(&s->mtx);
+				nni_aio_finish_error(aio, NNG_EINVAL);
+				return;
+			}
+		} else {
+			/* clean up and return */
+			/* Only one exchange with one ringBuffer now */
+			ret = ringBuffer_get_and_clean_msgs(s->ex_node->ex->rbs[0], &count, &list);
+			if (ret != 0) {
+				log_warn("ringBuffer_get_and_clean_msgs failed!");
+				nni_mtx_unlock(&s->mtx);
+				nni_aio_finish_error(aio, NNG_EINVAL);
+				return;
+			}
 		}
 	}
 
