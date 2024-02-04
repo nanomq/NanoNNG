@@ -125,6 +125,8 @@ int ringBuffer_search_msgs_fuzz(ringBuffer_t *rb,
 								uint64_t end,
 								uint32_t *count,
 								nng_msg ***list);
+int ringBuffer_get_and_clean_msgs(ringBuffer_t *rb,
+								  unsigned int *count, nng_msg ***list);
 #ifdef SUPP_PARQUET
 int ringBuffer_get_msgs_from_file(ringBuffer_t *rb, void ***msgs, int **msgLen);
 int ringBuffer_get_msgs_from_file_by_keys(ringBuffer_t *rb, uint64_t *keys, uint32_t count,
