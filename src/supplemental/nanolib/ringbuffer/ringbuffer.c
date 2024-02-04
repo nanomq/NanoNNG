@@ -12,7 +12,7 @@
 static inline int ringBuffer_get_msgs(ringBuffer_t *rb, unsigned int *count, nng_msg ***list)
 {
 	unsigned int i = 0;
-	int j = 0;
+	unsigned int j = 0;
 
 	nng_msg **newList = NULL;
 
@@ -83,8 +83,10 @@ int ringBuffer_get_and_clean_msgs(ringBuffer_t *rb,
 	if (rb == NULL || list == NULL || count == NULL) {
 		return -1;
 	}
-
-	if (count > rb->size) {
+	if (rb->size == 0) {
+		*list = NULL;
+		*count = 0;
+		log_error("Ring buffer is empty!\n");
 		return -1;
 	}
 
