@@ -1099,6 +1099,7 @@ conf_exchange_node_parse(conf_exchange_node *node, cJSON *obj)
 
 	hocon_read_str(node, name, exchange);
 	hocon_read_str(node, topic, exchange);
+
 	if (node->name == NULL || node->topic == NULL) {
 		log_error("invalid exchange configuration!");
 		return;
@@ -1132,10 +1133,17 @@ static void
 conf_exchange_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *node_array = hocon_get_obj("exchange_client", jso);
+	cJSON *jso_parquet = cJSON_GetObjectItem(jso, "parquet");
 	cJSON *node_item  = NULL;
+
+	conf_exchange *conf_exchange = &config->exchange;
+	if(conf_exchange->exchange_url == NULL) {
+		conf_exchange->exchange_url = nng_zalloc(64);
+	}
 
 	cJSON_ArrayForEach(node_item, node_array)
 	{
+		hocon_read_str(conf_exchange, exchange_url, node_item);
 		conf_exchange_node *node = NNI_ALLOC_STRUCT(node);
 		node->sock     = NULL;
 		node->topic    = NULL;
