@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include "core/nng_impl.h"
 #include "nng/supplemental/nanolib/file.h"
 
