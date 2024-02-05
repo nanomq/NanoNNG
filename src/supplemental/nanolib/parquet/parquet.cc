@@ -741,11 +741,13 @@ parquet_read(conf_parquet *conf, char *filename, uint64_t key, uint32_t *len)
 	return NULL;
 }
 
-parquet_data_packet *
-parquet_find_data_packet(conf_parquet *conf, char *filename, uint64_t key)
+vector<parquet_data_packet *>
+parquet_find_data_packet(
+    conf_parquet *conf, char *filename, vector<uint64_t> keys)
 {
 	WAIT_FOR_AVAILABLE
-	void *elem = NULL;
+	void	                 *elem = NULL;
+	vector<parquet_data_packet *> ret_vec;
 	pthread_mutex_lock(&parquet_queue_mutex);
 	FOREACH_QUEUE(parquet_file_queue, elem)
 	{
@@ -758,22 +760,14 @@ find:
 	pthread_mutex_unlock(&parquet_queue_mutex);
 
 	if (elem) {
-		uint32_t size = 0;
-		uint8_t *data = parquet_read(conf, (char *) elem, key, &size);
-		if (size) {
-			parquet_data_packet *pack =
-			    (parquet_data_packet *) malloc(
-			        sizeof(parquet_data_packet));
-			pack->data = data;
-			pack->size = size;
-			return pack;
-		} else {
-			log_debug(
-			    "No key %ld in file: %s", key, (char *) elem);
+		ret_vec = parquet_read(conf, (char *) elem, keys);
+		if (ret_vec.empty()) {
+			log_warn("No keys find in file %s ", (char *) elem);
+			return ret_vec;
 		}
 	}
 	log_debug("Not find file %s in file queue", (char *) elem);
-	return NULL;
+	return ret_vec;
 }
 
 parquet_data_packet **
