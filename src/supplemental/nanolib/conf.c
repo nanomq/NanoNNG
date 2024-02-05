@@ -938,6 +938,7 @@ conf_init(conf *nanomq_conf)
 
 	nanomq_conf->exchange.count           = 0;
 	nanomq_conf->exchange.nodes           = NULL;
+	nanomq_conf->exchange.exchange_url    = NULL;
 
 	nanomq_conf->parquet.enable           = false;
 	nanomq_conf->parquet.encryption.enable= false;
@@ -946,7 +947,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->parquet.encryption.type  = AES_GCM_V1;
 
 	nanomq_conf->parquet.file_count       = 5;
-	nanomq_conf->parquet.file_size       = (10240 * 1024);
+	nanomq_conf->parquet.file_size        = (10240 * 1024);
 	nanomq_conf->parquet.comp_type        = UNCOMPRESSED;
 	nanomq_conf->parquet.file_name_prefix = NULL;
 	nanomq_conf->parquet.dir              = NULL;

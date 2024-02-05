@@ -319,6 +319,7 @@ struct conf_exchange_node {
 
 typedef struct conf_exchange conf_exchange;
 struct conf_exchange {
+	char                *exchange_url;
 	size_t               count;
 	conf_exchange_node **nodes;
 };
