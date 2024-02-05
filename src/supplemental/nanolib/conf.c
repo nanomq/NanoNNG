@@ -3719,12 +3719,12 @@ conf_auth_http_req_parse(
 			req->url = value;
 		} else if ((value = get_conf_value_with_prefix(
 		                line, sz, key_prefix, ".method")) != NULL) {
-			if (nni_strcasecmp(value, "post") == 0 ||
-			    nni_strcasecmp(value, "get") == 0) {
+			if (nni_strcasecmp(value, "POST") == 0 ||
+			    nni_strcasecmp(value, "GET") == 0) {
 				req->method = value;
 			} else {
 				free(value);
-				req->method = nng_strdup("post");
+				req->method = nng_strdup("POST");
 			}
 		} else if ((value = get_conf_value_with_prefix(
 		                line, sz, key_prefix, ".params")) != NULL) {
