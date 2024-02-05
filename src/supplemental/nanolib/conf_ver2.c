@@ -640,6 +640,11 @@ conf_auth_http_req_parse_ver2(conf_auth_http_req *config, cJSON *jso)
 {
 	hocon_read_str(config, url, jso);
 	hocon_read_str(config, method, jso);
+	if (nni_strcasecmp(config->method, "POST") != 0 &&
+	    nni_strcasecmp(config->method, "GET") != 0) {
+		nng_strfree(config->method);
+		config->method = nng_strdup("POST");
+	}
 	cJSON *jso_headers = hocon_get_obj("headers", jso);
 	cJSON *jso_header  = NULL;
 	cJSON_ArrayForEach(jso_header, jso_headers)
