@@ -3907,6 +3907,7 @@ void
 conf_fini(conf *nanomq_conf)
 {
 	nng_strfree(nanomq_conf->url);
+	nng_strfree(nanomq_conf->exchange.exchange_url);
 	nng_strfree(nanomq_conf->conf_file);
 	nng_strfree(nanomq_conf->websocket.tls_url);
 
