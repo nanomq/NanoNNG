@@ -628,36 +628,42 @@ parquet_find_span(uint64_t start_key, uint64_t end_key, uint32_t *size)
 	return ret;
 }
 
-static uint8_t *
-parquet_read(conf_parquet *conf, char *filename, uint64_t key, uint32_t *len)
+static vector<parquet_data_packet *>
+parquet_read(conf_parquet *conf, char *filename, vector<uint64_t> keys)
 {
 	conf = g_conf;
-	std::string path_int64 = "key";
-	std::string path_str   = "data";
-	parquet::ReaderProperties reader_properties =
+	vector<parquet_data_packet *> ret_vec;
+	std::string                   path_int64 = "key";
+	std::string                   path_str   = "data";
+	parquet::ReaderProperties     reader_properties =
 	    parquet::default_reader_properties();
 
 	if (conf->encryption.enable) {
 		std::map<std::string,
 		    std::shared_ptr<parquet::ColumnDecryptionProperties>>
-		                                             decryption_cols;
-		parquet::ColumnDecryptionProperties::Builder decryption_col_builder31(
-		    path_int64);
-		parquet::ColumnDecryptionProperties::Builder decryption_col_builder32(
-		    path_str);
+		    decryption_cols;
+		parquet::ColumnDecryptionProperties::Builder
+		    decryption_col_builder31(path_int64);
+		parquet::ColumnDecryptionProperties::Builder
+		    decryption_col_builder32(path_str);
 
-		parquet::FileDecryptionProperties::Builder file_decryption_builder_3;
+		parquet::FileDecryptionProperties::Builder
+		    file_decryption_builder_3;
 		std::shared_ptr<parquet::FileDecryptionProperties>
 		    decryption_configuration =
-		        file_decryption_builder_3.footer_key(conf->encryption.key)
+		        file_decryption_builder_3
+		            .footer_key(conf->encryption.key)
 		            ->column_keys(decryption_cols)
 		            ->build();
 
-		// Add the current decryption configuration to ReaderProperties.
+		// Add the current decryption configuration to
+		// ReaderProperties.
 		reader_properties.file_decryption_properties(
 		    decryption_configuration->DeepClone());
-
 	}
+
+	vector<int> index_vector;
+	sort(keys.begin(), keys.end());
 
 	// Create a ParquetReader instance
 	std::string exception_msg = "";
@@ -688,23 +694,43 @@ parquet_read(conf_parquet *conf, char *filename, uint64_t key, uint32_t *len)
 			int16_t repetition_level;
 			std::shared_ptr<parquet::ColumnReader> column_reader;
 
-			// Get the Column Reader for the Int64 column
 			column_reader = row_group_reader->Column(0);
 			parquet::Int64Reader *int64_reader =
 			    static_cast<parquet::Int64Reader *>(
 			        column_reader.get());
 
-			int i = 0;
-			while (int64_reader->HasNext()) {
-				int64_t value;
-				rows_read = int64_reader->ReadBatch(1,
-				    &definition_level, &repetition_level,
-				    &value, &values_read);
-				if (1 == rows_read && 1 == values_read) {
-					if (((uint64_t) value) == key)
-						break;
+			for (const auto &key : keys) {
+				int i = 0;
+				while (int64_reader->HasNext()) {
+					int64_t value;
+					rows_read = int64_reader->ReadBatch(1,
+					    &definition_level,
+					    &repetition_level, &value,
+					    &values_read);
+					if (1 == rows_read &&
+					    1 == values_read) {
+						if (((uint64_t) value) ==
+						    key) {
+							if (index_vector
+							        .empty()) {
+								index_vector
+								    .push_back(
+								        i);
+							} else {
+								// Get the diff
+								// between last
+								// index so we
+								// can walk
+								index_vector.push_back(
+								    i -
+								    index_vector
+								        [i -
+								            1]);
+							}
+						}
+					}
+					i++;
 				}
-				i++;
 			}
 
 			// Get the Column Reader for the ByteArray column
@@ -713,24 +739,34 @@ parquet_read(conf_parquet *conf, char *filename, uint64_t key, uint32_t *len)
 			    static_cast<parquet::ByteArrayReader *>(
 			        column_reader.get());
 
-			if (ba_reader->HasNext()) {
-				ba_reader->Skip(i);
-			}
+			for (const auto &index : index_vector) {
 
-			if (ba_reader->HasNext()) {
-				parquet::ByteArray value;
-				rows_read =
-				    ba_reader->ReadBatch(1, &definition_level,
-				        nullptr, &value, &values_read);
-				if (1 == rows_read && 1 == values_read) {
-					uint8_t *ret = (uint8_t *) malloc(
-					    value.len * sizeof(uint8_t));
-					memcpy(ret, value.ptr, value.len);
-					*len = value.len;
-					return ret;
+				if (ba_reader->HasNext()) {
+					ba_reader->Skip(index - 1);
+				}
+
+				if (ba_reader->HasNext()) {
+					parquet::ByteArray value;
+					rows_read = ba_reader->ReadBatch(1,
+					    &definition_level, nullptr, &value,
+					    &values_read);
+					if (1 == rows_read &&
+					    1 == values_read) {
+						parquet_data_packet *pack =
+						    (parquet_data_packet *)
+						        malloc(sizeof(
+						            parquet_data_packet));
+						pack->data =
+						    (uint8_t *) malloc(
+						        value.len *
+						        sizeof(uint8_t));
+						memcpy(pack->data, value.ptr,
+						    value.len);
+						pack->size = value.len;
+						ret_vec.push_back(pack);
+					}
 				}
 			}
-
 		}
 
 	} catch (const std::exception &e) {
@@ -738,7 +774,7 @@ parquet_read(conf_parquet *conf, char *filename, uint64_t key, uint32_t *len)
 		log_error("exception_msg=[%s]", exception_msg.c_str());
 	}
 
-	return NULL;
+	return ret_vec;
 }
 
 vector<parquet_data_packet *>
