@@ -780,11 +780,32 @@ parquet_data_packet **
 parquet_find_data_packets(
     conf_parquet *conf, char **filenames, uint64_t *keys, uint32_t len)
 {
-	parquet_data_packet **packets = (parquet_data_packet **) malloc(
-	    sizeof(parquet_data_packet *) * len);
+	unordered_map<char *, vector<uint64_t>> file_name_map;
+	vector<parquet_data_packet *>           ret_vec;
+	// Get the file map
 	for (uint32_t i = 0; i < len; i++) {
-		packets[i] =
-		    parquet_find_data_packet(conf, filenames[i], keys[i]);
+		vector<uint64_t> key_vec;
+		if (auto s = file_name_map.find(filenames[i]);
+		    s != file_name_map.end()) {
+			s->second.push_back(keys[i]);
+		} else {
+			key_vec.push_back(keys[i]);
+			file_name_map.insert(pair(filenames[i], key_vec));
+		}
 	}
+
+	// Traverse the map and get the vector of parquet_data_packet
+	for (const auto &entry : file_name_map) {
+		char		        *filename = entry.first;
+		const std::vector<uint64_t> &sizes    = entry.second;
+
+		auto tmp = parquet_find_data_packet(conf, filename, sizes);
+		ret_vec.insert(ret_vec.end(), tmp.begin(), tmp.end());
+	}
+
+	parquet_data_packet **packets = (parquet_data_packet **) malloc(
+	    sizeof(parquet_data_packet *) * ret_vec.size());
+	copy(ret_vec.begin(), ret_vec.end(), packets);
+
 	return packets;
 }
