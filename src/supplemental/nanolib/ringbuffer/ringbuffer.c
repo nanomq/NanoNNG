@@ -573,6 +573,13 @@ int ringBuffer_get_msgs_from_file(ringBuffer_t *rb, void ***msgs, int **msgLen)
 		}
 	}
 
+	struct timespec start, end;
+	uint64_t delta_us;
+
+	clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+
+	log_error("finish get filenames: sec %ld, nsec %ld", start.tv_sec, start.tv_nsec);
+
 	int packet_count = 0;
 	parquet_data_packet **packet = parquet_find_data_packets(NULL, filenames, keys, count);
 	if (packet == NULL) {
@@ -583,6 +590,10 @@ int ringBuffer_get_msgs_from_file(ringBuffer_t *rb, void ***msgs, int **msgLen)
 		return -1;
 	}
 
+	clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+	log_error("finish parquet find data packets: sec %ld, nsec %ld", end.tv_sec, end.tv_nsec);
+//	delta_us = (end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000;
+//	log_error("ringbus: parquet find data packets cost: %ld us\n", delta_us);
 	for (long unsigned int i = 0; i < count; i++) {
 		if (packet[i] != NULL) {
 			packet_count++;

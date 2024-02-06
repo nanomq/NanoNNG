@@ -16,6 +16,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
+#include <time.h>
 
 #include <nng/nng.h>
 #include <nng/protocol/reqrep0/rep.h>
@@ -108,18 +110,32 @@ sendrecv(nng_socket sock)
 	    ((rv = nng_msg_append(msg, data, datalen)) != 0)) {
 		fatal("%s", nng_strerror(rv));
 	}
+	struct timespec start, end;
+	clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+	//do stuff
+
+	printf("sec %ld, nsec %ld\n", start.tv_sec, start.tv_nsec);
+	printf("Sending %lu bytes\n", datalen);
 	if ((rv = nng_sendmsg(sock, msg, 0)) != 0) {
 		fatal("Send error: %s", nng_strerror(rv));
 	}
 
+//	printf("Waiting for reply\n");
 	rv = nng_recvmsg(sock, &msg, 0);
 	switch (rv) {
 	case 0:
-		printmsg(nng_msg_body(msg), nng_msg_len(msg), datalen);
+		clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+		uint64_t delta_us = (end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000;
+		printf("sec %ld, nsec %ld,\n", end.tv_sec, end.tv_nsec);
+//		printf("Latency: %lu us\n", delta_us);
+		printf("Received %lu bytes\n", nng_msg_len(msg));
+//		printmsg(nng_msg_body(msg), nng_msg_len(msg), datalen);
 		nng_msg_free(msg);
 		break;
 	case NNG_ETIMEDOUT:
+		printf("Timeout\n");
 	case NNG_ESTATE:
+		printf("State error\n");
 		// We're done receiving
 		break;
 	default:

@@ -6,6 +6,7 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 #include <inttypes.h>
+#include <sys/time.h>
 
 #include "core/nng_impl.h"
 #include "nng/protocol/mqtt/mqtt.h"
@@ -884,6 +885,11 @@ ex_query_recv_cb(void *arg)
 	uint8_t            *body;
 	nni_msg            *tar_msg = NULL;
 	int ret;
+	struct timespec start, end;
+	uint64_t delta_us;
+
+	clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+	log_error("get in recv_cb start: sec %ld, nsec %ld", start.tv_sec, start.tv_nsec);
 
 	if (nni_aio_result(&p->ex_aio) != 0) {
 		nni_pipe_close(p->pipe);
@@ -918,8 +924,16 @@ ex_query_recv_cb(void *arg)
 		if (msgCount <= 0 || msgs == NULL || msgLen == NULL) {
 			log_error("not found msgs in file!");
 		} else {
+			clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+//			delta_us = (end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000;
+//			log_error("ringBuffer_get_msgs_from_file cost %ld us", delta_us);
+//			log_error("dump_file_result_cat start: sec %ld, nsec %ld", end.tv_sec, end.tv_nsec);
 			ret = dump_file_result_cat(msgs, msgLen, msgCount, obj);
 
+			clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+			log_error("dump_file_result_cat end: sec %ld, nsec %ld", end.tv_sec, end.tv_nsec);
+//			delta_us = (end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000;
+//			log_error("dump_file_result_cat cost %ld us", delta_us);
 			for(int i = 0; i < msgCount; ++i) {
 				nng_free(msgs[i], 0);
 			}
@@ -1075,6 +1089,10 @@ ex_query_recv_cb(void *arg)
 		nni_msg_append(msg, buf, strlen(buf));
 		nng_free(buf, strlen(buf));
 	}
+	clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+	log_error("recv_cb end: sec %ld, nsec %ld", end.tv_sec, end.tv_nsec);
+//	delta_us = (end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000;
+//	log_error("Latency: %lu us\n", delta_us);
 
 	tar_msg = msg;
 	nni_aio_wait(&p->rp_aio);
