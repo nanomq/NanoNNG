@@ -752,8 +752,10 @@ get_keys_indexes(parquet::Int64Reader *int64_reader, const vector<uint64_t> &key
 	int16_t     definition_level;
 	int16_t     repetition_level;
 
+	// FIXME:
 	for (const auto &key : keys) {
 		int i = 0;
+		bool found = false;
 		while (int64_reader->HasNext()) {
 			int64_t value;
 			rows_read =
@@ -764,16 +766,16 @@ get_keys_indexes(parquet::Int64Reader *int64_reader, const vector<uint64_t> &key
 					if (index_vector.empty()) {
 						index_vector.push_back(i);
 					} else {
-						// Get the diff
-						// between last
-						// index so we
-						// can walk
-						index_vector.push_back(
-						    i - index_vector[i - 1]);
+						index_vector.push_back(i);
 					}
+					found = true;
+					break;
 				}
 			}
 			i++;
+		}
+		if (!found) {
+			index_vector.push_back(-1);
 		}
 	}
 
@@ -791,7 +793,7 @@ parquet_read(conf_parquet *conf, char *filename, vector<uint64_t> keys)
 	    parquet::default_reader_properties();
 
 	parquet_read_set_property(reader_properties, conf);
-	vector<int> index_vector;
+	vector<int> index_vector(keys.size());
 	sort(keys.begin(), keys.end());
 
 	// Create a ParquetReader instance
@@ -836,6 +838,10 @@ parquet_read(conf_parquet *conf, char *filename, vector<uint64_t> keys)
 			        column_reader.get());
 
 			for (const auto &index : index_vector) {
+				if (-1 == index) {
+					ret_vec.push_back(NULL);
+					continue;
+				}
 
 				if (ba_reader->HasNext()) {
 					ba_reader->Skip(index-1);
@@ -860,6 +866,7 @@ parquet_read(conf_parquet *conf, char *filename, vector<uint64_t> keys)
 						    value.len);
 						pack->size = value.len;
 						ret_vec.push_back(pack);
+
 					}
 				}
 			}
@@ -893,12 +900,11 @@ find:
 
 	if (elem) {
 		ret_vec = parquet_read(conf, (char *) elem, keys);
-		if (ret_vec.empty()) {
-			log_warn("No keys find in file %s ", (char *) elem);
-			return ret_vec;
-		}
+	} else {
+
+		ret_vec.resize(keys.size(), nullptr);
+		log_debug("Not find file %s in file queue", (char *) elem);
 	}
-	log_debug("Not find file %s in file queue", (char *) elem);
 	return ret_vec;
 }
 
@@ -943,6 +949,7 @@ parquet_find_data_packets(
 {
 	unordered_map<char *, vector<uint64_t>> file_name_map;
 	vector<parquet_data_packet *>           ret_vec;
+	parquet_data_packet **packets = NULL;
 	// Get the file map
 	for (uint32_t i = 0; i < len; i++) {
 		vector<uint64_t> key_vec;
@@ -964,9 +971,11 @@ parquet_find_data_packets(
 		ret_vec.insert(ret_vec.end(), tmp.begin(), tmp.end());
 	}
 
-	parquet_data_packet **packets = (parquet_data_packet **) malloc(
-	    sizeof(parquet_data_packet *) * ret_vec.size());
-	copy(ret_vec.begin(), ret_vec.end(), packets);
+	if (!ret_vec.empty()) {
+		packets = (parquet_data_packet **) malloc(
+		    sizeof(parquet_data_packet *) * len);
+		copy(ret_vec.begin(), ret_vec.end(), packets);
+	}
 
 	return packets;
 }
