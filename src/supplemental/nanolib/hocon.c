@@ -124,7 +124,9 @@ deduplication_and_merging(cJSON *jso)
 						    parent->child->prev;
 						parent->child =
 						    parent->child->next;
-						cJSON_free(table[i]);
+						table[i]->next = NULL;
+						table[i]->prev = NULL;
+						cJSON_Delete(table[i]);
 						cvector_erase(table, i);
 
 					} else {
@@ -132,7 +134,9 @@ deduplication_and_merging(cJSON *jso)
 						    table[i]->prev;
 						table[i - 1]->next =
 						    table[i]->next;
-						cJSON_free(table[i]);
+						table[i]->next = NULL;
+						table[i]->prev = NULL;
+						cJSON_Delete(table[i]);
 						cvector_erase(table, i);
 					}
 				}
