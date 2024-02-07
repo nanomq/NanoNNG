@@ -141,6 +141,12 @@ deduplication_and_merging(cJSON *jso)
 
 		cvector_push_back(table, child);
 
+		child = child->next;
+	}
+
+	// First deduplicate and merge siblings then do it for children
+	// to avoid leaks
+	while (child) {
 		if (child->child) {
 			deduplication_and_merging(child);
 		}
