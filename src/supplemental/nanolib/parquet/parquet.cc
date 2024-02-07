@@ -794,7 +794,6 @@ parquet_read(conf_parquet *conf, char *filename, vector<uint64_t> keys)
 
 	parquet_read_set_property(reader_properties, conf);
 	vector<int> index_vector(keys.size());
-	sort(keys.begin(), keys.end());
 
 	// Create a ParquetReader instance
 	std::string exception_msg = "";
