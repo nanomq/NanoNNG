@@ -416,6 +416,7 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 		}
 
 		if (0 != (rv = msquic_conn_open(host, port, d))) {
+			log_warn("QUIC dialing failed! %d", rv);
 			goto error;
 		}
 	} else {
@@ -1262,10 +1263,10 @@ settls:
 	// not.
 	if (QUIC_FAILED(rv = MsQuic->ConfigurationLoadCredential(
 	                    configuration, &CredConfig))) {
-		//heap-buffer-overflow here if nanomq cannot find file by path
 		log_error("Configuration Load Credential failed, 0x%x!\n", rv);
+		if (CredConfig.CertificateFile != NULL)
+			nng_free(CredConfig.CertificateFile, sizeof(QUIC_CERTIFICATE_FILE_PROTECTED));
 		return FALSE;
-		// close connection!
 	}
 
 	return TRUE;
