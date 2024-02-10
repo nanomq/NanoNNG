@@ -104,6 +104,92 @@ static void quic_stream_error(void *arg, int err);
 static void quic_stream_close(void *arg);
 static void quic_stream_dowrite(nni_quic_conn *c);
 
+static QUIC_STATUS verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *cacert);
+
+static QUIC_STATUS
+verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *cacert)
+{
+	// local ca
+	X509_LOOKUP *lookup = NULL;
+	X509_STORE *trusted = NULL;
+	trusted = X509_STORE_new();
+	if (trusted == NULL) {
+		return QUIC_STATUS_ABORTED;
+	}
+	lookup = X509_STORE_add_lookup(trusted, X509_LOOKUP_file());
+	if (lookup == NULL) {
+		X509_STORE_free(trusted);
+		trusted = NULL;
+		return QUIC_STATUS_ABORTED;
+	}
+
+	// if (!X509_LOOKUP_load_file(lookup, cacertfile, X509_FILETYPE_PEM)) {
+	if (!X509_LOOKUP_load_file(lookup, cacert, X509_FILETYPE_PEM)) {
+		log_warn("No load cacertfile be found");
+		X509_STORE_free(trusted);
+		trusted = NULL;
+	}
+	if (trusted == NULL) {
+		return QUIC_STATUS_ABORTED;
+	}
+
+	// @TODO peer_certificate_received
+	// Only with QUIC_CREDENTIAL_FLAG_INDICATE_CERTIFICATE_RECEIVED
+	// set
+	// assert(QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED == Event->Type);
+
+	// Validate against CA certificates using OpenSSL API:s
+	X509 *crt = (X509 *) cert;
+	X509_STORE_CTX *x509_ctx = (X509_STORE_CTX *) chain;
+	STACK_OF(X509) *untrusted = X509_STORE_CTX_get0_untrusted(x509_ctx);
+
+	if (crt == NULL)
+		return QUIC_STATUS_BAD_CERTIFICATE;
+
+	X509_STORE_CTX *ctx = X509_STORE_CTX_new();
+	// X509_STORE_CTX_init(ctx, c_ctx->trusted, crt, untrusted);
+	X509_STORE_CTX_init(ctx, trusted, crt, untrusted);
+	int res = X509_verify_cert(ctx);
+	X509_STORE_CTX_free(ctx);
+
+	if (res <= 0) {
+		log_error("rv %d: %s", res, X509_verify_cert_error_string(ctx));
+		return QUIC_STATUS_BAD_CERTIFICATE;
+	} else
+		return QUIC_STATUS_SUCCESS;
+
+	/* @TODO validate SNI */
+
+/*
+	int rv;
+	uint32_t flags = 0;
+	// cert and chain are as quic_buffer when QUIC_CREDENTIAL_FLAG_USE_PORTABLE_CERTIFICATES is set
+	// refer. https://github.com/microsoft/msquic/blob/main/docs/api/QUIC_CONNECTION_EVENT.md#quic_connection_event_peer_certificate_received
+	QUIC_BUFFER *ce = (QUIC_BUFFER *)cert;
+	QUIC_BUFFER *ch = (QUIC_BUFFER *)chain;
+	mbedtls_x509_crt crt;
+	mbedtls_x509_crt chn;
+	mbedtls_x509_crt_init(&crt);
+	mbedtls_x509_crt_init(&chn);
+	log_info("chain %p %d cert %p %d\n", ch->Buffer, ch->Length, ce->Buffer, ce->Length);
+	mbedtls_x509_crt_parse_der(&crt, ce->Buffer, ce->Length);
+	mbedtls_x509_crt_parse(&chn, ch->Buffer, ch->Length);
+	rv = mbedtls_x509_crt_verify(&chn, &crt, NULL, NULL, &flags, my_verify, NULL);
+	if (rv != 0) {
+		char vrfy_buf[512];
+		log_warn(" failed\n");
+		mbedtls_x509_crt_verify_info(vrfy_buf, sizeof(vrfy_buf), "  ! ", flags);
+		log_warn("%s\n", vrfy_buf);
+	} else {
+		log_warn(" Verify OK\n");
+	}
+	if (rv != 0)
+		log_warn("Error: 0x%04x; flag: %u\n", rv, flags);
+	return QUIC_STATUS_SUCCESS;
+*/
+
+}
+
 /***************************** MsQuic Dialer ******************************/
 
 int
@@ -116,8 +202,10 @@ nni_quic_dialer_init(void **argp)
 	}
 
 	nni_mtx_init(&d->mtx);
-	d->closed = false;
+	d->closed  = false;
 	d->currcon = NULL;
+	d->ca      = NULL;
+	d->cacert  = NULL;
 	nni_aio_alloc(&d->qconaio, quic_dialer_cb, (void *)d);
 	nni_aio_list_init(&d->connq);
 	nni_atomic_init_bool(&d->fini);
@@ -310,8 +398,20 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 	if (ismain) {
 		// Make a quic connection to the url.
 		// Create stream after connection is established.
-		if ((rv = nni_aio_schedule(d->qconaio, quic_dialer_cancel, d)) != 0) {
+		if (nni_aio_busy(d->qconaio)) {
+			rv = NNG_EBUSY;
+			goto error;
+		}
+
+		if (nni_aio_begin(d->qconaio) != 0) {
 			rv = NNG_ECLOSED;
+			goto error;
+		}
+
+		if ((rv = nni_aio_schedule(d->qconaio, quic_dialer_cancel, d)) != 0) {
+			// FIX quic dialer allows dialing multiple connections in parallel
+			// however here we only has one qconaio?
+			rv = NNG_ECANCELED;
 			goto error;
 		}
 
@@ -755,7 +855,7 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 {
 	nni_quic_dialer *d = Context;
 	HQUIC            qconn = Connection;
-	// QUIC_STATUS      rv;
+	QUIC_STATUS      rv;
 
 	log_debug("msquic_connection_cb triggered! %d", Event->Type);
 	switch (Event->Type) {
@@ -817,7 +917,6 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		// reconnect here
 		nni_mtx_unlock(&d->mtx);
 		nni_aio_finish_error(d->qconaio, d->reason_code);
-
 		break;
 	case QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED:
 		// A resumption ticket (also called New Session Ticket or NST)
@@ -838,21 +937,18 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		break;
 	case QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED:
 		log_info("QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED");
-
 		// TODO Using mbedtls APIs to verify
 		/*
 		 * TODO
 		 * Does MsQuic ensure the connected event will happen after
 		 * peer_certificate_received event.?
 		 */
-		/*
 		if (QUIC_FAILED(rv = verify_peer_cert_tls(
 				Event->PEER_CERTIFICATE_RECEIVED.Certificate,
 				Event->PEER_CERTIFICATE_RECEIVED.Chain, d->cacert))) {
-			log_error("[conn][%p] Invalid certificate file received from the peer");
+			log_error("[conn][%p] Invalid certificate file received from the peer", qconn);
 			return rv;
 		}
-		*/
 		break;
 	case QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED:
 		log_info("QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED");
@@ -1166,8 +1262,10 @@ settls:
 	// not.
 	if (QUIC_FAILED(rv = MsQuic->ConfigurationLoadCredential(
 	                    configuration, &CredConfig))) {
+		//heap-buffer-overflow here if nanomq cannot find file by path
 		log_error("Configuration Load Credential failed, 0x%x!\n", rv);
 		return FALSE;
+		// close connection!
 	}
 
 	return TRUE;
