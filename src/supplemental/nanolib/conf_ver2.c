@@ -1137,9 +1137,6 @@ conf_exchange_parse_ver2(conf *config, cJSON *jso)
 	cJSON *node_item  = NULL;
 
 	conf_exchange *conf_exchange = &config->exchange;
-	if(conf_exchange->exchange_url == NULL) {
-		conf_exchange->exchange_url = nng_zalloc(64);
-	}
 
 	cJSON_ArrayForEach(node_item, node_array)
 	{
