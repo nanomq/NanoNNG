@@ -214,12 +214,14 @@ quic_dialer_cb(void *arg)
 	aio = c->dial_aio;
 	if ((aio == NULL) || (!nni_aio_list_active(aio))) {
 		// This should never happened
+		log_error("Found aio reuse error");
 		nni_mtx_unlock(&d->mtx);
 		return;
 	}
 
 	if (rv != 0) {
 		// Pass rv
+		log_warn("aio error while dialing QUIC!");
 		goto error;
 	}
 
@@ -227,9 +229,9 @@ quic_dialer_cb(void *arg)
 	rv = msquic_strm_open(d->qconn, d);
 
 error:
-
 	d->currcon = NULL;
 	if (rv != 0) {
+		log_warn("error in openning QUIC stream %d", rv);
 		c->dial_aio = NULL;
 
 		nni_aio_set_prov_data(aio, NULL);
@@ -239,8 +241,6 @@ error:
 	nni_mtx_unlock(&d->mtx);
 
 	if (rv != 0) {
-		// if (rv = NNG_ECLOSED)
-			// return;
 		nng_stream_close(&c->stream);
 		// Decement reference of dialer
 		nng_stream_free(&c->stream);

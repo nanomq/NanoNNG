@@ -41,7 +41,7 @@ extern void nni_msquic_quic_dialer_rele(nni_quic_dialer *);
 
 struct nni_quic_dialer {
 	nni_aio                *qconaio; // for quic connection
-	nni_quic_conn          *currcon;
+	nni_quic_conn          *currcon; // a var to record conn context for one dial action
 	nni_list                connq;   // pending connections/quic streams
 	bool                    closed;
 	bool                    nodelay;
