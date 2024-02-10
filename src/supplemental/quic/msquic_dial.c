@@ -228,8 +228,8 @@ quic_dialer_cb(void *arg)
 
 error:
 
+	d->currcon = NULL;
 	if (rv != 0) {
-		d->currcon = NULL;
 		c->dial_aio = NULL;
 
 		nni_aio_set_prov_data(aio, NULL);
