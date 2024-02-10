@@ -138,7 +138,9 @@ quic_dialer_dial(void *arg, nng_aio *aio)
 	}
 	nni_list_append(&d->conaios, aio);
 	if (nni_list_first(&d->conaios) == aio) {
-		nni_quic_dial(d->d, d->host, d->port, d->conaio);
+		if (!nni_aio_busy(d->conaio)) {
+			nni_quic_dial(d->d, d->host, d->port, d->conaio);
+		}
 	}
 	nni_mtx_unlock(&d->mtx);
 	log_debug("[quic dialer dial] end");
@@ -187,7 +189,8 @@ quic_dialer_set_tls_pwd(void *arg, const void *buf, size_t sz, nni_type t)
 	int              rv;
 	char *           str;
 
-	str = nng_alloc(sz + 1);
+	str = nng_alloc(sz);
+	memset(str, '\0', sz);
 
 	if (((rv = nni_copyin_str(str, buf, sz, sz, t)) != 0) || (d == NULL)) {
 		return rv;
@@ -206,7 +209,8 @@ quic_dialer_set_tls_key(void *arg, const void *buf, size_t sz, nni_type t)
 	int              rv;
 	char *           str;
 
-	str = nng_alloc(sz + 1);
+	str = nng_alloc(sz);
+	memset(str, '\0', sz);
 
 	if (((rv = nni_copyin_str(str, buf, sz, sz, t)) != 0) || (d == NULL)) {
 		return rv;
@@ -218,6 +222,20 @@ quic_dialer_set_tls_key(void *arg, const void *buf, size_t sz, nni_type t)
 	return 0;
 }
 
+// static int
+// sock_set_sockname(void *s, const void *buf, size_t sz, nni_type t)
+// {
+// 	int rv;
+// 	rv = (nni_copyin_str(
+// 	    SOCK(s)->s_name, buf, sizeof(SOCK(s)->s_name), sz, t));
+// #ifdef NNG_ENABLE_STATS
+// 	if (rv == 0) {
+// 		nni_stat_set_string(&SOCK(s)->st_name, SOCK(s)->s_name);
+// 	}
+// #endif
+// 	return (rv);
+// }
+
 static int
 quic_dialer_set_tls_cacert(void *arg, const void *buf, size_t sz, nni_type t)
 {
@@ -225,7 +243,8 @@ quic_dialer_set_tls_cacert(void *arg, const void *buf, size_t sz, nni_type t)
 	int              rv;
 	char *           str;
 
-	str = nng_alloc(sz + 1);
+	str = nng_alloc(sz);
+	memset(str, '\0', sz);
 
 	if (((rv = nni_copyin_str(str, buf, sz, sz, t)) != 0) || (d == NULL)) {
 		return rv;
