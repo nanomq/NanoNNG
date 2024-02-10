@@ -1211,6 +1211,21 @@ mqtt_quic_sock_set_multi_stream(void *arg, const void *buf, size_t sz, nni_type 
 }
 
 static int
+mqtt_quic_sock_set_bridge_config(
+    void *arg, const void *v, size_t sz, nni_opt_type t)
+{
+	NNI_ARG_UNUSED(sz);
+	mqtt_sock_t *s = arg;
+	if (t == NNI_TYPE_POINTER) {
+		nni_mtx_lock(&s->mtx);
+		s->bridge_conf = *(conf_bridge_node **) v;
+		nni_mtx_unlock(&s->mtx);
+		return (0);
+	}
+	return NNG_EUNREACHABLE;
+}
+
+static int
 mqtt_quic_sock_set_sqlite_option(
     void *arg, const void *v, size_t sz, nni_opt_type t)
 {
@@ -1912,6 +1927,10 @@ static nni_option mqtt_quic_sock_options[] = {
 	{
 	    .o_name = NNG_OPT_QUIC_ENABLE_MULTISTREAM,
 	    .o_set  = mqtt_quic_sock_set_multi_stream,
+	},
+	{
+	    .o_name = NNG_OPT_MQTT_BRIDGE_CONF,
+	    .o_set  = mqtt_quic_sock_set_bridge_config,
 	},
 	// terminate list
 	{
