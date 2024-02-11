@@ -688,7 +688,8 @@ nng_mqtt_msg_dump(
 uint32_t
 get_mqtt_properties_len(property *prop)
 {
-	return get_properties_len(prop);
+	// 0 means no context of msg type
+	return get_properties_len(prop, 0);
 }
 
 int
