@@ -3942,11 +3942,26 @@ decode_properties(nng_msg *msg, uint32_t *pos, uint32_t *len, bool copy_value)
 }
 
 uint32_t
-get_properties_len(property *prop)
+get_properties_len(property *prop, uint8_t cmd)
 {
 	uint32_t prop_len = 0;
 	if (prop != NULL) {
 		for (property *p = prop->next; p != NULL; p = p->next) {
+			if (cmd == CMD_CONNACK)
+				// Only allows following property in CONNACK
+				if (p->id != SESSION_EXPIRY_INTERVAL &&
+				    p->id != RECEIVE_MAXIMUM &&
+				    p->id != PUBLISH_MAXIMUM_QOS &&
+				    p->id != RETAIN_AVAILABLE &&
+				    p->id != MAXIMUM_PACKET_SIZE &&
+				    p->id != ASSIGNED_CLIENT_IDENTIFIER &&
+				    p->id != TOPIC_ALIAS_MAXIMUM &&
+				    p->id != USER_PROPERTY &&
+				    p->id != REASON_STRING &&
+				    // More TODO:
+				    // Response Information
+				    p->id != SERVER_KEEP_ALIVE)
+					continue;
 			switch (p->data.p_type) {
 			case U8:
 				prop_len++;
@@ -4083,16 +4098,16 @@ encode_properties(nni_msg *msg, property *prop, uint8_t cmd)
 	struct pos_buf buf     = { .curpos = &rlen[0],
                 .endpos                = &rlen[sizeof(rlen)] };
 
+	prop_len = get_properties_len(prop, cmd);
 	if (cmd == CMD_CONNACK)
-		// return 3 available flag by default, costs 6 bytes
-		prop_len = get_properties_len(prop) + 6;
-	else
-		prop_len = get_properties_len(prop);
+	// return 3 available flag by default, costs 6 bytes
+		prop_len += 6;
 
 	int bytes    = write_variable_length_value(prop_len, &buf);
 
 	if (bytes < 0)
 		return -1;
+
 	nni_msg_append(msg, rlen, bytes);
 	if (prop_len == 0) {
 		return 0;
@@ -4111,7 +4126,7 @@ encode_properties(nni_msg *msg, property *prop, uint8_t cmd)
 		}
 		*/
 	}
-	if (cmd == CMD_CONNACK){
+	if (cmd == CMD_CONNACK) {
 		uint8_t var = 0x01;
 		nni_mqtt_msg_append_u8(msg, SHARED_SUBSCRIPTION_AVAILABLE);
 		nni_mqtt_msg_append_u8(msg, var);
