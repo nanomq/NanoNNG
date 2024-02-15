@@ -154,6 +154,7 @@ quic_dialer_set_tls_ca(void *arg, const void *buf, size_t sz, nni_type t)
 	char *           str;
 
 	str = nng_alloc(sz + 1);
+	memset(str, '\0', sz + 1);
 
 	if (((rv = nni_copyin_str(str, buf, sz, sz, t)) != 0) || (d == NULL)) {
 		return rv;
@@ -189,8 +190,8 @@ quic_dialer_set_tls_pwd(void *arg, const void *buf, size_t sz, nni_type t)
 	int              rv;
 	char *           str;
 
-	str = nng_alloc(sz);
-	memset(str, '\0', sz);
+	str = nng_alloc(sz + 1);
+	memset(str, '\0', sz + 1);
 
 	if (((rv = nni_copyin_str(str, buf, sz, sz, t)) != 0) || (d == NULL)) {
 		return rv;
@@ -209,8 +210,8 @@ quic_dialer_set_tls_key(void *arg, const void *buf, size_t sz, nni_type t)
 	int              rv;
 	char *           str;
 
-	str = nng_alloc(sz);
-	memset(str, '\0', sz);
+	str = nng_alloc(sz + 1);
+	memset(str, '\0', sz + 1);
 
 	if (((rv = nni_copyin_str(str, buf, sz, sz, t)) != 0) || (d == NULL)) {
 		return rv;
@@ -243,8 +244,8 @@ quic_dialer_set_tls_cacert(void *arg, const void *buf, size_t sz, nni_type t)
 	int              rv;
 	char *           str;
 
-	str = nng_alloc(sz);
-	memset(str, '\0', sz);
+	str = nng_alloc(sz + 1);
+	memset(str, '\0', sz + 1);
 
 	if (((rv = nni_copyin_str(str, buf, sz, sz, t)) != 0) || (d == NULL)) {
 		return rv;
