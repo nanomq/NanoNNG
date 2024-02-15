@@ -104,10 +104,10 @@ static void quic_stream_error(void *arg, int err);
 static void quic_stream_close(void *arg);
 static void quic_stream_dowrite(nni_quic_conn *c);
 
-static QUIC_STATUS verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *cacert);
+static QUIC_STATUS verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *ca);
 
 static QUIC_STATUS
-verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *cacert)
+verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *ca)
 {
 	// local ca
 	X509_LOOKUP *lookup = NULL;
@@ -124,7 +124,7 @@ verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *cace
 	}
 
 	// if (!X509_LOOKUP_load_file(lookup, cacertfile, X509_FILETYPE_PEM)) {
-	if (!X509_LOOKUP_load_file(lookup, cacert, X509_FILETYPE_PEM)) {
+	if (!X509_LOOKUP_load_file(lookup, ca, X509_FILETYPE_PEM)) {
 		log_warn("No load cacertfile be found");
 		X509_STORE_free(trusted);
 		trusted = NULL;
@@ -946,7 +946,7 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		 */
 		if (QUIC_FAILED(rv = verify_peer_cert_tls(
 				Event->PEER_CERTIFICATE_RECEIVED.Certificate,
-				Event->PEER_CERTIFICATE_RECEIVED.Chain, d->cacert))) {
+				Event->PEER_CERTIFICATE_RECEIVED.Chain, d->ca))) {
 			log_error("[conn][%p] Invalid certificate file received from the peer", qconn);
 			return rv;
 		}
