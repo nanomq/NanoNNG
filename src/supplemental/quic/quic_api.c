@@ -397,6 +397,8 @@ quic_dialer_set_keepalive(void *arg, const void *buf, size_t sz, nni_type t)
 static int
 quic_dialer_set_priority(void *arg, const void *buf, size_t sz, nni_type t)
 {
+	NNI_ARG_UNUSED(sz);
+	NNI_ARG_UNUSED(t);
 	nni_quic_dialer *d = arg;
 	int *_buf = (int *)buf;
 
