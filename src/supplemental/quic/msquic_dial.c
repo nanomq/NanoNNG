@@ -152,6 +152,9 @@ verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *ca)
 	int res = X509_verify_cert(ctx);
 	X509_STORE_CTX_free(ctx);
 
+	X509_STORE_free(trusted);
+	trusted = NULL;
+
 	if (res <= 0) {
 		log_error("rv %d: %s", res, X509_verify_cert_error_string(ctx));
 		return QUIC_STATUS_BAD_CERTIFICATE;
@@ -1264,10 +1267,10 @@ settls:
 	if (QUIC_FAILED(rv = MsQuic->ConfigurationLoadCredential(
 	                    configuration, &CredConfig))) {
 		log_error("Configuration Load Credential failed, 0x%x!\n", rv);
-		if (CredConfig.CertificateFile != NULL)
-			nng_free(CredConfig.CertificateFile, sizeof(QUIC_CERTIFICATE_FILE_PROTECTED));
 		return FALSE;
 	}
+	if (CredConfig.CertificateFile != NULL)
+		nng_free(CredConfig.CertificateFile, sizeof(QUIC_CERTIFICATE_FILE_PROTECTED));
 
 	return TRUE;
 }
