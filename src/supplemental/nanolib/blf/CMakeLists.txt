@@ -1,0 +1,6 @@
+if(NNG_ENABLE_BLF)
+    nng_sources(blf.cc)
+    find_package(Vector_BLF REQUIRED)
+    nng_include_directories(${Vector_BLF_INCLUDE_DIRS})
+    nng_link_libraries(${Vector_BLF_LIBRARIES})
+endif()
