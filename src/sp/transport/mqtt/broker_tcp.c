@@ -844,7 +844,6 @@ tcptran_pipe_recv_cb(void *arg)
 		// if (prop != NULL) {
 		// nni_msg_proto_set_property(qmsg, prop);
 		// }
-		// aio_begin?
 		if (p->busy == false) {
 			iov[0].iov_len = nni_msg_header_len(qmsg);
 			iov[0].iov_buf = nni_msg_header(qmsg);

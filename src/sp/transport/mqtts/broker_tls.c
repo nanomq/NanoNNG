@@ -837,13 +837,7 @@ tlstran_pipe_recv_cb(void *arg)
 		// if (prop != NULL) {
 		// nni_msg_proto_set_property(qmsg, prop);
 		// }
-		// aio_begin?
 		if (p->busy == false) {
-			// nni_msg_insert(qmsg, nni_msg_header(qmsg),
-			//     nni_msg_header_len(qmsg));
-			if (nni_aio_begin(aio) != 0) {
-				log_error("ACK aio error!!");
-			}
 			nni_msg_insert(qmsg, nni_msg_header(qmsg),
 			    nni_msg_header_len(qmsg));
 			iov[0].iov_len = nni_msg_len(qmsg);
