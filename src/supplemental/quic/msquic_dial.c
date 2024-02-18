@@ -1267,6 +1267,8 @@ settls:
 	if (QUIC_FAILED(rv = MsQuic->ConfigurationLoadCredential(
 	                    configuration, &CredConfig))) {
 		log_error("Configuration Load Credential failed, 0x%x!\n", rv);
+		if (CredConfig.CertificateFile != NULL)
+			nng_free(CredConfig.CertificateFile, sizeof(QUIC_CERTIFICATE_FILE_PROTECTED));
 		return FALSE;
 	}
 	if (CredConfig.CertificateFile != NULL)
