@@ -990,7 +990,8 @@ nng_mqtt_subscribe_async(nng_mqtt_client *client, nng_mqtt_topic_qos *sbs, size_
 	}
 	if (nng_aio_busy(client->send_aio)) {
 		if (nni_lmq_put((nni_lmq *)client->msgq, submsg) != 0) {
-			nni_plat_println("subscribe failed!");
+			nng_msg_free(submsg);
+			log_warn("subscribe failed due to busy aio");
 		}
 		return 1;
 	}

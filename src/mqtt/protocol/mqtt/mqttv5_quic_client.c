@@ -842,6 +842,7 @@ mqtt_quic_recv_cb(void *arg)
 		}
 		break;
 	case NNG_MQTT_SUBACK:
+		log_debug("SUBACK received!");
 		// we have received a SUBACK, successful subscription
 		// FALLTHROUGH
 	case NNG_MQTT_UNSUBACK:
@@ -852,9 +853,13 @@ mqtt_quic_recv_cb(void *arg)
 		if (cached_msg != NULL) {
 			nni_id_remove(&p->sent_unack, packet_id);
 			user_aio = nni_mqtt_msg_get_aio(cached_msg);
-			// should we support sub/unsub cb here?
-			nni_msg_clone(msg);
-			nni_aio_set_msg(user_aio, msg);
+			log_debug("clean SUB msg!");
+			if (user_aio != NULL) {
+				// should we support sub/unsub cb here?
+				nni_msg_clone(msg);
+				nni_aio_set_msg(user_aio, msg);
+			}
+
 			nni_msg_free(cached_msg);
 		}
 		nni_msg_free(msg);

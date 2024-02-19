@@ -537,7 +537,6 @@ mqtt_quictran_pipe_qos_send_cb(void *arg)
 		nni_msg_free(msg);
 	// if (nni_lmq_get(&p->rslmq, &msg) == 0) {
 	// 	nni_iov iov[2];
-	// 	// TODO QOS V5
 	// 	iov[0].iov_len = nni_msg_header_len(msg);
 	// 	iov[0].iov_buf = nni_msg_header(msg);
 	// 	iov[1].iov_len = nni_msg_len(msg);
