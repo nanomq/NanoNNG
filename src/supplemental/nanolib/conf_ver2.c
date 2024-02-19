@@ -1164,6 +1164,7 @@ conf_parquet_parse_ver2(conf *config, cJSON *jso)
 		conf_parquet *parquet = &(config->parquet);
 		parquet->enable       = true;
 		hocon_read_bool_base(parquet, enable, "enable", jso_parquet);
+		hocon_read_num(parquet, limit_frequency, jso_parquet);
 		hocon_read_num(parquet, file_count, jso_parquet);
 		hocon_read_size(parquet, file_size, jso_parquet);
 		hocon_read_str(parquet, dir, jso_parquet);
