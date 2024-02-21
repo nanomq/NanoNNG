@@ -128,10 +128,34 @@ test_msquic_stream_multi_stream(void)
 	nng_stream_dialer_free(dialer);
 }
 
+void
+test_msquic_app_conn_refuse(void)
+{
+}
+
+void
+test_msquic_app_connect(void)
+{
+}
+
+void
+test_msquic_app_pub(void)
+{
+}
+
+void
+test_msquic_app_sub(void)
+{
+}
+
 TEST_LIST = {
-	{ "msquic stream layer conn refused", test_msquic_stream_conn_refused },
+	{ "msquic stream layer connect refused", test_msquic_stream_conn_refused },
 	{ "msquic stream layer connection", test_msquic_stream_connect},
 	{ "msquic stream layer multi-stream", test_msquic_stream_multi_stream },
 	// And follow tests are app layer test.
+	{ "msquic app layer connect refuse", test_msquic_app_conn_refuse },
+	{ "msquic app layer connect", test_msquic_app_connect },
+	{ "msquic app layer publish", test_msquic_app_pub },
+	{ "msquic app layer subscribe", test_msquic_app_sub },
 	{ NULL, NULL },
 };
