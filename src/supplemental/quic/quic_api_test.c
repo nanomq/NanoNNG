@@ -9,6 +9,9 @@
 
 #include <nuts.h>
 
+static const char *quic_test_url  = "mqtt-quic://127.0.0.1:14567";
+static const char *quic_test_url2 = "mqtt-quic://127.0.0.1:8";
+
 void
 test_quic_conn_refused(void)
 {
@@ -19,7 +22,7 @@ test_quic_conn_refused(void)
 	nng_aio_set_timeout(aio, 5000); // 5 sec
 
 	// port 8 is generally not used for anything.
-	NUTS_PASS(nng_stream_dialer_alloc(&dialer, "quic://127.0.0.1:8"));
+	NUTS_PASS(nng_stream_dialer_alloc(&dialer, quic_test_url2));
 	nng_stream_dialer_dial(dialer, aio);
 	nng_aio_wait(aio);
 	NUTS_FAIL(nng_aio_result(aio), NNG_ECONNREFUSED);
@@ -47,7 +50,7 @@ test_quic_send_message(void)
 	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
 	nng_aio_set_timeout(aio, 5000); // 5 sec
 
-	NUTS_PASS(nng_stream_dialer_alloc(&dialer, "quic://127.0.0.1:14567"));
+	NUTS_PASS(nng_stream_dialer_alloc(&dialer, quic_test_url));
 	nng_stream_dialer_dial(dialer, aio);
 	nng_aio_wait(aio);
 	NUTS_PASS(nng_aio_result(aio));
@@ -88,7 +91,7 @@ test_quic_recv_message(void)
 	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
 	nng_aio_set_timeout(aio, 5000); // 5 sec
 
-	NUTS_PASS(nng_stream_dialer_alloc(&dialer, "quic://127.0.0.1:14567"));
+	NUTS_PASS(nng_stream_dialer_alloc(&dialer, quic_test_url));
 	nng_stream_dialer_dial(dialer, aio);
 	nng_aio_wait(aio);
 	NUTS_PASS(nng_aio_result(aio));
@@ -135,7 +138,7 @@ test_quic_mqtt_connection(void)
 	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
 	nng_aio_set_timeout(aio, 5000); // 5 sec
 
-	NUTS_PASS(nng_stream_dialer_alloc(&dialer, "mqtt-quic://127.0.0.1:14567"));
+	NUTS_PASS(nng_stream_dialer_alloc(&dialer, quic_test_url));
 	nng_stream_dialer_dial(dialer, aio);
 	nng_aio_wait(aio);
 	NUTS_PASS(nng_aio_result(aio));
@@ -171,7 +174,7 @@ test_quic_multi_stream(void)
 	nng_aio_set_timeout(aio2, 5000); // 5 sec
 	nng_aio_set_timeout(aio3, 5000); // 5 sec
 
-	NUTS_PASS(nng_stream_dialer_alloc(&dialer, "quic://127.0.0.1:14567"));
+	NUTS_PASS(nng_stream_dialer_alloc(&dialer, quic_test_url));
 
 	nng_stream_dialer_dial(dialer, aio);
 	nng_aio_wait(aio);
