@@ -699,6 +699,7 @@ quic_stream_dowrite_prior(nni_quic_conn *c, nni_aio *aio)
 	                naiov, QUIC_SEND_FLAG_NONE, aio))) {
 		log_error("Failed in StreamSend, 0x%x!", rv);
 		free(buf);
+		nni_msg_free(nni_aio_get_msg(aio));
 		nni_aio_finish_error(aio, NNG_ECANCELED);
 		return;
 	}
