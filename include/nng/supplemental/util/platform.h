@@ -78,6 +78,14 @@ NNG_DECL void nng_mtx_lock(nng_mtx *);
 // call this on a mutex which is not owned by caller.
 NNG_DECL void nng_mtx_unlock(nng_mtx *);
 
+// nng_rwlock is a rwlock. TODO more comments
+typedef struct nng_rwlock nng_rwlock;
+NNG_DECL int  nng_rwlock_alloc(nng_rwlock **);
+NNG_DECL void nng_rwlock_free(nng_rwlock *);
+NNG_DECL void nng_rwlock_rdlock(nng_rwlock *);
+NNG_DECL void nng_rwlock_rwlock(nng_rwlock *);
+NNG_DECL void nng_rwlock_unlock(nng_rwlock *);
+
 // nng_cv is a condition variable.  It is always allocated with an
 // associated mutex, which must be held when waiting for it, or
 // when signaling it.
