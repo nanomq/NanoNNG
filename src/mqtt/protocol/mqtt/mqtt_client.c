@@ -464,15 +464,16 @@ mqtt_pipe_start(void *arg)
 		nni_list_remove(&s->send_queue, c);
 		mqtt_send_msg(c->saio, c);
 		c->saio = NULL;
-		nni_sleep_aio(s->retry, &p->time_aio);
 		nni_pipe_recv(p->pipe, &p->recv_aio);
+		nni_mtx_unlock(&s->mtx);
+		nni_sleep_aio(s->retry, &p->time_aio);
 		return (0);
 	}
-
+	nni_pipe_recv(p->pipe, &p->recv_aio);
 	nni_mtx_unlock(&s->mtx);
 	// initiate the global resend timer
 	nni_sleep_aio(s->retry, &p->time_aio);
-	nni_pipe_recv(p->pipe, &p->recv_aio);
+
 	return (0);
 }
 
