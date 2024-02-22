@@ -1692,7 +1692,6 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 
 	nni_mtx_lock(&s->mtx);
 	p = s->pipe;
-	npipe = p->qpipe;
 
 	msg = nni_aio_get_msg(aio);
 	if (msg == NULL) {
@@ -1777,6 +1776,7 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 		}
 		return;
 	}
+	npipe = p->qpipe;
 
 	if (s->multi_stream == false) {
 		if ((rv = mqtt_send_msg(aio, msg, s)) >= 0) {
