@@ -700,7 +700,7 @@ mqtt_quic_recv_cb(void *arg)
 	nni_aio *aio;
 	int rv = 0;
 
-	nni_mtx_lock(&s->mtx);
+	nni_mtx_lock(&p->lk);
 	if (nni_atomic_get_bool(&s->closed) ||
 	    nni_atomic_get_bool(&p->closed)) {
 		// pipe is already closed somewhere
