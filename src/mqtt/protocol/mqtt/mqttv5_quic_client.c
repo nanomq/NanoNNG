@@ -386,13 +386,12 @@ mqtt_quic_data_strm_send_cb(void *arg)
 		nni_aio_set_msg(&p->send_aio, NULL);
 		return;
 	}
-	nni_mtx_lock(&p->lk);
 	if (nni_atomic_get_bool(&p->closed)) {
 		// This occurs if the mqtt_pipe_close has been called.
 		// In that case we don't want any more processing.
-		nni_mtx_unlock(&p->lk);
 		return;
 	}
+	nni_mtx_lock(&p->lk);
 #if defined(NNG_SUPP_SQLITE)
 	// TODO how to let sqlite work with multi-stream?
 #endif
@@ -529,6 +528,7 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 		}
 		return;
 	}
+
 	nni_mqtt_msg_proto_data_alloc(msg);
 	nni_mqttv5_msg_decode(msg);
 
@@ -607,7 +607,6 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 		}
 		nni_id_remove(&p->recv_unack, packet_id);
 		// return msg to user
-		nni_mtx_lock(&s->mtx);
 		if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
 			// No one waiting to receive yet, putting msg
 			// into lmq
@@ -615,11 +614,9 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 				nni_msg_free(cached_msg);
 				cached_msg = NULL;
 			}
-			nni_mtx_unlock(&s->mtx);
 			break;
 		}
 		nni_list_remove(&s->recv_queue, aio);
-		nni_mtx_unlock(&s->mtx);
 		user_aio  = aio;
 		nni_aio_set_msg(user_aio, cached_msg);
 		break;
@@ -630,20 +627,17 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 		qos = nni_mqtt_msg_get_publish_qos(msg);
 		nng_msg_set_cmd_type(msg, CMD_PUBLISH);
 		if (2 > qos) {
-			nni_mtx_lock(&s->mtx);
 			// TODO aio should be placed in p->recv_queue to achieve parallel
 			if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
 				if (0 != mqtt_pipe_recv_msgq_putq(p, msg)) {
 					nni_msg_free(msg);
 					msg = NULL;
 				}
-				nni_mtx_unlock(&s->mtx);
 				// nni_println("ERROR: no ctx found!! create
 				// more ctxs!");
 				break;
 			}
 			nni_list_remove(&s->recv_queue, aio);
-			nni_mtx_unlock(&s->mtx);
 			user_aio  = aio;
 			nni_aio_set_msg(user_aio, msg);
 			break;
@@ -666,21 +660,21 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 		// PINGRESP is ignored in protocol layer
 		// Rely on health checker of Quic stream
 		nni_msg_free(msg);
-		nni_mtx_unlock(&p->lk);
+		nni_mtx_unlock(&s->mtx);
 		return;
 	case NNG_MQTT_PUBREC:
 		nni_msg_free(msg);
-		nni_mtx_unlock(&p->lk);
+		nni_mtx_unlock(&s->mtx);
 		return;
 	default:
 		// unexpected packet type, server misbehaviour
 		nni_msg_free(msg);
-		nni_mtx_unlock(&p->lk);
+		nni_mtx_unlock(&s->mtx);
 		// close quic stream
 		nni_pipe_close(p->qpipe);
 		return;
 	}
-	nni_mtx_unlock(&p->lk);
+	nni_mtx_unlock(&s->mtx);
 
 	if (user_aio) {
 		nni_aio_finish(user_aio, 0, 0);
@@ -705,7 +699,7 @@ mqtt_quic_recv_cb(void *arg)
 	nni_aio *aio;
 	int rv = 0;
 
-	nni_mtx_lock(&s->mtx);
+	nni_mtx_lock(&p->lk);
 	if (nni_atomic_get_bool(&s->closed) ||
 	    nni_atomic_get_bool(&p->closed)) {
 		// pipe is already closed somewhere
@@ -714,14 +708,14 @@ mqtt_quic_recv_cb(void *arg)
 		if (msg) {
 			nni_msg_free(msg);
 		}
-		nni_mtx_unlock(&s->mtx);
+		nni_mtx_unlock(&p->lk);
 		return;
 	}
 
 
 	if (nni_aio_result(&p->recv_aio) != 0 && 
 	    !nni_atomic_get_bool(&p->closed)) {
-		nni_mtx_unlock(&s->mtx);
+		nni_mtx_unlock(&p->lk);
 		// stream is closed in transport layer
 		if (p->qpipe != NULL) {
 			log_info("nni pipe close!");
@@ -734,7 +728,7 @@ mqtt_quic_recv_cb(void *arg)
 	nni_aio_set_msg(&p->recv_aio, NULL);
 	if (msg == NULL) {
 		nni_pipe_recv(p->qpipe, &p->recv_aio);
-		nni_mtx_unlock(&s->mtx);
+		nni_mtx_unlock(&p->lk);
 		return;
 	}
 
@@ -750,7 +744,7 @@ mqtt_quic_recv_cb(void *arg)
 		if ((rv = nni_mqttv5_msg_encode(msg)) != MQTT_SUCCESS) {
 			nni_plat_printf("Error in encoding disconnect.\n");
 			nni_msg_free(msg);
-			nni_mtx_unlock(&s->mtx);
+			nni_mtx_unlock(&p->lk);
 			nni_pipe_close(p->qpipe);
 			return;
 		}
@@ -758,7 +752,7 @@ mqtt_quic_recv_cb(void *arg)
 			p->busy = true;
 			nni_aio_set_msg(&p->send_aio, msg);
 			nni_pipe_send(p->qpipe, &p->send_aio);
-			nni_mtx_unlock(&s->mtx);
+			nni_mtx_unlock(&p->lk);
 			return;
 		}
 		if (nni_lmq_full(&p->send_inflight)) {
@@ -771,7 +765,7 @@ mqtt_quic_recv_cb(void *arg)
 			nni_println(
 			    "Warning! msg send failed due to busy socket");
 		}
-		nni_mtx_unlock(&s->mtx);
+		nni_mtx_unlock(&p->lk);
 		return;
 	}
 
@@ -893,17 +887,22 @@ mqtt_quic_recv_cb(void *arg)
 		nng_msg_set_cmd_type(msg, CMD_PUBLISH);
 		if (2 > qos) {
 			// No one waiting to receive yet, putting msginto lmq
+			nni_mtx_lock(&s->mtx);
 			if ((aio = nni_list_first(&s->recv_queue)) == NULL) {	
-				if (s->cb.msg_recv_cb)
+				if (s->cb.msg_recv_cb) {
+					nni_mtx_unlock(&s->mtx);
 					break;
+				}
 				if (0 != mqtt_pipe_recv_msgq_putq(p, msg)) {
 					nni_msg_free(msg);
 					msg = NULL;
 				}
+				nni_mtx_unlock(&s->mtx);
 				log_debug("ERROR: no ctx found!! create more ctxs!");
 				break;
 			}
 			nni_list_remove(&s->recv_queue, aio);
+			nni_mtx_unlock(&s->mtx);
 			user_aio  = aio;
 			nni_aio_set_msg(user_aio, msg);
 			break;
@@ -926,12 +925,12 @@ mqtt_quic_recv_cb(void *arg)
 		// PINGRESP is ignored in protocol layer
 		// Rely on health checker of Quic stream
 		nni_msg_free(msg);
-		nni_mtx_unlock(&s->mtx);
+		nni_mtx_unlock(&p->lk);
 		return;
 	case NNG_MQTT_PUBREC:
 		// return PUBREL
 		nni_msg_free(msg);
-		nni_mtx_unlock(&s->mtx);
+		nni_mtx_unlock(&p->lk);
 		return;
 	case NNG_MQTT_DISCONNECT:
 		log_debug("Broker disconnect QUIC actively");
@@ -940,19 +939,18 @@ mqtt_quic_recv_cb(void *arg)
 		    " Disconnect received from Broker %d", *(uint8_t *)nni_msg_body(msg));
 		// we wait for other side to close the stream
 		nni_msg_free(msg);
-		nni_mtx_unlock(&s->mtx);
+		nni_mtx_unlock(&p->lk);
 		return;
 
 	default:
 		// unexpected packet type, server misbehaviour
 		nni_msg_free(msg);
-		// nni_mtx_unlock(&s->mtx);
 		// close quic stream
-		nni_mtx_unlock(&s->mtx);
+		nni_mtx_unlock(&p->lk);
 		nni_pipe_close(p->qpipe);
 		return;
 	}
-	nni_mtx_unlock(&s->mtx);
+	nni_mtx_unlock(&p->lk);
 
 	if (user_aio) {
 		nni_aio_finish(user_aio, 0, 0);
