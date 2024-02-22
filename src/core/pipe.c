@@ -141,6 +141,7 @@ nni_pipe_send(nni_pipe *p, nni_aio *aio)
 // nni_pipe_close closes the underlying connection.  It is expected that
 // subsequent attempts to receive or send (including any waiting receive) will
 // simply return NNG_ECLOSED.
+// Important! This shall not be called within the socket lock!
 void
 nni_pipe_close(nni_pipe *p)
 {
