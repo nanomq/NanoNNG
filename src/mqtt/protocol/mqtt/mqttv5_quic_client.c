@@ -727,11 +727,11 @@ mqtt_quic_recv_cb(void *arg)
 		nni_mtx_unlock(&p->lk);
 		return;
 	}
-	nni_mtx_lock(&s->mtx);
+	// nni_mtx_lock(&s->mtx);
 	msg = nni_aio_get_msg(&p->recv_aio);
 	nni_aio_set_msg(&p->recv_aio, NULL);
 	if (msg == NULL) {
-		nni_mtx_unlock(&s->mtx);
+		// nni_mtx_unlock(&s->mtx);
 		nni_pipe_recv(p->qpipe, &p->recv_aio);
 		nni_mtx_unlock(&p->lk);
 		return;
@@ -750,7 +750,7 @@ mqtt_quic_recv_cb(void *arg)
 			nni_plat_printf("Error in encoding disconnect.\n");
 			nni_msg_free(msg);
 			nni_pipe_close(p->qpipe);
-			nni_mtx_unlock(&s->mtx);
+			// nni_mtx_unlock(&s->mtx);
 			nni_mtx_unlock(&p->lk);
 			return;
 		}
@@ -758,7 +758,7 @@ mqtt_quic_recv_cb(void *arg)
 			p->busy = true;
 			nni_aio_set_msg(&p->send_aio, msg);
 			nni_pipe_send(p->qpipe, &p->send_aio);
-			nni_mtx_unlock(&s->mtx);
+			// nni_mtx_unlock(&s->mtx);
 			nni_mtx_unlock(&p->lk);
 			return;
 		}
@@ -772,7 +772,7 @@ mqtt_quic_recv_cb(void *arg)
 			nni_println(
 			    "Warning! msg send failed due to busy socket");
 		}
-		nni_mtx_unlock(&s->mtx);
+		// nni_mtx_unlock(&s->mtx);
 		nni_mtx_unlock(&p->lk);
 		return;
 	}
@@ -928,13 +928,13 @@ mqtt_quic_recv_cb(void *arg)
 		// PINGRESP is ignored in protocol layer
 		// Rely on health checker of Quic stream
 		nni_msg_free(msg);
-		nni_mtx_unlock(&s->mtx);
+		// nni_mtx_unlock(&s->mtx);
 		nni_mtx_unlock(&p->lk);
 		return;
 	case NNG_MQTT_PUBREC:
 		// return PUBREL
 		nni_msg_free(msg);
-		nni_mtx_unlock(&s->mtx);
+		// nni_mtx_unlock(&s->mtx);
 		nni_mtx_unlock(&p->lk);
 		return;
 	case NNG_MQTT_DISCONNECT:
@@ -944,21 +944,21 @@ mqtt_quic_recv_cb(void *arg)
 		    " Disconnect received from Broker %d", *(uint8_t *)nni_msg_body(msg));
 		// we wait for other side to close the stream
 		nni_msg_free(msg);
-		nni_mtx_unlock(&s->mtx);
+		// nni_mtx_unlock(&s->mtx);
 		nni_mtx_unlock(&p->lk);
 		return;
 
 	default:
 		// unexpected packet type, server misbehaviour
 		nni_msg_free(msg);
-		nni_mtx_unlock(&s->mtx);
+		// nni_mtx_unlock(&s->mtx);
 		// close quic stream
 		nni_pipe_close(p->qpipe);
 		nni_mtx_unlock(&p->lk);
 		return;
 	}
 	nni_mtx_unlock(&p->lk);
-	nni_mtx_unlock(&s->mtx);
+	// nni_mtx_unlock(&s->mtx);
 
 	if (user_aio) {
 		nni_aio_finish(user_aio, 0, 0);
@@ -1566,8 +1566,6 @@ quic_mqtt_pipe_stop(void *arg)
 		nni_aio_close(&p->rep_aio);
 		nni_lmq_flush(&p->recv_messages);
 		nni_lmq_flush(&p->send_inflight);
-		nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
-		nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
 
 		p->ready = false;
 
@@ -1616,7 +1614,8 @@ quic_mqtt_pipe_close(void *arg)
 	nni_lmq_flush(&p->recv_messages);
 	if (p->mqtt_sock->multi_stream)
 		nni_lmq_flush(&p->send_inflight);
-	// nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
+	// multistream
+	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
 	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
 	p->ready = false;
 	if (s->pipe != p) {
