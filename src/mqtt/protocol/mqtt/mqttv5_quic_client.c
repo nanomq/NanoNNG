@@ -512,7 +512,7 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 		return;
 	}
 
-	nni_mtx_lock(&p->lk);
+	nni_mtx_lock(&s->mtx);
 	nni_msg *msg = nni_aio_get_msg(&p->recv_aio);
 	nni_aio_set_msg(&p->recv_aio, NULL);
 	if (msg == NULL) {
@@ -522,7 +522,7 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 	}
 	if (nni_atomic_get_bool(&p->closed)) {
 		//free msg and dont return data when pipe is closed.
-		nni_mtx_unlock(&p->lk);
+		nni_mtx_unlock(&s->mtx);
 		if (msg) {
 			nni_msg_free(msg);
 		}
@@ -706,7 +706,7 @@ mqtt_quic_recv_cb(void *arg)
 	nni_aio *aio;
 	int rv = 0;
 
-	nni_mtx_lock(&p->lk);
+	nni_mtx_lock(&s->mtx);
 	if (nni_atomic_get_bool(&s->closed) ||
 	    nni_atomic_get_bool(&p->closed)) {
 		// pipe is already closed somewhere
@@ -715,7 +715,7 @@ mqtt_quic_recv_cb(void *arg)
 		if (msg) {
 			nni_msg_free(msg);
 		}
-		nni_mtx_unlock(&p->lk);
+		nni_mtx_unlock(&s->mtx);
 		return;
 	}
 
@@ -735,7 +735,7 @@ mqtt_quic_recv_cb(void *arg)
 	nni_aio_set_msg(&p->recv_aio, NULL);
 	if (msg == NULL) {
 		nni_pipe_recv(p->qpipe, &p->recv_aio);
-		nni_mtx_unlock(&p->lk);
+		nni_mtx_unlock(&s->mtx);
 		return;
 	}
 
