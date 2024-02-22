@@ -186,7 +186,6 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 	case NNG_MQTT_PUBREC:
 	case NNG_MQTT_PUBREL:
 	case NNG_MQTT_PUBCOMP:
-		// TODO MQTT V5
 	case NNG_MQTT_PINGREQ:
 		break;
 
@@ -749,7 +748,7 @@ mqtt_quic_recv_cb(void *arg)
 		nni_mqtt_msg_set_disconnect_reason_code(msg, rv);
 		nni_mqtt_msg_set_disconnect_property(msg, NULL);
 		// Composed a disconnect msg
-		if ((rv = nni_mqttv5_msg_encode(msg)) != MQTT_SUCCESS) {
+		if ((rv = nni_mqtt_msg_encode(msg)) != MQTT_SUCCESS) {
 			nni_plat_printf("Error in encoding disconnect.\n");
 			nni_msg_free(msg);
 			nni_pipe_close(p->qpipe);
@@ -785,7 +784,7 @@ mqtt_quic_recv_cb(void *arg)
 	int32_t       packet_id;
 	uint8_t       qos;
 
-	// schedule another receive
+	//Schedule another receive
 	nni_pipe_recv(p->qpipe, &p->recv_aio);
 
 	// set conn_param for upper layer
