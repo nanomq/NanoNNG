@@ -607,7 +607,6 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 		}
 		nni_id_remove(&p->recv_unack, packet_id);
 		// return msg to user
-		nni_mtx_lock(&s->mtx);
 		if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
 			// No one waiting to receive yet, putting msg
 			// into lmq
@@ -615,12 +614,10 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 				nni_msg_free(cached_msg);
 				cached_msg = NULL;
 			}
-			nni_mtx_unlock(&s->mtx);
 			break;
 		}
 		nni_list_remove(&s->recv_queue, aio);
 		user_aio  = aio;
-		nni_mtx_unlock(&s->mtx);
 		nni_aio_set_msg(user_aio, cached_msg);
 		break;
 	case NNG_MQTT_PUBLISH:
@@ -630,7 +627,6 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 		qos = nni_mqtt_msg_get_publish_qos(msg);
 		nng_msg_set_cmd_type(msg, CMD_PUBLISH);
 		if (2 > qos) {
-			nni_mtx_lock(&s->mtx);
 			// TODO replace with p->recv_queue to achieve parallel?
 			// HOw to resolve multistream issue in ctx_recv?
 			if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
@@ -640,12 +636,10 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 				}
 				// nni_println("ERROR: no ctx found!! create
 				// more ctxs!");
-				nni_mtx_unlock(&s->mtx);
 				break;
 			}
 			nni_list_remove(&s->recv_queue, aio);
 			user_aio  = aio;
-			nni_mtx_unlock(&s->mtx);
 			nni_aio_set_msg(user_aio, msg);
 			break;
 		} else {
