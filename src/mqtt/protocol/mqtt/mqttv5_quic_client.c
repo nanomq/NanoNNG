@@ -512,17 +512,17 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 		return;
 	}
 
-	nni_mtx_lock(&s->mtx);
+	nni_mtx_lock(&p->lk);
 	nni_msg *msg = nni_aio_get_msg(&p->recv_aio);
 	nni_aio_set_msg(&p->recv_aio, NULL);
 	if (msg == NULL) {
-		nni_mtx_unlock(&s->mtx);
+		nni_mtx_unlock(&p->lk);
 		nni_pipe_recv(p->qpipe, &p->recv_aio);
 		return;
 	}
 	if (nni_atomic_get_bool(&p->closed)) {
 		//free msg and dont return data when pipe is closed.
-		nni_mtx_unlock(&s->mtx);
+		nni_mtx_unlock(&p->lk);
 		if (msg) {
 			nni_msg_free(msg);
 		}
@@ -627,7 +627,9 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 		qos = nni_mqtt_msg_get_publish_qos(msg);
 		nng_msg_set_cmd_type(msg, CMD_PUBLISH);
 		if (2 > qos) {
-			// TODO aio should be placed in p->recv_queue to achieve parallel
+			nni_mtx_lock(&s->mtx);
+			// TODO replace with p->recv_queue to achieve parallel?
+			// HOw to resolve multistream issue in ctx_recv?
 			if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
 				if (0 != mqtt_pipe_recv_msgq_putq(p, msg)) {
 					nni_msg_free(msg);
@@ -635,10 +637,12 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 				}
 				// nni_println("ERROR: no ctx found!! create
 				// more ctxs!");
+				nni_mtx_unlock(&s->mtx);
 				break;
 			}
 			nni_list_remove(&s->recv_queue, aio);
 			user_aio  = aio;
+			nni_mtx_unlock(&s->mtx);
 			nni_aio_set_msg(user_aio, msg);
 			break;
 		} else {
@@ -660,21 +664,21 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 		// PINGRESP is ignored in protocol layer
 		// Rely on health checker of Quic stream
 		nni_msg_free(msg);
-		nni_mtx_unlock(&s->mtx);
+		nni_mtx_unlock(&p->lk);
 		return;
 	case NNG_MQTT_PUBREC:
 		nni_msg_free(msg);
-		nni_mtx_unlock(&s->mtx);
+		nni_mtx_unlock(&p->lk);
 		return;
 	default:
 		// unexpected packet type, server misbehaviour
 		nni_msg_free(msg);
-		nni_mtx_unlock(&s->mtx);
+		nni_mtx_unlock(&p->lk);
 		// close quic stream
 		nni_pipe_close(p->qpipe);
 		return;
 	}
-	nni_mtx_unlock(&s->mtx);
+	nni_mtx_unlock(&p->lk);
 
 	if (user_aio) {
 		nni_aio_finish(user_aio, 0, 0);
@@ -890,6 +894,7 @@ mqtt_quic_recv_cb(void *arg)
 			nni_mtx_lock(&s->mtx);
 			if ((aio = nni_list_first(&s->recv_queue)) == NULL) {	
 				if (s->cb.msg_recv_cb) {
+					// ? Why discard recv aio cb ?
 					nni_mtx_unlock(&s->mtx);
 					break;
 				}
