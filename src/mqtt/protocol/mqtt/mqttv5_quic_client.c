@@ -516,8 +516,8 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 	nni_msg *msg = nni_aio_get_msg(&p->recv_aio);
 	nni_aio_set_msg(&p->recv_aio, NULL);
 	if (msg == NULL) {
-		nni_mtx_unlock(&p->lk);
 		nni_pipe_recv(p->qpipe, &p->recv_aio);
+		nni_mtx_unlock(&p->lk);
 		return;
 	}
 	if (nni_atomic_get_bool(&p->closed)) {
@@ -607,6 +607,7 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 		}
 		nni_id_remove(&p->recv_unack, packet_id);
 		// return msg to user
+		nni_mtx_lock(&s->mtx);
 		if ((aio = nni_list_first(&s->recv_queue)) == NULL) {
 			// No one waiting to receive yet, putting msg
 			// into lmq
@@ -614,10 +615,12 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 				nni_msg_free(cached_msg);
 				cached_msg = NULL;
 			}
+			nni_mtx_unlock(&s->mtx);
 			break;
 		}
 		nni_list_remove(&s->recv_queue, aio);
 		user_aio  = aio;
+		nni_mtx_unlock(&s->mtx);
 		nni_aio_set_msg(user_aio, cached_msg);
 		break;
 	case NNG_MQTT_PUBLISH:
@@ -891,23 +894,19 @@ mqtt_quic_recv_cb(void *arg)
 		nng_msg_set_cmd_type(msg, CMD_PUBLISH);
 		if (2 > qos) {
 			// No one waiting to receive yet, putting msginto lmq
-			nni_mtx_lock(&s->mtx);
 			if ((aio = nni_list_first(&s->recv_queue)) == NULL) {	
 				if (s->cb.msg_recv_cb) {
 					// ? Why discard recv aio cb ?
-					nni_mtx_unlock(&s->mtx);
 					break;
 				}
 				if (0 != mqtt_pipe_recv_msgq_putq(p, msg)) {
 					nni_msg_free(msg);
 					msg = NULL;
 				}
-				nni_mtx_unlock(&s->mtx);
 				log_debug("ERROR: no ctx found!! create more ctxs!");
 				break;
 			}
 			nni_list_remove(&s->recv_queue, aio);
-			nni_mtx_unlock(&s->mtx);
 			user_aio  = aio;
 			nni_aio_set_msg(user_aio, msg);
 			break;
