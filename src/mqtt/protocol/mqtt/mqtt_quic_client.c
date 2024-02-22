@@ -743,16 +743,14 @@ mqtt_quic_recv_cb(void *arg)
 		if ((rv = nni_mqtt_msg_encode(msg)) != MQTT_SUCCESS) {
 			nni_plat_printf("Error in encoding disconnect.\n");
 			nni_msg_free(msg);
-			nni_pipe_close(p->qpipe);
-			// nni_mtx_unlock(&s->mtx);
 			nni_mtx_unlock(&p->lk);
+			nni_pipe_close(p->qpipe);
 			return;
 		}
 		if (!p->busy) {
 			p->busy = true;
 			nni_aio_set_msg(&p->send_aio, msg);
 			nni_pipe_send(p->qpipe, &p->send_aio);
-			// nni_mtx_unlock(&s->mtx);
 			nni_mtx_unlock(&p->lk);
 			return;
 		}
