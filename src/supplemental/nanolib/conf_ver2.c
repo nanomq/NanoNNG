@@ -638,6 +638,8 @@ conf_auth_parse_ver2(conf *config, cJSON *jso)
 static void
 conf_auth_http_req_parse_ver2(conf_auth_http_req *config, cJSON *jso)
 {
+	if (jso == NULL)
+		return;
 	hocon_read_str(config, url, jso);
 	hocon_read_str(config, method, jso);
 	if (nni_strcasecmp(config->method, "POST") != 0 &&
