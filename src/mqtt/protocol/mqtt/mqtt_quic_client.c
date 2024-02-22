@@ -1292,7 +1292,7 @@ mqtt_quic_sock_set_sqlite_option(
  * send PUB/SUB packet to bind stream with topic
  * TODO: send UNSUB and close the stream? 
 */
-static inline int
+static int
 quic_mqtt_stream_bind(mqtt_sock_t *s, mqtt_pipe_t *p, nni_pipe *npipe)
 {
 	NNI_ARG_UNUSED(npipe);
