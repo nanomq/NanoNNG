@@ -366,7 +366,8 @@ mqtt_pipe_send_msg(nni_aio *aio, nni_msg *msg, mqtt_pipe_t *p, uint16_t packet_i
 		}
 	}
 	nni_mtx_unlock(&p->lk);
-	if (ptype == NNG_MQTT_PUBLISH ) {
+
+	if (ptype == NNG_MQTT_PUBLISH && qos == 0) {
 		return 0;
 	}
 	return -1;
@@ -558,6 +559,7 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 		cached_msg = nni_id_get(&p->sent_unack, packet_id);
 		if (cached_msg != NULL) {
 			nni_id_remove(&p->sent_unack, packet_id);
+			user_aio = nni_mqtt_msg_get_aio(cached_msg);
 			nni_msg_free(cached_msg);
 		}
 		if (s->ack_aio == NULL) {
@@ -1334,7 +1336,9 @@ quic_mqtt_stream_bind(mqtt_sock_t *s, mqtt_pipe_t *p, nni_pipe *npipe)
 		}
 		nni_msg_clone(msg);
 		p->idmsg = msg;
-		mqtt_pipe_send_msg(nni_mqtt_msg_get_aio(msg), msg, p, 0);
+		if ((rv = mqtt_pipe_send_msg(nni_mqtt_msg_get_aio(msg), msg, p, 0)) >= 0) {
+			nni_aio_finish(nni_mqtt_msg_get_aio(msg), rv, 0);
+		}
 	} else if (nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_PUBLISH) {
 		uint32_t topic_len;
 		char    *topic =
