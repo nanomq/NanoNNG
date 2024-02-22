@@ -121,6 +121,52 @@ nng_mtx_unlock(nng_mtx *mp)
 	nni_mtx_unlock(&mp->m);
 }
 
+struct nng_rwlock {
+	nni_rwlock l;
+};
+
+int
+nng_rwlock_alloc(nng_rwlock **lpp)
+{
+	nng_rwlock *lp;
+
+	(void) nni_init();
+
+	if ((lp = NNI_ALLOC_STRUCT(lp)) == NULL) {
+		return (NNG_ENOMEM);
+	}
+	nni_rwlock_init(&lp->l);
+	*lpp = lp;
+	return (0);
+}
+
+void
+nng_rwlock_free(nng_rwlock *lp)
+{
+	if (lp != NULL) {
+		nni_mtx_fini(&lp->l);
+		NNI_FREE_STRUCT(lp);
+	}
+}
+
+void
+nng_rwlock_rdlock(nng_rwlock *lp)
+{
+	nni_rwlock_rdlock(&lp->l);
+}
+
+void
+nng_rwlock_wrlock(nng_rwlock *lp)
+{
+	nni_rwlock_wrlock(&lp->l);
+}
+
+void
+nng_rwlock_unlock(nng_rwlock *lp)
+{
+	nni_rwlock_unlock(&lp->l);
+}
+
 struct nng_cv {
 	nni_cv c;
 };
