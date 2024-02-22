@@ -522,8 +522,9 @@ mqtt_quictran_pipe_qos_send_cb(void *arg)
 	nni_msg *          msg;
 	nni_aio *          qsaio = p->qsaio;
 
+	msg = nni_aio_get_msg(p->qsaio);
 	if (nni_aio_result(qsaio) != 0) {
-		nni_msg_free(nni_aio_get_msg(qsaio));
+		nni_msg_free(msg);
 		nni_aio_set_msg(qsaio, NULL);
 		// TODO: set error code
 		mqtt_quictran_pipe_close(p);
@@ -532,7 +533,6 @@ mqtt_quictran_pipe_qos_send_cb(void *arg)
 	nni_mtx_lock(&p->mtx);
 	p->pingcnt = 0;
 
-	msg = nni_aio_get_msg(p->qsaio);
 	if (msg != NULL)
 		nni_msg_free(msg);
 	// if (nni_lmq_get(&p->rslmq, &msg) == 0) {
@@ -567,16 +567,13 @@ mqtt_quictran_pipe_send_cb(void *arg)
 
 	nni_mtx_lock(&p->mtx);
 	aio = nni_list_first(&p->sendq);
+	msg = nni_aio_get_msg(aio);
 
 	if ((rv = nni_aio_result(txaio)) != 0) {
 		nni_pipe_bump_error(p->npipe, rv);
-		// Intentionally we do not queue up another transfer.
-		// There's an excellent chance that the pipe is no longer
-		// usable, with a partial transfer.
-		// The protocol should see this error, and close the
-		// pipe itself, we hope.
 		nni_aio_list_remove(aio);
 		nni_mtx_unlock(&p->mtx);
+		nni_msg_free(msg);
 		nni_aio_finish_error(aio, rv);
 		nni_pipe_bump_error(p->npipe, rv);
 		return;
@@ -594,13 +591,14 @@ mqtt_quictran_pipe_send_cb(void *arg)
 	nni_aio_list_remove(aio);
 	mqtt_quictran_pipe_send_start(p);
 
-	msg = nni_aio_get_msg(aio);
-	n   = nni_msg_len(msg);
-	nni_pipe_bump_tx(p->npipe, n);
-	nni_mtx_unlock(&p->mtx);
+	if (msg != NULL) {
+		n   = nni_msg_len(msg);
+		nni_pipe_bump_tx(p->npipe, n);
+		nni_msg_free(msg);
+	}
 
+	nni_mtx_unlock(&p->mtx);
 	nni_aio_set_msg(aio, NULL);
-	nni_msg_free(msg);
 	nni_aio_finish_sync(aio, rv, n);
 }
 
