@@ -1565,8 +1565,6 @@ quic_mqtt_pipe_stop(void *arg)
 		nni_aio_close(&p->rep_aio);
 		nni_lmq_flush(&p->recv_messages);
 		nni_lmq_flush(&p->send_inflight);
-		nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
-		nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
 
 		p->ready = false;
 
@@ -1614,7 +1612,7 @@ quic_mqtt_pipe_close(void *arg)
 	nni_lmq_flush(&p->recv_messages);
 	if (p->mqtt_sock->multi_stream)
 		nni_lmq_flush(&p->send_inflight);
-	// nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
+	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
 	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
 	p->ready = false;
 
