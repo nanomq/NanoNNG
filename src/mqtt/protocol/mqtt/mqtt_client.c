@@ -465,7 +465,6 @@ mqtt_pipe_start(void *arg)
 		mqtt_send_msg(c->saio, c);
 		c->saio = NULL;
 		nni_pipe_recv(p->pipe, &p->recv_aio);
-		nni_mtx_unlock(&s->mtx);
 		nni_sleep_aio(s->retry, &p->time_aio);
 		return (0);
 	}
