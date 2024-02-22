@@ -729,7 +729,7 @@ mqtt_quic_recv_cb(void *arg)
 	nni_aio_set_msg(&p->recv_aio, NULL);
 	if (msg == NULL) {
 		nni_pipe_recv(p->qpipe, &p->recv_aio);
-		nni_mtx_unlock(&&p->lk);
+		nni_mtx_unlock(&p->lk);
 		return;
 	}
 
