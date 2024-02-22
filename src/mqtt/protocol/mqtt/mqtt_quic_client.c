@@ -125,7 +125,7 @@ struct mqtt_pipe_s {
 	nni_aio         rep_aio;       // aio for resending qos msg and PINGREQ
 	nni_lmq 		send_inflight; // only used in multi-stream mode
 	nni_lmq         recv_messages; // recv messages queue
-	nni_msg        *idmsg;
+	nni_msg        *idmsg;		   // only valid in multi-stream
 	conn_param     *cparam;
 	uint16_t        rid;           // index of resending packet id
 	uint8_t         reason_code;   // MQTTV5 reason code
@@ -855,9 +855,12 @@ mqtt_quic_recv_cb(void *arg)
 		if (cached_msg != NULL) {
 			nni_id_remove(&p->sent_unack, packet_id);
 			user_aio = nni_mqtt_msg_get_aio(cached_msg);
-			// should we support sub/unsub cb here?
-			nni_msg_clone(msg);
-			nni_aio_set_msg(user_aio, msg);
+			if (user_aio != NULL) {
+				// should we support sub/unsub cb here?
+				nni_msg_clone(msg);
+				nni_aio_set_msg(user_aio, msg);
+			}
+
 			nni_msg_free(cached_msg);
 		}
 		nni_msg_free(msg);
@@ -1256,6 +1259,7 @@ mqtt_quic_sock_set_bridge_config(
 	if (t == NNI_TYPE_POINTER) {
 		nni_mtx_lock(&s->mtx);
 		s->bridge_conf = *(conf_bridge_node **) v;
+		s->qos_first = s->bridge_conf->qos_first;
 		nni_mtx_unlock(&s->mtx);
 		return (0);
 	}
@@ -1649,6 +1653,7 @@ quic_mqtt_pipe_close(void *arg)
 	nni_lmq_flush(&p->recv_messages);
 	if (p->mqtt_sock->multi_stream)
 		nni_lmq_flush(&p->send_inflight);
+	// multistream
 	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
 	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
 	p->ready = false;
