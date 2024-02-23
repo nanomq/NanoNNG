@@ -681,6 +681,8 @@ quic_stream_dowrite_prior(nni_quic_conn *c, nni_aio *aio)
 	size_t    n = 0;
 
 	if (c->closed) {
+		nni_msg_free(nni_aio_get_msg(aio));
+		nni_aio_finish_error(aio, NNG_ECANCELED);
 		return;
 	}
 
