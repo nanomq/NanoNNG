@@ -682,7 +682,7 @@ quic_stream_dowrite_prior(nni_quic_conn *c, nni_aio *aio)
 
 	if (c->closed) {
 		nni_msg_free(nni_aio_get_msg(aio));
-		nni_aio_finish_error(aio, NNG_ECANCELED);
+		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
 	}
 
@@ -1122,6 +1122,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		    stream, Event->START_COMPLETE.ID,
 		    Event->START_COMPLETE.Status);
 		if (!Event->START_COMPLETE.PeerAccepted) {
+			// FIXME Not clear the behavious of the broker.
 			log_warn("Peer refused");
 			quic_stream_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c, 0);
 			break;
