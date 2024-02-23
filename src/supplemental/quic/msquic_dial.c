@@ -652,6 +652,12 @@ quic_stream_recv(void *arg, nni_aio *aio)
 	if (nni_aio_begin(aio) != 0) {
 		return;
 	}
+
+	if (c->closed) {
+		nni_aio_finish_error(aio, NNG_ECLOSED);
+		return;
+	}
+
 	nni_mtx_lock(&c->mtx);
 
 	if ((rv = nni_aio_schedule(aio, quic_stream_cancel, c)) != 0) {
