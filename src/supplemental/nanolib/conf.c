@@ -953,6 +953,12 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->parquet.file_name_prefix = NULL;
 	nanomq_conf->parquet.dir              = NULL;
 
+	nanomq_conf->blf.enable           = false;
+	nanomq_conf->blf.file_count       = 5;
+	nanomq_conf->blf.file_size        = (10240 * 1024);
+	nanomq_conf->blf.comp_type        = UNCOMPRESSED;
+	nanomq_conf->blf.file_name_prefix = NULL;
+	nanomq_conf->blf.dir              = NULL;
 
 	conf_auth_init(&nanomq_conf->auths);
 	nanomq_conf->auth_http.enable = false;
@@ -1200,6 +1206,18 @@ print_parquet_conf(conf_parquet *parquet)
 	log_info("parquet limit_frequency:  %d", parquet->limit_frequency);
 }
 
+static void
+print_blf_conf(conf_blf *blf)
+{
+	// if (!blf->enable)
+	// 	return;
+	log_info("blf dir:              %s", blf->dir);
+	const char *encode_type = get_compress_type(blf->comp_type);
+	log_info("blf compress:         %s", encode_type);
+	log_info("blf file_name_prefix: %s", blf->file_name_prefix);
+	log_info("blf file_count:       %d", blf->file_count);
+	log_info("blf file_size:        %d", blf->file_size);
+}
 
 #if defined(SUPP_RULE_ENGINE)
 static void
@@ -1350,16 +1368,18 @@ print_conf(conf *nanomq_conf)
 	                                               : "disconnect");
 	print_acl_conf(&nanomq_conf->acl);
 #endif
-	conf_auth *auth = &(nanomq_conf->auths);
+	conf_auth      *auth      = &(nanomq_conf->auths);
 	conf_auth_http *auth_http = &(nanomq_conf->auth_http);
-	conf_web_hook *webhook = &(nanomq_conf->web_hook);
-	conf_parquet *parquet = &(nanomq_conf->parquet);
-	conf_exchange *exchange = &(nanomq_conf->exchange);
+	conf_web_hook  *webhook   = &(nanomq_conf->web_hook);
+	conf_parquet   *parquet   = &(nanomq_conf->parquet);
+	conf_blf       *blf       = &(nanomq_conf->blf);
+	conf_exchange  *exchange  = &(nanomq_conf->exchange);
 	print_auth_conf(auth);
 	print_auth_http_conf(auth_http);
 	print_webhook_conf(webhook);
 	print_exchange_conf(exchange);
 	print_parquet_conf(parquet);
+	print_blf_conf(blf);
 	print_bridge_conf(&nanomq_conf->bridge, "");
 #if defined(SUPP_AWS_BRIDGE)
 	print_bridge_conf(&nanomq_conf->aws_bridge, "aws.");

@@ -373,6 +373,17 @@ struct conf_parquet {
 };
 typedef struct conf_parquet conf_parquet;
 
+struct conf_blf {
+	bool                    enable;
+	char	           		*dir;
+	char	           		*file_name_prefix;
+	uint8_t                 file_count;
+	uint8_t                 file_index;
+	int32_t                 file_size;
+	compression_type        comp_type;
+};
+typedef struct conf_blf conf_blf;
+
 struct conf_bridge {
 	size_t             count;
 	conf_bridge_node **nodes;
@@ -557,6 +568,7 @@ struct conf {
 	conf_bridge          aws_bridge;	// AWS IoT Core
 	conf_exchange        exchange;
 	conf_parquet         parquet;
+	conf_blf             blf;
 #if defined(SUPP_PLUGIN)
 	conf_plugin          plugin;
 #endif

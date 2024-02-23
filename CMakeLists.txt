@@ -28,7 +28,7 @@
 
 cmake_minimum_required(VERSION 3.13)
 
-project(nng C)
+project(nng)
 include(CheckCCompilerFlag)
 include(GNUInstallDirs)
 
@@ -37,6 +37,8 @@ set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 include(NNGHelpers)
 include(NNGOptions)
 
+set (CMAKE_CXX_STANDARD 11)
+# add_definitions(-std=c++11) 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 list(FIND CMAKE_PLATFORM_IMPLICIT_LINK_DIRECTORIES "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}" isSystemDir)
