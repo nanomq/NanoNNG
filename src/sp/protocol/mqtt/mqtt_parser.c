@@ -418,7 +418,7 @@ ws_msg_adaptor(uint8_t *packet, nng_msg *dst)
 	size_t   pos = 1;
 
 	m   = (nni_msg *) dst;
-	len = get_var_integer(packet, &pos);
+	len = get_var_integer(packet, (uint8_t *)&pos);
 	nni_msg_set_cmd_type(m, *packet & 0xf0);
 	nni_msg_set_remaining_len(m, len);
 	rv = nni_msg_header_append(m, packet, pos);

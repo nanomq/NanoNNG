@@ -138,7 +138,7 @@ test_hash()
 	NUTS_ASSERT(fnv1a_hashn(str, strlen(str)) == (uint32_t)-1345293851); 
 	NUTS_ASSERT(crc_hashn(str, strlen(str)) == 191);
 	NUTS_ASSERT(DJBHash64(str) == 6385723493);
-	NUTS_ASSERT(DJBHash64n(str, strlen(str)) == 6385723493);
+	NUTS_ASSERT(DJBHash64n((uint8_t *)str, strlen(str)) == 6385723493);
 
 	NUTS_ASSERT(crc32_hashn(str2, strlen(str2)) == (uint32_t)-620996987);
 	NUTS_ASSERT(crc32c_hashn(str2, strlen(str2)) == 788723578);
