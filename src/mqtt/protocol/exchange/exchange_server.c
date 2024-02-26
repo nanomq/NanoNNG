@@ -547,6 +547,30 @@ exchange_client_get_msgs_fuzz(void *arg, uint64_t start, uint64_t end, uint32_t 
 	return 0;
 }
 
+void
+decToHex(unsigned char decimal, char *hexadecimal)
+{
+	unsigned char remainder = 0;
+	if (decimal > 0) {
+		remainder = decimal % 16;
+		if (remainder < 10) {
+			hexadecimal[1] = remainder + '0';
+		} else {
+			hexadecimal[1] = remainder + 'a' - 10;
+		}
+
+		decimal /= 16;
+		remainder = decimal % 16;
+		if (remainder < 10) {
+			hexadecimal[0] = remainder + '0';
+		} else {
+			hexadecimal[0] = remainder + 'a' - 10;
+		}
+	}
+
+	return;
+}
+
 #ifdef SUPP_PARQUET
 static char *
 get_file_bname(char *fpath)
@@ -684,31 +708,6 @@ get_parquet_files(uint32_t sz, char **fnames, cJSON *obj)
 
 	return 0;
 }
-#endif
-
-void
-decToHex(unsigned char decimal, char *hexadecimal)
-{
-	unsigned char remainder = 0;
-	if (decimal > 0) {
-		remainder = decimal % 16;
-		if (remainder < 10) {
-			hexadecimal[1] = remainder + '0';
-		} else {
-			hexadecimal[1] = remainder + 'a' - 10;
-		}
-
-		decimal /= 16;
-		remainder = decimal % 16;
-		if (remainder < 10) {
-			hexadecimal[0] = remainder + '0';
-		} else {
-			hexadecimal[0] = remainder + 'a' - 10;
-		}
-	}
-
-	return;
-}
 
 static int
 dump_file_result_cat(char **msgList, int *msgLen, uint32_t count, cJSON *obj)
@@ -765,6 +764,7 @@ dump_file_result_cat(char **msgList, int *msgLen, uint32_t count, cJSON *obj)
 
 	return 0;
 }
+#endif
 
 static int
 fuzz_search_result_cat(nng_msg **msgList, uint32_t count, cJSON *obj)
