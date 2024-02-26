@@ -130,7 +130,7 @@ compose_url(char *head, char *address)
 		if (cJSON_IsString(jso_key)) {                                \
 			if (NULL != jso_key->valuestring) {                   \
 				get_size(jso_key->valuestring,                \
-				    &(structure)->field);                     \
+				    (uint64_t *)(&(structure)->field));                     \
 			}                                                     \
 		} else if (cJSON_IsNumber(jso_key) && jso_key->valuedouble) { \
 			(structure)->field = (uint64_t) jso_key->valuedouble;   \
@@ -314,8 +314,8 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 		    config, ipc_internal, "enable_ipc_internal", jso_sys);
 	}
 
-	cJSON *jso_auth = cJSON_GetObjectItem(jso, "auth");
 #ifdef ACL_SUPP
+	cJSON *jso_auth = cJSON_GetObjectItem(jso, "auth");
 	hocon_read_enum_base(
 	    config, acl_nomatch, "no_match", jso_auth, auth_acl_permit);
 	hocon_read_enum_base(config, acl_deny_action, "deny_action", jso_auth,
@@ -1135,7 +1135,6 @@ static void
 conf_exchange_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *node_array = hocon_get_obj("exchange_client", jso);
-	cJSON *jso_parquet = cJSON_GetObjectItem(jso, "parquet");
 	cJSON *node_item  = NULL;
 
 	conf_exchange *conf_exchange = &config->exchange;
