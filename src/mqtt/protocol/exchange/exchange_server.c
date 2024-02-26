@@ -330,7 +330,7 @@ exchange_sock_recv(void *arg, nni_aio *aio)
 			return;
 		}
 	} else {
-		if (tss[2] == NULL || tss[2] == 0) {
+		if (tss[2] == 0) {
 			/* fuzz search */
 			startKey = tss[0];
 			endKey = tss[1];
