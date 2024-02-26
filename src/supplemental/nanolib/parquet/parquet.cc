@@ -853,7 +853,6 @@ parquet_read(conf_parquet *conf, char *filename, vector<uint64_t> keys)
 			int64_t values_read = 0;
 			int64_t rows_read   = 0;
 			int16_t definition_level;
-			int16_t repetition_level;
 			std::shared_ptr<parquet::ColumnReader> column_reader;
 
 			column_reader = row_group_reader->Column(0);
