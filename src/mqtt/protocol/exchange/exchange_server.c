@@ -997,14 +997,13 @@ ex_query_recv_cb(void *arg)
 				nni_mtx_unlock(&sock->mtx);
 				return;
 			}
+
+			uint32_t mqstr_len = 0;
 			for (uint32_t j = 0; j < diff; ++j) {
 				char *tmpch = (char *)nng_msg_payload_ptr(tar_msg);
-				if (j == 0) {
-					sprintf(mqdata, "%02x", (unsigned char)(tmpch[j] & 0xff));
-				} else {
-					sprintf(mqdata, "%s%02x", mqdata, (unsigned char)(tmpch[j] & 0xff));
-				}
+				mqstr_len += sprintf(mqdata + mqstr_len, "%02x", (unsigned char)(tmpch[j] & 0xff));
 			}
+
 			cJSON *mqs_obj = cJSON_CreateString(mqdata);
 			if (!mqs_obj) {
 				return;
