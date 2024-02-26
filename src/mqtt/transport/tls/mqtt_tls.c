@@ -900,8 +900,8 @@ mqtts_tcptran_pipe_send_start(mqtts_tcptran_pipe *p)
 			if (qos > 0)
 				p->sndmax --;
 			if (qos > p->qosmax) {
-				p->qosmax == 1? (*header &= 0XF9) & (*header |= 0X02): NNI_ARG_UNUSED(*header);
-				p->qosmax == 0? *header &= 0XF9: NNI_ARG_UNUSED(*header);
+				p->qosmax == 1 ? ((*header &= 0XF9), (*header |= 0X02)) : NNI_ARG_UNUSED(*header);
+				p->qosmax == 0 ? *header &= 0XF9 : NNI_ARG_UNUSED(*header);
 			}
 		}
 		// check max packet size
