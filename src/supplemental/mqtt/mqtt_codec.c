@@ -4192,12 +4192,14 @@ encode_properties(nni_msg *msg, property *prop, uint8_t cmd)
 	return 0;
 }
 
+/*
 static nni_proto_msg_ops proto_ops = {
 
 	.msg_free = (int (*)(void *)) property_free,
 
 	.msg_dup = (int (*)(void **, const void *)) property_dup
 };
+*/
 
 /* introduced from mqtt_parser, might be duplicated */
 
