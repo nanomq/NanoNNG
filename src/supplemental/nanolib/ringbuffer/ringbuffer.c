@@ -535,8 +535,8 @@ int ringBuffer_get_msgs_from_file(ringBuffer_t *rb, void ***msgs, int **msgLen)
 	}
 
 	int count = 0;
-	for (int i = 0; i < cvector_size(rb->files); i++) {
-		for (int j = 0; j < cvector_size(rb->files[i]->ranges); j++) {
+	for (long unsigned int i = 0; i < cvector_size(rb->files); i++) {
+		for (long unsigned int j = 0; j < cvector_size(rb->files[i]->ranges); j++) {
 			count += rb->files[i]->ranges[j]->endidx - rb->files[i]->ranges[j]->startidx + 1;
 		}
 	}
@@ -565,7 +565,7 @@ int ringBuffer_get_msgs_from_file(ringBuffer_t *rb, void ***msgs, int **msgLen)
 			return -1;
 		}
 
-		for (int j = 0; j < cvector_size(file->ranges); j++) {
+		for (long unsigned int j = 0; j < cvector_size(file->ranges); j++) {
 			for (unsigned int k = file->ranges[j]->startidx; k <= file->ranges[j]->endidx; k++) {
 				keys[tmpidx] = file->keys[k];
 				filenames[tmpidx++] = file->ranges[j]->filename;
@@ -583,7 +583,7 @@ int ringBuffer_get_msgs_from_file(ringBuffer_t *rb, void ***msgs, int **msgLen)
 		return -1;
 	}
 
-	for (long unsigned int i = 0; i < count; i++) {
+	for (int i = 0; i < count; i++) {
 		if (packet[i] != NULL) {
 			packet_count++;
 		}
