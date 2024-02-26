@@ -9,9 +9,11 @@
 
 #include <nuts.h>
 #include "nng/mqtt/mqtt_client.h"
+#include "nng/mqtt/mqtt_quic_client.h"
 
 static const char *quic_test_url  = "mqtt-quic://us.432121.xyz:14567";
 static const char *quic_test_url2 = "mqtt-quic://127.0.0.1:8";
+static const char *quic_test_clientid = "quic-ut-clientid";
 
 void
 test_msquic_stream_conn_refused(void)
@@ -128,9 +130,42 @@ test_msquic_stream_multi_stream(void)
 	nng_stream_dialer_free(dialer);
 }
 
+static inline nng_msg *
+create_connect_msg(uint16_t ver, bool cs, char *clientid)
+{
+	// create a CONNECT message
+	nng_msg *connmsg;
+	nng_mqtt_msg_alloc(&connmsg, 0);
+	nng_mqtt_msg_set_packet_type(connmsg, NNG_MQTT_CONNECT);
+	nng_mqtt_msg_set_connect_keep_alive(connmsg, 60);
+	nng_mqtt_msg_set_connect_proto_version(connmsg, ver);
+	nng_mqtt_msg_set_connect_clean_session(connmsg, cs);
+	nng_mqtt_msg_set_connect_client_id(connmsg, clientid);
+
+	if (ver == MQTT_PROTOCOL_VERSION_v5) {
+		nng_mqttv5_msg_encode(connmsg);
+	} else {
+		nng_mqtt_msg_encode(connmsg);
+	}
+	return connmsg;
+}
+
 void
 test_msquic_app_conn_refuse(void)
 {
+	nng_socket sock;
+	nng_dialer dialer;
+	nng_msg *connmsg = create_connect_msg(MQTT_PROTOCOL_VERSION_v311,
+			true, (char *)quic_test_clientid);
+
+	NUTS_PASS(nng_mqtt_quic_client_open(&sock));
+	NUTS_PASS(nng_dialer_create(&dialer, sock, quic_test_url2));
+	NUTS_PASS(nng_dialer_set_ptr(dialer, NNG_OPT_MQTT_CONNMSG, connmsg));
+	NUTS_PASS(nng_socket_set_ptr(sock, NNG_OPT_MQTT_CONNMSG, connmsg));
+	//NUTS_PASS(nng_mqtt_set_connect_cb(sock, hybrid_quic_connect_cb, NULL));
+	//NUTS_PASS(nng_mqtt_set_disconnect_cb(sock, hybrid_quic_disconnect_cb, NULL));
+	// Wait connect failed
+	NUTS_FAIL(nng_dialer_start(dialer, NNG_FLAG_ALLOC), SERVER_UNAVAILABLE);
 }
 
 void
