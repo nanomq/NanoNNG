@@ -672,7 +672,7 @@ get_parquet_files(uint32_t sz, char **fnames, cJSON *obj)
 		filenames[i] = get_file_bname((char *)fnames[i]);
 	}
 
-	cJSON *files_obj = cJSON_CreateStringArray(fnames, sz);
+	cJSON *files_obj = cJSON_CreateStringArray((const char * const *)fnames, sz);
 	cJSON_AddItemToObject(obj, "files", files_obj);
 	if (!files_obj) {
 		return -1;
@@ -690,7 +690,7 @@ get_parquet_files(uint32_t sz, char **fnames, cJSON *obj)
 		return -1;
 	}
 
-	cJSON *fileraws_obj = cJSON_CreateStringArray(file_raws, sz);
+	cJSON *fileraws_obj = cJSON_CreateStringArray((const char * const *)file_raws, sz);
 	if (!fileraws_obj) {
 		return -1;
 	}
@@ -848,7 +848,7 @@ static inline int find_keys_in_file(ringBuffer_t *rb, uint64_t *keys, uint32_t c
 	char **msgs = NULL;
 
 	/* Only one exchange with one ringBuffer now */
-	msgCount = ringBuffer_get_msgs_from_file_by_keys(rb, keys, count, &msgs, &msgLen);
+	msgCount = ringBuffer_get_msgs_from_file_by_keys(rb, keys, count, (void ***)&msgs, &msgLen);
 	if (msgCount <= 0 || msgs == NULL || msgLen == NULL) {
 		log_error("not found msgs in file!");
 	} else {
