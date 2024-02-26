@@ -179,7 +179,9 @@ extern FILE *yyin, *yyout;
 		YY_DO_BEFORE_ACTION; /* set up yytext again */ \
 		} \
 	while ( 0 )
+#ifndef YY_NO_UNPUT
 #define unput(c) yyunput( c, (yytext_ptr)  )
+#endif
 
 #ifndef YY_STRUCT_YY_BUFFER_STATE
 #define YY_STRUCT_YY_BUFFER_STATE
@@ -653,7 +655,7 @@ extern int yywrap ( void );
 
 #ifndef YY_NO_UNPUT
     
-    static void yyunput ( int c, char *buf_ptr  );
+void yyunput ( int c, char *buf_ptr  );
     
 #endif
 
@@ -1434,7 +1436,7 @@ static int yy_get_next_buffer (void)
 
 #ifndef YY_NO_UNPUT
 
-    static void yyunput (int c, char * yy_bp )
+void yyunput (int c, char * yy_bp )
 {
 	char *yy_cp;
     
