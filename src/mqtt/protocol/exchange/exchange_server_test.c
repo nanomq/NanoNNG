@@ -71,7 +71,7 @@ static inline void client_get_msgs(nng_socket sock, uint64_t startKey, uint64_t 
 		tss = nng_alloc(sizeof(nng_time) * 3);
 		tss[0] = startKey;
 		tss[1] = endKey;
-		tss[2] = (nng_time *)NULL;
+		tss[2] = (nng_time)NULL;
 		nng_msg_set_proto_data(msg, NULL, (void *)tss);
 	}
 	nni_aio_set_msg(aio, msg);
