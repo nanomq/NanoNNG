@@ -88,12 +88,15 @@ NNG_DECL void log_clear_callback();
 
 #else
 
-#define log_trace(...)
-#define log_debug(...)
-#define log_info(...)
-#define log_warn(...)
-#define log_error(...)
-#define log_fatal(...)
+static inline void dummy_log_function(const char *fmt, ...) { (void)fmt;  }
+
+#define log_trace(...) dummy_log_function(__VA_ARGS__)
+#define log_debug(...) dummy_log_function(__VA_ARGS__)
+#define log_info(...) dummy_log_function(__VA_ARGS__)
+#define log_warn(...) dummy_log_function(__VA_ARGS__)
+#define log_error(...) dummy_log_function(__VA_ARGS__)
+#define log_fatal(...) dummy_log_function(__VA_ARGS__)
+
 #endif
 
 
