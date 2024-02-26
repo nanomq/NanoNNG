@@ -1,5 +1,5 @@
 //
-// Copyright 2023 Staysail Systems, Inc. <info@staysail.tech>
+// Copyright 2024 Staysail Systems, Inc. <info@staysail.tech>
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -26,8 +26,8 @@
 
 static struct {
 	const char *scheme;
-	int (*dialer_alloc)(nng_stream_dialer **, const nng_url *);
-	int (*listener_alloc)(nng_stream_listener **, const nng_url *);
+	int         (*dialer_alloc)(nng_stream_dialer **, const nng_url *);
+	int         (*listener_alloc)(nng_stream_listener **, const nng_url *);
 
 } stream_drivers[] = {
 	{
@@ -89,11 +89,13 @@ static struct {
 	    .dialer_alloc   = nni_tcp_dialer_alloc,
 	    .listener_alloc = nni_tcp_listener_alloc,
 	},
+#ifdef NNG_ENABLE_IPV6
 	{
 	    .scheme         = "tcp6",
 	    .dialer_alloc   = nni_tcp_dialer_alloc,
 	    .listener_alloc = nni_tcp_listener_alloc,
 	},
+#endif
 	{
 	    .scheme         = "nmq-tcp",
 	    .dialer_alloc   = nni_tcp_dialer_alloc,
@@ -134,11 +136,13 @@ static struct {
 	    .dialer_alloc   = nni_tls_dialer_alloc,
 	    .listener_alloc = nni_tls_listener_alloc,
 	},
+#ifdef NNG_ENABLE_IPV6
 	{
 	    .scheme         = "tls+tcp6",
 	    .dialer_alloc   = nni_tls_dialer_alloc,
 	    .listener_alloc = nni_tls_listener_alloc,
 	},
+#endif
 	{
 	    .scheme         = "tls+nmq-tcp",
 	    .dialer_alloc   = nni_tls_dialer_alloc,
@@ -164,11 +168,13 @@ static struct {
 	    .dialer_alloc   = nni_ws_dialer_alloc,
 	    .listener_alloc = nni_ws_listener_alloc,
 	},
+#ifdef NNG_ENABLE_IPV6
 	{
 	    .scheme         = "ws6",
 	    .dialer_alloc   = nni_ws_dialer_alloc,
 	    .listener_alloc = nni_ws_listener_alloc,
 	},
+#endif
 	{
 	    .scheme         = "wss",
 	    .dialer_alloc   = nni_ws_dialer_alloc,
