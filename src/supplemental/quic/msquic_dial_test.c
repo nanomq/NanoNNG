@@ -171,6 +171,19 @@ test_msquic_app_conn_refuse(void)
 void
 test_msquic_app_connect(void)
 {
+	nng_socket sock;
+	nng_dialer dialer;
+	nng_msg *connmsg = create_connect_msg(MQTT_PROTOCOL_VERSION_v311,
+			true, (char *)quic_test_clientid);
+
+	NUTS_PASS(nng_mqtt_quic_client_open(&sock));
+	NUTS_PASS(nng_dialer_create(&dialer, sock, quic_test_url));
+	NUTS_PASS(nng_dialer_set_ptr(dialer, NNG_OPT_MQTT_CONNMSG, connmsg));
+	NUTS_PASS(nng_socket_set_ptr(sock, NNG_OPT_MQTT_CONNMSG, connmsg));
+	//NUTS_PASS(nng_mqtt_set_connect_cb(sock, hybrid_quic_connect_cb, NULL));
+	//NUTS_PASS(nng_mqtt_set_disconnect_cb(sock, hybrid_quic_disconnect_cb, NULL));
+	// Wait connect failed
+	NUTS_PASS(nng_dialer_start(dialer, NNG_FLAG_ALLOC));
 }
 
 void
