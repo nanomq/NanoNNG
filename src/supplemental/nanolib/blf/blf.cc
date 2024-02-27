@@ -396,3 +396,45 @@ blf_find(uint64_t key)
 	pthread_mutex_unlock(&blf_queue_mutex);
 	return value;
 }
+
+const char **
+blf_find_span(uint64_t start_key, uint64_t end_key, uint32_t *size)
+{
+	if (start_key > end_key) {
+		log_error("Start key can't be greater than end_key.");
+		*size = 0;
+		return NULL;
+	}
+
+	WAIT_FOR_AVAILABLE
+
+	uint64_t     low        = start_key;
+	uint64_t     high       = end_key;
+	uint32_t     local_size = 0;
+	const char  *value      = NULL;
+	const char **array      = NULL;
+	const char **ret        = NULL;
+	void        *elem       = NULL;
+
+	pthread_mutex_lock(&blf_queue_mutex);
+	if (blf_file_queue.size != 0) {
+		array = (const char **) nng_alloc(
+		    sizeof(char *) * blf_file_queue.size);
+
+		ret = array;
+		FOREACH_QUEUE(blf_file_queue, elem)
+		{
+			if (elem) {
+				if (compare_callback_span(elem, low, high)) {
+					++local_size;
+					value    = nng_strdup((char *) elem);
+					*array++ = value;
+				}
+			}
+		}
+	}
+
+	pthread_mutex_unlock(&blf_queue_mutex);
+	(*size) = local_size;
+	return ret;
+}
