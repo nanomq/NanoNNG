@@ -342,3 +342,15 @@ blf_write_batch_async(blf_object *elem)
 	pthread_mutex_unlock(&blf_queue_mutex);
 	return 0;
 }
+
+int
+blf_write_launcher(conf_blf *conf)
+{
+	g_conf = conf;
+	INIT_QUEUE(blf_queue);
+	INIT_QUEUE(blf_file_queue);
+	is_available = true;
+	thread write_loop(blf_write_loop, conf);
+	write_loop.detach();
+	return 0;
+}
