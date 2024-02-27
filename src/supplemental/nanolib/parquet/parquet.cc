@@ -122,7 +122,7 @@ remove_old_file(void)
 	if (remove(filename) == 0) {
 		log_debug("File '%s' removed successfully.\n", filename);
 	} else {
-		log_error("Error removing the file %s", filename);
+		log_error("Error removing the file %s errno: %d", filename, errno);
 		return -1;
 	}
 
