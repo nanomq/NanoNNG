@@ -208,3 +208,20 @@ read_binary_data(const std::string &inputString, unsigned int inputSize,
 		data[i] = (static_cast<unsigned char>(value));
 	}
 }
+
+void
+blf_write_can_message(Vector::BLF::File &file, cJSON *jso)
+{
+	/* write a CanMessage */
+	// puts(cJSON_Print(jso));
+	auto *canMessage = new Vector::BLF::CanMessage;
+	json_read_num(canMessage, id, "id", jso);
+	json_read_num(canMessage, objectTimeStamp, "t", jso);
+	json_read_num(canMessage, channel, "bus", jso);
+	json_read_num(canMessage, flags, "d", jso);
+	json_read_num(canMessage, dlc, "l", jso);
+	cJSON *data = cJSON_GetObjectItem(jso, "data");
+	// printf("ori: %s\n", data->valuestring);
+	read_binary_data(data->valuestring, canMessage->dlc, canMessage->data);
+	file.write(canMessage);
+}
