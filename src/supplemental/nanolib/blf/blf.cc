@@ -354,3 +354,45 @@ blf_write_launcher(conf_blf *conf)
 	write_loop.detach();
 	return 0;
 }
+
+static void
+get_range(const char *name, uint64_t range[2])
+{
+	const char *start = strrchr(name, '-');
+	sscanf(start, "-%ld~%ld.parquet", &range[0], &range[1]);
+	return;
+}
+
+static bool
+compare_callback(void *name, uint64_t key)
+{
+	uint64_t range[2] = { 0 };
+	get_range((const char *) name, range);
+	return (key >= range[0] && key <= range[1]);
+}
+
+static bool
+compare_callback_span(void *name, uint64_t low, uint64_t high)
+{
+	uint64_t range[2] = { 0 };
+	get_range((const char *) name, range);
+	return !(low > range[1] || high < range[0]);
+}
+
+const char *
+blf_find(uint64_t key)
+{
+	WAIT_FOR_AVAILABLE
+	const char *value = NULL;
+	void       *elem  = NULL;
+	pthread_mutex_lock(&blf_queue_mutex);
+	FOREACH_QUEUE(blf_file_queue, elem)
+	{
+		if (elem && compare_callback(elem, key)) {
+			value = nng_strdup((char *) elem);
+			break;
+		}
+	}
+	pthread_mutex_unlock(&blf_queue_mutex);
+	return value;
+}
