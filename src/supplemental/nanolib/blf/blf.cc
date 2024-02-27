@@ -115,3 +115,69 @@ blf_object_free(blf_object *elem)
 		delete elem;
 	}
 }
+
+
+static char *
+get_file_name(conf_blf *conf, uint64_t key_start, uint64_t key_end)
+{
+	char *file_name = NULL;
+	char *dir       = conf->dir;
+	char *prefix    = conf->file_name_prefix;
+
+	file_name = (char *) malloc(strlen(prefix) + strlen(dir) +
+	    UINT64_MAX_DIGITS + UINT64_MAX_DIGITS + 16);
+	if (file_name == NULL) {
+		log_error("Failed to allocate memory for file name.");
+		return NULL;
+	}
+
+	sprintf(file_name, "%s/%s-%" PRIu64 "~%" PRIu64 ".blf", dir, prefix,
+	    key_start, key_end);
+	ENQUEUE(blf_file_queue, file_name);
+	return file_name;
+}
+
+static int
+compute_new_index(blf_object *obj, uint32_t index, uint32_t file_size)
+{
+	uint64_t size = 0;
+	uint32_t new_index;
+	for (new_index = index; size < file_size && new_index < obj->size - 1;
+	     new_index++) {
+		size += obj->dsize[new_index];
+	}
+	return new_index;
+}
+
+static int
+remove_old_file(void)
+{
+	char *filename = (char *) DEQUEUE(blf_file_queue);
+	if (remove(filename) == 0) {
+		log_debug("File '%s' removed successfully.\n", filename);
+	} else {
+		log_error("Error removing the file %s", filename);
+		return -1;
+	}
+
+	free(filename);
+	return 0;
+}
+
+void
+update_blf_file_ranges(conf_blf *conf, blf_object *elem, blf_file_range *range)
+{
+	if (elem->ranges->size != conf->file_count) {
+		elem->ranges->range =
+		    (blf_file_range **) realloc(elem->ranges->range,
+		        sizeof(blf_file_range *) * (++elem->ranges->size));
+		elem->ranges->range[elem->ranges->size - 1] = range;
+	} else {
+		// Free old ranges and insert new ranges
+		// update start index
+		blf_file_range_free(elem->ranges->range[elem->ranges->start]);
+		elem->ranges->range[elem->ranges->start] = range;
+		elem->ranges->start++;
+		elem->ranges->start %= elem->ranges->size;
+	}
+}
