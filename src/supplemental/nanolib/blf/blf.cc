@@ -225,3 +225,33 @@ blf_write_can_message(Vector::BLF::File &file, cJSON *jso)
 	read_binary_data(data->valuestring, canMessage->dlc, canMessage->data);
 	file.write(canMessage);
 }
+
+int
+blf_write_core(
+    char *name, blf_object *elem, uint32_t old_index, uint32_t new_index)
+{
+	/* open file for writing */
+	Vector::BLF::File file;
+	file.open(name, std::ios_base::out);
+	if (!file.is_open()) {
+		std::cout << "Unable to open file" << std::endl;
+		return -1;
+	}
+
+	for (uint32_t i = old_index; i <= new_index; i++) {
+
+		cJSON *jso = cJSON_ParseWithLength(
+		    (const char *) elem->darray[i], elem->dsize[i]);
+		cJSON *frames = cJSON_GetObjectItem(jso, "frames");
+		cJSON *frame  = NULL;
+		cJSON_ArrayForEach(frame, frames)
+		{
+			/* write a CanMessage */
+			blf_write_can_message(file, frame);
+		}
+	}
+
+	/* close file */
+	file.close();
+	return 0;
+}
