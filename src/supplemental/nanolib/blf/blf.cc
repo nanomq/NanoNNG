@@ -255,3 +255,42 @@ blf_write_core(
 	file.close();
 	return 0;
 }
+
+int
+blf_write(conf_blf *conf, blf_object *elem)
+{
+	uint32_t old_index = 0;
+	uint32_t new_index = 0;
+again:
+
+	new_index = compute_new_index(elem, old_index, conf->file_size);
+	uint64_t key_start = elem->keys[old_index];
+	uint64_t key_end   = elem->keys[new_index];
+	pthread_mutex_lock(&blf_queue_mutex);
+	char *filename = get_file_name(conf, key_start, key_end);
+	if (filename == NULL) {
+		pthread_mutex_unlock(&blf_queue_mutex);
+		log_error("Failed to get file name");
+		return -1;
+	}
+
+	if (QUEUE_SIZE(blf_file_queue) > conf->file_count) {
+		remove_old_file();
+	}
+	pthread_mutex_unlock(&blf_queue_mutex);
+
+	{
+		blf_file_range *range =
+		    blf_file_range_alloc(old_index, new_index, filename);
+		update_blf_file_ranges(conf, elem, range);
+		// write value
+		blf_write_core(filename, elem, old_index, new_index);
+		old_index = new_index;
+
+		if (new_index != elem->size - 1)
+			goto again;
+	}
+
+	blf_object_free(elem);
+	return 0;
+}
