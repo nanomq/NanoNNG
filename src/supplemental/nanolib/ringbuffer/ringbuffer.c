@@ -6,6 +6,7 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 #include "nng/supplemental/nanolib/parquet.h"
+#include "nng/supplemental/nanolib/blf.h"
 #include "nng/supplemental/nanolib/ringbuffer.h"
 #include "core/nng_impl.h"
 
@@ -612,6 +613,413 @@ int ringBuffer_get_msgs_from_file(ringBuffer_t *rb, void ***msgs, int **msgLen)
 
 	return packet_count;
 }
+
+#elif defined (SUPP_BLF)
+
+void ringbuffer_blf_cb(void *arg)
+{
+	ringBufferFile_t *file = (ringBufferFile_t *)arg;
+	if (file == NULL) {
+		log_error("blf callback arg is NULL\n");
+		return;
+	}
+	if (nng_aio_result(file->aio) != 0) {
+		log_error("blf write file failed\n");
+		return;
+	}
+
+	nng_msg **smsgs = (nng_msg **)nng_aio_get_prov_data(file->aio);
+	if (smsgs == NULL) {
+		log_error("blf callback smsgs is NULL\n");
+		return;
+	}
+
+	blf_file_ranges *file_ranges = (blf_file_ranges *)nng_aio_get_output(file->aio, 1);
+	if (file_ranges == NULL) {
+		log_error("blf file range is NULL\n");
+		return;
+	}
+
+	uint32_t *szp = (uint32_t *)nng_aio_get_msg(file->aio);
+	if (szp == NULL) {
+		log_error("blf file size is NULL\n");
+		return;
+	}
+
+	int count = 0;
+	for (int i = file_ranges->start; count < file_ranges->size; count++, i++) {
+		if (i >= file_ranges->size) {
+			i = 0;
+		}
+		blf_file_range **file_range = file_ranges->range;
+
+		ringBufferFileRange_t *range = nng_alloc(sizeof(ringBufferFileRange_t));
+		if (range == NULL) {
+			log_error("alloc new file range failed! no memory! msg will be freed\n");
+			return;
+		}
+
+		range->startidx = file_range[i]->start_idx;
+		range->endidx = file_range[i]->end_idx;
+		range->filename = nng_alloc(sizeof(char) * strlen(file_range[i]->filename) + 1);
+		if (range->filename == NULL) {
+			log_error("alloc new file range filename failed! no memory! msg will be freed\n");
+			nng_free(range, sizeof(ringBufferFileRange_t));
+			range = NULL;
+			return;
+		}
+		range->filename[strlen(file_range[i]->filename)] = '\0';
+
+		(void)strncpy(range->filename, file_range[i]->filename, strlen(file_range[i]->filename));
+
+		cvector_push_back(file->ranges, range);
+		log_warn("ringbus: blf write to file: %s success\n", file_range[i]->filename);
+	}
+	for (uint32_t i = 0; i < *szp; i++) {
+		if (smsgs[i] != NULL) {
+			nng_msg_free(smsgs[i]);
+			smsgs[i] = NULL;
+		}
+	}
+
+	if (smsgs != NULL) {
+		nng_free(smsgs, sizeof(nng_msg *) * *szp);
+		smsgs = NULL;
+	}
+
+	return;
+}
+
+static blf_object *init_blf_object(ringBuffer_t *rb, ringBufferFile_t *file)
+{
+	if (rb == NULL || file == NULL) {
+		log_error("blf object or ringbuffer is NULL\n");
+		return NULL;
+	}
+
+	uint8_t **darray = nng_alloc(sizeof(uint8_t *) * rb->size);
+	uint32_t *dsize = nng_alloc(sizeof(uint32_t) * rb->size);
+	uint64_t *keys = nng_alloc(sizeof(uint64_t) * rb->size);
+
+	if (keys == NULL || darray == NULL || dsize == NULL) {
+		log_error("alloc new keys darray dsize failed! no memory! msg will be freed\n");
+
+		if (keys != NULL) {
+			nng_free(keys, sizeof(uint64_t) * rb->size);
+		}
+		if (darray != NULL) {
+			nng_free(darray, sizeof(uint8_t *) * rb->size);
+		}
+		if (dsize != NULL) {
+			nng_free(dsize, sizeof(uint32_t) * rb->size);
+		}
+
+		return NULL;
+	}
+
+	nng_msg **smsgs = nng_alloc(sizeof(nng_msg *) * rb->size);
+	for (unsigned int i = 0; i < rb->size; i++) {
+		keys[i] = rb->msgs[i].key;
+		smsgs[i] = rb->msgs[i].data;
+		darray[i] = nng_msg_payload_ptr((nng_msg *)rb->msgs[i].data);
+		dsize[i] = nng_msg_len((nng_msg *)rb->msgs[i].data) -
+		        (nng_msg_payload_ptr((nng_msg *)rb->msgs[i].data) -
+				(uint8_t *)nng_msg_body((nng_msg *)rb->msgs[i].data));
+	}
+
+	nng_aio *aio;
+	nng_aio_alloc(&aio, ringbuffer_blf_cb, file);
+	if(aio == NULL) {
+		log_error("alloc new aio failed! no memory! msg will be freed\n");
+		nng_free(keys, sizeof(uint64_t) * rb->size);
+		nng_free(darray, sizeof(uint8_t *) * rb->size);
+		nng_free(dsize, sizeof(uint32_t) * rb->size);
+		return NULL;
+	}
+
+	file->aio = aio;
+	file->ranges = NULL;
+
+	nng_aio_begin(aio);
+
+	blf_object *newObj = blf_object_alloc(keys, darray, dsize, rb->size, aio, smsgs);
+	if (newObj == NULL) {
+		log_error("alloc new blf object failed! no memory! msg will be freed\n");
+		nng_free(keys, sizeof(uint64_t) * rb->size);
+		nng_free(darray, sizeof(uint8_t *) * rb->size);
+		nng_free(dsize, sizeof(uint32_t) * rb->size);
+		return NULL;
+	}
+
+	return newObj;
+}
+
+static inline void free_msgs_from_file(uint64_t *keys, char **filenames,
+									   char **newList, int *newmsgLen,
+									   blf_data_packet **packet,
+									   uint32_t packet_count, uint32_t request_count)
+{
+
+	if (keys != NULL) {
+		nng_free(keys, sizeof(uint64_t) * request_count);
+	}
+
+	if (filenames != NULL) {
+		nng_free(filenames, sizeof(char *) * request_count);
+	}
+
+	if (newList != NULL) {
+		for (uint32_t i = 0; i < packet_count; i++) {
+			if (newList[i] != NULL) {
+				nng_free(newList[i], sizeof(*newList[i]));
+				newList[i] = NULL;
+			}
+		}
+		nng_free(newList, sizeof(char *) * packet_count);
+	}
+
+	if (newmsgLen != NULL) {
+		nng_free(newmsgLen, sizeof(int) * request_count);
+	}
+
+	if (packet != NULL) {
+		for (uint32_t i = 0; i < request_count; i++) {
+			if (packet[i] != NULL) {
+				nng_free(packet[i]->data, packet[i]->size);
+				nng_free(packet[i], sizeof(blf_data_packet));
+			}
+		}
+
+		nng_free(packet, sizeof(blf_data_packet *) * request_count);
+	}
+}
+
+static inline int ringBuffer_get_filenames_with_keys(ringBuffer_t *rb, char ***filenames, uint64_t *keys, uint32_t count)
+{
+	int file_count = 0;
+	if (rb == NULL || rb->files == NULL || filenames == NULL || keys == NULL) {
+		log_error("ringbuffer is NULL or files is NULL or filenames is NULL or keys is NULL\n");
+		return -1;
+	}
+	char **fnames = nng_alloc(sizeof(char *) * count);
+	if (fnames == NULL) {
+		log_error("alloc new fnames failed! no memory! msg will be freed\n");
+		return -1;
+	}
+
+	for (uint32_t i = 0; i < count; i++) {
+		fnames[i] = NULL;
+		for (uint32_t j = 0; j < cvector_size(rb->files); j++) {
+			ringBufferFile_t *file = rb->files[j];
+			if (file == NULL || file->keys == NULL) {
+				log_error("file is NULL or file keys is NULL\n");
+				nng_free(fnames, sizeof(char *) * count);
+				return -1;
+			}
+
+			for (uint32_t k = 0; k < rb->cap; k++) {
+				if (file->keys[k] == keys[i]) {
+					fnames[i] = file->ranges[0]->filename;
+					file_count++;
+					break;
+				}
+			}
+		}
+	}
+
+	*filenames = fnames;
+
+	return file_count;
+}
+
+static inline int init_newList_with_packet(void ***newList, int **newmsgLen,
+										   blf_data_packet **packet,
+										   uint32_t packet_count, uint32_t request_count)
+{
+	char **list = nng_alloc(sizeof(char *) * packet_count);
+	if (list == NULL) {
+		log_error("alloc new list failed! no memory! msg will be freed\n");
+		return -1;
+	}
+
+	int *msgLen = nng_alloc(sizeof(int) * packet_count);
+	if (msgLen == NULL) {
+		log_error("alloc new msgLen failed! no memory! msg will be freed\n");
+		nng_free(list, sizeof(char *) * packet_count);
+		return -1;
+	}
+
+	int msgidx = 0;
+	for (long unsigned int i = 0; i < request_count; i++) {
+		if(packet[i] == NULL) {
+			continue;
+		}
+
+		char *msg = nng_alloc(packet[i]->size);
+		if (msg == NULL) {
+			log_error("alloc new msg failed! no memory! msg will be freed\n");
+			nng_free(list, sizeof(char *) * packet_count);
+			nng_free(msgLen, sizeof(int) * packet_count);
+			return -1;
+		}
+
+		memcpy(msg, packet[i]->data, packet[i]->size);
+
+		msgLen[msgidx] = packet[i]->size;
+		list[msgidx++] = msg;
+	}
+
+	*newList = (void **)list;
+	*newmsgLen = msgLen;
+
+	return 0;
+}
+
+int ringBuffer_get_msgs_from_file_by_keys(ringBuffer_t *rb, uint64_t *keys, uint32_t count,
+										  void ***msgs, int **msgLen)
+{
+	if (rb == NULL || rb->files == NULL || keys == NULL || msgs == NULL || msgLen == NULL) {
+		log_error("ringbuffer is NULL or files is NULL or keys is NULL or msg is NULL or msgLen is NULL\n");
+		return -1;
+	}
+
+	char **filenames = NULL;
+	int ret = ringBuffer_get_filenames_with_keys(rb, &filenames, keys, count);
+	if (ret <= 0 || filenames == NULL) {
+		log_error("get filenames failed\n");
+		return -1;
+	}
+
+	blf_data_packet **packet = NULL;
+	// blf_data_packet **packet = blf_find_data_packets(NULL, filenames, keys, count);
+	if (packet == NULL) {
+		log_error("packet is NULL\n");
+		nng_free(filenames, sizeof(char *) * count);
+
+		return -1;
+	}
+
+	int packet_count = 0;
+	for (long unsigned int i = 0; i < count; i++) {
+		if (packet[i] != NULL) {
+			packet_count++;
+		}
+		/* todo: Cleaning up or update outdated messages */
+	}
+
+	if (packet_count == 0) {
+		log_error("packet count is 0\n");
+		nng_free(filenames, sizeof(char *) * count);
+
+		return -1;
+	}
+
+	ret = init_newList_with_packet(msgs, msgLen, packet, packet_count, count);
+	if (ret != 0) {
+		log_error("init new list with packet failed\n");
+		free_msgs_from_file(NULL, filenames, NULL, NULL,
+							packet, packet_count, count);
+
+		return -1;
+	}
+
+	free_msgs_from_file(NULL, filenames, NULL, NULL,
+						packet, packet_count, count);
+
+	return packet_count;
+
+}
+
+int ringBuffer_get_msgs_from_file(ringBuffer_t *rb, void ***msgs, int **msgLen)
+{
+	int ret = 0;
+
+	if (rb == NULL || rb->files == NULL || msgs == NULL || msgLen == NULL) {
+		log_error("ringbuffer is NULL or files is NULL or msgs is NULL or msgLen is NULL\n");
+		return -1;
+	}
+
+	int count = 0;
+	for (int i = 0; i < cvector_size(rb->files); i++) {
+		for (int j = 0; j < cvector_size(rb->files[i]->ranges); j++) {
+			count += rb->files[i]->ranges[j]->endidx - rb->files[i]->ranges[j]->startidx + 1;
+		}
+	}
+
+	uint64_t *keys = nng_alloc(sizeof(uint64_t) * count);
+	if (keys == NULL) {
+		log_error("alloc new keys failed! no memory! msg will be freed\n");
+		return -1;
+	}
+
+	char **filenames = nng_alloc(sizeof(char *) * count);
+	if (filenames == NULL) {
+		log_error("alloc new filenames failed! no memory! msg will be freed\n");
+		free_msgs_from_file(keys, NULL, NULL, NULL,
+							NULL, 0, count);
+		return -1;
+	}
+
+	int tmpidx = 0;
+	for(long unsigned int i = 0; i < cvector_size(rb->files); i++) {
+		ringBufferFile_t *file = rb->files[i];
+		if (file == NULL || file->ranges == NULL) {
+			log_error("file is NULL or file ranges is NULL\n");
+			free_msgs_from_file(keys, filenames, NULL, NULL,
+								NULL, 0, count);
+			return -1;
+		}
+
+		for (int j = 0; j < cvector_size(file->ranges); j++) {
+			for (unsigned int k = file->ranges[j]->startidx; k <= file->ranges[j]->endidx; k++) {
+				keys[tmpidx] = file->keys[k];
+				filenames[tmpidx++] = file->ranges[j]->filename;
+			}
+		}
+	}
+
+	int packet_count = 0;
+	blf_data_packet **packet = NULL;
+	// blf_data_packet **packet = blf_find_data_packets(NULL, filenames, keys, count);
+	if (packet == NULL) {
+		log_error("packet is NULL\n");
+		free_msgs_from_file(keys, filenames, NULL, NULL,
+							NULL, 0, count);
+
+		return -1;
+	}
+
+	for (long unsigned int i = 0; i < count; i++) {
+		if (packet[i] != NULL) {
+			packet_count++;
+		}
+		/* todo: Cleaning up or update outdated messages */
+	}
+
+	if (packet_count == 0) {
+		log_error("packet count is 0\n");
+		free_msgs_from_file(keys, filenames, NULL, NULL,
+							packet, packet_count, count);
+
+		return -1;
+	}
+
+	ret = init_newList_with_packet(msgs, msgLen, packet, packet_count, count);
+	if (ret != 0) {
+		log_error("init new list with packet failed\n");
+		free_msgs_from_file(keys, filenames, NULL, NULL,
+							packet, packet_count, count);
+
+		return -1;
+	}
+
+	free_msgs_from_file(keys, filenames, NULL, NULL,
+						packet, packet_count, count);
+
+	return packet_count;
+}
+
+
 #endif
 
 static int write_msgs_to_file(ringBuffer_t *rb)
@@ -652,8 +1060,45 @@ static int write_msgs_to_file(ringBuffer_t *rb)
 	ringBuffer_clean_msgs(rb, 0);
 
 	return 0;
+
+#elif defined(SUPP_BLF)
+	ringBufferFile_t *file = nng_alloc(sizeof(ringBufferFile_t));
+	if (file == NULL) {
+		log_error("alloc new file failed! no memory! msg will be freed\n");
+		ringBuffer_clean_msgs(rb, 1);
+		return -1;
+	}
+
+	blf_object *obj = init_blf_object(rb, file);
+	if (obj == NULL) {
+		log_error("init blf object failed! msg will be freed\n");
+		ringBuffer_clean_msgs(rb, 1);
+		nng_free(file, sizeof(ringBufferFile_t));
+		return -1;
+	}
+
+	(void)blf_write_batch_async(obj);
+
+	file->keys = nng_alloc(sizeof(uint64_t) * rb->cap);
+	if (file->keys == NULL) {
+		log_error("alloc new file keys failed! no memory! msg will be freed\n");
+		ringBuffer_clean_msgs(rb, 1);
+		nng_free(file, sizeof(ringBufferFile_t));
+		return -1;
+	}
+
+	for (unsigned int i = 0; i < rb->cap; i++) {
+		file->keys[i] = rb->msgs[i].key;
+	}
+
+	cvector_push_back(rb->files, file);
+
+	/* free msgs in callback */
+	ringBuffer_clean_msgs(rb, 0);
+
+	return 0;
 #else
-	log_error("parquet is not enable, msg will be freed\n");
+	log_error("parquet or blf is not enable, msg will be freed\n");
 	ringBuffer_clean_msgs(rb, 1);
 	return -1;
 #endif
