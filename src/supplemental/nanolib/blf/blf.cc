@@ -131,7 +131,6 @@ blf_object_free(blf_object *elem)
 	}
 }
 
-
 static char *
 get_file_name(conf_blf *conf, uint64_t key_start, uint64_t key_end)
 {
@@ -194,5 +193,18 @@ update_blf_file_ranges(conf_blf *conf, blf_object *elem, blf_file_range *range)
 		elem->ranges->range[elem->ranges->start] = range;
 		elem->ranges->start++;
 		elem->ranges->start %= elem->ranges->size;
+	}
+}
+
+void
+read_binary_data(const std::string &inputString, unsigned int inputSize,
+    array<uint8_t, 8> &data)
+{
+	std::vector<unsigned char> binaryData;
+	for (size_t i = 0; 2 * i < inputString.length(); i++) {
+		std::istringstream iss(inputString.substr(2 * i, 2));
+		unsigned int       value;
+		iss >> std::hex >> value;
+		data[i] = (static_cast<unsigned char>(value));
 	}
 }
