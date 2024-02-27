@@ -294,3 +294,36 @@ again:
 	blf_object_free(elem);
 	return 0;
 }
+
+void
+blf_write_loop(void *config)
+{
+	if (config == NULL) {
+		log_error("blf conf is NULL");
+	}
+
+	conf_blf *conf = (conf_blf *) config;
+	if (!directory_exists(conf->dir)) {
+		if (!create_directory(conf->dir)) {
+			log_error("Failed to create directory %s", conf->dir);
+			return;
+		}
+	}
+
+	while (true) {
+		// wait for mqtt messages to send method request
+		pthread_mutex_lock(&blf_queue_mutex);
+
+		while (IS_EMPTY(blf_queue)) {
+			pthread_cond_wait(
+			    &blf_queue_not_empty, &blf_queue_mutex);
+		}
+
+		log_debug("fetch element from blf queue");
+		blf_object *ele = (blf_object *) DEQUEUE(blf_queue);
+
+		pthread_mutex_unlock(&blf_queue_mutex);
+
+		blf_write(conf, ele);
+	}
+}
