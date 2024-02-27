@@ -327,3 +327,18 @@ blf_write_loop(void *config)
 		blf_write(conf, ele);
 	}
 }
+
+int
+blf_write_batch_async(blf_object *elem)
+{
+	WAIT_FOR_AVAILABLE
+	pthread_mutex_lock(&blf_queue_mutex);
+	if (IS_EMPTY(blf_queue)) {
+		pthread_cond_broadcast(&blf_queue_not_empty);
+	}
+	ENQUEUE(blf_queue, elem);
+	log_debug("enqueue element.");
+
+	pthread_mutex_unlock(&blf_queue_mutex);
+	return 0;
+}
