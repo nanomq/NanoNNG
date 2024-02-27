@@ -36,6 +36,20 @@ static conf_blf *g_conf = NULL;
 
 #define FREE_IF_NOT_NULL(free, size) DO_IT_IF_NOT_NULL(nng_free, free, size)
 
+#define json_read_num(structure, field, key, jso)                       \
+	do {                                                                  \
+		cJSON *jso_key = cJSON_GetObjectItem(jso, key);               \
+		if (NULL == jso_key) {                                        \
+			log_debug("Config %s is not set, use default!", key); \
+			break;                                                \
+		}                                                             \
+		if (cJSON_IsNumber(jso_key)) {                                \
+			if (jso_key->valuedouble > 0)                         \
+				(structure)->field = jso_key->valuedouble;    \
+		}                                                             \
+	} while (0);
+
+
 
 CircularQueue   blf_queue;
 CircularQueue   blf_file_queue;
@@ -57,6 +71,7 @@ create_directory(const std::string &directory_path)
 	    directory_path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 	return (status == 0);
 }
+
 blf_file_range *
 blf_file_range_alloc(uint32_t start_idx, uint32_t end_idx, char *filename)
 {
