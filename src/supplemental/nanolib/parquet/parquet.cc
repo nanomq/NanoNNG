@@ -531,13 +531,45 @@ parquet_write_loop_v2(void *config)
 	}
 }
 
+static void
+parquet_file_queue_init(conf_parquet *conf)
+{
+	DIR *dir;
+	struct dirent *ent;
+	INIT_QUEUE(parquet_file_queue);
+
+	if ((dir = opendir(conf->dir)) != NULL) {
+		int count = 0;
+		while ((ent = readdir(dir)) != NULL && count < conf->file_count) {
+			if (strstr(ent->d_name, ".parquet") != NULL) {
+				char *file_path = (char *) malloc(
+				    strlen(conf->dir) + strlen(ent->d_name) + 2);
+				if (file_path == NULL) {
+					log_error("Failed to allocate memory for file path.");
+					closedir(dir);
+					return;
+				}
+
+				sprintf(file_path, "%s/%s", conf->dir, ent->d_name);
+				ENQUEUE(parquet_file_queue, file_path);
+				count++;
+				free(file_path);
+			}
+		}
+		log_info("Found %d parquet file from %s", count, conf->dir);
+		closedir(dir);
+	} else {
+		log_info("parquet directory not found, creating new one");
+	}
+}
+
 int
 parquet_write_launcher(conf_parquet *conf)
 {
 	// Using a global variable g_conf temporarily, because it is inconvenient to access conf in exchange.
 	g_conf = conf;
 	INIT_QUEUE(parquet_queue);
-	INIT_QUEUE(parquet_file_queue);
+	parquet_file_queue_init(conf);
 	is_available = true;
 	thread write_loop(parquet_write_loop_v2, conf);
 	write_loop.detach();
