@@ -605,7 +605,7 @@ get_file_bname(char *fpath)
 }
 
 static int
-get_persitence_files_raw(uint32_t sz, char **fnames, char ***file_raws)
+get_persistence_files_raw(uint32_t sz, char **fnames, char ***file_raws)
 {
 
 	int ret = 0;
@@ -1023,9 +1023,10 @@ ex_query_recv_cb(void *arg)
 			cJSON_AddItemToObject(obj, "mq", mqs_obj);
 			nng_free(mqdata, diff * 2 + 1);
 		}
-#ifdef SUPP_PARQUET
+#if defined (SUPP_PARQUET)
 		const char *fname = parquet_find(key);
-#elif defined(SUPP_BLF)
+#endif
+#if defined(SUPP_BLF)
 		const char *fname = blf_find(key);
 #endif
 
@@ -1074,10 +1075,11 @@ ex_query_recv_cb(void *arg)
 		const char **fnames = NULL;
 		uint32_t     sz     = 0;
 
-#if defined(SUPP_PARQUET) || defined(SUPP_BLF)
+#if defined(SUPP_PARQUET)
 		/* parquet not support fuzz search now */
 		fnames = parquet_find_span(startKey, endKey, &sz);
-#elif defined(SUPP_BLF)
+#endif
+#if defined(SUPP_BLF)
 		/* blf not support fuzz search now */
 		fnames = blf_find_span(startKey, endKey, &sz);
 #endif
