@@ -15,9 +15,8 @@
 #include "nng/exchange/exchange.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 #include "nng/protocol/reqrep0/rep.h"
-#ifdef SUPP_PARQUET
 #include "nng/supplemental/nanolib/parquet.h"
-#endif
+#include "nng/supplemental/nanolib/blf.h"
 
 #define NANO_MAX_MQ_BUFFER_LEN 1024
 
@@ -584,7 +583,7 @@ decToHex(unsigned char decimal, char *hexadecimal)
 	return;
 }
 
-#ifdef SUPP_PARQUET
+#if defined(SUPP_PARQUET) || defined(SUPP_BLF)
 static char *
 get_file_bname(char *fpath)
 {
@@ -606,7 +605,7 @@ get_file_bname(char *fpath)
 }
 
 static int
-get_parquet_files_raw(uint32_t sz, char **fnames, char ***file_raws)
+get_persitence_files_raw(uint32_t sz, char **fnames, char ***file_raws)
 {
 
 	int ret = 0;
@@ -675,11 +674,11 @@ get_parquet_files_raw(uint32_t sz, char **fnames, char ***file_raws)
 }
 
 static int
-get_parquet_files(uint32_t sz, char **fnames, cJSON *obj)
+get_persistence_files(uint32_t sz, char **fnames, cJSON *obj)
 {
 	int ret;
 
-	log_info("Ask parquet and found.");
+	log_info("Ask MQ persistence and found.");
 	const char ** filenames = nng_alloc(sizeof(char *) * sz);
 	for (uint32_t i = 0; i < sz; ++i) {
 		filenames[i] = get_file_bname((char *)fnames[i]);
@@ -698,7 +697,7 @@ get_parquet_files(uint32_t sz, char **fnames, cJSON *obj)
 	cJSON_AddItemToObject(obj, "filenames", filenames_obj);
 
 	char **file_raws = NULL;
-	ret = get_parquet_files_raw(sz, fnames, &file_raws);
+	ret = get_persistence_files_raw(sz, fnames, &file_raws);
 	if (ret != 0) {
 		return -1;
 	}
@@ -1025,9 +1024,14 @@ ex_query_recv_cb(void *arg)
 			nng_free(mqdata, diff * 2 + 1);
 		}
 #ifdef SUPP_PARQUET
+		const char *fname = parquet_find(key);
+#elif defined(SUPP_BLF)
+		const char *fname = blf_find(key);
+#endif
+
+#if defined(SUPP_PARQUET) || defined(SUPP_BLF)
 		const char **fnames = NULL;
 		uint32_t sz = 1;
-		const char *fname = parquet_find(key);
 		if (fname && sz > 0) {
 			fnames = nng_alloc(sizeof(char *) * sz);
 			if (fnames == NULL) {
@@ -1037,7 +1041,7 @@ ex_query_recv_cb(void *arg)
 			}
 			fnames[0] = fname;
 
-			ret = get_parquet_files(sz, (char **)fnames, obj);
+			ret = get_persistence_files(sz, (char **)fnames, obj);
 			if (ret != 0) {
 				log_error("get_parquet_files failed!");
 			}
@@ -1066,13 +1070,19 @@ ex_query_recv_cb(void *arg)
 			nng_free(msgList, sizeof(nng_msg *) * count);
 		}
 
-#ifdef SUPP_PARQUET
+#if defined(SUPP_PARQUET) || defined(SUPP_BLF)
 		const char **fnames = NULL;
-		uint32_t sz = 0;
+		uint32_t     sz     = 0;
+
+#if defined(SUPP_PARQUET) || defined(SUPP_BLF)
 		/* parquet not support fuzz search now */
 		fnames = parquet_find_span(startKey, endKey, &sz);
+#elif defined(SUPP_BLF)
+		/* blf not support fuzz search now */
+		fnames = blf_find_span(startKey, endKey, &sz);
+#endif
 		if (fnames && sz > 0) {
-			ret = get_parquet_files(sz, (char **)fnames, obj);
+			ret = get_persistence_files(sz, (char **) fnames, obj);
 			if (ret != 0) {
 				log_error("get_parquet_files failed!");
 			}
