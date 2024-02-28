@@ -1206,6 +1206,18 @@ print_parquet_conf(conf_parquet *parquet)
 	log_info("parquet limit_frequency:  %d", parquet->limit_frequency);
 }
 
+static void
+print_blf_conf(conf_blf *blf)
+{
+	if (!blf->enable)
+		return;
+	log_info("blf dir:              %s", blf->dir);
+	const char *encode_type = get_compress_type(blf->comp_type);
+	log_info("blf compress:         %s", encode_type);
+	log_info("blf file_name_prefix: %s", blf->file_name_prefix);
+	log_info("blf file_count:       %d", blf->file_count);
+	log_info("blf file_size:        %d", blf->file_size);
+}
 
 #if defined(SUPP_RULE_ENGINE)
 static void
