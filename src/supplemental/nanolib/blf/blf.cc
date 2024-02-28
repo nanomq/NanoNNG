@@ -1,6 +1,6 @@
 #include "nng/supplemental/nanolib/blf.h"
 #include "nng/supplemental/nanolib/log.h"
-#include "queue.h"
+#include "nng/supplemental/nanolib/queue.h"
 #include <Vector/BLF.h>
 #include <assert.h>
 #include <atomic>
