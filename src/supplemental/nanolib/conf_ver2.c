@@ -1190,6 +1190,25 @@ conf_parquet_parse_ver2(conf *config, cJSON *jso)
 	return;
 }
 
+static void
+conf_blf_parse_ver2(conf *config, cJSON *jso)
+{
+	cJSON *jso_blf = cJSON_GetObjectItem(jso, "blf");
+
+	if (jso_blf) {
+		conf_blf *blf = &(config->blf);
+		blf->enable       = true;
+		hocon_read_num(blf, file_count, jso_blf);
+		hocon_read_size(blf, file_size, jso_blf);
+		hocon_read_str(blf, dir, jso_blf);
+		hocon_read_str(blf, file_name_prefix, jso_blf);
+		hocon_read_enum_base(blf, comp_type, "compress",
+		    jso_blf, compress_type);
+	}
+
+	return;
+}
+
 #if defined(SUPP_AWS_BRIDGE)
 static void
 conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
@@ -1534,6 +1553,7 @@ conf_parse_ver2(conf *config)
 		conf_bridge_parse_ver2(config, jso);
 		conf_exchange_parse_ver2(config, jso);
 		conf_parquet_parse_ver2(config, jso);
+		conf_blf_parse_ver2(config, jso);
 #if defined(SUPP_PLUGIN)
 		conf_plugin_parse_ver2(config, jso);
 #endif
