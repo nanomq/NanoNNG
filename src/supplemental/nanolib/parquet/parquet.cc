@@ -4,7 +4,7 @@
 
 #include "nng/supplemental/nanolib/log.h"
 #include "nng/supplemental/nanolib/parquet.h"
-#include "queue.h"
+#include "nng/supplemental/nanolib/queue.h"
 #include <assert.h>
 #include <atomic>
 #include <dirent.h>
