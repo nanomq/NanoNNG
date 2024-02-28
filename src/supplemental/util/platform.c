@@ -144,7 +144,7 @@ void
 nng_rwlock_free(nng_rwlock *lp)
 {
 	if (lp != NULL) {
-		nni_mtx_fini((nni_mtx *)&lp->l);
+		nni_rwlock_fini(&lp->l);
 		NNI_FREE_STRUCT(lp);
 	}
 }
