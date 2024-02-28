@@ -613,6 +613,84 @@ int ringBuffer_get_msgs_from_file(ringBuffer_t *rb, void ***msgs, int **msgLen)
 
 	return packet_count;
 }
+
+#endif
+
+#if defined (SUPP_BLF)
+
+void ringbuffer_blf_cb(void *arg)
+{
+	ringBufferFile_t *file = (ringBufferFile_t *)arg;
+	if (file == NULL) {
+		log_error("blf callback arg is NULL\n");
+		return;
+	}
+	if (nng_aio_result(file->aio) != 0) {
+		log_error("blf write file failed\n");
+		return;
+	}
+
+	nng_msg **smsgs = (nng_msg **)nng_aio_get_prov_data(file->aio);
+	if (smsgs == NULL) {
+		log_error("blf callback smsgs is NULL\n");
+		return;
+	}
+
+	blf_file_ranges *file_ranges = (blf_file_ranges *)nng_aio_get_output(file->aio, 1);
+	if (file_ranges == NULL) {
+		log_error("blf file range is NULL\n");
+		return;
+	}
+
+	uint32_t *szp = (uint32_t *)nng_aio_get_msg(file->aio);
+	if (szp == NULL) {
+		log_error("blf file size is NULL\n");
+		return;
+	}
+
+	int count = 0;
+	for (int i = file_ranges->start; count < file_ranges->size; count++, i++) {
+		if (i >= file_ranges->size) {
+			i = 0;
+		}
+		blf_file_range **file_range = file_ranges->range;
+
+		ringBufferFileRange_t *range = nng_alloc(sizeof(ringBufferFileRange_t));
+		if (range == NULL) {
+			log_error("alloc new file range failed! no memory! msg will be freed\n");
+			return;
+		}
+
+		range->startidx = file_range[i]->start_idx;
+		range->endidx = file_range[i]->end_idx;
+		range->filename = nng_alloc(sizeof(char) * strlen(file_range[i]->filename) + 1);
+		if (range->filename == NULL) {
+			log_error("alloc new file range filename failed! no memory! msg will be freed\n");
+			nng_free(range, sizeof(ringBufferFileRange_t));
+			range = NULL;
+			return;
+		}
+		range->filename[strlen(file_range[i]->filename)] = '\0';
+
+		(void)strncpy(range->filename, file_range[i]->filename, strlen(file_range[i]->filename));
+
+		cvector_push_back(file->ranges, range);
+		log_warn("ringbus: blf write to file: %s success\n", file_range[i]->filename);
+	}
+	for (uint32_t i = 0; i < *szp; i++) {
+		if (smsgs[i] != NULL) {
+			nng_msg_free(smsgs[i]);
+			smsgs[i] = NULL;
+		}
+	}
+
+	if (smsgs != NULL) {
+		nng_free(smsgs, sizeof(nng_msg *) * *szp);
+		smsgs = NULL;
+	}
+
+	return;
+}
 #endif
 
 static int write_msgs_to_file(ringBuffer_t *rb)
