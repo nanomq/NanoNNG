@@ -10,14 +10,22 @@
 #include "nng/nng.h"
 #include <stdlib.h>
 
+#ifdef _WIN32
+#define PRIu64 "I64u"
+#define PRIu64_FORMAT "%I64u"
+#else
+#include <inttypes.h>
+#define PRIu64_FORMAT "%" PRIu64
+#endif
+
 // Do not change to %lu! just suppress the warning of the compiler!
 #define DISCONNECT_MSG          \
 	"{\"username\":\"%s\"," \
-	"\"ts\":%lu,\"reason_code\":\"%x\",\"client_id\":\"%s\",\"IPv4\":\"%s\"}"
+	"\"ts\":" PRIu64_FORMAT ",\"reason_code\":\"%x\",\"client_id\":\"%s\",\"IPv4\":\"%s\"}"
 
 #define CONNECT_MSG                                                           \
 	"{\"username\":\"%s\", "                                              \
-	"\"ts\":%lu,\"proto_name\":\"%s\",\"keepalive\":%d,\"return_code\":" \
+	"\"ts\":" PRIu64_FORMAT ",\"proto_name\":\"%s\",\"keepalive\":%d,\"return_code\":" \
 	"\"%x\",\"proto_ver\":%d,\"client_id\":\"%s\",\"clean_start\":%d, \"IPv4\":\"%s\"}"
 
 #define DISCONNECT_TOPIC "$SYS/brokers/disconnected"
