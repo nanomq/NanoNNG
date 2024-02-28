@@ -644,6 +644,7 @@ nni_sock_open(nni_sock **sockp, const nni_proto *proto)
 	if ((rv = nni_id_alloc32(&sock_ids, &s->s_id, s)) != 0) {
 		nni_mtx_unlock(&sock_lk);
 		sock_destroy(s);
+		return (rv);
 	} else {
 		nni_list_append(&sock_list, s);
 		s->s_sock_ops.sock_open(s->s_data);
