@@ -1130,7 +1130,6 @@ exchange_pipe_init(void *arg, nni_pipe *pipe, void *s)
 
 	p->pipe = pipe;
 	p->id   = nni_pipe_id(pipe);
-	p->pipe = pipe;
 	p->sock = s;
 	return (0);
 }
