@@ -6,6 +6,7 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 #include "nng/supplemental/nanolib/parquet.h"
+#include "nng/supplemental/nanolib/blf.h"
 #include "nng/supplemental/nanolib/ringbuffer.h"
 #include "core/nng_impl.h"
 
@@ -616,7 +617,7 @@ int ringBuffer_get_msgs_from_file(ringBuffer_t *rb, void ***msgs, int **msgLen)
 
 static int write_msgs_to_file(ringBuffer_t *rb)
 {
-#ifdef SUPP_PARQUET
+#if defined (SUPP_PARQUET) || defined (SUPP_BLF)
 	ringBufferFile_t *file = nng_alloc(sizeof(ringBufferFile_t));
 	if (file == NULL) {
 		log_error("alloc new file failed! no memory! msg will be freed\n");
@@ -624,6 +625,7 @@ static int write_msgs_to_file(ringBuffer_t *rb)
 		return -1;
 	}
 
+#if defined (SUPP_PARQUET)
 	parquet_object *obj = init_parquet_object(rb, file);
 	if (obj == NULL) {
 		log_error("init parquet object failed! msg will be freed\n");
@@ -633,6 +635,19 @@ static int write_msgs_to_file(ringBuffer_t *rb)
 	}
 
 	(void)parquet_write_batch_async(obj);
+#endif
+#if defined(SUPP_BLF)
+	blf_object *obj = init_blf_object(rb, file);
+	if (obj == NULL) {
+		log_error("init blf object failed! msg will be freed\n");
+		ringBuffer_clean_msgs(rb, 1);
+		nng_free(file, sizeof(ringBufferFile_t));
+		return -1;
+	}
+
+	(void)blf_write_batch_async(obj);
+#endif
+
 
 	file->keys = nng_alloc(sizeof(uint64_t) * rb->cap);
 	if (file->keys == NULL) {
@@ -652,8 +667,9 @@ static int write_msgs_to_file(ringBuffer_t *rb)
 	ringBuffer_clean_msgs(rb, 0);
 
 	return 0;
+
 #else
-	log_error("parquet is not enable, msg will be freed\n");
+	log_error("parquet or blf is not enable, msg will be freed\n");
 	ringBuffer_clean_msgs(rb, 1);
 	return -1;
 #endif
