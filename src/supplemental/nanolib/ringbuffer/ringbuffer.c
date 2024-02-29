@@ -272,17 +272,17 @@ void ringbuffer_parquet_cb(void *arg)
 		cvector_push_back(file->ranges, range);
 		log_warn("ringbus: parquet write to file: %s success\n", file_range[i]->filename);
 	}
-	for (uint32_t i = 0; i < *szp; i++) {
-		if (smsgs[i] != NULL) {
-			nng_msg_free(smsgs[i]);
-			smsgs[i] = NULL;
-		}
-	}
+	 //  for (uint32_t i = 0; i < *szp && smsgs != NULL; i++) {
+	 //  	if (smsgs[i] != NULL) {
+	 //  		nng_msg_free(smsgs[i]);
+	 //  		smsgs[i] = NULL;
+	 //  	}
+	 //  }
 
-	if (smsgs != NULL) {
-		nng_free(smsgs, sizeof(nng_msg *) * *szp);
-		smsgs = NULL;
-	}
+	 //  if (smsgs != NULL) {
+	 //  	nng_free(smsgs, sizeof(nng_msg *) * *szp);
+	 //  	smsgs = NULL;
+	 //  }
 
 	return;
 }
@@ -677,17 +677,17 @@ void ringbuffer_blf_cb(void *arg)
 		cvector_push_back(file->ranges, range);
 		log_warn("ringbus: blf write to file: %s success\n", file_range[i]->filename);
 	}
-	for (uint32_t i = 0; i < *szp; i++) {
-		if (smsgs[i] != NULL) {
-			nng_msg_free(smsgs[i]);
-			smsgs[i] = NULL;
-		}
-	}
+	 for (uint32_t i = 0; i < *szp && smsgs != NULL; i++) {
+	 	if (smsgs[i] != NULL) {
+	 		nng_msg_free(smsgs[i]);
+	 		smsgs[i] = NULL;
+	 	}
+	 }
 
-	if (smsgs != NULL) {
-		nng_free(smsgs, sizeof(nng_msg *) * *szp);
-		smsgs = NULL;
-	}
+	 if (smsgs != NULL) {
+	 	nng_free(smsgs, sizeof(nng_msg *) * *szp);
+	 	smsgs = NULL;
+	 }
 
 	return;
 }
@@ -760,61 +760,85 @@ static blf_object *init_blf_object(ringBuffer_t *rb, ringBufferFile_t *file)
 static int write_msgs_to_file(ringBuffer_t *rb)
 {
 #if defined (SUPP_PARQUET) || defined (SUPP_BLF)
-	ringBufferFile_t *file = nng_alloc(sizeof(ringBufferFile_t));
-	if (file == NULL) {
+
+#if defined (SUPP_PARQUET)
+	ringBufferFile_t *parquet_file = nng_alloc(sizeof(ringBufferFile_t));
+	if (parquet_file == NULL) {
+		log_error("alloc new file failed! no memory! msg will be freed\n");
+		ringBuffer_clean_msgs(rb, 1);
+		return -1;
+	}
+ 	parquet_object *parquet_obj = init_parquet_object(rb, parquet_file);
+ 	if (parquet_obj == NULL) {
+ 		log_error("init parquet object failed! msg will be freed\n");
+ 		ringBuffer_clean_msgs(rb, 1);
+ 		nng_free(parquet_file, sizeof(ringBufferFile_t));
+ 		return -1;
+ 	}
+ 
+ 	(void)parquet_write_batch_async(parquet_obj);
+
+
+	parquet_file->keys = nng_alloc(sizeof(uint64_t) * rb->cap);
+	if (parquet_file->keys == NULL) {
+		log_error("alloc new file keys failed! no memory! msg will be freed\n");
+		ringBuffer_clean_msgs(rb, 1);
+		nng_free(parquet_file, sizeof(ringBufferFile_t));
+		return -1;
+	}
+
+	for (unsigned int i = 0; i < rb->cap; i++) {
+		parquet_file->keys[i] = rb->msgs[i].key;
+	}
+
+	cvector_push_back(rb->files, parquet_file);
+
+
+#endif
+
+#if defined(SUPP_BLF)
+	ringBufferFile_t *blf_file = nng_alloc(sizeof(ringBufferFile_t));
+	if (blf_file == NULL) {
 		log_error("alloc new file failed! no memory! msg will be freed\n");
 		ringBuffer_clean_msgs(rb, 1);
 		return -1;
 	}
 
-#if defined (SUPP_PARQUET)
-	parquet_object *obj = init_parquet_object(rb, file);
-	if (obj == NULL) {
-		log_error("init parquet object failed! msg will be freed\n");
-		ringBuffer_clean_msgs(rb, 1);
-		nng_free(file, sizeof(ringBufferFile_t));
-		return -1;
-	}
-
-	(void)parquet_write_batch_async(obj);
-#endif
-#if defined(SUPP_BLF)
-	blf_object *obj = init_blf_object(rb, file);
-	if (obj == NULL) {
+	blf_object *blf_obj = init_blf_object(rb, blf_file);
+	if (blf_obj == NULL) {
 		log_error("init blf object failed! msg will be freed\n");
 		ringBuffer_clean_msgs(rb, 1);
-		nng_free(file, sizeof(ringBufferFile_t));
+		nng_free(blf_file, sizeof(ringBufferFile_t));
 		return -1;
 	}
 
-	(void)blf_write_batch_async(obj);
-#endif
+	(void)blf_write_batch_async(blf_obj);
 
-
-	file->keys = nng_alloc(sizeof(uint64_t) * rb->cap);
-	if (file->keys == NULL) {
+	blf_file->keys = nng_alloc(sizeof(uint64_t) * rb->cap);
+	if (blf_file->keys == NULL) {
 		log_error("alloc new file keys failed! no memory! msg will be freed\n");
 		ringBuffer_clean_msgs(rb, 1);
-		nng_free(file, sizeof(ringBufferFile_t));
+		nng_free(blf_file, sizeof(ringBufferFile_t));
 		return -1;
 	}
 
 	for (unsigned int i = 0; i < rb->cap; i++) {
-		file->keys[i] = rb->msgs[i].key;
+		blf_file->keys[i] = rb->msgs[i].key;
 	}
 
-	cvector_push_back(rb->files, file);
+	cvector_push_back(rb->files, blf_file);
 
-	/* free msgs in callback */
-	ringBuffer_clean_msgs(rb, 0);
 
-	return 0;
-
+#endif
 #else
 	log_error("parquet or blf is not enable, msg will be freed\n");
 	ringBuffer_clean_msgs(rb, 1);
 	return -1;
 #endif
+
+	/* free msgs in callback */
+	ringBuffer_clean_msgs(rb, 0);
+	return 0;
 }
 
 static int put_msgs_to_aio(ringBuffer_t *rb, nng_aio *aio)
