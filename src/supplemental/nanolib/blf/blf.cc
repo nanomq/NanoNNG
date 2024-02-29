@@ -249,7 +249,10 @@ blf_write_core(
 			/* write a CanMessage */
 			blf_write_can_message(file, frame);
 		}
+
+        cJSON_Delete(jso);
 	}
+
 
 	/* close file */
 	file.close();
