@@ -553,7 +553,6 @@ parquet_file_queue_init(conf_parquet *conf)
 				sprintf(file_path, "%s/%s", conf->dir, ent->d_name);
 				ENQUEUE(parquet_file_queue, file_path);
 				count++;
-				free(file_path);
 			}
 		}
 		log_info("Found %d parquet file from %s", count, conf->dir);
