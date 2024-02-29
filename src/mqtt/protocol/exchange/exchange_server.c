@@ -1024,30 +1024,44 @@ ex_query_recv_cb(void *arg)
 			nng_free(mqdata, diff * 2 + 1);
 		}
 #if defined (SUPP_PARQUET)
-		const char *fname = parquet_find(key);
-#endif
-#if defined(SUPP_BLF)
-		const char *fname = blf_find(key);
-#endif
-
-#if defined(SUPP_PARQUET) || defined(SUPP_BLF)
-		const char **fnames = NULL;
-		uint32_t sz = 1;
-		if (fname && sz > 0) {
-			fnames = nng_alloc(sizeof(char *) * sz);
-			if (fnames == NULL) {
+		const char *parquet_fname = parquet_find(key);
+		const char **parquet_fnames = NULL;
+		uint32_t parquet_sz = 1;
+		if (parquet_fname && parquet_sz > 0) {
+			parquet_fnames = nng_alloc(sizeof(char *) * parquet_sz);
+			if (parquet_fnames == NULL) {
 				log_warn("Failed to allocate memory for file payload\n");
 				nni_mtx_unlock(&sock->mtx);
 				return;
 			}
-			fnames[0] = fname;
+			parquet_fnames[0] = parquet_fname;
 
-			ret = get_persistence_files(sz, (char **)fnames, obj);
+			ret = get_persistence_files(parquet_sz, (char **)parquet_fnames, obj);
 			if (ret != 0) {
 				log_error("get_parquet_files failed!");
 			}
 		}
 #endif
+#if defined(SUPP_BLF)
+		const char *blf_fname = blf_find(key);
+		const char **blf_fnames = NULL;
+		uint32_t blf_sz = 1;
+		if (blf_fname && blf_sz > 0) {
+			blf_fnames = nng_alloc(sizeof(char *) * blf_sz);
+			if (blf_fnames == NULL) {
+				log_warn("Failed to allocate memory for file payload\n");
+				nni_mtx_unlock(&sock->mtx);
+				return;
+			}
+			blf_fnames[0] = blf_fname;
+
+			ret = get_persistence_files(blf_sz, (char **)blf_fnames, obj);
+			if (ret != 0) {
+				log_error("get_blf_files failed!");
+			}
+		}
+#endif
+
 	} else {
 		/* fuzz search */
 		uint64_t startKey;
@@ -1071,25 +1085,32 @@ ex_query_recv_cb(void *arg)
 			nng_free(msgList, sizeof(nng_msg *) * count);
 		}
 
-#if defined(SUPP_PARQUET) || defined(SUPP_BLF)
-		const char **fnames = NULL;
-		uint32_t     sz     = 0;
-
 #if defined(SUPP_PARQUET)
+		const char **parquet_fnames = NULL;
+		uint32_t     parquet_sz     = 0;
 		/* parquet not support fuzz search now */
-		fnames = parquet_find_span(startKey, endKey, &sz);
-#endif
-#if defined(SUPP_BLF)
-		/* blf not support fuzz search now */
-		fnames = blf_find_span(startKey, endKey, &sz);
-#endif
-		if (fnames && sz > 0) {
-			ret = get_persistence_files(sz, (char **) fnames, obj);
+		parquet_fnames = parquet_find_span(startKey, endKey, &parquet_sz);
+		if (parquet_fnames && parquet_sz > 0) {
+			ret = get_persistence_files(parquet_sz, (char **) parquet_fnames, obj);
 			if (ret != 0) {
 				log_error("get_parquet_files failed!");
 			}
 		} else {
-			log_error("parquet_find_span failed! sz: %d", sz);
+			log_error("parquet_find_span failed! parquet_sz: %d", parquet_sz);
+		}
+#endif
+#if defined(SUPP_BLF)
+		const char **blf_fnames = NULL;
+		uint32_t     blf_sz     = 0;
+		/* blf not support fuzz search now */
+		blf_fnames = blf_find_span(startKey, endKey, &blf_sz);
+		if (blf_fnames && blf_sz > 0) {
+			ret = get_persistence_files(blf_sz, (char **) blf_fnames, obj);
+			if (ret != 0) {
+				log_error("get_blf_files failed!");
+			}
+		} else {
+			log_error("blf_find_span failed! sz: %d", blf_sz);
 		}
 #endif
 	}
