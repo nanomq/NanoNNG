@@ -334,6 +334,10 @@ blf_write_loop(void *config)
 int
 blf_write_batch_async(blf_object *elem)
 {
+    if (g_conf == NULL || g_conf->enable == false) {
+        log_error("BLF is not ready or not launch!");
+        return -1;
+    }
 	WAIT_FOR_AVAILABLE
 	pthread_mutex_lock(&blf_queue_mutex);
 	if (IS_EMPTY(blf_queue)) {
@@ -385,6 +389,10 @@ compare_callback_span(void *name, uint64_t low, uint64_t high)
 const char *
 blf_find(uint64_t key)
 {
+    if (g_conf == NULL || g_conf->enable == false) {
+        log_error("BLF is not ready or not launch!");
+        return NULL;
+    }
 	WAIT_FOR_AVAILABLE
 	const char *value = NULL;
 	void       *elem  = NULL;
@@ -403,6 +411,10 @@ blf_find(uint64_t key)
 const char **
 blf_find_span(uint64_t start_key, uint64_t end_key, uint32_t *size)
 {
+    if (g_conf == NULL || g_conf->enable == false) {
+        log_error("BLF is not ready or not launch!");
+        return NULL;
+    }
 	if (start_key > end_key) {
 		log_error("Start key can't be greater than end_key.");
 		*size = 0;
