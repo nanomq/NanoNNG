@@ -208,6 +208,10 @@ parquet_object_free(parquet_object *elem)
 int
 parquet_write_batch_async(parquet_object *elem)
 {
+    if (g_conf == NULL || g_conf->enable == false) {
+        log_error("Parquet is not ready or not launch!");
+        return -1;
+    }
 	elem->type = WRITE_TO_NORMAL;
 	WAIT_FOR_AVAILABLE
 	pthread_mutex_lock(&parquet_queue_mutex);
@@ -224,6 +228,10 @@ parquet_write_batch_async(parquet_object *elem)
 
 int  parquet_write_batch_tmp_async(parquet_object *elem)
 {
+    if (g_conf == NULL || g_conf->enable == false) {
+        log_error("Parquet is not ready or not launch!");
+        return -1;
+    }
 	elem->type = WRITE_TO_TEMP;
 	WAIT_FOR_AVAILABLE
 	pthread_mutex_lock(&parquet_queue_mutex);
@@ -602,6 +610,10 @@ compare_callback_span(void *name, uint64_t low, uint64_t high)
 const char *
 parquet_find(uint64_t key)
 {
+    if (g_conf == NULL || g_conf->enable == false) {
+        log_error("Parquet is not ready or not launch!");
+        return NULL;
+    }
 	WAIT_FOR_AVAILABLE
 	const char *value = NULL;
 	void       *elem  = NULL;
@@ -620,6 +632,10 @@ parquet_find(uint64_t key)
 const char **
 parquet_find_span(uint64_t start_key, uint64_t end_key, uint32_t *size)
 {
+    if (g_conf == NULL || g_conf->enable == false) {
+        log_error("Parquet is not ready or not launch!");
+        return NULL;
+    }
 	if (start_key > end_key) {
 		log_error("Start key can't be greater than end_key.");
 		*size = 0;
@@ -913,9 +929,13 @@ vector<parquet_data_packet *>
 parquet_find_data_packet(
     conf_parquet *conf, char *filename, vector<uint64_t> keys)
 {
+	vector<parquet_data_packet *> ret_vec;
+    if (g_conf == NULL || g_conf->enable == false) {
+        log_error("Parquet is not ready or not launch!");
+        return ret_vec;
+    }
 	WAIT_FOR_AVAILABLE
 	void	                 *elem = NULL;
-	vector<parquet_data_packet *> ret_vec;
 	pthread_mutex_lock(&parquet_queue_mutex);
 	FOREACH_QUEUE(parquet_file_queue, elem)
 	{
@@ -940,6 +960,10 @@ find:
 parquet_data_packet *
 parquet_find_data_packet(conf_parquet *conf, char *filename, uint64_t key)
 {
+    if (g_conf == NULL || g_conf->enable == false) {
+        log_error("Parquet is not ready or not launch!");
+        return NULL;
+    }
 	WAIT_FOR_AVAILABLE
 	void *elem = NULL;
 	pthread_mutex_lock(&parquet_queue_mutex);
