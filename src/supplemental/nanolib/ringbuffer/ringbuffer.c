@@ -272,17 +272,17 @@ void ringbuffer_parquet_cb(void *arg)
 		cvector_push_back(file->ranges, range);
 		log_warn("ringbus: parquet write to file: %s success\n", file_range[i]->filename);
 	}
-	 //  for (uint32_t i = 0; i < *szp && smsgs != NULL; i++) {
-	 //  	if (smsgs[i] != NULL) {
-	 //  		nng_msg_free(smsgs[i]);
-	 //  		smsgs[i] = NULL;
-	 //  	}
-	 //  }
+	for (uint32_t i = 0; i < *szp && smsgs != NULL; i++) {
+		if (smsgs[i] != NULL) {
+			nng_msg_free(smsgs[i]);
+			smsgs[i] = NULL;
+		}
+	}
 
-	 //  if (smsgs != NULL) {
-	 //  	nng_free(smsgs, sizeof(nng_msg *) * *szp);
-	 //  	smsgs = NULL;
-	 //  }
+	if (smsgs != NULL) {
+		nng_free(smsgs, sizeof(nng_msg *) * *szp);
+		smsgs = NULL;
+	}
 
 	return;
 }
@@ -317,11 +317,13 @@ static parquet_object *init_parquet_object(ringBuffer_t *rb, ringBufferFile_t *f
 	nng_msg **smsgs = nng_alloc(sizeof(nng_msg *) * rb->size);
 	for (unsigned int i = 0; i < rb->size; i++) {
 		keys[i] = rb->msgs[i].key;
-		smsgs[i] = rb->msgs[i].data;
 		darray[i] = nng_msg_payload_ptr((nng_msg *)rb->msgs[i].data);
 		dsize[i] = nng_msg_len((nng_msg *)rb->msgs[i].data) -
 		        (nng_msg_payload_ptr((nng_msg *)rb->msgs[i].data) -
 				(uint8_t *)nng_msg_body((nng_msg *)rb->msgs[i].data));
+
+	    nng_msg_clone((nng_msg*)rb->msgs[i].data);
+	    smsgs[i] = rb->msgs[i].data;
 	}
 
 	nng_aio *aio;
@@ -722,11 +724,13 @@ static blf_object *init_blf_object(ringBuffer_t *rb, ringBufferFile_t *file)
 	nng_msg **smsgs = nng_alloc(sizeof(nng_msg *) * rb->size);
 	for (unsigned int i = 0; i < rb->size; i++) {
 		keys[i] = rb->msgs[i].key;
-		smsgs[i] = rb->msgs[i].data;
 		darray[i] = nng_msg_payload_ptr((nng_msg *)rb->msgs[i].data);
 		dsize[i] = nng_msg_len((nng_msg *)rb->msgs[i].data) -
 		        (nng_msg_payload_ptr((nng_msg *)rb->msgs[i].data) -
 				(uint8_t *)nng_msg_body((nng_msg *)rb->msgs[i].data));
+
+	    nng_msg_clone((nng_msg*)rb->msgs[i].data);
+	    smsgs[i] = rb->msgs[i].data;
 	}
 
 	nng_aio *aio;
@@ -835,6 +839,10 @@ static int write_msgs_to_file(ringBuffer_t *rb)
 	ringBuffer_clean_msgs(rb, 1);
 	return -1;
 #endif
+
+	for (unsigned int i = 0; i < rb->size; i++) {
+	    nng_msg_free((nng_msg*)rb->msgs[i].data);
+	}
 
 	/* free msgs in callback */
 	ringBuffer_clean_msgs(rb, 0);
