@@ -359,7 +359,7 @@ exchange_sock_recv(void *arg, nni_aio *aio)
 			/* Change MQ fullOp to tss[1] */
 			/* Only one exchange with one ringBuffer now */
 			nng_mtx_lock(s->ex_node->ex->rbs[0]->ring_lock);
-			ret = ringBuffer_fullOp(s->ex_node->ex->rbs[0], tss[1]);
+			ret = ringBuffer_set_fullOp(s->ex_node->ex->rbs[0], tss[1]);
 			if (ret != 0) {
 				log_warn("ringBuffer_fullOp failed!");
 				nng_mtx_unlock(s->ex_node->ex->rbs[0]->ring_lock);

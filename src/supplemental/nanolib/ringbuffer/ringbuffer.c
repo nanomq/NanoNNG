@@ -695,7 +695,7 @@ static int put_msgs_to_aio(ringBuffer_t *rb, nng_aio *aio)
 	return 0;
 }
 
-int ringBuffer_fullOp(ringBuffer_t *rb, enum fullOption fullOp)
+int ringBuffer_set_fullOp(ringBuffer_t *rb, enum fullOption fullOp)
 {
 	if (rb == NULL || fullOp >= RB_FULL_MAX) {
 		log_error("ringbuffer is NULL or fullOp is not valid: %d\n", fullOp);
