@@ -346,15 +346,12 @@ typedef enum {
 	LZ4
 } compression_type;
 
-typedef enum { 
-	AES_GCM_V1 = 0, 
-	AES_GCM_CTR_V1 = 1 
-} cipher_type;
+typedef enum { AES_GCM_V1 = 0, AES_GCM_CTR_V1 = 1 } cipher_type;
 
 struct conf_parquet_encryption {
 	bool        enable;
-	char *key_id;
-	char *key;
+	char       *key_id;
+	char       *key;
 	cipher_type type;
 };
 
@@ -362,8 +359,8 @@ typedef struct conf_parquet_encryption conf_parquet_encryption;
 
 struct conf_parquet {
 	bool                    enable;
-	char	           		*dir;
-	char	           		*file_name_prefix;
+	char                   *dir;
+	char                   *file_name_prefix;
 	uint8_t                 file_count;
 	uint32_t                limit_frequency;
 	uint8_t                 file_index;
@@ -374,13 +371,13 @@ struct conf_parquet {
 typedef struct conf_parquet conf_parquet;
 
 struct conf_blf {
-	bool                    enable;
-	char	           		*dir;
-	char	           		*file_name_prefix;
-	uint8_t                 file_count;
-	uint8_t                 file_index;
-	int32_t                 file_size;
-	compression_type        comp_type;
+	bool             enable;
+	char            *dir;
+	char            *file_name_prefix;
+	uint8_t          file_count;
+	uint8_t          file_index;
+	int32_t          file_size;
+	compression_type comp_type;
 };
 typedef struct conf_blf conf_blf;
 

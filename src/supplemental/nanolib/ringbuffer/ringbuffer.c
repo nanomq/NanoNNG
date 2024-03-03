@@ -317,13 +317,14 @@ static parquet_object *init_parquet_object(ringBuffer_t *rb, ringBufferFile_t *f
 	nng_msg **smsgs = nng_alloc(sizeof(nng_msg *) * rb->size);
 	for (unsigned int i = 0; i < rb->size; i++) {
 		keys[i] = rb->msgs[i].key;
-		darray[i] = nng_msg_payload_ptr((nng_msg *)rb->msgs[i].data);
-		dsize[i] = nng_msg_len((nng_msg *)rb->msgs[i].data) -
-		        (nng_msg_payload_ptr((nng_msg *)rb->msgs[i].data) -
-				(uint8_t *)nng_msg_body((nng_msg *)rb->msgs[i].data));
+		darray[i] = nng_msg_payload_ptr((nng_msg *) rb->msgs[i].data);
+		dsize[i]  = nng_msg_len((nng_msg *) rb->msgs[i].data) -
+		    (nng_msg_payload_ptr((nng_msg *) rb->msgs[i].data) -
+		        (uint8_t *) nng_msg_body(
+		            (nng_msg *) rb->msgs[i].data));
 
-	    nng_msg_clone((nng_msg*)rb->msgs[i].data);
-	    smsgs[i] = rb->msgs[i].data;
+		nng_msg_clone((nng_msg *) rb->msgs[i].data);
+		smsgs[i] = rb->msgs[i].data;
 	}
 
 	nng_aio *aio;
@@ -723,34 +724,38 @@ static blf_object *init_blf_object(ringBuffer_t *rb, ringBufferFile_t *file)
 
 	nng_msg **smsgs = nng_alloc(sizeof(nng_msg *) * rb->size);
 	for (unsigned int i = 0; i < rb->size; i++) {
-		keys[i] = rb->msgs[i].key;
-		darray[i] = nng_msg_payload_ptr((nng_msg *)rb->msgs[i].data);
-		dsize[i] = nng_msg_len((nng_msg *)rb->msgs[i].data) -
-		        (nng_msg_payload_ptr((nng_msg *)rb->msgs[i].data) -
-				(uint8_t *)nng_msg_body((nng_msg *)rb->msgs[i].data));
+		keys[i]   = rb->msgs[i].key;
+		darray[i] = nng_msg_payload_ptr((nng_msg *) rb->msgs[i].data);
+		dsize[i]  = nng_msg_len((nng_msg *) rb->msgs[i].data) -
+		    (nng_msg_payload_ptr((nng_msg *) rb->msgs[i].data) -
+		        (uint8_t *) nng_msg_body(
+		            (nng_msg *) rb->msgs[i].data));
 
-	    nng_msg_clone((nng_msg*)rb->msgs[i].data);
-	    smsgs[i] = rb->msgs[i].data;
+		nng_msg_clone((nng_msg *) rb->msgs[i].data);
+		smsgs[i] = rb->msgs[i].data;
 	}
 
 	nng_aio *aio;
 	nng_aio_alloc(&aio, ringbuffer_blf_cb, file);
-	if(aio == NULL) {
-		log_error("alloc new aio failed! no memory! msg will be freed\n");
+	if (aio == NULL) {
+		log_error(
+		    "alloc new aio failed! no memory! msg will be freed\n");
 		nng_free(keys, sizeof(uint64_t) * rb->size);
 		nng_free(darray, sizeof(uint8_t *) * rb->size);
 		nng_free(dsize, sizeof(uint32_t) * rb->size);
 		return NULL;
 	}
 
-	file->aio = aio;
+	file->aio    = aio;
 	file->ranges = NULL;
 
 	nng_aio_begin(aio);
 
-	blf_object *newObj = blf_object_alloc(keys, darray, dsize, rb->size, aio, smsgs);
+	blf_object *newObj =
+	    blf_object_alloc(keys, darray, dsize, rb->size, aio, smsgs);
 	if (newObj == NULL) {
-		log_error("alloc new blf object failed! no memory! msg will be freed\n");
+		log_error("alloc new blf object failed! no memory! msg will "
+		          "be freed\n");
 		nng_free(keys, sizeof(uint64_t) * rb->size);
 		nng_free(darray, sizeof(uint8_t *) * rb->size);
 		nng_free(dsize, sizeof(uint32_t) * rb->size);
