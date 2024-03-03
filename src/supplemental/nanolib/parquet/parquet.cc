@@ -39,11 +39,11 @@ atomic_bool is_available = false;
 
 #define UINT64_MAX_DIGITS 20
 
-CircularQueue   parquet_queue;
-CircularQueue   parquet_file_queue;
-pthread_mutex_t parquet_queue_mutex     = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t  parquet_queue_not_empty = PTHREAD_COND_INITIALIZER;
-static conf_parquet *g_conf = NULL;
+CircularQueue        parquet_queue;
+CircularQueue        parquet_file_queue;
+pthread_mutex_t      parquet_queue_mutex     = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t       parquet_queue_not_empty = PTHREAD_COND_INITIALIZER;
+static conf_parquet *g_conf                  = NULL;
 
 static bool
 directory_exists(const std::string &directory_path)
@@ -100,7 +100,7 @@ static char *
 get_random_file_name(char *prefix, uint64_t key_start, uint64_t key_end)
 {
 	char *file_name = NULL;
-	char dir[]       = "/tmp";
+	char  dir[]     = "/tmp";
 
 	file_name = (char *) malloc(strlen(prefix) + strlen(dir) +
 	    UINT64_MAX_DIGITS + UINT64_MAX_DIGITS + 16);
@@ -122,7 +122,8 @@ remove_old_file(void)
 	if (remove(filename) == 0) {
 		log_debug("File '%s' removed successfully.\n", filename);
 	} else {
-		log_error("Error removing the file %s errno: %d", filename, errno);
+		log_error(
+		    "Error removing the file %s errno: %d", filename, errno);
 		return -1;
 	}
 
@@ -159,8 +160,7 @@ void
 parquet_file_range_free(parquet_file_range *range)
 {
 	if (range) {
-		FREE_IF_NOT_NULL(
-		    range->filename, strlen(range->filename));
+		FREE_IF_NOT_NULL(range->filename, strlen(range->filename));
 		delete range;
 	}
 }
@@ -226,7 +226,8 @@ parquet_write_batch_async(parquet_object *elem)
 	return 0;
 }
 
-int  parquet_write_batch_tmp_async(parquet_object *elem)
+int
+parquet_write_batch_tmp_async(parquet_object *elem)
 {
     if (g_conf == NULL || g_conf->enable == false) {
         log_error("Parquet is not ready or not launch!");
@@ -245,7 +246,6 @@ int  parquet_write_batch_tmp_async(parquet_object *elem)
 
 	return 0;
 }
-
 
 bool
 need_new_one(const char *file_name, size_t file_max)
@@ -310,7 +310,6 @@ update_parquet_file_ranges(
 		elem->ranges->range[elem->ranges->start] = range;
 		elem->ranges->start++;
 		elem->ranges->start %= elem->ranges->size;
-
 	}
 }
 
@@ -327,15 +326,17 @@ again:
 	uint64_t key_end   = elem->keys[new_index];
 
 	string prefix = gen_random(6);
-	prefix = "nanomq" + prefix;
-	char *filename = get_random_file_name(prefix.data(), key_start, key_end);
+	prefix        = "nanomq" + prefix;
+	char *filename =
+	    get_random_file_name(prefix.data(), key_start, key_end);
 	if (filename == NULL) {
 		log_error("Failed to get file name");
 		return -1;
 	}
 
 	{
-		parquet_file_range *range = parquet_file_range_alloc(old_index, new_index, filename);
+		parquet_file_range *range =
+		    parquet_file_range_alloc(old_index, new_index, filename);
 		update_parquet_file_ranges(conf, elem, range);
 
 		// Create a ParquetFileWriter instance
@@ -392,8 +393,7 @@ again:
 
 		old_index = new_index;
 
-		FREE_IF_NOT_NULL(
-		    filename, strlen(filename));
+		FREE_IF_NOT_NULL(filename, strlen(filename));
 
 		if (new_index != elem->size - 1)
 			goto again;
@@ -428,7 +428,8 @@ again:
 	pthread_mutex_unlock(&parquet_queue_mutex);
 
 	{
-		parquet_file_range *range = parquet_file_range_alloc(old_index, new_index, filename);
+		parquet_file_range *range =
+		    parquet_file_range_alloc(old_index, new_index, filename);
 		update_parquet_file_ranges(conf, elem, range);
 
 		// Create a ParquetFileWriter instance
@@ -535,30 +536,33 @@ parquet_write_loop_v2(void *config)
 		default:
 			break;
 		}
-
 	}
 }
 
 static void
 parquet_file_queue_init(conf_parquet *conf)
 {
-	DIR *dir;
+	DIR           *dir;
 	struct dirent *ent;
 	INIT_QUEUE(parquet_file_queue);
 
 	if ((dir = opendir(conf->dir)) != NULL) {
 		int count = 0;
-		while ((ent = readdir(dir)) != NULL && count < conf->file_count) {
+		while (
+		    (ent = readdir(dir)) != NULL && count < conf->file_count) {
 			if (strstr(ent->d_name, ".parquet") != NULL) {
-				char *file_path = (char *) malloc(
-				    strlen(conf->dir) + strlen(ent->d_name) + 2);
+				char *file_path =
+				    (char *) malloc(strlen(conf->dir) +
+				        strlen(ent->d_name) + 2);
 				if (file_path == NULL) {
-					log_error("Failed to allocate memory for file path.");
+					log_error("Failed to allocate memory "
+					          "for file path.");
 					closedir(dir);
 					return;
 				}
 
-				sprintf(file_path, "%s/%s", conf->dir, ent->d_name);
+				sprintf(file_path, "%s/%s", conf->dir,
+				    ent->d_name);
 				ENQUEUE(parquet_file_queue, file_path);
 				count++;
 			}
@@ -573,7 +577,8 @@ parquet_file_queue_init(conf_parquet *conf)
 int
 parquet_write_launcher(conf_parquet *conf)
 {
-	// Using a global variable g_conf temporarily, because it is inconvenient to access conf in exchange.
+	// Using a global variable g_conf temporarily, because it is
+	// inconvenient to access conf in exchange.
 	g_conf = conf;
 	INIT_QUEUE(parquet_queue);
 	parquet_file_queue_init(conf);
@@ -675,21 +680,25 @@ parquet_find_span(uint64_t start_key, uint64_t end_key, uint32_t *size)
 	return ret;
 }
 
-
-void parquet_read_set_property(parquet::ReaderProperties &reader_properties, conf_parquet *conf)
+void
+parquet_read_set_property(
+    parquet::ReaderProperties &reader_properties, conf_parquet *conf)
 {
 	if (conf->encryption.enable) {
 		std::map<std::string,
 		    std::shared_ptr<parquet::ColumnDecryptionProperties>>
-		                                             decryption_cols;
-		parquet::FileDecryptionProperties::Builder file_decryption_builder_3;
+		    decryption_cols;
+		parquet::FileDecryptionProperties::Builder
+		    file_decryption_builder_3;
 		std::shared_ptr<parquet::FileDecryptionProperties>
 		    decryption_configuration =
-		        file_decryption_builder_3.footer_key(conf->encryption.key)
+		        file_decryption_builder_3
+		            .footer_key(conf->encryption.key)
 		            ->column_keys(decryption_cols)
 		            ->build();
 
-		// Add the current decryption configuration to ReaderProperties.
+		// Add the current decryption configuration to
+		// ReaderProperties.
 		reader_properties.file_decryption_properties(
 		    decryption_configuration->DeepClone());
 	}
@@ -700,9 +709,9 @@ void parquet_read_set_property(parquet::ReaderProperties &reader_properties, con
 static uint8_t *
 parquet_read(conf_parquet *conf, char *filename, uint64_t key, uint32_t *len)
 {
-	conf = g_conf;
-	std::string path_int64 = "key";
-	std::string path_str   = "data";
+	conf                                 = g_conf;
+	std::string               path_int64 = "key";
+	std::string               path_str   = "data";
 	parquet::ReaderProperties reader_properties =
 	    parquet::default_reader_properties();
 
@@ -779,7 +788,6 @@ parquet_read(conf_parquet *conf, char *filename, uint64_t key, uint32_t *len)
 					return ret;
 				}
 			}
-
 		}
 
 	} catch (const std::exception &e) {
@@ -791,7 +799,8 @@ parquet_read(conf_parquet *conf, char *filename, uint64_t key, uint32_t *len)
 }
 
 static vector<int>
-get_keys_indexes(parquet::Int64Reader *int64_reader, const vector<uint64_t> &keys)
+get_keys_indexes(
+    parquet::Int64Reader *int64_reader, const vector<uint64_t> &keys)
 {
 	vector<int> index_vector;
 	int64_t     values_read = 0;
@@ -801,7 +810,7 @@ get_keys_indexes(parquet::Int64Reader *int64_reader, const vector<uint64_t> &key
 
 	// FIXME:
 	for (const auto &key : keys) {
-		int i = 0;
+		int  i     = 0;
 		bool found = false;
 		while (int64_reader->HasNext()) {
 			int64_t value;
@@ -889,7 +898,7 @@ parquet_read(conf_parquet *conf, char *filename, vector<uint64_t> keys)
 				}
 
 				if (ba_reader->HasNext()) {
-					ba_reader->Skip(index-1);
+					ba_reader->Skip(index - 1);
 				}
 
 				if (ba_reader->HasNext()) {
@@ -911,7 +920,6 @@ parquet_read(conf_parquet *conf, char *filename, vector<uint64_t> keys)
 						    value.len);
 						pack->size = value.len;
 						ret_vec.push_back(pack);
-
 					}
 				}
 			}
@@ -934,14 +942,14 @@ parquet_find_data_packet(
         log_error("Parquet is not ready or not launch!");
         return ret_vec;
     }
-	WAIT_FOR_AVAILABLE
-	void	                 *elem = NULL;
-	pthread_mutex_lock(&parquet_queue_mutex);
-	FOREACH_QUEUE(parquet_file_queue, elem)
-	{
-		if (elem && nng_strcasecmp((char *) elem, filename) == 0) {
-			goto find;
-		}
+    WAIT_FOR_AVAILABLE
+    void *elem = NULL;
+    pthread_mutex_lock(&parquet_queue_mutex);
+    FOREACH_QUEUE(parquet_file_queue, elem)
+    {
+	    if (elem && nng_strcasecmp((char *) elem, filename) == 0) {
+		    goto find;
+	    }
 	}
 
 find:
@@ -1002,7 +1010,7 @@ parquet_find_data_packets(
 {
 	unordered_map<char *, vector<uint64_t>> file_name_map;
 	vector<parquet_data_packet *>           ret_vec;
-	parquet_data_packet **packets = NULL;
+	parquet_data_packet                   **packets = NULL;
 	// Get the file map
 	for (uint32_t i = 0; i < len; i++) {
 		vector<uint64_t> key_vec;
@@ -1017,7 +1025,7 @@ parquet_find_data_packets(
 
 	// Traverse the map and get the vector of parquet_data_packet
 	for (const auto &entry : file_name_map) {
-		char		        *filename = entry.first;
+		char                        *filename = entry.first;
 		const std::vector<uint64_t> &sizes    = entry.second;
 
 		auto tmp = parquet_find_data_packet(conf, filename, sizes);

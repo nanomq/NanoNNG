@@ -36,7 +36,7 @@ static conf_blf *g_conf = NULL;
 
 #define FREE_IF_NOT_NULL(free, size) DO_IT_IF_NOT_NULL(nng_free, free, size)
 
-#define json_read_num(structure, field, key, jso)                       \
+#define json_read_num(structure, field, key, jso)                             \
 	do {                                                                  \
 		cJSON *jso_key = cJSON_GetObjectItem(jso, key);               \
 		if (NULL == jso_key) {                                        \
@@ -48,8 +48,6 @@ static conf_blf *g_conf = NULL;
 				(structure)->field = jso_key->valuedouble;    \
 		}                                                             \
 	} while (0);
-
-
 
 CircularQueue   blf_queue;
 CircularQueue   blf_file_queue;
