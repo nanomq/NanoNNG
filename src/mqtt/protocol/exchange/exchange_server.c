@@ -233,6 +233,32 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 	return 0;
 }
 
+static void inline
+exchange_do_send(exchange_node_t *ex_node, nni_msg *msg, nni_aio *user_aio)
+{
+	int ret = 0;
+
+	exchange_sock_t *s = ex_node->sock;
+	if (nni_atomic_get_bool(&s->closed)) {
+		// This occurs if the mqtt_pipe_close has been called.
+		// In that case we don't want any more processing.
+		log_error("exchange sock is closed!");
+		nni_aio_finish_error(user_aio, NNG_EINVAL);
+		return;
+	}
+
+	ret = exchange_client_handle_msg(ex_node, msg, user_aio);
+	if (ret != 0) {
+		log_error(
+		    "exchange_client_handle cached msg failed!\n");
+		nni_aio_finish_error(user_aio, NNG_EINVAL);
+	} else {
+		nni_aio_finish(user_aio, 0, 0);
+	}
+
+	return;
+}
+
 static void
 exchange_sock_send(void *arg, nni_aio *aio)
 {
