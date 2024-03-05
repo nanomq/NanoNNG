@@ -15,6 +15,9 @@
 static const char *quic_test_url  = "mqtt-quic://13.49.223.253:14567";
 static const char *quic_test_url2 = "mqtt-quic://127.0.0.1:8";
 static const char *quic_test_clientid = "quic-ut-clientid";
+static const char *quic_test_topic = "quic-ut-topic1";
+static const int   quic_test_qos = 0;
+static const char *quic_test_payload = "quic-ut-payload";
 
 void
 test_msquic_stream_conn_refused(void)
@@ -151,6 +154,26 @@ create_connect_msg(uint16_t ver, bool cs, char *clientid)
 	return connmsg;
 }
 
+static inline nng_msg *
+create_publish_msg(const char *topic, uint8_t *payload, uint32_t len, bool dup,
+    uint8_t qos, bool retain, property *props)
+{
+	// create a PUBLISH message
+	nng_msg *pubmsg;
+	nng_mqtt_msg_alloc(&pubmsg, 0);
+	nng_mqtt_msg_set_packet_type(pubmsg, NNG_MQTT_PUBLISH);
+	nng_mqtt_msg_set_publish_dup(pubmsg, dup);
+	nng_mqtt_msg_set_publish_qos(pubmsg, qos);
+	nng_mqtt_msg_set_publish_retain(pubmsg, retain);
+	nng_mqtt_msg_set_publish_payload(pubmsg, payload, len);
+	nng_mqtt_msg_set_publish_topic(pubmsg, topic);
+	if (props) {
+		nng_mqtt_msg_set_publish_property(pubmsg, props);
+	}
+
+	return pubmsg;
+}
+
 void
 test_msquic_app_conn_refuse(void)
 {
@@ -203,6 +226,26 @@ test_msquic_app_connect(void)
 void
 test_msquic_app_pub(void)
 {
+	// Connect...
+	nng_socket sock;
+	nng_dialer dialer;
+	nng_msg *connmsg = create_connect_msg(MQTT_PROTOCOL_VERSION_v311,
+			true, (char *)quic_test_clientid);
+	NUTS_ASSERT(connmsg != NULL);
+
+	NUTS_PASS(nng_mqtt_quic_client_open(&sock));
+	NUTS_PASS(nng_dialer_create(&dialer, sock, quic_test_url));
+	NUTS_PASS(nng_dialer_set_ptr(dialer, NNG_OPT_MQTT_CONNMSG, connmsg));
+	NUTS_PASS(nng_socket_set_ptr(sock, NNG_OPT_MQTT_CONNMSG, connmsg));
+	//NUTS_PASS(nng_mqtt_set_connect_cb(sock, test_msquic_connect_cb, NULL));
+	NUTS_PASS(nng_mqtt_set_disconnect_cb(sock, test_msquic_disconnect_cb, connmsg));
+	NUTS_PASS(nng_dialer_start(dialer, NNG_FLAG_ALLOC));
+
+	// Publish
+	nng_msg *pubmsg = create_publish_msg(quic_test_topic, (uint8_t *)quic_test_payload,
+		strlen(quic_test_payload), 0, quic_test_qos, 0, NULL);
+	nng_mqttv5_msg_encode(pubmsg);
+	nng_sendmsg(sock, pubmsg, NNG_FLAG_ALLOC);
 }
 
 void
