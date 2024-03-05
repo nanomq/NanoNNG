@@ -1171,6 +1171,12 @@ print_exchange_conf(conf_exchange *exchange)
 			log_info("exchange ringbus fullOp    %d", r->fullOp);
 		}
 	}
+	if (exchange->encryption != NULL) {
+		log_info("exchange encryption:       %s",
+				exchange->encryption->enable ? "true" : "false");
+		log_info("exchange encryption key:   %s",
+				exchange->encryption->key == NULL ? "null" : exchange->encryption->key);
+	}
 }
 
 #if defined(SUPP_PLUGIN)
