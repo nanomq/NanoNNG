@@ -1130,8 +1130,8 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		if (!Event->START_COMPLETE.PeerAccepted) {
 			// FIXME Not clear the behavious of the broker.
 			log_warn("Peer refused");
-			quic_stream_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c, 0);
-			break;
+			//quic_stream_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c, 0);
+			//break;
 		}
 
 		quic_stream_cb(QUIC_STREAM_EVENT_START_COMPLETE, c, 0);
