@@ -317,11 +317,18 @@ struct conf_exchange_node {
 	nng_mtx          *mtx;
 };
 
+typedef struct conf_exchange_encryption conf_exchange_encryption;
+struct conf_exchange_encryption {
+	bool        enable;
+	char       *key;
+};
+
 typedef struct conf_exchange conf_exchange;
 struct conf_exchange {
 	char                *exchange_url;
 	size_t               count;
 	conf_exchange_node **nodes;
+	conf_exchange_encryption *encryption;
 };
 
 #if defined(SUPP_PLUGIN)
