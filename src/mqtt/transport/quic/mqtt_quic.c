@@ -247,6 +247,9 @@ mqtt_quictran_pipe_fini(void *arg)
 	// nni_lmq_fini(&p->rslmq);
 	nni_mtx_fini(&p->mtx);
 	nni_aio_fini(&p->tmaio);
+#ifdef NNG_HAVE_MQTT_BROKER
+	conn_param_free(p->cparam);
+#endif
 	NNI_FREE_STRUCT(p);
 }
 
