@@ -74,7 +74,6 @@ static void exchange_sock_fini(void *arg);
 static void exchange_sock_open(void *arg);
 static void exchange_sock_send(void *arg, nni_aio *aio);
 static void exchange_sock_recv(void *arg, nni_aio *aio);
-static void exchange_send_cb(void *arg);
 
 static int
 exchange_add_ex(exchange_sock_t *s, exchange_t *ex)
@@ -375,65 +374,6 @@ exchange_sock_recv(void *arg, nni_aio *aio)
 	nni_mtx_unlock(&s->mtx);
 	nni_aio_finish(aio, 0, 0);
 
-	return;
-}
-
-
-static void
-exchange_send_cb(void *arg)
-{
-	exchange_node_t *ex_node = arg;
-	nni_msg         *msg = NULL;
-	nni_aio         *user_aio = NULL;
-	int             ret = 0;
-
-	if (ex_node == NULL) {
-		return;
-	}
-
-	exchange_sock_t *s = ex_node->sock;
-	if (nni_atomic_get_bool(&s->closed)) {
-		// This occurs if the mqtt_pipe_close has been called.
-		// In that case we don't want any more processing.
-		return;
-	}
-
-	if (nni_aio_result(&ex_node->saio) != 0) {
-		return;
-	}
-
-	nni_mtx_lock(&ex_node->mtx);
-	// send cached msg first
-	while (nni_lmq_get(&ex_node->send_messages, &msg) == 0) {
-		user_aio = (nni_aio *) nni_msg_get_proto_data(msg);
-		if (user_aio == NULL) {
-			log_error("user_aio is NULL\n");
-			break;
-		}
-		// make sure msg is in order
-		ret = exchange_client_handle_msg(ex_node, msg, user_aio);
-		if (ret != 0) {
-			log_error(
-			    "exchange_client_handle cached msg failed!\n");
-			nni_aio_finish_error(user_aio, NNG_EINVAL);
-		} else {
-			nni_aio_finish(user_aio, 0, 0);
-		}
-	}
-	// check msg in aio & send
-	if ((msg = nni_aio_get_msg(&ex_node->saio)) != NULL) {
-		user_aio = (nni_aio *) nni_msg_get_proto_data(msg);
-		nni_aio_set_msg(&ex_node->saio, NULL);
-		ret = exchange_client_handle_msg(ex_node, msg, user_aio);
-		if (ret != 0) {
-			log_error("exchange_client_handle_msg failed!\n");
-			nni_aio_finish_error(user_aio, NNG_EINVAL);
-		} else {
-			nni_aio_finish(user_aio, 0, 0);
-		}
-	}
-	ex_node->isBusy = false;
-	nni_mtx_unlock(&ex_node->mtx);
 	return;
 }
 
