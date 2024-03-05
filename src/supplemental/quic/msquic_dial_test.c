@@ -11,7 +11,8 @@
 #include "nng/mqtt/mqtt_client.h"
 #include "nng/mqtt/mqtt_quic_client.h"
 
-static const char *quic_test_url  = "mqtt-quic://us.432121.xyz:14567";
+//static const char *quic_test_url  = "mqtt-quic://us.432121.xyz:14567";
+static const char *quic_test_url  = "mqtt-quic://13.49.223.253:14567";
 static const char *quic_test_url2 = "mqtt-quic://127.0.0.1:8";
 static const char *quic_test_clientid = "quic-ut-clientid";
 
@@ -67,7 +68,7 @@ test_msquic_stream_connect(void)
 	nng_aio_wait(aio);
 	NUTS_PASS(nng_aio_result(aio));
 
-	NUTS_TRUE((s = nng_aio_get_output(aio, 0)) != NULL);
+	NUTS_ASSERT((s = nng_aio_get_output(aio, 0)) != NULL);
 
 	// Instead of quic echo server. We test a mqtt quic server.
 	// To get some data from mqtt quic server. We need to send a connect msg first.
@@ -157,15 +158,28 @@ test_msquic_app_conn_refuse(void)
 	nng_dialer dialer;
 	nng_msg *connmsg = create_connect_msg(MQTT_PROTOCOL_VERSION_v311,
 			true, (char *)quic_test_clientid);
+	NUTS_ASSERT(connmsg != NULL);
 
 	NUTS_PASS(nng_mqtt_quic_client_open(&sock));
 	NUTS_PASS(nng_dialer_create(&dialer, sock, quic_test_url2));
 	NUTS_PASS(nng_dialer_set_ptr(dialer, NNG_OPT_MQTT_CONNMSG, connmsg));
 	NUTS_PASS(nng_socket_set_ptr(sock, NNG_OPT_MQTT_CONNMSG, connmsg));
-	//NUTS_PASS(nng_mqtt_set_connect_cb(sock, hybrid_quic_connect_cb, NULL));
-	//NUTS_PASS(nng_mqtt_set_disconnect_cb(sock, hybrid_quic_disconnect_cb, NULL));
+	//NUTS_PASS(nng_mqtt_set_connect_cb(sock, test_msquic_connect_cb, NULL));
+	//NUTS_PASS(nng_mqtt_set_disconnect_cb(sock, test_msquic_disconnect_cb, NULL));
 	// Wait connect failed
 	NUTS_FAIL(nng_dialer_start(dialer, NNG_FLAG_ALLOC), SERVER_UNAVAILABLE);
+}
+
+static void
+test_msquic_disconnect_cb(nng_pipe p, nng_pipe_ev ev, void *arg)
+{
+	(void)(p);
+	(void)(ev);
+	nng_msg *connmsg = arg;
+	void    *cparam;
+
+	NUTS_ASSERT((cparam = nng_msg_get_conn_param(connmsg)) != NULL);
+	conn_param_free(cparam);
 }
 
 void
@@ -175,14 +189,14 @@ test_msquic_app_connect(void)
 	nng_dialer dialer;
 	nng_msg *connmsg = create_connect_msg(MQTT_PROTOCOL_VERSION_v311,
 			true, (char *)quic_test_clientid);
+	NUTS_ASSERT(connmsg != NULL);
 
 	NUTS_PASS(nng_mqtt_quic_client_open(&sock));
 	NUTS_PASS(nng_dialer_create(&dialer, sock, quic_test_url));
 	NUTS_PASS(nng_dialer_set_ptr(dialer, NNG_OPT_MQTT_CONNMSG, connmsg));
 	NUTS_PASS(nng_socket_set_ptr(sock, NNG_OPT_MQTT_CONNMSG, connmsg));
-	//NUTS_PASS(nng_mqtt_set_connect_cb(sock, hybrid_quic_connect_cb, NULL));
-	//NUTS_PASS(nng_mqtt_set_disconnect_cb(sock, hybrid_quic_disconnect_cb, NULL));
-	// Wait connect failed
+	//NUTS_PASS(nng_mqtt_set_connect_cb(sock, test_msquic_connect_cb, NULL));
+	NUTS_PASS(nng_mqtt_set_disconnect_cb(sock, test_msquic_disconnect_cb, connmsg));
 	NUTS_PASS(nng_dialer_start(dialer, NNG_FLAG_ALLOC));
 }
 
