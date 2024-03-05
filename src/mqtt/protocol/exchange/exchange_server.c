@@ -52,10 +52,7 @@ struct exchange_node_s {
 	exchange_t      *ex;
 	exchange_sock_t *sock;
 	exchange_pipe_t *pipe;
-	nni_aio         saio;
 	bool            isBusy;
-	nni_mtx         mtx;
-	nni_lmq         send_messages;
 };
 
 struct exchange_sock_s {
@@ -98,10 +95,6 @@ exchange_add_ex(exchange_sock_t *s, exchange_t *ex)
 	node->ex = ex;
 	node->sock = s;
 
-	nni_aio_init(&node->saio, exchange_send_cb, node);
-	nni_mtx_init(&node->mtx);
-	nni_lmq_init(&node->send_messages, NANO_MAX_MQ_BUFFER_LEN);
-
 	s->ex_node = node;
 	nni_mtx_unlock(&s->mtx);
 	return 0;
@@ -127,24 +120,10 @@ exchange_sock_init(void *arg, nni_sock *sock)
 static void
 exchange_sock_fini(void *arg)
 {
-	nni_msg *msg;
-	nni_aio *aio;
 	exchange_sock_t *s = arg;
 	exchange_node_t *ex_node;
 
 	ex_node = s->ex_node;
-	while (nni_lmq_get(&ex_node->send_messages, &msg) == 0) {
-		aio = nni_msg_get_proto_data(msg);
-		if (aio != NULL) {
-			nni_aio_finish_error(aio, NNG_ECLOSED);
-		}
-
-		nni_msg_free(msg);
-	}
-
-	nni_aio_fini(&ex_node->saio);
-	nni_mtx_fini(&ex_node->mtx);
-	nni_lmq_fini(&ex_node->send_messages);
 
 	nni_pollable_fini(&s->writable);
 	nni_pollable_fini(&s->readable);
@@ -171,10 +150,8 @@ static void
 exchange_sock_close(void *arg)
 {
 	exchange_sock_t *s = arg;
-	exchange_node_t *ex_node = s->ex_node;
 
 	nni_atomic_set_bool(&s->closed, true);
-	nni_aio_close(&ex_node->saio);
 
 	return;
 }
@@ -233,7 +210,7 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 	return 0;
 }
 
-static void inline
+static inline void
 exchange_do_send(exchange_node_t *ex_node, nni_msg *msg, nni_aio *user_aio)
 {
 	int ret = 0;
