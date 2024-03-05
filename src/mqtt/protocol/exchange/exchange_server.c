@@ -266,23 +266,7 @@ exchange_sock_send(void *arg, nni_aio *aio)
 	}
 
 	ex_node = s->ex_node;
-	nni_mtx_lock(&ex_node->mtx);  // Too complex lock, performance lost
-	/* Store aio in msg proto data */
-    nni_msg_set_proto_data(msg, NULL, (void *)aio);
-	if (!ex_node->isBusy) {
-		ex_node->isBusy = true;
-		nni_aio_set_msg(&ex_node->saio, msg);
-		nni_mtx_unlock(&ex_node->mtx);
-		// kick off
-		nni_aio_finish(&ex_node->saio, 0, nni_msg_len(msg));
-	} else {
-		if (nni_lmq_put(&ex_node->send_messages, msg) != 0) {
-			log_error("nni_lmq_put failed! msg lost\n");
-			nni_msg_free(msg);
-		}
-		nni_mtx_unlock(&ex_node->mtx);
-		/* don't finish user aio here, finish user aio in send_cb */
-	}
+	exchange_do_send(ex_node, msg, aio);
 	nni_mtx_unlock(&s->mtx);
 	return;
 }
