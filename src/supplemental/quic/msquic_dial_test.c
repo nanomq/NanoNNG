@@ -18,6 +18,9 @@ static const char *quic_test_clientid = "quic-ut-clientid";
 static const char *quic_test_topic = "quic-ut-topic1";
 static const int   quic_test_qos = 0;
 static const char *quic_test_payload = "quic-ut-payload";
+static const uint8_t quic_test_rap = 0;
+static const uint8_t quic_test_rh  = 0;
+static const uint8_t quic_test_nolocal = 0;
 
 void
 test_msquic_stream_conn_refused(void)
@@ -155,6 +158,23 @@ create_connect_msg(uint16_t ver, bool cs, char *clientid)
 }
 
 static inline nng_msg *
+create_subscribe_msg(const char *topic, uint8_t qos, uint8_t nolocal,
+	uint8_t rap, uint8_t rh, property *props)
+{
+	// create a SUBSCRIBE message
+	nng_msg *submsg;
+	nng_mqtt_msg_alloc(&submsg, 0);
+	nng_mqtt_msg_set_packet_type(submsg, NNG_MQTT_SUBSCRIBE);
+	nng_mqtt_topic_qos *topic_qos = nng_mqtt_topic_qos_array_create(1);
+	nng_mqtt_topic_qos_array_set(topic_qos, 0, topic, qos, nolocal, rap, rh);
+	nng_mqtt_msg_set_subscribe_topics(submsg, topic_qos, 0);
+	if (props)
+		nng_mqtt_msg_set_subscribe_property(submsg, props);
+
+	return submsg;
+}
+
+static inline nng_msg *
 create_publish_msg(const char *topic, uint8_t *payload, uint32_t len, bool dup,
     uint8_t qos, bool retain, property *props)
 {
@@ -244,13 +264,50 @@ test_msquic_app_pub(void)
 	// Publish
 	nng_msg *pubmsg = create_publish_msg(quic_test_topic, (uint8_t *)quic_test_payload,
 		strlen(quic_test_payload), 0, quic_test_qos, 0, NULL);
-	nng_mqttv5_msg_encode(pubmsg);
+	nng_mqttv5_msg_encode(pubmsg); // TODO Why no bug? It's a v311 client
 	nng_sendmsg(sock, pubmsg, NNG_FLAG_ALLOC);
 }
 
 void
 test_msquic_app_sub(void)
 {
+	// Connect...
+	nng_socket sock;
+	nng_dialer dialer;
+	nng_msg *connmsg = create_connect_msg(MQTT_PROTOCOL_VERSION_v311,
+			true, (char *)quic_test_clientid);
+	NUTS_ASSERT(connmsg != NULL);
+
+	NUTS_PASS(nng_mqtt_quic_client_open(&sock));
+	NUTS_PASS(nng_dialer_create(&dialer, sock, quic_test_url));
+	NUTS_PASS(nng_dialer_set_ptr(dialer, NNG_OPT_MQTT_CONNMSG, connmsg));
+	NUTS_PASS(nng_socket_set_ptr(sock, NNG_OPT_MQTT_CONNMSG, connmsg));
+	//NUTS_PASS(nng_mqtt_set_connect_cb(sock, test_msquic_connect_cb, NULL));
+	NUTS_PASS(nng_mqtt_set_disconnect_cb(sock, test_msquic_disconnect_cb, connmsg));
+	NUTS_PASS(nng_dialer_start(dialer, NNG_FLAG_ALLOC));
+
+	// Subscribe
+	nng_msg *submsg = create_subscribe_msg(quic_test_topic, quic_test_qos,
+		quic_test_nolocal, quic_test_rap, quic_test_rh, NULL);
+	NUTS_ASSERT(submsg != NULL);
+	NUTS_PASS(nng_mqtt_msg_encode(submsg));
+	printf("Wait here0\n");
+	NUTS_PASS(nng_sendmsg(sock, submsg, NNG_FLAG_ALLOC));
+
+	// Publish
+	nng_msg *pubmsg = create_publish_msg(quic_test_topic, (uint8_t *)quic_test_payload,
+		strlen(quic_test_payload), 0, quic_test_qos, 0, NULL);
+	NUTS_ASSERT(pubmsg != NULL);
+	NUTS_PASS(nng_mqtt_msg_encode(pubmsg));
+	printf("Wait here1\n");
+	NUTS_PASS(nng_sendmsg(sock, pubmsg, NNG_FLAG_ALLOC));
+
+	// Start to receive
+	nng_msg *newmsg;
+	printf("Wait here2\n");
+	NUTS_PASS(nng_recvmsg(sock, &newmsg, NNG_FLAG_ALLOC));
+	NUTS_ASSERT(nng_mqtt_msg_get_packet_type(newmsg) == NNG_MQTT_PUBLISH);
+	nng_msg_free(newmsg);
 }
 
 TEST_LIST = {
