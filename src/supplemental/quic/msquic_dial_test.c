@@ -163,14 +163,15 @@ create_subscribe_msg(const char *topic, uint8_t qos, uint8_t nolocal,
 {
 	// create a SUBSCRIBE message
 	nng_msg *submsg;
+	int cnt = 1;
 	nng_mqtt_msg_alloc(&submsg, 0);
 	nng_mqtt_msg_set_packet_type(submsg, NNG_MQTT_SUBSCRIBE);
-	nng_mqtt_topic_qos *topic_qos = nng_mqtt_topic_qos_array_create(1);
+	nng_mqtt_topic_qos *topic_qos = nng_mqtt_topic_qos_array_create(cnt);
 	nng_mqtt_topic_qos_array_set(topic_qos, 0, topic, qos, nolocal, rap, rh);
-	nng_mqtt_msg_set_subscribe_topics(submsg, topic_qos, 0);
+	nng_mqtt_msg_set_subscribe_topics(submsg, topic_qos, cnt);
 	if (props)
 		nng_mqtt_msg_set_subscribe_property(submsg, props);
-	nng_mqtt_topic_qos_array_free(topic_qos, 1);
+	nng_mqtt_topic_qos_array_free(topic_qos, cnt);
 
 	return submsg;
 }
@@ -293,7 +294,7 @@ test_msquic_app_sub(void)
 	NUTS_ASSERT(submsg != NULL);
 	NUTS_PASS(nng_mqtt_msg_encode(submsg));
 	printf("Wait here0\n");
-	NUTS_PASS(nng_sendmsg(sock, submsg, NNG_FLAG_ALLOC));
+	NUTS_ASSERT(0 == nng_sendmsg(sock, submsg, NNG_FLAG_ALLOC));
 
 	// Publish
 	nng_msg *pubmsg = create_publish_msg(quic_test_topic, (uint8_t *)quic_test_payload,
@@ -302,11 +303,20 @@ test_msquic_app_sub(void)
 	NUTS_PASS(nng_mqtt_msg_encode(pubmsg));
 	NUTS_PASS(nng_sendmsg(sock, pubmsg, NNG_FLAG_ALLOC));
 
-	// Start to receive
+	// Start to receive connack and publish
 	nng_msg *newmsg;
+	NUTS_PASS(nng_recvmsg(sock, &newmsg, NNG_FLAG_ALLOC));
+	NUTS_ASSERT(nng_mqtt_msg_get_packet_type(newmsg) == NNG_MQTT_CONNACK);
+	nng_msg_free(newmsg);
 	NUTS_PASS(nng_recvmsg(sock, &newmsg, NNG_FLAG_ALLOC));
 	NUTS_ASSERT(nng_mqtt_msg_get_packet_type(newmsg) == NNG_MQTT_PUBLISH);
 	nng_msg_free(newmsg);
+	/*
+	printf("Wait here4\n");
+	NUTS_PASS(nng_recvmsg(sock, &newmsg, NNG_FLAG_ALLOC));
+	NUTS_ASSERT(nng_mqtt_msg_get_packet_type(newmsg) == NNG_MQTT_SUBACK);
+	nng_msg_free(newmsg);
+	*/
 }
 
 TEST_LIST = {
