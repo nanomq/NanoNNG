@@ -170,6 +170,7 @@ create_subscribe_msg(const char *topic, uint8_t qos, uint8_t nolocal,
 	nng_mqtt_msg_set_subscribe_topics(submsg, topic_qos, 0);
 	if (props)
 		nng_mqtt_msg_set_subscribe_property(submsg, props);
+	nng_mqtt_topic_qos_array_free(topic_qos, 1);
 
 	return submsg;
 }
@@ -299,12 +300,10 @@ test_msquic_app_sub(void)
 		strlen(quic_test_payload), 0, quic_test_qos, 0, NULL);
 	NUTS_ASSERT(pubmsg != NULL);
 	NUTS_PASS(nng_mqtt_msg_encode(pubmsg));
-	printf("Wait here1\n");
 	NUTS_PASS(nng_sendmsg(sock, pubmsg, NNG_FLAG_ALLOC));
 
 	// Start to receive
 	nng_msg *newmsg;
-	printf("Wait here2\n");
 	NUTS_PASS(nng_recvmsg(sock, &newmsg, NNG_FLAG_ALLOC));
 	NUTS_ASSERT(nng_mqtt_msg_get_packet_type(newmsg) == NNG_MQTT_PUBLISH);
 	nng_msg_free(newmsg);
