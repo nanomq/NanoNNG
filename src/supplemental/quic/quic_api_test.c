@@ -9,7 +9,7 @@
 
 #include <nuts.h>
 
-static const char *quic_test_url  = "mqtt-quic://127.0.0.1:14567";
+static const char *quic_test_url  = "mqtt-quic://13.49.223.253:14567";
 static const char *quic_test_url2 = "mqtt-quic://127.0.0.1:8";
 
 void
