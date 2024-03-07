@@ -162,14 +162,12 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 {
 	int ret = 0;
 	uint64_t key;
-	uint32_t key2;
 	nni_msg *tmsg = NULL;
 
 	key  = nni_msg_get_timestamp(msg);
-	key2 = key & 0XFFFFFFFF;
 	nni_aio_set_prov_data(aio, NULL);
 
-	tmsg = nni_id_get(&ex_node->sock->rbmsgmap, key2);
+	tmsg = nni_id_get(&ex_node->sock->rbmsgmap, key);
 	if (tmsg != NULL) {
 		log_error("msg already in rbmsgmap, overwirte is not allowed");
 		/* free msg here! */
@@ -177,7 +175,7 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 		return -1;
 	}
 
-	ret = nni_id_set(&ex_node->sock->rbmsgmap, key2, msg);
+	ret = nni_id_set(&ex_node->sock->rbmsgmap, key, msg);
 	if (ret != 0) {
 		log_error("rbmsgmap set failed");
 		/* free msg here! */
@@ -200,7 +198,7 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 		if (msgs_lenp != NULL) {
 			for (int i = 0; i < *msgs_lenp; i++) {
 				if (msgs[i] != NULL) {
-					uint32_t tkey = (uint32_t)(nni_msg_get_timestamp(msgs[i]) & 0XFFFFFFFF);
+					uint64_t tkey = nni_msg_get_timestamp(msgs[i]);
 					nni_id_remove(&ex_node->sock->rbmsgmap, tkey);
 				}
 			}
@@ -424,8 +422,7 @@ exchange_client_get_msg_by_key(void *arg, uint64_t key, nni_msg **msg)
 	}
 
 	nni_msg *tmsg = NULL;
-	uint32_t key2 = key & 0XFFFFFFFF;
-	tmsg = nni_id_get(rbmsgmap, key2);
+	tmsg = nni_id_get(rbmsgmap, key);
 	if (tmsg == NULL) {
 		return -1;
 	}
