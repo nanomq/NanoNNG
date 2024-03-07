@@ -514,6 +514,38 @@ again:
 			goto again;
 	}
 
+	char md5_buffer[33];
+	int ret = calcFileMD5(filename, md5_buffer);
+	if (ret == 0) {
+		log_error("Failed to calculate md5sum");
+		free(filename);
+		return -1;
+	}
+
+	char *md5_file_name = (char *)malloc(strlen(filename) + strlen("_") + strlen(md5_buffer) + 2);
+	if (md5_file_name == NULL) {
+		log_error("Failed to allocate memory for file name.");
+		free(filename);
+		return -1;
+	}
+
+	strncpy(md5_file_name, filename, strlen(conf->dir) + strlen(conf->file_name_prefix) + 1);
+	md5_file_name[strlen(conf->dir) + strlen(conf->file_name_prefix) + 1] = '\0';
+
+	strcat(md5_file_name, "_");
+	strcat(md5_file_name, md5_buffer);
+	strcat(md5_file_name, filename + strlen(conf->dir) + strlen(conf->file_name_prefix) + 1);
+
+	ret = rename(filename, md5_file_name);
+	if (ret != 0) {
+		log_error("Failed to rename file %s to %s errno: %d", filename, md5_file_name, errno);
+		free(filename);
+		free(md5_file_name);
+		return -1;
+	}
+
+	free(filename);
+
 	ENQUEUE(parquet_file_queue, md5_file_name);
 	pthread_mutex_unlock(&parquet_queue_mutex);
 
