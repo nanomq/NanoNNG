@@ -402,6 +402,32 @@ again:
 	return 0;
 }
 
+#define STR_VALUE(val) #val
+#define STR(name) STR_VALUE(name)
+#define MD5SUM_CMD_FMT "md5sum %." STR(PATH_LEN) "s 2>/dev/null"
+#define PATH_LEN 256
+
+static int calcFileMD5(char *file_name, char *md5_sum)
+{
+	char cmd[PATH_LEN + sizeof (MD5SUM_CMD_FMT)];
+	sprintf(cmd, MD5SUM_CMD_FMT, file_name);
+
+	FILE *p = popen(cmd, "r");
+	if (p == NULL) {
+		log_error("popen failed");
+		return 0;
+	}
+
+	int i, ch;
+	for (i = 0; i < 32 && isxdigit(ch = fgetc(p)); i++) {
+		*md5_sum++ = ch;
+	}
+
+	*md5_sum = '\0';
+	pclose(p);
+	return i == 32;
+}
+
 int
 parquet_write(
     conf_parquet *conf, shared_ptr<GroupNode> schema, parquet_object *elem)
