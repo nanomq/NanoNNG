@@ -77,7 +77,6 @@ get_file_name(conf_parquet *conf, uint64_t key_start, uint64_t key_end)
 
 	sprintf(file_name, "%s/%s-%" PRIu64 "~%" PRIu64 ".parquet", dir,
 	    prefix, key_start, key_end);
-	ENQUEUE(parquet_file_queue, file_name);
 	return file_name;
 }
 
@@ -425,7 +424,6 @@ again:
 	if (QUEUE_SIZE(parquet_file_queue) > conf->file_count) {
 		remove_old_file();
 	}
-	pthread_mutex_unlock(&parquet_queue_mutex);
 
 	{
 		parquet_file_range *range =
@@ -489,6 +487,9 @@ again:
 		if (new_index != elem->size - 1)
 			goto again;
 	}
+
+	ENQUEUE(parquet_file_queue, md5_file_name);
+	pthread_mutex_unlock(&parquet_queue_mutex);
 
 	parquet_object_free(elem);
 	return 0;
