@@ -447,10 +447,6 @@ again:
 		return -1;
 	}
 
-	if (QUEUE_SIZE(parquet_file_queue) > conf->file_count) {
-		remove_old_file();
-	}
-
 	{
 		parquet_file_range *range =
 		    parquet_file_range_alloc(old_index, new_index, filename);
@@ -547,6 +543,11 @@ again:
 	free(filename);
 
 	ENQUEUE(parquet_file_queue, md5_file_name);
+
+	if (QUEUE_SIZE(parquet_file_queue) > conf->file_count) {
+		remove_old_file();
+	}
+
 	pthread_mutex_unlock(&parquet_queue_mutex);
 
 	parquet_object_free(elem);
