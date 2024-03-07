@@ -24,6 +24,7 @@ nng_sources(
   hocon.c
   log.c
   utils.c
+  md5.c
   )
 
 
