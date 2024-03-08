@@ -488,6 +488,11 @@ again:
 	int ret = ComputeFileMD5(filename, md5_buffer);
 	if (ret != 0) {
 		log_error("Failed to calculate md5sum");
+		ret = remove(filename);
+		if (ret != 0) {
+			log_error("Failed to remove file %s errno: %d", filename, errno);
+		}
+
 		free(filename);
 		pthread_mutex_unlock(&parquet_queue_mutex);
 		parquet_object_free(elem);
@@ -497,6 +502,11 @@ again:
 	char *md5_file_name = (char *)malloc(strlen(filename) + strlen("_") + strlen(md5_buffer) + 2);
 	if (md5_file_name == NULL) {
 		log_error("Failed to allocate memory for file name.");
+		ret = remove(filename);
+		if (ret != 0) {
+			log_error("Failed to remove file %s errno: %d", filename, errno);
+		}
+
 		free(filename);
 		pthread_mutex_unlock(&parquet_queue_mutex);
 		parquet_object_free(elem);
@@ -513,6 +523,11 @@ again:
 	ret = rename(filename, md5_file_name);
 	if (ret != 0) {
 		log_error("Failed to rename file %s to %s errno: %d", filename, md5_file_name, errno);
+		ret = remove(filename);
+		if (ret != 0) {
+			log_error("Failed to remove file %s errno: %d", filename, errno);
+		}
+
 		free(filename);
 		free(md5_file_name);
 		pthread_mutex_unlock(&parquet_queue_mutex);
