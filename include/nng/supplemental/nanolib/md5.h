@@ -56,8 +56,8 @@ typedef struct
 	a += b; \
 }                                            
 
-int Compute_string_md5(unsigned char *dest_str, unsigned int dest_len, char *md5_str);
-int Compute_file_md5(const char *file_path, char *md5_str);
+int ComputeStringMD5(unsigned char *dest_str, unsigned int dest_len, char *md5_str);
+int ComputeFileMD5(const char *file_path, char *md5_str);
 
 void MD5Init(MD5_CTX *context);
 void MD5Update(MD5_CTX *context, unsigned char *input, unsigned int inputlen);
