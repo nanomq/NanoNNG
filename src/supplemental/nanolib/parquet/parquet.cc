@@ -484,7 +484,7 @@ again:
 			goto again;
 	}
 
-	char md5_buffer[33];
+	char md5_buffer[MD5_LEN + 1];
 	int ret = ComputeFileMD5(filename, md5_buffer);
 	if (ret != 0) {
 		log_error("Failed to calculate md5sum");
