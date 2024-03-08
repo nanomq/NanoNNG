@@ -916,7 +916,7 @@ int ringBuffer_enqueue(ringBuffer_t *rb,
 		nng_mtx_unlock(rb->ring_lock);
 		return -1;
 	}
-
+	log_info("current RingBus status %d cap %d", rb->size, rb->cap);
 	if (rb->size == rb->cap) {
 		if (rb->fullOp == RB_FULL_NONE) {
 			log_error("Ring buffer is full enqueue failed!!!\n");
@@ -927,6 +927,7 @@ int ringBuffer_enqueue(ringBuffer_t *rb,
 			ringBuffer_clean_msgs(rb, 1);
 		}
 		if (rb->fullOp == RB_FULL_RETURN) {
+			log_info("RB_FULL_RETURN");
 			ret = put_msgs_to_aio(rb, aio);
 			if (ret != 0) {
 				log_error("Ring buffer is full and put msgs to aio failed!\n");
