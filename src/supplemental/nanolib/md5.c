@@ -181,7 +181,7 @@ void MD5Transform(unsigned int state[4], unsigned char block[64])
 	state[3] += d;
 }
 
-int Compute_string_md5(unsigned char *dest_str, unsigned int dest_len, char *md5_str)
+int ComputeStringMD5(unsigned char *dest_str, unsigned int dest_len, char *md5_str)
 {
 	int i;
 	unsigned char md5_value[MD5_SIZE];
@@ -203,7 +203,7 @@ int Compute_string_md5(unsigned char *dest_str, unsigned int dest_len, char *md5
 	return 0;
 }
 
-int Compute_file_md5(const char *file_path, char *md5_str)
+int ComputeFileMD5(const char *file_path, char *md5_str)
 {
 	int i;
 	int fd;
