@@ -420,6 +420,7 @@ again:
 	new_index = compute_new_index(elem, old_index, conf->file_size);
 	uint64_t key_start = elem->keys[old_index];
 	uint64_t key_end   = elem->keys[new_index];
+	log_info("wait for parquet_queue_mutex");
 	pthread_mutex_lock(&parquet_queue_mutex);
 	char *filename = get_file_name(conf, key_start, key_end);
 	if (filename == NULL) {
