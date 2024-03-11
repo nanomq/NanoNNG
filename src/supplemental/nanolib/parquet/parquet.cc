@@ -193,7 +193,8 @@ parquet_object_free(parquet_object *elem)
 		uint32_t *szp = (uint32_t *) malloc(sizeof(uint32_t));
 		*szp          = elem->size;
 		nng_aio_set_msg(elem->aio, (nng_msg *) szp);
-		DO_IT_IF_NOT_NULL(nng_aio_finish_sync, elem->aio, 0);
+		log_info("finish write aio");
+		DO_IT_IF_NOT_NULL(nng_aio_finish, elem->aio, 0);
 		FREE_IF_NOT_NULL(elem->darray, elem->size);
 		for (int i = 0; i < elem->ranges->size; i++) {
 			parquet_file_range_free(elem->ranges->range[i]);
@@ -530,7 +531,7 @@ again:
 	strcat(md5_file_name, "_");
 	strcat(md5_file_name, md5_buffer);
 	strcat(md5_file_name, filename + strlen(conf->dir) + strlen(conf->file_name_prefix) + 1);
-
+	log_info("trying to rename... %s to %s", filename, md5_file_name);
 	ret = rename(filename, md5_file_name);
 	if (ret != 0) {
 		log_error("Failed to rename file %s to %s errno: %d", filename, md5_file_name, errno);
@@ -555,7 +556,7 @@ again:
 	}
 
 	pthread_mutex_unlock(&parquet_queue_mutex);
-
+	log_info("flush finished!");
 	parquet_object_free(elem);
 	return 0;
 }
