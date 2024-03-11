@@ -218,9 +218,10 @@ parquet_write_batch_async(parquet_object *elem)
 	pthread_mutex_lock(&parquet_queue_mutex);
 	if (IS_EMPTY(parquet_queue)) {
 		pthread_cond_broadcast(&parquet_queue_not_empty);
+		log_info("broadcast signal!");
 	}
 	ENQUEUE(parquet_queue, elem);
-	log_debug("enqueue element.");
+	log_info("enqueue element.");
 
 	pthread_mutex_unlock(&parquet_queue_mutex);
 
@@ -334,6 +335,7 @@ again:
 	    get_random_file_name(prefix.data(), key_start, key_end);
 	if (filename == NULL) {
 		log_error("Failed to get file name");
+		parquet_object_free(elem);
 		return -1;
 	}
 
@@ -413,7 +415,7 @@ parquet_write(
 	uint32_t old_index = 0;
 	uint32_t new_index = 0;
 again:
-
+	log_info("parquet_write");
 	new_index = compute_new_index(elem, old_index, conf->file_size);
 	uint64_t key_start = elem->keys[old_index];
 	uint64_t key_end   = elem->keys[new_index];
@@ -433,13 +435,13 @@ again:
 
 		// Create a ParquetFileWriter instance
 		parquet::WriterProperties::Builder builder;
-
+		log_info("init builder");
 		builder.created_by("NanoMQ")
 		    ->version(parquet::ParquetVersion::PARQUET_2_6)
 		    ->data_page_version(parquet::ParquetDataPageVersion::V2)
 		    ->compression(static_cast<arrow::Compression::type>(
 		        conf->comp_type));
-
+		log_info("check encry");
 		if (conf->encryption.enable) {
 			shared_ptr<parquet::FileEncryptionProperties>
 			    encryption_configurations;
@@ -460,6 +462,7 @@ again:
 		    file_writer->AppendRowGroup();
 
 		// Write the Int64 column
+		log_info("start doing int64 write");
 		parquet::Int64Writer *int64_writer =
 		    static_cast<parquet::Int64Writer *>(
 		        rg_writer->NextColumn());
@@ -469,6 +472,7 @@ again:
 			int64_writer->WriteBatch(
 			    1, &definition_level, nullptr, &value);
 		}
+		log_info("stop doing int64 write");
 
 		// Write the ByteArray column. Make every alternate values NULL
 		parquet::ByteArrayWriter *ba_writer =
@@ -482,6 +486,7 @@ again:
 			ba_writer->WriteBatch(
 			    1, &definition_level, nullptr, &value);
 		}
+		log_info("stop doing ByteArray write");
 
 		old_index = new_index;
 
@@ -490,6 +495,7 @@ again:
 	}
 
 	char md5_buffer[MD5_LEN + 1];
+	log_info("compute md5");
 	int ret = ComputeFileMD5(filename, md5_buffer);
 	if (ret != 0) {
 		log_error("Failed to calculate md5sum");
