@@ -212,7 +212,9 @@ parquet_write_batch_async(parquet_object *elem)
         return -1;
     }
 	elem->type = WRITE_TO_NORMAL;
+	log_info("WAIT_FOR_AVAILABLE");
 	WAIT_FOR_AVAILABLE
+	log_info("WAIT_FOR parquet_queue_mutex");
 	pthread_mutex_lock(&parquet_queue_mutex);
 	if (IS_EMPTY(parquet_queue)) {
 		pthread_cond_broadcast(&parquet_queue_not_empty);
@@ -233,7 +235,9 @@ parquet_write_batch_tmp_async(parquet_object *elem)
         return -1;
     }
 	elem->type = WRITE_TO_TEMP;
+	log_info("WAIT_FOR_AVAILABLE");
 	WAIT_FOR_AVAILABLE
+	log_info("WAIT_FOR parquet_queue_mutex");
 	pthread_mutex_lock(&parquet_queue_mutex);
 	if (IS_EMPTY(parquet_queue)) {
 		pthread_cond_broadcast(&parquet_queue_not_empty);
