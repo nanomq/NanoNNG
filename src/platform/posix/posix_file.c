@@ -49,6 +49,7 @@ nni_plat_make_parent_dirs(const char *path)
 			*p = '/';
 			if ((rv != 0) && (errno != EEXIST)) {
 				rv = nni_plat_errno(errno);
+				printf("errno of mkdir %d rv %d\n", errno, rv);
 				nni_strfree(dup);
 				return (rv);
 			}
