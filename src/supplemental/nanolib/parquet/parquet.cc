@@ -421,6 +421,7 @@ again:
 	char *filename = get_file_name(conf, key_start, key_end);
 	if (filename == NULL) {
 		pthread_mutex_unlock(&parquet_queue_mutex);
+		parquet_object_free(elem);
 		log_error("Failed to get file name");
 		return -1;
 	}
