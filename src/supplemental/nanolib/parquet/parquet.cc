@@ -420,11 +420,8 @@ again:
 	new_index = compute_new_index(elem, old_index, conf->file_size);
 	uint64_t key_start = elem->keys[old_index];
 	uint64_t key_end   = elem->keys[new_index];
-	log_info("wait for parquet_queue_mutex");
-	pthread_mutex_lock(&parquet_queue_mutex);
 	char *filename = get_file_name(conf, key_start, key_end);
 	if (filename == NULL) {
-		pthread_mutex_unlock(&parquet_queue_mutex);
 		parquet_object_free(elem);
 		log_error("Failed to get file name");
 		return -1;
@@ -507,7 +504,6 @@ again:
 		}
 
 		free(filename);
-		pthread_mutex_unlock(&parquet_queue_mutex);
 		parquet_object_free(elem);
 		return -1;
 	}
@@ -521,7 +517,6 @@ again:
 		}
 
 		free(filename);
-		pthread_mutex_unlock(&parquet_queue_mutex);
 		parquet_object_free(elem);
 		return -1;
 	}
@@ -543,13 +538,14 @@ again:
 
 		free(filename);
 		free(md5_file_name);
-		pthread_mutex_unlock(&parquet_queue_mutex);
 		parquet_object_free(elem);
 		return -1;
 	}
 
 	free(filename);
 
+	log_info("wait for parquet_queue_mutex");
+	pthread_mutex_lock(&parquet_queue_mutex);
 	ENQUEUE(parquet_file_queue, md5_file_name);
 
 	if (QUEUE_SIZE(parquet_file_queue) > conf->file_count) {
