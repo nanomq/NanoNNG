@@ -829,25 +829,30 @@ nano_pipe_close(void *arg)
 	}
 	if (clientid) {
 		nni_pipe *new_pipe;
-		nni_pipe_find(&new_pipe, npipe->p_id);
-		if (new_pipe == npipe) {
-			nni_id_set(&s->cached_sessions, npipe->p_id, p);
-			nni_mtx_lock(&p->lk);
-			// set event to false avoid of sending the
-			// disconnecting msg
-			p->event                   = false;
-			npipe->cache               = true;
-			// set clean start to 1, prevent caching session twice
-			p->conn_param->clean_start = 1;
-			nni_atomic_swap_bool(&npipe->p_closed, false);
-			if (nni_list_active(&s->recvpipes, p)) {
-				nni_list_remove(&s->recvpipes, p);
+		if (nni_pipe_find(&new_pipe, npipe->p_id) == 0) {
+			log_debug("keep session id [%s] ", p->conn_param->clientid.body);
+			nni_pipe_rele(new_pipe);
+			if (new_pipe == npipe) {
+				nni_id_set(&s->cached_sessions, npipe->p_id, p);
+				nni_mtx_lock(&p->lk);
+				// set event to false avoid of sending the
+				// disconnecting msg
+				p->event     = false;
+				npipe->cache = true;
+				// set clean start to 1, prevent caching
+				// session twice
+				p->conn_param->clean_start = 1;
+				nni_atomic_swap_bool(&npipe->p_closed, false);
+				if (nni_list_active(&s->recvpipes, p)) {
+					nni_list_remove(&s->recvpipes, p);
+				}
+				nano_nni_lmq_flush(&p->rlmq, false);
+				nni_mtx_unlock(&s->lk);
+				nni_mtx_unlock(&p->lk);
+				return -1;
 			}
-			nano_nni_lmq_flush(&p->rlmq, false);
-			nni_mtx_unlock(&s->lk);
-			nni_mtx_unlock(&p->lk);
-			return -1;
 		}
+
 		// have to stop aio timer first, otherwise we hit null qos_db
 		nni_aio_stop(&p->aio_timer);
 		// take params from npipe to new pipe
