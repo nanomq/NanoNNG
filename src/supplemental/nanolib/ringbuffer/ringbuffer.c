@@ -916,7 +916,7 @@ int ringBuffer_enqueue(ringBuffer_t *rb,
 		nng_mtx_unlock(rb->ring_lock);
 		return -1;
 	}
-	log_info("current RingBus status %d cap %d", rb->size, rb->cap);
+	log_debug("current RingBus status %d cap %d", rb->size, rb->cap);
 	if (rb->size == rb->cap) {
 		if (rb->fullOp == RB_FULL_NONE) {
 			log_error("Ring buffer is full enqueue failed!!!\n");
