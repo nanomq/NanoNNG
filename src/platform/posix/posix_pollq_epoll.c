@@ -218,7 +218,7 @@ nni_posix_pfd_fini(nni_posix_pfd *pfd)
 
 	// We're exclusive now.
 
-	(void) close(pfd->fd);
+	(void) close(pfd->fd);		// release fd
 	nni_cv_fini(&pfd->cv);
 	nni_mtx_fini(&pfd->mtx);
 	NNI_FREE_STRUCT(pfd);
