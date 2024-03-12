@@ -193,7 +193,7 @@ parquet_object_free(parquet_object *elem)
 		uint32_t *szp = (uint32_t *) malloc(sizeof(uint32_t));
 		*szp          = elem->size;
 		nng_aio_set_msg(elem->aio, (nng_msg *) szp);
-		log_info("finish write aio");
+		log_debug("finish write aio");
 		DO_IT_IF_NOT_NULL(nng_aio_finish, elem->aio, 0);
 		FREE_IF_NOT_NULL(elem->darray, elem->size);
 		for (int i = 0; i < elem->ranges->size; i++) {
@@ -213,16 +213,16 @@ parquet_write_batch_async(parquet_object *elem)
 		return -1;
 	}
 	elem->type = WRITE_TO_NORMAL;
-	log_info("WAIT_FOR_AVAILABLE");
+	log_debug("WAIT_FOR_AVAILABLE");
 	WAIT_FOR_AVAILABLE
-	log_info("WAIT_FOR parquet_queue_mutex");
+	log_debug("WAIT_FOR parquet_queue_mutex");
 	pthread_mutex_lock(&parquet_queue_mutex);
 	if (IS_EMPTY(parquet_queue)) {
 		pthread_cond_broadcast(&parquet_queue_not_empty);
-		log_info("broadcast signal!");
+		log_debug("broadcast signal!");
 	}
 	ENQUEUE(parquet_queue, elem);
-	log_info("enqueue element.");
+	log_debug("enqueue element.");
 
 	pthread_mutex_unlock(&parquet_queue_mutex);
 
@@ -237,9 +237,9 @@ parquet_write_batch_tmp_async(parquet_object *elem)
 		return -1;
 	}
 	elem->type = WRITE_TO_TEMP;
-	log_info("WAIT_FOR_AVAILABLE");
+	log_debug("WAIT_FOR_AVAILABLE");
 	WAIT_FOR_AVAILABLE
-	log_info("WAIT_FOR parquet_queue_mutex");
+	log_debug("WAIT_FOR parquet_queue_mutex");
 	pthread_mutex_lock(&parquet_queue_mutex);
 	if (IS_EMPTY(parquet_queue)) {
 		pthread_cond_broadcast(&parquet_queue_not_empty);
@@ -412,7 +412,7 @@ char *
 compute_and_rename_file_withMD5(char *filename, conf_parquet *conf)
 {
 	char md5_buffer[MD5_LEN + 1];
-	log_info("compute md5");
+	log_debug("compute md5");
 	int ret = ComputeFileMD5(filename, md5_buffer);
 	if (ret != 0) {
 		log_error("Failed to calculate md5sum");
@@ -476,7 +476,7 @@ parquet_write(
 	uint32_t old_index = 0;
 	uint32_t new_index = 0;
 again:
-	log_info("parquet_write");
+	log_debug("parquet_write");
 	new_index = compute_new_index(elem, old_index, conf->file_size);
 	uint64_t key_start = elem->keys[old_index];
 	uint64_t key_end   = elem->keys[new_index];
@@ -494,13 +494,13 @@ again:
 
 		// Create a ParquetFileWriter instance
 		parquet::WriterProperties::Builder builder;
-		log_info("init builder");
+		log_debug("init builder");
 		builder.created_by("NanoMQ")
 		    ->version(parquet::ParquetVersion::PARQUET_2_6)
 		    ->data_page_version(parquet::ParquetDataPageVersion::V2)
 		    ->compression(static_cast<arrow::Compression::type>(
 		        conf->comp_type));
-		log_info("check encry");
+		log_debug("check encry");
 		if (conf->encryption.enable) {
 			shared_ptr<parquet::FileEncryptionProperties>
 			    encryption_configurations;
@@ -521,7 +521,7 @@ again:
 		    file_writer->AppendRowGroup();
 
 		// Write the Int64 column
-		log_info("start doing int64 write");
+		log_debug("start doing int64 write");
 		parquet::Int64Writer *int64_writer =
 		    static_cast<parquet::Int64Writer *>(
 		        rg_writer->NextColumn());
@@ -531,7 +531,7 @@ again:
 			int64_writer->WriteBatch(
 			    1, &definition_level, nullptr, &value);
 		}
-		log_info("stop doing int64 write");
+		log_debug("stop doing int64 write");
 
 		// Write the ByteArray column. Make every alternate values NULL
 		parquet::ByteArrayWriter *ba_writer =
@@ -545,7 +545,7 @@ again:
 			ba_writer->WriteBatch(
 			    1, &definition_level, nullptr, &value);
 		}
-		log_info("stop doing ByteArray write");
+		log_debug("stop doing ByteArray write");
 
 		char *md5_file_name =
 		    compute_and_rename_file_withMD5(filename, conf);
@@ -554,7 +554,7 @@ again:
 			return -1;
 		}
 
-		log_info("wait for parquet_queue_mutex");
+		log_debug("wait for parquet_queue_mutex");
 		pthread_mutex_lock(&parquet_queue_mutex);
 		ENQUEUE(parquet_file_queue, md5_file_name);
 
