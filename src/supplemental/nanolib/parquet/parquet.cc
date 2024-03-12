@@ -408,6 +408,57 @@ again:
 	parquet_object_free(elem);
 	return 0;
 }
+char *compute_and_rename_file_withMD5(char* filename, conf_parquet *conf)
+{
+	char md5_buffer[MD5_LEN + 1];
+	log_info("compute md5");
+	int ret = ComputeFileMD5(filename, md5_buffer);
+	if (ret != 0) {
+		log_error("Failed to calculate md5sum");
+		ret = remove(filename);
+		if (ret != 0) {
+			log_error("Failed to remove file %s errno: %d", filename, errno);
+		}
+
+		free(filename);
+		return NULL;
+	}
+
+	char *md5_file_name = (char *)malloc(strlen(filename) + strlen("_") + strlen(md5_buffer) + 2);
+	if (md5_file_name == NULL) {
+		log_error("Failed to allocate memory for file name.");
+		ret = remove(filename);
+		if (ret != 0) {
+			log_error("Failed to remove file %s errno: %d", filename, errno);
+		}
+
+		free(filename);
+		return NULL;
+	}
+
+	strncpy(md5_file_name, filename, strlen(conf->dir) + strlen(conf->file_name_prefix) + 1);
+	md5_file_name[strlen(conf->dir) + strlen(conf->file_name_prefix) + 1] = '\0';
+
+	strcat(md5_file_name, "_");
+	strcat(md5_file_name, md5_buffer);
+	strcat(md5_file_name, filename + strlen(conf->dir) + strlen(conf->file_name_prefix) + 1);
+	log_info("trying to rename... %s to %s", filename, md5_file_name);
+	ret = rename(filename, md5_file_name);
+	if (ret != 0) {
+		log_error("Failed to rename file %s to %s errno: %d", filename, md5_file_name, errno);
+		ret = remove(filename);
+		if (ret != 0) {
+			log_error("Failed to remove file %s errno: %d", filename, errno);
+		}
+
+		free(filename);
+		free(md5_file_name);
+		return NULL;
+	}
+
+	free(filename);
+	return md5_file_name;
+}
 
 int
 parquet_write(
@@ -487,72 +538,28 @@ again:
 		}
 		log_info("stop doing ByteArray write");
 
+		char *md5_file_name = compute_and_rename_file_withMD5(filename, conf);
+		if (md5_file_name == nullptr) {
+			parquet_object_free(elem);
+			return -1;
+		}
+
+		log_info("wait for parquet_queue_mutex");
+		pthread_mutex_lock(&parquet_queue_mutex);
+		ENQUEUE(parquet_file_queue, md5_file_name);
+
+		if (QUEUE_SIZE(parquet_file_queue) > conf->file_count) {
+			remove_old_file();
+		}
+
+		pthread_mutex_unlock(&parquet_queue_mutex);
+
 		old_index = new_index;
 
 		if (new_index != elem->size - 1)
 			goto again;
 	}
 
-	char md5_buffer[MD5_LEN + 1];
-	log_info("compute md5");
-	int ret = ComputeFileMD5(filename, md5_buffer);
-	if (ret != 0) {
-		log_error("Failed to calculate md5sum");
-		ret = remove(filename);
-		if (ret != 0) {
-			log_error("Failed to remove file %s errno: %d", filename, errno);
-		}
-
-		free(filename);
-		parquet_object_free(elem);
-		return -1;
-	}
-
-	char *md5_file_name = (char *)malloc(strlen(filename) + strlen("_") + strlen(md5_buffer) + 2);
-	if (md5_file_name == NULL) {
-		log_error("Failed to allocate memory for file name.");
-		ret = remove(filename);
-		if (ret != 0) {
-			log_error("Failed to remove file %s errno: %d", filename, errno);
-		}
-
-		free(filename);
-		parquet_object_free(elem);
-		return -1;
-	}
-
-	strncpy(md5_file_name, filename, strlen(conf->dir) + strlen(conf->file_name_prefix) + 1);
-	md5_file_name[strlen(conf->dir) + strlen(conf->file_name_prefix) + 1] = '\0';
-
-	strcat(md5_file_name, "_");
-	strcat(md5_file_name, md5_buffer);
-	strcat(md5_file_name, filename + strlen(conf->dir) + strlen(conf->file_name_prefix) + 1);
-	log_info("trying to rename... %s to %s", filename, md5_file_name);
-	ret = rename(filename, md5_file_name);
-	if (ret != 0) {
-		log_error("Failed to rename file %s to %s errno: %d", filename, md5_file_name, errno);
-		ret = remove(filename);
-		if (ret != 0) {
-			log_error("Failed to remove file %s errno: %d", filename, errno);
-		}
-
-		free(filename);
-		free(md5_file_name);
-		parquet_object_free(elem);
-		return -1;
-	}
-
-	free(filename);
-
-	log_info("wait for parquet_queue_mutex");
-	pthread_mutex_lock(&parquet_queue_mutex);
-	ENQUEUE(parquet_file_queue, md5_file_name);
-
-	if (QUEUE_SIZE(parquet_file_queue) > conf->file_count) {
-		remove_old_file();
-	}
-
-	pthread_mutex_unlock(&parquet_queue_mutex);
 	log_info("flush finished!");
 	parquet_object_free(elem);
 	return 0;
