@@ -117,17 +117,18 @@ get_random_file_name(char *prefix, uint64_t key_start, uint64_t key_end)
 static int
 remove_old_file(void)
 {
+	int   ret      = 0;
 	char *filename = (char *) DEQUEUE(parquet_file_queue);
 	if (remove(filename) == 0) {
 		log_debug("File '%s' removed successfully.\n", filename);
 	} else {
 		log_error(
 		    "Error removing the file %s errno: %d", filename, errno);
-		return -1;
+		ret = -1;
 	}
 
 	free(filename);
-	return 0;
+	return ret;
 }
 
 static shared_ptr<GroupNode>
@@ -473,9 +474,9 @@ int
 parquet_write(
     conf_parquet *conf, shared_ptr<GroupNode> schema, parquet_object *elem)
 {
-	uint32_t old_index = 0;
-	uint32_t new_index = 0;
-	char *last_file_name = NULL;
+	uint32_t old_index      = 0;
+	uint32_t new_index      = 0;
+	char    *last_file_name = NULL;
 again:
 
 	if (last_file_name != NULL) {
