@@ -484,6 +484,7 @@ again:
 		    compute_and_rename_file_withMD5(last_file_name, conf);
 		if (md5_file_name == nullptr) {
 			log_error("Failed to rename file with md5");
+			parquet_object_free(elem);
 			return -1;
 		}
 
@@ -586,6 +587,8 @@ again:
 		char *md5_file_name =
 		    compute_and_rename_file_withMD5(last_file_name, conf);
 		if (md5_file_name == nullptr) {
+			parquet_object_free(elem);
+			log_error("fail to get md5 from parquet file");
 			return -1;
 		}
 
