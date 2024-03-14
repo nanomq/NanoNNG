@@ -475,7 +475,34 @@ parquet_write(
 {
 	uint32_t old_index = 0;
 	uint32_t new_index = 0;
+	char *last_file_name = NULL;
 again:
+
+	if (last_file_name != NULL) {
+		char *md5_file_name =
+		    compute_and_rename_file_withMD5(last_file_name, conf);
+		if (md5_file_name == nullptr) {
+			log_error("Failed to rename file with md5");
+			return -1;
+		}
+
+		char md5_buffer[MD5_LEN + 1];
+		log_debug("compute md5 after rename");
+		int ret = ComputeFileMD5(md5_file_name, md5_buffer);
+		if (ret != 0) {
+			log_error("Failed to calculate md5sum");
+		}
+		log_debug("wait for parquet_queue_mutex");
+		pthread_mutex_lock(&parquet_queue_mutex);
+		ENQUEUE(parquet_file_queue, md5_file_name);
+
+		if (QUEUE_SIZE(parquet_file_queue) > conf->file_count) {
+			remove_old_file();
+		}
+
+		pthread_mutex_unlock(&parquet_queue_mutex);
+		last_file_name = NULL;
+	}
 	log_debug("parquet_write");
 	new_index = compute_new_index(elem, old_index, conf->file_size);
 	uint64_t key_start = elem->keys[old_index];
@@ -547,13 +574,26 @@ again:
 		}
 		log_debug("stop doing ByteArray write");
 
+		old_index = new_index;
+
+		last_file_name = filename;
+
+		if (new_index != elem->size - 1)
+			goto again;
+	}
+	if (last_file_name != NULL) {
 		char *md5_file_name =
-		    compute_and_rename_file_withMD5(filename, conf);
+		    compute_and_rename_file_withMD5(last_file_name, conf);
 		if (md5_file_name == nullptr) {
-			parquet_object_free(elem);
 			return -1;
 		}
 
+		char md5_buffer[MD5_LEN + 1];
+		log_debug("compute md5 after rename");
+		int ret = ComputeFileMD5(md5_file_name, md5_buffer);
+		if (ret != 0) {
+			log_error("Failed to calculate md5sum");
+		}
 		log_debug("wait for parquet_queue_mutex");
 		pthread_mutex_lock(&parquet_queue_mutex);
 		ENQUEUE(parquet_file_queue, md5_file_name);
@@ -563,11 +603,7 @@ again:
 		}
 
 		pthread_mutex_unlock(&parquet_queue_mutex);
-
-		old_index = new_index;
-
-		if (new_index != elem->size - 1)
-			goto again;
+		last_file_name = NULL;
 	}
 
 	log_info("flush finished!");
