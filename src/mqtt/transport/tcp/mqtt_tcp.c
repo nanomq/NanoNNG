@@ -919,6 +919,11 @@ mqtt_tcptran_pipe_send_start(mqtt_tcptran_pipe *p)
 		iov[niov].iov_buf = nni_msg_header(msg);
 		iov[niov].iov_len = nni_msg_header_len(msg);
 		niov++;
+		int i = 1;
+		while (i < iov[0].iov_len) {
+			log_info("%x ", *((uint8_t*)iov[0].iov_buf+i));
+			i++;
+		}
 	}
 	if (nni_msg_len(msg) > 0) {
 		iov[niov].iov_buf = nni_msg_body(msg);
