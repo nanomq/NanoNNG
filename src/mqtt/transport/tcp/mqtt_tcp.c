@@ -177,7 +177,7 @@ mqtt_pipe_timer_cb(void *arg)
 	// 	nng_stream_send(p->conn, p->qsaio);
 	// 	p->pingcnt ++;
 	// }
-	log_info("send pingreq!");
+	// log_info("send pingreq!");
 	nni_mtx_unlock(&p->mtx);
 	nni_sleep_aio(p->keepalive, &p->tmaio);
 }
