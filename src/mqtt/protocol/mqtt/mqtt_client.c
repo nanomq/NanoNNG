@@ -83,6 +83,7 @@ struct mqtt_pipe_s {
 	uint16_t        rid;
 
 	uint8_t         pingcnt;
+	nni_msg        *pingmsg;
 };
 
 // A mqtt_sock_s is our per-socket protocol private structure.
@@ -282,7 +283,19 @@ mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	p->pipe      = pipe;
 	p->mqtt_sock = s;
 	p->rid       = 0;
+
 	p->pingcnt   = 0;
+	p->pingmsg   = NULL;
+	nni_msg_alloc(&p->pingmsg, 0);
+	if (p->pingmsg) {
+		log_error("Error in create a pingmsg");
+	} else {
+		uint8_t buf[2];
+		buf[0] = 0xC0;
+		buf[1] = 0x00;
+		nni_msg_header_append(p->pingmsg, buf, 2);
+	}
+
 	nni_aio_init(&p->send_aio, mqtt_send_cb, p);
 	nni_aio_init(&p->recv_aio, mqtt_recv_cb, p);
 	nni_aio_init(&p->time_aio, mqtt_timer_cb, p);
@@ -578,6 +591,17 @@ mqtt_timer_cb(void *arg)
 		log_warn("MQTT Timeout and disconnect");
 		nni_mtx_unlock(&s->mtx);
 		nni_pipe_close(p->pipe);
+		return;
+	}
+
+	if (!p->busy && !nni_aio_busy(p->send_aio) && p->pingmsg) {
+		p->busy = true;
+		// send pingreq
+		nni_aio_set_msg(&p->send_aio, p->pingmsg);
+		nni_pipe_send(p->pipe, &p->send_aio);
+		p->pingcnt ++;
+		nni_mtx_unlock(&s->mtx);
+		nni_sleep_aio(s->retry, &p->time_aio);
 		return;
 	}
 
