@@ -81,6 +81,8 @@ struct mqtt_pipe_s {
 	nni_lmq         send_messages; // send messages queue
 	bool            busy;
 	uint16_t        rid;
+
+	uint8_t         pingcnt;
 };
 
 // A mqtt_sock_s is our per-socket protocol private structure.
@@ -298,6 +300,7 @@ mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	p->pipe      = pipe;
 	p->mqtt_sock = s;
 	p->rid       = 0;
+	p->pingcnt   = 0;
 	nni_aio_init(&p->send_aio, mqtt_send_cb, p);
 	nni_aio_init(&p->recv_aio, mqtt_recv_cb, p);
 	nni_aio_init(&p->time_aio, mqtt_timer_cb, p);
@@ -752,6 +755,9 @@ mqtt_recv_cb(void *arg)
 
 	// schedule another receive
 	nni_pipe_recv(p->pipe, &p->recv_aio);
+
+	// reset ping state
+	p->pingcnt = 0;
 
 	// state transitions
 	switch (packet_type) {
