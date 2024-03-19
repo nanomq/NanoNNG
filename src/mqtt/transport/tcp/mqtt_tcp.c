@@ -163,20 +163,20 @@ mqtt_pipe_timer_cb(void *arg)
 	// send PINGREQ with tmaio itself?
 	// nng_msleep(p->keepalive);
 	nni_mtx_lock(&p->mtx);
-	if (!p->busy && !nni_aio_busy(p->qsaio)) {
-		// send pingreq
-		buf[0] = 0xC0;
-		buf[1] = 0x00;
+	// if (!p->busy && !nni_aio_busy(p->qsaio)) {
+	// 	// send pingreq
+	// 	buf[0] = 0xC0;
+	// 	buf[1] = 0x00;
 
-		nni_iov iov;
-		iov.iov_len = 2;
-		iov.iov_buf = &buf;
-		// send it down...
-		p->busy = true;
-		nni_aio_set_iov(p->qsaio, 1, &iov);
-		nng_stream_send(p->conn, p->qsaio);
-		p->pingcnt ++;
-	}
+	// 	nni_iov iov;
+	// 	iov.iov_len = 2;
+	// 	iov.iov_buf = &buf;
+	// 	// send it down...
+	// 	p->busy = true;
+	// 	nni_aio_set_iov(p->qsaio, 1, &iov);
+	// 	nng_stream_send(p->conn, p->qsaio);
+	// 	p->pingcnt ++;
+	// }
 	log_info("send pingreq!");
 	nni_mtx_unlock(&p->mtx);
 	nni_sleep_aio(p->keepalive, &p->tmaio);
@@ -777,15 +777,15 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 		}
 		// aio_begin?
 		if (!nni_aio_busy(p->qsaio)) {
-			iov[0].iov_len = nni_msg_header_len(qmsg);
-			iov[0].iov_buf = nni_msg_header(qmsg);
-			iov[1].iov_len = nni_msg_len(qmsg);
-			iov[1].iov_buf = nni_msg_body(qmsg);
-			p->busy        = true;
-			nni_aio_set_msg(p->qsaio, qmsg);
-			// send ACK down...
-			nni_aio_set_iov(p->qsaio, 2, iov);
-			nng_stream_send(p->conn, p->qsaio);
+			// iov[0].iov_len = nni_msg_header_len(qmsg);
+			// iov[0].iov_buf = nni_msg_header(qmsg);
+			// iov[1].iov_len = nni_msg_len(qmsg);
+			// iov[1].iov_buf = nni_msg_body(qmsg);
+			// p->busy        = true;
+			// nni_aio_set_msg(p->qsaio, qmsg);
+			// // send ACK down...
+			// nni_aio_set_iov(p->qsaio, 2, iov);
+			// nng_stream_send(p->conn, p->qsaio);
 		} else {
 			// let protocol layer handle ack msg for us
 			nni_aio_set_prov_data(aio, qmsg);
@@ -919,11 +919,17 @@ mqtt_tcptran_pipe_send_start(mqtt_tcptran_pipe *p)
 		iov[niov].iov_buf = nni_msg_header(msg);
 		iov[niov].iov_len = nni_msg_header_len(msg);
 		niov++;
+		int i = 1;
+		while (i < iov[0].iov_len) {
+			// log_info("%x ", *((uint8_t*)iov[0].iov_buf+i));
+			i++;
+		}
 	}
 	if (nni_msg_len(msg) > 0) {
 		iov[niov].iov_buf = nni_msg_body(msg);
 		iov[niov].iov_len = nni_msg_len(msg);
 		niov++;
+		log_info("send msg len %ld", nni_msg_len(msg));
 	}
 	// assure send correct packet
 	len = get_var_integer((header + 1), &len_of_var);
