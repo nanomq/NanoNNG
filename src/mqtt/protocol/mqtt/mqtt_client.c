@@ -307,6 +307,7 @@ mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	nni_msg_alloc(&p->pingmsg, 0);
 	if (p->pingmsg) {
 		log_error("Error in create a pingmsg");
+		return NNG_ENOMEM;
 	} else {
 		uint8_t buf[2];
 		buf[0] = 0xC0;
@@ -613,9 +614,10 @@ mqtt_timer_cb(void *arg)
 		return;
 	}
 
-	if (!p->busy && !nni_aio_busy(p->send_aio) && p->pingmsg) {
+	if (!p->busy && !nni_aio_busy(&p->send_aio) && p->pingmsg) {
 		p->busy = true;
 		// send pingreq
+		nni_msg_clone(p->pingmsg);
 		nni_aio_set_msg(&p->send_aio, p->pingmsg);
 		nni_pipe_send(p->pipe, &p->send_aio);
 		p->pingcnt ++;
