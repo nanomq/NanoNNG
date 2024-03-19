@@ -776,7 +776,9 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 			property_free(prop);
 		}
 		// aio_begin?
-		if (!nni_aio_busy(p->qsaio)) {
+		// follow origin code. just let protocol layer handle ack msg
+		nni_aio_set_prov_data(aio, qmsg);
+		// if (!nni_aio_busy(p->qsaio)) {
 			// iov[0].iov_len = nni_msg_header_len(qmsg);
 			// iov[0].iov_buf = nni_msg_header(qmsg);
 			// iov[1].iov_len = nni_msg_len(qmsg);
@@ -786,10 +788,10 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 			// // send ACK down...
 			// nni_aio_set_iov(p->qsaio, 2, iov);
 			// nng_stream_send(p->conn, p->qsaio);
-		} else {
+		// } else {
 			// let protocol layer handle ack msg for us
-			nni_aio_set_prov_data(aio, qmsg);
-		}
+			// nni_aio_set_prov_data(aio, qmsg);
+		// }
 		// else {
 		// 	if (nni_lmq_full(&p->rslmq)) {
 		// 		// Make space for the new message. TODO add max
