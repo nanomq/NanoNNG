@@ -592,6 +592,14 @@ mqtt_timer_cb(void *arg)
 		nni_mtx_unlock(&s->mtx);
 		return;
 	}
+
+	if (p->pingcnt > 1) {
+		log_warn("MQTT Timeout and disconnect");
+		nni_mtx_unlock(&s->mtx);
+		nni_pipe_close(p->pipe);
+		return;
+	}
+
 	// start message resending
 	// msg = nni_id_get_min(&p->sent_unack, &pid);
 	// if (msg != NULL) {
@@ -774,6 +782,9 @@ mqtt_recv_cb(void *arg)
 			uint8_t     *arr;
 			nng_pipe     nng_pipe;
 			nng_pipe.id = nni_pipe_id(p->pipe);
+
+			// Reset retry keepalive
+			s->retry = conn_param_get_keepalive(s->cparam) * 1000;
 
 			rv = nng_pipe_get_addr(
 			    nng_pipe, NNG_OPT_REMADDR, &addr);
