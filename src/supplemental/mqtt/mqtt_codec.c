@@ -1254,8 +1254,10 @@ nni_mqtt_msg_encode_publish(nni_msg *msg)
 	} else {
 		rv = MQTT_ERR_INVAL;
 	}
-	if (mqtt->fixed_header.remaining_length != nni_msg_len(msg))
+	if (mqtt->fixed_header.remaining_length != nni_msg_len(msg)) {
+		log_error("encode header error!");
 		rv = MQTT_ERR_PROTOCOL;
+	}
 
 	return rv == 0? MQTT_SUCCESS : MQTT_ERR_PROTOCOL;
 }

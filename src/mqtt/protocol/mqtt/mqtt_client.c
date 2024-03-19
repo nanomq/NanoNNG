@@ -1071,7 +1071,7 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 			nni_mtx_unlock(&s->mtx);
 			nni_aio_set_msg(aio, NULL);
 			nni_aio_finish_error(aio, NNG_ECLOSED);
-			log_warn("client sending msg while disconnected! dropped");
+			log_warn("ctx is already cached! drop msg");
 		}
 		return;
 	}
