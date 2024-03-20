@@ -621,8 +621,13 @@ mqtt_timer_cb(void *arg)
 		return;
 	}
 
-	if (!p->busy && !nni_aio_busy(&p->send_aio) && p->pingmsg) {
+	// Update left time to send pingreq
+	s->timeleft -= s->retry;
+
+	if (!p->busy && !nni_aio_busy(&p->send_aio) && p->pingmsg &&
+			s->timeleft <= 0) {
 		p->busy = true;
+		s->timeleft = s->keepalive;
 		// send pingreq
 		nni_msg_clone(p->pingmsg);
 		nni_aio_set_msg(&p->send_aio, p->pingmsg);
