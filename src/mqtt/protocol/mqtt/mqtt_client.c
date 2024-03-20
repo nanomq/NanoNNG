@@ -92,6 +92,7 @@ struct mqtt_sock_s {
 	nni_atomic_int  next_packet_id;
 	nni_duration    retry;
 	nni_duration    keepalive; // mqtt keepalive
+	nni_duration    timeleft;  // left time to send next ping
 	nni_mtx         mtx;    // more fine grained mutual exclusion
 	mqtt_ctx_t      master; // to which we delegate send/recv calls
 	mqtt_pipe_t    *mqtt_pipe;
@@ -124,8 +125,9 @@ mqtt_sock_init(void *arg, nni_sock *sock)
 	nni_atomic_set(&s->next_packet_id, 1);
 
 	// this is "semi random" start for request IDs.
-	s->retry     = NNI_SECOND * 10;
+	s->retry     = NNI_SECOND * 5;
 	s->keepalive = NNI_SECOND * 10; // default mqtt keepalive
+	s->timeleft  = NNI_SECOND * 10;
 #ifdef NNG_HAVE_MQTT_BROKER
 	s->cparam = NULL;
 #endif
@@ -817,6 +819,7 @@ mqtt_recv_cb(void *arg)
 
 			// Reset keepalive
 			s->keepalive = conn_param_get_keepalive(s->cparam) * 1000;
+			s->timeleft  = s->keepalive;
 
 			rv = nng_pipe_get_addr(
 			    nng_pipe, NNG_OPT_REMADDR, &addr);
