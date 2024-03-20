@@ -348,6 +348,9 @@ mqtt_pipe_fini(void *arg)
 		nni_msg_free(msg);
 	}
 
+	if (p->pingmsg)
+		nni_msg_free(p->pingmsg);
+
 	nni_aio_fini(&p->send_aio);
 	nni_aio_fini(&p->recv_aio);
 	nni_aio_fini(&p->time_aio);
