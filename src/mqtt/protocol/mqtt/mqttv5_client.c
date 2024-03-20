@@ -280,7 +280,7 @@ mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	mqtt_pipe_t *p    = arg;
 
 	nni_atomic_init_bool(&p->closed);
-	nni_atomic_set_bool(&p->closed, false);
+	nni_atomic_set_bool(&p->closed, true);
 	p->pipe      = pipe;
 	p->mqtt_sock = s;
 	p->rid       = 1;
@@ -425,11 +425,12 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 		return;
 	}
 	if (nni_lmq_full(&p->send_messages)) {
+		log_error("rhack: v5: pipe is busy and lmq is full\n");
 		(void) nni_lmq_get(&p->send_messages, &tmsg);
 		nni_msg_free(tmsg);
 	}
 	if (0 != nni_lmq_put(&p->send_messages, msg)) {
-		nni_println("Warning! msg lost due to busy socket");
+		log_error("Warning! msg lost due to busy socket");
 	}
 out:
 	nni_mtx_unlock(&s->mtx);
@@ -443,11 +444,12 @@ out:
 static int
 mqtt_pipe_start(void *arg)
 {
-	mqtt_pipe_t *p   = arg;
-	mqtt_sock_t *s   = p->mqtt_sock;
-	mqtt_ctx_t * c   = NULL;
+	mqtt_pipe_t *p = arg;
+	mqtt_sock_t *s = p->mqtt_sock;
+	mqtt_ctx_t  *c = NULL;
 
 	nni_mtx_lock(&s->mtx);
+	nni_atomic_set_bool(&p->closed, false);
 	s->mqtt_pipe       = p;
 	s->disconnect_code = 0;
 	s->dis_prop        = NULL;
@@ -462,7 +464,7 @@ mqtt_pipe_start(void *arg)
 	}
 	nni_pipe_recv(p->pipe, &p->recv_aio);
 	nni_mtx_unlock(&s->mtx);
-	//initiate the global resend timer
+	// initiate the global resend timer
 	nni_sleep_aio(s->retry, &p->time_aio);
 
 	return (0);
@@ -788,7 +790,7 @@ mqtt_recv_cb(void *arg)
 			nng_pipe     nng_pipe;
 			nng_pipe.id = nni_pipe_id(p->pipe);
 
-			// Reset keepalive
+			// Set keepalive
 			s->keepalive = conn_param_get_keepalive(s->cparam) * 1000;
 			s->timeleft  = s->keepalive;
 
@@ -1093,11 +1095,13 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 			ctx->saio = aio;
 			nni_list_append(&s->send_queue, ctx);
 			nni_mtx_unlock(&s->mtx);
+			log_warn("client sending msg while disconnected! cached");
 		} else {
 			nni_msg_free(msg);
 			nni_mtx_unlock(&s->mtx);
 			nni_aio_set_msg(aio, NULL);
 			nni_aio_finish_error(aio, NNG_ECLOSED);
+			log_warn("ctx is already cached! drop msg");
 		}
 		return;
 	}
