@@ -606,6 +606,7 @@ mqtt_timer_cb(void *arg)
 	mqtt_sock_t *s = p->mqtt_sock;
 
 	if (nng_aio_result(&p->time_aio) != 0) {
+		log_info("Timer aio error!");
 		return;
 	}
 	nni_mtx_lock(&s->mtx);
