@@ -706,7 +706,7 @@ mqtt_send_cb(void *arg)
 		// We failed to send... clean up and deal with it.
 		nni_msg_free(nni_aio_get_msg(&p->send_aio));
 		nni_aio_set_msg(&p->send_aio, NULL);
-		s->disconnect_code = 0x8B;
+		s->disconnect_code = 0x8B; // TODO hardcode, Different with code in v5
 		nni_pipe_close(p->pipe);
 		return;
 	}
@@ -754,7 +754,7 @@ mqtt_recv_cb(void *arg)
 
 	if ((rv = nni_aio_result(&p->recv_aio)) != 0) {
 		log_warn("MQTT client recv error %d!", rv);
-		s->disconnect_code = 0x8B;
+		s->disconnect_code = 0x8B; // TODO hardcode, Different with code in v5
 		nni_pipe_close(p->pipe);
 		return;
 	}
