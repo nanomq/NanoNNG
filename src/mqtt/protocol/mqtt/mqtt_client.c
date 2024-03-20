@@ -81,7 +81,6 @@ struct mqtt_pipe_s {
 	nni_lmq         send_messages; // send messages queue
 	bool            busy;
 	uint16_t        rid;
-
 	uint8_t         pingcnt;
 	nni_msg        *pingmsg;
 };
@@ -286,8 +285,7 @@ mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	nni_atomic_set_bool(&p->closed, true);
 	p->pipe      = pipe;
 	p->mqtt_sock = s;
-	p->rid       = 0;
-
+	p->rid       = 1;
 	p->pingcnt   = 0;
 	p->pingmsg   = NULL;
 	nni_msg_alloc(&p->pingmsg, 0);
@@ -309,8 +307,10 @@ mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	// accidental collision across restarts.
 	nni_id_map_init(&p->sent_unack, 0x0000u, 0xffffu, true);
 	nni_id_map_init(&p->recv_unack, 0x0000u, 0xffffu, true);
-	nni_lmq_init(&p->recv_messages, NNG_MAX_RECV_LMQ);
-	nni_lmq_init(&p->send_messages, NNG_MAX_SEND_LMQ);
+	// nni_lmq_init(&p->recv_messages, NNG_MAX_RECV_LMQ);
+	// nni_lmq_init(&p->send_messages, NNG_MAX_SEND_LMQ);
+	nni_lmq_init(&p->recv_messages, 102400);
+	nni_lmq_init(&p->send_messages, 102400);
 
 	return (0);
 }
@@ -693,7 +693,8 @@ mqtt_send_cb(void *arg)
 	}
 	nni_mtx_lock(&s->mtx);
 
-	p->busy = false;
+	p->busy     = false;
+	s->timeleft = s->keepalive;
 	if (nni_atomic_get_bool(&s->closed) ||
 	    nni_atomic_get_bool(&p->closed)) {
 		// This occurs if the mqtt_pipe_close has been called.
@@ -804,7 +805,7 @@ mqtt_recv_cb(void *arg)
 			nng_pipe     nng_pipe;
 			nng_pipe.id = nni_pipe_id(p->pipe);
 
-			// Reset keepalive
+			// Set keepalive
 			s->keepalive = conn_param_get_keepalive(s->cparam) * 1000;
 			s->timeleft  = s->keepalive;
 
