@@ -748,7 +748,7 @@ nni_mqtt_msg_encode_fixed_header(nni_msg *msg, nni_mqtt_proto_data *data)
 	int len = write_variable_length_value(
 	    data->fixed_header.remaining_length, &buf);
 
-	log_error("%d %x %x %x %x", data->fixed_header.remaining_length,
+	log_debug("%d %x %x %x %x", data->fixed_header.remaining_length,
 	    rlen[0], rlen[1], rlen[2], rlen[3]);
 	if (len == -1) {
 		log_error("encode remaining length failed!");
