@@ -307,10 +307,8 @@ mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	// accidental collision across restarts.
 	nni_id_map_init(&p->sent_unack, 0x0000u, 0xffffu, true);
 	nni_id_map_init(&p->recv_unack, 0x0000u, 0xffffu, true);
-	// nni_lmq_init(&p->recv_messages, NNG_MAX_RECV_LMQ);
-	// nni_lmq_init(&p->send_messages, NNG_MAX_SEND_LMQ);
-	nni_lmq_init(&p->recv_messages, 102400);
-	nni_lmq_init(&p->send_messages, 102400);
+	nni_lmq_init(&p->recv_messages, NNG_MAX_RECV_LMQ);
+	nni_lmq_init(&p->send_messages, NNG_MAX_SEND_LMQ);
 
 	return (0);
 }
