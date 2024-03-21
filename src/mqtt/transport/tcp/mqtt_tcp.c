@@ -94,7 +94,6 @@ struct mqtt_tcptran_ep {
 static void mqtt_tcptran_pipe_send_start(mqtt_tcptran_pipe *);
 static void mqtt_tcptran_pipe_recv_start(mqtt_tcptran_pipe *);
 static void mqtt_tcptran_pipe_send_cb(void *);
-static void mqtt_tcptran_pipe_qos_send_cb(void *);
 static void mqtt_tcptran_pipe_recv_cb(void *);
 static void mqtt_tcptran_pipe_nego_cb(void *);
 static void mqtt_tcptran_ep_fini(void *);

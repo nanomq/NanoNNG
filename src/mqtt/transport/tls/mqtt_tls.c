@@ -97,7 +97,6 @@ struct mqtts_tcptran_ep {
 static void mqtts_tcptran_pipe_send_start(mqtts_tcptran_pipe *);
 static void mqtts_tcptran_pipe_recv_start(mqtts_tcptran_pipe *);
 static void mqtts_tcptran_pipe_send_cb(void *);
-static void mqtts_tcptran_pipe_qos_send_cb(void *);
 static void mqtts_tcptran_pipe_recv_cb(void *);
 static void mqtts_tcptran_pipe_nego_cb(void *);
 static void mqtts_tcptran_ep_fini(void *);
