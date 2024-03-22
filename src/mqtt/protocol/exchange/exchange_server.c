@@ -866,6 +866,7 @@ ex_query_recv_cb(void *arg)
 			nng_free(msgLen, sizeof(int) * msgCount);
 
 			if (ret != 0) {
+				cJSON_Delete(obj);
 				nni_mtx_unlock(&sock->mtx);
 				log_error("dump_file_result_cat failed!");
 				return;
@@ -880,12 +881,14 @@ ex_query_recv_cb(void *arg)
 
 		ret = sscanf(keystr, "dumpkey:%"SCNu64, &key);
 		if (ret == 0) {
+			cJSON_Delete(obj);
 			nni_mtx_unlock(&sock->mtx);
 			return;
 		}
 
 		ret = find_keys_in_file(sock->ex_node->ex->rbs[0], &key, 1, obj);
 		if (ret != 0) {
+			cJSON_Delete(obj);
 			log_error("find_keys_in_file failed!");
 			nni_mtx_unlock(&sock->mtx);
 			return;
@@ -905,6 +908,7 @@ ex_query_recv_cb(void *arg)
 		}
 		ret = find_keys_in_file(sock->ex_node->ex->rbs[0], keys, count, obj);
 		if (ret != 0) {
+			cJSON_Delete(obj);
 			log_error("find_keys_in_file failed!");
 			nni_mtx_unlock(&sock->mtx);
 			return;
@@ -917,6 +921,7 @@ ex_query_recv_cb(void *arg)
 		uint64_t key;
 		ret = sscanf(keystr, "%"SCNu64, &key);
 		if (ret == 0) {
+			cJSON_Delete(obj);
 			nni_mtx_unlock(&sock->mtx);
 			return;
 		}
@@ -932,6 +937,7 @@ ex_query_recv_cb(void *arg)
 
 			char *mqdata = nng_alloc(diff * 2 + 1);
 			if (mqdata == NULL) {
+				cJSON_Delete(obj);
 				log_warn("Failed to allocate memory for file payload\n");
 				nni_mtx_unlock(&sock->mtx);
 				return;
@@ -945,6 +951,7 @@ ex_query_recv_cb(void *arg)
 
 			cJSON *mqs_obj = cJSON_CreateString(mqdata);
 			if (!mqs_obj) {
+				cJSON_Delete(obj);
 				return;
 			}
 			cJSON_AddItemToObject(obj, "mq", mqs_obj);
@@ -957,6 +964,7 @@ ex_query_recv_cb(void *arg)
 		if (parquet_fname && parquet_sz > 0) {
 			parquet_fnames = nng_alloc(sizeof(char *) * parquet_sz);
 			if (parquet_fnames == NULL) {
+				cJSON_Delete(obj);
 				log_warn("Failed to allocate memory for file payload\n");
 				nni_mtx_unlock(&sock->mtx);
 				return;
@@ -976,6 +984,7 @@ ex_query_recv_cb(void *arg)
 		if (blf_fname && blf_sz > 0) {
 			blf_fnames = nng_alloc(sizeof(char *) * blf_sz);
 			if (blf_fnames == NULL) {
+				cJSON_Delete(obj);
 				log_warn("Failed to allocate memory for file payload\n");
 				nni_mtx_unlock(&sock->mtx);
 				return;
@@ -998,6 +1007,7 @@ ex_query_recv_cb(void *arg)
 
 		ret = sscanf(keystr, "%"SCNu64"-%"SCNu64, &startKey, &endKey);
 		if (ret == 0) {
+			cJSON_Delete(obj);
 			log_error("error in read key to number %s", keystr);
 			nni_mtx_unlock(&sock->mtx);
 			return;
