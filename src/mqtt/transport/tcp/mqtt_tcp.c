@@ -1369,7 +1369,7 @@ mqtt_tcptran_ep_connect(void *arg, nni_aio *aio)
 		ep->backoff = ep->backoff > ep->backoff_max
 		    ? nni_random() % 2000
 		    : ep->backoff;
-		log_debug("reconnect in %ld", ep->backoff);
+		log_info("reconnect in %ld", ep->backoff);
 		nni_msleep(ep->backoff);
 	} else {
 		ep->backoff = nni_random()%2000;
