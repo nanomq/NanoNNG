@@ -524,6 +524,9 @@ NNG_DECL int  nni_mqtt_msgack_encode(nng_msg *msg, uint16_t packet_id,
      uint8_t reason_code, property *prop, uint8_t proto_ver);
 NNG_DECL int  nni_mqtt_pubres_header_encode(nng_msg *msg, uint8_t cmd);
 
+NNG_DECL uint16_t
+mqtt_get_next_packet_id(nni_atomic_int *id)
+
 #ifdef __cplusplus
 }
 #endif
