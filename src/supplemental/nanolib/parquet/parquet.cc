@@ -680,6 +680,20 @@ parquet_file_queue_init(conf_parquet *conf)
 					closedir(dir);
 					return;
 				}
+				sprintf(file_path, "%s/%s", conf->dir,
+				    ent->d_name);
+
+				if (strstr(ent->d_name, "_") == NULL) {
+					if (unlink(file_path) != 0) {
+						log_error("Failed to remove file %s errno: %d",
+						    file_path, errno);
+					} else {
+						log_warn("Found a file without md5sum, "
+					         "delete it: %s", file_path);
+					}
+					free(file_path);
+					continue;
+				}
 
 				if (++count > conf->file_count) {
 					if (0 == remove_old_file()) {
@@ -688,11 +702,10 @@ parquet_file_queue_init(conf_parquet *conf)
 						         "file count: %d.",
 						    conf->file_count);
 					} else {
+						free(file_path);
 						return;
 					}
 				}
-				sprintf(file_path, "%s/%s", conf->dir,
-				    ent->d_name);
 				ENQUEUE(parquet_file_queue, file_path);
 			}
 		}
