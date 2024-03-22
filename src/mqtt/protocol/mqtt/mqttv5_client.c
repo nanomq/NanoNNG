@@ -524,6 +524,7 @@ mqtt_pipe_close(void *arg)
 		nni_list_remove(&s->recv_queue, ctx);
 		user_aio  = ctx->raio;
 		ctx->raio = NULL;
+		nni_aio_list_remove(user_aio);
 		nni_aio_set_msg(user_aio, tmsg);
 		// only return pipe closed error once for notification
 		// sync action to avoid NULL conn param
@@ -829,6 +830,7 @@ mqtt_recv_cb(void *arg)
 			nni_list_remove(&s->recv_queue, ctx);
 			user_aio  = ctx->raio;
 			ctx->raio = NULL;
+			nni_aio_list_remove(user_aio);
 			nni_aio_set_msg(user_aio, msg);
 			nni_mtx_unlock(&s->mtx);
 			nni_aio_finish(user_aio, 0, 0);
@@ -898,6 +900,7 @@ mqtt_recv_cb(void *arg)
 		nni_list_remove(&s->recv_queue, ctx);
 		user_aio  = ctx->raio;
 		ctx->raio = NULL;
+		nni_aio_list_remove(user_aio);
 		nni_aio_set_msg(user_aio, cached_msg);
 		nni_mtx_unlock(&s->mtx);
 		nni_aio_finish(user_aio, 0, 0);
@@ -930,6 +933,7 @@ mqtt_recv_cb(void *arg)
 			nni_list_remove(&s->recv_queue, ctx);
 			user_aio  = ctx->raio;
 			ctx->raio = NULL;
+			nni_aio_list_remove(user_aio);
 			nni_aio_set_msg(user_aio, msg);
 			nni_mtx_unlock(&s->mtx);
 			nni_aio_finish(user_aio, 0, 0);
