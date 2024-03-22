@@ -854,7 +854,8 @@ static int write_msgs_to_file(ringBuffer_t *rb)
 	return 0;
 }
 
-static int put_msgs_to_aio(ringBuffer_t *rb, nng_aio *aio)
+static int
+put_msgs_to_aio(ringBuffer_t *rb, nng_aio *aio)
 {
 	int ret = 0;
 	int *list_len = NULL;
@@ -870,6 +871,8 @@ static int put_msgs_to_aio(ringBuffer_t *rb, nng_aio *aio)
 	/* Put list len in msg proto data */
 	list_len = nng_alloc(sizeof(int));
 	if (list_len == NULL) {
+		// TODO Free msgs in list?
+		nng_free(list, rb->cap * sizeof(nng_msg *));
 		log_error("alloc new list_len failed! no memory!\n");
 		return -1;
 	}
@@ -878,6 +881,9 @@ static int put_msgs_to_aio(ringBuffer_t *rb, nng_aio *aio)
 	nng_msg *tmsg;
 	ret = nng_msg_alloc(&tmsg, 0);
 	if (ret != 0 || tmsg == NULL) {
+		// TODO Free msgs in list?
+		nng_free(list, rb->cap * sizeof(nng_msg *));
+		nng_free(list_len, sizeof(int));
 		log_error("alloc new msg failed! no memory!\n");
 		return -1;
 	}
