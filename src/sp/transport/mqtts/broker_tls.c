@@ -209,8 +209,6 @@ tlstran_pipe_fini(void *arg)
 	nni_aio_free(p->txaio);
 	nni_aio_free(p->negoaio);
 	nng_stream_free(p->conn);
-	if (p->rxmsg != NULL)
-		nni_msg_free(p->rxmsg);
 	nni_lmq_fini(&p->rslmq);
 	// nni_mtx_fini(&p->mtx);
 	NNI_FREE_STRUCT(p);

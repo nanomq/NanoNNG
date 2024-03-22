@@ -80,12 +80,16 @@ struct mqtt_pipe_s {
 	nni_lmq    send_messages; // send messages queue
 	uint16_t   rid;           // index of resending packet id
 	bool       busy;
+	uint8_t    pingcnt;
+	nni_msg   *pingmsg;
 };
 
 // A mqtt_sock_s is our per-socket protocol private structure.
 struct mqtt_sock_s {
 	nni_atomic_bool closed;
 	nni_duration    retry;
+	nni_duration    keepalive; // mqtt keepalive
+	nni_duration    timeleft;  // left time to send next ping
 	nni_atomic_int  next_packet_id; // next packet id to use
 	nni_mtx         mtx;    // more fine grained mutual exclusion
 	mqtt_ctx_t      master; // to which we delegate send/recv calls
@@ -117,7 +121,9 @@ mqtt_sock_init(void *arg, nni_sock *sock)
 	nni_atomic_set(&s->next_packet_id, 1);
 
 	// this is "semi random" start for request IDs.
-	s->retry  = NNI_SECOND * 10;
+	s->retry     = NNI_SECOND * 5;
+	s->keepalive = NNI_SECOND * 10; // default mqtt keepalive
+	s->timeleft  = NNI_SECOND * 10;
 #ifdef NNG_HAVE_MQTT_BROKER
 	s->cparam = NULL;
 #endif
@@ -293,10 +299,23 @@ mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	mqtt_pipe_t *p    = arg;
 
 	nni_atomic_init_bool(&p->closed);
-	nni_atomic_set_bool(&p->closed, false);
+	nni_atomic_set_bool(&p->closed, true);
 	p->pipe      = pipe;
 	p->mqtt_sock = s;
 	p->rid       = 1;
+	p->pingcnt   = 0;
+	p->pingmsg   = NULL;
+	nni_msg_alloc(&p->pingmsg, 0);
+	if (!p->pingmsg) {
+		log_error("Error in create a pingmsg");
+		return NNG_ENOMEM;
+	} else {
+		uint8_t buf[2];
+		buf[0] = 0xC0;
+		buf[1] = 0x00;
+		nni_msg_header_append(p->pingmsg, buf, 2);
+	}
+
 	nni_aio_init(&p->send_aio, mqtt_send_cb, p);
 	nni_aio_init(&p->recv_aio, mqtt_recv_cb, p);
 	nni_aio_init(&p->time_aio, mqtt_timer_cb, p);
@@ -325,6 +344,9 @@ mqtt_pipe_fini(void *arg)
 		nni_aio_set_msg(&p->send_aio, NULL);
 		nni_msg_free(msg);
 	}
+
+	if (p->pingmsg)
+		nni_msg_free(p->pingmsg);
 
 	nni_aio_fini(&p->send_aio);
 	nni_aio_fini(&p->recv_aio);
@@ -418,11 +440,12 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 		return;
 	}
 	if (nni_lmq_full(&p->send_messages)) {
+		log_error("v5 pipe is busy and lmq is full\n");
 		(void) nni_lmq_get(&p->send_messages, &tmsg);
 		nni_msg_free(tmsg);
 	}
 	if (0 != nni_lmq_put(&p->send_messages, msg)) {
-		nni_println("Warning! msg lost due to busy socket");
+		log_error("Warning! msg lost due to busy socket");
 	}
 out:
 	nni_mtx_unlock(&s->mtx);
@@ -436,11 +459,12 @@ out:
 static int
 mqtt_pipe_start(void *arg)
 {
-	mqtt_pipe_t *p   = arg;
-	mqtt_sock_t *s   = p->mqtt_sock;
-	mqtt_ctx_t * c   = NULL;
+	mqtt_pipe_t *p = arg;
+	mqtt_sock_t *s = p->mqtt_sock;
+	mqtt_ctx_t  *c = NULL;
 
 	nni_mtx_lock(&s->mtx);
+	nni_atomic_set_bool(&p->closed, false);
 	s->mqtt_pipe       = p;
 	s->disconnect_code = 0;
 	s->dis_prop        = NULL;
@@ -455,7 +479,7 @@ mqtt_pipe_start(void *arg)
 	}
 
 	nni_mtx_unlock(&s->mtx);
-	//initiate the global resend timer
+	// initiate the global resend timer
 	nni_sleep_aio(s->retry, &p->time_aio);
 	nni_pipe_recv(p->pipe, &p->recv_aio);
 	return (0);
@@ -552,6 +576,30 @@ mqtt_timer_cb(void *arg)
 		nni_mtx_unlock(&s->mtx);
 		return;
 	}
+	if (p->pingcnt > 1) {
+		log_warn("MQTT Timeout and disconnect");
+		nni_mtx_unlock(&s->mtx);
+		nni_pipe_close(p->pipe);
+		return;
+	}
+
+	// Update left time to send pingreq
+	s->timeleft -= s->retry;
+
+	if (!p->busy && !nni_aio_busy(&p->send_aio) && p->pingmsg &&
+			s->timeleft <= 0) {
+		p->busy = true;
+		s->timeleft = s->keepalive;
+		// send pingreq
+		nni_msg_clone(p->pingmsg);
+		nni_aio_set_msg(&p->send_aio, p->pingmsg);
+		nni_pipe_send(p->pipe, &p->send_aio);
+		p->pingcnt ++;
+		nni_mtx_unlock(&s->mtx);
+		log_info("Send pingreq (sock%p)(%dms)", s, s->keepalive);
+		nni_sleep_aio(s->retry, &p->time_aio);
+		return;
+	}
 	// start message resending
 	// msg = nni_id_get_min(&p->sent_unack, &pid);
 	// if (msg != NULL) {
@@ -626,7 +674,8 @@ mqtt_send_cb(void *arg)
 	}
 	nni_mtx_lock(&s->mtx);
 
-	p->busy = false;
+	p->busy     = false;
+	s->timeleft = s->keepalive;
 	if (nni_atomic_get_bool(&s->closed) ||
 	    nni_atomic_get_bool(&p->closed)) {
 		// This occurs if the mqtt_pipe_close has been called.
@@ -722,6 +771,8 @@ mqtt_recv_cb(void *arg)
 	// schedule another receive
 	nni_pipe_recv(p->pipe, &p->recv_aio);
 
+	// reset ping state
+	p->pingcnt = 0;
 	// state transitions
 	switch (packet_type) {
 	case NNG_MQTT_CONNACK:
@@ -737,6 +788,10 @@ mqtt_recv_cb(void *arg)
 			uint8_t     *arr;
 			nng_pipe     nng_pipe;
 			nng_pipe.id = nni_pipe_id(p->pipe);
+
+			// Set keepalive
+			s->keepalive = conn_param_get_keepalive(s->cparam) * 1000;
+			s->timeleft  = s->keepalive;
 
 			rv = nng_pipe_get_addr(
 			    nng_pipe, NNG_OPT_REMADDR, &addr);
@@ -1020,11 +1075,13 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 			ctx->saio = aio;
 			nni_list_append(&s->send_queue, ctx);
 			nni_mtx_unlock(&s->mtx);
+			log_warn("client sending msg while disconnected! cached");
 		} else {
 			nni_msg_free(msg);
 			nni_mtx_unlock(&s->mtx);
 			nni_aio_set_msg(aio, NULL);
 			nni_aio_finish_error(aio, NNG_ECLOSED);
+			log_warn("ctx is already cached! drop msg");
 		}
 		return;
 	}
