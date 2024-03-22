@@ -376,6 +376,7 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 					goto mqtt_error;
 				} else {
 					p->packmax = data->p_value.u32;
+					log_info("Set max packet size as %ld", p->packmax);
 				}
 			}
 			data = property_get_value(ep->property, PUBLISH_MAXIMUM_QOS);
@@ -512,7 +513,7 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 	uint8_t            type, pos, flags;
 	uint32_t           len = 0, rv;
 	size_t             n;
-	nni_msg *          msg, *qmsg;
+	nni_msg *          msg;
 	mqtt_tcptran_pipe *p     = arg;
 	nni_aio *          rxaio = p->rxaio;
 	bool               ack   = false;
@@ -667,6 +668,7 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 	if (ack == true) {
 		// alloc a msg here costs memory. However we must do it for the
 		// sake of compatibility with nng.
+		nni_msg *qmsg;
 		if ((rv = nni_msg_alloc(&qmsg, 0)) != 0) {
 			ack = false;
 			rv  = UNSPECIFIED_ERROR;
@@ -735,6 +737,9 @@ mqtt_tcptran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 static void
 mqtt_tcptran_pipe_send_start(mqtt_tcptran_pipe *p)
 {
+	uint32_t len;
+	uint8_t  len_of_var = 0;
+	uint8_t *header;
 	nni_aio *aio;
 	nni_aio *txaio;
 	nni_msg *msg;
@@ -755,17 +760,16 @@ mqtt_tcptran_pipe_send_start(mqtt_tcptran_pipe *p)
 
 	// This runs to send the message.
 	msg = nni_aio_get_msg(aio);
-
+	header = nni_msg_header(msg);
 	if (msg != NULL && p->proto == MQTT_PROTOCOL_VERSION_v5) {
-		uint8_t *header = nni_msg_header(msg);
 		if ((*header & 0XF0) == CMD_PUBLISH) {
 			// check max qos
 			uint8_t qos = nni_mqtt_msg_get_publish_qos(msg);
 			if (qos > 0)
 				p->sndmax --;
 			if (qos > p->qosmax) {
-				p->qosmax == 1? (*header &= 0XF9) & (*header |= 0X02): NNI_ARG_UNUSED(*header);
-				p->qosmax == 0? *header &= 0XF9: NNI_ARG_UNUSED(*header);
+				p->qosmax == 1 ? ((*header &= 0XF9), (*header |= 0X02)) : NNI_ARG_UNUSED(*header);
+				p->qosmax == 0 ? *header &= 0XF9 : NNI_ARG_UNUSED(*header);
 			}
 		}
 		// check max packet size
@@ -789,6 +793,10 @@ mqtt_tcptran_pipe_send_start(mqtt_tcptran_pipe *p)
 		iov[niov].iov_len = nni_msg_len(msg);
 		niov++;
 	}
+	// assure send correct packet
+	len = get_var_integer((header + 1), &len_of_var);
+	NNI_ASSERT(len == nni_msg_len(msg));
+
 	nni_aio_set_iov(txaio, niov, iov);
 	nng_stream_send(p->conn, txaio);
 }
@@ -929,10 +937,13 @@ mqtt_tcptran_pipe_start(
 
 	ep->refcnt++;
 
-	p->conn   = conn;
-	p->ep     = ep;
-	p->rcvmax = 0;
-	p->sndmax = 65535;
+	p->conn    = conn;
+	p->ep      = ep;
+	p->qosmax  = 0;
+	p->packmax = 0;
+	p->rcvmax  = 0;
+	p->sndmax  = 65535;
+
 #ifdef NNG_HAVE_MQTT_BROKER
 	p->cparam = NULL;
 #endif
@@ -1367,9 +1378,9 @@ mqtt_tcptran_ep_connect(void *arg, nni_aio *aio)
 	if (ep->backoff != 0) {
 		ep->backoff = ep->backoff * 2;
 		ep->backoff = ep->backoff > ep->backoff_max
-		    ? nni_random() % 2000
+		    ? (nni_duration) (nni_random() % 1000)
 		    : ep->backoff;
-		log_info("reconnect in %ld", ep->backoff);
+		log_debug("reconnect in %ld", ep->backoff);
 		nni_msleep(ep->backoff);
 	} else {
 		ep->backoff = nni_random()%2000;
@@ -1478,7 +1489,6 @@ mqtt_tcptran_ep_set_reconnect_backoff(void *arg, const void *v, size_t sz, nni_o
 	if ((rv = nni_copyin_ms(&tmp, v, sz, t)) == 0) {
 		nni_mtx_lock(&ep->mtx);
 		ep->backoff_max = tmp > 600000 ? 360000 : tmp;
-		log_debug("tcp backoff max is %dms", ep->backoff_max);
 		nni_mtx_unlock(&ep->mtx);
 	}
 	return (rv);
