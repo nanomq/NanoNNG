@@ -777,12 +777,52 @@ mqtt_recv_cb(void *arg)
 	}
 	nni_msg_set_pipe(msg, nni_pipe_id(p->pipe));
 	nni_mqtt_msg_proto_data_alloc(msg);
-	rv = nni_mqtt_msg_decode(msg);
-	if (rv != MQTT_SUCCESS) {
-		log_warn("MQTT client decode error %d!", rv);
+	if (s->mqtt_ver == MQTT_VERSION_V311) {
+		rv = nni_mqtt_msg_decode(msg);
+		if (rv != MQTT_SUCCESS) {
+			log_warn("MQTT client decode error %d!", rv);
+			nni_mtx_unlock(&s->mtx);
+			nni_msg_free(msg);
+			// close pipe directly, no DISCONNECT for MQTTv3.1.1
+			nni_pipe_close(p->pipe);
+			return;
+		}
+	} else if (s->mqtt_ver == MQTT_VERSION_V5) {
+		rv = nni_mqttv5_msg_decode(msg);
+		if (rv != MQTT_SUCCESS) {
+			// Msg should be clear if decode failed. We reuse it to send disconnect.
+			// Or it would encode a malformed packet.
+			nni_mqtt_msg_set_packet_type(msg, NNG_MQTT_DISCONNECT);
+			nni_mqtt_msg_set_disconnect_reason_code(msg, rv);
+			nni_mqtt_msg_set_disconnect_property(msg, NULL);
+			// Composed a disconnect msg
+			if ((rv = nni_mqttv5_msg_encode(msg)) != MQTT_SUCCESS) {
+				nni_plat_printf("Error in encoding disconnect.\n");
+			}
+			if (!p->busy) {
+				p->busy = true;
+				nni_aio_set_msg(&p->send_aio, msg);
+				nni_pipe_send(p->pipe, &p->send_aio);
+				nni_mtx_unlock(&s->mtx);
+				return;
+			}
+			if (nni_lmq_full(&p->send_messages)) {
+				nni_msg *tmsg;
+				(void) nni_lmq_get(&p->send_messages, &tmsg);
+				nni_msg_free(tmsg);
+			}
+			if (0 != nni_lmq_put(&p->send_messages, msg)) {
+				nni_println("Warning! DISCONNECT msg lost due to busy socket");
+			}
+			nni_mtx_unlock(&s->mtx);
+			return;
+		}
+	} else {
+		rv = PROTOCOL_ERROR;
+		log_error("Invalid mqtt version");
 		nni_mtx_unlock(&s->mtx);
 		nni_msg_free(msg);
-		// close pipe directly, no DISCONNECT for MQTTv3.1.1
+		// close pipe directly
 		nni_pipe_close(p->pipe);
 		return;
 	}
@@ -832,7 +872,16 @@ mqtt_recv_cb(void *arg)
 			}
 
 			nni_mqtt_msg_set_packet_type(msg, NNG_MQTT_CONNACK);
-			if ((rv = nni_mqtt_msg_encode(msg)) != MQTT_SUCCESS) {
+			if (s->mqtt_ver == MQTT_VERSION_V311) {
+				rv = nni_mqtt_msg_encode(msg);
+			} else if (s->mqtt_ver == MQTT_VERSION_V5) {
+				rv = nni_mqttv5_msg_encode(msg);
+			} else {
+				rv = PROTOCOL_ERROR;
+				log_error("Invalid mqtt version");
+			}
+
+			if (rv != MQTT_SUCCESS) {
 				nni_plat_printf("Error in encoding CONNACK.\n");
 			}
 			conn_param_clone(s->cparam);
@@ -973,7 +1022,13 @@ mqtt_recv_cb(void *arg)
 		}
 		break;
 	case NNG_MQTT_DISCONNECT:
-		s->disconnect_code = NORMAL_DISCONNECTION;
+		if (s->mqtt_ver == MQTT_VERSION_V311) {
+			s->disconnect_code = NORMAL_DISCONNECTION;
+		} else if (s->mqtt_ver == MQTT_VERSION_V5) {
+			s->disconnect_code = *(uint8_t *)nni_msg_body(msg);
+		} else {
+			log_error("Invalid mqtt version");
+		}
 		nni_msg_free(msg);
 		nni_mtx_unlock(&s->mtx);
 		nni_pipe_close(p->pipe);
@@ -981,7 +1036,13 @@ mqtt_recv_cb(void *arg)
 	default:
 		// unexpected packet type, server misbehaviour
 		nni_mtx_unlock(&s->mtx);
-		s->disconnect_code = PROTOCOL_ERROR;
+		if (s->mqtt_ver == MQTT_VERSION_V311) {
+			s->disconnect_code = PROTOCOL_ERROR;
+		} else if (s->mqtt_ver == MQTT_VERSION_V5) {
+			s->disconnect_code = MALFORMED_PACKET;
+		} else {
+			log_error("Invalid mqtt version");
+		}
 		nni_pipe_close(p->pipe);
 		return;
 	}
@@ -1081,9 +1142,18 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 		break;
 	}
 	// check return
-	if (nni_mqtt_msg_encode(msg) != MQTT_SUCCESS) {
+	if (s->mqtt_ver == MQTT_VERSION_V311) {
+		rv = nni_mqtt_msg_encode(msg);
+	} else if (s->mqtt_ver == MQTT_VERSION_V5) {
+		rv = nni_mqttv5_msg_encode(msg);
+	} else {
 		nni_mtx_unlock(&s->mtx);
-		log_error("MQTT client encoding msg failed!");
+		log_error("Invalid mqtt version");
+		rv = PROTOCOL_ERROR;
+	}
+	if (rv != MQTT_SUCCESS) {
+		nni_mtx_unlock(&s->mtx);
+		log_error("MQTT client encoding msg failed%d!", rv);
 		nni_msg_free(msg);
 		nni_aio_set_msg(aio, NULL);
 		nni_aio_finish_error(aio, NNG_EPROTO);
