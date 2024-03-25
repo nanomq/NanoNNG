@@ -88,6 +88,7 @@ struct mqtt_pipe_s {
 
 // A mqtt_sock_s is our per-socket protocol private structure.
 struct mqtt_sock_s {
+	uint8_t         mqtt_ver;       // mqtt version.
 	nni_atomic_bool closed;
 	nni_atomic_int  next_packet_id; // next packet id to use
 	nni_duration    retry;
@@ -108,10 +109,17 @@ struct mqtt_sock_s {
 #endif
 };
 
-
 /******************************************************************************
  *                              Sock Implementation                           *
  ******************************************************************************/
+
+static void
+mqttv5_sock_init(void *arg, nni_sock *sock)
+{
+	mqtt_sock_t *s = arg;
+	mqtt_sock_init(arg, sock);
+	s->mqtt_ver = MQTT_VERSION_V5;
+}
 
 static void
 mqtt_sock_init(void *arg, nni_sock *sock)
@@ -134,6 +142,7 @@ mqtt_sock_init(void *arg, nni_sock *sock)
 	nni_mtx_init(&s->mtx);
 	mqtt_ctx_init(&s->master, s);
 
+	s->mqtt_ver  = MQTT_VERSION_V311;
 	s->mqtt_pipe = NULL;
 	NNI_LIST_INIT(&s->recv_queue, mqtt_ctx_t, rqnode);
 	NNI_LIST_INIT(&s->send_queue, mqtt_ctx_t, sqnode);
@@ -1223,6 +1232,17 @@ static nni_proto_sock_ops mqtt_sock_ops = {
 	.sock_recv    = mqtt_sock_recv,
 };
 
+static nni_proto_sock_ops mqttv5_sock_ops = {
+	.sock_size    = sizeof(mqtt_sock_t),
+	.sock_init    = mqttv5_sock_init,
+	.sock_fini    = mqtt_sock_fini,
+	.sock_open    = mqtt_sock_open,
+	.sock_close   = mqtt_sock_close,
+	.sock_options = mqtt_sock_options,
+	.sock_send    = mqtt_sock_send,
+	.sock_recv    = mqtt_sock_recv,
+};
+
 static nni_proto mqtt_proto = {
 	.proto_version  = NNI_PROTOCOL_VERSION,
 	.proto_self     = { NNG_MQTT_SELF, NNG_MQTT_SELF_NAME },
@@ -1233,8 +1253,24 @@ static nni_proto mqtt_proto = {
 	.proto_ctx_ops  = &mqtt_ctx_ops,
 };
 
+static nni_proto mqttv5_proto = {
+	.proto_version  = NNI_PROTOCOL_VERSION,
+	.proto_self     = { NNG_MQTT_SELF, NNG_MQTT_SELF_NAME },
+	.proto_peer     = { NNG_MQTT_PEER, NNG_MQTT_PEER_NAME },
+	.proto_flags    = NNI_PROTO_FLAG_SNDRCV,
+	.proto_sock_ops = &mqttv5_sock_ops,
+	.proto_pipe_ops = &mqtt_pipe_ops,
+	.proto_ctx_ops  = &mqtt_ctx_ops,
+};
+
 int
 nng_mqtt_client_open(nng_socket *sock)
 {
 	return (nni_proto_open(sock, &mqtt_proto));
+}
+
+int
+nng_mqttv5_client_open(nng_socket *sock)
+{
+	return (nni_proto_open(sock, &mqttv5_proto));
 }
