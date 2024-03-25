@@ -118,7 +118,7 @@ mqttv5_sock_init(void *arg, nni_sock *sock)
 {
 	mqtt_sock_t *s = arg;
 	mqtt_sock_init(arg, sock);
-	s->mqtt_ver = MQTT_VERSION_V5;
+	s->mqtt_ver = MQTT_PROTOCOL_VERSION_v5;
 }
 
 static void
@@ -142,7 +142,7 @@ mqtt_sock_init(void *arg, nni_sock *sock)
 	nni_mtx_init(&s->mtx);
 	mqtt_ctx_init(&s->master, s);
 
-	s->mqtt_ver  = MQTT_VERSION_V311;
+	s->mqtt_ver  = MQTT_PROTOCOL_VERSION_v311;
 	s->mqtt_pipe = NULL;
 	NNI_LIST_INIT(&s->recv_queue, mqtt_ctx_t, rqnode);
 	NNI_LIST_INIT(&s->send_queue, mqtt_ctx_t, sqnode);
@@ -777,7 +777,7 @@ mqtt_recv_cb(void *arg)
 	}
 	nni_msg_set_pipe(msg, nni_pipe_id(p->pipe));
 	nni_mqtt_msg_proto_data_alloc(msg);
-	if (s->mqtt_ver == MQTT_VERSION_V311) {
+	if (s->mqtt_ver == MQTT_PROTOCOL_VERSION_v311) {
 		rv = nni_mqtt_msg_decode(msg);
 		if (rv != MQTT_SUCCESS) {
 			log_warn("MQTT client decode error %d!", rv);
@@ -787,7 +787,7 @@ mqtt_recv_cb(void *arg)
 			nni_pipe_close(p->pipe);
 			return;
 		}
-	} else if (s->mqtt_ver == MQTT_VERSION_V5) {
+	} else if (s->mqtt_ver == MQTT_PROTOCOL_VERSION_v5) {
 		rv = nni_mqttv5_msg_decode(msg);
 		if (rv != MQTT_SUCCESS) {
 			// Msg should be clear if decode failed. We reuse it to send disconnect.
@@ -872,9 +872,9 @@ mqtt_recv_cb(void *arg)
 			}
 
 			nni_mqtt_msg_set_packet_type(msg, NNG_MQTT_CONNACK);
-			if (s->mqtt_ver == MQTT_VERSION_V311) {
+			if (s->mqtt_ver == MQTT_PROTOCOL_VERSION_v311) {
 				rv = nni_mqtt_msg_encode(msg);
-			} else if (s->mqtt_ver == MQTT_VERSION_V5) {
+			} else if (s->mqtt_ver == MQTT_PROTOCOL_VERSION_v5) {
 				rv = nni_mqttv5_msg_encode(msg);
 			} else {
 				rv = PROTOCOL_ERROR;
@@ -1022,9 +1022,9 @@ mqtt_recv_cb(void *arg)
 		}
 		break;
 	case NNG_MQTT_DISCONNECT:
-		if (s->mqtt_ver == MQTT_VERSION_V311) {
+		if (s->mqtt_ver == MQTT_PROTOCOL_VERSION_v311) {
 			s->disconnect_code = NORMAL_DISCONNECTION;
-		} else if (s->mqtt_ver == MQTT_VERSION_V5) {
+		} else if (s->mqtt_ver == MQTT_PROTOCOL_VERSION_v5) {
 			s->disconnect_code = *(uint8_t *)nni_msg_body(msg);
 		} else {
 			log_error("Invalid mqtt version");
@@ -1036,9 +1036,9 @@ mqtt_recv_cb(void *arg)
 	default:
 		// unexpected packet type, server misbehaviour
 		nni_mtx_unlock(&s->mtx);
-		if (s->mqtt_ver == MQTT_VERSION_V311) {
+		if (s->mqtt_ver == MQTT_PROTOCOL_VERSION_v311) {
 			s->disconnect_code = PROTOCOL_ERROR;
-		} else if (s->mqtt_ver == MQTT_VERSION_V5) {
+		} else if (s->mqtt_ver == MQTT_PROTOCOL_VERSION_v5) {
 			s->disconnect_code = MALFORMED_PACKET;
 		} else {
 			log_error("Invalid mqtt version");
@@ -1142,9 +1142,9 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 		break;
 	}
 	// check return
-	if (s->mqtt_ver == MQTT_VERSION_V311) {
+	if (s->mqtt_ver == MQTT_PROTOCOL_VERSION_v311) {
 		rv = nni_mqtt_msg_encode(msg);
-	} else if (s->mqtt_ver == MQTT_VERSION_V5) {
+	} else if (s->mqtt_ver == MQTT_PROTOCOL_VERSION_v5) {
 		rv = nni_mqttv5_msg_encode(msg);
 	} else {
 		nni_mtx_unlock(&s->mtx);
