@@ -217,6 +217,43 @@ dbhash_get_ptpair_all(void)
 	return res;
 }
 
+topic_queue *
+topic_queue_init(char *topic, int topic_len)
+{
+	topic_queue *tq = nni_alloc(sizeof(topic_queue));
+	if (tq == NULL) {
+		return NULL;
+	}
+	tq->topic = nni_alloc(topic_len + 1);
+	if (tq->topic == NULL) {
+		nni_free(tq, sizeof(topic_queue));
+		return NULL;
+	}
+	for(int i = 0; i < topic_len - 1; i++) {
+		log_debug("topic[%d]: %c", i, topic[i]);
+	}
+	memcpy(tq->topic, topic, topic_len);
+	tq->topic[topic_len] = '\0';
+	tq->next            = NULL;
+	return tq;
+
+}
+
+void
+topic_queue_release(topic_queue *tq)
+{
+	while (tq != NULL) {
+		topic_queue *tmp = tq;
+		tq = tq->next;
+		if (tmp->topic != NULL) {
+			nni_free(tmp->topic, strlen(tmp->topic) + 1);
+		}
+		nni_free(tmp, sizeof(topic_queue));
+	}
+
+	return;
+}
+
 topic_queue **
 dbhash_get_topic_queue_all(size_t *sz)
 {
