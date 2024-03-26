@@ -1385,6 +1385,8 @@ nano_msg_get_subtopic(nni_msg *msg, nano_pipe_db *root, conn_param *cparam)
 			}
 			db->root = root;
 			if (topic == NULL || db == NULL) {
+				nng_free(db, sizeof(nano_pipe_db));
+				nng_free(topic, len_of_topic + 1);
 				NNI_ASSERT("ERROR: nng_alloc");
 				return NULL;
 			} else {
@@ -1573,8 +1575,10 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 		    "The current process topic is %s", payload_ptr + bpos);
 		if ((sn = nng_alloc(sizeof(struct subinfo))) == NULL)
 			return (-2);
-		if ((topic = nng_alloc(len_of_topic + 1)) == NULL)
+		if ((topic = nng_alloc(len_of_topic + 1)) == NULL) {
+			nng_free(sn, sizeof(struct subinfo));
 			return (-2);
+		}
 
 		strncpy(topic, (char *) payload_ptr + bpos, len_of_topic);
 		topic[len_of_topic] = 0x00;
@@ -1697,8 +1701,10 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 
 		bpos += len_of_topic;
 		// Check the index of topic option
-		if (bpos > remain)
+		if (bpos > remain) {
+			nng_free(topic, len_of_topic + 1);
 			return (-3);
+		}
 
 		snode.topic = topic;
 		sn = &snode;
