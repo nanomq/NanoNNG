@@ -1867,6 +1867,10 @@ topic_filter(const char *origin, const char *input)
 bool
 topic_filtern(const char *origin, const char *input, size_t n)
 {
+	// Wrong topic or invalid topic alias
+	if (input == NULL || origin == NULL)
+		return false;
+		
 	char *buff = nni_zalloc(n + 1);
 	strncpy(buff, input, n);
 	bool res = false;
