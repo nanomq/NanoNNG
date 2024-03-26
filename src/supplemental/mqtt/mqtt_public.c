@@ -857,6 +857,7 @@ nng_mqtt_client_alloc(nng_socket sock, nng_mqtt_send_cb cb, bool is_async)
 		// replace nng_mqtt_client_send_cb for lmq
 		nng_aio_alloc(&client->send_aio, nng_mqtt_client_send_cb, client);
 		if ((client->msgq = nng_alloc(sizeof(nni_lmq))) == NULL) {
+			NNI_FREE_STRUCT(client);
 			return NULL;
 		}
 		nni_lmq_init((nni_lmq *)client->msgq, NNG_MAX_SEND_LMQ);
