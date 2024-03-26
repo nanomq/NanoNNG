@@ -607,8 +607,6 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	nni_aio_init(&p->aio_timer, nano_pipe_timer_cb, p);
 	nni_aio_init(&p->aio_recv, nano_pipe_recv_cb, p);
 
-	p->conn_param  = nni_pipe_get_conn_param(pipe);
-	conn_param_free(p->conn_param);
 	p->id          = nni_pipe_id(pipe);
 	p->rid         = 1;
 	p->pipe        = pipe;
@@ -618,6 +616,8 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	p->event       = true;
 	p->tree        = sock->db;
 	p->keepalive   = p->conn_param->keepalive_mqtt;
+	p->conn_param  = nni_pipe_get_conn_param(pipe);
+	conn_param_free(p->conn_param);
 
 	return (0);
 }
