@@ -1495,6 +1495,120 @@ nmq_subinfol_rm_or(nni_list *l, struct subinfo *n)
  * @return int -1: protocol error; -2: unknown error; num:numbers of topics
  */
 int
+nmq_subtopic_decode(nng_msg *msg, uint8_t ver, topic_queue **ptq)
+{
+	char           *topic;
+	uint8_t         *payload_ptr, len_of_varint = 0, *var_ptr;
+	uint32_t        num = 0, len, len_of_str = 0, subid = 0;
+	uint16_t        len_of_topic = 0;
+	size_t          bpos = 0, remain = 0;
+	topic_queue     *tq = NULL;
+	topic_queue     *curtq = NULL;
+
+	if (!msg)
+		return (-1);
+
+	var_ptr = nni_msg_body(msg);
+	len = 0;
+	len_of_varint = 0;
+	// get variable length of properties
+	if (ver == MQTT_PROTOCOL_VERSION_v5) {
+		len = get_var_integer(
+		    (uint8_t *) nni_msg_body(msg) + 2, &len_of_varint);
+		if (len > nni_msg_remaining_len(msg))
+			return -1;
+	}
+	log_trace("prop len %d varint %d remain %d", len, len_of_varint, nni_msg_remaining_len(msg));
+	payload_ptr = (uint8_t *) nni_msg_body(msg) + 2 + len + len_of_varint;
+
+	size_t pos = 2 + len_of_varint;
+	size_t target_pos = 2 + len_of_varint + len;
+	while (pos < target_pos) {
+		switch (*(var_ptr + pos)) {
+		case USER_PROPERTY:
+			// key
+			NNI_GET16(var_ptr + pos, len_of_str);
+			pos += len_of_str;
+			if (pos > target_pos)
+				return (-3);
+			len_of_str = 0;
+			// value
+			NNI_GET16(var_ptr + pos, len_of_str);
+			pos += len_of_str;
+			if (pos > target_pos)
+				return (-3);
+			len_of_str = 0;
+			break;
+		case SUBSCRIPTION_IDENTIFIER:
+			subid = get_var_integer(var_ptr + pos, &len_of_varint);
+			if (subid == 0)
+				return (-1);
+			pos += len_of_varint;
+			break;
+		default:
+			log_error("Invalid property id");
+			return (-2);
+		}
+	}
+	if (pos > target_pos || nni_msg_len(msg) < target_pos)
+		return (-2);
+
+	remain = nni_msg_remaining_len(msg) - target_pos;
+	while (bpos < remain) {
+		// Check the index of topic len
+		if (bpos + 2 > remain)
+			return (-3);
+		NNI_GET16(payload_ptr + bpos, len_of_topic);
+		if (len_of_str > remain)
+			return -1;
+		bpos += 2;
+
+		if (len_of_topic == 0)
+			continue;
+		// Check the index of topic body
+		if (bpos + len_of_topic > remain)
+			return (-3);
+
+		if ((topic = nng_alloc(len_of_topic + 1)) == NULL)
+			return (-2);
+
+		strncpy(topic, (char *) payload_ptr + bpos, len_of_topic);
+		topic[len_of_topic] = 0x00;
+
+		if (tq == NULL) {
+			tq = nng_alloc(sizeof(topic_queue));
+			curtq = tq;
+			curtq->topic = topic;
+			curtq->next = NULL;
+		} else {
+			curtq->next = nng_alloc(sizeof(topic_queue));
+			curtq->next->topic = topic;
+			curtq = curtq->next;
+			curtq->next = NULL;
+		}
+
+		bpos += len_of_topic;
+		// Check the index of topic option
+		if (bpos > remain)
+			return (-3);
+
+		bpos += 1;
+		num++;
+	}
+	*ptq = tq;
+
+	return num;
+}
+
+/**
+ * @brief decode sub for subid, topics and RAP to subinfol
+ * 	  warning only use with sub msg & V5 client
+ *
+ * @param msg
+ * @param ptr to subinfol
+ * @return int -1: protocol error; -2: unknown error; num:numbers of topics
+ */
+int
 nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 {
 	char           *topic;
