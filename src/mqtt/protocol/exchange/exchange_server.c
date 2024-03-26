@@ -951,6 +951,7 @@ ex_query_recv_cb(void *arg)
 
 			cJSON *mqs_obj = cJSON_CreateString(mqdata);
 			if (!mqs_obj) {
+				nng_free(mqdata, diff * 2 + 1);
 				cJSON_Delete(obj);
 				return;
 			}
