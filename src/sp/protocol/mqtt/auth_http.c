@@ -368,95 +368,82 @@ nmq_auth_http_connect(conn_param *cparam, conf_auth_http *conf)
 	return status == NNG_HTTP_STATUS_OK ? SUCCESS : NOT_AUTHORIZED;
 }
 
-/**
- * Not Implemented yet
- * */
-// int
-// nmq_auth_http_publish(
-//     conn_param *cparam, bool is_sub, const char *topic, conf_auth_http *conf)
-// {
-// 	if (conf->enable == false ||
-// 	    (conf->super_req.url == NULL && conf->acl_req.url == NULL)) {
-// 		return NNG_HTTP_STATUS_OK;
-// 	}
-// 	auth_http_params auth_params = {
-// 		.clientid = (const char *) conn_param_get_clientid(cparam),
-// 		.username = (const char *) conn_param_get_username(cparam),
-// 		.password = (const char *) conn_param_get_password(cparam),
-// 		.access   = is_sub ? "1" : "2",
-// 		.topic    = topic,
-// 		// TODO incompleted fields
-// 		// .mountpoint = ,
-// 		// .ipaddress = ,
-// 		// .protocol = ,
-// 		// .sockport = ,
-// 		// .common = ,
-// 		// .subject = ,
-// 	};
-// 	int status = 0;
-// 	if (conf->super_req.url) {
-// 		status = send_request(conf, &conf->super_req, &auth_params);
-// 		if (status == NNG_HTTP_STATUS_OK) {
-// 			return status;
-// 		}
-// 	} else {
-// 		status = NNG_HTTP_STATUS_OK;
-// 	}
-// 	status = conf->acl_req.url == NULL
-// 	    ? NNG_HTTP_STATUS_OK
-// 	    : send_request(conf, &conf->acl_req, &auth_params);
+char *parse_topics(topic_queue *head)
+{
+	if (head == NULL) {
+	    return NULL;
+	}
+	int total_length = 0;
+	topic_queue *current = head;
+	if (current->topic == NULL || strlen(current->topic) == 0) {
+		log_error("topic is empty");
+		return NULL;
+	}
+	while (current != NULL) {
+	    total_length += strlen(current->topic);
+		total_length += 1; // for ','
+	    current = current->next;
+	}
+	char *result = (char *)malloc(total_length + 1);
+	if (result == NULL) {
+		log_error("malloc failed");
+		return NULL;
+	}
+	current = head;
+	result[0] = '\0';
+	while (current != NULL) {
+	    strcat(result, current->topic);
+	    strcat(result, ",");
+	    current = current->next;
+	}
+	if (strlen(result) > 0) {
+	    result[strlen(result) - 1] = '\0';
+	}
+	return result;
+}
 
-// 	return status == NNG_HTTP_STATUS_OK ? SUCCESS : NOT_AUTHORIZED;
-// }
+int
+nmq_auth_http_sub_pub(
+    conn_param *cparam, bool is_sub, topic_queue *topics, conf_auth_http *conf)
+{
+	if (conf->enable == false ||
+	    (conf->super_req.url == NULL && conf->acl_req.url == NULL)) {
+		return NNG_HTTP_STATUS_OK;
+	}
 
-// /**
-//  * Not Implemented yet
-//  * */
-// int
-// nmq_auth_http_subscribe(
-//     conn_param *cparam, bool is_sub, topic_queue *topics, conf_auth_http *conf)
-// {
-// 	if (conf->enable == false ||
-// 	    (conf->super_req.url == NULL && conf->acl_req.url == NULL)) {
-// 		return NNG_HTTP_STATUS_OK;
-// 	}
+	char *topic_str = parse_topics(topics);
+	if (topic_str == NULL) {
+		return NNG_HTTP_STATUS_OK;
+	}
 
-// 	char *topic_str = NULL;
-// 	for (topic_queue *tq = topics; tq != NULL; tq = tq->next) {
-// 		str_append(&topic_str, tq->topic);
-// 		str_append(&topic_str, ",");
-// 	}
+	auth_http_params auth_params = {
+		.clientid = (const char *) conn_param_get_clientid(cparam),
+		.username = (const char *) conn_param_get_username(cparam),
+		.password = (const char *) conn_param_get_password(cparam),
+		.access   = is_sub ? "1" : "2",
+		.topic    = topic_str,
+		// TODO incompleted fields
+		// .mountpoint = ,
+		// .ipaddress = ,
+		// .protocol = ,
+		// .sockport = ,
+		// .common = ,
+		// .subject = ,
+	};
+	int status = 0;
+	if (conf->super_req.url) {
+		status = send_request(conf, &conf->super_req, &auth_params);
+		if (status == NNG_HTTP_STATUS_OK) {
+			nni_free(topic_str, strlen(topic_str) + 1);
+			return status;
+		}
+	} else {
+		status = NNG_HTTP_STATUS_OK;
+	}
+	status = conf->acl_req.url == NULL
+	    ? NNG_HTTP_STATUS_OK
+	    : send_request(conf, &conf->acl_req, &auth_params);
 
-// 	if (topic_str != NULL && topic_str[strlen(topic_str) - 1] == ',') {
-// 		topic_str[strlen(topic_str) - 1] = '\0';
-// 	}
-
-// 	auth_http_params auth_params = {
-// 		.clientid = (const char *) conn_param_get_clientid(cparam),
-// 		.username = (const char *) conn_param_get_username(cparam),
-// 		.password = (const char *) conn_param_get_password(cparam),
-// 		.access   = is_sub ? "1" : "2",
-// 		.topic    = topic_str,
-// 		// TODO incompleted fields
-// 		// .mountpoint = ,
-// 		// .ipaddress = ,
-// 		// .protocol = ,
-// 		// .sockport = ,
-// 		// .common = ,
-// 		// .subject = ,
-// 	};
-// 	int status = 0;
-// 	if (conf->super_req.url) {
-// 		status = send_request(conf, &conf->super_req, &auth_params);
-// 		if (status == NNG_HTTP_STATUS_OK) {
-// 			return status;
-// 		}
-// 	} else {
-// 		status = NNG_HTTP_STATUS_OK;
-// 	}
-// 	status = conf->acl_req.url == NULL
-// 	    ? NNG_HTTP_STATUS_OK
-// 	    : send_request(conf, &conf->acl_req, &auth_params);
-
-// 	return status == NNG_HTTP_STATUS_OK ? SUCCESS : NOT_AUTHORIZED;
-// }
+	nni_free(topic_str, strlen(topic_str) + 1);
+	return status == NNG_HTTP_STATUS_OK ? SUCCESS : NOT_AUTHORIZED;
+}
