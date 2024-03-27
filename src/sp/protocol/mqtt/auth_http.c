@@ -48,6 +48,11 @@ set_data(
 	char *req_data     = NULL;
 	char *content_type = "application/x-www-form-urlencoded";
 
+	if (req_conf->header_count == 0) {
+		log_error("No headers found in request configuration");
+		return;
+	}
+
 	for (size_t i = 0; i < req_conf->header_count; i++) {
 		if (nni_strcasecmp(req_conf->headers[i]->key, "Content-Type") ==
 		    0) {
