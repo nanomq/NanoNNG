@@ -171,7 +171,7 @@ static int
 mqtt_sock_get_disconnect_prop(void *arg, void *v, size_t *szp, nni_opt_type t)
 {
 	mqtt_sock_t *s = arg;
-	int              rv;
+	int          rv;
 
 	nni_mtx_lock(&s->mtx);
 	rv = nni_copyout_ptr(s->dis_prop, v, szp, t);
@@ -184,7 +184,7 @@ mqtt_sock_get_disconnect_code(void *arg, void *v, size_t *sz, nni_opt_type t)
 {
 	NNI_ARG_UNUSED(sz);
 	mqtt_sock_t *s = arg;
-	int              rv;
+	int          rv;
 
 	nni_mtx_lock(&s->mtx);
 	rv = nni_copyin_int(
@@ -244,7 +244,7 @@ mqtt_sock_close(void *arg)
 	nni_msg *    msg;
 
 	nni_atomic_set_bool(&s->closed, true);
-	//clean ctx queue when pipe was closed.
+	// clean ctx queue when pipe was closed.
 	while ((ctx = nni_list_first(&s->send_queue)) != NULL) {
 		// Pipe was closed.  just push an error back to the
 		// entire socket, because we only have one pipe
@@ -288,7 +288,7 @@ mqtt_sock_recv(void *arg, nni_aio *aio)
 static int
 mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s)
 {
-	mqtt_pipe_t *p    = arg;
+	mqtt_pipe_t *p = arg;
 
 	nni_atomic_init_bool(&p->closed);
 	nni_atomic_set_bool(&p->closed, true);
@@ -463,12 +463,12 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 		return;
 	}
 	if (nni_lmq_full(&p->send_messages)) {
-		log_error("pipe is busy and lmq is full\n");
+		log_error("Warning! msg lost due to busy socket and full lmq");
 		(void) nni_lmq_get(&p->send_messages, &tmsg);
 		nni_msg_free(tmsg);
 	}
 	if (0 != nni_lmq_put(&p->send_messages, msg)) {
-		log_error("Warning! msg lost due to busy socket");
+		log_error("Warning! Failed to put to lmq and msg lost");
 	}
 out:
 	nni_mtx_unlock(&s->mtx);
@@ -489,14 +489,14 @@ mqtt_pipe_start(void *arg)
 	nni_mtx_lock(&s->mtx);
 	nni_atomic_set_bool(&p->closed, false);
 	s->mqtt_pipe       = p;
-	s->disconnect_code = 0;
+	s->disconnect_code = SUCCESS;
 	s->dis_prop        = NULL;
 
 	if ((c = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, c);
+		nni_pipe_recv(p->pipe, &p->recv_aio);
 		mqtt_send_msg(c->saio, c);
 		c->saio = NULL;
-		nni_pipe_recv(p->pipe, &p->recv_aio);
 		nni_sleep_aio(s->retry, &p->time_aio);
 		return (0);
 	}
@@ -522,7 +522,6 @@ mqtt_pipe_close(void *arg)
 {
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
-	nni_aio     *user_aio;
 
 	nni_mtx_lock(&s->mtx);
 	nni_atomic_set_bool(&p->closed, true);
@@ -539,12 +538,15 @@ mqtt_pipe_close(void *arg)
 		    mqtt_sock_get_sqlite_option(s), &p->send_messages);
 	}
 #endif
+
 	nni_lmq_flush(&p->send_messages);
 
 	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_aio_cb);
 	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
 
 #ifdef NNG_HAVE_MQTT_BROKER
+	nni_aio     *user_aio;
+
 	if (s->cparam == NULL) {
 		nni_mtx_unlock(&s->mtx);
 		return 0;
@@ -753,7 +755,7 @@ mqtt_recv_cb(void *arg)
 	nni_aio_set_msg(&p->recv_aio, NULL);
 	if (nni_atomic_get_bool(&s->closed) ||
 	    nni_atomic_get_bool(&p->closed)) {
-		//free msg and dont return data when pipe is closed.
+		// free msg and dont return data when pipe is closed.
 		if (msg) {
 			nni_msg_free(msg);
 		}
