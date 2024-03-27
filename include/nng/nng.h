@@ -1592,6 +1592,10 @@ NNG_DECL void          *conn_param_get_will_property(conn_param *cparam);
 NNG_DECL void           conn_param_set_qos_db(conn_param *cparam, void *);
 NNG_DECL void           conn_param_set_clientid(
               conn_param *cparam, const char *clientid);
+NNG_DECL void           conn_param_set_username(
+              conn_param *cparam, const char *username);
+NNG_DECL void           conn_param_set_password(
+              conn_param *cparam, const char *password);
 NNG_DECL void        conn_param_set_proto_ver(conn_param *cparam, uint8_t ver);
 NNG_DECL uint64_t    conn_param_get_will_delay_timestamp(conn_param *cparam);
 NNG_DECL uint64_t    conn_param_get_will_mexp(conn_param *cparam);
