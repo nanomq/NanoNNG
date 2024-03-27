@@ -73,6 +73,10 @@ NNG_DECL bool dbhash_check_topic(uint32_t id, char *val);
 
 NNG_DECL char *dbhash_get_first_topic(uint32_t id);
 
+NNG_DECL topic_queue *topic_queue_init(char *topic, int topic_len);
+
+NNG_DECL void topic_queue_release(topic_queue *tq);
+
 NNG_DECL struct topic_queue *dbhash_get_topic_queue(uint32_t id);
 
 NNG_DECL struct topic_queue *dbhash_copy_topic_queue(uint32_t id);

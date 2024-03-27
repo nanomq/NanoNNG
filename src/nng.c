@@ -2456,6 +2456,20 @@ conn_param_set_clientid(conn_param *cparam, const char *clientid)
 }
 
 void
+conn_param_set_username(conn_param *cparam, const char *username)
+{
+	cparam->username.body = nng_strdup(username);
+	cparam->username.len  = strlen(username) + 1;
+}
+
+void
+conn_param_set_password(conn_param *cparam, const char *password)
+{
+	cparam->password.body = nng_strdup(password);
+	cparam->password.len  = strlen(password) + 1;
+}
+
+void
 conn_param_set_proto_ver(conn_param *cparam, uint8_t ver)
 {
 	cparam->pro_ver = ver;

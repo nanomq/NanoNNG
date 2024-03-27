@@ -137,11 +137,15 @@ NNG_DECL property *property_set_value_strpair(uint8_t prop_id, const char *key,
     uint32_t key_len, const char *value, uint32_t value_len, bool copy_value);
 NNG_DECL void      property_append(property *prop_list, property *last);
 
+NNG_DECL int  nmq_subtopic_decode(nng_msg *msg, uint8_t ver, topic_queue **ptq);
 NNG_DECL int  nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver);
 NNG_DECL int  nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver);
 NNG_DECL bool topic_filter(const char *origin, const char *input);
 NNG_DECL bool topic_filtern(const char *origin, const char *input, size_t n);
 
 NNG_DECL int nmq_auth_http_connect(conn_param *cparam, conf_auth_http *conf);
+
+NNG_DECL int nmq_auth_http_sub_pub(
+    conn_param *cparam, bool is_sub, topic_queue *topics, conf_auth_http *conf);
 
 #endif // NNG_MQTT_H
