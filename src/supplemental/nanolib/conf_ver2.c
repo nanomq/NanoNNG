@@ -628,6 +628,13 @@ conf_auth_parse_ver2(conf *config, cJSON *jso)
 			    auth->usernames, nng_strdup(ele->string));
 			cvector_push_back(
 			    auth->passwords, nng_strdup(ele->valuestring));
+		} else if(cJSON_IsNumber(ele)) {
+			cvector_push_back(
+			    auth->usernames, nng_strdup(ele->string));
+			// max len of pw is 20.
+			char strpw[20];
+			sprintf(strpw, "%d", ele->valueint);
+			cvector_push_back(auth->passwords, nng_strdup(strpw));
 		}
 	}
 	auth->count = cvector_size(auth->usernames);
