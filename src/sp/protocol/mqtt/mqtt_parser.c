@@ -583,16 +583,16 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	NNI_GET16(packet + pos, tmp);
 	cparam->keepalive_mqtt = tmp;
 	pos += 2;
-	// properties
 
+	// properties
 	if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 		// check length
 		log_trace("Decoding MQTT V5 Properties");
-		if (pos >= max)
+		if (pos + 4 >= max)
 			return PROTOCOL_ERROR;
 		cparam->prop_len = (uint32_t) get_var_integer(packet + pos,
 													  &len_of_var);
-		if (cparam->prop_len > (max - pos - 1 - cparam->will_flag*2 ))
+		if (cparam->prop_len > (max - pos - 1 - cparam->will_flag * 2 ))
 			return PROTOCOL_ERROR;
 		log_debug("remain len %d max len %d prop len %d pos %d",
 				   len, max, cparam->prop_len, pos);
@@ -610,7 +610,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 
 	// here starts payload: client_id
 	cparam->clientid.body =
-	    (char *) copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
+	    (char *) copyn_utf8_str(packet, &pos, &len_of_str, max - pos);
 	cparam->clientid.len = len_of_str;
 
 	if (len_of_str == 0) {
