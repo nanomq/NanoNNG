@@ -66,7 +66,9 @@ path_expression_parse(cJSON *jso)
 			path_expression_parse(child);
 		}
 		if (NULL != child->string &&
-		    NULL != strchr(child->string, '.')) {
+		    NULL != strchr(child->string, '.') &&
+		    (parent->string != NULL &&
+		        strncmp(parent->string, "password", 8))) {
 			path_expression_parse_core(parent, child);
 			child = parent->child;
 		} else {
