@@ -254,6 +254,51 @@ topic_queue_release(topic_queue *tq)
 	return;
 }
 
+topic_queue *
+init_topic_queue_with_topic_node(topic_node *tn)
+{
+	topic_queue *tq = NULL;
+	topic_queue *curtq = NULL;
+
+	while (tn != NULL) {
+		if (tq == NULL) {
+			tq = nng_alloc(sizeof(topic_queue));
+			if (tq == NULL) {
+				log_error("nng_alloc failed");
+				return NULL;
+			}
+			curtq = tq;
+
+			curtq->topic = nng_strdup(tn->topic.body);
+			if (curtq->topic == NULL) {
+				log_error("nng_strdup failed");
+				topic_queue_release(tq);
+				return NULL;
+			}
+			curtq->next = NULL;
+		} else {
+			curtq->next = nng_alloc(sizeof(topic_queue));
+			if (curtq->next == NULL) {
+				log_error("nng_alloc failed");
+				topic_queue_release(tq);
+				return NULL;
+			}
+
+			curtq->next->topic = nng_strdup(tn->topic.body);
+			if (curtq->next->topic == NULL) {
+				log_error("nng_strdup failed");
+				topic_queue_release(tq);
+				return NULL;
+			}
+
+			curtq = curtq->next;
+			curtq->next = NULL;
+		}
+		tn = tn->next;
+	}
+	return tq;
+}
+
 topic_queue **
 dbhash_get_topic_queue_all(size_t *sz)
 {
