@@ -53,7 +53,7 @@ nano_iceoryx_listener_free(nano_iceoryx_listener *listener)
 }
 
 nano_iceoryx_suber *
-nano_iceoryx_suber_init(const char *subername, const char *const service_name,
+nano_iceoryx_suber_alloc(const char *subername, const char *const service_name,
     const char *const instance_name, const char *const event,
     nano_iceoryx_listener *lstner)
 {
@@ -82,7 +82,7 @@ nano_iceoryx_suber_init(const char *subername, const char *const service_name,
 }
 
 void
-nano_iceoryx_suber_fini(nano_iceoryx_suber *suber)
+nano_iceoryx_suber_free(nano_iceoryx_suber *suber)
 {
     iox_listener_detach_subscriber_event(suber->listener, suber->suber,
 	        SubscriberEvent_DATA_RECEIVED);
