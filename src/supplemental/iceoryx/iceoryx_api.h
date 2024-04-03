@@ -3,8 +3,9 @@
 
 #define NANO_ICEORYX_SERVICE  "NanoMQ"
 
-typedef struct nano_iceoryx_suber nano_iceoryx_suber;
 typedef void   nano_iceoryx_listener;
+typedef struct nano_iceoryx_suber nano_iceoryx_suber;
+typedef struct nano_iceoryx_puber nano_iceoryx_puber;
 
 extern int nano_iceoryx_init();
 extern int nano_iceoryx_fini();
