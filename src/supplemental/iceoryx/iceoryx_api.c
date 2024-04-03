@@ -7,6 +7,8 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
+#include "iceoryx_api.h"
+
 #include "iceoryx_binding_c/listener.h"
 #include "iceoryx_binding_c/runtime.h"
 #include "iceoryx_binding_c/subscriber.h"
@@ -21,12 +23,17 @@ nano_iceoryx_init()
     iox_listener_storage_t listenerStorage;
     iox_listener_t listener = iox_listener_init(&listenerStorage);
 
-	return 0;
+// Event is the topic you wanna read
+int
+nano_iceoryx_init(const char *const name)
+{
+    iox_runtime_init(name); // No related to subscriber or publisher. just a runtime name
 }
 
 int
 nano_iceoryx_fini()
 {
+	iox_runtime_shutdown();
 	return 0;
 }
 
