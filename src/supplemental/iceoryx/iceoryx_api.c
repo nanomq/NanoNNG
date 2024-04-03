@@ -19,6 +19,8 @@
 #include "iceoryx_binding_c/types.h"
 #include "iceoryx_binding_c/user_trigger.h"
 
+nni_id_map *suber_map = NULL;
+
 struct nano_iceoryx_suber {
 	iox_listener_t listener;
 	iox_sub_t      suber;
@@ -33,6 +35,7 @@ int
 nano_iceoryx_init(const char *const name)
 {
     iox_runtime_init(name); // No related to subscriber or publisher. just a runtime name
+	nni_id_map_init(suber_map, 0, 0xffffffff, false);
 	return 0;
 }
 
@@ -40,6 +43,7 @@ int
 nano_iceoryx_fini()
 {
 	iox_runtime_shutdown();
+	nni_id_map_fini(suber_map);
 	return 0;
 }
 
@@ -134,7 +138,7 @@ int
 nano_iceoryx_msg_alloc(void **msgp, size_t sz, nano_iceoryx_puber *puber)
 {
 	// Not a common result code. So +8 when try to find the real reason code.
-	return iox_pub_load_chunk(puber->puber, msgp, sz) - 8;
+	return iox_pub_loan_chunk(puber->puber, msgp, sz) - 8;
 }
 
 void
@@ -143,7 +147,7 @@ nano_iceoryx_write(nano_iceoryx_puber *puber, void *msg)
 	iox_pub_publish_chunk(puber->puber, msg);
 }
 
-int
+void
 nano_iceoryx_read()
 {
 }
