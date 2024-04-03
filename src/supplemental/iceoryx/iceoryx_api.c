@@ -130,4 +130,21 @@ nano_iceoryx_puber_free(nano_iceoryx_puber *puber)
 	nng_free(puber, sizeof(*puber));
 }
 
+int
+nano_iceoryx_msg_alloc(void **msgp, size_t sz, nano_iceoryx_puber *puber)
+{
+	// Not a common result code. So +8 when try to find the real reason code.
+	return iox_pub_load_chunk(puber->puber, msgp, sz) - 8;
+}
+
+void
+nano_iceoryx_write(nano_iceoryx_puber *puber, void *msg)
+{
+	iox_pub_publish_chunk(puber->puber, msg);
+}
+
+int
+nano_iceoryx_read()
+{
+}
 
