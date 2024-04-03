@@ -24,6 +24,7 @@ nni_id_map *suber_map = NULL;
 struct nano_iceoryx_suber {
 	iox_listener_t listener;
 	iox_sub_t      suber;
+	nni_lmq       *recvmq;
 };
 
 struct nano_iceoryx_puber {
@@ -95,12 +96,15 @@ nano_iceoryx_suber_alloc(const char *subername, const char *const service_name,
     iox_listener_attach_subscriber_event(
         (iox_listener_t)listener, subscriber, SubscriberEvent_DATA_RECEIVED, &suber_recv_cb);
 
+	nni_lmq_init(suber->recvmq, NANO_ICEORYX_RECVQ_LEN);
+
 	int rv;
 	if (0 != (rv = nni_id_set(suber_map, (uint64_t)subscriber, suber))) {
 		log_error("Failed to set suber_map %d", rv);
 		nano_iceoryx_suber_free(suber);
 		return NULL;
 	}
+
 	suber->listener = listener;
 	suber->suber    = subscriber;
 
@@ -113,6 +117,7 @@ nano_iceoryx_suber_free(nano_iceoryx_suber *suber)
     iox_listener_detach_subscriber_event(suber->listener, suber->suber,
 	        SubscriberEvent_DATA_RECEIVED);
     iox_sub_deinit(suber->suber);
+	nni_lmq_fini(suber->recvmq);
 	nng_free(suber, sizeof(*suber));
 }
 

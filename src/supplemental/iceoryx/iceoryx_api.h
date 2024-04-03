@@ -1,7 +1,7 @@
 #ifndef NNG_SUPP_ICEORYX_API_H
 #define NNG_SUPP_ICEORYX_API_H
 
-#define NANO_ICEORYX_SERVICE  "NanoMQ"
+#define NANO_ICEORYX_RECVQ_LEN 32
 
 typedef void   nano_iceoryx_listener;
 typedef struct nano_iceoryx_suber nano_iceoryx_suber;
