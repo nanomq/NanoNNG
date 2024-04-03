@@ -13,8 +13,14 @@ extern void nano_iceoryx_listener_alloc(nano_iceoryx_listener **);
 extern void nano_iceoryx_listener_free(nano_iceoryx_listener *);
 
 extern nano_iceoryx_suber *nano_iceoryx_suber_alloc(
-    const char *const service_name, const char *const instance_name,
-    const char *const event, nano_iceoryx_listener *listener);
-extern void nano_iceoryx_suber_free(nano_iceoryx_suber *suber)
+    const char *subername, const char *const service_name,
+    const char *const instance_name, const char *const event,
+    nano_iceoryx_listener *listener);
+extern void nano_iceoryx_suber_free(nano_iceoryx_suber *suber);
+
+extern nano_iceoryx_puber *nano_iceoryx_puber_alloc(
+    const char *pubername, const char *const service_name,
+    const char *const instance_name, const char *const event);
+extern void nano_iceoryx_puber_free(nano_iceoryx_puber *puber);
 
 #endif
