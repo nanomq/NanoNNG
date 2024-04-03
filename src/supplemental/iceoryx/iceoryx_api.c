@@ -9,9 +9,13 @@
 
 #include "iceoryx_api.h"
 
+#include "nng/nng.h"
+#include "core/nng_impl.h"
+
 #include "iceoryx_binding_c/listener.h"
 #include "iceoryx_binding_c/runtime.h"
 #include "iceoryx_binding_c/subscriber.h"
+#include "iceoryx_binding_c/publisher.h"
 #include "iceoryx_binding_c/types.h"
 #include "iceoryx_binding_c/user_trigger.h"
 
@@ -29,6 +33,7 @@ int
 nano_iceoryx_init(const char *const name)
 {
     iox_runtime_init(name); // No related to subscriber or publisher. just a runtime name
+	return 0;
 }
 
 int
@@ -51,6 +56,12 @@ void
 nano_iceoryx_listener_free(nano_iceoryx_listener *listener)
 {
     iox_listener_deinit((iox_listener_t)listener);
+}
+
+static void
+suber_recv_cb(iox_sub_t subscriber)
+{
+	NNI_ARG_UNUSED(subscriber);
 }
 
 nano_iceoryx_suber *
@@ -88,12 +99,12 @@ nano_iceoryx_suber_free(nano_iceoryx_suber *suber)
     iox_listener_detach_subscriber_event(suber->listener, suber->suber,
 	        SubscriberEvent_DATA_RECEIVED);
     iox_sub_deinit(suber->suber);
-	nng_free(suber);
+	nng_free(suber, sizeof(*suber));
 }
 
 nano_iceoryx_puber *
 nano_iceoryx_puber_alloc(const char *pubername, const char *const service_name,
-    const char *const instance_name, const char *const event,)
+    const char *const instance_name, const char *const event)
 {
 	nano_iceoryx_puber *puber = nng_alloc(sizeof(*puber));
 	if (!puber)
@@ -116,7 +127,7 @@ nano_iceoryx_puber_alloc(const char *pubername, const char *const service_name,
 void
 nano_iceoryx_puber_free(nano_iceoryx_puber *puber)
 {
-	nng_free(puber);
+	nng_free(puber, sizeof(*puber));
 }
 
 
