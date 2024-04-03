@@ -20,8 +20,9 @@ struct nano_iceoryx_suber {
 	iox_sub_t      suber;
 };
 
-    iox_listener_storage_t listenerStorage;
-    iox_listener_t listener = iox_listener_init(&listenerStorage);
+struct nano_iceoryx_puber {
+	iox_pub_t      puber;
+};
 
 // Event is the topic you wanna read
 int
@@ -89,4 +90,33 @@ nano_iceoryx_suber_free(nano_iceoryx_suber *suber)
     iox_sub_deinit(suber->suber);
 	nng_free(suber);
 }
+
+nano_iceoryx_puber *
+nano_iceoryx_puber_alloc(const char *pubername, const char *const service_name,
+    const char *const instance_name, const char *const event,)
+{
+	nano_iceoryx_puber *puber = nng_alloc(sizeof(*puber));
+	if (!puber)
+		return NULL;
+
+    iox_pub_options_t options;
+    iox_pub_options_init(&options);
+    options.historyCapacity = 10U;
+    options.nodeName = pubername;
+
+    iox_pub_storage_t publisher_storage;
+
+    iox_pub_t publisher = iox_pub_init(&publisher_storage, service_name,
+		instance_name, event, &options);
+
+	puber->puber = publisher;
+	return puber;
+}
+
+void
+nano_iceoryx_puber_free(nano_iceoryx_puber *puber)
+{
+	nng_free(puber);
+}
+
 
