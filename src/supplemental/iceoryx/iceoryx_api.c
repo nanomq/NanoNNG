@@ -163,7 +163,10 @@ nano_iceoryx_write(nano_iceoryx_puber *puber, void *msg)
 }
 
 void
-nano_iceoryx_read()
+nano_iceoryx_read(nano_iceoryx_suber *suber, void **msgp)
 {
+	if (0 != nni_lmq_get(suber->recvmq, msg)) {
+		*msgp = NULL;
+	}
 }
 
