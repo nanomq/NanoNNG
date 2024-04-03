@@ -35,7 +35,11 @@ int
 nano_iceoryx_init(const char *const name)
 {
     iox_runtime_init(name); // No related to subscriber or publisher. just a runtime name
+	
+	if ((suber_map = nng_alloc(sizeof(*suber_map))) == NULL)
+		return NNG_ENOMEM;
 	nni_id_map_init(suber_map, 0, 0xffffffff, false);
+
 	return 0;
 }
 
@@ -91,6 +95,12 @@ nano_iceoryx_suber_alloc(const char *subername, const char *const service_name,
     iox_listener_attach_subscriber_event(
         (iox_listener_t)listener, subscriber, SubscriberEvent_DATA_RECEIVED, &suber_recv_cb);
 
+	int rv;
+	if (0 != (rv = nni_id_set(suber_map, (uint64_t)subscriber, suber))) {
+		log_error("Failed to set suber_map %d", rv);
+		nano_iceoryx_suber_free(suber);
+		return NULL;
+	}
 	suber->listener = listener;
 	suber->suber    = subscriber;
 
