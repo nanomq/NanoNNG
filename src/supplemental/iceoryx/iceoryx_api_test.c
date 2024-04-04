@@ -8,24 +8,31 @@
 //
 
 #include <nuts.h>
+#include "iceoryx_api.h"
 
 void
-test_iceoryx_start()
+test_iceoryx_basic()
 {
+	nano_iceoryx_init("test-nanomq-iceoryx-basic");
+	nano_iceoryx_fini();
 }
 
 void
 test_iceoryx_msg()
 {
+	nano_iceoryx_init("test-nanomq-iceoryx-msg");
+	nano_iceoryx_fini();
 }
 
 void
 test_iceoryx_rw()
 {
+	nano_iceoryx_init("test-nanomq-iceoryx-rw");
+	nano_iceoryx_fini();
 }
 
 TEST_LIST = {
-	{ "iceoryx init and fini", test_iceoryx_start},
+	{ "iceoryx init and fini", test_iceoryx_basic},
 	{ "iceoryx alloc a msg", test_iceoryx_msg},
 	{ "iceoryx read and write", test_iceoryx_rw},
 	{ NULL, NULL },
