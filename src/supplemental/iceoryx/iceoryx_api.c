@@ -49,8 +49,8 @@ nano_iceoryx_init(const char *const name)
 int
 nano_iceoryx_fini()
 {
-	iox_runtime_shutdown();
 	nni_id_map_fini(suber_map);
+	// iox_runtime_shutdown();
 	return 0;
 }
 
