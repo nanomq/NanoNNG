@@ -36,8 +36,8 @@ struct nano_iceoryx_puber {
 int
 nano_iceoryx_init(const char *const name)
 {
-    iox_runtime_init(name); // No related to subscriber or publisher. just a runtime name
-	
+	iox_runtime_init(name); // No related to subscriber or publisher. just a runtime name
+
 	if ((suber_map = nng_alloc(sizeof(*suber_map))) == NULL)
 		return NNG_ENOMEM;
 	nni_id_map_init(suber_map, 0, 0xffffffff, false);
@@ -49,6 +49,7 @@ int
 nano_iceoryx_fini()
 {
 	nni_id_map_fini(suber_map);
+	// TODO I don't know. It get stuck when shutdown.
 	// iox_runtime_shutdown();
 	return 0;
 }
@@ -56,8 +57,8 @@ nano_iceoryx_fini()
 void
 nano_iceoryx_listener_alloc(nano_iceoryx_listener **listenerp)
 {
-    iox_listener_storage_t listener_storage;
-    iox_listener_t listener = iox_listener_init(&listener_storage);
+	iox_listener_storage_t listener_storage;
+	iox_listener_t         listener = iox_listener_init(&listener_storage);
 
 	*listenerp = listener;
 }
@@ -65,7 +66,7 @@ nano_iceoryx_listener_alloc(nano_iceoryx_listener **listenerp)
 void
 nano_iceoryx_listener_free(nano_iceoryx_listener *listener)
 {
-    iox_listener_deinit((iox_listener_t)listener);
+	iox_listener_deinit((iox_listener_t)listener);
 }
 
 static void
@@ -84,7 +85,7 @@ suber_recv_cb(iox_sub_t subscriber)
 		log_error("Failed to get msg from suber%d error%d", subscriber, rv);
 		return;
 	}
-	// Get description of this suber.
+	// XXX Get description of this suber.
 	// iox_service_description_t desc = iox_sub_get_service_description(subscriber);
 
 	rv = nni_lmq_put(suber->recvmq, (nng_msg *)msg);
@@ -100,23 +101,23 @@ nano_iceoryx_suber_alloc(const char *subername, const char *const service_name,
     const char *const instance_name, const char *const event,
     nano_iceoryx_listener *lstner)
 {
-	iox_listener_t listener = lstner;
-	nano_iceoryx_suber *suber = nng_alloc(sizeof(*suber));
+	iox_listener_t      listener = lstner;
+	nano_iceoryx_suber *suber    = nng_alloc(sizeof(*suber));
 	if (!suber)
 		return NULL;
 
-    iox_sub_options_t options;
-    iox_sub_options_init(&options);
-    options.historyRequest = 10U;
-    options.queueCapacity = 50U;
-    options.nodeName = subername;
+	iox_sub_options_t options;
+	iox_sub_options_init(&options);
+	options.historyRequest = 10U;
+	options.queueCapacity  = 50U;
+	options.nodeName       = subername;
 
-    iox_sub_storage_t subscriber_storage;
-    iox_sub_t subscriber = iox_sub_init(&subscriber_storage, service_name,
-	    instance_name, event, &options);
+	iox_sub_storage_t subscriber_storage;
+	iox_sub_t         subscriber = iox_sub_init(
+            &subscriber_storage, service_name, instance_name, event, &options);
 
-    iox_listener_attach_subscriber_event(
-        (iox_listener_t)listener, subscriber, SubscriberEvent_DATA_RECEIVED, &suber_recv_cb);
+	iox_listener_attach_subscriber_event((iox_listener_t) listener,
+	    subscriber, SubscriberEvent_DATA_RECEIVED, &suber_recv_cb);
 
 	suber->recvmq = nng_alloc(sizeof(*suber->recvmq));
 	if (suber->recvmq == NULL) {
@@ -142,9 +143,9 @@ nano_iceoryx_suber_alloc(const char *subername, const char *const service_name,
 void
 nano_iceoryx_suber_free(nano_iceoryx_suber *suber)
 {
-    iox_listener_detach_subscriber_event(suber->listener, suber->suber,
+	iox_listener_detach_subscriber_event(suber->listener, suber->suber,
 	        SubscriberEvent_DATA_RECEIVED);
-    iox_sub_deinit(suber->suber);
+	iox_sub_deinit(suber->suber);
 	nni_lmq_fini(suber->recvmq);
 	nng_free(suber->recvmq, sizeof(*suber->recvmq));
 	nng_free(suber, sizeof(*suber));
@@ -158,15 +159,15 @@ nano_iceoryx_puber_alloc(const char *pubername, const char *const service_name,
 	if (!puber)
 		return NULL;
 
-    iox_pub_options_t options;
-    iox_pub_options_init(&options);
-    options.historyCapacity = 10U;
-    options.nodeName = pubername;
+	iox_pub_options_t options;
+	iox_pub_options_init(&options);
+	options.historyCapacity = 10U;
+	options.nodeName        = pubername;
 
-    iox_pub_storage_t publisher_storage;
+	iox_pub_storage_t publisher_storage;
 
-    iox_pub_t publisher = iox_pub_init(&publisher_storage, service_name,
-		instance_name, event, &options);
+	iox_pub_t publisher = iox_pub_init(
+	    &publisher_storage, service_name, instance_name, event, &options);
 
 	puber->puber = publisher;
 	return puber;
