@@ -7,6 +7,8 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
+#include <string.h>
+
 #include "iceoryx_api.h"
 
 #include "nng/nng.h"
@@ -187,7 +189,7 @@ nano_iceoryx_msg_alloc(void **msgp, nano_iceoryx_puber *puber, uint32_t id, nng_
 	sz = nng_msg_len(msg);
 	sz += (NANO_ICEORYX_SZ_BYTES + NANO_ICEORYX_ID_BYTES);
 
-	if (0 != (rv = nano_iceoryx_msg_alloc_raw(&m, sz, puber))) {
+	if (0 != (rv = nano_iceoryx_msg_alloc_raw((void **)&m, sz, puber))) {
 		log_error("FAiled to alloc iceoryx chunk %d", rv);
 		return rv;
 	}
@@ -211,7 +213,7 @@ nano_iceoryx_write(nano_iceoryx_puber *puber, void *msg)
 void
 nano_iceoryx_read(nano_iceoryx_suber *suber, void **msgp)
 {
-	if (0 != nni_lmq_get(suber->recvmq, msg)) {
+	if (0 != nni_lmq_get(suber->recvmq, (nng_msg **)msgp)) {
 		*msgp = NULL;
 	}
 }
