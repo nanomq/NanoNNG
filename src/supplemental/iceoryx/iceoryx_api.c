@@ -33,7 +33,6 @@ struct nano_iceoryx_puber {
 	iox_pub_t      puber;
 };
 
-// Event is the topic you wanna read
 int
 nano_iceoryx_init(const char *const name)
 {
@@ -95,6 +94,7 @@ suber_recv_cb(iox_sub_t subscriber)
 	}
 }
 
+// Event is the topic you wanna read
 nano_iceoryx_suber *
 nano_iceoryx_suber_alloc(const char *subername, const char *const service_name,
     const char *const instance_name, const char *const event,
@@ -168,6 +168,7 @@ nano_iceoryx_puber_alloc(const char *pubername, const char *const service_name,
 void
 nano_iceoryx_puber_free(nano_iceoryx_puber *puber)
 {
+	iox_pub_deinit(puber->puber);
 	nng_free(puber, sizeof(*puber));
 }
 
