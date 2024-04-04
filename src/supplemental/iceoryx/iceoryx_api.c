@@ -150,10 +150,42 @@ nano_iceoryx_puber_free(nano_iceoryx_puber *puber)
 }
 
 int
-nano_iceoryx_msg_alloc(void **msgp, size_t sz, nano_iceoryx_puber *puber)
+nano_iceoryx_msg_alloc_raw(void **msgp, size_t sz, nano_iceoryx_puber *puber)
 {
 	// Not a common result code. So +8 when try to find the real reason code.
 	return iox_pub_loan_chunk(puber->puber, msgp, sz) - 8;
+}
+
+// U32 SZ | U32 ID | PAYLOAD
+int
+nano_iceoryx_msg_alloc(void **msgp, nano_iceoryx_puber *puber, uint32_t id, nng_msg *msg)
+{
+	int rv;
+	size_t sz;
+	uint8_t *m;
+
+	sz = nng_msg_len(msg);
+	sz += (NANO_ICEORYX_SZ_BYTES + NANO_ICEORYX_ID_BYTES);
+
+	if (0 != (rv = nano_iceoryx_msg_alloc_raw(&m, sz, puber))) {
+		log_error("FAiled to alloc iceoryx chunk %d", rv);
+		return rv;
+	}
+	*msgp = m;
+
+	NNI_PUT32(m, sz);
+	m += NANO_ICEORYX_SZ_BYTES;
+	NNI_PUT32(m, id);
+	m += NANO_ICEORYX_ID_BYTES;
+	memcpy(m, nng_msg_body(msg), nng_msg_len(msg));
+
+	return 0;
+}
+
+void
+nano_iceoryx_write_raw(nano_iceoryx_puber *puber, void *msg)
+{
+	iox_pub_publish_chunk(puber->puber, msg);
 }
 
 void

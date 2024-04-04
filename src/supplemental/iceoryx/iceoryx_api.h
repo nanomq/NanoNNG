@@ -2,6 +2,8 @@
 #define NNG_SUPP_ICEORYX_API_H
 
 #define NANO_ICEORYX_RECVQ_LEN 32
+#define NANO_ICEORYX_SZ_BYTES 4
+#define NANO_ICEORYX_ID_BYTES 4
 
 typedef void   nano_iceoryx_listener;
 typedef struct nano_iceoryx_suber nano_iceoryx_suber;
