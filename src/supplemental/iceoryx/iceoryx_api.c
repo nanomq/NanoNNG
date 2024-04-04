@@ -118,6 +118,12 @@ nano_iceoryx_suber_alloc(const char *subername, const char *const service_name,
     iox_listener_attach_subscriber_event(
         (iox_listener_t)listener, subscriber, SubscriberEvent_DATA_RECEIVED, &suber_recv_cb);
 
+	suber->recvmq = nng_alloc(sizeof(*suber->recvmq));
+	if (suber->recvmq == NULL) {
+		log_error("Failed to alloc recvmq");
+		nano_iceoryx_suber_free(suber);
+		return NULL;
+	}
 	nni_lmq_init(suber->recvmq, NANO_ICEORYX_RECVQ_LEN);
 
 	int rv;
@@ -140,6 +146,7 @@ nano_iceoryx_suber_free(nano_iceoryx_suber *suber)
 	        SubscriberEvent_DATA_RECEIVED);
     iox_sub_deinit(suber->suber);
 	nni_lmq_fini(suber->recvmq);
+	nng_free(suber->recvmq, sizeof(*suber->recvmq));
 	nng_free(suber, sizeof(*suber));
 }
 
