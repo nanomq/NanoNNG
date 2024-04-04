@@ -70,7 +70,27 @@ nano_iceoryx_listener_free(nano_iceoryx_listener *listener)
 static void
 suber_recv_cb(iox_sub_t subscriber)
 {
-	NNI_ARG_UNUSED(subscriber);
+	nano_iceoryx_suber *suber = nni_id_get(suber_map, (uint64_t)subscriber);
+	if (!suber) {
+		log_error("Not found suber%d in suber_map", subscriber);
+		return;
+	}
+
+	int rv;
+	void *msg;
+	rv = iox_sub_take_chunk(subscriber, (const void**)&msg);
+	if (rv != ChunkReceiveResult_SUCCESS) {
+		log_error("Failed to get msg from suber%d error%d", subscriber, rv);
+		return;
+	}
+	// Get description of this suber.
+	// iox_service_description_t desc = iox_sub_get_service_description(subscriber);
+
+	rv = nni_lmq_put(suber->recvmq, (nng_msg *)msg);
+	if (rv == NNG_EAGAIN) {
+		log_error("Failed to put msg for suber%d due to full, drop", subscriber);
+		return;
+	}
 }
 
 nano_iceoryx_suber *
@@ -180,12 +200,6 @@ nano_iceoryx_msg_alloc(void **msgp, nano_iceoryx_puber *puber, uint32_t id, nng_
 	memcpy(m, nng_msg_body(msg), nng_msg_len(msg));
 
 	return 0;
-}
-
-void
-nano_iceoryx_write_raw(nano_iceoryx_puber *puber, void *msg)
-{
-	iox_pub_publish_chunk(puber->puber, msg);
 }
 
 void
