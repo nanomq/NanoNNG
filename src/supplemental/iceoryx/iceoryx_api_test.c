@@ -37,43 +37,105 @@ test_iceoryx_msg()
 		"test-iceoryx-service",
 		"test-iceoryx-instance",
 		"test-iceoryx-topic");
-	nng_msg_alloc(&m, 0);
-
-	if (NULL == puber) {
-		printf("Failed to alloc puber\n");
-	}
 	NUTS_ASSERT(puber != NULL);
 
+	// Create a iceoryx msg
 	uint32_t id = 0x1234;
 	char *str = "Hello, It's a test-nanomq-iceoryx-msg.";
+	NUTS_ASSERT(0 == nng_msg_alloc(&m, 0));
 	nng_msg_append(m, str, strlen(str));
 	nano_iceoryx_msg_alloc((void **)&icem, puber, id, m);
 
 	NUTS_ASSERT(NULL != icem);
 	int pos = 0;
 
+	// Check sz
 	uint32_t sz;
 	NNI_GET32(icem + pos, sz);
 	pos += NANO_ICEORYX_SZ_BYTES;
 	NUTS_ASSERT(sz == (NANO_ICEORYX_SZ_BYTES + NANO_ICEORYX_ID_BYTES) + nng_msg_len(m));
 
+	// Check id
 	uint32_t id2;
 	NNI_GET32(icem + pos, id2);
 	pos += NANO_ICEORYX_ID_BYTES;
 	NUTS_ASSERT(id2 == id);
 
+	// Check payload
 	NUTS_ASSERT(0 == strncmp(icem + pos, str, strlen(str)));
 
 	nano_iceoryx_puber_free(puber);
 	nng_msg_free(m);
-
-	nano_iceoryx_fini();
+	NUTS_ASSERT(0 == nano_iceoryx_fini());
 }
 
 void
 test_iceoryx_rw()
 {
 	NUTS_ASSERT(0 == nano_iceoryx_init("test-nanomq-iceoryx-rw"));
+
+	// Create a listener
+	nano_iceoryx_listener *listener;
+	nano_iceoryx_listener_alloc(&listener);
+
+	// Create a suber
+	nano_iceoryx_suber *suber;
+	suber = nano_iceoryx_suber_alloc(
+		"test-nanomq-iceoryx-suber",
+		"test-iceoryx-service",
+		"test-iceoryx-instance",
+		"test-iceoryx-topic", listener);
+	NUTS_ASSERT(suber != NULL);
+
+	// Create a puber
+	nano_iceoryx_puber *puber;
+	puber = nano_iceoryx_puber_alloc(
+		"test-nanomq-iceoryx-puber",
+		"test-iceoryx-service",
+		"test-iceoryx-instance",
+		"test-iceoryx-topic");
+	NUTS_ASSERT(puber != NULL);
+
+	// Create a iceoryx msg
+	nng_msg *m;
+	char    *icem;
+	uint32_t id = 0x1234;
+	char *str = "Hello, It's a test-nanomq-iceoryx-msg.";
+	NUTS_ASSERT(0 == nng_msg_alloc(&m, 0));
+	nng_msg_append(m, str, strlen(str));
+	nano_iceoryx_msg_alloc((void **)&icem, puber, id, m);
+	NUTS_ASSERT(NULL != icem);
+
+	// Send msg
+	nano_iceoryx_write(puber, (void *)icem);
+	nng_msleep(1); // 1ms is enough
+
+	// Read msg
+	char *icesm;
+	nano_iceoryx_read(suber, (void **)&icesm);
+	NUTS_ASSERT(NULL != icesm);
+
+	// Comparison, Should have same address
+	NUTS_ASSERT(icem == icesm);
+
+	int pos = 0;
+	uint32_t sz;
+	NNI_GET32(icesm + pos, sz);
+	pos += NANO_ICEORYX_SZ_BYTES;
+	NUTS_ASSERT(sz == (NANO_ICEORYX_SZ_BYTES + NANO_ICEORYX_ID_BYTES) + nng_msg_len(m));
+
+	uint32_t id2;
+	NNI_GET32(icesm + pos, id2);
+	pos += NANO_ICEORYX_ID_BYTES;
+	NUTS_ASSERT(id2 == id);
+
+	NUTS_ASSERT(0 == strncmp(icesm + pos, str, strlen(str)));
+
+	nng_msg_free(m);
+	nano_iceoryx_puber_free(puber);
+	nano_iceoryx_suber_free(suber);
+	nano_iceoryx_listener_free(listener);
+
 	NUTS_ASSERT(0 == nano_iceoryx_fini());
 }
 
