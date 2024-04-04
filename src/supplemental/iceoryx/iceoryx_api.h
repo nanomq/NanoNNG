@@ -26,4 +26,12 @@ extern nano_iceoryx_puber *nano_iceoryx_puber_alloc(
     const char *const instance_name, const char *const event);
 extern void nano_iceoryx_puber_free(nano_iceoryx_puber *puber);
 
+extern int nano_iceoryx_msg_alloc_raw(
+    void **msgp, size_t sz, nano_iceoryx_puber *puber);
+extern int nano_iceoryx_msg_alloc(
+    void **msgp, nano_iceoryx_puber *puber, uint32_t id, nng_msg *msg);
+
+extern void nano_iceoryx_write(nano_iceoryx_puber *puber, void *msg);
+extern void nano_iceoryx_read(nano_iceoryx_suber *suber, void **msgp);
+
 #endif
