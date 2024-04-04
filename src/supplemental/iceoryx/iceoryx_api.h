@@ -1,6 +1,10 @@
 #ifndef NNG_SUPP_ICEORYX_API_H
 #define NNG_SUPP_ICEORYX_API_H
 
+#include <stdint.h>
+
+#include "nng/nng.h"
+
 #define NANO_ICEORYX_RECVQ_LEN 32
 #define NANO_ICEORYX_SZ_BYTES 4
 #define NANO_ICEORYX_ID_BYTES 4
