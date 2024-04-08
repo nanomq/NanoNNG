@@ -12,4 +12,4 @@ nng_directory(protocol)
 
 add_subdirectory(mqtt)
 add_subdirectory(exchange)
-add_subdirectory(iceoryx)
+add_subdirectory(iceoryx_shm)
