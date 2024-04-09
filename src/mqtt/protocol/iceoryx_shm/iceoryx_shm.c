@@ -50,13 +50,15 @@ struct iceoryx_ctx_s {
 };
 
 struct iceoryx_sock_s {
+	nni_atomic_bool    closed;
 	iceoryx_ctx_t      master; // to which we delegate send/recv calls
-	iceoryx_pipe_t    *iceoryx_pipe;
 	nni_mtx            mtx;    // more fine grained mutual exclusion
+	iceoryx_pipe_t    *iceoryx_pipe;
 };
 
 // A iceoryx_pipe_s is our per-pipe protocol private structure.
 struct iceoryx_pipe_s {
+	nni_atomic_bool   closed;
 	nni_pipe         *pipe;
 	iceoryx_sock_t   *iceoryx_sock;
 
@@ -66,10 +68,27 @@ struct iceoryx_pipe_s {
 };
 
 static void
-mqtt_sock_init(void *arg, nni_sock *sock)
+iceoryx_sock_init(void *arg, nni_sock *sock)
 {
+	NNI_ARG_UNUSED(sock);
+	iceoryx_sock_t *s = arg;
 
+	nni_atomic_init_bool(&s->closed);
+	nni_atomic_set_bool(&s->closed, false);
+
+	iceoryx_ctx_init(&s->master, s);
+	nni_mtx_init(&s->mtx);
+	s->iceoryx_pipe = NULL;
 }
+
+static void
+iceoryx_sock_fini(void *arg)
+{
+	iceoryx_sock_t *s = arg;
+	iceoryx_ctx_fini(&s->master);
+	nni_mtx_fini(&s->mtx);
+}
+
 
 static nni_option iceoryx_ctx_options[] = {
 	{
