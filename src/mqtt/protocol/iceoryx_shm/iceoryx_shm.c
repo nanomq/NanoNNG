@@ -117,6 +117,162 @@ iceoryx_sock_recv(void *arg, nni_aio *aio)
 	iceoryx_ctx_recv(&s->master, aio);
 }
 
+static int
+iceoryx_pipe_init(void *arg, nni_pipe *pipe, void *s)
+{
+	iceoryx_pipe_t *p = arg;
+
+	nni_atomic_init_bool(&p->closed);
+	nni_atomic_set_bool(&p->closed, true);
+
+	p->pipe         = pipe;
+	p->iceoryx_sock = s;
+
+	nni_aio_init(&p->send_aio, iceoryx_send_cb, p);
+	nni_aio_init(&p->recv_aio, iceoryx_recv_cb, p);
+	// nni_aio_init(&p->time_aio, iceoryx_timer_cb, p);
+
+	return (0);
+}
+
+static void
+iceoryx_pipe_fini(void *arg)
+{
+	iceoryx_pipe_t *p = arg;
+	nni_msg        *msg;
+
+	if ((msg = nni_aio_get_msg(&p->recv_aio)) != NULL) {
+		nni_aio_set_msg(&p->recv_aio, NULL);
+		nni_msg_free(msg);
+	}
+	if ((msg = nni_aio_get_msg(&p->send_aio)) != NULL) {
+		nni_aio_set_msg(&p->send_aio, NULL);
+		nni_msg_free(msg);
+	}
+
+	nni_aio_fini(&p->send_aio);
+	nni_aio_fini(&p->recv_aio);
+	//nni_aio_fini(&p->time_aio);
+}
+
+static int
+mqtt_pipe_start(void *arg)
+{
+	mqtt_pipe_t *p = arg;
+	mqtt_sock_t *s = p->mqtt_sock;
+	mqtt_ctx_t  *c = NULL;
+
+	nni_mtx_lock(&s->mtx);
+	nni_atomic_set_bool(&p->closed, false);
+	s->mqtt_pipe       = p;
+
+	// TODO nni_pipe_recv(p->pipe, &p->recv_aio);
+	nni_mtx_unlock(&s->mtx);
+	// nni_sleep_aio(s->retry, &p->time_aio);
+
+	return (0);
+}
+
+static void
+mqtt_pipe_stop(void *arg)
+{
+	mqtt_pipe_t *p = arg;
+	nni_aio_stop(&p->send_aio);
+	nni_aio_stop(&p->recv_aio);
+	// nni_aio_stop(&p->time_aio);
+}
+
+static int
+mqtt_pipe_close(void *arg)
+{
+	mqtt_pipe_t *p = arg;
+	mqtt_sock_t *s = p->mqtt_sock;
+
+	nni_mtx_lock(&s->mtx);
+	nni_atomic_set_bool(&p->closed, true);
+	s->mqtt_pipe = NULL;
+	nni_aio_close(&p->send_aio);
+	nni_aio_close(&p->recv_aio);
+	// nni_aio_close(&p->time_aio);
+
+	nni_mtx_unlock(&s->mtx);
+	return 0;
+}
+
+static void
+mqtt_send_cb(void *arg)
+{
+	mqtt_pipe_t *p   = arg;
+	mqtt_sock_t *s   = p->mqtt_sock;
+	mqtt_ctx_t * c   = NULL;
+	nni_msg *    msg = NULL;
+	int          rv;
+
+	if ((rv = nni_aio_result(&p->send_aio)) != 0) {
+		// We failed to send... clean up and deal with it.
+		nni_msg_free(nni_aio_get_msg(&p->send_aio));
+		nni_aio_set_msg(&p->send_aio, NULL);
+		// nni_pipe_close(p->pipe);
+		return;
+	}
+	nni_mtx_lock(&s->mtx);
+
+	p->busy     = false;
+	if (nni_atomic_get_bool(&s->closed) ||
+	    nni_atomic_get_bool(&p->closed)) {
+		// This occurs if the mqtt_pipe_close has been called.
+		// In that case we don't want any more processing.
+		nni_mtx_unlock(&s->mtx);
+		return;
+	}
+
+	p->busy = false;
+	nni_mtx_unlock(&s->mtx);
+	return;
+}
+
+static void
+mqtt_recv_cb(void *arg)
+{
+	int          rv;
+	mqtt_pipe_t *p          = arg;
+	mqtt_sock_t *s          = p->mqtt_sock;
+	nni_aio     *user_aio   = NULL;
+	nni_msg     *cached_msg = NULL;
+	mqtt_ctx_t  *ctx;
+
+	if ((rv = nni_aio_result(&p->recv_aio)) != 0) {
+		log_warn("MQTT client recv error %d!", rv);
+		// nni_pipe_close(p->pipe);
+		return;
+	}
+
+	nni_mtx_lock(&s->mtx);
+	nni_msg *msg = nni_aio_get_msg(&p->recv_aio);
+	nni_aio_set_msg(&p->recv_aio, NULL);
+	if (nni_atomic_get_bool(&s->closed) ||
+	    nni_atomic_get_bool(&p->closed)) {
+		// free msg and dont return data when pipe is closed.
+		if (msg) {
+			nni_msg_free(msg);
+		}
+		nni_mtx_unlock(&s->mtx);
+		return;
+	}
+
+	// schedule another receive
+	nni_pipe_recv(p->pipe, &p->recv_aio);
+
+	nni_mtx_unlock(&s->mtx);
+	if (user_aio) {
+		nni_aio_finish(user_aio, 0, 0);
+	}
+
+	return;
+}
+
+
+
 static nni_option iceoryx_ctx_options[] = {
 	{
 	    .o_name = NULL,
