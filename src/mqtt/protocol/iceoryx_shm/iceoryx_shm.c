@@ -41,15 +41,35 @@ static void iceoryx_ctx_fini(void *arg);
 static void iceoryx_ctx_send(void *arg, nni_aio *aio);
 static void iceoryx_ctx_recv(void *arg, nni_aio *aio);
 
-struct iceoryx_sock_s {
+struct iceoryx_ctx_s {
+	iceoryx_sock_t *iceoryx_sock;
+	nni_aio        *saio; // send aio
+	nni_aio        *raio; // recv aio
+	nni_list_node   sqnode;
+	nni_list_node   rqnode;
 };
 
-struct iceoryx_ctx_s {
+struct iceoryx_sock_s {
+	iceoryx_ctx_t      master; // to which we delegate send/recv calls
+	iceoryx_pipe_t    *iceoryx_pipe;
+	nni_mtx            mtx;    // more fine grained mutual exclusion
 };
 
 // A iceoryx_pipe_s is our per-pipe protocol private structure.
 struct iceoryx_pipe_s {
+	nni_pipe         *pipe;
+	iceoryx_sock_t   *iceoryx_sock;
+
+	nni_aio           send_aio; // send aio to the underlying transport
+	nni_aio           recv_aio; // recv aio to the underlying transport
+	bool              busy;
 };
+
+static void
+mqtt_sock_init(void *arg, nni_sock *sock)
+{
+
+}
 
 static nni_option iceoryx_ctx_options[] = {
 	{
