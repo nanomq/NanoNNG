@@ -83,8 +83,8 @@ iceoryx_sock_init(void *arg, nni_sock *sock)
 	nni_mtx_init(&s->mtx);
 	s->iceoryx_pipe = NULL;
 
-	NNI_LIST_INIT(&s->recv_queue, mqtt_ctx_t, rqnode);
-	NNI_LIST_INIT(&s->send_queue, mqtt_ctx_t, sqnode);
+	NNI_LIST_INIT(&s->recv_queue, iceoryx_ctx_t, rqnode);
+	NNI_LIST_INIT(&s->send_queue, iceoryx_ctx_t, sqnode);
 }
 
 static void
@@ -206,7 +206,7 @@ iceoryx_ctx_fini(void *arg)
 {
 	iceoryx_ctx_t  *ctx = arg;
 	iceoryx_sock_t *s   = ctx->iceoryx_sock;
-	nni_aio *    aio;
+	nni_aio        *aio;
 
 	nni_mtx_lock(&s->mtx);
 	if (nni_list_active(&s->send_queue, ctx)) {
@@ -245,7 +245,7 @@ iceoryx_ctx_send(void *arg, nni_aio *aio)
 		return;
 	}
 
-	msg   = nni_aio_get_msg(aio);
+	msg = nni_aio_get_msg(aio);
 	if (msg == NULL) {
 		nni_mtx_unlock(&s->mtx);
 		nni_aio_set_msg(aio, NULL);
@@ -269,7 +269,7 @@ iceoryx_ctx_recv(void *arg, nni_aio *aio)
 	iceoryx_ctx_t  *ctx = arg;
 	iceoryx_sock_t *s   = ctx->iceoryx_sock;
 	iceoryx_pipe_t *p;
-	nni_msg     *msg = NULL;
+	nni_msg        *msg = NULL;
 
 	if (nni_aio_begin(aio) != 0) {
 		return;
