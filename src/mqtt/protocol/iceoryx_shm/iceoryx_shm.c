@@ -54,6 +54,9 @@ struct iceoryx_sock_s {
 	iceoryx_ctx_t      master; // to which we delegate send/recv calls
 	nni_mtx            mtx;    // more fine grained mutual exclusion
 	iceoryx_pipe_t    *iceoryx_pipe;
+
+	nni_list           recv_queue; // ctx pending to receive
+	nni_list           send_queue; // ctx pending to send (only offline msg)
 };
 
 // A iceoryx_pipe_s is our per-pipe protocol private structure.
@@ -79,6 +82,9 @@ iceoryx_sock_init(void *arg, nni_sock *sock)
 	iceoryx_ctx_init(&s->master, s);
 	nni_mtx_init(&s->mtx);
 	s->iceoryx_pipe = NULL;
+
+	NNI_LIST_INIT(&s->recv_queue, mqtt_ctx_t, rqnode);
+	NNI_LIST_INIT(&s->send_queue, mqtt_ctx_t, sqnode);
 }
 
 static void
@@ -187,7 +193,7 @@ iceoryx_recv_cb(void *arg)
 static void
 iceoryx_ctx_init(void *arg, void *sock)
 {
-	iceoryx_ctx_t * ctx = arg;
+	iceoryx_ctx_t  *ctx = arg;
 	iceoryx_sock_t *s   = sock;
 
 	ctx->iceoryx_sock = s;
@@ -198,21 +204,35 @@ iceoryx_ctx_init(void *arg, void *sock)
 static void
 iceoryx_ctx_fini(void *arg)
 {
-	iceoryx_ctx_t * ctx = arg;
+	iceoryx_ctx_t  *ctx = arg;
 	iceoryx_sock_t *s   = ctx->iceoryx_sock;
 	nni_aio *    aio;
+
+	nni_mtx_lock(&s->mtx);
+	if (nni_list_active(&s->send_queue, ctx)) {
+		if ((aio = ctx->saio) != NULL) {
+			ctx->saio = NULL;
+			nni_list_remove(&s->send_queue, ctx);
+			nni_aio_finish_error(aio, NNG_ECLOSED);
+		}
+	} else if (nni_list_active(&s->recv_queue, ctx)) {
+		if ((aio = ctx->raio) != NULL) {
+			ctx->raio = NULL;
+			nni_list_remove(&s->recv_queue, ctx);
+			nni_aio_finish_error(aio, NNG_ECLOSED);
+		}
+	}
+	nni_mtx_unlock(&s->mtx);
 }
 
 static void
 iceoryx_ctx_send(void *arg, nni_aio *aio)
 {
-	int          rv;
+	int             rv;
 	iceoryx_ctx_t  *ctx = arg;
 	iceoryx_sock_t *s   = ctx->iceoryx_sock;
 	iceoryx_pipe_t *p;
-	nni_msg     *msg;
-	uint8_t      qos;
-	uint16_t     packet_id;
+	nni_msg        *msg;
 
 	if (nni_aio_begin(aio) != 0) {
 		return;
