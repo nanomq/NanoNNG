@@ -191,7 +191,13 @@ iceoryx_recv_cb(void *arg)
 }
 
 static inline void
-iceoryx_send_msg(nng_aio *aio, iceoryx_ctx_t *ctx)
+iceoryx_recv(nng_aio *aio, iceoryx_ctx_t *ctx)
+{
+	return 0;
+}
+
+static inline void
+iceoryx_send(nng_aio *aio, iceoryx_ctx_t *ctx)
 {
 	return 0;
 }
@@ -276,7 +282,8 @@ iceoryx_ctx_send(void *arg, nni_aio *aio)
 		}
 		return;
 	}
-	iceoryx_send_msg(aio, ctx);
+	iceoryx_send(aio, ctx);
+	nni_mtx_unlock(&s->mtx);
 	log_trace("client sending msg now");
 	return;
 }
@@ -306,6 +313,10 @@ iceoryx_ctx_recv(void *arg, nni_aio *aio)
 	}
 	// We don't need buffer. At least now. All msg are cached in iceoryx.
 	// nni_lmq_get(&p->recv_messages, &msg)
+
+	iceoryx_recv(aio, ctx);
+	nni_mtx_unlock(&s->mtx);
+	return;
 
 	// no open pipe or msg waiting
 wait:
