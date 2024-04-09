@@ -117,88 +117,6 @@ iceoryx_sock_recv(void *arg, nni_aio *aio)
 	iceoryx_ctx_recv(&s->master, aio);
 }
 
-static int
-iceoryx_pipe_init(void *arg, nni_pipe *pipe, void *s)
-{
-	iceoryx_pipe_t *p = arg;
-
-	nni_atomic_init_bool(&p->closed);
-	nni_atomic_set_bool(&p->closed, true);
-
-	p->pipe         = pipe;
-	p->iceoryx_sock = s;
-
-	nni_aio_init(&p->send_aio, iceoryx_send_cb, p);
-	nni_aio_init(&p->recv_aio, iceoryx_recv_cb, p);
-	// nni_aio_init(&p->time_aio, iceoryx_timer_cb, p);
-
-	return (0);
-}
-
-static void
-iceoryx_pipe_fini(void *arg)
-{
-	iceoryx_pipe_t *p = arg;
-	nni_msg        *msg;
-
-	if ((msg = nni_aio_get_msg(&p->recv_aio)) != NULL) {
-		nni_aio_set_msg(&p->recv_aio, NULL);
-		nni_msg_free(msg);
-	}
-	if ((msg = nni_aio_get_msg(&p->send_aio)) != NULL) {
-		nni_aio_set_msg(&p->send_aio, NULL);
-		nni_msg_free(msg);
-	}
-
-	nni_aio_fini(&p->send_aio);
-	nni_aio_fini(&p->recv_aio);
-	//nni_aio_fini(&p->time_aio);
-}
-
-static int
-iceoryx_pipe_start(void *arg)
-{
-	iceoryx_pipe_t *p = arg;
-	iceoryx_sock_t *s = p->iceoryx_sock;
-	iceoryx_ctx_t  *c = NULL;
-
-	nni_mtx_lock(&s->mtx);
-	nni_atomic_set_bool(&p->closed, false);
-	s->iceoryx_pipe       = p;
-
-	// TODO nni_pipe_recv(p->pipe, &p->recv_aio);
-	nni_mtx_unlock(&s->mtx);
-	// nni_sleep_aio(s->retry, &p->time_aio);
-
-	return (0);
-}
-
-static void
-iceoryx_pipe_stop(void *arg)
-{
-	iceoryx_pipe_t *p = arg;
-	nni_aio_stop(&p->send_aio);
-	nni_aio_stop(&p->recv_aio);
-	// nni_aio_stop(&p->time_aio);
-}
-
-static int
-iceoryx_pipe_close(void *arg)
-{
-	iceoryx_pipe_t *p = arg;
-	iceoryx_sock_t *s = p->iceoryx_sock;
-
-	nni_mtx_lock(&s->mtx);
-	nni_atomic_set_bool(&p->closed, true);
-	s->iceoryx_pipe = NULL;
-	nni_aio_close(&p->send_aio);
-	nni_aio_close(&p->recv_aio);
-	// nni_aio_close(&p->time_aio);
-
-	nni_mtx_unlock(&s->mtx);
-	return 0;
-}
-
 static void
 iceoryx_send_cb(void *arg)
 {
@@ -237,7 +155,6 @@ iceoryx_recv_cb(void *arg)
 	int          rv;
 	iceoryx_pipe_t *p          = arg;
 	iceoryx_sock_t *s          = p->iceoryx_sock;
-	nni_aio     *user_aio   = NULL;
 	nni_msg     *cached_msg = NULL;
 	iceoryx_ctx_t  *ctx;
 
@@ -264,10 +181,6 @@ iceoryx_recv_cb(void *arg)
 	nni_pipe_recv(p->pipe, &p->recv_aio);
 
 	nni_mtx_unlock(&s->mtx);
-	if (user_aio) {
-		nni_aio_finish(user_aio, 0, 0);
-	}
-
 	return;
 }
 
@@ -366,6 +279,86 @@ wait:
 	// nni_list_append(&s->recv_queue, ctx);
 	nni_mtx_unlock(&s->mtx);
 	return;
+}
+
+// Pipe implementation
+// But seems pipe is unnecessary for iceoryx shm communication.
+// Here we just put code here for future.
+static int
+iceoryx_pipe_init(void *arg, nni_pipe *pipe, void *s)
+{
+	iceoryx_pipe_t *p = arg;
+
+	nni_atomic_init_bool(&p->closed);
+	nni_atomic_set_bool(&p->closed, true);
+
+	p->pipe         = pipe;
+	p->iceoryx_sock = s;
+
+	nni_aio_init(&p->send_aio, iceoryx_send_cb, p);
+	nni_aio_init(&p->recv_aio, iceoryx_recv_cb, p);
+
+	return (0);
+}
+
+static void
+iceoryx_pipe_fini(void *arg)
+{
+	iceoryx_pipe_t *p = arg;
+	nni_msg        *msg;
+
+	if ((msg = nni_aio_get_msg(&p->recv_aio)) != NULL) {
+		nni_aio_set_msg(&p->recv_aio, NULL);
+		nni_msg_free(msg);
+	}
+	if ((msg = nni_aio_get_msg(&p->send_aio)) != NULL) {
+		nni_aio_set_msg(&p->send_aio, NULL);
+		nni_msg_free(msg);
+	}
+
+	nni_aio_fini(&p->send_aio);
+	nni_aio_fini(&p->recv_aio);
+}
+
+static int
+iceoryx_pipe_start(void *arg)
+{
+	iceoryx_pipe_t *p = arg;
+	iceoryx_sock_t *s = p->iceoryx_sock;
+	iceoryx_ctx_t  *c = NULL;
+
+	nni_mtx_lock(&s->mtx);
+	nni_atomic_set_bool(&p->closed, false);
+	s->iceoryx_pipe       = p;
+
+	// TODO nni_pipe_recv(p->pipe, &p->recv_aio);
+	nni_mtx_unlock(&s->mtx);
+
+	return (0);
+}
+
+static void
+iceoryx_pipe_stop(void *arg)
+{
+	iceoryx_pipe_t *p = arg;
+	nni_aio_stop(&p->send_aio);
+	nni_aio_stop(&p->recv_aio);
+}
+
+static int
+iceoryx_pipe_close(void *arg)
+{
+	iceoryx_pipe_t *p = arg;
+	iceoryx_sock_t *s = p->iceoryx_sock;
+
+	nni_mtx_lock(&s->mtx);
+	nni_atomic_set_bool(&p->closed, true);
+	s->iceoryx_pipe = NULL;
+	nni_aio_close(&p->send_aio);
+	nni_aio_close(&p->recv_aio);
+
+	nni_mtx_unlock(&s->mtx);
+	return 0;
 }
 
 static nni_option iceoryx_ctx_options[] = {
