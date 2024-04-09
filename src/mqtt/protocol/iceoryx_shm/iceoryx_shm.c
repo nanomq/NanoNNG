@@ -28,7 +28,7 @@ static void iceoryx_sock_send(void *arg, nni_aio *aio);
 static void iceoryx_sock_recv(void *arg, nni_aio *aio);
 static void iceoryx_send_cb(void *arg);
 static void iceoryx_recv_cb(void *arg);
-static void iceoryx_timer_cb(void *arg);
+//static void iceoryx_timer_cb(void *arg);
 
 static int  iceoryx_pipe_init(void *arg, nni_pipe *pipe, void *s);
 static void iceoryx_pipe_fini(void *arg);
@@ -156,15 +156,15 @@ iceoryx_pipe_fini(void *arg)
 }
 
 static int
-mqtt_pipe_start(void *arg)
+iceoryx_pipe_start(void *arg)
 {
-	mqtt_pipe_t *p = arg;
-	mqtt_sock_t *s = p->mqtt_sock;
-	mqtt_ctx_t  *c = NULL;
+	iceoryx_pipe_t *p = arg;
+	iceoryx_sock_t *s = p->iceoryx_sock;
+	iceoryx_ctx_t  *c = NULL;
 
 	nni_mtx_lock(&s->mtx);
 	nni_atomic_set_bool(&p->closed, false);
-	s->mqtt_pipe       = p;
+	s->iceoryx_pipe       = p;
 
 	// TODO nni_pipe_recv(p->pipe, &p->recv_aio);
 	nni_mtx_unlock(&s->mtx);
@@ -174,23 +174,23 @@ mqtt_pipe_start(void *arg)
 }
 
 static void
-mqtt_pipe_stop(void *arg)
+iceoryx_pipe_stop(void *arg)
 {
-	mqtt_pipe_t *p = arg;
+	iceoryx_pipe_t *p = arg;
 	nni_aio_stop(&p->send_aio);
 	nni_aio_stop(&p->recv_aio);
 	// nni_aio_stop(&p->time_aio);
 }
 
 static int
-mqtt_pipe_close(void *arg)
+iceoryx_pipe_close(void *arg)
 {
-	mqtt_pipe_t *p = arg;
-	mqtt_sock_t *s = p->mqtt_sock;
+	iceoryx_pipe_t *p = arg;
+	iceoryx_sock_t *s = p->iceoryx_sock;
 
 	nni_mtx_lock(&s->mtx);
 	nni_atomic_set_bool(&p->closed, true);
-	s->mqtt_pipe = NULL;
+	s->iceoryx_pipe = NULL;
 	nni_aio_close(&p->send_aio);
 	nni_aio_close(&p->recv_aio);
 	// nni_aio_close(&p->time_aio);
@@ -200,11 +200,11 @@ mqtt_pipe_close(void *arg)
 }
 
 static void
-mqtt_send_cb(void *arg)
+iceoryx_send_cb(void *arg)
 {
-	mqtt_pipe_t *p   = arg;
-	mqtt_sock_t *s   = p->mqtt_sock;
-	mqtt_ctx_t * c   = NULL;
+	iceoryx_pipe_t *p   = arg;
+	iceoryx_sock_t *s   = p->iceoryx_sock;
+	iceoryx_ctx_t * c   = NULL;
 	nni_msg *    msg = NULL;
 	int          rv;
 
@@ -220,7 +220,7 @@ mqtt_send_cb(void *arg)
 	p->busy     = false;
 	if (nni_atomic_get_bool(&s->closed) ||
 	    nni_atomic_get_bool(&p->closed)) {
-		// This occurs if the mqtt_pipe_close has been called.
+		// This occurs if the iceoryx_pipe_close has been called.
 		// In that case we don't want any more processing.
 		nni_mtx_unlock(&s->mtx);
 		return;
@@ -232,17 +232,17 @@ mqtt_send_cb(void *arg)
 }
 
 static void
-mqtt_recv_cb(void *arg)
+iceoryx_recv_cb(void *arg)
 {
 	int          rv;
-	mqtt_pipe_t *p          = arg;
-	mqtt_sock_t *s          = p->mqtt_sock;
+	iceoryx_pipe_t *p          = arg;
+	iceoryx_sock_t *s          = p->iceoryx_sock;
 	nni_aio     *user_aio   = NULL;
 	nni_msg     *cached_msg = NULL;
-	mqtt_ctx_t  *ctx;
+	iceoryx_ctx_t  *ctx;
 
 	if ((rv = nni_aio_result(&p->recv_aio)) != 0) {
-		log_warn("MQTT client recv error %d!", rv);
+		log_warn("iceoryx client recv error %d!", rv);
 		// nni_pipe_close(p->pipe);
 		return;
 	}
@@ -271,7 +271,102 @@ mqtt_recv_cb(void *arg)
 	return;
 }
 
+static void
+iceoryx_ctx_init(void *arg, void *sock)
+{
+	iceoryx_ctx_t * ctx = arg;
+	iceoryx_sock_t *s   = sock;
 
+	ctx->iceoryx_sock = s;
+	NNI_LIST_NODE_INIT(&ctx->sqnode);
+	NNI_LIST_NODE_INIT(&ctx->rqnode);
+}
+
+static void
+iceoryx_ctx_fini(void *arg)
+{
+	iceoryx_ctx_t * ctx = arg;
+	iceoryx_sock_t *s   = ctx->iceoryx_sock;
+	nni_aio *    aio;
+}
+
+static void
+iceoryx_ctx_send(void *arg, nni_aio *aio)
+{
+	int          rv;
+	iceoryx_ctx_t  *ctx = arg;
+	iceoryx_sock_t *s   = ctx->iceoryx_sock;
+	iceoryx_pipe_t *p;
+	nni_msg     *msg;
+	uint8_t      qos;
+	uint16_t     packet_id;
+
+	if (nni_aio_begin(aio) != 0) {
+		return;
+	}
+
+	nni_mtx_lock(&s->mtx);
+	if (nni_atomic_get_bool(&s->closed)) {
+		nni_mtx_unlock(&s->mtx);
+		nni_aio_finish_error(aio, NNG_ECLOSED);
+		return;
+	}
+
+	msg   = nni_aio_get_msg(aio);
+	if (msg == NULL) {
+		nni_mtx_unlock(&s->mtx);
+		nni_aio_set_msg(aio, NULL);
+		nni_aio_finish_error(aio, NNG_EPROTO);
+		return;
+	}
+
+	p = s->iceoryx_pipe;
+	if (p == NULL) {
+		// connection is lost or not established yet
+		return;
+	}
+	iceoryx_send_msg(aio, ctx);
+	log_trace("client sending msg now");
+	return;
+}
+
+static void
+iceoryx_ctx_recv(void *arg, nni_aio *aio)
+{
+	iceoryx_ctx_t  *ctx = arg;
+	iceoryx_sock_t *s   = ctx->iceoryx_sock;
+	iceoryx_pipe_t *p;
+	nni_msg     *msg = NULL;
+
+	if (nni_aio_begin(aio) != 0) {
+		return;
+	}
+
+	nni_mtx_lock(&s->mtx);
+	p = s->iceoryx_pipe;
+	if (p == NULL) {
+		goto wait;
+	}
+	if (nni_atomic_get_bool(&s->closed) ||
+	    nni_atomic_get_bool(&p->closed)) {
+		nni_mtx_unlock(&s->mtx);
+		nni_aio_finish_error(aio, NNG_ECLOSED);
+		return;
+	}
+
+	// no open pipe or msg waiting
+wait:
+	if (ctx->raio != NULL) {
+		nni_mtx_unlock(&s->mtx);
+		// nni_println("ERROR! former aio not finished!");
+		nni_aio_finish_error(aio, NNG_ESTATE);
+		return;
+	}
+	ctx->raio = aio;
+	// nni_list_append(&s->recv_queue, ctx);
+	nni_mtx_unlock(&s->mtx);
+	return;
+}
 
 static nni_option iceoryx_ctx_options[] = {
 	{
