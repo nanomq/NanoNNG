@@ -126,11 +126,9 @@ iceoryx_sock_recv(void *arg, nni_aio *aio)
 static void
 iceoryx_send_cb(void *arg)
 {
-	iceoryx_pipe_t *p   = arg;
-	iceoryx_sock_t *s   = p->iceoryx_sock;
-	iceoryx_ctx_t * c   = NULL;
-	nni_msg *    msg = NULL;
-	int          rv;
+	iceoryx_pipe_t *p = arg;
+	iceoryx_sock_t *s = p->iceoryx_sock;
+	int             rv;
 
 	if ((rv = nni_aio_result(&p->send_aio)) != 0) {
 		// We failed to send... clean up and deal with it.
@@ -158,11 +156,9 @@ iceoryx_send_cb(void *arg)
 static void
 iceoryx_recv_cb(void *arg)
 {
-	int          rv;
-	iceoryx_pipe_t *p          = arg;
-	iceoryx_sock_t *s          = p->iceoryx_sock;
-	nni_msg     *cached_msg = NULL;
-	iceoryx_ctx_t  *ctx;
+	int             rv;
+	iceoryx_pipe_t *p = arg;
+	iceoryx_sock_t *s = p->iceoryx_sock;
 
 	if ((rv = nni_aio_result(&p->recv_aio)) != 0) {
 		log_warn("iceoryx client recv error %d!", rv);
@@ -191,15 +187,17 @@ iceoryx_recv_cb(void *arg)
 }
 
 static inline void
-iceoryx_recv(nng_aio *aio, iceoryx_ctx_t *ctx)
+iceoryx_recv(nni_aio *aio, iceoryx_ctx_t *ctx)
 {
-	return 0;
+	NNI_ARG_UNUSED(aio);
+	NNI_ARG_UNUSED(ctx);
 }
 
 static inline void
-iceoryx_send(nng_aio *aio, iceoryx_ctx_t *ctx)
+iceoryx_send(nni_aio *aio, iceoryx_ctx_t *ctx)
 {
-	return 0;
+	NNI_ARG_UNUSED(aio);
+	NNI_ARG_UNUSED(ctx);
 }
 
 static void
@@ -240,7 +238,6 @@ iceoryx_ctx_fini(void *arg)
 static void
 iceoryx_ctx_send(void *arg, nni_aio *aio)
 {
-	int             rv;
 	iceoryx_ctx_t  *ctx = arg;
 	iceoryx_sock_t *s   = ctx->iceoryx_sock;
 	iceoryx_pipe_t *p;
@@ -294,7 +291,6 @@ iceoryx_ctx_recv(void *arg, nni_aio *aio)
 	iceoryx_ctx_t  *ctx = arg;
 	iceoryx_sock_t *s   = ctx->iceoryx_sock;
 	iceoryx_pipe_t *p;
-	nni_msg        *msg = NULL;
 
 	if (nni_aio_begin(aio) != 0) {
 		return;
@@ -376,7 +372,6 @@ iceoryx_pipe_start(void *arg)
 {
 	iceoryx_pipe_t *p = arg;
 	iceoryx_sock_t *s = p->iceoryx_sock;
-	iceoryx_ctx_t  *c = NULL;
 
 	nni_mtx_lock(&s->mtx);
 	nni_atomic_set_bool(&p->closed, false);
