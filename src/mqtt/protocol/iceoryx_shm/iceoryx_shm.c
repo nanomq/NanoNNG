@@ -190,6 +190,12 @@ iceoryx_recv_cb(void *arg)
 	return;
 }
 
+static inline void
+iceoryx_send_msg(nng_aio *aio, iceoryx_ctx_t *ctx)
+{
+	return 0;
+}
+
 static void
 iceoryx_ctx_init(void *arg, void *sock)
 {
@@ -253,9 +259,21 @@ iceoryx_ctx_send(void *arg, nni_aio *aio)
 		return;
 	}
 
-	p = s->iceoryx_pipe;
+	p = s->iceoryx_pipe; // TODO At this stage. iceoryx_pipe will not be null until sock init finished
 	if (p == NULL) {
-		// connection is lost or not established yet
+		if (!nni_list_active(&s->send_queue, ctx)) {
+			// cache ctx
+			ctx->saio = aio;
+			nni_list_append(&s->send_queue, ctx);
+			nni_mtx_unlock(&s->mtx);
+			log_warn("client sending msg while disconnected! cached");
+		} else {
+			nni_msg_free(msg);
+			nni_mtx_unlock(&s->mtx);
+			nni_aio_set_msg(aio, NULL);
+			nni_aio_finish_error(aio, NNG_ECLOSED);
+			log_warn("ctx is already cached! drop msg");
+		}
 		return;
 	}
 	iceoryx_send_msg(aio, ctx);
@@ -286,17 +304,19 @@ iceoryx_ctx_recv(void *arg, nni_aio *aio)
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
 	}
+	// We don't need buffer. At least now. All msg are cached in iceoryx.
+	// nni_lmq_get(&p->recv_messages, &msg)
 
 	// no open pipe or msg waiting
 wait:
 	if (ctx->raio != NULL) {
 		nni_mtx_unlock(&s->mtx);
-		// nni_println("ERROR! former aio not finished!");
+		log_error("ERROR! former aio not finished!");
 		nni_aio_finish_error(aio, NNG_ESTATE);
 		return;
 	}
 	ctx->raio = aio;
-	// nni_list_append(&s->recv_queue, ctx);
+	nni_list_append(&s->recv_queue, ctx);
 	nni_mtx_unlock(&s->mtx);
 	return;
 }
