@@ -89,6 +89,33 @@ iceoryx_sock_fini(void *arg)
 	nni_mtx_fini(&s->mtx);
 }
 
+static void
+iceoryx_sock_open(void *arg)
+{
+	NNI_ARG_UNUSED(arg);
+}
+
+static void
+iceoryx_sock_close(void *arg)
+{
+	iceoryx_sock_t *s = arg;
+
+	nni_atomic_set_bool(&s->closed, true);
+}
+
+static void
+iceoryx_sock_send(void *arg, nni_aio *aio)
+{
+	iceoryx_sock_t *s = arg;
+	iceoryx_ctx_send(&s->master, aio);
+}
+
+static void
+iceoryx_sock_recv(void *arg, nni_aio *aio)
+{
+	iceoryx_sock_t *s = arg;
+	iceoryx_ctx_recv(&s->master, aio);
+}
 
 static nni_option iceoryx_ctx_options[] = {
 	{
