@@ -57,6 +57,10 @@ struct iceoryx_sock_s {
 	nni_mtx            mtx;    // more fine grained mutual exclusion
 	iceoryx_pipe_t    *iceoryx_pipe;
 
+	nano_iceoryx_listener *icelistener;
+
+	nni_lmq            subers;
+
 	nni_list           recv_queue; // ctx pending to receive
 	nni_list           send_queue; // ctx pending to send (only offline msg)
 };
@@ -87,9 +91,11 @@ iceoryx_sock_init(void *arg, nni_sock *sock)
 
 	if (!g_runtime_name) {
 		log_error("Please specfic your iceoryx runtimename first.");
-		g_runtime_name = "UnknownRuntimeName-In-NanoMQ";
+		g_runtime_name = "UnknownIceoryxRuntimeName";
 	}
 	nano_iceoryx_init((const char *const)g_runtime_name);
+	nni_lmq_init(&s->subers, NANO_ICEORYX_MAX_NODES_NUMBER);
+	s->icelistener = NULL;
 
 	NNI_LIST_INIT(&s->recv_queue, iceoryx_ctx_t, rqnode);
 	NNI_LIST_INIT(&s->send_queue, iceoryx_ctx_t, sqnode);
@@ -101,7 +107,10 @@ iceoryx_sock_fini(void *arg)
 	iceoryx_sock_t *s = arg;
 	iceoryx_ctx_fini(&s->master);
 	nni_mtx_fini(&s->mtx);
+	if (s->icelistener)
+		nano_iceoryx_listener_free(s->icelistener);
 
+	nni_lmq_fini(&s->subers);
 	nano_iceoryx_fini();
 }
 
@@ -115,8 +124,16 @@ static void
 iceoryx_sock_close(void *arg)
 {
 	iceoryx_sock_t *s = arg;
+	nano_iceoryx_suber *suber;
 
 	nni_atomic_set_bool(&s->closed, true);
+
+	while (!nni_lmq_empty(&s->subers)) {
+		if (0 == nni_lmq_get(&s->subers, (nng_msg **)&suber)) {
+			if (!suber)
+				nano_iceoryx_suber_free(suber);
+		}
+	}
 }
 
 static void
@@ -467,6 +484,36 @@ static nni_proto iceoryx_proto = {
 	.proto_pipe_ops = &iceoryx_pipe_ops,
 	.proto_ctx_ops  = &iceoryx_ctx_ops,
 };
+
+int
+nng_iceoryx_sub(nng_socket *sock, const char *subername, const char *const service_name,
+    const char *const instance_name, const char *const event)
+{
+	int                    rv;
+	nano_iceoryx_suber    *suber;
+	nano_iceoryx_listener *listener;
+
+	iceoryx_sock_t *s = nni_sock_proto_data(sock->data);
+
+	if (!s->icelistener) {
+		nano_iceoryx_listener_alloc(&listener);
+		s->icelistener = listener;
+	}
+
+	suber = nano_iceoryx_suber_alloc(subername, service_name, instance_name,
+		event, s->icelistener);
+	if (!suber) {
+		log_error("Failed to alloc a iceoryx suber.");
+		return NNG_ENOMEM;
+	}
+
+	if (0 != (rv = nni_lmq_put(&s->subers, (nng_msg *)suber))) {
+		log_error("Failed to cache suber %d", rv);
+		return rv;
+	}
+
+	return 0;
+}
 
 int
 nng_iceoryx_open(nng_socket *sock, const char *runtimename)
