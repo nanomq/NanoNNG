@@ -9,9 +9,15 @@
 
 #if defined(SUPP_ICEORYX)
 
+#ifndef NNG_ICEORYX_SHM_H
+#define NNG_ICEORYX_SHM_H
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// TODO
+#include "../../../src/supplemental/iceoryx/iceoryx_api.h"
 
 struct nng_iceoryx_suber {
 	nano_iceoryx_suber *suber;
@@ -30,8 +36,14 @@ NNG_DECL int nng_iceoryx_sub(nng_socket *sock, const char *subername,
     const char *const service_name, const char *const instance_name,
     const char *const event, nng_iceoryx_suber **nsp);
 
+NNG_DECL int nng_iceoryx_pub(nng_socket *sock, const char *pubername,
+    const char *const service_name, const char *const instance_name,
+    const char *const event, nng_iceoryx_puber **npp);
+
 #ifdef __cplusplus
 }
+#endif
+
 #endif
 
 #endif
