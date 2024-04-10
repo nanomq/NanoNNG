@@ -1,5 +1,5 @@
 //
-// Copyright 2024 NanoMQ Team, Inc. <jaylin@emqx.io>
+// Copyright 2024 NanoMQ Team, Inc. <wangwei@emqx.io>
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -15,6 +15,8 @@
 #define NNG_ICEORYX_SELF_NAME "iceoryx-self"
 #define NNG_ICEORYX_PEER 0
 #define NNG_ICEORYX_PEER_NAME "iceoryx-peer"
+
+static const char *g_runtime_name = NULL;
 
 typedef struct iceoryx_sock_s iceoryx_sock_t;
 typedef struct iceoryx_pipe_s iceoryx_pipe_t;
@@ -83,6 +85,12 @@ iceoryx_sock_init(void *arg, nni_sock *sock)
 	nni_mtx_init(&s->mtx);
 	s->iceoryx_pipe = NULL;
 
+	if (!g_runtime_name) {
+		log_error("Please specfic your iceoryx runtimename first.");
+		g_runtime_name = "UnknownRuntimeName-In-NanoMQ";
+	}
+	nano_iceoryx_init((const char *const)g_runtime_name);
+
 	NNI_LIST_INIT(&s->recv_queue, iceoryx_ctx_t, rqnode);
 	NNI_LIST_INIT(&s->send_queue, iceoryx_ctx_t, sqnode);
 }
@@ -93,6 +101,8 @@ iceoryx_sock_fini(void *arg)
 	iceoryx_sock_t *s = arg;
 	iceoryx_ctx_fini(&s->master);
 	nni_mtx_fini(&s->mtx);
+
+	nano_iceoryx_fini();
 }
 
 static void
@@ -459,7 +469,8 @@ static nni_proto iceoryx_proto = {
 };
 
 int
-nng_iceoryx_open(nng_socket *sock)
+nng_iceoryx_open(nng_socket *sock, const char *runtimename)
 {
+	g_runtime_name = runtimename;
 	return (nni_proto_open(sock, &iceoryx_proto));
 }

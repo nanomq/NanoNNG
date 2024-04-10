@@ -49,7 +49,7 @@ int
 nano_iceoryx_fini()
 {
 	nni_id_map_fini(suber_map);
-	// TODO I don't know. It get stuck when shutdown.
+	// TODO I don't know. It gets stuck when shutdown.
 	// iox_runtime_shutdown();
 	return 0;
 }
