@@ -18,11 +18,17 @@ struct nng_iceoryx_suber {
 };
 typedef struct nng_iceoryx_suber nng_iceoryx_suber;
 
+struct nng_iceoryx_puber {
+	nano_iceoryx_puber *puber;
+};
+typedef struct nng_iceoryx_puber nng_iceoryx_puber;
+
+
 NNG_DECL int nng_iceoryx_open(nng_socket *sock, const char *runtimename);
 
 NNG_DECL int nng_iceoryx_sub(nng_socket *sock, const char *subername,
     const char *const service_name, const char *const instance_name,
-    const char *const event, nng_iceoryx_suber **nsp)
+    const char *const event, nng_iceoryx_suber **nsp);
 
 #ifdef __cplusplus
 }

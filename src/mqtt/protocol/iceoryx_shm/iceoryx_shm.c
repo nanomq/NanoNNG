@@ -61,6 +61,7 @@ struct iceoryx_sock_s {
 	nano_iceoryx_listener *icelistener;
 
 	nni_lmq            subers;
+	nni_lmq            pubers;
 
 	nni_list           recv_queue; // ctx pending to receive
 	nni_list           send_queue; // ctx pending to send (only offline msg)
@@ -96,6 +97,7 @@ iceoryx_sock_init(void *arg, nni_sock *sock)
 	}
 	nano_iceoryx_init((const char *const)g_runtime_name);
 	nni_lmq_init(&s->subers, NANO_ICEORYX_MAX_NODES_NUMBER);
+	nni_lmq_init(&s->pubers, NANO_ICEORYX_MAX_NODES_NUMBER);
 	s->icelistener = NULL;
 
 	NNI_LIST_INIT(&s->recv_queue, iceoryx_ctx_t, rqnode);
@@ -112,6 +114,7 @@ iceoryx_sock_fini(void *arg)
 		nano_iceoryx_listener_free(s->icelistener);
 
 	nni_lmq_fini(&s->subers);
+	nni_lmq_fini(&s->pubers);
 	nano_iceoryx_fini();
 }
 
@@ -126,6 +129,7 @@ iceoryx_sock_close(void *arg)
 {
 	iceoryx_sock_t *s = arg;
 	nano_iceoryx_suber *suber;
+	nano_iceoryx_puber *puber;
 
 	nni_atomic_set_bool(&s->closed, true);
 
@@ -133,6 +137,12 @@ iceoryx_sock_close(void *arg)
 		if (0 == nni_lmq_get(&s->subers, (nng_msg **)&suber)) {
 			if (!suber)
 				nano_iceoryx_suber_free(suber);
+		}
+	}
+	while (!nni_lmq_empty(&s->pubers)) {
+		if (0 == nni_lmq_get(&s->pubers, (nng_msg **)&puber)) {
+			if (!puber)
+				nano_iceoryx_puber_free(puber);
 		}
 	}
 }
@@ -485,6 +495,38 @@ static nni_proto iceoryx_proto = {
 	.proto_pipe_ops = &iceoryx_pipe_ops,
 	.proto_ctx_ops  = &iceoryx_ctx_ops,
 };
+
+int
+nng_iceoryx_pub(nng_socket *sock, const char *pubername, const char *const service_name,
+    const char *const instance_name, const char *const event, nng_iceoryx_puber **npp)
+{
+	int                 rv;
+	nano_iceoryx_puber *puber;
+
+	nng_iceoryx_puber *np = nng_alloc(sizeof(*np));
+	if (!np) {
+		log_error("Failed to alloc a nng iceoryx puber.");
+		return NNG_ENOMEM;
+	}
+
+	iceoryx_sock_t *s = nni_sock_proto_data(sock->data);
+
+	puber = nano_iceoryx_puber_alloc(pubername, service_name, instance_name, event);
+	if (!puber) {
+		log_error("Failed to alloc a iceoryx puber.");
+		return NNG_ENOMEM;
+	}
+
+	np->puber = puber;
+
+	if (0 != (rv = nni_lmq_put(&s->pubers, (nng_msg *)puber))) {
+		log_error("Failed to cache puber %d", rv);
+		return rv;
+	}
+
+	*npp = np;
+	return 0;
+}
 
 int
 nng_iceoryx_sub(nng_socket *sock, const char *subername, const char *const service_name,
