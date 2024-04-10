@@ -10,6 +10,7 @@
 #include "core/nng_impl.h"
 
 #include "supplemental/iceoryx/iceoryx_api.h"
+#include "nng/iceoryx_shm/iceoryx_shm.h"
 
 #define NNG_ICEORYX_SELF 0
 #define NNG_ICEORYX_SELF_NAME "iceoryx-self"
@@ -487,11 +488,17 @@ static nni_proto iceoryx_proto = {
 
 int
 nng_iceoryx_sub(nng_socket *sock, const char *subername, const char *const service_name,
-    const char *const instance_name, const char *const event)
+    const char *const instance_name, const char *const event, nng_iceoryx_suber **nsp)
 {
 	int                    rv;
 	nano_iceoryx_suber    *suber;
 	nano_iceoryx_listener *listener;
+
+	nng_iceoryx_suber *ns = nng_alloc(sizeof(*ns));
+	if (!ns) {
+		log_error("Failed to alloc a nng iceoryx suber.");
+		return NNG_ENOMEM;
+	}
 
 	iceoryx_sock_t *s = nni_sock_proto_data(sock->data);
 
@@ -507,11 +514,14 @@ nng_iceoryx_sub(nng_socket *sock, const char *subername, const char *const servi
 		return NNG_ENOMEM;
 	}
 
+	ns->suber = suber;
+
 	if (0 != (rv = nni_lmq_put(&s->subers, (nng_msg *)suber))) {
 		log_error("Failed to cache suber %d", rv);
 		return rv;
 	}
 
+	*nsp = ns;
 	return 0;
 }
 

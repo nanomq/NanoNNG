@@ -7,15 +7,23 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
+#if defined(SUPP_ICEORYX)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#if defined(SUPP_ICEORYX)
+struct nng_iceoryx_suber {
+	nano_iceoryx_suber *suber;
+};
+typedef struct nng_iceoryx_suber nng_iceoryx_suber;
 
 NNG_DECL int nng_iceoryx_open(nng_socket *sock, const char *runtimename);
 
-#endif
+NNG_DECL int nng_iceoryx_sub(nng_socket *sock, const char *subername,
+    const char *const service_name, const char *const instance_name,
+    const char *const event, nng_iceoryx_suber **nsp)
+
 #ifdef __cplusplus
 }
 #endif
