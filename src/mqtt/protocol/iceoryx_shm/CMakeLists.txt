@@ -13,6 +13,6 @@ nng_sources_if(
     iceoryx_shm.c
 )
 
-#nng_headers_if(NNG_ENABLE_ICEORYX nng/iceoryx_shm/iceoryx_shm.h)
+nng_headers_if(NNG_ENABLE_ICEORYX nng/iceoryx_shm/iceoryx_shm.h)
 
 #nng_test(iceoryx_shm_test)
