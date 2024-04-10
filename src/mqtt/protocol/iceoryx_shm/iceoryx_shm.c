@@ -502,6 +502,8 @@ nng_iceoryx_pub(nng_socket *sock, const char *pubername, const char *const servi
 {
 	int                 rv;
 	nano_iceoryx_puber *puber;
+	nni_sock           *nsock;
+	iceoryx_sock_t     *s;
 
 	nng_iceoryx_puber *np = nng_alloc(sizeof(*np));
 	if (!np) {
@@ -509,7 +511,17 @@ nng_iceoryx_pub(nng_socket *sock, const char *pubername, const char *const servi
 		return NNG_ENOMEM;
 	}
 
-	iceoryx_sock_t *s = nni_sock_proto_data(sock->data);
+	nni_sock_find(&nsock, sock->id);
+	if (nsock) {
+		s = nni_sock_proto_data(nsock);
+		if (!s) {
+			log_error("nng iceoryx sock error.");
+			return NNG_EINVAL;
+		}
+	} else {
+		return NNG_EINVAL;
+	}
+	nni_sock_rele(nsock);
 
 	puber = nano_iceoryx_puber_alloc(pubername, service_name, instance_name, event);
 	if (!puber) {
@@ -535,6 +547,8 @@ nng_iceoryx_sub(nng_socket *sock, const char *subername, const char *const servi
 	int                    rv;
 	nano_iceoryx_suber    *suber;
 	nano_iceoryx_listener *listener;
+	nni_sock              *nsock;
+	iceoryx_sock_t        *s;
 
 	nng_iceoryx_suber *ns = nng_alloc(sizeof(*ns));
 	if (!ns) {
@@ -542,7 +556,17 @@ nng_iceoryx_sub(nng_socket *sock, const char *subername, const char *const servi
 		return NNG_ENOMEM;
 	}
 
-	iceoryx_sock_t *s = nni_sock_proto_data(sock->data);
+	nni_sock_find(&nsock, sock->id);
+	if (nsock) {
+		s = nni_sock_proto_data(nsock);
+		if (!s) {
+			log_error("nng iceoryx sock error.");
+			return NNG_EINVAL;
+		}
+	} else {
+		return NNG_EINVAL;
+	}
+	nni_sock_rele(nsock);
 
 	if (!s->icelistener) {
 		nano_iceoryx_listener_alloc(&listener);
