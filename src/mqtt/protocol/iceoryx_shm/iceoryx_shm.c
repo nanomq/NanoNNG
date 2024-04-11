@@ -229,8 +229,13 @@ iceoryx_recv_cb(void *arg)
 static inline void
 iceoryx_recv(nni_aio *aio, iceoryx_ctx_t *ctx)
 {
-	NNI_ARG_UNUSED(aio);
 	NNI_ARG_UNUSED(ctx);
+
+	nng_iceoryx_suber  *ns = nni_aio_get_prov_data(aio);
+	nano_iceoryx_suber *suber = ns->suber;
+	nni_aio_set_prov_data(aio, NULL); // reset
+
+	nano_iceoryx_read(suber, aio);
 }
 
 static inline void
