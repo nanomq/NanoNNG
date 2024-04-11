@@ -26,6 +26,7 @@ nni_id_map *suber_map = NULL;
 struct nano_iceoryx_suber {
 	iox_listener_t listener;
 	iox_sub_t      suber;
+	nni_aio       *recv_aio;
 	nni_lmq       *recvmq;
 };
 
@@ -87,6 +88,12 @@ suber_recv_cb(iox_sub_t subscriber)
 	}
 	// XXX Get description of this suber.
 	// iox_service_description_t desc = iox_sub_get_service_description(subscriber);
+
+	if (suber->recv_aio) {
+		nni_aio_finish(suber->recv_aio, 0, nni_msg_len(msg));
+		suber->recv_aio = NULL;
+		return;
+	}
 
 	rv = nni_lmq_put(suber->recvmq, (nng_msg *)msg);
 	if (rv == NNG_EAGAIN) {
@@ -220,10 +227,20 @@ nano_iceoryx_write(nano_iceoryx_puber *puber, void *msg)
 }
 
 void
-nano_iceoryx_read(nano_iceoryx_suber *suber, void **msgp)
+nano_iceoryx_read(nano_iceoryx_suber *suber, nng_aio *aio)
 {
-	if (0 != nni_lmq_get(suber->recvmq, (nng_msg **)msgp)) {
-		*msgp = NULL;
+	nng_msg *msg;
+	if (0 != nni_lmq_get(suber->recvmq, (nng_msg **)&msg)) {
+		msg = NULL;
+		if (!suber->recv_aio) {
+			suber->recv_aio = aio;
+		} else {
+			nng_aio_set_msg(aio, msg);
+			nng_aio_finish_error(aio, NNG_EBUSY);
+		}
+		return;
 	}
+	nng_aio_set_msg(aio, msg);
+	nng_aio_finish(aio, 0);
 }
 
