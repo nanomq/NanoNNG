@@ -62,6 +62,7 @@ struct iceoryx_sock_s {
 
 	nni_lmq            subers;
 	nni_lmq            pubers;
+	int                id;
 
 	nni_list           recv_queue; // ctx pending to receive
 	nni_list           send_queue; // ctx pending to send (only offline msg)
@@ -90,6 +91,7 @@ iceoryx_sock_init(void *arg, nni_sock *sock)
 	iceoryx_ctx_init(&s->master, s);
 	nni_mtx_init(&s->mtx);
 	s->iceoryx_pipe = NULL;
+	s->id = 0;
 
 	if (!g_runtime_name) {
 		log_error("Please specfic your iceoryx runtimename first.");
@@ -241,15 +243,18 @@ iceoryx_recv(nni_aio *aio, iceoryx_ctx_t *ctx)
 static inline void
 iceoryx_send(nni_aio *aio, iceoryx_ctx_t *ctx)
 {
-	NNI_ARG_UNUSED(ctx);
-	// iceoryx_sock_t *s = ctx->iceoryx_sock;
+	iceoryx_sock_t *s = ctx->iceoryx_sock;
 
 	nng_iceoryx_puber  *np = nni_aio_get_prov_data(aio);
 	nano_iceoryx_puber *puber = np->puber;
 	nni_aio_set_prov_data(aio, NULL); // reset
 
 	nng_msg *msg = nng_aio_get_msg(aio);
-	nano_iceoryx_write(puber, msg);
+	char *icem;
+	nano_iceoryx_msg_alloc((void **)&icem, puber, s->id++, msg);
+	nano_iceoryx_write(puber, (void *)icem);
+
+	nni_msg_free(msg);
 	nng_aio_finish(aio, 0);
 }
 
