@@ -121,7 +121,9 @@ iceoryx_sock_fini(void *arg)
 static void
 iceoryx_sock_open(void *arg)
 {
-	NNI_ARG_UNUSED(arg);
+	iceoryx_sock_t *s = arg;
+	s->iceoryx_pipe = arg; // For future use
+	// NNI_ARG_UNUSED(arg);
 }
 
 static void
@@ -243,6 +245,7 @@ iceoryx_send(nni_aio *aio, iceoryx_ctx_t *ctx)
 
 	nng_msg *msg = nng_aio_get_msg(aio);
 	nano_iceoryx_write(puber, msg);
+	nng_aio_finish(aio, 0);
 }
 
 static void
