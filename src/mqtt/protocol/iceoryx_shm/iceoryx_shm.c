@@ -234,8 +234,15 @@ iceoryx_recv(nni_aio *aio, iceoryx_ctx_t *ctx)
 static inline void
 iceoryx_send(nni_aio *aio, iceoryx_ctx_t *ctx)
 {
-	NNI_ARG_UNUSED(aio);
 	NNI_ARG_UNUSED(ctx);
+	// iceoryx_sock_t *s = ctx->iceoryx_sock;
+
+	nng_iceoryx_puber  *np = nni_aio_get_prov_data(aio);
+	nano_iceoryx_puber *puber = np->puber;
+	nni_aio_set_prov_data(aio, NULL); // reset
+
+	nng_msg *msg = nng_aio_get_msg(aio);
+	nano_iceoryx_write(puber, msg);
 }
 
 static void
@@ -282,6 +289,12 @@ iceoryx_ctx_send(void *arg, nni_aio *aio)
 	nni_msg        *msg;
 
 	if (nni_aio_begin(aio) != 0) {
+		return;
+	}
+
+	if (NULL == nni_aio_get_prov_data(aio)) {
+		log_error("Not find puber in aio prov_data.");
+		nng_aio_finish_error(aio, NNG_EINVAL);
 		return;
 	}
 
