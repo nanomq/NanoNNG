@@ -7,6 +7,24 @@
 
 extern FILE *yyin;
 
+static char *
+remove_escape(char *str)
+{
+	str++;
+	char *ret = NULL;
+	while ('\0' != *str) {
+		if ('\\' != *str) {
+			cvector_push_back(ret, *str);
+		}
+		str++;
+	}
+	cvector_pop_back(ret);
+	cvector_push_back(ret, '\0');
+	char *res = strdup(ret);
+	cvector_free(ret);
+	return res;
+}
+
 static cJSON *
 path_expression_parse_core(cJSON *parent, cJSON *jso)
 {
@@ -61,16 +79,30 @@ path_expression_parse(cJSON *jso)
 	if (NULL != jso)
 		child = jso->child;
 
+	int index = 0;
 	while (child) {
 		if (child->child) {
 			path_expression_parse(child);
 		}
+
+		if (NULL != child->string) {
+			if ('"' == *child->string) {
+				child->string = remove_escape(child->string);
+				child         = child->next;
+				continue;
+			}
+		}
+
 		if (NULL != child->string &&
 		    NULL != strchr(child->string, '.')) {
 			path_expression_parse_core(parent, child);
 			child = parent->child;
+			for (int i = 0; i < index; i++) {
+				child = child->next;
+			}
 		} else {
 			child = child->next;
+			index++;
 		}
 	}
 
