@@ -250,12 +250,10 @@ iceoryx_send(nni_aio *aio, iceoryx_ctx_t *ctx)
 	nni_aio_set_prov_data(aio, NULL); // reset
 
 	nng_msg *msg = nng_aio_get_msg(aio);
-	char *icem;
-	nano_iceoryx_msg_alloc((void **)&icem, puber, s->id++, msg);
-	nano_iceoryx_write(puber, (void *)icem);
+	nano_iceoryx_msg_alloc(msg, puber, s->id++);
+	nano_iceoryx_write(puber, aio);
 
 	nni_msg_free(msg);
-	nng_aio_finish(aio, 0);
 }
 
 static void

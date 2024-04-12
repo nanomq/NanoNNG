@@ -80,8 +80,8 @@ suber_recv_cb(iox_sub_t subscriber)
 	}
 
 	int rv;
-	void *msg;
-	rv = iox_sub_take_chunk(subscriber, (const void**)&msg);
+	void *icem;
+	rv = iox_sub_take_chunk(subscriber, (const void**)&icem);
 	if (rv != ChunkReceiveResult_SUCCESS) {
 		log_error("Failed to get msg from suber%d error%d", subscriber, rv);
 		return;
@@ -89,7 +89,15 @@ suber_recv_cb(iox_sub_t subscriber)
 	// XXX Get description of this suber.
 	// iox_service_description_t desc = iox_sub_get_service_description(subscriber);
 
+	nng_msg *msg;
+	if (0 != nng_msg_alloc(&msg, 0)) {
+		log_error("Failed to alloc a nng msg");
+		return;
+	}
+	nng_msg_set_payload_ptr(msg, icem);
+
 	if (suber->recv_aio) {
+		nni_aio_set_msg(suber->recv_aio, msg);
 		nni_aio_finish(suber->recv_aio, 0, nni_msg_len(msg));
 		suber->recv_aio = NULL;
 		return;
