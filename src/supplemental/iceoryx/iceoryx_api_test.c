@@ -44,8 +44,9 @@ test_iceoryx_msg()
 	char *str = "Hello, It's a test-nanomq-iceoryx-msg.";
 	NUTS_ASSERT(0 == nng_msg_alloc(&m, 0));
 	nng_msg_append(m, str, strlen(str));
-	nano_iceoryx_msg_alloc((void **)&icem, puber, id, m);
+	nano_iceoryx_msg_alloc(m, puber, id);
 
+	icem = (char *)nng_msg_payload_ptr(m);
 	NUTS_ASSERT(NULL != icem);
 	int pos = 0;
 
@@ -103,16 +104,31 @@ test_iceoryx_rw()
 	char *str = "Hello, It's a test-nanomq-iceoryx-msg.";
 	NUTS_ASSERT(0 == nng_msg_alloc(&m, 0));
 	nng_msg_append(m, str, strlen(str));
-	nano_iceoryx_msg_alloc((void **)&icem, puber, id, m);
+	nano_iceoryx_msg_alloc(m, puber, id);
+
+	icem = (char *)nng_msg_payload_ptr(m);
 	NUTS_ASSERT(NULL != icem);
 
 	// Send msg
-	nano_iceoryx_write(puber, (void *)icem);
-	nng_msleep(1); // 1ms is enough
+	nng_aio *saio;
+	nng_aio_alloc(&saio, NULL, NULL);
+	NUTS_ASSERT(NULL != saio);
+
+	nng_aio_set_msg(saio, m);
+	nano_iceoryx_write(puber, saio);
+	nng_aio_wait(saio);
 
 	// Read msg
-	char *icesm;
-	nano_iceoryx_read(suber, (void **)&icesm);
+	nng_aio *raio;
+	nng_aio_alloc(&raio, NULL, NULL);
+	NUTS_ASSERT(NULL != raio);
+
+	nano_iceoryx_read(suber, raio);
+
+	nng_msg *rm = nng_aio_get_msg(raio);
+	NUTS_ASSERT(NULL != rm);
+
+	char *icesm = (char *)nng_msg_payload_ptr(rm);
 	NUTS_ASSERT(NULL != icesm);
 
 	// Comparison, Should have same address
