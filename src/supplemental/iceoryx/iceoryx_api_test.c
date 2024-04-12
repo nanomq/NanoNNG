@@ -98,15 +98,15 @@ test_iceoryx_rw()
 	NUTS_ASSERT(puber != NULL);
 
 	// Create a iceoryx msg
-	nng_msg *m;
+	nng_msg *sm;
 	char    *icem;
 	uint32_t id = 0x1234;
 	char *str = "Hello, It's a test-nanomq-iceoryx-msg.";
-	NUTS_ASSERT(0 == nng_msg_alloc(&m, 0));
-	nng_msg_append(m, str, strlen(str));
-	nano_iceoryx_msg_alloc(m, puber, id);
+	NUTS_ASSERT(0 == nng_msg_alloc(&sm, 0));
+	nng_msg_append(sm, str, strlen(str));
+	nano_iceoryx_msg_alloc(sm, puber, id);
 
-	icem = (char *)nng_msg_payload_ptr(m);
+	icem = (char *)nng_msg_payload_ptr(sm);
 	NUTS_ASSERT(NULL != icem);
 
 	// Send msg
@@ -114,9 +114,11 @@ test_iceoryx_rw()
 	nng_aio_alloc(&saio, NULL, NULL);
 	NUTS_ASSERT(NULL != saio);
 
-	nng_aio_set_msg(saio, m);
+	nng_aio_set_msg(saio, sm);
 	nano_iceoryx_write(puber, saio);
 	nng_aio_wait(saio);
+
+	nng_msleep(1); // enough to send
 
 	// Read msg
 	nng_aio *raio;
@@ -124,6 +126,7 @@ test_iceoryx_rw()
 	NUTS_ASSERT(NULL != raio);
 
 	nano_iceoryx_read(suber, raio);
+	nng_aio_wait(raio);
 
 	nng_msg *rm = nng_aio_get_msg(raio);
 	NUTS_ASSERT(NULL != rm);
@@ -138,7 +141,7 @@ test_iceoryx_rw()
 	uint32_t sz;
 	NNI_GET32(icesm + pos, sz);
 	pos += NANO_ICEORYX_SZ_BYTES;
-	NUTS_ASSERT(sz == (NANO_ICEORYX_SZ_BYTES + NANO_ICEORYX_ID_BYTES) + nng_msg_len(m));
+	NUTS_ASSERT(sz == (NANO_ICEORYX_SZ_BYTES + NANO_ICEORYX_ID_BYTES) + nng_msg_len(sm));
 
 	uint32_t id2;
 	NNI_GET32(icesm + pos, id2);
@@ -147,7 +150,10 @@ test_iceoryx_rw()
 
 	NUTS_ASSERT(0 == strncmp(icesm + pos, str, strlen(str)));
 
-	nng_msg_free(m);
+	nng_aio_free(saio);
+	nng_aio_free(raio);
+	nng_msg_free(rm);
+	nng_msg_free(sm);
 	nano_iceoryx_puber_free(puber);
 	nano_iceoryx_suber_free(suber);
 	nano_iceoryx_listener_free(listener);
