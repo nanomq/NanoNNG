@@ -162,6 +162,10 @@ nano_iceoryx_suber_free(nano_iceoryx_suber *suber)
 	iox_listener_detach_subscriber_event(suber->listener, suber->suber,
 	        SubscriberEvent_DATA_RECEIVED);
 	iox_sub_deinit(suber->suber);
+	if (suber->recv_aio) {
+		nng_aio_finish_error(suber->recv_aio, NNG_ECLOSED);
+		suber->recv_aio = NULL;
+	}
 	nni_lmq_fini(suber->recvmq);
 	nng_free(suber->recvmq, sizeof(*suber->recvmq));
 	nng_free(suber, sizeof(*suber));
