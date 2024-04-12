@@ -197,7 +197,7 @@ nano_iceoryx_msg_alloc_raw(void **msgp, size_t sz, nano_iceoryx_puber *puber)
 
 // U32 SZ | U32 ID | PAYLOAD
 int
-nano_iceoryx_msg_alloc(void **msgp, nano_iceoryx_puber *puber, uint32_t id, nng_msg *msg)
+nano_iceoryx_msg_alloc(nng_msg *msg, nano_iceoryx_puber *puber, uint32_t id)
 {
 	int rv;
 	size_t sz;
@@ -210,7 +210,7 @@ nano_iceoryx_msg_alloc(void **msgp, nano_iceoryx_puber *puber, uint32_t id, nng_
 		log_error("FAiled to alloc iceoryx chunk %d", rv);
 		return rv;
 	}
-	*msgp = m;
+	nng_msg_set_payload_ptr(msg, m);
 
 	NNI_PUT32(m, sz);
 	m += NANO_ICEORYX_SZ_BYTES;
