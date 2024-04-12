@@ -240,7 +240,7 @@ nano_iceoryx_write(nano_iceoryx_puber *puber, nng_aio *aio)
 	void    *icem;
 	msg = nng_aio_get_msg(aio);
 	if (!msg) {
-		nng_aio_finish(aio, NNG_EINVAL);
+		nng_aio_finish_error(aio, NNG_EINVAL);
 		return;
 	}
 
