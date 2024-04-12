@@ -222,9 +222,19 @@ nano_iceoryx_msg_alloc(nng_msg *msg, nano_iceoryx_puber *puber, uint32_t id)
 }
 
 void
-nano_iceoryx_write(nano_iceoryx_puber *puber, void *msg)
+nano_iceoryx_write(nano_iceoryx_puber *puber, nng_aio *aio)
 {
-	iox_pub_publish_chunk(puber->puber, msg);
+	nng_msg *msg;
+	void    *icem;
+	msg = nng_aio_get_msg(aio);
+	if (!msg) {
+		nng_aio_finish(aio, NNG_EINVAL);
+		return;
+	}
+
+	icem = nng_msg_payload_ptr(msg);
+	iox_pub_publish_chunk(puber->puber, icem);
+	nng_aio_finish(aio, 0);
 }
 
 void
