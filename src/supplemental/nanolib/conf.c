@@ -919,7 +919,7 @@ conf_init(conf *nanomq_conf)
 
 	conf_http_server_init(&nanomq_conf->http_server, 8081);
 
-	nanomq_conf->websocket.enable  = true;
+	nanomq_conf->websocket.enable  = false;
 	nanomq_conf->websocket.url     = NULL;
 	nanomq_conf->websocket.tls_url = NULL;
 
