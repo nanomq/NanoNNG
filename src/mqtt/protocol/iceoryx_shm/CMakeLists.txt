@@ -6,13 +6,13 @@
 #
 
 # iceoryx share memory communication
-nng_directory(iceoryx_shm)
+#nng_directory(iceoryx_shm)
 
-nng_sources_if(
-	NNG_ENABLE_ICEORYX
-    iceoryx_shm.c
-)
 
-nng_headers_if(NNG_ENABLE_ICEORYX nng/iceoryx_shm/iceoryx_shm.h)
+if (NNG_ENABLE_ICEORYX)
+    nng_headers(nng/iceoryx_shm/iceoryx_shm.h)
+    nng_sources(iceoryx_shm.c)
 
-#nng_test(iceoryx_shm_test)
+    #nng_test(iceoryx_shm_test)
+endif ()
+
