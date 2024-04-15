@@ -1001,7 +1001,56 @@ conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 
 	cJSON *   jso_tls         = hocon_get_obj("ssl", jso_connector);
 	conf_tls *bridge_node_tls = &(node->tls);
+
 	conf_tls_parse_ver2_base(bridge_node_tls, jso_tls);
+	while (1) {
+		if (bridge_node_tls->ca != NULL &&
+		    bridge_node_tls->cert != NULL &&
+		    bridge_node_tls->key != NULL) {
+			break;
+		}
+		if (bridge_node_tls->ca != NULL &&
+		    bridge_node_tls->cert == NULL &&
+		    bridge_node_tls->key == NULL) {
+			break;
+		}
+		log_warn("Wait for bridge tls ca/cert/key %d%d%d",
+			(bridge_node_tls->ca != NULL),
+			(bridge_node_tls->cert != NULL),
+			(bridge_node_tls->key != NULL));
+
+		if (bridge_node_tls->keyfile) {
+			nng_free(bridge_node_tls->keyfile, 0);
+			bridge_node_tls->keyfile = NULL;
+		}
+		if (bridge_node_tls->certfile) {
+			nng_free(bridge_node_tls->certfile, 0);
+			bridge_node_tls->certfile = NULL;
+		}
+		if (bridge_node_tls->cafile) {
+			nng_free(bridge_node_tls->cafile, 0);
+			bridge_node_tls->cafile = NULL;
+		}
+		if (bridge_node_tls->key_password) {
+			nng_free(bridge_node_tls->key_password, 0);
+			bridge_node_tls->key_password = NULL;
+		}
+		if (bridge_node_tls->ca) {
+			nng_free(bridge_node_tls->ca, 0);
+			bridge_node_tls->ca = NULL;
+		}
+		if (bridge_node_tls->cert) {
+			nng_free(bridge_node_tls->cert, 0);
+			bridge_node_tls->cert = NULL;
+		}
+		if (bridge_node_tls->key) {
+			nng_free(bridge_node_tls->key, 0);
+			bridge_node_tls->key = NULL;
+		}
+
+		nng_msleep(5000); // 5s
+		conf_tls_parse_ver2_base(bridge_node_tls, jso_tls);
+	}
 
 	cJSON    *jso_tcp         = hocon_get_obj("tcp", jso_connector);
 	conf_tcp *bridge_node_tcp = &(node->tcp);
