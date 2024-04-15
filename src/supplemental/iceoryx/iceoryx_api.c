@@ -26,7 +26,7 @@ nni_id_map *suber_map = NULL;
 struct nano_iceoryx_suber {
 	iox_listener_t listener;
 	iox_sub_t      suber;
-	nni_aio       *recv_aio;
+	nni_list       recvaioq;
 	nni_lmq       *recvmq;
 };
 
@@ -96,10 +96,11 @@ suber_recv_cb(iox_sub_t subscriber)
 	}
 	nng_msg_set_payload_ptr(msg, icem);
 
-	if (suber->recv_aio) {
-		nni_aio_set_msg(suber->recv_aio, msg);
-		nni_aio_finish(suber->recv_aio, 0, nni_msg_len(msg));
-		suber->recv_aio = NULL;
+	nng_aio *recv_aio = NULL;
+	if ((recv_aio = nni_list_first(&suber->recvaioq)) != NULL) {
+		nni_aio_set_msg(recv_aio, msg);
+		nni_aio_finish(recv_aio, 0, nni_msg_len(msg));
+		nni_aio_list_remove(recv_aio);
 		return;
 	}
 
@@ -134,7 +135,7 @@ nano_iceoryx_suber_alloc(const char *subername, const char *const service_name,
 	iox_listener_attach_subscriber_event((iox_listener_t) listener,
 	    subscriber, SubscriberEvent_DATA_RECEIVED, &suber_recv_cb);
 
-	suber->recv_aio = NULL;
+	nni_aio_list_init(&suber->recvaioq);
 	suber->recvmq = nng_alloc(sizeof(*suber->recvmq));
 	if (suber->recvmq == NULL) {
 		log_error("Failed to alloc recvmq");
@@ -162,9 +163,10 @@ nano_iceoryx_suber_free(nano_iceoryx_suber *suber)
 	iox_listener_detach_subscriber_event(suber->listener, suber->suber,
 	        SubscriberEvent_DATA_RECEIVED);
 	iox_sub_deinit(suber->suber);
-	if (suber->recv_aio) {
-		nng_aio_finish_error(suber->recv_aio, NNG_ECLOSED);
-		suber->recv_aio = NULL;
+	nng_aio *recv_aio;
+	while ((recv_aio = nni_list_first(&suber->recvaioq)) != NULL) {
+		nng_aio_finish_error(recv_aio, NNG_ECLOSED);
+		nni_aio_list_remove(recv_aio);
 	}
 	nni_lmq_fini(suber->recvmq);
 	nng_free(suber->recvmq, sizeof(*suber->recvmq));
@@ -254,13 +256,7 @@ nano_iceoryx_read(nano_iceoryx_suber *suber, nng_aio *aio)
 {
 	nng_msg *msg;
 	if (0 != nni_lmq_get(suber->recvmq, (nng_msg **)&msg)) {
-		msg = NULL;
-		if (!suber->recv_aio) {
-			suber->recv_aio = aio;
-		} else {
-			nng_aio_set_msg(aio, msg);
-			nng_aio_finish_error(aio, NNG_EBUSY);
-		}
+		nni_aio_list_append(&suber->recvaioq, aio);
 		return;
 	}
 	nng_aio_set_msg(aio, msg);
