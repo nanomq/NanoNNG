@@ -1002,6 +1002,7 @@ conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 	cJSON *   jso_tls         = hocon_get_obj("ssl", jso_connector);
 	conf_tls *bridge_node_tls = &(node->tls);
 
+	// Do a fool wait......
 	conf_tls_parse_ver2_base(bridge_node_tls, jso_tls);
 	while (1) {
 		if (bridge_node_tls->ca != NULL &&
