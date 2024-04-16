@@ -944,11 +944,20 @@ wstran_pipe_init(void *arg, nni_pipe *pipe)
 	int      rv, id;
 	NNI_ARG_UNUSED(rv);
 	NNI_ARG_UNUSED(id);
-	char    *cid;
 	ws_pipe *p            = arg;
-	uint32_t clientid_key = 0;
+	// sth wrong with negotiation, close it
 	log_trace(" ************ wstran_pipe_init [%p] ************ ", arg);
 	nni_pipe_set_conn_param(pipe, p->ws_param);
+	p->npipe      = pipe;
+
+	p->gotrxhead  = 0;
+	p->wantrxhead = 0;
+	p->ep_aio     = NULL;
+
+	if (p->closed)
+		return (0);
+	char    *cid;
+	uint32_t clientid_key = 0;
 	cid = (char *) conn_param_get_clientid(p->ws_param);
 	clientid_key = DJBHashn(cid, strlen(cid));
 	id = nni_pipe_id(pipe);
@@ -956,19 +965,12 @@ wstran_pipe_init(void *arg, nni_pipe *pipe)
 	log_debug("change p_id by hashing from %d to %d rv %d",
 			   id, clientid_key, rv);
 
-	p->npipe      = pipe;
-
-	if (!p->conf->sqlite.enable && pipe->nano_qos_db == NULL) {
-		nni_qos_db_init_id_hash(pipe->nano_qos_db);
-	}
-
-	p->gotrxhead  = 0;
-	p->wantrxhead = 0;
-	p->ep_aio     = NULL;
-
 	p->qos_buf = nng_zalloc(16 + NNI_NANO_MAX_PACKET_SIZE);
 	// the size limit of qos_buf reserve 1 byte for property length
 	p->qlength = 16 + NNI_NANO_MAX_PACKET_SIZE;
+	if (!p->conf->sqlite.enable && pipe->nano_qos_db == NULL) {
+		nni_qos_db_init_id_hash(pipe->nano_qos_db);
+	}
 	return (0);
 }
 
