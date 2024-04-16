@@ -1010,11 +1010,6 @@ conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 		    bridge_node_tls->key != NULL) {
 			break;
 		}
-		if (bridge_node_tls->ca != NULL &&
-		    bridge_node_tls->cert == NULL &&
-		    bridge_node_tls->key == NULL) {
-			break;
-		}
 		log_warn("Wait for bridge tls ca/cert/key %d%d%d",
 			(bridge_node_tls->ca != NULL),
 			(bridge_node_tls->cert != NULL),
