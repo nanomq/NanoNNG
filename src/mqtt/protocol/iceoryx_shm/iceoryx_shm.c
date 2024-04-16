@@ -245,6 +245,7 @@ iceoryx_recv(nni_aio *aio, iceoryx_ctx_t *ctx)
 static inline void
 iceoryx_send(nni_aio *aio, iceoryx_ctx_t *ctx)
 {
+	NNI_ARG_UNUSED(ctx);
 
 	nng_iceoryx_puber  *np = nni_aio_get_prov_data(aio);
 	nano_iceoryx_puber *puber = np->puber;

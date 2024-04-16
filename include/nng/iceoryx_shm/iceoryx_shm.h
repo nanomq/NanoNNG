@@ -40,6 +40,10 @@ NNG_DECL int nng_iceoryx_pub(nng_socket *sock, const char *pubername,
     const char *const service_name, const char *const instance_name,
     const char *const event, nng_iceoryx_puber **npp);
 
+NNG_DECL int nng_msg_iceoryx_alloc(nng_msg **msgp, nng_iceoryx_puber *puber, size_t sz);
+NNG_DECL int nng_msg_iceoryx_free(nng_msg *msg, nng_iceoryx_suber *suber);
+NNG_DECL int nng_msg_iceoryx_append(nng_msg *msg, const void *data, size_t sz);
+
 #ifdef __cplusplus
 }
 #endif
