@@ -28,6 +28,7 @@ struct nano_iceoryx_suber {
 	iox_sub_t      suber;
 	nni_list       recvaioq;
 	nni_lmq       *recvmq;
+	nni_mtx        mtx;
 };
 
 struct nano_iceoryx_puber {
@@ -144,6 +145,8 @@ nano_iceoryx_suber_alloc(const char *subername, const char *const service_name,
 	}
 	nni_lmq_init(suber->recvmq, NANO_ICEORYX_RECVQ_LEN);
 
+	nni_mtx_init(&suber->mtx);
+
 	int rv;
 	if (0 != (rv = nni_id_set(suber_map, (uint64_t)subscriber, suber))) {
 		log_error("Failed to set suber_map %d", rv);
@@ -164,10 +167,12 @@ nano_iceoryx_suber_free(nano_iceoryx_suber *suber)
 	        SubscriberEvent_DATA_RECEIVED);
 	iox_sub_deinit(suber->suber);
 	nng_aio *recv_aio;
+	nni_mtx_lock(&suber->mtx);
 	while ((recv_aio = nni_list_first(&suber->recvaioq)) != NULL) {
 		nng_aio_finish_error(recv_aio, NNG_ECLOSED);
 		nni_aio_list_remove(recv_aio);
 	}
+	nni_mtx_unlock(&suber->mtx);
 	nni_lmq_fini(suber->recvmq);
 	nng_free(suber->recvmq, sizeof(*suber->recvmq));
 	nng_free(suber, sizeof(*suber));
@@ -255,10 +260,13 @@ void
 nano_iceoryx_read(nano_iceoryx_suber *suber, nng_aio *aio)
 {
 	nng_msg *msg;
+	nni_mtx_lock(&suber->mtx);
 	if (0 != nni_lmq_get(suber->recvmq, (nng_msg **)&msg)) {
 		nni_aio_list_append(&suber->recvaioq, aio);
+		nni_mtx_unlock(&suber->mtx);
 		return;
 	}
+	nni_mtx_unlock(&suber->mtx);
 	nng_aio_set_msg(aio, msg);
 	nng_aio_finish(aio, 0);
 }
