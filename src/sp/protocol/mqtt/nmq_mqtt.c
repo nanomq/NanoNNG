@@ -617,7 +617,8 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	p->ka_refresh  = 0;
 	p->event       = true;
 	p->tree        = sock->db;
-	p->keepalive   = p->conn_param->keepalive_mqtt;
+	if (p->conn_param != NULL)
+		p->keepalive   = p->conn_param->keepalive_mqtt;
 
 	return (0);
 }
