@@ -527,7 +527,7 @@ int
 nng_msg_iceoryx_alloc(nng_msg **msgp, nng_iceoryx_puber *puber, size_t sz)
 {
 	int rv;
-	if ((rv = nng_msg_alloc(msgp, sz)) != 0) {
+	if ((rv = nng_msg_alloc(msgp, 0)) != 0) {
 		return rv;
 	}
 	void *icem;
@@ -554,7 +554,11 @@ nng_msg_iceoryx_free(nng_msg *msg, nng_iceoryx_suber *suber)
 int
 nng_msg_iceoryx_append(nng_msg *msg, const void *data, size_t sz)
 {
-	nng_msg_append(msg, data, sz);
+	int rv;
+	if (0 != (rv = nng_msg_append(msg, data, sz))) {
+		log_error("Failed to append %d\n", rv);
+		return rv;
+	}
 	void *icem = nng_msg_payload_ptr(msg);
 	if (!icem)
 		return NNG_EINVAL;
