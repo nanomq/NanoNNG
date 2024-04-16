@@ -76,7 +76,7 @@ suber_recv_cb(iox_sub_t subscriber)
 {
 	nano_iceoryx_suber *suber = nni_id_get(suber_map, (uint64_t)subscriber);
 	if (!suber) {
-		log_error("Not found suber%d in suber_map", subscriber);
+		log_error("Not found suber%p in suber_map", subscriber);
 		return;
 	}
 
@@ -84,7 +84,7 @@ suber_recv_cb(iox_sub_t subscriber)
 	void *icem;
 	rv = iox_sub_take_chunk(subscriber, (const void**)&icem);
 	if (rv != ChunkReceiveResult_SUCCESS) {
-		log_error("Failed to get msg from suber%d error%d", subscriber, rv);
+		log_error("Failed to get msg from suber%p error%d", subscriber, rv);
 		return;
 	}
 	// XXX Get description of this suber.
@@ -111,7 +111,7 @@ suber_recv_cb(iox_sub_t subscriber)
 	nni_mtx_unlock(&suber->mtx);
 
 	if (rv == NNG_EAGAIN) {
-		log_error("Failed to put msg for suber%d due to full, drop", subscriber);
+		log_error("Failed to put msg for suber%p due to full, drop", subscriber);
 		return;
 	}
 }
