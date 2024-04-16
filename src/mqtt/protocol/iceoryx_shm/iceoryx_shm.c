@@ -521,6 +521,44 @@ static nni_proto iceoryx_proto = {
 };
 
 int
+nng_msg_iceoryx_alloc(nng_msg **msgp, nng_iceoryx_puber *puber, size_t sz)
+{
+	int rv;
+	if ((rv = nng_msg_alloc(msgp, sz)) != 0) {
+		return rv;
+	}
+	void *icem;
+	if (0 != (rv = nano_iceoryx_msg_alloc_raw(&icem, sz, puber))) {
+		log_error("Failed to alloc iceoryx msg %d", rv);
+		return NNG_ENOMEM;
+	}
+	nng_msg_set_payload_ptr((*msgp), (uint8_t *)icem);
+	return 0;
+}
+
+int
+nng_msg_iceoryx_free(nng_msg *msg, nng_iceoryx_suber *suber)
+{
+	void *icem = nng_msg_payload_ptr(msg);
+	if (!icem)
+		return NNG_EINVAL;
+	nano_iceoryx_msg_free(icem, suber->suber);
+	return 0;
+}
+
+// Too much memory copy. TODO Fix it.
+int
+nng_msg_iceoryx_append(nng_msg *msg, const void *data, size_t sz)
+{
+	nng_msg_append(msg, data, sz);
+	void *icem = nng_msg_payload_ptr(msg);
+	if (!icem)
+		return NNG_EINVAL;
+	memcpy(icem, nng_msg_body(msg), nng_msg_len(msg));
+	return 0;
+}
+
+int
 nng_iceoryx_pub(nng_socket *sock, const char *pubername, const char *const service_name,
     const char *const instance_name, const char *const event, nng_iceoryx_puber **npp)
 {
