@@ -97,15 +97,19 @@ suber_recv_cb(iox_sub_t subscriber)
 	}
 	nng_msg_set_payload_ptr(msg, icem);
 
+	nni_mtx_lock(&suber->mtx);
 	nng_aio *recv_aio = NULL;
 	if ((recv_aio = nni_list_first(&suber->recvaioq)) != NULL) {
 		nni_aio_set_msg(recv_aio, msg);
 		nni_aio_finish(recv_aio, 0, nni_msg_len(msg));
 		nni_aio_list_remove(recv_aio);
+		nni_mtx_unlock(&suber->mtx);
 		return;
 	}
 
 	rv = nni_lmq_put(suber->recvmq, (nng_msg *)msg);
+	nni_mtx_unlock(&suber->mtx);
+
 	if (rv == NNG_EAGAIN) {
 		log_error("Failed to put msg for suber%d due to full, drop", subscriber);
 		return;
@@ -205,6 +209,12 @@ nano_iceoryx_puber_free(nano_iceoryx_puber *puber)
 {
 	iox_pub_deinit(puber->puber);
 	nng_free(puber, sizeof(*puber));
+}
+
+void
+nano_iceoryx_msg_free(void *msg, nano_iceoryx_suber *suber)
+{
+	iox_sub_release_chunk(suber->suber, msg);
 }
 
 int

@@ -44,6 +44,7 @@ extern int nano_iceoryx_msg_alloc_raw(
     void **msgp, size_t sz, nano_iceoryx_puber *puber);
 extern int nano_iceoryx_msg_alloc(
     nng_msg *msg, nano_iceoryx_puber *puber, uint32_t id);
+extern void nano_iceoryx_msg_free(void *msg, nano_iceoryx_suber *suber);
 
 extern void nano_iceoryx_write(nano_iceoryx_puber *puber, nng_aio *aio);
 extern void nano_iceoryx_read(nano_iceoryx_suber *suber, nng_aio *aio);

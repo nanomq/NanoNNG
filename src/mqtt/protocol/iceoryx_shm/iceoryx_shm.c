@@ -7,6 +7,8 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
+#include <string.h>
+
 #include "core/nng_impl.h"
 
 #include "supplemental/iceoryx/iceoryx_api.h"
@@ -243,14 +245,14 @@ iceoryx_recv(nni_aio *aio, iceoryx_ctx_t *ctx)
 static inline void
 iceoryx_send(nni_aio *aio, iceoryx_ctx_t *ctx)
 {
-	iceoryx_sock_t *s = ctx->iceoryx_sock;
 
 	nng_iceoryx_puber  *np = nni_aio_get_prov_data(aio);
 	nano_iceoryx_puber *puber = np->puber;
 	nni_aio_set_prov_data(aio, NULL); // reset
 
 	nng_msg *msg = nng_aio_get_msg(aio);
-	nano_iceoryx_msg_alloc(msg, puber, s->id++);
+	//iceoryx_sock_t *s = ctx->iceoryx_sock;
+	//nano_iceoryx_msg_alloc(msg, puber, s->id++);
 	nano_iceoryx_write(puber, aio);
 
 	nni_msg_free(msg);
@@ -528,7 +530,7 @@ nng_msg_iceoryx_alloc(nng_msg **msgp, nng_iceoryx_puber *puber, size_t sz)
 		return rv;
 	}
 	void *icem;
-	if (0 != (rv = nano_iceoryx_msg_alloc_raw(&icem, sz, puber))) {
+	if (0 != (rv = nano_iceoryx_msg_alloc_raw(&icem, sz, puber->puber))) {
 		log_error("Failed to alloc iceoryx msg %d", rv);
 		return NNG_ENOMEM;
 	}
@@ -543,6 +545,7 @@ nng_msg_iceoryx_free(nng_msg *msg, nng_iceoryx_suber *suber)
 	if (!icem)
 		return NNG_EINVAL;
 	nano_iceoryx_msg_free(icem, suber->suber);
+	nng_msg_free(msg);
 	return 0;
 }
 
