@@ -484,6 +484,7 @@ tlstran_pipe_qos_send_cb(void *arg)
 		type = nni_msg_cmd_type(msg);
 	else {
 		log_warn("NULL msg detected in send_cb");
+		p->busy = false;
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
