@@ -141,13 +141,13 @@ iceoryx_sock_close(void *arg)
 
 	while (!nni_lmq_empty(&s->subers)) {
 		if (0 == nni_lmq_get(&s->subers, (nng_msg **)&suber)) {
-			if (!suber)
+			if (suber)
 				nano_iceoryx_suber_free(suber);
 		}
 	}
 	while (!nni_lmq_empty(&s->pubers)) {
 		if (0 == nni_lmq_get(&s->pubers, (nng_msg **)&puber)) {
-			if (!puber)
+			if (puber)
 				nano_iceoryx_puber_free(puber);
 		}
 	}
