@@ -205,7 +205,9 @@ done:
 			        nni_msg_len(p->tmp_msg)) != 0) {
 				p->closed = true;
 				p->err_code = PROTOCOL_ERROR;
+				goto recv_error;
 			}
+			log_trace("MQTT Clientid is %s", p->ws_param->clientid.body);
 			if (p->ws_param->pro_ver == 5) {
 				p->qsend_quota = p->ws_param->rx_max;
 			}
