@@ -444,11 +444,11 @@ wstran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 static inline void
 wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 {
-	nni_msg *smsg;
+	nni_msg  *smsg = NULL;
 	int       niov;
 	nni_iov   iov[8];
 	nni_pipe *pipe = p->npipe;
-	uint8_t   qos;
+	uint8_t   qos = 0;
 
 
 	if (nni_msg_get_type(msg) != CMD_PUBLISH)
@@ -628,7 +628,7 @@ send:
 static inline void
 wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 {
-	nni_msg *smsg;
+	nni_msg  *smsg = NULL;
 	int       niov;
 	nni_iov   iov[8];
 	nni_pipe *pipe = p->npipe;
