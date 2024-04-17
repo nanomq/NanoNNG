@@ -495,6 +495,7 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 	else {
 		log_warn("NULL msg detected in send_cb");
 		nni_mtx_unlock(&p->mtx);
+		tcptran_pipe_close(p);
 		return;
 	}
 
@@ -620,15 +621,15 @@ nmq_tcptran_pipe_send_cb(void *arg)
 static void
 tcptran_pipe_recv_cb(void *arg)
 {
-	nni_aio      *aio;
+	nni_aio      *aio = NULL;
 	nni_iov       iov[2];
-	uint8_t       type, rv;
-	uint8_t       pos = 0;
-	uint32_t      len = 0;
-	nni_msg      *msg   = NULL, *qmsg;
+	uint8_t       type = 0, rv = 0;
+	uint8_t       pos   = 0;
+	uint32_t      len   = 0;
+	nni_msg      *msg   = NULL, *qmsg = NULL;
 	tcptran_pipe *p     = arg;
 	nni_aio      *rxaio = p->rxaio;
-	bool          ack = false;
+	bool          ack   = false;
 
 	log_trace("tcptran_pipe_recv_cb %p\n", p);
 	nni_mtx_lock(&p->mtx);
