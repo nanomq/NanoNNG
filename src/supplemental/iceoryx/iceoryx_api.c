@@ -177,6 +177,7 @@ nano_iceoryx_suber_free(nano_iceoryx_suber *suber)
 		nni_aio_list_remove(recv_aio);
 	}
 	nni_mtx_unlock(&suber->mtx);
+	nni_mtx_fini(&suber->mtx);
 	nni_lmq_fini(suber->recvmq);
 	nng_free(suber->recvmq, sizeof(*suber->recvmq));
 	nng_free(suber, sizeof(*suber));
