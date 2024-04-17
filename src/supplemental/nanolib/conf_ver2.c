@@ -605,6 +605,7 @@ conf_webhook_parse_ver2(conf *config, cJSON *jso)
 
 		hocon_read_enum_base(webhook, encode_payload, "body.encoding",
 		    jso_webhook, webhook_encoding);
+		hocon_read_num_base(webhook, pool_size, "pool_size", jso_webhook);
 
 		cJSON    *jso_webhook_tls = hocon_get_obj("ssl", jso_webhook);
 		conf_tls *webhook_tls     = &(webhook->tls);
