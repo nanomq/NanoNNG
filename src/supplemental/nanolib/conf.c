@@ -1141,7 +1141,7 @@ print_webhook_conf(conf_web_hook *webhook)
 		const char *encode_type =
 		    get_webhook_type(webhook->encode_payload);
 		log_info("webhook encoding:  %s", encode_type);
-		log_info("webhook poll size: %d", webhook->pool_size);
+		log_info("webhook pool size: %d", webhook->pool_size);
 		log_info("webhook rule:");
 		for (size_t i = 0; i < webhook->rule_count; i++) {
 			conf_web_hook_rule *rule = webhook->rules[i];
