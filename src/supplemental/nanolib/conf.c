@@ -889,7 +889,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->parallel         = ncpu * 2;
 
 	nanomq_conf->property_size = sizeof(uint8_t) * 32;
-	nanomq_conf->msq_len       = 2048;
+	nanomq_conf->msq_len       = 20480;
 	nanomq_conf->qos_duration  = 10;
 	nanomq_conf->backoff       = 1.5;
 	nanomq_conf->max_inflight_window = 2048;
