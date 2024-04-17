@@ -245,17 +245,6 @@ nni_task_fini(nni_task *task)
 	nni_mtx_fini(&task->task_mtx);
 }
 
-void
-nni_taskq_setter(int num_taskq_threads, int max_taskq_threads)
-{
-	if (num_taskq_threads)
-		var_num_taskq_threads = num_taskq_threads;
-	if (max_taskq_threads)
-		var_max_taskq_threads = max_taskq_threads;
-	log_debug("command line given: tq [%d], max_tq [%d]",
-	    var_num_taskq_threads, var_max_taskq_threads);
-}
-
 int
 nni_taskq_sys_init(void)
 {
