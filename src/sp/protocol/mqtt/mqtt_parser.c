@@ -588,7 +588,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 		// check length
 		log_trace("Decoding MQTT V5 Properties");
-		if (pos + 4 >= max)
+		if (pos + 3 > max)
 			return PROTOCOL_ERROR;
 		cparam->prop_len = (uint32_t) get_var_integer(packet + pos,
 													  &len_of_var);
@@ -612,6 +612,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	cparam->clientid.body =
 	    (char *) copyn_utf8_str(packet, &pos, &len_of_str, max - pos);
 	cparam->clientid.len = len_of_str;
+	log_trace("id is %s", cparam->clientid.body);
 
 	if (len_of_str == 0) {
 		char clientid_r[20] = {0};
