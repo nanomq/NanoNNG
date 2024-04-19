@@ -541,6 +541,12 @@ typedef enum {
 	sqlite,
 } persistence_type;
 
+typedef struct conf_filetransfer {
+	bool enable;
+	char *url;
+	char *topic;
+} conf_filetransfer;
+
 struct conf {
 	char      *conf_file;
 	char      *url;
@@ -564,6 +570,7 @@ struct conf {
 	bool       ipc_internal;
 	bool       bridge_mode;
 
+	conf_filetransfer    filetransfer;
 	conf_sqlite          sqlite;
 	conf_tls             tls;
 	conf_http_server     http_server;
