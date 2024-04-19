@@ -925,10 +925,20 @@ conf_init(conf *nanomq_conf)
 
 	/* Enable filetransfer by default */
 	nanomq_conf->filetransfer.enable = true;
-	nanomq_conf->filetransfer.url = malloc(strlen("mqtt-tcp://127.0.0.1:1883") + 1);
-	strcpy(nanomq_conf->filetransfer.url, "mqtt-tcp://127.0.0.1:1883");
-	nanomq_conf->filetransfer.topic = malloc(strlen("file_transfer") + 1);
-	strcpy(nanomq_conf->filetransfer.topic, "file_transfer");
+
+	nanomq_conf->filetransfer.url = nng_alloc(strlen("mqtt-tcp://127.0.0.1:1883") + 1);;
+	if (nanomq_conf->filetransfer.url == NULL) {
+		log_error("Failed to allocate memory for filetransfer url");
+	} else {
+		strcpy(nanomq_conf->filetransfer.url, "mqtt-tcp://127.0.0.1:1883");
+	}
+
+	nanomq_conf->filetransfer.topic = nng_alloc(strlen("file_transfer") + 1);
+	if (nanomq_conf->filetransfer.topic == NULL) {
+		log_error("Failed to allocate memory for filetransfer topic");
+	} else {
+		strcpy(nanomq_conf->filetransfer.topic, "file_transfer");
+	}
 
 	conf_bridge_init(&nanomq_conf->bridge);
 	conf_bridge_init(&nanomq_conf->aws_bridge);
@@ -3574,6 +3584,20 @@ conf_web_hook_destroy(conf_web_hook *web_hook)
 	conf_tls_destroy(&web_hook->tls);
 }
 
+static void
+conf_filetransfer_destroy(conf_filetransfer *file_transfer)
+{
+	if (file_transfer->url != NULL) {
+		free(file_transfer->url);
+		file_transfer->url = NULL;
+	}
+	if (file_transfer->topic != NULL) {
+		free(file_transfer->topic);
+		file_transfer->topic = NULL;
+	}
+	return;
+}
+
 int
 get_size(const char *str, uint64_t *size)
 {
@@ -3971,6 +3995,7 @@ conf_fini(conf *nanomq_conf)
 	conf_bridge_destroy(&nanomq_conf->bridge);
 	conf_bridge_destroy(&nanomq_conf->aws_bridge);
 	conf_web_hook_destroy(&nanomq_conf->web_hook);
+	conf_filetransfer_destroy(&nanomq_conf->filetransfer);
 	conf_auth_http_destroy(&nanomq_conf->auth_http);
 	conf_auth_destroy(&nanomq_conf->auths);
 #if defined(ENABLE_LOG)
