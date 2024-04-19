@@ -923,6 +923,13 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->websocket.url     = NULL;
 	nanomq_conf->websocket.tls_url = NULL;
 
+	/* Enable filetransfer by default */
+	nanomq_conf->filetransfer.enable = true;
+	nanomq_conf->filetransfer.url = malloc(strlen("mqtt-tcp://127.0.0.1:1883") + 1);
+	strcpy(nanomq_conf->filetransfer.url, "mqtt-tcp://127.0.0.1:1883");
+	nanomq_conf->filetransfer.topic = malloc(strlen("file_transfer") + 1);
+	strcpy(nanomq_conf->filetransfer.topic, "file_transfer");
+
 	conf_bridge_init(&nanomq_conf->bridge);
 	conf_bridge_init(&nanomq_conf->aws_bridge);
 
@@ -1158,6 +1165,14 @@ print_webhook_conf(conf_web_hook *webhook)
 }
 
 static void
+print_filetransfer_conf(conf_filetransfer *filetransfer)
+{
+	log_info("filetransfer enable: %s", filetransfer->enable ? "true" : "false");
+	log_info("filetransfer url: %s", filetransfer->url);
+	log_info("filetransfer topic: %s", filetransfer->topic);
+}
+
+static void
 print_exchange_conf(conf_exchange *exchange)
 {
 	for (int i=0; i < (int) exchange->count; ++i) {
@@ -1380,9 +1395,11 @@ print_conf(conf *nanomq_conf)
 	conf_parquet   *parquet   = &(nanomq_conf->parquet);
 	conf_blf       *blf       = &(nanomq_conf->blf);
 	conf_exchange  *exchange  = &(nanomq_conf->exchange);
+	conf_filetransfer *filetransfer = &(nanomq_conf->filetransfer);
 	print_auth_conf(auth);
 	print_auth_http_conf(auth_http);
 	print_webhook_conf(webhook);
+	print_filetransfer_conf(filetransfer);
 	print_exchange_conf(exchange);
 	print_parquet_conf(parquet);
 	print_blf_conf(blf);

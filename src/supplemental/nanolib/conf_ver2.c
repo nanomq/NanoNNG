@@ -381,6 +381,21 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 			}
 		}
 	}
+	cJSON *jso_filetransfer = cJSON_GetObjectItem(jso, "filetransfer");
+	if (jso_filetransfer) {
+		conf_filetransfer *filetransfer = &(config->filetransfer);
+
+		hocon_read_bool(filetransfer, enable, jso_filetransfer);
+		char *url = cJSON_GetStringValue(hocon_get_obj("bind", jso_filetransfer));
+		if (url != NULL) {
+			hocon_read_address_base(
+				filetransfer, url, "bind", "mqtt-tcp://", jso_filetransfer);
+		}
+		char *topic = cJSON_GetStringValue(hocon_get_obj("topic", jso_filetransfer));
+		if (topic != NULL) {
+			hocon_read_str(filetransfer, topic, jso_filetransfer);
+		}
+	}
 
 	conf_http_server_parse_ver2(&(config->http_server), jso);
 
