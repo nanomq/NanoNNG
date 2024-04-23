@@ -221,7 +221,7 @@ tlstran_pipe_fini(void *arg)
 	if (p->rxmsg != NULL)
 		nni_msg_free(p->rxmsg);
 	nni_lmq_fini(&p->rslmq);
-	// nni_mtx_fini(&p->mtx);
+	nni_mtx_fini(&p->mtx);
 	NNI_FREE_STRUCT(p);
 	log_trace(" ************ tlstran_pipe_finit [%p] ************ ", p);
 }
