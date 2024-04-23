@@ -82,6 +82,9 @@ struct mqtt_pipe_s {
 	bool       busy;
 	uint8_t    pingcnt;
 	nni_msg   *pingmsg;
+#ifdef NNG_HAVE_MQTT_BROKER
+	conn_param *cparam;
+#endif
 };
 
 // A mqtt_sock_s is our per-socket protocol private structure.
@@ -100,10 +103,6 @@ struct mqtt_sock_s {
 	property       *dis_prop;        // disconnect property
 
 	nni_mqtt_sqlite_option *sqlite_opt;
-
-#ifdef NNG_HAVE_MQTT_BROKER
-	conn_param *cparam;
-#endif
 };
 
 /******************************************************************************
@@ -124,9 +123,6 @@ mqtt_sock_init(void *arg, nni_sock *sock)
 	s->retry     = NNI_SECOND * 5;
 	s->keepalive = NNI_SECOND * 10; // default mqtt keepalive
 	s->timeleft  = NNI_SECOND * 10;
-#ifdef NNG_HAVE_MQTT_BROKER
-	s->cparam = NULL;
-#endif
 
 	nni_mtx_init(&s->mtx);
 	mqtt_ctx_init(&s->master, s);
@@ -331,6 +327,10 @@ mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	nni_lmq_init(&p->recv_messages, 102400);
 	nni_lmq_init(&p->send_messages, 102400);
 
+#ifdef NNG_HAVE_MQTT_BROKER
+	p->cparam = NULL;
+#endif
+
 	return (0);
 }
 
@@ -507,7 +507,6 @@ mqtt_pipe_close(void *arg)
 {
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
-	nni_aio     *user_aio;
 
 	nni_mtx_lock(&s->mtx);
 	s->mqtt_pipe = NULL;
@@ -529,18 +528,20 @@ mqtt_pipe_close(void *arg)
 	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
 
 #ifdef NNG_HAVE_MQTT_BROKER
-	if (s->cparam == NULL) {
+	nni_aio     *user_aio;
+
+	if (p->cparam == NULL) {
 		nni_mtx_unlock(&s->mtx);
 		return 0;
 	}
 	// Return disconnect event to broker
 	uint16_t count = 0;
 	mqtt_ctx_t *ctx;
-	nni_msg *tmsg = nano_msg_notify_disconnect(s->cparam, SERVER_SHUTTING_DOWN);
+	nni_msg *tmsg = nano_msg_notify_disconnect(p->cparam, SERVER_SHUTTING_DOWN);
 	nni_msg_set_cmd_type(tmsg, CMD_DISCONNECT_EV);
 	// clone once for DISCONNECT_EV state
-	conn_param_clone(s->cparam);
-	nni_msg_set_conn_param(tmsg, s->cparam);
+	conn_param_clone(p->cparam);
+	nni_msg_set_conn_param(tmsg, p->cparam);
 	// return error to all receving aio
 	// emulate disconnect notify msg as a normal publish
 	while ((ctx = nni_list_first(&s->recv_queue)) != NULL) {
@@ -558,13 +559,13 @@ mqtt_pipe_close(void *arg)
 	if (count == 0) {
 		log_info("disconnect msg of bridging is lost due to no ctx on receving");
 		nni_msg_free(tmsg);
-		conn_param_free(s->cparam);
+		conn_param_free(p->cparam);
 	}
 	// particular for NanoSDK in bridging
 	nni_lmq_flush_cp(&p->recv_messages, true);
+
 #endif
 	nni_mtx_unlock(&s->mtx);
-
 	return 0;
 }
 
@@ -802,10 +803,10 @@ mqtt_recv_cb(void *arg)
 	// return CONNACK to APP when working with broker
 #ifdef NNG_HAVE_MQTT_BROKER
 		nng_msg_set_cmd_type(msg, CMD_CONNACK);
-		s->cparam = nni_msg_get_conn_param(msg);
+		p->cparam = nni_msg_get_conn_param(msg);
 		// add connack msg to app layer only for notify in broker
 		// bridge
-		if (s->cparam != NULL) {
+		if (p->cparam != NULL) {
 			// Get IPv4 ADDR of client
 			nng_sockaddr addr;
 			uint8_t     *arr;
@@ -813,7 +814,7 @@ mqtt_recv_cb(void *arg)
 			nng_pipe.id = nni_pipe_id(p->pipe);
 
 			// Set keepalive
-			s->keepalive = conn_param_get_keepalive(s->cparam) * 1000;
+			s->keepalive = conn_param_get_keepalive(p->cparam) * 1000;
 			s->timeleft  = s->keepalive;
 
 			rv = nng_pipe_get_addr(
@@ -823,11 +824,11 @@ mqtt_recv_cb(void *arg)
 			if (arr == NULL) {
 				log_warn("Fail to get IP addr from client pipe!");
 			} else {
-				sprintf(s->cparam->ip_addr_v4,
+				sprintf(p->cparam->ip_addr_v4,
 				    "%d.%d.%d.%d", arr[0], arr[1], arr[2],
 				    arr[3]);
 				log_debug("client connected! addr [%s] port [%p]\n",
-				    s->cparam->ip_addr_v4, addr.s_in.sa_port);
+				    p->cparam->ip_addr_v4, addr.s_in.sa_port);
 			}
 
 			nni_mqtt_msg_set_packet_type(msg, NNG_MQTT_CONNACK);
@@ -835,13 +836,13 @@ mqtt_recv_cb(void *arg)
 				nni_plat_printf("Error in encoding CONNACK.\n");
 			}
 			// only clone CP when pass msg to APP
-			conn_param_clone(s->cparam);
+			conn_param_clone(p->cparam);
 			if ((ctx = nni_list_first(&s->recv_queue)) == NULL) {
 				// No one waiting to receive yet, putting msg
 				// into lmq
 				if (0 != nni_lmq_put(&p->recv_messages, msg)) {
 					nni_msg_free(msg);
-					conn_param_free(s->cparam);
+					conn_param_free(p->cparam);
 				}
 				nni_mtx_unlock(&s->mtx);
 				log_warn("Warning: no ctx found!! create more "
@@ -910,7 +911,7 @@ mqtt_recv_cb(void *arg)
 			if (0 != nni_lmq_put(&p->recv_messages, cached_msg)) {
 				nni_msg_free(cached_msg);
 #ifdef NNG_HAVE_MQTT_BROKER
-				conn_param_free(s->cparam);
+				conn_param_free(p->cparam);
 #endif
 			}
 			nni_mtx_unlock(&s->mtx);
@@ -929,7 +930,7 @@ mqtt_recv_cb(void *arg)
 		// we have received a PUBLISH
 		qos = nni_mqtt_msg_get_publish_qos(msg);
 #ifdef NNG_HAVE_MQTT_BROKER
-		conn_param_clone(s->cparam);
+		conn_param_clone(p->cparam);
 #endif
 		nng_msg_set_cmd_type(msg, CMD_PUBLISH);
 		if (2 > qos) {
@@ -941,7 +942,7 @@ mqtt_recv_cb(void *arg)
 				if (0 != nni_lmq_put(&p->recv_messages, msg)) {
 					nni_msg_free(msg);
 #ifdef NNG_HAVE_MQTT_BROKER
-					conn_param_free(s->cparam);
+					conn_param_free(p->cparam);
 #endif
 				}
 				nni_mtx_unlock(&s->mtx);
@@ -968,7 +969,7 @@ mqtt_recv_cb(void *arg)
 				    "packet id %d duplicates in", packet_id);
 				nni_msg_free(cached_msg);
 #ifdef NNG_HAVE_MQTT_BROKER
-				conn_param_free(s->cparam);
+				conn_param_free(p->cparam);
 #endif
 				// nni_id_remove(&pipe->nano_qos_db,
 				// pid);
