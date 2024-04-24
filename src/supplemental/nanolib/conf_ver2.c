@@ -386,15 +386,8 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 		conf_filetransfer *filetransfer = &(config->filetransfer);
 
 		hocon_read_bool(filetransfer, enable, jso_filetransfer);
-		char *url = cJSON_GetStringValue(hocon_get_obj("bind", jso_filetransfer));
-		if (url != NULL) {
-			hocon_read_address_base(
-				filetransfer, url, "bind", "mqtt-tcp://", jso_filetransfer);
-		}
-		char *topic = cJSON_GetStringValue(hocon_get_obj("topic", jso_filetransfer));
-		if (topic != NULL) {
-			hocon_read_str(filetransfer, topic, jso_filetransfer);
-		}
+		hocon_read_str_base(filetransfer, url, "bind", jso_filetransfer);
+		hocon_read_str(filetransfer, topic, jso_filetransfer);
 	}
 
 	conf_http_server_parse_ver2(&(config->http_server), jso);
