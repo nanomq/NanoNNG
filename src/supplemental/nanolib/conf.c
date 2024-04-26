@@ -3285,8 +3285,8 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		    node->name, node->clean_start);
 		log_info("%sbridge.mqtt.%s.username:                   %s", prefix,
 		    node->name, node->username);
-		log_info("%sbridge.mqtt.%s.password:                   %s", prefix,
-		    node->name, node->password);
+		log_info("%sbridge.mqtt.%s.password:                   ******",
+		    prefix, node->name);
 		log_info("%sbridge.mqtt.%s.keepalive:                  %d", prefix,
 		    node->name, node->keepalive);
 		log_info("%sbridge.mqtt.%s.backoff_max:                %d", prefix,
