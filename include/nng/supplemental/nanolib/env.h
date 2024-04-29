@@ -52,6 +52,9 @@
 
 #define NANOMQ_CONF_PATH "NANOMQ_CONF_PATH"
 
+#define NANOMQ_VIN "NANOMQ_VIN"
+
 NNG_DECL void read_env_conf(conf *config);
+NNG_DECL char *read_env_vin();
 
 #endif
