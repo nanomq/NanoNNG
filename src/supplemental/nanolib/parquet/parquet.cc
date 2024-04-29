@@ -253,19 +253,6 @@ parquet_write_batch_tmp_async(parquet_object *elem)
 	return 0;
 }
 
-bool
-need_new_one(const char *file_name, size_t file_max)
-{
-	struct stat st;
-	if (stat(file_name, &st) != 0) {
-		log_error("Failed to open the file.");
-		return false;
-	}
-	// printf("File size: %d\n", st.st_size + PARQUET_END);
-	// printf("File max: %d\n", file_max);
-	return st.st_size >= (__off_t) (file_max - PARQUET_END);
-}
-
 shared_ptr<parquet::FileEncryptionProperties>
 parquet_set_encryption(conf_parquet *conf)
 {
