@@ -872,6 +872,7 @@ conf_http_server_destroy(conf_http_server *http)
 void
 conf_init(conf *nanomq_conf)
 {
+	nanomq_conf->vin       = NULL;
 	nanomq_conf->url       = NULL;
 	nanomq_conf->conf_file = NULL;
 
