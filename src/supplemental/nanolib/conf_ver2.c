@@ -9,6 +9,7 @@
 #include "nng/supplemental/nanolib/hocon.h"
 #include "nng/supplemental/nanolib/log.h"
 #include "nng/exchange/exchange.h"
+#include "nng/supplemental/nanolib/env.h"
 #include "nanolib.h"
 #include <ctype.h>
 #include <string.h>
@@ -848,7 +849,7 @@ static char *split_vin(char *str)
 	return after;
 }
 
-static char *concat_str(char *b, char *m, char *a)
+static char *concat_str(char *b, const char *m, char *a)
 {
 	size_t new_len = strlen(b) + strlen(m) + strlen(a) + 1;
 	char *new      = nng_alloc(new_len);
@@ -856,7 +857,7 @@ static char *concat_str(char *b, char *m, char *a)
 	return new;
 }
 
-static char *check_and_replace_vin(char *origin, char *replace)
+static char *check_and_replace_vin(char *origin, const char *replace)
 {
 	char *new = origin;
 	char *vin_before = origin;
@@ -871,7 +872,7 @@ static char *check_and_replace_vin(char *origin, char *replace)
 }
 
 static void
-update_clientid_vin(conf_bridge_node *node, char *vin)
+update_clientid_vin(conf_bridge_node *node, const char *vin)
 {
 	if (node->clientid) {
 		size_t cid_len  = strlen(vin) + strlen(node->clientid) + 1;
@@ -886,7 +887,7 @@ update_clientid_vin(conf_bridge_node *node, char *vin)
 }
 
 static void
-update_forward_vin(conf_bridge_node *node, char *vin)
+update_forward_vin(conf_bridge_node *node, const char *vin)
 {
 	if (node->forwards_list) {
 		for (size_t i = 0; i < node->forwards_count; i++) {
@@ -901,7 +902,7 @@ update_forward_vin(conf_bridge_node *node, char *vin)
 }
 
 static void
-update_subscription_vin(conf_bridge_node *node, char *vin)
+update_subscription_vin(conf_bridge_node *node, const char *vin)
 {
 	if (node->sub_list) {
 		for (size_t i = 0; i < node->sub_count; i++) {
@@ -916,23 +917,10 @@ update_subscription_vin(conf_bridge_node *node, char *vin)
 static void
 update_parquet_vin(conf_parquet *parquet)
 {
-	if (parquet->file_name_prefix && 0 == nng_strcasecmp(parquet->file_name_prefix, "${VIN}"))
-	{
-		FILE *fp = popen("getprop |grep vin", "r");
-		// FILE *fp = popen("echo \"[persist.vehicled.vin]: [DV_PV_TASK_ENABLE]\" | grep vin", "r");
-		char  line[100];
-		fgets(line, sizeof(line), fp);
-		char *p = strchr(line, ':');
-		if (p != NULL) {
-			char *p_b = strchr(p, '[') + 1;
-			p = strchr(p, ']');
-			*p = '\0';
-			log_debug("vin: %s", p_b);
-			nng_strfree(parquet->file_name_prefix);
-			parquet->file_name_prefix = strdup(p_b);
-		}
-		pclose(fp);
-
+	if (parquet->file_name_prefix &&
+	    0 == nng_strcasecmp(parquet->file_name_prefix, "${VIN}")) {
+		nng_strfree(parquet->file_name_prefix);
+		parquet->file_name_prefix = strdup(gvin);
 	}
 }
 
@@ -943,34 +931,22 @@ update_parquet_vin(conf_parquet *parquet)
 static void
 update_bridge_node_vin(conf_bridge_node *node, int type)
 {
-	// FILE *fp = popen("echo \"[persist.vehicled.vin]: [DV_PV_TASK_ENABLE]\" | grep vin", "r");
-	FILE *fp = popen("getprop |grep vin", "r");
-	char  line[100];
-	fgets(line, sizeof(line), fp);
-	char *p = strchr(line, ':');
-	if (p != NULL) {
-		char *p_b = strchr(p, '[') + 1;
-		p = strchr(p, ']');
-		*p = '\0';
-		log_debug("vin: %s", p_b);
-		gvin = nng_strdup(p_b);
+	if (gvin != NULL) {
 
 		switch (type)
 		{
 		case CONF_NODE_CLIENTID:
-			update_clientid_vin(node, p_b);
+			update_clientid_vin(node, gvin);
 			break;
 		case CONF_NODE_SUBSCRIPTION:
-			update_subscription_vin(node, p_b);
+			update_subscription_vin(node, gvin);
 			break;
 		case CONF_NODE_FORWARD:
-			update_forward_vin(node, p_b);
+			update_forward_vin(node, gvin);
 		default:
 			break;
 		}
 	}
-
-	pclose(fp);
 }
 
 const char* conf_get_vin(void)
@@ -1002,56 +978,7 @@ conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 	cJSON *   jso_tls         = hocon_get_obj("ssl", jso_connector);
 	conf_tls *bridge_node_tls = &(node->tls);
 
-	// Do a fool wait......
 	conf_tls_parse_ver2_base(bridge_node_tls, jso_tls);
-	while (1) {
-		if (bridge_node_tls->ca != NULL &&
-		    bridge_node_tls->cert != NULL &&
-		    bridge_node_tls->key != NULL) {
-			break;
-		}
-		if (bridge_node_tls->ca != NULL &&
-		    bridge_node_tls->cert == NULL &&
-		    bridge_node_tls->key == NULL) {
-			break;
-		}
-		log_warn("Wait for bridge tls ca/cert/key %d%d%d",
-			(bridge_node_tls->ca != NULL),
-			(bridge_node_tls->cert != NULL),
-			(bridge_node_tls->key != NULL));
-
-		if (bridge_node_tls->keyfile) {
-			nng_free(bridge_node_tls->keyfile, 0);
-			bridge_node_tls->keyfile = NULL;
-		}
-		if (bridge_node_tls->certfile) {
-			nng_free(bridge_node_tls->certfile, 0);
-			bridge_node_tls->certfile = NULL;
-		}
-		if (bridge_node_tls->cafile) {
-			nng_free(bridge_node_tls->cafile, 0);
-			bridge_node_tls->cafile = NULL;
-		}
-		if (bridge_node_tls->key_password) {
-			nng_free(bridge_node_tls->key_password, 0);
-			bridge_node_tls->key_password = NULL;
-		}
-		if (bridge_node_tls->ca) {
-			nng_free(bridge_node_tls->ca, 0);
-			bridge_node_tls->ca = NULL;
-		}
-		if (bridge_node_tls->cert) {
-			nng_free(bridge_node_tls->cert, 0);
-			bridge_node_tls->cert = NULL;
-		}
-		if (bridge_node_tls->key) {
-			nng_free(bridge_node_tls->key, 0);
-			bridge_node_tls->key = NULL;
-		}
-
-		nng_msleep(5000); // 5s
-		conf_tls_parse_ver2_base(bridge_node_tls, jso_tls);
-	}
 
 	cJSON    *jso_tcp         = hocon_get_obj("tcp", jso_connector);
 	conf_tcp *bridge_node_tcp = &(node->tcp);
@@ -1766,6 +1693,12 @@ conf_parse_ver2(conf *config)
 
 	cJSON *jso = hocon_parse_file(conf_path);
 	if (NULL != jso) {
+		config->vin = read_env_vin();
+		if (config->vin == NULL) {
+			// TODO: Replace with rpc maybe is better
+			hocon_read_str_base(config, vin, "nanomq_vin", jso);
+		}
+		gvin = config->vin;
 		conf_basic_parse_ver2(config, jso);
 		conf_set_threads(config);
 		conf_sqlite_parse_ver2(config, jso);

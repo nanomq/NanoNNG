@@ -542,6 +542,7 @@ typedef enum {
 } persistence_type;
 
 struct conf {
+	char      *vin;
 	char      *conf_file;
 	char      *url;
 	bool       enable;
