@@ -132,6 +132,15 @@ set_log_to(conf_log *log)
 }
 #endif
 
+char *
+read_env_vin()
+{
+	char *env_vin = NULL;
+	set_string_var(&env_vin, NANOMQ_VIN);
+	return env_vin;
+}
+
+
 void
 read_env_conf(conf *config)
 {
