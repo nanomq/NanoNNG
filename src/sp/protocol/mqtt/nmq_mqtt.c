@@ -453,7 +453,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		nni_mtx_unlock(&p->lk);
 		return;
 	}
-	log_info("pipe %d occupied! resending in cb!", pipe);
+	log_debug("pipe %d occupied! resending in cb!", pipe);
 	if (nni_lmq_full(&p->rlmq)) {
 		// Make space for the new message.
 		if (nni_lmq_cap(&p->rlmq) <= NANO_MAX_QOS_PACKET) {
