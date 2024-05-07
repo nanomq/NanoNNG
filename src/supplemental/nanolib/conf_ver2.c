@@ -9,7 +9,6 @@
 #include "nng/supplemental/nanolib/hocon.h"
 #include "nng/supplemental/nanolib/log.h"
 #include "nng/exchange/exchange.h"
-#include "nng/supplemental/nanolib/env.h"
 #include "nanolib.h"
 #include <ctype.h>
 #include <string.h>
@@ -1693,11 +1692,6 @@ conf_parse_ver2(conf *config)
 
 	cJSON *jso = hocon_parse_file(conf_path);
 	if (NULL != jso) {
-		config->vin = read_env_vin();
-		if (config->vin == NULL) {
-			// TODO: Replace with rpc maybe is better
-			hocon_read_str_base(config, vin, "nanomq_vin", jso);
-		}
 		gvin = config->vin;
 		conf_basic_parse_ver2(config, jso);
 		conf_set_threads(config);
