@@ -361,16 +361,17 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 			config->enable = false;
 		}
 
-		cJSON *jso_websocket = hocon_get_obj("listeners.ws", jso);
+		cJSON *jso_websocket      = hocon_get_obj("listeners.ws", jso);
+		conf_websocket *websocket = &(config->websocket);
 		if (NULL == jso_websocket) {
 			log_error("Read config nanomq ws failed!");
-			return;
-		}
+			websocket->enable = true;
 
-		conf_websocket *websocket = &(config->websocket);
-		hocon_read_address_base(
-		    websocket, url, "bind", "nmq-ws://", jso_websocket);
-		websocket->enable = true;
+		} else {
+			hocon_read_address_base(websocket, url, "bind",
+			    "nmq-ws://", jso_websocket);
+			websocket->enable = true;
+		}
 
 		conf_tls *tls = &(config->tls);
 		if (tls != NULL) {
