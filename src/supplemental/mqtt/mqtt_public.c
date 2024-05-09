@@ -983,7 +983,7 @@ nng_mqtt_subscribe(nng_socket sock, nng_mqtt_topic_qos *sbs, size_t count, prope
 
 	rv  = nng_aio_result(aio);
 	if (rv != 0)
-		nng_msg_free(submsg);
+		return (NNG_ECLOSED);	// connection shall be closed this time
 	msg = nng_aio_get_msg(aio);
 	if (msg) {
 		uint8_t *code = nng_mqtt_msg_get_suback_return_codes(msg, &count);
