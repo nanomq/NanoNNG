@@ -493,6 +493,7 @@ tlstran_pipe_qos_send_cb(void *arg)
 		                                        : p->qrecv_quota;
 	}
 	nni_msg_free(msg);
+	nni_aio_set_msg(qsaio, NULL);
 	if (nni_lmq_get(&p->rslmq, &msg) == 0) {
 		nni_iov iov;
 		nni_msg_insert(
@@ -505,7 +506,6 @@ tlstran_pipe_qos_send_cb(void *arg)
 		nng_stream_send(p->conn, p->qsaio);
 		p->busy = true;
 		nni_mtx_unlock(&p->mtx);
-		nni_aio_set_msg(qsaio, NULL);
 		return;
 	}
 
