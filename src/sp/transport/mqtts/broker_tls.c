@@ -494,6 +494,7 @@ tlstran_pipe_qos_send_cb(void *arg)
 	}
 	nni_msg_free(msg);
 	nni_aio_set_msg(qsaio, NULL);
+	// not very sure if this cause fragmented msg
 	if (nni_lmq_get(&p->rslmq, &msg) == 0) {
 		nni_iov iov;
 		nni_msg_insert(
@@ -950,7 +951,7 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	// qos default to 0 if the msg is not PUBLISH
 	uint8_t qos = 0;
 
-	if (nni_msg_header_len(msg) <= 0 ||
+	if (nni_msg_header_len(msg) == 0 ||
 	    nni_msg_get_type(msg) != CMD_PUBLISH) {
 		goto send;
 	}
@@ -1184,8 +1185,10 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	nni_iov   iov[8];
 	nni_msg  *tmsg;
 
-	if (nni_msg_get_type(msg) != CMD_PUBLISH)
+	if (nni_msg_header_len(msg) == 0 ||
+	    nni_msg_get_type(msg) != CMD_PUBLISH) {
 		goto send;
+	}
 	// never modify the original msg
 
 	uint8_t *     body, *header, qos_pac, prop_bytes = 0;
