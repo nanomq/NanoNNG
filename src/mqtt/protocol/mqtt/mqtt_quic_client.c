@@ -704,10 +704,10 @@ mqtt_quic_recv_cb(void *arg)
 	    nni_atomic_get_bool(&p->closed)) {
 		// pipe is already closed somewhere
 		// free msg and dont return data when pipe is closed.
-		msg = nni_aio_get_msg(&p->recv_aio);
-		if (msg) {
-			nni_msg_free(msg);
-		}
+		//msg = nni_aio_get_msg(&p->recv_aio);
+		//if (msg) {
+		//	nni_msg_free(msg);
+		//}
 		nni_mtx_unlock(&p->lk);
 		return;
 	}
