@@ -75,7 +75,12 @@ udp_dial_start_next(udp_dialer *d)
 	if (nni_list_empty(&d->conaios)) {
 		return;
 	}
-	nni_resolv_ip(d->host, d->port, d->af, false, &d->sa, d->resaio);
+	// We don't resolv domain...
+	// nni_resolv_ip(d->host, d->port, d->af, false, &d->sa, d->resaio);
+	if (nni_aio_begin(d->resaio) != 0) {
+		return;
+	}
+	nni_aio_finish(d->resaio, 0, 0);
 }
 
 static void
