@@ -289,6 +289,10 @@ nni_udp_dialer_alloc(nng_stream_dialer **dp, const nng_url *url)
 		return (rv);
 	}
 
+	if (((p = url->u_port) == NULL) || (strlen(p) == 0)) {
+		return (NNG_EADDRINVAL);
+	}
+
 	if ((strlen(p) == 0) || (strlen(url->u_hostname) == 0)) {
 		// Dialer needs both a destination hostname and port.
 		udp_dialer_free(d);
