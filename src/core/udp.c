@@ -33,15 +33,28 @@ typedef struct {
 } udp_dialer;
 
 static int
-nni_udp_conn_alloc(nni_udp_conn **connp, nni_plat_udp *u)
+nni_udp_conn_alloc(nni_udp_conn **cp, nni_plat_udp *u)
 {
 	nni_udp_conn *c;
-	c = NNI_ALLOC_STRUCT(c);
-	if (!c)
+	if ((c = NNI_ALLOC_STRUCT(c)) == NULL) {
 		return NNG_ENOMEM;
-	c->u = u;
+	}
 
-	*connp = c;
+	c->closed = false;
+	c->u      = u;
+
+	nni_mtx_init(&c->mtx);
+	nni_aio_list_init(&c->readq);
+	nni_aio_list_init(&c->writeq);
+
+	c->stream.s_free  = udp_free;
+	c->stream.s_close = udp_close;
+	c->stream.s_recv  = udp_recv;
+	c->stream.s_send  = udp_send;
+	c->stream.s_get   = udp_get;
+	c->stream.s_set   = udp_set;
+
+	*cp = c;
 	return 0;
 }
 
