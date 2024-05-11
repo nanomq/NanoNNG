@@ -68,6 +68,8 @@ nng_sources(
         taskq.h
         tcp.c
         tcp.h
+        udp.c
+        udp.h
         thread.c
         thread.h
         url.c
