@@ -33,6 +33,39 @@ typedef struct {
 } udp_dialer;
 
 static int
+udp_get(void *arg, const char *name, void *buf, size_t *szp, nni_type t)
+{
+	NNI_ARG_UNUSED(arg);
+	NNI_ARG_UNUSED(name);
+	NNI_ARG_UNUSED(buf);
+	NNI_ARG_UNUSED(szp);
+	NNI_ARG_UNUSED(t);
+	return 0;
+}
+
+static int
+udp_set(void *arg, const char *name, const void *buf, size_t sz, nni_type t)
+{
+	NNI_ARG_UNUSED(arg);
+	NNI_ARG_UNUSED(name);
+	NNI_ARG_UNUSED(buf);
+	NNI_ARG_UNUSED(sz);
+	NNI_ARG_UNUSED(t);
+	return 0;
+}
+
+static nni_reap_list udp_reap_list = {
+	.rl_offset = offsetof(nni_udp_conn, reap),
+	.rl_func   = udp_fini,
+};
+static void
+udp_free(void *arg)
+{
+	nni_udp_conn *c = arg;
+	nni_reap(&udp_reap_list, c);
+}
+
+static int
 nni_udp_conn_alloc(nni_udp_conn **cp, nni_plat_udp *u)
 {
 	nni_udp_conn *c;
@@ -56,12 +89,6 @@ nni_udp_conn_alloc(nni_udp_conn **cp, nni_plat_udp *u)
 
 	*cp = c;
 	return 0;
-}
-
-static void
-nni_udp_conn_free(nni_udp_conn *c)
-{
-	nni_free(c, sizeof(nni_udp_conn));
 }
 
 static void
