@@ -48,7 +48,7 @@ nni_udp_conn_alloc(nni_udp_conn **connp, nni_plat_udp *u)
 static void
 nni_udp_conn_free(nni_udp_conn *c)
 {
-	nni_free(c);
+	nni_free(c, sizeof(nni_udp_conn));
 }
 
 static void
@@ -109,7 +109,7 @@ udp_dial_res_cb(void *arg)
 		udp_dial_start_next(d);
 
 	} else {
-		if ((rv == nni_plat_udp_open(d->u, &d->sa)) != 0) {
+		if ((rv == nni_plat_udp_open(&d->u, &d->sa)) != 0) {
 			nni_aio_finish_error(d->conaio, rv);
 		} else {
 			nni_udp_conn *c;
@@ -187,7 +187,6 @@ udp_dialer_free(void *arg)
 
 	if (d->u != NULL) {
 		nni_plat_udp_close(d->u);
-		nng_free(d->u);
 	}
 	nni_mtx_fini(&d->mtx);
 	nni_strfree(d->host);
@@ -224,16 +223,24 @@ udp_dialer_dial(void *arg, nng_aio *aio)
 static int
 udp_dialer_get(void *arg, const char *name, void *buf, size_t *szp, nni_type t)
 {
-	udp_dialer *d = arg;
-	return (nni_udp_dialer_get(d->d, name, buf, szp, t));
+	NNI_ARG_UNUSED(arg);
+	NNI_ARG_UNUSED(name);
+	NNI_ARG_UNUSED(buf);
+	NNI_ARG_UNUSED(szp);
+	NNI_ARG_UNUSED(t);
+	return 0;
 }
 
 static int
 udp_dialer_set(
     void *arg, const char *name, const void *buf, size_t sz, nni_type t)
 {
-	udp_dialer *d = arg;
-	return (nni_udp_dialer_set(d->d, name, buf, sz, t));
+	NNI_ARG_UNUSED(arg);
+	NNI_ARG_UNUSED(name);
+	NNI_ARG_UNUSED(buf);
+	NNI_ARG_UNUSED(sz);
+	NNI_ARG_UNUSED(t);
+	return 0;
 }
 
 static int
@@ -250,11 +257,12 @@ udp_dialer_alloc(udp_dialer **dp)
 	nni_aio_list_init(&d->conaios);
 
 	if (((rv = nni_aio_alloc(&d->resaio, udp_dial_res_cb, d)) != 0) ||
-	    ((rv = nni_aio_alloc(&d->conaio, udp_dial_con_cb, d)) != 0) ||
-	    ((d->u = NNI_ALLOC_STRUCT(d->u)) == NULL)) {
+	    ((rv = nni_aio_alloc(&d->conaio, udp_dial_con_cb, d)) != 0)) {
 		udp_dialer_free(d);
 		return (rv);
 	}
+
+	d->u = NULL;
 
 	d->ops.sd_close = udp_dialer_close;
 	d->ops.sd_free  = udp_dialer_free;
