@@ -105,14 +105,21 @@ udp_dial_res_cb(void *arg)
 		nni_list_remove(&d->conaios, aio);
 		nni_aio_finish_error(aio, rv);
 
-		// try DNS again for next connection...
+		// try again for next connection...
 		udp_dial_start_next(d);
 
 	} else {
 		if ((rv == nni_plat_udp_open(d->u, &d->sa)) != 0) {
 			nni_aio_finish_error(d->conaio, rv);
 		} else {
-			nni_aio_finish();
+			nni_udp_conn *c;
+			rv = nni_udp_conn_alloc(&c, d->u);
+			if (rv != 0) {
+				nni_aio_finish_error(d->conaio, rv);
+			} else {
+				nni_aio_set_output(d->conaio, 0, c);
+				nni_aio_finish(d->conaio, 0, 0);
+			}
 		}
 	}
 
