@@ -18,6 +18,10 @@
 typedef struct nni_udp_conn nni_udp_conn;
 struct nni_udp_conn {
 	nng_stream      stream;
+	nni_list        readq;
+	nni_list        writeq;
+	bool            closed;
+	nni_mtx         mtx;
 	nni_plat_udp   *u;
 	nni_reap_node   reap;
 };
