@@ -7,6 +7,9 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
+// We still use the udp platform layer. And defined a udp dialer that
+// is compatible with the nng streams.
+
 #include <stdint.h>
 #include <string.h>
 
@@ -22,7 +25,7 @@ typedef struct {
 	int               af; // address family
 	bool              closed;
 	nng_sockaddr      sa;
-	nni_udp_dialer *  d;      // platform dialer implementation
+	nni_plat_udp *    u;
 	nni_aio *         resaio; // resolver aio
 	nni_aio *         conaio; // platform connection aio
 	nni_list          conaios;
@@ -82,7 +85,11 @@ udp_dial_res_cb(void *arg)
 		udp_dial_start_next(d);
 
 	} else {
-		nni_udp_dial(d->d, &d->sa, d->conaio);
+		if ((rv == nni_plat_udp_open(d->u, &d->sa)) != 0) {
+			nni_aio_finish_error(d->conaio, rv);
+		} else {
+			nni_aio_finish();
+		}
 	}
 
 	nni_mtx_unlock(&d->mtx);
@@ -129,7 +136,7 @@ udp_dialer_close(void *arg)
 		nni_list_remove(&d->conaios, aio);
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
-	nni_udp_dialer_close(d->d);
+	nni_plat_udp_close(d->u);
 	nni_mtx_unlock(&d->mtx);
 }
 
@@ -147,9 +154,9 @@ udp_dialer_free(void *arg)
 	nni_aio_free(d->resaio);
 	nni_aio_free(d->conaio);
 
-	if (d->d != NULL) {
-		nni_udp_dialer_close(d->d);
-		nni_udp_dialer_fini(d->d);
+	if (d->u != NULL) {
+		nni_plat_udp_close(d->u);
+		nng_free(d->u);
 	}
 	nni_mtx_fini(&d->mtx);
 	nni_strfree(d->host);
@@ -213,7 +220,7 @@ udp_dialer_alloc(udp_dialer **dp)
 
 	if (((rv = nni_aio_alloc(&d->resaio, udp_dial_res_cb, d)) != 0) ||
 	    ((rv = nni_aio_alloc(&d->conaio, udp_dial_con_cb, d)) != 0) ||
-	    ((rv = nni_udp_dialer_init(&d->d)) != 0)) {
+	    ((d->u = NNI_ALLOC_STRUCT(d->u)) == NULL)) {
 		udp_dialer_free(d);
 		return (rv);
 	}
@@ -241,10 +248,6 @@ nni_udp_dialer_alloc(nng_stream_dialer **dp, const nng_url *url)
 
 	if ((rv = udp_dialer_alloc(&d)) != 0) {
 		return (rv);
-	}
-
-	if (((p = url->u_port) == NULL) || (strlen(p) == 0)) {
-		p = nni_url_default_port(url->u_scheme);
 	}
 
 	if ((strlen(p) == 0) || (strlen(url->u_hostname) == 0)) {
