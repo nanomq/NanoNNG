@@ -15,6 +15,13 @@
 // These are interfaces we use for UDP internally.  These are not exposed
 // to the public API.
 
+typedef nni_udp_conn struct nni_udp_conn;
+struct nni_udp_conn {
+	nng_stream      stream;
+	nni_plat_udp   *u;
+	nni_reap_node   reap;
+};
+
 extern int nni_udp_dialer_alloc(nng_stream_dialer **, const nng_url *);
 // TODO extern int nni_udp_listener_alloc(nng_stream_listener **, const nng_url *);
 

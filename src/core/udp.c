@@ -32,6 +32,25 @@ typedef struct {
 	nni_mtx           mtx;
 } udp_dialer;
 
+static int
+nni_udp_conn_alloc(nni_udp_conn **connp, nni_plat_udp *u)
+{
+	nni_udp_conn *c;
+	c = NNI_ALLOC_STRUCT(c);
+	if (!c)
+		return NNG_ENOMEM;
+	c->u = u;
+
+	*connp = c;
+	return 0;
+}
+
+static void
+nni_udp_conn_free(nni_udp_conn *c)
+{
+	nni_free(c);
+}
+
 static void
 udp_dial_cancel(nni_aio *aio, void *arg, int rv)
 {
