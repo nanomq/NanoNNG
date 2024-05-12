@@ -9,11 +9,10 @@
 
 #include <nuts.h>
 
-static const char *udp_test_url  = "udp://13.49.223.253:14567";
-static const char *udp_test_url2 = "udp://127.0.0.1:8";
+static const char *udp_test_url = "udp://127.0.0.1:8877";
 
 void
-test_udp_conn_refused(void)
+test_udp_conn_open(void)
 {
 	nng_stream_dialer *dialer;
 	nng_aio *          aio;
@@ -21,18 +20,50 @@ test_udp_conn_refused(void)
 	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
 	nng_aio_set_timeout(aio, 5000); // 5 sec
 
-	// port 8 is generally not used for anything.
-	NUTS_PASS(nng_stream_dialer_alloc(&dialer, udp_test_url2));
+	NUTS_PASS(nng_stream_dialer_alloc(&dialer, udp_test_url));
 	nng_stream_dialer_dial(dialer, aio);
 	nng_aio_wait(aio);
-	NUTS_FAIL(nng_aio_result(aio), NNG_ECONNREFUSED);
+	NUTS_PASS(nng_aio_result(aio));
+
+	nng_aio_free(aio);
+	nng_stream_dialer_free(dialer);
+}
+
+void
+test_udp_conn_send(void)
+{
+	nng_stream_dialer *dialer;
+	nng_aio *          aio;
+	nng_stream *       s;
+	void *             t;
+	uint8_t *          buf;
+	size_t             size = 100;
+
+	// allocate messages
+	NUTS_ASSERT((buf = nng_alloc(size)) != NULL);
+	for (size_t i = 0; i < size; i++) {
+		buf[i] = rand() & 0xff;
+	}
+
+	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
+	nng_aio_set_timeout(aio, 5000); // 5 sec
+
+	NUTS_PASS(nng_stream_dialer_alloc(&dialer, udp_test_url));
+	nng_stream_dialer_dial(dialer, aio);
+	nng_aio_wait(aio);
+	NUTS_PASS(nng_aio_result(aio));
+
+	NUTS_TRUE((s = nng_aio_get_output(aio, 0)) != NULL);
+	t = nuts_stream_send_start(s, buf, size);
+	NUTS_PASS(nuts_stream_wait(t));
 
 	nng_aio_free(aio);
 	nng_stream_dialer_free(dialer);
 }
 
 TEST_LIST = {
-	{ "udp conn refused", test_udp_conn_refused },
+	{ "udp conn open", test_udp_conn_open },
+	{ "udp conn send", test_udp_conn_send },
 	{ NULL, NULL },
 };
 
