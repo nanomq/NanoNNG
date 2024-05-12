@@ -12,6 +12,7 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <arpa/inet.h>
 
 #include <nng/nng.h>
 
@@ -133,14 +134,44 @@ udp_dial_cancel(nni_aio *aio, void *arg, int rv)
 	nni_mtx_unlock(&d->mtx);
 }
 
+static uint32_t str2u32ip(char *str)
+{
+	uint32_t res;
+	if (inet_pton(AF_INET, str, &res) == 1)
+		return res;
+	return 0;
+}
+
+static uint16_t str2port(char *str)
+{
+	long   port;
+	char * end;
+	port = strtol(str, &end, 10);
+	if (*end == '\0') {
+		if ((port < 0) || (port > 0xffff)) {
+			return 0;
+		}
+		return port;
+	}
+	return 0;
+}
+
 static void
 udp_dial_start_next(udp_dialer *d)
 {
 	if (nni_list_empty(&d->conaios)) {
 		return;
 	}
-	// We don't resolv domain...
+	// We don't resolv domain... Just assign host to sockaddr directly
 	// nni_resolv_ip(d->host, d->port, d->af, false, &d->sa, d->resaio);
+	if (d->af == NNG_AF_INET || d->af == NNG_AF_UNSPEC) {
+		d->sa.s_in.sa_family = NNG_AF_INET;
+		d->sa.s_in.sa_port   = str2port(d->port);
+		d->sa.s_in.sa_addr   = str2u32ip(d->host);
+	} else if (d->af == NNG_AF_INET6) {
+		printf("Unsupported for INET6.\n");
+		return;
+	}
 	if (nni_aio_begin(d->resaio) != 0) {
 		return;
 	}
