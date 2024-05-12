@@ -68,6 +68,21 @@ udp_set(void *arg, const char *name, const void *buf, size_t sz, nni_type t)
 	return 0;
 }
 
+static void
+udp_close(void *arg)
+{
+	nni_udp_conn *c = arg;
+	nni_plat_udp_close(c->u);
+}
+
+static void
+udp_fini(void *arg)
+{
+	nni_udp_conn *c = arg;
+	udp_close(c);
+
+	NNI_FREE_STRUCT(c);
+}
 static nni_reap_list udp_reap_list = {
 	.rl_offset = offsetof(nni_udp_conn, reap),
 	.rl_func   = udp_fini,
@@ -87,12 +102,7 @@ nni_udp_conn_alloc(nni_udp_conn **cp, nni_plat_udp *u)
 		return NNG_ENOMEM;
 	}
 
-	c->closed = false;
-	c->u      = u;
-
-	nni_mtx_init(&c->mtx);
-	nni_aio_list_init(&c->readq);
-	nni_aio_list_init(&c->writeq);
+	c->u = u;
 
 	c->stream.s_free  = udp_free;
 	c->stream.s_close = udp_close;
