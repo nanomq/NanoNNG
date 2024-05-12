@@ -74,8 +74,10 @@ udp_set(void *arg, const char *name, const void *buf, size_t sz, nni_type t)
 static void
 udp_close(void *arg)
 {
-	nni_udp_conn *c = arg;
-	nni_plat_udp_close(c->u);
+	NNI_ARG_UNUSED(arg);
+	// Nothing to do.
+	// nni_udp_conn *c = arg;
+	// nni_plat_udp_close(c->u);
 }
 
 static void

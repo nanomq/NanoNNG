@@ -16,6 +16,7 @@ test_udp_conn_open(void)
 {
 	nng_stream_dialer *dialer;
 	nng_aio *          aio;
+	nng_stream *       s;
 
 	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
 	nng_aio_set_timeout(aio, 5000); // 5 sec
@@ -25,6 +26,9 @@ test_udp_conn_open(void)
 	nng_aio_wait(aio);
 	NUTS_PASS(nng_aio_result(aio));
 
+	NUTS_TRUE((s = nng_aio_get_output(aio, 0)) != NULL);
+
+	nng_stream_free(s);
 	nng_aio_free(aio);
 	nng_stream_dialer_free(dialer);
 }
@@ -57,8 +61,10 @@ test_udp_conn_send(void)
 	t = nuts_stream_send_start(s, buf, size);
 	NUTS_PASS(nuts_stream_wait(t));
 
-	nng_aio_free(aio);
+	nng_free(buf, size);
+	nng_stream_free(s);
 	nng_stream_dialer_free(dialer);
+	nng_aio_free(aio);
 }
 
 TEST_LIST = {
