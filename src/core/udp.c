@@ -32,6 +32,20 @@ typedef struct {
 	nni_mtx           mtx;
 } udp_dialer;
 
+static void
+udp_send(void *arg, nni_aio *aio)
+{
+	nni_udp_conn *c = arg;
+	nni_plat_udp_send(c->u, aio);
+}
+
+static void
+udp_recv(void *arg, nni_aio *aio)
+{
+	nni_udp_conn *c = arg;
+	nni_plat_udp_recv(c->u, aio);
+}
+
 static int
 udp_get(void *arg, const char *name, void *buf, size_t *szp, nni_type t)
 {
