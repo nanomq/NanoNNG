@@ -37,6 +37,8 @@ static void
 udp_send(void *arg, nni_aio *aio)
 {
 	nni_udp_conn *c = arg;
+	udp_dialer *  d = c->d;
+	nni_aio_set_input(aio, 0, &d->sa);
 	nni_plat_udp_send(c->u, aio);
 }
 
@@ -96,7 +98,7 @@ udp_free(void *arg)
 }
 
 static int
-nni_udp_conn_alloc(nni_udp_conn **cp, nni_plat_udp *u)
+nni_udp_conn_alloc(nni_udp_conn **cp, nni_plat_udp *u, udp_dialer *d)
 {
 	nni_udp_conn *c;
 	if ((c = NNI_ALLOC_STRUCT(c)) == NULL) {
@@ -104,6 +106,7 @@ nni_udp_conn_alloc(nni_udp_conn **cp, nni_plat_udp *u)
 	}
 
 	c->u = u;
+	c->d = (void *)d;
 
 	c->stream.s_free  = udp_free;
 	c->stream.s_close = udp_close;
@@ -208,7 +211,7 @@ udp_dial_res_cb(void *arg)
 			nni_aio_finish_error(d->conaio, rv);
 		} else {
 			nni_udp_conn *c;
-			rv = nni_udp_conn_alloc(&c, d->u);
+			rv = nni_udp_conn_alloc(&c, d->u, d);
 			if (rv != 0) {
 				nni_aio_finish_error(d->conaio, rv);
 			} else {

@@ -17,9 +17,10 @@
 
 typedef struct nni_udp_conn nni_udp_conn;
 struct nni_udp_conn {
-	nng_stream      stream;
-	nni_plat_udp   *u;
-	nni_reap_node   reap;
+	nng_stream    stream;
+	nni_plat_udp *u;
+	void *        d; // udp_dialer
+	nni_reap_node reap;
 };
 
 extern int nni_udp_dialer_alloc(nng_stream_dialer **, const nng_url *);
