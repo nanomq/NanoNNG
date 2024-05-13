@@ -67,9 +67,53 @@ test_udp_conn_send(void)
 	nng_aio_free(aio);
 }
 
+void
+test_udp_send_recv(void)
+{
+	nng_stream_dialer *dialer;
+	nng_aio *          aio;
+	nng_stream *       s;
+	void *             t;
+	uint8_t *          buf, *buf2;
+	size_t             size = 100;
+
+	// allocate messages
+	NUTS_ASSERT((buf = nng_alloc(size)) != NULL);
+	for (size_t i = 0; i < size; i++) {
+		buf[i] = rand() & 0xff;
+	}
+	NUTS_ASSERT((buf2 = nng_alloc(size)) != NULL);
+
+	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
+	nng_aio_set_timeout(aio, 5000); // 5 sec
+
+	NUTS_PASS(nng_stream_dialer_alloc(&dialer, udp_test_url));
+	nng_stream_dialer_dial(dialer, aio);
+	nng_aio_wait(aio);
+	NUTS_PASS(nng_aio_result(aio));
+
+	NUTS_TRUE((s = nng_aio_get_output(aio, 0)) != NULL);
+	t = nuts_stream_send_start(s, buf, size);
+	NUTS_PASS(nuts_stream_wait(t));
+
+	t = nuts_stream_recv_start(s, buf2, size);
+	NUTS_PASS(nuts_stream_wait(t));
+
+	for (int i=0; i<(int)size; ++i) {
+		NUTS_ASSERT(buf[i] == buf2[i]);
+	}
+
+	nng_free(buf, size);
+	nng_free(buf2, size);
+	nng_stream_free(s);
+	nng_stream_dialer_free(dialer);
+	nng_aio_free(aio);
+}
+
 TEST_LIST = {
 	{ "udp conn open", test_udp_conn_open },
 	{ "udp conn send", test_udp_conn_send },
+	{ "udp send then recv", test_udp_send_recv },
 	{ NULL, NULL },
 };
 
