@@ -142,10 +142,13 @@ udp_dial_cancel(nni_aio *aio, void *arg, int rv)
 
 static uint32_t str2u32ip(char *str)
 {
+	/*
 	uint32_t res;
 	if (inet_pton(AF_INET, str, &res) == 1)
 		return res;
 	return 0;
+	*/
+	return inet_addr(str);
 }
 
 static uint16_t str2port(char *str)
