@@ -10,7 +10,7 @@
 #include <nuts.h>
 
 static const char *udp_test_url = "udp://127.0.0.1:8877";
-static const char *udp_test_url_multicast = "udp://239.255.255.250:8877";
+static const char *udp_test_url_multicast = "udp://224.0.0.1:8877";
 
 void
 test_udp_conn_open(void)
@@ -148,8 +148,8 @@ test_udp_conn_multicast(void)
 TEST_LIST = {
 	{ "udp conn open", test_udp_conn_open },
 	{ "udp conn send", test_udp_conn_send },
-	{ "udp send then recv", test_udp_send_recv },
-	//{ "udp conn multicast", test_udp_conn_multicast },
+	//{ "udp send then recv", test_udp_send_recv }, This need a udp listener
+	{ "udp conn multicast", test_udp_conn_multicast },
 	{ NULL, NULL },
 };
 
