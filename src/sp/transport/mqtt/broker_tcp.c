@@ -529,9 +529,7 @@ static void
 nmq_tcptran_pipe_rp_send_cb(void *arg)
 {
 	tcptran_pipe *p = arg;
-	nni_msg      *msg;
 	nni_aio      *rpaio = p->rpaio;
-	uint8_t       type;
 	size_t        n;
 	int           rv;
 
