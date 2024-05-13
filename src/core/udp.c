@@ -25,7 +25,8 @@ typedef struct {
 	char *            port;
 	int               af; // address family
 	bool              closed;
-	nng_sockaddr      sa;
+	nng_sockaddr      peersa;
+	nng_sockaddr      selfsa;
 	nni_plat_udp *    u;
 	nni_aio *         resaio; // resolver aio
 	nni_aio *         conaio; // platform connection aio
@@ -38,7 +39,7 @@ udp_send(void *arg, nni_aio *aio)
 {
 	nni_udp_conn *c = arg;
 	udp_dialer *  d = c->d;
-	nni_aio_set_input(aio, 0, &d->sa);
+	nni_aio_set_input(aio, 0, &d->peersa);
 	nni_plat_udp_send(c->u, aio);
 }
 
@@ -170,10 +171,11 @@ udp_dial_start_next(udp_dialer *d)
 	// We don't resolv domain... Just assign host to sockaddr directly
 	// nni_resolv_ip(d->host, d->port, d->af, false, &d->sa, d->resaio);
 	if (d->af == NNG_AF_INET || d->af == NNG_AF_UNSPEC) {
-		d->sa.s_in.sa_family = NNG_AF_INET;
-		d->sa.s_in.sa_port   = str2port(d->port);
-		d->sa.s_in.sa_addr   = str2u32ip(d->host);
+		d->peersa.s_in.sa_family = NNG_AF_INET;
+		d->peersa.s_in.sa_port   = htons(str2port(d->port));
+		d->peersa.s_in.sa_addr   = str2u32ip(d->host);
 	} else if (d->af == NNG_AF_INET6) {
+		log_error("Unsupported for INET6.\n");
 		printf("Unsupported for INET6.\n");
 		return;
 	}
@@ -192,6 +194,7 @@ udp_dial_res_cb(void *arg)
 
 	nni_mtx_lock(&d->mtx);
 	if (d->closed || ((aio = nni_list_first(&d->conaios)) == NULL)) {
+		log_warn("UDP socket has been closed");
 		// ignore this.
 		while ((aio = nni_list_first(&d->conaios)) != NULL) {
 			nni_list_remove(&d->conaios, aio);
@@ -209,7 +212,10 @@ udp_dial_res_cb(void *arg)
 		udp_dial_start_next(d);
 
 	} else {
-		if ((rv == nni_plat_udp_open(&d->u, &d->sa)) != 0) {
+		uint8_t *x = (uint8_t *)&(d->selfsa.s_in.sa_addr);
+		log_info("rv%d self %d.%d.%d.%d:%d\n", rv,
+			x[0], x[1], x[2], x[3], d->selfsa.s_in.sa_port);
+		if ((rv = nni_plat_udp_open(&d->u, &d->selfsa)) != 0) {
 			nni_aio_finish_error(d->conaio, rv);
 		} else {
 			nni_udp_conn *c;
@@ -406,6 +412,10 @@ nni_udp_dialer_alloc(nng_stream_dialer **dp, const nng_url *url)
 	} else {
 		d->af = NNG_AF_UNSPEC;
 	}
+
+	d->selfsa.s_in.sa_family = NNG_AF_INET; // FIXME
+	d->selfsa.s_in.sa_addr   = htonl(0x7f000001); // 127.0.0.1
+	d->selfsa.s_in.sa_port   = 0; // wild card port binding
 
 	if (((d->host = nng_strdup(url->u_hostname)) == NULL) ||
 	    ((d->port = nng_strdup(p)) == NULL)) {
