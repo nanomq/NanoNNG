@@ -114,15 +114,19 @@ power(uint64_t x, uint32_t n)
 static uint8_t
 get_value_size(uint64_t value)
 {
+	uint8_t  i = 0;
 	uint8_t  len = 1;
 	uint64_t pow;
-	for (int i = 1; i <= 4; ++i) {
+	for ( i = 1; i < 4; ++i) {
 		pow = power(0x080, i);
 		if (value >= pow) {
 			++len;
 		} else {
 			break;
 		}
+	}
+	if (i == 4 && value > pow) {
+		log_error("Malformaed variable value detected!");
 	}
 	return len;
 }
