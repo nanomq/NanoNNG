@@ -838,7 +838,8 @@ tcptran_pipe_recv_cb(void *arg)
 		ack     = true;
 	} else if (type == CMD_PUBREL) {
 		// verify msg header
-		if (nni_msg_header(msg) != 0X62) {
+		uint8_t *header = nni_msg_header(msg);
+		if (*header != 0X62) {
 			rv = PROTOCOL_ERROR;
 			goto recv_error;
 		}
@@ -1257,7 +1258,10 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	hlen    = nni_msg_header_len(msg);
 	qos_pac = nni_msg_get_pub_qos(msg);
 	NNI_GET16(body, tlen);
-
+	if (qos_pac == 0) {
+		// simply set DUP flag to 0 & correct error from client
+		*header &= ~(1 << 3);
+	}
 	// check max packet size for this client/msg
 	uint32_t total_len = mlen + hlen;
 	if (total_len > p->tcp_cparam->max_packet_size) {

@@ -802,7 +802,8 @@ tlstran_pipe_recv_cb(void *arg)
 		ack     = true;
 	} else if (type == CMD_PUBREL) {
 		// verify msg header
-		if (nni_msg_header(msg) != 0X62) {
+		uint8_t *header = nni_msg_header(msg);
+		if (*header != 0X62) {
 			rv = PROTOCOL_ERROR;
 			goto recv_error;
 		}
@@ -1016,7 +1017,10 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 		mlen    = nni_msg_len(msg);
 		qos_pac = nni_msg_get_pub_qos(msg);
 		NNI_GET16(body, tlen);
-
+		if (qos_pac == 0) {
+			// simply set DUP flag to 0 & correct error from client
+			*header &= ~(1 << 3);
+		}
 		if (nni_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
 			// V5 to V4 shrink msg, remove property length
 			// APP layer must give topic name even if topic
@@ -1219,7 +1223,10 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	hlen    = nni_msg_header_len(msg);
 	qos_pac = nni_msg_get_pub_qos(msg);
 	NNI_GET16(body, tlen);
-
+	if (qos_pac == 0) {
+		// simply set DUP flag to 0 & correct error from client
+		*header &= ~(1 << 3);
+	}
 	// check max packet size for this client/msg
 	uint32_t total_len = mlen + hlen;
 	if (total_len > p->tcp_cparam->max_packet_size) {
