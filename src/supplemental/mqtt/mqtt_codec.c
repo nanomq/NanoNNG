@@ -3525,7 +3525,7 @@ property_get_value_type(uint8_t prop_id)
 		value_type = VARINT;
 		break;
 	case CONTENT_TYPE:
-	case RESPONSE_TOPIC:
+	case RESPONSE_TOPIC:	// check invalid MQTT Topic (contains wildcard)
 	case ASSIGNED_CLIENT_IDENTIFIER:
 	case AUTHENTICATION_METHOD:
 	case RESPONSE_INFORMATION:
