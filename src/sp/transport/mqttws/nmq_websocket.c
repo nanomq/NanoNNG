@@ -1,6 +1,9 @@
 //
 // Copyright 2022 NanoMQ Team, Inc. <jaylin@emqx.io>
 //
+// MQTT over WebSocket dosen't enjoy same security fix and performance
+// enhancement as tls/tcp. This could be brought down by malformed packets
+//
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
 // file was obtained (LICENSE.txt).  A copy of the license may also be
