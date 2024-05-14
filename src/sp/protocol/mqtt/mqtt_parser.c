@@ -705,12 +705,16 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	}
 	// password
 	if (rv == 0 && (cparam->con_flag & 0x40) > 0) {
+		if (cparam->username.body == NULL) {
+			log_warn("Got password but no username!");
+			return PROTOCOL_ERROR;
+		}
 		cparam->password.body =
 		    copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
 		cparam->password.len = len_of_str;
 		rv                   = len_of_str <= 0 ? PAYLOAD_FORMAT_INVALID : 0;
 		if (rv != 0) {
-			log_warn("MQTT Packet parsing error!");
+			log_warn("MQTT Packet password parsing error!");
 			return rv;
 		}
 		log_trace(
