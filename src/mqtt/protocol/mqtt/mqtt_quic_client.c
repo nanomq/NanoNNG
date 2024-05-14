@@ -943,7 +943,7 @@ mqtt_quic_recv_cb(void *arg)
 		// close quic stream
 		nni_mtx_unlock(&p->lk);
 		nni_pipe_close(p->qpipe);
-		
+
 		return;
 	}
 	nni_mtx_unlock(&p->lk);
@@ -1551,7 +1551,7 @@ quic_mqtt_pipe_start(void *arg)
 			if ((rv = mqtt_send_msg(aio, msg, s)) >= 0) {
 				nni_mtx_unlock(&s->mtx);
 				nni_aio_finish(aio, rv, 0);
-				nni_pipe_recv(p->qpipe, &p->recv_aio);
+				nni_pipe_recv(npipe, &p->recv_aio);
 				return 0;
 			}
 		}
@@ -1752,7 +1752,14 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 	default:
 		break;
 	}
-	nni_mqtt_msg_encode(msg);
+	if (nni_mqtt_msg_encode(msg) != MQTT_SUCCESS) {
+		nni_mtx_unlock(&s->mtx);
+		log_error("MQTT client encoding msg failed!");
+		nni_msg_free(msg);
+		nni_aio_set_msg(aio, NULL);
+		nni_aio_finish_error(aio, NNG_EPROTO);
+		return;
+	}
 
 	if (p == NULL || p->ready == false) {
 		// connection is lost or not established yet

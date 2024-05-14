@@ -231,7 +231,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 			nni_aio_set_msg(aio, msg);
 			nni_aio_set_prov_data(aio, &prior_flags);
 			nni_pipe_send(p->qpipe, aio);
-			log_debug("sending high priority QoS msg in parallel");
+			log_debug("sending highpriority QoS msg in parallel");
 			nni_mtx_unlock(&p->lk);
 			return -1;
 		}
@@ -528,7 +528,6 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 		}
 		return;
 	}
-
 	nni_mqtt_msg_proto_data_alloc(msg);
 	nni_mqttv5_msg_decode(msg);
 
@@ -724,7 +723,6 @@ mqtt_quic_recv_cb(void *arg)
 		}
 		return;
 	}
-
 	msg = nni_aio_get_msg(&p->recv_aio);
 	nni_aio_set_msg(&p->recv_aio, NULL);
 	if (msg == NULL) {
@@ -775,7 +773,7 @@ mqtt_quic_recv_cb(void *arg)
 	int32_t       packet_id;
 	uint8_t       qos;
 
-	// schedule another receive
+	//Schedule another receive
 	nni_pipe_recv(p->qpipe, &p->recv_aio);
 
 	// set conn_param for upper layer
@@ -946,6 +944,7 @@ mqtt_quic_recv_cb(void *arg)
 		// close quic stream
 		nni_mtx_unlock(&p->lk);
 		nni_pipe_close(p->qpipe);
+
 		return;
 	}
 	nni_mtx_unlock(&p->lk);
@@ -1762,6 +1761,7 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 		nni_aio_finish_error(aio, NNG_EPROTO);
 		return;
 	}
+
 	if (p == NULL || p->ready == false) {
 		// connection is lost or not established yet
 #if defined(NNG_SUPP_SQLITE)
