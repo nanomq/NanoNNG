@@ -1644,10 +1644,13 @@ quic_mqtt_pipe_close(void *arg)
 	nni_lmq_flush(&p->recv_messages);
 	if (p->mqtt_sock->multi_stream)
 		nni_lmq_flush(&p->send_inflight);
+
+	nni_mtx_lock(&p->lk);
 	// multistream
 	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
 	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
 	p->ready = false;
+	nni_mtx_unlock(&p->lk);
 
 	if (s->pipe != p) {
 		if (p->idmsg == NULL)
