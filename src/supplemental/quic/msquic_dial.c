@@ -925,7 +925,7 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		nni_mtx_lock(&d->mtx);
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
 			// explicitly shutdon on protocol layer.
-			MsQuic->ConnectionClose(qconn);
+			//MsQuic->ConnectionClose(qconn); // plz use msquic_conn_fini(qconn)
 		}
 		// reconnect here
 		nni_mtx_unlock(&d->mtx);
