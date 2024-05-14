@@ -837,6 +837,11 @@ tcptran_pipe_recv_cb(void *arg)
 		ack_cmd = CMD_PUBREL;
 		ack     = true;
 	} else if (type == CMD_PUBREL) {
+		// verify msg header
+		if (nni_msg_header(msg) != 0X62) {
+			rv = PROTOCOL_ERROR;
+			goto recv_error;
+		}
 		if ((rv = nni_mqtt_pubres_decode(msg, &packet_id, &reason_code,
 		         &prop, p->pro_ver)) != 0) {
 			log_error("decode PUBREL variable header failed!");
@@ -1063,7 +1068,10 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		mlen    = nni_msg_len(msg);
 		qos_pac = nni_msg_get_pub_qos(msg);
 		NNI_GET16(body, tlen);
-
+		if (qos_pac == 0) {
+			// simply set DUP flag to 0 & correct error from client
+			*header &= ~(1 << 3);
+		}
 		if (nni_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
 			// V5 to V4 shrink msg, remove property length
 			// APP layer must give topic name even if topic
@@ -1071,7 +1079,6 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			if (qos_pac > 0) {
 				property_len = get_var_integer(
 				    body + 4 + tlen, &property_bytes);
-
 			} else {
 				property_len = get_var_integer(
 				    body + 2 + tlen, &property_bytes);
@@ -1081,7 +1088,6 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 
 			plength = property_len + property_bytes;
 		} else if (nni_msg_cmd_type(msg) == CMD_PUBLISH) {
-
 			if (qos_pac == 0) {
 				if (nni_msg_header_len(msg) > 0) {
 					iov[niov].iov_buf =

@@ -801,6 +801,11 @@ tlstran_pipe_recv_cb(void *arg)
 		ack_cmd = CMD_PUBREL;
 		ack     = true;
 	} else if (type == CMD_PUBREL) {
+		// verify msg header
+		if (nni_msg_header(msg) != 0X62) {
+			rv = PROTOCOL_ERROR;
+			goto recv_error;
+		}
 		if ((rv = nni_mqtt_pubres_decode(msg, &packet_id, &reason_code, &prop,
 		        p->pro_ver)) != 0) {
 			log_error("decode PUBREL variable header failed!");
