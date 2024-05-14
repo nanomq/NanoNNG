@@ -4171,7 +4171,10 @@ encode_properties(nni_msg *msg, property *prop, uint8_t cmd)
 			nni_mqtt_msg_append_u8(msg, p->data.p_value.u8);
 			break;
 		case U16:
-			nni_mqtt_msg_append_u16(msg, p->data.p_value.u16);
+			if (p->id == TOPIC_ALIAS_MAXIMUM)
+				nni_mqtt_msg_append_u16(msg, 0xFFFF);
+			else
+				nni_mqtt_msg_append_u16(msg, p->data.p_value.u16);
 			break;
 		case U32:
 			nni_mqtt_msg_append_u32(msg, p->data.p_value.u32);
