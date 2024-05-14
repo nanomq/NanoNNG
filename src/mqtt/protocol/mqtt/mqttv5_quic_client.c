@@ -1628,6 +1628,14 @@ quic_mqtt_pipe_close(void *arg)
 	mqtt_sock_t *s = p->mqtt_sock;
 
 	nni_atomic_set_bool(&p->closed, true);
+
+	nni_mtx_lock(&p->lk);
+	// multistream
+	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
+	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
+	p->ready = false;
+	nni_mtx_unlock(&p->lk);
+
 	nni_mtx_lock(&s->mtx);
 	nni_atomic_set_bool(&s->pipe->closed, true);
 	nni_aio_close(&p->send_aio);
@@ -1643,13 +1651,6 @@ quic_mqtt_pipe_close(void *arg)
 	nni_lmq_flush(&p->recv_messages);
 	if (p->mqtt_sock->multi_stream)
 		nni_lmq_flush(&p->send_inflight);
-
-	nni_mtx_lock(&p->lk);
-	// multistream
-	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
-	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
-	p->ready = false;
-	nni_mtx_unlock(&p->lk);
 
 	if (s->pipe != p) {
 		if (p->idmsg == NULL)
