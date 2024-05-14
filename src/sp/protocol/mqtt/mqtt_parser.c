@@ -1620,7 +1620,7 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 {
 	char           *topic;
 	uint8_t         *payload_ptr, len_of_varint = 0, *var_ptr;
-	uint32_t        num = 0, len, len_of_str = 0, subid = 0;
+	uint32_t        num = 0, len = 0, len_of_str = 0, subid = 0;
 	uint16_t        len_of_topic = 0;
 	size_t          bpos = 0, remain = 0;
 	struct subinfo *sn = NULL;
@@ -1630,8 +1630,7 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 		return (-1);
 
 	var_ptr = nni_msg_body(msg);
-	len = 0;
-	len_of_varint = 0;
+
 	// get variable length of properties
 	if (ver == MQTT_PROTOCOL_VERSION_v5) {
 		len = get_var_integer(
@@ -1646,20 +1645,20 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 	while (pos < target_pos) {
 		switch (*(var_ptr + pos)) {
 		case USER_PROPERTY:
-			// key
-			NNI_GET16(var_ptr + pos, len_of_str);
-			pos += len_of_str;
-			if (pos > target_pos)
-				return (-3);
-			len_of_str = 0;
-			// value
-			NNI_GET16(var_ptr + pos, len_of_str);
-			pos += len_of_str;
-			if (pos > target_pos)
-				return (-3);
-			len_of_str = 0;
+			// ID Length
+			pos ++;
+			for (int j = 0; j < 2; j++) {
+				len_of_str = 0;
+				// key/Value length
+				NNI_GET16(var_ptr + pos, len_of_str);
+				pos += (2 + len_of_str);
+				// Check the index of properties
+				if (pos > target_pos)
+					return (-3);
+			}
 			break;
 		case SUBSCRIPTION_IDENTIFIER:
+			// count id length in len_of_varint
 			subid = get_var_integer(var_ptr + pos, &len_of_varint);
 			if (subid == 0)
 				return (-1);
@@ -1743,22 +1742,18 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 {
 	char    *topic;
 	uint8_t  len_of_topic = 0, len_of_varint = 0, *payload_ptr, *var_ptr;
-	uint32_t num = 0, len, len_of_str = 0;
+	uint32_t num = 0, len = 0, len_of_str = 0;
 	size_t   bpos = 0, remain = 0;
 	struct subinfo *sn = NULL, *sn2, snode;
 	nni_list       *ll = l;
 
 	if (!l || !msg)
 		return (-1);
-
-	len = 0;
-	len_of_varint = 0;
-
 	// Check the index of property length
 	if (nni_msg_len(msg) < 3)
 		return (-3);
 	if (ver == MQTT_PROTOCOL_VERSION_v5) {
-		// get Property Length
+		// get Property variable Length
 		len = get_var_integer(
 		    (uint8_t *) nni_msg_body(msg) + 2, &len_of_varint);
 		if (len > nni_msg_remaining_len(msg))
@@ -1772,20 +1767,17 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 	while (pos < target_pos) {
 		switch (*(var_ptr + pos)) {
 		case USER_PROPERTY:
-			// key
-			NNI_GET16(var_ptr + pos, len_of_str);
-			pos += (2 + len_of_str);
-			// Check the index of properties
-			if (pos > target_pos)
-				return (-3);
-			len_of_str = 0;
-			// value
-			NNI_GET16(var_ptr + pos, len_of_str);
-			pos += (2 + len_of_str);
-			// Check the index of properties
-			if (pos > target_pos)
-				return (-3);
-			len_of_str = 0;
+			// ID Length
+			pos ++;
+			for (int j = 0; j < 2; j++) {
+				len_of_str = 0;
+				// key/Value length
+				NNI_GET16(var_ptr + pos, len_of_str);
+				pos += (2 + len_of_str);
+				// Check the index of properties
+				if (pos > target_pos)
+					return (-3);
+			}
 			break;
 		default:
 			log_error("Invalid property id");
