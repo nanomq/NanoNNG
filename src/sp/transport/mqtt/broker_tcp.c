@@ -452,7 +452,7 @@ error:
 	}
 	nni_mtx_unlock(&ep->mtx);
 	tcptran_pipe_reap(p);
-	log_error("connect nego error rv: %s(%d)", nng_strerror(rv), rv);
+	log_error("connect nego error rv:(%d)", rv);
 	return;
 }
 
