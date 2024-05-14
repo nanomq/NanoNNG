@@ -576,6 +576,8 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	cparam->will_flag   = (cparam->con_flag & 0x04) >> 2;
 	cparam->will_qos    = (cparam->con_flag & 0x18) >> 3;
 	cparam->will_retain = (cparam->con_flag & 0x20) >> 5;
+	if ((cparam->con_flag & 0x01) != 0)
+		return PROTOCOL_ERROR;
 	log_trace("conn flag:%x", cparam->con_flag);
 	if ((cparam->will_flag == 1 && cparam->will_qos > 2) ||
 	    (strncmp(cparam->pro_name.body, MQTT_PROTOCOL_NAME, 4) != 0 &&
