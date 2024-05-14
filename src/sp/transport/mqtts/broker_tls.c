@@ -747,6 +747,10 @@ tlstran_pipe_recv_cb(void *arg)
 		log_warn("Invalid Packet Type: Connection closed.");
 		rv = MALFORMED_PACKET;
 		goto recv_error;
+	} else if (type == CMD_CONNACK) {
+		log_warn("Got CONNACK from client!");
+		rv = MALFORMED_PACKET;
+		goto recv_error;
 	}
 
 	nni_msg_set_conn_param(msg, p->tcp_cparam);
