@@ -1385,7 +1385,7 @@ msquic_strm_open(HQUIC qconn, nni_quic_dialer *d)
 	}
 
 	if (d->priority != -1) {
-		printf("Ready to create a quic stream with priority: %d\n", d->priority);
+		log_info("Ready to create a quic stream with priority: %d\n", d->priority);
 		MsQuic->SetParam(strm, QUIC_PARAM_STREAM_PRIORITY, sizeof(int), &d->priority);
 	}
 
