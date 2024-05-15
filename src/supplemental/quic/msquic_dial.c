@@ -61,6 +61,7 @@ struct nni_quic_conn {
 	nni_list        readq;
 	nni_list        writeq;
 	bool            closed;
+	nni_atomic_int  ref;
 	nni_mtx         mtx;
 	nni_aio *       dial_aio;
 	// nni_aio *       qstrmaio; // Link to msquic_strm_cb
@@ -103,6 +104,7 @@ static void quic_dialer_cb(void *arg);
 static void quic_stream_error(void *arg, int err);
 static void quic_stream_close(void *arg);
 static void quic_stream_dowrite(nni_quic_conn *c);
+static void quic_stream_rele(nni_quic_conn *c);
 
 static QUIC_STATUS verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *ca);
 
@@ -565,11 +567,10 @@ quic_stream_cb(int events, void *arg, int rc)
 	// case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 	// case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
+		quic_stream_error(arg, NNG_ECONNSHUT);
 		// Marked it as closed, prevent explicit shutdown
 		c->closed = true;
-		// It's the only place to free msquic stream
-		msquic_strm_fini(c->qstrm);
-		quic_stream_error(arg, NNG_ECONNSHUT);
+		quic_stream_rele(c);
 		break;
 	default:
 		break;
@@ -581,12 +582,20 @@ static void
 quic_stream_fini(void *arg)
 {
 	nni_quic_conn *c = arg;
-	quic_stream_close(c);
+	NNI_FREE_STRUCT(c);
+}
 
+static void
+quic_stream_rele(nni_quic_conn *c)
+{
+	quic_stream_close(c);
 	if (c->dialer) {
 		nni_msquic_quic_dialer_rele(c->dialer);
 	}
-	NNI_FREE_STRUCT(c);
+	if (nni_atomic_dec_nv(&c->ref) != 0) {
+		return;
+	}
+	quic_stream_fini(c);
 }
 
 //static nni_reap_list quic_reap_list = {
@@ -597,7 +606,7 @@ static void
 quic_stream_free(void *arg)
 {
 	nni_quic_conn *c = arg;
-	quic_stream_fini(c);
+	quic_stream_rele(c);
 }
 
 // Notify upper layer that something happened.
@@ -852,6 +861,9 @@ nni_msquic_quic_alloc(nni_quic_conn **cp, nni_quic_dialer *d)
 	if ((c = NNI_ALLOC_STRUCT(c)) == NULL) {
 		return (NNG_ENOMEM);
 	}
+
+	nni_atomic_init(&c->ref);
+	nni_atomic_inc(&c->ref);
 
 	c->closed = false;
 	c->dialer = d;
@@ -1383,6 +1395,8 @@ msquic_strm_open(HQUIC qconn, nni_quic_dialer *d)
 		MsQuic->StreamClose(strm);
 		goto error;
 	}
+	// Stream is opened and started
+	nni_atomic_inc(&c->ref);
 
 	// Not ready for receiving
 	MsQuic->StreamReceiveSetEnabled(strm, FALSE);
