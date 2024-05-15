@@ -531,6 +531,10 @@ quic_stream_cb(int events, void *arg, int rc)
 		nni_aio_list_remove(aio);
 		QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
 		free(buf);
+		// XXX #[FORCANCEL]
+		nni_msg *m;
+		if ((m = nni_aio_get_msg(aio)) != NULL)
+			nni_msg_free(m);
 		if (rc != 0)
 			nni_aio_finish_error(aio, rc);
 		else
@@ -744,6 +748,14 @@ quic_stream_dowrite(nni_quic_conn *c)
 			n += aiov[i].iov_len;
 		}
 		nni_aio_set_input(aio, 0, buf);
+
+		// When streamsend is triggered. The msg is used by nng and msquic.
+		// But if a cancelled operation happens right now. And nng cancel function
+		// will free the msg immediately. But this msg is still be used in msquic.
+		// So here we need a clone. And will free in #[FORCANCEL].
+		nni_msg *m;
+		if ((m = nni_aio_get_msg(aio)) != NULL)
+			nni_msg_clone(m);
 
 		if (QUIC_FAILED(rv = MsQuic->StreamSend(c->qstrm, buf,
 		                naiov, QUIC_SEND_FLAG_NONE, NULL))) {
@@ -1010,7 +1022,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
 			free(buf);
 			Event->SEND_COMPLETE.ClientContext = NULL;
-			nni_msg *msg = nni_aio_get_msg(aio);
+			//nni_msg *msg = nni_aio_get_msg(aio);
 			// free SUBSCRIBE/UNSUBSCRIBE QoS 1/2 PUBLISH msg here
 			// nni_mqtt_packet_type t = nni_mqtt_msg_get_packet_type(msg);
 			//nni_msg_free(msg);
