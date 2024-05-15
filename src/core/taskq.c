@@ -27,9 +27,6 @@ struct nni_taskq {
 
 static nni_taskq *nni_taskq_systq = NULL;
 
-static int var_num_taskq_threads;
-static int var_max_taskq_threads;
-
 static void
 nni_taskq_thread(void *self)
 {
