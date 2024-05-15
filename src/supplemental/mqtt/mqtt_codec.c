@@ -3672,7 +3672,11 @@ property_parse(struct pos_buf *buf, property *prop, uint8_t prop_id,
 		    prop->data.p_value.u32);
 		break;
 	case VARINT:
-		read_variable_integer(buf, &prop->data.p_value.varint);
+		if (read_variable_integer(buf, &prop->data.p_value.varint) != MQTT_SUCCESS) {
+			log_warn("parse varint failed!");
+			// TODO expose error in a handler
+			prop->data.p_value.varint = 0xFFFFFFFF;
+		}
 		log_trace("id: %d, value: %d (VARINT)", prop_id,
 		    prop->data.p_value.varint);
 		break;
@@ -3903,6 +3907,11 @@ check_properties(property *prop, nni_msg *msg)
 			if (type == CMD_PUBLISH) {
 				log_warn("SUBSCRIPTION_IDENTIFIER detected in PUBLISH!");
 				return PROTOCOL_ERROR;
+			} else{
+				if (p1->data.p_value.u32 > 268435455) {
+					log_warn("SUBSCRIPTION_IDENTIFIER too large!");
+					return PROTOCOL_ERROR;
+				}
 			}
 			break;
 		case REQUEST_RESPONSE_INFORMATION:
