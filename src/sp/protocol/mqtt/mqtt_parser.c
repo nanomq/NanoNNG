@@ -1649,6 +1649,13 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 		if (len > nni_msg_remaining_len(msg))
 			return -1;
 	}
+	uint32_t pid = 0;
+	NNI_GET16(var_ptr, pid);
+	if (pid == 0) {
+		log_warn(" 0 Packetid in subscribe request");
+		return -2;
+	}
+
 	log_trace("prop len %d varint %d remain %d", len, len_of_varint, nni_msg_remaining_len(msg));
 	payload_ptr = (uint8_t *) nni_msg_body(msg) + 2 + len + len_of_varint;
 
@@ -1771,10 +1778,16 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 			return -1;
 	}
 
+
 	var_ptr     = (uint8_t *) nni_msg_body(msg);
 	payload_ptr = (uint8_t *) nni_msg_body(msg) + 2 + len + len_of_varint;
 	size_t pos = 2 + len_of_varint, target_pos = 2 + len_of_varint + len;
-
+	uint32_t pid = 0;
+	NNI_GET16(var_ptr, pid);
+	if (pid == 0) {
+		log_warn(" 0 Packetid in unsubscribe request");
+		return -2;
+	}
 	while (pos < target_pos) {
 		switch (*(var_ptr + pos)) {
 		case USER_PROPERTY:
