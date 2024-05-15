@@ -781,12 +781,13 @@ mqtt_tcptran_pipe_send_start(mqtt_tcptran_pipe *p)
 				p->qosmax == 0 ? *header &= 0XF9 : NNI_ARG_UNUSED(*header);
 			}
 		}
-		// check max packet size
-		if (nni_msg_header_len(msg) + nni_msg_len(msg) > p->packmax) {
-			txaio = p->txaio;
-			nni_aio_finish_error(txaio, UNSPECIFIED_ERROR);
-			return;
-		}
+	}
+
+	// check max packet size
+	if (nni_msg_header_len(msg) + nni_msg_len(msg) > p->packmax) {
+		txaio = p->txaio;
+		nni_aio_finish_error(txaio, UNSPECIFIED_ERROR);
+		return;
 	}
 
 	txaio = p->txaio;
