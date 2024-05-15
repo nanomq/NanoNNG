@@ -1,6 +1,7 @@
 
 #include "mqtt_msg.h"
 #include "nng/protocol/mqtt/mqtt.h"
+#include "nng/protocol/mqtt/mqtt_parser.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -1714,6 +1715,7 @@ nni_mqtt_msg_decode_connect(nni_msg *msg)
 			return MQTT_ERR_PROTOCOL;
 		}
 	}
+
 	return MQTT_SUCCESS;
 }
 
@@ -1763,7 +1765,7 @@ nni_mqttv5_msg_decode_connect(nni_msg *msg)
 	// Check connect properties
 	property *prop = mqtt->var_header.connect.properties;
 	if (prop != NULL) {
-		if ((ret = check_properties(prop)) != SUCCESS)
+		if ((ret = check_properties(prop, msg)) != SUCCESS)
 			return ret;
 		// Check Invalid properties
 		for (property *p = prop->next; p != NULL; p = p->next) {
@@ -1772,6 +1774,8 @@ nni_mqttv5_msg_decode_connect(nni_msg *msg)
 			case REQUEST_PROBLEM_INFORMATION:
 				if (p->data.p_value.u8 > 1)
 					return PROTOCOL_ERROR;
+				break;
+			case CONTENT_TYPE:
 				break;
 			case SESSION_EXPIRY_INTERVAL:
 			case RECEIVE_MAXIMUM:
@@ -1803,7 +1807,7 @@ nni_mqttv5_msg_decode_connect(nni_msg *msg)
 
 		property *will_prop = mqtt->payload.connect.will_properties;
 		if (will_prop != NULL) {
-			if ((ret = check_properties(will_prop)) != SUCCESS)
+			if ((ret = check_properties(will_prop, msg)) != SUCCESS)
 				return ret;
 			// Check Invalid properties
 			for (property *p = prop->next; p != NULL;
@@ -1940,7 +1944,7 @@ nni_mqttv5_msg_decode_connack(nni_msg *msg)
 	// Check properties
 	property *prop = mqtt->var_header.connack.properties;
 	if (prop != NULL) {
-		if ((result = check_properties(prop)) != SUCCESS)
+		if ((result = check_properties(prop, msg)) != SUCCESS)
 			return result;
 		// Check Invalid properties
 		for (property *p = prop->next; p != NULL; p = p->next) {
@@ -2258,7 +2262,7 @@ nni_mqtt_msg_decode_publish(nni_msg *msg)
 
 	return MQTT_SUCCESS;
 }
-
+// also responsible for verifying MQTTV5 protocol
 static int
 nni_mqttv5_msg_decode_publish(nni_msg *msg)
 {
@@ -2293,6 +2297,7 @@ nni_mqttv5_msg_decode_publish(nni_msg *msg)
 	uint32_t pos1 = pos;
 	mqtt->var_header.publish.properties =
 	    decode_buf_properties(body, length, &pos, &prop_len, true);
+	check_properties(mqtt->var_header.publish.properties, msg);
 	buf.curpos = &body[0] + pos;
 	prop_sz = pos - pos1;
 
@@ -2382,7 +2387,7 @@ nni_mqttv5_msg_decode_puback(nni_msg *msg)
 
 	mqtt->var_header.puback.properties =
 	    decode_properties(msg, &pos, &prop_len, false);
-	if (check_properties(mqtt->var_header.puback.properties) != SUCCESS) {
+	if (check_properties(mqtt->var_header.puback.properties, msg) != SUCCESS) {
 		property_free(mqtt->var_header.puback.properties);
 		return PROTOCOL_ERROR;
 	}
@@ -2432,7 +2437,7 @@ nni_mqttv5_msg_decode_pubrec(nni_msg *msg)
 
 	mqtt->var_header.pubrec.properties =
 	    decode_properties(msg, &pos, &prop_len, false);
-	if (check_properties(mqtt->var_header.pubrec.properties) != SUCCESS) {
+	if (check_properties(mqtt->var_header.pubrec.properties, msg) != SUCCESS) {
 		property_free(mqtt->var_header.pubrec.properties);
 		return PROTOCOL_ERROR;
 	}
@@ -2489,7 +2494,7 @@ nni_mqttv5_msg_decode_pubrel(nni_msg *msg)
 
 	mqtt->var_header.pubrel.properties =
 	    decode_properties(msg, &pos, &prop_len, false);
-	if (check_properties(mqtt->var_header.pubrel.properties) != SUCCESS) {
+	if (check_properties(mqtt->var_header.pubrel.properties, msg) != SUCCESS) {
 		property_free(mqtt->var_header.pubrel.properties);
 		return PROTOCOL_ERROR;
 	}
@@ -2539,7 +2544,7 @@ nni_mqttv5_msg_decode_pubcomp(nni_msg *msg)
 
 	mqtt->var_header.pubcomp.properties =
 	    decode_properties(msg, &pos, &prop_len, false);
-	if (check_properties(mqtt->var_header.pubcomp.properties) != SUCCESS) {
+	if (check_properties(mqtt->var_header.pubcomp.properties, msg) != SUCCESS) {
 		property_free(mqtt->var_header.pubcomp.properties);
 		return PROTOCOL_ERROR;
 	}
@@ -3862,14 +3867,44 @@ property_free(property *prop)
 	return 0;
 }
 
-// Check if repeated properties exist
+// Check if repeated properties exist, for broker use only.
 reason_code
-check_properties(property *prop)
+check_properties(property *prop, nni_msg *msg)
 {
+	uint8_t type = 0x00;
+	if (msg != NULL)
+		type = nni_msg_get_type(msg);
 	if (prop == NULL) {
 		return SUCCESS;
 	}
+#ifdef MQTTV5_VERIFY
+#endif
+	uint32_t pos = 0;
 	for (property *p1 = prop->next; p1 != NULL; p1 = p1->next) {
+		// if (type == CMD_PUBLISH) {
+		switch (p1->id) {
+		case RESPONSE_TOPIC:
+			if (strchr((const char *) p1->data.p_value.str.buf,
+			        '+') != NULL ||
+			    strchr((const char *) p1->data.p_value.str.buf,
+			        '#') != NULL)
+				return PROTOCOL_ERROR;
+			break;
+		case CONTENT_TYPE:
+			if (get_utf8_str(p1->data.p_value.str.buf,
+			        p1->data.p_value.str.buf, &pos) < 0) {
+				log_warn("CONTENT TYPE error: Not UTF-8");
+				return PROTOCOL_ERROR;
+			}
+		case SUBSCRIPTION_IDENTIFIER:
+			if (type == CMD_PUBLISH) {
+				log_warn("SUBSCRIPTION_IDENTIFIER detected in PUBLISH!");
+				return PROTOCOL_ERROR;
+			}
+			break;
+		default:
+			break;
+		}
 		for (property *p2 = p1->next; p2 != NULL; p2 = p2->next) {
 			if (p1->id == p2->id &&
 			    p1->data.p_type != STR_PAIR) {
@@ -4206,15 +4241,6 @@ encode_properties(nni_msg *msg, property *prop, uint8_t cmd)
 	return 0;
 }
 
-/*
-static nni_proto_msg_ops proto_ops = {
-
-	.msg_free = (int (*)(void *)) property_free,
-
-	.msg_dup = (int (*)(void **, const void *)) property_dup
-};
-*/
-
 /* introduced from mqtt_parser, might be duplicated */
 
 /**
@@ -4240,7 +4266,7 @@ nni_mqtt_pubres_decode(nng_msg *msg, uint16_t *packet_id, uint8_t *reason_code,
 		*prop = NULL;
 		return rv;
 	}
-
+	// MQTTV4 returns here
 	if (length == 2 || proto_ver != MQTT_PROTOCOL_VERSION_v5) {
 		*prop = NULL;
 		return MQTT_SUCCESS;
@@ -4260,7 +4286,7 @@ nni_mqtt_pubres_decode(nng_msg *msg, uint16_t *packet_id, uint8_t *reason_code,
 	uint32_t prop_len = 0;
 
 	*prop = decode_properties(msg, &pos, &prop_len, false);
-	if (check_properties(*prop) != SUCCESS) {
+	if (check_properties(*prop, msg) != SUCCESS) {
 		property_free(*prop);
 		*prop = NULL;
 		return PROTOCOL_ERROR;
