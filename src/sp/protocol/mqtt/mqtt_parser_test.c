@@ -54,12 +54,12 @@ test_get_utf8_str()
 	uint32_t pos   = 0;
 	char    *dest;
 	// test for correct src.
-	NUTS_ASSERT(get_utf8_str(&dest, src, &pos) == 5);
+	NUTS_ASSERT(get_utf8_str(&dest, src, &pos, -1) == 5);
 	NUTS_MATCH((char *) dest, "$MQTT");
 	src[2] = 0x04;
 	pos    = 0;
 	// test for non-utf8 src.
-	NUTS_FAIL(get_utf8_str(&dest, src, &pos), -1);
+	NUTS_FAIL(get_utf8_str(&dest, src, &pos, -1), -1);
 }
 
 static void

@@ -189,14 +189,17 @@ get_var_integer(const uint8_t *buf, uint8_t *pos)
  * @param dest output string
  * @param src input bytes
  * @param pos offset value
+ * @param max length limit, pass -1 if you dont know
  * @return string length -1: not utf-8, 0: empty string, >0 : normal utf-8
  * string
  */
 int32_t
-get_utf8_str(char **dest, const uint8_t *src, uint32_t *pos)
+get_utf8_str(char **dest, const uint8_t *src, uint32_t *pos, size_t max)
 {
 	int32_t str_len = 0;
 	NNI_GET16(src + (*pos), str_len);
+	if (max > 0 && str_len > max)
+		return -1;
 
 	*pos = (*pos) + 2;
 	if (str_len > 0) {
@@ -710,8 +713,8 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	// password
 	if (rv == 0 && (cparam->con_flag & 0x40) > 0) {
 		if (cparam->username.body == NULL) {
-			log_warn("Got password but no username!");
-			return PROTOCOL_ERROR;
+			// log_warn("Got password but no username!");
+			// return PROTOCOL_ERROR;
 		}
 		cparam->password.body =
 		    copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
