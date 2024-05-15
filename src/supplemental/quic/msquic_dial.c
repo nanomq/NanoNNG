@@ -61,6 +61,7 @@ struct nni_quic_conn {
 	nni_list        readq;
 	nni_list        writeq;
 	bool            closed;
+	nni_atomic_int  ref;
 	nni_mtx         mtx;
 	nni_aio *       dial_aio;
 	// nni_aio *       qstrmaio; // Link to msquic_strm_cb
@@ -103,6 +104,7 @@ static void quic_dialer_cb(void *arg);
 static void quic_stream_error(void *arg, int err);
 static void quic_stream_close(void *arg);
 static void quic_stream_dowrite(nni_quic_conn *c);
+static void quic_stream_rele(nni_quic_conn *c);
 
 static QUIC_STATUS verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *ca);
 
@@ -531,6 +533,10 @@ quic_stream_cb(int events, void *arg, int rc)
 		nni_aio_list_remove(aio);
 		QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
 		free(buf);
+		// XXX #[FORCANCEL]
+		nni_msg *m;
+		if ((m = nni_aio_get_msg(aio)) != NULL)
+			nni_msg_free(m);
 		if (rc != 0)
 			nni_aio_finish_error(aio, rc);
 		else
@@ -561,11 +567,10 @@ quic_stream_cb(int events, void *arg, int rc)
 	// case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 	// case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
+		quic_stream_error(arg, NNG_ECONNSHUT);
 		// Marked it as closed, prevent explicit shutdown
 		c->closed = true;
-		// It's the only place to free msquic stream
-		msquic_strm_fini(c->qstrm);
-		quic_stream_error(arg, NNG_ECONNSHUT);
+		quic_stream_rele(c);
 		break;
 	default:
 		break;
@@ -577,12 +582,20 @@ static void
 quic_stream_fini(void *arg)
 {
 	nni_quic_conn *c = arg;
-	quic_stream_close(c);
+	NNI_FREE_STRUCT(c);
+}
 
+static void
+quic_stream_rele(nni_quic_conn *c)
+{
+	quic_stream_close(c);
 	if (c->dialer) {
 		nni_msquic_quic_dialer_rele(c->dialer);
 	}
-	NNI_FREE_STRUCT(c);
+	if (nni_atomic_dec_nv(&c->ref) != 0) {
+		return;
+	}
+	quic_stream_fini(c);
 }
 
 //static nni_reap_list quic_reap_list = {
@@ -593,7 +606,7 @@ static void
 quic_stream_free(void *arg)
 {
 	nni_quic_conn *c = arg;
-	quic_stream_fini(c);
+	quic_stream_rele(c);
 }
 
 // Notify upper layer that something happened.
@@ -687,7 +700,7 @@ quic_stream_dowrite_prior(nni_quic_conn *c, nni_aio *aio)
 	size_t    n = 0;
 
 	if (c->closed) {
-		nni_msg_free(nni_aio_get_msg(aio));
+		//nni_msg_free(nni_aio_get_msg(aio));
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
 	}
@@ -707,7 +720,7 @@ quic_stream_dowrite_prior(nni_quic_conn *c, nni_aio *aio)
 	                naiov, QUIC_SEND_FLAG_NONE, aio))) {
 		log_error("Failed in StreamSend, 0x%x!", rv);
 		free(buf);
-		nni_msg_free(nni_aio_get_msg(aio));
+		//nni_msg_free(nni_aio_get_msg(aio));
 		nni_aio_finish_error(aio, NNG_ECANCELED);
 		return;
 	}
@@ -744,6 +757,14 @@ quic_stream_dowrite(nni_quic_conn *c)
 			n += aiov[i].iov_len;
 		}
 		nni_aio_set_input(aio, 0, buf);
+
+		// When streamsend is triggered. The msg is used by nng and msquic.
+		// But if a cancelled operation happens right now. And nng cancel function
+		// will free the msg immediately. But this msg is still be used in msquic.
+		// So here we need a clone. And will free in #[FORCANCEL].
+		nni_msg *m;
+		if ((m = nni_aio_get_msg(aio)) != NULL)
+			nni_msg_clone(m);
 
 		if (QUIC_FAILED(rv = MsQuic->StreamSend(c->qstrm, buf,
 		                naiov, QUIC_SEND_FLAG_NONE, NULL))) {
@@ -841,6 +862,9 @@ nni_msquic_quic_alloc(nni_quic_conn **cp, nni_quic_dialer *d)
 		return (NNG_ENOMEM);
 	}
 
+	nni_atomic_init(&c->ref);
+	nni_atomic_inc(&c->ref);
+
 	c->closed = false;
 	c->dialer = d;
 
@@ -925,7 +949,7 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		nni_mtx_lock(&d->mtx);
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
 			// explicitly shutdon on protocol layer.
-			MsQuic->ConnectionClose(qconn);
+			//MsQuic->ConnectionClose(qconn); // plz use msquic_conn_fini(qconn)
 		}
 		// reconnect here
 		nni_mtx_unlock(&d->mtx);
@@ -1010,10 +1034,10 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
 			free(buf);
 			Event->SEND_COMPLETE.ClientContext = NULL;
-			nni_msg *msg = nni_aio_get_msg(aio);
+			//nni_msg *msg = nni_aio_get_msg(aio);
 			// free SUBSCRIBE/UNSUBSCRIBE QoS 1/2 PUBLISH msg here
 			// nni_mqtt_packet_type t = nni_mqtt_msg_get_packet_type(msg);
-			nni_msg_free(msg);
+			//nni_msg_free(msg);
 			nni_aio_set_msg(aio, NULL);
 			if (canceled)
 				nni_aio_finish_error(aio, NNG_ECANCELED);
@@ -1130,8 +1154,8 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		if (!Event->START_COMPLETE.PeerAccepted) {
 			// FIXME Not clear the behavious of the broker.
 			log_warn("Peer refused");
-			quic_stream_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c, 0);
-			break;
+			//quic_stream_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c, 0);
+			//break;
 		}
 
 		quic_stream_cb(QUIC_STREAM_EVENT_START_COMPLETE, c, 0);
@@ -1361,7 +1385,7 @@ msquic_strm_open(HQUIC qconn, nni_quic_dialer *d)
 	}
 
 	if (d->priority != -1) {
-		printf("Ready to create a quic stream with priority: %d\n", d->priority);
+		log_info("Ready to create a quic stream with priority: %d\n", d->priority);
 		MsQuic->SetParam(strm, QUIC_PARAM_STREAM_PRIORITY, sizeof(int), &d->priority);
 	}
 
@@ -1371,6 +1395,8 @@ msquic_strm_open(HQUIC qconn, nni_quic_dialer *d)
 		MsQuic->StreamClose(strm);
 		goto error;
 	}
+	// Stream is opened and started
+	nni_atomic_inc(&c->ref);
 
 	// Not ready for receiving
 	MsQuic->StreamReceiveSetEnabled(strm, FALSE);

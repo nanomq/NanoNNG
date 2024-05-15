@@ -536,8 +536,8 @@ static const yytype_int8 yyrline[] =
 {
        0,    61,    61,    62,    65,    66,    67,    73,    74,    75,
       76,    77,    78,    79,    80,    81,    84,    85,    86,    89,
-      95,    96,    99,   105,   106,   107,   110,   111,   114,   115,
-     116
+      95,    96,    99,   111,   112,   113,   116,   117,   120,   121,
+     122
 };
 #endif
 
@@ -1324,11 +1324,17 @@ yyreduce:
 #line 90 "parser.y"
                                         { 
 
-                                                char *str = remove_escape((yyvsp[-2].strval));
-                                                free((yyvsp[-2].strval));
-                                                (yyval.jkval) = jso_kv_new(str, (yyvsp[0].jsonval));
+                                                // if dot in string
+                                                char *dotPtr = strchr((yyvsp[-2].strval), '.');
+                                                if (dotPtr != NULL) {
+                                                        (yyval.jkval) = jso_kv_new((yyvsp[-2].strval), (yyvsp[0].jsonval));
+                                                } else {
+                                                        char *str = remove_escape((yyvsp[-2].strval));
+                                                        free((yyvsp[-2].strval));
+                                                        (yyval.jkval) = jso_kv_new(str, (yyvsp[0].jsonval));
+                                                }
                                         }
-#line 1261 "nng/src/supplemental/nanolib/parser.c"
+#line 1338 "/Users/hom/workspace/hocon/build/parser.c"
     break;
 
   case 23: /* member: USTRING PUNCT value  */
@@ -1633,5 +1639,5 @@ char *remove_escape(char *str)
 void yyerror(struct cJSON **jso, const char *s)
 {
         (void)jso;
-        fprintf(stderr, "error: %s\n", s);
+        fprintf(stderr, "Parser %s\n", s);
 }

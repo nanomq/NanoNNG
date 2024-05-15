@@ -76,7 +76,7 @@ tcp_dowrite(nni_tcp_conn *c)
 			case EWOULDBLOCK:
 #endif
 #endif
-				log_info("EAGAIN! %d", n);
+				log_debug("EAGAIN! %d", n);
 				return;
 			default:
 				nni_aio_list_remove(aio);

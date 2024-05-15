@@ -1,6 +1,9 @@
 //
 // Copyright 2022 NanoMQ Team, Inc. <jaylin@emqx.io>
 //
+// MQTT over WebSocket dosen't enjoy same security fix and performance
+// enhancement as tls/tcp. This could be brought down by malformed packets
+//
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
 // file was obtained (LICENSE.txt).  A copy of the license may also be
@@ -205,7 +208,9 @@ done:
 			        nni_msg_len(p->tmp_msg)) != 0) {
 				p->closed = true;
 				p->err_code = PROTOCOL_ERROR;
+				goto recv_error;
 			}
+			log_trace("MQTT Clientid is %s", p->ws_param->clientid.body);
 			if (p->ws_param->pro_ver == 5) {
 				p->qsend_quota = p->ws_param->rx_max;
 			}
@@ -442,11 +447,11 @@ wstran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 static inline void
 wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 {
-	nni_msg *smsg;
+	nni_msg  *smsg = NULL;
 	int       niov;
 	nni_iov   iov[8];
 	nni_pipe *pipe = p->npipe;
-	uint8_t   qos;
+	uint8_t   qos = 0;
 
 
 	if (nni_msg_get_type(msg) != CMD_PUBLISH)
@@ -626,7 +631,7 @@ send:
 static inline void
 wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 {
-	nni_msg *smsg;
+	nni_msg  *smsg = NULL;
 	int       niov;
 	nni_iov   iov[8];
 	nni_pipe *pipe = p->npipe;
@@ -944,11 +949,20 @@ wstran_pipe_init(void *arg, nni_pipe *pipe)
 	int      rv, id;
 	NNI_ARG_UNUSED(rv);
 	NNI_ARG_UNUSED(id);
-	char    *cid;
 	ws_pipe *p            = arg;
-	uint32_t clientid_key = 0;
+	// sth wrong with negotiation, close it
 	log_trace(" ************ wstran_pipe_init [%p] ************ ", arg);
 	nni_pipe_set_conn_param(pipe, p->ws_param);
+	p->npipe      = pipe;
+
+	p->gotrxhead  = 0;
+	p->wantrxhead = 0;
+	p->ep_aio     = NULL;
+
+	if (p->closed)
+		return (0);
+	char    *cid;
+	uint32_t clientid_key = 0;
 	cid = (char *) conn_param_get_clientid(p->ws_param);
 	clientid_key = DJBHashn(cid, strlen(cid));
 	id = nni_pipe_id(pipe);
@@ -956,19 +970,12 @@ wstran_pipe_init(void *arg, nni_pipe *pipe)
 	log_debug("change p_id by hashing from %d to %d rv %d",
 			   id, clientid_key, rv);
 
-	p->npipe      = pipe;
-
-	if (!p->conf->sqlite.enable && pipe->nano_qos_db == NULL) {
-		nni_qos_db_init_id_hash(pipe->nano_qos_db);
-	}
-
-	p->gotrxhead  = 0;
-	p->wantrxhead = 0;
-	p->ep_aio     = NULL;
-
 	p->qos_buf = nng_zalloc(16 + NNI_NANO_MAX_PACKET_SIZE);
 	// the size limit of qos_buf reserve 1 byte for property length
 	p->qlength = 16 + NNI_NANO_MAX_PACKET_SIZE;
+	if (!p->conf->sqlite.enable && pipe->nano_qos_db == NULL) {
+		nni_qos_db_init_id_hash(pipe->nano_qos_db);
+	}
 	return (0);
 }
 

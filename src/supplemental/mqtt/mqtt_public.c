@@ -857,6 +857,7 @@ nng_mqtt_client_alloc(nng_socket sock, nng_mqtt_send_cb cb, bool is_async)
 		// replace nng_mqtt_client_send_cb for lmq
 		nng_aio_alloc(&client->send_aio, nng_mqtt_client_send_cb, client);
 		if ((client->msgq = nng_alloc(sizeof(nni_lmq))) == NULL) {
+			NNI_FREE_STRUCT(client);
 			return NULL;
 		}
 		nni_lmq_init((nni_lmq *)client->msgq, NNG_MAX_SEND_LMQ);
@@ -956,7 +957,7 @@ nng_mqtt_unsubscribe_async(nng_mqtt_client *client, nng_mqtt_topic *sbs, size_t 
 }
 // send a blocking sub msg until suback returns
 int
-nng_mqtt_subscribe(nng_socket sock, nng_mqtt_topic_qos *sbs, size_t count, property *pl)
+nng_mqtt_subscribe(nng_socket sock, nng_mqtt_topic_qos *sbs, uint32_t count, property *pl)
 {
 	int rv = 0;
 	// create a SUBSCRIBE message
@@ -982,12 +983,12 @@ nng_mqtt_subscribe(nng_socket sock, nng_mqtt_topic_qos *sbs, size_t count, prope
 
 	rv  = nng_aio_result(aio);
 	if (rv != 0)
-		nng_msg_free(submsg);
+		return (NNG_ECLOSED);	// connection shall be closed this time
 	msg = nng_aio_get_msg(aio);
 	if (msg) {
 		uint8_t *code = nng_mqtt_msg_get_suback_return_codes(msg, &count);
 		log_info("bridge: subscribe aio result %d", rv);
-		for (int i=0; i<count; ++i) {
+		for (uint32_t i=0; i<count; ++i) {
 			log_info("bridge: suback code %d ", *(code + i));
 		}
 		nng_msg_free(msg);

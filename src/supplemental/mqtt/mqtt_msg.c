@@ -919,7 +919,7 @@ mqtt_close_unack_msg_cb(void *key, void *val)
 	aio = nni_mqtt_msg_get_aio(msg);
 	if (aio) {
 		// could be incompatible with nng_close(quic_socket)
-		nni_aio_abort(aio, NNG_ECLOSED);
+		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
 #ifdef NNG_HAVE_MQTT_BROKER
 	conn_param *cparam = NULL;

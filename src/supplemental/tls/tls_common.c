@@ -910,6 +910,7 @@ tls_reap(void *arg)
 	if (conn->tcp_recv_buf != NULL) {
 		nni_free(conn->tcp_recv_buf, NNG_TLS_MAX_RECV_SIZE);
 	}
+	nni_mtx_fini(&conn->lock);
 	NNI_FREE_STRUCT(conn);
 }
 
@@ -1641,6 +1642,12 @@ nng_tls_config_alloc(nng_tls_config **cfgp, nng_tls_mode mode)
 	NNI_ARG_UNUSED(cfgp);
 	NNI_ARG_UNUSED(mode);
 	return (NNG_ENOTSUP);
+}
+
+void
+nng_tls_config_hold(nng_tls_config *cfg)
+{
+	NNI_ARG_UNUSED(cfg);
 }
 
 void

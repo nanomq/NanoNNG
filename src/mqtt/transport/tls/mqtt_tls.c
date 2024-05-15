@@ -33,8 +33,9 @@ struct mqtts_tcptran_pipe {
 	nni_reap_node     reap;
 	uint32_t          packmax; // MQTT Maximum Packet Size (Max length)
 	uint16_t          peer;    // broker info
-	uint16_t          proto;   // MQTT version
+	uint16_t          keepalive;
 	uint16_t          sndmax; // MQTT Receive Maximum (QoS 1/2 packet)
+	uint8_t           proto;   // MQTT version
 	uint8_t           qosmax;
 	uint8_t           txlen[sizeof(uint64_t)];
 	uint8_t           rxlen[sizeof(uint64_t)]; // fixed header
@@ -97,7 +98,6 @@ struct mqtts_tcptran_ep {
 static void mqtts_tcptran_pipe_send_start(mqtts_tcptran_pipe *);
 static void mqtts_tcptran_pipe_recv_start(mqtts_tcptran_pipe *);
 static void mqtts_tcptran_pipe_send_cb(void *);
-static void mqtts_tcptran_pipe_qos_send_cb(void *);
 static void mqtts_tcptran_pipe_recv_cb(void *);
 static void mqtts_tcptran_pipe_nego_cb(void *);
 static void mqtts_tcptran_ep_fini(void *);
@@ -160,8 +160,10 @@ mqtts_tcptran_pipe_init(void *arg, nni_pipe *npipe)
 	p->npipe = npipe;
 	// nni_lmq_init(&p->rslmq, 16);
 	p->busy = false;
-	p->packmax = 0xFFFF;
-	p->qosmax  = 2;
+	// set max value by default
+	p->packmax == 0 ? p->packmax = (uint32_t)0xFFFFFFFF : p->packmax;
+	p->qosmax  == 0 ? p->qosmax  = 2 : p->qosmax;
+	p->keepalive = 0;
 	return (0);
 }
 
@@ -252,6 +254,8 @@ mqtts_tcptran_ep_match(mqtts_tcptran_ep *ep)
 #ifdef NNG_HAVE_MQTT_BROKER
 	if (p->cparam == NULL) {
 		p->cparam = nni_get_conn_param_from_msg(ep->connmsg);
+		if (p->keepalive != 0)
+			p->cparam->keepalive_mqtt = p->keepalive;
 		nni_msg_set_conn_param(ep->connmsg, p->cparam);
 	}
 #endif
@@ -384,6 +388,11 @@ mqtts_tcptran_pipe_nego_cb(void *arg)
 			    ep->property, PUBLISH_MAXIMUM_QOS);
 			if (data) {
 				p->qosmax = data->p_value.u8;
+			}
+			data = property_get_value(
+			    ep->property, SERVER_KEEP_ALIVE);
+			if (data) {
+				p->keepalive = data->p_value.u16;
 			}
 		} else {
 			if ((rv = nni_mqtt_msg_decode(p->rxmsg)) !=

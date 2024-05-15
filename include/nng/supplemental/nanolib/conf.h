@@ -546,10 +546,10 @@ struct conf {
 	char      *conf_file;
 	char      *url;
 	bool       enable;
-	int        num_taskq_thread;
-	int        max_taskq_thread;
 	int        property_size;
 	int        msq_len;
+	uint32_t   num_taskq_thread;
+	uint32_t   max_taskq_thread;
 	uint32_t   parallel;				// broker ctx
 	uint64_t   total_ctx;		// Total ctx of work (bridge + AWS + broker + HTTP)
 	uint64_t   max_packet_size;        // byte
