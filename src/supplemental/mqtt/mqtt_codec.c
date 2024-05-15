@@ -3880,14 +3880,15 @@ check_properties(property *prop, nni_msg *msg)
 #ifdef MQTTV5_VERIFY
 #endif
 	uint32_t pos = 0;
+	bool mei = false; // MESSAGE_EXPIRY_INTERVAL:
 	for (property *p1 = prop->next; p1 != NULL; p1 = p1->next) {
 		// if (type == CMD_PUBLISH) {
 		switch (p1->id) {
 		case RESPONSE_TOPIC:
-			if (strchr((const char *) p1->data.p_value.str.buf,
-			        '+') != NULL ||
-			    strchr((const char *) p1->data.p_value.str.buf,
-			        '#') != NULL)
+			if (memchr((const char *) p1->data.p_value.str.buf,
+			        '+', p1->data.p_value.str.length) != NULL ||
+			    memchr((const char *) p1->data.p_value.str.buf,
+			        '#', p1->data.p_value.str.length) != NULL)
 				return PROTOCOL_ERROR;
 			break;
 		case CONTENT_TYPE:
@@ -3897,18 +3898,21 @@ check_properties(property *prop, nni_msg *msg)
 				log_warn("CONTENT TYPE error: Not UTF-8");
 				return PROTOCOL_ERROR;
 			}
+			break;
 		case SUBSCRIPTION_IDENTIFIER:
 			if (type == CMD_PUBLISH) {
 				log_warn("SUBSCRIPTION_IDENTIFIER detected in PUBLISH!");
 				return PROTOCOL_ERROR;
 			}
+			break;
 		case REQUEST_RESPONSE_INFORMATION:
 		case REQUEST_PROBLEM_INFORMATION:
 			if (p1->data.p_value.u8 != 0 && p1->data.p_value.u8 != 1) {
-				log_warn("REQUEST_PROBLEM_INFORMATION/REQUEST_RESPONSE_INFORMATION
+				log_warn("REQUEST_PROBLEM_INFORMATION/REQUEST_RESPONSE_INFORMATION	\\
 						  malformed value detected %x!", p1->data.p_value.u8);
 				return PROTOCOL_ERROR;	
 			}
+			break;
 		case AUTHENTICATION_DATA:
 			//It is a Protocol Error to include Authentication Data if there is no Authentication Method.
 			break;
@@ -3919,6 +3923,15 @@ check_properties(property *prop, nni_msg *msg)
 				log_warn("USER Property error: Not UTF-8");
 				return PROTOCOL_ERROR;
 			}
+			break;
+		case MESSAGE_EXPIRY_INTERVAL:
+			if (mei) {
+				log_warn("Duplicated MESSAGE_EXPIRY_INTERVAL!");
+				return PROTOCOL_ERROR;
+			} else {
+				mei == true;
+			}
+			break;
 		default:
 			break;
 		}
