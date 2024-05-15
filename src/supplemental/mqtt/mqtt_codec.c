@@ -3891,8 +3891,9 @@ check_properties(property *prop, nni_msg *msg)
 				return PROTOCOL_ERROR;
 			break;
 		case CONTENT_TYPE:
+			pos = 0;
 			if (get_utf8_str(p1->data.p_value.str.buf,
-			        p1->data.p_value.str.buf, &pos) < 0) {
+			        p1->data.p_value.str.buf, &pos, p1->data.p_value.str.length) < 0) {
 				log_warn("CONTENT TYPE error: Not UTF-8");
 				return PROTOCOL_ERROR;
 			}
@@ -3901,7 +3902,23 @@ check_properties(property *prop, nni_msg *msg)
 				log_warn("SUBSCRIPTION_IDENTIFIER detected in PUBLISH!");
 				return PROTOCOL_ERROR;
 			}
+		case REQUEST_RESPONSE_INFORMATION:
+		case REQUEST_PROBLEM_INFORMATION:
+			if (p1->data.p_value.u8 != 0 && p1->data.p_value.u8 != 1) {
+				log_warn("REQUEST_PROBLEM_INFORMATION/REQUEST_RESPONSE_INFORMATION
+						  malformed value detected %x!", p1->data.p_value.u8);
+				return PROTOCOL_ERROR;	
+			}
+		case AUTHENTICATION_DATA:
+			//It is a Protocol Error to include Authentication Data if there is no Authentication Method.
 			break;
+		case USER_PROPERTY:
+			pos = 0;
+			if (get_utf8_str(p1->data.p_value.str.buf,
+			        p1->data.p_value.str.buf, &pos, p1->data.p_value.str.length) < 0) {
+				log_warn("USER Property error: Not UTF-8");
+				return PROTOCOL_ERROR;
+			}
 		default:
 			break;
 		}
