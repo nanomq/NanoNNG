@@ -12,7 +12,10 @@
 
 #include <stdint.h>
 #include <string.h>
-#include <arpa/inet.h>
+
+#ifndef _WIN32
+#include <arpa/inet.h> // for endianness functions
+#endif
 
 #include <nng/nng.h>
 
