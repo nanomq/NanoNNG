@@ -218,8 +218,6 @@ tlstran_pipe_fini(void *arg)
 	nni_aio_free(p->txaio);
 	nni_aio_free(p->negoaio);
 	nng_stream_free(p->conn);
-	if (p->rxmsg != NULL)
-		nni_msg_free(p->rxmsg);
 	nni_lmq_fini(&p->rslmq);
 	// nni_mtx_fini(&p->mtx);
 	NNI_FREE_STRUCT(p);
@@ -495,6 +493,8 @@ tlstran_pipe_qos_send_cb(void *arg)
 		                                        : p->qrecv_quota;
 	}
 	nni_msg_free(msg);
+	nni_aio_set_msg(qsaio, NULL);
+	// not very sure if this cause fragmented msg
 	if (nni_lmq_get(&p->rslmq, &msg) == 0) {
 		nni_iov iov;
 		nni_msg_insert(
@@ -507,7 +507,6 @@ tlstran_pipe_qos_send_cb(void *arg)
 		nng_stream_send(p->conn, p->qsaio);
 		p->busy = true;
 		nni_mtx_unlock(&p->mtx);
-		nni_aio_set_msg(qsaio, NULL);
 		return;
 	}
 
@@ -716,7 +715,7 @@ tlstran_pipe_recv_cb(void *arg)
 		}
 
 		nni_msg_set_remaining_len(p->rxmsg, len);
-		if ((rv = nni_msg_header_append(p->rxmsg, p->rxlen, pos)) != 0) {
+		if ((rv = nni_msg_header_append(p->rxmsg, p->rxlen, pos+1)) != 0) {
 			rv = NMQ_SERVER_UNAVAILABLE;
 			goto recv_error;
 		}
@@ -746,6 +745,10 @@ tlstran_pipe_recv_cb(void *arg)
 	    (type == CMD_SUBSCRIBE || type == CMD_PUBLISH ||
 	        type == CMD_UNSUBSCRIBE)) {
 		log_warn("Invalid Packet Type: Connection closed.");
+		rv = MALFORMED_PACKET;
+		goto recv_error;
+	} else if (type == CMD_CONNACK) {
+		log_warn("Got CONNACK from client!");
 		rv = MALFORMED_PACKET;
 		goto recv_error;
 	}
@@ -798,6 +801,12 @@ tlstran_pipe_recv_cb(void *arg)
 		ack_cmd = CMD_PUBREL;
 		ack     = true;
 	} else if (type == CMD_PUBREL) {
+		// verify msg header
+		uint8_t *header = nni_msg_header(msg);
+		if (*header != 0X62) {
+			rv = PROTOCOL_ERROR;
+			goto recv_error;
+		}
 		if ((rv = nni_mqtt_pubres_decode(msg, &packet_id, &reason_code, &prop,
 		        p->pro_ver)) != 0) {
 			log_error("decode PUBREL variable header failed!");
@@ -952,7 +961,7 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	// qos default to 0 if the msg is not PUBLISH
 	uint8_t qos = 0;
 
-	if (nni_msg_header_len(msg) <= 0 ||
+	if (nni_msg_header_len(msg) == 0 ||
 	    nni_msg_get_type(msg) != CMD_PUBLISH) {
 		goto send;
 	}
@@ -1008,7 +1017,10 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 		mlen    = nni_msg_len(msg);
 		qos_pac = nni_msg_get_pub_qos(msg);
 		NNI_GET16(body, tlen);
-
+		if (qos_pac == 0) {
+			// simply set DUP flag to 0 & correct error from client
+			*header &= ~(1 << 3);
+		}
 		if (nni_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
 			// V5 to V4 shrink msg, remove property length
 			// APP layer must give topic name even if topic
@@ -1186,8 +1198,10 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	nni_iov   iov[8];
 	nni_msg  *tmsg;
 
-	if (nni_msg_get_type(msg) != CMD_PUBLISH)
+	if (nni_msg_header_len(msg) == 0 ||
+	    nni_msg_get_type(msg) != CMD_PUBLISH) {
 		goto send;
+	}
 	// never modify the original msg
 
 	uint8_t *     body, *header, qos_pac, prop_bytes = 0;
@@ -1209,7 +1223,10 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	hlen    = nni_msg_header_len(msg);
 	qos_pac = nni_msg_get_pub_qos(msg);
 	NNI_GET16(body, tlen);
-
+	if (qos_pac == 0) {
+		// simply set DUP flag to 0 & correct error from client
+		*header &= ~(1 << 3);
+	}
 	// check max packet size for this client/msg
 	uint32_t total_len = mlen + hlen;
 	if (total_len > p->tcp_cparam->max_packet_size) {

@@ -11,3 +11,4 @@ if (NNG_PROTO_MQTT_BROKER)
 endif ()
 
 nng_test(mqtt_parser_test)
+nng_test(auth_http_test)

@@ -114,15 +114,19 @@ power(uint64_t x, uint32_t n)
 static uint8_t
 get_value_size(uint64_t value)
 {
+	uint8_t  i = 0;
 	uint8_t  len = 1;
 	uint64_t pow;
-	for (int i = 1; i <= 4; ++i) {
+	for ( i = 1; i < 4; ++i) {
 		pow = power(0x080, i);
 		if (value >= pow) {
 			++len;
 		} else {
 			break;
 		}
+	}
+	if (i == 4 && value > pow) {
+		log_error("Malformaed variable value detected!");
 	}
 	return len;
 }
@@ -185,14 +189,17 @@ get_var_integer(const uint8_t *buf, uint8_t *pos)
  * @param dest output string
  * @param src input bytes
  * @param pos offset value
+ * @param max length limit, pass -1 if you dont know
  * @return string length -1: not utf-8, 0: empty string, >0 : normal utf-8
  * string
  */
 int32_t
-get_utf8_str(char **dest, const uint8_t *src, uint32_t *pos)
+get_utf8_str(char **dest, const uint8_t *src, uint32_t *pos, size_t max)
 {
 	int32_t str_len = 0;
 	NNI_GET16(src + (*pos), str_len);
+	if (max > 0 && str_len > max)
+		return -1;
 
 	*pos = (*pos) + 2;
 	if (str_len > 0) {
@@ -572,6 +579,10 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	cparam->will_flag   = (cparam->con_flag & 0x04) >> 2;
 	cparam->will_qos    = (cparam->con_flag & 0x18) >> 3;
 	cparam->will_retain = (cparam->con_flag & 0x20) >> 5;
+	if (((cparam->con_flag & 0x01) != 0) ||
+	    (cparam->will_flag == 0 && cparam->will_retain != 0))
+		return PROTOCOL_ERROR;
+
 	log_trace("conn flag:%x", cparam->con_flag);
 	if ((cparam->will_flag == 1 && cparam->will_qos > 2) ||
 	    (strncmp(cparam->pro_name.body, MQTT_PROTOCOL_NAME, 4) != 0 &&
@@ -583,16 +594,16 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	NNI_GET16(packet + pos, tmp);
 	cparam->keepalive_mqtt = tmp;
 	pos += 2;
-	// properties
 
+	// properties
 	if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 		// check length
 		log_trace("Decoding MQTT V5 Properties");
-		if (pos >= max)
+		if (pos + 3 > max)
 			return PROTOCOL_ERROR;
 		cparam->prop_len = (uint32_t) get_var_integer(packet + pos,
 													  &len_of_var);
-		if (cparam->prop_len > (max - pos - 1 - cparam->will_flag*2 ))
+		if (cparam->prop_len > (max - pos - 1 - cparam->will_flag * 2 ))
 			return PROTOCOL_ERROR;
 		log_debug("remain len %d max len %d prop len %d pos %d",
 				   len, max, cparam->prop_len, pos);
@@ -600,7 +611,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		    packet, len, &pos, &cparam->prop_len, true);
 		if (cparam->properties) {
 			conn_param_set_property(cparam, cparam->properties);
-			if ((rv = check_properties(cparam->properties)) !=
+			if ((rv = check_properties(cparam->properties, NULL)) !=
 			    SUCCESS) {
 				return rv;
 			}
@@ -610,8 +621,9 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 
 	// here starts payload: client_id
 	cparam->clientid.body =
-	    (char *) copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
+	    (char *) copyn_utf8_str(packet, &pos, &len_of_str, max - pos);
 	cparam->clientid.len = len_of_str;
+	log_trace("id is %s", cparam->clientid.body);
 
 	if (len_of_str == 0) {
 		char clientid_r[20] = {0};
@@ -649,7 +661,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 				conn_param_set_will_property(
 				    cparam, cparam->will_properties);
 				if ((rv = check_properties(
-				         cparam->will_properties)) !=
+				         cparam->will_properties, NULL)) !=
 				    SUCCESS) {
 					return PROTOCOL_ERROR;
 				}
@@ -700,12 +712,16 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	}
 	// password
 	if (rv == 0 && (cparam->con_flag & 0x40) > 0) {
+		if (cparam->username.body == NULL) {
+			// log_warn("Got password but no username!");
+			// return PROTOCOL_ERROR;
+		}
 		cparam->password.body =
 		    copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
 		cparam->password.len = len_of_str;
 		rv                   = len_of_str <= 0 ? PAYLOAD_FORMAT_INVALID : 0;
 		if (rv != 0) {
-			log_warn("MQTT Packet parsing error!");
+			log_warn("MQTT Packet password parsing error!");
 			return rv;
 		}
 		log_trace(
@@ -1385,6 +1401,8 @@ nano_msg_get_subtopic(nni_msg *msg, nano_pipe_db *root, conn_param *cparam)
 			}
 			db->root = root;
 			if (topic == NULL || db == NULL) {
+				nng_free(db, sizeof(nano_pipe_db));
+				nng_free(topic, len_of_topic + 1);
 				NNI_ASSERT("ERROR: nng_alloc");
 				return NULL;
 			} else {
@@ -1495,17 +1513,17 @@ nmq_subinfol_rm_or(nni_list *l, struct subinfo *n)
  * @return int -1: protocol error; -2: unknown error; num:numbers of topics
  */
 int
-nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
+nmq_subtopic_decode(nng_msg *msg, uint8_t ver, topic_queue **ptq)
 {
 	char           *topic;
 	uint8_t         *payload_ptr, len_of_varint = 0, *var_ptr;
 	uint32_t        num = 0, len, len_of_str = 0, subid = 0;
 	uint16_t        len_of_topic = 0;
 	size_t          bpos = 0, remain = 0;
-	struct subinfo *sn = NULL;
-	nni_list       *ll = l;
+	topic_queue     *tq = NULL;
+	topic_queue     *curtq = NULL;
 
-	if (!l || !msg)
+	if (!msg)
 		return (-1);
 
 	var_ptr = nni_msg_body(msg);
@@ -1521,7 +1539,8 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 	log_trace("prop len %d varint %d remain %d", len, len_of_varint, nni_msg_remaining_len(msg));
 	payload_ptr = (uint8_t *) nni_msg_body(msg) + 2 + len + len_of_varint;
 
-	size_t pos = 2 + len_of_varint, target_pos = 2 + len_of_varint + len;
+	size_t pos = 2 + len_of_varint;
+	size_t target_pos = 2 + len_of_varint + len;
 	while (pos < target_pos) {
 		switch (*(var_ptr + pos)) {
 		case USER_PROPERTY:
@@ -1539,6 +1558,125 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 			len_of_str = 0;
 			break;
 		case SUBSCRIPTION_IDENTIFIER:
+			subid = get_var_integer(var_ptr + pos, &len_of_varint);
+			if (subid == 0)
+				return (-1);
+			pos += len_of_varint;
+			break;
+		default:
+			log_error("Invalid property id");
+			return (-2);
+		}
+	}
+	if (pos > target_pos || nni_msg_len(msg) < target_pos)
+		return (-2);
+
+	remain = nni_msg_remaining_len(msg) - target_pos;
+	while (bpos < remain) {
+		// Check the index of topic len
+		if (bpos + 2 > remain)
+			return (-3);
+		NNI_GET16(payload_ptr + bpos, len_of_topic);
+		if (len_of_str > remain)
+			return -1;
+		bpos += 2;
+
+		if (len_of_topic == 0)
+			continue;
+		// Check the index of topic body
+		if (bpos + len_of_topic > remain)
+			return (-3);
+
+		if ((topic = nng_alloc(len_of_topic + 1)) == NULL)
+			return (-2);
+
+		strncpy(topic, (char *) payload_ptr + bpos, len_of_topic);
+		topic[len_of_topic] = 0x00;
+
+		if (tq == NULL) {
+			tq = nng_alloc(sizeof(topic_queue));
+			curtq = tq;
+			curtq->topic = topic;
+			curtq->next = NULL;
+		} else {
+			curtq->next = nng_alloc(sizeof(topic_queue));
+			curtq->next->topic = topic;
+			curtq = curtq->next;
+			curtq->next = NULL;
+		}
+
+		bpos += len_of_topic;
+		// Check the index of topic option
+		if (bpos > remain)
+			return (-3);
+
+		bpos += 1;
+		num++;
+	}
+	*ptq = tq;
+
+	return num;
+}
+
+/**
+ * @brief decode sub for subid, topics and RAP to subinfol
+ * 	  warning only use with sub msg & V5 client
+ *
+ * @param msg
+ * @param ptr to subinfol
+ * @return int -1: protocol error; -2: unknown error; num:numbers of topics
+ */
+int
+nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
+{
+	char           *topic;
+	uint8_t         *payload_ptr, len_of_varint = 0, *var_ptr;
+	uint32_t        num = 0, len = 0, len_of_str = 0, subid = 0;
+	uint16_t        len_of_topic = 0;
+	size_t          bpos = 0, remain = 0;
+	struct subinfo *sn = NULL;
+	nni_list       *ll = l;
+
+	if (!l || !msg)
+		return (-1);
+
+	var_ptr = nni_msg_body(msg);
+
+	// get variable length of properties
+	if (ver == MQTT_PROTOCOL_VERSION_v5) {
+		len = get_var_integer(
+		    (uint8_t *) nni_msg_body(msg) + 2, &len_of_varint);
+		if (len > nni_msg_remaining_len(msg))
+			return -1;
+	}
+	uint32_t pid = 0;
+	NNI_GET16(var_ptr, pid);
+	if (pid == 0) {
+		log_warn(" 0 Packetid in subscribe request");
+		return -2;
+	}
+
+	log_trace("prop len %d varint %d remain %d", len, len_of_varint, nni_msg_remaining_len(msg));
+	payload_ptr = (uint8_t *) nni_msg_body(msg) + 2 + len + len_of_varint;
+
+	size_t pos = 2 + len_of_varint, target_pos = 2 + len_of_varint + len;
+	while (pos < target_pos) {
+		switch (*(var_ptr + pos)) {
+		case USER_PROPERTY:
+			// ID Length
+			pos ++;
+			for (int j = 0; j < 2; j++) {
+				len_of_str = 0;
+				// key/Value length
+				NNI_GET16(var_ptr + pos, len_of_str);
+				pos += (2 + len_of_str);
+				// Check the index of properties
+				if (pos > target_pos)
+					return (-3);
+			}
+			break;
+		case SUBSCRIPTION_IDENTIFIER:
+			// count id length in len_of_varint
 			subid = get_var_integer(var_ptr + pos, &len_of_varint);
 			if (subid == 0)
 				return (-1);
@@ -1573,8 +1711,10 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 		    "The current process topic is %s", payload_ptr + bpos);
 		if ((sn = nng_alloc(sizeof(struct subinfo))) == NULL)
 			return (-2);
-		if ((topic = nng_alloc(len_of_topic + 1)) == NULL)
+		if ((topic = nng_alloc(len_of_topic + 1)) == NULL) {
+			nng_free(sn, sizeof(struct subinfo));
 			return (-2);
+		}
 
 		strncpy(topic, (char *) payload_ptr + bpos, len_of_topic);
 		topic[len_of_topic] = 0x00;
@@ -1620,49 +1760,48 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 {
 	char    *topic;
 	uint8_t  len_of_topic = 0, len_of_varint = 0, *payload_ptr, *var_ptr;
-	uint32_t num = 0, len, len_of_str = 0;
+	uint32_t num = 0, len = 0, len_of_str = 0;
 	size_t   bpos = 0, remain = 0;
 	struct subinfo *sn = NULL, *sn2, snode;
 	nni_list       *ll = l;
 
 	if (!l || !msg)
 		return (-1);
-
-	len = 0;
-	len_of_varint = 0;
-
 	// Check the index of property length
 	if (nni_msg_len(msg) < 3)
 		return (-3);
 	if (ver == MQTT_PROTOCOL_VERSION_v5) {
-		// get Property Length
+		// get Property variable Length
 		len = get_var_integer(
 		    (uint8_t *) nni_msg_body(msg) + 2, &len_of_varint);
 		if (len > nni_msg_remaining_len(msg))
 			return -1;
 	}
 
+
 	var_ptr     = (uint8_t *) nni_msg_body(msg);
 	payload_ptr = (uint8_t *) nni_msg_body(msg) + 2 + len + len_of_varint;
 	size_t pos = 2 + len_of_varint, target_pos = 2 + len_of_varint + len;
-
+	uint32_t pid = 0;
+	NNI_GET16(var_ptr, pid);
+	if (pid == 0) {
+		log_warn(" 0 Packetid in unsubscribe request");
+		return -2;
+	}
 	while (pos < target_pos) {
 		switch (*(var_ptr + pos)) {
 		case USER_PROPERTY:
-			// key
-			NNI_GET16(var_ptr + pos, len_of_str);
-			pos += (2 + len_of_str);
-			// Check the index of properties
-			if (pos > target_pos)
-				return (-3);
-			len_of_str = 0;
-			// value
-			NNI_GET16(var_ptr + pos, len_of_str);
-			pos += (2 + len_of_str);
-			// Check the index of properties
-			if (pos > target_pos)
-				return (-3);
-			len_of_str = 0;
+			// ID Length
+			pos ++;
+			for (int j = 0; j < 2; j++) {
+				len_of_str = 0;
+				// key/Value length
+				NNI_GET16(var_ptr + pos, len_of_str);
+				pos += (2 + len_of_str);
+				// Check the index of properties
+				if (pos > target_pos)
+					return (-3);
+			}
 			break;
 		default:
 			log_error("Invalid property id");
@@ -1697,8 +1836,10 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 
 		bpos += len_of_topic;
 		// Check the index of topic option
-		if (bpos > remain)
+		if (bpos > remain) {
+			nng_free(topic, len_of_topic + 1);
 			return (-3);
+		}
 
 		snode.topic = topic;
 		sn = &snode;
@@ -1861,6 +2002,10 @@ topic_filter(const char *origin, const char *input)
 bool
 topic_filtern(const char *origin, const char *input, size_t n)
 {
+	// Wrong topic or invalid topic alias
+	if (input == NULL || origin == NULL)
+		return false;
+		
 	char *buff = nni_zalloc(n + 1);
 	strncpy(buff, input, n);
 	bool res = false;

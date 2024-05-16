@@ -211,7 +211,8 @@ mqtt_quictran_pipe_init(void *arg, nni_pipe *npipe)
 	// nni_lmq_init(&p->rslmq, 10240);
 	p->busy = false;
 	p->closed = false;
-	p->packmax = 0xFFFF;
+	// set max value by default
+	p->packmax == 0 ? p->packmax = (uint32_t)0xFFFFFFFF : p->packmax;
 	p->qosmax  = 2;
 	p->pingcnt = 1;
 	if (p->ismain == true) {
@@ -436,6 +437,7 @@ mqtt_quictran_pipe_nego_cb(void *arg)
 					goto mqtt_error;
 				} else {
 					p->packmax = data->p_value.u32;
+					log_info("Set max packet size as %ld", p->packmax);
 				}
 			}
 			data = property_get_value(ep->property, PUBLISH_MAXIMUM_QOS);
@@ -871,11 +873,12 @@ mqtt_quictran_pipe_send_prior(mqtt_quictran_pipe *p, nni_aio *aio)
 				p->qosmax == 0? *header &= 0XF9: NNI_ARG_UNUSED(*header);
 			}
 		}
-		// check max packet size
-		if (nni_msg_header_len(msg) + nni_msg_len(msg) > p->packmax) {
-			nni_aio_finish_error(aio, UNSPECIFIED_ERROR);
-			return;
-		}
+	}
+
+	// check max packet size for v311 and v5
+	if (nni_msg_header_len(msg) + nni_msg_len(msg) > p->packmax) {
+		nni_aio_finish_error(aio, UNSPECIFIED_ERROR);
+		return;
 	}
 
 	niov  = 0;
@@ -954,12 +957,13 @@ mqtt_quictran_pipe_send_start(mqtt_quictran_pipe *p)
 				p->qosmax == 0? *header &= 0XF9: NNI_ARG_UNUSED(*header);
 			}
 		}
-		// check max packet size
-		if (nni_msg_header_len(msg) + nni_msg_len(msg) > p->packmax) {
-			txaio = p->txaio;
-			nni_aio_finish_error(txaio, UNSPECIFIED_ERROR);
-			return;
-		}
+	}
+
+	// check max packet size for v311 and v5
+	if (nni_msg_header_len(msg) + nni_msg_len(msg) > p->packmax) {
+		txaio = p->txaio;
+		nni_aio_finish_error(txaio, UNSPECIFIED_ERROR);
+		return;
 	}
 
 	txaio = p->txaio;
@@ -1127,10 +1131,12 @@ mqtt_quictran_data_pipe_start(
 
 	ep->refcnt++;
 
-	p->conn   = conn;
-	p->ep     = ep;
-	p->rcvmax = 0;
-	p->sndmax = 65535;
+	p->conn    = conn;
+	p->ep      = ep;
+	p->packmax = 0;
+	p->rcvmax  = 0;
+	p->sndmax  = 65535;
+
 #ifdef NNG_HAVE_MQTT_BROKER
 	p->cparam = NULL;
 #endif
@@ -1703,13 +1709,14 @@ mqtt_quictran_ep_set_reconnect_backoff(void *arg, const void *v, size_t sz, nni_
 static int
 mqtt_quictran_ep_set_priority(void *arg, const void *v, size_t sz, nni_opt_type t)
 {
+	NNI_ARG_UNUSED(sz);
 	mqtt_quictran_ep *ep = arg;
 	int rv;
 	int tmp;
 
 	nni_mtx_lock(&ep->mtx);
 	if((rv = nni_copyin_int(&tmp, v, sizeof(int), 0, 65535, t)) != 0) {
-		nni_stream_dialer_set(ep->dialer, NNG_OPT_QUIC_PRIORITY, -1, sizeof(int), NNI_TYPE_INT32);
+		nni_stream_dialer_set(ep->dialer, NNG_OPT_QUIC_PRIORITY, NULL, sizeof(int), NNI_TYPE_INT32);
 		return rv;
 	}
 

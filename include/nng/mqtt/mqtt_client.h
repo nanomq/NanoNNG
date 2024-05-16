@@ -562,7 +562,7 @@ struct nng_mqtt_client{
 
 NNG_DECL nng_mqtt_client *nng_mqtt_client_alloc(nng_socket, nng_mqtt_send_cb, bool);
 NNG_DECL void nng_mqtt_client_free(nng_mqtt_client*, bool);
-NNG_DECL int nng_mqtt_subscribe(nng_socket, nng_mqtt_topic_qos *, size_t, property *);
+NNG_DECL int nng_mqtt_subscribe(nng_socket, nng_mqtt_topic_qos *, uint32_t, property *);
 NNG_DECL int nng_mqtt_subscribe_async(nng_mqtt_client *, nng_mqtt_topic_qos *, size_t, property *);
 NNG_DECL int nng_mqtt_unsubscribe(nng_socket, nng_mqtt_topic *, size_t, property *);
 NNG_DECL int nng_mqtt_unsubscribe_async(nng_mqtt_client *, nng_mqtt_topic *, size_t, property *);

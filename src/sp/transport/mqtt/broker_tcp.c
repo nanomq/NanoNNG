@@ -21,8 +21,8 @@
 #include "supplemental/mqtt/mqtt_msg.h"
 #include "supplemental/mqtt/mqtt_qos_db_api.h"
 
-// TCP transport.   Platform specific TCP operations must be
-// supplied as well.
+// MQTT TCP transport, deal with framing and retransimission
+//  Platform specific TCP operations must be supplied as well.
 
 typedef struct tcptran_pipe tcptran_pipe;
 typedef struct tcptran_ep   tcptran_ep;
@@ -33,12 +33,11 @@ struct tcptran_pipe {
 	nni_pipe   *npipe; // for statitical
 	conf       *conf;
 	// uint16_t        peer;		//reserved for MQTT sdk version
-	// uint16_t        proto;
 	size_t          rcvmax; // duplicate with conf->max_packet_size
 	size_t          gotrxhead;
 	size_t          wantrxhead;
 	bool            closed;
-	bool            busy; // indicator for qos ack & aio
+	bool            busy; // protect the completeness of each msg
 	uint8_t         txlen[NANO_MIN_PACKET_LEN];
 	uint8_t         rxlen[NNI_NANO_MAX_HEADER_SIZE];
 	uint8_t         pro_ver;
@@ -66,14 +65,13 @@ struct tcptran_pipe {
 
 struct tcptran_ep {
 	nni_mtx mtx;
-	// uint16_t             proto;
 	size_t               rcvmax;
 	bool                 fini;
 	bool                 started;
 	bool                 closed;
 	nng_url             *url;
 	nng_sockaddr         src;
-	conf          *conf;
+	conf                *conf;
 	int                  refcnt; // active pipes
 	nni_aio             *useraio;
 	nni_aio             *connaio;
@@ -92,6 +90,7 @@ static void tcptran_pipe_send_start(tcptran_pipe *);
 static void tcptran_pipe_recv_start(tcptran_pipe *);
 static void nmq_tcptran_pipe_send_cb(void *);
 static void nmq_tcptran_pipe_qos_send_cb(void *);
+static void nmq_tcptran_pipe_rp_send_cb(void *arg);
 static void tcptran_pipe_recv_cb(void *);
 static void tcptran_pipe_nego_cb(void *);
 static void tcptran_ep_fini(void *);
@@ -214,8 +213,6 @@ tcptran_pipe_fini(void *arg)
 	nni_aio_free(p->txaio);
 	nni_aio_free(p->negoaio);
 	nng_stream_free(p->conn);
-	if (p->rxmsg != NULL)
-		nni_msg_free(p->rxmsg);
 	nni_lmq_fini(&p->rslmq);
 	nni_mtx_fini(&p->mtx);
 	NNI_FREE_STRUCT(p);
@@ -247,7 +244,7 @@ tcptran_pipe_alloc(tcptran_pipe **pipep)
 	        0) ||
 	    ((rv = nni_aio_alloc(
 	          &p->qsaio, nmq_tcptran_pipe_qos_send_cb, p)) != 0) ||
-	    ((rv = nni_aio_alloc(&p->rpaio, NULL, p)) != 0) ||
+	    ((rv = nni_aio_alloc(&p->rpaio, nmq_tcptran_pipe_rp_send_cb, p)) != 0) ||
 	    ((rv = nni_aio_alloc(&p->rxaio, tcptran_pipe_recv_cb, p)) != 0) ||
 	    ((rv = nni_aio_alloc(&p->negoaio, tcptran_pipe_nego_cb, p)) !=
 	        0)) {
@@ -424,6 +421,7 @@ close:
 	// if a malformated CONNECT packet is received
 	// reply CONNACK here for MQTT V5
 	// otherwise deal with it in protocol layer
+	nng_aio_wait(p->rpaio);
 	p->txlen[0] = CMD_CONNACK;
 	p->txlen[1] = 0x03;
 	p->txlen[2] = 0x00;
@@ -434,7 +432,6 @@ close:
 	// send connack down...
 	nni_aio_set_iov(p->rpaio, 1, &iov);
 	nng_stream_send(p->conn, p->rpaio);
-	nng_aio_wait(p->rpaio);
 error:
 	// If the connection is closed, we need to pass back a different
 	// error code.  This is necessary to avoid a problem where the
@@ -455,7 +452,7 @@ error:
 	}
 	nni_mtx_unlock(&ep->mtx);
 	tcptran_pipe_reap(p);
-	log_error("connect nego error rv: %s(%d)", nng_strerror(rv), rv);
+	log_error("connect nego error rv:(%d)", rv);
 	return;
 }
 
@@ -497,6 +494,7 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 	else {
 		log_warn("NULL msg detected in send_cb");
 		nni_mtx_unlock(&p->mtx);
+		tcptran_pipe_close(p);
 		return;
 	}
 
@@ -526,6 +524,37 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 	return;
 }
 
+
+static void
+nmq_tcptran_pipe_rp_send_cb(void *arg)
+{
+	tcptran_pipe *p = arg;
+	nni_aio      *rpaio = p->rpaio;
+	size_t        n;
+	int           rv;
+
+	if ((rv = nni_aio_result(rpaio)) != 0) {
+		log_warn(" send aio error %s", nng_strerror(rv));
+		tcptran_pipe_close(p);
+		return;
+	}
+
+	nni_mtx_lock(&p->mtx);
+	n = nni_aio_count(rpaio);
+	nni_aio_iov_advance(rpaio, n);
+
+	// more bytes to send
+	if (nni_aio_iov_count(rpaio) > 0) {
+		nng_stream_send(p->conn, rpaio);
+		nni_mtx_unlock(&p->mtx);
+		return;
+	}
+
+	p->busy = false;
+	nni_mtx_unlock(&p->mtx);
+	return;
+}
+
 static void
 nmq_tcptran_pipe_send_cb(void *arg)
 {
@@ -541,13 +570,11 @@ nmq_tcptran_pipe_send_cb(void *arg)
 	nni_mtx_lock(&p->mtx);
 	aio = nni_list_first(&p->sendq);
 
-	log_trace(
-	    "############### nmq_tcptran_pipe_send_cb [%p] ################",
-	    p);
+	log_trace(" ############ nmq_tcptran_pipe_send_cb [%p] ############ ", p);
 
 	if ((rv = nni_aio_result(txaio)) != 0) {
 		log_warn(" send aio error %s", nng_strerror(rv));
-		nni_pipe_bump_error(p->npipe, rv);
+		// nni_pipe_bump_error(p->npipe, rv);
 		nni_aio_list_remove(aio);
 		nni_mtx_unlock(&p->mtx);
 		// push error to protocol layer
@@ -622,15 +649,15 @@ nmq_tcptran_pipe_send_cb(void *arg)
 static void
 tcptran_pipe_recv_cb(void *arg)
 {
-	nni_aio      *aio;
+	nni_aio      *aio = NULL;
 	nni_iov       iov[2];
-	uint8_t       type, rv;
-	uint8_t       pos = 0;
-	uint32_t      len = 0;
-	nni_msg      *msg   = NULL, *qmsg;
+	uint8_t       type = 0, rv = 0;
+	uint8_t       pos   = 0;
+	uint32_t      len   = 0;
+	nni_msg      *msg   = NULL, *qmsg = NULL;
 	tcptran_pipe *p     = arg;
 	nni_aio      *rxaio = p->rxaio;
-	bool          ack = false;
+	bool          ack   = false;
 
 	log_trace("tcptran_pipe_recv_cb %p\n", p);
 	nni_mtx_lock(&p->mtx);
@@ -680,6 +707,7 @@ tcptran_pipe_recv_cb(void *arg)
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
+	// move to protocol layer
 	if (p->gotrxhead == 2) {
 		if ((p->rxlen[0] & 0XFF) == CMD_PINGREQ) {
 			// TODO set timeout in case it never finish
@@ -756,6 +784,10 @@ tcptran_pipe_recv_cb(void *arg)
 		log_warn("Invalid Packet Type: Connection closed.");
 		rv = MALFORMED_PACKET;
 		goto recv_error;
+	} else if (type == CMD_CONNACK) {
+		log_warn("Got CONNACK from client!");
+		rv = MALFORMED_PACKET;
+		goto recv_error;
 	}
 	nni_msg_set_conn_param(msg, p->tcp_cparam);
 	nni_msg_set_cmd_type(msg, type);
@@ -805,6 +837,12 @@ tcptran_pipe_recv_cb(void *arg)
 		ack_cmd = CMD_PUBREL;
 		ack     = true;
 	} else if (type == CMD_PUBREL) {
+		// verify msg header
+		uint8_t *header = nni_msg_header(msg);
+		if (*header != 0X62) {
+			rv = PROTOCOL_ERROR;
+			goto recv_error;
+		}
 		if ((rv = nni_mqtt_pubres_decode(msg, &packet_id, &reason_code,
 		         &prop, p->pro_ver)) != 0) {
 			log_error("decode PUBREL variable header failed!");
@@ -826,6 +864,7 @@ tcptran_pipe_recv_cb(void *arg)
 			p->qsend_quota++;
 		}
 	}
+
 	if (ack == true) {
 		// alloc a msg here costs memory. However we must do it for the
 		// sake of compatibility with nng.
@@ -855,6 +894,7 @@ tcptran_pipe_recv_cb(void *arg)
 			nni_aio_set_iov(p->qsaio, 2, iov);
 			nng_stream_send(p->conn, p->qsaio);
 		} else {
+			log_info("resend ack later");
 			if (nni_lmq_full(&p->rslmq)) {
 				// Make space for the new message.
 				if (nni_lmq_cap(&p->rslmq) <=
@@ -878,7 +918,6 @@ tcptran_pipe_recv_cb(void *arg)
 			}
 		}
 		ack = false;
-		// TODO should we push ack msg back to protocol layer?
 	}
 
 	// keep connection & Schedule next receive
@@ -906,7 +945,7 @@ recv_error:
 	nni_aio_set_msg(aio, NULL);
 	// error code cannot be 0. otherwise connection will sustain
 	nni_aio_finish_error(aio, rv);
-	log_warn("tcptran_pipe_recv_cb: parse error rv: %d\n", rv);
+	log_warn("tcptran_pipe_recv_cb: recv_error rv: %d\n", rv);
 	return;
 notify:
 	// nni_pipe_bump_rx(p->npipe, n);
@@ -960,8 +999,21 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	// qos default to 0 if the msg is not PUBLISH
 	uint8_t qos = 0;
 
-	if (nni_msg_header_len(msg) <= 0 ||
+	if (nni_msg_header_len(msg) == 0 ||
 	    nni_msg_get_type(msg) != CMD_PUBLISH) {
+		txaio = p->txaio;
+		niov  = 0;
+
+		if (nni_msg_header_len(msg) > 0) {
+			iov[niov].iov_buf = nni_msg_header(msg);
+			iov[niov].iov_len = nni_msg_header_len(msg);
+			niov++;
+		}
+		if (nni_msg_len(msg) > 0) {
+			iov[niov].iov_buf = nni_msg_body(msg);
+			iov[niov].iov_len = nni_msg_len(msg);
+			niov++;
+		}
 		goto send;
 	}
 
@@ -1017,7 +1069,10 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		mlen    = nni_msg_len(msg);
 		qos_pac = nni_msg_get_pub_qos(msg);
 		NNI_GET16(body, tlen);
-
+		if (qos_pac == 0) {
+			// simply set DUP flag to 0 & correct error from client
+			*header &= ~(1 << 3);
+		}
 		if (nni_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
 			// V5 to V4 shrink msg, remove property length
 			// APP layer must give topic name even if topic
@@ -1025,7 +1080,6 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			if (qos_pac > 0) {
 				property_len = get_var_integer(
 				    body + 4 + tlen, &property_bytes);
-
 			} else {
 				property_len = get_var_integer(
 				    body + 2 + tlen, &property_bytes);
@@ -1035,7 +1089,6 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 
 			plength = property_len + property_bytes;
 		} else if (nni_msg_cmd_type(msg) == CMD_PUBLISH) {
-
 			if (qos_pac == 0) {
 				if (nni_msg_header_len(msg) > 0) {
 					iov[niov].iov_buf =
@@ -1144,27 +1197,10 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			niov++;
 		}
 	}
-
+send:
 	nni_aio_set_iov(txaio, niov, iov);
 	nng_stream_send(p->conn, txaio);
 	return;
-
-send:
-	txaio = p->txaio;
-	niov  = 0;
-
-	if (nni_msg_header_len(msg) > 0) {
-		iov[niov].iov_buf = nni_msg_header(msg);
-		iov[niov].iov_len = nni_msg_header_len(msg);
-		niov++;
-	}
-	if (nni_msg_len(msg) > 0) {
-		iov[niov].iov_buf = nni_msg_body(msg);
-		iov[niov].iov_len = nni_msg_len(msg);
-		niov++;
-	}
-	nni_aio_set_iov(txaio, niov, iov);
-	nng_stream_send(p->conn, txaio);
 }
 
 /**
@@ -1183,8 +1219,24 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	int       niov;
 	nni_iov   iov[8];
 
-	if (nni_msg_get_type(msg) != CMD_PUBLISH)
-		goto send;
+	if (nni_msg_header_len(msg) == 0 ||
+	    nni_msg_get_type(msg) != CMD_PUBLISH) {
+		txaio = p->txaio;
+		niov  = 0;
+
+		if (nni_msg_header_len(msg) > 0) {
+			iov[niov].iov_buf = nni_msg_header(msg);
+			iov[niov].iov_len = nni_msg_header_len(msg);
+			niov++;
+		}
+		if (nni_msg_len(msg) > 0) {
+			iov[niov].iov_buf = nni_msg_body(msg);
+			iov[niov].iov_len = nni_msg_len(msg);
+			niov++;
+			goto send;
+		}
+	}
+
 	// never modify the original msg
 
 	uint8_t      *body, *header, qos_pac, prop_bytes = 0;
@@ -1206,7 +1258,10 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	hlen    = nni_msg_header_len(msg);
 	qos_pac = nni_msg_get_pub_qos(msg);
 	NNI_GET16(body, tlen);
-
+	if (qos_pac == 0) {
+		// simply set DUP flag to 0 & correct error from client
+		*header &= ~(1 << 3);
+	}
 	// check max packet size for this client/msg
 	uint32_t total_len = mlen + hlen;
 	if (total_len > p->tcp_cparam->max_packet_size) {
@@ -1423,26 +1478,12 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		nni_aio_finish(aio, 0, 0);
 		return;
 	}
-	nni_aio_set_iov(txaio, niov, iov);
+send:
+    nni_aio_set_iov(txaio, niov, iov);
 	nng_stream_send(p->conn, txaio);
 	return;
 
-send:
-	txaio = p->txaio;
-	niov  = 0;
 
-	if (nni_msg_header_len(msg) > 0) {
-		iov[niov].iov_buf = nni_msg_header(msg);
-		iov[niov].iov_len = nni_msg_header_len(msg);
-		niov++;
-	}
-	if (nni_msg_len(msg) > 0) {
-		iov[niov].iov_buf = nni_msg_body(msg);
-		iov[niov].iov_len = nni_msg_len(msg);
-		niov++;
-	}
-	nni_aio_set_iov(txaio, niov, iov);
-	nng_stream_send(p->conn, txaio);
 }
 
 /**
@@ -1469,7 +1510,7 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 	}
 
 	if ((aio = nni_list_first(&p->sendq)) == NULL) {
-		log_trace("aio not functioning");
+		log_trace("no send aio is functioning");
 		return;
 	}
 

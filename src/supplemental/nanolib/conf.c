@@ -890,7 +890,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->parallel         = ncpu * 2;
 
 	nanomq_conf->property_size = sizeof(uint8_t) * 32;
-	nanomq_conf->msq_len       = 2048;
+	nanomq_conf->msq_len       = 20480;
 	nanomq_conf->qos_duration  = 10;
 	nanomq_conf->backoff       = 1.5;
 	nanomq_conf->max_inflight_window = 2048;
@@ -920,7 +920,7 @@ conf_init(conf *nanomq_conf)
 
 	conf_http_server_init(&nanomq_conf->http_server, 8081);
 
-	nanomq_conf->websocket.enable  = true;
+	nanomq_conf->websocket.enable  = false;
 	nanomq_conf->websocket.url     = NULL;
 	nanomq_conf->websocket.tls_url = NULL;
 
@@ -1142,7 +1142,7 @@ print_webhook_conf(conf_web_hook *webhook)
 		const char *encode_type =
 		    get_webhook_type(webhook->encode_payload);
 		log_info("webhook encoding:  %s", encode_type);
-		log_info("webhook poll size: %d", webhook->pool_size);
+		log_info("webhook pool size: %d", webhook->pool_size);
 		log_info("webhook rule:");
 		for (size_t i = 0; i < webhook->rule_count; i++) {
 			conf_web_hook_rule *rule = webhook->rules[i];

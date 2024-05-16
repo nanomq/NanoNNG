@@ -217,6 +217,88 @@ dbhash_get_ptpair_all(void)
 	return res;
 }
 
+topic_queue *
+topic_queue_init(char *topic, int topic_len)
+{
+	topic_queue *tq = nni_alloc(sizeof(topic_queue));
+	if (tq == NULL) {
+		return NULL;
+	}
+	tq->topic = nni_alloc(topic_len + 1);
+	if (tq->topic == NULL) {
+		nni_free(tq, sizeof(topic_queue));
+		return NULL;
+	}
+	for(int i = 0; i < topic_len - 1; i++) {
+		log_debug("topic[%d]: %c", i, topic[i]);
+	}
+	memcpy(tq->topic, topic, topic_len);
+	tq->topic[topic_len] = '\0';
+	tq->next            = NULL;
+	return tq;
+
+}
+
+void
+topic_queue_release(topic_queue *tq)
+{
+	while (tq != NULL) {
+		topic_queue *tmp = tq;
+		tq = tq->next;
+		if (tmp->topic != NULL) {
+			nni_free(tmp->topic, strlen(tmp->topic) + 1);
+		}
+		nni_free(tmp, sizeof(topic_queue));
+	}
+
+	return;
+}
+
+topic_queue *
+init_topic_queue_with_topic_node(topic_node *tn)
+{
+	topic_queue *tq = NULL;
+	topic_queue *curtq = NULL;
+
+	while (tn != NULL) {
+		if (tq == NULL) {
+			tq = nng_alloc(sizeof(topic_queue));
+			if (tq == NULL) {
+				log_error("nng_alloc failed");
+				return NULL;
+			}
+			curtq = tq;
+
+			curtq->topic = nng_strdup(tn->topic.body);
+			if (curtq->topic == NULL) {
+				log_error("nng_strdup failed");
+				topic_queue_release(tq);
+				return NULL;
+			}
+			curtq->next = NULL;
+		} else {
+			curtq->next = nng_alloc(sizeof(topic_queue));
+			if (curtq->next == NULL) {
+				log_error("nng_alloc failed");
+				topic_queue_release(tq);
+				return NULL;
+			}
+
+			curtq->next->topic = nng_strdup(tn->topic.body);
+			if (curtq->next->topic == NULL) {
+				log_error("nng_strdup failed");
+				topic_queue_release(tq);
+				return NULL;
+			}
+
+			curtq = curtq->next;
+			curtq->next = NULL;
+		}
+		tn = tn->next;
+	}
+	return tq;
+}
+
 topic_queue **
 dbhash_get_topic_queue_all(size_t *sz)
 {

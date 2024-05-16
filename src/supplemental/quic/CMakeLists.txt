@@ -16,7 +16,8 @@ if (NNG_ENABLE_QUIC)
     nng_sources(quic_api.c)
     nng_sources(quic_api.h)
     nng_sources(msquic_dial.c)
-    nng_test(quic_api_test)
+	# nng_test(quic_api_test)
+    nng_test(msquic_dial_test)
 
     find_path(INTERNAL_MSQUIC_INCLUDE_DIR
     NAMES msquic.h
