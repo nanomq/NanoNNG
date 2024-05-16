@@ -29,6 +29,17 @@
 extern "C" {
 #endif
 
+// Return an absolute time from some arbitrary point.  The value is
+// provided in milliseconds, and is of limited resolution based on the
+// system clock.  (Do not use it for fine-grained performance measurements.)
+NNG_DECL nng_time nng_clock(void);
+
+// Return unix timestamp (milliseconds) .
+NNG_DECL nng_time nng_timestamp(void);
+
+// Sleep for specified msecs.
+NNG_DECL void nng_msleep(nng_duration);
+
 // nng_thread is a handle to a "thread", which may be a real system
 // thread, or a coroutine on some platforms.
 typedef struct nng_thread nng_thread;
