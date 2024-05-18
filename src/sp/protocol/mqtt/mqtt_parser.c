@@ -197,7 +197,10 @@ int32_t
 get_utf8_str(char **dest, const uint8_t *src, uint32_t *pos, size_t max)
 {
 	int32_t str_len = 0;
-	NNI_GET16(src + (*pos), str_len);
+	if (max > 0)
+		if (max - *pos < 2)
+			return -1;
+	NNI_GET16(src + (*pos), str_len);	// still vulnerable to attack
 	if (max > 0 && str_len > max)
 		return -1;
 
