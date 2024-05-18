@@ -3683,8 +3683,10 @@ property_parse(struct pos_buf *buf, property *prop, uint8_t prop_id,
 	case BINARY:
 		if (copy_value) {
 			mqtt_buf binary = { 0 };
-			read_utf8_str(buf, &binary);
-			mqtt_buf_dup(&prop->data.p_value.binary, &binary);
+			if (read_utf8_str(buf, &binary) != 0)
+				log_warn("Property decode error: Not UTF-8!");
+			else
+				mqtt_buf_dup(&prop->data.p_value.binary, &binary);
 		} else {
 			read_utf8_str(buf, &prop->data.p_value.binary);
 		}
@@ -3694,8 +3696,10 @@ property_parse(struct pos_buf *buf, property *prop, uint8_t prop_id,
 	case STR:
 		if (copy_value) {
 			mqtt_buf str = { 0 };
-			read_utf8_str(buf, &str);
-			mqtt_buf_dup(&prop->data.p_value.binary, &str);
+			if (read_utf8_str(buf, &str) != 0)
+				log_warn("Property decode error: Not UTF-8!");
+			else
+				mqtt_buf_dup(&prop->data.p_value.binary, &str);
 		} else {
 			read_utf8_str(buf, &prop->data.p_value.str);
 		}
@@ -3706,14 +3710,15 @@ property_parse(struct pos_buf *buf, property *prop, uint8_t prop_id,
 	case STR_PAIR:
 		if (copy_value) {
 			mqtt_kv kv = { 0 };
-			read_utf8_str(buf, &kv.key);
-			read_utf8_str(buf, &kv.value);
-			mqtt_kv_dup(&prop->data.p_value.strpair, &kv);
+			if (read_utf8_str(buf, &kv.key) != 0 || read_utf8_str(buf, &kv.value) != 0)
+				log_warn("Property decode error: Not UTF-8!");
+			else
+				mqtt_kv_dup(&prop->data.p_value.strpair, &kv);
 		} else {
 			read_utf8_str(buf, &prop->data.p_value.strpair.key);
 			read_utf8_str(buf, &prop->data.p_value.strpair.value);
 		}
-		log_trace("id: %d, value: '%.*s -> %.*s' (STR_PAIR)", prop_id,
+		log_debug("id: %d, value: '%.*s -> %.*s' (STR_PAIR)", prop_id,
 		    prop->data.p_value.strpair.key.length,
 		    prop->data.p_value.strpair.key.buf,
 		    prop->data.p_value.strpair.value.length,
@@ -3883,7 +3888,7 @@ check_properties(property *prop, nni_msg *msg)
 	}
 #ifdef MQTTV5_VERIFY
 #endif
-	uint32_t pos = 0;
+	// uint32_t pos = 0;
 	bool mei = false; // MESSAGE_EXPIRY_INTERVAL:
 	for (property *p1 = prop->next; p1 != NULL; p1 = p1->next) {
 		// if (type == CMD_PUBLISH) {
@@ -3896,12 +3901,12 @@ check_properties(property *prop, nni_msg *msg)
 				return PROTOCOL_ERROR;
 			break;
 		case CONTENT_TYPE:
-			pos = 0;
-			if (get_utf8_str(p1->data.p_value.str.buf,
-			        p1->data.p_value.str.buf, &pos, p1->data.p_value.str.length) < 0) {
-				log_warn("CONTENT TYPE error: Not UTF-8");
-				return PROTOCOL_ERROR;
-			}
+			// pos = 0;
+			// if (get_utf8_str(p1->data.p_value.str.buf,
+			//         p1->data.p_value.str.buf, &pos, p1->data.p_value.str.length) < 0) {
+			// 	log_warn("CONTENT TYPE error: Not UTF-8");
+			// 	return PROTOCOL_ERROR;
+			// }
 			break;
 		case SUBSCRIPTION_IDENTIFIER:
 			if (type == CMD_PUBLISH) {
@@ -3917,7 +3922,7 @@ check_properties(property *prop, nni_msg *msg)
 		case REQUEST_RESPONSE_INFORMATION:
 		case REQUEST_PROBLEM_INFORMATION:
 			if (p1->data.p_value.u8 != 0 && p1->data.p_value.u8 != 1) {
-				log_warn("REQUEST_PROBLEM_INFORMATION/REQUEST_RESPONSE_INFORMATION	\\
+				log_warn("REQUEST_PROBLEM_INFORMATION/REQUEST_RESPONSE_INFORMATION	\
 						  malformed value detected %x!", p1->data.p_value.u8);
 				return PROTOCOL_ERROR;	
 			}
@@ -3926,19 +3931,19 @@ check_properties(property *prop, nni_msg *msg)
 			//It is a Protocol Error to include Authentication Data if there is no Authentication Method.
 			break;
 		case USER_PROPERTY:
-			pos = 0;
-			if (get_utf8_str(p1->data.p_value.str.buf,
-			        p1->data.p_value.str.buf, &pos, p1->data.p_value.str.length) < 0) {
-				log_warn("USER Property error: Not UTF-8");
-				return PROTOCOL_ERROR;
-			}
+			// pos = 0;
+			// if (get_utf8_str(p1->data.p_value.str.buf,
+			//         p1->data.p_value.str.buf, &pos, p1->data.p_value.str.length) < 0) {
+			// 	log_warn("USER Property error: Not UTF-8");
+			// 	return PROTOCOL_ERROR;
+			// }
 			break;
 		case MESSAGE_EXPIRY_INTERVAL:
 			if (mei) {
 				log_warn("Duplicated MESSAGE_EXPIRY_INTERVAL!");
 				return PROTOCOL_ERROR;
 			} else {
-				mei == true;
+				mei = true;
 			}
 			break;
 		default:
