@@ -3885,12 +3885,10 @@ check_properties(property *prop, nni_msg *msg)
 	if (prop == NULL) {
 		return SUCCESS;
 	}
-#ifdef MQTTV5_VERIFY
-#endif
 	// uint32_t pos = 0;
 	bool mei = false; // MESSAGE_EXPIRY_INTERVAL:
 	for (property *p1 = prop->next; p1 != NULL; p1 = p1->next) {
-		// if (type == CMD_PUBLISH) {
+#ifdef MQTTV5_VERIFY
 		switch (p1->id) {
 		case RESPONSE_TOPIC:
 			if (memchr((const char *) p1->data.p_value.str.buf,
@@ -3948,6 +3946,7 @@ check_properties(property *prop, nni_msg *msg)
 		default:
 			break;
 		}
+#endif
 		for (property *p2 = p1->next; p2 != NULL; p2 = p2->next) {
 			if (p1->id == p2->id &&
 			    p1->data.p_type != STR_PAIR) {
