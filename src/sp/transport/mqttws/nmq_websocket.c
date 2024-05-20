@@ -100,17 +100,10 @@ static void
 wstran_pipe_qos_send_cb(void *arg)
 {
 	ws_pipe *p = arg;
-	nni_aio *qsaio;
 
 	nni_mtx_lock(&p->mtx);
 	log_trace(" wstran_pipe_qos_send_cb ");
-	if (p->closed){
-			nni_mtx_unlock(&p->mtx);
-			return;
-	}
-	qsaio          = p->qsaio;
-
-	nni_msg *msg = nni_aio_get_msg(qsaio);
+	nni_msg *msg = nni_aio_get_msg(p->qsaio);
 	if (msg != NULL) {
 		nni_msg_free(msg);
 	}
@@ -992,6 +985,7 @@ wstran_pipe_fini(void *arg)
 
 	nni_aio_free(p->rxaio);
 	nni_aio_free(p->txaio);
+	nni_aio_wait(p->qsaio);
 	nni_aio_free(p->qsaio);
 
 	nng_stream_free(p->ws);
