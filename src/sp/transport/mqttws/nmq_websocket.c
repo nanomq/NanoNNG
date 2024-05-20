@@ -102,13 +102,19 @@ wstran_pipe_qos_send_cb(void *arg)
 	ws_pipe *p = arg;
 	nni_aio *qsaio;
 
+	nni_mtx_lock(&p->mtx);
 	log_trace(" wstran_pipe_qos_send_cb ");
+	if (p->closed){
+			nni_mtx_unlock(&p->mtx);
+			return;
+	}
 	qsaio          = p->qsaio;
 
 	nni_msg *msg = nni_aio_get_msg(qsaio);
 	if (msg != NULL) {
 		nni_msg_free(msg);
 	}
+	nni_mtx_unlock(&p->mtx);
 }
 
 static void
