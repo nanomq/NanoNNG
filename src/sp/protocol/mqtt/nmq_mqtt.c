@@ -216,8 +216,6 @@ nano_pipe_timer_cb(void *arg)
 				nni_qos_db_remove_unused_msg(
 				    is_sqlite, old->nano_qos_db);
 #endif
-				nni_qos_db_remove_all_msg(is_sqlite,
-				    old->nano_qos_db, nmq_close_unack_msg_cb);
 				nni_id_remove(
 				    &s->cached_sessions, p->pipe->p_id);
 			}
