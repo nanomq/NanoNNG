@@ -68,6 +68,8 @@ struct ws_pipe {
 	reason_code err_code; // work with closed flag
 };
 
+static void wstran_pipe_close(void *arg);
+
 static void
 wstran_pipe_send_cb(void *arg)
 {
@@ -99,17 +101,16 @@ wstran_pipe_send_cb(void *arg)
 static void
 wstran_pipe_qos_send_cb(void *arg)
 {
-	ws_pipe *p = arg;
+	int rv;
+	ws_pipe *p     = arg;
+	nni_aio *qsaio = p->qsaio;
 
-	nni_mtx_lock(&p->mtx);
-	log_trace(" wstran_pipe_qos_send_cb ");
-	nni_msg *msg = nni_aio_get_msg(p->qsaio);
-	if (msg != NULL) {
-		nni_msg_free(msg);
+	if ((rv = nni_aio_result(qsaio)) != 0) {
+		log_warn(" send aio error %s", nng_strerror(rv));
+		wstran_pipe_close(p);
 	}
-	nni_mtx_unlock(&p->mtx);
+	return;
 }
-
 static void
 wstran_pipe_recv_cb(void *arg)
 {
@@ -986,6 +987,12 @@ wstran_pipe_fini(void *arg)
 	nni_aio_free(p->rxaio);
 	nni_aio_free(p->txaio);
 	nni_aio_wait(p->qsaio);
+	// We have to free msg here for a failed send
+	// due to the messy design of NNG WebSocket
+	nni_msg *msg;
+	if ((msg = nni_aio_get_msg(p->qsaio)) != NULL) {
+		nni_msg_free(msg);
+	}
 	nni_aio_free(p->qsaio);
 
 	nng_stream_free(p->ws);
