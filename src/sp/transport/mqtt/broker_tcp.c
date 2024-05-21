@@ -780,8 +780,11 @@ tcptran_pipe_recv_cb(void *arg)
 		log_warn("Invalid Packet Type: Connection closed.");
 		rv = MALFORMED_PACKET;
 		goto recv_error;
-	} else if (type == CMD_CONNACK) {
-		log_warn("Got CONNACK from client!");
+	} else if (type == CMD_CONNACK || type == CMD_CONNECT) {
+		if (type == CMD_CONNACK)
+			log_warn("Got CONNACK from client!");
+		else
+			log_warn("Got CONNECT from client!");
 		rv = MALFORMED_PACKET;
 		goto recv_error;
 	}
