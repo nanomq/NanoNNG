@@ -50,6 +50,7 @@ struct nano_ctx {
 // nano_sock is our per-socket protocol private structure.
 struct nano_sock {
 	nni_mtx        lk;
+	nni_msg       *pingmsg;
 	nni_atomic_int ttl;
 	nni_id_map     pipes;
 	nni_id_map     cached_sessions;
@@ -523,6 +524,17 @@ nano_sock_init(void *arg, nni_sock *sock)
 	// Readability comes when there is something on the socket.
 	nni_pollable_init(&s->writable);
 	nni_pollable_init(&s->readable);
+
+	s->pingmsg   = NULL;
+	nni_msg_alloc(&s->pingmsg, 0);
+	if (!s->pingmsg) {
+		log_error("Error in create a pingmsg");
+	} else {
+		uint8_t buf[2];
+		buf[0] = 0xD0;
+		buf[1] = 0x00;
+		nni_msg_header_append(s->pingmsg, buf, 2);
+	}
 }
 
 static void
@@ -1168,8 +1180,21 @@ nano_pipe_recv_cb(void *arg)
 	case CMD_CONNECT:
 	case CMD_PUBREC:
 	case CMD_PUBREL:
-	case CMD_PINGREQ:
 		goto drop;
+	case CMD_PINGREQ:
+		nni_mtx_lock(&p->lk);
+		nni_msg_clone(s->pingmsg);
+		if (!p->busy) {
+			p->busy = true;
+			nni_aio_set_msg(&p->aio_send, s->pingmsg);
+			nni_pipe_send(p->pipe, &p->aio_send);
+		} else {
+			if (nni_lmq_put(&p->rlmq, s->pingmsg) != 0) {
+				nni_msg_free(s->pingmsg);
+			}
+		}
+		nni_mtx_unlock(&p->lk);
+		break;
 	default:
 		goto drop;
 	}
