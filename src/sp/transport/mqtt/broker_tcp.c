@@ -708,20 +708,20 @@ tcptran_pipe_recv_cb(void *arg)
 		return;
 	}
 	// move to protocol layer
-	if (p->gotrxhead == 2) {
-		if ((p->rxlen[0] & 0XFF) == CMD_PINGREQ) {
-			// TODO set timeout in case it never finish
-			nng_aio_wait(p->rpaio);
-			p->txlen[0]    = CMD_PINGRESP;
-			p->txlen[1]    = 0x00;
-			iov[0].iov_len = 2;
-			iov[0].iov_buf = &p->txlen;
-			// send CMD_PINGRESP down...
-			nni_aio_set_iov(p->rpaio, 1, iov);
-			nng_stream_send(p->conn, p->rpaio);
-			goto notify;
-		}
-	}
+	// if (p->gotrxhead == 2) {
+	// 	if ((p->rxlen[0] & 0XFF) == CMD_PINGREQ) {
+	// 		// TODO set timeout in case it never finish
+	// 		nng_aio_wait(p->rpaio);
+	// 		p->txlen[0]    = CMD_PINGRESP;
+	// 		p->txlen[1]    = 0x00;
+	// 		iov[0].iov_len = 2;
+	// 		iov[0].iov_buf = &p->txlen;
+	// 		// send CMD_PINGRESP down...
+	// 		nni_aio_set_iov(p->rpaio, 1, iov);
+	// 		nng_stream_send(p->conn, p->rpaio);
+	// 		goto notify;
+	// 	}
+	// }
 
 	if (p->rxmsg == NULL) {
 		if ((rv = mqtt_get_remaining_length(
