@@ -497,6 +497,7 @@ nano_sock_fini(void *arg)
 	nni_mtx_fini(&s->lk);
 
 	conf_fini(s->conf);
+	nni_msg_free(s->pingmsg);
 }
 
 static void
