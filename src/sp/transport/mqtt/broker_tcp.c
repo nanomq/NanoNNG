@@ -297,6 +297,7 @@ tcptran_pipe_nego_cb(void *arg)
 	nni_iov       iov;
 	uint8_t       len_of_varint = 0;
 	uint32_t      len;
+	reason_code   code;
 	int           rv;
 
 	log_trace("start tcptran_pipe_nego_cb max len %ld pipe_addr %p gotrx "
@@ -310,6 +311,8 @@ tcptran_pipe_nego_cb(void *arg)
 			nng_free(p->conn_buf, p->wantrxhead);
 			p->conn_buf = NULL;
 		}
+		rv = NNG_ECANCELED;
+		code = NORMAL_DISCONNECTION;
 		goto error;
 	}
 
@@ -333,17 +336,20 @@ tcptran_pipe_nego_cb(void *arg)
 			log_error(
 			    "Illegal CONNECT Packet type %x", p->rxlen[0]);
 			rv = NNG_EPROTO;
+			code = PROTOCOL_ERROR;
 			goto error;
 		}
 		if ((rv = mqtt_get_remaining_length(
 		         p->rxlen, p->gotrxhead, &len, &len_of_varint)) != 0) {
-			rv = PAYLOAD_FORMAT_INVALID;
+			rv = NNG_EPROTO;
+			code = MALFORMED_PACKET;
 			goto error;
 		}
 		p->wantrxhead = len + 1 + len_of_varint;
 		rv            = (p->wantrxhead >= NANO_CONNECT_PACKET_LEN) ? 0
 		                                                           : NNG_EPROTO;
 		if (rv != 0) {
+			code = MALFORMED_PACKET;
 			goto error;
 		}
 	}
@@ -368,6 +374,8 @@ tcptran_pipe_nego_cb(void *arg)
 
 	if (p->gotrxhead >= p->wantrxhead) {
 		if (0 != conn_param_alloc(&p->tcp_cparam)) {
+			rv = NNG_ENOMEM;
+			code = SERVER_UNAVAILABLE;
 			goto error;
 		}
 		if ((rv = conn_handler(
@@ -403,8 +411,10 @@ tcptran_pipe_nego_cb(void *arg)
 			nni_mtx_unlock(&ep->mtx);
 			return;
 		} else {
-			log_info("Disconnect Client due to %d", rv);
+			log_info("Disconnect Client due to %d parse CONNECT failed", rv);
 			nng_free(p->conn_buf, p->wantrxhead);
+			rv = NNG_EPROTO;
+			code = MALFORMED_PACKET;
 			if (p->tcp_cparam->pro_ver == 5) {
 				goto close;
 			} else {
@@ -421,17 +431,17 @@ close:
 	// if a malformated CONNECT packet is received
 	// reply CONNACK here for MQTT V5
 	// otherwise deal with it in protocol layer
-	nng_aio_wait(p->rpaio);
+	nng_aio_wait(p->txaio);
 	p->txlen[0] = CMD_CONNACK;
 	p->txlen[1] = 0x03;
 	p->txlen[2] = 0x00;
-	p->txlen[3] = rv;
+	p->txlen[3] = code;
 	p->txlen[4] = 0x00;
 	iov.iov_len = 5;
 	iov.iov_buf = &p->txlen;
 	// send connack down...
-	nni_aio_set_iov(p->rpaio, 1, &iov);
-	nng_stream_send(p->conn, p->rpaio);
+	nni_aio_set_iov(p->txaio, 1, &iov);
+	nng_stream_send(p->conn, p->txaio);
 error:
 	// If the connection is closed, we need to pass back a different
 	// error code.  This is necessary to avoid a problem where the
@@ -452,7 +462,8 @@ error:
 	}
 	nni_mtx_unlock(&ep->mtx);
 	tcptran_pipe_reap(p);
-	log_error("connect nego error rv:(%d)", rv);
+	log_error("connect nego error rv:(%d) %s MQTT reason code %d",
+			  rv, nng_strerror(rv), code);
 	return;
 }
 
@@ -575,10 +586,12 @@ nmq_tcptran_pipe_send_cb(void *arg)
 	if ((rv = nni_aio_result(txaio)) != 0) {
 		log_warn(" send aio error %s", nng_strerror(rv));
 		// nni_pipe_bump_error(p->npipe, rv);
-		nni_aio_list_remove(aio);
+		if (aio)
+			nni_aio_list_remove(aio);
 		nni_mtx_unlock(&p->mtx);
 		// push error to protocol layer
-		nni_aio_finish_error(aio, rv);
+		if (aio)
+			nni_aio_finish_error(aio, rv);
 		return;
 	}
 
@@ -593,7 +606,11 @@ nmq_tcptran_pipe_send_cb(void *arg)
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
-
+	if (aio == NULL) {
+		// still in negotiation
+		nni_mtx_unlock(&p->mtx);
+		return;
+	}
 	msg = nni_aio_get_msg(aio);
 
 	if (nni_aio_get_prov_data(txaio) != NULL) {
