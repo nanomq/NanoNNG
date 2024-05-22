@@ -89,7 +89,6 @@ static void tcptran_pipe_send_start(tcptran_pipe *);
 static void tcptran_pipe_recv_start(tcptran_pipe *);
 static void nmq_tcptran_pipe_send_cb(void *);
 static void nmq_tcptran_pipe_qos_send_cb(void *);
-static void nmq_tcptran_pipe_rp_send_cb(void *arg);
 static void tcptran_pipe_recv_cb(void *);
 static void tcptran_pipe_nego_cb(void *);
 static void tcptran_ep_fini(void *);
@@ -280,7 +279,6 @@ tcptran_ep_match(tcptran_ep *ep)
  * Fixed header to variable header
  * receive multiple times for complete data packet then reply ACK in protocol
  * layer iov_len limits the length readv reads
- * TODO independent with nng SP
  */
 static void
 tcptran_pipe_nego_cb(void *arg)
@@ -336,6 +334,7 @@ tcptran_pipe_nego_cb(void *arg)
 		}
 		if ((rv = mqtt_get_remaining_length(
 		         p->rxlen, p->gotrxhead, &len, &len_of_varint)) != 0) {
+			log_warn("Remaining length parse error");
 			rv = NNG_EPROTO;
 			code = MALFORMED_PACKET;
 			goto error;
