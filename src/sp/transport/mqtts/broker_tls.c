@@ -288,7 +288,6 @@ tlstran_ep_match(tlstran_ep *ep)
  * Fixed header to variable header
  * receive multiple times for complete data packet then reply ACK in protocol
  * layer iov_len limits the length readv reads
- * TODO independent with nng SP
  */
 static void
 tlstran_pipe_nego_cb(void *arg)
@@ -300,6 +299,7 @@ tlstran_pipe_nego_cb(void *arg)
 	nni_iov       iov;
 	uint8_t       len_of_varint = 0;
 	uint32_t      len;
+	reason_code   code;
 	int           rv;
 
 	log_trace("start tlstran_pipe_nego_cb max len %ld pipe_addr %p gotrx %d wantrx %d\n",
@@ -312,6 +312,8 @@ tlstran_pipe_nego_cb(void *arg)
 			nng_free(p->conn_buf, p->wantrxhead);
 			p->conn_buf = NULL;
 		}
+		rv = NNG_ECANCELED;
+		code = NORMAL_DISCONNECTION;
 		goto error;
 	}
 
@@ -332,16 +334,23 @@ tlstran_pipe_nego_cb(void *arg)
 	}
 	if (p->gotrxhead == NNI_NANO_MAX_HEADER_SIZE) {
 		if (p->rxlen[0] != CMD_CONNECT) {
-			log_error("Illegal CONNECT Packet type %x", p->rxlen[0]);
+			log_warn("Illegal CONNECT Packet type %x", p->rxlen[0]);
 			rv = NNG_EPROTO;
+			code = PROTOCOL_ERROR;
 			goto error;
 		}
-		len =
-		    get_var_integer(p->rxlen + 1, &len_of_varint);
+		if ((rv = mqtt_get_remaining_length(
+		         p->rxlen, p->gotrxhead, &len, &len_of_varint)) != 0) {
+			log_warn("Remaining length parse error");
+			rv = NNG_EPROTO;
+			code = MALFORMED_PACKET;
+			goto error;
+		}
 		p->wantrxhead = len + 1 + len_of_varint;
 		rv            = (p->wantrxhead >= NANO_CONNECT_PACKET_LEN) ? 0
 		                                                           : NNG_EPROTO;
 		if (rv != 0) {
+			code = MALFORMED_PACKET;
 			goto error;
 		}
 	}
@@ -366,21 +375,17 @@ tlstran_pipe_nego_cb(void *arg)
 
 	if (p->gotrxhead >= p->wantrxhead) {
 		if (0 != conn_param_alloc(&p->tcp_cparam)) {
+			rv = NNG_ENOMEM;
+			code = SERVER_UNAVAILABLE;
 			goto error;
 		}
 		if ((rv = conn_handler(
 		         p->conn_buf, p->tcp_cparam, p->wantrxhead)) == 0) {
 			nng_free(p->conn_buf, p->wantrxhead);
 			p->conn_buf = NULL;
-			// we don't need to alloc a new msg, just use pipe.
-			// We are all ready now.  We put this in the wait list,
-			// and then try to run the matcher.
-
 			// connection packet handled successfully. clone it for protocol or app layer
 			conn_param_clone(p->tcp_cparam);
-
 			// Connection is accepted.
-
 			p->pro_ver = p->tcp_cparam->pro_ver;
 			if (p->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 				p->qsend_quota = p->tcp_cparam->rx_max;
@@ -390,14 +395,29 @@ tlstran_pipe_nego_cb(void *arg)
 			tlstran_ep_match(ep);
 			if (p->tcp_cparam->max_packet_size == 0) {
 				// set default max packet size for client
-				p->tcp_cparam->max_packet_size = p->conf == NULL?
-				NANO_MAX_RECV_PACKET_SIZE : p->conf->client_max_packet_size;
+				p->tcp_cparam->max_packet_size =
+				    p->conf == NULL
+				    ? NANO_MAX_RECV_PACKET_SIZE
+				    : p->conf->client_max_packet_size;
+				if (p->tcp_cparam->properties != NULL) {
+					property_remove(
+					    p->tcp_cparam->properties,
+					    MAXIMUM_PACKET_SIZE);
+					property_append(
+					    p->tcp_cparam->properties,
+					    property_set_value_u32(
+					        MAXIMUM_PACKET_SIZE,
+					        p->tcp_cparam
+					            ->max_packet_size));
+				}
 			}
 			nni_mtx_unlock(&ep->mtx);
 			return;
 		} else {
 			log_info("Disconnect Client due to %d", rv);
 			nng_free(p->conn_buf, p->wantrxhead);
+			rv = NNG_EPROTO;
+			code = MALFORMED_PACKET;
 			if (p->tcp_cparam->pro_ver == 5) {
 				goto close;
 			} else {
@@ -417,7 +437,7 @@ close:
 	p->txlen[0] = CMD_CONNACK;
 	p->txlen[1] = 0x03;
 	p->txlen[2] = 0x00;
-	p->txlen[3] = rv;
+	p->txlen[3] = code;
 	p->txlen[4] = 0x00;
 	iov.iov_len = 5;
 	iov.iov_buf = &p->txlen;
@@ -445,7 +465,8 @@ error:
 	}
 	nni_mtx_unlock(&ep->mtx);
 	tlstran_pipe_reap(p);
-	log_error("connect nego error rv: %s(%d)", nng_strerror(rv), rv);
+	log_error("connect nego error rv:(%d) %s MQTT reason code %d",
+			  rv, nng_strerror(rv), code);
 	return;
 }
 
