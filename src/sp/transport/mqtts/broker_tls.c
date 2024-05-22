@@ -672,19 +672,6 @@ tlstran_pipe_recv_cb(void *arg)
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
-	if (p->gotrxhead == 2) {
-		if ((p->rxlen[0] & 0XFF) == CMD_PINGREQ) {
-			nng_aio_wait(p->rpaio);
-			p->txlen[0]    = CMD_PINGRESP;
-			p->txlen[1]    = 0x00;
-			iov[0].iov_len = 2;
-			iov[0].iov_buf = &p->txlen;
-			// send it down...
-			nni_aio_set_iov(p->rpaio, 1, iov);
-			nng_stream_send(p->conn, p->rpaio);
-			goto notify;
-		}
-	}
 
 	if (p->rxmsg == NULL) {
 		if ((rv = mqtt_get_remaining_length(
@@ -909,14 +896,6 @@ recv_error:
 	// error code cannot be 0. otherwise connection will sustain
 	nni_aio_finish_error(aio, rv);
 	log_trace("tlstran_pipe_recv_cb: recv error rv: %d\n", rv);
-	return;
-notify:
-	// nni_pipe_bump_rx(p->npipe, n);
-	nni_aio_list_remove(aio);
-	// tlstran_pipe_recv_start(p);
-	nni_mtx_unlock(&p->mtx);
-	nni_aio_set_msg(aio, NULL);
-	nni_aio_finish(aio, 0, 0);
 	return;
 }
 
