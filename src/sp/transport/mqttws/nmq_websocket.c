@@ -396,7 +396,7 @@ recv_error:
 	} else if (p->ep_aio != NULL) {
 		nni_aio_finish_error(p->ep_aio, rv);
 	}
-	log_error("tcptran_pipe_recv_cb: recv error rv: %d\n", rv);
+	log_error("wstran_pipe_recv_cb: recv error rv: %d\n", rv);
 	return;
 }
 

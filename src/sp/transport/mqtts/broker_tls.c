@@ -735,7 +735,11 @@ tlstran_pipe_recv_cb(void *arg)
 		rv = MALFORMED_PACKET;
 		goto recv_error;
 	} else if (type == CMD_CONNACK) {
-		log_warn("Got CONNACK from client!");
+		log_warn("Got invalid CONNACK from client!");
+		rv = MALFORMED_PACKET;
+		goto recv_error;
+	} else if (type == CMD_CONNECT) {
+		log_warn("Got invalid CONNECT from client!");
 		rv = MALFORMED_PACKET;
 		goto recv_error;
 	}
