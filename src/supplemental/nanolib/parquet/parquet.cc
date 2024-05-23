@@ -195,7 +195,7 @@ parquet_object_free(parquet_object *elem)
 		*szp          = elem->size;
 		nng_aio_set_msg(elem->aio, (nng_msg *) szp);
 		log_debug("finish write aio");
-		DO_IT_IF_NOT_NULL(nng_aio_finish, elem->aio, 0);
+		DO_IT_IF_NOT_NULL(nng_aio_finish_sync, elem->aio, 0);
 		FREE_IF_NOT_NULL(elem->darray, elem->size);
 		for (int i = 0; i < elem->ranges->size; i++) {
 			parquet_file_range_free(elem->ranges->range[i]);
