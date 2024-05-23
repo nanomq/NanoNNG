@@ -81,6 +81,21 @@ static struct {
 	    .listener_alloc = nni_tls_listener_alloc,
 	},
 	{
+	    .scheme         = "mqtt-tls",
+	    .dialer_alloc   = nni_tls_dialer_alloc,
+	    .listener_alloc = nni_tls_listener_alloc,
+	},
+	{
+	    .scheme         = "mqtt-tls4",
+	    .dialer_alloc   = nni_tls_dialer_alloc,
+	    .listener_alloc = nni_tls_listener_alloc,
+	},
+	{
+	    .scheme         = "mqtt-tls6",
+	    .dialer_alloc   = nni_tls_dialer_alloc,
+	    .listener_alloc = nni_tls_listener_alloc,
+	},
+	{
 	    .scheme         = "tcp",
 	    .dialer_alloc   = nni_tcp_dialer_alloc,
 	    .listener_alloc = nni_tcp_listener_alloc,
@@ -156,6 +171,21 @@ static struct {
 	},
 	{
 	    .scheme         = "tls+nmq-tcp6",
+	    .dialer_alloc   = nni_tls_dialer_alloc,
+	    .listener_alloc = nni_tls_listener_alloc,
+	},
+	{
+	    .scheme         = "nmq-tls",
+	    .dialer_alloc   = nni_tls_dialer_alloc,
+	    .listener_alloc = nni_tls_listener_alloc,
+	},
+	{
+	    .scheme         = "nmq-tls4",
+	    .dialer_alloc   = nni_tls_dialer_alloc,
+	    .listener_alloc = nni_tls_listener_alloc,
+	},
+	{
+	    .scheme         = "nmq-tls6",
 	    .dialer_alloc   = nni_tls_dialer_alloc,
 	    .listener_alloc = nni_tls_listener_alloc,
 	},
