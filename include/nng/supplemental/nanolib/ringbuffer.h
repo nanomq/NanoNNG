@@ -16,7 +16,7 @@
 #include "nng/supplemental/nanolib/cvector.h"
 
 #define RBNAME_LEN          100
-#define RINGBUFFER_MAX_SIZE	0xffff
+#define RINGBUFFER_MAX_SIZE	0xffffffff
 #define RBRULELIST_MAX_SIZE	0xff
 
 #define ENQUEUE_IN_HOOK     0x0001
