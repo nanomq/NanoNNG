@@ -1271,7 +1271,7 @@ conf_exchange_node_parse(conf_exchange_node *node, cJSON *obj)
 	hocon_read_str(rb_node, name, rb);
 	hocon_read_num(rb_node, cap, rb);
 	if ((uint64_t)rb_node->cap > (uint64_t)RINGBUFFER_MAX_SIZE) {
-		log_error("exchange: ringbuffer: name/cap is exceeding limit");
+		log_error("exchange: ringbuffer: cap is exceeding limit");
 	}
 	hocon_read_num(rb_node, fullOp, rb);
 
