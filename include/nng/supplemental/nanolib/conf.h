@@ -302,8 +302,8 @@ typedef struct conf_bridge_node conf_bridge_node;
 typedef struct ringBuffer_node ringBuffer_node;
 struct ringBuffer_node {
 	char    *name;
-	uint32_t cap;
 	uint32_t fullOp;
+	uint64_t cap;
 };
 
 typedef struct conf_exchange_node conf_exchange_node;
