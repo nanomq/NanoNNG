@@ -1167,11 +1167,6 @@ conf_exchange_parse_ver2(conf *config, cJSON *jso)
 		node->rbufs              = NULL;
 		node->rbufs_sz           = 0;
 		conf_exchange_node_parse(node, node_item);
-		conf_exchange_encryption *enc = NNI_ALLOC_STRUCT(enc);
-		enc->enable                   = false;
-		enc->key                      = NULL;
-		conf_exchange_encryption_parse(enc, node_item);
-		config->exchange.encryption = enc;
 		nng_mtx_alloc(&node->mtx);
 		cvector_push_back(config->exchange.nodes, node);
 	}
