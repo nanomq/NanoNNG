@@ -205,8 +205,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 			                "packetID duplicated!",
 			    packet_id);
 			nni_aio *m_aio = nni_mqtt_msg_get_aio(tmsg);
-			if (m_aio && nni_mqtt_msg_get_packet_type(tmsg) !=
-			        NNG_MQTT_PUBLISH) {
+			if (m_aio) {
 				nni_aio_finish_error(m_aio, UNSPECIFIED_ERROR);
 			}
 			nni_msg_free(tmsg);
@@ -911,6 +910,9 @@ mqtt_quic_recv_cb(void *arg)
 				log_error(
 				    "ERROR: packet id %d duplicates in",
 				    packet_id);
+				if ((aio = nni_mqtt_msg_get_aio(cached_msg)) != NULL) {
+					nng_aio_finish_error(aio, UNSPECIFIED_ERROR);
+				}
 				nni_msg_free(cached_msg);
 			}
 			nni_id_set(&p->recv_unack, packet_id, msg);
