@@ -1191,6 +1191,15 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			niov++;
 		}
 	}
+	if (niov == 0) {
+		// No content to send
+		nni_msg_free(msg);
+		nni_aio_set_prov_data(txaio, NULL);
+		nni_list_remove(&p->sendq, aio);
+		nni_aio_set_msg(aio, NULL);
+		nni_aio_finish(aio, 0, 0);
+		return;
+	}
 send:
 	nni_aio_set_iov(txaio, niov, iov);
 	nng_stream_send(p->conn, txaio);
@@ -1374,25 +1383,19 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				len_offset = 2;
 				nni_msg *old;
 				// packetid in aio to differ resend msg
-				pid =
-				    (uint16_t) (size_t) nni_aio_get_prov_data(
-				        aio);
+				pid = (uint16_t) (size_t) nni_aio_get_prov_data(aio);
 				if (pid == 0) {
 					// first time send this msg
 					pid = nni_pipe_inc_packetid(pipe);
 					// store msg for qos retry
 					nni_msg_clone(msg);
-					if ((old = nni_qos_db_get(is_sqlite,
-					         pipe->nano_qos_db, pipe->p_id,
-					         pid)) != NULL) {
+					if ((old = nni_qos_db_get(is_sqlite, pipe->nano_qos_db,
+											  pipe->p_id, pid)) != NULL) {
 						// TODO packetid already
 						// exists. do we need to
 						// replace old with new one ?
 						// print warning to users
-						log_error("packet id "
-						          "duplicates in "
-						          "nano_qos_db");
-
+						log_error("packet id duplicates in nano_qos_db");
 						nni_qos_db_remove_msg(
 						    is_sqlite,
 						    pipe->nano_qos_db, old);
