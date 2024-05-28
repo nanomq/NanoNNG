@@ -231,7 +231,7 @@ nano_pipe_timer_cb(void *arg)
 	}
 	qos_backoff = p->ka_refresh * (qos_duration) *1000 -
 	    p->keepalive * qos_backoff * 1000;
-	log_debug("check pipe keepalive interval %d backoff %f, ka %d",
+	log_trace("check pipe keepalive interval %d backoff %f, ka %d",
 			  p->keepalive, qos_backoff, p->ka_refresh);
 	if (qos_backoff > 0) {
 		log_warn(
