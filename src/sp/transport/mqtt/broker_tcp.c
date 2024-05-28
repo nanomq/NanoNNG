@@ -1010,9 +1010,11 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 
 	bool      is_sqlite = p->conf->sqlite.enable;
 	int       qlen = 0, topic_len = 0;
+	uint8_t  *header      = nni_msg_header(msg);
+	uint8_t   retain_flag = (*header & 0x01);
+	char     *topic       = nni_msg_get_pub_topic(msg, &topic_len);
 	subinfo  *tinfo = NULL, *info = NULL;
 	nni_list *subinfol = p->npipe->subinfol;
-	char     *topic    = nni_msg_get_pub_topic(msg, &topic_len);
 
 	txaio = p->txaio;
 	tinfo = nni_aio_get_prov_data(txaio);
@@ -1020,7 +1022,6 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 
 	// Recomposing for each msg
 	// never modify the original msg
-	// TODO skip send if no valid topic is found in subinfol
 	NNI_LIST_FOREACH (subinfol, info) {
 		if (tinfo != NULL && info != tinfo)
 			continue;
@@ -1037,7 +1038,9 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				sub_topic++;
 			}
 		}
-		if (false == topic_filtern(sub_topic, topic, topic_len))
+		// We let retain msg through, due to topic reflection.
+		// And we never modify msg itself
+		if (false == topic_filtern(sub_topic, topic, topic_len) && retain_flag == 0)
 			continue;
 		if (niov > 4) {
 			// donot send too many msgs at a time
@@ -1248,6 +1251,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	mlen    = nni_msg_len(msg);
 	hlen    = nni_msg_header_len(msg);
 	qos_pac = nni_msg_get_pub_qos(msg);
+	uint8_t   retain_flag = (*header & 0x01);
 	NNI_GET16(body, tlen);
 	if (qos_pac == 0) {
 		// simply set DUP flag to 0 & correct error from client
@@ -1279,6 +1283,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	// subid
 	subinfo *info, *tinfo;
 	tinfo = nni_aio_get_prov_data(txaio);
+
 	nni_aio_set_prov_data(txaio, NULL);
 	NNI_LIST_FOREACH (p->npipe->subinfol, info) {
 		if (tinfo != NULL && info != tinfo) {
@@ -1300,7 +1305,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				sub_topic++;
 			}
 		}
-		if (topic_filtern(sub_topic, (char *) (body + 2), tlen)) {
+		if (topic_filtern(sub_topic, (char *) (body + 2), tlen) || retain_flag == 1) {
 			if (niov >= 8) {
 				// nng aio only allow 2 msgs at a time
 				nni_aio_set_prov_data(txaio, info);
