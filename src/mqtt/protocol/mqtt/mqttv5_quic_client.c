@@ -1529,6 +1529,7 @@ quic_mqtt_pipe_fini(void *arg)
 
 	conn_param_free(p->cparam);
 	nni_mtx_unlock(&s->mtx);
+
 	nni_sock_rele(s->nsock);
 	nni_sock_rele(s->nsock);
 }
@@ -1798,11 +1799,9 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 			nni_mtx_unlock(&s->mtx);
 		} else {
 			// aio is already on the list.
-			// caching pubmsg in lmq of sock and ignore the
-			// result/ack of cb
+			// caching pubmsg in lmq of sock
 			if (nni_mqtt_msg_get_packet_type(msg) ==
 			    NNG_MQTT_PUBLISH) {
-				nni_mqtt_msg_set_publish_qos(msg, 0);
 				log_info("caching msg!");
 				if (0 != nni_lmq_put(&s->send_messages, msg)) {
 					log_warn("caching msg failed due to full lmq!");
