@@ -836,6 +836,7 @@ mqtt_quic_recv_cb(void *arg)
 		}
 		break;
 	case NNG_MQTT_SUBACK:
+		log_debug("SUBACK received!");
 		// we have received a SUBACK, successful subscription
 		// FALLTHROUGH
 	case NNG_MQTT_UNSUBACK:
@@ -846,6 +847,7 @@ mqtt_quic_recv_cb(void *arg)
 		if (cached_msg != NULL) {
 			nni_id_remove(&p->sent_unack, packet_id);
 			user_aio = nni_mqtt_msg_get_aio(cached_msg);
+			log_debug("clean SUB msg!");
 			if (user_aio != NULL) {
 				// should we support sub/unsub cb here?
 				nni_msg_clone(msg);
@@ -1457,7 +1459,9 @@ quic_mqtt_pipe_fini(void *arg)
 	// hold nni_sock twice for thread safety
 	nni_sock_hold(s->nsock);
 	nni_sock_hold(s->nsock);
+
 	nni_mtx_lock(&s->mtx);
+
 	nni_aio_fini(&p->send_aio);
 	nni_aio_fini(&p->recv_aio);
 	nni_aio_fini(&p->rep_aio);
@@ -1632,6 +1636,14 @@ quic_mqtt_pipe_close(void *arg)
 	mqtt_sock_t *s = p->mqtt_sock;
 
 	nni_atomic_set_bool(&p->closed, true);
+
+	nni_mtx_lock(&p->lk);
+	// multistream
+	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
+	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
+	p->ready = false;
+	nni_mtx_unlock(&p->lk);
+
 	nni_mtx_lock(&s->mtx);
 	nni_atomic_set_bool(&s->pipe->closed, true);
 	nni_aio_close(&p->send_aio);
@@ -1647,13 +1659,6 @@ quic_mqtt_pipe_close(void *arg)
 	nni_lmq_flush(&p->recv_messages);
 	if (p->mqtt_sock->multi_stream)
 		nni_lmq_flush(&p->send_inflight);
-
-	nni_mtx_lock(&p->lk);
-	// multistream
-	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
-	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
-	p->ready = false;
-	nni_mtx_unlock(&p->lk);
 
 	if (s->pipe != p) {
 		if (p->idmsg == NULL)
