@@ -426,7 +426,6 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 		}
 	} else {
 		if ((rv = msquic_strm_open(d->qconn, d)) != 0) {
-			rv = NNG_ECLOSED;
 			goto error;
 		}
 	}
@@ -582,6 +581,7 @@ static void
 quic_stream_fini(void *arg)
 {
 	nni_quic_conn *c = arg;
+	msquic_strm_fini(c->qstrm);
 	NNI_FREE_STRUCT(c);
 }
 
@@ -953,6 +953,7 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		}
 		// reconnect here
 		nni_mtx_unlock(&d->mtx);
+		nni_atomic_set64(&d->ref, 1);
 		nni_aio_finish_error(d->qconaio, d->reason_code);
 		break;
 	case QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED:
@@ -1392,7 +1393,7 @@ msquic_strm_open(HQUIC qconn, nni_quic_dialer *d)
 	rv = MsQuic->StreamStart(strm, QUIC_STREAM_START_FLAG_NONE);
 	if (QUIC_FAILED(rv)) {
 		log_error("StreamStart failed, 0x%x!\n", rv);
-		MsQuic->StreamClose(strm);
+		msquic_strm_fini(strm);
 		goto error;
 	}
 	// Stream is opened and started
