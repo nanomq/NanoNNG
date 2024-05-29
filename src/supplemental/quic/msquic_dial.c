@@ -1407,6 +1407,8 @@ msquic_strm_open(HQUIC qconn, nni_quic_dialer *d)
 
 	return 0;
 error:
+	if (rv == QUIC_STATUS_ABORTED)
+		return (NNG_ECANCELED);
 	return (NNG_ECLOSED);
 }
 
