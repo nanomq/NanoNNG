@@ -282,6 +282,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 			log_warn(
 			    "Warning! msg send failed due to busy socket");
 			nni_msg_free(msg);
+			nni_aio_finish_error(aio, UNSPECIFIED_ERROR);
 		}
 	}
 	nni_mtx_unlock(&p->lk);
