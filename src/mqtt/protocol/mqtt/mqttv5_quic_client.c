@@ -206,8 +206,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 			                "packetID duplicated!",
 			    packet_id);
 			nni_aio *m_aio = nni_mqtt_msg_get_aio(tmsg);
-			if (m_aio && nni_mqtt_msg_get_packet_type(tmsg) !=
-			        NNG_MQTT_PUBLISH) {
+			if (m_aio) {
 				nni_aio_finish_error(m_aio, UNSPECIFIED_ERROR);
 			}
 			nni_msg_free(tmsg);
@@ -228,6 +227,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 	if (s->qos_first)
 		if (ptype == NNG_MQTT_SUBSCRIBE ||
 		   (qos > 0 && ptype == NNG_MQTT_PUBLISH)) {
+			nni_mqtt_msg_encode(msg);
 			nni_aio_set_msg(aio, msg);
 			nni_aio_set_prov_data(aio, &prior_flags);
 			nni_pipe_send(p->qpipe, aio);
@@ -330,8 +330,7 @@ mqtt_pipe_send_msg(nni_aio *aio, nni_msg *msg, mqtt_pipe_t *p, uint16_t packet_i
 			         "packetID duplicated!",
 			    packet_id);
 			nni_aio *m_aio = nni_mqtt_msg_get_aio(tmsg);
-			if (m_aio && nni_mqtt_msg_get_packet_type(tmsg) !=
-			        NNG_MQTT_PUBLISH) {
+			if (m_aio) {
 				nni_aio_finish_error(m_aio, UNSPECIFIED_ERROR);
 			}
 			nni_msg_free(tmsg);
@@ -386,12 +385,13 @@ mqtt_quic_data_strm_send_cb(void *arg)
 		nni_aio_set_msg(&p->send_aio, NULL);
 		return;
 	}
+	nni_mtx_lock(&p->lk);
 	if (nni_atomic_get_bool(&p->closed)) {
 		// This occurs if the mqtt_pipe_close has been called.
 		// In that case we don't want any more processing.
+		nni_mtx_unlock(&p->lk);
 		return;
 	}
-	nni_mtx_lock(&p->lk);
 #if defined(NNG_SUPP_SQLITE)
 	// TODO how to let sqlite work with multi-stream?
 #endif
@@ -651,6 +651,9 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 				log_error(
 				    "ERROR: packet id %d duplicates in",
 				    packet_id);
+				if ((aio = nni_mqtt_msg_get_aio(cached_msg)) != NULL) {
+					nng_aio_finish_error(aio, UNSPECIFIED_ERROR);
+				}
 				nni_msg_free(cached_msg);
 			}
 			nni_id_set(&p->recv_unack, packet_id, msg);
@@ -816,6 +819,7 @@ mqtt_quic_recv_cb(void *arg)
 		cached_msg = nni_id_get(&p->sent_unack, packet_id);
 		if (cached_msg != NULL) {
 			nni_id_remove(&p->sent_unack, packet_id);
+			user_aio = nni_mqtt_msg_get_aio(cached_msg);
 			nni_msg_free(cached_msg);
 		}
 		if (s->ack_aio == NULL) {
@@ -912,6 +916,9 @@ mqtt_quic_recv_cb(void *arg)
 				log_error(
 				    "ERROR: packet id %d duplicates in",
 				    packet_id);
+				if ((aio = nni_mqtt_msg_get_aio(cached_msg)) != NULL) {
+					nng_aio_finish_error(aio, UNSPECIFIED_ERROR);
+				}
 				nni_msg_free(cached_msg);
 			}
 			nni_id_set(&p->recv_unack, packet_id, msg);
@@ -1453,7 +1460,9 @@ quic_mqtt_pipe_fini(void *arg)
 	// hold nni_sock twice for thread safety
 	nni_sock_hold(s->nsock);
 	nni_sock_hold(s->nsock);
+
 	nni_mtx_lock(&s->mtx);
+
 	nni_aio_fini(&p->send_aio);
 	nni_aio_fini(&p->recv_aio);
 	nni_aio_fini(&p->rep_aio);

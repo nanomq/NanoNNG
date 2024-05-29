@@ -1528,6 +1528,7 @@ quic_mqtt_pipe_fini(void *arg)
 
 	conn_param_free(p->cparam);
 	nni_mtx_unlock(&s->mtx);
+
 	nni_sock_rele(s->nsock);
 	nni_sock_rele(s->nsock);
 }
