@@ -536,6 +536,7 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		log_info("close stream with Error Code: %llu",
 		    (unsigned long long)
 		        Event->SHUTDOWN_COMPLETE.ConnectionErrorCode);
+		nni_mtx_lock(&qstrm->mtx);
 		if (qstrm->sock->pipe != qstrm->pipe) {
 			// close data stream only
 			const nni_proto_pipe_ops *pipe_ops =
@@ -544,6 +545,7 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			pipe_ops->pipe_stop(qstrm->pipe);
 			if (qstrm->closed != true)
 				MsQuic->StreamClose(stream);
+			nni_mtx_unlock(&qstrm->mtx);
 			break;
 		}
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
@@ -559,6 +561,7 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			// Conflic with quic_pipe_close
 			// qstrm->closed = true;
 		}
+		nni_mtx_unlock(&qstrm->mtx);
 		break;
 	case QUIC_STREAM_EVENT_START_COMPLETE:
 		log_info(
@@ -1425,8 +1428,10 @@ quic_pipe_open(void *qsock, void **qpipe, void *mqtt_pipe)
 	quic_sock_t *qs = qsock;
 
 	quic_strm_t *qstrm = nng_alloc(sizeof(quic_strm_t));
-	if (qstrm == NULL)
+	if (qstrm == NULL) {
+		log_error("mem alloc failed!");
 		return -1;
+	}
 	quic_strm_init(qstrm, qsock);
 
 	// Allocate a new bidirectional stream.
@@ -1469,6 +1474,22 @@ error:
 	return (-2);
 }
 
+void
+quic_pipe_stop(void *qpipe)
+{
+	if (!qpipe)
+		return;
+	quic_strm_t *qstrm = qpipe;
+	quic_sock_t *qsock = qstrm->sock;
+	nni_mtx_lock(&qstrm->mtx);
+	if (qstrm->closed != true) {
+		qstrm->closed = true;
+		log_warn("closing the QUIC stream!");
+		MsQuic->StreamClose(qstrm->stream);
+	}
+	nni_mtx_unlock(&qstrm->mtx);
+}
+
 // return value 0 : normal close -1 : not even started
 int
 quic_pipe_close(void *qpipe, uint8_t *code)
@@ -1479,13 +1500,13 @@ quic_pipe_close(void *qpipe, uint8_t *code)
 	quic_strm_t *qstrm = qpipe;
 	nni_aio     *aio;
 
-	if (qstrm->closed != true) {
-		qstrm->closed = true;
-		log_warn("closing the QUIC stream!");
-		MsQuic->StreamClose(qstrm->stream);
-	} else {
-		return -1;
-	}
+	// if (qstrm->closed != true) {
+	// 	qstrm->closed = true;
+	// 	log_warn("closing the QUIC stream!");
+	// 	MsQuic->StreamClose(qstrm->stream);
+	// } else {
+	// 	return -1;
+	// }
 
 	log_info("Protocol layer is closing QUIC pipe!");
 	// take care of aios
