@@ -821,6 +821,7 @@ nng_mqtt_client_send_cb(void* arg)
 
 	if (msg == NULL || nng_aio_result(aio) != 0) {
 		client->cb(client, NULL, client->obj);
+		log_warn("nng_mqtt_client_send_cb report fail!");
 		return;
 	}
 
@@ -988,8 +989,10 @@ nng_mqtt_subscribe_async(nng_mqtt_client *client, nng_mqtt_topic_qos *sbs, size_
 		nng_mqtt_msg_set_subscribe_property(submsg, pl);
 	}
 	if (nng_aio_busy(client->send_aio)) {
+		nng_aio_abort(client->send_aio, NNG_ECANCELED);
 		if (nni_lmq_put((nni_lmq *)client->msgq, submsg) != 0) {
-			nni_plat_println("subscribe failed!");
+			log_error("subscribe failed!");
+			nni_msg_free(submsg);
 		}
 		return 1;
 	}
