@@ -290,8 +290,8 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 							nni_aio_finish_error(m_aio, NNG_ECANCELED);
 						}
 						nni_id_remove(&p->sent_unack, packet_id);
+						nni_mqtt_msg_set_aio(old_msg, NULL);
 					}
-					nni_mqtt_msg_set_aio(old_msg, NULL);
 				}
 				nni_msg_free(tmsg);
 			}
@@ -837,6 +837,7 @@ mqtt_quic_recv_cb(void *arg)
 			conn_param_clone(p->cparam);
 			// Set keepalive
 			s->keepalive = conn_param_get_keepalive(p->cparam) * 1000;
+			log_info("Update keepalive to %dms", s->keepalive);
 			s->timeleft  = s->keepalive;
 		}
 		// Clone CONNACK for connect_cb & user aio cb

@@ -1387,6 +1387,7 @@ mqtt_quictran_dial_cb(void *arg)
 	nng_stream *       conn;
 
 	if ((rv = nni_aio_result(aio)) != 0) {
+		log_error("Dial failed %d", rv);
 		goto error;
 	}
 
