@@ -152,7 +152,7 @@ mqtt_quictran_pipe_stop(void *arg)
 	mqtt_quictran_pipe *p = arg;
 
 	// leave rxaio to pipe_fini
-	// nni_aio_stop(p->rxaio);
+	nni_aio_stop(p->rxaio);
 	nni_aio_stop(p->qsaio);
 	nni_aio_stop(p->txaio);
 	nni_aio_stop(p->negoaio);
@@ -190,7 +190,7 @@ mqtt_quictran_pipe_fini(void *arg)
 		nni_mtx_unlock(&ep->mtx);
 	}
 
-	nni_aio_wait(p->rxaio);
+	//nni_aio_wait(p->rxaio);
 	nni_aio_free(p->rxaio);
 	nni_aio_free(p->txaio);
 	nni_aio_free(p->qsaio);
@@ -561,7 +561,7 @@ mqtt_quictran_pipe_recv_cb(void *arg)
 	uint32_t           len = 0, rv;
 	size_t             n;
 	nni_msg *          msg, *qmsg;
-	mqtt_quictran_pipe *p     = arg;
+	mqtt_quictran_pipe *p    = arg;
 	nni_aio *          rxaio = p->rxaio;
 	bool               ack   = false;
 
@@ -982,7 +982,7 @@ mqtt_quictran_pipe_recv_cancel(nni_aio *aio, void *arg, int rv)
 	// be canceled too.
 	if (nni_list_first(&p->recvq) == aio) {
 		// should wait for stream layer
-		// nni_aio_abort(p->rxaio, rv);
+		nni_aio_abort(p->rxaio, rv);
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}

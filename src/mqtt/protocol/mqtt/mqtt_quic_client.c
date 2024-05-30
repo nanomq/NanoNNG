@@ -1487,7 +1487,8 @@ quic_mqtt_pipe_init(void *arg, nni_pipe *pipe, void *sock)
 
 	p->pingcnt   = 0;
 	p->pingmsg   = NULL;
-	nni_msg_alloc(&p->pingmsg, 0);
+	if (!p->pingmsg)
+		nni_msg_alloc(&p->pingmsg, 0);
 	if (!p->pingmsg) {
 		log_error("Error in create a pingmsg");
 		return NNG_ENOMEM;
