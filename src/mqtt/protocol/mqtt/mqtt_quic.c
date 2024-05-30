@@ -363,6 +363,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		}
 
 		qos = nni_mqtt_msg_get_publish_qos(msg);
+		break;
 		if (qos == 0) {
 			break; // QoS 0 need no packet id
 		}
@@ -388,7 +389,8 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		nni_msg_clone(msg);
 		nni_msg_set_timestamp(msg, nni_clock());
 		if (0 != nni_id_set(&p->sent_unack, packet_id, msg)) {
-			nni_println("Warning! Cache QoS msg failed");
+			log_error("Warning! store QoS msg in id map failed");
+			// nni_mqtt_msg_set_aio(msg, NULL);
 			nni_msg_free(msg);
 			nni_aio_finish_error(aio, UNSPECIFIED_ERROR);
 		}
@@ -1026,6 +1028,8 @@ mqtt_quic_recv_cb(void *arg)
 			nni_msg_clone(msg);
 			nni_aio_set_msg(user_aio, msg);
 			nni_msg_free(cached_msg);
+		} else {
+			log_error("ack SUB failed");
 		}
 		nni_msg_free(msg);
 		break;
@@ -1659,6 +1663,7 @@ quic_mqtt_stream_stop(void *arg)
 	log_info("Stopping MQTT over QUIC Stream");
 	if (!nni_atomic_get_bool(&p->closed)) {
 		nni_atomic_set_bool(&p->closed, true);
+		quic_pipe_stop(p->qpipe);
 		if (quic_pipe_close(p->qpipe, &p->reason_code) == 0) {
 			// send aio
 			nni_aio_abort(&p->send_aio, NNG_ECANCELED);
@@ -1744,7 +1749,7 @@ quic_mqtt_stream_close(void *arg)
 	nni_lmq_flush(&p->recv_messages);
 	if (p->mqtt_sock->multi_stream)
 		nni_lmq_flush(&p->send_inflight);
-	// nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
+	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
 	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
 	p->ready = false;
 	nni_mtx_unlock(&s->mtx);
