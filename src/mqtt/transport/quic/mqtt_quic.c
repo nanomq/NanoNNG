@@ -36,7 +36,6 @@ struct mqtt_quictran_pipe {
 	uint16_t         proto;   // MQTT version
 	uint16_t         keepalive;
 	uint16_t         sndmax;  // MQTT Receive Maximum (QoS 1/2 packet)
-	uint8_t          pingcnt; // pingreq counter
 	uint8_t          qosmax;
 	uint8_t          txlen[sizeof(uint64_t)];
 	uint8_t          rxlen[sizeof(uint64_t)]; // fixed header
@@ -149,45 +148,6 @@ mqtt_quictran_pipe_close(void *arg)
 	nni_aio_close(&p->tmaio);
 }
 
-static uint8_t pingbuf[2];
-
-static void
-mqtt_quic_pipe_timer_cb(void *arg)
-{
-	mqtt_quictran_pipe *p = arg;
-	int rv;
-
-	rv = nng_aio_result(&p->tmaio);
-	if (rv != 0) {
-		log_error("keepalive error! aio result: %d", rv);
-		p->ep->reason_code = KEEP_ALIVE_TIMEOUT;
-		mqtt_quictran_pipe_close(p);
-		return;
-	}
-
-	if (p->pingcnt == 0){
-		p->pingcnt++;
-		log_trace("skip PINGREQ wait for next time!");
-		nni_sleep_aio(p->keepalive, &p->tmaio);
-		return;
-	}
-	nni_mtx_lock(&p->mtx);
-	// send pingreq
-	pingbuf[0] = 0xC0;
-	pingbuf[1] = 0x00;
-
-	nni_iov iov;
-	iov.iov_len = 2;
-	iov.iov_buf = &pingbuf;
-	// send it down...
-	nni_aio_set_iov(&p->tmaio, 1, &iov);
-	nng_stream_send(p->conn, &p->tmaio);
-	p->pingcnt = 0;
-	log_info("send pingreq!");
-	nni_mtx_unlock(&p->mtx);
-	return;
-}
-
 static void
 mqtt_quictran_pipe_stop(void *arg)
 {
@@ -214,7 +174,6 @@ mqtt_quictran_pipe_init(void *arg, nni_pipe *npipe)
 	// set max value by default
 	p->packmax == 0 ? p->packmax = (uint32_t)0xFFFFFFFF : p->packmax;
 	p->qosmax  = 2;
-	p->pingcnt = 1;
 	if (p->ismain == true) {
 		nni_sleep_aio(p->keepalive, &p->tmaio);
 	}
@@ -272,8 +231,6 @@ mqtt_quictran_pipe_alloc(mqtt_quictran_pipe **pipep)
 		return (NNG_ENOMEM);
 	}
 	nni_mtx_init(&p->mtx);
-	// alloc timer aio first, but only start it when nego is completed
-	nni_aio_init(&p->tmaio, mqtt_quic_pipe_timer_cb, p);
 	if (((rv = nni_aio_alloc(&p->txaio, mqtt_quictran_pipe_send_cb, p)) !=
 	        0) ||
 	    ((rv = nni_aio_alloc(&p->rxaio, mqtt_quictran_pipe_recv_cb, p)) !=
@@ -533,7 +490,6 @@ mqtt_quictran_pipe_qos_send_cb(void *arg)
 		return;
 	}
 	nni_mtx_lock(&p->mtx);
-	p->pingcnt = 0;
 
 	if (msg != NULL)
 		nni_msg_free(msg);
@@ -580,7 +536,6 @@ mqtt_quictran_pipe_send_cb(void *arg)
 		nni_pipe_bump_error(p->npipe, rv);
 		return;
 	}
-	p->pingcnt = 0;
 
 	n = nni_aio_count(txaio);
 	nni_aio_iov_advance(txaio, n);
