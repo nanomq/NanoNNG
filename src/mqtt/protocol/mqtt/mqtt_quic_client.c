@@ -1526,6 +1526,7 @@ quic_mqtt_pipe_fini(void *arg)
 		// connect failed or data stream close 
 		// also triggered stream finit, ignore it
 		nni_mtx_unlock(&s->mtx);
+		log_error("-----------------------Here triggered");
 		nni_sock_rele(s->nsock);
 		nni_sock_rele(s->nsock);
 		return;
