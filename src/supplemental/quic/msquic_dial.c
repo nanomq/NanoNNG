@@ -391,6 +391,7 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 	//}
 
 	if ((rv = nni_aio_schedule(aio, quic_dialer_strm_cancel, d)) != 0) {
+		nni_msquic_quic_dialer_rele(d);
 		goto error;
 	}
 
@@ -405,11 +406,13 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 		// Create stream after connection is established.
 		if (nni_aio_busy(d->qconaio)) {
 			rv = NNG_EBUSY;
+			nni_msquic_quic_dialer_rele(d);
 			goto error;
 		}
 
 		if (nni_aio_begin(d->qconaio) != 0) {
 			rv = NNG_ECLOSED;
+			nni_msquic_quic_dialer_rele(d);
 			goto error;
 		}
 
@@ -417,15 +420,18 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 			// FIX quic dialer allows dialing multiple connections in parallel
 			// however here we only has one qconaio?
 			rv = NNG_ECANCELED;
+			nni_msquic_quic_dialer_rele(d);
 			goto error;
 		}
 
 		if (0 != (rv = msquic_conn_open(host, port, d))) {
 			log_warn("QUIC dialing failed! %d", rv);
+			nni_msquic_quic_dialer_rele(d);
 			goto error;
 		}
 	} else {
 		if ((rv = msquic_strm_open(d->qconn, d)) != 0) {
+			nni_msquic_quic_dialer_rele(d);
 			goto error;
 		}
 	}
@@ -589,11 +595,11 @@ static void
 quic_stream_rele(nni_quic_conn *c)
 {
 	quic_stream_close(c);
-	if (c->dialer) {
-		nni_msquic_quic_dialer_rele(c->dialer);
-	}
 	if (nni_atomic_dec_nv(&c->ref) != 0) {
 		return;
+	}
+	if (c->dialer) {
+		nni_msquic_quic_dialer_rele(c->dialer);
 	}
 	quic_stream_fini(c);
 }
