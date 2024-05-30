@@ -947,10 +947,18 @@ quic_aio_send(void *arg, nni_aio *aio)
 	nni_msg     *msg;
 	QUIC_STATUS Status;
 
+	if (qstrm == NULL) {
+		nni_msg_free(msg);
+		nni_aio_finish_error(aio, rv);
+		return -1;
+	}
+	quic_sock_t *qsock = qstrm->sock;
 	nni_mtx_lock(&qstrm->mtx);
+	// nni_mtx_lock(&qsock->mtx);
 	msg = nni_aio_get_msg(aio);
 	if ((rv = nni_aio_schedule(aio, quic_pipe_send_cancel, qstrm)) != 0) {
 		nni_mtx_unlock(&qstrm->mtx);
+		// nni_mtx_unlock(&qsock->mtx);
 		nni_msg_free(msg);
 		nni_aio_finish_error(aio, rv);
 		return (-1);
@@ -960,6 +968,7 @@ quic_aio_send(void *arg, nni_aio *aio)
 		log_info("Sending msg on a closed pipe");
 		nni_msg_free(msg);
 		nni_mtx_unlock(&qstrm->mtx);
+		// nni_mtx_unlock(&qsock->mtx);
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return 0;
 	}
@@ -991,6 +1000,7 @@ quic_aio_send(void *arg, nni_aio *aio)
 		log_error("Failed in StreamSend, 0x%x!", Status);
 		nni_aio_list_remove(aio);
 		nni_mtx_unlock(&qstrm->mtx);
+		// nni_mtx_unlock(&qsock->mtx);
 		free(buf);
 		nni_msg_free(msg);
 		nni_aio_finish_error(aio, NNG_ECLOSED);
@@ -998,6 +1008,7 @@ quic_aio_send(void *arg, nni_aio *aio)
 	}
 
 	nni_mtx_unlock(&qstrm->mtx);
+	// nni_mtx_unlock(&qsock->mtx);
 
 	return 0;
 }
@@ -1298,18 +1309,20 @@ quic_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 	quic_strm_t *qstrm = arg;
 
 	nni_mtx_lock(&qstrm->mtx);
-	if (!nni_aio_list_active(aio)) {
-		nni_mtx_unlock(&qstrm->mtx);
-		return;
-	}
+	nni_aio_finish_error(aio, rv);
+	nni_aio_list_remove(aio);
+	// if (!nni_aio_list_active(aio)) {
+	// 	nni_mtx_unlock(&qstrm->mtx);
+	// 	return;
+	// }
 	if (nni_list_first(&qstrm->sendq) == aio) {
 		nni_mtx_unlock(&qstrm->mtx);
 		return;
 	}
-	nni_aio_list_remove(aio);
+	// nni_aio_list_remove(aio);
 	nni_mtx_unlock(&qstrm->mtx);
 
-	nni_aio_finish_error(aio, rv);
+
 }
 
 static void
@@ -1487,10 +1500,17 @@ quic_pipe_close(void *qpipe, uint8_t *code)
 		nni_list_remove(&qstrm->recvq, aio);
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
-	quic_strm_fini(qstrm);
-	nng_free(qstrm, sizeof(quic_strm_t));
 
 	return 0;
+}
+
+void quic_pipe_fini(void *qpipe)
+{
+	if (!qpipe)
+		return;
+	quic_strm_t *qstrm = qpipe;
+	quic_strm_fini(qstrm);
+	nng_free(qstrm, sizeof(quic_strm_t));
 }
 
 // only call this when main stream is closed!
