@@ -46,7 +46,6 @@ struct mqtt_quictran_pipe {
 	size_t           wantrxhead;
 	nni_list         recvq;
 	nni_list         sendq;
-	nni_aio          tmaio;
 	nni_aio         *txaio;
 	nni_aio         *rxaio;
 	nni_aio         *qsaio; // aio for qos/pingreq
@@ -145,7 +144,6 @@ mqtt_quictran_pipe_close(void *arg)
 	nni_aio_close(p->txaio);
 	nni_aio_close(p->negoaio);
 	nni_aio_close(p->rpaio);
-	nni_aio_close(&p->tmaio);
 }
 
 static void
@@ -159,7 +157,6 @@ mqtt_quictran_pipe_stop(void *arg)
 	nni_aio_stop(p->txaio);
 	nni_aio_stop(p->negoaio);
 	nni_aio_stop(p->rpaio);
-	nni_aio_stop(&p->tmaio);
 }
 
 static int
@@ -174,9 +171,6 @@ mqtt_quictran_pipe_init(void *arg, nni_pipe *npipe)
 	// set max value by default
 	p->packmax == 0 ? p->packmax = (uint32_t)0xFFFFFFFF : p->packmax;
 	p->qosmax  = 2;
-	if (p->ismain == true) {
-		nni_sleep_aio(p->keepalive, &p->tmaio);
-	}
 	return (0);
 }
 
@@ -206,7 +200,6 @@ mqtt_quictran_pipe_fini(void *arg)
 	nni_msg_free(p->rxmsg);
 	// nni_lmq_fini(&p->rslmq);
 	nni_mtx_fini(&p->mtx);
-	nni_aio_fini(&p->tmaio);
 	NNI_FREE_STRUCT(p);
 }
 
