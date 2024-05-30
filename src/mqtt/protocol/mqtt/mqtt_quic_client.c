@@ -86,6 +86,8 @@ struct mqtt_sock_s {
 	nni_atomic_bool closed;
 	nni_atomic_int  next_packet_id; // next packet id to use, shared by multiple pipes
 	nni_duration    retry;
+	nni_duration    keepalive; // mqtt keepalive
+	nni_duration    timeleft;  // left time to send next ping
 
 	mqtt_quic_ctx master;     // to which we delegate send/recv calls
 	nni_list      recv_queue; // aio pending to receive
@@ -129,6 +131,8 @@ struct mqtt_pipe_s {
 	uint16_t        rid;           // index of resending packet id
 	uint8_t         reason_code;   // MQTTV5 reason code
 	nni_atomic_bool closed;
+	uint8_t         pingcnt;
+	nni_msg        *pingmsg;
 };
 
 static inline int
@@ -479,6 +483,7 @@ mqtt_quic_send_cb(void *arg)
 		return;
 	}
 	nni_mtx_lock(&s->mtx);
+	s->timeleft = s->keepalive;
 
 	// Check cached aio first
 	if ((aio = nni_list_first(&s->send_queue)) != NULL) {
@@ -814,6 +819,9 @@ mqtt_quic_recv_cb(void *arg)
 	int32_t       packet_id;
 	uint8_t       qos;
 
+	// reset ping state
+	p->pingcnt = 0;
+
 	//Schedule another receive
 	nni_pipe_recv(p->qpipe, &p->recv_aio);
 
@@ -825,7 +833,12 @@ mqtt_quic_recv_cb(void *arg)
 		nng_msg_set_cmd_type(msg, CMD_CONNACK);
 		// turn to publish msg and free in WAIT state
 		p->cparam  = nng_msg_get_conn_param(msg);
-		conn_param_clone(p->cparam);
+		if (p->cparam != NULL) {
+			conn_param_clone(p->cparam);
+			// Set keepalive
+			s->keepalive = conn_param_get_keepalive(p->cparam) * 1000;
+			s->timeleft  = s->keepalive;
+		}
 		// Clone CONNACK for connect_cb & user aio cb
 		if (s->cb.connect_cb) {
 			nni_msg_clone(msg);
@@ -1031,6 +1044,31 @@ mqtt_timer_cb(void *arg)
 	}
 	// Ping would be send at transport layer
 
+	if (p->pingcnt > 1) {
+		log_warn("MQTT Timeout and disconnect");
+		nni_mtx_unlock(&s->mtx);
+		nni_pipe_close(p->qpipe);
+		return;
+	}
+
+	// Update left time to send pingreq
+	s->timeleft -= s->retry;
+
+	if (!p->busy && !nni_aio_busy(&p->send_aio) && p->pingmsg &&
+			s->timeleft <= 0) {
+		p->busy = true;
+		s->timeleft = s->keepalive;
+		// send pingreq
+		nni_msg_clone(p->pingmsg);
+		nni_aio_set_msg(&p->send_aio, p->pingmsg);
+		nni_pipe_send(p->qpipe, &p->send_aio);
+		p->pingcnt ++;
+		nni_mtx_unlock(&s->mtx);
+		log_info("Send pingreq (sock%p)(%dms)", s, s->keepalive);
+		nni_sleep_aio(s->retry, &s->time_aio);
+		return;
+	}
+
 	// start message resending
 	// uint16_t   pid = p->rid;
 	// msg = nni_id_get_min(&p->sent_unack, &pid);
@@ -1073,14 +1111,14 @@ mqtt_timer_cb(void *arg)
 				nni_pipe_send(p->qpipe, &p->send_aio);
 
 				nni_mtx_unlock(&s->mtx);
-				nni_sleep_aio(s->retry * NNI_SECOND, &s->time_aio);
+				nni_sleep_aio(s->retry, &s->time_aio);
 				return;
 			}
 		}
 	}
 #endif
 	nni_mtx_unlock(&s->mtx);
-	nni_sleep_aio(s->retry * NNI_SECOND, &s->time_aio);
+	nni_sleep_aio(s->retry, &s->time_aio);
 	return;
 }
 
@@ -1098,7 +1136,6 @@ static void mqtt_quic_sock_init(void *arg, nni_sock *sock)
 	nni_atomic_set_bool(&s->closed, false);
 
 	// this is a pre-defined timer for global timer
-	s->retry        = MQTT_QUIC_RETRTY;
 	s->sqlite_opt   = NULL;
 	s->qos_first    = false;
 	s->multi_stream = false;
@@ -1110,6 +1147,11 @@ static void mqtt_quic_sock_init(void *arg, nni_sock *sock)
 	s->bridge_conf = NULL;
 	s->pub_streams = NULL;
 	s->sub_streams = NULL;
+
+	// this is "semi random" start for request IDs.
+	s->retry     = MQTT_QUIC_RETRTY * NNI_SECOND;
+	s->keepalive = NNI_SECOND * 10; // default mqtt keepalive
+	s->timeleft  = NNI_SECOND * 10;
 
 	nni_lmq_init(&s->send_messages, NNG_MAX_SEND_LMQ);
 	nni_aio_list_init(&s->send_queue);
@@ -1442,6 +1484,19 @@ quic_mqtt_pipe_init(void *arg, nni_pipe *pipe, void *sock)
 		p->cparam = p->mqtt_sock->pipe->cparam;
 	}
 
+	p->pingcnt   = 0;
+	p->pingmsg   = NULL;
+	nni_msg_alloc(&p->pingmsg, 0);
+	if (!p->pingmsg) {
+		log_error("Error in create a pingmsg");
+		return NNG_ENOMEM;
+	} else {
+		uint8_t buf[2];
+		buf[0] = 0xC0;
+		buf[1] = 0x00;
+		nni_msg_header_append(p->pingmsg, buf, 2);
+	}
+
 	p->qpipe = pipe;
 	p->rid = 1;
 	p->reason_code = 0;
@@ -1468,7 +1523,7 @@ quic_mqtt_pipe_init(void *arg, nni_pipe *pipe, void *sock)
 	nni_mtx_init(&p->lk);
 
 	if (!nni_aio_list_active(&p->mqtt_sock->time_aio) && major)
-		nni_sleep_aio(p->mqtt_sock->retry * NNI_SECOND, &p->mqtt_sock->time_aio);
+		nni_sleep_aio(p->mqtt_sock->retry, &p->mqtt_sock->time_aio);
 
 	// if (!major && topic != NULL && topic->pipeType == PIPE_TYPE_SUB) {
 	// 	p->ready = true;
@@ -1505,6 +1560,9 @@ quic_mqtt_pipe_fini(void *arg)
 	nni_sock_hold(s->nsock);
 
 	nni_mtx_lock(&s->mtx);
+
+	if (p->pingmsg)
+		nni_msg_free(p->pingmsg);
 
 	nni_aio_fini(&p->send_aio);
 	nni_aio_fini(&p->recv_aio);
