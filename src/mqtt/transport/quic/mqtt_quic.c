@@ -524,9 +524,7 @@ mqtt_quictran_pipe_send_cb(void *arg)
 		nni_pipe_bump_error(p->npipe, rv);
 		nni_aio_list_remove(aio);
 		nni_mtx_unlock(&p->mtx);
-		nni_msg_free(msg);
 		nni_aio_finish_error(aio, rv);
-		nni_pipe_bump_error(p->npipe, rv);
 		return;
 	}
 
@@ -542,7 +540,7 @@ mqtt_quictran_pipe_send_cb(void *arg)
 	mqtt_quictran_pipe_send_start(p);
 
 	if (msg != NULL) {
-		n   = nni_msg_len(msg);
+		n = nni_msg_len(msg);
 		nni_pipe_bump_tx(p->npipe, n);
 		nni_msg_free(msg);
 	}
