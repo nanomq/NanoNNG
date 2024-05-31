@@ -207,12 +207,12 @@ tcptran_pipe_fini(void *arg)
 	}
 
 	nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
+	nng_stream_free(p->conn);
 	nni_aio_free(p->qsaio);
 	nni_aio_free(p->rpaio);
 	nni_aio_free(p->rxaio);
 	nni_aio_free(p->txaio);
 	nni_aio_free(p->negoaio);
-	nng_stream_free(p->conn);
 	nni_lmq_fini(&p->rslmq);
 	nni_mtx_fini(&p->mtx);
 	NNI_FREE_STRUCT(p);
