@@ -960,7 +960,6 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		}
 		// reconnect here
 		nni_mtx_unlock(&d->mtx);
-		nni_atomic_set64(&d->ref, 1);
 		nni_aio_finish_error(d->qconaio, d->reason_code);
 		break;
 	case QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED:
