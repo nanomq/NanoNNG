@@ -1014,6 +1014,7 @@ nng_mqtt_subscribe_async(nng_mqtt_client *client, nng_mqtt_topic_qos *sbs, size_
 		if (nni_lmq_put((nni_lmq *)client->msgq, submsg) != 0) {
 			nng_msg_free(submsg);
 			log_warn("subscribe failed due to busy aio");
+			return -1;
 		}
 		return 1;
 	}
