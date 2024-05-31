@@ -212,14 +212,15 @@ tlstran_pipe_fini(void *arg)
   	}
 
 	nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
+	nng_stream_free(p->conn);
 	nni_aio_free(p->qsaio);
 	nni_aio_free(p->rpaio);
 	nni_aio_free(p->rxaio);
 	nni_aio_free(p->txaio);
 	nni_aio_free(p->negoaio);
-	nng_stream_free(p->conn);
+
 	nni_lmq_fini(&p->rslmq);
-	// nni_mtx_fini(&p->mtx);
+	nni_mtx_fini(&p->mtx);
 	NNI_FREE_STRUCT(p);
 	log_trace(" ************ tlstran_pipe_finit [%p] ************ ", p);
 }
@@ -972,6 +973,8 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 
 	bool      is_sqlite = p->conf->sqlite.enable;
 	int       qlen = 0, topic_len = 0;
+	uint8_t  *header      = nni_msg_header(msg);
+	uint8_t   retain_flag = (*header & 0x01);
 	subinfo  *tinfo = NULL, *info = NULL;
 	nni_list *subinfol = p->npipe->subinfol;
 	char     *topic    = nni_msg_get_pub_topic(msg, &topic_len);
@@ -997,7 +1000,7 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 				sub_topic++;
 			}
 		}
-		if (false == topic_filtern(sub_topic, topic, topic_len))
+		if (false == topic_filtern(sub_topic, topic, topic_len) && retain_flag == 0)
 			continue;
 		if (niov > 4) {
 			// donot send too many msgs at a time
@@ -1226,6 +1229,8 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	mlen    = nni_msg_len(msg);
 	hlen    = nni_msg_header_len(msg);
 	qos_pac = nni_msg_get_pub_qos(msg);
+
+	uint8_t   retain_flag = (*header & 0x01);
 	NNI_GET16(body, tlen);
 	if (qos_pac == 0) {
 		// simply set DUP flag to 0 & correct error from client
@@ -1276,7 +1281,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 				sub_topic++;
 			}
 		}
-		if (topic_filtern(sub_topic, (char *)(body + 2), tlen)) {
+		if (topic_filtern(sub_topic, (char *)(body + 2), tlen) || retain_flag == 1) {
 			if (niov >= 8) {
 				// nng aio only allow 2 msgs at a time
 				nni_aio_set_prov_data(txaio, info);

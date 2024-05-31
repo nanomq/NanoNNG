@@ -474,7 +474,8 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	qos_pac = nni_msg_get_pub_qos(msg);
 	NNI_GET16(body, tlen);
 
-	subinfo *info, *tinfo=NULL;
+	uint8_t  retain_flag = (*header & 0x01);
+	subinfo *info, *tinfo = NULL;
 	nni_msg_alloc(&smsg, 0);
 	if (nni_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
 		// V5 to V4 shrink msg, remove property length
@@ -506,7 +507,7 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 				sub_topic++;
 			}
 		}
-		if (topic_filtern(sub_topic, (char *) (body + 2), tlen)) {
+		if (topic_filtern(sub_topic, (char *) (body + 2), tlen) || retain_flag == 1) {
 			uint8_t pos    = 1, var_extra[2], fixheader,
 			        tmp[4] = { 0 };
 			qos            = info->qos;
@@ -659,6 +660,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	hlen    = nni_msg_header_len(msg);
 	qos_pac = nni_msg_get_pub_qos(msg);
 	NNI_GET16(body, tlen);
+	uint8_t   retain_flag = (*header & 0x01);
 
 	// check max packet size for this client/msg
 	uint32_t total_len = mlen + hlen;
@@ -709,7 +711,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 				sub_topic++;
 			}
 		}
-		if (topic_filtern(sub_topic, (char *) (body + 2), tlen)) {
+		if (topic_filtern(sub_topic, (char *) (body + 2), tlen) || retain_flag == 1) {
 			uint8_t  var_extra[2], fixheader, tmp[4] = { 0 }, pos = 1;
 			uint8_t  proplen[4] = { 0 }, var_subid[5] = { 0 };
 			sub_id       = info->subid;
@@ -984,6 +986,7 @@ wstran_pipe_fini(void *arg)
 {
 	ws_pipe *p = arg;
 
+	nng_stream_free(p->ws);
 	nni_aio_free(p->rxaio);
 	nni_aio_free(p->txaio);
 	nni_aio_wait(p->qsaio);
@@ -994,8 +997,6 @@ wstran_pipe_fini(void *arg)
 		nni_msg_free(msg);
 	}
 	nni_aio_free(p->qsaio);
-
-	nng_stream_free(p->ws);
 	nni_msg_free(p->tmp_msg);
 	nni_mtx_fini(&p->mtx);
 	nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
