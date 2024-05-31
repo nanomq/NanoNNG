@@ -986,6 +986,7 @@ wstran_pipe_fini(void *arg)
 {
 	ws_pipe *p = arg;
 
+	nng_stream_free(p->ws);
 	nni_aio_free(p->rxaio);
 	nni_aio_free(p->txaio);
 	nni_aio_wait(p->qsaio);
@@ -996,8 +997,6 @@ wstran_pipe_fini(void *arg)
 		nni_msg_free(msg);
 	}
 	nni_aio_free(p->qsaio);
-
-	nng_stream_free(p->ws);
 	nni_msg_free(p->tmp_msg);
 	nni_mtx_fini(&p->mtx);
 	nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
