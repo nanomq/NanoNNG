@@ -274,6 +274,27 @@ mqtt_sock_recv(void *arg, nni_aio *aio)
  *                              Pipe Implementation                           *
  ******************************************************************************/
 
+static uint16_t
+mqtt_sock_get_next_packet_id(mqtt_sock_t *s)
+{
+	int packet_id;
+	do {
+		packet_id = nni_atomic_get(&s->next_packet_id);
+
+		/* PROTOCOL ERROR: when packet_id == 0 */
+		while ((uint16_t)(packet_id & 0xFFFF) == 0) {
+			while(!nni_atomic_cas(&s->next_packet_id,
+								  packet_id,
+								  packet_id + 1)) {
+				packet_id = nni_atomic_get(&s->next_packet_id);
+			}
+		}
+	} while (
+	    !nni_atomic_cas(&s->next_packet_id, packet_id, packet_id + 1));
+
+	return packet_id & 0xFFFF;
+}
+
 static int
 mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s)
 {
@@ -305,8 +326,10 @@ mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	// accidental collision across restarts.
 	nni_id_map_init(&p->sent_unack, 0x0000u, 0xffffu, true);
 	nni_id_map_init(&p->recv_unack, 0x0000u, 0xffffu, true);
-	nni_lmq_init(&p->recv_messages, NNG_MAX_RECV_LMQ);
-	nni_lmq_init(&p->send_messages, NNG_MAX_SEND_LMQ);
+	// nni_lmq_init(&p->recv_messages, NNG_MAX_RECV_LMQ);
+	// nni_lmq_init(&p->send_messages, NNG_MAX_SEND_LMQ);
+	nni_lmq_init(&p->recv_messages, 102400);
+	nni_lmq_init(&p->send_messages, 102400);
 
 	return (0);
 }
@@ -586,7 +609,6 @@ mqtt_timer_cb(void *arg)
 		return;
 	}
 	// start message resending
-	// msg = nni_id_get_min(&p->sent_unack, &pid);
 	// if (msg != NULL) {
 	// 	uint16_t ptype;
 	// 	ptype = nni_mqtt_msg_get_packet_type(msg);
@@ -1104,6 +1126,8 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 			log_warn("ctx is already cached! drop msg");
 		}
 		return;
+	} else {
+
 	}
 	mqtt_send_msg(aio, ctx);
 	return;

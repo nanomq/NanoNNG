@@ -3,6 +3,7 @@
 #include <parquet/stream_writer.h>
 
 #include "nng/supplemental/nanolib/log.h"
+#include "nng/supplemental/nanolib/md5.h"
 #include "nng/supplemental/nanolib/parquet.h"
 #include "nng/supplemental/nanolib/queue.h"
 #include <assert.h>
@@ -15,7 +16,6 @@
 #include <sys/stat.h>
 #include <thread>
 #include <vector>
-
 using namespace std;
 using parquet::ConvertedType;
 using parquet::Repetition;
@@ -77,7 +77,6 @@ get_file_name(conf_parquet *conf, uint64_t key_start, uint64_t key_end)
 
 	sprintf(file_name, "%s/%s-%" PRIu64 "~%" PRIu64 ".parquet", dir,
 	    prefix, key_start, key_end);
-	ENQUEUE(parquet_file_queue, file_name);
 	return file_name;
 }
 
@@ -118,17 +117,18 @@ get_random_file_name(char *prefix, uint64_t key_start, uint64_t key_end)
 static int
 remove_old_file(void)
 {
+	int   ret      = 0;
 	char *filename = (char *) DEQUEUE(parquet_file_queue);
 	if (remove(filename) == 0) {
 		log_debug("File '%s' removed successfully.\n", filename);
 	} else {
 		log_error(
 		    "Error removing the file %s errno: %d", filename, errno);
-		return -1;
+		ret = -1;
 	}
 
 	free(filename);
-	return 0;
+	return ret;
 }
 
 static shared_ptr<GroupNode>
@@ -194,6 +194,7 @@ parquet_object_free(parquet_object *elem)
 		uint32_t *szp = (uint32_t *) malloc(sizeof(uint32_t));
 		*szp          = elem->size;
 		nng_aio_set_msg(elem->aio, (nng_msg *) szp);
+		log_debug("finish write aio");
 		DO_IT_IF_NOT_NULL(nng_aio_finish_sync, elem->aio, 0);
 		FREE_IF_NOT_NULL(elem->darray, elem->size);
 		for (int i = 0; i < elem->ranges->size; i++) {
@@ -208,15 +209,18 @@ parquet_object_free(parquet_object *elem)
 int
 parquet_write_batch_async(parquet_object *elem)
 {
-    if (g_conf == NULL || g_conf->enable == false) {
-        log_error("Parquet is not ready or not launch!");
-        return -1;
-    }
+	if (g_conf == NULL || g_conf->enable == false) {
+		log_error("Parquet is not ready or not launch!");
+		return -1;
+	}
 	elem->type = WRITE_TO_NORMAL;
+	log_debug("WAIT_FOR_AVAILABLE");
 	WAIT_FOR_AVAILABLE
+	log_debug("WAIT_FOR parquet_queue_mutex");
 	pthread_mutex_lock(&parquet_queue_mutex);
 	if (IS_EMPTY(parquet_queue)) {
 		pthread_cond_broadcast(&parquet_queue_not_empty);
+		log_debug("broadcast signal!");
 	}
 	ENQUEUE(parquet_queue, elem);
 	log_debug("enqueue element.");
@@ -229,12 +233,14 @@ parquet_write_batch_async(parquet_object *elem)
 int
 parquet_write_batch_tmp_async(parquet_object *elem)
 {
-    if (g_conf == NULL || g_conf->enable == false) {
-        log_error("Parquet is not ready or not launch!");
-        return -1;
-    }
+	if (g_conf == NULL || g_conf->enable == false) {
+		log_error("Parquet is not ready or not launch!");
+		return -1;
+	}
 	elem->type = WRITE_TO_TEMP;
+	log_debug("WAIT_FOR_AVAILABLE");
 	WAIT_FOR_AVAILABLE
+	log_debug("WAIT_FOR parquet_queue_mutex");
 	pthread_mutex_lock(&parquet_queue_mutex);
 	if (IS_EMPTY(parquet_queue)) {
 		pthread_cond_broadcast(&parquet_queue_not_empty);
@@ -245,19 +251,6 @@ parquet_write_batch_tmp_async(parquet_object *elem)
 	pthread_mutex_unlock(&parquet_queue_mutex);
 
 	return 0;
-}
-
-bool
-need_new_one(const char *file_name, size_t file_max)
-{
-	struct stat st;
-	if (stat(file_name, &st) != 0) {
-		log_error("Failed to open the file.");
-		return false;
-	}
-	// printf("File size: %d\n", st.st_size + PARQUET_END);
-	// printf("File max: %d\n", file_max);
-	return st.st_size >= (__off_t) (file_max - PARQUET_END);
 }
 
 shared_ptr<parquet::FileEncryptionProperties>
@@ -331,6 +324,7 @@ again:
 	    get_random_file_name(prefix.data(), key_start, key_end);
 	if (filename == NULL) {
 		log_error("Failed to get file name");
+		parquet_object_free(elem);
 		return -1;
 	}
 
@@ -402,30 +396,112 @@ again:
 	parquet_object_free(elem);
 	return 0;
 }
+char *
+compute_and_rename_file_withMD5(char *filename, conf_parquet *conf)
+{
+	char md5_buffer[MD5_LEN + 1];
+	log_debug("compute md5");
+	int ret = ComputeFileMD5(filename, md5_buffer);
+	if (ret != 0) {
+		log_error("Failed to calculate md5sum");
+		ret = remove(filename);
+		if (ret != 0) {
+			log_error("Failed to remove file %s errno: %d",
+			    filename, errno);
+		}
+
+		free(filename);
+		return NULL;
+	}
+
+	char *md5_file_name = (char *) malloc(
+	    strlen(filename) + strlen("_") + strlen(md5_buffer) + 2);
+	if (md5_file_name == NULL) {
+		log_error("Failed to allocate memory for file name.");
+		ret = remove(filename);
+		if (ret != 0) {
+			log_error("Failed to remove file %s errno: %d",
+			    filename, errno);
+		}
+
+		free(filename);
+		return NULL;
+	}
+
+	strncpy(md5_file_name, filename,
+	    strlen(conf->dir) + strlen(conf->file_name_prefix) + 1);
+	md5_file_name[strlen(conf->dir) + strlen(conf->file_name_prefix) + 1] =
+	    '\0';
+
+	strcat(md5_file_name, "_");
+	strcat(md5_file_name, md5_buffer);
+	strcat(md5_file_name,
+	    filename + strlen(conf->dir) + strlen(conf->file_name_prefix) + 1);
+	log_info("trying to rename... %s to %s", filename, md5_file_name);
+	ret = rename(filename, md5_file_name);
+	if (ret != 0) {
+		log_error("Failed to rename file %s to %s errno: %d", filename,
+		    md5_file_name, errno);
+		ret = remove(filename);
+		if (ret != 0) {
+			log_error("Failed to remove file %s errno: %d",
+			    filename, errno);
+		}
+
+		free(filename);
+		free(md5_file_name);
+		return NULL;
+	}
+
+	free(filename);
+	return md5_file_name;
+}
 
 int
 parquet_write(
     conf_parquet *conf, shared_ptr<GroupNode> schema, parquet_object *elem)
 {
-	uint32_t old_index = 0;
-	uint32_t new_index = 0;
+	uint32_t old_index      = 0;
+	uint32_t new_index      = 0;
+	char    *last_file_name = NULL;
 again:
 
+	if (last_file_name != NULL) {
+		char *md5_file_name =
+		    compute_and_rename_file_withMD5(last_file_name, conf);
+		if (md5_file_name == nullptr) {
+			log_error("Failed to rename file with md5");
+			parquet_object_free(elem);
+			return -1;
+		}
+
+		char md5_buffer[MD5_LEN + 1];
+		log_debug("compute md5 after rename");
+		int ret = ComputeFileMD5(md5_file_name, md5_buffer);
+		if (ret != 0) {
+			log_error("Failed to calculate md5sum");
+		}
+		log_debug("wait for parquet_queue_mutex");
+		pthread_mutex_lock(&parquet_queue_mutex);
+		ENQUEUE(parquet_file_queue, md5_file_name);
+
+		if (QUEUE_SIZE(parquet_file_queue) > conf->file_count) {
+			remove_old_file();
+		}
+
+		pthread_mutex_unlock(&parquet_queue_mutex);
+		last_file_name = NULL;
+	}
+	log_debug("parquet_write");
 	new_index = compute_new_index(elem, old_index, conf->file_size);
 	uint64_t key_start = elem->keys[old_index];
 	uint64_t key_end   = elem->keys[new_index];
-	pthread_mutex_lock(&parquet_queue_mutex);
-	char *filename = get_file_name(conf, key_start, key_end);
+	char    *filename  = get_file_name(conf, key_start, key_end);
 	if (filename == NULL) {
-		pthread_mutex_unlock(&parquet_queue_mutex);
+		parquet_object_free(elem);
 		log_error("Failed to get file name");
 		return -1;
 	}
-
-	if (QUEUE_SIZE(parquet_file_queue) > conf->file_count) {
-		remove_old_file();
-	}
-	pthread_mutex_unlock(&parquet_queue_mutex);
 
 	{
 		parquet_file_range *range =
@@ -434,13 +510,13 @@ again:
 
 		// Create a ParquetFileWriter instance
 		parquet::WriterProperties::Builder builder;
-
+		log_debug("init builder");
 		builder.created_by("NanoMQ")
 		    ->version(parquet::ParquetVersion::PARQUET_2_6)
 		    ->data_page_version(parquet::ParquetDataPageVersion::V2)
 		    ->compression(static_cast<arrow::Compression::type>(
 		        conf->comp_type));
-
+		log_debug("check encry");
 		if (conf->encryption.enable) {
 			shared_ptr<parquet::FileEncryptionProperties>
 			    encryption_configurations;
@@ -461,6 +537,7 @@ again:
 		    file_writer->AppendRowGroup();
 
 		// Write the Int64 column
+		log_debug("start doing int64 write");
 		parquet::Int64Writer *int64_writer =
 		    static_cast<parquet::Int64Writer *>(
 		        rg_writer->NextColumn());
@@ -470,6 +547,7 @@ again:
 			int64_writer->WriteBatch(
 			    1, &definition_level, nullptr, &value);
 		}
+		log_debug("stop doing int64 write");
 
 		// Write the ByteArray column. Make every alternate values NULL
 		parquet::ByteArrayWriter *ba_writer =
@@ -483,13 +561,43 @@ again:
 			ba_writer->WriteBatch(
 			    1, &definition_level, nullptr, &value);
 		}
+		log_debug("stop doing ByteArray write");
 
 		old_index = new_index;
+
+		last_file_name = filename;
 
 		if (new_index != elem->size - 1)
 			goto again;
 	}
+	if (last_file_name != NULL) {
+		char *md5_file_name =
+		    compute_and_rename_file_withMD5(last_file_name, conf);
+		if (md5_file_name == nullptr) {
+			parquet_object_free(elem);
+			log_error("fail to get md5 from parquet file");
+			return -1;
+		}
 
+		char md5_buffer[MD5_LEN + 1];
+		log_debug("compute md5 after rename");
+		int ret = ComputeFileMD5(md5_file_name, md5_buffer);
+		if (ret != 0) {
+			log_error("Failed to calculate md5sum");
+		}
+		log_debug("wait for parquet_queue_mutex");
+		pthread_mutex_lock(&parquet_queue_mutex);
+		ENQUEUE(parquet_file_queue, md5_file_name);
+
+		if (QUEUE_SIZE(parquet_file_queue) > conf->file_count) {
+			remove_old_file();
+		}
+
+		pthread_mutex_unlock(&parquet_queue_mutex);
+		last_file_name = NULL;
+	}
+
+	log_info("flush finished!");
 	parquet_object_free(elem);
 	return 0;
 }
@@ -548,8 +656,7 @@ parquet_file_queue_init(conf_parquet *conf)
 
 	if ((dir = opendir(conf->dir)) != NULL) {
 		int count = 0;
-		while (
-		    (ent = readdir(dir)) != NULL && count < conf->file_count) {
+		while ((ent = readdir(dir)) != NULL) {
 			if (strstr(ent->d_name, ".parquet") != NULL) {
 				char *file_path =
 				    (char *) malloc(strlen(conf->dir) +
@@ -560,14 +667,42 @@ parquet_file_queue_init(conf_parquet *conf)
 					closedir(dir);
 					return;
 				}
-
 				sprintf(file_path, "%s/%s", conf->dir,
 				    ent->d_name);
+
+				if (strstr(ent->d_name, "_") == NULL) {
+					if (unlink(file_path) != 0) {
+						log_error("Failed to remove file %s errno: %d",
+						    file_path, errno);
+					} else {
+						log_warn("Found a file without md5sum, "
+					         "delete it: %s", file_path);
+					}
+					free(file_path);
+					continue;
+				}
+
+				if (++count > conf->file_count) {
+					if (0 == remove_old_file()) {
+						log_info("To delete files "
+						         "exceeding a certain "
+						         "file count: %d.",
+						    conf->file_count);
+					} else {
+						free(file_path);
+						return;
+					}
+				}
 				ENQUEUE(parquet_file_queue, file_path);
-				count++;
 			}
 		}
-		log_info("Found %d parquet file from %s", count, conf->dir);
+		int load_num =
+		    count > conf->file_count ? conf->file_count : count;
+		int remove_num =
+		    count > conf->file_count ? count - conf->file_count : 0;
+		log_info("Found %d parquet file from %s, load %d file, remove "
+		         "%d file.",
+		    count, conf->dir, load_num, remove_num);
 		closedir(dir);
 	} else {
 		log_info("parquet directory not found, creating new one");
@@ -615,10 +750,10 @@ compare_callback_span(void *name, uint64_t low, uint64_t high)
 const char *
 parquet_find(uint64_t key)
 {
-    if (g_conf == NULL || g_conf->enable == false) {
-        log_error("Parquet is not ready or not launch!");
-        return NULL;
-    }
+	if (g_conf == NULL || g_conf->enable == false) {
+		log_error("Parquet is not ready or not launch!");
+		return NULL;
+	}
 	WAIT_FOR_AVAILABLE
 	const char *value = NULL;
 	void       *elem  = NULL;
@@ -637,10 +772,10 @@ parquet_find(uint64_t key)
 const char **
 parquet_find_span(uint64_t start_key, uint64_t end_key, uint32_t *size)
 {
-    if (g_conf == NULL || g_conf->enable == false) {
-        log_error("Parquet is not ready or not launch!");
-        return NULL;
-    }
+	if (g_conf == NULL || g_conf->enable == false) {
+		log_error("Parquet is not ready or not launch!");
+		return NULL;
+	}
 	if (start_key > end_key) {
 		log_error("Start key can't be greater than end_key.");
 		*size = 0;
@@ -938,18 +1073,18 @@ parquet_find_data_packet(
     conf_parquet *conf, char *filename, vector<uint64_t> keys)
 {
 	vector<parquet_data_packet *> ret_vec;
-    if (g_conf == NULL || g_conf->enable == false) {
-        log_error("Parquet is not ready or not launch!");
-        return ret_vec;
-    }
-    WAIT_FOR_AVAILABLE
-    void *elem = NULL;
-    pthread_mutex_lock(&parquet_queue_mutex);
-    FOREACH_QUEUE(parquet_file_queue, elem)
-    {
-	    if (elem && nng_strcasecmp((char *) elem, filename) == 0) {
-		    goto find;
-	    }
+	if (g_conf == NULL || g_conf->enable == false) {
+		log_error("Parquet is not ready or not launch!");
+		return ret_vec;
+	}
+	WAIT_FOR_AVAILABLE
+	void *elem = NULL;
+	pthread_mutex_lock(&parquet_queue_mutex);
+	FOREACH_QUEUE(parquet_file_queue, elem)
+	{
+		if (elem && nng_strcasecmp((char *) elem, filename) == 0) {
+			goto find;
+		}
 	}
 
 find:
@@ -968,10 +1103,10 @@ find:
 parquet_data_packet *
 parquet_find_data_packet(conf_parquet *conf, char *filename, uint64_t key)
 {
-    if (g_conf == NULL || g_conf->enable == false) {
-        log_error("Parquet is not ready or not launch!");
-        return NULL;
-    }
+	if (g_conf == NULL || g_conf->enable == false) {
+		log_error("Parquet is not ready or not launch!");
+		return NULL;
+	}
 	WAIT_FOR_AVAILABLE
 	void *elem = NULL;
 	pthread_mutex_lock(&parquet_queue_mutex);
@@ -1025,7 +1160,7 @@ parquet_find_data_packets(
 
 	// Traverse the map and get the vector of parquet_data_packet
 	for (const auto &entry : file_name_map) {
-		char                        *filename = entry.first;
+		char		        *filename = entry.first;
 		const std::vector<uint64_t> &sizes    = entry.second;
 
 		auto tmp = parquet_find_data_packet(conf, filename, sizes);

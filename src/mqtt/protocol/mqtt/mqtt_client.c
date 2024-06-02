@@ -135,7 +135,6 @@ mqtt_sock_init(void *arg, nni_sock *sock)
 	s->keepalive = NNI_SECOND * 10; // default mqtt keepalive
 	s->timeleft  = NNI_SECOND * 10;
 
-
 	nni_mtx_init(&s->mtx);
 	mqtt_ctx_init(&s->master, s);
 
@@ -281,6 +280,24 @@ mqtt_sock_recv(void *arg, nni_aio *aio)
 /******************************************************************************
  *                              Pipe Implementation                           *
  ******************************************************************************/
+static uint16_t
+mqtt_sock_get_next_packet_id(mqtt_sock_t *s)
+{
+	int packet_id;
+	do {
+		packet_id = nni_atomic_get(&s->next_packet_id);
+		/* PROTOCOL ERROR: when packet_id == 0 */
+		while (packet_id & 0xFFFF == 0) {
+			while(!nni_atomic_cas(&s->next_packet_id,
+								  packet_id,
+								  packet_id + 1)) {
+				packet_id = nni_atomic_get(&s->next_packet_id);
+			}
+		}
+	} while (
+	    !nni_atomic_cas(&s->next_packet_id, packet_id, packet_id + 1));
+	return packet_id & 0xFFFF;
+}
 
 static int
 mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s)
@@ -313,8 +330,10 @@ mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	// accidental collision across restarts.
 	nni_id_map_init(&p->sent_unack, 0x0000u, 0xffffu, true);
 	nni_id_map_init(&p->recv_unack, 0x0000u, 0xffffu, true);
-	nni_lmq_init(&p->recv_messages, NNG_MAX_RECV_LMQ);
-	nni_lmq_init(&p->send_messages, NNG_MAX_SEND_LMQ);
+	// nni_lmq_init(&p->recv_messages, NNG_MAX_RECV_LMQ);
+	// nni_lmq_init(&p->send_messages, NNG_MAX_SEND_LMQ);
+	nni_lmq_init(&p->recv_messages, 102400);
+	nni_lmq_init(&p->send_messages, 102400);
 
 #ifdef NNG_HAVE_MQTT_BROKER
 	p->cparam = NULL;
@@ -464,12 +483,12 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 		return;
 	}
 	if (nni_lmq_full(&p->send_messages)) {
-		log_error("Warning! msg lost due to busy socket and full lmq");
+		log_error("rhack: pipe is busy and lmq is full\n");
 		(void) nni_lmq_get(&p->send_messages, &tmsg);
 		nni_msg_free(tmsg);
 	}
 	if (0 != nni_lmq_put(&p->send_messages, msg)) {
-		log_error("Warning! Failed to put to lmq and msg lost");
+		log_error("Warning! msg lost due to busy socket");
 	}
 out:
 	nni_mtx_unlock(&s->mtx);
@@ -746,7 +765,7 @@ mqtt_recv_cb(void *arg)
 
 	if ((rv = nni_aio_result(&p->recv_aio)) != 0) {
 		log_warn("MQTT client recv error %d!", rv);
-		s->disconnect_code = 0x8B; // TODO hardcode
+		s->disconnect_code = 0x8B; // TODO hardcode, Different with code in v5
 		nni_pipe_close(p->pipe);
 		return;
 	}

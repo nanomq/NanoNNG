@@ -393,6 +393,7 @@ config_init(nng_tls_engine_config *cfg, enum nng_tls_mode mode)
 	rv = mbedtls_ssl_config_defaults(&cfg->cfg_ctx, ssl_mode,
 	    MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT);
 	if (rv != 0) {
+		log_error("mbedtls_ssl_config_defaults: rv: %d\n", rv);
 		config_fini(cfg);
 		return (rv);
 	}
@@ -461,12 +462,14 @@ config_ca_chain(nng_tls_engine_config *cfg, const char *certs, const char *crl)
 	pem = (const uint8_t *) certs;
 	len = strlen(certs) + 1;
 	if ((rv = mbedtls_x509_crt_parse(&cfg->ca_certs, pem, len)) != 0) {
+		log_error("mbedtls_x509_crt_parse: rv: %d\n", rv);
 		return (tls_mk_err(rv));
 	}
 	if (crl != NULL) {
 		pem = (const uint8_t *) crl;
 		len = strlen(crl) + 1;
 		if ((rv = mbedtls_x509_crl_parse(&cfg->crl, pem, len)) != 0) {
+			log_error("mbedtls_x509_crl_parse: rv: %d\n", rv);
 			return (tls_mk_err(rv));
 		}
 	}
@@ -493,6 +496,7 @@ config_own_cert(nng_tls_engine_config *cfg, const char *cert, const char *key,
 	pem = (const uint8_t *) cert;
 	len = strlen(cert) + 1;
 	if ((rv = mbedtls_x509_crt_parse(&p->crt, pem, len)) != 0) {
+		log_error("mbedtls_x509_crt_parse: rv: %d", rv);
 		rv = tls_mk_err(rv);
 		goto err;
 	}
@@ -507,12 +511,14 @@ config_own_cert(nng_tls_engine_config *cfg, const char *cert, const char *key,
 	    pass != NULL ? strlen(pass) : 0, tls_random, NULL);
 #endif
 	if (rv != 0) {
+		log_error("mbedtls_pk_parse_key: rv: %d", rv);
 		rv = tls_mk_err(rv);
 		goto err;
 	}
 
 	rv = mbedtls_ssl_conf_own_cert(&cfg->cfg_ctx, &p->crt, &p->key);
 	if (rv != 0) {
+		log_error("mbedtls_ssl_conf_own_cert: rv: %d", rv);
 		rv = tls_mk_err(rv);
 		goto err;
 	}

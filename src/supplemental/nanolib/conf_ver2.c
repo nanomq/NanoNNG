@@ -14,6 +14,8 @@
 #include <ctype.h>
 #include <string.h>
 
+static const char *gvin = NULL;
+
 typedef struct {
 	uint8_t enumerate;
 	char   *desc;
@@ -359,16 +361,17 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 			config->enable = false;
 		}
 
-		cJSON *jso_websocket = hocon_get_obj("listeners.ws", jso);
+		cJSON *jso_websocket      = hocon_get_obj("listeners.ws", jso);
+		conf_websocket *websocket = &(config->websocket);
 		if (NULL == jso_websocket) {
 			log_error("Read config nanomq ws failed!");
-			return;
-		}
+			websocket->enable = true;
 
-		conf_websocket *websocket = &(config->websocket);
-		hocon_read_address_base(
-		    websocket, url, "bind", "nmq-ws://", jso_websocket);
-		websocket->enable = true;
+		} else {
+			hocon_read_address_base(websocket, url, "bind",
+			    "nmq-ws://", jso_websocket);
+			websocket->enable = true;
+		}
 
 		conf_tls *tls = &(config->tls);
 		if (tls != NULL) {
@@ -840,6 +843,126 @@ conf_bridge_conn_will_properties_parse_ver2(
 	    jso_prop, &prop->user_property_size);
 }
 
+static char *split_vin(char *str)
+{
+	char *after = strstr(str, "${VIN}");
+	if (after) {
+		*after = '\0';
+		after += strlen("${VIN}");
+	}
+	return after;
+}
+
+static char *concat_str(char *b, const char *m, char *a)
+{
+	size_t new_len = strlen(b) + strlen(m) + strlen(a) + 1;
+	char *new      = nng_alloc(new_len);
+	snprintf(new, new_len, "%s%s%s%c", b, m, a, '\0');
+	return new;
+}
+
+static char *check_and_replace_vin(char *origin, const char *replace)
+{
+	char *new = origin;
+	char *vin_before = origin;
+	char *vin_after = NULL;
+
+	if ((vin_after = split_vin(origin)) != NULL) {
+		new = concat_str(vin_before, replace, vin_after);
+		nng_strfree(origin);
+	}
+
+	return new;
+}
+
+static void
+update_clientid_vin(conf_bridge_node *node, const char *vin)
+{
+	if (node->clientid) {
+		size_t cid_len  = strlen(vin) + strlen(node->clientid) + 1;
+		char  *clientid = nng_alloc(cid_len);
+		snprintf(
+		    clientid, cid_len, "%s%s%c", node->clientid, vin, '\0');
+		nng_strfree(node->clientid);
+		node->clientid = clientid;
+	} else {
+		node->clientid = nng_strdup(vin);
+	}
+}
+
+static void
+update_forward_vin(conf_bridge_node *node, const char *vin)
+{
+	if (node->forwards_list) {
+		for (size_t i = 0; i < node->forwards_count; i++) {
+			node->forwards_list[i]->remote_topic =
+			    check_and_replace_vin(node->forwards_list[i]->remote_topic, vin);
+			node->forwards_list[i]->remote_topic_len = strlen(node->forwards_list[i]->remote_topic);
+			node->forwards_list[i]->local_topic =
+			    check_and_replace_vin(node->forwards_list[i]->local_topic, vin);
+			node->forwards_list[i]->local_topic_len = strlen(node->forwards_list[i]->local_topic);
+		}
+	}
+}
+
+static void
+update_subscription_vin(conf_bridge_node *node, const char *vin)
+{
+	if (node->sub_list) {
+		for (size_t i = 0; i < node->sub_count; i++) {
+			node->sub_list[i]->remote_topic = check_and_replace_vin(
+			    node->sub_list[i]->remote_topic, vin);
+			node->sub_list[i]->remote_topic_len =
+			    strlen(node->sub_list[i]->remote_topic);
+		}
+	}
+}
+
+static void
+update_parquet_vin(conf_parquet *parquet)
+{
+	if (parquet->file_name_prefix &&
+	    0 == nng_strcasecmp(parquet->file_name_prefix, "${VIN}")) {
+		nng_strfree(parquet->file_name_prefix);
+		parquet->file_name_prefix = strdup(gvin);
+	}
+}
+
+#define CONF_NODE_CLIENTID 0
+#define CONF_NODE_SUBSCRIPTION 1
+#define CONF_NODE_FORWARD 2
+
+static void
+update_bridge_node_vin(conf_bridge_node *node, int type)
+{
+	if (gvin != NULL) {
+
+		switch (type)
+		{
+		case CONF_NODE_CLIENTID:
+			update_clientid_vin(node, gvin);
+			break;
+		case CONF_NODE_SUBSCRIPTION:
+			update_subscription_vin(node, gvin);
+			break;
+		case CONF_NODE_FORWARD:
+			update_forward_vin(node, gvin);
+		default:
+			break;
+		}
+	}
+}
+
+const char* conf_get_vin(void)
+{
+	return gvin;
+}
+
+void conf_free_vin()
+{
+	nng_strfree((char*) gvin);
+}
+
 static void
 conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 {
@@ -854,9 +977,11 @@ conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 	hocon_read_bool(node, clean_start, jso_connector);
 	hocon_read_str(node, username, jso_connector);
 	hocon_read_str(node, password, jso_connector);
+	update_bridge_node_vin(node, CONF_NODE_CLIENTID);
 
 	cJSON    *jso_tls         = hocon_get_obj("ssl", jso_connector);
 	conf_tls *bridge_node_tls = &(node->tls);
+
 	conf_tls_parse_ver2_base(bridge_node_tls, jso_tls);
 
 	cJSON    *jso_tcp         = hocon_get_obj("tcp", jso_connector);
@@ -1032,6 +1157,8 @@ conf_bridge_node_parse(
 	}
 
 	hocon_read_num_base(node, parallel, "max_parallel_processes", obj);
+	update_bridge_node_vin(node, CONF_NODE_SUBSCRIPTION);
+	update_bridge_node_vin(node, CONF_NODE_FORWARD);
 	hocon_read_num(node, max_recv_queue_len, obj);
 	hocon_read_num(node, max_send_queue_len, obj);
 }
@@ -1149,6 +1276,23 @@ conf_exchange_node_parse(conf_exchange_node *node, cJSON *obj)
 	node->rbufs_sz = cvector_size(node->rbufs);
 }
 
+void
+conf_exchange_encryption_parse(conf_exchange_encryption *node, cJSON *obj)
+{
+
+	cJSON *encryption = hocon_get_obj("encryption", obj);
+
+	hocon_read_bool_base(node, enable, "enable", encryption);
+	hocon_read_str(node, key, encryption);
+
+	if (node->enable == true && node->key == NULL) {
+		log_error("invalid exchange encryption configuration!");
+		return;
+	}
+
+	return;
+}
+
 static void
 conf_exchange_parse_ver2(conf *config, cJSON *jso)
 {
@@ -1167,6 +1311,13 @@ conf_exchange_parse_ver2(conf *config, cJSON *jso)
 		node->rbufs              = NULL;
 		node->rbufs_sz           = 0;
 		conf_exchange_node_parse(node, node_item);
+
+		conf_exchange_encryption *enc = NNI_ALLOC_STRUCT(enc);
+		enc->enable = false;
+		enc->key = NULL;
+		conf_exchange_encryption_parse(enc, node_item);
+		config->exchange.encryption = enc;
+
 		nng_mtx_alloc(&node->mtx);
 		cvector_push_back(config->exchange.nodes, node);
 	}
@@ -1188,6 +1339,7 @@ conf_parquet_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_size(parquet, file_size, jso_parquet);
 		hocon_read_str(parquet, dir, jso_parquet);
 		hocon_read_str(parquet, file_name_prefix, jso_parquet);
+		update_parquet_vin(parquet);
 		hocon_read_enum_base(parquet, comp_type, "compress",
 		    jso_parquet, compress_type);
 		cJSON *jso_parquet_encryption =
@@ -1570,6 +1722,7 @@ conf_parse_ver2(conf *config)
 
 	cJSON *jso = hocon_parse_file(conf_path);
 	if (NULL != jso) {
+		gvin = config->vin;
 		conf_basic_parse_ver2(config, jso);
 		conf_set_threads(config);
 		conf_sqlite_parse_ver2(config, jso);

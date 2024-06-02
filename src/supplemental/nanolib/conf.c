@@ -872,6 +872,7 @@ conf_http_server_destroy(conf_http_server *http)
 void
 conf_init(conf *nanomq_conf)
 {
+	nanomq_conf->vin       = NULL;
 	nanomq_conf->url       = NULL;
 	nanomq_conf->conf_file = NULL;
 
@@ -1170,6 +1171,12 @@ print_exchange_conf(conf_exchange *exchange)
 			log_info("exchange ringbus cap       %d", r->cap);
 			log_info("exchange ringbus fullOp    %d", r->fullOp);
 		}
+	}
+	if (exchange->encryption != NULL) {
+		log_info("exchange encryption:       %s",
+				exchange->encryption->enable ? "true" : "false");
+		log_info("exchange encryption key:   %s",
+				exchange->encryption->key == NULL ? "null" : exchange->encryption->key);
 	}
 }
 

@@ -1196,12 +1196,9 @@ nni_mqttv5_msg_encode_suback(nni_msg *msg)
 	nni_mqtt_proto_data *mqtt = nni_msg_get_proto_data(msg);
 	nni_msg_clear(msg);
 
-	int poslength = 2; /* for Packet Identifier */
-
 	mqtt_suback_vhdr *   var_header = &mqtt->var_header.suback;
 	mqtt_suback_payload *spld       = &mqtt->payload.suback;
 
-	poslength += spld->ret_code_count;
 
 	/* Properties */
 	encode_properties(msg, var_header->properties, CMD_SUBACK);
@@ -1226,7 +1223,8 @@ nni_mqtt_msg_encode_publish(nni_msg *msg)
 	nni_msg_clear(msg);
 	nni_msg_header_clear(msg);
 
-	int poslength = 0, rv = 0;
+	uint32_t poslength = 0;
+	int      rv = 0;
 
 	poslength += 2; /* for Topic Name length field */
 	poslength += mqtt->var_header.publish.topic_name.length;
@@ -1235,7 +1233,7 @@ nni_mqtt_msg_encode_publish(nni_msg *msg)
 		poslength += 2; /* for Packet Identifier */
 	}
 	poslength += mqtt->payload.publish.payload.length;
-	mqtt->fixed_header.remaining_length = (uint32_t) poslength;
+	mqtt->fixed_header.remaining_length = poslength;
 
 	if (nni_mqtt_msg_encode_fixed_header(msg, mqtt) != 0)
 		return MQTT_ERR_PROTOCOL;
@@ -1501,19 +1499,19 @@ nni_mqttv5_msg_encode_unsubscribe(nni_msg *msg)
 	nni_mqtt_proto_data *mqtt = nni_msg_get_proto_data(msg);
 	nni_msg_clear(msg);
 
-	int poslength = 0;
+	// int poslength = 0;
 
-	poslength += 2; /* for Packet Identifier */
+	// poslength += 2; /* for Packet Identifier */
 
 	mqtt_unsubscribe_payload *uspld = &mqtt->payload.unsubscribe;
 
-	/* Go through topic filters to calculate length information */
-	for (size_t i = 0; i < uspld->topic_count; i++) {
-		mqtt_buf *topic = &uspld->topic_arr[i];
-		poslength += topic->length;
-		poslength += 2; // for 'length' field of Topic Filter, which is
-		                // encoded as UTF-8 encoded strings */
-	}
+	// /* Go through topic filters to calculate length information */
+	// for (size_t i = 0; i < uspld->topic_count; i++) {
+	// 	mqtt_buf *topic = &uspld->topic_arr[i];
+	// 	poslength += topic->length;
+	// 	poslength += 2; // for 'length' field of Topic Filter, which is
+	// 	                // encoded as UTF-8 encoded strings */
+	// }
 
 	mqtt_unsubscribe_vhdr *var_header = &mqtt->var_header.unsubscribe;
 	/* Packet Id */

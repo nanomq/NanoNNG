@@ -317,11 +317,18 @@ struct conf_exchange_node {
 	nng_mtx          *mtx;
 };
 
+typedef struct conf_exchange_encryption conf_exchange_encryption;
+struct conf_exchange_encryption {
+	bool        enable;
+	char       *key;
+};
+
 typedef struct conf_exchange conf_exchange;
 struct conf_exchange {
 	char                *exchange_url;
 	size_t               count;
 	conf_exchange_node **nodes;
+	conf_exchange_encryption *encryption;
 };
 
 #if defined(SUPP_PLUGIN)
@@ -535,6 +542,7 @@ typedef enum {
 } persistence_type;
 
 struct conf {
+	char      *vin;
 	char      *conf_file;
 	char      *url;
 	bool       enable;
@@ -618,6 +626,8 @@ NNG_DECL void conf_update_var(
     const char *fpath, const char *key, uint8_t type, void *var);
 NNG_DECL void conf_update_var2(const char *fpath, const char *key1,
     const char *key2, const char *key3, uint8_t type, void *var);
+NNG_DECL const char* conf_get_vin(void); 
+NNG_DECL void conf_free_vin();
 
 #define conf_update_int(path, key, var) \
 	conf_update_var(path, key, 0, (void *) &(var))
