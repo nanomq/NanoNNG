@@ -841,8 +841,8 @@ mqtt_quic_recv_cb(void *arg)
 			conn_param_clone(p->cparam);
 			// Set keepalive
 			s->keepalive = conn_param_get_keepalive(p->cparam) * 1000;
-			log_info("Update keepalive to %dms", s->keepalive);
 			s->timeleft  = s->keepalive;
+			log_info("Update keepalive to %dms", s->keepalive);
 		}
 		// Clone CONNACK for connect_cb & user aio cb
 		if (s->cb.connect_cb) {
