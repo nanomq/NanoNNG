@@ -180,7 +180,12 @@ int file_create_dir(const char *fpath)
 	}
 
 	log_info("mkdir = %s", fpath);
+	
+#ifndef NNG_PLATFORM_WINDOWS
 	ret = mkdir(fpath, 0777);
+#else
+	ret = mkdir(fpath);
+#endif
 out:
 	free(fpath_edit);
 
