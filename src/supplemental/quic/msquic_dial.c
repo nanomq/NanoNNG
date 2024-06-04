@@ -1049,8 +1049,8 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			nni_aio_set_msg(aio, NULL);
 			if (canceled)
 				nni_aio_finish_error(aio, NNG_ECANCELED);
-			else
-				nni_aio_finish(aio, 0, nni_aio_count(aio));
+			//else
+			//	nni_aio_finish(aio, 0, nni_aio_count(aio));
 			break;
 		}
 		// Ordinary sending
