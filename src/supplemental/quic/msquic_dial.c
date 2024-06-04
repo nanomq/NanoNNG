@@ -1042,10 +1042,10 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
 			nni_aio_set_input(aio, 0, NULL);
 			free(buf);
-			//nni_msg *msg = nni_aio_get_msg(aio);
+			nni_msg *msg = nni_aio_get_msg(aio);
 			// free SUBSCRIBE/UNSUBSCRIBE QoS 1/2 PUBLISH msg here
 			// nni_mqtt_packet_type t = nni_mqtt_msg_get_packet_type(msg);
-			//nni_msg_free(msg);
+			nni_msg_free(msg);
 			nni_aio_set_msg(aio, NULL);
 			if (canceled)
 				nni_aio_finish_error(aio, NNG_ECANCELED);
