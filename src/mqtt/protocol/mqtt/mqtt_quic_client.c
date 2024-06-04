@@ -589,7 +589,7 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 		nng_msg_set_conn_param(msg, p->cparam);
 	switch (packet_type) {
 	case NNG_MQTT_CONNACK:
-		log_error("ERROR: CONNACK received in data stream!");
+		log_error("CONNACK received in data stream!");
 		nni_msg_free(msg);
 		break;
 	case NNG_MQTT_PUBACK:
@@ -813,7 +813,6 @@ mqtt_quic_recv_cb(void *arg)
 			nni_println(
 			    "Warning! msg send failed due to busy socket");
 		}
-		// nni_mtx_unlock(&s->mtx);
 		nni_mtx_unlock(&p->lk);
 		return;
 	}
@@ -1178,9 +1177,9 @@ static void mqtt_quic_sock_init(void *arg, nni_sock *sock)
 static void
 mqtt_quic_sock_fini(void *arg)
 {
-	mqtt_sock_t   *s = arg;
-	nni_aio       *aio;
-	nni_msg       *tmsg = NULL, *msg = NULL;
+	mqtt_sock_t *  s = arg;
+	nni_aio *      aio;
+	nni_msg *      tmsg = NULL, *msg = NULL;
 	size_t         count = 0;
 	mqtt_quic_ctx *ctx;
 
@@ -1538,6 +1537,7 @@ quic_mqtt_pipe_init(void *arg, nni_pipe *pipe, void *sock)
 	nni_mtx_init(&p->lk);
 	NNI_LIST_INIT(&p->recv_queue, mqtt_quic_ctx, rqnode);
 
+	// TODO Not compatible with multi stream
 	// Move ctx from sock to pipe
 	mqtt_quic_ctx *ctx = NULL;
 	nni_mtx_lock(&p->mqtt_sock->mtx);
