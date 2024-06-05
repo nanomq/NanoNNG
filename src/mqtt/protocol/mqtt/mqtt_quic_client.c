@@ -250,6 +250,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 			    ? p->mqtt_sock->bridge_conf->max_send_queue_len
 			    : NNG_TRAN_MAX_LMQ_SIZE;
 
+			int run_remove = 1;
 			if (max_que_len > nni_lmq_cap(&s->send_messages)) {
 				size_t double_que_cap =
 				    nni_lmq_cap(&s->send_messages) * 2;
@@ -258,25 +259,20 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 				    ? double_que_cap
 				    : max_que_len;
 
-				if (0 !=
-				    nni_lmq_resize(
+				if (0 != nni_lmq_resize(
 				        &s->send_messages, resize_que_len)) {
-					(void) nni_lmq_get(
-					    &s->send_messages, &tmsg);
-					log_debug(
-					    "Max send queue capacity is %d",
-					    nni_lmq_cap(&s->send_messages));
-					log_debug("Max send queue len is %d",
-					    nni_lmq_len(&s->send_messages));
+					log_debug("Max sendq cap%d len%d",
+					    nni_lmq_cap(&s->send_messages),
+						nni_lmq_len(&s->send_messages));
 					log_warn("msg lost due to flight "
 					         "window is full");
-					nni_msg_free(tmsg);
+				} else {
+					log_info("Resize max send queue to %d",
+					    nni_lmq_cap(&s->send_messages));
+					run_remove = 0;
 				}
-
-				log_info("Resize max send queue to %d",
-				    nni_lmq_cap(&s->send_messages));
-
-			} else {
+			}
+			if (run_remove) {
 				(void) nni_lmq_get(&s->send_messages, &tmsg);
 				log_warn("remove old msg due to flight window is full");
 				uint32_t tmp_type = nni_msg_get_type(tmsg);
@@ -286,11 +282,11 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 					nni_msg *old_msg = nni_id_get(&p->sent_unack,
 							nni_mqtt_msg_get_packet_id(tmsg));
 					if (old_msg != NULL) {
+						nni_id_remove(&p->sent_unack, packet_id);
 						nni_aio *m_aio = nni_mqtt_msg_get_aio(tmsg);
 						if (m_aio) {
 							nni_aio_finish_error(m_aio, NNG_ECANCELED);
 						}
-						nni_id_remove(&p->sent_unack, packet_id);
 						nni_mqtt_msg_set_aio(old_msg, NULL);
 					}
 				}
