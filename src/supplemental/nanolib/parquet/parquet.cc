@@ -1302,3 +1302,30 @@ get_key(char *filename, key_type type)
 	}
 	return res;
 }
+
+parquet_data_packet **
+parquet_find_data_span_packets(conf_parquet *conf, char **filenames,
+    uint32_t len, uint64_t start_key, uint64_t end_key)
+{
+	vector<parquet_data_packet *> ret_vec;
+	parquet_data_packet         **packets = NULL;
+
+	for (uint32_t i = 0; i < len; i++) {
+		end_key   = i == 0 ? end_key : get_key(filenames[i], END_KEY);
+		start_key = i == len - 1 ? start_key
+		                         : get_key(filenames[i], START_KEY);
+		uint64_t keys[2];
+		keys[0]  = start_key;
+		keys[1]  = end_key;
+		auto tmp = parquet_read_span(conf, filenames[i], keys);
+		ret_vec.insert(ret_vec.end(), tmp.begin(), tmp.end());
+	}
+
+	if (!ret_vec.empty()) {
+		packets = (parquet_data_packet **) malloc(
+		    sizeof(parquet_data_packet *) * len);
+		copy(ret_vec.begin(), ret_vec.end(), packets);
+	}
+
+	return packets;
+}
