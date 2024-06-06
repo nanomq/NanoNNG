@@ -1278,3 +1278,27 @@ parquet_read_span(conf_parquet *conf, char *filename, uint64_t keys[2])
 
 	return ret_vec;
 }
+
+typedef enum {
+	START_KEY,
+	END_KEY
+} key_type;
+
+static uint64_t
+get_key(char *filename, key_type type)
+{
+	uint64_t range[2] = { 0 };
+	uint64_t res      = 0;
+	get_range(filename, range);
+	switch (type) {
+	case START_KEY:
+		res = range[0];
+		break;
+	case END_KEY:
+		res = range[1];
+		break;
+	default:
+		break;
+	}
+	return res;
+}
