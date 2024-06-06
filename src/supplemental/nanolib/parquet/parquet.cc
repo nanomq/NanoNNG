@@ -726,6 +726,7 @@ parquet_write_launcher(conf_parquet *conf)
 static void
 get_range(const char *name, uint64_t range[2])
 {
+	//{prefix}_{md5}-{start_key}~{end_key}.parquet
 	const char *start = strrchr(name, '-');
 	sscanf(start, "-%ld~%ld.parquet", &range[0], &range[1]);
 	return;
@@ -1174,4 +1175,106 @@ parquet_find_data_packets(
 	}
 
 	return packets;
+}
+
+static vector<parquet_data_packet *>
+parquet_read_span(conf_parquet *conf, char *filename, uint64_t keys[2])
+{
+	conf = g_conf;
+	vector<parquet_data_packet *> ret_vec;
+	std::string                   path_int64 = "key";
+	std::string                   path_str   = "data";
+	parquet::ReaderProperties     reader_properties =
+	    parquet::default_reader_properties();
+
+	parquet_read_set_property(reader_properties, conf);
+	vector<int> index_vector(2);
+
+	// Create a ParquetReader instance
+	std::string exception_msg = "";
+	try {
+		std::unique_ptr<parquet::ParquetFileReader> parquet_reader =
+		    parquet::ParquetFileReader::OpenFile(
+		        filename, false, reader_properties);
+
+		// Get the File MetaData
+		std::shared_ptr<parquet::FileMetaData> file_metadata =
+		    parquet_reader->metadata();
+
+		int num_row_groups =
+		    file_metadata
+		        ->num_row_groups(); // Get the number of RowGroups
+		int num_columns =
+		    file_metadata->num_columns(); // Get the number of Columns
+		assert(num_columns == 2);
+
+		for (int r = 0; r < num_row_groups; ++r) {
+
+			std::shared_ptr<parquet::RowGroupReader>
+			    row_group_reader = parquet_reader->RowGroup(
+			        r); // Get the RowGroup Reader
+			int64_t values_read = 0;
+			int64_t rows_read   = 0;
+			int16_t definition_level;
+			std::shared_ptr<parquet::ColumnReader> column_reader;
+
+			column_reader = row_group_reader->Column(0);
+			parquet::Int64Reader *int64_reader =
+			    static_cast<parquet::Int64Reader *>(
+			        column_reader.get());
+
+			index_vector = get_keys_indexes(
+			    int64_reader, vector<uint64_t>(keys, keys + 2));
+			if (-1 == index_vector[0] || -1 == index_vector[1]) {
+				ret_vec.push_back(NULL);
+				return ret_vec;
+			}
+			// Get the Column Reader for the ByteArray column
+			column_reader = row_group_reader->Column(1);
+			auto ba_reader =
+			    dynamic_pointer_cast<parquet::ByteArrayReader>(
+			        column_reader);
+
+			if (ba_reader->HasNext()) {
+				ba_reader->Skip(index_vector[0] - 1);
+			}
+
+			if (ba_reader->HasNext()) {
+				int64_t batch_size =
+				    index_vector[1] - index_vector[0];
+				std::vector<parquet::ByteArray> values(
+				    batch_size);
+				parquet::ByteArray value;
+				rows_read = ba_reader->ReadBatch(batch_size,
+				    &definition_level, nullptr, values.data(),
+				    &values_read);
+				if (batch_size == rows_read &&
+				    batch_size == values_read) {
+					for (int64_t b = 0; b < batch_size;
+					     b++) {
+						parquet_data_packet *pack =
+						    (parquet_data_packet *)
+						        malloc(sizeof(
+						            parquet_data_packet));
+						pack->data =
+						    (uint8_t *) malloc(
+						        values[b].len *
+						        sizeof(uint8_t));
+						memcpy(pack->data,
+						    values[b].ptr,
+						    values[b].len);
+						pack->size = values[b].len;
+						ret_vec.push_back(pack);
+					}
+				}
+			}
+
+		}
+
+	} catch (const std::exception &e) {
+		exception_msg = e.what();
+		log_error("exception_msg=[%s]", exception_msg.c_str());
+	}
+
+	return ret_vec;
 }
