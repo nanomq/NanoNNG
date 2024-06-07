@@ -1068,30 +1068,6 @@ static char* get_cJsonStr(cJSON *obj, const char* string)
 	return str;
 }
 
-static void update_prefix(char* topic, const char* pre)
-{
-	char *tmp = nni_alloc(strlen(pre) + strlen(topic) + 1);
-	if (tmp != NULL) {
-		strcat(tmp, pre);
-		strcat(tmp, topic);
-		nng_strfree(topic);
-		topic = nng_strdup(tmp);
-	}
-	nng_strfree(tmp);
-}
-
-static void update_suffix(char* topic, const char* suf)
-{
-	char *tmp = nni_alloc(strlen(suf) + strlen(topic) + 1);
-	if (tmp != NULL) {
-		strcat(tmp, topic);
-		strcat(tmp, suf);
-		nng_strfree(topic);
-		topic = nng_strdup(tmp);
-	}
-	nng_strfree(tmp);
-}
-
 void
 conf_bridge_node_parse(
     conf_bridge_node *node, conf_sqlite *bridge_sqlite, cJSON *obj)
@@ -1103,10 +1079,10 @@ conf_bridge_node_parse(
 #if defined(SUPP_QUIC)
 	conf_bridge_quic_parse_ver2(node, obj);
 #endif
-	char  *pre_remote = get_cJsonStr(obj, "pre_remote");
-	char  *pre_local = get_cJsonStr(obj, "pre_local");
-	char  *suf_remote = get_cJsonStr(obj, "suf_remote");
-	char  *suf_local = get_cJsonStr(obj, "suf_local");
+	char  *pre_remote = get_cJsonStr(obj, "prefix_remote");
+	char  *pre_local = get_cJsonStr(obj, "prefix_local");
+	char  *suf_remote = get_cJsonStr(obj, "suffix_remote");
+	char  *suf_local = get_cJsonStr(obj, "suffix_local");
 
 	cJSON *forwards = hocon_get_obj("forwards", obj);
 
@@ -1132,17 +1108,29 @@ conf_bridge_node_parse(
 			NNI_FREE_STRUCT(s);
 			continue;
 		}
-		if(pre_remote != NULL) {
-			update_prefix(s->remote_topic, pre_remote);
+		if(pre_remote != NULL || suf_remote != NULL) {
+			char *tmp = nni_alloc(
+			    strlen(s->remote_topic) + strlen(pre_remote) + strlen(suf_remote) + 1);
+			if (tmp != NULL) {
+				strcpy(tmp, pre_remote);
+				strcat(tmp, s->remote_topic);
+				strcat(tmp, suf_remote);
+				nni_strfree(s->remote_topic);
+				s->remote_topic = nng_strdup(tmp);
+			}
+			nng_strfree(tmp);
 		}
-		if(pre_local != NULL) {
-			update_prefix(s->local_topic, pre_local);
-		}
-		if(suf_remote != NULL) {
-			update_suffix(s->remote_topic, suf_remote);
-		}
-		if(suf_local != NULL) {
-			update_suffix(s->local_topic, suf_local);
+		if(pre_local != NULL || suf_local != NULL) {
+			char *tmp = nni_alloc(
+			    strlen(s->local_topic) + strlen(pre_local) + strlen(suf_local) + 1);
+			if (tmp != NULL) {
+				strcpy(tmp, pre_local);
+				strcat(tmp, s->local_topic);
+				strcat(tmp, suf_local);
+				nni_strfree(s->local_topic);
+				s->local_topic = nng_strdup(tmp);
+			}
+			nng_strfree(tmp);
 		}
 		s->remote_topic_len = strlen(s->remote_topic);
 		s->local_topic_len  = strlen(s->local_topic);
