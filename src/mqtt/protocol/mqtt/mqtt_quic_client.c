@@ -286,7 +286,8 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 					nni_msg *old_msg = nni_id_get(&p->sent_unack,
 					        nni_mqtt_msg_get_packet_id(tmsg));
 					if (old_msg != NULL) {
-						nni_id_remove(&p->sent_unack, packet_id);
+						nni_id_remove(&p->sent_unack,
+						        nni_mqtt_msg_get_packet_id(tmsg));
 						nni_aio *m_aio = nni_mqtt_msg_get_aio(tmsg);
 						if (m_aio) {
 							nni_aio_finish_error(m_aio, NNG_ECANCELED);
