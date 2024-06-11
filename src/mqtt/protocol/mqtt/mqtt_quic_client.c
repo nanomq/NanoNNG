@@ -207,7 +207,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		nni_mqtt_msg_set_aio(msg, aio);
 		tmsg = nni_id_get(&p->sent_unack, packet_id);
 		if (tmsg != NULL) {
-			log_warn("Warning : msg %d lost due to "
+			log_warn("msg %d lost due to "
 			                "packetID duplicated!", packet_id);
 			nni_aio *m_aio = nni_mqtt_msg_get_aio(tmsg);
 			if (m_aio) {
@@ -219,7 +219,7 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		nni_msg_clone(msg);
 		// cache QoS msg with packetid for potential resending
 		if (0 != nni_id_set(&p->sent_unack, packet_id, msg)) {
-			nni_println("Warning! Cache QoS msg failed");
+			log_warn("Cache QoS msg failed");
 			nni_msg_free(msg);
 			nni_id_remove(&p->sent_unack, packet_id);
 			nni_aio_finish_error(aio, UNSPECIFIED_ERROR);
@@ -348,7 +348,7 @@ mqtt_pipe_send_msg(nni_aio *aio, nni_msg *msg, mqtt_pipe_t *p, uint16_t packet_i
 		nni_mqtt_msg_set_aio(msg, aio);
 		tmsg = nni_id_get(&p->sent_unack, packet_id);
 		if (tmsg != NULL) {
-			log_warn("Warning : msg %d lost due to "
+			log_warn("msg %d lost due to "
 			         "packetID duplicated!", packet_id);
 			nni_aio *m_aio = nni_mqtt_msg_get_aio(tmsg);
 			if (m_aio) {
@@ -359,7 +359,7 @@ mqtt_pipe_send_msg(nni_aio *aio, nni_msg *msg, mqtt_pipe_t *p, uint16_t packet_i
 		}
 		nni_msg_clone(msg);
 		if (0 != nni_id_set(&p->sent_unack, packet_id, msg)) {
-			nni_println("Warning! Cache QoS msg failed");
+			log_warn("Cache QoS msg failed");
 			nni_msg_free(msg);
 			nni_id_remove(&p->sent_unack, packet_id);
 			nni_aio_finish_error(aio, UNSPECIFIED_ERROR);
