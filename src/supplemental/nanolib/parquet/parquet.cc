@@ -1211,7 +1211,6 @@ parquet_read_span(conf_parquet *conf, const char *filename, uint64_t keys[2])
 			        r); // Get the RowGroup Reader
 			int64_t values_read = 0;
 			int64_t rows_read   = 0;
-			int16_t definition_level;
 			std::shared_ptr<parquet::ColumnReader> column_reader;
 
 			column_reader = row_group_reader->Column(0);
@@ -1240,9 +1239,10 @@ parquet_read_span(conf_parquet *conf, const char *filename, uint64_t keys[2])
 				    index_vector[1] - index_vector[0] + 1;
 				std::vector<parquet::ByteArray> values(
 				    batch_size);
+				std::vector<int16_t> definition_levels(batch_size); // Use a vector for definition levels
 				parquet::ByteArray value;
 				rows_read = ba_reader->ReadBatch(batch_size,
-				    &definition_level, nullptr, values.data(),
+				    definition_levels.data(), nullptr, values.data(),
 				    &values_read);
 				if (batch_size == rows_read &&
 				    batch_size == values_read) {
@@ -1252,6 +1252,16 @@ parquet_read_span(conf_parquet *conf, const char *filename, uint64_t keys[2])
 						    (parquet_data_packet *)
 						        malloc(sizeof(
 						            parquet_data_packet));
+						if (!pack) {
+							// Handle malloc failure
+							log_error("Memory allocation failed for parquet_data_packet");
+							// Free already allocated memory
+							for (auto p : ret_vec) {
+								free(p->data);
+								free(p);
+							}
+							return vector<parquet_data_packet *>(); // Return an empty vector
+						}
 						pack->data =
 						    (uint8_t *) malloc(
 						        values[b].len *
@@ -1317,11 +1327,13 @@ parquet_find_data_span_packets(conf_parquet *conf, uint64_t start_key, uint64_t 
 		keys[1]  = end_key;
 		auto tmp = parquet_read_span(conf, filenames[i], keys);
 		ret_vec.insert(ret_vec.end(), tmp.begin(), tmp.end());
+		nng_strfree((char*)filenames[i]);
 	}
+	nng_free(filenames, len);
 
 	if (!ret_vec.empty()) {
 		packets = (parquet_data_packet **) malloc(
-		    sizeof(parquet_data_packet *) * len);
+		    sizeof(parquet_data_packet *) * ret_vec.size());
 		copy(ret_vec.begin(), ret_vec.end(), packets);
 		*size = ret_vec.size();
 	}
