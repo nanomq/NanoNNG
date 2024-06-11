@@ -216,12 +216,13 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 			nni_msg_free(tmsg);
 			nni_id_remove(&p->sent_unack, packet_id);
 		}
-		nni_msg_clone(msg);
 		// cache QoS msg with packetid for potential resending
+		nni_msg_clone(msg);
 		if (0 != nni_id_set(&p->sent_unack, packet_id, msg)) {
 			log_warn("Cache QoS msg failed");
 			nni_msg_free(msg);
 			nni_id_remove(&p->sent_unack, packet_id);
+			nni_mqtt_msg_set_aio(msg, NULL);
 			nni_aio_finish_error(aio, UNSPECIFIED_ERROR);
 		}
 		break;
@@ -298,11 +299,11 @@ mqtt_send_msg(nni_aio *aio, nni_msg *msg, mqtt_sock_t *s)
 		}
 		if (0 != nni_lmq_put(&p->send_messages, msg)) {
 			log_error("enqueue failed!");
-			nni_msg_free(msg);
 			nni_id_remove(&p->sent_unack, packet_id);
 			// remove aio from msg in case double finish
 			nni_mqtt_msg_set_aio(msg, NULL);
 			nni_aio_finish_error(aio, ECANCELED);
+			nni_msg_free(msg);
 		}
 	}
 	nni_mtx_unlock(&p->lk);
@@ -1784,13 +1785,14 @@ quic_mqtt_pipe_close(void *arg)
 		return 0;
 	}
 
-	nni_atomic_set_bool(&p->closed, true);
 	nni_atomic_set_bool(&s->pipe->closed, true);
 
 	nni_mtx_lock(&p->lk);
+	nni_atomic_set_bool(&p->closed, true);
+	p->ready = false;
+
 	nni_id_map_foreach(&p->sent_unack, mqtt_close_unack_msg_cb);
 	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
-	p->ready = false;
 
 	nni_aio_close(&p->send_aio);
 	nni_aio_close(&p->recv_aio);
@@ -2069,12 +2071,12 @@ mqtt_quic_ctx_recv(void *arg, nni_aio *aio)
 		nni_aio_finish(aio, NNG_ECANCELED, 0);
 		return;
 	}
-	nni_mtx_unlock(&s->mtx);
 
 	nni_mtx_lock(&p->lk);
 	if (nni_lmq_get(&p->recv_messages, &msg) == 0) {
 		nni_aio_set_msg(aio, msg);
 		nni_mtx_unlock(&p->lk);
+		nni_mtx_unlock(&s->mtx);
 		//let user gets a quick reply
 		nni_aio_finish(aio, 0, nni_msg_len(msg));
 		return;
@@ -2082,6 +2084,7 @@ mqtt_quic_ctx_recv(void *arg, nni_aio *aio)
 	// no msg available
 	if (ctx->raio != NULL) {
 		nni_mtx_unlock(&p->lk);
+		nni_mtx_unlock(&s->mtx);
 		nni_aio_set_msg(aio, NULL);
 		nni_println("ERROR! former aio not finished!");
 		nni_aio_finish_error(aio, NNG_ESTATE);
@@ -2091,6 +2094,7 @@ mqtt_quic_ctx_recv(void *arg, nni_aio *aio)
 	ctx->raio = aio;
 	nni_list_append(&p->recv_queue, ctx);
 	nni_mtx_unlock(&p->lk);
+	nni_mtx_unlock(&s->mtx);
 	return;
 
 	// no open pipe
