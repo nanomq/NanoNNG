@@ -969,6 +969,64 @@ get_keys_indexes(
 	return index_vector;
 }
 
+static vector<int>
+get_keys_indexes_fuzing(
+    parquet::Int64Reader *int64_reader, uint64_t start_key, uint64_t end_key)
+{
+	vector<int> index_vector;
+	int64_t     values_read = 0;
+	int64_t     rows_read   = 0;
+	int16_t     definition_level;
+	int16_t     repetition_level;
+
+	int  index = 0;
+	bool found = false;
+
+	while (int64_reader->HasNext()) {
+		int64_t value;
+		rows_read = int64_reader->ReadBatch(1, &definition_level,
+		    &repetition_level, &value, &values_read);
+		if (1 == rows_read && 1 == values_read) {
+			if (((uint64_t) value) >= start_key) {
+				index_vector.push_back(index++);
+				found = true;
+				break;
+			}
+			index++;
+		}
+	}
+	if (!found) {
+		index_vector.push_back(-1);
+		index_vector.push_back(-1);
+	} else {
+		found = false;
+		while (int64_reader->HasNext()) {
+			int64_t value;
+			rows_read =
+			    int64_reader->ReadBatch(1, &definition_level,
+			        &repetition_level, &value, &values_read);
+			if (1 == rows_read && 1 == values_read) {
+				if (((uint64_t) value) > end_key) {
+					index_vector.push_back(index - 1);
+					found = true;
+					break;
+				} else if (((uint64_t) value) == end_key) {
+					index_vector.push_back(index);
+					found = true;
+					break;
+				}
+				index++;
+			}
+		}
+
+		if (!found) {
+			index_vector.push_back(index - 1);
+		}
+	}
+
+	return index_vector;
+}
+
 static vector<parquet_data_packet *>
 parquet_read(conf_parquet *conf, char *filename, vector<uint64_t> keys)
 {
@@ -1218,8 +1276,8 @@ parquet_read_span(conf_parquet *conf, const char *filename, uint64_t keys[2])
 			    static_cast<parquet::Int64Reader *>(
 			        column_reader.get());
 
-			index_vector = get_keys_indexes(
-			    int64_reader, vector<uint64_t>(keys, keys + 2));
+			index_vector = get_keys_indexes_fuzing(
+			    int64_reader, keys[0], keys[1]);
 			if (-1 == index_vector[0] || -1 == index_vector[1]) {
 				ret_vec.push_back(NULL);
 				return ret_vec;
@@ -1253,14 +1311,12 @@ parquet_read_span(conf_parquet *conf, const char *filename, uint64_t keys[2])
 						        malloc(sizeof(
 						            parquet_data_packet));
 						if (!pack) {
-							// Handle malloc failure
 							log_error("Memory allocation failed for parquet_data_packet");
-							// Free already allocated memory
 							for (auto p : ret_vec) {
 								free(p->data);
 								free(p);
 							}
-							return vector<parquet_data_packet *>(); // Return an empty vector
+							return vector<parquet_data_packet *>();
 						}
 						pack->data =
 						    (uint8_t *) malloc(
