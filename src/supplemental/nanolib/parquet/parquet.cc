@@ -1319,12 +1319,18 @@ parquet_find_data_span_packets(conf_parquet *conf, uint64_t start_key, uint64_t 
 	const char **filenames = parquet_find_span(start_key, end_key, &len);
 
 	for (uint32_t i = 0; i < len; i++) {
-		end_key   = i == 0 ? end_key : get_key(filenames[i], END_KEY);
-		start_key = i == len - 1 ? start_key
-		                         : get_key(filenames[i], START_KEY);
+
 		uint64_t keys[2];
 		keys[0]  = start_key;
 		keys[1]  = end_key;
+		if (len > 1) {
+			keys[0] = i == 0 ? start_key
+			                 : get_key(filenames[i], START_KEY);
+			keys[1] = i == (len - 1)
+			    ? end_key
+			    : get_key(filenames[i], END_KEY);
+		}
+
 		auto tmp = parquet_read_span(conf, filenames[i], keys);
 		ret_vec.insert(ret_vec.end(), tmp.begin(), tmp.end());
 		nng_strfree((char*)filenames[i]);
