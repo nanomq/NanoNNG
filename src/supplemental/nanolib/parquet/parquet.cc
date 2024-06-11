@@ -944,9 +944,8 @@ get_keys_indexes(
 	int16_t     definition_level;
 	int16_t     repetition_level;
 
-	// FIXME:
+	int  index     = 0;
 	for (const auto &key : keys) {
-		int  i     = 0;
 		bool found = false;
 		while (int64_reader->HasNext()) {
 			int64_t value;
@@ -955,16 +954,12 @@ get_keys_indexes(
 			        &repetition_level, &value, &values_read);
 			if (1 == rows_read && 1 == values_read) {
 				if (((uint64_t) value) == key) {
-					if (index_vector.empty()) {
-						index_vector.push_back(i);
-					} else {
-						index_vector.push_back(i);
-					}
+					index_vector.push_back(index++);
 					found = true;
 					break;
 				}
 			}
-			i++;
+			index++;
 		}
 		if (!found) {
 			index_vector.push_back(-1);
@@ -1178,7 +1173,7 @@ parquet_find_data_packets(
 }
 
 static vector<parquet_data_packet *>
-parquet_read_span(conf_parquet *conf, char *filename, uint64_t keys[2])
+parquet_read_span(conf_parquet *conf, const char *filename, uint64_t keys[2])
 {
 	conf = g_conf;
 	vector<parquet_data_packet *> ret_vec;
@@ -1206,6 +1201,7 @@ parquet_read_span(conf_parquet *conf, char *filename, uint64_t keys[2])
 		        ->num_row_groups(); // Get the number of RowGroups
 		int num_columns =
 		    file_metadata->num_columns(); // Get the number of Columns
+		assert(num_row_groups == 1);
 		assert(num_columns == 2);
 
 		for (int r = 0; r < num_row_groups; ++r) {
@@ -1241,7 +1237,7 @@ parquet_read_span(conf_parquet *conf, char *filename, uint64_t keys[2])
 
 			if (ba_reader->HasNext()) {
 				int64_t batch_size =
-				    index_vector[1] - index_vector[0];
+				    index_vector[1] - index_vector[0] + 1;
 				std::vector<parquet::ByteArray> values(
 				    batch_size);
 				parquet::ByteArray value;
@@ -1285,7 +1281,7 @@ typedef enum {
 } key_type;
 
 static uint64_t
-get_key(char *filename, key_type type)
+get_key(const char *filename, key_type type)
 {
 	uint64_t range[2] = { 0 };
 	uint64_t res      = 0;
@@ -1304,11 +1300,13 @@ get_key(char *filename, key_type type)
 }
 
 parquet_data_packet **
-parquet_find_data_span_packets(conf_parquet *conf, char **filenames,
-    uint32_t len, uint64_t start_key, uint64_t end_key)
+parquet_find_data_span_packets(conf_parquet *conf, uint64_t start_key, uint64_t end_key, uint32_t *size)
 {
 	vector<parquet_data_packet *> ret_vec;
 	parquet_data_packet         **packets = NULL;
+	uint32_t                      len     = 0;
+
+	const char **filenames = parquet_find_span(start_key, end_key, &len);
 
 	for (uint32_t i = 0; i < len; i++) {
 		end_key   = i == 0 ? end_key : get_key(filenames[i], END_KEY);
@@ -1325,6 +1323,7 @@ parquet_find_data_span_packets(conf_parquet *conf, char **filenames,
 		packets = (parquet_data_packet **) malloc(
 		    sizeof(parquet_data_packet *) * len);
 		copy(ret_vec.begin(), ret_vec.end(), packets);
+		*size = ret_vec.size();
 	}
 
 	return packets;
