@@ -702,8 +702,10 @@ dump_file_result_cat(char **msgList, int *msgLen, uint32_t count, cJSON *obj)
 }
 #endif
 
-static int
-fuzz_search_result_cat(nng_msg **msgList, uint32_t count, cJSON *obj)
+static int fuzz_search_result_cat(nng_msg **msgList,
+								  uint32_t count,
+								  unsigned char **pringbusdata,
+								  int *pringbusdata_len)
 {
 	uint32_t sz = 0;
 	uint32_t pos = 0;
@@ -719,28 +721,15 @@ fuzz_search_result_cat(nng_msg **msgList, uint32_t count, cJSON *obj)
 		sz += diff;
 	}
 
-	char **mqdata = nng_alloc(sizeof(char *) * count);
-	memset(mqdata, 0, sizeof(char *) * count);
+	unsigned char *ringbusdata = nng_alloc(sz);
+	int index = 0;
 	for (uint32_t i = 0; i < count; i++) {
 		diff = nng_msg_len(msgList[i]) -
 			((uintptr_t)nng_msg_payload_ptr(msgList[i]) - (uintptr_t)nng_msg_body(msgList[i]));
 		if (sz >= pos + diff) {
-			mqdata[i] = nng_alloc(diff * 2 + 1);
-			memset(mqdata[i], '\0', diff * 2 + 1);
-			if (mqdata[i] == NULL) {
-				log_warn("Failed to allocate memory for file payload\n");
-				return -1;
-			}
-			for (uint32_t j = 0; j < diff; ++j) {
-				char *tmpch = (char *)nng_msg_payload_ptr(msgList[i]);
-				char hex[2];
-				hex[0] = '0';
-				hex[1] = '0';
-
-				decToHex(tmpch[j] & 0xff, hex);
-
-				mqdata[i][j * 2] = hex[0];
-				mqdata[i][j * 2 + 1] = hex[1];
+			char *tmpch = (char *)nng_msg_payload_ptr(msgList[i]);
+			for (int j = 0; j < diff; j++) {
+				ringbusdata[index++] = tmpch[j];
 			}
 		} else {
 			log_error("buffer overflow!");
@@ -749,16 +738,8 @@ fuzz_search_result_cat(nng_msg **msgList, uint32_t count, cJSON *obj)
 		pos += diff;
 	}
 
-	cJSON *mqs_obj = cJSON_CreateStringArray((const char * const*)mqdata, count);
-	if (!mqs_obj) {
-		return -1;
-	}
-	cJSON_AddItemToObject(obj, "mq", mqs_obj);
-
-	for (uint32_t i = 0; i < count; ++i) {
-		nng_free(mqdata[i], 0);
-	}
-	nng_free(mqdata, sizeof(char *) * count);
+	*pringbusdata = ringbusdata;
+	*pringbusdata_len = sz;
 
 	return 0;
 }
@@ -813,13 +794,15 @@ static inline int find_keys_in_file(ringBuffer_t *rb, uint64_t *keys, uint32_t c
 static void
 ex_query_recv_cb(void *arg)
 {
-	exchange_pipe_t       *p    = arg;
-	exchange_sock_t       *sock = p->sock;
-
-	nni_msg            *msg;
-	uint8_t            *body;
-	nni_msg            *tar_msg = NULL;
-	int ret;
+	int ret = 0;
+	exchange_pipe_t *p = arg;
+	exchange_sock_t *sock = p->sock;
+	nni_msg *msg = NULL;
+	uint8_t *body = NULL;
+	char *parquetdata = NULL;
+	char *ringbusdata = NULL;
+	int parquetdata_len = 0;
+	int ringbusdata_len = 0;
 
 	if (nni_aio_result(&p->ex_aio) != 0) {
 		nni_pipe_close(p->pipe);
@@ -830,7 +813,7 @@ ex_query_recv_cb(void *arg)
 	nni_aio_set_msg(&p->ex_aio, NULL);
 	nni_msg_set_pipe(msg, nni_pipe_id(p->pipe));
 
-	body    = nni_msg_body(msg);
+	body = nni_msg_body(msg);
 
 	nni_mtx_lock(&sock->mtx);
 
@@ -842,230 +825,98 @@ ex_query_recv_cb(void *arg)
 		return;
 	}
 
-	cJSON *obj = cJSON_CreateObject();
-	if (strstr(keystr, "dumpfile") != NULL) {
-#ifdef SUPP_PARQUET
-		char **msgs = NULL;
-		int *msgLen = NULL;
-		int msgCount = 0;
+	/* fuzz search */
+	uint64_t startKey = 0;
+	uint64_t endKey = 0;
+	uint32_t count = 0;
+	nng_msg **msgList = NULL;
 
-		/* Only one exchange with one ringBuffer now */
-		msgCount = ringBuffer_get_msgs_from_file(sock->ex_node->ex->rbs[0], (void ***)&msgs, &msgLen);
-		if (msgCount <= 0 || msgs == NULL || msgLen == NULL) {
-			log_error("not found msgs in file!");
-		} else {
-			ret = dump_file_result_cat(msgs, msgLen, msgCount, obj);
+	log_info("Recv command: %s", keystr);
 
-			for(int i = 0; i < msgCount; ++i) {
-				nng_free(msgs[i], 0);
-			}
-			nng_free(msgs, sizeof(char *) * msgCount);
-			nng_free(msgLen, sizeof(int) * msgCount);
+	ret = sscanf(keystr, "%"SCNu64"-%"SCNu64, &startKey, &endKey);
+	if (ret == 0) {
+		log_error("error in read key to number %s", keystr);
+		nni_mtx_unlock(&sock->mtx);
+		return;
+	}
+	log_info("Start fuzz search startKey: %"PRIu64", endKey: %"PRIu64, startKey, endKey);
 
-			if (ret != 0) {
-				cJSON_Delete(obj);
-				nni_mtx_unlock(&sock->mtx);
-				log_error("dump_file_result_cat failed!");
-				return;
-			}
-		}
-#else
-		log_error("dumpfile: parquet not enable!");
-#endif
-	} else if (strstr(keystr, "dumpkey:") != NULL) {
-#ifdef SUPP_PARQUET
-		uint64_t key;
-
-		ret = sscanf(keystr, "dumpkey:%"SCNu64, &key);
-		if (ret == 0) {
-			cJSON_Delete(obj);
-			nni_mtx_unlock(&sock->mtx);
-			return;
-		}
-
-		ret = find_keys_in_file(sock->ex_node->ex->rbs[0], &key, 1, obj);
+	ret = exchange_client_get_msgs_fuzz(sock, startKey, endKey, &count, &msgList);
+	if (ret == 0 && count != 0 && msgList != NULL) {
+		ret = fuzz_search_result_cat(msgList, count, &ringbusdata, &ringbusdata_len);
 		if (ret != 0) {
-			cJSON_Delete(obj);
-			log_error("find_keys_in_file failed!");
-			nni_mtx_unlock(&sock->mtx);
-			return;
+			log_error("fuzz_search_result_cat failed!");
 		}
-#else
-		log_error("dumpkey: parquet not enable!");
-#endif
-	} else if (strstr(keystr, "dumpkeys:") != NULL) {
-#ifdef SUPP_PARQUET
-		/* Only lookups of up to 100 keys are supported */
-		char *result[100];
-		uint64_t keys[100];
-
-		int count = splitstr(keystr + strlen("dumpkeys:"), ",", result, 100);
-		for (int i = 0; i < count; i++) {
-			sscanf(result[i], "%"SCNu64, &keys[i]);
-		}
-		ret = find_keys_in_file(sock->ex_node->ex->rbs[0], keys, count, obj);
-		if (ret != 0) {
-			cJSON_Delete(obj);
-			log_error("find_keys_in_file failed!");
-			nni_mtx_unlock(&sock->mtx);
-			return;
-		}
-#else
-		log_error("dumpkeys: parquet not enable!");
-#endif
-	} else if (strstr(keystr, "-" ) == NULL) {
-		/* single key */
-		uint64_t key;
-		ret = sscanf(keystr, "%"SCNu64, &key);
-		if (ret == 0) {
-			cJSON_Delete(obj);
-			nni_mtx_unlock(&sock->mtx);
-			return;
-		}
-		ret = exchange_client_get_msg_by_key(sock, key, &tar_msg);
-		if (ret == 0) {
-			/*
-			 * req will check req id which store in msg body,
-			 * so append tar_msg body to msg which is from req
-			 */
-			uint32_t diff;
-			diff = nng_msg_len(tar_msg) -
-				((uintptr_t)nng_msg_payload_ptr(tar_msg) - (uintptr_t) nng_msg_body(tar_msg));
-
-			char *mqdata = nng_alloc(diff * 2 + 1);
-			if (mqdata == NULL) {
-				cJSON_Delete(obj);
-				log_warn("Failed to allocate memory for file payload\n");
-				nni_mtx_unlock(&sock->mtx);
-				return;
-			}
-
-			uint32_t mqstr_len = 0;
-			for (uint32_t j = 0; j < diff; ++j) {
-				char *tmpch = (char *)nng_msg_payload_ptr(tar_msg);
-				mqstr_len += sprintf(mqdata + mqstr_len, "%02x", (unsigned char)(tmpch[j] & 0xff));
-			}
-
-			cJSON *mqs_obj = cJSON_CreateString(mqdata);
-			if (!mqs_obj) {
-				nng_free(mqdata, diff * 2 + 1);
-				cJSON_Delete(obj);
-				return;
-			}
-			cJSON_AddItemToObject(obj, "mq", mqs_obj);
-			nng_free(mqdata, diff * 2 + 1);
-		}
-#if defined (SUPP_PARQUET)
-		const char *parquet_fname = parquet_find(key);
-		const char **parquet_fnames = NULL;
-		uint32_t parquet_sz = 1;
-		if (parquet_fname && parquet_sz > 0) {
-			parquet_fnames = nng_alloc(sizeof(char *) * parquet_sz);
-			if (parquet_fnames == NULL) {
-				cJSON_Delete(obj);
-				log_warn("Failed to allocate memory for file payload\n");
-				nni_mtx_unlock(&sock->mtx);
-				return;
-			}
-			parquet_fnames[0] = parquet_fname;
-
-			ret = get_persistence_files(parquet_sz, (char **)parquet_fnames, obj);
-			if (ret != 0) {
-				log_error("get_parquet_files failed!");
-			}
-		}
-#endif
-#if defined(SUPP_BLF)
-		const char *blf_fname = blf_find(key);
-		const char **blf_fnames = NULL;
-		uint32_t blf_sz = 1;
-		if (blf_fname && blf_sz > 0) {
-			blf_fnames = nng_alloc(sizeof(char *) * blf_sz);
-			if (blf_fnames == NULL) {
-				cJSON_Delete(obj);
-				log_warn("Failed to allocate memory for file payload\n");
-				nni_mtx_unlock(&sock->mtx);
-				return;
-			}
-			blf_fnames[0] = blf_fname;
-
-			ret = get_persistence_files(blf_sz, (char **)blf_fnames, obj);
-			if (ret != 0) {
-				log_error("get_blf_files failed!");
-			}
-		}
-#endif
-
+		nng_free(msgList, sizeof(nng_msg *) * count);
 	} else {
-		/* fuzz search */
-		uint64_t startKey;
-		uint64_t endKey;
-		uint32_t count = 0;
-		nng_msg **msgList = NULL;
-
-		ret = sscanf(keystr, "%"SCNu64"-%"SCNu64, &startKey, &endKey);
-		if (ret == 0) {
-			cJSON_Delete(obj);
-			log_error("error in read key to number %s", keystr);
-			nni_mtx_unlock(&sock->mtx);
-			return;
-		}
-
-		ret = exchange_client_get_msgs_fuzz(sock, startKey, endKey, &count, &msgList);
-		if (ret == 0 && count != 0 && msgList != NULL) {
-			ret = fuzz_search_result_cat(msgList, count, obj);
-			if (ret != 0) {
-				log_error("fuzz_search_result_cat failed!");
-			}
-			nng_free(msgList, sizeof(nng_msg *) * count);
-		}
+		log_error("exchange_client_get_msgs_fuzz failed! count: %d", count);
+	}
 
 #if defined(SUPP_PARQUET)
-		const char **parquet_fnames = NULL;
-		uint32_t     parquet_sz     = 0;
-		/* parquet not support fuzz search now */
-		parquet_fnames = parquet_find_span(startKey, endKey, &parquet_sz);
-		if (parquet_fnames && parquet_sz > 0) {
-			ret = get_persistence_files(parquet_sz, (char **) parquet_fnames, obj);
-			if (ret != 0) {
-				log_error("get_parquet_files failed!");
-			}
-		} else {
-			log_error("parquet_find_span failed! parquet_sz: %d", parquet_sz);
+	int size = 0;
+	parquet_data_packet **parquet_objs = NULL;
+	parquet_objs = parquet_find_data_span_packets(NULL, startKey, endKey, &size);
+	if (parquet_objs != NULL && size > 0) {
+		int total_len = 0;
+		for (int i = 0; i < size; i++) {
+			total_len += parquet_objs[i]->size;
 		}
+		parquetdata = nng_alloc(total_len);
+		if (parquetdata == NULL) {
+			log_error("Failed to allocate memory for file payload\n");
+			nni_mtx_unlock(&sock->mtx);
+			return;
+		}
+		for (int i = 0; i < size; i++) {
+			memcpy(parquetdata + parquetdata_len, parquet_objs[i]->data, parquet_objs[i]->size);
+			parquetdata_len += parquet_objs[i]->size;
+		}
+		for (int i = 0; i < size; i++) {
+			nng_free(parquet_objs[i]->data, parquet_objs[i]->size);
+			nng_free(parquet_objs[i], sizeof(parquet_data_packet));
+		}
+		nng_free(parquet_objs, sizeof(parquet_data_packet *) * size);
+	} else {
+		log_error("parquet_find_data_span_packets failed! size: %d", size);
+	}
 #endif
 #if defined(SUPP_BLF)
-		const char **blf_fnames = NULL;
-		uint32_t     blf_sz     = 0;
-		/* blf not support fuzz search now */
-		blf_fnames = blf_find_span(startKey, endKey, &blf_sz);
-		if (blf_fnames && blf_sz > 0) {
-			ret = get_persistence_files(blf_sz, (char **) blf_fnames, obj);
-			if (ret != 0) {
-				log_error("get_blf_files failed!");
-			}
-		} else {
-			log_error("blf_find_span failed! sz: %d", blf_sz);
+	/* not support */
+	const char **blf_fnames = NULL;
+	uint32_t     blf_sz     = 0;
+	/* blf not support fuzz search now */
+	blf_fnames = blf_find_span(startKey, endKey, &blf_sz);
+	if (blf_fnames && blf_sz > 0) {
+		ret = get_persistence_files(blf_sz, (char **) blf_fnames, obj);
+		if (ret != 0) {
+			log_error("get_blf_files failed!");
 		}
-#endif
+	} else {
+		log_error("blf_find_span failed! sz: %d", blf_sz);
 	}
-	char *buf = cJSON_PrintUnformatted(obj);
-	cJSON_Delete(obj);
-	if (buf != NULL) {
-		nni_msg_append(msg, buf, strlen(buf));
-		nng_free(buf, strlen(buf));
+#endif
+	log_info("found parquetdata_len: %d, ringbusdata_len: %d", parquetdata_len, ringbusdata_len);
+
+	if (parquetdata != NULL && parquetdata_len > 0) {
+		nni_msg_append(msg, parquetdata, parquetdata_len);
+		nng_free(parquetdata, parquetdata_len);
+		parquetdata = NULL;
+	}
+	if (ringbusdata != NULL && ringbusdata_len > 0) {
+		nni_msg_append(msg, ringbusdata, ringbusdata_len);
+		nng_free(ringbusdata, ringbusdata_len);
+		ringbusdata = NULL;
 	}
 
-	tar_msg = msg;
 	nni_aio_wait(&p->rp_aio);
 	nni_time time = 3000;
 	nni_aio_set_expire(&p->rp_aio, time);
-	nni_aio_set_msg(&p->rp_aio, tar_msg);
+	nni_aio_set_msg(&p->rp_aio, msg);
 	nni_pipe_send(p->pipe, &p->rp_aio);
-
 	nni_mtx_unlock(&sock->mtx);
-
 	nni_pipe_recv(p->pipe, &p->ex_aio);
+
+	return;
 }
 
 static void
