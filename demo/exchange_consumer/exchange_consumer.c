@@ -64,31 +64,31 @@ printmsg(char *buf, size_t len, size_t inputlen)
 	putchar('"');
 	/* i is inputlen to remove prefix */
 	for (size_t i = inputlen; i < len; i++) {
-		switch (buf[i]) {
-		case '\n':
-			putchar('\\');
-			putchar('n');
-			break;
-		case '\r':
-			putchar('\\');
-			putchar('r');
-			break;
-		case '\t':
-			putchar('\\');
-			putchar('t');
-			break;
-		case '"':
-		case '\\':
-			putchar('\\');
-			putchar(buf[i]);
-			break;
-		default:
-			if (isprint(buf[i])) {
-				fputc(buf[i], stdout);
-			} else {
-				printf("\\x%02x", (uint8_t) buf[i]);
-			}
-		}
+//		switch (buf[i]) {
+//		case '\n':
+//			putchar('\\');
+//			putchar('n');
+//			break;
+//		case '\r':
+//			putchar('\\');
+//			putchar('r');
+//			break;
+//		case '\t':
+//			putchar('\\');
+//			putchar('t');
+//			break;
+//		case '"':
+//		case '\\':
+//			putchar('\\');
+//			putchar(buf[i]);
+//			break;
+//		default:
+//			if (isprint(buf[i])) {
+//				fputc(buf[i], stdout);
+//			} else {
+				printf("%02x ", (uint8_t) buf[i]);
+//			}
+//		}
 	}
 	putchar('"');
 	putchar('\n');
