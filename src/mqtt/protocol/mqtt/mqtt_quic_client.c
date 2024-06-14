@@ -1668,6 +1668,16 @@ quic_mqtt_pipe_fini(void *arg)
 		}
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
+	while ((ctx = nni_list_first(&s->recv_queue)) != NULL) {
+		nni_list_remove(&s->recv_queue, ctx);
+		aio       = ctx->raio;
+		ctx->raio = NULL;
+		msg       = nni_aio_get_msg(aio);
+		if (msg != NULL) {
+			nni_msg_free(msg);
+		}
+		nni_aio_finish_error(aio, NNG_ECLOSED);
+	}
 
 	conn_param_free(p->cparam);
 	nni_mtx_unlock(&s->mtx);
