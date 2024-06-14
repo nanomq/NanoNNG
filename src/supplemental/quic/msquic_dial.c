@@ -379,6 +379,12 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 	cnt = nni_atomic_get64(&d->ref);
 
 	ismain = (cnt == 2 ? true : false);
+	// TODO It's a not a good way to create a main/sub stream by checking ref
+	// So. Disable multistream now.
+	if (ismain == false) {
+		rv = NNG_ECLOSED;
+		goto error;
+	}
 
 	nni_aio_set_output(aio, 1,
 	        (void *)(ismain ? &flags_main_stream : &flags_sub_stream));
@@ -391,7 +397,6 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 	//}
 
 	if ((rv = nni_aio_schedule(aio, quic_dialer_strm_cancel, d)) != 0) {
-		nni_msquic_quic_dialer_rele(d);
 		goto error;
 	}
 
@@ -406,13 +411,11 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 		// Create stream after connection is established.
 		if (nni_aio_busy(d->qconaio)) {
 			rv = NNG_EBUSY;
-			nni_msquic_quic_dialer_rele(d);
 			goto error;
 		}
 
 		if (nni_aio_begin(d->qconaio) != 0) {
 			rv = NNG_ECLOSED;
-			nni_msquic_quic_dialer_rele(d);
 			goto error;
 		}
 
@@ -420,18 +423,15 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 			// FIX quic dialer allows dialing multiple connections in parallel
 			// however here we only has one qconaio?
 			rv = NNG_ECANCELED;
-			nni_msquic_quic_dialer_rele(d);
 			goto error;
 		}
 
 		if (0 != (rv = msquic_conn_open(host, port, d))) {
 			log_warn("QUIC dialing failed! %d", rv);
-			nni_msquic_quic_dialer_rele(d);
 			goto error;
 		}
 	} else {
 		if ((rv = msquic_strm_open(d->qconn, d)) != 0) {
-			nni_msquic_quic_dialer_rele(d);
 			goto error;
 		}
 	}
@@ -446,6 +446,7 @@ error:
 	d->currcon = NULL;
 	c->dial_aio = NULL;
 	nni_aio_set_prov_data(aio, NULL);
+	nni_msquic_quic_dialer_rele(d);
 	nni_mtx_unlock(&d->mtx);
 	nng_stream_free(&c->stream);
 	nni_aio_finish_error(aio, rv);
