@@ -939,7 +939,6 @@ conf_init(conf *nanomq_conf)
 
 	nanomq_conf->exchange.count           = 0;
 	nanomq_conf->exchange.nodes           = NULL;
-	nanomq_conf->exchange.exchange_url    = NULL;
 
 	nanomq_conf->parquet.enable           = false;
 	nanomq_conf->parquet.encryption.enable= false;
@@ -3936,7 +3935,6 @@ void
 conf_fini(conf *nanomq_conf)
 {
 	nng_strfree(nanomq_conf->url);
-	nng_strfree(nanomq_conf->exchange.exchange_url);
 	nng_strfree(nanomq_conf->conf_file);
 	nng_strfree(nanomq_conf->websocket.tls_url);
 
