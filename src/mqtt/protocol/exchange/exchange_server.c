@@ -228,6 +228,12 @@ exchange_do_send(exchange_node_t *ex_node, nni_msg *msg, nni_aio *user_aio)
 		    "exchange_client_handle cached msg failed!\n");
 		nni_aio_finish_error(user_aio, NNG_EINVAL);
 	} else {
+		nng_msg *tmsg = nng_aio_get_msg(user_aio);
+		if (tmsg != NULL) {
+			char *topic = ex_node->ex->topic;
+			nng_msg_set_conn_param(tmsg, topic);
+			nni_aio_set_msg(user_aio, tmsg);
+		}
 		nni_aio_finish(user_aio, 0, 0);
 	}
 
@@ -855,7 +861,7 @@ ex_query_recv_cb(void *arg)
 #if defined(SUPP_PARQUET)
 	int size = 0;
 	parquet_data_packet **parquet_objs = NULL;
-	parquet_objs = parquet_find_data_span_packets(NULL, startKey, endKey, &size);
+	parquet_objs = parquet_find_data_span_packets(NULL, startKey, endKey, &size, sock->ex_node->ex->topic);
 	if (parquet_objs != NULL && size > 0) {
 		int total_len = 0;
 		for (int i = 0; i < size; i++) {

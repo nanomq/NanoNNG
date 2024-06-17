@@ -397,7 +397,7 @@ again:
 	return 0;
 }
 char *
-compute_and_rename_file_withMD5(char *filename, conf_parquet *conf)
+compute_and_rename_file_withMD5(char *filename, conf_parquet *conf, char *topic)
 {
 	char md5_buffer[MD5_LEN + 1];
 	log_debug("compute md5");
@@ -415,7 +415,7 @@ compute_and_rename_file_withMD5(char *filename, conf_parquet *conf)
 	}
 
 	char *md5_file_name = (char *) malloc(
-	    strlen(filename) + strlen("_") + strlen(md5_buffer) + 2);
+	    strlen(filename) + strlen("_") + strlen(topic) + strlen("_") + strlen(md5_buffer) + 2);
 	if (md5_file_name == NULL) {
 		log_error("Failed to allocate memory for file name.");
 		ret = remove(filename);
@@ -433,6 +433,8 @@ compute_and_rename_file_withMD5(char *filename, conf_parquet *conf)
 	md5_file_name[strlen(conf->dir) + strlen(conf->file_name_prefix) + 1] =
 	    '\0';
 
+	strcat(md5_file_name, "_");
+	strcat(md5_file_name, topic);
 	strcat(md5_file_name, "_");
 	strcat(md5_file_name, md5_buffer);
 	strcat(md5_file_name,
@@ -468,7 +470,7 @@ again:
 
 	if (last_file_name != NULL) {
 		char *md5_file_name =
-		    compute_and_rename_file_withMD5(last_file_name, conf);
+		    compute_and_rename_file_withMD5(last_file_name, conf, elem->topic);
 		if (md5_file_name == nullptr) {
 			log_error("Failed to rename file with md5");
 			parquet_object_free(elem);
@@ -572,7 +574,7 @@ again:
 	}
 	if (last_file_name != NULL) {
 		char *md5_file_name =
-		    compute_and_rename_file_withMD5(last_file_name, conf);
+		    compute_and_rename_file_withMD5(last_file_name, conf, elem->topic);
 		if (md5_file_name == nullptr) {
 			parquet_object_free(elem);
 			log_error("fail to get md5 from parquet file");
@@ -1366,7 +1368,7 @@ get_key(const char *filename, key_type type)
 }
 
 parquet_data_packet **
-parquet_find_data_span_packets(conf_parquet *conf, uint64_t start_key, uint64_t end_key, uint32_t *size)
+parquet_find_data_span_packets(conf_parquet *conf, uint64_t start_key, uint64_t end_key, uint32_t *size, char *topic)
 {
 	vector<parquet_data_packet *> ret_vec;
 	parquet_data_packet         **packets = NULL;
@@ -1375,6 +1377,10 @@ parquet_find_data_span_packets(conf_parquet *conf, uint64_t start_key, uint64_t 
 	const char **filenames = parquet_find_span(start_key, end_key, &len);
 
 	for (uint32_t i = 0; i < len; i++) {
+		if (strstr(filenames[i], topic) == NULL) {
+			nng_strfree((char*)filenames[i]);
+			continue;
+		}
 
 		uint64_t keys[2];
 		keys[0]  = start_key;

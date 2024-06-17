@@ -1312,13 +1312,16 @@ conf_exchange_parse_ver2(conf *config, cJSON *jso)
 
 	cJSON_ArrayForEach(node_item, node_array)
 	{
-		hocon_read_str(conf_exchange, exchange_url, node_item);
 		conf_exchange_node *node = NNI_ALLOC_STRUCT(node);
 		node->sock               = NULL;
 		node->topic              = NULL;
 		node->name               = NULL;
 		node->rbufs              = NULL;
 		node->rbufs_sz           = 0;
+		node->exchange_url       = NULL;
+
+		hocon_read_str(node, exchange_url, node_item);
+
 		conf_exchange_node_parse(node, node_item);
 
 		conf_exchange_encryption *enc = NNI_ALLOC_STRUCT(enc);

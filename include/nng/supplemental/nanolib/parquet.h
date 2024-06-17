@@ -42,6 +42,7 @@ struct parquet_object {
 	void	        *arg;
 	parquet_file_ranges *ranges;
 	parquet_write_type   type;
+	char                *topic;
 };
 
 parquet_object *parquet_object_alloc(uint64_t *keys, uint8_t **darray,
@@ -66,7 +67,7 @@ parquet_data_packet *parquet_find_data_packet(conf_parquet *conf, char *filename
 
 parquet_data_packet **parquet_find_data_packets(conf_parquet *conf, char **filenames, uint64_t *keys, uint32_t len);
 
-parquet_data_packet **parquet_find_data_span_packets(conf_parquet *conf, uint64_t start_key, uint64_t end_key, uint32_t *size);
+parquet_data_packet **parquet_find_data_span_packets(conf_parquet *conf, uint64_t start_key, uint64_t end_key, uint32_t *size, char *topic);
 
 #ifdef __cplusplus
 }
