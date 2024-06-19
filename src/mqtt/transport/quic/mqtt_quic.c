@@ -1420,7 +1420,10 @@ error:
 	nni_mtx_lock(&ep->mtx);
 	if ((aio = ep->useraio) != NULL) {
 		ep->useraio = NULL;
+		log_error("Dialer useraio cb rv%d", rv);
 		nni_aio_finish_error(aio, rv);
+	} else {
+		log_error("Null useraio in ep");
 	}
 	nni_mtx_unlock(&ep->mtx);
 }
