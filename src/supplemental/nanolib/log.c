@@ -206,6 +206,13 @@ void uds_vsyslog(int priority, const char *format, va_list args) {
     }
 }
 
+void uds_syslog(int priority, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    vsyslog(priority, format, args);
+    va_end(args);
+}
+
 const char *
 log_level_string(int level)
 {
