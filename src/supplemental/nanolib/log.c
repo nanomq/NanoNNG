@@ -183,6 +183,29 @@ uds_openlog(
 	}
 }
 
+void uds_vsyslog(int priority, const char *format, va_list args) {
+    char message[1024];
+    char final_message[1064];
+
+    vsnprintf(message, sizeof(message), format, args);
+    
+    if (log_ident) {
+        snprintf(final_message, sizeof(final_message), "<%d>%s: %s", priority | log_facility, log_ident, message);
+    } else {
+        snprintf(final_message, sizeof(final_message), "<%d>%s", priority | log_facility, message);
+    }
+    
+    size_t message_len = strlen(final_message);
+
+    if (syslog_socket >= 0) {
+        if (sendto(syslog_socket, final_message, message_len, 0, (struct sockaddr *)&syslog_addr, sizeof(syslog_addr)) < 0) {
+            perror("sendto");
+        }
+    } else {
+        fprintf(stderr, "Syslog socket not open\n");
+    }
+}
+
 const char *
 log_level_string(int level)
 {
