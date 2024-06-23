@@ -3,6 +3,9 @@
 #include "nng/supplemental/nanolib/file.h"
 #include "core/nng_impl.h"
 #include "core/defs.h"
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <errno.h>
 
 #define INDEX_FILE_NAME ".idx"
 
@@ -20,6 +23,12 @@
 #include <sys/syscall.h>
 #define nano_localtime(t, pTm) localtime_r(t, pTm)
 #endif
+
+static int syslog_socket = -1;
+static struct sockaddr_un syslog_addr;
+static const char *log_ident = NULL;
+static int log_option = 0;
+static int log_facility = LOG_USER;
 
 typedef struct {
 	log_func  fn;
@@ -147,6 +156,32 @@ log_add_syslog(const char *log_name, uint8_t level, void *mtx)
 }
 
 #endif
+
+void
+uds_openlog(
+    const char *uds_path, const char *ident, int option, int facility)
+{
+	log_ident    = ident;
+	log_option   = option;
+	log_facility = facility;
+
+	if ((syslog_socket = socket(AF_UNIX, SOCK_DGRAM, 0)) < 0) {
+		fprintf(stderr, "socket %s", strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	memset(&syslog_addr, 0, sizeof(syslog_addr));
+	syslog_addr.sun_family = AF_UNIX;
+	strncpy(syslog_addr.sun_path, uds_path,
+	    sizeof(syslog_addr.sun_path) - 1);
+
+	int len = offsetof(struct sockaddr_un, sun_path) + strlen(uds_path);
+	if (connect(syslog_socket, (struct sockaddr *) &syslog_addr, len) <
+	    0) {
+		fprintf(stderr, "connect to %s %s", uds_path, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+}
 
 const char *
 log_level_string(int level)
