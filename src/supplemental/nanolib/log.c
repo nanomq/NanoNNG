@@ -213,6 +213,26 @@ void uds_syslog(int priority, const char *format, ...) {
     va_end(args);
 }
 
+void uds_closelog(void) {
+    if (syslog_socket >= 0) {
+        close(syslog_socket);
+        syslog_socket = -1;
+    }
+}
+
+static void
+uds_syslog_callback(log_event *ev)
+{
+	uds_vsyslog(ev->level, ev->fmt, ev->ap);
+}
+
+void
+log_add_uds(const char *uds_path, const char *log_name, uint8_t level, void *mtx)
+{
+	uds_openlog(uds_path, log_name, LOG_PID, LOG_DAEMON | convert_syslog_level(level));
+	log_add_callback(uds_syslog_callback, NULL, level, mtx, NULL);
+}
+
 const char *
 log_level_string(int level)
 {
