@@ -489,6 +489,9 @@ conf_log_parse_ver2(conf *config, cJSON *jso)
 			} else if (!strcmp("syslog",
 			               cJSON_GetStringValue(jso_log_to_ele))) {
 				log->type |= LOG_TO_SYSLOG;
+			} else if (!strcmp("uds",
+			               cJSON_GetStringValue(jso_log_to_ele))) {
+				log->type |= LOG_TO_UDS;
 			} else {
 				log_error("Unsupport log to");
 			}
@@ -500,6 +503,13 @@ conf_log_parse_ver2(conf *config, cJSON *jso)
 			log->level = rv;
 		} else {
 			log->level = NNG_LOG_ERROR;
+		}
+
+		hocon_read_str(log, uds_addr, jso_log);
+		if (0 != (log->type & LOG_TO_UDS)) {
+			if (!log->uds_addr) {
+				log_error("uds is enable but uds_addr is NULL!");
+			}
 		}
 
 		hocon_read_str(log, dir, jso_log);
