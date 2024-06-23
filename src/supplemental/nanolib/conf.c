@@ -653,11 +653,12 @@ conf_parse(conf *nanomq_conf)
 static void
 conf_log_init(conf_log *log)
 {
-	log->level = NNG_LOG_WARN;
-	log->file  = NULL;
-	log->dir   = NULL;
-	log->type  = LOG_TO_CONSOLE;
-	log->fp    = NULL;
+	log->level    = NNG_LOG_WARN;
+	log->file     = NULL;
+	log->dir      = NULL;
+	log->type     = LOG_TO_CONSOLE;
+	log->fp       = NULL;
+	log->uds_addr = NULL;
 
 	log->abs_path        = NULL;
 	log->rotation_sz_str = NULL;
