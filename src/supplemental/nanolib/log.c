@@ -11,6 +11,11 @@
 
 #if defined(SUPP_SYSLOG)
 #include <syslog.h>
+static int syslog_socket = -1;
+static struct sockaddr_un syslog_addr;
+static const char *log_ident = NULL;
+static int log_option = 0;
+static int log_facility = LOG_USER;
 #endif
 
 #define MAX_CALLBACKS 10
@@ -24,11 +29,6 @@
 #define nano_localtime(t, pTm) localtime_r(t, pTm)
 #endif
 
-static int syslog_socket = -1;
-static struct sockaddr_un syslog_addr;
-static const char *log_ident = NULL;
-static int log_option = 0;
-static int log_facility = LOG_USER;
 
 typedef struct {
 	log_func  fn;
@@ -145,21 +145,9 @@ log_add_syslog(const char *log_name, uint8_t level, void *mtx)
 	openlog(log_name, LOG_PID, LOG_DAEMON | convert_syslog_level(level));
 	log_add_callback(syslog_callback, NULL, level, mtx, NULL);
 }
-#else
 
 void
-log_add_syslog(const char *log_name, uint8_t level, void *mtx)
-{
-	NNI_ARG_UNUSED(log_name);
-	NNI_ARG_UNUSED(level);
-	NNI_ARG_UNUSED(mtx);
-}
-
-#endif
-
-void
-uds_openlog(
-    const char *uds_path, const char *ident, int option, int facility)
+uds_openlog(const char *uds_path, const char *ident, int option, int facility)
 {
 	log_ident    = ident;
 	log_option   = option;
@@ -172,8 +160,8 @@ uds_openlog(
 
 	memset(&syslog_addr, 0, sizeof(syslog_addr));
 	syslog_addr.sun_family = AF_UNIX;
-	strncpy(syslog_addr.sun_path, uds_path,
-	    sizeof(syslog_addr.sun_path) - 1);
+	strncpy(
+	    syslog_addr.sun_path, uds_path, sizeof(syslog_addr.sun_path) - 1);
 
 	int len = offsetof(struct sockaddr_un, sun_path) + strlen(uds_path);
 	if (connect(syslog_socket, (struct sockaddr *) &syslog_addr, len) <
@@ -183,33 +171,39 @@ uds_openlog(
 	}
 }
 
-void uds_vsyslog(int priority, const char *format, va_list args) {
-    char message[1024];
-    char final_message[1064];
+void
+uds_vsyslog(int priority, const char *format, va_list args)
+{
+	char message[1024];
+	char final_message[1064];
 
-    vsnprintf(message, sizeof(message), format, args);
-    
-    if (log_ident) {
-        snprintf(final_message, sizeof(final_message), "<%d>%s: %s", priority | log_facility, log_ident, message);
-    } else {
-        snprintf(final_message, sizeof(final_message), "<%d>%s", priority | log_facility, message);
-    }
-    
-    size_t message_len = strlen(final_message);
+	vsnprintf(message, sizeof(message), format, args);
 
-    if (syslog_socket >= 0) {
-        if (sendto(syslog_socket, final_message, message_len, 0, (struct sockaddr *)&syslog_addr, sizeof(syslog_addr)) < 0) {
-            perror("sendto");
-        }
-    } else {
-        fprintf(stderr, "Syslog socket not open\n");
-    }
+	if (log_ident) {
+		snprintf(final_message, sizeof(final_message), "<%d>%s: %s",
+		    priority | log_facility, log_ident, message);
+	} else {
+		snprintf(final_message, sizeof(final_message), "<%d>%s",
+		    priority | log_facility, message);
+	}
+
+	size_t message_len = strlen(final_message);
+
+	if (syslog_socket >= 0) {
+		if (sendto(syslog_socket, final_message, message_len, 0,
+		        (struct sockaddr *) &syslog_addr,
+		        sizeof(syslog_addr)) < 0) {
+			perror("sendto");
+		}
+	} else {
+		fprintf(stderr, "Syslog socket not open\n");
+	}
 }
 
 void uds_syslog(int priority, const char *format, ...) {
     va_list args;
     va_start(args, format);
-    vsyslog(priority, format, args);
+    uds_vsyslog(priority, format, args);
     va_end(args);
 }
 
@@ -232,6 +226,28 @@ log_add_uds(const char *uds_path, const char *log_name, uint8_t level, void *mtx
 	uds_openlog(uds_path, log_name, LOG_PID, LOG_DAEMON | convert_syslog_level(level));
 	log_add_callback(uds_syslog_callback, NULL, level, mtx, NULL);
 }
+
+#else
+
+void
+log_add_syslog(const char *log_name, uint8_t level, void *mtx)
+{
+	NNI_ARG_UNUSED(log_name);
+	NNI_ARG_UNUSED(level);
+	NNI_ARG_UNUSED(mtx);
+}
+
+void
+log_add_uds(const char *uds_path, const char *log_name, uint8_t level, void *mtx)
+{
+	NNI_ARG_UNUSED(uds_path);
+	NNI_ARG_UNUSED(log_name);
+	NNI_ARG_UNUSED(level);
+	NNI_ARG_UNUSED(mtx);
+}
+
+#endif
+
 
 const char *
 log_level_string(int level)
