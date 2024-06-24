@@ -382,7 +382,7 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 	// TODO It's a not a good way to create a main/sub stream by checking ref
 	// So. Disable multistream now.
 	if (ismain == false) {
-		rv = NNG_ECLOSED;
+		rv = NNG_ETIMEDOUT; // Avoid to stop reconnecting
 		goto error;
 	}
 
