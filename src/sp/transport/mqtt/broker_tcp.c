@@ -1236,8 +1236,8 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			iov[niov].iov_buf = nni_msg_body(msg);
 			iov[niov].iov_len = nni_msg_len(msg);
 			niov++;
-			goto send;
 		}
+		goto send;
 	}
 
 	// never modify the original msg
