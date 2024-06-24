@@ -1534,7 +1534,8 @@ mqtt_quictran_ep_connect(void *arg, nni_aio *aio)
 	// XXX Reset the d_started flag to allow eatablish multistream fast
 	nni_atomic_flag_reset(&ep->ndialer->d_started);
 
-	if (nni_aio_begin(aio) != 0) {
+	if ((rv = nni_aio_begin(aio)) != 0) {
+		log_error("ep connect rv %d", rv);
 		return;
 	}
 	if (ep->backoff != 0) {
@@ -1542,7 +1543,7 @@ mqtt_quictran_ep_connect(void *arg, nni_aio *aio)
 		ep->backoff = ep->backoff > ep->backoff_max
 		    ? (nni_duration) (nni_random() % 1000)
 		    : ep->backoff;
-		log_debug("reconnect in %ld", ep->backoff);
+		log_info("reconnect in %ld", ep->backoff);
 		nni_msleep(ep->backoff);
 	} else {
 		ep->backoff = nni_random()%2000;
@@ -1550,10 +1551,12 @@ mqtt_quictran_ep_connect(void *arg, nni_aio *aio)
 	nni_mtx_lock(&ep->mtx);
 	if (ep->closed) {
 		nni_mtx_unlock(&ep->mtx);
+		log_error("ep clsoed");
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
 	}
 	if (ep->useraio != NULL) {
+		log_error("ep busy");
 		nni_mtx_unlock(&ep->mtx);
 		nni_aio_finish_error(aio, NNG_EBUSY);
 		return;
