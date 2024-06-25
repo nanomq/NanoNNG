@@ -90,6 +90,17 @@ set_log_level(conf_log *log)
 }
 
 static void
+set_log_uds_addr(conf_log *log)
+{
+	char *uds_addr = NULL;
+	set_string_var(&uds_addr, NANOMQ_LOG_UDS_ADDR);
+	if (uds_addr != NULL) {
+		log->uds_addr = nng_strdup(uds_addr);
+	}
+	nng_strfree(uds_addr);
+}
+
+static void
 set_log_rotation_size(conf_log *log)
 {
 	char *size = NULL;
@@ -118,14 +129,20 @@ set_log_to(conf_log *log)
 	char *log_to = NULL;
 	set_string_var(&log_to, NANOMQ_LOG_TO);
 	if (log_to) {
-		if (!strstr(log_to, "file")) {
+		if (strstr(log_to, "file")) {
 			log->type |= LOG_TO_FILE;
 		}
-		if (!strstr(log_to, "console")) {
+		if (strstr(log_to, "console")) {
 			log->type |= LOG_TO_CONSOLE;
 		}
-		if (!strstr(log_to, "syslog")) {
+		if (strstr(log_to, "syslog")) {
 			log->type |= LOG_TO_SYSLOG;
+		}
+		if (strstr(log_to, "uds")) {
+			log->type |= LOG_TO_UDS;
+			if (log->uds_addr == NULL) {
+				fprintf(stderr, "uds addr is NULL");
+			}
 		}
 	}
 	nng_strfree(log_to);
@@ -202,6 +219,7 @@ read_env_conf(conf *config)
 #if defined(ENABLE_LOG)
 	set_log_level(&config->log);
 	set_log_rotation_size(&config->log);
+	set_log_uds_addr(&config->log);
 	set_log_to(&config->log);
 	set_string_var(&config->log.dir, NANOMQ_LOG_DIR);
 	set_string_var(&config->log.file, NANOMQ_LOG_FILE);
