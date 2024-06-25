@@ -798,6 +798,7 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 				nni_msg_free(cached_msg);
 				cached_msg = NULL;
 			}
+			nni_mtx_unlock(&s->mtx);
 			break;
 		}
 		nni_list_remove(&s->recv_queue, aio);
@@ -833,6 +834,7 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 				}
 				// nni_println("ERROR: no ctx found!! create
 				// more ctxs!");
+				nni_mtx_unlock(&s->mtx);
 				break;
 			}
 			nni_list_remove(&s->recv_queue, aio);
@@ -1559,6 +1561,7 @@ quic_mqtt_stream_fini(void *arg)
 	conn_param_clone(p->cparam);
 	nni_msg_set_conn_param(tmsg, p->cparam);
 	// emulate disconnect notify msg as a normal publish
+	// TODO only discard aio while finit main stream
 	while ((aio = nni_list_first(&s->recv_queue)) != NULL) {
 		// Pipe was closed.  just push an error back to the
 		// entire socket, because we only have one pipe
@@ -1912,7 +1915,7 @@ wait:
 	} else {
 		nni_mtx_unlock(&s->mtx);
 		nni_aio_set_msg(aio, NULL);
-		nni_println("ERROR! former aio not finished!");
+		log_error("ERROR! former aio not finished!");
 		nni_aio_finish_error(aio, NNG_EBUSY);
 	}
 	return;

@@ -804,6 +804,7 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 				nni_msg_free(cached_msg);
 				cached_msg = NULL;
 			}
+			nni_mtx_unlock(&s->mtx);
 			break;
 		}
 		nni_list_remove(&s->recv_queue, aio);
@@ -837,8 +838,8 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 					nni_msg_free(msg);
 					msg = NULL;
 				}
-				// nni_println("ERROR: no ctx found!! create
-				// more ctxs!");
+				log_error("ERROR: no ctx found!! create more ctxs!");
+				nni_mtx_unlock(&s->mtx);
 				break;
 			}
 			nni_list_remove(&s->recv_queue, aio);
