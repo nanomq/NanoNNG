@@ -816,15 +816,16 @@ nng_mqtt_client_send_cb(void* arg)
 	nng_aio *        aio    = client->send_aio;
 	nng_msg *        msg    = nng_aio_get_msg(aio);
 	nng_msg *        tmsg   = NULL;
+	int 			 rv     = 0;
 
 	nni_lmq * lmq = (nni_lmq *)client->msgq;
-
-	if (msg == NULL || nng_aio_result(aio) != 0) {
-		client->cb(client, NULL, client->obj);
+	rv = nng_aio_result(aio);
+	if (rv == NNG_EAGAIN) {
+		goto again;
+	} else if (msg == NULL) {
 		log_warn("nng_mqtt_client_send_cb report fail!");
-		return;
 	}
-
+again:
 	if (nni_lmq_get(lmq, &tmsg) == 0) {
 		nng_aio_set_msg(client->send_aio, tmsg);
 		nng_send_aio(client->sock, client->send_aio);
@@ -993,6 +994,7 @@ nng_mqtt_subscribe_async(nng_mqtt_client *client, nng_mqtt_topic_qos *sbs, size_
 			log_error("subscribe failed!");
 			nni_msg_free(submsg);
 		}
+		nng_aio_finish_error(client->send_aio, NNG_EAGAIN);
 		return 1;
 	}
 	nng_aio_set_msg(client->send_aio, submsg);
