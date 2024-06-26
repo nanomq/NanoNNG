@@ -1335,6 +1335,7 @@ msquic_conn_open(const char *host, const char *port, nni_quic_dialer *d)
 	}
 
 	if (TRUE != msquic_load_config(&d->settings, d)) {
+		log_error("Failed in load quic configuration");
 		// error in configuration so... close the quic connection
 		return (NNG_EINVAL);
 	}

@@ -2098,7 +2098,7 @@ mqtt_quic_ctx_recv(void *arg, nni_aio *aio)
 		nni_mtx_unlock(&p->lk);
 		nni_mtx_unlock(&s->mtx);
 		nni_aio_set_msg(aio, NULL);
-		nni_println("ERROR! former aio not finished!");
+		log_warn("ERROR! former aio not finished!");
 		nni_aio_finish_error(aio, NNG_ESTATE);
 		return;
 	}
@@ -2114,7 +2114,7 @@ wait:
 	if (ctx->raio != NULL) {
 		nni_mtx_unlock(&s->mtx);
 		nni_aio_set_msg(aio, NULL);
-		nni_println("ERROR! former aio not finished!");
+		log_warn("ERROR! former aio not finished!");
 		nni_aio_finish_error(aio, NNG_ESTATE);
 		return;
 	}
