@@ -329,7 +329,7 @@ mqtt_pipe_send_msg(nni_aio *aio, nni_msg *msg, mqtt_pipe_t *p, uint16_t packet_i
 	ptype = nni_mqtt_msg_get_packet_type(msg);
 	switch (ptype) {
 	case NNG_MQTT_CONNECT:
-		nni_println("Error: wrong type of msg is being sent via data stream!");
+		log_error("wrong type of msg is being sent via data stream!");
 	case NNG_MQTT_PUBACK:
 	case NNG_MQTT_PUBREC:
 	case NNG_MQTT_PUBREL:
@@ -682,8 +682,7 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 					nni_msg_free(msg);
 					msg = NULL;
 				}
-				// nni_println("ERROR: no ctx found!! create
-				// more ctxs!");
+				// log_error("no ctx found!! create more ctxs!");
 				break;
 			}
 			nni_list_remove(&p->recv_queue, ctx);
@@ -698,9 +697,7 @@ mqtt_quic_data_strm_recv_cb(void *arg)
 				// packetid already exists.
 				// sth wrong with the broker
 				// replace old with new
-				log_error(
-				    "ERROR: packet id %d duplicates in",
-				    packet_id);
+				log_error("packet id %d duplicates in", packet_id);
 				if ((aio = nni_mqtt_msg_get_aio(cached_msg)) != NULL) {
 					nng_aio_finish_error(aio, UNSPECIFIED_ERROR);
 					nni_mqtt_msg_set_aio(cached_msg, NULL);
@@ -793,7 +790,7 @@ mqtt_quic_recv_cb(void *arg)
 		nni_mqtt_msg_set_disconnect_property(msg, NULL);
 		// Composed a disconnect msg
 		if ((rv = nni_mqtt_msg_encode(msg)) != MQTT_SUCCESS) {
-			nni_plat_printf("Error in encoding disconnect.\n");
+			log_error("Error in encoding disconnect.\n");
 			nni_msg_free(msg);
 			nni_mtx_unlock(&p->lk);
 			nni_pipe_close(p->qpipe);
@@ -813,8 +810,7 @@ mqtt_quic_recv_cb(void *arg)
 			nni_msg_free(tmsg);
 		}
 		if (0 != nni_lmq_put(&p->send_inflight, msg)) {
-			nni_println(
-			    "Warning! msg send failed due to busy socket");
+			log_warn("msg send failed due to busy socket");
 		}
 		nni_mtx_unlock(&p->lk);
 		return;
@@ -2053,8 +2049,10 @@ mqtt_quic_ctx_recv(void *arg, nni_aio *aio)
 	mqtt_sock_t   *s   = ctx->mqtt_sock;
 	mqtt_pipe_t   *p;
 	nni_msg       *msg = NULL;
+	int            rv;
 
-	if (nni_aio_begin(aio) != 0) {
+	if ((rv = nni_aio_begin(aio)) != 0) {
+		log_error("aio begin failed %d", rv);
 		return;
 	}
 
@@ -2067,7 +2065,7 @@ mqtt_quic_ctx_recv(void *arg, nni_aio *aio)
 
 	if (nni_atomic_get_bool(&s->closed)) {
 		nni_mtx_unlock(&s->mtx);
-		log_debug("recv action on closed socket!");
+		log_info("recv action on closed socket!");
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
 	}
