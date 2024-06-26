@@ -422,6 +422,12 @@ quic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			// QoS messages send_cb
 			nni_aio_list_remove(aio);
 			// free the buf
+			if (Event->SEND_COMPLETE.Canceled) {
+				nni_mtx_unlock(&qstrm->mtx);
+				nni_aio_set_msg(aio, NULL);
+				nni_aio_finish(aio, 0, 0);
+				break;
+			}
 			QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
 			free(buf);
 			smsg = nni_aio_get_msg(aio);
@@ -1000,7 +1006,7 @@ quic_aio_send(void *arg, nni_aio *aio)
 
 	if (QUIC_FAILED(Status = MsQuic->StreamSend(qstrm->stream, buf, bl > 0 ? 2:1,
 	                    QUIC_SEND_FLAG_NONE, aio))) {
-		log_error("Failed in StreamSend, 0x%x!", Status);
+		log_warn("Failed in StreamSend, 0x%x!", Status);
 		nni_aio_list_remove(aio);
 		nni_mtx_unlock(&qstrm->mtx);
 		// nni_mtx_unlock(&qsock->mtx);
@@ -1312,20 +1318,18 @@ quic_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 	quic_strm_t *qstrm = arg;
 
 	nni_mtx_lock(&qstrm->mtx);
-	nni_aio_finish_error(aio, rv);
+	if (!nni_aio_list_active(aio)) {
+		nni_mtx_unlock(&qstrm->mtx);
+		return;
+	}
 	nni_aio_list_remove(aio);
 	// if (!nni_aio_list_active(aio)) {
 	// 	nni_mtx_unlock(&qstrm->mtx);
 	// 	return;
 	// }
-	if (nni_list_first(&qstrm->sendq) == aio) {
-		nni_mtx_unlock(&qstrm->mtx);
-		return;
-	}
 	// nni_aio_list_remove(aio);
 	nni_mtx_unlock(&qstrm->mtx);
-
-
+	nni_aio_finish_error(aio, rv);
 }
 
 static void
