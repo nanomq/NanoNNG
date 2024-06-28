@@ -262,6 +262,7 @@ conf_http_server_parse_ver2(conf_http_server *http_server, cJSON *json)
 	if (jso_http_server) {
 		http_server->enable = true;
 		hocon_read_num(http_server, port, jso_http_server);
+		hocon_read_str(http_server, host, jso_http_server);
 		hocon_read_num_base(
 		    http_server, parallel, "limit_conn", jso_http_server);
 		hocon_read_str(http_server, username, jso_http_server);

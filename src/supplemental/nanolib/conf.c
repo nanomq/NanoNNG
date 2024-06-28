@@ -812,6 +812,7 @@ conf_http_server_init(conf_http_server *http, uint16_t port)
 	http->enable              = false;
 	http->port                = port;
 	http->parallel            = 32;
+	http->host                = NULL;
 	http->username            = NULL;
 	http->password            = NULL;
 	http->auth_type           = BASIC;
