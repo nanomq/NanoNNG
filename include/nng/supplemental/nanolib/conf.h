@@ -177,6 +177,7 @@ typedef enum {
 struct conf_http_server {
 	bool        enable;
 	uint16_t    port;
+	char       *host;
 	char       *username;
 	char       *password;
 	size_t      parallel;
