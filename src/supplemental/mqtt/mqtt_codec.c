@@ -3886,7 +3886,9 @@ check_properties(property *prop, nni_msg *msg)
 		return SUCCESS;
 	}
 	// uint32_t pos = 0;
+#ifdef MQTTV5_VERIFY
 	bool mei = false; // MESSAGE_EXPIRY_INTERVAL:
+#endif
 	for (property *p1 = prop->next; p1 != NULL; p1 = p1->next) {
 #ifdef MQTTV5_VERIFY
 		switch (p1->id) {
