@@ -59,43 +59,6 @@ addaddr(struct addr **endp, const char *a)
 }
 
 void
-printmsg(char *buf, size_t len, size_t inputlen)
-{
-	putchar('"');
-	/* i is inputlen to remove prefix */
-	for (size_t i = inputlen; i < len; i++) {
-//		switch (buf[i]) {
-//		case '\n':
-//			putchar('\\');
-//			putchar('n');
-//			break;
-//		case '\r':
-//			putchar('\\');
-//			putchar('r');
-//			break;
-//		case '\t':
-//			putchar('\\');
-//			putchar('t');
-//			break;
-//		case '"':
-//		case '\\':
-//			putchar('\\');
-//			putchar(buf[i]);
-//			break;
-//		default:
-//			if (isprint(buf[i])) {
-//				fputc(buf[i], stdout);
-//			} else {
-				printf("%02x ", (uint8_t) buf[i]);
-//			}
-//		}
-	}
-	putchar('"');
-	putchar('\n');
-	fflush(stdout);
-}
-
-void
 sendrecv(nng_socket sock)
 {
 	if (data == NULL) {
@@ -108,6 +71,7 @@ sendrecv(nng_socket sock)
 	    ((rv = nng_msg_append(msg, data, datalen)) != 0)) {
 		fatal("%s", nng_strerror(rv));
 	}
+
 	if ((rv = nng_sendmsg(sock, msg, 0)) != 0) {
 		fatal("Send error: %s", nng_strerror(rv));
 	}
@@ -115,7 +79,8 @@ sendrecv(nng_socket sock)
 	rv = nng_recvmsg(sock, &msg, 0);
 	switch (rv) {
 	case 0:
-		printmsg(nng_msg_body(msg), nng_msg_len(msg), datalen);
+		/* handle reply msg */
+		printf("Received %d bytes\n", nng_msg_len(msg));
 		nng_msg_free(msg);
 		break;
 	case NNG_ETIMEDOUT:
