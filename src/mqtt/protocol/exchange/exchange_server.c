@@ -903,6 +903,7 @@ ex_query_recv_cb(void *arg)
 #endif
 	log_info("found parquetdata_len: %d, ringbusdata_len: %d", parquetdata_len, ringbusdata_len);
 
+	nni_msg_chop(msg, strlen(keystr));
 	if (parquetdata != NULL && parquetdata_len > 0) {
 		nni_msg_append(msg, parquetdata, parquetdata_len);
 		nng_free(parquetdata, parquetdata_len);
