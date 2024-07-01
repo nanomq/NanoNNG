@@ -1036,10 +1036,10 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				sub_topic++;
 			}
 		}
-		// We let retain msg through, due to topic reflection.
 		// And we never modify msg itself
-		if (false == topic_filtern(sub_topic, topic, topic_len))
+		if (false == topic_filtern(sub_topic, topic, topic_len)) {
 			continue;
+		}
 		if (niov > 4) {
 			// donot send too many msgs at a time
 			nni_aio_set_prov_data(txaio, info);
