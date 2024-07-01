@@ -1010,7 +1010,6 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 
 	bool      is_sqlite = p->conf->sqlite.enable;
 	int       qlen = 0, topic_len = 0;
-	uint8_t  *header      = nni_msg_header(msg);
 	char     *topic       = nni_msg_get_pub_topic(msg, &topic_len);
 	subinfo  *tinfo = NULL, *info = NULL;
 	nni_list *subinfol = p->npipe->subinfol;
