@@ -287,7 +287,7 @@ mqtt_sock_get_next_packet_id(mqtt_sock_t *s)
 	do {
 		packet_id = nni_atomic_get(&s->next_packet_id);
 		/* PROTOCOL ERROR: when packet_id == 0 */
-		while (packet_id & 0xFFFF == 0) {
+		while ((packet_id & 0xFFFF) == 0) {
 			while(!nni_atomic_cas(&s->next_packet_id,
 								  packet_id,
 								  packet_id + 1)) {
@@ -407,6 +407,7 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 	nni_msg *        msg   = NULL;
 	nni_msg *        tmsg  = NULL;
 	nni_aio *        taio  = NULL;
+	uint16_t         ttype = 0;
 
 	if (p == NULL || nni_atomic_get_bool(&p->closed) || aio == NULL) {
 		//pipe closed, should never gets here
@@ -450,14 +451,12 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 		packet_id = nni_mqtt_msg_get_packet_id(msg);
 		taio = nni_id_get(&p->sent_unack, packet_id);
 		if (taio != NULL) {
-			nni_plat_printf("Warning : msg %d lost due to "
-			                "packetID duplicated!",
-			    packet_id);
+			log_warn("msg %d lost due to packetID duplicated!", packet_id);
 			nni_aio_finish_error(taio, NNG_ECANCELED);
 			nni_id_remove(&p->sent_unack, packet_id);
 		}
 		if (0 != nni_id_set(&p->sent_unack, packet_id, aio)) {
-			nni_plat_printf("Warning : aio caching failed");
+			log_warn("aio caching failed");
 			nni_aio_finish_error(aio, NNG_ECANCELED);
 		}
 		break;
@@ -483,8 +482,19 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 		return;
 	}
 	if (nni_lmq_full(&p->send_messages)) {
-		log_error("rhack: pipe is busy and lmq is full\n");
+		log_warn("pipe is busy and lmq is full, drop a msg\n");
 		(void) nni_lmq_get(&p->send_messages, &tmsg);
+		ttype = nni_mqtt_msg_get_packet_type(msg);
+		if (ttype == NNG_MQTT_SUBSCRIBE || ttype == NNG_MQTT_UNSUBSCRIBE) {
+			packet_id = nni_mqtt_msg_get_packet_id(tmsg);
+			taio = nni_id_get(&p->sent_unack, packet_id); // Also the user aio
+			if (taio != NULL) {
+				log_warn("msg of packetid %d lost due to full lmq!", packet_id);
+				nni_aio_finish_error(taio, NNG_ECANCELED);
+				nni_id_remove(&p->sent_unack, packet_id);
+				nni_mqtt_msg_set_aio(tmsg, NULL);
+			}
+		}
 		nni_msg_free(tmsg);
 	}
 	if (0 != nni_lmq_put(&p->send_messages, msg)) {
@@ -904,7 +914,7 @@ mqtt_recv_cb(void *arg)
 			}
 
 			if (rv != MQTT_SUCCESS) {
-				nni_plat_printf("Error in encoding CONNACK.\n");
+				log_error("Error in encoding CONNACK.\n");
 			}
 			conn_param_clone(p->cparam);
 			if ((ctx = nni_list_first(&s->recv_queue)) == NULL) {
