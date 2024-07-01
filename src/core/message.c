@@ -749,6 +749,7 @@ void
 nni_msg_set_proto_data(nng_msg *m, nni_proto_msg_ops *ops, void *data)
 {
 	if (m->m_proto_ops != NULL && m->m_proto_ops->msg_free != NULL) {
+		log_trace("overwirte msg proto data");
 		m->m_proto_ops->msg_free(m->m_proto_data);
 	}
 	m->m_proto_ops  = ops;
