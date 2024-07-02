@@ -660,9 +660,13 @@ mqtt_timer_cb(void *arg)
 			nni_lmq_put(&p->send_messages, msg);
 		}
 	}
-	if (s->batchcnt > 0 && s->batchcnt < s->batchsz) {
+	if (s->batchcnt > 0) {
+		s->batchcnt %= s->batchsz;
 		nni_mtx_unlock(&s->mtx);
-		nni_sleep_aio(s->batchtmo, &p->time_aio);
+		if (s->batchcnt == 0)
+			nni_sleep_aio(s->retry, &p->time_aio);
+		else
+			nni_sleep_aio(s->batchtmo, &p->time_aio);
 		return;
 	}
 
