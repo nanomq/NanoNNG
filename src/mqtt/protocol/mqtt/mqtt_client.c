@@ -459,14 +459,17 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 		if (taio != NULL) {
 			log_warn("msg %d lost due to packetID duplicated!", packet_id);
 			nni_aio_finish_error(taio, NNG_ECANCELED);
+			if ((tmsg = nni_aio_get_msg(taio)) != NULL)
+				nni_msg_free(tmsg);
 			nni_aio_set_msg(taio, NULL);
 			nni_id_remove(&p->sent_unack, packet_id);
 		}
-		log_info("IN <%d,%p>", packet_id, aio);
+		nni_msg_clone(msg); // clone for resend, will free when ack received
 		if (0 != nni_id_set(&p->sent_unack, packet_id, aio)) {
 			log_warn("aio caching failed");
 			nni_aio_finish_error(aio, NNG_ECANCELED);
 			nni_aio_set_msg(aio, NULL);
+			nni_msg_free(msg);
 		}
 		break;
 
@@ -493,14 +496,6 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 	if (nni_lmq_full(&p->send_messages)) {
 		log_warn("pipe is busy and lmq is full, drop a msg\n");
 		(void) nni_lmq_get(&p->send_messages, &tmsg);
-		packet_id = nni_mqtt_msg_get_packet_id(tmsg);
-		taio = nni_id_get(&p->sent_unack, packet_id); // Also the user aio
-		if (taio != NULL) {
-			log_warn("msg of packetid %d lost due to full lmq!", packet_id);
-			nni_aio_finish_error(taio, NNG_ECANCELED);
-			nni_id_remove(&p->sent_unack, packet_id);
-			nni_mqtt_msg_set_aio(tmsg, NULL);
-		}
 		nni_msg_free(tmsg);
 	}
 	if (0 != nni_lmq_put(&p->send_messages, msg)) {
@@ -651,10 +646,9 @@ mqtt_timer_cb(void *arg)
 		s->batchcnt ++;
 	}
 	if (aio != NULL && (msg = nni_aio_get_msg(aio)) != NULL) {
-		log_info("clonemsg %p", msg);
 		nni_msg_clone(msg);
 		s->lastpid = pid;
-		log_info("NO.%d Batch sending id %d", s->batchcnt-1, pid);
+		log_info("NO.%d Batch sending id%d msg%p", s->batchcnt-1, pid, msg);
 		ptype = nni_mqtt_msg_get_packet_type(msg);
 		if (ptype == NNG_MQTT_PUBLISH)
 			nni_mqtt_msg_set_publish_dup(msg, true);
@@ -703,7 +697,7 @@ mqtt_timer_cb(void *arg)
 		nni_msg_clone(msg);
 		s->lastpid = pid;
 		s->batchcnt ++;
-		log_info("Batch sending started id%d", pid);
+		log_info("Batch sending started id%d msg%p", pid, msg);
 		ptype = nni_mqtt_msg_get_packet_type(msg);
 		if (ptype == NNG_MQTT_PUBLISH)
 			nni_mqtt_msg_set_publish_dup(msg, true);
@@ -983,6 +977,8 @@ mqtt_recv_cb(void *arg)
 		p->rid ++;
 		user_aio = nni_id_get(&p->sent_unack, packet_id);
 		if (user_aio != NULL) {
+			if (nni_aio_get_msg(user_aio) != NULL)
+				nni_msg_free(nni_aio_get_msg(user_aio));
 			nni_id_remove(&p->sent_unack, packet_id);
 			if (packet_type == NNG_MQTT_SUBACK ||
 			    packet_type == NNG_MQTT_UNSUBACK) {
