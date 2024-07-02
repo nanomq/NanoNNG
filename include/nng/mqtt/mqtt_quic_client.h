@@ -32,8 +32,6 @@ NNG_DECL int nng_mqttv5_quic_set_msg_send_cb(nng_socket *sock, int (*cb)(void *,
 NNG_DECL int nng_mqttv5_quic_set_msg_recv_cb(nng_socket *sock, int (*cb)(void *, void *), void *arg);
 NNG_DECL int nng_mqttv5_quic_set_disconnect_cb(nng_socket *sock, int (*cb)(void *, void *), void *arg);
 
-
-
 #endif
 #ifdef __cplusplus
 }

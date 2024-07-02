@@ -372,7 +372,7 @@ mqtt_pipe_send_msg(nni_aio *aio, nni_msg *msg, mqtt_pipe_t *p, uint16_t packet_i
 		return NNG_EPROTO;
 	}
 	if (!p->busy) {
-		// TODO: qos_first
+		// TODO: qos_first in data pipe
 		nni_aio_set_msg(&p->send_aio, msg);
 		p->busy = true;
 		nni_pipe_send(p->qpipe, &p->send_aio);
