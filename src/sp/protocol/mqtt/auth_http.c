@@ -413,12 +413,12 @@ nmq_auth_http_sub_pub(
 {
 	if (conf->enable == false ||
 	    (conf->super_req.url == NULL && conf->acl_req.url == NULL)) {
-		return NNG_HTTP_STATUS_OK;
+		return SUCCESS;
 	}
 
 	char *topic_str = parse_topics(topics);
 	if (topic_str == NULL) {
-		return NNG_HTTP_STATUS_OK;
+		return SUCCESS;
 	}
 
 	auth_http_params auth_params = {
@@ -440,15 +440,15 @@ nmq_auth_http_sub_pub(
 		status = send_request(conf, &conf->super_req, &auth_params);
 		if (status == NNG_HTTP_STATUS_OK) {
 			nni_free(topic_str, strlen(topic_str) + 1);
-			return status;
+			return SUCCESS;
 		}
-	} else {
-		status = NNG_HTTP_STATUS_OK;
 	}
+
 	status = conf->acl_req.url == NULL
 	    ? NNG_HTTP_STATUS_OK
 	    : send_request(conf, &conf->acl_req, &auth_params);
 
 	nni_free(topic_str, strlen(topic_str) + 1);
+
 	return status == NNG_HTTP_STATUS_OK ? SUCCESS : NOT_AUTHORIZED;
 }
