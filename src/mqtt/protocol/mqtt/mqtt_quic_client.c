@@ -1074,7 +1074,9 @@ mqtt_timer_cb(void *arg)
 		nni_mtx_unlock(&s->mtx);
 		return;
 	}
+	nni_mtx_unlock(&s->mtx);
 
+	nni_mtx_lock(&p->lk);
 	// If batchcnt > 0. Batch sending was started. So handle batch first.
 	if (s->batchcnt > 0 && s->batchcnt < s->batchsz) {
 		pid = ++ s->lastpid;
@@ -1095,12 +1097,12 @@ mqtt_timer_cb(void *arg)
 		} else {
 			nni_lmq_put(&p->send_messages, msg);
 		}
-	} else {
-		log_warn("Batch sending id%d missing", pid);
+	//} else {
+	//	log_warn("Batch sending id%d missing", pid);
 	}
 	if (s->batchcnt > 0) {
 		s->batchcnt %= s->batchsz;
-		nni_mtx_unlock(&s->mtx);
+		nni_mtx_unlock(&p->lk);
 		if (s->batchcnt == 0)
 			nni_sleep_aio(s->retry, &s->time_aio);
 		else
@@ -1111,7 +1113,7 @@ mqtt_timer_cb(void *arg)
 	// Ping would be send at transport layer
 	if (p->pingcnt > 1) {
 		log_warn("MQTT Timeout and disconnect");
-		nni_mtx_unlock(&s->mtx);
+		nni_mtx_unlock(&p->lk);
 		nni_pipe_close(p->qpipe);
 		return;
 	}
@@ -1128,7 +1130,7 @@ mqtt_timer_cb(void *arg)
 		nni_aio_set_msg(&p->send_aio, p->pingmsg);
 		nni_pipe_send(p->qpipe, &p->send_aio);
 		p->pingcnt ++;
-		nni_mtx_unlock(&s->mtx);
+		nni_mtx_unlock(&p->lk);
 		log_info("Send pingreq (sock%p)(%dms)", s, s->keepalive);
 		nni_sleep_aio(s->retry, &s->time_aio);
 		return;
@@ -1157,7 +1159,7 @@ mqtt_timer_cb(void *arg)
 			nni_aio_set_msg(&p->send_aio, msg);
 			nni_pipe_send(p->qpipe, &p->send_aio);
 
-			nni_mtx_unlock(&s->mtx);
+			nni_mtx_unlock(&p->lk);
 			nni_sleep_aio(s->batchtmo, &s->time_aio);
 			return;
 		}
@@ -1176,14 +1178,14 @@ mqtt_timer_cb(void *arg)
 				nni_aio_set_msg(&p->send_aio, msg);
 				nni_pipe_send(p->qpipe, &p->send_aio);
 
-				nni_mtx_unlock(&s->mtx);
+				nni_mtx_unlock(&p->lk);
 				nni_sleep_aio(s->retry, &s->time_aio);
 				return;
 			}
 		}
 	}
 #endif
-	nni_mtx_unlock(&s->mtx);
+	nni_mtx_unlock(&p->lk);
 	nni_sleep_aio(s->retry, &s->time_aio);
 	return;
 }
