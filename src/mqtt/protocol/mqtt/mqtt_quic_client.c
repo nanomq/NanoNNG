@@ -1086,7 +1086,7 @@ mqtt_timer_cb(void *arg)
 	if (msg != NULL) {
 		nni_msg_clone(msg);
 		s->lastpid = pid;
-		log_info("NO.%d Batch sending id%d msg%p", s->batchcnt-1, pid, msg);
+		log_debug("NO.%d Batch sending id%d msg%p", s->batchcnt-1, pid, msg);
 		ptype = nni_mqtt_msg_get_packet_type(msg);
 		if (ptype == NNG_MQTT_PUBLISH)
 			nni_mqtt_msg_set_publish_dup(msg, true);
@@ -1143,7 +1143,7 @@ mqtt_timer_cb(void *arg)
 		ptype = nni_mqtt_msg_get_packet_type(msg);
 		s->lastpid = pid;
 		s->batchcnt ++;
-		log_info("Batch sending started id%d msg%p", pid, msg);
+		log_debug("Batch sending started id%d msg%p", pid, msg);
 		if (ptype == NNG_MQTT_PUBLISH)
 			nni_mqtt_msg_set_publish_dup(msg, true);
 		if (!p->busy) {
