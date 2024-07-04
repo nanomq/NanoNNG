@@ -125,6 +125,7 @@ wstran_pipe_recv_cb(void *arg)
 	bool     ack  = false;
 
 	nni_mtx_lock(&p->mtx);
+	p->err_code = MQTT_SUCCESS;
 	// only sets uaio at first time
 	if (p->user_rxaio != NULL) {
 		uaio = p->user_rxaio;
@@ -193,7 +194,8 @@ done:
 			rv = NMQ_PACKET_TOO_LARGE;
 			nni_msg_free(msg);
 			msg = NULL;
-			goto recv_error;
+			p->err_code = NMQ_PACKET_TOO_LARGE;
+			goto skip;
 		}
 		p->gotrxhead  = 0;
 		p->wantrxhead = 0;
@@ -208,7 +210,7 @@ done:
 			        nni_msg_len(p->tmp_msg)) != 0) {
 				p->closed = true;
 				p->err_code = PROTOCOL_ERROR;
-				goto recv_error;
+				goto skip;
 			}
 			log_trace("MQTT Clientid is %s", p->ws_param->clientid.body);
 			if (p->ws_param->pro_ver == 5) {
@@ -228,7 +230,8 @@ done:
 			return;
 		} else {
 			if (nni_msg_alloc(&smsg, 0) != 0) {
-				goto reset;
+				p->err_code = SERVER_UNAVAILABLE;
+				goto skip;
 			}
 			// parse fixed header
 			ws_msg_adaptor(ptr, smsg);
@@ -254,9 +257,9 @@ done:
 					if (p->qrecv_quota > 0) {
 						p->qrecv_quota--;
 					} else {
-						rv = NMQ_RECEIVE_MAXIMUM_EXCEEDED;
-						log_error("Quota exceeds limitation\n");
-						goto recv_error;
+						rv = NNG_ECLOSED;
+						p->err_code = QUOTA_EXCEEDED;
+						goto skip;
 					}
 				}
 
@@ -266,14 +269,16 @@ done:
 					ack_cmd = CMD_PUBREC;
 				} else {
 					log_warn("Wrong QoS level!");
-					rv = PROTOCOL_ERROR;
-					goto recv_error;
+					rv = NNG_ECLOSED;
+					p->err_code = PROTOCOL_ERROR;
+					goto skip;
 				}
 				if ((packet_id = nni_msg_get_pub_pid(smsg)) ==
 				    0) {
 					log_warn("0 Packet ID in QoS Message!");
-					rv = PROTOCOL_ERROR;
-					goto recv_error;
+					rv = NNG_ECLOSED;
+					p->err_code = PROTOCOL_ERROR;
+					goto skip;
 				}
 				ack = true;
 			}
@@ -281,7 +286,8 @@ done:
 			if ((rv = nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
 			        p->ws_param->pro_ver)) != 0) {
 				log_warn("decode PUBREC variable header failed!");
-				goto recv_error;
+				p->err_code = PROTOCOL_ERROR;
+				goto skip;
 			}
 			ack_cmd = CMD_PUBREL;
 			ack     = true;
@@ -289,7 +295,8 @@ done:
 			if ((rv = nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
 			        p->ws_param->pro_ver)) != 0) {
 				log_warn("decode PUBREL variable header failed!");
-				goto recv_error;
+				p->err_code = PROTOCOL_ERROR;
+				goto skip;
 			}
 			ack_cmd = CMD_PUBCOMP;
 			ack     = true;
@@ -298,7 +305,8 @@ done:
 			        p->ws_param->pro_ver)) != 0) {
 				log_warn("decode PUBACK or PUBCOMP variable header "
 				          "failed!");
-				goto recv_error;
+				p->err_code = PROTOCOL_ERROR;
+				goto skip;
 			}
 			// MQTT V5 flow control
 			if (p->ws_param->pro_ver == 5) {
@@ -317,7 +325,8 @@ done:
 				ack = false;
 				rv  = NMQ_SERVER_BUSY;
 				log_error("ERROR: OOM in WebSocket");
-				goto recv_error;
+				p->err_code = SERVER_UNAVAILABLE;
+				goto skip;
 			}
 			if (cmd == CMD_PINGREQ) {
 				uint8_t buf[2] = { CMD_PINGRESP, 0x00 };
@@ -351,13 +360,14 @@ done:
 			}
 		}
 		nni_aio_set_msg(uaio, smsg);
-		nni_aio_set_output(uaio, 0, p);
 	} else {
 		log_warn("No AIO waitting, unable to process websocket packet");
 		goto reset;
 	}
+skip:
+	nni_aio_set_output(uaio, 0, p);
 	nni_mtx_unlock(&p->mtx);
-	nni_aio_finish(uaio, 0, nni_msg_len(smsg));
+	nni_aio_finish(uaio, 0, 0);
 	return;
 reset:
 	p->gotrxhead  = 0;
@@ -385,19 +395,6 @@ reset:
 	if (msg != NULL)
 		nni_msg_free(msg);
 	return;
-
-recv_error:
-	nni_pipe_bump_error(p->npipe, rv);
-	nni_mtx_unlock(&p->mtx);
-	if (smsg)
-		nni_msg_free(smsg);
-	if (uaio != NULL) {
-		nni_aio_finish_error(uaio, rv);
-	} else if (p->ep_aio != NULL) {
-		nni_aio_finish_error(p->ep_aio, rv);
-	}
-	log_error("wstran_pipe_recv_cb: recv error rv: %d\n", rv);
-	return;
 }
 
 static void
@@ -419,6 +416,11 @@ wstran_pipe_recv(void *arg, nni_aio *aio)
 	int      rv;
 
 	if (nni_aio_begin(aio) != 0) {
+		return;
+	}
+	if (p->err_code != SUCCESS) {
+		log_warn("Close WebSocket connection due to err %d", p->err_code);
+		nni_aio_finish_error(aio, p->err_code);
 		return;
 	}
 	nni_mtx_lock(&p->mtx);
@@ -474,7 +476,7 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	qos_pac = nni_msg_get_pub_qos(msg);
 	NNI_GET16(body, tlen);
 
-	subinfo *info, *tinfo=NULL;
+	subinfo *info, *tinfo = NULL;
 	nni_msg_alloc(&smsg, 0);
 	if (nni_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
 		// V5 to V4 shrink msg, remove property length
@@ -945,7 +947,6 @@ wstran_pipe_stop(void *arg)
 static int
 wstran_pipe_init(void *arg, nni_pipe *pipe)
 {
-
 	int      rv, id;
 	NNI_ARG_UNUSED(rv);
 	NNI_ARG_UNUSED(id);
@@ -958,7 +959,6 @@ wstran_pipe_init(void *arg, nni_pipe *pipe)
 	p->gotrxhead  = 0;
 	p->wantrxhead = 0;
 	p->ep_aio     = NULL;
-
 	if (p->closed)
 		return (0);
 	char    *cid;
@@ -976,6 +976,7 @@ wstran_pipe_init(void *arg, nni_pipe *pipe)
 	if (!p->conf->sqlite.enable && pipe->nano_qos_db == NULL) {
 		nni_qos_db_init_id_hash(pipe->nano_qos_db);
 	}
+
 	return (0);
 }
 
@@ -984,6 +985,7 @@ wstran_pipe_fini(void *arg)
 {
 	ws_pipe *p = arg;
 
+	nng_stream_free(p->ws);
 	nni_aio_free(p->rxaio);
 	nni_aio_free(p->txaio);
 	nni_aio_wait(p->qsaio);
@@ -994,8 +996,6 @@ wstran_pipe_fini(void *arg)
 		nni_msg_free(msg);
 	}
 	nni_aio_free(p->qsaio);
-
-	nng_stream_free(p->ws);
 	nni_msg_free(p->tmp_msg);
 	nni_mtx_fini(&p->mtx);
 	nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);

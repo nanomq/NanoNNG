@@ -489,7 +489,6 @@ mqtt_tcptran_pipe_send_cb(void *arg)
 		nni_aio_list_remove(aio);
 		nni_mtx_unlock(&p->mtx);
 		nni_aio_finish_error(aio, rv);
-		nni_pipe_bump_error(p->npipe, rv);
 		return;
 	}
 

@@ -1125,6 +1125,7 @@ collect_retains(void **vec, dbtree_node **nodes,
 				     i++) {
 					node_t = child[i];
 					if (node_t->retain) {
+						// remember to free the ref!
 						nng_msg_clone(node_t->retain);
 						cvector_push_back(
 						    vec, node_t->retain);

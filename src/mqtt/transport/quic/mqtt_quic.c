@@ -36,7 +36,6 @@ struct mqtt_quictran_pipe {
 	uint16_t         proto;   // MQTT version
 	uint16_t         keepalive;
 	uint16_t         sndmax;  // MQTT Receive Maximum (QoS 1/2 packet)
-	uint8_t          pingcnt; // pingreq counter
 	uint8_t          qosmax;
 	uint8_t          txlen[sizeof(uint64_t)];
 	uint8_t          rxlen[sizeof(uint64_t)]; // fixed header
@@ -47,7 +46,6 @@ struct mqtt_quictran_pipe {
 	size_t           wantrxhead;
 	nni_list         recvq;
 	nni_list         sendq;
-	nni_aio          tmaio;
 	nni_aio         *txaio;
 	nni_aio         *rxaio;
 	nni_aio         *qsaio; // aio for qos/pingreq
@@ -146,46 +144,6 @@ mqtt_quictran_pipe_close(void *arg)
 	nni_aio_close(p->txaio);
 	nni_aio_close(p->negoaio);
 	nni_aio_close(p->rpaio);
-	nni_aio_close(&p->tmaio);
-}
-
-static uint8_t pingbuf[2];
-
-static void
-mqtt_quic_pipe_timer_cb(void *arg)
-{
-	mqtt_quictran_pipe *p = arg;
-	int rv;
-
-	rv = nng_aio_result(&p->tmaio);
-	if (rv != 0) {
-		log_error("keepalive error! aio result: %d", rv);
-		p->ep->reason_code = KEEP_ALIVE_TIMEOUT;
-		mqtt_quictran_pipe_close(p);
-		return;
-	}
-
-	if (p->pingcnt == 0){
-		p->pingcnt++;
-		log_trace("skip PINGREQ wait for next time!");
-		nni_sleep_aio(p->keepalive, &p->tmaio);
-		return;
-	}
-	nni_mtx_lock(&p->mtx);
-	// send pingreq
-	pingbuf[0] = 0xC0;
-	pingbuf[1] = 0x00;
-
-	nni_iov iov;
-	iov.iov_len = 2;
-	iov.iov_buf = &pingbuf;
-	// send it down...
-	nni_aio_set_iov(&p->tmaio, 1, &iov);
-	nng_stream_send(p->conn, &p->tmaio);
-	p->pingcnt = 0;
-	log_info("send pingreq!");
-	nni_mtx_unlock(&p->mtx);
-	return;
 }
 
 static void
@@ -194,12 +152,11 @@ mqtt_quictran_pipe_stop(void *arg)
 	mqtt_quictran_pipe *p = arg;
 
 	// leave rxaio to pipe_fini
-	// nni_aio_stop(p->rxaio);
+	nni_aio_stop(p->rxaio);
 	nni_aio_stop(p->qsaio);
 	nni_aio_stop(p->txaio);
 	nni_aio_stop(p->negoaio);
 	nni_aio_stop(p->rpaio);
-	nni_aio_stop(&p->tmaio);
 }
 
 static int
@@ -214,10 +171,6 @@ mqtt_quictran_pipe_init(void *arg, nni_pipe *npipe)
 	// set max value by default
 	p->packmax == 0 ? p->packmax = (uint32_t)0xFFFFFFFF : p->packmax;
 	p->qosmax  = 2;
-	p->pingcnt = 1;
-	if (p->ismain == true) {
-		nni_sleep_aio(p->keepalive, &p->tmaio);
-	}
 	return (0);
 }
 
@@ -237,7 +190,7 @@ mqtt_quictran_pipe_fini(void *arg)
 		nni_mtx_unlock(&ep->mtx);
 	}
 
-	nni_aio_wait(p->rxaio);
+	//nni_aio_wait(p->rxaio);
 	nni_aio_free(p->rxaio);
 	nni_aio_free(p->txaio);
 	nni_aio_free(p->qsaio);
@@ -247,7 +200,6 @@ mqtt_quictran_pipe_fini(void *arg)
 	nni_msg_free(p->rxmsg);
 	// nni_lmq_fini(&p->rslmq);
 	nni_mtx_fini(&p->mtx);
-	nni_aio_fini(&p->tmaio);
 	NNI_FREE_STRUCT(p);
 }
 
@@ -272,8 +224,6 @@ mqtt_quictran_pipe_alloc(mqtt_quictran_pipe **pipep)
 		return (NNG_ENOMEM);
 	}
 	nni_mtx_init(&p->mtx);
-	// alloc timer aio first, but only start it when nego is completed
-	nni_aio_init(&p->tmaio, mqtt_quic_pipe_timer_cb, p);
 	if (((rv = nni_aio_alloc(&p->txaio, mqtt_quictran_pipe_send_cb, p)) !=
 	        0) ||
 	    ((rv = nni_aio_alloc(&p->rxaio, mqtt_quictran_pipe_recv_cb, p)) !=
@@ -533,7 +483,6 @@ mqtt_quictran_pipe_qos_send_cb(void *arg)
 		return;
 	}
 	nni_mtx_lock(&p->mtx);
-	p->pingcnt = 0;
 
 	if (msg != NULL)
 		nni_msg_free(msg);
@@ -575,12 +524,9 @@ mqtt_quictran_pipe_send_cb(void *arg)
 		nni_pipe_bump_error(p->npipe, rv);
 		nni_aio_list_remove(aio);
 		nni_mtx_unlock(&p->mtx);
-		nni_msg_free(msg);
 		nni_aio_finish_error(aio, rv);
-		nni_pipe_bump_error(p->npipe, rv);
 		return;
 	}
-	p->pingcnt = 0;
 
 	n = nni_aio_count(txaio);
 	nni_aio_iov_advance(txaio, n);
@@ -594,7 +540,7 @@ mqtt_quictran_pipe_send_cb(void *arg)
 	mqtt_quictran_pipe_send_start(p);
 
 	if (msg != NULL) {
-		n   = nni_msg_len(msg);
+		n = nni_msg_len(msg);
 		nni_pipe_bump_tx(p->npipe, n);
 		nni_msg_free(msg);
 	}
@@ -613,7 +559,7 @@ mqtt_quictran_pipe_recv_cb(void *arg)
 	uint32_t           len = 0, rv;
 	size_t             n;
 	nni_msg *          msg, *qmsg;
-	mqtt_quictran_pipe *p     = arg;
+	mqtt_quictran_pipe *p    = arg;
 	nni_aio *          rxaio = p->rxaio;
 	bool               ack   = false;
 
@@ -1034,7 +980,7 @@ mqtt_quictran_pipe_recv_cancel(nni_aio *aio, void *arg, int rv)
 	// be canceled too.
 	if (nni_list_first(&p->recvq) == aio) {
 		// should wait for stream layer
-		// nni_aio_abort(p->rxaio, rv);
+		nni_aio_abort(p->rxaio, rv);
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
@@ -1439,6 +1385,7 @@ mqtt_quictran_dial_cb(void *arg)
 	nng_stream *       conn;
 
 	if ((rv = nni_aio_result(aio)) != 0) {
+		log_error("Dial failed %d", rv);
 		goto error;
 	}
 
@@ -1473,7 +1420,10 @@ error:
 	nni_mtx_lock(&ep->mtx);
 	if ((aio = ep->useraio) != NULL) {
 		ep->useraio = NULL;
+		log_error("Dialer useraio cb rv%d", rv);
 		nni_aio_finish_error(aio, rv);
+	} else {
+		log_error("Null useraio in ep");
 	}
 	nni_mtx_unlock(&ep->mtx);
 }
@@ -1584,7 +1534,8 @@ mqtt_quictran_ep_connect(void *arg, nni_aio *aio)
 	// XXX Reset the d_started flag to allow eatablish multistream fast
 	nni_atomic_flag_reset(&ep->ndialer->d_started);
 
-	if (nni_aio_begin(aio) != 0) {
+	if ((rv = nni_aio_begin(aio)) != 0) {
+		log_error("ep connect rv %d", rv);
 		return;
 	}
 	if (ep->backoff != 0) {
@@ -1592,7 +1543,7 @@ mqtt_quictran_ep_connect(void *arg, nni_aio *aio)
 		ep->backoff = ep->backoff > ep->backoff_max
 		    ? (nni_duration) (nni_random() % 1000)
 		    : ep->backoff;
-		log_debug("reconnect in %ld", ep->backoff);
+		log_info("reconnect in %ld", ep->backoff);
 		nni_msleep(ep->backoff);
 	} else {
 		ep->backoff = nni_random()%2000;
@@ -1600,10 +1551,12 @@ mqtt_quictran_ep_connect(void *arg, nni_aio *aio)
 	nni_mtx_lock(&ep->mtx);
 	if (ep->closed) {
 		nni_mtx_unlock(&ep->mtx);
+		log_error("ep clsoed");
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
 	}
 	if (ep->useraio != NULL) {
+		log_error("ep busy");
 		nni_mtx_unlock(&ep->mtx);
 		nni_aio_finish_error(aio, NNG_EBUSY);
 		return;

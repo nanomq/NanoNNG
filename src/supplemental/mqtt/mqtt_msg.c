@@ -14,6 +14,7 @@ static nni_proto_msg_ops proto_msg_ops = {
 void
 nni_proto_data_init(nni_mqtt_proto_data *proto_data)
 {
+	proto_data->bridged = false;
 	proto_data->var_header.connect.conn_flags.clean_session = true;
 	proto_data->var_header.connect.keep_alive = 30;
 	proto_data->var_header.connack.properties = NULL;
@@ -82,6 +83,26 @@ nni_mqtt_msg_get_packet_type(nni_msg *msg)
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
 
 	return proto_data->fixed_header.common.packet_type;
+}
+
+void
+nni_mqtt_msg_set_bridge_bool(nni_msg *msg, bool bridged)
+{
+	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
+
+	proto_data->bridged = bridged;
+}
+
+bool
+nni_mqtt_msg_get_bridge_bool(nni_msg *msg)
+{
+	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
+	if (proto_data != NULL)
+		return proto_data->bridged;
+	else {
+		log_warn("query on NULL proto_data object!");
+		return false;
+	}
 }
 
 void

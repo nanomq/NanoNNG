@@ -379,6 +379,12 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 	cnt = nni_atomic_get64(&d->ref);
 
 	ismain = (cnt == 2 ? true : false);
+	// TODO It's a not a good way to create a main/sub stream by checking ref
+	// So. Disable multistream now.
+	if (ismain == false) {
+		rv = NNG_ETIMEDOUT; // Avoid to stop reconnecting
+		goto error;
+	}
 
 	nni_aio_set_output(aio, 1,
 	        (void *)(ismain ? &flags_main_stream : &flags_sub_stream));
@@ -426,7 +432,6 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 		}
 	} else {
 		if ((rv = msquic_strm_open(d->qconn, d)) != 0) {
-			rv = NNG_ECLOSED;
 			goto error;
 		}
 	}
@@ -441,6 +446,7 @@ error:
 	d->currcon = NULL;
 	c->dial_aio = NULL;
 	nni_aio_set_prov_data(aio, NULL);
+	nni_msquic_quic_dialer_rele(d);
 	nni_mtx_unlock(&d->mtx);
 	nng_stream_free(&c->stream);
 	nni_aio_finish_error(aio, rv);
@@ -582,6 +588,7 @@ static void
 quic_stream_fini(void *arg)
 {
 	nni_quic_conn *c = arg;
+	msquic_strm_fini(c->qstrm);
 	NNI_FREE_STRUCT(c);
 }
 
@@ -589,11 +596,11 @@ static void
 quic_stream_rele(nni_quic_conn *c)
 {
 	quic_stream_close(c);
-	if (c->dialer) {
-		nni_msquic_quic_dialer_rele(c->dialer);
-	}
 	if (nni_atomic_dec_nv(&c->ref) != 0) {
 		return;
+	}
+	if (c->dialer) {
+		nni_msquic_quic_dialer_rele(c->dialer);
 	}
 	quic_stream_fini(c);
 }
@@ -648,6 +655,7 @@ quic_stream_cancel(nni_aio *aio, void *arg, int rv)
 {
 	nni_quic_conn *c = arg;
 
+	log_info("quic_stream_cancel");
 	nni_mtx_lock(&c->mtx);
 	if (nni_aio_list_active(aio)) {
 		nni_aio_list_remove(aio);
@@ -1031,18 +1039,20 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		}
 		// Priority msg send
 		if ((aio = Event->SEND_COMPLETE.ClientContext) != NULL) {
-			QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
-			free(buf);
 			Event->SEND_COMPLETE.ClientContext = NULL;
-			//nni_msg *msg = nni_aio_get_msg(aio);
+			QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
+			nni_aio_set_input(aio, 0, NULL);
+			free(buf);
+			nni_msg *msg = nni_aio_get_msg(aio);
 			// free SUBSCRIBE/UNSUBSCRIBE QoS 1/2 PUBLISH msg here
 			// nni_mqtt_packet_type t = nni_mqtt_msg_get_packet_type(msg);
-			//nni_msg_free(msg);
+			nni_msg_free(msg);
 			nni_aio_set_msg(aio, NULL);
 			if (canceled)
 				nni_aio_finish_error(aio, NNG_ECANCELED);
-			else
-				nni_aio_finish(aio, 0, nni_aio_count(aio));
+			// XXX Finish aio when received ack
+			//else
+			//	nni_aio_finish(aio, 0, nni_aio_count(aio));
 			break;
 		}
 		// Ordinary sending
@@ -1325,6 +1335,7 @@ msquic_conn_open(const char *host, const char *port, nni_quic_dialer *d)
 	}
 
 	if (TRUE != msquic_load_config(&d->settings, d)) {
+		log_error("Failed in load quic configuration");
 		// error in configuration so... close the quic connection
 		return (NNG_EINVAL);
 	}
@@ -1392,7 +1403,7 @@ msquic_strm_open(HQUIC qconn, nni_quic_dialer *d)
 	rv = MsQuic->StreamStart(strm, QUIC_STREAM_START_FLAG_NONE);
 	if (QUIC_FAILED(rv)) {
 		log_error("StreamStart failed, 0x%x!\n", rv);
-		MsQuic->StreamClose(strm);
+		msquic_strm_fini(strm);
 		goto error;
 	}
 	// Stream is opened and started
@@ -1406,6 +1417,8 @@ msquic_strm_open(HQUIC qconn, nni_quic_dialer *d)
 
 	return 0;
 error:
+	if (rv == QUIC_STATUS_ABORTED)
+		return (NNG_ECANCELED);
 	return (NNG_ECLOSED);
 }
 

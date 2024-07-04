@@ -63,6 +63,18 @@ nng_mqtt_msg_get_packet_type(nng_msg *msg)
 }
 
 void
+nng_mqtt_msg_set_bridge_bool(nng_msg *msg, bool bridged)
+{
+	nni_mqtt_msg_set_bridge_bool(msg, bridged);
+}
+
+bool
+nng_mqtt_msg_get_bridge_bool(nng_msg *msg)
+{
+	return nni_mqtt_msg_get_bridge_bool(msg);
+}
+
+void
 nng_mqtt_msg_set_connect_clean_session(nng_msg *msg, bool clean_session)
 {
 	nni_mqtt_msg_set_connect_clean_session(msg, clean_session);
@@ -1014,6 +1026,7 @@ nng_mqtt_subscribe_async(nng_mqtt_client *client, nng_mqtt_topic_qos *sbs, size_
 		if (nni_lmq_put((nni_lmq *)client->msgq, submsg) != 0) {
 			nng_msg_free(submsg);
 			log_warn("subscribe failed due to busy aio");
+			return -1;
 		}
 		return 1;
 	}

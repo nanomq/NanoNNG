@@ -17,6 +17,7 @@
 
 #include "core/sockfd.h"
 #include "core/tcp.h"
+#include "core/udp.h"
 #include "supplemental/tls/tls_api.h"
 #include "supplemental/websocket/websocket.h"
 
@@ -226,6 +227,11 @@ static struct {
 	    .scheme         = "nmq-wss",
 	    .dialer_alloc   = nni_ws_dialer_alloc,
 	    .listener_alloc = nni_ws_listener_alloc,
+	},
+	{
+	    .scheme         = "udp",
+	    .dialer_alloc   = nni_udp_dialer_alloc,
+	    // TODO .listener_alloc = nni_udp_listener_alloc,
 	},
 #ifdef SUPP_QUIC
 	{
