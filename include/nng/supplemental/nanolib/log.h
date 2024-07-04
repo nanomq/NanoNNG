@@ -23,6 +23,7 @@ extern "C" {
 #define LOG_TO_FILE (1 << 0)
 #define LOG_TO_CONSOLE (1 << 1)
 #define LOG_TO_SYSLOG (1 << 2)
+#define LOG_TO_UDS (1 << 3)
 
 typedef struct conf_log conf_log;
 struct conf_log {
@@ -30,6 +31,7 @@ struct conf_log {
 	int      level;
 	char    *dir;
 	char    *file;
+	char    *uds_addr;
 	FILE    *fp;
 	char    *abs_path;        // absolut path of log file
 	char    *rotation_sz_str; // 1000KB, 100MB, 10GB
@@ -68,6 +70,8 @@ NNG_DECL int         log_add_callback(
 NNG_DECL void log_add_console(int level, void *mtx);
 NNG_DECL int  log_add_fp(FILE *fp, int level, void *mtx, conf_log *config);
 NNG_DECL void log_add_syslog(const char *log_name, uint8_t level, void *mtx);
+NNG_DECL void log_add_uds(const char *uds_path, const char *log_name, uint8_t level, void *mtx);
+NNG_DECL void uds_closelog(void);
 NNG_DECL void log_log(int level, const char *file, int line, const char *func,
     const char *fmt, ...);
 NNG_DECL void log_clear_callback();

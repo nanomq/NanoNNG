@@ -653,11 +653,12 @@ conf_parse(conf *nanomq_conf)
 static void
 conf_log_init(conf_log *log)
 {
-	log->level = NNG_LOG_WARN;
-	log->file  = NULL;
-	log->dir   = NULL;
-	log->type  = LOG_TO_CONSOLE;
-	log->fp    = NULL;
+	log->level    = NNG_LOG_WARN;
+	log->file     = NULL;
+	log->dir      = NULL;
+	log->type     = LOG_TO_CONSOLE;
+	log->fp       = NULL;
+	log->uds_addr = NULL;
 
 	log->abs_path        = NULL;
 	log->rotation_sz_str = NULL;
@@ -939,7 +940,6 @@ conf_init(conf *nanomq_conf)
 
 	nanomq_conf->exchange.count           = 0;
 	nanomq_conf->exchange.nodes           = NULL;
-	nanomq_conf->exchange.exchange_url    = NULL;
 
 	nanomq_conf->parquet.enable           = false;
 	nanomq_conf->parquet.encryption.enable= false;
@@ -3936,7 +3936,6 @@ void
 conf_fini(conf *nanomq_conf)
 {
 	nng_strfree(nanomq_conf->url);
-	nng_strfree(nanomq_conf->exchange.exchange_url);
 	nng_strfree(nanomq_conf->conf_file);
 	nng_strfree(nanomq_conf->websocket.tls_url);
 

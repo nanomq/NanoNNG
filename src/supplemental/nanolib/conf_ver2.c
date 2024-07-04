@@ -489,6 +489,9 @@ conf_log_parse_ver2(conf *config, cJSON *jso)
 			} else if (!strcmp("syslog",
 			               cJSON_GetStringValue(jso_log_to_ele))) {
 				log->type |= LOG_TO_SYSLOG;
+			} else if (!strcmp("uds",
+			               cJSON_GetStringValue(jso_log_to_ele))) {
+				log->type |= LOG_TO_UDS;
 			} else {
 				log_error("Unsupport log to");
 			}
@@ -500,6 +503,13 @@ conf_log_parse_ver2(conf *config, cJSON *jso)
 			log->level = rv;
 		} else {
 			log->level = NNG_LOG_ERROR;
+		}
+
+		hocon_read_str(log, uds_addr, jso_log);
+		if (0 != (log->type & LOG_TO_UDS)) {
+			if (!log->uds_addr) {
+				log_error("uds is enable but uds_addr is NULL!");
+			}
 		}
 
 		hocon_read_str(log, dir, jso_log);
@@ -843,7 +853,8 @@ conf_bridge_conn_will_properties_parse_ver2(
 	    jso_prop, &prop->user_property_size);
 }
 
-static char *split_vin(char *str)
+static char *
+split_vin(char *str)
 {
 	char *after = strstr(str, "${VIN}");
 	if (after) {
@@ -853,7 +864,8 @@ static char *split_vin(char *str)
 	return after;
 }
 
-static char *concat_str(char *b, const char *m, char *a)
+static char *
+concat_str(char *b, const char *m, char *a)
 {
 	size_t new_len = strlen(b) + strlen(m) + strlen(a) + 1;
 	char *new      = nng_alloc(new_len);
@@ -861,11 +873,12 @@ static char *concat_str(char *b, const char *m, char *a)
 	return new;
 }
 
-static char *check_and_replace_vin(char *origin, const char *replace)
+static char *
+check_and_replace_vin(char *origin, const char *replace)
 {
-	char *new = origin;
+	char *new        = origin;
 	char *vin_before = origin;
-	char *vin_after = NULL;
+	char *vin_after  = NULL;
 
 	if ((vin_after = split_vin(origin)) != NULL) {
 		new = concat_str(vin_before, replace, vin_after);
@@ -896,11 +909,15 @@ update_forward_vin(conf_bridge_node *node, const char *vin)
 	if (node->forwards_list) {
 		for (size_t i = 0; i < node->forwards_count; i++) {
 			node->forwards_list[i]->remote_topic =
-			    check_and_replace_vin(node->forwards_list[i]->remote_topic, vin);
-			node->forwards_list[i]->remote_topic_len = strlen(node->forwards_list[i]->remote_topic);
+			    check_and_replace_vin(
+			        node->forwards_list[i]->remote_topic, vin);
+			node->forwards_list[i]->remote_topic_len =
+			    strlen(node->forwards_list[i]->remote_topic);
 			node->forwards_list[i]->local_topic =
-			    check_and_replace_vin(node->forwards_list[i]->local_topic, vin);
-			node->forwards_list[i]->local_topic_len = strlen(node->forwards_list[i]->local_topic);
+			    check_and_replace_vin(
+			        node->forwards_list[i]->local_topic, vin);
+			node->forwards_list[i]->local_topic_len =
+			    strlen(node->forwards_list[i]->local_topic);
 		}
 	}
 }
@@ -910,8 +927,9 @@ update_subscription_vin(conf_bridge_node *node, const char *vin)
 {
 	if (node->sub_list) {
 		for (size_t i = 0; i < node->sub_count; i++) {
-			node->sub_list[i]->remote_topic = check_and_replace_vin(
-			    node->sub_list[i]->remote_topic, vin);
+			node->sub_list[i]->remote_topic =
+			    check_and_replace_vin(
+			        node->sub_list[i]->remote_topic, vin);
 			node->sub_list[i]->remote_topic_len =
 			    strlen(node->sub_list[i]->remote_topic);
 		}
@@ -937,8 +955,7 @@ update_bridge_node_vin(conf_bridge_node *node, int type)
 {
 	if (gvin != NULL) {
 
-		switch (type)
-		{
+		switch (type) {
 		case CONF_NODE_CLIENTID:
 			update_clientid_vin(node, gvin);
 			break;
@@ -953,14 +970,16 @@ update_bridge_node_vin(conf_bridge_node *node, int type)
 	}
 }
 
-const char* conf_get_vin(void)
+const char *
+conf_get_vin(void)
 {
 	return gvin;
 }
 
-void conf_free_vin()
+void
+conf_free_vin()
 {
-	nng_strfree((char*) gvin);
+	nng_strfree((char *) gvin);
 }
 
 static void
@@ -1353,18 +1372,21 @@ conf_exchange_parse_ver2(conf *config, cJSON *jso)
 
 	cJSON_ArrayForEach(node_item, node_array)
 	{
-		hocon_read_str(conf_exchange, exchange_url, node_item);
 		conf_exchange_node *node = NNI_ALLOC_STRUCT(node);
 		node->sock               = NULL;
 		node->topic              = NULL;
 		node->name               = NULL;
 		node->rbufs              = NULL;
 		node->rbufs_sz           = 0;
+		node->exchange_url       = NULL;
+
+		hocon_read_str(node, exchange_url, node_item);
+
 		conf_exchange_node_parse(node, node_item);
 
 		conf_exchange_encryption *enc = NNI_ALLOC_STRUCT(enc);
-		enc->enable = false;
-		enc->key = NULL;
+		enc->enable                   = false;
+		enc->key                      = NULL;
 		conf_exchange_encryption_parse(enc, node_item);
 		config->exchange.encryption = enc;
 
