@@ -1075,9 +1075,9 @@ mqtt_timer_cb(void *arg)
 		return;
 	}
 
-	// If batchcnt > 0. Batch sending was started. So handle batch first. 
+	// If batchcnt > 0. Batch sending was started. So handle batch first.
 	if (s->batchcnt > 0 && s->batchcnt < s->batchsz) {
-		pid = s->lastpid + 1;
+		pid = ++ s->lastpid;
 		msg = nni_id_get_min(&p->sent_unack, &pid);
 		s->batchcnt ++;
 	}
@@ -1095,6 +1095,8 @@ mqtt_timer_cb(void *arg)
 		} else {
 			nni_lmq_put(&p->send_messages, msg);
 		}
+	} else {
+		log_warn("Batch sending id%d missing", pid);
 	}
 	if (s->batchcnt > 0) {
 		s->batchcnt %= s->batchsz;
