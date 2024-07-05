@@ -778,7 +778,7 @@ nmq_connack_encode(nng_msg *msg, conn_param *cparam, uint8_t reason)
 
 	size_t         msg_len    = nng_msg_len(msg);
 	uint8_t        var_len[4] = { 0 };
-	struct pos_buf buf = { .curpos = &var_len[0], .endpos = &var_len[4] };
+	struct pos_buf buf = { .curpos = &var_len[0], .endpos = &var_len[3] };
 
 	int     bytes = write_variable_length_value(msg_len, &buf);
 	uint8_t cmd   = CMD_CONNACK;
