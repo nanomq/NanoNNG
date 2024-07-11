@@ -274,8 +274,9 @@ typedef struct mqtt_msg_t {
 	// is_copied is for bridging(if true needs free)
 	bool is_copied : 1;  /* indicates string or array members are copied */
 	bool initialized : 1; /* message is decoded or encoded*/
-	uint8_t _unused : 1;
+	bool sub_retain : 1; /* message coming from sub action */
 } mqtt_msg;
+// bridged bit: x : x : x : x : x : retain via sub  : bridged
 
 NNG_DECL int mqtt_get_remaining_length(
     uint8_t *, uint32_t, uint32_t *, uint8_t *);
@@ -339,6 +340,8 @@ NNG_DECL void nni_mqtt_msg_set_packet_type(nni_msg *, nni_mqtt_packet_type);
 NNG_DECL nni_mqtt_packet_type nni_mqtt_msg_get_packet_type(nni_msg *);
 NNG_DECL void nni_mqtt_msg_set_bridge_bool(nni_msg *msg, bool bridged);
 NNG_DECL bool nni_mqtt_msg_get_bridge_bool(nni_msg *msg);
+NNG_DECL bool nni_mqtt_msg_get_sub_retain_bool(nni_msg *msg);
+NNG_DECL void nni_mqtt_msg_set_sub_retain_bool(nni_msg *msg, bool retain);
 
 // mqtt packet id
 // NOTE: not all packet have a packet id field
