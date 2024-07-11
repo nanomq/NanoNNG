@@ -75,6 +75,18 @@ nng_mqtt_msg_get_bridge_bool(nng_msg *msg)
 }
 
 void
+nng_mqtt_msg_set_sub_retain_bool(nng_msg *msg, bool retain)
+{
+	nni_mqtt_msg_set_sub_retain_bool(msg, retain);
+}
+
+bool
+nng_mqtt_msg_get_sub_retain_bool(nng_msg *msg)
+{
+	return nni_mqtt_msg_get_sub_retain_bool(msg);
+}
+
+void
 nng_mqtt_msg_set_connect_clean_session(nng_msg *msg, bool clean_session)
 {
 	nni_mqtt_msg_set_connect_clean_session(msg, clean_session);
