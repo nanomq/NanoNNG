@@ -1087,36 +1087,64 @@ static char* get_cJsonStr(cJSON *obj, const char* string)
 	return str;
 }
 
-static void update_prefix(char** uptopic, const char* pre)
+static void update_prefix(char** uptopic, const char* pre, const char *subpre)
 {
-	if(pre == NULL)
+	int presz, subpresz;
+	if (pre == NULL)
+		presz = 0;
+	else
+		presz = strlen(pre);
+	if (subpre == NULL)
+		subpresz = 0;
+	else
+		subpresz = strlen(subpre);
+	if (presz == 0 && subpresz == 0)
 		return;
+
 	char *topic = *uptopic;
-	char *tmp   = nni_alloc(strlen(pre) + strlen(topic) + 1);
-	if (tmp != NULL) {
-		strcpy(tmp, pre);
-		strcat(tmp, topic);
-		nng_strfree(topic);
-		topic = nng_strdup(tmp);
-	}
-	nng_strfree(tmp);
-	*uptopic = topic;
+	char *restopic = nni_alloc(strlen(topic) + presz + subpresz + 1);
+	if (restopic == NULL)
+		return;
+	memset(restopic, 0, strlen(topic) + presz + subpresz + 1);
+
+	if (presz != 0)
+		strcat(restopic, pre);
+	if (subpresz != 0)
+		strcat(restopic, subpre);
+	strcat(restopic, topic);
+	nng_strfree(topic);
+
+	*uptopic = restopic;
 }
 
-static void update_suffix(char** uptopic, const char* suf)
+static void update_suffix(char** uptopic, const char* suf, const char *subsuf)
 {
-	if(suf == NULL)
+	int sufsz, subsufsz;
+	if (suf == NULL)
+		sufsz = 0;
+	else
+		sufsz = strlen(suf);
+	if (subsuf == NULL)
+		subsufsz = 0;
+	else
+		subsufsz = strlen(subsuf);
+	if (sufsz == 0 && subsufsz == 0)
 		return;
+
 	char *topic = *uptopic;
-	char *tmp   = nni_alloc(strlen(topic) + strlen(suf) + 1);
-	if (tmp != NULL) {
-		strcpy(tmp, topic);
-		strcat(tmp, suf);
-		nng_strfree(topic);
-		topic = nng_strdup(tmp);
-	}
-	nng_strfree(tmp);
-	*uptopic = topic;
+	char *restopic = nni_alloc(strlen(topic) + sufsz + subsufsz + 1);
+	if (restopic == NULL)
+		return;
+	memset(restopic, 0, strlen(topic) + sufsz + subsufsz + 1);
+
+	strcat(restopic, topic);
+	if (subsufsz != 0)
+		strcat(restopic, subsuf);
+	if (sufsz != 0)
+		strcat(restopic, suf);
+	nng_strfree(topic);
+
+	*uptopic = restopic;
 }
 
 void
@@ -1159,10 +1187,12 @@ conf_bridge_node_parse(
 			NNI_FREE_STRUCT(s);
 			continue;
 		}
-		update_prefix(&(s->remote_topic), pre_remote);
-		update_prefix(&(s->local_topic), pre_local);
-		update_suffix(&(s->remote_topic), suf_remote);
-		update_suffix(&(s->local_topic), suf_local);
+		char *prefix = get_cJsonStr(forward, "prefix");
+		char *suffix = get_cJsonStr(forward, "suffix");
+		update_prefix(&(s->remote_topic), pre_remote, prefix);
+		update_prefix(&(s->local_topic), pre_local, prefix);
+		update_suffix(&(s->remote_topic), suf_remote, suffix);
+		update_suffix(&(s->local_topic), suf_local, suffix);
 		s->remote_topic_len = strlen(s->remote_topic);
 		s->local_topic_len  = strlen(s->local_topic);
 		for (int i = 0; i < (int) s->remote_topic_len; ++i)
@@ -1204,6 +1234,12 @@ conf_bridge_node_parse(
 			NNI_FREE_STRUCT(s);
 			continue;
 		}
+		char *prefix = get_cJsonStr(subscription, "prefix");
+		char *suffix = get_cJsonStr(subscription, "suffix");
+		update_prefix(&(s->remote_topic), pre_remote, prefix);
+		update_prefix(&(s->local_topic), pre_local, prefix);
+		update_suffix(&(s->remote_topic), suf_remote, suffix);
+		update_suffix(&(s->local_topic), suf_local, suffix);
 		s->remote_topic_len = strlen(s->remote_topic);
 		s->local_topic_len  = strlen(s->local_topic);
 		for (int i = 0; i < (int) s->local_topic_len; ++i)
