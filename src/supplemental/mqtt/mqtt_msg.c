@@ -264,7 +264,10 @@ bool
 nni_mqtt_msg_get_sub_retain_bool(nni_msg *msg)
 {
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
-	return proto_data->sub_retain;
+	if (proto_data != NULL)
+		return proto_data->sub_retain;
+	else
+		return false;
 }
 
 const char *
