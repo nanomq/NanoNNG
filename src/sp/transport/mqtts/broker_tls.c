@@ -1297,7 +1297,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 				tprop_bytes   = 1;
 				len_offset    = 1;
 			}
-			if (info->rap == 0) {
+			if (info->rap == 0 && !nni_mqtt_msg_get_sub_retain_bool(msg)) {
 				fixheader = fixheader & 0xFE;
 			}
 			if (sub_id != 0) {
