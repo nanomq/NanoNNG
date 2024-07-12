@@ -77,7 +77,8 @@ struct mqtt_pipe_s {
 	nni_id_map      recv_unack;    // recv messages unacknowledged
 	nni_aio         send_aio;      // send aio to the underlying transport
 	nni_aio         recv_aio;      // recv aio to the underlying transport
-	nni_aio         time_aio;      // timer aio to resend unack msg
+	nni_aio         time_aio;      // timer aio to trigger batch_aio and ping
+	nni_aio         batch_aio;     // batch aio to resend unack msg
 	nni_lmq         recv_messages; // recv messages queue
 	nni_lmq         send_messages; // send messages queue
 	uint16_t        rid;           // index of resending packet id
@@ -332,6 +333,7 @@ mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	nni_aio_init(&p->send_aio, mqtt_send_cb, p);
 	nni_aio_init(&p->recv_aio, mqtt_recv_cb, p);
 	nni_aio_init(&p->time_aio, mqtt_timer_cb, p);
+	nni_aio_init(&p->batch_aio, mqtt_batch_cb, p);
 	// Packet IDs are 16 bits
 	// We start at a random point, to minimize likelihood of
 	// accidental collision across restarts.
@@ -374,6 +376,7 @@ mqtt_pipe_fini(void *arg)
 	nni_aio_fini(&p->send_aio);
 	nni_aio_fini(&p->recv_aio);
 	nni_aio_fini(&p->time_aio);
+	nni_aio_fini(&p->batch_aio);
 
 	nni_id_map_fini(&p->sent_unack);
 	nni_id_map_fini(&p->recv_unack);
@@ -546,6 +549,7 @@ mqtt_pipe_stop(void *arg)
 	nni_aio_stop(&p->send_aio);
 	nni_aio_stop(&p->recv_aio);
 	nni_aio_stop(&p->time_aio);
+	nni_aio_stop(&p->batch_aio);
 }
 
 static int
@@ -560,6 +564,7 @@ mqtt_pipe_close(void *arg)
 	nni_aio_close(&p->send_aio);
 	nni_aio_close(&p->recv_aio);
 	nni_aio_close(&p->time_aio);
+	nni_aio_close(&p->batch_aio);
 
 #if defined(NNG_SUPP_SQLITE)
 	// flush to disk
@@ -618,6 +623,61 @@ mqtt_pipe_close(void *arg)
 	return 0;
 }
 
+static void
+mqtt_batch_cb(void *arg)
+{
+	mqtt_pipe_t *p = arg;
+	mqtt_sock_t *s = p->mqtt_sock;
+	nni_msg     *msg = NULL;
+	uint16_t     pid;
+	uint16_t     ptype;
+	nni_aio     *aio = NULL;
+
+	if (nng_aio_result(&p->batch_aio) != 0) {
+		log_error("Batch aio error!");
+		return;
+	}
+	nni_mtx_lock(&s->mtx);
+	if (NULL == p || nni_atomic_get_bool(&p->closed)) {
+		nni_mtx_unlock(&s->mtx);
+		return;
+	}
+
+	// If batchcnt > 0. Batch sending was started.
+	if (s->batchcnt > 0) {
+		if (s->batchcnt < s->batchsz) {
+			pid = ++ s->lastpid;
+			aio = nni_id_get_min(&p->sent_unack, &pid);
+		} else {
+			// This batch sending finished
+			s->batchcnt = 0;
+			nni_mtx_unlock(&s->mtx);
+			return;
+		}
+	} else {
+		// The first run of this batch
+		aio = nni_id_get_min(&p->sent_unack, &pid);
+	}
+	s->batchcnt ++;
+	if (aio != NULL && (msg = nni_aio_get_msg(aio)) != NULL) {
+		nni_msg_clone(msg);
+		s->lastpid = pid;
+		log_info("NO.%d Batch sending id%d msg%p", s->batchcnt, pid, msg);
+		ptype = nni_mqtt_msg_get_packet_type(msg);
+		if (ptype == NNG_MQTT_PUBLISH)
+			nni_mqtt_msg_set_publish_dup(msg, true);
+		if (!p->busy) {
+			p->busy = true;
+			nni_aio_set_msg(&p->send_aio, msg);
+			nni_pipe_send(p->pipe, &p->send_aio);
+		} else {
+			nni_lmq_put(&p->send_messages, msg);
+		}
+	}
+	nni_mtx_unlock(&s->mtx);
+	nni_sleep_aio(s->batchtmo, &p->batch_aio);
+}
+
 // Timer callback, we use it for retransmitting.
 static void
 mqtt_timer_cb(void *arg)
@@ -630,43 +690,12 @@ mqtt_timer_cb(void *arg)
 	nni_aio     *aio = NULL;
 
 	if (nng_aio_result(&p->time_aio) != 0) {
-		log_info("Timer aio error!");
+		log_error("Timer aio error!");
 		return;
 	}
 	nni_mtx_lock(&s->mtx);
 	if (NULL == p || nni_atomic_get_bool(&p->closed)) {
 		nni_mtx_unlock(&s->mtx);
-		return;
-	}
-
-	// If batchcnt > 0. Batch sending was started. So handle batch first. 
-	if (s->batchcnt > 0 && s->batchcnt < s->batchsz) {
-		pid = s->lastpid + 1;
-		aio = nni_id_get_min(&p->sent_unack, &pid);
-		s->batchcnt ++;
-	}
-	if (aio != NULL && (msg = nni_aio_get_msg(aio)) != NULL) {
-		nni_msg_clone(msg);
-		s->lastpid = pid;
-		log_debug("NO.%d Batch sending id%d msg%p", s->batchcnt-1, pid, msg);
-		ptype = nni_mqtt_msg_get_packet_type(msg);
-		if (ptype == NNG_MQTT_PUBLISH)
-			nni_mqtt_msg_set_publish_dup(msg, true);
-		if (!p->busy) {
-			p->busy = true;
-			nni_aio_set_msg(&p->send_aio, msg);
-			nni_pipe_send(p->pipe, &p->send_aio);
-		} else {
-			nni_lmq_put(&p->send_messages, msg);
-		}
-	}
-	if (s->batchcnt > 0) {
-		s->batchcnt %= s->batchsz;
-		nni_mtx_unlock(&s->mtx);
-		if (s->batchcnt == 0)
-			nni_sleep_aio(s->retry, &p->time_aio);
-		else
-			nni_sleep_aio(s->batchtmo, &p->time_aio);
 		return;
 	}
 
@@ -695,28 +724,8 @@ mqtt_timer_cb(void *arg)
 		return;
 	}
 
-	// start message resending
-	aio = nni_id_get_min(&p->sent_unack, &pid);
-	if (aio != NULL && (msg = nni_aio_get_msg(aio)) != NULL) {
-		nni_msg_clone(msg);
-		s->lastpid = pid;
-		s->batchcnt ++;
-		log_debug("Batch sending started id%d msg%p", pid, msg);
-		ptype = nni_mqtt_msg_get_packet_type(msg);
-		if (ptype == NNG_MQTT_PUBLISH)
-			nni_mqtt_msg_set_publish_dup(msg, true);
-		if (!p->busy) {
-			p->busy = true;
-			nni_aio_set_msg(&p->send_aio, msg);
-			nni_pipe_send(p->pipe, &p->send_aio);
-
-			nni_mtx_unlock(&s->mtx);
-			nni_sleep_aio(s->batchtmo, &p->time_aio);
-			return;
-		} else {
-			nni_lmq_put(&p->send_messages, msg);
-		}
-	}
+	nni_aio_finish(&p->batch_aio, 0, 0); // start batch resend
+										 //
 #if defined(NNG_SUPP_SQLITE)
 	if (!p->busy) {
 		nni_mqtt_sqlite_option *sqlite =
