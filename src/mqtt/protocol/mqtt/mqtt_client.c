@@ -40,6 +40,7 @@ static void mqtt_sock_recv(void *arg, nni_aio *aio);
 static void mqtt_send_cb(void *arg);
 static void mqtt_recv_cb(void *arg);
 static void mqtt_timer_cb(void *arg);
+static void mqtt_batch_cb(void *arg);
 
 static int  mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s);
 static void mqtt_pipe_fini(void *arg);
@@ -684,10 +685,6 @@ mqtt_timer_cb(void *arg)
 {
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
-	nni_msg     *msg = NULL;
-	uint16_t     pid;
-	uint16_t     ptype;
-	nni_aio     *aio = NULL;
 
 	if (nng_aio_result(&p->time_aio) != 0) {
 		log_error("Timer aio error!");
@@ -727,6 +724,7 @@ mqtt_timer_cb(void *arg)
 	nni_aio_finish(&p->batch_aio, 0, 0); // start batch resend
 										 //
 #if defined(NNG_SUPP_SQLITE)
+	nni_msg *msg = NULL;
 	if (!p->busy) {
 		nni_mqtt_sqlite_option *sqlite =
 		    mqtt_sock_get_sqlite_option(s);
