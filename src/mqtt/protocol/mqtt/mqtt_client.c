@@ -721,8 +721,9 @@ mqtt_timer_cb(void *arg)
 		return;
 	}
 
-	nni_aio_finish(&p->batch_aio, 0, 0); // start batch resend
-										 //
+	if (s->batchcnt == 0)
+		nni_aio_finish(&p->batch_aio, 0, 0); // start batch resend
+
 #if defined(NNG_SUPP_SQLITE)
 	nni_msg *msg = NULL;
 	if (!p->busy) {
