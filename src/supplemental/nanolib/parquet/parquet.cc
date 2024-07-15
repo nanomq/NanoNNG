@@ -720,8 +720,14 @@ parquet_write_launcher(conf_parquet *conf)
 	INIT_QUEUE(parquet_queue);
 	parquet_file_queue_init(conf);
 	is_available = true;
-	thread write_loop(parquet_write_loop_v2, conf);
-	write_loop.detach();
+	pthread_t write_thread;
+	int result = 0;
+	result = pthread_create(&write_thread, NULL, parquet_write_loop_v2, conf);
+	if (result != 0) {
+		log_error("Failed to create parquet write thread.");
+		return -1;
+	}
+
 	return 0;
 }
 
