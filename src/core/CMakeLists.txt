@@ -68,6 +68,8 @@ nng_sources(
         taskq.h
         tcp.c
         tcp.h
+        udp.c
+        udp.h
         thread.c
         thread.h
         url.c
@@ -87,3 +89,4 @@ nng_test(reconnect_test)
 nng_test(sock_test)
 nng_test(stats_test)
 nng_test(url_test)
+nng_test(udp2_test)

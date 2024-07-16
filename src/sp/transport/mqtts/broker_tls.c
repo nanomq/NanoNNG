@@ -212,14 +212,15 @@ tlstran_pipe_fini(void *arg)
   	}
 
 	nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
+	nng_stream_free(p->conn);
 	nni_aio_free(p->qsaio);
 	nni_aio_free(p->rpaio);
 	nni_aio_free(p->rxaio);
 	nni_aio_free(p->txaio);
 	nni_aio_free(p->negoaio);
-	nng_stream_free(p->conn);
+
 	nni_lmq_fini(&p->rslmq);
-	// nni_mtx_fini(&p->mtx);
+	nni_mtx_fini(&p->mtx);
 	NNI_FREE_STRUCT(p);
 	log_trace(" ************ tlstran_pipe_finit [%p] ************ ", p);
 }
@@ -1226,6 +1227,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	mlen    = nni_msg_len(msg);
 	hlen    = nni_msg_header_len(msg);
 	qos_pac = nni_msg_get_pub_qos(msg);
+
 	NNI_GET16(body, tlen);
 	if (qos_pac == 0) {
 		// simply set DUP flag to 0 & correct error from client
@@ -1295,7 +1297,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 				tprop_bytes   = 1;
 				len_offset    = 1;
 			}
-			if (info->rap == 0) {
+			if (info->rap == 0 && !nni_mqtt_msg_get_sub_retain_bool(msg)) {
 				fixheader = fixheader & 0xFE;
 			}
 			if (sub_id != 0) {

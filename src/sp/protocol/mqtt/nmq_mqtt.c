@@ -231,7 +231,7 @@ nano_pipe_timer_cb(void *arg)
 	}
 	qos_backoff = p->ka_refresh * (qos_duration) *1000 -
 	    p->keepalive * qos_backoff * 1000;
-	log_debug("check pipe keepalive interval %d backoff %f, ka %d",
+	log_trace("check pipe keepalive interval %d backoff %f, ka %d",
 			  p->keepalive, qos_backoff, p->ka_refresh);
 	if (qos_backoff > 0) {
 		log_warn(
@@ -679,7 +679,7 @@ nano_pipe_start(void *arg)
 		log_warn("IPv6 address is not supported in event msg yet");
 	}
 
-	log_debug("client connected! addr [%s port [%d]\n",
+	log_debug("client connected! addr [%s] port [%d]\n",
 	    p->conn_param->ip_addr_v4, addr.s_in.sa_port);
 
 session_keeping:

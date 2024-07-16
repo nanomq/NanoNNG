@@ -717,13 +717,23 @@ nni_mqtt_msg_append_u32(nni_msg *msg, uint32_t val)
 	nni_msg_append(msg, buf, 4);
 }
 
-static void
+static int
 nni_mqtt_msg_append_varint(nni_msg *msg, uint32_t val)
 {
+	if (val > 268435455) {
+		log_warn("variable value overflow!");
+		return -1;
+	}
 	uint8_t        buf[4] = { 0 };
-	struct pos_buf pbuf   = { .curpos = &buf[0], .endpos = &buf[4] };
+	struct pos_buf pbuf   = { .curpos = &buf[0], .endpos = &buf[3] };
 	int            bytes  = write_variable_length_value(val, &pbuf);
-	nni_msg_append(msg, buf, bytes);
+	if (bytes > -1) {
+		nni_msg_append(msg, buf, bytes);
+		return 0;
+	} else {
+		log_warn("invalid var value!");
+		return -1;
+	}
 }
 
 static void
@@ -2776,9 +2786,9 @@ write_variable_length_value(uint32_t value, struct pos_buf *buf)
 		}
 		*(buf->curpos++) = byte;
 		count++;
-	} while (value > 0 && count < 5);
+	} while (value > 0 && count < 4);
 
-	if (count == 5) {
+	if (count == 4) {
 		return -1;
 	}
 	return count;
@@ -3057,12 +3067,12 @@ read_packet_length(struct pos_buf *buf, uint32_t *length)
 /**
  * packet: orginal buffer
  * len: max len to decode
- * remainning_length: result
+ * remaining_length: result
  * used_bytes: bits used
 */
 int
 mqtt_get_remaining_length(uint8_t *packet, uint32_t len,
-    uint32_t *remainning_length, uint8_t *used_bytes)
+    uint32_t *remaining_length, uint8_t *used_bytes)
 {
 	int      multiplier = 1;
 	int32_t  lword      = 0;
@@ -3083,7 +3093,7 @@ mqtt_get_remaining_length(uint8_t *packet, uint32_t len,
 			if (lbytes > 1 && byte == 0) {
 				return MQTT_ERR_INVAL;
 			} else {
-				*remainning_length = lword;
+				*remaining_length = lword;
 				if (used_bytes) {
 					*used_bytes = lbytes;
 				}
@@ -3886,7 +3896,9 @@ check_properties(property *prop, nni_msg *msg)
 		return SUCCESS;
 	}
 	// uint32_t pos = 0;
+#ifdef MQTTV5_VERIFY
 	bool mei = false; // MESSAGE_EXPIRY_INTERVAL:
+#endif
 	for (property *p1 = prop->next; p1 != NULL; p1 = p1->next) {
 #ifdef MQTTV5_VERIFY
 		switch (p1->id) {
@@ -4181,6 +4193,7 @@ out:
 int
 encode_properties(nni_msg *msg, property *prop, uint8_t cmd)
 {
+	int rv = 0;
 	uint8_t        rlen[4] = { 0 };
 	uint32_t       prop_len;
 	struct pos_buf buf     = { .curpos = &rlen[0],
@@ -4257,7 +4270,7 @@ encode_properties(nni_msg *msg, property *prop, uint8_t cmd)
 			nni_mqtt_msg_append_u32(msg, p->data.p_value.u32);
 			break;
 		case VARINT:
-			nni_mqtt_msg_append_varint(
+			rv = nni_mqtt_msg_append_varint(
 			    msg, p->data.p_value.varint);
 			break;
 		case BINARY:
@@ -4280,7 +4293,7 @@ encode_properties(nni_msg *msg, property *prop, uint8_t cmd)
 		}
 	}
 
-	return 0;
+	return rv;
 }
 
 /* introduced from mqtt_parser, might be duplicated */
@@ -4349,7 +4362,7 @@ nni_mqtt_pubres_header_encode(nng_msg *msg, uint8_t cmd)
 {
 	size_t         msg_len    = nng_msg_len(msg);
 	uint8_t        var_len[4] = { 0 };
-	struct pos_buf buf = { .curpos = &var_len[0], .endpos = &var_len[4] };
+	struct pos_buf buf = { .curpos = &var_len[0], .endpos = &var_len[3] };
 
 	int bytes = write_variable_length_value(msg_len, &buf);
 	if (cmd == CMD_PUBREL) {

@@ -3,12 +3,13 @@
 #include "nng/supplemental/nanolib/file.h"
 #include "core/nng_impl.h"
 #include "core/defs.h"
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <errno.h>
-
 #define INDEX_FILE_NAME ".idx"
 
+#define MAX_CALLBACKS 10
+
+#if NNG_PLATFORM_WINDOWS
+#define nano_localtime(t, pTm) localtime_s(pTm, t)
+#else
 #if defined(SUPP_SYSLOG)
 #include <syslog.h>
 static int syslog_socket = -1;
@@ -17,15 +18,12 @@ static const char *log_ident = NULL;
 static int log_option = 0;
 static int log_facility = LOG_USER;
 #endif
-
-#define MAX_CALLBACKS 10
-
-#if NNG_PLATFORM_WINDOWS
-#define nano_localtime(t, pTm) localtime_s(pTm, t)
-#else
 #include <sys/types.h>
 #include <unistd.h>
 #include <sys/syscall.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <errno.h>
 #define nano_localtime(t, pTm) localtime_r(t, pTm)
 #endif
 
@@ -145,7 +143,7 @@ log_add_syslog(const char *log_name, uint8_t level, void *mtx)
 	openlog(log_name, LOG_PID, LOG_DAEMON | convert_syslog_level(level));
 	log_add_callback(syslog_callback, NULL, level, mtx, NULL);
 }
-
+#ifndef NNG_PLATFORM_WINDOWS
 void
 uds_openlog(const char *uds_path, const char *ident, int option, int facility)
 {
@@ -226,6 +224,7 @@ log_add_uds(const char *uds_path, const char *log_name, uint8_t level, void *mtx
 	uds_openlog(uds_path, log_name, LOG_PID, LOG_DAEMON | convert_syslog_level(level));
 	log_add_callback(uds_syslog_callback, NULL, level, mtx, NULL);
 }
+#endif
 
 #else
 

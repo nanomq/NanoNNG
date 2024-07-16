@@ -153,10 +153,10 @@ tcptran_pipe_fini(void *arg)
 		nni_mtx_unlock(&ep->mtx);
 	}
 
+	nng_stream_free(p->conn);
 	nni_aio_free(p->rxaio);
 	nni_aio_free(p->txaio);
 	nni_aio_free(p->negoaio);
-	nng_stream_free(p->conn);
 	nni_msg_free(p->rxmsg);
 	nni_mtx_fini(&p->mtx);
 	NNI_FREE_STRUCT(p);
@@ -293,7 +293,9 @@ error:
 		ep->useraio = NULL;
 		nni_aio_finish_error(uaio, rv);
 	}
+	nni_list_remove(&ep->negopipes, p);
 	nni_mtx_unlock(&ep->mtx);
+
 	tcptran_pipe_reap(p);
 }
 
