@@ -22,7 +22,10 @@ using parquet::Repetition;
 using parquet::Type;
 using parquet::schema::GroupNode;
 using parquet::schema::PrimitiveNode;
+using parquet::Encoding;
 #define PARQUET_END 1024
+
+static uint64_t key_span[2] = { 0 };
 
 #define DO_IT_IF_NOT_NULL(func, arg1, arg2) \
 	if (arg1) {                         \
@@ -1414,4 +1417,35 @@ parquet_find_data_span_packets(conf_parquet *conf, uint64_t start_key, uint64_t 
 	}
 
 	return packets;
+}
+
+uint64_t *
+parquet_get_key_span()
+{
+	if (false == g_conf->enable) {
+		return NULL;
+	}
+	// memset static key_span
+	memset(key_span, 0, 2 * sizeof(uint64_t));
+	uint64_t file_key_span[2] = { 0 };
+
+	pthread_mutex_lock(&parquet_queue_mutex);
+	char *first_file = NULL;
+	char *last_file  = NULL;
+	if (0 < parquet_file_queue.size) {
+		first_file = static_cast<char *>(
+		    parquet_file_queue.array[parquet_file_queue.front]);
+		last_file = static_cast<char *>(
+		    parquet_file_queue.array[parquet_file_queue.rear]);
+	}
+	pthread_mutex_unlock(&parquet_queue_mutex);
+	if (first_file) {
+		get_range(first_file, key_span);
+	}
+	if (last_file) {
+		get_range(last_file, file_key_span);
+	}
+
+	key_span[1] = file_key_span[1];
+	return key_span;
 }
