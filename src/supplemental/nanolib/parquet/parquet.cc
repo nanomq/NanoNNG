@@ -519,6 +519,8 @@ again:
 		builder.created_by("NanoMQ")
 		    ->version(parquet::ParquetVersion::PARQUET_2_6)
 		    ->data_page_version(parquet::ParquetDataPageVersion::V2)
+		    ->encoding("key", Encoding::DELTA_BINARY_PACKED)
+		    ->disable_dictionary("key")
 		    ->compression(static_cast<arrow::Compression::type>(
 		        conf->comp_type));
 		log_debug("check encry");
