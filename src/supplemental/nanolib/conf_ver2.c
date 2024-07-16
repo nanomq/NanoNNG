@@ -1170,12 +1170,19 @@ conf_bridge_node_parse(
 	{
 		topics *s = NNI_ALLOC_STRUCT(s);
 		s->retain = NO_RETAIN;
+		s->qos    = NO_QOS;
 		hocon_read_str(s, remote_topic, forward);
 		hocon_read_str(s, local_topic, forward);
 		cJSON *jso_key = cJSON_GetObjectItem(forward, "retain");
 		if (cJSON_IsNumber(jso_key) &&
 		    (jso_key->valuedouble == 0 || jso_key->valuedouble == 1)) {
 			s->retain = jso_key->valuedouble;
+		}
+		cJSON *jso_key2 = cJSON_GetObjectItem(forward, "qos");
+		if (cJSON_IsNumber(jso_key2) &&
+		    (jso_key2->valuedouble == 0 || jso_key2->valuedouble == 1 ||
+			 jso_key2->valuedouble == 2)) {
+			s->qos = jso_key2->valuedouble;
 		}
 		if (!s->remote_topic || !s->local_topic) {
 			log_warn("remote_topic/local_topic not found");

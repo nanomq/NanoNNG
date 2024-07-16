@@ -191,15 +191,16 @@ struct conf_websocket {
 typedef struct conf_websocket conf_websocket;
 
 #define NO_RETAIN 2 // default retain flag value, none 0, 1
+#define NO_QOS    3 // default QoS level value for forwarding bridge msg, 3 = keep old qos
 
 typedef struct {
 	char *   remote_topic;
 	uint32_t remote_topic_len;
 	char *   local_topic;
 	uint32_t local_topic_len;
-	uint8_t  qos;
 	uint8_t  nolocal;
 	uint8_t  retain; // override for retain
+	uint8_t  qos;    // override for QoS
 	uint8_t  retain_as_published;
 	uint8_t  retain_handling;
 	uint32_t stream_id; // only effective when multi_stream is enabled
