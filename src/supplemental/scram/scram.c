@@ -7,9 +7,24 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
+static char *
+gs_header()
+{
+	return ()"n,,";
+}
+
+static int
+nonce()
+{
+	return (int)nng_random();
+}
+
 uint8_t *
 scram_client_first_msg(const char *username)
 {
+	int sz = strlen(username) + 32; // gs_header + username + nonce
+	char *buf = nng_alloc(sizeof(char) * sz);
+	sprintf(buf, "%sn=%s,r=%d", gs_header(), username, nonce());
 }
 
 static uint8_t *
