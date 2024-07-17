@@ -10,4 +10,11 @@
 #ifndef NNG_SUPP_SCRAM_H
 #define NNG_SUPP_SCRAM_H
 
+uint8_t *scram_client_first_msg(const char *username);
+
+int scram_handle_client_first_msg();
+int scram_handle_server_first_msg();
+int scram_handle_client_final_msg();
+int scram_handle_server_final_msg();
+
 #endif
