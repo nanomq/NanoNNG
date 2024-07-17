@@ -9,6 +9,17 @@
 
 #include "nng/supplemental/base64/base64.h"
 
+/* TODO Is salt a global static value?
+gen_salt() ->
+    <<X:128/big-unsigned-integer>> = crypto:strong_rand_bytes(16),
+    iolist_to_binary(io_lib:format("~32.16.0b", [X])).
+*/
+static int
+gen_salt()
+{
+	return 666;
+}
+
 static char *
 gs_header()
 {
@@ -66,7 +77,7 @@ scram_client_final_msg(int nonce, const char *proof)
 server_first_message(Nonce, Salt, IterationCount) ->
     iolist_to_binary(["r=", Nonce, ",s=", base64:encode(Salt), ",i=", integer_to_list(IterationCount)]).
 */
-static uint8_t *
+static char *
 scram_server_first_msg(int nonce, const char *salt, int iteration_cnt)
 {
 	size_t saltb64sz = BASE64_ENCODE_OUT_SIZE(strlen(salt)) + 1;
@@ -104,18 +115,84 @@ scram_server_final_msg(const char * server_sig, int error)
 	return buf;
 }
 
-int
-scram_handle_client_first_msg()
+static int
+get_comma_value_len(char *payload)
 {
+	int len = 0;
+	char *it = payload;
+	while (it != NULL) {
+		if (*it == ',')
+			break;
+		len ++;
+	}
+	return len;
+}
+
+static const char *
+get_next_comma_value(char *payload, const char *payload_end)
+{
+	char *it = payload;
+	while (it != NULL) {
+		if (*it == ',')
+			break;
+		it++;
+	}
+	if (it == payload_end)
+		return NULL;
+	return it + 1;
+}
+
+// %% = gs2-cbind-flag "," [authzid] "," [reserved-mext ","] userame "," nonce ["," extensions]
+char *
+scram_handle_client_first_msg(const char *msg, int len, int iteration_cnt)
+{
+	char *it = msg;
+	char *itend = msg + len;
+	char *gs2_cbind_flag   = it;
+	int   gs2_cbind_flagsz = get_comma_value_len(it);
+	it += gs2_cbind_flagsz;
+	char *authzid          = get_next_comma_value(it, itend);
+	int   authzidsz        = get_comma_value_len(it);
+	it += authzidsz;
+	char *reserved_mext    = get_next_comma_value(it, itend);
+	int   reserved_mextsz  = get_comma_value_len(it);
+	it += reserved_mextsz;
+	char *username         = get_next_comma_value(it, itend);
+	int   usernamesz       = get_comma_value_len(it);
+	it += usernamesz;
+	char *cnonce            = get_next_comma_value(it, itend);
+	int   cnoncesz          = get_comma_value_len(it);
+	it += cnoncesz;
+	char *extensions       = get_next_comma_value(it, itend);
+	int   extensionssz     = get_comma_value_len(it);
+	// parse done
+	int snonce = nonce();
+	char csnonce[64];
+	sprintf(csnonce, "%.*s%d", cnoncesz, cnonce, snonce);
+	int salt = gen_salt();
+	return scram_server_first_msg(csnonce, salt, iteration_cnt);
+}
+
+// %% = channel-binding "," nonce ["," extensions] "," proof
+int
+scram_handle_client_final_msg(const char *msg, int len)
+{
+	char *it = msg;
+	char *itend = msg + len;
+	char *gs2_cbind_flag   = it;
+	int   gs2_cbind_flagsz = get_comma_value_len(it);
+	it += gs2_cbind_flagsz;
+	char *csnonce          = get_next_comma_value(it, itend);
+	int   csnoncesz        = get_comma_value_len(it);
+	it += csnoncesz;
+	char *proof            = get_next_comma_value(it, itend);
+	int   proofsz          = get_comma_value_len(it);
+	// parse done
+	return 0;
 }
 
 int
 scram_handle_server_first_msg()
-{
-}
-
-int
-scram_handle_client_final_msg()
 {
 }
 
