@@ -12,7 +12,7 @@
 
 uint8_t *scram_client_first_msg(const char *username);
 
-int scram_handle_client_first_msg();
+char *scram_handle_client_first_msg(const char *msg, int len, int iteration_cnt);
 int scram_handle_server_first_msg();
 int scram_handle_client_final_msg();
 int scram_handle_server_final_msg();
