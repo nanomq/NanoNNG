@@ -114,3 +114,13 @@ scram_handle_server_first_msg()
 {
 }
 
+int
+scram_handle_client_final_msg()
+{
+}
+
+int
+scram_handle_server_final_msg()
+{
+}
+
