@@ -61,8 +61,8 @@ server_key(const EVP_MD *digest, char *salt_pwd)
 static char *
 stored_key(const EVP_MD *digest, char *client_key)
 {
-	//return digest(client_key);
-	return NULL;
+	//return digest(client_key); // TODO
+	return client_key;
 }
 
 struct scram_ctx {
@@ -71,7 +71,11 @@ struct scram_ctx {
 	const EVP_MD *hmac;
 	char *client_key;
 	char *server_key;
+	char *stored_key;
 	int   iteration_cnt;
+
+	char *client_first_msg_bare;
+	char *server_first_msg;
 };
 
 void *scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, const EVP_MD *digest, int keysz)
@@ -101,7 +105,8 @@ void *scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, const EVP_MD *di
 
 	ctx->hmac = digest;
 	ctx->client_key = client_key(digest, salt_pwd);
-	ctx->client_key = server_key(digest, salt_pwd);
+	ctx->server_key = server_key(digest, salt_pwd);
+	ctx->stored_key = stored_key(digest, ctx->client_key);
 	ctx->iteration_cnt = iteration_cnt;
 
 	return (void *)ctx;
@@ -230,6 +235,15 @@ scram_handle_client_first_msg(void *arg, const char *msg, int len)
 	char *authzid          = get_next_comma_value(it, itend);
 	int   authzidsz        = get_comma_value_len(it);
 	it += authzidsz;
+
+	/*
+	peek_client_first_message_bare(Bin) ->
+    [_, One] = binary:split(Bin, <<",">>),
+    [_, Two] = binary:split(One, <<",">>),
+    Two.
+	*/
+	ctx->client_first_msg_bare = it;
+
 	char *reserved_mext    = get_next_comma_value(it, itend);
 	int   reserved_mextsz  = get_comma_value_len(it);
 	it += reserved_mextsz;
@@ -247,13 +261,27 @@ scram_handle_client_first_msg(void *arg, const char *msg, int len)
 	sprintf(csnonce, "%.*s%d", cnoncesz, cnonce, snonce);
 	char *salt = ctx->salt;
 	int   iteration_cnt = ctx->iteration_cnt;
-	return scram_server_first_msg(csnonce, salt, iteration_cnt);
+	char *server_first_msg = scram_server_first_msg(csnonce, salt, iteration_cnt);
+	ctx->server_first_msg = server_first_msg;
+	return server_first_msg;
+}
+
+/*
+peek_client_final_message_without_proof(Bin) ->
+    [ClientFinalMessageWithoutProof | _] = binary:split(Bin, <<",p=">>, [trim_all]),
+    ClientFinalMessageWithoutProof.
+*/
+static char *
+peek_client_final_msg_without_proof(const char *msg)
+{
+	return strstr(msg, ",p=");
 }
 
 // %% = channel-binding "," nonce ["," extensions] "," proof
-int
-scram_handle_client_final_msg(const char *msg, int len)
+char *
+scram_handle_client_final_msg(void *arg, const char *msg, int len)
 {
+	struct scram_ctx *ctx = arg;
 	char *it = msg;
 	char *itend = msg + len;
 	char *gs2_cbind_flag   = it;
@@ -265,7 +293,32 @@ scram_handle_client_final_msg(const char *msg, int len)
 	char *proof            = get_next_comma_value(it, itend);
 	int   proofsz          = get_comma_value_len(it);
 	// parse done
-	return 0;
+	//AuthMessage = ([ ClientFirstMessageBare,ServerFirstMessage,ClientFinalMessageWithoutProof]),
+	char *c_final_msg_without_proof = peek_client_final_msg_without_proof(msg);
+	char authmsg[256];
+	sprintf(authmsg, "%s,%s,%s",
+	    ctx->client_first_msg_bare, ctx->server_first_msg, c_final_msg_without_proof);
+	// ClientSignature = hmac(Algorithm, StoredKey, AuthMessage),
+	char *client_sig = ctx->hmac(ctx->stored_key, authmsg);
+	// ClientKey = crypto:exor(ClientProof, ClientSignature)
+	char *client_key = proof ^ client_sig; // TODO xor
+	/*
+	 case Nonce =:= CachedNonce andalso crypto:hash(Algorithm, ClientKey) =:= StoredKey of
+         true ->
+             ServerSignature = hmac(Algorithm, ServerKey, AuthMessage),
+             ServerFinalMessage = server_final_message(verifier, ServerSignature),
+             {ok, ServerFinalMessage};
+         false ->
+             {error, 'other-error'}
+     end;
+	*/
+	if (0 == strncmp(csnonce, ctx->cached_nonce, csnoncesz) &&
+	    0 == strcmp(client_key, ctx->stored_key)) {
+		char *server_sig = ctx->hmac(ctx->server_key, authmsg);
+		char *server_final_msg = scram_server_final_msg(server_sig, 0);
+		return server_final_msg;
+	}
+	return NULL;
 }
 
 int
