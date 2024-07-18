@@ -15,7 +15,7 @@ enum SCRAM_digest {
 	SCRAM_SHA256;
 };
 
-uint8_t *scram_client_first_msg(const char *username);
+uint8_t *scram_client_first_msg(void *arg, const char *username);
 void *scram_ctx_create(char *pwd, int pwdsz, int it_cnt, SCRAM_digest digest, int keysz);
 
 char *scram_handle_client_first_msg(void *arg, const char *msg, int len);
