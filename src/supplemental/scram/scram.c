@@ -356,6 +356,7 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
 	char *iteration_cnt    = get_next_comma_value(it, itend);
 	int   iteration_cntsz  = get_comma_value_len(it);
 	// parse done
+	ctx->server_first_msg  = msg;
 	char *client_first_msg_bare = ctx->client_first_msg_bare;
 	//ClientFinalMessageWithoutProof = client_final_message_without_proof(Nonce),
 	char *gh = gs_header();
@@ -366,6 +367,7 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
 	}
 	char client_final_msg_without_proof[32];
 	sprintf(client_final_msg_without_proof, "c=%s,r=%s", ghb64, nonce);
+	ctx->client_final_msg_without_proof = strdup(client_final_msg_without_proof);
 	// authmsg=[ClientFirstMessageBare,ServerFirstMessage,ClientFinalMessageWithoutProof]
 	char authmsg[256];
 	sprintf(authmsg, "%s,%s,%s",
@@ -383,8 +385,38 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
 	return scram_client_final_msg(nonce, client_proof);
 }
 
+// %% = (server-error / verifier) ["," extensions]
 char *
 scram_handle_server_final_msg(void *arg, const char *msg, int len)
 {
+	char *it = msg;
+	char *itend = msg + len;
+	char *verifier     = it;
+	int   verifiersz   = get_comma_value_len(it);
+	it += verifiersz;
+	char *extensions   = get_next_comma_value(it, itend);
+	int   extensionssz = get_comma_value_len(it);
+	// parse done
+	/*
+	ClientFinalMessageWithoutProof = client_final_message_without_proof(Nonce),
+	authmsg=[ClientFirstMessageBare,ServerFirstMessage,ClientFinalMessageWithoutProof]
+	*/
+	char authmsg[256];
+	sprintf(authmsg, "%s,%s,%s",
+	    ctx->client_first_msg_bare,
+	    ctx->server_first_msg,
+	    ctx->client_final_msg_without_proof);
+	/*
+    case Verifier =:= hmac(Algorithm, ServerKey, AuthMessage) of
+        true ->
+            ok;
+        false ->
+            {error, 'other-error'}
+    end;
+	*/
+	if (0 == strcmp(verifier, ctx->hmac(ctx->server_key, authmsg))) {
+		return NULL; // true
+	}
+	return authmsg; // return anything to indicate pass
 }
 
