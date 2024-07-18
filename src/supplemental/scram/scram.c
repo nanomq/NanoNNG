@@ -17,7 +17,7 @@ gen_salt() ->
 static int
 gen_salt()
 {
-	return 666;
+	return (int)nng_random();
 }
 
 static char *
@@ -30,6 +30,81 @@ static int
 nonce()
 {
 	return (int)nng_random();
+}
+
+static int
+salt_password(char *pwd, int pwdsz, char *salt, int saltsz, int iteration_cnt, const EVP_MD *digest, int keysz, char *result)
+{
+	return PKCS5_PBKDF2_HMAC(pwd, pwdsz, salt, saltsz, iteration_cnt, digest, keysz, result);
+}
+
+/*
+client_key(Alg, SaltedPassword) ->
+    hmac(Alg, SaltedPassword, <<"Client Key">>).
+server_key(Alg, SaltedPassword) ->
+    hmac(Alg, SaltedPassword, <<"Server Key">>).
+stored_key(Alg, ClientKey) ->
+    crypto:hash(Alg, ClientKey).
+*/
+static char *
+client_key(const EVP_MD *digest, char *salt_pwd)
+{
+	return digest(salt_pwd, "Client Key");
+}
+
+static char *
+server_key(const EVP_MD *digest, char *salt_pwd)
+{
+	return digest(salt_pwd, "Server Key");
+}
+
+static char *
+stored_key(const EVP_MD *digest, char *client_key)
+{
+	//return digest(client_key);
+	return NULL;
+}
+
+struct scram_ctx {
+	char *salt;
+	char *salt_pwd;
+	const EVP_MD *hmac;
+	char *client_key;
+	char *server_key;
+	int   iteration_cnt;
+};
+
+void *scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, const EVP_MD *digest, int keysz)
+{
+	int rv;
+	struct scram_ctx *ctx = nng_alloc(sizeof(struct scram_ctx));
+	if (ctx == NULL)
+		return NULL;
+
+	int salt = gen_salt();
+	ctx->salt = nng_alloc(sizeof(char) * 32);
+	if (ctx->salt == NULL)
+		return NULL;
+	sprintf(ctx->salt, "%d", salt);
+
+	char *salt_pwd = nng_alloc(sizeof(char) * keysz);
+	rv = salt_password(pwd, pwdsz, salt, strlen(salt),
+			               iteration_cnt, digest, keysz, salt_pwd);
+	if (rv != 0)
+		return NULL;
+	ctx->salt_pwd = salt_pwd;
+
+	// debug
+	for (int i=0; i<keysz; ++i)
+		printf("%x", salt_pwd[i]);
+	printf(">>> PWD SALT\n");
+
+	ctx->hmac = digest;
+	ctx->client_key = client_key(digest, salt_pwd);
+	ctx->client_key = server_key(digest, salt_pwd);
+	ctx->iteration_cnt = iteration_cnt;
+
+	return (void *)ctx;
 }
 
 /*
@@ -144,8 +219,9 @@ get_next_comma_value(char *payload, const char *payload_end)
 
 // %% = gs2-cbind-flag "," [authzid] "," [reserved-mext ","] userame "," nonce ["," extensions]
 char *
-scram_handle_client_first_msg(const char *msg, int len, int iteration_cnt)
+scram_handle_client_first_msg(void *arg, const char *msg, int len)
 {
+	struct scram_ctx *ctx = arg;
 	char *it = msg;
 	char *itend = msg + len;
 	char *gs2_cbind_flag   = it;
@@ -169,7 +245,8 @@ scram_handle_client_first_msg(const char *msg, int len, int iteration_cnt)
 	int snonce = nonce();
 	char csnonce[64];
 	sprintf(csnonce, "%.*s%d", cnoncesz, cnonce, snonce);
-	int salt = gen_salt();
+	char *salt = ctx->salt;
+	int   iteration_cnt = ctx->iteration_cnt;
 	return scram_server_first_msg(csnonce, salt, iteration_cnt);
 }
 
