@@ -127,11 +127,17 @@ client_first_message_bare(Username) ->
     iolist_to_binary(["n=", Username, ",r=", nonce()]).
 */
 uint8_t *
-scram_client_first_msg(const char *username)
+scram_client_first_msg(void *arg, const char *username)
 {
+	struct scram_ctx *ctx = arg;
+	char client_first_msg_bare[strlen(username) + 32];
+	sprintf(client_first_msg_bare, "n=%s,r=%d", username, nonce());
+
 	int sz = strlen(username) + 32; // gs_header + username + nonce
 	char *buf = nng_alloc(sizeof(char) * sz);
-	sprintf(buf, "%sn=%s,r=%d", gs_header(), username, nonce());
+
+	sprintf(buf, "%s%s", gs_header(), client_first_msg_bare);
+	ctx->client_first_msg_bare = strdup(client_first_msg_bare);
 	return (uint8_t *)buf;
 }
 
