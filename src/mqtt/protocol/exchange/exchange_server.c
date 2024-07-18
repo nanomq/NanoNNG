@@ -28,15 +28,14 @@ typedef struct exchange_sock_s         exchange_sock_t;
 typedef struct exchange_node_s         exchange_node_t;
 typedef struct exchange_pipe_s         exchange_pipe_t;
 
+static void ex_query_recv_cb(void *arg);
+static void ex_query_send_cb(void *arg);
 // one MQ, one Sock(TBD), one PIPE
 struct exchange_pipe_s {
 	nni_pipe        *pipe;
 	exchange_sock_t *sock;
 	bool             closed;
 	uint32_t         id;
-	nni_aio          ex_aio;	// recv cmd from Consumer
-	nni_aio          rp_aio;	// send msg to consumer
-	nni_lmq          lmq;
 };
 
 // struct exchange_ctx {
@@ -63,6 +62,10 @@ struct exchange_sock_s {
 	exchange_node_t *ex_node;
 	nni_pollable    readable;
 	nni_pollable    writable;
+	nng_socket     *rep0_sock;
+	nni_aio          ex_aio;	// recv cmd from Consumer
+	nni_aio          rp_aio;	// send msg to consumer
+	nni_lmq          lmq;
 };
 
 
@@ -114,6 +117,10 @@ exchange_sock_init(void *arg, nni_sock *sock)
 
 	nni_pollable_init(&s->writable);
 	nni_pollable_init(&s->readable);
+
+	nni_aio_init(&s->ex_aio, ex_query_recv_cb, s);
+	nni_aio_init(&s->rp_aio, ex_query_send_cb, s);
+	nni_lmq_init(&s->lmq, 256);
 	return;
 }
 
@@ -122,8 +129,17 @@ exchange_sock_fini(void *arg)
 {
 	exchange_sock_t *s = arg;
 	exchange_node_t *ex_node;
+	nng_msg *msg;
 
 	ex_node = s->ex_node;
+
+	if ((msg = nni_aio_get_msg(&s->ex_aio)) != NULL) {
+		nni_aio_set_msg(&s->ex_aio, NULL);
+		nni_msg_free(msg);
+	}
+
+	nni_aio_fini(&s->ex_aio);
+	nni_aio_fini(&s->rp_aio);
 
 	nni_pollable_fini(&s->writable);
 	nni_pollable_fini(&s->readable);
@@ -152,7 +168,10 @@ exchange_sock_close(void *arg)
 	exchange_sock_t *s = arg;
 
 	nni_atomic_set_bool(&s->closed, true);
-
+	nni_aio_close(&s->ex_aio);
+	nni_aio_close(&s->rp_aio);
+	nni_aio_stop(&s->ex_aio);
+	nni_aio_stop(&s->rp_aio);
 	return;
 }
 
@@ -801,8 +820,7 @@ static void
 ex_query_recv_cb(void *arg)
 {
 	int ret = 0;
-	exchange_pipe_t *p = arg;
-	exchange_sock_t *sock = p->sock;
+	exchange_sock_t *s = arg;
 	nni_msg *msg = NULL;
 	uint8_t *body = NULL;
 	char *parquetdata = NULL;
@@ -810,24 +828,22 @@ ex_query_recv_cb(void *arg)
 	int parquetdata_len = 0;
 	int ringbusdata_len = 0;
 
-	if (nni_aio_result(&p->ex_aio) != 0) {
-		nni_pipe_close(p->pipe);
+	if (nni_aio_result(&s->ex_aio) != 0) {
 		return;
 	}
 
-	msg = nni_aio_get_msg(&p->ex_aio);
-	nni_aio_set_msg(&p->ex_aio, NULL);
-	nni_msg_set_pipe(msg, nni_pipe_id(p->pipe));
+	msg = nni_aio_get_msg(&s->ex_aio);
+	nni_aio_set_msg(&s->ex_aio, NULL);
 
 	body = nni_msg_body(msg);
 
-	nni_mtx_lock(&sock->mtx);
+	nni_mtx_lock(&s->mtx);
 
 	// process query
 	char *keystr = (char *) (body + 4);
 	if (keystr == NULL) {
 		log_error("error in paring keystr");
-		nni_mtx_unlock(&sock->mtx);
+		nni_mtx_unlock(&s->mtx);
 		return;
 	}
 
@@ -842,12 +858,12 @@ ex_query_recv_cb(void *arg)
 	ret = sscanf(keystr, "%"SCNu64"-%"SCNu64, &startKey, &endKey);
 	if (ret == 0) {
 		log_error("error in read key to number %s", keystr);
-		nni_mtx_unlock(&sock->mtx);
+		nni_mtx_unlock(&s->mtx);
 		return;
 	}
 	log_info("Start fuzz search startKey: %"PRIu64", endKey: %"PRIu64, startKey, endKey);
 
-	ret = exchange_client_get_msgs_fuzz(sock, startKey, endKey, &count, &msgList);
+	ret = exchange_client_get_msgs_fuzz(s, startKey, endKey, &count, &msgList);
 	if (ret == 0 && count != 0 && msgList != NULL) {
 		ret = fuzz_search_result_cat(msgList, count, &ringbusdata, &ringbusdata_len);
 		if (ret != 0) {
@@ -861,7 +877,7 @@ ex_query_recv_cb(void *arg)
 #if defined(SUPP_PARQUET)
 	int size = 0;
 	parquet_data_packet **parquet_objs = NULL;
-	parquet_objs = parquet_find_data_span_packets(NULL, startKey, endKey, &size, sock->ex_node->ex->topic);
+	parquet_objs = parquet_find_data_span_packets(NULL, startKey, endKey, &size, s->ex_node->ex->topic);
 	if (parquet_objs != NULL && size > 0) {
 		int total_len = 0;
 		for (int i = 0; i < size; i++) {
@@ -870,7 +886,7 @@ ex_query_recv_cb(void *arg)
 		parquetdata = nng_alloc(total_len);
 		if (parquetdata == NULL) {
 			log_error("Failed to allocate memory for file payload\n");
-			nni_mtx_unlock(&sock->mtx);
+			nni_mtx_unlock(&s->mtx);
 			return;
 		}
 		for (int i = 0; i < size; i++) {
@@ -915,13 +931,15 @@ ex_query_recv_cb(void *arg)
 		ringbusdata = NULL;
 	}
 
-	nni_aio_wait(&p->rp_aio);
+	nni_aio_wait(&s->rp_aio);
 	nni_time time = 3000;
-	nni_aio_set_expire(&p->rp_aio, time);
-	nni_aio_set_msg(&p->rp_aio, msg);
-	nni_pipe_send(p->pipe, &p->rp_aio);
-	nni_mtx_unlock(&sock->mtx);
-	nni_pipe_recv(p->pipe, &p->ex_aio);
+	nng_socket *socket = s->rep0_sock;
+	nni_aio_set_expire(&s->rp_aio, time);
+	nni_aio_set_msg(&s->rp_aio, msg);
+	nng_send_aio(*socket, &s->rp_aio);
+	nni_mtx_unlock(&s->mtx);
+	// nni_pipe_recv(p->pipe, &p->ex_aio);
+	nng_recv_aio(*socket, &s->ex_aio);
 
 	return;
 }
@@ -939,10 +957,6 @@ static int
 exchange_pipe_init(void *arg, nni_pipe *pipe, void *s)
 {
 	exchange_pipe_t *p = arg;
-
-	nni_aio_init(&p->ex_aio, ex_query_recv_cb, p);
-	nni_aio_init(&p->rp_aio, ex_query_send_cb, p);
-	nni_lmq_init(&p->lmq, 256);
 
 	p->pipe = pipe;
 	p->id   = nni_pipe_id(pipe);
@@ -968,7 +982,6 @@ exchange_pipe_start(void *arg)
 	if (rv != 0) {
 		return (rv);
 	}
-	nni_pipe_recv(p->pipe, &p->ex_aio);
 	return (0);
 }
 
@@ -977,8 +990,6 @@ exchange_pipe_stop(void *arg)
 {
 	exchange_pipe_t *p = arg;
 
-	nni_aio_stop(&p->ex_aio);
-	nni_aio_stop(&p->rp_aio);
 	return;
 }
 
@@ -987,9 +998,6 @@ exchange_pipe_close(void *arg)
 {
 	exchange_pipe_t *p = arg;
 	exchange_sock_t *s = p->sock;
-
-	nni_aio_close(&p->ex_aio);
-	nni_aio_close(&p->rp_aio);
 
 	nni_mtx_lock(&s->mtx);
 	p->closed = true;
@@ -1005,15 +1013,6 @@ exchange_pipe_fini(void *arg)
 {
 	exchange_pipe_t *p = arg;
 
-	nng_msg *  msg;
-
-	if ((msg = nni_aio_get_msg(&p->ex_aio)) != NULL) {
-		nni_aio_set_msg(&p->ex_aio, NULL);
-		nni_msg_free(msg);
-	}
-
-	nni_aio_fini(&p->ex_aio);
-	nni_aio_fini(&p->rp_aio);
 	return;
 }
 
@@ -1071,8 +1070,19 @@ static nni_proto exchange_proto = {
 	.proto_ctx_ops  = &exchange_ctx_ops,
 };
 
+// init rep0_sock inside of exchange_sock, only allowed being called once at init
+static void
+exchange_sock_setsock(void *arg, void *data)
+{
+	exchange_sock_t *s = arg;
+	nng_socket *socket = data;
+	s->rep0_sock       = data;
+	// to start first recv
+	nng_recv_aio(*s->rep0_sock, &s->ex_aio);
+}
+
 int
 nng_exchange_client_open(nng_socket *sock)
 {
-	return (nni_proto_open(sock, &exchange_proto));
+	return (nni_proto_mqtt_open(sock, &exchange_proto, exchange_sock_setsock));
 }
