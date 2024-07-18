@@ -400,7 +400,7 @@ dialer_connect_cb(void *arg)
 		}
 		break;
 	}
-	log_info("dialer connect cb rv%d %p", rv, user_aio);
+	log_debug("dialer connect cb rv%d %p", rv, user_aio);
 	if (user_aio != NULL) {
 		nni_aio_finish(user_aio, rv, 0);
 	}
