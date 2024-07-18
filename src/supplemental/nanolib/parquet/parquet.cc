@@ -996,11 +996,14 @@ get_keys_indexes_fuzing(
 	int  index = 0;
 	bool found = false;
 
+    log_error("start_key: %lu, end_key: %lu", start_key, end_key);
+
 	while (int64_reader->HasNext()) {
 		int64_t value;
 		rows_read = int64_reader->ReadBatch(1, &definition_level,
 		    &repetition_level, &value, &values_read);
 		if (1 == rows_read && 1 == values_read) {
+            log_error("read value: %lu", value);
 			if (((uint64_t) value) >= start_key) {
 				index_vector.push_back(index++);
 				found = true;
@@ -1019,6 +1022,7 @@ get_keys_indexes_fuzing(
 			rows_read =
 			    int64_reader->ReadBatch(1, &definition_level,
 			        &repetition_level, &value, &values_read);
+            log_error("read value: %lu", value);
 			if (1 == rows_read && 1 == values_read) {
 				if (((uint64_t) value) > end_key) {
 					index_vector.push_back(index - 1);
@@ -1293,6 +1297,7 @@ parquet_read_span(conf_parquet *conf, const char *filename, uint64_t keys[2])
 			index_vector = get_keys_indexes_fuzing(
 			    int64_reader, keys[0], keys[1]);
 			if (-1 == index_vector[0] || -1 == index_vector[1]) {
+                log_error("Not found data in key");
 				ret_vec.push_back(NULL);
 				return ret_vec;
 			}
@@ -1301,9 +1306,10 @@ parquet_read_span(conf_parquet *conf, const char *filename, uint64_t keys[2])
 			auto ba_reader =
 			    dynamic_pointer_cast<parquet::ByteArrayReader>(
 			        column_reader);
+            log_error("start index: %lu, end index: %lu", index_vector[0], index_vector[1]);
 
 			if (ba_reader->HasNext()) {
-				ba_reader->Skip(index_vector[0] - 1);
+				ba_reader->Skip(index_vector[0]);
 			}
 
 			if (ba_reader->HasNext()) {
@@ -1316,6 +1322,7 @@ parquet_read_span(conf_parquet *conf, const char *filename, uint64_t keys[2])
 				rows_read = ba_reader->ReadBatch(batch_size,
 				    definition_levels.data(), nullptr, values.data(),
 				    &values_read);
+                log_error("batch_size: %lu, rows_read: %lu, values_read: %lu", batch_size, rows_read, values_read);
 				if (batch_size == rows_read &&
 				    batch_size == values_read) {
 					for (int64_t b = 0; b < batch_size;
@@ -1340,10 +1347,13 @@ parquet_read_span(conf_parquet *conf, const char *filename, uint64_t keys[2])
 						    values[b].ptr,
 						    values[b].len);
 						pack->size = values[b].len;
+                        log_error("push element");
 						ret_vec.push_back(pack);
 					}
 				}
-			}
+			} else {
+                log_error("Next is NULL");
+            }
 
 		}
 
@@ -1386,9 +1396,11 @@ parquet_find_data_span_packets(conf_parquet *conf, uint64_t start_key, uint64_t 
 	parquet_data_packet         **packets = NULL;
 	uint32_t                      len     = 0;
 
+    log_error("start_key: %lu, end_key: %lu", start_key, end_key);
 	const char **filenames = parquet_find_span(start_key, end_key, &len);
 
 	for (uint32_t i = 0; i < len; i++) {
+        log_info("name: %s, topic: %s", filenames[i], topic);
 		if (strstr(filenames[i], topic) == NULL) {
 			nng_strfree((char*)filenames[i]);
 			continue;
@@ -1405,7 +1417,10 @@ parquet_find_data_span_packets(conf_parquet *conf, uint64_t start_key, uint64_t 
 			    : get_key(filenames[i], END_KEY);
 		}
 
+        log_error("file start_key: %lu, file end_key: %lu", keys[0], keys[1]);
+
 		auto tmp = parquet_read_span(conf, filenames[i], keys);
+        log_error("read span size: %ld", tmp.size());
 		ret_vec.insert(ret_vec.end(), tmp.begin(), tmp.end());
 		nng_strfree((char*)filenames[i]);
 	}
