@@ -303,10 +303,10 @@ scram_handle_client_final_msg(void *arg, const char *msg, int len)
 	int   proofsz          = get_comma_value_len(it);
 	// parse done
 	//AuthMessage = ([ ClientFirstMessageBare,ServerFirstMessage,ClientFinalMessageWithoutProof]),
-	char *c_final_msg_without_proof = peek_client_final_msg_without_proof(msg);
+	char *client_final_msg_without_proof = peek_client_final_msg_without_proof(msg);
 	char authmsg[256];
 	sprintf(authmsg, "%s,%s,%s",
-	    ctx->client_first_msg_bare, ctx->server_first_msg, c_final_msg_without_proof);
+	    ctx->client_first_msg_bare, ctx->server_first_msg, client_final_msg_without_proof);
 	// ClientSignature = hmac(Algorithm, StoredKey, AuthMessage),
 	char *client_sig = ctx->hmac(ctx->stored_key, authmsg);
 	// ClientKey = crypto:exor(ClientProof, ClientSignature)
@@ -330,13 +330,55 @@ scram_handle_client_final_msg(void *arg, const char *msg, int len)
 	return NULL;
 }
 
-int
-scram_handle_server_first_msg()
+/*
+client_final_message_without_proof(Nonce) ->
+    iolist_to_binary(["c=", base64:encode(gs2_header()), ",r=", Nonce]).
+*/
+// %% = [reserved-mext ","] nonce "," salt "," iteration-count ["," extensions]
+char *
+scram_handle_server_first_msg(void *arg, const char *msg, int len)
 {
+	struct scram_ctx *ctx = arg;
+	char *it = msg;
+	char *itend = msg + len;
+	char *nonce            = it;
+	int   noncesz          = get_comma_value_len(it);
+	it += noncesz;
+	char *salt             = get_next_comma_value(it, itend);
+	int   saltsz           = get_comma_value_len(it);
+	it += saltsz;
+	char *iteration_cnt    = get_next_comma_value(it, itend);
+	int   iteration_cntsz  = get_comma_value_len(it);
+	// parse done
+	char *client_first_msg_bare = ctx->client_first_msg_bare;
+	//ClientFinalMessageWithoutProof = client_final_message_without_proof(Nonce),
+	char *gh = gs_header();
+	size_t ghb64sz = BASE64_ENCODE_OUT_SIZE(strlen(gh)) + 1;
+	char ghb64[ghb64sz];
+	if (0 != base64_encode(gh, strlen(gh), ghb64)) {
+		return NULL;
+	}
+	char client_final_msg_without_proof[32];
+	sprintf(client_final_msg_without_proof, "c=%s,r=%s", ghb64, nonce);
+	// authmsg=[ClientFirstMessageBare,ServerFirstMessage,ClientFinalMessageWithoutProof]
+	char authmsg[256];
+	sprintf(authmsg, "%s,%s,%s",
+	    ctx->client_first_msg_bare, msg, client_final_msg_without_proof);
+	/*
+	SaltedPassword = salted_password(Algorithm, Password, Salt, IterationCount),
+    ClientKey = client_key(Algorithm, SaltedPassword),
+    StoredKey = stored_key(Algorithm, ClientKey),
+    ClientSignature = hmac(Algorithm, StoredKey, AuthMessage),
+    ClientProof = crypto:exor(ClientKey, ClientSignature),
+	*/
+	char *client_sig = ctx->hmac(ctx->stored_key, authmsg);
+	char *client_proof = ctx->client_key ^ client_sig;
+
+	return scram_client_final_msg(nonce, client_proof);
 }
 
-int
-scram_handle_server_final_msg()
+char *
+scram_handle_server_final_msg(void *arg, const char *msg, int len)
 {
 }
 
