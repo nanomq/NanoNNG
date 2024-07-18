@@ -10,11 +10,17 @@
 #ifndef NNG_SUPP_SCRAM_H
 #define NNG_SUPP_SCRAM_H
 
-uint8_t *scram_client_first_msg(const char *username);
+enum SCRAM_digest {
+	SCRAM_SHA1;
+	SCRAM_SHA256;
+};
 
-char *scram_handle_client_first_msg(const char *msg, int len, int iteration_cnt);
-int scram_handle_server_first_msg();
-int scram_handle_client_final_msg();
-int scram_handle_server_final_msg();
+uint8_t *scram_client_first_msg(const char *username);
+void *scram_ctx_create(char *pwd, int pwdsz, int it_cnt, SCRAM_digest digest, int keysz);
+
+char *scram_handle_client_first_msg(void *arg, const char *msg, int len);
+char *scram_handle_server_first_msg(void *arg, const char *msg, int len);
+char *scram_handle_client_final_msg(void *arg, const char *msg, int len);
+char *scram_handle_server_final_msg(void *arg, const char *msg, int len);
 
 #endif
