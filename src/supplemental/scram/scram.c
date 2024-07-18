@@ -78,9 +78,18 @@ struct scram_ctx {
 	char *server_first_msg;
 };
 
-void *scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, const EVP_MD *digest, int keysz)
+void *scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, SCRAM_digest dig, int keysz)
 {
 	int rv;
+	const EVP_MD *digest;
+	switch (dig) {
+		case SCRAM_SHA1:
+			digest = EVP_sha1();
+			break;
+		case SCRAM_SHA256:
+			digest = EVP_sha256();
+			break;
+	}
 	struct scram_ctx *ctx = nng_alloc(sizeof(struct scram_ctx));
 	if (ctx == NULL)
 		return NULL;
