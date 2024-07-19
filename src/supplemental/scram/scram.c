@@ -23,7 +23,7 @@ gen_salt()
 static char *
 gs_header()
 {
-	return ()"n,,";
+	return (char *)"n,,";
 }
 
 static int
@@ -49,13 +49,19 @@ stored_key(Alg, ClientKey) ->
 static char *
 client_key(const EVP_MD *digest, char *salt_pwd)
 {
-	return digest(salt_pwd, "Client Key");
+	char *key    = salt_pwd;
+	char *data   = "Client Key";
+	char *result = HMAC(digest, key, strlen(key), data, strlen(data), NULL, NULL);
+	return result;
 }
 
 static char *
 server_key(const EVP_MD *digest, char *salt_pwd)
 {
-	return digest(salt_pwd, "Server Key");
+	char *key    = salt_pwd;
+	char *data   = "Server Key";
+	char *result = HMAC(digest, key, strlen(key), data, strlen(data), NULL, NULL);
+	return result;
 }
 
 static char *
