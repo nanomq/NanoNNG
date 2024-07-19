@@ -7,7 +7,10 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
-#include "nng/supplemental/base64/base64.h"
+#include <openssl/evp.h>
+#include <openssl/hmac.h>
+
+#include "nng/supplemental/nanolib/base64.h"
 
 /* TODO Is salt a global static value?
 gen_salt() ->
@@ -82,7 +85,7 @@ xor(char *in1, char *in2, char *out, int len)
 struct scram_ctx {
 	char *salt;
 	char *salt_pwd;
-	const EVP_MD *hmac;
+	const EVP_MD *digest;
 	char *client_key;
 	char *server_key;
 	char *stored_key;
@@ -91,6 +94,14 @@ struct scram_ctx {
 	char *client_first_msg_bare;
 	char *server_first_msg;
 };
+
+static char *
+scram_hmac(void *arg, char *key, char *data)
+{
+	struct scram_ctx *ctx = arg;
+	char *result = HMAC(ctx->digest, key, strlen(key), data, strlen(data), NULL, NULL);
+	return result;
+}
 
 void *scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, SCRAM_digest dig, int keysz)
 {
@@ -126,7 +137,7 @@ void *scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, SCRAM_digest dig
 		printf("%x", salt_pwd[i]);
 	printf(">>> PWD SALT\n");
 
-	ctx->hmac = digest;
+	ctx->digest     = digest;
 	ctx->client_key = client_key(digest, salt_pwd);
 	ctx->server_key = server_key(digest, salt_pwd);
 	ctx->stored_key = stored_key(digest, ctx->client_key);
@@ -328,7 +339,7 @@ scram_handle_client_final_msg(void *arg, const char *msg, int len)
 	sprintf(authmsg, "%s,%s,%s",
 	    ctx->client_first_msg_bare, ctx->server_first_msg, client_final_msg_without_proof);
 	// ClientSignature = hmac(Algorithm, StoredKey, AuthMessage),
-	char *client_sig = ctx->hmac(ctx->stored_key, authmsg);
+	char *client_sig = scram_hmac(ctx, ctx->stored_key, authmsg);
 	// ClientKey = crypto:exor(ClientProof, ClientSignature)
 	char client_key[proofsz];
 	xor(proof, client_sig, client_key, proofsz);
@@ -344,7 +355,7 @@ scram_handle_client_final_msg(void *arg, const char *msg, int len)
 	*/
 	if (0 == strncmp(csnonce, ctx->cached_nonce, csnoncesz) &&
 	    0 == strcmp(client_key, ctx->stored_key)) {
-		char *server_sig = ctx->hmac(ctx->server_key, authmsg);
+		char *server_sig = scram_hmac(ctx, ctx->server_key, authmsg);
 		char *server_final_msg = scram_server_final_msg(server_sig, 0);
 		return server_final_msg;
 	}
@@ -394,7 +405,7 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
     ClientSignature = hmac(Algorithm, StoredKey, AuthMessage),
     ClientProof = crypto:exor(ClientKey, ClientSignature),
 	*/
-	char *client_sig = ctx->hmac(ctx->stored_key, authmsg);
+	char *client_sig = scram_hmac(ctx, ctx->stored_key, authmsg);
 	int client_sig_len = strlen(client_sig);
 	char client_proof[client_sig_len];
 	xor(ctx->client_key, client_sig, client_proof, client_sig_len);
@@ -406,6 +417,7 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
 char *
 scram_handle_server_final_msg(void *arg, const char *msg, int len)
 {
+	struct scram_ctx *ctx = arg;
 	char *it = msg;
 	char *itend = msg + len;
 	char *verifier     = it;
@@ -431,7 +443,7 @@ scram_handle_server_final_msg(void *arg, const char *msg, int len)
             {error, 'other-error'}
     end;
 	*/
-	if (0 == strcmp(verifier, ctx->hmac(ctx->server_key, authmsg))) {
+	if (0 == strcmp(verifier, scram_hmac(ctx, ctx->server_key, authmsg))) {
 		return NULL; // true
 	}
 	return authmsg; // return anything to indicate pass
