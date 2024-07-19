@@ -840,7 +840,7 @@ ex_query_recv_cb(void *arg)
 	nni_mtx_lock(&s->mtx);
 
 	// process query
-	char *keystr = (char *) (body + 4);
+	char *keystr = (char *) (body);
 	if (keystr == NULL) {
 		log_error("error in paring keystr");
 		nni_mtx_unlock(&s->mtx);
