@@ -7,10 +7,14 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
+#include <string.h>
+#include <stdio.h>
+
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 
 #include "nng/supplemental/nanolib/base64.h"
+#include "nng/supplemental/scram/scram.h"
 
 /* TODO Is salt a global static value?
 gen_salt() ->
@@ -91,6 +95,9 @@ struct scram_ctx {
 	char *stored_key;
 	int   iteration_cnt;
 
+	char *cached_nonce;
+
+	char *client_final_msg_without_proof;
 	char *client_first_msg_bare;
 	char *server_first_msg;
 };
@@ -103,7 +110,7 @@ scram_hmac(void *arg, char *key, char *data)
 	return result;
 }
 
-void *scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, SCRAM_digest dig, int keysz)
+void *scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, enum SCRAM_digest dig, int keysz)
 {
 	int rv;
 	const EVP_MD *digest;
@@ -187,7 +194,7 @@ scram_client_final_msg(int nonce, const char *proof)
 	if (0 != base64_encode(proof, strlen(proof), proofb64)) {
 		return NULL;
 	}
-	char *buf = malloc(size(char) * (ghb64sz + proofb64sz + 32));
+	char *buf = malloc(sizeof(char) * (ghb64sz + proofb64sz + 32));
 
 	sprintf(buf, "c=%s,r=%d,p=%s", ghb64, nonce, proofb64);
 	return (uint8_t *)buf;
@@ -225,7 +232,7 @@ scram_server_final_msg(const char * server_sig, int error)
 		sprintf(buf, "e=%d", error);
 		return buf;
 	}
-	size_t ssb64sz = BASE64_ENCODE_OUT_SIZE(strlen(ss)) + 1;
+	size_t ssb64sz = BASE64_ENCODE_OUT_SIZE(strlen(server_sig)) + 1;
 	char ssb64[ssb64sz];
 	if (0 != base64_encode(server_sig, strlen(server_sig), ssb64)) {
 		return NULL;
