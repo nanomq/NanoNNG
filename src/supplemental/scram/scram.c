@@ -71,6 +71,14 @@ stored_key(const EVP_MD *digest, char *client_key)
 	return client_key;
 }
 
+static void
+xor(char *in1, char *in2, char *out, int len)
+{
+	for (int i=0; i<len; ++i) {
+		out[i] = in1[i] ^ in2[i];
+	}
+}
+
 struct scram_ctx {
 	char *salt;
 	char *salt_pwd;
@@ -322,7 +330,8 @@ scram_handle_client_final_msg(void *arg, const char *msg, int len)
 	// ClientSignature = hmac(Algorithm, StoredKey, AuthMessage),
 	char *client_sig = ctx->hmac(ctx->stored_key, authmsg);
 	// ClientKey = crypto:exor(ClientProof, ClientSignature)
-	char *client_key = proof ^ client_sig; // TODO xor
+	char client_key[proofsz];
+	xor(proof, client_sig, client_key, proofsz);
 	/*
 	 case Nonce =:= CachedNonce andalso crypto:hash(Algorithm, ClientKey) =:= StoredKey of
          true ->
@@ -386,7 +395,9 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
     ClientProof = crypto:exor(ClientKey, ClientSignature),
 	*/
 	char *client_sig = ctx->hmac(ctx->stored_key, authmsg);
-	char *client_proof = ctx->client_key ^ client_sig;
+	int client_sig_len = strlen(client_sig);
+	char client_proof[client_sig_len];
+	xor(ctx->client_key, client_sig, client_proof, client_sig_len);
 
 	return scram_client_final_msg(nonce, client_proof);
 }
