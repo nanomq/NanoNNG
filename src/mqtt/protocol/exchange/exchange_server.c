@@ -50,21 +50,18 @@ struct exchange_pipe_s {
 struct exchange_node_s {
 	exchange_t      *ex;
 	exchange_sock_t *sock;
-	exchange_pipe_t *pipe;
-	bool            isBusy;
+
 };
 
 struct exchange_sock_s {
-	nni_mtx         mtx;
-	nni_atomic_bool closed;
-	nni_id_map      rbmsgmap;
-	nni_id_map      pipes;		//pipe = consumer client
+	nni_mtx          mtx;
+	bool             isBusy;
+	nni_atomic_bool  closed;
+	nni_id_map       rbmsgmap;
 	exchange_node_t *ex_node;
-	nni_pollable    readable;
-	nni_pollable    writable;
-	nng_socket     *rep0_sock;
-	nni_aio          ex_aio;	// recv cmd from Consumer
-	nni_aio          rp_aio;	// send msg to consumer
+	nng_socket      *rep0_sock;
+	nni_aio          ex_aio; // recv cmd from Consumer
+	nni_aio          rp_aio; // send msg to consumer
 	nni_lmq          lmq;
 };
 
@@ -94,7 +91,6 @@ exchange_add_ex(exchange_sock_t *s, exchange_t *ex)
 		return -1;
 	}
 
-	node->isBusy = false;
 	node->ex = ex;
 	node->sock = s;
 
@@ -113,10 +109,7 @@ exchange_sock_init(void *arg, nni_sock *sock)
 	nni_atomic_set_bool(&s->closed, false);
 	nni_mtx_init(&s->mtx);
 	nni_id_map_init(&s->rbmsgmap, 0, 0, true);
-	nni_id_map_init(&s->pipes, 0, 0, false);
-
-	nni_pollable_init(&s->writable);
-	nni_pollable_init(&s->readable);
+	s->isBusy = false;
 
 	nni_aio_init(&s->ex_aio, ex_query_recv_cb, s);
 	nni_aio_init(&s->rp_aio, ex_query_send_cb, s);
@@ -141,15 +134,15 @@ exchange_sock_fini(void *arg)
 	nni_aio_fini(&s->ex_aio);
 	nni_aio_fini(&s->rp_aio);
 
-	nni_pollable_fini(&s->writable);
-	nni_pollable_fini(&s->readable);
+	// nni_pollable_fini(&s->writable);
+	// nni_pollable_fini(&s->readable);
 	exchange_release(ex_node->ex);
 
 	nni_free(ex_node, sizeof(*ex_node));
 	ex_node = NULL;
 
-	nni_id_map_fini(&s->pipes);
 	nni_id_map_fini(&s->rbmsgmap);
+	nni_lmq_fini(&s->lmq);
 	nni_mtx_fini(&s->mtx);
 
 	return;
@@ -168,10 +161,10 @@ exchange_sock_close(void *arg)
 	exchange_sock_t *s = arg;
 
 	nni_atomic_set_bool(&s->closed, true);
-	nni_aio_close(&s->ex_aio);
-	nni_aio_close(&s->rp_aio);
 	nni_aio_stop(&s->ex_aio);
 	nni_aio_stop(&s->rp_aio);
+	nni_aio_close(&s->ex_aio);
+	nni_aio_close(&s->rp_aio);
 	return;
 }
 
@@ -401,7 +394,7 @@ exchange_sock_bind_exchange(void *arg, const void *v, size_t sz, nni_opt_type t)
 	char    **rbsName = NULL;
 	uint32_t *rbsCap = NULL;
 	uint8_t  *rbsFullOp = NULL;
-	for (int i=0; i<(int)node->rbufs_sz; ++i) {
+	for (int i = 0; i<(int)node->rbufs_sz; ++i) {
 		cvector_push_back(rbsName, node->rbufs[i]->name);
 		cvector_push_back(rbsCap, node->rbufs[i]->cap);
 		cvector_push_back(rbsFullOp, node->rbufs[i]->fullOp);
@@ -931,15 +924,23 @@ ex_query_recv_cb(void *arg)
 		ringbusdata = NULL;
 	}
 
-	nni_aio_wait(&s->rp_aio);
-	nni_time time = 3000;
-	nng_socket *socket = s->rep0_sock;
-	nni_aio_set_expire(&s->rp_aio, time);
-	nni_aio_set_msg(&s->rp_aio, msg);
-	nng_send_aio(*socket, &s->rp_aio);
+	// nni_aio_wait(&s->rp_aio);
+	if (!s->isBusy) {
+		nni_time time = 3000;
+		nng_socket *socket = s->rep0_sock;
+		nni_aio_set_expire(&s->rp_aio, time);
+		nni_aio_set_msg(&s->rp_aio, msg);
+		s->isBusy = true;
+		nng_send_aio(*socket, &s->rp_aio);
+	} else {
+		if (nni_lmq_put(&s->lmq, msg) != 0) {
+			nni_msg_free(msg);
+			log_warn("Exchange msg lost due to busy rep0 socket");
+		}
+	}
+
 	nni_mtx_unlock(&s->mtx);
-	// nni_pipe_recv(p->pipe, &p->ex_aio);
-	nng_recv_aio(*socket, &s->ex_aio);
+	nng_recv_aio(*s->rep0_sock, &s->ex_aio);
 
 	return;
 }
@@ -947,26 +948,36 @@ ex_query_recv_cb(void *arg)
 static void
 ex_query_send_cb(void *arg)
 {
+	nni_msg *msg = NULL;
 	exchange_pipe_t       *p    = arg;
-	exchange_sock_t       *sock = p->sock;
-
-	NNI_ARG_UNUSED(sock);
+	exchange_sock_t       *s = p->sock;
+	nni_mtx_lock(&s->mtx);
+    
+	if (nni_lmq_get(&s->lmq, &msg) == 0) {
+		nni_time time = 3000;
+		nng_socket *socket = s->rep0_sock;
+		nni_aio_set_expire(&s->rp_aio, time);
+		nni_aio_set_msg(&s->rp_aio, msg);
+		nng_send_aio(*socket, &s->rp_aio);
+	} else {
+		s->isBusy = false;
+	}
+	nni_mtx_unlock(&s->mtx);
+	return;
 }
 
 static int
 exchange_pipe_init(void *arg, nni_pipe *pipe, void *s)
 {
-	exchange_pipe_t *p = arg;
-
-	p->pipe = pipe;
-	p->id   = nni_pipe_id(pipe);
-	p->sock = s;
+	NNI_ARG_UNUSED(arg);
 	return (0);
 }
 
 static int
 exchange_pipe_start(void *arg)
 {
+	NNI_ARG_UNUSED(arg);
+	return 0;
 	exchange_pipe_t *p = arg;
 	exchange_sock_t *s = p->sock;
 
@@ -975,44 +986,28 @@ exchange_pipe_start(void *arg)
 	// 	// Peer protocol mismatch.
 	// 	return (NNG_EPROTO);
 	// }
-
-	nni_mtx_lock(&s->mtx);
-	int rv = nni_id_set(&s->pipes, nni_pipe_id(p->pipe), p);
-	nni_mtx_unlock(&s->mtx);
-	if (rv != 0) {
-		return (rv);
-	}
+	// int rv = nni_id_set(&s->pipes, nni_pipe_id(p->pipe), p);
 	return (0);
 }
 
 static void
 exchange_pipe_stop(void *arg)
 {
-	exchange_pipe_t *p = arg;
-
+	NNI_ARG_UNUSED(arg);
 	return;
 }
 
 static int
 exchange_pipe_close(void *arg)
 {
-	exchange_pipe_t *p = arg;
-	exchange_sock_t *s = p->sock;
-
-	nni_mtx_lock(&s->mtx);
-	p->closed = true;
-
-	nni_id_remove(&s->pipes, nni_pipe_id(p->pipe));
-	nni_mtx_unlock(&s->mtx);
-
+	NNI_ARG_UNUSED(arg);
 	return (0);
 }
 
 static void
 exchange_pipe_fini(void *arg)
 {
-	exchange_pipe_t *p = arg;
-
+	NNI_ARG_UNUSED(arg);
 	return;
 }
 
