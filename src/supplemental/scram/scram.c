@@ -42,7 +42,7 @@ nonce()
 static int
 salt_password(char *pwd, int pwdsz, char *salt, int saltsz, int iteration_cnt, const EVP_MD *digest, int keysz, char *result)
 {
-	return PKCS5_PBKDF2_HMAC(pwd, pwdsz, salt, saltsz, iteration_cnt, digest, keysz, result);
+	return PKCS5_PBKDF2_HMAC(pwd, pwdsz, (const unsigned char *)salt, saltsz, iteration_cnt, digest, keysz, (unsigned char *)result);
 }
 
 /*
@@ -58,8 +58,8 @@ client_key(const EVP_MD *digest, char *salt_pwd)
 {
 	char *key    = salt_pwd;
 	char *data   = "Client Key";
-	char *result = HMAC(digest, key, strlen(key), data, strlen(data), NULL, NULL);
-	return result;
+	unsigned char *result = HMAC(digest, key, strlen(key), (const unsigned char *)data, strlen(data), NULL, NULL);
+	return (char *)result;
 }
 
 static char *
@@ -67,8 +67,8 @@ server_key(const EVP_MD *digest, char *salt_pwd)
 {
 	char *key    = salt_pwd;
 	char *data   = "Server Key";
-	char *result = HMAC(digest, key, strlen(key), data, strlen(data), NULL, NULL);
-	return result;
+	unsigned char *result = HMAC(digest, key, strlen(key), (const unsigned char *)data, strlen(data), NULL, NULL);
+	return (char *)result;
 }
 
 static char *
@@ -106,8 +106,8 @@ static char *
 scram_hmac(void *arg, char *key, char *data)
 {
 	struct scram_ctx *ctx = arg;
-	char *result = HMAC(ctx->digest, key, strlen(key), data, strlen(data), NULL, NULL);
-	return result;
+	unsigned char *result = HMAC(ctx->digest, key, strlen(key), (const unsigned char *)data, strlen(data), NULL, NULL);
+	return (char *)result;
 }
 
 void *scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, enum SCRAM_digest dig, int keysz)
@@ -133,7 +133,7 @@ void *scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, enum SCRAM_diges
 	sprintf(ctx->salt, "%d", salt);
 
 	char *salt_pwd = nng_alloc(sizeof(char) * keysz);
-	rv = salt_password(pwd, pwdsz, salt, strlen(salt),
+	rv = salt_password(pwd, pwdsz, ctx->salt, strlen(ctx->salt),
 			               iteration_cnt, digest, keysz, salt_pwd);
 	if (rv != 0)
 		return NULL;
@@ -180,24 +180,24 @@ client_final_message_without_proof(Nonce) ->
 client_final_message(Nonce, Proof) ->
     iolist_to_binary([client_final_message_without_proof(Nonce), ",p=", base64:encode(Proof)]).
 */
-static uint8_t *
-scram_client_final_msg(int nonce, const char *proof)
+static char *
+scram_client_final_msg(char *nonce, const char *proof)
 {
 	char *gh = gs_header();
 	size_t ghb64sz = BASE64_ENCODE_OUT_SIZE(strlen(gh)) + 1;
 	char ghb64[ghb64sz];
 	size_t proofb64sz = BASE64_ENCODE_OUT_SIZE(strlen(proof)) + 1;
 	char proofb64[proofb64sz];
-	if (0 != base64_encode(gh, strlen(gh), ghb64)) {
+	if (0 != base64_encode((const unsigned char *)gh, strlen(gh), ghb64)) {
 		return NULL;
 	}
-	if (0 != base64_encode(proof, strlen(proof), proofb64)) {
+	if (0 != base64_encode((const unsigned char *)proof, strlen(proof), proofb64)) {
 		return NULL;
 	}
 	char *buf = malloc(sizeof(char) * (ghb64sz + proofb64sz + 32));
 
-	sprintf(buf, "c=%s,r=%d,p=%s", ghb64, nonce, proofb64);
-	return (uint8_t *)buf;
+	sprintf(buf, "c=%s,r=%s,p=%s", ghb64, nonce, proofb64);
+	return buf;
 }
 
 /*
@@ -205,16 +205,16 @@ server_first_message(Nonce, Salt, IterationCount) ->
     iolist_to_binary(["r=", Nonce, ",s=", base64:encode(Salt), ",i=", integer_to_list(IterationCount)]).
 */
 static char *
-scram_server_first_msg(int nonce, const char *salt, int iteration_cnt)
+scram_server_first_msg(char *nonce, const char *salt, int iteration_cnt)
 {
 	size_t saltb64sz = BASE64_ENCODE_OUT_SIZE(strlen(salt)) + 1;
 	char saltb64[saltb64sz];
-	if (0 != base64_encode(salt, strlen(salt), saltb64)) {
+	if (0 != base64_encode((const unsigned char *)salt, strlen(salt), saltb64)) {
 		return NULL;
 	}
 	char *buf = nng_alloc(sizeof(char) * (saltb64sz + 64));
-	sprintf(buf, "r=%d,s=%d,i=%d", nonce, saltb64, iteration_cnt);
-	return (uint8_t *)buf;
+	sprintf(buf, "r=%s,s=%s,i=%d", nonce, saltb64, iteration_cnt);
+	return buf;
 }
 
 /*
@@ -223,7 +223,7 @@ server_final_message(verifier, ServerSignature) ->
 server_final_message(error, Error) ->
     iolist_to_binary(["e=", Error]).
 */
-static uint8_t *
+static char *
 scram_server_final_msg(const char * server_sig, int error)
 {
 	char *buf;
@@ -234,7 +234,7 @@ scram_server_final_msg(const char * server_sig, int error)
 	}
 	size_t ssb64sz = BASE64_ENCODE_OUT_SIZE(strlen(server_sig)) + 1;
 	char ssb64[ssb64sz];
-	if (0 != base64_encode(server_sig, strlen(server_sig), ssb64)) {
+	if (0 != base64_encode((const unsigned char *)server_sig, strlen(server_sig), ssb64)) {
 		return NULL;
 	}
 	buf = nng_alloc(sizeof(char) * (ssb64sz + 32));
@@ -243,11 +243,11 @@ scram_server_final_msg(const char * server_sig, int error)
 }
 
 static int
-get_comma_value_len(char *payload)
+get_comma_value_len(char *payload, char *payload_end)
 {
 	int len = 0;
 	char *it = payload;
-	while (it != NULL) {
+	while (it != (payload_end + 1)) {
 		if (*it == ',')
 			break;
 		len ++;
@@ -255,16 +255,16 @@ get_comma_value_len(char *payload)
 	return len;
 }
 
-static const char *
-get_next_comma_value(char *payload, const char *payload_end)
+static char *
+get_next_comma_value(char *payload, char *payload_end)
 {
 	char *it = payload;
-	while (it != NULL) {
+	while (it != (payload_end + 1)) {
 		if (*it == ',')
 			break;
 		it++;
 	}
-	if (it == payload_end)
+	if (it == (payload_end + 1))
 		return NULL;
 	return it + 1;
 }
@@ -274,13 +274,13 @@ char *
 scram_handle_client_first_msg(void *arg, const char *msg, int len)
 {
 	struct scram_ctx *ctx = arg;
-	char *it = msg;
-	char *itend = msg + len;
+	char *it = (char *)msg;
+	char *itend = it + len;
 	char *gs2_cbind_flag   = it;
-	int   gs2_cbind_flagsz = get_comma_value_len(it);
+	int   gs2_cbind_flagsz = get_comma_value_len(it, itend);
 	it += gs2_cbind_flagsz;
 	char *authzid          = get_next_comma_value(it, itend);
-	int   authzidsz        = get_comma_value_len(it);
+	int   authzidsz        = get_comma_value_len(it, itend);
 	it += authzidsz;
 
 	/*
@@ -292,16 +292,22 @@ scram_handle_client_first_msg(void *arg, const char *msg, int len)
 	ctx->client_first_msg_bare = it;
 
 	char *reserved_mext    = get_next_comma_value(it, itend);
-	int   reserved_mextsz  = get_comma_value_len(it);
+	int   reserved_mextsz  = get_comma_value_len(it, itend);
 	it += reserved_mextsz;
 	char *username         = get_next_comma_value(it, itend);
-	int   usernamesz       = get_comma_value_len(it);
+	int   usernamesz       = get_comma_value_len(it, itend);
 	it += usernamesz;
 	char *cnonce            = get_next_comma_value(it, itend);
-	int   cnoncesz          = get_comma_value_len(it);
+	int   cnoncesz          = get_comma_value_len(it, itend);
 	it += cnoncesz;
 	char *extensions       = get_next_comma_value(it, itend);
-	int   extensionssz     = get_comma_value_len(it);
+	int   extensionssz     = get_comma_value_len(it, itend);
+	(void)gs2_cbind_flag;
+	(void)authzid;
+	(void)reserved_mext;
+	(void)username;
+	(void)extensions;
+	(void)extensionssz;
 	// parse done
 	int snonce = nonce();
 	char csnonce[64];
@@ -329,16 +335,18 @@ char *
 scram_handle_client_final_msg(void *arg, const char *msg, int len)
 {
 	struct scram_ctx *ctx = arg;
-	char *it = msg;
-	char *itend = msg + len;
+	char *it = (char *)msg;
+	char *itend = it + len;
 	char *gs2_cbind_flag   = it;
-	int   gs2_cbind_flagsz = get_comma_value_len(it);
+	int   gs2_cbind_flagsz = get_comma_value_len(it, itend);
 	it += gs2_cbind_flagsz;
 	char *csnonce          = get_next_comma_value(it, itend);
-	int   csnoncesz        = get_comma_value_len(it);
+	int   csnoncesz        = get_comma_value_len(it, itend);
 	it += csnoncesz;
 	char *proof            = get_next_comma_value(it, itend);
-	int   proofsz          = get_comma_value_len(it);
+	int   proofsz          = get_comma_value_len(it, itend);
+	(void)gs2_cbind_flag;
+	(void)gs2_cbind_flagsz;
 	// parse done
 	//AuthMessage = ([ ClientFirstMessageBare,ServerFirstMessage,ClientFinalMessageWithoutProof]),
 	char *client_final_msg_without_proof = peek_client_final_msg_without_proof(msg);
@@ -378,24 +386,27 @@ char *
 scram_handle_server_first_msg(void *arg, const char *msg, int len)
 {
 	struct scram_ctx *ctx = arg;
-	char *it = msg;
-	char *itend = msg + len;
+	char *it = (char *)msg;
+	char *itend = it + len;
 	char *nonce            = it;
-	int   noncesz          = get_comma_value_len(it);
+	int   noncesz          = get_comma_value_len(it, itend);
 	it += noncesz;
 	char *salt             = get_next_comma_value(it, itend);
-	int   saltsz           = get_comma_value_len(it);
+	int   saltsz           = get_comma_value_len(it, itend);
 	it += saltsz;
 	char *iteration_cnt    = get_next_comma_value(it, itend);
-	int   iteration_cntsz  = get_comma_value_len(it);
+	int   iteration_cntsz  = get_comma_value_len(it, itend);
+	(void)salt;
+	(void)saltsz;
+	(void)iteration_cnt;
+	(void)iteration_cntsz;
 	// parse done
-	ctx->server_first_msg  = msg;
-	char *client_first_msg_bare = ctx->client_first_msg_bare;
+	ctx->server_first_msg = (char *)msg;
 	//ClientFinalMessageWithoutProof = client_final_message_without_proof(Nonce),
 	char *gh = gs_header();
 	size_t ghb64sz = BASE64_ENCODE_OUT_SIZE(strlen(gh)) + 1;
 	char ghb64[ghb64sz];
-	if (0 != base64_encode(gh, strlen(gh), ghb64)) {
+	if (0 != base64_encode((const unsigned char *)gh, strlen(gh), ghb64)) {
 		return NULL;
 	}
 	char client_final_msg_without_proof[32];
@@ -425,13 +436,13 @@ char *
 scram_handle_server_final_msg(void *arg, const char *msg, int len)
 {
 	struct scram_ctx *ctx = arg;
-	char *it = msg;
-	char *itend = msg + len;
+	char *it = (char *)msg;
+	char *itend = it + len;
 	char *verifier     = it;
-	int   verifiersz   = get_comma_value_len(it);
+	int   verifiersz   = get_comma_value_len(it, itend);
 	it += verifiersz;
-	char *extensions   = get_next_comma_value(it, itend);
-	int   extensionssz = get_comma_value_len(it);
+	//char *extensions   = get_next_comma_value(it, itend);
+	//int   extensionssz = get_comma_value_len(it);
 	// parse done
 	/*
 	ClientFinalMessageWithoutProof = client_final_message_without_proof(Nonce),
@@ -453,6 +464,6 @@ scram_handle_server_final_msg(void *arg, const char *msg, int len)
 	if (0 == strcmp(verifier, scram_hmac(ctx, ctx->server_key, authmsg))) {
 		return NULL; // true
 	}
-	return authmsg; // return anything to indicate pass
+	return arg; // return anything to indicate pass
 }
 
