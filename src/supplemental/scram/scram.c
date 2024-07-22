@@ -55,20 +55,20 @@ stored_key(Alg, ClientKey) ->
     crypto:hash(Alg, ClientKey).
 */
 static char *
-client_key(const EVP_MD *digest, char *salt_pwd)
+client_key(const EVP_MD *digest, char *salt_pwd, int sz)
 {
-	char *key    = salt_pwd;
-	char *data   = "Client Key";
-	unsigned char *result = HMAC(digest, key, strlen(key), (const unsigned char *)data, strlen(data), NULL, NULL);
+	char *key  = salt_pwd;
+	char *data = "Client Key";
+	unsigned char *result = HMAC(digest, key, sz, (const unsigned char *)data, strlen(data), NULL, NULL);
 	return (char *)result;
 }
 
 static char *
-server_key(const EVP_MD *digest, char *salt_pwd)
+server_key(const EVP_MD *digest, char *salt_pwd, int sz)
 {
-	char *key    = salt_pwd;
-	char *data   = "Server Key";
-	unsigned char *result = HMAC(digest, key, strlen(key), (const unsigned char *)data, strlen(data), NULL, NULL);
+	char *key  = salt_pwd;
+	char *data = "Server Key";
+	unsigned char *result = HMAC(digest, key, sz, (const unsigned char *)data, strlen(data), NULL, NULL);
 	return (char *)result;
 }
 
@@ -128,6 +128,7 @@ struct scram_ctx {
 	char *salt;
 	char *salt_pwd;
 	const EVP_MD *digest;
+	int   digestsz;
 	char *client_key;
 	char *server_key;
 	char *stored_key;
@@ -148,43 +149,59 @@ scram_hmac(void *arg, char *key, char *data)
 	return (char *)result;
 }
 
-void *scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, enum SCRAM_digest dig, int keysz)
+void *scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, enum SCRAM_digest dig)
 {
 	int rv;
+	int keysz;
 	const EVP_MD *digest;
 	switch (dig) {
 		case SCRAM_SHA1:
 			digest = EVP_sha1();
+			keysz  = 20; // 160 bits
 			break;
 		case SCRAM_SHA256:
 			digest = EVP_sha256();
+			keysz  = 32; // 256 bits
 			break;
+		default:
+			printf("default???\n");
+			return NULL;
 	}
 	struct scram_ctx *ctx = nng_alloc(sizeof(struct scram_ctx));
-	if (ctx == NULL)
+	if (ctx == NULL) {
+		printf("no alloc???\n");
 		return NULL;
+	}
 
 	int salt = gen_salt();
 	ctx->salt = nng_alloc(sizeof(char) * 32);
-	if (ctx->salt == NULL)
+	if (ctx->salt == NULL) {
+		nng_free(ctx, 0);
 		return NULL;
+	}
 	sprintf(ctx->salt, "%d", salt);
 
 	char *salt_pwd = nng_alloc(sizeof(char) * keysz);
 	rv = salt_password(pwd, pwdsz, ctx->salt, strlen(ctx->salt),
 			               iteration_cnt, digest, keysz, salt_pwd);
-	if (rv != 0)
+	if (rv != 1) {
+		printf("salt password failed %d???\n", rv);
+		nng_free(salt_pwd, 0);
+		nng_free(ctx->salt, 0);
+		nng_free(ctx, 0);
 		return NULL;
+	}
 	ctx->salt_pwd = salt_pwd;
 
 	// debug
 	for (int i=0; i<keysz; ++i)
-		printf("%x", salt_pwd[i]);
+		printf("%x", salt_pwd[i] & 0xff);
 	printf(">>> PWD SALT\n");
 
 	ctx->digest     = digest;
-	ctx->client_key = client_key(digest, salt_pwd);
-	ctx->server_key = server_key(digest, salt_pwd);
+	ctx->digestsz   = keysz;
+	ctx->client_key = client_key(digest, salt_pwd, keysz);
+	ctx->server_key = server_key(digest, salt_pwd, keysz);
 	ctx->stored_key = stored_key(digest, ctx->client_key);
 	ctx->iteration_cnt = iteration_cnt;
 
