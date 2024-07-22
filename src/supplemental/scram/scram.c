@@ -12,6 +12,7 @@
 
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
+#include <openssl/sha.h>
 
 #include "nng/supplemental/nanolib/base64.h"
 #include "nng/supplemental/scram/scram.h"
@@ -282,10 +283,10 @@ scram_client_final_msg(char *nonce, const char *proof)
 	char ghb64[ghb64sz];
 	size_t proofb64sz = BASE64_ENCODE_OUT_SIZE(strlen(proof)) + 1;
 	char proofb64[proofb64sz];
-	if (0 != base64_encode((const unsigned char *)gh, strlen(gh), ghb64)) {
+	if (0 == base64_encode((const unsigned char *)gh, strlen(gh), ghb64)) {
 		return NULL;
 	}
-	if (0 != base64_encode((const unsigned char *)proof, strlen(proof), proofb64)) {
+	if (0 == base64_encode((const unsigned char *)proof, strlen(proof), proofb64)) {
 		return NULL;
 	}
 	char *buf = malloc(sizeof(char) * (ghb64sz + proofb64sz + 32));
@@ -303,7 +304,7 @@ scram_server_first_msg(char *nonce, const char *salt, int iteration_cnt)
 {
 	size_t saltb64sz = BASE64_ENCODE_OUT_SIZE(strlen(salt)) + 1;
 	char saltb64[saltb64sz];
-	if (0 != base64_encode((const unsigned char *)salt, strlen(salt), saltb64)) {
+	if (0 == base64_encode((const unsigned char *)salt, strlen(salt), saltb64)) {
 		return NULL;
 	}
 	char *buf = nng_alloc(sizeof(char) * (saltb64sz + 64));
@@ -328,7 +329,7 @@ scram_server_final_msg(const char * server_sig, int error)
 	}
 	size_t ssb64sz = BASE64_ENCODE_OUT_SIZE(strlen(server_sig)) + 1;
 	char ssb64[ssb64sz];
-	if (0 != base64_encode((const unsigned char *)server_sig, strlen(server_sig), ssb64)) {
+	if (0 == base64_encode((const unsigned char *)server_sig, strlen(server_sig), ssb64)) {
 		return NULL;
 	}
 	buf = nng_alloc(sizeof(char) * (ssb64sz + 32));
@@ -520,7 +521,7 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
 	char *gh = gs_header();
 	size_t ghb64sz = BASE64_ENCODE_OUT_SIZE(strlen(gh)) + 1;
 	char ghb64[ghb64sz];
-	if (0 != base64_encode((const unsigned char *)gh, strlen(gh), ghb64)) {
+	if (0 == base64_encode((const unsigned char *)gh, strlen(gh), ghb64)) {
 		return NULL;
 	}
 	char client_final_msg_without_proof[32];
