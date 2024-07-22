@@ -419,6 +419,7 @@ scram_handle_client_first_msg(void *arg, const char *msg, int len)
 	int   iteration_cnt = ctx->iteration_cnt;
 	char *server_first_msg = scram_server_first_msg(csnonce, salt, iteration_cnt);
 	ctx->server_first_msg = server_first_msg;
+	ctx->cached_nonce = strdup(csnonce);
 
 	nng_free(gs2_cbind_flag, 0);
 	nng_free(authzid, 0);
@@ -444,18 +445,16 @@ char *
 scram_handle_client_final_msg(void *arg, const char *msg, int len)
 {
 	struct scram_ctx *ctx = arg;
+	char *result = NULL;
 	char *it = (char *)msg;
 	char *itend = it + len;
-	char *gs2_cbind_flag   = it;
-	int   gs2_cbind_flagsz = get_comma_value_len(it, itend);
-	it += gs2_cbind_flagsz;
-	char *csnonce          = get_next_comma_value(it, itend);
-	int   csnoncesz        = get_comma_value_len(it, itend);
-	it += csnoncesz;
-	char *proof            = get_next_comma_value(it, itend);
-	int   proofsz          = get_comma_value_len(it, itend);
-	(void)gs2_cbind_flag;
-	(void)gs2_cbind_flagsz;
+	char *itnext;
+	char *gs2_cbind_flag   = get_comma_value(it, itend, &itnext, 2);
+	it = itnext;
+	char *csnonce          = get_comma_value(it, itend, &itnext, 2);
+	it = itnext;
+	char *proof            = get_comma_value(it, itend, &itnext, 2);
+	it = itnext;
 	// parse done
 	//AuthMessage = ([ ClientFirstMessageBare,ServerFirstMessage,ClientFinalMessageWithoutProof]),
 	char *client_final_msg_without_proof = peek_client_final_msg_without_proof(msg);
@@ -465,6 +464,7 @@ scram_handle_client_final_msg(void *arg, const char *msg, int len)
 	// ClientSignature = hmac(Algorithm, StoredKey, AuthMessage),
 	char *client_sig = scram_hmac(ctx, ctx->stored_key, ctx->digestsz, authmsg);
 	// ClientKey = crypto:exor(ClientProof, ClientSignature)
+	int  proofsz = ctx->digestsz;
 	char client_key[proofsz];
 	xor(proof, client_sig, client_key, proofsz);
 	/*
@@ -478,13 +478,19 @@ scram_handle_client_final_msg(void *arg, const char *msg, int len)
      end;
 	*/
 	char *hash_client_key = hash(ctx->digest, client_key, ctx->digestsz);
-	if (0 == strncmp(csnonce, ctx->cached_nonce, csnoncesz) &&
+	if (ctx->cached_nonce &&
+	    0 == strcmp(csnonce, ctx->cached_nonce) &&
 	    0 == strcmp(hash_client_key, ctx->stored_key)) {
 		char *server_sig = scram_hmac(ctx, ctx->server_key, ctx->digestsz, authmsg);
 		char *server_final_msg = scram_server_final_msg(server_sig, 0);
-		return server_final_msg;
+		result = server_final_msg;
 	}
-	return NULL;
+	nng_free(gs2_cbind_flag, 0);
+	nng_free(hash_client_key, 0);
+	nng_free(client_sig, 0);
+	nng_free(csnonce, 0);
+	nng_free(proof, 0);
+	return result;
 }
 
 /*
