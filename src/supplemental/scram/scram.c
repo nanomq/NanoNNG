@@ -149,7 +149,27 @@ scram_hmac(void *arg, char *key, char *data)
 	return (char *)result;
 }
 
-void *scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, enum SCRAM_digest dig)
+void
+scram_ctx_free(void *arg)
+{
+	struct scram_ctx *ctx = arg;
+	if (!ctx)
+		return;
+	if (ctx->salt)         nng_free(ctx->salt, 0);
+	if (ctx->salt_pwd)     nng_free(ctx->salt_pwd, 0);
+	if (ctx->client_key)   nng_free(ctx->client_key, 0);
+	if (ctx->server_key)   nng_free(ctx->server_key, 0);
+	if (ctx->stored_key)   nng_free(ctx->stored_key, 0);
+	if (ctx->cached_nonce) nng_free(ctx->cached_nonce, 0);
+
+	if (ctx->client_final_msg_without_proof) nng_free(ctx->client_final_msg_without_proof, 0);
+	if (ctx->client_first_msg_bare)          nng_free(ctx->client_first_msg_bare, 0);
+	if (ctx->server_first_msg)               nng_free(ctx->server_first_msg, 0);
+	nng_free(ctx, 0);
+}
+
+void *
+scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, enum SCRAM_digest dig)
 {
 	int rv;
 	int keysz;
@@ -202,8 +222,13 @@ void *scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, enum SCRAM_diges
 	ctx->digestsz   = keysz;
 	ctx->client_key = client_key(digest, salt_pwd, keysz);
 	ctx->server_key = server_key(digest, salt_pwd, keysz);
-	ctx->stored_key = stored_key(digest, ctx->client_key);
+	ctx->stored_key = stored_key(digest, ctx->client_key, keysz);
 	ctx->iteration_cnt = iteration_cnt;
+	ctx->cached_nonce  = NULL;
+
+	ctx->client_final_msg_without_proof = NULL;
+	ctx->client_first_msg_bare          = NULL;
+	ctx->server_first_msg               = NULL;
 
 	return (void *)ctx;
 }
