@@ -38,7 +38,7 @@ test_first_msg(void)
 }
 
 void
-test_handle_first_msg(void)
+test_handle_client_first_msg(void)
 {
 	char *username  = "admin";
 	char *pwd       = "public";
@@ -58,8 +58,52 @@ test_handle_first_msg(void)
 	(void)username;
 }
 
+void
+test_handle_server_first_msg(void)
+{
+	char *username  = "admin";
+	char *pwd       = "public";
+	char *server_first_msg = "r=5889969031670468145,s=MTcxMDYxMjE0Mw==,i=4096";
+
+	void *ctx = scram_ctx_create(pwd, strlen(pwd), 4096, SCRAM_SHA256);
+	NUTS_ASSERT(NULL != ctx);
+
+	char *client_final_msg =
+		scram_handle_server_first_msg(ctx, server_first_msg, strlen(server_first_msg));
+	NUTS_ASSERT(NULL != client_final_msg);
+
+	printf("client final msg: %s\n", client_final_msg);
+
+	nng_free(client_final_msg, 0);
+	scram_ctx_free(ctx);
+	(void)username;
+}
+
+void
+test_handle_client_final_msg(void)
+{
+	char *username  = "admin";
+	char *pwd       = "public";
+	char *client_final_msg = "c=biws,r=5889969031670468145,p=DtmY/yJcVDnfUT4hDRF+pvsG6ec8dctrlNe1XO7er2c=";
+
+	void *ctx = scram_ctx_create(pwd, strlen(pwd), 4096, SCRAM_SHA256);
+	NUTS_ASSERT(NULL != ctx);
+
+	char *server_final_msg =
+		scram_handle_client_final_msg(ctx, client_final_msg, strlen(client_final_msg));
+	NUTS_ASSERT(NULL != server_final_msg);
+
+	printf("server final msg: %s\n", server_final_msg);
+
+	nng_free(server_final_msg, 0);
+	scram_ctx_free(ctx);
+	(void)username;
+}
+
 TEST_LIST = {
 	{ "first msg", test_first_msg },
-	{ "handle first msg", test_handle_first_msg },
+	{ "handle client first msg", test_handle_client_first_msg },
+	{ "handle server first msg", test_handle_server_first_msg },
+	{ "handle client final msg", test_handle_client_final_msg },
 	{ NULL, NULL },
 };
