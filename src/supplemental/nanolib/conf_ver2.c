@@ -365,7 +365,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 		conf_websocket *websocket = &(config->websocket);
 		if (NULL == jso_websocket) {
 			log_error("Read config nanomq ws failed!");
-			websocket->enable = true;
+			websocket->enable = false;
 
 		} else {
 			hocon_read_address_base(websocket, url, "bind",
