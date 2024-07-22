@@ -344,6 +344,7 @@ get_comma_value_len(char *payload, char *payload_end)
 	while (it != (payload_end + 1)) {
 		if (*it == ',')
 			break;
+		it ++;
 		len ++;
 	}
 	return len;
@@ -363,6 +364,29 @@ get_next_comma_value(char *payload, char *payload_end)
 	return it + 1;
 }
 
+static char *
+get_comma_value(char *payload, char *payload_end, char **next_start, int peekn)
+{
+	int   len = 0;
+	char *it  = payload;
+	while (it != (payload_end + 1)) {
+		if (*it == ',')
+			break;
+		it++;
+		len++;
+	}
+	*next_start = (it + 1);
+	if (it == (payload_end + 1)) {
+		*next_start = it;
+		if (len > 0)
+			return strndup(payload + peekn, len - peekn);
+		return NULL;
+	}
+	if (len > 0)
+		return strndup(payload + peekn, len - peekn);
+	return NULL;
+}
+
 // %% = gs2-cbind-flag "," [authzid] "," [reserved-mext ","] userame "," nonce ["," extensions]
 char *
 scram_handle_client_first_msg(void *arg, const char *msg, int len)
@@ -370,12 +394,11 @@ scram_handle_client_first_msg(void *arg, const char *msg, int len)
 	struct scram_ctx *ctx = arg;
 	char *it = (char *)msg;
 	char *itend = it + len;
-	char *gs2_cbind_flag   = it;
-	int   gs2_cbind_flagsz = get_comma_value_len(it, itend);
-	it += gs2_cbind_flagsz;
-	char *authzid          = get_next_comma_value(it, itend);
-	int   authzidsz        = get_comma_value_len(it, itend);
-	it += authzidsz;
+	char *itnext;
+	char *gs2_cbind_flag   = get_comma_value(it, itend, &itnext, 0);
+	it = itnext;
+	char *authzid          = get_comma_value(it, itend, &itnext, 0);
+	it = itnext;
 
 	/*
 	peek_client_first_message_bare(Bin) ->
@@ -385,27 +408,23 @@ scram_handle_client_first_msg(void *arg, const char *msg, int len)
 	*/
 	ctx->client_first_msg_bare = it;
 
-	char *reserved_mext    = get_next_comma_value(it, itend);
-	int   reserved_mextsz  = get_comma_value_len(it, itend);
-	it += reserved_mextsz;
-	char *username         = get_next_comma_value(it, itend);
-	int   usernamesz       = get_comma_value_len(it, itend);
-	it += usernamesz;
-	char *cnonce            = get_next_comma_value(it, itend);
-	int   cnoncesz          = get_comma_value_len(it, itend);
-	it += cnoncesz;
-	char *extensions       = get_next_comma_value(it, itend);
-	int   extensionssz     = get_comma_value_len(it, itend);
+	//char *reserved_mext    = get_next_comma_value(it, itend);
+	//int   reserved_mextsz  = get_comma_value_len(it, itend);
+	//it += (reserved_mextsz + 1);
+	char *username         = get_comma_value(it, itend, &itnext, 2);
+	it = itnext;
+	char *cnonce           = get_comma_value(it, itend, &itnext, 2);
+	it = itnext;
+	char *extensions       = get_comma_value(it, itend, &itnext, 0);
 	(void)gs2_cbind_flag;
 	(void)authzid;
-	(void)reserved_mext;
+	//(void)reserved_mext;
 	(void)username;
 	(void)extensions;
-	(void)extensionssz;
 	// parse done
 	int snonce = nonce();
 	char csnonce[64];
-	sprintf(csnonce, "%.*s%d", cnoncesz, cnonce, snonce);
+	sprintf(csnonce, "%s%d", cnonce, snonce);
 	char *salt = ctx->salt;
 	int   iteration_cnt = ctx->iteration_cnt;
 	char *server_first_msg = scram_server_first_msg(csnonce, salt, iteration_cnt);
