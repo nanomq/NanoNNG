@@ -270,17 +270,17 @@ client_final_message(Nonce, Proof) ->
     iolist_to_binary([client_final_message_without_proof(Nonce), ",p=", base64:encode(Proof)]).
 */
 static char *
-scram_client_final_msg(char *nonce, const char *proof)
+scram_client_final_msg(char *nonce, const char *proof, int client_proofsz)
 {
 	char *gh = gs_header();
 	size_t ghb64sz = BASE64_ENCODE_OUT_SIZE(strlen(gh)) + 1;
 	char ghb64[ghb64sz];
-	size_t proofb64sz = BASE64_ENCODE_OUT_SIZE(strlen(proof)) + 1;
+	size_t proofb64sz = BASE64_ENCODE_OUT_SIZE(client_proofsz) + 1;
 	char proofb64[proofb64sz];
 	if (0 == base64_encode((const unsigned char *)gh, strlen(gh), ghb64)) {
 		return NULL;
 	}
-	if (0 == base64_encode((const unsigned char *)proof, strlen(proof), proofb64)) {
+	if (0 == base64_encode((const unsigned char *)proof, client_proofsz, proofb64)) {
 		return NULL;
 	}
 	char *buf = malloc(sizeof(char) * (ghb64sz + proofb64sz + 32));
@@ -498,18 +498,12 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
 	struct scram_ctx *ctx = arg;
 	char *it = (char *)msg;
 	char *itend = it + len;
-	char *nonce            = it;
-	int   noncesz          = get_comma_value_len(it, itend);
-	it += noncesz;
-	char *salt             = get_next_comma_value(it, itend);
-	int   saltsz           = get_comma_value_len(it, itend);
-	it += saltsz;
-	char *iteration_cnt    = get_next_comma_value(it, itend);
-	int   iteration_cntsz  = get_comma_value_len(it, itend);
-	(void)salt;
-	(void)saltsz;
-	(void)iteration_cnt;
-	(void)iteration_cntsz;
+	char *itnext;
+	char *nonce            = get_comma_value(it, itend, &itnext, 2);
+	it = itnext;
+	char *salt             = get_comma_value(it, itend, &itnext, 2);
+	it = itnext;
+	char *iteration_cnt    = get_comma_value(it, itend, &itnext, 2);
 	// parse done
 	ctx->server_first_msg = (char *)msg;
 	//ClientFinalMessageWithoutProof = client_final_message_without_proof(Nonce),
@@ -534,11 +528,17 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
     ClientProof = crypto:exor(ClientKey, ClientSignature),
 	*/
 	char *client_sig = scram_hmac(ctx, ctx->stored_key, ctx->digestsz, authmsg);
-	int client_sig_len = strlen(client_sig);
+	int client_sig_len = ctx->digestsz;
 	char client_proof[client_sig_len];
 	xor(ctx->client_key, client_sig, client_proof, client_sig_len);
 
-	return scram_client_final_msg(nonce, client_proof);
+	char *client_final_msg = scram_client_final_msg(nonce, client_proof, client_sig_len);
+
+	nng_free(client_sig, client_sig_len);
+	nng_free(nonce, 0);
+	nng_free(salt, 0);
+	nng_free(iteration_cnt, 0);
+	return client_final_msg;
 }
 
 // %% = (server-error / verifier) ["," extensions]
