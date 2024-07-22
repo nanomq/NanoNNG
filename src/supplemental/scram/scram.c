@@ -15,6 +15,7 @@
 
 #include "nng/supplemental/nanolib/base64.h"
 #include "nng/supplemental/scram/scram.h"
+#include "nng/supplemental/nanolib/log.h"
 
 /* TODO Is salt a global static value?
 gen_salt() ->
@@ -72,10 +73,47 @@ server_key(const EVP_MD *digest, char *salt_pwd)
 }
 
 static char *
+hash(const EVP_MD *digest, char *data)
+{
+	unsigned char *out_hash = nng_alloc(sizeof(char) *EVP_MAX_MD_SIZE);
+	int data_len = strlen(data);
+
+    EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
+    if (mdctx == NULL) {
+        fprintf(stderr, "Failed to create EVP_MD_CTX\n");
+        log_error("Failed to create EVP_MD_CTX\n");
+        return NULL;
+    }
+
+    if (1 != EVP_DigestInit_ex(mdctx, digest, NULL)) {
+        fprintf(stderr, "Failed to initialize digest\n");
+        log_error("Failed to initialize digest\n");
+        EVP_MD_CTX_free(mdctx);
+        return NULL;
+    }
+
+    if (1 != EVP_DigestUpdate(mdctx, data, data_len)) {
+        fprintf(stderr, "Failed to update digest\n");
+        log_error("Failed to update digest\n");
+        EVP_MD_CTX_free(mdctx);
+        return NULL;
+    }
+
+    unsigned int out_len;
+    if (1 != EVP_DigestFinal_ex(mdctx, out_hash, &out_len)) {
+        fprintf(stderr, "Failed to finalize digest\n");
+        EVP_MD_CTX_free(mdctx);
+        return NULL;
+    }
+
+    EVP_MD_CTX_free(mdctx);
+	return (char *)out_hash;
+}
+
+static char *
 stored_key(const EVP_MD *digest, char *client_key)
 {
-	//return digest(client_key); // TODO
-	return client_key;
+	return hash(digest, client_key);
 }
 
 static void
@@ -368,8 +406,9 @@ scram_handle_client_final_msg(void *arg, const char *msg, int len)
              {error, 'other-error'}
      end;
 	*/
+	char *hash_client_key = hash(ctx->digest, client_key);
 	if (0 == strncmp(csnonce, ctx->cached_nonce, csnoncesz) &&
-	    0 == strcmp(client_key, ctx->stored_key)) {
+	    0 == strcmp(hash_client_key, ctx->stored_key)) {
 		char *server_sig = scram_hmac(ctx, ctx->server_key, authmsg);
 		char *server_final_msg = scram_server_final_msg(server_sig, 0);
 		return server_final_msg;
