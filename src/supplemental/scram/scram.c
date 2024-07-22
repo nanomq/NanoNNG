@@ -178,8 +178,6 @@ scram_ctx_free(void *arg)
 	if (ctx->cached_nonce) nng_free(ctx->cached_nonce, 0);
 
 	if (ctx->client_final_msg_without_proof) nng_free(ctx->client_final_msg_without_proof, 0);
-	if (ctx->client_first_msg_bare)          nng_free(ctx->client_first_msg_bare, 0);
-	if (ctx->server_first_msg)               nng_free(ctx->server_first_msg, 0);
 	nng_free(ctx, 0);
 }
 
@@ -207,6 +205,7 @@ scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, enum SCRAM_digest dig)
 		printf("no alloc???\n");
 		return NULL;
 	}
+	memset(ctx, 0, sizeof(*ctx));
 
 	int salt = gen_salt();
 	ctx->salt = nng_alloc(sizeof(char) * 32);
@@ -239,11 +238,6 @@ scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, enum SCRAM_digest dig)
 	ctx->server_key = server_key(digest, salt_pwd, keysz);
 	ctx->stored_key = stored_key(digest, ctx->client_key, keysz);
 	ctx->iteration_cnt = iteration_cnt;
-	ctx->cached_nonce  = NULL;
-
-	ctx->client_final_msg_without_proof = NULL;
-	ctx->client_first_msg_bare          = NULL;
-	ctx->server_first_msg               = NULL;
 
 	return (void *)ctx;
 }
@@ -264,7 +258,7 @@ scram_client_first_msg(void *arg, const char *username)
 	char *buf = nng_alloc(sizeof(char) * sz);
 
 	sprintf(buf, "%s%s", gs_header(), client_first_msg_bare);
-	ctx->client_first_msg_bare = strdup(client_first_msg_bare);
+	ctx->client_first_msg_bare = buf + strlen(gs_header());
 	return (uint8_t *)buf;
 }
 
@@ -417,11 +411,6 @@ scram_handle_client_first_msg(void *arg, const char *msg, int len)
 	char *cnonce           = get_comma_value(it, itend, &itnext, 2);
 	it = itnext;
 	char *extensions       = get_comma_value(it, itend, &itnext, 0);
-	(void)gs2_cbind_flag;
-	(void)authzid;
-	//(void)reserved_mext;
-	(void)username;
-	(void)extensions;
 	// parse done
 	int snonce = nonce();
 	char csnonce[64];
@@ -430,6 +419,12 @@ scram_handle_client_first_msg(void *arg, const char *msg, int len)
 	int   iteration_cnt = ctx->iteration_cnt;
 	char *server_first_msg = scram_server_first_msg(csnonce, salt, iteration_cnt);
 	ctx->server_first_msg = server_first_msg;
+
+	nng_free(gs2_cbind_flag, 0);
+	nng_free(authzid, 0);
+	nng_free(username, 0);
+	nng_free(cnonce, 0);
+	nng_free(extensions, 0);
 	return server_first_msg;
 }
 
