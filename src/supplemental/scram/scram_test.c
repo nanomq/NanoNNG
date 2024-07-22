@@ -19,9 +19,9 @@ void
 test_first_msg(void)
 {
 	char *username = "admin";
-	char *pwd      = "password";
+	char *pwd      = "public";
 
-	void *ctx = scram_ctx_create(pwd, strlen(pwd), 4096, SCRAM_SHA1);
+	void *ctx = scram_ctx_create(pwd, strlen(pwd), 4096, SCRAM_SHA256);
 	NUTS_ASSERT(NULL != ctx);
 	uint8_t *first_msg = scram_client_first_msg(ctx, username);
 	NUTS_ASSERT(NULL != first_msg);
@@ -31,11 +31,35 @@ test_first_msg(void)
 	sprintf(expect_first_msg, "n,,n=%s,r=", username);
 	NUTS_ASSERT(0 == strncmp((char *)first_msg, expect_first_msg, strlen(expect_first_msg)));
 
+	printf("first msg:%s\n", first_msg);
+
 	nng_free(first_msg, 0);
 	scram_ctx_free(ctx);
 }
 
+void
+test_handle_first_msg(void)
+{
+	char *username  = "admin";
+	char *pwd       = "public";
+	char *client_first_msg = "n,,n=admin,r=588996903";
+
+	void *ctx = scram_ctx_create(pwd, strlen(pwd), 4096, SCRAM_SHA256);
+	NUTS_ASSERT(NULL != ctx);
+
+	char *server_first_msg =
+		scram_handle_client_first_msg(ctx, client_first_msg, strlen(client_first_msg));
+	NUTS_ASSERT(NULL != server_first_msg);
+
+	printf("server first msg: %s\n", server_first_msg);
+
+	nng_free(server_first_msg, 0);
+	scram_ctx_free(ctx);
+	(void)username;
+}
+
 TEST_LIST = {
 	{ "first msg", test_first_msg },
+	{ "handle first msg", test_handle_first_msg },
 	{ NULL, NULL },
 };
