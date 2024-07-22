@@ -59,8 +59,13 @@ client_key(const EVP_MD *digest, char *salt_pwd, int sz)
 {
 	char *key  = salt_pwd;
 	char *data = "Client Key";
-	unsigned char *result = HMAC(digest, key, sz, (const unsigned char *)data, strlen(data), NULL, NULL);
-	return (char *)result;
+	unsigned char *md = HMAC(digest, key, sz, (const unsigned char *)data, strlen(data), NULL, NULL);
+	if (md != NULL) {
+		char *result = nng_alloc(sizeof(char) * sz);
+		memcpy(result, md, sz);
+		return result;
+	}
+	return NULL;
 }
 
 static char *
@@ -68,15 +73,19 @@ server_key(const EVP_MD *digest, char *salt_pwd, int sz)
 {
 	char *key  = salt_pwd;
 	char *data = "Server Key";
-	unsigned char *result = HMAC(digest, key, sz, (const unsigned char *)data, strlen(data), NULL, NULL);
-	return (char *)result;
+	unsigned char *md = HMAC(digest, key, sz, (const unsigned char *)data, strlen(data), NULL, NULL);
+	if (md != NULL) {
+		char *result = nng_alloc(sizeof(char) * sz);
+		memcpy(result, md, sz);
+		return result;
+	}
+	return NULL;
 }
 
 static char *
-hash(const EVP_MD *digest, char *data)
+hash(const EVP_MD *digest, char *data, int sz)
 {
 	unsigned char *out_hash = nng_alloc(sizeof(char) *EVP_MAX_MD_SIZE);
-	int data_len = strlen(data);
 
     EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
     if (mdctx == NULL) {
@@ -92,7 +101,7 @@ hash(const EVP_MD *digest, char *data)
         return NULL;
     }
 
-    if (1 != EVP_DigestUpdate(mdctx, data, data_len)) {
+    if (1 != EVP_DigestUpdate(mdctx, data, sz)) {
         fprintf(stderr, "Failed to update digest\n");
         log_error("Failed to update digest\n");
         EVP_MD_CTX_free(mdctx);
@@ -111,9 +120,9 @@ hash(const EVP_MD *digest, char *data)
 }
 
 static char *
-stored_key(const EVP_MD *digest, char *client_key)
+stored_key(const EVP_MD *digest, char *client_key, int sz)
 {
-	return hash(digest, client_key);
+	return hash(digest, client_key, sz);
 }
 
 static void
@@ -142,11 +151,16 @@ struct scram_ctx {
 };
 
 static char *
-scram_hmac(void *arg, char *key, char *data)
+scram_hmac(void *arg, char *key, int keysz, char *data)
 {
 	struct scram_ctx *ctx = arg;
-	unsigned char *result = HMAC(ctx->digest, key, strlen(key), (const unsigned char *)data, strlen(data), NULL, NULL);
-	return (char *)result;
+	unsigned char *md = HMAC(ctx->digest, key, keysz, (const unsigned char *)data, strlen(data), NULL, NULL);
+	if (md != NULL) {
+		char *result = nng_alloc(sizeof(char) * keysz);
+		memcpy(result, md, keysz);
+		return result;
+	}
+	return NULL;
 }
 
 void
@@ -434,7 +448,7 @@ scram_handle_client_final_msg(void *arg, const char *msg, int len)
 	sprintf(authmsg, "%s,%s,%s",
 	    ctx->client_first_msg_bare, ctx->server_first_msg, client_final_msg_without_proof);
 	// ClientSignature = hmac(Algorithm, StoredKey, AuthMessage),
-	char *client_sig = scram_hmac(ctx, ctx->stored_key, authmsg);
+	char *client_sig = scram_hmac(ctx, ctx->stored_key, ctx->digestsz, authmsg);
 	// ClientKey = crypto:exor(ClientProof, ClientSignature)
 	char client_key[proofsz];
 	xor(proof, client_sig, client_key, proofsz);
@@ -448,10 +462,10 @@ scram_handle_client_final_msg(void *arg, const char *msg, int len)
              {error, 'other-error'}
      end;
 	*/
-	char *hash_client_key = hash(ctx->digest, client_key);
+	char *hash_client_key = hash(ctx->digest, client_key, ctx->digestsz);
 	if (0 == strncmp(csnonce, ctx->cached_nonce, csnoncesz) &&
 	    0 == strcmp(hash_client_key, ctx->stored_key)) {
-		char *server_sig = scram_hmac(ctx, ctx->server_key, authmsg);
+		char *server_sig = scram_hmac(ctx, ctx->server_key, ctx->digestsz, authmsg);
 		char *server_final_msg = scram_server_final_msg(server_sig, 0);
 		return server_final_msg;
 	}
@@ -504,7 +518,7 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
     ClientSignature = hmac(Algorithm, StoredKey, AuthMessage),
     ClientProof = crypto:exor(ClientKey, ClientSignature),
 	*/
-	char *client_sig = scram_hmac(ctx, ctx->stored_key, authmsg);
+	char *client_sig = scram_hmac(ctx, ctx->stored_key, ctx->digestsz, authmsg);
 	int client_sig_len = strlen(client_sig);
 	char client_proof[client_sig_len];
 	xor(ctx->client_key, client_sig, client_proof, client_sig_len);
@@ -542,7 +556,7 @@ scram_handle_server_final_msg(void *arg, const char *msg, int len)
             {error, 'other-error'}
     end;
 	*/
-	if (0 == strcmp(verifier, scram_hmac(ctx, ctx->server_key, authmsg))) {
+	if (0 == strcmp(verifier, scram_hmac(ctx, ctx->server_key, ctx->digestsz, authmsg))) {
 		return NULL; // true
 	}
 	return arg; // return anything to indicate pass
