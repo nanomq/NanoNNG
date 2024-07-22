@@ -25,9 +25,14 @@ test_first_msg(void)
 	NUTS_ASSERT(NULL != ctx);
 	uint8_t *first_msg = scram_client_first_msg(ctx, username);
 	NUTS_ASSERT(NULL != first_msg);
+
+	// We don't care about the random
 	char expect_first_msg[256];
 	sprintf(expect_first_msg, "n,,n=%s,r=", username);
 	NUTS_ASSERT(0 == strncmp((char *)first_msg, expect_first_msg, strlen(expect_first_msg)));
+
+	nng_free(first_msg, 0);
+	scram_ctx_free(ctx);
 }
 
 TEST_LIST = {
