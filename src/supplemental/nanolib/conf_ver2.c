@@ -466,12 +466,14 @@ conf_tls_parse_ver2(conf *config, cJSON *jso)
 	// parsing single listener
 	if (jso_tls) {
 		conf_tls *tls = &(config->tls);
-		conf_tls_parse_ver2_base(tls, jso_tls);
-		hocon_read_bool(tls, verify_peer, jso_tls);
-		hocon_read_bool_base(
-		    tls, set_fail, "fail_if_no_peer_cert", jso_tls);
 		hocon_read_address_base(
 		    tls, url, "bind", "tls+nmq-tcp://", jso_tls);
+		if (tls->url) {
+			conf_tls_parse_ver2_base(tls, jso_tls);
+			hocon_read_bool(tls, verify_peer, jso_tls);
+			hocon_read_bool_base(
+			    tls, set_fail, "fail_if_no_peer_cert", jso_tls);
+		}
 	}
 
 	// parsing for multiple listener
