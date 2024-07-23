@@ -131,6 +131,8 @@ xor(char *in1, char *in2, char *out, int len)
 }
 
 struct scram_ctx {
+	char *pwd;
+	int   pwdsz;
 	char *salt;
 	char *salt_pwd;
 	const EVP_MD *digest;
@@ -166,6 +168,7 @@ scram_ctx_free(void *arg)
 	struct scram_ctx *ctx = arg;
 	if (!ctx)
 		return;
+	if (ctx->pwd)          nng_free(ctx->pwd, 0);
 	if (ctx->salt)         nng_free(ctx->salt, 0);
 	if (ctx->salt_pwd)     nng_free(ctx->salt_pwd, 0);
 	if (ctx->client_key)   nng_free(ctx->client_key, 0);
@@ -177,8 +180,37 @@ scram_ctx_free(void *arg)
 	nng_free(ctx, 0);
 }
 
+static int
+scram_ctx_update(void *arg, char *salt)
+{
+	struct scram_ctx *ctx = arg;
+	int keysz = ctx->digestsz;
+
+	ctx->salt = salt;
+	if (ctx->salt == NULL) {
+		return -1;
+	}
+
+	char *salt_pwd = nng_alloc(sizeof(char) * ctx->digestsz);
+	int rv = salt_password(ctx->pwd, ctx->pwdsz, ctx->salt, strlen(ctx->salt),
+			               ctx->iteration_cnt, ctx->digest, ctx->digestsz, salt_pwd);
+	if (rv != 1) {
+		log_error("salt password failed %d???\n", rv);
+		nng_free(salt_pwd, 0);
+		nng_free(ctx->salt, 0);
+		return -2;
+	}
+	ctx->salt_pwd = salt_pwd;
+
+	ctx->client_key = client_key(ctx->digest, salt_pwd, keysz);
+	ctx->server_key = server_key(ctx->digest, salt_pwd, keysz);
+	ctx->stored_key = stored_key(ctx->digest, ctx->client_key, keysz);
+
+	return 0;
+}
+
 void *
-scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, enum SCRAM_digest dig)
+scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, enum SCRAM_digest dig, int salt)
 {
 	int rv;
 	int keysz;
@@ -203,14 +235,29 @@ scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, enum SCRAM_digest dig)
 	}
 	memset(ctx, 0, sizeof(*ctx));
 
-	int salt = gen_salt();
-	ctx->salt = nng_alloc(sizeof(char) * 32);
-	if (ctx->salt == NULL) {
+	ctx->pwd           = strdup(pwd);
+	ctx->pwdsz         = pwdsz;
+	ctx->digest        = digest;
+	ctx->digestsz      = keysz;
+	ctx->iteration_cnt = iteration_cnt;
+
+	if (salt == 0)
+		return (void *)ctx;
+
+	salt = gen_salt();
+	char *saltstr = nng_alloc(sizeof(char) * 32);
+	if (saltstr == NULL) {
 		nng_free(ctx, 0);
 		return NULL;
 	}
-	sprintf(ctx->salt, "%d", salt);
+	sprintf(saltstr, "%d", salt);
+	if (0 != (rv = scram_ctx_update(ctx, saltstr))) {
+		log_error("error in updating ctx %d", rv);
+		nng_free(ctx, 0);
+		return NULL;
+	}
 
+	/*
 	char *salt_pwd = nng_alloc(sizeof(char) * keysz);
 	rv = salt_password(pwd, pwdsz, ctx->salt, strlen(ctx->salt),
 			               iteration_cnt, digest, keysz, salt_pwd);
@@ -223,20 +270,15 @@ scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, enum SCRAM_digest dig)
 	}
 	ctx->salt_pwd = salt_pwd;
 
+	ctx->client_key = client_key(digest, salt_pwd, keysz);
+	ctx->server_key = server_key(digest, salt_pwd, keysz);
+	ctx->stored_key = stored_key(digest, ctx->client_key, keysz);
+	*/
+
 	/* debug
 	for (int i=0; i<keysz; ++i)
 		printf("%d,", salt_pwd[i] & 0xff);
 	printf(">>> SALT\n");
-	*/
-
-	ctx->digest     = digest;
-	ctx->digestsz   = keysz;
-	ctx->client_key = client_key(digest, salt_pwd, keysz);
-	ctx->server_key = server_key(digest, salt_pwd, keysz);
-	ctx->stored_key = stored_key(digest, ctx->client_key, keysz);
-	ctx->iteration_cnt = iteration_cnt;
-
-	/* debug
 	for (int i=0; i<keysz; ++i)
 		printf("%d,", ctx->client_key[i] & 0xff);
 	printf(">>> CLIKEY\n");
@@ -536,11 +578,18 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
 	char *itnext;
 	char *nonce            = get_comma_value(it, itend, &itnext, 2);
 	it = itnext;
-	char *salt             = get_comma_value(it, itend, &itnext, 2);
+	char *saltb64          = get_comma_value(it, itend, &itnext, 2);
 	it = itnext;
 	char *iteration_cnt    = get_comma_value(it, itend, &itnext, 2);
 	// parse done
 	ctx->server_first_msg = (char *)msg;
+	char *salt = nng_alloc(sizeof(char) * 32);
+	memset(salt, 0, 32);
+	if (0 == base64_decode(saltb64, strlen(saltb64), (unsigned char *)salt)) {
+		return NULL;
+	}
+
+	scram_ctx_update(ctx, salt);
 	//ClientFinalMessageWithoutProof = client_final_message_without_proof(Nonce),
 	char *gh = gs_header();
 	size_t ghb64sz = BASE64_ENCODE_OUT_SIZE(strlen(gh)) + 1;
@@ -572,7 +621,7 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
 
 	nng_free(client_sig, client_sig_len);
 	nng_free(nonce, 0);
-	nng_free(salt, 0);
+	nng_free(saltb64, 0);
 	nng_free(iteration_cnt, 0);
 	return client_final_msg;
 }
