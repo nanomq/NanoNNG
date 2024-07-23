@@ -373,10 +373,13 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 			hocon_read_address_base(
 			    node, url, "bind", "nmq-tcp://", tcp_node);
 			hocon_read_bool_base(node, enable, "enable", tcp_node);
-
-			cvector_push_back(config->tcp_list.nodes, node);
-
-			config->enable = true;
+			if (node->url) {
+				cvector_push_back(
+				    config->tcp_list.nodes, node);
+				config->enable = true;
+			} else {
+				nng_free(node, sizeof(node));
+			}
 		}
 		config->tcp_list.count = cvector_size(config->tcp_list.nodes);
 
