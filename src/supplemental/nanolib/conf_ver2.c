@@ -1454,7 +1454,7 @@ conf_exchange_parse_ver2(conf *config, cJSON *jso)
 	cJSON *node_array = hocon_get_obj("exchange_client", jso);
 	cJSON *node_item  = NULL;
 
-	conf_exchange *conf_exchange = &config->exchange;
+	// conf_exchange *conf_exchange = &config->exchange;
 
 	cJSON_ArrayForEach(node_item, node_array)
 	{
