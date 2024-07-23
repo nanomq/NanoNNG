@@ -3932,6 +3932,44 @@ conf_rule_destroy(conf_rule *re)
 }
 #endif
 
+static void
+conf_tcp_node_destroy(conf_tcp *node)
+{
+	node->enable = false;
+	if(node->url) {
+		free(node->url);
+		node->url = NULL;
+	}
+}
+
+static void
+conf_tcplist_destroy(conf_tcp_list *tcplist)
+{
+	if(tcplist->count > 0) {
+		for (size_t i = 0; i < tcplist->count; i++) {
+			conf_tcp *node = tcplist->nodes[i];
+			conf_tcp_node_destroy(node);
+			free(node);
+		}
+		cvector_free(tcplist->nodes);
+		tcplist->nodes = NULL;
+	}
+}
+
+static void
+conf_tlslist_destroy(conf_tls_list *tlslist)
+{
+	if(tlslist->count > 0) {
+		for (size_t i = 0; i < tlslist->count; i++) {
+			conf_tls *node = tlslist->nodes[i];
+			conf_tls_destroy(node);
+			free(node);
+		}
+		cvector_free(tlslist->nodes);
+		tlslist->nodes = NULL;
+	}
+}
+
 void
 conf_fini(conf *nanomq_conf)
 {
@@ -3959,5 +3997,9 @@ conf_fini(conf *nanomq_conf)
 #if defined(ENABLE_LOG)
 	conf_log_destroy(&nanomq_conf->log);
 #endif
+
+	conf_tcplist_destroy(&nanomq_conf->tcp_list);
+	conf_tlslist_destroy(&nanomq_conf->tls_list);
+
 	free(nanomq_conf);
 }
