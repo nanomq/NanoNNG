@@ -247,7 +247,7 @@ scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, enum SCRAM_digest dig)
 client_first_message_bare(Username) ->
     iolist_to_binary(["n=", Username, ",r=", nonce()]).
 */
-uint8_t *
+char *
 scram_client_first_msg(void *arg, const char *username)
 {
 	struct scram_ctx *ctx = arg;
@@ -259,7 +259,7 @@ scram_client_first_msg(void *arg, const char *username)
 
 	sprintf(buf, "%s%s", gs_header(), client_first_msg_bare);
 	ctx->client_first_msg_bare = buf + strlen(gs_header());
-	return (uint8_t *)buf;
+	return buf;
 }
 
 /*
@@ -437,7 +437,10 @@ peek_client_final_message_without_proof(Bin) ->
 static char *
 peek_client_final_msg_without_proof(const char *msg)
 {
-	return strstr(msg, ",p=");
+	char *m = strdup(msg);
+	char *end = strstr(m, ",p=");
+	*end = '\0';
+	return m;
 }
 
 // %% = channel-binding "," nonce ["," extensions] "," proof

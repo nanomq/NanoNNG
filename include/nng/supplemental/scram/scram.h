@@ -18,7 +18,7 @@ enum SCRAM_digest {
 void *scram_ctx_create(char *pwd, int pwdsz, int it_cnt, enum SCRAM_digest digest);
 void  scram_ctx_free(void *ctx);
 
-uint8_t *scram_client_first_msg(void *arg, const char *username);
+char *scram_client_first_msg(void *arg, const char *username);
 
 char *scram_handle_client_first_msg(void *arg, const char *msg, int len);
 char *scram_handle_server_first_msg(void *arg, const char *msg, int len);
