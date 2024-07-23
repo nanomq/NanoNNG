@@ -376,7 +376,6 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 			if (node->url) {
 				cvector_push_back(
 				    config->tcp_list.nodes, node);
-				config->enable = true;
 			} else {
 				nng_free(node, sizeof(node));
 			}
@@ -460,8 +459,11 @@ conf_tcp_parse_ver2_base(conf_tcp *tcp, cJSON *jso_tcp)
 static void
 conf_tls_parse_ver2(conf *config, cJSON *jso)
 {
-	// parsing single listener
 	cJSON *jso_tls = hocon_get_obj("listeners.ssl", jso);
+	cJSON *node_array = hocon_get_obj("listeners.ssl", jso);
+	cJSON *node_item  = NULL;
+
+	// parsing single listener
 	if (jso_tls) {
 		conf_tls *tls = &(config->tls);
 		conf_tls_parse_ver2_base(tls, jso_tls);
@@ -473,22 +475,22 @@ conf_tls_parse_ver2(conf *config, cJSON *jso)
 	}
 
 	// parsing for multiple listener
-	cJSON *node_array = hocon_get_obj("listeners.ssl", jso);
-	cJSON *node_item  = NULL;
-
 	config->tls_list.nodes = NULL;
 	cJSON_ArrayForEach(node_item, node_array)
 	{
 		conf_tls *node = NNI_ALLOC_STRUCT(node);
 
-		conf_tls_parse_ver2_base(node, node_item);
-		hocon_read_bool(node, verify_peer, node_item);
-		hocon_read_bool_base(
-		    node, set_fail, "fail_if_no_peer_cert", node_item);
 		hocon_read_address_base(
 		    node, url, "bind", "tls+nmq-tcp://", node_item);
-
-		cvector_push_back(config->tls_list.nodes, node);
+		if (node->url) {
+			conf_tls_parse_ver2_base(node, node_item);
+			hocon_read_bool(node, verify_peer, node_item);
+			hocon_read_bool_base(
+			    node, set_fail, "fail_if_no_peer_cert", node_item);
+			cvector_push_back(config->tls_list.nodes, node);
+		} else {
+			nng_free(node, sizeof(node));
+		}
 	}
 	config->tls_list.count = cvector_size(config->tls_list.nodes);
 
