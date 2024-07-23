@@ -511,6 +511,7 @@ scram_handle_client_final_msg(void *arg, const char *msg, int len)
 		*/
 		char *server_final_msg = scram_server_final_msg(server_sig, ctx->digestsz, 0);
 		result = server_final_msg;
+		nng_free(server_sig, 0);
 	}
 	nng_free(gs2_cbind_flag, 0);
 	nng_free(hash_client_key, 0);
@@ -620,6 +621,7 @@ scram_handle_server_final_msg(void *arg, const char *msg, int len)
 		result = arg; // Successfully
 	}
 	nng_free(server_sig, 0);
+	nng_free(verifier, 0);
 	return result;
 }
 
