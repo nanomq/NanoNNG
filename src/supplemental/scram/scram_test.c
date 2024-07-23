@@ -91,6 +91,29 @@ test_handle_client_final_msg(void)
 
 	char *server_final_msg =
 		scram_handle_client_final_msg(ctx, client_final_msg, strlen(client_final_msg));
+	// NUTS_ASSERT(NULL != server_final_msg);
+	NUTS_ASSERT(NULL == server_final_msg); // Due to no ctx
+
+	// printf("server final msg: %s\n", server_final_msg);
+
+	nng_free(server_final_msg, 0);
+	scram_ctx_free(ctx);
+	(void)username;
+}
+
+/*
+void
+test_handle_server_final_msg(void)
+{
+	char *username  = "admin";
+	char *pwd       = "public";
+	char *server_final_msg = "c=biws,r=5889969031670468145,p=3f+0DVmROdCQE/nAMo4wIKobP6TolZOEldP7s2wCykM=";
+
+	void *ctx = scram_ctx_create(pwd, strlen(pwd), 4096, SCRAM_SHA256);
+	NUTS_ASSERT(NULL != ctx);
+
+	char *server_final_msg =
+		scram_handle_client_final_msg(ctx, client_final_msg, strlen(client_final_msg));
 	//NUTS_ASSERT(NULL != server_final_msg);
 	NUTS_ASSERT(NULL == server_final_msg); // Due to no ctx
 
