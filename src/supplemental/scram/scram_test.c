@@ -177,13 +177,66 @@ test_full_auth(void)
 	scram_ctx_free(sctx);
 }
 
+void
+test_full_auth_unmatch(void)
+{
+	char *username = "admin";
+	char *pwd      = "public";
+	char *pwd2     = "closed";
+	int   salt     = nng_random();
+
+	void *cctx = scram_ctx_create(pwd, strlen(pwd), 4096, SCRAM_SHA256, 0);
+	NUTS_ASSERT(NULL != cctx);
+
+	void *sctx = scram_ctx_create(pwd2, strlen(pwd), 4096, SCRAM_SHA256, salt);
+	NUTS_ASSERT(NULL != sctx);
+
+	// client generate first msg
+	char *client_first_msg = scram_client_first_msg(cctx, username);
+	NUTS_ASSERT(NULL != client_first_msg);
+	printf("client first msg: %s\n", client_first_msg);
+
+	// server recv client_first_msg and return server_first_msg
+	char *server_first_msg =
+		scram_handle_client_first_msg(sctx, client_first_msg, strlen(client_first_msg));
+	NUTS_ASSERT(NULL != server_first_msg);
+	printf("server first msg: %s\n", server_first_msg);
+
+	// client recv server_first_msg and return client_final_msg
+	char *client_final_msg =
+		scram_handle_server_first_msg(cctx, server_first_msg, strlen(server_first_msg));
+	NUTS_ASSERT(NULL != client_final_msg);
+	printf("client final msg: %s\n", client_final_msg);
+
+	// server recv client_final_msg and return server_final_msg
+	char *server_final_msg =
+		scram_handle_client_final_msg(sctx, client_final_msg, strlen(client_final_msg));
+	NUTS_ASSERT(NULL == server_final_msg);
+	printf("server final msg: %s\n", server_final_msg);
+
+	/*
+	// client recv server_final_msg and return result
+	char *result =
+		scram_handle_server_final_msg(cctx, server_final_msg, strlen(server_final_msg));
+	NUTS_ASSERT(NULL == result);
+	*/
+
+	nng_free(client_first_msg, 0);
+	nng_free(server_first_msg, 0);
+	nng_free(client_final_msg, 0);
+	nng_free(server_final_msg, 0);
+
+	scram_ctx_free(cctx);
+	scram_ctx_free(sctx);
+}
 
 TEST_LIST = {
-	{ "first msg", test_first_msg },
+	{ "client first msg", test_client_first_msg },
 	{ "handle client first msg", test_handle_client_first_msg },
 	{ "handle server first msg", test_handle_server_first_msg },
 	{ "handle client final msg", test_handle_client_final_msg },
 	//{ "handle server final msg", test_handle_server_final_msg },
 	{ "full enhanced auth", test_full_auth },
+	{ "full enhanced auth with unmatch password", test_full_auth_unmatch },
 	{ NULL, NULL },
 };
