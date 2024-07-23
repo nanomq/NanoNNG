@@ -90,20 +90,17 @@ hash(const EVP_MD *digest, char *data, int sz)
 
     EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
     if (mdctx == NULL) {
-        fprintf(stderr, "Failed to create EVP_MD_CTX\n");
         log_error("Failed to create EVP_MD_CTX\n");
         return NULL;
     }
 
     if (1 != EVP_DigestInit_ex(mdctx, digest, NULL)) {
-        fprintf(stderr, "Failed to initialize digest\n");
         log_error("Failed to initialize digest\n");
         EVP_MD_CTX_free(mdctx);
         return NULL;
     }
 
     if (1 != EVP_DigestUpdate(mdctx, data, sz)) {
-        fprintf(stderr, "Failed to update digest\n");
         log_error("Failed to update digest\n");
         EVP_MD_CTX_free(mdctx);
         return NULL;
@@ -111,7 +108,6 @@ hash(const EVP_MD *digest, char *data, int sz)
 
     unsigned int out_len;
     if (1 != EVP_DigestFinal_ex(mdctx, out_hash, &out_len)) {
-        fprintf(stderr, "Failed to finalize digest\n");
         EVP_MD_CTX_free(mdctx);
         return NULL;
     }
@@ -197,12 +193,12 @@ scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, enum SCRAM_digest dig)
 			keysz  = 32; // 256 bits
 			break;
 		default:
-			printf("default???\n");
+			log_error("wrong SCRAM_TYPE\n");
 			return NULL;
 	}
 	struct scram_ctx *ctx = nng_alloc(sizeof(struct scram_ctx));
 	if (ctx == NULL) {
-		printf("no alloc???\n");
+		log_error("no memory\n");
 		return NULL;
 	}
 	memset(ctx, 0, sizeof(*ctx));
@@ -219,7 +215,7 @@ scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, enum SCRAM_digest dig)
 	rv = salt_password(pwd, pwdsz, ctx->salt, strlen(ctx->salt),
 			               iteration_cnt, digest, keysz, salt_pwd);
 	if (rv != 1) {
-		printf("salt password failed %d???\n", rv);
+		log_error("salt password failed %d???\n", rv);
 		nng_free(salt_pwd, 0);
 		nng_free(ctx->salt, 0);
 		nng_free(ctx, 0);
@@ -227,10 +223,11 @@ scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, enum SCRAM_digest dig)
 	}
 	ctx->salt_pwd = salt_pwd;
 
-	// debug
+	/* debug
 	for (int i=0; i<keysz; ++i)
-		printf("%x", salt_pwd[i] & 0xff);
-	printf(">>> PWD SALT\n");
+		printf("%d,", salt_pwd[i] & 0xff);
+	printf(">>> SALT\n");
+	*/
 
 	ctx->digest     = digest;
 	ctx->digestsz   = keysz;
@@ -238,6 +235,18 @@ scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, enum SCRAM_digest dig)
 	ctx->server_key = server_key(digest, salt_pwd, keysz);
 	ctx->stored_key = stored_key(digest, ctx->client_key, keysz);
 	ctx->iteration_cnt = iteration_cnt;
+
+	/* debug
+	for (int i=0; i<keysz; ++i)
+		printf("%d,", ctx->client_key[i] & 0xff);
+	printf(">>> CLIKEY\n");
+	for (int i=0; i<keysz; ++i)
+		printf("%d,", ctx->server_key[i] & 0xff);
+	printf(">>> SERKEY\n");
+	for (int i=0; i<keysz; ++i)
+		printf("%d,", ctx->stored_key[i] & 0xff);
+	printf(">>> STOREDKEY\n");
+	*/
 
 	return (void *)ctx;
 }
@@ -464,6 +473,7 @@ scram_handle_client_final_msg(void *arg, const char *msg, int len)
 	char authmsg[256];
 	sprintf(authmsg, "%s,%s,%s",
 	    ctx->client_first_msg_bare, ctx->server_first_msg, client_final_msg_without_proof);
+	log_trace("handle client final authmsg: %s\n", authmsg);
 	// ClientSignature = hmac(Algorithm, StoredKey, AuthMessage),
 	char *client_sig = scram_hmac(ctx, ctx->stored_key, ctx->digestsz, authmsg);
 	// ClientKey = crypto:exor(ClientProof, ClientSignature)
@@ -531,6 +541,7 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
 	char authmsg[256];
 	sprintf(authmsg, "%s,%s,%s",
 	    ctx->client_first_msg_bare, msg, client_final_msg_without_proof);
+	//printf("handle server first authmsg: %s\n", authmsg);
 	/*
 	SaltedPassword = salted_password(Algorithm, Password, Salt, IterationCount),
     ClientKey = client_key(Algorithm, SaltedPassword),
@@ -575,6 +586,7 @@ scram_handle_server_final_msg(void *arg, const char *msg, int len)
 	    ctx->client_first_msg_bare,
 	    ctx->server_first_msg,
 	    ctx->client_final_msg_without_proof);
+	log_trace("handle server final authmsg: %s\n", authmsg);
 	/*
     case Verifier =:= hmac(Algorithm, ServerKey, AuthMessage) of
         true ->
@@ -584,6 +596,7 @@ scram_handle_server_final_msg(void *arg, const char *msg, int len)
     end;
 	*/
 	char *server_sig = scram_hmac(ctx, ctx->server_key, ctx->digestsz, authmsg);
+	log_trace("client: server_key %.*s\n", ctx->digestsz, ctx->server_key);
 	size_t ssb64sz = BASE64_ENCODE_OUT_SIZE(ctx->digestsz) + 1;
 	char ssb64[ssb64sz];
 	if (0 == base64_encode((const unsigned char *)server_sig, ctx->digestsz, ssb64)) {
