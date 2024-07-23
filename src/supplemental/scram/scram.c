@@ -480,7 +480,11 @@ scram_handle_client_final_msg(void *arg, const char *msg, int len)
 	// ClientKey = crypto:exor(ClientProof, ClientSignature)
 	int  proofsz = ctx->digestsz;
 	char client_key[proofsz];
-	xor(proof, client_sig, client_key, proofsz);
+	char client_proof[proofsz + 1];
+	if (0 == base64_decode(proof, strlen(proof), (unsigned char *)client_proof)) {
+		return NULL;
+	}
+	xor(client_proof, client_sig, client_key, proofsz);
 	/*
 	 case Nonce =:= CachedNonce andalso crypto:hash(Algorithm, ClientKey) =:= StoredKey of
          true ->
@@ -494,9 +498,17 @@ scram_handle_client_final_msg(void *arg, const char *msg, int len)
 	char *hash_client_key = hash(ctx->digest, client_key, ctx->digestsz);
 	if (ctx->cached_nonce &&
 	    0 == strcmp(csnonce, ctx->cached_nonce) &&
-	    0 == strcmp(hash_client_key, ctx->stored_key)) {
+	    0 == strncmp(hash_client_key, ctx->stored_key, ctx->digestsz)) {
 	    //0 == strcmp(csnonce, ctx->cached_nonce)) {
 		char *server_sig = scram_hmac(ctx, ctx->server_key, ctx->digestsz, authmsg);
+
+		/*
+	printf(">>> server: SERVER_SIG ");
+	for (int i=0; i<ctx->digestsz; ++i)
+		printf("%d,", server_sig[i] & 0xff);
+	printf("<<<\n");
+		printf("server: server_key %.*s\n", ctx->digestsz, ctx->server_key);
+		*/
 		char *server_final_msg = scram_server_final_msg(server_sig, ctx->digestsz, 0);
 		result = server_final_msg;
 	}
