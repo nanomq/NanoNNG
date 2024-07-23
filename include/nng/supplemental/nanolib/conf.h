@@ -563,8 +563,8 @@ struct conf {
 	int        msq_len;
 	uint32_t   num_taskq_thread;
 	uint32_t   max_taskq_thread;
-	uint32_t   parallel;				// broker ctx
-	uint64_t   total_ctx;		// Total ctx of work (bridge + AWS + broker + HTTP)
+	uint32_t   parallel;			   // broker ctx
+	uint64_t   total_ctx;		       // Total ctx of work (bridge + AWS + broker + HTTP)
 	uint64_t   max_packet_size;        // byte
 	uint32_t   client_max_packet_size; // byte
 	uint32_t   max_inflight_window;
@@ -579,6 +579,7 @@ struct conf {
 	bool       bridge_mode;
 
 	conf_tcp_list        tcp_list;
+	conf_tls_list        tls_list;
 	conf_sqlite          sqlite;
 	conf_tls             tls;
 	conf_http_server     http_server;
