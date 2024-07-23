@@ -554,9 +554,9 @@ scram_handle_server_final_msg(void *arg, const char *msg, int len)
 	struct scram_ctx *ctx = arg;
 	char *it = (char *)msg;
 	char *itend = it + len;
-	char *verifier     = it;
-	int   verifiersz   = get_comma_value_len(it, itend);
-	it += verifiersz;
+	char *itnext;
+	char *verifier     = get_comma_value(it, itend, &itnext, 0);
+	it = itnext;
 	//char *extensions   = get_next_comma_value(it, itend);
 	//int   extensionssz = get_comma_value_len(it);
 	// parse done
@@ -578,8 +578,8 @@ scram_handle_server_final_msg(void *arg, const char *msg, int len)
     end;
 	*/
 	if (0 == strcmp(verifier, scram_hmac(ctx, ctx->server_key, ctx->digestsz, authmsg))) {
-		return NULL; // true
+		return arg; // Successfully
 	}
-	return arg; // return anything to indicate pass
+	return NULL; // Failed
 }
 
