@@ -313,7 +313,7 @@ server_final_message(error, Error) ->
     iolist_to_binary(["e=", Error]).
 */
 static char *
-scram_server_final_msg(const char * server_sig, int error)
+scram_server_final_msg(const char *server_sig, int sz, int error)
 {
 	char *buf;
 	if (error != 0) {
@@ -321,9 +321,9 @@ scram_server_final_msg(const char * server_sig, int error)
 		sprintf(buf, "e=%d", error);
 		return buf;
 	}
-	size_t ssb64sz = BASE64_ENCODE_OUT_SIZE(strlen(server_sig)) + 1;
+	size_t ssb64sz = BASE64_ENCODE_OUT_SIZE(sz) + 1;
 	char ssb64[ssb64sz];
-	if (0 == base64_encode((const unsigned char *)server_sig, strlen(server_sig), ssb64)) {
+	if (0 == base64_encode((const unsigned char *)server_sig, sz, ssb64)) {
 		return NULL;
 	}
 	buf = nng_alloc(sizeof(char) * (ssb64sz + 32));
@@ -484,8 +484,9 @@ scram_handle_client_final_msg(void *arg, const char *msg, int len)
 	if (ctx->cached_nonce &&
 	    0 == strcmp(csnonce, ctx->cached_nonce) &&
 	    0 == strcmp(hash_client_key, ctx->stored_key)) {
+	    //0 == strcmp(csnonce, ctx->cached_nonce)) {
 		char *server_sig = scram_hmac(ctx, ctx->server_key, ctx->digestsz, authmsg);
-		char *server_final_msg = scram_server_final_msg(server_sig, 0);
+		char *server_final_msg = scram_server_final_msg(server_sig, ctx->digestsz, 0);
 		result = server_final_msg;
 	}
 	nng_free(gs2_cbind_flag, 0);
@@ -493,6 +494,7 @@ scram_handle_client_final_msg(void *arg, const char *msg, int len)
 	nng_free(client_sig, 0);
 	nng_free(csnonce, 0);
 	nng_free(proof, 0);
+	nng_free(client_final_msg_without_proof, 0);
 	return result;
 }
 
@@ -554,11 +556,12 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
 char *
 scram_handle_server_final_msg(void *arg, const char *msg, int len)
 {
+	char *result = NULL;
 	struct scram_ctx *ctx = arg;
 	char *it = (char *)msg;
 	char *itend = it + len;
 	char *itnext;
-	char *verifier     = get_comma_value(it, itend, &itnext, 0);
+	char *verifier     = get_comma_value(it, itend, &itnext, 2);
 	it = itnext;
 	//char *extensions   = get_next_comma_value(it, itend);
 	//int   extensionssz = get_comma_value_len(it);
@@ -580,9 +583,17 @@ scram_handle_server_final_msg(void *arg, const char *msg, int len)
             {error, 'other-error'}
     end;
 	*/
-	if (0 == strcmp(verifier, scram_hmac(ctx, ctx->server_key, ctx->digestsz, authmsg))) {
-		return arg; // Successfully
+	char *server_sig = scram_hmac(ctx, ctx->server_key, ctx->digestsz, authmsg);
+	size_t ssb64sz = BASE64_ENCODE_OUT_SIZE(ctx->digestsz) + 1;
+	char ssb64[ssb64sz];
+	if (0 == base64_encode((const unsigned char *)server_sig, ctx->digestsz, ssb64)) {
+		return NULL;
 	}
-	return NULL; // Failed
+
+	if (0 == strcmp(verifier, ssb64)) {
+		result = arg; // Successfully
+	}
+	nng_free(server_sig, 0);
+	return result;
 }
 
