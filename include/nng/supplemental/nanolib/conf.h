@@ -243,7 +243,11 @@ struct conf_bridge_node {
 	bool         enable;
 	bool         dynamic;
 	bool         clean_start;
+	bool         transparent;
+	bool         will_flag;
+	bool         will_retain;
 	void        *sock;
+	void        *bridge_arg;	// for reloading bridge case
 	uint8_t      proto_ver;
 	uint16_t     port;
 	uint16_t     keepalive;
@@ -258,6 +262,8 @@ struct conf_bridge_node {
 	char        *clientid;
 	char        *username;
 	char        *password;
+	char        *will_payload;
+	char        *will_topic;
 	topics     **forwards_list;
 	uint64_t     parallel;
 	topics     **sub_list;
@@ -265,14 +271,7 @@ struct conf_bridge_node {
 	conf_tcp     tcp;
 	conf_sqlite *sqlite;
 	nng_aio    **bridge_aio;
-	void        *bridge_arg;	// for reloading bridge case
-
 	nng_mtx     *mtx;
-
-	bool    will_flag;
-	char *  will_payload;
-	char *  will_topic;
-	bool    will_retain;
 	uint8_t will_qos;
 
 	// MQTT v5 property
