@@ -480,6 +480,12 @@ NNG_DECL uint8_t nni_mqtt_msg_get_disconnect_reason_code(nni_msg *msg);
 NNG_DECL property *nni_mqtt_msg_get_disconnect_property(nng_msg *msg);
 NNG_DECL void nni_mqtt_msg_set_disconnect_property(nng_msg *msg, property *prop);
 
+// mqtt auth
+NNG_DECL property *nni_mqtt_msg_get_auth_property(nng_msg *msg);
+NNG_DECL uint8_t nni_mqtt_msg_get_auth_reason_code(nng_msg *msg);
+NNG_DECL void nni_mqtt_msg_set_auth_property(nng_msg *msg, property *prop);
+NNG_DECL void nni_mqtt_msg_set_auth_reason_code(nng_msg *msg, uint8_t reason_code);
+
 NNG_DECL void nni_mqtt_msg_dump(nni_msg *, uint8_t *, uint32_t, bool);
 // mqtt topic create/free
 NNG_DECL nni_mqtt_topic *nni_mqtt_topic_array_create(size_t n);
