@@ -994,6 +994,7 @@ conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 	hocon_read_time(node, keepalive, jso_connector);
 	hocon_read_time(node, backoff_max, jso_connector);
 	hocon_read_bool(node, clean_start, jso_connector);
+	hocon_read_bool(node, transparent, jso_connector);
 	hocon_read_str(node, username, jso_connector);
 	hocon_read_str(node, password, jso_connector);
 	update_bridge_node_vin(node, CONF_NODE_CLIENTID);
