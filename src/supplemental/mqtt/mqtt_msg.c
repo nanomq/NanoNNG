@@ -853,6 +853,34 @@ nni_mqtt_msg_get_disconnect_property(nng_msg *msg)
 	return mqtt->var_header.disconnect.properties;
 }
 
+property *
+nni_mqtt_msg_get_auth_property(nni_msg *msg)
+{
+	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
+	return proto_data->var_header.auth.properties;
+}
+
+void
+nni_mqtt_msg_set_auth_property(nni_msg *msg, property *prop)
+{
+	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
+	proto_data->var_header.auth.properties = prop;
+}
+
+uint8_t
+nni_mqtt_msg_get_auth_reason_code(nni_msg *msg)
+{
+	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
+	return proto_data->var_header.auth.reason_code;
+}
+
+void
+nni_mqtt_msg_set_auth_reason_code(nni_msg *msg, uint8_t reason_code)
+{
+	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
+	proto_data->var_header.auth.reason_code = reason_code;
+}
+
 void
 nni_mqtt_msg_dump(
     nni_msg *msg, uint8_t *buffer, uint32_t len, bool print_bytes)
