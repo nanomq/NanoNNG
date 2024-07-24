@@ -153,6 +153,12 @@ typedef struct mqtt_unsuback_vhdr_t {
 	property *properties;
 } mqtt_unsuback_vhdr;
 
+typedef struct mqtt_auth_vhdr_t {
+	uint8_t   reason_code;
+	// MQTTV5
+	property *properties;
+} mqtt_auth_vhdr;
+
 /*****************************************************************************
  * Union to cover all Variable Header types
  ****************************************************************************/
@@ -169,6 +175,7 @@ union mqtt_variable_header {
 	mqtt_suback_vhdr      suback;
 	mqtt_unsubscribe_vhdr unsubscribe;
 	mqtt_unsuback_vhdr    unsuback;
+	mqtt_auth_vhdr        auth;
 };
 
 /*****************************************************************************

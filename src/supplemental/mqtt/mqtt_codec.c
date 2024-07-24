@@ -40,6 +40,7 @@ static int  nni_mqttv5_msg_encode_unsubscribe(nni_msg *);
 static int  nni_mqttv5_msg_encode_unsuback(nni_msg *);
 static int  nni_mqttv5_msg_encode_base(nni_msg *);
 static int  nni_mqttv5_msg_encode_disconnect(nni_msg *);
+static int  nni_mqttv5_msg_encode_auth(nni_msg *);
 
 static int nni_mqtt_msg_decode_fixed_header(nni_msg *);
 static int nni_mqtt_msg_decode_connect(nni_msg *);
@@ -67,7 +68,8 @@ static int nni_mqttv5_msg_decode_pubcomp(nni_msg *);
 static int nni_mqttv5_msg_decode_unsubscribe(nni_msg *);
 static int nni_mqttv5_msg_decode_unsuback(nni_msg *);
 static int nni_mqttv5_msg_decode_base(nni_msg *);
-static int  nni_mqttv5_msg_decode_disconnect(nni_msg *);
+static int nni_mqttv5_msg_decode_disconnect(nni_msg *);
+static int nni_mqttv5_msg_decode_auth(nni_msg *);
 
 static void destory_connect(nni_mqtt_proto_data *);
 static void destory_publish(nni_mqtt_proto_data *);
@@ -149,7 +151,9 @@ static mqtt_msg_codec_handler codec_v5_handler[] = {
 	{ NNG_MQTT_PINGRESP, nni_mqttv5_msg_encode_base,
 	    nni_mqttv5_msg_decode_base },
 	{ NNG_MQTT_DISCONNECT, nni_mqttv5_msg_encode_disconnect,
-	    nni_mqttv5_msg_decode_disconnect }
+	    nni_mqttv5_msg_decode_disconnect },
+	{ NNG_MQTT_AUTH, nni_mqttv5_msg_encode_auth,
+	    nni_mqttv5_msg_decode_auth }
 };
 
 int
@@ -1627,6 +1631,25 @@ nni_mqttv5_msg_encode_disconnect(nni_msg *msg)
 	return MQTT_SUCCESS;
 }
 
+static int
+nni_mqttv5_msg_encode_auth(nni_msg *msg)
+{
+	nni_mqtt_proto_data *mqtt = nni_msg_get_proto_data(msg);
+	nni_msg_clear(msg);
+
+	mqtt_auth_vhdr *var_header = &mqtt->var_header.auth;
+	nni_mqtt_msg_append_u8(msg, var_header->reason_code);
+	if (NULL == var_header->properties) {
+		mqtt->fixed_header.remaining_length = 2;
+	} else {
+		encode_properties(msg, mqtt->var_header.auth.properties, CMD_AUTH_V5);
+		mqtt->fixed_header.remaining_length = nng_msg_len(msg);
+	}
+
+	nni_mqtt_msg_encode_fixed_header(msg, mqtt);
+	return MQTT_SUCCESS;
+}
+
 
 static int
 nni_mqtt_msg_decode_fixed_header(nni_msg *msg)
@@ -1888,6 +1911,34 @@ nni_mqttv5_msg_decode_disconnect(nni_msg *msg)
 	uint32_t pos = buf.curpos - &body[0];
 	uint32_t prop_len = 0;
 	mqtt->var_header.disconnect.properties =
+	    decode_buf_properties(body, length, &pos, &prop_len, true);
+	buf.curpos = &body[0] + pos;
+
+	return MQTT_SUCCESS;
+}
+
+static int
+nni_mqttv5_msg_decode_auth(nni_msg *msg)
+{
+	int                  ret;
+	nni_mqtt_proto_data *mqtt          = nni_msg_get_proto_data(msg);
+
+	uint8_t *body   = nni_msg_body(msg);
+	size_t   length = nni_msg_len(msg);
+
+	struct pos_buf buf;
+	buf.curpos = &body[0];
+	buf.endpos = &body[length];
+
+	ret = read_byte(&buf, &mqtt->var_header.auth.reason_code);
+	if (ret != MQTT_SUCCESS) {
+		return MQTT_ERR_PROTOCOL;
+	}
+
+	/* Properties */
+	uint32_t pos = buf.curpos - &body[0];
+	uint32_t prop_len = 0;
+	mqtt->var_header.auth.properties =
 	    decode_buf_properties(body, length, &pos, &prop_len, true);
 	buf.curpos = &body[0] + pos;
 
