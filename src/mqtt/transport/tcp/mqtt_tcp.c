@@ -93,6 +93,7 @@ struct mqtt_tcptran_ep {
 	nni_dialer *         ndialer;
 	void *               property;  // property
 	void *               connmsg;
+	void *               scram_ctx;
 
 #ifdef NNG_ENABLE_STATS
 	nni_stat_item st_rcv_max;
@@ -976,6 +977,27 @@ mqtt_tcptran_pipe_start(
 		rv = nni_mqtt_msg_encode(connmsg);
 	else if (mqtt_version == MQTT_PROTOCOL_VERSION_v5) {
 		property *prop = nni_mqtt_msg_get_connect_property(connmsg);
+#ifdef SUPP_SCRAM
+		char *pwd;
+		char *username;
+		if (((pwd = nni_mqtt_msg_get_connect_password(connmsg)) != NULL) &&
+			((username = nni_mqtt_msg_get_connect_user_name(connmsg)) != NULL)) {
+			if (ep->scram_ctx == NULL) {
+				ep->scram_ctx = scram_ctx_create(pwd, strlen(pwd),
+					SCRAM_ITERATION_CNT_DEFAULT, SCRAM_DIGEST_DEFAULT, 0);
+			}
+		}
+		if (ep->scram_ctx) {
+			property *prop_auth_method = property_set_value_str(
+				AUTHENTICATION_METHOD, SCRAM_DIGEST_STR_DEFAULT,
+				strlen(SCRAM_DIGEST_STR_DEFAULT), false);
+			char *client_first_msg     = scram_client_first_msg(ep->scram_ctx, username);
+			property *prop_auth_data   = property_set_value_str(
+				AUTHENTICATION_DATA, client_first_msg, strlen(client_first_msg), false);
+			property_append(prop, prop_auth_method);
+			property_append(prop, prop_auth_data);
+		}
+#endif
 		property_data *data;
 		data = property_get_value(prop, MAXIMUM_PACKET_SIZE);
 		if (data)
