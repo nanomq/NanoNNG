@@ -1078,40 +1078,6 @@ conf_bridge_quic_parse_ver2(conf_bridge_node *node, cJSON *jso_bridge_node)
 }
 #endif
 
-static char* get_cJsonStr(cJSON *obj, const char* string)
-{
-	char *str = NULL;
-	cJSON *json = cJSON_GetObjectItem(obj, string);
-	if(json != NULL && cJSON_IsString(json)) {
-		str = json->valuestring;
-	}
-	return str;
-}
-
-static void update_prefix(char* topic, const char* pre)
-{
-	char *tmp = nni_alloc(strlen(pre) + strlen(topic) + 1);
-	if (tmp != NULL) {
-		strcat(tmp, pre);
-		strcat(tmp, topic);
-		nng_strfree(topic);
-		topic = nng_strdup(tmp);
-	}
-	nng_strfree(tmp);
-}
-
-static void update_suffix(char* topic, const char* suf)
-{
-	char *tmp = nni_alloc(strlen(suf) + strlen(topic) + 1);
-	if (tmp != NULL) {
-		strcat(tmp, topic);
-		strcat(tmp, suf);
-		nng_strfree(topic);
-		topic = nng_strdup(tmp);
-	}
-	nng_strfree(tmp);
-}
-
 void
 conf_bridge_node_parse(
     conf_bridge_node *node, conf_sqlite *bridge_sqlite, cJSON *obj)
@@ -1123,10 +1089,6 @@ conf_bridge_node_parse(
 #if defined(SUPP_QUIC)
 	conf_bridge_quic_parse_ver2(node, obj);
 #endif
-	char  *pre_remote = get_cJsonStr(obj, "pre_remote");
-	char  *pre_local = get_cJsonStr(obj, "pre_local");
-	char  *suf_remote = get_cJsonStr(obj, "suf_remote");
-	char  *suf_local = get_cJsonStr(obj, "suf_local");
 
 	cJSON *forwards = hocon_get_obj("forwards", obj);
 
@@ -1158,18 +1120,6 @@ conf_bridge_node_parse(
 			}
 			NNI_FREE_STRUCT(s);
 			continue;
-		}
-		if(pre_remote != NULL) {
-			update_prefix(s->remote_topic, pre_remote);
-		}
-		if(pre_local != NULL) {
-			update_prefix(s->local_topic, pre_local);
-		}
-		if(suf_remote != NULL) {
-			update_suffix(s->remote_topic, suf_remote);
-		}
-		if(suf_local != NULL) {
-			update_suffix(s->local_topic, suf_local);
 		}
 		s->remote_topic_len = strlen(s->remote_topic);
 		s->local_topic_len  = strlen(s->local_topic);
