@@ -479,6 +479,18 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 			if (data) {
 				p->keepalive = data->p_value.u16;
 			}
+#ifdef SUPP_SCRAM
+			data = property_get_value(ep->property, AUTHENTICATION_DATA);
+			if (!data && data->p_value.str && ep->scram_ctx) {
+				char *server_final_msg = data->p_value.str;
+				char *result = scram_handle_server_final_msg(
+					ep->scram_ctx, server_final_msg, strlen(server_final_msg));
+				if (result == NULL) {
+					// Failed so closed the connection
+					goto error;
+				}
+			}
+#endif
 		} else {
 			if ((rv = nni_mqtt_msg_decode(p->rxmsg)) != MQTT_SUCCESS) {
 				ep->reason_code = rv;
