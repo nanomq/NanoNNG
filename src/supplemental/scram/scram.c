@@ -382,6 +382,7 @@ scram_server_final_msg(const char *server_sig, int sz, int error)
 	return buf;
 }
 
+/*
 static int
 get_comma_value_len(char *payload, char *payload_end)
 {
@@ -409,6 +410,7 @@ get_next_comma_value(char *payload, char *payload_end)
 		return NULL;
 	return it + 1;
 }
+*/
 
 static char *
 get_comma_value(char *payload, char *payload_end, char **next_start, int peekn)
