@@ -465,8 +465,7 @@ scram_handle_client_first_msg(void *arg, const char *msg, int len)
 	// parse done
 	int snonce = nonce();
 	char csnonce[64];
-	//sprintf(csnonce, "%s%d", cnonce, snonce);
-	sprintf(csnonce, "%d", snonce);
+	sprintf(csnonce, "%s%d", cnonce, snonce);
 	char *salt = ctx->salt;
 	int   iteration_cnt = ctx->iteration_cnt;
 	char *server_first_msg = scram_server_first_msg(csnonce, salt, iteration_cnt);
