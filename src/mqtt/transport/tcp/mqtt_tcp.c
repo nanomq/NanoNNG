@@ -17,6 +17,13 @@
 #include "supplemental/mqtt/mqtt_msg.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
 
+#ifdef SUPP_SCRAM
+#define SCRAM_ITERATION_CNT_DEFAULT 4096
+#define SCRAM_DIGEST_DEFAULT        SCRAM_SHA256
+#define SCRAM_DIGEST_STR_DEFAULT    "SCRAM-SHA-256"
+#include "supplemental/scram/scram.h"
+#endif
+
 // TCP transport.   Platform specific TCP operations must be
 // supplied as well.
 
