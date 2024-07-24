@@ -604,7 +604,7 @@ again:
 	return 0;
 }
 
-void
+void *
 parquet_write_loop_v2(void *config)
 {
 	if (config == NULL) {
@@ -615,7 +615,7 @@ parquet_write_loop_v2(void *config)
 	if (!directory_exists(conf->dir)) {
 		if (!create_directory(conf->dir)) {
 			log_error("Failed to create directory %s", conf->dir);
-			return;
+			return NULL;
 		}
 	}
 
@@ -647,6 +647,7 @@ parquet_write_loop_v2(void *config)
 			break;
 		}
 	}
+	return NULL;
 }
 
 static void
