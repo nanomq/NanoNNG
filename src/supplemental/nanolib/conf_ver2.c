@@ -1090,8 +1090,6 @@ static char* get_cJsonStr(cJSON *obj, const char* string)
 
 static void update_prefix(char** uptopic, const char* pre)
 {
-	if(pre == NULL)
-		return;
 	char *topic = *uptopic;
 	char *tmp   = nni_alloc(strlen(pre) + strlen(topic) + 1);
 	if (tmp != NULL) {
@@ -1106,8 +1104,6 @@ static void update_prefix(char** uptopic, const char* pre)
 
 static void update_suffix(char** uptopic, const char* suf)
 {
-	if(suf == NULL)
-		return;
 	char *topic = *uptopic;
 	char *tmp   = nni_alloc(strlen(topic) + strlen(suf) + 1);
 	if (tmp != NULL) {
@@ -1167,10 +1163,18 @@ conf_bridge_node_parse(
 			NNI_FREE_STRUCT(s);
 			continue;
 		}
-		update_prefix(&(s->remote_topic), pre_remote);
-		update_prefix(&(s->local_topic), pre_local);
-		update_suffix(&(s->remote_topic), suf_remote);
-		update_suffix(&(s->local_topic), suf_local);
+		if(pre_remote != NULL) {
+			update_prefix(&(s->remote_topic), pre_remote);
+		}
+		if(pre_local != NULL) {
+			update_prefix(&(s->local_topic), pre_local);
+		}
+		if(suf_remote != NULL) {
+			update_suffix(&(s->remote_topic), suf_remote);
+		}
+		if(suf_local != NULL) {
+			update_suffix(&(s->local_topic), suf_local);
+		}
 		s->remote_topic_len = strlen(s->remote_topic);
 		s->local_topic_len  = strlen(s->local_topic);
 		for (int i = 0; i < (int) s->remote_topic_len; ++i)
