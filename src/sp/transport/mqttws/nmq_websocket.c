@@ -993,6 +993,7 @@ wstran_pipe_fini(void *arg)
 	nni_aio_free(p->txaio);
 	// We have to free msg here for a failed send
 	// due to the messy design of NNG WebSocket
+	nni_aio_wait(p->qsaio);
 	nni_aio_free(p->qsaio);
 	nni_msg_free(p->tmp_msg);
 	nni_mtx_fini(&p->mtx);
