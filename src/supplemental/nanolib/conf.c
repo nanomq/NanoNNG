@@ -2743,6 +2743,7 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->host           = NULL;
 	node->port           = 1883;
 	node->clean_start    = true;
+	node->transparent    = false;
 	node->clientid       = NULL;
 	node->username       = NULL;
 	node->password       = NULL;
@@ -2947,6 +2948,10 @@ conf_bridge_node_parse_with_name(const char *path,const char *key_prefix, const 
 			free(value);
 #endif
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".transparent_bridging")) != NULL) {
+			node->transparent = nni_strcasecmp(value, "true") == 0;
+			free(value);
+		}  else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".clean_start")) != NULL) {
 			node->clean_start = nni_strcasecmp(value, "true") == 0;
 			free(value);
