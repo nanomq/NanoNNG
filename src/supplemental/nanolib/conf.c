@@ -1166,6 +1166,7 @@ print_exchange_conf(conf_exchange *exchange)
 		conf_exchange_node *n = exchange->nodes[i];
 		log_info("exchange name            %s", n->name);
 		log_info("exchange topic           %s", n->topic);
+		log_info("exchange streamType	   %d", n->streamType);
 		for (int j=0; j< (int) n->rbufs_sz; j++) {
 			ringBuffer_node *r = n->rbufs[j];
 			log_info("exchange ringbus name      %s", r->name);

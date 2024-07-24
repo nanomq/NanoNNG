@@ -1378,6 +1378,7 @@ conf_exchange_node_parse(conf_exchange_node *node, cJSON *obj)
 
 	hocon_read_str(node, name, exchange);
 	hocon_read_str(node, topic, exchange);
+	hocon_read_num(node, streamType, exchange);
 
 	if (node->name == NULL || node->topic == NULL) {
 		log_error("invalid exchange configuration!");
@@ -1441,6 +1442,7 @@ conf_exchange_parse_ver2(conf *config, cJSON *jso)
 		node->topic              = NULL;
 		node->name               = NULL;
 		node->rbufs              = NULL;
+		node->streamType         = 0;
 		node->rbufs_sz           = 0;
 		node->exchange_url       = NULL;
 
