@@ -679,7 +679,7 @@ nano_pipe_start(void *arg)
 		log_warn("IPv6 address is not supported in event msg yet");
 	}
 
-	log_debug("client connected! addr [%s] port [%d]\n",
+	log_debug("client connected! addr [%s port [%d]\n",
 	    p->conn_param->ip_addr_v4, addr.s_in.sa_port);
 
 session_keeping:
