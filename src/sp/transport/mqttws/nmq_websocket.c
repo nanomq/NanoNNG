@@ -105,6 +105,7 @@ wstran_pipe_qos_send_cb(void *arg)
 	ws_pipe *p     = arg;
 	nni_aio *qsaio = p->qsaio;
 
+	nni_mtx_lock(&p->mtx);
 	if ((rv = nni_aio_result(qsaio)) != 0) {
 		log_warn(" send aio error %s", nng_strerror(rv));
 		nni_msg *msg;
@@ -112,6 +113,7 @@ wstran_pipe_qos_send_cb(void *arg)
 			nni_msg_free(msg);
 		}
 	}
+	nni_mtx_unlock(&p->mtx);
 	return;
 }
 static void
@@ -1006,13 +1008,11 @@ static void
 wstran_pipe_close(void *arg)
 {
 	ws_pipe *p = arg;
-
+	nni_mtx_lock(&p->mtx);
 	nni_aio_close(p->rxaio);
 	nni_aio_abort(p->qsaio, NNG_ECANCELED);
 	nni_aio_close(p->qsaio);
 	nni_aio_close(p->txaio);
-
-	nni_mtx_lock(&p->mtx);
 	nng_stream_close(p->ws);
 	nni_mtx_unlock(&p->mtx);
 }
