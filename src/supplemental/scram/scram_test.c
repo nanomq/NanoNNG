@@ -11,7 +11,7 @@
 #include <string.h>
 #include <stdint.h>
 
-#include "nng/supplemental/scram/scram.h"
+#include "scram.h"
 
 #include <nuts.h>
 
