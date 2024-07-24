@@ -6,6 +6,6 @@
 #
 
 if (NNG_ENABLE_SCRAM)
-    nng_sources(scram.c scram.h)
-    #nng_test(scram_test)
+    nng_sources(scram.c)
+    nng_test(scram_test)
 endif ()
