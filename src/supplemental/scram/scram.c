@@ -14,8 +14,9 @@
 #include <openssl/hmac.h>
 #include <openssl/sha.h>
 
+#include "scram.h"
+
 #include "nng/supplemental/nanolib/base64.h"
-#include "nng/supplemental/scram/scram.h"
 #include "nng/supplemental/nanolib/log.h"
 
 /* TODO Is salt a global static value?
