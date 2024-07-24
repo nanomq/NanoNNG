@@ -3067,12 +3067,12 @@ read_packet_length(struct pos_buf *buf, uint32_t *length)
 /**
  * packet: orginal buffer
  * len: max len to decode
- * remaining_length: result
+ * remainning_length: result
  * used_bytes: bits used
 */
 int
 mqtt_get_remaining_length(uint8_t *packet, uint32_t len,
-    uint32_t *remaining_length, uint8_t *used_bytes)
+    uint32_t *remainning_length, uint8_t *used_bytes)
 {
 	int      multiplier = 1;
 	int32_t  lword      = 0;
@@ -3093,7 +3093,7 @@ mqtt_get_remaining_length(uint8_t *packet, uint32_t len,
 			if (lbytes > 1 && byte == 0) {
 				return MQTT_ERR_INVAL;
 			} else {
-				*remaining_length = lword;
+				*remainning_length = lword;
 				if (used_bytes) {
 					*used_bytes = lbytes;
 				}
