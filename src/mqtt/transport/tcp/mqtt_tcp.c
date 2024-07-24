@@ -322,8 +322,9 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 		nni_mtx_unlock(&ep->mtx);
 		return;
 	}
-	// only accept CONNACK msg
-	if ((p->rxlen[0] & CMD_CONNACK) != CMD_CONNACK) {
+	// only accept CONNACK/AUTH msg
+	if (((p->rxlen[0] & CMD_CONNACK) != CMD_CONNACK) ||
+	    ((p->rxlen[0] & CMD_AUTH_V5) != CMD_AUTH_V5)) {
 		rv = PROTOCOL_ERROR;
 		goto error;
 	}
@@ -361,7 +362,7 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 		nni_mtx_unlock(&ep->mtx);
 		return;
 	}
-	// Connack
+	// Handle connack/auth
 	if (p->gotrxhead >= p->wantrxhead) {
 		if (p->proto == MQTT_PROTOCOL_VERSION_v5) {
 			rv = nni_mqttv5_msg_decode(p->rxmsg);
@@ -369,7 +370,85 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 			if (rv != 0)
 				goto mqtt_error;
 			property_free(ep->property);
-			property *prop = (void *)nni_mqtt_msg_get_connack_property(p->rxmsg);
+#ifdef SUPP_SCRAM
+			if (ep->scram_ctx &&
+				nni_mqtt_msg_get_packet_type(p->rxmsg) == NNG_MQTT_AUTH) {
+				property *prop = nni_mqtt_msg_get_auth_property(p->rxmsg);
+				if (prop == NULL) {
+					ep->reason_code = MQTT_ERR_MALFORMED;
+					rv = MQTT_ERR_PROTOCOL;
+					log_error("No property found in AUTH msg");
+					goto mqtt_error;
+				}
+				uint8_t rc = nni_mqtt_msg_get_auth_reason_code(p->rxmsg);
+				if (rc != 0x18) {
+					ep->reason_code = MQTT_ERR_MALFORMED;
+					rv = MQTT_ERR_PROTOCOL;
+					log_error("Reason code in AUTH msg is invalid");
+					goto mqtt_error;
+				}
+				property_data *data = property_get_value(prop, AUTHENTICATION_DATA);
+				if (data == NULL || data->p_value.str == NULL) {
+					ep->reason_code = MQTT_ERR_MALFORMED;
+					rv = MQTT_ERR_PROTOCOL;
+					log_error("No auth data property found in AUTH msg");
+					goto mqtt_error;
+				}
+				char *client_final_msg = scram_handle_server_first_msg(
+					ep->scram_ctx, data->p_value.str, strlen(data->p_value.str));
+				if (client_final_msg == NULL) {
+					ep->reason_code = MQTT_ERR_MALFORMED;
+					rv = MQTT_ERR_PROTOCOL;
+					log_error("Error in handle scram server_first_msg");
+					goto mqtt_error;
+				}
+				// TODO 0x19 Re-authenticate
+				// Prepare authmsg with client_final_msg
+				nni_msg *authmsg;
+				nni_mqtt_msg_alloc(&authmsg, 0);
+				nni_mqtt_msg_set_auth_reason_code(authmsg, 0x18);
+				property *props = mqtt_property_alloc();
+				property *prop_auth_method = property_set_value_str(
+					AUTHENTICATION_METHOD, SCRAM_DIGEST_STR_DEFAULT,
+					strlen(SCRAM_DIGEST_STR_DEFAULT), false);
+				property *prop_auth_data   = property_set_value_str(
+					AUTHENTICATION_DATA, client_final_msg, strlen(client_final_msg), false);
+				property_append(props, prop_auth_method);
+				property_append(props, prop_auth_data);
+				nni_mqtt_msg_set_auth_property(authmsg, props);
+				if (0 != nni_mqttv5_msg_encode(authmsg)) {
+					ep->reason_code = MQTT_ERR_MALFORMED;
+					rv = MQTT_ERR_PROTOCOL;
+					log_error("Error in encode auth msg with client_final_msg");
+					goto mqtt_error;
+				}
+				// Update got/want to send client_final_msg and recv connack
+				nng_msg_free(p->rxmsg);
+				p->gotrxhead  = 0;
+				p->gottxhead  = 0;
+				p->wantrxhead = 2;
+				p->wanttxhead = nni_msg_header_len(authmsg) + nni_msg_len(authmsg);
+				p->rxmsg      = NULL;
+
+				nni_iov iov[2];
+				int niov = 0;
+				if (nni_msg_header_len(auth) > 0) {
+					iov[niov].iov_buf = nni_msg_header(connmsg);
+					iov[niov].iov_len = nni_msg_header_len(connmsg);
+					niov++;
+				}
+				if (nni_msg_len(connmsg) > 0) {
+					iov[niov].iov_buf = nni_msg_body(connmsg);
+					iov[niov].iov_len = nni_msg_len(connmsg);
+					niov++;
+				}
+				nni_aio_set_iov(aio, niov, iov);
+				nng_stream_send(p->conn, p->negoaio);
+
+				return;
+			}
+#endif
+			property *prop = nni_mqtt_msg_get_connack_property(p->rxmsg);
 			property_dup((property **)&ep->property, prop);
 			property_data *data;
 			data = property_get_value(ep->property, RECEIVE_MAXIMUM);
