@@ -19,6 +19,8 @@
 #include "nng/supplemental/nanolib/base64.h"
 #include "nng/supplemental/nanolib/log.h"
 
+#define SCRAM_SALT_SZ 64
+
 /* TODO Is salt a global static value?
 gen_salt() ->
     <<X:128/big-unsigned-integer>> = crypto:strong_rand_bytes(16),
@@ -246,7 +248,7 @@ scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, enum SCRAM_digest dig,
 		return (void *)ctx;
 
 	salt = gen_salt();
-	char *saltstr = nng_alloc(sizeof(char) * 32);
+	char *saltstr = nng_alloc(sizeof(char) * SCRAM_SALT_SZ);
 	if (saltstr == NULL) {
 		nng_free(ctx, 0);
 		return NULL;
@@ -306,7 +308,7 @@ scram_client_first_msg(void *arg, const char *username)
 	char client_first_msg_bare[strlen(username) + 32];
 	sprintf(client_first_msg_bare, "n=%s,r=%d", username, nonce());
 
-	int sz = strlen(username) + 32; // gs_header + username + nonce
+	int sz = strlen(username) + SCRAM_SALT_SZ + 32; // gs_header + username + nonce
 	char *buf = nng_alloc(sizeof(char) * sz);
 
 	sprintf(buf, "%s%s", gs_header(), client_first_msg_bare);
@@ -442,7 +444,7 @@ scram_handle_client_first_msg(void *arg, const char *msg, int len)
 {
 	struct scram_ctx *ctx = arg;
 	char *it = (char *)msg;
-	char *itend = it + len;
+	char *itend = it + len - 1;
 	char *itnext;
 	char *gs2_cbind_flag   = get_comma_value(it, itend, &itnext, 0);
 	it = itnext;
@@ -504,7 +506,7 @@ scram_handle_client_final_msg(void *arg, const char *msg, int len)
 	struct scram_ctx *ctx = arg;
 	char *result = NULL;
 	char *it = (char *)msg;
-	char *itend = it + len;
+	char *itend = it + len - 1;
 	char *itnext;
 	char *gs2_cbind_flag   = get_comma_value(it, itend, &itnext, 2);
 	it = itnext;
@@ -515,7 +517,7 @@ scram_handle_client_final_msg(void *arg, const char *msg, int len)
 	// parse done
 	//AuthMessage = ([ ClientFirstMessageBare,ServerFirstMessage,ClientFinalMessageWithoutProof]),
 	char *client_final_msg_without_proof = peek_client_final_msg_without_proof(msg);
-	char authmsg[256];
+	char authmsg[512];
 	sprintf(authmsg, "%s,%s,%s",
 	    ctx->client_first_msg_bare, ctx->server_first_msg, client_final_msg_without_proof);
 	log_trace("handle client final authmsg: %s\n", authmsg);
@@ -576,7 +578,7 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
 {
 	struct scram_ctx *ctx = arg;
 	char *it = (char *)msg;
-	char *itend = it + len;
+	char *itend = it + len - 1;
 	char *itnext;
 	char *nonce            = get_comma_value(it, itend, &itnext, 2);
 	it = itnext;
@@ -584,9 +586,9 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
 	it = itnext;
 	char *iteration_cnt    = get_comma_value(it, itend, &itnext, 2);
 	// parse done
-	ctx->server_first_msg = (char *)msg;
-	char *salt = nng_alloc(sizeof(char) * 32);
-	memset(salt, 0, 32);
+	ctx->server_first_msg = strndup(msg, len);
+	char *salt = nng_alloc(sizeof(char) * SCRAM_SALT_SZ);
+	memset(salt, 0, SCRAM_SALT_SZ);
 	if (0 == base64_decode(saltb64, strlen(saltb64), (unsigned char *)salt)) {
 		return NULL;
 	}
@@ -599,13 +601,15 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
 	if (0 == base64_encode((const unsigned char *)gh, strlen(gh), ghb64)) {
 		return NULL;
 	}
-	char client_final_msg_without_proof[32];
+	char client_final_msg_without_proof[32 + SCRAM_SALT_SZ];
 	sprintf(client_final_msg_without_proof, "c=%s,r=%s", ghb64, nonce);
 	ctx->client_final_msg_without_proof = strdup(client_final_msg_without_proof);
 	// authmsg=[ClientFirstMessageBare,ServerFirstMessage,ClientFinalMessageWithoutProof]
-	char authmsg[256];
+	char authmsg[512];
 	sprintf(authmsg, "%s,%s,%s",
-	    ctx->client_first_msg_bare, msg, client_final_msg_without_proof);
+	    ctx->client_first_msg_bare,
+		ctx->server_first_msg,
+		client_final_msg_without_proof);
 	//printf("handle server first authmsg: %s\n", authmsg);
 	/*
 	SaltedPassword = salted_password(Algorithm, Password, Salt, IterationCount),
@@ -635,7 +639,7 @@ scram_handle_server_final_msg(void *arg, const char *msg, int len)
 	char *result = NULL;
 	struct scram_ctx *ctx = arg;
 	char *it = (char *)msg;
-	char *itend = it + len;
+	char *itend = it + len - 1;
 	char *itnext;
 	char *verifier     = get_comma_value(it, itend, &itnext, 2);
 	it = itnext;
@@ -646,7 +650,7 @@ scram_handle_server_final_msg(void *arg, const char *msg, int len)
 	ClientFinalMessageWithoutProof = client_final_message_without_proof(Nonce),
 	authmsg=[ClientFirstMessageBare,ServerFirstMessage,ClientFinalMessageWithoutProof]
 	*/
-	char authmsg[256];
+	char authmsg[512];
 	sprintf(authmsg, "%s,%s,%s",
 	    ctx->client_first_msg_bare,
 	    ctx->server_first_msg,
