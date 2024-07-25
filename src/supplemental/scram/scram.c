@@ -236,7 +236,7 @@ scram_ctx_create(char *pwd, int pwdsz, int iteration_cnt, enum SCRAM_digest dig,
 	}
 	memset(ctx, 0, sizeof(*ctx));
 
-	ctx->pwd           = strdup(pwd);
+	ctx->pwd           = strndup(pwd, pwdsz);
 	ctx->pwdsz         = pwdsz;
 	ctx->digest        = digest;
 	ctx->digestsz      = keysz;
