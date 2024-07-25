@@ -180,6 +180,7 @@ scram_ctx_free(void *arg)
 	if (ctx->cached_nonce) nng_free(ctx->cached_nonce, 0);
 
 	if (ctx->client_final_msg_without_proof) nng_free(ctx->client_final_msg_without_proof, 0);
+	if (ctx->server_first_msg) nng_free(ctx->server_first_msg, 0);
 	nng_free(ctx, 0);
 }
 
@@ -474,7 +475,7 @@ scram_handle_client_first_msg(void *arg, const char *msg, int len)
 	char *salt = ctx->salt;
 	int   iteration_cnt = ctx->iteration_cnt;
 	char *server_first_msg = scram_server_first_msg(csnonce, salt, iteration_cnt);
-	ctx->server_first_msg = server_first_msg;
+	ctx->server_first_msg = strdup(server_first_msg);
 	ctx->cached_nonce = strdup(csnonce);
 
 	nng_free(gs2_cbind_flag, 0);
