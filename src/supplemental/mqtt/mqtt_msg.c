@@ -797,11 +797,25 @@ nni_mqtt_msg_get_connect_user_name(nni_msg *msg)
 	return (const char *) proto_data->payload.connect.user_name.buf;
 }
 
+uint32_t
+nni_mqtt_msg_get_connect_user_name_len(nni_msg *msg)
+{
+	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
+	return proto_data->payload.connect.user_name.length;
+}
+
 const char *
 nni_mqtt_msg_get_connect_password(nni_msg *msg)
 {
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
 	return (const char *) proto_data->payload.connect.password.buf;
+}
+
+uint32_t
+nni_mqtt_msg_get_connect_password_len(nni_msg *msg)
+{
+	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
+	return proto_data->payload.connect.password.length;
 }
 
 void
