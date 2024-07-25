@@ -37,6 +37,17 @@ nni_strdup(const char *src)
 	return (dst);
 }
 
+// insert src string to head of dst string, with length safety
+// return a new dst, append with '\0', keep original src & dst.
+char *
+nni_strnins(char *dst, const char *src, size_t dst_len, size_t src_len)
+{
+	char *new = nni_zalloc(dst_len + src_len +1);
+	strncat(new, src, src_len);
+	strncat(new, dst, dst_len);
+	return new;
+}
+
 char *
 nni_strndup(const char *src, size_t n)
 {
