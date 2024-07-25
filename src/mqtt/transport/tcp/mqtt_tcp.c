@@ -322,8 +322,9 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 		return;
 	}
 	// only accept CONNACK/AUTH msg
-	if (((p->rxlen[0] & CMD_CONNACK) != CMD_CONNACK) ||
+	if (((p->rxlen[0] & CMD_CONNACK) != CMD_CONNACK) &&
 	    ((p->rxlen[0] & CMD_AUTH_V5) != CMD_AUTH_V5)) {
+		log_error("Invalid type received %x %x", p->rxlen[0], p->rxlen[1]);
 		rv = PROTOCOL_ERROR;
 		goto error;
 	}
@@ -444,6 +445,7 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 				}
 				nni_aio_set_iov(aio, niov, iov);
 				nng_stream_send(p->conn, p->negoaio);
+				nni_mtx_unlock(&ep->mtx);
 
 				return;
 			}
@@ -485,11 +487,19 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 			if (data && data->p_value.str.buf && ep->scram_ctx) {
 				char *server_final_msg = (char *)data->p_value.str.buf;
 				char *result = scram_handle_server_final_msg(
-					ep->scram_ctx, server_final_msg, strlen(server_final_msg));
+					ep->scram_ctx, server_final_msg, data->p_value.str.length);
 				if (result == NULL) {
+					log_error("Enhanced Authentication failed");
+					rv = MQTT_ERR_PROTOCOL;
+					ep->reason_code = rv;
 					// Failed so closed the connection
 					goto error;
 				}
+			} else {
+				log_error("Enhanced Authentication failed");
+				rv = MQTT_ERR_PROTOCOL;
+				ep->reason_code = rv;
+				goto error;
 			}
 #endif
 		} else {
