@@ -48,6 +48,17 @@ nni_strnins(char *dst, const char *src, size_t dst_len, size_t src_len)
 	return new;
 }
 
+// append src string to tail of dst string, with length safety
+// return a new dst, append with '\0', keep original src & dst.
+char *
+nni_strncat(char *dst, const char *src, size_t dst_len, size_t src_len)
+{
+	char *new = nni_zalloc(dst_len + src_len +1);
+	strncat(new, dst, dst_len);
+	strncat(new, src, src_len);
+	return new;
+}
+
 char *
 nni_strndup(const char *src, size_t n)
 {

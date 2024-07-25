@@ -109,9 +109,9 @@ nng_strndup(const char *src, size_t len)
 }
 
 char *
-nng_strncat(char *dst, const char *src, size_t len)
+nng_strncat(char *dst, const char *src, size_t dst_len, size_t src_len)
 {
-	return strncat(dst, src, len);
+	return nni_strncat(dst,src, dst_len, src_len);
 }
 
 char *
