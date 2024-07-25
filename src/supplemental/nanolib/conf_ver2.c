@@ -1100,6 +1100,19 @@ conf_bridge_node_parse(
 		s->qos    = NO_QOS;
 		hocon_read_str(s, remote_topic, forward);
 		hocon_read_str(s, local_topic, forward);
+		hocon_read_str(s, prefix, forward);
+		hocon_read_str(s, suffix, forward);
+		if (strstr(s->prefix, "+") != NULL || strstr(s->prefix, "#") != NULL ||
+		    strstr(s->suffix, "+") != NULL || strstr(s->suffix, "#") != NULL) {
+			log_error(
+				"No wildcard +/# should be contained in "
+				"prefix/suffix in forward rules.");
+			break;
+		}
+		if (s->suffix != NULL)
+			s->suffix_len = strlen(s->suffix);
+		if (s->prefix != NULL)
+			s->prefix_len = strlen(s->prefix);
 		cJSON *jso_key = cJSON_GetObjectItem(forward, "retain");
 		if (cJSON_IsNumber(jso_key) &&
 		    (jso_key->valuedouble == 0 || jso_key->valuedouble == 1)) {
@@ -1325,8 +1338,6 @@ conf_exchange_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *node_array = hocon_get_obj("exchange_client", jso);
 	cJSON *node_item  = NULL;
-
-	conf_exchange *conf_exchange = &config->exchange;
 
 	cJSON_ArrayForEach(node_item, node_array)
 	{

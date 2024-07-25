@@ -194,16 +194,21 @@ typedef struct conf_websocket conf_websocket;
 #define NO_QOS    3 // default QoS level value for forwarding bridge msg, 3 = keep old qos
 
 typedef struct {
-	char *   remote_topic;
-	uint32_t remote_topic_len;
-	char *   local_topic;
-	uint32_t local_topic_len;
-	uint8_t  nolocal;
-	uint8_t  retain; // override for retain
-	uint8_t  qos;    // override for QoS
-	uint8_t  retain_as_published;
-	uint8_t  retain_handling;
-	uint32_t stream_id; // only effective when multi_stream is enabled
+	char       *remote_topic;
+	uint32_t    remote_topic_len;
+	char       *local_topic;
+	uint32_t    local_topic_len;
+	// mqtt_string prefix2;
+	char       *prefix;
+	uint32_t    prefix_len;
+	char       *suffix;
+	uint32_t    suffix_len;
+	uint8_t     nolocal;
+	uint8_t     retain; // override for retain
+	uint8_t     qos;    // override for QoS
+	uint8_t     retain_as_published;
+	uint8_t     retain_handling;
+	uint32_t    stream_id; // only effective when multi_stream is enabled
 } topics;
 
 typedef struct {
@@ -248,14 +253,6 @@ struct conf_bridge_node {
 	bool         will_retain;
 	void        *sock;
 	void        *bridge_arg;	// for reloading bridge case
-	uint8_t      proto_ver;
-	uint16_t     port;
-	uint16_t     keepalive;
-	uint16_t     backoff_max;
-	size_t       sub_count;
-	size_t       forwards_count;
-	size_t       max_recv_queue_len;
-	size_t       max_send_queue_len;
 	char        *name;
 	char        *address;
 	char        *host;
@@ -264,6 +261,15 @@ struct conf_bridge_node {
 	char        *password;
 	char        *will_payload;
 	char        *will_topic;
+	uint8_t      proto_ver;
+	uint8_t      will_qos;
+	uint16_t     port;
+	uint16_t     keepalive;
+	uint16_t     backoff_max;
+	size_t       sub_count;
+	size_t       forwards_count;
+	size_t       max_recv_queue_len;
+	size_t       max_send_queue_len;
 	topics     **forwards_list;
 	uint64_t     parallel;
 	topics     **sub_list;
@@ -272,7 +278,7 @@ struct conf_bridge_node {
 	conf_sqlite *sqlite;
 	nng_aio    **bridge_aio;
 	nng_mtx     *mtx;
-	uint8_t will_qos;
+
 
 	// MQTT v5 property
 	conf_bridge_conn_properties *     conn_properties;
