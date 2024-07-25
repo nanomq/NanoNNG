@@ -94,6 +94,7 @@ struct mqtt_tcptran_ep {
 	void *               property;  // property
 	void *               connmsg;
 	void *               scram_ctx;
+	nni_msg *            authmsg;
 
 #ifdef NNG_ENABLE_STATS
 	nni_stat_item st_rcv_max;
@@ -424,6 +425,10 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 					log_error("Error in encode auth msg with client_final_msg");
 					goto mqtt_error;
 				}
+				if (ep->authmsg)
+					nng_msg_free(ep->authmsg);
+				ep->authmsg = authmsg;
+				nng_free(client_final_msg, 0);
 				// Update got/want to send client_final_msg and recv connack
 				nng_msg_free(p->rxmsg);
 				p->gotrxhead  = 0;
@@ -1092,10 +1097,11 @@ mqtt_tcptran_pipe_start(
 			usernamesz = nni_mqtt_msg_get_connect_user_name_len(connmsg);
 			pwd      = strndup(pwd, pwdsz);
 			username = strndup(username, usernamesz);
-			if (ep->scram_ctx == NULL) {
-				ep->scram_ctx = scram_ctx_create(pwd, strlen(pwd),
-					SCRAM_ITERATION_CNT_DEFAULT, SCRAM_DIGEST_DEFAULT, 0);
+			if (ep->scram_ctx) {
+				scram_ctx_free(ep->scram_ctx);
 			}
+			ep->scram_ctx = scram_ctx_create(pwd, strlen(pwd),
+				SCRAM_ITERATION_CNT_DEFAULT, SCRAM_DIGEST_DEFAULT, 0);
 		}
 		if (ep->scram_ctx) {
 			property *prop_auth_method = property_set_value_str(
@@ -1107,10 +1113,9 @@ mqtt_tcptran_pipe_start(
 			property_append(prop, prop_auth_method);
 			property_append(prop, prop_auth_data);
 			nni_mqtt_msg_set_connect_property(connmsg, prop);
-			log_info("<<<<%s>>>>>", client_first_msg);
+			log_debug("client first msg %s", client_first_msg);
 			//property_free(prop_auth_method);
 			//property_free(prop_auth_data);
-			//nng_free(client_first_msg, 0);
 		}
 		if (pwd)
 			nng_free(pwd, 0);
@@ -1182,6 +1187,13 @@ mqtt_tcptran_ep_fini(void *arg)
 	// Free connmsg once
 	if (ep->connmsg)
 		nni_msg_free(ep->connmsg);
+#ifdef SUPP_SCRAM
+	if (ep->authmsg)
+		nni_msg_free(ep->authmsg);
+	ep->authmsg = NULL;
+	if (ep->scram_ctx)
+		scram_ctx_free(ep->scram_ctx);
+#endif
 
 	nni_aio_stop(ep->timeaio);
 	nni_aio_stop(ep->connaio);
@@ -1453,7 +1465,11 @@ mqtt_tcptran_dialer_init(void **dp, nng_url *url, nni_dialer *ndialer)
 	if ((rv = mqtt_tcptran_ep_init(&ep, url, sock)) != 0) {
 		return (rv);
 	}
-	ep->ndialer = ndialer;
+	ep->ndialer   = ndialer;
+#ifdef SUPP_SCRAM
+	ep->scram_ctx = NULL;
+	ep->authmsg   = NULL;
+#endif
 
 	if ((rv != 0) ||
 	    ((rv = nni_aio_alloc(&ep->connaio, mqtt_tcptran_dial_cb, ep)) !=
