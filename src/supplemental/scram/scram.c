@@ -147,6 +147,7 @@ struct scram_ctx {
 
 	char *cached_nonce;
 
+	char *client_first_msg;
 	char *client_final_msg_without_proof;
 	char *client_first_msg_bare;
 	char *server_first_msg;
@@ -181,6 +182,7 @@ scram_ctx_free(void *arg)
 
 	if (ctx->client_final_msg_without_proof) nng_free(ctx->client_final_msg_without_proof, 0);
 	if (ctx->server_first_msg) nng_free(ctx->server_first_msg, 0);
+	if (ctx->client_first_msg) nng_free(ctx->client_first_msg, 0);
 	nng_free(ctx, 0);
 }
 
@@ -314,6 +316,7 @@ scram_client_first_msg(void *arg, const char *username)
 
 	sprintf(buf, "%s%s", gs_header(), client_first_msg_bare);
 	ctx->client_first_msg_bare = buf + strlen(gs_header());
+	ctx->client_first_msg      = buf;
 	return buf;
 }
 
@@ -458,7 +461,8 @@ scram_handle_client_first_msg(void *arg, const char *msg, int len)
     [_, Two] = binary:split(One, <<",">>),
     Two.
 	*/
-	ctx->client_first_msg_bare = it;
+	ctx->client_first_msg = strndup(msg, len);
+	ctx->client_first_msg_bare = ctx->client_first_msg + (it - msg);
 
 	//char *reserved_mext    = get_next_comma_value(it, itend);
 	//int   reserved_mextsz  = get_comma_value_len(it, itend);
