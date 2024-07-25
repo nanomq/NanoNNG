@@ -93,8 +93,10 @@ struct mqtt_tcptran_ep {
 	nni_dialer *         ndialer;
 	void *               property;  // property
 	void *               connmsg;
+#ifdef SUPP_SCRAM
 	void *               scram_ctx;
 	nni_msg *            authmsg;
+#endif
 
 #ifdef NNG_ENABLE_STATS
 	nni_stat_item st_rcv_max;
@@ -396,6 +398,8 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 					log_error("No auth data property found in AUTH msg");
 					goto mqtt_error;
 				}
+				log_debug("auth:server_first_msg:%.*s",
+					data->p_value.str.length, (char *)data->p_value.str.buf);
 				char *client_final_msg = scram_handle_server_first_msg(
 					ep->scram_ctx, (char *)data->p_value.str.buf, data->p_value.str.length);
 				if (client_final_msg == NULL) {
@@ -404,6 +408,7 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 					log_error("Error in handle scram server_first_msg");
 					goto mqtt_error;
 				}
+				log_debug("auth:client_final_msg:%s", client_final_msg);
 				// TODO 0x19 Re-authenticate
 				// Prepare authmsg with client_final_msg
 				nni_msg *authmsg;
@@ -492,6 +497,8 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 			data = property_get_value(ep->property, AUTHENTICATION_DATA);
 			if (data && data->p_value.str.buf && ep->scram_ctx) {
 				char *server_final_msg = (char *)data->p_value.str.buf;
+				log_debug("auth:server_final_msg:%.*s",
+					data->p_value.str.length, server_final_msg);
 				char *result = scram_handle_server_final_msg(
 					ep->scram_ctx, server_final_msg, data->p_value.str.length);
 				if (result == NULL) {
@@ -1113,7 +1120,7 @@ mqtt_tcptran_pipe_start(
 			property_append(prop, prop_auth_method);
 			property_append(prop, prop_auth_data);
 			nni_mqtt_msg_set_connect_property(connmsg, prop);
-			log_debug("client first msg %s", client_first_msg);
+			log_debug("auth:client_first_msg:%s", client_first_msg);
 			//property_free(prop_auth_method);
 			//property_free(prop_auth_data);
 		}
