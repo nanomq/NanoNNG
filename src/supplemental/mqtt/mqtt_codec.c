@@ -415,9 +415,11 @@ mqtt_msg_content_free(nni_mqtt_proto_data *mqtt)
 		}
 		break;
 
-		// TODO case NNG_MQTT_AUTH:
-		//
-		// break;
+	case NNG_MQTT_AUTH:
+		if (mqtt->var_header.auth.properties) {
+			property_free(mqtt->var_header.auth.properties);
+		}
+		break;
 
 	default:
 		break;
@@ -557,6 +559,13 @@ nni_mqtt_msg_dup(void **dest, const void *src)
 		if (mqtt->var_header.disconnect.properties) {
 			property_dup(&mqtt->var_header.disconnect.properties,
 			    s->var_header.disconnect.properties);
+		}
+		break;
+
+	case NNG_MQTT_AUTH:
+		if (s->var_header.auth.properties) {
+			property_dup(&mqtt->var_header.auth.properties,
+			    s->var_header.auth.properties);
 		}
 		break;
 
