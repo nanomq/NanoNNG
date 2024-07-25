@@ -388,14 +388,14 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 					goto mqtt_error;
 				}
 				property_data *data = property_get_value(prop, AUTHENTICATION_DATA);
-				if (data == NULL || data->p_value.str == NULL) {
+				if (data == NULL || data->p_value.str.buf == NULL) {
 					ep->reason_code = MQTT_ERR_MALFORMED;
 					rv = MQTT_ERR_PROTOCOL;
 					log_error("No auth data property found in AUTH msg");
 					goto mqtt_error;
 				}
 				char *client_final_msg = scram_handle_server_first_msg(
-					ep->scram_ctx, data->p_value.str, strlen(data->p_value.str));
+					ep->scram_ctx, (char *)data->p_value.str.buf, data->p_value.str.length);
 				if (client_final_msg == NULL) {
 					ep->reason_code = MQTT_ERR_MALFORMED;
 					rv = MQTT_ERR_PROTOCOL;
@@ -432,14 +432,14 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 
 				nni_iov iov[2];
 				int niov = 0;
-				if (nni_msg_header_len(auth) > 0) {
-					iov[niov].iov_buf = nni_msg_header(connmsg);
-					iov[niov].iov_len = nni_msg_header_len(connmsg);
+				if (nni_msg_header_len(authmsg) > 0) {
+					iov[niov].iov_buf = nni_msg_header(authmsg);
+					iov[niov].iov_len = nni_msg_header_len(authmsg);
 					niov++;
 				}
-				if (nni_msg_len(connmsg) > 0) {
-					iov[niov].iov_buf = nni_msg_body(connmsg);
-					iov[niov].iov_len = nni_msg_len(connmsg);
+				if (nni_msg_len(authmsg) > 0) {
+					iov[niov].iov_buf = nni_msg_body(authmsg);
+					iov[niov].iov_len = nni_msg_len(authmsg);
 					niov++;
 				}
 				nni_aio_set_iov(aio, niov, iov);
@@ -482,8 +482,8 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 			}
 #ifdef SUPP_SCRAM
 			data = property_get_value(ep->property, AUTHENTICATION_DATA);
-			if (!data && data->p_value.str && ep->scram_ctx) {
-				char *server_final_msg = data->p_value.str;
+			if (data && data->p_value.str.buf && ep->scram_ctx) {
+				char *server_final_msg = (char *)data->p_value.str.buf;
 				char *result = scram_handle_server_final_msg(
 					ep->scram_ctx, server_final_msg, strlen(server_final_msg));
 				if (result == NULL) {
@@ -1071,10 +1071,14 @@ mqtt_tcptran_pipe_start(
 	else if (mqtt_version == MQTT_PROTOCOL_VERSION_v5) {
 		property *prop = nni_mqtt_msg_get_connect_property(connmsg);
 #ifdef SUPP_SCRAM
-		char *pwd;
-		char *username;
-		if (((pwd = nni_mqtt_msg_get_connect_password(connmsg)) != NULL) &&
-			((username = nni_mqtt_msg_get_connect_user_name(connmsg)) != NULL)) {
+		char *pwd, *username;
+		int   pwdsz, usernamesz;
+		if (((pwd = (char *)nni_mqtt_msg_get_connect_password(connmsg)) != NULL) &&
+			((username = (char *)nni_mqtt_msg_get_connect_user_name(connmsg)) != NULL)) {
+			pwdsz = nni_mqtt_msg_get_connect_password_len(connmsg);
+			usernamesz = nni_mqtt_msg_get_connect_user_name_len(connmsg);
+			pwd      = strndup(pwd, pwdsz);
+			username = strndup(username, usernamesz);
 			if (ep->scram_ctx == NULL) {
 				ep->scram_ctx = scram_ctx_create(pwd, strlen(pwd),
 					SCRAM_ITERATION_CNT_DEFAULT, SCRAM_DIGEST_DEFAULT, 0);
@@ -1083,13 +1087,22 @@ mqtt_tcptran_pipe_start(
 		if (ep->scram_ctx) {
 			property *prop_auth_method = property_set_value_str(
 				AUTHENTICATION_METHOD, SCRAM_DIGEST_STR_DEFAULT,
-				strlen(SCRAM_DIGEST_STR_DEFAULT), false);
+				strlen(SCRAM_DIGEST_STR_DEFAULT), true);
 			char *client_first_msg     = scram_client_first_msg(ep->scram_ctx, username);
 			property *prop_auth_data   = property_set_value_str(
-				AUTHENTICATION_DATA, client_first_msg, strlen(client_first_msg), false);
+				AUTHENTICATION_DATA, client_first_msg, strlen(client_first_msg), true);
 			property_append(prop, prop_auth_method);
 			property_append(prop, prop_auth_data);
+			nni_mqtt_msg_set_connect_property(connmsg, prop);
+			log_info("<<<<%s>>>>>", client_first_msg);
+			property_free(prop_auth_method);
+			property_free(prop_auth_data);
+			nng_free(client_first_msg, 0);
 		}
+		if (pwd)
+			nng_free(pwd, 0);
+		if (username)
+			nng_free(username, 0);
 #endif
 		property_data *data;
 		data = property_get_value(prop, MAXIMUM_PACKET_SIZE);
