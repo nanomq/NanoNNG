@@ -493,8 +493,8 @@ NNG_DECL void  nng_free(void *, size_t);
 // nng_strdup duplicates the source string, using nng_alloc. The result
 // should be freed with nng_strfree (or nng_free(strlen(s)+1)).
 NNG_DECL char *nng_strdup(const char *);
-
 NNG_DECL char *nng_strndup(const char *, size_t);
+NNG_DECL char *nng_strnins(char *, const char *, size_t, size_t);
 
 // nng_strfree is equivalent to nng_free(strlen(s)+1).
 NNG_DECL void nng_strfree(char *);
