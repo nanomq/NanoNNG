@@ -806,7 +806,7 @@ ex_query_recv_cb(void *arg)
 	nni_msg *msg = NULL;
 	uint8_t *body = NULL;
 	char *parquetdata = NULL;
-	char *ringbusdata = NULL;
+	unsigned char *ringbusdata = NULL;
 	int parquetdata_len = 0;
 	int ringbusdata_len = 0;
 
