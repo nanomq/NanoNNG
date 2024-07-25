@@ -1071,6 +1071,8 @@ mqtt_tcptran_pipe_start(
 	else if (mqtt_version == MQTT_PROTOCOL_VERSION_v5) {
 		property *prop = nni_mqtt_msg_get_connect_property(connmsg);
 #ifdef SUPP_SCRAM
+		if (prop == NULL)
+			prop = mqtt_property_alloc();
 		char *pwd, *username;
 		int   pwdsz, usernamesz;
 		if (((pwd = (char *)nni_mqtt_msg_get_connect_password(connmsg)) != NULL) &&
@@ -1095,9 +1097,9 @@ mqtt_tcptran_pipe_start(
 			property_append(prop, prop_auth_data);
 			nni_mqtt_msg_set_connect_property(connmsg, prop);
 			log_info("<<<<%s>>>>>", client_first_msg);
-			property_free(prop_auth_method);
-			property_free(prop_auth_data);
-			nng_free(client_first_msg, 0);
+			//property_free(prop_auth_method);
+			//property_free(prop_auth_data);
+			//nng_free(client_first_msg, 0);
 		}
 		if (pwd)
 			nng_free(pwd, 0);
