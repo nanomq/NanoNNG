@@ -405,13 +405,14 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 				// Prepare authmsg with client_final_msg
 				nni_msg *authmsg;
 				nni_mqtt_msg_alloc(&authmsg, 0);
+				nni_mqtt_msg_set_packet_type(authmsg, NNG_MQTT_AUTH);
 				nni_mqtt_msg_set_auth_reason_code(authmsg, 0x18);
 				property *props = mqtt_property_alloc();
 				property *prop_auth_method = property_set_value_str(
 					AUTHENTICATION_METHOD, SCRAM_DIGEST_STR_DEFAULT,
-					strlen(SCRAM_DIGEST_STR_DEFAULT), false);
+					strlen(SCRAM_DIGEST_STR_DEFAULT), true);
 				property *prop_auth_data   = property_set_value_str(
-					AUTHENTICATION_DATA, client_final_msg, strlen(client_final_msg), false);
+					AUTHENTICATION_DATA, client_final_msg, strlen(client_final_msg), true);
 				property_append(props, prop_auth_method);
 				property_append(props, prop_auth_data);
 				nni_mqtt_msg_set_auth_property(authmsg, props);
