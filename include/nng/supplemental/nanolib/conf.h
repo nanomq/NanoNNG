@@ -198,7 +198,6 @@ typedef struct {
 	uint32_t    remote_topic_len;
 	char       *local_topic;
 	uint32_t    local_topic_len;
-	// mqtt_string prefix2;
 	char       *prefix;
 	uint32_t    prefix_len;
 	char       *suffix;

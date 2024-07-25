@@ -1102,17 +1102,28 @@ conf_bridge_node_parse(
 		hocon_read_str(s, local_topic, forward);
 		hocon_read_str(s, prefix, forward);
 		hocon_read_str(s, suffix, forward);
-		if (strstr(s->prefix, "+") != NULL || strstr(s->prefix, "#") != NULL ||
-		    strstr(s->suffix, "+") != NULL || strstr(s->suffix, "#") != NULL) {
-			log_error(
-				"No wildcard +/# should be contained in "
-				"prefix/suffix in forward rules.");
-			break;
-		}
-		if (s->suffix != NULL)
-			s->suffix_len = strlen(s->suffix);
-		if (s->prefix != NULL)
-			s->prefix_len = strlen(s->prefix);
+		 if (s->suffix != NULL) {
+			 s->suffix_len = strlen(s->suffix);
+			 if (strstr(s->suffix, "+") != NULL ||
+			     strstr(s->suffix, "#") != NULL) {
+				 log_error(
+				     "No wildcard +/# should be contained in "
+				     "prefix/suffix in forward rules.");
+				 break;
+			 }
+		 }
+
+		 if (s->prefix != NULL) {
+			 if (strstr(s->prefix, "+") != NULL ||
+			     strstr(s->prefix, "#") != NULL) {
+				 log_error(
+				     "No wildcard +/# should be contained in "
+				     "prefix/suffix in forward rules.");
+				 break;
+			 }
+			 s->prefix_len = strlen(s->prefix);
+		 }
+
 		cJSON *jso_key = cJSON_GetObjectItem(forward, "retain");
 		if (cJSON_IsNumber(jso_key) &&
 		    (jso_key->valuedouble == 0 || jso_key->valuedouble == 1)) {
@@ -1123,6 +1134,8 @@ conf_bridge_node_parse(
 		    (jso_key2->valuedouble == 0 || jso_key2->valuedouble == 1 ||
 			 jso_key2->valuedouble == 2)) {
 			s->qos = jso_key2->valuedouble;
+		} else {
+			log_warn("invalid qos level detected in forwarding list");
 		}
 		if (!s->remote_topic || !s->local_topic) {
 			log_warn("remote_topic/local_topic not found");
@@ -1158,6 +1171,29 @@ conf_bridge_node_parse(
 		hocon_read_str(s, remote_topic, subscription);
 		hocon_read_str(s, local_topic, subscription);
 		hocon_read_num(s, qos, subscription);
+		hocon_read_str(s, prefix, subscription);
+		hocon_read_str(s, suffix, subscription);
+		 if (s->suffix != NULL) {
+			 s->suffix_len = strlen(s->suffix);
+			 if (strstr(s->suffix, "+") != NULL ||
+			     strstr(s->suffix, "#") != NULL) {
+				 log_error(
+				     "No wildcard +/# should be contained in "
+				     "prefix/suffix in forward rules.");
+				 break;
+			 }
+		 }
+
+		 if (s->prefix != NULL) {
+			 if (strstr(s->prefix, "+") != NULL ||
+			     strstr(s->prefix, "#") != NULL) {
+				 log_error(
+				     "No wildcard +/# should be contained in "
+				     "prefix/suffix in forward rules.");
+				 break;
+			 }
+			 s->prefix_len = strlen(s->prefix);
+		 }
 		cJSON *jso_key = cJSON_GetObjectItem(subscription, "retain");
 		if (cJSON_IsNumber(jso_key) &&
 		    (jso_key->valuedouble == 0 || jso_key->valuedouble == 1)) {
