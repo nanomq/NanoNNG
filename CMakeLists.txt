@@ -306,6 +306,10 @@ if(NNG_ENABLE_QUIC)
   add_definitions(-DSUPP_QUIC)
 endif()
 
+if (NNG_ENABLE_SCRAM)
+    add_definitions(-DSUPP_SCRAM)
+endif ()
+
 add_subdirectory(src)
 
 if (NNG_TESTS)
