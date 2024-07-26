@@ -949,8 +949,7 @@ static void
 ex_query_send_cb(void *arg)
 {
 	nni_msg *msg = NULL;
-	exchange_pipe_t       *p    = arg;
-	exchange_sock_t       *s = p->sock;
+	exchange_sock_t *s = arg;
 	nni_mtx_lock(&s->mtx);
     
 	if (nni_lmq_get(&s->lmq, &msg) == 0) {
