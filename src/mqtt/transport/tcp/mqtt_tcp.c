@@ -506,12 +506,17 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 					ep->reason_code = rv;
 					// Failed so closed the connection
 					goto error;
+				} else {
+					log_info("Enhanced Authentication Passed");
 				}
-			} else {
+			} else if (ep->scram_ctx) {
+				// We want a authenticate response. but not found
 				log_error("Enhanced Authentication failed");
 				rv = MQTT_ERR_PROTOCOL;
 				ep->reason_code = rv;
 				goto error;
+			} else {
+				// No more action
 			}
 #endif
 		} else {
