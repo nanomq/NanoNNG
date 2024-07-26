@@ -1099,38 +1099,44 @@ mqtt_tcptran_pipe_start(
 #ifdef SUPP_SCRAM
 		if (prop == NULL)
 			prop = mqtt_property_alloc();
-		char *pwd, *username;
+		char *pwd = NULL, *username = NULL;
+		char *pwd2 = NULL, *username2 = NULL;
 		int   pwdsz, usernamesz;
 		if (((pwd = (char *)nni_mqtt_msg_get_connect_password(connmsg)) != NULL) &&
 			((username = (char *)nni_mqtt_msg_get_connect_user_name(connmsg)) != NULL)) {
 			pwdsz = nni_mqtt_msg_get_connect_password_len(connmsg);
 			usernamesz = nni_mqtt_msg_get_connect_user_name_len(connmsg);
-			pwd      = strndup(pwd, pwdsz);
-			username = strndup(username, usernamesz);
+			pwd2      = strndup(pwd, pwdsz);
+			username2 = strndup(username, usernamesz);
 			if (ep->scram_ctx) {
 				scram_ctx_free(ep->scram_ctx);
 			}
-			ep->scram_ctx = scram_ctx_create(pwd, strlen(pwd),
+			ep->scram_ctx = scram_ctx_create(pwd2, strlen(pwd2),
 				SCRAM_ITERATION_CNT_DEFAULT, SCRAM_DIGEST_DEFAULT, 0);
 		}
 		if (ep->scram_ctx) {
 			property *prop_auth_method = property_set_value_str(
 				AUTHENTICATION_METHOD, SCRAM_DIGEST_STR_DEFAULT,
 				strlen(SCRAM_DIGEST_STR_DEFAULT), true);
-			char *client_first_msg     = scram_client_first_msg(ep->scram_ctx, username);
+			char *client_first_msg     = scram_client_first_msg(ep->scram_ctx, username2);
 			property *prop_auth_data   = property_set_value_str(
 				AUTHENTICATION_DATA, client_first_msg, strlen(client_first_msg), true);
 			property_append(prop, prop_auth_method);
 			property_append(prop, prop_auth_data);
 			nni_mqtt_msg_set_connect_property(connmsg, prop);
-			log_debug("auth:client_first_msg:%s", client_first_msg);
+			prop = NULL;
+			log_info("auth:client_first_msg:%s", client_first_msg);
 			//property_free(prop_auth_method);
 			//property_free(prop_auth_data);
 		}
-		if (pwd)
-			nng_free(pwd, 0);
-		if (username)
-			nng_free(username, 0);
+		if (pwd2)
+			nng_free(pwd2, 0);
+		if (username2)
+			nng_free(username2, 0);
+		if (prop) {
+			mqtt_property_free(prop);
+			prop = NULL;
+		}
 #endif
 		property_data *data;
 		data = property_get_value(prop, MAXIMUM_PACKET_SIZE);
