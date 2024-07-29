@@ -462,7 +462,8 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 			}
 #endif
 			property *prop = nni_mqtt_msg_get_connack_property(p->rxmsg);
-			property_dup((property **)&ep->property, prop);
+			if (property_dup((property **) &ep->property, prop) != 0)
+				goto mqtt_error;
 			property_data *data;
 			data = property_get_value(ep->property, RECEIVE_MAXIMUM);
 			if (data) {
@@ -1127,7 +1128,7 @@ mqtt_tcptran_pipe_start(
 			property_append(prop, prop_auth_data);
 			nni_mqtt_msg_set_connect_property(connmsg, prop);
 			prop = NULL;
-			log_info("auth:client_first_msg:%s", client_first_msg);
+			log_debug("auth:client_first_msg:%s", client_first_msg);
 			//property_free(prop_auth_method);
 			//property_free(prop_auth_data);
 		}
