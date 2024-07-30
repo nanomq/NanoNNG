@@ -475,14 +475,11 @@ TEST_LIST = {
 	{ "tls config version", test_tls_config_version },
 	{ "tls conn refused", test_tls_conn_refused },
 	{ "tls large message", test_tls_large_message },
-<<<<<<< HEAD
-=======
 	{ "tls garbled cert", test_tls_garbled_cert },
 	{ "tls psk", test_tls_psk },
 	{ "tls psk server identities", test_tls_psk_server_identities },
 	{ "tls psk bad identity", test_tls_psk_bad_identity },
 	{ "tls psk key too big", test_tls_psk_key_too_big },
 	{ "tls psk key config busy", test_tls_psk_config_busy },
->>>>>>> 0aeed90d9 (fixes #1846 Add support for TLS PSK)
 	{ NULL, NULL },
 };
