@@ -409,18 +409,12 @@ psk_server_cb(
 		if (strcmp(psk->identity, identity) == 0) {
 			if (max_len < psk->keylen) {
 				// key overrun
-				nng_log_warn("NNG-TLS-PSK-LEN",
-				    "Preshared key too long");
 				return (0);
 			}
-			nng_log_info("NNG-TLS-PSK-IDENTITY",
-			    "TLS client using PSK identity %s", psk->identity);
 			memcpy(key, psk->key, psk->keylen);
 			return (psk->keylen);
 		}
 	}
-	nng_log_warn(
-	    "NNG-TLS-PSK-NO-IDENTITY", "TLS client PSK identity not found");
 	return (0);
 }
 #endif
@@ -440,8 +434,6 @@ wolf_config_psk(nng_tls_engine_config *cfg, const char *identity,
 	if (key_len > 64) {
 		// not exactly sure where the wolfSSL limits are, but this is
 		// enough for 512 bits of data.
-		nng_log_warn(
-		    "NNG-TLS-PSK-TOO-BIG", "PSK key length too large");
 		return (NNG_ECRYPTO);
 	}
 	if (((psk = NNI_ALLOC_STRUCT(psk)) == NULL) ||
