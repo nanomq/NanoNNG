@@ -519,8 +519,6 @@ config_psk(nng_tls_engine_config *cfg, const char *identity,
 		         (const unsigned char *) identity,
 		         strlen(identity))) != 0) {
 			psk_free(newpsk);
-			tls_log_err("NNG-TLS-PSK-FAIL",
-			    "Failed to configure PSK identity", rv);
 			return (tls_mk_err(rv));
 		}
 	}
