@@ -183,11 +183,12 @@ mqtt_tcptran_pipe_fini(void *arg)
 		nni_mtx_unlock(&ep->mtx);
 	}
 
+	nng_stream_free(p->conn);
 	nni_aio_free(p->rxaio);
 	nni_aio_free(p->txaio);
 	nni_aio_free(p->negoaio);
 	nni_aio_free(p->rpaio);
-	nng_stream_free(p->conn);
+
 	nni_msg_free(p->rxmsg);
 	// nni_lmq_fini(&p->rslmq);
 	nni_mtx_fini(&p->mtx);
@@ -462,6 +463,7 @@ error:
 		ep->useraio = NULL;
 		nni_aio_finish_error(uaio, rv);
 	}
+	nni_list_remove(&ep->nego_pipes, p);
 	nni_mtx_unlock(&ep->mtx);
 	mqtt_tcptran_pipe_reap(p);
 }
