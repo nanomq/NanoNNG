@@ -18,8 +18,6 @@
 #define NNG_TESTING_NUTS_H
 
 #include <nng/nng.h>
-extern void nuts_logger(
-    nng_log_level, nng_log_facility, const char *, const char *);
 
 // Call nng_fini during test finalization -- this avoids leak warnings.
 extern void nng_fini(void);
