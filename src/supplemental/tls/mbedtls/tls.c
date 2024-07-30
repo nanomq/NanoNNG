@@ -481,14 +481,10 @@ config_psk_cb(void *arg, mbedtls_ssl_context *ssl,
 	NNI_LIST_FOREACH (&cfg->psks, psk) {
 		if (id_len == strlen(psk->identity) &&
 		    (memcmp(identity, psk->identity, id_len) == 0)) {
-			nng_log_debug("NNG-TLS-PSK-IDENTITY",
-			    "TLS client using PSK identity %s", psk->identity);
 			return (mbedtls_ssl_set_hs_psk(
 			    ssl, psk->key, psk->keylen));
 		}
 	}
-	nng_log_warn(
-	    "NNG-TLS-PSK-NO-IDENTITY", "TLS client PSK identity not found");
 	return (MBEDTLS_ERR_SSL_UNKNOWN_IDENTITY);
 }
 
