@@ -101,7 +101,7 @@ tls_log_err(const char *msgid, const char *context, int errnum)
 {
 	char errbuf[256];
 	wolfSSL_ERR_error_string(errnum, errbuf);
-	nng_log_err(msgid, "%s: %s", context, errbuf);
+	// nng_log_err(msgid, "%s: %s", context, errbuf);
 }
 
 static int
@@ -384,14 +384,11 @@ psk_client_cb(WOLFSSL *ssl, const char *hint, char *identity,
 		strncpy(identity, psk->identity, id_max_len);
 		if (max_len < psk->keylen) {
 			// key overrun
-			nng_log_warn(
-			    "NNG-TLS-PSK-LEN", "Preshared key too long");
 			return (0);
 		}
 		memcpy(key, psk->key, psk->keylen);
 		return (psk->keylen);
 	}
-	nng_log_warn("NNG-TLS-PSK-MISSING", "Preshared key missing");
 	return (0);
 }
 
@@ -664,23 +661,18 @@ static nng_tls_engine wolf_engine = {
 static void
 wolf_logging_cb(const int level, const char *msg)
 {
-	switch (level) {
-	case ERROR_LOG:
-		nng_log_err("NNG-WOLFSSL", msg);
-		break;
-	case INFO_LOG:
-		nng_log_info("NNG-WOLFSSL", msg);
-		break;
-	case ENTER_LOG:
-		nng_log_debug("NNG-WOLFSSL-ENTER", msg);
-		break;
-	case LEAVE_LOG:
-		nng_log_debug("NNG-WOLFSSL-ENTER", msg);
-		break;
-	case OTHER_LOG:
-		nng_log_debug("NNG-WOLFSSL", msg);
-		break;
-	}
+	// switch (level) {
+	// case ERROR_LOG:
+	// 	break;
+	// case INFO_LOG:
+	// 	break;
+	// case ENTER_LOG:
+	// 	break;
+	// case LEAVE_LOG:
+	// 	break;
+	// case OTHER_LOG:
+	// 	break;
+	// }
 }
 
 int
