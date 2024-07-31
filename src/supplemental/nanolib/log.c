@@ -143,7 +143,7 @@ log_add_syslog(const char *log_name, uint8_t level, void *mtx)
 	openlog(log_name, LOG_PID, LOG_DAEMON | convert_syslog_level(level));
 	log_add_callback(syslog_callback, NULL, level, mtx, NULL);
 }
-#ifdef NNG_PLATFORM_WINDOWS
+#ifndef NNG_PLATFORM_WINDOWS
 void
 uds_openlog(const char *uds_path, const char *ident, int option, int facility)
 {

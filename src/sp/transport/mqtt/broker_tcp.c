@@ -205,6 +205,8 @@ tcptran_pipe_fini(void *arg)
 		conn_param_free(p->tcp_cparam);
 		p->tcp_cparam = NULL;
 	}
+	if (p->rxmsg != NULL)
+		nni_msg_free(p->rxmsg);
 
 	nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
 	nng_stream_free(p->conn);
@@ -461,6 +463,7 @@ error:
 		ep->useraio = NULL;
 		nni_aio_finish_error(uaio, rv);
 	}
+	nni_list_remove(&ep->negopipes, p);
 	nni_mtx_unlock(&ep->mtx);
 	tcptran_pipe_reap(p);
 	log_error("connect nego error rv:(%d)", rv);
@@ -874,7 +877,6 @@ tcptran_pipe_recv_cb(void *arg)
 			goto recv_error;
 		}
 		// TODO set reason code or property here if necessary
-
 		nni_msg_set_cmd_type(qmsg, ack_cmd);
 		nni_mqtt_msgack_encode(
 		    qmsg, packet_id, reason_code, prop, p->pro_ver);
@@ -902,7 +904,8 @@ tcptran_pipe_recv_cb(void *arg)
 					if ((rv = nni_lmq_resize(&p->rslmq,
 					         nni_lmq_cap(&p->rslmq) *
 					             2)) == 0) {
-						nni_lmq_put(&p->rslmq, qmsg);
+						if (nni_lmq_put(&p->rslmq, qmsg) != 0)
+							nni_msg_free(qmsg);
 					} else {
 						// memory error.
 						nni_msg_free(qmsg);
@@ -911,10 +914,12 @@ tcptran_pipe_recv_cb(void *arg)
 					nni_msg *old;
 					(void) nni_lmq_get(&p->rslmq, &old);
 					nni_msg_free(old);
-					nni_lmq_put(&p->rslmq, qmsg);
+					if (nni_lmq_put(&p->rslmq, qmsg) != 0)
+						nni_msg_free(qmsg);
 				}
 			} else {
-				nni_lmq_put(&p->rslmq, qmsg);
+				if (nni_lmq_put(&p->rslmq, qmsg) != 0)
+					nni_msg_free(qmsg);
 			}
 		}
 		ack = false;
@@ -937,8 +942,10 @@ recv_error:
 	nni_aio_list_remove(aio);
 	if (msg != NULL)
 		nni_msg_free(msg);
-	if (p->rxmsg != NULL)
+	if (p->rxmsg != NULL) {
 		nni_msg_free(p->rxmsg);
+	}
+
 	msg      = NULL;
 	p->rxmsg = NULL;
 	nni_mtx_unlock(&p->mtx);
@@ -1269,7 +1276,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	if (total_len > p->tcp_cparam->max_packet_size) {
 		// drop msg and finish aio
 		// pretend it has been sent
-		log_warn("msg dropped due to overceed max packet size!");
+		log_warn("msg dropped due to exceed max packet size!");
 		nni_msg_free(msg);
 		nni_aio_set_msg(aio, NULL);
 		nni_aio_list_remove(aio);
@@ -1400,8 +1407,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 					}
 					old = msg;
 					nni_qos_db_set(is_sqlite,
-					    pipe->nano_qos_db, pipe->p_id, pid,
-					    old);
+					    pipe->nano_qos_db, pipe->p_id, pid, old);
 					nni_qos_db_remove_oldest(is_sqlite,
 					    pipe->nano_qos_db,
 					    p->conf->sqlite.disk_cache_size);

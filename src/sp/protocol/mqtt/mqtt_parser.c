@@ -196,14 +196,15 @@ get_var_integer(const uint8_t *buf, uint8_t *pos)
 int32_t
 get_utf8_str(char **dest, const uint8_t *src, uint32_t *pos, size_t max)
 {
-	int32_t str_len = 0;
+	int32_t  str_len = 0;
+	uint32_t len;
 	if (max > 0)
 		if (max - *pos < 2)
 			return -1;
-	NNI_GET16(src + (*pos), str_len);	// still vulnerable to attack
-	if (max > 0 && str_len > max)
+	NNI_GET16(src + (*pos), len);	// still vulnerable to attack
+	if (max > 0 && (len > max))
 		return -1;
-
+	str_len = len;
 	*pos = (*pos) + 2;
 	if (str_len > 0) {
 		if (utf8_check((const char *) (src + *pos), str_len) ==
@@ -677,7 +678,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		rv                     = len_of_str <= 0 ? 1 : 0;
 
 		if (cparam->will_topic.body == NULL || rv != 0) {
-			log_trace("NULL will topic detected!");
+			log_warn("NULL will topic detected!");
 			return PROTOCOL_ERROR;
 		}
 		log_trace("will_topic: %s %d", cparam->will_topic.body, rv);
@@ -698,6 +699,9 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		cparam->will_msg.len = len_of_str;
 		log_trace("will_msg: %s %d", cparam->will_msg.body, rv);
 		log_trace("pos after will msg: [%d]", pos);
+	} else if (cparam->will_flag == 0 && cparam->will_qos != 0) {
+		log_warn("will qos must be set to 0 if will flag is 0!");
+		return PROTOCOL_ERROR;
 	}
 
 	// username

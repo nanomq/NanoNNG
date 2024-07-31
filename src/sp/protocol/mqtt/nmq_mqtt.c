@@ -679,7 +679,7 @@ nano_pipe_start(void *arg)
 		log_warn("IPv6 address is not supported in event msg yet");
 	}
 
-	log_debug("client connected! addr [%s] port [%d]\n",
+	log_debug("client connected! addr [%s port [%d]\n",
 	    p->conn_param->ip_addr_v4, addr.s_in.sa_port);
 
 session_keeping:
@@ -798,14 +798,19 @@ close_pipe(nano_pipe *p)
 	nano_pipe *t = NULL;
 	nano_sock *s = p->broker;
 
+	if (nni_list_active(&s->recvpipes, p)) {
+		nni_msg *msg = nni_aio_get_msg(&p->aio_recv);
+		if (msg)
+			nni_msg_free(msg);
+		conn_param_free(p->conn_param);
+		nni_list_remove(&s->recvpipes, p);
+	}
 	nni_aio_close(&p->aio_send);
 	nni_aio_close(&p->aio_recv);
 	nni_aio_close(&p->aio_timer);
 	nni_mtx_lock(&p->lk);
 	p->closed = true;
-	if (nni_list_active(&s->recvpipes, p)) {
-		nni_list_remove(&s->recvpipes, p);
-	}
+
 	nano_nni_lmq_flush(&p->rlmq, false);
 	nni_mtx_unlock(&p->lk);
 	// only remove matched pipe, could have been overwritten
@@ -856,6 +861,10 @@ nano_pipe_close(void *arg)
 				p->conn_param->clean_start = 1;
 				nni_atomic_swap_bool(&npipe->p_closed, false);
 				if (nni_list_active(&s->recvpipes, p)) {
+					nni_msg *tmsg = nni_aio_get_msg(&p->aio_recv);
+					if (tmsg)
+						nni_msg_free(tmsg);
+					conn_param_free(p->conn_param);
 					nni_list_remove(&s->recvpipes, p);
 				}
 				nano_nni_lmq_flush(&p->rlmq, false);
@@ -1019,6 +1028,7 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 		nni_mtx_unlock(&s->lk);
 		return;
 	}
+
 	msg = nni_aio_get_msg(&p->aio_recv);
 	nni_aio_set_msg(&p->aio_recv, NULL);
 	nni_list_remove(&s->recvpipes, p);
@@ -1199,7 +1209,7 @@ nano_pipe_recv_cb(void *arg)
 	default:
 		goto drop;
 	}
-
+	nni_mtx_lock(&s->lk);
 	if (p->closed) {
 		// If we are closed, then we can't return data.
 		// This drops DISCONNECT packet.
@@ -1209,9 +1219,10 @@ nano_pipe_recv_cb(void *arg)
 		    type == CMD_CONNACK || type == CMD_PUBLISH)
 			conn_param_free(cparam);
 		log_trace("pipe is closed abruptly!");
+		nni_mtx_unlock(&s->lk);
 		return;
 	}
-	nni_mtx_lock(&s->lk);
+
 	if ((ctx = nni_list_first(&s->recvq)) == NULL) {
 		// No one waiting to receive yet, holding pattern.
 		nni_list_append(&s->recvpipes, p);

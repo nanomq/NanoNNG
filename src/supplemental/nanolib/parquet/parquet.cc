@@ -604,7 +604,7 @@ again:
 	return 0;
 }
 
-void
+void *
 parquet_write_loop_v2(void *config)
 {
 	if (config == NULL) {
@@ -615,7 +615,7 @@ parquet_write_loop_v2(void *config)
 	if (!directory_exists(conf->dir)) {
 		if (!create_directory(conf->dir)) {
 			log_error("Failed to create directory %s", conf->dir);
-			return;
+			return NULL;
 		}
 	}
 
@@ -647,6 +647,7 @@ parquet_write_loop_v2(void *config)
 			break;
 		}
 	}
+	return NULL;
 }
 
 static void
@@ -720,8 +721,14 @@ parquet_write_launcher(conf_parquet *conf)
 	INIT_QUEUE(parquet_queue);
 	parquet_file_queue_init(conf);
 	is_available = true;
-	thread write_loop(parquet_write_loop_v2, conf);
-	write_loop.detach();
+	pthread_t write_thread;
+	int result = 0;
+	result = pthread_create(&write_thread, NULL, parquet_write_loop_v2, conf);
+	if (result != 0) {
+		log_error("Failed to create parquet write thread.");
+		return -1;
+	}
+
 	return 0;
 }
 
