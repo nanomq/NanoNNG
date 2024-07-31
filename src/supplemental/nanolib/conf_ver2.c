@@ -1135,7 +1135,8 @@ conf_bridge_node_parse(
 			 jso_key2->valuedouble == 2)) {
 			s->qos = jso_key2->valuedouble;
 		} else {
-			log_warn("invalid qos level detected in forwarding list");
+			if (jso_key2 != NULL)
+				log_warn("invalid qos level detected in forwarding list");
 		}
 		if (!s->remote_topic || !s->local_topic) {
 			log_warn("remote_topic/local_topic not found");
