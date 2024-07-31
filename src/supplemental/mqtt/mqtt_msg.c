@@ -89,8 +89,12 @@ void
 nni_mqtt_msg_set_bridge_bool(nni_msg *msg, bool bridged)
 {
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
-
-	proto_data->bridged = bridged;
+	if (proto_data != NULL)
+		proto_data->bridged = bridged;
+	else {
+		log_warn("set on NULL proto_data object!");
+		return;
+	}
 }
 
 bool
