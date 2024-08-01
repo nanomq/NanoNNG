@@ -1410,17 +1410,18 @@ get_key(const char *filename, key_type type)
 	return res;
 }
 
-parquet_data_packet **
-parquet_find_data_span_packets(conf_parquet *conf, uint64_t start_key,
-    uint64_t end_key, uint32_t *size, char *topic)
+parquet_filename_range **
+parquet_find_file_range(uint64_t start_key,
+    uint64_t end_key, char *topic)
 {
-	vector<parquet_data_packet *> ret_vec;
-	parquet_data_packet         **packets = NULL;
-	uint32_t                      len     = 0;
-
+	uint32_t len = 0;
+	// Find filenames
 	log_info("start_key: %lu, end_key: %lu", start_key, end_key);
 	const char **filenames = parquet_find_span(start_key, end_key, &len);
 
+	vector<parquet_filename_range *> range_vec;
+
+	// Get all keys
 	for (uint32_t i = 0; i < len; i++) {
 		log_info("name: %s, topic: %s", filenames[i], topic);
 		if (strstr(filenames[i], topic) == NULL) {
@@ -1428,29 +1429,51 @@ parquet_find_data_span_packets(conf_parquet *conf, uint64_t start_key,
 			continue;
 		}
 
-		uint64_t keys[2];
-		keys[0] = start_key;
-		keys[1] = end_key;
+		parquet_filename_range *range = (parquet_filename_range *) nng_alloc(
+		    sizeof(parquet_filename_range));
+		range->keys[0] = start_key;
+		range->keys[1] = end_key;
 		if (len > 1) {
-			keys[0] = i == 0 ? start_key
-			                 : get_key(filenames[i], START_KEY);
-			keys[1] = i == (len - 1)
+			range->keys[0] = i == 0
+			    ? start_key
+			    : get_key(filenames[i], START_KEY);
+			range->keys[1] = i == (len - 1)
 			    ? end_key
 			    : get_key(filenames[i], END_KEY);
 		}
 
-		log_debug("file start_key: %lu, file end_key: %lu", keys[0],
-		    keys[1]);
+		log_debug("file start_key: %lu, file end_key: %lu",
+		    range->keys[0], range->keys[1]);
 
-		auto tmp = parquet_read_span(conf, filenames[i], keys);
-		log_debug("read span size: %ld", tmp.size());
-		ret_vec.insert(ret_vec.end(), tmp.begin(), tmp.end());
-		nng_strfree((char *) filenames[i]);
+		range_vec.push_back(range);
 	}
-	nng_free(filenames, len);
+
+	if (!range_vec.empty()) {
+		// Push NULL as terminate
+		range_vec.push_back(NULL);
+		parquet_filename_range **ranges =
+		    (parquet_filename_range **) nng_alloc(
+		        sizeof(parquet_filename_range) * range_vec.size());
+		copy(range_vec.begin(), range_vec.end(), ranges);
+
+		nng_free(filenames, len);
+		return ranges;
+	}
+
+	return NULL;
+}
+
+parquet_data_packet **
+parquet_find_data_span_packets_specify_file(conf_parquet *conf, parquet_filename_range *range, uint32_t *size)
+{
+
+	parquet_data_packet         **packets = NULL;
+
+	auto ret_vec = parquet_read_span(conf, range->filename, range->keys);
+	log_debug("read span size: %ld", ret_vec.size());
 
 	if (!ret_vec.empty()) {
-		packets = (parquet_data_packet **) malloc(
+		packets = (parquet_data_packet **) nng_alloc(
 		    sizeof(parquet_data_packet *) * ret_vec.size());
 		copy(ret_vec.begin(), ret_vec.end(), packets);
 		*size = ret_vec.size();
