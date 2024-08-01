@@ -39,36 +39,51 @@ struct parquet_object {
 	uint32_t            *dsize;
 	uint32_t             size;
 	nng_aio             *aio;
-	void	        *arg;
+	void                *arg;
 	parquet_file_ranges *ranges;
 	parquet_write_type   type;
 	char                *topic;
 };
 
+typedef struct {
+	char    *filename;
+	uint64_t keys[2];
+} parquet_filename_range;
+
 parquet_object *parquet_object_alloc(uint64_t *keys, uint8_t **darray,
     uint32_t *dsize, uint32_t size, nng_aio *aio, void *arg);
 void            parquet_object_free(parquet_object *elem);
 
-parquet_file_range *parquet_file_range_alloc(uint32_t start_idx, uint32_t end_idx, char *filename);
+parquet_file_range *parquet_file_range_alloc(
+    uint32_t start_idx, uint32_t end_idx, char *filename);
 void parquet_file_range_free(parquet_file_range *range);
 
 void parquet_object_set_cb(parquet_object *obj, parquet_cb cb);
 int  parquet_write_batch_async(parquet_object *elem);
-// Write a batch to a temporary Parquet file, utilize it in scenarios where a single 
-// file is sufficient for writing, sending, and subsequent deletion.
-int  parquet_write_batch_tmp_async(parquet_object *elem);
-int  parquet_write_launcher(conf_parquet *conf);
+// Write a batch to a temporary Parquet file, utilize it in scenarios where a
+// single file is sufficient for writing, sending, and subsequent deletion.
+int parquet_write_batch_tmp_async(parquet_object *elem);
+int parquet_write_launcher(conf_parquet *conf);
 
 const char  *parquet_find(uint64_t key);
 const char **parquet_find_span(
     uint64_t start_key, uint64_t end_key, uint32_t *size);
 uint64_t *parquet_get_key_span();
 
-parquet_data_packet *parquet_find_data_packet(conf_parquet *conf, char *filename, uint64_t key);
+parquet_data_packet *parquet_find_data_packet(
+    conf_parquet *conf, char *filename, uint64_t key);
 
-parquet_data_packet **parquet_find_data_packets(conf_parquet *conf, char **filenames, uint64_t *keys, uint32_t len);
+parquet_data_packet **parquet_find_data_packets(
+    conf_parquet *conf, char **filenames, uint64_t *keys, uint32_t len);
 
-parquet_data_packet **parquet_find_data_span_packets(conf_parquet *conf, uint64_t start_key, uint64_t end_key, uint32_t *size, char *topic);
+parquet_data_packet **parquet_find_data_span_packets(conf_parquet *conf,
+    uint64_t start_key, uint64_t end_key, uint32_t *size, char *topic);
+
+parquet_filename_range **parquet_find_file_range(
+    uint64_t start_key, uint64_t end_key, char *topic);
+
+parquet_data_packet **parquet_find_data_span_packets_specify_file(
+    conf_parquet *conf, parquet_filename_range *range, uint32_t *size);
 
 #ifdef __cplusplus
 }
