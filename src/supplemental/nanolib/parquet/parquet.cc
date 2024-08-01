@@ -1482,6 +1482,55 @@ parquet_find_data_span_packets_specify_file(conf_parquet *conf, parquet_filename
 	return packets;
 }
 
+parquet_data_packet **
+parquet_find_data_span_packets(conf_parquet *conf, uint64_t start_key,
+    uint64_t end_key, uint32_t *size, char *topic)
+{
+	vector<parquet_data_packet *> ret_vec;
+	parquet_data_packet         **packets = NULL;
+	uint32_t                      len     = 0;
+
+	log_info("start_key: %lu, end_key: %lu", start_key, end_key);
+	const char **filenames = parquet_find_span(start_key, end_key, &len);
+
+	for (uint32_t i = 0; i < len; i++) {
+		log_info("name: %s, topic: %s", filenames[i], topic);
+		if (strstr(filenames[i], topic) == NULL) {
+			nng_strfree((char *) filenames[i]);
+			continue;
+		}
+
+		uint64_t keys[2];
+		keys[0] = start_key;
+		keys[1] = end_key;
+		if (len > 1) {
+			keys[0] = i == 0 ? start_key
+			                 : get_key(filenames[i], START_KEY);
+			keys[1] = i == (len - 1)
+			    ? end_key
+			    : get_key(filenames[i], END_KEY);
+		}
+
+		log_debug("file start_key: %lu, file end_key: %lu", keys[0],
+		    keys[1]);
+
+		auto tmp = parquet_read_span(conf, filenames[i], keys);
+		log_debug("read span size: %ld", tmp.size());
+		ret_vec.insert(ret_vec.end(), tmp.begin(), tmp.end());
+		nng_strfree((char *) filenames[i]);
+	}
+	nng_free(filenames, len);
+
+	if (!ret_vec.empty()) {
+		packets = (parquet_data_packet **) malloc(
+		    sizeof(parquet_data_packet *) * ret_vec.size());
+		copy(ret_vec.begin(), ret_vec.end(), packets);
+		*size = ret_vec.size();
+	}
+
+	return packets;
+}
+
 uint64_t *
 parquet_get_key_span()
 {
