@@ -58,6 +58,8 @@ addaddr(struct addr **endp, const char *a)
 	return (&na->next);
 }
 
+#define QUERY_EOF "C60="
+
 void
 sendrecv(nng_socket sock)
 {
@@ -76,20 +78,29 @@ sendrecv(nng_socket sock)
 		fatal("Send error: %s", nng_strerror(rv));
 	}
 
-	rv = nng_recvmsg(sock, &msg, 0);
-	switch (rv) {
-	case 0:
-		/* handle reply msg */
-		printf("Received %d bytes\n", nng_msg_len(msg));
-		nng_msg_free(msg);
-		break;
-	case NNG_ETIMEDOUT:
-	case NNG_ESTATE:
-		// We're done receiving
-		break;
-	default:
-		fatal("Cannot receive: %s", nng_strerror(rv));
-		break;
+
+	while (true) {
+		rv = nng_recvmsg(sock, &msg, 0);
+		switch (rv) {
+		case 0:
+			if (nng_msg_len(msg) == strlen(QUERY_EOF)) {
+				if (strncmp(nng_msg_body(msg), QUERY_EOF, strlen(QUERY_EOF)) == 0) {
+					nng_msg_free(msg);
+					return;
+				}
+			}
+			/* handle reply msg */
+			printf("Received %d bytes\n", nng_msg_len(msg));
+			nng_msg_free(msg);
+			break;
+		case NNG_ETIMEDOUT:
+		case NNG_ESTATE:
+			// We're done receiving
+			break;
+		default:
+			fatal("Cannot receive: %s", nng_strerror(rv));
+			break;
+		}
 	}
 }
 
@@ -124,7 +135,7 @@ main(int ac, char **av)
 		fatal("No address specified.");
 	}
 
-	rv = nng_req0_open(&sock);
+	rv = nng_pair0_open(&sock);
 
 	if (rv != 0) {
 		fatal("Unable to open socket: %s", nng_strerror(rv));

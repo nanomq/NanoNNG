@@ -46,7 +46,7 @@ struct parquet_object {
 };
 
 typedef struct {
-	char    *filename;
+	const char    *filename;
 	uint64_t keys[2];
 } parquet_filename_range;
 
