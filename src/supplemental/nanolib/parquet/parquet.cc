@@ -486,6 +486,13 @@ again:
 		if (ret != 0) {
 			log_error("Failed to calculate md5sum");
 		}
+
+		parquet_file_range *range =
+		    parquet_file_range_alloc(old_index, new_index, md5_file_name);
+		update_parquet_file_ranges(conf, elem, range);
+
+		old_index = new_index;
+
 		log_debug("wait for parquet_queue_mutex");
 		pthread_mutex_lock(&parquet_queue_mutex);
 		ENQUEUE(parquet_file_queue, md5_file_name);
@@ -509,11 +516,6 @@ again:
 	}
 
 	{
-		parquet_file_range *range =
-		    parquet_file_range_alloc(old_index, new_index, filename);
-		update_parquet_file_ranges(conf, elem, range);
-
-		// Create a ParquetFileWriter instance
 		parquet::WriterProperties::Builder builder;
 		log_debug("init builder");
 		builder.created_by("NanoMQ")
@@ -570,10 +572,11 @@ again:
 		}
 		log_debug("stop doing ByteArray write");
 
-		old_index = new_index;
 
 		last_file_name = filename;
-
+		// If byte size large than file size limit, 
+		// we will open a new file.
+		// go again.
 		if (new_index != elem->size - 1)
 			goto again;
 	}
@@ -592,6 +595,13 @@ again:
 		if (ret != 0) {
 			log_error("Failed to calculate md5sum");
 		}
+
+		parquet_file_range *range =
+		    parquet_file_range_alloc(old_index, new_index, md5_file_name);
+		update_parquet_file_ranges(conf, elem, range);
+
+		old_index = new_index;
+
 		log_debug("wait for parquet_queue_mutex");
 		pthread_mutex_lock(&parquet_queue_mutex);
 		ENQUEUE(parquet_file_queue, md5_file_name);
