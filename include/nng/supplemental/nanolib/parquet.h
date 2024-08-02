@@ -46,8 +46,8 @@ struct parquet_object {
 };
 
 typedef struct {
-	char    *filename;
-	uint64_t keys[2];
+	const char *filename;
+	uint64_t    keys[2];
 } parquet_filename_range;
 
 parquet_object *parquet_object_alloc(uint64_t *keys, uint8_t **darray,
