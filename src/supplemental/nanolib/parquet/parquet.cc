@@ -1452,6 +1452,8 @@ parquet_find_file_range(uint64_t start_key,
 			    : get_key(filenames[i], END_KEY);
 		}
 
+		range->filename = filenames[i];
+
 		log_debug("file start_key: %lu, file end_key: %lu",
 		    range->keys[0], range->keys[1]);
 
