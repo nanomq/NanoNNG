@@ -2749,7 +2749,7 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->password       = NULL;
 	node->proto_ver      = 4;
 	node->keepalive      = 60;
-	node->backoff_max    = 60;
+	node->backoff_max    = 5;
 	node->forwards_count = 0;
 	node->forwards_list  = NULL;
 	node->sub_count      = 0;
