@@ -896,7 +896,7 @@ tcptran_pipe_recv_cb(void *arg)
 			nni_aio_set_iov(p->qsaio, 2, iov);
 			nng_stream_send(p->conn, p->qsaio);
 		} else {
-			log_info("resend ack later");
+			log_debug("resend ack later");
 			if (nni_lmq_full(&p->rslmq)) {
 				// Make space for the new message.
 				if (nni_lmq_cap(&p->rslmq) <=
