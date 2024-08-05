@@ -280,24 +280,6 @@ mqtt_sock_recv(void *arg, nni_aio *aio)
 /******************************************************************************
  *                              Pipe Implementation                           *
  ******************************************************************************/
-static uint16_t
-mqtt_sock_get_next_packet_id(mqtt_sock_t *s)
-{
-	int packet_id;
-	do {
-		packet_id = nni_atomic_get(&s->next_packet_id);
-		/* PROTOCOL ERROR: when packet_id == 0 */
-		while ((packet_id & 0xFFFF) == 0) {
-			while(!nni_atomic_cas(&s->next_packet_id,
-								  packet_id,
-								  packet_id + 1)) {
-				packet_id = nni_atomic_get(&s->next_packet_id);
-			}
-		}
-	} while (
-	    !nni_atomic_cas(&s->next_packet_id, packet_id, packet_id + 1));
-	return packet_id & 0xFFFF;
-}
 
 static int
 mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s)
@@ -449,17 +431,21 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 		nni_mqtt_msg_set_aio(msg, aio);
 		packet_id = nni_mqtt_msg_get_packet_id(msg);
 		taio = nni_id_get(&p->sent_unack, packet_id);
+		// pass proto_data to cached aio, either it is freed in ack or in cancel
+		nni_aio_set_prov_data(aio, nni_msg_get_proto_data(msg));
 		if (taio != NULL) {
 			nni_plat_printf("Warning : msg %d lost due to "
 			                "packetID duplicated!",
 			    packet_id);
 			nni_aio_finish_error(taio, NNG_ECANCELED);
 			nni_id_remove(&p->sent_unack, packet_id);
+			nni_msg_free(nni_aio_get_msg(taio));
 		}
 		if (0 != nni_id_set(&p->sent_unack, packet_id, aio)) {
 			nni_plat_printf("Warning : aio caching failed");
 			nni_aio_finish_error(aio, NNG_ECANCELED);
-		}
+		} else
+			nni_msg_clone(msg);
 		break;
 
 	default:
@@ -532,7 +518,9 @@ static void
 mqtt_pipe_stop(void *arg)
 {
 	mqtt_pipe_t *p = arg;
+	nni_aio_abort(&p->send_aio, NNG_ECANCELED);
 	nni_aio_stop(&p->send_aio);
+	nni_aio_abort(&p->recv_aio, NNG_ECANCELED);
 	nni_aio_stop(&p->recv_aio);
 	nni_aio_stop(&p->time_aio);
 }
@@ -944,12 +932,16 @@ mqtt_recv_cb(void *arg)
 		user_aio = nni_id_get(&p->sent_unack, packet_id);
 		if (user_aio != NULL) {
 			nni_id_remove(&p->sent_unack, packet_id);
+			// in case data race in cancel
+			nni_aio_set_prov_data(user_aio, NULL);
+			nni_msg_free(nni_aio_get_msg(user_aio));
 			if (packet_type == NNG_MQTT_SUBACK ||
 			    packet_type == NNG_MQTT_UNSUBACK) {
 				nni_msg_clone(msg);
 				nni_aio_set_msg(user_aio, msg);
 			}
-		}
+		} else
+			log_warn("QoS msg ack failed %d", packet_id);
 		nni_msg_free(msg);
 		break;
 
@@ -1116,6 +1108,53 @@ mqtt_ctx_fini(void *arg)
 	nni_mtx_unlock(&s->mtx);
 }
 
+
+static void
+mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
+{
+	uint16_t             packet_id;
+	mqtt_ctx_t          *ctx = arg;
+	mqtt_sock_t         *s   = ctx->mqtt_sock;
+	mqtt_pipe_t         *p;
+	nni_mqtt_proto_data *proto_data;
+
+	nni_mtx_lock(&s->mtx);
+	if (nni_list_active(&s->send_queue, ctx)) {
+		nni_list_remove(&s->send_queue, ctx);
+		nni_list_node_remove(&ctx->sqnode);
+	}
+
+	ctx->saio = NULL;
+	// deal with canceld QoS msg
+	proto_data = nni_aio_get_prov_data(aio);
+	if (proto_data) {
+		uint8_t type = proto_data->fixed_header.common.packet_type;
+		if (type == NNG_MQTT_PUBLISH)
+			packet_id = proto_data->var_header.publish.packet_id;
+		else if (type == NNG_MQTT_SUBSCRIBE)
+			packet_id = proto_data->var_header.subscribe.packet_id;
+		else if (type == NNG_MQTT_UNSUBSCRIBE)
+			packet_id = proto_data->var_header.unsubscribe.packet_id;
+		p = s->mqtt_pipe;
+		if (p != NULL) {
+			nni_aio *taio;
+			taio = nni_id_get(&p->sent_unack, packet_id);
+			if (taio != NULL) {
+				log_warn("Warning : msg %d lost due to "
+								"timeout!", packet_id);
+				nni_id_remove(&p->sent_unack, packet_id);
+				nni_msg_free(nni_aio_get_msg(taio));
+			}
+		}
+	}
+
+	if (nni_aio_list_active(aio)) {
+		nni_aio_list_remove(aio);
+	}
+	nni_mtx_unlock(&s->mtx);
+	nni_aio_finish_error(aio, NNG_ECANCELED);
+}
+
 static void
 mqtt_ctx_send(void *arg, nni_aio *aio)
 {
@@ -1211,11 +1250,16 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 			nni_mtx_unlock(&s->mtx);
 			nni_aio_set_msg(aio, NULL);
 			nni_aio_finish_error(aio, NNG_ECLOSED);
-			log_warn("ctx is already cached! drop msg");
+			log_info("ctx is already cached! drop msg");
 		}
 		return;
 	}
 	mqtt_send_msg(aio, ctx);
+	if ((rv = nni_aio_schedule(aio, mqtt_ctx_cancel_send, ctx)) != 0) {
+		// nni_mtx_unlock(&s->lk);
+		nni_aio_finish_error(aio, rv);
+		return;
+	}
 	log_trace("client sending msg now");
 	return;
 }
