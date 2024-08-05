@@ -51,6 +51,7 @@ static void mqtt_ctx_init(void *arg, void *sock);
 static void mqtt_ctx_fini(void *arg);
 static void mqtt_ctx_send(void *arg, nni_aio *aio);
 static void mqtt_ctx_recv(void *arg, nni_aio *aio);
+static void mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv);
 
 typedef nni_mqtt_packet_type packet_type_t;
 
@@ -444,8 +445,16 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 		if (0 != nni_id_set(&p->sent_unack, packet_id, aio)) {
 			nni_plat_printf("Warning : aio caching failed");
 			nni_aio_finish_error(aio, NNG_ECANCELED);
-		} else
+		} else {
+			int rv;
+			if ((rv = nni_aio_schedule(aio, mqtt_ctx_cancel_send, ctx)) != 0) {
+				nni_id_remove(&p->sent_unack, packet_id);
+				nni_mtx_unlock(&s->mtx);
+				nni_aio_finish_error(aio, rv);
+				return;
+			}
 			nni_msg_clone(msg);
+		}
 		break;
 
 	default:
@@ -1118,6 +1127,8 @@ mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
 	mqtt_pipe_t         *p;
 	nni_mqtt_proto_data *proto_data;
 
+	// if (rv != NNG_ETIMEDOUT)
+	// 	return;
 	nni_mtx_lock(&s->mtx);
 	if (nni_list_active(&s->send_queue, ctx)) {
 		nni_list_remove(&s->send_queue, ctx);
@@ -1151,8 +1162,9 @@ mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
 	if (nni_aio_list_active(aio)) {
 		nni_aio_list_remove(aio);
 	}
+		nni_aio_finish_error(aio, NNG_ECANCELED);
 	nni_mtx_unlock(&s->mtx);
-	nni_aio_finish_error(aio, NNG_ECANCELED);
+
 }
 
 static void
@@ -1255,11 +1267,6 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 		return;
 	}
 	mqtt_send_msg(aio, ctx);
-	if ((rv = nni_aio_schedule(aio, mqtt_ctx_cancel_send, ctx)) != 0) {
-		// nni_mtx_unlock(&s->lk);
-		nni_aio_finish_error(aio, rv);
-		return;
-	}
 	log_trace("client sending msg now");
 	return;
 }
