@@ -983,6 +983,7 @@ mqtt_close_unack_aio_cb(void *key, void *val)
 
 	if (aio) {
 		nni_aio_finish_error(aio, NNG_ECLOSED);
+		nni_msg_free(nni_aio_get_msg(aio));
 	}
 }
 
