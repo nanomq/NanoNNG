@@ -780,7 +780,7 @@ tcptran_pipe_recv_cb(void *arg)
 	if (nni_msg_len(msg) == 0 &&
 	    (type == CMD_SUBSCRIBE || type == CMD_PUBLISH ||
 	        type == CMD_UNSUBSCRIBE)) {
-		log_warn("Invalid Packet Type: Connection closed.");
+		log_warn("Invalid Packet Type: 0 len received! Connection closed.");
 		rv = MALFORMED_PACKET;
 		goto recv_error;
 	} else if (type == CMD_CONNACK) {
@@ -865,6 +865,17 @@ tcptran_pipe_recv_cb(void *arg)
 			log_debug("free property & reduce send quota");
 			property_free(prop);
 			p->qsend_quota++;
+		}
+	} else if (type == CMD_UNSUBSCRIBE) {
+		// extract sub id
+		// Remove Subid RAP Topic stored
+		if (nmq_unsubinfo_decode(msg, p->npipe->subinfol,
+								  p->tcp_cparam->pro_ver) < 0) {
+			log_error("Invalid unsubscribe packet!");
+			// nni_msg_free(msg);
+			// conn_param_free(cparam);
+			rv = PROTOCOL_ERROR;
+			goto recv_error;
 		}
 	}
 
