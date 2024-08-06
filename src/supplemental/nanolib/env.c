@@ -157,6 +157,13 @@ read_env_vin()
 	return env_vin;
 }
 
+char *
+read_env_pid_file()
+{
+	char *pid_file = NULL;
+	set_string_var(&pid_file, NANOMQ_PID_FILE);
+	return pid_file;
+}
 
 void
 read_env_conf(conf *config)
