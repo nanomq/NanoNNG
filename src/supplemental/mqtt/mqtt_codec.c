@@ -4189,7 +4189,9 @@ property_pub_by_will(property *will_prop)
 
 	property_dup(&list, will_prop);
 	property_remove(list, WILL_DELAY_INTERVAL);
-
+	if (get_mqtt_properties_len(list) == 0) {
+		goto out;
+	}
 	return list;
 
 out:
