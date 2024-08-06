@@ -584,6 +584,7 @@ nano_pipe_fini(void *arg)
 	void *nano_qos_db = p->pipe->nano_qos_db;
 
 	//Safely free the msgs in qos_db, only when nano_qos_db is not taken by new pipe
+	nni_mtx_lock(&p->lk);
 	if (p->event == true) {
 		if (!p->broker->conf->sqlite.enable && nano_qos_db != NULL) {
 			nni_qos_db_remove_all_msg(false,
@@ -595,6 +596,7 @@ nano_pipe_fini(void *arg)
 		// we keep all structs in broker layer, except this conn_param
 		conn_param_free(p->conn_param);
 	}
+	nni_mtx_unlock(&p->lk);
 
 	nni_mtx_fini(&p->lk);
 	nni_aio_fini(&p->aio_send);
@@ -629,6 +631,9 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	p->tree        = sock->db;
 	if (p->conn_param != NULL)
 		p->keepalive   = p->conn_param->keepalive_mqtt;
+	if (!p->broker->conf->sqlite.enable && pipe->nano_qos_db == NULL) {
+		nni_qos_db_init_id_hash(pipe->nano_qos_db);
+	}
 
 	return (0);
 }
@@ -873,8 +878,8 @@ nano_pipe_close(void *arg)
 		}
 
 		// have to close & stop aio timer first, otherwise we hit null qos_db
+		nni_aio_finish_error(&p->aio_timer, NNG_ECANCELED);
 		nni_aio_close(&p->aio_timer);
-		nni_aio_stop(&p->aio_timer);
 		nni_aio_close(&p->aio_send);
 		nni_aio_close(&p->aio_recv);
 		// take params from npipe to new pipe
