@@ -24,6 +24,8 @@ nni_qos_db_set(bool is_sqlite, void *db, uint32_t pipe_id, uint16_t packet_id,
 nng_msg *
 nni_qos_db_get(bool is_sqlite, void *db, uint32_t pipe_id, uint16_t packet_id)
 {
+	if (db == NULL)
+		return NULL;
 	nng_msg *msg = NULL;
 	if (is_sqlite) {
 #ifdef NNG_SUPP_SQLITE
