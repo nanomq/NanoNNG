@@ -171,10 +171,7 @@ tcptran_pipe_init(void *arg, nni_pipe *npipe)
 	clientid_key = DJBHashn(cid, strlen(cid));
 	rv = nni_pipe_set_pid(npipe, clientid_key);
 	log_debug("change p_id by hashing %d rv %d", clientid_key, rv);
-	p->npipe = npipe;
-	if (!p->conf->sqlite.enable && npipe->nano_qos_db == NULL) {
-		nni_qos_db_init_id_hash(npipe->nano_qos_db);
-	}
+	p->npipe    = npipe;
 	p->conn_buf = NULL;
 	p->busy     = false;
 
@@ -609,7 +606,8 @@ nmq_tcptran_pipe_send_cb(void *arg)
 	}
 
 	msg = nni_aio_get_msg(aio);
-
+	if (p->closed)
+		goto exit;
 	if (nni_aio_get_prov_data(txaio) != NULL) {
 		// msgs left behind due to multiple topics matched
 		if (p->pro_ver == MQTT_PROTOCOL_VERSION_v311 ||
@@ -624,7 +622,7 @@ nmq_tcptran_pipe_send_cb(void *arg)
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
-
+exit:
 	nni_aio_list_remove(aio);
 	tcptran_pipe_send_start(p);
 
