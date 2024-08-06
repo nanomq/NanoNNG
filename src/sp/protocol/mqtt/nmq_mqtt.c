@@ -589,6 +589,7 @@ nano_pipe_fini(void *arg)
 			nni_qos_db_remove_all_msg(false,
 				nano_qos_db, nmq_close_unack_msg_cb);
 			nni_qos_db_fini_id_hash(nano_qos_db);
+			p->pipe->nano_qos_db = NULL;
 		}
 	} else {
 		// we keep all structs in broker layer, except this conn_param
@@ -699,10 +700,11 @@ session_keeping:
 
 			if (!is_sqlite && p->pipe->nano_qos_db!= NULL) {
 				nni_qos_db_fini_id_hash(p->pipe->nano_qos_db);
+				p->pipe->nano_qos_db = NULL;
 			}
 
 			p->pipe->nano_qos_db = old->nano_qos_db;
-
+			log_info("resuming session %d with %d", npipe->p_id, old->pipe->p_id);
 			nni_pipe_id_swap(npipe->p_id, old->pipe->p_id);
 			p->id = nni_pipe_id(npipe);
 			// set event to false so that no notification will be
@@ -845,6 +847,7 @@ nano_pipe_close(void *arg)
 			log_debug("keep session id [%s] ", p->conn_param->clientid.body);
 			nni_pipe_rele(new_pipe);
 			if (new_pipe == npipe) {
+				log_info("session stored %d", npipe->p_id);
 				nni_id_set(&s->cached_sessions, npipe->p_id, p);
 				nni_mtx_lock(&s->lk);
 				// set event to false avoid of sending the
@@ -877,6 +880,8 @@ nano_pipe_close(void *arg)
 		// take params from npipe to new pipe
 		new_pipe->packet_id = npipe->packet_id;
 		// there should be no msg in this map
+		if (new_pipe->nano_qos_db != NULL)
+			nni_qos_db_fini_id_hash(new_pipe->nano_qos_db);
 		new_pipe->nano_qos_db = npipe->nano_qos_db;
 		npipe->nano_qos_db = NULL;
 

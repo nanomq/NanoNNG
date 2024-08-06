@@ -3755,6 +3755,7 @@ property_append(property *prop_list, property *last)
 	}
 }
 
+// will free the prop_list if prop_id is the last prop remaining
 void
 property_remove(property *prop_list, uint8_t prop_id)
 {
