@@ -3923,6 +3923,42 @@ conf_sqlite_destroy(conf_sqlite *sqlite)
 	}
 }
 
+static void
+conf_exchange_node_destory(conf_exchange_node *node)
+{
+	if (node) {
+		nng_strfree(node->exchange_url);
+		nng_strfree(node->topic);
+		nng_strfree(node->name);
+		nng_mtx_free(node->mtx);
+		for (int i = 0; i < node->rbufs_sz; i++) {
+			if (node->rbufs[i]) {
+				nng_strfree(node->rbufs[i]->name);
+				NNI_FREE_STRUCT(node->rbufs[i]);
+			}
+		}
+
+		cvector_free(node->rbufs);
+		NNI_FREE_STRUCT(node);
+	}
+
+}
+
+static void
+conf_exchange_destroy(conf_exchange *exchange)
+{
+	for (int i = 0; i < exchange->count; i++) {
+		conf_exchange_node *node = exchange->nodes[i];
+		conf_exchange_node_destory(node);
+	}
+
+	if (exchange->encryption) {
+		nng_strfree(exchange->encryption->key);
+		NNI_FREE_STRUCT(exchange->encryption);
+	}
+	cvector_free(exchange->nodes);
+}
+
 #if defined(SUPP_RULE_ENGINE)
 static void
 conf_rule_destroy(conf_rule *re)
@@ -4005,6 +4041,7 @@ conf_fini(conf *nanomq_conf)
 	conf_web_hook_destroy(&nanomq_conf->web_hook);
 	conf_auth_http_destroy(&nanomq_conf->auth_http);
 	conf_auth_destroy(&nanomq_conf->auths);
+	conf_exchange_destroy(&nanomq_conf->exchange);
 #if defined(ENABLE_LOG)
 	conf_log_destroy(&nanomq_conf->log);
 #endif
