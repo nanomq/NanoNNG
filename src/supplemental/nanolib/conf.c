@@ -4012,6 +4012,19 @@ conf_tlslist_destroy(conf_tls_list *tlslist)
 		tlslist->nodes = NULL;
 	}
 }
+conf_parquet_destroy(conf_parquet *parquet)
+{
+	if (parquet) {
+		nng_strfree(parquet->dir);
+		nng_strfree(parquet->file_name_prefix);
+
+		if (parquet->encryption.enable) {
+			nng_strfree(parquet->encryption.key);
+			nng_strfree(parquet->encryption.key_id);
+		}
+	}
+
+}
 
 void
 conf_fini(conf *nanomq_conf)
@@ -4049,5 +4062,8 @@ conf_fini(conf *nanomq_conf)
 	conf_tcplist_destroy(&nanomq_conf->tcp_list);
 	conf_tlslist_destroy(&nanomq_conf->tls_list);
 
+#if defined(SUPP_PARQUET)
+	conf_parquet_destroy(&nanomq_conf->parquet);
+#endif
 	free(nanomq_conf);
 }
