@@ -3970,6 +3970,21 @@ conf_rule_destroy(conf_rule *re)
 }
 #endif
 
+static void
+conf_parquet_destroy(conf_parquet *parquet)
+{
+	if (parquet) {
+		nng_strfree(parquet->dir);
+		nng_strfree(parquet->file_name_prefix);
+
+		if (parquet->encryption.enable) {
+			nng_strfree(parquet->encryption.key);
+			nng_strfree(parquet->encryption.key_id);
+		}
+	}
+
+}
+
 void
 conf_fini(conf *nanomq_conf)
 {
@@ -4001,6 +4016,10 @@ conf_fini(conf *nanomq_conf)
 	conf_exchange_destroy(&nanomq_conf->exchange);
 #if defined(ENABLE_LOG)
 	conf_log_destroy(&nanomq_conf->log);
+#endif
+
+#if defined(SUPP_PARQUET)
+	conf_parquet_destroy(&nanomq_conf->parquet);
 #endif
 	free(nanomq_conf);
 }
