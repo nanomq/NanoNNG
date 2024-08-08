@@ -239,16 +239,19 @@ nni_tcp_dial(nni_tcp_dialer *d, const nni_sockaddr *sa, nni_aio *aio)
 	int                     nd;
 
 	if (nni_aio_begin(aio) != 0) {
+		log_info(" aio begin failed");
 		return;
 	}
 
 	if (((sslen = nni_posix_nn2sockaddr(&ss, sa)) == 0) ||
 	    ((ss.ss_family != AF_INET) && (ss.ss_family != AF_INET6))) {
+		log_info("address wrong");
 		nni_aio_finish_error(aio, NNG_EADDRINVAL);
 		return;
 	}
 
 	if ((fd = socket(ss.ss_family, SOCK_STREAM | SOCK_CLOEXEC, 0)) < 0) {
+		log_info("socket fd fail");
 		nni_aio_finish_error(aio, nni_plat_errno(errno));
 		return;
 	}
@@ -257,6 +260,7 @@ nni_tcp_dial(nni_tcp_dialer *d, const nni_sockaddr *sa, nni_aio *aio)
 
 	if ((rv = nni_posix_tcp_alloc(&c, d)) != 0) {
 		nni_aio_finish_error(aio, rv);
+		log_info("dialer alloc failed!");
 		nni_posix_tcp_dialer_rele(d);
 		return;
 	}
@@ -266,6 +270,7 @@ nni_tcp_dial(nni_tcp_dialer *d, const nni_sockaddr *sa, nni_aio *aio)
 	if ((rv = nni_posix_pfd_init(&pfd, fd)) != 0) {
 		(void) close(fd);
 		// the error label unlocks this
+		log_info("epoll fd return error %d", rv);
 		nni_mtx_lock(&d->mtx);
 		goto error;
 	}
@@ -276,6 +281,7 @@ nni_tcp_dial(nni_tcp_dialer *d, const nni_sockaddr *sa, nni_aio *aio)
 	nni_mtx_lock(&d->mtx);
 	if (d->closed) {
 		rv = NNG_ECLOSED;
+		log_info("dialer closed");
 		goto error;
 	}
 	if (d->srclen != 0) {
@@ -290,14 +296,17 @@ nni_tcp_dial(nni_tcp_dialer *d, const nni_sockaddr *sa, nni_aio *aio)
 	if (connect(fd, (void *) &ss, sslen) != 0) {
 		if (errno != EINPROGRESS) {
 			rv = nni_plat_errno(errno);
+			log_info("connect failed %d", rv);
 			goto error;
 		}
 		// Asynchronous connect.
 		if ((rv = nni_posix_pfd_arm(pfd, NNI_POLL_OUT)) != 0) {
+			log_info("epoll fd return error %d", rv);
 			goto error;
 		}
 		c->dial_aio = aio;
 		nni_aio_set_prov_data(aio, c);
+		log_info("trying next time....");
 		nni_list_append(&d->connq, aio);
 		nni_mtx_unlock(&d->mtx);
 		return;
@@ -310,6 +319,7 @@ nni_tcp_dial(nni_tcp_dialer *d, const nni_sockaddr *sa, nni_aio *aio)
 	nni_mtx_unlock(&d->mtx);
 	nni_posix_tcp_start(c, nd, ka);
 	nni_aio_set_output(aio, 0, c);
+	log_info("begin next dial");
 	nni_aio_finish(aio, 0, 0);
 	return;
 

@@ -1526,8 +1526,9 @@ dialer_timer_start_locked(nni_dialer *d)
 	// have a statistically perfect distribution with the modulo of
 	// the random number, but this really doesn't matter.
 	log_warn("start d_tmo_aio, backoff param %d", back_off);
-	nni_sleep_aio(
-	    back_off ? (int) nni_random() % back_off : 0, &d->d_tmo_aio);
+	// nni_sleep_aio(
+	//     back_off ? (int) nni_random() % back_off : 0, &d->d_tmo_aio);
+	nni_aio_finish(&d->d_tmo_aio, 0, 0);
 }
 
 void

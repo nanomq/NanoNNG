@@ -129,6 +129,7 @@ mqtt_tcptran_pipe_close(void *arg)
 
 	p->closed = true;
 	// nni_lmq_flush(&p->rslmq);
+	log_info("mqtt_tcptran_pipe_close");
 	nni_mtx_unlock(&p->mtx);
 
 	nni_aio_close(p->rxaio);
@@ -143,6 +144,7 @@ mqtt_tcptran_pipe_stop(void *arg)
 {
 	mqtt_tcptran_pipe *p = arg;
 
+	log_info("mqtt_tcptran_pipe_stop");
 	nni_aio_stop(p->rxaio);
 	nni_aio_stop(p->txaio);
 	nni_aio_stop(p->negoaio);
@@ -173,6 +175,7 @@ mqtt_tcptran_pipe_fini(void *arg)
 	mqtt_tcptran_ep *  ep;
 
 	mqtt_tcptran_pipe_stop(p);
+	log_info("mqtt_tcptran_pipe_fini");
 	if ((ep = p->ep) != NULL) {
 		nni_mtx_lock(&ep->mtx);
 		nni_list_node_remove(&p->node);
@@ -1160,6 +1163,7 @@ mqtt_tcptran_accept_cb(void *arg)
 	nni_mtx_lock(&ep->mtx);
 
 	if ((rv = nni_aio_result(aio)) != 0) {
+		log_error("error accept cb %d", rv);
 		goto error;
 	}
 
@@ -1181,6 +1185,7 @@ mqtt_tcptran_accept_cb(void *arg)
 	return;
 
 error:
+	log_error("error case %d", rv);
 	// When an error here occurs, let's send a notice up to the consumer.
 	// That way it can be reported properly.
 	if ((aio = ep->useraio) != NULL) {
@@ -1213,12 +1218,14 @@ mqtt_tcptran_dial_cb(void *arg)
 	nng_stream *       conn;
 
 	if ((rv = nni_aio_result(aio)) != 0) {
+		log_error("error rv %d", rv);
 		goto error;
 	}
 
 	conn = nni_aio_get_output(aio, 0);
 	if ((rv = mqtt_tcptran_pipe_alloc(&p)) != 0) {
 		nng_stream_free(conn);
+		log_error("error rv %d", rv);
 		goto error;
 	}
 	nni_mtx_lock(&ep->mtx);
@@ -1390,24 +1397,27 @@ mqtt_tcptran_ep_connect(void *arg, nni_aio *aio)
 		ep->backoff = ep->backoff > ep->backoff_max
 		    ? (nni_duration) (nni_random() % 1000)
 		    : ep->backoff;
-		log_debug("reconnect in %ld", ep->backoff);
-		nni_msleep(ep->backoff);
+		log_info("reconnect now");
+		// nni_msleep(ep->backoff);
 	} else {
 		ep->backoff = nni_random()%2000;
 	}
 	nni_mtx_lock(&ep->mtx);
 	if (ep->closed) {
 		nni_mtx_unlock(&ep->mtx);
+		log_info("ep closed!");
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
 	}
 	if (ep->useraio != NULL) {
 		nni_mtx_unlock(&ep->mtx);
+		log_info("NULL user aio");
 		nni_aio_finish_error(aio, NNG_EBUSY);
 		return;
 	}
 	if ((rv = nni_aio_schedule(aio, mqtt_tcptran_ep_cancel, ep)) != 0) {
 		nni_mtx_unlock(&ep->mtx);
+		log_info("scheduling failed!");
 		nni_aio_finish_error(aio, rv);
 		return;
 	}

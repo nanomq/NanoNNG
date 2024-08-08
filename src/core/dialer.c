@@ -355,6 +355,7 @@ nni_dialer_close(nni_dialer *d)
 static void
 dialer_timer_cb(void *arg)
 {
+	int rv = 0;
 	nni_dialer *d = arg;
 
 	if ((rv = nni_aio_result(&d->d_tmo_aio)) == 0) {

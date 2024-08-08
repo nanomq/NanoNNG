@@ -134,6 +134,7 @@ nni_clock(void)
 	if (gettimeofday(&tv, NULL) != 0) {
 		nni_panic("gettimeofday failed: %s", strerror(errno));
 	}
+	log_error("we shall exclude gettimeofday");
 
 	ms = tv.tv_sec;
 	ms *= 1000;

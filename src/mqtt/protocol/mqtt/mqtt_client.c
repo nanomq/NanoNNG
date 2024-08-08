@@ -329,6 +329,7 @@ mqtt_pipe_fini(void *arg)
 	mqtt_pipe_t *p = arg;
 	nni_msg *    msg;
 
+	log_info("mqtt_pipe_fini");
 	if ((msg = nni_aio_get_msg(&p->recv_aio)) != NULL) {
 		nni_aio_set_msg(&p->recv_aio, NULL);
 		nni_msg_free(msg);
@@ -513,6 +514,7 @@ static void
 mqtt_pipe_stop(void *arg)
 {
 	mqtt_pipe_t *p = arg;
+	log_info("mqtt_pipe_stop");
 	nni_aio_stop(&p->send_aio);
 	nni_aio_stop(&p->recv_aio);
 	nni_aio_stop(&p->time_aio);
@@ -524,6 +526,7 @@ mqtt_pipe_close(void *arg)
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
 
+	log_info("mqtt_pipe_close");
 	nni_mtx_lock(&s->mtx);
 	nni_atomic_set_bool(&p->closed, true);
 	s->mqtt_pipe = NULL;

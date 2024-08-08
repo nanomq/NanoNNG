@@ -72,6 +72,7 @@ tcp_dial_res_cb(void *arg)
 			nni_list_remove(&d->conaios, aio);
 			nni_aio_finish_error(aio, NNG_ECLOSED);
 		}
+		log_info("failed & ignored!");
 		nni_mtx_unlock(&d->mtx);
 		return;
 	}
@@ -79,7 +80,7 @@ tcp_dial_res_cb(void *arg)
 	if ((rv = nni_aio_result(d->resaio)) != 0) {
 		nni_list_remove(&d->conaios, aio);
 		nni_aio_finish_error(aio, rv);
-
+		log_info("try DNS again ... ");
 		// try DNS again for next connection...
 		tcp_dial_start_next(d);
 
