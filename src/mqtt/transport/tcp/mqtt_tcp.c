@@ -1056,7 +1056,7 @@ mqtt_tcptran_ep_close(void *arg)
 	mqtt_tcptran_pipe *p;
 
 	nni_mtx_lock(&ep->mtx);
-
+	log_warn("ep closed!");
 	ep->closed = true;
 	nni_aio_close(ep->timeaio);
 	if (ep->dialer != NULL) {
@@ -1161,6 +1161,7 @@ mqtt_tcptran_accept_cb(void *arg)
 	nni_mtx_lock(&ep->mtx);
 
 	if ((rv = nni_aio_result(aio)) != 0) {
+		log_warn(" conn aio error %s", nng_strerror(rv));
 		goto error;
 	}
 
@@ -1186,6 +1187,7 @@ error:
 	// That way it can be reported properly.
 	if ((aio = ep->useraio) != NULL) {
 		ep->useraio = NULL;
+		log_warn("mem error or closed ep detected ");
 		nni_aio_finish_error(aio, rv);
 	}
 	switch (rv) {
@@ -1392,22 +1394,25 @@ mqtt_tcptran_ep_connect(void *arg, nni_aio *aio)
 		    ? (nni_duration) (nni_random() % 1000)
 		    : ep->backoff;
 		log_warn("reconnect in %ld ms", ep->backoff);
-		nni_msleep(ep->backoff);
+		// nni_msleep(ep->backoff);
 	} else {
 		ep->backoff = nni_random()%2000;
 	}
 	nni_mtx_lock(&ep->mtx);
 	if (ep->closed) {
 		nni_mtx_unlock(&ep->mtx);
+		log_warn("ep closed!");
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
 	}
 	if (ep->useraio != NULL) {
+		log_warn("last action still remaining!!");
 		nni_mtx_unlock(&ep->mtx);
 		nni_aio_finish_error(aio, NNG_EBUSY);
 		return;
 	}
 	if ((rv = nni_aio_schedule(aio, mqtt_tcptran_ep_cancel, ep)) != 0) {
+		log_warn("schedule ep cancel failed!");
 		nni_mtx_unlock(&ep->mtx);
 		nni_aio_finish_error(aio, rv);
 		return;

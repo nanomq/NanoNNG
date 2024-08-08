@@ -331,6 +331,7 @@ mqtt_pipe_fini(void *arg)
 	mqtt_pipe_t *p = arg;
 	nni_msg *    msg;
 
+	log_info("finishing pipe %p", p->pipe);
 	if ((msg = nni_aio_get_msg(&p->recv_aio)) != NULL) {
 		nni_aio_set_msg(&p->recv_aio, NULL);
 		nni_msg_free(msg);
@@ -432,27 +433,33 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 		nni_mqtt_msg_set_aio(msg, aio);
 		packet_id = nni_mqtt_msg_get_packet_id(msg);
 		taio = nni_id_get(&p->sent_unack, packet_id);
-		// pass proto_data to cached aio, either it is freed in ack or in cancel
-		nni_aio_set_prov_data(aio, nni_msg_get_proto_data(msg));
 		if (taio != NULL) {
-			nni_plat_printf("Warning : msg %d lost due to "
-			                "packetID duplicated!",
-			    packet_id);
+			log_warn("Warning : msg %d lost due to "
+			                "packetID duplicated!", packet_id);
 			nni_aio_finish_error(taio, NNG_ECANCELED);
 			nni_id_remove(&p->sent_unack, packet_id);
 			nni_msg_free(nni_aio_get_msg(taio));
+			nni_aio_set_msg(taio, NULL);
 		}
 		if (0 != nni_id_set(&p->sent_unack, packet_id, aio)) {
-			nni_plat_printf("Warning : aio caching failed");
+			log_warn("Warning : aio caching failed");
+			nni_mtx_unlock(&s->mtx);
 			nni_aio_finish_error(aio, NNG_ECANCELED);
+			nni_msg_free(msg);
+			return;
 		} else {
 			int rv;
 			if ((rv = nni_aio_schedule(aio, mqtt_ctx_cancel_send, ctx)) != 0) {
+				log_warn("Cancel_Func scheduling failed, send abort!");
 				nni_id_remove(&p->sent_unack, packet_id);
+				nni_aio_set_msg(aio, NULL);
 				nni_mtx_unlock(&s->mtx);
+				nni_msg_free(msg);	// User need to realloc this msg again
 				nni_aio_finish_error(aio, rv);
 				return;
 			}
+			// pass proto_data to cached aio, either it is freed in ack or in cancel
+			nni_aio_set_prov_data(aio, nni_msg_get_proto_data(msg));
 			nni_msg_clone(msg);
 		}
 		break;
@@ -484,6 +491,7 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 	}
 	if (0 != nni_lmq_put(&p->send_messages, msg)) {
 		log_error("Warning! msg lost due to busy socket");
+		nni_msg_free(tmsg);
 	}
 out:
 	nni_mtx_unlock(&s->mtx);
@@ -527,11 +535,13 @@ static void
 mqtt_pipe_stop(void *arg)
 {
 	mqtt_pipe_t *p = arg;
-	nni_aio_abort(&p->send_aio, NNG_ECANCELED);
+	log_info("stopping pipe %p", p->pipe);
+	// nni_aio_abort(&p->send_aio, NNG_ECANCELED);
 	nni_aio_stop(&p->send_aio);
-	nni_aio_abort(&p->recv_aio, NNG_ECANCELED);
+	// nni_aio_abort(&p->recv_aio, NNG_ECANCELED);
 	nni_aio_stop(&p->recv_aio);
 	nni_aio_stop(&p->time_aio);
+	log_info("stopped pipe %p", p->pipe);
 }
 
 static int
@@ -600,6 +610,7 @@ mqtt_pipe_close(void *arg)
 	nni_lmq_flush_cp(&p->recv_messages, true);
 #endif
 	nni_mtx_unlock(&s->mtx);
+	log_info("closed pipe %p", p->pipe);
 
 	return 0;
 }
@@ -611,7 +622,7 @@ mqtt_timer_cb(void *arg)
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
 
-	if (nng_aio_result(&p->time_aio) != 0) {
+	if (nni_aio_result(&p->time_aio) != 0) {
 		log_info("Timer aio error!");
 		return;
 	}
@@ -713,7 +724,7 @@ mqtt_send_cb(void *arg)
 		// We failed to send... clean up and deal with it.
 		nni_msg_free(nni_aio_get_msg(&p->send_aio));
 		nni_aio_set_msg(&p->send_aio, NULL);
-		log_warn("MQTT client send error %d!", rv);
+		log_warn("MQTT client send error %d! %s", rv, nng_strerror(rv));
 		s->disconnect_code = 0x8B; // TODO hardcode
 		nni_pipe_close(p->pipe);
 		return;
@@ -761,7 +772,7 @@ mqtt_recv_cb(void *arg)
 	mqtt_ctx_t  *ctx;
 
 	if ((rv = nni_aio_result(&p->recv_aio)) != 0) {
-		log_warn("MQTT client recv error %d!", rv);
+		log_warn("MQTT client recv error %d! %s", rv, nng_strerror(rv));
 		s->disconnect_code = 0x8B; // TODO hardcode, Different with code in v5
 		nni_pipe_close(p->pipe);
 		return;
@@ -944,6 +955,7 @@ mqtt_recv_cb(void *arg)
 			// in case data race in cancel
 			nni_aio_set_prov_data(user_aio, NULL);
 			nni_msg_free(nni_aio_get_msg(user_aio));
+			nni_aio_set_msg(user_aio, NULL);
 			if (packet_type == NNG_MQTT_SUBACK ||
 			    packet_type == NNG_MQTT_UNSUBACK) {
 				nni_msg_clone(msg);
@@ -1155,14 +1167,21 @@ mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
 								"timeout!", packet_id);
 				nni_id_remove(&p->sent_unack, packet_id);
 				nni_msg_free(nni_aio_get_msg(taio));
+				nni_aio_set_msg(taio, NULL);
+				nni_aio_set_prov_data(taio, NULL);
+			} else {
+				log_error("cancel failed msg leak!!!");
 			}
+			if (taio == aio)
+				nni_aio_finish_error(aio, NNG_ECANCELED);
+			else
+				log_error("canceling wrong aio!");
 		}
 	}
 
 	if (nni_aio_list_active(aio)) {
 		nni_aio_list_remove(aio);
 	}
-		nni_aio_finish_error(aio, NNG_ECANCELED);
 	nni_mtx_unlock(&s->mtx);
 
 }

@@ -581,10 +581,10 @@ nano_pipe_fini(void *arg)
 		nni_aio_set_msg(&p->aio_send, NULL);
 		nni_msg_free(msg);
 	}
-	void *nano_qos_db = p->pipe->nano_qos_db;
 
 	//Safely free the msgs in qos_db, only when nano_qos_db is not taken by new pipe
 	nni_mtx_lock(&p->lk);
+	void *nano_qos_db = p->pipe->nano_qos_db;
 	if (p->event == true) {
 		if (!p->broker->conf->sqlite.enable && nano_qos_db != NULL) {
 			nni_qos_db_remove_all_msg(false,
@@ -695,7 +695,7 @@ session_keeping:
 		nni_mtx_unlock(&s->lk);
 		return NNG_ECONNSHUT;
 	}
-
+	// nni_mtx_lock(&p->lk);
 	if (p->conn_param->clean_start == 0) {
 		old = nni_id_get(&s->cached_sessions, p->pipe->p_id);
 		if (old != NULL) {
@@ -765,6 +765,7 @@ session_keeping:
 		// TODO disconnect client && send connack with reason code 0x05
 		log_warn("Invalid auth info.");
 	}
+	// nni_mtx_unlock(&p->lk);
 	nni_mtx_unlock(&s->lk);
 
 	// TODO MQTT V5 check return code
