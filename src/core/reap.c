@@ -40,6 +40,7 @@ reap_worker(void *unused)
 			nni_cb         func;
 
 			if ((node = list->rl_nodes) == NULL) {
+				log_warn("reaper looking for next target");
 				continue;
 			}
 
@@ -55,6 +56,7 @@ reap_worker(void *unused)
 				void *ptr;
 				ptr  = ((char *) node) - offset;
 				node = node->rn_next;
+				log_warn("node found! reaping %p now!", ptr);
 				func(ptr);
 			}
 			nni_mtx_lock(&reap_mtx);
@@ -63,9 +65,11 @@ reap_worker(void *unused)
 			reap_empty = true;
 			nni_cv_wake(&reap_empty_cv);
 			if (reap_exit) {
+				log_warn("reaper exits!");
 				nni_mtx_unlock(&reap_mtx);
 				return;
 			}
+			log_warn("reaper waits for next schedule");
 			nni_cv_wait(&reap_work_cv);
 		}
 	}

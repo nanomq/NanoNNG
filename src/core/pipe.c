@@ -33,7 +33,9 @@ static void
 pipe_destroy(void *arg)
 {
 	nni_pipe *p = arg;
+	log_warn("reap nni pipe %p", p);
 	if (p == NULL || p->cache) {
+		log_warn("reaping cached pipe! skip action!");
 		return;
 	}
 
@@ -49,6 +51,7 @@ pipe_destroy(void *arg)
 	}
 	// This wait guarantees that all callers are done with us.
 	while (p->p_ref != 0) {
+		log_warn("wait for next cv scheduling");
 		nni_cv_wait(&p->p_cv);
 	}
 	nni_mtx_unlock(&pipes_lk);

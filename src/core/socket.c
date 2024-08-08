@@ -1525,6 +1525,7 @@ dialer_timer_start_locked(nni_dialer *d)
 	// This algorithm may lead to slight biases because we don't
 	// have a statistically perfect distribution with the modulo of
 	// the random number, but this really doesn't matter.
+	log_warn("start d_tmo_aio, backoff param %d", back_off);
 	nni_sleep_aio(
 	    back_off ? (int) nni_random() % back_off : 0, &d->d_tmo_aio);
 }
@@ -1776,6 +1777,7 @@ nni_pipe_run_cb(nni_pipe *p, nng_pipe_ev ev)
 			// First event, after this we want all other events.
 			p->p_cbs = true;
 		} else {
+			log_info("no cb array found");
 			nni_mtx_unlock(&s->s_pipe_cbs_mtx);
 			return;
 		}
@@ -1788,6 +1790,8 @@ nni_pipe_run_cb(nni_pipe *p, nng_pipe_ev ev)
 		nng_pipe pid;
 		pid.id = p->p_id;
 		cb(pid, ev, arg);
+	} else {
+		log_info("NULL pipe cb");
 	}
 }
 

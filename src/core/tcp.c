@@ -167,20 +167,25 @@ tcp_dialer_dial(void *arg, nng_aio *aio)
 	if (nni_aio_begin(aio) != 0) {
 		return;
 	}
+	log_info("start tcp dialing");
 	nni_mtx_lock(&d->mtx);
 	if (d->closed) {
 		nni_mtx_unlock(&d->mtx);
+		log_info("tcp dialer closed");
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
 	}
 	if ((rv = nni_aio_schedule(aio, tcp_dial_cancel, d)) != 0) {
 		nni_mtx_unlock(&d->mtx);
+		log_info("scheduling cancel failed");
 		nni_aio_finish_error(aio, rv);
 		return;
 	}
 	nni_list_append(&d->conaios, aio);
 	if (nni_list_first(&d->conaios) == aio) {
 		tcp_dial_start_next(d);
+	} else {
+		log_info("no aio found in tcp dialing");
 	}
 	nni_mtx_unlock(&d->mtx);
 }

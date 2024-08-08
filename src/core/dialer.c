@@ -357,8 +357,11 @@ dialer_timer_cb(void *arg)
 {
 	nni_dialer *d = arg;
 
-	if (nni_aio_result(&d->d_tmo_aio) == 0) {
+	if ((rv = nni_aio_result(&d->d_tmo_aio)) == 0) {
+		log_warn("start reconnect action!");
 		dialer_connect_start(d);
+	} else {
+		log_error("failed timer cb rv %d", rv);
 	}
 }
 
