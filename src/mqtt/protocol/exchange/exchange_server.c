@@ -186,6 +186,7 @@ static void query_send_eof(nng_socket *sock, nng_aio *aio)
 	nng_msg_alloc(&msg, 0);
 	nng_msg_append(msg, QUERY_EOF, strlen(QUERY_EOF));
 	nng_sendmsg(*sock, msg, 0);
+	nng_msg_free(msg);
 	return;
 }
 
