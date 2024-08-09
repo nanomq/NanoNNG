@@ -28,8 +28,6 @@ typedef struct exchange_sock_s         exchange_sock_t;
 typedef struct exchange_node_s         exchange_node_t;
 typedef struct exchange_pipe_s         exchange_pipe_t;
 
-static void ex_query_recv_cb(void *arg);
-static void ex_query_send_cb(void *arg);
 // one MQ, one Sock(TBD), one PIPE
 struct exchange_pipe_s {
 	nni_pipe        *pipe;
@@ -50,7 +48,6 @@ struct exchange_pipe_s {
 struct exchange_node_s {
 	exchange_t      *ex;
 	exchange_sock_t *sock;
-
 };
 
 struct exchange_sock_s {
@@ -482,9 +479,11 @@ exchange_sock_init(void *arg, nni_sock *sock)
 	nni_id_map_init(&s->rbmsgmap, 0, 0, true);
 	s->isBusy = false;
 
-	nni_aio_init(&s->ex_aio, ex_query_recv_cb, s);
-	nni_aio_init(&s->rp_aio, ex_query_send_cb, s);
 	nni_lmq_init(&s->lmq, 256);
+
+	nng_aio *query_aio = NULL;
+	nni_aio_init(&s->query_aio, query_cb, s);
+
 	return;
 }
 
@@ -497,16 +496,13 @@ exchange_sock_fini(void *arg)
 
 	ex_node = s->ex_node;
 
-	if ((msg = nni_aio_get_msg(&s->ex_aio)) != NULL) {
-		nni_aio_set_msg(&s->ex_aio, NULL);
-		nni_msg_free(msg);
-	}
+//	if ((msg = nni_aio_get_msg(&s->ex_aio)) != NULL) {
+//		nni_aio_set_msg(&s->ex_aio, NULL);
+//		nni_msg_free(msg);
+//	}
 
-	nni_aio_fini(&s->ex_aio);
-	nni_aio_fini(&s->rp_aio);
+	nni_aio_fini(&s->query_aio);
 
-	// nni_pollable_fini(&s->writable);
-	// nni_pollable_fini(&s->readable);
 	exchange_release(ex_node->ex);
 
 	nni_free(ex_node, sizeof(*ex_node));
@@ -532,10 +528,9 @@ exchange_sock_close(void *arg)
 	exchange_sock_t *s = arg;
 
 	nni_atomic_set_bool(&s->closed, true);
-	nni_aio_stop(&s->ex_aio);
-	nni_aio_stop(&s->rp_aio);
-	nni_aio_close(&s->ex_aio);
-	nni_aio_close(&s->rp_aio);
+	nni_aio_stop(&s->query_aio);
+	nni_aio_close(&s->query_aio);
+
 	return;
 }
 
@@ -1091,48 +1086,6 @@ dump_file_result_cat(char **msgList, int *msgLen, uint32_t count, cJSON *obj)
 }
 #endif
 
-static int fuzz_search_result_cat(nng_msg **msgList,
-								  uint32_t count,
-								  unsigned char **pringbusdata,
-								  int *pringbusdata_len)
-{
-	uint32_t sz = 0;
-	uint32_t pos = 0;
-	uint32_t diff = 0;
-
-	if (msgList == NULL || count == 0) {
-		return -1;
-	}
-
-	for (uint32_t i = 0; i < count; i++) {
-		diff = nng_msg_len(msgList[i]) -
-			((uintptr_t)nng_msg_payload_ptr(msgList[i]) - (uintptr_t)nng_msg_body(msgList[i]));
-		sz += diff;
-	}
-
-	unsigned char *ringbusdata = nng_alloc(sz);
-	int index = 0;
-	for (uint32_t i = 0; i < count; i++) {
-		diff = nng_msg_len(msgList[i]) -
-			((uintptr_t)nng_msg_payload_ptr(msgList[i]) - (uintptr_t)nng_msg_body(msgList[i]));
-		if (sz >= pos + diff) {
-			char *tmpch = (char *)nng_msg_payload_ptr(msgList[i]);
-			for (int j = 0; j < diff; j++) {
-				ringbusdata[index++] = tmpch[j];
-			}
-		} else {
-			log_error("buffer overflow!");
-			return -1;
-		}
-		pos += diff;
-	}
-
-	*pringbusdata = ringbusdata;
-	*pringbusdata_len = sz;
-
-	return 0;
-}
-
 static inline int splitstr(char *str, char *delim, char *result[], int max_num)
 {
 	char *p;
@@ -1175,166 +1128,6 @@ static inline int find_keys_in_file(ringBuffer_t *rb, uint64_t *keys, uint32_t c
 	return 0;
 }
 #endif
-
-/**
- * For exchanger, recv_cb is a consumer SDK
- * TCP/QUIC/IPC/InPROC is at your disposal
-*/
-static void
-ex_query_recv_cb(void *arg)
-{
-	int ret = 0;
-	exchange_sock_t *s = arg;
-	nni_msg *msg = NULL;
-	uint8_t *body = NULL;
-	char *parquetdata = NULL;
-	char *ringbusdata = NULL;
-	int parquetdata_len = 0;
-	int ringbusdata_len = 0;
-
-	if (nni_aio_result(&s->ex_aio) != 0) {
-		return;
-	}
-
-	msg = nni_aio_get_msg(&s->ex_aio);
-	nni_aio_set_msg(&s->ex_aio, NULL);
-
-	body = nni_msg_body(msg);
-
-	nni_mtx_lock(&s->mtx);
-
-	// process query
-	char *keystr = (char *) (body);
-	if (keystr == NULL) {
-		log_error("error in paring keystr");
-		nni_mtx_unlock(&s->mtx);
-		return;
-	}
-
-	/* fuzz search */
-	uint64_t startKey = 0;
-	uint64_t endKey = 0;
-	uint32_t count = 0;
-	nng_msg **msgList = NULL;
-
-	log_info("Recv command: %s", keystr);
-
-	ret = sscanf(keystr, "%"SCNu64"-%"SCNu64, &startKey, &endKey);
-	if (ret == 0) {
-		log_error("error in read key to number %s", keystr);
-		nni_mtx_unlock(&s->mtx);
-		return;
-	}
-	log_info("Start fuzz search startKey: %"PRIu64", endKey: %"PRIu64, startKey, endKey);
-
-	ret = exchange_client_get_msgs_fuzz(s, startKey, endKey, &count, &msgList);
-	if (ret == 0 && count != 0 && msgList != NULL) {
-		ret = fuzz_search_result_cat(msgList, count, &ringbusdata, &ringbusdata_len);
-		if (ret != 0) {
-			log_error("fuzz_search_result_cat failed!");
-		}
-		nng_free(msgList, sizeof(nng_msg *) * count);
-	} else {
-		log_error("exchange_client_get_msgs_fuzz failed! count: %d", count);
-	}
-
-#if defined(SUPP_PARQUET)
-	int size = 0;
-	parquet_data_packet **parquet_objs = NULL;
-	parquet_objs = parquet_find_data_span_packets(NULL, startKey, endKey, &size, s->ex_node->ex->topic);
-	if (parquet_objs != NULL && size > 0) {
-		int total_len = 0;
-		for (int i = 0; i < size; i++) {
-			total_len += parquet_objs[i]->size;
-		}
-		parquetdata = nng_alloc(total_len);
-		if (parquetdata == NULL) {
-			log_error("Failed to allocate memory for file payload\n");
-			nni_mtx_unlock(&s->mtx);
-			return;
-		}
-		for (int i = 0; i < size; i++) {
-			memcpy(parquetdata + parquetdata_len, parquet_objs[i]->data, parquet_objs[i]->size);
-			parquetdata_len += parquet_objs[i]->size;
-		}
-		for (int i = 0; i < size; i++) {
-			nng_free(parquet_objs[i]->data, parquet_objs[i]->size);
-			nng_free(parquet_objs[i], sizeof(parquet_data_packet));
-		}
-		nng_free(parquet_objs, sizeof(parquet_data_packet *) * size);
-	} else {
-		log_error("parquet_find_data_span_packets failed! size: %d", size);
-	}
-#endif
-#if defined(SUPP_BLF)
-	/* not support */
-	const char **blf_fnames = NULL;
-	uint32_t     blf_sz     = 0;
-	/* blf not support fuzz search now */
-	blf_fnames = blf_find_span(startKey, endKey, &blf_sz);
-	if (blf_fnames && blf_sz > 0) {
-		ret = get_persistence_files(blf_sz, (char **) blf_fnames, obj);
-		if (ret != 0) {
-			log_error("get_blf_files failed!");
-		}
-	} else {
-		log_error("blf_find_span failed! sz: %d", blf_sz);
-	}
-#endif
-	log_info("found parquetdata_len: %d, ringbusdata_len: %d", parquetdata_len, ringbusdata_len);
-
-	nni_msg_chop(msg, strlen(keystr));
-	if (parquetdata != NULL && parquetdata_len > 0) {
-		nni_msg_append(msg, parquetdata, parquetdata_len);
-		nng_free(parquetdata, parquetdata_len);
-		parquetdata = NULL;
-	}
-	if (ringbusdata != NULL && ringbusdata_len > 0) {
-		nni_msg_append(msg, ringbusdata, ringbusdata_len);
-		nng_free(ringbusdata, ringbusdata_len);
-		ringbusdata = NULL;
-	}
-
-	// nni_aio_wait(&s->rp_aio);
-	if (!s->isBusy) {
-		nni_time time = 3000;
-		nng_socket *socket = s->rep0_sock;
-		nni_aio_set_expire(&s->rp_aio, time);
-		nni_aio_set_msg(&s->rp_aio, msg);
-		s->isBusy = true;
-		nng_send_aio(*socket, &s->rp_aio);
-	} else {
-		if (nni_lmq_put(&s->lmq, msg) != 0) {
-			nni_msg_free(msg);
-			log_warn("Exchange msg lost due to busy rep0 socket");
-		}
-	}
-
-	nni_mtx_unlock(&s->mtx);
-	nng_recv_aio(*s->rep0_sock, &s->ex_aio);
-
-	return;
-}
-
-static void
-ex_query_send_cb(void *arg)
-{
-	nni_msg *msg = NULL;
-	exchange_sock_t *s = arg;
-	nni_mtx_lock(&s->mtx);
-    
-	if (nni_lmq_get(&s->lmq, &msg) == 0) {
-		nni_time time = 3000;
-		nng_socket *socket = s->rep0_sock;
-		nni_aio_set_expire(&s->rp_aio, time);
-		nni_aio_set_msg(&s->rp_aio, msg);
-		nng_send_aio(*socket, &s->rp_aio);
-	} else {
-		s->isBusy = false;
-	}
-	nni_mtx_unlock(&s->mtx);
-	return;
-}
 
 static int
 exchange_pipe_init(void *arg, nni_pipe *pipe, void *s)
