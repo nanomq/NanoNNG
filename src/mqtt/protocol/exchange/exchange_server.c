@@ -250,11 +250,10 @@ static void query_send_sync(exchange_sock_t *s, uint64_t startKey, uint64_t endK
 		log_error("exchange_client_get_msgs_fuzz failed! count: %d", count);
 	}
 
-#if defined(SUPP_PARQUET)
 	int size = 0;
 	uint8_t *parquetdata = NULL;
 	uint32_t parquetdata_len = 0;
-
+#if defined(SUPP_PARQUET)
 	parquet_data_packet **parquet_objs = NULL;
 	parquet_objs = parquet_find_data_span_packets(NULL, startKey, endKey, &size, s->ex_node->ex->topic);
 	if (parquet_objs != NULL && size > 0) {
@@ -317,6 +316,7 @@ static void query_send_sync(exchange_sock_t *s, uint64_t startKey, uint64_t endK
 
 static void query_send_async(exchange_sock_t *s, uint64_t startKey, uint64_t endKey)
 {
+#if defined(SUPP_PARQUET)
 	parquet_filename_range **file_ranges = parquet_find_file_range(startKey, endKey, s->ex_node->ex->topic);
 	if (file_ranges != NULL) {
 		uint32_t file_range_idx = 0;
@@ -370,6 +370,7 @@ static void query_send_async(exchange_sock_t *s, uint64_t startKey, uint64_t end
 	} else {
 		log_error("parquet_find_file_range failed!");
 	}
+#endif
 
 	uint8_t *ringbusdata = NULL;
 	uint32_t count = 0;
