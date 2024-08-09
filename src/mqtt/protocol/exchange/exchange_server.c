@@ -59,9 +59,8 @@ struct exchange_sock_s {
 	nni_atomic_bool  closed;
 	nni_id_map       rbmsgmap;
 	exchange_node_t *ex_node;
-	nng_socket      *rep0_sock;
-	nni_aio          ex_aio; // recv cmd from Consumer
-	nni_aio          rp_aio; // send msg to consumer
+	nng_socket      *pair0_sock;
+	nni_aio          query_aio;
 	nni_lmq          lmq;
 };
 
@@ -100,10 +99,10 @@ exchange_add_ex(exchange_sock_t *s, exchange_t *ex)
 }
 
 typedef struct {
-    char sync[10];
-    uint64_t number1;
+	char sync[10];
+	uint64_t number1;
 	uint64_t number1_idx;
-    uint64_t number2;
+	uint64_t number2;
 	uint64_t number2_idx;
 } SyncNumbers;
 
@@ -148,7 +147,7 @@ int checkInput(SyncNumbers *result, const char *input) {
 }
 
 SyncNumbers *parseSyncNumbers(const char *input) {
-    SyncNumbers *result = NULL;
+	SyncNumbers *result = NULL;
 	result = (SyncNumbers *)nng_alloc(sizeof(SyncNumbers));
 	if (result == NULL) {
 		log_error("Error: malloc failed\n");
@@ -156,29 +155,319 @@ SyncNumbers *parseSyncNumbers(const char *input) {
 	}
 	result->number1_idx = 0;
 	result->number2_idx = 0;
-	
+
 	if (checkInput(result, input) != 0) {
 		log_error("checkInput failed\n");
 		nng_free(result, sizeof(SyncNumbers));
 		return NULL;
 	}
 
-    if (strncmp(input, "sync", 4) == 0) {
-        strncpy(result->sync, input, 4);
-        result->sync[4] = '\0';
-    } else if (strncmp(input, "async", 5) == 0) {
-        strncpy(result->sync, input, 5);
-        result->sync[5] = '\0';
-    } else {
-        log_error("Error: Invalid input format\n");
+	if (strncmp(input, "sync", 4) == 0) {
+		strncpy(result->sync, input, 4);
+		result->sync[4] = '\0';
+	} else if (strncmp(input, "async", 5) == 0) {
+		strncpy(result->sync, input, 5);
+		result->sync[5] = '\0';
+	} else {
+		log_error("Error: Invalid input format\n");
 		nng_free(result, sizeof(SyncNumbers));
 		return NULL;
-    }
+	}
 
-    result->number1 = (uint64_t)atoll(input + result->number1_idx);
-    result->number2 = (uint64_t)atoll(input + result->number2_idx);
+result->number1 = (uint64_t)atoll(input + result->number1_idx);
+result->number2 = (uint64_t)atoll(input + result->number2_idx);
 
-    return result;
+return result;
+}
+
+/* 0xBAD ----base64----> C60= */
+#define QUERY_EOF "C60="
+
+static void query_send_eof(nng_socket *sock, nng_aio *aio)
+{
+	nng_msg *msg = NULL;
+	nng_msg_alloc(&msg, 0);
+	nng_msg_append(msg, QUERY_EOF, strlen(QUERY_EOF));
+	nng_sendmsg(*sock, msg, 0);
+	return;
+}
+
+static int fuzz_search_result_cat(nng_msg **msgList,
+								  uint32_t count,
+								  unsigned char **pringbusdata,
+								  int *pringbusdata_len)
+{
+	uint32_t sz = 0;
+	uint32_t pos = 0;
+	uint32_t diff = 0;
+
+	if (msgList == NULL || count == 0) {
+		return -1;
+	}
+
+	for (uint32_t i = 0; i < count; i++) {
+		diff = nng_msg_len(msgList[i]) -
+			((uintptr_t)nng_msg_payload_ptr(msgList[i]) - (uintptr_t)nng_msg_body(msgList[i]));
+		sz += diff;
+	}
+
+	unsigned char *ringbusdata = nng_alloc(sz);
+	int index = 0;
+	for (uint32_t i = 0; i < count; i++) {
+		diff = nng_msg_len(msgList[i]) -
+			((uintptr_t)nng_msg_payload_ptr(msgList[i]) - (uintptr_t)nng_msg_body(msgList[i]));
+		if (sz >= pos + diff) {
+			char *tmpch = (char *)nng_msg_payload_ptr(msgList[i]);
+			for (int j = 0; j < diff; j++) {
+				ringbusdata[index++] = tmpch[j];
+			}
+		} else {
+			log_error("buffer overflow!");
+			return -1;
+		}
+		pos += diff;
+	}
+
+	*pringbusdata = ringbusdata;
+	*pringbusdata_len = sz;
+
+	return 0;
+}
+
+static void query_send_sync(exchange_sock_t *s, uint64_t startKey, uint64_t endKey)
+{
+	uint8_t *ringbusdata = NULL;
+	uint32_t count = 0;
+	int ringbusdata_len = 0;
+	int ret = 0;
+	nng_msg **msgList = NULL;
+
+	ret = exchange_client_get_msgs_fuzz(s, startKey, endKey, &count, &msgList);
+	if (ret == 0 && count != 0 && msgList != NULL) {
+		ret = fuzz_search_result_cat(msgList, count, &ringbusdata, &ringbusdata_len);
+		if (ret != 0) {
+			log_error("fuzz_search_result_cat failed!");
+		}
+		nng_free(msgList, sizeof(nng_msg *) * count);
+	} else {
+		log_error("exchange_client_get_msgs_fuzz failed! count: %d", count);
+	}
+
+#if defined(SUPP_PARQUET)
+	int size = 0;
+	uint8_t *parquetdata = NULL;
+	uint32_t parquetdata_len = 0;
+
+	parquet_data_packet **parquet_objs = NULL;
+	parquet_objs = parquet_find_data_span_packets(NULL, startKey, endKey, &size, s->ex_node->ex->topic);
+	if (parquet_objs != NULL && size > 0) {
+		int total_len = 0;
+		for (int i = 0; i < size; i++) {
+			total_len += parquet_objs[i]->size;
+		}
+		parquetdata = nng_alloc(total_len);
+		if (parquetdata == NULL) {
+			log_error("Failed to allocate memory for file payload\n");
+			return;
+		}
+		for (int i = 0; i < size; i++) {
+			memcpy(parquetdata + parquetdata_len, parquet_objs[i]->data, parquet_objs[i]->size);
+			parquetdata_len += parquet_objs[i]->size;
+		}
+		for (int i = 0; i < size; i++) {
+			nng_free(parquet_objs[i]->data, parquet_objs[i]->size);
+			nng_free(parquet_objs[i], sizeof(parquet_data_packet));
+		}
+		nng_free(parquet_objs, sizeof(parquet_data_packet *) * size);
+	} else {
+		log_error("parquet_find_data_span_packets failed! size: %d", size);
+	}
+#endif
+#if defined(SUPP_BLF)
+	/* not support */
+	const char **blf_fnames = NULL;
+	uint32_t     blf_sz     = 0;
+	/* blf not support fuzz search now */
+	blf_fnames = blf_find_span(startKey, endKey, &blf_sz);
+	if (blf_fnames && blf_sz > 0) {
+		ret = get_persistence_files(blf_sz, (char **) blf_fnames, obj);
+		if (ret != 0) {
+			log_error("get_blf_files failed!");
+		}
+	} else {
+		log_error("blf_find_span failed! sz: %d", blf_sz);
+	}
+#endif
+	log_info("found parquetdata_len: %d, ringbusdata_len: %d", parquetdata_len, ringbusdata_len);
+
+	nng_msg *msg = NULL;
+	nng_msg_alloc(&msg, 0);
+	if (parquetdata != NULL && parquetdata_len > 0) {
+		nni_msg_append(msg, parquetdata, parquetdata_len);
+		nng_free(parquetdata, parquetdata_len);
+		parquetdata = NULL;
+	}
+	if (ringbusdata != NULL && ringbusdata_len > 0) {
+		nni_msg_append(msg, ringbusdata, ringbusdata_len);
+		nng_free(ringbusdata, ringbusdata_len);
+		ringbusdata = NULL;
+	}
+
+	nng_sendmsg(*(s->pair0_sock), msg, 0);
+
+	return;
+}
+
+static void query_send_async(exchange_sock_t *s, uint64_t startKey, uint64_t endKey)
+{
+	parquet_filename_range **file_ranges = parquet_find_file_range(startKey, endKey, s->ex_node->ex->topic);
+	if (file_ranges != NULL) {
+		uint32_t file_range_idx = 0;
+		parquet_filename_range *file_range = file_ranges[file_range_idx++];
+		uint32_t size = 0;
+		while (file_range != NULL) {
+			parquet_data_packet **parquet_objs = parquet_find_data_span_packets_specify_file(NULL, file_range, &size);
+			if (parquet_objs != NULL && size > 0) {
+				int total_len = 0;
+				for (uint32_t i = 0; i < size; i++) {
+					total_len += parquet_objs[i]->size;
+				}
+
+				uint8_t *parquetdata = NULL;
+				uint32_t parquetdata_len = 0;
+
+				parquetdata = nng_alloc(total_len);
+				if (parquetdata == NULL) {
+					log_error("Failed to allocate memory for file payload\n");
+					return;
+				}
+
+				for (uint32_t i = 0; i < size; i++) {
+					memcpy(parquetdata + parquetdata_len, parquet_objs[i]->data, parquet_objs[i]->size);
+					parquetdata_len += parquet_objs[i]->size;
+				}
+				for (uint32_t i = 0; i < size; i++) {
+					nng_free(parquet_objs[i]->data, parquet_objs[i]->size);
+					nng_free(parquet_objs[i], sizeof(parquet_data_packet));
+				}
+				nng_free(parquet_objs, sizeof(parquet_data_packet *) * size);
+				log_info("parquetdata_len: %d", parquetdata_len);
+				if (parquetdata != NULL && parquetdata_len > 0) {
+					nng_msg *newmsg = NULL;
+					nng_msg_alloc(&newmsg, 0);
+					nni_msg_append(newmsg, parquetdata, parquetdata_len);
+					nng_sendmsg(*(s->pair0_sock), newmsg, 0);
+					/* NOTE: sleep 1000ms */
+					nng_msleep(1000);
+					nng_free(parquetdata, parquetdata_len);
+					parquetdata = NULL;
+				}
+			} else {
+				log_error("parquet_find_data_span_packets failed! size: %d", size);
+			}
+			nng_free(file_range->filename, strlen(file_range->filename));
+			nng_free(file_range, sizeof(parquet_filename_range));
+			file_range = file_ranges[file_range_idx++];
+		}
+		nng_free(file_ranges, sizeof(parquet_filename_range *) * file_range_idx);
+	} else {
+		log_error("parquet_find_file_range failed!");
+	}
+
+	uint8_t *ringbusdata = NULL;
+	uint32_t count = 0;
+	int ringbusdata_len = 0;
+	int ret = 0;
+	nng_msg **msgList = NULL;
+
+	ret = exchange_client_get_msgs_fuzz(s, startKey, endKey, &count, &msgList);
+	if (ret == 0 && count != 0 && msgList != NULL) {
+		ret = fuzz_search_result_cat(msgList, count, &ringbusdata, &ringbusdata_len);
+		if (ret != 0) {
+			log_error("fuzz_search_result_cat failed!");
+		}
+		nng_free(msgList, sizeof(nng_msg *) * count);
+	} else {
+		log_error("ringbus failed! count: %d", count);
+	}
+
+	log_info("ringbusdata_len: %d", ringbusdata_len);
+	if (ringbusdata != NULL && ringbusdata_len > 0) {
+		nng_msg *newmsg = NULL;
+		nng_msg_alloc(&newmsg, 0);
+		nni_msg_append(newmsg, ringbusdata, ringbusdata_len);
+		nng_sendmsg(*(s->pair0_sock), newmsg, 0);
+		/* NOTE: sleep 1000ms */
+		nng_msleep(1000);
+		nng_free(ringbusdata, ringbusdata_len);
+		ringbusdata = NULL;
+	}
+
+	return;
+}
+
+static void
+query_cb(void *arg)
+{
+	exchange_sock_t *s = arg;
+
+	nni_aio *aio = &s->query_aio;
+	if (s->ex_node == NULL || s->ex_node->ex == NULL || s->ex_node->ex->topic == NULL) {
+		query_send_eof(s->pair0_sock, &s->query_aio);
+		nng_recv_aio(*(s->pair0_sock), aio);
+		log_error("exchange_sock_t is not ready!");
+		return;
+	}
+	char *topic = s->ex_node->ex->topic;
+
+	nng_msg *msg = nng_aio_get_msg(aio);
+	if (msg == NULL) {
+		query_send_eof(s->pair0_sock, &s->query_aio);
+		nng_recv_aio(*(s->pair0_sock), aio);
+		log_error("NUll Commanding msg!");
+		return;
+	}
+
+	char *keystr = (char *)nng_msg_body(msg);
+	if (keystr == NULL) {
+		query_send_eof(s->pair0_sock, &s->query_aio);
+		nng_recv_aio(*(s->pair0_sock), aio);
+		log_error("error in parsing keystr");
+		nng_msg_free(msg);
+		return;
+	}
+
+	uint64_t startKey = 0;
+	uint64_t endKey = 0;
+
+	log_info("Recv command: %s topic: %s", keystr, topic);
+	SyncNumbers *parsed_str = parseSyncNumbers(keystr);
+	if (parsed_str == NULL) {
+		log_error("parseSyncNumbers failed!");
+		query_send_eof(s->pair0_sock, &s->query_aio);
+		nng_recv_aio(*(s->pair0_sock), aio);
+		nng_msg_free(msg);
+		return;
+	}
+
+	char *type = parsed_str->sync;
+	startKey = parsed_str->number1;
+	endKey = parsed_str->number2;
+
+	if (strcmp(type, "sync") == 0) {
+		query_send_sync(s, startKey, endKey);
+	} else if (strcmp(type, "async") == 0) {
+		query_send_async(s, startKey, endKey);
+	} else {
+		log_error("Invalid type: %s", type);
+	}
+
+	query_send_eof(s->pair0_sock, &s->query_aio);
+	nng_recv_aio(*(s->pair0_sock), aio);
+	nng_free(parsed_str, sizeof(SyncNumbers));
+	nng_msg_free(msg);
+
+	return;
 }
 
 static void
@@ -1146,15 +1435,16 @@ static nni_proto exchange_proto = {
 	.proto_ctx_ops  = &exchange_ctx_ops,
 };
 
-// init rep0_sock inside of exchange_sock, only allowed being called once at init
+// init pair0_sock inside of exchange_sock, only allowed being called once at init
 static void
 exchange_sock_setsock(void *arg, void *data)
 {
 	exchange_sock_t *s = arg;
 	nng_socket *socket = data;
-	s->rep0_sock       = data;
+	s->pair0_sock      = data;
 	// to start first recv
-	nng_recv_aio(*s->rep0_sock, &s->ex_aio);
+	nng_recv_aio(*s->pair0_sock, &s->query_aio);
+	log_error("start to recv\n");
 }
 
 int
