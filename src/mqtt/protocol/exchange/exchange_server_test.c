@@ -138,6 +138,9 @@ test_exchange_client(void)
 	int rv = 0;
 	uint64_t key = 0;
 	nng_socket sock;
+	nng_socket pair0_sock;
+	nng_rep0_open(&pair0_sock);
+	sock.data = &pair0_sock;
 
 	NUTS_TRUE(nng_exchange_client_open(&sock) == 0);
 
