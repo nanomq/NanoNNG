@@ -99,6 +99,88 @@ exchange_add_ex(exchange_sock_t *s, exchange_t *ex)
 	return 0;
 }
 
+typedef struct {
+    char sync[10];
+    uint64_t number1;
+	uint64_t number1_idx;
+    uint64_t number2;
+	uint64_t number2_idx;
+} SyncNumbers;
+
+int checkInput(SyncNumbers *result, const char *input) {
+	if (strncmp(input, "sync", 4) != 0 && strncmp(input, "async", 5) != 0) {
+		log_error("Error: Invalid input format\n");
+		return -1;
+	}
+
+	int count = 0;
+	for (int i = 0; i < strlen(input); i++) {
+		if (input[i] == '-') {
+			if (count == 0) {
+				result->number1_idx = i + 1;
+			} else if (count == 1) {
+				result->number2_idx = i + 1;
+			}
+			count++;
+		}
+	}
+
+	if (count != 2) {
+		fprintf(stderr, "Error: Invalid input format\n");
+		return -1;
+	}
+
+	for (int i = result->number1_idx; i < result->number2_idx - 1; i++) {
+		if (input[i] < '0' || input[i] > '9') {
+			fprintf(stderr, "Error: Invalid input format\n");
+			return -1;
+		}
+	}
+
+	for (int i = result->number2_idx; i < strlen(input); i++) {
+		if (input[i] < '0' || input[i] > '9') {
+			fprintf(stderr, "Error: Invalid input format\n");
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+SyncNumbers *parseSyncNumbers(const char *input) {
+    SyncNumbers *result = NULL;
+	result = (SyncNumbers *)nng_alloc(sizeof(SyncNumbers));
+	if (result == NULL) {
+		log_error("Error: malloc failed\n");
+		return NULL;
+	}
+	result->number1_idx = 0;
+	result->number2_idx = 0;
+	
+	if (checkInput(result, input) != 0) {
+		log_error("checkInput failed\n");
+		nng_free(result, sizeof(SyncNumbers));
+		return NULL;
+	}
+
+    if (strncmp(input, "sync", 4) == 0) {
+        strncpy(result->sync, input, 4);
+        result->sync[4] = '\0';
+    } else if (strncmp(input, "async", 5) == 0) {
+        strncpy(result->sync, input, 5);
+        result->sync[5] = '\0';
+    } else {
+        log_error("Error: Invalid input format\n");
+		nng_free(result, sizeof(SyncNumbers));
+		return NULL;
+    }
+
+    result->number1 = (uint64_t)atoll(input + result->number1_idx);
+    result->number2 = (uint64_t)atoll(input + result->number2_idx);
+
+    return result;
+}
+
 static void
 exchange_sock_init(void *arg, nni_sock *sock)
 {
