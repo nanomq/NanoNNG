@@ -244,6 +244,7 @@ exchange_do_send(exchange_node_t *ex_node, nni_msg *msg, nni_aio *user_aio)
 		if (tmsg != NULL) {
 			char *topic = ex_node->ex->topic;
 			nng_msg_set_conn_param(tmsg, topic);
+			nng_msg_set_cmd_type(tmsg, ex_node->ex->streamType);
 			nni_aio_set_msg(user_aio, tmsg);
 		}
 		nni_aio_finish(user_aio, 0, 0);
@@ -401,7 +402,7 @@ exchange_sock_bind_exchange(void *arg, const void *v, size_t sz, nni_opt_type t)
 	}
 
 	exchange_t *ex = NULL;
-	rv = exchange_init(&ex, node->name, node->topic,
+	rv = exchange_init(&ex, node->name, node->topic, node->streamType,
 			rbsCap, rbsName, rbsFullOp, cvector_size(rbsName));
 
 	cvector_free(rbsName);
@@ -430,7 +431,7 @@ exchange_sock_get_rbmsgmap(void *arg, void *v, size_t *szp, nni_opt_type t)
 }
 
 int
-exchange_client_get_msg_by_key(void *arg, uint64_t key, nni_msg **msg)
+exchange_client_get_msg_by_key(void *arg, uint64_t key, nng_msg **msg)
 {
 	exchange_sock_t *s = arg;
 	nni_id_map *rbmsgmap = &s->rbmsgmap;

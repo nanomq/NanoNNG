@@ -77,6 +77,7 @@ extern size_t        nni_msg_remaining_len(const nni_msg *m);
 extern void          nni_msg_set_payload_ptr(nni_msg *m, uint8_t *ptr);
 extern void          nni_msg_set_remaining_len(nni_msg *m, size_t len);
 extern void          nni_msg_set_cmd_type(nni_msg *m, uint8_t cmd);
+extern uint8_t       nni_msg_get_cmd_type(nni_msg *m);
 extern void          nni_msg_set_conn_param(nni_msg *m, void *ptr);
 extern uint8_t       nni_msg_get_preset_qos(nni_msg *m);
 extern uint16_t      nni_msg_get_pub_pid(nni_msg *m);

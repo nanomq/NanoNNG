@@ -312,6 +312,7 @@ struct conf_exchange_node {
 	char             *topic;
 	ringBuffer_node **rbufs;
 	size_t            rbufs_sz;
+	uint8_t           streamType;
 
 	nng_socket       *sock;
 	nng_mtx          *mtx;
