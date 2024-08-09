@@ -361,38 +361,42 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 			if (rv != 0)
 				goto mqtt_error;
 			property_free(ep->property);
+			ep->property = NULL;
 			property *prop = (void *)nni_mqtt_msg_get_connack_property(p->rxmsg);
 			property_dup((property **)&ep->property, prop);
-			property_data *data;
-			data = property_get_value(ep->property, RECEIVE_MAXIMUM);
-			if (data) {
-				if (data->p_value.u16 == 0) {
-					rv = MQTT_ERR_PROTOCOL;
-					ep->reason_code = rv;
-					goto mqtt_error;
-				} else {
-					p->sndmax = data->p_value.u16;
+			if (ep->property != NULL) {
+				property_data *data;
+				data = property_get_value(ep->property, RECEIVE_MAXIMUM);
+				if (data) {
+					if (data->p_value.u16 == 0) {
+						rv = MQTT_ERR_PROTOCOL;
+						ep->reason_code = rv;
+						goto mqtt_error;
+					} else {
+						p->sndmax = data->p_value.u16;
+					}
+				}
+				data = property_get_value(ep->property, MAXIMUM_PACKET_SIZE);
+				if (data) {
+					if (data->p_value.u32 == 0) {
+						rv = MQTT_ERR_PROTOCOL;
+						ep->reason_code = rv;
+						goto mqtt_error;
+					} else {
+						p->packmax = data->p_value.u32;
+						log_info("Set max packet size as %ld", p->packmax);
+					}
+				}
+				data = property_get_value(ep->property, PUBLISH_MAXIMUM_QOS);
+				if (data) {
+					p->qosmax = data->p_value.u8;
+				}
+				data = property_get_value(ep->property, SERVER_KEEP_ALIVE);
+				if (data) {
+					p->keepalive = data->p_value.u16;
 				}
 			}
-			data = property_get_value(ep->property, MAXIMUM_PACKET_SIZE);
-			if (data) {
-				if (data->p_value.u32 == 0) {
-					rv = MQTT_ERR_PROTOCOL;
-					ep->reason_code = rv;
-					goto mqtt_error;
-				} else {
-					p->packmax = data->p_value.u32;
-					log_info("Set max packet size as %ld", p->packmax);
-				}
-			}
-			data = property_get_value(ep->property, PUBLISH_MAXIMUM_QOS);
-			if (data) {
-				p->qosmax = data->p_value.u8;
-			}
-			data = property_get_value(ep->property, SERVER_KEEP_ALIVE);
-			if (data) {
-				p->keepalive = data->p_value.u16;
-			}
+
 		} else {
 			if ((rv = nni_mqtt_msg_decode(p->rxmsg)) != MQTT_SUCCESS) {
 				ep->reason_code = rv;
@@ -533,6 +537,7 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 	aio = nni_list_first(&p->recvq);
 
 	if ((rv = nni_aio_result(rxaio)) != 0) {
+		log_info("aio rv %s", nng_strerror(rv));
 		rv = SERVER_UNAVAILABLE;
 		goto recv_error;
 	}
