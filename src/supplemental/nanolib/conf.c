@@ -2761,14 +2761,16 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->will_qos     = 0;
 	node->will_retain  = false;
 
-	node->sqlite         = NULL;
+	node->bridge_aio   = NULL;
+	node->bridge_arg   = NULL;
 
-	node->bridge_aio     = NULL;
-	node->bridge_arg = NULL;
+	node->sqlite       = NULL;
+
+	node->hybrid             = false;
+	node->hybrid_servers     = NULL;
 
 #if defined(SUPP_QUIC)
 	node->multi_stream       = false;
-	node->hybrid             = false;
 	node->qkeepalive         = 30;
 	node->qconnect_timeout   = 20; // HandshakeIdleTimeoutMs of QUIC
 	node->qdiscon_timeout    = 20; // DisconnectTimeoutMs
@@ -2915,10 +2917,6 @@ conf_bridge_node_parse_with_name(const char *path,const char *key_prefix, const 
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".quic_max_ack_delay_ms")) != NULL) {
 			node->qmax_ack_delay_ms = atoi(value);
-			free(value);
-		} else if ((value = get_conf_value_with_prefix2(line, sz,
-		                key_prefix, name, ".hybrid_bridging")) != NULL) {
-			node->hybrid = nni_strcasecmp(value, "true") == 0;
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".quic_multi_stream")) != NULL) {
@@ -3226,6 +3224,12 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 		free(node->sub_properties);
 		node->sub_properties = NULL;
 	}
+	if (node->hybrid_servers) {
+		for (size_t i = 0; i < cvector_size(node->hybrid_servers); ++i)
+			if (node->hybrid_servers[i])
+				free(node->hybrid_servers[i]);
+		cvector_free(node->hybrid_servers);
+	}
 	conf_tls_destroy(&node->tls);
 }
 
@@ -3272,6 +3276,14 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		    node->name, node->backoff_max);
 		log_info("%sbridge.mqtt.%s.max_parallel_processes:     %ld", prefix,
 		    node->name, node->parallel);
+		log_info("%sbridge.mqtt.%s.hybrid_bridging       :     %s", prefix,
+		    node->name, node->hybrid ? "true" : "false");
+		log_info("%sbridge.mqtt.%s.hybrid_servers: ", prefix, node->name);
+		for (size_t j = 0; j < cvector_size(node->hybrid_servers); j++) {
+			log_info(
+				 "\t[%ld] hybrid servers:       %s", j,
+										node->hybrid_servers[j]);
+		}
 
 #if defined(SUPP_QUIC)
 		log_info("%sbridge.mqtt.%s.quic_multi_stream:          %s", prefix,

@@ -1162,9 +1162,8 @@ mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
 	if (nni_aio_list_active(aio)) {
 		nni_aio_list_remove(aio);
 	}
-		nni_aio_finish_error(aio, NNG_ECANCELED);
+	nni_aio_finish_error(aio, NNG_ECANCELED);
 	nni_mtx_unlock(&s->mtx);
-
 }
 
 static void

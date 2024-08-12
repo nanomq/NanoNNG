@@ -290,6 +290,8 @@ struct conf_bridge_node {
 	nng_aio    **bridge_aio;
 	nng_mtx     *mtx;
 
+	bool         hybrid;  // enable/disable hybrid bridging
+	char       **hybrid_servers;
 
 	// MQTT v5 property
 	conf_bridge_conn_properties *     conn_properties;
@@ -301,7 +303,6 @@ struct conf_bridge_node {
 	bool         multi_stream;
 	bool         stream_auto_genid; // generate stream id automatically for each stream
 	bool         qos_first; // send QoS msg in high priority
-	bool         hybrid;  // hybrid bridging affects auto-reconnect of QUIC transport
 	uint64_t     qkeepalive;		 //keepalive timeout interval of QUIC transport
 	uint64_t     qconnect_timeout;	 // HandshakeIdleTimeoutMs of QUIC
 	uint32_t     qdiscon_timeout;	 // DisconnectTimeoutMs

@@ -1097,7 +1097,6 @@ conf_bridge_quic_parse_ver2(conf_bridge_node *node, cJSON *jso_bridge_node)
 	    node, qmax_ack_delay_ms, "quic_max_ack_delay_ms", jso_bridge_node);
 	hocon_read_time_base(
 	    node, qconnect_timeout, "quic_handshake_timeout", jso_bridge_node);
-	hocon_read_bool_base(node, hybrid, "hybrid_bridging", jso_bridge_node);
 	hocon_read_bool_base(node, quic_0rtt, "quic_0rtt", jso_bridge_node);
 	hocon_read_bool_base(
 	    node, multi_stream, "quic_multi_stream", jso_bridge_node);
@@ -1278,6 +1277,14 @@ conf_bridge_node_parse(
 	cJSON *jso_prop = hocon_get_obj("sub_properties", obj);
 	if (jso_prop != NULL) {
 		conf_bridge_sub_properties_parse_ver2(node, jso_prop);
+	}
+
+	hocon_read_bool_base(node, hybrid, "hybrid_bridging", obj);
+	cJSON *hybrid_servers = hocon_get_obj("hybrid_servers", obj);
+	cJSON *hybrid_server = NULL;
+	cJSON_ArrayForEach(hybrid_server, hybrid_servers)
+	{
+		cvector_push_back(node->hybrid_servers, strdup(hybrid_server->valuestring));
 	}
 
 	hocon_read_num_base(node, parallel, "max_parallel_processes", obj);
