@@ -215,7 +215,6 @@ tcptran_pipe_fini(void *arg)
 	nni_lmq_fini(&p->rslmq);
 	nni_mtx_fini(&p->mtx);
 	NNI_FREE_STRUCT(p);
-	log_trace(" ************ tcptran_pipe_finit [%p] ************ ", p);
 }
 
 static void
@@ -1205,15 +1204,6 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			niov++;
 		}
 	}
-	if (niov == 0) {
-		// No content to send
-		nni_msg_free(msg);
-		nni_aio_set_prov_data(txaio, NULL);
-		nni_list_remove(&p->sendq, aio);
-		nni_aio_set_msg(aio, NULL);
-		nni_aio_finish(aio, 0, 0);
-		return;
-	}
 send:
 	nni_aio_set_iov(txaio, niov, iov);
 	nng_stream_send(p->conn, txaio);
@@ -1471,8 +1461,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		} else {
 			// what should broker does when exceed
 			// max_recv? msg lost, make it look like a
-			// normal send. qos msg will be resend
-			// afterwards
+			// normal send. qos msg will be resend afterwards
 			nni_msg_free(msg);
 			nni_aio_set_prov_data(txaio, NULL);
 			nni_list_remove(&p->sendq, aio);
@@ -1480,15 +1469,6 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			nni_aio_finish(aio, 0, 0);
 			return;
 		}
-	}
-	if (niov == 0) {
-		// No content to send
-		nni_msg_free(msg);
-		nni_aio_set_prov_data(txaio, NULL);
-		nni_list_remove(&p->sendq, aio);
-		nni_aio_set_msg(aio, NULL);
-		nni_aio_finish(aio, 0, 0);
-		return;
 	}
 send:
     nni_aio_set_iov(txaio, niov, iov);
