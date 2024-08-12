@@ -3815,6 +3815,7 @@ property_append(property *prop_list, property *last)
 	}
 }
 
+// will free the prop_list if prop_id is the last prop remaining
 void
 property_remove(property *prop_list, uint8_t prop_id)
 {
@@ -4248,7 +4249,9 @@ property_pub_by_will(property *will_prop)
 
 	property_dup(&list, will_prop);
 	property_remove(list, WILL_DELAY_INTERVAL);
-
+	if (get_mqtt_properties_len(list) == 0) {
+		goto out;
+	}
 	return list;
 
 out:

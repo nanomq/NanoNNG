@@ -361,7 +361,7 @@ dialer_timer_cb(void *arg)
 	if ((rv = nni_aio_result(&d->d_tmo_aio)) == 0) {
 		dialer_connect_start(d);
 	} else {
-		log_error("timer cb rv%d", rv);
+		log_error("failed timer cb rv %d", rv);
 	}
 }
 
