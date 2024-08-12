@@ -16,6 +16,20 @@ struct nng_id_map_s {
 	nni_id_map m;
 };
 
+// For NanoNNG
+void
+nng_id_map_foreach(nng_id_map *map, void (*cb)(void *id, void *value))
+{
+	nni_id_map_foreach(&map->m, cb);
+}
+
+void
+nng_id_map_foreach2(nng_id_map *map,
+    void (*cb)(void *id, void *value, void *arg), void *user_arg)
+{
+	nni_id_map_foreach2(&map->m, cb, user_arg);
+}
+
 int
 nng_id_map_alloc(nng_id_map **map, uint64_t lo, uint64_t hi, int flags)
 {
@@ -61,15 +75,8 @@ nng_id_alloc(nng_id_map *map, uint64_t *id, void *val)
 	return (nni_id_alloc(&map->m, id, val));
 }
 
-void
-nng_id_map_foreach(nng_id_map *map, void (*cb)(void *id, void *value))
+bool
+nng_id_visit(nng_id_map *map, uint64_t *id, void **valp, uint32_t *cursor)
 {
-	nni_id_map_foreach(&map->m, cb);
-}
-
-void
-nng_id_map_foreach2(nng_id_map *map,
-    void (*cb)(void *id, void *value, void *arg), void *user_arg)
-{
-	nni_id_map_foreach2(&map->m, cb, user_arg);
+	return (nni_id_visit(&map->m, id, valp, cursor));
 }
