@@ -22,7 +22,7 @@ struct canStreamCol {
 	uint32_t canid;
 	uint8_t busid;
 	uint16_t payloadLen;
-	void *payload;
+	uint8_t *payload;
 };
 
 struct canStreamRow {
@@ -40,7 +40,7 @@ int canStreamRowAddColumn(struct canStreamRow *row,
 						  uint64_t canid,
 						  uint8_t busid,
 						  uint16_t payloadLen,
-						  void *payload);
+						  uint8_t *payload);
 
 int canStreamAddRow(struct canStream *stream, uint64_t timestamp);
 void freeCanStream(struct canStream *stream);
