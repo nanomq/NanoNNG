@@ -52,10 +52,10 @@ void test_exchange_init(void)
 
 	strcpy(ringBufferName[0], "ringBuffer1");
 
-	NUTS_TRUE(exchange_init(NULL, NULL, "topic1", &caps, ringBufferName, &fullOps, 1) != 0);
-	NUTS_TRUE(exchange_init(&ex, NULL, "topic1", &caps, ringBufferName, &fullOps, 1) != 0);
+	NUTS_TRUE(exchange_init(NULL, NULL, "topic1", 0, &caps, ringBufferName, &fullOps, 1) != 0);
+	NUTS_TRUE(exchange_init(&ex, NULL, "topic1", 0, &caps, ringBufferName, &fullOps, 1) != 0);
 
-	NUTS_TRUE(exchange_init(&ex, EX_NAME, "topic1", &caps, ringBufferName, &fullOps, 1) == 0);
+	NUTS_TRUE(exchange_init(&ex, EX_NAME, "topic1", 0, &caps, ringBufferName, &fullOps, 1) == 0);
 	NUTS_TRUE(ex != NULL);
 	NUTS_TRUE(ex->rb_count != 0);
 	NUTS_TRUE(exchange_release(ex) == 0);
@@ -89,7 +89,7 @@ void test_exchange_ringBuffer(void)
 
 	char topic[100] = "topic1";
 	uint8_t fullOps = RB_FULL_RETURN;
-	NUTS_TRUE(exchange_init(&ex, EX_NAME, "topic1", &caps, ringBufferName, &fullOps, 1) == 0);
+	NUTS_TRUE(exchange_init(&ex, EX_NAME, "topic1", 0, &caps, ringBufferName, &fullOps, 1) == 0);
 	NUTS_TRUE(ex != NULL);
 	NUTS_TRUE(ex->rb_count == 1);
 
