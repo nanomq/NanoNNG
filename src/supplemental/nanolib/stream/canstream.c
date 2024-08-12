@@ -6,7 +6,7 @@ int canStreamRowAddColumn(struct canStreamRow *row,
 						  uint64_t canid,
 						  uint8_t busid,
 						  uint16_t payloadLen,
-						  void *payload) {
+						  uint8_t *payload) {
 	struct canStreamCol *new_col = nng_alloc(sizeof(struct canStreamCol));
 	if (new_col == NULL) {
 		log_error("Memory allocation failed");
@@ -122,12 +122,12 @@ struct canStream *parseCanStream(nng_msg **smsg, size_t len)
 		memcpy_big_endian(&timestamp, payload + 2, 8);
 		canStreamAddRow(stream, timestamp);
 
-		void *canpacket = payload + 10;
-		while (canpacket < (void *)payload + m_len) {
+		uint8_t *canpacket = payload + 10;
+		while (canpacket < (uint8_t *)payload + m_len) {
 			uint16_t canpacket_len = 0;
 			memcpy_big_endian(&canpacket_len, canpacket, 2);
 			canpacket += 2;
-			void *canpacket_end = canpacket + canpacket_len;
+			uint8_t *canpacket_end = canpacket + canpacket_len;
 			while (canpacket < canpacket_end) {
 				uint64_t can_timestamp = 0;
 				memcpy_big_endian(&can_timestamp, canpacket, 8);
@@ -142,7 +142,7 @@ struct canStream *parseCanStream(nng_msg **smsg, size_t len)
 				uint16_t canPayloadLen = 0;
 				memcpy_big_endian(&canPayloadLen, canpacket, 2);
 				canpacket += 2;
-				void *canPayload = NULL;
+				uint8_t *canPayload = NULL;
 				canPayload = nng_alloc(canPayloadLen);
 				memcpy_big_endian(canPayload, canpacket, canPayloadLen);
 				canpacket += canPayloadLen;
