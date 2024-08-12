@@ -251,6 +251,17 @@ NNG_DECL int nng_socket_get_ptr(nng_socket, const char *, void **);
 NNG_DECL int nng_socket_get_ms(nng_socket, const char *, nng_duration *);
 NNG_DECL int nng_socket_get_addr(nng_socket, const char *, nng_sockaddr *);
 
+// Utility function for getting a printable form of the socket address
+// for display in logs, etc.  It is not intended to be parsed, and the
+// display format may change without notice.  Generally you should alow
+// at least NNG_MAXADDRSTRLEN if you want to avoid typical truncations.
+// It is still possible for very long IPC paths to be truncated, but that
+// is an edge case and applications that pass such long paths should
+// expect some truncation (but they may pass larger values).
+#define NNG_MAXADDRSTRLEN (NNG_MAXADDRLEN + 16) // extra bytes for scheme
+NNG_DECL const char *nng_str_sockaddr(
+    const nng_sockaddr *sa, char *buf, size_t bufsz);
+
 // Arguably the pipe callback functions could be handled as an option,
 // but with the need to specify an argument, we find it best to unify
 // this as a separate function to pass in the argument and the callback.
