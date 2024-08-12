@@ -11,7 +11,7 @@
 #include <string.h>
 #include <stdint.h>
 
-#include "nng/supplemental/scram/scram.h"
+#include "scram.h"
 
 #include <nuts.h>
 
@@ -23,17 +23,16 @@ test_client_first_msg(void)
 
 	void *ctx = scram_ctx_create(pwd, strlen(pwd), 4096, SCRAM_SHA256, 0);
 	NUTS_ASSERT(NULL != ctx);
-	char *first_msg = scram_client_first_msg(ctx, username);
-	NUTS_ASSERT(NULL != first_msg);
+	char *client_first_msg = scram_client_first_msg(ctx, username);
+	NUTS_ASSERT(NULL != client_first_msg);
 
 	// We don't care about the random
 	char expect_first_msg[256];
 	sprintf(expect_first_msg, "n,,n=%s,r=", username);
-	NUTS_ASSERT(0 == strncmp((char *)first_msg, expect_first_msg, strlen(expect_first_msg)));
+	NUTS_ASSERT(0 == strncmp(client_first_msg, expect_first_msg, strlen(expect_first_msg)));
 
-	printf("first msg:%s\n", first_msg);
+	printf("first msg:%s\n", client_first_msg);
 
-	nng_free(first_msg, 0);
 	scram_ctx_free(ctx);
 }
 
@@ -168,7 +167,6 @@ test_full_auth(void)
 		scram_handle_server_final_msg(cctx, server_final_msg, strlen(server_final_msg));
 	NUTS_ASSERT(NULL != result);
 
-	nng_free(client_first_msg, 0);
 	nng_free(server_first_msg, 0);
 	nng_free(client_final_msg, 0);
 	nng_free(server_final_msg, 0);
@@ -221,7 +219,6 @@ test_full_auth_unmatch(void)
 	NUTS_ASSERT(NULL == result);
 	*/
 
-	nng_free(client_first_msg, 0);
 	nng_free(server_first_msg, 0);
 	nng_free(client_final_msg, 0);
 	nng_free(server_final_msg, 0);

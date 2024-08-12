@@ -74,8 +74,10 @@ struct conf_tls {
 
 typedef struct conf_tls conf_tls;
 
+// TODO: params for one single tcp node should be in here.
 typedef struct {
 	bool     enable;
+	char    *url;
 	uint8_t  nodelay;
 	uint8_t  keepalive;
 	uint8_t  quickack;
@@ -85,6 +87,16 @@ typedef struct {
 	uint16_t sendtimeo;
 	uint16_t recvtimeo;
 } conf_tcp;
+
+typedef struct {
+	size_t     count;
+	conf_tls **nodes;
+} conf_tls_list;
+
+typedef struct {
+	size_t     count;
+	conf_tcp **nodes;
+} conf_tcp_list;
 
 struct conf_sqlite {
 	bool   enable;
@@ -548,6 +560,8 @@ typedef enum {
 
 struct conf {
 	char      *vin;
+	char      *cmd_ipc_url;
+	char      *hook_ipc_url;
 	char      *conf_file;
 	char      *url;
 	bool       enable;
@@ -555,8 +569,8 @@ struct conf {
 	int        msq_len;
 	uint32_t   num_taskq_thread;
 	uint32_t   max_taskq_thread;
-	uint32_t   parallel;				// broker ctx
-	uint64_t   total_ctx;		// Total ctx of work (bridge + AWS + broker + HTTP)
+	uint32_t   parallel;			   // broker ctx
+	uint64_t   total_ctx;		       // Total ctx of work (bridge + AWS + broker + HTTP)
 	uint64_t   max_packet_size;        // byte
 	uint32_t   client_max_packet_size; // byte
 	uint32_t   max_inflight_window;
@@ -570,6 +584,8 @@ struct conf {
 	bool       ipc_internal;
 	bool       bridge_mode;
 
+	conf_tcp_list        tcp_list;
+	conf_tls_list        tls_list;
 	conf_sqlite          sqlite;
 	conf_tls             tls;
 	conf_http_server     http_server;

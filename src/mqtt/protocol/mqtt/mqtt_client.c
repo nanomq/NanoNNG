@@ -432,6 +432,8 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 		nni_mqtt_msg_set_aio(msg, aio);
 		packet_id = nni_mqtt_msg_get_packet_id(msg);
 		taio = nni_id_get(&p->sent_unack, packet_id);
+		// pass proto_data to cached aio, either it is freed in ack or in cancel
+		nni_aio_set_prov_data(aio, nni_msg_get_proto_data(msg));
 		if (taio != NULL) {
 			log_warn("Warning : msg %d lost due to "
 			                "packetID duplicated!", packet_id);
@@ -530,9 +532,7 @@ static void
 mqtt_pipe_stop(void *arg)
 {
 	mqtt_pipe_t *p = arg;
-	// nni_aio_abort(&p->send_aio, NNG_ECANCELED);
 	nni_aio_stop(&p->send_aio);
-	// nni_aio_abort(&p->recv_aio, NNG_ECANCELED);
 	nni_aio_stop(&p->recv_aio);
 	nni_aio_stop(&p->time_aio);
 }

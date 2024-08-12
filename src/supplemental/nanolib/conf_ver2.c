@@ -312,6 +312,8 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_num(config, parallel, jso_sys);
 		hocon_read_bool_base(
 		    config, ipc_internal, "enable_ipc_internal", jso_sys);
+		hocon_read_str(config, hook_ipc_url, jso_sys);
+		hocon_read_str(config, cmd_ipc_url, jso_sys);
 	}
 
 #ifdef ACL_SUPP
@@ -351,21 +353,42 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	cJSON *jso_listeners = cJSON_GetObjectItem(jso, "listeners");
 	if (jso_listeners) {
 		cJSON *jso_tcp = cJSON_GetObjectItem(jso_listeners, "tcp");
+		cJSON *tcp_array = hocon_get_obj("tcp", jso_listeners);
+		cJSON *tcp_node  = NULL;
+		config->enable   = false;
+
+		// parsing for single listener
 		if (jso_tcp) {
 			hocon_read_address_base(
 			    config, url, "bind", "nmq-tcp://", jso_tcp);
-			config->enable = true;
 			hocon_read_bool_base(
 			    config, enable, "enable", jso_tcp);
-		} else {
-			config->enable = false;
+
+			config->enable = true;
 		}
+
+		// parsing for multiple listener
+		cJSON_ArrayForEach(tcp_node, tcp_array)
+		{
+			conf_tcp *node = NNI_ALLOC_STRUCT(node);
+
+			hocon_read_address_base(
+			    node, url, "bind", "nmq-tcp://", tcp_node);
+			hocon_read_bool_base(node, enable, "enable", tcp_node);
+			if (node->url) {
+				cvector_push_back(
+				    config->tcp_list.nodes, node);
+			} else {
+				nng_free(node, sizeof(node));
+			}
+		}
+		config->tcp_list.count = cvector_size(config->tcp_list.nodes);
 
 		cJSON *jso_websocket      = hocon_get_obj("listeners.ws", jso);
 		conf_websocket *websocket = &(config->websocket);
 		if (NULL == jso_websocket) {
 			log_error("Read config nanomq ws failed!");
-			websocket->enable = true;
+			websocket->enable = false;
 
 		} else {
 			hocon_read_address_base(websocket, url, "bind",
@@ -439,15 +462,41 @@ static void
 conf_tls_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *jso_tls = hocon_get_obj("listeners.ssl", jso);
+	cJSON *node_array = hocon_get_obj("listeners.ssl", jso);
+	cJSON *node_item  = NULL;
+
+	// parsing single listener
 	if (jso_tls) {
 		conf_tls *tls = &(config->tls);
-		conf_tls_parse_ver2_base(tls, jso_tls);
-		hocon_read_bool(tls, verify_peer, jso_tls);
-		hocon_read_bool_base(
-		    tls, set_fail, "fail_if_no_peer_cert", jso_tls);
 		hocon_read_address_base(
 		    tls, url, "bind", "tls+nmq-tcp://", jso_tls);
+		if (tls->url) {
+			conf_tls_parse_ver2_base(tls, jso_tls);
+			hocon_read_bool(tls, verify_peer, jso_tls);
+			hocon_read_bool_base(
+			    tls, set_fail, "fail_if_no_peer_cert", jso_tls);
+		}
 	}
+
+	// parsing for multiple listener
+	config->tls_list.nodes = NULL;
+	cJSON_ArrayForEach(node_item, node_array)
+	{
+		conf_tls *node = NNI_ALLOC_STRUCT(node);
+
+		hocon_read_address_base(
+		    node, url, "bind", "tls+nmq-tcp://", node_item);
+		if (node->url) {
+			conf_tls_parse_ver2_base(node, node_item);
+			hocon_read_bool(node, verify_peer, node_item);
+			hocon_read_bool_base(
+			    node, set_fail, "fail_if_no_peer_cert", node_item);
+			cvector_push_back(config->tls_list.nodes, node);
+		} else {
+			nng_free(node, sizeof(node));
+		}
+	}
+	config->tls_list.count = cvector_size(config->tls_list.nodes);
 
 	return;
 }

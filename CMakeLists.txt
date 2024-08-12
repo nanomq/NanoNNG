@@ -306,6 +306,16 @@ if(NNG_ENABLE_QUIC)
   add_definitions(-DSUPP_QUIC)
 endif()
 
+if (NNG_ENABLE_SCRAM)
+    find_package(OpenSSL)
+    if (NNG_ENABLE_QUIC)
+    else ()
+        target_link_libraries(nng PRIVATE OpenSSL::SSL OpenSSL:Crypto)
+    endif (NNG_ENABLE_QUIC)
+
+    add_definitions(-DSUPP_SCRAM)
+endif ()
+
 add_subdirectory(src)
 
 if (NNG_TESTS)
