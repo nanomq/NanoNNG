@@ -4012,6 +4012,8 @@ conf_tlslist_destroy(conf_tls_list *tlslist)
 		tlslist->nodes = NULL;
 	}
 }
+#if defined(SUPP_PARQUET)
+static void
 conf_parquet_destroy(conf_parquet *parquet)
 {
 	if (parquet) {
@@ -4025,6 +4027,7 @@ conf_parquet_destroy(conf_parquet *parquet)
 	}
 
 }
+#endif
 
 void
 conf_fini(conf *nanomq_conf)
