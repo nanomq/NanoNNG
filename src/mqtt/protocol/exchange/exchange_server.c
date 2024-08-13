@@ -177,14 +177,16 @@ result->number2 = (uint64_t)atoll(input + result->number2_idx);
 return result;
 }
 
-/* 0xBAD ----base64----> C60= */
-#define QUERY_EOF "C60="
-
 static void query_send_eof(nng_socket *sock, nng_aio *aio)
 {
 	nng_msg *msg = NULL;
 	nng_msg_alloc(&msg, 0);
-	nng_msg_append(msg, QUERY_EOF, strlen(QUERY_EOF));
+
+	unsigned char eof[2];
+	eof[0] = 0x0B;
+	eof[1] = 0xAD;
+
+	nng_msg_append(msg, eof, 2);
 	nng_sendmsg(*sock, msg, 0);
 	nng_msg_free(msg);
 	return;
