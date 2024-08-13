@@ -2557,11 +2557,7 @@ nng_file_is_dir(const char *path)
 
 int nng_access(const char* name, int flag)
 {
-#ifdef NNG_PLATFORM_WINDOWS
-    return _access(name, flag);
-#else
-    return access(name, flag);
-#endif
+    return nni_plat_access(name, flag);
 }
 // Ends of NANOMQ API
 

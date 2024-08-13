@@ -582,6 +582,8 @@ extern int nni_plat_getpid(void);
 // nni_plat_file_size get file size.
 extern int nni_plat_file_size(const char *, size_t *);
 
+// nni_access check accessibility of path
+extern int nni_plat_access(const char* name, int flag);
 //
 // Actual platforms we support.  This is included up front so that we can
 // get the specific types that are supplied by the platform.
