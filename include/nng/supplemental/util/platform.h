@@ -29,6 +29,8 @@
 extern "C" {
 #endif
 
+// Return unix timestamp (milliseconds) .
+NNG_DECL nng_time nng_timestamp(void);
 
 // Get current process Id.
 NNG_DECL int nng_getpid();
