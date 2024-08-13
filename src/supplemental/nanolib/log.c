@@ -98,6 +98,18 @@ file_callback(log_event *ev)
 #else
 	pid_t pid = syscall(__NR_gettid);
 #endif
+#ifndef NANO_PLATFORM_WINDOWS
+	if (nng_access(ev->config->dir, W_OK) < 0) {
+		fprintf(stderr, "open path %s failed! close file!\n",
+				ev->config->dir);
+		if (ev->config->fp != NULL)
+			fclose(ev->config->fp);
+		ev->config->fp = NULL;
+		return;
+	}
+#endif
+	if (ev->config->fp == NULL)
+		ev->config->fp = fopen(ev->config->abs_path, "a");
 	FILE *fp = ev->config->fp;
 	buf[strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &ev->time)] = '\0';
 	fprintf(fp, "%s [%i] %-5s %s:%d: ", buf, pid,
@@ -300,8 +312,7 @@ log_clear_callback()
 static void
 file_rotation(FILE *fp, conf_log *config)
 {
-	// Note : do not call log_xxx() in this function, it will cause dead
-	// lock
+	// Note : do not call log_xxx() in this function, it will cause dead lock
 	size_t sz = 0;
 	int    rv;
 	if ((rv = nni_plat_file_size(config->abs_path, &sz)) != 0) {
@@ -309,10 +320,23 @@ file_rotation(FILE *fp, conf_log *config)
 		    config->abs_path, nng_strerror(rv));
 		if (!nni_plat_file_exists(config->abs_path)) {
 			// file missing, recreate one
-			fclose(fp);
-			if (nng_file_put(config->abs_path, "\n", 1) != 0)
-				fprintf(stderr, "create file %s failed: %s\n",
+			if (fp)
+				fclose(fp);
+#ifndef NANO_PLATFORM_WINDOWS
+			if (nng_access(config->dir, W_OK) < 0) {
+				fprintf(stderr, "open path %s failed\n",
+						config->dir);
+				config->fp = NULL;
+				return;
+			}
+#endif
+			if (nng_file_put(config->abs_path, "\n", 1) != 0) {
+				fprintf(stderr, "write to file %s failed: %s\n",
 				    config->abs_path, nng_strerror(rv));
+				config->fp = NULL;
+				return;
+			}
+
 			config->fp = fopen(config->abs_path, "a");
 			fp             = config->fp;
 		}
@@ -342,13 +366,21 @@ file_rotation(FILE *fp, conf_log *config)
 		    log_name, log_name_len, "%s.%lu", config->file, index);
 		char *backup_log_path =
 		    nano_concat_path(config->dir, log_name);
-		fclose(fp);
+		if (fp)
+			fclose(fp);
 		fp = NULL;
 		remove(backup_log_path);
 		rename(config->abs_path, backup_log_path);
 		nni_free(log_name, log_name_len);
 		nni_strfree(backup_log_path);
-
+#ifndef NANO_PLATFORM_WINDOWS
+		if (nng_access(config->dir, W_OK) < 0) {
+			fprintf(stderr, "open path %s failed\n",
+					config->dir);
+			config->fp = NULL;
+			return;
+		}
+#endif
 		fp           = fopen(config->abs_path, "a");
 		config->fp   = fp;
 		char num[20] = { 0 };
