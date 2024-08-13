@@ -725,7 +725,8 @@ mqtt_property_free(property *prop)
 void
 mqtt_property_foreach(property *prop, void (*cb)(property *))
 {
-	return property_foreach(prop, cb);
+	property_foreach(prop, cb);
+	return;
 }
 
 int
@@ -809,7 +810,8 @@ mqtt_property_get_value(property *prop, uint8_t prop_id)
 void
 mqtt_property_append(property *prop_list, property *last)
 {
-	return property_append(prop_list, last);
+	property_append(prop_list, last);
+	return;
 }
 
 

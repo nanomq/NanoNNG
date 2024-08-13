@@ -98,7 +98,7 @@ file_callback(log_event *ev)
 #else
 	pid_t pid = syscall(__NR_gettid);
 #endif
-#ifndef NANO_PLATFORM_WINDOWS
+#ifndef NNG_PLATFORM_WINDOWS
 	if (nng_access(ev->config->dir, W_OK) < 0) {
 		fprintf(stderr, "open path %s failed! close file!\n",
 				ev->config->dir);
@@ -322,7 +322,7 @@ file_rotation(FILE *fp, conf_log *config)
 			// file missing, recreate one
 			if (fp)
 				fclose(fp);
-#ifndef NANO_PLATFORM_WINDOWS
+#ifndef NNG_PLATFORM_WINDOWS
 			if (nng_access(config->dir, W_OK) < 0) {
 				fprintf(stderr, "open path %s failed\n",
 						config->dir);
@@ -373,7 +373,7 @@ file_rotation(FILE *fp, conf_log *config)
 		rename(config->abs_path, backup_log_path);
 		nni_free(log_name, log_name_len);
 		nni_strfree(backup_log_path);
-#ifndef NANO_PLATFORM_WINDOWS
+#ifndef NNG_PLATFORM_WINDOWS
 		if (nng_access(config->dir, W_OK) < 0) {
 			fprintf(stderr, "open path %s failed\n",
 					config->dir);
