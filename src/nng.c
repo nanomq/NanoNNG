@@ -2478,7 +2478,7 @@ conn_param_set_username(conn_param *cparam, const char *username)
 void
 conn_param_set_password(conn_param *cparam, const char *password)
 {
-	cparam->password.body = nng_strdup(password);
+	cparam->password.body = (uint8_t *)nng_strdup(password);
 	cparam->password.len  = strlen(password) + 1;
 }
 
@@ -2554,6 +2554,16 @@ nng_file_is_dir(const char *path)
 {
 	return nni_file_is_dir(path);
 }
+
+int nng_access(const char* name, int flag)
+{
+#ifdef NNG_PLATFORM_WINDOWS
+    return _access(name, flag);
+#else
+    return access(name, flag);
+#endif
+}
+// Ends of NANOMQ API
 
 void
 nng_init_set_parameter(nng_init_parameter p, uint64_t value)

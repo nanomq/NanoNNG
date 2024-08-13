@@ -1344,6 +1344,10 @@ NNG_DECL bool nng_lmq_empty(nng_lmq *);
 typedef struct conn_param        conn_param;
 typedef struct pub_packet_struct pub_packet_struct;
 typedef struct pipe_db           nano_pipe_db;
+
+NNG_DECL int nng_access(const char* name, int flag);
+
+// NANOMQ MQTT API ends
 // UDP operations.  These are provided for convenience,
 // and should be considered somewhat experimental.
 
