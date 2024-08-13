@@ -452,6 +452,8 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	if (!p->busy) {
 		p->busy = true;
 		nni_aio_set_msg(&p->aio_send, msg);
+		if (nni_msg_get_type(msg) == CMD_PUBLISH)
+			log_warn("S %s", p->conn_param->clientid.body);
 		nni_pipe_send(p->pipe, &p->aio_send);
 		nni_mtx_unlock(&p->lk);
 		nni_aio_set_msg(aio, NULL);
@@ -594,6 +596,7 @@ nano_pipe_fini(void *arg)
 	}
 	nni_mtx_lock(&s->lk);
 	nni_mtx_lock(&p->lk);
+	log_warn("Offline %s", p->conn_param->clientid.body);
 	if ((msg = nni_aio_get_msg(&p->aio_recv)) != NULL) {
 		nni_aio_set_msg(&p->aio_recv, NULL);
 	}
@@ -823,6 +826,7 @@ session_keeping:
 	// connection rate is not fast enough in this way.
 	nni_aio_finish_sync(&p->aio_recv, 0, nni_msg_len(msg));
 	nni_atomic_set_bool(&p->closed, false);
+	log_warn("Online %s", p->conn_param->clientid.body);
 	return (rv);
 }
 
@@ -1098,7 +1102,7 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 static void
 nano_pipe_recv_cb(void *arg)
 {
-	uint32_t    len;
+	uint32_t    len, count;
 	uint16_t    ackid;
 	uint8_t     type, len_of_varint = 0;
 	uint8_t    *ptr;
@@ -1161,6 +1165,15 @@ nano_pipe_recv_cb(void *arg)
 		} else {
 			nni_msg_set_payload_ptr(msg, ptr + 2);
 		}
+		nni_mqtt_msg_proto_data_alloc(msg);
+		if (nni_mqtt_msg_decode(msg) == MQTT_SUCCESS) {
+			nni_mqtt_topic_qos *topics = nni_mqtt_msg_get_subscribe_topics(msg, &count);
+			for (uint32_t i = 0; i < count; i++) {
+				log_warn(" %s sub %s %d", cparam->clientid.body, topics[i].topic.buf,
+							topics[i].qos);
+			}
+		} else
+			log_warn("decode fail!");
 		break;
 	case CMD_UNSUBSCRIBE:
 		// 1. Clone for App layer 2. Clone should be called before being used
@@ -1172,6 +1185,14 @@ nano_pipe_recv_cb(void *arg)
 		} else {
 			nni_msg_set_payload_ptr(msg, ptr + 2);
 		}
+		nni_mqtt_msg_proto_data_alloc(msg);
+		if (nni_mqtt_msg_decode(msg) == MQTT_SUCCESS) {
+			nni_mqtt_topic *topics2 = nni_mqtt_msg_get_unsubscribe_topics(msg, &count);
+			for (uint32_t i = 0; i < count; i++) {
+				log_warn(" %s unsub %s", cparam->clientid.body, topics2[i].buf);
+			}
+		} else
+			log_warn("decode fail!");
 		break;
 	case CMD_DISCONNECT:
 		if (p->conn_param) {
@@ -1207,6 +1228,7 @@ nano_pipe_recv_cb(void *arg)
 	case CMD_PUBLISH:
 		// 1. Clone for App layer 2. Clone should be called before being used
 		conn_param_clone(cparam);
+		log_warn("R %s", cparam->clientid.body);
 		break;
 	case CMD_PUBACK:
 	case CMD_PUBCOMP:
