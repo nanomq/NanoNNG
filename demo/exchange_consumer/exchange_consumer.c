@@ -58,8 +58,6 @@ addaddr(struct addr **endp, const char *a)
 	return (&na->next);
 }
 
-#define QUERY_EOF "C60="
-
 void
 sendrecv(nng_socket sock)
 {
@@ -83,8 +81,9 @@ sendrecv(nng_socket sock)
 		rv = nng_recvmsg(sock, &msg, 0);
 		switch (rv) {
 		case 0:
-			if (nng_msg_len(msg) == strlen(QUERY_EOF)) {
-				if (strncmp(nng_msg_body(msg), QUERY_EOF, strlen(QUERY_EOF)) == 0) {
+			if (nng_msg_len(msg) == 2) {
+				unsigned char *p = nng_msg_body(msg);
+				if (p[0] == 0x0B && p[1] == 0xAD) {
 					nng_msg_free(msg);
 					return;
 				}

@@ -188,7 +188,7 @@ static void query_send_eof(nng_socket *sock, nng_aio *aio)
 
 	nng_msg_append(msg, eof, 2);
 	nng_sendmsg(*sock, msg, 0);
-	nng_msg_free(msg);
+
 	return;
 }
 
@@ -413,6 +413,13 @@ query_cb(void *arg)
 	exchange_sock_t *s = arg;
 
 	nni_aio *aio = &s->query_aio;
+	nng_msg *msg = nng_aio_get_msg(aio);
+	if (msg == NULL) {
+		nng_recv_aio(*(s->pair0_sock), aio);
+		log_error("NUll Commanding msg!");
+		return;
+	}
+
 	if (s->ex_node == NULL || s->ex_node->ex == NULL || s->ex_node->ex->topic == NULL) {
 		query_send_eof(s->pair0_sock, &s->query_aio);
 		nng_recv_aio(*(s->pair0_sock), aio);
@@ -420,14 +427,6 @@ query_cb(void *arg)
 		return;
 	}
 	char *topic = s->ex_node->ex->topic;
-
-	nng_msg *msg = nng_aio_get_msg(aio);
-	if (msg == NULL) {
-		query_send_eof(s->pair0_sock, &s->query_aio);
-		nng_recv_aio(*(s->pair0_sock), aio);
-		log_error("NUll Commanding msg!");
-		return;
-	}
 
 	char *keystr = (char *)nng_msg_body(msg);
 	if (keystr == NULL) {
