@@ -313,6 +313,7 @@ struct conf_exchange_node {
 	ringBuffer_node **rbufs;
 	size_t            rbufs_sz;
 	uint8_t           streamType;
+	uint32_t          limit_frequency;
 
 	nng_socket       *sock;
 	nng_mtx          *mtx;
