@@ -110,7 +110,7 @@ int checkInput(SyncNumbers *result, const char *input) {
 	}
 
 	int count = 0;
-	for (int i = 0; i < strlen(input); i++) {
+	for (unsigned int i = 0; i < strlen(input); i++) {
 		if (input[i] == '-') {
 			if (count == 0) {
 				result->number1_idx = i + 1;
@@ -126,14 +126,14 @@ int checkInput(SyncNumbers *result, const char *input) {
 		return -1;
 	}
 
-	for (int i = result->number1_idx; i < result->number2_idx - 1; i++) {
+	for (unsigned int i = result->number1_idx; i < result->number2_idx - 1; i++) {
 		if (input[i] < '0' || input[i] > '9') {
 			fprintf(stderr, "Error: Invalid input format\n");
 			return -1;
 		}
 	}
 
-	for (int i = result->number2_idx; i < strlen(input); i++) {
+	for (unsigned int i = result->number2_idx; i < strlen(input); i++) {
 		if (input[i] < '0' || input[i] > '9') {
 			fprintf(stderr, "Error: Invalid input format\n");
 			return -1;
@@ -143,7 +143,8 @@ int checkInput(SyncNumbers *result, const char *input) {
 	return 0;
 }
 
-SyncNumbers *parseSyncNumbers(const char *input) {
+SyncNumbers *parseSyncNumbers(const char *input)
+{
 	SyncNumbers *result = NULL;
 	result = (SyncNumbers *)nng_alloc(sizeof(SyncNumbers));
 	if (result == NULL) {
@@ -171,14 +172,15 @@ SyncNumbers *parseSyncNumbers(const char *input) {
 		return NULL;
 	}
 
-result->number1 = (uint64_t)atoll(input + result->number1_idx);
-result->number2 = (uint64_t)atoll(input + result->number2_idx);
+	result->number1 = (uint64_t)atoll(input + result->number1_idx);
+	result->number2 = (uint64_t)atoll(input + result->number2_idx);
 
-return result;
+	return result;
 }
 
 static void query_send_eof(nng_socket *sock, nng_aio *aio)
 {
+	NNI_ARG_UNUSED(aio);
 	nng_msg *msg = NULL;
 	nng_msg_alloc(&msg, 0);
 
@@ -218,7 +220,7 @@ static int fuzz_search_result_cat(nng_msg **msgList,
 			((uintptr_t)nng_msg_payload_ptr(msgList[i]) - (uintptr_t)nng_msg_body(msgList[i]));
 		if (sz >= pos + diff) {
 			char *tmpch = (char *)nng_msg_payload_ptr(msgList[i]);
-			for (int j = 0; j < diff; j++) {
+			for (unsigned int j = 0; j < diff; j++) {
 				ringbusdata[index++] = tmpch[j];
 			}
 		} else {
@@ -253,7 +255,7 @@ static void query_send_sync(exchange_sock_t *s, uint64_t startKey, uint64_t endK
 		log_error("exchange_client_get_msgs_fuzz failed! count: %d", count);
 	}
 
-	int size = 0;
+	uint32_t size = 0;
 	uint8_t *parquetdata = NULL;
 	uint32_t parquetdata_len = 0;
 #if defined(SUPP_PARQUET)
@@ -261,7 +263,7 @@ static void query_send_sync(exchange_sock_t *s, uint64_t startKey, uint64_t endK
 	parquet_objs = parquet_find_data_span_packets(NULL, startKey, endKey, &size, s->ex_node->ex->topic);
 	if (parquet_objs != NULL && size > 0) {
 		int total_len = 0;
-		for (int i = 0; i < size; i++) {
+		for (unsigned int i = 0; i < size; i++) {
 			total_len += parquet_objs[i]->size;
 		}
 		parquetdata = nng_alloc(total_len);
@@ -269,11 +271,11 @@ static void query_send_sync(exchange_sock_t *s, uint64_t startKey, uint64_t endK
 			log_error("Failed to allocate memory for file payload\n");
 			return;
 		}
-		for (int i = 0; i < size; i++) {
+		for (unsigned int i = 0; i < size; i++) {
 			memcpy(parquetdata + parquetdata_len, parquet_objs[i]->data, parquet_objs[i]->size);
 			parquetdata_len += parquet_objs[i]->size;
 		}
-		for (int i = 0; i < size; i++) {
+		for (unsigned int i = 0; i < size; i++) {
 			nng_free(parquet_objs[i]->data, parquet_objs[i]->size);
 			nng_free(parquet_objs[i], sizeof(parquet_data_packet));
 		}
@@ -365,7 +367,7 @@ static void query_send_async(exchange_sock_t *s, uint64_t startKey, uint64_t end
 			} else {
 				log_error("parquet_find_data_span_packets failed! size: %d", size);
 			}
-			nng_free(file_range->filename, strlen(file_range->filename));
+			nng_free((void *)file_range->filename, strlen(file_range->filename));
 			nng_free(file_range, sizeof(parquet_filename_range));
 			file_range = file_ranges[file_range_idx++];
 		}
@@ -410,6 +412,7 @@ static void query_send_async(exchange_sock_t *s, uint64_t startKey, uint64_t end
 static void
 query_cb(void *arg)
 {
+	int rv = 0;
 	exchange_sock_t *s = arg;
 
 	nni_aio *aio = &s->query_aio;
@@ -495,7 +498,7 @@ exchange_sock_fini(void *arg)
 {
 	exchange_sock_t *s = arg;
 	exchange_node_t *ex_node;
-	nng_msg *msg;
+//	nng_msg *msg;
 
 	ex_node = s->ex_node;
 
@@ -895,7 +898,7 @@ decToHex(unsigned char decimal, char *hexadecimal)
 	return;
 }
 
-#if defined(SUPP_PARQUET) || defined(SUPP_BLF)
+#if defined(SUPP_BLF)
 static char *
 get_file_bname(char *fpath)
 {
@@ -985,6 +988,7 @@ get_persistence_files_raw(uint32_t sz, char **fnames, char ***file_raws)
 	return 0;
 }
 
+#if defined(SUPP_BLF)
 static int
 get_persistence_files(uint32_t sz, char **fnames, cJSON *obj)
 {
@@ -1032,7 +1036,10 @@ get_persistence_files(uint32_t sz, char **fnames, cJSON *obj)
 
 	return 0;
 }
+#endif
+#endif
 
+#ifdef SUPP_PARQUET
 static int
 dump_file_result_cat(char **msgList, int *msgLen, uint32_t count, cJSON *obj)
 {
@@ -1297,6 +1304,8 @@ static int
 exchange_pipe_init(void *arg, nni_pipe *pipe, void *s)
 {
 	NNI_ARG_UNUSED(arg);
+	NNI_ARG_UNUSED(pipe);
+	NNI_ARG_UNUSED(s);
 	return (0);
 }
 
@@ -1305,8 +1314,8 @@ exchange_pipe_start(void *arg)
 {
 	NNI_ARG_UNUSED(arg);
 	return 0;
-	exchange_pipe_t *p = arg;
-	exchange_sock_t *s = p->sock;
+//	exchange_pipe_t *p = arg;
+//	exchange_sock_t *s = p->sock;
 
 	// might be useful in MQ switching
 	// if (nni_pipe_peer(p->pipe) != NNI_PROTO_EXCHANGE_V0) {
@@ -1397,11 +1406,10 @@ static void
 exchange_sock_setsock(void *arg, void *data)
 {
 	exchange_sock_t *s = arg;
-	nng_socket *socket = data;
 	s->pair0_sock      = data;
 	// to start first recv
 	nng_recv_aio(*s->pair0_sock, &s->query_aio);
-	log_error("start to recv\n");
+	log_info("start to recv\n");
 }
 
 int
