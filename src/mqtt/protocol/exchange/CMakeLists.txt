@@ -7,3 +7,5 @@ nng_sources(
 	exchange.c
 	exchange_server.c
 )
+
+add_subdirectory(stream)
