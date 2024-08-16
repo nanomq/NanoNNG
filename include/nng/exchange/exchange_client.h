@@ -27,6 +27,7 @@ extern "C" {
 #define NNG_OPT_EXCHANGE_BIND            "exchange-client-bind"
 #define NNG_OPT_EXCHANGE_GET_EX_QUEUE    "exchange-client-get-ex-queue"
 #define NNG_OPT_EXCHANGE_GET_RBMSGMAP    "exchange-client-get-rbmsgmap"
+#define NNG_OPT_EXCHANGE_START_LIMIT_TIMER "exchange-client-start-limit-timer"
 
 NNG_DECL int nng_exchange_client_open(nng_socket *sock);
 

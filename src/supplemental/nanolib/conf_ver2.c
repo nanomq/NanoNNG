@@ -1445,8 +1445,10 @@ conf_exchange_parse_ver2(conf *config, cJSON *jso)
 		node->streamType         = 0;
 		node->rbufs_sz           = 0;
 		node->exchange_url       = NULL;
+		node->limit_frequency    = 5;
 
 		hocon_read_str(node, exchange_url, node_item);
+		hocon_read_num(node, limit_frequency, node_item);
 
 		conf_exchange_node_parse(node, node_item);
 

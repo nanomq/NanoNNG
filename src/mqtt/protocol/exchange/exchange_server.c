@@ -28,6 +28,9 @@ typedef struct exchange_sock_s         exchange_sock_t;
 typedef struct exchange_node_s         exchange_node_t;
 typedef struct exchange_pipe_s         exchange_pipe_t;
 
+static nng_aio *query_reset_aio = NULL;
+static nng_atomic_int *query_limit = NULL;
+
 // one MQ, one Sock(TBD), one PIPE
 struct exchange_pipe_s {
 	nni_pipe        *pipe;
@@ -423,10 +426,23 @@ query_cb(void *arg)
 		return;
 	}
 
+	if (query_limit != NULL) {
+		rv = nng_atomic_dec_nv(query_limit);
+		log_error("query_limit: %d", rv);
+		if (rv < 0) {
+			log_warn("Hook searching too frequently");
+			query_send_eof(s->pair0_sock, &s->query_aio);
+			nng_recv_aio(*(s->pair0_sock), aio);
+			nng_msg_free(msg);
+			return;
+		}
+	}
+
 	if (s->ex_node == NULL || s->ex_node->ex == NULL || s->ex_node->ex->topic == NULL) {
 		query_send_eof(s->pair0_sock, &s->query_aio);
 		nng_recv_aio(*(s->pair0_sock), aio);
 		log_error("exchange_sock_t is not ready!");
+		nng_msg_free(msg);
 		return;
 	}
 	char *topic = s->ex_node->ex->topic;
@@ -473,6 +489,23 @@ query_cb(void *arg)
 	return;
 }
 
+#define QUERY_RESET_DURATION 5
+
+static void query_reset_cb(void *arg)
+{
+	uint32_t *query_limit_conf = (uint32_t *)arg;
+
+	nng_duration duration;
+
+	duration = QUERY_RESET_DURATION * 1000;
+
+	nng_atomic_set(query_limit, *query_limit_conf);
+
+	nng_sleep_aio(duration, query_reset_aio);
+
+	return;
+}
+
 static void
 exchange_sock_init(void *arg, nni_sock *sock)
 {
@@ -487,8 +520,8 @@ exchange_sock_init(void *arg, nni_sock *sock)
 
 	nni_lmq_init(&s->lmq, 256);
 
-	nng_aio *query_aio = NULL;
 	nni_aio_init(&s->query_aio, query_cb, s);
+
 
 	return;
 }
@@ -800,6 +833,23 @@ exchange_sock_get_rbmsgmap(void *arg, void *v, size_t *szp, nni_opt_type t)
 	rv = nni_copyout_ptr(&s->rbmsgmap, v, szp, t);
 	nni_mtx_unlock(&s->mtx);
 	return (rv);
+}
+
+static int
+exchange_sock_start_limit_timer(void *arg, const void *v, size_t sz, nni_opt_type t)
+{
+	NNI_ARG_UNUSED(arg);
+	NNI_ARG_UNUSED(sz);
+	NNI_ARG_UNUSED(t);
+	conf_exchange_node *node = *(conf_exchange_node **)v;
+
+	nng_atomic_alloc(&query_limit);
+
+	nni_aio_alloc(&query_reset_aio, query_reset_cb, &node->limit_frequency);
+
+	nng_aio_finish(query_reset_aio, 0);
+
+	return 0;
 }
 
 int
@@ -1373,6 +1423,10 @@ static nni_option exchange_sock_options[] = {
 	{
 		.o_name = NNG_OPT_EXCHANGE_GET_RBMSGMAP,
 		.o_get  = exchange_sock_get_rbmsgmap,
+	},
+	{
+		.o_name = NNG_OPT_EXCHANGE_START_LIMIT_TIMER,
+		.o_set  = exchange_sock_start_limit_timer,
 	},
 	{
 	    .o_name = NULL,
