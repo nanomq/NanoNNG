@@ -1173,7 +1173,6 @@ mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
 		nni_aio_list_remove(aio);
 	}
 	nni_mtx_unlock(&s->mtx);
-
 }
 
 static void
