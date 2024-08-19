@@ -69,27 +69,26 @@ struct nano_sock {
 
 // nano_pipe is our per-pipe protocol private structure.
 struct nano_pipe {
-	nni_mtx       lk;
-	nni_pipe     *pipe;
-	nano_sock    *broker;
-	uint32_t      id;	// pipe id of nni_pipe
-	uint16_t      rid;  // index of packet ID for resending
-	uint16_t      keepalive;
-	void         *tree; // root node of db tree
+	nni_mtx     lk;
+	nni_pipe   *pipe;
+	nano_sock  *broker;
+	conn_param *conn_param;
+	nni_lmq     rlmq; // only for sending cache
+	uint8_t     reason_code;
+	uint32_t    id;  // pipe id of nni_pipe
+	uint16_t    rid; // index of packet ID for resending
+	uint16_t    keepalive;
+	uint16_t 	ka_refresh; // ka_refresh count how many times the keepalive
+	                     	// timer has been triggered
+	bool          busy;
+	bool          event; // indicates if exposure disconnect event is valid
+	void         *tree;  // root node of db tree
+	void         *nano_qos_db; // 'sqlite' or 'nni_id_hash_map'
 	nni_aio       aio_send;
 	nni_aio       aio_recv;
 	nni_aio       aio_timer;
 	nni_list_node rnode; // receivable list linkage
-	bool          busy;
-	bool          closed;
-	bool          event; // indicates if exposure disconnect event is valid
-	uint8_t       reason_code;
-	// ka_refresh count how many times the keepalive timer has
-	// been triggered
-	uint16_t    ka_refresh;
-	conn_param *conn_param;
-	nni_lmq     rlmq; 		 // only for sending cache
-	void       *nano_qos_db; // 'sqlite' or 'nni_id_hash_map'
+	nni_atomic_bool closed;
 };
 
 void
@@ -272,9 +271,8 @@ nano_pipe_timer_cb(void *arg)
 			}
 		}
 	}
-
-	nni_mtx_unlock(&p->lk);
 	nni_sleep_aio(qos_duration * 1000, &p->aio_timer);
+	nni_mtx_unlock(&p->lk);
 	return;
 }
 
@@ -399,8 +397,8 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	}
 
 	// 2 locks here cause performance degradation
-	nni_mtx_lock(&p->lk);
 	nni_mtx_unlock(&s->lk);
+	nni_mtx_lock(&p->lk);
 
 	if (p->pipe->cache) {
 		if (nni_msg_get_type(msg) == CMD_PUBLISH) {
@@ -583,19 +581,22 @@ nano_pipe_fini(void *arg)
 		nni_aio_set_msg(&p->aio_send, NULL);
 		nni_msg_free(msg);
 	}
-	void *nano_qos_db = p->pipe->nano_qos_db;
 
 	//Safely free the msgs in qos_db, only when nano_qos_db is not taken by new pipe
+	nni_mtx_lock(&p->lk);
+	void *nano_qos_db = p->pipe->nano_qos_db;
 	if (p->event == true) {
 		if (!p->broker->conf->sqlite.enable && nano_qos_db != NULL) {
 			nni_qos_db_remove_all_msg(false,
 				nano_qos_db, nmq_close_unack_msg_cb);
 			nni_qos_db_fini_id_hash(nano_qos_db);
+			p->pipe->nano_qos_db = NULL;
 		}
 	} else {
 		// we keep all structs in broker layer, except this conn_param
 		conn_param_free(p->conn_param);
 	}
+	nni_mtx_unlock(&p->lk);
 
 	nni_mtx_fini(&p->lk);
 	nni_aio_fini(&p->aio_send);
@@ -630,6 +631,9 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	p->tree        = sock->db;
 	if (p->conn_param != NULL)
 		p->keepalive   = p->conn_param->keepalive_mqtt;
+	if (!p->broker->conf->sqlite.enable && pipe->nano_qos_db == NULL) {
+		nni_qos_db_init_id_hash(pipe->nano_qos_db);
+	}
 
 	return (0);
 }
@@ -691,7 +695,7 @@ session_keeping:
 		nni_mtx_unlock(&s->lk);
 		return NNG_ECONNSHUT;
 	}
-
+	// nni_mtx_lock(&p->lk);
 	if (p->conn_param->clean_start == 0) {
 		old = nni_id_get(&s->cached_sessions, p->pipe->p_id);
 		if (old != NULL) {
@@ -701,10 +705,11 @@ session_keeping:
 
 			if (!is_sqlite && p->pipe->nano_qos_db!= NULL) {
 				nni_qos_db_fini_id_hash(p->pipe->nano_qos_db);
+				p->pipe->nano_qos_db = NULL;
 			}
 
 			p->pipe->nano_qos_db = old->nano_qos_db;
-
+			log_info("resuming session %d with %d", npipe->p_id, old->pipe->p_id);
 			nni_pipe_id_swap(npipe->p_id, old->pipe->p_id);
 			p->id = nni_pipe_id(npipe);
 			// set event to false so that no notification will be
@@ -760,6 +765,7 @@ session_keeping:
 		// TODO disconnect client && send connack with reason code 0x05
 		log_warn("Invalid auth info.");
 	}
+	// nni_mtx_unlock(&p->lk);
 	nni_mtx_unlock(&s->lk);
 
 	// TODO MQTT V5 check return code
@@ -788,6 +794,7 @@ session_keeping:
 	nni_aio_set_msg(&p->aio_recv, msg);
 	// connection rate is not fast enough in this way.
 	nni_aio_finish_sync(&p->aio_recv, 0, nni_msg_len(msg));
+	nni_atomic_set_bool(&p->closed, false);
 	return (rv);
 }
 
@@ -798,6 +805,8 @@ close_pipe(nano_pipe *p)
 	nano_pipe *t = NULL;
 	nano_sock *s = p->broker;
 
+	nni_atomic_set_bool(&p->closed, true);
+	nni_mtx_lock(&s->lk);
 	if (nni_list_active(&s->recvpipes, p)) {
 		nni_msg *msg = nni_aio_get_msg(&p->aio_recv);
 		if (msg)
@@ -805,18 +814,12 @@ close_pipe(nano_pipe *p)
 		conn_param_free(p->conn_param);
 		nni_list_remove(&s->recvpipes, p);
 	}
-	nni_aio_close(&p->aio_send);
-	nni_aio_close(&p->aio_recv);
-	nni_aio_close(&p->aio_timer);
-	nni_mtx_lock(&p->lk);
-	p->closed = true;
-
-	nano_nni_lmq_flush(&p->rlmq, false);
-	nni_mtx_unlock(&p->lk);
 	// only remove matched pipe, could have been overwritten
 	t = nni_id_get(&s->pipes, nni_pipe_id(p->pipe));
 	if (t == p)
 		nni_id_remove(&s->pipes, nni_pipe_id(p->pipe));
+	nni_mtx_unlock(&s->lk);
+	nano_nni_lmq_flush(&p->rlmq, false);
 }
 
 static int
@@ -837,7 +840,7 @@ nano_pipe_close(void *arg)
 		return -1;
 	}
 
-	nni_mtx_lock(&s->lk);
+	nni_mtx_lock(&p->lk);
 	// we freed the conn_param when restoring pipe
 	// so check status of conn_param. just let it close silently
 	if (p->conn_param->clean_start == 0) {
@@ -850,8 +853,9 @@ nano_pipe_close(void *arg)
 			log_debug("keep session id [%s] ", p->conn_param->clientid.body);
 			nni_pipe_rele(new_pipe);
 			if (new_pipe == npipe) {
+				log_info("session stored %d", npipe->p_id);
 				nni_id_set(&s->cached_sessions, npipe->p_id, p);
-				nni_mtx_lock(&p->lk);
+				nni_mtx_lock(&s->lk);
 				// set event to false avoid of sending the
 				// disconnecting msg
 				p->event     = false;
@@ -874,11 +878,16 @@ nano_pipe_close(void *arg)
 			}
 		}
 
-		// have to stop aio timer first, otherwise we hit null qos_db
-		nni_aio_stop(&p->aio_timer);
+		// have to close & stop aio timer first, otherwise we hit null qos_db
+		nni_aio_finish_error(&p->aio_timer, NNG_ECANCELED);
+		nni_aio_close(&p->aio_timer);
+		nni_aio_close(&p->aio_send);
+		nni_aio_close(&p->aio_recv);
 		// take params from npipe to new pipe
 		new_pipe->packet_id = npipe->packet_id;
 		// there should be no msg in this map
+		if (new_pipe->nano_qos_db != NULL)
+			nni_qos_db_fini_id_hash(new_pipe->nano_qos_db);
 		new_pipe->nano_qos_db = npipe->nano_qos_db;
 		npipe->nano_qos_db = NULL;
 
@@ -886,6 +895,10 @@ nano_pipe_close(void *arg)
 		new_pipe->subinfol = npipe->subinfol;
 		npipe->subinfol    = l;
 		log_info("client kick itself while keeping session!");
+	} else {
+		nni_aio_close(&p->aio_send);
+		nni_aio_close(&p->aio_recv);
+		nni_aio_close(&p->aio_timer);
 	}
 	close_pipe(p);
 
@@ -896,7 +909,7 @@ nano_pipe_close(void *arg)
 		msg =
 		    nano_msg_notify_disconnect(p->conn_param, p->reason_code);
 		if (msg == NULL) {
-			nni_mtx_unlock(&s->lk);
+			nni_mtx_unlock(&p->lk);
 			return 0;
 		}
 		nni_msg_set_conn_param(msg, p->conn_param);
@@ -905,12 +918,14 @@ nano_pipe_close(void *arg)
 		nni_msg_set_cmd_type(msg, CMD_DISCONNECT_EV);
 		nni_msg_set_pipe(msg, p->id);
 
+		nni_mtx_lock(&s->lk);
 		// expose disconnect event
 		if ((ctx = nni_list_first(&s->recvq)) != NULL) {
 			aio       = ctx->raio;
 			ctx->raio = NULL;
 			nni_list_remove(&s->recvq, ctx);
 			nni_mtx_unlock(&s->lk);
+			nni_mtx_unlock(&p->lk);
 			nni_aio_set_msg(aio, msg);
 			nni_aio_finish(aio, 0, nni_msg_len(msg));
 			return 0;
@@ -927,8 +942,9 @@ nano_pipe_close(void *arg)
 			}
 			nni_lmq_put(&s->waitlmq, msg);
 		}
+		nni_mtx_unlock(&s->lk);
 	}
-	nni_mtx_unlock(&s->lk);
+	nni_mtx_unlock(&p->lk);
 	return 0;
 }
 
@@ -1079,6 +1095,10 @@ nano_pipe_recv_cb(void *arg)
 	if (msg == NULL) {
 		goto end;
 	}
+	if (nni_atomic_get_bool(&p->closed)) {
+		nni_msg_free(msg);
+		return;
+	}
 
 	// ttl = nni_atomic_get(&s->ttl);
 	nni_msg_set_pipe(msg, p->id);
@@ -1195,7 +1215,7 @@ nano_pipe_recv_cb(void *arg)
 		goto drop;
 	}
 	nni_mtx_lock(&s->lk);
-	if (p->closed) {
+	if (nni_atomic_get_bool(&p->closed)) {
 		// If we are closed, then we can't return data.
 		// This drops DISCONNECT packet.
 		nni_aio_set_msg(&p->aio_recv, NULL);

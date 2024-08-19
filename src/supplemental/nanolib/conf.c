@@ -873,9 +873,11 @@ conf_http_server_destroy(conf_http_server *http)
 void
 conf_init(conf *nanomq_conf)
 {
-	nanomq_conf->vin       = NULL;
-	nanomq_conf->url       = NULL;
-	nanomq_conf->conf_file = NULL;
+	nanomq_conf->vin          = NULL;
+	nanomq_conf->hook_ipc_url = NULL;
+	nanomq_conf->cmd_ipc_url  = NULL;
+	nanomq_conf->url          = NULL;
+	nanomq_conf->conf_file    = NULL;
 
 #if defined(SUPP_RULE_ENGINE)
 	conf_rule_init(&nanomq_conf->rule_eng);
@@ -3933,6 +3935,42 @@ conf_sqlite_destroy(conf_sqlite *sqlite)
 	}
 }
 
+static void
+conf_exchange_node_destory(conf_exchange_node *node)
+{
+	if (node) {
+		nng_strfree(node->exchange_url);
+		nng_strfree(node->topic);
+		nng_strfree(node->name);
+		nng_mtx_free(node->mtx);
+		for (int i = 0; i < node->rbufs_sz; i++) {
+			if (node->rbufs[i]) {
+				nng_strfree(node->rbufs[i]->name);
+				NNI_FREE_STRUCT(node->rbufs[i]);
+			}
+		}
+
+		cvector_free(node->rbufs);
+		NNI_FREE_STRUCT(node);
+	}
+
+}
+
+static void
+conf_exchange_destroy(conf_exchange *exchange)
+{
+	for (int i = 0; i < exchange->count; i++) {
+		conf_exchange_node *node = exchange->nodes[i];
+		conf_exchange_node_destory(node);
+	}
+
+	if (exchange->encryption) {
+		nng_strfree(exchange->encryption->key);
+		NNI_FREE_STRUCT(exchange->encryption);
+	}
+	cvector_free(exchange->nodes);
+}
+
 #if defined(SUPP_RULE_ENGINE)
 static void
 conf_rule_destroy(conf_rule *re)
@@ -3986,12 +4024,32 @@ conf_tlslist_destroy(conf_tls_list *tlslist)
 		tlslist->nodes = NULL;
 	}
 }
+#if defined(SUPP_PARQUET)
+static void
+conf_parquet_destroy(conf_parquet *parquet)
+{
+	if (parquet) {
+		nng_strfree(parquet->dir);
+		nng_strfree(parquet->file_name_prefix);
+
+		if (parquet->encryption.enable) {
+			nng_strfree(parquet->encryption.key);
+			nng_strfree(parquet->encryption.key_id);
+		}
+	}
+
+}
+#endif
 
 void
 conf_fini(conf *nanomq_conf)
 {
 	nng_strfree(nanomq_conf->url);
 	nng_strfree(nanomq_conf->conf_file);
+	if (nanomq_conf->vin)
+		nng_strfree(nanomq_conf->vin);
+	nng_strfree(nanomq_conf->hook_ipc_url);
+	nng_strfree(nanomq_conf->cmd_ipc_url);
 	nng_strfree(nanomq_conf->websocket.tls_url);
 
 	conf_http_server_destroy(&nanomq_conf->http_server);
@@ -4011,6 +4069,7 @@ conf_fini(conf *nanomq_conf)
 	conf_web_hook_destroy(&nanomq_conf->web_hook);
 	conf_auth_http_destroy(&nanomq_conf->auth_http);
 	conf_auth_destroy(&nanomq_conf->auths);
+	conf_exchange_destroy(&nanomq_conf->exchange);
 #if defined(ENABLE_LOG)
 	conf_log_destroy(&nanomq_conf->log);
 #endif
@@ -4018,5 +4077,8 @@ conf_fini(conf *nanomq_conf)
 	conf_tcplist_destroy(&nanomq_conf->tcp_list);
 	conf_tlslist_destroy(&nanomq_conf->tls_list);
 
+#if defined(SUPP_PARQUET)
+	conf_parquet_destroy(&nanomq_conf->parquet);
+#endif
 	free(nanomq_conf);
 }

@@ -442,6 +442,7 @@ nni_mqtt_msg_free(void *self)
 int
 nni_mqtt_msg_dup(void **dest, const void *src)
 {
+	int rv = 0;
 	nni_mqtt_proto_data *mqtt = (nni_mqtt_proto_data *) *dest;
 	nni_mqtt_proto_data *s    = (nni_mqtt_proto_data *) src;
 
@@ -455,17 +456,17 @@ nni_mqtt_msg_dup(void **dest, const void *src)
 			dup_connect(mqtt, s);
 		}
 		if (s->var_header.connect.properties) {
-			property_dup(&mqtt->var_header.connect.properties,
+			rv += property_dup(&mqtt->var_header.connect.properties,
 			    s->var_header.connect.properties);
 		}
 		if (s->payload.connect.will_properties) {
-			property_dup(&mqtt->var_header.connect.properties,
+			rv += property_dup(&mqtt->var_header.connect.properties,
 			    s->payload.connect.will_properties);
 		}
 		break;
 	case NNG_MQTT_CONNACK:
 		if (s->var_header.connack.properties) {
-			property_dup(&mqtt->var_header.connack.properties,
+			rv += property_dup(&mqtt->var_header.connack.properties,
 			    s->var_header.connack.properties);
 		}
 		break;
@@ -474,31 +475,31 @@ nni_mqtt_msg_dup(void **dest, const void *src)
 			dup_publish(mqtt, s);
 		}
 		if (s->var_header.publish.properties) {
-			property_dup(&mqtt->var_header.publish.properties,
+			rv += property_dup(&mqtt->var_header.publish.properties,
 			    s->var_header.publish.properties);
 		}
 		break;
 	case NNG_MQTT_PUBACK:
 		if (s->var_header.puback.properties) {
-			property_dup(&mqtt->var_header.puback.properties,
+			rv += property_dup(&mqtt->var_header.puback.properties,
 			    s->var_header.puback.properties);
 		}
 		break;
 	case NNG_MQTT_PUBREC:
 		if (s->var_header.pubrec.properties) {
-			property_dup(&mqtt->var_header.pubrec.properties,
+			rv += property_dup(&mqtt->var_header.pubrec.properties,
 			    s->var_header.pubrec.properties);
 		}
 		break;
 	case NNG_MQTT_PUBREL:
 		if (s->var_header.pubrel.properties) {
-			property_dup(&mqtt->var_header.pubrel.properties,
+			rv += property_dup(&mqtt->var_header.pubrel.properties,
 			    s->var_header.pubrel.properties);
 		}
 		break;
 	case NNG_MQTT_PUBCOMP:
 		if (s->var_header.pubcomp.properties) {
-			property_dup(&mqtt->var_header.pubcomp.properties,
+			rv += property_dup(&mqtt->var_header.pubcomp.properties,
 			    s->var_header.pubcomp.properties);
 		}
 		break;
@@ -517,14 +518,14 @@ nni_mqtt_msg_dup(void **dest, const void *src)
 			        sizeof(nni_mqtt_topic_qos));
 		}
 		if (s->var_header.subscribe.properties) {
-			property_dup(&mqtt->var_header.subscribe.properties,
+			rv += property_dup(&mqtt->var_header.subscribe.properties,
 			    s->var_header.subscribe.properties);
 		}
 		break;
 	case NNG_MQTT_SUBACK:
 		dup_suback(mqtt, s);
 		if (s->var_header.suback.properties) {
-			property_dup(&mqtt->var_header.suback.properties,
+			rv += property_dup(&mqtt->var_header.suback.properties,
 			    s->var_header.suback.properties);
 		}
 		break;
@@ -543,28 +544,28 @@ nni_mqtt_msg_dup(void **dest, const void *src)
 			        sizeof(nni_mqtt_topic));
 		}
 		if (s->var_header.unsubscribe.properties) {
-			property_dup(&mqtt->var_header.unsubscribe.properties,
+			rv += property_dup(&mqtt->var_header.unsubscribe.properties,
 			    s->var_header.unsubscribe.properties);
 		}
 		break;
 
 	case NNG_MQTT_UNSUBACK:
 		if (mqtt->var_header.unsuback.properties) {
-			property_dup(&mqtt->var_header.unsuback.properties,
+			rv += property_dup(&mqtt->var_header.unsuback.properties,
 			    s->var_header.unsuback.properties);
 		}
 		break;
 
 	case NNG_MQTT_DISCONNECT:
 		if (mqtt->var_header.disconnect.properties) {
-			property_dup(&mqtt->var_header.disconnect.properties,
+			rv += property_dup(&mqtt->var_header.disconnect.properties,
 			    s->var_header.disconnect.properties);
 		}
 		break;
 
 	case NNG_MQTT_AUTH:
 		if (s->var_header.auth.properties) {
-			property_dup(&mqtt->var_header.auth.properties,
+			rv += property_dup(&mqtt->var_header.auth.properties,
 			    s->var_header.auth.properties);
 		}
 		break;
@@ -575,7 +576,7 @@ nni_mqtt_msg_dup(void **dest, const void *src)
 
 	*dest = mqtt;
 
-	return (0);
+	return rv;
 }
 
 static void
@@ -3664,7 +3665,7 @@ property_set_value_binary(
 	property *prop     = property_alloc();
 	prop->id           = prop_id;
 	prop->data.is_copy = copy_value;
-	if (copy_value) {
+	if (copy_value && len > 0) {
 		mqtt_buf_create(&prop->data.p_value.binary, value, len);
 	} else {
 		prop->data.p_value.binary.buf    = (uint8_t *) value;
@@ -3815,6 +3816,7 @@ property_append(property *prop_list, property *last)
 	}
 }
 
+// will free the prop_list if prop_id is the last prop remaining
 void
 property_remove(property *prop_list, uint8_t prop_id)
 {
@@ -4248,7 +4250,9 @@ property_pub_by_will(property *will_prop)
 
 	property_dup(&list, will_prop);
 	property_remove(list, WILL_DELAY_INTERVAL);
-
+	if (get_mqtt_properties_len(list) == 0) {
+		goto out;
+	}
 	return list;
 
 out:

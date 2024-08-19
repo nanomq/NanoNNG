@@ -1024,8 +1024,10 @@ mqtt_close_unack_aio_cb(void *key, void *val)
 	nni_aio * aio = val;
 
 	if (aio) {
-		nni_aio_finish_error(aio, NNG_ECLOSED);
+		nni_aio_finish_sync(aio, NNG_ECLOSED, 0);
 		nni_msg_free(nni_aio_get_msg(aio));
+		nni_aio_set_msg(aio, NULL);
+		nni_aio_set_prov_data(aio, NULL);
 	}
 }
 

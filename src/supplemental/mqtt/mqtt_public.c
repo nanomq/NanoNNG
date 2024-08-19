@@ -725,7 +725,8 @@ mqtt_property_free(property *prop)
 void
 mqtt_property_foreach(property *prop, void (*cb)(property *))
 {
-	return property_foreach(prop, cb);
+	property_foreach(prop, cb);
+	return;
 }
 
 int
@@ -809,7 +810,8 @@ mqtt_property_get_value(property *prop, uint8_t prop_id)
 void
 mqtt_property_append(property *prop_list, property *last)
 {
-	return property_append(prop_list, last);
+	property_append(prop_list, last);
+	return;
 }
 
 
@@ -839,11 +841,14 @@ nng_mqtt_client_send_cb(void* arg)
 {
 	nng_mqtt_client *client = (nng_mqtt_client *) arg;
 	nng_aio *        aio    = client->send_aio;
-	nng_msg *        msg    = nng_aio_get_msg(aio);
 	nng_msg *        tmsg   = NULL;
 
 	nni_lmq * lmq = (nni_lmq *)client->msgq;
+	// in case of data conention while fini pipes
+	if (nng_aio_result(aio) == NNG_ECLOSED)
+		return;
 
+	nng_msg *        msg    = nng_aio_get_msg(aio);
 	if (msg == NULL || nng_aio_result(aio) != 0) {
 		client->cb(client, NULL, client->obj);
 		return;
