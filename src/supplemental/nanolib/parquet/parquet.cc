@@ -25,6 +25,13 @@ using parquet::schema::PrimitiveNode;
 using parquet::Encoding;
 #define PARQUET_END 1024
 
+vector<uint64_t> tsArr;
+vector<uint64_t> canidArr;
+vector<uint16_t> channelArr;
+vector<vector<uint8_t>> dataArr;
+unordered_map<uint32_t, unordered_set<uint16_t>> canidChannelMap;
+unordered_map<string, uint32_t> canidMap;
+
 static uint64_t key_span[2] = { 0 };
 
 #define DO_IT_IF_NOT_NULL(func, arg1, arg2) \
@@ -148,6 +155,36 @@ setup_schema()
 	return static_pointer_cast<GroupNode>(
 	    GroupNode::Make("schema", Repetition::REQUIRED, fields));
 }
+
+static shared_ptr<GroupNode>
+setup_schema(struct canStream *canData, uint32_t &index)
+{
+
+	unordered_set<string>       schema_set;
+	parquet::schema::NodeVector fields;
+	fields.push_back(
+	    PrimitiveNode::Make("ts", parquet::Repetition::REQUIRED,
+	        parquet::Type::INT64, parquet::ConvertedType::UINT_64));
+
+	for (uint32_t r = 0; r < canData->rowLen; r++) {
+		for (uint32_t c; canData->row[r].col; c++) {
+			string name = to_string(canData->row[r].col[c].busid) +
+			    to_string(canData->row[r].col[c].canid);
+			schema_set.insert(name);
+		}
+	}
+
+	index = 0;
+	for (auto n : schema_set) {
+		fields.push_back(PrimitiveNode::Make(n, Repetition::OPTIONAL,
+		    Type::BYTE_ARRAY, ConvertedType::NONE));
+		canidMap[n] = (++index);
+	}
+
+	return static_pointer_cast<GroupNode>(
+	    GroupNode::Make("schema", Repetition::REQUIRED, fields));
+}
+
 
 parquet_file_range *
 parquet_file_range_alloc(uint32_t start_idx, uint32_t end_idx, char *filename)
