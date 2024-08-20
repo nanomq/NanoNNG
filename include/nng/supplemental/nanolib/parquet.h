@@ -12,9 +12,10 @@ typedef struct parquet_object parquet_object;
 typedef void (*parquet_cb)(parquet_object *arg);
 
 typedef enum {
-	WRITE_TO_NORMAL,
-	WRITE_TO_TEMP,
-} parquet_write_type;
+	WRITE_RAW,
+	WRITE_CAN,
+	WRITE_TEMP_RAW,
+} parquet_type;
 
 typedef struct {
 	uint32_t start_idx;
@@ -33,15 +34,24 @@ typedef struct {
 	uint32_t size;
 } parquet_data_packet;
 
+struct parquet_payload {
+	uint16_t payload_len;
+	void    *payload;
+};
+
+struct parquet_data {
+	uint32_t          col_len;
+	uint32_t          row_len;
+	char            **schema;
+	parquet_payload **payload_arr;
+};
+
 struct parquet_object {
-	uint64_t            *keys;
-	uint8_t            **darray;
-	uint32_t            *dsize;
-	uint32_t             size;
+	parquet_data        *data;
+	parquet_type         type;
 	nng_aio             *aio;
-	void                *arg;
+	void	            *aio_arg;
 	parquet_file_ranges *ranges;
-	parquet_write_type   type;
 	char                *topic;
 };
 
@@ -50,9 +60,9 @@ typedef struct {
 	uint64_t    keys[2];
 } parquet_filename_range;
 
-parquet_object *parquet_object_alloc(uint64_t *keys, uint8_t **darray,
-    uint32_t *dsize, uint32_t size, nng_aio *aio, void *arg);
-void            parquet_object_free(parquet_object *elem);
+parquet_object *parquet_object_alloc(
+    parquet_data *data, parquet_type type, nng_aio *aio, void *aio_arg);
+void parquet_object_free(parquet_object *elem);
 
 parquet_file_range *parquet_file_range_alloc(
     uint32_t start_idx, uint32_t end_idx, char *filename);
