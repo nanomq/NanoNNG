@@ -205,6 +205,22 @@ parquet_file_range_free(parquet_file_range *range)
 	}
 }
 
+parquet_data *
+parquet_data_alloc(parquet_payload *payload, char **schema, uint32_t col_len,
+    uint32_t row_len)
+{
+	assert(col_len)
+	parquet_data *data = new parquet_data;
+	if (data == NULL) {
+		return NULL; // Memory allocation failed
+	}
+	data->col_len = col_len;
+	data->row_len = row_len;
+	data->schema  = schema;
+	data->payload = payload;
+	return data;
+}
+
 parquet_object *
 parquet_object_alloc(
     parquet_data *data, parquet_type type, nng_aio *aio, void *aio_arg)
@@ -227,6 +243,9 @@ void
 parquet_object_free(parquet_object *elem)
 {
 	if (elem) {
+		if (elem->data) {
+			parquet_data_free(data);
+		}
 		FREE_IF_NOT_NULL(elem->keys, elem->size);
 		FREE_IF_NOT_NULL(elem->dsize, elem->size);
 		nng_aio_set_prov_data(elem->aio, elem->arg);
