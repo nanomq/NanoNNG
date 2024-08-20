@@ -25,11 +25,11 @@ using parquet::schema::PrimitiveNode;
 using parquet::Encoding;
 #define PARQUET_END 1024
 
-vector<uint64_t> tsArr;
-vector<uint64_t> canidArr;
-vector<uint16_t> channelArr;
-vector<vector<uint8_t>> dataArr;
-unordered_map<uint32_t, unordered_set<uint16_t>> canidChannelMap;
+// vector<uint64_t> tsArr;
+// vector<uint64_t> canidArr;
+// vector<uint16_t> channelArr;
+// vector<vector<uint8_t>> dataArr;
+// unordered_map<uint32_t, unordered_set<uint16_t>> canidChannelMap;
 unordered_map<string, uint32_t> canidMap;
 
 static uint64_t key_span[2] = { 0 };
@@ -206,20 +206,20 @@ parquet_file_range_free(parquet_file_range *range)
 }
 
 parquet_object *
-parquet_object_alloc(uint64_t *keys, uint8_t **darray, uint32_t *dsize,
-    uint32_t size, nng_aio *aio, void *arg)
+parquet_object_alloc(
+    parquet_data *data, parquet_type type, nng_aio *aio, void *aio_arg)
 {
 	parquet_object *elem = new parquet_object;
-	elem->keys           = keys;
-	elem->darray         = darray;
-	elem->dsize          = dsize;
-	elem->size           = size;
+	elem->data           = data;
+	elem->type           = type;
 	elem->aio            = aio;
-	elem->arg            = arg;
-	elem->ranges         = new parquet_file_ranges;
-	elem->ranges->range  = NULL;
-	elem->ranges->start  = 0;
-	elem->ranges->size   = 0;
+	elem->aio_arg        = aio_arg;
+	// TODO: not all types need file ranges
+ 	elem->ranges         = new parquet_file_ranges;
+ 	elem->ranges->range  = NULL;
+ 	elem->ranges->start  = 0;
+ 	elem->ranges->size   = 0;
+
 	return elem;
 }
 
@@ -237,6 +237,7 @@ parquet_object_free(parquet_object *elem)
 		log_debug("finish write aio");
 		DO_IT_IF_NOT_NULL(nng_aio_finish_sync, elem->aio, 0);
 		FREE_IF_NOT_NULL(elem->darray, elem->size);
+
 		for (int i = 0; i < elem->ranges->size; i++) {
 			parquet_file_range_free(elem->ranges->range[i]);
 		}
@@ -253,7 +254,7 @@ parquet_write_batch_async(parquet_object *elem)
 		log_error("Parquet is not ready or not launch!");
 		return -1;
 	}
-	elem->type = WRITE_TO_NORMAL;
+	elem->type = WRITE_RAW;
 	log_debug("WAIT_FOR_AVAILABLE");
 	WAIT_FOR_AVAILABLE
 	log_debug("WAIT_FOR parquet_queue_mutex");
@@ -277,7 +278,7 @@ parquet_write_batch_tmp_async(parquet_object *elem)
 		log_error("Parquet is not ready or not launch!");
 		return -1;
 	}
-	elem->type = WRITE_TO_TEMP;
+	elem->type = WRITE_TEMP_RAW;
 	log_debug("WAIT_FOR_AVAILABLE");
 	WAIT_FOR_AVAILABLE
 	log_debug("WAIT_FOR parquet_queue_mutex");
@@ -499,6 +500,136 @@ compute_and_rename_file_withMD5(char *filename, conf_parquet *conf, char *topic)
 	return md5_file_name;
 }
 
+static int
+parquet_write_can(conf_parquet *conf, parquet_object *elem)
+{
+	try {
+		struct canStream *canData; // TODO = elem->
+		uint32_t bitmapSize = 0;
+
+		shared_ptr<GroupNode> schema =
+		    setup_schema(canData, bitmapSize);
+		// TODO parquet get file name
+		//
+		// get_file_name(conf, start, end);
+
+		string filename("canBatchWriteAll.parquet");
+
+		cout << "bitmapSize: " << bitmapSize << endl;
+
+		bool bitmap[bitmapSize + 1];
+		memset(bitmap, 1, bitmapSize + 1);
+
+		// Create a ParquetFileWriter instance
+		parquet::WriterProperties::Builder builder;
+		builder.created_by("NanoMQ")
+		    ->version(parquet::ParquetVersion::PARQUET_2_6)
+		    ->data_page_version(parquet::ParquetDataPageVersion::V2)
+		    ->encoding("ts", Encoding::DELTA_BINARY_PACKED)
+		    ->disable_dictionary("ts")
+		    ->compression(static_cast<arrow::Compression::type>(
+		        conf->comp_type));
+
+		shared_ptr<parquet::WriterProperties> props = builder.build();
+		using FileClass = arrow::io::FileOutputStream;
+		shared_ptr<FileClass> out_file;
+		PARQUET_ASSIGN_OR_THROW(out_file, FileClass::Open(filename));
+
+		// Create a Parquet file writer
+		std::unique_ptr<parquet::ParquetFileWriter> parquet_writer;
+		parquet_writer =
+		    parquet::ParquetFileWriter::Open(out_file, schema, props);
+
+		parquet::RowGroupWriter *rg_writer =
+		    parquet_writer->AppendBufferedRowGroup();
+
+		int16_t definition_level = 1;
+
+		uint32_t ts_num = 0, emp_num = 0;
+
+		uint32_t drop_num = 0;
+		int      num      = 0;
+
+		for (uint32_t r = 0; r < canData->rowLen; r++) {
+
+			// Set bitmap
+			for (uint32_t i = 1; i < bitmapSize + 1; i++) {
+				if (bitmap[i] == false) {
+					bitmap[i] = true;
+					parquet::ByteArrayWriter *ba_writer =
+					    static_cast<
+					        parquet::ByteArrayWriter *>(
+					        rg_writer->column(i));
+					definition_level = 0;
+					ba_writer->WriteBatch(1,
+					    &definition_level, nullptr,
+					    nullptr);
+				}
+			}
+
+			// reset bitmap
+			memset(bitmap, 0, bitmapSize + 1);
+
+			parquet::Int64Writer *ts_writer =
+			    static_cast<parquet::Int64Writer *>(
+			        rg_writer->column(0));
+			ts_writer->WriteBatch(1, &definition_level, nullptr,
+			    (int64_t *) canData->row[r].timestamp);
+
+			for (uint32_t c; c < canData->row[r].colLen; c++) {
+				uint32_t canid = canData->row[r].col[c].canid;
+				uint8_t  busid = canData->row[r].col[c].busid;
+				uint16_t dataLen =
+				    canData->row[r].col[c].payloadLen;
+				void *data = canData->row[r].col[c].payload;
+
+				string newName =
+				    to_string(busid) + "+" + to_string(canid);
+
+				auto col_idx = canidMap[newName];
+
+				if (bitmap[col_idx] == false) {
+					bitmap[col_idx] = true;
+					parquet::ByteArrayWriter *ba_writer =
+					    static_cast<
+					        parquet::ByteArrayWriter *>(
+					        rg_writer->column(col_idx));
+					parquet::ByteArray value;
+					definition_level = 1;
+					value.ptr = (const uint8_t *) data;
+					value.len = dataLen;
+					auto ret = ba_writer->WriteBatch(1,
+					    &definition_level, nullptr,
+					    &value);
+				}
+			}
+		}
+
+		for (uint32_t i = 1; i < bitmapSize + 1; i++) {
+			if (bitmap[i] == false) {
+				bitmap[i] = true;
+				parquet::ByteArrayWriter *ba_writer =
+				    static_cast<parquet::ByteArrayWriter *>(
+				        rg_writer->column(i));
+				definition_level = 0;
+				ba_writer->WriteBatch(
+				    1, &definition_level, nullptr, nullptr);
+			}
+		}
+
+		// Close the RowGroupWriter
+		rg_writer->Close();
+		// Close the ParquetFileWriter
+		parquet_writer->Close();
+
+		// Write the bytes to file
+		// DCHECK(out_file->Close().ok());
+	} catch (const std::exception &e) {
+		std::cerr << "Parquet write error: " << e.what() << std::endl;
+		return -1;
+	}
+}
+
 int
 parquet_write(
     conf_parquet *conf, shared_ptr<GroupNode> schema, parquet_object *elem)
@@ -689,10 +820,13 @@ parquet_write_loop_v2(void *config)
 		pthread_mutex_unlock(&parquet_queue_mutex);
 
 		switch (ele->type) {
-		case WRITE_TO_NORMAL:
+		case WRITE_RAW:
 			parquet_write(conf, schema, ele);
 			break;
-		case WRITE_TO_TEMP:
+		case WRITE_CAN:
+			parquet_write_can(conf, ele);
+			break;
+		case WRITE_TEMP_RAW:
 			parquet_write_tmp(conf, schema, ele);
 			break;
 		default:
