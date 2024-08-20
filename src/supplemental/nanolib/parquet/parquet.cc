@@ -532,136 +532,6 @@ compute_and_rename_file_withMD5(char *filename, conf_parquet *conf, char *topic)
 	return md5_file_name;
 }
 
-static int
-parquet_write_can(conf_parquet *conf, parquet_object *elem)
-{
-	try {
-		struct canStream *canData; // TODO = elem->
-		uint32_t bitmapSize = 0;
-
-		shared_ptr<GroupNode> schema =
-		    setup_schema(canData, bitmapSize);
-		// TODO parquet get file name
-		//
-		// get_file_name(conf, start, end);
-
-		string filename("canBatchWriteAll.parquet");
-
-		cout << "bitmapSize: " << bitmapSize << endl;
-
-		bool bitmap[bitmapSize + 1];
-		memset(bitmap, 1, bitmapSize + 1);
-
-		// Create a ParquetFileWriter instance
-		parquet::WriterProperties::Builder builder;
-		builder.created_by("NanoMQ")
-		    ->version(parquet::ParquetVersion::PARQUET_2_6)
-		    ->data_page_version(parquet::ParquetDataPageVersion::V2)
-		    ->encoding("ts", Encoding::DELTA_BINARY_PACKED)
-		    ->disable_dictionary("ts")
-		    ->compression(static_cast<arrow::Compression::type>(
-		        conf->comp_type));
-
-		shared_ptr<parquet::WriterProperties> props = builder.build();
-		using FileClass = arrow::io::FileOutputStream;
-		shared_ptr<FileClass> out_file;
-		PARQUET_ASSIGN_OR_THROW(out_file, FileClass::Open(filename));
-
-		// Create a Parquet file writer
-		std::unique_ptr<parquet::ParquetFileWriter> parquet_writer;
-		parquet_writer =
-		    parquet::ParquetFileWriter::Open(out_file, schema, props);
-
-		parquet::RowGroupWriter *rg_writer =
-		    parquet_writer->AppendBufferedRowGroup();
-
-		int16_t definition_level = 1;
-
-		uint32_t ts_num = 0, emp_num = 0;
-
-		uint32_t drop_num = 0;
-		int      num      = 0;
-
-		for (uint32_t r = 0; r < canData->rowLen; r++) {
-
-			// Set bitmap
-			for (uint32_t i = 1; i < bitmapSize + 1; i++) {
-				if (bitmap[i] == false) {
-					bitmap[i] = true;
-					parquet::ByteArrayWriter *ba_writer =
-					    static_cast<
-					        parquet::ByteArrayWriter *>(
-					        rg_writer->column(i));
-					definition_level = 0;
-					ba_writer->WriteBatch(1,
-					    &definition_level, nullptr,
-					    nullptr);
-				}
-			}
-
-			// reset bitmap
-			memset(bitmap, 0, bitmapSize + 1);
-
-			parquet::Int64Writer *ts_writer =
-			    static_cast<parquet::Int64Writer *>(
-			        rg_writer->column(0));
-			ts_writer->WriteBatch(1, &definition_level, nullptr,
-			    (int64_t *) canData->row[r].timestamp);
-
-			for (uint32_t c; c < canData->row[r].colLen; c++) {
-				uint32_t canid = canData->row[r].col[c].canid;
-				uint8_t  busid = canData->row[r].col[c].busid;
-				uint16_t dataLen =
-				    canData->row[r].col[c].payloadLen;
-				void *data = canData->row[r].col[c].payload;
-
-				string newName =
-				    to_string(busid) + "+" + to_string(canid);
-
-				auto col_idx = canidMap[newName];
-
-				if (bitmap[col_idx] == false) {
-					bitmap[col_idx] = true;
-					parquet::ByteArrayWriter *ba_writer =
-					    static_cast<
-					        parquet::ByteArrayWriter *>(
-					        rg_writer->column(col_idx));
-					parquet::ByteArray value;
-					definition_level = 1;
-					value.ptr = (const uint8_t *) data;
-					value.len = dataLen;
-					auto ret = ba_writer->WriteBatch(1,
-					    &definition_level, nullptr,
-					    &value);
-				}
-			}
-		}
-
-		for (uint32_t i = 1; i < bitmapSize + 1; i++) {
-			if (bitmap[i] == false) {
-				bitmap[i] = true;
-				parquet::ByteArrayWriter *ba_writer =
-				    static_cast<parquet::ByteArrayWriter *>(
-				        rg_writer->column(i));
-				definition_level = 0;
-				ba_writer->WriteBatch(
-				    1, &definition_level, nullptr, nullptr);
-			}
-		}
-
-		// Close the RowGroupWriter
-		rg_writer->Close();
-		// Close the ParquetFileWriter
-		parquet_writer->Close();
-
-		// Write the bytes to file
-		// DCHECK(out_file->Close().ok());
-	} catch (const std::exception &e) {
-		std::cerr << "Parquet write error: " << e.what() << std::endl;
-		return -1;
-	}
-}
-
 int
 parquet_write_core(parquet_conf *conf, char *filename,
     shared_ptr<GroupNode> schema, parquet_data *data)
@@ -716,12 +586,13 @@ parquet_write_core(parquet_conf *conf, char *filename,
 		parquet::ByteArrayWriter *ba_writer =
 		    static_cast<parquet::ByteArrayWriter *>(
 		        rg_writer->NextColumn());
-		for (uint32_t i = old_index; i <= new_index; i++) {
-			if (payload_arr[c][i] != NULL) {
+		// for (uint32_t i = old_index; i <= new_index; i++) {
+		for (uint32_t r = 0; r < row_len; r++) {
+			if (payload_arr[c][r] != NULL) {
 				parquet::ByteArray value;
 				int16_t            definition_level = 1;
-				value.ptr = payload_arr[c][i]->data;
-				value.len = payload_arr[c][i]->len;
+				value.ptr = payload_arr[c][r]->data;
+				value.len = payload_arr[c][r]->len;
 				ba_writer->WriteBatch(
 				    1, &definition_level, nullptr, &value);
 			} else {
@@ -739,12 +610,13 @@ int
 parquet_write(
     conf_parquet *conf, parquet_object *elem)
 {
-	uint32_t           old_index      = 0;
-	uint32_t           new_index      = 0;
+	// uint32_t           old_index      = 0;
+	// uint32_t           new_index      = 0;
 	char              *last_file_name = NULL;
 	char             **schema         = elem->data->schema;
-	char             **col_len        = elem->data->col_len;
-	char             **row_len        = elem->data->row_len;
+	uint32_t           col_len        = elem->data->col_len;
+	uint32_t           row_len        = elem->data->row_len;
+	uint64_t          *ts_arr         = elem->ts;
 	parquet_payload ***payload_arr    = elem->data->payload_arr;
 
 	shared_ptr<GroupNode> schema = setup_schema(schema, col_len);
@@ -772,11 +644,11 @@ again:
 			log_error("Failed to calculate md5sum");
 		}
 
-		parquet_file_range *range =
-		    parquet_file_range_alloc(old_index, new_index, md5_file_name);
-		update_parquet_file_ranges(conf, elem, range);
-
-		old_index = new_index;
+		// parquet_file_range *range =
+		//     parquet_file_range_alloc(old_index, new_index, md5_file_name);
+		// update_parquet_file_ranges(conf, elem, range);
+		// 
+		// old_index = new_index;
 
 		log_debug("wait for parquet_queue_mutex");
 		pthread_mutex_lock(&parquet_queue_mutex);
@@ -790,10 +662,11 @@ again:
 		last_file_name = NULL;
 	}
 	log_debug("parquet_write");
-	new_index = compute_new_index(elem, old_index, conf->file_size);
-	uint64_t key_start = elem->keys[old_index];
-	uint64_t key_end   = elem->keys[new_index];
-	char    *filename  = get_file_name(conf, key_start, key_end);
+	// new_index = compute_new_index(elem, old_index, conf->file_size);
+	// uint64_t key_start = elem->keys[old_index];
+	// uint64_t key_end   = elem->keys[new_index];
+	// char    *filename  = get_file_name(conf, key_start, key_end);
+	char    *filename  = get_file_name(conf, ts_arr[0], ts_arr[row_len-1]);
 	if (filename == NULL) {
 		parquet_object_free(elem);
 		log_error("Failed to get file name");
@@ -801,77 +674,13 @@ again:
 	}
 
 	{
-		// parquet::WriterProperties::Builder builder;
-		// log_debug("init builder");
-		// builder.created_by("NanoMQ")
-		//     ->version(parquet::ParquetVersion::PARQUET_2_6)
-		//     ->data_page_version(parquet::ParquetDataPageVersion::V2)
-		//     ->encoding("key", Encoding::DELTA_BINARY_PACKED)
-		//     ->disable_dictionary("key")
-		//     ->compression(static_cast<arrow::Compression::type>(
-		//         conf->comp_type));
-		// log_debug("check encry");
-		// if (conf->encryption.enable) {
-		// 	shared_ptr<parquet::FileEncryptionProperties>
-		// 	    encryption_configurations;
-		// 	encryption_configurations =
-		// 	    parquet_set_encryption(conf);
-		// 	builder.encryption(encryption_configurations);
-		// }
-
-		// shared_ptr<parquet::WriterProperties> props = builder.build();
-		// using FileClass = arrow::io::FileOutputStream;
-		// shared_ptr<FileClass> out_file;
-		// PARQUET_ASSIGN_OR_THROW(out_file, FileClass::Open(filename));
-		// std::shared_ptr<parquet::ParquetFileWriter> file_writer =
-		//     parquet::ParquetFileWriter::Open(out_file, schema, props);
-
-		// // Append a RowGroup with a specific number of rows.
-		// parquet::RowGroupWriter *rg_writer =
-		//     file_writer->AppendRowGroup();
-
-		// // Write the Int64 column
-		// log_debug("start doing int64 write");
-		// parquet::Int64Writer *int64_writer =
-		//     static_cast<parquet::Int64Writer *>(
-		//         rg_writer->NextColumn());
-		// for (uint32_t i = old_index; i <= new_index; i++) {
-		// 	int64_t value            = elem->keys[i];
-		// 	int16_t definition_level = 1;
-		// 	int64_writer->WriteBatch(
-		// 	    1, &definition_level, nullptr, &value);
-		// }
-		// log_debug("stop doing int64 write");
-
-		// // Write the ByteArray column. Make every alternate values NULL
-		// for (uint32_t c = 0; c < col_len; c++) {
-		// 	parquet::ByteArrayWriter *ba_writer =
-		// 	    static_cast<parquet::ByteArrayWriter *>(
-		// 	        rg_writer->NextColumn());
-		// 	for (uint32_t i = old_index; i <= new_index; i++) {
-		// 		if (payload_arr[c][i] != NULL) {
-		// 			parquet::ByteArray value;
-		// 			int16_t definition_level = 1;
-		// 			value.ptr = payload_arr[c][i]->data;
-		// 			value.len = payload_arr[c][i]->len;
-		// 			ba_writer->WriteBatch(1,
-		// 			    &definition_level, nullptr,
-		// 			    &value);
-		// 		} else {
-		// 			ba_writer->WriteBatch(
-		// 			    1, &definition_level, nullptr, nullptr);
-		// 		}
-		// 	}
-		// }
-		// log_debug("stop doing ByteArray write");
 		parquet_write_core(conf, filename, schema, elem->data);
-
 		last_file_name = filename;
 		// If byte size large than file size limit, 
 		// we will open a new file.
 		// go again.
-		if (new_index != elem->size - 1)
-			goto again;
+		// if (new_index != elem->size - 1)
+		// 	goto again;
 	}
 	if (last_file_name != NULL) {
 		char *md5_file_name =
