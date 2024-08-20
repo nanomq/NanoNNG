@@ -142,7 +142,7 @@ remove_old_file(void)
 }
 
 static shared_ptr<GroupNode>
-setup_schema(char **schema, uint32_t col_len)
+setup_schema(char **schema, uint32_t schema_col)
 {
 	parquet::schema::NodeVector fields;
 	if (NULL == schema[0]) {
@@ -155,7 +155,7 @@ setup_schema(char **schema, uint32_t col_len)
 	        parquet::Type::INT64, parquet::ConvertedType::UINT_64));
 
 	// Set data column(like canid+busid or raw data...)
-	for (int i = 1; i < col_len; i++) {
+	for (uint32_t i = 1; i < schema_col; i++) {
 		if (NULL == schema[i]) {
 			log_error("Schema value is NULL!");
 			return NULL;
@@ -189,10 +189,10 @@ parquet_file_range_free(parquet_file_range *range)
 }
 
 parquet_data *
-parquet_data_alloc(parquet_payload **payload, char **schema, uint32_t col_len,
+parquet_data_alloc(parquet_payload **payload_arr, char **schema, uint32_t col_len,
     uint32_t row_len)
 {
-	if (payload == NULL || schema == NULL || col_len == 0 ||
+	if (payload_arr == NULL || schema == NULL || col_len == 0 ||
 	    row_len == 0) {
 		log_error("payload || schema should not be NULL, col || row "
 		          "len should't == 0");
@@ -204,7 +204,7 @@ parquet_data_alloc(parquet_payload **payload, char **schema, uint32_t col_len,
 	data->col_len = col_len;
 	data->row_len = row_len;
 	data->schema  = schema;
-	data->payload = payload;
+	data->payload_arr = payload_arr;
 	return data;
 }
 
@@ -212,12 +212,12 @@ void
 parquet_data_free(parquet_data *data)
 {
 	if (data) {
-		for (int i = 0; i < data->col_len; i++) {
+		for (uint32_t i = 0; i < data->col_len; i++) {
 			FREE_IF_NOT_NULL(
 			    data->schema[i], strlen(data->schema[i]));
 			data->schema[i] = NULL;
 			// FIXME:
-			for (int j = 0; j < data->row_len; j++) {
+			for (uint32_t j = 0; j < data->row_len; j++) {
 				parquet_payload *payload =
 				    data->payload_arr[i][j];
 				if (payload) {
@@ -663,13 +663,96 @@ parquet_write_can(conf_parquet *conf, parquet_object *elem)
 }
 
 int
+parquet_write_core(parquet_conf *conf, char *filename,
+    shared_ptr<GroupNode> schema, parquet_data *data)
+{
+
+	char             **schema      = data->schema;
+	char             **col_len     = data->col_len;
+	char             **row_len     = data->row_len;
+	parquet_payload ***payload_arr = data->payload_arr;
+
+	parquet::WriterProperties::Builder builder;
+	log_debug("init builder");
+	builder.created_by("NanoMQ")
+	    ->version(parquet::ParquetVersion::PARQUET_2_6)
+	    ->data_page_version(parquet::ParquetDataPageVersion::V2)
+	    ->encoding(schema[0], Encoding::DELTA_BINARY_PACKED)
+	    ->disable_dictionary(schema[0])
+	    ->compression(
+	        static_cast<arrow::Compression::type>(conf->comp_type));
+	log_debug("check encry");
+	if (conf->encryption.enable) {
+		shared_ptr<parquet::FileEncryptionProperties>
+		    encryption_configurations;
+		encryption_configurations = parquet_set_encryption(conf);
+		builder.encryption(encryption_configurations);
+	}
+
+	shared_ptr<parquet::WriterProperties> props = builder.build();
+	using FileClass = arrow::io::FileOutputStream;
+	shared_ptr<FileClass> out_file;
+	PARQUET_ASSIGN_OR_THROW(out_file, FileClass::Open(filename));
+	std::shared_ptr<parquet::ParquetFileWriter> file_writer =
+	    parquet::ParquetFileWriter::Open(out_file, schema, props);
+
+	// Append a RowGroup with a specific number of rows.
+	parquet::RowGroupWriter *rg_writer = file_writer->AppendRowGroup();
+
+	// Write the Int64 column
+	log_debug("start doing int64 write");
+	parquet::Int64Writer *int64_writer =
+	    static_cast<parquet::Int64Writer *>(rg_writer->NextColumn());
+	for (uint32_t i = old_index; i <= new_index; i++) {
+		int64_t value            = elem->keys[i];
+		int16_t definition_level = 1;
+		int64_writer->WriteBatch(
+		    1, &definition_level, nullptr, &value);
+	}
+	log_debug("stop doing int64 write");
+
+	// Write the ByteArray column. Make every alternate values NULL
+	for (uint32_t c = 0; c < col_len; c++) {
+		parquet::ByteArrayWriter *ba_writer =
+		    static_cast<parquet::ByteArrayWriter *>(
+		        rg_writer->NextColumn());
+		for (uint32_t i = old_index; i <= new_index; i++) {
+			if (payload_arr[c][i] != NULL) {
+				parquet::ByteArray value;
+				int16_t            definition_level = 1;
+				value.ptr = payload_arr[c][i]->data;
+				value.len = payload_arr[c][i]->len;
+				ba_writer->WriteBatch(
+				    1, &definition_level, nullptr, &value);
+			} else {
+				ba_writer->WriteBatch(
+				    1, &definition_level, nullptr, nullptr);
+			}
+		}
+	}
+	log_debug("stop doing ByteArray write");
+
+	return 0;
+}
+
+int
 parquet_write(
     conf_parquet *conf, parquet_object *elem)
 {
-	uint32_t old_index      = 0;
-	uint32_t new_index      = 0;
-	char    *last_file_name = NULL;
-	shared_ptr<GroupNode> schema = setup_schema();
+	uint32_t           old_index      = 0;
+	uint32_t           new_index      = 0;
+	char              *last_file_name = NULL;
+	char             **schema         = elem->data->schema;
+	char             **col_len        = elem->data->col_len;
+	char             **row_len        = elem->data->row_len;
+	parquet_payload ***payload_arr    = elem->data->payload_arr;
+
+	shared_ptr<GroupNode> schema = setup_schema(schema, col_len);
+
+	if (NULL == schema) {
+		log_error("Schema set error.");
+		return -1;
+	}
 
 again:
 
@@ -718,62 +801,70 @@ again:
 	}
 
 	{
-		parquet::WriterProperties::Builder builder;
-		log_debug("init builder");
-		builder.created_by("NanoMQ")
-		    ->version(parquet::ParquetVersion::PARQUET_2_6)
-		    ->data_page_version(parquet::ParquetDataPageVersion::V2)
-		    ->encoding("key", Encoding::DELTA_BINARY_PACKED)
-		    ->disable_dictionary("key")
-		    ->compression(static_cast<arrow::Compression::type>(
-		        conf->comp_type));
-		log_debug("check encry");
-		if (conf->encryption.enable) {
-			shared_ptr<parquet::FileEncryptionProperties>
-			    encryption_configurations;
-			encryption_configurations =
-			    parquet_set_encryption(conf);
-			builder.encryption(encryption_configurations);
-		}
+		// parquet::WriterProperties::Builder builder;
+		// log_debug("init builder");
+		// builder.created_by("NanoMQ")
+		//     ->version(parquet::ParquetVersion::PARQUET_2_6)
+		//     ->data_page_version(parquet::ParquetDataPageVersion::V2)
+		//     ->encoding("key", Encoding::DELTA_BINARY_PACKED)
+		//     ->disable_dictionary("key")
+		//     ->compression(static_cast<arrow::Compression::type>(
+		//         conf->comp_type));
+		// log_debug("check encry");
+		// if (conf->encryption.enable) {
+		// 	shared_ptr<parquet::FileEncryptionProperties>
+		// 	    encryption_configurations;
+		// 	encryption_configurations =
+		// 	    parquet_set_encryption(conf);
+		// 	builder.encryption(encryption_configurations);
+		// }
 
-		shared_ptr<parquet::WriterProperties> props = builder.build();
-		using FileClass = arrow::io::FileOutputStream;
-		shared_ptr<FileClass> out_file;
-		PARQUET_ASSIGN_OR_THROW(out_file, FileClass::Open(filename));
-		std::shared_ptr<parquet::ParquetFileWriter> file_writer =
-		    parquet::ParquetFileWriter::Open(out_file, schema, props);
+		// shared_ptr<parquet::WriterProperties> props = builder.build();
+		// using FileClass = arrow::io::FileOutputStream;
+		// shared_ptr<FileClass> out_file;
+		// PARQUET_ASSIGN_OR_THROW(out_file, FileClass::Open(filename));
+		// std::shared_ptr<parquet::ParquetFileWriter> file_writer =
+		//     parquet::ParquetFileWriter::Open(out_file, schema, props);
 
-		// Append a RowGroup with a specific number of rows.
-		parquet::RowGroupWriter *rg_writer =
-		    file_writer->AppendRowGroup();
+		// // Append a RowGroup with a specific number of rows.
+		// parquet::RowGroupWriter *rg_writer =
+		//     file_writer->AppendRowGroup();
 
-		// Write the Int64 column
-		log_debug("start doing int64 write");
-		parquet::Int64Writer *int64_writer =
-		    static_cast<parquet::Int64Writer *>(
-		        rg_writer->NextColumn());
-		for (uint32_t i = old_index; i <= new_index; i++) {
-			int64_t value            = elem->keys[i];
-			int16_t definition_level = 1;
-			int64_writer->WriteBatch(
-			    1, &definition_level, nullptr, &value);
-		}
-		log_debug("stop doing int64 write");
+		// // Write the Int64 column
+		// log_debug("start doing int64 write");
+		// parquet::Int64Writer *int64_writer =
+		//     static_cast<parquet::Int64Writer *>(
+		//         rg_writer->NextColumn());
+		// for (uint32_t i = old_index; i <= new_index; i++) {
+		// 	int64_t value            = elem->keys[i];
+		// 	int16_t definition_level = 1;
+		// 	int64_writer->WriteBatch(
+		// 	    1, &definition_level, nullptr, &value);
+		// }
+		// log_debug("stop doing int64 write");
 
-		// Write the ByteArray column. Make every alternate values NULL
-		parquet::ByteArrayWriter *ba_writer =
-		    static_cast<parquet::ByteArrayWriter *>(
-		        rg_writer->NextColumn());
-		for (uint32_t i = old_index; i <= new_index; i++) {
-			parquet::ByteArray value;
-			int16_t            definition_level = 1;
-			value.ptr                           = elem->darray[i];
-			value.len                           = elem->dsize[i];
-			ba_writer->WriteBatch(
-			    1, &definition_level, nullptr, &value);
-		}
-		log_debug("stop doing ByteArray write");
-
+		// // Write the ByteArray column. Make every alternate values NULL
+		// for (uint32_t c = 0; c < col_len; c++) {
+		// 	parquet::ByteArrayWriter *ba_writer =
+		// 	    static_cast<parquet::ByteArrayWriter *>(
+		// 	        rg_writer->NextColumn());
+		// 	for (uint32_t i = old_index; i <= new_index; i++) {
+		// 		if (payload_arr[c][i] != NULL) {
+		// 			parquet::ByteArray value;
+		// 			int16_t definition_level = 1;
+		// 			value.ptr = payload_arr[c][i]->data;
+		// 			value.len = payload_arr[c][i]->len;
+		// 			ba_writer->WriteBatch(1,
+		// 			    &definition_level, nullptr,
+		// 			    &value);
+		// 		} else {
+		// 			ba_writer->WriteBatch(
+		// 			    1, &definition_level, nullptr, nullptr);
+		// 		}
+		// 	}
+		// }
+		// log_debug("stop doing ByteArray write");
+		parquet_write_core(conf, filename, schema, elem->data);
 
 		last_file_name = filename;
 		// If byte size large than file size limit, 
