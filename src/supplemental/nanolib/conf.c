@@ -829,7 +829,6 @@ conf_sqlite_init(conf_sqlite *sqlite)
 	sqlite->disk_cache_size     = 102400;
 	sqlite->mounted_file_path   = NULL;
 	sqlite->flush_mem_threshold = 100;
-	sqlite->resend_interval     = 5000;
 }
 
 #if defined(SUPP_RULE_ENGINE)
@@ -2770,6 +2769,9 @@ conf_bridge_node_init(conf_bridge_node *node)
 
 	node->hybrid             = false;
 	node->hybrid_servers     = NULL;
+	node->resend_interval    = 5000;
+	node->resend_wait        = 3000;
+	node->cancel_timeout     = 10000;
 
 #if defined(SUPP_QUIC)
 	node->multi_stream       = false;
@@ -2962,6 +2964,18 @@ conf_bridge_node_parse_with_name(const char *path,const char *key_prefix, const 
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".max_send_queue_len")) != NULL) {
 			node->max_send_queue_len = atoi(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".resend_interval")) != NULL) {
+			node->resend_interval = atoi(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".cancel_timeout")) != NULL) {
+			node->cancel_timeout = atoi(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".resend_wait")) != NULL) {
+			node->resend_wait = atoi(value);
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".max_recv_queue_len")) != NULL) {
@@ -3278,6 +3292,12 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		    node->name, node->backoff_max);
 		log_info("%sbridge.mqtt.%s.max_parallel_processes:     %ld", prefix,
 		    node->name, node->parallel);
+		log_info("%sbridge.mqtt.%s.resend_interval:            %ld", prefix,
+		    node->name, node->resend_interval);
+		log_info("%sbridge.mqtt.%s.resend_wait:                %ld", prefix,
+		    node->name, node->resend_wait);
+		log_info("%sbridge.mqtt.%s.cancel_timeout:             %ld", prefix,
+		    node->name, node->cancel_timeout);
 		log_info("%sbridge.mqtt.%s.hybrid_bridging       :     %s", prefix,
 		    node->name, node->hybrid ? "true" : "false");
 		log_info("%sbridge.mqtt.%s.hybrid_servers: ", prefix, node->name);
@@ -3355,8 +3375,6 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		    bridge->sqlite.mounted_file_path);
 		log_info("%sbridge.sqlite.flush_mem_threshold: %ld", prefix,
 		    bridge->sqlite.flush_mem_threshold);
-		log_info("%sbridge.sqlite.resend_interval: %ld", prefix,
-		    bridge->sqlite.resend_interval);
 	}
 }
 
