@@ -277,6 +277,9 @@ struct conf_bridge_node {
 	uint16_t     port;
 	uint16_t     keepalive;
 	uint16_t     backoff_max;
+	uint64_t     cancel_timeout;
+	uint64_t     resend_interval; // resend caching message interval (ms)
+	uint64_t     resend_wait;
 	size_t       sub_count;
 	size_t       forwards_count;
 	size_t       max_recv_queue_len;

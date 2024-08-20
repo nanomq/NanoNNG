@@ -511,7 +511,6 @@ conf_sqlite_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_num(sqlite, disk_cache_size, jso_sqlite);
 		hocon_read_str(sqlite, mounted_file_path, jso_sqlite);
 		hocon_read_num(sqlite, flush_mem_threshold, jso_sqlite);
-		hocon_read_num(sqlite, resend_interval, jso_sqlite);
 	}
 
 	return;
@@ -1294,6 +1293,9 @@ conf_bridge_node_parse(
 	update_bridge_node_vin(node, CONF_NODE_FORWARD);
 	hocon_read_num(node, max_recv_queue_len, obj);
 	hocon_read_num(node, max_send_queue_len, obj);
+	hocon_read_num(node, resend_interval, obj);
+	hocon_read_num(node, resend_wait, obj);
+	hocon_read_num(node, cancel_timeout, obj);
 }
 
 static void
