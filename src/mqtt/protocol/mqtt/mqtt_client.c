@@ -92,13 +92,13 @@ struct mqtt_pipe_s {
 
 // A mqtt_sock_s is our per-socket protocol private structure.
 struct mqtt_sock_s {
+	nni_mtx         mtx;    		// more fine grained mutual exclusion
 	uint8_t         mqtt_ver;       // mqtt version.
 	nni_atomic_bool closed;
 	nni_atomic_int  next_packet_id; // next packet id to use
 	nni_duration    retry;
 	nni_duration    keepalive; // mqtt keepalive
 	nni_duration    timeleft;  // left time to send next ping
-	nni_mtx         mtx;    // more fine grained mutual exclusion
 	mqtt_ctx_t      master; // to which we delegate send/recv calls
 	mqtt_pipe_t    *mqtt_pipe;
 	nni_list        recv_queue; // ctx pending to receive
@@ -107,6 +107,10 @@ struct mqtt_sock_s {
 	property       *dis_prop;        // disconnect property
 
 	nni_mqtt_sqlite_option *sqlite_opt;
+	// user defined option
+	uint8_t         retry_interval;
+	uint8_t         retry_wait;
+	uint8_t         timeout_backoff;
 };
 
 /******************************************************************************
@@ -429,7 +433,6 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 		// FALLTHROUGH
 	case NNG_MQTT_SUBSCRIBE:
 	case NNG_MQTT_UNSUBSCRIBE:
-		nni_mqtt_msg_set_aio(msg, aio);
 		packet_id = nni_mqtt_msg_get_packet_id(msg);
 		taio = nni_id_get(&p->sent_unack, packet_id);
 		// pass proto_data to cached aio, either it is freed in ack or in cancel
@@ -624,7 +627,7 @@ mqtt_timer_cb(void *arg)
 		return;
 	}
 
-	if (p->pingcnt > 1) {
+	if (p->pingcnt > 1) {	// expose it
 		log_warn("MQTT Timeout and disconnect");
 		nni_mtx_unlock(&s->mtx);
 		nni_pipe_close(p->pipe);
@@ -632,10 +635,9 @@ mqtt_timer_cb(void *arg)
 	}
 
 	// Update left time to send pingreq
-	s->timeleft -= s->retry;
+	s->timeleft -= s->retry; // retry time shall be 1/2 or 1/4 of keepalive
 
-	if (!p->busy && !nni_aio_busy(&p->send_aio) && p->pingmsg &&
-			s->timeleft <= 0) {
+	if (!p->busy && p->pingmsg && s->timeleft <= 0) {
 		p->busy = true;
 		s->timeleft = s->keepalive;
 		// send pingreq
@@ -650,34 +652,34 @@ mqtt_timer_cb(void *arg)
 	}
 
 	// start message resending
-	// msg = nni_id_get_min(&p->sent_unack, &pid);
-	// if (msg != NULL) {
-	// 	uint16_t ptype;
-	// 	ptype = nni_mqtt_msg_get_packet_type(msg);
-	// 	if (ptype == NNG_MQTT_PUBLISH) {
-	// 		nni_mqtt_msg_set_publish_dup(msg, true);
-	// 	}
-	// 	if (!p->busy) {
-	// 		p->busy = true;
-	// 		nni_msg_clone(msg);
-	// 		aio = nni_mqtt_msg_get_aio(msg);
-	// 		if (aio) {
-	// 			nni_aio_bump_count(aio,
-	// 			    nni_msg_header_len(msg) +
-	// 			        nni_msg_len(msg));
-	// 			nni_aio_set_msg(aio, NULL);
-	// 		}
-	// 		nni_aio_set_msg(&p->send_aio, msg);
-	// 		nni_pipe_send(p->pipe, &p->send_aio);
-
-	// 		nni_mtx_unlock(&s->mtx);
-	// 		nni_sleep_aio(s->retry, &p->time_aio);
-	// 		return;
-	// 	} else {
-	// 		nni_msg_clone(msg);
-	// 		nni_lmq_put(&p->send_messages, msg);
-	// 	}
-	// }
+	nni_aio *taio = NULL;
+	uint16_t pid;
+	taio = nni_id_get_min(&p->sent_unack, &pid);
+	if (taio != NULL) {
+		uint16_t ptype;
+		nni_msg *msg = nni_aio_get_msg(taio);
+		nni_time time = nni_clock() - nni_msg_get_timestamp(msg);
+		if (time > NNI_SECOND * 2 && msg != NULL) {
+			ptype = nni_mqtt_msg_get_packet_type(msg);
+			if (ptype == NNG_MQTT_PUBLISH) {
+				nni_mqtt_msg_set_publish_dup(msg, true);
+			}
+			log_error("resending QoS msg %d", pid);
+			nni_msg_clone(msg);
+			if (!p->busy) {
+				p->busy = true;
+				nni_aio_set_msg(&p->send_aio, msg);
+				log_error("actually resending QoS msg %d", pid);
+				nni_pipe_send(p->pipe, &p->send_aio);
+				nni_mtx_unlock(&s->mtx);
+				nni_sleep_aio(s->retry, &p->time_aio);
+				return;
+			} else {
+				if (nni_lmq_put(&p->send_messages, msg) != 0)
+					nni_msg_free(msg);
+			}
+		}
+	}
 #if defined(NNG_SUPP_SQLITE)
 	if (!p->busy) {
 		nni_msg     *msg = NULL;
