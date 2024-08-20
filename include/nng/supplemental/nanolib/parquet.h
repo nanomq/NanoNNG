@@ -37,11 +37,12 @@ typedef struct {
 } parquet_data_packet;
 
 struct parquet_payload {
-	uint16_t payload_len;
-	void    *payload;
+	uint16_t len;
+	void    *data;
 };
 
 struct parquet_data {
+	// TODO 这里按列给是不是更好
 	uint32_t          col_len;
 	uint32_t          row_len;
 	char            **schema;
