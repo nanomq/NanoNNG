@@ -142,49 +142,32 @@ remove_old_file(void)
 }
 
 static shared_ptr<GroupNode>
-setup_schema()
+setup_schema(char **schema, uint32_t col_len)
 {
 	parquet::schema::NodeVector fields;
-	fields.push_back(parquet::schema::PrimitiveNode::Make("key",
-	    parquet::Repetition::OPTIONAL, parquet::Type::INT64,
-	    parquet::ConvertedType::UINT_64));
-	fields.push_back(parquet::schema::PrimitiveNode::Make("data",
-	    parquet::Repetition::OPTIONAL, parquet::Type::BYTE_ARRAY,
-	    parquet::ConvertedType::UTF8));
-
-	return static_pointer_cast<GroupNode>(
-	    GroupNode::Make("schema", Repetition::REQUIRED, fields));
-}
-
-static shared_ptr<GroupNode>
-setup_schema(struct canStream *canData, uint32_t &index)
-{
-
-	unordered_set<string>       schema_set;
-	parquet::schema::NodeVector fields;
+	if (NULL == schema[0]) {
+		log_error("Schema value is NULL!");
+		return NULL;
+	}
+	// Set ts column
 	fields.push_back(
-	    PrimitiveNode::Make("ts", parquet::Repetition::REQUIRED,
+	    PrimitiveNode::Make(schema[0], parquet::Repetition::REQUIRED,
 	        parquet::Type::INT64, parquet::ConvertedType::UINT_64));
 
-	for (uint32_t r = 0; r < canData->rowLen; r++) {
-		for (uint32_t c; canData->row[r].col; c++) {
-			string name = to_string(canData->row[r].col[c].busid) +
-			    to_string(canData->row[r].col[c].canid);
-			schema_set.insert(name);
+	// Set data column(like canid+busid or raw data...)
+	for (int i = 1; i < col_len; i++) {
+		if (NULL == schema[i]) {
+			log_error("Schema value is NULL!");
+			return NULL;
 		}
-	}
-
-	index = 0;
-	for (auto n : schema_set) {
-		fields.push_back(PrimitiveNode::Make(n, Repetition::OPTIONAL,
-		    Type::BYTE_ARRAY, ConvertedType::NONE));
-		canidMap[n] = (++index);
+		fields.push_back(
+		    PrimitiveNode::Make(schema[i], Repetition::OPTIONAL,
+		        Type::BYTE_ARRAY, ConvertedType::NONE));
 	}
 
 	return static_pointer_cast<GroupNode>(
 	    GroupNode::Make("schema", Repetition::REQUIRED, fields));
 }
-
 
 parquet_file_range *
 parquet_file_range_alloc(uint32_t start_idx, uint32_t end_idx, char *filename)
@@ -304,7 +287,6 @@ parquet_write_batch_async(parquet_object *elem)
 		log_error("Parquet is not ready or not launch!");
 		return -1;
 	}
-	elem->type = WRITE_RAW;
 	log_debug("WAIT_FOR_AVAILABLE");
 	WAIT_FOR_AVAILABLE
 	log_debug("WAIT_FOR parquet_queue_mutex");
@@ -682,11 +664,13 @@ parquet_write_can(conf_parquet *conf, parquet_object *elem)
 
 int
 parquet_write(
-    conf_parquet *conf, shared_ptr<GroupNode> schema, parquet_object *elem)
+    conf_parquet *conf, parquet_object *elem)
 {
 	uint32_t old_index      = 0;
 	uint32_t new_index      = 0;
 	char    *last_file_name = NULL;
+	shared_ptr<GroupNode> schema = setup_schema();
+
 again:
 
 	if (last_file_name != NULL) {
@@ -851,8 +835,6 @@ parquet_write_loop_v2(void *config)
 			return NULL;
 		}
 	}
-
-	shared_ptr<GroupNode> schema = setup_schema();
 
 	while (true) {
 		// wait for mqtt messages to send method request
