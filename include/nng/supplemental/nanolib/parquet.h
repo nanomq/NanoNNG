@@ -9,6 +9,8 @@ extern "C" {
 #endif
 
 typedef struct parquet_object parquet_object;
+typedef struct parquet_data parquet_data;
+typedef struct parquet_payload parquet_payload;
 typedef void (*parquet_cb)(parquet_object *arg);
 
 typedef enum {
