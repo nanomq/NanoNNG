@@ -43,8 +43,10 @@ struct parquet_payload {
 
 struct parquet_data {
 	// TODO 这里按列给是不是更好
+	// 第一列 schema 为 ts, 不可更改
 	uint32_t          col_len;
 	uint32_t          row_len;
+	uint64_t         *ts;
 	char            **schema;
 	parquet_payload **payload_arr;
 };
@@ -97,6 +99,12 @@ parquet_filename_range **parquet_find_file_range(
 
 parquet_data_packet **parquet_find_data_span_packets_specify_file(
     conf_parquet *conf, parquet_filename_range *range, uint32_t *size);
+
+
+// parquet_data_packet **parquet_find_data_span_packets(conf_parquet *conf,
+//     uint64_t start_key, uint64_t end_key, char **schema, uint16_t schema_col, uint32_t *size, char *topic);
+
+
 
 #ifdef __cplusplus
 }
