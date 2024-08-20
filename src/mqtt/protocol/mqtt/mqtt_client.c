@@ -108,8 +108,7 @@ struct mqtt_sock_s {
 
 	nni_mqtt_sqlite_option *sqlite_opt;
 	// user defined option
-	uint8_t         retry_interval;
-	uint8_t         retry_wait;
+	nni_time        retry_wait;
 	uint8_t         timeout_backoff;
 };
 
@@ -136,9 +135,12 @@ mqtt_sock_init(void *arg, nni_sock *sock)
 	nni_atomic_set(&s->next_packet_id, 1);
 
 	// this is "semi random" start for request IDs.
-	s->retry     = NNI_SECOND * 5;
-	s->keepalive = NNI_SECOND * 10; // default mqtt keepalive
-	s->timeleft  = NNI_SECOND * 10;
+	s->retry      = NNI_SECOND * 5;
+	s->retry_wait = NNI_SECOND * 3;
+	s->keepalive  = NNI_SECOND * 10; // default mqtt keepalive
+	s->timeleft   = NNI_SECOND * 10;
+
+	s->timeout_backoff = 1;
 
 	nni_mtx_init(&s->mtx);
 	mqtt_ctx_init(&s->master, s);
@@ -211,6 +213,19 @@ mqtt_sock_set_retry_interval(void *arg, const void *v, size_t sz, nni_opt_type t
 
 	if ((rv = nni_copyin_ms(&tmp, v, sz, t)) == 0) {
 		s->retry = tmp > 600000 ? 360000 : tmp;
+	}
+	return (rv);
+}
+
+static int
+mqtt_sock_set_retry_wait(void *arg, const void *v, size_t sz, nni_opt_type t)
+{
+	mqtt_sock_t *s = arg;
+	nni_time    tmp;
+	int rv;
+
+	if ((rv = nni_copyin_u64(&tmp, v, sz, t)) == 0) {
+		s->retry_wait = tmp;
 	}
 	return (rv);
 }
@@ -627,7 +642,7 @@ mqtt_timer_cb(void *arg)
 		return;
 	}
 
-	if (p->pingcnt > 1) {	// expose it
+	if (p->pingcnt > s->timeout_backoff) {	// expose it
 		log_warn("MQTT Timeout and disconnect");
 		nni_mtx_unlock(&s->mtx);
 		nni_pipe_close(p->pipe);
@@ -635,7 +650,7 @@ mqtt_timer_cb(void *arg)
 	}
 
 	// Update left time to send pingreq
-	s->timeleft -= s->retry; // retry time shall be 1/2 or 1/4 of keepalive
+	s->timeleft -= s->retry;
 
 	if (!p->busy && p->pingmsg && s->timeleft <= 0) {
 		p->busy = true;
@@ -659,7 +674,7 @@ mqtt_timer_cb(void *arg)
 		uint16_t ptype;
 		nni_msg *msg = nni_aio_get_msg(taio);
 		nni_time time = nni_clock() - nni_msg_get_timestamp(msg);
-		if (time > NNI_SECOND * 2 && msg != NULL) {
+		if (time > s->retry_wait && msg != NULL) {
 			ptype = nni_mqtt_msg_get_packet_type(msg);
 			if (ptype == NNG_MQTT_PUBLISH) {
 				nni_mqtt_msg_set_publish_dup(msg, true);
@@ -1157,7 +1172,7 @@ mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
 			nni_aio *taio;
 			taio = nni_id_get(&p->sent_unack, packet_id);
 			if (taio != NULL) {
-				log_warn("Warning : msg %d lost due to "
+				log_warn("Warning : QoS action of msg %d is canceled due to "
 								"timeout!", packet_id);
 				nni_id_remove(&p->sent_unack, packet_id);
 				nni_msg_free(nni_aio_get_msg(taio));
@@ -1363,6 +1378,10 @@ static nni_option mqtt_sock_options[] = {
 	{
 	    .o_name = NNG_OPT_MQTT_RETRY_INTERVAL,
 	    .o_set  = mqtt_sock_set_retry_interval,
+	},
+	{
+	    .o_name = NNG_OPT_MQTT_RETRY_WAIT_TIME,
+	    .o_set  = mqtt_sock_set_retry_wait,
 	},
 	{
 	    .o_name = NNG_OPT_MQTT_SQLITE,
