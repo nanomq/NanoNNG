@@ -6,8 +6,8 @@
 # file was obtained (LICENSE.txt).  A copy of the license may also be
 # found online at https://opensource.org/licenses/MIT.
 #
-
-nng_headers(nng/supplemental/encryption/argon2.h)
+nng_sources(encrypt.c)
+nng_headers(nng/supplemental/nanolib/argon2.h)
 if(BUILD_WITH_STATIC_LIBS)
 	nng_link_libraries(${CMAKE_CURRENT_SOURCE_DIR}/libargon2.a)
 else()

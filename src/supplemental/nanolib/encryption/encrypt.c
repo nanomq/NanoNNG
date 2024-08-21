@@ -7,11 +7,8 @@
 #define HASHLEN 32
 #define SALTLEN 16
 
-uint8_t* get_encryption(char* password)
+int get_encrypt(void* hash, char* password)
 {
-    uint8_t hash1[HASHLEN];
-    uint8_t hash2[HASHLEN];
-
     uint8_t salt[SALTLEN];
     memset( salt, 0x00, SALTLEN );
 
@@ -23,39 +20,31 @@ uint8_t* get_encryption(char* password)
     uint32_t parallelism = 1;       // number of threads and lanes
 
     // high-level API
-    argon2i_hash_raw(t_cost, m_cost, parallelism, pwd, pwdlen, salt, SALTLEN, hash1, HASHLEN);
+    argon2i_hash_raw(t_cost, m_cost, parallelism, pwd, pwdlen, salt, SALTLEN, hash, HASHLEN);
 
-    // low-level API
-    argon2_context context = {
-        hash2,  /* output array, at least HASHLEN in size */
-        HASHLEN, /* digest length */
-        pwd, /* password array */
-        pwdlen, /* password length */
-        salt,  /* salt array */
-        SALTLEN, /* salt length */
-        NULL, 0, /* optional secret data */
-        NULL, 0, /* optional associated data */
-        t_cost, m_cost, parallelism, parallelism,
-        ARGON2_VERSION_13, /* algorithm version */
-        NULL, NULL, /* custom memory allocation / deallocation functions */
-        /* by default only internal memory is cleared (pwd is not wiped) */
-        ARGON2_DEFAULT_FLAGS
-    };
+    // // low-level API
+    // argon2_context context = {
+    //     hash,  /* output array, at least HASHLEN in size */
+    //     HASHLEN, /* digest length */
+    //     pwd, /* password array */
+    //     pwdlen, /* password length */
+    //     salt,  /* salt array */
+    //     SALTLEN, /* salt length */
+    //     NULL, 0, /* optional secret data */
+    //     NULL, 0, /* optional associated data */
+    //     t_cost, m_cost, parallelism, parallelism,
+    //     ARGON2_VERSION_13, /* algorithm version */
+    //     NULL, NULL, /* custom memory allocation / deallocation functions */
+    //     /* by default only internal memory is cleared (pwd is not wiped) */
+    //     ARGON2_DEFAULT_FLAGS
+    // };
 
-    int rc = argon2i_ctx( &context );
-    if(ARGON2_OK != rc) {
-        printf("Error: %s\n", argon2_error_message(rc));
-        exit(1);
-    }
-    free(pwd);
-
-    // for( int i=0; i<HASHLEN; ++i ) printf( "%02x", hash1[i] ); printf( "\n" );
-    // if (memcmp(hash1, hash2, HASHLEN)) {
-    //     for( int i=0; i<HASHLEN; ++i ) {
-    //         printf( "%02x", hash2[i] );
-    //     }
-    //     printf("\nfail\n");
+    // int rc = argon2i_ctx( &context );
+    // if(ARGON2_OK != rc) {
+    //     printf("Error: %s\n", argon2_error_message(rc));
+    //     exit(1);
     // }
-    // else printf("ok\n");
-    return hash1;
+
+    free(pwd);
+    return 0;
 }

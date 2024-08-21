@@ -3,6 +3,6 @@
 
 #include "nng/nng.h"
 
-NNG_DECL uint8_t* get_encrypt(char* password);
+NNG_DECL int get_encrypt(void *hash, char* password);
 
 #endif
