@@ -7,7 +7,7 @@
 # found online at https://opensource.org/licenses/MIT.
 #
 
-nng_headers(nng/supplemental/encreption/argon2.h)
+nng_headers(nng/supplemental/encryption/argon2.h)
 if(BUILD_WITH_STATIC_LIBS)
 	nng_link_libraries(${CMAKE_CURRENT_SOURCE_DIR}/libargon2.a)
 else()
