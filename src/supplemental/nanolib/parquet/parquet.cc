@@ -189,7 +189,7 @@ parquet_file_range_free(parquet_file_range *range)
 }
 
 parquet_data *
-parquet_data_alloc(parquet_payload ***payload_arr, char **schema, uint32_t col_len,
+parquet_data_alloc(parquet_data_packet ***payload_arr, char **schema, uint32_t col_len,
     uint32_t row_len)
 {
 	if (payload_arr == NULL || schema == NULL || col_len == 0 ||
@@ -218,11 +218,11 @@ parquet_data_free(parquet_data *data)
 			data->schema[i] = NULL;
 			// FIXME:
 			for (uint32_t j = 0; j < data->row_len; j++) {
-				parquet_payload *payload =
+				parquet_data_packet *payload =
 				    data->payload_arr[i][j];
 				if (payload) {
-					FREE_IF_NOT_NULL(payload->data,
-					    payload->len);
+					FREE_IF_NOT_NULL(
+					    payload->data, payload->size);
 					FREE_IF_NOT_NULL(
 					    payload, sizeof(payload));
 				}
@@ -541,11 +541,11 @@ parquet_write_core(conf_parquet *conf, char *filename,
     shared_ptr<GroupNode> schema, parquet_data *data)
 {
 
-	char             **schema_arr  = data->schema;
-	uint32_t           col_len     = data->col_len;
-	uint32_t           row_len     = data->row_len;
-	uint64_t          *ts_arr      = data->ts;
-	parquet_payload ***payload_arr = data->payload_arr;
+	char                 **schema_arr  = data->schema;
+	uint32_t               col_len     = data->col_len;
+	uint32_t               row_len     = data->row_len;
+	uint64_t              *ts_arr      = data->ts;
+	parquet_data_packet ***payload_arr = data->payload_arr;
 
 	parquet::WriterProperties::Builder builder;
 	log_debug("init builder");
@@ -599,7 +599,7 @@ parquet_write_core(conf_parquet *conf, char *filename,
 			if (payload_arr[c][r] != NULL) {
 				parquet::ByteArray value;
 				value.ptr = payload_arr[c][r]->data;
-				value.len = payload_arr[c][r]->len;
+				value.len = payload_arr[c][r]->size;
 				ba_writer->WriteBatch(
 				    1, &definition_level, nullptr, &value);
 			} else {
@@ -614,16 +614,15 @@ parquet_write_core(conf_parquet *conf, char *filename,
 }
 
 int
-parquet_write(
-    conf_parquet *conf, parquet_object *elem)
+parquet_write(conf_parquet *conf, parquet_object *elem)
 {
 	// uint32_t           old_index      = 0;
 	// uint32_t           new_index      = 0;
-	char              *last_file_name = NULL;
-	char             **schema_arr     = elem->data->schema;
-	uint32_t           col_len        = elem->data->col_len;
-	uint32_t           row_len        = elem->data->row_len;
-	uint64_t          *ts_arr         = elem->data->ts;
+	char     *last_file_name = NULL;
+	char    **schema_arr     = elem->data->schema;
+	uint32_t  col_len        = elem->data->col_len;
+	uint32_t  row_len        = elem->data->row_len;
+	uint64_t *ts_arr         = elem->data->ts;
 
 	shared_ptr<GroupNode> schema = setup_schema(schema_arr, col_len);
 
@@ -632,11 +631,11 @@ parquet_write(
 		return -1;
 	}
 
-// again:
+	// again:
 
 	if (last_file_name != NULL) {
-		char *md5_file_name =
-		    compute_and_rename_file_withMD5(last_file_name, conf, elem->topic);
+		char *md5_file_name = compute_and_rename_file_withMD5(
+		    last_file_name, conf, elem->topic);
 		if (md5_file_name == nullptr) {
 			log_error("Failed to rename file with md5");
 			parquet_object_free(elem);
@@ -651,9 +650,10 @@ parquet_write(
 		}
 
 		// parquet_file_range *range =
-		//     parquet_file_range_alloc(old_index, new_index, md5_file_name);
+		//     parquet_file_range_alloc(old_index, new_index,
+		//     md5_file_name);
 		// update_parquet_file_ranges(conf, elem, range);
-		// 
+		//
 		// old_index = new_index;
 
 		log_debug("wait for parquet_queue_mutex");
@@ -672,7 +672,7 @@ parquet_write(
 	// uint64_t key_start = elem->keys[old_index];
 	// uint64_t key_end   = elem->keys[new_index];
 	// char    *filename  = get_file_name(conf, key_start, key_end);
-	char    *filename  = get_file_name(conf, ts_arr[0], ts_arr[row_len-1]);
+	char *filename = get_file_name(conf, ts_arr[0], ts_arr[row_len - 1]);
 	if (filename == NULL) {
 		parquet_object_free(elem);
 		log_error("Failed to get file name");
@@ -689,8 +689,8 @@ parquet_write(
 	// 	goto again;
 	// }
 	if (last_file_name != NULL) {
-		char *md5_file_name =
-		    compute_and_rename_file_withMD5(last_file_name, conf, elem->topic);
+		char *md5_file_name = compute_and_rename_file_withMD5(
+		    last_file_name, conf, elem->topic);
 		if (md5_file_name == nullptr) {
 			parquet_object_free(elem);
 			log_error("fail to get md5 from parquet file");
@@ -705,7 +705,8 @@ parquet_write(
 		}
 
 		// parquet_file_range *range =
-		//     parquet_file_range_alloc(old_index, new_index, md5_file_name);
+		//     parquet_file_range_alloc(old_index, new_index,
+		//     md5_file_name);
 		// update_parquet_file_ranges(conf, elem, range);
 
 		// old_index = new_index;
