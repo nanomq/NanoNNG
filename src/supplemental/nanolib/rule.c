@@ -671,3 +671,45 @@ void rule_mysql_free(rule_mysql *mysql)
 		NNI_FREE_STRUCT(mysql);
 	}
 }
+
+bool rule_postgresql_check(rule_postgresql *postgresql)
+{
+	if (postgresql) {
+		if (postgresql->host && postgresql->password && postgresql->username &&
+		    postgresql->table) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+rule_postgresql *rule_postgresql_init(void)
+{
+	rule_postgresql *postgresql = NNI_ALLOC_STRUCT(postgresql);
+	postgresql->host = NULL;
+	postgresql->password = NULL;
+	postgresql->username = NULL;
+	postgresql->table = NULL;
+	postgresql->conn = NULL;
+	return postgresql;
+}
+
+void rule_postgresql_free(rule_postgresql *postgresql)
+{
+	if (postgresql) {
+		if (postgresql->host) {
+			nng_strfree(postgresql->host);
+		}
+		if (postgresql->password) {
+			nng_strfree(postgresql->password);
+		}
+		if (postgresql->username) {
+			nng_strfree(postgresql->username);
+		}
+		if (postgresql->table) {
+			nng_strfree(postgresql->table);
+		}
+		NNI_FREE_STRUCT(postgresql);
+	}
+}

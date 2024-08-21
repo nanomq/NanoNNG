@@ -58,7 +58,10 @@ static void conf_log_parse(conf_log *log, const char *path);
 
 #if defined(SUPP_RULE_ENGINE)
 static void conf_rule_repub_parse(conf_rule *cr, char *path);
-# if defined(SUPP_MYSQL)
+#if defined(SUPP_POSTGRESQL)
+static void conf_rule_postgresql_parse(conf_rule *cr, char *path);
+#endif
+#if defined(SUPP_MYSQL)
 static void conf_rule_mysql_parse(conf_rule *cr, char *path);
 #endif
 #if defined(NNG_SUPP_SQLITE)
@@ -258,7 +261,7 @@ get_conf_value(char *line, size_t len, const char *key)
 	}
 
 	char *pound = strstr(line, "#");
-    
+
     if (pound != NULL && pound < ptr) {
         return NULL;
     }
@@ -625,7 +628,7 @@ conf_parse(conf *nanomq_conf)
 			conf_path = CONF_PATH_NAME;
 		}
 	}
-	
+
 
 	conf *config = nanomq_conf;
 	conf_basic_parse(config, conf_path);
@@ -841,7 +844,7 @@ conf_rule_init(conf_rule *rule_en)
 {
 	rule_en->option = 0;
 	rule_en->rules  = NULL;
-	memset(rule_en->rdb, 0, sizeof(void *) * 3);
+	memset(rule_en->rdb, 0, sizeof(void *) * 4);
 }
 #endif
 
@@ -1283,6 +1286,25 @@ print_rule_engine_conf(conf_rule *rule_eng)
 			}
 		}
 	}
+
+	if (rule_eng->option & RULE_ENG_PDB) {
+		log_info("rule engine postgresql:");
+		log_info("name:         %s", rule_eng->postgresql_db);
+		rule *r = rule_eng->rules;
+		for (size_t i = 0; i < cvector_size(r); i++) {
+			if (r[i].forword_type == RULE_FORWORD_POSTGRESQL) {
+				rule_postgresql *postgresql = r[i].postgresql;
+				log_info("[%d] sql:      %s", i, r[i].raw_sql);
+				log_info("[%d] table:    %s", i, postgresql->table);
+				log_info("[%d] host:     %s", i, postgresql->host);
+				log_info("[%d] username: %s", i, postgresql->username);
+				log_info("[%d] password: ******", i);
+			}
+		}
+	}
+
+
+
 }
 #endif
 
@@ -1465,7 +1487,7 @@ conf_auth_parse(conf_auth *auth, const char *path)
 			    auth->usernames, sizeof(char *) * auth->count);
 			auth->passwords = realloc(
 			    auth->passwords, sizeof(char *) * auth->count);
-			
+
 			auth->usernames[auth->count - 1] = name;
 			auth->passwords[auth->count - 1] = pass;
 
@@ -1675,6 +1697,136 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 	fclose(fp);
 }
 
+static void
+conf_rule_postgresql_parse(conf_rule *cr, char *path)
+{
+	assert(path);
+	if (path == NULL || !nano_file_exists(path)) {
+		printf("Configure file [%s] not found or "
+		       "unreadable\n",
+		    path);
+		return;
+	}
+
+	char *      line = NULL;
+	size_t      sz   = 0;
+	FILE *      fp;
+	rule_postgresql *postgresql = NNI_ALLOC_STRUCT(postgresql);
+
+	if (NULL == (fp = fopen(path, "r"))) {
+		log_debug("File %s open failed\n", path);
+		return;
+	}
+
+	char *value;
+	while (nano_getline(&line, &sz, fp) != -1) {
+		if (NULL !=
+		    (value = get_conf_value(line, sz, "rule.postgresql.name"))) {
+			cr->postgresql_db = value;
+			log_debug(value);
+		} else if (0 ==
+		    strncmp(line, "rule.postgresql.event.publish",
+		        strlen("rule.postgresql.event.publish"))) {
+
+			// TODO more accurate way
+			// topic <=======> broker <======> sql
+			int num = 0;
+			int res =
+			    sscanf(line, "rule.postgresql.event.publish.%d.sql", &num);
+			if (0 == res) {
+				log_error("Do not find postgresql client");
+				exit(EXIT_FAILURE);
+			}
+
+			if (NULL != (value = strchr(line, '='))) {
+				value++;
+				rule_sql_parse(cr, value);
+				char *p = strrchr(value, '\"');
+				*p      = '\0';
+
+				cr->rules[cvector_size(cr->rules) - 1].postgresql =
+				    NNI_ALLOC_STRUCT(postgresql);
+				memcpy(cr->rules[cvector_size(cr->rules) - 1]
+				           .postgresql,
+				    postgresql, sizeof(*postgresql));
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .forword_type = RULE_FORWORD_POSTGRESQL;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .raw_sql = nng_strdup(++value);
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .enabled = true;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .rule_id = rule_generate_rule_id();
+
+			}
+
+		} else if (0 ==
+		    strncmp(line, "rule.postgresql", strlen("rule.postgresql"))) {
+			int num = 0;
+
+			if (strstr(line, "table")) {
+				if (0 != sscanf(line, "rule.postgresql.%d", &num)) {
+					char key[32] = { 0 };
+					snprintf(key, 32,
+					    "rule.postgresql.%d.table", num);
+					if (NULL !=
+					    (value = get_conf_value(
+					         line, sz, key))) {
+						log_debug(value);
+						postgresql->table = value;
+					}
+				}
+			} else if (strstr(line, "host")) {
+				if (0 != sscanf(line, "rule.postgresql.%d", &num)) {
+					char key[32] = { 0 };
+					snprintf(key, 32, "rule.postgresql.%d.host",
+					    num);
+					if (NULL !=
+					    (value = get_conf_value(
+					         line, sz, key))) {
+						log_debug(value);
+						postgresql->host = value;
+					}
+				}
+			} else if (strstr(line, "username")) {
+				if (0 != sscanf(line, "rule.postgresql.%d", &num)) {
+					char key[32] = { 0 };
+					snprintf(key, 32, "rule.postgresql.%d.username",
+					    num);
+					if (NULL !=
+					    (value = get_conf_value(
+					         line, sz, key))) {
+						log_debug(value);
+						postgresql->username = value;
+					}
+				}
+			} else if (strstr(line, "password")) {
+				if (0 != sscanf(line, "rule.postgresql.%d", &num)) {
+					char key[32] = { 0 };
+					snprintf(key, 32, "rule.postgresql.%d.password",
+					    num);
+					if (NULL !=
+					    (value = get_conf_value(
+					         line, sz, key))) {
+						log_debug(value);
+						postgresql->password = value;
+					}
+				}
+			}
+		}
+
+		free(line);
+		line = NULL;
+	}
+
+	NNI_FREE_STRUCT(postgresql);
+
+	if (line) {
+		free(line);
+	}
+
+	fclose(fp);
+}
 
 static void
 conf_rule_mysql_parse(conf_rule *cr, char *path)
@@ -1738,7 +1890,7 @@ conf_rule_mysql_parse(conf_rule *cr, char *path)
 				    .rule_id = rule_generate_rule_id();
 
 			}
-		
+
 		} else if (0 ==
 		    strncmp(line, "rule.mysql", strlen("rule.mysql"))) {
 			int num = 0;
@@ -1833,7 +1985,7 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 		if (NULL !=
 		    (value = get_conf_value(line, sz, "rule.sqlite.path"))) {
 			cr->sqlite_db = value;
-		
+
 		} else if (NULL != strstr(line, "rule.sqlite.event.publish")) {
 
 			// TODO more accurate way table <======> sql
@@ -2061,6 +2213,27 @@ conf_rule_parse(conf_rule *rule, const char *path)
 				}
 			}
 			free(value);
+			// postgresql
+		} else if ((value = get_conf_value(line, sz, "rule_option.postgresql")) != NULL) {
+			if (0 == nni_strcasecmp(value, "enable")) {
+#if defined(SUPP_POSTGRESQL)
+				rule->option |= RULE_ENG_PDB;
+				conf_rule_postgresql_parse(cr, path);
+#else
+				log_error("If you want use postgresql rule, recompile nanomq with option `-DENABLE_POSTGRESQL=ON`");
+#endif
+			} else {
+				if (0 != nni_strcasecmp(value, "disable")) {
+					log_warn(
+					    "Unsupported option: %s\nrule "
+					    "option postgresql only support "
+					    "enable/disable",
+					    value);
+					break;
+				}
+			}
+			free(value);
+
 		}
 
 		free(line);
@@ -3229,7 +3402,7 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 		    node->will_properties->user_property,
 		    node->will_properties->user_property_size);
 		node->will_properties->user_property_size = 0;
-		
+
 		if (node->will_properties->content_type != NULL) {
 			free(node->will_properties->content_type);
 			node->will_properties->content_type = NULL;
@@ -4009,9 +4182,11 @@ conf_rule_destroy(conf_rule *re)
 {
 	nng_strfree(re->sqlite_db);
 	nng_strfree(re->mysql_db);
+	nng_strfree(re->postgresql_db);
 	for (int i = 0; i < cvector_size(re->rules); ++i) {
 		rule_repub_free(re->rules[i].repub);
 		rule_mysql_free(re->rules[i].mysql);
+        rule_postgresql_free(re->rules[i].postgresql);
 		rule_free(&(re->rules[i]));
 	}
 	cvector_free(re->rules);
