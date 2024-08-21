@@ -38,26 +38,27 @@ typedef struct {
 
 struct parquet_payload {
 	uint16_t len;
-	void    *data;
+	uint8_t *data;
 };
 
 struct parquet_data {
 	// TODO 这里按列给是不是更好
 	// 第一列 schema 为 ts, 不可更改
-	uint32_t          col_len;
-	uint32_t          row_len;
-	uint64_t         *ts;
-	char            **schema;
-	parquet_payload **payload_arr;
+	uint32_t           col_len;
+	uint32_t           row_len;
+	uint64_t          *ts;
+	char             **schema;
+	parquet_payload ***payload_arr;
 };
 
 struct parquet_object {
 	parquet_data        *data;
 	parquet_type         type;
 	nng_aio             *aio;
-	void	            *aio_arg;
+	void                *aio_arg;
 	parquet_file_ranges *ranges;
 	char                *topic;
+	uint32_t             size;
 };
 
 typedef struct {
