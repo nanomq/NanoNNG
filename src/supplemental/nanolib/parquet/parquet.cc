@@ -25,13 +25,6 @@ using parquet::schema::PrimitiveNode;
 using parquet::Encoding;
 #define PARQUET_END 1024
 
-// vector<uint64_t> tsArr;
-// vector<uint64_t> canidArr;
-// vector<uint16_t> channelArr;
-// vector<vector<uint8_t>> dataArr;
-// unordered_map<uint32_t, unordered_set<uint16_t>> canidChannelMap;
-unordered_map<string, uint32_t> canidMap;
-
 static uint64_t key_span[2] = { 0 };
 
 #define DO_IT_IF_NOT_NULL(func, arg1, arg2) \
@@ -189,8 +182,8 @@ parquet_file_range_free(parquet_file_range *range)
 }
 
 parquet_data *
-parquet_data_alloc(parquet_data_packet ***payload_arr, char **schema, uint32_t col_len,
-    uint32_t row_len)
+parquet_data_alloc(char **schema, parquet_data_packet ***payload_arr,
+    uint64_t *ts, uint32_t col_len, uint32_t row_len)
 {
 	if (payload_arr == NULL || schema == NULL || col_len == 0 ||
 	    row_len == 0) {
@@ -201,9 +194,10 @@ parquet_data_alloc(parquet_data_packet ***payload_arr, char **schema, uint32_t c
 	if (data == NULL) {
 		return NULL; // Memory allocation failed
 	}
-	data->col_len = col_len;
-	data->row_len = row_len;
-	data->schema  = schema;
+	data->ts          = ts;
+	data->col_len     = col_len;
+	data->row_len     = row_len;
+	data->schema      = schema;
 	data->payload_arr = payload_arr;
 	return data;
 }
@@ -212,14 +206,12 @@ void
 parquet_data_free(parquet_data *data)
 {
 	if (data) {
-		for (uint32_t i = 0; i < data->col_len; i++) {
+		for (uint32_t c = 0; c < data->col_len - 1; c++) {
 			FREE_IF_NOT_NULL(
-			    data->schema[i], strlen(data->schema[i]));
-			data->schema[i] = NULL;
-			// FIXME:
-			for (uint32_t j = 0; j < data->row_len; j++) {
+			    data->schema[c], strlen(data->schema[c]));
+			for (uint32_t r = 0; r < data->row_len; r++) {
 				parquet_data_packet *payload =
-				    data->payload_arr[i][j];
+				    data->payload_arr[c][r];
 				if (payload) {
 					FREE_IF_NOT_NULL(
 					    payload->data, payload->size);
@@ -227,9 +219,15 @@ parquet_data_free(parquet_data *data)
 					    payload, sizeof(payload));
 				}
 			}
+			FREE_IF_NOT_NULL(data->payload_arr[c], data->row_len);
 		}
+
+		FREE_IF_NOT_NULL(
+		    data->schema[data->col_len-1], strlen(data->schema[data->col_len-1]));
 		FREE_IF_NOT_NULL(data->schema, data->col_len);
-		FREE_IF_NOT_NULL(data->payload_arr, data->col_len * data->row_len);
+		FREE_IF_NOT_NULL(data->ts, data->row_len);
+		FREE_IF_NOT_NULL(
+		    data->payload_arr, data->col_len);
 		delete data;
 	}
 }
@@ -243,13 +241,11 @@ parquet_object_alloc(
 	elem->type           = type;
 	elem->aio            = aio;
 	elem->aio_arg        = aio_arg;
-	elem->size           = 0;
 	// TODO: not all types need file ranges
  	elem->ranges         = new parquet_file_ranges;
  	elem->ranges->range  = NULL;
  	elem->ranges->start  = 0;
  	elem->ranges->size   = 0;
-
 	return elem;
 }
 
@@ -262,9 +258,6 @@ parquet_object_free(parquet_object *elem)
 		}
 		nng_aio_set_prov_data(elem->aio, elem->aio_arg);
 		nng_aio_set_output(elem->aio, 1, elem->ranges);
-		uint32_t *szp = (uint32_t *) malloc(sizeof(uint32_t));
-		*szp          = elem->size;
-		nng_aio_set_msg(elem->aio, (nng_msg *) szp);
 		log_debug("finish write aio");
 		DO_IT_IF_NOT_NULL(nng_aio_finish_sync, elem->aio, 0);
 
@@ -356,25 +349,25 @@ parquet_set_encryption(conf_parquet *conf)
 // 	return new_index;
 // }
 // 
-// void
-// update_parquet_file_ranges(
-//     conf_parquet *conf, parquet_object *elem, parquet_file_range *range)
-// {
-// 	if (elem->ranges->size != conf->file_count) {
-// 		elem->ranges->range =
-// 		    (parquet_file_range **) realloc(elem->ranges->range,
-// 		        sizeof(parquet_file_range *) * (++elem->ranges->size));
-// 		elem->ranges->range[elem->ranges->size - 1] = range;
-// 	} else {
-// 		// Free old ranges and insert new ranges
-// 		// update start index
-// 		parquet_file_range_free(
-// 		    elem->ranges->range[elem->ranges->start]);
-// 		elem->ranges->range[elem->ranges->start] = range;
-// 		elem->ranges->start++;
-// 		elem->ranges->start %= elem->ranges->size;
-// 	}
-// }
+void
+update_parquet_file_ranges(
+    conf_parquet *conf, parquet_object *elem, parquet_file_range *range)
+{
+	if (elem->ranges->size != conf->file_count) {
+		elem->ranges->range =
+		    (parquet_file_range **) realloc(elem->ranges->range,
+		        sizeof(parquet_file_range *) * (++elem->ranges->size));
+		elem->ranges->range[elem->ranges->size - 1] = range;
+	} else {
+		// Free old ranges and insert new ranges
+		// update start index
+		parquet_file_range_free(
+		    elem->ranges->range[elem->ranges->start]);
+		elem->ranges->range[elem->ranges->start] = range;
+		elem->ranges->start++;
+		elem->ranges->start %= elem->ranges->size;
+	}
+}
 
 // int
 // parquet_write_tmp(
@@ -578,8 +571,7 @@ parquet_write_core(conf_parquet *conf, char *filename,
 	log_debug("start doing int64 write");
 	parquet::Int64Writer *int64_writer =
 	    static_cast<parquet::Int64Writer *>(rg_writer->NextColumn());
-	// for (uint32_t i = old_index; i <= new_index; i++) {
-		for (uint32_t r = 0; r < row_len; r++) {
+	for (uint32_t r = 0; r < row_len; r++) {
 		int64_t value            = ts_arr[r];
 		int16_t definition_level = 1;
 		int64_writer->WriteBatch(
@@ -588,26 +580,30 @@ parquet_write_core(conf_parquet *conf, char *filename,
 	log_debug("stop doing int64 write");
 
 	// Write the ByteArray column. Make every alternate values NULL
-	for (uint32_t c = 0; c < col_len; c++) {
+	for (uint32_t c = 0; c < col_len-1; c++) {
 		parquet::ByteArrayWriter *ba_writer =
 		    static_cast<parquet::ByteArrayWriter *>(
 		        rg_writer->NextColumn());
-		// for (uint32_t i = old_index; i <= new_index; i++) {
 		for (uint32_t r = 0; r < row_len; r++) {
 
-			int16_t definition_level = 1;
 			if (payload_arr[c][r] != NULL) {
+				int16_t definition_level = 1;
 				parquet::ByteArray value;
 				value.ptr = payload_arr[c][r]->data;
 				value.len = payload_arr[c][r]->size;
 				ba_writer->WriteBatch(
 				    1, &definition_level, nullptr, &value);
 			} else {
+				int16_t definition_level = 0;
 				ba_writer->WriteBatch(
 				    1, &definition_level, nullptr, nullptr);
 			}
 		}
 	}
+	// Close the RowGroupWriter
+	rg_writer->Close();
+	// Close the ParquetFileWriter
+	file_writer->Close();
 	log_debug("stop doing ByteArray write");
 
 	return 0;
@@ -616,9 +612,6 @@ parquet_write_core(conf_parquet *conf, char *filename,
 int
 parquet_write(conf_parquet *conf, parquet_object *elem)
 {
-	// uint32_t           old_index      = 0;
-	// uint32_t           new_index      = 0;
-	char     *last_file_name = NULL;
 	char    **schema_arr     = elem->data->schema;
 	uint32_t  col_len        = elem->data->col_len;
 	uint32_t  row_len        = elem->data->row_len;
@@ -631,47 +624,7 @@ parquet_write(conf_parquet *conf, parquet_object *elem)
 		return -1;
 	}
 
-	// again:
-
-	if (last_file_name != NULL) {
-		char *md5_file_name = compute_and_rename_file_withMD5(
-		    last_file_name, conf, elem->topic);
-		if (md5_file_name == nullptr) {
-			log_error("Failed to rename file with md5");
-			parquet_object_free(elem);
-			return -1;
-		}
-
-		char md5_buffer[MD5_LEN + 1];
-		log_debug("compute md5 after rename");
-		int ret = ComputeFileMD5(md5_file_name, md5_buffer);
-		if (ret != 0) {
-			log_error("Failed to calculate md5sum");
-		}
-
-		// parquet_file_range *range =
-		//     parquet_file_range_alloc(old_index, new_index,
-		//     md5_file_name);
-		// update_parquet_file_ranges(conf, elem, range);
-		//
-		// old_index = new_index;
-
-		log_debug("wait for parquet_queue_mutex");
-		pthread_mutex_lock(&parquet_queue_mutex);
-		ENQUEUE(parquet_file_queue, md5_file_name);
-
-		if (QUEUE_SIZE(parquet_file_queue) > conf->file_count) {
-			remove_old_file();
-		}
-
-		pthread_mutex_unlock(&parquet_queue_mutex);
-		last_file_name = NULL;
-	}
 	log_debug("parquet_write");
-	// new_index = compute_new_index(elem, old_index, conf->file_size);
-	// uint64_t key_start = elem->keys[old_index];
-	// uint64_t key_end   = elem->keys[new_index];
-	// char    *filename  = get_file_name(conf, key_start, key_end);
 	char *filename = get_file_name(conf, ts_arr[0], ts_arr[row_len - 1]);
 	if (filename == NULL) {
 		parquet_object_free(elem);
@@ -679,49 +632,35 @@ parquet_write(conf_parquet *conf, parquet_object *elem)
 		return -1;
 	}
 
-	// {
 	parquet_write_core(conf, filename, schema, elem->data);
-	last_file_name = filename;
-	// If byte size large than file size limit,
-	// we will open a new file.
-	// go again.
-	// if (new_index != elem->size - 1)
-	// 	goto again;
-	// }
-	if (last_file_name != NULL) {
-		char *md5_file_name = compute_and_rename_file_withMD5(
-		    last_file_name, conf, elem->topic);
-		if (md5_file_name == nullptr) {
-			parquet_object_free(elem);
-			log_error("fail to get md5 from parquet file");
-			return -1;
-		}
-
-		char md5_buffer[MD5_LEN + 1];
-		log_debug("compute md5 after rename");
-		int ret = ComputeFileMD5(md5_file_name, md5_buffer);
-		if (ret != 0) {
-			log_error("Failed to calculate md5sum");
-		}
-
-		// parquet_file_range *range =
-		//     parquet_file_range_alloc(old_index, new_index,
-		//     md5_file_name);
-		// update_parquet_file_ranges(conf, elem, range);
-
-		// old_index = new_index;
-
-		log_debug("wait for parquet_queue_mutex");
-		pthread_mutex_lock(&parquet_queue_mutex);
-		ENQUEUE(parquet_file_queue, md5_file_name);
-
-		if (QUEUE_SIZE(parquet_file_queue) > conf->file_count) {
-			remove_old_file();
-		}
-
-		pthread_mutex_unlock(&parquet_queue_mutex);
-		last_file_name = NULL;
+	char *md5_file_name =
+	    compute_and_rename_file_withMD5(filename, conf, elem->topic);
+	if (md5_file_name == nullptr) {
+		parquet_object_free(elem);
+		log_error("fail to get md5 from parquet file");
+		return -1;
 	}
+
+	char md5_buffer[MD5_LEN + 1];
+	log_debug("compute md5 after rename");
+	int ret = ComputeFileMD5(md5_file_name, md5_buffer);
+	if (ret != 0) {
+		log_error("Failed to calculate md5sum");
+	}
+
+	parquet_file_range *range =
+	    parquet_file_range_alloc(0, elem->data->row_len-1, md5_file_name);
+	update_parquet_file_ranges(conf, elem, range);
+
+	log_debug("wait for parquet_queue_mutex");
+	pthread_mutex_lock(&parquet_queue_mutex);
+	ENQUEUE(parquet_file_queue, md5_file_name);
+
+	if (QUEUE_SIZE(parquet_file_queue) > conf->file_count) {
+		remove_old_file();
+	}
+
+	pthread_mutex_unlock(&parquet_queue_mutex);
 
 	log_info("flush finished!");
 	parquet_object_free(elem);
