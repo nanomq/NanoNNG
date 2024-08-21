@@ -52,6 +52,7 @@
 struct conf_auth {
 	bool   enable;
 	size_t count;
+	bool   enable_encrypt;
 	char **usernames;
 	char **passwords;
 };
