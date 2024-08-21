@@ -37,8 +37,9 @@ typedef struct {
 } parquet_data_packet;
 
 struct parquet_data {
-	// TODO 这里按列给是不是更好
-	// 第一列 schema 为 ts, 不可更改
+	// Payload_arr should col first.
+	// First column of schema should be 
+	// ts, can not be changed.
 	uint32_t               col_len;
 	uint32_t               row_len;
 	uint64_t              *ts;
@@ -53,13 +54,17 @@ struct parquet_object {
 	void                *aio_arg;
 	parquet_file_ranges *ranges;
 	char                *topic;
-	uint32_t             size;
 };
 
 typedef struct {
 	const char *filename;
 	uint64_t    keys[2];
 } parquet_filename_range;
+
+parquet_data *parquet_data_alloc(char **schema,
+    parquet_data_packet ***payload_arr, uint64_t *ts, uint32_t col_len,
+    uint32_t row_len);
+void          parquet_data_free(parquet_data *data);
 
 parquet_object *parquet_object_alloc(
     parquet_data *data, parquet_type type, nng_aio *aio, void *aio_arg);
