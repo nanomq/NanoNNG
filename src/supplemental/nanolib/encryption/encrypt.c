@@ -1,11 +1,9 @@
 #include "nng/supplemental/nanolib/argon2.h"
+#include "nng/supplemental/nanolib/encrypt.h"
 
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-
-#define HASHLEN 32
-#define SALTLEN 16
 
 int get_encrypt(void* hash, char* password)
 {

@@ -13,6 +13,7 @@
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "supplemental/mqtt/mqtt_msg.h"
+#include "nng/supplemental/nanolib/encrypt.h"
 
 #include "nng/mqtt/packet.h"
 // #include <iconv.h>
@@ -1276,8 +1277,14 @@ verify_connect(conn_param *cparam, conf *conf)
 	}
 
 	for (i = 0; i < n; i++) {
+		uint8_t pwd_hash[HASHLEN];
+		get_encrypt(pwd_hash, password);
+		char pwd[HASHLEN * 2 + 1];
+		for (size_t i = 0; i < HASHLEN; ++i) {
+			snprintf(pwd + (i * 2), HASHLEN * 2 + 1, "%02x", pwd_hash[i]);
+		}
 		if (strcmp(username, conf->auths.usernames[i]) == 0 &&
-		    strcmp(password, conf->auths.passwords[i]) == 0) {
+		    strcmp(pwd, conf->auths.passwords[i]) == 0) {
 			return 0;
 		}
 	}
