@@ -36,19 +36,14 @@ typedef struct {
 	uint32_t size;
 } parquet_data_packet;
 
-struct parquet_payload {
-	uint16_t len;
-	uint8_t *data;
-};
-
 struct parquet_data {
 	// TODO 这里按列给是不是更好
 	// 第一列 schema 为 ts, 不可更改
-	uint32_t           col_len;
-	uint32_t           row_len;
-	uint64_t          *ts;
-	char             **schema;
-	parquet_payload ***payload_arr;
+	uint32_t               col_len;
+	uint32_t               row_len;
+	uint64_t              *ts;
+	char                 **schema;
+	parquet_data_packet ***payload_arr;
 };
 
 struct parquet_object {
