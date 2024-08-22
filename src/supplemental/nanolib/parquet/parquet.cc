@@ -228,9 +228,7 @@ parquet_data_free(parquet_data *data)
 				    data->payload_arr[c][r];
 				if (payload) {
 					FREE_IF_NOT_NULL(
-					    payload->data, payload->size);
-					FREE_IF_NOT_NULL(
-					    payload, sizeof(payload));
+					    payload, sizeof(*payload));
 				}
 			}
 			FREE_IF_NOT_NULL(data->payload_arr[c], data->row_len);
