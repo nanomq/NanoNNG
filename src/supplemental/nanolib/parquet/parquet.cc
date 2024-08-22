@@ -233,14 +233,15 @@ parquet_data_free(parquet_data *data)
 }
 
 parquet_object *
-parquet_object_alloc(
-    parquet_data *data, parquet_type type, nng_aio *aio, void *aio_arg)
+parquet_object_alloc(parquet_data *data, parquet_type type, nng_aio *aio,
+    void *aio_arg, char *topic)
 {
 	parquet_object *elem = new parquet_object;
 	elem->data           = data;
 	elem->type           = type;
 	elem->aio            = aio;
 	elem->aio_arg        = aio_arg;
+	elem->topic          = topic;
 	// TODO: not all types need file ranges
  	elem->ranges         = new parquet_file_ranges;
  	elem->ranges->range  = NULL;
