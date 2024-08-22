@@ -36,16 +36,6 @@ typedef struct {
 	uint32_t size;
 } parquet_data_packet;
 
-struct parquet_data {
-	// Payload_arr should col first.
-	// First column of schema should be 
-	// ts, can not be changed.
-	uint32_t               col_len;
-	uint32_t               row_len;
-	uint64_t              *ts;
-	char                 **schema;
-	parquet_data_packet ***payload_arr;
-};
 
 struct parquet_object {
 	parquet_data        *data;
