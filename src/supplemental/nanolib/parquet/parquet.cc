@@ -25,6 +25,20 @@ using parquet::schema::PrimitiveNode;
 using parquet::Encoding;
 #define PARQUET_END 1024
 
+
+struct parquet_data {
+	// Payload_arr should col first.
+	// First column of schema should be 
+	// ts, can not be changed.
+	// col_len is payload_arr col_len, 
+	// schema len = col_len + 1, 1 is ts col.
+	uint32_t               col_len;
+	uint32_t               row_len;
+	uint64_t              *ts;
+	char                 **schema;
+	parquet_data_packet ***payload_arr;
+};
+
 static uint64_t key_span[2] = { 0 };
 
 #define DO_IT_IF_NOT_NULL(func, arg1, arg2) \
@@ -195,7 +209,7 @@ parquet_data_alloc(char **schema, parquet_data_packet ***payload_arr,
 		return NULL; // Memory allocation failed
 	}
 	data->ts          = ts;
-	data->col_len     = col_len;
+	data->col_len     = col_len+1;
 	data->row_len     = row_len;
 	data->schema      = schema;
 	data->payload_arr = payload_arr;
@@ -206,7 +220,7 @@ void
 parquet_data_free(parquet_data *data)
 {
 	if (data) {
-		for (uint32_t c = 0; c < data->col_len - 1; c++) {
+		for (uint32_t c = 0; c < data->col_len-1; c++) {
 			FREE_IF_NOT_NULL(
 			    data->schema[c], strlen(data->schema[c]));
 			for (uint32_t r = 0; r < data->row_len; r++) {
