@@ -66,8 +66,8 @@ parquet_data *parquet_data_alloc(char **schema,
     uint32_t row_len);
 void          parquet_data_free(parquet_data *data);
 
-parquet_object *parquet_object_alloc(
-    parquet_data *data, parquet_type type, nng_aio *aio, void *aio_arg);
+parquet_object *parquet_object_alloc(parquet_data *data, parquet_type type,
+    nng_aio *aio, void *aio_arg, char *topic);
 void parquet_object_free(parquet_object *elem);
 
 parquet_file_range *parquet_file_range_alloc(
