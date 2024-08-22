@@ -227,6 +227,8 @@ parquet_data_free(parquet_data *data)
 				parquet_data_packet *payload =
 				    data->payload_arr[c][r];
 				if (payload) {
+					// FREE_IF_NOT_NULL(
+					//     payload->data, payload->size);
 					FREE_IF_NOT_NULL(
 					    payload, sizeof(*payload));
 				}
@@ -382,103 +384,6 @@ update_parquet_file_ranges(
 	}
 }
 
-// int
-// parquet_write_tmp(
-//     conf_parquet *conf, shared_ptr<GroupNode> schema, parquet_object *elem)
-// {
-// 	uint32_t              old_index = 0;
-// 	uint32_t              new_index = 0;
-// 	char                **schema    = elem->data->schema;
-// 	uint32_t              col_len   = elem->data->col_len;
-// 	shared_ptr<GroupNode> schema    = setup_schema(schema, col_len);
-// 	if (NULL == schema) {
-// 		log_error("Schema set error.");
-// 		return -1;
-// 	}
-// again:
-// 
-// 	new_index = compute_new_index(elem, old_index, conf->file_size);
-// 	uint64_t key_start = elem->keys[old_index];
-// 	uint64_t key_end   = elem->keys[new_index];
-// 
-// 	string prefix = gen_random(6);
-// 	prefix        = "nanomq" + prefix;
-// 	char *filename =
-// 	    get_random_file_name(prefix.data(), key_start, key_end);
-// 	if (filename == NULL) {
-// 		log_error("Failed to get file name");
-// 		parquet_object_free(elem);
-// 		return -1;
-// 	}
-// 
-// 	{
-// 		parquet_file_range *range =
-// 		    parquet_file_range_alloc(old_index, new_index, filename);
-// 		update_parquet_file_ranges(conf, elem, range);
-// 
-// 		// Create a ParquetFileWriter instance
-// 		parquet::WriterProperties::Builder builder;
-// 
-// 		builder.created_by("NanoMQ")
-// 		    ->version(parquet::ParquetVersion::PARQUET_2_6)
-// 		    ->data_page_version(parquet::ParquetDataPageVersion::V2)
-// 		    ->compression(static_cast<arrow::Compression::type>(
-// 		        conf->comp_type));
-// 
-// 		if (conf->encryption.enable) {
-// 			shared_ptr<parquet::FileEncryptionProperties>
-// 			    encryption_configurations;
-// 			encryption_configurations =
-// 			    parquet_set_encryption(conf);
-// 			builder.encryption(encryption_configurations);
-// 		}
-// 
-// 		shared_ptr<parquet::WriterProperties> props = builder.build();
-// 		using FileClass = arrow::io::FileOutputStream;
-// 		shared_ptr<FileClass> out_file;
-// 		PARQUET_ASSIGN_OR_THROW(out_file, FileClass::Open(filename));
-// 		std::shared_ptr<parquet::ParquetFileWriter> file_writer =
-// 		    parquet::ParquetFileWriter::Open(out_file, schema, props);
-// 
-// 		// Append a RowGroup with a specific number of rows.
-// 		parquet::RowGroupWriter *rg_writer =
-// 		    file_writer->AppendRowGroup();
-// 
-// 		// Write the Int64 column
-// 		parquet::Int64Writer *int64_writer =
-// 		    static_cast<parquet::Int64Writer *>(
-// 		        rg_writer->NextColumn());
-// 		for (uint32_t i = old_index; i <= new_index; i++) {
-// 			int64_t value            = elem->keys[i];
-// 			int16_t definition_level = 1;
-// 			int64_writer->WriteBatch(
-// 			    1, &definition_level, nullptr, &value);
-// 		}
-// 
-// 		// Write the ByteArray column. Make every alternate values NULL
-// 		parquet::ByteArrayWriter *ba_writer =
-// 		    static_cast<parquet::ByteArrayWriter *>(
-// 		        rg_writer->NextColumn());
-// 		for (uint32_t i = old_index; i <= new_index; i++) {
-// 			parquet::ByteArray value;
-// 			int16_t            definition_level = 1;
-// 			value.ptr                           = elem->darray[i];
-// 			value.len                           = elem->dsize[i];
-// 			ba_writer->WriteBatch(
-// 			    1, &definition_level, nullptr, &value);
-// 		}
-// 
-// 		old_index = new_index;
-// 
-// 		FREE_IF_NOT_NULL(filename, strlen(filename));
-// 
-// 		if (new_index != elem->size - 1)
-// 			goto again;
-// 	}
-// 
-// 	parquet_object_free(elem);
-// 	return 0;
-// }
 char *
 compute_and_rename_file_withMD5(char *filename, conf_parquet *conf, char *topic)
 {
@@ -623,6 +528,46 @@ parquet_write_core(conf_parquet *conf, char *filename,
 }
 
 int
+parquet_write_tmp(
+    conf_parquet *conf, parquet_object *elem)
+{
+	char    **schema_arr = elem->data->schema;
+	uint32_t  col_len    = elem->data->col_len;
+	uint32_t  row_len    = elem->data->row_len;
+	uint64_t *ts_arr     = elem->data->ts;
+
+	shared_ptr<GroupNode> schema = setup_schema(schema_arr, col_len);
+
+	if (NULL == schema) {
+		log_error("Schema set error.");
+		return -1;
+	}
+
+	log_debug("parquet_write");
+
+	string prefix  = gen_random(6);
+	prefix         = "nanomq" + prefix;
+	char *filename = get_random_file_name(
+	    prefix.data(), ts_arr[0], ts_arr[row_len - 1]);
+	if (filename == NULL) {
+		log_error("Failed to get file name");
+		parquet_object_free(elem);
+		return -1;
+	}
+
+	parquet_write_core(conf, filename, schema, elem->data);
+	parquet_file_range *range =
+	    parquet_file_range_alloc(0, row_len - 1, filename);
+	update_parquet_file_ranges(conf, elem, range);
+
+	// Create a ParquetFileWriter instance
+	parquet::WriterProperties::Builder builder;
+
+	parquet_object_free(elem);
+	return 0;
+}
+
+int
 parquet_write(conf_parquet *conf, parquet_object *elem)
 {
 	char    **schema_arr     = elem->data->schema;
@@ -638,7 +583,7 @@ parquet_write(conf_parquet *conf, parquet_object *elem)
 	}
 
 	log_debug("parquet_write");
-	char *filename = get_file_name(conf, ts_arr[0], ts_arr[row_len - 1]);
+	char *filename = get_file_name(conf, ts_arr[0], ts_arr[row_len-1]);
 	if (filename == NULL) {
 		parquet_object_free(elem);
 		log_error("Failed to get file name");
@@ -716,7 +661,7 @@ parquet_write_loop_v2(void *config)
 			parquet_write(conf, ele);
 			break;
 		case WRITE_TEMP_RAW:
-			// parquet_write_tmp(conf, ele);
+			parquet_write_tmp(conf, ele);
 			break;
 		default:
 			break;
