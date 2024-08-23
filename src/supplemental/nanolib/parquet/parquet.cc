@@ -1578,3 +1578,79 @@ parquet_get_key_span()
 	key_span[1] = file_key_span[1];
 	return key_span;
 }
+
+parquet_data_ret **
+parquet_get_data_packets_in_range(
+    parquet_filename_range *range, const char *topic, uint32_t *size)
+{
+	if (!range || size) {
+		log_error("range && size should not be NULL");
+		return NULL;
+	}
+
+	parquet_data_ret **rets = NULL;
+
+	if (range->filename) {
+		// Search only one file
+		parquet_data_ret *ret =
+		    parquet_read_span(conf, range->filename, range->keys);
+		if (!ret) {
+			rets = (parquet_data_ret **) nng_alloc(
+			    sizeof(parquet_data_ret *) * 1);
+			log_debug("read span size: 1");
+			*size = 1;
+			*rets = ret;
+		} else {
+			return NULL;
+		}
+
+	} else {
+		// Search multiple files
+		vector<parquet_data_ret *> ret_vec;
+		uint32_t                   len       = 0;
+		uint64_t                   start_key = range->start_key;
+		uint64_t                   end_key   = range->end_key;
+
+		log_info("start_key: %lu, end_key: %lu", start_key, end_key);
+		const char **filenames =
+		    parquet_find_span(start_key, end_key, &len);
+
+		for (uint32_t i = 0; i < len; i++) {
+			log_info("name: %s, topic: %s", filenames[i], topic);
+			if (strstr(filenames[i], topic) == NULL) {
+				nng_strfree((char *) filenames[i]);
+				continue;
+			}
+
+			uint64_t keys[2];
+			keys[0] = start_key;
+			keys[1] = end_key;
+			if (len > 1) {
+				keys[0] = i == 0
+				    ? start_key
+				    : get_key(filenames[i], START_KEY);
+				keys[1] = i == (len - 1)
+				    ? end_key
+				    : get_key(filenames[i], END_KEY);
+			}
+
+			log_debug("file start_key: %lu, file end_key: %lu",
+			    keys[0], keys[1]);
+
+			auto tmp = parquet_read_span(conf, filenames[i], keys);
+			log_debug("read span size: %ld", tmp.size());
+			ret_vec.insert(ret_vec.end(), tmp.begin(), tmp.end());
+			nng_strfree((char *) filenames[i]);
+		}
+		nng_free(filenames, len);
+
+		if (!ret_vec.empty()) {
+			rets = (parquet_data_ret **) nng_alloc(
+			    sizeof(parquet_data_ret *) * ret_vec.size());
+			copy(ret_vec.begin(), ret_vec.end(), rets);
+			*size = ret_vec.size();
+		}
+	}
+
+	return rets;
+}
