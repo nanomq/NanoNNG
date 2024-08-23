@@ -1263,6 +1263,218 @@ parquet_find_data_packets(
 	return packets;
 }
 
+static parquet_data_ret *
+parquet_read_span_by_column(const char *filename, uint64_t keys[2],
+    const char **schema, uint16_t schema_len)
+{
+	conf_parquet             *conf = g_conf;
+	parquet_data_ret         *ret  = NULL;
+	parquet::ReaderProperties reader_properties =
+	    parquet::default_reader_properties();
+
+	parquet_read_set_property(reader_properties, conf);
+	vector<int> index_vector(2);
+
+	// Create a ParquetReader instance
+	std::string exception_msg = "";
+	try {
+		std::unique_ptr<parquet::ParquetFileReader> parquet_reader =
+		    parquet::ParquetFileReader::OpenFile(
+		        filename, false, reader_properties);
+
+		// Get the File MetaData
+		std::shared_ptr<parquet::FileMetaData> file_metadata =
+		    parquet_reader->metadata();
+
+		int num_row_groups =
+		    file_metadata
+		        ->num_row_groups(); // Get the number of RowGroups
+		int num_columns =
+		    file_metadata->num_columns(); // Get the number of Columns
+		assert(num_row_groups == 1);
+
+		for (int r = 0; r < num_row_groups; ++r) {
+
+			std::shared_ptr<parquet::RowGroupReader>
+			    row_group_reader = parquet_reader->RowGroup(
+			        r); // Get the RowGroup Reader
+			int64_t                                values_read = 0;
+			int64_t                                rows_read   = 0;
+			std::shared_ptr<parquet::ColumnReader> column_reader;
+
+			column_reader = row_group_reader->Column(0);
+			parquet::Int64Reader *int64_reader =
+			    static_cast<parquet::Int64Reader *>(
+			        column_reader.get());
+
+			index_vector = get_keys_indexes_fuzing(
+			    int64_reader, keys[0], keys[1]);
+			if (-1 == index_vector[0] || -1 == index_vector[1]) {
+				log_error("Not found data in key");
+				return ret;
+			}
+
+			ret = (parquet_data_ret *) malloc(
+			    sizeof(parquet_data_ret));
+			if (!ret) {
+				log_error("malloc failed");
+				return ret;
+			}
+			ret->payload_arr = (parquet_data_packet ***) malloc(
+			    sizeof(parquet_data_packet **) * num_columns);
+			ret->schema =
+			    (char **) malloc(sizeof(char *) * num_columns);
+			ret->col_len = num_columns;
+			ret->row_len = index_vector[1] - index_vector[0] + 1;
+
+			for (int i = 1; i < num_columns; i++) {
+				// Get the Column Reader for the ByteArray
+				// column
+
+				const char *column_name = file_metadata->schema()->Column(i)->name().c_str();
+				bool in_schema = false;
+                for (int j = 0; j < schema_len; j++) {
+                    if (strcmp(column_name, schema[j]) == 0) {
+                        in_schema = true;
+                        break;
+                    }
+                }
+                if (!in_schema) {
+					ret->col_len--;
+                    continue; // Not in schema, skip
+                }
+				column_reader  = row_group_reader->Column(i);
+				auto ba_reader = dynamic_pointer_cast<
+				    parquet::ByteArrayReader>(column_reader);
+				log_debug("start index: %lu, end index: %lu",
+				    index_vector[0], index_vector[1]);
+
+				if (ba_reader->HasNext()) {
+					ba_reader->Skip(index_vector[0]);
+				}
+
+				if (ba_reader->HasNext()) {
+					int64_t batch_size = index_vector[1] -
+					    index_vector[0] + 1;
+					int64_t total_values_read = 0;
+					vector<parquet_data_packet *> ret_vec;
+					vector<char *> schema_vec;
+					while (
+					    total_values_read < batch_size) {
+						std::vector<parquet::ByteArray>
+						    values(batch_size);
+						std::vector<int16_t>
+						    definition_levels(
+						        batch_size); // Use a
+						                     // vector
+						                     // for
+						                     // definition
+						                     // levels
+						parquet::ByteArray value;
+						rows_read =
+						    ba_reader->ReadBatch(
+						        batch_size,
+						        definition_levels
+						            .data(),
+						        nullptr, values.data(),
+						        &values_read);
+						total_values_read += rows_read;
+						log_info(
+						    "batch_size: %lu, "
+						    "total_values_read: %lu, "
+						    "rows_read: %lu, "
+						    "values_read: %lu",
+						    batch_size,
+						    total_values_read,
+						    rows_read, values_read);
+						for (int64_t r = 0;
+						     r < rows_read; r++) {
+							parquet_data_packet *pack =
+							    (parquet_data_packet
+							            *)
+							        malloc(sizeof(
+							            parquet_data_packet));
+							if (!pack) {
+								log_error(
+								    "Memory "
+								    "allocatio"
+								    "n "
+								    "failed "
+								    "for "
+								    "parquet_"
+								    "data_"
+								    "packet");
+								for (auto p :
+								    ret_vec) {
+									free(
+									    p->data);
+									free(
+									    p);
+								}
+								free(ret);
+								return NULL;
+							}
+							pack->data =
+							    (uint8_t *) malloc(
+							        values[r].len *
+							        sizeof(
+							            uint8_t));
+							memcpy(pack->data,
+							    values[r].ptr,
+							    values[r].len);
+							pack->size =
+							    values[r].len;
+							log_trace(
+							    "push element");
+							ret_vec.push_back(
+							    pack);
+							char *schema = strdup(
+							    file_metadata
+							        ->schema()
+							        ->Column(i)
+							        ->name()
+							        .c_str());
+							schema_vec.push_back(
+							    schema);
+						}
+						if (batch_size ==
+						    total_values_read) {
+							if (!ret_vec.empty()) {
+								ret->payload_arr
+								    [i] = (parquet_data_packet
+								        **)
+								    malloc(
+								        sizeof(
+								            parquet_data_packet
+								                *) *
+								        ret_vec
+								            .size());
+								copy(
+								    ret_vec
+								        .begin(),
+								    ret_vec
+								        .end(),
+								    ret->payload_arr
+								        [i]);
+							} else {
+								ret->payload_arr
+								    [i] = NULL;
+							}
+							break;
+						}
+					}
+				} else {
+					log_error("Next is NULL");
+				}
+			}
+		}
+	} catch (const std::exception &e) {
+		exception_msg = e.what();
+		log_error("exception_msg=[%s]", exception_msg.c_str());
+	}
+
+	return ret;
+}
 
 
 static parquet_data_ret *
@@ -1314,105 +1526,152 @@ parquet_read_span(const char *filename, uint64_t keys[2])
 				log_error("Not found data in key");
 				return ret;
 			}
-	
-	ret = (parquet_data_ret *)malloc(sizeof(parquet_data_ret));
-	if (!ret) {
-		log_error("malloc failed");
-		return ret;
-	}
-	ret->payload_arr = (parquet_data_packet ***) malloc(
-	    sizeof(parquet_data_packet **) * num_columns);
-	ret->schema  = (char **) malloc(sizeof(char *) * num_columns);
-	ret->col_len = num_columns;
-	ret->row_len = index_vector[1] - index_vector[0] + 1;
 
-	for (int i = 1; i < num_columns; i++) {
-	// Get the Column Reader for the ByteArray
-	// column
-	column_reader = row_group_reader->Column(i);
-	auto ba_reader =
-	    dynamic_pointer_cast<parquet::ByteArrayReader>(column_reader);
-	log_debug("start index: %lu, end index: %lu", index_vector[0],
-	    index_vector[1]);
+			ret = (parquet_data_ret *) malloc(
+			    sizeof(parquet_data_ret));
+			if (!ret) {
+				log_error("malloc failed");
+				return ret;
+			}
+			ret->payload_arr = (parquet_data_packet ***) malloc(
+			    sizeof(parquet_data_packet **) * num_columns);
+			ret->schema =
+			    (char **) malloc(sizeof(char *) * num_columns);
+			ret->col_len = num_columns;
+			ret->row_len = index_vector[1] - index_vector[0] + 1;
 
-	if (ba_reader->HasNext()) {
-		ba_reader->Skip(index_vector[0]);
-	}
+			for (int i = 1; i < num_columns; i++) {
+				// Get the Column Reader for the ByteArray
+				// column
+				column_reader  = row_group_reader->Column(i);
+				auto ba_reader = dynamic_pointer_cast<
+				    parquet::ByteArrayReader>(column_reader);
+				log_debug("start index: %lu, end index: %lu",
+				    index_vector[0], index_vector[1]);
 
-	if (ba_reader->HasNext()) {
-		int64_t batch_size = index_vector[1] - index_vector[0] + 1;
-		int64_t total_values_read = 0;
-		vector<parquet_data_packet *> ret_vec;
-		vector<char *>                schema_vec;
-		while (total_values_read < batch_size) {
-			std::vector<parquet::ByteArray> values(batch_size);
-			std::vector<int16_t>            definition_levels(
-                            batch_size); // Use a
-			                            // vector
-			                            // for
-			                            // definition
-			                            // levels
-			parquet::ByteArray value;
-			rows_read = ba_reader->ReadBatch(batch_size,
-			    definition_levels.data(), nullptr, values.data(),
-			    &values_read);
-			total_values_read += rows_read;
-			log_info("batch_size: %lu, "
-			         "total_values_read: %lu, "
-			         "rows_read: %lu, "
-			         "values_read: %lu",
-			    batch_size, total_values_read, rows_read,
-			    values_read);
-			for (int64_t r = 0; r < rows_read; r++) {
-				parquet_data_packet *pack =
-				    (parquet_data_packet *) malloc(
-				        sizeof(parquet_data_packet));
-				if (!pack) {
-					log_error("Memory "
-					          "allocatio"
-					          "n "
-					          "failed "
-					          "for "
-					          "parquet_"
-					          "data_"
-					          "packet");
-					for (auto p : ret_vec) {
-						free(p->data);
-						free(p);
+				if (ba_reader->HasNext()) {
+					ba_reader->Skip(index_vector[0]);
+				}
+
+				if (ba_reader->HasNext()) {
+					int64_t batch_size = index_vector[1] -
+					    index_vector[0] + 1;
+					int64_t total_values_read = 0;
+					vector<parquet_data_packet *> ret_vec;
+					vector<char *> schema_vec;
+					while (
+					    total_values_read < batch_size) {
+						std::vector<parquet::ByteArray>
+						    values(batch_size);
+						std::vector<int16_t>
+						    definition_levels(
+						        batch_size); // Use a
+						                     // vector
+						                     // for
+						                     // definition
+						                     // levels
+						parquet::ByteArray value;
+						rows_read =
+						    ba_reader->ReadBatch(
+						        batch_size,
+						        definition_levels
+						            .data(),
+						        nullptr, values.data(),
+						        &values_read);
+						total_values_read += rows_read;
+						log_info(
+						    "batch_size: %lu, "
+						    "total_values_read: %lu, "
+						    "rows_read: %lu, "
+						    "values_read: %lu",
+						    batch_size,
+						    total_values_read,
+						    rows_read, values_read);
+						for (int64_t r = 0;
+						     r < rows_read; r++) {
+							parquet_data_packet *pack =
+							    (parquet_data_packet
+							            *)
+							        malloc(sizeof(
+							            parquet_data_packet));
+							if (!pack) {
+								log_error(
+								    "Memory "
+								    "allocatio"
+								    "n "
+								    "failed "
+								    "for "
+								    "parquet_"
+								    "data_"
+								    "packet");
+								for (auto p :
+								    ret_vec) {
+									free(
+									    p->data);
+									free(
+									    p);
+								}
+								free(ret);
+								return NULL;
+							}
+							pack->data =
+							    (uint8_t *) malloc(
+							        values[r].len *
+							        sizeof(
+							            uint8_t));
+							memcpy(pack->data,
+							    values[r].ptr,
+							    values[r].len);
+							pack->size =
+							    values[r].len;
+							log_trace(
+							    "push element");
+							ret_vec.push_back(
+							    pack);
+							char *schema = strdup(
+							    file_metadata
+							        ->schema()
+							        ->Column(i)
+							        ->name()
+							        .c_str());
+							schema_vec.push_back(
+							    schema);
+						}
+						if (batch_size ==
+						    total_values_read) {
+							if (!ret_vec.empty()) {
+								ret->payload_arr
+								    [i] = (parquet_data_packet
+								        **)
+								    malloc(
+								        sizeof(
+								            parquet_data_packet
+								                *) *
+								        ret_vec
+								            .size());
+								copy(
+								    ret_vec
+								        .begin(),
+								    ret_vec
+								        .end(),
+								    ret->payload_arr
+								        [i]);
+							} else {
+								ret->payload_arr
+								    [i] = NULL;
+							}
+							break;
+						}
 					}
-					free(ret);
-					return NULL;
-				}
-				pack->data = (uint8_t *) malloc(
-				    values[r].len * sizeof(uint8_t));
-				memcpy(
-				    pack->data, values[r].ptr, values[r].len);
-				pack->size = values[r].len;
-				log_trace("push element");
-				ret_vec.push_back(pack);
-				char *schema = strdup(file_metadata->schema()->Column(i)->name().c_str());
-				schema_vec.push_back(schema);
-			}
-			if (batch_size == total_values_read) {
-				if (!ret_vec.empty()) {
-					ret->payload_arr[i] = (parquet_data_packet**) malloc(sizeof(parquet_data_packet*)*ret_vec.size());
-					copy(ret_vec.begin(), ret_vec.end(), ret->payload_arr[i]);
 				} else {
-					ret->payload_arr[i] = NULL;
+					log_error("Next is NULL");
 				}
-				break;
 			}
-		}
-	} else {
-		log_error("Next is NULL");
-	}
-	}
 		}
 	} catch (const std::exception &e) {
 		exception_msg = e.what();
 		log_error("exception_msg=[%s]", exception_msg.c_str());
 	}
-
 
 	return ret;
 }
@@ -1597,6 +1856,82 @@ parquet_get_key_span()
 parquet_data_ret **
 parquet_get_data_packets_in_range(
     parquet_filename_range *range, const char *topic, uint32_t *size)
+{
+	if (!range || size) {
+		log_error("range && size should not be NULL");
+		return NULL;
+	}
+
+	parquet_data_ret **rets = NULL;
+
+	if (range->filename) {
+		// Search only one file
+		parquet_data_ret *ret =
+		    parquet_read_span(range->filename, range->keys);
+		if (!ret) {
+			rets = (parquet_data_ret **) nng_alloc(
+			    sizeof(parquet_data_ret *) * 1);
+			log_debug("read span size: 1");
+			*size = 1;
+			*rets = ret;
+		} else {
+			return NULL;
+		}
+
+	} else {
+		// Search multiple files
+		vector<parquet_data_ret *> ret_vec;
+		uint32_t                   len       = 0;
+		uint64_t                   start_key = range->keys[0];
+		uint64_t                   end_key   = range->keys[1];
+
+		log_info("start_key: %lu, end_key: %lu", start_key, end_key);
+		const char **filenames =
+		    parquet_find_span(start_key, end_key, &len);
+
+		for (uint32_t i = 0; i < len; i++) {
+			log_info("name: %s, topic: %s", filenames[i], topic);
+			if (strstr(filenames[i], topic) == NULL) {
+				nng_strfree((char *) filenames[i]);
+				continue;
+			}
+
+			uint64_t keys[2];
+			keys[0] = start_key;
+			keys[1] = end_key;
+			if (len > 1) {
+				keys[0] = i == 0
+				    ? start_key
+				    : get_key(filenames[i], START_KEY);
+				keys[1] = i == (len - 1)
+				    ? end_key
+				    : get_key(filenames[i], END_KEY);
+			}
+
+			log_debug("file start_key: %lu, file end_key: %lu",
+			    keys[0], keys[1]);
+
+			auto tmp = parquet_read_span(filenames[i], keys);
+			ret_vec.push_back(tmp);
+			nng_strfree((char *) filenames[i]);
+		}
+		nng_free(filenames, len);
+
+		if (!ret_vec.empty()) {
+			rets = (parquet_data_ret **) nng_alloc(
+			    sizeof(parquet_data_ret *) * ret_vec.size());
+			copy(ret_vec.begin(), ret_vec.end(), rets);
+			*size = ret_vec.size();
+		}
+	}
+
+	return rets;
+}
+
+parquet_data_ret **
+parquet_get_data_packets_in_range_by_column(parquet_filename_range *range,
+    const char *topic, const char **schema, uint16_t schema_len,
+    uint32_t *size)
 {
 	if (!range || size) {
 		log_error("range && size should not be NULL");
