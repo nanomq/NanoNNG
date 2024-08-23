@@ -354,6 +354,7 @@ nano_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
 	log_trace("*********** nano_ctx_cancel_send ***********");
 	nni_mtx_lock(&s->lk);
 	if (ctx->saio != aio) {
+		log_error("send aio cancel failed!");
 		nni_mtx_unlock(&s->lk);
 		return;
 	}
@@ -576,14 +577,18 @@ static void
 nano_pipe_stop(void *arg)
 {
 	nano_pipe *p = arg;
-	if (p->pipe->cache)
+	if (p->pipe->cache) {
+		log_info("stop a cached pipe %p", p->pipe);
 		return; // your time is yet to come
-
+	}
 	log_trace(" ########## nano_pipe_stop ########## ");
+	log_info("stop send aio");
 	// nni_aio_abort(&p->aio_send, NNG_ECANCELED);
 	nni_aio_stop(&p->aio_send);
 	nni_aio_stop(&p->aio_timer);
+	log_info("stop recv aio");
 	nni_aio_stop(&p->aio_recv);
+	log_info(" ########## nano_pipe_stop ########## ");
 }
 
 static void
@@ -1029,6 +1034,8 @@ nano_cancel_recv(nni_aio *aio, void *arg, int rv)
 		nni_list_remove(&s->recvq, ctx);
 		ctx->raio = NULL;
 		nni_aio_finish_error(aio, rv);
+	} else {
+		log_error("recv aio cancel failed!");
 	}
 	nni_mtx_unlock(&s->lk);
 }

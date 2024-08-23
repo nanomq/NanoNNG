@@ -209,6 +209,8 @@ tcp_fini(void *arg)
 	tcp_close(c);
 	if (c->pfd != NULL) {
 		nni_posix_pfd_fini(c->pfd);
+	} else {
+		log_warn("skipping fd release!");
 	}
 	nni_mtx_fini(&c->mtx);
 

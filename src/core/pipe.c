@@ -52,10 +52,11 @@ pipe_destroy(void *arg)
 		nni_cv_wait(&p->p_cv);
 	}
 	nni_mtx_unlock(&pipes_lk);
-
+	log_info("protocol stop");
 	if (p->p_proto_data != NULL) {
 		p->p_proto_ops.pipe_stop(p->p_proto_data);
 	}
+	log_info("transport stop");
 	if ((p->p_tran_data != NULL) && (p->p_tran_ops.p_stop != NULL)) {
 		p->p_tran_ops.p_stop(p->p_tran_data);
 	}
@@ -79,10 +80,11 @@ pipe_destroy(void *arg)
 	nni_stat_unregister(&p->st_root);
 #endif
 	nni_pipe_remove(p);
-
+	log_info("protocol fini");
 	if (p->p_proto_data != NULL) {
 		p->p_proto_ops.pipe_fini(p->p_proto_data);
 	}
+	log_info("transport fini");
 	if (p->p_tran_data != NULL) {
 		p->p_tran_ops.p_fini(p->p_tran_data);
 	}

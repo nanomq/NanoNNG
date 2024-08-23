@@ -137,25 +137,27 @@ tcptran_pipe_close(void *arg)
 
 	nng_stream_close(p->conn);
 	nni_aio_close(p->rxaio);
-	nni_aio_close(p->rpaio);
 	nni_aio_close(p->txaio);
+	nni_aio_close(p->rpaio);
 	nni_aio_close(p->qsaio);
 	nni_aio_close(p->negoaio);
 
-	log_trace("tcptran_pipe_close\n");
+	log_info("tcptran_pipe_close %p\n", p->npipe);
 }
 
 static void
 tcptran_pipe_stop(void *arg)
 {
 	tcptran_pipe *p = arg;
-
+	log_info(" ###### start tcptran_pipe_stop ###### ");
 	nni_aio_stop(p->qsaio);
+	log_info(" qsaio stopped");
 	nni_aio_stop(p->rpaio);
+	log_info(" rpaio stopped");
 	nni_aio_stop(p->rxaio);
 	nni_aio_stop(p->txaio);
 	nni_aio_stop(p->negoaio);
-	log_trace(" ###### tcptran_pipe_stop ###### ");
+	log_info(" ###### tcptran_pipe_stop ###### ");
 }
 
 static int
@@ -186,7 +188,7 @@ tcptran_pipe_fini(void *arg)
 {
 	tcptran_pipe *p = arg;
 	tcptran_ep   *ep;
-
+	log_info(" ************ tcptran_pipe_finit [%p] ************ ", p);
 	tcptran_pipe_stop(p);
 	if ((ep = p->ep) != NULL) {
 		nni_mtx_lock(&ep->mtx);
@@ -206,6 +208,7 @@ tcptran_pipe_fini(void *arg)
 		nni_msg_free(p->rxmsg);
 
 	nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
+	log_info(" free stream ");
 	nng_stream_free(p->conn);
 	nni_aio_free(p->qsaio);
 	nni_aio_free(p->rpaio);
@@ -477,7 +480,7 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 	int           rv;
 
 	if ((rv = nni_aio_result(qsaio)) != 0) {
-		log_warn(" send aio error %s", nng_strerror(rv));
+		log_warn(" qos send aio error %s", nng_strerror(rv));
 		nni_msg_free(nni_aio_get_msg(qsaio));
 		nni_aio_set_msg(qsaio, NULL);
 		tcptran_pipe_close(p);
@@ -544,7 +547,7 @@ nmq_tcptran_pipe_rp_send_cb(void *arg)
 	int           rv;
 
 	if ((rv = nni_aio_result(rpaio)) != 0) {
-		log_warn(" send aio error %s", nng_strerror(rv));
+		log_warn(" rep send aio error %s", nng_strerror(rv));
 		// pipe is reaped in nego_cb
 		return;
 	}

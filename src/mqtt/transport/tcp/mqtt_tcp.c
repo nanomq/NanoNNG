@@ -1580,7 +1580,7 @@ mqtt_tcptran_ep_connect(void *arg, nni_aio *aio)
 		    ? (nni_duration) (nni_random() % 1000)
 		    : ep->backoff;
 		log_warn("reconnect in %ld ms", ep->backoff);
-		// nni_msleep(ep->backoff);
+		nni_msleep(ep->backoff);
 	} else {
 		ep->backoff = nni_random()%2000;
 	}
