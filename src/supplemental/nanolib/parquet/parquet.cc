@@ -1324,7 +1324,7 @@ parquet_read_span_by_column(const char *filename, uint64_t keys[2],
 			    sizeof(parquet_data_packet **) * num_columns);
 			ret->schema =
 			    (char **) malloc(sizeof(char *) * num_columns);
-			ret->col_len = num_columns;
+			ret->col_len = num_columns-1;
 			ret->row_len = index_vector[1] - index_vector[0] + 1;
 
 			for (int i = 1; i < num_columns; i++) {
@@ -1334,6 +1334,8 @@ parquet_read_span_by_column(const char *filename, uint64_t keys[2],
 				const char *column_name = file_metadata->schema()->Column(i)->name().c_str();
 				bool in_schema = false;
                 for (int j = 0; j < schema_len; j++) {
+					printf("schema: %s, %s\n", column_name, schema[j]);
+
                     if (strcmp(column_name, schema[j]) == 0) {
                         in_schema = true;
                         break;
@@ -1519,11 +1521,6 @@ parquet_read_span(const char *filename, uint64_t keys[2])
 
 			column_reader = row_group_reader->Column(0);
 
-			char *schema = strdup(file_metadata->schema()
-			                          ->Column(0)
-			                          ->name()
-			                          .c_str());
-			schema_vec.push_back(schema);
 			parquet::Int64Reader *int64_reader =
 			    static_cast<parquet::Int64Reader *>(
 			        column_reader.get());
@@ -1952,7 +1949,7 @@ parquet_get_data_packets_in_range_by_column(parquet_filename_range *range,
 	if (range->filename) {
 		// Search only one file
 		parquet_data_ret *ret =
-		    parquet_read_span(range->filename, range->keys);
+		    parquet_read_span_by_column(range->filename, range->keys, schema, schema_len);
 		if (!ret) {
 			rets = (parquet_data_ret **) nng_alloc(
 			    sizeof(parquet_data_ret *) * 1);
@@ -1996,7 +1993,8 @@ parquet_get_data_packets_in_range_by_column(parquet_filename_range *range,
 			log_debug("file start_key: %lu, file end_key: %lu",
 			    keys[0], keys[1]);
 
-			auto tmp = parquet_read_span(filenames[i], keys);
+			auto tmp = parquet_read_span_by_column(
+			    filenames[i], keys, schema, schema_len);
 			ret_vec.push_back(tmp);
 			nng_strfree((char *) filenames[i]);
 		}
