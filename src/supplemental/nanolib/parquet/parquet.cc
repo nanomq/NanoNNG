@@ -1295,6 +1295,7 @@ parquet_read_span_by_column(const char *filename, uint64_t keys[2],
 
 		for (int r = 0; r < num_row_groups; ++r) {
 
+			vector<char *> schema_vec;
 			std::shared_ptr<parquet::RowGroupReader>
 			    row_group_reader = parquet_reader->RowGroup(
 			        r); // Get the RowGroup Reader
@@ -1345,6 +1346,11 @@ parquet_read_span_by_column(const char *filename, uint64_t keys[2],
 					ret->col_len--;
                     continue; // Not in schema, skip
                 }
+
+				char *schema = strdup(column_name);
+				puts(schema);
+				schema_vec.push_back(schema);
+
 				column_reader  = row_group_reader->Column(i);
 				auto ba_reader = dynamic_pointer_cast<
 				    parquet::ByteArrayReader>(column_reader);
@@ -1443,7 +1449,7 @@ parquet_read_span_by_column(const char *filename, uint64_t keys[2],
 						    total_values_read) {
 							if (!ret_vec.empty()) {
 								ret->payload_arr
-								    [i] = (parquet_data_packet
+								    [i-1] = (parquet_data_packet
 								        **)
 								    malloc(
 								        sizeof(
@@ -1457,10 +1463,10 @@ parquet_read_span_by_column(const char *filename, uint64_t keys[2],
 								    ret_vec
 								        .end(),
 								    ret->payload_arr
-								        [i]);
+								        [i-1]);
 							} else {
 								ret->payload_arr
-								    [i] = NULL;
+								    [i-1] = NULL;
 							}
 							break;
 						}
@@ -1469,6 +1475,7 @@ parquet_read_span_by_column(const char *filename, uint64_t keys[2],
 					log_error("Next is NULL");
 				}
 			}
+			copy(schema_vec.begin(), schema_vec.end(), ret->schema);
 		}
 	} catch (const std::exception &e) {
 		exception_msg = e.what();
@@ -1993,9 +2000,10 @@ parquet_get_data_packets_in_range_by_column(parquet_filename_range *range,
 			log_debug("file start_key: %lu, file end_key: %lu",
 			    keys[0], keys[1]);
 
-			auto tmp = parquet_read_span_by_column(
+			auto ret = parquet_read_span_by_column(
 			    filenames[i], keys, schema, schema_len);
-			ret_vec.push_back(tmp);
+			
+			ret_vec.push_back(ret);
 			nng_strfree((char *) filenames[i]);
 		}
 		nng_free(filenames, len);
