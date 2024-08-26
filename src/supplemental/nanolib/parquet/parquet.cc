@@ -1508,6 +1508,8 @@ parquet_read_span(const char *filename, uint64_t keys[2])
 
 		for (int r = 0; r < num_row_groups; ++r) {
 
+			vector<char *> schema_vec;
+
 			std::shared_ptr<parquet::RowGroupReader>
 			    row_group_reader = parquet_reader->RowGroup(
 			        r); // Get the RowGroup Reader
@@ -1516,6 +1518,12 @@ parquet_read_span(const char *filename, uint64_t keys[2])
 			std::shared_ptr<parquet::ColumnReader> column_reader;
 
 			column_reader = row_group_reader->Column(0);
+
+			char *schema = strdup(file_metadata->schema()
+			                          ->Column(0)
+			                          ->name()
+			                          .c_str());
+			schema_vec.push_back(schema);
 			parquet::Int64Reader *int64_reader =
 			    static_cast<parquet::Int64Reader *>(
 			        column_reader.get());
@@ -1537,7 +1545,7 @@ parquet_read_span(const char *filename, uint64_t keys[2])
 			    sizeof(parquet_data_packet **) * num_columns);
 			ret->schema =
 			    (char **) malloc(sizeof(char *) * num_columns);
-			ret->col_len = num_columns;
+			ret->col_len = num_columns-1;
 			ret->row_len = index_vector[1] - index_vector[0] + 1;
 
 			for (int i = 1; i < num_columns; i++) {
@@ -1549,6 +1557,12 @@ parquet_read_span(const char *filename, uint64_t keys[2])
 				log_debug("start index: %lu, end index: %lu",
 				    index_vector[0], index_vector[1]);
 
+				char *schema = strdup(file_metadata->schema()
+				                          ->Column(i)
+				                          ->name()
+				                          .c_str());
+				schema_vec.push_back(schema);
+
 				if (ba_reader->HasNext()) {
 					ba_reader->Skip(index_vector[0]);
 				}
@@ -1558,7 +1572,6 @@ parquet_read_span(const char *filename, uint64_t keys[2])
 					    index_vector[0] + 1;
 					int64_t total_values_read = 0;
 					vector<parquet_data_packet *> ret_vec;
-					vector<char *> schema_vec;
 					while (
 					    total_values_read < batch_size) {
 						std::vector<parquet::ByteArray>
@@ -1628,20 +1641,12 @@ parquet_read_span(const char *filename, uint64_t keys[2])
 							    "push element");
 							ret_vec.push_back(
 							    pack);
-							char *schema = strdup(
-							    file_metadata
-							        ->schema()
-							        ->Column(i)
-							        ->name()
-							        .c_str());
-							schema_vec.push_back(
-							    schema);
 						}
 						if (batch_size ==
 						    total_values_read) {
 							if (!ret_vec.empty()) {
 								ret->payload_arr
-								    [i] = (parquet_data_packet
+								    [i-1] = (parquet_data_packet
 								        **)
 								    malloc(
 								        sizeof(
@@ -1655,10 +1660,11 @@ parquet_read_span(const char *filename, uint64_t keys[2])
 								    ret_vec
 								        .end(),
 								    ret->payload_arr
-								        [i]);
+								        [i-1]);
+
 							} else {
 								ret->payload_arr
-								    [i] = NULL;
+								    [i-1] = NULL;
 							}
 							break;
 						}
@@ -1667,7 +1673,9 @@ parquet_read_span(const char *filename, uint64_t keys[2])
 					log_error("Next is NULL");
 				}
 			}
+			copy(schema_vec.begin(), schema_vec.end(), ret->schema);
 		}
+
 	} catch (const std::exception &e) {
 		exception_msg = e.what();
 		log_error("exception_msg=[%s]", exception_msg.c_str());
@@ -1857,7 +1865,7 @@ parquet_data_ret **
 parquet_get_data_packets_in_range(
     parquet_filename_range *range, const char *topic, uint32_t *size)
 {
-	if (!range || size) {
+	if (!range || !size) {
 		log_error("range && size should not be NULL");
 		return NULL;
 	}
@@ -1912,6 +1920,7 @@ parquet_get_data_packets_in_range(
 			    keys[0], keys[1]);
 
 			auto tmp = parquet_read_span(filenames[i], keys);
+
 			ret_vec.push_back(tmp);
 			nng_strfree((char *) filenames[i]);
 		}
@@ -1933,7 +1942,7 @@ parquet_get_data_packets_in_range_by_column(parquet_filename_range *range,
     const char *topic, const char **schema, uint16_t schema_len,
     uint32_t *size)
 {
-	if (!range || size) {
+	if (!range || !size) {
 		log_error("range && size should not be NULL");
 		return NULL;
 	}
