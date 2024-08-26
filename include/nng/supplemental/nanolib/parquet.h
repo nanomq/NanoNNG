@@ -8,9 +8,10 @@
 extern "C" {
 #endif
 
-typedef struct parquet_object parquet_object;
-typedef struct parquet_data parquet_data;
-typedef struct parquet_payload parquet_payload;
+typedef struct parquet_object   parquet_object;
+typedef struct parquet_data     parquet_data;
+typedef struct parquet_data_ret parquet_data_ret;
+typedef struct parquet_payload  parquet_payload;
 typedef void (*parquet_cb)(parquet_object *arg);
 
 typedef enum {
@@ -35,6 +36,15 @@ typedef struct {
 	uint8_t *data;
 	uint32_t size;
 } parquet_data_packet;
+
+
+struct parquet_data_ret {
+	// Payload_arr should col first.
+	uint32_t               col_len;
+	uint32_t               row_len;
+	char                 **schema;
+	parquet_data_packet ***payload_arr;
+};
 
 
 struct parquet_object {
@@ -85,17 +95,39 @@ parquet_data_packet **parquet_find_data_packets(
 parquet_data_packet **parquet_find_data_span_packets(conf_parquet *conf,
     uint64_t start_key, uint64_t end_key, uint32_t *size, char *topic);
 
-parquet_filename_range **parquet_find_file_range(
-    uint64_t start_key, uint64_t end_key, char *topic);
 
 parquet_data_packet **parquet_find_data_span_packets_specify_file(
     conf_parquet *conf, parquet_filename_range *range, uint32_t *size);
 
 
-// parquet_data_packet **parquet_find_data_span_packets(conf_parquet *conf,
-//     uint64_t start_key, uint64_t end_key, char **schema, uint16_t schema_col, uint32_t *size, char *topic);
 
+// struct parquet_data_ret {
+// 	// Payload_arr should col first.
+// 	uint32_t               col_len;
+// 	uint32_t               row_len;
+// 	char                 **schema;
+// 	parquet_data_packet ***payload_arr;
+// };
 
+// typedef struct {
+// 	const char *filename;
+// 	uint64_t    keys[2];
+// } parquet_filename_range;
+
+parquet_filename_range **parquet_get_file_ranges(
+    uint64_t start_key, uint64_t end_key, char *topic);
+
+// parquet_data_ret **parquet_get_data_packets_in_range_by_column(
+//     uint64_t start_key, uint64_t end_key, const char *topic,
+//     const char **schema, uint16_t schema_len, uint32_t *size);
+
+// If filename in range is NULL return all results, else one parquet file results.
+parquet_data_ret **parquet_get_data_packets_in_range_by_column(
+    parquet_filename_range *range, const char *topic, const char **schema,
+    uint16_t schema_len, uint32_t *size);
+
+parquet_data_ret **parquet_get_data_packets_in_range(
+    parquet_filename_range *range, const char *topic, uint32_t *size);
 
 #ifdef __cplusplus
 }
