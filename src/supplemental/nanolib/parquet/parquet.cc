@@ -860,8 +860,6 @@ static uint8_t *
 parquet_read(conf_parquet *conf, char *filename, uint64_t key, uint32_t *len)
 {
 	conf                                 = g_conf;
-	string               path_int64 = "key";
-	string               path_str   = "data";
 	parquet::ReaderProperties reader_properties =
 	    parquet::default_reader_properties();
 
@@ -881,10 +879,6 @@ parquet_read(conf_parquet *conf, char *filename, uint64_t key, uint32_t *len)
 		int num_row_groups =
 		    file_metadata
 		        ->num_row_groups(); // Get the number of RowGroups
-		int num_columns =
-		    file_metadata->num_columns(); // Get the number of Columns
-		assert(num_columns == 2);
-
 		for (int r = 0; r < num_row_groups; ++r) {
 
 			shared_ptr<parquet::RowGroupReader>
@@ -1072,9 +1066,6 @@ parquet_read(conf_parquet *conf, char *filename, vector<uint64_t> keys)
 		int num_row_groups =
 		    file_metadata
 		        ->num_row_groups(); // Get the number of RowGroups
-		int num_columns =
-		    file_metadata->num_columns(); // Get the number of Columns
-		assert(num_columns == 2);
 
 		for (int r = 0; r < num_row_groups; ++r) {
 
@@ -1221,6 +1212,10 @@ parquet_find_data_packets(
 	// Get the file map
 	for (uint32_t i = 0; i < len; i++) {
 		vector<uint64_t> key_vec;
+		if (filenames[i] == NULL) {
+			log_error("filenames[%d] is NULL, len is %d", i, len);
+			return NULL;
+		}
 		if (auto s = file_name_map.find(filenames[i]);
 		    s != file_name_map.end()) {
 			s->second.push_back(keys[i]);
@@ -1302,7 +1297,8 @@ static parquet_data_packet **read_column_data(shared_ptr<parquet::ColumnReader> 
         int64_t rows_read = ba_reader->ReadBatch(batch_size, def_levels.data(), rep_levels.data(), values.data(), &values_read);
         total_values_read += rows_read;
 
-        for (int64_t r = 0; r < rows_read; r++) {
+        for (int64_t r = 0, i = 0; r < rows_read; r++) {
+
             if (def_levels[r] == 0) { // Assuming definition level 0 indicates NULL
                 log_trace("Row %lld is NULL", r);
                 ret_vec.push_back(nullptr);
@@ -1318,9 +1314,9 @@ static parquet_data_packet **read_column_data(shared_ptr<parquet::ColumnReader> 
                 }
                 return nullptr;
             }
-            pack->data = (uint8_t *)malloc(values[r].len * sizeof(uint8_t));
-            memcpy(pack->data, values[r].ptr, values[r].len);
-            pack->size = values[r].len;
+            pack->data = (uint8_t *)malloc(values[i].len * sizeof(uint8_t));
+            memcpy(pack->data, values[i].ptr, values[i].len);
+            pack->size = values[i++].len;
             ret_vec.push_back(pack);
         }
 
