@@ -538,6 +538,7 @@ parquet_write_tmp(conf_parquet *conf, parquet_object *elem)
 	parquet_write_core(conf, filename, schema, elem->data);
 	parquet_file_range *range =
 	    parquet_file_range_alloc(0, row_len - 1, filename);
+	free(filename);
 	update_parquet_file_ranges(conf, elem, range);
 
 	// Create a ParquetFileWriter instance
@@ -1400,8 +1401,6 @@ parquet_read_span_by_column(const char *filename, uint64_t keys[2],
 		int num_row_groups =
 		    file_metadata
 		        ->num_row_groups(); // Get the number of RowGroups
-		int num_columns =
-		    file_metadata->num_columns(); // Get the number of Columns
 		assert(num_row_groups == 1);
 
 		for (int r = 0; r < num_row_groups; ++r) {
@@ -1412,8 +1411,6 @@ parquet_read_span_by_column(const char *filename, uint64_t keys[2],
 			shared_ptr<parquet::RowGroupReader>
 			    row_group_reader = parquet_reader->RowGroup(
 			        r); // Get the RowGroup Reader
-			int64_t                                values_read = 0;
-			int64_t                                rows_read   = 0;
 			shared_ptr<parquet::ColumnReader> column_reader;
 
 			column_reader = row_group_reader->Column(0);
