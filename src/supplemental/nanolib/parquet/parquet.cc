@@ -979,7 +979,7 @@ get_keys_indexes(
 
 static vector<int>
 get_keys_indexes_fuzing(
-    parquet::Int64Reader *int64_reader, uint64_t start_key, uint64_t end_key)
+    parquet::Int64Reader *int64_reader, vector<uint64_t> &ts, uint64_t start_key, uint64_t end_key)
 {
 	vector<int> index_vector;
 	int64_t     values_read = 0;
@@ -1000,6 +1000,7 @@ get_keys_indexes_fuzing(
 			log_trace("read value: %lu", value);
 			if (((uint64_t) value) >= start_key) {
 				index_vector.push_back(index++);
+				ts.push_back(value);
 				found = true;
 				break;
 			}
@@ -1024,8 +1025,11 @@ get_keys_indexes_fuzing(
 					break;
 				} else if (((uint64_t) value) == end_key) {
 					index_vector.push_back(index);
+					ts.push_back(value);
 					found = true;
 					break;
+				} else {
+					ts.push_back(value);
 				}
 				index++;
 			}
@@ -1403,6 +1407,7 @@ parquet_read_span_by_column(const char *filename, uint64_t keys[2],
 
 			vector<char *>                 schema_vec;
 			vector<parquet_data_packet **> ret_rows_vec;
+			vector<uint64_t>                ts;
 
 			shared_ptr<parquet::RowGroupReader>
 			    row_group_reader = parquet_reader->RowGroup(
@@ -1416,7 +1421,7 @@ parquet_read_span_by_column(const char *filename, uint64_t keys[2],
 			        column_reader.get());
 
 			index_vector = get_keys_indexes_fuzing(
-			    int64_reader, keys[0], keys[1]);
+			    int64_reader, ts, keys[0], keys[1]);
 			if (-1 == index_vector[0] || -1 == index_vector[1]) {
 				log_error("Not found data in key");
 				return ret;
@@ -1426,6 +1431,9 @@ parquet_read_span_by_column(const char *filename, uint64_t keys[2],
 			    index_vector[0], index_vector[1]);
 			ret = parquet_read_payload(row_group_reader,
 			    file_metadata, schema, schema_len, index_vector);
+			ret->ts =
+			    (uint64_t *) malloc(sizeof(uint64_t) * ts.size());
+			copy(ts.begin(), ts.end(), ret->ts);
 		}
 
 	} catch (const exception &e) {
