@@ -8,21 +8,56 @@
 #define STREAM_H
 #include "nng/supplemental/util/idhash.h"
 #include "nng/supplemental/nanolib/log.h"
+#include "nng/supplemental/nanolib/parquet.h"
 
 typedef struct stream_node {
 	char *name;
 	uint8_t id;
-	void *(*decode)(void *, uint32_t, uint32_t *);
-	void *(*encode)(void *, uint32_t, uint32_t *);
+	void *(*decode)(void *);
+	void *(*encode)(void *);
+	void *(*cmd_parser)(void *);
 } stream_node;
 
+struct stream_data_out {
+	uint32_t col_len;
+	uint32_t row_len;
+	uint64_t *ts;
+	char **schema;
+	parquet_data_packet ***payload_arr;
+};
+
+struct stream_data_in {
+	void **datas;
+	uint64_t *keys;
+	uint32_t *lens;
+	uint32_t len;
+};
+
+struct stream_decoded_data {
+	void *data;
+	uint32_t len;
+};
+
+struct cmd_data {
+	bool is_sync;
+	uint64_t start_key;
+	uint64_t end_key;
+	uint32_t schema_len;
+	char **schema;
+};
+
 int stream_register(char *name, uint8_t id,
-					void *(*decode)(void *, uint32_t, uint32_t *),
-					void *(*encode)(void *, uint32_t, uint32_t *));
+					void *(*decode)(void *),
+					void *(*encode)(void *),
+					void *(*cmd_parser)(void *));
 int stream_unregister(uint8_t id);
-void *stream_decode(uint8_t id, void *buf, uint32_t len, uint32_t *outlen);
-void *stream_encode(uint8_t id, void *buf, uint32_t len, uint32_t *outlen);
+void *stream_decode(uint8_t id, void *buf);
+void *stream_encode(uint8_t id, void *buf);
+void *stream_cmd_parser(uint8_t id, void *buf);
 int stream_sys_init(void);
 void stream_sys_fini(void);
 
+void stream_decoded_data_free(struct stream_decoded_data *data);
+void stream_data_out_free(struct stream_data_out *data);
+void stream_data_in_free(struct stream_data_in *sdata);
 #endif
