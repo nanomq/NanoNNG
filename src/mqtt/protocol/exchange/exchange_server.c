@@ -11,8 +11,9 @@
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "nng/mqtt/mqtt_client.h"
-#include "nng/exchange/exchange_client.h"
 #include "nng/exchange/exchange.h"
+#include "nng/exchange/exchange_client.h"
+#include "nng/exchange/stream/stream.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 #include "nng/protocol/reqrep0/rep.h"
 #include "nng/supplemental/nanolib/parquet.h"
@@ -456,34 +457,25 @@ query_cb(void *arg)
 		return;
 	}
 
-	uint64_t startKey = 0;
-	uint64_t endKey = 0;
-
 	log_info("Recv command: %s topic: %s", keystr, topic);
-	SyncNumbers *parsed_str = parseSyncNumbers(keystr);
-	if (parsed_str == NULL) {
-		log_error("parseSyncNumbers failed!");
+	struct cmd_data *cmd_data = stream_cmd_parser(s->ex_node->ex->streamType, keystr);
+	if (cmd_data == NULL) {
+		log_error("stream_cmd_parser failed!");
 		query_send_eof(s->pair0_sock, &s->query_aio);
 		nng_recv_aio(*(s->pair0_sock), aio);
 		nng_msg_free(msg);
 		return;
 	}
 
-	char *type = parsed_str->sync;
-	startKey = parsed_str->number1;
-	endKey = parsed_str->number2;
-
-	if (strcmp(type, "sync") == 0) {
-		query_send_sync(s, startKey, endKey);
-	} else if (strcmp(type, "async") == 0) {
-		query_send_async(s, startKey, endKey);
+	if (cmd_data->is_sync) {
+		query_send_sync(s, cmd_data);
 	} else {
-		log_error("Invalid type: %s", type);
+		query_send_async(s, cmd_data);
 	}
 
 	query_send_eof(s->pair0_sock, &s->query_aio);
 	nng_recv_aio(*(s->pair0_sock), aio);
-	nng_free(parsed_str, sizeof(SyncNumbers));
+	cmd_data_free(cmd_data);
 	nng_msg_free(msg);
 
 	return;
@@ -917,7 +909,6 @@ exchange_client_get_msgs_fuzz(void *arg, uint64_t start, uint64_t end, uint32_t 
 	/* Only one exchange with one ringBuffer now */
 	ret = ringBuffer_search_msgs_fuzz(s->ex_node->ex->rbs[0], start, end, count, list);
 	if (ret != 0 || *list == NULL) {
-		log_error("ringBuffer_get_msgs_fuzz failed!\n");
 		return -1;
 	}
 
@@ -1146,18 +1137,6 @@ dump_file_result_cat(char **msgList, int *msgLen, uint32_t count, cJSON *obj)
 	return 0;
 }
 #endif
-
-static inline int splitstr(char *str, char *delim, char *result[], int max_num)
-{
-	char *p;
-	int count = 0;
-	p = strtok(str, delim);
-	while (p != NULL && count < max_num) {
-		result[count++] = p;
-		p = strtok(NULL, delim);
-	}
-	return count;
-}
 
 #ifdef SUPP_PARQUET
 static inline int find_keys_in_file(ringBuffer_t *rb, uint64_t *keys, uint32_t count, cJSON *obj)
