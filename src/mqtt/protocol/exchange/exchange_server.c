@@ -99,89 +99,6 @@ exchange_add_ex(exchange_sock_t *s, exchange_t *ex)
 	return 0;
 }
 
-typedef struct {
-	char sync[10];
-	uint64_t number1;
-	uint64_t number1_idx;
-	uint64_t number2;
-	uint64_t number2_idx;
-} SyncNumbers;
-
-int checkInput(SyncNumbers *result, const char *input) {
-	if (strncmp(input, "sync", 4) != 0 && strncmp(input, "async", 5) != 0) {
-		log_error("Error: Invalid input format\n");
-		return -1;
-	}
-
-	int count = 0;
-	for (unsigned int i = 0; i < strlen(input); i++) {
-		if (input[i] == '-') {
-			if (count == 0) {
-				result->number1_idx = i + 1;
-			} else if (count == 1) {
-				result->number2_idx = i + 1;
-			}
-			count++;
-		}
-	}
-
-	if (count != 2) {
-		fprintf(stderr, "Error: Invalid input format\n");
-		return -1;
-	}
-
-	for (unsigned int i = result->number1_idx; i < result->number2_idx - 1; i++) {
-		if (input[i] < '0' || input[i] > '9') {
-			fprintf(stderr, "Error: Invalid input format\n");
-			return -1;
-		}
-	}
-
-	for (unsigned int i = result->number2_idx; i < strlen(input); i++) {
-		if (input[i] < '0' || input[i] > '9') {
-			fprintf(stderr, "Error: Invalid input format\n");
-			return -1;
-		}
-	}
-
-	return 0;
-}
-
-SyncNumbers *parseSyncNumbers(const char *input)
-{
-	SyncNumbers *result = NULL;
-	result = (SyncNumbers *)nng_alloc(sizeof(SyncNumbers));
-	if (result == NULL) {
-		log_error("Error: malloc failed\n");
-		return NULL;
-	}
-	result->number1_idx = 0;
-	result->number2_idx = 0;
-
-	if (checkInput(result, input) != 0) {
-		log_error("checkInput failed\n");
-		nng_free(result, sizeof(SyncNumbers));
-		return NULL;
-	}
-
-	if (strncmp(input, "sync", 4) == 0) {
-		strncpy(result->sync, input, 4);
-		result->sync[4] = '\0';
-	} else if (strncmp(input, "async", 5) == 0) {
-		strncpy(result->sync, input, 5);
-		result->sync[5] = '\0';
-	} else {
-		log_error("Error: Invalid input format\n");
-		nng_free(result, sizeof(SyncNumbers));
-		return NULL;
-	}
-
-	result->number1 = (uint64_t)atoll(input + result->number1_idx);
-	result->number2 = (uint64_t)atoll(input + result->number2_idx);
-
-	return result;
-}
-
 static void query_send_eof(nng_socket *sock, nng_aio *aio)
 {
 	NNI_ARG_UNUSED(aio);
@@ -198,94 +115,261 @@ static void query_send_eof(nng_socket *sock, nng_aio *aio)
 	return;
 }
 
-static int fuzz_search_result_cat(nng_msg **msgList,
-								  uint32_t count,
-								  unsigned char **pringbusdata,
-								  int *pringbusdata_len)
+static inline void parquet_data_ret_free(struct parquet_data_ret *parquet_data)
 {
-	uint32_t sz = 0;
-	uint32_t pos = 0;
-	uint32_t diff = 0;
-
-	if (msgList == NULL || count == 0) {
-		return -1;
+	if (parquet_data == NULL) {
+		return;
 	}
-
-	for (uint32_t i = 0; i < count; i++) {
-		diff = nng_msg_len(msgList[i]) -
-			((uintptr_t)nng_msg_payload_ptr(msgList[i]) - (uintptr_t)nng_msg_body(msgList[i]));
-		sz += diff;
-	}
-
-	unsigned char *ringbusdata = nng_alloc(sz);
-	int index = 0;
-	for (uint32_t i = 0; i < count; i++) {
-		diff = nng_msg_len(msgList[i]) -
-			((uintptr_t)nng_msg_payload_ptr(msgList[i]) - (uintptr_t)nng_msg_body(msgList[i]));
-		if (sz >= pos + diff) {
-			char *tmpch = (char *)nng_msg_payload_ptr(msgList[i]);
-			for (unsigned int j = 0; j < diff; j++) {
-				ringbusdata[index++] = tmpch[j];
+	if (parquet_data->payload_arr != NULL) {
+		for (uint32_t j = 0; j < parquet_data->col_len; j++) {
+			if (parquet_data->payload_arr[j] != NULL) {
+				for (uint32_t k = 0; k < parquet_data->row_len; k++) {
+					if (parquet_data->payload_arr[j][k] != NULL) {
+						if (parquet_data->payload_arr[j][k]->data != NULL && parquet_data->payload_arr[j][k]->size > 0) {
+							nng_free(parquet_data->payload_arr[j][k]->data, parquet_data->payload_arr[j][k]->size);
+						}
+						nng_free(parquet_data->payload_arr[j][k], parquet_data->payload_arr[j][k]->size);
+					}
+				}
+				nng_free(parquet_data->payload_arr[j], sizeof(parquet_data_packet *) * parquet_data->row_len);
 			}
-		} else {
-			log_error("buffer overflow!");
-			return -1;
 		}
-		pos += diff;
+		nng_free(parquet_data->payload_arr, sizeof(parquet_data_packet **) * parquet_data->col_len);
 	}
 
-	*pringbusdata = ringbusdata;
-	*pringbusdata_len = sz;
+	if (parquet_data->schema != NULL) {
+		for (uint32_t i = 0; i < parquet_data->col_len; i++) {
+			if (parquet_data->schema[i] != NULL) {
+				nng_free(parquet_data->schema[i], strlen(parquet_data->schema[i]));
+			}
+		}
+		nng_free(parquet_data->schema, sizeof(char *) * parquet_data->col_len);
+	}
 
-	return 0;
+	nng_free(parquet_data, sizeof(struct parquet_data_ret));
+
+	return;
 }
 
-static void query_send_sync(exchange_sock_t *s, uint64_t startKey, uint64_t endKey)
+static inline void parquet_datas_ret_free(parquet_data_ret **parquet_datas, uint32_t size)
 {
-	uint8_t *ringbusdata = NULL;
-	uint32_t count = 0;
-	int ringbusdata_len = 0;
-	int ret = 0;
-	nng_msg **msgList = NULL;
+	if (parquet_datas == NULL) {
+		return;
+	}
+	for (uint32_t i = 0; i < size; i ++) {
+		parquet_data_ret *parquet_data = parquet_datas[i];
+		parquet_data_ret_free(parquet_data);
+	}
 
-	ret = exchange_client_get_msgs_fuzz(s, startKey, endKey, &count, &msgList);
+	nng_free(parquet_datas, sizeof(parquet_data_ret *) * size);
+
+	return;
+}
+
+static inline void ringbus_stream_data_in_free(struct stream_data_in *stream_data_in)
+{
+	if (stream_data_in == NULL) {
+		return;
+	}
+	if (stream_data_in->keys != NULL) {
+		nng_free(stream_data_in->keys, sizeof(uint64_t) * stream_data_in->len);
+	}
+	if (stream_data_in->datas != NULL) {
+		nng_free(stream_data_in->datas, sizeof(void *) * stream_data_in->len);
+	}
+	if (stream_data_in->lens != NULL) {
+		nng_free(stream_data_in->lens, sizeof(uint32_t) * stream_data_in->len);
+	}
+	nng_free(stream_data_in, sizeof(struct stream_data_in));
+
+	return;
+}
+
+static struct stream_data_in *ringbus_stream_data_in_init(uint32_t count, nng_msg **msgList)
+{
+	uint32_t diff = 0;
+	struct stream_data_in *stream_data = NULL;
+
+	if (msgList == NULL || count == 0) {
+		return NULL;
+	}
+
+	stream_data = nng_alloc(sizeof(struct stream_data_in));
+	if (stream_data == NULL) {
+		log_error("Failed to allocate memory for stream_data\n");
+		return NULL;
+	}
+	stream_data->len = count;
+	stream_data->datas = nng_alloc(sizeof(void *) * count);
+	if (stream_data->datas == NULL) {
+		log_error("Failed to allocate memory for stream_data->datas\n");
+		nng_free(stream_data, sizeof(struct stream_data_in));
+		return NULL;
+	}
+	stream_data->keys = nng_alloc(sizeof(uint64_t) * count);
+	if (stream_data->keys == NULL) {
+		log_error("Failed to allocate memory for stream_data->keys\n");
+		nng_free(stream_data->datas, sizeof(void *) * count);
+		nng_free(stream_data, sizeof(struct stream_data_in));
+		return NULL;
+	}
+
+	stream_data->lens = nng_alloc(sizeof(uint32_t) * count);
+	if (stream_data->lens == NULL) {
+		log_error("Failed to allocate memory for stream_data->lens\n");
+		nng_free(stream_data->keys, sizeof(uint64_t) * count);
+		nng_free(stream_data->datas, sizeof(void *) * count);
+		nng_free(stream_data, sizeof(struct stream_data_in));
+		return NULL;
+	}
+
+	for (uint32_t i = 0; i < count; i++) {
+		diff = nng_msg_len(msgList[i]) -
+			((uintptr_t)nng_msg_payload_ptr(msgList[i]) - (uintptr_t)nng_msg_body(msgList[i]));
+		stream_data->lens[i] = diff;
+		stream_data->datas[i] = nng_msg_payload_ptr(msgList[i]);
+		stream_data->keys[i] = nni_msg_get_timestamp(msgList[i]);
+	}
+
+	return stream_data;
+}
+
+static struct parquet_data_ret *ringbus_parquet_data_ret_init(struct stream_data_out *stream_data_out, struct cmd_data *cmd_data)
+{
+	uint32_t new_index = 0;
+	uint32_t new_col_len = 0;
+	struct parquet_data_ret *parquet_data_ret = NULL;
+
+	if (stream_data_out == NULL || cmd_data == NULL) {
+		return NULL;
+	}
+
+	parquet_data_ret = nng_alloc(sizeof(struct parquet_data_ret));
+	if (parquet_data_ret == NULL) {
+		log_error("Failed to allocate memory for parquet_data_ret\n");
+		return NULL;
+	}
+
+	for (uint32_t i = 1; i < stream_data_out->col_len; i++) {
+		for (uint32_t j = 0; j < cmd_data->schema_len; j++) {
+			if (strcmp(stream_data_out->schema[i], cmd_data->schema[j]) == 0) {
+				new_col_len++;
+				break;
+			}
+		}
+	}
+
+	parquet_data_ret->col_len = new_col_len;
+	parquet_data_ret->row_len = stream_data_out->row_len;
+	parquet_data_ret->payload_arr = nng_alloc(sizeof(parquet_data_packet *) * new_col_len);
+	parquet_data_ret->schema = nng_alloc(sizeof(char *) * new_col_len);
+
+	for (uint32_t i = 0; i < stream_data_out->col_len; i++) {
+		for (uint32_t j = 0; j < cmd_data->schema_len; j++) {
+			if (strcmp(stream_data_out->schema[i], cmd_data->schema[j]) == 0) {
+				parquet_data_ret->schema[new_index] = stream_data_out->schema[i];
+				parquet_data_ret->payload_arr[new_index] = stream_data_out->payload_arr[i];
+				new_index++;
+			}
+		}
+	}
+
+	return parquet_data_ret;
+}
+
+static struct stream_decoded_data *fuzz_search_result_cat(nng_msg **msgList,
+														 uint32_t count,
+														 uint8_t stream_type,
+														 struct cmd_data *cmd_data)
+{
+	struct stream_data_in *stream_data = NULL;
+	struct stream_data_out *stream_data_out = NULL;
+	struct stream_decoded_data *decoded_data = NULL;
+
+	if (msgList == NULL || count == 0) {
+		return NULL;
+	}
+
+	stream_data = ringbus_stream_data_in_init(count, msgList);
+	if (stream_data == NULL) {
+		log_error("Failed to allocate memory for stream_data\n");
+		return NULL;
+	}
+
+	stream_data_out = stream_encode(stream_type, stream_data);
+	if (stream_data_out == NULL) {
+		log_error("stream_encode failed!");
+		ringbus_stream_data_in_free(stream_data);
+		return NULL;
+	}
+
+	parquet_data_ret *parquet_data_ele = ringbus_parquet_data_ret_init(stream_data_out, cmd_data);
+	if (parquet_data_ele == NULL) {
+		log_error("Failed to allocate memory for parquet_data\n");
+		parquet_data_free((parquet_data *)stream_data_out);
+		ringbus_stream_data_in_free(stream_data);
+		return NULL;
+	}
+
+	decoded_data = stream_decode(stream_type, parquet_data_ele);
+	if (decoded_data == NULL) {
+		log_error("stream_decode failed!");
+		parquet_data_ret_free(parquet_data_ele);
+		parquet_data_free((parquet_data *)stream_data_out);
+		ringbus_stream_data_in_free(stream_data);
+		return NULL;
+	}
+
+	ringbus_stream_data_in_free(stream_data);
+	parquet_data_free((parquet_data *)stream_data_out);
+
+	nng_free(parquet_data_ele->schema, sizeof(char *) * parquet_data_ele->col_len);
+	nng_free(parquet_data_ele->payload_arr, sizeof(parquet_data_packet *) * parquet_data_ele->col_len);
+	nng_free(parquet_data_ele, sizeof(struct parquet_data_ret));
+
+	return decoded_data;
+}
+
+static void query_send_sync(exchange_sock_t *s, struct cmd_data *cmd_data)
+{
+	int ret = 0;
+	uint32_t count = 0;
+	nng_msg **msgList = NULL;
+	struct stream_decoded_data *ringbus_decoded_data = NULL;
+
+	ret = exchange_client_get_msgs_fuzz(s, cmd_data->start_key, cmd_data->end_key, &count, &msgList);
 	if (ret == 0 && count != 0 && msgList != NULL) {
-		ret = fuzz_search_result_cat(msgList, count, &ringbusdata, &ringbusdata_len);
-		if (ret != 0) {
+		ringbus_decoded_data = fuzz_search_result_cat(msgList, count, s->ex_node->ex->streamType, cmd_data);
+		if (ringbus_decoded_data == NULL) {
 			log_error("fuzz_search_result_cat failed!");
 		}
 		nng_free(msgList, sizeof(nng_msg *) * count);
 	} else {
-		log_error("exchange_client_get_msgs_fuzz failed! count: %d", count);
+		log_warn("exchange_client_get_msgs_fuzz failed! count: %d", count);
 	}
 
-	uint32_t size = 0;
-	uint8_t *parquetdata = NULL;
-	uint32_t parquetdata_len = 0;
 #if defined(SUPP_PARQUET)
-	parquet_data_packet **parquet_objs = NULL;
-	parquet_objs = parquet_find_data_span_packets(NULL, startKey, endKey, &size, s->ex_node->ex->topic);
-	if (parquet_objs != NULL && size > 0) {
-		int total_len = 0;
-		for (unsigned int i = 0; i < size; i++) {
-			total_len += parquet_objs[i]->size;
+	uint32_t parquet_decoded_data_len = 0;
+	struct stream_decoded_data **parquet_decoded_data = NULL;
+	parquet_data_ret **parquet_datas = NULL;
+	parquet_filename_range file_range;
+
+	file_range.filename = NULL;
+	file_range.keys[0] = cmd_data->start_key;
+	file_range.keys[1] = cmd_data->end_key;
+	parquet_datas = parquet_get_data_packets_in_range_by_column(&file_range,
+																s->ex_node->ex->topic,
+																(const char **)cmd_data->schema,
+																cmd_data->schema_len,
+																&parquet_decoded_data_len);
+	if (parquet_datas != NULL) {
+		parquet_decoded_data = nng_alloc(sizeof(struct stream_decoded_data *) * parquet_decoded_data_len);
+		for (uint32_t i = 0; i < parquet_decoded_data_len; i++) {
+			if (parquet_datas[i] != NULL) {
+				parquet_decoded_data[i] = stream_decode(s->ex_node->ex->streamType, parquet_datas[i]);
+			}
 		}
-		parquetdata = nng_alloc(total_len);
-		if (parquetdata == NULL) {
-			log_error("Failed to allocate memory for file payload\n");
-			return;
-		}
-		for (unsigned int i = 0; i < size; i++) {
-			memcpy(parquetdata + parquetdata_len, parquet_objs[i]->data, parquet_objs[i]->size);
-			parquetdata_len += parquet_objs[i]->size;
-		}
-		for (unsigned int i = 0; i < size; i++) {
-			nng_free(parquet_objs[i]->data, parquet_objs[i]->size);
-			nng_free(parquet_objs[i], sizeof(parquet_data_packet));
-		}
-		nng_free(parquet_objs, sizeof(parquet_data_packet *) * size);
-	} else {
-		log_error("parquet_find_data_span_packets failed! size: %d", size);
+		parquet_datas_ret_free(parquet_datas, parquet_decoded_data_len);
 	}
 #endif
 #if defined(SUPP_BLF)
@@ -303,19 +387,26 @@ static void query_send_sync(exchange_sock_t *s, uint64_t startKey, uint64_t endK
 		log_error("blf_find_span failed! sz: %d", blf_sz);
 	}
 #endif
-	log_info("found parquetdata_len: %d, ringbusdata_len: %d", parquetdata_len, ringbusdata_len);
 
 	nng_msg *msg = NULL;
 	nng_msg_alloc(&msg, 0);
-	if (parquetdata != NULL && parquetdata_len > 0) {
-		nni_msg_append(msg, parquetdata, parquetdata_len);
-		nng_free(parquetdata, parquetdata_len);
-		parquetdata = NULL;
+#if defined(SUPP_PARQUET)
+	if (parquet_decoded_data != NULL) {
+		for (uint32_t i = 0; i < parquet_decoded_data_len; i++) {
+			if (parquet_decoded_data[i] != NULL && parquet_decoded_data[i] != NULL && parquet_decoded_data[i]->len > 0) {
+				log_info("parquet_decoded_data[%d] size: %d", i, parquet_decoded_data[i]->len);
+				nng_msg_append(msg, parquet_decoded_data[i]->data, parquet_decoded_data[i]->len);
+				stream_decoded_data_free(parquet_decoded_data[i]);
+			}
+		}
+		nng_free(parquet_decoded_data, sizeof(struct stream_decoded_data *) * parquet_decoded_data_len);
 	}
-	if (ringbusdata != NULL && ringbusdata_len > 0) {
-		nni_msg_append(msg, ringbusdata, ringbusdata_len);
-		nng_free(ringbusdata, ringbusdata_len);
-		ringbusdata = NULL;
+#endif
+
+	if (ringbus_decoded_data != NULL && ringbus_decoded_data->len > 0) {
+		log_info("ringbus_decoded_data size: %d", ringbus_decoded_data->len);
+		nng_msg_append(msg, ringbus_decoded_data->data, ringbus_decoded_data->len);
+		stream_decoded_data_free(ringbus_decoded_data);
 	}
 
 	nng_sendmsg(*(s->pair0_sock), msg, 0);
@@ -323,53 +414,54 @@ static void query_send_sync(exchange_sock_t *s, uint64_t startKey, uint64_t endK
 	return;
 }
 
-static void query_send_async(exchange_sock_t *s, uint64_t startKey, uint64_t endKey)
+static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data)
 {
+	uint32_t count = 0;
+	int ret = 0;
+	nng_msg **msgList = NULL;
+	struct stream_decoded_data *ringbus_decoded_data = NULL;
+
 #if defined(SUPP_PARQUET)
-	parquet_filename_range **file_ranges = parquet_find_file_range(startKey, endKey, s->ex_node->ex->topic);
+	parquet_filename_range **file_ranges = NULL;
+
+	file_ranges = parquet_get_file_ranges(cmd_data->start_key, cmd_data->end_key, s->ex_node->ex->topic);
 	if (file_ranges != NULL) {
-		uint32_t file_range_idx = 0;
-		parquet_filename_range *file_range = file_ranges[file_range_idx++];
 		uint32_t size = 0;
+		uint32_t file_range_idx = 0;
+		parquet_filename_range *file_range = NULL;
+
+		file_range = file_ranges[file_range_idx++];
 		while (file_range != NULL) {
-			parquet_data_packet **parquet_objs = parquet_find_data_span_packets_specify_file(NULL, file_range, &size);
-			if (parquet_objs != NULL && size > 0) {
-				int total_len = 0;
-				for (uint32_t i = 0; i < size; i++) {
-					total_len += parquet_objs[i]->size;
-				}
+			parquet_data_ret **parquet_datas = NULL;
 
-				uint8_t *parquetdata = NULL;
-				uint32_t parquetdata_len = 0;
-
-				parquetdata = nng_alloc(total_len);
-				if (parquetdata == NULL) {
-					log_error("Failed to allocate memory for file payload\n");
-					return;
-				}
-
+			parquet_datas = parquet_get_data_packets_in_range_by_column(file_range,
+																		s->ex_node->ex->topic,
+																		(const char **)cmd_data->schema,
+																		cmd_data->schema_len,
+																		&size);
+			if (parquet_datas != NULL) {
 				for (uint32_t i = 0; i < size; i++) {
-					memcpy(parquetdata + parquetdata_len, parquet_objs[i]->data, parquet_objs[i]->size);
-					parquetdata_len += parquet_objs[i]->size;
+					if (parquet_datas[i] != NULL) {
+						struct stream_decoded_data *parquet_decoded_data = NULL;
+
+						parquet_decoded_data = stream_decode(s->ex_node->ex->streamType, parquet_datas[i]);
+						if (parquet_decoded_data != NULL && parquet_decoded_data->len > 0) {
+							log_info("parquet_decoded_data[%d] size: %d", i, parquet_decoded_data->len);
+							nng_msg *newmsg = NULL;
+							nng_msg_alloc(&newmsg, 0);
+							nni_msg_append(newmsg, parquet_decoded_data->data, parquet_decoded_data->len);
+							nng_sendmsg(*(s->pair0_sock), newmsg, 0);
+							/* NOTE: sleep 1000ms */
+							nng_msleep(1000);
+							stream_decoded_data_free(parquet_decoded_data);
+						}
+					} else {
+						log_error("parquet_datas[%d] is NULL", i);
+					}
 				}
-				for (uint32_t i = 0; i < size; i++) {
-					nng_free(parquet_objs[i]->data, parquet_objs[i]->size);
-					nng_free(parquet_objs[i], sizeof(parquet_data_packet));
-				}
-				nng_free(parquet_objs, sizeof(parquet_data_packet *) * size);
-				log_info("parquetdata_len: %d", parquetdata_len);
-				if (parquetdata != NULL && parquetdata_len > 0) {
-					nng_msg *newmsg = NULL;
-					nng_msg_alloc(&newmsg, 0);
-					nni_msg_append(newmsg, parquetdata, parquetdata_len);
-					nng_sendmsg(*(s->pair0_sock), newmsg, 0);
-					/* NOTE: sleep 1000ms */
-					nng_msleep(1000);
-					nng_free(parquetdata, parquetdata_len);
-					parquetdata = NULL;
-				}
+				parquet_datas_ret_free(parquet_datas, size);
 			} else {
-				log_error("parquet_find_data_span_packets failed! size: %d", size);
+				log_error("parquet_get_data_packets_in_range_by_column failed!");
 			}
 			nng_free((void *)file_range->filename, strlen(file_range->filename));
 			nng_free(file_range, sizeof(parquet_filename_range));
@@ -381,33 +473,43 @@ static void query_send_async(exchange_sock_t *s, uint64_t startKey, uint64_t end
 	}
 #endif
 
-	uint8_t *ringbusdata = NULL;
-	uint32_t count = 0;
-	int ringbusdata_len = 0;
-	int ret = 0;
-	nng_msg **msgList = NULL;
-
-	ret = exchange_client_get_msgs_fuzz(s, startKey, endKey, &count, &msgList);
+	ret = exchange_client_get_msgs_fuzz(s, cmd_data->start_key, cmd_data->end_key, &count, &msgList);
 	if (ret == 0 && count != 0 && msgList != NULL) {
-		ret = fuzz_search_result_cat(msgList, count, &ringbusdata, &ringbusdata_len);
-		if (ret != 0) {
+		ringbus_decoded_data = fuzz_search_result_cat(msgList, count, s->ex_node->ex->streamType, cmd_data);
+		if (ringbus_decoded_data == NULL) {
 			log_error("fuzz_search_result_cat failed!");
 		}
 		nng_free(msgList, sizeof(nng_msg *) * count);
 	} else {
-		log_error("ringbus failed! count: %d", count);
+		log_warn("ringbus failed! count: %d", count);
 	}
 
-	log_info("ringbusdata_len: %d", ringbusdata_len);
-	if (ringbusdata != NULL && ringbusdata_len > 0) {
+	if (ringbus_decoded_data != NULL && ringbus_decoded_data->len > 0) {
+		log_info("ringbus_decoded_data size: %d", ringbus_decoded_data->len);
 		nng_msg *newmsg = NULL;
 		nng_msg_alloc(&newmsg, 0);
-		nni_msg_append(newmsg, ringbusdata, ringbusdata_len);
+		nni_msg_append(newmsg, ringbus_decoded_data->data, ringbus_decoded_data->len);
 		nng_sendmsg(*(s->pair0_sock), newmsg, 0);
 		/* NOTE: sleep 1000ms */
 		nng_msleep(1000);
-		nng_free(ringbusdata, ringbusdata_len);
-		ringbusdata = NULL;
+		stream_decoded_data_free(ringbus_decoded_data);
+	}
+
+	return;
+}
+
+static void cmd_data_free(struct cmd_data *cmd_data)
+{
+	if (cmd_data != NULL) {
+		if (cmd_data->schema != NULL) {
+			for (uint32_t i = 0; i < cmd_data->schema_len; i++) {
+				if (cmd_data->schema[i] != NULL) {
+					nng_free(cmd_data->schema[i], strlen(cmd_data->schema[i]));
+				}
+			}
+			nng_free(cmd_data->schema, sizeof(char *) * cmd_data->schema_len);
+		}
+		nng_free(cmd_data, sizeof(struct cmd_data));
 	}
 
 	return;
