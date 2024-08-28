@@ -61,6 +61,9 @@ static void conf_rule_repub_parse(conf_rule *cr, char *path);
 #if defined(SUPP_POSTGRESQL)
 static void conf_rule_postgresql_parse(conf_rule *cr, char *path);
 #endif
+#if defined(SUPP_TIMESCALEDB)
+static void conf_rule_timescaledb_parse(conf_rule *cr, char *path);
+#endif
 #if defined(SUPP_MYSQL)
 static void conf_rule_mysql_parse(conf_rule *cr, char *path);
 #endif
@@ -840,7 +843,7 @@ conf_rule_init(conf_rule *rule_en)
 {
 	rule_en->option = 0;
 	rule_en->rules  = NULL;
-	memset(rule_en->rdb, 0, sizeof(void *) * 4);
+	memset(rule_en->rdb, 0, sizeof(void *) * 5);
 }
 #endif
 
@@ -1298,6 +1301,22 @@ print_rule_engine_conf(conf_rule *rule_eng)
 		}
 	}
 
+	if (rule_eng->option & RULE_ENG_TDB) {
+		log_info("rule engine timescaledb:");
+		log_info("name:         %s", rule_eng->timescale_db);
+		rule *r = rule_eng->rules;
+		for (size_t i = 0; i < cvector_size(r); i++) {
+			if (r[i].forword_type == RULE_FORWORD_TIMESCALEDB) {
+				rule_timescaledb *timescaledb = r[i].timescaledb;
+				log_info("[%d] sql:      %s", i, r[i].raw_sql);
+				log_info("[%d] table:    %s", i, timescaledb->table);
+				log_info("[%d] host:     %s", i, timescaledb->host);
+				log_info("[%d] username: %s", i, timescaledb->username);
+				log_info("[%d] password: ******", i);
+			}
+		}
+	}
+
 
 
 }
@@ -1683,6 +1702,137 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 	}
 
 	NNI_FREE_STRUCT(repub);
+
+	if (line) {
+		free(line);
+	}
+
+	fclose(fp);
+}
+
+static void
+conf_rule_timescaledb_parse(conf_rule *cr, char *path)
+{
+	assert(path);
+	if (path == NULL || !nano_file_exists(path)) {
+		printf("Configure file [%s] not found or "
+		       "unreadable\n",
+		    path);
+		return;
+	}
+
+	char *      line = NULL;
+	size_t      sz   = 0;
+	FILE *      fp;
+	rule_timescaledb *timescaledb = NNI_ALLOC_STRUCT(timescaledb);
+
+	if (NULL == (fp = fopen(path, "r"))) {
+		log_debug("File %s open failed\n", path);
+		return;
+	}
+
+	char *value;
+	while (nano_getline(&line, &sz, fp) != -1) {
+		if (NULL !=
+		    (value = get_conf_value(line, sz, "rule.timescaledb.name"))) {
+			cr->timescale_db = value;
+			log_debug(value);
+		} else if (0 ==
+		    strncmp(line, "rule.timescaledb.event.publish",
+		        strlen("rule.timescaledb.event.publish"))) {
+
+			// TODO more accurate way
+			// topic <=======> broker <======> sql
+			int num = 0;
+			int res =
+			    sscanf(line, "rule.timescaledb.event.publish.%d.sql", &num);
+			if (0 == res) {
+				log_error("Do not find timescaledb client");
+				exit(EXIT_FAILURE);
+			}
+
+			if (NULL != (value = strchr(line, '='))) {
+				value++;
+				rule_sql_parse(cr, value);
+				char *p = strrchr(value, '\"');
+				*p      = '\0';
+
+				cr->rules[cvector_size(cr->rules) - 1].timescaledb =
+				    NNI_ALLOC_STRUCT(timescaledb);
+				memcpy(cr->rules[cvector_size(cr->rules) - 1]
+				           .timescaledb,
+				    timescaledb, sizeof(*timescaledb));
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .forword_type = RULE_FORWORD_TIMESCALEDB;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .raw_sql = nng_strdup(++value);
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .enabled = true;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .rule_id = rule_generate_rule_id();
+
+			}
+
+		} else if (0 ==
+		    strncmp(line, "rule.timescaledb", strlen("rule.timescaledb"))) {
+			int num = 0;
+
+			if (strstr(line, "table")) {
+				if (0 != sscanf(line, "rule.timescaledb.%d", &num)) {
+					char key[32] = { 0 };
+					snprintf(key, 32,
+					    "rule.timescaledb.%d.table", num);
+					if (NULL !=
+					    (value = get_conf_value(
+					         line, sz, key))) {
+						log_debug(value);
+						timescaledb->table = value;
+					}
+				}
+			} else if (strstr(line, "host")) {
+				if (0 != sscanf(line, "rule.timescaledb.%d", &num)) {
+					char key[32] = { 0 };
+					snprintf(key, 32, "rule.timescaledb.%d.host",
+					    num);
+					if (NULL !=
+					    (value = get_conf_value(
+					         line, sz, key))) {
+						log_debug(value);
+						timescaledb->host = value;
+					}
+				}
+			} else if (strstr(line, "username")) {
+				if (0 != sscanf(line, "rule.timescaledb.%d", &num)) {
+					char key[32] = { 0 };
+					snprintf(key, 32, "rule.timescaledb.%d.username",
+					    num);
+					if (NULL !=
+					    (value = get_conf_value(
+					         line, sz, key))) {
+						log_debug(value);
+						timescaledb->username = value;
+					}
+				}
+			} else if (strstr(line, "password")) {
+				if (0 != sscanf(line, "rule.postgresql.%d", &num)) {
+					char key[32] = { 0 };
+					snprintf(key, 32, "rule.postgresql.%d.password",
+					    num);
+					if (NULL !=
+					    (value = get_conf_value(
+					         line, sz, key))) {
+						log_debug(value);
+						timescaledb->password = value;
+					}
+				}
+			}
+		}
+
+		free(line);
+		line = NULL;
+	}
+
+	NNI_FREE_STRUCT(timescaledb);
 
 	if (line) {
 		free(line);
@@ -2228,7 +2378,29 @@ conf_rule_parse(conf_rule *rule, const char *path)
 			}
 			free(value);
 
+		// timescaledb
+		} else if ((value = get_conf_value(line, sz, "rule_option.timescaledb")) != NULL) {
+			if (0 == nni_strcasecmp(value, "enable")) {
+#if defined(SUPP_TIMESCALEDB)
+				rule->option |= RULE_ENG_TDB;
+				conf_rule_timescaledb_parse(cr, path);
+#else
+				log_error("If you want use timescaledb rule, recompile nanomq with option `-DENABLE_TIMESCALEDB=ON`");
+#endif
+			} else {
+				if (0 != nni_strcasecmp(value, "disable")) {
+					log_warn(
+					    "Unsupported option: %s\nrule "
+					    "option timescaledb only support "
+					    "enable/disable",
+					    value);
+					break;
+				}
+			}
+			free(value);
+
 		}
+
 
 		free(line);
 		line = NULL;
@@ -4169,10 +4341,12 @@ conf_rule_destroy(conf_rule *re)
 	nng_strfree(re->sqlite_db);
 	nng_strfree(re->mysql_db);
 	nng_strfree(re->postgresql_db);
+	nng_strfree(re->timescale_db);
 	for (int i = 0; i < cvector_size(re->rules); ++i) {
 		rule_repub_free(re->rules[i].repub);
 		rule_mysql_free(re->rules[i].mysql);
         rule_postgresql_free(re->rules[i].postgresql);
+        rule_timescaledb_free(re->rules[i].timescaledb);
 		rule_free(&(re->rules[i]));
 	}
 	cvector_free(re->rules);

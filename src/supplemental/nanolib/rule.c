@@ -713,3 +713,45 @@ void rule_postgresql_free(rule_postgresql *postgresql)
 		NNI_FREE_STRUCT(postgresql);
 	}
 }
+
+bool rule_timescaledb_check(rule_timescaledb *timescaledb)
+{
+	if (timescaledb) {
+		if (timescaledb->host && timescaledb->password && timescaledb->username &&
+		    timescaledb->table) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+rule_timescaledb *rule_timescaledb_init(void)
+{
+	rule_timescaledb *timescaledb = NNI_ALLOC_STRUCT(timescaledb);
+	timescaledb->host = NULL;
+	timescaledb->password = NULL;
+	timescaledb->username = NULL;
+	timescaledb->table = NULL;
+	timescaledb->conn = NULL;
+	return timescaledb;
+}
+
+void rule_timescaledb_free(rule_timescaledb *timescaledb)
+{
+	if (timescaledb) {
+		if (timescaledb->host) {
+			nng_strfree(timescaledb->host);
+		}
+		if (timescaledb->password) {
+			nng_strfree(timescaledb->password);
+		}
+		if (timescaledb->username) {
+			nng_strfree(timescaledb->username);
+		}
+		if (timescaledb->table) {
+			nng_strfree(timescaledb->table);
+		}
+		NNI_FREE_STRUCT(timescaledb);
+	}
+}

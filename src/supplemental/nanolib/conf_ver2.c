@@ -1837,6 +1837,69 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
     }
 #endif
 
+	cJSON *jso_rule_timescaledb = hocon_get_obj("rules.timescaledb", jso);
+    if (jso_rule_timescaledb) {
+#ifndef SUPP_TIMESCALEDB
+		log_error("If you want use timescaledb rule, recompile nanomq with "
+		          "option `-DENABLE_TIMESCALEDB=ON`");
+	}
+#else
+
+		cr->option |= RULE_ENG_TDB;
+
+        cJSON *ele = NULL;
+		cJSON_ArrayForEach(ele, jso_rule_timescaledb)
+		{
+			cJSON *jso_conn = cJSON_GetObjectItem(ele, "conn");
+			cJSON *jso_rules = cJSON_GetObjectItem(ele, "rules");
+			rule_timescaledb sql = { 0 };
+
+			if (jso_conn) {
+				hocon_read_str_base(
+				    cr, timescale_db, "database", jso_conn);
+
+				hocon_read_str(&sql, host, jso_conn);
+				hocon_read_str(&sql, username, jso_conn);
+				hocon_read_str(&sql, password, jso_conn);
+			}
+
+			jso_rule = NULL;
+
+			cJSON_ArrayForEach(jso_rule, jso_rules)
+			{
+				rule r = { 0 };
+				r.enabled = true;
+				hocon_read_str_base(
+				    &r, raw_sql, "sql", jso_rule);
+				rule_timescaledb *timescaledb = NNI_ALLOC_STRUCT(timescaledb);
+
+				rule_sql_parse(cr, r.raw_sql);
+
+				timescaledb->host = nng_strdup(sql.host);
+				timescaledb->username = nng_strdup(sql.username);
+				timescaledb->password = nng_strdup(sql.password);
+				hocon_read_str(timescaledb, table, jso_rule);
+
+				cr->rules[cvector_size(cr->rules) - 1].timescaledb =
+				    timescaledb;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .forword_type = RULE_FORWORD_TIMESCALEDB;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .raw_sql = r.raw_sql;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .enabled = r.enabled;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .rule_id = rule_generate_rule_id();
+			}
+
+			nng_strfree(sql.host);
+			nng_strfree(sql.username);
+			nng_strfree(sql.password);
+		}
+
+    }
+#endif
+
 	return;
 }
 #endif

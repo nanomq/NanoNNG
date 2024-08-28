@@ -42,6 +42,7 @@
 #define RULE_ENG_MDB (1 << 2)
 #define RULE_ENG_RPB (1 << 3)
 #define RULE_ENG_PDB (1 << 4)
+#define RULE_ENG_TDB (1 << 5)
 
 
 #define FREE_NONULL(p)    \
