@@ -42,6 +42,7 @@ struct parquet_data_ret {
 	// Payload_arr should col first.
 	uint32_t               col_len;
 	uint32_t               row_len;
+	uint64_t              *ts;
 	char                 **schema;
 	parquet_data_packet ***payload_arr;
 };
