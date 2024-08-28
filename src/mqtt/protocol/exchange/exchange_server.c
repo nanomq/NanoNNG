@@ -146,6 +146,10 @@ static inline void parquet_data_ret_free(struct parquet_data_ret *parquet_data)
 		nng_free(parquet_data->schema, sizeof(char *) * parquet_data->col_len);
 	}
 
+	if (parquet_data->ts != NULL) {
+		nng_free(parquet_data->ts, sizeof(uint64_t) * parquet_data->row_len);
+	}
+
 	nng_free(parquet_data, sizeof(struct parquet_data_ret));
 
 	return;
@@ -263,6 +267,7 @@ static struct parquet_data_ret *ringbus_parquet_data_ret_init(struct stream_data
 	parquet_data_ret->row_len = stream_data_out->row_len;
 	parquet_data_ret->payload_arr = nng_alloc(sizeof(parquet_data_packet *) * new_col_len);
 	parquet_data_ret->schema = nng_alloc(sizeof(char *) * new_col_len);
+	parquet_data_ret->ts = stream_data_out->ts;
 
 	for (uint32_t i = 0; i < stream_data_out->col_len; i++) {
 		for (uint32_t j = 0; j < cmd_data->schema_len; j++) {
