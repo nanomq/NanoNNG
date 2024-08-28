@@ -21,10 +21,7 @@ void test_stream_sys_register(void)
 	ret = stream_sys_init();
 	NUTS_TRUE(ret == 0);
 
-	int outlen = 0;
-	void *outdata = NULL;
-
-	ret = stream_register("raw", RAW_STREAM_ID, NULL, 0);
+	ret = stream_register("raw", RAW_STREAM_ID, NULL, NULL, NULL);
 	NUTS_TRUE(ret != 0);
 
 	stream_sys_fini();
@@ -35,9 +32,6 @@ void test_stream_sys_unregister(void)
 	int ret = 0;
 	ret = stream_sys_init();
 	NUTS_TRUE(ret == 0);
-
-	int outlen = 0;
-	void *outdata = NULL;
 
 	ret = stream_unregister(RAW_STREAM_ID);
 	NUTS_TRUE(ret == 0);
@@ -54,12 +48,13 @@ void test_stream_sys_encode(void)
 	ret = stream_sys_init();
 	NUTS_TRUE(ret == 0);
 
-	int outlen = 0;
 	void *outdata = NULL;
 
-	outdata = stream_encode(RAW_STREAM_ID, NULL, 0, &outlen);
+	outdata = stream_encode(RAW_STREAM_ID, NULL);
+	NUTS_TRUE(outdata == NULL);
 
-	outdata = stream_encode(INVALID_STREAM_ID, NULL, 0, &outlen);
+	outdata = stream_encode(INVALID_STREAM_ID, NULL);
+	NUTS_TRUE(outdata == NULL);
 
 	stream_sys_fini();
 }
@@ -70,12 +65,13 @@ void test_stream_sys_decode(void)
 	ret = stream_sys_init();
 	NUTS_TRUE(ret == 0);
 
-	int outlen = 0;
 	void *outdata = NULL;
 
-	outdata = stream_decode(RAW_STREAM_ID, NULL, 0, &outlen);
+	outdata = stream_decode(RAW_STREAM_ID, NULL);
+	NUTS_TRUE(outdata == NULL);
 
-	outdata = stream_decode(INVALID_STREAM_ID, NULL, 0, &outlen);
+	outdata = stream_decode(INVALID_STREAM_ID, NULL);
+	NUTS_TRUE(outdata == NULL);
 
 	stream_sys_fini();
 }
