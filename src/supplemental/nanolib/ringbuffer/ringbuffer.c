@@ -342,14 +342,16 @@ static parquet_object *init_parquet_object(ringBuffer_t *rb, ringBufferFile_t *f
 
 	nng_aio_begin(aio);
 
-	parquet_object *newObj = parquet_object_alloc(keys, darray, dsize, rb->size, aio, smsgs);
-	if (newObj == NULL) {
-		log_error("alloc new parquet object failed! no memory! msg will be freed\n");
-		nng_free(keys, sizeof(uint64_t) * rb->size);
-		nng_free(darray, sizeof(uint8_t *) * rb->size);
-		nng_free(dsize, sizeof(uint32_t) * rb->size);
-		return NULL;
-	}
+	/* fix */
+	parquet_object *newObj = NULL;
+//	parquet_object *newObj = parquet_object_alloc(keys, darray, dsize, rb->size, aio, smsgs);
+//	if (newObj == NULL) {
+//		log_error("alloc new parquet object failed! no memory! msg will be freed\n");
+//		nng_free(keys, sizeof(uint64_t) * rb->size);
+//		nng_free(darray, sizeof(uint8_t *) * rb->size);
+//		nng_free(dsize, sizeof(uint32_t) * rb->size);
+//		return NULL;
+//	}
 
 	return newObj;
 }
@@ -1168,7 +1170,6 @@ int ringBuffer_search_msgs_fuzz(ringBuffer_t *rb,
 	nng_mtx_lock(rb->ring_lock);
 	if (rb == NULL || rb->size == 0 || count == NULL || list == NULL) {
 		nng_mtx_unlock(rb->ring_lock);
-		log_error("ringbuffer is NULL or count is NULL or list is NULL\n");
 		return -1;
 	}
 
