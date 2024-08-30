@@ -5,9 +5,12 @@
 // file was obtained (LICENSE.txt).  A copy of the license may also be
 // found online at https://opensource.org/licenses/MIT.
 
-#include "string.h"
+#include <stdlib.h>
+#include <string.h>
 #include "nng/exchange/stream/raw_stream.h"
+#if defined(SUPP_PARQUET)
 #include "nng/supplemental/nanolib/parquet.h"
+#endif
 
 static char **raw_schema_init()
 {
@@ -180,7 +183,7 @@ static struct stream_decoded_data *raw_stream_decode(struct parquet_data_ret *pa
 			if (parquet_data->payload_arr[i][j]->size == 0) {
 				continue;
 			}
-			memcpy(decoded_data->data + decoded_data_index, parquet_data->payload_arr[i][j]->data, parquet_data->payload_arr[i][j]->size);
+			memcpy((uint8_t *)decoded_data->data + decoded_data_index, parquet_data->payload_arr[i][j]->data, parquet_data->payload_arr[i][j]->size);
 			decoded_data_index += parquet_data->payload_arr[i][j]->size;
 		}
 	}

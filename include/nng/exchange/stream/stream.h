@@ -8,7 +8,9 @@
 #define STREAM_H
 #include "nng/supplemental/util/idhash.h"
 #include "nng/supplemental/nanolib/log.h"
+#ifdef SUPP_PARQUET
 #include "nng/supplemental/nanolib/parquet.h"
+#endif
 
 typedef struct stream_node {
 	char *name;
@@ -17,6 +19,47 @@ typedef struct stream_node {
 	void *(*encode)(void *);
 	void *(*cmd_parser)(void *);
 } stream_node;
+
+#ifndef SUPP_PARQUET
+typedef struct parquet_data parquet_data;
+typedef struct parquet_data_ret parquet_data_ret;
+
+typedef struct {
+	uint8_t *data;
+	uint32_t size;
+} parquet_data_packet;
+
+
+struct parquet_data_ret {
+	// Payload_arr should col first.
+	uint32_t               col_len;
+	uint32_t               row_len;
+	uint64_t              *ts;
+	char                 **schema;
+	parquet_data_packet ***payload_arr;
+};
+
+struct parquet_data {
+	// Payload_arr should col first.
+	// First column of schema should be
+	// ts, can not be changed.
+	// col_len is payload_arr col_len,
+	// schema len = col_len + 1, 1 is ts col.
+	uint32_t               col_len;
+	uint32_t               row_len;
+	uint64_t              *ts;
+	char                 **schema;
+	parquet_data_packet ***payload_arr;
+};
+
+parquet_data *parquet_data_alloc(char **schema,
+								 parquet_data_packet ***payload_arr,
+								 uint64_t *ts,
+								 uint32_t col_len,
+								 uint32_t row_len);
+
+void parquet_data_free(parquet_data *data);
+#endif
 
 struct stream_data_out {
 	uint32_t col_len;
