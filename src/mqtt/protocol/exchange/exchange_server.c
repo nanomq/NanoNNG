@@ -16,7 +16,9 @@
 #include "nng/exchange/stream/stream.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 #include "nng/protocol/reqrep0/rep.h"
+#if defined(SUPP_PARQUET)
 #include "nng/supplemental/nanolib/parquet.h"
+#endif
 #include "nng/supplemental/nanolib/blf.h"
 
 #define NANO_MAX_MQ_BUFFER_LEN 1024
@@ -536,7 +538,6 @@ query_cb(void *arg)
 
 	if (query_limit != NULL) {
 		rv = nng_atomic_dec_nv(query_limit);
-		log_error("query_limit: %d", rv);
 		if (rv < 0) {
 			log_warn("Hook searching too frequently");
 			query_send_eof(s->pair0_sock, &s->query_aio);

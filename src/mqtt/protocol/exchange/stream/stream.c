@@ -5,7 +5,7 @@
 // file was obtained (LICENSE.txt).  A copy of the license may also be
 // found online at https://opensource.org/licenses/MIT.
 
-#include "string.h"
+#include <string.h>
 #include "nng/exchange/stream/stream.h"
 #include "nng/exchange/stream/raw_stream.h"
 
@@ -95,7 +95,7 @@ void *stream_cmd_parser(uint8_t id, void *buf)
 
 #define UNUSED(x) ((void) x)
 
-int stream_node_destory(void *id, void *value)
+void stream_node_destory(void *id, void *value)
 {
 	UNUSED(id);
 	stream_node *snode = value;
@@ -103,7 +103,7 @@ int stream_node_destory(void *id, void *value)
 	nng_free(snode->name, strlen(snode->name) + 1);
 	nng_free(snode, sizeof(*snode));
 
-	return 0;
+	return;
 }
 
 void stream_decoded_data_free(struct stream_decoded_data *data)
@@ -187,10 +187,68 @@ int stream_sys_init(void)
 
 void stream_sys_fini(void)
 {
-	stream_node *snode = NULL;
-
 	nng_id_map_foreach(stream_node_map, stream_node_destory);
 	nng_id_map_free(stream_node_map);
 
 	return;
 }
+#ifndef PARQUET_H
+parquet_data *parquet_data_alloc(char **schema, parquet_data_packet ***payload_arr,
+    uint64_t *ts, uint32_t col_len, uint32_t row_len)
+{
+	if (payload_arr == NULL || schema == NULL || col_len == 0 ||
+	    row_len == 0) {
+		log_error("payload || schema should not be NULL, col || row "
+		          "len should't == 0");
+	}
+	parquet_data *data = nng_alloc(sizeof(parquet_data));
+	if (data == NULL) {
+		return NULL; // Memory allocation failed
+	}
+	data->ts          = ts;
+	data->col_len     = col_len + 1;
+	data->row_len     = row_len;
+	data->schema      = schema;
+	data->payload_arr = payload_arr;
+	return data;
+}
+
+void parquet_data_free(parquet_data *data)
+{
+	if (data) {
+		for (uint32_t c = 0; c < data->col_len - 1; c++) {
+			if (data->schema[c] != NULL) {
+				nng_free(data->schema[c], strlen(data->schema[c]));
+			}
+			for (uint32_t r = 0; r < data->row_len; r++) {
+				parquet_data_packet *payload =
+				    data->payload_arr[c][r];
+				if (payload != NULL) {
+					nng_free(payload, sizeof(payload));
+				}
+			}
+			if (data->payload_arr[c] != NULL) {
+				nng_free(data->payload_arr[c],
+				    data->row_len * sizeof(parquet_data_packet *));
+			}
+		}
+
+		if (data->schema[data->col_len - 1] != NULL) {
+			nng_free(data->schema[data->col_len - 1],
+			    strlen(data->schema[data->col_len - 1]));
+		}
+		if (data->schema != NULL) {
+			nng_free(data->schema, data->col_len * sizeof(char *));
+		}
+		if (data->ts != NULL) {
+			nng_free(data->ts, data->row_len * sizeof(uint64_t));
+		}
+		if (data->payload_arr != NULL) {
+			nng_free(data->payload_arr,
+			    data->col_len * sizeof(parquet_data_packet **));
+		}
+		nng_free(data, sizeof(parquet_data));
+	}
+	return;
+}
+#endif
