@@ -264,12 +264,17 @@ static struct parquet_data_ret *ringbus_parquet_data_ret_init(struct stream_data
 			}
 		}
 	}
+	if (new_col_len == 0) {
+		nng_free(parquet_data_ret, sizeof(struct parquet_data_ret));
+		return NULL;
+	}
 
 	parquet_data_ret->col_len = new_col_len;
 	parquet_data_ret->row_len = stream_data_out->row_len;
 	parquet_data_ret->payload_arr = nng_alloc(sizeof(parquet_data_packet *) * new_col_len);
 	parquet_data_ret->schema = nng_alloc(sizeof(char *) * new_col_len);
-	parquet_data_ret->ts = stream_data_out->ts;
+	parquet_data_ret->ts = nng_alloc(sizeof(uint64_t) * stream_data_out->row_len);
+	memcpy(parquet_data_ret->ts, stream_data_out->ts, sizeof(uint64_t) * stream_data_out->row_len);
 
 	for (uint32_t i = 0; i < stream_data_out->col_len; i++) {
 		for (uint32_t j = 0; j < cmd_data->schema_len; j++) {
@@ -277,6 +282,7 @@ static struct parquet_data_ret *ringbus_parquet_data_ret_init(struct stream_data
 				parquet_data_ret->schema[new_index] = stream_data_out->schema[i];
 				parquet_data_ret->payload_arr[new_index] = stream_data_out->payload_arr[i];
 				new_index++;
+				break;
 			}
 		}
 	}
@@ -312,7 +318,6 @@ static struct stream_decoded_data *fuzz_search_result_cat(nng_msg **msgList,
 
 	parquet_data_ret *parquet_data_ele = ringbus_parquet_data_ret_init(stream_data_out, cmd_data);
 	if (parquet_data_ele == NULL) {
-		log_error("Failed to allocate memory for parquet_data\n");
 		parquet_data_free((parquet_data *)stream_data_out);
 		ringbus_stream_data_in_free(stream_data);
 		return NULL;
@@ -332,6 +337,7 @@ static struct stream_decoded_data *fuzz_search_result_cat(nng_msg **msgList,
 
 	nng_free(parquet_data_ele->schema, sizeof(char *) * parquet_data_ele->col_len);
 	nng_free(parquet_data_ele->payload_arr, sizeof(parquet_data_packet *) * parquet_data_ele->col_len);
+	nng_free(parquet_data_ele->ts, sizeof(uint64_t) * parquet_data_ele->row_len);
 	nng_free(parquet_data_ele, sizeof(struct parquet_data_ret));
 
 	return decoded_data;
@@ -348,7 +354,7 @@ static void query_send_sync(exchange_sock_t *s, struct cmd_data *cmd_data)
 	if (ret == 0 && count != 0 && msgList != NULL) {
 		ringbus_decoded_data = fuzz_search_result_cat(msgList, count, s->ex_node->ex->streamType, cmd_data);
 		if (ringbus_decoded_data == NULL) {
-			log_error("fuzz_search_result_cat failed!");
+			log_info("get decoded data from ringbus failed!");
 		}
 		nng_free(msgList, sizeof(nng_msg *) * count);
 	} else {
@@ -369,11 +375,13 @@ static void query_send_sync(exchange_sock_t *s, struct cmd_data *cmd_data)
 																(const char **)cmd_data->schema,
 																cmd_data->schema_len,
 																&parquet_decoded_data_len);
-	if (parquet_datas != NULL) {
+	if (parquet_datas != NULL && parquet_decoded_data_len > 0) {
 		parquet_decoded_data = nng_alloc(sizeof(struct stream_decoded_data *) * parquet_decoded_data_len);
 		for (uint32_t i = 0; i < parquet_decoded_data_len; i++) {
 			if (parquet_datas[i] != NULL) {
 				parquet_decoded_data[i] = stream_decode(s->ex_node->ex->streamType, parquet_datas[i]);
+			} else {
+				parquet_decoded_data[i] = NULL;
 			}
 		}
 		parquet_datas_ret_free(parquet_datas, parquet_decoded_data_len);
@@ -398,12 +406,14 @@ static void query_send_sync(exchange_sock_t *s, struct cmd_data *cmd_data)
 	nng_msg *msg = NULL;
 	nng_msg_alloc(&msg, 0);
 #if defined(SUPP_PARQUET)
-	if (parquet_decoded_data != NULL) {
+	if (parquet_decoded_data != NULL && parquet_decoded_data_len > 0) {
 		for (uint32_t i = 0; i < parquet_decoded_data_len; i++) {
-			if (parquet_decoded_data[i] != NULL && parquet_decoded_data[i] != NULL && parquet_decoded_data[i]->len > 0) {
+			if (parquet_decoded_data[i] != NULL && parquet_decoded_data[i]->len > 0) {
 				log_info("parquet_decoded_data[%d] size: %d", i, parquet_decoded_data[i]->len);
 				nng_msg_append(msg, parquet_decoded_data[i]->data, parquet_decoded_data[i]->len);
 				stream_decoded_data_free(parquet_decoded_data[i]);
+			} else {
+				log_info("parquet_decoded_data[%d] is NULL", i);
 			}
 		}
 		nng_free(parquet_decoded_data, sizeof(struct stream_decoded_data *) * parquet_decoded_data_len);
