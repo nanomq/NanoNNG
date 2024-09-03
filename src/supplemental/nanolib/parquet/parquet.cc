@@ -1431,6 +1431,9 @@ parquet_read_span_by_column(const char *filename, uint64_t keys[2],
 			    index_vector[0], index_vector[1]);
 			ret = parquet_read_payload(row_group_reader,
 			    file_metadata, schema, schema_len, index_vector);
+			if (ret == NULL) {
+				continue;
+			}
 			ret->ts =
 			    (uint64_t *) malloc(sizeof(uint64_t) * ts.size());
 			copy(ts.begin(), ts.end(), ret->ts);
