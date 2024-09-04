@@ -247,13 +247,36 @@ nano_pipe_timer_cb(void *arg)
 	if (!p->busy) {
 		nni_msg *msg, *rmsg;
 		uint16_t pid = p->rid;
+
+
+
 		// trying to resend msg
 		msg = nni_qos_db_get_one(
 		    is_sqlite, npipe->nano_qos_db, npipe->p_id, &pid);
 		if (msg != NULL) {
 			rmsg = msg;
-			time = nni_msg_get_timestamp(rmsg);
-			if ((nni_clock() - time) >=
+			property      *prop = NULL;
+			property_data *data = NULL;
+			if (p->conn_param->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
+				if (nni_msg_get_proto_data(msg) == NULL)
+					nni_mqtt_msg_proto_data_alloc(rmsg);
+				nni_mqttv5_msg_decode(rmsg);
+				prop = nni_mqtt_msg_get_publish_property(rmsg);
+			}
+			if (prop) {
+				data = property_get_value(
+				    prop, MESSAGE_EXPIRY_INTERVAL);
+			}
+			nni_time ntime = nni_clock();
+			nni_time mtime = nni_msg_get_timestamp(rmsg);
+			if (data && ntime > mtime + data->p_value.u32 * 1000) {
+				log_info("QoS msg %d expired!", pid);
+				// remove expired msg from qos db
+				nni_qos_db_remove_msg(
+				    is_sqlite, npipe->nano_qos_db, rmsg);
+				nni_qos_db_remove(is_sqlite,
+				    npipe->nano_qos_db, npipe->p_id, pid);
+			} else if ((ntime - mtime) >=
 			    (long unsigned) qos_duration * 1250) {
 				p->busy = true;
 				// TODO set max retrying times in nanomq.conf
@@ -262,12 +285,11 @@ nano_pipe_timer_cb(void *arg)
 				nni_aio_set_prov_data(
 				    &p->aio_send, (void *)(uintptr_t)pid);
 				// put original msg into sending
-				nni_msg_clone(msg);
-				nni_aio_set_msg(&p->aio_send, msg);
-				log_trace(
-				    "resending qos msg packetid: %d", pid);
+				nni_msg_clone(rmsg);
+				nni_aio_set_msg(&p->aio_send, rmsg);
+				log_trace("resending qos msg packetid: %d", pid);
+				log_info("msg payload : %s", nni_msg_payload_ptr(rmsg));
 				nni_pipe_send(p->pipe, &p->aio_send);
-				//  only remove msg from qos_db when get ack
 			}
 		}
 	}
@@ -558,7 +580,7 @@ nano_pipe_stop(void *arg)
 		return; // your time is yet to come
 
 	log_trace(" ########## nano_pipe_stop ########## ");
-	nni_aio_abort(&p->aio_send, NNG_ECANCELED);
+	// nni_aio_abort(&p->aio_send, NNG_ECANCELED);
 	nni_aio_stop(&p->aio_send);
 	nni_aio_stop(&p->aio_timer);
 	nni_aio_stop(&p->aio_recv);
@@ -609,11 +631,17 @@ nano_pipe_fini(void *arg)
 	nni_mtx_unlock(&p->lk);
 
 	nni_mtx_fini(&p->lk);
+	nni_mtx_unlock(&s->lk);
+
+	if (nni_aio_busy(&p->aio_send)) {
+		nni_aio_abort(&p->aio_send, NNG_ECANCELED);
+		nni_aio_close(&p->aio_send);
+		log_error("send aio not finished!");
+	}
 	nni_aio_fini(&p->aio_send);
 	nni_aio_fini(&p->aio_recv);
 	nni_aio_fini(&p->aio_timer);
 	nano_nni_lmq_fini(&p->rlmq);
-	nni_mtx_unlock(&s->lk);
 }
 
 static int
@@ -965,6 +993,7 @@ nano_pipe_send_cb(void *arg)
 	log_trace("******** nano_pipe_send_cb %d ****", p->id);
 	// retry here
 	if ((rv = nni_aio_result(&p->aio_send)) != 0) {
+		log_debug("send cb error result %d", rv);
 		msg = nni_aio_get_msg(&p->aio_send);
 		nni_msg_free(msg);
 		nni_aio_set_msg(&p->aio_send, NULL);
@@ -1016,6 +1045,7 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 	nni_msg *msg = NULL;
 
 	if (nni_aio_begin(aio) != 0) {
+		log_warn("recv aio begin failed!");
 		return;
 	}
 
