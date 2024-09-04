@@ -135,13 +135,13 @@ tcptran_pipe_close(void *arg)
 	nni_lmq_flush(&p->rslmq);
 	nni_mtx_unlock(&p->mtx);
 
+	nng_stream_close(p->conn);
 	nni_aio_close(p->rxaio);
 	nni_aio_close(p->rpaio);
 	nni_aio_close(p->txaio);
 	nni_aio_close(p->qsaio);
 	nni_aio_close(p->negoaio);
 
-	nng_stream_close(p->conn);
 	log_trace("tcptran_pipe_close\n");
 }
 
@@ -1534,7 +1534,10 @@ tcptran_pipe_send(void *arg, nni_aio *aio)
 	int           rv;
 
 	log_trace("########### tcptran_pipe_send ###########");
-	if (nni_aio_begin(aio) != 0) {
+	if ((rv = nni_aio_begin(aio)) != 0) {
+		log_error("transport send aio begin error %d!", rv);
+		nni_msg_free(nni_aio_get_msg(aio));
+		nni_aio_set_msg(aio, NULL);
 		return;
 	}
 	nni_mtx_lock(&p->mtx);
