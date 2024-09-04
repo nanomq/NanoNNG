@@ -809,7 +809,7 @@ session_keeping:
 	return (rv);
 }
 
-// please use it within a pipe lock
+// please use it within a pipe+sock lock
 static inline void
 close_pipe(nano_pipe *p)
 {
@@ -817,7 +817,6 @@ close_pipe(nano_pipe *p)
 	nano_sock *s = p->broker;
 
 	nni_atomic_set_bool(&p->closed, true);
-	nni_mtx_lock(&s->lk);
 	if (nni_list_active(&s->recvpipes, p)) {
 		nni_msg *msg = nni_aio_get_msg(&p->aio_recv);
 		if (msg)
@@ -829,7 +828,6 @@ close_pipe(nano_pipe *p)
 	t = nni_id_get(&s->pipes, nni_pipe_id(p->pipe));
 	if (t == p)
 		nni_id_remove(&s->pipes, nni_pipe_id(p->pipe));
-	nni_mtx_unlock(&s->lk);
 	nano_nni_lmq_flush(&p->rlmq, false);
 }
 
@@ -850,7 +848,7 @@ nano_pipe_close(void *arg)
 		nni_atomic_swap_bool(&npipe->p_closed, false);
 		return -1;
 	}
-
+	nni_mtx_lock(&s->lk);
 	nni_mtx_lock(&p->lk);
 	// we freed the conn_param when restoring pipe
 	// so check status of conn_param. just let it close silently
@@ -866,7 +864,6 @@ nano_pipe_close(void *arg)
 			if (new_pipe == npipe) {
 				log_info("session stored %d", npipe->p_id);
 				nni_id_set(&s->cached_sessions, npipe->p_id, p);
-				nni_mtx_lock(&s->lk);
 				// set event to false avoid of sending the
 				// disconnecting msg
 				p->event     = false;
@@ -917,10 +914,10 @@ nano_pipe_close(void *arg)
 	// depends on MQTT V5 reason code
 	// create disconnect event msg
 	if (p->event) {
-		msg =
-		    nano_msg_notify_disconnect(p->conn_param, p->reason_code);
+		msg = nano_msg_notify_disconnect(p->conn_param, p->reason_code);
 		if (msg == NULL) {
 			nni_mtx_unlock(&p->lk);
+			nni_mtx_unlock(&s->lk);
 			return 0;
 		}
 		nni_msg_set_conn_param(msg, p->conn_param);
@@ -929,14 +926,13 @@ nano_pipe_close(void *arg)
 		nni_msg_set_cmd_type(msg, CMD_DISCONNECT_EV);
 		nni_msg_set_pipe(msg, p->id);
 
-		nni_mtx_lock(&s->lk);
 		// expose disconnect event
 		if ((ctx = nni_list_first(&s->recvq)) != NULL) {
 			aio       = ctx->raio;
 			ctx->raio = NULL;
 			nni_list_remove(&s->recvq, ctx);
-			nni_mtx_unlock(&s->lk);
 			nni_mtx_unlock(&p->lk);
+			nni_mtx_unlock(&s->lk);
 			nni_aio_set_msg(aio, msg);
 			nni_aio_finish(aio, 0, nni_msg_len(msg));
 			return 0;
@@ -953,9 +949,9 @@ nano_pipe_close(void *arg)
 			}
 			nni_lmq_put(&s->waitlmq, msg);
 		}
-		nni_mtx_unlock(&s->lk);
 	}
 	nni_mtx_unlock(&p->lk);
+	nni_mtx_unlock(&s->lk);
 	return 0;
 }
 
