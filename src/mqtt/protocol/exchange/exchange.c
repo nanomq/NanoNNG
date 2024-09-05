@@ -2,7 +2,7 @@
 #include "nng/exchange/exchange.h"
 
 int
-exchange_init(exchange_t **ex, char *name, char *topic, uint8_t streamType,
+exchange_init(exchange_t **ex, char *name, char *topic, uint8_t streamType, uint32_t chunk_size,
 			  unsigned int *rbsCaps, char **rbsName, uint8_t *rbsFullOp, unsigned int rbsCount)
 {
 	int ret = 0;
@@ -51,6 +51,7 @@ exchange_init(exchange_t **ex, char *name, char *topic, uint8_t streamType,
 	(void)strcpy(newEx->topic, topic);
 
 	newEx->streamType = streamType;
+	newEx->chunk_size = chunk_size;
 
 	for (unsigned int i = 0; i < RINGBUFFER_MAX; i++) {
 		newEx->rbs[i] = NULL;
