@@ -1624,7 +1624,7 @@ quic_mqtt_pipe_fini(void *arg)
 
 	// emulate disconnect notify msg as a normal publish
 	while ((ctx = nni_list_first(&p->recv_queue)) != NULL) {
-		// Pipe was closed.  just push an error back to the
+		// Pipe was closed. just push an error back to the
 		// entire socket, because we only have one pipe
 		nni_list_remove(&p->recv_queue, ctx);
 		aio       = ctx->raio;
@@ -1901,7 +1901,32 @@ mqtt_quic_ctx_init(void *arg, void *sock)
 static void
 mqtt_quic_ctx_fini(void *arg)
 {
-	NNI_ARG_UNUSED(arg);
+	mqtt_quic_ctx *ctx = arg;
+	mqtt_sock_t   *s   = ctx->mqtt_sock;
+	mqtt_pipe_t   *p   = s->pipe;
+	nni_aio *      aio;
+
+	nni_mtx_lock(&s->mtx);
+	if (nni_list_active(&s->recv_queue, ctx)) {
+		if ((aio = ctx->raio) != NULL) {
+			ctx->raio = NULL;
+			nni_list_remove(&s->recv_queue, ctx);
+			nni_aio_finish_error(aio, NNG_ECLOSED);
+		}
+	}
+	nni_mtx_unlock(&s->mtx);
+
+	if (p) {
+		nni_mtx_lock(&p->lk);
+		if (nni_list_active(&p->recv_queue, ctx)) {
+			if ((aio = ctx->raio) != NULL) {
+				ctx->raio = NULL;
+				nni_list_remove(&p->recv_queue, ctx);
+				nni_aio_finish_error(aio, NNG_ECLOSED);
+			}
+		}
+		nni_mtx_unlock(&p->lk);
+	}
 }
 
 static void

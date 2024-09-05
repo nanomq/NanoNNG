@@ -140,13 +140,13 @@ tlstran_pipe_close(void *arg)
 	nni_lmq_flush(&p->rslmq);
 	nni_mtx_unlock(&p->mtx);
 
+	nng_stream_close(p->conn);
 	nni_aio_close(p->rxaio);
 	nni_aio_close(p->rpaio);
 	nni_aio_close(p->txaio);
 	nni_aio_close(p->qsaio);
 	nni_aio_close(p->negoaio);
 
-	nng_stream_close(p->conn);
 	log_trace("tlstran_pipe_close\n");
 }
 
@@ -210,7 +210,8 @@ tlstran_pipe_fini(void *arg)
     		conn_param_free(p->tcp_cparam);
     		p->tcp_cparam = NULL;
   	}
-
+	if (p->rxmsg != NULL)
+        nni_msg_free(p->rxmsg);
 	nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
 	nng_stream_free(p->conn);
 	nni_aio_free(p->qsaio);
@@ -464,6 +465,7 @@ error:
 		ep->useraio = NULL;
 		nni_aio_finish_error(uaio, rv);
 	}
+	nni_list_remove(&ep->negopipes, p);
 	nni_mtx_unlock(&ep->mtx);
 	tlstran_pipe_reap(p);
 	log_error("connect nego error rv:(%d) %s MQTT reason code %d",

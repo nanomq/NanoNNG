@@ -67,9 +67,13 @@ extern "C" {
 
 #define NNG_OPT_MQTT_RETRY_INTERVAL "mqtt-client-retry-interval"
 
+#define NNG_OPT_MQTT_RETRY_WAIT_TIME "mqtt-client-retry-wait-time"
+
 #define NNG_OPT_MQTT_DISCONNECT_REASON "mqtt-disconnect-reason"
 
 #define NNG_OPT_MQTT_SQLITE "mqtt-sqlite-option"
+
+#define NNG_OPT_MQTT_ENABLE_SCRAM "mqtt-scram-option"
 
 // NNG_OPT_MQTT_QOS is a byte (only lower two bits significant) representing
 // the quality of service.  At this time, only level zero is supported.

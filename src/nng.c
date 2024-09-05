@@ -12,6 +12,7 @@
 #include "core/nng_impl.h"
 #include "core/zmalloc.h"
 #include "nng/protocol/mqtt/mqtt.h"
+#include "core/platform.h"
 
 // This file provides the "public" API.  This is a thin wrapper around
 // internal API functions.  We use the public prefix instead of internal,
@@ -106,6 +107,18 @@ char *
 nng_strndup(const char *src, size_t len)
 {
 	return (nni_strndup(src, len));
+}
+
+char *
+nng_strncat(char *dst, const char *src, size_t dst_len, size_t src_len)
+{
+	return nni_strncat(dst,src, dst_len, src_len);
+}
+
+char *
+nng_strnins(char *dst, const char *src, size_t dst_len, size_t src_len)
+{
+	return nni_strnins(dst,src, dst_len, src_len);
 }
 
 void
@@ -2471,7 +2484,7 @@ conn_param_set_username(conn_param *cparam, const char *username)
 void
 conn_param_set_password(conn_param *cparam, const char *password)
 {
-	cparam->password.body = nng_strdup(password);
+	cparam->password.body = (uint8_t *)nng_strdup(password);
 	cparam->password.len  = strlen(password) + 1;
 }
 
@@ -2548,8 +2561,209 @@ nng_file_is_dir(const char *path)
 	return nni_file_is_dir(path);
 }
 
+int nng_access(const char* name, int flag)
+{
+    return nni_plat_access(name, flag);
+}
+// Ends of NANOMQ API
+
 void
 nng_init_set_parameter(nng_init_parameter p, uint64_t value)
 {
 	nni_init_set_param(p, value);
+}
+
+nng_time
+nng_clock(void)
+{
+	(void) nni_init();
+	return (nni_clock());
+}
+
+// Sleep for specified msecs.
+void
+nng_msleep(nng_duration dur)
+{
+	(void) nni_init();
+	nni_msleep(dur);
+}
+
+// Create and start a thread.  Note that on some platforms, this might
+// actually be a coroutine, with limitations about what system APIs
+// you can call.  Therefore, these threads should only be used with the
+// I/O APIs provided by nng.  The thread runs until completion.
+int
+nng_thread_create(nng_thread **thrp, void (*func)(void *), void *arg)
+{
+	nni_thr *thr;
+	int      rv;
+
+	(void) nni_init();
+
+	if ((thr = NNI_ALLOC_STRUCT(thr)) == NULL) {
+		return (NNG_ENOMEM);
+	}
+	*thrp = (void *) thr;
+	if ((rv = nni_thr_init(thr, func, arg)) != 0) {
+		return (rv);
+	}
+	nni_thr_run(thr);
+	return (0);
+}
+
+void
+nng_thread_set_name(nng_thread *thr, const char *name)
+{
+	nni_thr_set_name((void *) thr, name);
+}
+
+// Destroy a thread (waiting for it to complete.)  When this function
+// returns all resources for the thread are cleaned up.
+void
+nng_thread_destroy(nng_thread *thr)
+{
+	nni_thr *t = (void *) thr;
+	nni_thr_fini(t);
+	NNI_FREE_STRUCT(t);
+}
+
+struct nng_mtx {
+	nni_mtx m;
+};
+
+int
+nng_mtx_alloc(nng_mtx **mpp)
+{
+	nng_mtx *mp;
+
+	(void) nni_init();
+
+	if ((mp = NNI_ALLOC_STRUCT(mp)) == NULL) {
+		return (NNG_ENOMEM);
+	}
+	nni_mtx_init(&mp->m);
+	*mpp = mp;
+	return (0);
+}
+
+void
+nng_mtx_free(nng_mtx *mp)
+{
+	if (mp != NULL) {
+		nni_mtx_fini(&mp->m);
+		NNI_FREE_STRUCT(mp);
+	}
+}
+
+void
+nng_mtx_lock(nng_mtx *mp)
+{
+	nni_mtx_lock(&mp->m);
+}
+
+void
+nng_mtx_unlock(nng_mtx *mp)
+{
+	nni_mtx_unlock(&mp->m);
+}
+
+struct nng_cv {
+	nni_cv c;
+};
+
+int
+nng_cv_alloc(nng_cv **cvp, nng_mtx *mx)
+{
+	nng_cv *cv;
+
+	if ((cv = NNI_ALLOC_STRUCT(cv)) == NULL) {
+		return (NNG_ENOMEM);
+	}
+	nni_cv_init(&cv->c, &mx->m);
+	*cvp = cv;
+	return (0);
+}
+
+void
+nng_cv_free(nng_cv *cv)
+{
+	if (cv != NULL) {
+		nni_cv_fini(&cv->c);
+		NNI_FREE_STRUCT(cv);
+	}
+}
+
+void
+nng_cv_wait(nng_cv *cv)
+{
+	nni_cv_wait(&cv->c);
+}
+
+int
+nng_cv_until(nng_cv *cv, nng_time when)
+{
+	return (nni_cv_until(&cv->c, (nni_time) when));
+}
+
+void
+nng_cv_wake(nng_cv *cv)
+{
+	nni_cv_wake(&cv->c);
+}
+
+void
+nng_cv_wake1(nng_cv *cv)
+{
+	nni_cv_wake1(&cv->c);
+}
+
+uint32_t
+nng_random(void)
+{
+	(void) nni_init();
+	return (nni_random());
+}
+
+int
+nng_socket_pair(int fds[2])
+{
+	return (nni_socket_pair(fds));
+}
+
+int
+nng_udp_open(nng_udp **udp, nng_sockaddr *sa)
+{
+	(void) nni_init();
+	return (nni_plat_udp_open((nni_plat_udp **) udp, sa));
+}
+
+void
+nng_udp_close(nng_udp *udp)
+{
+	nni_plat_udp_close((nni_plat_udp *) udp);
+}
+
+int
+nng_udp_sockname(nng_udp *udp, nng_sockaddr *sa)
+{
+	return (nni_plat_udp_sockname((nni_plat_udp *) udp, sa));
+}
+
+void
+nng_udp_send(nng_udp *udp, nng_aio *aio)
+{
+	nni_plat_udp_send((nni_plat_udp *) udp, aio);
+}
+
+void
+nng_udp_recv(nng_udp *udp, nng_aio *aio)
+{
+	nni_plat_udp_recv((nni_plat_udp *) udp, aio);
+}
+
+int
+nng_udp_multicast_membership(nng_udp *udp, nng_sockaddr *sa, bool join)
+{
+	return (
+	    nni_plat_udp_multicast_membership((nni_plat_udp *) udp, sa, join));
 }

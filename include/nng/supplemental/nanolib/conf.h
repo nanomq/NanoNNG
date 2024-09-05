@@ -74,8 +74,10 @@ struct conf_tls {
 
 typedef struct conf_tls conf_tls;
 
+// TODO: params for one single tcp node should be in here.
 typedef struct {
 	bool     enable;
+	char    *url;
 	uint8_t  nodelay;
 	uint8_t  keepalive;
 	uint8_t  quickack;
@@ -85,6 +87,16 @@ typedef struct {
 	uint16_t sendtimeo;
 	uint16_t recvtimeo;
 } conf_tcp;
+
+typedef struct {
+	size_t     count;
+	conf_tls **nodes;
+} conf_tls_list;
+
+typedef struct {
+	size_t     count;
+	conf_tcp **nodes;
+} conf_tcp_list;
 
 struct conf_sqlite {
 	bool   enable;
@@ -191,18 +203,23 @@ struct conf_websocket {
 typedef struct conf_websocket conf_websocket;
 
 #define NO_RETAIN 2 // default retain flag value, none 0, 1
+#define NO_QOS    3 // default QoS level value for forwarding bridge msg, 3 = keep old qos
 
 typedef struct {
-	char *   remote_topic;
-	uint32_t remote_topic_len;
-	char *   local_topic;
-	uint32_t local_topic_len;
-	uint8_t  qos;
-	uint8_t  nolocal;
-	uint8_t  retain; // override for retain
-	uint8_t  retain_as_published;
-	uint8_t  retain_handling;
-	uint32_t stream_id; // only effective when multi_stream is enabled
+	char       *remote_topic;
+	uint32_t    remote_topic_len;
+	char       *local_topic;
+	uint32_t    local_topic_len;
+	char       *prefix;
+	uint32_t    prefix_len;
+	char       *suffix;
+	uint32_t    suffix_len;
+	uint8_t     nolocal;
+	uint8_t     retain; // override for retain
+	uint8_t     qos;    // override for QoS
+	uint8_t     retain_as_published;
+	uint8_t     retain_handling;
+	uint32_t    stream_id; // only effective when multi_stream is enabled
 } topics;
 
 typedef struct {
@@ -242,21 +259,31 @@ struct conf_bridge_node {
 	bool         enable;
 	bool         dynamic;
 	bool         clean_start;
+	bool         transparent;
+	bool         will_flag;
+	bool         will_retain;
 	void        *sock;
-	uint8_t      proto_ver;
-	uint16_t     port;
-	uint16_t     keepalive;
-	uint16_t     backoff_max;
-	size_t       sub_count;
-	size_t       forwards_count;
-	size_t       max_recv_queue_len;
-	size_t       max_send_queue_len;
+	void        *bridge_arg;	// for reloading bridge case
 	char        *name;
 	char        *address;
 	char        *host;
 	char        *clientid;
 	char        *username;
 	char        *password;
+	char        *will_payload;
+	char        *will_topic;
+	uint8_t      proto_ver;
+	uint8_t      will_qos;
+	uint16_t     port;
+	uint16_t     keepalive;
+	uint16_t     backoff_max;
+	uint64_t     cancel_timeout;
+	uint64_t     resend_interval; // resend caching message interval (ms)
+	uint64_t     resend_wait;
+	size_t       sub_count;
+	size_t       forwards_count;
+	size_t       max_recv_queue_len;
+	size_t       max_send_queue_len;
 	topics     **forwards_list;
 	uint64_t     parallel;
 	topics     **sub_list;
@@ -264,15 +291,10 @@ struct conf_bridge_node {
 	conf_tcp     tcp;
 	conf_sqlite *sqlite;
 	nng_aio    **bridge_aio;
-	void        *bridge_arg;	// for reloading bridge case
-
 	nng_mtx     *mtx;
 
-	bool    will_flag;
-	char *  will_payload;
-	char *  will_topic;
-	bool    will_retain;
-	uint8_t will_qos;
+	bool         hybrid;  // enable/disable hybrid bridging
+	char       **hybrid_servers;
 
 	// MQTT v5 property
 	conf_bridge_conn_properties *     conn_properties;
@@ -284,7 +306,6 @@ struct conf_bridge_node {
 	bool         multi_stream;
 	bool         stream_auto_genid; // generate stream id automatically for each stream
 	bool         qos_first; // send QoS msg in high priority
-	bool         hybrid;  // hybrid bridging affects auto-reconnect of QUIC transport
 	uint64_t     qkeepalive;		 //keepalive timeout interval of QUIC transport
 	uint64_t     qconnect_timeout;	 // HandshakeIdleTimeoutMs of QUIC
 	uint32_t     qdiscon_timeout;	 // DisconnectTimeoutMs
@@ -554,8 +575,8 @@ struct conf {
 	int        msq_len;
 	uint32_t   num_taskq_thread;
 	uint32_t   max_taskq_thread;
-	uint32_t   parallel;				// broker ctx
-	uint64_t   total_ctx;		// Total ctx of work (bridge + AWS + broker + HTTP)
+	uint32_t   parallel;			   // broker ctx
+	uint64_t   total_ctx;		       // Total ctx of work (bridge + AWS + broker + HTTP)
 	uint64_t   max_packet_size;        // byte
 	uint32_t   client_max_packet_size; // byte
 	uint32_t   max_inflight_window;
@@ -569,6 +590,8 @@ struct conf {
 	bool       ipc_internal;
 	bool       bridge_mode;
 
+	conf_tcp_list        tcp_list;
+	conf_tls_list        tls_list;
 	conf_sqlite          sqlite;
 	conf_tls             tls;
 	conf_http_server     http_server;

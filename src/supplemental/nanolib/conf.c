@@ -829,7 +829,6 @@ conf_sqlite_init(conf_sqlite *sqlite)
 	sqlite->disk_cache_size     = 102400;
 	sqlite->mounted_file_path   = NULL;
 	sqlite->flush_mem_threshold = 100;
-	sqlite->resend_interval     = 5000;
 }
 
 #if defined(SUPP_RULE_ENGINE)
@@ -2748,12 +2747,13 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->host           = NULL;
 	node->port           = 1883;
 	node->clean_start    = true;
+	node->transparent    = false;
 	node->clientid       = NULL;
 	node->username       = NULL;
 	node->password       = NULL;
 	node->proto_ver      = 4;
 	node->keepalive      = 60;
-	node->backoff_max    = 60;
+	node->backoff_max    = 5;
 	node->forwards_count = 0;
 	node->forwards_list  = NULL;
 	node->sub_count      = 0;
@@ -2765,14 +2765,19 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->will_qos     = 0;
 	node->will_retain  = false;
 
-	node->sqlite         = NULL;
+	node->bridge_aio   = NULL;
+	node->bridge_arg   = NULL;
 
-	node->bridge_aio     = NULL;
-	node->bridge_arg = NULL;
+	node->sqlite       = NULL;
+
+	node->hybrid             = false;
+	node->hybrid_servers     = NULL;
+	node->resend_interval    = 5000;
+	node->resend_wait        = 3000;
+	node->cancel_timeout     = 10000;
 
 #if defined(SUPP_QUIC)
 	node->multi_stream       = false;
-	node->hybrid             = false;
 	node->qkeepalive         = 30;
 	node->qconnect_timeout   = 20; // HandshakeIdleTimeoutMs of QUIC
 	node->qdiscon_timeout    = 20; // DisconnectTimeoutMs
@@ -2921,10 +2926,6 @@ conf_bridge_node_parse_with_name(const char *path,const char *key_prefix, const 
 			node->qmax_ack_delay_ms = atoi(value);
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
-		                key_prefix, name, ".hybrid_bridging")) != NULL) {
-			node->hybrid = nni_strcasecmp(value, "true") == 0;
-			free(value);
-		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".quic_multi_stream")) != NULL) {
 			node->multi_stream = nni_strcasecmp(value, "true") == 0;
 			free(value);
@@ -2952,6 +2953,10 @@ conf_bridge_node_parse_with_name(const char *path,const char *key_prefix, const 
 			free(value);
 #endif
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".transparent_bridging")) != NULL) {
+			node->transparent = nni_strcasecmp(value, "true") == 0;
+			free(value);
+		}  else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".clean_start")) != NULL) {
 			node->clean_start = nni_strcasecmp(value, "true") == 0;
 			free(value);
@@ -2962,6 +2967,18 @@ conf_bridge_node_parse_with_name(const char *path,const char *key_prefix, const 
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".max_send_queue_len")) != NULL) {
 			node->max_send_queue_len = atoi(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".resend_interval")) != NULL) {
+			node->resend_interval = atoi(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".cancel_timeout")) != NULL) {
+			node->cancel_timeout = atoi(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".resend_wait")) != NULL) {
+			node->resend_wait = atoi(value);
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".max_recv_queue_len")) != NULL) {
@@ -3226,6 +3243,12 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 		free(node->sub_properties);
 		node->sub_properties = NULL;
 	}
+	if (node->hybrid_servers) {
+		for (size_t i = 0; i < cvector_size(node->hybrid_servers); ++i)
+			if (node->hybrid_servers[i])
+				free(node->hybrid_servers[i]);
+		cvector_free(node->hybrid_servers);
+	}
 	conf_tls_destroy(&node->tls);
 }
 
@@ -3272,6 +3295,20 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		    node->name, node->backoff_max);
 		log_info("%sbridge.mqtt.%s.max_parallel_processes:     %ld", prefix,
 		    node->name, node->parallel);
+		log_info("%sbridge.mqtt.%s.resend_interval:            %ld", prefix,
+		    node->name, node->resend_interval);
+		log_info("%sbridge.mqtt.%s.resend_wait:                %ld", prefix,
+		    node->name, node->resend_wait);
+		log_info("%sbridge.mqtt.%s.cancel_timeout:             %ld", prefix,
+		    node->name, node->cancel_timeout);
+		log_info("%sbridge.mqtt.%s.hybrid_bridging       :     %s", prefix,
+		    node->name, node->hybrid ? "true" : "false");
+		log_info("%sbridge.mqtt.%s.hybrid_servers: ", prefix, node->name);
+		for (size_t j = 0; j < cvector_size(node->hybrid_servers); j++) {
+			log_info(
+				 "\t[%ld] hybrid servers:       %s", j,
+										node->hybrid_servers[j]);
+		}
 
 #if defined(SUPP_QUIC)
 		log_info("%sbridge.mqtt.%s.quic_multi_stream:          %s", prefix,
@@ -3341,8 +3378,6 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		    bridge->sqlite.mounted_file_path);
 		log_info("%sbridge.sqlite.flush_mem_threshold: %ld", prefix,
 		    bridge->sqlite.flush_mem_threshold);
-		log_info("%sbridge.sqlite.resend_interval: %ld", prefix,
-		    bridge->sqlite.resend_interval);
 	}
 }
 
@@ -3974,6 +4009,44 @@ conf_rule_destroy(conf_rule *re)
 #endif
 
 static void
+conf_tcp_node_destroy(conf_tcp *node)
+{
+	node->enable = false;
+	if(node->url) {
+		free(node->url);
+		node->url = NULL;
+	}
+}
+
+static void
+conf_tcplist_destroy(conf_tcp_list *tcplist)
+{
+	if(tcplist->count > 0) {
+		for (size_t i = 0; i < tcplist->count; i++) {
+			conf_tcp *node = tcplist->nodes[i];
+			conf_tcp_node_destroy(node);
+			free(node);
+		}
+		cvector_free(tcplist->nodes);
+		tcplist->nodes = NULL;
+	}
+}
+
+static void
+conf_tlslist_destroy(conf_tls_list *tlslist)
+{
+	if(tlslist->count > 0) {
+		for (size_t i = 0; i < tlslist->count; i++) {
+			conf_tls *node = tlslist->nodes[i];
+			conf_tls_destroy(node);
+			free(node);
+		}
+		cvector_free(tlslist->nodes);
+		tlslist->nodes = NULL;
+	}
+}
+#if defined(SUPP_PARQUET)
+static void
 conf_parquet_destroy(conf_parquet *parquet)
 {
 	if (parquet) {
@@ -3987,6 +4060,7 @@ conf_parquet_destroy(conf_parquet *parquet)
 	}
 
 }
+#endif
 
 void
 conf_fini(conf *nanomq_conf)
@@ -4020,6 +4094,9 @@ conf_fini(conf *nanomq_conf)
 #if defined(ENABLE_LOG)
 	conf_log_destroy(&nanomq_conf->log);
 #endif
+
+	conf_tcplist_destroy(&nanomq_conf->tcp_list);
+	conf_tlslist_destroy(&nanomq_conf->tls_list);
 
 #if defined(SUPP_PARQUET)
 	conf_parquet_destroy(&nanomq_conf->parquet);

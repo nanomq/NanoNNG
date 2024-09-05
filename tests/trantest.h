@@ -602,7 +602,7 @@ trantest_mqtt_pub(nng_socket sock, bool no_broker)
 	nng_mqtt_msg_set_publish_payload(
 	    pubmsg, (uint8_t *) params.data, params.data_len);
 	nng_mqtt_msg_set_publish_topic(pubmsg, params.topic);
-	So(nng_sendmsg(sock, pubmsg, NNG_FLAG_NONBLOCK) == 0);
+	So(nng_sendmsg(sock, pubmsg, NNG_FLAG_ALLOC) == 0);
 
 	if (no_broker) {
 		conn_param *cp  = NULL;
@@ -659,7 +659,7 @@ trantest_mqtt_disconnect(nng_socket sock)
 	nng_mqtt_msg_alloc(&msg, 0);
 	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_DISCONNECT);
 
-	So(nng_sendmsg(sock, msg, NNG_FLAG_NONBLOCK) == 0);
+	So(nng_sendmsg(sock, msg, NNG_FLAG_NONBLOCK) == NNG_EAGAIN);
 }
 
 void

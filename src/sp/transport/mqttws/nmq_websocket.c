@@ -105,10 +105,15 @@ wstran_pipe_qos_send_cb(void *arg)
 	ws_pipe *p     = arg;
 	nni_aio *qsaio = p->qsaio;
 
+	nni_mtx_lock(&p->mtx);
 	if ((rv = nni_aio_result(qsaio)) != 0) {
 		log_warn(" send aio error %s", nng_strerror(rv));
-		wstran_pipe_close(p);
+		nni_msg *msg;
+		if ((msg = nni_aio_get_msg(p->qsaio)) != NULL) {
+			nni_msg_free(msg);
+		}
 	}
+	nni_mtx_unlock(&p->mtx);
 	return;
 }
 static void
@@ -984,19 +989,16 @@ static void
 wstran_pipe_fini(void *arg)
 {
 	ws_pipe *p = arg;
-
+	nni_mtx_lock(&p->mtx);
 	nng_stream_free(p->ws);
 	nni_aio_free(p->rxaio);
 	nni_aio_free(p->txaio);
-	nni_aio_wait(p->qsaio);
 	// We have to free msg here for a failed send
 	// due to the messy design of NNG WebSocket
-	nni_msg *msg;
-	if ((msg = nni_aio_get_msg(p->qsaio)) != NULL) {
-		nni_msg_free(msg);
-	}
+	nni_aio_wait(p->qsaio);
 	nni_aio_free(p->qsaio);
 	nni_msg_free(p->tmp_msg);
+	nni_mtx_unlock(&p->mtx);
 	nni_mtx_fini(&p->mtx);
 	nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
 	NNI_FREE_STRUCT(p);
@@ -1006,12 +1008,11 @@ static void
 wstran_pipe_close(void *arg)
 {
 	ws_pipe *p = arg;
-
+	nni_mtx_lock(&p->mtx);
 	nni_aio_close(p->rxaio);
+	nni_aio_abort(p->qsaio, NNG_ECANCELED);
 	nni_aio_close(p->qsaio);
 	nni_aio_close(p->txaio);
-
-	nni_mtx_lock(&p->mtx);
 	nng_stream_close(p->ws);
 	nni_mtx_unlock(&p->mtx);
 }

@@ -409,6 +409,10 @@ extern void nni_plat_udp_send(nni_plat_udp *, nni_aio *);
 // NNG_EMSGSIZE results.
 extern void nni_plat_udp_recv(nni_plat_udp *, nni_aio *);
 
+// nni_plat_udp_membership provides for joining or leaving multicast groups.
+extern int nni_plat_udp_multicast_membership(
+    nni_plat_udp *udp, nni_sockaddr *sa, bool join);
+
 //
 // Notification Pipe Pairs
 //
@@ -578,6 +582,8 @@ extern int nni_plat_getpid(void);
 // nni_plat_file_size get file size.
 extern int nni_plat_file_size(const char *, size_t *);
 
+// nni_access check accessibility of path
+extern int nni_plat_access(const char* name, int flag);
 //
 // Actual platforms we support.  This is included up front so that we can
 // get the specific types that are supplied by the platform.

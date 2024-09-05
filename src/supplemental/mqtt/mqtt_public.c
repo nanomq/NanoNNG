@@ -725,7 +725,8 @@ mqtt_property_free(property *prop)
 void
 mqtt_property_foreach(property *prop, void (*cb)(property *))
 {
-	return property_foreach(prop, cb);
+	property_foreach(prop, cb);
+	return;
 }
 
 int
@@ -809,7 +810,8 @@ mqtt_property_get_value(property *prop, uint8_t prop_id)
 void
 mqtt_property_append(property *prop_list, property *last)
 {
-	return property_append(prop_list, last);
+	property_append(prop_list, last);
+	return;
 }
 
 
@@ -839,11 +841,14 @@ nng_mqtt_client_send_cb(void* arg)
 {
 	nng_mqtt_client *client = (nng_mqtt_client *) arg;
 	nng_aio *        aio    = client->send_aio;
-	nng_msg *        msg    = nng_aio_get_msg(aio);
 	nng_msg *        tmsg   = NULL;
 
 	nni_lmq * lmq = (nni_lmq *)client->msgq;
+	// in case of data conention while fini pipes
+	if (nng_aio_result(aio) == NNG_ECLOSED)
+		return;
 
+	nng_msg *        msg    = nng_aio_get_msg(aio);
 	if (msg == NULL || nng_aio_result(aio) != 0) {
 		client->cb(client, NULL, client->obj);
 		return;
@@ -956,29 +961,6 @@ nng_mqtt_unsubscribe(nng_socket sock, nng_mqtt_topic *sbs, size_t count, propert
 	return rv;
 }
 
-int 
-nng_mqtt_unsubscribe_async(nng_mqtt_client *client, nng_mqtt_topic *sbs, size_t count, property *pl)
-{
-	nng_msg *unsubmsg;
-	nng_mqtt_msg_alloc(&unsubmsg, 0);
-	nng_mqtt_msg_set_packet_type(unsubmsg, NNG_MQTT_UNSUBSCRIBE);
-	nng_mqtt_msg_set_unsubscribe_topics(unsubmsg, sbs, count);
-
-	if (pl) {
-		nng_mqtt_msg_set_subscribe_property(unsubmsg, pl);
-	}
-	if (nng_aio_busy(client->send_aio)) {
-		if (nni_lmq_put((nni_lmq *)client->msgq, unsubmsg) != 0) {
-			nni_plat_println("unsubscribe failed!");
-		}
-		return 1;
-	}
-	nng_aio_set_msg(client->send_aio, unsubmsg);
-	nng_send_aio(client->sock, client->send_aio);
-
-	return 0;
-
-}
 // send a blocking sub msg until suback returns
 int
 nng_mqtt_subscribe(nng_socket sock, nng_mqtt_topic_qos *sbs, uint32_t count, property *pl)
@@ -1022,7 +1004,32 @@ nng_mqtt_subscribe(nng_socket sock, nng_mqtt_topic_qos *sbs, uint32_t count, pro
 	return rv;
 }
 
-int 
+int
+nng_mqtt_unsubscribe_async(nng_mqtt_client *client, nng_mqtt_topic *sbs, size_t count, property *pl)
+{
+	nng_msg *unsubmsg;
+	nng_mqtt_msg_alloc(&unsubmsg, 0);
+	nng_mqtt_msg_set_packet_type(unsubmsg, NNG_MQTT_UNSUBSCRIBE);
+	nng_mqtt_msg_set_unsubscribe_topics(unsubmsg, sbs, count);
+
+	if (pl) {
+		nng_mqtt_msg_set_subscribe_property(unsubmsg, pl);
+	}
+	if (nng_aio_busy(client->send_aio)) {
+		if (nni_lmq_put((nni_lmq *)client->msgq, unsubmsg) != 0) {
+			nng_msg_free(unsubmsg);
+			log_warn("unsubscribe failed!");
+			return -1;
+		}
+		return 1;
+	}
+	nng_aio_set_msg(client->send_aio, unsubmsg);
+	nng_send_aio(client->sock, client->send_aio);
+
+	return 0;
+}
+
+int
 nng_mqtt_subscribe_async(nng_mqtt_client *client, nng_mqtt_topic_qos *sbs, size_t count, property *pl)
 {
 	// create a SUBSCRIBE message

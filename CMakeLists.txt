@@ -26,7 +26,7 @@
 #   IN THE SOFTWARE.
 #
 
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.15)
 
 project(nng)
 include(CheckCCompilerFlag)
@@ -305,6 +305,16 @@ if(NNG_ENABLE_QUIC)
 #   include_directories(${PROJECT_SOURCE_DIR}/extern/msquic/src/inc)
   add_definitions(-DSUPP_QUIC)
 endif()
+
+if (NNG_ENABLE_SCRAM)
+    find_package(OpenSSL)
+    if (NNG_ENABLE_QUIC)
+    else ()
+        target_link_libraries(nng PRIVATE OpenSSL::SSL OpenSSL:Crypto)
+    endif (NNG_ENABLE_QUIC)
+
+    add_definitions(-DSUPP_SCRAM)
+endif ()
 
 add_subdirectory(src)
 

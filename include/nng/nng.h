@@ -251,6 +251,17 @@ NNG_DECL int nng_socket_get_ptr(nng_socket, const char *, void **);
 NNG_DECL int nng_socket_get_ms(nng_socket, const char *, nng_duration *);
 NNG_DECL int nng_socket_get_addr(nng_socket, const char *, nng_sockaddr *);
 
+// Utility function for getting a printable form of the socket address
+// for display in logs, etc.  It is not intended to be parsed, and the
+// display format may change without notice.  Generally you should alow
+// at least NNG_MAXADDRSTRLEN if you want to avoid typical truncations.
+// It is still possible for very long IPC paths to be truncated, but that
+// is an edge case and applications that pass such long paths should
+// expect some truncation (but they may pass larger values).
+#define NNG_MAXADDRSTRLEN (NNG_MAXADDRLEN + 16) // extra bytes for scheme
+NNG_DECL const char *nng_str_sockaddr(
+    const nng_sockaddr *sa, char *buf, size_t bufsz);
+
 // Arguably the pipe callback functions could be handled as an option,
 // but with the need to specify an argument, we find it best to unify
 // this as a separate function to pass in the argument and the callback.
@@ -264,7 +275,6 @@ typedef enum {
 } nng_pipe_ev;
 
 typedef void (*nng_pipe_cb)(nng_pipe, nng_pipe_ev, void *);
-// typedef void (*nng_pipe_cb)(nng_pipe, nng_pipe_ev, void *, int, void *);
 
 // nng_pipe_notify registers a callback to be executed when the
 // given event is triggered.  To watch for different events, register
@@ -493,8 +503,9 @@ NNG_DECL void  nng_free(void *, size_t);
 // nng_strdup duplicates the source string, using nng_alloc. The result
 // should be freed with nng_strfree (or nng_free(strlen(s)+1)).
 NNG_DECL char *nng_strdup(const char *);
-
 NNG_DECL char *nng_strndup(const char *, size_t);
+NNG_DECL char *nng_strnins(char *, const char *, size_t, size_t);
+NNG_DECL char *nng_strncat(char *, const char *, size_t, size_t);
 
 // nng_strfree is equivalent to nng_free(strlen(s)+1).
 NNG_DECL void nng_strfree(char *);
@@ -1334,6 +1345,42 @@ typedef struct conn_param        conn_param;
 typedef struct pub_packet_struct pub_packet_struct;
 typedef struct pipe_db           nano_pipe_db;
 
+NNG_DECL int nng_access(const char* name, int flag);
+
+// NANOMQ MQTT API ends
+// UDP operations.  These are provided for convenience,
+// and should be considered somewhat experimental.
+
+// nng_udp represents a socket / file descriptor for use with UDP
+typedef struct nng_udp nng_udp;
+
+// nng_udp_open initializes a UDP socket.  The socket is bound
+// to the specified address.
+NNG_DECL int nng_udp_open(nng_udp **udpp, nng_sockaddr *sa);
+
+// nng_udp_close closes the underlying UDP socket.
+NNG_DECL void nng_udp_close(nng_udp *udp);
+
+// nng_udp_sockname determines the locally bound address.
+// This is useful to determine a chosen port after binding to port 0.
+NNG_DECL int nng_udp_sockname(nng_udp *udp, nng_sockaddr *sa);
+
+// nng_udp_send sends the data in the aio to the the
+// destination specified in the nng_aio.  The iovs are the UDP payload.
+// The destination address is the first input (0th) for the aio.
+NNG_DECL void nng_udp_send(nng_udp *udp, nng_aio *aio);
+
+// nng_udp_recv receives a message, storing it in the iovs
+// from the UDP payload.  If the UDP payload will not fit, then
+// NNG_EMSGSIZE results.  The senders address is stored in the
+// socket address (nng_sockaddr), which should have been specified
+// in the aio's first input.
+NNG_DECL void nng_udp_recv(nng_udp *udp, nng_aio *aio);
+
+// nng_udp_membership provides for joining or leaving multicast groups.
+NNG_DECL int nng_udp_multicast_membership(
+    nng_udp *udp, nng_sockaddr *sa, bool join);
+
 #ifndef NNG_ELIDE_DEPRECATED
 // These are legacy APIs that have been deprecated.
 // Their use is strongly discouraged.
@@ -1635,6 +1682,70 @@ NNG_DECL uint32_t nng_random(void);
 // if the platform lacks support for this.  The argument is a pointer
 // to an array of file descriptors (or HANDLES or similar).
 NNG_DECL int nng_socket_pair(int[2]);
+
+// Multithreading and synchronization functions.
+
+// nng_thread is a handle to a "thread", which may be a real system
+// thread, or a coroutine on some platforms.
+typedef struct nng_thread nng_thread;
+
+// Create and start a thread.  Note that on some platforms, this might
+// actually be a coroutine, with limitations about what system APIs
+// you can call.  Therefore, these threads should only be used with the
+// I/O APIs provided by nng.  The thread runs until completion.
+NNG_DECL int nng_thread_create(nng_thread **, void (*)(void *), void *);
+
+// Set the thread name.  Support for this is platform specific and varies.
+// It is intended to provide information for use when debugging applications,
+// and not for programmatic use beyond that.
+NNG_DECL void nng_thread_set_name(nng_thread *, const char *);
+
+// Destroy a thread (waiting for it to complete.)  When this function
+// returns all resources for the thread are cleaned up.
+NNG_DECL void nng_thread_destroy(nng_thread *);
+
+// nng_mtx represents a mutex, which is a simple, non-reentrant, boolean lock.
+typedef struct nng_mtx nng_mtx;
+
+// nng_mtx_alloc allocates a mutex structure.
+NNG_DECL int nng_mtx_alloc(nng_mtx **);
+
+// nng_mtx_free frees the mutex.  It must not be locked.
+NNG_DECL void nng_mtx_free(nng_mtx *);
+
+// nng_mtx_lock locks the mutex; if it is already locked it will block
+// until it can be locked.  If the caller already holds the lock, the
+// results are undefined (a panic may occur).
+NNG_DECL void nng_mtx_lock(nng_mtx *);
+
+// nng_mtx_unlock unlocks a previously locked mutex.  It is an error to
+// call this on a mutex which is not owned by caller.
+NNG_DECL void nng_mtx_unlock(nng_mtx *);
+
+// nng_cv is a condition variable.  It is always allocated with an
+// associated mutex, which must be held when waiting for it, or
+// when signaling it.
+typedef struct nng_cv nng_cv;
+
+NNG_DECL int nng_cv_alloc(nng_cv **, nng_mtx *);
+
+// nng_cv_free frees the condition variable.
+NNG_DECL void nng_cv_free(nng_cv *);
+
+// nng_cv_wait waits until the condition variable is "signaled".
+NNG_DECL void nng_cv_wait(nng_cv *);
+
+// nng_cv_until waits until either the condition is signaled, or
+// the timeout expires.  It returns NNG_ETIMEDOUT in that case.
+NNG_DECL int nng_cv_until(nng_cv *, nng_time);
+
+// nng_cv_wake wakes all threads waiting on the condition.
+NNG_DECL void nng_cv_wake(nng_cv *);
+
+// nng_cv_wake1 wakes only one thread waiting on the condition.  This may
+// reduce the thundering herd problem, but care must be taken to ensure
+// that no waiter starves forever.
+NNG_DECL void nng_cv_wake1(nng_cv *);
 
 #ifdef __cplusplus
 }

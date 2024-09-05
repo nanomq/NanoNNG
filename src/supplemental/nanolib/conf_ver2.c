@@ -353,21 +353,42 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	cJSON *jso_listeners = cJSON_GetObjectItem(jso, "listeners");
 	if (jso_listeners) {
 		cJSON *jso_tcp = cJSON_GetObjectItem(jso_listeners, "tcp");
+		cJSON *tcp_array = hocon_get_obj("tcp", jso_listeners);
+		cJSON *tcp_node  = NULL;
+		config->enable   = false;
+
+		// parsing for single listener
 		if (jso_tcp) {
 			hocon_read_address_base(
 			    config, url, "bind", "nmq-tcp://", jso_tcp);
-			config->enable = true;
 			hocon_read_bool_base(
 			    config, enable, "enable", jso_tcp);
-		} else {
-			config->enable = false;
+
+			config->enable = true;
 		}
+
+		// parsing for multiple listener
+		cJSON_ArrayForEach(tcp_node, tcp_array)
+		{
+			conf_tcp *node = NNI_ALLOC_STRUCT(node);
+
+			hocon_read_address_base(
+			    node, url, "bind", "nmq-tcp://", tcp_node);
+			hocon_read_bool_base(node, enable, "enable", tcp_node);
+			if (node->url) {
+				cvector_push_back(
+				    config->tcp_list.nodes, node);
+			} else {
+				nng_free(node, sizeof(node));
+			}
+		}
+		config->tcp_list.count = cvector_size(config->tcp_list.nodes);
 
 		cJSON *jso_websocket      = hocon_get_obj("listeners.ws", jso);
 		conf_websocket *websocket = &(config->websocket);
 		if (NULL == jso_websocket) {
 			log_error("Read config nanomq ws failed!");
-			websocket->enable = true;
+			websocket->enable = false;
 
 		} else {
 			hocon_read_address_base(websocket, url, "bind",
@@ -441,15 +462,41 @@ static void
 conf_tls_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *jso_tls = hocon_get_obj("listeners.ssl", jso);
+	cJSON *node_array = hocon_get_obj("listeners.ssl", jso);
+	cJSON *node_item  = NULL;
+
+	// parsing single listener
 	if (jso_tls) {
 		conf_tls *tls = &(config->tls);
-		conf_tls_parse_ver2_base(tls, jso_tls);
-		hocon_read_bool(tls, verify_peer, jso_tls);
-		hocon_read_bool_base(
-		    tls, set_fail, "fail_if_no_peer_cert", jso_tls);
 		hocon_read_address_base(
 		    tls, url, "bind", "tls+nmq-tcp://", jso_tls);
+		if (tls->url) {
+			conf_tls_parse_ver2_base(tls, jso_tls);
+			hocon_read_bool(tls, verify_peer, jso_tls);
+			hocon_read_bool_base(
+			    tls, set_fail, "fail_if_no_peer_cert", jso_tls);
+		}
 	}
+
+	// parsing for multiple listener
+	config->tls_list.nodes = NULL;
+	cJSON_ArrayForEach(node_item, node_array)
+	{
+		conf_tls *node = NNI_ALLOC_STRUCT(node);
+
+		hocon_read_address_base(
+		    node, url, "bind", "tls+nmq-tcp://", node_item);
+		if (node->url) {
+			conf_tls_parse_ver2_base(node, node_item);
+			hocon_read_bool(node, verify_peer, node_item);
+			hocon_read_bool_base(
+			    node, set_fail, "fail_if_no_peer_cert", node_item);
+			cvector_push_back(config->tls_list.nodes, node);
+		} else {
+			nng_free(node, sizeof(node));
+		}
+	}
+	config->tls_list.count = cvector_size(config->tls_list.nodes);
 
 	return;
 }
@@ -464,7 +511,6 @@ conf_sqlite_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_num(sqlite, disk_cache_size, jso_sqlite);
 		hocon_read_str(sqlite, mounted_file_path, jso_sqlite);
 		hocon_read_num(sqlite, flush_mem_threshold, jso_sqlite);
-		hocon_read_num(sqlite, resend_interval, jso_sqlite);
 	}
 
 	return;
@@ -996,6 +1042,7 @@ conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 	hocon_read_time(node, keepalive, jso_connector);
 	hocon_read_time(node, backoff_max, jso_connector);
 	hocon_read_bool(node, clean_start, jso_connector);
+	hocon_read_bool(node, transparent, jso_connector);
 	hocon_read_str(node, username, jso_connector);
 	hocon_read_str(node, password, jso_connector);
 	update_bridge_node_vin(node, CONF_NODE_CLIENTID);
@@ -1051,7 +1098,6 @@ conf_bridge_quic_parse_ver2(conf_bridge_node *node, cJSON *jso_bridge_node)
 	    node, qmax_ack_delay_ms, "quic_max_ack_delay_ms", jso_bridge_node);
 	hocon_read_time_base(
 	    node, qconnect_timeout, "quic_handshake_timeout", jso_bridge_node);
-	hocon_read_bool_base(node, hybrid, "hybrid_bridging", jso_bridge_node);
 	hocon_read_bool_base(node, quic_0rtt, "quic_0rtt", jso_bridge_node);
 	hocon_read_bool_base(
 	    node, multi_stream, "quic_multi_stream", jso_bridge_node);
@@ -1079,76 +1125,6 @@ conf_bridge_quic_parse_ver2(conf_bridge_node *node, cJSON *jso_bridge_node)
 }
 #endif
 
-static char* get_cJsonStr(cJSON *obj, const char* string)
-{
-	char *str = NULL;
-	cJSON *json = cJSON_GetObjectItem(obj, string);
-	if(json != NULL && cJSON_IsString(json)) {
-		str = json->valuestring;
-	}
-	return str;
-}
-
-static void update_prefix(char** uptopic, const char* pre, const char *subpre)
-{
-	int presz, subpresz;
-	if (pre == NULL)
-		presz = 0;
-	else
-		presz = strlen(pre);
-	if (subpre == NULL)
-		subpresz = 0;
-	else
-		subpresz = strlen(subpre);
-	if (presz == 0 && subpresz == 0)
-		return;
-
-	char *topic = *uptopic;
-	char *restopic = nni_alloc(strlen(topic) + presz + subpresz + 1);
-	if (restopic == NULL)
-		return;
-	memset(restopic, 0, strlen(topic) + presz + subpresz + 1);
-
-	if (presz != 0)
-		strcat(restopic, pre);
-	if (subpresz != 0)
-		strcat(restopic, subpre);
-	strcat(restopic, topic);
-	nng_strfree(topic);
-
-	*uptopic = restopic;
-}
-
-static void update_suffix(char** uptopic, const char* suf, const char *subsuf)
-{
-	int sufsz, subsufsz;
-	if (suf == NULL)
-		sufsz = 0;
-	else
-		sufsz = strlen(suf);
-	if (subsuf == NULL)
-		subsufsz = 0;
-	else
-		subsufsz = strlen(subsuf);
-	if (sufsz == 0 && subsufsz == 0)
-		return;
-
-	char *topic = *uptopic;
-	char *restopic = nni_alloc(strlen(topic) + sufsz + subsufsz + 1);
-	if (restopic == NULL)
-		return;
-	memset(restopic, 0, strlen(topic) + sufsz + subsufsz + 1);
-
-	strcat(restopic, topic);
-	if (subsufsz != 0)
-		strcat(restopic, subsuf);
-	if (sufsz != 0)
-		strcat(restopic, suf);
-	nng_strfree(topic);
-
-	*uptopic = restopic;
-}
-
 void
 conf_bridge_node_parse(
     conf_bridge_node *node, conf_sqlite *bridge_sqlite, cJSON *obj)
@@ -1160,10 +1136,6 @@ conf_bridge_node_parse(
 #if defined(SUPP_QUIC)
 	conf_bridge_quic_parse_ver2(node, obj);
 #endif
-	char  *pre_remote = get_cJsonStr(obj, "prefix_remote");
-	char  *pre_local = get_cJsonStr(obj, "prefix_local");
-	char  *suf_remote = get_cJsonStr(obj, "suffix_remote");
-	char  *suf_local = get_cJsonStr(obj, "suffix_local");
 
 	cJSON *forwards = hocon_get_obj("forwards", obj);
 
@@ -1172,12 +1144,46 @@ conf_bridge_node_parse(
 	{
 		topics *s = NNI_ALLOC_STRUCT(s);
 		s->retain = NO_RETAIN;
+		s->qos    = NO_QOS;
 		hocon_read_str(s, remote_topic, forward);
 		hocon_read_str(s, local_topic, forward);
+		hocon_read_str(s, prefix, forward);
+		hocon_read_str(s, suffix, forward);
+		 if (s->suffix != NULL) {
+			 s->suffix_len = strlen(s->suffix);
+			 if (strstr(s->suffix, "+") != NULL ||
+			     strstr(s->suffix, "#") != NULL) {
+				 log_error(
+				     "No wildcard +/# should be contained in "
+				     "prefix/suffix in forward rules.");
+				 break;
+			 }
+		 }
+
+		 if (s->prefix != NULL) {
+			 if (strstr(s->prefix, "+") != NULL ||
+			     strstr(s->prefix, "#") != NULL) {
+				 log_error(
+				     "No wildcard +/# should be contained in "
+				     "prefix/suffix in forward rules.");
+				 break;
+			 }
+			 s->prefix_len = strlen(s->prefix);
+		 }
+
 		cJSON *jso_key = cJSON_GetObjectItem(forward, "retain");
 		if (cJSON_IsNumber(jso_key) &&
 		    (jso_key->valuedouble == 0 || jso_key->valuedouble == 1)) {
 			s->retain = jso_key->valuedouble;
+		}
+		cJSON *jso_key2 = cJSON_GetObjectItem(forward, "qos");
+		if (cJSON_IsNumber(jso_key2) &&
+		    (jso_key2->valuedouble == 0 || jso_key2->valuedouble == 1 ||
+			 jso_key2->valuedouble == 2)) {
+			s->qos = jso_key2->valuedouble;
+		} else {
+			if (jso_key2 != NULL)
+				log_warn("invalid qos level detected in forwarding list");
 		}
 		if (!s->remote_topic || !s->local_topic) {
 			log_warn("remote_topic/local_topic not found");
@@ -1189,12 +1195,6 @@ conf_bridge_node_parse(
 			NNI_FREE_STRUCT(s);
 			continue;
 		}
-		char *prefix = get_cJsonStr(forward, "prefix");
-		char *suffix = get_cJsonStr(forward, "suffix");
-		update_prefix(&(s->remote_topic), pre_remote, prefix);
-		update_prefix(&(s->local_topic), pre_local, prefix);
-		update_suffix(&(s->remote_topic), suf_remote, suffix);
-		update_suffix(&(s->local_topic), suf_local, suffix);
 		s->remote_topic_len = strlen(s->remote_topic);
 		s->local_topic_len  = strlen(s->local_topic);
 		for (int i = 0; i < (int) s->remote_topic_len; ++i)
@@ -1219,6 +1219,29 @@ conf_bridge_node_parse(
 		hocon_read_str(s, remote_topic, subscription);
 		hocon_read_str(s, local_topic, subscription);
 		hocon_read_num(s, qos, subscription);
+		hocon_read_str(s, prefix, subscription);
+		hocon_read_str(s, suffix, subscription);
+		 if (s->suffix != NULL) {
+			 s->suffix_len = strlen(s->suffix);
+			 if (strstr(s->suffix, "+") != NULL ||
+			     strstr(s->suffix, "#") != NULL) {
+				 log_error(
+				     "No wildcard +/# should be contained in "
+				     "prefix/suffix in forward rules.");
+				 break;
+			 }
+		 }
+
+		 if (s->prefix != NULL) {
+			 if (strstr(s->prefix, "+") != NULL ||
+			     strstr(s->prefix, "#") != NULL) {
+				 log_error(
+				     "No wildcard +/# should be contained in "
+				     "prefix/suffix in forward rules.");
+				 break;
+			 }
+			 s->prefix_len = strlen(s->prefix);
+		 }
 		cJSON *jso_key = cJSON_GetObjectItem(subscription, "retain");
 		if (cJSON_IsNumber(jso_key) &&
 		    (jso_key->valuedouble == 0 || jso_key->valuedouble == 1)) {
@@ -1236,12 +1259,6 @@ conf_bridge_node_parse(
 			NNI_FREE_STRUCT(s);
 			continue;
 		}
-		char *prefix = get_cJsonStr(subscription, "prefix");
-		char *suffix = get_cJsonStr(subscription, "suffix");
-		update_prefix(&(s->remote_topic), pre_remote, prefix);
-		update_prefix(&(s->local_topic), pre_local, prefix);
-		update_suffix(&(s->remote_topic), suf_remote, suffix);
-		update_suffix(&(s->local_topic), suf_local, suffix);
 		s->remote_topic_len = strlen(s->remote_topic);
 		s->local_topic_len  = strlen(s->local_topic);
 		for (int i = 0; i < (int) s->local_topic_len; ++i)
@@ -1263,11 +1280,22 @@ conf_bridge_node_parse(
 		conf_bridge_sub_properties_parse_ver2(node, jso_prop);
 	}
 
+	hocon_read_bool_base(node, hybrid, "hybrid_bridging", obj);
+	cJSON *hybrid_servers = hocon_get_obj("hybrid_servers", obj);
+	cJSON *hybrid_server = NULL;
+	cJSON_ArrayForEach(hybrid_server, hybrid_servers)
+	{
+		cvector_push_back(node->hybrid_servers, strdup(hybrid_server->valuestring));
+	}
+
 	hocon_read_num_base(node, parallel, "max_parallel_processes", obj);
 	update_bridge_node_vin(node, CONF_NODE_SUBSCRIPTION);
 	update_bridge_node_vin(node, CONF_NODE_FORWARD);
 	hocon_read_num(node, max_recv_queue_len, obj);
 	hocon_read_num(node, max_send_queue_len, obj);
+	hocon_read_num(node, resend_interval, obj);
+	hocon_read_num(node, resend_wait, obj);
+	hocon_read_num(node, cancel_timeout, obj);
 }
 
 static void
@@ -1406,8 +1434,6 @@ conf_exchange_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *node_array = hocon_get_obj("exchange_client", jso);
 	cJSON *node_item  = NULL;
-
-	conf_exchange *conf_exchange = &config->exchange;
 
 	cJSON_ArrayForEach(node_item, node_array)
 	{
