@@ -598,14 +598,6 @@ nano_pipe_fini(void *arg)
 		return; // your time is yet to come
 	}
 	nni_mtx_lock(&s->lk);
-	nano_pipe *tpipe = NULL;
-	if ((tpipe = nni_id_get(&s->pipes, p->id)) != NULL) {
-		// Pipe is gone.  Make this look like a good send to avoid
-		// disrupting the state machine.  We don't care if the peer
-		// lost interest in our reply.
-		nni_id_remove(&s->pipes, p->id);
-		log_warn("removing pipe id %ld again", p->id);
-	}
 	nni_mtx_lock(&p->lk);
 	if ((msg = nni_aio_get_msg(&p->aio_recv)) != NULL) {
 		nni_aio_set_msg(&p->aio_recv, NULL);
@@ -749,10 +741,11 @@ session_keeping:
 
 			p->pipe->nano_qos_db = old->nano_qos_db;
 			log_info("resuming session %d with %d", npipe->p_id, old->pipe->p_id);
-			nni_pipe_id_swap(npipe->p_id, old->pipe->p_id);
+			nni_list *l = npipe->subinfol;
+			npipe->subinfol = old->pipe->subinfol;
+			old->pipe->subinfol = l;
 			p->id = nni_pipe_id(npipe);
-			// set event to false so that no notification will be
-			// sent
+			// set event to false so that no notification will be sent
 			p->event = false;
 			// set event of old pipe to false and discard it.
 			old->event       = false;
@@ -776,6 +769,7 @@ session_keeping:
 			nni_qos_db_remove_all_msg(is_sqlite, old->nano_qos_db,
 			    nmq_close_unack_msg_cb);
 			nni_id_remove(&s->cached_sessions, p->pipe->p_id);
+			log_info("cleaning session %d from cache", p->pipe->p_id);
 		}
 	}
 #ifdef NNG_SUPP_SQLITE
@@ -890,28 +884,32 @@ nano_pipe_close(void *arg)
 			log_debug("keep session id [%s] ", p->conn_param->clientid.body);
 			nni_pipe_rele(new_pipe);
 			if (new_pipe == npipe) {
-				log_info("session stored %d", npipe->p_id);
-				nni_id_set(&s->cached_sessions, npipe->p_id, p);
-				// set event to false avoid of sending the
-				// disconnecting msg
-				p->event     = false;
-				npipe->cache = true;
-				// set clean start to 1, prevent caching
-				// session twice
-				p->conn_param->clean_start = 1;
-				nni_atomic_swap_bool(&npipe->p_closed, false);
-				if (nni_list_active(&s->recvpipes, p)) {
-					nni_msg *tmsg = nni_aio_get_msg(&p->aio_recv);
-					if (tmsg)
-						nni_msg_free(tmsg);
-					conn_param_free(p->conn_param);
-					nni_list_remove(&s->recvpipes, p);
-				}
-				nano_nni_lmq_flush(&p->rlmq, false);
-				nni_mtx_unlock(&s->lk);
-				nni_mtx_unlock(&p->lk);
-				return -1;
+				log_info("A keeping Session is step down");
+			} else {
+				// client with session stored is kicking itself
+				log_info("A keeping Session is kicked out");
 			}
+			log_info("session stored %d", npipe->p_id);
+			nni_id_set(&s->cached_sessions, npipe->p_id, p);
+			// set event to false avoid of sending the
+			// disconnecting msg
+			p->event     = false;
+			npipe->cache = true;
+			// set clean start to 1, prevent caching
+			// session twice
+			p->conn_param->clean_start = 1;
+			nni_atomic_swap_bool(&npipe->p_closed, false);
+			if (nni_list_active(&s->recvpipes, p)) {
+				nni_msg *tmsg = nni_aio_get_msg(&p->aio_recv);
+				if (tmsg)
+					nni_msg_free(tmsg);
+				conn_param_free(p->conn_param);
+				nni_list_remove(&s->recvpipes, p);
+			}
+			nano_nni_lmq_flush(&p->rlmq, false);
+			nni_mtx_unlock(&s->lk);
+			nni_mtx_unlock(&p->lk);
+			return -1;
 		}
 
 		// have to close & stop aio timer first, otherwise we hit null qos_db
