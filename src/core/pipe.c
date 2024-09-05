@@ -516,8 +516,9 @@ nni_pipe_set_pid(nni_pipe *new_pipe, uint32_t id)
 		nni_mtx_unlock(&pipes_lk);
 		if (!p->cache || rv != 0) {
 			log_error("Client ID collision or set ID failed!");
+			// Must close old pipe first to make it like a normal disconnect
+			// so that new pipe can inherit.
 			nni_pipe_close(p);
-			// nni_pipe_rele(p);
 		}
 		return rv;
 	}
