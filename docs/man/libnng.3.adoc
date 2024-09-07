@@ -66,32 +66,31 @@ The following functions are used with either listeners, or dialers.
 Listeners accept incoming connection requests, and dialers make them.
 
 |===
-|xref:nng_dial.3.adoc[nng_dial]|create and start dialer
-|xref:nng_dialer_close.3.adoc[nng_dialer_close]|close dialer
-|xref:nng_dialer_create.3.adoc[nng_dialer_create]|create dialer
-|xref:nng_dialer_get.3.adoc[nng_dialer_get]|get dialer option
-|xref:nng_dialer_getopt.3.adoc[nng_dialer_getopt]|get dialer option (DEPRECATED)
-|xref:nng_dialer_id.3.adoc[nng_dialer_id]|get numeric dialer identifier
-|xref:nng_dialer_set.3.adoc[nng_dialer_set]|set dialer option
-|xref:nng_dialer_setopt.3.adoc[nng_dialer_setopt]|set dialer option (DEPRECATED)
-|xref:nng_dialer_start.3.adoc[nng_dialer_start]|start dialer
-|xref:nng_listen.3.adoc[nng_listen]|create and start listener
-|xref:nng_listener_close.3.adoc[nng_listener_close]|close listener
-|xref:nng_listener_create.3.adoc[nng_listener_create]|create listener
-|xref:nng_listener_get.3.adoc[nng_listener_get]|get listener option
-|xref:nng_listener_getopt.3.adoc[nng_listener_getopt]|get listener option (DEPRECATED)
-|xref:nng_listener_id.3.adoc[nng_listener_id]|get numeric listener identifier
-|xref:nng_listener_set.3.adoc[nng_listener_set]|set listener option
-|xref:nng_listener_setopt.3.adoc[nng_listener_setopt]|set listener option (DEPRECATED)
-|xref:nng_listener_start.3.adoc[nng_listener_start]|start listener
-|xref:nng_pipe_close.3.adoc[nng_pipe_close]|close pipe
-|xref:nng_pipe_dialer.3.adoc[nng_pipe_dialer]|return dialer that created pipe
-|xref:nng_pipe_get.3.adoc[nng_pipe_get]|get pipe option
-|xref:nng_pipe_getopt.3.adoc[nng_pipe_getopt]|get pipe option (DEPRECATED)
-|xref:nng_pipe_id.3.adoc[nng_pipe_id]|get numeric pipe identifier
-|xref:nng_pipe_listener.3.adoc[nng_pipe_listener]|return listener that created pipe
-|xref:nng_pipe_notify.3.adoc[nng_pipe_notify]|register pipe notification callback
-|xref:nng_pipe_socket.3.adoc[nng_pipe_socket]|return owning socket for pipe
+|xref:nng_dial.3.adoc[nng_dial()]|create and start dialer
+|xref:nng_dialer_close.3.adoc[nng_dialer_close()]|close dialer
+|xref:nng_dialer_create.3.adoc[nng_dialer_create()]|create dialer
+|xref:nng_dialer_get.3.adoc[nng_dialer_get()]|get dialer option
+|xref:nng_dialer_getopt.3.adoc[nng_dialer_getopt()]|get dialer option
+|xref:nng_dialer_id.3.adoc[nng_dialer_id()]|get numeric dialer identifier
+|xref:nng_dialer_set.3.adoc[nng_dialer_set()]|set dialer option
+|xref:nng_dialer_setopt.3.adoc[nng_dialer_setopt()]|set dialer option
+|xref:nng_dialer_start.3.adoc[nng_dialer_start()]|start dialer
+|xref:nng_listen.3.adoc[nng_listen()]|create and start listener
+|xref:nng_listener_close.3.adoc[nng_listener_close()]|close listener
+|xref:nng_listener_create.3.adoc[nng_listener_create()]|create listener
+|xref:nng_listener_get.3.adoc[nng_listener_get()]|get listener option
+|xref:nng_listener_getopt.3.adoc[nng_listener_getopt()]|get listener option
+|xref:nng_listener_id.3.adoc[nng_listener_id()]|get numeric listener identifier
+|xref:nng_listener_set.3.adoc[nng_listener_set()]|set listener option
+|xref:nng_listener_setopt.3.adoc[nng_listener_setopt()]|set listener option
+|xref:nng_listener_start.3.adoc[nng_listener_start()]|start listener
+|xref:nng_pipe_close.3.adoc[nng_pipe_close()]|close pipe
+|xref:nng_pipe_dialer.3.adoc[nng_pipe_dialer()]|return dialer that created pipe
+|xref:nng_pipe_get.3.adoc[nng_pipe_get()]|get pipe option
+|xref:nng_pipe_id.3.adoc[nng_pipe_id()]|get numeric pipe identifier
+|xref:nng_pipe_listener.3.adoc[nng_pipe_listener()]|return listener that created pipe
+|xref:nng_pipe_notify.3.adoc[nng_pipe_notify()]|register pipe notification callback
+|xref:nng_pipe_socket.3.adoc[nng_pipe_socket()]|return owning socket for pipe
 |===
 
 === Message Handling Functions
