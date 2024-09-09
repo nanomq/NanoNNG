@@ -651,6 +651,121 @@ parquet_write_loop_v2(void *config)
 	return NULL;
 }
 
+#include <dirent.h>
+#include <regex.h>
+typedef struct {
+    char *file_path;
+    long start_time;
+} ParquetFile;
+
+static int compare_files(const void *a, const void *b) {
+    ParquetFile *file1 = (ParquetFile *)a;
+    ParquetFile *file2 = (ParquetFile *)b;
+    return (file1->start_time - file2->start_time);
+}
+
+static long extract_start_time(const char *file_name) {
+    regex_t regex;
+    regmatch_t matches[2];
+    const char *pattern = "-([0-9]+)~";
+
+    if (regcomp(&regex, pattern, REG_EXTENDED) != 0) {
+        fprintf(stderr, "Failed to compile regex\n");
+        return -1;
+    }
+
+    if (regexec(&regex, file_name, 2, matches, 0) == 0) {
+        char time_str[20];
+        snprintf(time_str, matches[1].rm_eo - matches[1].rm_so + 1, "%s", file_name + matches[1].rm_so);
+        regfree(&regex);
+        return atol(time_str);
+    } else {
+        regfree(&regex);
+        return -1;
+    }
+}
+
+static void
+parquet_file_queue_init(conf_parquet *conf)
+{
+	DIR           *dir;
+	struct dirent *ent;
+	ParquetFile   *files      = NULL;
+	int            file_count = 0;
+
+	INIT_QUEUE(parquet_file_queue);
+
+	if ((dir = opendir(conf->dir)) != NULL) {
+		while ((ent = readdir(dir)) != NULL) {
+			if (strstr(ent->d_name, ".parquet") != NULL) {
+				char *file_path =
+				    (char *) malloc(strlen(conf->dir) +
+				        strlen(ent->d_name) + 2);
+				if (file_path == NULL) {
+					log_error("Failed to allocate memory "
+					          "for file path.");
+					closedir(dir);
+					return;
+				}
+				sprintf(file_path, "%s/%s", conf->dir,
+				    ent->d_name);
+
+				if (strstr(ent->d_name, "_") == NULL) {
+					if (unlink(file_path) != 0) {
+						log_error("Failed to remove "
+						          "file %s errno: %d",
+						    file_path, errno);
+					} else {
+						log_warn(
+						    "Found a file without "
+						    "md5sum, delete it: %s",
+						    file_path);
+					}
+					free(file_path);
+					continue;
+				}
+
+				long start_time =
+				    extract_start_time(ent->d_name);
+				if (start_time == -1) {
+					log_error("Failed to extract start "
+					          "time from file: %s",
+					    ent->d_name);
+					free(file_path);
+					continue;
+				}
+
+				files = (ParquetFile *) realloc(files,
+				    (file_count + 1) * sizeof(ParquetFile));
+				if (files == NULL) {
+					log_error("Failed to allocate memory "
+					          "for file array.");
+					closedir(dir);
+					return;
+				}
+
+				files[file_count].file_path  = file_path;
+				files[file_count].start_time = start_time;
+				file_count++;
+			}
+		}
+
+		closedir(dir);
+
+		qsort(files, file_count, sizeof(ParquetFile), compare_files);
+
+		for (int i = 0; i < file_count; i++) {
+			ENQUEUE(parquet_file_queue, files[i].file_path);
+		}
+
+		free(files);
+		log_info("Loaded %d parquet files in time order from %s.",
+		    file_count, conf->dir);
+	} else {
+		log_info("parquet directory not found, creating new one.");
+	}
+}
+
 static void
 parquet_file_queue_init(conf_parquet *conf)
 {
