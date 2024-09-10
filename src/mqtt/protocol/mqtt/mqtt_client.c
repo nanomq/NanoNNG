@@ -552,8 +552,8 @@ mqtt_pipe_start(void *arg)
 static void
 mqtt_pipe_stop(void *arg)
 {
-	log_info("stopping pipe %p", p->pipe);
 	mqtt_pipe_t *p = arg;
+	log_info("stopping pipe %p", p->pipe);
 	nni_aio_stop(&p->send_aio);
 	nni_aio_stop(&p->recv_aio);
 	nni_aio_stop(&p->time_aio);
