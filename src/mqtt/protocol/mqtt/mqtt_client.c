@@ -552,10 +552,12 @@ mqtt_pipe_start(void *arg)
 static void
 mqtt_pipe_stop(void *arg)
 {
+	log_info("stopping pipe %p", p->pipe);
 	mqtt_pipe_t *p = arg;
 	nni_aio_stop(&p->send_aio);
 	nni_aio_stop(&p->recv_aio);
 	nni_aio_stop(&p->time_aio);
+	log_info("stopped pipe %p", p->pipe);
 }
 
 static int
@@ -623,6 +625,7 @@ mqtt_pipe_close(void *arg)
 	nni_lmq_flush_cp(&p->recv_messages, true);
 #endif
 	nni_mtx_unlock(&s->mtx);
+	log_info("closed pipe %p", p->pipe);
 
 	return 0;
 }
