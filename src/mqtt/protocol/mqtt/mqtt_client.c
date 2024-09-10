@@ -463,7 +463,7 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 			nni_aio_set_msg(taio, NULL);
 		}
 		if (0 != nni_id_set(&s->sent_unack, packet_id, aio)) {
-			nni_plat_printf("Warning : aio caching failed");
+			log_warn("QoS aio caching failed. Proceed to send directly");
 			nni_aio_finish_error(aio, NNG_ECANCELED);
 		} else {
 			int rv;
@@ -503,12 +503,13 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 		return;
 	}
 	if (nni_lmq_full(&p->send_messages)) {
-		log_error("rhack: pipe is busy and lmq is full\n");
+		log_warn("Cached Message lost! pipe is busy and lmq is full\n");
 		(void) nni_lmq_get(&p->send_messages, &tmsg);
 		nni_msg_free(tmsg);
 	}
 	if (0 != nni_lmq_put(&p->send_messages, msg)) {
-		log_error("Warning! msg lost due to busy socket");
+		nni_msg_free(msg);
+		log_warn("Message lost while enqueing");
 	}
 out:
 	nni_mtx_unlock(&s->mtx);
