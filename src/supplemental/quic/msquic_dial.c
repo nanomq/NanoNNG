@@ -74,6 +74,14 @@ struct nni_quic_conn {
 	nni_reap_node   reap;
 };
 
+struct ex_quic_conn {
+	nni_quic_conn *main;
+	nni_quic_conn *substrms[QUIC_SUB_STREAM_NUM]; // sub streams
+	// TODO int    priority[QUIC_SUB_STREAM_NUM]; // Priority
+	// TODO int    strategy; // Advanced strategy
+	nni_mtx        mtx;
+};
+
 static const QUIC_API_TABLE *MsQuic = NULL;
 
 // Config for msquic
@@ -193,6 +201,30 @@ verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *ca)
 	return QUIC_STATUS_SUCCESS;
 */
 
+}
+
+static ex_quic_conn *
+ex_quic_conn_init(nni_quic_conn *c)
+{
+	ex_quic_conn *ec = nni_alloc(sizeof(ex_quic_conn));
+	if (!ec)
+		return NULL;
+	ec->main = c;
+	nni_mtx_init(&ec->mtx);
+	return ec;
+}
+
+static void
+ex_quic_conn_free(ex_quic_conn *ec)
+{
+	for (int i=0; i<QUIC_SUB_STREAM_NUM; ++i) {
+		nni_quic_conn *subc;
+		if (ec && (subc = ec->substrms[i]) != NULL)
+			quic_substream_rele(subc);
+	}
+
+	nni_mtx_fini(&ec->mtx);
+	nng_free(ec, 0);
 }
 
 /***************************** MsQuic Dialer ******************************/
