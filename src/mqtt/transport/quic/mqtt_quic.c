@@ -1379,10 +1379,10 @@ static void
 mqtt_quictran_dial_cb(void *arg)
 {
 	mqtt_quictran_ep *  ep  = arg;
-	nni_aio *          aio = ep->connaio;
+	nni_aio *           aio = ep->connaio;
 	mqtt_quictran_pipe *p;
-	int                rv, ismain;
-	nng_stream *       conn;
+	int                 rv, ismain;
+	nng_stream *        conn;
 
 	if ((rv = nni_aio_result(aio)) != 0) {
 		log_error("Dial failed %d", rv);
