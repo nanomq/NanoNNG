@@ -103,7 +103,7 @@ static void msquic_close();
 static int  msquic_conn_open(const char *host, const char *port, nni_quic_dialer *d);
 static void msquic_conn_close(HQUIC qconn, int rv);
 static void msquic_conn_fini(HQUIC qconn);
-static int  msquic_strm_open(HQUIC qconn, nni_quic_dialer *d);
+static int  msquic_strm_open(HQUIC qconn, nni_quic_dialer *d, nni_quic_conn *c, int priority);
 static void msquic_strm_close(HQUIC qstrm);
 static void msquic_strm_fini(HQUIC qstrm);
 static void msquic_strm_recv_start(HQUIC qstrm);
@@ -350,14 +350,33 @@ quic_dialer_cb(void *arg)
 		goto error;
 	}
 
-	// Connection was established. Nice. Then. Create the main quic stream.
-	rv = msquic_strm_open(d->qconn, d);
+	// Connection was established. Nice. Then. Create the main and sub quic streams.
+	if ((rv = msquic_strm_open(d->qconn, d, c, d->priority)) != 0)
+		goto error;
+	c->ismain = true;
+
+	ex_quic_conn *ec = ex_quic_conn_init(c);
+	c->dial_arg = ec;
+
+	for (int i=0; i<QUIC_SUB_STREAM_NUM; ++i) {
+		nni_quic_conn *subc;
+		// Create sub streams
+		if ((rv = nni_msquic_quic_alloc(&subc, d)) != 0)
+			goto error;
+
+		if ((rv = msquic_strm_open(d->qconn, d, subc, d->priority)) != 0) {
+			quic_substream_rele(subc);
+			goto error;
+		}
+		ec->substrms[i] = subc;
+	}
 
 error:
 	d->currcon = NULL;
 	if (rv != 0) {
 		log_warn("error in openning QUIC stream %d", rv);
 		c->dial_aio = NULL;
+		c->dial_arg = NULL;
 
 		nni_aio_set_prov_data(aio, NULL);
 		nni_aio_list_remove(aio);
@@ -366,6 +385,10 @@ error:
 	nni_mtx_unlock(&d->mtx);
 
 	if (rv != 0) {
+		// Free sub streams first
+		if (ec)
+			ex_quic_conn_free(ec);
+
 		nng_stream_close(&c->stream);
 		// Decement reference of dialer
 		nng_stream_free(&c->stream);
@@ -1415,15 +1438,12 @@ msquic_conn_fini(HQUIC qconn)
 }
 
 static int
-msquic_strm_open(HQUIC qconn, nni_quic_dialer *d)
+msquic_strm_open(HQUIC qconn, nni_quic_dialer *d, nni_quic_conn *c, int priority)
 {
+	NNI_ARG_UNUSED(d);
 	HQUIC          strm = NULL;
 	QUIC_STATUS    rv;
-	nni_quic_conn *c;
-
 	log_debug("[strm][%p] Starting...", strm);
-
-	c = d->currcon;
 
 	rv = MsQuic->StreamOpen(qconn, QUIC_STREAM_OPEN_FLAG_NONE,
 	        msquic_strm_cb, (void *)c, &strm);
@@ -1432,9 +1452,9 @@ msquic_strm_open(HQUIC qconn, nni_quic_dialer *d)
 		goto error;
 	}
 
-	if (d->priority != -1) {
-		log_info("Ready to create a quic stream with priority: %d\n", d->priority);
-		MsQuic->SetParam(strm, QUIC_PARAM_STREAM_PRIORITY, sizeof(int), &d->priority);
+	if (priority != -1) {
+		log_info("Ready to create a quic stream with priority: %d\n", priority);
+		MsQuic->SetParam(strm, QUIC_PARAM_STREAM_PRIORITY, sizeof(int), &priority);
 	}
 
 	rv = MsQuic->StreamStart(strm, QUIC_STREAM_START_FLAG_NONE);
