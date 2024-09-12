@@ -33,6 +33,8 @@ extern void nni_quic_listener_listen(nni_quic_listener *, const char *, const ch
 extern void nni_quic_listener_accept(nni_quic_listener *, nng_aio *aio);
 
 typedef struct nni_quic_conn nni_quic_conn;
+// When multi stream is enabled
+typedef struct ex_quic_conn ex_quic_conn;
 
 extern int  nni_msquic_quic_alloc(nni_quic_conn **, nni_quic_dialer *);
 extern void nni_msquic_quic_init(nni_quic_conn *);
