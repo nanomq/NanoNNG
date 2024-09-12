@@ -127,7 +127,6 @@ struct mqtt_pipe_s {
 	nni_lmq 		send_inflight; // only used in multi-stream mode
 	nni_lmq         recv_messages; // recv messages queue
 	nni_lmq         send_messages; // send messages queue
-	nni_msg        *idmsg;		   // only valid in multi-stream
 	conn_param     *cparam;
 	uint16_t        rid;           // index of resending packet id
 	uint8_t         reason_code;   // MQTTV5 reason code
