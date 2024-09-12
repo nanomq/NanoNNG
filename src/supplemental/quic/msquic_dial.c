@@ -64,12 +64,14 @@ struct nni_quic_conn {
 	nni_atomic_int  ref;
 	nni_mtx         mtx;
 	nni_aio *       dial_aio;
+	void *          dial_arg;
 	// nni_aio *       qstrmaio; // Link to msquic_strm_cb
 	nni_quic_dialer *dialer;
+	uint8_t         reason_code;
 
 	// MsQuic
 	HQUIC           qstrm; // quic stream
-	uint8_t         reason_code;
+	bool            ismain;
 
 	nni_reap_node   reap;
 };
@@ -457,38 +459,32 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 
 	// pass c to the dialer for getting it in msquic_strm_open
 	d->currcon = c;
-	// set c to provdata. Which is helpful for quic dialer close.
+	// set c to provdata. Which is used to close/cancel quic stream when dial failed.
 	nni_aio_set_prov_data(aio, c);
 	c->dial_aio = aio;
 
-	if (ismain) {
-		// Make a quic connection to the url.
-		// Create stream after connection is established.
-		if (nni_aio_busy(d->qconaio)) {
-			rv = NNG_EBUSY;
-			goto error;
-		}
+	// Make a quic connection to the url.
+	// Create stream after connection is established.
+	if (nni_aio_busy(d->qconaio)) {
+		rv = NNG_EBUSY;
+		goto error;
+	}
 
-		if (nni_aio_begin(d->qconaio) != 0) {
-			rv = NNG_ECLOSED;
-			goto error;
-		}
+	if (nni_aio_begin(d->qconaio) != 0) {
+		rv = NNG_ECLOSED;
+		goto error;
+	}
 
-		if ((rv = nni_aio_schedule(d->qconaio, quic_dialer_cancel, d)) != 0) {
-			// FIX quic dialer allows dialing multiple connections in parallel
-			// however here we only has one qconaio?
-			rv = NNG_ECANCELED;
-			goto error;
-		}
+	if ((rv = nni_aio_schedule(d->qconaio, quic_dialer_cancel, d)) != 0) {
+		// FIX quic dialer allows dialing multiple connections in parallel
+		// however here we only has one qconaio?
+		rv = NNG_ECANCELED;
+		goto error;
+	}
 
-		if (0 != (rv = msquic_conn_open(host, port, d))) {
-			log_warn("QUIC dialing failed! %d", rv);
-			goto error;
-		}
-	} else {
-		if ((rv = msquic_strm_open(d->qconn, d)) != 0) {
-			goto error;
-		}
+	if (0 != (rv = msquic_conn_open(host, port, d))) {
+		log_warn("QUIC dialing failed! %d", rv);
+		goto error;
 	}
 
 	nni_list_append(&d->connq, aio);
@@ -610,13 +606,15 @@ quic_stream_cb(int events, void *arg, int rc)
 		break;
 	case QUIC_STREAM_EVENT_START_COMPLETE:
 		nni_mtx_lock(&d->mtx);
-		if (c->dial_aio) {
+		// dial_aio only exists in main stream
+		if (c->dial_aio && c->ismain) {
 			// For upper layer to get the stream handle
-			nni_aio_set_output(c->dial_aio, 0, c);
+			nni_aio_set_output(c->dial_aio, 0, c->dial_arg);
 
 			nni_aio_list_remove(c->dial_aio);
 			nni_aio_finish(c->dial_aio, 0, 0);
 			c->dial_aio = NULL;
+			c->dial_arg = NULL;
 		}
 
 		nni_mtx_unlock(&d->mtx);
@@ -928,6 +926,7 @@ nni_msquic_quic_alloc(nni_quic_conn **cp, nni_quic_dialer *d)
 	nni_atomic_init(&c->ref);
 	nni_atomic_inc(&c->ref);
 
+	c->ismain = false;
 	c->closed = false;
 	c->dialer = d;
 
