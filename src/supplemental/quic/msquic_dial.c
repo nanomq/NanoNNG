@@ -641,7 +641,10 @@ quic_stream_cb(int events, void *arg, int rc)
 		quic_stream_error(arg, NNG_ECONNSHUT);
 		// Marked it as closed, prevent explicit shutdown
 		c->closed = true;
-		quic_stream_rele(c);
+		if (c->ismain)
+			quic_stream_rele(c);
+		else
+			quic_substream_rele(c);
 		break;
 	default:
 		break;
