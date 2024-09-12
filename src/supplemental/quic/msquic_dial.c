@@ -732,8 +732,29 @@ quic_stream_cancel(nni_aio *aio, void *arg, int rv)
 static void
 quic_stream_recv(void *arg, nni_aio *aio)
 {
-	nni_quic_conn *c = arg;
+	ex_quic_conn  *ec = arg;
+	nni_quic_conn *c;
 	int            rv;
+	int            strmid = 0;
+
+	// Multistreams Feature!
+	int *flags = nni_aio_get_prov_data(aio);
+	nni_aio_set_prov_data(aio, NULL);
+
+	if (flags) {
+		strmid = (*flags & QUIC_MULTISTREAM_FLAGS) >> 8;
+		if (strmid > QUIC_SUB_STREAM_NUM) {
+			if (nni_aio_begin(aio) != 0) {
+				return;
+			}
+			nng_aio_finish_error(aio, NNG_EINVAL);
+			return;
+		}
+	}
+
+	nni_mtx_lock(&ec->mtx);
+	c = (strmid == 0) ? ec->main : ec->substrms[strmid-1];
+	nni_mtx_unlock(&ec->mtx);
 
 	if (nni_aio_begin(aio) != 0) {
 		return;
@@ -859,24 +880,39 @@ quic_stream_dowrite(nni_quic_conn *c)
 static void
 quic_stream_send(void *arg, nni_aio *aio)
 {
-	nni_quic_conn *c = arg;
+	ex_quic_conn  *ec = arg;
+	nni_quic_conn *c;
 	int            rv;
+	int            strmid = 0;
 
-	nni_mtx_lock(&c->mtx);
-
-	// QUIC_HIGH_PRIOR_MSG Feature!
+	// Multistreams Feature!
 	int *flags = nni_aio_get_prov_data(aio);
 	nni_aio_set_prov_data(aio, NULL);
 
 	if (flags) {
+		strmid = (*flags & QUIC_MULTISTREAM_FLAGS) >> 8;
+		if (strmid > QUIC_SUB_STREAM_NUM) {
+			if (nni_aio_begin(aio) != 0) {
+				return;
+			}
+			nng_aio_finish_error(aio, NNG_EINVAL);
+			return;
+		}
+	}
+
+	nni_mtx_lock(&ec->mtx);
+	c = (strmid == 0) ? ec->main : ec->substrms[strmid-1];
+	nni_mtx_unlock(&ec->mtx);
+
+	// QUIC_HIGH_PRIOR_MSG Feature!
+	if (flags) {
 		if (*flags & QUIC_HIGH_PRIOR_MSG) {
+			nni_mtx_lock(&c->mtx);
 			quic_stream_dowrite_prior(c, aio);
 			nni_mtx_unlock(&c->mtx);
 			return;
 		}
 	}
-
-	nni_mtx_unlock(&c->mtx);
 
 	if (nni_aio_begin(aio) != 0) {
 		return;
