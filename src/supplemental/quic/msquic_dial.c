@@ -115,6 +115,7 @@ static void quic_stream_error(void *arg, int err);
 static void quic_stream_close(void *arg);
 static void quic_stream_dowrite(nni_quic_conn *c);
 static void quic_stream_rele(nni_quic_conn *c);
+static void quic_substream_rele(nni_quic_conn *c);
 
 static QUIC_STATUS verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *ca);
 
@@ -643,6 +644,17 @@ quic_stream_fini(void *arg)
 	nni_quic_conn *c = arg;
 	msquic_strm_fini(c->qstrm);
 	NNI_FREE_STRUCT(c);
+}
+
+// No effects to the main stream
+static void
+quic_substream_rele(nni_quic_conn *c)
+{
+	quic_stream_close(c);
+	if (nni_atomic_dec_nv(&c->ref) != 0) {
+		return;
+	}
+	quic_stream_fini(c);
 }
 
 static void
