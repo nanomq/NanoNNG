@@ -42,11 +42,11 @@ static void mqtt_quic_send_cb(void *arg);
 static void mqtt_quic_recv_cb(void *arg);
 static void mqtt_timer_cb(void *arg);
 
-static int  quic_mqtt_pipe_init(void *arg, nni_pipe *qstrm, void *sock);
-static void quic_mqtt_pipe_fini(void *arg);
-static int  quic_mqtt_pipe_start(void *arg);
-static void quic_mqtt_pipe_stop(void *arg);
-static int  quic_mqtt_pipe_close(void *arg);
+static int  mqtt_quic_pipe_init(void *arg, nni_pipe *qstrm, void *sock);
+static void mqtt_quic_pipe_fini(void *arg);
+static int  mqtt_quic_pipe_start(void *arg);
+static void mqtt_quic_pipe_stop(void *arg);
+static int  mqtt_quic_pipe_close(void *arg);
 
 static void mqtt_quic_ctx_init(void *arg, void *sock);
 static void mqtt_quic_ctx_fini(void *arg);
@@ -394,7 +394,6 @@ mqtt_quic_send_cb(void *arg)
 	return;
 }
 
-/* recv cb func for singe-stream mode or main stream */
 static void
 mqtt_quic_recv_cb(void *arg)
 {
@@ -1033,9 +1032,9 @@ mqtt_quic_sock_set_sqlite_option(
 /******************************************************************************
  *                          Stream(PIPE) Implementation                       *
  ******************************************************************************/
-// allocate main stream with pipe
+// allocate quic stream with pipe
 static int
-quic_mqtt_pipe_init(void *arg, nni_pipe *pipe, void *sock)
+mqtt_quic_pipe_init(void *arg, nni_pipe *pipe, void *sock)
 {
 	bool major     = false;
 	mqtt_pipe_t *p = arg;
@@ -1104,14 +1103,14 @@ quic_mqtt_pipe_init(void *arg, nni_pipe *pipe, void *sock)
 }
 
 static void
-quic_mqtt_pipe_fini(void *arg)
+mqtt_quic_pipe_fini(void *arg)
 {
 	nni_aio *aio;
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
 	nni_msg * msg;
 
-	log_warn("quic_mqtt_pipe_fini! pipe finit!");
+	log_warn("mqtt_quic_pipe_fini! pipe finit!");
 	if ((msg = nni_aio_get_msg(&p->recv_aio)) != NULL) {
 		nni_aio_set_msg(&p->recv_aio, NULL);
 		nni_msg_free(msg);
@@ -1217,7 +1216,7 @@ quic_mqtt_pipe_fini(void *arg)
 }
 
 static int
-quic_mqtt_pipe_start(void *arg)
+mqtt_quic_pipe_start(void *arg)
 {
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
@@ -1252,11 +1251,10 @@ quic_mqtt_pipe_start(void *arg)
 }
 
 static void
-quic_mqtt_pipe_stop(void *arg)
+mqtt_quic_pipe_stop(void *arg)
 {
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
-	nni_msg *msg;
 
 	log_info("Stopping MQTT over QUIC Stream");
 	if (!nni_atomic_get_bool(&p->closed)) {
@@ -1271,9 +1269,9 @@ quic_mqtt_pipe_stop(void *arg)
 
 // stream close
 static int
-quic_mqtt_pipe_close(void *arg)
+mqtt_quic_pipe_close(void *arg)
 {
-	log_info(" ##### quic_mqtt_pipe_close ##### ");
+	log_info(" ##### mqtt_quic_pipe_close ##### ");
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
 
@@ -1558,11 +1556,11 @@ wait:
 
 static nni_proto_pipe_ops mqtt_quic_pipe_ops = {
 	.pipe_size  = sizeof(mqtt_pipe_t),
-	.pipe_init  = quic_mqtt_pipe_init,
-	.pipe_fini  = quic_mqtt_pipe_fini,
-	.pipe_start = quic_mqtt_pipe_start,
-	.pipe_close = quic_mqtt_pipe_close,
-	.pipe_stop  = quic_mqtt_pipe_stop,
+	.pipe_init  = mqtt_quic_pipe_init,
+	.pipe_fini  = mqtt_quic_pipe_fini,
+	.pipe_start = mqtt_quic_pipe_start,
+	.pipe_close = mqtt_quic_pipe_close,
+	.pipe_stop  = mqtt_quic_pipe_stop,
 };
 
 static nni_option mqtt_quic_ctx_options[] = {
