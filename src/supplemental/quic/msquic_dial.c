@@ -230,6 +230,17 @@ ex_quic_conn_free(ex_quic_conn *ec)
 	nng_free(ec, 0);
 }
 
+static void
+ex_quic_conn_close(ex_quic_conn *ec)
+{
+	for (int i=0; i<QUIC_SUB_STREAM_NUM; ++i) {
+		nni_quic_conn *subc;
+		// FIXME Should all sub stream protect by ec->mtx???
+		if (ec && (subc = ec->substrms[i]) != NULL)
+			msquic_strm_close(subc->qstrm);
+	}
+}
+
 /***************************** MsQuic Dialer ******************************/
 
 int
@@ -706,7 +717,14 @@ quic_stream_error(void *arg, int err)
 static void
 quic_stream_close(void *arg)
 {
-	nni_quic_conn *c = arg;
+	ex_quic_conn  *ec = arg;
+	nni_quic_conn *c;
+
+	nni_mtx_lock(&ec->mtx);
+	c = ec->main;
+	ex_quic_conn_close(ec);
+	nni_mtx_unlock(&ec->mtx);
+
 	nni_mtx_lock(&c->mtx);
 	if (c->closed != true) {
 		c->closed = true;
@@ -944,9 +962,6 @@ quic_stream_get(void *arg, const char *name, void *buf, size_t *szp, nni_type t)
 	NNI_ARG_UNUSED(szp);
 	NNI_ARG_UNUSED(t);
 	return 0;
-
-	// nni_quic_conn *c = arg;
-	// return (nni_getopt(tcp_options, name, c, buf, szp, t));
 }
 
 static int
@@ -958,9 +973,6 @@ quic_stream_set(void *arg, const char *name, const void *buf, size_t sz, nni_typ
 	NNI_ARG_UNUSED(sz);
 	NNI_ARG_UNUSED(t);
 	return 0;
-
-	// nni_quic_conn *c = arg;
-	// return (nni_setopt(tcp_options, name, c, buf, sz, t));
 }
 
 int
