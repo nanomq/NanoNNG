@@ -340,6 +340,7 @@ quic_dialer_cb(void *arg)
 	int              rv;
 	nni_aio *        aio;
 	nni_quic_conn *  c;
+	ex_quic_conn *   ec = NULL;
 
 	// pass rv to upper aio if error happened in connecting
 	rv = nni_aio_result(d->qconaio);
@@ -377,7 +378,7 @@ quic_dialer_cb(void *arg)
 	c->ismain = true;
 	c->id     = 0;
 
-	ex_quic_conn *ec = ex_quic_conn_init(c);
+	ec = ex_quic_conn_init(c);
 	c->dial_arg = ec;
 
 	for (int i=0; i<QUIC_SUB_STREAM_NUM; ++i) {
@@ -597,7 +598,8 @@ quic_stream_cb(int events, void *arg, int rc)
 
 	if (!c)
 		return;
-	log_debug("[quic cb][sid%d] start event%d", c->id, events);
+	int sid = c->id;
+	log_debug("[quic cb][sid%d] start event%d", sid, events);
 
 	d = c->dialer;
 
@@ -659,7 +661,7 @@ quic_stream_cb(int events, void *arg, int rc)
 	default:
 		break;
 	}
-	log_debug("[quic cb][sid%d] end", c->id);
+	log_debug("[quic cb][sid%d] end", sid);
 }
 
 static void
@@ -707,6 +709,8 @@ quic_stream_rele(nni_quic_conn *c, void *arg)
 	if (c->dialer) {
 		nni_msquic_quic_dialer_rele(c->dialer);
 	}
+	if (arg)
+		ex_quic_conn_free(arg);
 	quic_stream_fini(c);
 }
 
@@ -940,7 +944,7 @@ quic_stream_send(void *arg, nni_aio *aio)
 	nni_aio_set_prov_data(aio, NULL);
 
 	if (flags) {
-		log_info("flag %x", *flags);
+		//log_info("flag %x", *flags);
 		strmid = (*flags & QUIC_MULTISTREAM_FLAGS) >> 8;
 		if (strmid > QUIC_SUB_STREAM_NUM) {
 			log_error("Invalid streamid %d (0-%d are available)",
