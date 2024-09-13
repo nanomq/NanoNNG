@@ -68,10 +68,11 @@ struct nni_quic_conn {
 	// nni_aio *       qstrmaio; // Link to msquic_strm_cb
 	nni_quic_dialer *dialer;
 	uint8_t         reason_code;
+	bool            ismain;
+	int             id; // stream id
 
 	// MsQuic
 	HQUIC           qstrm; // quic stream
-	bool            ismain;
 
 	nni_reap_node   reap;
 };
@@ -370,6 +371,7 @@ quic_dialer_cb(void *arg)
 	if ((rv = msquic_strm_open(d->qconn, d, c, d->priority)) != 0)
 		goto error;
 	c->ismain = true;
+	c->id     = 0;
 
 	ex_quic_conn *ec = ex_quic_conn_init(c);
 	c->dial_arg = ec;
@@ -384,13 +386,14 @@ quic_dialer_cb(void *arg)
 			quic_substream_rele(subc);
 			goto error;
 		}
+		subc->id = i;
 		ec->substrms[i] = subc;
 	}
 
 error:
 	d->currcon = NULL;
 	if (rv != 0) {
-		log_warn("error in openning QUIC stream %d", rv);
+		log_warn("error in openning QUIC streams %d", rv);
 		c->dial_aio = NULL;
 		c->dial_arg = NULL;
 
@@ -583,13 +586,13 @@ nni_msquic_quic_dialer_rele(nni_quic_dialer *d)
 static void
 quic_stream_cb(int events, void *arg, int rc)
 {
-	log_debug("[quic cb] start %d\n", events);
 	nni_quic_conn   *c = arg;
 	nni_quic_dialer *d;
 	nni_aio         *aio;
 
 	if (!c)
 		return;
+	log_debug("[quic cb][sid%d] start %d", c->id, events);
 
 	d = c->dialer;
 
@@ -597,7 +600,7 @@ quic_stream_cb(int events, void *arg, int rc)
 	case QUIC_STREAM_EVENT_SEND_COMPLETE:
 		nni_mtx_lock(&c->mtx);
 		if ((aio = nni_list_first(&c->writeq)) == NULL) {
-			log_error("Aio lost after sending: conn %p", c);
+			log_error("[sid%d] Aio lost after sending: conn %p", c->id, c);
 			nni_mtx_unlock(&c->mtx);
 			break;
 		}
@@ -651,13 +654,14 @@ quic_stream_cb(int events, void *arg, int rc)
 	default:
 		break;
 	}
-	log_debug("[quic cb] end\n");
+	log_debug("[quic cb][sid%d] end", c->id);
 }
 
 static void
 quic_stream_fini(void *arg)
 {
 	nni_quic_conn *c = arg;
+	log_debug("[sid%d] finite", c->id);
 	msquic_strm_fini(c->qstrm);
 	NNI_FREE_STRUCT(c);
 }
@@ -743,7 +747,7 @@ quic_stream_cancel(nni_aio *aio, void *arg, int rv)
 {
 	nni_quic_conn *c = arg;
 
-	log_info("quic_stream_cancel");
+	log_info("[sid%d] quic_stream_cancel", c->id);
 	nni_mtx_lock(&c->mtx);
 	if (nni_aio_list_active(aio)) {
 		nni_aio_list_remove(aio);
@@ -810,7 +814,7 @@ quic_stream_recv(void *arg, nni_aio *aio)
 static void
 quic_stream_dowrite_prior(nni_quic_conn *c, nni_aio *aio)
 {
-	log_debug("[quic dowrite adv] start\n");
+	log_debug("[quic dowrite adv][sid%d] start", c->id);
 	int       rv;
 	unsigned  naiov;
 	nni_iov * aiov;
@@ -826,7 +830,7 @@ quic_stream_dowrite_prior(nni_quic_conn *c, nni_aio *aio)
 
 	QUIC_BUFFER *buf=(QUIC_BUFFER*)malloc(sizeof(QUIC_BUFFER)*naiov);
 	for (uint8_t i = 0; i < naiov; ++i) {
-		log_debug("buf%d sz %d", i, aiov[i].iov_len);
+		log_debug("[sid%d] buf%d sz %d", c->id, i, aiov[i].iov_len);
 		buf[i].Buffer = aiov[i].iov_buf;
 		buf[i].Length = aiov[i].iov_len;
 		n += aiov[i].iov_len;
@@ -835,7 +839,7 @@ quic_stream_dowrite_prior(nni_quic_conn *c, nni_aio *aio)
 
 	if (QUIC_FAILED(rv = MsQuic->StreamSend(c->qstrm, buf,
 	                naiov, QUIC_SEND_FLAG_NONE, aio))) {
-		log_error("Failed in StreamSend, 0x%x!", rv);
+		log_error("[sid%d] Failed in StreamSend, 0x%x!", c->id, rv);
 		free(buf);
 		//nni_msg_free(nni_aio_get_msg(aio));
 		nni_aio_finish_error(aio, NNG_ECANCELED);
@@ -843,13 +847,13 @@ quic_stream_dowrite_prior(nni_quic_conn *c, nni_aio *aio)
 	}
 
 	nni_aio_bump_count(aio, n);
-	log_debug("[quic dowrite adv] end");
+	log_debug("[quic dowrite adv][sid%d] end", c->id);
 }
 
 static void
 quic_stream_dowrite(nni_quic_conn *c)
 {
-	log_debug("[quic dowrite] start %p", c->qstrm);
+	log_debug("[quic dowrite][sid%d] start %p", c->qstrm, c->id);
 	nni_aio *aio;
 	int      rv;
 
@@ -864,11 +868,11 @@ quic_stream_dowrite(nni_quic_conn *c)
 
 		nni_aio_get_iov(aio, &naiov, &aiov);
 		if (naiov == 0)
-			log_warn("A msg without content?");
+			log_warn("[sid%d] A msg without content?", c->id);
 
 		QUIC_BUFFER *buf=(QUIC_BUFFER*)malloc(sizeof(QUIC_BUFFER)*naiov);
 		for (uint8_t i = 0; i < naiov; ++i) {
-			log_debug("buf%d sz %d", i, aiov[i].iov_len);
+			log_debug("[sid%d] buf%d sz %d", c->id, i, aiov[i].iov_len);
 			buf[i].Buffer = aiov[i].iov_buf;
 			buf[i].Length = aiov[i].iov_len;
 			n += aiov[i].iov_len;
@@ -885,7 +889,7 @@ quic_stream_dowrite(nni_quic_conn *c)
 
 		if (QUIC_FAILED(rv = MsQuic->StreamSend(c->qstrm, buf,
 		                naiov, QUIC_SEND_FLAG_NONE, NULL))) {
-			log_error("Failed in StreamSend, 0x%x!", rv);
+			log_error("[sid%d] Failed in StreamSend, 0x%x!", c->id, rv);
 			free(buf);
 			// nni_aio_list_remove(aio);
 			// nni_aio_finish_error(aio, NNG_ECLOSED);
@@ -1151,14 +1155,15 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	uint32_t       count;
 	bool           canceled;
 
-	log_debug("quic_strm_cb triggered! %d conn %p strm %p", Event->Type, c, stream);
+	log_debug("[sid%d] quic_strm_cb triggered! %d conn %p strm %p",
+			c->id, Event->Type, c, stream);
 	switch (Event->Type) {
 	case QUIC_STREAM_EVENT_SEND_COMPLETE:
-		log_debug("QUIC_STREAM_EVENT_SEND_COMPLETE!");
+		log_debug("[sid%d] QUIC_STREAM_EVENT_SEND_COMPLETE!", c->id);
 		canceled = false;
 		if (Event->SEND_COMPLETE.Canceled) {
-			log_warn("[strm][%p] Data sent Canceled: %d",
-			    stream, Event->SEND_COMPLETE.Canceled);
+			log_warn("[sid%d][%p] Data sent Canceled: %d",
+			    c->id, stream, Event->SEND_COMPLETE.Canceled);
 			canceled = true;
 		}
 		// Priority msg send
@@ -1189,12 +1194,12 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		// Data was received from the peer on the stream.
 		count = Event->RECEIVE.BufferCount;
 
-		log_debug("[strm][%p] Data received Flag: %d", stream, Event->RECEIVE.Flags);
+		log_debug("[sid%d][%p] Data received Flag: %d", c->id, stream, Event->RECEIVE.Flags);
 
 		if (Event->RECEIVE.Flags & QUIC_RECEIVE_FLAG_FIN) {
 			if (c->reason_code == 0)
 				c->reason_code = CLIENT_IDENTIFIER_NOT_VALID;
-			log_warn("FIN received in QUIC stream");
+			log_warn("[sid%d] FIN received in QUIC stream", c->id);
 			break;
 		}
 
@@ -1253,7 +1258,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
 		// The peer gracefully shut down its send direction of the
 		// stream.
-		log_warn("[strm][%p] PEER_SEND_ABORTED errorcode %llu\n", stream,
+		log_warn("[sid%d][%p] PEER_SEND_ABORTED errorcode %llu\n", c->id, stream,
 		    (unsigned long long) Event->PEER_SEND_ABORTED.ErrorCode);
 		if (c->reason_code == 0)
 			c->reason_code = SERVER_SHUTTING_DOWN;
@@ -1262,32 +1267,30 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		break;
 	case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
 		// The peer aborted its send direction of the stream.
-		log_warn("[strm][%p] Peer send shut down\n", stream);
+		log_warn("[sid%d][%p] Peer send shut down\n", c->id, stream);
 		MsQuic->StreamShutdown(stream, QUIC_STREAM_SHUTDOWN_FLAG_GRACEFUL, 0);
 		quic_stream_cb(QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN, c, 0);
 		break;
 	case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
-		log_warn("[strm][%p] QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE.", stream);
+		log_warn("[sid%d][%p] QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE.", c->id, stream);
 		break;
 
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 		// Both directions of the stream have been shut down and MsQuic
 		// is done with the stream. It can now be safely cleaned up.
-		log_warn("[strm][%p] QUIC_STREAM_EVENT shutdown: All done.",
-		    stream);
-		log_info("close stream with Error Code: %llu",
-		    (unsigned long long)
-		        Event->SHUTDOWN_COMPLETE.ConnectionErrorCode);
+		log_warn("[sid%d][%p] QUIC_STREAM_EVENT shutdown: All done.", c->id, stream);
+		log_info("[sud%d] close stream with Error Code: %llu", c->id,
+		    (unsigned long long) Event->SHUTDOWN_COMPLETE.ConnectionErrorCode);
 		quic_stream_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c, 0);
 		break;
 	case QUIC_STREAM_EVENT_START_COMPLETE:
 		log_info(
-		    "QUIC_STREAM_EVENT_START_COMPLETE [%p] ID: %ld Status: %d",
-		    stream, Event->START_COMPLETE.ID,
+		    "[sid%d][%p] QUIC_STREAM_EVENT_START_COMPLETE ID%ld Status%d",
+		    c->id, stream, Event->START_COMPLETE.ID,
 		    Event->START_COMPLETE.Status);
 		if (!Event->START_COMPLETE.PeerAccepted) {
 			// FIXME Not clear the behavious of the broker.
-			log_warn("Peer refused");
+			log_warn("[sid%d] Peer refused", c->id);
 			//quic_stream_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c, 0);
 			//break;
 		}
@@ -1295,22 +1298,21 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		quic_stream_cb(QUIC_STREAM_EVENT_START_COMPLETE, c, 0);
 		break;
 	case QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE:
-		log_info("QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE");
+		log_info("[sid%d] QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE", c->id);
 		break;
 	case QUIC_STREAM_EVENT_PEER_ACCEPTED:
-		log_info("QUIC_STREAM_EVENT_PEER_ACCEPTED");
+		log_info("[sid%d] QUIC_STREAM_EVENT_PEER_ACCEPTED", c->id);
 		break;
 	case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
 		// The peer has requested that we stop sending. Close abortively.
-		log_warn("[strm][%p] Peer RECEIVE aborted\n", stream);
-		log_warn("QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED Error Code: %llu",
-		    (unsigned long long) Event->PEER_RECEIVE_ABORTED.ErrorCode);
+		log_warn("[sid%d][%p] QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED %llu",
+		    c->id, stream, (unsigned long long) Event->PEER_RECEIVE_ABORTED.ErrorCode);
 
 		quic_stream_cb(QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED, c, 0);
 		break;
 
 	default:
-		log_warn("Unknown Event Type %d", Event->Type);
+		log_warn("[sid%d] Unknown Event Type %d", c->id, Event->Type);
 		break;
 	}
 	return QUIC_STATUS_SUCCESS;
@@ -1507,23 +1509,23 @@ msquic_strm_open(HQUIC qconn, nni_quic_dialer *d, nni_quic_conn *c, int priority
 	NNI_ARG_UNUSED(d);
 	HQUIC          strm = NULL;
 	QUIC_STATUS    rv;
-	log_debug("[strm][%p] Starting...", strm);
+	log_debug("[sid%d] quic stream opening...", c->id);
 
 	rv = MsQuic->StreamOpen(qconn, QUIC_STREAM_OPEN_FLAG_NONE,
 	        msquic_strm_cb, (void *)c, &strm);
 	if (QUIC_FAILED(rv)) {
-		log_error("StreamOpen failed, 0x%x!\n", rv);
+		log_error("[sid%d] StreamOpen failed, 0x%x!\n", c->id, rv);
 		goto error;
 	}
 
 	if (priority != -1) {
-		log_info("Ready to create a quic stream with priority: %d\n", priority);
+		log_info("[sid%d] set quic stream with priority: %d", c->id, priority);
 		MsQuic->SetParam(strm, QUIC_PARAM_STREAM_PRIORITY, sizeof(int), &priority);
 	}
 
 	rv = MsQuic->StreamStart(strm, QUIC_STREAM_START_FLAG_NONE);
 	if (QUIC_FAILED(rv)) {
-		log_error("StreamStart failed, 0x%x!\n", rv);
+		log_error("[sid%d] StreamStart failed, 0x%x!\n", c->id, rv);
 		msquic_strm_fini(strm);
 		goto error;
 	}
@@ -1534,7 +1536,7 @@ msquic_strm_open(HQUIC qconn, nni_quic_dialer *d, nni_quic_conn *c, int priority
 	MsQuic->StreamReceiveSetEnabled(strm, FALSE);
 	c->qstrm = strm;
 
-	log_debug("[strm][%p] Done...\n", strm);
+	log_debug("[sid%d][%p] Done...\n", c->id, strm);
 
 	return 0;
 error:
