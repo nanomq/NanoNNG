@@ -511,8 +511,6 @@ NNG_DECL uint16_t mqtt_get_next_packet_id(nni_atomic_int *id);
 
 NNG_DECL void      nni_mqtt_msg_set_connect_property(nni_msg *, property *);
 NNG_DECL property *nni_mqtt_msg_get_connect_property(nni_msg *);
-
-NNG_DECL reason_code check_properties(property *prop, nni_msg *msg);
 NNG_DECL property *decode_buf_properties(uint8_t *packet, uint32_t packet_len,
     uint32_t *pos, uint32_t *len, bool copy_value);
 NNG_DECL property *decode_properties(
