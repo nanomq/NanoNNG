@@ -217,6 +217,8 @@ ex_quic_conn_init(nni_quic_conn *c)
 		return NULL;
 	ec->stream = c->stream;
 	ec->main = c;
+	for (int i=0; i<QUIC_SUB_STREAM_NUM; i++)
+		ec->substrms[i] = NULL;
 	nni_mtx_init(&ec->mtx);
 	return ec;
 }
@@ -387,7 +389,8 @@ quic_dialer_cb(void *arg)
 			quic_substream_rele(subc);
 			goto error;
 		}
-		subc->id = i;
+		subc->id = i+1;
+		log_debug("assign %p to substreams %d", subc, i);
 		ec->substrms[i] = subc;
 	}
 
@@ -593,7 +596,7 @@ quic_stream_cb(int events, void *arg, int rc)
 
 	if (!c)
 		return;
-	log_debug("[quic cb][sid%d] start %d", c->id, events);
+	log_debug("[quic cb][sid%d] start event%d", c->id, events);
 
 	d = c->dialer;
 
@@ -854,7 +857,7 @@ quic_stream_dowrite_prior(nni_quic_conn *c, nni_aio *aio)
 static void
 quic_stream_dowrite(nni_quic_conn *c)
 {
-	log_debug("[quic dowrite][sid%d] start %p", c->qstrm, c->id);
+	log_debug("[quic dowrite][sid%d] start %p", c->id, c->qstrm);
 	nni_aio *aio;
 	int      rv;
 
@@ -918,8 +921,11 @@ quic_stream_send(void *arg, nni_aio *aio)
 	nni_aio_set_prov_data(aio, NULL);
 
 	if (flags) {
+		log_info("flag %x", *flags);
 		strmid = (*flags & QUIC_MULTISTREAM_FLAGS) >> 8;
 		if (strmid > QUIC_SUB_STREAM_NUM) {
+			log_error("Invalid streamid %d (0-%d are available)",
+					strmid, QUIC_SUB_STREAM_NUM);
 			if (nni_aio_begin(aio) != 0) {
 				return;
 			}
@@ -1057,7 +1063,7 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 			log_warn("[conn][%p] Host unreachable.\n", qconn);
 			break;
 		default:
-			log_warn("No network availiable. Random errcode is used");
+			log_warn("No network available. Random errcode is used");
 			break;
 		}
 		if (d->reason_code == 0)
@@ -1280,7 +1286,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		// Both directions of the stream have been shut down and MsQuic
 		// is done with the stream. It can now be safely cleaned up.
 		log_warn("[sid%d][%p] QUIC_STREAM_EVENT shutdown: All done.", c->id, stream);
-		log_info("[sud%d] close stream with Error Code: %llu", c->id,
+		log_info("[sid%d] close stream with Error Code: %llu", c->id,
 		    (unsigned long long) Event->SHUTDOWN_COMPLETE.ConnectionErrorCode);
 		quic_stream_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c, 0);
 		break;
