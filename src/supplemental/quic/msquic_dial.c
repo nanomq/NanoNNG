@@ -716,8 +716,12 @@ quic_stream_rele(nni_quic_conn *c)
 static void
 quic_stream_free(void *arg)
 {
-	nni_quic_conn *c = arg;
-	quic_stream_rele(c);
+	ex_quic_conn  *ec = arg;
+	nni_quic_conn *c;
+
+	c = ec->main;
+
+	quic_stream_rele(c, arg);
 }
 
 // Notify upper layer that something happened.
@@ -748,10 +752,7 @@ quic_stream_close(void *arg)
 	ex_quic_conn  *ec = arg;
 	nni_quic_conn *c;
 
-	nni_mtx_lock(&ec->mtx);
 	c = ec->main;
-	ex_quic_conn_close(ec);
-	nni_mtx_unlock(&ec->mtx);
 
 	nni_mtx_lock(&c->mtx);
 	if (c->closed != true) {
@@ -802,9 +803,7 @@ quic_stream_recv(void *arg, nni_aio *aio)
 		}
 	}
 
-	nni_mtx_lock(&ec->mtx);
 	c = (strmid == 0) ? ec->main : ec->substrms[strmid-1];
-	nni_mtx_unlock(&ec->mtx);
 
 	if (nni_aio_begin(aio) != 0) {
 		return;
@@ -953,9 +952,7 @@ quic_stream_send(void *arg, nni_aio *aio)
 		}
 	}
 
-	nni_mtx_lock(&ec->mtx);
 	c = (strmid == 0) ? ec->main : ec->substrms[strmid-1];
-	nni_mtx_unlock(&ec->mtx);
 
 	// QUIC_HIGH_PRIOR_MSG Feature!
 	if (flags) {
