@@ -77,6 +77,7 @@ struct nni_quic_conn {
 };
 
 struct ex_quic_conn {
+	nng_stream     stream;
 	nni_quic_conn *main;
 	nni_quic_conn *substrms[QUIC_SUB_STREAM_NUM]; // sub streams
 	// TODO int    priority[QUIC_SUB_STREAM_NUM]; // Priority
@@ -212,6 +213,7 @@ ex_quic_conn_init(nni_quic_conn *c)
 	ex_quic_conn *ec = nni_alloc(sizeof(ex_quic_conn));
 	if (!ec)
 		return NULL;
+	ec->stream = c->stream;
 	ec->main = c;
 	nni_mtx_init(&ec->mtx);
 	return ec;
