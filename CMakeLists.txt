@@ -324,7 +324,7 @@ endif ()
 
 #  Build the tools
 
-include_directories(${CMAKE_SOURCE_DIR}/nanolib/include)
+
 include_directories(${CMAKE_SOURCE_DIR}/nanomq/include)
 
 add_subdirectory(docs/man)
