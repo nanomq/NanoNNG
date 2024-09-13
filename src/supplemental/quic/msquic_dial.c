@@ -118,6 +118,7 @@ static void quic_stream_close(void *arg);
 static void quic_stream_dowrite(nni_quic_conn *c);
 static void quic_stream_rele(nni_quic_conn *c);
 static void quic_substream_rele(nni_quic_conn *c);
+static void quic_substream_close(nni_quic_conn *c);
 
 static QUIC_STATUS verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *ca);
 
@@ -241,9 +242,9 @@ ex_quic_conn_close(ex_quic_conn *ec)
 {
 	for (int i=0; i<QUIC_SUB_STREAM_NUM; ++i) {
 		nni_quic_conn *subc;
-		// FIXME Should all sub stream protect by ec->mtx???
+		// FIXME Should all sub stream protect by a lock???
 		if (ec && (subc = ec->substrms[i]) != NULL)
-			msquic_strm_close(subc->qstrm);
+			quic_substream_close(subc);
 	}
 }
 
@@ -672,9 +673,23 @@ quic_stream_fini(void *arg)
 
 // No effects to the main stream
 static void
+quic_substream_close(nni_quic_conn *c)
+{
+	nni_mtx_lock(&c->mtx);
+	if (c->closed != true) {
+		c->closed = true;
+		nni_mtx_unlock(&c->mtx);
+		msquic_strm_close(c->qstrm);
+		return;
+	}
+	nni_mtx_unlock(&c->mtx);
+}
+
+// No effects to the main stream
+static void
 quic_substream_rele(nni_quic_conn *c)
 {
-	quic_stream_close(c);
+	quic_substream_close(c);
 	if (nni_atomic_dec_nv(&c->ref) != 0) {
 		return;
 	}
@@ -741,7 +756,11 @@ quic_stream_close(void *arg)
 	nni_mtx_lock(&c->mtx);
 	if (c->closed != true) {
 		c->closed = true;
+		nni_mtx_unlock(&c->mtx);
+		// Close all sub streams when main stream is closing
+		ex_quic_conn_close(ec);
 		msquic_strm_close(c->qstrm);
+		return;
 	}
 	nni_mtx_unlock(&c->mtx);
 }
