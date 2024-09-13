@@ -171,7 +171,8 @@ verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *ca)
 	trusted = NULL;
 
 	if (res <= 0) {
-		log_error("rv %d: %s", res, X509_verify_cert_error_string(ctx));
+		int errorcode = X509_STORE_CTX_get_error(ctx);
+		log_error("rv %d: %s", res, X509_verify_cert_error_string(errorcode));
 		return QUIC_STATUS_BAD_CERTIFICATE;
 	} else
 		return QUIC_STATUS_SUCCESS;
@@ -1412,8 +1413,7 @@ msquic_load_config(QUIC_SETTINGS *settings, nni_quic_dialer *d)
 		CredConfig.Type =
 		    QUIC_CREDENTIAL_TYPE_CERTIFICATE_FILE_PROTECTED;
 	} else {
-		QUIC_CERTIFICATE_FILE *CertFile =
-		    (QUIC_CERTIFICATE_FILE_PROTECTED *) malloc(sizeof(QUIC_CERTIFICATE_FILE_PROTECTED));
+		QUIC_CERTIFICATE_FILE *CertFile = malloc(sizeof(QUIC_CERTIFICATE_FILE));
 		CertFile->CertificateFile  = cert_path;
 		CertFile->PrivateKeyFile   = key_path;
 		CredConfig.CertificateFile = CertFile;
