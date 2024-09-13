@@ -116,7 +116,7 @@ static void quic_dialer_cb(void *arg);
 static void quic_stream_error(void *arg, int err);
 static void quic_stream_close(void *arg);
 static void quic_stream_dowrite(nni_quic_conn *c);
-static void quic_stream_rele(nni_quic_conn *c);
+static void quic_stream_rele(nni_quic_conn *c, void *arg);
 static void quic_substream_rele(nni_quic_conn *c);
 static void quic_substream_close(nni_quic_conn *c);
 
@@ -652,7 +652,7 @@ quic_stream_cb(int events, void *arg, int rc)
 		// Marked it as closed, prevent explicit shutdown
 		c->closed = true;
 		if (c->ismain)
-			quic_stream_rele(c);
+			quic_stream_rele(c, NULL);
 		else
 			quic_substream_rele(c);
 		break;
@@ -697,9 +697,10 @@ quic_substream_rele(nni_quic_conn *c)
 }
 
 static void
-quic_stream_rele(nni_quic_conn *c)
+quic_stream_rele(nni_quic_conn *c, void *arg)
 {
-	quic_stream_close(c);
+	if (arg)
+		quic_stream_close(arg);
 	if (nni_atomic_dec_nv(&c->ref) != 0) {
 		return;
 	}
