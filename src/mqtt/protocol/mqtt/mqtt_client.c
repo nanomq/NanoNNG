@@ -435,6 +435,7 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 		}
 	}
 
+	nni_msg_set_timestamp(msg, nni_clock());
 	ptype = nni_mqtt_msg_get_packet_type(msg);
 	switch (ptype) {
 	case NNG_MQTT_CONNECT:
@@ -875,6 +876,7 @@ mqtt_recv_cb(void *arg)
 
 	// reset ping state
 	p->pingcnt = 0;
+	s->timeleft = s->keepalive;
 
 	// state transitions
 	switch (packet_type) {
