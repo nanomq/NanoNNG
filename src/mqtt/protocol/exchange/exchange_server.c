@@ -760,6 +760,7 @@ exchange_do_send(exchange_node_t *ex_node, nni_msg *msg, nni_aio *user_aio)
 			char *topic = ex_node->ex->topic;
 			nng_msg_set_conn_param(tmsg, topic);
 			nng_msg_set_cmd_type(tmsg, ex_node->ex->streamType);
+			nng_msg_set_payload_ptr(tmsg, (uint8_t *)ex_node->ex->chunk_size);
 			nni_aio_set_msg(user_aio, tmsg);
 		}
 		nni_aio_finish(user_aio, 0, 0);
@@ -917,7 +918,7 @@ exchange_sock_bind_exchange(void *arg, const void *v, size_t sz, nni_opt_type t)
 	}
 
 	exchange_t *ex = NULL;
-	rv = exchange_init(&ex, node->name, node->topic, node->streamType,
+	rv = exchange_init(&ex, node->name, node->topic, node->streamType, node->chunk_size,
 			rbsCap, rbsName, rbsFullOp, cvector_size(rbsName));
 
 	cvector_free(rbsName);

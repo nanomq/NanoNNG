@@ -1167,6 +1167,7 @@ print_exchange_conf(conf_exchange *exchange)
 		log_info("exchange name            %s", n->name);
 		log_info("exchange topic           %s", n->topic);
 		log_info("exchange streamType	   %d", n->streamType);
+		log_info("exchange chunk_size      %d", n->chunk_size);
 		log_info("exchange url             %s", n->exchange_url);
 		log_info("exchange limit_frequency %d", n->limit_frequency);
 		for (int j=0; j< (int) n->rbufs_sz; j++) {
