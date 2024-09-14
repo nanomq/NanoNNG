@@ -675,8 +675,9 @@ mqtt_timer_cb(void *arg)
 	taio = nni_id_get_min(&s->sent_unack, &pid);
 	if (taio != NULL) {
 		uint16_t ptype;
-		nni_msg *msg = nni_aio_get_msg(taio);
-		nni_time time = nni_clock() - nni_msg_get_timestamp(msg);
+		nni_msg *msg  = nni_aio_get_msg(taio);
+		nni_time now  = nni_clock();
+		nni_time time = now - nni_msg_get_timestamp(msg);
 		if (time > s->retry_wait && msg != NULL) {
 			ptype = nni_mqtt_msg_get_packet_type(msg);
 			if (ptype == NNG_MQTT_PUBLISH) {
@@ -689,6 +690,7 @@ mqtt_timer_cb(void *arg)
 				nni_aio_set_msg(&p->send_aio, msg);
 				log_info("resending QoS msg %d", pid);
 				nni_pipe_send(p->pipe, &p->send_aio);
+				nni_msg_set_timestamp(msg, now);
 				nni_mtx_unlock(&s->mtx);
 				nni_sleep_aio(s->retry, &p->time_aio);
 				return;
@@ -749,7 +751,7 @@ mqtt_send_cb(void *arg)
 	}
 	nni_mtx_lock(&s->mtx);
 	p->busy     = false;
-	s->timeleft = s->keepalive;
+
 	// Check cached ctx in nni_list first
 	// these ctxs are triggered before the pipe is established
 	if ((c = nni_list_first(&s->send_queue)) != NULL) {
