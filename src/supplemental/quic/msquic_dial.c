@@ -955,8 +955,13 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		// ready to be safely cleaned up.
 		log_info("[conn][%p] QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE: All done\n\n", qconn);
 		nni_mtx_lock(&d->mtx);
+		msquic_conn_fini(qconn);
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
-			// explicitly shutdon on protocol layer.
+			log_debug("MsQUIC is closed!");
+			//MsQuic->ConnectionClose(qconn); // plz use msquic_conn_fini(qconn)
+		}
+		if (!Event->SHUTDOWN_COMPLETE.PeerAcknowledgedShutdown) {
+			log_debug("Peer acked shutdown!");
 			//MsQuic->ConnectionClose(qconn); // plz use msquic_conn_fini(qconn)
 		}
 		// reconnect here
