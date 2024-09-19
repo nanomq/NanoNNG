@@ -1346,6 +1346,7 @@ typedef struct pub_packet_struct pub_packet_struct;
 typedef struct pipe_db           nano_pipe_db;
 
 NNG_DECL int nng_access(const char* name, int flag);
+NNG_DECL int nng_aio_alloc_itself(nng_aio **, void (*)(void *));
 
 // NANOMQ MQTT API ends
 // UDP operations.  These are provided for convenience,

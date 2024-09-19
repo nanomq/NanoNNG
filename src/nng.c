@@ -1937,6 +1937,22 @@ nng_msg_set_pipe(nng_msg *msg, nng_pipe p)
 }
 
 int
+nng_aio_alloc_itself(nng_aio **app, void (*cb)(void *))
+{
+	nng_aio *aio;
+	int      rv;
+
+	if ((rv = nni_init()) != 0) {
+		return (rv);
+	}
+	if ((rv = nni_aio_alloc_itself(&aio, (nni_cb) cb)) == 0) {
+		nng_aio_set_timeout(aio, NNG_DURATION_DEFAULT);
+		*app = aio;
+	}
+	return (rv);
+}
+
+int
 nng_aio_alloc(nng_aio **app, void (*cb)(void *), void *arg)
 {
 	nng_aio *aio;

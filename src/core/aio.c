@@ -863,3 +863,30 @@ nni_aio_sys_init(void)
 }
 
 // NANOMQ APIs
+
+// Pass aio itself to cb arg
+static inline void
+nni_aio_init_itself(nni_aio *aio, nni_cb cb)
+{
+	memset(aio, 0, sizeof(*aio));
+	nni_task_init(&aio->a_task, NULL, cb, aio);
+	aio->a_expire  = NNI_TIME_NEVER;
+	aio->a_timeout = NNG_DURATION_INFINITE;
+	aio->a_expire_q =
+	    nni_aio_expire_q_list[nni_random() % nni_aio_expire_q_cnt];
+}
+
+int
+nni_aio_alloc_itself(nni_aio **aio_p, nni_cb cb)
+{
+	nni_aio *aio;
+
+	if ((aio = NNI_ALLOC_STRUCT(aio)) == NULL) {
+		return (NNG_ENOMEM);
+	}
+
+	nni_aio_init_itself(aio, cb);
+
+	*aio_p = aio;
+	return (0);
+}
