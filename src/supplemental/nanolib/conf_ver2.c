@@ -1828,6 +1828,9 @@ conf_authorization_prase_ver2(conf *config, cJSON *jso)
 	if (jso_auth_http) {
 		conf_auth_http_parse_ver2(config, jso_auth_http);
 	}
+	cJSON *jso_auth = cJSON_GetObjectItem(jso, "auth");
+	conf_auth *auth = &(config->auths);
+	hocon_read_bool(auth, enable_encrypt, jso_auth);
 	// TODO if not use include, we should read file manually.
 	cJSON *jso_auth_pwd = hocon_get_obj("auth.password", jso);
 	if (jso_auth_pwd) {

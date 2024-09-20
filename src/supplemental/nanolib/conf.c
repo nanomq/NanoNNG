@@ -1404,7 +1404,8 @@ print_conf(conf *nanomq_conf)
 static void
 conf_auth_init(conf_auth *auth)
 {
-	auth->count     = 0;
+	auth->enable_encrypt = false;
+	auth->count          = 0;
 	auth->usernames = NULL;
 	auth->passwords = NULL;
 }
