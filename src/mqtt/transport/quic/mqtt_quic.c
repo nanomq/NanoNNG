@@ -867,6 +867,9 @@ mqtt_quictran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 	nni_aio_finish_error(aio, rv);
 }
 
+static int quic_streamid;
+static int quic_roundrobin = 1;
+
 static void
 mqtt_quictran_pipe_send_start(mqtt_quictran_pipe *p)
 {
@@ -925,6 +928,10 @@ mqtt_quictran_pipe_send_start(mqtt_quictran_pipe *p)
 		iov[niov].iov_len = nni_msg_len(msg);
 		niov++;
 	}
+	quic_roundrobin = (quic_roundrobin + 1) % 4;
+	quic_streamid = (quic_roundrobin + 1) << 8;
+
+	nng_aio_set_prov_data(txaio, &quic_streamid);
 	nni_aio_set_iov(txaio, niov, iov);
 	nng_stream_send(p->conn, txaio);
 }
