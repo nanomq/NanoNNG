@@ -308,7 +308,8 @@ quic_dialer_strm_cancel(nni_aio *aio, void *arg, int rv)
 	nni_mtx_unlock(&d->mtx);
 
 	nni_aio_finish_error(aio, rv);
-	nng_stream_free(&c->stream);
+	quic_stream_rele(c, NULL);
+	//nng_stream_free(&c->stream);
 }
 
 static void
@@ -414,9 +415,9 @@ error:
 		if (ec)
 			ex_quic_conn_free(ec);
 
-		nng_stream_close(&c->stream);
+		nng_stream_close(&ec->stream);
 		// Decement reference of dialer
-		nng_stream_free(&c->stream);
+		nng_stream_free(&ec->stream);
 		nni_aio_finish_error(aio, rv);
 	}
 }
@@ -522,7 +523,8 @@ error:
 	nni_aio_set_prov_data(aio, NULL);
 	nni_msquic_quic_dialer_rele(d);
 	nni_mtx_unlock(&d->mtx);
-	nng_stream_free(&c->stream);
+	quic_stream_rele(c, NULL);
+	//nng_stream_free(&c->stream);
 	nni_aio_finish_error(aio, rv);
 }
 
@@ -537,17 +539,17 @@ nni_quic_dialer_close(void *arg)
 		nni_aio *aio;
 		d->closed = true;
 		while ((aio = nni_list_first(&d->connq)) != NULL) {
-			nni_quic_conn *c;
+			ex_quic_conn *ec;
 			nni_list_remove(&d->connq, aio);
-			if ((c = nni_aio_get_prov_data(aio)) != NULL) {
-				c->dial_aio = NULL;
+			if ((ec = nni_aio_get_prov_data(aio)) != NULL) {
+				ec->main->dial_aio = NULL;
 				nni_aio_set_prov_data(aio, NULL);
-				nng_stream_close(&c->stream);
+				nng_stream_close(&ec->stream);
 				// We don't need to free the quic stream. Because it would be free
 				// in QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE state.
 				// QUIC_STREAM_EVENT_START_COMPLETE is not necessary to trigger
 				// QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE.
-				// nng_stream_free(&c->stream);
+				// nng_stream_free(&ec->stream);
 			}
 			nni_aio_finish_error(aio, NNG_ECLOSED);
 		}
@@ -1104,7 +1106,7 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 	case QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE:
 		// The connection has completed the shutdown process and is
 		// ready to be safely cleaned up.
-		log_info("[conn][%p] QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE: All done\n\n", qconn);
+		log_info("[conn][%p] QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE: All done\n", qconn);
 		nni_mtx_lock(&d->mtx);
 		msquic_conn_fini(qconn);
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
@@ -1122,7 +1124,7 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 	case QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED:
 		// A resumption ticket (also called New Session Ticket or NST)
 		// was received from the server.
-		log_warn("[conn][%p] Resumption ticket received (%u bytes):\n",
+		log_info("[conn][%p] Resumption ticket received (%u bytes):\n",
 		    Connection, Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength);
 		if (d->enable_0rtt == false) {
 			log_warn("[conn][%p] Ignore ticket due to turn off the 0RTT");
