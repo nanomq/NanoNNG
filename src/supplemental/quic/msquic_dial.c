@@ -107,7 +107,7 @@ static void msquic_close();
 static int  msquic_conn_open(const char *host, const char *port, nni_quic_dialer *d);
 static void msquic_conn_close(HQUIC qconn, int rv);
 static void msquic_conn_fini(HQUIC qconn);
-static int  msquic_strm_open(HQUIC qconn, nni_quic_dialer *d, nni_quic_conn *c, int priority);
+static int  msquic_strm_open(HQUIC qconn, nni_quic_conn *c, int priority);
 static void msquic_strm_close(HQUIC qstrm);
 static void msquic_strm_fini(HQUIC qstrm);
 static void msquic_strm_recv_start(HQUIC qstrm);
@@ -374,7 +374,7 @@ quic_dialer_cb(void *arg)
 	}
 
 	// Connection was established. Nice. Then. Create the main and sub quic streams.
-	if ((rv = msquic_strm_open(d->qconn, d, c, d->priority)) != 0)
+	if ((rv = msquic_strm_open(d->qconn, c, d->priority)) != 0)
 		goto error;
 	c->ismain = true;
 	c->id     = 0;
@@ -388,7 +388,7 @@ quic_dialer_cb(void *arg)
 		if ((rv = nni_msquic_quic_alloc(&subc, d)) != 0)
 			goto error;
 
-		if ((rv = msquic_strm_open(d->qconn, d, subc, d->priority)) != 0) {
+		if ((rv = msquic_strm_open(d->qconn, subc, d->priority)) != 0) {
 			quic_substream_rele(subc);
 			goto error;
 		}
@@ -661,9 +661,8 @@ quic_stream_cb(int events, void *arg, int rc)
 }
 
 static void
-quic_stream_fini(void *arg)
+quic_stream_fini(nni_quic_conn *c)
 {
-	nni_quic_conn *c = arg;
 	log_debug("[sid%d] finite", c->id);
 	msquic_strm_fini(c->qstrm);
 	NNI_FREE_STRUCT(c);
@@ -1527,9 +1526,8 @@ msquic_conn_fini(HQUIC qconn)
 }
 
 static int
-msquic_strm_open(HQUIC qconn, nni_quic_dialer *d, nni_quic_conn *c, int priority)
+msquic_strm_open(HQUIC qconn, nni_quic_conn *c, int priority)
 {
-	NNI_ARG_UNUSED(d);
 	HQUIC          strm = NULL;
 	QUIC_STATUS    rv;
 	log_debug("[sid%d] quic stream opening...", c->id);
