@@ -411,13 +411,7 @@ error:
 	nni_mtx_unlock(&d->mtx);
 
 	if (rv != 0) {
-		// Free sub streams first
-		if (ec)
-			ex_quic_conn_free(ec);
-
-		nng_stream_close(&ec->stream);
-		// Decement reference of dialer
-		nng_stream_free(&ec->stream);
+		quic_stream_rele(c, ec);
 		nni_aio_finish_error(aio, rv);
 	}
 }
