@@ -235,8 +235,15 @@ ex_quic_conn_free(ex_quic_conn *ec)
 {
 	for (int i=0; i<QUIC_SUB_STREAM_NUM; ++i) {
 		nni_quic_conn *subc;
-		if (ec && (subc = ec->substrms[i]) != NULL)
-			quic_substream_rele(subc, false);
+		nni_mtx_lock(&ec->mtx);
+		if ((subc = ec->substrms[i]) == NULL) {
+			nni_mtx_unlock(&ec->mtx);
+			continue;
+		}
+		ec->substrms[i] = NULL;
+		nni_mtx_unlock(&ec->mtx);
+
+		quic_substream_rele(subc, false);
 		nni_aio_fini(&ec->reconaio[i]);
 	}
 
@@ -255,8 +262,14 @@ ex_quic_conn_close(ex_quic_conn *ec)
 	for (int i=0; i<QUIC_SUB_STREAM_NUM; ++i) {
 		nni_quic_conn *subc;
 		// FIXME Should all sub stream protect by a lock???
-		if (ec && (subc = ec->substrms[i]) != NULL)
-			quic_substream_close(subc);
+		nni_mtx_lock(&ec->mtx);
+		if ((subc = ec->substrms[i]) == NULL) {
+			nni_mtx_unlock(&ec->mtx);
+			continue;
+		}
+		nni_mtx_unlock(&ec->mtx);
+
+		quic_substream_close(subc);
 	}
 }
 
@@ -706,7 +719,13 @@ quic_substream_reopen(void *arg)
 		return;
 	}
 	subc->id = idx + 1;
+	subc->ec = ec;
+	subc->ismain = false;
+
+	nni_mtx_lock(&ec->mtx);
 	ec->substrms[idx] = subc;
+	nni_mtx_unlock(&ec->mtx);
+
 	// Reopen finished
 	nni_aio_list_remove(aio);
 	log_debug("[sid%d] reopen end", idx + 1);
@@ -858,7 +877,16 @@ quic_stream_recv(void *arg, nni_aio *aio)
 		}
 	}
 
-	c = (strmid == 0) ? ec->main : ec->substrms[strmid-1];
+	//c = (strmid == 0) ? ec->main : ec->substrms[strmid-1];
+	if (strmid == 0)
+		c = ec->main;
+	else {
+		nni_mtx_lock(&ec->mtx);
+		c = ec->substrms[strmid-1];
+		nni_mtx_unlock(&ec->mtx);
+		if (c == NULL) // This quic stream is reopening.
+			nni_aio_finish_error(aio, NNG_ECLOSED);
+	}
 
 	if (nni_aio_begin(aio) != 0) {
 		return;
@@ -1007,7 +1035,16 @@ quic_stream_send(void *arg, nni_aio *aio)
 		}
 	}
 
-	c = (strmid == 0) ? ec->main : ec->substrms[strmid-1];
+	// c = (strmid == 0) ? ec->main : ec->substrms[strmid-1];
+	if (strmid == 0)
+		c = ec->main;
+	else {
+		nni_mtx_lock(&ec->mtx);
+		c = ec->substrms[strmid-1];
+		nni_mtx_unlock(&ec->mtx);
+		if (c == NULL) // This quic stream is reopening.
+			nni_aio_finish_error(aio, NNG_ECLOSED);
+	}
 
 	// QUIC_HIGH_PRIOR_MSG Feature!
 	if (flags) {
