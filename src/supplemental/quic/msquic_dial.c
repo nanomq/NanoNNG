@@ -711,8 +711,8 @@ quic_substream_reopen(void *arg)
 		log_error("No reconnect quic stream found");
 		return;
 	}
-	int idx = ((char *)aio - (char *)&ec->reconaio[0]) / sizeof(void *);
-	log_debug("[sid%d] reopen", idx + 1);
+	int idx = ((char *)aio - (char *)&ec->reconaio[0]) / sizeof(nni_aio);
+	log_info("[sid%d] reopen", idx + 1);
 	if ((rv = nni_msquic_quic_alloc(&subc, d)) != 0)
 		return;
 	if ((rv = msquic_strm_open(d->qconn, subc, d->priority)) != 0) {
