@@ -71,6 +71,7 @@ struct nni_quic_conn {
 	bool            ismain;
 	int             id; // stream id
 	ex_quic_conn   *ec;
+	bool            reopen; // Should it be reopen
 	// MsQuic
 	HQUIC           qstrm; // quic stream
 
@@ -715,7 +716,7 @@ quic_substream_reopen(void *arg)
 	if ((rv = nni_msquic_quic_alloc(&subc, d)) != 0)
 		return;
 	if ((rv = msquic_strm_open(d->qconn, subc, d->priority)) != 0) {
-		quic_substream_rele(subc, false); // No reopen to avoid recursive...
+		quic_substream_rele(subc, true); // Could reopen
 		return;
 	}
 	subc->id = idx + 1;
@@ -728,7 +729,7 @@ quic_substream_reopen(void *arg)
 
 	// Reopen finished
 	nni_aio_list_remove(aio);
-	log_debug("[sid%d] reopen end", idx + 1);
+	log_info("[sid%d] reopen end", idx + 1);
 	return;
 }
 
@@ -752,6 +753,9 @@ quic_substream_rele(nni_quic_conn *c, bool reopen)
 {
 	int idx = c->id - 1;
 	ex_quic_conn *ec = c->ec;
+	if (reopen == false)
+		c->reopen = reopen;
+	bool reopen2 = c->reopen;
 
 	quic_substream_close(c);
 	if (nni_atomic_dec_nv(&c->ref) != 0) {
@@ -759,7 +763,8 @@ quic_substream_rele(nni_quic_conn *c, bool reopen)
 	}
 	quic_stream_fini(c);
 
-	if (reopen) {
+	log_info("[sid%d] ready to do reopen %d", idx+1, reopen2);
+	if (reopen2) {
 		// Do recover this quic stream
 		nni_aio *aio = &ec->reconaio[idx];
 		nni_list_append(&ec->reconq, aio);
@@ -1041,9 +1046,24 @@ quic_stream_send(void *arg, nni_aio *aio)
 	else {
 		nni_mtx_lock(&ec->mtx);
 		c = ec->substrms[strmid-1];
+
+		if (c) {
+			nni_mtx_lock(&c->mtx);
+			if (c->closed && c->ismain == false) {
+				nni_mtx_unlock(&c->mtx);
+				nni_mtx_unlock(&ec->mtx);
+				quic_substream_rele(c, true);
+				nni_aio_finish_error(aio, NNG_ECANCELED);
+				return;
+			}
+			nni_mtx_unlock(&c->mtx);
+		}
+
 		nni_mtx_unlock(&ec->mtx);
-		if (c == NULL) // This quic stream is reopening.
-			nni_aio_finish_error(aio, NNG_ECLOSED);
+		if (c == NULL) { // This quic stream is reopening.
+			nni_aio_finish_error(aio, NNG_ECANCELED);
+			return;
+		}
 	}
 
 	// QUIC_HIGH_PRIOR_MSG Feature!
@@ -1112,6 +1132,7 @@ nni_msquic_quic_alloc(nni_quic_conn **cp, nni_quic_dialer *d)
 
 	c->ismain = false;
 	c->closed = false;
+	c->reopen = true;
 	c->dialer = d;
 
 	nni_mtx_init(&c->mtx);
@@ -1643,8 +1664,7 @@ msquic_strm_open(HQUIC qconn, nni_quic_conn *c, int priority)
 		goto error;
 	}
 	// Stream is opened and started
-	if (c->ismain)
-		nni_atomic_inc(&c->ref);
+	nni_atomic_inc(&c->ref);
 
 	// Not ready for receiving
 	MsQuic->StreamReceiveSetEnabled(strm, FALSE);
