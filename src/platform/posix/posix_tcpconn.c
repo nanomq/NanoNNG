@@ -146,6 +146,7 @@ tcp_doread(nni_tcp_conn *c)
 		if (n == 0) {
 			// No bytes indicates a closed descriptor.
 			// This implicitly completes this (all!) aio.
+			log_warn("Socket hits eof!");
 			nni_aio_list_remove(aio);
 			nni_aio_finish_error(aio, NNG_ECONNSHUT);
 			continue;
