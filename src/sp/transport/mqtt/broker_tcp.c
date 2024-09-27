@@ -132,7 +132,6 @@ tcptran_pipe_close(void *arg)
 	}
 	nni_mtx_lock(&p->mtx);
 	p->closed = true;
-	nni_lmq_flush(&p->rslmq);
 	nni_mtx_unlock(&p->mtx);
 
 	nng_stream_close(p->conn);
@@ -206,6 +205,7 @@ tcptran_pipe_fini(void *arg)
 		nni_msg_free(p->rxmsg);
 
 	nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
+	nni_lmq_flush(&p->rslmq);
 	nng_stream_free(p->conn);
 	nni_aio_free(p->qsaio);
 	nni_aio_free(p->rpaio);
@@ -675,7 +675,7 @@ tcptran_pipe_recv_cb(void *arg)
 
 	aio = nni_list_first(&p->recvq);
 
-	if ((rv = nni_aio_result(rxaio)) != 0) {
+	if ((rv = nni_aio_result(rxaio)) != 0 ) {
 		log_warn("nni aio recv error!! %s\n", nng_strerror(rv));
 		nni_pipe_bump_error(p->npipe, rv);
 		if (rv == NNG_ECONNRESET || rv == NNG_ECONNSHUT ||
@@ -687,6 +687,9 @@ tcptran_pipe_recv_cb(void *arg)
 		} else {
 			rv = NMQ_UNSEPECIFY_ERROR;
 		}
+		goto recv_error;
+	}
+	if (p->closed) {
 		goto recv_error;
 	}
 
@@ -907,11 +910,9 @@ tcptran_pipe_recv_cb(void *arg)
 			log_debug("resend ack later");
 			if (nni_lmq_full(&p->rslmq)) {
 				// Make space for the new message.
-				if (nni_lmq_cap(&p->rslmq) <=
-				    NANO_MAX_QOS_PACKET) {
+				if (nni_lmq_cap(&p->rslmq) <= NANO_MAX_QOS_PACKET) {
 					if ((rv = nni_lmq_resize(&p->rslmq,
-					         nni_lmq_cap(&p->rslmq) *
-					             2)) == 0) {
+					         nni_lmq_cap(&p->rslmq) * 2)) == 0) {
 						if (nni_lmq_put(&p->rslmq, qmsg) != 0)
 							nni_msg_free(qmsg);
 					} else {
@@ -1154,8 +1155,7 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				// store msg for qos retrying
 				nni_msg_clone(msg);
 				if ((old = nni_qos_db_get(is_sqlite,
-				         pipe->nano_qos_db, pipe->p_id,
-				         pid)) != NULL) {
+				         pipe->nano_qos_db, pipe->p_id, pid)) != NULL) {
 					// TODO packetid already exists.
 					// do we need to replace old with new
 					// one ? print warning to users
