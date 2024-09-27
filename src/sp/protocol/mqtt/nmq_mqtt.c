@@ -1158,42 +1158,66 @@ nano_pipe_recv_cb(void *arg)
 			return;
 		}
 		nni_mtx_unlock(&p->lk);
-
+		if (nni_msg_get_proto_data(msg) == NULL)
+			nni_mqtt_msg_proto_data_alloc(msg);
 		if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 			len = get_var_integer(ptr + 2, &len_of_varint);
 			nni_msg_set_payload_ptr(
 			    msg, ptr + 2 + len + len_of_varint);
+			if (nni_mqttv5_msg_decode(msg) == MQTT_SUCCESS) {
+				nni_mqtt_topic_qos *topics =
+				    nni_mqtt_msg_get_subscribe_topics(
+				        msg, &count);
+				for (uint32_t i = 0; i < count; i++) {
+					log_warn(" %s sub %s %d",
+					    cparam->clientid.body,
+					    topics[i].topic.buf,
+					    topics[i].qos);
+				}
+			} else
+				log_warn("decode fail!");
 		} else {
+			if (nni_mqtt_msg_decode(msg) == MQTT_SUCCESS) {
+				nni_mqtt_topic_qos *topics =
+				    nni_mqtt_msg_get_subscribe_topics(
+				        msg, &count);
+				for (uint32_t i = 0; i < count; i++) {
+					log_warn(" %s sub %s %d",
+					    cparam->clientid.body,
+					    topics[i].topic.buf,
+					    topics[i].qos);
+				}
+			} else
+				log_warn("decode fail!");
 			nni_msg_set_payload_ptr(msg, ptr + 2);
 		}
-		nni_mqtt_msg_proto_data_alloc(msg);
-		if (nni_mqtt_msg_decode(msg) == MQTT_SUCCESS) {
-			nni_mqtt_topic_qos *topics = nni_mqtt_msg_get_subscribe_topics(msg, &count);
-			for (uint32_t i = 0; i < count; i++) {
-				log_warn(" %s sub %s %d", cparam->clientid.body, topics[i].topic.buf,
-							topics[i].qos);
-			}
-		} else
-			log_warn("decode fail!");
 		break;
 	case CMD_UNSUBSCRIBE:
 		// 1. Clone for App layer 2. Clone should be called before being used
 		conn_param_clone(cparam);
+		if (nni_msg_get_proto_data(msg) == NULL)
+			nni_mqtt_msg_proto_data_alloc(msg);
 		if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 			len = get_var_integer(ptr + 2, &len_of_varint);
 			nni_msg_set_payload_ptr(
 			    msg, ptr + 2 + len + len_of_varint);
+			if (nni_mqttv5_msg_decode(msg) == MQTT_SUCCESS) {
+				nni_mqtt_topic *topics2 = nni_mqtt_msg_get_unsubscribe_topics(msg, &count);
+				for (uint32_t i = 0; i < count; i++) {
+					log_warn(" %s unsub %s", cparam->clientid.body, topics2[i].buf);
+				}
+			} else
+				log_warn("decode fail!");
 		} else {
 			nni_msg_set_payload_ptr(msg, ptr + 2);
+			if (nni_mqtt_msg_decode(msg) == MQTT_SUCCESS) {
+				nni_mqtt_topic *topics2 = nni_mqtt_msg_get_unsubscribe_topics(msg, &count);
+				for (uint32_t i = 0; i < count; i++) {
+					log_warn(" %s unsub %s", cparam->clientid.body, topics2[i].buf);
+				}
+			} else
+				log_warn("decode fail!");
 		}
-		nni_mqtt_msg_proto_data_alloc(msg);
-		if (nni_mqtt_msg_decode(msg) == MQTT_SUCCESS) {
-			nni_mqtt_topic *topics2 = nni_mqtt_msg_get_unsubscribe_topics(msg, &count);
-			for (uint32_t i = 0; i < count; i++) {
-				log_warn(" %s unsub %s", cparam->clientid.body, topics2[i].buf);
-			}
-		} else
-			log_warn("decode fail!");
 		break;
 	case CMD_DISCONNECT:
 		if (p->conn_param) {
