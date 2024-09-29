@@ -670,7 +670,11 @@ quic_stream_cb(int events, void *arg, int rc)
 	// case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 	// case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
-		quic_stream_error(arg, NNG_ECONNSHUT);
+		if (c->ismain)
+			quic_stream_error(arg, NNG_ECONNSHUT);
+		else
+			quic_stream_error(arg, NNG_ECANCELED);
+
 		// Marked it as closed, prevent explicit shutdown
 		c->closed = true;
 		if (c->ismain) {
@@ -1646,7 +1650,7 @@ msquic_strm_open(HQUIC qconn, nni_quic_conn *c, int priority)
 	rv = MsQuic->StreamOpen(qconn, QUIC_STREAM_OPEN_FLAG_NONE,
 	        msquic_strm_cb, (void *)c, &strm);
 	if (QUIC_FAILED(rv)) {
-		log_error("[sid%d] StreamOpen failed, 0x%x!\n", c->id, rv);
+		log_error("[sid%d] StreamOpen failed, 0x%x!", c->id, rv);
 		goto error;
 	}
 
