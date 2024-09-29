@@ -72,6 +72,7 @@ struct nni_quic_conn {
 	int             id; // stream id
 	ex_quic_conn   *ec;
 	bool            reopen; // Should it be reopen
+	nni_aio         reconaio;
 	// MsQuic
 	HQUIC           qstrm; // quic stream
 
@@ -82,8 +83,6 @@ struct ex_quic_conn {
 	nng_stream     stream;
 	nni_quic_conn *main;
 	nni_quic_conn *substrms[QUIC_SUB_STREAM_NUM]; // sub streams
-	nni_aio        reconaio[QUIC_SUB_STREAM_NUM]; // to reopen sub streams
-	nni_list       reconq; // Queue to reopen
 	// TODO int    priority[QUIC_SUB_STREAM_NUM]; // Priority
 	// TODO int    strategy; // Advanced strategy
 	nni_mtx        mtx;
@@ -224,9 +223,7 @@ ex_quic_conn_init(nni_quic_conn *c)
 	ec->main = c;
 	for (int i=0; i<QUIC_SUB_STREAM_NUM; i++) {
 		ec->substrms[i] = NULL;
-		nni_aio_init(&ec->reconaio[i], quic_substream_reopen, ec);
 	}
-	nni_aio_list_init(&ec->reconq);
 	nni_mtx_init(&ec->mtx);
 	return ec;
 }
@@ -255,11 +252,6 @@ ex_quic_conn_free(ex_quic_conn *ec)
 static void
 ex_quic_conn_close(ex_quic_conn *ec)
 {
-	nni_aio *aio;
-	// Cancel quic streams are reopening
-	while ((aio = nni_list_first(&ec->reconq)) != NULL) {
-		nni_aio_list_remove(aio);
-	}
 	for (int i=0; i<QUIC_SUB_STREAM_NUM; ++i) {
 		nni_quic_conn *subc;
 		// FIXME Should all sub stream protect by a lock???
@@ -698,38 +690,36 @@ quic_stream_fini(nni_quic_conn *c)
 }
 
 static void
+quic_substream_fini(nni_quic_conn *c)
+{
+	log_debug("[sid%d] finite", c->id);
+	msquic_strm_fini(c->qstrm);
+}
+
+static void
 quic_substream_reopen(void *arg)
 {
 	int rv;
-	nni_aio *aio;
-	ex_quic_conn *ec = arg;
-	nni_quic_conn *subc;
+	nni_quic_conn *c = arg;
+	nni_aio *aio = &c->reconaio;
 	// FIXME Not thread safely to get dialer
-	nni_quic_dialer *d = ec->main->dialer;
+	nni_quic_dialer *d = c->dialer;
+	if (c->reopen == false)
+		return;
 
-	if ((aio = nni_list_first(&ec->reconq)) == NULL) {
-		log_error("No reconnect quic stream found");
+	//log_info("[sid%d] reopen", c->id);
+	if ((rv = msquic_strm_open(d->qconn, c, d->priority)) != 0) {
+		log_info("[sid%d] reopen failed rv%d", c->id, rv);
+		nni_sleep_aio(5000, aio); // retry after 5s
 		return;
 	}
-	int idx = ((char *)aio - (char *)&ec->reconaio[0]) / sizeof(nni_aio);
-	log_info("[sid%d] reopen", idx + 1);
-	if ((rv = nni_msquic_quic_alloc(&subc, d)) != 0)
-		return;
-	if ((rv = msquic_strm_open(d->qconn, subc, d->priority)) != 0) {
-		quic_substream_rele(subc, true); // Could reopen
-		return;
-	}
-	subc->id = idx + 1;
-	subc->ec = ec;
-	subc->ismain = false;
 
-	nni_mtx_lock(&ec->mtx);
-	ec->substrms[idx] = subc;
-	nni_mtx_unlock(&ec->mtx);
+	nni_mtx_lock(&c->mtx);
+	c->closed = false;
+	nni_mtx_unlock(&c->mtx);
 
 	// Reopen finished
-	nni_aio_list_remove(aio);
-	log_info("[sid%d] reopen end", idx + 1);
+	log_info("[sid%d] reopen successfully", c->id);
 	return;
 }
 
@@ -1138,6 +1128,8 @@ nni_msquic_quic_alloc(nni_quic_conn **cp, nni_quic_dialer *d)
 	nni_mtx_init(&c->mtx);
 	nni_aio_list_init(&c->readq);
 	nni_aio_list_init(&c->writeq);
+
+	nni_aio_init(&c->reconaio, quic_substream_reopen, c);
 
 	c->stream.s_free  = quic_stream_free;
 	c->stream.s_close = quic_stream_close;
