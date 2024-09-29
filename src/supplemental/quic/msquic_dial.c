@@ -119,9 +119,11 @@ static void quic_stream_error(void *arg, int err);
 static void quic_stream_close(void *arg);
 static void quic_stream_dowrite(nni_quic_conn *c);
 static void quic_stream_rele(nni_quic_conn *c, void *arg);
-static void quic_substream_rele(nni_quic_conn *c, bool reopen);
+static void quic_substream_free(nni_quic_conn *c);
+static void quic_substream_rele(nni_quic_conn *c);
 static void quic_substream_close(nni_quic_conn *c);
 static void quic_substream_reopen(void *arg);
+static void quic_substream_fini(nni_quic_conn *c);
 
 static QUIC_STATUS verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *ca);
 
@@ -408,7 +410,7 @@ quic_dialer_cb(void *arg)
 			goto error;
 
 		if ((rv = msquic_strm_open(d->qconn, subc, d->priority)) != 0) {
-			quic_substream_rele(subc, false);
+			quic_substream_rele(subc);
 			goto error;
 		}
 		subc->id = i+1;
@@ -669,11 +671,13 @@ quic_stream_cb(int events, void *arg, int rc)
 		quic_stream_error(arg, NNG_ECONNSHUT);
 		// Marked it as closed, prevent explicit shutdown
 		c->closed = true;
-		if (c->ismain)
+		if (c->ismain) {
 			quic_stream_rele(c, NULL);
-		else
-			// It's the only place to release a quic sub stream with reopen
-			quic_substream_rele(c, true);
+		} else {
+			quic_substream_rele(c);
+			if (c->reopen == false)
+				quic_substream_free(c);
+		}
 		break;
 	default:
 		break;
@@ -737,29 +741,30 @@ quic_substream_close(nni_quic_conn *c)
 	nni_mtx_unlock(&c->mtx);
 }
 
-// No effects to the main stream
+// This should be call when main stream closed
 static void
-quic_substream_rele(nni_quic_conn *c, bool reopen)
+quic_substream_free(nni_quic_conn *c)
 {
-	int idx = c->id - 1;
-	ex_quic_conn *ec = c->ec;
-	if (reopen == false)
-		c->reopen = reopen;
-	bool reopen2 = c->reopen;
-
+	c->reopen = false;
 	quic_substream_close(c);
 	if (nni_atomic_dec_nv(&c->ref) != 0) {
 		return;
 	}
 	quic_stream_fini(c);
+}
 
-	log_info("[sid%d] ready to do reopen %d", idx+1, reopen2);
-	if (reopen2) {
-		// Do recover this quic stream
-		nni_aio *aio = &ec->reconaio[idx];
-		nni_list_append(&ec->reconq, aio);
-		nni_aio_finish(aio, 0, 0);
-	}
+// No effects to the main stream
+static void
+quic_substream_rele(nni_quic_conn *c)
+{
+	quic_substream_close(c);
+	// close and free the msquic stream but not free the nni_quic_conn
+	quic_substream_fini(c);
+
+	//log_info("[sid%d] ready to do reopen? %d", c->id);
+	// Do recover this quic stream
+	nni_aio *aio = &c->reconaio;
+	nni_aio_finish(aio, 0, 0);
 }
 
 static void
@@ -1042,7 +1047,6 @@ quic_stream_send(void *arg, nni_aio *aio)
 			if (c->closed && c->ismain == false) {
 				nni_mtx_unlock(&c->mtx);
 				nni_mtx_unlock(&ec->mtx);
-				quic_substream_rele(c, true);
 				nni_aio_finish_error(aio, NNG_ECANCELED);
 				return;
 			}
