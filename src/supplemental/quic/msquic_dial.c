@@ -56,6 +56,21 @@
 #include <time.h>
 #include <unistd.h>
 
+enum mltstrm_ev_type {
+	MLTSTRM_NEW = 0,
+	MLTSTRM_SEND,
+	MLTSTRM_RECV,
+	MLTSTRM_CLOSE,
+	MLTSTRM_SHUTDOWN,
+	MLTSTRM_FREE,
+};
+
+struct mltstrm_ev {
+	enum mltstrm_ev_type type;
+	int                  streamid;
+	nng_aio             *aio;
+};
+
 struct nni_quic_conn {
 	nng_stream      stream;
 	nni_list        readq;
@@ -66,6 +81,7 @@ struct nni_quic_conn {
 	nni_aio *       dial_aio;
 	// nni_aio *       qstrmaio; // Link to msquic_strm_cb
 	nni_quic_dialer *dialer;
+	int             id;
 
 	// MsQuic
 	HQUIC           qstrm; // quic stream
@@ -95,10 +111,18 @@ static void msquic_close();
 static int  msquic_conn_open(const char *host, const char *port, nni_quic_dialer *d);
 static void msquic_conn_close(HQUIC qconn, int rv);
 static void msquic_conn_fini(HQUIC qconn);
-static int  msquic_strm_open(HQUIC qconn, nni_quic_dialer *d);
+static int  msquic_strm_open(HQUIC qconn, nni_quic_conn *c, int priority);
 static void msquic_strm_close(HQUIC qstrm);
 static void msquic_strm_fini(HQUIC qstrm);
 static void msquic_strm_recv_start(HQUIC qstrm);
+
+static void mltstrm_thr_cb(void *arg);
+static inline int mltstrm_ev_put(nni_quic_dialer *d, enum mltstrm_ev_type type, int streamid, nng_aio *aio);
+static inline int mltstrm_ev_get(nni_quic_dialer *d, mltstrm_ev **evp);
+static inline void mltstrm_ev_flush(nni_quic_dialer *d);
+static void quic_substream_send(void *arg, nni_aio *aio);
+static void quic_substream_recv(void *arg, nni_aio *aio);
+static void quic_substream_close(void *arg);
 
 static void quic_dialer_cb(void *arg);
 static void quic_stream_error(void *arg, int err);
@@ -222,6 +246,14 @@ nni_quic_dialer_init(void **argp)
 	// multi_stream is disabled by default
 	d->enable_mltstrm = false;
 
+	if (0 != nng_thread_create(&d->mltstrm_thr, mltstrm_thr_cb, (void *)d)) {
+		log_error("mltstrm thr start failed");
+	}
+	nng_thread_set_name(d->mltstrm_thr, "inner multistream worker");
+	nni_mtx_init(&d->mltstrm_mtx);
+	nni_cv_init(&d->mltstrm_cv, &d->mltstrm_mtx);
+	nni_lmq_init(&d->mltstrm_evq, 2560);
+
 	memset(&d->settings, 0, sizeof(QUIC_SETTINGS));
 
 	d->priority = -1;
@@ -319,7 +351,8 @@ quic_dialer_cb(void *arg)
 	}
 
 	// Connection was established. Nice. Then. Create the main quic stream.
-	rv = msquic_strm_open(d->qconn, d);
+	rv = msquic_strm_open(d->qconn, c, d->priority);
+	mltstrm_ev_put(d, MLTSTRM_NEW, 0, NULL);
 
 error:
 	d->currcon = NULL;
@@ -335,6 +368,7 @@ error:
 
 	if (rv != 0) {
 		nng_stream_close(&c->stream);
+		mltstrm_ev_put(d, MLTSTRM_FREE, 0, NULL);
 		// Decement reference of dialer
 		nng_stream_free(&c->stream);
 		nni_aio_finish_error(aio, rv);
@@ -363,7 +397,7 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 	log_info("begin dialing!");
 	nni_atomic_inc64(&d->ref);
 
-	// Create a connection whenever dial. So it's okey. right?
+	// Create the main quic stream.
 	if ((rv = nni_msquic_quic_alloc(&c, d)) != 0) {
 		nni_aio_finish_error(aio, rv);
 		nni_msquic_quic_dialer_rele(d);
@@ -406,34 +440,28 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 	nni_aio_set_prov_data(aio, c);
 	c->dial_aio = aio;
 
-	if (ismain) {
-		// Make a quic connection to the url.
-		// Create stream after connection is established.
-		if (nni_aio_busy(d->qconaio)) {
-			rv = NNG_EBUSY;
-			goto error;
-		}
+	// Make a quic connection to the url.
+	// Create stream after connection is established.
+	if (nni_aio_busy(d->qconaio)) {
+		rv = NNG_EBUSY;
+		goto error;
+	}
 
-		if (nni_aio_begin(d->qconaio) != 0) {
-			rv = NNG_ECLOSED;
-			goto error;
-		}
+	if (nni_aio_begin(d->qconaio) != 0) {
+		rv = NNG_ECLOSED;
+		goto error;
+	}
 
-		if ((rv = nni_aio_schedule(d->qconaio, quic_dialer_cancel, d)) != 0) {
-			// FIX quic dialer allows dialing multiple connections in parallel
-			// however here we only has one qconaio?
-			rv = NNG_ECANCELED;
-			goto error;
-		}
+	if ((rv = nni_aio_schedule(d->qconaio, quic_dialer_cancel, d)) != 0) {
+		// FIX quic dialer allows dialing multiple connections in parallel
+		// however here we only has one qconaio?
+		rv = NNG_ECANCELED;
+		goto error;
+	}
 
-		if (0 != (rv = msquic_conn_open(host, port, d))) {
-			log_warn("QUIC dialing failed! %d", rv);
-			goto error;
-		}
-	} else {
-		if ((rv = msquic_strm_open(d->qconn, d)) != 0) {
-			goto error;
-		}
+	if (0 != (rv = msquic_conn_open(host, port, d))) {
+		log_warn("QUIC dialing failed! %d", rv);
+		goto error;
 	}
 
 	nni_list_append(&d->connq, aio);
@@ -576,7 +604,11 @@ quic_stream_cb(int events, void *arg, int rc)
 		quic_stream_error(arg, NNG_ECONNSHUT);
 		// Marked it as closed, prevent explicit shutdown
 		c->closed = true;
+		int streamid = c->id;
 		quic_stream_rele(c);
+		if (streamid != 0) {
+			mltstrm_ev_put(d, MLTSTRM_SHUTDOWN, streamid, NULL);
+		}
 		break;
 	default:
 		break;
@@ -613,6 +645,7 @@ static void
 quic_stream_free(void *arg)
 {
 	nni_quic_conn *c = arg;
+	mltstrm_ev_put(c->dialer, MLTSTRM_FREE, 0, NULL);
 	quic_stream_rele(c);
 }
 
@@ -645,6 +678,7 @@ quic_stream_close(void *arg)
 	nni_mtx_lock(&c->mtx);
 	if (c->closed != true) {
 		c->closed = true;
+		mltstrm_ev_put(c->dialer, MLTSTRM_CLOSE, 0, NULL);
 		msquic_strm_close(c->qstrm);
 	}
 	nni_mtx_unlock(&c->mtx);
@@ -669,6 +703,30 @@ quic_stream_recv(void *arg, nni_aio *aio)
 {
 	nni_quic_conn *c = arg;
 	int            rv;
+	int            strmid = 0;
+
+	// QUIC_HIGH_PRIOR_MSG OR MULTISTREAMS Feature!
+	int *flags = nni_aio_get_prov_data(aio);
+	nni_aio_set_prov_data(aio, NULL);
+
+	if (flags) {
+		//log_info("flag %x", *flags);
+		strmid = (*flags & QUIC_MULTISTREAM_FLAGS) >> 8;
+		if (strmid > QUIC_SUB_STREAM_NUM) {
+			log_error("Invalid streamid %d (0-%d are available)",
+					strmid, QUIC_SUB_STREAM_NUM);
+			if (nni_aio_begin(aio) != 0) {
+				return;
+			}
+			nng_aio_finish_error(aio, NNG_EINVAL);
+			return;
+		}
+	}
+	if (strmid != 0) {
+		if (!c->closed)
+			mltstrm_ev_put(c->dialer, MLTSTRM_RECV, strmid, aio);
+		return;
+	}
 
 	if (nni_aio_begin(aio) != 0) {
 		return;
@@ -740,7 +798,7 @@ quic_stream_dowrite_prior(nni_quic_conn *c, nni_aio *aio)
 static void
 quic_stream_dowrite(nni_quic_conn *c)
 {
-	log_debug("[quic dowrite] start %p", c->qstrm);
+	log_trace("[quic dowrite] start %p", c->qstrm);
 	nni_aio *aio;
 	int      rv;
 
@@ -759,11 +817,11 @@ quic_stream_dowrite(nni_quic_conn *c)
 
 		QUIC_BUFFER *buf=(QUIC_BUFFER*)malloc(sizeof(QUIC_BUFFER)*naiov);
 		for (uint8_t i = 0; i < naiov; ++i) {
-			log_debug("buf%d sz %d", i, aiov[i].iov_len);
 			buf[i].Buffer = aiov[i].iov_buf;
 			buf[i].Length = aiov[i].iov_len;
 			n += aiov[i].iov_len;
 		}
+		log_debug("[quic dowrite] niov%d sz%d", naiov, n);
 		nni_aio_set_input(aio, 0, buf);
 
 		// When streamsend is triggered. The msg is used by nng and msquic.
@@ -796,12 +854,32 @@ quic_stream_send(void *arg, nni_aio *aio)
 {
 	nni_quic_conn *c = arg;
 	int            rv;
-
-	nni_mtx_lock(&c->mtx);
+	int            strmid = 0;
 
 	// QUIC_HIGH_PRIOR_MSG Feature!
 	int *flags = nni_aio_get_prov_data(aio);
 	nni_aio_set_prov_data(aio, NULL);
+
+	if (flags) {
+		//log_info("flag %x", *flags);
+		strmid = (*flags & QUIC_MULTISTREAM_FLAGS) >> 8;
+		if (strmid > QUIC_SUB_STREAM_NUM) {
+			log_error("Invalid streamid %d (0-%d are available)",
+					strmid, QUIC_SUB_STREAM_NUM);
+			if (nni_aio_begin(aio) != 0) {
+				return;
+			}
+			nng_aio_finish_error(aio, NNG_EINVAL);
+			return;
+		}
+	}
+	if (strmid != 0) {
+		if (!c->closed)
+			mltstrm_ev_put(c->dialer, MLTSTRM_SEND, strmid, aio);
+		return;
+	}
+
+	nni_mtx_lock(&c->mtx);
 
 	if (flags) {
 		if (*flags & QUIC_HIGH_PRIOR_MSG) {
@@ -843,9 +921,6 @@ quic_stream_get(void *arg, const char *name, void *buf, size_t *szp, nni_type t)
 	NNI_ARG_UNUSED(szp);
 	NNI_ARG_UNUSED(t);
 	return 0;
-
-	// nni_quic_conn *c = arg;
-	// return (nni_getopt(tcp_options, name, c, buf, szp, t));
 }
 
 static int
@@ -857,9 +932,6 @@ quic_stream_set(void *arg, const char *name, const void *buf, size_t sz, nni_typ
 	NNI_ARG_UNUSED(sz);
 	NNI_ARG_UNUSED(t);
 	return 0;
-
-	// nni_quic_conn *c = arg;
-	// return (nni_setopt(tcp_options, name, c, buf, sz, t));
 }
 
 int
@@ -1378,15 +1450,12 @@ msquic_conn_fini(HQUIC qconn)
 }
 
 static int
-msquic_strm_open(HQUIC qconn, nni_quic_dialer *d)
+msquic_strm_open(HQUIC qconn, nni_quic_conn *c, int priority)
 {
 	HQUIC          strm = NULL;
 	QUIC_STATUS    rv;
-	nni_quic_conn *c;
 
 	log_debug("[strm][%p] Starting...", strm);
-
-	c = d->currcon;
 
 	rv = MsQuic->StreamOpen(qconn, QUIC_STREAM_OPEN_FLAG_NONE,
 	        msquic_strm_cb, (void *)c, &strm);
@@ -1395,9 +1464,9 @@ msquic_strm_open(HQUIC qconn, nni_quic_dialer *d)
 		goto error;
 	}
 
-	if (d->priority != -1) {
-		log_info("Ready to create a quic stream with priority: %d\n", d->priority);
-		MsQuic->SetParam(strm, QUIC_PARAM_STREAM_PRIORITY, sizeof(int), &d->priority);
+	if (priority != -1) {
+		log_info("Ready to create a quic stream with priority: %d\n", priority);
+		MsQuic->SetParam(strm, QUIC_PARAM_STREAM_PRIORITY, sizeof(int), &priority);
 	}
 
 	rv = MsQuic->StreamStart(strm, QUIC_STREAM_START_FLAG_NONE);
@@ -1442,3 +1511,239 @@ msquic_strm_recv_start(HQUIC qstrm)
 {
 	MsQuic->StreamReceiveSetEnabled(qstrm, TRUE);
 }
+
+/*********************** Multi streams *********************/
+
+static void
+mltstrm_thr_cb(void *arg)
+{
+	nni_quic_dialer *d = arg;
+
+	nni_quic_conn *substrms[QUIC_SUB_STREAM_NUM] = { 0 };
+	nni_quic_conn *c;
+
+	mltstrm_ev *ev;
+	int         rv;
+	bool        isreopen;
+	bool        running = true;
+
+	while (running) {
+		ev = NULL;
+		if (0 != mltstrm_ev_get(d, &ev))
+			continue;
+		switch (ev->type) {
+		case MLTSTRM_NEW:
+			for (int i=0; i<QUIC_SUB_STREAM_NUM; ++i) {
+				nni_quic_conn *subc;
+				if ((rv = nni_msquic_quic_alloc(&subc, d)) != 0)
+					continue;
+				if ((rv = msquic_strm_open(d->qconn, subc, d->priority)) != 0)
+					continue;
+				subc->id = i+1;
+				substrms[i] = subc;
+				nni_atomic_inc64(&d->ref);
+				log_info("[sid%d] quic sub stream started", subc->id);
+			}
+			isreopen = true;
+			break;
+		case MLTSTRM_SEND:
+			c = substrms[ev->streamid - 1];
+			if (c == NULL)
+				break;
+			quic_substream_send(c, ev->aio);
+			log_debug("[sid%d] quic sub stream send", ev->streamid);
+			break;
+		case MLTSTRM_RECV:
+			c = substrms[ev->streamid - 1];
+			if (c == NULL)
+				break;
+			quic_substream_recv(c, ev->aio);
+			log_info("[sid%d] quic sub stream recv", ev->streamid);
+			break;
+		case MLTSTRM_CLOSE:
+			for (int i=0; i<QUIC_SUB_STREAM_NUM; ++i) {
+				if (substrms[i] == NULL)
+					continue;
+				c = substrms[i];
+				substrms[i] = NULL;
+				quic_substream_close(c);
+				quic_stream_rele(c);
+				log_info("[sid%d] quic sub stream close and release", i + 1);
+			}
+			break;
+		case MLTSTRM_SHUTDOWN:
+			log_info("[sid%d] quic sub stream shutdown", ev->streamid);
+			if (isreopen == false)
+				break;
+			// do quic_stream_reopen;
+			nni_quic_conn *subc;
+			if ((rv = nni_msquic_quic_alloc(&subc, d)) != 0)
+				continue;
+			if ((rv = msquic_strm_open(d->qconn, subc, d->priority)) != 0)
+				continue;
+			subc->id = ev->streamid;
+			substrms[ev->streamid - 1] = subc;
+			nni_atomic_inc64(&d->ref);
+			log_info("[sid%d] quic sub stream reopened", ev->streamid);
+			break;
+		case MLTSTRM_FREE:
+			// Prevent all streams from reopen
+			isreopen = false;
+
+			/*
+			for (int i=0; i<QUIC_SUB_STREAM_NUM; ++i) {
+				if (substrms[i] == NULL)
+					continue;
+				c = substrms[i];
+				quic_stream_rele(c);
+				log_info("[sid%d] quic sub stream free", i + 1);
+			}
+			*/
+			mltstrm_ev_flush(d);
+
+			break;
+		default:
+			break;
+		}
+		nng_free(ev, sizeof(*ev));
+	}
+}
+
+static inline int
+mltstrm_ev_put(nni_quic_dialer *d, enum mltstrm_ev_type type, int streamid, nng_aio *aio)
+{
+	int rv;
+	mltstrm_ev *ev = nng_alloc(sizeof(mltstrm_ev));
+	if (ev == NULL) {
+		return NNG_ENOMEM;
+	}
+	ev->type = type;
+	ev->streamid = streamid;
+	ev->aio = aio;
+
+	nni_mtx_lock(&d->mltstrm_mtx);
+	rv = nni_lmq_put(&d->mltstrm_evq, (nng_msg *)ev);
+	nni_cv_wake1(&d->mltstrm_cv);
+	nni_mtx_unlock(&d->mltstrm_mtx);
+	if (rv != 0)
+		log_warn("LMQ is FULLLLLLL");
+
+	return rv;
+}
+
+static inline void
+mltstrm_ev_flush(nni_quic_dialer *d)
+{
+	mltstrm_ev *ev;
+	nni_mtx_lock(&d->mltstrm_mtx);
+	while (!nni_lmq_empty(&d->mltstrm_evq)) {
+		nni_lmq_get(&d->mltstrm_evq, (nng_msg **)&ev);
+		if (ev->aio)
+			nng_aio_finish(ev->aio, NNG_ECONNSHUT);
+		nng_free(ev, sizeof(*ev));
+	}
+	nni_mtx_unlock(&d->mltstrm_mtx);
+}
+
+static inline int
+mltstrm_ev_get(nni_quic_dialer *d, mltstrm_ev **evp)
+{
+	int rv;
+
+	nni_mtx_lock(&d->mltstrm_mtx);
+	nni_cv_wait(&d->mltstrm_cv);
+	rv = nni_lmq_get(&d->mltstrm_evq, (nng_msg **)evp);
+	nni_mtx_unlock(&d->mltstrm_mtx);
+
+	return rv;
+}
+
+static void
+quic_substream_close(void *arg)
+{
+	nni_quic_conn *c = arg;
+	nni_mtx_lock(&c->mtx);
+	if (c->closed != true) {
+		c->closed = true;
+		msquic_strm_close(c->qstrm);
+	}
+	nni_mtx_unlock(&c->mtx);
+}
+
+static void
+quic_substream_send(void *arg, nni_aio *aio)
+{
+	nni_quic_conn *c = arg;
+	int            rv;
+
+	nni_mtx_lock(&c->mtx);
+
+	// QUIC_HIGH_PRIOR_MSG Feature!
+	int *flags = nni_aio_get_prov_data(aio);
+	nni_aio_set_prov_data(aio, NULL);
+
+	if (flags) {
+		if (*flags & QUIC_HIGH_PRIOR_MSG) {
+			quic_stream_dowrite_prior(c, aio);
+			nni_mtx_unlock(&c->mtx);
+			return;
+		}
+	}
+
+	nni_mtx_unlock(&c->mtx);
+
+	if (nni_aio_begin(aio) != 0) {
+		return;
+	}
+
+	nni_mtx_lock(&c->mtx);
+
+	if ((rv = nni_aio_schedule(aio, quic_stream_cancel, c)) != 0) {
+		nni_mtx_unlock(&c->mtx);
+		nni_aio_finish_error(aio, rv);
+		return;
+	}
+
+	nni_aio_list_append(&c->writeq, aio);
+
+	if (nni_list_first(&c->writeq) == aio) {
+		quic_stream_dowrite(c);
+		// In msquic. Write can be done at any time.
+	}
+	nni_mtx_unlock(&c->mtx);
+}
+
+static void
+quic_substream_recv(void *arg, nni_aio *aio)
+{
+	nni_quic_conn *c = arg;
+	int            rv;
+
+	if (nni_aio_begin(aio) != 0) {
+		return;
+	}
+
+	if (c->closed) {
+		nni_aio_finish_error(aio, NNG_ECLOSED);
+		return;
+	}
+
+	nni_mtx_lock(&c->mtx);
+
+	if ((rv = nni_aio_schedule(aio, quic_stream_cancel, c)) != 0) {
+		nni_mtx_unlock(&c->mtx);
+		nni_aio_finish_error(aio, rv);
+		return;
+	}
+	nni_aio_list_append(&c->readq, aio);
+
+	// Receive start if there are only one aio in readq.
+	if (nni_list_first(&c->readq) == aio) {
+		// In msquic. To avoid repeated memory copies. We just enable
+		// the receive. And doread in msquic_strm_cb. So there is
+		// only one copy from msquic to nanonng.
+		msquic_strm_recv_start(c->qstrm);
+	}
+	nni_mtx_unlock(&c->mtx);
+}
+

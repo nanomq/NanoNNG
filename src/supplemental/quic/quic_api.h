@@ -2,12 +2,15 @@
 #define NNG_SUPP_QUIC_API_H
 
 #define QUIC_HIGH_PRIOR_MSG (0x01)
+#define QUIC_MULTISTREAM_FLAGS (0xFF00)
 
 #define QUIC_MAIN_STREAM (1)
 #define QUIC_SUB_STREAM (0)
 
 #define QUIC_IDLE_TIMEOUT_DEFAULT (90)
 #define QUIC_KEEPALIVE_DEFAULT (60)
+
+#define QUIC_SUB_STREAM_NUM (4)
 
 #include "core/nng_impl.h"
 #include "nng/nng.h"
@@ -33,6 +36,7 @@ extern void nni_quic_listener_listen(nni_quic_listener *, const char *, const ch
 extern void nni_quic_listener_accept(nni_quic_listener *, nng_aio *aio);
 
 typedef struct nni_quic_conn nni_quic_conn;
+typedef struct mltstrm_ev mltstrm_ev;
 
 extern int  nni_msquic_quic_alloc(nni_quic_conn **, nni_quic_dialer *);
 extern void nni_msquic_quic_init(nni_quic_conn *);
@@ -51,6 +55,11 @@ struct nni_quic_dialer {
 	nni_mtx                 mtx;
 	nni_atomic_u64          ref;
 	nni_atomic_bool         fini;
+
+	nng_thread             *mltstrm_thr;
+	nni_mtx                 mltstrm_mtx;
+	nni_cv                  mltstrm_cv;
+	nni_lmq                 mltstrm_evq;
 
 	// MsQuic
 	HQUIC    qconn; // quic connection
