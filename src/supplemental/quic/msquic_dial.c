@@ -242,9 +242,11 @@ ex_quic_conn_free(ex_quic_conn *ec)
 		}
 		ec->substrms[i] = NULL;
 		nni_mtx_unlock(&ec->mtx);
+		nni_aio_close(&subc->reconaio);
+		nni_aio_stop(&subc->reconaio);
+		log_info("[sid%d] Stop reopen!", subc->id);
 
-		quic_substream_rele(subc, false);
-		nni_aio_fini(&ec->reconaio[i]);
+		quic_substream_free(subc);
 	}
 
 	nni_mtx_fini(&ec->mtx);
