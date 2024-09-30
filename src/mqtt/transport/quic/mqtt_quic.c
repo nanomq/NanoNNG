@@ -521,7 +521,8 @@ mqtt_quictran_pipe_send_cb(void *arg)
 	msg = nni_aio_get_msg(aio);
 
 	if ((rv = nni_aio_result(txaio)) != 0) {
-		nni_pipe_bump_error(p->npipe, rv);
+		if (rv != NNG_ECANCELED)
+			nni_pipe_bump_error(p->npipe, rv);
 		nni_aio_list_remove(aio);
 		nni_mtx_unlock(&p->mtx);
 		nni_aio_finish_error(aio, rv);
