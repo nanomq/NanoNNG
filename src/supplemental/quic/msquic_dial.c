@@ -109,7 +109,7 @@ static void msquic_close();
 static int  msquic_conn_open(const char *host, const char *port, nni_quic_dialer *d);
 static void msquic_conn_close(HQUIC qconn, int rv);
 static void msquic_conn_fini(HQUIC qconn);
-static int  msquic_strm_open(HQUIC qconn, nni_quic_conn *c, int priority);
+static int  msquic_strm_open(HQUIC qconn, nni_quic_conn *c, int priority, bool isreopen);
 static void msquic_strm_close(HQUIC qstrm);
 static void msquic_strm_fini(HQUIC qstrm);
 static void msquic_strm_recv_start(HQUIC qstrm);
@@ -398,7 +398,7 @@ quic_dialer_cb(void *arg)
 	// Connection was established. Nice. Then. Create the main and sub quic streams.
 	c->ismain = true;
 	c->id     = 0;
-	if ((rv = msquic_strm_open(d->qconn, c, d->priority)) != 0)
+	if ((rv = msquic_strm_open(d->qconn, c, d->priority, false)) != 0)
 		goto error;
 
 	ec = ex_quic_conn_init(c);
@@ -411,7 +411,7 @@ quic_dialer_cb(void *arg)
 		if ((rv = nni_msquic_quic_alloc(&subc, d)) != 0)
 			goto error;
 
-		if ((rv = msquic_strm_open(d->qconn, subc, d->priority)) != 0) {
+		if ((rv = msquic_strm_open(d->qconn, subc, d->priority, false)) != 0) {
 			quic_substream_rele(subc);
 			goto error;
 		}
@@ -719,7 +719,7 @@ quic_substream_reopen(void *arg)
 		return;
 
 	//log_info("[sid%d] reopen", c->id);
-	if ((rv = msquic_strm_open(d->qconn, c, d->priority)) != 0) {
+	if ((rv = msquic_strm_open(d->qconn, c, d->priority, true)) != 0) {
 		log_info("[sid%d] reopen failed rv%d", c->id, rv);
 		nni_sleep_aio(5000, aio); // retry after 5s
 		return;
@@ -1642,7 +1642,7 @@ msquic_conn_fini(HQUIC qconn)
 }
 
 static int
-msquic_strm_open(HQUIC qconn, nni_quic_conn *c, int priority)
+msquic_strm_open(HQUIC qconn, nni_quic_conn *c, int priority, bool isreopen)
 {
 	HQUIC          strm = NULL;
 	QUIC_STATUS    rv;
@@ -1667,7 +1667,8 @@ msquic_strm_open(HQUIC qconn, nni_quic_conn *c, int priority)
 		goto error;
 	}
 	// Stream is opened and started
-	nni_atomic_inc(&c->ref);
+	if (!isreopen)
+		nni_atomic_inc(&c->ref);
 
 	// Not ready for receiving
 	MsQuic->StreamReceiveSetEnabled(strm, FALSE);
