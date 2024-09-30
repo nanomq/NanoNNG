@@ -670,19 +670,20 @@ quic_stream_cb(int events, void *arg, int rc)
 	// case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 	// case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
+		// Marked it as closed, prevent explicit shutdown
+		c->closed = true;
 		if (c->ismain)
 			quic_stream_error(arg, NNG_ECONNSHUT);
 		else
 			quic_stream_error(arg, NNG_ECANCELED);
 
-		// Marked it as closed, prevent explicit shutdown
-		c->closed = true;
 		if (c->ismain) {
 			quic_stream_rele(c, NULL);
 		} else {
-			quic_substream_rele(c);
 			if (c->reopen == false)
 				quic_substream_free(c);
+			else
+				quic_substream_rele(c);
 		}
 		break;
 	default:
@@ -1050,7 +1051,7 @@ quic_stream_send(void *arg, nni_aio *aio)
 
 		if (c) {
 			nni_mtx_lock(&c->mtx);
-			if (c->closed && c->ismain == false) {
+			if (c->closed) {
 				nni_mtx_unlock(&c->mtx);
 				nni_mtx_unlock(&ec->mtx);
 				nni_aio_finish_error(aio, NNG_ECANCELED);
