@@ -573,7 +573,9 @@ mqtt_quictran_pipe_recv_cb(void *arg)
 		// close the pipe
 		goto recv_error;
 	}
-
+	if (p->closed) {
+		goto recv_error;
+	}
 	n = nni_aio_count(rxaio);
 	p->gotrxhead += n;
 
