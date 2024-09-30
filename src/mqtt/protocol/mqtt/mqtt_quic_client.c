@@ -320,13 +320,16 @@ mqtt_quic_send_cb(void *arg)
 	mqtt_sock_t *s   = p->mqtt_sock;
 	nni_msg     *msg = NULL;
 	nni_aio     *aio;
+	int          rv;
 
-	if (nni_aio_result(&p->send_aio) != 0) {
+	if ((rv = nni_aio_result(&p->send_aio)) != 0) {
 		// We failed to send... clean up and deal with it.
-		log_warn("fail to send on aio");
-		// msg is already be freed in QUIC transport
-		nni_aio_set_msg(&p->send_aio, NULL);
-		return;
+		log_warn("fail to send on aio %p rv%d", &p->send_aio, rv);
+		if (rv != NNG_ECANCELED) {
+			// msg is already be freed in QUIC transport
+			nni_aio_set_msg(&p->send_aio, NULL);
+			return;
+		}
 	}
 	if (nni_atomic_get_bool(&s->closed) ||
 	    nni_atomic_get_bool(&p->closed)) {
