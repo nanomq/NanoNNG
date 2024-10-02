@@ -242,9 +242,11 @@ ex_quic_conn_free(ex_quic_conn *ec)
 		}
 		ec->substrms[i] = NULL;
 		nni_mtx_unlock(&ec->mtx);
+		subc->reopen = false;
 		nni_aio_close(&subc->reconaio);
 		nni_aio_stop(&subc->reconaio);
-		log_info("[sid%d] Stop reopen!", subc->id);
+		log_info("[sid%d] Stop reopen and stream rele! aio%p",
+				subc->id, &subc->reconaio);
 
 		quic_substream_free(subc);
 	}
@@ -720,7 +722,7 @@ quic_substream_reopen(void *arg)
 
 	//log_info("[sid%d] reopen", c->id);
 	if ((rv = msquic_strm_open(d->qconn, c, d->priority, true)) != 0) {
-		log_info("[sid%d] reopen failed rv%d", c->id, rv);
+		log_info("[sid%d] reopen failed rv%d aio%p", c->id, rv, aio);
 		nni_sleep_aio(5000, aio); // retry after 5s
 		return;
 	}
@@ -730,7 +732,7 @@ quic_substream_reopen(void *arg)
 	nni_mtx_unlock(&c->mtx);
 
 	// Reopen finished
-	log_info("[sid%d] reopen successfully", c->id);
+	log_info("[sid%d] reopen successfully aio%p", c->id, aio);
 	return;
 }
 
@@ -752,7 +754,6 @@ quic_substream_close(nni_quic_conn *c)
 static void
 quic_substream_free(nni_quic_conn *c)
 {
-	c->reopen = false;
 	quic_substream_close(c);
 	if (nni_atomic_dec_nv(&c->ref) != 0) {
 		return;
@@ -1417,9 +1418,9 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 		// Both directions of the stream have been shut down and MsQuic
 		// is done with the stream. It can now be safely cleaned up.
-		log_warn("[sid%d][%p] QUIC_STREAM_EVENT shutdown: All done.", c->id, stream);
-		log_info("[sid%d] close stream with Error Code: %llu", c->id,
-		    (unsigned long long) Event->SHUTDOWN_COMPLETE.ConnectionErrorCode);
+		log_warn("[sid%d][%p] QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:"
+		         " All done stream rele %ld",
+				c->id, stream, Event->SHUTDOWN_COMPLETE.ConnectionErrorCode);
 		quic_stream_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c, 0);
 		break;
 	case QUIC_STREAM_EVENT_START_COMPLETE:
@@ -1686,7 +1687,7 @@ error:
 static void
 msquic_strm_close(HQUIC qstrm)
 {
-	log_info("stream %p shutdown", qstrm);
+	log_debug("stream %p shutdown", qstrm);
 	MsQuic->StreamShutdown(
 	    qstrm, QUIC_STREAM_SHUTDOWN_FLAG_ABORT | QUIC_STREAM_SHUTDOWN_FLAG_IMMEDIATE, NNG_ECONNSHUT);
 }
@@ -1694,7 +1695,7 @@ msquic_strm_close(HQUIC qstrm)
 static void
 msquic_strm_fini(HQUIC qstrm)
 {
-	log_info("stream %p fini", qstrm);
+	log_debug("stream %p fini", qstrm);
 	MsQuic->StreamClose(qstrm);
 }
 
