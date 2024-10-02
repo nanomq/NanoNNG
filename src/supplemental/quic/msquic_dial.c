@@ -680,7 +680,7 @@ quic_stream_cb(int events, void *arg, int rc)
 			quic_stream_error(arg, NNG_ECANCELED);
 
 		if (c->ismain) {
-			quic_stream_rele(c, NULL);
+			quic_stream_rele(c, c->ec);
 		} else {
 			if (c->reopen == false)
 				quic_substream_free(c);
