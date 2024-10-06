@@ -489,3 +489,9 @@ nni_id_visit(nni_id_map *m, uint64_t *keyp, void **valp, uint32_t *cursor)
 	*cursor = index;
 	return (false);
 }
+
+uint32_t
+nni_id_count(const nni_id_map *m)
+{
+	return (m->id_count);
+}
