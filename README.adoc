@@ -22,6 +22,15 @@ image:https://img.shields.io/static/v1?label=&message=docs&logo=asciidoctor&logo
 image:https://img.shields.io/github/license/nanomsg/nng.svg?logoColor=silver&logo=open-source-initiative&label=&color=blue[MIT License,link="https://github.com/nanomsg/nng/blob/master/LICENSE.txt"]
 image:https://img.shields.io/github/v/tag/nanomsg/nng.svg?logo=github&label=[Latest version,link="https://github.com/nanomsg/nng/releases"]
 
+<<<<<<< HEAD
+=======
+Please see <<UKRAINE#,here>> for an important message for the people of Russia.
+
+NOTE: THIS IS THE DEVELOPMENT BRANCH FOR NNG.  The content here is
+under development and may not be stable.  Please use the `stable` branch
+for the latest stable release.
+
+>>>>>>> 4ae376e82 (README update for development vs. stable)
 NOTE: If you are looking for the legacy version of nanomsg, please
 see the https://github.com/nanomsg/nanomsg[nanomsg] repository.
 
