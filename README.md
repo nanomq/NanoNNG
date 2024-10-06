@@ -14,7 +14,8 @@ This is NNG repo of NanoMQ project. I have updated it to support MQTT protocol.
 
 Please see [here](UKRAINE) for an important message for the people of Russia.
 
-> [!NOTE] _THIS IS THE DEVELOPMENT BRANCH FOR NNG._
+> [!NOTE]
+> This is the development branch for NNG.
 > The content here is
 > under development and may not be suitable for production use.
 > Please use the [`stable`](https://github.com/nanomsg/nng/tree/stable) branch
