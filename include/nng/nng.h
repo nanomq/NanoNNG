@@ -1526,18 +1526,6 @@ NNG_DECL int nng_listener_setopt_ptr(
 NNG_DECL int nng_listener_setopt_string(
     nng_listener, const char *, const char *) NNG_DEPRECATED;
 
-// nng_closeall closes all open sockets. Do not call this from
-// a library; it will affect all sockets.
-NNG_DECL void nng_closeall(void) NNG_DEPRECATED;
-
-// THese functions are deprecated, but they really serve no useful purpose.
-NNG_DECL int nng_stream_set_addr(
-    nng_stream *, const char *, const nng_sockaddr *) NNG_DEPRECATED;
-NNG_DECL int nng_ctx_get_addr(
-    nng_ctx, const char *, nng_sockaddr *) NNG_DEPRECATED;
-NNG_DECL int nng_ctx_set_addr(
-    nng_ctx, const char *, const nng_sockaddr *) NNG_DEPRECATED;
-
 #endif // NNG_ELIDE_DEPRECATED
 
 // nng_init_parameter is used by applications to change a tunable setting.
