@@ -30,7 +30,9 @@ typedef enum {
 	RULE_FORWORD_SQLITE,
 	RULE_FORWORD_FDB,
 	RULE_FORWORD_MYSQL,
-	RULE_FORWORD_REPUB
+	RULE_FORWORD_REPUB,
+	RULE_FORWORD_POSTGRESQL,
+	RULE_FORWORD_TIMESCALEDB,
 } rule_forword_type;
 
 typedef struct {
@@ -72,7 +74,23 @@ typedef struct {
 } rule_mysql;
 
 typedef struct {
-	/* 
+	char *table;
+	char *host;
+	char *username;
+	char *password;
+	void *conn;
+} rule_postgresql;
+
+typedef struct {
+	char *table;
+	char *host;
+	char *username;
+	char *password;
+	void *conn;
+} rule_timescaledb;
+
+typedef struct {
+	/*
 	** flag[0] == RULE_QOS,
 	** flag[1] == RULE_ID,
 	** flag[2] == RULE_TOPIC,
@@ -97,10 +115,12 @@ typedef struct {
 	rule_key         *key;
 	repub_t          *repub;
 	rule_mysql       *mysql;
+	rule_postgresql  *postgresql;
+	rule_timescaledb  *timescaledb;
 } rule;
 
 typedef struct {
-	/* 
+	/*
 	** 00000000 == OFF,
 	** 00000001 == Sqlite ON,
 	** 00000010 == Fdb ON,
@@ -111,16 +131,20 @@ typedef struct {
 	** 01000000
 	*/
 	uint8_t option;
-	/* 
+	/*
 	** rdb[0] == Sqlite
 	** rdb[1] == Fdb
 	** rdb[2] == MySOL
 	** rdb[3] == RePub
+	** rdb[4] == PostgreSQL
+	** rdb[5] == timescaledb
 	*/
-	void *rdb[3]; 
+	void *rdb[5];
 	rule *rules;
 	char *sqlite_db;
 	char *mysql_db;
+	char *postgresql_db;
+	char *timescale_db;
 	nng_mtx *rule_mutex;
 } conf_rule;
 
@@ -134,5 +158,11 @@ void        rule_free(rule *r);
 bool        rule_mysql_check(rule_mysql *mysql);
 void        rule_mysql_free(rule_mysql *mysql);
 rule_mysql *rule_mysql_init(void);
+bool        rule_postgresql_check(rule_postgresql *postgresql);
+void        rule_postgresql_free(rule_postgresql *postgresql);
+rule_postgresql *rule_postgresql_init(void);
+bool        rule_timescaledb_check(rule_timescaledb *timescaledb);
+void        rule_timescaledb_free(rule_timescaledb *timescaledb);
+rule_timescaledb *rule_timescaledb_init(void);
 
 #endif
