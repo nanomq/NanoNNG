@@ -150,8 +150,8 @@ extern "C" {
 // NNG_MAX_RECV_LMQ and NNG_MAX_SEND_LMQ define the length of waiting queue
 // they are the length of nni_lmq, please be ware it affects the memory usage
 // significantly while having heavy throughput
-#define NNG_MAX_RECV_LMQ 16
-#define NNG_MAX_SEND_LMQ 16
+#define NNG_MAX_RECV_LMQ 64
+#define NNG_MAX_SEND_LMQ 64
 #define NNG_TRAN_MAX_LMQ_SIZE 128
 
 // NNG_TLS_xxx options can be set on the client as well.
