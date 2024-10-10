@@ -871,7 +871,7 @@ quic_stream_recv(void *arg, nni_aio *aio)
 	nni_aio_set_prov_data(aio, NULL);
 
 	if (flags) {
-		strmid = (*flags & QUIC_MULTISTREAM_FLAGS) >> 8;
+		strmid = (*flags & QUIC_MULTISTREAM_FLAGS);
 		if (strmid > QUIC_SUB_STREAM_NUM) {
 			if (nni_aio_begin(aio) != 0) {
 				return;
@@ -1027,7 +1027,7 @@ quic_stream_send(void *arg, nni_aio *aio)
 
 	if (flags) {
 		//log_info("flag %x", *flags);
-		strmid = (*flags & QUIC_MULTISTREAM_FLAGS) >> 8;
+		strmid = (*flags & QUIC_MULTISTREAM_FLAGS);
 		if (strmid > QUIC_SUB_STREAM_NUM) {
 			log_error("Invalid streamid %d (0-%d are available)",
 					strmid, QUIC_SUB_STREAM_NUM);
