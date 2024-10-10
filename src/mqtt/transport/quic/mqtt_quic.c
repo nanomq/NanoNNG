@@ -24,7 +24,19 @@
 typedef struct mqtt_quictran_pipe mqtt_quictran_pipe;
 typedef struct mqtt_quictran_ep   mqtt_quictran_ep;
 
+typedef struct mqtt_quic_sub_stream   quic_substream;
+
+struct mqtt_quic_sub_stream {
+	mqtt_quictran_pipe  *pipe;		// refer to main pipe
+	nni_aio         	 saio;		//for substream
+	nni_aio         	 raio;
+	uint16_t			 level;
+	uint16_t			 id;	// To command stream layer
+	uint8_t         	 txlen[sizeof(uint64_t)];
+	uint8_t          	 rxlen[sizeof(uint64_t)]; // fixed header
+};
 struct mqtt_quictran_pipe {
+	quic_substream   substreams[QUIC_SUB_STREAM_NUM];
 	nng_stream *     conn;
 	nni_pipe *       npipe;
 	nni_list_node    node;
@@ -48,8 +60,6 @@ struct mqtt_quictran_pipe {
 	nni_list         sendq;
 	nni_aio         *txaio;
 	nni_aio         *rxaio;
-	nni_aio         *saio[QUIC_SUB_STREAM_NUM];	//for substream
-	nni_aio         *raio[QUIC_SUB_STREAM_NUM]; //for substream
 	nni_aio         *qsaio; // aio for qos/pingreq
 	nni_aio         *negoaio;
 	nni_aio         *rpaio;
@@ -95,12 +105,17 @@ struct mqtt_quictran_ep {
 #endif
 };
 
+static void mqtt_share_pipe_send_cb(void *, nni_aio *, quic_substream *);
+static void mqtt_share_pipe_recv_cb(void *, nni_aio *, quic_substream *);
 static void mqtt_quictran_pipe_send_start(mqtt_quictran_pipe *);
-static void mqtt_quictran_pipe_recv_start(mqtt_quictran_pipe *);
+static void mqtt_quictran_subpipe_send_cb(void *);
+static void mqtt_quictran_subpipe_recv_cb(void *);
 static void mqtt_quictran_pipe_send_cb(void *);
-static void mqtt_quictran_pipe_qos_send_cb(void *);
-static void mqtt_quictran_pipe_rp_send_cb(void *arg);
 static void mqtt_quictran_pipe_recv_cb(void *);
+
+static void mqtt_quictran_pipe_recv_start(mqtt_quictran_pipe *);
+static void mqtt_quictran_pipe_qos_send_cb(void *);
+static void mqtt_quictran_pipe_rp_send_cb(void *);
 static void mqtt_quictran_pipe_nego_cb(void *);
 static void mqtt_quictran_ep_fini(void *);
 static void mqtt_quictran_pipe_fini(void *);
@@ -235,6 +250,16 @@ mqtt_quictran_pipe_alloc(mqtt_quictran_pipe **pipep)
 		mqtt_quictran_pipe_fini(p);
 		return (rv);
 	}
+
+	for (uint8_t i = 0; i < QUIC_SUB_STREAM_NUM; i++)
+	{
+		quic_substream *stream = &p->substreams[i];
+		stream->pipe = p;
+		stream->id = (i + 1) << 8;
+		nni_aio_init(&stream->raio, mqtt_quictran_subpipe_recv_cb, stream);
+		nni_aio_init(&stream->saio, mqtt_quictran_subpipe_send_cb, stream);
+	}
+
 	nni_aio_list_init(&p->recvq);
 	nni_aio_list_init(&p->sendq);
 	nni_atomic_flag_reset(&p->reaped);
@@ -579,15 +604,37 @@ mqtt_quictran_pipe_rp_send_cb(void *arg)
 	return;
 }
 
+// only for main stream
 static void
 mqtt_quictran_pipe_send_cb(void *arg)
+{
+	mqtt_quictran_pipe *p = arg;
+	nni_aio *          txaio = p->txaio;
+
+	mqtt_share_pipe_send_cb(p, txaio, NULL);
+}
+
+// only for sub stream
+static void
+mqtt_quictran_subpipe_send_cb(void *arg)
+{
+	quic_substream 	   *stream = arg;
+	mqtt_quictran_pipe *pipe   = stream->pipe;
+	nni_aio            *txaio  = &stream->saio;
+
+	mqtt_share_pipe_send_cb(pipe, txaio, stream);
+}
+
+// shared by sub stream and main stream
+static void
+mqtt_share_pipe_send_cb(void *arg, nni_aio *saio, quic_substream *stream)
 {
 	mqtt_quictran_pipe *p = arg;
 	int                rv;
 	nni_aio *          aio;
 	size_t             n;
 	nni_msg *          msg;
-	nni_aio *          txaio = p->txaio;
+	nni_aio *          txaio = saio;
 
 	nni_mtx_lock(&p->mtx);
 	aio = nni_list_first(&p->sendq);
@@ -627,6 +674,26 @@ mqtt_quictran_pipe_send_cb(void *arg)
 static void
 mqtt_quictran_pipe_recv_cb(void *arg)
 {
+	mqtt_quictran_pipe *pipe   = arg;
+	nni_aio            *rxaio  = pipe->rxaio;
+
+	mqtt_share_pipe_recv_cb(pipe, rxaio, NULL);
+}
+
+// only for sub stream
+static void
+mqtt_quictran_subpipe_recv_cb(void *arg)
+{
+	quic_substream 	   *stream = arg;
+	mqtt_quictran_pipe *pipe   = stream->pipe;
+	nni_aio            *rxaio  = &stream->raio;
+
+	mqtt_share_pipe_recv_cb(pipe, rxaio, stream);
+}
+
+static void
+mqtt_share_pipe_recv_cb(void *arg, nni_aio *raio, quic_substream *stream)
+{
 	nni_aio *          aio;
 	nni_iov            iov[2];
 	uint8_t            type, pos, flags;
@@ -634,7 +701,7 @@ mqtt_quictran_pipe_recv_cb(void *arg)
 	size_t             n;
 	nni_msg *          msg, *qmsg;
 	mqtt_quictran_pipe *p    = arg;
-	nni_aio *          rxaio = p->rxaio;
+	nni_aio *          rxaio = raio;
 	bool               ack   = false;
 
 	nni_mtx_lock(&p->mtx);
@@ -944,9 +1011,6 @@ mqtt_quictran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 	nni_aio_finish_error(aio, rv);
 }
 
-static int quic_streamid;
-static int quic_roundrobin = 1;
-
 static void
 mqtt_quictran_pipe_send_start(mqtt_quictran_pipe *p)
 {
@@ -1005,10 +1069,7 @@ mqtt_quictran_pipe_send_start(mqtt_quictran_pipe *p)
 		iov[niov].iov_len = nni_msg_len(msg);
 		niov++;
 	}
-	quic_roundrobin = (quic_roundrobin + 1) % 4;
-	quic_streamid = (quic_roundrobin + 1) << 8;
 
-	nng_aio_set_prov_data(txaio, &quic_streamid);
 	nni_aio_set_iov(txaio, niov, iov);
 	nng_stream_send(p->conn, txaio);
 }
@@ -1093,6 +1154,24 @@ mqtt_quictran_pipe_recv_start(mqtt_quictran_pipe *p)
 	iov.iov_len   = 2;
 	nni_aio_set_iov(rxaio, 1, &iov);
 	nng_stream_recv(p->conn, rxaio);
+	for (uint8_t i = 0; i < QUIC_SUB_STREAM_NUM; i++)
+	{
+		// simply go through all sub stream again.
+		// TODO link recv action with each cb
+		quic_substream *stream = &p->substreams[i];
+		if (!nni_aio_list_active(&stream->raio)) {
+			rxaio         = &stream->raio;
+			p->gotrxhead  = 0;
+			// 2 = MIN_FIXED_HEADER_LEN
+			p->wantrxhead = 2;
+			iov.iov_buf   = stream->rxlen;
+			iov.iov_len   = 2;
+			nni_aio_set_iov(rxaio, 1, &iov);
+
+			nng_aio_set_prov_data(rxaio, &stream->id);
+			nng_stream_recv(p->conn, rxaio);
+		}
+	}
 }
 
 static void
