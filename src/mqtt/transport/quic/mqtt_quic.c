@@ -30,10 +30,16 @@ struct mqtt_quic_sub_stream {
 	mqtt_quictran_pipe  *pipe;		// refer to main pipe
 	nni_aio         	 saio;		//for substream
 	nni_aio         	 raio;
+	nni_msg             *rxmsg;
 	uint16_t			 level;
 	uint16_t			 id;	// To command stream layer
 	uint8_t         	 txlen[sizeof(uint64_t)];
 	uint8_t          	 rxlen[sizeof(uint64_t)]; // fixed header
+
+	size_t           gottxhead;
+	size_t           gotrxhead;
+	size_t           wanttxhead;
+	size_t           wantrxhead;
 };
 struct mqtt_quictran_pipe {
 	quic_substream   substreams[QUIC_SUB_STREAM_NUM];
@@ -106,7 +112,7 @@ struct mqtt_quictran_ep {
 };
 
 static void mqtt_share_pipe_send_cb(void *, nni_aio *, quic_substream *);
-static void mqtt_share_pipe_recv_cb(void *, nni_aio *, quic_substream *);
+static void mqtt_share_pipe_recv_cb(void *, nni_aio *, quic_substream *, nni_msg **);
 static void mqtt_quictran_pipe_send_start(mqtt_quictran_pipe *);
 static void mqtt_quictran_subpipe_send_cb(void *);
 static void mqtt_quictran_subpipe_recv_cb(void *);
@@ -677,7 +683,8 @@ mqtt_quictran_pipe_recv_cb(void *arg)
 	mqtt_quictran_pipe *pipe   = arg;
 	nni_aio            *rxaio  = pipe->rxaio;
 
-	mqtt_share_pipe_recv_cb(pipe, rxaio, NULL);
+	mqtt_share_pipe_recv_cb(pipe, rxaio, NULL, &pipe->rxmsg);
+	log_error("rxmsg %p", pipe->rxmsg);
 }
 
 // only for sub stream
@@ -688,11 +695,11 @@ mqtt_quictran_subpipe_recv_cb(void *arg)
 	mqtt_quictran_pipe *pipe   = stream->pipe;
 	nni_aio            *rxaio  = &stream->raio;
 
-	mqtt_share_pipe_recv_cb(pipe, rxaio, stream);
+	mqtt_share_pipe_recv_cb(pipe, rxaio, stream, &stream->rxmsg);
 }
 
 static void
-mqtt_share_pipe_recv_cb(void *arg, nni_aio *raio, quic_substream *stream)
+mqtt_share_pipe_recv_cb(void *arg, nni_aio *raio, quic_substream *stream, nni_msg **rxmsg)
 {
 	nni_aio *          aio;
 	nni_iov            iov[2];
@@ -703,6 +710,8 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *raio, quic_substream *stream)
 	mqtt_quictran_pipe *p    = arg;
 	nni_aio *          rxaio = raio;
 	bool               ack   = false;
+	uint8_t            *rxlen;
+	size_t			   *gotrxhead, *wantrxhead;
 
 	nni_mtx_lock(&p->mtx);
 	if (p->closed) {
@@ -722,29 +731,41 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *raio, quic_substream *stream)
 
 	nni_aio_iov_advance(rxaio, n);
 	if (nni_aio_iov_count(rxaio) > 0) {
+		if (stream != NULL)
+			nng_aio_set_prov_data(rxaio, &stream->id);
 		nng_stream_recv(p->conn, rxaio);
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
-
-	rv = mqtt_get_remaining_length(p->rxlen, p->gotrxhead, &len, &pos);
-	p->wantrxhead = len + 1 + pos;
-	if (p->gotrxhead <= 5 && p->rxlen[p->gotrxhead - 1] > 0x7f) {
-		if (p->gotrxhead == NNI_NANO_MAX_HEADER_SIZE) {
+	if (stream != NULL) {
+		rxlen = stream->rxlen;
+		gotrxhead  = &stream->gotrxhead;
+		wantrxhead = &stream->wantrxhead;
+	} else {
+		rxlen = p->rxlen;
+		gotrxhead  = &p->gotrxhead;
+		wantrxhead = &p->wantrxhead;
+	}
+	rv = mqtt_get_remaining_length(rxlen, *gotrxhead, &len, &pos);
+	*wantrxhead = len + 1 + pos;
+	if (*gotrxhead <= 5 && rxlen[*gotrxhead - 1] > 0x7f) {
+		if (*gotrxhead == NNI_NANO_MAX_HEADER_SIZE) {
 			rv = PACKET_TOO_LARGE;
 			goto recv_error;
 		}
 		// same packet, continue receving next byte of remaining length
-		iov[0].iov_buf = &p->rxlen[p->gotrxhead];
+		iov[0].iov_buf = &rxlen[*gotrxhead];
 		iov[0].iov_len = 1;
 		nni_aio_set_iov(rxaio, 1, iov);
+		if (stream != NULL)
+			nng_aio_set_prov_data(rxaio, &stream->id);
 		nng_stream_recv(p->conn, rxaio);
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
 
 	// fixed header finished
-	if (NULL == p->rxmsg) {
+	if (NULL == *rxmsg) {
 		// Make sure the message payload is not too big.  If it is
 		// the caller will shut down the pipe.
 		if ((len > p->rcvmax) && (p->rcvmax > 0)) {
@@ -752,22 +773,24 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *raio, quic_substream *stream)
 			goto recv_error;
 		}
 
-		if ((rv = nni_msg_alloc(&p->rxmsg, (size_t) len)) != 0) {
+		if ((rv = nni_msg_alloc(rxmsg, (size_t) len)) != 0) {
 			rv = UNSPECIFIED_ERROR;
 			goto recv_error;
 		}
 		// set remaining length for bridging
-		nni_msg_set_remaining_len(p->rxmsg, len);
+		nni_msg_set_remaining_len(*rxmsg, len);
 
 		// Submit the rest of the data for a read -- seperate Fixed
 		// header with variable header and so on
 		//  we want to read the entire message now.
 		if (len != 0) {
-			iov[0].iov_buf = nni_msg_body(p->rxmsg);
+			iov[0].iov_buf = nni_msg_body(*rxmsg);
 			iov[0].iov_len = (size_t) len;
 
 			nni_aio_set_iov(rxaio, 1, iov);
 			// second recv action
+			if (stream != NULL)
+				nng_aio_set_prov_data(rxaio, &stream->id);
 			nng_stream_recv(p->conn, rxaio);
 			nni_mtx_unlock(&p->mtx);
 			return;
@@ -777,9 +800,9 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *raio, quic_substream *stream)
 	// We read a message completely.  Let the user know the good news. use
 	// as application message callback of users
 	nni_aio_list_remove(aio);
-	nni_msg_header_append(p->rxmsg, p->rxlen, pos + 1);
-	msg      = p->rxmsg;
-	p->rxmsg = NULL;
+	nni_msg_header_append(*rxmsg, rxlen, pos + 1);
+	msg      = *rxmsg;
+	*rxmsg = NULL;
 	n        = nni_msg_len(msg);
 	type     = p->rxlen[0] & 0xf0;
 	flags    = p->rxlen[0] & 0x0f;
@@ -928,8 +951,8 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *raio, quic_substream *stream)
 
 recv_error:
 	nni_aio_list_remove(aio);
-	msg      = p->rxmsg;
-	p->rxmsg = NULL;
+	msg      = *rxmsg;
+	*rxmsg = NULL;
 	nni_mtx_unlock(&p->mtx);
 
 	nni_msg_free(msg);
