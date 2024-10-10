@@ -521,7 +521,8 @@ mqtt_quictran_pipe_send_cb(void *arg)
 	msg = nni_aio_get_msg(aio);
 
 	if ((rv = nni_aio_result(txaio)) != 0) {
-		nni_pipe_bump_error(p->npipe, rv);
+		if (rv != NNG_ECANCELED)
+			nni_pipe_bump_error(p->npipe, rv);
 		nni_aio_list_remove(aio);
 		nni_mtx_unlock(&p->mtx);
 		nni_aio_finish_error(aio, rv);
@@ -572,7 +573,9 @@ mqtt_quictran_pipe_recv_cb(void *arg)
 		// close the pipe
 		goto recv_error;
 	}
-
+	if (p->closed) {
+		goto recv_error;
+	}
 	n = nni_aio_count(rxaio);
 	p->gotrxhead += n;
 
@@ -867,6 +870,9 @@ mqtt_quictran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 	nni_aio_finish_error(aio, rv);
 }
 
+static int quic_streamid;
+static int quic_roundrobin = 1;
+
 static void
 mqtt_quictran_pipe_send_start(mqtt_quictran_pipe *p)
 {
@@ -925,6 +931,10 @@ mqtt_quictran_pipe_send_start(mqtt_quictran_pipe *p)
 		iov[niov].iov_len = nni_msg_len(msg);
 		niov++;
 	}
+	quic_roundrobin = (quic_roundrobin + 1) % 4;
+	quic_streamid = (quic_roundrobin + 1) << 8;
+
+	nng_aio_set_prov_data(txaio, &quic_streamid);
 	nni_aio_set_iov(txaio, niov, iov);
 	nng_stream_send(p->conn, txaio);
 }
@@ -1379,10 +1389,10 @@ static void
 mqtt_quictran_dial_cb(void *arg)
 {
 	mqtt_quictran_ep *  ep  = arg;
-	nni_aio *          aio = ep->connaio;
+	nni_aio *           aio = ep->connaio;
 	mqtt_quictran_pipe *p;
-	int                rv, ismain;
-	nng_stream *       conn;
+	int                 rv, ismain;
+	nng_stream *        conn;
 
 	if ((rv = nni_aio_result(aio)) != 0) {
 		log_error("Dial failed %d", rv);
