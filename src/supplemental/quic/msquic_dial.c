@@ -120,10 +120,10 @@ static void quic_stream_close(void *arg);
 static void quic_stream_dowrite(nni_quic_conn *c);
 static void quic_stream_rele(nni_quic_conn *c, void *arg);
 static void quic_substream_free(nni_quic_conn *c);
-static void quic_substream_rele(nni_quic_conn *c);
+static void quic_substream_free_and_reopen(nni_quic_conn *c);
 static void quic_substream_close(nni_quic_conn *c);
-static void quic_substream_reopen(void *arg);
-static void quic_substream_fini(nni_quic_conn *c);
+static void quic_substream_reopen_cb(void *arg);
+static void quic_substream_fini_without_free(nni_quic_conn *c);
 
 static QUIC_STATUS verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *ca);
 
@@ -414,7 +414,7 @@ quic_dialer_cb(void *arg)
 			goto error;
 
 		if ((rv = msquic_strm_open(d->qconn, subc, d->priority, false)) != 0) {
-			quic_substream_rele(subc);
+			quic_substream_free_and_reopen(subc);
 			goto error;
 		}
 		subc->id = i+1;
@@ -685,7 +685,7 @@ quic_stream_cb(int events, void *arg, int rc)
 			if (c->reopen == false)
 				quic_substream_free(c);
 			else
-				quic_substream_rele(c);
+				quic_substream_free_and_reopen(c);
 		}
 		break;
 	default:
@@ -703,24 +703,22 @@ quic_stream_fini(nni_quic_conn *c)
 }
 
 static void
-quic_substream_fini(nni_quic_conn *c)
+quic_substream_fini_without_free(nni_quic_conn *c)
 {
-	log_debug("[sid%d] finite", c->id);
+	log_debug("[sid%d] finite without free", c->id);
 	msquic_strm_fini(c->qstrm);
 }
 
 static void
-quic_substream_reopen(void *arg)
+quic_substream_reopen_cb(void *arg)
 {
 	int rv;
 	nni_quic_conn *c = arg;
 	nni_aio *aio = &c->reconaio;
-	// FIXME Not thread safely to get dialer
 	nni_quic_dialer *d = c->dialer;
 	if (c->reopen == false)
 		return;
 
-	//log_info("[sid%d] reopen", c->id);
 	if ((rv = msquic_strm_open(d->qconn, c, d->priority, true)) != 0) {
 		log_info("[sid%d] reopen failed rv%d aio%p", c->id, rv, aio);
 		nni_sleep_aio(5000, aio); // retry after 5s
@@ -763,14 +761,12 @@ quic_substream_free(nni_quic_conn *c)
 
 // No effects to the main stream
 static void
-quic_substream_rele(nni_quic_conn *c)
+quic_substream_free_and_reopen(nni_quic_conn *c)
 {
 	quic_substream_close(c);
-	// close and free the msquic stream but not free the nni_quic_conn
-	quic_substream_fini(c);
+	quic_substream_fini_without_free(c);
 
-	//log_info("[sid%d] ready to do reopen? %d", c->id);
-	// Do recover this quic stream
+	// reopen this quic stream
 	nni_aio *aio = &c->reconaio;
 	nni_aio_finish(aio, 0, 0);
 }
@@ -1141,7 +1137,7 @@ nni_msquic_quic_alloc(nni_quic_conn **cp, nni_quic_dialer *d)
 	nni_aio_list_init(&c->readq);
 	nni_aio_list_init(&c->writeq);
 
-	nni_aio_init(&c->reconaio, quic_substream_reopen, c);
+	nni_aio_init(&c->reconaio, quic_substream_reopen_cb, c);
 
 	c->stream.s_free  = quic_stream_free;
 	c->stream.s_close = quic_stream_close;
