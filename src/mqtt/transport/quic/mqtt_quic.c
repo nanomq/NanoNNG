@@ -1,5 +1,5 @@
 //
-// Copyright 2022 NanoMQ Team, Inc. <jaylin@emqx.io>
+// Copyright 2024 NanoMQ Team, Inc. <jaylin@emqx.io>
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -48,15 +48,16 @@ struct mqtt_quictran_pipe {
 	nni_list         sendq;
 	nni_aio         *txaio;
 	nni_aio         *rxaio;
+	nni_aio         *saio[QUIC_SUB_STREAM_NUM];	//for substream
+	nni_aio         *raio[QUIC_SUB_STREAM_NUM]; //for substream
 	nni_aio         *qsaio; // aio for qos/pingreq
 	nni_aio         *negoaio;
 	nni_aio         *rpaio;
 	nni_msg         *rxmsg;
-	// nni_lmq          rslmq;
+	nni_lmq          rslmq;
 	nni_mtx          mtx;
 	bool             closed;
 	bool             busy;
-	bool             ismain;
 #ifdef NNG_HAVE_MQTT_BROKER
 	nni_msg         *connack;
 	conn_param *     cparam;
@@ -98,6 +99,7 @@ static void mqtt_quictran_pipe_send_start(mqtt_quictran_pipe *);
 static void mqtt_quictran_pipe_recv_start(mqtt_quictran_pipe *);
 static void mqtt_quictran_pipe_send_cb(void *);
 static void mqtt_quictran_pipe_qos_send_cb(void *);
+static void mqtt_quictran_pipe_rp_send_cb(void *arg);
 static void mqtt_quictran_pipe_recv_cb(void *);
 static void mqtt_quictran_pipe_nego_cb(void *);
 static void mqtt_quictran_ep_fini(void *);
@@ -129,21 +131,16 @@ mqtt_quictran_pipe_close(void *arg)
 	mqtt_quictran_pipe *p = arg;
 
 	nni_mtx_lock(&p->mtx);
-	if (p->closed != true) {
-		// close the stream first
-		nng_stream_close(p->conn);
-		nni_mtx_unlock(&p->mtx);
-		return;
-	}
 	log_info("mqtt quic pipe close");
 	p->closed = true;
-	// nni_lmq_flush(&p->rslmq);
 	nni_mtx_unlock(&p->mtx);
 
+	nni_aio_close(p->rxaio);
 	nni_aio_close(p->qsaio);
 	nni_aio_close(p->txaio);
 	nni_aio_close(p->negoaio);
 	nni_aio_close(p->rpaio);
+	nng_stream_close(p->conn);
 }
 
 static void
@@ -165,12 +162,13 @@ mqtt_quictran_pipe_init(void *arg, nni_pipe *npipe)
 	mqtt_quictran_pipe *p = arg;
 
 	p->npipe = npipe;
-	// nni_lmq_init(&p->rslmq, 10240);
+	nni_lmq_init(&p->rslmq, 1024);
 	p->busy = false;
 	p->closed = false;
 	// set max value by default
 	p->packmax == 0 ? p->packmax = (uint32_t)0xFFFFFFFF : p->packmax;
-	p->qosmax  = 2;
+	p->qosmax  == 0 ? p->qosmax  = 2 : p->qosmax;
+	p->keepalive = 0;
 	return (0);
 }
 
@@ -180,6 +178,8 @@ mqtt_quictran_pipe_fini(void *arg)
 	mqtt_quictran_pipe *p = arg;
 	mqtt_quictran_ep *  ep;
 
+	// Cautious, do we need to stop pipe here?
+	mqtt_quictran_pipe_stop(p);
 	if ((ep = p->ep) != NULL) {
 		nni_mtx_lock(&ep->mtx);
 		nni_list_node_remove(&p->node);
@@ -189,17 +189,20 @@ mqtt_quictran_pipe_fini(void *arg)
 		}
 		nni_mtx_unlock(&ep->mtx);
 	}
-
-	//nni_aio_wait(p->rxaio);
+	nng_stream_free(p->conn);
 	nni_aio_free(p->rxaio);
 	nni_aio_free(p->txaio);
 	nni_aio_free(p->qsaio);
 	nni_aio_free(p->negoaio);
 	nni_aio_free(p->rpaio);
-	nng_stream_free(p->conn);
+
 	nni_msg_free(p->rxmsg);
-	// nni_lmq_fini(&p->rslmq);
+	nni_lmq_flush(&p->rslmq);
+	nni_lmq_fini(&p->rslmq);
 	nni_mtx_fini(&p->mtx);
+#ifdef NNG_HAVE_MQTT_BROKER
+	conn_param_free(p->cparam);	//Cautious!!
+#endif
 	NNI_FREE_STRUCT(p);
 }
 
@@ -224,15 +227,11 @@ mqtt_quictran_pipe_alloc(mqtt_quictran_pipe **pipep)
 		return (NNG_ENOMEM);
 	}
 	nni_mtx_init(&p->mtx);
-	if (((rv = nni_aio_alloc(&p->txaio, mqtt_quictran_pipe_send_cb, p)) !=
-	        0) ||
-	    ((rv = nni_aio_alloc(&p->rxaio, mqtt_quictran_pipe_recv_cb, p)) !=
-	        0) ||
-	    ((rv = nni_aio_alloc(
-	          &p->qsaio, mqtt_quictran_pipe_qos_send_cb, p)) != 0) ||
-	    ((rv = nni_aio_alloc(&p->rpaio, NULL, p)) != 0) ||
-	    ((rv = nni_aio_alloc(&p->negoaio, mqtt_quictran_pipe_nego_cb, p)) !=
-	        0)) {
+	if (((rv = nni_aio_alloc(&p->txaio, mqtt_quictran_pipe_send_cb, p)) != 0) ||
+	    ((rv = nni_aio_alloc(&p->rxaio, mqtt_quictran_pipe_recv_cb, p)) != 0) ||
+	    ((rv = nni_aio_alloc(&p->qsaio, mqtt_quictran_pipe_qos_send_cb, p)) != 0) ||
+	    ((rv = nni_aio_alloc(&p->rpaio, mqtt_quictran_pipe_rp_send_cb, p)) != 0) ||
+	    ((rv = nni_aio_alloc(&p->negoaio, mqtt_quictran_pipe_nego_cb, p)) != 0)) {
 		mqtt_quictran_pipe_fini(p);
 		return (rv);
 	}
@@ -261,6 +260,8 @@ mqtt_quictran_ep_match(mqtt_quictran_ep *ep)
 #ifdef NNG_HAVE_MQTT_BROKER
 	if (p->cparam == NULL) {
 		p->cparam = nni_get_conn_param_from_msg(ep->connmsg);
+		if (p->keepalive != 0)
+			p->cparam->keepalive_mqtt = p->keepalive;
 		nni_msg_set_conn_param(ep->connmsg, p->cparam);
 	}
 #endif
@@ -282,6 +283,7 @@ mqtt_quictran_pipe_nego_cb(void *arg)
 	nni_mtx_lock(&ep->mtx);
 
 	if ((rv = nni_aio_result(aio)) != 0) {
+		log_info("aio result %s", nng_strerror(rv));
 		rv = SERVER_UNAVAILABLE;
 		goto error;
 	}
@@ -320,7 +322,9 @@ mqtt_quictran_pipe_nego_cb(void *arg)
 		return;
 	}
 	// only accept CONNACK msg
+	// TODO auth
 	if ((p->rxlen[0] & CMD_CONNACK) != CMD_CONNACK) {
+		log_error("Invalid type received %x %x", p->rxlen[0], p->rxlen[1]);
 		rv = PROTOCOL_ERROR;
 		goto error;
 	}
@@ -366,33 +370,41 @@ mqtt_quictran_pipe_nego_cb(void *arg)
 			if (rv != 0)
 				goto mqtt_error;
 			property_free(ep->property);
+			ep->property = NULL;
 			property *prop = (void *)nni_mqtt_msg_get_connack_property(p->rxmsg);
-			property_dup((property **)&ep->property, prop);
-			property_data *data;
-			data = property_get_value(ep->property, RECEIVE_MAXIMUM);
-			if (data) {
-				if (data->p_value.u16 == 0) {
-					rv = MQTT_ERR_PROTOCOL;
-					ep->reason_code = rv;
-					goto mqtt_error;
-				} else {
-					p->sndmax = data->p_value.u16;
+			if (property_dup((property **) &ep->property, prop) != 0)
+				goto mqtt_error;
+			if (ep->property != NULL) {
+				property_data *data;
+				data = property_get_value(ep->property, RECEIVE_MAXIMUM);
+				if (data) {
+					if (data->p_value.u16 == 0) {
+						rv = MQTT_ERR_PROTOCOL;
+						ep->reason_code = rv;
+						goto mqtt_error;
+					} else {
+						p->sndmax = data->p_value.u16;
+					}
 				}
-			}
-			data = property_get_value(ep->property, MAXIMUM_PACKET_SIZE);
-			if (data) {
-				if (data->p_value.u32 == 0) {
-					rv = MQTT_ERR_PROTOCOL;
-					ep->reason_code = rv;
-					goto mqtt_error;
-				} else {
-					p->packmax = data->p_value.u32;
-					log_info("Set max packet size as %ld", p->packmax);
+				data = property_get_value(ep->property, MAXIMUM_PACKET_SIZE);
+				if (data) {
+					if (data->p_value.u32 == 0) {
+						rv = MQTT_ERR_PROTOCOL;
+						ep->reason_code = rv;
+						goto mqtt_error;
+					} else {
+						p->packmax = data->p_value.u32;
+						log_info("Set max packet size as %ld", p->packmax);
+					}
 				}
-			}
-			data = property_get_value(ep->property, PUBLISH_MAXIMUM_QOS);
-			if (data) {
-				p->qosmax = data->p_value.u8;
+				data = property_get_value(ep->property, PUBLISH_MAXIMUM_QOS);
+				if (data) {
+					p->qosmax = data->p_value.u8;
+				}
+				data = property_get_value(ep->property, SERVER_KEEP_ALIVE);
+				if (data) {
+					p->keepalive = data->p_value.u16;
+				}
 			}
 		} else {
 			if ((rv = nni_mqtt_msg_decode(p->rxmsg)) != MQTT_SUCCESS) {
@@ -473,35 +485,96 @@ mqtt_quictran_pipe_qos_send_cb(void *arg)
 	mqtt_quictran_pipe *p = arg;
 	nni_msg *          msg;
 	nni_aio *          qsaio = p->qsaio;
+	uint8_t       type;
+	size_t        n;
+	int           rv;
 
 	msg = nni_aio_get_msg(p->qsaio);
-	if (nni_aio_result(qsaio) != 0) {
-		nni_msg_free(msg);
+	if (p->closed) {
+		if (msg!= NULL)
+			nni_msg_free(msg);
+		return;
+	}
+	if ((rv = nni_aio_result(qsaio)) != 0) {
+		log_warn("qos send aio error %s", nng_strerror(rv));
+		if (msg!= NULL)
+			nni_msg_free(msg);
 		nni_aio_set_msg(qsaio, NULL);
-		// TODO: set error code
 		mqtt_quictran_pipe_close(p);
 		return;
 	}
-	nni_mtx_lock(&p->mtx);
 
-	if (msg != NULL)
+	nni_mtx_lock(&p->mtx);
+	n = nni_aio_count(qsaio);
+	nni_aio_iov_advance(qsaio, n);
+
+	// more bytes to send
+	if (nni_aio_iov_count(qsaio) > 0) {
+		nng_stream_send(p->conn, qsaio);
+		nni_mtx_unlock(&p->mtx);
+		return;
+	}
+	if (msg != NULL) {
+		type = nni_msg_cmd_type(msg);
 		nni_msg_free(msg);
-	// if (nni_lmq_get(&p->rslmq, &msg) == 0) {
-	// 	nni_iov iov[2];
-	// 	iov[0].iov_len = nni_msg_header_len(msg);
-	// 	iov[0].iov_buf = nni_msg_header(msg);
-	// 	iov[1].iov_len = nni_msg_len(msg);
-	// 	iov[1].iov_buf = nni_msg_body(msg);
-	// 	p->busy        = true;
-	// 	nni_aio_set_msg(p->qsaio, msg);
-	// 	// send ACK down...
-	// 	nni_aio_set_iov(p->qsaio, 2, iov);
-	// 	nng_stream_send(p->conn, p->qsaio);
-	// 	nni_mtx_unlock(&p->mtx);
-	// 	return;
+	} else {
+		log_warn("NULL msg detected in send_cb");
+		nni_mtx_unlock(&p->mtx);
+		mqtt_quictran_pipe_close(p);
+		return;
+	}
+	// if (p->proto == MQTT_PROTOCOL_VERSION_v5) {
+	// 	(type == CMD_PUBCOMP || type == CMD_PUBACK) ? p->qrecv_quota++
+	// 	                                            : p->qrecv_quota;
 	// }
+	nni_aio_set_msg(qsaio, NULL);
+		
+	if (nni_lmq_get(&p->rslmq, &msg) == 0) {
+		nni_iov iov[2];
+		iov[0].iov_len = nni_msg_header_len(msg);
+		iov[0].iov_buf = nni_msg_header(msg);
+		iov[1].iov_len = nni_msg_len(msg);
+		iov[1].iov_buf = nni_msg_body(msg);
+		p->busy        = true;
+		nni_aio_set_msg(p->qsaio, msg);
+		// send ACK down...
+		nni_aio_set_iov(p->qsaio, 2, iov);
+		nng_stream_send(p->conn, p->qsaio);
+		nni_mtx_unlock(&p->mtx);
+		return;
+	}
 	p->busy = false;
 	nni_aio_set_msg(qsaio, NULL);
+	nni_mtx_unlock(&p->mtx);
+	return;
+}
+
+static void
+mqtt_quictran_pipe_rp_send_cb(void *arg)
+{
+	mqtt_quictran_pipe *p = arg;
+	nni_aio      *rpaio = p->rpaio;
+	size_t        n;
+	int           rv;
+
+	if ((rv = nni_aio_result(rpaio)) != 0) {
+		log_warn(" send aio error %s", nng_strerror(rv));
+		// pipe is reaped in nego_cb
+		return;
+	}
+
+	nni_mtx_lock(&p->mtx);
+	n = nni_aio_count(rpaio);
+	nni_aio_iov_advance(rpaio, n);
+
+	// more bytes to send
+	if (nni_aio_iov_count(rpaio) > 0) {
+		nng_stream_send(p->conn, rpaio);
+		nni_mtx_unlock(&p->mtx);
+		return;
+	}
+
+	p->busy = false;
 	nni_mtx_unlock(&p->mtx);
 	return;
 }
@@ -518,11 +591,10 @@ mqtt_quictran_pipe_send_cb(void *arg)
 
 	nni_mtx_lock(&p->mtx);
 	aio = nni_list_first(&p->sendq);
-	msg = nni_aio_get_msg(aio);
 
+	log_trace(" ############ mqtt_quictran_pipe_send_cb [%p] ############ ", p);
 	if ((rv = nni_aio_result(txaio)) != 0) {
-		if (rv != NNG_ECANCELED)
-			nni_pipe_bump_error(p->npipe, rv);
+		log_warn(" send aio error %s", nng_strerror(rv));
 		nni_aio_list_remove(aio);
 		nni_mtx_unlock(&p->mtx);
 		nni_aio_finish_error(aio, rv);
@@ -540,6 +612,7 @@ mqtt_quictran_pipe_send_cb(void *arg)
 	nni_aio_list_remove(aio);
 	mqtt_quictran_pipe_send_start(p);
 
+	msg = nni_aio_get_msg(aio);
 	if (msg != NULL) {
 		n = nni_msg_len(msg);
 		nni_pipe_bump_tx(p->npipe, n);
@@ -565,17 +638,18 @@ mqtt_quictran_pipe_recv_cb(void *arg)
 	bool               ack   = false;
 
 	nni_mtx_lock(&p->mtx);
-
-	aio = nni_list_first(&p->recvq);
-
-	if ((rv = nni_aio_result(rxaio)) != 0) {
-		p->closed = true;
-		// close the pipe
-		goto recv_error;
-	}
 	if (p->closed) {
 		goto recv_error;
 	}
+	aio = nni_list_first(&p->recvq);
+	if ((rv = nni_aio_result(rxaio)) != 0) {
+		log_info("aio result %s", nng_strerror(rv));
+		p->closed = true;
+		rv = SERVER_UNAVAILABLE;
+		// close the pipe
+		goto recv_error;
+	}
+
 	n = nni_aio_count(rxaio);
 	p->gotrxhead += n;
 
@@ -720,6 +794,7 @@ mqtt_quictran_pipe_recv_cb(void *arg)
 		if ((rv = nni_msg_alloc(&qmsg, 0)) != 0) {
 			ack = false;
 			rv  = UNSPECIFIED_ERROR;
+			log_error("Memory error");
 			goto recv_error;
 		}
 		// TODO set reason code or property here if necessary
@@ -741,39 +816,38 @@ mqtt_quictran_pipe_recv_cb(void *arg)
 			nni_aio_set_iov(p->qsaio, 2, iov);
 			nng_stream_send(p->conn, p->qsaio);
 		} else {
-			log_warn("ACK msg %x lost!", ack_cmd);
-			nni_msg_free(qmsg);
+			if (nni_lmq_full(&p->rslmq)) {
+				// Make space for the new message. TODO add max
+				// limit of msgq len in conf
+				if (nni_lmq_cap(&p->rslmq) <=
+				    NANO_MAX_QOS_PACKET) {
+					if ((rv = nni_lmq_resize(&p->rslmq,
+					         nni_lmq_cap(&p->rslmq) * 2)) == 0) {
+						nni_lmq_put(&p->rslmq, qmsg);
+					} else {
+						// memory error.
+						nni_msg_free(qmsg);
+					}
+				} else {
+					nni_msg *old;
+					(void) nni_lmq_get(&p->rslmq, &old);
+					nni_msg_free(old);
+					if (nni_lmq_put(&p->rslmq, qmsg) != 0) {
+						nni_msg_free(qmsg);
+						log_warn("ACK msg lost due to full lmq");
+					}
+				}
+			} else {
+				if (nni_lmq_put(&p->rslmq, qmsg) != 0) {
+					nni_msg_free(qmsg);
+					log_warn("ACK msg lost due to full lmq");
+				}
+			}
 		}
-		// caching msg in lmq cause malformed packets
-		// else {
-		// 	if (nni_lmq_full(&p->rslmq)) {
-		// 		// Make space for the new message. TODO add max
-		// 		// limit of msgq len in conf
-		// 		if (nni_lmq_cap(&p->rslmq) <=
-		// 		    NNG_TRAN_MAX_LMQ_SIZE) {
-		// 			if ((rv = nni_lmq_resize(&p->rslmq,
-		// 			         nni_lmq_cap(&p->rslmq) *
-		// 			             2)) == 0) {
-		// 				nni_lmq_put(&p->rslmq, qmsg);
-		// 			} else {
-		// 				// memory error.
-		// 				nni_msg_free(qmsg);
-		// 			}
-		// 		} else {
-		// 			nni_msg *old;
-		// 			(void) nni_lmq_get(&p->rslmq, &old);
-		// 			nni_msg_free(old);
-		// 			nni_lmq_put(&p->rslmq, qmsg);
-		// 		}
-		// 	} else {
-		// 		nni_lmq_put(&p->rslmq, qmsg);
-		// 	}
-		// }
 		ack = false;
 	}
 
 	// keep connection & Schedule next receive
-	nni_pipe_bump_rx(p->npipe, n);
 	if (!nni_list_empty(&p->recvq)) {
 		mqtt_quictran_pipe_recv_start(p);
 	}
@@ -945,7 +1019,9 @@ mqtt_quictran_pipe_send(void *arg, nni_aio *aio)
 	mqtt_quictran_pipe *p = arg;
 	int                rv;
 
-	// Is this lock necessary???? TODO
+	if (nni_aio_begin(aio) != 0) {
+		return;
+	}
 	nni_mtx_lock(&p->mtx);
 	// Priority msg
 	int *flags = nni_aio_get_prov_data(aio);
@@ -954,15 +1030,7 @@ mqtt_quictran_pipe_send(void *arg, nni_aio *aio)
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
-	nni_mtx_unlock(&p->mtx);
-
-	if (nni_aio_begin(aio) != 0) {
-		return;
-	}
-
-	nni_mtx_lock(&p->mtx);
-	if ((rv = nni_aio_schedule(aio, mqtt_quictran_pipe_send_cancel, p)) !=
-	    0) {
+	if ((rv = nni_aio_schedule(aio, mqtt_quictran_pipe_send_cancel, p)) != 0) {
 		nni_mtx_unlock(&p->mtx);
 		nni_aio_finish_error(aio, rv);
 		return;
@@ -989,7 +1057,6 @@ mqtt_quictran_pipe_recv_cancel(nni_aio *aio, void *arg, int rv)
 	// The callback on the rxaio will cause the user aio to
 	// be canceled too.
 	if (nni_list_first(&p->recvq) == aio) {
-		// should wait for stream layer
 		nni_aio_abort(p->rxaio, rv);
 		nni_mtx_unlock(&p->mtx);
 		return;
@@ -1038,8 +1105,7 @@ mqtt_quictran_pipe_recv(void *arg, nni_aio *aio)
 		return;
 	}
 	nni_mtx_lock(&p->mtx);
-	if ((rv = nni_aio_schedule(aio, mqtt_quictran_pipe_recv_cancel, p)) !=
-	    0) {
+	if ((rv = nni_aio_schedule(aio, mqtt_quictran_pipe_recv_cancel, p)) != 0) {
 		nni_mtx_unlock(&p->mtx);
 		nni_aio_finish_error(aio, rv);
 		return;
@@ -1077,46 +1143,6 @@ mqtt_quictran_pipe_getopt(
 	return (nni_stream_get(p->conn, name, buf, szp, t));
 }
 
-// No connect request needed. No negotiating needed.
-static void
-mqtt_quictran_data_pipe_start(
-    mqtt_quictran_pipe *p, nng_stream *conn, mqtt_quictran_ep *ep)
-{
-	nni_msg *connmsg = NULL;
-	uint8_t mqtt_version;
-
-	ep->refcnt++;
-
-	p->conn    = conn;
-	p->ep      = ep;
-	p->packmax = 0;
-	p->rcvmax  = 0;
-	p->sndmax  = 65535;
-
-#ifdef NNG_HAVE_MQTT_BROKER
-	p->cparam = NULL;
-#endif
-	nni_dialer_getopt(ep->ndialer, NNG_OPT_MQTT_CONNMSG, &connmsg, NULL,
-	    NNI_TYPE_POINTER);
-
-	if (connmsg == NULL) {
-		mqtt_version = 0;
-		log_error("No connmsg in dialer.");
-		return;
-	}
-
-	mqtt_version = nni_mqtt_msg_get_connect_proto_version(connmsg);
-
-	p->rxmsg      = NULL;
-	p->keepalive  = nni_mqtt_msg_get_connect_keep_alive(connmsg) * 1000;
-	p->proto      = mqtt_version;
-
-	// Pass the process of nego
-	nni_list_append(&ep->waitpipes, p);
-
-	mqtt_quictran_ep_match(ep);
-}
-
 static void
 mqtt_quictran_pipe_start(
     mqtt_quictran_pipe *p, nng_stream *conn, mqtt_quictran_ep *ep)
@@ -1141,6 +1167,7 @@ mqtt_quictran_pipe_start(
 
 	if (connmsg == NULL) {
 		mqtt_version = 0;
+		log_error("User forget to set CONNECT msg!");
 	} else {
 		mqtt_version = nni_mqtt_msg_get_connect_proto_version(connmsg);
 	}
@@ -1164,7 +1191,7 @@ mqtt_quictran_pipe_start(
 	    mqtt_version != MQTT_PROTOCOL_VERSION_v5)) {
 		// Free the msg from user
 		nni_msg_free(connmsg);
-		nni_plat_printf("Warning. Cancelled a illegal connnect msg from user.\n");
+		log_error("Warning. Cancelled a illegal connnect msg from user.\n");
 		// Using MQTT V311 as default protocol version
 		mqtt_version = 4; // Default TODO Notify user as a warning
 		nni_mqtt_msg_alloc(&connmsg, 0);
@@ -1180,7 +1207,7 @@ mqtt_quictran_pipe_start(
 	p->wantrxhead = 2;
 	p->wanttxhead = nni_msg_header_len(connmsg) + nni_msg_len(connmsg);
 	p->rxmsg      = NULL;
-	p->keepalive  = nni_mqtt_msg_get_connect_keep_alive(connmsg) * 1000;
+	// p->keepalive  = nni_mqtt_msg_get_connect_keep_alive(connmsg) * 1000;
 	p->proto      = mqtt_version;
 
 	if (nni_msg_header_len(connmsg) > 0) {
@@ -1264,61 +1291,9 @@ mqtt_quictran_ep_close(void *arg)
 // This parses off the optional source address that this transport uses.
 // The special handling of this URL format is quite honestly an historical
 // mistake, which we would remove if we could.
-/*
-static int
-mqtt_quictran_url_parse_source(
-    nng_url *url, nng_sockaddr *sa, const nng_url *surl)
-{
-	int      af;
-	char *   semi;
-	char *   src;
-	size_t   len;
-	int      rv;
-	nni_aio *aio;
 
-	// We modify the URL.  This relies on the fact that the underlying
-	// transport does not free this, so we can just use references.
 
-	url->u_scheme   = surl->u_scheme;
-	url->u_port     = surl->u_port;
-	url->u_hostname = surl->u_hostname;
-
-	if ((semi = strchr(url->u_hostname, ';')) == NULL) {
-		memset(sa, 0, sizeof(*sa));
-		return (0);
-	}
-
-	len             = (size_t) (semi - url->u_hostname);
-	url->u_hostname = semi + 1;
-
-	if (strcmp(surl->u_scheme, "tcp") == 0) {
-		af = NNG_AF_UNSPEC;
-	} else if (strcmp(surl->u_scheme, "tcp4") == 0) {
-		af = NNG_AF_INET;
-	} else if (strcmp(surl->u_scheme, "tcp6") == 0) {
-		af = NNG_AF_INET6;
-	} else {
-		return (NNG_EADDRINVAL);
-	}
-
-	if ((src = nni_alloc(len + 1)) == NULL) {
-		return (NNG_ENOMEM);
-	}
-	memcpy(src, surl->u_hostname, len);
-	src[len] = '\0';
-
-	if ((rv = nni_aio_alloc(&aio, NULL, NULL)) != 0) {
-		nni_free(src, len + 1);
-		return (rv);
-	}
-
-	nni_resolv_ip(src, "0", af, true, sa, aio);
-	nni_aio_wait(aio);
-	rv = nni_aio_result(aio);
-	nni_aio_free(aio);
-	nni_free(src, len + 1);
-	return (rv);
-}
+// we delete mqtt_quictran_url_parse_source
 
 static void
 mqtt_quictran_timer_cb(void *arg)
@@ -1329,61 +1304,60 @@ mqtt_quictran_timer_cb(void *arg)
 	}
 }
 
-static void
-mqtt_quictran_accept_cb(void *arg)
-{
-	mqtt_quictran_ep *  ep  = arg;
-	nni_aio *          aio = ep->connaio;
-	mqtt_quictran_pipe *p;
-	int                rv;
-	nng_stream *       conn;
+// static void
+// mqtt_quictran_accept_cb(void *arg)
+// {
+// 	mqtt_quictran_ep *  ep  = arg;
+// 	nni_aio *          aio = ep->connaio;
+// 	mqtt_quictran_pipe *p;
+// 	int                rv;
+// 	nng_stream *       conn;
 
-	nni_mtx_lock(&ep->mtx);
+// 	nni_mtx_lock(&ep->mtx);
 
-	if ((rv = nni_aio_result(aio)) != 0) {
-		goto error;
-	}
+// 	if ((rv = nni_aio_result(aio)) != 0) {
+// 		goto error;
+// 	}
 
-	conn = nni_aio_get_output(aio, 0);
-	if ((rv = mqtt_quictran_pipe_alloc(&p)) != 0) {
-		nng_stream_free(conn);
-		goto error;
-	}
+// 	conn = nni_aio_get_output(aio, 0);
+// 	if ((rv = mqtt_quictran_pipe_alloc(&p)) != 0) {
+// 		nng_stream_free(conn);
+// 		goto error;
+// 	}
 
-	if (ep->closed) {
-		mqtt_quictran_pipe_fini(p);
-		nng_stream_free(conn);
-		rv = NNG_ECLOSED;
-		goto error;
-	}
-	mqtt_quictran_pipe_start(p, conn, ep);
-	nng_stream_listener_accept(ep->listener, ep->connaio);
-	nni_mtx_unlock(&ep->mtx);
-	return;
+// 	if (ep->closed) {
+// 		mqtt_quictran_pipe_fini(p);
+// 		nng_stream_free(conn);
+// 		rv = NNG_ECLOSED;
+// 		goto error;
+// 	}
+// 	mqtt_quictran_pipe_start(p, conn, ep);
+// 	nng_stream_listener_accept(ep->listener, ep->connaio);
+// 	nni_mtx_unlock(&ep->mtx);
+// 	return;
 
-error:
-	// When an error here occurs, let's send a notice up to the consumer.
-	// That way it can be reported properly.
-	if ((aio = ep->useraio) != NULL) {
-		ep->useraio = NULL;
-		nni_aio_finish_error(aio, rv);
-	}
-	switch (rv) {
+// error:
+// 	// When an error here occurs, let's send a notice up to the consumer.
+// 	// That way it can be reported properly.
+// 	if ((aio = ep->useraio) != NULL) {
+// 		ep->useraio = NULL;
+// 		nni_aio_finish_error(aio, rv);
+// 	}
+// 	switch (rv) {
 
-	case NNG_ENOMEM:
-	case NNG_ENOFILES:
-		nng_sleep_aio(10, ep->timeaio);
-		break;
+// 	case NNG_ENOMEM:
+// 	case NNG_ENOFILES:
+// 		nng_sleep_aio(10, ep->timeaio);
+// 		break;
 
-	default:
-		if (!ep->closed) {
-			nng_stream_listener_accept(ep->listener, ep->connaio);
-		}
-		break;
-	}
-	nni_mtx_unlock(&ep->mtx);
-}
-*/
+// 	default:
+// 		if (!ep->closed) {
+// 			nng_stream_listener_accept(ep->listener, ep->connaio);
+// 		}
+// 		break;
+// 	}
+// 	nni_mtx_unlock(&ep->mtx);
+// }
 
 static void
 mqtt_quictran_dial_cb(void *arg)
@@ -1391,7 +1365,7 @@ mqtt_quictran_dial_cb(void *arg)
 	mqtt_quictran_ep *  ep  = arg;
 	nni_aio *           aio = ep->connaio;
 	mqtt_quictran_pipe *p;
-	int                 rv, ismain;
+	int                 rv;
 	nng_stream *        conn;
 
 	if ((rv = nni_aio_result(aio)) != 0) {
@@ -1400,14 +1374,10 @@ mqtt_quictran_dial_cb(void *arg)
 	}
 
 	conn = nni_aio_get_output(aio, 0);
-	ismain = *(int *)nni_aio_get_output(aio, 1);
-	log_info("%s pipe %p", (ismain ? "main":"sub"), conn);
-
 	if ((rv = mqtt_quictran_pipe_alloc(&p)) != 0) {
 		nng_stream_free(conn);
 		goto error;
 	}
-	p->ismain = ismain;
 	nni_mtx_lock(&ep->mtx);
 	if (ep->closed) {
 		mqtt_quictran_pipe_fini(p);
@@ -1416,10 +1386,7 @@ mqtt_quictran_dial_cb(void *arg)
 		nni_mtx_unlock(&ep->mtx);
 		goto error;
 	} else {
-		if (ismain)
-			mqtt_quictran_pipe_start(p, conn, ep);
-		else
-			mqtt_quictran_data_pipe_start(p, conn, ep);
+		mqtt_quictran_pipe_start(p, conn, ep);
 	}
 	nni_mtx_unlock(&ep->mtx);
 	return;
@@ -1490,12 +1457,6 @@ mqtt_quictran_dialer_init(void **dp, nng_url *url, nni_dialer *ndialer)
 	    (strlen(url->u_port) == 0)) {
 		return (NNG_EADDRINVAL);
 	}
-
-	//nng_url          myurl;
-	// It seems that no error in nni_url_parse so here we ignore this function
-	//if ((rv = mqtt_quictran_url_parse_source(&myurl, &srcsa, url)) != 0) {
-	//	return (rv);
-	//}
 
 	if ((rv = mqtt_quictran_ep_init(&ep, url, sock)) != 0) {
 		return (rv);
