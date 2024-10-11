@@ -509,6 +509,7 @@ tlstran_pipe_qos_send_cb(void *arg)
 	else {
 		log_warn("NULL msg detected in send_cb");
 		nni_mtx_unlock(&p->mtx);
+		tlstran_pipe_close(p);
 		return;
 	}
 
