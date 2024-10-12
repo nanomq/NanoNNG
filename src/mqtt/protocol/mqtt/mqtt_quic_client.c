@@ -96,7 +96,6 @@ struct mqtt_sock_s {
 	mqtt_pipe_t  *pipe;     // the major pipe (control stream)
 	                   // main quic pipe, others needs a map to store the
 	                   // relationship between MQTT topics and quic pipes
-	nni_aio   time_aio; // timer aio to resend unack msg
 	nni_aio  *ack_aio;  // set by user, expose puback/pubcomp
 	nni_sock *nsock;
 
@@ -117,6 +116,7 @@ struct mqtt_pipe_s {
 	nni_id_map      recv_unack;    // unacknowledged received messages
 	nni_aio         send_aio;      // send aio to the underlying transport
 	nni_aio         recv_aio;      // recv aio to the underlying transport
+	nni_aio   		time_aio; // timer aio to resend unack msg
 	nni_lmq         recv_messages; // recv messages queue
 	nni_lmq         send_messages; // send messages queue
 	uint16_t        rid;           // index of resending packet id
@@ -691,13 +691,9 @@ mqtt_quic_recv_cb(void *arg)
 static void
 mqtt_timer_cb(void *arg)
 {
-	mqtt_sock_t *s = arg;
-	mqtt_pipe_t *p;
+	mqtt_pipe_t *p = arg;
+	mqtt_sock_t *s = p->mqtt_sock;
 
-	if (nng_aio_result(&s->time_aio) != 0) {
-		log_warn("sleep aio finish error!");
-		return;
-	}
 	nni_mtx_lock(&s->mtx);
 	p = s->pipe;
 	if (NULL == p || nni_atomic_get_bool(&p->closed)) {
@@ -706,7 +702,11 @@ mqtt_timer_cb(void *arg)
 		return;
 	}
 	// Ping would be send at transport layer
-
+	if (nng_aio_result(&p->time_aio) != 0) {
+		log_warn("sleep aio finish error!");
+		nni_mtx_unlock(&s->mtx);
+		return;
+	}
 	if (p->pingcnt > 1) {
 		log_warn("MQTT Timeout and disconnect");
 		nni_mtx_unlock(&s->mtx);
@@ -727,7 +727,7 @@ mqtt_timer_cb(void *arg)
 		p->pingcnt ++;
 		nni_mtx_unlock(&s->mtx);
 		log_info("Send pingreq (sock%p)(%dms)", s, s->keepalive);
-		nni_sleep_aio(s->retry, &s->time_aio);
+		nni_sleep_aio(s->retry, &p->time_aio);
 		return;
 	}
 
@@ -750,7 +750,7 @@ mqtt_timer_cb(void *arg)
 				nni_pipe_send(p->qpipe, &p->send_aio);
 				nni_msg_set_timestamp(msg, now);
 				nni_mtx_unlock(&s->mtx);
-				nni_sleep_aio(s->retry, &s->time_aio);
+				nni_sleep_aio(s->retry, &p->time_aio);
 				return;
 			} else {
 				// TODO send to lmq?
@@ -774,14 +774,14 @@ mqtt_timer_cb(void *arg)
 				nni_pipe_send(p->qpipe, &p->send_aio);
 
 				nni_mtx_unlock(&s->mtx);
-				nni_sleep_aio(s->retry, &s->time_aio);
+				nni_sleep_aio(s->retry, &p->time_aio);
 				return;
 			}
 		}
 	}
 #endif
 	nni_mtx_unlock(&s->mtx);
-	nni_sleep_aio(s->retry, &s->time_aio);
+	nni_sleep_aio(s->retry, &p->time_aio);
 	return;
 }
 
@@ -826,7 +826,6 @@ static void mqtt_quic_sock_init(void *arg, nni_sock *sock)
 	// For caching ctx
 	NNI_LIST_INIT(&s->recv_queue, mqtt_quic_ctx, rqnode);
 
-	nni_aio_init(&s->time_aio, mqtt_timer_cb, s);
 	nni_id_map_init(&s->sent_unack, 0x0000u, 0xffffu, true);
 
 	s->pipe = NULL;
@@ -865,7 +864,6 @@ mqtt_quic_sock_fini(void *arg)
 	}
 	nni_id_map_fini(&s->sent_unack);
 	mqtt_quic_ctx_fini(&s->master);
-	nni_aio_fini(&s->time_aio);
 	nni_mtx_fini(&s->mtx);
 }
 
@@ -886,7 +884,6 @@ mqtt_quic_sock_close(void *arg)
 	nni_atomic_set_bool(&s->closed, true);
 	nni_mtx_lock(&s->mtx);
 	nni_sock_hold(s->nsock);
-	nni_aio_close(&s->time_aio);
 
 	// emulate disconnect notify msg as a normal publish
 	while ((ctx = nni_list_first(&s->recv_queue)) != NULL) {
@@ -1016,6 +1013,7 @@ mqtt_quic_pipe_init(void *arg, nni_pipe *pipe, void *sock)
 
 	nni_aio_init(&p->send_aio, mqtt_quic_send_cb, p);
 	nni_aio_init(&p->recv_aio, mqtt_quic_recv_cb, p);
+	nni_aio_init(&p->time_aio, mqtt_timer_cb, p);
 	// Packet IDs are 16 bits
 	// We start at a random point, to minimize likelihood of
 	// accidental collision across restarts.
@@ -1056,7 +1054,8 @@ mqtt_quic_pipe_fini(void *arg)
 
 	nni_aio_fini(&p->send_aio);
 	nni_aio_fini(&p->recv_aio);
-	nni_aio_abort(&s->time_aio, NNG_ECANCELED);
+	nni_aio_fini(&p->time_aio);
+
 
 	nni_id_map_fini(&p->recv_unack);
 	nni_lmq_fini(&p->recv_messages);
@@ -1097,12 +1096,12 @@ mqtt_quic_pipe_start(void *arg)
 		nni_list_remove(&s->send_queue, aio);
 		mqtt_quic_send_msg(aio, s);
 		nni_pipe_recv(npipe, &p->recv_aio);
-		nni_sleep_aio(s->retry, &s->time_aio);
+		nni_sleep_aio(s->retry, &p->time_aio);
 		return (0);
 	}
 	nni_mtx_unlock(&s->mtx);
 	// initiate the global resend timer
-	nni_sleep_aio(s->retry, &s->time_aio);
+	nni_sleep_aio(s->retry, &p->time_aio);
 	nni_pipe_recv(npipe, &p->recv_aio);
 	return 0;
 }
@@ -1114,11 +1113,9 @@ mqtt_quic_pipe_stop(void *arg)
 	mqtt_sock_t *s = p->mqtt_sock;
 
 	log_info("Stopping MQTT over QUIC Stream");
-	// if (!nni_atomic_get_bool(&p->closed)) {
-		nni_aio_stop(&p->send_aio);
-		nni_aio_stop(&p->recv_aio);
-		nni_aio_stop(&s->time_aio);	// move time_aio to pipe!!!!!!1
-	// }
+	nni_aio_stop(&p->send_aio);
+	nni_aio_stop(&p->recv_aio);
+	nni_aio_stop(&p->time_aio);
 }
 
 static int
@@ -1140,7 +1137,7 @@ mqtt_quic_pipe_close(void *arg)
 
 	nni_aio_close(&p->send_aio);
 	nni_aio_close(&p->recv_aio);
-	nni_aio_abort(&s->time_aio, NNG_ECANCELED);
+	nni_aio_close(&p->time_aio);
 #if defined(NNG_SUPP_SQLITE)
 	if (!nni_lmq_empty(&p->send_messages)) {
 		log_info("cached msg into sqlite");
