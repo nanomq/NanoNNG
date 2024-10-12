@@ -284,7 +284,7 @@ mqtt_quictran_pipe_alloc(mqtt_quictran_pipe **pipep)
 	{
 		quic_substream *stream = &p->substreams[i];
 		stream->pipe = p;
-		stream->id = (i + 1) << 8;
+		stream->id = (i + 1);
 		nni_mtx_init(&stream->mtx);
 		nni_lmq_init(&stream->rslmq, 1024);
 		nni_aio_init(&stream->raio, mqtt_quictran_subpipe_recv_cb, stream);
