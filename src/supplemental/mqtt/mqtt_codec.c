@@ -738,8 +738,8 @@ nni_mqtt_msg_append_varint(nni_msg *msg, uint32_t val)
 		log_warn("variable value overflow!");
 		return -1;
 	}
-	uint8_t        buf[4] = { 0 };
-	struct pos_buf pbuf   = { .curpos = &buf[0], .endpos = &buf[3] };
+	uint8_t        buf[5] = { 0 };
+	struct pos_buf pbuf   = { .curpos = &buf[0], .endpos = &buf[4] };
 	int            bytes  = write_variable_length_value(val, &pbuf);
 	if (bytes > -1) {
 		nni_msg_append(msg, buf, bytes);
@@ -2847,9 +2847,9 @@ write_variable_length_value(uint32_t value, struct pos_buf *buf)
 		}
 		*(buf->curpos++) = byte;
 		count++;
-	} while (value > 0 && count < 4);
+	} while (value > 0 && count < 5);
 
-	if (count == 4) {
+	if (count == 5) {
 		return -1;
 	}
 	return count;
