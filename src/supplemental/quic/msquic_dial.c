@@ -328,7 +328,7 @@ quic_dialer_strm_cancel(nni_aio *aio, void *arg, int rv)
 	}
 	nni_aio_list_remove(aio);
 	c->dial_aio = NULL;
-	nni_aio_set_prov_data(aio, NULL);
+	// nni_aio_set_prov_data(aio, NULL);
 	nni_mtx_unlock(&d->mtx);
 
 	nni_aio_finish_error(aio, rv);
@@ -348,7 +348,7 @@ quic_dialer_cancel(nni_aio *aio, void *arg, int rv)
 		d->currcon = NULL;
 		cdaio = c->dial_aio;
 		c->dial_aio = NULL;
-		nni_aio_set_prov_data(cdaio, NULL);
+		// nni_aio_set_prov_data(cdaio, NULL);
 	}
 	nni_mtx_unlock(&d->mtx);
 
@@ -430,7 +430,7 @@ error:
 		c->dial_aio = NULL;
 		c->dial_arg = NULL;
 
-		nni_aio_set_prov_data(aio, NULL);
+		// nni_aio_set_prov_data(aio, NULL);
 		nni_aio_list_remove(aio);
 	}
 
@@ -540,7 +540,7 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 error:
 	d->currcon = NULL;
 	c->dial_aio = NULL;
-	nni_aio_set_prov_data(aio, NULL);
+	// nni_aio_set_prov_data(aio, NULL);
 	nni_msquic_quic_dialer_rele(d);
 	nni_mtx_unlock(&d->mtx);
 	quic_stream_rele(c, NULL);
@@ -563,7 +563,7 @@ nni_quic_dialer_close(void *arg)
 			nni_list_remove(&d->connq, aio);
 			if ((ec = nni_aio_get_prov_data(aio)) != NULL) {
 				ec->main->dial_aio = NULL;
-				nni_aio_set_prov_data(aio, NULL);
+				// nni_aio_set_prov_data(aio, NULL);
 				nng_stream_close(&ec->stream);
 				// We don't need to free the quic stream. Because it would be free
 				// in QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE state.
@@ -868,7 +868,7 @@ quic_stream_recv(void *arg, nni_aio *aio)
 
 	// Multistreams Feature!
 	int *flags = nni_aio_get_prov_data(aio);
-	nni_aio_set_prov_data(aio, NULL);
+	// nni_aio_set_prov_data(aio, NULL);
 
 	if (flags) {
 		strmid = (*flags & QUIC_MULTISTREAM_FLAGS);
@@ -1023,7 +1023,7 @@ quic_stream_send(void *arg, nni_aio *aio)
 
 	// Multistreams Feature!
 	int *flags = nni_aio_get_prov_data(aio);
-	nni_aio_set_prov_data(aio, NULL);
+	// nni_aio_set_prov_data(aio, NULL);
 
 	if (flags) {
 		//log_info("flag %x", *flags);
