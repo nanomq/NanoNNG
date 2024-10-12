@@ -304,6 +304,7 @@ mqtt_quic_send_cb(void *arg)
 		// Cautious
 		if (rv != NNG_ECANCELED) {
 			// msg is already be freed in QUIC transport
+			// Cautious!! TODO cancel qos msg in sent_unack
 			nni_aio_set_msg(&p->send_aio, NULL);
 			return;
 		} else if (rv == NNG_ECONNABORTED) {
@@ -1116,7 +1117,7 @@ mqtt_quic_pipe_stop(void *arg)
 	// if (!nni_atomic_get_bool(&p->closed)) {
 		nni_aio_stop(&p->send_aio);
 		nni_aio_stop(&p->recv_aio);
-		nni_aio_stop(&s->time_aio);
+		nni_aio_stop(&s->time_aio);	// move time_aio to pipe!!!!!!1
 	// }
 }
 
@@ -1131,7 +1132,6 @@ mqtt_quic_pipe_close(void *arg)
 		log_error("double close pipe!");
 		return 0;
 	}
-
 
 	nni_mtx_lock(&s->mtx);
 	nni_atomic_set_bool(&p->closed, true);
@@ -1151,7 +1151,6 @@ mqtt_quic_pipe_close(void *arg)
 	nni_lmq_flush(&p->recv_messages);
 	nni_lmq_flush(&p->send_messages);
 	//TODO add timeout cancel for msgs in sent_unack
-	nni_id_map_foreach(&s->sent_unack, mqtt_close_unack_msg_cb);
 	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
 #ifdef NNG_HAVE_MQTT_BROKER
 	if (p->cparam == NULL) {
