@@ -182,7 +182,8 @@ endif ()
 include(CheckSanitizer)
 CheckSanitizer()
 if (NOT NNG_SANITIZER STREQUAL "none")
-    set(NNG_SANITIZER_FLAGS "-g -fsanitize=${NNG_SANITIZER}")
+    set(NNG_SANITIZER_FLAGS "-fsanitize=${NNG_SANITIZER}")
+    add_definitions(-DNNG_SANITIZER)
 endif ()
 
 
@@ -206,6 +207,7 @@ if (NNG_ENABLE_COVERAGE)
     else ()
         message(FATAL_ERROR "Unable to enable coverage for your compiler.")
     endif ()
+    add_definitions(-DNNG_CONVERAGE)
 endif ()
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${NNG_WARN_FLAGS} ${NNG_COVERAGE_C_FLAGS} ${NNG_SANITIZER_FLAGS}")
