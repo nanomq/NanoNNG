@@ -314,7 +314,6 @@ tlstran_pipe_nego_cb(void *arg)
 			nng_free(p->conn_buf, p->wantrxhead);
 			p->conn_buf = NULL;
 		}
-		rv = NNG_ECANCELED;
 		code = NORMAL_DISCONNECTION;
 		goto error;
 	}
@@ -459,13 +458,13 @@ error:
 	if (rv == NNG_ECLOSED) {
 		rv = NNG_ECONNSHUT;
 	}
+	nni_list_remove(&ep->negopipes, p);
 	nng_stream_close(p->conn);
 
 	if ((uaio = ep->useraio) != NULL) {
 		ep->useraio = NULL;
 		nni_aio_finish_error(uaio, rv);
 	}
-	nni_list_remove(&ep->negopipes, p);
 	nni_mtx_unlock(&ep->mtx);
 	tlstran_pipe_reap(p);
 	log_error("connect nego error rv:(%d) %s MQTT reason code %d",
