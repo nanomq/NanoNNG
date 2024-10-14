@@ -467,7 +467,7 @@ mqtt_quic_recv_cb(void *arg)
 	s->timeleft = s->keepalive;
 
 	//Schedule another receive
-	nni_pipe_recv(p->qpipe, &p->recv_aio);
+	nni_pipe_recv(p->qpipe, &p->recv_aio);	//TODO register multiple aio for sub stream
 
 	// set conn_param for upper layer
 	if (p->cparam)
@@ -747,6 +747,7 @@ mqtt_timer_cb(void *arg)
 				p->busy = true;
 				nni_msg_clone(msg);
 				nni_aio_set_msg(&p->send_aio, msg);
+				log_info("msg id %d resend start", pid);
 				nni_pipe_send(p->qpipe, &p->send_aio);
 				nni_msg_set_timestamp(msg, now);
 				nni_mtx_unlock(&s->mtx);
@@ -754,7 +755,7 @@ mqtt_timer_cb(void *arg)
 				return;
 			} else {
 				// TODO send to lmq?
-				log_info("%d resend canceld due to blocked pipe", pid);
+				log_info("msg id %d resend canceld due to blocked pipe", pid);
 			}
 		}
 
