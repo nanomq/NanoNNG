@@ -109,6 +109,7 @@ static void mqtt_tcptran_pipe_recv_start(mqtt_tcptran_pipe *);
 static void mqtt_tcptran_pipe_send_cb(void *);
 static void mqtt_tcptran_pipe_recv_cb(void *);
 static void mqtt_tcptran_pipe_nego_cb(void *);
+static void mqtt_tcptran_pipe_rp_send_cb(void *arg);
 static void mqtt_tcptran_ep_fini(void *);
 static void mqtt_tcptran_pipe_fini(void *);
 
@@ -168,7 +169,8 @@ mqtt_tcptran_pipe_init(void *arg, nni_pipe *npipe)
 
 	p->npipe = npipe;
 	// nni_lmq_init(&p->rslmq, 10240);
-	p->busy = false;
+	p->busy   = false;
+	p->closed = false;
 	// set max value by default
 	p->packmax == 0 ? p->packmax = (uint32_t)0xFFFFFFFF : p->packmax;
 	p->qosmax  == 0 ? p->qosmax  = 2 : p->qosmax;
@@ -231,13 +233,10 @@ mqtt_tcptran_pipe_alloc(mqtt_tcptran_pipe **pipep)
 		return (NNG_ENOMEM);
 	}
 	nni_mtx_init(&p->mtx);
-	if (((rv = nni_aio_alloc(&p->txaio, mqtt_tcptran_pipe_send_cb, p)) !=
-	        0) ||
-	    ((rv = nni_aio_alloc(&p->rxaio, mqtt_tcptran_pipe_recv_cb, p)) !=
-	        0) ||
-	    ((rv = nni_aio_alloc(&p->rpaio, NULL, p)) != 0) ||
-	    ((rv = nni_aio_alloc(&p->negoaio, mqtt_tcptran_pipe_nego_cb, p)) !=
-	        0)) {
+	if (((rv = nni_aio_alloc(&p->txaio, mqtt_tcptran_pipe_send_cb, p)) != 0) ||
+	    ((rv = nni_aio_alloc(&p->rxaio, mqtt_tcptran_pipe_recv_cb, p)) != 0) ||
+	    ((rv = nni_aio_alloc(&p->rpaio, mqtt_tcptran_pipe_rp_send_cb, p)) != 0) ||
+	    ((rv = nni_aio_alloc(&p->negoaio, mqtt_tcptran_pipe_nego_cb, p)) != 0)) {
 		mqtt_tcptran_pipe_fini(p);
 		return (rv);
 	}
@@ -650,6 +649,36 @@ mqtt_tcptran_pipe_send_cb(void *arg)
 }
 
 static void
+mqtt_tcptran_pipe_rp_send_cb(void *arg)
+{
+	mqtt_tcptran_pipe *p = arg;
+	nni_aio      *rpaio = p->rpaio;
+	size_t        n;
+	int           rv;
+
+	if ((rv = nni_aio_result(rpaio)) != 0) {
+		log_warn(" send aio error %s", nng_strerror(rv));
+		// pipe is reaped in nego_cb
+		return;
+	}
+
+	nni_mtx_lock(&p->mtx);
+	n = nni_aio_count(rpaio);
+	nni_aio_iov_advance(rpaio, n);
+
+	// more bytes to send
+	if (nni_aio_iov_count(rpaio) > 0) {
+		nng_stream_send(p->conn, rpaio);
+		nni_mtx_unlock(&p->mtx);
+		return;
+	}
+
+	p->busy = false;
+	nni_mtx_unlock(&p->mtx);
+	return;
+}
+
+static void
 mqtt_tcptran_pipe_recv_cb(void *arg)
 {
 	nni_aio *          aio;
@@ -832,7 +861,7 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 	}
 
 	// keep connection & Schedule next receive
-	nni_pipe_bump_rx(p->npipe, n);
+	// nni_pipe_bump_rx(p->npipe, n);
 	if (!nni_list_empty(&p->recvq)) {
 		mqtt_tcptran_pipe_recv_start(p);
 	}
@@ -957,8 +986,7 @@ mqtt_tcptran_pipe_send(void *arg, nni_aio *aio)
 		return;
 	}
 	nni_mtx_lock(&p->mtx);
-	if ((rv = nni_aio_schedule(aio, mqtt_tcptran_pipe_send_cancel, p)) !=
-	    0) {
+	if ((rv = nni_aio_schedule(aio, mqtt_tcptran_pipe_send_cancel, p)) != 0) {
 		nni_mtx_unlock(&p->mtx);
 		nni_aio_finish_error(aio, rv);
 		return;
@@ -1098,10 +1126,10 @@ mqtt_tcptran_pipe_start(
 
 	if (connmsg == NULL) {
 		mqtt_version = 0;
+		log_error("User forget to set CONNECT msg!");
+	} else {
+		mqtt_version = nni_mqtt_msg_get_connect_proto_version(connmsg);
 	}
-
-	mqtt_version = nni_mqtt_msg_get_connect_proto_version(connmsg);
-
 	if (mqtt_version == MQTT_PROTOCOL_VERSION_v311)
 		rv = nni_mqtt_msg_encode(connmsg);
 	else if (mqtt_version == MQTT_PROTOCOL_VERSION_v5) {
@@ -1160,7 +1188,7 @@ mqtt_tcptran_pipe_start(
 	    mqtt_version != MQTT_PROTOCOL_VERSION_v5)) {
 		// Free the msg from user
 		nni_msg_free(connmsg);
-		nni_plat_printf("Warning. Cancelled a illegal connnect msg from user.\n");
+		log_error("Warning. Cancelled a illegal connnect msg from user.\n");
 		// Using MQTT V311 as default protocol version
 		mqtt_version = 4; // Default TODO Notify user as a warning
 		nni_mqtt_msg_alloc(&connmsg, 0);
@@ -1572,6 +1600,7 @@ mqtt_tcptran_ep_connect(void *arg, nni_aio *aio)
 	int              rv;
 
 	if (nni_aio_begin(aio) != 0) {
+		log_error("ep connect rv %d", rv);
 		return;
 	}
 	if (ep->backoff != 0) {
@@ -1587,6 +1616,7 @@ mqtt_tcptran_ep_connect(void *arg, nni_aio *aio)
 	nni_mtx_lock(&ep->mtx);
 	if (ep->closed) {
 		nni_mtx_unlock(&ep->mtx);
+		log_error("ep clsoed");
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
 	}
