@@ -181,35 +181,46 @@ uds_openlog(const char *uds_path, const char *ident, int option, int facility)
 	}
 }
 
-void
-uds_vsyslog(int priority, const char *format, va_list args)
+void uds_vsyslog(int priority, const char *format, va_list args)
 {
-	char message[1024];
-	char final_message[1064];
+    char message[1024];
+    char final_message[2048];
+    char timestamp[32];
+    char hostname[64];
 
-	vsnprintf(message, sizeof(message), format, args);
+    // Get the current time and format it in RFC 3164 style (e.g., "May  1 20:51:40")
+    time_t now = time(NULL);
+    struct tm *tm_info = localtime(&now);
+    strftime(timestamp, sizeof(timestamp), "%b %d %H:%M:%S", tm_info);
 
-	if (log_ident) {
-		snprintf(final_message, sizeof(final_message), "<%d>%s: %s",
-		    priority | log_facility, log_ident, message);
-	} else {
-		snprintf(final_message, sizeof(final_message), "<%d>%s",
-		    priority | log_facility, message);
-	}
+    // Get the hostname
+    if (gethostname(hostname, sizeof(hostname)) != 0) {
+        strncpy(hostname, "localhost", sizeof(hostname) - 1);
+        hostname[sizeof(hostname) - 1] = '\0';  // Ensure null termination
+    }
 
-	size_t message_len = strlen(final_message);
+    // Format the message
+    vsnprintf(message, sizeof(message), format, args);
 
-	if (syslog_socket >= 0) {
-		if (sendto(syslog_socket, final_message, message_len, 0,
-		        (struct sockaddr *) &syslog_addr,
-		        sizeof(syslog_addr)) < 0) {
-			perror("sendto");
-		}
-	} else {
-		fprintf(stderr, "Syslog socket not open\n");
-	}
+    // Ensure log_ident is set, use default if not provided
+    const char *ident = log_ident ? log_ident : "unknown";
+
+    // Build the final syslog message in the format: <PRI>timestamp hostname tag: message
+    snprintf(final_message, sizeof(final_message), "<%d>%s %s %s: %s",
+             priority | log_facility, timestamp, hostname, ident, message);
+
+    size_t message_len = strlen(final_message);
+
+    // Send the message via UDS
+    if (syslog_socket >= 0) {
+        if (sendto(syslog_socket, final_message, message_len, 0,
+                   (struct sockaddr *) &syslog_addr, sizeof(syslog_addr)) < 0) {
+            perror("sendto");
+        }
+    } else {
+        fprintf(stderr, "Syslog socket not open\n");
+    }
 }
-
 void uds_syslog(int priority, const char *format, ...) {
     va_list args;
     va_start(args, format);
