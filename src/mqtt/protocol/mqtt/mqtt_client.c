@@ -695,8 +695,10 @@ mqtt_timer_cb(void *arg)
 				nni_sleep_aio(s->retry, &p->time_aio);
 				return;
 			} else {
-				if (nni_lmq_put(&p->send_messages, msg) != 0)
+				if (nni_lmq_put(&p->send_messages, msg) != 0) {
+					log_info("resend msg %d lost due to full lmq", pid);
 					nni_msg_free(msg);
+				}
 			}
 		}
 	}
@@ -811,7 +813,7 @@ mqtt_recv_cb(void *arg)
 			nni_pipe_send(p->pipe, &p->send_aio);
 		} else {
 			if (0 != nni_lmq_put(&p->send_messages, ack_msg)) {
-				nni_println(
+				log_warn(
 				    "Warning! ack msg lost due to busy socket");
 				nni_msg_free(ack_msg);
 			}
@@ -852,9 +854,10 @@ mqtt_recv_cb(void *arg)
 				nni_msg *tmsg;
 				(void) nni_lmq_get(&p->send_messages, &tmsg);
 				nni_msg_free(tmsg);
+				log_warn("Warning! cached msg lost due to busy socket");
 			}
 			if (0 != nni_lmq_put(&p->send_messages, msg)) {
-				nni_println("Warning! DISCONNECT msg lost due to busy socket");
+				log_warn("Warning! DISCONNECT msg lost due to busy socket");
 			}
 			nni_mtx_unlock(&s->mtx);
 			return;
