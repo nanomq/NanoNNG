@@ -411,12 +411,13 @@ quic_dialer_cb(void *arg)
 		if ((rv = nni_msquic_quic_alloc(&subc, d)) != 0)
 			goto error;
 
-		if ((rv = msquic_strm_open(d->qconn, subc, d->priority, false)) != 0) {
-			quic_substream_free_and_reopen(subc);
-			goto error;
-		}
 		subc->id = i+1;
 		subc->ec = ec;
+		if ((rv = msquic_strm_open(d->qconn, subc, d->priority, false)) != 0) {
+			quic_substream_free_and_reopen(subc);
+			log_error("quic substream%d open failed", subc->id);
+			// goto error;
+		}
 		log_debug("assign %p to substreams %d", subc, i);
 		ec->substrms[i] = subc;
 	}
