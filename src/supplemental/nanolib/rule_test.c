@@ -299,6 +299,8 @@ void test_rule_init_free(void)
 {
 	repub_t      *rpub_rule    = NULL;
 	rule_mysql   *mysql_rule   = NULL;
+    rule_postgresql *postgresql_rule = NULL;
+    rule_timescaledb *timescaledb_rule = NULL;
 	rule         *rule         = NULL;
 	rule_payload *rule_payload = NULL;
 
@@ -330,6 +332,23 @@ void test_rule_init_free(void)
 	mysql_rule->table    = nng_strdup("m-table");
 	NUTS_TRUE(rule_mysql_check(mysql_rule));
 	rule_mysql_free(mysql_rule);
+
+	postgresql_rule           = rule_postgresql_init();
+	postgresql_rule->host     = nng_strdup("p-host");
+	postgresql_rule->password = nng_strdup("p-pwd");
+	postgresql_rule->username = nng_strdup("p-usrname");
+	postgresql_rule->table    = nng_strdup("p-table");
+	NUTS_TRUE(rule_postgresql_check(postgresql_rule));
+	rule_postgresql_free(postgresql_rule);
+
+	timescaledb_rule           = rule_timescaledb_init();
+	timescaledb_rule->host     = nng_strdup("p-host");
+	timescaledb_rule->password = nng_strdup("p-pwd");
+	timescaledb_rule->username = nng_strdup("p-usrname");
+	timescaledb_rule->table    = nng_strdup("p-table");
+	NUTS_TRUE(rule_timescaledb_check(timescaledb_rule));
+	rule_timescaledb_free(timescaledb_rule);
+
 }
 
 NUTS_TESTS = {
