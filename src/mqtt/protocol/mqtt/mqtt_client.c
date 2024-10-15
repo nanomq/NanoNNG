@@ -683,7 +683,7 @@ mqtt_timer_cb(void *arg)
 			if (ptype == NNG_MQTT_PUBLISH) {
 				nni_mqtt_msg_set_publish_dup(msg, true);
 			}
-			log_debug("trying to resend QoS msg %d", pid);
+			log_info("trying to resend QoS msg %d", pid);
 			nni_msg_clone(msg);
 			if (!p->busy) {
 				p->busy = true;
