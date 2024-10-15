@@ -64,7 +64,6 @@ struct nni_quic_conn {
 	nni_atomic_int  ref;
 	nni_mtx         mtx;
 	nni_aio *       dial_aio;
-	void *          dial_arg;
 	// nni_aio *       qstrmaio; // Link to msquic_strm_cb
 	nni_quic_dialer *dialer;
 	uint8_t         reason_code;
@@ -405,7 +404,6 @@ quic_dialer_cb(void *arg)
 
 	ec = ex_quic_conn_init(c);
 	c->ec       = ec;
-	c->dial_arg = ec;
 
 	for (int i=0; i<QUIC_SUB_STREAM_NUM; ++i) {
 		nni_quic_conn *subc;
@@ -428,7 +426,6 @@ error:
 	if (rv != 0) {
 		log_warn("error in openning QUIC streams %d", rv);
 		c->dial_aio = NULL;
-		c->dial_arg = NULL;
 
 		// nni_aio_set_prov_data(aio, NULL);
 		nni_aio_list_remove(aio);
@@ -655,12 +652,11 @@ quic_stream_cb(int events, void *arg, int rc)
 		// dial_aio only exists in main stream
 		if (c->dial_aio && c->ismain) {
 			// For upper layer to get the stream handle
-			nni_aio_set_output(c->dial_aio, 0, c->dial_arg);
+			nni_aio_set_output(c->dial_aio, 0, (void *) c->ec);
 
 			nni_aio_list_remove(c->dial_aio);
 			nni_aio_finish(c->dial_aio, 0, 0);
 			c->dial_aio = NULL;
-			c->dial_arg = NULL;
 		}
 
 		nni_mtx_unlock(&d->mtx);
