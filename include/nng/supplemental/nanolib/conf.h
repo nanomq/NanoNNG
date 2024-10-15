@@ -291,6 +291,7 @@ struct conf_bridge_node {
 	conf_tcp     tcp;
 	conf_sqlite *sqlite;
 	nng_aio    **bridge_aio;
+	nng_dialer   dialer;	// in order to postpone bridging client start after local broker
 	nng_mtx     *mtx;
 
 	bool         hybrid;  // enable/disable hybrid bridging
