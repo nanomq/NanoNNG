@@ -218,6 +218,7 @@ mqtt_quic_send_msg(nni_aio *aio, mqtt_sock_t *s)
 	case NNG_MQTT_SUBSCRIBE:
 	case NNG_MQTT_UNSUBSCRIBE:
 		packet_id = nni_mqtt_msg_get_packet_id(msg);
+		log_warn("send msg id %d", packet_id);
 		nni_mqtt_msg_set_aio(msg, aio);
 		tmsg = nni_id_get(&s->sent_unack, packet_id);
 		if (tmsg != NULL) {
@@ -522,12 +523,14 @@ mqtt_quic_recv_cb(void *arg)
 	case NNG_MQTT_UNSUBACK:
 		// we have received a UNSUBACK, successful unsubscription
 		packet_id  = nni_mqtt_msg_get_packet_id(msg);
+		log_warn("get ack msg id %d", packet_id);
 		p->rid ++;
 		cached_msg = nni_id_get(&s->sent_unack, packet_id);
 		if (cached_msg != NULL) {
 			nni_id_remove(&s->sent_unack, packet_id);
 			user_aio = nni_mqtt_msg_get_aio(cached_msg);
 			nni_mqtt_msg_set_aio(cached_msg, NULL);
+			log_info("free !!!!!!!!!!!! acked msg %p id %d", cached_msg, packet_id);
 			nni_msg_free(cached_msg);
 			if (packet_type == NNG_MQTT_SUBACK ||
 			    packet_type == NNG_MQTT_UNSUBACK)
@@ -1355,7 +1358,6 @@ mqtt_quic_ctx_recv(void *arg, nni_aio *aio)
 
 	nni_mtx_lock(&s->mtx);
 	p = s->pipe;
-	// TODO Should socket is closed be check first?
 	if (p == NULL) {
 		goto wait;
 	}
@@ -1363,7 +1365,7 @@ mqtt_quic_ctx_recv(void *arg, nni_aio *aio)
 	if (nni_atomic_get_bool(&s->closed)||
 	    nni_atomic_get_bool(&p->closed)) {
 		nni_mtx_unlock(&s->mtx);
-		log_info("recv action on closed socket!");
+		log_info("recv on a closed socket!");
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
 	}
