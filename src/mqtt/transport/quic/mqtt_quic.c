@@ -74,7 +74,8 @@ struct mqtt_quictran_pipe {
 	nni_aio         *negoaio;
 	nni_aio         *rpaio;
 	nni_msg         *rxmsg;
-	nni_lmq          rslmq;
+	nni_lmq          rslmq;	// resend lmq
+	nni_lmq          rxlmq; // recv lmq, shared by all streams
 	nni_mtx          mtx;
 	bool             closed;
 	bool             busy;
@@ -189,7 +190,6 @@ mqtt_quictran_pipe_stop(void *arg)
 	for (uint8_t i = 0; i < QUIC_SUB_STREAM_NUM; i++)
 	{
 		quic_substream *stream = &p->substreams[i];
-		nni_lmq_flush(&stream->rslmq);
 		nni_aio_stop(&stream->raio);
 		nni_aio_stop(&stream->saio);
 		nni_aio_stop(&stream->qaio);
@@ -209,6 +209,7 @@ mqtt_quictran_pipe_init(void *arg, nni_pipe *npipe)
 
 	p->npipe = npipe;
 	nni_lmq_init(&p->rslmq, 1024);
+	nni_lmq_init(&p->rxlmq, 1024);
 	p->busy = false;
 	p->closed = false;
 	// set max value by default
@@ -243,6 +244,8 @@ mqtt_quictran_pipe_fini(void *arg)
 	nni_aio_free(p->rpaio);
 
 	nni_msg_free(p->rxmsg);
+	nni_lmq_flush(&p->rxlmq);
+	nni_lmq_fini(&p->rxlmq);
 	nni_lmq_flush(&p->rslmq);
 	nni_lmq_fini(&p->rslmq);
 	nni_mtx_fini(&p->mtx);
@@ -288,7 +291,7 @@ mqtt_quictran_pipe_alloc(mqtt_quictran_pipe **pipep)
 		stream->pipe = p;
 		stream->id = (i + 1);
 		nni_mtx_init(&stream->mtx);
-		nni_lmq_init(&stream->rslmq, 1024);
+		nni_lmq_init(&stream->rslmq, 512);
 		nni_aio_init(&stream->raio, mqtt_quictran_subpipe_recv_cb, stream);
 		nni_aio_init(&stream->saio, mqtt_quictran_subpipe_send_cb, stream);
 		nni_aio_init(&stream->qaio, mqtt_quictran_subpipe_qos_cb, stream);
@@ -698,7 +701,7 @@ mqtt_share_pipe_send_cb(void *arg, nni_aio *txaio, quic_substream *stream)
 	nni_mtx_lock(&p->mtx);
 	aio = nni_list_first(&p->sendq);
 
-	log_trace(" ############ mqtt_quictran_pipe_send_cb [%p] ############ ", p);
+	log_info(" ############ mqtt_quictran_pipe_send_cb [%p] ############ ", p);
 	if ((rv = nni_aio_result(txaio)) != 0) {
 		log_warn(" send aio error %s", nng_strerror(rv));
 		nni_aio_list_remove(aio);
@@ -719,7 +722,6 @@ mqtt_share_pipe_send_cb(void *arg, nni_aio *txaio, quic_substream *stream)
 
 	nni_aio_list_remove(aio);
 	mqtt_quictran_pipe_send_start(p);
-
 	msg = nni_aio_get_msg(aio);
 	if (msg != NULL) {
 		n = nni_msg_len(msg);
@@ -768,6 +770,7 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 
 	nni_mtx_lock(&p->mtx);
 	aio = nni_list_first(&p->recvq);
+	log_info("aio cb on %p", rxaio);
 	if ((rv = nni_aio_result(rxaio)) != 0) {
 		log_info("aio result %s", nng_strerror(rv));
 		if (stream != NULL)
@@ -786,7 +789,7 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 		wantrxhead = &stream->wantrxhead;
 		id = (uint16_t *)nni_aio_get_prov_data(rxaio); 
 		if (*id != (stream->id))
-			log_error("BUG!!!!!!!!");
+			log_error("bug!!!!!!!!");
 	} else {
 		rxlen = p->rxlen;
 		gotrxhead  = &p->gotrxhead;
@@ -1041,12 +1044,18 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 		}
 		nni_aio_finish_sync(aio, 0, n);
 	} else if (msg!= NULL) {
-		log_error("msg has no where to go!!");
+		if (nni_lmq_full(&p->rxlmq)) {
+			nni_msg_free(msg);
+			log_info("msg from substream lost!");
+		} else {
+			log_debug("cache msg from substream first");
+			if (nni_lmq_put(&p->rxlmq, msg) != 0)
+				nni_msg_free(msg);
+		}
 	}
 	return;
 
 recv_error:
-	log_error("pipe recv error!");
 	if (aio)
 		nni_aio_list_remove(aio);
 	msg      = *rxmsg;
@@ -1107,8 +1116,9 @@ mqtt_quictran_pipe_send_prior(mqtt_quictran_pipe *p, nni_aio *aio)
 	}
 	nni_aio_set_iov(aio, niov, iov);
 	// For now, we take stream 1/2 as high priority stream randomly
-	nni_aio_set_prov_data(aio, &p->substreams[nni_random()%2].id);
-	// nni_aio_set_prov_data(aio, &p->substreams[1].id);
+	int *flag = nni_aio_get_prov_data(aio);
+	*flag |= p->substreams[nni_random()%2].id;
+	nni_aio_set_prov_data(aio, flag);
 	nng_stream_send(p->conn, aio);
 }
 
@@ -1160,7 +1170,8 @@ mqtt_quictran_pipe_send_start(mqtt_quictran_pipe *p)
 	// This runs to send the message.
 	msg = nni_aio_get_msg(aio);
 	if (msg == NULL) {
-		log_error("bug!!!!! send null msg!!!!!!");
+		log_error("ERROR: sending null msg! Please report issue");
+		nni_aio_list_remove(aio);
 		return;
 	}
 	if (p->proto == MQTT_PROTOCOL_VERSION_v5) {
@@ -1182,6 +1193,7 @@ mqtt_quictran_pipe_send_start(mqtt_quictran_pipe *p)
 		txaio = &p->substreams[nni_random()%2 + 2].saio;
 	else if (nni_msg_get_type(msg) == CMD_SUBSCRIBE) {
 		txaio = &p->substreams[1].saio;
+		log_info("send msg on stream id 1");
 	} else {
 		txaio = p->txaio;
 	}
@@ -1244,14 +1256,13 @@ mqtt_quictran_pipe_recv_cancel(nni_aio *aio, void *arg, int rv)
 {
 	mqtt_quictran_pipe *p = arg;
 
+	log_info("mqtt_quictran_pipe_recv_cancel triggered!");
 	nni_mtx_lock(&p->mtx);
 	if (!nni_aio_list_active(aio)) {
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
-	// If receive in progress, then cancel the pending transfer.
-	// The callback on the rxaio will cause the user aio to
-	// be canceled too.
+	// 
 	if (nni_list_first(&p->recvq) == aio) {
 		nni_aio_abort(p->rxaio, rv);
 		nni_mtx_unlock(&p->mtx);
@@ -1319,16 +1330,24 @@ mqtt_quictran_pipe_recv(void *arg, nni_aio *aio)
 {
 	mqtt_quictran_pipe *p = arg;
 	int                rv;
-
+	nni_msg *msg = NULL;
 	if (nni_aio_begin(aio) != 0) {
 		return;
 	}
 	nni_mtx_lock(&p->mtx);
-	// if ((rv = nni_aio_schedule(aio, mqtt_quictran_pipe_recv_cancel, p)) != 0) {
-	// 	nni_mtx_unlock(&p->mtx);
-	// 	nni_aio_finish_error(aio, rv);
-	// 	return;
-	// }
+
+	if (nni_lmq_get(&p->rxlmq, &msg) == 0) {
+		// nni_aio_list_remove(aio);
+		nni_aio_set_msg(aio, msg);
+		nni_mtx_unlock(&p->mtx);
+		nni_aio_finish(aio, 0, nni_msg_len(msg));
+		return;
+	}
+	if ((rv = nni_aio_schedule(aio, mqtt_quictran_pipe_recv_cancel, p)) != 0) {
+		nni_mtx_unlock(&p->mtx);
+		nni_aio_finish_error(aio, rv);
+		return;
+	}
 #ifdef NNG_HAVE_MQTT_BROKER
 	if (p->connack != NULL) {
 		nni_aio_set_msg(aio, p->connack);
