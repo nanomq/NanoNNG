@@ -1018,12 +1018,11 @@ quic_stream_send(void *arg, nni_aio *aio)
 	int            rv;
 	int            strmid = 0;
 
-	// Multistreams Feature!
 	int *flags = nni_aio_get_prov_data(aio);
 	// nni_aio_set_prov_data(aio, NULL);
 
+	// Multistreams Feature!
 	if (flags) {
-		//log_info("flag %x", *flags);
 		strmid = (*flags & QUIC_MULTISTREAM_FLAGS);
 		if (strmid > QUIC_SUB_STREAM_NUM) {
 			log_error("Invalid streamid %d (0-%d are available)",
@@ -1061,8 +1060,15 @@ quic_stream_send(void *arg, nni_aio *aio)
 		}
 	}
 
-	// QUIC_HIGH_PRIOR_MSG Feature!
 	if (flags) {
+		// Wanna close a substream
+		if (*flags & QUIC_CLOSE_REOPEN_FLAGS) {
+			quic_substream_close(c);
+			nni_aio_finish_error(aio, NNG_ECANCELED);
+			return;
+		}
+
+		// QUIC_HIGH_PRIOR_MSG Feature!
 		if (*flags & QUIC_HIGH_PRIOR_MSG) {
 			nni_mtx_lock(&c->mtx);
 			quic_stream_dowrite_prior(c, aio);
