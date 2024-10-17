@@ -19,11 +19,13 @@ if (NNG_ENABLE_QUIC)
 	# nng_test(quic_api_test)
     nng_test(msquic_dial_test)
 
-    find_path(INTERNAL_MSQUIC_INCLUDE_DIR
-    NAMES msquic.h
-    HINTS ${_MSQUIC_ROOT_HINTS}
-    PATHS ${PROJECT_SOURCE_DIR}/extern/msquic/src
-    PATH_SUFFIXES inc)
+    if(NOT ANDROID)
+        find_path(INTERNAL_MSQUIC_INCLUDE_DIR
+        NAMES msquic.h
+        HINTS ${_MSQUIC_ROOT_HINTS}
+        PATHS ${PROJECT_SOURCE_DIR}/extern/msquic/src
+        PATH_SUFFIXES inc)
+    endif()
 
     if(NNG_PLATFORM_POSIX)
         nng_link_libraries(dl)
@@ -37,7 +39,11 @@ if (NNG_ENABLE_QUIC)
     # nng_link_libraries("${CMAKE_SOURCE_DIR}/build/_deps/opensslquic-build/openssl/lib/libcrypto.a")
 
     if(NNG_PROTO_MQTT_BROKER)
-        nng_include_directories(${INTERNAL_MSQUIC_INCLUDE_DIR})
+        if(NOT ANDROID)
+            nng_include_directories(${INTERNAL_MSQUIC_INCLUDE_DIR})
+        else()
+            nng_include_directories(${PROJECT_SOURCE_DIR}/extern/msquic/src/inc)
+        endif()
     endif()
     # set_property(CACHE NNG_QUIC_LIB PROPERTY STRINGS ${NNG_TLS_ENGINES})
 else ()
