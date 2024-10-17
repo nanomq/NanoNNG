@@ -768,9 +768,9 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 	uint8_t            *rxlen;
 	size_t			   *gotrxhead, *wantrxhead;
 
+	log_trace("mqtt_share_pipe_recv_cb %p aio %p\n", p, rxaio);
 	nni_mtx_lock(&p->mtx);
 	aio = nni_list_first(&p->recvq);
-	log_info("aio cb on %p", rxaio);
 	if ((rv = nni_aio_result(rxaio)) != 0) {
 		log_info("aio result %s", nng_strerror(rv));
 		if (stream != NULL)
@@ -805,8 +805,6 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 		return;
 	}
 
-	rv = mqtt_get_remaining_length(rxlen, *gotrxhead, &len, &pos);
-	*wantrxhead = len + 1 + pos;
 	if (*gotrxhead <= 5 && rxlen[*gotrxhead - 1] > 0x7f) {
 		if (*gotrxhead == NNI_NANO_MAX_HEADER_SIZE) {
 			rv = PACKET_TOO_LARGE;
@@ -824,6 +822,12 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 	// fixed header finished
 	if (NULL == *rxmsg) {
 		// Make sure the message payload is not too big.  If it is
+		if ((rv = mqtt_get_remaining_length(rxlen, *gotrxhead,
+										   &len, &pos)) !=0 ) {
+			rv = PAYLOAD_FORMAT_INVALID;
+			goto recv_error;
+		}
+		*wantrxhead = len + 1 + pos;
 		// the caller will shut down the pipe.
 		if ((len > p->rcvmax) && (p->rcvmax > 0)) {
 			rv = PACKET_TOO_LARGE;
@@ -831,7 +835,8 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 		}
 
 		if ((rv = nni_msg_alloc(rxmsg, (size_t) len)) != 0) {
-			rv = UNSPECIFIED_ERROR;
+			log_error("Mem error %ld\n", (size_t) len);
+			rv = NMQ_SERVER_UNAVAILABLE;
 			goto recv_error;
 		}
 		// set remaining length for bridging
@@ -1021,11 +1026,10 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 		ack = false;
 	}
 
-	// keep connection & Schedule next receive
-	if (stream==NULL) {
-		nni_aio *useraio = NULL;
-		useraio = nni_list_first(&p->recvq);
-		if (NULL != aio) {
+	// only main stream keeps connection & Schedule next receive here
+	if (stream == NULL) {
+		if (!nni_list_empty(&p->recvq)) {
+			// TODO check this aio, always main stream?
 			mqtt_quictran_pipe_recv_start(p, aio);
 		}
 	}
@@ -1052,6 +1056,22 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 			if (nni_lmq_put(&p->rxlmq, msg) != 0)
 				nni_msg_free(msg);
 		}
+		if (stream) {
+			nni_iov sub_iov;
+			stream->gotrxhead  = 0;
+			stream->wantrxhead = 2;
+			sub_iov.iov_buf    = stream->rxlen;
+			sub_iov.iov_len    = 2;
+			nni_aio_set_iov(rxaio, 1, &sub_iov);
+
+			nni_aio_set_prov_data(rxaio, &stream->id);
+			log_info("start recv on aio %p", rxaio);
+			nng_stream_recv(p->conn, rxaio);
+		} else {
+			log_error("bug!!!!!!!!");
+		}
+	} else {
+		log_error("why?????????????????");
 	}
 	return;
 
