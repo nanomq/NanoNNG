@@ -244,6 +244,7 @@ mqtt_quictran_pipe_fini(void *arg)
 	nni_aio_free(p->rpaio);
 
 	nni_msg_free(p->rxmsg);
+	log_error("flush lmQ!!!");
 	nni_lmq_flush(&p->rxlmq);
 	nni_lmq_fini(&p->rxlmq);
 	nni_lmq_flush(&p->rslmq);
@@ -903,7 +904,7 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 		break;
 	case CMD_PUBREL:
 	if (stream)
-		log_info("PUBREL received from stream id %d", stream->id);
+		log_trace("PUBREL received from stream id %d", stream->id);
 		if (flags == 0x02) {
 			if (nni_mqtt_pubres_decode(msg, &packet_id, &reason_code,
 			        &prop, p->proto) != 0) {
@@ -921,7 +922,7 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 		// TODO set property for user callback
 	case CMD_PUBCOMP:
 	if (stream)
-		log_info("PUBCOMP/PUBACK received from stream id %d", stream->id);
+		log_trace("PUBCOMP/PUBACK received from stream id %d", stream->id);
 		if (nni_mqtt_pubres_decode(
 		        msg, &packet_id, &reason_code, &prop, p->proto) != 0) {
 			rv = PROTOCOL_ERROR;
@@ -1031,7 +1032,6 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 #endif
 	if (aio)
 		nni_aio_set_msg(aio, msg);
-	nni_mtx_unlock(&p->mtx);
 	if (aio) {
 		log_trace("return msg type %d", type);
 		if (stream != NULL) {
@@ -1039,15 +1039,20 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 		} else {
 			nni_aio_set_prov_data(aio, NULL);
 		}
+		nni_mtx_unlock(&p->mtx);
 		nni_aio_finish_sync(aio, 0, n);
+		return;
 	} else if (msg!= NULL) {
 		if (nni_lmq_full(&p->rxlmq)) {
 			nni_msg_free(msg);
-			log_info("msg from substream lost!");
+			log_warn("msg from substream lost!");
 		} else {
 			log_debug("cache msg from substream first");
-			if (nni_lmq_put(&p->rxlmq, msg) != 0)
+			if (nni_lmq_put(&p->rxlmq, msg) != 0) {
 				nni_msg_free(msg);
+				log_error("put msg in rxlmq %p failed", msg);
+			}
+			log_error("put msg in rxlmq %p", msg);
 		}
 		if (stream) {
 			nni_iov sub_iov;
@@ -1066,6 +1071,7 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 	} else {
 		log_error("why?????????????????");
 	}
+	nni_mtx_unlock(&p->mtx);
 	return;
 
 recv_error:
@@ -1352,6 +1358,7 @@ mqtt_quictran_pipe_recv(void *arg, nni_aio *aio)
 	if (nni_lmq_get(&p->rxlmq, &msg) == 0) {
 		// nni_aio_list_remove(aio);
 		nni_aio_set_msg(aio, msg);
+		log_error("get msg from rxlmq %p", msg);
 		nni_mtx_unlock(&p->mtx);
 		nni_aio_finish(aio, 0, nni_msg_len(msg));
 		return;
