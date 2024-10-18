@@ -523,14 +523,14 @@ mqtt_quic_recv_cb(void *arg)
 	case NNG_MQTT_UNSUBACK:
 		// we have received a UNSUBACK, successful unsubscription
 		packet_id  = nni_mqtt_msg_get_packet_id(msg);
-		log_warn("get ack msg id %d", packet_id);
+		log_debug("get ack msg id %d", packet_id);
 		p->rid ++;
 		cached_msg = nni_id_get(&s->sent_unack, packet_id);
 		if (cached_msg != NULL) {
 			nni_id_remove(&s->sent_unack, packet_id);
 			user_aio = nni_mqtt_msg_get_aio(cached_msg);
 			nni_mqtt_msg_set_aio(cached_msg, NULL);
-			log_info("free !!!!!!!!!!!! acked msg %p id %d", cached_msg, packet_id);
+			log_debug("acked msg %p id %d", cached_msg, packet_id);
 			nni_msg_free(cached_msg);
 			if (packet_type == NNG_MQTT_SUBACK ||
 			    packet_type == NNG_MQTT_UNSUBACK)
