@@ -186,7 +186,6 @@ mqtt_quictran_pipe_stop(void *arg)
 {
 	mqtt_quictran_pipe *p = arg;
 
-	nni_mtx_lock(&p->mtx);
 	for (uint8_t i = 0; i < QUIC_SUB_STREAM_NUM; i++)
 	{
 		quic_substream *stream = &p->substreams[i];
@@ -194,7 +193,6 @@ mqtt_quictran_pipe_stop(void *arg)
 		nni_aio_stop(&stream->saio);
 		nni_aio_stop(&stream->qaio);
 	}
-	nni_mtx_unlock(&p->mtx);
 	nni_aio_stop(p->rxaio);
 	nni_aio_stop(p->qsaio);
 	nni_aio_stop(p->txaio);
@@ -702,7 +700,7 @@ mqtt_share_pipe_send_cb(void *arg, nni_aio *txaio, quic_substream *stream)
 	nni_mtx_lock(&p->mtx);
 	aio = nni_list_first(&p->sendq);
 
-	log_info(" ############ mqtt_quictran_pipe_send_cb [%p] ############ ", p);
+	log_trace(" ############ mqtt_quictran_pipe_send_cb [%p] ############ ", p);
 	if ((rv = nni_aio_result(txaio)) != 0) {
 		log_warn(" send aio error %s", nng_strerror(rv));
 		nni_aio_list_remove(aio);
@@ -763,7 +761,7 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 	uint8_t            type, pos, flags;
 	uint32_t           len = 0, rv;
 	size_t             n;
-	nni_msg *          msg, *qmsg;
+	nni_msg *          msg;
 	mqtt_quictran_pipe *p    = arg;
 	bool               ack   = false;
 	uint8_t            *rxlen;
@@ -872,8 +870,6 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 	case CMD_PUBLISH:
 		// should we seperate the 2 phase work of QoS into 2 aios?
 		// TODO MQTT v5 qos
-		if (stream)
-			log_info("PUBLISH received from stream id %d", stream->id);
 		qos_pac = nni_msg_get_pub_qos(msg);
 		if (qos_pac > 0) {
 			if (qos_pac == 1) {
@@ -892,8 +888,6 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 		}
 		break;
 	case CMD_PUBREC:
-	if (stream)
-		log_info("PUBREC received from stream id %d", stream->id);
 		if (nni_mqtt_pubres_decode(msg, &packet_id, &reason_code, &prop,
 		        p->proto) != 0) {
 			rv = PROTOCOL_ERROR;
@@ -903,8 +897,6 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 		ack     = true;
 		break;
 	case CMD_PUBREL:
-	if (stream)
-		log_trace("PUBREL received from stream id %d", stream->id);
 		if (flags == 0x02) {
 			if (nni_mqtt_pubres_decode(msg, &packet_id, &reason_code,
 			        &prop, p->proto) != 0) {
@@ -951,6 +943,7 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 		nni_lmq *rlmq;
 		// alloc a msg here costs memory. However we must do it for the
 		// sake of compatibility with nng.
+		nni_msg *qmsg;
 		if ((rv = nni_msg_alloc(&qmsg, 0)) != 0) {
 			ack = false;
 			rv  = UNSPECIFIED_ERROR;
@@ -1050,9 +1043,7 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 			log_debug("cache msg from substream first");
 			if (nni_lmq_put(&p->rxlmq, msg) != 0) {
 				nni_msg_free(msg);
-				log_error("put msg in rxlmq %p failed", msg);
 			}
-			log_error("put msg in rxlmq %p", msg);
 		}
 		if (stream) {
 			nni_iov sub_iov;
@@ -1326,7 +1317,6 @@ mqtt_quictran_pipe_recv_start(mqtt_quictran_pipe *p, nni_aio *aio)
 			nni_aio_set_iov(&stream->raio, 1, &sub_iov);
 
 			nni_aio_set_prov_data(&stream->raio, &stream->id);
-			log_info("start recv on aio %p", &stream->raio);
 			nng_stream_recv(p->conn, &stream->raio);
 		} else {
 			log_error("bug2??????????????");
@@ -1358,7 +1348,6 @@ mqtt_quictran_pipe_recv(void *arg, nni_aio *aio)
 	if (nni_lmq_get(&p->rxlmq, &msg) == 0) {
 		// nni_aio_list_remove(aio);
 		nni_aio_set_msg(aio, msg);
-		log_error("get msg from rxlmq %p", msg);
 		nni_mtx_unlock(&p->mtx);
 		nni_aio_finish(aio, 0, nni_msg_len(msg));
 		return;
