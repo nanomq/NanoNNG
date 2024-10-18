@@ -770,7 +770,6 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 
 	nni_mtx_lock(&p->mtx);
 	aio = nni_list_first(&p->recvq);
-	log_info("aio cb on %p", rxaio);
 	if ((rv = nni_aio_result(rxaio)) != 0) {
 		log_info("aio result %s", nng_strerror(rv));
 		if (stream != NULL)
@@ -1021,11 +1020,9 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 		ack = false;
 	}
 
-	// keep connection & Schedule next receive
-	if (stream==NULL) {
-		nni_aio *useraio = NULL;
-		useraio = nni_list_first(&p->recvq);
-		if (NULL != aio) {
+	if (stream == NULL) {
+		// only main stream keep connection & Schedule next receive at here
+		if (!nni_list_empty(&p->recvq)) {
 			mqtt_quictran_pipe_recv_start(p, aio);
 		}
 	}
@@ -1052,6 +1049,22 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 			if (nni_lmq_put(&p->rxlmq, msg) != 0)
 				nni_msg_free(msg);
 		}
+		if (stream) {
+			nni_iov sub_iov;
+			stream->gotrxhead  = 0;
+			stream->wantrxhead = 2;
+			sub_iov.iov_buf    = stream->rxlen;
+			sub_iov.iov_len    = 2;
+			nni_aio_set_iov(rxaio, 1, &sub_iov);
+
+			nni_aio_set_prov_data(rxaio, &stream->id);
+			log_info("start recv on sub aio %p", rxaio);
+			nng_stream_recv(p->conn, rxaio);
+		} else {
+			log_error("bug!!!!!!!!");
+		}
+	} else {
+		log_error("why?????????????????");
 	}
 	return;
 
