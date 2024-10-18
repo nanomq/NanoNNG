@@ -244,7 +244,7 @@ ex_quic_conn_free(ex_quic_conn *ec)
 		subc->reopen = false;
 		nni_aio_close(&subc->reconaio);
 		nni_aio_stop(&subc->reconaio);
-		log_info("[sid%d] Stop reopen and stream rele! aio%p",
+		log_warn("[sid%d] Stop reopen and stream rele! aio%p",
 				subc->id, &subc->reconaio);
 
 		quic_substream_free(subc);
@@ -259,7 +259,6 @@ ex_quic_conn_close(ex_quic_conn *ec)
 {
 	for (int i=0; i<QUIC_SUB_STREAM_NUM; ++i) {
 		nni_quic_conn *subc;
-		// FIXME Should all sub stream protect by a lock???
 		nni_mtx_lock(&ec->mtx);
 		if ((subc = ec->substrms[i]) == NULL) {
 			nni_mtx_unlock(&ec->mtx);
@@ -399,8 +398,10 @@ quic_dialer_cb(void *arg)
 	// Connection was established. Nice. Then. Create the main and sub quic streams.
 	c->ismain = true;
 	c->id     = 0;
-	if ((rv = msquic_strm_open(d->qconn, c, d->priority, false)) != 0)
+	if ((rv = msquic_strm_open(d->qconn, c, d->priority, false)) != 0) {
+		log_error("quic stream open failed 0x%d", rv);
 		goto error;
+	}
 
 	ec = ex_quic_conn_init(c);
 	c->ec       = ec;
@@ -440,9 +441,6 @@ error:
 	}
 }
 
-static const int flags_main_stream = QUIC_MAIN_STREAM;
-static const int flags_sub_stream  = QUIC_SUB_STREAM;
-
 // Dial to the `url`. Finish `aio` when connected.
 // For quic. If the connection is not established.
 // This nng stream is linked to main quic stream.
@@ -452,8 +450,6 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 {
 	nni_quic_conn *  c;
 	nni_quic_dialer *d = arg;
-	int              cnt;
-	bool             ismain = false;
 	int              rv;
 
 	if (nni_aio_begin(aio) != 0) {
@@ -474,26 +470,6 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 		rv = NNG_ECLOSED;
 		goto error;
 	}
-
-	cnt = nni_atomic_get64(&d->ref);
-
-	ismain = (cnt == 2 ? true : false);
-	// TODO It's a not a good way to create a main/sub stream by checking ref
-	// So. Disable multistream now.
-	if (ismain == false) {
-		rv = NNG_ETIMEDOUT; // Avoid to stop reconnecting
-		goto error;
-	}
-
-	nni_aio_set_output(aio, 1,
-	        (void *)(ismain ? &flags_main_stream : &flags_sub_stream));
-
-	// XXX Which should be uncommented when debug is finished
-	//if (d->enable_mltstrm == false && ismain == false) {
-	//	log_error("Please enable multistream first");
-	//	rv = NNG_EINVAL;
-	//	goto error;
-	//}
 
 	if ((rv = nni_aio_schedule(aio, quic_dialer_strm_cancel, d)) != 0) {
 		goto error;
@@ -878,7 +854,6 @@ quic_stream_recv(void *arg, nni_aio *aio)
 		}
 	}
 
-	//c = (strmid == 0) ? ec->main : ec->substrms[strmid-1];
 	if (strmid == 0)
 		c = ec->main;
 	else {
@@ -1411,14 +1386,14 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		quic_stream_cb(QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN, c, 0);
 		break;
 	case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
-		log_warn("[sid%d][%p] QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE.", c->id, stream);
+		log_info("[sid%d][%p] QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE.", c->id, stream);
 		break;
 
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 		// Both directions of the stream have been shut down and MsQuic
 		// is done with the stream. It can now be safely cleaned up.
 		log_warn("[sid%d][%p] QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:"
-		         " All done stream rele %ld",
+		         "All done%ld and stream rele!",
 				c->id, stream, Event->SHUTDOWN_COMPLETE.ConnectionErrorCode);
 		quic_stream_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c, 0);
 		break;
@@ -1652,7 +1627,7 @@ msquic_strm_open(HQUIC qconn, nni_quic_conn *c, int priority, bool isreopen)
 	rv = MsQuic->StreamOpen(qconn, QUIC_STREAM_OPEN_FLAG_NONE,
 	        msquic_strm_cb, (void *)c, &strm);
 	if (QUIC_FAILED(rv)) {
-		log_error("[sid%d] StreamOpen failed, 0x%x!", c->id, rv);
+		log_error("[sid%d] StreamOpen failed, 0x%x! isreopen%d", c->id, rv, isreopen);
 		goto error;
 	}
 
