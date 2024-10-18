@@ -218,11 +218,11 @@ mqtt_quic_send_msg(nni_aio *aio, mqtt_sock_t *s)
 	case NNG_MQTT_SUBSCRIBE:
 	case NNG_MQTT_UNSUBSCRIBE:
 		packet_id = nni_mqtt_msg_get_packet_id(msg);
-		log_warn("send msg id %d", packet_id);
+		log_debug("send msg id %d", packet_id);
 		nni_mqtt_msg_set_aio(msg, aio);
 		tmsg = nni_id_get(&s->sent_unack, packet_id);
 		if (tmsg != NULL) {
-			log_warn("msg packetID %d conflict due to duplicated!", packet_id);
+			log_warn("msg %p packetID %d conflict due to duplicated!",tmsg, packet_id);
 			nni_aio *m_aio = nni_mqtt_msg_get_aio(tmsg);
 			if (m_aio) {
 				nni_aio_finish_error(m_aio, NNG_ECANCELED);
@@ -242,6 +242,7 @@ mqtt_quic_send_msg(nni_aio *aio, mqtt_sock_t *s)
 			nni_aio_finish_error(aio, NNG_ECANCELED);
 			return NNG_ECANCELED;
 		}
+		log_warn("send qos msg %p id %d!", msg, packet_id);
 		// TODO nni_aio_schedule
 		break;
 	default:
@@ -619,8 +620,7 @@ mqtt_quic_recv_cb(void *arg)
 				// packetid already exists.
 				// sth wrong with the broker
 				// replace old with new
-				log_error("ERROR: packet id %d duplicates in",
-				    packet_id);
+				log_error("ERROR: packet id %d duplicates in", packet_id);
 				// if ((aio = nni_mqtt_msg_get_aio(cached_msg)) != NULL) {
 				// 	nng_aio_finish_error(aio, NNG_EEXIST);
 				// 	nni_mqtt_msg_set_aio(cached_msg, NULL);
@@ -631,6 +631,7 @@ mqtt_quic_recv_cb(void *arg)
 #endif
 			}
 			nni_id_set(&p->recv_unack, packet_id, msg);
+			log_warn("received qos 2 msg %p id %d awaits release !", msg, packet_id);
 		}
 		break;
 	case NNG_MQTT_PINGRESP:
@@ -1049,10 +1050,10 @@ mqtt_quic_pipe_fini(void *arg)
 	// 	nni_aio_set_prov_data(&p->recv_aio, NULL);
 	// 	nni_msg_free(msg);
 	// }
-	if ((msg = nni_aio_get_msg(&p->send_aio)) != NULL) {
-		nni_aio_set_msg(&p->send_aio, NULL);
-		nni_msg_free(msg);
-	}
+	// if ((msg = nni_aio_get_msg(&p->send_aio)) != NULL) {
+	// 	nni_aio_set_msg(&p->send_aio, NULL);
+	// 	nni_msg_free(msg);
+	// }
 	if (p->pingmsg)
 		nni_msg_free(p->pingmsg);
 
