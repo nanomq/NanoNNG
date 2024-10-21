@@ -1,5 +1,5 @@
 //
-// Copyright 2023 NanoMQ Team, Inc. <wangwei@emqx.io>
+// Copyright 2024 NanoMQ Team, Inc. <wangwei@emqx.io>
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -419,7 +419,7 @@ quic_dialer_cb(void *arg)
 			log_error("quic substream%d open failed", subc->id);
 			// goto error;
 		}
-		log_debug("assign %p to substreams %d", subc, i);
+		log_error("assign %p to substreams %d", subc, i);
 		ec->substrms[i] = subc;
 	}
 
@@ -647,18 +647,20 @@ quic_stream_cb(int events, void *arg, int rc)
 	// case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
 		// Marked it as closed, prevent explicit shutdown
 		c->closed = true;
-		if (c->ismain)
+		if (c->ismain) {
 			quic_stream_error(arg, NNG_ECONNSHUT);
-		else
+		} else
 			quic_stream_error(arg, NNG_ECANCELED);
 
 		if (c->ismain) {
 			quic_stream_rele(c, c->ec);
 		} else {
-			if (c->reopen == false)
+			log_error("reopen???^^^^^^^^^ %d", c->reopen);
+			if (c->reopen == false) {
 				quic_substream_free(c);
-			else
+			} else {
 				quic_substream_free_and_reopen(c);
+			}
 		}
 		break;
 	default:
@@ -670,7 +672,8 @@ quic_stream_cb(int events, void *arg, int rc)
 static void
 quic_stream_fini(nni_quic_conn *c)
 {
-	log_debug("[sid%d] finite", c->id);
+	log_info("free @@@@@@@@@@@@@@@@@@@@@@@@ [sid%d] stream %p fini",
+	c->id, c->qstrm);
 	msquic_strm_fini(c->qstrm);
 	NNI_FREE_STRUCT(c);
 }
@@ -679,6 +682,7 @@ static void
 quic_substream_fini_without_free(nni_quic_conn *c)
 {
 	log_debug("[sid%d] finite without free", c->id);
+	log_info("stop c id%d stream %p", c->id, c->qstrm);
 	msquic_strm_fini(c->qstrm);
 }
 
@@ -726,6 +730,8 @@ static void
 quic_substream_free(nni_quic_conn *c)
 {
 	quic_substream_close(c);
+	log_info("stream sid%d stream%p ref is %d ############", c->id,
+	 c->qstrm, nni_atomic_get(&c->ref));
 	if (nni_atomic_dec_nv(&c->ref) != 0) {
 		return;
 	}
@@ -737,7 +743,7 @@ static void
 quic_substream_free_and_reopen(nni_quic_conn *c)
 {
 	quic_substream_close(c);
-	quic_substream_fini_without_free(c);
+	// quic_substream_fini_without_free(c);
 
 	// reopen this quic stream
 	nni_aio *aio = &c->reconaio;
@@ -1383,7 +1389,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 		// The peer aborted its send direction of the stream.
 		log_warn("[sid%d][%p] Peer send shut down\n", c->id, stream);
 		MsQuic->StreamShutdown(stream, QUIC_STREAM_SHUTDOWN_FLAG_GRACEFUL, 0);
-		quic_stream_cb(QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN, c, 0);
+		// quic_stream_cb(QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN, c, 0);
 		break;
 	case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
 		log_info("[sid%d][%p] QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE.", c->id, stream);
@@ -1670,7 +1676,6 @@ msquic_strm_close(HQUIC qstrm)
 static void
 msquic_strm_fini(HQUIC qstrm)
 {
-	log_debug("stream %p fini", qstrm);
 	MsQuic->StreamClose(qstrm);
 }
 

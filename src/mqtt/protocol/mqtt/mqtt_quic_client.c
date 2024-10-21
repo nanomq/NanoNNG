@@ -531,7 +531,7 @@ mqtt_quic_recv_cb(void *arg)
 			nni_id_remove(&s->sent_unack, packet_id);
 			user_aio = nni_mqtt_msg_get_aio(cached_msg);
 			nni_mqtt_msg_set_aio(cached_msg, NULL);
-			log_debug("acked msg %p id %d", cached_msg, packet_id);
+			log_info("acked msg %p id %d", cached_msg, packet_id);
 			nni_msg_free(cached_msg);
 			if (packet_type == NNG_MQTT_SUBACK ||
 			    packet_type == NNG_MQTT_UNSUBACK)
@@ -631,7 +631,7 @@ mqtt_quic_recv_cb(void *arg)
 #endif
 			}
 			nni_id_set(&p->recv_unack, packet_id, msg);
-			log_warn("received qos 2 msg %p id %d awaits release !", msg, packet_id);
+			log_debug("received qos 2 msg %p id %d awaits release !", msg, packet_id);
 		}
 		break;
 	case NNG_MQTT_PINGRESP:
@@ -762,7 +762,6 @@ mqtt_timer_cb(void *arg)
 				log_info("msg id %d resend canceld due to blocked pipe", pid);
 			}
 		}
-
 	}
 #if defined(NNG_SUPP_SQLITE)
 	if (!p->busy) {
