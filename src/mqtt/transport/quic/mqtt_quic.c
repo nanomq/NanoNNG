@@ -240,9 +240,7 @@ mqtt_quictran_pipe_fini(void *arg)
 	nni_aio_free(p->qsaio);
 	nni_aio_free(p->negoaio);
 	nni_aio_free(p->rpaio);
-
 	nni_msg_free(p->rxmsg);
-	log_error("flush lmQ!!!");
 	nni_lmq_flush(&p->rxlmq);
 	nni_lmq_fini(&p->rxlmq);
 	nni_lmq_flush(&p->rslmq);
@@ -716,8 +714,6 @@ mqtt_share_pipe_send_cb(void *arg, nni_aio *txaio, quic_substream *stream)
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
-	if (stream)
-		log_info("msg sent on stream id %d", stream->id);
 
 	nni_aio_list_remove(aio);
 	mqtt_quictran_pipe_send_start(p);
@@ -785,7 +781,7 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 		rxlen = stream->rxlen;
 		gotrxhead  = &stream->gotrxhead;
 		wantrxhead = &stream->wantrxhead;
-		id = (uint16_t *)nni_aio_get_prov_data(rxaio); 
+		id = (uint16_t *)nni_aio_get_prov_data(rxaio);
 		if (*id != (stream->id))
 			log_error("bug!!!!!!!!");
 	} else {
@@ -1485,9 +1481,7 @@ mqtt_quictran_pipe_start(
 			sub_iov[i].iov_buf   = stream->rxlen;
 			sub_iov[i].iov_len   = 2;
 			nni_aio_set_iov(&stream->raio, 1, &sub_iov[i]);
-
 			nni_aio_set_prov_data(&stream->raio, &stream->id);
-			log_info("recv on aio %p", &stream->raio);
 			nng_stream_recv(p->conn, &stream->raio);
 		}
 	}
