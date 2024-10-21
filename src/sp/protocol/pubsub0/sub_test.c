@@ -1,5 +1,5 @@
 //
-// Copyright 2020 Staysail Systems, Inc. <info@staysail.tech>
+// Copyright 2024 Staysail Systems, Inc. <info@staysail.tech>
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -179,10 +179,10 @@ test_sub_context_no_poll(void)
 void
 test_sub_validate_peer(void)
 {
-	nng_socket s1, s2;
-	nng_stat  *stats;
-	nng_stat  *reject;
-	char      *addr;
+	nng_socket      s1, s2;
+	nng_stat       *stats;
+	const nng_stat *reject;
+	char           *addr;
 
 	NUTS_ADDR(addr, "inproc");
 

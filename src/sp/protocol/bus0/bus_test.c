@@ -99,10 +99,10 @@ test_bus_device(void)
 static void
 test_bus_validate_peer(void)
 {
-	nng_socket s1, s2;
-	nng_stat  *stats;
-	nng_stat  *reject;
-	char      *addr;
+	nng_socket      s1, s2;
+	nng_stat       *stats;
+	const nng_stat *reject;
+	char           *addr;
 
 	NUTS_ADDR(addr, "inproc");
 	NUTS_PASS(nng_bus0_open(&s1));
