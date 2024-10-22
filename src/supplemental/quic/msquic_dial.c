@@ -646,7 +646,10 @@ quic_stream_cb(int events, void *arg, int rc)
 	case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
 	// case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
 		// Marked it as closed, prevent explicit shutdown
+		nni_mtx_lock(&c->mtx);
 		c->closed = true;
+		nni_mtx_unlock(&c->mtx);
+
 		if (c->ismain) {
 			quic_stream_error(arg, NNG_ECONNSHUT);
 		} else
@@ -874,12 +877,13 @@ quic_stream_recv(void *arg, nni_aio *aio)
 		return;
 	}
 
+	nni_mtx_lock(&c->mtx);
+
 	if (c->closed) {
+		nni_mtx_unlock(&c->mtx);
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
 	}
-
-	nni_mtx_lock(&c->mtx);
 
 	if ((rv = nni_aio_schedule(aio, quic_stream_cancel, c)) != 0) {
 		nni_mtx_unlock(&c->mtx);
