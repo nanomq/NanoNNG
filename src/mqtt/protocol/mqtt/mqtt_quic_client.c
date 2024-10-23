@@ -181,7 +181,7 @@ mqtt_quic_send_msg(nni_aio *aio, mqtt_sock_t *s)
 		// Not gonna hit this.
 #if defined(NNG_SUPP_SQLITE)
 		nni_mqtt_sqlite_option *sqlite =
-		    mqtt_sock_get_sqlite_option(s);
+		    mqtt_quic_sock_get_sqlite_option(s);
 		if (sqlite_is_enabled(sqlite)) {
 			if (!nni_lmq_empty(&sqlite->offline_cache)) {
 				sqlite_flush_offline_cache(sqlite);
