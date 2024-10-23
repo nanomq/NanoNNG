@@ -122,7 +122,7 @@ static void quic_substream_free(nni_quic_conn *c);
 static void quic_substream_free_and_reopen(nni_quic_conn *c);
 static void quic_substream_close(nni_quic_conn *c);
 static void quic_substream_reopen_cb(void *arg);
-static void quic_substream_fini_without_free(nni_quic_conn *c);
+// static void quic_substream_fini_without_free(nni_quic_conn *c);
 
 static QUIC_STATUS verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *ca);
 
@@ -680,6 +680,7 @@ quic_stream_fini(nni_quic_conn *c)
 	NNI_FREE_STRUCT(c);
 }
 
+/*
 static void
 quic_substream_fini_without_free(nni_quic_conn *c)
 {
@@ -687,6 +688,7 @@ quic_substream_fini_without_free(nni_quic_conn *c)
 	log_info("stop c id%d stream %p", c->id, c->qstrm);
 	msquic_strm_fini(c->qstrm);
 }
+*/
 
 static void
 quic_substream_reopen_cb(void *arg)
