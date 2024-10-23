@@ -858,8 +858,8 @@ quic_stream_recv(void *arg, nni_aio *aio)
 	if (flags) {
 		strmid = (*flags & QUIC_MULTISTREAM_FLAGS);
 		if (strmid > QUIC_SUB_STREAM_NUM) {
-			if (nni_aio_begin(aio) != 0) {
-				return;
+			if ((rv = nni_aio_begin(aio)) != 0) {
+				log_error("aio begin failed %d", rv);
 			}
 			nng_aio_finish_error(aio, NNG_EINVAL);
 			return;
@@ -876,7 +876,9 @@ quic_stream_recv(void *arg, nni_aio *aio)
 			nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
 
-	if (nni_aio_begin(aio) != 0) {
+	if ((rv = nni_aio_begin(aio)) != 0) {
+		log_error("aio begin failed %d", rv);
+		nng_aio_finish_error(aio, rv);
 		return;
 	}
 
@@ -1015,8 +1017,8 @@ quic_stream_send(void *arg, nni_aio *aio)
 		if (strmid > QUIC_SUB_STREAM_NUM) {
 			log_error("Invalid streamid %d (0-%d are available)",
 					strmid, QUIC_SUB_STREAM_NUM);
-			if (nni_aio_begin(aio) != 0) {
-				return;
+			if ((rv = nni_aio_begin(aio)) != 0) {
+				log_error("aio begin failed %d", rv);
 			}
 			nng_aio_finish_error(aio, NNG_EINVAL);
 			return;
@@ -1065,7 +1067,9 @@ quic_stream_send(void *arg, nni_aio *aio)
 		}
 	}
 
-	if (nni_aio_begin(aio) != 0) {
+	if ((rv = nni_aio_begin(aio)) != 0) {
+		log_error("aio begin failed %d", rv);
+		nng_aio_finish_error(aio, rv);
 		return;
 	}
 
