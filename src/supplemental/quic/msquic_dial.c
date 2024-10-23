@@ -658,7 +658,6 @@ quic_stream_cb(int events, void *arg, int rc)
 		if (c->ismain) {
 			quic_stream_rele(c, c->ec);
 		} else {
-			log_error("reopen???^^^^^^^^^ %d", c->reopen);
 			if (c->reopen == false) {
 				quic_substream_free(c);
 			} else {
@@ -696,8 +695,10 @@ quic_substream_reopen_cb(void *arg)
 	nni_quic_conn *c = arg;
 	nni_aio *aio = &c->reconaio;
 	nni_quic_dialer *d = c->dialer;
-	if (c->reopen == false)
+	if (c->reopen == false) {
+		quic_substream_free(c);
 		return;
+	}
 
 	if ((rv = msquic_strm_open(d->qconn, c, d->priority, true)) != 0) {
 		log_info("[sid%d] reopen failed rv%d aio%p", c->id, rv, aio);
