@@ -96,7 +96,6 @@ struct mqtt_sock_s {
 	mqtt_pipe_t  *pipe;     // the major pipe (control stream)
 	                   // main quic pipe, others needs a map to store the
 	                   // relationship between MQTT topics and quic pipes
-	nni_aio  *ack_aio;  // set by user, expose puback/pubcomp
 	nni_sock *nsock;
 
 	nni_mqtt_sqlite_option *sqlite_opt;
@@ -481,11 +480,6 @@ mqtt_quic_recv_cb(void *arg)
 		if (s->cb.connect_cb) {
 			nni_msg_clone(msg);
 		}
-		if (s->ack_aio != NULL && !nni_aio_busy(s->ack_aio)) {
-			//TODO rm ack aio
-			nni_msg_clone(msg);
-			nni_aio_finish_msg(s->ack_aio, msg);
-		}
 		p->cparam  = nng_msg_get_conn_param(msg);
 		if (p->cparam != NULL) {
 			conn_param_clone(p->cparam);
@@ -540,20 +534,10 @@ mqtt_quic_recv_cb(void *arg)
 					nni_msg_clone(msg);
 					nni_aio_set_msg(user_aio, msg);
 				}
-		}
-		if (s->ack_aio == NULL) {
-			// no callback being set
-			log_debug("Ack Reason code:");
-			nni_msg_free(msg);
-			break;
-		}
-		if (!nni_aio_busy(s->ack_aio)) {
-			nni_aio_set_msg(s->ack_aio, msg);
-			nni_aio_finish(s->ack_aio, 0, nni_msg_len(msg));
 		} else {
-			nni_lmq_put(s->ack_lmq, msg);
-			log_debug("ack msg cached!");
+			log_warn("QoS msg ack failed %d", packet_id);
 		}
+		nni_msg_free(msg);
 		break;
 	case NNG_MQTT_PUBREL:
 		packet_id = nni_mqtt_msg_get_pubrel_packet_id(msg);
@@ -855,17 +839,6 @@ mqtt_quic_sock_fini(void *arg)
 #endif
 
 	log_debug("mqtt_quic_sock_fini %p", s);
-
-	if (s->ack_aio != NULL) {
-		// set by user
-		nni_aio_fini(s->ack_aio);
-		nng_free(s->ack_aio, sizeof(nni_aio *));
-	}
-
-	if (s->ack_lmq != NULL) {
-		nni_lmq_fini(s->ack_lmq);
-		nng_free(s->ack_lmq, sizeof(nni_lmq));
-	}
 	nni_id_map_fini(&s->sent_unack);
 	mqtt_quic_ctx_fini(&s->master);
 	nni_mtx_fini(&s->mtx);
@@ -1367,18 +1340,6 @@ mqtt_quic_ctx_recv(void *arg, nni_aio *aio)
 		nni_mtx_unlock(&s->mtx);
 		log_info("recv on a closed socket!");
 		nni_aio_finish_error(aio, NNG_ECLOSED);
-		return;
-	}
-	// TODO ack aio??
-	if (aio == s->ack_aio) {
-		if (nni_lmq_get(s->ack_lmq, &msg) == 0) {
-			nni_aio_set_msg(aio, msg);
-			nni_mtx_unlock(&s->mtx);
-			nni_aio_finish_msg(aio, msg);
-			return;
-		}
-		nni_mtx_unlock(&s->mtx);
-		nni_aio_finish(aio, NNG_ECANCELED, 0);
 		return;
 	}
 	if (nni_lmq_get(&p->recv_messages, &msg) == 0) {
