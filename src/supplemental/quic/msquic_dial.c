@@ -241,11 +241,14 @@ ex_quic_conn_free(ex_quic_conn *ec)
 		}
 		ec->substrms[i] = NULL;
 		nni_mtx_unlock(&ec->mtx);
+
+		nni_mtx_lock(&subc->mtx);
 		subc->reopen = false;
 		nni_aio_close(&subc->reconaio);
 		nni_aio_stop(&subc->reconaio);
 		log_warn("[sid%d] Stop reopen and stream rele! aio%p",
 				subc->id, &subc->reconaio);
+		nni_mtx_unlock(&subc->mtx);
 
 		quic_substream_free(subc);
 	}
@@ -659,11 +662,12 @@ quic_stream_cb(int events, void *arg, int rc)
 		if (c->ismain) {
 			quic_stream_rele(c, c->ec);
 		} else {
-			if (c->reopen == false) {
-				quic_substream_free(c);
-			} else {
+			nni_mtx_lock(&c->mtx);
+			if (c->reopen == true)
 				quic_substream_free_and_reopen(c);
-			}
+			nni_mtx_unlock(&c->mtx);
+
+			quic_substream_free(c);
 		}
 		break;
 	default:
@@ -698,18 +702,21 @@ quic_substream_reopen_cb(void *arg)
 	nni_quic_conn *c = arg;
 	nni_aio *aio = &c->reconaio;
 	nni_quic_dialer *d = c->dialer;
-	if (c->reopen == false) {
-		quic_substream_free(c);
-		return;
-	}
 
-	if ((rv = msquic_strm_open(d->qconn, c, d->priority, true)) != 0) {
-		log_info("[sid%d] reopen failed rv%d aio%p", c->id, rv, aio);
-		nni_sleep_aio(5000, aio); // retry after 5s
+	// TODO is reopen flag still needed?
+	if (c->reopen == false) {
 		return;
 	}
 
 	nni_mtx_lock(&c->mtx);
+
+	if ((rv = msquic_strm_open(d->qconn, c, d->priority, true)) != 0) {
+		log_info("[sid%d] reopen failed rv%d aio%p", c->id, rv, aio);
+		nni_sleep_aio(5000, aio); // retry after 5s
+		nni_mtx_unlock(&c->mtx);
+		return;
+	}
+
 	c->closed = false;
 	nni_mtx_unlock(&c->mtx);
 
@@ -749,7 +756,7 @@ quic_substream_free(nni_quic_conn *c)
 static void
 quic_substream_free_and_reopen(nni_quic_conn *c)
 {
-	quic_substream_close(c);
+	// quic_substream_close(c);
 	// quic_substream_fini_without_free(c);
 
 	// reopen this quic stream
@@ -1664,7 +1671,7 @@ msquic_strm_open(HQUIC qconn, nni_quic_conn *c, int priority, bool isreopen)
 		goto error;
 	}
 	// Stream is opened and started
-	if (!isreopen)
+	// if (!isreopen)
 		nni_atomic_inc(&c->ref);
 
 	// Not ready for receiving
