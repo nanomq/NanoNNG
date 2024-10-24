@@ -524,7 +524,7 @@ mqtt_quic_recv_cb(void *arg)
 			nni_id_remove(&s->sent_unack, packet_id);
 			user_aio = nni_mqtt_msg_get_aio(cached_msg);
 			nni_mqtt_msg_set_aio(cached_msg, NULL);
-			log_info("acked msg %p id %d", cached_msg, packet_id);
+			log_info("acked msg %p packet id %d", cached_msg, packet_id);
 			nni_msg_free(cached_msg);
 			if (packet_type == NNG_MQTT_SUBACK ||
 			    packet_type == NNG_MQTT_UNSUBACK)
