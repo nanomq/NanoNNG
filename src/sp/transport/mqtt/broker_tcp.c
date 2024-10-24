@@ -508,11 +508,12 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 		return;
 	}
 
-	if (p->pro_ver == 5) {
+	if (p->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 		(type == CMD_PUBCOMP || type == CMD_PUBACK) ? p->qrecv_quota++
 		                                            : p->qrecv_quota;
 	}
 	nni_msg_free(msg);
+	nni_aio_set_msg(qsaio, NULL);
 	if (nni_lmq_get(&p->rslmq, &msg) == 0) {
 		nni_iov iov[2];
 		iov[0].iov_len = nni_msg_header_len(msg);
