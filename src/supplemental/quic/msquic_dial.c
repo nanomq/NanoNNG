@@ -756,9 +756,6 @@ quic_substream_free(nni_quic_conn *c)
 static void
 quic_substream_free_and_reopen(nni_quic_conn *c)
 {
-	// quic_substream_close(c);
-	// quic_substream_fini_without_free(c);
-
 	// reopen this quic stream
 	nni_aio *aio = &c->reconaio;
 	nni_aio_finish(aio, 0, 0);
@@ -885,8 +882,10 @@ quic_stream_recv(void *arg, nni_aio *aio)
 	}
 
 	if ((rv = nni_aio_begin(aio)) != 0) {
-		log_error("aio begin failed %d", rv);
-		nng_aio_finish_error(aio, rv);
+		// log_error("aio begin failed %d", rv);
+		// if (rv == NNG_ECANCELED)
+		// 	rv = NNG_ESTATE;
+		// nng_aio_finish_error(aio, rv);
 		return;
 	}
 
@@ -1077,7 +1076,7 @@ quic_stream_send(void *arg, nni_aio *aio)
 
 	if ((rv = nni_aio_begin(aio)) != 0) {
 		log_error("aio begin failed %d", rv);
-		nng_aio_finish_error(aio, rv);
+		// nng_aio_finish_error(aio, rv);
 		return;
 	}
 
