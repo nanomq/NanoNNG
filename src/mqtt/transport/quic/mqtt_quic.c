@@ -769,12 +769,12 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 	aio = nni_list_first(&p->recvq);
 	if ((rv = nni_aio_result(rxaio)) != 0) {
 		log_info("aio result %s", nng_strerror(rv));
-		if (rv == NNG_ECANCELED)
-			log_info("CHECK!!!!!!!!!! %s", nng_strerror(rv));
-		if (stream == NULL)	//??
+		if (stream == NULL) {
+			// set close flag to prevent infinit stream recv
 			p->closed = true;
-		rv = SERVER_UNAVAILABLE;
-		// close the pipe
+			// NNI_ASSERT(rv == NNG_ECANCELED);
+			rv = NNG_ECONNABORTED;
+		}
 		goto recv_error;
 	}
 	if (p->closed) {
@@ -1064,30 +1064,31 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 recv_error:
 	if (aio)
 		nni_aio_list_remove(aio);
-	else {
-			nni_iov sub_iov;
-			if (stream) {
-				stream->gotrxhead  = 0;
-				stream->wantrxhead = 2;
-				sub_iov.iov_buf    = stream->rxlen;
-			} else {
-				p->gotrxhead  = 0;
-				p->wantrxhead = 2;
-				sub_iov.iov_buf    = p->rxlen;
-			}	
-			sub_iov.iov_len    = 2;
-			nni_aio_set_iov(rxaio, 1, &sub_iov);
-
-			log_info("start recv on aio %p", rxaio);
-			nng_stream_recv(p->conn, rxaio);
+	else if (!p->closed) {
+		nni_iov sub_iov;
+		if (stream) {
+			stream->gotrxhead  = 0;
+			stream->wantrxhead = 2;
+			sub_iov.iov_buf    = stream->rxlen;
+			log_info("sub stream %d closed", stream->id);
+		} else {
+			p->gotrxhead    = 0;
+			p->wantrxhead   = 2;
+			sub_iov.iov_buf = p->rxlen;
 		}
+		sub_iov.iov_len = 2;
+		nni_aio_set_iov(rxaio, 1, &sub_iov);
+
+		log_info("aio canceled, keep receving on aio %p", rxaio);
+		nng_stream_recv(p->conn, rxaio);
+	}
 	msg      = *rxmsg;
 	*rxmsg = NULL;
 	nni_mtx_unlock(&p->mtx);
 
 	nni_msg_free(msg);
 	if (aio)
-		nni_aio_finish_error(aio, SERVER_UNAVAILABLE);
+		nni_aio_finish_error(aio, rv);
 }
 
 static void
