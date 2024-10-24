@@ -267,6 +267,7 @@ ex_quic_conn_close(ex_quic_conn *ec)
 			nni_mtx_unlock(&ec->mtx);
 			continue;
 		}
+		subc->reopen = false;
 		nni_mtx_unlock(&ec->mtx);
 
 		quic_substream_close(subc);
@@ -732,6 +733,7 @@ quic_substream_close(nni_quic_conn *c)
 	nni_mtx_lock(&c->mtx);
 	if (c->closed != true) {
 		c->closed = true;
+		c->reopen = false;
 		nni_mtx_unlock(&c->mtx);
 		msquic_strm_close(c->qstrm);
 		return;
@@ -821,13 +823,14 @@ quic_stream_close(void *arg)
 	nni_quic_conn *c;
 
 	c = ec->main;
-
 	nni_mtx_lock(&c->mtx);
+	msquic_conn_close(c->dialer->qconn, 0);
 	if (c->closed != true) {
 		c->closed = true;
+		c->reopen = false;
+		ex_quic_conn_close(ec);
 		nni_mtx_unlock(&c->mtx);
 		// Close all sub streams when main stream is closing
-		ex_quic_conn_close(ec);
 		msquic_strm_close(c->qstrm);
 		return;
 	}
