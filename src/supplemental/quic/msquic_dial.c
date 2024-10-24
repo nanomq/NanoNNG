@@ -241,11 +241,14 @@ ex_quic_conn_free(ex_quic_conn *ec)
 		}
 		ec->substrms[i] = NULL;
 		nni_mtx_unlock(&ec->mtx);
+
+		nni_mtx_lock(&subc->mtx);
 		subc->reopen = false;
 		nni_aio_close(&subc->reconaio);
 		nni_aio_stop(&subc->reconaio);
 		log_warn("[sid%d] Stop reopen and stream rele! aio%p",
 				subc->id, &subc->reconaio);
+		nni_mtx_unlock(&subc->mtx);
 
 		quic_substream_free(subc);
 	}
@@ -264,6 +267,7 @@ ex_quic_conn_close(ex_quic_conn *ec)
 			nni_mtx_unlock(&ec->mtx);
 			continue;
 		}
+		subc->reopen = false;
 		nni_mtx_unlock(&ec->mtx);
 
 		quic_substream_close(subc);
@@ -483,8 +487,9 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 
 	// Make a quic connection to the url.
 	// Create stream after connection is established.
-	if (nni_aio_busy(d->qconaio)) {
+	if (nni_aio_busy(d->qconaio) || d->qconn != NULL) {
 		rv = NNG_EBUSY;
+		log_error("^bug*********************");
 		goto error;
 	}
 
@@ -658,11 +663,12 @@ quic_stream_cb(int events, void *arg, int rc)
 		if (c->ismain) {
 			quic_stream_rele(c, c->ec);
 		} else {
-			if (c->reopen == false) {
-				quic_substream_free(c);
-			} else {
+			nni_mtx_lock(&c->mtx);
+			if (c->reopen == true)
 				quic_substream_free_and_reopen(c);
-			}
+			nni_mtx_unlock(&c->mtx);
+
+			quic_substream_free(c);
 		}
 		break;
 	default:
@@ -697,18 +703,21 @@ quic_substream_reopen_cb(void *arg)
 	nni_quic_conn *c = arg;
 	nni_aio *aio = &c->reconaio;
 	nni_quic_dialer *d = c->dialer;
-	if (c->reopen == false) {
-		quic_substream_free(c);
-		return;
-	}
 
-	if ((rv = msquic_strm_open(d->qconn, c, d->priority, true)) != 0) {
-		log_info("[sid%d] reopen failed rv%d aio%p", c->id, rv, aio);
-		nni_sleep_aio(5000, aio); // retry after 5s
+	// TODO is reopen flag still needed?
+	if (c->reopen == false) {
 		return;
 	}
 
 	nni_mtx_lock(&c->mtx);
+
+	if ((rv = msquic_strm_open(d->qconn, c, d->priority, true)) != 0) {
+		log_info("[sid%d] reopen failed rv%d aio%p", c->id, rv, aio);
+		nni_sleep_aio(5000, aio); // retry after 5s
+		nni_mtx_unlock(&c->mtx);
+		return;
+	}
+
 	c->closed = false;
 	nni_mtx_unlock(&c->mtx);
 
@@ -724,6 +733,7 @@ quic_substream_close(nni_quic_conn *c)
 	nni_mtx_lock(&c->mtx);
 	if (c->closed != true) {
 		c->closed = true;
+		c->reopen = false;
 		nni_mtx_unlock(&c->mtx);
 		msquic_strm_close(c->qstrm);
 		return;
@@ -748,9 +758,6 @@ quic_substream_free(nni_quic_conn *c)
 static void
 quic_substream_free_and_reopen(nni_quic_conn *c)
 {
-	quic_substream_close(c);
-	// quic_substream_fini_without_free(c);
-
 	// reopen this quic stream
 	nni_aio *aio = &c->reconaio;
 	nni_aio_finish(aio, 0, 0);
@@ -816,13 +823,14 @@ quic_stream_close(void *arg)
 	nni_quic_conn *c;
 
 	c = ec->main;
-
 	nni_mtx_lock(&c->mtx);
+	msquic_conn_close(c->dialer->qconn, 0);
 	if (c->closed != true) {
 		c->closed = true;
+		c->reopen = false;
+		ex_quic_conn_close(ec);
 		nni_mtx_unlock(&c->mtx);
 		// Close all sub streams when main stream is closing
-		ex_quic_conn_close(ec);
 		msquic_strm_close(c->qstrm);
 		return;
 	}
@@ -877,8 +885,10 @@ quic_stream_recv(void *arg, nni_aio *aio)
 	}
 
 	if ((rv = nni_aio_begin(aio)) != 0) {
-		log_error("aio begin failed %d", rv);
-		nng_aio_finish_error(aio, rv);
+		// log_error("aio begin failed %d", rv);
+		// if (rv == NNG_ECANCELED)
+		// 	rv = NNG_ESTATE;
+		// nng_aio_finish_error(aio, rv);
 		return;
 	}
 
@@ -1069,7 +1079,7 @@ quic_stream_send(void *arg, nni_aio *aio)
 
 	if ((rv = nni_aio_begin(aio)) != 0) {
 		log_error("aio begin failed %d", rv);
-		nng_aio_finish_error(aio, rv);
+		// nng_aio_finish_error(aio, rv);
 		return;
 	}
 
@@ -1219,7 +1229,10 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 			//MsQuic->ConnectionClose(qconn); // plz use msquic_conn_fini(qconn)
 		}
 		// reconnect here
+		d->qconn = NULL;
 		nni_mtx_unlock(&d->mtx);
+		if (nni_aio_busy(d->qconaio))
+			log_error("@bug!!##!@$!=!@#!");
 		nni_aio_finish_error(d->qconaio, d->reason_code);
 		break;
 	case QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED:
@@ -1424,7 +1437,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			// Will EVENT_SHUTDOWN_COMPLETE finally come? Nothing to do if yes.
 			log_warn("[sid%d] Peer refused", c->id);
 			//quic_stream_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c, 0);
-			break;
+			// break;
 		}
 
 		quic_stream_cb(QUIC_STREAM_EVENT_START_COMPLETE, c, 0);
@@ -1660,7 +1673,7 @@ msquic_strm_open(HQUIC qconn, nni_quic_conn *c, int priority, bool isreopen)
 		goto error;
 	}
 	// Stream is opened and started
-	if (!isreopen)
+	// if (!isreopen)
 		nni_atomic_inc(&c->ref);
 
 	// Not ready for receiving

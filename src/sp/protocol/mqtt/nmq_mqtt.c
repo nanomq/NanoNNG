@@ -282,8 +282,7 @@ nano_pipe_timer_cb(void *arg)
 				// put original msg into sending
 				nni_msg_clone(rmsg);
 				nni_aio_set_msg(&p->aio_send, rmsg);
-				log_trace("resending qos msg packetid: %d", pid);
-				log_info("msg payload : %s", nni_msg_payload_ptr(rmsg));
+				log_info("resending qos msg packetid: %d", pid);
 				nni_pipe_send(p->pipe, &p->aio_send);
 			}
 		}
@@ -1221,7 +1220,7 @@ nano_pipe_recv_cb(void *arg)
 			nni_qos_db_remove(
 			    is_sqlite, npipe->nano_qos_db, npipe->p_id, ackid);
 		} else {
-			log_error("ACK failed! qos msg %ld not found!", ackid);
+			log_warn("ACK failed! qos msg %ld not found!", ackid);
 		}
 		nni_mtx_unlock(&p->lk);
 	case CMD_CONNECT:
