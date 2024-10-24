@@ -240,7 +240,7 @@ mqtt_quic_send_msg(nni_aio *aio, mqtt_sock_t *s)
 			nni_aio_finish_error(aio, NNG_ECANCELED);
 			return NNG_ECANCELED;
 		}
-		log_warn("send qos msg %p id %d!", msg, packet_id);
+		log_debug("send qos msg %p id %d!", msg, packet_id);
 		// TODO nni_aio_schedule
 		break;
 	default:
@@ -528,7 +528,7 @@ mqtt_quic_recv_cb(void *arg)
 			nni_id_remove(&s->sent_unack, packet_id);
 			user_aio = nni_mqtt_msg_get_aio(cached_msg);
 			nni_mqtt_msg_set_aio(cached_msg, NULL);
-			log_info("acked msg %p packet id %d", cached_msg, packet_id);
+			log_debug("acked msg %p packet id %d", cached_msg, packet_id);
 			nni_msg_free(cached_msg);
 			if (packet_type == NNG_MQTT_SUBACK ||
 			    packet_type == NNG_MQTT_UNSUBACK)
