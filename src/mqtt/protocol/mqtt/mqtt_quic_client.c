@@ -377,12 +377,18 @@ mqtt_quic_recv_cb(void *arg)
 	nni_aio     *aio;
 	int          rv = 0;
 
-	if ((rv = nni_aio_result(&p->recv_aio)) != 0) {
+	rv = nni_aio_result(&p->recv_aio);
+	if (rv != 0) {
 		log_warn("MQTT client recv error %d!", rv);
-		if (s->disconnect_code == SUCCESS) {
-			s->disconnect_code = SERVER_SHUTTING_DOWN;
+		if (rv == NNG_ECONNABORTED) {
+			if (s->disconnect_code == SUCCESS) {
+				s->disconnect_code = SERVER_SHUTTING_DOWN;
+			}
+			nni_pipe_close(p->qpipe);
+		} else {
+			nni_pipe_recv(p->qpipe, &p->recv_aio);
+			log_debug("Sub Stream stopped, keep on receving");
 		}
-		nni_pipe_close(p->qpipe);
 		return;
 	}
 
@@ -403,8 +409,6 @@ mqtt_quic_recv_cb(void *arg)
 		nni_mtx_unlock(&s->mtx);
 		return;
 	}
-	//ACK msg?
-
 	nni_mqtt_msg_proto_data_alloc(msg);
 	int (*decode_func)(nni_msg *);
 	int (*encode_func)(nni_msg *);
