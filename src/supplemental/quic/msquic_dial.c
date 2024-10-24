@@ -483,8 +483,9 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 
 	// Make a quic connection to the url.
 	// Create stream after connection is established.
-	if (nni_aio_busy(d->qconaio)) {
+	if (nni_aio_busy(d->qconaio) || d->qconn != NULL) {
 		rv = NNG_EBUSY;
+		log_error("^bug*********************");
 		goto error;
 	}
 
@@ -1219,7 +1220,10 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 			//MsQuic->ConnectionClose(qconn); // plz use msquic_conn_fini(qconn)
 		}
 		// reconnect here
+		d->qconn = NULL;
 		nni_mtx_unlock(&d->mtx);
+		if (nni_aio_busy(d->qconaio))
+			log_error("@bug!!##!@$!=!@#!");
 		nni_aio_finish_error(d->qconaio, d->reason_code);
 		break;
 	case QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED:
@@ -1424,7 +1428,7 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			// Will EVENT_SHUTDOWN_COMPLETE finally come? Nothing to do if yes.
 			log_warn("[sid%d] Peer refused", c->id);
 			//quic_stream_cb(QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE, c, 0);
-			break;
+			// break;
 		}
 
 		quic_stream_cb(QUIC_STREAM_EVENT_START_COMPLETE, c, 0);
