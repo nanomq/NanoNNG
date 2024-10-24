@@ -890,14 +890,10 @@ quic_stream_recv(void *arg, nni_aio *aio)
 		c = ec->substrms[strmid-1];
 		nni_mtx_unlock(&ec->mtx);
 		if (c == NULL) // This quic stream is reopening.
-			nni_aio_finish_error(aio, NNG_ECLOSED);
+			nni_aio_finish_error(aio, NNG_ECANCELED);
 	}
 
 	if ((rv = nni_aio_begin(aio)) != 0) {
-		// log_error("aio begin failed %d", rv);
-		// if (rv == NNG_ECANCELED)
-		// 	rv = NNG_ESTATE;
-		// nng_aio_finish_error(aio, rv);
 		return;
 	}
 
@@ -905,7 +901,10 @@ quic_stream_recv(void *arg, nni_aio *aio)
 
 	if (c->closed) {
 		nni_mtx_unlock(&c->mtx);
-		nni_aio_finish_error(aio, NNG_ECLOSED);
+		if (strmid == 0)
+			nni_aio_finish_error(aio, NNG_ECLOSED);
+		else
+			nni_aio_finish_error(aio, NNG_ECANCELED);
 		return;
 	}
 
@@ -1028,7 +1027,6 @@ quic_stream_send(void *arg, nni_aio *aio)
 	int            strmid = 0;
 
 	int *flags = nni_aio_get_prov_data(aio);
-	// nni_aio_set_prov_data(aio, NULL);
 
 	// Multistreams Feature!
 	if (flags) {
@@ -1088,11 +1086,19 @@ quic_stream_send(void *arg, nni_aio *aio)
 
 	if ((rv = nni_aio_begin(aio)) != 0) {
 		log_error("aio begin failed %d", rv);
-		// nng_aio_finish_error(aio, rv);
 		return;
 	}
 
 	nni_mtx_lock(&c->mtx);
+
+	if (c->closed) {
+		nni_mtx_unlock(&c->mtx);
+		if (strmid == 0)
+			nni_aio_finish_error(aio, NNG_ECLOSED);
+		else
+			nni_aio_finish_error(aio, NNG_ECANCELED);
+		return;
+	}
 
 	if ((rv = nni_aio_schedule(aio, quic_stream_cancel, c)) != 0) {
 		nni_mtx_unlock(&c->mtx);
