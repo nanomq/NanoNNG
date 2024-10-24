@@ -165,9 +165,6 @@ mqtt_quictran_pipe_close(void *arg)
 	for (uint8_t i = 0; i < QUIC_SUB_STREAM_NUM; i++)
 	{
 		quic_substream *stream = &p->substreams[i];
-		nni_lmq_flush(&stream->rslmq);
-		nni_lmq_fini(&stream->rslmq);
-		nni_mtx_fini(&stream->mtx);
 		nni_aio_close(&stream->raio);
 		nni_aio_close(&stream->saio);
 		nni_aio_close(&stream->qaio);
@@ -235,6 +232,13 @@ mqtt_quictran_pipe_fini(void *arg)
 		nni_mtx_unlock(&ep->mtx);
 	}
 	log_warn("pipe finit!! %p", p);
+	for (uint8_t i = 0; i < QUIC_SUB_STREAM_NUM; i++)
+	{
+		quic_substream *stream = &p->substreams[i];
+		nni_lmq_flush(&stream->rslmq);
+		nni_lmq_fini(&stream->rslmq);
+		nni_mtx_fini(&stream->mtx);
+	}
 	nng_stream_free(p->conn);
 	nni_aio_free(p->rxaio);
 	nni_aio_free(p->txaio);
