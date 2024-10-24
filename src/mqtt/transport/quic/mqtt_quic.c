@@ -158,8 +158,9 @@ mqtt_quictran_pipe_close(void *arg)
 {
 	mqtt_quictran_pipe *p = arg;
 
+	nng_stream_close(p->conn);
 	nni_mtx_lock(&p->mtx);
-	log_info("mqtt quic pipe close");
+	log_info("mqtt quic pipe close %p !!!!!!!!!!!!!!!!!!", p);
 	p->closed = true;
 	for (uint8_t i = 0; i < QUIC_SUB_STREAM_NUM; i++)
 	{
@@ -178,7 +179,6 @@ mqtt_quictran_pipe_close(void *arg)
 	nni_aio_close(p->txaio);
 	nni_aio_close(p->negoaio);
 	nni_aio_close(p->rpaio);
-	nng_stream_close(p->conn);
 }
 
 static void
@@ -273,6 +273,7 @@ mqtt_quictran_pipe_alloc(mqtt_quictran_pipe **pipep)
 	if ((p = NNI_ALLOC_STRUCT(p)) == NULL) {
 		return (NNG_ENOMEM);
 	}
+	log_warn("pipe alloc %p!!!!!!!!!!!!!!!!!!", p);
 	nni_mtx_init(&p->mtx);
 	if (((rv = nni_aio_alloc(&p->txaio, mqtt_quictran_pipe_send_cb, p)) != 0) ||
 	    ((rv = nni_aio_alloc(&p->rxaio, mqtt_quictran_pipe_recv_cb, p)) != 0) ||
@@ -765,10 +766,10 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 	size_t			   *gotrxhead, *wantrxhead;
 
 	nni_mtx_lock(&p->mtx);
-	log_info(" ###### recv cb of %p stream %p ###### ", rxaio, stream);
+	log_trace(" ###### recv cb of %p stream %p ###### ", rxaio, stream);
 	aio = nni_list_first(&p->recvq);
 	if ((rv = nni_aio_result(rxaio)) != 0) {
-		log_info("aio result %s", nng_strerror(rv));
+		log_info("aio error result %s", nng_strerror(rv));
 		if (stream == NULL) {
 			// set close flag to prevent infinit stream recv
 			p->closed = true;
@@ -1053,7 +1054,7 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 		}
 		sub_iov.iov_len    = 2;
 		nni_aio_set_iov(rxaio, 1, &sub_iov);
-		log_info("start recv on aio %p", rxaio);
+		log_debug("start recv on aio %p", rxaio);
 		nng_stream_recv(p->conn, rxaio);
 	} else {
 		log_error("why?????????????????");
@@ -1217,7 +1218,6 @@ mqtt_quictran_pipe_send_start(mqtt_quictran_pipe *p)
 		txaio = &p->substreams[nni_random()%2 + 2].saio;
 	else if (nni_msg_get_type(msg) == CMD_SUBSCRIBE) {
 		txaio = &p->substreams[1].saio;
-		log_info("send msg on stream id 1");
 	} else {
 		txaio = p->txaio;
 	}
@@ -1329,7 +1329,7 @@ mqtt_quictran_pipe_recv_start(mqtt_quictran_pipe *p, nni_aio *aio)
 			sub_iov.iov_buf   = stream->rxlen;
 			sub_iov.iov_len   = 2;
 			nni_aio_set_iov(&stream->raio, 1, &sub_iov);
-			log_info("$$$$$$$$$$$$$$$$$ start recv on sub aio %p", &stream->raio);
+			log_debug(" start recv on sub aio %p", &stream->raio);
 			nni_aio_set_prov_data(&stream->raio, &stream->id);
 			nng_stream_recv(p->conn, &stream->raio);
 		} else {
@@ -1500,7 +1500,7 @@ mqtt_quictran_pipe_start(
 			sub_iov[i].iov_len   = 2;
 			nni_aio_set_iov(&stream->raio, 1, &sub_iov[i]);
 			nni_aio_set_prov_data(&stream->raio, &stream->id);
-			log_info("$$$$$$$$$$$$$$$$$ start recv on sub aio %p", &stream->raio);
+			log_debug(" start recv on sub aio %p", &stream->raio);
 			nng_stream_recv(p->conn, &stream->raio);
 		}
 	}
