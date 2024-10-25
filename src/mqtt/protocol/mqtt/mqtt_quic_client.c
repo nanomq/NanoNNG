@@ -385,9 +385,10 @@ mqtt_quic_recv_cb(void *arg)
 				s->disconnect_code = SERVER_SHUTTING_DOWN;
 			}
 			nni_pipe_close(p->qpipe);
-		} else {
-			nni_pipe_recv(p->qpipe, &p->recv_aio);
+		} else if (rv == NNG_ECANCELED) {
 			log_debug("Sub Stream stopped, keep on receving");
+		} else {
+			nni_pipe_close(p->qpipe);
 		}
 		return;
 	}

@@ -1290,7 +1290,7 @@ mqtt_quictran_pipe_recv_cancel(nni_aio *aio, void *arg, int rv)
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
-	// 
+
 	if (nni_list_first(&p->recvq) == aio) {
 		nni_aio_abort(p->rxaio, rv);
 		nni_mtx_unlock(&p->mtx);
@@ -1310,7 +1310,7 @@ mqtt_quictran_pipe_recv_start(mqtt_quictran_pipe *p, nni_aio *aio)
 	if (p->closed) {
 		while ((aio = nni_list_first(&p->recvq)) != NULL) {
 			nni_list_remove(&p->recvq, aio);
-			nni_aio_finish_error(aio, SERVER_SHUTTING_DOWN);
+			nni_aio_finish_error(aio, NNG_ECONNABORTED);
 		}
 		return;
 	}
