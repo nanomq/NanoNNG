@@ -301,6 +301,7 @@ mqtt_quic_send_cb(void *arg)
 		// We failed to send... clean up and deal with it.
 		log_warn("fail to send on aio %p rv%d", &p->send_aio, rv);
 		nni_msg_free(nni_aio_get_msg(&p->send_aio));
+		p->busy = false;
 		if (rv != NNG_ECANCELED) {
 			// msg is already be freed in QUIC transport
 			// Cautious!! TODO cancel qos msg in sent_unack
