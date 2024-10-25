@@ -652,18 +652,14 @@ quic_stream_cb(int events, void *arg, int rc)
 	// case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
 		// Marked it as closed, prevent explicit shutdown
 		nni_mtx_lock(&c->mtx);
+		c->closed = true;
 		if (c->ismain) {
-			c->closed = true;
-			c->reopen = false;
-			log_error("main stream closed!!!!!! stop all1!!!!!");
 			ex_quic_conn_close(c->ec);
-		} else 
-			c->closed = true;
+		}
 		nni_mtx_unlock(&c->mtx);
 
 		if (c->ismain) {
 			quic_stream_error(arg, NNG_ECONNSHUT);
-			
 		} else
 			quic_stream_error(arg, NNG_ECANCELED);
 
@@ -740,7 +736,6 @@ quic_substream_close(nni_quic_conn *c)
 	nni_mtx_lock(&c->mtx);
 	if (c->closed != true) {
 		c->closed = true;
-		c->reopen = false;
 		nni_mtx_unlock(&c->mtx);
 		msquic_strm_close(c->qstrm);
 		return;
@@ -831,12 +826,9 @@ quic_stream_close(void *arg)
 
 	c = ec->main;
 	nni_mtx_lock(&c->mtx);
-	log_error("closing all streams!!!!!!!!!!!!!!!!!!!!!");
 	msquic_conn_close(c->dialer->qconn, 0);
-	// msquic_conn_fini(c->dialer->qconn);
 	if (c->closed != true) {
 		c->closed = true;
-		c->reopen = false;
 		ex_quic_conn_close(ec);
 		nni_mtx_unlock(&c->mtx);
 		// Close all sub streams when main stream is closing
