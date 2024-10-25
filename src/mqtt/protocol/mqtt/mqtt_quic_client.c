@@ -306,6 +306,7 @@ mqtt_quic_send_cb(void *arg)
 			// msg is already be freed in QUIC transport
 			// Cautious!! TODO cancel qos msg in sent_unack
 			nni_aio_set_msg(&p->send_aio, NULL);
+			p->busy = false;
 			return;
 		} else if (rv == NNG_ECONNABORTED) {
 			s->disconnect_code = SERVER_UNAVAILABLE;
