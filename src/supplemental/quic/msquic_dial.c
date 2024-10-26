@@ -268,6 +268,8 @@ ex_quic_conn_close(ex_quic_conn *ec)
 			continue;
 		}
 		subc->reopen = false;
+		// stop ongoing reopen action!
+		nni_aio_close(&subc->reconaio);
 		nni_mtx_unlock(&ec->mtx);
 
 		quic_substream_close(subc);
@@ -652,8 +654,11 @@ quic_stream_cb(int events, void *arg, int rc)
 	// case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
 		// Marked it as closed, prevent explicit shutdown
 		nni_mtx_lock(&c->mtx);
+		msquic_strm_fini(c->qstrm);
 		c->closed = true;
 		if (c->ismain) {
+			c->closed = true;
+			c->reopen = false;
 			ex_quic_conn_close(c->ec);
 		}
 		nni_mtx_unlock(&c->mtx);
@@ -685,7 +690,7 @@ quic_stream_fini(nni_quic_conn *c)
 {
 	log_info("free @@@@@@@@@@@@@@@@@@@@@@@@ [sid%d] stream %p fini",
 	c->id, c->qstrm);
-	msquic_strm_fini(c->qstrm);
+	// msquic_strm_fini(c->qstrm);
 	NNI_FREE_STRUCT(c);
 }
 
@@ -711,7 +716,12 @@ quic_substream_reopen_cb(void *arg)
 	if (c->reopen == false) {
 		return;
 	}
-
+	if (nni_aio_result(aio) != 0) {
+		log_info("[sid%d] stop reopen successfully aio%p", c->id, aio);
+		c->reopen = false;
+		quic_substream_close(c);
+		return;
+	}
 	nni_mtx_lock(&c->mtx);
 
 	if ((rv = msquic_strm_open(d->qconn, c, d->priority, true)) != 0) {
@@ -886,6 +896,10 @@ quic_stream_recv(void *arg, nni_aio *aio)
 	}
 
 	if ((rv = nni_aio_begin(aio)) != 0) {
+		log_error("aio begin failed %d", rv);
+		// if (rv == NNG_ECANCELED)
+		// 	rv = NNG_ESTATE;
+		// nng_aio_finish_error(aio, rv);
 		return;
 	}
 
@@ -1061,7 +1075,7 @@ quic_stream_send(void *arg, nni_aio *aio)
 
 	if (flags) {
 		// Wanna close a substream
-		if (*flags & QUIC_CLOSE_REOPEN_FLAGS) {
+		if ((*flags & QUIC_CLOSE_REOPEN_FLAGS)) {
 			quic_substream_close(c);
 			nni_aio_finish_error(aio, NNG_ECANCELED);
 			return;
@@ -1661,7 +1675,8 @@ msquic_strm_open(HQUIC qconn, nni_quic_conn *c, int priority, bool isreopen)
 	QUIC_STATUS    rv;
 	log_debug("[sid%d] quic stream opening...", c->id);
 
-	rv = MsQuic->StreamOpen(qconn, QUIC_STREAM_OPEN_FLAG_NONE,
+	// QUIC_STREAM_OPEN_FLAG_NONE or 
+	rv = MsQuic->StreamOpen(qconn, QUIC_STREAM_START_FLAG_SHUTDOWN_ON_FAIL,
 	        msquic_strm_cb, (void *)c, &strm);
 	if (QUIC_FAILED(rv)) {
 		log_error("[sid%d] StreamOpen failed, 0x%x! isreopen%d", c->id, rv, isreopen);
