@@ -299,16 +299,15 @@ mqtt_quic_send_cb(void *arg)
 
 	if ((rv = nni_aio_result(&p->send_aio)) != 0) {
 		// We failed to send... clean up and deal with it.
-		log_warn("fail to send on aio %p rv%d", &p->send_aio, rv);
+		log_warn("fail to send on aio %p rv %d", &p->send_aio, rv);
 		nni_msg_free(nni_aio_get_msg(&p->send_aio));
-		p->busy = false;
-		if (rv != NNG_ECANCELED) {
+		if (rv == NNG_ECANCELED) {
 			// msg is already be freed in QUIC transport
 			// Cautious!! TODO cancel qos msg in sent_unack
 			nni_aio_set_msg(&p->send_aio, NULL);
 			p->busy = false;
 			return;
-		} else if (rv == NNG_ECONNABORTED) {
+		} else if (rv == NNG_ECONNABORTED || rv == SERVER_SHUTTING_DOWN) {
 			s->disconnect_code = SERVER_UNAVAILABLE;
 			nni_pipe_close(p->qpipe);
 			return;
