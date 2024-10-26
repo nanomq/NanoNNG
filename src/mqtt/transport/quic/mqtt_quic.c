@@ -770,10 +770,10 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 	size_t			   *gotrxhead, *wantrxhead;
 
 	nni_mtx_lock(&p->mtx);
-	log_trace(" ###### recv cb of %p stream %p ###### ", rxaio, stream);
+	log_warn(" ###### recv cb of %p stream %p ###### ", rxaio, stream);
 	aio = nni_list_first(&p->recvq);
 	if ((rv = nni_aio_result(rxaio)) != 0) {
-		log_info("aio error result %s", nng_strerror(rv));
+		log_info("aio error result %s stream %p", nng_strerror(rv), stream);
 		if (stream == NULL) {
 			// set close flag to prevent infinit stream recv
 			p->closed = true;
@@ -1072,20 +1072,17 @@ recv_error:
 	else if (!p->closed) {
 		nni_iov sub_iov;
 		if (stream) {
+			// nni_msleep(500);
 			stream->gotrxhead  = 0;
 			stream->wantrxhead = 2;
 			sub_iov.iov_buf    = stream->rxlen;
-			log_info("sub stream %d closed", stream->id);
-		} else {
-			p->gotrxhead    = 0;
-			p->wantrxhead   = 2;
-			sub_iov.iov_buf = p->rxlen;
-		}
-		sub_iov.iov_len = 2;
-		nni_aio_set_iov(rxaio, 1, &sub_iov);
+			sub_iov.iov_len = 2;
+			nni_aio_set_iov(rxaio, 1, &sub_iov);
 
-		log_info("aio canceled, keep receving on aio %p", rxaio);
-		nng_stream_recv(p->conn, rxaio);
+			log_info("sub stream %d canceled, keep receving on aio %p",
+					  stream->id, rxaio);
+			nng_stream_recv(p->conn, rxaio);
+		}
 	}
 	msg      = *rxmsg;
 	*rxmsg = NULL;
@@ -1094,6 +1091,10 @@ recv_error:
 	nni_msg_free(msg);
 	if (aio)
 		nni_aio_finish_error(aio, rv);
+	else if (stream == NULL) {
+		log_info("Main stream aborted! Connection closed!");
+		mqtt_quictran_pipe_close(p);
+	}
 }
 
 static void
