@@ -253,7 +253,7 @@ mqtt_quictran_pipe_fini(void *arg)
 	nni_lmq_fini(&p->rslmq);
 	nni_mtx_fini(&p->mtx);
 #ifdef NNG_HAVE_MQTT_BROKER
-	conn_param_free(p->cparam);	//Cautious!!
+	conn_param_free(p->cparam);
 #endif
 	NNI_FREE_STRUCT(p);
 }
@@ -390,7 +390,7 @@ mqtt_quictran_pipe_nego_cb(void *arg)
 		return;
 	}
 	// only accept CONNACK msg
-	// TODO auth
+	// TODO MQTT V5 Auth
 	if ((p->rxlen[0] & CMD_CONNACK) != CMD_CONNACK) {
 		log_error("Invalid type received %x %x", p->rxlen[0], p->rxlen[1]);
 		rv = PROTOCOL_ERROR;
@@ -574,18 +574,22 @@ mqtt_quictran_share_qos_send_cb(void *arg, nni_aio *qsaio, quic_substream *strea
 
 	msg = nni_aio_get_msg(qsaio);
 	if (p->closed) {
-		if (msg!= NULL)
+		if (msg != NULL)
 			nni_msg_free(msg);
 		return;
 	}
 	stream == NULL ? (mtx = &p->mtx) : (mtx = &stream->mtx);
 	if ((rv = nni_aio_result(qsaio)) != 0) {
 		log_warn("qos send aio error %s", nng_strerror(rv));
-		if (msg!= NULL)
+		if (msg != NULL)
 			nni_msg_free(msg);
 		nni_aio_set_msg(qsaio, NULL);
-		if (stream == NULL)
-			mqtt_quictran_pipe_close(p);
+		if (stream == NULL) {
+			
+		} else {
+			log_info("Send ACK on sub stream failed %d", rv);
+			stream->busy = false;
+		}
 		return;
 	}
 
@@ -604,15 +608,16 @@ mqtt_quictran_share_qos_send_cb(void *arg, nni_aio *qsaio, quic_substream *strea
 		nni_msg_free(msg);
 	} else {
 		log_warn("NULL msg detected in send_cb");
-		nni_mtx_unlock(mtx);
-		if (stream == NULL)
-			mqtt_quictran_pipe_close(p);
+		if (stream == NULL) {
+			nni_mtx_unlock(mtx);
+			nng_stream_close(p->conn);
+		} else {
+			log_info("Send NULL msg on sub stream");
+			stream->busy = false;
+			nni_mtx_unlock(mtx);
+		}
 		return;
 	}
-	// if (p->proto == MQTT_PROTOCOL_VERSION_v5) {
-	// 	(type == CMD_PUBCOMP || type == CMD_PUBACK) ? p->qrecv_quota++
-	// 	                                            : p->qrecv_quota;
-	// }
 	nni_aio_set_msg(qsaio, NULL);
 	nni_lmq *lmq;
 	stream == NULL? (lmq = &p->rslmq) : (lmq = &stream->rslmq);
@@ -733,6 +738,10 @@ mqtt_share_pipe_send_cb(void *arg, nni_aio *txaio, quic_substream *stream)
 
 	nni_mtx_unlock(&p->mtx);
 	nni_aio_set_msg(aio, NULL);
+	if (stream)
+		stream->busy = false;
+	else
+		p->busy = false;
 	nni_aio_finish_sync(aio, rv, n);
 }
 
@@ -874,8 +883,6 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 	uint8_t   ack_cmd     = 0;
 	switch (type) {
 	case CMD_PUBLISH:
-		// should we seperate the 2 phase work of QoS into 2 aios?
-		// TODO MQTT v5 qos
 		qos_pac = nni_msg_get_pub_qos(msg);
 		if (qos_pac > 0) {
 			if (qos_pac == 1) {
@@ -917,7 +924,6 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 			goto recv_error;
 		}
 	case CMD_PUBACK:
-		// TODO set property for user callback
 	case CMD_PUBCOMP:
 		if (nni_mqtt_pubres_decode(
 		        msg, &packet_id, &reason_code, &prop, p->proto) != 0) {
@@ -963,14 +969,13 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 			qsaio = &stream->qaio;
 			rlmq = &stream->rslmq;
 			busy  = stream->busy;
-			nni_aio_set_prov_data(qsaio, &stream->id);
 		} else {
 			qsaio = p->qsaio;
 			busy  = p->busy;
 			rlmq = &p->rslmq;
 		}
-		// if (busy) {
-		if (!nni_aio_busy(qsaio)) {	// TODO replace it with busy bool
+		if (!busy) {
+		// if (!nni_aio_busy(qsaio)) {
 			iov[0].iov_len = nni_msg_header_len(qmsg);
 			iov[0].iov_buf = nni_msg_header(qmsg);
 			iov[1].iov_len = nni_msg_len(qmsg);
@@ -986,16 +991,15 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 			nng_stream_send(p->conn, qsaio);
 		} else {
 			if (nni_lmq_full(rlmq)) {
-				// Make space for the new message. TODO add max
-				// limit of msgq len in conf
-				if (nni_lmq_cap(rlmq) <=
-				    NANO_MAX_QOS_PACKET) {
+				// Make space for the new message.
+				if (nni_lmq_cap(rlmq) <= NANO_MAX_QOS_PACKET) {
 					if ((rv = nni_lmq_resize(rlmq,
 					         nni_lmq_cap(rlmq) * 2)) == 0) {
 						nni_lmq_put(rlmq, qmsg);
 					} else {
 						// memory error.
 						nni_msg_free(qmsg);
+						log_warn("ACK msg lost due to full lmq");
 					}
 				} else {
 					nni_msg *old;
@@ -1218,7 +1222,6 @@ mqtt_quictran_pipe_send_start(mqtt_quictran_pipe *p)
 			}
 		}
 	}
-	//TODO switch aio
 	if (nni_msg_get_type(msg) == CMD_PUBLISH)
 		txaio = &p->substreams[nni_random()%2 + 2].saio;
 	else if (nni_msg_get_type(msg) == CMD_SUBSCRIBE) {
@@ -1322,8 +1325,6 @@ mqtt_quictran_pipe_recv_start(mqtt_quictran_pipe *p, nni_aio *aio)
 	// Schedule a read of the header.
 	if (flags) {
 		int strmid = (*flags & QUIC_MULTISTREAM_FLAGS);
-			// simply go through all sub stream again.
-		// TODO link recv action with each cb
 		quic_substream *stream = &p->substreams[strmid-1];
 		if (!nni_aio_list_active(&stream->raio)) {
 			nni_iov sub_iov;
@@ -1458,7 +1459,7 @@ mqtt_quictran_pipe_start(
 		nni_msg_free(connmsg);
 		log_error("Warning. Cancelled a illegal connnect msg from user.\n");
 		// Using MQTT V311 as default protocol version
-		mqtt_version = 4; // Default TODO Notify user as a warning
+		mqtt_version = 4; // Default version 4
 		nni_mqtt_msg_alloc(&connmsg, 0);
 		nni_mqtt_msg_set_packet_type(connmsg, NNG_MQTT_CONNECT);
 		nni_mqtt_msg_set_connect_proto_version(
@@ -1493,13 +1494,12 @@ mqtt_quictran_pipe_start(
 	nni_iov sub_iov[4];
 	for (uint8_t i = 0; i < QUIC_SUB_STREAM_NUM; i++)
 	{
-		// simply go through all sub stream again.
-		// TODO link recv action with each cb
+		// simply go through all sub stream.
 		quic_substream *stream = &p->substreams[i];
 		if (!nni_aio_list_active(&stream->raio)) {
-			stream->gotrxhead  = 0;
+			stream->gotrxhead    = 0;
 			// 2 = MIN_FIXED_HEADER_LEN
-			stream->wantrxhead = 2;
+			stream->wantrxhead   = 2;
 			sub_iov[i].iov_buf   = stream->rxlen;
 			sub_iov[i].iov_len   = 2;
 			nni_aio_set_iov(&stream->raio, 1, &sub_iov[i]);
@@ -2065,24 +2065,12 @@ static nni_sp_dialer_ops mqtt_quictran_dialer_ops = {
 	.d_setopt  = mqtt_quictran_dialer_setopt,
 };
 
-// TODO Remove: MQTT SDK has no listener though
-/*
-static nni_sp_listener_ops mqtt_quictran_listener_ops = {
-	.l_init   = mqtt_quictran_listener_init,
-	.l_fini   = mqtt_quictran_ep_fini,
-	.l_bind   = mqtt_quictran_ep_bind,
-	.l_accept = mqtt_quictran_ep_accept,
-	.l_close  = mqtt_quictran_ep_close,
-	.l_getopt = mqtt_quictran_listener_getopt,
-	.l_setopt = mqtt_quictran_listener_setopt,
-};
-*/
 
 static nni_sp_tran mqtt_quic_tran = {
 	.tran_scheme   = "mqtt-quic",
 	.tran_dialer   = &mqtt_quictran_dialer_ops,
 	.tran_listener = NULL,
-//	.tran_listener = &mqtt_quictran_listener_ops,
+	// .tran_listener = &mqtt_quictran_listener_ops,
 	.tran_pipe     = &mqtt_quictran_pipe_ops,
 	.tran_init     = mqtt_quictran_init,
 	.tran_fini     = mqtt_quictran_fini,

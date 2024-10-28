@@ -531,6 +531,7 @@ mqtt_quic_recv_cb(void *arg)
 			nni_mqtt_msg_set_aio(cached_msg, NULL);
 			log_debug("acked msg %p packet id %d", cached_msg, packet_id);
 			nni_msg_free(cached_msg);
+			// Only return ACK msg of Sub action, nor Pub action is supported now.
 			if (packet_type == NNG_MQTT_SUBACK ||
 			    packet_type == NNG_MQTT_UNSUBACK)
 				if (user_aio != NULL) {
@@ -666,7 +667,7 @@ mqtt_quic_recv_cb(void *arg)
 	nni_mtx_unlock(&s->mtx);
 
 	if (user_aio) {
-		nni_aio_finish(user_aio, 0, 0);
+		nni_aio_finish_sync(user_aio, 0, 0);
 	}
 	// Trigger connect cb first in case connack being freed
 	if (packet_type == NNG_MQTT_CONNACK)
