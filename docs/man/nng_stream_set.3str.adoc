@@ -28,15 +28,11 @@ int nng_stream_set_int(nng_stream *s, const char *opt, int val);
 
 int nng_stream_set_ms(nng_stream *s, const char *opt, nng_duration val);
 
-int nng_stream_set_ptr(nng_stream *s, const char *opt, void *val);
-
 int nng_stream_set_size(nng_stream *s, const char *opt, size_t val);
 
 int nng_stream_set_string(nng_stream *s, const char *opt, const char *val);
 
 int nng_stream_set_uint64(nng_stream *s, const char *opt, uint64_t val);
-
-int nng_stream_set_addr(nng_stream *s, const char *opt, const nng_sockaddr *val);
 
 ----
 
@@ -76,17 +72,6 @@ the type
 xref:nng_duration.5.adoc[`nng_duration`].
 The duration is an integer number of milliseconds.
 
-`nng_stream_set_ptr()`::
-This function is used to pass a pointer to structured data.
-The data referenced by is generally managed by other functions.
-For example, TLS configuration objects created with
-xref:nng_tls_config_alloc.3tls.adoc[`nng_tls_config_alloc()`]
-can be passed this way.
-+
-NOTE: This form is somewhat special in that the object is generally
-not copied, but instead the *pointer* to the object is copied.
-Please see the documentation for the specific option for further details.
-
 `nng_stream_set_size()`::
 This function is used to configure a size, typically for buffer sizes,
 message maximum sizes, and similar options.
@@ -102,10 +87,6 @@ for details.)
 This function is used to configure a 64-bit unsigned value/
 This is typically used for identifiers, network numbers,
 and similar options.
-
-`nng_stream_set_addr()`::
-This function performs no useful function, and will be removed in
-in a future release.
 
 == RETURN VALUES
 
