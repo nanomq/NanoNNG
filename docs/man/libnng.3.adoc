@@ -319,25 +319,24 @@ xref:nng_stream_dialer.5.adoc[`nng_stream_dialer`] or
 xref:nng_stream_listener.5.adoc[`nng_stream_listener`] objects.
 
 |===
-|xref:nng_stream_close.3str.adoc[nng_stream_close]|close byte stream
-|xref:nng_stream_dialer_alloc.3str.adoc[nng_stream_dialer_alloc]|allocate byte stream dialer
-|xref:nng_stream_dialer_close.3str.adoc[nng_stream_dialer_close]|close byte stream dialer
-|xref:nng_stream_dialer_dial.3str.adoc[nng_stream_dialer_dial]|initiate outgoing byte stream
-|xref:nng_stream_dialer_free.3str.adoc[nng_stream_dialer_free]|free byte stream dialer
-|xref:nng_stream_dialer_get.3str.adoc[nng_stream_dialer_get]|get option from byte stream dialer
-|xref:nng_stream_dialer_set.3str.adoc[nng_stream_dialer_set]|set option on byte stream dialer
-|xref:nng_stream_free.3str.adoc[nng_stream_free]|free byte stream
-|xref:nng_stream_get.3str.adoc[nng_stream_get]|get option from byte stream
-|xref:nng_stream_listener_accept.3str.adoc[nng_stream_listener_accept]|accept incoming byte stream
-|xref:nng_stream_listener_alloc.3str.adoc[nng_stream_listener_alloc]|allocate byte stream listener
-|xref:nng_stream_listener_close.3str.adoc[nng_stream_listener_close]|close byte stream listener
-|xref:nng_stream_listener_free.3str.adoc[nng_stream_listener_free]|free byte stream listener
-|xref:nng_stream_listener_get.3str.adoc[nng_stream_listener_get]|get option from byte stream listener
-|xref:nng_stream_listener_listen.3str.adoc[nng_stream_listener_listen]|bind byte stream listener to address
-|xref:nng_stream_listener_set.3str.adoc[nng_stream_listener_set]|set option on byte stream listener
-|xref:nng_stream_recv.3str.adoc[nng_stream_recv]|receive from byte stream
-|xref:nng_stream_send.3str.adoc[nng_stream_send]|send to byte stream
-|xref:nng_stream_set.3str.adoc[nng_stream_set]|set option on byte stream
+|xref:nng_stream_close.3str.adoc[nng_stream_close()]|close byte stream
+|xref:nng_stream_dialer_alloc.3str.adoc[nng_stream_dialer_alloc()]|allocate byte stream dialer
+|xref:nng_stream_dialer_close.3str.adoc[nng_stream_dialer_close()]|close byte stream dialer
+|xref:nng_stream_dialer_dial.3str.adoc[nng_stream_dialer_dial()]|initiate outgoing byte stream
+|xref:nng_stream_dialer_free.3str.adoc[nng_stream_dialer_free()]|free byte stream dialer
+|xref:nng_stream_dialer_get.3str.adoc[nng_stream_dialer_get()]|get option from byte stream dialer
+|xref:nng_stream_dialer_set.3str.adoc[nng_stream_dialer_set()]|set option on byte stream dialer
+|xref:nng_stream_free.3str.adoc[nng_stream_free()]|free byte stream
+|xref:nng_stream_get.3str.adoc[nng_stream_get()]|get option from byte stream
+|xref:nng_stream_listener_accept.3str.adoc[nng_stream_listener_accept()]|accept incoming byte stream
+|xref:nng_stream_listener_alloc.3str.adoc[nng_stream_listener_alloc()]|allocate byte stream listener
+|xref:nng_stream_listener_close.3str.adoc[nng_stream_listener_close()]|close byte stream listener
+|xref:nng_stream_listener_free.3str.adoc[nng_stream_listener_free()]|free byte stream listener
+|xref:nng_stream_listener_get.3str.adoc[nng_stream_listener_get()]|get option from byte stream listener
+|xref:nng_stream_listener_listen.3str.adoc[nng_stream_listener_listen()]|bind byte stream listener to address
+|xref:nng_stream_listener_set.3str.adoc[nng_stream_listener_set()]|set option on byte stream listener
+|xref:nng_stream_recv.3str.adoc[nng_stream_recv()]|receive from byte stream
+|xref:nng_stream_send.3str.adoc[nng_stream_send()]|send to byte stream
 |===
 
 === HTTP Support
