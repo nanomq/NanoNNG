@@ -657,8 +657,7 @@ quic_stream_cb(int events, void *arg, int rc)
 		msquic_strm_fini(c->qstrm);
 		c->closed = true;
 		if (c->ismain) {
-			c->closed = true;
-			c->reopen = false;
+			c->reopen = false; // Make no sense
 			ex_quic_conn_close(c->ec);
 		}
 		nni_mtx_unlock(&c->mtx);
@@ -688,8 +687,7 @@ quic_stream_cb(int events, void *arg, int rc)
 static void
 quic_stream_fini(nni_quic_conn *c)
 {
-	log_info("free @@@@@@@@@@@@@@@@@@@@@@@@ [sid%d] stream %p fini",
-	c->id, c->qstrm);
+	log_debug("[sid%d] stream %p fini", c->id, c->qstrm);
 	// msquic_strm_fini(c->qstrm);
 	NNI_FREE_STRUCT(c);
 }
@@ -719,7 +717,6 @@ quic_substream_reopen_cb(void *arg)
 	if (nni_aio_result(aio) != 0) {
 		log_info("[sid%d] stop reopen successfully aio%p", c->id, aio);
 		c->reopen = false;
-		quic_substream_close(c);
 		return;
 	}
 	nni_mtx_lock(&c->mtx);
@@ -1695,8 +1692,7 @@ msquic_strm_open(HQUIC qconn, nni_quic_conn *c, int priority, bool isreopen)
 		goto error;
 	}
 	// Stream is opened and started
-	// if (!isreopen)
-		nni_atomic_inc(&c->ref);
+	nni_atomic_inc(&c->ref);
 
 	// Not ready for receiving
 	MsQuic->StreamReceiveSetEnabled(strm, FALSE);
