@@ -61,7 +61,6 @@ struct mqtt_tcptran_pipe {
 	// nni_lmq          rslmq;
 	nni_mtx          mtx;
 	bool             closed;
-	bool             busy;
 #ifdef NNG_HAVE_MQTT_BROKER
 	nni_msg         *connack;
 	conn_param *     cparam;
@@ -169,7 +168,6 @@ mqtt_tcptran_pipe_init(void *arg, nni_pipe *npipe)
 
 	p->npipe = npipe;
 	// nni_lmq_init(&p->rslmq, 10240);
-	p->busy   = false;
 	p->closed = false;
 	// set max value by default
 	p->packmax == 0 ? p->packmax = (uint32_t)0xFFFFFFFF : p->packmax;
@@ -672,8 +670,6 @@ mqtt_tcptran_pipe_rp_send_cb(void *arg)
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
-
-	p->busy = false;
 	nni_mtx_unlock(&p->mtx);
 	return;
 }
