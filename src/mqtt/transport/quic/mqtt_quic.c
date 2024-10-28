@@ -700,6 +700,7 @@ mqtt_share_pipe_send_cb(void *arg, nni_aio *txaio, quic_substream *stream)
 	nni_aio *          aio;
 	size_t             n;
 	nni_msg *          msg;
+	NNI_ARG_UNUSED(stream);
 
 	nni_mtx_lock(&p->mtx);
 	aio = nni_list_first(&p->sendq);
@@ -1120,7 +1121,7 @@ mqtt_quictran_pipe_send_prior(mqtt_quictran_pipe *p, nni_aio *aio)
 			if (qos > 0)
 				p->sndmax --;
 			if (qos > p->qosmax) {
-				p->qosmax == 1? (*header &= 0XF9) & (*header |= 0X02): NNI_ARG_UNUSED(*header);
+				p->qosmax == 1 ? ((*header &= 0XF9), (*header |= 0X02)) : NNI_ARG_UNUSED(*header);
 				p->qosmax == 0? *header &= 0XF9: NNI_ARG_UNUSED(*header);
 			}
 		}
@@ -1218,7 +1219,6 @@ mqtt_quictran_pipe_send_start(mqtt_quictran_pipe *p)
 		}
 	}
 	//TODO switch aio
-	uint32_t topic;
 	if (nni_msg_get_type(msg) == CMD_PUBLISH)
 		txaio = &p->substreams[nni_random()%2 + 2].saio;
 	else if (nni_msg_get_type(msg) == CMD_SUBSCRIBE) {
@@ -1305,7 +1305,6 @@ mqtt_quictran_pipe_recv_cancel(nni_aio *aio, void *arg, int rv)
 static void
 mqtt_quictran_pipe_recv_start(mqtt_quictran_pipe *p, nni_aio *aio)
 {
-	nni_aio *rxaio;
 	nni_iov  iov;
 
 	if (p->closed) {
@@ -1579,14 +1578,14 @@ mqtt_quictran_ep_close(void *arg)
 
 // we delete mqtt_quictran_url_parse_source
 
-static void
-mqtt_quictran_timer_cb(void *arg)
-{
-	mqtt_quictran_ep *ep = arg;
-	if (nni_aio_result(ep->timeaio) == 0) {
-		nng_stream_listener_accept(ep->listener, ep->connaio);
-	}
-}
+// static void
+// mqtt_quictran_timer_cb(void *arg)
+// {
+// 	mqtt_quictran_ep *ep = arg;
+// 	if (nni_aio_result(ep->timeaio) == 0) {
+// 		nng_stream_listener_accept(ep->listener, ep->connaio);
+// 	}
+// }
 
 // static void
 // mqtt_quictran_accept_cb(void *arg)

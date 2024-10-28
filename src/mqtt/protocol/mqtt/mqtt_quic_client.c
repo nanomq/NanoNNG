@@ -375,7 +375,6 @@ mqtt_quic_recv_cb(void *arg)
 	nni_aio     *user_aio   = NULL;
 	nni_msg     *cached_msg = NULL;
 	nni_msg     *msg        = NULL;
-	nni_aio     *aio;
 	int          rv = 0;
 
 	rv = nni_aio_result(&p->recv_aio);
@@ -702,7 +701,7 @@ mqtt_timer_cb(void *arg)
 	}
 	if (p->pingcnt > 1) {
 		log_warn("MQTT Timeout and disconnect");
-		s->disconnect_code == KEEP_ALIVE_TIMEOUT;
+		s->disconnect_code = KEEP_ALIVE_TIMEOUT;
 		nni_mtx_unlock(&s->mtx);
 		nni_pipe_close(p->qpipe);
 		return;
@@ -833,10 +832,7 @@ static void mqtt_quic_sock_init(void *arg, nni_sock *sock)
 static void
 mqtt_quic_sock_fini(void *arg)
 {
-	mqtt_sock_t *  s = arg;
-	nni_aio *      aio;
-	nni_msg *      tmsg = NULL, *msg = NULL;
-	mqtt_quic_ctx *ctx;
+	mqtt_sock_t *s = arg;
 
 #if defined(NNG_SUPP_SQLITE) && defined(NNG_HAVE_MQTT_BROKER)
 	nni_mqtt_sqlite_db_fini(s->sqlite_opt);
@@ -852,6 +848,7 @@ mqtt_quic_sock_fini(void *arg)
 static void
 mqtt_quic_sock_open(void *arg)
 {
+	NNI_ARG_UNUSED(arg);
 }
 
 static void
@@ -924,6 +921,10 @@ static int
 mqtt_quic_sock_set_multi_stream(void *arg, const void *buf, size_t sz, nni_type t)
 {
 	mqtt_sock_t *s = arg;
+	NNI_ARG_UNUSED(s);
+	NNI_ARG_UNUSED(buf);
+	NNI_ARG_UNUSED(sz);
+	NNI_ARG_UNUSED(t);
 	return (0);
 }
 
@@ -1013,7 +1014,6 @@ mqtt_quic_pipe_init(void *arg, nni_pipe *pipe, void *sock)
 static void
 mqtt_quic_pipe_fini(void *arg)
 {
-	nni_aio *aio;
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
 	nni_msg * msg;
@@ -1038,7 +1038,6 @@ mqtt_quic_pipe_fini(void *arg)
 	nni_aio_fini(&p->recv_aio);
 	nni_aio_fini(&p->time_aio);
 
-
 	nni_id_map_fini(&p->recv_unack);
 	nni_lmq_fini(&p->recv_messages);
 	nni_lmq_fini(&p->send_messages);
@@ -1062,8 +1061,7 @@ mqtt_quic_pipe_start(void *arg)
 	mqtt_sock_t *s = p->mqtt_sock;
 	nni_pipe    *npipe = p->qpipe;
 	nni_aio     *aio;
-	nni_msg     *msg;
-	int          rv = 0;
+
 	// p_dialer is not available when pipe init and sock init. Until pipe start.
 	nni_mtx_lock(&s->mtx);
 	nni_atomic_set_bool(&p->closed, false);
@@ -1092,7 +1090,6 @@ static void
 mqtt_quic_pipe_stop(void *arg)
 {
 	mqtt_pipe_t *p = arg;
-	mqtt_sock_t *s = p->mqtt_sock;
 
 	log_info("Stopping MQTT over QUIC Stream");
 	nni_aio_stop(&p->send_aio);
@@ -1194,7 +1191,6 @@ mqtt_quic_ctx_fini(void *arg)
 {
 	mqtt_quic_ctx *ctx = arg;
 	mqtt_sock_t   *s   = ctx->mqtt_sock;
-	mqtt_pipe_t   *p   = s->pipe;
 	nni_aio *      aio;
 
 	nni_mtx_lock(&s->mtx);
