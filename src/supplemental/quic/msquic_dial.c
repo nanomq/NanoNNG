@@ -1672,8 +1672,7 @@ msquic_strm_open(HQUIC qconn, nni_quic_conn *c, int priority, bool isreopen)
 	QUIC_STATUS    rv;
 	log_debug("[sid%d] quic stream opening...", c->id);
 
-	// QUIC_STREAM_OPEN_FLAG_NONE or 
-	rv = MsQuic->StreamOpen(qconn, QUIC_STREAM_START_FLAG_SHUTDOWN_ON_FAIL,
+	rv = MsQuic->StreamOpen(qconn, QUIC_STREAM_OPEN_FLAG_NONE,
 	        msquic_strm_cb, (void *)c, &strm);
 	if (QUIC_FAILED(rv)) {
 		log_error("[sid%d] StreamOpen failed, 0x%x! isreopen%d", c->id, rv, isreopen);
@@ -1685,7 +1684,8 @@ msquic_strm_open(HQUIC qconn, nni_quic_conn *c, int priority, bool isreopen)
 		MsQuic->SetParam(strm, QUIC_PARAM_STREAM_PRIORITY, sizeof(int), &priority);
 	}
 
-	rv = MsQuic->StreamStart(strm, QUIC_STREAM_START_FLAG_NONE);
+	// QUIC_STREAM_START_FLAG_NONE or
+	rv = MsQuic->StreamStart(strm, QUIC_STREAM_START_FLAG_SHUTDOWN_ON_FAIL);
 	if (QUIC_FAILED(rv)) {
 		log_error("[sid%d] StreamStart failed, 0x%x!\n", c->id, rv);
 		msquic_strm_fini(strm);
