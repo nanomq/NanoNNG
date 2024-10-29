@@ -380,6 +380,8 @@ nng_mqtt_msg_get_publish_packet_id(nng_msg *msg)
 int
 nng_mqtt_msg_set_publish_payload(nng_msg *msg, uint8_t *payload, uint32_t len)
 {
+	if (len <= 0)
+		return NNG_EINVAL;
 	return nni_mqtt_msg_set_publish_payload(msg, payload, len);
 }
 
