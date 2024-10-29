@@ -1634,6 +1634,7 @@ tlstran_pipe_recv_start(tlstran_pipe *p)
 	p->wantrxhead = NANO_MIN_FIXED_HEADER_LEN;
 	iov.iov_buf   = p->rxlen;
 	iov.iov_len   = NANO_MIN_FIXED_HEADER_LEN;
+	memset(p->rxlen, '\0', NNI_NANO_MAX_HEADER_SIZE * sizeof(p->rxlen[0]));
 	nni_aio_set_iov(rxaio, 1, &iov);
 	nng_stream_recv(p->conn, rxaio);
 }

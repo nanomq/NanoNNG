@@ -1056,10 +1056,14 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 			stream->gotrxhead  = 0;
 			stream->wantrxhead = 2;
 			sub_iov.iov_buf    = stream->rxlen;
+			memset(stream->rxlen, '\0',
+			    sizeof(uint64_t) * sizeof(stream->rxlen[0]));
 		} else {
-			p->gotrxhead  = 0;
-			p->wantrxhead = 2;
-			sub_iov.iov_buf    = p->rxlen;
+			p->gotrxhead    = 0;
+			p->wantrxhead   = 2;
+			sub_iov.iov_buf = p->rxlen;
+			memset(p->rxlen, '\0',
+			    sizeof(uint64_t) * sizeof(p->rxlen[0]));
 		}
 		sub_iov.iov_len    = 2;
 		nni_aio_set_iov(rxaio, 1, &sub_iov);
@@ -1333,6 +1337,7 @@ mqtt_quictran_pipe_recv_start(mqtt_quictran_pipe *p, nni_aio *aio)
 			stream->wantrxhead = 2;
 			sub_iov.iov_buf   = stream->rxlen;
 			sub_iov.iov_len   = 2;
+			memset(stream->rxlen, '\0', sizeof(uint64_t) * sizeof(stream->rxlen[0]));
 			nni_aio_set_iov(&stream->raio, 1, &sub_iov);
 			log_debug(" start recv on sub aio %p", &stream->raio);
 			nni_aio_set_prov_data(&stream->raio, &stream->id);
@@ -1346,6 +1351,7 @@ mqtt_quictran_pipe_recv_start(mqtt_quictran_pipe *p, nni_aio *aio)
 		p->wantrxhead = 2;
 		iov.iov_buf   = p->rxlen;
 		iov.iov_len   = 2;
+		memset(p->rxlen, '\0', sizeof(uint64_t) * sizeof(p->rxlen[0]));
 		nni_aio_set_iov(p->rxaio, 1, &iov);
 		nng_stream_recv(p->conn, p->rxaio);
 	} else {
