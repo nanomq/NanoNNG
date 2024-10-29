@@ -21,6 +21,7 @@
 #endif
 
 #include "nng/nng.h"
+#include "nng/supplemental/nanolib/log.h"
 #include "nng/supplemental/tls/tls.h"
 
 // mbedTLS renamed this header for 2.4.0.
@@ -104,7 +105,7 @@ tls_dbg(void *ctx, int level, const char *file, int line, const char *s)
 	while ((f = strchr(file, '/')) != NULL) {
 		file = f + 1;
 	}
-	nng_log_debug("MBED", "%s: %d: %s", file, line, s);
+	log_debug("MBED %s: %d: %s", file, line, s);
 }
 
 static int
@@ -769,8 +770,8 @@ nng_tls_engine_init_mbed(void)
 #ifdef MBEDTLS_PSA_CRYPTO_C
 	rv = psa_crypto_init();
 	if (rv != 0) {
-		tls_log_err(
-		    "NNG-TLS-INIT", "Failed initializing PSA crypto", rv);
+		log_error(
+		    "NNG-TLS-INIT Failed initializing PSA crypto %d", rv);
 		return (rv);
 	}
 #endif
