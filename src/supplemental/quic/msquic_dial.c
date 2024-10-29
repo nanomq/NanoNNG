@@ -425,7 +425,7 @@ quic_dialer_cb(void *arg)
 			log_error("quic substream%d open failed", subc->id);
 			// goto error;
 		}
-		log_error("assign %p to substreams %d", subc, i);
+		log_info("assign %p to substreams %d", subc, i);
 		ec->substrms[i] = subc;
 	}
 
@@ -755,7 +755,7 @@ static void
 quic_substream_free(nni_quic_conn *c)
 {
 	quic_substream_close(c);
-	log_info("stream sid%d stream%p ref is %d ############", c->id,
+	log_debug("stream sid%d stream%p ref is %d ############", c->id,
 	 c->qstrm, nni_atomic_get(&c->ref));
 	if (nni_atomic_dec_nv(&c->ref) != 0) {
 		return;
