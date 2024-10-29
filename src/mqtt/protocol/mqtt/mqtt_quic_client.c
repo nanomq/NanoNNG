@@ -52,6 +52,7 @@ static void mqtt_quic_ctx_init(void *arg, void *sock);
 static void mqtt_quic_ctx_fini(void *arg);
 static void mqtt_quic_ctx_recv(void *arg, nni_aio *aio);
 static void mqtt_quic_ctx_send(void *arg, nni_aio *aio);
+static void mqtt_quic_cancel_send(nni_aio *aio, void *arg, int rv);
 
 #if defined(NNG_SUPP_SQLITE)
 static void *mqtt_quic_sock_get_sqlite_option(mqtt_sock_t *s);
@@ -127,6 +128,54 @@ struct mqtt_pipe_s {
 	conn_param *cparam;
 #endif
 };
+
+
+static void
+mqtt_quic_cancel_send(nni_aio *aio, void *arg, int rv)
+{
+	nni_msg             *msg, *tmsg;
+	uint16_t             packet_id;
+	mqtt_sock_t         *s   = arg;
+	mqtt_pipe_t         *p;
+	nni_mqtt_proto_data *proto_data;
+
+	nni_mtx_lock(&s->mtx);
+	msg = nni_aio_get_msg(aio);
+	// deal with canceld QoS msg
+	proto_data = nni_msg_get_proto_data(msg);
+	if (proto_data) {
+		uint8_t type = proto_data->fixed_header.common.packet_type;
+		if (type == NNG_MQTT_PUBLISH)
+			packet_id = proto_data->var_header.publish.packet_id;
+		else if (type == NNG_MQTT_SUBSCRIBE)
+			packet_id = proto_data->var_header.subscribe.packet_id;
+		else if (type == NNG_MQTT_UNSUBSCRIBE)
+			packet_id = proto_data->var_header.unsubscribe.packet_id;
+		p = s->pipe;
+		if (p != NULL) {
+			tmsg = nni_id_get(&s->sent_unack, packet_id);
+			if (tmsg != msg)
+				log_warn("QoS msg got overwritten!");
+			if (tmsg != NULL) {
+				log_warn("Warning : QoS action of msg %d is canceled due to "
+								"timeout!", packet_id);
+				nni_id_remove(&s->sent_unack, packet_id);
+				nni_aio_set_msg(aio, NULL);
+				nni_mqtt_msg_set_aio(tmsg, NULL);
+				nni_msg_free(tmsg);
+			} else
+				log_warn("canceling QoS aio, however msg is lost!");
+			nni_aio_finish_error(aio, NNG_ECANCELED);
+		}
+	}
+	if (nni_list_active(&s->send_queue, aio)) {
+		nni_list_remove(&s->send_queue, aio);
+	}
+	if (nni_aio_list_active(aio)) {
+		nni_aio_list_remove(aio);
+	}
+	nni_mtx_unlock(&s->mtx);
+}
 
 static inline int
 mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
@@ -232,13 +281,24 @@ mqtt_quic_send_msg(nni_aio *aio, mqtt_sock_t *s)
 		nni_msg_clone(msg);
 		if (0 != nni_id_set(&s->sent_unack, packet_id, msg)) {
 			log_warn("QoS msg caching failed. send aborted");
-			nni_id_remove(&s->sent_unack, packet_id);
 			nni_aio_set_msg(aio, NULL);
 			nni_mqtt_msg_set_aio(msg, NULL);
 			nni_mtx_unlock(&s->mtx);
 			nni_msg_free(msg);
 			nni_aio_finish_error(aio, NNG_ECANCELED);
 			return NNG_ECANCELED;
+		} else {
+			int rv;
+			if ((rv = nni_aio_schedule(aio, mqtt_quic_cancel_send, s)) != 0) {
+				log_warn("Cancel_Func scheduling failed, send abort!");
+				nni_id_remove(&s->sent_unack, packet_id);
+				nni_aio_set_msg(aio, NULL);
+				nni_mqtt_msg_set_aio(msg, NULL);
+				nni_mtx_unlock(&s->mtx);
+				nni_msg_free(msg);	// User need to realloc this msg again
+				nni_aio_finish_error(aio, rv);
+				return NNG_ECANCELED;
+			}
 		}
 		log_debug("send qos msg %p id %d!", msg, packet_id);
 		// TODO nni_aio_schedule
@@ -303,7 +363,6 @@ mqtt_quic_send_cb(void *arg)
 		nni_msg_free(nni_aio_get_msg(&p->send_aio));
 		if (rv == NNG_ECANCELED) {
 			// msg is already be freed in QUIC transport
-			// Cautious!! TODO cancel qos msg in sent_unack
 			nni_aio_set_msg(&p->send_aio, NULL);
 			p->busy = false;
 			return;
