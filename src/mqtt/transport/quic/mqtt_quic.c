@@ -1154,10 +1154,10 @@ mqtt_quictran_pipe_send_prior(mqtt_quictran_pipe *p, nni_aio *aio)
 		niov++;
 	}
 	nni_aio_set_iov(aio, niov, iov);
-	// For now, we take stream 1/2 as high priority stream randomly
-	int *flag = nni_aio_get_prov_data(aio);
-	*flag |= p->substreams[nni_random()%2].id;
-	nni_aio_set_prov_data(aio, flag);
+	// For now, we take main stream for high priority msg
+	// int *flag = nni_aio_get_prov_data(aio);
+	// *flag |= p->substreams[nni_random()%2].id;
+	// nni_aio_set_prov_data(aio, flag);
 	nng_stream_send(p->conn, aio);
 }
 
@@ -1226,10 +1226,11 @@ mqtt_quictran_pipe_send_start(mqtt_quictran_pipe *p)
 			}
 		}
 	}
+	// 2 data stream with low priority 2 sub stream 
 	if (nni_msg_get_type(msg) == CMD_PUBLISH)
 		txaio = &p->substreams[nni_random()%2 + 2].saio;
 	else if (nni_msg_get_type(msg) == CMD_SUBSCRIBE) {
-		txaio = &p->substreams[1].saio;
+		txaio = &p->substreams[nni_random()%2].saio;
 	} else {
 		txaio = p->txaio;
 	}
@@ -1262,9 +1263,6 @@ mqtt_quictran_pipe_send(void *arg, nni_aio *aio)
 	mqtt_quictran_pipe *p = arg;
 	int                rv;
 
-	if (nni_aio_begin(aio) != 0) {
-		return;
-	}
 	nni_mtx_lock(&p->mtx);
 	// Priority msg
 	int *flags = nni_aio_get_prov_data(aio);
@@ -1274,6 +1272,11 @@ mqtt_quictran_pipe_send(void *arg, nni_aio *aio)
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
+	if (nni_aio_begin(aio) != 0) {
+		nni_mtx_unlock(&p->mtx);
+		return;
+	}
+
 	if ((rv = nni_aio_schedule(aio, mqtt_quictran_pipe_send_cancel, p)) != 0) {
 		nni_mtx_unlock(&p->mtx);
 		nni_aio_finish_error(aio, rv);
