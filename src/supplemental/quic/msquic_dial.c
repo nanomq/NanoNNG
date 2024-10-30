@@ -1008,8 +1008,7 @@ quic_stream_dowrite(nni_quic_conn *c)
 		                naiov, QUIC_SEND_FLAG_NONE, NULL))) {
 			log_error("[sid%d] Failed in StreamSend, 0x%x!", c->id, rv);
 			free(buf);
-			// nni_aio_list_remove(aio);
-			// nni_aio_finish_error(aio, NNG_ECLOSED);
+			// Verify: send_complete cb triggered later?
 			return;
 		}
 
@@ -1335,15 +1334,9 @@ msquic_strm_cb(_In_ HQUIC stream, _In_opt_ void *Context,
 			nni_aio_set_input(aio, 0, NULL);
 			free(buf);
 			nni_msg *msg = nni_aio_get_msg(aio);
-			// free SUBSCRIBE/UNSUBSCRIBE QoS 1/2 PUBLISH msg here
-			// nni_mqtt_packet_type t = nni_mqtt_msg_get_packet_type(msg);
 			nni_msg_free(msg);
 			// Do not set nni_aio_set_msg(aio, NULL) here! leave it to cancel!
-			if (canceled)
-				nni_aio_finish_error(aio, NNG_ECANCELED);
-			// XXX Protocol will finish aio when received ack.
-			//else
-			//	nni_aio_finish(aio, 0, nni_aio_count(aio));
+			// Do not finish user aio here!
 			break;
 		}
 		// Ordinary sending
