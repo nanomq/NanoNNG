@@ -726,11 +726,10 @@ mqtt_quic_recv_cb(void *arg)
 		nni_pipe_close(p->qpipe);
 		return;
 	}
+	nni_mtx_unlock(&s->mtx);
 	if (user_aio) {
 		nni_aio_finish(user_aio, 0, 0);
 	}
-	nni_mtx_unlock(&s->mtx);
-
 	// Trigger connect cb first in case connack being freed
 	if (packet_type == NNG_MQTT_CONNACK)
 		if (s->cb.connect_cb) {
@@ -740,6 +739,7 @@ mqtt_quic_recv_cb(void *arg)
 	if (packet_type == NNG_MQTT_PUBLISH)
 		if (s->cb.msg_recv_cb) // Trigger cb
 			s->cb.msg_recv_cb(msg, s->cb.recvarg);
+	return;
 }
 
 // Timer callback, we use it for retransmition.
