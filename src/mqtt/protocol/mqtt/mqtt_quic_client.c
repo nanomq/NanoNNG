@@ -141,33 +141,36 @@ mqtt_quic_cancel_send(nni_aio *aio, void *arg, int rv)
 
 	nni_mtx_lock(&s->mtx);
 	msg = nni_aio_get_msg(aio);
-	// deal with canceld QoS msg
-	proto_data = nni_msg_get_proto_data(msg);
-	if (proto_data) {
-		uint8_t type = proto_data->fixed_header.common.packet_type;
-		if (type == NNG_MQTT_PUBLISH)
-			packet_id = proto_data->var_header.publish.packet_id;
-		else if (type == NNG_MQTT_SUBSCRIBE)
-			packet_id = proto_data->var_header.subscribe.packet_id;
-		else if (type == NNG_MQTT_UNSUBSCRIBE)
-			packet_id = proto_data->var_header.unsubscribe.packet_id;
-		p = s->pipe;
-		if (p != NULL) {
-			tmsg = nni_id_get(&s->sent_unack, packet_id);
-			if (tmsg != msg)
-				log_warn("QoS msg got overwritten!");
-			if (tmsg != NULL) {
-				log_warn("Warning : QoS action of msg %d is canceled due to "
-								"timeout!", packet_id);
-				nni_id_remove(&s->sent_unack, packet_id);
-				nni_aio_set_msg(aio, NULL);
-				nni_mqtt_msg_set_aio(tmsg, NULL);
-				nni_msg_free(tmsg);
-			} else
-				log_warn("canceling QoS aio, however msg is lost!");
-			nni_aio_finish_error(aio, NNG_ECANCELED);
+	if (msg != NULL) {
+		// deal with canceld QoS msg
+		proto_data = nni_msg_get_proto_data(msg);
+		if (proto_data) {
+			uint8_t type = proto_data->fixed_header.common.packet_type;
+			if (type == NNG_MQTT_PUBLISH)
+				packet_id = proto_data->var_header.publish.packet_id;
+			else if (type == NNG_MQTT_SUBSCRIBE)
+				packet_id = proto_data->var_header.subscribe.packet_id;
+			else if (type == NNG_MQTT_UNSUBSCRIBE)
+				packet_id = proto_data->var_header.unsubscribe.packet_id;
+			p = s->pipe;
+			if (p != NULL) {
+				tmsg = nni_id_get(&s->sent_unack, packet_id);
+				if (tmsg != msg)
+					log_warn("QoS msg got overwritten!");
+				if (tmsg != NULL) {
+					log_warn("Warning : QoS action of msg %d is canceled due to "
+									"timeout!", packet_id);
+					nni_id_remove(&s->sent_unack, packet_id);
+					nni_aio_set_msg(aio, NULL);
+					nni_mqtt_msg_set_aio(tmsg, NULL);
+					nni_msg_free(tmsg);
+				} else
+					log_warn("canceling QoS aio, however msg is lost!");
+				nni_aio_finish_error(aio, NNG_ECANCELED);
+			}
 		}
 	}
+
 	if (nni_list_active(&s->send_queue, aio)) {
 		nni_list_remove(&s->send_queue, aio);
 	}
@@ -301,7 +304,6 @@ mqtt_quic_send_msg(nni_aio *aio, mqtt_sock_t *s)
 			}
 		}
 		log_debug("send qos msg %p id %d!", msg, packet_id);
-		// TODO nni_aio_schedule
 		break;
 	default:
 		log_error("Undefined msg type");
@@ -587,6 +589,7 @@ mqtt_quic_recv_cb(void *arg)
 		if (cached_msg != NULL) {
 			nni_id_remove(&s->sent_unack, packet_id);
 			user_aio = nni_mqtt_msg_get_aio(cached_msg);
+			nni_aio_set_msg(user_aio, NULL);
 			nni_mqtt_msg_set_aio(cached_msg, NULL);
 			log_debug("acked msg %p packet id %d", cached_msg, packet_id);
 			nni_msg_free(cached_msg);
@@ -668,7 +671,7 @@ mqtt_quic_recv_cb(void *arg)
 				// packetid already exists.
 				// sth wrong with the broker
 				// replace old with new
-				log_error("ERROR: packet id %d duplicates in", packet_id);
+				log_error("ERROR: packet id %d duplicate", packet_id);
 				// if ((aio = nni_mqtt_msg_get_aio(cached_msg)) != NULL) {
 				// 	nng_aio_finish_error(aio, NNG_EEXIST);
 				// 	nni_mqtt_msg_set_aio(cached_msg, NULL);
@@ -723,11 +726,11 @@ mqtt_quic_recv_cb(void *arg)
 		nni_pipe_close(p->qpipe);
 		return;
 	}
+	if (user_aio) {
+		nni_aio_finish(user_aio, 0, 0);
+	}
 	nni_mtx_unlock(&s->mtx);
 
-	if (user_aio) {
-		nni_aio_finish_sync(user_aio, 0, 0);
-	}
 	// Trigger connect cb first in case connack being freed
 	if (packet_type == NNG_MQTT_CONNACK)
 		if (s->cb.connect_cb) {
@@ -1188,6 +1191,7 @@ mqtt_quic_pipe_close(void *arg)
 	nni_lmq_flush(&p->send_messages);
 	//TODO add timeout cancel for msgs in sent_unack
 	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
+	// nni_id_map_foreach(&s->sent_unack, mqtt_close_unack_msg_cb);
 #ifdef NNG_HAVE_MQTT_BROKER
 	if (p->cparam == NULL) {
 		nni_mtx_unlock(&s->mtx);
