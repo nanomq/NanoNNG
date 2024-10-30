@@ -129,7 +129,7 @@ struct mqtt_pipe_s {
 #endif
 };
 
-
+// QUIC is still retrying, Although we abort sending in protocol layer.
 static void
 mqtt_quic_cancel_send(nni_aio *aio, void *arg, int rv)
 {
@@ -290,7 +290,8 @@ mqtt_quic_send_msg(nni_aio *aio, mqtt_sock_t *s)
 			nni_msg_free(msg);
 			nni_aio_finish_error(aio, NNG_ECANCELED);
 			return NNG_ECANCELED;
-		} else {
+		} else if (!s->qos_first) {
+			// Cancel Timeout is simply not compatible with QoS first logic
 			int rv;
 			if ((rv = nni_aio_schedule(aio, mqtt_quic_cancel_send, s)) != 0) {
 				log_warn("Cancel_Func scheduling failed, send abort!");
@@ -319,7 +320,7 @@ mqtt_quic_send_msg(nni_aio *aio, mqtt_sock_t *s)
 			// this make cancel_send impossible
 			nni_aio_set_prov_data(aio, &prior_flags);
 			nni_pipe_send(p->qpipe, aio);
-			log_debug("sending highpriority QoS msg in parallel");
+			log_debug("sending high priority QoS msg in parallel");
 			nni_mtx_unlock(&s->mtx);
 			return 0;
 		}
@@ -726,10 +727,11 @@ mqtt_quic_recv_cb(void *arg)
 		nni_pipe_close(p->qpipe);
 		return;
 	}
-	nni_mtx_unlock(&s->mtx);
 	if (user_aio) {
 		nni_aio_finish(user_aio, 0, 0);
 	}
+	nni_mtx_unlock(&s->mtx);
+
 	// Trigger connect cb first in case connack being freed
 	if (packet_type == NNG_MQTT_CONNACK)
 		if (s->cb.connect_cb) {
