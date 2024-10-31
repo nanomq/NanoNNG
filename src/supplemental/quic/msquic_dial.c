@@ -984,8 +984,12 @@ quic_stream_dowrite(nni_quic_conn *c)
 		size_t        n = 0;
 
 		nni_aio_get_iov(aio, &naiov, &aiov);
-		if (naiov == 0)
+		if (naiov == 0) {
 			log_warn("[sid%d] A msg without content?", c->id);
+			nni_aio_list_remove(aio);
+			nng_aio_finish_error(aio, NNG_EMSGSIZE);
+			return;
+		}
 
 		QUIC_BUFFER *buf=(QUIC_BUFFER*)malloc(sizeof(QUIC_BUFFER)*naiov);
 		for (uint8_t i = 0; i < naiov; ++i) {
