@@ -610,7 +610,7 @@ quic_stream_cb(int events, void *arg, int rc)
 	case QUIC_STREAM_EVENT_SEND_COMPLETE:
 		nni_mtx_lock(&c->mtx);
 		if ((aio = nni_list_first(&c->writeq)) == NULL) {
-			log_error("[sid%d] Aio lost after sending: conn %p", c->id, c);
+			log_error("[sid%d] Aio lost after send canceled?: conn %p", c->id, c);
 			nni_mtx_unlock(&c->mtx);
 			break;
 		}
@@ -853,10 +853,17 @@ quic_stream_cancel(nni_aio *aio, void *arg, int rv)
 	log_info("[sid%d] quic_stream_cancel", c->id);
 	nni_mtx_lock(&c->mtx);
 	if (nni_aio_list_active(aio)) {
-		nni_aio_list_remove(aio);
-		nni_aio_finish_error(aio, rv);
+		if (nni_aio_count(aio) == 0) { // QUIC_BUF not be put to msquic
+			nni_aio_list_remove(aio);
+			QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
+			free(buf);
+			nni_aio_finish_error(aio, rv);
+		}
 	}
 	nni_mtx_unlock(&c->mtx);
+
+	if (c->id != 0) // No effects the main stream
+		quic_substream_close(c);
 }
 
 static void
@@ -1105,6 +1112,9 @@ quic_stream_send(void *arg, nni_aio *aio)
 			nni_aio_finish_error(aio, NNG_ECANCELED);
 		return;
 	}
+
+	if (strmid != 0)
+		nni_aio_set_timeout(aio, QUIC_SUB_STREAM_TIMEOUT);
 
 	if ((rv = nni_aio_schedule(aio, quic_stream_cancel, c)) != 0) {
 		nni_mtx_unlock(&c->mtx);
