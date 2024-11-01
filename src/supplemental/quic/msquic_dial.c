@@ -284,6 +284,7 @@ ex_quic_conn_free(ex_quic_conn *ec)
 	}
 
 	nni_aio_stop(&ec->tmoaio);
+	nni_aio_fini(&ec->tmoaio);
 	nni_mtx_fini(&ec->mtx);
 	nng_free(ec, 0);
 }
