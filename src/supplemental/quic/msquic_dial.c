@@ -846,11 +846,26 @@ quic_stream_close(void *arg)
 }
 
 static void
-quic_stream_cancel(nni_aio *aio, void *arg, int rv)
+quic_stream_recv_cancel(nni_aio *aio, void *arg, int rv)
 {
 	nni_quic_conn *c = arg;
 
-	log_info("[sid%d] quic_stream_cancel", c->id);
+	log_info("[sid%d] quic_stream_recv_cancel", c->id);
+	nni_mtx_lock(&c->mtx);
+	if (nni_aio_list_active(aio)) {
+		nni_aio_list_remove(aio);
+		nni_aio_finish_error(aio, rv);
+	}
+	nni_mtx_unlock(&c->mtx);
+}
+
+static void
+quic_stream_send_cancel(nni_aio *aio, void *arg, int rv)
+{
+	nni_quic_conn *c = arg;
+	bool needwait = false;
+
+	log_info("[sid%d] quic_stream_send_cancel", c->id);
 	nni_mtx_lock(&c->mtx);
 	if (nni_aio_list_active(aio)) {
 		if (nni_aio_count(aio) == 0) { // QUIC_BUF not be put to msquic
@@ -858,9 +873,15 @@ quic_stream_cancel(nni_aio *aio, void *arg, int rv)
 			QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
 			free(buf);
 			nni_aio_finish_error(aio, rv);
+		} else {
+			log_error("@@@@@@@@@@@@@@@@@@@@ WAITING NOW !!!!!!!!!!!!");
+			needwait = true;
 		}
 	}
 	nni_mtx_unlock(&c->mtx);
+
+	if (needwait)
+		nni_aio_wait(aio); // Is it okey to do so???
 
 	if (c->id != 0) // No effects the main stream
 		quic_substream_close(c);
@@ -918,7 +939,7 @@ quic_stream_recv(void *arg, nni_aio *aio)
 		return;
 	}
 
-	if ((rv = nni_aio_schedule(aio, quic_stream_cancel, c)) != 0) {
+	if ((rv = nni_aio_schedule(aio, quic_stream_recv_cancel, c)) != 0) {
 		nni_mtx_unlock(&c->mtx);
 		nni_aio_finish_error(aio, rv);
 		return;
@@ -1116,7 +1137,7 @@ quic_stream_send(void *arg, nni_aio *aio)
 	if (strmid != 0)
 		nni_aio_set_timeout(aio, QUIC_SUB_STREAM_TIMEOUT);
 
-	if ((rv = nni_aio_schedule(aio, quic_stream_cancel, c)) != 0) {
+	if ((rv = nni_aio_schedule(aio, quic_stream_send_cancel, c)) != 0) {
 		nni_mtx_unlock(&c->mtx);
 		nni_aio_finish_error(aio, rv);
 		return;
