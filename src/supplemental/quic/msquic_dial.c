@@ -72,6 +72,7 @@ struct nni_quic_conn {
 	ex_quic_conn   *ec;
 	bool            reopen; // Should it be reopen
 	nni_aio         reconaio;
+	nni_time        tmo;
 	// MsQuic
 	HQUIC           qstrm; // quic stream
 
@@ -85,6 +86,7 @@ struct ex_quic_conn {
 	// TODO int    priority[QUIC_SUB_STREAM_NUM]; // Priority
 	// TODO int    strategy; // Advanced strategy
 	nni_mtx        mtx;
+	nni_aio        tmoaio;
 };
 
 static const QUIC_API_TABLE *MsQuic = NULL;
@@ -214,6 +216,33 @@ verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *ca)
 
 }
 
+static void
+check_timeout_reopen(void *arg)
+{
+	ex_quic_conn  *ec = arg;
+	nni_quic_conn *c;
+
+	nni_mtx_lock(&ec->mtx);
+	for (int i=0; i<QUIC_SUB_STREAM_NUM; i++) {
+		if ((c = ec->substrms[i]) != NULL) {
+			nni_mtx_lock(&c->mtx);
+			if (c->tmo >= QUIC_SUB_STREAM_TIMEOUT) {
+				log_warn("[sid%d] close stream actively due to timeout%ld.", c->id, c->tmo);
+				c->tmo = 0; // reset
+				nni_mtx_unlock(&c->mtx);
+				break;
+			}
+			nni_mtx_unlock(&c->mtx);
+			c = NULL;
+		}
+	}
+	nni_mtx_unlock(&ec->mtx);
+
+	if (c)
+		quic_substream_close(c);
+	nni_sleep_aio(QUIC_SUB_STREAM_TIMEOUT, &ec->tmoaio);
+}
+
 static ex_quic_conn *
 ex_quic_conn_init(nni_quic_conn *c)
 {
@@ -226,6 +255,7 @@ ex_quic_conn_init(nni_quic_conn *c)
 		ec->substrms[i] = NULL;
 	}
 	nni_mtx_init(&ec->mtx);
+	nni_aio_init(&ec->tmoaio, check_timeout_reopen, ec);
 	return ec;
 }
 
@@ -253,6 +283,7 @@ ex_quic_conn_free(ex_quic_conn *ec)
 		quic_substream_free(subc);
 	}
 
+	nni_aio_stop(&ec->tmoaio);
 	nni_mtx_fini(&ec->mtx);
 	nng_free(ec, 0);
 }
@@ -274,6 +305,7 @@ ex_quic_conn_close(ex_quic_conn *ec)
 
 		quic_substream_close(subc);
 	}
+	nni_aio_close(&ec->tmoaio);
 }
 
 /***************************** MsQuic Dialer ******************************/
@@ -428,6 +460,7 @@ quic_dialer_cb(void *arg)
 		log_info("assign %p to substreams %d", subc, i);
 		ec->substrms[i] = subc;
 	}
+	nni_sleep_aio(QUIC_SUB_STREAM_TIMEOUT, &ec->tmoaio);
 
 error:
 	d->currcon = NULL;
@@ -615,6 +648,12 @@ quic_stream_cb(int events, void *arg, int rc)
 			break;
 		}
 		nni_aio_list_remove(aio);
+		// Update timeout
+		nni_time timeout = nni_timestamp() - (nni_time)nni_aio_get_input(aio, 1);
+		if (timeout > c->tmo) c->tmo = timeout;
+		//log_debug("[sid%d] timeout%ld max%ld start%ld",
+		//		c->id, timeout, c->tmo, (nni_time)nni_aio_get_input(aio, 1));
+		// Free quic buffer
 		QUIC_BUFFER *buf = nni_aio_get_input(aio, 0);
 		free(buf);
 		// XXX #[FORCANCEL]
@@ -1102,6 +1141,8 @@ quic_stream_send(void *arg, nni_aio *aio)
 		return;
 	}
 
+	nni_aio_set_input(aio, 1, (void *)nni_timestamp());
+
 	if ((rv = nni_aio_schedule(aio, quic_stream_cancel, c)) != 0) {
 		nni_mtx_unlock(&c->mtx);
 		nni_aio_finish_error(aio, rv);
@@ -1154,6 +1195,7 @@ nni_msquic_quic_alloc(nni_quic_conn **cp, nni_quic_dialer *d)
 	c->closed = false;
 	c->reopen = true;
 	c->dialer = d;
+	c->tmo    = 0;
 
 	nni_mtx_init(&c->mtx);
 	nni_aio_list_init(&c->readq);
