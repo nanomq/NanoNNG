@@ -591,7 +591,7 @@ nni_msquic_quic_dialer_rele(nni_quic_dialer *d)
 }
 
 /**************************** MsQuic Connection ****************************/
-
+static int count = 0;
 static void
 quic_stream_cb(int events, void *arg, int rc)
 {
@@ -608,6 +608,8 @@ quic_stream_cb(int events, void *arg, int rc)
 
 	switch (events) {
 	case QUIC_STREAM_EVENT_SEND_COMPLETE:
+		if (sid > 0 && count++ > 10 && count % 5 == 0)
+			nni_msleep(QUIC_SUB_STREAM_TIMEOUT - 10);
 		nni_mtx_lock(&c->mtx);
 		if ((aio = nni_list_first(&c->writeq)) == NULL) {
 			log_error("[sid%d] Aio lost after send canceled?: conn %p", c->id, c);
