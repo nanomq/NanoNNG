@@ -13,6 +13,7 @@
 #include "core/zmalloc.h"
 #include "nng/protocol/mqtt/mqtt.h"
 #include "core/platform.h"
+#include "core/socket.h"
 
 // This file provides the "public" API.  This is a thin wrapper around
 // internal API functions.  We use the public prefix instead of internal,
@@ -1146,6 +1147,38 @@ int
 nng_socket_set_ptr(nng_socket id, const char *n, void *v)
 {
 	return (socket_set(id, n, &v, sizeof(v), NNI_TYPE_POINTER));
+}
+
+int
+nng_socket_get_recv_poll_fd(nng_socket id, int *fdp)
+{
+	int       rv;
+	nni_sock *sock;
+
+	if (((rv = nni_init()) != 0) ||
+	    ((rv = nni_sock_find(&sock, id.id)) != 0)) {
+		return (rv);
+	}
+
+	rv = nni_sock_get_recv_fd(sock, fdp);
+	nni_sock_rele(sock);
+	return (rv);
+}
+
+int
+nng_socket_get_send_poll_fd(nng_socket id, int *fdp)
+{
+	int       rv;
+	nni_sock *sock;
+
+	if (((rv = nni_init()) != 0) ||
+	    ((rv = nni_sock_find(&sock, id.id)) != 0)) {
+		return (rv);
+	}
+
+	rv = nni_sock_get_send_fd(sock, fdp);
+	nni_sock_rele(sock);
+	return (rv);
 }
 
 int
