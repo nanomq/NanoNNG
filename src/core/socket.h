@@ -84,6 +84,8 @@ extern int nni_sock_replace(nni_sock *, nni_sock *);
 // NNG_ECLOSED unless the final argument is true.)
 extern int nni_ctx_find(nni_ctx **, uint32_t, bool);
 
+extern void *nni_ctx_proto_data(nni_ctx *);
+
 // nni_ctx_rele is called to release a hold on the context.  These holds
 // are acquired by either nni_ctx_open or nni_ctx_find.  If the context
 // is being closed (nni_ctx_close was called), and this is the last reference,

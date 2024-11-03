@@ -1205,6 +1205,12 @@ nni_ctx_find(nni_ctx **cp, uint32_t id, bool closing)
 	return (rv);
 }
 
+void *
+nni_ctx_proto_data(nni_ctx *ctx)
+{
+	return (ctx->c_data);
+}
+
 static void
 nni_ctx_destroy(nni_ctx *ctx)
 {
