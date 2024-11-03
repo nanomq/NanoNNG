@@ -249,8 +249,6 @@ NNG_DECL int nng_socket_set_uint64(nng_socket, const char *, uint64_t);
 NNG_DECL int nng_socket_set_string(nng_socket, const char *, const char *);
 NNG_DECL int nng_socket_set_ptr(nng_socket, const char *, void *);
 NNG_DECL int nng_socket_set_ms(nng_socket, const char *, nng_duration);
-NNG_DECL int nng_socket_set_addr(
-    nng_socket, const char *, const nng_sockaddr *);
 
 NNG_DECL int nng_socket_get(nng_socket, const char *, void *, size_t *);
 NNG_DECL int nng_socket_get_bool(nng_socket, const char *, bool *);
@@ -260,7 +258,6 @@ NNG_DECL int nng_socket_get_uint64(nng_socket, const char *, uint64_t *);
 NNG_DECL int nng_socket_get_string(nng_socket, const char *, char **);
 NNG_DECL int nng_socket_get_ptr(nng_socket, const char *, void **);
 NNG_DECL int nng_socket_get_ms(nng_socket, const char *, nng_duration *);
-NNG_DECL int nng_socket_get_addr(nng_socket, const char *, nng_sockaddr *);
 
 // These functions are used to obtain a file descriptor that will poll
 // as readable if the socket can receive or send. Applications must never
