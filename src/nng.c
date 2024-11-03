@@ -1068,12 +1068,6 @@ socket_set(
 }
 
 int
-nng_socket_set(nng_socket id, const char *n, const void *v, size_t sz)
-{
-	return (socket_set(id, n, v, sz, NNI_TYPE_OPAQUE));
-}
-
-int
 nng_socket_set_int(nng_socket id, const char *n, int v)
 {
 	return (socket_set(id, n, &v, sizeof(v), NNI_TYPE_INT32));
@@ -1163,12 +1157,6 @@ socket_get(nng_socket s, const char *name, void *val, size_t *szp, nni_type t)
 	rv = nni_sock_getopt(sock, name, val, szp, t);
 	nni_sock_rele(sock);
 	return (rv);
-}
-
-int
-nng_socket_get(nng_socket id, const char *n, void *v, size_t *szp)
-{
-	return (socket_get(id, n, v, szp, NNI_TYPE_OPAQUE));
 }
 
 int
