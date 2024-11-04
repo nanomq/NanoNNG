@@ -224,7 +224,9 @@ check_timeout_reopen(void *arg)
 	bool           isreopen;
 
 	nni_mtx_lock(&ec->mtx);
-	for (int i=0; i<QUIC_SUB_STREAM_NUM; i++) {
+	// index should start from 0. But now it starts from 2 because transport
+	// layer request only reopen sub stream 3 and 4.
+	for (int i=2; i<QUIC_SUB_STREAM_NUM; i++) {
 		isreopen = false;
 		if ((c = ec->substrms[i]) != NULL) {
 			nni_mtx_lock(&c->mtx);
