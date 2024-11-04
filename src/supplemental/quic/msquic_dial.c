@@ -221,25 +221,25 @@ check_timeout_reopen(void *arg)
 {
 	ex_quic_conn  *ec = arg;
 	nni_quic_conn *c;
+	bool           isreopen;
 
 	nni_mtx_lock(&ec->mtx);
 	for (int i=0; i<QUIC_SUB_STREAM_NUM; i++) {
+		isreopen = false;
 		if ((c = ec->substrms[i]) != NULL) {
 			nni_mtx_lock(&c->mtx);
 			if (c->tmo >= QUIC_SUB_STREAM_TIMEOUT) {
 				log_warn("[sid%d] close stream actively due to timeout%ld.", c->id, c->tmo);
 				c->tmo = 0; // reset
-				nni_mtx_unlock(&c->mtx);
-				break;
+				isreopen = true;
 			}
 			nni_mtx_unlock(&c->mtx);
-			c = NULL;
+			if (isreopen)
+				quic_substream_close(c);
 		}
 	}
 	nni_mtx_unlock(&ec->mtx);
 
-	if (c)
-		quic_substream_close(c);
 	nni_sleep_aio(QUIC_SUB_STREAM_TIMEOUT, &ec->tmoaio);
 }
 
