@@ -1143,15 +1143,6 @@ static nni_sp_tran ipc_tran_abstract = {
 };
 #endif
 
-
-#ifndef NNG_ELIDE_DEPRECATED
-int
-nng_ipc_register(void)
-{
-	return (nni_init());
-}
-#endif
-
 void
 nni_sp_ipc_register(void)
 {
