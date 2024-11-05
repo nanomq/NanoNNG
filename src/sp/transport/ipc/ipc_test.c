@@ -1,5 +1,5 @@
 //
-// Copyright 2020 Staysail Systems, Inc. <info@staysail.tech>
+// Copyright 2024 Staysail Systems, Inc. <info@staysail.tech>
 // Copyright 2018 Cody Piersall <cody.piersall@gmail.com>
 //
 // This software is supplied under the terms of the MIT License, a
@@ -202,6 +202,8 @@ test_abstract_sockets(void)
 	NUTS_RECV(s2, "ping");
 	NUTS_CLOSE(s1);
 	NUTS_CLOSE(s2);
+#else
+	NUTS_SKIP("No abstract sockets.");
 #endif
 }
 
@@ -249,6 +251,8 @@ test_abstract_auto_bind(void)
 
 	NUTS_CLOSE(s1);
 	NUTS_CLOSE(s2);
+#else
+	NUTS_SKIP("No abstract sockets.");
 #endif
 }
 
@@ -272,6 +276,8 @@ test_abstract_too_long(void)
 	NUTS_FAIL(nng_dial(s1, addr, NULL, NNG_FLAG_NONBLOCK), NNG_EADDRINVAL);
 
 	NUTS_CLOSE(s1);
+#else
+	NUTS_SKIP("No abstract sockets.");
 #endif
 }
 
@@ -324,6 +330,8 @@ test_abstract_null(void)
 
 	NUTS_CLOSE(s1);
 	NUTS_CLOSE(s2);
+#else
+	NUTS_SKIP("No abstract sockets.");
 #endif
 }
 
@@ -373,6 +381,8 @@ test_unix_alias(void)
 
 	NUTS_CLOSE(s1);
 	NUTS_CLOSE(s2);
+#else
+	NUTS_SKIP("Not POSIX.");
 #endif
 }
 
@@ -426,6 +436,8 @@ test_ipc_pipe_peer(void)
 	nng_msg_free(msg);
 	NUTS_CLOSE(s0);
 	NUTS_CLOSE(s1);
+#else
+	NUTS_SKIP("Not POSIX.")
 #endif // NNG_PLATFORM_POSIX
 }
 
