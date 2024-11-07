@@ -813,7 +813,7 @@ compare_callback_span(void *name, uint64_t low, uint64_t high)
 }
 
 const char *
-parquet_find(uint64_t key)
+parquet_find(const char *topic, uint64_t key)
 {
 	if (g_conf == NULL || g_conf->enable == false) {
 		log_error("Parquet is not ready or not launch!");
@@ -825,6 +825,9 @@ parquet_find(uint64_t key)
 	pthread_mutex_lock(&parquet_queue_mutex);
 	FOREACH_QUEUE(parquet_file_queue, elem)
 	{
+		if (strstr((const char *)elem, topic) == NULL) {
+			continue;
+		}
 		if (elem && compare_callback(elem, key)) {
 			value = nng_strdup((char *) elem);
 			break;
