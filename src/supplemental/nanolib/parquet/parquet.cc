@@ -835,7 +835,7 @@ parquet_find(uint64_t key)
 }
 
 const char **
-parquet_find_span(uint64_t start_key, uint64_t end_key, uint32_t *size)
+parquet_find_span(const char *topic, uint64_t start_key, uint64_t end_key, uint32_t *size)
 {
 	if (g_conf == NULL || g_conf->enable == false) {
 		log_error("Parquet is not ready or not launch!");
@@ -866,6 +866,9 @@ parquet_find_span(uint64_t start_key, uint64_t end_key, uint32_t *size)
 		FOREACH_QUEUE(parquet_file_queue, elem)
 		{
 			if (elem) {
+				if (strstr((const char *)elem, topic) == NULL) {
+					continue;
+				}
 				if (compare_callback_span(elem, low, high)) {
 					++local_size;
 					value    = nng_strdup((char *) elem);
@@ -1523,17 +1526,13 @@ parquet_get_file_ranges(uint64_t start_key, uint64_t end_key, char *topic)
 {
 	uint32_t len = 0;
 	// Find filenames
-	log_info("start_key: %lu, end_key: %lu", start_key, end_key);
-	const char **filenames = parquet_find_span(start_key, end_key, &len);
+	log_info("topic: %s, start_key: %lu, end_key: %lu", topic, start_key, end_key);
+	const char **filenames = parquet_find_span(topic, start_key, end_key, &len);
 	vector<parquet_filename_range *> range_vec;
 
 	// Get all keys
 	for (uint32_t i = 0; i < len; i++) {
-		log_info("name: %s, topic: %s", filenames[i], topic);
-		if (strstr(filenames[i], topic) == NULL) {
-			nng_strfree((char *) filenames[i]);
-			continue;
-		}
+		log_info("filename: %s", filenames[i]);
 
 		parquet_filename_range *range =
 		    (parquet_filename_range *) nng_alloc(
@@ -1636,16 +1635,12 @@ parquet_get_data_packets_in_range_by_column(parquet_filename_range *range,
 		uint64_t                   start_key = range->keys[0];
 		uint64_t                   end_key   = range->keys[1];
 
-		log_info("start_key: %lu, end_key: %lu", start_key, end_key);
+		log_info("topic: %s, start_key: %lu, end_key: %lu", topic, start_key, end_key);
 		const char **filenames =
-		    parquet_find_span(start_key, end_key, &len);
+		    parquet_find_span(topic, start_key, end_key, &len);
 
 		for (uint32_t i = 0; i < len; i++) {
-			log_info("name: %s, topic: %s", filenames[i], topic);
-			if (strstr(filenames[i], topic) == NULL) {
-				nng_strfree((char *) filenames[i]);
-				continue;
-			}
+			log_info("filename: %s", filenames[i]);
 
 			uint64_t keys[2];
 			keys[0] = start_key;
