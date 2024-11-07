@@ -247,6 +247,7 @@ static struct parquet_data_ret *ringbus_parquet_data_ret_init(struct stream_data
 	struct parquet_data_ret *parquet_data_ret = NULL;
 
 	if (stream_data_out == NULL || cmd_data == NULL) {
+		log_error("stream_data_out or cmd_data is null");
 		return NULL;
 	}
 
@@ -265,6 +266,7 @@ static struct parquet_data_ret *ringbus_parquet_data_ret_init(struct stream_data
 		}
 	}
 	if (new_col_len == 0) {
+		log_error("new_col_len is 0");
 		nng_free(parquet_data_ret, sizeof(struct parquet_data_ret));
 		return NULL;
 	}
@@ -318,6 +320,7 @@ static struct stream_decoded_data *fuzz_search_result_cat(nng_msg **msgList,
 
 	parquet_data_ret *parquet_data_ele = ringbus_parquet_data_ret_init(stream_data_out, cmd_data);
 	if (parquet_data_ele == NULL) {
+		log_error("ringbus_parquet_data_ret_init failed!");
 		parquet_data_free((parquet_data *)stream_data_out);
 		ringbus_stream_data_in_free(stream_data);
 		return NULL;
@@ -354,7 +357,7 @@ static void query_send_sync(exchange_sock_t *s, struct cmd_data *cmd_data)
 	if (ret == 0 && count != 0 && msgList != NULL) {
 		ringbus_decoded_data = fuzz_search_result_cat(msgList, count, s->ex_node->ex->streamType, cmd_data);
 		if (ringbus_decoded_data == NULL) {
-			log_info("get decoded data from ringbus failed!");
+			log_error("get decoded data from ringbus failed!");
 		}
 		nng_free(msgList, sizeof(nng_msg *) * count);
 	} else {
