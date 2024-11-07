@@ -825,12 +825,14 @@ parquet_find(const char *topic, uint64_t key)
 	pthread_mutex_lock(&parquet_queue_mutex);
 	FOREACH_QUEUE(parquet_file_queue, elem)
 	{
-		if (strstr((const char *)elem, topic) == NULL) {
-			continue;
-		}
-		if (elem && compare_callback(elem, key)) {
-			value = nng_strdup((char *) elem);
-			break;
+		if (elem) {
+			if (strstr((const char *)elem, topic) == NULL) {
+				continue;
+			}
+			if (compare_callback(elem, key)) {
+				value = nng_strdup((char *) elem);
+				break;
+			}
 		}
 	}
 	pthread_mutex_unlock(&parquet_queue_mutex);
