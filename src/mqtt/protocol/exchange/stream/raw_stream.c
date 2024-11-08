@@ -277,8 +277,6 @@ static struct cmd_data *parse_input_cmd(const char *input)
 	if (cmd_data == NULL) {
 		return NULL;
 	}
-	cmd_data->schema = NULL;
-	cmd_data->schema_len = 0;
 
 	if (checkInput(input, &start_key_index, &end_key_index) != 0) {
 		log_error("checkInput failed\n");
@@ -298,6 +296,29 @@ static struct cmd_data *parse_input_cmd(const char *input)
 
 	cmd_data->start_key = (uint64_t)atoll(input + start_key_index);
 	cmd_data->end_key = (uint64_t)atoll(input + end_key_index);
+
+	cmd_data->schema_len = 2;
+	cmd_data->schema = nng_alloc(cmd_data->schema_len * sizeof(char *));
+	if (cmd_data->schema == NULL) {
+		nng_free(cmd_data, sizeof(struct cmd_data));
+		return NULL;
+	}
+	cmd_data->schema[0] = nng_alloc(strlen("ts") + 1);
+	if (cmd_data->schema[0] == NULL) {
+		nng_free(cmd_data->schema, cmd_data->schema_len * sizeof(char *));
+		nng_free(cmd_data, sizeof(struct cmd_data));
+		return NULL;
+	}
+	strcpy(cmd_data->schema[0], "ts");
+	cmd_data->schema[1] = nng_alloc(strlen("data") + 1);
+	if (cmd_data->schema[1] == NULL) {
+		nng_free(cmd_data->schema[0], strlen("ts") + 1);
+		nng_free(cmd_data->schema, cmd_data->schema_len * sizeof(char *));
+		nng_free(cmd_data, sizeof(struct cmd_data));
+		return NULL;
+	}
+	strcpy(cmd_data->schema[1], "data");
+
 
 	log_info("start_key: %ld end_key: %ld", cmd_data->start_key, cmd_data->end_key);
 
