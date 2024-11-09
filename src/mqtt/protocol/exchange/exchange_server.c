@@ -786,14 +786,11 @@ exchange_sock_send(void *arg, nni_aio *aio)
 
 	msg = nni_aio_get_msg(aio);
 	nni_aio_set_msg(aio, NULL);
-	if (msg == NULL) {
+	if (msg == NULL || nni_msg_get_type(msg) != CMD_PUBLISH) {
 		nni_aio_finish_error(aio, NNG_EINVAL);
 		return;
 	}
-	if (nni_msg_get_type(msg) != CMD_PUBLISH) {
-		nni_aio_finish_error(aio, NNG_EINVAL);
-		return;
-	}
+
 	nni_mtx_lock(&s->mtx);
 	if (s->ex_node == NULL) {
 		nni_aio_finish_error(aio, NNG_EINVAL);
