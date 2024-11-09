@@ -102,7 +102,7 @@ test_tls_large_message(void)
 	NUTS_PASS(nng_tls_config_alloc(&c1, NNG_TLS_MODE_SERVER));
 	NUTS_PASS(nng_tls_config_own_cert(
 	    c1, nuts_server_crt, nuts_server_key, NULL));
-	NUTS_PASS(nng_stream_listener_set_ptr(l, NNG_OPT_TLS_CONFIG, c1));
+	NUTS_PASS(nng_stream_listener_set_tls(l, c1));
 	NUTS_PASS(nng_stream_listener_listen(l));
 	NUTS_PASS(
 	    nng_stream_listener_get_int(l, NNG_OPT_TCP_BOUND_PORT, &port));
@@ -115,7 +115,7 @@ test_tls_large_message(void)
 	NUTS_PASS(nng_tls_config_ca_chain(c2, nuts_server_crt, NULL));
 	NUTS_PASS(nng_tls_config_server_name(c2, "localhost"));
 
-	NUTS_PASS(nng_stream_dialer_set_ptr(d, NNG_OPT_TLS_CONFIG, c2));
+	NUTS_PASS(nng_stream_dialer_set_tls(d, c2));
 
 	nng_stream_listener_accept(l, aio1);
 	nng_stream_dialer_dial(d, aio2);
@@ -207,7 +207,7 @@ test_tls_psk(void)
 	NUTS_PASS(nng_stream_listener_alloc(&l, "tls+tcp://127.0.0.1:0"));
 	NUTS_PASS(nng_tls_config_alloc(&c1, NNG_TLS_MODE_SERVER));
 	NUTS_PASS(nng_tls_config_psk(c1, "identity", key, sizeof(key)));
-	NUTS_PASS(nng_stream_listener_set_ptr(l, NNG_OPT_TLS_CONFIG, c1));
+	NUTS_PASS(nng_stream_listener_set_tls(l, c1));
 	NUTS_PASS(nng_stream_listener_listen(l));
 	NUTS_PASS(
 	    nng_stream_listener_get_int(l, NNG_OPT_TCP_BOUND_PORT, &port));
@@ -220,7 +220,7 @@ test_tls_psk(void)
 	NUTS_PASS(nng_tls_config_psk(c2, "identity", key, sizeof(key)));
 	NUTS_PASS(nng_tls_config_server_name(c2, "localhost"));
 
-	NUTS_PASS(nng_stream_dialer_set_ptr(d, NNG_OPT_TLS_CONFIG, c2));
+	NUTS_PASS(nng_stream_dialer_set_tls(d, c2));
 
 	nng_stream_listener_accept(l, aio1);
 	nng_stream_dialer_dial(d, aio2);
@@ -298,7 +298,7 @@ test_tls_psk_server_identities(void)
 	    nng_tls_config_psk(c1, "identity2", key + 4, sizeof(key) - 4));
 	NUTS_PASS(nng_tls_config_psk(c1, identity, key + 4, sizeof(key) - 4));
 	NUTS_PASS(nng_tls_config_psk(c1, identity, key, sizeof(key)));
-	NUTS_PASS(nng_stream_listener_set_ptr(l, NNG_OPT_TLS_CONFIG, c1));
+	NUTS_PASS(nng_stream_listener_set_tls(l, c1));
 	NUTS_PASS(nng_stream_listener_listen(l));
 	NUTS_PASS(
 	    nng_stream_listener_get_int(l, NNG_OPT_TCP_BOUND_PORT, &port));
@@ -311,7 +311,7 @@ test_tls_psk_server_identities(void)
 	NUTS_PASS(nng_tls_config_psk(c2, identity, key, sizeof(key)));
 	NUTS_PASS(nng_tls_config_server_name(c2, "localhost"));
 
-	NUTS_PASS(nng_stream_dialer_set_ptr(d, NNG_OPT_TLS_CONFIG, c2));
+	NUTS_PASS(nng_stream_dialer_set_tls(d, c2));
 
 	nng_stream_listener_accept(l, aio1);
 	nng_stream_dialer_dial(d, aio2);
@@ -385,7 +385,7 @@ test_tls_psk_bad_identity(void)
 	NUTS_PASS(nng_tls_config_alloc(&c1, NNG_TLS_MODE_SERVER));
 	// Replace the identity .. first write one value, then we change it
 	NUTS_PASS(nng_tls_config_psk(c1, "identity1", key, sizeof(key)));
-	NUTS_PASS(nng_stream_listener_set_ptr(l, NNG_OPT_TLS_CONFIG, c1));
+	NUTS_PASS(nng_stream_listener_set_tls(l, c1));
 	NUTS_PASS(nng_stream_listener_listen(l));
 	NUTS_PASS(
 	    nng_stream_listener_get_int(l, NNG_OPT_TCP_BOUND_PORT, &port));
@@ -398,7 +398,7 @@ test_tls_psk_bad_identity(void)
 	NUTS_PASS(nng_tls_config_psk(c2, "identity2", key, sizeof(key)));
 	NUTS_PASS(nng_tls_config_server_name(c2, "localhost"));
 
-	NUTS_PASS(nng_stream_dialer_set_ptr(d, NNG_OPT_TLS_CONFIG, c2));
+	NUTS_PASS(nng_stream_dialer_set_tls(d, c2));
 
 	nng_stream_listener_accept(l, aio1);
 	nng_stream_dialer_dial(d, aio2);
@@ -461,7 +461,7 @@ test_tls_psk_config_busy(void)
 	NUTS_PASS(nng_stream_listener_alloc(&l, "tls+tcp://127.0.0.1:0"));
 	NUTS_PASS(nng_tls_config_alloc(&c1, NNG_TLS_MODE_SERVER));
 	NUTS_PASS(nng_tls_config_psk(c1, "identity", key, sizeof(key)));
-	NUTS_PASS(nng_stream_listener_set_ptr(l, NNG_OPT_TLS_CONFIG, c1));
+	NUTS_PASS(nng_stream_listener_set_tls(l, c1));
 	nng_stream_listener_accept(l, aio);
 	nng_msleep(100);
 	NUTS_FAIL(

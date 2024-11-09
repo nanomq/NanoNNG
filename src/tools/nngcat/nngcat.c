@@ -1104,8 +1104,7 @@ main(int ac, char **av)
 				fatal("Unable to create dialer for %s: %s",
 				    a->val, nng_strerror(rv));
 			}
-			rv = nng_dialer_get_ptr(
-			    d, NNG_OPT_TLS_CONFIG, (void **) &tls);
+			rv = nng_dialer_get_tls(d, &tls);
 			if (rv == 0) {
 				configtls(tls);
 			} else if (rv != NNG_ENOTSUP) {
@@ -1139,8 +1138,7 @@ main(int ac, char **av)
 				fatal("Unable to create listener for %s: %s",
 				    a->val, nng_strerror(rv));
 			}
-			rv = nng_listener_get_ptr(
-			    l, NNG_OPT_TLS_CONFIG, (void **) &tls);
+			rv = nng_listener_get_tls(l, &tls);
 			if (rv == 0) {
 				configtls(tls);
 			} else if (rv != NNG_ENOTSUP) {

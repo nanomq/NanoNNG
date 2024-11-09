@@ -354,6 +354,24 @@ nni_stream_dialer_set(nng_stream_dialer *d, const char *nm, const void *data,
 	return (d->sd_set(d, nm, data, sz, t));
 }
 
+int
+nni_stream_dialer_get_tls(nng_stream_dialer *d, nng_tls_config **cfgp)
+{
+	if (d->sd_get_tls == NULL) {
+		return (NNG_ENOTSUP);
+	}
+	return (d->sd_get_tls(d, cfgp));
+}
+
+int
+nni_stream_dialer_set_tls(nng_stream_dialer *d, nng_tls_config *cfg)
+{
+	if (d->sd_set_tls == NULL) {
+		return (NNG_ENOTSUP);
+	}
+	return (d->sd_set_tls(d, cfg));
+}
+
 void
 nng_stream_listener_close(nng_stream_listener *l)
 {
@@ -390,6 +408,24 @@ nni_stream_listener_set(nng_stream_listener *l, const char *nm,
     const void *data, size_t sz, nni_type t)
 {
 	return (l->sl_set(l, nm, data, sz, t));
+}
+
+int
+nni_stream_listener_get_tls(nng_stream_listener *l, nng_tls_config **cfgp)
+{
+	if (l->sl_get_tls == NULL) {
+		return (NNG_ENOTSUP);
+	}
+	return (l->sl_get_tls(l, cfgp));
+}
+
+int
+nni_stream_listener_set_tls(nng_stream_listener *l, nng_tls_config *cfg)
+{
+	if (l->sl_set_tls == NULL) {
+		return (NNG_ENOTSUP);
+	}
+	return (l->sl_set_tls(l, cfg));
 }
 
 int
@@ -527,6 +563,12 @@ nng_stream_dialer_get_addr(
 }
 
 int
+nng_stream_dialer_get_tls(nng_stream_dialer *d, nng_tls_config **cfgp)
+{
+	return (nni_stream_dialer_get_tls(d, cfgp));
+}
+
+int
 nng_stream_listener_get_int(nng_stream_listener *l, const char *n, int *v)
 {
 	return (nni_stream_listener_get(l, n, v, NULL, NNI_TYPE_INT32));
@@ -578,6 +620,12 @@ nng_stream_listener_get_addr(
 }
 
 int
+nng_stream_listener_get_tls(nng_stream_listener *l, nng_tls_config **cfgp)
+{
+	return (nni_stream_listener_get_tls(l, cfgp));
+}
+
+int
 nng_stream_dialer_set_int(nng_stream_dialer *d, const char *n, int v)
 {
 	return (nni_stream_dialer_set(d, n, &v, sizeof(v), NNI_TYPE_INT32));
@@ -626,6 +674,12 @@ nng_stream_dialer_set_addr(
     nng_stream_dialer *d, const char *n, const nng_sockaddr *v)
 {
 	return (nni_stream_dialer_set(d, n, v, sizeof(*v), NNI_TYPE_SOCKADDR));
+}
+
+int
+nng_stream_dialer_set_tls(nng_stream_dialer *d, nng_tls_config *cfg)
+{
+	return (nni_stream_dialer_set_tls(d, cfg));
 }
 
 int
@@ -682,4 +736,10 @@ nng_stream_listener_set_addr(
 {
 	return (
 	    nni_stream_listener_set(l, n, v, sizeof(*v), NNI_TYPE_SOCKADDR));
+}
+
+int
+nng_stream_listener_set_tls(nng_stream_listener *l, nng_tls_config *cfg)
+{
+	return (nni_stream_listener_set_tls(l, cfg));
 }

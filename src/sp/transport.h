@@ -1,5 +1,5 @@
 //
-// Copyright 2021 Staysail Systems, Inc. <info@staysail.tech>
+// Copyright 2024 Staysail Systems, Inc. <info@staysail.tech>
 // Copyright 2018 Capitar IT Group BV <info@capitar.com>
 // Copyright 2018 Devolutions <info@devolutions.net>
 //
@@ -51,6 +51,13 @@ struct nni_sp_dialer_ops {
 
 	//d_setconncb is used to set callback for connection.
 	int (*d_connsetcb)(void *, void *);
+	// d_get_tls is used to get the TLS configuration to use for dialing.
+	// This may be NULL if the dialer does not support TLS.
+	int (*d_get_tls)(void *, nng_tls_config **);
+
+	// d_set_tls is used to set the TLS configruation to use for the
+	// dialer. This may be NULL if this dialer does not support TLS.
+	int (*d_set_tls)(void *, nng_tls_config *);
 
 	// d_options is an array of dialer options.  The final
 	// element must have a NULL name. If this member is NULL, then
@@ -87,6 +94,14 @@ struct nni_sp_listener_ops {
 
 	// l_setopt is used to set or change an option.
 	int (*l_setopt)(void *, const char *, const void *, size_t, nni_type);
+
+	// l_get_tls is used to get the TLS configuration to use for listening.
+	// This may be NULL if the listener does not support TLS.
+	int (*l_get_tls)(void *, nng_tls_config **);
+
+	// l_set_tls is used to set the TLS configruation to use for listening.
+	// This may be NULL if this listener does not support TLS.
+	int (*l_set_tls)(void *, nng_tls_config *);
 
 	// l_options is an array of listener options.  The final
 	// element must have a NULL name. If this member is NULL, then

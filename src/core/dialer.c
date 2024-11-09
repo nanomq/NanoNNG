@@ -560,6 +560,23 @@ nni_dialer_url(nni_dialer *d)
 {
 	return (d->d_url);
 }
+int
+nni_dialer_get_tls(nni_dialer *d, nng_tls_config **cfgp)
+{
+	if (d->d_ops.d_get_tls == NULL) {
+		return (NNG_ENOTSUP);
+	}
+	return (d->d_ops.d_get_tls(d->d_data, cfgp));
+}
+
+int
+nni_dialer_set_tls(nni_dialer *d, nng_tls_config *cfg)
+{
+	if (d->d_ops.d_set_tls == NULL) {
+		return (NNG_ENOTSUP);
+	}
+	return (d->d_ops.d_set_tls(d->d_data, cfg));
+}
 
 void
 nni_dialer_add_stat(nni_dialer *d, nni_stat_item *item)
