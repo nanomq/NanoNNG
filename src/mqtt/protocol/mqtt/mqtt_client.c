@@ -335,11 +335,8 @@ mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	// We start at a random point, to minimize likelihood of
 	// accidental collision across restarts.
 	nni_id_map_init(&p->recv_unack, 0x0000u, 0xffffu, true);
-	// nni_lmq_init(&p->recv_messages, NNG_MAX_RECV_LMQ);
-	// nni_lmq_init(&p->send_messages, NNG_MAX_SEND_LMQ);
-	nni_lmq_init(&p->recv_messages, 102400);
-	nni_lmq_init(&p->send_messages, 102400);
-
+	nni_lmq_init(&p->recv_messages, NNG_MAX_RECV_LMQ);
+	nni_lmq_init(&p->send_messages, NNG_MAX_SEND_LMQ);
 #ifdef NNG_HAVE_MQTT_BROKER
 	p->cparam = NULL;
 #endif
@@ -533,6 +530,7 @@ mqtt_pipe_start(void *arg)
 	s->mqtt_pipe       = p;
 	s->disconnect_code = SUCCESS;
 	s->dis_prop        = NULL;
+	p->busy			   = false;
 
 	if ((c = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, c);
@@ -683,7 +681,7 @@ mqtt_timer_cb(void *arg)
 			if (ptype == NNG_MQTT_PUBLISH) {
 				nni_mqtt_msg_set_publish_dup(msg, true);
 			}
-			log_info("trying to resend QoS msg %d", pid);
+			log_debug("trying to resend QoS msg %d", pid);
 			nni_msg_clone(msg);
 			if (!p->busy) {
 				p->busy = true;
@@ -696,7 +694,7 @@ mqtt_timer_cb(void *arg)
 				return;
 			} else {
 				if (nni_lmq_put(&p->send_messages, msg) != 0) {
-					log_info("resend msg %d lost due to full lmq", pid);
+					log_info("%d resend canceld due to full lmq", pid);
 					nni_msg_free(msg);
 				}
 			}
@@ -841,7 +839,11 @@ mqtt_recv_cb(void *arg)
 			nni_mqtt_msg_set_disconnect_property(msg, NULL);
 			// Composed a disconnect msg
 			if ((rv = nni_mqttv5_msg_encode(msg)) != MQTT_SUCCESS) {
-				nni_plat_printf("Error in encoding disconnect.\n");
+				log_error("Error in encoding disconnect.\n");
+				nni_msg_free(msg);
+				nni_mtx_unlock(&s->mtx);
+				nni_pipe_close(p->pipe);
+				return;
 			}
 			if (!p->busy) {
 				p->busy = true;
@@ -854,9 +856,9 @@ mqtt_recv_cb(void *arg)
 				nni_msg *tmsg;
 				(void) nni_lmq_get(&p->send_messages, &tmsg);
 				nni_msg_free(tmsg);
-				log_warn("Warning! cached msg lost due to busy socket");
 			}
 			if (0 != nni_lmq_put(&p->send_messages, msg)) {
+				nni_msg_free(msg);
 				log_warn("Warning! DISCONNECT msg lost due to busy socket");
 			}
 			nni_mtx_unlock(&s->mtx);
@@ -890,8 +892,7 @@ mqtt_recv_cb(void *arg)
 #ifdef NNG_HAVE_MQTT_BROKER
 		nng_msg_set_cmd_type(msg, CMD_CONNACK);
 		p->cparam = nni_msg_get_conn_param(msg);
-		// add connack msg to app layer only for notify in broker
-		// bridge
+		// add connack msg to app layer only for notify in broker bridge
 		if (p->cparam != NULL) {
 			// Get IPv4 ADDR of client
 			nng_sockaddr addr;
@@ -918,6 +919,7 @@ mqtt_recv_cb(void *arg)
 			}
 
 			nni_mqtt_msg_set_packet_type(msg, NNG_MQTT_CONNACK);
+			//TODO is it neccessary??
 			if (s->mqtt_ver == MQTT_PROTOCOL_VERSION_v311) {
 				rv = nni_mqtt_msg_encode(msg);
 			} else if (s->mqtt_ver == MQTT_PROTOCOL_VERSION_v5) {
@@ -932,13 +934,11 @@ mqtt_recv_cb(void *arg)
 			}
 			conn_param_clone(p->cparam);
 			if ((ctx = nni_list_first(&s->recv_queue)) == NULL) {
-				// No one waiting to receive yet, putting msg
-				// into lmq
+				// No one waiting to receive yet, putting msg into lmq
 				if (mqtt_pipe_recv_msgq_putq(p, msg) != 0)
 					conn_param_free(p->cparam);
 				nni_mtx_unlock(&s->mtx);
-				log_warn("Warning: no ctx found!! create more "
-				         "ctxs!");
+				log_warn("Warning: no ctx found! CONNACK lost! plz create more ctxs!");
 				return;
 			}
 			nni_list_remove(&s->recv_queue, ctx);
@@ -989,19 +989,20 @@ mqtt_recv_cb(void *arg)
 		return;
 
 	case NNG_MQTT_PUBREC:
+		nni_mtx_unlock(&s->mtx);
 		nni_msg_free(msg);
-		break;
+		return;
 
 	case NNG_MQTT_PUBREL:
 		packet_id  = nni_mqtt_msg_get_pubrel_packet_id(msg);
 		cached_msg = nni_id_get(&p->recv_unack, packet_id);
 		nni_msg_free(msg);
 		if (cached_msg == NULL) {
-			nni_plat_printf("ERROR! packet id %d not found\n", packet_id);
+			log_warn("ERROR! packet id %d not found\n", packet_id);
 			break;
 		}
 		nni_id_remove(&p->recv_unack, packet_id);
-
+		// return msg to user APP
 		if ((ctx = nni_list_first(&s->recv_queue)) == NULL) {
 			// No one waiting to receive yet, putting msg
 			// into lmq
@@ -1035,8 +1036,7 @@ mqtt_recv_cb(void *arg)
 			// QoS 0, successful receipt
 			// QoS 1, the transport handled sending a PUBACK
 			if ((ctx = nni_list_first(&s->recv_queue)) == NULL) {
-				// No one waiting to receive yet, putting msg
-				// into lmq
+				// No one waiting to receive yet, putting msg into lmq
 				if (mqtt_pipe_recv_msgq_putq(p, msg) != 0) {
 #ifdef NNG_HAVE_MQTT_BROKER
 					conn_param_free(p->cparam);
@@ -1060,8 +1060,7 @@ mqtt_recv_cb(void *arg)
 				// packetid already exists.
 				// sth wrong with the broker
 				// replace old with new
-				log_error(
-				    "packet id %d duplicates in", packet_id);
+				log_error("packet id %d duplicates in", packet_id);
 				nni_msg_free(cached_msg);
 #ifdef NNG_HAVE_MQTT_BROKER
 				conn_param_free(p->cparam);
@@ -1094,6 +1093,7 @@ mqtt_recv_cb(void *arg)
 		} else {
 			log_error("Invalid mqtt version");
 		}
+		nni_msg_free(msg);
 		nni_pipe_close(p->pipe);
 		return;
 	}
@@ -1117,6 +1117,8 @@ mqtt_ctx_init(void *arg, void *sock)
 	mqtt_sock_t *s   = sock;
 
 	ctx->mqtt_sock = s;
+	ctx->raio      = NULL;
+	ctx->saio      = NULL;
 	NNI_LIST_NODE_INIT(&ctx->sqnode);
 	NNI_LIST_NODE_INIT(&ctx->rqnode);
 }
@@ -1251,7 +1253,6 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 	} else if (s->mqtt_ver == MQTT_PROTOCOL_VERSION_v5) {
 		rv = nni_mqttv5_msg_encode(msg);
 	} else {
-		nni_mtx_unlock(&s->mtx);
 		log_error("Invalid mqtt version");
 		rv = PROTOCOL_ERROR;
 	}
@@ -1311,6 +1312,7 @@ mqtt_ctx_recv(void *arg, nni_aio *aio)
 	nni_msg     *msg = NULL;
 
 	if (nni_aio_begin(aio) != 0) {
+		log_error("aio begin failed");
 		return;
 	}
 
