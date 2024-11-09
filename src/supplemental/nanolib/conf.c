@@ -656,7 +656,7 @@ conf_log_init(conf_log *log)
 	log->level    = NNG_LOG_WARN;
 	log->file     = NULL;
 	log->dir      = NULL;
-	log->type     = LOG_TO_CONSOLE;
+	log->type     = 0x00;
 	log->fp       = NULL;
 	log->uds_addr = NULL;
 
