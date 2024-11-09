@@ -1290,7 +1290,7 @@ nano_pipe_recv_cb(void *arg)
 	nni_mtx_unlock(&s->lk);
 	nni_aio_set_msg(aio, msg);
 
-	nni_aio_finish_sync(aio, 0, nni_msg_len(msg));
+	nni_aio_finish(aio, 0, nni_msg_len(msg));
 	log_trace("end of nano_pipe_recv_cb %p", ctx);
 	return;
 
