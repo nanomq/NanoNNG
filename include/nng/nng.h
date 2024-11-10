@@ -215,22 +215,9 @@ typedef struct nng_iov {
 #define NNG_DURATION_DEFAULT (-2)
 #define NNG_DURATION_ZERO (0)
 
-// nng_fini is used to terminate the library, freeing certain global resources.
-// This should only be called during atexit() or just before dlclose().
-// THIS FUNCTION MUST NOT BE CALLED CONCURRENTLY WITH ANY OTHER FUNCTION
-// IN THIS LIBRARY; IT IS NOT REENTRANT OR THREADSAFE.
-//
-// For most cases, this call is unnecessary, but it is provided to assist
-// when debugging with memory checkers (e.g. valgrind).  Calling this
-// function prevents global library resources from being reported incorrectly
-// as memory leaks.  In those cases, we recommend doing this with atexit().
-NNG_DECL void nng_fini(void);
-
 // nng_close closes the socket, terminating all activity and
 // closing any underlying connections and releasing any associated
 // resources.
-// We're not eliding this with NNG_ELIDE_DEPRECATED for now, because
-// it would break far too many applications, as nng_socket_close is brand new.
 NNG_DECL int nng_close(nng_socket);
 
 // nng_socket_close is the *new* name for nng_close.  It should be used
@@ -1324,6 +1311,20 @@ NNG_DECL bool nng_lmq_empty(nng_lmq *);
 // NNG_DECL int   nng_id_alloc(nng_id_map *, uint32_t *, void *);
 // NNG_DECL int   nng_id_remove(nng_id_map *, uint32_t );
 
+// Log levels.  These correspond to RFC 5424 (syslog) levels.
+// NNG never only uses priorities 3 - 7.
+//
+// Note that LOG_EMERG is 0, but we don't let applications submit'
+// such messages, so this is a useful value to prevent logging altogether.
+typedef enum nng_log_level {
+	NNG_LOG_NONE   = 0, // used for filters only, NNG suppresses these
+	NNG_LOG_ERR    = 3,
+	NNG_LOG_WARN   = 4,
+	NNG_LOG_NOTICE = 5,
+	NNG_LOG_INFO   = 6,
+	NNG_LOG_DEBUG  = 7
+} nng_log_level;
+
 // NANOMQ MQTT variables & APIs
 typedef struct conn_param        conn_param;
 typedef struct pub_packet_struct pub_packet_struct;
@@ -1331,114 +1332,6 @@ typedef struct pipe_db           nano_pipe_db;
 
 NNG_DECL int nng_access(const char* name, int flag);
 
-// NANOMQ MQTT API ends
-
-NNG_DECL int nng_stream_listener_get_tls(
-    nng_stream_listener *, nng_tls_config **);
-NNG_DECL int nng_stream_listener_set_tls(
-    nng_stream_listener *, nng_tls_config *);
-
-// UDP operations.  These are provided for convenience,
-// and should be considered somewhat experimental.
-
-// nng_udp represents a socket / file descriptor for use with UDP
-typedef struct nng_udp nng_udp;
-
-// nng_udp_open initializes a UDP socket.  The socket is bound
-// to the specified address.
-NNG_DECL int nng_udp_open(nng_udp **udpp, nng_sockaddr *sa);
-
-// nng_udp_close closes the underlying UDP socket.
-NNG_DECL void nng_udp_close(nng_udp *udp);
-
-// nng_udp_sockname determines the locally bound address.
-// This is useful to determine a chosen port after binding to port 0.
-NNG_DECL int nng_udp_sockname(nng_udp *udp, nng_sockaddr *sa);
-
-// nng_udp_send sends the data in the aio to the the
-// destination specified in the nng_aio.  The iovs are the UDP payload.
-// The destination address is the first input (0th) for the aio.
-NNG_DECL void nng_udp_send(nng_udp *udp, nng_aio *aio);
-
-// nng_udp_recv receives a message, storing it in the iovs
-// from the UDP payload.  If the UDP payload will not fit, then
-// NNG_EMSGSIZE results.  The senders address is stored in the
-// socket address (nng_sockaddr), which should have been specified
-// in the aio's first input.
-NNG_DECL void nng_udp_recv(nng_udp *udp, nng_aio *aio);
-
-// nng_udp_membership provides for joining or leaving multicast groups.
-NNG_DECL int nng_udp_multicast_membership(
-    nng_udp *udp, nng_sockaddr *sa, bool join);
-
-// nng_init_parameter is used by applications to change a tunable setting.
-// This function must be called before any other NNG function for the setting
-// to have any effect.  This function is also not thread-safe!
-//
-// The list of parameters supported is *not* documented, and subject to change.
-//
-// We try to provide sane defaults, so the use here is intended to provide
-// more control for applications that cannot use compile-time configuration.
-//
-// Applications should not depend on this API for correct operation.
-//
-// This API is intentionally undocumented.
-//
-// Parameter settings are lost after nng_fini() is called.
-typedef int   nng_init_parameter;
-NNG_DECL void nng_init_set_parameter(nng_init_parameter, uint64_t);
-
-// The following list of parameters is not part of our API stability promise.
-// In particular the set of parameters that are supported, the default values,
-// the range of valid values, and semantics associated therein are subject to
-// change at any time.  We won't go out of our way to break these, and we will
-// try to prevent changes here from breaking working applications, but this is
-// on a best effort basis only.
-//
-// NOTE: When removing a value, please leave the enumeration in place and add
-// a suffix _RETIRED ... this will preserve the binary values for binary
-// compatibility.
-enum {
-	NNG_INIT_PARAMETER_NONE = 0, // ensure values start at 1.
-
-	// Fix the number of threads used for tasks (callbacks),
-	// Default is 2 threads per core, capped to NNG_INIT_MAX_TASK_THREADS.
-	// At least 2 threads will be created in any case.
-	NNG_INIT_NUM_TASK_THREADS,
-
-	// Fix the number of threads used for expiration.  Default is one
-	// thread per core, capped to NNG_INIT_MAX_EXPIRE_THREADS.  At least
-	// one thread will be created.
-	NNG_INIT_NUM_EXPIRE_THREADS,
-
-	// Fix the number of poller threads (used for I/O).  Support varies
-	// by platform (many platforms only support a single poller thread.)
-	NNG_INIT_NUM_POLLER_THREADS,
-
-	// Fix the number of threads used for DNS resolution.  At least one
-	// will be used. Default is controlled by NNG_RESOLV_CONCURRENCY
-	// compile time variable.
-	NNG_INIT_NUM_RESOLVER_THREADS,
-
-	// Limit the number of threads of created for tasks.
-	// NNG will always create at least 2 of these in order to prevent
-	// deadlocks. Zero means no limit.  Default is determined by
-	// NNG_MAX_TASKQ_THREADS compile time variable.
-	NNG_INIT_MAX_TASK_THREADS,
-
-	// Limit the number of threads created for expiration.  Zero means no
-	// limit. Default is determined by the NNG_MAX_EXPIRE_THREADS compile
-	// time variable.
-	NNG_INIT_MAX_EXPIRE_THREADS,
-
-	// Limit the number of poller/IO threads created.  Zero means no limit.
-	// Default is determined by NNG_MAX_POLLER_THREADS compile time
-	// variable.
-	NNG_INIT_MAX_POLLER_THREADS,
-};
-
-NNG_DECL void    nng_aio_finish_error(nng_aio *aio, int rv);
-NNG_DECL void    nng_aio_finish_sync(nng_aio *aio, int rv);
 NNG_DECL uint8_t nng_msg_cmd_type(nng_msg *msg);
 NNG_DECL uint8_t nng_msg_get_type(nng_msg *msg);
 NNG_DECL size_t  nng_msg_remaining_len(nng_msg *msg);
@@ -1495,6 +1388,9 @@ NNG_DECL int 		 nng_dialer_off(nng_dialer did);
 
 NNG_DECL void nng_taskq_setter(int num_taskq_threads, int max_taskq_threads);
 
+NNG_DECL void    nng_aio_finish_error(nng_aio *aio, int rv);
+NNG_DECL void    nng_aio_finish_sync(nng_aio *aio, int rv);
+
 #if defined(NNG_SUPP_SQLITE)
 
 NNG_DECL int nng_mqtt_qos_db_set_retain(
@@ -1505,6 +1401,100 @@ NNG_DECL nng_msg **nng_mqtt_qos_db_find_retain(void *, const char *);
 
 #endif
 
+// NANOMQ MQTT API ends
+
+NNG_DECL int nng_stream_listener_get_tls(
+    nng_stream_listener *, nng_tls_config **);
+NNG_DECL int nng_stream_listener_set_tls(
+    nng_stream_listener *, nng_tls_config *);
+
+// UDP operations.  These are provided for convenience,
+// and should be considered somewhat experimental.
+
+// nng_udp represents a socket / file descriptor for use with UDP
+typedef struct nng_udp nng_udp;
+
+// nng_udp_open initializes a UDP socket.  The socket is bound
+// to the specified address.
+NNG_DECL int nng_udp_open(nng_udp **udpp, nng_sockaddr *sa);
+
+// nng_udp_close closes the underlying UDP socket.
+NNG_DECL void nng_udp_close(nng_udp *udp);
+
+// nng_udp_sockname determines the locally bound address.
+// This is useful to determine a chosen port after binding to port 0.
+NNG_DECL int nng_udp_sockname(nng_udp *udp, nng_sockaddr *sa);
+
+// nng_udp_send sends the data in the aio to the the
+// destination specified in the nng_aio.  The iovs are the UDP payload.
+// The destination address is the first input (0th) for the aio.
+NNG_DECL void nng_udp_send(nng_udp *udp, nng_aio *aio);
+
+// nng_udp_recv receives a message, storing it in the iovs
+// from the UDP payload.  If the UDP payload will not fit, then
+// NNG_EMSGSIZE results.  The senders address is stored in the
+// socket address (nng_sockaddr), which should have been specified
+// in the aio's first input.
+NNG_DECL void nng_udp_recv(nng_udp *udp, nng_aio *aio);
+
+// nng_udp_membership provides for joining or leaving multicast groups.
+NNG_DECL int nng_udp_multicast_membership(
+    nng_udp *udp, nng_sockaddr *sa, bool join);
+
+// Initialization parameters.
+// Applications can tweak behavior by passing a non-empty set
+// values here, but only the first caller to nng_init may supply
+// values.
+typedef struct {
+	// Fix the number of threads used for tasks (callbacks),
+	// Default is 2 threads per core, capped to max_task_threads below.
+	// At least 2 threads will be created in any case.  0 leaves this at
+	// the default.
+	int16_t num_task_threads;
+
+	// Limit the number of threads of created for tasks.
+	// NNG will always create at least 2 of these in order to prevent
+	// deadlocks. -1 means no limit.  Default is determined by
+	// NNG_MAX_TASKQ_THREADS compile time variable.
+	int16_t max_task_threads;
+
+	// Fix the number of threads used for expiration.  Default is one
+	// thread per core, capped to max_expires_threads below.  At least
+	// one thread will be created.
+	int16_t num_expire_threads;
+
+	// Limit the number of threads created for expiration.  -1 means no
+	// limit. Default is determined by the NNG_MAX_EXPIRE_THREADS compile
+	// time variable.
+	int16_t max_expire_threads;
+
+	// Fix the number of poller threads (used for I/O).  Support varies
+	// by platform (many platforms only support a single poller thread.)
+	int16_t num_poller_threads;
+
+	// Limit the number of poller/IO threads created.  -1 means no limit.
+	// Default is determined by NNG_MAX_POLLER_THREADS compile time
+	// variable.
+	int16_t max_poller_threads;
+
+	// Fix the number of threads used for DNS resolution.  At least one
+	// will be used. Default is controlled by NNG_RESOLV_CONCURRENCY
+	// compile time variable.
+	int16_t num_resolver_threads;
+} nng_init_params;
+
+// Initialize the library.  May be called multiple times, but
+// only the first call can contain a non-NULL params.  If already
+// initialized with non-NULL params, will return NNG_EALREADY.
+// Applications should *not* call a matching nng_fini() in that case.
+NNG_DECL int nng_init(nng_init_params *parms);
+
+// nng_fini is used to terminate the library, freeing certain global resources.
+// Each call to nng_fini is paired to a call to nng_init.  The last such
+// call will tear down any resources associated with the library.  Thus,
+// applications must not call other functions in the library after calling
+// this.
+NNG_DECL void nng_fini(void);
 
 // Return an absolute time from some arbitrary point.  The value is
 // provided in milliseconds, and is of limited resolution based on the

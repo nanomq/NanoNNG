@@ -20,11 +20,16 @@
 #include <nng/nng.h>
 
 // Call nng_fini during test finalization -- this avoids leak warnings.
-extern void nng_fini(void);
+#ifndef TEST_FINI
 #define TEST_FINI nng_fini()
-#define TEST_INIT                                 \
-	do {                                      \
+#endif
+
+#ifndef TEST_INIT
+#define TEST_INIT                                \
+	do {                                     \
+		nng_init(NULL);                  \
 	} while (0)
+#endif
 #include "acutest.h"
 
 #include <stdbool.h>
