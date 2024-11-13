@@ -17,9 +17,9 @@
 #include "mbedtls/version.h" // Must be first in order to pick up version
 
 #include "mbedtls/error.h"
-#ifdef MBEDTLS_PSA_CRYPTO_C
-#include "psa/crypto.h"
-#endif
+// #ifdef MBEDTLS_PSA_CRYPTO_C
+// #include "psa/crypto.h"
+// #endif
 
 #include "nng/nng.h"
 #include "nng/supplemental/tls/tls.h"
