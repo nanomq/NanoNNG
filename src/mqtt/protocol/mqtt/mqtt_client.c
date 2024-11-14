@@ -559,7 +559,7 @@ mqtt_pipe_start(void *arg)
 	if ((aio = nni_list_first(&s->cached_aio)) != NULL) {
 		nni_list_remove(&s->cached_aio, aio);
 		nni_pipe_recv(p->pipe, &p->recv_aio);
-		mqtt_send_msg(c->saio, NULL, s);
+		mqtt_send_msg(aio, NULL, s);
 		nni_sleep_aio(s->retry, &p->time_aio);
 		return (0);
 	}
