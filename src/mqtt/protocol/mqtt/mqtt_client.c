@@ -149,6 +149,8 @@ mqtt_sock_init(void *arg, nni_sock *sock)
 
 	s->mqtt_ver  = MQTT_PROTOCOL_VERSION_v311;
 	s->mqtt_pipe = NULL;
+	// For caching aio
+	nni_aio_list_init(&s->cached_aio);
 	NNI_LIST_INIT(&s->recv_queue, mqtt_ctx_t, rqnode);
 	NNI_LIST_INIT(&s->send_queue, mqtt_ctx_t, sqnode);
 
@@ -284,6 +286,14 @@ mqtt_sock_close(void *arg)
 		aio       = ctx->raio;
 		ctx->raio = NULL;
 		// there should be no msg waiting
+		nni_aio_finish_error(aio, NNG_ECLOSED);
+	}
+	while ((aio = nni_list_first(&s->cached_aio)) != NULL) {
+		nni_list_remove(&s->send_queue, aio);
+		msg = nni_aio_get_msg(aio);
+		if (msg != NULL) {
+			nni_msg_free(msg);
+		}
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
 	nni_id_map_foreach(&s->sent_unack, mqtt_close_unack_aio_cb);
@@ -529,6 +539,7 @@ mqtt_pipe_start(void *arg)
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
 	mqtt_ctx_t  *c = NULL;
+	nni_aio		*aio;
 
 	nni_mtx_lock(&s->mtx);
 	nni_atomic_set_bool(&p->closed, false);
@@ -542,6 +553,13 @@ mqtt_pipe_start(void *arg)
 		nni_pipe_recv(p->pipe, &p->recv_aio);
 		mqtt_send_msg(c->saio, c, s);
 		c->saio = NULL;
+		nni_sleep_aio(s->retry, &p->time_aio);
+		return (0);
+	}
+	if ((aio = nni_list_first(&s->cached_aio)) != NULL) {
+		nni_list_remove(&s->cached_aio, aio);
+		nni_pipe_recv(p->pipe, &p->recv_aio);
+		mqtt_send_msg(c->saio, NULL, s);
 		nni_sleep_aio(s->retry, &p->time_aio);
 		return (0);
 	}
@@ -658,18 +676,21 @@ mqtt_timer_cb(void *arg)
 	// Update left time to send pingreq
 	s->timeleft -= s->retry;
 
-	if (!p->busy && p->pingmsg && s->timeleft <= 0) {
-		p->busy = true;
-		s->timeleft = s->keepalive;
-		// send pingreq
-		nni_msg_clone(p->pingmsg);
-		nni_aio_set_msg(&p->send_aio, p->pingmsg);
-		nni_pipe_send(p->pipe, &p->send_aio);
+	if (p->pingmsg && s->timeleft <= 0) {
 		p->pingcnt ++;
-		nni_mtx_unlock(&s->mtx);
-		log_info("Send pingreq (sock%p)(%dms)", s, s->keepalive);
-		nni_sleep_aio(s->retry, &p->time_aio);
-		return;
+		if (!p->busy) {
+			p->busy = true;
+			s->timeleft = s->keepalive;
+			// send pingreq
+			nni_msg_clone(p->pingmsg);
+			nni_aio_set_msg(&p->send_aio, p->pingmsg);
+			nni_pipe_send(p->pipe, &p->send_aio);
+			nni_mtx_unlock(&s->mtx);
+			log_info("Send pingreq (sock%p)(%dms)", s, s->keepalive);
+			nni_sleep_aio(s->retry, &p->time_aio);
+			return;
+		}
+
 	}
 
 	// start message resending
@@ -766,14 +787,13 @@ mqtt_send_cb(void *arg)
 		return;
 	}
 	// Check cached aio first
-	// nni_aio * aio;
-	// if ((aio = nni_list_first(&s->cached_aio)) != NULL) {
-	// 	nni_list_remove(&s->cached_aio, aio);
-	// 	msg = nni_aio_get_msg(aio);
-	// 	mqtt_send_msg(aio, NULL);
-	// 	int rv = 0;
-	// 	return;
-	// }
+	nni_aio * aio;
+	if ((aio = nni_list_first(&s->cached_aio)) != NULL) {
+		nni_list_remove(&s->cached_aio, aio);
+		msg = nni_aio_get_msg(aio);
+		mqtt_send_msg(aio, NULL, s);
+		return;
+	}
 	if (nni_lmq_get(&p->send_messages, &msg) == 0) {
 		p->busy = true;
 		nni_aio_set_msg(&p->send_aio, msg);
@@ -1145,6 +1165,12 @@ mqtt_ctx_fini(void *arg)
 	nni_aio *    aio;
 
 	nni_mtx_lock(&s->mtx);
+	if ((aio = ctx->saio) != NULL) {
+		if (nni_list_active(&s->cached_aio, aio)) {
+			nni_list_remove(&s->cached_aio, aio);
+			nni_aio_finish_error(aio, NNG_ECLOSED);
+		}
+	} // not really needed
 	if (nni_list_active(&s->send_queue, ctx)) {
 		if ((aio = ctx->saio) != NULL) {
 			ctx->saio = NULL;
@@ -1201,6 +1227,9 @@ mqtt_cancel_send(nni_aio *aio, void *arg, int rv)
 
 	if (nni_aio_list_active(aio)) {
 		nni_aio_list_remove(aio);
+	}
+	if (nni_list_active(&s->cached_aio, aio)) {
+		nni_list_remove(&s->cached_aio, aio);
 	}
 	nni_mtx_unlock(&s->mtx);
 }
@@ -1310,14 +1339,20 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 			ctx->saio = aio;
 			nni_list_append(&s->send_queue, ctx);
 			nni_mtx_unlock(&s->mtx);
-			log_warn("client sending msg while disconnected! cached");
+			log_warn("client sending msg while disconnected! ctx cached");
 		} else {
-
-			nni_msg_free(msg);
-			nni_mtx_unlock(&s->mtx);
-			nni_aio_set_msg(aio, NULL);
-			nni_aio_finish_error(aio, NNG_ECLOSED);
-			log_info("ctx is already cached! drop msg");
+			if (!nni_list_active(&s->cached_aio, aio)) {
+				// cache aio
+				nni_list_append(&s->cached_aio, aio);
+				nni_mtx_unlock(&s->mtx);
+				log_warn("client sending msg while disconnected! aio cached");
+			} else {
+				nni_msg_free(msg);
+				nni_mtx_unlock(&s->mtx);
+				nni_aio_set_msg(aio, NULL);
+				nni_aio_finish_error(aio, NNG_ECLOSED);
+				log_info("aio is already cached! or drop qos 0 msg");
+			}
 		}
 		return;
 	}
