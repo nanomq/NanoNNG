@@ -102,6 +102,7 @@ struct mqtt_sock_s {
 	mqtt_pipe_t    *mqtt_pipe;
 	nni_list        recv_queue; // ctx pending to receive
 	nni_list        send_queue; // ctx pending to send (only offline msg)
+	nni_list        cached_aio; // aio pending to send
 	reason_code     disconnect_code; // disconnect reason code
 	property       *dis_prop;        // disconnect property
 	nni_id_map      sent_unack;    // send messages unacknowledged
@@ -760,6 +761,15 @@ mqtt_send_cb(void *arg)
 		c->saio = NULL;
 		return;
 	}
+	// Check cached aio first
+	// nni_aio * aio;
+	// if ((aio = nni_list_first(&s->cached_aio)) != NULL) {
+	// 	nni_list_remove(&s->cached_aio, aio);
+	// 	msg = nni_aio_get_msg(aio);
+	// 	mqtt_send_msg(aio, NULL);
+	// 	int rv = 0;
+	// 	return;
+	// }
 	if (nni_lmq_get(&p->send_messages, &msg) == 0) {
 		p->busy = true;
 		nni_aio_set_msg(&p->send_aio, msg);
@@ -1147,25 +1157,15 @@ mqtt_ctx_fini(void *arg)
 	nni_mtx_unlock(&s->mtx);
 }
 
-
-static void
-mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
+static inline void
+mqtt_cancel_send(nni_aio *aio, void *arg, int rv)
 {
 	uint16_t             packet_id;
-	mqtt_ctx_t          *ctx = arg;
-	mqtt_sock_t         *s   = ctx->mqtt_sock;
 	mqtt_pipe_t         *p;
+	mqtt_sock_t         *s = arg;
 	nni_mqtt_proto_data *proto_data;
 
-	// if (rv != NNG_ETIMEDOUT)
-	// 	return;
 	nni_mtx_lock(&s->mtx);
-	if (nni_list_active(&s->send_queue, ctx)) {
-		nni_list_remove(&s->send_queue, ctx);
-		nni_list_node_remove(&ctx->sqnode);
-	}
-
-	ctx->saio = NULL;
 	// deal with canceld QoS msg
 	proto_data = nni_aio_get_prov_data(aio);
 	if (proto_data) {
@@ -1199,6 +1199,24 @@ mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
 		nni_aio_list_remove(aio);
 	}
 	nni_mtx_unlock(&s->mtx);
+}
+
+static void
+mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
+{
+	mqtt_ctx_t          *ctx = arg;
+	mqtt_sock_t         *s   = ctx->mqtt_sock;
+
+	// if (rv != NNG_ETIMEDOUT)
+	// 	return;
+	nni_mtx_lock(&s->mtx);
+	if (nni_list_active(&s->send_queue, ctx)) {
+		nni_list_remove(&s->send_queue, ctx);
+		nni_list_node_remove(&ctx->sqnode);
+	}
+	ctx->saio = NULL;
+	nni_mtx_unlock(&s->mtx);
+	mqtt_cancel_send(aio, s, rv);
 }
 
 static void
@@ -1290,6 +1308,7 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 			nni_mtx_unlock(&s->mtx);
 			log_warn("client sending msg while disconnected! cached");
 		} else {
+
 			nni_msg_free(msg);
 			nni_mtx_unlock(&s->mtx);
 			nni_aio_set_msg(aio, NULL);
