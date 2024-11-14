@@ -1260,7 +1260,7 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 	mqtt_sock_t *s   = ctx->mqtt_sock;
 	mqtt_pipe_t *p;
 	nni_msg     *msg;
-	uint8_t      qos;
+	uint8_t      qos = 0;
 	uint16_t     packet_id;
 
 	if (nni_aio_begin(aio) != 0) {
@@ -1341,7 +1341,7 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 			nni_mtx_unlock(&s->mtx);
 			log_warn("client sending msg while disconnected! ctx cached");
 		} else {
-			if (!nni_list_active(&s->cached_aio, aio)) {
+			if (!nni_list_active(&s->cached_aio, aio) && qos > 0) {
 				// cache aio
 				nni_list_append(&s->cached_aio, aio);
 				nni_mtx_unlock(&s->mtx);
