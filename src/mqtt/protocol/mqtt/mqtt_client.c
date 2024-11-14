@@ -399,10 +399,9 @@ mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
 // Should be called with mutex lock hold. and it will unlock mtx.
 // flag indicates if need to skip msg in sqlite 1: check sqlite 0: only aio
 static inline void
-mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
+mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg, mqtt_sock_t *s)
 {
 	mqtt_ctx_t *     ctx   = arg;
-	mqtt_sock_t *    s     = ctx->mqtt_sock;
 	mqtt_pipe_t *    p     = s->mqtt_pipe;
 	uint16_t         ptype = 0, packet_id = 0;
 	uint8_t          qos   = 0;
@@ -536,7 +535,7 @@ mqtt_pipe_start(void *arg)
 	if ((c = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, c);
 		nni_pipe_recv(p->pipe, &p->recv_aio);
-		mqtt_send_msg(c->saio, c);
+		mqtt_send_msg(c->saio, c, s);
 		c->saio = NULL;
 		nni_sleep_aio(s->retry, &p->time_aio);
 		return (0);
@@ -757,7 +756,7 @@ mqtt_send_cb(void *arg)
 	// these ctxs are triggered before the pipe is established
 	if ((c = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, c);
-		mqtt_send_msg(c->saio, c);
+		mqtt_send_msg(c->saio, c, s);
 		c->saio = NULL;
 		return;
 	}
@@ -1317,7 +1316,7 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 		}
 		return;
 	}
-	mqtt_send_msg(aio, ctx);
+	mqtt_send_msg(aio, ctx, s);
 	log_trace("client sending msg now");
 	return;
 }
