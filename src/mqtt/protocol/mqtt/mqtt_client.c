@@ -52,6 +52,7 @@ static void mqtt_ctx_fini(void *arg);
 static void mqtt_ctx_send(void *arg, nni_aio *aio);
 static void mqtt_ctx_recv(void *arg, nni_aio *aio);
 static void mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv);
+static void mqtt_cancel_send(nni_aio *aio, void *arg, int rv);
 
 typedef nni_mqtt_packet_type packet_type_t;
 
@@ -465,7 +466,11 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg, mqtt_sock_t *s)
 			nni_aio_finish_error(aio, NNG_ECANCELED);
 		} else {
 			int rv;
-			if ((rv = nni_aio_schedule(aio, mqtt_ctx_cancel_send, ctx)) != 0) {
+			if (ctx != NULL)
+				rv = nni_aio_schedule(aio, mqtt_ctx_cancel_send, ctx);
+			else
+				rv = nni_aio_schedule(aio, mqtt_cancel_send, s);
+			if ((rv ) != 0) {
 				log_warn("Cancel_Func scheduling failed, send abort!");
 				nni_id_remove(&s->sent_unack, packet_id);
 				nni_aio_set_msg(aio, NULL);
@@ -1156,7 +1161,7 @@ mqtt_ctx_fini(void *arg)
 	nni_mtx_unlock(&s->mtx);
 }
 
-static inline void
+static void
 mqtt_cancel_send(nni_aio *aio, void *arg, int rv)
 {
 	uint16_t             packet_id;
