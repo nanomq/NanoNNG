@@ -973,7 +973,7 @@ mqtt_recv_cb(void *arg)
 			arr = (uint8_t *) &addr.s_in.sa_addr;
 
 			if (arr == NULL) {
-				log_warn("Fail to get IP addr from client pipe!");
+				log_info("Fail to get IP addr from client pipe!");
 			} else {
 				sprintf(p->cparam->ip_addr_v4,
 				    "%d.%d.%d.%d", arr[0], arr[1], arr[2],
@@ -1002,7 +1002,7 @@ mqtt_recv_cb(void *arg)
 				if (mqtt_pipe_recv_msgq_putq(p, msg) != 0)
 					conn_param_free(p->cparam);
 				nni_mtx_unlock(&s->mtx);
-				log_warn("Warning: no ctx found! CONNACK lost! plz create more ctxs!");
+				log_info("Warning: no ctx found! CONNACK lost! plz create more ctxs!");
 				return;
 			}
 			nni_list_remove(&s->recv_queue, ctx);
@@ -1221,8 +1221,8 @@ static void
 mqtt_cancel_send(nni_aio *aio, void *arg, int rv)
 {
 	uint16_t             packet_id;
-	mqtt_pipe_t         *p;
 	mqtt_sock_t         *s = arg;
+	nni_aio			    *taio;
 	nni_mqtt_proto_data *proto_data;
 
 	nni_mtx_lock(&s->mtx);
@@ -1236,23 +1236,19 @@ mqtt_cancel_send(nni_aio *aio, void *arg, int rv)
 			packet_id = proto_data->var_header.subscribe.packet_id;
 		else if (type == NNG_MQTT_UNSUBSCRIBE)
 			packet_id = proto_data->var_header.unsubscribe.packet_id;
-		p = s->mqtt_pipe;
-		if (p != NULL) {
-			nni_aio *taio;
-			taio = nni_id_get(&s->sent_unack, packet_id);
-			if (taio != NULL) {
-				log_warn("Warning : QoS action of msg %d is canceled due to "
-								"timeout!", packet_id);
-				nni_id_remove(&s->sent_unack, packet_id);
-				nni_msg_free(nni_aio_get_msg(taio));
-				nni_aio_set_msg(taio, NULL);
-				nni_aio_set_prov_data(taio, NULL);
-			}
-			if (taio == aio)
-				nni_aio_finish_error(aio, NNG_ECANCELED);
-			else
-				log_error("canceling wrong aio!");
+		taio = nni_id_get(&s->sent_unack, packet_id);
+		if (taio != NULL) {
+			log_warn("Warning : QoS action of msg %d is canceled due to "
+							"timeout!", packet_id);
+			nni_id_remove(&s->sent_unack, packet_id);
+			nni_msg_free(nni_aio_get_msg(taio));
+			nni_aio_set_msg(taio, NULL);
+			nni_aio_set_prov_data(taio, NULL);
 		}
+		if (taio == aio)
+			nni_aio_finish_error(aio, NNG_ECANCELED);
+		else
+			log_error("canceling wrong aio!");
 	}
 
 	if (nni_aio_list_active(aio)) {
@@ -1261,9 +1257,6 @@ mqtt_cancel_send(nni_aio *aio, void *arg, int rv)
 	if (nni_list_active(&s->cached_aio, aio)) {
 		nni_list_remove(&s->cached_aio, aio);
 		log_warn("remove cached aio");
-		nni_msg *tmsg = nni_aio_get_msg(aio);
-		if (tmsg)
-			nni_msg_free(tmsg);
 	}
 	nni_mtx_unlock(&s->mtx);
 }
