@@ -1373,6 +1373,12 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 				nni_list_append(&s->cached_aio, aio);
 				nni_mtx_unlock(&s->mtx);
 				log_warn("client sending msg while disconnected! aio cached");
+			} else {
+				nni_msg_free(msg);
+				nni_mtx_unlock(&s->mtx);
+				nni_aio_set_msg(aio, NULL);
+				nni_aio_finish_error(aio, NNG_ECLOSED);
+				log_info("aio is already cached! or drop qos 0 msg");
 			}
 		}
 		return;
