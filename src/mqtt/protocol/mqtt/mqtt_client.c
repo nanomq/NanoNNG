@@ -112,6 +112,11 @@ struct mqtt_sock_s {
 	// user defined option
 	nni_time        retry_wait;
 	uint8_t         timeout_backoff;
+
+#ifdef NNG_HAVE_MQTT_BROKER
+	conf_bridge_node       *bridge_conf;
+
+#endif
 };
 
 /******************************************************************************
@@ -123,7 +128,8 @@ mqttv5_sock_init(void *arg, nni_sock *sock)
 {
 	mqtt_sock_t *s = arg;
 	mqtt_sock_init(arg, sock);
-	s->mqtt_ver = MQTT_PROTOCOL_VERSION_v5;
+	s->mqtt_ver    = MQTT_PROTOCOL_VERSION_v5;
+	s->bridge_conf = NULL;
 }
 
 static void
@@ -238,6 +244,21 @@ mqtt_sock_set_retry_wait(void *arg, const void *v, size_t sz, nni_opt_type t)
 }
 
 static int
+mqtt_sock_set_bridge_config(
+    void *arg, const void *v, size_t sz, nni_opt_type t)
+{
+	NNI_ARG_UNUSED(sz);
+	mqtt_sock_t *s = arg;
+	if (t == NNI_TYPE_POINTER) {
+		nni_mtx_lock(&s->mtx);
+		s->bridge_conf = *(conf_bridge_node **) v;
+		nni_mtx_unlock(&s->mtx);
+		return (0);
+	}
+	return NNG_EUNREACHABLE;
+}
+
+static int
 mqtt_sock_set_sqlite_option(
     void *arg, const void *v, size_t sz, nni_opt_type t)
 {
@@ -347,8 +368,15 @@ mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	// We start at a random point, to minimize likelihood of
 	// accidental collision across restarts.
 	nni_id_map_init(&p->recv_unack, 0x0000u, 0xffffu, true);
-	nni_lmq_init(&p->recv_messages, NNG_MAX_RECV_LMQ);
-	nni_lmq_init(&p->send_messages, NNG_MAX_SEND_LMQ);
+	if (p->mqtt_sock->bridge_conf != NULL) {
+		nni_lmq_init(&p->recv_messages,
+		    p->mqtt_sock->bridge_conf->max_recv_queue_len);
+		nni_lmq_init(&p->send_messages,
+		    p->mqtt_sock->bridge_conf->max_send_queue_len);
+	} else {
+		nni_lmq_init(&p->recv_messages, NNG_MAX_RECV_LMQ);
+		nni_lmq_init(&p->send_messages, NNG_MAX_SEND_LMQ);
+	}
 #ifdef NNG_HAVE_MQTT_BROKER
 	p->cparam = NULL;
 #endif
@@ -558,6 +586,7 @@ mqtt_pipe_start(void *arg)
 	}
 	if ((aio = nni_list_first(&s->cached_aio)) != NULL) {
 		nni_list_remove(&s->cached_aio, aio);
+		log_info("resend cached aio");
 		nni_pipe_recv(p->pipe, &p->recv_aio);
 		mqtt_send_msg(aio, NULL, s);
 		nni_sleep_aio(s->retry, &p->time_aio);
@@ -790,6 +819,7 @@ mqtt_send_cb(void *arg)
 	nni_aio * aio;
 	if ((aio = nni_list_first(&s->cached_aio)) != NULL) {
 		nni_list_remove(&s->cached_aio, aio);
+		log_info("resend cached aio");
 		msg = nni_aio_get_msg(aio);
 		mqtt_send_msg(aio, NULL, s);
 		return;
@@ -1230,6 +1260,10 @@ mqtt_cancel_send(nni_aio *aio, void *arg, int rv)
 	}
 	if (nni_list_active(&s->cached_aio, aio)) {
 		nni_list_remove(&s->cached_aio, aio);
+		log_warn("remove cached aio");
+		nni_msg *tmsg = nni_aio_get_msg(aio);
+		if (tmsg)
+			nni_msg_free(tmsg);
 	}
 	nni_mtx_unlock(&s->mtx);
 }
@@ -1346,12 +1380,6 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 				nni_list_append(&s->cached_aio, aio);
 				nni_mtx_unlock(&s->mtx);
 				log_warn("client sending msg while disconnected! aio cached");
-			} else {
-				nni_msg_free(msg);
-				nni_mtx_unlock(&s->mtx);
-				nni_aio_set_msg(aio, NULL);
-				nni_aio_finish_error(aio, NNG_ECLOSED);
-				log_info("aio is already cached! or drop qos 0 msg");
 			}
 		}
 		return;
@@ -1452,6 +1480,10 @@ static nni_option mqtt_sock_options[] = {
 	{
 	    .o_name = NNG_OPT_MQTT_SQLITE,
 	    .o_set  = mqtt_sock_set_sqlite_option,
+	},
+	{
+	    .o_name = NNG_OPT_MQTT_BRIDGE_CONF,
+	    .o_set  = mqtt_sock_set_bridge_config,
 	},
 	// terminate list
 	{
