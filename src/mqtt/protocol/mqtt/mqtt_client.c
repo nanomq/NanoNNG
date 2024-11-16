@@ -578,6 +578,7 @@ mqtt_pipe_start(void *arg)
 
 	if ((c = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, c);
+		log_debug("resend cached ctx");
 		nni_pipe_recv(p->pipe, &p->recv_aio);
 		mqtt_send_msg(c->saio, c, s);
 		c->saio = NULL;
@@ -586,7 +587,7 @@ mqtt_pipe_start(void *arg)
 	}
 	if ((aio = nni_list_first(&s->cached_aio)) != NULL) {
 		nni_list_remove(&s->cached_aio, aio);
-		log_info("resend cached aio");
+		log_debug("resend cached aio");
 		nni_pipe_recv(p->pipe, &p->recv_aio);
 		mqtt_send_msg(aio, NULL, s);
 		nni_sleep_aio(s->retry, &p->time_aio);
@@ -810,6 +811,7 @@ mqtt_send_cb(void *arg)
 	// Check cached ctx in nni_list first
 	// these ctxs are triggered before the pipe is established
 	if ((c = nni_list_first(&s->send_queue)) != NULL) {
+		log_debug("resend cached ctx");
 		nni_list_remove(&s->send_queue, c);
 		mqtt_send_msg(c->saio, c, s);
 		c->saio = NULL;
@@ -819,7 +821,7 @@ mqtt_send_cb(void *arg)
 	nni_aio * aio;
 	if ((aio = nni_list_first(&s->cached_aio)) != NULL) {
 		nni_list_remove(&s->cached_aio, aio);
-		log_info("resend cached aio");
+		log_debug("resend cached aio");
 		msg = nni_aio_get_msg(aio);
 		mqtt_send_msg(aio, NULL, s);
 		return;
@@ -994,7 +996,7 @@ mqtt_recv_cb(void *arg)
 			}
 
 			if (rv != MQTT_SUCCESS) {
-				nni_plat_printf("Error in encoding CONNACK.\n");
+				log_error("Error in encoding CONNACK.\n");
 			}
 			conn_param_clone(p->cparam);
 			if ((ctx = nni_list_first(&s->recv_queue)) == NULL) {
