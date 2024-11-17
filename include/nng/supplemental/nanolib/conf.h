@@ -258,6 +258,7 @@ typedef struct {
 struct conf_bridge_node {
 	bool         enable;
 	bool         dynamic;
+	bool		 busy;
 	bool         clean_start;
 	bool         transparent;
 	bool         will_flag;
@@ -291,7 +292,9 @@ struct conf_bridge_node {
 	conf_tcp     tcp;
 	conf_sqlite *sqlite;
 	nng_aio    **bridge_aio;
+	nng_aio		*resend_aio;
 	nng_dialer   dialer;	// in order to postpone bridging client start after local broker
+	nng_lmq		*ctx_msgs;  // only cache qos msg blocked by aio busy
 	nng_mtx     *mtx;
 
 	bool         hybrid;  // enable/disable hybrid bridging
