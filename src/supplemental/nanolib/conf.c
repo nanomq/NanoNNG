@@ -2742,6 +2742,7 @@ conf_bridge_node_init(conf_bridge_node *node)
 {
 	node->sock           = NULL;
 	node->name           = NULL;
+	node->busy 			 = false;
 	node->enable         = false;
 	node->parallel       = 2;
 	node->address        = NULL;
@@ -2793,6 +2794,8 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->conn_properties = NULL;
 	node->will_properties = NULL;
 	node->sub_properties  = NULL;
+	// TODO compatible with bridge reload
+	node->ctx_msgs = NULL;
 }
 
 static void
@@ -2968,6 +2971,7 @@ conf_bridge_node_parse_with_name(const char *path,const char *key_prefix, const 
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".max_send_queue_len")) != NULL) {
 			node->max_send_queue_len = atoi(value);
+			nng_lmq_alloc(&node->ctx_msgs, node->max_send_queue_len);
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".resend_interval")) != NULL) {
@@ -3170,6 +3174,10 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 	if (node->will_payload) {
 		free(node->will_payload);
 		node->will_payload = NULL;
+	}
+	if (node->ctx_msgs) {
+		nng_lmq_flush(node->ctx_msgs);
+		nng_lmq_free(node->ctx_msgs);
 	}
 	if (node->forwards_count > 0 && node->forwards_list) {
 		for (size_t i = 0; i < node->forwards_count; i++) {
