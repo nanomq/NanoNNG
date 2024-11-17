@@ -1293,6 +1293,7 @@ conf_bridge_node_parse(
 	update_bridge_node_vin(node, CONF_NODE_FORWARD);
 	hocon_read_num(node, max_recv_queue_len, obj);
 	hocon_read_num(node, max_send_queue_len, obj);
+	nng_lmq_alloc(&node->ctx_msgs, node->max_send_queue_len);
 	hocon_read_num(node, resend_interval, obj);
 	hocon_read_num(node, resend_wait, obj);
 	hocon_read_num(node, cancel_timeout, obj);
