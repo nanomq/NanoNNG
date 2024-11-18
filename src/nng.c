@@ -2280,6 +2280,11 @@ nng_lmq_empty(nng_lmq *lmq)
 // 	return nni_id_remove(map, id);
 // }
 
+nng_url_sprintf(char *buf, size_t bufsz, const nng_url *src)
+{
+	return (nni_url_sprintf(buf, bufsz, src));
+}
+
 #define xstr(a) str(a)
 #define str(a) #a
 
