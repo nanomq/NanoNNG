@@ -2160,24 +2160,25 @@ nng_aio_begin(nng_aio *aio)
 	return (true);
 }
 
-int
-nng_url_parse(nng_url **result, const char *ustr)
+#define xstr(a) str(a)
+#define str(a) #a
+
+const char *
+nng_version(void)
 {
-	return (nni_url_parse(result, ustr));
+	return (xstr(NNG_MAJOR_VERSION) "." xstr(NNG_MINOR_VERSION) "." xstr(
+	    NNG_PATCH_VERSION) NNG_RELEASE_SUFFIX);
 }
 
-void
-nng_url_free(nng_url *url)
-{
-	nni_url_free(url);
-}
+// NANOMQ MQTT APIs
 
-int
-nng_url_clone(nng_url **dstp, const nng_url *src)
-{
-	return (nni_url_clone(dstp, src));
-}
-
+/**
+ * @brief expose nng lmq to app
+ *
+ * @param lmq nni_lmq obj
+ * @param cap max size of lmq
+ * @return int
+ */
 int
 nng_lmq_alloc(nng_lmq **lmq, size_t cap)
 {
@@ -2280,22 +2281,6 @@ nng_lmq_empty(nng_lmq *lmq)
 // 	return nni_id_remove(map, id);
 // }
 
-nng_url_sprintf(char *buf, size_t bufsz, const nng_url *src)
-{
-	return (nni_url_sprintf(buf, bufsz, src));
-}
-
-#define xstr(a) str(a)
-#define str(a) #a
-
-const char *
-nng_version(void)
-{
-	return (xstr(NNG_MAJOR_VERSION) "." xstr(NNG_MINOR_VERSION) "." xstr(
-	    NNG_PATCH_VERSION) NNG_RELEASE_SUFFIX);
-}
-
-// NANOMQ MQTT APIs
 /**
  * @brief CMD specifically for app layer acting
  *        get cmd/flag from msg->CMD_TYPE
