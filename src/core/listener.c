@@ -382,7 +382,9 @@ listener_accept_start(nni_listener *l)
 int
 nni_listener_start(nni_listener *l, int flags)
 {
-	int rv;
+	int            rv;
+	const nng_url *url;
+	char           us[NNG_MAXADDRSTRLEN];
 	NNI_ARG_UNUSED(flags);
 
 	if (nni_atomic_flag_test_and_set(&l->l_started)) {
@@ -396,6 +398,11 @@ nni_listener_start(nni_listener *l, int flags)
 		nni_atomic_flag_reset(&l->l_started);
 		return (rv);
 	}
+	// collect the URL which may have changed (e.g. binding to port 0)
+	url = nni_listener_url(l);
+	nng_url_sprintf(us, sizeof(us), url);
+	log_info("Starting listener for socket<%u> on %s",
+	    nni_sock_id(l->l_sock), us);
 
 	listener_accept_start(l);
 
@@ -501,6 +508,12 @@ nni_listener_set_tls(nni_listener *l, nng_tls_config *cfg)
 		return (NNG_ENOTSUP);
 	}
 	return (l->l_ops.l_set_tls(l->l_data, cfg));
+}
+
+nng_url *
+nni_listener_url(nni_listener *l)
+{
+	return (&l->l_url);
 }
 
 void
