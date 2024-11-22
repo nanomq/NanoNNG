@@ -722,7 +722,7 @@ nng_url_scheme(const nng_url *url)
 	return (url->u_scheme);
 }
 
-uint16_t
+uint32_t
 nng_url_port(const nng_url *url)
 {
 	return (url->u_port);
