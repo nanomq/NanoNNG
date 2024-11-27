@@ -11,8 +11,10 @@
 #ifndef CORE_NNG_IMPL_H
 #define CORE_NNG_IMPL_H
 
+#ifndef NNG_PLATFORM_WINDOWS
 #define unlikely(expr) __builtin_expect(!!(expr), 0)
 #define likely(expr) __builtin_expect(!!(expr), 1)
+#endif
 
 #include "nng/nng.h"
 #include "nng/supplemental/nanolib/log.h"
