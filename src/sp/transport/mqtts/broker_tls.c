@@ -314,7 +314,6 @@ tlstran_pipe_nego_cb(void *arg)
 			nng_free(p->conn_buf, p->wantrxhead);
 			p->conn_buf = NULL;
 		}
-		rv = NNG_ECANCELED;
 		code = NORMAL_DISCONNECTION;
 		goto error;
 	}
@@ -459,13 +458,13 @@ error:
 	if (rv == NNG_ECLOSED) {
 		rv = NNG_ECONNSHUT;
 	}
+	nni_list_remove(&ep->negopipes, p);
 	nng_stream_close(p->conn);
 
 	if ((uaio = ep->useraio) != NULL) {
 		ep->useraio = NULL;
 		nni_aio_finish_error(uaio, rv);
 	}
-	nni_list_remove(&ep->negopipes, p);
 	nni_mtx_unlock(&ep->mtx);
 	tlstran_pipe_reap(p);
 	log_error("connect nego error rv:(%d) %s MQTT reason code %d",
@@ -509,6 +508,7 @@ tlstran_pipe_qos_send_cb(void *arg)
 	else {
 		log_warn("NULL msg detected in send_cb");
 		nni_mtx_unlock(&p->mtx);
+		tlstran_pipe_close(p);
 		return;
 	}
 
@@ -1634,6 +1634,7 @@ tlstran_pipe_recv_start(tlstran_pipe *p)
 	p->wantrxhead = NANO_MIN_FIXED_HEADER_LEN;
 	iov.iov_buf   = p->rxlen;
 	iov.iov_len   = NANO_MIN_FIXED_HEADER_LEN;
+	memset(p->rxlen, '\0', NNI_NANO_MAX_HEADER_SIZE * sizeof(p->rxlen[0]));
 	nni_aio_set_iov(rxaio, 1, &iov);
 	nng_stream_recv(p->conn, rxaio);
 }

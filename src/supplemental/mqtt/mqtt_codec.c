@@ -1276,8 +1276,6 @@ nni_mqtt_msg_encode_publish(nni_msg *msg)
 	if (mqtt->payload.publish.payload.length > 0) {
 		rv = nni_msg_append(msg, mqtt->payload.publish.payload.buf,
 		    mqtt->payload.publish.payload.length);
-	} else {
-		rv = MQTT_ERR_INVAL;
 	}
 	if (mqtt->fixed_header.remaining_length != nni_msg_len(msg)) {
 		log_error("encode header error!");
@@ -1315,8 +1313,6 @@ nni_mqttv5_msg_encode_publish(nni_msg *msg)
 	if (mqtt->payload.publish.payload.length > 0) {
 		rv = nni_msg_append(msg, mqtt->payload.publish.payload.buf,
 		    mqtt->payload.publish.payload.length);
-	} else {
-		rv = MQTT_ERR_INVAL;
 	}
 
 	mqtt->fixed_header.remaining_length = nng_msg_len(msg);

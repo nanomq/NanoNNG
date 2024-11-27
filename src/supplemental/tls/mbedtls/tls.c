@@ -17,11 +17,12 @@
 #include "mbedtls/version.h" // Must be first in order to pick up version
 
 #include "mbedtls/error.h"
-// #ifdef MBEDTLS_PSA_CRYPTO_C
-// #include "psa/crypto.h"
-// #endif
+#ifdef MBEDTLS_PSA_CRYPTO_C
+#include "psa/crypto.h"
+#endif
 
 #include "nng/nng.h"
+#include "nng/supplemental/nanolib/log.h"
 #include "nng/supplemental/tls/tls.h"
 
 // mbedTLS renamed this header for 2.4.0.
@@ -31,6 +32,7 @@
 #include "mbedtls/net.h"
 #endif
 
+#include "mbedtls/debug.h"
 #include "mbedtls/ssl.h"
 
 #include "core/nng_impl.h"
@@ -821,8 +823,8 @@ nng_tls_engine_init_mbed(void)
 #ifdef MBEDTLS_PSA_CRYPTO_C
 	rv = psa_crypto_init();
 	if (rv != 0) {
-		tls_log_err(
-		    "NNG-TLS-INIT", "Failed initializing PSA crypto", rv);
+		log_error(
+		    "NNG-TLS-INIT Failed initializing PSA crypto %d", rv);
 		return (rv);
 	}
 #endif

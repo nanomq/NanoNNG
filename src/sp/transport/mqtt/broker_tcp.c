@@ -132,7 +132,6 @@ tcptran_pipe_close(void *arg)
 	}
 	nni_mtx_lock(&p->mtx);
 	p->closed = true;
-	nni_lmq_flush(&p->rslmq);
 	nni_mtx_unlock(&p->mtx);
 
 	nng_stream_close(p->conn);
@@ -206,6 +205,7 @@ tcptran_pipe_fini(void *arg)
 		nni_msg_free(p->rxmsg);
 
 	nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
+	nni_lmq_flush(&p->rslmq);
 	nng_stream_free(p->conn);
 	nni_aio_free(p->qsaio);
 	nni_aio_free(p->rpaio);
@@ -508,11 +508,12 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 		return;
 	}
 
-	if (p->pro_ver == 5) {
+	if (p->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 		(type == CMD_PUBCOMP || type == CMD_PUBACK) ? p->qrecv_quota++
 		                                            : p->qrecv_quota;
 	}
 	nni_msg_free(msg);
+	nni_aio_set_msg(qsaio, NULL);
 	if (nni_lmq_get(&p->rslmq, &msg) == 0) {
 		nni_iov iov[2];
 		iov[0].iov_len = nni_msg_header_len(msg);
@@ -675,7 +676,7 @@ tcptran_pipe_recv_cb(void *arg)
 
 	aio = nni_list_first(&p->recvq);
 
-	if ((rv = nni_aio_result(rxaio)) != 0) {
+	if ((rv = nni_aio_result(rxaio)) != 0 ) {
 		log_warn("nni aio recv error!! %s\n", nng_strerror(rv));
 		nni_pipe_bump_error(p->npipe, rv);
 		if (rv == NNG_ECONNRESET || rv == NNG_ECONNSHUT ||
@@ -687,6 +688,9 @@ tcptran_pipe_recv_cb(void *arg)
 		} else {
 			rv = NMQ_UNSEPECIFY_ERROR;
 		}
+		goto recv_error;
+	}
+	if (p->closed) {
 		goto recv_error;
 	}
 
@@ -907,11 +911,9 @@ tcptran_pipe_recv_cb(void *arg)
 			log_debug("resend ack later");
 			if (nni_lmq_full(&p->rslmq)) {
 				// Make space for the new message.
-				if (nni_lmq_cap(&p->rslmq) <=
-				    NANO_MAX_QOS_PACKET) {
+				if (nni_lmq_cap(&p->rslmq) <= NANO_MAX_QOS_PACKET) {
 					if ((rv = nni_lmq_resize(&p->rslmq,
-					         nni_lmq_cap(&p->rslmq) *
-					             2)) == 0) {
+					         nni_lmq_cap(&p->rslmq) * 2)) == 0) {
 						if (nni_lmq_put(&p->rslmq, qmsg) != 0)
 							nni_msg_free(qmsg);
 					} else {
@@ -1154,8 +1156,7 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				// store msg for qos retrying
 				nni_msg_clone(msg);
 				if ((old = nni_qos_db_get(is_sqlite,
-				         pipe->nano_qos_db, pipe->p_id,
-				         pid)) != NULL) {
+				         pipe->nano_qos_db, pipe->p_id, pid)) != NULL) {
 					// TODO packetid already exists.
 					// do we need to replace old with new
 					// one ? print warning to users
@@ -1636,7 +1637,7 @@ tcptran_pipe_recv_start(tcptran_pipe *p)
 	p->wantrxhead = NANO_MIN_FIXED_HEADER_LEN;
 	iov.iov_buf   = p->rxlen;
 	iov.iov_len   = NANO_MIN_FIXED_HEADER_LEN;
-	memset(p->rxlen, 0, 5 * sizeof(p->rxlen[0]));
+	memset(p->rxlen, '\0', NNI_NANO_MAX_HEADER_SIZE * sizeof(p->rxlen[0]));
 	nni_aio_set_iov(rxaio, 1, &iov);
 	nng_stream_recv(p->conn, rxaio);
 }

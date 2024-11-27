@@ -281,7 +281,7 @@ typedef struct mqtt_msg_t {
 	// is_copied is for bridging(if true needs free)
 	bool is_copied : 1;  /* indicates string or array members are copied */
 	bool initialized : 1; /* message is decoded or encoded*/
-	bool sub_retain : 1; /* message coming from sub action */
+	bool sub_retain : 1; /* retain message coming from sub action or from bridging channel */
 } mqtt_msg;
 // bridged bit: x : x : x : x : x : retain via sub  : bridged
 
