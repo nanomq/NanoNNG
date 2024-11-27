@@ -600,11 +600,8 @@ config_ca_chain(nng_tls_engine_config *cfg, const char *certs, const char *crl)
 	// Certs and CRL are in PEM data, with terminating NUL byte.
 	pem = (const uint8_t *) certs;
 	len = strlen(certs) + 1;
-	// rv = mbedtls_x509_crt_parse_path(&cfg->ca_certs,
-	// 	"/home/jaylin/Downloads/geea2-emqx-geely-test-com/crts/");
-	// rv = mbedtls_x509_crt_parse_file(&cfg->ca_certs,
-	// "/home/jaylin/Downloads/geea2-emqx-geely-test-com/caa.crt");
-
+	// mbedtls_x509_crt_parse_file
+	// mbedtls_x509_crt_parse_path
 	if ((rv = mbedtls_x509_crt_parse(&cfg->ca_certs, pem, len)) != 0) {
 		tls_log_err("NNG-TLS-CA-FAIL",
 		    "Failed to parse CA certificate(s)", rv);
