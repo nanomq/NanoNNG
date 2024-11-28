@@ -793,13 +793,6 @@ session_keeping:
 		// TODO disconnect client && send connack with reason code 0x05
 		log_warn("Invalid auth info.");
 	}
-	// nni_mtx_unlock(&p->lk);
-	nni_mtx_unlock(&s->lk);
-
-	// TODO MQTT V5 check return code
-	if (rv == 0) {
-		nni_sleep_aio(s->conf->qos_duration * 1500, &p->aio_timer);
-	}
 	// close old one (bool to prevent disconnect_ev)
 	// check if pointer is different later
 	if (old) {
@@ -809,7 +802,15 @@ session_keeping:
 			// it is not your time yet
 			old->conn_param->will_flag = 0;
 		}
+		nni_mtx_unlock(&s->lk);
 		nni_pipe_close(old->pipe);
+	} else {
+		nni_mtx_unlock(&s->lk);
+	}
+	// nni_mtx_unlock(&p->lk);
+	// TODO MQTT V5 check return code
+	if (rv == 0) {
+		nni_sleep_aio(s->conf->qos_duration * 1500, &p->aio_timer);
 	}
 	nni_msg_set_cmd_type(msg, CMD_CONNACK);
 	if (p->event == false) {
@@ -859,7 +860,7 @@ nano_pipe_close(void *arg)
 	nni_pipe  *npipe        = p->pipe;
 	char      *clientid     = NULL;
 
-	log_trace(" ############## nano_pipe_close ############## ");
+	log_trace(" ############## nano_pipe_close [%p] ############## ", p);
 	if (npipe->cache == true) {
 		// not first time we trying to close stored session pipe
 		nni_atomic_swap_bool(&npipe->p_closed, false);
@@ -867,6 +868,7 @@ nano_pipe_close(void *arg)
 	}
 	nni_mtx_lock(&s->lk);
 	nni_mtx_lock(&p->lk);
+	log_info("%s pipe close!", p->conn_param->clientid.body);
 	// we freed the conn_param when restoring pipe
 	// so check status of conn_param. just let it close silently
 	if (p->conn_param->clean_start == 0) {
