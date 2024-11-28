@@ -560,7 +560,7 @@ query_cb(void *arg)
 		}
 	}
 
-	if (s->ex_node == NULL || s->ex_node->ex == NULL || s->ex_node->ex->topic == NULL) {
+	if (s->ex_node == NULL || s->ex_node->ex == NULL || s->ex_node->ex->topic[0] == 0) {
 		query_send_eof(s->pair0_sock, &s->query_aio);
 		nng_recv_aio(*(s->pair0_sock), aio);
 		log_error("exchange_sock_t is not ready!");
@@ -754,6 +754,7 @@ exchange_do_send(exchange_node_t *ex_node, nni_msg *msg, nni_aio *user_aio)
 
 	ret = exchange_client_handle_msg(ex_node, msg, user_aio);
 	if (ret != 0) {
+		log_error("[%s]exchange handle msg failed%d!", ex_node->ex->topic, ret);
 		nni_aio_finish_error(user_aio, NNG_EINVAL);
 	} else {
 		nng_msg *tmsg = nng_aio_get_msg(user_aio);
@@ -785,12 +786,17 @@ exchange_sock_send(void *arg, nni_aio *aio)
 	msg = nni_aio_get_msg(aio);
 	nni_aio_set_msg(aio, NULL);
 	if (msg == NULL || nni_msg_get_type(msg) != CMD_PUBLISH) {
+		if (msg == NULL)
+			log_error("Get null msg!");
+		else
+			log_error("Invalid msg type %d!", nni_msg_get_type(msg));
 		nni_aio_finish_error(aio, NNG_EINVAL);
 		return;
 	}
 
 	nni_mtx_lock(&s->mtx);
 	if (s->ex_node == NULL) {
+		log_error("NULL s->ex_node!");
 		nni_aio_finish_error(aio, NNG_EINVAL);
 		nni_mtx_unlock(&s->mtx);
 		return;
