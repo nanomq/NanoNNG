@@ -793,13 +793,6 @@ session_keeping:
 		// TODO disconnect client && send connack with reason code 0x05
 		log_warn("Invalid auth info.");
 	}
-	// nni_mtx_unlock(&p->lk);
-	nni_mtx_unlock(&s->lk);
-
-	// TODO MQTT V5 check return code
-	if (rv == 0) {
-		nni_sleep_aio(s->conf->qos_duration * 1500, &p->aio_timer);
-	}
 	// close old one (bool to prevent disconnect_ev)
 	// check if pointer is different later
 	if (old) {
@@ -809,8 +802,17 @@ session_keeping:
 			// it is not your time yet
 			old->conn_param->will_flag = 0;
 		}
+		nni_mtx_unlock(&s->lk);
 		nni_pipe_close(old->pipe);
+	} else {
+		nni_mtx_unlock(&s->lk);
 	}
+	// nni_mtx_unlock(&p->lk);
+	// TODO MQTT V5 check return code
+	if (rv == 0) {
+		nni_sleep_aio(s->conf->qos_duration * 1500, &p->aio_timer);
+	}
+
 	nni_msg_set_cmd_type(msg, CMD_CONNACK);
 	if (p->event == false) {
 		// set session present in connack
