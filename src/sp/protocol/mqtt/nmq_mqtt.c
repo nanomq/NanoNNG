@@ -936,6 +936,7 @@ nano_pipe_close(void *arg)
 	// TODO send disconnect msg to client if needed.
 	// depends on MQTT V5 reason code
 	// create disconnect event msg
+	log_warn("%s pipe close!", p->conn_param->clientid.body);
 	if (p->event) {
 		msg = nano_msg_notify_disconnect(p->conn_param, p->reason_code);
 		if (msg == NULL) {

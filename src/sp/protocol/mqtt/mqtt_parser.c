@@ -1296,6 +1296,7 @@ nano_msg_notify_disconnect(conn_param *cparam, uint8_t code)
 	char        buff[512];
 	snprintf(buff, 256, DISCONNECT_MSG, (char *) cparam->username.body,
 	    nni_timestamp(), code, (char *) cparam->clientid.body, cparam->ip_addr_v4);
+	log_warn("%s offline!", cparam->clientid.body);
 	string.body = buff;
 	string.len  = strlen(string.body);
 	topic.body  = DISCONNECT_TOPIC;
@@ -1316,7 +1317,7 @@ nano_msg_notify_connect(conn_param *cparam, uint8_t code)
 	snprintf(buff, 256, CONNECT_MSG, cparam->username.body,
 	    nni_timestamp(), cparam->pro_name.body, cparam->keepalive_mqtt,
 	    code, cparam->pro_ver, cparam->clientid.body, cparam->clean_start, cparam->ip_addr_v4);
-
+	log_warn("%s online!", cparam->clientid.body);
     string.body = buff;
 	string.len  = strlen(string.body);
 	topic.body  = CONNECT_TOPIC;
