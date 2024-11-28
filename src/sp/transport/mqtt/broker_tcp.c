@@ -411,7 +411,7 @@ tcptran_pipe_nego_cb(void *arg)
 		} else {
 			log_info("Disconnect Client due to %d parse CONNECT failed", rv);
 			nng_free(p->conn_buf, p->wantrxhead);
-			rv   = NNG_ENOMEM;
+			rv   = NNG_EPROTO;
 			code = MALFORMED_PACKET;
 			if (p->tcp_cparam->pro_ver == 5) {
 				goto close;
