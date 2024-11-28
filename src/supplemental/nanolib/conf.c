@@ -2738,7 +2738,7 @@ conf_bridge_node_init(conf_bridge_node *node)
 {
 	node->sock           = NULL;
 	node->name           = NULL;
-	node->busy 			 = false;
+	node->busy           = false;
 	node->enable         = false;
 	node->parallel       = 2;
 	node->address        = NULL;

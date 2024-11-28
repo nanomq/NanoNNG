@@ -258,7 +258,7 @@ typedef struct {
 struct conf_bridge_node {
 	bool         enable;
 	bool         dynamic;
-	bool		 busy;
+	bool         busy;
 	bool         clean_start;
 	bool         transparent;
 	bool         will_flag;
