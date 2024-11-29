@@ -296,6 +296,7 @@ struct conf_bridge_node {
 	nng_dialer   dialer;	// in order to postpone bridging client start after local broker
 	nng_lmq		*ctx_msgs;  // only cache qos msg blocked by aio busy
 	nng_mtx     *mtx;
+	bool         sleep;
 
 	bool         hybrid;  // enable/disable hybrid bridging
 	char       **hybrid_servers;
