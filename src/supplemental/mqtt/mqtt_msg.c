@@ -260,7 +260,10 @@ void
 nni_mqtt_msg_set_sub_retain_bool(nni_msg *msg, bool retain)
 {
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
-	proto_data->sub_retain = retain;
+	if (proto_data != NULL)
+		proto_data->sub_retain = retain;
+	else
+		log_error("Set retain bool in NULL proto data");
 	return;
 }
 

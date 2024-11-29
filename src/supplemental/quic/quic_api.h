@@ -1,11 +1,15 @@
 #ifndef NNG_SUPP_QUIC_API_H
 #define NNG_SUPP_QUIC_API_H
 
-#define QUIC_HIGH_PRIOR_MSG (0x01)
+#define QUIC_HIGH_PRIOR_MSG (0x80)
+#define QUIC_MULTISTREAM_FLAGS (0x7F)
+#define QUIC_CLOSE_REOPEN_FLAGS (0x100)
 
 #define QUIC_MAIN_STREAM (1)
 #define QUIC_SUB_STREAM (0)
+#define QUIC_SUB_STREAM_NUM (4)
 
+#define QUIC_SUB_STREAM_TIMEOUT (5000) // 5s
 #define QUIC_IDLE_TIMEOUT_DEFAULT (90)
 #define QUIC_KEEPALIVE_DEFAULT (60)
 
@@ -33,6 +37,8 @@ extern void nni_quic_listener_listen(nni_quic_listener *, const char *, const ch
 extern void nni_quic_listener_accept(nni_quic_listener *, nng_aio *aio);
 
 typedef struct nni_quic_conn nni_quic_conn;
+// When multi stream is enabled
+typedef struct ex_quic_conn ex_quic_conn;
 
 extern int  nni_msquic_quic_alloc(nni_quic_conn **, nni_quic_dialer *);
 extern void nni_msquic_quic_init(nni_quic_conn *);

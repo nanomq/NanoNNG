@@ -17,11 +17,12 @@
 #include "mbedtls/version.h" // Must be first in order to pick up version
 
 #include "mbedtls/error.h"
-// #ifdef MBEDTLS_PSA_CRYPTO_C
-// #include "psa/crypto.h"
-// #endif
+#ifdef MBEDTLS_PSA_CRYPTO_C
+#include "psa/crypto.h"
+#endif
 
 #include "nng/nng.h"
+#include "nng/supplemental/nanolib/log.h"
 #include "nng/supplemental/tls/tls.h"
 
 // mbedTLS renamed this header for 2.4.0.
@@ -31,6 +32,7 @@
 #include "mbedtls/net.h"
 #endif
 
+#include "mbedtls/debug.h"
 #include "mbedtls/ssl.h"
 
 #include "core/nng_impl.h"
@@ -598,11 +600,8 @@ config_ca_chain(nng_tls_engine_config *cfg, const char *certs, const char *crl)
 	// Certs and CRL are in PEM data, with terminating NUL byte.
 	pem = (const uint8_t *) certs;
 	len = strlen(certs) + 1;
-	// rv = mbedtls_x509_crt_parse_path(&cfg->ca_certs,
-	// 	"/home/jaylin/Downloads/geea2-emqx-geely-test-com/crts/");
-	// rv = mbedtls_x509_crt_parse_file(&cfg->ca_certs,
-	// "/home/jaylin/Downloads/geea2-emqx-geely-test-com/caa.crt");
-
+	// mbedtls_x509_crt_parse_file
+	// mbedtls_x509_crt_parse_path
 	if ((rv = mbedtls_x509_crt_parse(&cfg->ca_certs, pem, len)) != 0) {
 		tls_log_err("NNG-TLS-CA-FAIL",
 		    "Failed to parse CA certificate(s)", rv);
@@ -821,8 +820,8 @@ nng_tls_engine_init_mbed(void)
 #ifdef MBEDTLS_PSA_CRYPTO_C
 	rv = psa_crypto_init();
 	if (rv != 0) {
-		tls_log_err(
-		    "NNG-TLS-INIT", "Failed initializing PSA crypto", rv);
+		log_error(
+		    "NNG-TLS-INIT Failed initializing PSA crypto %d", rv);
 		return (rv);
 	}
 #endif

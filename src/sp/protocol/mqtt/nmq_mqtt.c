@@ -248,8 +248,6 @@ nano_pipe_timer_cb(void *arg)
 		nni_msg *msg, *rmsg;
 		uint16_t pid = p->rid;
 
-
-
 		// trying to resend msg
 		msg = nni_qos_db_get_one(
 		    is_sqlite, npipe->nano_qos_db, npipe->p_id, &pid);
@@ -258,14 +256,11 @@ nano_pipe_timer_cb(void *arg)
 			property      *prop = NULL;
 			property_data *data = NULL;
 			if (p->conn_param->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
-				if (nni_msg_get_proto_data(msg) == NULL)
-					nni_mqtt_msg_proto_data_alloc(rmsg);
-				nni_mqttv5_msg_decode(rmsg);
-				prop = nni_mqtt_msg_get_publish_property(rmsg);
+				if (nni_msg_get_proto_data(rmsg) != NULL)
+					prop = nni_mqtt_msg_get_publish_property(rmsg);
 			}
 			if (prop) {
-				data = property_get_value(
-				    prop, MESSAGE_EXPIRY_INTERVAL);
+				data = property_get_value(prop, MESSAGE_EXPIRY_INTERVAL);
 			}
 			nni_time ntime = nni_clock();
 			nni_time mtime = nni_msg_get_timestamp(rmsg);
@@ -287,8 +282,7 @@ nano_pipe_timer_cb(void *arg)
 				// put original msg into sending
 				nni_msg_clone(rmsg);
 				nni_aio_set_msg(&p->aio_send, rmsg);
-				log_trace("resending qos msg packetid: %d", pid);
-				log_info("msg payload : %s", nni_msg_payload_ptr(rmsg));
+				log_info("resending qos msg packetid: %d", pid);
 				nni_pipe_send(p->pipe, &p->aio_send);
 			}
 		}
@@ -438,6 +432,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		}
 		if (qos > 0) {
 			packetid = nni_pipe_inc_packetid(p->pipe);
+			// TODO potential qos msg overwrite?
 			nni_qos_db_set(is_sqlite, p->pipe->nano_qos_db,
 			    p->pipe->p_id, packetid, msg);
 			nni_qos_db_remove_oldest(is_sqlite,
@@ -798,13 +793,6 @@ session_keeping:
 		// TODO disconnect client && send connack with reason code 0x05
 		log_warn("Invalid auth info.");
 	}
-	// nni_mtx_unlock(&p->lk);
-	nni_mtx_unlock(&s->lk);
-
-	// TODO MQTT V5 check return code
-	if (rv == 0) {
-		nni_sleep_aio(s->conf->qos_duration * 1500, &p->aio_timer);
-	}
 	// close old one (bool to prevent disconnect_ev)
 	// check if pointer is different later
 	if (old) {
@@ -814,8 +802,17 @@ session_keeping:
 			// it is not your time yet
 			old->conn_param->will_flag = 0;
 		}
+		nni_mtx_unlock(&s->lk);
 		nni_pipe_close(old->pipe);
+	} else {
+		nni_mtx_unlock(&s->lk);
 	}
+	// nni_mtx_unlock(&p->lk);
+	// TODO MQTT V5 check return code
+	if (rv == 0) {
+		nni_sleep_aio(s->conf->qos_duration * 1500, &p->aio_timer);
+	}
+
 	nni_msg_set_cmd_type(msg, CMD_CONNACK);
 	if (p->event == false) {
 		// set session present in connack
@@ -939,6 +936,7 @@ nano_pipe_close(void *arg)
 	// TODO send disconnect msg to client if needed.
 	// depends on MQTT V5 reason code
 	// create disconnect event msg
+	log_warn("%s pipe close!", p->conn_param->clientid.body);
 	if (p->event) {
 		msg = nano_msg_notify_disconnect(p->conn_param, p->reason_code);
 		if (msg == NULL) {
@@ -1225,7 +1223,7 @@ nano_pipe_recv_cb(void *arg)
 			nni_qos_db_remove(
 			    is_sqlite, npipe->nano_qos_db, npipe->p_id, ackid);
 		} else {
-			log_error("ACK failed! qos msg %ld not found!", ackid);
+			log_warn("ACK failed! qos msg %ld not found!", ackid);
 		}
 		nni_mtx_unlock(&p->lk);
 	case CMD_CONNECT:
