@@ -3974,7 +3974,7 @@ conf_exchange_node_destory(conf_exchange_node *node)
 		nng_strfree(node->topic);
 		nng_strfree(node->name);
 		nng_mtx_free(node->mtx);
-		for (int i = 0; i < node->rbufs_sz; i++) {
+		for (int i = 0; i < (int)node->rbufs_sz; i++) {
 			if (node->rbufs[i]) {
 				nng_strfree(node->rbufs[i]->name);
 				NNI_FREE_STRUCT(node->rbufs[i]);
@@ -3990,7 +3990,7 @@ conf_exchange_node_destory(conf_exchange_node *node)
 static void
 conf_exchange_destroy(conf_exchange *exchange)
 {
-	for (int i = 0; i < exchange->count; i++) {
+	for (int i = 0; i < (int)exchange->count; i++) {
 		conf_exchange_node *node = exchange->nodes[i];
 		conf_exchange_node_destory(node);
 	}
