@@ -508,7 +508,7 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg, mqtt_sock_t *s)
 				rv = nni_aio_schedule(aio, mqtt_ctx_cancel_send, ctx);
 			else
 				rv = nni_aio_schedule(aio, mqtt_cancel_send, s);
-			if ((rv ) != 0) {
+			if (rv != 0) {
 				log_warn("Cancel_Func scheduling failed, send abort!");
 				nni_id_remove(&s->sent_unack, packet_id);
 				nni_aio_set_msg(aio, NULL);
@@ -720,7 +720,16 @@ mqtt_timer_cb(void *arg)
 			nni_sleep_aio(s->retry, &p->time_aio);
 			return;
 		}
+	}
 
+	// Check cached aio first
+	nni_aio * aio;
+	if ((aio = nni_list_first(&s->cached_aio)) != NULL) {
+		nni_list_remove(&s->cached_aio, aio);
+		log_debug("resend cached aio");
+		mqtt_send_msg(aio, NULL, s);
+		nni_sleep_aio(s->retry, &p->time_aio);
+		return;
 	}
 
 	// start message resending
@@ -817,15 +826,7 @@ mqtt_send_cb(void *arg)
 		c->saio = NULL;
 		return;
 	}
-	// Check cached aio first
-	nni_aio * aio;
-	if ((aio = nni_list_first(&s->cached_aio)) != NULL) {
-		nni_list_remove(&s->cached_aio, aio);
-		log_debug("resend cached aio");
-		msg = nni_aio_get_msg(aio);
-		mqtt_send_msg(aio, NULL, s);
-		return;
-	}
+
 	if (nni_lmq_get(&p->send_messages, &msg) == 0) {
 		p->busy = true;
 		nni_aio_set_msg(&p->send_aio, msg);
