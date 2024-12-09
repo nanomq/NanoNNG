@@ -125,7 +125,8 @@ get_value_size(uint64_t value)
 			break;
 		}
 	}
-	if (i == 4 && value > pow) {
+	if (i == 5 && value > pow) {
+		log_error("i %d value %ld pow %ld", i, value, pow);
 		log_error("Malformaed variable value detected!");
 	}
 	return len;
