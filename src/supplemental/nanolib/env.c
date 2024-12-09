@@ -186,6 +186,7 @@ read_env_conf(conf *config)
 	set_string_var(&config->websocket.url, NANOMQ_WEBSOCKET_URL);
 	set_string_var(&config->websocket.tls_url, NANOMQ_WEBSOCKET_TLS_URL);
 	set_bool_var(&config->http_server.enable, NANOMQ_HTTP_SERVER_ENABLE);
+	set_string_var(&config->http_server.ip_addr, NANOMQ_HTTP_SERVER_URL);
 	set_int_var(
 	    (int *) &config->http_server.port, NANOMQ_HTTP_SERVER_PORT);
 	set_long_var((long *) &config->http_server.parallel,
