@@ -183,6 +183,7 @@ typedef enum {
 
 struct conf_http_server {
 	bool        enable;
+	char       *ip_addr;	// only localhost or 0.0.0.0 is required
 	uint16_t    port;
 	char       *username;
 	char       *password;
