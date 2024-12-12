@@ -324,6 +324,40 @@ struct conf_bridge_node {
 };
 
 typedef struct conf_bridge_node conf_bridge_node;
+typedef enum {
+	UNCOMPRESSED,
+	SNAPPY,
+	GZIP,
+	BROTLI,
+	ZSTD,
+	LZ4
+} compression_type;
+
+typedef enum { AES_GCM_V1 = 0, AES_GCM_CTR_V1 = 1 } cipher_type;
+
+struct conf_parquet_encryption {
+	bool        enable;
+	char       *key_id;
+	char       *key;
+	cipher_type type;
+};
+
+typedef struct conf_parquet_encryption conf_parquet_encryption;
+
+struct conf_parquet {
+	bool                    enable;
+	char                   *name;
+	char                   *dir;
+	char                   *file_name_prefix;
+	uint8_t                 file_count;
+	uint32_t                limit_frequency;
+	uint8_t                 file_index;
+	int32_t                 file_size;
+	compression_type        comp_type;
+	conf_parquet_encryption encryption;
+};
+
+typedef struct conf_parquet conf_parquet;
 
 typedef struct ringBuffer_node ringBuffer_node;
 struct ringBuffer_node {
@@ -341,6 +375,7 @@ struct conf_exchange_node {
 	uint8_t           streamType;
 	uint32_t          chunk_size;
 	uint32_t          limit_frequency;
+	conf_parquet      *parquet;
 
 	nng_socket       *sock;
 	nng_mtx          *mtx;
@@ -372,39 +407,6 @@ struct conf_plugin {
 	size_t path_sz;
 };
 #endif
-
-typedef enum {
-	UNCOMPRESSED,
-	SNAPPY,
-	GZIP,
-	BROTLI,
-	ZSTD,
-	LZ4
-} compression_type;
-
-typedef enum { AES_GCM_V1 = 0, AES_GCM_CTR_V1 = 1 } cipher_type;
-
-struct conf_parquet_encryption {
-	bool        enable;
-	char       *key_id;
-	char       *key;
-	cipher_type type;
-};
-
-typedef struct conf_parquet_encryption conf_parquet_encryption;
-
-struct conf_parquet {
-	bool                    enable;
-	char                   *dir;
-	char                   *file_name_prefix;
-	uint8_t                 file_count;
-	uint32_t                limit_frequency;
-	uint8_t                 file_index;
-	int32_t                 file_size;
-	compression_type        comp_type;
-	conf_parquet_encryption encryption;
-};
-typedef struct conf_parquet conf_parquet;
 
 struct conf_blf {
 	bool             enable;
