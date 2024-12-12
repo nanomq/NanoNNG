@@ -1183,6 +1183,9 @@ print_exchange_conf(conf_exchange *exchange)
 		log_info("exchange encryption key:   %s",
 				exchange->encryption->key == NULL ? "null" : exchange->encryption->key);
 	}
+	if (exchange->parquet != NULL) {
+		print_parquet_conf(exchange->parquet);
+	}
 }
 
 #if defined(SUPP_PLUGIN)
@@ -3998,6 +4001,12 @@ conf_exchange_destroy(conf_exchange *exchange)
 	if (exchange->encryption) {
 		nng_strfree(exchange->encryption->key);
 		NNI_FREE_STRUCT(exchange->encryption);
+	}
+
+	if (exchange->parquet) {
+#if defined(SUPP_PARQUET)
+		conf_parquet_destroy(&nanomq_conf->parquet);
+#endif
 	}
 	cvector_free(exchange->nodes);
 }
