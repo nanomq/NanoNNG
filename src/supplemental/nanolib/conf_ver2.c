@@ -1455,6 +1455,8 @@ conf_exchange_parse_ver2(conf *config, cJSON *jso)
 
 		conf_exchange_node_parse(node, node_item);
 
+		conf_parquet_parse_ver2(node->parquet, jso);
+
 		conf_exchange_encryption *enc = NNI_ALLOC_STRUCT(enc);
 		enc->enable                   = false;
 		enc->key                      = NULL;
