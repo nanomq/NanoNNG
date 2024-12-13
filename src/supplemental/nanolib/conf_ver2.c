@@ -1373,10 +1373,8 @@ conf_plugin_parse_ver2(conf *config, cJSON *jso)
 #endif
 
 void
-conf_exchange_node_parse(conf_exchange_node *node, cJSON *obj)
+conf_exchange_node_parse(conf_exchange_node *node, cJSON *exchange)
 {
-	cJSON *exchange = hocon_get_obj("exchange", obj);
-
 	hocon_read_str(node, name, exchange);
 	hocon_read_str(node, topic, exchange);
 	hocon_read_num(node, streamType, exchange);
@@ -1432,47 +1430,45 @@ conf_exchange_encryption_parse(conf_exchange_encryption *node, cJSON *obj)
 }
 
 static void
-conf_exchange_parse_ver2(conf *config, cJSON *jso)
+conf_parquet_parse_ver2(conf *config, conf_exchange_node *node, cJSON *jso)
 {
-	cJSON *node_array = hocon_get_obj("exchange_client", jso);
-	cJSON *node_item  = NULL;
-
-	cJSON_ArrayForEach(node_item, node_array)
-	{
-		conf_exchange_node *node = NNI_ALLOC_STRUCT(node);
-		node->sock               = NULL;
-		node->topic              = NULL;
-		node->name               = NULL;
-		node->rbufs              = NULL;
-		node->streamType         = 0;
-		node->chunk_size         = 0;
-		node->rbufs_sz           = 0;
-		node->exchange_url       = NULL;
-		node->limit_frequency    = 5;
-
-		hocon_read_str(node, exchange_url, node_item);
-		hocon_read_num(node, limit_frequency, node_item);
-
-		conf_exchange_node_parse(node, node_item);
-
-		conf_parquet_parse_ver2(node->parquet, jso);
-
-		conf_exchange_encryption *enc = NNI_ALLOC_STRUCT(enc);
-		enc->enable                   = false;
-		enc->key                      = NULL;
-		conf_exchange_encryption_parse(enc, node_item);
-		config->exchange.encryption = enc;
-
-		nng_mtx_alloc(&node->mtx);
-		cvector_push_back(config->exchange.nodes, node);
+	cJSON *jso_parquet = cJSON_GetObjectItem(jso, "parquet");
+	if (jso_parquet) {
+		conf_parquet *parquet = NNI_ALLOC_STRUCT(parquet);
+		node->parquet = parquet;
+		parquet->enable       = true;
+		hocon_read_bool_base(parquet, enable, "enable", jso_parquet);
+		hocon_read_num(parquet, limit_frequency, jso_parquet);
+		hocon_read_num(parquet, file_count, jso_parquet);
+		hocon_read_size(parquet, file_size, jso_parquet);
+		hocon_read_str(parquet, dir, jso_parquet);
+		hocon_read_str(parquet, file_name_prefix, jso_parquet);
+		update_parquet_vin(parquet);
+		hocon_read_enum_base(parquet, comp_type, "compress",
+		    jso_parquet, compress_type);
+		cJSON *jso_parquet_encryption =
+		    cJSON_GetObjectItem(jso_parquet, "encryption");
+		if (jso_parquet_encryption) {
+			conf_parquet_encryption *encryption =
+			    &(parquet->encryption);
+			encryption->enable = true;
+			hocon_read_str(
+			    encryption, key_id, jso_parquet_encryption);
+			hocon_read_str(
+			    encryption, key, jso_parquet_encryption);
+			hocon_read_enum(encryption, type,
+			    jso_parquet_encryption, encryption_type);
+		}
+	} else {
+		// Use the default settings. One should be careful when it's free.
+		node->parquet = &config->parquet;
 	}
-	config->exchange.count = cvector_size(config->exchange.nodes);
 
 	return;
 }
 
 static void
-conf_parquet_parse_ver2(conf *config, cJSON *jso)
+conf_parquet_parse_default_ver2(conf *config, cJSON *jso)
 {
 	cJSON *jso_parquet = cJSON_GetObjectItem(jso, "parquet");
 	if (jso_parquet) {
@@ -1501,6 +1497,47 @@ conf_parquet_parse_ver2(conf *config, cJSON *jso)
 			    jso_parquet_encryption, encryption_type);
 		}
 	}
+
+	return;
+}
+
+static void
+conf_exchange_parse_ver2(conf *config, cJSON *jso)
+{
+	cJSON *node_array = hocon_get_obj("exchange_client", jso);
+	cJSON *node_item  = NULL;
+
+	cJSON_ArrayForEach(node_item, node_array)
+	{
+		conf_exchange_node *node = NNI_ALLOC_STRUCT(node);
+		node->sock               = NULL;
+		node->topic              = NULL;
+		node->name               = NULL;
+		node->rbufs              = NULL;
+		node->streamType         = 0;
+		node->chunk_size         = 0;
+		node->rbufs_sz           = 0;
+		node->exchange_url       = NULL;
+		node->limit_frequency    = 5;
+
+		hocon_read_str(node, exchange_url, node_item);
+		hocon_read_num(node, limit_frequency, node_item);
+
+		cJSON *exchange = hocon_get_obj("exchange", node_item);
+
+		conf_exchange_node_parse(node, exchange);
+		conf_parquet_parse_ver2(config, node, exchange);
+
+		conf_exchange_encryption *enc = NNI_ALLOC_STRUCT(enc);
+		enc->enable                   = false;
+		enc->key                      = NULL;
+		conf_exchange_encryption_parse(enc, node_item);
+		config->exchange.encryption = enc;
+
+		nng_mtx_alloc(&node->mtx);
+		cvector_push_back(config->exchange.nodes, node);
+	}
+	config->exchange.count = cvector_size(config->exchange.nodes);
 
 	return;
 }
@@ -1879,7 +1916,7 @@ conf_parse_ver2(conf *config)
 		conf_authorization_prase_ver2(config, jso);
 		conf_bridge_parse_ver2(config, jso);
 		conf_exchange_parse_ver2(config, jso);
-		conf_parquet_parse_ver2(config, jso);
+		conf_parquet_parse_default_ver2(config, jso);
 		conf_blf_parse_ver2(config, jso);
 #if defined(SUPP_PLUGIN)
 		conf_plugin_parse_ver2(config, jso);
