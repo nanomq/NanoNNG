@@ -1160,45 +1160,6 @@ print_webhook_conf(conf_web_hook *webhook)
 }
 
 static void
-print_exchange_conf(conf_exchange *exchange)
-{
-	for (int i=0; i < (int) exchange->count; ++i) {
-		conf_exchange_node *n = exchange->nodes[i];
-		log_info("exchange name            %s", n->name);
-		log_info("exchange topic           %s", n->topic);
-		log_info("exchange streamType	   %d", n->streamType);
-		log_info("exchange chunk_size      %d", n->chunk_size);
-		log_info("exchange url             %s", n->exchange_url);
-		log_info("exchange limit_frequency %d", n->limit_frequency);
-		for (int j=0; j< (int) n->rbufs_sz; j++) {
-			ringBuffer_node *r = n->rbufs[j];
-			log_info("exchange ringbus name      %s", r->name);
-			log_info("exchange ringbus cap       %d", r->cap);
-			log_info("exchange ringbus fullOp    %d", r->fullOp);
-		}
-	}
-	if (exchange->encryption != NULL) {
-		log_info("exchange encryption:       %s",
-				exchange->encryption->enable ? "true" : "false");
-		log_info("exchange encryption key:   %s",
-				exchange->encryption->key == NULL ? "null" : exchange->encryption->key);
-	}
-	if (exchange->parquet != NULL) {
-		print_parquet_conf(exchange->parquet);
-	}
-}
-
-#if defined(SUPP_PLUGIN)
-static void
-print_plugin_conf(conf_plugin *plugin)
-{
-	for (int i = 0; i < (int)plugin->path_sz; i++) {
-		log_info("plugin path: %s", plugin->libs[i]->path);
-	}
-}
-#endif
-
-static void
 print_parquet_conf(conf_parquet *parquet)
 {
 	if (!parquet->enable)
@@ -1220,6 +1181,47 @@ print_parquet_conf(conf_parquet *parquet)
 	log_info("parquet file_size:        %d", parquet->file_size);
 	log_info("parquet limit_frequency:  %d", parquet->limit_frequency);
 }
+
+
+static void
+print_exchange_conf(conf_exchange *exchange)
+{
+	for (int i=0; i < (int) exchange->count; ++i) {
+		conf_exchange_node *n = exchange->nodes[i];
+		log_info("exchange name            %s", n->name);
+		log_info("exchange topic           %s", n->topic);
+		log_info("exchange streamType	   %d", n->streamType);
+		log_info("exchange chunk_size      %d", n->chunk_size);
+		log_info("exchange url             %s", n->exchange_url);
+		log_info("exchange limit_frequency %d", n->limit_frequency);
+		for (int j=0; j< (int) n->rbufs_sz; j++) {
+			ringBuffer_node *r = n->rbufs[j];
+			log_info("exchange ringbus name      %s", r->name);
+			log_info("exchange ringbus cap       %d", r->cap);
+			log_info("exchange ringbus fullOp    %d", r->fullOp);
+		}
+
+		if (n->parquet != NULL) {
+			print_parquet_conf(n->parquet);
+		}
+	}
+	if (exchange->encryption != NULL) {
+		log_info("exchange encryption:       %s",
+				exchange->encryption->enable ? "true" : "false");
+		log_info("exchange encryption key:   %s",
+				exchange->encryption->key == NULL ? "null" : exchange->encryption->key);
+	}
+}
+
+#if defined(SUPP_PLUGIN)
+static void
+print_plugin_conf(conf_plugin *plugin)
+{
+	for (int i = 0; i < (int)plugin->path_sz; i++) {
+		log_info("plugin path: %s", plugin->libs[i]->path);
+	}
+}
+#endif
 
 static void
 print_blf_conf(conf_blf *blf)
@@ -3990,11 +3992,35 @@ conf_exchange_node_destory(conf_exchange_node *node)
 
 }
 
+#if defined(SUPP_PARQUET)
+static void
+conf_parquet_destroy(conf_parquet *parquet)
+{
+	if (parquet) {
+		nng_strfree(parquet->dir);
+		nng_strfree(parquet->file_name_prefix);
+
+		if (parquet->encryption.enable) {
+			nng_strfree(parquet->encryption.key);
+			nng_strfree(parquet->encryption.key_id);
+		}
+	}
+
+}
+#endif
+
 static void
 conf_exchange_destroy(conf_exchange *exchange)
 {
-	for (int i = 0; i < (int)exchange->count; i++) {
+	for (int i = 0; i < (int) exchange->count; i++) {
 		conf_exchange_node *node = exchange->nodes[i];
+
+		if (node->parquet) {
+#if defined(SUPP_PARQUET)
+			conf_parquet_destroy(node->parquet);
+#endif
+		}
+
 		conf_exchange_node_destory(node);
 	}
 
@@ -4003,11 +4029,6 @@ conf_exchange_destroy(conf_exchange *exchange)
 		NNI_FREE_STRUCT(exchange->encryption);
 	}
 
-	if (exchange->parquet) {
-#if defined(SUPP_PARQUET)
-		conf_parquet_destroy(&nanomq_conf->parquet);
-#endif
-	}
 	cvector_free(exchange->nodes);
 }
 
@@ -4064,22 +4085,6 @@ conf_tlslist_destroy(conf_tls_list *tlslist)
 		tlslist->nodes = NULL;
 	}
 }
-#if defined(SUPP_PARQUET)
-static void
-conf_parquet_destroy(conf_parquet *parquet)
-{
-	if (parquet) {
-		nng_strfree(parquet->dir);
-		nng_strfree(parquet->file_name_prefix);
-
-		if (parquet->encryption.enable) {
-			nng_strfree(parquet->encryption.key);
-			nng_strfree(parquet->encryption.key_id);
-		}
-	}
-
-}
-#endif
 
 void
 conf_fini(conf *nanomq_conf)
