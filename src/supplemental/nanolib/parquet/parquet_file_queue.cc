@@ -142,3 +142,9 @@ parquet_file_queue::is_parquet_file(const string &file_name)
 	           file_name.length() - PARQUET_EXTENSION.length(),
 	           PARQUET_EXTENSION.length(), PARQUET_EXTENSION) == 0;
 }
+
+bool
+parquet_file_queue::has_md5_sum(const string &file_name)
+{
+	return file_name.find("_") != string::npos;
+}
