@@ -130,3 +130,15 @@ parquet_file_queue::extract_start_time(const std::string &file_name)
 
 	return std::nullopt;
 }
+
+bool
+parquet_file_queue::is_parquet_file(const string &file_name)
+{
+	const string PARQUET_EXTENSION = ".parquet";
+	if (file_name.length() < PARQUET_EXTENSION.length()) {
+		return false;
+	}
+	return file_name.compare(
+	           file_name.length() - PARQUET_EXTENSION.length(),
+	           PARQUET_EXTENSION.length(), PARQUET_EXTENSION) == 0;
+}
