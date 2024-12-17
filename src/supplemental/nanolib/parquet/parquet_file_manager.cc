@@ -30,3 +30,11 @@ parquet_file_manager::fetch_conf(const string &topic)
 {
     return file_queue_map[topic]->get_conf();
 }
+
+
+void
+parquet_file_manager::update_queue(
+    const string &topic, const char *md5_file_name)
+{
+	file_queue_map[topic]->update_queue(md5_file_name);
+}
