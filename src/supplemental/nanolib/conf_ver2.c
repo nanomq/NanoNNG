@@ -1538,6 +1538,7 @@ conf_exchange_parse_ver2(conf *config, cJSON *jso)
 		cvector_push_back(config->exchange.nodes, node);
 	}
 	config->exchange.count = cvector_size(config->exchange.nodes);
+	config->exchange.default_parquet = &config->parquet;
 
 	return;
 }
@@ -1915,8 +1916,8 @@ conf_parse_ver2(conf *config)
 		conf_webhook_parse_ver2(config, jso);
 		conf_authorization_prase_ver2(config, jso);
 		conf_bridge_parse_ver2(config, jso);
-		conf_exchange_parse_ver2(config, jso);
 		conf_parquet_parse_default_ver2(config, jso);
+		conf_exchange_parse_ver2(config, jso);
 		conf_blf_parse_ver2(config, jso);
 #if defined(SUPP_PLUGIN)
 		conf_plugin_parse_ver2(config, jso);
