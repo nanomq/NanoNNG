@@ -112,3 +112,21 @@ parquet_file_queue::get_conf()
 {
 	return node;
 }
+
+optional<long>
+parquet_file_queue::extract_start_time(const std::string &file_name)
+{
+	regex  pattern("-([0-9]+)~");
+	smatch matches;
+
+	try {
+		if (regex_search(file_name, matches, pattern) &&
+		    matches.size() > 1) {
+			return stol(matches[1].str());
+		}
+	} catch (const std::exception &e) {
+		log_error("Error extracting start time: %s", e.what());
+	}
+
+	return std::nullopt;
+}
