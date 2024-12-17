@@ -154,3 +154,9 @@ parquet_file_queue::directory_exists(const std::string &directory_path)
 {
 	return fs::exists(directory_path) && fs::is_directory(directory_path);
 }
+
+bool
+parquet_file_queue::create_directory(const std::string &directory_path)
+{
+	return fs::create_directory(directory_path);
+}
