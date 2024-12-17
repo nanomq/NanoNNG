@@ -106,3 +106,9 @@ parquet_file_queue::update_queue(const char *filename)
 		remove_old_file(queue);
 	}
 }
+
+conf_parquet *
+parquet_file_queue::get_conf()
+{
+	return node;
+}
