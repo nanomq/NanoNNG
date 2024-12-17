@@ -80,7 +80,7 @@ int  parquet_write_batch_async(parquet_object *elem);
 // Write a batch to a temporary Parquet file, utilize it in scenarios where a
 // single file is sufficient for writing, sending, and subsequent deletion.
 int parquet_write_batch_tmp_async(parquet_object *elem);
-int parquet_write_launcher(conf_parquet *conf);
+int parquet_write_launcher(conf_exchange *conf);
 
 const char  *parquet_find(const char *topic, uint64_t key);
 const char **parquet_find_span(const char *topic,
