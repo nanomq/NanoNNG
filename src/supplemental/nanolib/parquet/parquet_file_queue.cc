@@ -148,3 +148,9 @@ parquet_file_queue::has_md5_sum(const string &file_name)
 {
 	return file_name.find("_") != string::npos;
 }
+
+bool
+parquet_file_queue::directory_exists(const std::string &directory_path)
+{
+	return fs::exists(directory_path) && fs::is_directory(directory_path);
+}
