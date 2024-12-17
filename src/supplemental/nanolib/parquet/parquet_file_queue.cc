@@ -160,3 +160,20 @@ parquet_file_queue::create_directory(const std::string &directory_path)
 {
 	return fs::create_directory(directory_path);
 }
+
+int
+parquet_file_queue::remove_old_file(CircularQueue &queue)
+{
+	int   ret      = 0;
+	char *filename = (char *) DEQUEUE(queue);
+	if (remove(filename) == 0) {
+		log_debug("File '%s' removed successfully.\n", filename);
+	} else {
+		log_error(
+		    "Error removing the file %s errno: %d", filename, errno);
+		ret = -1;
+	}
+
+	free(filename);
+	return ret;
+}
