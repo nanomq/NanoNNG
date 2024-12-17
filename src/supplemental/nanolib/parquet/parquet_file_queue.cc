@@ -89,3 +89,9 @@ parquet_file_queue::init()
 		}
 	}
 }
+
+CircularQueue *
+parquet_file_queue::get_queue()
+{
+	return &queue;
+}
