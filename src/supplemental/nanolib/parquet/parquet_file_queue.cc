@@ -95,3 +95,14 @@ parquet_file_queue::get_queue()
 {
 	return &queue;
 }
+
+void
+parquet_file_queue::update_queue(const char *filename)
+{
+	ENQUEUE(queue, (void *) filename);
+	log_info("queue size: %d, file_count: %d", QUEUE_SIZE(queue),
+	    node->file_count);
+	if (QUEUE_SIZE(queue) > node->file_count) {
+		remove_old_file(queue);
+	}
+}
