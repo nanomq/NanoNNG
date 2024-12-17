@@ -24,3 +24,9 @@ parquet_file_manager::fetch_queue(const string &topic)
         return nullptr;
     }
 }
+
+conf_parquet*
+parquet_file_manager::fetch_conf(const string &topic)
+{
+    return file_queue_map[topic]->get_conf();
+}
