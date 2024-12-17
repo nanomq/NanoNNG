@@ -941,6 +941,7 @@ conf_init(conf *nanomq_conf)
 
 	nanomq_conf->exchange.count           = 0;
 	nanomq_conf->exchange.nodes           = NULL;
+	nanomq_conf->exchange.default_parquet = NULL;
 
 	nanomq_conf->parquet.enable           = false;
 	nanomq_conf->parquet.encryption.enable= false;
