@@ -6,6 +6,7 @@
 #include "nng/supplemental/nanolib/md5.h"
 #include "nng/supplemental/nanolib/parquet.h"
 #include "nng/supplemental/nanolib/queue.h"
+#include "parquet_file_manager.h"
 #include <assert.h>
 #include <atomic>
 #include <dirent.h>
@@ -27,6 +28,11 @@ using parquet::schema::GroupNode;
 using parquet::schema::PrimitiveNode;
 #define PARQUET_END 1024
 
+struct SchemaColumn {
+	char                             *name;
+	shared_ptr<parquet::ColumnReader> reader;
+};
+
 struct parquet_data {
 	// Payload_arr should col first.
 	// First column of schema should be
@@ -39,6 +45,7 @@ struct parquet_data {
 	char                 **schema;
 	parquet_data_packet ***payload_arr;
 };
+
 
 #define DO_IT_IF_NOT_NULL(func, arg1, arg2) \
 	if (arg1) {                         \
@@ -55,30 +62,14 @@ atomic_bool is_available = false;
 
 #define UINT64_MAX_DIGITS 20
 
+parquet_file_manager file_manager;
 CircularQueue        parquet_queue;
-CircularQueue        parquet_file_queue;
 pthread_mutex_t      parquet_queue_mutex     = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t       parquet_queue_not_empty = PTHREAD_COND_INITIALIZER;
-static conf_parquet *g_conf                  = NULL;
-
-static bool
-directory_exists(const string &directory_path)
-{
-	struct stat buffer;
-	return (stat(directory_path.c_str(), &buffer) == 0 &&
-	    S_ISDIR(buffer.st_mode));
-}
-
-static bool
-create_directory(const string &directory_path)
-{
-	int status = mkdir(
-	    directory_path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-	return (status == 0);
-}
 
 static char *
-get_file_name(conf_parquet *conf, uint64_t key_start, uint64_t key_end)
+get_file_name(conf_parquet
+ *conf, uint64_t key_start, uint64_t key_end)
 {
 	char *file_name = NULL;
 	char *dir       = conf->dir;
@@ -128,23 +119,6 @@ get_random_file_name(char *prefix, uint64_t key_start, uint64_t key_end)
 	    prefix, key_start, key_end);
 	log_error("file_name: %s", file_name);
 	return file_name;
-}
-
-static int
-remove_old_file(void)
-{
-	int   ret      = 0;
-	char *filename = (char *) DEQUEUE(parquet_file_queue);
-	if (remove(filename) == 0) {
-		log_debug("File '%s' removed successfully.\n", filename);
-	} else {
-		log_error(
-		    "Error removing the file %s errno: %d", filename, errno);
-		ret = -1;
-	}
-
-	free(filename);
-	return ret;
 }
 
 static shared_ptr<GroupNode>
@@ -280,10 +254,13 @@ parquet_object_free(parquet_object *elem)
 int
 parquet_write_batch_async(parquet_object *elem)
 {
-	if (g_conf == NULL || g_conf->enable == false) {
-		log_error("Parquet is not ready or not launch!");
+	log_error("parquet topic: %s", elem->topic);
+	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
+	if (conf->enable == false) {
+		log_error("Parquet %s is not ready or not launch!", elem->topic);
 		return -1;
 	}
+
 	log_debug("WAIT_FOR_AVAILABLE");
 	WAIT_FOR_AVAILABLE
 	log_debug("WAIT_FOR parquet_queue_mutex");
@@ -303,10 +280,12 @@ parquet_write_batch_async(parquet_object *elem)
 int
 parquet_write_batch_tmp_async(parquet_object *elem)
 {
-	if (g_conf == NULL || g_conf->enable == false) {
-		log_error("Parquet is not ready or not launch!");
+	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
+	if (conf->enable == false) {
+		log_error("Parquet %s is not ready or not launch!", elem->topic);
 		return -1;
 	}
+
 	elem->type = WRITE_TEMP_RAW;
 	log_debug("WAIT_FOR_AVAILABLE");
 	WAIT_FOR_AVAILABLE
@@ -522,8 +501,15 @@ parquet_write_core(conf_parquet *conf, char *filename,
 }
 
 int
-parquet_write_tmp(conf_parquet *conf, parquet_object *elem)
+parquet_write_tmp(parquet_object *elem)
 {
+
+	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
+	if (conf->enable == false) {
+		log_error("Parquet %s is not ready or not launch!", elem->topic);
+		return -1;
+	}
+
 	char    **schema_arr = elem->data->schema;
 	uint32_t  col_len    = elem->data->col_len;
 	uint32_t  row_len    = elem->data->row_len;
@@ -562,8 +548,16 @@ parquet_write_tmp(conf_parquet *conf, parquet_object *elem)
 }
 
 int
-parquet_write(conf_parquet *conf, parquet_object *elem)
+parquet_write(parquet_object *elem)
 {
+
+	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
+	if (conf->enable == false) {
+		log_error("Parquet %s is not ready or not launch!", elem->topic);
+		return -1;
+	}
+
+	log_error("topic: %s", elem->topic);
 	char    **schema_arr = elem->data->schema;
 	uint32_t  col_len    = elem->data->col_len;
 	uint32_t  row_len    = elem->data->row_len;
@@ -606,12 +600,7 @@ parquet_write(conf_parquet *conf, parquet_object *elem)
 
 	log_debug("wait for parquet_queue_mutex");
 	pthread_mutex_lock(&parquet_queue_mutex);
-	ENQUEUE(parquet_file_queue, md5_file_name);
-
-	if (QUEUE_SIZE(parquet_file_queue) > conf->file_count) {
-		remove_old_file();
-	}
-
+	file_manager.update_queue(elem->topic, md5_file_name);
 	pthread_mutex_unlock(&parquet_queue_mutex);
 
 	log_info("flush finished!");
@@ -620,19 +609,9 @@ parquet_write(conf_parquet *conf, parquet_object *elem)
 }
 
 void *
-parquet_write_loop_v2(void *config)
+parquet_write_loop_v2(void *arg)
 {
-	if (config == NULL) {
-		log_error("parquet conf is NULL");
-	}
-
-	conf_parquet *conf = (conf_parquet *) config;
-	if (!directory_exists(conf->dir)) {
-		if (!create_directory(conf->dir)) {
-			log_error("Failed to create directory %s", conf->dir);
-			return NULL;
-		}
-	}
+	(void(arg));
 
 	while (true) {
 		// wait for mqtt messages to send method request
@@ -652,10 +631,10 @@ parquet_write_loop_v2(void *config)
 		switch (ele->type) {
 		case WRITE_RAW:
 		case WRITE_CAN:
-			parquet_write(conf, ele);
+			parquet_write(ele);
 			break;
 		case WRITE_TEMP_RAW:
-			parquet_write_tmp(conf, ele);
+			parquet_write_tmp(ele);
 			break;
 		default:
 			break;
@@ -664,127 +643,17 @@ parquet_write_loop_v2(void *config)
 	return NULL;
 }
 
-typedef struct {
-    char *file_path;
-    long start_time;
-} ParquetFile;
-
-static int compare_files(const void *a, const void *b) {
-    ParquetFile *file1 = (ParquetFile *)a;
-    ParquetFile *file2 = (ParquetFile *)b;
-    return (file1->start_time - file2->start_time);
-}
-
-static long extract_start_time(const char *file_name) {
-    regex_t regex;
-    regmatch_t matches[2];
-    const char *pattern = "-([0-9]+)~";
-
-    if (regcomp(&regex, pattern, REG_EXTENDED) != 0) {
-        fprintf(stderr, "Failed to compile regex\n");
-        return -1;
-    }
-
-    if (regexec(&regex, file_name, 2, matches, 0) == 0) {
-        char time_str[20];
-        snprintf(time_str, matches[1].rm_eo - matches[1].rm_so + 1, "%s", file_name + matches[1].rm_so);
-        regfree(&regex);
-        return atol(time_str);
-    } else {
-        regfree(&regex);
-        return -1;
-    }
-}
-
-static void
-parquet_file_queue_init(conf_parquet *conf)
-{
-	DIR           *dir;
-	struct dirent *ent;
-	ParquetFile   *files      = NULL;
-	int            file_count = 0;
-
-	INIT_QUEUE(parquet_file_queue);
-
-	if ((dir = opendir(conf->dir)) != NULL) {
-		while ((ent = readdir(dir)) != NULL) {
-			if (strstr(ent->d_name, ".parquet") != NULL) {
-				char *file_path =
-				    (char *) malloc(strlen(conf->dir) +
-				        strlen(ent->d_name) + 2);
-				if (file_path == NULL) {
-					log_error("Failed to allocate memory "
-					          "for file path.");
-					closedir(dir);
-					return;
-				}
-				sprintf(file_path, "%s/%s", conf->dir,
-				    ent->d_name);
-
-				if (strstr(ent->d_name, "_") == NULL) {
-					if (unlink(file_path) != 0) {
-						log_error("Failed to remove "
-						          "file %s errno: %d",
-						    file_path, errno);
-					} else {
-						log_warn(
-						    "Found a file without "
-						    "md5sum, delete it: %s",
-						    file_path);
-					}
-					free(file_path);
-					continue;
-				}
-
-				long start_time =
-				    extract_start_time(ent->d_name);
-				if (start_time == -1) {
-					log_error("Failed to extract start "
-					          "time from file: %s",
-					    ent->d_name);
-					free(file_path);
-					continue;
-				}
-
-				files = (ParquetFile *) realloc(files,
-				    (file_count + 1) * sizeof(ParquetFile));
-				if (files == NULL) {
-					log_error("Failed to allocate memory "
-					          "for file array.");
-					closedir(dir);
-					return;
-				}
-
-				files[file_count].file_path  = file_path;
-				files[file_count].start_time = start_time;
-				file_count++;
-			}
-		}
-
-		closedir(dir);
-
-		qsort(files, file_count, sizeof(ParquetFile), compare_files);
-
-		for (int i = 0; i < file_count; i++) {
-			ENQUEUE(parquet_file_queue, files[i].file_path);
-		}
-
-		free(files);
-		log_info("Loaded %d parquet files in time order from %s.",
-		    file_count, conf->dir);
-	} else {
-		log_info("parquet directory not found, creating new one.");
-	}
-}
 
 int
-parquet_write_launcher(conf_parquet *conf)
+parquet_write_launcher(conf_exchange *conf)
 {
-	// Using a global variable g_conf temporarily, because it is
-	// inconvenient to access conf in exchange.
-	g_conf = conf;
+
 	INIT_QUEUE(parquet_queue);
-	parquet_file_queue_init(conf);
+
+	for (size_t i = 0; i < conf->count; i++) {
+		file_manager.add_queue(conf->nodes[i]);
+	}
+
 	is_available = true;
 	pthread_t write_thread;
 	int       result = 0;
@@ -826,20 +695,20 @@ compare_callback_span(void *name, uint64_t low, uint64_t high)
 const char *
 parquet_find(const char *topic, uint64_t key)
 {
-	if (g_conf == NULL || g_conf->enable == false) {
-		log_error("Parquet is not ready or not launch!");
+	conf_parquet *conf = file_manager.fetch_conf(topic);
+	if (conf->enable == false) {
+		log_error("Parquet %s is not ready or not launch!", topic);
 		return NULL;
 	}
+
 	WAIT_FOR_AVAILABLE
 	const char *value = NULL;
 	void       *elem  = NULL;
 	pthread_mutex_lock(&parquet_queue_mutex);
-	FOREACH_QUEUE(parquet_file_queue, elem)
+	auto queue = file_manager.fetch_queue(topic);
+	FOREACH_QUEUE(*queue, elem)
 	{
 		if (elem) {
-			if (strstr((const char *)elem, topic) == NULL) {
-				continue;
-			}
 			if (compare_callback(elem, key)) {
 				value = nng_strdup((char *) elem);
 				break;
@@ -851,20 +720,16 @@ parquet_find(const char *topic, uint64_t key)
 }
 
 const char **
-parquet_find_span(const char *topic, uint64_t start_key, uint64_t end_key, uint32_t *size)
+parquet_find_span(
+    const char *topic, uint64_t start_key, uint64_t end_key, uint32_t *size)
 {
-	if (g_conf == NULL || g_conf->enable == false) {
-		log_error("Parquet is not ready or not launch!");
-		return NULL;
-	}
+
 	if (start_key > end_key) {
 		log_error("Start key can't be greater than end_key.");
 		*size = 0;
 		return NULL;
 	}
-
 	WAIT_FOR_AVAILABLE
-
 	uint64_t     low        = start_key;
 	uint64_t     high       = end_key;
 	uint32_t     local_size = 0;
@@ -874,17 +739,15 @@ parquet_find_span(const char *topic, uint64_t start_key, uint64_t end_key, uint3
 	void        *elem       = NULL;
 
 	pthread_mutex_lock(&parquet_queue_mutex);
-	if (parquet_file_queue.size != 0) {
-		array = (const char **) nng_alloc(
-		    sizeof(char *) * parquet_file_queue.size);
+
+	auto queue = file_manager.fetch_queue(topic);
+	if (queue->size != 0) {
+		array = (const char **) nng_alloc(sizeof(char *) * queue->size);
 
 		ret = array;
-		FOREACH_QUEUE(parquet_file_queue, elem)
+		FOREACH_QUEUE(*queue, elem)
 		{
 			if (elem) {
-				if (strstr((const char *)elem, topic) == NULL) {
-					continue;
-				}
 				if (compare_callback_span(elem, low, high)) {
 					++local_size;
 					value    = nng_strdup((char *) elem);
@@ -928,7 +791,6 @@ parquet_read_set_property(
 static uint8_t *
 parquet_read(conf_parquet *conf, char *filename, uint64_t key, uint32_t *len)
 {
-	conf                                 = g_conf;
 	parquet::ReaderProperties reader_properties =
 	    parquet::default_reader_properties();
 
@@ -1115,7 +977,6 @@ get_keys_indexes_fuzing(
 static vector<parquet_data_packet *>
 parquet_read(conf_parquet *conf, char *filename, vector<uint64_t> keys)
 {
-	conf = g_conf;
 	vector<parquet_data_packet *> ret_vec;
 	string                   path_int64 = "key";
 	string                   path_str   = "data";
@@ -1204,19 +1065,38 @@ parquet_read(conf_parquet *conf, char *filename, vector<uint64_t> keys)
 	return ret_vec;
 }
 
+string extract_topic(const string &file_path) {
+    // Define the regex pattern to match the file format
+    std::regex pattern(R"(.*?/[^/]*_(.*?)_[a-fA-F0-9]{32}-\d+~\d+\.parquet)");
+    std::smatch matches;
+
+    // Perform regex matching
+    if (std::regex_match(file_path, matches, pattern) && matches.size() > 1) {
+        return matches[1]; // Return the captured 'topic' group
+    }
+
+    // If no match, return an empty string
+    return "";
+}
+
 vector<parquet_data_packet *>
 parquet_find_data_packet(
     conf_parquet *conf, char *filename, vector<uint64_t> keys)
 {
 	vector<parquet_data_packet *> ret_vec;
-	if (g_conf == NULL || g_conf->enable == false) {
-		log_error("Parquet is not ready or not launch!");
+	string topic = extract_topic(filename);
+	conf         = file_manager.fetch_conf(topic);
+	if (conf->enable == false) {
+		log_error("Parquet %s is not ready or not launch!", topic);
 		return ret_vec;
 	}
+
+
 	WAIT_FOR_AVAILABLE
 	void *elem = NULL;
+	auto queue = file_manager.fetch_queue(topic);
 	pthread_mutex_lock(&parquet_queue_mutex);
-	FOREACH_QUEUE(parquet_file_queue, elem)
+	FOREACH_QUEUE(*queue, elem)
 	{
 		if (elem && nng_strcasecmp((char *) elem, filename) == 0) {
 			goto find;
@@ -1239,14 +1119,18 @@ find:
 parquet_data_packet *
 parquet_find_data_packet(conf_parquet *conf, char *filename, uint64_t key)
 {
-	if (g_conf == NULL || g_conf->enable == false) {
-		log_error("Parquet is not ready or not launch!");
+	string topic = extract_topic(filename);
+	conf         = file_manager.fetch_conf(topic);
+	if (conf->enable == false) {
+		log_error("Parquet %s is not ready or not launch!", topic);
 		return NULL;
 	}
 	WAIT_FOR_AVAILABLE
-	void *elem = NULL;
+	void *elem  = NULL;
+	auto  queue = file_manager.fetch_queue(topic);
+
 	pthread_mutex_lock(&parquet_queue_mutex);
-	FOREACH_QUEUE(parquet_file_queue, elem)
+	FOREACH_QUEUE(*queue, elem)
 	{
 		if (elem && nng_strcasecmp((char *) elem, filename) == 0) {
 			goto find;
@@ -1313,13 +1197,9 @@ parquet_find_data_packets(
 		copy(ret_vec.begin(), ret_vec.end(), packets);
 	}
 
-	return packets;
+	// return packets;
+	return nullptr;
 }
-
-struct SchemaColumn {
-	char                             *name;
-	shared_ptr<parquet::ColumnReader> reader;
-};
 
 static vector<SchemaColumn>
 get_filtered_schema(shared_ptr<parquet::RowGroupReader> row_group_reader,
@@ -1445,10 +1325,9 @@ static parquet_data_ret *parquet_read_payload(shared_ptr<parquet::RowGroupReader
 }
 
 static parquet_data_ret *
-parquet_read_span_by_column(const char *filename, uint64_t keys[2],
+parquet_read_span_by_column(conf_parquet *conf, const char *filename, uint64_t keys[2],
     const char **schema, uint16_t schema_len)
 {
-	conf_parquet             *conf = g_conf;
 	parquet_data_ret         *ret  = NULL;
 	parquet::ReaderProperties reader_properties =
 	    parquet::default_reader_properties();
@@ -1543,6 +1422,12 @@ parquet_get_file_ranges(uint64_t start_key, uint64_t end_key, char *topic)
 	uint32_t len = 0;
 	// Find filenames
 	log_info("topic: %s, start_key: %lu, end_key: %lu", topic, start_key, end_key);
+	conf_parquet *conf = file_manager.fetch_conf(topic);
+	if (conf->enable == false) {
+		log_error("Parquet %s is not ready or not launch!", topic);
+		return NULL;
+	}
+
 	const char **filenames = parquet_find_span(topic, start_key, end_key, &len);
 	vector<parquet_filename_range *> range_vec;
 
@@ -1590,9 +1475,6 @@ parquet_get_file_ranges(uint64_t start_key, uint64_t end_key, char *topic)
 uint64_t *
 parquet_get_key_span(const char **topicl, uint32_t sz)
 {
-	if (false == g_conf->enable) {
-		return NULL;
-	}
 	uint64_t *key_span = (uint64_t *)nng_alloc(sz * 2 * sizeof(uint64_t));
 	void     *elem = NULL;
 	memset(key_span, 0, sz * 2 * sizeof(uint64_t));
@@ -1603,24 +1485,26 @@ parquet_get_key_span(const char **topicl, uint32_t sz)
 		char     *first_file = NULL;
 		char     *last_file  = NULL;
 		uint64_t  file_key_span[2] = { 0 };
-		FOREACH_QUEUE(parquet_file_queue, elem)
-		{
-			if (elem) {
-				if (strstr((const char *)elem, topicl[idx]) == NULL) {
-					continue;
+		auto queue = file_manager.fetch_queue(topicl[idx]);
+		if (NULL != queue) {
+
+			FOREACH_QUEUE(*queue, elem)
+			{
+				if (elem) {
+					if (!first_file) // Only set at the
+					                 // first time
+						first_file = (char *) elem;
+					last_file = (char *) elem;
 				}
-				if (!first_file) // Only set at the first time
-					first_file = (char *) elem;
-				last_file = (char *) elem;
 			}
+			if (first_file) {
+				get_range(first_file, key_span + 2 * idx);
+			}
+			if (last_file) {
+				get_range(last_file, file_key_span);
+			}
+			key_span[2 * idx + 1] = file_key_span[1];
 		}
-		if (first_file) {
-			get_range(first_file, key_span + 2*idx);
-		}
-		if (last_file) {
-			get_range(last_file, file_key_span);
-		}
-		key_span[2*idx + 1] = file_key_span[1];
 	}
 
 	pthread_mutex_unlock(&parquet_queue_mutex);
@@ -1632,6 +1516,13 @@ parquet_get_data_packets_in_range_by_column(parquet_filename_range *range,
     const char *topic, const char **schema, uint16_t schema_len,
     uint32_t *size)
 {
+
+	conf_parquet *conf = file_manager.fetch_conf(topic);
+	if (conf->enable == false) {
+		log_error("Parquet %s is not ready or not launch!", topic);
+		return NULL;
+	}
+
 	if (!range || !size) {
 		log_error("range && size should not be NULL");
 		return NULL;
@@ -1641,7 +1532,7 @@ parquet_get_data_packets_in_range_by_column(parquet_filename_range *range,
 
 	if (range->filename) {
 		// Search only one file
-		parquet_data_ret *ret = parquet_read_span_by_column(
+		parquet_data_ret *ret = parquet_read_span_by_column(conf, 
 		    range->filename, range->keys, schema, schema_len);
 		if (ret) {
 			rets = (parquet_data_ret **) nng_alloc(
@@ -1682,7 +1573,7 @@ parquet_get_data_packets_in_range_by_column(parquet_filename_range *range,
 			log_debug("file start_key: %lu, file end_key: %lu",
 			    keys[0], keys[1]);
 
-			auto ret = parquet_read_span_by_column(
+			auto ret = parquet_read_span_by_column(conf,
 			    filenames[i], keys, schema, schema_len);
 
 			ret_vec.push_back(ret);
