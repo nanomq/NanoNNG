@@ -568,7 +568,6 @@ mqtt_quictran_share_qos_send_cb(void *arg, nni_aio *qsaio, quic_substream *strea
 	mqtt_quictran_pipe *p = arg;
 	nni_mtx            *mtx;
 	nni_msg            *msg;
-	uint8_t             type;
 	size_t              n;
 	int                 rv;
 
@@ -604,7 +603,6 @@ mqtt_quictran_share_qos_send_cb(void *arg, nni_aio *qsaio, quic_substream *strea
 		return;
 	}
 	if (msg != NULL) {
-		type = nni_msg_cmd_type(msg);
 		nni_msg_free(msg);
 	} else {
 		log_warn("NULL msg detected in send_cb");
@@ -1221,7 +1219,7 @@ mqtt_quictran_pipe_send_start(mqtt_quictran_pipe *p)
 			if (qos > 0)
 				p->sndmax --;
 			if (qos > p->qosmax) {
-				p->qosmax == 1? (*header &= 0XF9) & (*header |= 0X02): NNI_ARG_UNUSED(*header);
+				p->qosmax == 1 ? ((*header &= 0XF9), (*header |= 0X02)) : NNI_ARG_UNUSED(*header);
 				p->qosmax == 0? *header &= 0XF9: NNI_ARG_UNUSED(*header);
 			}
 		}

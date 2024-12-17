@@ -1593,9 +1593,9 @@ static void
 mqtt_tcptran_ep_connect(void *arg, nni_aio *aio)
 {
 	mqtt_tcptran_ep *ep = arg;
-	int              rv;
+	int              rv = 0;
 
-	if (nni_aio_begin(aio) != 0) {
+	if ((rv = nni_aio_begin(aio)) != 0) {
 		log_error("ep connect rv %d", rv);
 		return;
 	}
