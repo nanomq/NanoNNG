@@ -377,7 +377,7 @@ dialer_connect_cb(void *arg)
 	user_aio      = d->d_user_aio;
 	d->d_user_aio = NULL;
 	nni_mtx_unlock(&d->d_mtx);
-
+	log_warn("dialer_connect_cb rv %d", nni_aio_result(aio));
 	switch ((rv = nni_aio_result(aio))) {
 	case 0:
 #ifdef NNG_ENABLE_STATS
