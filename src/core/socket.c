@@ -1513,15 +1513,15 @@ nni_ctx_setopt(
 static void
 dialer_timer_start_locked(nni_dialer *d)
 {
-	nni_duration back_off;
+	nni_duration back_off = (uint32_t) 100;
 
-	back_off = d->d_currtime;
-	if (d->d_maxrtime > 0) {
-		d->d_currtime *= 2;
-		if (d->d_currtime > d->d_maxrtime) {
-			d->d_currtime = d->d_maxrtime;
-		}
-	}
+	// back_off = d->d_currtime;
+	// if (d->d_maxrtime > 0) {
+	// 	d->d_currtime *= 2;
+	// 	if (d->d_currtime > d->d_maxrtime) {
+	// 		d->d_currtime = d->d_maxrtime;
+	// 	}
+	// }
 
 	// To minimize damage from storms, etc., we select a back-off
 	// value randomly, in the range of [0, back_off-1]; this is
@@ -1530,8 +1530,9 @@ dialer_timer_start_locked(nni_dialer *d)
 	// This algorithm may lead to slight biases because we don't
 	// have a statistically perfect distribution with the modulo of
 	// the random number, but this really doesn't matter.
-	nni_sleep_aio(
-	    back_off ? (int) nni_random() % back_off : 0, &d->d_tmo_aio);
+	// nni_sleep_aio(
+	//     back_off ? (int) nni_random() % back_off : 0, &d->d_tmo_aio);
+	nni_sleep_aio(back_off, &d->d_tmo_aio);
 }
 
 void
