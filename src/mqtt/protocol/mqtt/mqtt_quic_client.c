@@ -530,10 +530,6 @@ mqtt_quic_recv_cb(void *arg)
 	uint8_t        qos;
 	mqtt_quic_ctx *ctx;
 
-	// reset ping state
-	p->pingcnt = 0;
-	s->timeleft = s->keepalive;
-
 	//Schedule another receive
 	nni_pipe_recv(p->qpipe, &p->recv_aio);
 
