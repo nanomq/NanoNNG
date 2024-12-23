@@ -686,6 +686,8 @@ mqtt_quic_recv_cb(void *arg)
 		// PINGRESP is ignored in protocol layer
 		// Rely on health checker of Quic stream
 		nni_msg_free(msg);
+		p->pingcnt = 0;
+		s->timeleft = s->keepalive;
 		nni_mtx_unlock(&s->mtx);
 		return;
 	case NNG_MQTT_PUBREC:
