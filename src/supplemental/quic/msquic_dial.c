@@ -527,12 +527,13 @@ nni_quic_dial(void *arg, const char *host, const char *port, nni_aio *aio)
 	// Create stream after connection is established.
 	if (nni_aio_busy(d->qconaio) || d->qconn != NULL) {
 		rv = NNG_EBUSY;
-		log_error("^bug*********************");
+		log_error("last reconnect is still ongoing!");
 		goto error;
 	}
 
 	if (nni_aio_begin(d->qconaio) != 0) {
 		rv = NNG_ECLOSED;
+		log_error("qconaio begin failed!");
 		goto error;
 	}
 
