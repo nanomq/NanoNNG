@@ -263,6 +263,7 @@ copyn_utf8_str(const uint8_t *src, uint32_t *pos, int *str_len, int limit)
 				return NULL;
 			}
 		} else {
+			log_warn("UTF-8 check failed!");
 			*str_len = -1;
 		}
 	}
@@ -1648,7 +1649,7 @@ int
 nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 {
 	char           *topic;
-	uint8_t         *payload_ptr, len_of_varint = 0, *var_ptr;
+	uint8_t        *payload_ptr, len_of_varint = 0, *var_ptr;
 	uint32_t        num = 0, len = 0, len_of_str = 0, subid = 0;
 	uint16_t        len_of_topic = 0;
 	size_t          bpos = 0, remain = 0;
@@ -1674,7 +1675,8 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 		return -2;
 	}
 
-	log_trace("prop len %d varint %d remain %d", len, len_of_varint, nni_msg_remaining_len(msg));
+	log_trace("prop len %d varint %d remain %d", len, len_of_varint,
+			  nni_msg_remaining_len(msg));
 	payload_ptr = (uint8_t *) nni_msg_body(msg) + 2 + len + len_of_varint;
 
 	size_t pos = 2 + len_of_varint, target_pos = 2 + len_of_varint + len;

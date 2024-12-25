@@ -848,12 +848,11 @@ tlstran_pipe_recv_cb(void *arg)
 		if (nmq_unsubinfo_decode(msg, p->npipe->subinfol,
 								  p->tcp_cparam->pro_ver) < 0) {
 			log_error("Invalid unsubscribe packet!");
-			// nni_msg_free(msg);
-			// conn_param_free(cparam);
 			rv = PROTOCOL_ERROR;
 			goto recv_error;
 		}
 	}
+
 	if (ack == true) {
 		// alloc a msg here costs memory. However we must do it for the
 		// sake of compatibility with nng.

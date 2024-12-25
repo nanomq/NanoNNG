@@ -662,7 +662,7 @@ mqtt_timer_cb(void *arg)
 		nni_pipe_send(p->pipe, &p->send_aio);
 		p->pingcnt ++;
 		nni_mtx_unlock(&s->mtx);
-		log_info("Send pingreq (sock%p)(%dms)", s, s->keepalive);
+		log_debug("Send pingreq (sock%p)(%dms)", s, s->keepalive);
 		nni_sleep_aio(s->retry, &p->time_aio);
 		return;
 	}
