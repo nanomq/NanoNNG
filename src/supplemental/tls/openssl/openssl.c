@@ -316,13 +316,10 @@ open_conn_recv(nng_tls_engine_conn *ec, uint8_t *buf, size_t *szp)
 		if (written == rv)
 			break;
 	}
-	log_debug("NNG-TLS-CONN-RECV",
-		"recv %d from tcp and written %d to BIO", rv, written);
 	if (ensz < 0) {
-		log_debug("NNG-TLS-CONN-RECV",
-			"bio write result %d", ensz);
+		log_debug("NNG-TLS-CONN-RECV" "bio write result %d", ensz);
 		if (!BIO_should_retry(ec->rbio)) {
-			log_warn("NNG-TLS-CONN-RECV",
+			log_error("NNG-TLS-CONN-RECV"
 				"[%d]openssl BIO write failed rv%d", ensz);
 			return (NNG_ECRYPTO);
 		}
@@ -441,10 +438,11 @@ open_conn_send(nng_tls_engine_conn *ec, const uint8_t *buf, size_t *szp)
 				written2tcp += written2ssl;
 				goto end;
 			}
-			// A special case for handshake
 			written2tcp += written2ssl;
-			if (written2tcp == 0)
+			// A special case before handshake finished
+			if (written2tcp == 0) {
 				goto end;
+			}
 		} else if (rv == 0 - SSL_ERROR_WANT_READ || rv == 0 - SSL_ERROR_WANT_WRITE) {
 			trace("end2 read2buf%d written2tcp%d", read2buf, written2tcp);
 			if (written2tcp == 0)
