@@ -1302,13 +1302,6 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 		nni_aio_finish_error(aio, NNG_EPROTO);
 		return;
 	}
-	if (p == NULL || nni_atomic_get_bool(&p->closed)) {
-		nni_mtx_unlock(&s->mtx);
-		nni_msg_free(msg);
-		nni_aio_set_msg(aio, NULL);
-		nni_aio_finish_error(aio, NNG_ECLOSED);
-		return;
-	}
 	nni_mqtt_packet_type ptype = nni_mqtt_msg_get_packet_type(msg);
 	switch (ptype)
 	{
@@ -1342,7 +1335,8 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 		nni_aio_finish_error(aio, NNG_EPROTO);
 		return;
 	}
-	if (p == NULL || p->ready == false) {
+
+	if (p == NULL || nni_atomic_get_bool(&p->closed) || p->ready == false) {
 		// connection is lost or not established yet
 #if defined(NNG_SUPP_SQLITE)
 		if (ptype == NNG_MQTT_PUBLISH) {
