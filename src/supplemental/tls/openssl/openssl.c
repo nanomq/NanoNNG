@@ -190,13 +190,8 @@ open_conn_init(nng_tls_engine_conn *ec, void *tls, nng_tls_engine_config *cfg)
 		return (NNG_ENOMEM); // most likely
 	}
 
-	log_debug("NNG-TLS-CONN-INIT" "%s",
+	log_info("NNG-TLS-CONN-INIT" "%s",
 			cfg->mode == NNG_TLS_MODE_SERVER ? "SSL Server Mode":"SSL Client Mode");
-
-	if (cfg->mode == NNG_TLS_MODE_CLIENT)
-		SSL_set_connect_state(ec->ssl);
-	else
-		SSL_set_accept_state(ec->ssl);
 
 	ec->rbio = BIO_new(BIO_s_mem());
 	ec->wbio = BIO_new(BIO_s_mem());
@@ -206,12 +201,16 @@ open_conn_init(nng_tls_engine_conn *ec, void *tls, nng_tls_engine_config *cfg)
 	}
 	SSL_set_bio(ec->ssl, ec->rbio, ec->wbio);
 
+	if (cfg->mode == NNG_TLS_MODE_CLIENT)
+		SSL_set_connect_state(ec->ssl);
+	else
+		SSL_set_accept_state(ec->ssl);
+
 	ec->wnext = NULL;
 
 	if (cfg->server_name != NULL) {
 		SSL_set_tlsext_host_name(ec->ssl, cfg->server_name);
 	}
-	//open_conn_handshake(ec);
 	trace("end");
 
 	return (0);
