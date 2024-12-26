@@ -97,6 +97,7 @@ struct nng_tls_engine_conn {
 	char     wbuf[2 * OPEN_BUF_SZ];
 	char    *wnext;
 	int      wnsz;
+	int      wntcpsz;
 	int      running;
 	int      ok;
 };
@@ -376,11 +377,14 @@ open_conn_send(nng_tls_engine_conn *ec, const uint8_t *buf, size_t *szp)
 				return NNG_EAGAIN;
 			}
 			nng_free(wnext, 0);
+			written2tcp = ec->wntcpsz;
+			goto end;
 		} else if (rv == 0 - SSL_ERROR_WANT_READ || rv == 0 - SSL_ERROR_WANT_WRITE) {
 			trace("end3");
-			return NNG_EAGAIN;
-		} else
+			return (NNG_EAGAIN);
+		} else {
 			return (NNG_ECLOSED);
+		}
 	}
 
 	print_hex("send buffer:", buf, sz);
@@ -433,7 +437,12 @@ open_conn_send(nng_tls_engine_conn *ec, const uint8_t *buf, size_t *szp)
 				ec->wnsz = dm;
 				log_debug("NNG-TLS-CONN-SEND"
 					"still %d bytes not really be put to kernel", dm);
-				written2tcp += written2ssl;
+				// written2tcp += written2ssl; // This may make wnext send after a long time
+				// So updated way is as following.
+				// Part of block of data sent failed. The return value size will not
+				// contains the length of this block. So Upper layer will send again.
+				// So the `wnext` will be sent next immediately.
+				ec->wntcpsz = written2ssl;
 				goto end;
 			}
 			written2tcp += written2ssl;
