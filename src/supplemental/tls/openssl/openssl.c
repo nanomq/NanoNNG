@@ -1,3 +1,12 @@
+//
+// Copyright 2024 NanoMQ Team, Inc. <wangwei@emqx.io>
+//
+// This software is supplied under the terms of the MIT License, a
+// copy of which should be located in the distribution where this
+// file was obtained (LICENSE.txt).  A copy of the license may also be
+// found online at https://opensource.org/licenses/MIT.
+//
+
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -231,6 +240,7 @@ static int
 open_conn_handshake(nng_tls_engine_conn *ec)
 {
 	int rv;
+	print_trace();
 	if (ec->ok == 1)
 		return 0;
 	rv = SSL_do_handshake(ec->ssl);
@@ -372,12 +382,13 @@ open_conn_send(nng_tls_engine_conn *ec, const uint8_t *buf, size_t *szp)
 				memcpy(ec->wnext, wnext + rv, dm);
 				ec->wnsz = dm;
 				log_debug("NNG-TLS-CONN-SEND"
-					"still %d bytes not really be put to kernel", dm);
+					"written%d remain%d bytes to put to kernel", rv, dm);
 				nng_free(wnext, 0);
 				return NNG_EAGAIN;
 			}
 			nng_free(wnext, 0);
 			written2tcp = ec->wntcpsz;
+			log_debug("writing done%d written2tcp%d", ec->wnsz, written2tcp);
 			goto end;
 		} else if (rv == 0 - SSL_ERROR_WANT_READ || rv == 0 - SSL_ERROR_WANT_WRITE) {
 			trace("end3");
@@ -436,7 +447,8 @@ open_conn_send(nng_tls_engine_conn *ec, const uint8_t *buf, size_t *szp)
 				memcpy(ec->wnext, ec->rbuf + rv, dm);
 				ec->wnsz = dm;
 				log_debug("NNG-TLS-CONN-SEND"
-					"still %d bytes not really be put to kernel", dm);
+					"tcp%d ssl%d written%d remain%dbytes to put to kernel",
+					written2tcp, read2buf, rv, dm);
 				// written2tcp += written2ssl; // This may make wnext send after a long time
 				// So updated way is as following.
 				// Part of block of data sent failed. The return value size will not
