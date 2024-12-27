@@ -1,5 +1,10 @@
 include(FindThreads)
 
+if(TLS_EXTERN_PRIVATE_KEY)
+    nng_defines(TLS_EXTERN_PRIVATE_KEY)
+    message(NOTICE "TLS_EXTERN_PRIVATE_KEY IS ENABLED")
+endif(TLS_EXTERN_PRIVATE_KEY)
+
 if (NNG_TLS_ENGINE STREQUAL "open")
     message(NOTICE "
         ************************************************************

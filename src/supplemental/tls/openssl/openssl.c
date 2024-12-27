@@ -96,6 +96,57 @@ print_hex(char *str, const uint8_t *data, size_t len)
 #include "nng/supplemental/tls/tls.h"
 #include <nng/supplemental/tls/engine.h>
 
+#ifdef TLS_EXTERN_PRIVATE_KEY
+
+typedef int (*SignFunction)(int type, const unsigned char *dgst, int dlen,
+    unsigned char *sig, unsigned int *siglen, const BIGNUM *kinv,
+    const BIGNUM *r, EC_KEY *eckey);
+
+typedef int (*SignSetup)(
+    EC_KEY *eckey, BN_CTX *ctx_in, BIGNUM **kinvp, BIGNUM **rp);
+
+typedef ECDSA_SIG *(*SignSig)(const unsigned char *dgst, int dgst_len,
+    const BIGNUM *in_kinv, const BIGNUM *in_r, EC_KEY *eckey);
+
+int
+gSign(int type, const unsigned char *dgst, int dlen, unsigned char *sig,
+    unsigned int *siglen, const BIGNUM *kinv, const BIGNUM *r, EC_KEY *eckey)
+{
+	(void) type;
+	(void) kinv;
+	(void) r;
+	(void) eckey;
+
+	if (dlen > INT_MAX) {
+		return 0;
+	}
+
+#ifdef OPEN_DEBUG
+fprintf(stderr, "dgst(%d):", dlen);
+for (int i = 0; i < dlen; ++i)
+	fprintf(stderr, "%x", dgst[i]);
+fprintf(stderr, "\n");
+#endif
+
+	int ret = getPrivatekeyToSign("TODO!", dgst, (int) dlen, sig, 0);
+	if (ret <= 0) {
+		return 0;
+	}
+
+#ifdef OPEN_DEBUG
+fprintf(stderr, "sigDER(%d):", ret);
+for (int i = 0; i < ret; ++i)
+	fprintf(stderr, "%x", sig[i]);
+fprintf(stderr, "\n");
+#endif
+
+	*siglen = ret;
+
+	return 1;
+}
+
+#endif
+
 struct nng_tls_engine_conn {
 	void    *tls; // parent conn
 	SSL     *ssl;
@@ -716,6 +767,81 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		goto error;
 	}
 
+#ifdef TLS_EXTERN_PRIVATE_KEY
+	NNI_ARG_UNUSED(key);
+	// Generate ECKEY
+	EC_KEY *eckey = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
+	if (eckey == NULL) {
+		log_error("EC_KEY_new_by_curve_name failed");
+		goto error;
+	}
+	// XXX Remove?
+	if (0 == EC_KEY_generate_key(eckey)) {
+		log_error("EC_KEY_generate_key failed");
+		goto error;
+	}
+
+	// Update the sign
+	const EC_KEY_METHOD *eckeyMethodOld = EC_KEY_get_method(eckey);
+	EC_KEY_METHOD *eckeyMethodNew = EC_KEY_METHOD_new(eckeyMethodOld);
+
+	SignFunction sign;
+	SignSetup    signsetup;
+	SignSig      signsig;
+	EC_KEY_METHOD_get_sign(eckeyMethodNew, &sign, &signsetup, &signsig);
+	sign = gSign;
+	EC_KEY_METHOD_set_sign(eckeyMethodNew, sign, signsetup, signsig);
+
+	if (EC_KEY_set_method(eckey, eckeyMethodNew) != 1) {
+		log_error("EC_KEY_set_method failed");
+		goto error;
+	}
+
+	// Create a fake Private key and set private key to ctx
+	X509 *x509 = SSL_CTX_get0_certificate(cfg->ctx);
+	if (!x509) {
+		log_error("SSL_CTX_get0_certificate failed");
+		goto error;
+	}
+	EVP_PKEY *pubkey = X509_get0_pubkey(x509);
+	if (!pubkey) {
+		log_error("X509_get0_pubkey failed");
+		goto error;
+	}
+	EC_KEY *pubeckey = EVP_PKEY_get1_EC_KEY(pubkey);
+	if (!pubeckey) {
+		log_error("EVP_PKEY_get1_EC_KEY failed");
+		goto error;
+	}
+	const EC_POINT *pubecpoint = EC_KEY_get0_public_key((const EC_KEY *)pubeckey);
+	if (!pubecpoint) {
+		log_error("EC_KEY_get0_public_key failed");
+		goto error;
+	}
+	EVP_PKEY *prik = EVP_PKEY_new();
+	if (!prik) {
+		log_error("EVP_PKEY_new failed");
+		goto error;
+	}
+	// Load the ECC private key
+	if (1 != EC_KEY_set_public_key(eckey, pubecpoint) ||
+	    1 != EVP_PKEY_set1_EC_KEY(prik, eckey)) {
+		log_error("EC_KEY_set_public_key || EVP_PKEY_set1_EC_KEY failed");
+		goto error;
+	}
+	if (SSL_CTX_use_PrivateKey(cfg->ctx, prik) <= 0) {
+		log_error("SSL_CTX_use_PrivateKey failed");
+		ERR_print_errors_fp(stderr);
+		goto error;
+	}
+
+	// check the ECC private key
+	if (!SSL_CTX_check_private_key(cfg->ctx)) {
+		log_error("Private key does not match the certificate public key");
+		goto error;
+	}
+
+#else
 	len = strlen(key);
 	biokey = BIO_new_mem_buf(key, len);
 	if (!biokey) {
@@ -734,6 +860,7 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		rv = NNG_EINVAL;
 		goto error;
 	}
+#endif // TLS_EXTERN_PRIVATE_KEY
 
 	if (SSL_CTX_check_private_key(cfg->ctx) != 1) {
 		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to check key in SSL_CTX");
