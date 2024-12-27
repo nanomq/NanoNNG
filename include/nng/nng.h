@@ -1042,6 +1042,9 @@ NNG_DECL nng_stat *nng_stat_find_socket(nng_stat *, nng_socket);
 // nng_stat_find_dialer is used to find the stats for the given dialer.
 NNG_DECL nng_stat *nng_stat_find_dialer(nng_stat *, nng_dialer);
 
+// nng_stat_find_dialer is used to find the stats for the given dialer.
+NNG_DECL nng_stat *nng_stat_find_pipe(nng_stat *, uint64_t pipeid);
+
 // nng_stat_find_listener is used to find the stats for the given listener.
 NNG_DECL nng_stat *nng_stat_find_listener(nng_stat *, nng_listener);
 
