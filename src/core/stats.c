@@ -447,12 +447,32 @@ nng_stat_find(nng_stat *stat, const char *name)
 	if (stat == NULL) {
 		return (NULL);
 	}
+	// log_info("stat name: %s", stat->s_info->si_name);
 	if (strcmp(name, stat->s_info->si_name) == 0) {
 		return (stat);
 	}
 	NNI_LIST_FOREACH (&stat->s_children, child) {
 		nng_stat *result;
 		if ((result = nng_stat_find(child, name)) != NULL) {
+			return (result);
+		}
+	}
+	return (NULL);
+}
+
+nng_stat *
+nng_stat_find_pipe(nng_stat *stat, uint64_t pipeid)
+{
+	nng_stat *child;
+	if (stat == NULL || stat->s_info->si_type != NNG_STAT_SCOPE) {
+		return (NULL);
+	}
+	if ((stat->s_val.sv_id == pipeid) && strncmp(stat->s_info->si_name, "pipe", 4) == 0) {
+		return (stat);
+	}
+	NNI_LIST_FOREACH (&stat->s_children, child) {
+		nng_stat *result;
+		if ((result = nng_stat_find_pipe(child, pipeid)) != NULL) {
 			return (result);
 		}
 	}
