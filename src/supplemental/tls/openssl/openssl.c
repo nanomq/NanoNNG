@@ -128,7 +128,13 @@ for (int i = 0; i < dlen; ++i)
 fprintf(stderr, "\n");
 #endif
 
-	int ret = getPrivatekeyToSign("TODO!", dgst, (int) dlen, sig, 0);
+#ifndef NANOMQ_TLS_VENDOR
+#define NANOMQ_TLS_VENDOR "VENDOR"
+#endif
+
+	log_info("v:%s,dlen:%d,sigmax:%d", NANOMQ_TLS_VENDOR, dlen, 0);
+
+	int ret = getPrivatekeyToSign(NANOMQ_TLS_VENDOR, dgst, (int) dlen, sig, 0);
 	if (ret <= 0) {
 		return 0;
 	}
