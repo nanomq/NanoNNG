@@ -458,7 +458,7 @@ mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
 		// nni_lmq_put(&p->recv_messages, msg);
 		nni_msg_free(msg);
 #ifdef NNG_ENABLE_STATS
-		nni_stat_inc(&p->mqtt_sock->msg_send_drop, 1);
+		nni_stat_inc(&p->mqtt_sock->msg_recv_drop, 1);
 #endif
 	}
 	return rv;
@@ -895,7 +895,7 @@ mqtt_recv_cb(void *arg)
 		if (msg) {
 			nni_msg_free(msg);
 #ifdef NNG_ENABLE_STATS
-			nni_stat_inc(&s->msg_send_drop, 1);
+			nni_stat_inc(&s->msg_recv_drop, 1);
 #endif
 		}
 		nni_mtx_unlock(&s->mtx);
@@ -910,8 +910,7 @@ mqtt_recv_cb(void *arg)
 			nni_pipe_send(p->pipe, &p->send_aio);
 		} else {
 			if (0 != nni_lmq_put(&p->send_messages, ack_msg)) {
-				nni_println("Warning! ack msg lost due to "
-				            "busy socket");
+				log_warn("Warning! ack msg lost due to busy socket");
 				nni_msg_free(ack_msg);
 #ifdef NNG_ENABLE_STATS
 				nni_stat_inc(&s->msg_send_drop, 1);
@@ -926,6 +925,9 @@ mqtt_recv_cb(void *arg)
 		if (rv != MQTT_SUCCESS) {
 			log_warn("MQTT client decode error %d!", rv);
 			nni_mtx_unlock(&s->mtx);
+#ifdef NNG_ENABLE_STATS
+			nni_stat_inc(&s->msg_recv_drop, 1);
+#endif
 			nni_msg_free(msg);
 			// close pipe directly, no DISCONNECT for MQTTv3.1.1
 			nni_pipe_close(p->pipe);
@@ -936,6 +938,9 @@ mqtt_recv_cb(void *arg)
 		if (rv != MQTT_SUCCESS) {
 			// Msg should be clear if decode failed. We reuse it to send disconnect.
 			// Or it would encode a malformed packet.
+#ifdef NNG_ENABLE_STATS
+			nni_stat_inc(&s->msg_recv_drop, 1);
+#endif
 			nni_mqtt_msg_set_packet_type(msg, NNG_MQTT_DISCONNECT);
 			nni_mqtt_msg_set_disconnect_reason_code(msg, rv);
 			nni_mqtt_msg_set_disconnect_property(msg, NULL);
@@ -1160,15 +1165,16 @@ mqtt_recv_cb(void *arg)
 			if ((cached_msg = nni_id_get(
 			         &p->recv_unack, packet_id)) != NULL) {
 				// packetid already exists.
-				// sth wrong with the broker
-				// replace old with new
-				log_error("packet id %d duplicates in", packet_id);
+				// sth wrong with the broker replace old with new
+				log_error("packet id %d duplicates, old msg lost", packet_id);
 				nni_msg_free(cached_msg);
 #ifdef NNG_HAVE_MQTT_BROKER
 				conn_param_free(p->cparam);
 #endif
-				// nni_id_remove(&pipe->nano_qos_db,
-				// pid);
+#ifdef NNG_ENABLE_STATS
+				nni_stat_inc(&s->msg_recv_drop, 1);
+#endif
+				// nni_id_remove(&pipe->nano_qos_db, pid);
 			}
 			nni_id_set(&p->recv_unack, packet_id, msg);
 		}
@@ -1196,6 +1202,9 @@ mqtt_recv_cb(void *arg)
 			log_error("Invalid mqtt version");
 		}
 		nni_msg_free(msg);
+#ifdef NNG_ENABLE_STATS
+		nni_stat_inc(&s->msg_recv_drop, 1);
+#endif
 		nni_pipe_close(p->pipe);
 		return;
 	}
@@ -1365,6 +1374,9 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 		nni_mtx_unlock(&s->mtx);
 		log_error("MQTT client encoding msg failed%d!", rv);
 		nni_msg_free(msg);
+#ifdef NNG_ENABLE_STATS
+			nni_stat_inc(&s->msg_send_drop, 1);
+#endif
 		nni_aio_set_msg(aio, NULL);
 		nni_aio_finish_error(aio, NNG_EPROTO);
 		return;
