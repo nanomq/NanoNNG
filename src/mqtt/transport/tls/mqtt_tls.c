@@ -88,6 +88,7 @@ struct mqtts_tcptran_ep {
 	nni_aio *            useraio;
 	nni_aio *            connaio;
 	nni_aio *            timeaio;
+	nni_sock *			 nsock;
 	nni_list             busypipes; // busy pipes -- ones passed to socket
 	nni_list             waitpipes; // pipes waiting to match to socket
 	nni_list             negopipes; // pipes busy negotiating
@@ -101,10 +102,6 @@ struct mqtts_tcptran_ep {
 #ifdef SUPP_SCRAM
 	void *               scram_ctx;
 	nni_msg *            authmsg;
-#endif
-
-#ifdef NNG_ENABLE_STATS
-	nni_stat_item st_rcv_max;
 #endif
 };
 
@@ -638,9 +635,11 @@ mqtts_tcptran_pipe_send_cb(void *arg)
 
 	msg = nni_aio_get_msg(aio);
 	n   = nni_msg_len(msg);
-	nni_pipe_bump_tx(p->npipe, n);
 	nni_mtx_unlock(&p->mtx);
-
+#ifdef NNG_ENABLE_STATS
+	// nni_pipe_bump_tx(p->npipe, n);
+	nni_sock_bump_tx(p->ep->nsock, n);
+#endif
 	nni_aio_set_msg(aio, NULL);
 	nni_msg_free(msg);
 	nni_aio_finish_sync(aio, rv, n);
@@ -831,7 +830,6 @@ mqtts_tcptran_pipe_recv_cb(void *arg)
 	}
 
 	// keep connection & Schedule next receive
-	nni_pipe_bump_rx(p->npipe, n);
 	if (!nni_list_empty(&p->recvq)) {
 		mqtts_tcptran_pipe_recv_start(p);
 	}
@@ -840,6 +838,10 @@ mqtts_tcptran_pipe_recv_cb(void *arg)
 #endif
 	nni_aio_set_msg(aio, msg);
 	nni_mtx_unlock(&p->mtx);
+#ifdef NNG_ENABLE_STATS
+	// nni_pipe_bump_rx(p->npipe, n);
+	nni_sock_bump_rx(p->ep->nsock, n);
+#endif
 	nni_aio_finish_sync(aio, 0, n);
 	return;
 
@@ -1429,22 +1431,12 @@ mqtts_tcptran_ep_init(mqtts_tcptran_ep **epp, nng_url *url, nni_sock *sock)
 	NNI_LIST_INIT(&ep->negopipes, mqtts_tcptran_pipe, node);
 
 	ep->proto       = nni_sock_proto_id(sock);
+	ep->nsock       = sock;
 	ep->url         = url;
 	ep->connmsg     = NULL;
 	ep->reason_code = 0;
 	ep->property    = NULL;
 	ep->backoff     = 0;
-
-#ifdef NNG_ENABLE_STATS
-	static const nni_stat_info rcv_max_info = {
-		.si_name   = "rcv_max",
-		.si_desc   = "maximum receive size",
-		.si_type   = NNG_STAT_LEVEL,
-		.si_unit   = NNG_UNIT_BYTES,
-		.si_atomic = true,
-	};
-	nni_stat_init(&ep->st_rcv_max, &rcv_max_info);
-#endif
 
 	*epp = ep;
 	return (0);
@@ -1497,8 +1489,6 @@ mqtts_tcptran_dialer_init(void **dp, nng_url *url, nni_dialer *ndialer)
 		mqtts_tcptran_ep_fini(ep);
 		return (rv);
 	}
-#ifdef NNG_ENABLE_STATS
-#endif
 	*dp = ep;
 	return (0);
 }
@@ -1569,9 +1559,6 @@ mqtts_tcptran_listener_init(void **lp, nng_url *url, nni_listener *nlistener)
 		mqtts_tcptran_ep_fini(ep);
 		return (rv);
 	}
-#ifdef NNG_ENABLE_STATS
-	nni_listener_add_stat(nlistener, &ep->st_rcv_max);
-#endif
 
 	*lp = ep;
 	return (0);

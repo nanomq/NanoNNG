@@ -1375,7 +1375,7 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 		log_error("MQTT client encoding msg failed%d!", rv);
 		nni_msg_free(msg);
 #ifdef NNG_ENABLE_STATS
-			nni_stat_inc(&s->msg_send_drop, 1);
+		nni_stat_inc(&s->msg_send_drop, 1);
 #endif
 		nni_aio_set_msg(aio, NULL);
 		nni_aio_finish_error(aio, NNG_EPROTO);

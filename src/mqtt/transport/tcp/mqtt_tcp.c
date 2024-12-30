@@ -631,12 +631,12 @@ mqtt_tcptran_pipe_send_cb(void *arg)
 
 	msg = nni_aio_get_msg(aio);
 	n   = nni_msg_len(msg);
+
+	nni_mtx_unlock(&p->mtx);
 #ifdef NNG_ENABLE_STATS
 	// nni_pipe_bump_tx(p->npipe, n);
 	nni_sock_bump_tx(p->ep->nsock, n);
 #endif
-	nni_mtx_unlock(&p->mtx);
-
 	nni_aio_set_msg(aio, NULL);
 	nni_msg_free(msg);
 	nni_aio_finish_sync(aio, rv, n);
@@ -759,11 +759,6 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 	type     = p->rxlen[0] & 0xf0;
 	flags    = p->rxlen[0] & 0x0f;
 
-#ifdef NNG_ENABLE_STATS
-	// nni_pipe_bump_rx(p->npipe, n);
-	nni_sock_bump_rx(p->ep->nsock, n);
-#endif
-
 	// set the payload pointer of msg according to packet_type
 	uint8_t   qos_pac;
 	uint16_t  packet_id   = 0;
@@ -857,7 +852,6 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 	}
 
 	// keep connection & Schedule next receive
-	// nni_pipe_bump_rx(p->npipe, n);
 	if (!nni_list_empty(&p->recvq)) {
 		mqtt_tcptran_pipe_recv_start(p);
 	}
@@ -866,6 +860,10 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 #endif
 	nni_aio_set_msg(aio, msg);
 	nni_mtx_unlock(&p->mtx);
+#ifdef NNG_ENABLE_STATS
+	// nni_pipe_bump_rx(p->npipe, n);
+	nni_sock_bump_rx(p->ep->nsock, n);
+#endif
 	nni_aio_finish_sync(aio, 0, n);
 	return;
 
