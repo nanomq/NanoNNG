@@ -100,16 +100,22 @@ struct mqtt_sock_s {
 	nni_duration    timeleft;  // left time to send next ping
 	mqtt_ctx_t      master; // to which we delegate send/recv calls
 	mqtt_pipe_t    *mqtt_pipe;
+	nni_sock       *nsock;
 	nni_list        recv_queue; // ctx pending to receive
 	nni_list        send_queue; // ctx pending to send (only offline msg)
 	reason_code     disconnect_code; // disconnect reason code
 	property       *dis_prop;        // disconnect property
-	nni_id_map      sent_unack;    // send messages unacknowledged
-
+	nni_id_map      sent_unack;      // send messages unacknowledged
+#ifdef NNG_SUPP_SQLITE
 	nni_mqtt_sqlite_option *sqlite_opt;
+#endif
 	// user defined option
-	nni_time        retry_wait;
-	uint8_t         timeout_backoff;
+	nni_time retry_wait;
+	uint8_t  timeout_backoff;
+#ifdef NNG_ENABLE_STATS
+	nni_stat_item st_rcv_max;
+	nni_stat_item mqtt_reconnect;
+#endif
 };
 
 /******************************************************************************
@@ -127,7 +133,6 @@ mqttv5_sock_init(void *arg, nni_sock *sock)
 static void
 mqtt_sock_init(void *arg, nni_sock *sock)
 {
-	NNI_ARG_UNUSED(sock);
 	mqtt_sock_t *s = arg;
 
 	nni_atomic_init_bool(&s->closed);
@@ -141,6 +146,7 @@ mqtt_sock_init(void *arg, nni_sock *sock)
 	s->timeleft   = NNI_SECOND * 10;
 
 	s->timeout_backoff = 1;
+	s->nsock           = sock;
 
 	nni_mtx_init(&s->mtx);
 	mqtt_ctx_init(&s->master, s);
@@ -151,6 +157,18 @@ mqtt_sock_init(void *arg, nni_sock *sock)
 	NNI_LIST_INIT(&s->send_queue, mqtt_ctx_t, sqnode);
 
 	nni_id_map_init(&s->sent_unack, 0x0000u, 0xffffu, true);
+
+#ifdef NNG_ENABLE_STATS
+	static const nni_stat_info mqtt_reconnect = {
+		.si_name   = "mqtt_client_reconnect",
+		.si_desc   = "reconnect recorder(TCP)",
+		.si_type   = NNG_STAT_COUNTER,
+		.si_unit   = NNG_UNIT_EVENTS,
+		.si_atomic = true,
+	};
+	nni_stat_init(&s->mqtt_reconnect, &mqtt_reconnect);
+	nni_sock_add_stat(s->nsock, &s->mqtt_reconnect);
+#endif
 }
 
 static void
@@ -232,10 +250,25 @@ mqtt_sock_set_retry_wait(void *arg, const void *v, size_t sz, nni_opt_type t)
 	}
 	return (rv);
 }
-
 static int
-mqtt_sock_set_sqlite_option(
-    void *arg, const void *v, size_t sz, nni_opt_type t)
+mqtt_sock_get_pipeid(void *arg, void *buf, size_t *szp, nni_type t)
+{
+	// For MQTT Client, only has one pipe
+	mqtt_sock_t *s = arg;
+	uint32_t     pid;
+	if (s->mqtt_pipe == NULL) {
+		pid = 0xffffffff;
+		nni_copyout_u64(pid, buf, szp, t);
+		return NNG_ECLOSED;
+	}
+
+	nni_pipe *npipe = s->mqtt_pipe->pipe;
+	pid = nni_pipe_id(npipe);
+
+	return (nni_copyout_u64(pid, buf, szp, t));
+}
+static int
+mqtt_sock_set_sqlite_option(void *arg, const void *v, size_t sz, nni_opt_type t)
 {
 	NNI_ARG_UNUSED(sz);
 #if defined(NNG_SUPP_SQLITE)
@@ -544,6 +577,7 @@ mqtt_pipe_start(void *arg)
 	nni_mtx_unlock(&s->mtx);
 	// initiate the global resend timer
 	nni_sleep_aio(s->retry, &p->time_aio);
+	nni_stat_inc(&s->mqtt_reconnect, 1);
 
 	return (0);
 }
@@ -1294,7 +1328,8 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 			nni_mtx_unlock(&s->mtx);
 			nni_aio_set_msg(aio, NULL);
 			nni_aio_finish_error(aio, NNG_ECLOSED);
-			log_info("ctx is already cached! drop msg");
+			log_warn("ctx is already cached! drop msg");
+			log_info("Commercial ver assures you no msg lost!");
 		}
 		return;
 	}
@@ -1394,6 +1429,10 @@ static nni_option mqtt_sock_options[] = {
 	{
 	    .o_name = NNG_OPT_MQTT_SQLITE,
 	    .o_set  = mqtt_sock_set_sqlite_option,
+	},
+	{
+	    .o_name = NNG_OPT_MQTT_CLIENT_PIPEID,
+	    .o_get  = mqtt_sock_get_pipeid,
 	},
 	// terminate list
 	{
