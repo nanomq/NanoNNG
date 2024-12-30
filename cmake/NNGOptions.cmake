@@ -179,6 +179,9 @@ mark_as_advanced(NNG_TRANSPORT_TLS)
 option (NNG_TRANSPORT_MQTT_TLS "Enable MQTT TLS transport." ON )
 mark_as_advanced(NNG_TRANSPORT_MQTT_TLS)
 
+# External TLS Private key
+option (TLS_EXTERN_PRIVATE_KEY "Load TLS Private key from externals" OFF)
+
 # WebSocket
 option (NNG_TRANSPORT_WS "Enable WebSocket transport." ON)
 mark_as_advanced(NNG_TRANSPORT_WS)
