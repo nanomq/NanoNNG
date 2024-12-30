@@ -115,6 +115,9 @@ struct mqtt_sock_s {
 #ifdef NNG_ENABLE_STATS
 	nni_stat_item st_rcv_max;
 	nni_stat_item mqtt_reconnect;
+	nni_stat_item msg_resend;
+	nni_stat_item msg_send_drop;
+	nni_stat_item msg_recv_drop;
 #endif
 };
 
@@ -167,7 +170,34 @@ mqtt_sock_init(void *arg, nni_sock *sock)
 		.si_atomic = true,
 	};
 	nni_stat_init(&s->mqtt_reconnect, &mqtt_reconnect);
+	static const nni_stat_info msg_resend = {
+		.si_name   = "mqtt_msg_resend",
+		.si_desc   = "resend times",
+		.si_type   = NNG_STAT_COUNTER,
+		.si_unit   = NNG_UNIT_MESSAGES,
+		.si_atomic = true,
+	};
+	nni_stat_init(&s->msg_resend, &msg_resend);
+	static const nni_stat_info msg_send_drop = {
+		.si_name   = "mqtt_msg_send_drop",
+		.si_desc   = "uplink msg dropped",
+		.si_type   = NNG_STAT_COUNTER,
+		.si_unit   = NNG_UNIT_MESSAGES,
+		.si_atomic = true,
+	};
+	nni_stat_init(&s->msg_send_drop, &msg_send_drop);
+	static const nni_stat_info msg_recv_drop = {
+		.si_name   = "mqtt_msg_recv_drop",
+		.si_desc   = "downlink msg dropped",
+		.si_type   = NNG_STAT_COUNTER,
+		.si_unit   = NNG_UNIT_MESSAGES,
+		.si_atomic = true,
+	};
+	nni_stat_init(&s->msg_recv_drop, &msg_recv_drop);
 	nni_sock_add_stat(s->nsock, &s->mqtt_reconnect);
+	nni_sock_add_stat(s->nsock, &s->msg_resend);
+	nni_sock_add_stat(s->nsock, &s->msg_send_drop);
+	nni_sock_add_stat(s->nsock, &s->msg_recv_drop);
 #endif
 }
 
@@ -394,6 +424,9 @@ mqtt_pipe_fini(void *arg)
 	if ((msg = nni_aio_get_msg(&p->send_aio)) != NULL) {
 		nni_aio_set_msg(&p->send_aio, NULL);
 		nni_msg_free(msg);
+#ifdef NNG_ENABLE_STATS
+		nni_stat_inc(&p->mqtt_sock->msg_send_drop, 1);
+#endif
 	}
 
 	if (p->pingmsg)
@@ -424,6 +457,9 @@ mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
 		// }
 		// nni_lmq_put(&p->recv_messages, msg);
 		nni_msg_free(msg);
+#ifdef NNG_ENABLE_STATS
+		nni_stat_inc(&p->mqtt_sock->msg_send_drop, 1);
+#endif
 	}
 	return rv;
 }
@@ -504,6 +540,9 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 				nni_aio_set_msg(aio, NULL);
 				nni_mtx_unlock(&s->mtx);
 				nni_msg_free(msg);	// User need to realloc this msg again
+#ifdef NNG_ENABLE_STATS
+				nni_stat_inc(&s->msg_send_drop, 1);
+#endif
 				nni_aio_finish_error(aio, rv);
 				return;
 			}
@@ -516,6 +555,10 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 	default:
 		nni_mtx_unlock(&s->mtx);
 		nni_msg_free(msg);
+		log_warn("Malformed msg dropped!");
+#ifdef NNG_ENABLE_STATS
+		nni_stat_inc(&s->msg_send_drop, 1);
+#endif
 		nni_aio_finish_error(aio, NNG_EPROTO);
 		return;
 	}
@@ -537,9 +580,15 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 		log_warn("Cached Message lost! pipe is busy and lmq is full\n");
 		(void) nni_lmq_get(&p->send_messages, &tmsg);
 		nni_msg_free(tmsg);
+#ifdef NNG_ENABLE_STATS
+		nni_stat_inc(&s->msg_send_drop, 1);
+#endif
 	}
 	if (0 != nni_lmq_put(&p->send_messages, msg)) {
 		nni_msg_free(msg);
+#ifdef NNG_ENABLE_STATS
+		nni_stat_inc(&s->msg_send_drop, 1);
+#endif
 		log_warn("Message lost while enqueing");
 	}
 out:
@@ -577,8 +626,9 @@ mqtt_pipe_start(void *arg)
 	nni_mtx_unlock(&s->mtx);
 	// initiate the global resend timer
 	nni_sleep_aio(s->retry, &p->time_aio);
+#ifdef NNG_ENABLE_STATS
 	nni_stat_inc(&s->mqtt_reconnect, 1);
-
+#endif
 	return (0);
 }
 
@@ -717,6 +767,9 @@ mqtt_timer_cb(void *arg)
 			}
 			log_debug("trying to resend QoS msg %d", pid);
 			nni_msg_clone(msg);
+#ifdef NNG_ENABLE_STATS
+			nni_stat_inc(&s->msg_resend, 1);
+#endif
 			if (!p->busy) {
 				p->busy = true;
 				nni_aio_set_msg(&p->send_aio, msg);
@@ -730,6 +783,9 @@ mqtt_timer_cb(void *arg)
 				if (nni_lmq_put(&p->send_messages, msg) != 0) {
 					log_info("%d resend canceld due to full lmq", pid);
 					nni_msg_free(msg);
+#ifdef NNG_ENABLE_STATS
+					nni_stat_inc(&s->msg_send_drop, 1);
+#endif
 				}
 			}
 		}
@@ -747,6 +803,9 @@ mqtt_timer_cb(void *arg)
 				p->busy = true;
 				nni_aio_set_msg(&p->send_aio, msg);
 				nni_pipe_send(p->pipe, &p->send_aio);
+#ifdef NNG_ENABLE_STATS
+				nni_stat_inc(&s->msg_resend, 1);
+#endif
 				nni_mtx_unlock(&s->mtx);
 				nni_sleep_aio(s->retry, &p->time_aio);
 				return;
@@ -771,6 +830,9 @@ mqtt_send_cb(void *arg)
 	if ((rv = nni_aio_result(&p->send_aio)) != 0) {
 		// We failed to send... clean up and deal with it.
 		nni_msg_free(nni_aio_get_msg(&p->send_aio));
+#ifdef NNG_ENABLE_STATS
+		nni_stat_inc(&s->msg_send_drop, 1);
+#endif
 		nni_aio_set_msg(&p->send_aio, NULL);
 		log_warn("MQTT client send error %d!", rv);
 		s->disconnect_code = 0x8B; // TODO hardcode
@@ -832,6 +894,9 @@ mqtt_recv_cb(void *arg)
 		// free msg and dont return data when pipe is closed.
 		if (msg) {
 			nni_msg_free(msg);
+#ifdef NNG_ENABLE_STATS
+			nni_stat_inc(&s->msg_send_drop, 1);
+#endif
 		}
 		nni_mtx_unlock(&s->mtx);
 		return;
@@ -845,9 +910,12 @@ mqtt_recv_cb(void *arg)
 			nni_pipe_send(p->pipe, &p->send_aio);
 		} else {
 			if (0 != nni_lmq_put(&p->send_messages, ack_msg)) {
-				nni_println(
-				    "Warning! ack msg lost due to busy socket");
+				nni_println("Warning! ack msg lost due to "
+				            "busy socket");
 				nni_msg_free(ack_msg);
+#ifdef NNG_ENABLE_STATS
+				nni_stat_inc(&s->msg_send_drop, 1);
+#endif
 			}
 		}
 	}
@@ -1219,6 +1287,9 @@ mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
 								"timeout!", packet_id);
 				nni_id_remove(&s->sent_unack, packet_id);
 				nni_msg_free(nni_aio_get_msg(taio));
+#ifdef NNG_ENABLE_STATS
+				nni_stat_inc(&s->msg_send_drop, 1);
+#endif
 				nni_aio_set_msg(taio, NULL);
 				nni_aio_set_prov_data(taio, NULL);
 			}
@@ -1326,6 +1397,9 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 		} else {
 			nni_msg_free(msg);
 			nni_mtx_unlock(&s->mtx);
+#ifdef NNG_ENABLE_STATS
+			nni_stat_inc(&s->msg_send_drop, 1);
+#endif
 			nni_aio_set_msg(aio, NULL);
 			nni_aio_finish_error(aio, NNG_ECLOSED);
 			log_warn("ctx is already cached! drop msg");
