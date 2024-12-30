@@ -296,7 +296,7 @@ struct conf_bridge_node {
 	conf_sqlite *sqlite;
 	nng_aio    **bridge_aio;
 	nng_aio		*resend_aio;
-	nng_dialer   dialer;	// in order to postpone bridging client start after local broker
+	nng_dialer  *dialer;	// in order to postpone bridging client start after local broker
 	nng_lmq		*ctx_msgs;  // only cache qos msg blocked by aio busy
 	nng_mtx     *mtx;
 
