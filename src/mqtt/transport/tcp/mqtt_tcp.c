@@ -58,7 +58,6 @@ struct mqtt_tcptran_pipe {
 	nni_aio         *negoaio;
 	nni_aio         *rpaio;
 	nni_msg         *rxmsg;
-	// nni_lmq          rslmq;
 	nni_mtx          mtx;
 	bool             closed;
 #ifdef NNG_HAVE_MQTT_BROKER
@@ -68,38 +67,35 @@ struct mqtt_tcptran_pipe {
 };
 
 struct mqtt_tcptran_ep {
+	int                  refcnt; // active pipes
 	nni_mtx              mtx;
-	uint16_t             proto; //socket's 16-bit protocol number
+	uint16_t             proto; // socket's 16-bit protocol number
 	nni_duration         backoff;
 	nni_duration         backoff_max;
 	bool                 fini;
 	bool                 started;
 	bool                 closed;
-	nng_url *            url;
-	const char *         host; // for dialers
+	nng_url             *url;
+	const char          *host; // for dialers
 	nng_sockaddr         src;
-	int                  refcnt; // active pipes
 	reason_code          reason_code;
-	nni_aio *            useraio;
-	nni_aio *            connaio;
-	nni_aio *            timeaio;
+	nni_aio             *useraio;
+	nni_aio             *connaio;
+	nni_aio             *timeaio;
+	nni_sock            *nsock;
 	nni_list             busypipes; // busy pipes -- ones passed to socket
 	nni_list             waitpipes; // pipes waiting to match to socket
 	nni_list             negopipes; // pipes busy negotiating
 	nni_reap_node        reap;
-	nng_stream_dialer *  dialer;
+	nng_stream_dialer   *dialer;
 	nng_stream_listener *listener;
-	nni_dialer *         ndialer;
-	void *               property;  // property
-	void *               connmsg;
+	nni_dialer          *ndialer;
+	void                *property; // property
+	void                *connmsg;
 	bool                 enable_scram;
 #ifdef SUPP_SCRAM
-	void *               scram_ctx;
-	nni_msg *            authmsg;
-#endif
-
-#ifdef NNG_ENABLE_STATS
-	nni_stat_item st_rcv_max;
+	void    *scram_ctx;
+	nni_msg *authmsg;
 #endif
 };
 
@@ -140,7 +136,6 @@ mqtt_tcptran_pipe_close(void *arg)
 	nni_mtx_lock(&p->mtx);
 
 	p->closed = true;
-	// nni_lmq_flush(&p->rslmq);
 	nni_mtx_unlock(&p->mtx);
 
 	nni_aio_close(p->rxaio);
@@ -167,7 +162,6 @@ mqtt_tcptran_pipe_init(void *arg, nni_pipe *npipe)
 	mqtt_tcptran_pipe *p = arg;
 
 	p->npipe = npipe;
-	// nni_lmq_init(&p->rslmq, 10240);
 	p->closed = false;
 	// set max value by default
 	p->packmax == 0 ? p->packmax = (uint32_t)0xFFFFFFFF : p->packmax;
@@ -202,7 +196,6 @@ mqtt_tcptran_pipe_fini(void *arg)
 	nni_aio_free(p->rpaio);
 
 	nni_msg_free(p->rxmsg);
-	// nni_lmq_fini(&p->rslmq);
 	nni_mtx_fini(&p->mtx);
 #ifdef NNG_HAVE_MQTT_BROKER
 	conn_param_free(p->cparam);
@@ -612,7 +605,7 @@ mqtt_tcptran_pipe_send_cb(void *arg)
 	aio = nni_list_first(&p->sendq);
 
 	if ((rv = nni_aio_result(txaio)) != 0) {
-		// nni_pipe_bump_error(p->npipe, rv);
+		nni_pipe_bump_error(p->npipe, rv);
 		log_info("aio result %s", nng_strerror(rv));
 		// Intentionally we do not queue up another transfer.
 		// There's an excellent chance that the pipe is no longer
@@ -638,7 +631,10 @@ mqtt_tcptran_pipe_send_cb(void *arg)
 
 	msg = nni_aio_get_msg(aio);
 	n   = nni_msg_len(msg);
-	nni_pipe_bump_tx(p->npipe, n);
+#ifdef NNG_ENABLE_STATS
+	// nni_pipe_bump_tx(p->npipe, n);
+	nni_sock_bump_tx(p->ep->nsock, n);
+#endif
 	nni_mtx_unlock(&p->mtx);
 
 	nni_aio_set_msg(aio, NULL);
@@ -754,8 +750,7 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 		}
 	}
 
-	// We read a message completely.  Let the user know the good news. use
-	// as application message callback of users
+	// We read a message completely.  Let the user know the good news.
 	nni_aio_list_remove(aio);
 	nni_msg_header_append(p->rxmsg, p->rxlen, pos + 1);
 	msg      = p->rxmsg;
@@ -763,6 +758,11 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 	n        = nni_msg_len(msg);
 	type     = p->rxlen[0] & 0xf0;
 	flags    = p->rxlen[0] & 0x0f;
+
+#ifdef NNG_ENABLE_STATS
+	// nni_pipe_bump_rx(p->npipe, n);
+	nni_sock_bump_rx(p->ep->nsock, n);
+#endif
 
 	// set the payload pointer of msg according to packet_type
 	uint8_t   qos_pac;
@@ -1467,22 +1467,12 @@ mqtt_tcptran_ep_init(mqtt_tcptran_ep **epp, nng_url *url, nni_sock *sock)
 	NNI_LIST_INIT(&ep->negopipes, mqtt_tcptran_pipe, node);
 
 	ep->proto       = nni_sock_proto_id(sock);
+	ep->nsock       = sock;
 	ep->url         = url;
 	ep->connmsg     = NULL;
 	ep->reason_code = 0;
 	ep->property    = NULL;
 	ep->backoff     = 0;
-
-#ifdef NNG_ENABLE_STATS
-	static const nni_stat_info rcv_max_info = {
-		.si_name   = "rcv_max",
-		.si_desc   = "maximum receive size",
-		.si_type   = NNG_STAT_LEVEL,
-		.si_unit   = NNG_UNIT_BYTES,
-		.si_atomic = true,
-	};
-	nni_stat_init(&ep->st_rcv_max, &rcv_max_info);
-#endif
 
 	*epp = ep;
 	return (0);
@@ -1534,8 +1524,7 @@ mqtt_tcptran_dialer_init(void **dp, nng_url *url, nni_dialer *ndialer)
 		mqtt_tcptran_ep_fini(ep);
 		return (rv);
 	}
-#ifdef NNG_ENABLE_STATS
-#endif
+
 	*dp = ep;
 	return (0);
 }
@@ -1568,9 +1557,6 @@ mqtt_tcptran_listener_init(void **lp, nng_url *url, nni_listener *nlistener)
 		mqtt_tcptran_ep_fini(ep);
 		return (rv);
 	}
-#ifdef NNG_ENABLE_STATS
-	nni_listener_add_stat(nlistener, &ep->st_rcv_max);
-#endif
 
 	*lp = ep;
 	return (0);
