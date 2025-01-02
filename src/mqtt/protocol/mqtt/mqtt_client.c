@@ -164,7 +164,7 @@ mqtt_sock_init(void *arg, nni_sock *sock)
 #ifdef NNG_ENABLE_STATS
 	static const nni_stat_info mqtt_reconnect = {
 		.si_name   = "mqtt_client_reconnect",
-		.si_desc   = "reconnect recorder(TCP)",
+		.si_desc   = "MQTT reconnect times",
 		.si_type   = NNG_STAT_COUNTER,
 		.si_unit   = NNG_UNIT_EVENTS,
 		.si_atomic = true,
@@ -172,7 +172,7 @@ mqtt_sock_init(void *arg, nni_sock *sock)
 	nni_stat_init(&s->mqtt_reconnect, &mqtt_reconnect);
 	static const nni_stat_info msg_resend = {
 		.si_name   = "mqtt_msg_resend",
-		.si_desc   = "resend times",
+		.si_desc   = "MQTT message resend times",
 		.si_type   = NNG_STAT_COUNTER,
 		.si_unit   = NNG_UNIT_MESSAGES,
 		.si_atomic = true,
@@ -527,6 +527,9 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 			nni_id_remove(&s->sent_unack, packet_id);
 			nni_aio_finish_error(taio, NNG_ECANCELED);
 			nni_msg_free(nni_aio_get_msg(taio));
+#ifdef NNG_ENABLE_STATS
+			nni_stat_inc(&s->msg_send_drop, 1);
+#endif
 			nni_aio_set_msg(taio, NULL);
 		}
 		if (0 != nni_id_set(&s->sent_unack, packet_id, aio)) {
@@ -803,10 +806,10 @@ mqtt_timer_cb(void *arg)
 				p->busy = true;
 				nni_aio_set_msg(&p->send_aio, msg);
 				nni_pipe_send(p->pipe, &p->send_aio);
+				nni_mtx_unlock(&s->mtx);
 #ifdef NNG_ENABLE_STATS
 				nni_stat_inc(&s->msg_resend, 1);
 #endif
-				nni_mtx_unlock(&s->mtx);
 				nni_sleep_aio(s->retry, &p->time_aio);
 				return;
 			}
