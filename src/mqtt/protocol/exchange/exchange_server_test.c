@@ -228,6 +228,7 @@ test_exchange_client(void)
 	client_get_and_clean_msgs(sock, lenp, &msgList);
 	NUTS_TRUE(*lenp == 10 && msgList != NULL);
 	free_msg_list(msgList, NULL, lenp, 1);
+	nni_sock_close(nsock);
 
 	cvector_free(conf->rbufs);
 	nng_free(conf, sizeof(conf_exchange_node));
