@@ -944,7 +944,11 @@ tcptran_pipe_recv_cb(void *arg)
 	nni_mtx_unlock(&p->mtx);
 
 	nni_aio_set_msg(aio, msg);
-	nni_aio_finish_sync(aio, 0, nni_msg_len(msg));
+	if (type == CMD_SUBSCRIBE) {
+		nni_aio_finish(aio, 0, nni_msg_len(msg));
+	} else {
+		nni_aio_finish_sync(aio, 0, nni_msg_len(msg));
+	}
 	log_trace("end of tcptran_pipe_recv_cb: synch! %p\n", p);
 	return;
 
