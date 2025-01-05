@@ -2870,6 +2870,32 @@ nng_udp_multicast_membership(nng_udp *udp, nng_sockaddr *sa, bool join)
 }
 
 int
+nng_dialer_get_url(nng_dialer id, const nng_url **urlp)
+{
+       int         rv;
+       nni_dialer *d;
+       if ((rv = nni_dialer_find(&d, id.id)) != 0) {
+               return (rv);
+       }
+       *urlp = nni_dialer_url(d);
+       nni_dialer_rele(d);
+       return (0);
+}
+
+int
+nng_listener_get_url(nng_listener id, const nng_url **urlp)
+{
+       int           rv;
+       nni_listener *l;
+       if ((rv = nni_listener_find(&l, id.id)) != 0) {
+               return (rv);
+       }
+       *urlp = nni_listener_url(l);
+       nni_listener_rele(l);
+       return (0);
+}
+
+int
 nng_dialer_off(nng_dialer did)
 {
 	nni_dialer *d;
