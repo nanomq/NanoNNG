@@ -226,6 +226,9 @@ done:
 				p->ws_param->max_packet_size =
 				    p->conf->client_max_packet_size;
 			}
+			log_info("max_packet_size of %.*s is %d",
+					p->ws_param->clientid.len, p->ws_param->clientid.body,
+					p->ws_param->max_packet_size);
 			nni_msg_free(p->tmp_msg);
 			p->tmp_msg = NULL;
 			nni_aio_set_output(uaio, 0, p);
@@ -672,7 +675,8 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	if (total_len > p->ws_param->max_packet_size) {
 		// drop msg and finish aio
 		// pretend it has been sent
-		log_warn("msg dropped due to overceed max packet size!");
+		log_warn("msg dropped due to exceed max packet size %ld %ld!",
+				total_len, p->ws_param->max_packet_size);
 		nni_msg_free(msg);
 		nni_aio_set_msg(aio, NULL);
 		nni_aio_list_remove(aio);
