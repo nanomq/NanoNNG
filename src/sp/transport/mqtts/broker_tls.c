@@ -412,6 +412,9 @@ tlstran_pipe_nego_cb(void *arg)
 					            ->max_packet_size));
 				}
 			}
+			log_info("max_packet_size of %.*s is %d",
+					p->tcp_cparam->clientid.len, p->tcp_cparam->clientid.body,
+					p->tcp_cparam->max_packet_size);
 			nni_mtx_unlock(&ep->mtx);
 			return;
 		} else {
@@ -1250,7 +1253,8 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	if (total_len > p->tcp_cparam->max_packet_size) {
 		// drop msg and finish aio
 		// pretend it has been sent
-		log_warn("msg dropped due to overceed max packet size!");
+		log_warn("msg dropped due to exceed max packet size %ld %ld!",
+				total_len, p->tcp_cparam->max_packet_size);
 		nni_msg_free(msg);
 		nni_aio_set_msg(aio, NULL);
 		nni_aio_list_remove(aio);
