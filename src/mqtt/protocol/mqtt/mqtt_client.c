@@ -1354,8 +1354,7 @@ mqtt_cancel_send(nni_aio *aio, void *arg, int rv)
 			packet_id = proto_data->var_header.subscribe.packet_id;
 		else if (type == NNG_MQTT_UNSUBSCRIBE)
 			packet_id = proto_data->var_header.unsubscribe.packet_id;
-		p = s->mqtt_pipe;
-		if (p != NULL) {
+		if (s->mqtt_pipe != NULL) {
 			nni_aio *taio;
 			taio = nni_id_get(&s->sent_unack, packet_id);
 			if (taio != NULL) {
