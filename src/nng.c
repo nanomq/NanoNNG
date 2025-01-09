@@ -2761,3 +2761,16 @@ nng_udp_multicast_membership(nng_udp *udp, nng_sockaddr *sa, bool join)
 	return (
 	    nni_plat_udp_multicast_membership((nni_plat_udp *) udp, sa, join));
 }
+
+int
+nng_dialer_off(nng_dialer did)
+{
+	nni_dialer *d;
+	int         rv;
+
+	if ((rv = nni_dialer_find(&d, did.id)) != 0) {
+		return (rv);
+	}
+	nni_dialer_off(d);
+	return (0);
+}
