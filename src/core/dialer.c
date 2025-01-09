@@ -565,3 +565,18 @@ nni_dialer_add_stat(nni_dialer *d, nni_stat_item *item)
 	NNI_ARG_UNUSED(item);
 #endif
 }
+
+void
+nni_dialer_off(nni_dialer *d)
+{
+	nni_mtx_lock(&dialers_lk);
+	if (d->d_closed) {
+		nni_mtx_unlock(&dialers_lk);
+		nni_dialer_rele(d);
+		return;
+	}
+	nni_mtx_unlock(&dialers_lk);
+
+	nni_atomic_flag_reset(&d->d_started);
+	nni_dialer_rele(d);
+}
