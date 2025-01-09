@@ -1,5 +1,5 @@
 //
-// Copyright 2023 NanoMQ Team, Inc. <jaylin@emqx.io>
+// Copyright 2024 NanoMQ Team, Inc. <jaylin@emqx.io>
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -49,6 +49,12 @@ extern "C" {
 #define MQTT_PROTOCOL_NAME "MQTT"
 #define MQTT_PROTOCOL_VERSION_v311 4
 #define MQTT_PROTOCOL_VERSION_v5 5
+
+// Only work for MQTT Protocol layer
+#define NNG_OPT_MQTT_CLIENT_PIPEID "nng-nano-pipe-id"
+
+// Only work for MQTT Protocol layer
+#define NNG_OPT_MQTT_BROKER_PIPEID "nano-broker-pipe-id"
 
 // NNG_OPT_MQTT_EXPIRES is a 32-bit integer representing the expiration in
 // seconds. This can be applied to a message.

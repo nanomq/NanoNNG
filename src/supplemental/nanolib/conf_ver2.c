@@ -281,6 +281,7 @@ conf_http_server_parse_ver2(conf_http_server *http_server, cJSON *json)
 		hocon_read_num_base(
 		    http_server, parallel, "limit_conn", jso_http_server);
 		hocon_read_str(http_server, username, jso_http_server);
+		hocon_read_str(http_server, ip_addr, jso_http_server);
 		hocon_read_str(http_server, password, jso_http_server);
 		hocon_read_enum(http_server, auth_type, jso_http_server,
 		    http_server_auth_type);
@@ -1043,6 +1044,7 @@ conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 	hocon_read_time(node, backoff_max, jso_connector);
 	hocon_read_bool(node, clean_start, jso_connector);
 	hocon_read_bool(node, transparent, jso_connector);
+	hocon_read_bool(node, enable, jso_connector);
 	hocon_read_str(node, username, jso_connector);
 	hocon_read_str(node, password, jso_connector);
 	update_bridge_node_vin(node, CONF_NODE_CLIENTID);
@@ -1130,9 +1132,9 @@ conf_bridge_node_parse(
     conf_bridge_node *node, conf_sqlite *bridge_sqlite, cJSON *obj)
 {
 	node->name = nng_strdup(obj->string);
+	node->enable = true;	// from 0.23.3, enable option returned.
 	conf_bridge_connector_parse_ver2(node, obj);
 	node->sqlite = bridge_sqlite;
-	node->enable = true;
 #if defined(SUPP_QUIC)
 	conf_bridge_quic_parse_ver2(node, obj);
 #endif
@@ -1319,14 +1321,13 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 			    bridge_sqlite, resend_interval, node_item);
 			hocon_read_str(
 			    bridge_sqlite, mounted_file_path, node_item);
-
 		} else {
 			conf_bridge_node *node = NNI_ALLOC_STRUCT(node);
 			nng_mtx_alloc(&node->mtx);
 			conf_bridge_node_init(node);
 			conf_bridge_node_parse(node, bridge_sqlite, node_item);
 			cvector_push_back(config->bridge.nodes, node);
-			config->bridge_mode |= node->enable;
+			config->bridge_mode = true;
 		}
 	}
 
@@ -1819,6 +1820,132 @@ conf_rule_parse_ver2(conf *config, cJSON *jso)
 			nng_strfree(sql.password);
 		}
 	}
+#endif
+
+	cJSON *jso_rule_postgresql = hocon_get_obj("rules.postgresql", jso);
+    if (jso_rule_postgresql) {
+#ifndef SUPP_POSTGRESQL
+		log_error("If you want use postgresql rule, recompile nanomq with "
+		          "option `-DENABLE_POSTGRESQL=ON`");
+	}
+#else
+
+		cr->option |= RULE_ENG_PDB;
+
+        cJSON *ele = NULL;
+		cJSON_ArrayForEach(ele, jso_rule_postgresql)
+		{
+			cJSON *jso_conn = cJSON_GetObjectItem(ele, "conn");
+			cJSON *jso_rules = cJSON_GetObjectItem(ele, "rules");
+			rule_postgresql sql = { 0 };
+
+			if (jso_conn) {
+				hocon_read_str_base(
+				    cr, postgresql_db, "database", jso_conn);
+
+				hocon_read_str(&sql, host, jso_conn);
+				hocon_read_str(&sql, username, jso_conn);
+				hocon_read_str(&sql, password, jso_conn);
+			}
+
+			jso_rule = NULL;
+
+			cJSON_ArrayForEach(jso_rule, jso_rules)
+			{
+				rule r = { 0 };
+				r.enabled = true;
+				hocon_read_str_base(
+				    &r, raw_sql, "sql", jso_rule);
+				rule_postgresql *postgresql = NNI_ALLOC_STRUCT(postgresql);
+
+				rule_sql_parse(cr, r.raw_sql);
+
+				postgresql->host = nng_strdup(sql.host);
+				postgresql->username = nng_strdup(sql.username);
+				postgresql->password = nng_strdup(sql.password);
+				hocon_read_str(postgresql, table, jso_rule);
+
+				cr->rules[cvector_size(cr->rules) - 1].postgresql =
+				    postgresql;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .forword_type = RULE_FORWORD_POSTGRESQL;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .raw_sql = r.raw_sql;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .enabled = r.enabled;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .rule_id = rule_generate_rule_id();
+			}
+
+			nng_strfree(sql.host);
+			nng_strfree(sql.username);
+			nng_strfree(sql.password);
+		}
+
+    }
+#endif
+
+	cJSON *jso_rule_timescaledb = hocon_get_obj("rules.timescaledb", jso);
+    if (jso_rule_timescaledb) {
+#ifndef SUPP_TIMESCALEDB
+		log_error("If you want use timescaledb rule, recompile nanomq with "
+		          "option `-DENABLE_TIMESCALEDB=ON`");
+	}
+#else
+
+		cr->option |= RULE_ENG_TDB;
+
+        cJSON *ele = NULL;
+		cJSON_ArrayForEach(ele, jso_rule_timescaledb)
+		{
+			cJSON *jso_conn = cJSON_GetObjectItem(ele, "conn");
+			cJSON *jso_rules = cJSON_GetObjectItem(ele, "rules");
+			rule_timescaledb sql = { 0 };
+
+			if (jso_conn) {
+				hocon_read_str_base(
+				    cr, timescale_db, "database", jso_conn);
+
+				hocon_read_str(&sql, host, jso_conn);
+				hocon_read_str(&sql, username, jso_conn);
+				hocon_read_str(&sql, password, jso_conn);
+			}
+
+			jso_rule = NULL;
+
+			cJSON_ArrayForEach(jso_rule, jso_rules)
+			{
+				rule r = { 0 };
+				r.enabled = true;
+				hocon_read_str_base(
+				    &r, raw_sql, "sql", jso_rule);
+				rule_timescaledb *timescaledb = NNI_ALLOC_STRUCT(timescaledb);
+
+				rule_sql_parse(cr, r.raw_sql);
+
+				timescaledb->host = nng_strdup(sql.host);
+				timescaledb->username = nng_strdup(sql.username);
+				timescaledb->password = nng_strdup(sql.password);
+				hocon_read_str(timescaledb, table, jso_rule);
+
+				cr->rules[cvector_size(cr->rules) - 1].timescaledb =
+				    timescaledb;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .forword_type = RULE_FORWORD_TIMESCALEDB;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .raw_sql = r.raw_sql;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .enabled = r.enabled;
+				cr->rules[cvector_size(cr->rules) - 1]
+				    .rule_id = rule_generate_rule_id();
+			}
+
+			nng_strfree(sql.host);
+			nng_strfree(sql.username);
+			nng_strfree(sql.password);
+		}
+
+    }
 #endif
 
 	return;

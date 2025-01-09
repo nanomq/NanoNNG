@@ -41,6 +41,8 @@
 #define RULE_ENG_FDB (1 << 1)
 #define RULE_ENG_MDB (1 << 2)
 #define RULE_ENG_RPB (1 << 3)
+#define RULE_ENG_PDB (1 << 4)
+#define RULE_ENG_TDB (1 << 5)
 
 
 #define FREE_NONULL(p)    \
@@ -183,6 +185,7 @@ typedef enum {
 
 struct conf_http_server {
 	bool        enable;
+	char       *ip_addr;	// only localhost or 0.0.0.0 is required
 	uint16_t    port;
 	char       *username;
 	char       *password;
@@ -258,7 +261,7 @@ typedef struct {
 struct conf_bridge_node {
 	bool         enable;
 	bool         dynamic;
-	bool         busy; // for resend
+	bool         busy;
 	bool         clean_start;
 	bool         transparent;
 	bool         will_flag;
@@ -293,7 +296,7 @@ struct conf_bridge_node {
 	conf_sqlite *sqlite;
 	nng_aio    **bridge_aio;
 	nng_aio		*resend_aio;
-	nng_dialer   dialer;	// in order to postpone bridging client start after local broker
+	nng_dialer  *dialer;
 	nng_lmq		*ctx_msgs;  // only cache qos msg blocked by aio busy
 	nng_mtx     *mtx;
 	bool         sleep;
@@ -597,7 +600,7 @@ struct conf {
 	bool       allow_anonymous;
 	bool       daemon;
 	bool       ipc_internal;
-	bool       bridge_mode;
+	bool       bridge_mode;				// global switch of bridging for hot update
 
 	conf_tcp_list        tcp_list;
 	conf_tls_list        tls_list;

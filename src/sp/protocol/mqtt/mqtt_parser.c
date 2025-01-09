@@ -125,7 +125,8 @@ get_value_size(uint64_t value)
 			break;
 		}
 	}
-	if (i == 4 && value > pow) {
+	if (i == 5 && value > pow) {
+		log_error("i %d value %ld pow %ld", i, value, pow);
 		log_error("Malformaed variable value detected!");
 	}
 	return len;
@@ -262,6 +263,7 @@ copyn_utf8_str(const uint8_t *src, uint32_t *pos, int *str_len, int limit)
 				return NULL;
 			}
 		} else {
+			log_warn("UTF-8 check failed!");
 			*str_len = -1;
 		}
 	}
@@ -584,15 +586,20 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	cparam->will_qos    = (cparam->con_flag & 0x18) >> 3;
 	cparam->will_retain = (cparam->con_flag & 0x20) >> 5;
 	if (((cparam->con_flag & 0x01) != 0) ||
-	    (cparam->will_flag == 0 && cparam->will_retain != 0))
+	    (cparam->will_flag == 0 && cparam->will_retain != 0)) {
+		log_info("Malformed CONNECT: conn flag conflicts with will msg");
 		return PROTOCOL_ERROR;
+	}
 
 	log_trace("conn flag:%x", cparam->con_flag);
 	if ((cparam->will_flag == 1 && cparam->will_qos > 2) ||
 	    (strncmp(cparam->pro_name.body, MQTT_PROTOCOL_NAME, 4) != 0 &&
 	    strncmp(cparam->pro_name.body, MQTT_PROTOCOL_NAME_v31, 6) != 0) ||
-	    cparam->pro_ver > 5 || cparam->pro_ver < 3)
+	    cparam->pro_ver > 5 || cparam->pro_ver < 3) {
+		log_info("Malformed CONNECT: Invalid cparam %d %d %s ver %d",
+				 cparam->will_flag, cparam->will_qos, cparam->pro_name.body, cparam->pro_ver);
 		return PROTOCOL_ERROR;
+	}
 	pos++;
 	// keepalive
 	NNI_GET16(packet + pos, tmp);
@@ -603,12 +610,16 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 		// check length
 		log_trace("Decoding MQTT V5 Properties");
-		if (pos + 3 > max)
+		if (pos + 3 > max) {
+			log_info("Malformed CONNECT: incomplete len");
 			return PROTOCOL_ERROR;
+		}
 		cparam->prop_len = (uint32_t) get_var_integer(packet + pos,
 													  &len_of_var);
-		if (cparam->prop_len > (max - pos - 1 - cparam->will_flag * 2 ))
+		if (cparam->prop_len > (max - pos - 1 - cparam->will_flag * 2 )) {
+			log_info("Malformed CONNECT: incomplete len");
 			return PROTOCOL_ERROR;
+		}
 		log_debug("remain len %d max len %d prop len %d pos %d",
 				   len, max, cparam->prop_len, pos);
 		cparam->properties = decode_buf_properties(
@@ -617,6 +628,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 			conn_param_set_property(cparam, cparam->properties);
 			if ((rv = check_properties(cparam->properties, NULL)) !=
 			    SUCCESS) {
+				log_info("Malformed CONNECT: property check failed");
 				return rv;
 			}
 		}
@@ -637,11 +649,11 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		cparam->clientid.len  = strlen(clientid_r);
 		cparam->assignedid    = true;
 	} else if (len_of_str < 0) {
-		log_trace("PROTOCOL_ERROR: No clientid is found!");
+		log_info("Malformed CONNECT: incomplete utf8 in clientid");
 		return (PROTOCOL_ERROR);
 	} else if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v31 &&
 	    len_of_str > 23) {
-		log_trace("CLIENT_IDENTIFIER_NOT_VALID: clientid invalid!");
+		log_info("CLIENT_IDENTIFIER_NOT_VALID: clientid invalid!");
 		return (CLIENT_IDENTIFIER_NOT_VALID);
 	}
 	log_trace("clientid: [%s] [%d]", cparam->clientid.body, len_of_str);
@@ -665,8 +677,8 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 				conn_param_set_will_property(
 				    cparam, cparam->will_properties);
 				if ((rv = check_properties(
-				         cparam->will_properties, NULL)) !=
-				    SUCCESS) {
+						cparam->will_properties, NULL)) != SUCCESS) {
+					log_info("Malformed CONNECT: check will property failed");
 					return PROTOCOL_ERROR;
 				}
 			}
@@ -1638,7 +1650,7 @@ int
 nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 {
 	char           *topic;
-	uint8_t         *payload_ptr, len_of_varint = 0, *var_ptr;
+	uint8_t        *payload_ptr, len_of_varint = 0, *var_ptr;
 	uint32_t        num = 0, len = 0, len_of_str = 0, subid = 0;
 	uint16_t        len_of_topic = 0;
 	size_t          bpos = 0, remain = 0;
@@ -1664,7 +1676,8 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 		return -2;
 	}
 
-	log_trace("prop len %d varint %d remain %d", len, len_of_varint, nni_msg_remaining_len(msg));
+	log_trace("prop len %d varint %d remain %d", len, len_of_varint,
+			  nni_msg_remaining_len(msg));
 	payload_ptr = (uint8_t *) nni_msg_body(msg) + 2 + len + len_of_varint;
 
 	size_t pos = 2 + len_of_varint, target_pos = 2 + len_of_varint + len;

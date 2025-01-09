@@ -741,6 +741,7 @@ NNG_DECL nng_listener nng_pipe_listener(nng_pipe);
 #define NNG_OPT_LOCADDR "local-address"
 #define NNG_OPT_REMADDR "remote-address"
 #define NNG_OPT_URL "url"
+#define NNG_OPT_BRIDGE_SET_EP_CLOSED "ep-closed-switch"
 #define NNG_OPT_MAXTTL "ttl-max"
 #define NNG_OPT_RECVMAXSZ "recv-size-max"
 #define NNG_OPT_RECONNMINT "reconnect-time-min"
@@ -1041,6 +1042,9 @@ NNG_DECL nng_stat *nng_stat_find_socket(nng_stat *, nng_socket);
 
 // nng_stat_find_dialer is used to find the stats for the given dialer.
 NNG_DECL nng_stat *nng_stat_find_dialer(nng_stat *, nng_dialer);
+
+// nng_stat_find_dialer is used to find the stats for the given dialer.
+NNG_DECL nng_stat *nng_stat_find_pipe(nng_stat *, uint64_t pipeid);
 
 // nng_stat_find_listener is used to find the stats for the given listener.
 NNG_DECL nng_stat *nng_stat_find_listener(nng_stat *, nng_listener);
@@ -1651,6 +1655,7 @@ NNG_DECL void        nng_msg_set_proto_data(nng_msg *m, void *ops, void *data);
 NNG_DECL void       *nng_msg_get_proto_data(nng_msg *m);
 NNG_DECL conn_param *nng_pipe_cparam(nng_pipe p);
 NNG_DECL bool        nng_pipe_status(nng_pipe p);
+NNG_DECL int 		 nng_dialer_off(nng_dialer did);
 
 NNG_DECL void nng_taskq_setter(int num_taskq_threads, int max_taskq_threads);
 
