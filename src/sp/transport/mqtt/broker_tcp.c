@@ -372,7 +372,7 @@ tcptran_pipe_nego_cb(void *arg)
 
 	if (p->gotrxhead >= p->wantrxhead) {
 		if (0 != conn_param_alloc(&p->tcp_cparam)) {
-			rv   = NNG_ENOMEM;
+			rv   = NNG_EPROTO;
 			code = SERVER_UNAVAILABLE;
 			goto error;
 		}
@@ -411,7 +411,7 @@ tcptran_pipe_nego_cb(void *arg)
 		} else {
 			log_info("Disconnect Client due to %d parse CONNECT failed", rv);
 			nng_free(p->conn_buf, p->wantrxhead);
-			rv   = NNG_ENOMEM;
+			rv   = NNG_EPROTO;
 			code = MALFORMED_PACKET;
 			if (p->tcp_cparam->pro_ver == 5) {
 				goto close;
@@ -944,7 +944,11 @@ tcptran_pipe_recv_cb(void *arg)
 	nni_mtx_unlock(&p->mtx);
 
 	nni_aio_set_msg(aio, msg);
-	nni_aio_finish_sync(aio, 0, nni_msg_len(msg));
+	if (type == CMD_SUBSCRIBE) {
+		nni_aio_finish(aio, 0, nni_msg_len(msg));
+	} else {
+		nni_aio_finish_sync(aio, 0, nni_msg_len(msg));
+	}
 	log_trace("end of tcptran_pipe_recv_cb: synch! %p\n", p);
 	return;
 
