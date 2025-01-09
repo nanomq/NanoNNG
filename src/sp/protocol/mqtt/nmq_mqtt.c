@@ -812,12 +812,6 @@ session_keeping:
 	if (rv == 0) {
 		nni_sleep_aio(s->conf->qos_duration * 1500, &p->aio_timer);
 	}
-	// nni_mtx_unlock(&p->lk);
-	// TODO MQTT V5 check return code
-	if (rv == 0) {
-		nni_sleep_aio(s->conf->qos_duration * 1500, &p->aio_timer);
-	}
-
 	nni_msg_set_cmd_type(msg, CMD_CONNACK);
 	if (p->event == false) {
 		// set session present in connack
@@ -942,7 +936,6 @@ nano_pipe_close(void *arg)
 	// TODO send disconnect msg to client if needed.
 	// depends on MQTT V5 reason code
 	// create disconnect event msg
-	log_warn("%s pipe close!", p->conn_param->clientid.body);
 	if (p->event) {
 		msg = nano_msg_notify_disconnect(p->conn_param, p->reason_code);
 		if (msg == NULL) {
@@ -1295,7 +1288,7 @@ nano_pipe_recv_cb(void *arg)
 	nni_mtx_unlock(&s->lk);
 	nni_aio_set_msg(aio, msg);
 
-	nni_aio_finish(aio, 0, nni_msg_len(msg));
+	nni_aio_finish_sync(aio, 0, nni_msg_len(msg));
 	log_trace("end of nano_pipe_recv_cb %p", ctx);
 	return;
 
