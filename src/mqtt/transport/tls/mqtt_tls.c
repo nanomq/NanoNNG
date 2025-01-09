@@ -1705,7 +1705,7 @@ mqtts_tcptran_ep_set_reconnect_backoff(void *arg, const void *v, size_t sz, nni_
 }
 
 static int
-mqtt_tcptran_ep_set_ep_closed(void *arg, const void *v, size_t sz, nni_opt_type t)
+mqtts_tcptran_ep_set_ep_closed(void *arg, const void *v, size_t sz, nni_opt_type t)
 {
 	mqtts_tcptran_ep *ep = arg;
 	bool              tmp;
@@ -1714,7 +1714,7 @@ mqtt_tcptran_ep_set_ep_closed(void *arg, const void *v, size_t sz, nni_opt_type 
 	if ((rv = nni_copyin_bool(&tmp, v, sz, t)) == 0) {
 		nni_mtx_lock(&ep->mtx);
 		ep->closed = tmp;
-		if (tmp = true) {
+		if (tmp == true) {
 			mqtts_tcptran_pipe *p;
 			NNI_LIST_FOREACH (&ep->busypipes, p) {
 				mqtts_tcptran_pipe_close(p);
