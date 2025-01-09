@@ -290,6 +290,7 @@ mqtt_sock_set_retry_wait(void *arg, const void *v, size_t sz, nni_opt_type t)
 	return (rv);
 }
 
+static uint64_t
 mqtt_sock_get_pipeid(void *arg, void *buf, size_t *szp, nni_type t)
 {
 	// For MQTT Client, only has one pipe
