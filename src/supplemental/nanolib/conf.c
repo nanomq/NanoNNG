@@ -3645,6 +3645,8 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		    node->name, node->proto_ver);
 		log_info("%sbridge.mqtt.%s.clientid:                   %s", prefix,
 		    node->name, node->clientid);
+		log_info("%sbridge.mqtt.%s.enable:                     %d", prefix,
+		    node->name, node->enable);
 		log_info("%sbridge.mqtt.%s.clean_start:                %d", prefix,
 		    node->name, node->clean_start);
 		log_info("%sbridge.mqtt.%s.username:                   %s", prefix,
