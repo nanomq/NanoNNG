@@ -812,6 +812,11 @@ session_keeping:
 	if (rv == 0) {
 		nni_sleep_aio(s->conf->qos_duration * 1500, &p->aio_timer);
 	}
+	// nni_mtx_unlock(&p->lk);
+	// TODO MQTT V5 check return code
+	if (rv == 0) {
+		nni_sleep_aio(s->conf->qos_duration * 1500, &p->aio_timer);
+	}
 
 	nni_msg_set_cmd_type(msg, CMD_CONNACK);
 	if (p->event == false) {
@@ -861,7 +866,7 @@ nano_pipe_close(void *arg)
 	nni_pipe  *npipe        = p->pipe;
 	char      *clientid     = NULL;
 
-	log_trace(" ############## nano_pipe_close ############## ");
+	log_trace(" ############## nano_pipe_close [%p] ############## ", p);
 	if (npipe->cache == true) {
 		// not first time we trying to close stored session pipe
 		nni_atomic_swap_bool(&npipe->p_closed, false);
@@ -869,6 +874,7 @@ nano_pipe_close(void *arg)
 	}
 	nni_mtx_lock(&s->lk);
 	nni_mtx_lock(&p->lk);
+	log_info("%s pipe close!", p->conn_param->clientid.body);
 	// we freed the conn_param when restoring pipe
 	// so check status of conn_param. just let it close silently
 	if (p->conn_param->clean_start == 0) {
@@ -1146,6 +1152,7 @@ nano_pipe_recv_cb(void *arg)
 		// Store Subid RAP Topic for sub
 		nni_mtx_lock(&p->lk);
 		rv = nmq_subinfo_decode(msg, npipe->subinfol, cparam->pro_ver);
+		log_debug("Processing subinfo done");
 		if (rv < 0) {
 			log_error("Invalid subscribe packet!");
 			nni_msg_free(msg);

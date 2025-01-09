@@ -400,7 +400,7 @@ dialer_connect_cb(void *arg)
 		}
 		break;
 	}
-	log_debug("dialer connect cb rv%d %p", rv, user_aio);
+	log_trace("dialer connect cb rv%d %p", rv, user_aio);
 	if (user_aio != NULL) {
 		nni_aio_finish(user_aio, rv, 0);
 	}
@@ -564,4 +564,19 @@ nni_dialer_add_stat(nni_dialer *d, nni_stat_item *item)
 	NNI_ARG_UNUSED(d);
 	NNI_ARG_UNUSED(item);
 #endif
+}
+
+void
+nni_dialer_off(nni_dialer *d)
+{
+	nni_mtx_lock(&dialers_lk);
+	if (d->d_closed) {
+		nni_mtx_unlock(&dialers_lk);
+		nni_dialer_rele(d);
+		return;
+	}
+	nni_mtx_unlock(&dialers_lk);
+
+	nni_atomic_flag_reset(&d->d_started);
+	nni_dialer_rele(d);
 }

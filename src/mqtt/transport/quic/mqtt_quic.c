@@ -101,6 +101,7 @@ struct mqtt_quictran_ep {
 	nni_aio *            useraio;
 	nni_aio *            connaio;
 	nni_aio *            timeaio;
+	nni_sock *           nsock;
 	nni_list             busypipes; // busy pipes -- ones passed to socket
 	nni_list             waitpipes; // pipes waiting to match to socket
 	nni_list             negopipes; // pipes busy negotiating
@@ -110,10 +111,6 @@ struct mqtt_quictran_ep {
 	nni_dialer *         ndialer;
 	void *               property;  // property
 	void *               connmsg;
-
-#ifdef NNG_ENABLE_STATS
-	nni_stat_item st_rcv_max;
-#endif
 };
 
 static void mqtt_share_pipe_send_cb(void *, nni_aio *, quic_substream *);
@@ -568,7 +565,6 @@ mqtt_quictran_share_qos_send_cb(void *arg, nni_aio *qsaio, quic_substream *strea
 	mqtt_quictran_pipe *p = arg;
 	nni_mtx            *mtx;
 	nni_msg            *msg;
-	uint8_t             type;
 	size_t              n;
 	int                 rv;
 
@@ -604,7 +600,6 @@ mqtt_quictran_share_qos_send_cb(void *arg, nni_aio *qsaio, quic_substream *strea
 		return;
 	}
 	if (msg != NULL) {
-		type = nni_msg_cmd_type(msg);
 		nni_msg_free(msg);
 	} else {
 		log_warn("NULL msg detected in send_cb");
@@ -730,13 +725,17 @@ mqtt_share_pipe_send_cb(void *arg, nni_aio *txaio, quic_substream *stream)
 	nni_aio_list_remove(aio);
 	mqtt_quictran_pipe_send_start(p);
 	msg = nni_aio_get_msg(aio);
+
 	if (msg != NULL) {
 		n = nni_msg_len(msg);
-		nni_pipe_bump_tx(p->npipe, n);
+#ifdef NNG_ENABLE_STATS
+		// nni_pipe_bump_tx(p->npipe, n);
+		nni_sock_bump_tx(p->ep->nsock, n);
+#endif
 		nni_msg_free(msg);
 	}
-
 	nni_mtx_unlock(&p->mtx);
+
 	nni_aio_set_msg(aio, NULL);
 	if (stream)
 		stream->busy = false;
@@ -1040,10 +1039,16 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 		}
 		nni_mtx_unlock(&p->mtx);
 		nni_aio_finish_sync(aio, 0, n);
+#ifdef NNG_ENABLE_STATS
+		// nni_pipe_bump_rx(p->npipe, n);
+		nni_sock_bump_rx(p->ep->nsock, n);
+#endif
 		return;
 	} else if (msg != NULL) {
+		// protocol layer is not ready yet.
 		if (nni_lmq_full(&p->rxlmq)) {
 			nni_msg_free(msg);
+			// lost counter in stats msg_recv_drop
 			log_warn("msg from substream lost!");
 		} else {
 			log_debug("cache msg from substream first");
@@ -1221,7 +1226,7 @@ mqtt_quictran_pipe_send_start(mqtt_quictran_pipe *p)
 			if (qos > 0)
 				p->sndmax --;
 			if (qos > p->qosmax) {
-				p->qosmax == 1? (*header &= 0XF9) & (*header |= 0X02): NNI_ARG_UNUSED(*header);
+				p->qosmax == 1 ? ((*header &= 0XF9), (*header |= 0X02)) : NNI_ARG_UNUSED(*header);
 				p->qosmax == 0? *header &= 0XF9: NNI_ARG_UNUSED(*header);
 			}
 		}
@@ -1711,22 +1716,12 @@ mqtt_quictran_ep_init(mqtt_quictran_ep **epp, nng_url *url, nni_sock *sock)
 	NNI_LIST_INIT(&ep->negopipes, mqtt_quictran_pipe, node);
 
 	ep->proto       = nni_sock_proto_id(sock);
+	ep->nsock       = sock;
 	ep->url         = url;
 	ep->connmsg     = NULL;
 	ep->reason_code = 0;
 	ep->property    = NULL;
 	ep->backoff     = 0;
-
-#ifdef NNG_ENABLE_STATS
-	static const nni_stat_info rcv_max_info = {
-		.si_name   = "rcv_max",
-		.si_desc   = "maximum receive size",
-		.si_type   = NNG_STAT_LEVEL,
-		.si_unit   = NNG_UNIT_BYTES,
-		.si_atomic = true,
-	};
-	nni_stat_init(&ep->st_rcv_max, &rcv_max_info);
-#endif
 
 	*epp = ep;
 	return (0);
@@ -1769,8 +1764,6 @@ mqtt_quictran_dialer_init(void **dp, nng_url *url, nni_dialer *ndialer)
 	//	mqtt_quictran_ep_fini(ep);
 	//	return (rv);
 	//}
-#ifdef NNG_ENABLE_STATS
-#endif
 	*dp = ep;
 	return (0);
 }

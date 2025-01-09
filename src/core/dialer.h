@@ -30,5 +30,5 @@ extern void nni_dialer_bump_error(nni_dialer *, int);
 
 // NNG-MQTT
 extern void nni_dialer_setcb(nni_dialer *, void * cb);
-
+extern void nni_dialer_off(nni_dialer *d);  // turn off auto connect & disconnect
 #endif // CORE_DIALER_H
