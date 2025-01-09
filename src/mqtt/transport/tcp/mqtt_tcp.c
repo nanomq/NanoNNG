@@ -1602,6 +1602,7 @@ mqtt_tcptran_ep_connect(void *arg, nni_aio *aio)
 	}
 	if (ep->useraio != NULL) {
 		nni_mtx_unlock(&ep->mtx);
+		log_error("ep->useraio is NULL");
 		nni_aio_finish_error(aio, NNG_EBUSY);
 		return;
 	}
@@ -1697,6 +1698,27 @@ mqtt_tcptran_ep_set_reconnect_backoff(void *arg, const void *v, size_t sz, nni_o
 	if ((rv = nni_copyin_ms(&tmp, v, sz, t)) == 0) {
 		nni_mtx_lock(&ep->mtx);
 		ep->backoff_max = tmp > 600000 ? 360000 : tmp;
+		nni_mtx_unlock(&ep->mtx);
+	}
+	return (rv);
+}
+
+static int
+mqtt_tcptran_ep_set_ep_closed(void *arg, const void *v, size_t sz, nni_opt_type t)
+{
+	mqtt_tcptran_ep *ep = arg;
+	bool             tmp;
+	int              rv;
+
+	if ((rv = nni_copyin_bool(&tmp, v, sz, t)) == 0) {
+		nni_mtx_lock(&ep->mtx);
+		ep->closed = tmp;
+		if (tmp = true) {
+			mqtt_tcptran_pipe *p;
+			NNI_LIST_FOREACH (&ep->busypipes, p) {
+				mqtt_tcptran_pipe_close(p);
+			}
+		}
 		nni_mtx_unlock(&ep->mtx);
 	}
 	return (rv);
@@ -1802,6 +1824,10 @@ static const nni_option mqtt_tcptran_ep_opts[] = {
 	{
 	    .o_name = NNG_OPT_URL,
 	    .o_get  = mqtt_tcptran_ep_get_url,
+	},
+	{
+	    .o_name = NNG_OPT_BRIDGE_SET_EP_CLOSED,
+	    .o_set  = mqtt_tcptran_ep_set_ep_closed,
 	},
 	{
 	    .o_name = NNG_OPT_MQTT_ENABLE_SCRAM,
