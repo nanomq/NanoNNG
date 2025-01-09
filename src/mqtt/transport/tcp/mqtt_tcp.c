@@ -1713,7 +1713,7 @@ mqtt_tcptran_ep_set_ep_closed(void *arg, const void *v, size_t sz, nni_opt_type 
 	if ((rv = nni_copyin_bool(&tmp, v, sz, t)) == 0) {
 		nni_mtx_lock(&ep->mtx);
 		ep->closed = tmp;
-		if (tmp = true) {
+		if (tmp == true) {
 			mqtt_tcptran_pipe *p;
 			NNI_LIST_FOREACH (&ep->busypipes, p) {
 				mqtt_tcptran_pipe_close(p);
