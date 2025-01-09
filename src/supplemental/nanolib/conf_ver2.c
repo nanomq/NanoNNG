@@ -1044,6 +1044,7 @@ conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 	hocon_read_time(node, backoff_max, jso_connector);
 	hocon_read_bool(node, clean_start, jso_connector);
 	hocon_read_bool(node, transparent, jso_connector);
+	hocon_read_bool(node, enable, jso_connector);
 	hocon_read_str(node, username, jso_connector);
 	hocon_read_str(node, password, jso_connector);
 	update_bridge_node_vin(node, CONF_NODE_CLIENTID);
@@ -1131,9 +1132,9 @@ conf_bridge_node_parse(
     conf_bridge_node *node, conf_sqlite *bridge_sqlite, cJSON *obj)
 {
 	node->name = nng_strdup(obj->string);
+	node->enable = true;	// from 0.23.3, enable option returned.
 	conf_bridge_connector_parse_ver2(node, obj);
 	node->sqlite = bridge_sqlite;
-	node->enable = true;
 #if defined(SUPP_QUIC)
 	conf_bridge_quic_parse_ver2(node, obj);
 #endif
@@ -1320,14 +1321,13 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 			    bridge_sqlite, resend_interval, node_item);
 			hocon_read_str(
 			    bridge_sqlite, mounted_file_path, node_item);
-
 		} else {
 			conf_bridge_node *node = NNI_ALLOC_STRUCT(node);
 			nng_mtx_alloc(&node->mtx);
 			conf_bridge_node_init(node);
 			conf_bridge_node_parse(node, bridge_sqlite, node_item);
 			cvector_push_back(config->bridge.nodes, node);
-			config->bridge_mode |= node->enable;
+			config->bridge_mode = true;
 		}
 	}
 
