@@ -1705,6 +1705,27 @@ mqtts_tcptran_ep_set_reconnect_backoff(void *arg, const void *v, size_t sz, nni_
 }
 
 static int
+mqtt_tcptran_ep_set_ep_closed(void *arg, const void *v, size_t sz, nni_opt_type t)
+{
+	mqtts_tcptran_ep *ep = arg;
+	bool              tmp;
+	int               rv;
+
+	if ((rv = nni_copyin_bool(&tmp, v, sz, t)) == 0) {
+		nni_mtx_lock(&ep->mtx);
+		ep->closed = tmp;
+		if (tmp = true) {
+			mqtts_tcptran_pipe *p;
+			NNI_LIST_FOREACH (&ep->busypipes, p) {
+				mqtts_tcptran_pipe_close(p);
+			}
+		}
+		nni_mtx_unlock(&ep->mtx);
+	}
+	return (rv);
+}
+
+static int
 mqtts_tcptran_ep_set_enable_scram(void *arg, const void *v, size_t sz, nni_opt_type t)
 {
 	mqtts_tcptran_ep *ep = arg;
@@ -1804,6 +1825,10 @@ static const nni_option mqtts_tcptran_ep_opts[] = {
 	{
 	    .o_name = NNG_OPT_URL,
 	    .o_get  = mqtts_tcptran_ep_get_url,
+	},
+	{
+	    .o_name = NNG_OPT_BRIDGE_SET_EP_CLOSED,
+	    .o_set  = mqtts_tcptran_ep_set_ep_closed,
 	},
 	{
 	    .o_name = NNG_OPT_MQTT_ENABLE_SCRAM,

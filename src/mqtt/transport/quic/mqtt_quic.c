@@ -1917,6 +1917,27 @@ mqtt_quictran_ep_set_reconnect_backoff(void *arg, const void *v, size_t sz, nni_
 }
 
 static int
+mqtt_quictran_ep_set_ep_closed(void *arg, const void *v, size_t sz, nni_opt_type t)
+{
+	mqtt_quictran_ep *ep = arg;
+	bool             tmp;
+	int              rv;
+
+	if ((rv = nni_copyin_bool(&tmp, v, sz, t)) == 0) {
+		nni_mtx_lock(&ep->mtx);
+		ep->closed = tmp;
+		if (tmp = true) {
+			mqtt_quictran_pipe *p;
+			NNI_LIST_FOREACH (&ep->busypipes, p) {
+				mqtt_quictran_pipe_close(p);
+			}
+		}
+		nni_mtx_unlock(&ep->mtx);
+	}
+	return (rv);
+}
+
+static int
 mqtt_quictran_ep_set_priority(void *arg, const void *v, size_t sz, nni_opt_type t)
 {
 	NNI_ARG_UNUSED(sz);
@@ -2018,6 +2039,10 @@ static const nni_option mqtt_quictran_ep_opts[] = {
 	{
 	    .o_name = NNG_OPT_URL,
 	    .o_get  = mqtt_quictran_ep_get_url,
+	},
+	{
+	    .o_name = NNG_OPT_BRIDGE_SET_EP_CLOSED,
+	    .o_set  = mqtt_quictran_ep_set_ep_closed,
 	},
 	{
 	    .o_name = NNG_OPT_MQTT_QUIC_PRIORITY,
