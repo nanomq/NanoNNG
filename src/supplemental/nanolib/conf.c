@@ -3107,6 +3107,7 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->forwards_list  = NULL;
 	node->sub_count      = 0;
 	node->sub_list       = NULL;
+	node->dialer         = NULL;
 
 	node->will_flag    = false;
 	node->will_topic   = NULL;
@@ -3428,6 +3429,7 @@ conf_bridge_content_parse(conf *nanomq_conf, conf_bridge *bridge,
 	// 3. foreach the names as the key, get the value from the file and set
 	// sqlite config pointer;
 	conf_bridge_node **node_array = NULL;
+	nanomq_conf->bridge_mode = true;
 	cvector_set_size(node_array, sizeof(conf_bridge_node *) * group_count);
 
 	char key_prefix[100] = {0};
@@ -3440,7 +3442,6 @@ conf_bridge_content_parse(conf *nanomq_conf, conf_bridge *bridge,
 		node->name    = nng_strdup(group_names[i]);
 		node->sqlite  = &bridge->sqlite;
 		cvector_push_back(node_array, node);
-		nanomq_conf->bridge_mode |= node->enable;
 	}
 	bridge->nodes = node_array;
 	free_bridge_group_names(group_names, group_count);
@@ -3521,6 +3522,11 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 	if (node->will_payload) {
 		free(node->will_payload);
 		node->will_payload = NULL;
+	}
+	if (node->dialer) {
+		nng_dialer_close(*node->dialer);
+		nng_free(node->dialer, sizeof(nng_dialer));
+		node->dialer = NULL;
 	}
 	if (node->ctx_msgs) {
 		nng_lmq_flush(node->ctx_msgs);
