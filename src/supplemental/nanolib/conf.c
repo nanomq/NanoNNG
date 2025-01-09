@@ -2827,7 +2827,7 @@ conf_bridge_node_parse_subs(
 		if (!get_retain &&
 		    (value = get_conf_value(line, sz, key)) != NULL) {
 			retain = (uint8_t) atoi(value);
-			if(retain != 0 || retain != 1) {
+			if(retain != 0 && retain != 1) {
 				retain = NO_RETAIN;
 			}
 			free(value);
@@ -3000,7 +3000,7 @@ conf_bridge_node_parse_forwards(
 		if (!get_retain &&
 		    (value = get_conf_value(line, sz, key)) != NULL) {
 			retain = (uint8_t) atoi(value);
-			if(retain != 0 || retain != 1) {
+			if(retain != 0 && retain != 1) {
 				retain = NO_RETAIN;
 			}
 			free(value);
@@ -4326,7 +4326,7 @@ conf_exchange_node_destory(conf_exchange_node *node)
 		nng_strfree(node->topic);
 		nng_strfree(node->name);
 		nng_mtx_free(node->mtx);
-		for (int i = 0; i < node->rbufs_sz; i++) {
+		for (size_t i = 0; i < node->rbufs_sz; i++) {
 			if (node->rbufs[i]) {
 				nng_strfree(node->rbufs[i]->name);
 				NNI_FREE_STRUCT(node->rbufs[i]);
@@ -4342,7 +4342,7 @@ conf_exchange_node_destory(conf_exchange_node *node)
 static void
 conf_exchange_destroy(conf_exchange *exchange)
 {
-	for (int i = 0; i < exchange->count; i++) {
+	for (size_t i = 0; i < exchange->count; i++) {
 		conf_exchange_node *node = exchange->nodes[i];
 		conf_exchange_node_destory(node);
 	}

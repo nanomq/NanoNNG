@@ -296,7 +296,7 @@ struct conf_bridge_node {
 	conf_sqlite *sqlite;
 	nng_aio    **bridge_aio;
 	nng_aio		*resend_aio;
-	nng_dialer  *dialer;	// in order to postpone bridging client start after local broker
+	nng_dialer  *dialer;
 	nng_lmq		*ctx_msgs;  // only cache qos msg blocked by aio busy
 	nng_mtx     *mtx;
 
@@ -593,7 +593,7 @@ struct conf {
 	bool       allow_anonymous;
 	bool       daemon;
 	bool       ipc_internal;
-	bool       bridge_mode;
+	bool       bridge_mode;				// global switch of bridging for hot update
 
 	conf_tcp_list        tcp_list;
 	conf_tls_list        tls_list;
