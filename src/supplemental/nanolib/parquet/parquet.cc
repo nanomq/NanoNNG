@@ -1087,7 +1087,7 @@ parquet_find_data_packet(
 	string topic = extract_topic(filename);
 	conf         = file_manager.fetch_conf(topic);
 	if (conf->enable == false) {
-		log_error("Parquet %s is not ready or not launch!", topic);
+		log_error("Parquet %s is not ready or not launch!", topic.c_str());
 		return ret_vec;
 	}
 
@@ -1122,7 +1122,7 @@ parquet_find_data_packet(conf_parquet *conf, char *filename, uint64_t key)
 	string topic = extract_topic(filename);
 	conf         = file_manager.fetch_conf(topic);
 	if (conf->enable == false) {
-		log_error("Parquet %s is not ready or not launch!", topic);
+		log_error("Parquet %s is not ready or not launch!", topic.c_str());
 		return NULL;
 	}
 	WAIT_FOR_AVAILABLE
