@@ -2,6 +2,7 @@
 #include <unistd.h>
 
 #include <unistd.h>
+#include <sys/stat.h>
 
 // Constructor
 parquet_file_queue::parquet_file_queue(conf_parquet *node)
@@ -152,17 +153,23 @@ parquet_file_queue::has_md5_sum(const string &file_name)
 	return file_name.find("_") != string::npos;
 }
 
+
 bool
 parquet_file_queue::directory_exists(const std::string &directory_path)
 {
-	return fs::exists(directory_path) && fs::is_directory(directory_path);
+	struct stat buffer;
+	return (stat(directory_path.c_str(), &buffer) == 0 &&
+	    S_ISDIR(buffer.st_mode));
 }
 
 bool
 parquet_file_queue::create_directory(const std::string &directory_path)
 {
-	return fs::create_directory(directory_path);
+	int status = mkdir(
+	    directory_path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+	return (status == 0);
 }
+
 
 int
 parquet_file_queue::remove_old_file(CircularQueue &queue)

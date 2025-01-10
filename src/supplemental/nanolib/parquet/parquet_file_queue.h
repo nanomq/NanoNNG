@@ -9,13 +9,11 @@
 #include <algorithm>
 #include <cstdlib>
 #include <dirent.h>
-#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <regex>
 #include <string>
 #include <vector>
-namespace fs = std::filesystem;
 
 using namespace std;
 
