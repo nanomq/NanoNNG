@@ -59,7 +59,7 @@ struct mqtt_tcptran_pipe {
 	nni_aio         *rpaio;
 	nni_msg         *rxmsg;
 	nni_mtx          mtx;
-	bool             closed;
+	nni_atomic_bool  closed;
 #ifdef NNG_HAVE_MQTT_BROKER
 	nni_msg         *connack;
 	conn_param *     cparam;
@@ -133,10 +133,7 @@ mqtt_tcptran_pipe_close(void *arg)
 {
 	mqtt_tcptran_pipe *p = arg;
 
-	nni_mtx_lock(&p->mtx);
-
-	p->closed = true;
-	nni_mtx_unlock(&p->mtx);
+	nni_atomic_set_bool(&p->closed, true);
 
 	nni_aio_close(p->rxaio);
 	nni_aio_close(p->txaio);
@@ -162,7 +159,8 @@ mqtt_tcptran_pipe_init(void *arg, nni_pipe *npipe)
 	mqtt_tcptran_pipe *p = arg;
 
 	p->npipe = npipe;
-	p->closed = false;
+	nni_atomic_init_bool(&p->closed);
+	nni_atomic_set_bool(&p->closed, false);
 	// set max value by default
 	p->packmax == 0 ? p->packmax = (uint32_t)0xFFFFFFFF : p->packmax;
 	p->qosmax  == 0 ? p->qosmax  = 2 : p->qosmax;
@@ -914,7 +912,7 @@ mqtt_tcptran_pipe_send_start(mqtt_tcptran_pipe *p)
 	int      niov;
 	nni_iov  iov[3];
 
-	if (p->closed) {
+	if (nni_atomic_get_bool(&p->closed)) {
 		while ((aio = nni_list_first(&p->sendq)) != NULL) {
 			nni_list_remove(&p->sendq, aio);
 			nni_aio_finish_error(aio, SERVER_SHUTTING_DOWN);
@@ -979,6 +977,10 @@ mqtt_tcptran_pipe_send(void *arg, nni_aio *aio)
 	if (nni_aio_begin(aio) != 0) {
 		return;
 	}
+	if (nni_atomic_get_bool(&p->closed)) {
+		nni_aio_finish_error(aio, rv);
+		return;
+	}
 	nni_mtx_lock(&p->mtx);
 	if ((rv = nni_aio_schedule(aio, mqtt_tcptran_pipe_send_cancel, p)) != 0) {
 		nni_mtx_unlock(&p->mtx);
@@ -1021,7 +1023,7 @@ mqtt_tcptran_pipe_recv_start(mqtt_tcptran_pipe *p)
 	nni_aio *rxaio;
 	nni_iov  iov;
 
-	if (p->closed) {
+	if (nni_atomic_get_bool(&p->closed)) {
 		nni_aio *aio;
 		while ((aio = nni_list_first(&p->recvq)) != NULL) {
 			nni_list_remove(&p->recvq, aio);
@@ -1583,6 +1585,10 @@ mqtt_tcptran_ep_connect(void *arg, nni_aio *aio)
 		log_error("ep connect rv %d", rv);
 		return;
 	}
+	if (ep->closed) {
+		nni_aio_finish_error(aio, NNG_ECLOSED);
+		return;
+	}
 	if (ep->backoff != 0) {
 		ep->backoff = ep->backoff * 2;
 		ep->backoff = ep->backoff > ep->backoff_max
@@ -1716,7 +1722,7 @@ mqtt_tcptran_ep_set_ep_closed(void *arg, const void *v, size_t sz, nni_opt_type 
 		if (tmp == true) {
 			mqtt_tcptran_pipe *p;
 			NNI_LIST_FOREACH (&ep->busypipes, p) {
-				mqtt_tcptran_pipe_close(p);
+				nni_pipe_close(p->npipe);
 			}
 		}
 		nni_mtx_unlock(&ep->mtx);
