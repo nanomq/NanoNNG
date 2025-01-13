@@ -61,7 +61,7 @@ struct mqtts_tcptran_pipe {
 	nni_msg *         rxmsg;
 	nni_lmq           rslmq;
 	nni_mtx           mtx;
-	bool              closed;
+	nni_atomic_bool   closed;
 	bool              busy;
 	nni_msg *         smsg;
 #ifdef NNG_HAVE_MQTT_BROKER
@@ -138,11 +138,7 @@ mqtts_tcptran_pipe_close(void *arg)
 {
 	mqtts_tcptran_pipe *p = arg;
 
-	nni_mtx_lock(&p->mtx);
-
-	p->closed = true;
-	// nni_lmq_flush(&p->rslmq);
-	nni_mtx_unlock(&p->mtx);
+	nni_atomic_set_bool(&p->closed, true);
 
 	nni_aio_close(p->rxaio);
 	nni_aio_close(p->txaio);
@@ -169,7 +165,8 @@ mqtts_tcptran_pipe_init(void *arg, nni_pipe *npipe)
 
 	p->npipe = npipe;
 	// nni_lmq_init(&p->rslmq, 16);
-	p->busy = false;
+	nni_atomic_init_bool(&p->closed);
+	nni_atomic_set_bool(&p->closed, false);
 	// set max value by default
 	p->packmax == 0 ? p->packmax = (uint32_t)0xFFFFFFFF : p->packmax;
 	p->qosmax  == 0 ? p->qosmax  = 2 : p->qosmax;
@@ -889,7 +886,7 @@ mqtts_tcptran_pipe_send_start(mqtts_tcptran_pipe *p)
 	int      niov;
 	nni_iov  iov[3];
 
-	if (p->closed) {
+	if (nni_atomic_get_bool(&p->closed)) {
 		while ((aio = nni_list_first(&p->sendq)) != NULL) {
 			nni_list_remove(&p->sendq, aio);
 			nni_aio_finish_error(aio, SERVER_SHUTTING_DOWN);
@@ -951,6 +948,10 @@ mqtts_tcptran_pipe_send(void *arg, nni_aio *aio)
 	if (nni_aio_begin(aio) != 0) {
 		return;
 	}
+	if (nni_atomic_get_bool(&p->closed)) {
+		nni_aio_finish_error(aio, rv);
+		return;
+	}
 	nni_mtx_lock(&p->mtx);
 	if ((rv = nni_aio_schedule(aio, mqtts_tcptran_pipe_send_cancel, p)) !=
 	    0) {
@@ -994,7 +995,7 @@ mqtts_tcptran_pipe_recv_start(mqtts_tcptran_pipe *p)
 	nni_aio *rxaio;
 	nni_iov  iov;
 
-	if (p->closed) {
+	if (nni_atomic_get_bool(&p->closed)) {
 		nni_aio *aio;
 		while ((aio = nni_list_first(&p->recvq)) != NULL) {
 			nni_list_remove(&p->recvq, aio);
@@ -1583,6 +1584,10 @@ mqtts_tcptran_ep_connect(void *arg, nni_aio *aio)
 	int               rv;
 
 	if (nni_aio_begin(aio) != 0) {
+		return;
+	}
+	if (ep->closed) {
+		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
 	}
 	if (ep->backoff != 0) {
