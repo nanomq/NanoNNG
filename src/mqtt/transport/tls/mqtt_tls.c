@@ -953,8 +953,7 @@ mqtts_tcptran_pipe_send(void *arg, nni_aio *aio)
 		return;
 	}
 	nni_mtx_lock(&p->mtx);
-	if ((rv = nni_aio_schedule(aio, mqtts_tcptran_pipe_send_cancel, p)) !=
-	    0) {
+	if ((rv = nni_aio_schedule(aio, mqtts_tcptran_pipe_send_cancel, p)) != 0) {
 		nni_mtx_unlock(&p->mtx);
 		nni_aio_finish_error(aio, rv);
 		return;
