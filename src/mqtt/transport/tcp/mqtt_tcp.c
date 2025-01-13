@@ -978,7 +978,7 @@ mqtt_tcptran_pipe_send(void *arg, nni_aio *aio)
 		return;
 	}
 	if (nni_atomic_get_bool(&p->closed)) {
-		nni_aio_finish_error(aio, rv);
+		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
 	}
 	nni_mtx_lock(&p->mtx);
