@@ -578,5 +578,6 @@ nni_dialer_off(nni_dialer *d)
 	nni_mtx_unlock(&dialers_lk);
 
 	nni_atomic_flag_reset(&d->d_started);
+	nni_aio_stop(&d->d_tmo_aio);
 	nni_dialer_rele(d);
 }
