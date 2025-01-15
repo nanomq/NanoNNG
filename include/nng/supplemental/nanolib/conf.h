@@ -352,7 +352,7 @@ struct conf_parquet {
 	char                   *name;
 	char                   *dir;
 	char                   *file_name_prefix;
-	uint8_t                 file_count;
+	uint32_t                 file_count;
 	uint32_t                limit_frequency;
 	uint8_t                 file_index;
 	int32_t                 file_size;
