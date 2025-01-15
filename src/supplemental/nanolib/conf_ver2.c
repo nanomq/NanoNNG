@@ -1460,6 +1460,8 @@ conf_parquet_parse_ver2(conf *config, conf_exchange_node *node, cJSON *jso)
 			hocon_read_enum(encryption, type,
 			    jso_parquet_encryption, encryption_type);
 		}
+
+		config->parquet.enable = true;
 	} else {
 		// Use the default settings. One should be careful when it's free.
 		node->parquet = &config->parquet;
