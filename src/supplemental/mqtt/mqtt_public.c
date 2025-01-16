@@ -847,14 +847,23 @@ nng_mqtt_client_send_cb(void* arg)
 
 	nni_lmq * lmq = (nni_lmq *)client->msgq;
 	// in case of data conention while fini pipes
-	if (nng_aio_result(aio) == NNG_ECLOSED)
-		return;
+	int rv = nng_aio_result(aio);
 
 	nng_msg *        msg    = nng_aio_get_msg(aio);
-	if (msg == NULL || nng_aio_result(aio) != 0) {
+	if (msg == NULL && rv != 0) {
+		log_warn("bridge send aio rv %d", rv);
 		client->cb(client, NULL, client->obj);
 		return;
 	}
+	if (rv != 0) {
+		if (msg != NULL && nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_SUBSCRIBE) {
+			nng_aio_set_msg(client->send_aio, msg);
+			log_info("resend subscribe msg again!");
+			nng_send_aio(client->sock, client->send_aio);
+			return;
+		}
+	}
+
 
 	if (nni_lmq_get(lmq, &tmsg) == 0) {
 		nng_aio_set_msg(client->send_aio, tmsg);
