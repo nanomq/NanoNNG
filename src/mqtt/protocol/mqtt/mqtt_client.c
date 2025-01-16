@@ -585,13 +585,20 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg, mqtt_sock_t *s)
 			if (rv != 0) {
 				log_warn("Cancel_Func scheduling failed, send abort!");
 				nni_id_remove(&s->sent_unack, packet_id);
-				nni_aio_set_msg(aio, NULL);
+				if (ptype == NNG_MQTT_SUBSCRIBE) {
+					nni_aio_set_msg(aio, msg);	// only preserve subscribe msg
+				} else {
+					nni_aio_set_msg(aio, NULL);
+					nni_msg_free(msg);	// User need to realloc this msg again
+				}
 				nni_mtx_unlock(&s->mtx);
-				nni_msg_free(msg);	// User need to realloc this msg again
 #ifdef NNG_ENABLE_STATS
 				nni_stat_inc(&s->msg_send_drop, 1);
 #endif
-				nni_aio_finish_error(aio, rv);
+				if (ptype == NNG_MQTT_SUBSCRIBE)
+					nni_aio_finish_error(aio, rv);
+				else
+					nni_aio_finish(aio, rv, 0);
 				return;
 			}
 			// pass proto_data to cached aio, either it is freed in ack or in cancel
