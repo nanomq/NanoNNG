@@ -77,7 +77,7 @@ parquet_file_queue::init()
 			char *file_name = strdup(file.file_path.c_str());
 			update_queue(file_name);
 
-			log_info("Loaded %zu parquet file %s, %p in time "
+			log_debug("Loaded %zu parquet file %s, %p in time "
 			         "order from %s.",
 			    files.size(), parquet->dir, file_name, file_name);
 		}
@@ -104,7 +104,7 @@ void
 parquet_file_queue::update_queue(const char *filename)
 {
 	ENQUEUE(queue, (void *) filename);
-	log_info("queue size: %d, file_count: %d", QUEUE_SIZE(queue),
+	log_debug("queue size: %d, file_count: %d", QUEUE_SIZE(queue),
 	    node->file_count);
 	if (QUEUE_SIZE(queue) > node->file_count) {
 		remove_old_file(queue);
