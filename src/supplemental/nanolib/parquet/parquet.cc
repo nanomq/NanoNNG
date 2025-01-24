@@ -1302,6 +1302,8 @@ static parquet_data_ret *parquet_read_payload(shared_ptr<parquet::RowGroupReader
         parquet_data_packet **payload_arr = read_column_data(col.reader, index_vector, batch_size, total_values_read);
         if (payload_arr) {
             ret_rows_vec.push_back(payload_arr);
+        } else {
+            ret_rows_vec.push_back(nullptr);
         }
     }
 
