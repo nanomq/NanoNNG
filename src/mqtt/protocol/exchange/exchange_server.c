@@ -470,7 +470,10 @@ static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data)
 							nng_msg *newmsg = NULL;
 							nng_msg_alloc(&newmsg, 0);
 							nni_msg_append(newmsg, parquet_decoded_data->data, parquet_decoded_data->len);
-							nng_sendmsg(*(s->pair0_sock), newmsg, 0);
+							if (s->pair0_sock)
+								nng_sendmsg(*(s->pair0_sock), newmsg, 0);
+							else
+								log_error("pair0_sock is null!!!!!!!!!");
 							/* NOTE: sleep 1000ms */
 							nng_msleep(1000);
 							stream_decoded_data_free(parquet_decoded_data);
@@ -630,6 +633,7 @@ exchange_sock_init(void *arg, nni_sock *sock)
 	nni_mtx_init(&s->mtx);
 	nni_id_map_init(&s->rbmsgmap, 0, 0, true);
 	s->isBusy = false;
+	s->pair0_sock = NULL;
 
 	nni_lmq_init(&s->lmq, 256);
 
