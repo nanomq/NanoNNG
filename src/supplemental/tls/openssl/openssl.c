@@ -21,7 +21,7 @@
 // Follow the suggestion from Sliepen. https://stackoverflow.com/questions/69079419/how-i-can-read-more-than-16384-bytes-using-openssl-tls
 #define OPEN_BUF_SZ 16000
 
-//#define OPEN_DEBUG 1
+#define OPEN_DEBUG 1
 //#define OPEN_TRACE 1
 
 #ifdef OPEN_TRACE
@@ -299,7 +299,7 @@ static int
 open_conn_handshake(nng_tls_engine_conn *ec)
 {
 	int rv;
-	print_trace();
+	//print_trace();
 	if (ec->ok == 1)
 		return 0;
 	rv = SSL_do_handshake(ec->ssl);
