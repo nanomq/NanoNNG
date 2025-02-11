@@ -11,7 +11,12 @@ if (NNG_TLS_ENGINE STREQUAL "open")
         Linking against OpenSSL may change license terms.
         Consult a lawyer and the license files for details.
         ************************************************************")
-    nng_sources(openssl.c)
+    if(TLS_EXTERN_PRIVATE_KEY)
+        nng_sources(openssl.c tee.cc tee.h)
+    else()
+        nng_sources(openssl.c)
+    endif()
+
 
     # If OpenSSL was added by a consuming project, then we should use that
     # instance of it, instead of configuring our own.
