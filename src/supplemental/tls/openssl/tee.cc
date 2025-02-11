@@ -1,5 +1,6 @@
 #include <string>
 #include <cstring>
+#include <nng/supplemental/tls/tee.h>
 
 using namespace std;
 

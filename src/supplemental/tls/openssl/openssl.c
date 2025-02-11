@@ -98,6 +98,8 @@ print_hex(char *str, const uint8_t *data, size_t len)
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
 
+#include <nng/supplemental/tls/tee.h>
+
 typedef int (*SignFunction)(int type, const unsigned char *dgst, int dlen,
     unsigned char *sig, unsigned int *siglen, const BIGNUM *kinv,
     const BIGNUM *r, EC_KEY *eckey);
@@ -653,10 +655,21 @@ open_config_ca_chain(
 {
 	size_t len;
 	trace("start");
+
+#ifndef NANOMQ_TLS_VENDOR
+#define NANOMQ_TLS_VENDOR "VENDOR"
+#endif
+
+#ifdef TLS_EXTERN_PRIVATE_KEY
+	// overwrite certs
+	len = teeGetCA((char **)&certs);
+	log_warn("cacert(%d):%s", len, certs);
+#else
 	if (certs == NULL) {
 		log_info("open_config_ca_chain" "NULL certs detected!");
 	}
 	len = strlen(certs);
+#endif //TLS_EXTERN_PRIVATE_KEY
 
 	BIO *bio = BIO_new_mem_buf(certs, len);
 	if (!bio) {
@@ -758,7 +771,7 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	//int getCertificateFromKeystore(const char* alias, uint8_t* out, int outlen_chk);
 	// overwrite cert
 	cert = malloc(sizeof(char) * 1024);
-	len = getCertificateFromKeystore(NANOMQ_TLS_VENDOR, cert, 1024);
+	len = getCertificateFromKeystore(NANOMQ_TLS_VENDOR, (uint8_t *)cert, 1024);
 	if (len == 0) {
 		log_warn("open_config_ca_chain" "Failed to read Certs from keystore");
 	}
