@@ -98,6 +98,9 @@ print_hex(char *str, const uint8_t *data, size_t len)
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
 
+#include "tee_interface.h"
+#include "csmwDesayPki.h"
+
 #include <nng/supplemental/tls/tee.h>
 
 typedef int (*SignFunction)(int type, const unsigned char *dgst, int dlen,
@@ -775,7 +778,7 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	if (len == 0) {
 		log_warn("open_config_ca_chain" "Failed to read Certs from keystore");
 	}
-	log_warn("cert(%d) %x%x%x", len, cert[0], cert[1], cert[2]);
+	log_warn("cert(%d) %x%x%x %s", len, cert[0], cert[1], cert[2], cert);
 #endif // TLS_EXTERN_PRIVATE_KEY
 	len = strlen(cert);
 	biocert = BIO_new_mem_buf(cert, len);
