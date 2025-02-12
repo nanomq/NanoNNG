@@ -642,6 +642,7 @@ open_config_ca_chain(
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
 	// overwrite certs
+	log_info("teeGetCA start");
 	len = teeGetCA((char **)&certs);
 	log_warn("cacert(%d):%s", len, certs);
 #else
@@ -750,6 +751,7 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 #ifdef TLS_EXTERN_PRIVATE_KEY
 	//int getCertificateFromKeystore(const char* alias, uint8_t* out, int outlen_chk);
 	// overwrite cert
+	log_info("Try to read Certs from keystore");
 	cert = malloc(sizeof(char) * 1024);
 	len = getCertificateFromKeystore(NANOMQ_TLS_VENDOR, (uint8_t *)cert, 1024);
 	if (len == 0) {
@@ -777,6 +779,7 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	}
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
+	log_info("eckey generate start");
 	NNI_ARG_UNUSED(key);
 	// Generate ECKEY
 	EC_KEY *eckey = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
