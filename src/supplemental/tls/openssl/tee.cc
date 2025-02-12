@@ -3,8 +3,8 @@
 #include <nng/supplemental/tls/tee.h>
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
-#include "tee_interface.h"
-#include "csmwDesayPki.h"
+#include "/home/runner/work/NanoMQ_mirror/NanoMQ_mirror/extern/thirdparty/tee_interface.h"
+#include "/home/runner/work/NanoMQ_mirror/NanoMQ_mirror/extern/thirdparty/csmwDesayPki.h"
 #endif
 
 using namespace std;
