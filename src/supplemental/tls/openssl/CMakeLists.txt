@@ -6,6 +6,8 @@ if(TLS_EXTERN_PRIVATE_KEY)
     message(NOTICE ${CMAKE_SOURCE_DIR})
     include_directories(${CMAKE_SOURCE_DIR}/extern/thirdparty)
     link_directories(${CMAKE_SOURCE_DIR}/extern/thirdparty)
+    nng_link_libraries(libcsmw_desaypki.so)
+    nng_link_libraries(libcsmw.so)
 endif(TLS_EXTERN_PRIVATE_KEY)
 
 if (NNG_TLS_ENGINE STREQUAL "open")
