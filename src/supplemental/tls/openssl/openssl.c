@@ -76,8 +76,8 @@ print_hex(char *str, const uint8_t *data, size_t len)
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
 
-#include "/home/runner/work/NanoMQ_mirror/NanoMQ_mirror/extern/thirdparty/tee_interface.h"
 #include "/home/runner/work/NanoMQ_mirror/NanoMQ_mirror/extern/thirdparty/csmwDesayPki.h"
+//#include "/home/wangha/Documents/NanoMQ_mirror/extern/thirdparty/csmwDesayPki.h"
 
 #include <nng/supplemental/tls/tee.h>
 
