@@ -168,7 +168,7 @@ static void
 open_conn_fini(nng_tls_engine_conn *ec)
 {
 	trace("start");
-	SSL_free(ec->ssl);
+	//SSL_free(ec->ssl);
 	trace("end");
 }
 
@@ -729,12 +729,13 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	BIO *biocert = NULL;
 	X509 *xcert = NULL;
 	EVP_PKEY *pkey = NULL;
-	trace("start");
+	log_info("--start");
 
 #if NNG_OPENSSL_HAVE_PASSWORD
 	char *dup = NULL;
 	if (pass != NULL) {
 		if ((dup = nng_strdup(pass)) == NULL) {
+			log_info("--end1");
 			return (NNG_ENOMEM);
 		}
 	}
@@ -757,7 +758,7 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	if (len == 0) {
 		log_warn("open_config_ca_chain" "Failed to read Certs from keystore");
 	}
-	log_warn("cert(%d) %x%x%x %s", len, cert[0], cert[1], cert[2], cert);
+	log_warn("cert(%d) %x%x%x", len, cert[0], cert[1], cert[2]);
 #endif // TLS_EXTERN_PRIVATE_KEY
 	len = strlen(cert);
 	biocert = BIO_new_mem_buf(cert, len);
