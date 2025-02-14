@@ -752,16 +752,19 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 #ifdef TLS_EXTERN_PRIVATE_KEY
 	//int getCertificateFromKeystore(const char* alias, uint8_t* out, int outlen_chk);
 	// overwrite cert
+	NNI_ARG_UNUSED(cert);
 	log_info("Try to read Certs from keystore(%s)", NANOMQ_TLS_VENDOR);
-	cert = malloc(sizeof(char) * 2048);
-	len = getCertificateFromKeystore(NANOMQ_TLS_VENDOR, (uint8_t *)cert, 2048);
+	char *cert1 = malloc(sizeof(char) * 2048);
+	memset(cert1, 0, 2048);
+	len = getCertificateFromKeystore(NANOMQ_TLS_VENDOR, (uint8_t *)cert1, 2048);
 	if (len == 0) {
 		log_warn("open_config_ca_chain" "Failed to read Certs from keystore");
 	}
-	log_warn("cert(%d) %x%x%x", len, cert[0], cert[1], cert[2]);
+	log_warn("cert(%d) %x%x%x", len, cert1[0], cert1[1], cert1[2]);
 #endif // TLS_EXTERN_PRIVATE_KEY
-	len = strlen(cert);
-	biocert = BIO_new_mem_buf(cert, len);
+	len = strlen(cert1);
+	log_warn("cert:%s len:%d", cert1, len);
+	biocert = BIO_new_mem_buf(cert1, len);
 	if (!biocert) {
 		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to create BIO");
 		rv = NNG_ENOMEM;
@@ -891,6 +894,7 @@ error:
 	if (biokey)
 		BIO_free(biokey);
 
+	log_info("--end");
 	trace("end");
 	return rv;
 }
