@@ -752,9 +752,9 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 #ifdef TLS_EXTERN_PRIVATE_KEY
 	//int getCertificateFromKeystore(const char* alias, uint8_t* out, int outlen_chk);
 	// overwrite cert
-	log_info("Try to read Certs from keystore");
-	cert = malloc(sizeof(char) * 1024);
-	len = getCertificateFromKeystore(NANOMQ_TLS_VENDOR, (uint8_t *)cert, 1024);
+	log_info("Try to read Certs from keystore(%s)", NANOMQ_TLS_VENDOR);
+	cert = malloc(sizeof(char) * 2048);
+	len = getCertificateFromKeystore(NANOMQ_TLS_VENDOR, (uint8_t *)cert, 2048);
 	if (len == 0) {
 		log_warn("open_config_ca_chain" "Failed to read Certs from keystore");
 	}
