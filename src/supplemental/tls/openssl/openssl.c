@@ -762,7 +762,7 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	}
 	log_warn("cert(%d) %x%x%x", len, cert1[0], cert1[1], cert1[2]);
 #endif // TLS_EXTERN_PRIVATE_KEY
-	len = strlen(cert1);
+	//len = strlen(cert1);
 	log_warn("cert:%s len:%d", cert1, len);
 	biocert = BIO_new_mem_buf(cert1, len);
 	if (!biocert) {
@@ -770,14 +770,17 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		rv = NNG_ENOMEM;
 		goto error;
 	}
-	xcert = PEM_read_bio_X509(biocert, NULL, 0, NULL);
+	//xcert = PEM_read_bio_X509(biocert, NULL, 0, NULL);
+	xcert = d2i_X509_bio(biocert, NULL);
 	if (!xcert) {
 		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to load certificate from buffer");
 		rv = NNG_EINVAL;
 		goto error;
 	}
-	if (SSL_CTX_use_certificate(cfg->ctx, xcert) <= 0) {
-		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to set certificate to SSL_CTX");
+	log_info("ctx %p cert %p", cfg->ctx, xcert);
+	if ((rv = SSL_CTX_use_certificate(cfg->ctx, xcert)) <= 0) {
+		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to set certificate to SSL_CTX %d", rv);
+		ERR_print_errors_fp(stderr);
 		rv = NNG_EINVAL;
 		goto error;
 	}
