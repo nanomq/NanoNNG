@@ -748,7 +748,7 @@ trantest_broker_start(trantest *tt, nng_listener listener)
 	So(nng_nmq_tcp0_open(&tt->repsock) == 0);
 
 	So(nng_listener_create(&listener, tt->repsock, tt->addr) == 0);
-	So(nng_listener_set(listener, NANO_CONF, nanomq_conf, sizeof(conf)) == 0);
+	So(nng_listener_set_ptr(listener, NANO_CONF, nanomq_conf) == 0);
 	So(nng_listener_start(listener, 0) == 0);
 
 	// alloc and init work
