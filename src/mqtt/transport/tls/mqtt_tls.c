@@ -1552,10 +1552,7 @@ mqtts_tcptran_listener_init(void **lp, nng_url *url, nni_listener *nlistener)
 	rv = nni_aio_result(aio);
 	nni_aio_free(aio);
 
-	if (((rv = nng_stream_listener_alloc_url(&ep->listener, url)) != 0) ||
-	    ((rv = nni_stream_listener_set(ep->listener, NNG_OPT_TLS_AUTH_MODE,
-	          &ep->authmode, sizeof(ep->authmode), NNI_TYPE_INT32)) !=
-	        0)) {
+	if (((rv = nng_stream_listener_alloc_url(&ep->listener, url)) != 0)) {
 		mqtts_tcptran_ep_fini(ep);
 		return (rv);
 	}
