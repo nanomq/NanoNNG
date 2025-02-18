@@ -1179,11 +1179,11 @@ udp_ep_fini(void *arg)
 		nng_msleep(1);
 		nni_mtx_lock(&ep->mtx);
 	}
-	if (ep->tx_ring.count > 0) {
-		nng_log_warn("NNG-UDP-LINGER",
-		    "Lingering timed out on endpoint close, peer "
-		    "notifications dropped");
-	}
+	// if (ep->tx_ring.count > 0) {
+		// nng_log_warn("NNG-UDP-LINGER",
+		//     "Lingering timed out on endpoint close, peer "
+		//     "notifications dropped");
+	// }
 	udp_ep_rele(ep); // drops the lock
 }
 
@@ -1249,9 +1249,9 @@ udp_timer_cb(void *arg)
 		if (now > p->expire) {
 			char     buf[128];
 			nni_aio *aio;
-			nng_log_info("NNG-UDP-INACTIVE",
-			    "Pipe peer %s timed out due to inactivity",
-			    nng_str_sockaddr(&p->peer_addr, buf, sizeof(buf)));
+			// nng_log_info("NNG-UDP-INACTIVE",
+			//     "Pipe peer %s timed out due to inactivity",
+			//     nng_str_sockaddr(&p->peer_addr, buf, sizeof(buf)));
 
 			// Possibly alert the dialer, so it can restart a new
 			// attempt.
@@ -1521,8 +1521,8 @@ udp_resolv_cb(void *arg)
 	if ((rv = nni_aio_result(&ep->resaio)) != 0) {
 		nni_aio_list_remove(aio);
 		nni_mtx_unlock(&ep->mtx);
-		nng_log_warn("NNG-UDP-RESOLV",
-		    "Failed resolving IP address: %s", nng_strerror(rv));
+		// nng_log_warn("NNG-UDP-RESOLV",
+		//     "Failed resolving IP address: %s", nng_strerror(rv));
 		nni_aio_finish_error(aio, rv);
 		return;
 	}
