@@ -1,3 +1,5 @@
+This is NNG repo of NanoMQ project. I have updated it to support MQTT protocol.
+
 # nng - nanomsg-next-gen
 
 [![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/badges/StandWithUkraine.svg)](https://stand-with-ukraine.pp.ua)
