@@ -1340,30 +1340,17 @@ nano_sock_get_qos_db(void *arg, void *buf, size_t *szp, nni_opt_type t)
 #endif
 
 static int
-nano_sock_get_sendfd(void *arg, void *buf, size_t *szp, nni_opt_type t)
+nano_sock_get_sendfd(void *arg, int *fdp)
 {
 	nano_sock *s = arg;
-	int        rv;
-	int        fd;
-
-	if ((rv = nni_pollable_getfd(&s->writable, &fd)) != 0) {
-		return (rv);
-	}
-	return (nni_copyout_int(fd, buf, szp, t));
+	return (nni_pollable_getfd(&s->writable, fdp));
 }
 
 static int
-nano_sock_get_recvfd(void *arg, void *buf, size_t *szp, nni_opt_type t)
+nano_sock_get_recvfd(void *arg, int *fdp)
 {
 	nano_sock *s = arg;
-	int        rv;
-	int        fd;
-
-	if ((rv = nni_pollable_getfd(&s->readable, &fd)) != 0) {
-		return (rv);
-	}
-
-	return (nni_copyout_int(fd, buf, szp, t));
+	return (nni_pollable_getfd(&s->readable, fdp));
 }
 
 static void
@@ -1427,14 +1414,6 @@ static nni_option nano_sock_options[] = {
 	    .o_set  = nano_sock_set_max_ttl,
 	},
 	{
-	    .o_name = NNG_OPT_RECVFD,
-	    .o_get  = nano_sock_get_recvfd,
-	},
-	{
-	    .o_name = NNG_OPT_SENDFD,
-	    .o_get  = nano_sock_get_sendfd,
-	},
-	{
 	    .o_name = NMQ_OPT_MQTT_PIPES,
 	    .o_get  = nano_sock_get_idmap,
 	},
@@ -1450,14 +1429,16 @@ static nni_option nano_sock_options[] = {
 };
 
 static nni_proto_sock_ops nano_sock_ops = {
-	.sock_size    = sizeof(nano_sock),
-	.sock_init    = nano_sock_init,
-	.sock_fini    = nano_sock_fini,
-	.sock_open    = nano_sock_open,
-	.sock_close   = nano_sock_close,
-	.sock_options = nano_sock_options,
-	.sock_send    = nano_sock_send,
-	.sock_recv    = nano_sock_recv,
+	.sock_size         = sizeof(nano_sock),
+	.sock_init         = nano_sock_init,
+	.sock_fini         = nano_sock_fini,
+	.sock_open         = nano_sock_open,
+	.sock_close        = nano_sock_close,
+	.sock_send         = nano_sock_send,
+	.sock_recv         = nano_sock_recv,
+	.sock_send_poll_fd = nano_sock_get_sendfd,
+	.sock_recv_poll_fd = nano_sock_get_recvfd,
+	.sock_options      = nano_sock_options,
 };
 
 static nni_proto nano_tcp_proto = {
