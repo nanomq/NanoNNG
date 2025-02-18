@@ -1604,11 +1604,9 @@ NNG_DECL void nng_cv_wake(nng_cv *);
 // that no waiter starves forever.
 NNG_DECL void nng_cv_wake1(nng_cv *);
 
-<<<<<<< HEAD
 // New URL accessors for endpoints - from NNG 2.0.
 NNG_DECL int nng_dialer_get_url(nng_dialer, const nng_url **);
 NNG_DECL int nng_listener_get_url(nng_listener, const nng_url **);
-=======
 // Note that TLS functions may be stubbed out if TLS is not enabled in
 // the build.
 
@@ -1718,7 +1716,6 @@ NNG_DECL int nng_tls_config_psk(
 // for TLS 1.3) then NNG_ENOTSUP will be returned.
 NNG_DECL int nng_tls_config_version(
     nng_tls_config *, nng_tls_version, nng_tls_version);
->>>>>>> 1401d2f62 (tls: move definitions to core nng.h)
 
 #ifdef __cplusplus
 }
