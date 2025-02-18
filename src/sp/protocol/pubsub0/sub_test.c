@@ -499,15 +499,8 @@ test_sub_multi_context(void)
 	NUTS_PASS(nng_sub0_ctx_subscribe(c1, "one", 3));
 	NUTS_PASS(nng_sub0_ctx_subscribe(c1, "all", 3));
 
-<<<<<<< HEAD
-	NUTS_PASS(nng_ctx_set(c2, NNG_OPT_SUB_SUBSCRIBE, "two", 3));
-	NUTS_PASS(nng_sub0_ctx_subscribe(c2, "all", 3));
-	NUTS_PASS(nng_sub0_ctx_subscribe(c2, "junk", 4));
-	NUTS_PASS(nng_sub0_ctx_unsubscribe(c2, "junk", 4));
-=======
 	NUTS_PASS(nng_sub0_ctx_subscribe(c2, "two", 3));
 	NUTS_PASS(nng_sub0_ctx_subscribe(c2, "all", 3));
->>>>>>> b3fc8a441 (Replace NNG_OPT_SUB_SUBSCRIBE/UNSUBSCRIBE with functions.)
 
 	nng_aio_set_timeout(aio1, 100);
 	nng_aio_set_timeout(aio2, 100);
