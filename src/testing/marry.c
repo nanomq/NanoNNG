@@ -85,7 +85,7 @@ nuts_scratch_addr(const char *scheme, size_t sz, char *addr)
 	}
 
 	// We should not be here.
-	nng_log_err("NUTS", "Unknown scheme");
+	// nng_log_err("NUTS", "Unknown scheme");
 	abort();
 }
 
