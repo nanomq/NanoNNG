@@ -1956,7 +1956,8 @@ tcptran_ep_set_conf(void *arg, const void *v, size_t sz, nni_opt_type t)
 	NNI_ARG_UNUSED(t);
 
 	nni_mtx_lock(&ep->mtx);
-	ep->conf = (conf *) v;
+	conf **conf = v;
+	ep->conf = *conf;
 	nni_mtx_unlock(&ep->mtx);
 	return 0;
 }

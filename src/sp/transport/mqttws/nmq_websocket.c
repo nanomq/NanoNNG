@@ -1256,7 +1256,8 @@ wstran_ep_set_conf(void *arg, const void *v, size_t sz, nni_type t)
 	NNI_ARG_UNUSED(sz);
 	NNI_ARG_UNUSED(t);
 	nni_mtx_lock(&l->mtx);
-	l->conf = (conf *) v;
+	conf **conf = v;
+	l->conf = *conf;
 	nni_mtx_unlock(&l->mtx);
 	return 0;
 }
