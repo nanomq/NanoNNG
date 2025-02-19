@@ -8,8 +8,10 @@
 //
 
 #include "nng/nng.h"
+#include "nng/supplemental/nanolib/log.h"
 #include <nuts.h>
 #include <stdlib.h>
+
 
 // TCP tests.
 
@@ -285,12 +287,10 @@ test_udp_multi_small_burst(void)
 	const char *pass_rate = getenv("NNG_UDP_PASS_RATE");
 	if (pass_rate != NULL && strlen(pass_rate) > 0) {
 		require = (atoi(pass_rate) * 1.0) / 100.0;
-		nng_log_notice(
-		    "UDP", "required pass rate changed to %0.02f", require);
+		log_info("required pass rate changed to %0.02f", require);
 	} else {
-		nng_log_notice("UDP", "required pass rate %0.02f", require);
-		nng_log_notice(NULL,
-		    "To change pass rate, set $NNG_UDP_PASS_RATE to "
+		log_info("required pass rate %0.02f", require);
+		log_info("To change pass rate, set $NNG_UDP_PASS_RATE to "
 		    "percentage of packets that must be received.");
 	}
 
@@ -322,7 +322,7 @@ test_udp_multi_small_burst(void)
 	}
 	NUTS_TRUE(actual <= expect);
 	NUTS_TRUE(actual / expect > require);
-	nng_log_notice("UDP", "Packet loss: %.02f (got %.f of %.f)",
+	log_info("Packet loss: %.02f (got %.f of %.f)",
 	    1.0 - actual / expect, actual, expect);
 	NUTS_CLOSE(s0);
 	NUTS_CLOSE(s1);
