@@ -276,8 +276,7 @@ udp_recv_count_cb(void *arg)
 		break;
 	default:
 		c->fail++;
-		nng_log_warn(
-		    NULL, "Unexpected recv error %s", nng_strerror(rv));
+		log_warn("Unexpected recv error %s", nng_strerror(rv));
 		break;
 	}
 
