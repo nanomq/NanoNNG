@@ -1252,12 +1252,14 @@ wstran_fini(void)
 static int
 wstran_ep_set_conf(void *arg, const void *v, size_t sz, nni_type t)
 {
+	int rv;
 	ws_listener *l = arg;
 	NNI_ARG_UNUSED(sz);
 	NNI_ARG_UNUSED(t);
 	nni_mtx_lock(&l->mtx);
-	conf **conf = v;
-	l->conf = *conf;
+	if ((rv = nni_copyin_ptr((void **) &(l->conf), v, sz, t)) != 0) {
+		return (rv);
+	}
 	nni_mtx_unlock(&l->mtx);
 	return 0;
 }

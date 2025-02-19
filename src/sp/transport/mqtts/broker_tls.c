@@ -1995,13 +1995,15 @@ tlstran_ep_get_url(void *arg, void *v, size_t *szp, nni_opt_type t)
 static int
 tlstran_ep_set_conf(void *arg, const void *v, size_t sz, nni_opt_type t)
 {
+	int rv;
 	tlstran_ep *ep = arg;
 	NNI_ARG_UNUSED(sz);
 	NNI_ARG_UNUSED(t);
 
 	nni_mtx_lock(&ep->mtx);
-	conf **conf = v;
-	ep->conf = *conf;
+	if ((rv = nni_copyin_ptr((void **) &(ep->conf), v, sz, t)) != 0) {
+		return (rv);
+	}
 	nni_mtx_unlock(&ep->mtx);
 	return 0;
 }
