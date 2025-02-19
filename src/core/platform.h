@@ -47,14 +47,8 @@
 // for abnormal programs on the platform, such as calling abort().
 extern void nni_plat_abort(void);
 
-// nni_plat_println is used to emit debug messages.  Typically this is used
-// during core debugging, or to emit panic messages.  Message content will
-// not contain newlines, but the output will add them.
-extern void nni_plat_println(const char *);
-
 // nni_plat_printf is like printf.  It should conform to C99 standard printf,
-// but is a function to allow platform ports to redirect.  It should go to
-// the same place that nni_plat_println does.
+// but is a function to allow platform ports to redirect.
 extern void nni_plat_printf(const char *, ...);
 
 // nni_plat_strerror allows the platform to use additional error messages
