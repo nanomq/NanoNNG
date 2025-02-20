@@ -92,7 +92,7 @@ typedef ECDSA_SIG *(*SignSig)(const unsigned char *dgst, int dgst_len,
     const BIGNUM *in_kinv, const BIGNUM *in_r, EC_KEY *eckey);
 
 int
-gSign(int type, const unsigned char *dgst, int dlen, unsigned char *sig,
+gSign_open(int type, const unsigned char *dgst, int dlen, unsigned char *sig,
     unsigned int *siglen, const BIGNUM *kinv, const BIGNUM *r, EC_KEY *eckey)
 {
 	(void) type;
@@ -133,6 +133,49 @@ fprintf(stderr, "\n");
 
 	return 1;
 }
+
+static enum ssl_private_key_result_t
+gSign_boring(SSL* ssl, uint8_t* out, size_t* out_len, size_t max_out,
+	uint16_t signature_algorithm, const uint8_t* in, size_t in_len)
+{
+    (void)ssl;
+    (void)signature_algorithm;
+
+#ifdef OPEN_DEBUG
+fprintf(stderr, "in(%ld):", in_len);
+for (int i = 0; i < (int)in_len; ++i)
+	fprintf(stderr, "%x", in[i]);
+fprintf(stderr, "\n");
+#endif
+
+#ifndef NANOMQ_TLS_VENDOR
+#define NANOMQ_TLS_VENDOR "VENDOR"
+#endif
+
+    if (in_len > INT_MAX || max_out > INT_MAX) {
+        return ssl_private_key_failure;
+    }
+    int ret = getPrivatekeyToSign(NANOMQ_TLS_VENDOR, in, (int)in_len, out, (int)max_out);
+    if (ret <= 0) {
+        return ssl_private_key_failure;
+    }
+    *out_len = ret;
+
+#ifdef OPEN_DEBUG
+fprintf(stderr, "out(%d):", ret);
+for (int i = 0; i < ret; ++i)
+	fprintf(stderr, "%x", out[i]);
+fprintf(stderr, "\n");
+#endif
+
+    return ssl_private_key_success;
+}
+
+static SSL_PRIVATE_KEY_METHOD my_ssl_private_key_method = {
+	.sign = gSign_boring,
+	.decrypt = NULL,
+	.complete = NULL
+};
 
 #endif
 
@@ -777,17 +820,20 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		rv = NNG_EINVAL;
 		goto error;
 	}
-	log_info("ctx %p cert %p", cfg->ctx, xcert);
+	log_info("ctx %p cert %p rv%d", cfg->ctx, xcert, rv);
 	if ((rv = SSL_CTX_use_certificate(cfg->ctx, xcert)) <= 0) {
 		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to set certificate to SSL_CTX %d", rv);
 		ERR_print_errors_fp(stderr);
 		rv = NNG_EINVAL;
 		goto error;
 	}
+	rv = 0;
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
-	log_info("eckey generate start");
 	NNI_ARG_UNUSED(key);
+	SSL_CTX_set_private_key_method(cfg->ctx, &my_ssl_private_key_method);
+/*
+	log_info("eckey generate start");
 	// Generate ECKEY
 	EC_KEY *eckey = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
 	if (eckey == NULL) {
@@ -859,6 +905,7 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		log_error("Private key does not match the certificate public key");
 		goto error;
 	}
+*/
 
 #else
 	len = strlen(key);
@@ -879,13 +926,14 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		rv = NNG_EINVAL;
 		goto error;
 	}
-#endif // TLS_EXTERN_PRIVATE_KEY
 
 	if (SSL_CTX_check_private_key(cfg->ctx) != 1) {
 		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to check key in SSL_CTX");
+		ERR_print_errors_fp(stderr);
 		rv = NNG_ECRYPTO;
 		goto error;
 	}
+#endif // TLS_EXTERN_PRIVATE_KEY
 
 error:
 	if (xcert)
@@ -897,7 +945,7 @@ error:
 	if (biokey)
 		BIO_free(biokey);
 
-	log_info("--end");
+	log_info("--end rv%d", rv);
 	trace("end");
 	return rv;
 }
