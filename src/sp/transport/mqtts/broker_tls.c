@@ -2156,6 +2156,20 @@ tlstran_listener_set(
 	return (rv);
 }
 
+static int
+tlstran_listener_set_tls(void *arg, nng_tls_config *cfg)
+{
+	tlstran_ep *ep = arg;
+	return (nni_stream_listener_set_tls(ep->listener, cfg));
+}
+
+static int
+tlstran_listener_get_tls(void *arg, nng_tls_config **cfgp)
+{
+	tlstran_ep *ep = arg;
+	return (nni_stream_listener_get_tls(ep->listener, cfgp));
+}
+
 static nni_sp_listener_ops tlstran_listener_ops = {
 	.l_init   = tlstran_ep_init_listener,
 	.l_fini   = tlstran_ep_fini,
@@ -2164,6 +2178,8 @@ static nni_sp_listener_ops tlstran_listener_ops = {
 	.l_close  = tlstran_ep_close,
 	.l_getopt = tlstran_listener_get,
 	.l_setopt = tlstran_listener_set,
+	.l_set_tls = tlstran_listener_set_tls,
+	.l_get_tls = tlstran_listener_get_tls,
 };
 
 static nni_sp_tran tlstran_mqtt = {

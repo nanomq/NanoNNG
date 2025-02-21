@@ -29,14 +29,14 @@
 // supplied as well.
 
 typedef struct mqtts_tcptran_pipe mqtts_tcptran_pipe;
-typedef struct mqtts_tcptran_ep   mqtts_tcptran_ep;
+typedef struct mqtts_tlstran_ep   mqtts_tlstran_ep;
 
 // tcp_pipe is one end of a TCP connection.
 struct mqtts_tcptran_pipe {
 	nng_stream *      conn;
 	nni_pipe *        npipe;
 	nni_list_node     node;
-	mqtts_tcptran_ep *ep;
+	mqtts_tlstran_ep *ep;
 	nni_atomic_flag   reaped;
 	nni_reap_node     reap;
 	uint32_t          packmax; // MQTT Maximum Packet Size (Max length)
@@ -70,7 +70,7 @@ struct mqtts_tcptran_pipe {
 #endif
 };
 
-struct mqtts_tcptran_ep {
+struct mqtts_tlstran_ep {
 	nni_mtx              mtx;
 	uint16_t             proto; //socket's 16-bit protocol number
 	nni_duration         backoff;
@@ -93,7 +93,7 @@ struct mqtts_tcptran_ep {
 	nni_list             waitpipes; // pipes waiting to match to socket
 	nni_list             negopipes; // pipes busy negotiating
 	nni_reap_node        reap;
-	nng_stream_dialer *  dialer;
+	nng_stream_dialer   *dialer;
 	nng_stream_listener *listener;
 	nni_dialer *         ndialer;
 	void *               property;  // property
@@ -110,12 +110,12 @@ static void mqtts_tcptran_pipe_recv_start(mqtts_tcptran_pipe *);
 static void mqtts_tcptran_pipe_send_cb(void *);
 static void mqtts_tcptran_pipe_recv_cb(void *);
 static void mqtts_tcptran_pipe_nego_cb(void *);
-static void mqtts_tcptran_ep_fini(void *);
+static void mqtts_tlstran_ep_fini(void *);
 static void mqtts_tcptran_pipe_fini(void *);
 
 static nni_reap_list tcptran_ep_reap_list = {
-	.rl_offset = offsetof(mqtts_tcptran_ep, reap),
-	.rl_func   = mqtts_tcptran_ep_fini,
+	.rl_offset = offsetof(mqtts_tlstran_ep, reap),
+	.rl_func   = mqtts_tlstran_ep_fini,
 };
 
 static nni_reap_list tcptran_pipe_reap_list = {
@@ -178,7 +178,7 @@ static void
 mqtts_tcptran_pipe_fini(void *arg)
 {
 	mqtts_tcptran_pipe *p = arg;
-	mqtts_tcptran_ep *  ep;
+	mqtts_tlstran_ep *  ep;
 
 	mqtts_tcptran_pipe_stop(p);
 	if ((ep = p->ep) != NULL) {
@@ -247,7 +247,7 @@ mqtts_tcptran_pipe_alloc(mqtts_tcptran_pipe **pipep)
 }
 
 static void
-mqtts_tcptran_ep_match(mqtts_tcptran_ep *ep)
+mqtts_tcptran_ep_match(mqtts_tlstran_ep *ep)
 {
 	nni_aio *           aio;
 	mqtts_tcptran_pipe *p;
@@ -275,7 +275,7 @@ static void
 mqtts_tcptran_pipe_nego_cb(void *arg)
 {
 	mqtts_tcptran_pipe *p   = arg;
-	mqtts_tcptran_ep *  ep  = p->ep;
+	mqtts_tlstran_ep *  ep  = p->ep;
 	nni_aio *           aio = p->negoaio;
 	nni_aio *           uaio;
 	int                 rv;
@@ -1067,7 +1067,7 @@ mqtts_tcptran_pipe_getopt(
 
 static void
 mqtts_tcptran_pipe_start(
-    mqtts_tcptran_pipe *p, nng_stream *conn, mqtts_tcptran_ep *ep)
+    mqtts_tcptran_pipe *p, nng_stream *conn, mqtts_tlstran_ep *ep)
 {
 	nni_iov  iov[2];
 	nni_msg *connmsg = NULL;
@@ -1184,9 +1184,9 @@ mqtts_tcptran_pipe_start(
 }
 
 static void
-mqtts_tcptran_ep_fini(void *arg)
+mqtts_tlstran_ep_fini(void *arg)
 {
-	mqtts_tcptran_ep *ep = arg;
+	mqtts_tlstran_ep *ep = arg;
 
 	nni_mtx_lock(&ep->mtx);
 	ep->fini = true;
@@ -1219,9 +1219,9 @@ mqtts_tcptran_ep_fini(void *arg)
 }
 
 static void
-mqtts_tcptran_ep_close(void *arg)
+mqtts_tlstran_ep_close(void *arg)
 {
-	mqtts_tcptran_ep *  ep = arg;
+	mqtts_tlstran_ep *  ep = arg;
 	mqtts_tcptran_pipe *p;
 
 	nni_mtx_lock(&ep->mtx);
@@ -1312,7 +1312,7 @@ mqtts_tcptran_url_parse_source(
 static void
 mqtts_tcptran_timer_cb(void *arg)
 {
-	mqtts_tcptran_ep *ep = arg;
+	mqtts_tlstran_ep *ep = arg;
 	if (nni_aio_result(ep->timeaio) == 0) {
 		nng_stream_listener_accept(ep->listener, ep->connaio);
 	}
@@ -1321,7 +1321,7 @@ mqtts_tcptran_timer_cb(void *arg)
 static void
 mqtts_tcptran_accept_cb(void *arg)
 {
-	mqtts_tcptran_ep *  ep  = arg;
+	mqtts_tlstran_ep *  ep  = arg;
 	nni_aio *           aio = ep->connaio;
 	mqtts_tcptran_pipe *p;
 	int                 rv;
@@ -1377,7 +1377,7 @@ error:
 static void
 mqtts_tcptran_dial_cb(void *arg)
 {
-	mqtts_tcptran_ep *  ep  = arg;
+	mqtts_tlstran_ep *  ep  = arg;
 	nni_aio *           aio = ep->connaio;
 	mqtts_tcptran_pipe *p;
 	int                 rv;
@@ -1418,9 +1418,9 @@ error:
 }
 
 static int
-mqtts_tcptran_ep_init(mqtts_tcptran_ep **epp, nng_url *url, nni_sock *sock)
+mqtts_tcptran_ep_init(mqtts_tlstran_ep **epp, nng_url *url, nni_sock *sock)
 {
-	mqtts_tcptran_ep *ep;
+	mqtts_tlstran_ep *ep;
 
 	if ((ep = NNI_ALLOC_STRUCT(ep)) == NULL) {
 		return (NNG_ENOMEM);
@@ -1443,9 +1443,9 @@ mqtts_tcptran_ep_init(mqtts_tcptran_ep **epp, nng_url *url, nni_sock *sock)
 }
 
 static int
-mqtts_tcptran_dialer_init(void **dp, nng_url *url, nni_dialer *ndialer)
+mqtts_tlstran_dialer_init(void **dp, nng_url *url, nni_dialer *ndialer)
 {
-	mqtts_tcptran_ep *ep;
+	mqtts_tlstran_ep *ep;
 	int               rv;
 	nng_sockaddr      srcsa;
 	nni_sock *        sock = nni_dialer_sock(ndialer);
@@ -1480,13 +1480,13 @@ mqtts_tcptran_dialer_init(void **dp, nng_url *url, nni_dialer *ndialer)
 	    ((rv = nni_aio_alloc(&ep->connaio, mqtts_tcptran_dial_cb, ep)) !=
 	        0) ||
 	    ((rv = nng_stream_dialer_alloc_url(&ep->dialer, &myurl)) != 0)) {
-		mqtts_tcptran_ep_fini(ep);
+		mqtts_tlstran_ep_fini(ep);
 		return (rv);
 	}
 	if ((srcsa.s_family != NNG_AF_UNSPEC) &&
 	    ((rv = nni_stream_dialer_set(ep->dialer, NNG_OPT_LOCADDR, &srcsa,
 	          sizeof(srcsa), NNI_TYPE_SOCKADDR)) != 0)) {
-		mqtts_tcptran_ep_fini(ep);
+		mqtts_tlstran_ep_fini(ep);
 		return (rv);
 	}
 	*dp = ep;
@@ -1494,9 +1494,9 @@ mqtts_tcptran_dialer_init(void **dp, nng_url *url, nni_dialer *ndialer)
 }
 
 static int
-mqtts_tcptran_listener_init(void **lp, nng_url *url, nni_listener *nlistener)
+mqtts_tlstran_listener_init(void **lp, nng_url *url, nni_listener *nlistener)
 {
-	mqtts_tcptran_ep *ep;
+	mqtts_tlstran_ep *ep;
 	uint16_t          af;
 	char *            host = url->u_hostname;
 	nni_aio *         aio;
@@ -1544,7 +1544,7 @@ mqtts_tcptran_listener_init(void **lp, nng_url *url, nni_listener *nlistener)
 	// names when possible.
 
 	if ((rv = nni_aio_alloc(&aio, NULL, NULL)) != 0) {
-		mqtts_tcptran_ep_fini(ep);
+		mqtts_tlstran_ep_fini(ep);
 		return (rv);
 	}
 	nni_resolv_ip(host, url->u_port, af, true, &ep->sa, aio);
@@ -1553,7 +1553,7 @@ mqtts_tcptran_listener_init(void **lp, nng_url *url, nni_listener *nlistener)
 	nni_aio_free(aio);
 
 	if (((rv = nng_stream_listener_alloc_url(&ep->listener, url)) != 0)) {
-		mqtts_tcptran_ep_fini(ep);
+		mqtts_tlstran_ep_fini(ep);
 		return (rv);
 	}
 
@@ -1564,7 +1564,7 @@ mqtts_tcptran_listener_init(void **lp, nng_url *url, nni_listener *nlistener)
 static void
 mqtts_tcptran_ep_cancel(nni_aio *aio, void *arg, int rv)
 {
-	mqtts_tcptran_ep *ep = arg;
+	mqtts_tlstran_ep *ep = arg;
 	nni_mtx_lock(&ep->mtx);
 	if (ep->useraio == aio) {
 		ep->useraio = NULL;
@@ -1574,9 +1574,9 @@ mqtts_tcptran_ep_cancel(nni_aio *aio, void *arg, int rv)
 }
 
 static void
-mqtts_tcptran_ep_connect(void *arg, nni_aio *aio)
+mqtts_tlstran_ep_connect(void *arg, nni_aio *aio)
 {
-	mqtts_tcptran_ep *ep = arg;
+	mqtts_tlstran_ep *ep = arg;
 	int               rv;
 
 	if (nni_aio_begin(aio) != 0) {
@@ -1621,7 +1621,7 @@ mqtts_tcptran_ep_connect(void *arg, nni_aio *aio)
 static int
 mqtts_tcptran_ep_get_url(void *arg, void *v, size_t *szp, nni_opt_type t)
 {
-	mqtts_tcptran_ep *ep = arg;
+	mqtts_tlstran_ep *ep = arg;
 	char *            s;
 	int               rv;
 	int               port = 0;
@@ -1642,7 +1642,7 @@ static int
 mqtts_tcptran_ep_get_reasoncode(void *arg, void *v, size_t *sz, nni_opt_type t)
 {
 	NNI_ARG_UNUSED(sz);
-	mqtts_tcptran_ep *ep = arg;
+	mqtts_tlstran_ep *ep = arg;
 	int              rv;
 
 	nni_mtx_lock(&ep->mtx);
@@ -1654,7 +1654,7 @@ mqtts_tcptran_ep_get_reasoncode(void *arg, void *v, size_t *sz, nni_opt_type t)
 static int
 mqtts_tcptran_ep_get_connmsg(void *arg, void *v, size_t *szp, nni_opt_type t)
 {
-	mqtts_tcptran_ep *ep = arg;
+	mqtts_tlstran_ep *ep = arg;
 	int               rv;
 
 	rv = nni_copyout_ptr(ep->connmsg, v, szp, t);
@@ -1665,7 +1665,7 @@ mqtts_tcptran_ep_get_connmsg(void *arg, void *v, size_t *szp, nni_opt_type t)
 static int
 mqtts_tcptran_ep_get_property(void *arg, void *v, size_t *szp, nni_opt_type t)
 {
-	mqtts_tcptran_ep *ep = arg;
+	mqtts_tlstran_ep *ep = arg;
 	int              rv;
 
 	rv = nni_copyout_ptr(ep->property, v, szp, t);
@@ -1676,7 +1676,7 @@ static int
 mqtts_tcptran_ep_set_connmsg(
     void *arg, const void *v, size_t sz, nni_opt_type t)
 {
-	mqtts_tcptran_ep *ep = arg;
+	mqtts_tlstran_ep *ep = arg;
 	int              rv;
 
 	nni_mtx_lock(&ep->mtx);
@@ -1691,7 +1691,7 @@ mqtts_tcptran_ep_set_connmsg(
 static int
 mqtts_tcptran_ep_set_reconnect_backoff(void *arg, const void *v, size_t sz, nni_opt_type t)
 {
-	mqtts_tcptran_ep *ep = arg;
+	mqtts_tlstran_ep *ep = arg;
 	nni_duration      tmp;
 	int rv;
 
@@ -1708,7 +1708,7 @@ mqtts_tcptran_ep_set_reconnect_backoff(void *arg, const void *v, size_t sz, nni_
 static int
 mqtts_tcptran_ep_set_ep_closed(void *arg, const void *v, size_t sz, nni_opt_type t)
 {
-	mqtts_tcptran_ep *ep = arg;
+	mqtts_tlstran_ep *ep = arg;
 	bool              tmp;
 	int               rv;
 
@@ -1729,7 +1729,7 @@ mqtts_tcptran_ep_set_ep_closed(void *arg, const void *v, size_t sz, nni_opt_type
 static int
 mqtts_tcptran_ep_set_enable_scram(void *arg, const void *v, size_t sz, nni_opt_type t)
 {
-	mqtts_tcptran_ep *ep = arg;
+	mqtts_tlstran_ep *ep = arg;
 	bool             tmp;
 	int              rv;
 
@@ -1747,9 +1747,9 @@ mqtts_tcptran_ep_set_enable_scram(void *arg, const void *v, size_t sz, nni_opt_t
 }
 
 static int
-mqtts_tcptran_ep_bind(void *arg)
+mqtts_tlstran_ep_bind(void *arg)
 {
-	mqtts_tcptran_ep *ep = arg;
+	mqtts_tlstran_ep *ep = arg;
 	int               rv;
 
 	nni_mtx_lock(&ep->mtx);
@@ -1760,9 +1760,9 @@ mqtts_tcptran_ep_bind(void *arg)
 }
 
 static void
-mqtts_tcptran_ep_accept(void *arg, nni_aio *aio)
+mqtts_tlstran_ep_accept(void *arg, nni_aio *aio)
 {
-	mqtts_tcptran_ep *ep = arg;
+	mqtts_tlstran_ep *ep = arg;
 	int               rv;
 
 	if (nni_aio_begin(aio) != 0) {
@@ -1842,10 +1842,10 @@ static const nni_option mqtts_tcptran_ep_opts[] = {
 };
 
 static int
-mqtts_tcptran_dialer_getopt(
+mqtts_tlstran_dialer_getopt(
     void *arg, const char *name, void *buf, size_t *szp, nni_type t)
 {
-	mqtts_tcptran_ep *ep = arg;
+	mqtts_tlstran_ep *ep = arg;
 	int               rv;
 
 	rv = nni_stream_dialer_get(ep->dialer, name, buf, szp, t);
@@ -1856,10 +1856,10 @@ mqtts_tcptran_dialer_getopt(
 }
 
 static int
-mqtts_tcptran_dialer_setopt(
+mqtts_tlstran_dialer_setopt(
     void *arg, const char *name, const void *buf, size_t sz, nni_type t)
 {
-	mqtts_tcptran_ep *ep = arg;
+	mqtts_tlstran_ep *ep = arg;
 	int               rv;
 
 	// TODO get mqtts dialer's option
@@ -1871,10 +1871,10 @@ mqtts_tcptran_dialer_setopt(
 }
 
 static int
-mqtts_tcptran_listener_getopt(
+mqtts_tlstran_listener_getopt(
     void *arg, const char *name, void *buf, size_t *szp, nni_type t)
 {
-	mqtts_tcptran_ep *ep = arg;
+	mqtts_tlstran_ep *ep = arg;
 	int               rv;
 
 	rv = nni_stream_listener_get(ep->listener, name, buf, szp, t);
@@ -1885,10 +1885,10 @@ mqtts_tcptran_listener_getopt(
 }
 
 static int
-mqtts_tcptran_listener_setopt(
+mqtts_tlstran_listener_setopt(
     void *arg, const char *name, const void *buf, size_t sz, nni_type t)
 {
-	mqtts_tcptran_ep *ep = arg;
+	mqtts_tlstran_ep *ep = arg;
 	int               rv;
 
 	rv = nni_stream_listener_set(ep->listener, name, buf, sz, t);
@@ -1898,23 +1898,55 @@ mqtts_tcptran_listener_setopt(
 	return (rv);
 }
 
+static int
+mqtts_tlstran_dialer_set_tls(void *arg, nng_tls_config *cfg)
+{
+	mqtts_tlstran_ep *ep = arg;
+	return (nni_stream_dialer_set_tls(ep->dialer, cfg));
+}
+
+static int
+mqtts_tlstran_dialer_get_tls(void *arg, nng_tls_config **cfgp)
+{
+	mqtts_tlstran_ep *ep = arg;
+	return (nni_stream_dialer_get_tls(ep->dialer, cfgp));
+}
+
+static int
+mqtts_tlstran_listener_set_tls(void *arg, nng_tls_config *cfg)
+{
+	mqtts_tlstran_ep *ep = arg;
+	return (nni_stream_listener_set_tls(ep->listener, cfg));
+}
+
+static int
+mqtts_tlstran_listener_get_tls(void *arg, nng_tls_config **cfgp)
+{
+	mqtts_tlstran_ep *ep = arg;
+	return (nni_stream_listener_get_tls(ep->listener, cfgp));
+}
+
 static nni_sp_dialer_ops mqtts_tcptran_dialer_ops = {
-	.d_init    = mqtts_tcptran_dialer_init,
-	.d_fini    = mqtts_tcptran_ep_fini,
-	.d_connect = mqtts_tcptran_ep_connect,
-	.d_close   = mqtts_tcptran_ep_close,
-	.d_getopt  = mqtts_tcptran_dialer_getopt,
-	.d_setopt  = mqtts_tcptran_dialer_setopt,
+	.d_init    = mqtts_tlstran_dialer_init,
+	.d_fini    = mqtts_tlstran_ep_fini,
+	.d_connect = mqtts_tlstran_ep_connect,
+	.d_close   = mqtts_tlstran_ep_close,
+	.d_getopt  = mqtts_tlstran_dialer_getopt,
+	.d_setopt  = mqtts_tlstran_dialer_setopt,
+	.d_get_tls = mqtts_tlstran_dialer_get_tls,
+	.d_set_tls = mqtts_tlstran_dialer_set_tls,
 };
 
 static nni_sp_listener_ops mqtts_tcptran_listener_ops = {
-	.l_init   = mqtts_tcptran_listener_init,
-	.l_fini   = mqtts_tcptran_ep_fini,
-	.l_bind   = mqtts_tcptran_ep_bind,
-	.l_accept = mqtts_tcptran_ep_accept,
-	.l_close  = mqtts_tcptran_ep_close,
-	.l_getopt = mqtts_tcptran_listener_getopt,
-	.l_setopt = mqtts_tcptran_listener_setopt,
+	.l_init    = mqtts_tlstran_listener_init,
+	.l_fini    = mqtts_tlstran_ep_fini,
+	.l_bind    = mqtts_tlstran_ep_bind,
+	.l_accept  = mqtts_tlstran_ep_accept,
+	.l_close   = mqtts_tlstran_ep_close,
+	.l_getopt  = mqtts_tlstran_listener_getopt,
+	.l_setopt  = mqtts_tlstran_listener_setopt,
+	.l_set_tls = mqtts_tlstran_listener_set_tls,
+	.l_get_tls = mqtts_tlstran_listener_get_tls,
 };
 
 static nni_sp_tran mqtts_tcp_tran = {

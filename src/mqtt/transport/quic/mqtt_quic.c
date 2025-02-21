@@ -2091,6 +2091,21 @@ mqtt_quictran_dialer_setopt(
 	return (rv);
 }
 
+// TODO Quic stream is not compatible yet
+static int
+mqtt_quictran_dialer_set_tls(void *arg, nng_tls_config *cfg)
+{
+	mqtt_quictran_ep *ep = arg;
+	return (nni_stream_dialer_set_tls(ep->dialer, cfg));
+}
+
+static int
+mqtt_quictran_dialer_get_tls(void *arg, nng_tls_config **cfgp)
+{
+	mqtt_quictran_ep *ep = arg;
+	return (nni_stream_dialer_get_tls(ep->dialer, cfgp));
+}
+
 static nni_sp_dialer_ops mqtt_quictran_dialer_ops = {
 	.d_init    = mqtt_quictran_dialer_init,
 	.d_fini    = mqtt_quictran_ep_fini,
@@ -2098,6 +2113,8 @@ static nni_sp_dialer_ops mqtt_quictran_dialer_ops = {
 	.d_close   = mqtt_quictran_ep_close,
 	.d_getopt  = mqtt_quictran_dialer_getopt,
 	.d_setopt  = mqtt_quictran_dialer_setopt,
+	.d_get_tls = mqtt_quictran_dialer_get_tls,
+	.d_set_tls = mqtt_quictran_dialer_set_tls,
 };
 
 
