@@ -21,7 +21,7 @@
 // Follow the suggestion from Sliepen. https://stackoverflow.com/questions/69079419/how-i-can-read-more-than-16384-bytes-using-openssl-tls
 #define OPEN_BUF_SZ 16000
 
-#define OPEN_DEBUG 1
+//#define OPEN_DEBUG 1
 //#define OPEN_TRACE 1
 
 #ifdef OPEN_TRACE
@@ -76,9 +76,7 @@ print_hex(char *str, const uint8_t *data, size_t len)
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
 
-#include "/home/runner/work/NanoMQ_mirror/NanoMQ_mirror/extern/thirdparty/csmwDesayPki.h"
-//#include "/home/wangha/Documents/NanoMQ_mirror/extern/thirdparty/csmwDesayPki.h"
-
+#include <thirdparty/csmwDesayPki.h>
 #include <nng/supplemental/tls/tee.h>
 
 typedef int (*SignFunction)(int type, const unsigned char *dgst, int dlen,
@@ -328,9 +326,11 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 	rv = SSL_do_handshake(ec->ssl);
 	if (rv != 0) {
 		rv = SSL_get_error(ec->ssl, rv);
-		if (rv != 0)
+		if (rv != 0) {
 			log_warn("NNG-TLS-CONN-HANDSHAKE"
 				"openssl handshake still in process rv%d", rv);
+			ERR_print_errors_fp(stderr);
+		}
 	}
 	if (rv == SSL_ERROR_WANT_READ || rv == SSL_ERROR_WANT_WRITE) {
 		int ensz, sz;
@@ -687,7 +687,7 @@ open_config_ca_chain(
 	// overwrite certs
 	log_info("teeGetCA start");
 	len = teeGetCA((char **)&certs);
-	log_warn("cacert(%d):%s", len, certs);
+	log_info("cacert(%d):%s", len, certs);
 #else
 	if (certs == NULL) {
 		log_info("open_config_ca_chain" "NULL certs detected!");
@@ -797,15 +797,15 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	// overwrite cert
 	NNI_ARG_UNUSED(cert);
 	log_info("Try to read Certs from keystore(%s)", NANOMQ_TLS_VENDOR);
-	char *cert1 = malloc(sizeof(char) * 2048);
-	memset(cert1, 0, 2048);
-	len = getCertificateFromKeystore(NANOMQ_TLS_VENDOR, (uint8_t *)cert1, 2048);
+	char *cert1 = malloc(sizeof(char) * 4096);
+	memset(cert1, 0, 4096);
+	len = getCertificateFromKeystore(NANOMQ_TLS_VENDOR, (uint8_t *)cert1, 4096);
 	if (len == 0) {
 		log_warn("open_config_ca_chain" "Failed to read Certs from keystore");
 	}
-	log_warn("cert(%d) %x%x%x", len, cert1[0], cert1[1], cert1[2]);
+#else
+	len = strlen(cert1);
 #endif // TLS_EXTERN_PRIVATE_KEY
-	//len = strlen(cert1);
 	log_warn("cert:%s len:%d", cert1, len);
 	biocert = BIO_new_mem_buf(cert1, len);
 	if (!biocert) {
@@ -819,6 +819,10 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to load certificate from buffer");
 		rv = NNG_EINVAL;
 		goto error;
+	}
+	// Print the certificate in PEM format to stdout
+	if (PEM_write_X509(stdout, xcert) != 1) {
+		log_error(stderr, "Error writing PEM certificate: %s\n", ERR_error_string(ERR_get_error(), NULL));
 	}
 	log_info("ctx %p cert %p rv%d", cfg->ctx, xcert, rv);
 	if ((rv = SSL_CTX_use_certificate(cfg->ctx, xcert)) <= 0) {
