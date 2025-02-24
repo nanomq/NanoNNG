@@ -1186,7 +1186,7 @@ udp_ep_fini(void *arg)
 		nni_mtx_lock(&ep->mtx);
 	}
 	// if (ep->tx_ring.count > 0) {
-		// nng_log_warn("NNG-UDP-LINGER",
+		// log_warn(
 		//     "Lingering timed out on endpoint close, peer "
 		//     "notifications dropped");
 	// }

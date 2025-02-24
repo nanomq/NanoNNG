@@ -118,10 +118,6 @@ nni_quic_listener_alloc(nng_stream_listener **lp, const nni_url *url)
 	int          rv;
 	const char * h, *p;
 
-	if ((rv = nni_init()) != 0) {
-		return (rv);
-	}
-
 	h = url->u_hostname;
 	// Wildcard special case, which means bind to INADDR_ANY.
 	if ((h != NULL) && ((strcmp(h, "*") == 0) || (strcmp(h, "") == 0))) {

@@ -1976,14 +1976,6 @@ static nni_sp_tran mqtts_tcp6_tran = {
 	.tran_fini     = mqtts_tcptran_fini,
 };
 
-#ifndef NNG_ELIDE_DEPRECATED
-int
-nng_mqtts_tcp_register(void)
-{
-	return (nni_init());
-}
-#endif
-
 void
 nni_mqtts_tcp_register(void)
 {

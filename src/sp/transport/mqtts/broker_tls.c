@@ -2206,14 +2206,6 @@ static nni_sp_tran tls_tcp6_tran_mqtt = {
 	.tran_fini     = tlstran_fini,
 };
 
-#ifndef NNG_ELIDE_DEPRECATED
-int
-nmq_mqtt_tls_register(void)
-{
-	return (nni_init());
-}
-#endif
-
 void
 nni_nmq_broker_tls_register(void)
 {

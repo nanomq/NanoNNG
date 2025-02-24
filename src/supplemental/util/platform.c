@@ -17,7 +17,6 @@
 nng_time
 nng_timestamp(void)
 {
-	(void) nni_init();
 	return (nni_timestamp());
 }
 
@@ -39,8 +38,6 @@ int
 nng_rwlock_alloc(nng_rwlock **lpp)
 {
 	nng_rwlock *lp;
-
-	(void) nni_init();
 
 	if ((lp = NNI_ALLOC_STRUCT(lp)) == NULL) {
 		return (NNG_ENOMEM);

@@ -127,16 +127,16 @@ static uint8_t
 convert_syslog_level(uint8_t level)
 {
 	switch (level) {
-	case NNG_LOG_FATAL:
+	case NANO_LOG_FATAL:
 		return LOG_EMERG;
-	case NNG_LOG_ERROR:
+	case NANO_LOG_ERROR:
 		return LOG_ERR;
-	case NNG_LOG_WARN:
+	case NANO_LOG_WARN:
 		return LOG_WARNING;
-	case NNG_LOG_INFO:
+	case NANO_LOG_INFO:
 		return LOG_INFO;
-	case NNG_LOG_DEBUG:
-	case NNG_LOG_TRACE:
+	case NANO_LOG_DEBUG:
+	case NANO_LOG_TRACE:
 		return LOG_DEBUG;
 	default:
 		return LOG_WARNING;

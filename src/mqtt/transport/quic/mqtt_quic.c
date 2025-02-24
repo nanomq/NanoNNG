@@ -2128,14 +2128,6 @@ static nni_sp_tran mqtt_quic_tran = {
 	.tran_fini     = mqtt_quictran_fini,
 };
 
-#ifndef NNG_ELIDE_DEPRECATED
-int
-nng_mqtt_quic_register(void)
-{
-	return (nni_init());
-}
-#endif
-
 void
 nni_mqtt_quic_register(void)
 {

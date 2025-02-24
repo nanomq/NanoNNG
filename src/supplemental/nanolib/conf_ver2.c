@@ -551,7 +551,7 @@ conf_log_parse_ver2(conf *config, cJSON *jso)
 		if (-1 != rv) {
 			log->level = rv;
 		} else {
-			log->level = NNG_LOG_ERROR;
+			log->level = NANO_LOG_ERROR;
 		}
 
 		hocon_read_str(log, uds_addr, jso_log);
@@ -1970,7 +1970,7 @@ conf_authorization_prase_ver2(conf *config, cJSON *jso)
 void
 conf_parse_ver2(conf *config)
 {
-	log_add_console(NNG_LOG_INFO, NULL);
+	log_add_console(NANO_LOG_INFO, NULL);
 	const char *conf_path = config->conf_file;
 	if (conf_path == NULL || !nano_file_exists(conf_path)) {
 		if (!nano_file_exists(CONF_PATH_NAME)) {
