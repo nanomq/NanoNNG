@@ -75,9 +75,113 @@ print_hex(char *str, const uint8_t *data, size_t len)
 #include <nng/supplemental/tls/engine.h>
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
+#include <nng/supplemental/tls/tee.h>
+#endif
+
+#ifdef TLS_EXTERN_PRIVATE_KEY
+
+#ifdef DEBUG_PKI_LOCAL
+
+EC_KEY *
+create_ec_key_from_file(const char *private_key_file)
+{
+	FILE   *file  = NULL;
+	EC_KEY *eckey = NULL;
+
+	// Open the private key file
+	file = fopen(private_key_file, "r");
+	if (!file) {
+		fprintf(stderr, "Failed to open private key: %s\n",
+		    private_key_file);
+		return NULL;
+	}
+
+	// Read the EC private key
+	eckey = PEM_read_ECPrivateKey(file, NULL, NULL, NULL);
+	if (!eckey) {
+		fprintf(stderr, "Failed to read EC private key: %s\n",
+		    ERR_error_string(ERR_get_error(), NULL));
+		fclose(file);
+		return NULL;
+	}
+
+	fclose(file);
+
+	// Verify that the EC key has both private and public components
+	if (!EC_KEY_check_key(eckey)) {
+		fprintf(stderr, "Invalid EC key: %s\n",
+		    ERR_error_string(ERR_get_error(), NULL));
+		EC_KEY_free(eckey);
+		return NULL;
+	}
+
+fprintf(stderr, "---------Loaded Private key from file----\n");
+	return eckey;
+}
+
+int
+getPrivatekeyToSign(const char *v, const unsigned char *dgst, int dlen,
+    uint8_t *sig, int sigmaxlen)
+{
+	NNI_ARG_UNUSED(v);
+	NNI_ARG_UNUSED(sigmaxlen);
+	EC_KEY *eckey = create_ec_key_from_file("/home/wangha/Downloads/geely/ssl_tee_test/certs/client.key");
+	// ECDSA_SIG *signature = ECDSA_do_sign_ex(dgst, dlen, kinv, r, eckey);
+	ECDSA_SIG *signature = ECDSA_do_sign(dgst, dlen, eckey);
+	if (!signature) {
+		fprintf(stderr, "ECDSA_do_sign_ex failed: %s\n",
+		    ERR_error_string(ERR_get_error(), NULL));
+		return 0; // Failure
+	}
+	// Encode the signature into DER format
+	unsigned char *der    = sig;
+	int            derlen = i2d_ECDSA_SIG(signature, &der);
+	if (derlen <= 0) {
+		fprintf(stderr, "i2d_ECDSA_SIG failed: %s\n",
+		    ERR_error_string(ERR_get_error(), NULL));
+		ECDSA_SIG_free(signature);
+		return 0; // Failure
+	}
+
+	ECDSA_SIG_free(signature);
+	EC_KEY_free(eckey);
+	return derlen;
+}
+
+int
+getCertificateFromKeystore(const char* alias, uint8_t* out, int outlen_chk)
+{
+	(void) outlen_chk;
+	(void) alias;
+	char cert[1024];
+	sprintf(cert, "-----BEGIN CERTIFICATE-----\n"
+"MIIBrjCCAVMCFHnf2Ja7Y/4Omx+aCy2qJ6/Pkq7OMAoGCCqGSM49BAMCMFYxCzAJ"
+"BgNVBAYTAkhLMQswCQYDVQQIDAJISzELMAkGA1UEBwwCS0wxHDAaBgNVBAoME0Rl"
+"ZmF1bHQgQ29tcGFueSBMdGQxDzANBgNVBAMMBldBTkdIQTAeFw0yNTAyMTkwOTUw"
+"MjNaFw0yNjAyMTkwOTUwMjNaMFwxCzAJBgNVBAYTAkhLMQswCQYDVQQIDAJISzEL"
+"MAkGA1UEBwwCS0wxHDAaBgNVBAoME0RlZmF1bHQgQ29tcGFueSBMdGQxFTATBgNV"
+"BAMMDFdBTkdIQUNMSUVOVDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABLnDk9rY"
+"oBzhwyBBjqpDadO/yTSTaYWNci8baguBuqxYwe3mR2qlNZfIFfWNA0LEdg0O1/Kh"
+"+/jfaTdQndadyeUwCgYIKoZIzj0EAwIDSQAwRgIhAPG2K3Y+hLK68mJmZdp34MMm"
+"nkqbQXlRf3Hv7XW87K2NAiEAkgdmDBDuyACkOOTTX21IoJl1Hze0Sy05iyEPTsRs"
+"ius=\n"
+"-----END CERTIFICATE-----\n");
+	BIO * biocert = BIO_new_mem_buf(cert, strlen(cert));
+	X509 * xcert = PEM_read_bio_X509(biocert, NULL, 0, NULL);
+	if (!xcert) {
+		log_error("Null xcert");
+	}
+	int len = i2d_X509(xcert, &out);
+	BIO_free(biocert);
+	X509_free(xcert);
+	return len;
+}
+
+#else
 
 #include <thirdparty/csmwDesayPki.h>
-#include <nng/supplemental/tls/tee.h>
+
+#endif // DEBUG_PKI_LOCAL
 
 typedef int (*SignFunction)(int type, const unsigned char *dgst, int dlen,
     unsigned char *sig, unsigned int *siglen, const BIGNUM *kinv,
@@ -175,7 +279,7 @@ static SSL_PRIVATE_KEY_METHOD my_ssl_private_key_method = {
 	.complete = NULL
 };
 
-#endif
+#endif // TLS_EXTERN_PRIVATE_KEY
 
 struct nng_tls_engine_conn {
 	void    *tls; // parent conn
