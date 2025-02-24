@@ -39,6 +39,8 @@ if (NNG_TLS_ENGINE STREQUAL "open")
         if(TLS_EXTERN_PRIVATE_KEY)
             #nng_link_libraries_public(/home/wangha/Downloads/android-ndk-r23c/toolchains/llvm/prebuilt/linux-x86_64/sysroot/lib/libcsmw_crypto.so /home/wangha/Downloads/android-ndk-r23c/toolchains/llvm/prebuilt/linux-x86_64/sysroot/lib/libcsmw_ssl.so /home/wangha/Downloads/android-ndk-r23c/toolchains/llvm/prebuilt/linux-x86_64/sysroot/lib/libcsmw.so /home/wangha/Downloads/android-ndk-r23c/toolchains/llvm/prebuilt/linux-x86_64/sysroot/lib/libcsmw_desaypki.so)
             nng_link_libraries_public(csmw_crypto csmw_ssl csmw csmw_desaypki)
+            # Comment the line above and uncomment the line following when DEBUG_PKI_LOCAL
+            #nng_link_libraries_public(OpenSSL::SSL OpenSSL::Crypto)
         else()
             nng_link_libraries_public(OpenSSL::SSL OpenSSL::Crypto)
         endif()
