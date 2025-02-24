@@ -313,7 +313,7 @@ static void
 open_conn_fini(nng_tls_engine_conn *ec)
 {
 	trace("start");
-	//SSL_free(ec->ssl);
+	SSL_free(ec->ssl);
 	trace("end");
 }
 
