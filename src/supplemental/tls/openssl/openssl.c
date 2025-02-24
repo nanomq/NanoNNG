@@ -804,6 +804,7 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		log_warn("open_config_ca_chain" "Failed to read Certs from keystore");
 	}
 #else
+	char *cert1 = cert;
 	len = strlen(cert1);
 #endif // TLS_EXTERN_PRIVATE_KEY
 	log_warn("cert:%s len:%d", cert1, len);
