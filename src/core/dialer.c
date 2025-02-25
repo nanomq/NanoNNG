@@ -548,11 +548,6 @@ nni_dialer_getopt(
 	return (nni_sock_getopt(d->d_sock, name, valp, szp, t));
 }
 
-const nng_url *
-nni_dialer_url(nni_dialer *d)
-{
-	return (d->d_url);
-}
 int
 nni_dialer_get_tls(nni_dialer *d, nng_tls_config **cfgp)
 {

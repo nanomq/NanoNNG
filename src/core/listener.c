@@ -487,11 +487,6 @@ nni_listener_getopt(
 	return (nni_sock_getopt(l->l_sock, name, val, szp, t));
 }
 
-const nng_url *
-nni_listener_url(nni_listener *l)
-{
-	return (l->l_url);
-}
 int
 nni_listener_get_tls(nni_listener *l, nng_tls_config **cfgp)
 {
