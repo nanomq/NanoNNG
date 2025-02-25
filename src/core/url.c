@@ -284,6 +284,31 @@ static const char *nni_schemes[] = {
 	"telnet",
 	"irc",
 	"imap",
+	// NanoMQ Schema
+	"mqtt-tcp",
+	"mqtt-tcp4",
+	"mqtt-tcp6",
+	"tls+mqtt-tcp",
+	"tls+mqtt-tcp4",
+	"tls+mqtt-tcp6",
+	"nmq-tcp",
+	"nmq-tcp4",
+	"nmq-tcp6",
+	"broker+tcp",
+	"broker+tcp4",
+	"broker+tcp6",
+	"tls+nmq-tcp",
+	"tls+nmq-tcp4",
+	"tls+nmq-tcp6",
+	"nmq-ws",
+	"nmq+ws4",
+	"nmq+ws6",
+	"nmq-wss",
+#ifdef SUPP_QUIC
+	"quic",
+	"mqtt-quic",
+	"nmq-quic",
+#endif
 	NULL,
 };
 
