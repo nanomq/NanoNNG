@@ -1947,10 +1947,7 @@ tlstran_ep_init_listener(void **lp, nng_url *url, nni_listener *nlistener)
 	nni_aio_free(aio);
 
 	if ((rv != 0) ||
-	    ((rv = nng_stream_listener_alloc_url(&ep->listener, url)) != 0) ||
-	    ((rv = nni_stream_listener_set(ep->listener, NNG_OPT_TLS_AUTH_MODE,
-	          &ep->authmode, sizeof(ep->authmode), NNI_TYPE_INT32)) !=
-	        0)) {
+	    ((rv = nng_stream_listener_alloc_url(&ep->listener, url)) != 0)) {
 		tlstran_ep_fini(ep);
 		return (rv);
 	}
@@ -1998,12 +1995,15 @@ tlstran_ep_get_url(void *arg, void *v, size_t *szp, nni_opt_type t)
 static int
 tlstran_ep_set_conf(void *arg, const void *v, size_t sz, nni_opt_type t)
 {
+	int rv;
 	tlstran_ep *ep = arg;
 	NNI_ARG_UNUSED(sz);
 	NNI_ARG_UNUSED(t);
 
 	nni_mtx_lock(&ep->mtx);
-	ep->conf = (conf *) v;
+	if ((rv = nni_copyin_ptr((void **) &(ep->conf), v, sz, t)) != 0) {
+		return (rv);
+	}
 	nni_mtx_unlock(&ep->mtx);
 	return 0;
 }
@@ -2156,6 +2156,20 @@ tlstran_listener_set(
 	return (rv);
 }
 
+static int
+tlstran_listener_set_tls(void *arg, nng_tls_config *cfg)
+{
+	tlstran_ep *ep = arg;
+	return (nni_stream_listener_set_tls(ep->listener, cfg));
+}
+
+static int
+tlstran_listener_get_tls(void *arg, nng_tls_config **cfgp)
+{
+	tlstran_ep *ep = arg;
+	return (nni_stream_listener_get_tls(ep->listener, cfgp));
+}
+
 static nni_sp_listener_ops tlstran_listener_ops = {
 	.l_init   = tlstran_ep_init_listener,
 	.l_fini   = tlstran_ep_fini,
@@ -2164,6 +2178,8 @@ static nni_sp_listener_ops tlstran_listener_ops = {
 	.l_close  = tlstran_ep_close,
 	.l_getopt = tlstran_listener_get,
 	.l_setopt = tlstran_listener_set,
+	.l_set_tls = tlstran_listener_set_tls,
+	.l_get_tls = tlstran_listener_get_tls,
 };
 
 static nni_sp_tran tlstran_mqtt = {
@@ -2189,14 +2205,6 @@ static nni_sp_tran tls_tcp6_tran_mqtt = {
 	.tran_init     = tlstran_init,
 	.tran_fini     = tlstran_fini,
 };
-
-#ifndef NNG_ELIDE_DEPRECATED
-int
-nmq_mqtt_tls_register(void)
-{
-	return (nni_init());
-}
-#endif
 
 void
 nni_nmq_broker_tls_register(void)

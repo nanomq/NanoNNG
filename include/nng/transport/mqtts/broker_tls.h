@@ -19,10 +19,6 @@ extern "C" {
 
 // TLS transport.  This is used for communication over TLS.
 
-#ifndef NNG_ELIDE_DEPRECATED
-NNG_DECL int nmq_mqtt_tls_register(void);
-#endif
-
 #ifdef __cplusplus
 }
 #endif

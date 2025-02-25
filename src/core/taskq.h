@@ -1,5 +1,5 @@
 //
-// Copyright 2022 Staysail Systems, Inc. <info@staysail.tech>
+// Copyright 2024 Staysail Systems, Inc. <info@staysail.tech>
 // Copyright 2018 Capitar IT Group BV <info@capitar.com>
 //
 // This software is supplied under the terms of the MIT License, a
@@ -13,6 +13,8 @@
 
 #include "core/defs.h"
 #include "core/list.h"
+#include "core/platform.h"
+#include "nng/nng.h"
 
 typedef struct nni_taskq nni_taskq;
 typedef struct nni_task  nni_task;
@@ -59,7 +61,7 @@ extern void nni_task_init(nni_task *, nni_taskq *, nni_cb, void *);
 // it reschedules the task.)
 extern void nni_task_fini(nni_task *);
 
-extern int  nni_taskq_sys_init(void);
+extern int  nni_taskq_sys_init(nng_init_params *);
 extern void nni_taskq_sys_fini(void);
 
 // nni_task implementation details are not to be used except by the
@@ -67,9 +69,9 @@ extern void nni_taskq_sys_fini(void);
 // consuming structures.
 struct nni_task {
 	nni_list_node task_node;
-	void *        task_arg;
+	void         *task_arg;
 	nni_cb        task_cb;
-	nni_taskq *   task_tq;
+	nni_taskq    *task_tq;
 	unsigned      task_busy;
 	bool          task_prep;
 	nni_mtx       task_mtx;

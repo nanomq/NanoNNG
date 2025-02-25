@@ -1,25 +1,33 @@
 name: linux
 on: [push, pull_request]
 jobs:
-
   build:
+    strategy:
+      matrix:
+        tls:
+          - engine: mbed
+            pkg: libmbedtls-dev
+            dir: build.mbed
+          - engine: wolf
+            pkg: libwolfssl-dev
+            dir: build.wolf
     name: build
-    runs-on: [ ubuntu-latest ]
+    runs-on: [ubuntu-latest]
     steps:
-    - name: Check out code
-      uses: actions/checkout@v1
+      - name: Check out code
+        uses: actions/checkout@v4
 
-    - name: Install mbedTLS
-      run: sudo apt-get install libmbedtls-dev
+      - name: Install ninja
+        run: sudo apt-get install ninja-build
 
-    - name: Install ninja
-      run: sudo apt-get install ninja-build
+      - name: Install TLS engine
+        run: sudo apt-get install ${{ matrix.tls.pkg }}
 
-    - name: Configure
-      run: mkdir build && cd build && cmake -G Ninja -D NNG_ENABLE_TLS=ON ..
+      - name: Configure
+        run: mkdir ${{ matrix.tls.dir }} && cd ${{ matrix.tls.dir }} && cmake -G Ninja -D NNG_ENABLE_TLS=ON -DNNG_TLS_ENGINE=${{ matrix.tls.engine }} ..
 
-    - name: Build
-      run: cd build && ninja
+      - name: Build
+        run: cd ${{ matrix.tls.dir }} && ninja
 
-    - name: Test
-      run: cd build && ctest --output-on-failure
+      - name: Test
+        run: cd ${{ matrix.tls.dir }} && ctest --output-on-failure
