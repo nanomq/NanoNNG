@@ -113,7 +113,7 @@ quic_listener_alloc_addr(nng_stream_listener **lp, const char *h, const char *p)
 }
 
 int
-nni_quic_listener_alloc(nng_stream_listener **lp, const nni_url *url)
+nni_quic_listener_alloc(nng_stream_listener **lp, const nng_url *url)
 {
 	int          rv;
 	const char * h, *p;

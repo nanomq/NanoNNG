@@ -2157,7 +2157,7 @@ zt_parsedec(const char **sp, uint64_t *valp)
 }
 
 static int
-zt_ep_init(void **epp, nni_url *url, nni_sock *sock, nni_dialer *ndialer,
+zt_ep_init(void **epp, nng_url *url, nni_sock *sock, nni_dialer *ndialer,
     nni_listener *nlistener)
 {
 	zt_ep      *ep;
@@ -2235,13 +2235,13 @@ zt_ep_init(void **epp, nni_url *url, nni_sock *sock, nni_dialer *ndialer,
 }
 
 static int
-zt_dialer_init(void **epp, nni_url *url, nni_dialer *d)
+zt_dialer_init(void **epp, nng_url *url, nni_dialer *d)
 {
 	return (zt_ep_init(epp, url, nni_dialer_sock(d), d, NULL));
 }
 
 static int
-zt_listener_init(void **epp, nni_url *url, nni_listener *l)
+zt_listener_init(void **epp, nng_url *url, nni_listener *l)
 {
 	return (zt_ep_init(epp, url, nni_listener_sock(l), NULL, l));
 }

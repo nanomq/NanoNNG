@@ -41,7 +41,7 @@ struct quic_dialer {
 };
 
 int
-nni_quic_listener_alloc(nng_stream_listener **lp, const nni_url *url)
+nni_quic_listener_alloc(nng_stream_listener **lp, const nng_url *url)
 {
 	NNI_ARG_UNUSED(lp);
 	NNI_ARG_UNUSED(url);
@@ -628,7 +628,7 @@ quic_dialer_alloc(quic_dialer **dp)
 }
 
 int
-nni_quic_dialer_alloc(nng_stream_dialer **dp, const nni_url *url)
+nni_quic_dialer_alloc(nng_stream_dialer **dp, const nng_url *url)
 {
 	quic_dialer *d;
 	int          rv;
