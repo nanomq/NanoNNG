@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -202,18 +203,25 @@ getCertificateFromKeystore(const char* alias, uint8_t* out, int outlen_chk)
 {
 	(void) outlen_chk;
 	(void) alias;
-	char cert[1024];
+	char cert[2048];
 	sprintf(cert, "-----BEGIN CERTIFICATE-----\n"
-"MIIBrjCCAVMCFHnf2Ja7Y/4Omx+aCy2qJ6/Pkq7OMAoGCCqGSM49BAMCMFYxCzAJ"
-"BgNVBAYTAkhLMQswCQYDVQQIDAJISzELMAkGA1UEBwwCS0wxHDAaBgNVBAoME0Rl"
-"ZmF1bHQgQ29tcGFueSBMdGQxDzANBgNVBAMMBldBTkdIQTAeFw0yNTAyMTkwOTUw"
-"MjNaFw0yNjAyMTkwOTUwMjNaMFwxCzAJBgNVBAYTAkhLMQswCQYDVQQIDAJISzEL"
-"MAkGA1UEBwwCS0wxHDAaBgNVBAoME0RlZmF1bHQgQ29tcGFueSBMdGQxFTATBgNV"
-"BAMMDFdBTkdIQUNMSUVOVDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABLnDk9rY"
-"oBzhwyBBjqpDadO/yTSTaYWNci8baguBuqxYwe3mR2qlNZfIFfWNA0LEdg0O1/Kh"
-"+/jfaTdQndadyeUwCgYIKoZIzj0EAwIDSQAwRgIhAPG2K3Y+hLK68mJmZdp34MMm"
-"nkqbQXlRf3Hv7XW87K2NAiEAkgdmDBDuyACkOOTTX21IoJl1Hze0Sy05iyEPTsRs"
-"ius=\n"
+"MIIDEzCCAfugAwIBAgIBATANBgkqhkiG9w0BAQsFADA/MQswCQYDVQQGEwJDTjER"
+"MA8GA1UECAwIaGFuZ3pob3UxDDAKBgNVBAoMA0VNUTEPMA0GA1UEAwwGUm9vdENB"
+"MB4XDTIwMDUwODA4MDY1N1oXDTMwMDUwNjA4MDY1N1owPzELMAkGA1UEBhMCQ04x"
+"ETAPBgNVBAgMCGhhbmd6aG91MQwwCgYDVQQKDANFTVExDzANBgNVBAMMBkNsaWVu"
+"dDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMy4hoksKcZBDbY680u6"
+"TS25U51nuB1FBcGMlF9B/t057wPOlxF/OcmbxY5MwepS41JDGPgulE1V7fpsXkiW"
+"1LUimYV/tsqBfymIe0mlY7oORahKji7zKQ2UBIVFhdlvQxunlIDnw6F9popUgyHt"
+"dMhtlgZK8oqRwHxO5dbfoukYd6J/r+etS5q26sgVkf3C6dt0Td7B25H9qW+f7oLV"
+"PbcHYCa+i73u9670nrpXsC+Qc7Mygwa2Kq/jwU+ftyLQnOeW07DuzOwsziC/fQZa"
+"nbxR+8U9FNftgRcC3uP/JMKYUqsiRAuaDokARZxVTV5hUElfpO6z6/NItSDvvh3i"
+"eikCAwEAAaMaMBgwCQYDVR0TBAIwADALBgNVHQ8EBAMCBeAwDQYJKoZIhvcNAQEL"
+"BQADggEBABchYxKo0YMma7g1qDswJXsR5s56Czx/I+B41YcpMBMTrRqpUC0nHtLk"
+"M7/tZp592u/tT8gzEnQjZLKBAhFeZaR3aaKyknLqwiPqJIgg0pgsBGITrAK3Pv4z"
+"5/YvAJJKgTe5UdeTz6U4lvNEux/4juZ4pmqH4qSFJTOzQS7LmgSmNIdd072rwXBd"
+"UzcSHzsJgEMb88u/LDLjj1pQ7AtZ4Tta8JZTvcgBFmjB0QUi6fgkHY6oGat/W4kR"
+"jSRUBlMUbM/drr2PVzRc2dwbFIl3X+ZE6n5Sl3ZwRAC/s92JU6CPMRW02muVu6xl"
+"goraNgPISnrbpR6KjxLZkVembXzjNNc=\n"
 "-----END CERTIFICATE-----\n");
 	BIO * biocert = BIO_new_mem_buf(cert, strlen(cert));
 	X509 * xcert = PEM_read_bio_X509(biocert, NULL, 0, NULL);
