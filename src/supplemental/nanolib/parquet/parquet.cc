@@ -254,7 +254,6 @@ parquet_object_free(parquet_object *elem)
 int
 parquet_write_batch_async(parquet_object *elem)
 {
-	log_error("parquet topic: %s", elem->topic);
 	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
 	if (conf->enable == false) {
 		log_error("Parquet %s is not ready or not launch!", elem->topic);
@@ -557,7 +556,6 @@ parquet_write(parquet_object *elem)
 		return -1;
 	}
 
-	log_error("topic: %s", elem->topic);
 	char    **schema_arr = elem->data->schema;
 	uint32_t  col_len    = elem->data->col_len;
 	uint32_t  row_len    = elem->data->row_len;

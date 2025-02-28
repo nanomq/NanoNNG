@@ -820,6 +820,11 @@ open_config_ca_chain(
 
 	BIO_free(bio);
 
+#ifdef TLS_EXTERN_PRIVATE_KEY
+	if (certs)
+		nng_free((void *)certs, len);
+#endif //TLS_EXTERN_PRIVATE_KEY
+
 	if (crl == NULL) {
 		trace("end without crl");
 		return (0);
@@ -1045,6 +1050,9 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 #endif // TLS_EXTERN_PRIVATE_KEY
 
 error:
+#ifdef TLS_EXTERN_PRIVATE_KEY
+	nng_free(cert1, len);
+#endif // TLS_EXTERN_PRIVATE_KEY
 	if (xcert)
 		X509_free(xcert);
 	if (biocert)
