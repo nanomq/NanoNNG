@@ -82,6 +82,43 @@ print_hex(char *str, const uint8_t *data, size_t len)
 
 #ifdef DEBUG_PKI_LOCAL
 
+RSA *
+create_rsa_key_from_file(const char *private_key_file)
+{
+	FILE   *file  = NULL;
+	RSA    *key = NULL;
+
+	// Open the private key file
+	file = fopen(private_key_file, "r");
+	if (!file) {
+		fprintf(stderr, "Failed to open private key: %s\n",
+		    private_key_file);
+		return NULL;
+	}
+
+	// Read the EC private key
+	key = PEM_read_RSAPrivateKey(file, NULL, NULL, NULL);
+	if (!key) {
+		fprintf(stderr, "Failed to read RSA private key: %s\n",
+		    ERR_error_string(ERR_get_error(), NULL));
+		fclose(file);
+		return NULL;
+	}
+
+	fclose(file);
+
+	// Verify that the key has both private and public components
+	if (!RSA_check_key(key)) {
+		fprintf(stderr, "Invalid RSA key: %s\n",
+		    ERR_error_string(ERR_get_error(), NULL));
+		RSA_free(key);
+		return NULL;
+	}
+
+fprintf(stderr, "---------Loaded Private key from file----\n");
+	return key;
+}
+
 EC_KEY *
 create_ec_key_from_file(const char *private_key_file)
 {
@@ -120,11 +157,22 @@ fprintf(stderr, "---------Loaded Private key from file----\n");
 }
 
 int
-getPrivatekeyToSign(const char *v, const unsigned char *dgst, int dlen,
+getPrivatekeyToSign(const char *v, const uint8_t *dgst, int dlen,
     uint8_t *sig, int sigmaxlen)
 {
 	NNI_ARG_UNUSED(v);
 	NNI_ARG_UNUSED(sigmaxlen);
+	RSA *rsakey = create_rsa_key_from_file("/home/wangha/Documents/NanoMQ_mirror/etc/certs/client-key.pem");
+	uint8_t hash[2048];
+	int sig_len = sigmaxlen;
+	if (SHA256((unsigned char *)dgst, dlen, hash) == NULL) {
+        log_error("Error hashing the data.\n");
+    }
+	if (RSA_sign(NID_sha256, hash, 2048, sig, (unsigned int *)&sig_len, rsakey) != 1) {
+		log_error("Error signing the data.\n");
+	}
+	return sig_len;
+	/*
 	EC_KEY *eckey = create_ec_key_from_file("/home/wangha/Downloads/geely/ssl_tee_test/certs/client.key");
 	// ECDSA_SIG *signature = ECDSA_do_sign_ex(dgst, dlen, kinv, r, eckey);
 	ECDSA_SIG *signature = ECDSA_do_sign(dgst, dlen, eckey);
@@ -146,6 +194,7 @@ getPrivatekeyToSign(const char *v, const unsigned char *dgst, int dlen,
 	ECDSA_SIG_free(signature);
 	EC_KEY_free(eckey);
 	return derlen;
+	*/
 }
 
 int
@@ -932,7 +981,7 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	}
 	// Print the certificate in PEM format to stdout
 	if (PEM_write_X509(stdout, xcert) != 1) {
-		log_error(stderr, "Error writing PEM certificate: %s\n", ERR_error_string(ERR_get_error(), NULL));
+		log_error("Error writing PEM certificate: %s\n", ERR_error_string(ERR_get_error(), NULL));
 	}
 	log_info("ctx %p cert %p rv%d", cfg->ctx, xcert, rv);
 	if ((rv = SSL_CTX_use_certificate(cfg->ctx, xcert)) <= 0) {
