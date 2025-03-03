@@ -191,6 +191,7 @@ typedef enum {
 
 /* Message types & flags */
 #define CMD_UNKNOWN 0x00
+#define CMD_HTTPREQ 0x01
 #define CMD_CONNECT 0x10
 #define CMD_CONNACK 0x20
 #define CMD_PUBLISH 0x30	// indicates PUBLISH packet & MQTTV4 pub packet
