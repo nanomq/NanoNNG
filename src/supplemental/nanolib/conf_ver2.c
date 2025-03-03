@@ -405,6 +405,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 				hocon_read_address_base(websocket, tls_url,
 				    "bind", "nmq-wss://", jso_websocket_tls);
 			}
+			websocket->tls_enable = true;
 		}
 	}
 

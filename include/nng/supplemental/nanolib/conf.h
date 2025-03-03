@@ -199,6 +199,7 @@ typedef struct conf_http_server conf_http_server;
 
 struct conf_websocket {
 	bool  enable;
+	bool  tls_enable;
 	char *url;     // "nmq-ws://addr:port/path"
 	char *tls_url; // "nmq-wss://addr:port/path"
 };
