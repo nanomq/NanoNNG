@@ -513,6 +513,12 @@ conf_basic_parse(conf *config, const char *path)
 			    nni_strcasecmp(value, "true") == 0;
 			nng_strfree(value);
 		} else if ((value = get_conf_value(
+		                line, sz, "websocket.tls_enable")) != NULL) {
+			config->websocket.tls_enable =
+			    nni_strcasecmp(value, "yes") == 0 ||
+			    nni_strcasecmp(value, "true") == 0;
+			nng_strfree(value);
+		} else if ((value = get_conf_value(
 		                line, sz, "websocket.url")) != NULL) {
 			FREE_NONULL(config->websocket.url);
 			config->websocket.url = value;
@@ -933,9 +939,10 @@ conf_init(conf *nanomq_conf)
 
 	conf_http_server_init(&nanomq_conf->http_server, 8081);
 
-	nanomq_conf->websocket.enable  = false;
-	nanomq_conf->websocket.url     = NULL;
-	nanomq_conf->websocket.tls_url = NULL;
+	nanomq_conf->websocket.enable     = false;
+	nanomq_conf->websocket.tls_enable = false;
+	nanomq_conf->websocket.url        = NULL;
+	nanomq_conf->websocket.tls_url    = NULL;
 
 	conf_bridge_init(&nanomq_conf->bridge);
 	conf_bridge_init(&nanomq_conf->aws_bridge);
@@ -1345,11 +1352,11 @@ print_conf(conf *nanomq_conf)
 	if (nanomq_conf->enable) {
 		log_info("tcp url:                  %s ", nanomq_conf->url);
 	}
-	if (nanomq_conf->websocket.enable) {
+	if (nanomq_conf->websocket.enable && nanomq_conf->websocket.url) {
 		log_info("websocket url:            %s",
 		    nanomq_conf->websocket.url);
 	}
-	if (nanomq_conf->websocket.tls_url) {
+	if (nanomq_conf->websocket.tls_url && nanomq_conf->websocket.tls_enable) {
 		log_info("websocket tls url:        %s",
 		    nanomq_conf->websocket.tls_url);
 	}

@@ -34,7 +34,7 @@ nng_fini(void)
 }
 
 int
-nng_close(nng_socket s)
+nng_socket_close(nng_socket s)
 {
 	int       rv;
 	nni_sock *sock;
@@ -47,6 +47,12 @@ nng_close(nng_socket s)
 	// No release -- close releases it.
 	nni_sock_close(sock);
 	return (0);
+}
+
+int
+nng_close(nng_socket s)
+{
+	return (nng_socket_close(s));
 }
 
 int
@@ -263,7 +269,7 @@ nng_sendmsg(nng_socket s, nng_msg *msg, int flags)
 }
 
 void
-nng_recv_aio(nng_socket s, nng_aio *aio)
+nng_sock_recv(nng_socket s, nng_aio *aio)
 {
 	nni_sock *sock;
 	int       rv;
@@ -279,7 +285,13 @@ nng_recv_aio(nng_socket s, nng_aio *aio)
 }
 
 void
-nng_send_aio(nng_socket s, nng_aio *aio)
+nng_recv_aio(nng_socket s, nng_aio *aio)
+{
+	nng_sock_recv(s, aio);
+}
+
+void
+nng_sock_send(nng_socket s, nng_aio *aio)
 {
 	nni_sock *sock;
 	int       rv;
@@ -298,6 +310,12 @@ nng_send_aio(nng_socket s, nng_aio *aio)
 	}
 	nni_sock_send(sock, aio);
 	nni_sock_rele(sock);
+}
+
+void
+nng_send_aio(nng_socket s, nng_aio *aio)
+{
+	nng_sock_send(s, aio);
 }
 
 int
@@ -537,11 +555,13 @@ nng_ctx_get_ms(nng_ctx id, const char *n, nng_duration *v)
 	return (ctx_get(id, n, v, NULL, NNI_TYPE_DURATION));
 }
 
+#ifndef NNG_ELIDE_DEPRECATED
 int
 nng_ctx_get_addr(nng_ctx id, const char *n, nng_sockaddr *v)
 {
 	return (ctx_get(id, n, v, NULL, NNI_TYPE_SOCKADDR));
 }
+#endif
 
 static int
 ctx_set(nng_ctx id, const char *n, const void *v, size_t sz, nni_type t)
@@ -609,11 +629,13 @@ nng_ctx_set_string(nng_ctx id, const char *n, const char *v)
 	    ctx_set(id, n, v, v == NULL ? 0 : strlen(v) + 1, NNI_TYPE_STRING));
 }
 
+#ifndef NNG_ELIDE_DEPRECATED
 int
 nng_ctx_set_addr(nng_ctx id, const char *n, const nng_sockaddr *v)
 {
 	return (ctx_set(id, n, v, sizeof(*v), NNI_TYPE_SOCKADDR));
 }
+#endif
 
 int
 nng_dial(nng_socket sid, const char *addr, nng_dialer *dp, int flags)
@@ -1208,6 +1230,85 @@ int
 nng_socket_get_addr(nng_socket id, const char *n, nng_sockaddr *v)
 {
 	return (socket_get(id, n, v, NULL, NNI_TYPE_SOCKADDR));
+}
+
+int
+nng_socket_proto_id(nng_socket id, uint16_t *idp)
+{
+	int       rv;
+	nni_sock *sock;
+
+	if (((rv = nni_init()) != 0) ||
+	    ((rv = nni_sock_find(&sock, id.id)) != 0)) {
+		return (rv);
+	}
+
+	*idp = nni_sock_proto_id(sock);
+	nni_sock_rele(sock);
+	return (0);
+}
+
+int
+nng_socket_peer_id(nng_socket id, uint16_t *idp)
+{
+	int       rv;
+	nni_sock *sock;
+
+	if (((rv = nni_init()) != 0) ||
+	    ((rv = nni_sock_find(&sock, id.id)) != 0)) {
+		return (rv);
+	}
+
+	*idp = nni_sock_peer_id(sock);
+	nni_sock_rele(sock);
+	return (0);
+}
+
+int
+nng_socket_proto_name(nng_socket id, const char **name)
+{
+	int       rv;
+	nni_sock *sock;
+
+	if (((rv = nni_init()) != 0) ||
+	    ((rv = nni_sock_find(&sock, id.id)) != 0)) {
+		return (rv);
+	}
+
+	*name = nni_sock_proto_name(sock);
+	nni_sock_rele(sock);
+	return (0);
+}
+
+int
+nng_socket_peer_name(nng_socket id, const char **name)
+{
+	int       rv;
+	nni_sock *sock;
+
+	if (((rv = nni_init()) != 0) ||
+	    ((rv = nni_sock_find(&sock, id.id)) != 0)) {
+		return (rv);
+	}
+
+	*name = nni_sock_peer_name(sock);
+	nni_sock_rele(sock);
+	return (0);
+}
+
+int
+nng_socket_raw(nng_socket id, bool *rawp)
+{
+	int       rv;
+	nni_sock *sock;
+
+	if (((rv = nni_init()) != 0) ||
+	    ((rv = nni_sock_find(&sock, id.id)) != 0)) {
+		return (rv);
+	}
+	*rawp = nni_sock_raw(sock);
+	nni_sock_rele(sock);
+	return (0);
 }
 
 int
@@ -2766,6 +2867,32 @@ nng_udp_multicast_membership(nng_udp *udp, nng_sockaddr *sa, bool join)
 {
 	return (
 	    nni_plat_udp_multicast_membership((nni_plat_udp *) udp, sa, join));
+}
+
+int
+nng_dialer_get_url(nng_dialer id, const nng_url **urlp)
+{
+       int         rv;
+       nni_dialer *d;
+       if ((rv = nni_dialer_find(&d, id.id)) != 0) {
+               return (rv);
+       }
+       *urlp = nni_dialer_url(d);
+       nni_dialer_rele(d);
+       return (0);
+}
+
+int
+nng_listener_get_url(nng_listener id, const nng_url **urlp)
+{
+       int           rv;
+       nni_listener *l;
+       if ((rv = nni_listener_find(&l, id.id)) != 0) {
+               return (rv);
+       }
+       *urlp = nni_listener_url(l);
+       nni_listener_rele(l);
+       return (0);
 }
 
 int

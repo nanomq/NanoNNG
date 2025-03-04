@@ -1,5 +1,5 @@
-// Copyright 2024 Jaylin <neverfail2012@hotmail.com>
-// Copyright 2024 Staysail Systems, Inc. <info@staysail.tech>
+// Copyright 2025 Jaylin <neverfail2012@hotmail.com>
+// Copyright 2025 Staysail Systems, Inc. <info@staysail.tech>
 // Copyright 2018 Capitar IT Group BV <info@capitar.com>
 //
 // This software is supplied under the terms of the MIT License, a
@@ -57,10 +57,10 @@ extern "C" {
 // We use SemVer, and these versions are about the API, and
 // may not necessarily match the ABI versions.
 #define NNG_MAJOR_VERSION 1
-#define NNG_MINOR_VERSION 8
+#define NNG_MINOR_VERSION 10
 #define NNG_PATCH_VERSION 0
-#define NNG_RELEASE_SUFFIX \
-	"" // if non-empty (i.e. "pre"), this is a pre-release
+// if non-empty (i.e. "pre"), this is a pre-release
+#define NNG_RELEASE_SUFFIX ""
 
 // Maximum length of a socket address. This includes the terminating NUL.
 // This limit is built into other implementations, so do not change it.
@@ -224,7 +224,13 @@ NNG_DECL void nng_fini(void);
 // nng_close closes the socket, terminating all activity and
 // closing any underlying connections and releasing any associated
 // resources.
+// We're not eliding this with NNG_ELIDE_DEPRECATED for now, because
+// it would break far too many applications, as nng_socket_close is brand new.
 NNG_DECL int nng_close(nng_socket);
+
+// nng_socket_close is the *new* name for nng_close.  It should be used
+// in new code, as nng_close will be removed in the next major release.
+NNG_DECL int nng_socket_close(nng_socket);
 
 // nng_socket_id returns the positive socket id for the socket, or -1
 // if the socket is not valid.
@@ -250,6 +256,14 @@ NNG_DECL int nng_socket_get_string(nng_socket, const char *, char **);
 NNG_DECL int nng_socket_get_ptr(nng_socket, const char *, void **);
 NNG_DECL int nng_socket_get_ms(nng_socket, const char *, nng_duration *);
 NNG_DECL int nng_socket_get_addr(nng_socket, const char *, nng_sockaddr *);
+
+// These functions are used on a socket to get information about it's
+// identity, and the identity of the peer.  Few applications need these.
+NNG_DECL int nng_socket_proto_id(nng_socket id, uint16_t *);
+NNG_DECL int nng_socket_peer_id(nng_socket id, uint16_t *);
+NNG_DECL int nng_socket_proto_name(nng_socket id, const char **);
+NNG_DECL int nng_socket_peer_name(nng_socket id, const char **);
+NNG_DECL int nng_socket_raw(nng_socket, bool *);
 
 // Utility function for getting a printable form of the socket address
 // for display in logs, etc.  It is not intended to be parsed, and the
@@ -407,18 +421,24 @@ NNG_DECL int nng_sendmsg(nng_socket, nng_msg *, int);
 // can be passed off directly to nng_sendmsg.
 NNG_DECL int nng_recvmsg(nng_socket, nng_msg **, int);
 
-// nng_send_aio sends data on the socket asynchronously.  As with nng_send,
+// nng_sock_send sends data on the socket asynchronously.  As with nng_send,
 // the completion may be executed before the data has actually been delivered,
 // but only when it is accepted for delivery.  The supplied AIO must have
 // been initialized, and have an associated message.  The message will be
 // "owned" by the socket if the operation completes successfully.  Otherwise,
 // the caller is responsible for freeing it.
+NNG_DECL void nng_sock_send(nng_socket, nng_aio *);
+
+// Compatible alias for nng_sock_send.
 NNG_DECL void nng_send_aio(nng_socket, nng_aio *);
 
-// nng_recv_aio receives data on the socket asynchronously.  On a successful
+// nng_sock_recv receives data on the socket asynchronously.  On a successful
 // result, the AIO will have an associated message, that can be obtained
 // with nng_aio_get_msg().  The caller takes ownership of the message at
 // this point.
+NNG_DECL void nng_sock_recv(nng_socket, nng_aio *);
+
+// Compatible alias for nng_sock_recv.
 NNG_DECL void nng_recv_aio(nng_socket, nng_aio *);
 
 // Context support.  User contexts are not supported by all protocols,
@@ -447,7 +467,7 @@ NNG_DECL int nng_ctx_close(nng_ctx);
 // A valid context is not necessarily an *open* context.
 NNG_DECL int nng_ctx_id(nng_ctx);
 
-// nng_ctx_recv receives asynchronously.  It works like nng_recv_aio, but
+// nng_ctx_recv receives asynchronously.  It works like nng_sock_recv, but
 // uses a local context instead of the socket global context.
 NNG_DECL void nng_ctx_recv(nng_ctx, nng_aio *);
 
@@ -456,7 +476,7 @@ NNG_DECL void nng_ctx_recv(nng_ctx, nng_aio *);
 // on a context instead of a socket.
 NNG_DECL int nng_ctx_recvmsg(nng_ctx, nng_msg **, int);
 
-// nng_ctx_send sends asynchronously. It works like nng_send_aio, but
+// nng_ctx_send sends asynchronously. It works like nng_sock_send, but
 // uses a local context instead of the socket global context.
 NNG_DECL void nng_ctx_send(nng_ctx, nng_aio *);
 
@@ -473,7 +493,6 @@ NNG_DECL int nng_ctx_get_uint64(nng_ctx, const char *, uint64_t *);
 NNG_DECL int nng_ctx_get_string(nng_ctx, const char *, char **);
 NNG_DECL int nng_ctx_get_ptr(nng_ctx, const char *, void **);
 NNG_DECL int nng_ctx_get_ms(nng_ctx, const char *, nng_duration *);
-NNG_DECL int nng_ctx_get_addr(nng_ctx, const char *, nng_sockaddr *);
 
 NNG_DECL int nng_ctx_set(nng_ctx, const char *, const void *, size_t);
 NNG_DECL int nng_ctx_set_bool(nng_ctx, const char *, bool);
@@ -483,7 +502,6 @@ NNG_DECL int nng_ctx_set_uint64(nng_ctx, const char *, uint64_t);
 NNG_DECL int nng_ctx_set_string(nng_ctx, const char *, const char *);
 NNG_DECL int nng_ctx_set_ptr(nng_ctx, const char *, void *);
 NNG_DECL int nng_ctx_set_ms(nng_ctx, const char *, nng_duration);
-NNG_DECL int nng_ctx_set_addr(nng_ctx, const char *, const nng_sockaddr *);
 
 // nng_alloc is used to allocate memory.  It's intended purpose is for
 // allocating memory suitable for message buffers with nng_send().
@@ -1232,8 +1250,6 @@ NNG_DECL int  nng_stream_set_size(nng_stream *, const char *, size_t);
 NNG_DECL int  nng_stream_set_uint64(nng_stream *, const char *, uint64_t);
 NNG_DECL int  nng_stream_set_string(nng_stream *, const char *, const char *);
 NNG_DECL int  nng_stream_set_ptr(nng_stream *, const char *, void *);
-NNG_DECL int  nng_stream_set_addr(
-     nng_stream *, const char *, const nng_sockaddr *);
 
 NNG_DECL int nng_stream_dialer_alloc(nng_stream_dialer **, const char *);
 NNG_DECL int nng_stream_dialer_alloc_url(
@@ -1532,6 +1548,14 @@ NNG_DECL int nng_pipe_getopt_string(
 // a library; it will affect all sockets.
 NNG_DECL void nng_closeall(void) NNG_DEPRECATED;
 
+// THese functions are deprecated, but they really serve no useful purpose.
+NNG_DECL int nng_stream_set_addr(
+    nng_stream *, const char *, const nng_sockaddr *) NNG_DEPRECATED;
+NNG_DECL int nng_ctx_get_addr(
+    nng_ctx, const char *, nng_sockaddr *) NNG_DEPRECATED;
+NNG_DECL int nng_ctx_set_addr(
+    nng_ctx, const char *, const nng_sockaddr *) NNG_DEPRECATED;
+
 #endif // NNG_ELIDE_DEPRECATED
 
 // nng_init_parameter is used by applications to change a tunable setting.
@@ -1751,6 +1775,10 @@ NNG_DECL void nng_cv_wake(nng_cv *);
 // reduce the thundering herd problem, but care must be taken to ensure
 // that no waiter starves forever.
 NNG_DECL void nng_cv_wake1(nng_cv *);
+
+// New URL accessors for endpoints - from NNG 2.0.
+NNG_DECL int nng_dialer_get_url(nng_dialer, const nng_url **);
+NNG_DECL int nng_listener_get_url(nng_listener, const nng_url **);
 
 #ifdef __cplusplus
 }

@@ -479,36 +479,19 @@ send_callback(nng_mqtt_client *client, nng_msg *msg, void *arg)
 		return;
 	switch (nng_mqtt_msg_get_packet_type(msg)) {
 	case NNG_MQTT_CONNACK:
-		// printf("connack!\n");
-		break;
 	case NNG_MQTT_SUBACK:
-		// code = (reason_code *) nng_mqtt_msg_get_suback_return_codes(
-		//     msg, &count);
-		// printf("SUBACK reason codes are\n");
-		// for (int i = 0; i < count; ++i)
-		// 	printf("%d ", code[i]);
-		// printf("\n");
-		break;
 	case NNG_MQTT_UNSUBACK:
-		// code = (reason_code *)
-		// nng_mqtt_msg_get_unsuback_return_codes(
-		//     msg, &count);
-		// printf("UNSUBACK reason codes are\n");
-		// for (int i = 0; i < count; ++i)
-		// 	printf("%d ", code[i]);
-		// printf("\n");
+		nng_msg_free(msg);
 		break;
 	case NNG_MQTT_PUBACK:
 		// printf("PUBACK\n");
+		nng_msg_free(msg);
 		break;
 	default:
 		// printf("Sending in async way is done.\n");
 		// printf("default\n");
 		break;
 	}
-	// printf("aio mqtt result %d \n", nng_aio_result(aio));
-	// printf("suback %d \n", *code);
-	nng_msg_free(msg);
 }
 
 // Connect to the given address.

@@ -922,16 +922,40 @@ nni_sock_peer_name(nni_sock *sock)
 	return (sock->s_peer_id.p_name);
 }
 
+bool
+nni_sock_raw(nni_sock *sock)
+{
+	return ((nni_sock_flags(sock) & NNI_PROTO_FLAG_RAW) != 0);
+}
+
 struct nni_proto_pipe_ops *
 nni_sock_proto_pipe_ops(nni_sock *sock)
 {
 	return (&sock->s_pipe_ops);
 }
 
+struct nni_proto_sock_ops *
+nni_sock_proto_ops(nni_sock *sock)
+{
+	return (&sock->s_sock_ops);
+}
+
+struct nni_proto_ctx_ops *
+nni_ctx_proto_ops(nni_ctx *ctx)
+{
+	return (&ctx->c_ops);
+}
+
 void *
 nni_sock_proto_data(nni_sock *sock)
 {
 	return (sock->s_data);
+}
+
+void *
+nni_ctx_proto_data(nni_ctx *ctx)
+{
+	return (ctx->c_data);
 }
 
 int
@@ -1530,9 +1554,8 @@ dialer_timer_start_locked(nni_dialer *d)
 	// This algorithm may lead to slight biases because we don't
 	// have a statistically perfect distribution with the modulo of
 	// the random number, but this really doesn't matter.
-	// nni_sleep_aio(
-	//     back_off ? (int) nni_random() % back_off : 0, &d->d_tmo_aio);
-	nni_sleep_aio(back_off, &d->d_tmo_aio);
+	nni_sleep_aio(back_off ? (nng_duration) (nni_random() % back_off) : 0,
+	    &d->d_tmo_aio);
 }
 
 void
