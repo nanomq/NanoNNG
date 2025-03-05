@@ -722,7 +722,11 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		    (char *) copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
 		cparam->username.len = len_of_str;
 		rv                   = len_of_str <= 0 ? PAYLOAD_FORMAT_INVALID : 0;
-		if (rv != 0) {
+		if (len_of_str == 0) {
+			log_warn("0 length of username found! It is a malformed CONNECT!\
+					  But we let it bypass rules due to compatiblity.");
+			rv = 0;
+		} else if (rv != 0) {
 			return rv;
 		}
 		log_trace(
@@ -739,7 +743,11 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		    copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
 		cparam->password.len = len_of_str;
 		rv                   = len_of_str <= 0 ? PAYLOAD_FORMAT_INVALID : 0;
-		if (rv != 0) {
+		if (len_of_str == 0) {
+			log_warn("0 length of passwd found! It is a malformed CONNECT!\
+					  But we let it bypass rules due to compatiblity.");
+			rv = 0;
+		} else if (rv != 0) {
 			log_warn("MQTT Packet password parsing error!");
 			return rv;
 		}

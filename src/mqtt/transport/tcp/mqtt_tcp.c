@@ -1582,7 +1582,7 @@ mqtt_tcptran_ep_connect(void *arg, nni_aio *aio)
 	int              rv = 0;
 
 	if ((rv = nni_aio_begin(aio)) != 0) {
-		log_error("ep connect rv %d", rv);
+		log_error("ep connect aio begin error");
 		return;
 	}
 	if (ep->closed) {

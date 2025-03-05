@@ -1583,6 +1583,7 @@ mqtts_tcptran_ep_connect(void *arg, nni_aio *aio)
 	int               rv;
 
 	if (nni_aio_begin(aio) != 0) {
+		log_error("ep connect aio begin error");
 		return;
 	}
 	if (ep->closed) {
@@ -1602,16 +1603,19 @@ mqtts_tcptran_ep_connect(void *arg, nni_aio *aio)
 	nni_mtx_lock(&ep->mtx);
 	if (ep->closed) {
 		nni_mtx_unlock(&ep->mtx);
+		log_error("ep clsoed");
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
 	}
 	if (ep->useraio != NULL) {
 		nni_mtx_unlock(&ep->mtx);
+		log_error("ep->useraio is NULL");
 		nni_aio_finish_error(aio, NNG_EBUSY);
 		return;
 	}
 	if ((rv = nni_aio_schedule(aio, mqtts_tcptran_ep_cancel, ep)) != 0) {
 		nni_mtx_unlock(&ep->mtx);
+		log_error("aio schedule failed");
 		nni_aio_finish_error(aio, rv);
 		return;
 	}
