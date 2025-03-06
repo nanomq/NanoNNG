@@ -382,10 +382,15 @@ compute_and_rename_file_withMD5(
 
 	strcat(md5_file_name, "_");
 	strcat(md5_file_name, topic);
+	strcat(md5_file_name, "-");
+	char *ts_start = filename + strlen(conf->dir) + strlen(conf->file_name_prefix) + 2;
+	char *ts_end = strrchr(ts_start, '.');
+	long ts_len = ts_end - ts_start;
+	strncat(md5_file_name,
+	    filename + strlen(conf->dir) + strlen(conf->file_name_prefix) + 2, ts_len);
 	strcat(md5_file_name, "_");
 	strcat(md5_file_name, md5_buffer);
-	strcat(md5_file_name,
-	    filename + strlen(conf->dir) + strlen(conf->file_name_prefix) + 1);
+	strcat(md5_file_name, ".parquet");
 	log_info("trying to rename... %s to %s", filename, md5_file_name);
 	ret = rename(filename, md5_file_name);
 	if (ret != 0) {
@@ -668,9 +673,11 @@ parquet_write_launcher(conf_exchange *conf)
 static void
 get_range(const char *name, uint64_t range[2])
 {
-	//{prefix}_{md5}-{start_key}~{end_key}.parquet
-	const char *start = strrchr(name, '-');
-	sscanf(start, "-%ld~%ld.parquet", &range[0], &range[1]);
+	// {prefix}_{topic}-{start_ts}~{end_ts}_{md5}.parquet
+	const char *ts_start = strrchr(name, '-') + 1;
+	char *md5[32];
+	sscanf(ts_start, "%ld~%ld_%s.parquet", &range[0], &range[1], md5);
+
 	return;
 }
 
