@@ -1027,6 +1027,9 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		}
 		X509_free(cacert);
 	}
+	if (cacerts)
+		free(cacerts);
+	BIO_free(cabio);
 #endif
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
