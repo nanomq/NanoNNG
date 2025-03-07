@@ -864,7 +864,7 @@ open_config_ca_chain(
 	}
 
 	X509 *cert = NULL;
-	X509_STORE *store = SSL_CTX_get_cert_store(cfg->ctx);
+	X509_STORE *store = X509_STORE_new();
 
 	while ((cert = PEM_read_bio_X509(bio, NULL, 0, NULL)) != NULL) {
 		if (X509_STORE_add_cert(store, cert) == 0) {
@@ -875,6 +875,7 @@ open_config_ca_chain(
 		}
 		X509_free(cert);
 	}
+	SSL_CTX_set_cert_store(cfg->ctx, store);
 
 	BIO_free(bio);
 
