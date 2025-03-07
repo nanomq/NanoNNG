@@ -994,6 +994,7 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	if (PEM_write_X509(stdout, xcert) != 1) {
 		log_error("Error writing PEM certificate: %s\n", ERR_error_string(ERR_get_error(), NULL));
 	}
+	rv = SSL_CTX_clear_mode(cfg->ctx, SSL_MODE_NO_AUTO_CHAIN);
 #else
 	xcert = PEM_read_bio_X509(biocert, NULL, 0, NULL);
 #endif // TLS_EXTERN_PRIVATE_KEY
@@ -1006,6 +1007,29 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		goto error;
 	}
 	rv = 0;
+
+#ifdef TLS_EXTERN_PRIVATE_KEY
+	char *cacerts;
+	len = teeGetCA((char **)&cacerts);
+
+	BIO *cabio = BIO_new_mem_buf(cacerts, len);
+	if (!cabio) {
+		log_error("NNG-TLS-CFG-CACHAIN" "Failed to create BIO");
+		return (NNG_ENOMEM);
+	}
+
+	X509 *cacert = NULL;
+	while ((cacert = PEM_read_bio_X509(cabio, NULL, 0, NULL)) != NULL) {
+		log_info("Add a CACert to Certs");
+		if (SSL_CTX_add1_chain_cert(cfg->ctx, cacert) == 0) {
+			log_error("NNG-TLS-CFG-CACHAIN" "Failed to add certificate to store");
+			X509_free(cacert);
+			BIO_free(cabio);
+			return (NNG_ECRYPTO);
+		}
+		X509_free(cacert);
+	}
+#endif
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
 	NNI_ARG_UNUSED(key);
