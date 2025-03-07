@@ -40,13 +40,10 @@ std::string teeGetTeeRootCert()
 #endif // DEBUG_PKI_LOCAL
 
 int teeGetCA(char **cacert) {
-	// std::string teeGetTeeRootCert();
 	string ca = teeGetTeeRootCert();
-	//printf("--ca: %s\n", ca.c_str());
 	// overwrite certs
 	char *certs = strdup(ca.c_str());
 	int   len   = strlen(certs);
-	printf("--len: %d\n", len);
 
 	*cacert = certs;
 	return len;
