@@ -940,13 +940,11 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	BIO *biocert = NULL;
 	X509 *xcert = NULL;
 	EVP_PKEY *pkey = NULL;
-	log_info("--start");
 
 #if NNG_OPENSSL_HAVE_PASSWORD
 	char *dup = NULL;
 	if (pass != NULL) {
 		if ((dup = nng_strdup(pass)) == NULL) {
-			log_info("--end1");
 			return (NNG_ENOMEM);
 		}
 	}
@@ -1150,7 +1148,6 @@ error:
 	if (biokey)
 		BIO_free(biokey);
 
-	log_info("--end rv%d", rv);
 	trace("end");
 	return rv;
 }
