@@ -817,16 +817,17 @@ open_config_auth_mode(nng_tls_engine_config *cfg, nng_tls_auth_mode mode)
 	switch (mode) {
 	case NNG_TLS_AUTH_MODE_NONE:
 		SSL_CTX_set_verify(cfg->ctx, SSL_VERIFY_NONE, NULL);
-		log_debug("NNG-TLS-CFG-AUTH" "AUTH MODE: NONE");
+		log_info("NNG-TLS-CFG-AUTH" "AUTH MODE: NONE");
 		return (0);
 	case NNG_TLS_AUTH_MODE_OPTIONAL:
 		SSL_CTX_set_verify(cfg->ctx, SSL_VERIFY_PEER, NULL);
-		log_debug("NNG-TLS-CFG-AUTH" "AUTH MODE: OPTION");
+		log_info("NNG-TLS-CFG-AUTH" "AUTH MODE: OPTION");
 		return (0);
 	case NNG_TLS_AUTH_MODE_REQUIRED:
+	default:
 		SSL_CTX_set_verify(cfg->ctx,
 		    SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);
-		log_debug("NNG-TLS-CFG-AUTH" "AUTH MODE: REQUIRE");
+		log_info("NNG-TLS-CFG-AUTH" "AUTH MODE: REQUIRE");
 		return (0);
 	}
 	log_error("NNG-TLS-CFG-AUTH" "AUTH MODE: Unknown");
@@ -980,7 +981,8 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		rv = NNG_ENOMEM;
 		goto error;
 	}
-	//xcert = PEM_read_bio_X509(biocert, NULL, 0, NULL);
+
+#ifdef TLS_EXTERN_PRIVATE_KEY
 	xcert = d2i_X509_bio(biocert, NULL);
 	if (!xcert) {
 		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to load certificate from buffer");
@@ -991,6 +993,10 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	if (PEM_write_X509(stdout, xcert) != 1) {
 		log_error("Error writing PEM certificate: %s\n", ERR_error_string(ERR_get_error(), NULL));
 	}
+#else
+	xcert = PEM_read_bio_X509(biocert, NULL, 0, NULL);
+#endif // TLS_EXTERN_PRIVATE_KEY
+
 	log_info("ctx %p cert %p rv%d", cfg->ctx, xcert, rv);
 	if ((rv = SSL_CTX_use_certificate(cfg->ctx, xcert)) <= 0) {
 		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to set certificate to SSL_CTX %d", rv);
