@@ -124,6 +124,7 @@ struct mqtt_sock_s {
 	nni_stat_item msg_resend;
 	nni_stat_item msg_send_drop;
 	nni_stat_item msg_recv_drop;
+	nni_stat_item msg_bytes_cached;
 #endif
 };
 
@@ -203,10 +204,19 @@ mqtt_sock_init(void *arg, nni_sock *sock)
 		.si_atomic = true,
 	};
 	nni_stat_init(&s->msg_recv_drop, &msg_recv_drop);
+	static const nni_stat_info msg_bytes_cached = {
+		.si_name   = "mqtt_msg_bytes_cached",
+		.si_desc   = "cached msg payload size",
+		.si_type   = NNG_STAT_COUNTER,
+		.si_unit   = NNG_UNIT_BYTES,
+		.si_atomic = true,
+	};
+	nni_stat_init(&s->msg_bytes_cached, &msg_bytes_cached);
 	nni_sock_add_stat(s->nsock, &s->mqtt_reconnect);
 	nni_sock_add_stat(s->nsock, &s->msg_resend);
 	nni_sock_add_stat(s->nsock, &s->msg_send_drop);
 	nni_sock_add_stat(s->nsock, &s->msg_recv_drop);
+	nni_sock_add_stat(s->nsock, &s->msg_bytes_cached);
 #endif
 }
 
@@ -646,6 +656,7 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg, mqtt_sock_t *s)
 #endif
 		log_warn("Message lost while enqueing");
 	}
+	log_info("inflight window size %d", nng_lmq_len(&p->send_messages));
 out:
 	nni_mtx_unlock(&s->mtx);
 	if (0 == qos && ptype != NNG_MQTT_SUBSCRIBE &&
@@ -681,6 +692,9 @@ mqtt_pipe_start(void *arg)
 	}
 	if ((aio = nni_list_first(&s->cached_aio)) != NULL) {
 		nni_list_remove(&s->cached_aio, aio);
+#ifdef NNG_ENABLE_STATS
+		nni_stat_dec(&s->msg_bytes_cached, nng_msg_len(nni_aio_get_msg(aio)));
+#endif
 		log_debug("resend cached aio");
 		nni_pipe_recv(p->pipe, &p->recv_aio);
 		mqtt_send_msg(aio, NULL, s);
@@ -822,6 +836,9 @@ mqtt_timer_cb(void *arg)
 	nni_aio * aio;
 	if ((aio = nni_list_first(&s->cached_aio)) != NULL) {
 		nni_list_remove(&s->cached_aio, aio);
+#ifdef NNG_ENABLE_STATS
+		nni_stat_dec(&s->msg_bytes_cached, nng_msg_len(nni_aio_get_msg(aio)));
+#endif
 		log_debug("resend cached aio");
 		mqtt_send_msg(aio, NULL, s);
 		nni_sleep_aio(s->retry, &p->time_aio);
@@ -1501,12 +1518,18 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 			ctx->saio = aio;
 			nni_list_append(&s->send_queue, ctx);
 			nni_mtx_unlock(&s->mtx);
+#ifdef NNG_ENABLE_STATS
+			nni_stat_inc(&s->msg_bytes_cached, nng_msg_len(msg));
+#endif
 			log_warn("client sending msg while disconnected! ctx cached");
 		} else {
 			if (!nni_list_active(&s->cached_aio, aio) && qos > 0) {
 				// cache aio
 				nni_list_append(&s->cached_aio, aio);
 				nni_mtx_unlock(&s->mtx);
+#ifdef NNG_ENABLE_STATS
+				nni_stat_inc(&s->msg_bytes_cached, nng_msg_len(msg));
+#endif
 				log_warn("client sending msg while disconnected! aio cached");
 			} else {
 				nni_msg_free(msg);
