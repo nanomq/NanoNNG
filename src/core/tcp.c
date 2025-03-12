@@ -79,6 +79,7 @@ tcp_dial_res_cb(void *arg)
 
 	if ((rv = nni_aio_result(d->resaio)) != 0) {
 		nni_list_remove(&d->conaios, aio);
+		log_error("TCP DNS resolve return %s", nng_strerror(rv));
 		nni_aio_finish_error(aio, rv);
 
 		// try DNS again for next connection...
@@ -106,11 +107,14 @@ tcp_dial_con_cb(void *arg)
 			nng_stream_free(nni_aio_get_output(d->conaio, 0));
 			nni_aio_set_output(d->conaio, 0, NULL);
 		}
+		log_warn("TCP dial failed, dialer closed %d or aio NULL",
+				 d->closed);
 		nni_mtx_unlock(&d->mtx);
 		return;
 	}
 	nni_list_remove(&d->conaios, aio);
 	if (rv != 0) {
+		log_error("TCP dial return %s", nng_strerror(rv));
 		nni_aio_finish_error(aio, rv);
 	} else {
 		nni_aio_set_output(aio, 0, nni_aio_get_output(d->conaio, 0));
