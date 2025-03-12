@@ -686,7 +686,7 @@ mqtt_pipe_start(void *arg)
 		log_debug("resend cached ctx");
 		nni_pipe_recv(p->pipe, &p->recv_aio);
 #ifdef NNG_ENABLE_STATS
-		nni_stat_dec(&s->msg_bytes_cached, nng_msg_len(nni_aio_get_msg(aio)));
+		nni_stat_dec(&s->msg_bytes_cached, nng_msg_len(nni_aio_get_msg(c->saio)));
 #endif
 		mqtt_send_msg(c->saio, c, s);
 		c->saio = NULL;
