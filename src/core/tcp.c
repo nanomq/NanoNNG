@@ -87,6 +87,7 @@ tcp_dial_res_cb(void *arg)
 		tcp_dial_start_next(d);
 
 	} else {
+		log_info("dialer %p start dialing %s %s",d->d, d->host, d->port);
 		nni_tcp_dial(d->d, &d->sa, d->conaio);
 	}
 
@@ -118,6 +119,7 @@ tcp_dial_con_cb(void *arg)
 		log_error("TCP dial return %s", nng_strerror(rv));
 		nni_aio_finish_error(aio, rv);
 	} else {
+		log_info("TCP to %s connected successfully!", d->host);
 		nni_aio_set_output(aio, 0, nni_aio_get_output(d->conaio, 0));
 		nni_aio_finish(aio, 0, 0);
 	}

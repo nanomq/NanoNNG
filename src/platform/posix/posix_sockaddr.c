@@ -100,6 +100,9 @@ nni_posix_nn2sockaddr(void *sa, const nni_sockaddr *na)
 			    nsabs->sa_len);
 			return (sizeof(sa_family_t) + 1 + nsabs->sa_len);
 		}
+	default:
+		log_warn("wrong sa family: %d", na->s_family);
+		return (0);
 	}
 	return (0);
 }
