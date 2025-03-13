@@ -1022,7 +1022,7 @@ mqtt_recv_cb(void *arg)
 	if (s->mqtt_ver == MQTT_PROTOCOL_VERSION_v311) {
 		rv = nni_mqtt_msg_decode(msg);
 		if (rv != MQTT_SUCCESS) {
-			log_warn("MQTT client decode error %d!", rv);
+			log_warn("MQTT client decode error %d %02x!", rv, nni_msg_get_type(msg));
 			nni_mtx_unlock(&s->mtx);
 #ifdef NNG_ENABLE_STATS
 			nni_stat_inc(&s->msg_recv_drop, 1);
