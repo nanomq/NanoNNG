@@ -1223,6 +1223,7 @@ nano_pipe_recv_cb(void *arg)
 			    is_sqlite, npipe->nano_qos_db, qos_msg);
 			nni_qos_db_remove(
 			    is_sqlite, npipe->nano_qos_db, npipe->p_id, ackid);
+			log_info("QoS msg of %ld acked id %ld",npipe->p_id, ackid);
 		} else {
 			log_warn("ACK failed! qos msg %ld not found!", ackid);
 		}
