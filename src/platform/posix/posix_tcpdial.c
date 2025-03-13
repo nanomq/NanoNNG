@@ -239,16 +239,19 @@ nni_tcp_dial(nni_tcp_dialer *d, const nni_sockaddr *sa, nni_aio *aio)
 	int                     nd;
 
 	if (nni_aio_begin(aio) != 0) {
+		log_warn("TCP dial aio error!");
 		return;
 	}
 
 	if (((sslen = nni_posix_nn2sockaddr(&ss, sa)) == 0) ||
 	    ((ss.ss_family != AF_INET) && (ss.ss_family != AF_INET6))) {
+		log_warn("sslen %d ss.ss_family %d",sslen, ss.ss_family);
 		nni_aio_finish_error(aio, NNG_EADDRINVAL);
 		return;
 	}
 
 	if ((fd = socket(ss.ss_family, SOCK_STREAM | SOCK_CLOEXEC, 0)) < 0) {
+		log_warn("Create socket failed %d!", errno);
 		nni_aio_finish_error(aio, nni_plat_errno(errno));
 		return;
 	}
@@ -256,6 +259,7 @@ nni_tcp_dial(nni_tcp_dialer *d, const nni_sockaddr *sa, nni_aio *aio)
 	nni_atomic_inc64(&d->ref);
 
 	if ((rv = nni_posix_tcp_alloc(&c, d)) != 0) {
+		log_warn("Memory alloc failed %d!", errno);
 		nni_aio_finish_error(aio, rv);
 		nni_posix_tcp_dialer_rele(d);
 		return;
@@ -264,6 +268,7 @@ nni_tcp_dial(nni_tcp_dialer *d, const nni_sockaddr *sa, nni_aio *aio)
 	// This arranges for the fd to be in non-blocking mode, and adds the
 	// poll fd to the list.
 	if ((rv = nni_posix_pfd_init(&pfd, fd)) != 0) {
+		log_warn("epoll/poll mode init failed! %d", rv);
 		(void) close(fd);
 		// the error label unlocks this
 		nni_mtx_lock(&d->mtx);
@@ -276,24 +281,30 @@ nni_tcp_dial(nni_tcp_dialer *d, const nni_sockaddr *sa, nni_aio *aio)
 	nni_mtx_lock(&d->mtx);
 	if (d->closed) {
 		rv = NNG_ECLOSED;
+		log_warn("dialer closed!");
 		goto error;
 	}
 	if (d->srclen != 0) {
 		if (bind(fd, (void *) &d->src, d->srclen) != 0) {
+			log_warn("dialer bind to fd failed");
 			rv = nni_plat_errno(errno);
 			goto error;
 		}
 	}
 	if ((rv = nni_aio_schedule(aio, tcp_dialer_cancel, d)) != 0) {
+		log_warn("dial aio schedule failed!");
 		goto error;
 	}
+	log_info("dialer %p start connect %d!", d, ss.ss_family);
 	if (connect(fd, (void *) &ss, sslen) != 0) {
 		if (errno != EINPROGRESS) {
 			rv = nni_plat_errno(errno);
+			log_warn("return errno != EINPROGRESS");
 			goto error;
 		}
 		// Asynchronous connect.
 		if ((rv = nni_posix_pfd_arm(pfd, NNI_POLL_OUT)) != 0) {
+			log_warn(" epoll/poll return %d", rv);
 			goto error;
 		}
 		c->dial_aio = aio;
@@ -304,6 +315,7 @@ nni_tcp_dial(nni_tcp_dialer *d, const nni_sockaddr *sa, nni_aio *aio)
 	}
 	// Immediate connect, cool!  This probably only happens
 	// on loop back, and probably not on every platform.
+	log_info("TCP connected");
 	nni_aio_set_prov_data(aio, NULL);
 	nd = d->nodelay ? 1 : 0;
 	ka = d->keepalive ? 1 : 0;
