@@ -801,8 +801,12 @@ mqtts_tcptran_pipe_recv_cb(void *arg)
 		break;
 	case CMD_DISCONNECT:
 		break;
-	default:
+	case CMD_SUBACK:
+	case CMD_UNSUBACK:
 		break;
+	default:
+		log_warn("invalid packet type %d", type);
+		goto recv_error;
 	}
 
 	if (ack == true) {
@@ -1012,6 +1016,7 @@ mqtts_tcptran_pipe_recv_start(mqtts_tcptran_pipe *p)
 	p->wantrxhead = 2;
 	iov.iov_buf   = p->rxlen;
 	iov.iov_len   = 2;
+	memset(p->rxlen, '\0', NNI_NANO_MAX_HEADER_SIZE * sizeof(p->rxlen[0]));
 	nni_aio_set_iov(rxaio, 1, &iov);
 	nng_stream_recv(p->conn, rxaio);
 }
