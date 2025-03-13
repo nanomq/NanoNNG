@@ -1165,8 +1165,8 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 					// TODO packetid already exists.
 					// do we need to replace old with new
 					// one ? print warning to users
-					log_error("packet id duplicates in "
-					          "nano_qos_db");
+					log_error("packet id %ld duplicates in "
+					          "nano_qos_db", pid);
 
 					nni_qos_db_remove_msg(
 					    is_sqlite, pipe->nano_qos_db, old);
@@ -1174,6 +1174,7 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				old = msg;
 				nni_qos_db_set(is_sqlite, pipe->nano_qos_db,
 				    pipe->p_id, pid, old);
+				log_info("QoS msg of %ld cached %ld",pipe->p_id, pid);
 				nni_qos_db_remove_oldest(is_sqlite,
 				    pipe->nano_qos_db,
 				    p->conf->sqlite.disk_cache_size);
@@ -1406,7 +1407,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 						// exists. do we need to
 						// replace old with new one ?
 						// print warning to users
-						log_error("packet id duplicates in nano_qos_db");
+						log_error("packet id %ld duplicates in nano_qos_db", pid);
 						nni_qos_db_remove_msg(
 						    is_sqlite,
 						    pipe->nano_qos_db, old);
