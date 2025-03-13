@@ -2301,9 +2301,6 @@ nni_mqtt_msg_decode_publish(nni_msg *msg)
 	ret = read_utf8_str(&buf, &mqtt->var_header.publish.topic_name);
 	if (ret != MQTT_SUCCESS) {
 		log_warn("topic is not utf8 str!");
-		uint8_t buff[4096] = { 0 };
-		nng_mqtt_msg_dump(msg, buff, sizeof(buff), false);
-		printf("%s\n", buff);
 		return ret;
 	}
 
@@ -2313,9 +2310,6 @@ nni_mqtt_msg_decode_publish(nni_msg *msg)
 		if (ret != MQTT_SUCCESS) {
 			log_warn("pid uint 16 : %02x %02x", buf.curpos[0], buf.curpos[1]);
 			log_warn("packet id is not valid uint16!");
-			uint8_t buff[4096] = { 0 };
-			nng_mqtt_msg_dump(msg, buff, sizeof(buff), false);
-			printf("%s\n", buff);
 			return ret;
 		}
 		packid_length = 2;
