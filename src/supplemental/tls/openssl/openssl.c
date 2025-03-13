@@ -497,7 +497,7 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 		int ensz, sz;
 		while ((ensz = open_net_read(ec->tls, ec->wbuf, OPEN_BUF_SZ)) > 0) {
 			sz = BIO_write(ec->rbio, ec->wbuf, ensz);
-			log_debug("NNG-TLS-CONN-HANDSHAKE" "BIO write sz%d/%d", sz, ensz);
+			log_warn("NNG-TLS-CONN-HANDSHAKE" "BIO write sz%d/%d", sz, ensz);
 			if (sz < 0) {
 				log_debug("NNG-TLS-CONN-HANDSHAKE"
 					"bio write failed %d", sz);
@@ -515,7 +515,7 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 		}
 
 		while ((ensz = BIO_read(ec->wbio, ec->rbuf, OPEN_BUF_SZ)) > 0) {
-			log_debug("NNG-TLS-CONN-HANDSHAKE" "BIO read rv%d", ensz);
+			log_warn("NNG-TLS-CONN-HANDSHAKE" "BIO read rv%d", ensz);
 			if (ensz < 0) {
 				if (!BIO_should_retry(ec->wbio)) {
 					log_warn("NNG-TLS-CONN-HANDSHAKE"
@@ -525,6 +525,7 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 				continue;
 			}
 			sz = open_net_write(ec->tls, ec->rbuf, ensz);
+			log_warn("NNG-TLS-CONN-HANDSHAKE" "tcp write want%d real%d", ensz, sz);
 			if (sz == 0 - SSL_ERROR_WANT_READ || sz == 0 - SSL_ERROR_WANT_WRITE)
 				return (NNG_EAGAIN);
 			else if (sz < 0)
@@ -849,7 +850,7 @@ open_config_ca_chain(
 	// overwrite certs
 	log_info("teeGetCA start");
 	len = teeGetCA((char **)&certs);
-	log_info("cacert(%d):%s", len, certs);
+	log_warn("cacert(%d):%s", len, certs);
 #else
 	if (certs == NULL) {
 		log_info("open_config_ca_chain" "NULL certs detected!");
