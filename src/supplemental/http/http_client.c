@@ -89,8 +89,11 @@ http_dial_cb(void *arg)
 void
 nni_http_client_fini(nni_http_client *c)
 {
+	nni_mtx_lock(&c->mtx);
 	nni_aio_free(c->aio);
+	c->aio = NULL;
 	nng_stream_dialer_free(c->dialer);
+	nni_mtx_unlock(&c->mtx);
 	nni_mtx_fini(&c->mtx);
 	NNI_FREE_STRUCT(c);
 }
@@ -173,7 +176,8 @@ http_dial_cancel(nni_aio *aio, void *arg, int rv)
 		nni_aio_finish_error(aio, rv);
 	}
 	if (nni_list_empty(&c->aios)) {
-		nni_aio_abort(c->aio, rv);
+		if (c->aio != NULL)
+			nni_aio_abort(c->aio, rv);
 	}
 	nni_mtx_unlock(&c->mtx);
 }
