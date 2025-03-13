@@ -227,7 +227,7 @@ nni_mqtt_msg_decode(nni_msg *msg)
 			return codec_handler[i].decode(msg);
 		}
 	}
-
+	log_warn("no matched packet type!");
 	return MQTT_ERR_PROTOCOL;
 }
 
@@ -2297,18 +2297,26 @@ nni_mqtt_msg_decode_publish(nni_msg *msg)
 	struct pos_buf buf;
 	buf.curpos = &body[0];
 	buf.endpos = &body[length];
-
 	/* Topic Name */
 	ret = read_utf8_str(&buf, &mqtt->var_header.publish.topic_name);
 	if (ret != MQTT_SUCCESS) {
-		return MQTT_ERR_PROTOCOL;
+		log_warn("topic is not utf8 str!");
+		uint8_t buff[4096] = { 0 };
+		nng_mqtt_msg_dump(msg, buff, sizeof(buff), false);
+		printf("%s\n", buff);
+		return ret;
 	}
 
 	if (mqtt->fixed_header.publish.qos > MQTT_QOS_0_AT_MOST_ONCE) {
 		/* Packet Identifier */
 		ret = read_uint16(&buf, &mqtt->var_header.publish.packet_id);
 		if (ret != MQTT_SUCCESS) {
-			return MQTT_ERR_PROTOCOL;
+			log_warn("pid uint 16 : %02x %02x", buf.curpos[0], buf.curpos[1]);
+			log_warn("packet id is not valid uint16!");
+			uint8_t buff[4096] = { 0 };
+			nng_mqtt_msg_dump(msg, buff, sizeof(buff), false);
+			printf("%s\n", buff);
+			return ret;
 		}
 		packid_length = 2;
 	}
@@ -2324,7 +2332,6 @@ nni_mqtt_msg_decode_publish(nni_msg *msg)
 	        mqtt->var_header.publish.topic_name.length + packid_length);
 	mqtt->payload.publish.payload.buf =
 	    (mqtt->payload.publish.payload.length > 0) ? buf.curpos : NULL;
-
 	return MQTT_SUCCESS;
 }
 // also responsible for verifying MQTTV5 protocol
@@ -3001,9 +3008,11 @@ read_utf8_str(struct pos_buf *buf, mqtt_buf *val)
 	uint16_t length = 0;
 	int      ret    = read_uint16(buf, &length);
 	if (ret != 0) {
+		log_warn("uint 16 : %02x %02x", buf->curpos[0], buf->curpos[1]);
 		return ret;
 	}
 	if ((buf->endpos - buf->curpos) < length) {
+		log_warn("%d %d", buf->endpos - buf->curpos, length);
 		return MQTT_ERR_INVAL;
 	}
 
