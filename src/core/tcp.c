@@ -56,6 +56,7 @@ tcp_dial_start_next(tcp_dialer *d)
 	if (nni_list_empty(&d->conaios)) {
 		return;
 	}
+	log_info("Start dialing! resolving host %s port %s", d->host, d->port);
 	nni_resolv_ip(d->host, d->port, d->af, false, &d->sa, d->resaio);
 }
 

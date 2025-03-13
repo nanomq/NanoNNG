@@ -167,6 +167,7 @@ resolv_task(resolv_item *item)
 
 			// Not a valid port number.  Fail.
 			if ((port < 0) || (port > 0xffff)) {
+				log_warn("Resolve failed! Invalid port number!");
 				rv = NNG_EADDRINVAL;
 				goto done;
 			}
@@ -177,6 +178,8 @@ resolv_task(resolv_item *item)
 	// *something*, in case we are using a NULL hostname.
 	if ((rv = getaddrinfo(item->host, item->serv, &hints, &results)) !=
 	    0) {
+		log_warn("Resolve %s %s failed! getaddrinfo %d!",
+		         item->host, item->serv, rv);
 		rv = posix_gai_errno(rv);
 		goto done;
 	}
@@ -188,6 +191,8 @@ resolv_task(resolv_item *item)
 	for (probe = results; probe != NULL; probe = probe->ai_next) {
 		if (probe->ai_addr->sa_family == AF_INET) {
 			break;
+		} else {
+			log_info("probe sa %d", probe->ai_addr->sa_family);
 		}
 #ifdef NNG_ENABLE_IPV6
 		if (probe->ai_addr->sa_family == AF_INET6) {
@@ -222,7 +227,12 @@ resolv_task(resolv_item *item)
 			memcpy(sa->s_in6.sa_addr, sin6->sin6_addr.s6_addr, 16);
 			break;
 #endif
+		default:
+			log_info("probe sa %d", probe->ai_addr->sa_family);
+			break;
 		}
+	} else {
+		log_warn("resolve failed, probe %p item->aio %p", probe, item->aio);
 	}
 	nni_mtx_unlock(&resolv_mtx);
 
@@ -302,6 +312,7 @@ nni_resolv_ip(const char *host, const char *serv, int af, bool passive,
 		rv = nni_aio_schedule(aio, resolv_cancel, item);
 	}
 	if (rv != 0) {
+		log_warn("Resolve aio schedule failed %s", nng_strerror(rv));
 		nni_mtx_unlock(&resolv_mtx);
 		resolv_free_item(item);
 		nni_aio_finish_error(aio, rv);
