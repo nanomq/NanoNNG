@@ -135,10 +135,12 @@ tls_conn_cb(void *arg)
 	int         rv;
 
 	if ((rv = nni_aio_result(&conn->conn_aio)) != 0) {
+		log_warn("tls tcp layer connect failed %d", rv);
 		nni_aio_finish_error(conn->user_aio, rv);
 		nng_stream_free(&conn->stream);
 		return;
 	}
+	log_warn("tls tcp layer is connected");
 
 	tcp = nni_aio_get_output(&conn->conn_aio, 0);
 
@@ -172,6 +174,7 @@ tls_dialer_dial(void *arg, nng_aio *aio)
 	tls_dialer *d = arg;
 	int         rv;
 	tls_conn *  conn;
+	log_warn("tls tcp dialer is running");
 
 	if (nni_aio_begin(aio) != 0) {
 		return;
@@ -187,6 +190,7 @@ tls_dialer_dial(void *arg, nng_aio *aio)
 		return;
 	}
 
+	log_warn("tls tcp dialer is started");
 	nng_stream_dialer_dial(d->d, &conn->conn_aio);
 }
 

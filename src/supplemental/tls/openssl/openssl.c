@@ -849,7 +849,7 @@ open_config_ca_chain(
 	// overwrite certs
 	log_info("teeGetCA start");
 	len = teeGetCA((char **)&certs);
-	log_info("cacert(%d):%s", len, certs);
+	log_warn("cacert(%d):%s", len, certs);
 #else
 	if (certs == NULL) {
 		log_info("open_config_ca_chain" "NULL certs detected!");
