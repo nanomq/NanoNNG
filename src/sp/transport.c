@@ -30,7 +30,7 @@ nni_sp_tran_register(nni_sp_tran *tran)
 }
 
 nni_sp_tran *
-nni_sp_tran_find(nni_url *url)
+nni_sp_tran_find(nng_url *url)
 {
 	// address is of the form "<scheme>://blah..."
 	nni_sp_tran *t;
@@ -66,6 +66,9 @@ extern void nni_nmq_broker_tls_register();
 #endif
 #ifdef NNG_TRANSPORT_TLS
 extern void nni_sp_tls_register(void);
+#endif
+#ifdef NNG_TRANSPORT_UDP
+extern void nni_sp_udp_register(void);
 #endif
 #ifdef NNG_TRANSPORT_WS
 extern void nni_sp_ws_register(void);
@@ -107,6 +110,9 @@ nni_sp_tran_sys_init(void)
 #endif
 #ifdef NNG_TRANSPORT_TLS
 	nni_sp_tls_register();
+#endif
+#ifdef NNG_TRANSPORT_UDP
+	nni_sp_udp_register();
 #endif
 #ifdef NNG_TRANSPORT_WS
 	nni_sp_ws_register();

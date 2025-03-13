@@ -85,35 +85,26 @@ if (NNG_ENABLE_DOC)
             nng_close
             nng_ctx_close
             nng_ctx_get
-            nng_ctx_getopt
             nng_ctx_id
             nng_ctx_open
             nng_ctx_recv
             nng_ctx_send
             nng_ctx_set
-            nng_ctx_setopt
             nng_device
             nng_dial
             nng_dialer_close
             nng_dialer_create
             nng_dialer_get
-            nng_dialer_getopt
             nng_dialer_id
             nng_dialer_set
-            nng_dialer_setopt
             nng_dialer_start
             nng_free
-            nng_getopt
-            nng_inproc_register
-            nng_ipc_register
             nng_listen
             nng_listener_close
             nng_listener_create
             nng_listener_get
-            nng_listener_getopt
             nng_listener_id
             nng_listener_set
-            nng_listener_setopt
             nng_listener_start
             nng_msg_alloc
             nng_msg_append
@@ -139,7 +130,6 @@ if (NNG_ENABLE_DOC)
             nng_pipe_close
             nng_pipe_dialer
             nng_pipe_get
-            nng_pipe_getopt
             nng_pipe_id
             nng_pipe_listener
             nng_pipe_notify
@@ -156,7 +146,7 @@ if (NNG_ENABLE_DOC)
             nng_send
             nng_send_aio
             nng_sendmsg
-            nng_setopt
+            nng_set
             nng_sleep_aio
             nng_socket_id
             nng_socket_get
@@ -185,40 +175,10 @@ if (NNG_ENABLE_DOC)
             nng_strfree
             nng_sub_open
             nng_surveyor_open
-            nng_tcp_register
-            nng_tls_register
             nng_url_clone
             nng_url_free
             nng_url_parse
             nng_version
-            nng_ws_register
-            nng_wss_register
-            nng_zt_register
-            )
-
-    set(NNG_MAN3COMPAT
-            nn_allocmsg
-            nn_bind
-            nn_close
-            nn_cmsg
-            nn_connect
-            nn_device
-            nn_errno
-            nn_freemsg
-            nn_get_statistic
-            nn_getsockopt
-            nn_poll
-            nn_reallocmsg
-            nn_recv
-            nn_recvmsg
-            nn_send
-            nn_sendmsg
-            nn_setsockopt
-            nn_shutdown
-            nn_socket
-            nn_strerror
-            nn_term
-            nng_compat
             )
 
     set(NNG_MAN3HTTP
@@ -318,7 +278,6 @@ if (NNG_ENABLE_DOC)
             nng_stream_get
             nng_stream_recv
             nng_stream_send
-            nng_stream_set
             nng_stream_dialer_alloc
             nng_stream_dialer_close
             nng_stream_dialer_dial
@@ -409,10 +368,6 @@ if (NNG_ENABLE_DOC)
 
     foreach (F ${NNG_MAN3})
         nng_man(${F} 3)
-    endforeach ()
-
-    foreach (F ${NNG_MAN3COMPAT})
-        nng_man(${F} 3compat)
     endforeach ()
 
     foreach (F ${NNG_MAN3HTTP})

@@ -20,8 +20,8 @@
 typedef struct quic_dialer quic_dialer;
 typedef struct quic_listener quic_listener;
 
-extern int nni_quic_dialer_alloc(nng_stream_dialer **, const nni_url *);
-extern int nni_quic_listener_alloc(nng_stream_listener **, const nni_url *);
+extern int nni_quic_dialer_alloc(nng_stream_dialer **, const nng_url *);
+extern int nni_quic_listener_alloc(nng_stream_listener **, const nng_url *);
 
 typedef struct nni_quic_dialer nni_quic_dialer;
 

@@ -11,6 +11,8 @@
 #ifndef NNG_PROTOCOL_PUBSUB0_SUB_H
 #define NNG_PROTOCOL_PUBSUB0_SUB_H
 
+#include <nng/nng.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -33,9 +35,6 @@ NNG_DECL int nng_sub0_ctx_unsubscribe(nng_ctx id, const void *buf, size_t sz);
 #ifndef nng_sub_open_raw
 #define nng_sub_open_raw nng_sub0_open_raw
 #endif
-
-#define NNG_OPT_SUB_SUBSCRIBE "sub:subscribe"
-#define NNG_OPT_SUB_UNSUBSCRIBE "sub:unsubscribe"
 
 #define NNG_OPT_SUB_PREFNEW "sub:prefnew"
 

@@ -1,5 +1,5 @@
 //
-// Copyright 2020 Staysail Systems, Inc. <info@staysail.tech>
+// Copyright 2024 Staysail Systems, Inc. <info@staysail.tech>
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -7,26 +7,25 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
+#include "nng/nng.h"
 #include <nuts.h>
 
 static void
 test_pub_identity(void)
 {
-	nng_socket s;
-	int        p;
-	char *     n;
+	nng_socket  s;
+	uint16_t    p;
+	const char *n;
 
 	NUTS_PASS(nng_pub0_open(&s));
-	NUTS_PASS(nng_socket_get_int(s, NNG_OPT_PROTO, &p));
+	NUTS_PASS(nng_socket_proto_id(s, &p));
 	NUTS_TRUE(p == NUTS_PROTO(2u, 0u)); // 32
-	NUTS_PASS(nng_socket_get_int(s, NNG_OPT_PEER, &p));
+	NUTS_PASS(nng_socket_peer_id(s, &p));
 	NUTS_TRUE(p == NUTS_PROTO(2u, 1u)); // 33
-	NUTS_PASS(nng_socket_get_string(s, NNG_OPT_PROTONAME, &n));
+	NUTS_PASS(nng_socket_proto_name(s, &n));
 	NUTS_MATCH(n, "pub");
-	nng_strfree(n);
-	NUTS_PASS(nng_socket_get_string(s, NNG_OPT_PEERNAME, &n));
+	NUTS_PASS(nng_socket_peer_name(s, &n));
 	NUTS_MATCH(n, "sub");
-	nng_strfree(n);
 	NUTS_CLOSE(s);
 }
 
@@ -58,7 +57,7 @@ test_pub_not_readable(void)
 	nng_socket pub;
 
 	NUTS_PASS(nng_pub0_open(&pub));
-	NUTS_FAIL(nng_socket_get_int(pub, NNG_OPT_RECVFD, &fd), NNG_ENOTSUP);
+	NUTS_FAIL(nng_socket_get_recv_poll_fd(pub, &fd), NNG_ENOTSUP);
 	NUTS_CLOSE(pub);
 }
 
@@ -71,7 +70,7 @@ test_pub_poll_writeable(void)
 
 	NUTS_PASS(nng_sub0_open(&sub));
 	NUTS_PASS(nng_pub0_open(&pub));
-	NUTS_PASS(nng_socket_get_int(pub, NNG_OPT_SENDFD, &fd));
+	NUTS_PASS(nng_socket_get_send_poll_fd(pub, &fd));
 	NUTS_TRUE(fd >= 0);
 
 	// Pub is *always* writeable
@@ -103,10 +102,10 @@ test_pub_send_no_pipes(void)
 void
 test_pub_validate_peer(void)
 {
-	nng_socket s1, s2;
-	nng_stat * stats;
-	nng_stat * reject;
-	char       *addr;
+	nng_socket      s1, s2;
+	nng_stat       *stats;
+	const nng_stat *reject;
+	char           *addr;
 
 	NUTS_ADDR(addr, "inproc");
 
@@ -142,7 +141,7 @@ test_pub_send_queued(void)
 	// test to be really meaningful.
 	NUTS_PASS(nng_pub0_open(&pub));
 	NUTS_PASS(nng_sub0_open(&sub));
-	NUTS_PASS(nng_socket_set(sub, NNG_OPT_SUB_SUBSCRIBE, "", 0));
+	NUTS_PASS(nng_sub0_socket_subscribe(sub, "", 0));
 	NUTS_PASS(nng_socket_set_int(pub, NNG_OPT_SENDBUF, 10));
 	NUTS_PASS(nng_socket_set_int(sub, NNG_OPT_RECVBUF, 10));
 	NUTS_PASS(nng_socket_set_ms(pub, NNG_OPT_SENDTIMEO, 1000));
@@ -166,7 +165,7 @@ test_sub_recv_ctx_closed(void)
 {
 	nng_socket sub;
 	nng_ctx    ctx;
-	nng_aio *  aio;
+	nng_aio   *aio;
 	NUTS_PASS(nng_sub0_open(&sub));
 	NUTS_PASS(nng_ctx_open(&ctx, sub));
 	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
@@ -183,7 +182,7 @@ test_sub_ctx_recv_aio_stopped(void)
 {
 	nng_socket sub;
 	nng_ctx    ctx;
-	nng_aio *  aio;
+	nng_aio   *aio;
 
 	NUTS_PASS(nng_sub0_open(&sub));
 	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
@@ -203,7 +202,7 @@ test_sub_close_context_recv(void)
 {
 	nng_socket sub;
 	nng_ctx    ctx;
-	nng_aio *  aio;
+	nng_aio   *aio;
 
 	NUTS_PASS(nng_sub0_open(&sub));
 	NUTS_PASS(nng_ctx_open(&ctx, sub));
@@ -223,7 +222,7 @@ test_sub_ctx_recv_nonblock(void)
 {
 	nng_socket sub;
 	nng_ctx    ctx;
-	nng_aio *  aio;
+	nng_aio   *aio;
 
 	NUTS_PASS(nng_sub0_open(&sub));
 	NUTS_PASS(nng_ctx_open(&ctx, sub));
@@ -243,7 +242,7 @@ test_sub_ctx_recv_cancel(void)
 {
 	nng_socket sub;
 	nng_ctx    ctx;
-	nng_aio *  aio;
+	nng_aio   *aio;
 
 	NUTS_PASS(nng_sub0_open(&sub));
 	NUTS_PASS(nng_ctx_open(&ctx, sub));
@@ -265,7 +264,6 @@ test_pub_send_buf_option(void)
 	nng_socket  pub;
 	int         v;
 	bool        b;
-	size_t      sz;
 	const char *opt = NNG_OPT_SENDBUF;
 
 	NUTS_PASS(nng_pub0_open(&pub));
@@ -277,15 +275,6 @@ test_pub_send_buf_option(void)
 	NUTS_PASS(nng_socket_set_int(pub, opt, 3));
 	NUTS_PASS(nng_socket_get_int(pub, opt, &v));
 	NUTS_TRUE(v == 3);
-	v  = 0;
-	sz = sizeof(v);
-	NUTS_PASS(nng_socket_get(pub, opt, &v, &sz));
-	NUTS_TRUE(v == 3);
-	NUTS_TRUE(sz == sizeof(v));
-
-	NUTS_FAIL(nng_socket_set(pub, opt, "", 1), NNG_EINVAL);
-	sz = 1;
-	NUTS_FAIL(nng_socket_get(pub, opt, &v, &sz), NNG_EINVAL);
 	NUTS_FAIL(nng_socket_set_bool(pub, opt, true), NNG_EBADTYPE);
 	NUTS_FAIL(nng_socket_get_bool(pub, opt, &b), NNG_EBADTYPE);
 
@@ -299,14 +288,13 @@ test_pub_cooked(void)
 	bool       b;
 
 	NUTS_PASS(nng_pub0_open(&s));
-	NUTS_PASS(nng_socket_get_bool(s, NNG_OPT_RAW, &b));
+	NUTS_PASS(nng_socket_raw(s, &b));
 	NUTS_TRUE(!b);
-	NUTS_FAIL(nng_socket_set_bool(s, NNG_OPT_RAW, true), NNG_EREADONLY);
 	NUTS_PASS(nng_close(s));
 
 	// raw pub only differs in the option setting
 	NUTS_PASS(nng_pub0_open_raw(&s));
-	NUTS_PASS(nng_socket_get_bool(s, NNG_OPT_RAW, &b));
+	NUTS_PASS(nng_socket_raw(s, &b));
 	NUTS_TRUE(b);
 	NUTS_CLOSE(s);
 }

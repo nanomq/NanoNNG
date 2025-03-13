@@ -1951,12 +1951,15 @@ tcptran_ep_get_url(void *arg, void *v, size_t *szp, nni_opt_type t)
 static int
 tcptran_ep_set_conf(void *arg, const void *v, size_t sz, nni_opt_type t)
 {
+	int rv;
 	tcptran_ep *ep = arg;
 	NNI_ARG_UNUSED(sz);
 	NNI_ARG_UNUSED(t);
 
 	nni_mtx_lock(&ep->mtx);
-	ep->conf = (conf *) v;
+	if ((rv = nni_copyin_ptr((void **) &(ep->conf), v, sz, t)) != 0) {
+		return (rv);
+	}
 	nni_mtx_unlock(&ep->mtx);
 	return 0;
 }
@@ -2164,14 +2167,6 @@ static nni_sp_tran tcp6_tran_mqtt = {
 	.tran_init     = tcptran_init,
 	.tran_fini     = tcptran_fini,
 };
-
-#ifndef NNG_ELIDE_DEPRECATED
-int
-nmq_mqtt_tcp_register(void)
-{
-	return (nni_init());
-}
-#endif
 
 void
 nni_nmq_broker_tcp_register(void)

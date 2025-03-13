@@ -17,7 +17,6 @@
 #include "supplemental/websocket/websocket.h"
 
 #include <nng/supplemental/tls/tls.h>
-#include <nng/transport/ws/websocket.h>
 
 typedef struct ws_dialer   ws_dialer;
 typedef struct ws_listener ws_listener;
@@ -253,13 +252,17 @@ wstran_pipe_peer(void *arg)
 }
 
 static int
-ws_listener_bind(void *arg)
+ws_listener_bind(void *arg, nng_url *url)
 {
 	ws_listener *l = arg;
 	int          rv;
 
 	if ((rv = nng_stream_listener_listen(l->listener)) == 0) {
+		int port;
 		l->started = true;
+		nng_stream_listener_get_int(
+		    l->listener, NNG_OPT_TCP_BOUND_PORT, &port);
+		url->u_port = (uint32_t) port;
 	}
 	return (rv);
 }
@@ -598,6 +601,20 @@ wstran_dialer_setopt(
 }
 
 static int
+wstran_dialer_get_tls(void *arg, nng_tls_config **tls)
+{
+	ws_dialer *d = arg;
+	return (nni_stream_dialer_get_tls(d->dialer, tls));
+}
+
+static int
+wstran_dialer_set_tls(void *arg, nng_tls_config *tls)
+{
+	ws_dialer *d = arg;
+	return (nni_stream_dialer_set_tls(d->dialer, tls));
+}
+
+static int
 wstran_listener_get(
     void *arg, const char *name, void *buf, size_t *szp, nni_type t)
 {
@@ -625,6 +642,20 @@ wstran_listener_set(
 	return (rv);
 }
 
+static int
+wstran_listener_get_tls(void *arg, nng_tls_config **tls)
+{
+	ws_listener *l = arg;
+	return (nni_stream_listener_get_tls(l->listener, tls));
+}
+
+static int
+wstran_listener_set_tls(void *arg, nng_tls_config *tls)
+{
+	ws_listener *l = arg;
+	return (nni_stream_listener_set_tls(l->listener, tls));
+}
+
 static nni_sp_dialer_ops ws_dialer_ops = {
 	.d_init    = wstran_dialer_init,
 	.d_fini    = wstran_dialer_fini,
@@ -632,16 +663,20 @@ static nni_sp_dialer_ops ws_dialer_ops = {
 	.d_close   = wstran_dialer_close,
 	.d_setopt  = wstran_dialer_setopt,
 	.d_getopt  = wstran_dialer_getopt,
+	.d_get_tls = wstran_dialer_get_tls,
+	.d_set_tls = wstran_dialer_set_tls,
 };
 
 static nni_sp_listener_ops ws_listener_ops = {
-	.l_init   = wstran_listener_init,
-	.l_fini   = wstran_listener_fini,
-	.l_bind   = ws_listener_bind,
-	.l_accept = wstran_listener_accept,
-	.l_close  = wstran_listener_close,
-	.l_setopt = wstran_listener_set,
-	.l_getopt = wstran_listener_get,
+	.l_init    = wstran_listener_init,
+	.l_fini    = wstran_listener_fini,
+	.l_bind    = ws_listener_bind,
+	.l_accept  = wstran_listener_accept,
+	.l_close   = wstran_listener_close,
+	.l_setopt  = wstran_listener_set,
+	.l_getopt  = wstran_listener_get,
+	.l_get_tls = wstran_listener_get_tls,
+	.l_set_tls = wstran_listener_set_tls,
 };
 
 static nni_sp_tran ws_tran = {
@@ -670,20 +705,6 @@ static nni_sp_tran ws6_tran = {
 	.tran_init     = wstran_init,
 	.tran_fini     = wstran_fini,
 };
-
-#ifndef NNG_ELIDE_DEPRECATED
-int
-nng_ws_register(void)
-{
-	return (nni_init());
-}
-
-int
-nng_wss_register(void)
-{
-	return (nni_init());
-}
-#endif
 
 void
 nni_sp_ws_register(void)
