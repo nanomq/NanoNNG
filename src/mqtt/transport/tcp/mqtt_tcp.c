@@ -1042,6 +1042,7 @@ mqtt_tcptran_pipe_recv_start(mqtt_tcptran_pipe *p)
 	p->wantrxhead = 2;
 	iov.iov_buf   = p->rxlen;
 	iov.iov_len   = 2;
+	memset(p->rxlen, '\0', NNI_NANO_MAX_HEADER_SIZE * sizeof(p->rxlen[0]));
 	nni_aio_set_iov(rxaio, 1, &iov);
 	nng_stream_recv(p->conn, rxaio);
 }
