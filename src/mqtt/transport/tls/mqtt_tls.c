@@ -227,13 +227,10 @@ mqtts_tcptran_pipe_alloc(mqtts_tcptran_pipe **pipep)
 		return (NNG_ENOMEM);
 	}
 	nni_mtx_init(&p->mtx);
-	if (((rv = nni_aio_alloc(&p->txaio, mqtts_tcptran_pipe_send_cb, p)) !=
-	        0) ||
-	    ((rv = nni_aio_alloc(&p->rxaio, mqtts_tcptran_pipe_recv_cb, p)) !=
-	        0) ||
-	    ((rv = nni_aio_alloc(&p->rpaio, NULL, p)) != 0) ||
-	    ((rv = nni_aio_alloc(
-	          &p->negoaio, mqtts_tcptran_pipe_nego_cb, p)) != 0)) {
+	if (((rv = nni_aio_alloc(&p->txaio, mqtts_tcptran_pipe_send_cb, p)) != 0) ||
+	    ((rv = nni_aio_alloc(&p->rxaio, mqtts_tcptran_pipe_recv_cb, p)) != 0) ||
+	    ((rv = nni_aio_alloc(&p->rpaio, mqtts_tcptran_pipe_rp_send_cb, p)) != 0) ||
+	    ((rv = nni_aio_alloc(&p->negoaio, mqtts_tcptran_pipe_nego_cb, p)) != 0)) {
 		mqtts_tcptran_pipe_fini(p);
 		return (rv);
 	}
@@ -285,6 +282,7 @@ mqtts_tcptran_pipe_nego_cb(void *arg)
 	nni_mtx_lock(&ep->mtx);
 
 	if ((rv = nni_aio_result(aio)) != 0) {
+		log_info("aio result %s", nng_strerror(rv));
 		rv = SERVER_UNAVAILABLE;
 		goto error;
 	}
@@ -606,7 +604,7 @@ mqtts_tcptran_pipe_send_cb(void *arg)
 	aio = nni_list_first(&p->sendq);
 
 	if ((rv = nni_aio_result(txaio)) != 0) {
-		// nni_pipe_bump_error(p->npipe, rv);
+		nni_pipe_bump_error(p->npipe, rv);
 		log_info("aio result %s", nng_strerror(rv));
 		// Intentionally we do not queue up another transfer.
 		// There's an excellent chance that the pipe is no longer
@@ -640,6 +638,34 @@ mqtts_tcptran_pipe_send_cb(void *arg)
 	nni_aio_set_msg(aio, NULL);
 	nni_msg_free(msg);
 	nni_aio_finish_sync(aio, rv, n);
+}
+
+static void
+mqtts_tcptran_pipe_rp_send_cb(void *arg)
+{
+	mqtts_tcptran_pipe *p     = arg;
+	nni_aio            *rpaio = p->rpaio;
+	size_t              n;
+	int                 rv;
+
+	if ((rv = nni_aio_result(rpaio)) != 0) {
+		log_warn(" send aio error %s", nng_strerror(rv));
+		// pipe is reaped in nego_cb
+		return;
+	}
+
+	nni_mtx_lock(&p->mtx);
+	n = nni_aio_count(rpaio);
+	nni_aio_iov_advance(rpaio, n);
+
+	// more bytes to send
+	if (nni_aio_iov_count(rpaio) > 0) {
+		nng_stream_send(p->conn, rpaio);
+		nni_mtx_unlock(&p->mtx);
+		return;
+	}
+	nni_mtx_unlock(&p->mtx);
+	return;
 }
 
 static void
@@ -1082,10 +1108,12 @@ mqtts_tcptran_pipe_start(
 
 	ep->refcnt++;
 
-	p->conn   = conn;
-	p->ep     = ep;
-	p->rcvmax = 0;
-	p->sndmax = 65535;
+	p->conn    = conn;
+	p->ep      = ep;
+	p->qosmax  = 0;
+	p->packmax = 0;
+	p->rcvmax  = 0;
+	p->sndmax  = 65535;
 #ifdef NNG_HAVE_MQTT_BROKER
 	p->cparam = NULL;
 #endif
@@ -1094,9 +1122,10 @@ mqtts_tcptran_pipe_start(
 
 	if (connmsg == NULL) {
 		mqtt_version = 0;
+		log_error("User forget to set CONNECT msg!");
+	} else {
+		mqtt_version = nni_mqtt_msg_get_connect_proto_version(connmsg);
 	}
-
-	mqtt_version = nni_mqtt_msg_get_connect_proto_version(connmsg);
 
 	if (mqtt_version == MQTT_PROTOCOL_VERSION_v311)
 		rv = nni_mqtt_msg_encode(connmsg);
@@ -1156,7 +1185,7 @@ mqtts_tcptran_pipe_start(
 	    mqtt_version != MQTT_PROTOCOL_VERSION_v5)) {
 		// Free the msg from user
 		nni_msg_free(connmsg);
-		nni_plat_printf("Warning. Cancelled a illegal connnect msg from user.\n");
+		log_error("Warning. Cancelled a illegal connnect msg from user.\n");
 		// Using MQTT V311 as default protocol version
 		mqtt_version = 4; // Default TODO Notify user as a warning
 		nni_mqtt_msg_alloc(&connmsg, 0);
@@ -1600,7 +1629,7 @@ mqtts_tcptran_ep_connect(void *arg, nni_aio *aio)
 		ep->backoff = ep->backoff > ep->backoff_max
 		    ? (nni_duration) (nni_random() % 1000)
 		    : ep->backoff;
-		log_warn("reconnect %s in %ld", ep->url->u_host, ep->backoff);
+		log_warn("reconnect to %s in %ld", ep->url->u_host, ep->backoff);
 		nni_msleep(ep->backoff);
 	} else {
 		ep->backoff = nni_random()%2000;
@@ -1730,7 +1759,7 @@ mqtts_tcptran_ep_set_ep_closed(void *arg, const void *v, size_t sz, nni_opt_type
 		if (tmp == true) {
 			mqtts_tcptran_pipe *p;
 			NNI_LIST_FOREACH (&ep->busypipes, p) {
-				mqtts_tcptran_pipe_close(p);
+				nni_pipe_close(p->npipe);
 			}
 		}
 		nni_mtx_unlock(&ep->mtx);
