@@ -1080,6 +1080,7 @@ cJSON_ParseWithLengthOpts(const char *value, size_t buffer_length,
 	if (!parse_value(
 	        item, buffer_skip_whitespace(skip_utf8_bom(&buffer)))) {
 		/* parse failure. ep is set. */
+		fprintf(stderr, "Json parse error! Payload is not valid UTF8!");
 		goto fail;
 	}
 
