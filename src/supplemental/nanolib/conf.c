@@ -541,6 +541,10 @@ conf_basic_parse(conf *config, const char *path)
 			config->http_server.parallel = atol(value);
 			nng_strfree(value);
 		} else if ((value = get_conf_value(
+		                line, sz, "http_server.max_body")) != NULL) {
+			config->http_server.max_body = atol(value);
+			nng_strfree(value);
+		} else if ((value = get_conf_value(
 		                line, sz, "http_server.username")) != NULL) {
 			FREE_NONULL(config->http_server.username);
 			config->http_server.username = value;
@@ -864,6 +868,7 @@ conf_http_server_init(conf_http_server *http, uint16_t port)
 	http->port                = port;
 	http->ip_addr             = NULL;
 	http->parallel            = 32;
+	http->max_body			  = 1024 * 1024;
 	http->username            = NULL;
 	http->password            = NULL;
 	http->auth_type           = BASIC;
@@ -1384,6 +1389,7 @@ print_conf(conf *nanomq_conf)
 		log_info("http server port:         %d", hs.port);
 		log_info("http server url:          %s", hs.ip_addr);
 		log_info("http server limit_conn:   %u", hs.parallel);
+		log_info("http server max body:     %ld", hs.max_body);
 		log_info("http server username:     %s", hs.username);
 		const char *type = get_http_auth_type(hs.auth_type);
 		log_info("http server auth type:    %s", type);
