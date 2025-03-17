@@ -1174,7 +1174,7 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				old = msg;
 				nni_qos_db_set(is_sqlite, pipe->nano_qos_db,
 				    pipe->p_id, pid, old);
-				log_info("QoS msg of %ld cached %ld",pipe->p_id, pid);
+				log_debug("QoS msg of %ld cached %ld",pipe->p_id, pid);
 				nni_qos_db_remove_oldest(is_sqlite,
 				    pipe->nano_qos_db,
 				    p->conf->sqlite.disk_cache_size);
