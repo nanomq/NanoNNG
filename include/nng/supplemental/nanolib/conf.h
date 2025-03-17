@@ -190,6 +190,7 @@ struct conf_http_server {
 	char       *username;
 	char       *password;
 	size_t      parallel;
+	size_t      max_body;
 	auth_type_t auth_type;
 	conf_jwt    jwt;
 	nng_socket *broker_sock;
