@@ -492,7 +492,8 @@ static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data)
 		}
 		nng_free(file_ranges, sizeof(parquet_filename_range *) * file_range_idx);
 	} else {
-		log_error("parquet_find_file_range failed!");
+		log_error("parquet_find_file_range %ld~%ld failed!",
+				cmd_data->start_key, cmd_data->end_key);
 	}
 #endif
 
