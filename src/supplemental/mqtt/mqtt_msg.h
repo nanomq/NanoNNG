@@ -101,6 +101,7 @@ typedef struct mqtt_connack_vhdr_t {
 
 typedef struct mqtt_publish_vhdr_t {
 	mqtt_buf  topic_name;
+	uint8_t   proto_ver;
 	uint16_t  packet_id;
 	property *properties;
 } mqtt_publish_vhdr;
@@ -162,6 +163,7 @@ typedef struct mqtt_auth_vhdr_t {
 /*****************************************************************************
  * Union to cover all Variable Header types
  ****************************************************************************/
+// Only use one struct at a time!
 union mqtt_variable_header {
 	mqtt_connect_vhdr     connect;
 	mqtt_disconnect_vhdr  disconnect;
@@ -402,6 +404,8 @@ NNG_DECL property *nni_mqtt_msg_get_publish_property(nni_msg *msg);
 NNG_DECL void nni_mqtt_msg_set_publish_property(nni_msg *msg, property *prop);
 NNG_DECL void        nni_mqtt_msg_set_publish_qos(nni_msg *, uint8_t);
 NNG_DECL uint8_t     nni_mqtt_msg_get_publish_qos(nni_msg *);
+NNG_DECL uint8_t     nni_mqtt_msg_get_publish_proto_version(nni_msg *);
+NNG_DECL void 		 nni_mqtt_msg_set_publish_proto_version(nni_msg *, uint8_t);
 NNG_DECL void        nni_mqtt_msg_set_publish_retain(nni_msg *, bool);
 NNG_DECL bool        nni_mqtt_msg_get_publish_retain(nni_msg *);
 NNG_DECL void        nni_mqtt_msg_set_publish_dup(nni_msg *, bool);
