@@ -665,6 +665,13 @@ nni_mqtt_msg_set_connect_proto_version(nni_msg *msg, uint8_t version)
 }
 
 void
+nni_mqtt_msg_set_publish_proto_version(nni_msg *msg, uint8_t version)
+{
+	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
+	proto_data->var_header.publish.proto_ver = version;
+}
+
+void
 nni_mqtt_msg_set_disconnect_reason_code(nni_msg *msg, uint8_t reason_code)
 {
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
@@ -725,6 +732,13 @@ nni_mqtt_msg_get_connect_proto_version(nni_msg *msg)
 {
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
 	return proto_data->var_header.connect.protocol_version;
+}
+
+uint8_t
+nni_mqtt_msg_get_publish_proto_version(nni_msg *msg)
+{
+	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
+	return proto_data->var_header.publish.proto_ver;
 }
 
 uint16_t
@@ -962,7 +976,7 @@ void
 nni_mqtt_topic_qos_array_set(nni_mqtt_topic_qos *topic_qos, size_t index,
     const char *topic_name, uint32_t len, uint8_t qos, uint8_t nl, uint8_t rap, uint8_t rh)
 {
-	topic_qos[index].topic.buf       = (uint8_t *) nni_alloc(len+1 * sizeof(uint8_t));
+	topic_qos[index].topic.buf       = (uint8_t *) nni_alloc(len + 1 * sizeof(uint8_t));
 	memcpy(topic_qos[index].topic.buf, topic_name, len);
 	topic_qos[index].topic.buf[len]  = '\0';
 	topic_qos[index].topic.length    = len;
@@ -976,7 +990,7 @@ void
 nni_mqtt_topic_qos_array_free(nni_mqtt_topic_qos *topic_qos, size_t n)
 {
 	for (size_t i = 0; i < n; i++) {
-		nni_free(topic_qos[i].topic.buf, topic_qos[i].topic.length);
+		nni_free(topic_qos[i].topic.buf, topic_qos[i].topic.length + 1 * sizeof(uint8_t));
 		topic_qos[i].topic.length = 0;
 	}
 	NNI_FREE_STRUCTS(topic_qos, n);
