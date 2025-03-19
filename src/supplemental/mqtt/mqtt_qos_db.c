@@ -768,6 +768,7 @@ nni_mqtt_qos_db_get_retain(sqlite3 *db, const char *topic)
 		} else {
 			nni_mqtt_msg_decode(msg);
 		}
+		nni_mqtt_msg_set_publish_proto_version(msg, proto_ver);
 	}
 
 	sqlite3_finalize(stmt);
@@ -790,7 +791,7 @@ nni_mqtt_qos_db_find_retain(sqlite3 *db, const char *topic_pattern)
 		}
 	}
 
-	char sql[] = "SELECT msg FROM " table_retain " WHERE topic GLOB ";
+	char sql[] = "SELECT msg, proto_ver FROM " table_retain " WHERE topic GLOB ";
 
 	size_t full_sql_sz = strlen(sql) + strlen(topic_str) + 10;
 	char * full_sql    = nni_zalloc(full_sql_sz);
@@ -810,12 +811,13 @@ nni_mqtt_qos_db_find_retain(sqlite3 *db, const char *topic_pattern)
 		msg = nni_msg_deserialize(bytes, nbyte);
 		sqlite3_free(bytes);
 		uint8_t proto_ver = sqlite3_column_int(stmt, 1);
-				nni_mqtt_msg_proto_data_alloc(msg);
+		nni_mqtt_msg_proto_data_alloc(msg);
 		if(proto_ver == MQTT_PROTOCOL_VERSION_v5) {
 			nni_mqttv5_msg_decode(msg);
 		}else {
 			nni_mqtt_msg_decode(msg);
 		}
+		nni_mqtt_msg_set_publish_proto_version(msg, proto_ver);
 		cvector_push_back(msg_vec, msg);
 	}
 
