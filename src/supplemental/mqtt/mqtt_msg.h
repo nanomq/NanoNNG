@@ -399,24 +399,23 @@ NNG_DECL property *nni_mqtt_msg_get_connack_property(nni_msg *);
 
 // mqtt publish
 
-
 NNG_DECL property *nni_mqtt_msg_get_publish_property(nni_msg *msg);
 NNG_DECL void nni_mqtt_msg_set_publish_property(nni_msg *msg, property *prop);
-NNG_DECL void        nni_mqtt_msg_set_publish_qos(nni_msg *, uint8_t);
-NNG_DECL uint8_t     nni_mqtt_msg_get_publish_qos(nni_msg *);
-NNG_DECL uint8_t     nni_mqtt_msg_get_publish_proto_version(nni_msg *);
-NNG_DECL void 		 nni_mqtt_msg_set_publish_proto_version(nni_msg *, uint8_t);
-NNG_DECL void        nni_mqtt_msg_set_publish_retain(nni_msg *, bool);
-NNG_DECL bool        nni_mqtt_msg_get_publish_retain(nni_msg *);
-NNG_DECL void        nni_mqtt_msg_set_publish_dup(nni_msg *, bool);
-NNG_DECL bool        nni_mqtt_msg_get_publish_dup(nni_msg *);
-NNG_DECL int         nni_mqtt_msg_set_publish_topic(nni_msg *, const char *);
-NNG_DECL int         nni_mqtt_msg_set_publish_topic_len(nni_msg *, uint32_t);
+NNG_DECL void nni_mqtt_msg_set_publish_qos(nni_msg *, uint8_t);
+NNG_DECL uint8_t nni_mqtt_msg_get_publish_qos(nni_msg *);
+NNG_DECL uint8_t nni_mqtt_msg_get_publish_proto_version(nni_msg *);
+NNG_DECL void    nni_mqtt_msg_set_publish_proto_version(nni_msg *, uint8_t);
+NNG_DECL void    nni_mqtt_msg_set_publish_retain(nni_msg *, bool);
+NNG_DECL bool    nni_mqtt_msg_get_publish_retain(nni_msg *);
+NNG_DECL void    nni_mqtt_msg_set_publish_dup(nni_msg *, bool);
+NNG_DECL bool    nni_mqtt_msg_get_publish_dup(nni_msg *);
+NNG_DECL int     nni_mqtt_msg_set_publish_topic(nni_msg *, const char *);
+NNG_DECL int     nni_mqtt_msg_set_publish_topic_len(nni_msg *, uint32_t);
 NNG_DECL const char *nni_mqtt_msg_get_publish_topic(nni_msg *, uint32_t *);
 NNG_DECL void        nni_mqtt_msg_set_publish_packet_id(nni_msg *, uint16_t);
 NNG_DECL uint16_t    nni_mqtt_msg_get_publish_packet_id(nni_msg *);
-NNG_DECL int         nni_mqtt_msg_set_publish_payload(nni_msg *, uint8_t *, uint32_t);
-NNG_DECL uint8_t    *nni_mqtt_msg_get_publish_payload(nni_msg *, uint32_t *);
+NNG_DECL int nni_mqtt_msg_set_publish_payload(nni_msg *, uint8_t *, uint32_t);
+NNG_DECL uint8_t *nni_mqtt_msg_get_publish_payload(nni_msg *, uint32_t *);
 
 // mqtt puback
 NNG_DECL uint16_t nni_mqtt_msg_get_puback_packet_id(nni_msg *);
