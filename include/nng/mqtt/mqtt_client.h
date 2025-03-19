@@ -444,6 +444,8 @@ NNG_DECL uint8_t     nng_mqtt_msg_get_connack_return_code(nng_msg *);
 NNG_DECL uint8_t     nng_mqtt_msg_get_connack_flags(nng_msg *);
 NNG_DECL property   *nng_mqtt_msg_get_connack_property(nng_msg *);
 
+NNG_DECL void        nng_mqtt_msg_set_publish_proto_version(nng_msg *, uint8_t);
+NNG_DECL uint8_t     nng_mqtt_msg_get_publish_proto_version(nng_msg *);
 NNG_DECL void        nng_mqtt_msg_set_publish_qos(nng_msg *, uint8_t);
 NNG_DECL uint8_t     nng_mqtt_msg_get_publish_qos(nng_msg *);
 NNG_DECL void        nng_mqtt_msg_set_publish_retain(nng_msg *, bool);
