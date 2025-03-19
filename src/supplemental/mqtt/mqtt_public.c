@@ -135,6 +135,12 @@ nng_mqtt_msg_set_connect_proto_version(nng_msg *msg, uint8_t proto_version)
 }
 
 void
+nng_mqtt_msg_set_publish_proto_version(nng_msg *msg, uint8_t proto_version)
+{
+	nni_mqtt_msg_set_publish_proto_version(msg, proto_version);
+}
+
+void
 nng_mqtt_msg_set_connect_keep_alive(nng_msg *msg, uint16_t keep_alive)
 {
 	nni_mqtt_msg_set_connect_keep_alive(msg, keep_alive);
@@ -187,6 +193,12 @@ uint8_t
 nng_mqtt_msg_get_connect_proto_version(nng_msg *msg)
 {
 	return nni_mqtt_msg_get_connect_proto_version(msg);
+}
+
+uint8_t
+nng_mqtt_msg_get_publish_proto_version(nng_msg *msg)
+{
+	return nni_mqtt_msg_get_publish_proto_version(msg);
 }
 
 uint16_t
@@ -1057,7 +1069,7 @@ nng_mqtt_subscribe_async(nng_mqtt_client *client, nng_mqtt_topic_qos *sbs, size_
 	if (nng_aio_busy(client->send_aio)) {
 		if (nni_lmq_put((nni_lmq *)client->msgq, submsg) != 0) {
 			nng_msg_free(submsg);
-			log_warn("subscribe failed due to busy aio");
+			log_warn("subscribe failed due to busy aio & full lmq!");
 			return -1;
 		}
 		return 1;
