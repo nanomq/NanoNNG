@@ -868,7 +868,7 @@ conf_http_server_init(conf_http_server *http, uint16_t port)
 	http->port                = port;
 	http->ip_addr             = NULL;
 	http->parallel            = 32;
-	http->max_body			  = 1024 * 1024;
+	http->max_body            = 1024 * 1024;
 	http->username            = NULL;
 	http->password            = NULL;
 	http->auth_type           = BASIC;
