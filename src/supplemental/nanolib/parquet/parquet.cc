@@ -1,4 +1,5 @@
 #include <arrow/io/file.h>
+#include <arrow/util/key_value_metadata.h>
 #include <parquet/stream_reader.h>
 #include <parquet/stream_writer.h>
 
@@ -465,6 +466,12 @@ parquet_write_core(conf_parquet *conf, char *filename,
 		shared_ptr<parquet::ParquetFileWriter> file_writer =
 		    parquet::ParquetFileWriter::Open(out_file, schema, props);
 
+		static int num = 0;
+		shared_ptr<arrow::KeyValueMetadata> key_value_metadata = make_shared<arrow::KeyValueMetadata>();
+		key_value_metadata->Append("number", std::to_string(num++));
+
+		file_writer->AddKeyValueMetadata(key_value_metadata);
+		
 		// Append a RowGroup with a specific number of rows.
 		parquet::RowGroupWriter *rg_writer =
 		    file_writer->AppendRowGroup();
