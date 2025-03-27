@@ -1227,7 +1227,7 @@ mqtt_recv_cb(void *arg)
 		ctx->raio = NULL;
 		nni_aio_set_msg(user_aio, cached_msg);
 		nni_mtx_unlock(&s->mtx);
-		nni_aio_finish(user_aio, 0, 0);
+		nni_aio_finish_sync(user_aio, 0, 0);
 		return;
 
 	case NNG_MQTT_PUBLISH:
@@ -1257,7 +1257,7 @@ mqtt_recv_cb(void *arg)
 			ctx->raio = NULL;
 			nni_aio_set_msg(user_aio, msg);
 			nni_mtx_unlock(&s->mtx);
-			nni_aio_finish(user_aio, 0, 0);
+			nni_aio_finish_sync(user_aio, 0, 0);
 			return;
 		} else {
 			packet_id = nni_mqtt_msg_get_publish_packet_id(msg);
