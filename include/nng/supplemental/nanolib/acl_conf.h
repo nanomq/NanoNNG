@@ -35,7 +35,7 @@ typedef enum {
 typedef struct acl_rule_ct {
 	acl_value_type type;
 	size_t         count;
-	union {
+	union { // TODO check union safety
 		char * str;
 		char **str_array;
 		int *  int_array;

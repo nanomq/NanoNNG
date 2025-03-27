@@ -65,7 +65,8 @@ tcp_dowrite(nni_tcp_conn *c)
 
 		hdr.msg_iovlen = niov;
 		hdr.msg_iov    = iovec;
-
+        nni_time time = nni_timestamp();
+        log_warn("%lld", time);
 		if ((n = sendmsg(fd, &hdr, MSG_NOSIGNAL)) < 0) {
 			switch (errno) {
 			case EINTR:
@@ -154,6 +155,8 @@ tcp_doread(nni_tcp_conn *c)
 		nni_aio_bump_count(aio, n);
 
 		// We completed the entire operation on this aio.
+        nni_time time = nni_timestamp();
+        log_warn("%lld", time);
 		nni_aio_list_remove(aio);
 		nni_aio_finish(aio, 0, nni_aio_count(aio));
 

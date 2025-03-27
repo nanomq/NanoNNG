@@ -12,6 +12,14 @@
 
 #include "core/nng_impl.h"
 
+#ifdef _WIN32
+#define PRIu64 "I64u"
+#define PRIu64_FORMAT "%I64u"
+#else
+#include <inttypes.h>
+#define PRIu64_FORMAT "%" PRIu64
+#endif
+
 // Message API.
 
 // Message chunk, internal to the message implementation.
@@ -40,7 +48,7 @@ struct nng_msg {
 	conn_param      *cparam;      // indicates where it originated
 };
 
-#if 0
+#if 1
 static void
 nni_chunk_dump(const nni_chunk *chunk, char *prefix)
 {
@@ -805,6 +813,36 @@ nni_msg_get_pub_pid(nni_msg *m)
 	else {
 		NNI_GET16(pos + len + 2, pid);
 		return pid;
+	}
+}
+
+void
+zeeker_timestamp(nni_msg *m, const int j)
+{
+    uint8_t  *ptr;
+    nni_time time = nni_timestamp();
+    ptr           = nni_msg_payload_ptr(m);
+    uint8_t *p = &time;
+    log_warn(PRIu64_FORMAT, time);
+    for (size_t i = 0; i<j;i++) {
+        memcpy(ptr + j + i, p + 7 - i, 1);
+    }
+}
+
+void
+nni_msg_set_pub_payload_ptr(nni_msg *m)
+{
+	// only valid in mqttv4 with qos 0
+	uint16_t  pid;
+	uint8_t  *pos, len;
+
+	pos = nni_msg_body(m);
+	NNI_GET16(pos, len);
+	if (len > nni_msg_remaining_len(m) - 2)
+		log_error("Malformed message!");
+	else {
+		nni_msg_set_payload_ptr(m, pos + len + 2);
+        zeeker_timestamp(m, 8);
 	}
 }
 

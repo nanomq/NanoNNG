@@ -81,6 +81,8 @@ extern uint8_t       nni_msg_get_cmd_type(nni_msg *m);
 extern void          nni_msg_set_conn_param(nni_msg *m, void *ptr);
 extern uint8_t       nni_msg_get_preset_qos(nni_msg *m);
 extern uint16_t      nni_msg_get_pub_pid(nni_msg *m);
+extern void          nni_msg_set_pub_payload_ptr(nni_msg *m);
+extern void zeeker_timestamp(nni_msg *m, const int j);
 
 extern conn_param *nni_msg_get_conn_param(nni_msg *m);
 

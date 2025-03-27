@@ -808,6 +808,12 @@ tcptran_pipe_recv_cb(void *arg)
 	if (type == CMD_PUBLISH) {
 		nni_msg_set_timestamp(msg, nng_clock());
 		uint8_t qos_pac = nni_msg_get_pub_qos(msg);
+        uint16_t topic_len;
+        char *topic = nni_msg_get_pub_topic(msg, &topic_len);
+        if (strncmp(topic, "canspi", 6) == 0) {
+            nni_msg_set_pub_payload_ptr(msg);
+            // nni_msg_dump(NULL, msg);
+        }
 		if (qos_pac > 0) {
 			// flow control, check rx_max
 			// recv_quota as length of lmq
@@ -1036,6 +1042,10 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	subinfo  *tinfo = NULL, *info = NULL;
 	nni_list *subinfol = p->npipe->subinfol;
 
+    if (strncmp(topic, "canspi", 6) == 0) {
+        zeeker_timestamp(msg, 16);
+        // nni_msg_dump(NULL, msg);
+    }
 	txaio = p->txaio;
 	tinfo = nni_aio_get_prov_data(txaio);
 	nni_aio_set_prov_data(txaio, NULL);
@@ -1480,6 +1490,8 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	}
 send:
     nni_aio_set_iov(txaio, niov, iov);
+    nni_time time = nni_timestamp();
+    log_warn(PRIu64_FORMAT, time);
 	nng_stream_send(p->conn, txaio);
 	return;
 
