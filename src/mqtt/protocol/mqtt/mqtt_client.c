@@ -718,9 +718,12 @@ static void
 mqtt_pipe_stop(void *arg)
 {
 	mqtt_pipe_t *p = arg;
+	if (nni_aio_busy(&p->send_aio))
+		nni_aio_finish_error(&p->send_aio, NNG_ECLOSED);
 	nni_aio_stop(&p->send_aio);
 	nni_aio_stop(&p->recv_aio);
 	nni_aio_stop(&p->time_aio);
+	log_warn("%p pipe stopped!", p->pipe);
 }
 
 static int
@@ -829,7 +832,7 @@ mqtt_timer_cb(void *arg)
 			nni_aio_set_msg(&p->send_aio, p->pingmsg);
 			nni_pipe_send(p->pipe, &p->send_aio);
 			nni_mtx_unlock(&s->mtx);
-			log_info("Send pingreq (sock%p)(%dms)", s, s->keepalive);
+			log_info("Send pingreq (pipe %p)(%dms)", p->pipe, s->keepalive);
 			nni_sleep_aio(s->retry, &p->time_aio);
 			return;
 		}
@@ -932,7 +935,8 @@ mqtt_send_cb(void *arg)
 #endif
 		nni_aio_set_msg(&p->send_aio, NULL);
 		log_warn("MQTT client send error %d!", rv);
-		s->disconnect_code = 0x8B; // TODO hardcode
+		if (s->disconnect_code != 0)
+			s->disconnect_code = 0x8B; // TODO hardcode
 		nni_pipe_close(p->pipe);
 		return;
 	}

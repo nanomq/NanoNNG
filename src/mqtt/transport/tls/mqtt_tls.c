@@ -152,11 +152,13 @@ static void
 mqtts_tcptran_pipe_stop(void *arg)
 {
 	mqtts_tcptran_pipe *p = arg;
-
+    if (nni_aio_busy(p->txaio))
+        nni_aio_finish_error(p->txaio, NNG_ECLOSED);
 	nni_aio_stop(p->rxaio);
 	nni_aio_stop(p->txaio);
 	nni_aio_stop(p->negoaio);
 	nni_aio_stop(p->rpaio);
+    log_warn("%p pipe stopped!", p->npipe);
 }
 
 static int
@@ -599,22 +601,24 @@ mqtts_tcptran_pipe_send_cb(void *arg)
 	nni_aio *           aio;
 	size_t              n;
 	nni_msg *           msg;
-	nni_aio *           txaio = p->txaio;
+	nni_aio            *txaio = p->txaio;
 
 	nni_mtx_lock(&p->mtx);
 	aio = nni_list_first(&p->sendq);
 
 	if ((rv = nni_aio_result(txaio)) != 0) {
 		nni_pipe_bump_error(p->npipe, rv);
-		log_info("aio result %s", nng_strerror(rv));
+		log_warn("send aio result %s", nng_strerror(rv));
 		// Intentionally we do not queue up another transfer.
 		// There's an excellent chance that the pipe is no longer
 		// usable, with a partial transfer.
 		// The protocol should see this error, and close the
 		// pipe itself, we hope.
-		nni_aio_list_remove(aio);
+		if (aio)
+			nni_aio_list_remove(aio);
 		nni_mtx_unlock(&p->mtx);
-		nni_aio_finish_error(aio, rv);
+		if (aio)
+			nni_aio_finish_error(aio, rv);
 		return;
 	}
 
@@ -650,7 +654,7 @@ mqtts_tcptran_pipe_rp_send_cb(void *arg)
 	int                 rv;
 
 	if ((rv = nni_aio_result(rpaio)) != 0) {
-		log_warn(" send aio error %s", nng_strerror(rv));
+		log_warn(" rp send aio error %s", nng_strerror(rv));
 		// pipe is reaped in nego_cb
 		return;
 	}
@@ -687,7 +691,7 @@ mqtts_tcptran_pipe_recv_cb(void *arg)
 	aio = nni_list_first(&p->recvq);
 
 	if ((rv = nni_aio_result(rxaio)) != 0) {
-		log_info("aio result %s", nng_strerror(rv));
+		log_warn("recv aio result %s", nng_strerror(rv));
 		rv = SERVER_UNAVAILABLE;
 		goto recv_error;
 	}
@@ -1419,7 +1423,7 @@ mqtts_tcptran_dial_cb(void *arg)
 	nng_stream *        conn;
 
 	if ((rv = nni_aio_result(aio)) != 0) {
-		log_info("aio result %s", nng_strerror(rv));
+		log_warn("aio result %s", nng_strerror(rv));
 		goto error;
 	}
 
