@@ -1844,6 +1844,7 @@ nni_pipe_remove(nni_pipe *p)
 	p->p_dialer   = NULL;
 	if ((d != NULL) && (d->d_pipe == p)) {
 		d->d_pipe = NULL;
+		log_warn("start reconnect dialer %p", p);
 		dialer_timer_start_locked(d); // Kick the timer to redial.
 	}
 	nni_cv_wake(&s->s_cv);

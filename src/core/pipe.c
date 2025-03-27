@@ -49,6 +49,7 @@ pipe_destroy(void *arg)
 	}
 	// This wait guarantees that all callers are done with us.
 	while (p->p_ref != 0) {
+		log_warn("%p still in cleaning", p);
 		nni_cv_wait(&p->p_cv);
 	}
 	nni_mtx_unlock(&pipes_lk);
@@ -73,7 +74,6 @@ pipe_destroy(void *arg)
 		}
 		nni_free(p->subinfol, sizeof(nni_list));
 	}
-
 
 #ifdef NNG_ENABLE_STATS
 	nni_stat_unregister(&p->st_root);
