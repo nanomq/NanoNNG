@@ -824,7 +824,7 @@ zeeker_timestamp(nni_msg *m, const int j)
     ptr           = nni_msg_payload_ptr(m);
     uint8_t *p = &time;
     log_warn(PRIu64_FORMAT, time);
-    for (size_t i = 0; i<j;i++) {
+    for (size_t i = 0; i<8;i++) {
         memcpy(ptr + j + i, p + 7 - i, 1);
     }
 }
