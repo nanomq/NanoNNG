@@ -41,7 +41,7 @@ struct quic_dialer {
 };
 
 int
-nni_quic_listener_alloc(nng_stream_listener **lp, const nni_url *url)
+nni_quic_listener_alloc(nng_stream_listener **lp, const nng_url *url)
 {
 	NNI_ARG_UNUSED(lp);
 	NNI_ARG_UNUSED(url);
@@ -156,7 +156,7 @@ quic_dialer_set_tls_ca(void *arg, const void *buf, size_t sz, nni_type t)
 	str = nng_alloc(sz + 1);
 	memset(str, '\0', sz + 1);
 
-	if (((rv = nni_copyin_str(str, buf, sz, sz, t)) != 0) || (d == NULL)) {
+	if (((rv = nni_copyin_str(str, buf, sz, t)) != 0) || (d == NULL)) {
 		nng_free(str, sz + 1);
 		return rv;
 	}
@@ -194,7 +194,7 @@ quic_dialer_set_tls_pwd(void *arg, const void *buf, size_t sz, nni_type t)
 	str = nng_alloc(sz + 1);
 	memset(str, '\0', sz + 1);
 
-	if (((rv = nni_copyin_str(str, buf, sz, sz, t)) != 0) || (d == NULL)) {
+	if (((rv = nni_copyin_str(str, buf, sz, t)) != 0) || (d == NULL)) {
 		nng_free(str, sz + 1);
 		return rv;
 	}
@@ -215,7 +215,7 @@ quic_dialer_set_tls_key(void *arg, const void *buf, size_t sz, nni_type t)
 	str = nng_alloc(sz + 1);
 	memset(str, '\0', sz + 1);
 
-	if (((rv = nni_copyin_str(str, buf, sz, sz, t)) != 0) || (d == NULL)) {
+	if (((rv = nni_copyin_str(str, buf, sz, t)) != 0) || (d == NULL)) {
 		nng_free(str, sz + 1);
 		return rv;
 	}
@@ -225,20 +225,6 @@ quic_dialer_set_tls_key(void *arg, const void *buf, size_t sz, nni_type t)
 	nni_mtx_unlock(&d->mtx);
 	return 0;
 }
-
-// static int
-// sock_set_sockname(void *s, const void *buf, size_t sz, nni_type t)
-// {
-// 	int rv;
-// 	rv = (nni_copyin_str(
-// 	    SOCK(s)->s_name, buf, sizeof(SOCK(s)->s_name), sz, t));
-// #ifdef NNG_ENABLE_STATS
-// 	if (rv == 0) {
-// 		nni_stat_set_string(&SOCK(s)->st_name, SOCK(s)->s_name);
-// 	}
-// #endif
-// 	return (rv);
-// }
 
 static int
 quic_dialer_set_tls_cacert(void *arg, const void *buf, size_t sz, nni_type t)
@@ -250,7 +236,7 @@ quic_dialer_set_tls_cacert(void *arg, const void *buf, size_t sz, nni_type t)
 	str = nng_alloc(sz + 1);
 	memset(str, '\0', sz + 1);
 
-	if (((rv = nni_copyin_str(str, buf, sz, sz, t)) != 0) || (d == NULL)) {
+	if (((rv = nni_copyin_str(str, buf, sz, t)) != 0) || (d == NULL)) {
 		nng_free(str, sz + 1);
 		return rv;
 	}
@@ -642,7 +628,7 @@ quic_dialer_alloc(quic_dialer **dp)
 }
 
 int
-nni_quic_dialer_alloc(nng_stream_dialer **dp, const nni_url *url)
+nni_quic_dialer_alloc(nng_stream_dialer **dp, const nng_url *url)
 {
 	quic_dialer *d;
 	int          rv;

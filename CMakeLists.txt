@@ -58,8 +58,10 @@ set(NNG_MINOR_VERSION ${CMAKE_MATCH_1})
 string(REGEX MATCH "NNG_PATCH_VERSION ([0-9]*)" _ ${nng_ver_h})
 set(NNG_PATCH_VERSION ${CMAKE_MATCH_1})
 string(REGEX MATCH "NNG_RELEASE_SUFFIX \"([a-z0-9]*)\"" _ ${nng_ver_h})
-if (NOT ("${CMAKE_MATCH_1}" STREQUAL ""))
-    set(NNG_PRERELEASE "-${CMAKE_MATCH_1}")
+set(NNG_DEV_VERSION ${CMAKE_MATCH_1})
+if (NNG_DEV_VERSION)
+    message(STATUS "This is a prelease.")
+    set(NNG_PRERELEASE "-${NNG_DEV_VERSION}")
 endif ()
 
 set(NNG_ABI_SOVERSION 1)
@@ -99,10 +101,6 @@ target_compile_definitions(nng_private INTERFACE NNG_PRIVATE)
 if (NNG_ELIDE_DEPRECATED)
     target_compile_definitions(nng PRIVATE NNG_ELIDE_DEPRECATED)
 endif()
-if (NNG_ENABLE_COMPAT)
-    target_compile_definitions(nng PRIVATE NNG_ENABLE_COMPAT)
-endif()
-
 
 # We can use rlimit to configure the stack size for systems
 # that have too small defaults.  This is not used for Windows,
@@ -180,7 +178,8 @@ endif ()
 include(CheckSanitizer)
 CheckSanitizer()
 if (NOT NNG_SANITIZER STREQUAL "none")
-    set(NNG_SANITIZER_FLAGS "-g -fsanitize=${NNG_SANITIZER}")
+    set(NNG_SANITIZER_FLAGS "-fsanitize=${NNG_SANITIZER}")
+    add_definitions(-DNNG_SANITIZER)
 endif ()
 
 
@@ -204,6 +203,7 @@ if (NNG_ENABLE_COVERAGE)
     else ()
         message(FATAL_ERROR "Unable to enable coverage for your compiler.")
     endif ()
+    add_definitions(-DNNG_CONVERAGE)
 endif ()
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${NNG_WARN_FLAGS} ${NNG_COVERAGE_C_FLAGS} ${NNG_SANITIZER_FLAGS}")

@@ -724,6 +724,9 @@ main(int ac, char **av)
 	addrend  = &addrs;
 	topicend = &topics;
 
+	nng_init(NULL);
+	atexit(nng_fini);
+
 	while ((rv = nng_opts_parse(ac, av, opts, &val, &arg, &idx)) == 0) {
 		switch (val) {
 		case OPT_HELP:
@@ -1066,8 +1069,7 @@ main(int ac, char **av)
 	}
 
 	for (struct topic *t = topics; t != NULL; t = t->next) {
-		rv = nng_socket_set(
-		    sock, NNG_OPT_SUB_SUBSCRIBE, t->val, strlen(t->val));
+		rv = nng_sub0_socket_subscribe(sock, t->val, strlen(t->val));
 		if (rv != 0) {
 			fatal("Unable to subscribe to topic %s: %s", t->val,
 			    nng_strerror(rv));
@@ -1105,8 +1107,7 @@ main(int ac, char **av)
 				fatal("Unable to create dialer for %s: %s",
 				    a->val, nng_strerror(rv));
 			}
-			rv = nng_dialer_get_ptr(
-			    d, NNG_OPT_TLS_CONFIG, (void **) &tls);
+			rv = nng_dialer_get_tls(d, &tls);
 			if (rv == 0) {
 				configtls(tls);
 			} else if (rv != NNG_ENOTSUP) {
@@ -1114,8 +1115,8 @@ main(int ac, char **av)
 				    nng_strerror(rv));
 			}
 			if (zthome != NULL) {
-				rv = nng_dialer_set(d, NNG_OPT_ZT_HOME,
-				    zthome, strlen(zthome) + 1);
+				rv = nng_dialer_set_string(
+				    d, NNG_OPT_ZT_HOME, zthome);
 				if ((rv != 0) && (rv != NNG_ENOTSUP)) {
 					fatal("Unable to set ZT home: %s",
 					    nng_strerror(rv));
@@ -1124,12 +1125,11 @@ main(int ac, char **av)
 			rv  = nng_dialer_start(d, async);
 			act = "dial";
 			if ((rv == 0) && (verbose == OPT_VERBOSE)) {
-				char   ustr[256];
-				size_t sz;
-				sz = sizeof(ustr);
-				if (nng_dialer_get(
-				        d, NNG_OPT_URL, ustr, &sz) == 0) {
+				char *ustr;
+				if (nng_dialer_get_string(
+				        d, NNG_OPT_URL, &ustr) == 0) {
 					printf("Connected to: %s\n", ustr);
+					nng_strfree(ustr);
 				}
 			}
 			break;
@@ -1141,8 +1141,7 @@ main(int ac, char **av)
 				fatal("Unable to create listener for %s: %s",
 				    a->val, nng_strerror(rv));
 			}
-			rv = nng_listener_get_ptr(
-			    l, NNG_OPT_TLS_CONFIG, (void **) &tls);
+			rv = nng_listener_get_tls(l, &tls);
 			if (rv == 0) {
 				configtls(tls);
 			} else if (rv != NNG_ENOTSUP) {
@@ -1150,8 +1149,8 @@ main(int ac, char **av)
 				    nng_strerror(rv));
 			}
 			if (zthome != NULL) {
-				rv = nng_listener_set(l, NNG_OPT_ZT_HOME,
-				    zthome, strlen(zthome) + 1);
+				rv = nng_listener_set_string(
+				    l, NNG_OPT_ZT_HOME, zthome);
 				if ((rv != 0) && (rv != NNG_ENOTSUP)) {
 					fatal("Unable to set ZT home: %s",
 					    nng_strerror(rv));
@@ -1160,12 +1159,11 @@ main(int ac, char **av)
 			rv  = nng_listener_start(l, async);
 			act = "listen";
 			if ((rv == 0) && (verbose == OPT_VERBOSE)) {
-				char   ustr[256];
-				size_t sz;
-				sz = sizeof(ustr);
-				if (nng_listener_get(
-				        l, NNG_OPT_URL, ustr, &sz) == 0) {
+				char *ustr;
+				if (nng_listener_get_string(
+				        l, NNG_OPT_URL, &ustr) == 0) {
 					printf("Listening at: %s\n", ustr);
+					nng_strfree(ustr);
 				}
 			}
 			break;

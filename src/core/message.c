@@ -29,15 +29,16 @@ struct nng_msg {
 	size_t    m_header_len;
 	nni_chunk m_body; // equal to variable header + payload
 	nni_proto_msg_ops *m_proto_ops;
-	void *             m_proto_data;
+	void              *m_proto_data;
 	uint32_t           m_pipe; // set on receive
 	nni_atomic_int     m_refcnt;
+	nng_sockaddr       m_addr; // set on receive, transport use
 	// FOR NANOMQ
-	size_t           remaining_len; // TODO replace it with body len
-	uint8_t          CMD_TYPE;
-	uint8_t *        payload_ptr; // payload
-	nni_time         times;		  // the time msg arrives
-	conn_param      *cparam;      // indicates where it originated
+	size_t      remaining_len; // TODO replace it with body len
+	uint8_t     CMD_TYPE;
+	uint8_t    *payload_ptr; // payload
+	nni_time    times;       // the time msg arrives
+	conn_param *cparam;      // indicates where it originated
 };
 
 #if 0
@@ -681,6 +682,18 @@ uint32_t
 nni_msg_get_pipe(const nni_msg *m)
 {
 	return (m->m_pipe);
+}
+
+const nng_sockaddr *
+nni_msg_address(const nni_msg *msg)
+{
+	return (&msg->m_addr);
+}
+
+void
+nni_msg_set_address(nng_msg *msg, const nng_sockaddr *addr)
+{
+	msg->m_addr = *addr;
 }
 
 // NAOMQ APIs

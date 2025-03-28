@@ -7,6 +7,7 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
+#include "nng/nng.h"
 #include <nuts.h>
 
 #include <nng/protocol/bus0/bus.h>
@@ -99,10 +100,10 @@ test_bus_device(void)
 static void
 test_bus_validate_peer(void)
 {
-	nng_socket s1, s2;
-	nng_stat  *stats;
-	nng_stat  *reject;
-	char      *addr;
+	nng_socket      s1, s2;
+	nng_stat       *stats;
+	const nng_stat *reject;
+	char           *addr;
 
 	NUTS_ADDR(addr, "inproc");
 	NUTS_PASS(nng_bus0_open(&s1));
@@ -242,7 +243,7 @@ test_bus_poll_readable(void)
 	NUTS_PASS(nng_bus0_open(&s2));
 	NUTS_PASS(nng_socket_set_ms(s1, NNG_OPT_RECVTIMEO, 1000));
 	NUTS_PASS(nng_socket_set_ms(s2, NNG_OPT_SENDTIMEO, 1000));
-	NUTS_PASS(nng_socket_get_int(s1, NNG_OPT_RECVFD, &fd));
+	NUTS_PASS(nng_socket_get_recv_poll_fd(s1, &fd));
 	NUTS_TRUE(fd >= 0);
 
 	// Not readable if not connected!
@@ -275,10 +276,10 @@ test_bus_poll_writeable(void)
 	NUTS_PASS(nng_bus0_open(&s1));
 	NUTS_PASS(nng_bus0_open(&s2));
 	NUTS_PASS(nng_socket_set_int(s2, NNG_OPT_SENDBUF, 1));
-	NUTS_PASS(nng_socket_get_int(s2, NNG_OPT_SENDFD, &fd));
+	NUTS_PASS(nng_socket_get_send_poll_fd(s2, &fd));
 	NUTS_TRUE(fd >= 0);
 
-	// Pub is *always* writeable
+	// Bus is *always* writeable
 	NUTS_TRUE(nuts_poll_fd(fd));
 
 	// Even after connect (no message yet)
@@ -299,7 +300,6 @@ test_bus_recv_buf_option(void)
 	nng_socket  s;
 	int         v;
 	bool        b;
-	size_t      sz;
 	const char *opt = NNG_OPT_RECVBUF;
 
 	NUTS_PASS(nng_bus0_open(&s));
@@ -311,15 +311,6 @@ test_bus_recv_buf_option(void)
 	NUTS_PASS(nng_socket_set_int(s, opt, 3));
 	NUTS_PASS(nng_socket_get_int(s, opt, &v));
 	NUTS_TRUE(v == 3);
-	v  = 0;
-	sz = sizeof(v);
-	NUTS_PASS(nng_socket_get(s, opt, &v, &sz));
-	NUTS_TRUE(v == 3);
-	NUTS_TRUE(sz == sizeof(v));
-
-	NUTS_FAIL(nng_socket_set(s, opt, "", 1), NNG_EINVAL);
-	sz = 1;
-	NUTS_FAIL(nng_socket_get(s, opt, &v, &sz), NNG_EINVAL);
 	NUTS_FAIL(nng_socket_set_bool(s, opt, true), NNG_EBADTYPE);
 	NUTS_FAIL(nng_socket_get_bool(s, opt, &b), NNG_EBADTYPE);
 
@@ -333,7 +324,6 @@ test_bus_send_buf_option(void)
 	nng_socket  s2;
 	int         v;
 	bool        b;
-	size_t      sz;
 	const char *opt = NNG_OPT_SENDBUF;
 
 	NUTS_PASS(nng_bus0_open(&s1));
@@ -347,15 +337,6 @@ test_bus_send_buf_option(void)
 	NUTS_PASS(nng_socket_set_int(s1, opt, 3));
 	NUTS_PASS(nng_socket_get_int(s1, opt, &v));
 	NUTS_TRUE(v == 3);
-	v  = 0;
-	sz = sizeof(v);
-	NUTS_PASS(nng_socket_get(s1, opt, &v, &sz));
-	NUTS_TRUE(v == 3);
-	NUTS_TRUE(sz == sizeof(v));
-
-	NUTS_FAIL(nng_socket_set(s1, opt, "", 1), NNG_EINVAL);
-	sz = 1;
-	NUTS_FAIL(nng_socket_get(s1, opt, &v, &sz), NNG_EINVAL);
 	NUTS_FAIL(nng_socket_set_bool(s1, opt, true), NNG_EBADTYPE);
 	NUTS_FAIL(nng_socket_get_bool(s1, opt, &b), NNG_EBADTYPE);
 
@@ -372,14 +353,11 @@ test_bus_cooked(void)
 	NUTS_PASS(nng_bus0_open(&s));
 	NUTS_PASS(nng_socket_raw(s, &b));
 	NUTS_TRUE(!b);
-	NUTS_PASS(nng_socket_get_bool(s, NNG_OPT_RAW, &b));
-	NUTS_TRUE(!b);
-	NUTS_FAIL(nng_socket_set_bool(s, NNG_OPT_RAW, true), NNG_EREADONLY);
 	NUTS_PASS(nng_close(s));
 
 	// raw pub only differs in the option setting
 	NUTS_PASS(nng_bus0_open_raw(&s));
-	NUTS_PASS(nng_socket_get_bool(s, NNG_OPT_RAW, &b));
+	NUTS_PASS(nng_socket_raw(s, &b));
 	NUTS_TRUE(b);
 	NUTS_CLOSE(s);
 }

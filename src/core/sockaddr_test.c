@@ -12,7 +12,7 @@
 
 #include "nuts.h"
 #include <nng/nng.h>
-
+#include "nng/supplemental/nanolib/log.h"
 #ifndef _WIN32
 #include <arpa/inet.h> // for endianness functions
 #endif
@@ -49,7 +49,7 @@ test_sa_inproc(void)
 	snprintf((char *) sa.s_inproc.sa_name, sizeof(sa.s_inproc.sa_name),
 	    "something");
 	nng_str_sockaddr(&sa, addr, sizeof(addr));
-	nng_log_debug(NULL, "address is %s", addr);
+	log_debug("address is %s", addr);
 	NUTS_ASSERT(strcmp(addr, "inproc[something]") == 0);
 }
 
@@ -76,7 +76,7 @@ test_sa_inet6(void)
 	sa.s_in6.sa_scope    = 0;
 	sa.s_in6.sa_port     = htons(80);
 	nng_str_sockaddr(&sa, addr, sizeof(addr));
-	nng_log_debug(NULL, "address is %s", addr);
+	log_debug("address is %s", addr);
 	NUTS_ASSERT(strcmp(addr, "[::1]:80") == 0);
 }
 
@@ -96,7 +96,7 @@ test_sa_inet6_v4_mapped(void)
 	sa.s_in6.sa_scope    = 0;
 	sa.s_in6.sa_port     = htons(80);
 	nng_str_sockaddr(&sa, addr, sizeof(addr));
-	nng_log_debug(NULL, "address is %s", addr);
+	log_debug("address is %s", addr);
 	NUTS_ASSERT(strcmp(addr, "[::ffff:192.168.1.100]:80") == 0);
 }
 
@@ -114,7 +114,7 @@ test_sa_inet6_ll(void)
 	sa.s_in6.sa_port     = htons(80);
 	sa.s_in6.sa_scope    = 2; // link local addresses have a non-zero scope
 	nng_str_sockaddr(&sa, addr, sizeof(addr));
-	nng_log_debug(NULL, "address is %s", addr);
+	log_debug("address is %s", addr);
 	NUTS_ASSERT(strcmp(addr, "[fe80::4%2]:80") == 0);
 }
 
@@ -128,7 +128,7 @@ test_sa_inet6_zero(void)
 	sa.s_in6.sa_port  = htons(80);
 	sa.s_in6.sa_scope = 0;
 	nng_str_sockaddr(&sa, addr, sizeof(addr));
-	nng_log_debug(NULL, "address is %s", addr);
+	log_debug("address is %s", addr);
 	NUTS_ASSERT(strcmp(addr, "[::]:80") == 0);
 }
 
@@ -143,7 +143,7 @@ test_sa_inet6_net(void)
 	sa.s_in6.sa_addr[0] = 0xfc;
 	sa.s_in6.sa_scope   = 0;
 	nng_str_sockaddr(&sa, addr, sizeof(addr));
-	nng_log_debug(NULL, "address is %s", addr);
+	log_debug("address is %s", addr);
 	NUTS_ASSERT(strcmp(addr, "[fc00::]:80") == 0);
 }
 
@@ -157,7 +157,7 @@ test_sa_zt(void)
 	sa.s_zt.sa_nwid   = 0xb;
 	sa.s_zt.sa_port   = 1 << 20;
 	nng_str_sockaddr(&sa, addr, sizeof(addr));
-	nng_log_debug(NULL, "address is %s", addr);
+	log_debug("address is %s", addr);
 	NUTS_ASSERT(strcmp(addr, "ZT[a:b:1048576]") == 0);
 }
 

@@ -1,5 +1,5 @@
 //
-// Copyright 2021 Staysail Systems, Inc. <info@staysail.tech>
+// Copyright 2024 Staysail Systems, Inc. <info@staysail.tech>
 // Copyright 2018 Capitar IT Group BV <info@capitar.com>
 //
 // This software is supplied under the terms of the MIT License, a
@@ -8,26 +8,25 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
+#include "nng/nng.h"
 #include <nuts.h>
 
 static void
 test_surv_identity(void)
 {
-	nng_socket s;
-	int        p;
-	char      *n;
+	nng_socket  s;
+	uint16_t    p;
+	const char *n;
 
 	NUTS_PASS(nng_surveyor0_open(&s));
-	NUTS_PASS(nng_socket_get_int(s, NNG_OPT_PROTO, &p));
+	NUTS_PASS(nng_socket_proto_id(s, &p));
 	NUTS_TRUE(p == NNG_SURVEYOR0_SELF);
-	NUTS_PASS(nng_socket_get_int(s, NNG_OPT_PEER, &p));
+	NUTS_PASS(nng_socket_peer_id(s, &p));
 	NUTS_TRUE(p == NNG_SURVEYOR0_PEER); // 49
-	NUTS_PASS(nng_socket_get_string(s, NNG_OPT_PROTONAME, &n));
+	NUTS_PASS(nng_socket_proto_name(s, &n));
 	NUTS_MATCH(n, NNG_SURVEYOR0_SELF_NAME);
-	nng_strfree(n);
-	NUTS_PASS(nng_socket_get_string(s, NNG_OPT_PEERNAME, &n));
+	NUTS_PASS(nng_socket_peer_name(s, &n));
 	NUTS_MATCH(n, NNG_SURVEYOR0_PEER_NAME);
-	nng_strfree(n);
 	NUTS_CLOSE(s);
 }
 
@@ -37,7 +36,6 @@ test_surv_ttl_option(void)
 	nng_socket  surv;
 	int         v;
 	bool        b;
-	size_t      sz;
 	const char *opt = NNG_OPT_MAXTTL;
 
 	NUTS_PASS(nng_surveyor0_open(&surv));
@@ -52,15 +50,6 @@ test_surv_ttl_option(void)
 	NUTS_PASS(nng_socket_set_int(surv, opt, 3));
 	NUTS_PASS(nng_socket_get_int(surv, opt, &v));
 	NUTS_TRUE(v == 3);
-	v  = 0;
-	sz = sizeof(v);
-	NUTS_PASS(nng_socket_get(surv, opt, &v, &sz));
-	NUTS_TRUE(v == 3);
-	NUTS_TRUE(sz == sizeof(v));
-
-	NUTS_FAIL(nng_socket_set(surv, opt, "", 1), NNG_EINVAL);
-	sz = 1;
-	NUTS_FAIL(nng_socket_get(surv, opt, &v, &sz), NNG_EINVAL);
 	NUTS_FAIL(nng_socket_set_bool(surv, opt, true), NNG_EBADTYPE);
 	NUTS_FAIL(nng_socket_get_bool(surv, opt, &b), NNG_EBADTYPE);
 
@@ -73,14 +62,11 @@ test_surv_survey_time_option(void)
 	nng_socket   surv;
 	nng_duration d;
 	bool         b;
-	size_t       sz  = sizeof(b);
 	const char  *opt = NNG_OPT_SURVEYOR_SURVEYTIME;
 
 	NUTS_PASS(nng_surveyor0_open(&surv));
 
 	NUTS_PASS(nng_socket_set_ms(surv, opt, 10));
-	NUTS_FAIL(nng_socket_set(surv, opt, "", 1), NNG_EINVAL);
-	NUTS_FAIL(nng_socket_get(surv, opt, &b, &sz), NNG_EINVAL);
 	NUTS_FAIL(nng_socket_set_bool(surv, opt, true), NNG_EBADTYPE);
 	NUTS_FAIL(nng_socket_get_bool(surv, opt, &b), NNG_EBADTYPE);
 
@@ -313,7 +299,7 @@ test_surv_poll_writeable(void)
 
 	NUTS_PASS(nng_surveyor0_open(&surv));
 	NUTS_PASS(nng_respondent0_open(&resp));
-	NUTS_PASS(nng_socket_get_int(surv, NNG_OPT_SENDFD, &fd));
+	NUTS_PASS(nng_socket_get_send_poll_fd(surv, &fd));
 	NUTS_TRUE(fd >= 0);
 
 	// Survey is broadcast, so we can always write.
@@ -338,7 +324,7 @@ test_surv_poll_readable(void)
 
 	NUTS_PASS(nng_surveyor0_open(&surv));
 	NUTS_PASS(nng_respondent0_open(&resp));
-	NUTS_PASS(nng_socket_get_int(surv, NNG_OPT_RECVFD, &fd));
+	NUTS_PASS(nng_socket_get_recv_poll_fd(surv, &fd));
 	NUTS_TRUE(fd >= 0);
 
 	// Not readable if not connected!
@@ -369,21 +355,6 @@ test_surv_poll_readable(void)
 
 	NUTS_CLOSE(surv);
 	NUTS_CLOSE(resp);
-}
-
-static void
-test_surv_ctx_no_poll(void)
-{
-	int        fd;
-	nng_socket surv;
-	nng_ctx    ctx;
-
-	NUTS_PASS(nng_surveyor0_open(&surv));
-	NUTS_PASS(nng_ctx_open(&ctx, surv));
-	NUTS_FAIL(nng_ctx_get_int(ctx, NNG_OPT_SENDFD, &fd), NNG_ENOTSUP);
-	NUTS_FAIL(nng_ctx_get_int(ctx, NNG_OPT_RECVFD, &fd), NNG_ENOTSUP);
-	NUTS_PASS(nng_ctx_close(ctx));
-	NUTS_CLOSE(surv);
 }
 
 static void
@@ -600,10 +571,10 @@ test_surv_context_multi(void)
 static void
 test_surv_validate_peer(void)
 {
-	nng_socket s1, s2;
-	nng_stat  *stats;
-	nng_stat  *reject;
-	char      *addr;
+	nng_socket      s1, s2;
+	nng_stat       *stats;
+	const nng_stat *reject;
+	char           *addr;
 
 	NUTS_ADDR(addr, "inproc");
 	NUTS_PASS(nng_surveyor0_open(&s1));
@@ -639,7 +610,6 @@ TEST_LIST = {
 	{ "survey cancel post recv", test_surv_cancel_post_recv },
 	{ "survey poll writable", test_surv_poll_writeable },
 	{ "survey poll readable", test_surv_poll_readable },
-	{ "survey context does not poll", test_surv_ctx_no_poll },
 	{ "survey context recv close socket",
 	    test_surv_ctx_recv_close_socket },
 	{ "survey context recv nonblock", test_surv_ctx_recv_nonblock },

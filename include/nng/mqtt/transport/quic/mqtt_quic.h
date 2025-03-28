@@ -19,10 +19,6 @@ extern "C" {
 
 // QUIC transport.  This is used for communication over QUIC/UDP/IP.
 
-#ifndef NNG_ELIDE_DEPRECATED
-NNG_DECL int nng_mqtt_quic_register(void);
-#endif
-
 #ifdef __cplusplus
 }
 #endif
