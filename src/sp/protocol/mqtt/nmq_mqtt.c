@@ -413,8 +413,8 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	}
 
 	// 2 locks here cause performance degradation
-	nni_mtx_lock(&p->lk);
 	nni_mtx_unlock(&s->lk);
+    nni_mtx_lock(&p->lk);
 
 	if (p->pipe->cache) {
 		if (nni_msg_get_type(msg) == CMD_PUBLISH) {
@@ -1081,18 +1081,19 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 	msg = nni_aio_get_msg(&p->aio_recv);
 	nni_aio_set_msg(&p->aio_recv, NULL);
 	nni_list_remove(&s->recvpipes, p);
-	if (nni_list_empty(&s->recvpipes)) {
-		nni_pollable_clear(&s->readable);
-	}
+    nni_mtx_unlock(&s->lk);
+	// if (nni_list_empty(&s->recvpipes)) {
+	// 	nni_pollable_clear(&s->readable);
+	// }
 	nni_pipe_recv(p->pipe, &p->aio_recv);
-	if ((ctx == &s->ctx) && !p->busy) {
-		nni_pollable_raise(&s->writable);
-	}
+	// if ((ctx == &s->ctx) && !p->busy) {
+	// 	nni_pollable_raise(&s->writable);
+	// }
 
 	ctx->pipe_id = nni_pipe_id(p->pipe);
 	log_trace("nano_ctx_recv ends %p pipe: %p pipe_id: %d", ctx, p,
 	    ctx->pipe_id);
-	nni_mtx_unlock(&s->lk);
+
 
 	nni_aio_set_msg(aio, msg);
 	nni_aio_finish(aio, 0, nni_msg_len(msg));
