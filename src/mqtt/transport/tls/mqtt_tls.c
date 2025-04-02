@@ -17,6 +17,7 @@
 #include "nng/supplemental/tls/tls.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
+#include "nng/supplemental/nanolib/file.h"
 
 #ifdef SUPP_SCRAM
 #define SCRAM_ITERATION_CNT_DEFAULT 4096
@@ -1619,6 +1620,63 @@ mqtts_tcptran_ep_cancel(nni_aio *aio, void *arg, int rv)
 }
 
 static void
+nng_dialer_reload_tls(conf_bridge_node *node, nni_dialer *ndialer)
+{
+	int             rv;
+	nng_tls_config *cfg;
+	conf_tls       *tls = &node->tls;
+
+	nng_free(tls->key, sizeof(tls->key));
+	if (NULL == tls->keyfile ||
+	    0 == file_load_data(tls->keyfile, (void **) &tls->key)) {
+		log_error("Read keyfile %s failed!", tls->keyfile);
+	}
+	nng_free(tls->cert, sizeof(tls->cert));
+	if (NULL == tls->certfile ||
+	    0 == file_load_data(tls->certfile, (void **) &tls->cert)) {
+		log_error("Read certfile %s failed!", tls->certfile);
+	}
+	nng_free(tls->ca, sizeof(tls->ca));
+	if (NULL == tls->cafile ||
+	    0 == file_load_data(tls->cafile, (void **) &tls->ca)) {
+		log_error("Read cacertfile %s failed!", tls->cafile);
+	}
+	if (ndialer != NULL) {
+		nni_dialer_hold(ndialer);
+		rv = nni_dialer_getopt(
+		    ndialer, NNG_OPT_TLS_CONFIG, &cfg, NULL, NNI_TYPE_POINTER);
+		nni_dialer_rele(ndialer);
+	}
+
+	nng_tls_config_free(cfg);
+	if ((rv = nng_tls_config_alloc(&cfg, NNG_TLS_MODE_CLIENT)) != 0) {
+		log_error("alloc tls config failed!");
+		return;
+	}
+
+	if (node->tls.cert != NULL && node->tls.key != NULL) {
+		if ((rv = nng_tls_config_own_cert(cfg, node->tls.cert,
+		         node->tls.key, node->tls.key_password)) != 0) {
+			log_error("restart tls config failed!");
+		}
+	}
+	if (node->tls.ca != NULL) {
+		if ((rv = nng_tls_config_ca_chain(cfg, node->tls.ca, NULL)) !=
+		    0) {
+			log_error("restart tls config failed!");
+		}
+	}
+
+	if (ndialer != NULL) {
+		nni_dialer_hold(ndialer);
+		rv = nni_dialer_setopt(
+		    ndialer, NNG_OPT_TLS_CONFIG, &cfg, sizeof(cfg), NNI_TYPE_POINTER);
+		nni_dialer_rele(ndialer);
+	}
+	nng_tls_config_free(cfg);
+}
+
+static void
 mqtts_tcptran_ep_connect(void *arg, nni_aio *aio)
 {
 	mqtts_tcptran_ep *ep = arg;
@@ -1663,7 +1721,7 @@ mqtts_tcptran_ep_connect(void *arg, nni_aio *aio)
 	}
 	ep->useraio = aio;
 
-	nano_dialer_reload_tls(ep->bridge_conf, NULL, ep->ndialer);
+	nng_dialer_reload_tls(ep->bridge_conf, ep->ndialer);
 	nng_stream_dialer_dial(ep->dialer, ep->connaio);
 	nni_mtx_unlock(&ep->mtx);
 }
@@ -1744,7 +1802,7 @@ mqtts_tcptran_ep_set_conf(
 	int              rv;
 
 	nni_mtx_lock(&ep->mtx);
-	rv = nni_copyin_ptr(&ep->bridge_conf, v, sz, t);
+	rv = nni_copyin_ptr((void **)&ep->bridge_conf, v, sz, t);
 	nni_mtx_unlock(&ep->mtx);
 
 	return (rv);
