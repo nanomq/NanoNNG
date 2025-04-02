@@ -17,5 +17,7 @@ extern void conf_bridge_conn_properties_init(
     conf_bridge_conn_properties *prop);
 extern void conf_bridge_conn_will_properties_init(
     conf_bridge_conn_will_properties *prop);
+extern void nano_dialer_reload_tls(
+    conf_bridge_node *node, nng_dialer *dialer, nni_dialer *ndialer);
 
 #endif //NNG_SUPPLEMENTAL_NANOLIB_NANOLIB_H
