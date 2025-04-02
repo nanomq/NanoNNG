@@ -96,6 +96,7 @@ struct mqtts_tcptran_ep {
 	nng_stream_dialer *  dialer;
 	nng_stream_listener *listener;
 	nni_dialer *         ndialer;
+	conf_bridge_node *   bridge_conf;
 	void *               property;  // property
 	void *               connmsg;
 	bool                 enable_scram;
@@ -152,9 +153,10 @@ static void
 mqtts_tcptran_pipe_stop(void *arg)
 {
 	mqtts_tcptran_pipe *p = arg;
-    if (nni_aio_busy(p->txaio))
-        nni_aio_finish_error(p->txaio, NNG_ECLOSED);
 	nni_aio_stop(p->rxaio);
+	if (nni_aio_busy(p->txaio)) {
+		nni_aio_finish_error(p->txaio, NNG_ECLOSED);
+	}
 	nni_aio_stop(p->txaio);
 	nni_aio_stop(p->negoaio);
 	nni_aio_stop(p->rpaio);
@@ -1475,6 +1477,7 @@ mqtts_tcptran_ep_init(mqtts_tcptran_ep **epp, nng_url *url, nni_sock *sock)
 	ep->connmsg     = NULL;
 	ep->reason_code = 0;
 	ep->property    = NULL;
+	ep->bridge_conf = NULL;
 	ep->backoff     = 0;
 
 	*epp = ep;
@@ -1660,6 +1663,7 @@ mqtts_tcptran_ep_connect(void *arg, nni_aio *aio)
 	}
 	ep->useraio = aio;
 
+	nano_dialer_reload_tls(ep->bridge_conf, NULL, ep->ndialer);
 	nng_stream_dialer_dial(ep->dialer, ep->connaio);
 	nni_mtx_unlock(&ep->mtx);
 }
@@ -1727,6 +1731,20 @@ mqtts_tcptran_ep_set_connmsg(
 
 	nni_mtx_lock(&ep->mtx);
 	rv = nni_copyin_ptr(&ep->connmsg, v, sz, t);
+	nni_mtx_unlock(&ep->mtx);
+
+	return (rv);
+}
+
+static int
+mqtts_tcptran_ep_set_conf(
+    void *arg, const void *v, size_t sz, nni_opt_type t)
+{
+	mqtts_tcptran_ep *ep = arg;
+	int              rv;
+
+	nni_mtx_lock(&ep->mtx);
+	rv = nni_copyin_ptr(&ep->bridge_conf, v, sz, t);
 	nni_mtx_unlock(&ep->mtx);
 
 	return (rv);
@@ -1864,6 +1882,10 @@ static const nni_option mqtts_tcptran_ep_opts[] = {
 	    .o_name = NNG_OPT_MQTT_CONNMSG,
 	    .o_get  = mqtts_tcptran_ep_get_connmsg,
 	    .o_set  = mqtts_tcptran_ep_set_connmsg,
+	},
+	{
+	    .o_name = NNG_OPT_MQTT_TLS_BRIDGE_CONF,
+	    .o_set  = mqtts_tcptran_ep_set_conf,
 	},
 	{
 	    .o_name = NNG_OPT_MQTT_RECONNECT_BACKOFF_MAX,
