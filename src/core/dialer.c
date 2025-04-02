@@ -351,7 +351,7 @@ nni_dialer_close(nni_dialer *d)
 	nni_sock_remove_dialer(d);
 	nni_dialer_rele(d);
 }
-
+// Reconnect timer!
 static void
 dialer_timer_cb(void *arg)
 {
