@@ -661,7 +661,7 @@ NNG_DECL void conf_update2(const char *fpath, const char *key1,
 NNG_DECL void
 conf_bridge_node_parse(
     conf_bridge_node *node, conf_sqlite *bridge_sqlite, cJSON *obj);
-NNG_DECL void   conf_bridge_node_destroy(conf_bridge_node *node);
+NNG_DECL void conf_bridge_node_destroy(conf_bridge_node *node);
 
 NNG_DECL void conf_update_var(
     const char *fpath, const char *key, uint8_t type, void *var);
