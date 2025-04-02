@@ -742,6 +742,7 @@ nni_sleep_aio(nng_duration ms, nng_aio *aio)
 {
 	int rv;
 	if (nni_aio_begin(aio) != 0) {
+        log_warn("sleep aio canceled!");
 		return;
 	}
 	aio->a_expire_ok = true;
