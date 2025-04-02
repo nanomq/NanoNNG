@@ -433,7 +433,9 @@ nni_dialer_start(nni_dialer *d, unsigned flags)
 	}
 
 	nni_mtx_lock(&d->d_mtx);
-	d->d_user_aio = aio;
+	d->d_user_aio       = aio;
+	d->d_tmo_aio.a_stop = false;
+	d->d_con_aio.a_stop = false;
 	dialer_connect_start(d);
 	nni_mtx_unlock(&d->d_mtx);
 

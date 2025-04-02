@@ -1380,7 +1380,7 @@ nng_tls_config_own_cert(
 	int rv;
 	nni_mtx_lock(&cfg->lock);
 	if (cfg->busy) {
-	log_info("--busy");
+	    log_info("--busy");
 		rv = NNG_EBUSY;
 	} else {
 		rv = cfg->ops.own_cert((void *) (cfg + 1), cert, key, pass);
