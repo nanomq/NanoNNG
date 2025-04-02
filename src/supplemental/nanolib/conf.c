@@ -15,7 +15,7 @@
 #include "nng/supplemental/nanolib/log.h"
 #include "nng/supplemental/nanolib/hocon.h"
 #include "nng/supplemental/tls/tls.h"
-#include "nanolib.h"
+#include "nng/supplemental/nanolib/nanolib.h"
 #include <ctype.h>
 
 static void conf_bridge_parse(conf *nanomq_conf, const char *path);
@@ -4502,69 +4502,4 @@ conf_fini(conf *nanomq_conf)
 	conf_parquet_destroy(&nanomq_conf->parquet);
 #endif
 	free(nanomq_conf);
-}
-
-void
-nano_dialer_reload_tls(
-    conf_bridge_node *node, nng_dialer *dialer, nni_dialer *ndialer)
-{
-	int             rv;
-	nng_tls_config *cfg;
-	conf_tls       *tls = &node->tls;
-
-	nng_free(tls->key, sizeof(tls->key));
-	if (NULL == tls->keyfile ||
-	    0 == file_load_data(tls->keyfile, (void **) &tls->key)) {
-		log_error("Read keyfile %s failed!", tls->keyfile);
-	}
-	nng_free(tls->cert, sizeof(tls->cert));
-	if (NULL == tls->certfile ||
-	    0 == file_load_data(tls->certfile, (void **) &tls->cert)) {
-		log_error("Read certfile %s failed!", tls->certfile);
-	}
-	nng_free(tls->ca, sizeof(tls->ca));
-	if (NULL == tls->cafile ||
-	    0 == file_load_data(tls->cafile, (void **) &tls->ca)) {
-		log_error("Read cacertfile %s failed!", tls->cafile);
-	}
-	if (dialer != NULL) {
-		if ((rv = nng_dialer_get_ptr(
-		         *dialer, NNG_OPT_TLS_CONFIG, (void **) &cfg)) != 0) {
-			log_error("get bridge dialer failed! %d", rv);
-		}
-	} else if (ndialer != NULL) {
-		nni_dialer_hold(ndialer);
-		rv = nni_dialer_getopt(
-		    ndialer, NNG_OPT_TLS_CONFIG, &cfg, NULL, NNI_TYPE_POINTER);
-		nni_dialer_rele(ndialer);
-	}
-
-	nng_tls_config_free(cfg);
-	if ((rv = nng_tls_config_alloc(&cfg, NNG_TLS_MODE_CLIENT)) != 0) {
-		log_error("alloc tls config failed!");
-		return;
-	}
-
-	if (node->tls.cert != NULL && node->tls.key != NULL) {
-		if ((rv = nng_tls_config_own_cert(cfg, node->tls.cert,
-		         node->tls.key, node->tls.key_password)) != 0) {
-			log_error("restart tls config failed!");
-		}
-	}
-	if (node->tls.ca != NULL) {
-		if ((rv = nng_tls_config_ca_chain(cfg, node->tls.ca, NULL)) !=
-		    0) {
-			log_error("restart tls config failed!");
-		}
-	}
-
-	if (dialer != NULL) {
-		rv = nng_dialer_set_ptr(*dialer, NNG_OPT_TLS_CONFIG, cfg);
-	} else if (ndialer != NULL) {
-		nni_dialer_hold(ndialer);
-		rv = nni_dialer_setopt(
-		    ndialer, NNG_OPT_TLS_CONFIG, &cfg, sizeof(cfg), NNI_TYPE_POINTER);
-		nni_dialer_rele(ndialer);
-	}
-	nng_tls_config_free(cfg);
 }
