@@ -1,6 +1,6 @@
 #include "core/nng_impl.h"
 
-#include "nanolib.h"
+#include "nng/supplemental/nanolib/nanolib.h"
 #include "nng/exchange/exchange.h"
 #include "nng/nng.h"
 #include "nng/supplemental/nanolib/acl_conf.h"
