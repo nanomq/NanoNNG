@@ -575,8 +575,8 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	if (rv != 0)
 		return rv;
 	log_trace("pro_name: %s", cparam->pro_name.body);
-	// protocol ver
-	cparam->pro_ver = packet[pos];
+	// protocol ver to be compatible with 0x84 (highest bit represents bridge)
+	cparam->pro_ver = packet[pos] & 0x07;
 	log_trace("pro_ver: %d", cparam->pro_ver);
 	pos++;
 	// connect flag
