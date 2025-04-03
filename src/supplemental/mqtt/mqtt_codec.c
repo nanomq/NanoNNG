@@ -847,8 +847,11 @@ nni_mqtt_msg_encode_connect(nni_msg *msg)
 	nni_mqtt_msg_encode_fixed_header(msg, mqtt);
 
 	nni_mqtt_msg_append_byte_str(msg, &var_header->protocol_name);
-
+#ifdef NNG_HAVE_MQTT_BROKER
+	nni_mqtt_msg_append_u8(msg, 0x84);	// hack first bit as bridge flag
+#else
 	nni_mqtt_msg_append_u8(msg, var_header->protocol_version);
+#endif
 
 	/* Connect Flags */
 	nni_mqtt_msg_append_u8(msg, *(uint8_t *) &var_header->conn_flags);
