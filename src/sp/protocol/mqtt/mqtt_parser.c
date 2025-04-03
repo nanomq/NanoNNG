@@ -1249,7 +1249,7 @@ nano_pubmsg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
 	if (retain > 0) {
 		buf[0] = buf[0] | 0x01;
 	}
-	memcpy(ptr, buf, rlen + 1);
+	nni_msg_header_append(msg, buf, rlen + 1);
 
 	ptr = nni_msg_body(msg);
 	NNI_PUT16(ptr, topic->len);
