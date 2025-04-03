@@ -14,7 +14,7 @@
 #include "nng/supplemental/nanolib/file.h"
 #include "nng/supplemental/nanolib/log.h"
 #include "nng/supplemental/nanolib/hocon.h"
-#include "nanolib.h"
+#include "nng/supplemental/nanolib/nanolib.h"
 #include <ctype.h>
 
 static void conf_bridge_parse(conf *nanomq_conf, const char *path);
