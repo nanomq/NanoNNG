@@ -2445,7 +2445,6 @@ printf_gateway_conf(zmq_gateway_conf *gateway)
 	log_info("mqtt sub url: %s", gateway->sub_topic);
 	log_info("mqtt pub url: %s", gateway->pub_topic);
 	log_info("mqtt username: %s", gateway->username);
-	log_info("mqtt password: %s", gateway->password);
 	log_info("mqtt proto version: %d", gateway->proto_ver);
 	log_info("mqtt keepalive: %d", gateway->keepalive);
 	log_info("mqtt clean start: %d", gateway->clean_start);
@@ -3664,8 +3663,6 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		    node->name, node->clean_start);
 		log_info("%sbridge.mqtt.%s.username:                   %s", prefix,
 		    node->name, node->username);
-		log_info("%sbridge.mqtt.%s.password:                   %s", prefix,
-		    node->name, node->password);
 		log_info("%sbridge.mqtt.%s.keepalive:                  %d", prefix,
 		    node->name, node->keepalive);
 		log_info("%sbridge.mqtt.%s.backoff_max:                %d", prefix,
