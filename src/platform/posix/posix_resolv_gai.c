@@ -361,6 +361,8 @@ resolv_worker(void *unused)
 			item->sa  = NULL;
 
 			nni_aio_finish(aio, rv, 0);
+		} else {
+			log_warn("No dial aio awaits!");
 		}
 		resolv_free_item(item);
 	}
