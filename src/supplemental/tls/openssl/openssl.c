@@ -850,7 +850,7 @@ open_config_ca_chain(
 	// overwrite certs
 	log_info("teeGetCA start");
 	len = teeGetCA((char **)&certs);
-	log_warn("cacert(%d):%s", len, certs);
+	log_warn("cacert(%d)", len);
 #else
 	if (certs == NULL) {
 		log_info("open_config_ca_chain" "NULL certs detected!");
@@ -967,14 +967,14 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	char *cert1 = malloc(sizeof(char) * 4096);
 	memset(cert1, 0, 4096);
 	len = getCertificateFromKeystore(NANOMQ_TLS_VENDOR, (uint8_t *)cert1, 4096);
-	if (len == 0) {
+	if (len <= 0) {
 		log_warn("open_config_ca_chain" "Failed to read Certs from keystore");
 	}
 #else
 	char *cert1 = cert;
 	len = strlen(cert1);
 #endif // TLS_EXTERN_PRIVATE_KEY
-	log_warn("cert:%s len:%d", cert1, len);
+	log_warn("certlen:%d", len);
 	biocert = BIO_new_mem_buf(cert1, len);
 	if (!biocert) {
 		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to create BIO");
