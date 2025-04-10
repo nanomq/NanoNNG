@@ -72,6 +72,7 @@ struct conf_tls {
 	char *key_password;
 	bool  verify_peer;
 	bool  set_fail; // fail_if_no_peer_cert
+	bool  cert_encrypted;
 };
 
 typedef struct conf_tls conf_tls;
