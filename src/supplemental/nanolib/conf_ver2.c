@@ -419,6 +419,10 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 static void
 conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 {
+	size_t len;
+	char * plain;
+	int    plainsz;
+	char * aeskey = "1234567890123456";
 	if (jso_tls) {
 		tls->enable = true;
 		hocon_read_str(tls, keyfile, jso_tls);
@@ -428,16 +432,52 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 		hocon_read_bool(tls, cert_encrypted, jso_tls);
 
 		if (NULL == tls->keyfile ||
-		    0 == file_load_data(tls->keyfile, (void **) &tls->key)) {
+		    0 == (len = file_load_data(tls->keyfile, (void **) &tls->key))) {
 			log_warn("Read keyfile %s failed!", tls->keyfile);
 		}
+		if (tls->cert_encrypted && tls->key) {
+			char tag[32];
+			memcpy(tag, tls->key, 32);
+			plain = aes_gcm_decrypt(tls->key, len, aeskey, tag, &plainsz);
+			if (!plain || plainsz == 0) {
+				log_error("AES decrypt key %s failed!", tls->keyfile);
+				// TODO
+			} else {
+				nng_free(tls->key, 0);
+				tls->key = plain;
+			}
+		}
 		if (NULL == tls->certfile ||
-		    0 == file_load_data(tls->certfile, (void **) &tls->cert)) {
+		    0 == (len = file_load_data(tls->certfile, (void **) &tls->cert))) {
 			log_warn("Read certfile %s failed!", tls->certfile);
 		}
+		if (tls->cert_encrypted && tls->cert) {
+			char tag[32];
+			memcpy(tag, tls->cert, 32);
+			plain = aes_gcm_decrypt(tls->cert, len, aeskey, tag, &plainsz);
+			if (!plain || plainsz == 0) {
+				log_error("AES decrypt cert %s failed!", tls->certfile);
+				// TODO
+			} else {
+				nng_free(tls->cert, 0);
+				tls->cert = plain;
+			}
+		}
 		if (NULL == tls->cafile ||
-		    0 == file_load_data(tls->cafile, (void **) &tls->ca)) {
+		    0 == (len = file_load_data(tls->cafile, (void **) &tls->ca))) {
 			log_error("Read cacertfile %s failed!", tls->cafile);
+		}
+		if (tls->cert_encrypted && tls->ca) {
+			char tag[32];
+			memcpy(tag, tls->ca, 32);
+			plain = aes_gcm_decrypt(tls->ca, len, aeskey, tag, &plainsz);
+			if (!plain || plainsz == 0) {
+				log_error("AES decrypt ca %s failed!", tls->cafile);
+				// TODO
+			} else {
+				nng_free(tls->ca, 0);
+				tls->ca = plain;
+			}
 		}
 	}
 
