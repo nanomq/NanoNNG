@@ -416,8 +416,8 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	return;
 }
 
-#if 1 // For geely. There is openssl dependency in geely all platforms.
-	  // Refer to nanomq/extern/aes_gcm.c.
+#ifdef SUPP_PARQUET // There is openssl dependency in all platforms.
+                    // Refer to nanomq/extern/aes_gcm.c.
 
 #include <openssl/evp.h>
 #include <openssl/err.h>
@@ -537,7 +537,7 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 	size_t len;
 	char * plain;
 	int    plainsz;
-	char * aeskey = "1234567890123456";
+	char * aeskey = "givemeacoffeeplz";
 	if (jso_tls) {
 		tls->enable = true;
 		hocon_read_str(tls, keyfile, jso_tls);
@@ -550,6 +550,7 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 		    0 == (len = file_load_data(tls->keyfile, (void **) &tls->key))) {
 			log_warn("Read keyfile %s failed!", tls->keyfile);
 		}
+#ifdef SUPP_PARQUET
 		if (tls->cert_encrypted && tls->key) {
 			char tag[32];
 			memcpy(tag, tls->key, 32);
@@ -563,10 +564,12 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 				tls->key = plain;
 			}
 		}
+#endif
 		if (NULL == tls->certfile ||
 		    0 == (len = file_load_data(tls->certfile, (void **) &tls->cert))) {
 			log_warn("Read certfile %s failed!", tls->certfile);
 		}
+#ifdef SUPP_PARQUET
 		if (tls->cert_encrypted && tls->cert) {
 			char tag[32];
 			memcpy(tag, tls->cert, 32);
@@ -580,10 +583,12 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 				tls->cert = plain;
 			}
 		}
+#endif
 		if (NULL == tls->cafile ||
 		    0 == (len = file_load_data(tls->cafile, (void **) &tls->ca))) {
 			log_error("Read cacertfile %s failed!", tls->cafile);
 		}
+#ifdef SUPP_PARQUET
 		if (tls->cert_encrypted && tls->ca) {
 			char tag[32];
 			memcpy(tag, tls->ca, 32);
@@ -597,6 +602,7 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 				tls->ca = plain;
 			}
 		}
+#endif
 	}
 
 	return;
