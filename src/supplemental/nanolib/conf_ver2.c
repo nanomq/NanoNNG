@@ -553,11 +553,12 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 		if (tls->cert_encrypted && tls->key) {
 			char tag[32];
 			memcpy(tag, tls->key, 32);
-			plain = aes_gcm_decrypt(tls->key, len, aeskey, tag, &plainsz);
+			plain = aes_gcm_decrypt(tls->key, len - 1, aeskey, tag, &plainsz);
 			if (!plain || plainsz == 0) {
-				log_error("AES decrypt key %s failed!", tls->keyfile);
+				log_error("AES decrypt key %s len %d failed!", tls->keyfile, len);
 				// TODO
 			} else {
+				log_info("AES decrypt key %s successfully!", tls->keyfile);
 				nng_free(tls->key, 0);
 				tls->key = plain;
 			}
@@ -569,11 +570,12 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 		if (tls->cert_encrypted && tls->cert) {
 			char tag[32];
 			memcpy(tag, tls->cert, 32);
-			plain = aes_gcm_decrypt(tls->cert, len, aeskey, tag, &plainsz);
+			plain = aes_gcm_decrypt(tls->cert, len - 1, aeskey, tag, &plainsz);
 			if (!plain || plainsz == 0) {
-				log_error("AES decrypt cert %s failed!", tls->certfile);
+				log_error("AES decrypt cert %s len %d failed!", tls->certfile, len);
 				// TODO
 			} else {
+				log_info("AES decrypt cert %s successfully!", tls->certfile);
 				nng_free(tls->cert, 0);
 				tls->cert = plain;
 			}
@@ -585,11 +587,12 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 		if (tls->cert_encrypted && tls->ca) {
 			char tag[32];
 			memcpy(tag, tls->ca, 32);
-			plain = aes_gcm_decrypt(tls->ca, len, aeskey, tag, &plainsz);
+			plain = aes_gcm_decrypt(tls->ca, len - 1, aeskey, tag, &plainsz);
 			if (!plain || plainsz == 0) {
-				log_error("AES decrypt ca %s failed!", tls->cafile);
+				log_error("AES decrypt ca %s len %d failed!", tls->cafile, len);
 				// TODO
 			} else {
+				log_info("AES decrypt ca %s successfully!", tls->cafile);
 				nng_free(tls->ca, 0);
 				tls->ca = plain;
 			}
