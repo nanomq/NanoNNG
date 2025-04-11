@@ -416,7 +416,8 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	return;
 }
 
-#ifdef NNG_TLS_ENGINE_OPENSSL // For geely. Refer to nanomq/extern/aes_gcm.c
+#if 1 // For geely. There is openssl dependency in geely all platforms.
+	  // Refer to nanomq/extern/aes_gcm.c.
 
 #include <openssl/evp.h>
 #include <openssl/err.h>
