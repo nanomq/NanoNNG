@@ -89,11 +89,13 @@ http_dial_cb(void *arg)
 void
 nni_http_client_fini(nni_http_client *c)
 {
-	nni_mtx_lock(&c->mtx);
+	nng_mtx_lock(&c->mtx);
+	nng_stream_dialer_close(c->dialer);
+	nng_mtx_unlock(&c->mtx);
+	nng_stream_dialer_free(c->dialer);
+	nni_aio_abort(c->aio, NNG_ECANCELED);
 	nni_aio_free(c->aio);
 	c->aio = NULL;
-	nng_stream_dialer_free(c->dialer);
-	nni_mtx_unlock(&c->mtx);
 	nni_mtx_fini(&c->mtx);
 	NNI_FREE_STRUCT(c);
 }
