@@ -445,7 +445,7 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 		} else {
 			log_error("keyfile %s is null!", tls->keyfile);
 		}
-		if (NULL == tls->certfile) {
+		if (tls->certfile) {
 			if (tls->cert_encrypted == false) {
 				len = file_load_data(tls->certfile, (void **) &tls->cert);
 				if (len == 0)
@@ -463,7 +463,7 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 			log_error("certfile %s is null!", tls->certfile);
 		}
 
-		if (NULL == tls->cafile) {
+		if (tls->cafile) {
 			if (tls->cert_encrypted == false) {
 				len = file_load_data(tls->cafile, (void **) &tls->ca);
 				if (len == 0)
