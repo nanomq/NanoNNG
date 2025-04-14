@@ -1647,7 +1647,7 @@ nng_dialer_reload_tls(conf_bridge_node *node, nni_dialer *ndialer)
 	}
 
 	nng_free(tls->cert, sizeof(tls->cert));
-	if (NULL == tls->certfile) {
+	if (tls->certfile) {
 		if (tls->cert_encrypted == false) {
 			len = file_load_data(tls->certfile, (void **) &tls->cert);
 			if (len == 0)
@@ -1666,7 +1666,7 @@ nng_dialer_reload_tls(conf_bridge_node *node, nni_dialer *ndialer)
 	}
 
 	nng_free(tls->ca, sizeof(tls->ca));
-	if (NULL == tls->cafile) {
+	if (tls->cafile) {
 		if (tls->cert_encrypted == false) {
 			len = file_load_data(tls->cafile, (void **) &tls->ca);
 			if (len == 0)
