@@ -37,12 +37,14 @@ tcp_dial_cancel(nni_aio *aio, void *arg, int rv)
 {
 	tcp_dialer *d = arg;
 
+	log_info("TCP Dial canceled!");
 	nni_mtx_lock(&d->mtx);
 	if (nni_aio_list_active(aio)) {
 		nni_aio_list_remove(aio);
 		nni_aio_finish_error(aio, rv);
 
 		if (nni_list_empty(&d->conaios)) {
+			log_debug("d->connaio aborted! %p", d->conaio);
 			nni_aio_abort(d->conaio, NNG_ECANCELED);
 			nni_aio_abort(d->resaio, NNG_ECANCELED);
 		}
