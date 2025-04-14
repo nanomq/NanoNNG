@@ -305,7 +305,7 @@ nni_aio_count(nni_aio *aio)
 {
 	return (aio->a_count);
 }
-
+// TODO: Need to find a way let aio wait yield.
 void
 nni_aio_wait(nni_aio *aio)
 {
