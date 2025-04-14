@@ -416,128 +416,10 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	return;
 }
 
-#ifdef SUPP_PARQUET // There is openssl dependency in all platforms.
-                    // Refer to nanomq/extern/aes_gcm.c.
-
-#include <openssl/evp.h>
-#include <openssl/err.h>
-
-static const char aes_gcm_aad[] =
-{0x4d, 0x23, 0xc3, 0xce, 0xc3, 0x34, 0xb4, 0x9b, 0xdb, 0x37, 0x0c, 0x43,
- 0x7f, 0xec, 0x78, 0xde};
-static const int  aes_gcm_aad_sz = 16;
-static const char aes_gcm_iv[] =
-{0x99, 0xaa, 0x3e, 0x68, 0xed, 0x81, 0x73, 0xa0, 0xee, 0xd0, 0x66, 0x84};
-
-static char* aes_gcm_decrypt(char *ciphertext, int ciphertext_len,
-		char *key, char *tag, int *plaintext_lenp)
-{
-	const EVP_CIPHER *cipher_handle;
-	switch (strlen(key) * 8) {
-	case 128:
-		cipher_handle = EVP_aes_128_gcm();
-		break;
-	case 192:
-		cipher_handle = EVP_aes_192_gcm();
-		break;
-	case 256:
-		cipher_handle = EVP_aes_256_gcm();
-		break;
-	default:
-		log_error("Unsupported aes key length");
-		return NULL;
-	}
-
-	// skip tag part
-	ciphertext += 32;
-	ciphertext_len -= 32;
-
-    EVP_CIPHER_CTX *ctx;
-    int len;
-    int plaintext_len;
-    int ret;
-
-    /* Create and initialise the context */
-    if(!(ctx = EVP_CIPHER_CTX_new())) {
-		log_error("error in new ctx");
-		return NULL;
-	}
-
-    /* Initialise the decryption operation. */
-    if(!EVP_DecryptInit_ex(ctx, cipher_handle, NULL, NULL, NULL)) {
-		log_error("error in init ctx");
-		return NULL;
-	}
-
-    /* Set IV length. Not necessary if this is 12 bytes (96 bits) */
-    if(!EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, sizeof(aes_gcm_iv), NULL)) {
-		log_error("error in ctx ctrl");
-		return NULL;
-	}
-
-    /* Initialise key and IV */
-    if(!EVP_DecryptInit_ex(ctx, NULL, NULL, key, aes_gcm_iv)) {
-		log_error("error in decrypted init");
-		return NULL;
-	}
-
-    /*
-     * Provide any AAD data. This can be called zero or more times as
-     * required
-     */
-    if(!EVP_DecryptUpdate(ctx, NULL, &len, aes_gcm_aad, aes_gcm_aad_sz)) {
-		log_error("error in decrypted update1");
-		return NULL;
-	}
-
-	char *plaintext = malloc(sizeof(char) * (ciphertext_len+32));
-	memset(plaintext, '\0', ciphertext_len + 32);
-    /*
-     * Provide the message to be decrypted, and obtain the plaintext output.
-     * EVP_DecryptUpdate can be called multiple times if necessary
-     */
-    if(!EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ciphertext_len)) {
-		log_error("error in decrypted update1");
-		return NULL;
-	}
-    plaintext_len = len;
-
-    /* Set expected tag value. Works in OpenSSL 1.0.1d and later */
-    if(!EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, tag)) {
-		log_error("error in ctx ctrl2");
-		return NULL;
-	}
-
-    /*
-     * Finalise the decryption. A positive return value indicates success,
-     * anything else is a failure - the plaintext is not trustworthy.
-     */
-    ret = EVP_DecryptFinal_ex(ctx, plaintext + len, &len);
-
-    /* Clean up */
-    EVP_CIPHER_CTX_free(ctx);
-
-    if(ret > 0) {
-        /* Success */
-        plaintext_len += len;
-		*plaintext_lenp = plaintext_len;
-        return plaintext;
-    } else {
-		log_error("error in decryption %d", ret);
-        /* Verify failed */
-        return NULL;
-    }
-}
-
-#endif
-
 static void
 conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 {
 	size_t len;
-	char * plain;
-	int    plainsz;
-	char * aeskey = "givemeacoffeeplz";
 	if (jso_tls) {
 		tls->enable = true;
 		hocon_read_str(tls, keyfile, jso_tls);
@@ -546,63 +428,58 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 		hocon_read_str(tls, key_password, jso_tls);
 		hocon_read_bool(tls, cert_encrypted, jso_tls);
 
-		if (NULL == tls->keyfile ||
-		    0 == (len = file_load_data(tls->keyfile, (void **) &tls->key))) {
-			log_warn("Read keyfile %s failed!", tls->keyfile);
-		}
-#ifdef SUPP_PARQUET
-		if (tls->cert_encrypted && tls->key) {
-			char tag[32];
-			memcpy(tag, tls->key, 32);
-			plain = aes_gcm_decrypt(tls->key, len - 1, aeskey, tag, &plainsz);
-			if (!plain || plainsz == 0) {
-				log_error("AES decrypt key %s len %d failed!", tls->keyfile, len);
-				// TODO
+		if (tls->keyfile) {
+			if (tls->cert_encrypted == false) {
+				len = file_load_data(tls->keyfile, (void **) &tls->key);
+				if (len == 0)
+					log_error("Read keyfile %s failed!", tls->keyfile);
 			} else {
-				log_info("AES decrypt key %s successfully!", tls->keyfile);
-				nng_free(tls->key, 0);
-				tls->key = plain;
-			}
-		}
-#endif
-		if (NULL == tls->certfile ||
-		    0 == (len = file_load_data(tls->certfile, (void **) &tls->cert))) {
-			log_warn("Read certfile %s failed!", tls->certfile);
-		}
 #ifdef SUPP_PARQUET
-		if (tls->cert_encrypted && tls->cert) {
-			char tag[32];
-			memcpy(tag, tls->cert, 32);
-			plain = aes_gcm_decrypt(tls->cert, len - 1, aeskey, tag, &plainsz);
-			if (!plain || plainsz == 0) {
-				log_error("AES decrypt cert %s len %d failed!", tls->certfile, len);
-				// TODO
-			} else {
-				log_info("AES decrypt cert %s successfully!", tls->certfile);
-				nng_free(tls->cert, 0);
-				tls->cert = plain;
-			}
-		}
+				len = file_load_aes_decrypt(tls->keyfile, (void **) &tls->key);
+				if (len == 0)
+					log_error("Read encrypted keyfile %s failed!", tls->keyfile);
+#else
+				log_error("Recompile with Parquet enabled!");
 #endif
-		if (NULL == tls->cafile ||
-		    0 == (len = file_load_data(tls->cafile, (void **) &tls->ca))) {
-			log_error("Read cacertfile %s failed!", tls->cafile);
+			}
+		} else {
+			log_error("keyfile %s is null!", tls->keyfile);
 		}
+		if (NULL == tls->certfile) {
+			if (tls->cert_encrypted == false) {
+				len = file_load_data(tls->certfile, (void **) &tls->cert);
+				if (len == 0)
+					log_error("Read certfile %s failed!", tls->certfile);
+			} else {
 #ifdef SUPP_PARQUET
-		if (tls->cert_encrypted && tls->ca) {
-			char tag[32];
-			memcpy(tag, tls->ca, 32);
-			plain = aes_gcm_decrypt(tls->ca, len - 1, aeskey, tag, &plainsz);
-			if (!plain || plainsz == 0) {
-				log_error("AES decrypt ca %s len %d failed!", tls->cafile, len);
-				// TODO
-			} else {
-				log_info("AES decrypt ca %s successfully!", tls->cafile);
-				nng_free(tls->ca, 0);
-				tls->ca = plain;
-			}
-		}
+				len = file_load_aes_decrypt(tls->certfile, (void **) &tls->cert);
+				if (len == 0)
+					log_error("Read encrypted certfile %s failed!", tls->certfile);
+#else
+				log_error("Recompile with Parquet enabled!");
 #endif
+			}
+		} else {
+			log_error("certfile %s is null!", tls->certfile);
+		}
+
+		if (NULL == tls->cafile) {
+			if (tls->cert_encrypted == false) {
+				len = file_load_data(tls->cafile, (void **) &tls->ca);
+				if (len == 0)
+					log_error("Read cafile %s failed!", tls->cafile);
+			} else {
+#ifdef SUPP_PARQUET
+				len = file_load_aes_decrypt(tls->cafile, (void **) &tls->ca);
+				if (len == 0)
+					log_error("Read encrypted cafile %s failed!", tls->cafile);
+#else
+				log_error("Recompile with Parquet enabled!");
+#endif
+			}
+		} else {
+			log_error("cafile %s is null!", tls->cafile);
+		}
 	}
 
 	return;
