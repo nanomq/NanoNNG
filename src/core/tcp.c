@@ -37,7 +37,7 @@ tcp_dial_cancel(nni_aio *aio, void *arg, int rv)
 {
 	tcp_dialer *d = arg;
 
-	log_info("TCP Dial canceled!");
+	log_debug("TCP Dial canceled!");
 	nni_mtx_lock(&d->mtx);
 	if (nni_aio_list_active(aio)) {
 		nni_aio_list_remove(aio);

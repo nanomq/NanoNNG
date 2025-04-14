@@ -53,7 +53,7 @@ http_dial_cb(void *arg)
 	if ((aio = nni_list_first(&c->aios)) == NULL) {
 		// User abandoned request, and no residuals left.
 		nni_mtx_unlock(&c->mtx);
-		log_info("http dial cancelded %p", c->aio);
+		log_debug("http dial cancelded %p", c->aio);
 		if (rv == 0) {
 			stream = nni_aio_get_output(c->aio, 0);
 			nng_stream_free(stream);
@@ -62,7 +62,7 @@ http_dial_cb(void *arg)
 	}
 
 	if (rv != 0) {
-		log_info("http dial cancelded %p", c->aio);
+		log_debug("http dial cancelded %p", c->aio);
 		nni_aio_list_remove(aio);
 		http_dial_start(c);
 		nni_mtx_unlock(&c->mtx);
@@ -170,7 +170,7 @@ static void
 http_dial_cancel(nni_aio *aio, void *arg, int rv)
 {
 	nni_http_client *c = arg;
-	log_info("http aio aborted %p c->aio %p", aio, c->aio);
+
 	nni_mtx_lock(&c->mtx);
 	if (c->aio != NULL)
 		nni_aio_abort(c->aio, rv);
