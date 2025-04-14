@@ -53,6 +53,7 @@ http_dial_cb(void *arg)
 	if ((aio = nni_list_first(&c->aios)) == NULL) {
 		// User abandoned request, and no residuals left.
 		nni_mtx_unlock(&c->mtx);
+		log_info("http dial cancelded %p", c->aio);
 		if (rv == 0) {
 			stream = nni_aio_get_output(c->aio, 0);
 			nng_stream_free(stream);
@@ -61,6 +62,7 @@ http_dial_cb(void *arg)
 	}
 
 	if (rv != 0) {
+		log_info("http dial cancelded %p", c->aio);
 		nni_aio_list_remove(aio);
 		http_dial_start(c);
 		nni_mtx_unlock(&c->mtx);
@@ -89,13 +91,9 @@ http_dial_cb(void *arg)
 void
 nni_http_client_fini(nni_http_client *c)
 {
-	nng_mtx_lock(&c->mtx);
-	nng_stream_dialer_close(c->dialer);
-	nng_mtx_unlock(&c->mtx);
-	nng_stream_dialer_free(c->dialer);
-	nni_aio_abort(c->aio, NNG_ECANCELED);
 	nni_aio_free(c->aio);
 	c->aio = NULL;
+	nng_stream_dialer_free(c->dialer);
 	nni_mtx_fini(&c->mtx);
 	NNI_FREE_STRUCT(c);
 }
@@ -172,14 +170,13 @@ static void
 http_dial_cancel(nni_aio *aio, void *arg, int rv)
 {
 	nni_http_client *c = arg;
+	log_info("http aio aborted %p c->aio %p", aio, c->aio);
 	nni_mtx_lock(&c->mtx);
+	if (c->aio != NULL)
+		nni_aio_abort(c->aio, rv);
 	if (nni_aio_list_active(aio)) {
 		nni_aio_list_remove(aio);
 		nni_aio_finish_error(aio, rv);
-	}
-	if (nni_list_empty(&c->aios)) {
-		if (c->aio != NULL)
-			nni_aio_abort(c->aio, rv);
 	}
 	nni_mtx_unlock(&c->mtx);
 }
@@ -194,6 +191,7 @@ nni_http_client_connect(nni_http_client *c, nni_aio *aio)
 	nni_mtx_lock(&c->mtx);
 	if ((rv = nni_aio_schedule(aio, http_dial_cancel, c)) != 0) {
 		nni_mtx_unlock(&c->mtx);
+		log_error("cancel fn schedule failed!");
 		nni_aio_finish_error(aio, rv);
 		return;
 	}
