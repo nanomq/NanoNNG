@@ -327,7 +327,7 @@ mqtt_quic_send_msg(nni_aio *aio, mqtt_sock_t *s)
 				return NNG_ECANCELED;
 			}
 		}
-		log_debug("send qos msg %p id %d!", msg, packet_id);
+		log_info("send qos msg %p id %d!", msg, packet_id);
 		break;
 	default:
 		log_error("Undefined msg type");
@@ -408,12 +408,15 @@ mqtt_quic_send_cb(void *arg)
 			s->disconnect_code = SERVER_UNAVAILABLE;
 			nni_pipe_close(p->qpipe);
 			return;
+		} else {
+			log_warn("send msg on closed pipe failed %d", rv);
 		}
 	}
 	if (nni_atomic_get_bool(&s->closed) ||
 	    nni_atomic_get_bool(&p->closed)) {
 		// This occurs if the mqtt_pipe_close has been called.
 		// In that case we don't want any more processing.
+		log_warn("send msg on closed pipe failed %d", rv);
 		return;
 	}
 	nni_mtx_lock(&s->mtx);
@@ -422,6 +425,7 @@ mqtt_quic_send_cb(void *arg)
 	// Check cached aio first
 	if ((aio = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, aio);
+		p->busy = false;
 		mqtt_quic_send_msg(aio, s);
 		if (s->cb.msg_send_cb)
 			s->cb.msg_send_cb(NULL, s->cb.sendarg);
