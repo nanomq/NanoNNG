@@ -1623,24 +1623,67 @@ static void
 nng_dialer_reload_tls(conf_bridge_node *node, nni_dialer *ndialer)
 {
 	int             rv;
+	int             len;
 	nng_tls_config *cfg;
 	conf_tls       *tls = &node->tls;
 
 	nng_free(tls->key, sizeof(tls->key));
-	if (NULL == tls->keyfile ||
-	    0 == file_load_data(tls->keyfile, (void **) &tls->key)) {
-		log_error("Read keyfile %s failed!", tls->keyfile);
+	if (tls->keyfile) {
+		if (tls->cert_encrypted == false) {
+			len = file_load_data(tls->keyfile, (void **) &tls->key);
+			if (len == 0)
+				log_error("Read keyfile %s failed!", tls->keyfile);
+		} else {
+#ifdef SUPP_PARQUET
+			len = file_load_aes_decrypt(tls->keyfile, (void **) &tls->key);
+			if (len == 0)
+				log_error("Read encrypted keyfile %s failed!", tls->keyfile);
+#else
+			log_error("Recompile with Parquet enabled!");
+#endif
+		}
+	} else {
+		log_error("keyfile %s is null!", tls->keyfile);
 	}
+
 	nng_free(tls->cert, sizeof(tls->cert));
-	if (NULL == tls->certfile ||
-	    0 == file_load_data(tls->certfile, (void **) &tls->cert)) {
-		log_error("Read certfile %s failed!", tls->certfile);
+	if (tls->certfile) {
+		if (tls->cert_encrypted == false) {
+			len = file_load_data(tls->certfile, (void **) &tls->cert);
+			if (len == 0)
+				log_error("Read certfile %s failed!", tls->certfile);
+		} else {
+#ifdef SUPP_PARQUET
+			len = file_load_aes_decrypt(tls->certfile, (void **) &tls->cert);
+			if (len == 0)
+				log_error("Read encrypted certfile %s failed!", tls->certfile);
+#else
+			log_error("Recompile with Parquet enabled!");
+#endif
+		}
+	} else {
+		log_error("certfile %s is null!", tls->certfile);
 	}
+
 	nng_free(tls->ca, sizeof(tls->ca));
-	if (NULL == tls->cafile ||
-	    0 == file_load_data(tls->cafile, (void **) &tls->ca)) {
-		log_error("Read cacertfile %s failed!", tls->cafile);
+	if (tls->cafile) {
+		if (tls->cert_encrypted == false) {
+			len = file_load_data(tls->cafile, (void **) &tls->ca);
+			if (len == 0)
+				log_error("Read cafile %s failed!", tls->cafile);
+		} else {
+#ifdef SUPP_PARQUET
+			len = file_load_aes_decrypt(tls->cafile, (void **) &tls->ca);
+			if (len == 0)
+				log_error("Read encrypted cafile %s failed!", tls->cafile);
+#else
+			log_error("Recompile with Parquet enabled!");
+#endif
+		}
+	} else {
+		log_error("cafile %s is null!", tls->cafile);
 	}
+
 	if (ndialer != NULL) {
 		nni_dialer_hold(ndialer);
 		rv = nni_dialer_getopt(

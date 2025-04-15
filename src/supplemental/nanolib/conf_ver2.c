@@ -419,24 +419,66 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 static void
 conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 {
+	size_t len;
 	if (jso_tls) {
 		tls->enable = true;
 		hocon_read_str(tls, keyfile, jso_tls);
 		hocon_read_str(tls, certfile, jso_tls);
 		hocon_read_str_base(tls, cafile, "cacertfile", jso_tls);
 		hocon_read_str(tls, key_password, jso_tls);
+		hocon_read_bool(tls, cert_encrypted, jso_tls);
 
-		if (NULL == tls->keyfile ||
-		    0 == file_load_data(tls->keyfile, (void **) &tls->key)) {
-			log_warn("Read keyfile %s failed!", tls->keyfile);
+		if (tls->keyfile) {
+			if (tls->cert_encrypted == false) {
+				len = file_load_data(tls->keyfile, (void **) &tls->key);
+				if (len == 0)
+					log_error("Read keyfile %s failed!", tls->keyfile);
+			} else {
+#ifdef SUPP_PARQUET
+				len = file_load_aes_decrypt(tls->keyfile, (void **) &tls->key);
+				if (len == 0)
+					log_error("Read encrypted keyfile %s failed!", tls->keyfile);
+#else
+				log_error("Recompile with Parquet enabled!");
+#endif
+			}
+		} else {
+			log_error("keyfile %s is null!", tls->keyfile);
 		}
-		if (NULL == tls->certfile ||
-		    0 == file_load_data(tls->certfile, (void **) &tls->cert)) {
-			log_warn("Read certfile %s failed!", tls->certfile);
+		if (tls->certfile) {
+			if (tls->cert_encrypted == false) {
+				len = file_load_data(tls->certfile, (void **) &tls->cert);
+				if (len == 0)
+					log_error("Read certfile %s failed!", tls->certfile);
+			} else {
+#ifdef SUPP_PARQUET
+				len = file_load_aes_decrypt(tls->certfile, (void **) &tls->cert);
+				if (len == 0)
+					log_error("Read encrypted certfile %s failed!", tls->certfile);
+#else
+				log_error("Recompile with Parquet enabled!");
+#endif
+			}
+		} else {
+			log_error("certfile %s is null!", tls->certfile);
 		}
-		if (NULL == tls->cafile ||
-		    0 == file_load_data(tls->cafile, (void **) &tls->ca)) {
-			log_error("Read cacertfile %s failed!", tls->cafile);
+
+		if (tls->cafile) {
+			if (tls->cert_encrypted == false) {
+				len = file_load_data(tls->cafile, (void **) &tls->ca);
+				if (len == 0)
+					log_error("Read cafile %s failed!", tls->cafile);
+			} else {
+#ifdef SUPP_PARQUET
+				len = file_load_aes_decrypt(tls->cafile, (void **) &tls->ca);
+				if (len == 0)
+					log_error("Read encrypted cafile %s failed!", tls->cafile);
+#else
+				log_error("Recompile with Parquet enabled!");
+#endif
+			}
+		} else {
+			log_error("cafile %s is null!", tls->cafile);
 		}
 	}
 
