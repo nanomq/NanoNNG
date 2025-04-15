@@ -238,12 +238,12 @@ file_load_aes_decrypt(const char *filepath, void **data)
 {
 	int   len;
 	int   plainsz;
-	char *plain;
-	char *cipher;
+	char *plain = NULL;
+	char *cipher = NULL;
 	char *aeskey = "givemeacoffeeplz";
 
 	len = file_load_data(filepath, (void **)&cipher);
-	if (len == 0)
+	if (len == 0 || cipher == NULL)
 		return 0;
 
 	char tag[32];
@@ -253,7 +253,7 @@ file_load_aes_decrypt(const char *filepath, void **data)
 		log_error("AES decrypt %s len %d failed!", filepath, len);
 		return 0;
 	} else {
-		log_info("AES decrypt %s successfully! %s", filepath);
+		log_info("AES decrypt %s successfully!", filepath);
 		nng_free(cipher, 0);
 		*data = plain;
 	}
