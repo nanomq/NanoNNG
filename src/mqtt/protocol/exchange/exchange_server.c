@@ -451,6 +451,9 @@ static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data)
 		parquet_filename_range *file_range = NULL;
 
 		file_range = file_ranges[file_range_idx++];
+		if (file_range == NULL) {
+			log_error("file range is null");
+		}
 		while (file_range != NULL) {
 			parquet_data_ret **parquet_datas = NULL;
 
@@ -460,6 +463,8 @@ static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data)
 																		cmd_data->schema_len,
 																		&size);
 			if (parquet_datas != NULL) {
+				if (size <= 1)
+					log_warn("parquet_datas size: %d", size);
 				for (uint32_t i = 0; i < size; i++) {
 					if (parquet_datas[i] != NULL) {
 						struct stream_decoded_data *parquet_decoded_data = NULL;
@@ -477,6 +482,12 @@ static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data)
 							/* NOTE: sleep 1000ms */
 							nng_msleep(1000);
 							stream_decoded_data_free(parquet_decoded_data);
+						} else {
+							if (parquet_decoded_data == NULL) {
+								log_warn("parquet_decoded_data is null");
+							} else {
+								log_warn("parquet_decoded_data len : %d", parquet_decoded_data->len);
+							}
 						}
 					} else {
 						log_error("parquet_datas[%d] is NULL", i);

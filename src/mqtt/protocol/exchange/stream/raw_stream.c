@@ -145,6 +145,7 @@ static struct stream_decoded_data *raw_stream_decode(struct parquet_data_ret *pa
 
 	decoded_data = nng_alloc(sizeof(struct stream_decoded_data));
 	if (decoded_data == NULL) {
+		log_warn("decoded_data is NULL");
 		return NULL;
 	}
 
@@ -153,11 +154,17 @@ static struct stream_decoded_data *raw_stream_decode(struct parquet_data_ret *pa
 
 	for (uint32_t i = 0; i < parquet_data->col_len; i++) {
 		if (parquet_data->payload_arr[i] == NULL) {
+			log_warn("parquet_data->payload_arr[%d] is NULL", i);
 			continue;
 		}
 
 		for (uint32_t j = 0; j < parquet_data->row_len; j++) {
 			if (parquet_data->payload_arr[i][j] == NULL || parquet_data->payload_arr[i][j]->size == 0) {
+				if (parquet_data->payload_arr[i][j] == NULL)
+					log_warn("parquet_data->payload_arr[%d][%d] is NULL", i, j);
+				else
+					log_warn("parquet_data->payload_arr[%d][%d] size: %d", i, j, parquet_data->payload_arr[i][j]->size);
+
 				continue;
 			}
 			decoded_data->len += parquet_data->payload_arr[i][j]->size;
@@ -166,11 +173,13 @@ static struct stream_decoded_data *raw_stream_decode(struct parquet_data_ret *pa
 
 	if (decoded_data->len == 0) {
 		nng_free(decoded_data, sizeof(struct stream_decoded_data));
+		log_warn("decoded_data len is 0");
 		return NULL;
 	}
 
 	decoded_data->data = nng_alloc(decoded_data->len);
 	if (decoded_data->data == NULL) {
+		log_warn("decoded_data data is null");
 		return NULL;
 	}
 
@@ -178,9 +187,11 @@ static struct stream_decoded_data *raw_stream_decode(struct parquet_data_ret *pa
 	for (uint32_t i = 0; i < parquet_data->col_len; i++) {
 		for (uint32_t j = 0; j < parquet_data->row_len; j++) {
 			if (parquet_data->payload_arr[i][j] == NULL) {
+				log_warn("parquet_data->payload_arr[%d][%d] is NULL", i, j);
 				continue;
 			}
 			if (parquet_data->payload_arr[i][j]->size == 0) {
+				log_warn("parquet_data->payload_arr[%d][%d] size is 0", i, j);
 				continue;
 			}
 			memcpy((uint8_t *)decoded_data->data + decoded_data_index, parquet_data->payload_arr[i][j]->data, parquet_data->payload_arr[i][j]->size);
@@ -195,6 +206,7 @@ void *raw_decode(void *data)
 {
 	struct parquet_data_ret *parquet_data = (struct parquet_data_ret *)data;
 	if (parquet_data == NULL) {
+		log_warn("parquet_data is NULL");
 		return NULL;
 	}
 
