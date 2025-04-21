@@ -1235,11 +1235,14 @@ get_filtered_schema(shared_ptr<parquet::RowGroupReader> row_group_reader,
 	}
 	return schema_vec;
 }
-static parquet_data_packet **read_column_data(shared_ptr<parquet::ColumnReader> column_reader, 
-                                              const vector<int> &index_vector, 
-                                              int64_t batch_size, 
-                                              int &total_values_read) {
-    auto ba_reader = dynamic_pointer_cast<parquet::ByteArrayReader>(column_reader);
+
+static parquet_data_packet **
+read_column_data(shared_ptr<parquet::ColumnReader> column_reader,
+    const vector<int> &index_vector, int64_t batch_size,
+    int &total_values_read)
+{
+    auto ba_reader =
+        dynamic_pointer_cast<parquet::ByteArrayReader>(column_reader);
     if (!ba_reader->HasNext()) {
         log_error("Next is NULL");
         return nullptr;
@@ -1248,49 +1251,60 @@ static parquet_data_packet **read_column_data(shared_ptr<parquet::ColumnReader> 
     ba_reader->Skip(index_vector[0]);
     vector<parquet_data_packet *> ret_vec;
     while (total_values_read < batch_size) {
-        vector<int16_t> def_levels(batch_size);
-        vector<int16_t> rep_levels(batch_size);
+        vector<int16_t>            def_levels(batch_size);
+        vector<int16_t>            rep_levels(batch_size);
         vector<parquet::ByteArray> values(batch_size);
-        int64_t values_read = 0;
-        int64_t rows_read = ba_reader->ReadBatch(batch_size, def_levels.data(), rep_levels.data(), values.data(), &values_read);
-        total_values_read += rows_read;
+        int64_t                    values_read = 0;
+        int64_t                    rows_read =
+            ba_reader->ReadBatch(batch_size, def_levels.data(),
+                rep_levels.data(), values.data(), &values_read);
 
         for (int64_t r = 0, i = 0; r < rows_read; r++) {
 
-            if (def_levels[r] == 0) { // Assuming definition level 0 indicates NULL
+            if (def_levels[r] ==
+                0) { // Assuming definition level 0 indicates NULL
                 log_trace("Row %lld is NULL", r);
                 ret_vec.push_back(nullptr);
                 continue;
             }
 
-            parquet_data_packet *pack = (parquet_data_packet *)malloc(sizeof(parquet_data_packet));
+            total_values_read += 1;
+
+            parquet_data_packet *pack =
+                (parquet_data_packet *) malloc(
+                    sizeof(parquet_data_packet));
             if (!pack) {
-                log_error("Memory allocation failed for parquet_data_packet");
+                log_error("Memory allocation failed for "
+                          "parquet_data_packet");
                 for (auto p : ret_vec) {
                     free(p->data);
                     free(p);
                 }
                 return nullptr;
             }
-            pack->data = (uint8_t *)malloc(values[i].len * sizeof(uint8_t));
+            pack->data = (uint8_t *) malloc(
+                values[i].len * sizeof(uint8_t));
             memcpy(pack->data, values[i].ptr, values[i].len);
             pack->size = values[i++].len;
             ret_vec.push_back(pack);
-        }
 
-        if (batch_size == total_values_read) {
-            parquet_data_packet **payload_arr = nullptr;
-            if (!ret_vec.empty()) {
-                payload_arr = (parquet_data_packet **)malloc(sizeof(parquet_data_packet *) * ret_vec.size());
-                copy(ret_vec.begin(), ret_vec.end(), payload_arr);
+            if (batch_size == total_values_read) {
+                parquet_data_packet **payload_arr = nullptr;
+                if (!ret_vec.empty()) {
+                    payload_arr =
+                        (parquet_data_packet **) malloc(
+                            sizeof(parquet_data_packet *) *
+                            ret_vec.size());
+                    copy(ret_vec.begin(), ret_vec.end(),
+                        payload_arr);
+                }
+                return payload_arr;
             }
-            return payload_arr;
         }
     }
+
     return nullptr;
 }
-
-
 
 static parquet_data_ret *parquet_read_payload(shared_ptr<parquet::RowGroupReader> row_group_reader, 
                                               shared_ptr<parquet::FileMetaData> file_metadata, 
