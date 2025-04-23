@@ -463,7 +463,7 @@ static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data)
 																		cmd_data->schema_len,
 																		&size);
 			if (parquet_datas != NULL) {
-				if (size <= 1)
+				if (size < 1)
 					log_warn("parquet_datas size: %d", size);
 				for (uint32_t i = 0; i < size; i++) {
 					if (parquet_datas[i] != NULL) {
