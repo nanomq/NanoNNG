@@ -156,40 +156,37 @@ static char* aes_gcm_decrypt(char *ciphertext, int ciphertext_len,
 	ciphertext += 32;
 	ciphertext_len -= 32;
 
-    EVP_CIPHER_CTX *ctx;
-    int len;
-    int plaintext_len;
-    int ret;
+	EVP_CIPHER_CTX *ctx;
+	int len;
+	int plaintext_len;
+	int ret;
 
-    /* Create and initialise the context */
-    if(!(ctx = EVP_CIPHER_CTX_new())) {
+	/* Create and initialise the context */
+	if(!(ctx = EVP_CIPHER_CTX_new())) {
 		log_error("error in new ctx");
 		return NULL;
 	}
 
-    /* Initialise the decryption operation. */
-    if(!EVP_DecryptInit_ex(ctx, cipher_handle, NULL, NULL, NULL)) {
+	/* Initialise the decryption operation. */
+	if(!EVP_DecryptInit_ex(ctx, cipher_handle, NULL, NULL, NULL)) {
 		log_error("error in init ctx");
 		return NULL;
 	}
 
-    /* Set IV length. Not necessary if this is 12 bytes (96 bits) */
-    if(!EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, sizeof(aes_gcm_iv), NULL)) {
+	/* Set IV length. Not necessary if this is 12 bytes (96 bits) */
+	if(!EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, sizeof(aes_gcm_iv), NULL)) {
 		log_error("error in ctx ctrl");
 		return NULL;
 	}
 
-    /* Initialise key and IV */
-    if(!EVP_DecryptInit_ex(ctx, NULL, NULL, key, aes_gcm_iv)) {
+	/* Initialise key and IV */
+	if(!EVP_DecryptInit_ex(ctx, NULL, NULL, key, aes_gcm_iv)) {
 		log_error("error in decrypted init");
 		return NULL;
 	}
 
-    /*
-     * Provide any AAD data. This can be called zero or more times as
-     * required
-     */
-    if(!EVP_DecryptUpdate(ctx, NULL, &len, aes_gcm_aad, aes_gcm_aad_sz)) {
+	/* Provide any AAD data. This can be called zero or more times as required */
+	if(!EVP_DecryptUpdate(ctx, NULL, &len, aes_gcm_aad, aes_gcm_aad_sz)) {
 		log_error("error in decrypted update1");
 		return NULL;
 	}
@@ -200,37 +197,38 @@ static char* aes_gcm_decrypt(char *ciphertext, int ciphertext_len,
      * Provide the message to be decrypted, and obtain the plaintext output.
      * EVP_DecryptUpdate can be called multiple times if necessary
      */
-    if(!EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ciphertext_len)) {
+	if(!EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ciphertext_len)) {
 		log_error("error in decrypted update1");
 		return NULL;
 	}
-    plaintext_len = len;
+	plaintext_len = len;
 
-    /* Set expected tag value. Works in OpenSSL 1.0.1d and later */
-    if(!EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, tag)) {
+	/* Set expected tag value. Works in OpenSSL 1.0.1d and later */
+	if(!EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, tag)) {
 		log_error("error in ctx ctrl2");
 		return NULL;
 	}
 
-    /*
-     * Finalise the decryption. A positive return value indicates success,
-     * anything else is a failure - the plaintext is not trustworthy.
-     */
-    ret = EVP_DecryptFinal_ex(ctx, plaintext + len, &len);
+	/*
+	 * Finalise the decryption. A positive return value indicates success,
+	 * anything else is a failure - the plaintext is not trustworthy.
+	 */
+	ret = EVP_DecryptFinal_ex(ctx, plaintext + len, &len);
 
-    /* Clean up */
-    EVP_CIPHER_CTX_free(ctx);
+	/* Clean up */
+	EVP_CIPHER_CTX_free(ctx);
 
-    if(ret > 0) {
-        /* Success */
-        plaintext_len += len;
+	if(ret > 0) {
+		/* Success */
+		plaintext_len += len;
 		*plaintext_lenp = plaintext_len;
-        return plaintext;
-    } else {
+		return plaintext;
+	} else {
+		/* Verify failed */
 		log_error("error in decryption %d", ret);
-        /* Verify failed */
-        return NULL;
-    }
+		free(plaintext);
+		return NULL;
+	}
 }
 
 size_t
@@ -249,12 +247,13 @@ file_load_aes_decrypt(const char *filepath, void **data)
 	char tag[32];
 	memcpy(tag, cipher, 32);
 	plain = aes_gcm_decrypt(cipher, len - 1, aeskey, tag, &plainsz);
+	nng_free(cipher, 0);
+
 	if (!plain || plainsz == 0) {
 		log_error("AES decrypt %s len %d failed!", filepath, len);
 		return 0;
 	} else {
 		log_info("AES decrypt %s successfully!", filepath);
-		nng_free(cipher, 0);
 		*data = plain;
 	}
 	return plainsz;
@@ -322,7 +321,7 @@ int file_create_dir(const char *fpath)
 	}
 
 	log_info("mkdir = %s", fpath);
-	
+
 #ifndef NNG_PLATFORM_WINDOWS
 	ret = mkdir(fpath, 0777);
 #else
