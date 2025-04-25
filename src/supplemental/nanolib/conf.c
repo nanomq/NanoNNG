@@ -963,6 +963,8 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->web_hook.rules          = NULL;
 	nanomq_conf->web_hook.rule_count     = 0;
 	nanomq_conf->web_hook.cancel_time 	 = (nng_duration) 5000;
+	nanomq_conf->web_hook.saios          = NULL;
+	nanomq_conf->web_hook.raios          = NULL;
 	conf_tls_init(&nanomq_conf->web_hook.tls);
 
 	nanomq_conf->exchange.count           = 0;
