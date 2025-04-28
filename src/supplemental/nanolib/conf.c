@@ -896,11 +896,12 @@ conf_http_server_destroy(conf_http_server *http)
 void
 conf_init(conf *nanomq_conf)
 {
-	nanomq_conf->vin          = NULL;
-	nanomq_conf->hook_ipc_url = NULL;
-	nanomq_conf->cmd_ipc_url  = NULL;
-	nanomq_conf->url          = NULL;
-	nanomq_conf->conf_file    = NULL;
+	nanomq_conf->vin              = NULL;
+	nanomq_conf->hook_ipc_url     = NULL;
+	nanomq_conf->exchange_ipc_url = NULL;
+	nanomq_conf->cmd_ipc_url      = NULL;
+	nanomq_conf->url              = NULL;
+	nanomq_conf->conf_file        = NULL;
 
 #if defined(SUPP_RULE_ENGINE)
 	conf_rule_init(&nanomq_conf->rule_eng);
@@ -4478,6 +4479,7 @@ conf_fini(conf *nanomq_conf)
 		nng_strfree(nanomq_conf->vin);
 	nng_strfree(nanomq_conf->hook_ipc_url);
 	nng_strfree(nanomq_conf->cmd_ipc_url);
+	nng_strfree(nanomq_conf->exchange_ipc_url);
 	nng_strfree(nanomq_conf->websocket.tls_url);
 
 	conf_http_server_destroy(&nanomq_conf->http_server);
