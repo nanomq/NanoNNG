@@ -864,6 +864,7 @@ nng_mqtt_client_send_cb(void* arg)
 	int rv = nng_aio_result(aio);
 
 	nng_msg *        msg    = nng_aio_get_msg(aio);
+	nng_aio_set_msg(aio, NULL);
 	if (msg == NULL && rv != 0) {
 		log_warn("bridge send aio rv %d", rv);
 		client->cb(client, NULL, client->obj);
