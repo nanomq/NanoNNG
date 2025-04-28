@@ -316,6 +316,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_bool_base(
 		    config, ipc_internal, "enable_ipc_internal", jso_sys);
 		hocon_read_str(config, hook_ipc_url, jso_sys);
+		hocon_read_str(config, exchange_ipc_url, jso_sys);
 		hocon_read_str(config, cmd_ipc_url, jso_sys);
 	}
 

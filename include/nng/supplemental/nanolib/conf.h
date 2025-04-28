@@ -584,6 +584,7 @@ struct conf {
 	char      *vin;
 	char      *cmd_ipc_url;
 	char      *hook_ipc_url;
+	char      *exchange_ipc_url;
 	char      *conf_file;
 	char      *url;
 	bool       enable;
