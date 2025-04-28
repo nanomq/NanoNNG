@@ -830,28 +830,6 @@ mqtt_property_append(property *prop_list, property *last)
 	return;
 }
 
-
-// static void
-// mqtt_sub_aio_cancel(nni_aio *aio, void *arg, int rv)
-// {
-// 	NNI_ARG_UNUSED(arg);
-// 	// nng_mqtt_client *client = arg;
-
-// 	if (!nni_aio_list_active(aio)) {
-// 		return;
-// 	}
-// 	// If receive in progress, then cancel the pending transfer.
-// 	// The callback on the rxaio will cause the user aio to
-// 	// be canceled too.
-// 	// if (nni_list_first(&p->recvq) == aio) {
-// 	// 	nni_aio_abort(p->rxaio, rv);
-// 	// 	nni_mtx_unlock(&p->mtx);
-// 	// 	return;
-// 	// }
-// 	nni_aio_list_remove(aio);
-// 	nni_aio_finish_error(aio, rv);
-// }
-
 static void
 nng_mqtt_client_send_cb(void* arg)
 {
@@ -870,7 +848,7 @@ nng_mqtt_client_send_cb(void* arg)
 		client->cb(client, NULL, client->obj);
 		return;
 	}
-	if (rv != 0) {
+	if (rv != 0 && rv != NNG_ECLOSED) {
 		if (msg != NULL && nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_SUBSCRIBE) {
 			nng_aio_set_msg(client->send_aio, msg);
 			log_info("resend subscribe msg again!");
