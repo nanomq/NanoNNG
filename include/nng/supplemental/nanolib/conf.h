@@ -567,7 +567,6 @@ struct conf_web_hook {
 	nng_mtx  *ex_mtx; // mutex for saios
 	nng_aio  *ex_aio; // Await flush
 	nng_aio **saios;  // Aios for sending message
-	nng_aio **raios;  // Aios for recving message
 
 	// TODO not support yet
 	conf_tls tls;
