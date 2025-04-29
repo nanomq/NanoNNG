@@ -963,6 +963,11 @@ mqtt_send_cb(void *arg)
 		log_debug("resend cached ctx");
 		nni_list_remove(&s->send_queue, c);
 		mqtt_send_msg(c->saio, c, s);
+#ifdef NNG_ENABLE_STATS
+		if (nni_aio_get_msg(c->saio) != NULL)
+			nni_stat_dec(&s->msg_bytes_cached,
+			    nng_msg_len(nni_aio_get_msg(c->saio)));
+#endif
 		c->saio = NULL;
 		return;
 	}
@@ -1528,52 +1533,58 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 			return;
 		}
 #endif
-		if (!nni_atomic_get_bool(&s->closed) &&
-			!nni_list_active(&s->send_queue, ctx)) {
-			// cache ctx
-			ctx->saio = aio;
-			nni_list_append(&s->send_queue, ctx);
-			nni_mtx_unlock(&s->mtx);
-#ifdef NNG_ENABLE_STATS
-			nni_stat_inc(&s->msg_bytes_cached, nng_msg_len(msg));
-#endif
-			log_warn("client sending msg while disconnected! ctx cached");
-		} else {
-			if (!nni_atomic_get_bool(&s->closed) &&
-				!nni_list_active(&s->cached_aio, aio) && qos > 0) {
-			// if (0) {	// perhaps conflict with aio cancel!?
-				// cache aio
-				nni_list_append(&s->cached_aio, aio);
+		if (!nni_atomic_get_bool(&s->closed)) {
+			if (!nni_list_active(&s->send_queue, ctx)) {
+				// cache ctx
+				ctx->saio = aio;
+				nni_list_append(&s->send_queue, ctx);
 				nni_mtx_unlock(&s->mtx);
 #ifdef NNG_ENABLE_STATS
 				nni_stat_inc(&s->msg_bytes_cached, nng_msg_len(msg));
 #endif
-				log_warn("client sending msg while disconnected! aio cached");
-			} else {
-				nni_mtx_unlock(&s->mtx);
-#ifdef NNG_HAVE_MQTT_BROKER
-				if (nni_lmq_full(s->bridge_conf->ctx_msgs)) {
-					log_warn("Rolling update old Message in ctx_msgs is lost!");
-					nni_msg *tmsg;
-					(void) nni_lmq_get(s->bridge_conf->ctx_msgs, &tmsg);
-#ifdef NNG_ENABLE_STATS
-					nni_stat_inc(&s->msg_send_drop, 1);
-#endif
-					nni_msg_free(tmsg);
-				}
-				if (nng_lmq_put(s->bridge_conf->ctx_msgs, msg) != 0) {
-					log_warn("Msg lost! put msg to ctx_msgs failed!");
-					nni_msg_free(msg);
-#ifdef NNG_ENABLE_STATS
-					nni_stat_inc(&s->msg_send_drop, 1);
-#endif
-				}
-#else
-				nni_msg_free(msg);
-#endif
-				nni_aio_set_msg(aio, NULL);
-				nni_aio_finish_error(aio, NNG_ECLOSED);
+				log_warn("client sending msg while "
+				         "disconnected! ctx cached");
 			}
+// 			else if (!nni_list_active(&s->cached_aio, aio) && qos > 0) {
+// 				// cache aio
+// 				nni_list_append(&s->cached_aio, aio);
+// 				nni_mtx_unlock(&s->mtx);
+// #ifdef NNG_ENABLE_STATS
+// 				nni_stat_inc(&s->msg_bytes_cached, nng_msg_len(msg));
+// #endif
+// 				log_warn("client sending msg while "
+// 				         "disconnected! aio cached");
+// 			}
+			else {
+				nni_mtx_unlock(&s->mtx);
+				nni_msg_free(msg);
+				nni_aio_set_msg(aio, NULL);
+				nni_aio_finish_error(aio, NNG_EAGAIN);
+			}
+		} else {
+			nni_mtx_unlock(&s->mtx);
+#ifdef NNG_HAVE_MQTT_BROKER
+			if (nni_lmq_full(s->bridge_conf->ctx_msgs)) {
+				log_warn("Rolling update old Message in ctx_msgs is lost!");
+				nni_msg *tmsg;
+				(void) nni_lmq_get(s->bridge_conf->ctx_msgs, &tmsg);
+#ifdef NNG_ENABLE_STATS
+				nni_stat_inc(&s->msg_send_drop, 1);
+#endif
+				nni_msg_free(tmsg);
+			}
+			if (nng_lmq_put(s->bridge_conf->ctx_msgs, msg) != 0) {
+				log_warn("Msg lost! put msg to ctx_msgs failed!");
+				nni_msg_free(msg);
+#ifdef NNG_ENABLE_STATS
+				nni_stat_inc(&s->msg_send_drop, 1);
+#endif
+			}
+#else
+			nni_msg_free(msg);
+#endif
+			nni_aio_set_msg(aio, NULL);
+			nni_aio_finish_error(aio, NNG_ECLOSED);
 		}
 		return;
 	}
