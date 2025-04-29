@@ -1551,8 +1551,22 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 				log_warn("client sending msg while disconnected! aio cached");
 			} else {
 				nni_mtx_unlock(&s->mtx);
-
-				nni_msg_free(msg);
+				if (nni_lmq_full(s->bridge_conf->ctx_msgs)) {
+					log_warn("Rolling update old Message in ctx_msgs is lost!");
+					nni_msg *tmsg;
+					(void) nni_lmq_get(s->bridge_conf->ctx_msgs, &tmsg);
+#ifdef NNG_ENABLE_STATS
+					nni_stat_inc(&s->msg_send_drop, 1);
+#endif
+					nni_msg_free(tmsg);
+				}
+				if (nng_lmq_put(s->bridge_conf->ctx_msgs, msg) != 0) {
+					log_warn("Msg lost! put msg to ctx_msgs failed!");
+					nni_msg_free(msg);
+#ifdef NNG_ENABLE_STATS
+					nni_stat_inc(&s->msg_send_drop, 1);
+#endif
+				}
 				nni_aio_set_msg(aio, NULL);
 				nni_aio_finish_error(aio, NNG_ECLOSED);
 			}
