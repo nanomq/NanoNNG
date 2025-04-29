@@ -3560,6 +3560,7 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 	if (node->ctx_msgs) {
 		nng_lmq_flush(node->ctx_msgs);
 		nng_lmq_free(node->ctx_msgs);
+		node->ctx_msgs = NULL;
 	}
 	if (node->forwards_count > 0 && node->forwards_list) {
 		for (size_t i = 0; i < node->forwards_count; i++) {
