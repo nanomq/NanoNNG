@@ -104,7 +104,6 @@ struct mqtt_sock_s {
 	nni_sock       *nsock;
 	nni_list        recv_queue; // ctx pending to receive
 	nni_list        send_queue; // ctx pending to send (only offline msg)
-	nni_list        cached_aio; // aio pending to send
 	reason_code     disconnect_code; // disconnect reason code
 	property       *dis_prop;        // disconnect property
 	nni_id_map      sent_unack;      // send messages unacknowledged
@@ -164,8 +163,6 @@ mqtt_sock_init(void *arg, nni_sock *sock)
 
 	s->mqtt_ver  = MQTT_PROTOCOL_VERSION_v311;
 	s->mqtt_pipe = NULL;
-	// For caching aio
-	nni_aio_list_init(&s->cached_aio);
 	NNI_LIST_INIT(&s->recv_queue, mqtt_ctx_t, rqnode);
 	NNI_LIST_INIT(&s->send_queue, mqtt_ctx_t, sqnode);
 
@@ -365,20 +362,10 @@ mqtt_sock_close(void *arg)
 	if (s->mqtt_pipe != NULL)
 		nni_atomic_set_bool(&s->mqtt_pipe->closed, true);
 	nni_mtx_lock(&s->mtx);
-	while ((aio = nni_list_first(&s->cached_aio)) != NULL) {
-		nni_list_remove(&s->cached_aio, aio);
-		msg = nni_aio_get_msg(aio);
-		log_error("free cached aio msg %p!!!!", msg);
-		if (msg != NULL) {
-			nni_msg_free(msg);
-		}
-		nni_aio_finish_error(aio, NNG_ECLOSED);
-	}
 	// clean ctx queue when pipe was closed.
 	while ((ctx = nni_list_first(&s->send_queue)) != NULL) {
 		// Pipe was closed.  just push an error back to the
 		// entire socket, because we only have one pipe
-		log_error("free cached ctx msg!!!!");
 		nni_list_remove(&s->send_queue, ctx);
 		aio       = ctx->saio;
 		ctx->saio = NULL;
@@ -701,17 +688,6 @@ mqtt_pipe_start(void *arg)
 		nni_sleep_aio(s->retry, &p->time_aio);
 		return (0);
 	}
-	if ((aio = nni_list_first(&s->cached_aio)) != NULL) {
-		nni_list_remove(&s->cached_aio, aio);
-#ifdef NNG_ENABLE_STATS
-		nni_stat_dec(&s->msg_bytes_cached, nng_msg_len(nni_aio_get_msg(aio)));
-#endif
-		log_debug("resend cached aio");
-		nni_pipe_recv(p->pipe, &p->recv_aio);
-		mqtt_send_msg(aio, NULL, s);
-		nni_sleep_aio(s->retry, &p->time_aio);
-		return (0);
-	}
 	nni_pipe_recv(p->pipe, &p->recv_aio);
 	nni_mtx_unlock(&s->mtx);
 	// initiate the global resend timer
@@ -844,19 +820,6 @@ mqtt_timer_cb(void *arg)
 			nni_sleep_aio(s->retry, &p->time_aio);
 			return;
 		}
-	}
-
-	// Check cached aio first
-	nni_aio * aio;
-	if ((aio = nni_list_first(&s->cached_aio)) != NULL) {
-		nni_list_remove(&s->cached_aio, aio);
-#ifdef NNG_ENABLE_STATS
-		nni_stat_dec(&s->msg_bytes_cached, nng_msg_len(nni_aio_get_msg(aio)));
-#endif
-		log_debug("resend cached aio");
-		mqtt_send_msg(aio, NULL, s);
-		nni_sleep_aio(s->retry, &p->time_aio);
-		return;
 	}
 
 	// start message resending
@@ -1358,12 +1321,6 @@ mqtt_ctx_fini(void *arg)
 	nni_aio *    aio;
 
 	nni_mtx_lock(&s->mtx);
-	if ((aio = ctx->saio) != NULL) {
-		if (nni_list_active(&s->cached_aio, aio)) {
-			nni_list_remove(&s->cached_aio, aio);
-			nni_aio_finish_error(aio, NNG_ECLOSED);
-		}
-	} // not really needed
 	if (nni_list_active(&s->send_queue, ctx)) {
 		if ((aio = ctx->saio) != NULL) {
 			ctx->saio = NULL;
@@ -1422,10 +1379,6 @@ mqtt_cancel_send(nni_aio *aio, void *arg, int rv)
 
 	if (nni_aio_list_active(aio)) {
 		nni_aio_list_remove(aio);
-	}
-	if (nni_list_active(&s->cached_aio, aio)) {
-		nni_list_remove(&s->cached_aio, aio);
-		log_warn("remove cached aio");
 	}
 	nni_mtx_unlock(&s->mtx);
 }
@@ -1544,21 +1497,11 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 #endif
 				log_warn("client sending msg while "
 				         "disconnected! ctx cached");
-			}
-// 			else if (!nni_list_active(&s->cached_aio, aio) && qos > 0) {
-// 				// cache aio
-// 				nni_list_append(&s->cached_aio, aio);
-// 				nni_mtx_unlock(&s->mtx);
-// #ifdef NNG_ENABLE_STATS
-// 				nni_stat_inc(&s->msg_bytes_cached, nng_msg_len(msg));
-// #endif
-// 				log_warn("client sending msg while "
-// 				         "disconnected! aio cached");
-// 			}
-			else {
+			} else {
 				nni_mtx_unlock(&s->mtx);
 				nni_msg_free(msg);
 				nni_aio_set_msg(aio, NULL);
+				// TODO deal with it in bridge resend aio cb?
 				nni_aio_finish_error(aio, NNG_EAGAIN);
 			}
 		} else {
