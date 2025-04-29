@@ -230,7 +230,6 @@ mqtt_sock_fini(void *arg)
 	nng_mqtt_free_sqlite_opt(s->sqlite_opt);
 #endif
 	mqtt_ctx_fini(&s->master);
-
 	nni_mtx_fini(&s->mtx);
 }
 
@@ -363,10 +362,23 @@ mqtt_sock_close(void *arg)
 	nni_msg *    msg;
 
 	nni_atomic_set_bool(&s->closed, true);
+	if (s->mqtt_pipe != NULL)
+		nni_atomic_set_bool(&s->mqtt_pipe->closed, true);
+	nni_mtx_lock(&s->mtx);
+	while ((aio = nni_list_first(&s->cached_aio)) != NULL) {
+		nni_list_remove(&s->cached_aio, aio);
+		msg = nni_aio_get_msg(aio);
+		log_error("free cached aio msg %p!!!!", msg);
+		if (msg != NULL) {
+			nni_msg_free(msg);
+		}
+		nni_aio_finish_error(aio, NNG_ECLOSED);
+	}
 	// clean ctx queue when pipe was closed.
 	while ((ctx = nni_list_first(&s->send_queue)) != NULL) {
 		// Pipe was closed.  just push an error back to the
 		// entire socket, because we only have one pipe
+		log_error("free cached ctx msg!!!!");
 		nni_list_remove(&s->send_queue, ctx);
 		aio       = ctx->saio;
 		ctx->saio = NULL;
@@ -384,14 +396,7 @@ mqtt_sock_close(void *arg)
 		// there should be no msg waiting
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
-	while ((aio = nni_list_first(&s->cached_aio)) != NULL) {
-		nni_list_remove(&s->send_queue, aio);
-		msg = nni_aio_get_msg(aio);
-		if (msg != NULL) {
-			nni_msg_free(msg);
-		}
-		nni_aio_finish_error(aio, NNG_ECLOSED);
-	}
+	nni_mtx_unlock(&s->mtx);
 	nni_id_map_foreach(&s->sent_unack, mqtt_close_unack_aio_cb);
 }
 
@@ -529,9 +534,10 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg, mqtt_sock_t *s)
 	nni_msg *        tmsg  = NULL;
 	nni_aio *        taio  = NULL;
 
-	if (p == NULL || nni_atomic_get_bool(&p->closed) || aio == NULL) {
-		//pipe closed, should never gets here
-		// sending msg on a closed pipe
+	if (p == NULL || nni_atomic_get_bool(&p->closed) ||
+	    nni_atomic_get_bool(&s->closed) || aio == NULL) {
+		// pipe closed, should never gets here
+		//  sending msg on a closed pipe
 		goto out;
 	}
 	msg = nni_aio_get_msg(aio);
@@ -647,6 +653,7 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg, mqtt_sock_t *s)
 		nni_msg_free(tmsg);
 #ifdef NNG_ENABLE_STATS
 		nni_stat_inc(&s->msg_send_drop, 1);
+		log_info("inflight window size %d", nng_lmq_len(&p->send_messages));
 #endif
 	}
 	if (0 != nni_lmq_put(&p->send_messages, msg)) {
@@ -656,7 +663,6 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg, mqtt_sock_t *s)
 #endif
 		log_warn("Message lost while enqueing");
 	}
-	log_info("inflight window size %d", nng_lmq_len(&p->send_messages));
 out:
 	nni_mtx_unlock(&s->mtx);
 	if (0 == qos && ptype != NNG_MQTT_SUBSCRIBE &&
@@ -685,10 +691,12 @@ mqtt_pipe_start(void *arg)
 		nni_list_remove(&s->send_queue, c);
 		log_debug("resend cached ctx");
 		nni_pipe_recv(p->pipe, &p->recv_aio);
-#ifdef NNG_ENABLE_STATS
-		nni_stat_dec(&s->msg_bytes_cached, nng_msg_len(nni_aio_get_msg(c->saio)));
-#endif
 		mqtt_send_msg(c->saio, c, s);
+#ifdef NNG_ENABLE_STATS
+		if (nni_aio_get_msg(c->saio) != NULL)
+			nni_stat_dec(&s->msg_bytes_cached,
+			    nng_msg_len(nni_aio_get_msg(c->saio)));
+#endif
 		c->saio = NULL;
 		nni_sleep_aio(s->retry, &p->time_aio);
 		return (0);
@@ -1492,7 +1500,7 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 	}
 	if (rv != MQTT_SUCCESS) {
 		nni_mtx_unlock(&s->mtx);
-		log_error("MQTT client encoding msg failed%d!", rv);
+		log_error("MQTT client encoding msg failed %d!", rv);
 		nni_msg_free(msg);
 #ifdef NNG_ENABLE_STATS
 		nni_stat_inc(&s->msg_send_drop, 1);
@@ -1502,7 +1510,7 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 		return;
 	}
 	p = s->mqtt_pipe;
-	if (p == NULL) {
+	if (p == NULL || nni_atomic_get_bool(&p->closed)) {
 		// connection is lost or not established yet
 #if defined(NNG_SUPP_SQLITE)
 		nni_mqtt_sqlite_option *sqlite =
@@ -1520,7 +1528,8 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 			return;
 		}
 #endif
-		if (!nni_list_active(&s->send_queue, ctx)) {
+		if (!nni_atomic_get_bool(&s->closed) &&
+			!nni_list_active(&s->send_queue, ctx)) {
 			// cache ctx
 			ctx->saio = aio;
 			nni_list_append(&s->send_queue, ctx);
@@ -1530,7 +1539,9 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 #endif
 			log_warn("client sending msg while disconnected! ctx cached");
 		} else {
-			if (!nni_list_active(&s->cached_aio, aio) && qos > 0) {
+			if (!nni_atomic_get_bool(&s->closed) &&
+				!nni_list_active(&s->cached_aio, aio) && qos > 0) {
+			// if (0) {	// perhaps conflict with aio cancel!?
 				// cache aio
 				nni_list_append(&s->cached_aio, aio);
 				nni_mtx_unlock(&s->mtx);
@@ -1539,14 +1550,11 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 #endif
 				log_warn("client sending msg while disconnected! aio cached");
 			} else {
-				nni_msg_free(msg);
 				nni_mtx_unlock(&s->mtx);
+
+				nni_msg_free(msg);
 				nni_aio_set_msg(aio, NULL);
 				nni_aio_finish_error(aio, NNG_ECLOSED);
-#ifdef NNG_ENABLE_STATS
-				nni_stat_inc(&s->msg_send_drop, 1);
-#endif
-				log_info("aio is already cached! or drop qos 0 msg");
 			}
 		}
 		return;
