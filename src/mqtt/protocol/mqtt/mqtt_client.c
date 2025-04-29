@@ -1551,6 +1551,7 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 				log_warn("client sending msg while disconnected! aio cached");
 			} else {
 				nni_mtx_unlock(&s->mtx);
+#ifdef NNG_HAVE_MQTT_BROKER
 				if (nni_lmq_full(s->bridge_conf->ctx_msgs)) {
 					log_warn("Rolling update old Message in ctx_msgs is lost!");
 					nni_msg *tmsg;
@@ -1567,6 +1568,9 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 					nni_stat_inc(&s->msg_send_drop, 1);
 #endif
 				}
+#else
+				nni_msg_free(msg);
+#endif
 				nni_aio_set_msg(aio, NULL);
 				nni_aio_finish_error(aio, NNG_ECLOSED);
 			}
