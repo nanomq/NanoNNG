@@ -1041,7 +1041,7 @@ mqtt_close_unack_aio_cb(void *key, void *val)
 	nni_aio * aio = val;
 
 	if (aio) {
-		nni_aio_finish_sync(aio, NNG_ECLOSED, 0);
+		nni_aio_finish_error(aio, NNG_ECLOSED);
 		nni_msg_free(nni_aio_get_msg(aio));
 		nni_aio_set_msg(aio, NULL);
 		nni_aio_set_prov_data(aio, NULL);
@@ -1068,8 +1068,7 @@ nni_get_conn_param_from_msg(nni_msg *msg)
 	nni_atomic_set(&conn_ctx->refcnt, 1);
 
 	conn_ctx->pro_ver    = nni_mqtt_msg_get_connect_proto_version(msg);
-	memcpy(&conn_ctx->con_flag, &proto_data->var_header.connect.conn_flags,
-	    1);
+	memcpy(&conn_ctx->con_flag, &proto_data->var_header.connect.conn_flags, 1);
 
 	conn_ctx->clean_start =
 	    proto_data->var_header.connect.conn_flags.clean_session;

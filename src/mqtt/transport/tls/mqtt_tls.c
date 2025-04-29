@@ -97,7 +97,7 @@ struct mqtts_tcptran_ep {
 	nng_stream_dialer *  dialer;
 	nng_stream_listener *listener;
 	nni_dialer *         ndialer;
-	conf_bridge_node *   bridge_conf;
+	conf_bridge_node *   bridge_conf; // only for reload TLS certs
 	void *               property;  // property
 	void *               connmsg;
 	bool                 enable_scram;
@@ -617,8 +617,9 @@ mqtts_tcptran_pipe_send_cb(void *arg)
 		// usable, with a partial transfer.
 		// The protocol should see this error, and close the
 		// pipe itself, we hope.
-		if (aio)
+		if (aio) {
 			nni_aio_list_remove(aio);
+		}
 		nni_mtx_unlock(&p->mtx);
 		if (aio)
 			nni_aio_finish_error(aio, rv);

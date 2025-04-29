@@ -848,6 +848,9 @@ nng_mqtt_client_send_cb(void* arg)
 		client->cb(client, NULL, client->obj);
 		return;
 	}
+	// NNG_ECLOSED represents actively close of sock/pipe
+	// which shall not trigger a resend.
+	// actually only NNG_ECANCELED/NNG_EAGAIN should?
 	if (rv != 0 && rv != NNG_ECLOSED) {
 		if (msg != NULL && nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_SUBSCRIBE) {
 			nng_aio_set_msg(client->send_aio, msg);
