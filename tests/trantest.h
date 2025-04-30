@@ -675,6 +675,7 @@ trantest_mqtt_sub_pub(trantest *tt)
 		nng_msleep(2000);
 		cp2 = trantest_mqtt_sub_recv(tt->reqsock);
 		trantest_mqtt_unsub_send(tt->reqsock, client, true);
+		nng_msleep(2000);
 		// syn sub & unsub
 		params.topic = topic2;
 		// trantest_mqtt_sub_send(tt->reqsock, client, false);
@@ -722,6 +723,7 @@ trantest_mqttv5_sub_pub(trantest *tt)
 		nng_msleep(2000);
 		cp2 = trantest_mqtt_sub_recv(tt->reqsock);
 		trantest_mqtt_unsub_send(tt->reqsock, client, true);
+		nng_msleep(2000);
 		nng_mqtt_disconnect(&(tt->reqsock), 0, NULL);
 		nng_mqtt_client_free(client, true);
 		nng_close(tt->repsock);
