@@ -629,7 +629,7 @@ struct conf {
 	conf_auth         auths;
 	conf_auth_http    auth_http;
 	struct hashmap_s *cid_table;
-	nng_mtx 		 *restapi_lk; // No other option for bride reload
+	nng_mtx          *restapi_lk; // No other option for bride reload
 };
 
 typedef struct conf conf;
