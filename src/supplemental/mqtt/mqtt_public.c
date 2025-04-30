@@ -843,8 +843,8 @@ nng_mqtt_client_send_cb(void* arg)
 
 	nng_msg *        msg    = nng_aio_get_msg(aio);
 	nng_aio_set_msg(aio, NULL);
-	if (msg == NULL && rv != 0) {
-		log_warn("bridge send aio rv %d", rv);
+	if (msg == NULL || rv == NNG_ECLOSED) {
+		log_warn("bridge send failed rv %d", nng_strerror(rv));
 		client->cb(client, NULL, client->obj);
 		return;
 	}
@@ -859,7 +859,6 @@ nng_mqtt_client_send_cb(void* arg)
 			return;
 		}
 	}
-
 
 	if (nni_lmq_get(lmq, &tmsg) == 0) {
 		nng_aio_set_msg(client->send_aio, tmsg);
