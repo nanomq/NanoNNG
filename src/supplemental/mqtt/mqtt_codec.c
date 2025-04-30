@@ -1972,7 +1972,7 @@ nni_mqtt_msg_decode_connack(nni_msg *msg)
 	}
 
 	/* Connect Return Code */
-	result = read_byte(&buf, &mqtt->var_header.connack.connack_flags);
+	result = read_byte(&buf, &mqtt->var_header.connack.conn_return_code);
 	if (result != 0) {
 		return MQTT_ERR_PROTOCOL;
 	}
@@ -1998,7 +1998,7 @@ nni_mqttv5_msg_decode_connack(nni_msg *msg)
 	}
 
 	/* Connect Return Code */
-	result = read_byte(&buf, &mqtt->var_header.connack.connack_flags);
+	result = read_byte(&buf, &mqtt->var_header.connack.conn_return_code);
 	if (result != 0) {
 		return MQTT_ERR_PROTOCOL;
 	}
