@@ -14,6 +14,7 @@ nng_check_sym(strlcpy string.h NNG_HAVE_STRLCPY)
 nng_check_sym(strnlen string.h NNG_HAVE_STRNLEN)
 nng_check_sym(strcasecmp string.h NNG_HAVE_STRCASECMP)
 nng_check_sym(strncasecmp string.h NNG_HAVE_STRNCASECMP)
+nng_check_sym(localtime_r time.h NNG_HAVE_LOCALTIME_R)
 
 nng_sources(
         defs.h
@@ -55,6 +56,7 @@ nng_sources(
         protocol.h
         reap.c
         reap.h
+        sockaddr.c
         socket.c
         socket.h
         sockimpl.h
@@ -87,6 +89,6 @@ nng_test(list_test)
 nng_test(message_test)
 nng_test(reconnect_test)
 nng_test(sock_test)
+nng_test(sockaddr_test)
 nng_test(stats_test)
 nng_test(url_test)
-nng_test(udp2_test)

@@ -609,26 +609,26 @@ conf_basic_parse(conf *config, const char *path)
 void
 conf_set_threads(conf *nanomq_conf)
 {
-	nng_init_set_parameter(NNG_INIT_NUM_RESOLVER_THREADS, 1);
+	nng_init_params  p = { 0 };
+
 	// taskq and max_taskq
 	if (nanomq_conf->num_taskq_thread) {
-		nng_init_set_parameter(
-		    NNG_INIT_NUM_TASK_THREADS, nanomq_conf->num_taskq_thread);
-		nng_init_set_parameter(NNG_INIT_NUM_EXPIRE_THREADS,
-		    nanomq_conf->num_taskq_thread);
+		p.num_task_threads = nanomq_conf->num_taskq_thread;
+		p.num_expire_threads = nanomq_conf->num_taskq_thread;
 	}
 	if (nanomq_conf->max_taskq_thread) {
-		nng_init_set_parameter(
-		    NNG_INIT_MAX_TASK_THREADS, nanomq_conf->max_taskq_thread);
-		nng_init_set_parameter(NNG_INIT_MAX_EXPIRE_THREADS,
-		    nanomq_conf->max_taskq_thread);
+		p.max_task_threads = nanomq_conf->max_taskq_thread;
+		p.max_expire_threads = nanomq_conf->max_taskq_thread;
+	}
+	if (nng_init(&p) != 0) {
+		fprintf(stderr, "NNG library init failed");
 	}
 }
 
 void
 conf_parse(conf *nanomq_conf)
 {
-	log_add_console(NNG_LOG_INFO, NULL);
+	log_add_console(NANO_LOG_INFO, NULL);
 	const char *conf_path = nanomq_conf->conf_file;
 
 	if (conf_path == NULL || !nano_file_exists(conf_path)) {
@@ -673,7 +673,7 @@ conf_parse(conf *nanomq_conf)
 static void
 conf_log_init(conf_log *log)
 {
-	log->level    = NNG_LOG_WARN;
+	log->level    = NANO_LOG_WARN;
 	log->file     = NULL;
 	log->dir      = NULL;
 	log->type     = LOG_TO_CONSOLE;
@@ -689,7 +689,7 @@ conf_log_init(conf_log *log)
 static void
 conf_log_destroy(conf_log *log)
 {
-	log->level = NNG_LOG_WARN;
+	log->level = NANO_LOG_WARN;
 	if (log->fp) {
 		fclose(log->fp);
 		log->fp = NULL;
@@ -732,7 +732,7 @@ conf_log_parse(conf_log *log, const char *path)
 			if (rv != -1) {
 				log->level = rv;
 			} else {
-				log->level = NNG_LOG_ERROR;
+				log->level = NANO_LOG_ERROR;
 			}
 		} else if ((value = get_conf_value(line, sz, "log.file")) !=
 		    NULL) {

@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "core/defs.h"
 #include "core/nng_impl.h"
 
 // Socket transport.  This takes sockets that may have been
@@ -817,7 +818,7 @@ sfd_tran_listener_init(void **lp, nng_url *url, nni_listener *nlistener)
 	nni_sock    *sock = nni_listener_sock(nlistener);
 
 	// Check for invalid URL components -- we only accept a bare scheme
-	if ((strlen(url->u_host) != 0) || (strlen(url->u_path) != 0) ||
+	if ((strlen(url->u_hostname) != 0) || (strlen(url->u_path) != 0) ||
 	    (url->u_fragment != NULL) || (url->u_userinfo != NULL) ||
 	    (url->u_query != NULL)) {
 		return (NNG_EADDRINVAL);
@@ -884,9 +885,10 @@ sfd_tran_ep_set_recvmaxsz(void *arg, const void *v, size_t sz, nni_opt_type t)
 }
 
 static int
-sfd_tran_ep_bind(void *arg)
+sfd_tran_ep_bind(void *arg, nng_url *url)
 {
 	sfd_tran_ep *ep = arg;
+	NNI_ARG_UNUSED(url);
 	return (nng_stream_listener_listen(ep->listener));
 }
 

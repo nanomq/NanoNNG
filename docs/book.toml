@@ -1,0 +1,39 @@
+[book]
+authors = ["Garrett D'Amore"]
+language = "en"
+multilingual = false
+src = "ref"
+title = "NNG Reference Manual (DRAFT)"
+
+[output.html]
+smart-punctuation = true
+fold.enable = true
+fold.level = 2
+additional-css = ["theme/pagetoc.css"]
+additional-js = ["theme/pagetoc.js"]
+site-url = "/ref/"
+
+# [output.markdown]
+
+# [output.compress]
+# page.new_pages = true
+# page.spacing.line = 1.3
+# page.size = { x = 203.2, y = 254 }
+# font.regular = "IBMPlexSerif-Regular.ttf"
+# font.monospace = "IBMPlexMono"
+# font.bold = "IBMPlexSans-SemiBold.ttf"
+
+# [output.epub]
+# epub-version = 3
+
+[preprocessor.alerts]
+
+[preprocessor.indexing]
+
+
+# [preprocessor.inline-highlighting]
+# default-language = "c"
+
+[preprocessor.footnote]
+
+[preprocessor.pagetoc]

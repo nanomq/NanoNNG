@@ -393,10 +393,6 @@ nni_udp_dialer_alloc(nng_stream_dialer **dp, const nng_url *url)
 	int         rv;
 	const char *p;
 
-	if ((rv = nni_init()) != 0) {
-		return (rv);
-	}
-
 	if ((rv = udp_dialer_alloc(&d)) != 0) {
 		return (rv);
 	}

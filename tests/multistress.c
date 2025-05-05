@@ -24,10 +24,6 @@
 #include <nng/protocol/reqrep0/req.h>
 #include <nng/protocol/survey0/respond.h>
 #include <nng/protocol/survey0/survey.h>
-#include <nng/supplemental/util/platform.h>
-#include <nng/transport/inproc/inproc.h>
-#include <nng/transport/ipc/ipc.h>
-#include <nng/transport/tcp/tcp.h>
 
 #include "convey.h"
 #include "stubs.h"
@@ -585,7 +581,7 @@ pubsub0_test(int ntests)
 		if ((rv = nng_aio_alloc(&cli->recd, sub0_recd, cli)) != 0) {
 			fatal("nng_aio_alloc", rv);
 		}
-		rv = nng_socket_set(cli->sock, NNG_OPT_SUB_SUBSCRIBE, "", 0);
+		rv = nng_sub0_socket_subscribe(cli->sock, "", 0);
 		if (rv != 0) {
 			fatal("subscribe", rv);
 		}
