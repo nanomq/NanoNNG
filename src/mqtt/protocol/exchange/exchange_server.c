@@ -42,6 +42,15 @@ struct exchange_pipe_s {
 	uint32_t         id;
 };
 
+enum exchange_reason_codes {
+	EXCHANGE_ERR_OK,
+	EXCHANGE_ERR_NONE,
+	EXCHANGE_ERR_TOO_FREQ,
+	EXCHANGE_ERR_NOT_READY,
+	EXCHANGE_ERR_KEY,
+	EXCHANGE_ERR_CMD
+};
+
 // struct exchange_ctx {
 // 	nni_list_node    node;
 // 	sub0_sock       *sock;
