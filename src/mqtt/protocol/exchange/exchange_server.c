@@ -120,8 +120,8 @@ static void query_send_eof(nng_socket *sock, nng_aio *aio, int pcode, int rcode)
 	eof[0] = 0x0B;
 	eof[1] = 0xAD;
 
-	char rc[6];
-	sprintf(&rc, "%d,%d", pcode, rcode);
+	char rc[32];
+	sprintf(rc, "%d,%d", pcode, rcode);
 
 	nng_msg_append(msg, eof, 2);
 	nng_msg_append(msg, rc, strlen(rc));
@@ -569,7 +569,6 @@ query_cb(void *arg)
 {
 	int rv = 0;
 	exchange_sock_t *s = arg;
-	int code[2] = { 0 };
 
 	nni_aio *aio = &s->query_aio;
 	nng_msg *msg = nng_aio_get_msg(aio);
