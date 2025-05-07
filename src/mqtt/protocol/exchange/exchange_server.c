@@ -365,7 +365,7 @@ static struct stream_decoded_data *fuzz_search_result_cat(nng_msg **msgList,
 	return decoded_data;
 }
 
-static void query_send_sync(exchange_sock_t *s, struct cmd_data *cmd_data)
+static void query_send_sync(exchange_sock_t *s, struct cmd_data *cmd_data, int rc[2])
 {
 	int ret = 0;
 	uint32_t count = 0;
@@ -376,10 +376,12 @@ static void query_send_sync(exchange_sock_t *s, struct cmd_data *cmd_data)
 	if (ret == 0 && count != 0 && msgList != NULL) {
 		ringbus_decoded_data = fuzz_search_result_cat(msgList, count, s->ex_node->ex->streamType, cmd_data);
 		if (ringbus_decoded_data == NULL) {
+			rc[1] = EXCHANGE_ERR_RB_DECODE;
 			log_error("get decoded data from ringbus failed!");
 		}
 		nng_free(msgList, sizeof(nng_msg *) * count);
 	} else {
+		rc[1] = EXCHANGE_ERR_NONE;
 		log_warn("exchange_client_get_msgs_fuzz failed! count: %d", count);
 	}
 
@@ -407,6 +409,8 @@ static void query_send_sync(exchange_sock_t *s, struct cmd_data *cmd_data)
 			}
 		}
 		parquet_datas_ret_free(parquet_datas, parquet_decoded_data_len);
+	} else {
+		rc[0] = EXCHANGE_ERR_NONE;
 	}
 #endif
 #if defined(SUPP_BLF)
@@ -436,9 +440,12 @@ static void query_send_sync(exchange_sock_t *s, struct cmd_data *cmd_data)
 				stream_decoded_data_free(parquet_decoded_data[i]);
 			} else {
 				log_info("parquet_decoded_data[%d] is NULL", i);
+				rc[0] = EXCHANGE_ERR_PAR_DATA_DECODE;
 			}
 		}
 		nng_free(parquet_decoded_data, sizeof(struct stream_decoded_data *) * parquet_decoded_data_len);
+	} else {
+		rc[0] = EXCHANGE_ERR_PAR_DECODE;
 	}
 #endif
 
@@ -453,7 +460,7 @@ static void query_send_sync(exchange_sock_t *s, struct cmd_data *cmd_data)
 	return;
 }
 
-static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data)
+static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data, int rc[2])
 {
 	uint32_t count = 0;
 	int ret = 0;
@@ -482,8 +489,10 @@ static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data)
 																		cmd_data->schema_len,
 																		&size);
 			if (parquet_datas != NULL) {
-				if (size < 1)
+				if (size < 1) {
 					log_warn("parquet_datas size: %d", size);
+					rc[0] = EXCHANGE_ERR_PAR_SEARCH;
+				}
 				for (uint32_t i = 0; i < size; i++) {
 					if (parquet_datas[i] != NULL) {
 						struct stream_decoded_data *parquet_decoded_data = NULL;
@@ -502,6 +511,7 @@ static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data)
 							nng_msleep(1000);
 							stream_decoded_data_free(parquet_decoded_data);
 						} else {
+							rc[0] = EXCHANGE_ERR_PAR_DATA_DECODE;
 							if (parquet_decoded_data == NULL) {
 								log_warn("parquet_decoded_data is null");
 							} else {
@@ -509,11 +519,13 @@ static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data)
 							}
 						}
 					} else {
+						rc[0] = EXCHANGE_ERR_PAR_DECODE;
 						log_error("parquet_datas[%d] is NULL", i);
 					}
 				}
 				parquet_datas_ret_free(parquet_datas, size);
 			} else {
+				rc[0] = EXCHANGE_ERR_PAR_SEARCH;
 				log_error("parquet_get_data_packets_in_range_by_column failed!");
 			}
 			nng_free((void *)file_range->filename, strlen(file_range->filename));
@@ -524,6 +536,7 @@ static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data)
 	} else {
 		log_error("parquet_find_file_range %ld~%ld failed!",
 				cmd_data->start_key, cmd_data->end_key);
+		rc[0] = EXCHANGE_ERR_NONE;
 	}
 #endif
 
@@ -531,10 +544,12 @@ static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data)
 	if (ret == 0 && count != 0 && msgList != NULL) {
 		ringbus_decoded_data = fuzz_search_result_cat(msgList, count, s->ex_node->ex->streamType, cmd_data);
 		if (ringbus_decoded_data == NULL) {
+			rc[1] = EXCHANGE_ERR_RB_DECODE;
 			log_error("fuzz_search_result_cat failed!");
 		}
 		nng_free(msgList, sizeof(nng_msg *) * count);
 	} else {
+		rc[1] = EXCHANGE_ERR_RB_SEARCH;
 		log_warn("ringbus failed! count: %d", count);
 	}
 
@@ -624,13 +639,14 @@ query_cb(void *arg)
 		return;
 	}
 
+	int codes[2] = { EXCHANGE_ERR_OK };
 	if (cmd_data->is_sync) {
-		query_send_sync(s, cmd_data);
+		query_send_sync(s, cmd_data, codes);
 	} else {
-		query_send_async(s, cmd_data);
+		query_send_async(s, cmd_data, codes);
 	}
 
-	query_send_eof(s->pair0_sock, &s->query_aio, EXCHANGE_ERR_OK, EXCHANGE_ERR_OK);
+	query_send_eof(s->pair0_sock, &s->query_aio, codes[0], codes[1]);
 	nng_recv_aio(*(s->pair0_sock), aio);
 	cmd_data_free(cmd_data);
 	nng_msg_free(msg);
