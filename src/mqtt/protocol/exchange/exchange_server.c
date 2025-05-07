@@ -44,7 +44,6 @@ struct exchange_pipe_s {
 
 enum exchange_reason_codes {
 	EXCHANGE_ERR_OK,
-	EXCHANGE_ERR_NONE,
 	EXCHANGE_ERR_TOO_FREQ,
 	EXCHANGE_ERR_NOT_READY,
 	EXCHANGE_ERR_KEY,
@@ -110,7 +109,7 @@ exchange_add_ex(exchange_sock_t *s, exchange_t *ex)
 	return 0;
 }
 
-static void query_send_eof(nng_socket *sock, nng_aio *aio)
+static void query_send_eof(nng_socket *sock, nng_aio *aio, int code)
 {
 	NNI_ARG_UNUSED(aio);
 	nng_msg *msg = NULL;
@@ -120,6 +119,12 @@ static void query_send_eof(nng_socket *sock, nng_aio *aio)
 	eof[0] = 0x0B;
 	eof[1] = 0xAD;
 
+	char rc[4];
+	uint32_t code32 = code;
+	sprintf(&rc, "%d", code32);
+
+	nng_msg_append(msg, eof, 2);
+	nng_msg_append(msg, rc, 4);
 	nng_msg_append(msg, eof, 2);
 	nng_sendmsg(*sock, msg, 0);
 
@@ -578,7 +583,7 @@ query_cb(void *arg)
 		rv = nng_atomic_dec_nv(query_limit);
 		if (rv < 0) {
 			log_warn("Hook searching too frequently");
-			query_send_eof(s->pair0_sock, &s->query_aio);
+			query_send_eof(s->pair0_sock, &s->query_aio, EXCHANGE_ERR_TOO_FREQ);
 			nng_recv_aio(*(s->pair0_sock), aio);
 			nng_msg_free(msg);
 			return;
@@ -586,7 +591,7 @@ query_cb(void *arg)
 	}
 
 	if (s->ex_node == NULL || s->ex_node->ex == NULL || s->ex_node->ex->topic[0] == 0) {
-		query_send_eof(s->pair0_sock, &s->query_aio);
+		query_send_eof(s->pair0_sock, &s->query_aio, EXCHANGE_ERR_NOT_READY);
 		nng_recv_aio(*(s->pair0_sock), aio);
 		log_error("exchange_sock_t is not ready!");
 		nng_msg_free(msg);
@@ -596,7 +601,7 @@ query_cb(void *arg)
 
 	char *keystr = (char *)nng_msg_body(msg);
 	if (keystr == NULL) {
-		query_send_eof(s->pair0_sock, &s->query_aio);
+		query_send_eof(s->pair0_sock, &s->query_aio, EXCHANGE_ERR_KEY);
 		nng_recv_aio(*(s->pair0_sock), aio);
 		log_error("error in parsing keystr");
 		nng_msg_free(msg);
@@ -607,7 +612,7 @@ query_cb(void *arg)
 	struct cmd_data *cmd_data = stream_cmd_parser(s->ex_node->ex->streamType, keystr);
 	if (cmd_data == NULL) {
 		log_error("stream_cmd_parser failed!");
-		query_send_eof(s->pair0_sock, &s->query_aio);
+		query_send_eof(s->pair0_sock, &s->query_aio, EXCHANGE_ERR_CMD);
 		nng_recv_aio(*(s->pair0_sock), aio);
 		nng_msg_free(msg);
 		return;
@@ -619,7 +624,7 @@ query_cb(void *arg)
 		query_send_async(s, cmd_data);
 	}
 
-	query_send_eof(s->pair0_sock, &s->query_aio);
+	query_send_eof(s->pair0_sock, &s->query_aio, EXCHANGE_ERR_OK);
 	nng_recv_aio(*(s->pair0_sock), aio);
 	cmd_data_free(cmd_data);
 	nng_msg_free(msg);
