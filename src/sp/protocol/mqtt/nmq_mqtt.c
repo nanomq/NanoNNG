@@ -395,9 +395,6 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	if (pipeid)
 		pipe = *pipeid;
 	nni_aio_set_prov_data(aio, NULL);
-	if (pipe == 0)
-		pipe = ctx->pipe_id; // reply to self
-	ctx->pipe_id = 0; // ensure connack/PING/DISCONNECT/PUBACK only sends once
 	if (ctx == &s->ctx) {
 		nni_pollable_clear(&s->writable);
 	}
@@ -995,7 +992,6 @@ nano_pipe_send_cb(void *arg)
 		msg = nni_aio_get_msg(&p->aio_send);
 		nni_msg_free(msg);
 		nni_aio_set_msg(&p->aio_send, NULL);
-		// possibily due to client crashed
 		p->reason_code = rv;
 		nni_pipe_close(p->pipe);
 		return;
@@ -1282,15 +1278,13 @@ nano_pipe_recv_cb(void *arg)
 		nni_pollable_raise(&s->writable);
 	}
 
-	// schedule another receive
-	nni_pipe_recv(p->pipe, &p->aio_recv);
-
 	ctx->pipe_id = p->id;
 	log_trace("currently processing pipe_id: %d", p->id);
-
 	nni_mtx_unlock(&s->lk);
-	nni_aio_set_msg(aio, msg);
 
+	// schedule another receive
+	nni_pipe_recv(p->pipe, &p->aio_recv);
+	nni_aio_set_msg(aio, msg);
 	nni_aio_finish_sync(aio, 0, nni_msg_len(msg));
 	log_trace("end of nano_pipe_recv_cb %p", ctx);
 	return;
