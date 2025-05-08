@@ -852,7 +852,6 @@ session_keeping:
 	}
 
 	// Dont need to manage id_map while enable SQLite.
-#ifndef NNG_SUPP_SQLITE
 	void *qos_db = nng_id_get(s->conf->ext_qos_db, p->pipe->p_id);
 	if (qos_db != NULL && !s->conf->sqlite.enable) {
 		// check sqlite compatibility
@@ -863,7 +862,6 @@ session_keeping:
 		p->pipe->nano_qos_db = qos_db;
 		nng_id_remove(s->conf->ext_qos_db, p->pipe->p_id);
 	}
-#endif
 
 	// close old one (bool to prevent disconnect_ev)
 	// check if pointer is different later
@@ -1479,7 +1477,8 @@ nano_sock_setdb(void *arg, void *data)
 			nng_id_set(nano_conf->ext_qos_db, hashn, qos_db);
 		} else {
 #ifdef NNG_SUPP_SQLITE
-			nni_qos_db_set_pipe(is_sqlite, s->sqlite_db, hashn, node->clientid);
+			nni_qos_db_set_pipe(s->conf->sqlite.enable,
+				s->sqlite_db, hashn, node->clientid);
 #endif
 			log_warn("Not recommend to use Preset session with SQLite ");
 		}
