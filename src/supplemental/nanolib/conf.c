@@ -3091,6 +3091,20 @@ conf_bridge_conn_will_properties_init(conf_bridge_conn_will_properties *prop)
 }
 
 static void
+conf_preset_sessions_init(conf_preset_session *session)
+{
+	session->count = 0;
+	session->nodes = NULL;
+}
+
+void
+conf_session_node_init(conf_session_node *node)
+{
+	node->clientid = NULL;
+	node->sub_list = NULL;
+}
+
+static void
 conf_bridge_init(conf_bridge *bridge)
 {
 	bridge->count = 0;
@@ -4481,6 +4495,9 @@ conf_fini(conf *nanomq_conf)
 
 	conf_tcplist_destroy(&nanomq_conf->tcp_list);
 	conf_tlslist_destroy(&nanomq_conf->tls_list);
+
+	nni_id_map_fini((nni_id_map *)nanomq_conf->ext_qos_db);
+	nni_free(nanomq_conf->ext_qos_db, sizeof(nni_id_map));
 
 #if defined(SUPP_PARQUET)
 	conf_parquet_destroy(&nanomq_conf->parquet);
