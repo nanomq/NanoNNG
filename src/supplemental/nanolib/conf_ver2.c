@@ -1160,7 +1160,7 @@ void
 conf_session_node_parse(conf_session_node *node, cJSON *obj)
 {
 	node->name = nng_strdup(obj->string);
-
+	hocon_read_str(node, clientid, obj);
 	cJSON *subscriptions = hocon_get_obj("topic", obj);
 
 	cJSON *subscription = NULL;
