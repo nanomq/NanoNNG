@@ -1353,12 +1353,12 @@ NNG_DECL bool nng_lmq_empty(nng_lmq *);
 // typedef struct nng_id_map nng_id_map;
 
 // NNG_DECL void nng_id_map_init(
-//     nng_id_map *, uint32_t , uint32_t , bool );
+//     nng_id_map *, uint64_t , uint64_t , bool );
 // NNG_DECL void  nng_id_map_fini(nng_id_map *);
-// NNG_DECL void *nng_id_get(nng_id_map *, uint32_t );
-// NNG_DECL int   nng_id_set(nng_id_map *, uint32_t , void *);
-// NNG_DECL int   nng_id_alloc(nng_id_map *, uint32_t *, void *);
-// NNG_DECL int   nng_id_remove(nng_id_map *, uint32_t );
+// NNG_DECL void *nng_id_get(nng_id_map *, uint64_t );
+// NNG_DECL int   nng_id_set(nng_id_map *, uint64_t , void *);
+// NNG_DECL int   nng_id_alloc(nng_id_map *, uint64_t *, void *);
+// NNG_DECL int   nng_id_remove(nng_id_map *, uint64_t );
 
 // NANOMQ MQTT variables & APIs
 typedef struct conn_param        conn_param;
