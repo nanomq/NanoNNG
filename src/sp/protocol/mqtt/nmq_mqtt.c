@@ -917,7 +917,7 @@ nano_pipe_close(void *arg)
 		// take params from npipe to new pipe
 		new_pipe->packet_id = npipe->packet_id;
 		// there should be no msg in this map
-		if (new_pipe->nano_qos_db != NULL)
+		if (!s->conf->sqlite.enable && new_pipe->nano_qos_db != NULL)
 			nni_qos_db_fini_id_hash(new_pipe->nano_qos_db);
 		new_pipe->nano_qos_db = npipe->nano_qos_db;
 		npipe->nano_qos_db = NULL;
