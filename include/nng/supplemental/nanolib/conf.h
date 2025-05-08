@@ -264,10 +264,11 @@ typedef struct {
 } conf_bridge_sub_properties;
 
 struct conf_session_node {
-	char        *name;
-	char 		*clientid;
-	size_t		 sub_count;
-	topics     **sub_list;
+	char    *name;
+	char    *clientid;
+	uint32_t idhash;
+	size_t   sub_count;
+	topics **sub_list;
 };
 struct conf_bridge_node {
 	bool         enable;
