@@ -1490,6 +1490,7 @@ parquet_get_file_ranges(uint64_t start_key, uint64_t end_key, char *topic)
 		return ranges;
 	}
 
+	nng_free(filenames, len);
 	return NULL;
 }
 
