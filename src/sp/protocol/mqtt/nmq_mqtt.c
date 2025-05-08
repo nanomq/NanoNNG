@@ -365,18 +365,17 @@ nano_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
 static void
 nano_ctx_send(void *arg, nni_aio *aio)
 {
-	nano_ctx *       ctx = arg;
-	nano_sock *      s   = ctx->sock;
-	nano_pipe *      p;
-	nni_msg *        msg;
-	int              rv;
-	uint32_t         pipe    = 0;
-	uint32_t *       pipeid;
-	uint8_t          qos_pac = 0;
-	uint8_t          qos     = 0;
-	char *           pld_pac = NULL;
-	int              tlen_pac = 0;
-	uint16_t         packetid;
+	nano_ctx  *ctx = arg;
+	nano_sock *s   = ctx->sock;
+	nano_pipe *p;
+	nni_msg   *msg;
+	int        rv;
+	uint32_t   pipe = 0;
+	uint32_t  *pipeid;
+	uint8_t    qos_pac = 0, qos = 0;
+	char      *pld_pac  = NULL;
+	int        tlen_pac = 0;
+	uint16_t   packetid;
 
 	bool is_sqlite = s->conf->sqlite.enable;
 
@@ -402,6 +401,23 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	nni_mtx_lock(&s->lk);
 	log_trace(" ******** working with pipe id : %d ctx ******** ", pipe);
 	if ((p = nni_id_get(&s->pipes, pipe)) == NULL) {
+		// pre-configured session
+		void *qos_db = nng_id_get(s->conf->ext_qos_db, pipe);
+		if (qos_db != NULL) {
+			if (nni_msg_get_type(msg) == CMD_PUBLISH) {
+				qos_pac = nni_msg_get_pub_qos(msg);
+				if (qos_pac > 0) {
+					nni_msg_clone(msg);
+					packetid = nni_msg_get_pub_pid(msg);
+					// check sqlite again!
+					nni_qos_db_set(is_sqlite, qos_db,
+					    pipe, packetid, msg);
+					log_debug("msg cached for session");
+				} else {
+					nni_msg_free(msg);
+				}
+			}
+		}
 		// Pipe is gone.  Make this look like a good send to avoid
 		// disrupting the state machine.  We don't care if the peer
 		// lost interest in our reply.
@@ -774,7 +790,6 @@ session_keeping:
 		nni_mtx_unlock(&s->lk);
 		return NNG_ECONNSHUT;
 	}
-	// nni_mtx_lock(&p->lk);
 	if (p->conn_param->clean_start == 0) {
 		old = nni_id_get(&s->cached_sessions, p->pipe->p_id);
 		if (old != NULL) {
@@ -841,10 +856,19 @@ session_keeping:
 	}
 	nmq_connack_encode(msg, p->conn_param, rv);
 	conn_param_free(p->conn_param);
-	p->nano_qos_db = npipe->nano_qos_db;
 	if (rv != 0) {
-		// TODO disconnect client && send connack with reason code 0x05
+		// send connack with reason code 0x05
 		log_warn("Invalid auth info.");
+	}
+	void *qos_db = nng_id_get(s->conf->ext_qos_db, p->pipe->p_id);
+	if (qos_db != NULL) {
+		// check sqlite compatibility
+		if (p->nano_qos_db != NULL)
+			nni_qos_db_fini_id_hash(p->nano_qos_db);
+		p->nano_qos_db = qos_db;
+		p->conn_param->nano_qos_db = qos_db;
+		p->pipe->nano_qos_db = qos_db;
+		nng_id_remove(s->conf->ext_qos_db, p->pipe->p_id);
 	}
 	// close old one (bool to prevent disconnect_ev)
 	// check if pointer is different later
@@ -852,7 +876,7 @@ session_keeping:
 		// check will msg delay interval
 		if (conn_param_get_will_delay_timestamp(old->conn_param) >
 		    nng_clock()) {
-			// it is not your time yet
+			// it is not your time yet, do not send will msg
 			old->conn_param->will_flag = 0;
 		}
 		nni_mtx_unlock(&s->lk);
@@ -860,7 +884,6 @@ session_keeping:
 	} else {
 		nni_mtx_unlock(&s->lk);
 	}
-	// nni_mtx_unlock(&p->lk);
 	// TODO MQTT V5 check return code
 	if (rv == 0) {
 		nni_sleep_aio(s->conf->qos_duration * 1500, &p->aio_timer);
@@ -1449,6 +1472,14 @@ nano_sock_setdb(void *arg, void *data)
 		nni_qos_db_reset_pipe(s->conf->sqlite.enable, s->sqlite_db);
 	}
 #endif
+
+	// check pre-configured session id
+	// or switch to lmq for better msg rate?
+	void *qos_db;
+	nni_qos_db_init_id_hash(qos_db);
+	char clientid[12] = "diagnostic";
+	uint32_t hashn = DJBHashn("diagnostic", strlen(clientid));
+	nng_id_set(nano_conf->ext_qos_db, hashn, qos_db);
 }
 
 // This is the global protocol structure -- our linkage to the core.
