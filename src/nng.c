@@ -2293,7 +2293,7 @@ nng_lmq_empty(nng_lmq *lmq)
 
 // void
 // nng_id_map_init(
-//     nng_id_map *map, uint32_t min_val, uint32_t max_val, bool randomize)
+//     nng_id_map *map, uint64_t min_val, uint64_t max_val, bool randomize)
 // {
 // 	nni_id_map_init(map, min_val, max_val, randomize);
 // }
@@ -2305,25 +2305,25 @@ nng_lmq_empty(nng_lmq *lmq)
 // }
 
 // void *
-// nng_id_get(nng_id_map *map, uint32_t id)
+// nng_id_get(nng_id_map *map, uint64_t id)
 // {
 // 	return nni_id_get(map, id);
 // }
 
 // int
-// nng_id_set(nng_id_map *map, uint32_t id, void *value)
+// nng_id_set(nng_id_map *map, uint64_t id, void *value)
 // {
 // 	return nni_id_set(map, id, value);
 // }
 
 // int
-// nng_id_alloc(nng_id_map *map, uint32_t *idp, void *val)
+// nng_id_alloc(nng_id_map *map, uint64_t *idp, void *val)
 // {
 // 	return nni_id_alloc(map, idp, val);
 // }
 
 // int
-// nng_id_remove(nng_id_map *map, uint32_t id)
+// nng_id_remove(nng_id_map *map, uint64_t id)
 // {
 // 	return nni_id_remove(map, id);
 // }
