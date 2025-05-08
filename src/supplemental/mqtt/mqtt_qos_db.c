@@ -448,6 +448,7 @@ nni_mqtt_qos_db_set_pipe(sqlite3 *db, uint32_t pipe_id, const char *client_id)
 	if (id == 0) {
 		nni_mqtt_qos_db_insert_pipe(db, pipe_id, client_id);
 	} else {
+		// TODO: now clientid always match with pipe_id
 		nni_mqtt_qos_db_update_pipe_by_clientid(
 		    db, pipe_id, client_id);
 	}
