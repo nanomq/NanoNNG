@@ -209,7 +209,7 @@ nni_mqtt_msg_decode(nni_msg *msg)
 {
 	int ret;
 	if ((ret = nni_mqtt_msg_decode_fixed_header(msg)) != MQTT_SUCCESS) {
-		// nni_plat_printf("decode_fixed_header failed %d\n", ret);
+		log_error("decode_fixed_header failed %d\n", ret);
 		return ret;
 	}
 	nni_mqtt_proto_data *mqtt = nni_msg_get_proto_data(msg);
@@ -223,8 +223,12 @@ nni_mqtt_msg_decode(nni_msg *msg)
 				mqtt->initialized = true;
 				mqtt->is_copied   = false;
 			}
-			mqtt->is_decoded = true;
-			return codec_handler[i].decode(msg);
+			if (!mqtt->is_decoded) {
+				mqtt->is_decoded = true;
+				return codec_handler[i].decode(msg);
+			} else {
+				return MQTT_SUCCESS;
+			}
 		}
 	}
 
@@ -250,8 +254,12 @@ nni_mqttv5_msg_decode(nni_msg *msg)
 				mqtt->initialized = true;
 				mqtt->is_copied   = false;
 			}
-			mqtt->is_decoded = true;
-			return codec_v5_handler[i].decode(msg);
+			if (!mqtt->is_decoded) {
+				mqtt->is_decoded = true;
+				return codec_v5_handler[i].decode(msg);
+			} else {
+				return MQTT_SUCCESS;
+			}
 		}
 	}
 
