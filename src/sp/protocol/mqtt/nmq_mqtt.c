@@ -202,8 +202,7 @@ nano_pipe_timer_cb(void *arg)
 		// check session expiry interval
 		log_trace("check session alive time %lu", time);
 		if (rv) {
-			// close pipe
-			//  clean previous session
+			// EXPIRED. close pipe & clean previous session
 			nano_pipe *old;
 			nano_sock *s = p->broker;
 
@@ -280,8 +279,7 @@ nano_pipe_timer_cb(void *arg)
 				// TODO set max retrying times in nanomq.conf
 				nano_msg_set_dup(rmsg);
 				// deliver packet id to transport here
-				nni_aio_set_prov_data(
-				    &p->aio_send, (void *)(uintptr_t)pid);
+				nni_aio_set_prov_data(&p->aio_send, (void *)(uintptr_t)pid);
 				// put original msg into sending
 				nni_msg_clone(rmsg);
 				nni_aio_set_msg(&p->aio_send, rmsg);
@@ -404,18 +402,13 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		// pre-configured session
 		void *qos_db = nng_id_get(s->conf->ext_qos_db, pipe);
 		if (qos_db != NULL) {
-			if (nni_msg_get_type(msg) == CMD_PUBLISH) {
-				qos_pac = nni_msg_get_pub_qos(msg);
-				if (qos_pac > 0) {
-					nni_msg_clone(msg);
-					packetid = nni_msg_get_pub_pid(msg);
-					// check sqlite again!
-					nni_qos_db_set(is_sqlite, qos_db,
-					    pipe, packetid, msg);
-					log_debug("msg cached for session");
-				} else {
-					nni_msg_free(msg);
-				}
+			if (nni_msg_get_type(msg) == CMD_PUBLISH &&
+			    nni_msg_get_pub_qos(msg) > 0) {
+				nni_msg_clone(msg); // for line 422
+				packetid = nni_msg_get_pub_pid(msg);
+				nni_qos_db_set(is_sqlite, qos_db,
+				    pipe, packetid, msg);
+				log_debug("msg cached for preset session");
 			}
 		}
 		// Pipe is gone.  Make this look like a good send to avoid
@@ -783,10 +776,7 @@ session_keeping:
 		}
 	}
 #ifdef NNG_SUPP_SQLITE
-	if (is_sqlite) {
-		nni_qos_db_set_pipe(
-		    is_sqlite, p->pipe->nano_qos_db, p->id, clientid);
-	}
+	nni_qos_db_set_pipe(is_sqlite, p->pipe->nano_qos_db, p->id, clientid);
 #endif
 	// pipe_id is just random value of id_dyn_val with self-increment.
 	nni_id_set(&s->pipes, p->id, p);
@@ -807,8 +797,11 @@ session_keeping:
 		// send connack with reason code 0x05
 		log_warn("Invalid auth info.");
 	}
+
+	// Dont need to manage id_map while enable SQLite.
+#ifndef NNG_SUPP_SQLITE
 	void *qos_db = nng_id_get(s->conf->ext_qos_db, p->pipe->p_id);
-	if (qos_db != NULL) {
+	if (qos_db != NULL && !s->conf->sqlite.enable) {
 		// check sqlite compatibility
 		if (p->nano_qos_db != NULL)
 			nni_qos_db_fini_id_hash(p->nano_qos_db);
@@ -817,6 +810,8 @@ session_keeping:
 		p->pipe->nano_qos_db = qos_db;
 		nng_id_remove(s->conf->ext_qos_db, p->pipe->p_id);
 	}
+#endif
+
 	// close old one (bool to prevent disconnect_ev)
 	// check if pointer is different later
 	if (old) {
@@ -1413,7 +1408,6 @@ nano_sock_setdb(void *arg, void *data)
 
 #ifdef NNG_SUPP_SQLITE
 	if (s->conf->sqlite.enable) {
-
 		nni_qos_db_init_sqlite(s->sqlite_db,
 		    s->conf->sqlite.mounted_file_path, DB_NAME, true);
 		nni_qos_db_reset_pipe(s->conf->sqlite.enable, s->sqlite_db);
@@ -1425,9 +1419,17 @@ nano_sock_setdb(void *arg, void *data)
 	for (size_t y = 0; y < nano_conf->pre_sessions.count; y++) {
 		conf_session_node *node = nano_conf->pre_sessions.nodes[y];
 		uint32_t hashn = DJBHashn(node->clientid, strlen(node->clientid));
-		void *qos_db;
-		nni_qos_db_init_id_hash(qos_db);
-		nng_id_set(nano_conf->ext_qos_db, hashn, qos_db);
+		node->idhash = hashn;
+		if (!nano_conf->sqlite.enable) {
+			void *qos_db;
+			nni_qos_db_init_id_hash(qos_db);
+			nng_id_set(nano_conf->ext_qos_db, hashn, qos_db);
+		} else {
+#ifdef NNG_SUPP_SQLITE
+			nni_qos_db_set_pipe(is_sqlite, s->sqlite_db, hashn, node->clientid);
+#endif
+			log_warn("Not recommend to use Preset session with SQLite ");
+		}
 	}
 
 }
