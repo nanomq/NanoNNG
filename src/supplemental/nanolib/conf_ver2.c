@@ -668,7 +668,7 @@ conf_pre_session_parse_ver2(conf *config, cJSON *jso)
 		}
 	}
 
-	config->bridge.count = cvector_size(config->bridge.nodes);
+	config->pre_sessions.count = cvector_size(config->pre_sessions.nodes);
 
 	return;
 }
