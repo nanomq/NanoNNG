@@ -14,6 +14,9 @@
 #include "log.h"
 #include "ringbuffer.h"
 #include "nng/supplemental/util/platform.h"
+#include "nng/supplemental/util/idhash.h"
+
+
 
 #define PID_PATH_NAME "/tmp/nanomq/nanomq.pid"
 #define CONF_PATH_NAME "/etc/nanomq.conf"
@@ -261,6 +264,12 @@ typedef struct {
 	conf_user_property **user_property;
 } conf_bridge_sub_properties;
 
+struct conf_session_node {
+	char        *name;
+	char 		*clientid;
+	size_t		 sub_count;
+	topics     **sub_list;
+};
 struct conf_bridge_node {
 	bool         enable;
 	bool         dynamic;
@@ -329,6 +338,7 @@ struct conf_bridge_node {
 #endif
 };
 
+typedef struct conf_session_node conf_session_node;
 typedef struct conf_bridge_node conf_bridge_node;
 typedef enum {
 	UNCOMPRESSED,
@@ -433,6 +443,12 @@ struct conf_bridge {
 };
 
 typedef struct conf_bridge conf_bridge;
+struct conf_preset_session {
+	size_t count;
+	conf_session_node **nodes;
+};
+
+typedef struct conf_preset_session conf_preset_session;
 typedef struct {
 	char *zmq_sub_url;
 	char *zmq_pub_url;
@@ -612,6 +628,7 @@ struct conf {
 	conf_tls             tls;
 	conf_http_server     http_server;
 	conf_websocket       websocket;
+	conf_preset_session  pre_sessions;
 	conf_bridge          bridge;		//standard MQTT
 	conf_bridge          aws_bridge;	// AWS IoT Core
 	conf_exchange        exchange;
@@ -639,6 +656,7 @@ struct conf {
 	conf_auth_http    auth_http;
 	struct hashmap_s *cid_table;
 	nng_mtx          *restapi_lk; // No other option for bride reload
+	nng_id_map *ext_qos_db; // store nano_qos_db for pre-configured sessions
 };
 
 typedef struct conf conf;
@@ -661,10 +679,9 @@ NNG_DECL void conf_fini(conf *nanomq_conf);
 NNG_DECL void conf_update(const char *fpath, const char *key, char *value);
 NNG_DECL void conf_update2(const char *fpath, const char *key1,
     const char *key2, const char *key3, char *value);
-NNG_DECL void
-conf_bridge_node_parse(
-    conf_bridge_node *node, conf_sqlite *bridge_sqlite, cJSON *obj);
+NNG_DECL void conf_bridge_node_parse(conf_bridge_node *node, conf_sqlite *bridge_sqlite, cJSON *obj);
 NNG_DECL void conf_bridge_node_destroy(conf_bridge_node *node);
+NNG_DECL void conf_session_node_parse(conf_session_node *node, cJSON *obj);
 
 NNG_DECL void conf_update_var(
     const char *fpath, const char *key, uint8_t type, void *var);
