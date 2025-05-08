@@ -278,11 +278,12 @@ static struct parquet_data_ret *ringbus_parquet_data_ret_init(struct stream_data
 	parquet_data_ret->ts = nng_alloc(sizeof(uint64_t) * stream_data_out->row_len);
 	memcpy(parquet_data_ret->ts, stream_data_out->ts, sizeof(uint64_t) * stream_data_out->row_len);
 
-	for (uint32_t i = 0; i < stream_data_out->col_len; i++) {
+	/* Don't copy ts column */
+	for (uint32_t i = 1; i < stream_data_out->col_len; i++) {
 		for (uint32_t j = 0; j < cmd_data->schema_len; j++) {
 			if (strcmp(stream_data_out->schema[i], cmd_data->schema[j]) == 0) {
-				parquet_data_ret->schema[new_index] = stream_data_out->schema[i];
-				parquet_data_ret->payload_arr[new_index] = stream_data_out->payload_arr[i];
+				parquet_data_ret->schema[new_index] = stream_data_out->schema[i - 1];
+				parquet_data_ret->payload_arr[new_index] = stream_data_out->payload_arr[i - 1];
 				new_index++;
 				break;
 			}
