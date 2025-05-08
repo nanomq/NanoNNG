@@ -50,7 +50,6 @@ enum exchange_reason_codes {
 	EXCHANGE_ERR_KEY,
 	EXCHANGE_ERR_CMD,
 	EXCHANGE_ERR_RB_DECODE,
-	EXCHANGE_ERR_RB_SEARCH,
 	EXCHANGE_ERR_PAR_DECODE,
 	EXCHANGE_ERR_PAR_DATA_DECODE,
 	EXCHANGE_ERR_PAR_SEARCH,
@@ -444,8 +443,6 @@ static void query_send_sync(exchange_sock_t *s, struct cmd_data *cmd_data, int r
 			}
 		}
 		nng_free(parquet_decoded_data, sizeof(struct stream_decoded_data *) * parquet_decoded_data_len);
-	} else {
-		rc[0] = EXCHANGE_ERR_PAR_DECODE;
 	}
 #endif
 
@@ -549,7 +546,7 @@ static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data, int 
 		}
 		nng_free(msgList, sizeof(nng_msg *) * count);
 	} else {
-		rc[1] = EXCHANGE_ERR_RB_SEARCH;
+		rc[1] = EXCHANGE_ERR_NONE;
 		log_warn("ringbus failed! count: %d", count);
 	}
 
