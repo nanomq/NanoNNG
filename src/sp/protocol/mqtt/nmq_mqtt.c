@@ -1424,11 +1424,14 @@ nano_sock_setdb(void *arg, void *data)
 
 	// check pre-configured session id
 	// or switch to lmq for better msg rate?
-	void *qos_db;
-	nni_qos_db_init_id_hash(qos_db);
-	char clientid[12] = "diagnostic";
-	uint32_t hashn = DJBHashn("diagnostic", strlen(clientid));
-	nng_id_set(nano_conf->ext_qos_db, hashn, qos_db);
+	for (size_t y = 0; y < nano_conf->pre_sessions.count; y++) {
+		conf_session_node *node = nano_conf->pre_sessions.nodes[y];
+		uint32_t hashn = DJBHashn(node->clientid, strlen(node->clientid));
+		void *qos_db;
+		nni_qos_db_init_id_hash(qos_db);
+		nng_id_set(nano_conf->ext_qos_db, hashn, qos_db);
+	}
+
 }
 
 // This is the global protocol structure -- our linkage to the core.
