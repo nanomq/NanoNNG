@@ -352,6 +352,8 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_time(config, max_awaiting_rel, jso_mqtt);
 		hocon_read_time(config, await_rel_timeout, jso_mqtt);
 	}
+	config->ext_qos_db = nni_zalloc(sizeof(nni_id_map));
+	nni_id_map_init((nni_id_map *)config->ext_qos_db, 0, 0, false);
 
 	cJSON *jso_listeners = cJSON_GetObjectItem(jso, "listeners");
 	if (jso_listeners) {
@@ -644,6 +646,29 @@ conf_web_hook_parse_rules_ver2(conf *config, cJSON *jso)
 		cvector_push_back(webhook->rules, hook_rule);
 		webhook->rule_count = cvector_size(webhook->rules);
 	}
+
+	return;
+}
+
+static void
+conf_pre_session_parse_ver2(conf *config, cJSON *jso)
+{
+	cJSON *node_array = hocon_get_obj("preset.session", jso);
+	cJSON *node_item  = NULL;
+
+	config->bridge.nodes       = NULL;
+	cJSON_ArrayForEach(node_item, node_array)
+	{
+		if (nng_strcasecmp(node_item->string, "cache") == 0) {
+		} else {
+			conf_session_node *node = NNI_ALLOC_STRUCT(node);
+			conf_session_node_init(node);
+			conf_session_node_parse(node, node_item);
+			cvector_push_back(config->pre_sessions.nodes, node);
+		}
+	}
+
+	config->bridge.count = cvector_size(config->bridge.nodes);
 
 	return;
 }
@@ -1132,6 +1157,35 @@ conf_bridge_quic_parse_ver2(conf_bridge_node *node, cJSON *jso_bridge_node)
 #endif
 
 void
+conf_session_node_parse(conf_session_node *node, cJSON *obj)
+{
+	node->name = nng_strdup(obj->string);
+
+	cJSON *subscriptions = hocon_get_obj("topic", obj);
+
+	cJSON *subscription = NULL;
+	cJSON_ArrayForEach(subscription, subscriptions)
+	{
+		topics *s = NNI_ALLOC_STRUCT(s);
+		s->retain = NO_RETAIN;
+		hocon_read_str(s, remote_topic, subscription);
+		hocon_read_num(s, qos, subscription);
+		cJSON *jso_key = cJSON_GetObjectItem(subscription, "retain");
+		if (cJSON_IsNumber(jso_key) &&
+		    (jso_key->valuedouble == 0 || jso_key->valuedouble == 1)) {
+			s->retain = jso_key->valuedouble;
+		}
+		hocon_read_num(s, retain_as_published, subscription);
+		hocon_read_num(s, retain_handling, subscription);
+		s->remote_topic_len = strlen(s->remote_topic);
+		s->stream_id = 0;
+		hocon_read_num(s, stream_id, subscription);
+		cvector_push_back(node->sub_list, s);
+	}
+	node->sub_count = cvector_size(node->sub_list);
+}
+
+void
 conf_bridge_node_parse(
     conf_bridge_node *node, conf_sqlite *bridge_sqlite, cJSON *obj)
 {
@@ -1155,27 +1209,27 @@ conf_bridge_node_parse(
 		hocon_read_str(s, local_topic, forward);
 		hocon_read_str(s, prefix, forward);
 		hocon_read_str(s, suffix, forward);
-		 if (s->suffix != NULL) {
-			 s->suffix_len = strlen(s->suffix);
-			 if (strstr(s->suffix, "+") != NULL ||
-			     strstr(s->suffix, "#") != NULL) {
-				 log_error(
-				     "No wildcard +/# should be contained in "
-				     "prefix/suffix in forward rules.");
-				 break;
-			 }
+		if (s->suffix != NULL) {
+		 s->suffix_len = strlen(s->suffix);
+		 if (strstr(s->suffix, "+") != NULL ||
+		     strstr(s->suffix, "#") != NULL) {
+			 log_error(
+			     "No wildcard +/# should be contained in "
+			     "prefix/suffix in forward rules.");
+			 break;
 		 }
+		}
 
-		 if (s->prefix != NULL) {
-			 if (strstr(s->prefix, "+") != NULL ||
-			     strstr(s->prefix, "#") != NULL) {
-				 log_error(
-				     "No wildcard +/# should be contained in "
-				     "prefix/suffix in forward rules.");
-				 break;
-			 }
-			 s->prefix_len = strlen(s->prefix);
-		 }
+		if (s->prefix != NULL) {
+			if (strstr(s->prefix, "+") != NULL ||
+			    strstr(s->prefix, "#") != NULL) {
+				log_error(
+				    "No wildcard +/# should be contained in "
+				    "prefix/suffix in forward rules.");
+				break;
+			}
+			s->prefix_len = strlen(s->prefix);
+		}
 
 		cJSON *jso_key = cJSON_GetObjectItem(forward, "retain");
 		if (cJSON_IsNumber(jso_key) &&
@@ -1999,6 +2053,7 @@ conf_parse_ver2(conf *config)
 		conf_log_parse_ver2(config, jso);
 #endif
 		conf_webhook_parse_ver2(config, jso);
+		conf_pre_session_parse_ver2(config, jso);
 		conf_authorization_prase_ver2(config, jso);
 		conf_bridge_parse_ver2(config, jso);
 		conf_exchange_parse_ver2(config, jso);
