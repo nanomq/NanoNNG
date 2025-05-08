@@ -763,6 +763,7 @@ nni_mqtt_qos_db_get_retain(sqlite3 *db, const char *topic)
 		sqlite3_free(bytes);
 		uint8_t proto_ver = sqlite3_column_int(stmt, 1);
 		nni_mqtt_msg_proto_data_alloc(msg);
+		// TODO: decode multiple times. performance tunning
 		if (proto_ver == MQTT_PROTOCOL_VERSION_v5) {
 			nni_mqttv5_msg_decode(msg);
 		} else {
