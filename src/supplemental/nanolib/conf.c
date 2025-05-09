@@ -994,6 +994,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->auth_http.timeout         = 5;
 	nanomq_conf->auth_http.connect_timeout = 5;
 	nanomq_conf->auth_http.pool_size       = 32;
+	nanomq_conf->ext_qos_db                = NULL;
 }
 
 static void
@@ -4496,7 +4497,8 @@ conf_fini(conf *nanomq_conf)
 	conf_tcplist_destroy(&nanomq_conf->tcp_list);
 	conf_tlslist_destroy(&nanomq_conf->tls_list);
 
-	nni_id_map_fini((nni_id_map *)nanomq_conf->ext_qos_db);
+	if (nanomq_conf->ext_qos_db)
+		nni_id_map_fini((nni_id_map *)nanomq_conf->ext_qos_db);
 	nni_free(nanomq_conf->ext_qos_db, sizeof(nni_id_map));
 
 #if defined(SUPP_PARQUET)
