@@ -1244,24 +1244,31 @@ trantest_mqttv5_broker_send_recv(trantest *tt)
 		params.qos      = qos;
 
 		trantest_broker_start(tt, listener);
+		// Wait broker to start.
+		nng_msleep(20);
+
 		// create client and send CONNECT msg to establish connection.
 		client_connect(&tt->reqsock, &dialer, url, MQTT_PROTOCOL_VERSION_v5);
 		So((client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true)) != NULL);
 
-		// recv aio may be slightly behind.
-		nng_msleep(100);
-
 		// server recv CONNECT msg.
 		nng_ctx_recv(work->ctx, work->aio);
+
+		// recv aio may be slightly behind.
+		nng_msleep(20);
 		So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
+
 		// we don't need conn_parm in trantest so we just free it.
 		So((cp = nng_msg_get_conn_param(rmsg)) != NULL);
-		// send CONNACK back to the client.
+		// server send CONNACK back to the client.
 		nng_aio_set_msg(work->aio, rmsg);
+		nng_pipe pipe = nng_msg_get_pipe(rmsg);
+		nng_aio_set_prov_data(work->aio, &pipe.id);
 		nng_ctx_send(work->ctx, work->aio);
 		// cp is cloned in protocol layer, so we free it here
 		conn_param_free(cp);
 
+		nng_msleep(20);
 		// client recv CONNACK msg.
 		So(nng_recvmsg(tt->reqsock, &msg, 0) == 0);
 		So(nng_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNACK);
@@ -1269,7 +1276,7 @@ trantest_mqttv5_broker_send_recv(trantest *tt)
 
 		// client send sub & server send suback.
 		trantest_mqtt_sub_send(tt->reqsock, client, true);
-		nng_msleep(100);
+		nng_msleep(20);
 		nng_ctx_recv(work->ctx, work->aio);
 		So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
 		So(nng_msg_get_type(rmsg) == CMD_SUBSCRIBE);
@@ -1284,6 +1291,7 @@ trantest_mqttv5_broker_send_recv(trantest *tt)
 		So(encode_suback_msg(rmsg, work) == 0);
 		nng_msg_set_cmd_type(rmsg, CMD_SUBACK);
 		nng_aio_set_msg(work->aio, rmsg);
+		nng_aio_set_prov_data(work->aio, &pipe.id);
 		nng_ctx_send(work->ctx, work->aio);
 
 		// client send pub msg & server send pub msg.
@@ -1294,6 +1302,7 @@ trantest_mqttv5_broker_send_recv(trantest *tt)
 		So(nng_msg_get_type(rmsg) == CMD_PUBLISH);
 		nng_msg_set_cmd_type(rmsg, CMD_PUBLISH_V5);
 		nng_aio_set_msg(work->aio, rmsg);
+		nng_aio_set_prov_data(work->aio, &pipe.id);
 		nng_ctx_send(work->ctx, work->aio);
 
 		//client recv pub msg.
@@ -1310,6 +1319,7 @@ trantest_mqttv5_broker_send_recv(trantest *tt)
 		So(decode_unsub_msg(work) == 0);
 		So(encode_unsuback_msg(rmsg, work) == 0);
 		nng_aio_set_msg(work->aio, rmsg);
+		nng_aio_set_prov_data(work->aio, &pipe.id);
 		nng_ctx_send(work->ctx, work->aio);
 
 		// nmq_broker will check connmsg when connection is
