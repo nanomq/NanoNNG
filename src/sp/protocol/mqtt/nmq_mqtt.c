@@ -400,7 +400,9 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	log_trace(" ******** working with pipe id : %d ctx ******** ", pipe);
 	if ((p = nni_id_get(&s->pipes, pipe)) == NULL) {
 		// pre-configured session
-		void *qos_db = nng_id_get(s->conf->ext_qos_db, pipe);
+		void *qos_db = NULL;
+		if (s->conf->ext_qos_db)
+			 qos_db = nng_id_get(s->conf->ext_qos_db, pipe);
 		if (qos_db != NULL) {
 			if (nni_msg_get_type(msg) == CMD_PUBLISH &&
 			    nni_msg_get_pub_qos(msg) > 0) {
@@ -852,7 +854,9 @@ session_keeping:
 	}
 
 	// Dont need to manage id_map while enable SQLite.
-	void *qos_db = nng_id_get(s->conf->ext_qos_db, p->pipe->p_id);
+	void *qos_db = NULL;
+	if (s->conf->ext_qos_db)
+		qos_db = nng_id_get(s->conf->ext_qos_db, p->pipe->p_id);
 	if (qos_db != NULL && !s->conf->sqlite.enable) {
 		// check sqlite compatibility
 		if (p->nano_qos_db != NULL)
