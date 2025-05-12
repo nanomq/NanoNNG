@@ -622,6 +622,9 @@ struct conf {
 	bool       daemon;
 	bool       ipc_internal;
 	bool       bridge_mode;				// global switch of bridging for hot update
+#if defined(SUPP_LICENSE)
+	char      *license_file;
+#endif
 
 	conf_tcp_list        tcp_list;
 	conf_tls_list        tls_list;
