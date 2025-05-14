@@ -68,7 +68,7 @@ iter_retains_db(void *k, void *v, void *arg)
 	cJSON_AddStringToObject(retainjson, "topic", item->topic);
 	cJSON_AddStringToObject(retainjson, "clientid", item->clientid);
 
-	cJSON_AddItemToArray(retainjson, arg);
+	cJSON_AddItemToArray(arg, retainjson);
 }
 
 char *
