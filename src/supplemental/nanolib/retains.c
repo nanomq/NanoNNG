@@ -34,6 +34,7 @@ int
 retains_db_add_item(nng_id_map *map, const char *topic, const char *clientid, nng_msg *msg)
 {
 	uint32_t id = DJBHashn((char *)topic, strlen(topic));
+	log_debug("in: %d->%s,%s,%p", id, topic, clientid, msg);
 	retains_db_item *old;
 	retains_db_item *item = new_item(topic, clientid, msg);
 	if (NULL != (old = nng_id_get(map, id))) {
@@ -45,6 +46,7 @@ retains_db_add_item(nng_id_map *map, const char *topic, const char *clientid, nn
 void
 retains_db_rm_item(nng_id_map *map, const char *topic)
 {
+	log_debug("out: %s", topic);
 	uint32_t id = DJBHashn((char *)topic, strlen(topic));
 	retains_db_item *old;
 	if (NULL != (old = nng_id_get(map, id))) {
@@ -56,6 +58,7 @@ retains_db_rm_item(nng_id_map *map, const char *topic)
 static inline void
 iter_retains_db(void *k, void *v, void *arg)
 {
+	log_debug("iter: %d->%p", *(uint32_t *)k, v);
 	if (!v)
 		return;
 	(void) k;
@@ -75,6 +78,8 @@ retains_json_all_items(nng_id_map *map)
 	cJSON *arrjson = cJSON_CreateArray();
 	nng_id_map_foreach2(map, iter_retains_db, arrjson);
 	cJSON_AddItemToObject(resjson, "retains", arrjson);
-	return cJSON_PrintUnformatted(resjson);
+	char *res = cJSON_PrintUnformatted(resjson);
+	cJSON_Delete(resjson);
+	return res;
 }
 
