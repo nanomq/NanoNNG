@@ -16,6 +16,7 @@
 #include "nng/supplemental/nanolib/hocon.h"
 #include "nng/supplemental/tls/tls.h"
 #include "nng/supplemental/nanolib/nanolib.h"
+#include "nng/supplemental/util/idhash.h"
 #include <ctype.h>
 
 static void conf_bridge_parse(conf *nanomq_conf, const char *path);
@@ -50,6 +51,8 @@ static void conf_sqlite_destroy(conf_sqlite *sqlite);
 
 static void conf_web_hook_parse(conf_web_hook *webhook, const char *path);
 static void conf_web_hook_destroy(conf_web_hook *web_hook);
+
+static void conf_preset_sessions_init(conf_preset_session *session);
 
 #if defined(ENABLE_LOG)
 static void conf_log_init(conf_log *log);
@@ -1003,6 +1006,8 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->auth_http.connect_timeout = 5;
 	nanomq_conf->auth_http.pool_size       = 32;
 	nanomq_conf->ext_qos_db                = NULL;
+	nng_id_map_alloc(&nanomq_conf->retains_db, 0, 0, false);
+	conf_preset_sessions_init(&nanomq_conf->pre_sessions);
 }
 
 static void
@@ -4528,9 +4533,14 @@ conf_fini(conf *nanomq_conf)
 	conf_tcplist_destroy(&nanomq_conf->tcp_list);
 	conf_tlslist_destroy(&nanomq_conf->tls_list);
 
-	if (nanomq_conf->ext_qos_db)
+	if (nanomq_conf->ext_qos_db) {
 		nni_id_map_fini((nni_id_map *)nanomq_conf->ext_qos_db);
-	nni_free(nanomq_conf->ext_qos_db, sizeof(nni_id_map));
+		nni_free(nanomq_conf->ext_qos_db, sizeof(nni_id_map));
+	}
+
+	if (nanomq_conf->retains_db) {
+		nng_id_map_free(nanomq_conf->retains_db);
+	}
 
 #if defined(SUPP_PARQUET)
 	conf_parquet_destroy(&nanomq_conf->parquet);
