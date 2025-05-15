@@ -11,11 +11,13 @@
 #include "core/sockimpl.h"
 
 static retains_db_item *
-new_item(const char *topic, const char *clientid, nng_msg *msg)
+new_item(const char *topic, const char *clientid, nng_time ts, uint8_t qos, nng_msg *msg)
 {
 	retains_db_item *item = nng_alloc(sizeof(retains_db_item));
 	item->topic = strdup(topic);
 	item->clientid = strdup(clientid);
+	item->ts = ts;
+	item->qos = qos;
 	nng_msg_clone(msg);
 	item->msg = msg;
 	return item;
@@ -34,9 +36,11 @@ int
 retains_db_add_item(nng_id_map *map, const char *topic, const char *clientid, nng_msg *msg)
 {
 	uint32_t id = DJBHashn((char *)topic, strlen(topic));
-	log_debug("in: %d->%s,%s,%p", id, topic, clientid, msg);
+	nng_time ts = nng_timestamp();
+	uint8_t qos = nng_mqtt_msg_get_publish_qos(msg);
+	log_debug("in: %d->t<%s>,cid<%s>,ts<%ld>,q<%d>", id, topic, clientid, ts, qos);
 	retains_db_item *old;
-	retains_db_item *item = new_item(topic, clientid, msg);
+	retains_db_item *item = new_item(topic, clientid, ts, qos, msg);
 	if (NULL != (old = nng_id_get(map, id))) {
 		free_item(old);
 	}
