@@ -71,6 +71,10 @@ iter_retains_db(void *k, void *v, void *arg)
 	cJSON *retainjson = cJSON_CreateObject();
 	cJSON_AddStringToObject(retainjson, "topic", item->topic);
 	cJSON_AddStringToObject(retainjson, "clientid", item->clientid);
+	cJSON_AddNumberToObject(retainjson, "qos", item->qos);
+	char ts[32];
+	sprintf(ts, "%ld", item->ts);
+	cJSON_AddStringToObject(retainjson, "ts", ts);
 
 	cJSON_AddItemToArray(arg, retainjson);
 }
