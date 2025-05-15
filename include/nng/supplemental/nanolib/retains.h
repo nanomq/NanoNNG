@@ -9,6 +9,8 @@ struct retains_db_item {
 	uint8_t  qos;
 	char    *clientid;
 	nng_time ts;
+	uint8_t *bin;
+	uint32_t binsz;
 	nng_msg *msg;
 };
 typedef struct retains_db_item retains_db_item;
