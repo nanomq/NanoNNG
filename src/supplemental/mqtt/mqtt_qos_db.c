@@ -141,7 +141,7 @@ static void
 set_db_pragma(sqlite3 *db)
 {
 	sqlite3_exec(db, "PRAGMA journal_mode=WAL", NULL, 0, 0);
-	sqlite3_exec(db, "PRAGMA synchronous=FULL", NULL, 0, 0);
+	sqlite3_exec(db, "PRAGMA synchronous=NORMAL", NULL, 0, 0);
 	sqlite3_exec(db, "PRAGMA wal_autocheckpoint", NULL, 0, 0);
 }
 
