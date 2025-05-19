@@ -1497,47 +1497,49 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 #endif
 				log_warn("client sending msg while "
 				         "disconnected! ctx cached");
-			} else {
-				nni_mtx_unlock(&s->mtx);
+				return;
+			}
+		}
+		nni_mtx_unlock(&s->mtx);
+		if (qos > 0) {
+#ifdef NNG_HAVE_MQTT_BROKER
+			if (nni_lmq_full(s->bridge_conf->ctx_msgs)) {
+				log_warn(
+				    "Rolling update overwrites old Message");
+				nni_msg *tmsg;
+				(void) nni_lmq_get(
+				    s->bridge_conf->ctx_msgs, &tmsg);
+#ifdef NNG_ENABLE_STATS
+				nni_stat_inc(&s->msg_send_drop, 1);
+#endif
+				nni_msg_free(tmsg);
+			}
+			if (nng_lmq_put(s->bridge_conf->ctx_msgs, msg) != 0) {
+				log_warn(
+				    "Msg lost! put msg to ctx_msgs failed!");
 				nni_msg_free(msg);
 #ifdef NNG_ENABLE_STATS
 				nni_stat_inc(&s->msg_send_drop, 1);
 #endif
-				nni_aio_set_msg(aio, NULL);
-				// TODO deal with it in bridge resend aio cb?
-				nni_aio_finish_error(aio, NNG_EAGAIN);
-			}
-		} else {
-			nni_mtx_unlock(&s->mtx);
-			if (qos > 0) {
-#ifdef NNG_HAVE_MQTT_BROKER
-				if (nni_lmq_full(s->bridge_conf->ctx_msgs)) {
-					log_warn("Rolling update overwrites old Message");
-					nni_msg *tmsg;
-					(void) nni_lmq_get(s->bridge_conf->ctx_msgs, &tmsg);
-#ifdef NNG_ENABLE_STATS
-					nni_stat_inc(&s->msg_send_drop, 1);
-#endif
-					nni_msg_free(tmsg);
-				}
-				if (nng_lmq_put(s->bridge_conf->ctx_msgs, msg) != 0) {
-					log_warn("Msg lost! put msg to ctx_msgs failed!");
-					nni_msg_free(msg);
-#ifdef NNG_ENABLE_STATS
-					nni_stat_inc(&s->msg_send_drop, 1);
-#endif
-				}
-#else
-				nni_msg_free(msg);
-#endif
 			} else {
-				nni_msg_free(msg);
-				log_info("Discard QoS 0 msg while disconnected!");
+#ifdef NNG_ENABLE_STATS
+				nni_stat_inc(
+				    &s->msg_bytes_cached, nni_msg_len(msg));
+#endif
 			}
-
-			nni_aio_set_msg(aio, NULL);
-			nni_aio_finish_error(aio, NNG_ECLOSED);
+#else
+			nni_msg_free(msg);
+#endif
+		} else {
+			nni_msg_free(msg);
+			log_info("Discard QoS 0 msg while disconnected!");
+#ifdef NNG_ENABLE_STATS
+			nni_stat_inc(&s->msg_send_drop, 1);
+#endif
 		}
+
+		nni_aio_set_msg(aio, NULL);
+		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
 	}
 	mqtt_send_msg(aio, ctx, s);
