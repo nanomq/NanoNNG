@@ -255,25 +255,28 @@ test_insert_retain()
 	nng_msg_alloc(&retain8, 0);
 	nng_msg_alloc(&retain9, 0);
 
-	dbtree_insert_retain(db_ret, topic00, retain0);
+	char *cid = NULL;
+	char *ts = NULL;
+
+	dbtree_insert_retain(db_ret, topic00, retain0, cid, ts);
 	dbtree_print(db_ret);
-	dbtree_insert_retain(db_ret, topic01, retain1);
+	dbtree_insert_retain(db_ret, topic01, retain1, cid, ts);
 	dbtree_print(db_ret);
-	dbtree_insert_retain(db_ret, topic02, retain2);
+	dbtree_insert_retain(db_ret, topic02, retain2, cid, ts);
 	dbtree_print(db_ret);
-	dbtree_insert_retain(db_ret, topic03, retain3);
+	dbtree_insert_retain(db_ret, topic03, retain3, cid, ts);
 	dbtree_print(db_ret);
-	dbtree_insert_retain(db_ret, topic04, retain4);
+	dbtree_insert_retain(db_ret, topic04, retain4, cid, ts);
 	dbtree_print(db_ret);
-	dbtree_insert_retain(db_ret, topic05, retain5);
+	dbtree_insert_retain(db_ret, topic05, retain5, cid, ts);
 	dbtree_print(db_ret);
-	dbtree_insert_retain(db_ret, topic06, retain6);
+	dbtree_insert_retain(db_ret, topic06, retain6, cid, ts);
 	dbtree_print(db_ret);
-	dbtree_insert_retain(db_ret, topic07, retain7);
+	dbtree_insert_retain(db_ret, topic07, retain7, cid, ts);
 	dbtree_print(db_ret);
-	dbtree_insert_retain(db_ret, topic08, retain8);
+	dbtree_insert_retain(db_ret, topic08, retain8, cid, ts);
 	dbtree_print(db_ret);
-	dbtree_insert_retain(db_ret, topic09, retain9);
+	dbtree_insert_retain(db_ret, topic09, retain9, cid, ts);
 	dbtree_print(db_ret);
 }
 
