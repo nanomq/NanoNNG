@@ -286,7 +286,6 @@ dbtree_get_retain_tree(dbtree *db, void *(*cb)(nng_msg *retain))
 
 			cvector_push_back(ret_line_ping, vn);
 
-			vn->topic   = nni_strdup(nodes[i]->topic);
 			vn->cld_cnt = cvector_size(nodes[i]->child);
 			for (size_t j = 0; j < (size_t) vn->cld_cnt; j++) {
 				cvector_push_back(
@@ -309,7 +308,6 @@ dbtree_get_retain_tree(dbtree *db, void *(*cb)(nng_msg *retain))
 
 			cvector_push_back(ret_line_pang, vn);
 
-			vn->topic   = nni_strdup(nodes_t[i]->topic);
 			vn->cld_cnt = cvector_size(nodes_t[i]->child);
 			for (size_t j = 0; j < (size_t) vn->cld_cnt; j++) {
 				cvector_push_back(
