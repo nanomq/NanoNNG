@@ -6,8 +6,7 @@
 #include "nng/supplemental/nanolib/conf.h"
 
 
-NNG_DECL void validate_and_preprocess_topics(topics* s);
+NNG_DECL void preprocess_topics(topics* s);
 NNG_DECL void generate_repub_topic(const topics* s, const char* topic);
-
 
 #endif
