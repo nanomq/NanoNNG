@@ -96,10 +96,12 @@ NNG_DECL uint32_t *dbtree_find_clients(dbtree *db, char *topic);
  * @param db - dbtree
  * @param topic - topic
  * @param ret_msg - dbtree_retain_msg
+ * @param cid - clientid
+ * @param ts - timestamp
  * @return
  */
 NNG_DECL nng_msg *dbtree_insert_retain(
-    dbtree *db, char *topic, nng_msg *ret_msg);
+    dbtree *db, char *topic, nng_msg *ret_msg, char *cid, char *ts);
 
 /**
  * @brief dbtree_delete_retain - Delete all retain message to this topic.
