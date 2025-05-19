@@ -279,10 +279,15 @@ dbtree_get_retain_tree(dbtree *db, void *(*cb)(nng_msg *retain))
 		for (size_t i = 0; i < cvector_size(nodes); i++) {
 			dbtree_info *vn = nni_zalloc(sizeof(dbtree_info));
 			vn->clients     = NULL;
-			if (cb && nodes[i]->retain) {
+			char *cid       = nodes[i]->ret_ex[0];
+			char *ts        = nodes[i]->ret_ex[1];
+			if (cb && nodes[i]->retain && cid && ts) {
 				void *val = cb(nodes[i]->retain);
-				if (val)
+				if (val) {
 					cvector_push_back(vn->clients, val);
+					cvector_push_back(vn->clients, (void *)strdup(cid));
+					cvector_push_back(vn->clients, (void *)strdup(ts));
+				}
 			}
 
 			cvector_push_back(ret_line_ping, vn);
@@ -301,10 +306,15 @@ dbtree_get_retain_tree(dbtree *db, void *(*cb)(nng_msg *retain))
 		for (size_t i = 0; i < cvector_size(nodes_t); i++) {
 			dbtree_info *vn = nni_zalloc(sizeof(dbtree_info));
 			vn->clients     = NULL;
-			if (cb && nodes_t[i]->retain) {
+			char *cid       = nodes_t[i]->ret_ex[0];
+			char *ts        = nodes_t[i]->ret_ex[1];
+			if (cb && nodes_t[i]->retain && cid && ts) {
 				void *val = cb(nodes_t[i]->retain);
-				if (val)
+				if (val) {
 					cvector_push_back(vn->clients, val);
+					cvector_push_back(vn->clients, (void *)strdup(cid));
+					cvector_push_back(vn->clients, (void *)strdup(ts));
+				}
 			}
 
 			cvector_push_back(ret_line_pang, vn);
