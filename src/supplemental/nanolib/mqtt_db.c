@@ -30,6 +30,7 @@ struct dbtree_node {
 	int      plus;
 	int      well;
 	nng_msg *retain;
+	void    *ret_ex[2]; // retain ex infos [clientid, ts]
 	cvector(uint32_t) clients;
 	cvector(dbtree_node *) child;
 	nni_rwlock rwlock;
@@ -449,6 +450,7 @@ dbtree_node_new(char *topic)
 	log_debug("New node: [%s]", node->topic);
 
 	node->retain  = NULL;
+	*node->ret_ex = NULL;
 	node->child   = NULL;
 	node->clients = NULL;
 	node->well    = -1;
@@ -1092,14 +1094,19 @@ mem_free:
 static void *
 insert_dbtree_retain(dbtree_node *node, void *args)
 {
-	nng_msg *retain = (nng_msg *) args;
-	void *             ret    = NULL;
+	nng_msg *retain = (nng_msg *) ((void **)args)[0];
+	char *cid       = (char *) ((void **)args)[1];
+	char *ts        = (char *) ((void **)args)[2];
+	void *ret       = NULL;
+
 	nni_rwlock_wrlock(&(node->rwlock));
 	if (node->retain != NULL) {
 		ret = node->retain;
 	}
 
-	node->retain = retain;
+	node->retain    = retain;
+	node->ret_ex[0] = cid;
+	node->ret_ex[1] = ts;
 
 	nni_rwlock_unlock(&(node->rwlock));
 
@@ -1107,9 +1114,13 @@ insert_dbtree_retain(dbtree_node *node, void *args)
 }
 
 nng_msg *
-dbtree_insert_retain(dbtree *db, char *topic, nng_msg *ret_msg)
+dbtree_insert_retain(dbtree *db, char *topic, nng_msg *ret_msg, char *cid, char *ts)
 {
-	return search_insert_node(db, topic, ret_msg, insert_dbtree_retain);
+	void *args[3];
+	args[0] = ret_msg;
+	args[1] = cid;
+	args[2] = ts;
+	return search_insert_node(db, topic, (void *)args, insert_dbtree_retain);
 }
 
 nng_msg **
@@ -1294,8 +1305,16 @@ delete_dbtree_retain(dbtree_node *node)
 	}
 	void *retain = NULL;
 	if (node) {
-		retain       = node->retain;
-		node->retain = NULL;
+		retain          = node->retain;
+		node->retain    = NULL;
+		if (node->ret_ex[0]) {
+			nng_free(node->ret_ex[0], 0);
+			node->ret_ex[0] = NULL;
+		}
+		if (node->ret_ex[1]) {
+			nng_free(node->ret_ex[1], 0);
+			node->ret_ex[1] = NULL;
+		}
 	}
 
 	return retain;
