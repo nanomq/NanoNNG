@@ -258,6 +258,72 @@ dbtree_get_tree(dbtree *db, void *(*cb)(uint32_t pipe_id))
 	return (void ***) ret;
 }
 
+void ***
+dbtree_get_retain_tree(dbtree *db, void *(*cb)(nng_msg *retain))
+{
+	if (db == NULL) {
+		return NULL;
+	}
+
+	nni_rwlock_wrlock(&(db->rwlock));
+
+	dbtree_node *  node    = db->root;
+	dbtree_node ** nodes   = NULL;
+	dbtree_node ** nodes_t = NULL;
+	dbtree_info ***ret     = NULL;
+
+	cvector_push_back(nodes, node);
+	while (!cvector_empty(nodes)) {
+		dbtree_info **ret_line_ping = NULL;
+		for (size_t i = 0; i < cvector_size(nodes); i++) {
+			dbtree_info *vn = nni_zalloc(sizeof(dbtree_info));
+			vn->clients     = NULL;
+			if (cb && nodes[i]->retain) {
+				void *val = cb(nodes[i]->retain);
+				if (val)
+					cvector_push_back(vn->clients, val);
+			}
+
+			cvector_push_back(ret_line_ping, vn);
+
+			vn->topic   = nni_strdup(nodes[i]->topic);
+			vn->cld_cnt = cvector_size(nodes[i]->child);
+			for (size_t j = 0; j < (size_t) vn->cld_cnt; j++) {
+				cvector_push_back(
+				    nodes_t, (nodes[i]->child)[j]);
+			}
+		}
+		cvector_push_back(ret, ret_line_ping);
+		cvector_free(nodes);
+		nodes = NULL;
+
+		dbtree_info **ret_line_pang = NULL;
+		for (size_t i = 0; i < cvector_size(nodes_t); i++) {
+			dbtree_info *vn = nni_zalloc(sizeof(dbtree_info));
+			vn->clients     = NULL;
+			if (cb && nodes_t[i]->retain) {
+				void *val = cb(nodes_t[i]->retain);
+				if (val)
+					cvector_push_back(vn->clients, val);
+			}
+
+			cvector_push_back(ret_line_pang, vn);
+
+			vn->topic   = nni_strdup(nodes_t[i]->topic);
+			vn->cld_cnt = cvector_size(nodes_t[i]->child);
+			for (size_t j = 0; j < (size_t) vn->cld_cnt; j++) {
+				cvector_push_back(
+				    nodes, (nodes_t[i]->child)[j]);
+			}
+		}
+		cvector_push_back(ret, ret_line_pang);
+		cvector_free(nodes_t);
+		nodes_t = NULL;
+	}
+	nni_rwlock_unlock(&(db->rwlock));
+	return (void ***) ret;
+}
+
 /**
  * @brief dbtree_print - Print dbtree for debug.
  * @param dbtree - dbtree
