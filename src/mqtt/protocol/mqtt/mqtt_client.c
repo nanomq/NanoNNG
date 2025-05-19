@@ -1504,27 +1504,23 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 		if (qos > 0) {
 #ifdef NNG_HAVE_MQTT_BROKER
 			if (nni_lmq_full(s->bridge_conf->ctx_msgs)) {
-				log_warn(
-				    "Rolling update overwrites old Message");
+				log_warn("Rolling update overwrites old Message");
 				nni_msg *tmsg;
-				(void) nni_lmq_get(
-				    s->bridge_conf->ctx_msgs, &tmsg);
+				(void) nni_lmq_get(s->bridge_conf->ctx_msgs, &tmsg);
 #ifdef NNG_ENABLE_STATS
 				nni_stat_inc(&s->msg_send_drop, 1);
 #endif
 				nni_msg_free(tmsg);
 			}
 			if (nng_lmq_put(s->bridge_conf->ctx_msgs, msg) != 0) {
-				log_warn(
-				    "Msg lost! put msg to ctx_msgs failed!");
+				log_warn("Msg lost! put msg to ctx_msgs failed!");
 				nni_msg_free(msg);
 #ifdef NNG_ENABLE_STATS
 				nni_stat_inc(&s->msg_send_drop, 1);
 #endif
 			} else {
 #ifdef NNG_ENABLE_STATS
-				nni_stat_inc(
-				    &s->msg_bytes_cached, nni_msg_len(msg));
+				nni_stat_inc(&s->msg_bytes_cached, nni_msg_len(msg));
 #endif
 			}
 #else
@@ -1537,7 +1533,6 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 			nni_stat_inc(&s->msg_send_drop, 1);
 #endif
 		}
-
 		nni_aio_set_msg(aio, NULL);
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
