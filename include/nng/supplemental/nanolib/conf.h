@@ -219,6 +219,8 @@ typedef struct {
 	uint32_t    remote_topic_len;
 	char       *local_topic;
 	uint32_t    local_topic_len;
+	int16_t     local_skip_level;
+	int16_t     local_save_level;
 	char       *prefix;
 	uint32_t    prefix_len;
 	char       *suffix;
