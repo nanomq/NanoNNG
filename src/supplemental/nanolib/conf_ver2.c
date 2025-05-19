@@ -10,6 +10,7 @@
 #include "nng/supplemental/nanolib/file.h"
 #include "nng/supplemental/nanolib/hocon.h"
 #include "nng/supplemental/nanolib/log.h"
+#include "nng/supplemental/nanolib/topics.h"
 #include "nng/supplemental/nanolib/ringbuffer.h"
 #include <ctype.h>
 #include <string.h>
@@ -1366,16 +1367,10 @@ conf_bridge_node_parse(
 		}
 		s->remote_topic_len = strlen(s->remote_topic);
 		s->local_topic_len  = strlen(s->local_topic);
-		for (int i = 0; i < (int) s->local_topic_len; ++i)
-			if (s->local_topic[i] == '+' ||
-			    s->local_topic[i] == '#') {
-				log_error(
-				    "No wildcard +/# should be contained in "
-				    "local topic in subscription rules");
-				break;
-			}
+
 		s->stream_id = 0;
 		hocon_read_num(s, stream_id, subscription);
+		validate_and_preprocess_topics(s);
 		cvector_push_back(node->sub_list, s);
 	}
 	node->sub_count = cvector_size(node->sub_list);
