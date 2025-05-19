@@ -135,4 +135,13 @@ NNG_DECL uint32_t *dbtree_find_shared_clients(dbtree *db, char *topic);
  */
 NNG_DECL void ***dbtree_get_tree(dbtree *db, void *(*cb)(uint32_t pipe_id));
 
+/**
+ * @brief dbtree_get_retain_tree - This function will
+ * get all info about this retain tree.
+ * @param dbtree - retain dbtree
+ * @param cb - a callback function
+ * @return all info about this tree
+ */
+NNG_DECL void ***dbtree_get_retain_tree(dbtree *db, void *(*cb)(nng_msg *retain));
+
 #endif
