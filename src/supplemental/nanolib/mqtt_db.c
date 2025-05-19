@@ -459,12 +459,13 @@ dbtree_node_new(char *topic)
 	node->topic = nni_strdup(topic);
 	log_debug("New node: [%s]", node->topic);
 
-	node->retain  = NULL;
-	*node->ret_ex = NULL;
-	node->child   = NULL;
-	node->clients = NULL;
-	node->well    = -1;
-	node->plus    = -1;
+	node->retain    = NULL;
+	node->ret_ex[0] = NULL;
+	node->ret_ex[1] = NULL;
+	node->child     = NULL;
+	node->clients   = NULL;
+	node->well      = -1;
+	node->plus      = -1;
 
 	nni_rwlock_init(&node->rwlock);
 	return node;
@@ -1113,9 +1114,15 @@ insert_dbtree_retain(dbtree_node *node, void *args)
 	if (node->retain != NULL) {
 		ret = node->retain;
 	}
+	node->retain = retain;
 
-	node->retain    = retain;
+	if (node->ret_ex[0] != NULL) {
+		nng_free(node->ret_ex[0], 0);
+	}
 	node->ret_ex[0] = cid;
+	if (node->ret_ex[1] != NULL) {
+		nng_free(node->ret_ex[1], 0);
+	}
 	node->ret_ex[1] = ts;
 
 	nni_rwlock_unlock(&(node->rwlock));
@@ -1319,12 +1326,12 @@ delete_dbtree_retain(dbtree_node *node)
 		node->retain    = NULL;
 		if (node->ret_ex[0]) {
 			nng_free(node->ret_ex[0], 0);
-			node->ret_ex[0] = NULL;
 		}
+		node->ret_ex[0] = NULL;
 		if (node->ret_ex[1]) {
 			nng_free(node->ret_ex[1], 0);
-			node->ret_ex[1] = NULL;
 		}
+		node->ret_ex[1] = NULL;
 	}
 
 	return retain;
