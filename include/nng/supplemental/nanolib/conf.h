@@ -661,7 +661,6 @@ struct conf {
 	struct hashmap_s *cid_table;
 	nng_mtx          *restapi_lk; // No other option for bride reload
 	nng_id_map       *ext_qos_db; // store nano_qos_db for pre-configured sessions
-	nng_id_map       *retains_db; // store retain msgs for restapi
 };
 
 typedef struct conf conf;
