@@ -1006,7 +1006,6 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->auth_http.connect_timeout = 5;
 	nanomq_conf->auth_http.pool_size       = 32;
 	nanomq_conf->ext_qos_db                = NULL;
-	nng_id_map_alloc(&nanomq_conf->retains_db, 0, 0, false);
 	conf_preset_sessions_init(&nanomq_conf->pre_sessions);
 }
 
@@ -4536,10 +4535,6 @@ conf_fini(conf *nanomq_conf)
 	if (nanomq_conf->ext_qos_db) {
 		nni_id_map_fini((nni_id_map *)nanomq_conf->ext_qos_db);
 		nni_free(nanomq_conf->ext_qos_db, sizeof(nni_id_map));
-	}
-
-	if (nanomq_conf->retains_db) {
-		nng_id_map_free(nanomq_conf->retains_db);
 	}
 
 #if defined(SUPP_PARQUET)
