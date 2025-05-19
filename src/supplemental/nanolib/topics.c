@@ -11,7 +11,6 @@ static int count_slashes(const char* str, size_t len) {
 }
 
 
-
 static void calculate_topic_hierarchy(topics* s) {
 
     char* current = s->local_topic;
@@ -41,6 +40,17 @@ static void calculate_topic_hierarchy(topics* s) {
     }
 }
 
+void validate_and_preprocess_topics(topics* s) {
+    if (!s || !s->remote_topic || !s->local_topic) {
+        fprintf(stderr, "Invalid input parameters\n");
+        return;
+    }
+    
+    s->remote_topic_len = strlen(s->remote_topic);
+    s->local_topic_len = strlen(s->local_topic);
 
+    calculate_topic_hierarchy(s);
+
+}
 
 
