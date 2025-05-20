@@ -25,6 +25,7 @@ nng_sources(
   log.c
   utils.c
   md5.c
+  topics.c
   )
 
 
@@ -35,6 +36,7 @@ nng_test(conf_test)
 nng_test(env_test)
 nng_test(rule_test)
 nng_test(lib_base64_test)
+nng_test(topics_test)
 
 if (SUPP_RULE_ENGINE)
   nng_sources(rule.c)
