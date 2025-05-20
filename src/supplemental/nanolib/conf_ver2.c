@@ -1325,7 +1325,7 @@ conf_bridge_node_parse(
 
 		s->stream_id = 0;
 		hocon_read_num(s, stream_id, subscription);
-		validate_and_preprocess_topics(s);
+		preprocess_topics(s);
 		cvector_push_back(node->sub_list, s);
 	}
 	node->sub_count = cvector_size(node->sub_list);
