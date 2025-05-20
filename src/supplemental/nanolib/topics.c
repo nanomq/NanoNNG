@@ -84,6 +84,7 @@ generate_repub_topic(const topics *s, char *topic)
 	}
 
 	char *new_topic = NULL;
+	const char *end_pos = current_pos;
 
 	switch (s->local_save_level) {
 	case LOCAL_TOPIC_INFINITE_LEVEL:
@@ -97,7 +98,6 @@ generate_repub_topic(const topics *s, char *topic)
 		break;
 
 	default:
-		const char *end_pos = current_pos;
 		for (int i = 0; end_pos && i < s->local_save_level; ++i) {
 			end_pos = strchr(end_pos, '/');
 			if (end_pos)
