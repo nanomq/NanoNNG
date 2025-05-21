@@ -134,6 +134,18 @@ struct nni_pipe {
 	nni_stat_item st_tx_bytes;
 #endif
 
+	// NanoMQ stats metrics
+	size_t   stm_tx_qos0;
+	size_t   stm_tx_qos1;
+	size_t   stm_tx_qos2;
+	size_t   stm_rx_qos0;
+	size_t   stm_rx_qos1;
+	size_t   stm_rx_qos2;
+	size_t   stm_tx_drop_expired;
+	size_t   stm_tx_drop_full;
+	size_t   stm_rx_drop_expired;
+	size_t   stm_rx_drop_full;
+	size_t   stm_rx_drop_invalid;
 	// NanoMQ
 	void    *conn_param;
 	bool     cache;

@@ -454,6 +454,138 @@ nni_pipe_get_conn_param(nni_pipe *p)
 	return cp;
 }
 
+size_t
+nni_pipe_get_metric_tx_qos0(nni_pipe *p)
+{
+	return p->stm_tx_qos0;
+}
+
+void
+nni_pipe_inc_metric_tx_qos0(nni_pipe *p)
+{
+	p->stm_tx_qos0++;
+}
+
+size_t
+nni_pipe_get_metric_tx_qos1(nni_pipe *p)
+{
+	return p->stm_tx_qos1;
+}
+
+void
+nni_pipe_inc_metric_tx_qos1(nni_pipe *p)
+{
+	p->stm_tx_qos1++;
+}
+
+size_t
+nni_pipe_get_metric_tx_qos2(nni_pipe *p)
+{
+	return p->stm_tx_qos2;
+}
+
+void
+nni_pipe_inc_metric_tx_qos2(nni_pipe *p)
+{
+	p->stm_tx_qos2++;
+}
+
+size_t
+nni_pipe_get_metric_rx_qos0(nni_pipe *p)
+{
+	return p->stm_rx_qos0;
+}
+
+void
+nni_pipe_inc_metric_rx_qos0(nni_pipe *p)
+{
+	p->stm_rx_qos0++;
+}
+
+size_t
+nni_pipe_get_metric_rx_qos1(nni_pipe *p)
+{
+	return p->stm_rx_qos1;
+}
+
+void
+nni_pipe_inc_metric_rx_qos1(nni_pipe *p)
+{
+	p->stm_rx_qos1++;
+}
+
+size_t
+nni_pipe_get_metric_rx_qos2(nni_pipe *p)
+{
+	return p->stm_rx_qos2;
+}
+
+void
+nni_pipe_inc_metric_rx_qos2(nni_pipe *p)
+{
+	p->stm_rx_qos2++;
+}
+
+size_t
+nni_pipe_get_metric_tx_drop_expired(nni_pipe *p)
+{
+	return p->stm_tx_drop_expired;
+}
+
+void
+nni_pipe_inc_metric_tx_drop_expired(nni_pipe *p)
+{
+	p->stm_tx_drop_expired++;
+}
+
+size_t
+nni_pipe_get_metric_tx_drop_full(nni_pipe *p)
+{
+	return p->stm_tx_drop_full;
+}
+
+void
+nni_pipe_inc_metric_tx_drop_full(nni_pipe *p)
+{
+	p->stm_tx_drop_full++;
+}
+
+size_t
+nni_pipe_get_metric_rx_drop_expired(nni_pipe *p)
+{
+	return p->stm_rx_drop_expired;
+}
+
+void
+nni_pipe_inc_metric_rx_drop_expired(nni_pipe *p)
+{
+	p->stm_rx_drop_expired++;
+}
+
+size_t
+nni_pipe_get_metric_rx_drop_full(nni_pipe *p)
+{
+	return p->stm_rx_drop_full;
+}
+
+void
+nni_pipe_inc_metric_rx_drop_full(nni_pipe *p)
+{
+	p->stm_rx_drop_full++;
+}
+
+size_t
+nni_pipe_get_metric_rx_drop_invalid(nni_pipe *p)
+{
+	return p->stm_rx_drop_invalid;
+}
+
+void
+nni_pipe_inc_metric_rx_drop_invalid(nni_pipe *p)
+{
+	p->stm_rx_drop_invalid++;
+}
+
 bool
 nni_pipe_get_status(nni_pipe *p)
 {

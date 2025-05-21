@@ -62,6 +62,30 @@ extern void nni_pipe_bump_tx(nni_pipe *, size_t);
 extern void nni_pipe_bump_error(nni_pipe *, int);
 
 // NanoMQ APIs
+extern size_t   nni_pipe_get_metric_tx_qos0(nni_pipe *p);
+extern void     nni_pipe_inc_metric_tx_qos0(nni_pipe *p);
+extern size_t   nni_pipe_get_metric_tx_qos1(nni_pipe *p);
+extern void     nni_pipe_inc_metric_tx_qos1(nni_pipe *p);
+extern size_t   nni_pipe_get_metric_tx_qos2(nni_pipe *p);
+extern void     nni_pipe_inc_metric_tx_qos2(nni_pipe *p);
+extern size_t   nni_pipe_get_metric_rx_qos0(nni_pipe *p);
+extern void     nni_pipe_inc_metric_rx_qos0(nni_pipe *p);
+extern size_t   nni_pipe_get_metric_rx_qos1(nni_pipe *p);
+extern void     nni_pipe_inc_metric_rx_qos1(nni_pipe *p);
+extern size_t   nni_pipe_get_metric_rx_qos2(nni_pipe *p);
+extern void     nni_pipe_inc_metric_rx_qos2(nni_pipe *p);
+
+extern size_t   nni_pipe_get_metric_tx_drop_expired(nni_pipe *p);
+extern void     nni_pipe_inc_metric_tx_drop_expired(nni_pipe *p);
+extern size_t   nni_pipe_get_metric_tx_drop_full(nni_pipe *p);
+extern void     nni_pipe_inc_metric_tx_drop_full(nni_pipe *p);
+extern size_t   nni_pipe_get_metric_rx_drop_expired(nni_pipe *p);
+extern void     nni_pipe_inc_metric_rx_drop_expired(nni_pipe *p);
+extern size_t   nni_pipe_get_metric_rx_drop_full(nni_pipe *p);
+extern void     nni_pipe_inc_metric_rx_drop_full(nni_pipe *p);
+extern size_t   nni_pipe_get_metric_rx_drop_invalid(nni_pipe *p);
+extern void     nni_pipe_inc_metric_rx_drop_invalid(nni_pipe *p);
+
 extern void     nni_pipe_set_conn_param(nni_pipe *p, void *c);
 extern void *   nni_pipe_get_conn_param(nni_pipe *p);
 extern bool     nni_pipe_get_status(nni_pipe *p);
