@@ -278,6 +278,17 @@ pipe_create(nni_pipe **pp, nni_sock *sock, nni_sp_tran *tran, void *tran_data)
 	p->cache     = false;
 	p->subinfol = nni_zalloc(sizeof(nni_list));
 	NNI_LIST_INIT(p->subinfol, struct subinfo, node);
+	p->stm_tx_qos0 = 0;
+	p->stm_tx_qos1 = 0;
+	p->stm_tx_qos2 = 0;
+	p->stm_rx_qos0 = 0;
+	p->stm_rx_qos1 = 0;
+	p->stm_rx_qos2 = 0;
+	p->stm_tx_drop_expired = 0;
+	p->stm_tx_drop_full = 0;
+	p->stm_rx_drop_expired = 0;
+	p->stm_rx_drop_full = 0;
+	p->stm_rx_drop_invalid = 0;
 
 	nni_atomic_init_bool(&p->p_closed);
 	nni_atomic_flag_reset(&p->p_stop);
