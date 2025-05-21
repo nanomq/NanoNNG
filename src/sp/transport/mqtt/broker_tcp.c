@@ -409,6 +409,7 @@ tcptran_pipe_nego_cb(void *arg)
 			log_info("max_packet_size of %.*s is %d",
 					p->tcp_cparam->clientid.len, p->tcp_cparam->clientid.body,
 					p->tcp_cparam->max_packet_size);
+			nni_pipe_bump_rx(p->npipe, p->wantrxhead);
 			nni_mtx_unlock(&ep->mtx);
 			return;
 		} else {
@@ -502,9 +503,9 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 		return;
 	}
 	msg = nni_aio_get_msg(qsaio);
-	if (msg != NULL)
+	if (msg != NULL) {
 		type = nni_msg_cmd_type(msg);
-	else {
+	} else {
 		log_warn("NULL msg detected in send_cb");
 		nni_mtx_unlock(&p->mtx);
 		tcptran_pipe_close(p);
@@ -515,8 +516,10 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 		(type == CMD_PUBCOMP || type == CMD_PUBACK) ? p->qrecv_quota++
 		                                            : p->qrecv_quota;
 	}
+	nni_pipe_bump_tx(p->npipe, nni_msg_header_len(msg) + nni_msg_len(msg));
 	nni_msg_free(msg);
 	nni_aio_set_msg(qsaio, NULL);
+
 	if (nni_lmq_get(&p->rslmq, &msg) == 0) {
 		nni_iov iov[2];
 		iov[0].iov_len = nni_msg_header_len(msg);
@@ -643,7 +646,7 @@ exit:
 		// parse result code TODO verify bug
 		flag = header[3];
 	}
-	// nni_pipe_bump_tx(p->npipe, n);
+	nni_pipe_bump_tx(p->npipe, n + nni_msg_header_len(msg));
 	nni_mtx_unlock(&p->mtx);
 
 	nni_aio_set_msg(aio, NULL);
@@ -937,7 +940,7 @@ tcptran_pipe_recv_cb(void *arg)
 	}
 
 	// keep connection & Schedule next receive
-	// nni_pipe_bump_rx(p->npipe, n);
+	nni_pipe_bump_rx(p->npipe, p->wantrxhead);
 	if (!nni_list_empty(&p->recvq)) {
 		tcptran_pipe_recv_start(p);
 	}
