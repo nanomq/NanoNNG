@@ -1321,18 +1321,16 @@ delete_dbtree_retain(dbtree_node *node)
 		return NULL;
 	}
 	void *retain = NULL;
-	if (node) {
-		retain          = node->retain;
-		node->retain    = NULL;
-		if (node->ret_ex[0]) {
-			nng_free(node->ret_ex[0], 0);
-		}
-		node->ret_ex[0] = NULL;
-		if (node->ret_ex[1]) {
-			nng_free(node->ret_ex[1], 0);
-		}
-		node->ret_ex[1] = NULL;
+	retain          = node->retain;
+	node->retain    = NULL;
+	if (node->ret_ex[0]) {
+		nng_free(node->ret_ex[0], 0);
 	}
+	node->ret_ex[0] = NULL;
+	if (node->ret_ex[1]) {
+		nng_free(node->ret_ex[1], 0);
+	}
+	node->ret_ex[1] = NULL;
 
 	return retain;
 }
