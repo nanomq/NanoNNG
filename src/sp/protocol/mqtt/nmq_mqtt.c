@@ -352,6 +352,12 @@ nano_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
 		nni_mtx_unlock(&s->lk);
 		return;
 	}
+	nano_pipe *p;
+	if (ctx->pipe_id != 0) {
+		if ((p = nni_id_get(&s->pipes, ctx->pipe_id)) != NULL) {
+			nni_pipe_inc_metric_rx_drop_expired(p->pipe);
+		}
+	}
 	nni_list_node_remove(&ctx->sqnode);
 	ctx->saio = NULL;
 	nni_mtx_unlock(&s->lk);
@@ -444,6 +450,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		if (qos > 0) {
 			packetid = nni_pipe_inc_packetid(p->pipe);
 			// TODO potential qos msg overwrite?
+			// TODO nni_pipe_inc_metric_rx_drop_full(pipe) when overwrite
 			nni_qos_db_set(is_sqlite, p->pipe->nano_qos_db,
 			    p->pipe->p_id, packetid, msg);
 			nni_qos_db_remove_oldest(is_sqlite,
@@ -454,6 +461,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 			// only cache QoS messages
 			log_debug("Drop msg due to qos == 0");
 			nni_msg_free(msg);
+			nni_pipe_inc_metric_rx_drop_full(p->pipe);
 		}
 		nni_mtx_unlock(&p->lk);
 		nni_aio_set_msg(aio, NULL);
@@ -469,6 +477,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		return;
 	}
 
+	ctx->pipe_id = nni_pipe_id(p->pipe);
 	if ((rv = nni_aio_schedule(aio, nano_ctx_cancel_send, ctx)) != 0) {
 		nni_msg_free(msg);
 		nni_mtx_unlock(&p->lk);
@@ -484,6 +493,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 				nni_msg *old;
 				nni_lmq_get(&p->rlmq, &old);
 				nni_msg_free(old);
+				nni_pipe_inc_metric_rx_drop_full(p->pipe);
 			}
 		} else {
 			// Warning msg lost due to reach the limit of lmq
@@ -492,6 +502,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 			nni_msg_free(msg);
 			nni_mtx_unlock(&p->lk);
 			nni_aio_set_msg(aio, NULL);
+			nni_pipe_inc_metric_rx_drop_full(p->pipe);
 			return;
 		}
 	}
@@ -866,6 +877,7 @@ close_pipe(nano_pipe *p)
 	t = nni_id_get(&s->pipes, nni_pipe_id(p->pipe));
 	if (t == p)
 		nni_id_remove(&s->pipes, nni_pipe_id(p->pipe));
+	// updating pipe stats makes no sense
 	nano_nni_lmq_flush(&p->rlmq, false);
 }
 
@@ -923,6 +935,8 @@ nano_pipe_close(void *arg)
 				conn_param_free(p->conn_param);
 				nni_list_remove(&s->recvpipes, p);
 			}
+			for (size_t i=0; i<nni_lmq_len(&p->rlmq); ++i)
+				nni_pipe_inc_metric_rx_drop_full(p->pipe);
 			nano_nni_lmq_flush(&p->rlmq, false);
 			nni_mtx_unlock(&s->lk);
 			nni_mtx_unlock(&p->lk);
