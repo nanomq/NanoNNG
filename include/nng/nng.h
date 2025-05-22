@@ -1688,9 +1688,9 @@ NNG_DECL size_t      nng_pipe_get_metric_rx_qos1(nng_pipe p);
 NNG_DECL size_t      nng_pipe_get_metric_rx_qos2(nng_pipe p);
 NNG_DECL size_t      nng_pipe_get_metric_tx_drop_expired(nng_pipe p);
 NNG_DECL size_t      nng_pipe_get_metric_tx_drop_full(nng_pipe p);
+NNG_DECL size_t      nng_pipe_get_metric_tx_drop_invalid(nng_pipe p);
 NNG_DECL size_t      nng_pipe_get_metric_rx_drop_expired(nng_pipe p);
 NNG_DECL size_t      nng_pipe_get_metric_rx_drop_full(nng_pipe p);
-NNG_DECL size_t      nng_pipe_get_metric_rx_drop_invalid(nng_pipe p);
 
 NNG_DECL void nng_taskq_setter(int num_taskq_threads, int max_taskq_threads);
 

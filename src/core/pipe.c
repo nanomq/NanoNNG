@@ -286,9 +286,9 @@ pipe_create(nni_pipe **pp, nni_sock *sock, nni_sp_tran *tran, void *tran_data)
 	p->stm_rx_qos2 = 0;
 	p->stm_tx_drop_expired = 0;
 	p->stm_tx_drop_full = 0;
+	p->stm_tx_drop_invalid = 0;
 	p->stm_rx_drop_expired = 0;
 	p->stm_rx_drop_full = 0;
-	p->stm_rx_drop_invalid = 0;
 
 	nni_atomic_init_bool(&p->p_closed);
 	nni_atomic_flag_reset(&p->p_stop);
@@ -562,6 +562,18 @@ nni_pipe_inc_metric_tx_drop_full(nni_pipe *p)
 }
 
 size_t
+nni_pipe_get_metric_tx_drop_invalid(nni_pipe *p)
+{
+	return p->stm_tx_drop_invalid;
+}
+
+void
+nni_pipe_inc_metric_tx_drop_invalid(nni_pipe *p)
+{
+	p->stm_tx_drop_invalid++;
+}
+
+size_t
 nni_pipe_get_metric_rx_drop_expired(nni_pipe *p)
 {
 	return p->stm_rx_drop_expired;
@@ -583,18 +595,6 @@ void
 nni_pipe_inc_metric_rx_drop_full(nni_pipe *p)
 {
 	p->stm_rx_drop_full++;
-}
-
-size_t
-nni_pipe_get_metric_rx_drop_invalid(nni_pipe *p)
-{
-	return p->stm_rx_drop_invalid;
-}
-
-void
-nni_pipe_inc_metric_rx_drop_invalid(nni_pipe *p)
-{
-	p->stm_rx_drop_invalid++;
 }
 
 bool
