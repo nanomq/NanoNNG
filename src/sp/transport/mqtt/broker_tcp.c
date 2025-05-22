@@ -818,6 +818,7 @@ tcptran_pipe_recv_cb(void *arg)
 					p->qrecv_quota--;
 				} else {
 					rv = NMQ_RECEIVE_MAXIMUM_EXCEEDED;
+					nni_pipe_inc_metric_tx_drop_invalid(p->npipe);
 					goto recv_error;
 				}
 			}
@@ -829,11 +830,13 @@ tcptran_pipe_recv_cb(void *arg)
 				ack_cmd = CMD_PUBREC;
 			} else {
 				log_warn("Wrong QoS level!");
+				nni_pipe_inc_metric_tx_drop_invalid(p->npipe);
 				rv = PROTOCOL_ERROR;
 				goto recv_error;
 			}
 			if ((packet_id = nni_msg_get_pub_pid(msg)) == 0) {
 				log_warn("0 Packet ID in QoS Message!");
+				nni_pipe_inc_metric_tx_drop_invalid(p->npipe);
 				rv = PROTOCOL_ERROR;
 				goto recv_error;
 			}
