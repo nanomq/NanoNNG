@@ -409,7 +409,6 @@ tcptran_pipe_nego_cb(void *arg)
 			log_info("max_packet_size of %.*s is %d",
 					p->tcp_cparam->clientid.len, p->tcp_cparam->clientid.body,
 					p->tcp_cparam->max_packet_size);
-			nni_pipe_bump_rx(p->npipe, p->wantrxhead);
 			nni_mtx_unlock(&ep->mtx);
 			return;
 		} else {
@@ -823,10 +822,10 @@ tcptran_pipe_recv_cb(void *arg)
 				}
 			}
 			if (qos_pac == 1) {
-				nni_pipe_inc_metric_rx_qos1(p->npipe);
+				nni_pipe_inc_metric_tx_qos1(p->npipe);
 				ack_cmd = CMD_PUBACK;
 			} else if (qos_pac == 2) {
-				nni_pipe_inc_metric_rx_qos2(p->npipe);
+				nni_pipe_inc_metric_tx_qos2(p->npipe);
 				ack_cmd = CMD_PUBREC;
 			} else {
 				log_warn("Wrong QoS level!");
@@ -840,7 +839,7 @@ tcptran_pipe_recv_cb(void *arg)
 			}
 			ack = true;
 		} else {
-			nni_pipe_inc_metric_rx_qos0(p->npipe);
+			nni_pipe_inc_metric_tx_qos0(p->npipe);
 		}
 	} else if (type == CMD_PUBREC) {
 		if ((rv = nni_mqtt_pubres_decode(msg, &packet_id, &reason_code,
@@ -1134,11 +1133,11 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		// get final qos
 		qos = qos_pac > qos ? qos : qos_pac;
 		if (qos == 0)
-			nni_pipe_inc_metric_tx_qos0(pipe);
+			nni_pipe_inc_metric_rx_qos0(pipe);
 		else if (qos == 1)
-			nni_pipe_inc_metric_tx_qos1(pipe);
+			nni_pipe_inc_metric_rx_qos1(pipe);
 		else
-			nni_pipe_inc_metric_tx_qos2(pipe);
+			nni_pipe_inc_metric_rx_qos2(pipe);
 
 		// alter qos according to sub qos
 		if (qos_pac > qos) {
@@ -1373,11 +1372,11 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			// get final qos
 			qos = qos_pac > qos ? qos : qos_pac;
 			if (qos == 0)
-				nni_pipe_inc_metric_tx_qos0(pipe);
+				nni_pipe_inc_metric_rx_qos0(pipe);
 			else if (qos == 1)
-				nni_pipe_inc_metric_tx_qos1(pipe);
+				nni_pipe_inc_metric_rx_qos1(pipe);
 			else
-				nni_pipe_inc_metric_tx_qos2(pipe);
+				nni_pipe_inc_metric_rx_qos2(pipe);
 
 			// alter qos according to sub qos
 			if (qos_pac > qos) {
