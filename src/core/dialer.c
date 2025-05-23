@@ -9,6 +9,7 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
+#include "core/defs.h"
 #include "core/nng_impl.h"
 #include "sockimpl.h"
 
@@ -42,7 +43,7 @@ nni_dialer_destroy(nni_dialer *d)
 		d->d_ops.d_fini(d->d_data);
 	}
 	nni_mtx_fini(&d->d_mtx);
-	nni_url_free(d->d_url);
+	nni_url_fini(&d->d_url);
 	NNI_FREE_STRUCT(d);
 }
 
@@ -71,12 +72,6 @@ dialer_stats_init(nni_dialer *d)
 		.si_name = "socket",
 		.si_desc = "socket for dialer",
 		.si_type = NNG_STAT_ID,
-	};
-	static const nni_stat_info url_info = {
-		.si_name  = "url",
-		.si_desc  = "dialer url",
-		.si_type  = NNG_STAT_STRING,
-		.si_alloc = true,
 	};
 	static const nni_stat_info pipes_info = {
 		.si_name   = "pipes",
@@ -149,7 +144,6 @@ dialer_stats_init(nni_dialer *d)
 
 	dialer_stat_init(d, &d->st_id, &id_info);
 	dialer_stat_init(d, &d->st_sock, &socket_info);
-	dialer_stat_init(d, &d->st_url, &url_info);
 	dialer_stat_init(d, &d->st_pipes, &pipes_info);
 	dialer_stat_init(d, &d->st_connect, &connect_info);
 	dialer_stat_init(d, &d->st_refused, &refused_info);
@@ -165,7 +159,6 @@ dialer_stats_init(nni_dialer *d)
 	nni_stat_set_id(&d->st_root, (int) d->d_id);
 	nni_stat_set_id(&d->st_id, (int) d->d_id);
 	nni_stat_set_id(&d->st_sock, (int) nni_sock_id(d->d_sock));
-	nni_stat_set_string(&d->st_url, d->d_url->u_rawurl);
 	nni_stat_register(&d->st_root);
 }
 #endif // NNG_ENABLE_STATS
@@ -222,23 +215,20 @@ nni_dialer_create(nni_dialer **dp, nni_sock *s, const char *url_str)
 	nni_sp_tran *tran;
 	nni_dialer * d;
 	int          rv;
-	nni_url *    url;
-
-	if ((rv = nni_url_parse(&url, url_str)) != 0) {
-		return (rv);
-	}
-	if ((((tran = nni_sp_tran_find(url)) == NULL) &&
-	        ((tran = nni_mqtt_tran_find(url)) == NULL)) ||
-	    (tran->tran_dialer == NULL)) {
-		nni_url_free(url);
-		return (NNG_ENOTSUP);
-	}
 
 	if ((d = NNI_ALLOC_STRUCT(d)) == NULL) {
-		nni_url_free(url);
 		return (NNG_ENOMEM);
 	}
-	d->d_url    = url;
+	if ((rv = nni_url_parse_inline(&d->d_url, url_str)) != 0) {
+		NNI_FREE_STRUCT(d);
+		return (rv);
+	}
+	if (((tran = nni_sp_tran_find(&d->d_url)) == NULL) ||
+	    (tran->tran_dialer == NULL)) {
+		nni_url_fini(&d->d_url);
+		NNI_FREE_STRUCT(d);
+		return (NNG_ENOTSUP);
+	}
 	d->d_closed = false;
 	d->d_data   = NULL;
 	d->d_ref    = 1;
@@ -267,7 +257,8 @@ nni_dialer_create(nni_dialer **dp, nni_sock *s, const char *url_str)
 	dialer_stats_init(d);
 #endif
 
-	if ((rv != 0) || ((rv = d->d_ops.d_init(&d->d_data, url, d)) != 0) ||
+	if ((rv != 0) ||
+	    ((rv = d->d_ops.d_init(&d->d_data, &d->d_url, d)) != 0) ||
 	    ((rv = nni_sock_add_dialer(s, d)) != 0)) {
 		nni_mtx_lock(&dialers_lk);
 		nni_id_remove(&dialers, d->d_id);
@@ -286,12 +277,7 @@ nni_dialer_create(nni_dialer **dp, nni_sock *s, const char *url_str)
 int
 nni_dialer_find(nni_dialer **dp, uint32_t id)
 {
-	int         rv;
 	nni_dialer *d;
-
-	if ((rv = nni_init()) != 0) {
-		return (rv);
-	}
 
 	nni_mtx_lock(&dialers_lk);
 	if ((d = nni_id_get(&dialers, id)) != NULL) {
@@ -392,6 +378,10 @@ dialer_connect_cb(void *arg)
 	case NNG_ECONNREFUSED:
 	case NNG_ETIMEDOUT:
 	default:
+		log_warn(
+		    "Failed connecting socket<%u>: %s", nni_sock_id(d->d_sock),
+		    nng_strerror(rv));
+
 		nni_dialer_bump_error(d, rv);
 		if (user_aio == NULL) {
 			nni_dialer_timer_start(d);
@@ -444,6 +434,9 @@ nni_dialer_start(nni_dialer *d, unsigned flags)
 		rv = nni_aio_result(aio);
 		nni_aio_free(aio);
 	}
+
+	log_info("Starting dialer for socket<%u>",
+	    nni_sock_id(d->d_sock));
 
 	return (rv);
 }
@@ -551,16 +544,34 @@ nni_dialer_getopt(
 	// override.  This allows the URL to be created with wildcards,
 	// that are resolved later.
 	if (strcmp(name, NNG_OPT_URL) == 0) {
-		return (nni_copyout_str(d->d_url->u_rawurl, valp, szp, t));
+		return (nni_copyout_str(d->d_url.u_rawurl, valp, szp, t));
 	}
 
 	return (nni_sock_getopt(d->d_sock, name, valp, szp, t));
 }
 
-const nng_url *
+int
+nni_dialer_get_tls(nni_dialer *d, nng_tls_config **cfgp)
+{
+	if (d->d_ops.d_get_tls == NULL) {
+		return (NNG_ENOTSUP);
+	}
+	return (d->d_ops.d_get_tls(d->d_data, cfgp));
+}
+
+int
+nni_dialer_set_tls(nni_dialer *d, nng_tls_config *cfg)
+{
+	if (d->d_ops.d_set_tls == NULL) {
+		return (NNG_ENOTSUP);
+	}
+	return (d->d_ops.d_set_tls(d->d_data, cfg));
+}
+
+nng_url *
 nni_dialer_url(nni_dialer *d)
 {
-	return (d->d_url);
+	return (&d->d_url);
 }
 
 void

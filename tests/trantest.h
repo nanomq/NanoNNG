@@ -134,13 +134,6 @@ extern void trantest_test(trantest *tt);
 extern void trantest_test_extended(const char *addr, trantest_proptest_t f);
 extern void trantest_test_all(const char *addr);
 
-#ifndef NNG_TRANSPORT_ZEROTIER
-#define nng_zt_register notransport
-#endif
-#ifndef NNG_TRANSPORT_WSS
-#define nng_wss_register notransport
-#endif
-
 void
 fatal(const char *msg, int rv)
 {
@@ -757,7 +750,7 @@ trantest_broker_start(trantest *tt, nng_listener listener)
 	So(nng_nmq_tcp0_open(&tt->repsock) == 0);
 
 	So(nng_listener_create(&listener, tt->repsock, tt->addr) == 0);
-	So(nng_listener_set(listener, NANO_CONF, nanomq_conf, sizeof(conf)) == 0);
+	So(nng_listener_set_ptr(listener, NANO_CONF, nanomq_conf) == 0);
 	So(nng_listener_start(listener, 0) == 0);
 
 	// alloc and init work

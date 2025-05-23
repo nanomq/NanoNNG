@@ -1,5 +1,5 @@
 //
-// Copyright 2021 Staysail Systems, Inc. <info@staysail.tech>
+// Copyright 2024 Staysail Systems, Inc. <info@staysail.tech>
 // Copyright 2018 Capitar IT Group BV <info@capitar.com>
 //
 // This software is supplied under the terms of the MIT License, a
@@ -11,6 +11,7 @@
 // POSIX threads.
 
 #include "core/nng_impl.h"
+#include "nng/nng.h"
 
 #ifdef NNG_PLATFORM_POSIX
 
@@ -33,9 +34,8 @@
 #include <sys/resource.h>
 #endif
 
-static pthread_mutex_t nni_plat_init_lock = PTHREAD_MUTEX_INITIALIZER;
-static volatile int    nni_plat_inited    = 0;
-static int             nni_plat_forked    = 0;
+static bool nni_plat_inited = false;
+static bool nni_plat_forked = false;
 
 pthread_condattr_t  nni_cvattr;
 pthread_mutexattr_t nni_mxattr;
@@ -143,6 +143,9 @@ nni_pthread_cond_timedwait(
 void
 nni_plat_mtx_lock(nni_plat_mtx *mtx)
 {
+	if (nni_plat_forked) {
+		nni_panic("nng is not fork-reentrant safe");
+	}
 	nni_pthread_mutex_lock(&mtx->mtx);
 }
 
@@ -339,38 +342,21 @@ nni_atfork_child(void)
 }
 
 int
-nni_plat_init(int (*helper)(void))
+nni_plat_init(nng_init_params *params)
 {
 	int rv;
-
-	if (nni_plat_forked) {
-		nni_panic("nng is not fork-reentrant safe");
-	}
-	if (nni_plat_inited) {
-		return (0); // fast path
-	}
-
-	pthread_mutex_lock(&nni_plat_init_lock);
-	if (nni_plat_inited) { // check again under the lock to be sure
-		pthread_mutex_unlock(&nni_plat_init_lock);
-		return (0);
-	}
 
 	if ((pthread_mutexattr_init(&nni_mxattr) != 0) ||
 	    (pthread_condattr_init(&nni_cvattr) != 0) ||
 	    (pthread_attr_init(&nni_thrattr) != 0)) {
 		// Technically this is leaking, but it should never
 		// occur, so really not worried about it.
-		pthread_mutex_unlock(&nni_plat_init_lock);
 		return (NNG_ENOMEM);
 	}
 
 #if !defined(NNG_USE_GETTIMEOFDAY) && NNG_USE_CLOCKID != CLOCK_REALTIME
 	if (pthread_condattr_setclock(&nni_cvattr, NNG_USE_CLOCKID) != 0) {
-		pthread_mutex_unlock(&nni_plat_init_lock);
-		pthread_mutexattr_destroy(&nni_mxattr);
-		pthread_condattr_destroy(&nni_cvattr);
-		pthread_attr_destroy(&nni_thrattr);
+		nni_plat_fini();
 		return (NNG_ENOMEM);
 	}
 #endif
@@ -381,10 +367,7 @@ nni_plat_init(int (*helper)(void))
 	    (rl.rlim_cur != RLIM_INFINITY) &&
 	    (rl.rlim_cur >= PTHREAD_STACK_MIN) &&
 	    (pthread_attr_setstacksize(&nni_thrattr, rl.rlim_cur) != 0)) {
-		pthread_mutex_unlock(&nni_plat_init_lock);
-		pthread_mutexattr_destroy(&nni_mxattr);
-		pthread_condattr_destroy(&nni_cvattr);
-		pthread_attr_destroy(&nni_thrattr);
+		nni_plat_fini();
 		return (NNG_ENOMEM);
 	}
 #endif
@@ -393,36 +376,25 @@ nni_plat_init(int (*helper)(void))
 	(void) pthread_mutexattr_settype(
 	    &nni_mxattr, PTHREAD_MUTEX_ERRORCHECK);
 
-	if ((rv = nni_posix_pollq_sysinit()) != 0) {
-		pthread_mutex_unlock(&nni_plat_init_lock);
-		pthread_mutexattr_destroy(&nni_mxattr);
-		pthread_condattr_destroy(&nni_cvattr);
-		pthread_attr_destroy(&nni_thrattr);
+	if ((rv = nni_posix_pollq_sysinit(params)) != 0) {
+		nni_plat_fini();
 		return (rv);
 	}
 
-	if ((rv = nni_posix_resolv_sysinit()) != 0) {
-		pthread_mutex_unlock(&nni_plat_init_lock);
+	if ((rv = nni_posix_resolv_sysinit(params)) != 0) {
 		nni_posix_pollq_sysfini();
-		pthread_mutexattr_destroy(&nni_mxattr);
-		pthread_condattr_destroy(&nni_cvattr);
-		pthread_attr_destroy(&nni_thrattr);
+		nni_plat_fini();
 		return (rv);
 	}
 
-	if (pthread_atfork(NULL, NULL, nni_atfork_child) != 0) {
-		pthread_mutex_unlock(&nni_plat_init_lock);
-		nni_posix_resolv_sysfini();
-		nni_posix_pollq_sysfini();
-		pthread_mutexattr_destroy(&nni_mxattr);
-		pthread_condattr_destroy(&nni_cvattr);
-		pthread_attr_destroy(&nni_thrattr);
-		return (NNG_ENOMEM);
-	}
-	if ((rv = helper()) == 0) {
-		nni_plat_inited = 1;
-	}
-	pthread_mutex_unlock(&nni_plat_init_lock);
+	nni_plat_inited = true;
+
+	// if this fails, its not critical, but it means the user won't get the
+	// benefit of checking for incorrect use-after-fork-in-child behavior.
+	// Since that only can occur if the application developer has made a
+	// gross mistake, and the consequence of that will be a panic anyway,
+	// we just ignore this error.
+	(void) pthread_atfork(NULL, NULL, nni_atfork_child);
 
 	return (rv);
 }
@@ -430,15 +402,14 @@ nni_plat_init(int (*helper)(void))
 void
 nni_plat_fini(void)
 {
-	pthread_mutex_lock(&nni_plat_init_lock);
 	if (nni_plat_inited) {
 		nni_posix_resolv_sysfini();
 		nni_posix_pollq_sysfini();
-		pthread_mutexattr_destroy(&nni_mxattr);
-		pthread_condattr_destroy(&nni_cvattr);
-		nni_plat_inited = 0;
 	}
-	pthread_mutex_unlock(&nni_plat_init_lock);
+	pthread_mutexattr_destroy(&nni_mxattr);
+	pthread_condattr_destroy(&nni_cvattr);
+	pthread_attr_destroy(&nni_thrattr);
+	nni_plat_inited = false;
 }
 
 int

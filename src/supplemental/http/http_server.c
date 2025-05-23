@@ -1,5 +1,5 @@
 //
-// Copyright 2023 Staysail Systems, Inc. <info@staysail.tech>
+// Copyright 2024 Staysail Systems, Inc. <info@staysail.tech>
 // Copyright 2018 Capitar IT Group BV <info@capitar.com>
 // Copyright 2018 QXSoftware <lh563566994@126.com>
 // Copyright 2019 Devolutions <info@devolutions.net>
@@ -24,9 +24,9 @@
 
 struct nng_http_handler {
 	nni_list_node   node;
-	char *          uri;
-	char *          method;
-	char *          host;
+	char           *uri;
+	char           *method;
+	char           *host;
 	nng_sockaddr    host_addr;
 	bool            host_ip;
 	bool            tree;
@@ -35,33 +35,33 @@ struct nng_http_handler {
 	nni_atomic_bool busy;
 	size_t          maxbody;
 	bool            getbody;
-	void *          data;
+	void           *data;
 	nni_cb          dtor;
 	void (*cb)(nni_aio *);
 };
 
 typedef struct http_sconn {
 	nni_list_node     node;
-	nni_http_conn *   conn;
-	nni_http_server * server;
-	nni_http_req *    req;
-	nni_http_res *    res;
+	nni_http_conn    *conn;
+	nni_http_server  *server;
+	nni_http_req     *req;
+	nni_http_res     *res;
 	nni_http_handler *handler; // set if we deferred to read body
 	nni_http_handler *release; // set if we dispatched handler
 	bool              close;
 	bool              closed;
 	bool              finished;
-	nni_aio *         cbaio;
-	nni_aio *         rxaio;
-	nni_aio *         txaio;
-	nni_aio *         txdataio;
+	nni_aio          *cbaio;
+	nni_aio          *rxaio;
+	nni_aio          *txaio;
+	nni_aio          *txdataio;
 	nni_reap_node     reap;
 } http_sconn;
 
 typedef struct http_error {
 	nni_list_node node;
 	uint16_t      code;
-	void *        body;
+	void         *body;
 	size_t        len;
 } http_error;
 
@@ -75,10 +75,10 @@ struct nng_http_server {
 	nni_mtx              mtx;
 	bool                 closed;
 	bool                 fini; // if nni_http_server_fini was called
-	nni_aio *            accaio;
+	nni_aio             *accaio;
 	nng_stream_listener *listener;
-	int                  port; // native order
-	char *               hostname;
+	uint32_t             port; // native order
+	char                *hostname;
 	nni_list             errors;
 	nni_mtx              errors_mtx;
 	nni_reap_node        reap;
@@ -285,7 +285,7 @@ static nni_mtx http_servers_lk = NNI_MTX_INITIALIZER;
 static void
 http_sc_reap(void *arg)
 {
-	http_sconn *     sc = arg;
+	http_sconn      *sc = arg;
 	nni_http_server *s  = sc->server;
 	NNI_ASSERT(!sc->finished);
 	sc->finished = true;
@@ -354,7 +354,7 @@ static void
 http_sconn_txdatdone(void *arg)
 {
 	http_sconn *sc  = arg;
-	nni_aio *   aio = sc->txdataio;
+	nni_aio    *aio = sc->txdataio;
 
 	if (nni_aio_result(aio) != 0) {
 		http_sconn_close(sc);
@@ -378,7 +378,7 @@ static void
 http_sconn_txdone(void *arg)
 {
 	http_sconn *sc  = arg;
-	nni_aio *   aio = sc->txaio;
+	nni_aio    *aio = sc->txaio;
 
 	if (nni_aio_result(aio) != 0) {
 		http_sconn_close(sc);
@@ -580,21 +580,21 @@ http_handler_host_match(nni_http_handler *h, const char *host)
 static void
 http_sconn_rxdone(void *arg)
 {
-	http_sconn *      sc  = arg;
-	nni_http_server * s   = sc->server;
-	nni_aio *         aio = sc->rxaio;
+	http_sconn       *sc  = arg;
+	nni_http_server  *s   = sc->server;
+	nni_aio          *aio = sc->rxaio;
 	int               rv;
 	nni_http_handler *h    = NULL;
 	nni_http_handler *head = NULL;
-	const char *      val;
-	nni_http_req *    req = sc->req;
-	char *            uri;
+	const char       *val;
+	nni_http_req     *req = sc->req;
+	char             *uri;
 	size_t            urisz;
-	char *            path;
+	char             *path;
 	bool              badmeth  = false;
 	bool              needhost = false;
-	const char *      host;
-	const char *      cls;
+	const char       *host;
+	const char       *cls;
 
 	if ((rv = nni_aio_result(aio)) != 0) {
 		http_sconn_close(sc);
@@ -720,7 +720,7 @@ http_sconn_rxdone(void *arg)
 	if ((h->getbody) &&
 	    ((cls = nni_http_req_get_header(req, "Content-Length")) != NULL)) {
 		uint64_t len;
-		char *   end;
+		char    *end;
 
 		len = strtoull(cls, &end, 10);
 		if ((end == NULL) || (*end != '\0') || (len > h->maxbody)) {
@@ -770,11 +770,11 @@ finish:
 static void
 http_sconn_cbdone(void *arg)
 {
-	http_sconn *      sc  = arg;
-	nni_aio *         aio = sc->cbaio;
-	nni_http_res *    res;
+	http_sconn       *sc  = arg;
+	nni_aio          *aio = sc->cbaio;
+	nni_http_res     *res;
 	nni_http_handler *h;
-	nni_http_server * s = sc->server;
+	nni_http_server  *s = sc->server;
 
 	// Get the handler.  It may be set regardless of success or
 	// failure.  Clear it, and drop our reference, since we're
@@ -812,7 +812,7 @@ http_sconn_cbdone(void *arg)
 		}
 		sc->res = res;
 		if (strcmp(nni_http_req_get_method(sc->req), "HEAD") == 0) {
-			void * data;
+			void  *data;
 			size_t size;
 			// prune off the data, but preserve the content-length
 			// header.  By passing NULL here, we leave off the old
@@ -871,9 +871,9 @@ static void
 http_server_acccb(void *arg)
 {
 	nni_http_server *s   = arg;
-	nni_aio *        aio = s->accaio;
-	nng_stream *     stream;
-	http_sconn *     sc;
+	nni_aio         *aio = s->accaio;
+	nng_stream      *stream;
+	http_sconn      *sc;
 	int              rv;
 
 	nni_mtx_lock(&s->mtx);
@@ -912,7 +912,7 @@ static void
 http_server_fini(nni_http_server *s)
 {
 	nni_http_handler *h;
-	http_error *      epage;
+	http_error       *epage;
 
 	nni_aio_stop(s->accaio);
 
@@ -940,12 +940,12 @@ http_server_fini(nni_http_server *s)
 }
 
 static int
-http_server_init(nni_http_server **serverp, const nni_url *url)
+http_server_init(nni_http_server **serverp, const nng_url *url)
 {
 	nni_http_server *s;
 	int              rv;
 	nng_url          my_url;
-	const char *     scheme;
+	const char      *scheme;
 
 	if ((scheme = nni_http_stream_scheme(url->u_scheme)) == NULL) {
 		return (NNG_EADDRINVAL);
@@ -970,9 +970,7 @@ http_server_init(nni_http_server **serverp, const nni_url *url)
 		return (rv);
 	}
 
-	// NB: We only support number port numbers, and the URL framework
-	// expands empty port numbers to 80 or 443 as appropriate.
-	s->port = atoi(url->u_port);
+	s->port = url->u_port;
 
 	if ((s->hostname = nni_strdup(url->u_hostname)) == NULL) {
 		http_server_fini(s);
@@ -990,14 +988,14 @@ http_server_init(nni_http_server **serverp, const nni_url *url)
 }
 
 int
-nni_http_server_init(nni_http_server **serverp, const nni_url *url)
+nni_http_server_init(nni_http_server **serverp, const nng_url *url)
 {
 	int              rv;
 	nni_http_server *s;
 
 	nni_mtx_lock(&http_servers_lk);
 	NNI_LIST_FOREACH (&http_servers, s) {
-		if ((!s->closed) && (atoi(url->u_port) == s->port) &&
+		if ((!s->closed) && (url->u_port == s->port) &&
 		    (strcmp(url->u_hostname, s->hostname) == 0)) {
 			*serverp = s;
 			s->refcnt++;
@@ -1024,8 +1022,10 @@ http_server_start(nni_http_server *s)
 		return (rv);
 	}
 	if (s->port == 0) {
+		int port;
 		nng_stream_listener_get_int(
-		    s->listener, NNG_OPT_TCP_BOUND_PORT, &s->port);
+		    s->listener, NNG_OPT_TCP_BOUND_PORT, &port);
+		s->port = (uint32_t) port;
 	}
 	nng_stream_listener_accept(s->listener, s->accaio);
 	return (0);
@@ -1135,7 +1135,7 @@ int
 nni_http_server_set_error_page(
     nni_http_server *s, uint16_t code, const char *html)
 {
-	char * body;
+	char  *body;
 	int    rv;
 	size_t len;
 
@@ -1155,7 +1155,7 @@ int
 nni_http_server_set_error_file(
     nni_http_server *s, uint16_t code, const char *path)
 {
-	void * body;
+	void  *body;
 	size_t len;
 	int    rv;
 	if ((rv = nni_file_get(path, &body, &len)) != 0) {
@@ -1171,8 +1171,8 @@ int
 nni_http_server_res_error(nni_http_server *s, nni_http_res *res)
 {
 	http_error *epage;
-	char *      body = NULL;
-	char *      html = NULL;
+	char       *body = NULL;
+	char       *html = NULL;
 	size_t      len  = 0;
 	uint16_t    code = nni_http_res_get_status(res);
 	int         rv;
@@ -1402,12 +1402,12 @@ static void
 http_handle_file(nni_aio *aio)
 {
 	nni_http_handler *h   = nni_aio_get_input(aio, 1);
-	nni_http_res *    res = NULL;
-	void *            data;
+	nni_http_res     *res = NULL;
+	void             *data;
 	size_t            size;
 	int               rv;
-	http_file *       hf = nni_http_handler_get_data(h);
-	const char *      ctype;
+	http_file        *hf = nni_http_handler_get_data(h);
+	const char       *ctype;
 
 	if ((ctype = hf->ctype) == NULL) {
 		ctype = "application/octet-stream";
@@ -1474,7 +1474,7 @@ nni_http_handler_init_file_ctype(nni_http_handler **hpp, const char *uri,
     const char *path, const char *ctype)
 {
 	nni_http_handler *h;
-	http_file *       hf;
+	http_file        *hf;
 	int               rv;
 
 	if ((hf = NNI_ALLOC_STRUCT(hf)) == NULL) {
@@ -1523,21 +1523,21 @@ nni_http_handler_init_file(
 static void
 http_handle_dir(nni_aio *aio)
 {
-	nni_http_req *    req = nni_aio_get_input(aio, 0);
+	nni_http_req     *req = nni_aio_get_input(aio, 0);
 	nni_http_handler *h   = nni_aio_get_input(aio, 1);
-	nni_http_res *    res = NULL;
-	void *            data;
+	nni_http_res     *res = NULL;
+	void             *data;
 	size_t            size;
 	int               rv;
-	http_file *       hf   = nni_http_handler_get_data(h);
-	const char *      path = hf->path;
-	const char *      base = nni_http_handler_get_uri(h); // base uri
-	const char *      uri  = nni_http_req_get_uri(req);
-	const char *      ctype;
-	char *            dst;
+	http_file        *hf   = nni_http_handler_get_data(h);
+	const char       *path = hf->path;
+	const char       *base = nni_http_handler_get_uri(h); // base uri
+	const char       *uri  = nni_http_req_get_uri(req);
+	const char       *ctype;
+	char             *dst;
 	size_t            len;
 	size_t            pnsz;
-	char *            pn;
+	char             *pn;
 
 	len = strlen(base);
 	if (base[1] != '\0' && // Allows "/" as base
@@ -1655,7 +1655,7 @@ int
 nni_http_handler_init_directory(
     nni_http_handler **hpp, const char *uri, const char *path)
 {
-	http_file *       hf;
+	http_file        *hf;
 	nni_http_handler *h;
 	int               rv;
 
@@ -1687,22 +1687,22 @@ nni_http_handler_init_directory(
 
 typedef struct http_redirect {
 	uint16_t code;
-	char *   where;
+	char    *where;
 } http_redirect;
 
 static void
 http_handle_redirect(nni_aio *aio)
 {
-	nni_http_res *    r    = NULL;
-	char *            html = NULL;
-	char *            msg  = NULL;
-	char *            loc  = NULL;
-	http_redirect *   hr;
+	nni_http_res     *r    = NULL;
+	char             *html = NULL;
+	char             *msg  = NULL;
+	char             *loc  = NULL;
+	http_redirect    *hr;
 	nni_http_handler *h;
 	int               rv;
-	nni_http_req *    req;
-	const char *      base;
-	const char *      uri;
+	nni_http_req     *req;
+	const char       *base;
+	const char       *uri;
 
 	req  = nni_aio_get_input(aio, 0);
 	h    = nni_aio_get_input(aio, 1);
@@ -1774,7 +1774,7 @@ nni_http_handler_init_redirect(nni_http_handler **hpp, const char *uri,
 {
 	nni_http_handler *h;
 	int               rv;
-	http_redirect *   hr;
+	http_redirect    *hr;
 
 	if ((hr = NNI_ALLOC_STRUCT(hr)) == NULL) {
 		return (NNG_ENOMEM);
@@ -1810,18 +1810,18 @@ nni_http_handler_init_redirect(nni_http_handler **hpp, const char *uri,
 }
 
 typedef struct http_static {
-	void * data;
+	void  *data;
 	size_t size;
-	char * ctype;
+	char  *ctype;
 } http_static;
 
 static void
 http_handle_static(nni_aio *aio)
 {
-	http_static *     hs;
-	const char *      ctype;
+	http_static      *hs;
+	const char       *ctype;
 	nni_http_handler *h;
-	nni_http_res *    r = NULL;
+	nni_http_res     *r = NULL;
 	int               rv;
 
 	h  = nni_aio_get_input(aio, 1);
@@ -1862,7 +1862,7 @@ nni_http_handler_init_static(nni_http_handler **hpp, const char *uri,
 {
 	nni_http_handler *h;
 	int               rv;
-	http_static *     hs;
+	http_static      *hs;
 
 	if ((hs = NNI_ALLOC_STRUCT(hs)) == NULL) {
 		return (NNG_ENOMEM);
@@ -1896,15 +1896,13 @@ nni_http_handler_init_static(nni_http_handler **hpp, const char *uri,
 int
 nni_http_server_set_tls(nni_http_server *s, nng_tls_config *tls)
 {
-	return (
-	    nng_stream_listener_set_ptr(s->listener, NNG_OPT_TLS_CONFIG, tls));
+	return (nng_stream_listener_set_tls(s->listener, tls));
 }
 
 int
 nni_http_server_get_tls(nni_http_server *s, nng_tls_config **tlsp)
 {
-	return (nng_stream_listener_get_ptr(
-	    s->listener, NNG_OPT_TLS_CONFIG, (void **) tlsp));
+	return (nng_stream_listener_get_tls(s->listener, tlsp));
 }
 
 int

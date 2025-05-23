@@ -1,5 +1,5 @@
 //
-// Copyright 2021 Staysail Systems, Inc. <info@staysail.tech>
+// Copyright 2024 Staysail Systems, Inc. <info@staysail.tech>
 // Copyright 2017 Capitar IT Group BV <info@capitar.com>
 //
 // This software is supplied under the terms of the MIT License, a
@@ -8,6 +8,7 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
+#include "nng/nng.h"
 #include <nuts.h>
 
 #define SECOND 1000
@@ -20,21 +21,19 @@
 static void
 test_identity(void)
 {
-	nng_socket s;
-	int        p;
-	char *     n;
+	nng_socket  s;
+	uint16_t    p;
+	const char *n;
 
 	NUTS_PASS(nng_pair0_open(&s));
-	NUTS_PASS(nng_socket_get_int(s, NNG_OPT_PROTO, &p));
+	NUTS_PASS(nng_socket_proto_id(s, &p));
 	NUTS_TRUE(p == NUTS_PROTO(1u, 0u)); // 16
-	NUTS_PASS(nng_socket_get_int(s, NNG_OPT_PEER, &p));
+	NUTS_PASS(nng_socket_peer_id(s, &p));
 	NUTS_TRUE(p == NUTS_PROTO(1u, 0u)); // 17
-	NUTS_PASS(nng_socket_get_string(s, NNG_OPT_PROTONAME, &n));
+	NUTS_PASS(nng_socket_proto_name(s, &n));
 	NUTS_MATCH(n, "pair");
-	nng_strfree(n);
-	NUTS_PASS(nng_socket_get_string(s, NNG_OPT_PEERNAME, &n));
+	NUTS_PASS(nng_socket_peer_name(s, &n));
 	NUTS_MATCH(n, "pair");
-	nng_strfree(n);
 	NUTS_CLOSE(s);
 }
 
@@ -43,7 +42,7 @@ test_cooked(void)
 {
 	nng_socket s1;
 	nng_socket c1;
-	nng_msg *  msg;
+	nng_msg   *msg;
 
 	NUTS_PASS(nng_pair0_open(&s1));
 	NUTS_PASS(nng_pair0_open(&c1));
@@ -75,7 +74,7 @@ test_faithful(void)
 	nng_socket  s1;
 	nng_socket  c1;
 	nng_socket  c2;
-	nng_msg *   msg;
+	nng_msg    *msg;
 	const char *addr = "inproc://pair0_mono_faithful";
 
 	NUTS_PASS(nng_pair0_open(&s1));
@@ -116,7 +115,7 @@ test_back_pressure(void)
 	nng_socket   c1;
 	int          i;
 	int          rv;
-	nng_msg *    msg;
+	nng_msg     *msg;
 	nng_duration to = 100;
 
 	NUTS_PASS(nng_pair0_open(&s1));
@@ -147,7 +146,7 @@ void
 test_send_no_peer(void)
 {
 	nng_socket   s1;
-	nng_msg *    msg;
+	nng_msg     *msg;
 	nng_duration to = 100;
 
 	NUTS_PASS(nng_pair0_open(&s1));
@@ -203,8 +202,8 @@ void
 test_pair0_send_closed_aio(void)
 {
 	nng_socket s1;
-	nng_aio *  aio;
-	nng_msg *  msg;
+	nng_aio   *aio;
+	nng_msg   *msg;
 
 	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
 	NUTS_PASS(nng_msg_alloc(&msg, 0));
@@ -226,25 +225,23 @@ test_pair0_raw(void)
 	bool       raw;
 
 	NUTS_PASS(nng_pair0_open(&s1));
-	NUTS_PASS(nng_socket_get_bool(s1, NNG_OPT_RAW, &raw));
+	NUTS_PASS(nng_socket_raw(s1, &raw));
 	NUTS_TRUE(raw == false);
-	NUTS_FAIL(nng_socket_set_bool(s1, NNG_OPT_RAW, true), NNG_EREADONLY);
 	NUTS_PASS(nng_close(s1));
 
 	NUTS_PASS(nng_pair0_open_raw(&s1));
-	NUTS_PASS(nng_socket_get_bool(s1, NNG_OPT_RAW, &raw));
+	NUTS_PASS(nng_socket_raw(s1, &raw));
 	NUTS_TRUE(raw == true);
-	NUTS_FAIL(nng_socket_set_bool(s1, NNG_OPT_RAW, false), NNG_EREADONLY);
 	NUTS_PASS(nng_close(s1));
 }
 
 void
 test_pair0_validate_peer(void)
 {
-	nng_socket s1, s2;
-	nng_stat * stats;
-	nng_stat * reject;
-	char *     addr;
+	nng_socket      s1, s2;
+	nng_stat       *stats;
+	const nng_stat *reject;
+	char           *addr;
 
 	NUTS_ADDR(addr, "inproc");
 	NUTS_PASS(nng_pair0_open(&s1));
@@ -285,18 +282,15 @@ test_pair0_send_buffer(void)
 	nng_socket s;
 	int        v;
 	bool       b;
-	size_t     sz;
 
 	NUTS_PASS(nng_pair0_open(&s));
 	NUTS_PASS(nng_socket_get_int(s, NNG_OPT_SENDBUF, &v));
 	NUTS_TRUE(v == 0);
 	NUTS_FAIL(nng_socket_get_bool(s, NNG_OPT_SENDBUF, &b), NNG_EBADTYPE);
-	sz = 1;
-	NUTS_FAIL(nng_socket_get(s, NNG_OPT_SENDBUF, &b, &sz), NNG_EINVAL);
 	NUTS_FAIL(nng_socket_set_int(s, NNG_OPT_SENDBUF, -1), NNG_EINVAL);
 	NUTS_FAIL(nng_socket_set_int(s, NNG_OPT_SENDBUF, 100000), NNG_EINVAL);
-	NUTS_FAIL(nng_socket_set_bool(s, NNG_OPT_SENDBUF, false), NNG_EBADTYPE);
-	NUTS_FAIL(nng_socket_set(s, NNG_OPT_SENDBUF, &b, 1), NNG_EINVAL);
+	NUTS_FAIL(
+	    nng_socket_set_bool(s, NNG_OPT_SENDBUF, false), NNG_EBADTYPE);
 	NUTS_PASS(nng_socket_set_int(s, NNG_OPT_SENDBUF, 100));
 	NUTS_PASS(nng_socket_get_int(s, NNG_OPT_SENDBUF, &v));
 	NUTS_TRUE(v == 100);
@@ -309,18 +303,15 @@ test_pair0_recv_buffer(void)
 	nng_socket s;
 	int        v;
 	bool       b;
-	size_t     sz;
 
 	NUTS_PASS(nng_pair0_open(&s));
 	NUTS_PASS(nng_socket_get_int(s, NNG_OPT_RECVBUF, &v));
 	NUTS_TRUE(v == 0);
 	NUTS_FAIL(nng_socket_get_bool(s, NNG_OPT_RECVBUF, &b), NNG_EBADTYPE);
-	sz = 1;
-	NUTS_FAIL(nng_socket_get(s, NNG_OPT_RECVBUF, &b, &sz), NNG_EINVAL);
 	NUTS_FAIL(nng_socket_set_int(s, NNG_OPT_RECVBUF, -1), NNG_EINVAL);
 	NUTS_FAIL(nng_socket_set_int(s, NNG_OPT_RECVBUF, 100000), NNG_EINVAL);
-	NUTS_FAIL(nng_socket_set_bool(s, NNG_OPT_RECVBUF, false), NNG_EBADTYPE);
-	NUTS_FAIL(nng_socket_set(s, NNG_OPT_RECVBUF, &b, 1), NNG_EINVAL);
+	NUTS_FAIL(
+	    nng_socket_set_bool(s, NNG_OPT_RECVBUF, false), NNG_EBADTYPE);
 	NUTS_PASS(nng_socket_set_int(s, NNG_OPT_RECVBUF, 100));
 	NUTS_PASS(nng_socket_get_int(s, NNG_OPT_RECVBUF, &v));
 	NUTS_TRUE(v == 100);
@@ -338,7 +329,7 @@ test_pair0_poll_readable(void)
 	NUTS_PASS(nng_pair0_open(&s2));
 	NUTS_PASS(nng_socket_set_ms(s1, NNG_OPT_RECVTIMEO, 1000));
 	NUTS_PASS(nng_socket_set_ms(s2, NNG_OPT_SENDTIMEO, 1000));
-	NUTS_PASS(nng_socket_get_int(s1, NNG_OPT_RECVFD, &fd));
+	NUTS_PASS(nng_socket_get_recv_poll_fd(s1, &fd));
 	NUTS_TRUE(fd >= 0);
 
 	// Not readable if not connected!
@@ -384,7 +375,7 @@ test_pair0_poll_writable(void)
 	NUTS_PASS(nng_pair0_open(&s2));
 	NUTS_PASS(nng_socket_set_ms(s1, NNG_OPT_RECVTIMEO, 1000));
 	NUTS_PASS(nng_socket_set_ms(s2, NNG_OPT_SENDTIMEO, 1000));
-	NUTS_PASS(nng_socket_get_int(s1, NNG_OPT_SENDFD, &fd));
+	NUTS_PASS(nng_socket_get_send_poll_fd(s1, &fd));
 	NUTS_TRUE(fd >= 0);
 
 	// Not writable if not connected!

@@ -11,8 +11,10 @@
 #ifndef CORE_DEFS_H
 #define CORE_DEFS_H
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
+
+#include <nng/nng.h>
 
 // C compilers may get unhappy when named arguments are not used.  While
 // there are things like __attribute__((unused)) which are arguably
@@ -24,7 +26,7 @@
 	if (!(x))     \
 	nni_panic("%s: %d: assert err: %s", __FILE__, __LINE__, #x)
 #else
-#define NNI_ASSERT(x) ((void)(0))
+#define NNI_ASSERT(x) ((void) (0))
 #endif
 
 // Returns the size of an array in elements. (Convenience.)
@@ -34,7 +36,6 @@
 // Internal code should use these names when possible.
 typedef nng_msg      nni_msg;
 typedef nng_sockaddr nni_sockaddr;
-typedef nng_url      nni_url;
 typedef nng_iov      nni_iov;
 typedef nng_aio      nni_aio;
 
@@ -105,25 +106,25 @@ typedef void (*nni_idhash_cb2)(void *, void *, void *);
 		(ptr)[7] = (uint8_t) ((uint64_t) (u));          \
 	} while (0)
 
-#define NNI_GET16(ptr, v)                               \
-	v = (((uint16_t) ((uint8_t) (ptr)[0])) << 8u) + \
-	    (((uint16_t) (uint8_t) (ptr)[1]))
+#define NNI_GET16(ptr, v)                                   \
+	v = (((uint16_t) (((uint8_t *) (ptr))[0])) << 8u) + \
+	    ((uint16_t) ((uint8_t *) (ptr))[1])
 
-#define NNI_GET32(ptr, v)                                \
-	v = (((uint32_t) ((uint8_t) (ptr)[0])) << 24u) + \
-	    (((uint32_t) ((uint8_t) (ptr)[1])) << 16u) + \
-	    (((uint32_t) ((uint8_t) (ptr)[2])) << 8u) +  \
-	    (((uint32_t) (uint8_t) (ptr)[3]))
+#define NNI_GET32(ptr, v)                                  \
+	v = (((uint32_t) ((uint8_t *) (ptr))[0]) << 24u) + \
+	    (((uint32_t) ((uint8_t *) (ptr))[1]) << 16u) + \
+	    (((uint32_t) ((uint8_t *) (ptr))[2]) << 8u) +  \
+	    ((uint32_t) ((uint8_t *) (ptr))[3])
 
-#define NNI_GET64(ptr, v)                                \
-	v = (((uint64_t) ((uint8_t) (ptr)[0])) << 56u) + \
-	    (((uint64_t) ((uint8_t) (ptr)[1])) << 48u) + \
-	    (((uint64_t) ((uint8_t) (ptr)[2])) << 40u) + \
-	    (((uint64_t) ((uint8_t) (ptr)[3])) << 32u) + \
-	    (((uint64_t) ((uint8_t) (ptr)[4])) << 24u) + \
-	    (((uint64_t) ((uint8_t) (ptr)[5])) << 16u) + \
-	    (((uint64_t) ((uint8_t) (ptr)[6])) << 8u) +  \
-	    (((uint64_t) (uint8_t) (ptr)[7]))
+#define NNI_GET64(ptr, v)                                  \
+	v = (((uint64_t) ((uint8_t *) (ptr))[0]) << 56u) + \
+	    (((uint64_t) ((uint8_t *) (ptr))[1]) << 48u) + \
+	    (((uint64_t) ((uint8_t *) (ptr))[2]) << 40u) + \
+	    (((uint64_t) ((uint8_t *) (ptr))[3]) << 32u) + \
+	    (((uint64_t) ((uint8_t *) (ptr))[4]) << 24u) + \
+	    (((uint64_t) ((uint8_t *) (ptr))[5]) << 16u) + \
+	    (((uint64_t) ((uint8_t *) (ptr))[6]) << 8u) +  \
+	    ((uint64_t) ((uint8_t *) (ptr))[7])
 
 // Modern CPUs are all little endian.  Let's stop paying the endian tax.
 
@@ -188,7 +189,7 @@ typedef void (*nni_idhash_cb2)(void *, void *, void *);
 // Types.  These are used to provide more structured access to options
 // (and maybe later statistics).  For now these are internal only.
 typedef enum {
-	NNI_TYPE_OPAQUE,
+	NNI_TYPE_NONE, // DO NOT USE
 	NNI_TYPE_BOOL,
 	NNI_TYPE_INT32,
 	NNI_TYPE_UINT32,

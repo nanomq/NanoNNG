@@ -19,10 +19,6 @@ extern "C" {
 
 // TCP transport.  This is used for communication over TCP/IP.
 
-#ifndef NNG_ELIDE_DEPRECATED
-NNG_DECL int nmq_mqtt_tcp_register(void);
-#endif
-
 #ifdef __cplusplus
 }
 #endif

@@ -1,5 +1,5 @@
 //
-// Copyright 2020 Staysail Systems, Inc. <info@staysail.tech>
+// Copyright 2024 Staysail Systems, Inc. <info@staysail.tech>
 // Copyright 2018 Cody Piersall <cody.piersall@gmail.com>
 //
 // This software is supplied under the terms of the MIT License, a
@@ -8,6 +8,7 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
+#include <nng/nng.h>
 #include <nuts.h>
 
 #ifdef NNG_PLATFORM_POSIX
@@ -67,15 +68,13 @@ test_ipc_dialer_properties(void)
 	// Dialers don't have local addresses.
 	NUTS_FAIL(nng_dialer_get_addr(d, NNG_OPT_LOCADDR, &sa), NNG_ENOTSUP);
 
-	NUTS_FAIL(
-	    nng_dialer_set(d, NNG_OPT_LOCADDR, &sa, sizeof(sa)), NNG_ENOTSUP);
+	NUTS_FAIL(nng_dialer_set_addr(d, NNG_OPT_LOCADDR, &sa), NNG_ENOTSUP);
 
 	z = 8192;
 	NUTS_PASS(nng_dialer_set_size(d, NNG_OPT_RECVMAXSZ, z));
 	z = 0;
 	NUTS_PASS(nng_dialer_get_size(d, NNG_OPT_RECVMAXSZ, &z));
 	NUTS_TRUE(z == 8192);
-	NUTS_FAIL(nng_dialer_set_bool(d, NNG_OPT_RAW, true), NNG_ENOTSUP);
 	NUTS_CLOSE(s);
 }
 
@@ -134,14 +133,13 @@ test_ipc_listener_properties(void)
 	NUTS_TRUE(sa.s_ipc.sa_family == NNG_AF_IPC);
 	NUTS_MATCH(sa.s_ipc.sa_path, addr + strlen("ipc://"));
 
-	NUTS_FAIL(nng_listener_set(l, NNG_OPT_LOCADDR, &sa, sizeof(sa)),
-	    NNG_EREADONLY);
+	NUTS_FAIL(
+	    nng_listener_set_addr(l, NNG_OPT_LOCADDR, &sa), NNG_EREADONLY);
 	z = 8192;
 	NUTS_PASS(nng_listener_set_size(l, NNG_OPT_RECVMAXSZ, z));
 	z = 0;
 	NUTS_PASS(nng_listener_get_size(l, NNG_OPT_RECVMAXSZ, &z));
 	NUTS_TRUE(z == 8192);
-	NUTS_FAIL(nng_listener_set_bool(l, NNG_OPT_RAW, true), NNG_ENOTSUP);
 	NUTS_CLOSE(s);
 }
 
@@ -179,6 +177,113 @@ test_ipc_recv_max(void)
 }
 
 void
+test_ipc_connect_blocking(void)
+{
+	nng_socket           s0;
+	nng_stream_listener *l;
+	char                *addr;
+
+	NUTS_ENABLE_LOG(NNG_LOG_INFO);
+	NUTS_ADDR(addr, "ipc");
+	NUTS_OPEN(s0);
+
+	// start a listening stream listener but do not call accept
+	NUTS_PASS(nng_stream_listener_alloc(&l, addr));
+	NUTS_PASS(nng_stream_listener_listen(l));
+
+	NUTS_PASS(nng_dial(s0, addr, NULL, NNG_FLAG_NONBLOCK));
+	nng_msleep(100);
+	NUTS_CLOSE(s0);
+	nng_stream_listener_close(l);
+	nng_stream_listener_free(l);
+}
+
+void
+test_ipc_connect_blocking_accept(void)
+{
+	nng_socket           s0;
+	nng_stream_listener *l;
+	char                *addr;
+	nng_aio             *aio;
+
+	NUTS_ENABLE_LOG(NNG_LOG_INFO);
+	NUTS_ADDR(addr, "ipc");
+	NUTS_OPEN(s0);
+
+	// start a listening stream listener but do not call accept
+	NUTS_PASS(nng_stream_listener_alloc(&l, addr));
+	NUTS_PASS(nng_stream_listener_listen(l));
+
+	NUTS_PASS(nng_dial(s0, addr, NULL, NNG_FLAG_NONBLOCK));
+	nng_msleep(100);
+	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
+	nng_stream_listener_accept(l, aio);
+	nng_aio_wait(aio);
+	NUTS_PASS(nng_aio_result(aio));
+	nng_stream_close(nng_aio_get_output(aio, 0));
+	nng_stream_free(nng_aio_get_output(aio, 0));
+	nng_aio_free(aio);
+	NUTS_CLOSE(s0);
+	nng_stream_listener_close(l);
+	nng_stream_listener_free(l);
+}
+
+void
+test_ipc_listen_accept_cancel(void)
+{
+	nng_stream_listener *l;
+	char                *addr;
+	nng_aio             *aio;
+
+	NUTS_ENABLE_LOG(NNG_LOG_INFO);
+	NUTS_ADDR(addr, "ipc");
+	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
+
+	// start a listening stream listener but do not call accept
+	NUTS_PASS(nng_stream_listener_alloc(&l, addr));
+	NUTS_PASS(nng_stream_listener_listen(l));
+	nng_stream_listener_accept(l, aio);
+	nng_msleep(100);
+	nng_aio_free(aio);
+	nng_stream_listener_close(l);
+	nng_stream_listener_free(l);
+}
+
+void
+test_ipc_listener_clean_stale(void)
+{
+#ifdef NNG_PLATFORM_POSIX
+	nng_socket           s0;
+	nng_stream_listener *l;
+	char                *addr;
+	char                *path;
+	char                 renamed[256];
+
+	NUTS_ENABLE_LOG(NNG_LOG_INFO);
+	NUTS_ADDR(addr, "ipc");
+	NUTS_OPEN(s0);
+
+	// start a listening stream listener but do not call accept
+	NUTS_PASS(nng_stream_listener_alloc(&l, addr));
+	NUTS_PASS(nng_stream_listener_listen(l));
+	path = addr + strlen("ipc://");
+	snprintf(renamed, sizeof(renamed), "%s.renamed", path);
+	NUTS_ASSERT(rename(path, renamed) == 0);
+	nng_stream_listener_close(l);
+	nng_stream_listener_free(l);
+	nng_msleep(100);
+	// put it back
+	NUTS_ASSERT(rename(renamed, path) == 0);
+
+	NUTS_PASS(nng_listen(s0, addr, NULL, 0));
+	nng_msleep(50);
+	NUTS_CLOSE(s0);
+#else
+	NUTS_SKIP("Not POSIX.");
+#endif
+}
+
+void
 test_abstract_sockets(void)
 {
 #ifdef NNG_HAVE_ABSTRACT_SOCKETS
@@ -205,6 +310,8 @@ test_abstract_sockets(void)
 	NUTS_RECV(s2, "ping");
 	NUTS_CLOSE(s1);
 	NUTS_CLOSE(s2);
+#else
+	NUTS_SKIP("No abstract sockets.");
 #endif
 }
 
@@ -252,6 +359,8 @@ test_abstract_auto_bind(void)
 
 	NUTS_CLOSE(s1);
 	NUTS_CLOSE(s2);
+#else
+	NUTS_SKIP("No abstract sockets.");
 #endif
 }
 
@@ -275,6 +384,8 @@ test_abstract_too_long(void)
 	NUTS_FAIL(nng_dial(s1, addr, NULL, NNG_FLAG_NONBLOCK), NNG_EADDRINVAL);
 
 	NUTS_CLOSE(s1);
+#else
+	NUTS_SKIP("No abstract sockets.");
 #endif
 }
 
@@ -327,6 +438,8 @@ test_abstract_null(void)
 
 	NUTS_CLOSE(s1);
 	NUTS_CLOSE(s2);
+#else
+	NUTS_SKIP("No abstract sockets.");
 #endif
 }
 
@@ -376,6 +489,8 @@ test_unix_alias(void)
 
 	NUTS_CLOSE(s1);
 	NUTS_CLOSE(s2);
+#else
+	NUTS_SKIP("Not POSIX.");
 #endif
 }
 
@@ -429,6 +544,8 @@ test_ipc_pipe_peer(void)
 	nng_msg_free(msg);
 	NUTS_CLOSE(s0);
 	NUTS_CLOSE(s1);
+#else
+	NUTS_SKIP("Not POSIX.");
 #endif // NNG_PLATFORM_POSIX
 }
 
@@ -440,6 +557,10 @@ TEST_LIST = {
 	{ "ipc listener perms", test_ipc_listener_perms },
 	{ "ipc listener props", test_ipc_listener_properties },
 	{ "ipc recv max", test_ipc_recv_max },
+	{ "ipc connect blocking", test_ipc_connect_blocking },
+	{ "ipc connect blocking accept", test_ipc_connect_blocking_accept },
+	{ "ipc listen cleanup stale", test_ipc_listener_clean_stale },
+	{ "ipc listen accept cancel", test_ipc_listen_accept_cancel },
 	{ "ipc abstract sockets", test_abstract_sockets },
 	{ "ipc abstract auto bind", test_abstract_auto_bind },
 	{ "ipc abstract name too long", test_abstract_too_long },

@@ -1,5 +1,5 @@
 //
-// Copyright 2023 Staysail Systems, Inc. <info@staysail.tech>
+// Copyright 2024 Staysail Systems, Inc. <info@staysail.tech>
 // Copyright 2018 Capitar IT Group BV <info@capitar.com>
 //
 // This software is supplied under the terms of the MIT License, a
@@ -8,26 +8,25 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
+#include "nng/nng.h"
 #include <nuts.h>
 
 static void
 test_req_identity(void)
 {
-	nng_socket s;
-	int        p;
-	char      *n;
+	nng_socket  s;
+	uint16_t    p;
+	const char *n;
 
 	NUTS_PASS(nng_req0_open(&s));
-	NUTS_PASS(nng_socket_get_int(s, NNG_OPT_PROTO, &p));
+	NUTS_PASS(nng_socket_proto_id(s, &p));
 	NUTS_TRUE(p == NNG_REQ0_SELF);
-	NUTS_PASS(nng_socket_get_int(s, NNG_OPT_PEER, &p));
+	NUTS_PASS(nng_socket_peer_id(s, &p));
 	NUTS_TRUE(p == NNG_REQ0_PEER); // 49
-	NUTS_PASS(nng_socket_get_string(s, NNG_OPT_PROTONAME, &n));
+	NUTS_PASS(nng_socket_proto_name(s, &n));
 	NUTS_MATCH(n, NNG_REQ0_SELF_NAME);
-	nng_strfree(n);
-	NUTS_PASS(nng_socket_get_string(s, NNG_OPT_PEERNAME, &n));
+	NUTS_PASS(nng_socket_peer_name(s, &n));
 	NUTS_MATCH(n, NNG_REQ0_PEER_NAME);
-	nng_strfree(n);
 	NUTS_CLOSE(s);
 }
 
@@ -37,7 +36,6 @@ test_req_ttl_option(void)
 	nng_socket  req;
 	int         v;
 	bool        b;
-	size_t      sz;
 	const char *opt = NNG_OPT_MAXTTL;
 
 	NUTS_PASS(nng_req0_open(&req));
@@ -52,15 +50,6 @@ test_req_ttl_option(void)
 	NUTS_PASS(nng_socket_set_int(req, opt, 3));
 	NUTS_PASS(nng_socket_get_int(req, opt, &v));
 	NUTS_TRUE(v == 3);
-	v  = 0;
-	sz = sizeof(v);
-	NUTS_PASS(nng_socket_get(req, opt, &v, &sz));
-	NUTS_TRUE(v == 3);
-	NUTS_TRUE(sz == sizeof(v));
-
-	NUTS_FAIL(nng_socket_set(req, opt, "", 1), NNG_EINVAL);
-	sz = 1;
-	NUTS_FAIL(nng_socket_get(req, opt, &v, &sz), NNG_EINVAL);
 	NUTS_FAIL(nng_socket_set_bool(req, opt, true), NNG_EBADTYPE);
 	NUTS_FAIL(nng_socket_get_bool(req, opt, &b), NNG_EBADTYPE);
 
@@ -73,14 +62,11 @@ test_req_resend_option(void)
 	nng_socket   req;
 	nng_duration d;
 	bool         b;
-	size_t       sz  = sizeof(b);
 	const char  *opt = NNG_OPT_REQ_RESENDTIME;
 
 	NUTS_PASS(nng_req0_open(&req));
 
 	NUTS_TRUE(nng_socket_set_ms(req, opt, 10) == 0);
-	NUTS_FAIL(nng_socket_set(req, opt, "", 1), NNG_EINVAL);
-	NUTS_FAIL(nng_socket_get(req, opt, &b, &sz), NNG_EINVAL);
 	NUTS_FAIL(nng_socket_set_bool(req, opt, true), NNG_EBADTYPE);
 	NUTS_FAIL(nng_socket_get_bool(req, opt, &b), NNG_EBADTYPE);
 
@@ -95,14 +81,11 @@ test_req_resend_tick_option(void)
 	nng_socket   req;
 	nng_duration d;
 	bool         b;
-	size_t       sz  = sizeof(b);
 	const char  *opt = NNG_OPT_REQ_RESENDTICK;
 
 	NUTS_PASS(nng_req0_open(&req));
 
 	NUTS_TRUE(nng_socket_set_ms(req, opt, 10) == 0);
-	NUTS_FAIL(nng_socket_set(req, opt, "", 1), NNG_EINVAL);
-	NUTS_FAIL(nng_socket_get(req, opt, &b, &sz), NNG_EINVAL);
 	NUTS_FAIL(nng_socket_set_bool(req, opt, true), NNG_EBADTYPE);
 	NUTS_FAIL(nng_socket_get_bool(req, opt, &b), NNG_EBADTYPE);
 
@@ -233,7 +216,7 @@ test_req_resend_reconnect(void)
 	// the retry from loss of our original peer.
 	NUTS_PASS(nng_socket_set_ms(req, NNG_OPT_REQ_RESENDTIME, 60 * SECOND));
 	// And make sure the tick runs faster than our timeout!
-	NUTS_PASS(nng_socket_set_ms(req, NNG_OPT_REQ_RESENDTICK, SECOND/10));
+	NUTS_PASS(nng_socket_set_ms(req, NNG_OPT_REQ_RESENDTICK, SECOND / 10));
 
 	NUTS_MARRY(rep1, req);
 
@@ -272,7 +255,7 @@ test_req_resend_disconnect(void)
 	// the retry from loss of our original peer.
 	NUTS_PASS(nng_socket_set_ms(req, NNG_OPT_REQ_RESENDTIME, 60 * SECOND));
 	// And make sure the tick runs faster than our timeout!
-	NUTS_PASS(nng_socket_set_ms(req, NNG_OPT_REQ_RESENDTICK, SECOND/10));
+	NUTS_PASS(nng_socket_set_ms(req, NNG_OPT_REQ_RESENDTICK, SECOND / 10));
 
 	NUTS_MARRY(rep1, req);
 	NUTS_SEND(req, "ping");
@@ -517,7 +500,7 @@ test_req_poll_writeable(void)
 
 	NUTS_PASS(nng_req0_open(&req));
 	NUTS_PASS(nng_rep0_open(&rep));
-	NUTS_PASS(nng_socket_get_int(req, NNG_OPT_SENDFD, &fd));
+	NUTS_PASS(nng_socket_get_send_poll_fd(req, &fd));
 	NUTS_TRUE(fd >= 0);
 
 	// Not writable before connect.
@@ -570,7 +553,7 @@ test_req_poll_contention(void)
 	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
 	NUTS_PASS(nng_msg_alloc(&msg, 0));
 
-	NUTS_PASS(nng_socket_get_int(req, NNG_OPT_SENDFD, &fd));
+	NUTS_PASS(nng_socket_get_send_poll_fd(req, &fd));
 	NUTS_TRUE(fd >= 0);
 
 	// Not writable before connect.
@@ -627,7 +610,7 @@ test_req_poll_multi_pipe(void)
 	NUTS_PASS(nng_socket_set_int(req, NNG_OPT_SENDBUF, 1));
 	NUTS_PASS(nng_socket_set_ms(req, NNG_OPT_SENDTIMEO, 1000));
 
-	NUTS_PASS(nng_socket_get_int(req, NNG_OPT_SENDFD, &fd));
+	NUTS_PASS(nng_socket_get_send_poll_fd(req, &fd));
 	NUTS_TRUE(fd >= 0);
 
 	// Not writable before connect.
@@ -655,7 +638,7 @@ test_req_poll_readable(void)
 
 	NUTS_PASS(nng_req0_open(&req));
 	NUTS_PASS(nng_rep0_open(&rep));
-	NUTS_PASS(nng_socket_get_int(req, NNG_OPT_RECVFD, &fd));
+	NUTS_PASS(nng_socket_get_recv_poll_fd(req, &fd));
 	NUTS_TRUE(fd >= 0);
 
 	// Not readable if not connected!
@@ -686,21 +669,6 @@ test_req_poll_readable(void)
 
 	NUTS_CLOSE(req);
 	NUTS_CLOSE(rep);
-}
-
-static void
-test_req_ctx_no_poll(void)
-{
-	int        fd;
-	nng_socket req;
-	nng_ctx    ctx;
-
-	NUTS_PASS(nng_req0_open(&req));
-	NUTS_PASS(nng_ctx_open(&ctx, req));
-	NUTS_FAIL(nng_ctx_get_int(ctx, NNG_OPT_SENDFD, &fd), NNG_ENOTSUP);
-	NUTS_FAIL(nng_ctx_get_int(ctx, NNG_OPT_RECVFD, &fd), NNG_ENOTSUP);
-	NUTS_PASS(nng_ctx_close(ctx));
-	NUTS_CLOSE(req);
 }
 
 static void
@@ -974,10 +942,10 @@ test_req_ctx_recv_close_socket(void)
 static void
 test_req_validate_peer(void)
 {
-	nng_socket s1, s2;
-	nng_stat  *stats;
-	nng_stat  *reject;
-	char      *addr;
+	nng_socket      s1, s2;
+	nng_stat       *stats;
+	const nng_stat *reject;
+	char           *addr;
 
 	NUTS_ADDR(addr, "inproc");
 
@@ -1027,7 +995,6 @@ NUTS_TESTS = {
 	{ "req context send abort", test_req_ctx_send_abort },
 	{ "req context send twice", test_req_ctx_send_twice },
 	{ "req context send recv abort", test_req_ctx_send_recv_abort },
-	{ "req context does not poll", test_req_ctx_no_poll },
 	{ "req context recv close socket", test_req_ctx_recv_close_socket },
 	{ "req context recv nonblock", test_req_ctx_recv_nonblock },
 	{ "req context send nonblock", test_req_ctx_send_nonblock },

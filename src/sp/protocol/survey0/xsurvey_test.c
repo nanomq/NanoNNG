@@ -1,5 +1,5 @@
 //
-// Copyright 2020 Staysail Systems, Inc. <info@staysail.tech>
+// Copyright 2024 Staysail Systems, Inc. <info@staysail.tech>
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -7,26 +7,25 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
+#include "nng/nng.h"
 #include <nuts.h>
 
 static void
 test_xsurveyor_identity(void)
 {
-	nng_socket s;
-	int        p;
-	char *     n;
+	nng_socket  s;
+	uint16_t    p;
+	const char *n;
 
 	NUTS_PASS(nng_surveyor0_open_raw(&s));
-	NUTS_PASS(nng_socket_get_int(s, NNG_OPT_PROTO, &p));
+	NUTS_PASS(nng_socket_proto_id(s, &p));
 	NUTS_TRUE(p == NNG_SURVEYOR0_SELF); // 0x62
-	NUTS_PASS(nng_socket_get_int(s, NNG_OPT_PEER, &p));
+	NUTS_PASS(nng_socket_peer_id(s, &p));
 	NUTS_TRUE(p == NNG_SURVEYOR0_PEER); // 0x62
-	NUTS_PASS(nng_socket_get_string(s, NNG_OPT_PROTONAME, &n));
+	NUTS_PASS(nng_socket_proto_name(s, &n));
 	NUTS_MATCH(n, NNG_SURVEYOR0_SELF_NAME);
-	nng_strfree(n);
-	NUTS_PASS(nng_socket_get_string(s, NNG_OPT_PEERNAME, &n));
+	NUTS_PASS(nng_socket_peer_name(s, &n));
 	NUTS_MATCH(n, NNG_SURVEYOR0_PEER_NAME);
-	nng_strfree(n);
 	NUTS_CLOSE(s);
 }
 
@@ -37,7 +36,7 @@ test_xsurveyor_raw(void)
 	bool       b;
 
 	NUTS_PASS(nng_surveyor0_open_raw(&s));
-	NUTS_PASS(nng_socket_get_bool(s, NNG_OPT_RAW, &b));
+	NUTS_PASS(nng_socket_raw(s, &b));
 	NUTS_TRUE(b);
 	NUTS_CLOSE(s);
 }
@@ -62,7 +61,7 @@ test_xsurvey_poll_writeable(void)
 
 	NUTS_PASS(nng_surveyor0_open_raw(&surv));
 	NUTS_PASS(nng_respondent0_open(&resp));
-	NUTS_PASS(nng_socket_get_int(surv, NNG_OPT_SENDFD, &fd));
+	NUTS_PASS(nng_socket_get_send_poll_fd(surv, &fd));
 	NUTS_TRUE(fd >= 0);
 
 	// Survey is broadcast, so we can always write.
@@ -83,11 +82,11 @@ test_xsurvey_poll_readable(void)
 	int        fd;
 	nng_socket surv;
 	nng_socket resp;
-	nng_msg *  msg;
+	nng_msg   *msg;
 
 	NUTS_PASS(nng_surveyor0_open_raw(&surv));
 	NUTS_PASS(nng_respondent0_open(&resp));
-	NUTS_PASS(nng_socket_get_int(surv, NNG_OPT_RECVFD, &fd));
+	NUTS_PASS(nng_socket_get_recv_poll_fd(surv, &fd));
 	NUTS_PASS(nng_socket_set_ms(resp, NNG_OPT_RECVTIMEO, 1000));
 	NUTS_PASS(nng_socket_set_ms(surv, NNG_OPT_RECVTIMEO, 1000));
 	NUTS_PASS(nng_socket_set_ms(resp, NNG_OPT_SENDTIMEO, 1000));
@@ -114,7 +113,7 @@ test_xsurvey_poll_readable(void)
 
 	NUTS_SLEEP(100);
 
-	NUTS_TRUE(nuts_poll_fd(fd) );
+	NUTS_TRUE(nuts_poll_fd(fd));
 
 	// and receiving makes it no longer ready
 	NUTS_PASS(nng_recvmsg(surv, &msg, 0));
@@ -128,10 +127,10 @@ test_xsurvey_poll_readable(void)
 static void
 test_xsurvey_validate_peer(void)
 {
-	nng_socket s1, s2;
-	nng_stat * stats;
-	nng_stat * reject;
-	char       *addr;
+	nng_socket      s1, s2;
+	nng_stat       *stats;
+	const nng_stat *reject;
+	char           *addr;
 
 	NUTS_ADDR(addr, "inproc");
 
@@ -160,7 +159,7 @@ static void
 test_xsurvey_recv_aio_stopped(void)
 {
 	nng_socket surv;
-	nng_aio *  aio;
+	nng_aio   *aio;
 
 	NUTS_PASS(nng_surveyor0_open_raw(&surv));
 	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
@@ -178,7 +177,7 @@ test_xsurvey_recv_garbage(void)
 {
 	nng_socket resp;
 	nng_socket surv;
-	nng_msg *  m;
+	nng_msg   *m;
 	uint32_t   req_id;
 
 	NUTS_PASS(nng_respondent0_open_raw(&resp));
@@ -215,7 +214,7 @@ test_xsurvey_recv_header(void)
 {
 	nng_socket resp;
 	nng_socket surv;
-	nng_msg *  m;
+	nng_msg   *m;
 	nng_pipe   p;
 	uint32_t   id;
 
@@ -257,7 +256,7 @@ test_xsurvey_close_during_recv(void)
 {
 	nng_socket resp;
 	nng_socket surv;
-	nng_msg *  m;
+	nng_msg   *m;
 	nng_pipe   p1;
 	nng_pipe   p2;
 
@@ -288,7 +287,7 @@ test_xsurvey_close_pipe_during_send(void)
 {
 	nng_socket resp;
 	nng_socket surv;
-	nng_msg *  m;
+	nng_msg   *m;
 	nng_pipe   p1;
 	nng_pipe   p2;
 
@@ -321,7 +320,6 @@ test_xsurvey_ttl_option(void)
 	nng_socket  s;
 	int         v;
 	bool        b;
-	size_t      sz;
 	const char *opt = NNG_OPT_MAXTTL;
 
 	NUTS_PASS(nng_surveyor0_open_raw(&s));
@@ -334,17 +332,8 @@ test_xsurvey_ttl_option(void)
 	NUTS_PASS(nng_socket_set_int(s, opt, 3));
 	NUTS_PASS(nng_socket_get_int(s, opt, &v));
 	NUTS_TRUE(v == 3);
-	v  = 0;
-	sz = sizeof(v);
-	NUTS_PASS(nng_socket_get(s, opt, &v, &sz));
-	NUTS_TRUE(v == 3);
-	NUTS_TRUE(sz == sizeof(v));
-
-	NUTS_FAIL(nng_socket_set(s, opt, "", 1) , NNG_EINVAL);
-	sz = 1;
-	NUTS_FAIL(nng_socket_get(s, opt, &v, &sz) , NNG_EINVAL);
-	NUTS_FAIL(nng_socket_set_bool(s, opt, true) , NNG_EBADTYPE);
-	NUTS_FAIL(nng_socket_get_bool(s, opt, &b) , NNG_EBADTYPE);
+	NUTS_FAIL(nng_socket_set_bool(s, opt, true), NNG_EBADTYPE);
+	NUTS_FAIL(nng_socket_get_bool(s, opt, &b), NNG_EBADTYPE);
 
 	NUTS_CLOSE(s);
 }
@@ -355,7 +344,7 @@ test_xsurvey_broadcast(void)
 	nng_socket resp1;
 	nng_socket resp2;
 	nng_socket surv;
-	nng_msg *  m;
+	nng_msg   *m;
 
 	NUTS_PASS(nng_respondent0_open(&resp1));
 	NUTS_PASS(nng_respondent0_open(&resp2));

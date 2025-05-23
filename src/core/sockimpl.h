@@ -22,7 +22,6 @@ struct nni_dialer {
 	uint32_t          d_id;   // endpoint id
 	nni_list_node     d_node; // per socket list
 	nni_sock         *d_sock;
-	nni_url          *d_url;
 	nni_pipe         *d_pipe; // active pipe (for re-dialer)
 	int               d_ref;
 	bool              d_closed; // full shutdown
@@ -37,12 +36,12 @@ struct nni_dialer {
 	nni_duration      d_currtime; // current time for reconnect
 	nni_duration      d_inirtime; // initial time for reconnect
 	nni_reap_node     d_reap;
+	nng_url           d_url;
 
 #ifdef NNG_ENABLE_STATS
 	nni_stat_item st_root;
 	nni_stat_item st_id;
 	nni_stat_item st_sock;
-	nni_stat_item st_url;
 	nni_stat_item st_pipes;
 	nni_stat_item st_connect;
 	nni_stat_item st_refused;
@@ -64,7 +63,6 @@ struct nni_listener {
 	uint32_t            l_id;   // endpoint id
 	nni_list_node       l_node; // per socket list
 	nni_sock           *l_sock;
-	nni_url            *l_url;
 	int                 l_ref;
 	bool                l_closed;  // full shutdown
 	nni_atomic_flag     l_closing; // close started (shutdown)
@@ -73,12 +71,12 @@ struct nni_listener {
 	nni_aio             l_acc_aio;
 	nni_aio             l_tmo_aio;
 	nni_reap_node       l_reap;
+	nng_url             l_url;
 
 #ifdef NNG_ENABLE_STATS
 	nni_stat_item st_root;
 	nni_stat_item st_id;
 	nni_stat_item st_sock;
-	nni_stat_item st_url;
 	nni_stat_item st_pipes;
 	nni_stat_item st_accept;
 	nni_stat_item st_disconnect; // aborted remotely

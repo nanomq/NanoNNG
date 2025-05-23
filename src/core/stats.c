@@ -1,5 +1,5 @@
 //
-// Copyright 2022 Staysail Systems, Inc. <info@staysail.tech>
+// Copyright 2024 Staysail Systems, Inc. <info@staysail.tech>
 // Copyright 2018 Capitar IT Group BV <info@capitar.com>
 //
 // This software is supplied under the terms of the MIT License, a
@@ -11,7 +11,9 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "core/defs.h"
 #include "core/nng_impl.h"
+#include "nng/nng.h"
 
 typedef struct nng_stat nni_stat;
 
@@ -109,16 +111,25 @@ nni_stat_unregister(nni_stat_item *item)
 }
 
 void
-nni_stat_init(nni_stat_item *item, const nni_stat_info *info)
+nni_stat_init_lock(
+    nni_stat_item *item, const nni_stat_info *info, nni_mtx *mtx)
 {
 #ifdef NNG_ENABLE_STATS
 	memset(item, 0, sizeof(*item));
 	NNI_LIST_INIT(&item->si_children, nni_stat_item, si_node);
 	item->si_info = info;
+	item->si_mtx  = mtx;
 #else
 	NNI_ARG_UNUSED(item);
 	NNI_ARG_UNUSED(info);
+	NNI_ARG_UNUSED(mtx);
 #endif
+}
+
+void
+nni_stat_init(nni_stat_item *item, const nni_stat_info *info)
+{
+	nni_stat_init_lock(item, info, NULL);
 }
 
 void
@@ -272,13 +283,26 @@ stat_make_tree(nni_stat_item *item, nni_stat **sp)
 }
 
 static void
-stat_update(nni_stat *stat)
+stat_update(nni_stat *stat, nni_mtx **mtxp)
 {
 	const nni_stat_item *item = stat->s_item;
 	const nni_stat_info *info = item->si_info;
 	char                *old;
 	char                *str;
 
+	if (info->si_lock) {
+		NNI_ASSERT(item->si_mtx != NULL);
+		if (*mtxp != item->si_mtx) {
+			if (*mtxp) {
+				nni_mtx_unlock(*mtxp);
+			}
+			nni_mtx_lock(item->si_mtx);
+			*mtxp = item->si_mtx;
+		}
+	} else if (*mtxp) {
+		nni_mtx_unlock(*mtxp);
+		*mtxp = NULL;
+	}
 	switch (info->si_type) {
 	case NNG_STAT_SCOPE:
 	case NNG_STAT_ID:
@@ -323,12 +347,12 @@ stat_update(nni_stat *stat)
 }
 
 static void
-stat_update_tree(nni_stat *stat)
+stat_update_tree(nni_stat *stat, nni_mtx **mtxp)
 {
 	nni_stat *child;
-	stat_update(stat);
+	stat_update(stat, mtxp);
 	NNI_LIST_FOREACH (&stat->s_children, child) {
-		stat_update_tree(child);
+		stat_update_tree(child, mtxp);
 	}
 }
 
@@ -337,6 +361,7 @@ nni_stat_snapshot(nni_stat **statp, nni_stat_item *item)
 {
 	int       rv;
 	nni_stat *stat;
+	nni_mtx  *mtx = NULL;
 
 	if (item == NULL) {
 		item = &stats_root;
@@ -346,7 +371,10 @@ nni_stat_snapshot(nni_stat **statp, nni_stat_item *item)
 		nni_mtx_unlock(&stats_lock);
 		return (rv);
 	}
-	stat_update_tree(stat);
+	stat_update_tree(stat, &mtx);
+	if (mtx != NULL) {
+		nni_mtx_unlock(mtx);
+	}
 	nni_mtx_unlock(&stats_lock);
 	*statp = stat;
 	return (0);
@@ -357,10 +385,6 @@ int
 nng_stats_get(nng_stat **statp)
 {
 #ifdef NNG_ENABLE_STATS
-	int rv;
-	if ((rv = nni_init()) != 0) {
-		return (rv);
-	}
 	return (nni_stat_snapshot(statp, &stats_root));
 #else
 	NNI_ARG_UNUSED(statp);
@@ -368,82 +392,133 @@ nng_stats_get(nng_stat **statp)
 #endif
 }
 
-nng_stat *
-nng_stat_parent(nng_stat *stat)
+const nng_stat *
+nng_stat_parent(const nng_stat *stat)
 {
 	return (stat->s_parent);
 }
 
-nng_stat *
-nng_stat_next(nng_stat *stat)
+const nng_stat *
+nng_stat_next(const nng_stat *stat)
 {
+#if NNG_ENABLE_STATS
 	if (stat->s_parent == NULL) {
 		return (NULL); // Root node, no siblings.
 	}
-	return (nni_list_next(&stat->s_parent->s_children, stat));
+	return (nni_list_next(&stat->s_parent->s_children, (void *) stat));
+#else
+	NNI_ARG_UNUSED(stat);
+	return (NULL);
+#endif
 }
 
-nng_stat *
-nng_stat_child(nng_stat *stat)
+const nng_stat *
+nng_stat_child(const nng_stat *stat)
 {
+#if NNG_ENABLE_STATS
 	return (nni_list_first(&stat->s_children));
+#else
+	NNI_ARG_UNUSED(stat);
+	return (NULL);
+#endif
 }
 
 const char *
-nng_stat_name(nni_stat *stat)
+nng_stat_name(const nng_stat *stat)
 {
+#if NNG_ENABLE_STATS
 	return (stat->s_info->si_name);
+#else
+	NNI_ARG_UNUSED(stat);
+	return (NULL);
+#endif
 }
 
 uint64_t
-nng_stat_value(nni_stat *stat)
+nng_stat_value(const nng_stat *stat)
 {
+#if NNG_ENABLE_STATS
 	return (stat->s_val.sv_value);
+#else
+	NNI_ARG_UNUSED(stat);
+	return (0);
+#endif
 }
 
 bool
-nng_stat_bool(nni_stat *stat)
+nng_stat_bool(const nng_stat *stat)
 {
+#if NNG_ENABLE_STATS
 	return (stat->s_val.sv_bool);
+#else
+	NNI_ARG_UNUSED(stat);
+	return (false);
+#endif
 }
 
 const char *
-nng_stat_string(nng_stat *stat)
+nng_stat_string(const nng_stat *stat)
 {
+#if NNG_ENABLE_STATS
 	if (stat->s_info->si_type != NNG_STAT_STRING) {
 		return ("");
 	}
 	return (stat->s_val.sv_string);
+#else
+	NNI_ARG_UNUSED(stat);
+	return ("");
+#endif
 }
 
 uint64_t
-nng_stat_timestamp(nng_stat *stat)
+nng_stat_timestamp(const nng_stat *stat)
 {
+#if NNG_ENABLE_STATS
 	return ((uint64_t) stat->s_timestamp);
+#else
+	NNI_ARG_UNUSED(stat);
+	return (0);
+#endif
 }
 
 int
-nng_stat_type(nng_stat *stat)
+nng_stat_type(const nng_stat *stat)
 {
+#if NNG_ENABLE_STATS
 	return (stat->s_info->si_type);
+#else
+	NNI_ARG_UNUSED(stat);
+	return (NNG_STAT_ID);
+#endif
 }
 
 int
-nng_stat_unit(nng_stat *stat)
+nng_stat_unit(const nng_stat *stat)
 {
+#if NNG_ENABLE_STATS
 	return (stat->s_info->si_unit);
+#else
+	NNI_ARG_UNUSED(stat);
+	return (NNG_UNIT_NONE);
+#endif
 }
 
 const char *
-nng_stat_desc(nng_stat *stat)
+nng_stat_desc(const nng_stat *stat)
 {
+#if NNG_ENABLE_STATS
 	return (stat->s_info->si_desc);
+#else
+	NNI_ARG_UNUSED(stat);
+	return ("");
+#endif
 }
 
-nng_stat *
-nng_stat_find(nng_stat *stat, const char *name)
+const nng_stat *
+nng_stat_find(const nng_stat *stat, const char *name)
 {
-	nng_stat *child;
+#if NNG_ENABLE_STATS
+	const nng_stat *child;
 	if (stat == NULL) {
 		return (NULL);
 	}
@@ -452,36 +527,22 @@ nng_stat_find(nng_stat *stat, const char *name)
 		return (stat);
 	}
 	NNI_LIST_FOREACH (&stat->s_children, child) {
-		nng_stat *result;
+		const nng_stat *result;
 		if ((result = nng_stat_find(child, name)) != NULL) {
 			return (result);
 		}
 	}
+#else
+	NNI_ARG_UNUSED(stat);
+	NNI_ARG_UNUSED(name);
+#endif
 	return (NULL);
 }
 
-nng_stat *
-nng_stat_find_pipe(nng_stat *stat, uint64_t pipeid)
+const nng_stat *
+nng_stat_find_scope(const nng_stat *stat, const char *name, int id)
 {
-	nng_stat *child;
-	if (stat == NULL || stat->s_info->si_type != NNG_STAT_SCOPE) {
-		return (NULL);
-	}
-	if ((stat->s_val.sv_id == pipeid) && strncmp(stat->s_info->si_name, "pipe", 4) == 0) {
-		return (stat);
-	}
-	NNI_LIST_FOREACH (&stat->s_children, child) {
-		nng_stat *result;
-		if ((result = nng_stat_find_pipe(child, pipeid)) != NULL) {
-			return (result);
-		}
-	}
-	return (NULL);
-}
-
-nng_stat *
-nng_stat_find_scope(nng_stat *stat, const char *name, int id)
-{
+#if NNG_ENABLE_STATS
 	nng_stat *child;
 	if (stat == NULL || stat->s_info->si_type != NNG_STAT_SCOPE) {
 		return (NULL);
@@ -492,35 +553,40 @@ nng_stat_find_scope(nng_stat *stat, const char *name, int id)
 		return (stat);
 	}
 	NNI_LIST_FOREACH (&stat->s_children, child) {
-		nng_stat *result;
+		const nng_stat *result;
 		if ((result = nng_stat_find_scope(child, name, id)) != NULL) {
 			return (result);
 		}
 	}
+#else
+	NNI_ARG_UNUSED(stat);
+	NNI_ARG_UNUSED(name);
+	NNI_ARG_UNUSED(id);
+#endif
 	return (NULL);
 }
 
-nng_stat *
-nng_stat_find_socket(nng_stat *stat, nng_socket s)
+const nng_stat *
+nng_stat_find_socket(const nng_stat *stat, nng_socket s)
 {
 	return (nng_stat_find_scope(stat, "socket", nng_socket_id(s)));
 }
 
-nng_stat *
-nng_stat_find_dialer(nng_stat *stat, nng_dialer d)
+const nng_stat *
+nng_stat_find_dialer(const nng_stat *stat, nng_dialer d)
 {
 	return (nng_stat_find_scope(stat, "dialer", nng_dialer_id(d)));
 }
 
-nng_stat *
-nng_stat_find_listener(nng_stat *stat, nng_listener l)
+const nng_stat *
+nng_stat_find_listener(const nng_stat *stat, nng_listener l)
 {
 	return (nng_stat_find_scope(stat, "listener", nng_listener_id(l)));
 }
 
 #ifdef NNG_ENABLE_STATS
 void
-stat_sprint_scope(nni_stat *stat, char **scope, int *lenp)
+stat_sprint_scope(const nni_stat *stat, char **scope, int *lenp)
 {
 	if (stat->s_parent != NULL) {
 		stat_sprint_scope(stat->s_parent, scope, lenp);
@@ -537,7 +603,7 @@ stat_sprint_scope(nni_stat *stat, char **scope, int *lenp)
 #endif
 
 void
-nng_stats_dump(nng_stat *stat)
+nng_stats_dump(const nng_stat *stat)
 {
 #ifdef NNG_ENABLE_STATS
 	static char        buf[128]; // to minimize recursion, not thread safe

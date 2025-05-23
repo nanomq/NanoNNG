@@ -14,8 +14,8 @@
 
 #include "core/nng_impl.h"
 
+#include "nng/nng.h"
 #include "nng/supplemental/tls/tls.h"
-#include "nng/transport/tls/tls.h"
 
 // TLS over TCP transport.   Platform specific TCP operations must be
 // supplied as well, and uses the supplemental TLS v1.2 code.  It is not
@@ -63,8 +63,7 @@ struct tlstran_ep {
 	bool                 closed;
 	bool                 fini;
 	int                  refcnt;
-	int                  authmode;
-	nni_url             *url;
+	nng_url             *url;
 	nni_list             pipes;
 	nni_reap_node        reap;
 	nng_stream_dialer   *dialer;
@@ -674,65 +673,6 @@ tlstran_ep_close(void *arg)
 	nni_mtx_unlock(&ep->mtx);
 }
 
-// This parses off the optional source address that this transport uses.
-// The special handling of this URL format is quite honestly an historical
-// mistake, which we would remove if we could.
-static int
-tlstran_url_parse_source(nni_url *url, nng_sockaddr *sa, const nni_url *surl)
-{
-	int      af;
-	char    *semi;
-	char    *src;
-	size_t   len;
-	int      rv;
-	nni_aio *aio;
-
-	// We modify the URL.  This relies on the fact that the underlying
-	// transport does not free this, so we can just use references.
-
-	url->u_scheme   = surl->u_scheme;
-	url->u_port     = surl->u_port;
-	url->u_hostname = surl->u_hostname;
-
-	if ((semi = strchr(url->u_hostname, ';')) == NULL) {
-		memset(sa, 0, sizeof(*sa));
-		return (0);
-	}
-
-	len             = (size_t) (semi - url->u_hostname);
-	url->u_hostname = semi + 1;
-
-	if (strcmp(surl->u_scheme, "tls+tcp") == 0) {
-		af = NNG_AF_UNSPEC;
-	} else if (strcmp(surl->u_scheme, "tls+tcp4") == 0) {
-		af = NNG_AF_INET;
-#ifdef NNG_ENABLE_IPV6
-	} else if (strcmp(surl->u_scheme, "tls+tcp6") == 0) {
-		af = NNG_AF_INET6;
-#endif
-	} else {
-		return (NNG_EADDRINVAL);
-	}
-
-	if ((src = nni_alloc(len + 1)) == NULL) {
-		return (NNG_ENOMEM);
-	}
-	memcpy(src, surl->u_hostname, len);
-	src[len] = '\0';
-
-	if ((rv = nni_aio_alloc(&aio, NULL, NULL)) != 0) {
-		nni_free(src, len + 1);
-		return (rv);
-	}
-
-	nni_resolv_ip(src, "0", af, 1, sa, aio);
-	nni_aio_wait(aio);
-	rv = nni_aio_result(aio);
-	nni_aio_free(aio);
-	nni_free(src, len + 1);
-	return (rv);
-}
-
 static void
 tlstran_timer_cb(void *arg)
 {
@@ -874,13 +814,11 @@ tlstran_ep_init(tlstran_ep **epp, nng_url *url, nni_sock *sock)
 }
 
 static int
-tlstran_ep_init_dialer(void **dp, nni_url *url, nni_dialer *ndialer)
+tlstran_ep_init_dialer(void **dp, nng_url *url, nni_dialer *ndialer)
 {
-	tlstran_ep  *ep;
-	int          rv;
-	nng_sockaddr srcsa;
-	nni_sock    *sock = nni_dialer_sock(ndialer);
-	nni_url      myurl;
+	tlstran_ep *ep;
+	int         rv;
+	nni_sock   *sock = nni_dialer_sock(ndialer);
 
 	// Check for invalid URL components.
 	if ((strlen(url->u_path) != 0) && (strcmp(url->u_path, "/") != 0)) {
@@ -888,28 +826,17 @@ tlstran_ep_init_dialer(void **dp, nni_url *url, nni_dialer *ndialer)
 	}
 	if ((url->u_fragment != NULL) || (url->u_userinfo != NULL) ||
 	    (url->u_query != NULL) || (strlen(url->u_hostname) == 0) ||
-	    (strlen(url->u_port) == 0)) {
+	    (url->u_port == 0)) {
 		return (NNG_EADDRINVAL);
-	}
-
-	if ((rv = tlstran_url_parse_source(&myurl, &srcsa, url)) != 0) {
-		return (rv);
 	}
 
 	if (((rv = tlstran_ep_init(&ep, url, sock)) != 0) ||
 	    ((rv = nni_aio_alloc(&ep->connaio, tlstran_dial_cb, ep)) != 0)) {
 		return (rv);
 	}
-	ep->authmode = NNG_TLS_AUTH_MODE_REQUIRED;
 
 	if ((rv != 0) ||
-	    ((rv = nng_stream_dialer_alloc_url(&ep->dialer, &myurl)) != 0)) {
-		tlstran_ep_fini(ep);
-		return (rv);
-	}
-	if ((srcsa.s_family != NNG_AF_UNSPEC) &&
-	    ((rv = nni_stream_dialer_set(ep->dialer, NNG_OPT_LOCADDR, &srcsa,
-	          sizeof(srcsa), NNI_TYPE_SOCKADDR)) != 0)) {
+	    ((rv = nng_stream_dialer_alloc_url(&ep->dialer, url)) != 0)) {
 		tlstran_ep_fini(ep);
 		return (rv);
 	}
@@ -921,7 +848,7 @@ tlstran_ep_init_dialer(void **dp, nni_url *url, nni_dialer *ndialer)
 }
 
 static int
-tlstran_ep_init_listener(void **lp, nni_url *url, nni_listener *nlistener)
+tlstran_ep_init_listener(void **lp, nng_url *url, nni_listener *nlistener)
 {
 	tlstran_ep *ep;
 	int         rv;
@@ -956,8 +883,6 @@ tlstran_ep_init_listener(void **lp, nni_url *url, nni_listener *nlistener)
 		return (rv);
 	}
 
-	ep->authmode = NNG_TLS_AUTH_MODE_NONE;
-
 	if (strlen(host) == 0) {
 		host = NULL;
 	}
@@ -978,10 +903,7 @@ tlstran_ep_init_listener(void **lp, nni_url *url, nni_listener *nlistener)
 	nni_aio_free(aio);
 
 	if ((rv != 0) ||
-	    ((rv = nng_stream_listener_alloc_url(&ep->listener, url)) != 0) ||
-	    ((rv = nni_stream_listener_set(ep->listener, NNG_OPT_TLS_AUTH_MODE,
-	          &ep->authmode, sizeof(ep->authmode), NNI_TYPE_INT32)) !=
-	        0)) {
+	    ((rv = nng_stream_listener_alloc_url(&ep->listener, url)) != 0)) {
 		tlstran_ep_fini(ep);
 		return (rv);
 	}
@@ -1037,13 +959,19 @@ tlstran_ep_connect(void *arg, nni_aio *aio)
 }
 
 static int
-tlstran_ep_bind(void *arg)
+tlstran_ep_bind(void *arg, nng_url *url)
 {
 	tlstran_ep *ep = arg;
 	int         rv;
 
 	nni_mtx_lock(&ep->mtx);
 	rv = nng_stream_listener_listen(ep->listener);
+	if (rv == 0) {
+		int port;
+		nng_stream_listener_get_int(
+		    ep->listener, NNG_OPT_TCP_BOUND_PORT, &port);
+		url->u_port = (uint32_t) port;
+	}
 	nni_mtx_unlock(&ep->mtx);
 
 	return (rv);
@@ -1236,6 +1164,34 @@ tlstran_listener_set(
 	return (rv);
 }
 
+static int
+tlstran_listener_set_tls(void *arg, nng_tls_config *cfg)
+{
+	tlstran_ep *ep = arg;
+	return (nni_stream_listener_set_tls(ep->listener, cfg));
+}
+
+static int
+tlstran_listener_get_tls(void *arg, nng_tls_config **cfgp)
+{
+	tlstran_ep *ep = arg;
+	return (nni_stream_listener_get_tls(ep->listener, cfgp));
+}
+
+static int
+tlstran_dialer_set_tls(void *arg, nng_tls_config *cfg)
+{
+	tlstran_ep *ep = arg;
+	return (nni_stream_dialer_set_tls(ep->dialer, cfg));
+}
+
+static int
+tlstran_dialer_get_tls(void *arg, nng_tls_config **cfgp)
+{
+	tlstran_ep *ep = arg;
+	return (nni_stream_dialer_get_tls(ep->dialer, cfgp));
+}
+
 static nni_sp_dialer_ops tlstran_dialer_ops = {
 	.d_init    = tlstran_ep_init_dialer,
 	.d_fini    = tlstran_ep_fini,
@@ -1243,16 +1199,20 @@ static nni_sp_dialer_ops tlstran_dialer_ops = {
 	.d_close   = tlstran_ep_close,
 	.d_getopt  = tlstran_dialer_getopt,
 	.d_setopt  = tlstran_dialer_setopt,
+	.d_get_tls = tlstran_dialer_get_tls,
+	.d_set_tls = tlstran_dialer_set_tls,
 };
 
 static nni_sp_listener_ops tlstran_listener_ops = {
-	.l_init   = tlstran_ep_init_listener,
-	.l_fini   = tlstran_ep_fini,
-	.l_bind   = tlstran_ep_bind,
-	.l_accept = tlstran_ep_accept,
-	.l_close  = tlstran_ep_close,
-	.l_getopt = tlstran_listener_get,
-	.l_setopt = tlstran_listener_set,
+	.l_init    = tlstran_ep_init_listener,
+	.l_fini    = tlstran_ep_fini,
+	.l_bind    = tlstran_ep_bind,
+	.l_accept  = tlstran_ep_accept,
+	.l_close   = tlstran_ep_close,
+	.l_getopt  = tlstran_listener_get,
+	.l_setopt  = tlstran_listener_set,
+	.l_set_tls = tlstran_listener_set_tls,
+	.l_get_tls = tlstran_listener_get_tls,
 };
 
 static nni_sp_tran tls_tran = {
@@ -1283,12 +1243,6 @@ static nni_sp_tran tls6_tran = {
 	.tran_fini     = tlstran_fini,
 };
 #endif
-
-int
-nng_tls_register(void)
-{
-	return (nni_init());
-}
 
 void
 nni_sp_tls_register(void)

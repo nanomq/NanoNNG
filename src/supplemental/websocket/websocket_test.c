@@ -21,7 +21,6 @@ test_websocket_wildcard(void)
 	nng_stream_listener *l = NULL;
 	nng_sockaddr         sa1;
 	nng_sockaddr         sa2;
-	size_t               sz;
 	nng_aio             *daio = NULL;
 	nng_aio             *laio = NULL;
 	nng_aio             *aio1 = NULL;
@@ -39,9 +38,7 @@ test_websocket_wildcard(void)
 
 	// Let's get the address we're going to use to dial -- also check
 	// that it is correct.
-	sz = sizeof(sa1);
-	NUTS_PASS(nng_stream_listener_get(l, NNG_OPT_LOCADDR, &sa1, &sz));
-	NUTS_TRUE(sz == sizeof(sa1));
+	NUTS_PASS(nng_stream_listener_get_addr(l, NNG_OPT_LOCADDR, &sa1));
 	NUTS_TRUE(sa1.s_in.sa_port != 0);
 	NUTS_TRUE(sa1.s_family == NNG_AF_INET);
 	NUTS_TRUE(nuts_be32(sa1.s_in.sa_addr) == 0x7F000001u);
@@ -150,6 +147,12 @@ test_websocket_conn_props(void)
 	NUTS_PASS(nng_stream_listener_listen(l));
 	NUTS_PASS(nng_stream_dialer_alloc(&d, uri));
 
+	NUTS_PASS(nng_stream_dialer_set_string(
+	    d, NNG_OPT_WS_REQUEST_HEADER "NNG-Req", "True"));
+
+	NUTS_PASS(nng_stream_listener_set_string(
+	    l, NNG_OPT_WS_RESPONSE_HEADER "NNG-Rep", "True"));
+
 	nng_stream_dialer_dial(d, daio);
 	nng_stream_listener_accept(l, laio);
 
@@ -176,29 +179,26 @@ test_websocket_conn_props(void)
 	NUTS_TRUE(sa1.s_in.sa_addr == sa2.s_in.sa_addr);
 	NUTS_TRUE(sa1.s_in.sa_port == sa2.s_in.sa_port);
 
-	on = true;
-	NUTS_PASS(nng_stream_set_bool(c1, NNG_OPT_TCP_NODELAY, on));
-	NUTS_PASS(nng_stream_set_bool(c2, NNG_OPT_TCP_NODELAY, on));
-
-	NUTS_PASS(nng_stream_set_bool(c1, NNG_OPT_TCP_KEEPALIVE, on));
-	NUTS_PASS(nng_stream_set_bool(c2, NNG_OPT_TCP_KEEPALIVE, on));
-	NUTS_FAIL(nng_stream_set_string(c1, NNG_OPT_TCP_KEEPALIVE, "nope"),
-	    NNG_EBADTYPE);
-
-	on = false;
-	sz = sizeof(on);
-	NUTS_PASS(nng_stream_get(c1, NNG_OPT_TCP_NODELAY, &on, &sz));
-	NUTS_TRUE(sz == sizeof(on));
+	NUTS_PASS(nng_stream_get_bool(c1, NNG_OPT_TCP_NODELAY, &on));
 	NUTS_TRUE(on == true);
 
-	on = false;
-	sz = sizeof(on);
-	NUTS_PASS(nng_stream_get(c2, NNG_OPT_TCP_KEEPALIVE, &on, &sz));
-	NUTS_TRUE(sz == sizeof(on));
-	NUTS_TRUE(on == true);
+	NUTS_PASS(nng_stream_get_bool(c2, NNG_OPT_TCP_KEEPALIVE, &on));
 
 	NUTS_FAIL(
 	    nng_stream_get_size(c1, NNG_OPT_TCP_NODELAY, &sz), NNG_EBADTYPE);
+
+	NUTS_FAIL(nng_stream_get_string(
+	              c1, NNG_OPT_WS_REQUEST_HEADER "No-Such-Header", &str),
+	    NNG_ENOENT);
+	NUTS_PASS(nng_stream_get_string(
+	    c1, NNG_OPT_WS_REQUEST_HEADER "NNG-Req", &str));
+	NUTS_MATCH(str, "True");
+	nng_strfree(str);
+
+	NUTS_PASS(nng_stream_get_string(
+	    c2, NNG_OPT_WS_RESPONSE_HEADER "NNG-Rep", &str));
+	NUTS_MATCH(str, "True");
+	nng_strfree(str);
 
 	NUTS_PASS(nng_stream_get_string(
 	    c1, NNG_OPT_WS_REQUEST_HEADER "Sec-WebSocket-Version", &str));

@@ -8,7 +8,9 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
+#include "core/init.h"
 #include "core/nng_impl.h"
+#include "nng/nng.h"
 
 #ifdef NNG_USE_POSIX_RESOLV_GAI
 
@@ -16,6 +18,7 @@
 #include <errno.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -42,14 +45,14 @@ static nni_cv   resolv_cv   = NNI_CV_INITIALIZER(&resolv_mtx);
 static bool     resolv_fini = false;
 static nni_list resolv_aios;
 static nni_thr *resolv_thrs;
-static int      resolv_num_thr;
+static int16_t  resolv_num_thr;
 
 typedef struct resolv_item resolv_item;
 struct resolv_item {
 	int           family;
 	bool          passive;
-	char         *host;
-	char         *serv;
+	char          host[256];
+	char          serv[8];
 	nni_aio      *aio;
 	nng_sockaddr *sa;
 };
@@ -57,8 +60,6 @@ struct resolv_item {
 static void
 resolv_free_item(resolv_item *item)
 {
-	nni_strfree(item->serv);
-	nni_strfree(item->host);
 	NNI_FREE_STRUCT(item);
 }
 
@@ -154,29 +155,12 @@ resolv_task(resolv_item *item)
 	}
 	hints.ai_family   = item->family;
 	hints.ai_socktype = SOCK_STREAM;
-
-	// Check to see if this is a numeric port number, and if it is
-	// make sure that it's in the valid range (because Windows may
-	// incorrectly simple do a conversion and mask off upper bits.
-	if (item->serv != NULL) {
-		long  port;
-		char *end;
-		port = strtol(item->serv, &end, 10);
-		if (*end == '\0') { // we fully converted it as a number...
-			hints.ai_flags |= AI_NUMERICSERV;
-
-			// Not a valid port number.  Fail.
-			if ((port < 0) || (port > 0xffff)) {
-				rv = NNG_EADDRINVAL;
-				goto done;
-			}
-		}
-	}
+	hints.ai_flags |= AI_NUMERICSERV;
 
 	// We can pass any non-zero service number, but we have to pass
 	// *something*, in case we are using a NULL hostname.
-	if ((rv = getaddrinfo(item->host, item->serv, &hints, &results)) !=
-	    0) {
+	if ((rv = getaddrinfo(item->host[0] != 0 ? item->host : NULL,
+	         item->serv, &hints, &results)) != 0) {
 		rv = posix_gai_errno(rv);
 		goto done;
 	}
@@ -236,7 +220,7 @@ done:
 }
 
 void
-nni_resolv_ip(const char *host, const char *serv, int af, bool passive,
+nni_resolv_ip(const char *host, uint16_t port, int af, bool passive,
     nng_sockaddr *sa, nni_aio *aio)
 {
 	resolv_item *item;
@@ -245,6 +229,13 @@ nni_resolv_ip(const char *host, const char *serv, int af, bool passive,
 
 	if (nni_aio_begin(aio) != 0) {
 		return;
+	}
+	if (host != NULL) {
+		if ((strlen(host) >= sizeof(item->host)) ||
+		    (strcmp(host, "*") == 0)) {
+			nni_aio_finish_error(aio, NNG_EADDRINVAL);
+			return;
+		}
 	}
 	switch (af) {
 	case NNG_AF_INET:
@@ -274,19 +265,11 @@ nni_resolv_ip(const char *host, const char *serv, int af, bool passive,
 		return;
 	}
 
-	if (serv == NULL || strcmp(serv, "") == 0) {
-		item->serv = NULL;
-	} else if ((item->serv = nni_strdup(serv)) == NULL) {
-		nni_aio_finish_error(aio, NNG_ENOMEM);
-		resolv_free_item(item);
-		return;
-	}
+	snprintf(item->serv, sizeof(item->serv), "%u", port);
 	if (host == NULL) {
-		item->host = NULL;
-	} else if ((item->host = nni_strdup(host)) == NULL) {
-		nni_aio_finish_error(aio, NNG_ENOMEM);
-		resolv_free_item(item);
-		return;
+		item->host[0] = '\0';
+	} else {
+		snprintf(item->host, sizeof(item->host), "%s", host);
 	}
 
 	item->aio     = aio;
@@ -477,22 +460,37 @@ nni_parse_ip_port(const char *addr, nni_sockaddr *sa)
 }
 
 int
-nni_posix_resolv_sysinit(void)
+nni_get_port_by_name(const char *name, uint32_t *portp)
+{
+	struct servent *se;
+	long            port;
+	char           *end = NULL;
+
+	port = strtol(name, &end, 10);
+	if ((*end == '\0') && (port >= 0) && (port <= 0xffff)) {
+		*portp = (uint16_t) port;
+		return (0);
+	}
+
+	if ((se = getservbyname(name, "tcp")) != NULL) {
+		*portp = (uint16_t) ntohs(se->s_port);
+		return (0);
+	}
+	return (NNG_EADDRINVAL);
+}
+
+int
+nni_posix_resolv_sysinit(nng_init_params *params)
 {
 	resolv_fini = false;
 	nni_aio_list_init(&resolv_aios);
 
-#ifndef NNG_RESOLV_CONCURRENCY
-#define NNG_RESOLV_CONCURRENCY 4
-#endif
-
-	resolv_num_thr = (int) nni_init_get_param(
-	    NNG_INIT_NUM_RESOLVER_THREADS, NNG_RESOLV_CONCURRENCY);
+	resolv_num_thr = params->num_resolver_threads;
 	if (resolv_num_thr < 1) {
 		resolv_num_thr = 1;
 	}
+	params->num_resolver_threads = resolv_num_thr;
 	// no limit on the maximum for now
-	nni_init_set_effective(NNG_INIT_NUM_RESOLVER_THREADS, resolv_num_thr);
 	resolv_thrs = NNI_ALLOC_STRUCTS(resolv_thrs, resolv_num_thr);
 	if (resolv_thrs == NULL) {
 		return (NNG_ENOMEM);

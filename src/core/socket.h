@@ -37,6 +37,8 @@ extern int nni_sock_getopt(
 extern void     nni_sock_send(nni_sock *, nni_aio *);
 extern void     nni_sock_recv(nni_sock *, nni_aio *);
 extern uint32_t nni_sock_id(nni_sock *);
+extern int      nni_sock_get_send_fd(nni_sock *s, int *fdp);
+extern int      nni_sock_get_recv_fd(nni_sock *s, int *fdp);
 
 // These are socket methods that protocol operations can expect to call.
 // Note that each of these should be called without any locks held, since
@@ -81,6 +83,8 @@ extern int nni_sock_replace(nni_sock *, nni_sock *);
 // (If the socket for the context is being closed, then this will return
 // NNG_ECLOSED unless the final argument is true.)
 extern int nni_ctx_find(nni_ctx **, uint32_t, bool);
+
+extern void *nni_ctx_proto_data(nni_ctx *);
 
 // nni_ctx_rele is called to release a hold on the context.  These holds
 // are acquired by either nni_ctx_open or nni_ctx_find.  If the context

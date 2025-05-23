@@ -1,5 +1,5 @@
 //
-// Copyright 2020 Staysail Systems, Inc. <info@staysail.tech>
+// Copyright 2024 Staysail Systems, Inc. <info@staysail.tech>
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -7,28 +7,27 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
+#include "nng/nng.h"
 #include <nuts.h>
 
 static void
 test_xrep_identity(void)
 {
-	nng_socket s;
-	int        p1, p2;
-	char *     n1;
-	char *     n2;
+	nng_socket  s;
+	uint16_t    p1, p2;
+	const char *n1;
+	const char *n2;
 
 	NUTS_PASS(nng_rep0_open_raw(&s));
-	NUTS_PASS(nng_socket_get_int(s, NNG_OPT_PROTO, &p1));
-	NUTS_PASS(nng_socket_get_int(s, NNG_OPT_PEER, &p2));
-	NUTS_PASS(nng_socket_get_string(s, NNG_OPT_PROTONAME, &n1));
-	NUTS_PASS(nng_socket_get_string(s, NNG_OPT_PEERNAME, &n2));
+	NUTS_PASS(nng_socket_proto_id(s, &p1));
+	NUTS_PASS(nng_socket_peer_id(s, &p2));
+	NUTS_PASS(nng_socket_proto_name(s, &n1));
+	NUTS_PASS(nng_socket_peer_name(s, &n2));
 	NUTS_CLOSE(s);
 	NUTS_TRUE(p1 == NNG_REP0_SELF);
 	NUTS_TRUE(p2 == NNG_REP0_PEER);
 	NUTS_MATCH(n1, NNG_REP0_SELF_NAME);
 	NUTS_MATCH(n2, NNG_REP0_PEER_NAME);
-	nng_strfree(n1);
-	nng_strfree(n2);
 }
 
 static void
@@ -38,7 +37,7 @@ test_xrep_raw(void)
 	bool       b;
 
 	NUTS_PASS(nng_rep0_open_raw(&s));
-	NUTS_PASS(nng_socket_get_bool(s, NNG_OPT_RAW, &b));
+	NUTS_PASS(nng_socket_raw(s, &b));
 	NUTS_TRUE(b);
 	NUTS_CLOSE(s);
 }
@@ -63,7 +62,7 @@ test_xrep_poll_writeable(void)
 
 	NUTS_PASS(nng_rep0_open_raw(&rep));
 	NUTS_PASS(nng_req0_open(&req));
-	NUTS_PASS(nng_socket_get_int(rep, NNG_OPT_SENDFD, &fd));
+	NUTS_PASS(nng_socket_get_send_poll_fd(rep, &fd));
 	NUTS_TRUE(fd >= 0);
 
 	// We are always writeable, even before connect.  This is so that
@@ -87,11 +86,11 @@ test_xrep_poll_readable(void)
 	int        fd;
 	nng_socket req;
 	nng_socket rep;
-	nng_msg *  msg;
+	nng_msg   *msg;
 
 	NUTS_PASS(nng_req0_open(&req));
 	NUTS_PASS(nng_rep0_open_raw(&rep));
-	NUTS_PASS(nng_socket_get_int(rep, NNG_OPT_RECVFD, &fd));
+	NUTS_PASS(nng_socket_get_recv_poll_fd(rep, &fd));
 	NUTS_TRUE(fd >= 0);
 
 	// Not readable if not connected!
@@ -120,10 +119,10 @@ test_xrep_poll_readable(void)
 static void
 test_xrep_validate_peer(void)
 {
-	nng_socket s1, s2;
-	nng_stat * stats;
-	nng_stat * reject;
-	char       *addr;
+	nng_socket      s1, s2;
+	nng_stat       *stats;
+	const nng_stat *reject;
+	char           *addr;
 
 	NUTS_ADDR(addr, "inproc");
 
@@ -154,8 +153,8 @@ test_xrep_close_pipe_before_send(void)
 	nng_socket rep;
 	nng_socket req;
 	nng_pipe   p;
-	nng_aio *  aio1;
-	nng_msg *  m;
+	nng_aio   *aio1;
+	nng_msg   *m;
 
 	NUTS_PASS(nng_rep0_open_raw(&rep));
 	NUTS_PASS(nng_req0_open(&req));
@@ -186,7 +185,7 @@ test_xrep_close_pipe_during_send(void)
 	nng_socket rep;
 	nng_socket req;
 	nng_pipe   p;
-	nng_msg *  m;
+	nng_msg   *m;
 
 	NUTS_PASS(nng_rep0_open_raw(&rep));
 	NUTS_PASS(nng_req0_open_raw(&req));
@@ -226,7 +225,7 @@ test_xrep_close_during_recv(void)
 {
 	nng_socket rep;
 	nng_socket req;
-	nng_msg *  m;
+	nng_msg   *m;
 
 	NUTS_PASS(nng_rep0_open_raw(&rep));
 	NUTS_PASS(nng_req0_open_raw(&req));
@@ -255,7 +254,7 @@ static void
 test_xrep_recv_aio_stopped(void)
 {
 	nng_socket rep;
-	nng_aio *  aio;
+	nng_aio   *aio;
 
 	NUTS_PASS(nng_rep0_open_raw(&rep));
 	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
@@ -273,7 +272,7 @@ test_xrep_send_no_header(void)
 {
 	nng_socket rep;
 	nng_socket req;
-	nng_msg *  m;
+	nng_msg   *m;
 
 	NUTS_PASS(nng_req0_open_raw(&req));
 	NUTS_PASS(nng_rep0_open_raw(&rep));
@@ -297,7 +296,7 @@ test_xrep_recv_garbage(void)
 {
 	nng_socket rep;
 	nng_socket req;
-	nng_msg *  m;
+	nng_msg   *m;
 
 	NUTS_PASS(nng_rep0_open_raw(&rep));
 	NUTS_PASS(nng_req0_open_raw(&req));
@@ -322,7 +321,6 @@ test_xrep_ttl_option(void)
 	nng_socket  rep;
 	int         v;
 	bool        b;
-	size_t      sz;
 	const char *opt = NNG_OPT_MAXTTL;
 
 	NUTS_PASS(nng_rep0_open_raw(&rep));
@@ -335,15 +333,6 @@ test_xrep_ttl_option(void)
 	NUTS_PASS(nng_socket_set_int(rep, opt, 3));
 	NUTS_PASS(nng_socket_get_int(rep, opt, &v));
 	NUTS_TRUE(v == 3);
-	v  = 0;
-	sz = sizeof(v);
-	NUTS_PASS(nng_socket_get(rep, opt, &v, &sz));
-	NUTS_TRUE(v == 3);
-	NUTS_TRUE(sz == sizeof(v));
-
-	NUTS_TRUE(nng_socket_set(rep, opt, "", 1) == NNG_EINVAL);
-	sz = 1;
-	NUTS_TRUE(nng_socket_get(rep, opt, &v, &sz) == NNG_EINVAL);
 	NUTS_TRUE(nng_socket_set_bool(rep, opt, true) == NNG_EBADTYPE);
 	NUTS_TRUE(nng_socket_get_bool(rep, opt, &b) == NNG_EBADTYPE);
 
@@ -355,7 +344,7 @@ test_xrep_ttl_drop(void)
 {
 	nng_socket rep;
 	nng_socket req;
-	nng_msg *  m;
+	nng_msg   *m;
 
 	NUTS_PASS(nng_rep0_open_raw(&rep));
 	NUTS_PASS(nng_req0_open_raw(&req));

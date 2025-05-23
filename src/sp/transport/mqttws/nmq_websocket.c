@@ -1252,11 +1252,14 @@ wstran_fini(void)
 static int
 wstran_ep_set_conf(void *arg, const void *v, size_t sz, nni_type t)
 {
+	int rv;
 	ws_listener *l = arg;
 	NNI_ARG_UNUSED(sz);
 	NNI_ARG_UNUSED(t);
 	nni_mtx_lock(&l->mtx);
-	l->conf = (conf *) v;
+	if ((rv = nni_copyin_ptr((void **) &(l->conf), v, sz, t)) != 0) {
+		return (rv);
+	}
 	nni_mtx_unlock(&l->mtx);
 	return 0;
 }
@@ -1301,14 +1304,30 @@ wstran_listener_set(
 	return (rv);
 }
 
+static int
+wstran_listener_get_tls(void *arg, nng_tls_config **tls)
+{
+	ws_listener *l = arg;
+	return (nni_stream_listener_get_tls(l->listener, tls));
+}
+
+static int
+wstran_listener_set_tls(void *arg, nng_tls_config *tls)
+{
+	ws_listener *l = arg;
+	return (nni_stream_listener_set_tls(l->listener, tls));
+}
+
 static nni_sp_listener_ops ws_listener_ops = {
-	.l_init   = wstran_listener_init,
-	.l_fini   = wstran_listener_fini,
-	.l_bind   = ws_listener_bind,
-	.l_accept = wstran_listener_accept,
-	.l_close  = wstran_listener_close,
-	.l_setopt = wstran_listener_set,
-	.l_getopt = wstran_listener_get,
+	.l_init    = wstran_listener_init,
+	.l_fini    = wstran_listener_fini,
+	.l_bind    = ws_listener_bind,
+	.l_accept  = wstran_listener_accept,
+	.l_close   = wstran_listener_close,
+	.l_setopt  = wstran_listener_set,
+	.l_getopt  = wstran_listener_get,
+	.l_get_tls = wstran_listener_get_tls,
+	.l_set_tls = wstran_listener_set_tls,
 };
 
 static nni_sp_tran ws__tran = {
@@ -1364,20 +1383,6 @@ static nni_sp_tran ws6_tran = {
 	.tran_init     = wstran_init,
 	.tran_fini     = wstran_fini,
 };
-
-#ifndef NNG_ELIDE_DEPRECATED
-int
-nng_nmq_ws_register(void)
-{
-	return (nni_init());
-}
-
-int
-nng_nmq_wss_register(void)
-{
-	return (nni_init());
-}
-#endif
 
 void
 nni_nmq_ws_register(void)

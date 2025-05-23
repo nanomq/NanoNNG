@@ -19,7 +19,6 @@
 
 #include <nng/nng.h>
 #include <nng/protocol/reqrep0/req.h>
-#include <nng/transport/ipc/ipc.h>
 
 #include "convey.h"
 #include "trantest.h"
@@ -39,20 +38,14 @@ check_props(nng_msg *msg)
 	So(nng_pipe_get_addr(p, NNG_OPT_LOCADDR, &la) == 0);
 	So(la.s_family == NNG_AF_IPC);
 	// untyped
-	z = sizeof(nng_sockaddr);
-	So(nng_pipe_get(p, NNG_OPT_REMADDR, &ra, &z) == 0);
-	So(z == sizeof(ra));
+	So(nng_pipe_get_addr(p, NNG_OPT_REMADDR, &ra) == 0);
 	So(ra.s_family == NNG_AF_IPC);
 
 	So(nng_pipe_get_size(p, NNG_OPT_REMADDR, &z) == NNG_EBADTYPE);
-	z = 1;
-	So(nng_pipe_get(p, NNG_OPT_REMADDR, &ra, &z) == NNG_EINVAL);
 
 #ifdef _WIN32
-	So(nng_pipe_get_uint64(p, NNG_OPT_IPC_PEER_UID, &id) ==
-	    NNG_ENOTSUP);
-	So(nng_pipe_get_uint64(p, NNG_OPT_IPC_PEER_GID, &id) ==
-	    NNG_ENOTSUP);
+	So(nng_pipe_get_uint64(p, NNG_OPT_IPC_PEER_UID, &id) == NNG_ENOTSUP);
+	So(nng_pipe_get_uint64(p, NNG_OPT_IPC_PEER_GID, &id) == NNG_ENOTSUP);
 	So(nng_pipe_get_uint64(p, NNG_OPT_IPC_PEER_ZONEID, &id) ==
 	    NNG_ENOTSUP);
 	So(nng_pipe_get_uint64(p, NNG_OPT_IPC_PEER_PID, &id) == 0);
@@ -68,8 +61,7 @@ check_props(nng_msg *msg)
 	So(nng_pipe_get_uint64(p, NNG_OPT_IPC_PEER_PID, &id) == 0);
 	So(id == (uint64_t) getpid());
 #else
-	So(nng_pipe_get_uint64(p, NNG_OPT_IPC_PEER_PID, &id) ==
-	    NNG_ENOTSUP);
+	So(nng_pipe_get_uint64(p, NNG_OPT_IPC_PEER_PID, &id) == NNG_ENOTSUP);
 #endif
 
 #ifdef NNG_HAVE_GETPEERUCRED
@@ -83,6 +75,5 @@ check_props(nng_msg *msg)
 	return (0);
 }
 
-TestMain("IPC Transport", {
-	trantest_test_extended("ipc:///tmp/nng_ipc_test_%u", check_props);
-})
+TestMain("IPC Transport",
+    { trantest_test_extended("ipc:///tmp/nng_ipc_test_%u", check_props); })

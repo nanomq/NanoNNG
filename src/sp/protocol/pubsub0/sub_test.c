@@ -1,5 +1,5 @@
 //
-// Copyright 2020 Staysail Systems, Inc. <info@staysail.tech>
+// Copyright 2024 Staysail Systems, Inc. <info@staysail.tech>
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -7,26 +7,26 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
+#include "nng/nng.h"
+#include "nng/protocol/pubsub0/sub.h"
 #include <nuts.h>
 
 static void
 test_sub_identity(void)
 {
-	nng_socket s;
-	int        p;
-	char      *n;
+	nng_socket  s;
+	uint16_t    p;
+	const char *n;
 
 	NUTS_PASS(nng_sub0_open(&s));
-	NUTS_PASS(nng_socket_get_int(s, NNG_OPT_PROTO, &p));
+	NUTS_PASS(nng_socket_proto_id(s, &p));
 	NUTS_TRUE(p == NUTS_PROTO(2u, 1u)); // 33
-	NUTS_PASS(nng_socket_get_int(s, NNG_OPT_PEER, &p));
+	NUTS_PASS(nng_socket_peer_id(s, &p));
 	NUTS_TRUE(p == NUTS_PROTO(2u, 0u)); // 32
-	NUTS_PASS(nng_socket_get_string(s, NNG_OPT_PROTONAME, &n));
+	NUTS_PASS(nng_socket_proto_name(s, &n));
 	NUTS_MATCH(n, "sub");
-	nng_strfree(n);
-	NUTS_PASS(nng_socket_get_string(s, NNG_OPT_PEERNAME, &n));
+	NUTS_PASS(nng_socket_peer_name(s, &n));
 	NUTS_MATCH(n, "pub");
-	nng_strfree(n);
 	NUTS_CLOSE(s);
 }
 
@@ -70,7 +70,7 @@ test_sub_not_writeable(void)
 	nng_socket sub;
 
 	NUTS_PASS(nng_sub0_open(&sub));
-	NUTS_FAIL(nng_socket_get_int(sub, NNG_OPT_SENDFD, &fd), NNG_ENOTSUP);
+	NUTS_FAIL(nng_socket_get_send_poll_fd(sub, &fd), NNG_ENOTSUP);
 	NUTS_CLOSE(sub);
 }
 
@@ -83,10 +83,10 @@ test_sub_poll_readable(void)
 
 	NUTS_PASS(nng_sub0_open(&sub));
 	NUTS_PASS(nng_pub0_open(&pub));
-	NUTS_PASS(nng_socket_set(sub, NNG_OPT_SUB_SUBSCRIBE, "a", 1));
+	NUTS_PASS(nng_sub0_socket_subscribe(sub, "a", 1));
 	NUTS_PASS(nng_socket_set_ms(sub, NNG_OPT_RECVTIMEO, 1000));
 	NUTS_PASS(nng_socket_set_ms(pub, NNG_OPT_SENDTIMEO, 1000));
-	NUTS_PASS(nng_socket_get_int(sub, NNG_OPT_RECVFD, &fd));
+	NUTS_PASS(nng_socket_get_recv_poll_fd(sub, &fd));
 	NUTS_TRUE(fd >= 0);
 
 	// Not readable if not connected!
@@ -127,10 +127,10 @@ test_sub_recv_late(void)
 	NUTS_PASS(nng_sub0_open(&sub));
 	NUTS_PASS(nng_pub0_open(&pub));
 	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
-	NUTS_PASS(nng_socket_set(sub, NNG_OPT_SUB_SUBSCRIBE, "", 0));
+	NUTS_PASS(nng_sub0_socket_subscribe(sub, "", 0));
 	NUTS_PASS(nng_socket_set_ms(sub, NNG_OPT_RECVTIMEO, 1000));
 	NUTS_PASS(nng_socket_set_ms(pub, NNG_OPT_SENDTIMEO, 1000));
-	NUTS_PASS(nng_socket_get_int(sub, NNG_OPT_RECVFD, &fd));
+	NUTS_PASS(nng_socket_get_recv_poll_fd(sub, &fd));
 	NUTS_TRUE(fd >= 0);
 
 	// Not readable if not connected!
@@ -162,27 +162,12 @@ test_sub_recv_late(void)
 }
 
 void
-test_sub_context_no_poll(void)
-{
-	int        fd;
-	nng_socket sub;
-	nng_ctx    ctx;
-
-	NUTS_PASS(nng_sub0_open(&sub));
-	NUTS_PASS(nng_ctx_open(&ctx, sub));
-	NUTS_FAIL(nng_ctx_get_int(ctx, NNG_OPT_SENDFD, &fd), NNG_ENOTSUP);
-	NUTS_FAIL(nng_ctx_get_int(ctx, NNG_OPT_RECVFD, &fd), NNG_ENOTSUP);
-	NUTS_PASS(nng_ctx_close(ctx));
-	NUTS_CLOSE(sub);
-}
-
-void
 test_sub_validate_peer(void)
 {
-	nng_socket s1, s2;
-	nng_stat  *stats;
-	nng_stat  *reject;
-	char      *addr;
+	nng_socket      s1, s2;
+	nng_stat       *stats;
+	const nng_stat *reject;
+	char           *addr;
 
 	NUTS_ADDR(addr, "inproc");
 
@@ -311,7 +296,6 @@ test_sub_recv_buf_option(void)
 	nng_socket  sub;
 	int         v;
 	bool        b;
-	size_t      sz;
 	const char *opt = NNG_OPT_RECVBUF;
 
 	NUTS_PASS(nng_sub0_open(&sub));
@@ -323,15 +307,6 @@ test_sub_recv_buf_option(void)
 	NUTS_PASS(nng_socket_set_int(sub, opt, 3));
 	NUTS_PASS(nng_socket_get_int(sub, opt, &v));
 	NUTS_TRUE(v == 3);
-	v  = 0;
-	sz = sizeof(v);
-	NUTS_PASS(nng_socket_get(sub, opt, &v, &sz));
-	NUTS_TRUE(v == 3);
-	NUTS_TRUE(sz == sizeof(v));
-
-	NUTS_FAIL(nng_socket_set(sub, opt, "", 1), NNG_EINVAL);
-	sz = 1;
-	NUTS_FAIL(nng_socket_get(sub, opt, &v, &sz), NNG_EINVAL);
 	NUTS_FAIL(nng_socket_set_bool(sub, opt, true), NNG_EBADTYPE);
 	NUTS_FAIL(nng_socket_get_bool(sub, opt, &b), NNG_EBADTYPE);
 
@@ -341,22 +316,11 @@ test_sub_recv_buf_option(void)
 static void
 test_sub_subscribe_option(void)
 {
-	nng_socket  sub;
-	size_t      sz;
-	int         v;
-	const char *opt = NNG_OPT_SUB_SUBSCRIBE;
-
+	nng_socket sub;
 	NUTS_PASS(nng_sub0_open(&sub));
 
-	NUTS_PASS(nng_socket_set(sub, opt, "abc", 3));
-	NUTS_PASS(nng_socket_set(sub, opt, "abc", 3)); // duplicate
-	NUTS_PASS(nng_socket_set_bool(sub, opt, false));
-	NUTS_PASS(nng_socket_set_int(sub, opt, 32));
-	sz = sizeof(v);
-	NUTS_FAIL(nng_socket_get(sub, opt, &v, &sz), NNG_EWRITEONLY);
 	NUTS_PASS(nng_sub0_socket_subscribe(sub, "abc", 3));
-	NUTS_PASS(nng_sub0_socket_subscribe(sub, "abc", 3));
-	NUTS_PASS(nng_sub0_socket_unsubscribe(sub, "abc", 3));
+	NUTS_PASS(nng_sub0_socket_subscribe(sub, "abc", 3)); // duplicate
 
 	NUTS_CLOSE(sub);
 }
@@ -364,23 +328,14 @@ test_sub_subscribe_option(void)
 static void
 test_sub_unsubscribe_option(void)
 {
-	nng_socket  sub;
-	size_t      sz;
-	int         v;
-	const char *opt1 = NNG_OPT_SUB_SUBSCRIBE;
-	const char *opt2 = NNG_OPT_SUB_UNSUBSCRIBE;
+	nng_socket sub;
 
 	NUTS_PASS(nng_sub0_open(&sub));
 
-	NUTS_PASS(nng_socket_set(sub, opt1, "abc", 3));
-	NUTS_FAIL(nng_socket_set(sub, opt2, "abc123", 6), NNG_ENOENT);
-	NUTS_PASS(nng_socket_set(sub, opt2, "abc", 3));
-	NUTS_FAIL(nng_socket_set(sub, opt2, "abc", 3), NNG_ENOENT);
-	NUTS_PASS(nng_socket_set_int(sub, opt1, 32));
-	NUTS_FAIL(nng_socket_set_int(sub, opt2, 23), NNG_ENOENT);
-	NUTS_PASS(nng_socket_set_int(sub, opt2, 32));
-	sz = sizeof(v);
-	NUTS_FAIL(nng_socket_get(sub, opt2, &v, &sz), NNG_EWRITEONLY);
+	NUTS_PASS(nng_sub0_socket_subscribe(sub, "abc", 3));
+	NUTS_FAIL(nng_sub0_socket_unsubscribe(sub, "abc123", 6), NNG_ENOENT);
+	NUTS_PASS(nng_sub0_socket_unsubscribe(sub, "abc", 3));
+	NUTS_FAIL(nng_sub0_socket_unsubscribe(sub, "abc", 3), NNG_ENOENT);
 
 	NUTS_CLOSE(sub);
 }
@@ -390,7 +345,6 @@ test_sub_prefer_new_option(void)
 {
 	nng_socket  sub;
 	bool        b;
-	size_t      sz;
 	const char *opt = NNG_OPT_SUB_PREFNEW;
 
 	NUTS_PASS(nng_sub0_open(&sub));
@@ -399,13 +353,6 @@ test_sub_prefer_new_option(void)
 	NUTS_PASS(nng_socket_set_bool(sub, opt, false));
 	NUTS_PASS(nng_socket_get_bool(sub, opt, &b));
 	NUTS_TRUE(b == false);
-	sz = sizeof(b);
-	b  = true;
-	NUTS_PASS(nng_socket_get(sub, opt, &b, &sz));
-	NUTS_TRUE(b == false);
-	NUTS_TRUE(sz == sizeof(bool));
-
-	NUTS_FAIL(nng_socket_set(sub, opt, "abc", 3), NNG_EINVAL);
 	NUTS_FAIL(nng_socket_set_int(sub, opt, 1), NNG_EBADTYPE);
 
 	NUTS_CLOSE(sub);
@@ -422,7 +369,7 @@ test_sub_drop_new(void)
 	NUTS_PASS(nng_pub0_open(&pub));
 	NUTS_PASS(nng_socket_set_int(sub, NNG_OPT_RECVBUF, 2));
 	NUTS_PASS(nng_socket_set_bool(sub, NNG_OPT_SUB_PREFNEW, false));
-	NUTS_PASS(nng_socket_set(sub, NNG_OPT_SUB_SUBSCRIBE, NULL, 0));
+	NUTS_PASS(nng_sub0_socket_subscribe(sub, NULL, 0));
 	NUTS_PASS(nng_socket_set_ms(sub, NNG_OPT_RECVTIMEO, 200));
 	NUTS_PASS(nng_socket_set_ms(pub, NNG_OPT_SENDTIMEO, 1000));
 	NUTS_MARRY(pub, sub);
@@ -448,7 +395,7 @@ test_sub_drop_old(void)
 	NUTS_PASS(nng_pub0_open(&pub));
 	NUTS_PASS(nng_socket_set_int(sub, NNG_OPT_RECVBUF, 2));
 	NUTS_PASS(nng_socket_set_bool(sub, NNG_OPT_SUB_PREFNEW, true));
-	NUTS_PASS(nng_socket_set(sub, NNG_OPT_SUB_SUBSCRIBE, NULL, 0));
+	NUTS_PASS(nng_sub0_socket_subscribe(sub, NULL, 0));
 	NUTS_PASS(nng_socket_set_ms(sub, NNG_OPT_RECVTIMEO, 200));
 	NUTS_PASS(nng_socket_set_ms(pub, NNG_OPT_SENDTIMEO, 1000));
 	NUTS_MARRY(pub, sub);
@@ -478,10 +425,10 @@ test_sub_filter(void)
 	NUTS_PASS(nng_socket_set_int(sub, NNG_OPT_RECVBUF, 10));
 
 	// Set up some default filters
-	NUTS_PASS(nng_socket_set(sub, NNG_OPT_SUB_SUBSCRIBE, "abc", 3));
-	NUTS_PASS(nng_socket_set(sub, NNG_OPT_SUB_SUBSCRIBE, "def", 3));
-	NUTS_PASS(nng_socket_set(sub, NNG_OPT_SUB_SUBSCRIBE, "ghi", 3));
-	NUTS_PASS(nng_socket_set(sub, NNG_OPT_SUB_SUBSCRIBE, "jkl", 3));
+	NUTS_PASS(nng_sub0_socket_subscribe(sub, "abc", 3));
+	NUTS_PASS(nng_sub0_socket_subscribe(sub, "def", 3));
+	NUTS_PASS(nng_sub0_socket_subscribe(sub, "ghi", 3));
+	NUTS_PASS(nng_sub0_socket_subscribe(sub, "jkl", 3));
 
 	NUTS_MARRY(pub, sub);
 
@@ -493,7 +440,7 @@ test_sub_filter(void)
 	NUTS_PASS(nng_send(pub, "jkl-mno", 6, 0));
 
 	NUTS_SLEEP(100);
-	NUTS_PASS(nng_socket_set(sub, NNG_OPT_SUB_UNSUBSCRIBE, "ghi", 3));
+	NUTS_PASS(nng_sub0_socket_unsubscribe(sub, "ghi", 3));
 	sz = sizeof(buf);
 	NUTS_PASS(nng_recv(sub, buf, &sz, 0));
 	NUTS_TRUE(sz == 3);
@@ -531,13 +478,11 @@ test_sub_multi_context(void)
 	NUTS_PASS(nng_ctx_open(&c1, sub));
 	NUTS_PASS(nng_ctx_open(&c2, sub));
 
-	NUTS_PASS(nng_ctx_set(c1, NNG_OPT_SUB_SUBSCRIBE, "one", 3));
-	NUTS_PASS(nng_ctx_set(c1, NNG_OPT_SUB_SUBSCRIBE, "all", 3));
+	NUTS_PASS(nng_sub0_ctx_subscribe(c1, "one", 3));
+	NUTS_PASS(nng_sub0_ctx_subscribe(c1, "all", 3));
 
-	NUTS_PASS(nng_ctx_set(c2, NNG_OPT_SUB_SUBSCRIBE, "two", 3));
+	NUTS_PASS(nng_sub0_ctx_subscribe(c2, "two", 3));
 	NUTS_PASS(nng_sub0_ctx_subscribe(c2, "all", 3));
-	NUTS_PASS(nng_sub0_ctx_subscribe(c2, "junk", 4));
-	NUTS_PASS(nng_sub0_ctx_unsubscribe(c2, "junk", 4));
 
 	nng_aio_set_timeout(aio1, 100);
 	nng_aio_set_timeout(aio2, 100);
@@ -584,6 +529,10 @@ test_sub_multi_context(void)
 	nng_aio_wait(aio2);
 	NUTS_FAIL(nng_aio_result(aio1), NNG_ETIMEDOUT);
 	NUTS_FAIL(nng_aio_result(aio2), NNG_ETIMEDOUT);
+
+	NUTS_PASS(nng_sub0_ctx_unsubscribe(c2, "two", 3));
+	NUTS_PASS(nng_sub0_ctx_unsubscribe(c2, "all", 3));
+
 	NUTS_CLOSE(sub);
 	NUTS_CLOSE(pub);
 	nng_aio_free(aio1);
@@ -597,9 +546,41 @@ test_sub_cooked(void)
 	bool       b;
 
 	NUTS_PASS(nng_sub0_open(&s));
-	NUTS_PASS(nng_socket_get_bool(s, NNG_OPT_RAW, &b));
+	NUTS_PASS(nng_socket_raw(s, &b));
 	NUTS_TRUE(!b);
 	NUTS_CLOSE(s);
+}
+
+static void
+test_sub_wrong_protocol(void)
+{
+#ifdef NNG_HAVE_REQ0
+	nng_socket s;
+	nng_ctx    c;
+
+	NUTS_PASS(nng_req0_open(&s));
+	NUTS_PASS(nng_ctx_open(&c, s));
+	NUTS_FAIL(nng_sub0_socket_subscribe(s, NULL, 0), NNG_ENOTSUP);
+	NUTS_FAIL(nng_sub0_socket_unsubscribe(s, NULL, 0), NNG_ENOTSUP);
+	NUTS_FAIL(nng_sub0_ctx_subscribe(c, NULL, 0), NNG_ENOTSUP);
+	NUTS_FAIL(nng_sub0_ctx_unsubscribe(c, NULL, 0), NNG_ENOTSUP);
+	NUTS_CLOSE(s);
+#endif
+}
+
+static void
+test_sub_closed_socket(void)
+{
+	nng_socket s;
+	nng_ctx    c;
+
+	NUTS_PASS(nng_sub0_open(&s));
+	NUTS_PASS(nng_ctx_open(&c, s));
+	NUTS_CLOSE(s);
+	NUTS_FAIL(nng_sub0_socket_subscribe(s, NULL, 0), NNG_ECLOSED);
+	NUTS_FAIL(nng_sub0_socket_unsubscribe(s, NULL, 0), NNG_ECLOSED);
+	NUTS_FAIL(nng_sub0_ctx_subscribe(c, NULL, 0), NNG_ECLOSED);
+	NUTS_FAIL(nng_sub0_ctx_unsubscribe(c, NULL, 0), NNG_ECLOSED);
 }
 
 TEST_LIST = {
@@ -608,7 +589,6 @@ TEST_LIST = {
 	{ "sub context cannot send", test_sub_context_cannot_send },
 	{ "sub not writeable", test_sub_not_writeable },
 	{ "sub poll readable", test_sub_poll_readable },
-	{ "sub context does not poll", test_sub_context_no_poll },
 	{ "sub validate peer", test_sub_validate_peer },
 	{ "sub recv late", test_sub_recv_late },
 	{ "sub recv ctx closed", test_sub_recv_ctx_closed },
@@ -625,5 +605,7 @@ TEST_LIST = {
 	{ "sub filter", test_sub_filter },
 	{ "sub multi context", test_sub_multi_context },
 	{ "sub cooked", test_sub_cooked },
+	{ "sub wrong protocol", test_sub_wrong_protocol },
+	{ "sub closed socket", test_sub_closed_socket },
 	{ NULL, NULL },
 };

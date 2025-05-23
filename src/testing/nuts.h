@@ -20,11 +20,16 @@
 #include <nng/nng.h>
 
 // Call nng_fini during test finalization -- this avoids leak warnings.
-extern void nng_fini(void);
+#ifndef TEST_FINI
 #define TEST_FINI nng_fini()
-#define TEST_INIT                                 \
-	do {                                      \
+#endif
+
+#ifndef TEST_INIT
+#define TEST_INIT                                \
+	do {                                     \
+		nng_init(NULL);                  \
 	} while (0)
+#endif
 #include "acutest.h"
 
 #include <stdbool.h>
@@ -44,7 +49,6 @@ extern void nng_fini(void);
 #include <nng/protocol/survey0/respond.h>
 #include <nng/protocol/survey0/survey.h>
 #include <nng/supplemental/tls/tls.h>
-#include <nng/transport/ws/websocket.h>
 #include <supplemental/sha1/sha1.h>
 
 #ifdef __cplusplus
@@ -105,6 +109,11 @@ extern const char *nuts_server_crt;
 extern const char *nuts_client_key;
 extern const char *nuts_client_crt;
 extern const char *nuts_garbled_crt;
+// These ones use ecdsa with prime256v1.
+extern const char *nuts_ecdsa_server_key;
+extern const char *nuts_ecdsa_server_crt;
+extern const char *nuts_ecdsa_client_key;
+extern const char *nuts_ecdsa_client_crt;
 
 // NUTS_SUCCESS tests for NNG success.  It reports the failure if it
 // did not.
@@ -202,6 +211,7 @@ extern const char *nuts_garbled_crt;
 #define NUTS_ASSERT TEST_ASSERT
 #define NUTS_CASE TEST_CASE
 #define NUTS_MSG TEST_MSG
+#define NUTS_SKIP TEST_SKIP
 
 #define NUTS_TESTS TEST_LIST
 

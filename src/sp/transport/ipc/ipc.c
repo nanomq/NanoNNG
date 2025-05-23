@@ -11,9 +11,8 @@
 
 #include <stdio.h>
 
+#include "core/defs.h"
 #include "core/nng_impl.h"
-
-#include <nng/transport/ipc/ipc.h>
 
 // IPC transport.   Platform specific IPC operations must be
 // supplied as well.  Normally the IPC is UNIX domain sockets or
@@ -842,7 +841,7 @@ ipc_ep_init(ipc_ep **epp, nni_sock *sock)
 }
 
 static int
-ipc_ep_init_dialer(void **dp, nni_url *url, nni_dialer *dialer)
+ipc_ep_init_dialer(void **dp, nng_url *url, nni_dialer *dialer)
 {
 	ipc_ep *  ep;
 	int       rv;
@@ -865,7 +864,7 @@ ipc_ep_init_dialer(void **dp, nni_url *url, nni_dialer *dialer)
 }
 
 static int
-ipc_ep_init_listener(void **dp, nni_url *url, nni_listener *listener)
+ipc_ep_init_listener(void **dp, nng_url *url, nni_listener *listener)
 {
 	ipc_ep *  ep;
 	int       rv;
@@ -962,10 +961,11 @@ ipc_ep_set_recv_max_sz(void *arg, const void *v, size_t sz, nni_type t)
 }
 
 static int
-ipc_ep_bind(void *arg)
+ipc_ep_bind(void *arg, nng_url *url)
 {
 	ipc_ep *ep = arg;
 	int     rv;
+	NNI_ARG_UNUSED(url);
 
 	nni_mtx_lock(&ep->mtx);
 	rv = nng_stream_listener_listen(ep->listener);
@@ -1143,15 +1143,6 @@ static nni_sp_tran ipc_tran_abstract = {
 	.tran_init     = ipc_tran_init,
 	.tran_fini     = ipc_tran_fini,
 };
-#endif
-
-
-#ifndef NNG_ELIDE_DEPRECATED
-int
-nng_ipc_register(void)
-{
-	return (nni_init());
-}
 #endif
 
 void

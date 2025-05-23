@@ -1,5 +1,5 @@
 //
-// Copyright 2023 Staysail Systems, Inc. <info@staysail.tech>
+// Copyright 2024 Staysail Systems, Inc. <info@staysail.tech>
 // Copyright 2018 Capitar IT Group BV <info@capitar.com>
 // Copyright 2019 Devolutions <info@devolutions.net>
 //
@@ -17,8 +17,6 @@
 #include "supplemental/base64/base64.h"
 #include "supplemental/http/http_api.h"
 #include "supplemental/sha1/sha1.h"
-
-#include <nng/transport/ws/websocket.h>
 
 #include "websocket.h"
 
@@ -181,7 +179,6 @@ static void ws_str_close(void *);
 static void ws_str_send(void *, nng_aio *);
 static void ws_str_recv(void *, nng_aio *);
 static int  ws_str_get(void *, const char *, void *, size_t *, nni_type);
-static int  ws_str_set(void *, const char *, const void *, size_t, nni_type);
 
 static void ws_listener_close(void *);
 static void ws_listener_free(void *);
@@ -189,7 +186,7 @@ static void ws_listener_free(void *);
 static int
 ws_check_string(const void *v, size_t sz, nni_opt_type t)
 {
-	if ((t != NNI_TYPE_OPAQUE) && (t != NNI_TYPE_STRING)) {
+	if (t != NNI_TYPE_STRING) {
 		return (NNG_EBADTYPE);
 	}
 	if (nni_strnlen(v, sz) >= sz) {
@@ -1327,7 +1324,7 @@ ws_http_cb_dialer(nni_ws *ws, nni_aio *aio)
 
 	// There is a race between the dialer closing and any connections
 	// that were in progress completing.
-	if (d->closed){
+	if (d->closed) {
 		rv = NNG_ECLOSED;
 		goto err;
 	}
@@ -1463,7 +1460,6 @@ ws_init(nni_ws **wsp)
 	ws->ops.s_send  = ws_str_send;
 	ws->ops.s_recv  = ws_str_recv;
 	ws->ops.s_get   = ws_str_get;
-	ws->ops.s_set   = ws_str_set;
 
 	ws->fragsize = 1 << 20; // we won't send a frame larger than this
 	*wsp         = ws;
@@ -2114,6 +2110,20 @@ ws_listener_get(
 	return (rv);
 }
 
+static int
+ws_listener_get_tls(void *arg, nng_tls_config **cfgp)
+{
+	nni_ws_listener *l = arg;
+	return (nni_http_server_get_tls(l->server, cfgp));
+}
+
+static int
+ws_listener_set_tls(void *arg, nng_tls_config *cfg)
+{
+	nni_ws_listener *l = arg;
+	return (nni_http_server_set_tls(l->server, cfg));
+}
+
 int
 nni_ws_listener_alloc(nng_stream_listener **wslp, const nng_url *url)
 {
@@ -2130,6 +2140,7 @@ nni_ws_listener_alloc(nng_stream_listener **wslp, const nng_url *url)
 
 	NNI_LIST_INIT(&l->pend, nni_ws, node);
 	NNI_LIST_INIT(&l->reply, nni_ws, node);
+	NNI_LIST_INIT(&l->headers, ws_header, node);
 
 	// make a private copy of the url structure.
 	if ((rv = nng_url_clone(&l->url, url)) != 0) {
@@ -2154,17 +2165,19 @@ nni_ws_listener_alloc(nng_stream_listener **wslp, const nng_url *url)
 		return (rv);
 	}
 
-	l->fragsize      = WS_DEF_MAXTXFRAME;
-	l->maxframe      = WS_DEF_MAXRXFRAME;
-	l->recvmax       = WS_DEF_RECVMAX;
-	l->isstream      = true;
-	l->ops.sl_free   = ws_listener_free;
-	l->ops.sl_close  = ws_listener_close;
-	l->ops.sl_accept = ws_listener_accept;
-	l->ops.sl_listen = ws_listener_listen;
-	l->ops.sl_set    = ws_listener_set;
-	l->ops.sl_get    = ws_listener_get;
-	*wslp            = (void *) l;
+	l->fragsize       = WS_DEF_MAXTXFRAME;
+	l->maxframe       = WS_DEF_MAXRXFRAME;
+	l->recvmax        = WS_DEF_RECVMAX;
+	l->isstream       = true;
+	l->ops.sl_free    = ws_listener_free;
+	l->ops.sl_close   = ws_listener_close;
+	l->ops.sl_accept  = ws_listener_accept;
+	l->ops.sl_listen  = ws_listener_listen;
+	l->ops.sl_set     = ws_listener_set;
+	l->ops.sl_get     = ws_listener_get;
+	l->ops.sl_get_tls = ws_listener_get_tls;
+	l->ops.sl_set_tls = ws_listener_set_tls;
+	*wslp             = (void *) l;
 	return (0);
 }
 
@@ -2644,6 +2657,20 @@ ws_dialer_get(void *arg, const char *name, void *buf, size_t *szp, nni_type t)
 	return (rv);
 }
 
+static int
+ws_dialer_get_tls(void *arg, nng_tls_config **cfgp)
+{
+	nni_ws_dialer *d = arg;
+	return (nni_http_client_get_tls(d->client, cfgp));
+}
+
+static int
+ws_dialer_set_tls(void *arg, nng_tls_config *cfg)
+{
+	nni_ws_dialer *d = arg;
+	return (nni_http_client_set_tls(d->client, cfg));
+}
+
 int
 nni_ws_dialer_alloc(nng_stream_dialer **dp, const nng_url *url)
 {
@@ -2655,6 +2682,7 @@ nni_ws_dialer_alloc(nng_stream_dialer **dp, const nng_url *url)
 	}
 	NNI_LIST_INIT(&d->headers, ws_header, node);
 	NNI_LIST_INIT(&d->wspend, nni_ws, node);
+	NNI_LIST_INIT(&d->headers, ws_header, node);
 	nni_mtx_init(&d->mtx);
 	nni_cv_init(&d->cv, &d->mtx);
 
@@ -2672,12 +2700,14 @@ nni_ws_dialer_alloc(nng_stream_dialer **dp, const nng_url *url)
 	d->maxframe = WS_DEF_MAXRXFRAME;
 	d->fragsize = WS_DEF_MAXTXFRAME;
 
-	d->ops.sd_free  = ws_dialer_free;
-	d->ops.sd_close = ws_dialer_close;
-	d->ops.sd_dial  = ws_dialer_dial;
-	d->ops.sd_set   = ws_dialer_set;
-	d->ops.sd_get   = ws_dialer_get;
-	*dp             = (void *) d;
+	d->ops.sd_free    = ws_dialer_free;
+	d->ops.sd_close   = ws_dialer_close;
+	d->ops.sd_dial    = ws_dialer_dial;
+	d->ops.sd_set     = ws_dialer_set;
+	d->ops.sd_get     = ws_dialer_get;
+	d->ops.sd_set_tls = ws_dialer_set_tls;
+	d->ops.sd_get_tls = ws_dialer_get_tls;
+	*dp               = (void *) d;
 	return (0);
 }
 
@@ -2869,33 +2899,6 @@ static const nni_option ws_options[] = {
 	    .o_name = NULL,
 	},
 };
-
-static int
-ws_str_set(void *arg, const char *nm, const void *buf, size_t sz, nni_type t)
-{
-	nni_ws *ws = arg;
-	int     rv;
-
-	// Headers can only be set.
-	nni_mtx_lock(&ws->mtx);
-	if (ws->closed) {
-		nni_mtx_unlock(&ws->mtx);
-		return (NNG_ECLOSED);
-	}
-	nni_mtx_unlock(&ws->mtx);
-	rv = nni_http_conn_setopt(ws->http, nm, buf, sz, t);
-	if (rv == NNG_ENOTSUP) {
-		rv = nni_setopt(ws_options, nm, ws, buf, sz, t);
-	}
-	if (rv == NNG_ENOTSUP) {
-		if (startswith(nm, NNG_OPT_WS_REQUEST_HEADER) ||
-		    startswith(nm, NNG_OPT_WS_RESPONSE_HEADER)) {
-			return (NNG_EREADONLY);
-		}
-	}
-
-	return (rv);
-}
 
 static int
 ws_get_req_header(

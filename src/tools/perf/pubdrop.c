@@ -76,6 +76,9 @@ main(int argc, char **argv)
 	argc--;
 	argv++;
 
+	nng_init(NULL);
+	atexit(nng_fini);
+
 	// We calculate a delay factor to roughly delay 1 usec.  We don't
 	// need this to be perfect, just reproducible on the same host.
 	unsigned long cnt = 1000000;
@@ -207,7 +210,7 @@ sub_client(void *arg)
 	if ((rv = nng_socket_set_ms(sock, NNG_OPT_RECONNMINT, 51)) != 0) {
 		die("setopt: %s", nng_strerror(rv));
 	}
-	if ((rv = nng_socket_set(sock, NNG_OPT_SUB_SUBSCRIBE, "", 0)) != 0) {
+	if ((rv = nng_sub0_socket_subscribe(sock, "", 0)) != 0) {
 		die("setopt: %s", nng_strerror(rv));
 	}
 	if ((rv = nng_socket_set_ms(sock, NNG_OPT_RECVTIMEO, 10000)) != 0) {
@@ -324,4 +327,7 @@ do_pubdrop(int argc, char **argv)
 	printf("Drop rate %.2f%%\n", expect ? 100.0 * missing / expect : 0);
 
 	nng_mtx_unlock(pa.mtx);
+	nng_cv_free(pa.cv);
+	nng_mtx_free(pa.mtx);
+	free(thrs);
 }

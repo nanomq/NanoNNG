@@ -38,7 +38,8 @@ nni_tcp_dialer_init(nni_tcp_dialer **dp)
 		return (NNG_ENOMEM);
 	}
 	nni_mtx_init(&d->mtx);
-	d->closed = false;
+	d->closed  = false;
+	d->nodelay = true;
 	nni_aio_list_init(&d->connq);
 	nni_atomic_init_bool(&d->fini);
 	nni_atomic_init64(&d->ref);
@@ -569,8 +570,9 @@ tcp_dialer_set_locaddr(void *arg, const void *buf, size_t sz, nni_type t)
 #ifdef NNG_ENABLE_IPV6
 	struct sockaddr_in6 *sin6;
 #endif
+	NNI_ARG_UNUSED(sz);
 
-	if ((rv = nni_copyin_sockaddr(&sa, buf, sz, t)) != 0) {
+	if ((rv = nni_copyin_sockaddr(&sa, buf, t)) != 0) {
 		return (rv);
 	}
 	if ((len = nni_posix_nn2sockaddr(&ss, &sa)) == 0) {
