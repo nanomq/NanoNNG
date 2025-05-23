@@ -1,3 +1,4 @@
+#include "nng/nng.h"
 #include "nng/supplemental/nanolib/topics.h"
 #include "nng/supplemental/nanolib/log.h"
 
