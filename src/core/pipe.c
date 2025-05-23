@@ -289,6 +289,8 @@ pipe_create(nni_pipe **pp, nni_sock *sock, nni_sp_tran *tran, void *tran_data)
 	p->stm_tx_drop_invalid = 0;
 	p->stm_rx_drop_expired = 0;
 	p->stm_rx_drop_full = 0;
+	p->stm_rx_drop_invalid = 0;
+	p->stm_rx_drop_nonqos = 0;
 
 	nni_atomic_init_bool(&p->p_closed);
 	nni_atomic_flag_reset(&p->p_stop);
