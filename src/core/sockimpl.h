@@ -141,10 +141,10 @@ struct nni_pipe {
 	size_t   stm_rx_qos0;
 	size_t   stm_rx_qos1;
 	size_t   stm_rx_qos2;
-	size_t   stm_tx_drop_expired; // TODO currently. no supported.
-	size_t   stm_tx_drop_full; // currently. no msgs will be dropped at app layer.
-	size_t   stm_tx_drop_invalid;
-	size_t   stm_rx_drop_expired;
+	size_t   stm_tx_drop_expired; // cancel or pipe was gone
+	size_t   stm_tx_drop_full; // caused by flow control
+	size_t   stm_tx_drop_invalid; // max length over limit or malformed
+	size_t   stm_rx_drop_expired; // cancel or pipe was gone
 	size_t   stm_rx_drop_full; // lmq is full or caused by flow control
 	size_t   stm_rx_drop_nonqos; // qos 0 msg
 	size_t   stm_rx_drop_invalid; // max length over limit
