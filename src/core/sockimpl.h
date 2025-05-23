@@ -134,6 +134,20 @@ struct nni_pipe {
 	nni_stat_item st_tx_bytes;
 #endif
 
+	// NanoMQ stats metrics
+	size_t   stm_tx_qos0;
+	size_t   stm_tx_qos1;
+	size_t   stm_tx_qos2;
+	size_t   stm_rx_qos0;
+	size_t   stm_rx_qos1;
+	size_t   stm_rx_qos2;
+	size_t   stm_tx_drop_expired; // cancel or pipe was gone
+	size_t   stm_tx_drop_full; // caused by flow control
+	size_t   stm_tx_drop_invalid; // max length over limit or malformed
+	size_t   stm_rx_drop_expired; // cancel or pipe was gone
+	size_t   stm_rx_drop_full; // lmq is full or caused by flow control
+	size_t   stm_rx_drop_nonqos; // qos 0 msg
+	size_t   stm_rx_drop_invalid; // max length over limit
 	// NanoMQ
 	void    *conn_param;
 	bool     cache;
