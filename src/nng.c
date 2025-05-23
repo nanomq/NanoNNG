@@ -1585,21 +1585,6 @@ nng_pipe_get_metric_tx_qos0(nng_pipe p)
 	return res;
 }
 
-void
-nng_pipe_inc_metric_tx_qos0(nng_pipe p)
-{
-	int       rv;
-	nni_pipe *pipe;
-
-	if ((rv = nni_pipe_find(&pipe, p.id)) != 0) {
-		return;
-	}
-	nni_pipe_inc_metric_tx_qos0(pipe);
-
-	nni_pipe_rele(pipe);
-	return;
-}
-
 size_t
 nng_pipe_get_metric_tx_qos1(nng_pipe p)
 {
@@ -1613,21 +1598,6 @@ nng_pipe_get_metric_tx_qos1(nng_pipe p)
 
 	nni_pipe_rele(pipe);
 	return res;
-}
-
-void
-nng_pipe_inc_metric_tx_qos1(nng_pipe p)
-{
-	int       rv;
-	nni_pipe *pipe;
-
-	if ((rv = nni_pipe_find(&pipe, p.id)) != 0) {
-		return;
-	}
-	nni_pipe_inc_metric_tx_qos1(pipe);
-
-	nni_pipe_rele(pipe);
-	return;
 }
 
 size_t
@@ -1645,21 +1615,6 @@ nng_pipe_get_metric_tx_qos2(nng_pipe p)
 	return res;
 }
 
-void
-nng_pipe_inc_metric_tx_qos2(nng_pipe p)
-{
-	int       rv;
-	nni_pipe *pipe;
-
-	if ((rv = nni_pipe_find(&pipe, p.id)) != 0) {
-		return;
-	}
-	nni_pipe_inc_metric_tx_qos2(pipe);
-
-	nni_pipe_rele(pipe);
-	return;
-}
-
 size_t
 nng_pipe_get_metric_rx_qos0(nng_pipe p)
 {
@@ -1673,21 +1628,6 @@ nng_pipe_get_metric_rx_qos0(nng_pipe p)
 
 	nni_pipe_rele(pipe);
 	return res;
-}
-
-void
-nng_pipe_inc_metric_rx_qos0(nng_pipe p)
-{
-	int       rv;
-	nni_pipe *pipe;
-
-	if ((rv = nni_pipe_find(&pipe, p.id)) != 0) {
-		return;
-	}
-	nni_pipe_inc_metric_rx_qos0(pipe);
-
-	nni_pipe_rele(pipe);
-	return;
 }
 
 size_t
@@ -1705,21 +1645,6 @@ nng_pipe_get_metric_rx_qos1(nng_pipe p)
 	return res;
 }
 
-void
-nng_pipe_inc_metric_rx_qos1(nng_pipe p)
-{
-	int       rv;
-	nni_pipe *pipe;
-
-	if ((rv = nni_pipe_find(&pipe, p.id)) != 0) {
-		return;
-	}
-	nni_pipe_inc_metric_rx_qos1(pipe);
-
-	nni_pipe_rele(pipe);
-	return;
-}
-
 size_t
 nng_pipe_get_metric_rx_qos2(nng_pipe p)
 {
@@ -1733,21 +1658,6 @@ nng_pipe_get_metric_rx_qos2(nng_pipe p)
 
 	nni_pipe_rele(pipe);
 	return res;
-}
-
-void
-nng_pipe_inc_metric_rx_qos2(nng_pipe p)
-{
-	int       rv;
-	nni_pipe *pipe;
-
-	if ((rv = nni_pipe_find(&pipe, p.id)) != 0) {
-		return;
-	}
-	nni_pipe_inc_metric_rx_qos2(pipe);
-
-	nni_pipe_rele(pipe);
-	return;
 }
 
 size_t
@@ -1765,21 +1675,6 @@ nng_pipe_get_metric_tx_drop_expired(nng_pipe p)
 	return res;
 }
 
-void
-nng_pipe_inc_metric_tx_drop_expired(nng_pipe p)
-{
-	int       rv;
-	nni_pipe *pipe;
-
-	if ((rv = nni_pipe_find(&pipe, p.id)) != 0) {
-		return;
-	}
-	nni_pipe_inc_metric_tx_drop_expired(pipe);
-
-	nni_pipe_rele(pipe);
-	return;
-}
-
 size_t
 nng_pipe_get_metric_tx_drop_full(nng_pipe p)
 {
@@ -1793,21 +1688,6 @@ nng_pipe_get_metric_tx_drop_full(nng_pipe p)
 
 	nni_pipe_rele(pipe);
 	return res;
-}
-
-void
-nng_pipe_inc_metric_tx_drop_full(nng_pipe p)
-{
-	int       rv;
-	nni_pipe *pipe;
-
-	if ((rv = nni_pipe_find(&pipe, p.id)) != 0) {
-		return;
-	}
-	nni_pipe_inc_metric_tx_drop_full(pipe);
-
-	nni_pipe_rele(pipe);
-	return;
 }
 
 size_t
@@ -1825,21 +1705,6 @@ nng_pipe_get_metric_tx_drop_invalid(nng_pipe p)
 	return res;
 }
 
-void
-nng_pipe_inc_metric_tx_drop_invalid(nng_pipe p)
-{
-	int       rv;
-	nni_pipe *pipe;
-
-	if ((rv = nni_pipe_find(&pipe, p.id)) != 0) {
-		return;
-	}
-	nni_pipe_inc_metric_tx_drop_invalid(pipe);
-
-	nni_pipe_rele(pipe);
-	return;
-}
-
 size_t
 nng_pipe_get_metric_rx_drop_expired(nng_pipe p)
 {
@@ -1853,21 +1718,6 @@ nng_pipe_get_metric_rx_drop_expired(nng_pipe p)
 
 	nni_pipe_rele(pipe);
 	return res;
-}
-
-void
-nng_pipe_inc_metric_rx_drop_expired(nng_pipe p)
-{
-	int       rv;
-	nni_pipe *pipe;
-
-	if ((rv = nni_pipe_find(&pipe, p.id)) != 0) {
-		return;
-	}
-	nni_pipe_inc_metric_rx_drop_expired(pipe);
-
-	nni_pipe_rele(pipe);
-	return;
 }
 
 size_t
