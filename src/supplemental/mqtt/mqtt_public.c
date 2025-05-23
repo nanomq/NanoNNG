@@ -63,18 +63,6 @@ nng_mqtt_msg_get_packet_type(nng_msg *msg)
 }
 
 void
-nng_mqtt_msg_set_bridge_bool(nng_msg *msg, bool bridged)
-{
-	nni_mqtt_msg_set_bridge_bool(msg, bridged);
-}
-
-bool
-nng_mqtt_msg_get_bridge_bool(nng_msg *msg)
-{
-	return nni_mqtt_msg_get_bridge_bool(msg);
-}
-
-void
 nng_mqtt_msg_set_sub_retain_bool(nng_msg *msg, bool retain)
 {
 	nni_mqtt_msg_set_sub_retain_bool(msg, retain);
@@ -389,6 +377,7 @@ nng_mqtt_msg_get_publish_packet_id(nng_msg *msg)
 	return nni_mqtt_msg_get_publish_packet_id(msg);
 }
 
+// payload & topic must be set together!
 int
 nng_mqtt_msg_set_publish_payload(nng_msg *msg, uint8_t *payload, uint32_t len)
 {

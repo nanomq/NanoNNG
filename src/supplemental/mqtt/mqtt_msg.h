@@ -270,7 +270,6 @@ typedef struct mqtt_fixed_hdr_t {
 typedef struct mqtt_msg_t {
 	/* Fixed header part */
 	nni_aio *                  aio; // QoS AIO
-	bool                       bridged;
 	mqtt_fixed_hdr             fixed_header;
 	union mqtt_variable_header var_header;
 	union mqtt_payload         payload;
@@ -348,7 +347,6 @@ NNG_DECL int nni_mqtt_msg_packet_validate(uint8_t *, size_t, size_t, uint8_t);
 NNG_DECL void nni_mqtt_msg_set_packet_type(nni_msg *, nni_mqtt_packet_type);
 NNG_DECL nni_mqtt_packet_type nni_mqtt_msg_get_packet_type(nni_msg *);
 NNG_DECL void nni_mqtt_msg_set_bridge_bool(nni_msg *msg, bool bridged);
-NNG_DECL bool nni_mqtt_msg_get_bridge_bool(nni_msg *msg);
 NNG_DECL bool nni_mqtt_msg_get_sub_retain_bool(nni_msg *msg);
 NNG_DECL void nni_mqtt_msg_set_sub_retain_bool(nni_msg *msg, bool retain);
 
