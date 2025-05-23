@@ -88,10 +88,10 @@ generate_repub_topic(const topics *s, char *topic)
 
 	switch (s->local_save_level) {
 	case LOCAL_TOPIC_INFINITE_LEVEL:
-		new_topic = strdup(current_pos ? current_pos : "");
+		new_topic = nng_strdup(current_pos ? current_pos : "");
 		break;
 	case LOCAL_TOPIC_DEFAULT_LEVEL:
-		new_topic = strdup(s->local_topic);
+		new_topic = nng_strdup(s->local_topic);
 		break;
 	case LOCAL_TOPIC_INVALID_LEVEL:
 		new_topic = NULL;
@@ -104,8 +104,8 @@ generate_repub_topic(const topics *s, char *topic)
 				++end_pos;
 		}
 		new_topic = end_pos
-		    ? strndup(current_pos, end_pos - current_pos - 1)
-		    : strdup(current_pos);
+		    ? nng_strndup(current_pos, end_pos - current_pos - 1)
+		    : nng_strdup(current_pos);
 		break;
 	}
 
