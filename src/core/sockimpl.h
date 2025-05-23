@@ -145,8 +145,9 @@ struct nni_pipe {
 	size_t   stm_tx_drop_full; // currently. no msgs will be dropped at app layer.
 	size_t   stm_tx_drop_invalid;
 	size_t   stm_rx_drop_expired;
-	size_t   stm_rx_drop_full;
-	size_t   stm_rx_drop_nonqos;
+	size_t   stm_rx_drop_full; // lmq is full or caused by flow control
+	size_t   stm_rx_drop_nonqos; // qos 0 msg
+	size_t   stm_rx_drop_invalid; // max length over limit
 	// NanoMQ
 	void    *conn_param;
 	bool     cache;

@@ -87,6 +87,8 @@ extern size_t   nni_pipe_get_metric_rx_drop_full(nni_pipe *p);
 extern void     nni_pipe_inc_metric_rx_drop_full(nni_pipe *p);
 extern size_t   nni_pipe_get_metric_rx_drop_nonqos(nni_pipe *p);
 extern void     nni_pipe_inc_metric_rx_drop_nonqos(nni_pipe *p);
+extern size_t   nni_pipe_get_metric_rx_drop_invalid(nni_pipe *p);
+extern void     nni_pipe_inc_metric_rx_drop_invalid(nni_pipe *p);
 
 extern void     nni_pipe_set_conn_param(nni_pipe *p, void *c);
 extern void *   nni_pipe_get_conn_param(nni_pipe *p);

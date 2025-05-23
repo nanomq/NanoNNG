@@ -1750,6 +1750,21 @@ nng_pipe_get_metric_rx_drop_nonqos(nng_pipe p)
 	return res;
 }
 
+size_t
+nng_pipe_get_metric_rx_drop_invalid(nng_pipe p)
+{
+	int       rv;
+	nni_pipe *pipe;
+
+	if ((rv = nni_pipe_find(&pipe, p.id)) != 0) {
+		return 0;
+	}
+	size_t res = nni_pipe_get_metric_rx_drop_invalid(pipe);
+
+	nni_pipe_rele(pipe);
+	return res;
+}
+
 /**
  * @brief get conn param from nng_pipe
  * 	  user need to free conn_param by itself
