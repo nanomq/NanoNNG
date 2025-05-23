@@ -141,11 +141,12 @@ struct nni_pipe {
 	size_t   stm_rx_qos0;
 	size_t   stm_rx_qos1;
 	size_t   stm_rx_qos2;
-	size_t   stm_tx_drop_expired; // currently. no supported.
+	size_t   stm_tx_drop_expired; // TODO currently. no supported.
 	size_t   stm_tx_drop_full; // currently. no msgs will be dropped at app layer.
 	size_t   stm_tx_drop_invalid;
 	size_t   stm_rx_drop_expired;
 	size_t   stm_rx_drop_full;
+	size_t   stm_rx_drop_nonqos;
 	// NanoMQ
 	void    *conn_param;
 	bool     cache;

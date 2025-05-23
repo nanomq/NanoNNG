@@ -1885,21 +1885,20 @@ nng_pipe_get_metric_rx_drop_full(nng_pipe p)
 	return res;
 }
 
-void
-nng_pipe_inc_metric_rx_drop_full(nng_pipe p)
+size_t
+nng_pipe_get_metric_rx_drop_nonqos(nng_pipe p)
 {
 	int       rv;
 	nni_pipe *pipe;
 
 	if ((rv = nni_pipe_find(&pipe, p.id)) != 0) {
-		return;
+		return 0;
 	}
-	nni_pipe_inc_metric_rx_drop_full(pipe);
+	size_t res = nni_pipe_get_metric_rx_drop_nonqos(pipe);
 
 	nni_pipe_rele(pipe);
-	return;
+	return res;
 }
-
 
 /**
  * @brief get conn param from nng_pipe

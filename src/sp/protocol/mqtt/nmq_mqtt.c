@@ -461,7 +461,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 			// only cache QoS messages
 			log_debug("Drop msg due to qos == 0");
 			nni_msg_free(msg);
-			nni_pipe_inc_metric_rx_drop_full(p->pipe);
+			nni_pipe_inc_metric_rx_drop_nonqos(p->pipe);
 		}
 		nni_mtx_unlock(&p->lk);
 		nni_aio_set_msg(aio, NULL);

@@ -597,6 +597,18 @@ nni_pipe_inc_metric_rx_drop_full(nni_pipe *p)
 	p->stm_rx_drop_full++;
 }
 
+size_t
+nni_pipe_get_metric_rx_drop_nonqos(nni_pipe *p)
+{
+	return p->stm_rx_drop_nonqos;
+}
+
+void
+nni_pipe_inc_metric_rx_drop_nonqos(nni_pipe *p)
+{
+	p->stm_rx_drop_nonqos++;
+}
+
 bool
 nni_pipe_get_status(nni_pipe *p)
 {
