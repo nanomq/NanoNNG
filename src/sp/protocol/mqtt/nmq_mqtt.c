@@ -1162,6 +1162,7 @@ nano_pipe_recv_cb(void *arg)
 		goto end;
 	}
 	if (nni_atomic_get_bool(&p->closed)) {
+		// nni_pipe_inc_metric_tx_drop_expired(p->pipe); // No need. The pipe is closed.
 		nni_msg_free(msg);
 		return;
 	}

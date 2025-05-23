@@ -747,6 +747,7 @@ tcptran_pipe_recv_cb(void *arg)
 		if (len > p->conf->max_packet_size) {
 			// log_error("Size of packet exceeds limitation: 0x95\n");
 			// rv = NMQ_PACKET_TOO_LARGE;
+			// nni_pipe_inc_metric_tx_drop_invalid(p->npipe);
 			// goto recv_error;
 		}
 
@@ -786,6 +787,8 @@ tcptran_pipe_recv_cb(void *arg)
 	if (nni_msg_len(msg) == 0 &&
 	    (type == CMD_SUBSCRIBE || type == CMD_PUBLISH ||
 	        type == CMD_UNSUBSCRIBE)) {
+		if (type == CMD_PUBLISH)
+			nni_pipe_inc_metric_tx_drop_invalid(p->npipe);
 		log_warn("Invalid Packet Type: 0 len received! Connection closed.");
 		rv = MALFORMED_PACKET;
 		goto recv_error;
@@ -818,7 +821,7 @@ tcptran_pipe_recv_cb(void *arg)
 					p->qrecv_quota--;
 				} else {
 					rv = NMQ_RECEIVE_MAXIMUM_EXCEEDED;
-					nni_pipe_inc_metric_tx_drop_invalid(p->npipe);
+					nni_pipe_inc_metric_tx_drop_full(p->npipe);
 					goto recv_error;
 				}
 			}
@@ -998,6 +1001,7 @@ tcptran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
+	nni_pipe_inc_metric_rx_drop_expired(p->npipe);
 	nni_aio_abort(p->qsaio, rv);
 	nni_aio_list_remove(aio);
 	nni_mtx_unlock(&p->mtx);
@@ -1497,15 +1501,15 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			nni_list_remove(&p->sendq, aio);
 			nni_aio_set_msg(aio, NULL);
 			nni_aio_finish(aio, 0, 0);
+			nni_pipe_inc_metric_rx_drop_full(p->npipe);
 			return;
 		}
 	}
+
 send:
     nni_aio_set_iov(txaio, niov, iov);
 	nng_stream_send(p->conn, txaio);
 	return;
-
-
 }
 
 /**
@@ -1602,6 +1606,7 @@ tcptran_pipe_recv_cancel(nni_aio *aio, void *arg, int rv)
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
+	nni_pipe_inc_metric_tx_drop_expired(p->npipe);
 	nni_aio_list_remove(aio);
 	nni_mtx_unlock(&p->mtx);
 	nni_aio_finish_error(aio, rv);
