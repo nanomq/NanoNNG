@@ -410,8 +410,6 @@ NNG_DECL int  nng_mqttv5_msg_decode(nng_msg *);
 NNG_DECL int  nng_mqtt_msg_validate(nng_msg *, uint8_t);
 NNG_DECL void nng_mqtt_msg_set_packet_type(nng_msg *, nng_mqtt_packet_type);
 NNG_DECL nng_mqtt_packet_type nng_mqtt_msg_get_packet_type(nng_msg *);
-NNG_DECL void nng_mqtt_msg_set_bridge_bool(nng_msg *msg, bool bridged);
-NNG_DECL bool nng_mqtt_msg_get_bridge_bool(nng_msg *msg);
 NNG_DECL void nng_mqtt_msg_set_sub_retain_bool(nng_msg *msg, bool retain);
 NNG_DECL bool nng_mqtt_msg_get_sub_retain_bool(nng_msg *msg);
 NNG_DECL void nng_mqtt_msg_set_connect_proto_version(nng_msg *, uint8_t);
