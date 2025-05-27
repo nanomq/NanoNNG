@@ -983,11 +983,20 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	}
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
-	xcert = d2i_X509_bio(biocert, NULL);
-	if (!xcert) {
-		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to load certificate from buffer");
-		rv = NNG_EINVAL;
-		goto error;
+	if (len > 5 && 0 == strncmp(cert1, "-----", 5)) {
+		xcert = PEM_read_bio_X509(biocert, NULL, NULL, NULL);
+		if (!xcert) {
+			log_error("NNG-TLS-CFG-OWNCHAIN" "Fail to convert pem certificate to x509");
+			rv = NNG_EINVAL;
+			goto error;
+		}
+	} else {
+		xcert = d2i_X509_bio(biocert, NULL);
+		if (!xcert) {
+			log_error("NNG-TLS-CFG-OWNCHAIN" "Fail to convert der certificate to x509");
+			rv = NNG_EINVAL;
+			goto error;
+		}
 	}
 	// Print the certificate in PEM format to stdout
 	if (PEM_write_X509(stdout, xcert) != 1) {
