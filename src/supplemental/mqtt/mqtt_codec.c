@@ -4280,7 +4280,9 @@ encode_properties(nni_msg *msg, property *prop, uint8_t cmd)
 	if (cmd == CMD_CONNACK)
 	// return 3 available flag by default, costs 6 bytes
 		prop_len += 6;
-
+	if (cmd == CMD_PUBLISH)
+		if (property_get_value(prop, TOPIC_ALIAS) != NULL)
+			prop_len -= 3;
 	int bytes    = write_variable_length_value(prop_len, &buf);
 
 	if (bytes < 0)
@@ -4289,20 +4291,6 @@ encode_properties(nni_msg *msg, property *prop, uint8_t cmd)
 	nni_msg_append(msg, rlen, bytes);
 	if (prop_len == 0) {
 		return 0;
-	}
-	if (cmd == CMD_PUBLISH) {
-		/* TODO  check msg expiry, return -1 to stop publishing
-		nni_time       rtime = nni_msg_get_timestamp(msg);
-		nni_time       ntime = nni_clock();
-		property_data *data =
-		    property_get_value(prop, MESSAGE_EXPIRY_INTERVAL);
-		if (data && ntime > rtime + data->p_value.u32 * 1000) {
-			return -1;
-		} else if (data) {
-			data->p_value.u32 =
-			    data->p_value.u32 - (ntime - rtime) / 1000;
-		}
-		*/
 	}
 	if (cmd == CMD_CONNACK) {
 		uint8_t var = 0x01;
@@ -4316,6 +4304,10 @@ encode_properties(nni_msg *msg, property *prop, uint8_t cmd)
 	if (prop == NULL)
 		return 0;
 	for (property *p = prop->next; p != NULL; p = p->next) {
+		if (cmd == CMD_PUBLISH)
+		// pretty hard to encode different alias for each receiver due to shared msg mem
+			if (p->id == TOPIC_ALIAS)
+				continue;
 		if (cmd == CMD_CONNACK)
 		// Only allows following property in CONNACK
 			if (p->id != SESSION_EXPIRY_INTERVAL &&
@@ -4327,7 +4319,6 @@ encode_properties(nni_msg *msg, property *prop, uint8_t cmd)
 			    p->id != TOPIC_ALIAS_MAXIMUM &&
 			    p->id != USER_PROPERTY &&
 				p->id != REASON_STRING &&
-				// More TODO:
 				// Response Information
 			    p->id != SERVER_KEEP_ALIVE)
 				continue;
