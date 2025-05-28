@@ -596,7 +596,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	    (strncmp(cparam->pro_name.body, MQTT_PROTOCOL_NAME, 4) != 0 &&
 	    strncmp(cparam->pro_name.body, MQTT_PROTOCOL_NAME_v31, 6) != 0) ||
 	    cparam->pro_ver > 5 || cparam->pro_ver < 3) {
-		log_info("Malformed CONNECT: Invalid cparam %d %d %s ver %d",
+		log_error("Malformed CONNECT: Invalid cparam %d %d %s ver %d",
 				 cparam->will_flag, cparam->will_qos, cparam->pro_name.body, cparam->pro_ver);
 		return PROTOCOL_ERROR;
 	}
