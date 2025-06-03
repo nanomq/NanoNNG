@@ -3131,46 +3131,6 @@ read_packet_length(struct pos_buf *buf, uint32_t *length)
 
 	return 0;
 }
-/**
- * packet: orginal buffer
- * len: max len to decode
- * remainning_length: result
- * used_bytes: bits used
-*/
-int
-mqtt_get_remaining_length(uint8_t *packet, uint32_t len,
-    uint32_t *remainning_length, uint8_t *used_bytes)
-{
-	int      multiplier = 1;
-	int32_t  lword      = 0;
-	uint8_t  lbytes     = 0;
-	uint8_t *ptr        = packet + 1;
-	uint8_t *start      = ptr;
-
-	for (size_t i = 0; i < 4; i++) {
-		if ((size_t) (ptr - start + 1) > len) {
-			return MQTT_ERR_PAYLOAD_SIZE;
-		}
-		lbytes++;
-		uint8_t byte = ptr[0];
-		lword += (byte & 127) * multiplier;
-		multiplier *= 128;
-		ptr++;
-		if ((byte & 128) == 0) {
-			if (lbytes > 1 && byte == 0) {
-				return MQTT_ERR_INVAL;
-			} else {
-				*remainning_length = lword;
-				if (used_bytes) {
-					*used_bytes = lbytes;
-				}
-				return MQTT_SUCCESS;
-			}
-		}
-	}
-
-	return MQTT_ERR_INVAL;
-}
 
 int
 mqtt_buf_create(mqtt_buf *mbuf, const uint8_t *buf, uint32_t length)
