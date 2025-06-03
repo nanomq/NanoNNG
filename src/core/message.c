@@ -799,7 +799,7 @@ nni_msg_get_pub_pid(nni_msg *m)
 
 	pos = nni_msg_body(m);
 	NNI_GET16(pos, len);
-	if (len > nni_msg_remaining_len(m) - 2)
+	if (len > nni_msg_len(m) - 2)
 		return 0;
 	else {
 		NNI_GET16(pos + len + 2, pid);
