@@ -2303,7 +2303,6 @@ nni_mqtt_msg_decode_publish(nni_msg *msg)
 
 	uint8_t *body   = nni_msg_body(msg);
 	size_t   length = nni_msg_len(msg);
-	nni_msg_set_remaining_len(msg, length);
 
 	struct pos_buf buf;
 	buf.curpos = &body[0];

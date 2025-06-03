@@ -728,7 +728,6 @@ tlstran_pipe_recv_cb(void *arg)
 			goto recv_error;
 		}
 
-		nni_msg_set_remaining_len(p->rxmsg, len);
 		if ((rv = nni_msg_header_append(p->rxmsg, p->rxlen, pos+1)) != 0) {
 			rv = NMQ_SERVER_UNAVAILABLE;
 			goto recv_error;
