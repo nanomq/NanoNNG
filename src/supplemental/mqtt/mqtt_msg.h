@@ -286,8 +286,6 @@ typedef struct mqtt_msg_t {
 } mqtt_msg;
 // bridged bit: x : x : x : x : x : retain via sub  : bridged
 
-NNG_DECL int mqtt_get_remaining_length(
-    uint8_t *, uint32_t, uint32_t *, uint8_t *);
 NNG_DECL int byte_number_for_variable_length(uint32_t);
 NNG_DECL int write_variable_length_value(uint32_t, struct pos_buf *);
 NNG_DECL int write_byte(uint8_t, struct pos_buf *);
