@@ -33,7 +33,6 @@ struct nng_msg {
 	uint32_t           m_pipe; // set on receive
 	nni_atomic_int     m_refcnt;
 	// FOR NANOMQ
-	size_t           remaining_len; // TODO replace it with body len
 	uint8_t          CMD_TYPE;
 	uint8_t *        payload_ptr; // payload
 	nni_time         times;		  // the time msg arrives
@@ -697,12 +696,6 @@ nni_msg_payload_ptr(const nni_msg *m)
 	return (m->payload_ptr);
 }
 
-size_t
-nni_msg_remaining_len(const nni_msg *m)
-{
-	return (m->remaining_len);
-}
-
 void
 nni_msg_set_payload_ptr(nni_msg *m, uint8_t *ptr)
 {
@@ -719,12 +712,6 @@ conn_param *
 nni_msg_get_conn_param(nni_msg *m)
 {
 	return m->cparam;
-}
-
-void
-nni_msg_set_remaining_len(nni_msg *m, size_t len)
-{
-	m->remaining_len = len;
 }
 
 void
