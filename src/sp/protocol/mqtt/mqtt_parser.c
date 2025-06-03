@@ -433,7 +433,6 @@ ws_msg_adaptor(uint8_t *packet, nng_msg *dst)
 	m   = (nni_msg *) dst;
 	len = get_var_integer(packet, (uint8_t *)&pos);
 	nni_msg_set_cmd_type(m, *packet & 0xf0);
-	nni_msg_set_remaining_len(m, len);
 	rv = nni_msg_header_append(m, packet, pos);
 
 	if (len > 0) {
@@ -1230,7 +1229,6 @@ nano_pubmsg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
 	nni_msg_set_timestamp(msg, time);
 	if (qos > 0) {
 		rlen = put_var_integer(buf + 1, len + 2);
-		nni_msg_set_remaining_len(msg, len + 2);
 		if (qos == 1) {
 			buf[0] = CMD_PUBLISH | 0x02;
 		} else if (qos == 2) {
@@ -1242,7 +1240,6 @@ nano_pubmsg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
 		}
 	} else {
 		rlen = put_var_integer(buf + 1, len);
-		nni_msg_set_remaining_len(msg, len);
 		buf[0] = CMD_PUBLISH;
 	}
 	ptr = nni_msg_header(msg);
@@ -1383,7 +1380,7 @@ nano_msg_get_subtopic(nni_msg *msg, nano_pipe_db *root, conn_param *cparam)
 		payload_ptr = (uint8_t *) nni_msg_body(msg) + 2;
 	}
 	nni_msg_set_payload_ptr(msg, payload_ptr);
-	remain = nni_msg_remaining_len(msg) - 2;
+	remain = nni_msg_len(msg) - 2;
 
 	while (bpos < remain) {
 		NNI_GET16(payload_ptr + bpos, len_of_topic);
@@ -1560,10 +1557,10 @@ nmq_subtopic_decode(nng_msg *msg, uint8_t ver, topic_queue **ptq)
 	if (ver == MQTT_PROTOCOL_VERSION_v5) {
 		len = get_var_integer(
 		    (uint8_t *) nni_msg_body(msg) + 2, &len_of_varint);
-		if (len > nni_msg_remaining_len(msg))
+		if (len > nni_msg_len(msg))
 			return -1;
 	}
-	log_trace("prop len %d varint %d remain %d", len, len_of_varint, nni_msg_remaining_len(msg));
+	log_trace("prop len %d varint %d remain %d", len, len_of_varint, nni_msg_len(msg));
 	payload_ptr = (uint8_t *) nni_msg_body(msg) + 2 + len + len_of_varint;
 
 	size_t pos = 2 + len_of_varint;
@@ -1598,7 +1595,7 @@ nmq_subtopic_decode(nng_msg *msg, uint8_t ver, topic_queue **ptq)
 	if (pos > target_pos || nni_msg_len(msg) < target_pos)
 		return (-2);
 
-	remain = nni_msg_remaining_len(msg) - target_pos;
+	remain = nni_msg_len(msg) - target_pos;
 	while (bpos < remain) {
 		// Check the index of topic len
 		if (bpos + 2 > remain)
@@ -1673,7 +1670,7 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 	if (ver == MQTT_PROTOCOL_VERSION_v5) {
 		len = get_var_integer(
 		    (uint8_t *) nni_msg_body(msg) + 2, &len_of_varint);
-		if (len > nni_msg_remaining_len(msg))
+		if (len > nni_msg_len(msg))
 			return -1;
 	}
 	uint32_t pid = 0;
@@ -1684,7 +1681,7 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 	}
 
 	log_trace("prop len %d varint %d remain %d", len, len_of_varint,
-			  nni_msg_remaining_len(msg));
+		nni_msg_len(msg));
 	payload_ptr = (uint8_t *) nni_msg_body(msg) + 2 + len + len_of_varint;
 
 	size_t pos = 2 + len_of_varint, target_pos = 2 + len_of_varint + len;
@@ -1718,7 +1715,7 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 	if (pos > target_pos || nni_msg_len(msg) < target_pos)
 		return (-2);
 
-	remain = nni_msg_remaining_len(msg) - target_pos;
+	remain = nni_msg_len(msg) - target_pos;
 
 	while (bpos < remain) {
 		// Check the index of topic len
@@ -1802,7 +1799,7 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 		// get Property variable Length
 		len = get_var_integer(
 		    (uint8_t *) nni_msg_body(msg) + 2, &len_of_varint);
-		if (len > nni_msg_remaining_len(msg))
+		if (len > nni_msg_len(msg))
 			return -1;
 	}
 
@@ -1839,7 +1836,7 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 	if (pos > target_pos || nni_msg_len(msg) < target_pos)
 		return (-2);
 
-	remain = nni_msg_remaining_len(msg) - target_pos;
+	remain = nni_msg_len(msg) - target_pos;
 
 	while (bpos < remain) {
 		// Check the index of topic len
