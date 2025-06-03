@@ -732,8 +732,6 @@ mqtts_tcptran_pipe_recv_cb(void *arg)
 			rv = UNSPECIFIED_ERROR;
 			goto recv_error;
 		}
-		// set remaining length for bridging
-		nni_msg_set_remaining_len(p->rxmsg, len);
 
 		// Submit the rest of the data for a read -- seperate Fixed
 		// header with variable header and so on
