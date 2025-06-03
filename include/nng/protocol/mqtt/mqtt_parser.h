@@ -149,4 +149,5 @@ NNG_DECL int nmq_auth_http_connect(conn_param *cparam, conf_auth_http *conf);
 NNG_DECL int nmq_auth_http_sub_pub(
     conn_param *cparam, bool is_sub, topic_queue *topics, conf_auth_http *conf);
 
+NNG_DECL int mqtt_get_remaining_length(uint8_t *, uint32_t, uint32_t *, uint8_t *);
 #endif // NNG_MQTT_H
