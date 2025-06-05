@@ -73,6 +73,11 @@ extern "C" {
 
 #define NNG_OPT_MQTT_RETRY_INTERVAL "mqtt-client-retry-interval"
 
+// Retry sending messages with qos=0
+// if the bridge is not connected
+// when the message is published
+#define NNG_OPT_MQTT_RETRY_QOS_0 "mqtt-client-retry-qos-0"
+
 #define NNG_OPT_MQTT_RETRY_WAIT_TIME "mqtt-client-retry-wait-time"
 
 #define NNG_OPT_MQTT_DISCONNECT_REASON "mqtt-disconnect-reason"
