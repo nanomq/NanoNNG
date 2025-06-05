@@ -106,6 +106,7 @@ struct mqtt_sock_s {
 	reason_code     disconnect_code; // disconnect reason code
 	property       *dis_prop;        // disconnect property
 	nni_id_map      sent_unack;      // send messages unacknowledged
+	bool            retry_qos_0;
 #ifdef NNG_SUPP_SQLITE
 	nni_mqtt_sqlite_option *sqlite_opt;
 #endif
@@ -280,6 +281,20 @@ mqtt_sock_set_retry_wait(void *arg, const void *v, size_t sz, nni_opt_type t)
 	}
 	return (rv);
 }
+
+static int
+mqtt_sock_set_retry_qos_0(void *arg, const void *v, size_t sz, nni_opt_type t)
+{
+	mqtt_sock_t *s = arg;
+	bool tmp;
+	int rv;
+
+	if ((rv = nni_copyin_bool(&tmp, v, sz, t)) == 0) {
+		s->retry_qos_0 = tmp;
+	}
+	return (rv);
+}
+
 static int
 mqtt_sock_get_pipeid(void *arg, void *buf, size_t *szp, nni_type t)
 {
@@ -1400,7 +1415,8 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 #if defined(NNG_SUPP_SQLITE)
 		nni_mqtt_sqlite_option *sqlite =
 		    mqtt_sock_get_sqlite_option(s);
-		if (sqlite_is_enabled(sqlite)) {
+		if (sqlite_is_enabled(sqlite)
+				&& (qos > 0 || s->retry_qos_0)) {
 			// the msg order is exactly as same as the ctx
 			// in send_queue
 			nni_lmq_put(&sqlite->offline_cache, msg);
@@ -1524,6 +1540,10 @@ static nni_option mqtt_sock_options[] = {
 	{
 	    .o_name = NNG_OPT_MQTT_RETRY_WAIT_TIME,
 	    .o_set  = mqtt_sock_set_retry_wait,
+	},
+	{
+	    .o_name = NNG_OPT_MQTT_RETRY_QOS_0,
+	    .o_set  = mqtt_sock_set_retry_qos_0,
 	},
 	{
 	    .o_name = NNG_OPT_MQTT_SQLITE,
