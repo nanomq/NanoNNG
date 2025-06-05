@@ -282,6 +282,7 @@ struct conf_bridge_node {
 	bool         transparent;
 	bool         will_flag;
 	bool         will_retain;
+	bool         retry_qos_0;
 	void        *sock;
 	void        *bridge_arg;	// for reloading bridge case
 	char        *name;
