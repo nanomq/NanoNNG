@@ -1073,6 +1073,7 @@ conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 	hocon_read_time(node, keepalive, jso_connector);
 	hocon_read_time(node, backoff_max, jso_connector);
 	hocon_read_bool(node, clean_start, jso_connector);
+	hocon_read_bool(node, retry_qos_0, jso_connector);
 	hocon_read_bool(node, transparent, jso_connector);
 	hocon_read_bool(node, enable, jso_connector);
 	hocon_read_str(node, username, jso_connector);
