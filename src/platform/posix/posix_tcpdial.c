@@ -39,6 +39,7 @@ nni_tcp_dialer_init(nni_tcp_dialer **dp)
 	}
 	nni_mtx_init(&d->mtx);
 	d->closed = false;
+	d->interface = NULL;
 	nni_aio_list_init(&d->connq);
 	nni_atomic_init_bool(&d->fini);
 	nni_atomic_init64(&d->ref);
@@ -219,7 +220,7 @@ tcp_dialer_cb(nni_posix_pfd *pfd, unsigned ev, void *arg)
 	}
 
 	nni_posix_tcp_start(c, nd, ka);
-	tcp_params_set(pfd, d);
+	tcp_params_set(pfd, d);	// move this before tcp start
 	nni_aio_set_output(aio, 0, c);
 	nni_aio_finish(aio, 0, 0);
 }
@@ -254,6 +255,13 @@ nni_tcp_dial(nni_tcp_dialer *d, const nni_sockaddr *sa, nni_aio *aio)
 		log_warn("Create socket failed %d!", errno);
 		nni_aio_finish_error(aio, nni_plat_errno(errno));
 		return;
+	}
+	if (d->interface != NULL) {
+		if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, d->interface,
+		        strlen(d->interface) + 1) < 0)
+			log_error("bind to interface %s failed!", d->interface);
+		else
+			log_info("bind to %s successfully!", d->interface);
 	}
 
 	nni_atomic_inc64(&d->ref);
@@ -570,6 +578,28 @@ tcp_dialer_get_locaddr(void *arg, void *buf, size_t *szp, nni_type t)
 }
 
 static int
+tcp_dialer_bind_interface(void *arg, const void *buf, size_t sz, nni_type t)
+{
+	int             rv;
+	nni_tcp_dialer *d = arg;
+	char           *str;
+
+	str = nng_alloc(sz + 1);
+	memset(str, '\0', sz + 1);
+
+	if (((rv = nni_copyin_str(str, buf, sz, sz, t)) != 0) || (d == NULL)) {
+		nng_free(str, sz + 1);
+		log_error("Copy memory failed!");
+		return rv;
+	}
+
+	nni_mtx_lock(&d->mtx);
+	d->interface = str;
+	nni_mtx_unlock(&d->mtx);
+	return rv;
+}
+
+static int
 tcp_dialer_set_locaddr(void *arg, const void *buf, size_t sz, nni_type t)
 {
 	nni_tcp_dialer         *d = arg;
@@ -668,6 +698,10 @@ static const nni_option tcp_dialer_options[] = {
 	    .o_name = NNG_OPT_TCP_RECVTIMEO,
 	    .o_get  = tcp_dialer_get_recvtimeo,
 	    .o_set  = tcp_dialer_set_recvtimeo
+	},
+	{
+	    .o_name = NNG_OPT_TCP_BINDTODEVICE,
+	    .o_set  = tcp_dialer_bind_interface
 	},
 	{
 	    .o_name = NULL,
