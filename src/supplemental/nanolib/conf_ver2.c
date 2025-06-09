@@ -505,7 +505,7 @@ conf_tcp_parse_ver2_base(conf_tcp *tcp, cJSON *jso_tcp)
 		hocon_read_time(tcp, keepcnt, jso_tcp);
 		hocon_read_time(tcp, sendtimeo, jso_tcp);
 		hocon_read_time(tcp, recvtimeo, jso_tcp);
-		// TODO: handle error
+		hocon_read_str(tcp, interface, jso_tcp);
 	}
 
 	return;
