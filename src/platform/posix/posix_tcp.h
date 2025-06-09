@@ -45,6 +45,8 @@ struct nni_tcp_dialer {
 	int  keepcnt;
 	int  sendtimeo;
 	int  recvtimeo;
+
+	char *interface;
 };
 
 extern int  nni_posix_tcp_alloc(nni_tcp_conn **, nni_tcp_dialer *);
