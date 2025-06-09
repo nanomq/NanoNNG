@@ -884,6 +884,8 @@ NNG_DECL nng_listener nng_pipe_listener(nng_pipe);
 
 #define NNG_OPT_TCP_RECVTIMEO "tcp-recvtimeo"
 
+#define NNG_OPT_TCP_BINDTODEVICE "tcp-bindtodevice"
+
 // Local TCP port number.  This is used on a listener, and is intended
 // to be used after starting the listener in combination with a wildcard
 // (0) local port.  This determines the actual ephemeral port that was
