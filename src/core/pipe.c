@@ -278,6 +278,19 @@ pipe_create(nni_pipe **pp, nni_sock *sock, nni_sp_tran *tran, void *tran_data)
 	p->cache     = false;
 	p->subinfol = nni_zalloc(sizeof(nni_list));
 	NNI_LIST_INIT(p->subinfol, struct subinfo, node);
+	p->stm_tx_qos0 = 0;
+	p->stm_tx_qos1 = 0;
+	p->stm_tx_qos2 = 0;
+	p->stm_rx_qos0 = 0;
+	p->stm_rx_qos1 = 0;
+	p->stm_rx_qos2 = 0;
+	p->stm_tx_drop_expired = 0;
+	p->stm_tx_drop_full = 0;
+	p->stm_tx_drop_invalid = 0;
+	p->stm_rx_drop_expired = 0;
+	p->stm_rx_drop_full = 0;
+	p->stm_rx_drop_invalid = 0;
+	p->stm_rx_drop_nonqos = 0;
 
 	nni_atomic_init_bool(&p->p_closed);
 	nni_atomic_flag_reset(&p->p_stop);
@@ -452,6 +465,162 @@ nni_pipe_get_conn_param(nni_pipe *p)
 	if (cp != NULL)
 		nni_atomic_inc(&cp->refcnt);
 	return cp;
+}
+
+size_t
+nni_pipe_get_metric_tx_qos0(nni_pipe *p)
+{
+	return p->stm_tx_qos0;
+}
+
+void
+nni_pipe_inc_metric_tx_qos0(nni_pipe *p)
+{
+	p->stm_tx_qos0++;
+}
+
+size_t
+nni_pipe_get_metric_tx_qos1(nni_pipe *p)
+{
+	return p->stm_tx_qos1;
+}
+
+void
+nni_pipe_inc_metric_tx_qos1(nni_pipe *p)
+{
+	p->stm_tx_qos1++;
+}
+
+size_t
+nni_pipe_get_metric_tx_qos2(nni_pipe *p)
+{
+	return p->stm_tx_qos2;
+}
+
+void
+nni_pipe_inc_metric_tx_qos2(nni_pipe *p)
+{
+	p->stm_tx_qos2++;
+}
+
+size_t
+nni_pipe_get_metric_rx_qos0(nni_pipe *p)
+{
+	return p->stm_rx_qos0;
+}
+
+void
+nni_pipe_inc_metric_rx_qos0(nni_pipe *p)
+{
+	p->stm_rx_qos0++;
+}
+
+size_t
+nni_pipe_get_metric_rx_qos1(nni_pipe *p)
+{
+	return p->stm_rx_qos1;
+}
+
+void
+nni_pipe_inc_metric_rx_qos1(nni_pipe *p)
+{
+	p->stm_rx_qos1++;
+}
+
+size_t
+nni_pipe_get_metric_rx_qos2(nni_pipe *p)
+{
+	return p->stm_rx_qos2;
+}
+
+void
+nni_pipe_inc_metric_rx_qos2(nni_pipe *p)
+{
+	p->stm_rx_qos2++;
+}
+
+size_t
+nni_pipe_get_metric_tx_drop_expired(nni_pipe *p)
+{
+	return p->stm_tx_drop_expired;
+}
+
+void
+nni_pipe_inc_metric_tx_drop_expired(nni_pipe *p)
+{
+	p->stm_tx_drop_expired++;
+}
+
+size_t
+nni_pipe_get_metric_tx_drop_full(nni_pipe *p)
+{
+	return p->stm_tx_drop_full;
+}
+
+void
+nni_pipe_inc_metric_tx_drop_full(nni_pipe *p)
+{
+	p->stm_tx_drop_full++;
+}
+
+size_t
+nni_pipe_get_metric_tx_drop_invalid(nni_pipe *p)
+{
+	return p->stm_tx_drop_invalid;
+}
+
+void
+nni_pipe_inc_metric_tx_drop_invalid(nni_pipe *p)
+{
+	p->stm_tx_drop_invalid++;
+}
+
+size_t
+nni_pipe_get_metric_rx_drop_expired(nni_pipe *p)
+{
+	return p->stm_rx_drop_expired;
+}
+
+void
+nni_pipe_inc_metric_rx_drop_expired(nni_pipe *p)
+{
+	p->stm_rx_drop_expired++;
+}
+
+size_t
+nni_pipe_get_metric_rx_drop_full(nni_pipe *p)
+{
+	return p->stm_rx_drop_full;
+}
+
+void
+nni_pipe_inc_metric_rx_drop_full(nni_pipe *p)
+{
+	p->stm_rx_drop_full++;
+}
+
+size_t
+nni_pipe_get_metric_rx_drop_nonqos(nni_pipe *p)
+{
+	return p->stm_rx_drop_nonqos;
+}
+
+void
+nni_pipe_inc_metric_rx_drop_nonqos(nni_pipe *p)
+{
+	p->stm_rx_drop_nonqos++;
+}
+
+size_t
+nni_pipe_get_metric_rx_drop_invalid(nni_pipe *p)
+{
+	return p->stm_rx_drop_invalid;
+}
+
+void
+nni_pipe_inc_metric_rx_drop_invalid(nni_pipe *p)
+{
+	p->stm_rx_drop_invalid++;
 }
 
 bool

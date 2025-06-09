@@ -502,9 +502,9 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 		return;
 	}
 	msg = nni_aio_get_msg(qsaio);
-	if (msg != NULL)
+	if (msg != NULL) {
 		type = nni_msg_cmd_type(msg);
-	else {
+	} else {
 		log_warn("NULL msg detected in send_cb");
 		nni_mtx_unlock(&p->mtx);
 		tcptran_pipe_close(p);
@@ -515,8 +515,10 @@ nmq_tcptran_pipe_qos_send_cb(void *arg)
 		(type == CMD_PUBCOMP || type == CMD_PUBACK) ? p->qrecv_quota++
 		                                            : p->qrecv_quota;
 	}
+	nni_pipe_bump_tx(p->npipe, nni_msg_header_len(msg) + nni_msg_len(msg));
 	nni_msg_free(msg);
 	nni_aio_set_msg(qsaio, NULL);
+
 	if (nni_lmq_get(&p->rslmq, &msg) == 0) {
 		nni_iov iov[2];
 		iov[0].iov_len = nni_msg_header_len(msg);
@@ -643,7 +645,7 @@ exit:
 		// parse result code TODO verify bug
 		flag = header[3];
 	}
-	// nni_pipe_bump_tx(p->npipe, n);
+	nni_pipe_bump_tx(p->npipe, n + nni_msg_header_len(msg));
 	nni_mtx_unlock(&p->mtx);
 
 	nni_aio_set_msg(aio, NULL);
@@ -745,6 +747,7 @@ tcptran_pipe_recv_cb(void *arg)
 		if (len > p->conf->max_packet_size) {
 			// log_error("Size of packet exceeds limitation: 0x95\n");
 			// rv = NMQ_PACKET_TOO_LARGE;
+			// nni_pipe_inc_metric_tx_drop_invalid(p->npipe);
 			// goto recv_error;
 		}
 
@@ -783,6 +786,8 @@ tcptran_pipe_recv_cb(void *arg)
 	if (nni_msg_len(msg) == 0 &&
 	    (type == CMD_SUBSCRIBE || type == CMD_PUBLISH ||
 	        type == CMD_UNSUBSCRIBE)) {
+		if (type == CMD_PUBLISH)
+			nni_pipe_inc_metric_tx_drop_invalid(p->npipe);
 		log_warn("Invalid Packet Type: 0 len received! Connection closed.");
 		rv = MALFORMED_PACKET;
 		goto recv_error;
@@ -815,24 +820,31 @@ tcptran_pipe_recv_cb(void *arg)
 					p->qrecv_quota--;
 				} else {
 					rv = NMQ_RECEIVE_MAXIMUM_EXCEEDED;
+					nni_pipe_inc_metric_tx_drop_full(p->npipe);
 					goto recv_error;
 				}
 			}
 			if (qos_pac == 1) {
+				nni_pipe_inc_metric_tx_qos1(p->npipe);
 				ack_cmd = CMD_PUBACK;
 			} else if (qos_pac == 2) {
+				nni_pipe_inc_metric_tx_qos2(p->npipe);
 				ack_cmd = CMD_PUBREC;
 			} else {
 				log_warn("Wrong QoS level!");
+				nni_pipe_inc_metric_tx_drop_invalid(p->npipe);
 				rv = PROTOCOL_ERROR;
 				goto recv_error;
 			}
 			if ((packet_id = nni_msg_get_pub_pid(msg)) == 0) {
 				log_warn("0 Packet ID in QoS Message!");
+				nni_pipe_inc_metric_tx_drop_invalid(p->npipe);
 				rv = PROTOCOL_ERROR;
 				goto recv_error;
 			}
 			ack = true;
+		} else {
+			nni_pipe_inc_metric_tx_qos0(p->npipe);
 		}
 	} else if (type == CMD_PUBREC) {
 		if ((rv = nni_mqtt_pubres_decode(msg, &packet_id, &reason_code,
@@ -936,7 +948,7 @@ tcptran_pipe_recv_cb(void *arg)
 	}
 
 	// keep connection & Schedule next receive
-	// nni_pipe_bump_rx(p->npipe, n);
+	nni_pipe_bump_rx(p->npipe, p->wantrxhead);
 	if (!nni_list_empty(&p->recvq)) {
 		tcptran_pipe_recv_start(p);
 	}
@@ -988,6 +1000,7 @@ tcptran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
+	nni_pipe_inc_metric_rx_drop_expired(p->npipe);
 	nni_aio_abort(p->qsaio, rv);
 	nni_aio_list_remove(aio);
 	nni_mtx_unlock(&p->mtx);
@@ -1125,6 +1138,12 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		fixheader = *header;
 		// get final qos
 		qos = qos_pac > qos ? qos : qos_pac;
+		if (qos == 0)
+			nni_pipe_inc_metric_rx_qos0(pipe);
+		else if (qos == 1)
+			nni_pipe_inc_metric_rx_qos1(pipe);
+		else
+			nni_pipe_inc_metric_rx_qos2(pipe);
 
 		// alter qos according to sub qos
 		if (qos_pac > qos) {
@@ -1283,6 +1302,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		// pretend it has been sent
 		log_warn("msg dropped due to exceed max packet size %ld %ld!",
 				total_len, p->tcp_cparam->max_packet_size);
+		nni_pipe_inc_metric_rx_drop_invalid(p->npipe);
 		nni_msg_free(msg);
 		nni_aio_set_msg(aio, NULL);
 		nni_aio_list_remove(aio);
@@ -1358,6 +1378,12 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			}
 			// get final qos
 			qos = qos_pac > qos ? qos : qos_pac;
+			if (qos == 0)
+				nni_pipe_inc_metric_rx_qos0(pipe);
+			else if (qos == 1)
+				nni_pipe_inc_metric_rx_qos1(pipe);
+			else
+				nni_pipe_inc_metric_rx_qos2(pipe);
 
 			// alter qos according to sub qos
 			if (qos_pac > qos) {
@@ -1474,15 +1500,15 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			nni_list_remove(&p->sendq, aio);
 			nni_aio_set_msg(aio, NULL);
 			nni_aio_finish(aio, 0, 0);
+			nni_pipe_inc_metric_rx_drop_full(p->npipe);
 			return;
 		}
 	}
+
 send:
     nni_aio_set_iov(txaio, niov, iov);
 	nng_stream_send(p->conn, txaio);
 	return;
-
-
 }
 
 /**
@@ -1579,6 +1605,7 @@ tcptran_pipe_recv_cancel(nni_aio *aio, void *arg, int rv)
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
+	nni_pipe_inc_metric_tx_drop_expired(p->npipe);
 	nni_aio_list_remove(aio);
 	nni_mtx_unlock(&p->mtx);
 	nni_aio_finish_error(aio, rv);
