@@ -28,6 +28,44 @@ struct nni_taskq {
 static nni_taskq *nni_taskq_systq = NULL;
 static nni_taskq *nni_taskq_longtq = NULL;
 
+static void
+nni_taskq_long_thread(void *self)
+{
+	nni_taskq_thr *thr = self;
+	nni_taskq     *tq  = thr->tqt_tq;
+	nni_task      *task;
+
+	nni_thr_set_name(NULL, "nng:longtask");
+
+	nni_mtx_lock(&tq->tq_mtx);
+	for (;;) {
+		if ((task = nni_list_first(&tq->tq_tasks)) != NULL) {
+
+			nni_list_remove(&tq->tq_tasks, task);
+
+			nni_mtx_unlock(&tq->tq_mtx);
+
+			task->task_cb(task->task_arg);
+
+			nni_mtx_lock(&task->task_mtx);
+			task->task_busy--;
+			if (task->task_busy == 0) {
+				nni_cv_wake(&task->task_cv);
+			}
+			nni_mtx_unlock(&task->task_mtx);
+
+			nni_mtx_lock(&tq->tq_mtx);
+
+			continue;
+		}
+
+		if (!tq->tq_run) {
+			break;
+		}
+		nni_cv_wait(&tq->tq_sched_cv);
+	}
+	nni_mtx_unlock(&tq->tq_mtx);
+}
 
 static void
 nni_taskq_thread(void *self)
