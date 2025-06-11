@@ -257,6 +257,12 @@ nni_task_busy(nni_task *task)
 	return (busy);
 }
 
+void *
+nni_taskq_get_longtq()
+{
+	return nni_taskq_longtq;
+}
+
 void
 nni_task_init(nni_task *task, nni_taskq *tq, nni_cb cb, void *arg)
 {
