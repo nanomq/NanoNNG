@@ -26,6 +26,8 @@ struct nni_taskq {
 };
 
 static nni_taskq *nni_taskq_systq = NULL;
+static nni_taskq *nni_taskq_longtq = NULL;
+
 
 static void
 nni_taskq_thread(void *self)
@@ -67,7 +69,7 @@ nni_taskq_thread(void *self)
 }
 
 int
-nni_taskq_init(nni_taskq **tqp, int nthr)
+nni_taskq_init(nni_taskq **tqp, int nthr, nni_thr_func task_fn)
 {
 	nni_taskq *tq;
 
@@ -90,7 +92,7 @@ nni_taskq_init(nni_taskq **tqp, int nthr)
 		int rv;
 		tq->tq_threads[i].tqt_tq = tq;
 		rv = nni_thr_init(&tq->tq_threads[i].tqt_thread,
-		    nni_taskq_thread, &tq->tq_threads[i]);
+		    task_fn, &tq->tq_threads[i]);
 		if (rv != 0) {
 			nni_taskq_fini(tq);
 			return (rv);
@@ -270,7 +272,17 @@ nni_taskq_sys_init(void)
 	}
 	nni_init_set_effective(NNG_INIT_NUM_TASK_THREADS, num_thr);
 
-	return (nni_taskq_init(&nni_taskq_systq, num_thr));
+#ifndef NNG_NUM_TASKQ_LONG_THREADS
+#define NNG_NUM_TASKQ_LONG_THREADS 1
+#endif
+
+	int rv;
+	if (0 != (rv = nni_taskq_init(&nni_taskq_longtq,
+	    NNG_NUM_TASKQ_LONG_THREADS, nni_taskq_long_thread))) {
+		log_error("nni_taskq_init long taskq thread failed %d", rv);
+		return rv;
+	}
+	return (nni_taskq_init(&nni_taskq_systq, num_thr, nni_taskq_thread));
 }
 
 void

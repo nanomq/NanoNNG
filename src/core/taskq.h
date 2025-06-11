@@ -17,7 +17,7 @@
 typedef struct nni_taskq nni_taskq;
 typedef struct nni_task  nni_task;
 
-extern int  nni_taskq_init(nni_taskq **, int);
+extern int  nni_taskq_init(nni_taskq **, int, nni_thr_func fn);
 extern void nni_taskq_fini(nni_taskq *);
 
 // nni_task_dispatch sends the task to the queue.  It is guaranteed to
