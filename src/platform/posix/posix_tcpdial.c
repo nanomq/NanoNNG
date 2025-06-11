@@ -262,8 +262,12 @@ nni_tcp_dial(nni_tcp_dialer *d, const nni_sockaddr *sa, nni_aio *aio)
 		if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, d->interface,
 		        strlen(d->interface) + 1) < 0) {
 			log_error("bind to interface %s failed!", d->interface);
-			nni_aio_finish_error(aio, NNG_ECONNREFUSED);
-			return;
+			// Disgused as NNG_ECONNREFUSED, therefore dialer_connect_cb would fire a normal reconnect
+			if (d->nodelay) {
+				// nodelay option also changes failover action of bounding
+				nni_aio_finish_error(aio, NNG_ECONNREFUSED);
+				return;
+			}
 		}
 		else
 			log_info("bind to %s successfully!", d->interface);
