@@ -74,6 +74,8 @@ static void
 tcp_dialer_fini(nni_tcp_dialer *d)
 {
 	nni_mtx_fini(&d->mtx);
+	if (d->interface != NULL)
+		nni_strfree(d->interface);
 	NNI_FREE_STRUCT(d);
 }
 
@@ -258,8 +260,11 @@ nni_tcp_dial(nni_tcp_dialer *d, const nni_sockaddr *sa, nni_aio *aio)
 	}
 	if (d->interface != NULL) {
 		if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, d->interface,
-		        strlen(d->interface) + 1) < 0)
+		        strlen(d->interface) + 1) < 0) {
 			log_error("bind to interface %s failed!", d->interface);
+			nni_aio_finish_error(aio, NNG_ECONNREFUSED);
+			return;
+		}
 		else
 			log_info("bind to %s successfully!", d->interface);
 	}
