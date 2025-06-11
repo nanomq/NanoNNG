@@ -551,6 +551,10 @@ NNG_DECL int   nng_strncasecmp(const char *, const char *, size_t);
 // locks held.
 NNG_DECL int nng_aio_alloc(nng_aio **, void (*)(void *), void *);
 
+// nng_aio_long_alloc allocates a special AIO. The aio will run on nng:longtask
+// thread instead of nng:task.
+NNG_DECL int nng_aio_long_alloc(nng_aio **, void (*)(void *), void *);
+
 // nng_aio_free frees the AIO and any associated resources.
 // It *must not* be in use at the time it is freed.
 NNG_DECL void nng_aio_free(nng_aio *);
