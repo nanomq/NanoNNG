@@ -551,12 +551,15 @@ test_run_order_long(void)
 	int        done = 0;
 	uint64_t   ms = 100;
 	void *     args[2] = {&ms, &done};
+	nng_time   now;
 
 	NUTS_TRUE(nng_aio_long_alloc(&a, cb_sleep, (void *)args) == 0);
 	NUTS_TRUE(nng_aio_long_alloc(&a2, cb_sleep, (void *)args) == 0);
 	NUTS_TRUE(nng_aio_long_alloc(&a3, cb_sleep, (void *)args) == 0);
 	NUTS_TRUE(nng_aio_long_alloc(&a4, cb_sleep, (void *)args) == 0);
 	NUTS_TRUE(nng_aio_long_alloc(&a5, cb_sleep, (void *)args) == 0);
+
+	now = nng_clock();
 
 	nng_aio_finish(a, 0);
 	nng_aio_finish(a2, 0);
@@ -565,14 +568,19 @@ test_run_order_long(void)
 	nng_aio_finish(a5, 0);
 
 	nng_aio_wait(a);
+	NUTS_TRUE((nng_clock() - now) >= 100);
 	NUTS_TRUE(done == 1);
 	nng_aio_wait(a2);
+	NUTS_TRUE((nng_clock() - now) >= 200);
 	NUTS_TRUE(done == 2);
 	nng_aio_wait(a3);
+	NUTS_TRUE((nng_clock() - now) >= 300);
 	NUTS_TRUE(done == 3);
 	nng_aio_wait(a4);
+	NUTS_TRUE((nng_clock() - now) >= 400);
 	NUTS_TRUE(done == 4);
 	nng_aio_wait(a5);
+	NUTS_TRUE((nng_clock() - now) >= 500);
 	NUTS_TRUE(done == 5);
 
 	nng_aio_free(a);
