@@ -397,6 +397,191 @@ test_aio_busy(void)
 	nng_aio_free(aio);
 }
 
+void
+test_consumer_cancel_long(void)
+{
+	nng_aio   *a;
+	nng_socket s1;
+	int        done = 0;
+
+	NUTS_TRUE(nng_pair1_open(&s1) == 0);
+	NUTS_TRUE(nng_aio_long_alloc(&a, cb_done, &done) == 0);
+
+	nng_aio_set_timeout(a, NNG_DURATION_INFINITE);
+	nng_recv_aio(s1, a);
+	nng_aio_cancel(a);
+	nng_aio_wait(a);
+	NUTS_TRUE(done == 1);
+	NUTS_TRUE(nng_aio_result(a) == NNG_ECANCELED);
+
+	nng_aio_free(a);
+	NUTS_TRUE(nng_close(s1) == 0);
+}
+
+void
+test_timeout_task_long(void)
+{
+	nng_aio   *a;
+	nng_socket s1;
+	int        done = 0;
+	nng_time   now;
+	uint64_t   ms = 1000;
+
+	now = nng_clock();
+
+	NUTS_TRUE(nng_pair1_open(&s1) == 0);
+	NUTS_TRUE(nng_aio_long_alloc(&a, cb_done, &done) == 0);
+
+	nng_aio_set_timeout(a, ms);
+	nng_recv_aio(s1, a);
+
+	nng_aio_wait(a);
+	NUTS_TRUE(done == 1);
+	NUTS_TRUE(nng_aio_result(a) == NNG_ETIMEDOUT);
+	NUTS_TRUE((nng_clock() - now) >= ms);
+
+	nng_aio_free(a);
+	NUTS_TRUE(nng_close(s1) == 0);
+}
+
+static void
+cb_sleep(void *p)
+{
+	void **args = p;
+	nng_duration ms = *(nng_duration *)args[0];
+	int *donep = args[1];
+
+	nng_msleep(ms);
+	(*donep) ++;
+}
+
+void
+test_task_block_long(void)
+{
+	// ensure nng:longtask has only one thread
+	nng_aio   *a, *a2;
+	nng_socket s1;
+	int        done = 0;
+	uint64_t   ms = 1000, ms2 = 1000;
+	nng_time   now;
+	void *     args[2] = {&ms2, &done};
+
+	now = nng_clock();
+
+	NUTS_TRUE(nng_pair1_open(&s1) == 0);
+	NUTS_TRUE(nng_aio_long_alloc(&a, cb_done, &done) == 0);
+	NUTS_TRUE(nng_aio_long_alloc(&a2, cb_sleep, (void *)args) == 0);
+
+	nng_aio_set_timeout(a, ms);
+	nng_recv_aio(s1, a);
+
+	nng_aio_finish(a2, 0); // block
+	NUTS_TRUE(done == 0);
+
+	nng_aio_wait(a);
+	NUTS_TRUE(nng_aio_result(a) == NNG_ETIMEDOUT);
+
+	nng_msleep(50);
+	NUTS_TRUE(done == 2);
+	NUTS_TRUE((nng_clock() - now) >= 1000);
+
+	nng_aio_free(a);
+	nng_aio_free(a2);
+	NUTS_TRUE(nng_close(s1) == 0);
+}
+
+void
+test_traffic_long(void)
+{
+	// traffic should also works in longtask
+	nng_socket s1;
+	nng_socket s2;
+	nng_aio   *tx_aio;
+	nng_aio   *rx_aio;
+	int        tx_done = 0;
+	int        rx_done = 0;
+	nng_msg   *m;
+	char      *addr = "inproc://traffic";
+
+	NUTS_PASS(nng_pair1_open(&s1));
+	NUTS_PASS(nng_pair1_open(&s2));
+
+	NUTS_PASS(nng_listen(s1, addr, NULL, 0));
+	NUTS_PASS(nng_dial(s2, addr, NULL, 0));
+
+	NUTS_PASS(nng_aio_long_alloc(&rx_aio, cb_done, &rx_done));
+	NUTS_PASS(nng_aio_long_alloc(&tx_aio, cb_done, &tx_done));
+
+	nng_aio_set_timeout(rx_aio, 1000);
+	nng_aio_set_timeout(tx_aio, 1000);
+
+	NUTS_PASS(nng_msg_alloc(&m, 0));
+	NUTS_PASS(nng_msg_append(m, "hello", strlen("hello")));
+
+	nng_recv_aio(s2, rx_aio);
+
+	nng_aio_set_msg(tx_aio, m);
+	nng_send_aio(s1, tx_aio);
+
+	nng_aio_wait(tx_aio);
+	nng_aio_wait(rx_aio);
+
+	NUTS_PASS(nng_aio_result(rx_aio));
+	NUTS_PASS(nng_aio_result(tx_aio));
+
+	NUTS_TRUE((m = nng_aio_get_msg(rx_aio)) != NULL);
+	NUTS_TRUE(nng_msg_len(m) == strlen("hello"));
+	NUTS_TRUE(memcmp(nng_msg_body(m), "hello", strlen("hello")) == 0);
+
+	nng_msg_free(m);
+
+	NUTS_TRUE(rx_done == 1);
+	NUTS_TRUE(tx_done == 1);
+
+	nng_aio_free(rx_aio);
+	nng_aio_free(tx_aio);
+	NUTS_PASS(nng_close(s1));
+	NUTS_PASS(nng_close(s2));
+}
+
+void
+test_run_order_long(void)
+{
+	nng_aio   *a, *a2, *a3, *a4, *a5;
+	int        done = 0;
+	uint64_t   ms = 100;
+	void *     args[2] = {&ms, &done};
+
+	NUTS_TRUE(nng_aio_long_alloc(&a, cb_sleep, (void *)args) == 0);
+	NUTS_TRUE(nng_aio_long_alloc(&a2, cb_sleep, (void *)args) == 0);
+	NUTS_TRUE(nng_aio_long_alloc(&a3, cb_sleep, (void *)args) == 0);
+	NUTS_TRUE(nng_aio_long_alloc(&a4, cb_sleep, (void *)args) == 0);
+	NUTS_TRUE(nng_aio_long_alloc(&a5, cb_sleep, (void *)args) == 0);
+
+	nng_aio_finish(a, 0);
+	nng_aio_finish(a2, 0);
+	nng_aio_finish(a3, 0);
+	nng_aio_finish(a4, 0);
+	nng_aio_finish(a5, 0);
+
+	nng_aio_wait(a);
+	NUTS_TRUE(done == 1);
+	nng_aio_wait(a2);
+	NUTS_TRUE(done == 2);
+	nng_aio_wait(a3);
+	NUTS_TRUE(done == 3);
+	nng_aio_wait(a4);
+	NUTS_TRUE(done == 4);
+	nng_aio_wait(a5);
+	NUTS_TRUE(done == 5);
+
+	nng_aio_free(a);
+	nng_aio_free(a2);
+	nng_aio_free(a3);
+	nng_aio_free(a4);
+	nng_aio_free(a5);
+}
+
 NUTS_TESTS = {
 	{ "sleep", test_sleep },
 	{ "sleep timeout", test_sleep_timeout },
@@ -412,5 +597,10 @@ NUTS_TESTS = {
 	{ "sleep loop", test_sleep_loop },
 	{ "sleep cancel", test_sleep_cancel },
 	{ "aio busy", test_aio_busy },
+	{ "consumer cancel long", test_consumer_cancel_long },
+	{ "timeout task long", test_timeout_task_long },
+	{ "task block long", test_task_block_long },
+	{ "traffic long", test_traffic_long },
+	{ "run order long", test_run_order_long },
 	{ NULL, NULL },
 };
