@@ -2053,6 +2053,22 @@ nng_aio_alloc(nng_aio **app, void (*cb)(void *), void *arg)
 	return (rv);
 }
 
+int
+nng_aio_long_alloc(nng_aio **app, void (*cb)(void *), void *arg)
+{
+	nng_aio *aio;
+	int      rv;
+
+	if ((rv = nni_init()) != 0) {
+		return (rv);
+	}
+	if ((rv = nni_aio_long_alloc(&aio, (nni_cb) cb, arg)) == 0) {
+		nng_aio_set_timeout(aio, NNG_DURATION_DEFAULT);
+		*app = aio;
+	}
+	return (rv);
+}
+
 void
 nng_aio_free(nng_aio *aio)
 {
