@@ -42,7 +42,7 @@ nni_tcp_dialer_init(nni_tcp_dialer **dp)
 	}
 	nni_mtx_init(&d->mtx);
 	d->closed = false;
-	d->interface = NULL;
+	d->bind_interface = NULL;
 	nni_aio_list_init(&d->connq);
 	nni_atomic_init_bool(&d->fini);
 	nni_atomic_init64(&d->ref);
@@ -77,8 +77,8 @@ static void
 tcp_dialer_fini(nni_tcp_dialer *d)
 {
 	nni_mtx_fini(&d->mtx);
-	if (d->interface != NULL)
-		nni_strfree(d->interface);
+	if (d->bind_interface != NULL)
+		nni_strfree(d->bind_interface);
 	NNI_FREE_STRUCT(d);
 }
 
@@ -258,17 +258,17 @@ nni_tcp_dial(nni_tcp_dialer *d, const nni_sockaddr *sa, nni_aio *aio)
 		nni_aio_finish_error(aio, nni_plat_errno(errno));
 		return;
 	}
-	if (d->interface != NULL) {
+	if (d->bind_interface != NULL) {
 #if defined(NNG_PLATFORM_DARWIN)
 		int idx = if_nametoindex(d->interface);
 		if (setsockopt(fd, IPPROTO_TCP, IP_BOUND_IF, &idx, sizeof(idx)) < 0) {
 #elif defined(NNG_PLATFORM_LINUX)
-		if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, d->interface,
-		        strlen(d->interface) + 1) < 0) {
+		if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, d->bind_interface,
+		        strlen(d->bind_interface) + 1) < 0) {
 #else
-		if (0) {
+		if (0) {	// not sure if Windows support interface binding as well
 #endif
-			log_error("bind to interface %s failed!", d->interface);
+			log_error("bind to interface %s failed!", d->bind_interface);
 			// Disgused as NNG_ECONNREFUSED, therefore dialer_connect_cb would fire a normal reconnect
 			if (d->nodelay) {
 				// nodelay option also changes failover action of bounding
@@ -276,7 +276,7 @@ nni_tcp_dial(nni_tcp_dialer *d, const nni_sockaddr *sa, nni_aio *aio)
 				return;
 			}
 		} else
-			log_info("bind to %s successfully!", d->interface);
+			log_info("bind to %s successfully!", d->bind_interface);
 	}
 
 	nni_atomic_inc64(&d->ref);
@@ -600,7 +600,7 @@ tcp_dialer_bind_interface(void *arg, const void *buf, size_t sz, nni_type t)
 	}
 
 	nni_mtx_lock(&d->mtx);
-	d->interface = str;
+	d->bind_interface = str;
 	nni_mtx_unlock(&d->mtx);
 	return rv;
 }
