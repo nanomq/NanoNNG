@@ -590,6 +590,43 @@ test_run_order_long(void)
 	nng_aio_free(a5);
 }
 
+void
+test_task_abort_long(void)
+{
+	// ensure nng:longtask has only one thread
+	nng_aio   *a, *a2;
+	nng_socket s1;
+	int        done = 0;
+	uint64_t   ms = 1000;
+	nng_time   now;
+
+	now = nng_clock();
+
+	NUTS_TRUE(nng_pair1_open(&s1) == 0);
+	NUTS_TRUE(nng_aio_long_alloc(&a, cb_done, &done) == 0);
+	NUTS_TRUE(nng_aio_long_alloc(&a2, cb_done, &done) == 0);
+
+	nng_aio_set_timeout(a, ms);
+	nng_recv_aio(s1, a);
+
+	nng_aio_finish(a2, 0); // block
+	NUTS_TRUE(done == 0);
+
+	nng_aio_abort(a2, NNG_ECANCELED);
+	nng_aio_wait(a2);
+	NUTS_TRUE(done == 1);
+	NUTS_TRUE((nng_clock() - now) < 1000);
+
+	nng_aio_wait(a);
+	NUTS_TRUE(nng_aio_result(a) == NNG_ETIMEDOUT);
+	NUTS_TRUE(done == 2);
+	NUTS_TRUE((nng_clock() - now) > 1000);
+
+	nng_aio_free(a);
+	nng_aio_free(a2);
+	NUTS_TRUE(nng_close(s1) == 0);
+}
+
 NUTS_TESTS = {
 	{ "sleep", test_sleep },
 	{ "sleep timeout", test_sleep_timeout },
@@ -610,5 +647,6 @@ NUTS_TESTS = {
 	{ "task block long", test_task_block_long },
 	{ "traffic long", test_traffic_long },
 	{ "run order long", test_run_order_long },
+	{ "run task abort long", test_task_abort_long },
 	{ NULL, NULL },
 };
