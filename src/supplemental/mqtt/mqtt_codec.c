@@ -249,12 +249,12 @@ nni_mqttv5_msg_decode(nni_msg *msg)
 	     i < sizeof(codec_v5_handler) / sizeof(mqtt_msg_codec_handler); i++) {
 		if (codec_v5_handler[i].packet_type ==
 		    mqtt->fixed_header.common.packet_type) {
-			mqtt_msg_content_free(mqtt);
 			if (!mqtt->initialized) {
 				mqtt->initialized = true;
 				mqtt->is_copied   = false;
 			}
 			if (!mqtt->is_decoded) {
+				mqtt_msg_content_free(mqtt);
 				mqtt->is_decoded = true;
 				return codec_v5_handler[i].decode(msg);
 			} else {
