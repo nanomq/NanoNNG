@@ -17,6 +17,9 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#if defined(NNG_PLATFORM_DARWIN)
+#include <net/if.h>
+#endif
 
 #ifndef SOCK_CLOEXEC
 #define SOCK_CLOEXEC 0
@@ -258,7 +261,7 @@ nni_tcp_dial(nni_tcp_dialer *d, const nni_sockaddr *sa, nni_aio *aio)
 	if (d->interface != NULL) {
 #if defined(NNG_PLATFORM_DARWIN)
 		int idx = if_nametoindex(d->interface);
-		setsockopt(fd, IPPROTO_TCP, IP_BOUND_IF, &idx, sizeof(idx) < 0) {
+		if (setsockopt(fd, IPPROTO_TCP, IP_BOUND_IF, &idx, sizeof(idx)) < 0) {
 #else
 		if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, d->interface,
 		        strlen(d->interface) + 1) < 0) {
