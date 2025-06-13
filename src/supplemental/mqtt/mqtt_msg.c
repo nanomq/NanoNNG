@@ -156,6 +156,8 @@ property *
 nni_mqtt_msg_get_publish_property(nng_msg *msg)
 {
 	nni_mqtt_proto_data *mqtt = nni_msg_get_proto_data(msg);
+	if (mqtt == NULL)
+		return NULL;
 	return mqtt->var_header.publish.properties;
 }
 
@@ -209,25 +211,27 @@ nni_mqtt_msg_get_publish_dup(nni_msg *msg)
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
 	return proto_data->fixed_header.publish.dup;
 }
-
+// only for internal use
 int
 nni_mqtt_msg_set_publish_topic(nni_msg *msg, const char *topic)
 {
 	int rv;
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
+	if (proto_data->is_copied == true)
+		mqtt_buf_free(&proto_data->var_header.publish.topic_name);
 	rv = mqtt_buf_create(&proto_data->var_header.publish.topic_name,
 	    (uint8_t *) topic, (uint32_t) strlen(topic));
-	proto_data->is_copied = true;
 	return rv;
 }
 
-// only for internal use (aws bridge)
+// only for internal use
 int
 nni_mqtt_msg_set_publish_topic_len(nni_msg *msg, uint32_t len)
 {
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
+	if (proto_data == NULL)
+		return -1;
 	proto_data->var_header.publish.topic_name.length = len;
-	proto_data->is_copied = true;
 	return 0;
 }
 
@@ -264,6 +268,10 @@ int
 nni_mqtt_msg_set_publish_payload(nni_msg *msg, uint8_t *payload, uint32_t len)
 {
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
+	if (proto_data == NULL)
+		return -1;
+	if (proto_data->is_copied == true)
+		mqtt_buf_free(&proto_data->payload.publish.payload);
 	return mqtt_buf_create(
 	    &proto_data->payload.publish.payload, payload, (uint32_t) len);
 }
