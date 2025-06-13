@@ -352,6 +352,18 @@ nng_mqtt_msg_set_publish_topic(nng_msg *msg, const char *topic)
 	}
 	return nni_mqtt_msg_set_publish_topic(msg, topic);
 }
+/**
+ * @brief A customized API for free specific mqtt_buf only
+ * 		  Only used in bridge_downward_msg_coding
+ * @return None 
+ */
+void
+nng_mqtt_msg_free_publish_buf(nng_msg *msg)
+{
+	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
+	mqtt_buf_free(&proto_data->var_header.publish.topic_name);
+	mqtt_buf_free(&proto_data->payload.publish.payload);
+}
 
 int
 nng_mqtt_msg_set_publish_topic_len(nng_msg *msg, uint32_t len)
