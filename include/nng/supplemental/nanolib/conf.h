@@ -84,7 +84,7 @@ typedef struct conf_tls conf_tls;
 typedef struct {
 	bool     enable;
 	char    *url;
-	char    *interface;
+	char    *bind_interface;
 	uint8_t  nodelay;
 	uint8_t  keepalive;
 	uint8_t  quickack;
