@@ -15,6 +15,7 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <string.h>
+#include <socket.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -259,8 +260,13 @@ nni_tcp_dial(nni_tcp_dialer *d, const nni_sockaddr *sa, nni_aio *aio)
 		return;
 	}
 	if (d->interface != NULL) {
+#if defined(NNG_PLATFORM_DARWIN)
+		int idx = if_nametoindex(d->interface);
+		setsockopt(fd, IPPROTO_TCP, IP_BOUND_IF, &idx, sizeof(idx) < 0) {
+#else
 		if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, d->interface,
 		        strlen(d->interface) + 1) < 0) {
+#endif
 			log_error("bind to interface %s failed!", d->interface);
 			// Disgused as NNG_ECONNREFUSED, therefore dialer_connect_cb would fire a normal reconnect
 			if (d->nodelay) {
