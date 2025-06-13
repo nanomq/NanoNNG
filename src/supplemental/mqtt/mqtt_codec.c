@@ -196,7 +196,7 @@ nni_mqttv5_msg_encode(nni_msg *msg)
 				mqtt->initialized = true;
 				mqtt->is_copied   = true;
 			}
-			mqtt->is_copied  = true;
+			mqtt->is_decoded  = false;
 			return codec_v5_handler[i].encode(msg);
 		}
 	}
@@ -240,11 +240,11 @@ nni_mqttv5_msg_decode(nni_msg *msg)
 {
 	int ret;
 	if ((ret = nni_mqtt_msg_decode_fixed_header(msg)) != MQTT_SUCCESS) {
-		// nni_plat_printf("decode_fixed_header failed %d\n", ret);
+		log_info("decode_fixed_header failed %d\n", ret);
 		return ret;
 	}
 	nni_mqtt_proto_data *mqtt = nni_msg_get_proto_data(msg);
-
+	// TODO: skip searching if it is already decoded?
 	for (size_t i = 0;
 	     i < sizeof(codec_v5_handler) / sizeof(mqtt_msg_codec_handler); i++) {
 		if (codec_v5_handler[i].packet_type ==
