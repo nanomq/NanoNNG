@@ -262,6 +262,8 @@ test_encode_connect_v5(void)
 	nng_mqtt_msg_set_connect_password(msg, passwd);
 	nng_mqtt_msg_set_connect_clean_session(msg, true);
 	nng_mqtt_msg_set_connect_keep_alive(msg, 60);
+	//TODO test property
+	// nng_mqtt_msg_set_connect_property
 
 	nni_mqttv5_msg_encode(msg);
 	print_mqtt_msg(msg);
@@ -270,7 +272,9 @@ test_encode_connect_v5(void)
 	nng_msg_dup(&decode_msg, msg);
 	nng_msg_free(msg);
 
+		nni_mqttv5_msg_encode(decode_msg);
 	nni_mqttv5_msg_decode(decode_msg);
+
 	print_mqtt_msg(decode_msg);
 
 	nng_msg_free(decode_msg);
