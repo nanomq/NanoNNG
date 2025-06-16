@@ -29,6 +29,7 @@ class parquet_file_queue {
 	void           init();
 	CircularQueue *get_queue();
 	void           update_queue(const char *filename);
+	int            remove_old_file(CircularQueue &queue);
 	conf_parquet  *get_conf();
 
     private:
@@ -38,10 +39,10 @@ class parquet_file_queue {
 	static int  compare_files(const ParquetFile &a, const ParquetFile &b);
 	static bool directory_exists(const string &directory_path);
 	static bool create_directory(const string &directory_path);
-	static int  remove_old_file(CircularQueue &queue);
 
 	conf_parquet *node;
 	CircularQueue queue;
+	uint64_t      sum = 0;
 };
 
 #endif // PARQUET_FILE_QUEUE_H

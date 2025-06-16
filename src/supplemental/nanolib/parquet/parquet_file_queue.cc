@@ -106,8 +106,19 @@ parquet_file_queue::update_queue(const char *filename)
 	ENQUEUE(queue, (void *) filename);
 	log_debug("queue size: %d, file_count: %d", QUEUE_SIZE(queue),
 	    node->file_count);
-	if (QUEUE_SIZE(queue) > node->file_count) {
-		remove_old_file(queue);
+
+	struct stat st;
+	if (stat(filename, &st) == 0) {
+		uint64_t file_size = (uint64_t) st.st_size;
+		sum += file_size;
+
+		while (sum > node->file_size) {
+			remove_old_file(queue);
+		}
+
+		if (QUEUE_SIZE(queue) > node->file_count) {
+			remove_old_file(queue);
+		}
 	}
 }
 
@@ -170,12 +181,18 @@ parquet_file_queue::create_directory(const std::string &directory_path)
 	return (status == 0);
 }
 
-
 int
 parquet_file_queue::remove_old_file(CircularQueue &queue)
 {
 	int   ret      = 0;
 	char *filename = (char *) DEQUEUE(queue);
+
+	struct stat st;
+	if (stat(filename, &st) == 0) {
+		uint64_t file_size = (uint64_t) st.st_size;
+		sum -= file_size;
+	}
+
 	if (remove(filename) == 0) {
 		log_debug("File '%s' removed successfully.\n", filename);
 	} else {
