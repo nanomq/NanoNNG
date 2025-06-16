@@ -432,6 +432,7 @@ mqtt_msg_content_free(nni_mqtt_proto_data *mqtt)
 	default:
 		break;
 	}
+	mqtt->is_copied = false;
 }
 
 int
@@ -446,7 +447,7 @@ nni_mqtt_msg_free(void *self)
 	}
 	return (1);
 }
-
+// FIXME rework to make this mem safe!
 int
 nni_mqtt_msg_dup(void **dest, const void *src)
 {
