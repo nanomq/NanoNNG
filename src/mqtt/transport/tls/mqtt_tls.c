@@ -1201,6 +1201,7 @@ mqtts_tcptran_pipe_start(
 		    connmsg, MQTT_PROTOCOL_VERSION_v311);
 		nni_mqtt_msg_set_connect_keep_alive(connmsg, 60);
 		nni_mqtt_msg_set_connect_clean_session(connmsg, true);
+		ep->connmsg = connmsg;
 	}
 
 	p->gotrxhead  = 0;
