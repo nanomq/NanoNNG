@@ -34,6 +34,7 @@ nng_msg *alloc_pub_msg(const char *topic)
 	nng_mqtt_msg_set_publish_retain(pubmsg, 0);
 	nng_mqtt_msg_set_publish_topic(pubmsg, topic);
 	nng_mqtt_msg_set_publish_topic_len(pubmsg, strlen(topic));
+	nng_mqtt_msg_encode(pubmsg);
 
 	return pubmsg;
 }
