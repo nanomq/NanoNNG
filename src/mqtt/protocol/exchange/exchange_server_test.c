@@ -106,16 +106,16 @@ client_publish(nng_socket sock, const char *topic, uint64_t key, uint8_t *payloa
 	nng_mqtt_msg_set_publish_dup(pubmsg, 0);
 	nng_mqtt_msg_set_publish_qos(pubmsg, qos);
 	nng_mqtt_msg_set_publish_retain(pubmsg, 0);
-	nng_mqtt_msg_set_publish_payload(
-	    pubmsg, (uint8_t *) payload, payload_len);
 	nng_mqtt_msg_set_publish_topic(pubmsg, topic);
 	nng_mqtt_msg_set_publish_topic_len(pubmsg, strlen(topic));
-
+	nng_mqtt_msg_set_publish_payload(
+	    pubmsg, (uint8_t *) payload, payload_len);
 	nni_aio *aio = NULL;
 	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
 
 
 	nng_msg_set_timestamp(pubmsg, key);
+	nng_mqtt_msg_encode(pubmsg);
 	nni_aio_set_msg(aio, pubmsg);
 
 	nng_send_aio(sock, aio);
@@ -161,7 +161,8 @@ test_exchange_client(void)
 	nng_socket_set_ptr(sock, NNG_OPT_EXCHANGE_BIND, conf);
 
 	key = 0;
-	client_publish(sock, "topic1", key, NULL, 0, 0, 0);
+	char *payload = "message";
+	client_publish(sock, "topic1", key, payload, 0, 0, 0);
 
 	nni_msg *msg = NULL;
 	nni_sock *nsock = NULL;
