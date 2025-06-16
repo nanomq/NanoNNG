@@ -263,7 +263,7 @@ nni_tcp_dial(nni_tcp_dialer *d, const nni_sockaddr *sa, nni_aio *aio)
 	}
 	if (d->bind_interface != NULL) {
 #if defined(NNG_PLATFORM_DARWIN)
-		int idx = if_nametoindex(d->interface);
+		int idx = if_nametoindex(d->bind_interface);
 		if (setsockopt(fd, IPPROTO_TCP, IP_BOUND_IF, &idx, sizeof(idx)) < 0) {
 #elif defined(NNG_PLATFORM_LINUX)
 		if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, d->bind_interface,
