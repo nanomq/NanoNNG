@@ -410,8 +410,10 @@ nano_ctx_send(void *arg, nni_aio *aio)
 				packetid = nni_msg_get_pub_pid(msg);
 				nni_qos_db_set(is_sqlite, qos_db,
 				    pipe, packetid, msg);
-				log_debug("msg cached for preset session");
+				log_info("msg %d cached for preset session", packetid);
 			}
+		} else {
+			log_info("NULL qos_db, cache failed!");
 		}
 		// Pipe is gone.  Make this look like a good send to avoid
 		// disrupting the state machine.  We don't care if the peer
@@ -802,8 +804,11 @@ session_keeping:
 
 	// Dont need to manage id_map while enable SQLite.
 	void *qos_db = NULL;
-	if (s->conf->ext_qos_db)
+	if (s->conf->ext_qos_db) {
 		qos_db = nng_id_get(s->conf->ext_qos_db, p->pipe->p_id);
+		if (qos_db)
+			log_info("Restore %p preset session from %d", qos_db, p->pipe->p_id);
+	}
 	if (qos_db != NULL && !s->conf->sqlite.enable) {
 		// check sqlite compatibility
 		if (p->nano_qos_db != NULL)
@@ -812,6 +817,7 @@ session_keeping:
 		p->conn_param->nano_qos_db = qos_db;
 		p->pipe->nano_qos_db = qos_db;
 		nng_id_remove(s->conf->ext_qos_db, p->pipe->p_id);
+		log_info("Replace qos db");
 	}
 
 	// close old one (bool to prevent disconnect_ev)
