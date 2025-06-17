@@ -169,7 +169,7 @@ tcptran_pipe_init(void *arg, nni_pipe *npipe)
 	cid = (char *) conn_param_get_clientid(p->tcp_cparam);
 	clientid_key = DJBHashn(cid, strlen(cid));
 	rv = nni_pipe_set_pid(npipe, clientid_key);
-	log_debug("change p_id by hashing %d rv %d", clientid_key, rv);
+	log_info("change p_id by hashing %s to %d rv %d", cid, clientid_key, rv);
 	p->npipe    = npipe;
 	p->conn_buf = NULL;
 	p->busy     = false;
