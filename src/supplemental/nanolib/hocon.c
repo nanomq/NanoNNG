@@ -212,7 +212,7 @@ typedef struct yy_buffer_state *YY_BUFFER_STATE;
 extern YY_BUFFER_STATE          yy_scan_bytes(char *buffer, size_t size);
 extern void yy_delete_buffer(struct yy_buffer_state *buffer);
 
-cJSON *
+void *
 hocon_parse_str(char *str, size_t len)
 {
 	YY_BUFFER_STATE buffer = yy_scan_bytes(str, len);
