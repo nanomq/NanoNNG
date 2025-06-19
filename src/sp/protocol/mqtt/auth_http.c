@@ -3,6 +3,7 @@
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/supplemental/http/http.h"
 #include "nng/supplemental/nanolib/cJSON.h"
+#include "nng/protocol/mqtt/mqtt_parser.h"
 #include "nng/supplemental/nanolib/conf.h"
 #include "nng/supplemental/nanolib/hash_table.h"
 #include <stdarg.h>
