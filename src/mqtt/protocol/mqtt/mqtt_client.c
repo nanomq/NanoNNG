@@ -1272,7 +1272,7 @@ mqtt_ctx_fini(void *arg)
 static void
 mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
 {
-	uint16_t             packet_id;
+	uint16_t             packet_id = 1;
 	mqtt_ctx_t          *ctx = arg;
 	mqtt_sock_t         *s   = ctx->mqtt_sock;
 	mqtt_pipe_t         *p;
@@ -1280,6 +1280,7 @@ mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
 
 	// if (rv != NNG_ETIMEDOUT)
 	// 	return;
+	NNI_ARG_UNUSED(rv);
 	nni_mtx_lock(&s->mtx);
 	if (nni_list_active(&s->send_queue, ctx)) {
 		nni_list_remove(&s->send_queue, ctx);
@@ -1297,6 +1298,8 @@ mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
 			packet_id = proto_data->var_header.subscribe.packet_id;
 		else if (type == NNG_MQTT_UNSUBSCRIBE)
 			packet_id = proto_data->var_header.unsubscribe.packet_id;
+		else
+			log_error("Canceling a non QoS msg!");
 		p = s->mqtt_pipe;
 		if (p != NULL) {
 			nni_aio *taio;
