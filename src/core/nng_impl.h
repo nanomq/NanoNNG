@@ -18,6 +18,7 @@
 
 #include "nng/nng.h"
 #include "nng/supplemental/nanolib/log.h"
+#include "nng/supplemental/nanolib/hocon.h"
 
 // Internal implementation things for NNG, common definitions, etc.
 // All internal modules wind up including this file to avoid having

@@ -109,6 +109,11 @@ nng_strdup(const char *src)
 	return (nni_strdup(src));
 }
 
+void *nng_hocon_parse_str(char *str, size_t len)
+{
+	return hocon_parse_str(str, len);
+}
+
 char *
 nng_strndup(const char *src, size_t len)
 {
