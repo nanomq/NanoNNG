@@ -1227,7 +1227,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	target_prover target_prover = 0;
 	int           len_offset = 0, sub_id = 0, qos = 0;
 	uint16_t      pid;
-	uint32_t tprop_bytes, id_bytes = 0, property_len = 0;
+	uint32_t tprop_bytes = 0, id_bytes = 0, property_len = 0;
 	size_t   tlen, rlen, mlen, hlen, qlength, plength;
 
 	bool is_sqlite = p->conf->sqlite.enable;
