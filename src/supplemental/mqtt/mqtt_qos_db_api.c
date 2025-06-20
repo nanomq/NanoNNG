@@ -19,6 +19,7 @@ nni_qos_db_set(bool is_sqlite, void *db, uint32_t pipe_id, uint16_t packet_id,
 		NNI_ARG_UNUSED(msg);
 #endif
 	} else {
+		// TODO free the conflict msg
 		if (nni_id_set((nni_id_map *) (db), packet_id, msg) != 0) {
 			log_warn("insert QoS msg into hashmap failed! msg lost");
 			nni_msg_free(msg);
