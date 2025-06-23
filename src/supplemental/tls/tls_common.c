@@ -945,6 +945,7 @@ static void
 tls_tcp_error(tls_conn *conn, int rv)
 {
 	// An error here is fatal.  Shut it all down.
+	log_warn("TLS encounter error %d Shut it all down.", rv);
 	nni_aio *aio;
 	nng_stream_close(conn->tcp);
 	nni_aio_close(&conn->tcp_send);
@@ -966,6 +967,7 @@ tls_do_handshake(tls_conn *conn)
 	rv = conn->ops.handshake((void *) (conn + 1));
 	if (rv == NNG_EAGAIN) {
 		// We need more data.
+		log_warn("read more data from tls layer ...");
 		return (false);
 	}
 	if (rv == 0) {
