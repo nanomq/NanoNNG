@@ -463,7 +463,7 @@ quic_dialer_cb(void *arg)
 		log_info("assign %p to substreams %d", subc, i);
 		ec->substrms[i] = subc;
 	}
-	nni_sleep_aio(QUIC_SUB_STREAM_TIMEOUT, &ec->tmoaio);
+	// nni_sleep_aio(QUIC_SUB_STREAM_TIMEOUT, &ec->tmoaio);
 
 error:
 	d->currcon = NULL;
