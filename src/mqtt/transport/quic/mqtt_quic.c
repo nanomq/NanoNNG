@@ -199,8 +199,8 @@ mqtt_quictran_pipe_init(void *arg, nni_pipe *npipe)
 	mqtt_quictran_pipe *p = arg;
 
 	p->npipe = npipe;
-	nni_lmq_init(&p->rslmq, 1024);
-	nni_lmq_init(&p->rxlmq, 1024);
+	nni_lmq_init(&p->rslmq, NNG_MAX_SEND_LMQ);
+	nni_lmq_init(&p->rxlmq, NNG_MAX_RECV_LMQ);
 	p->busy = false;
 	nni_atomic_init_bool(&p->closed);
 	nni_atomic_set_bool(&p->closed, false);
@@ -1047,7 +1047,7 @@ mqtt_share_pipe_recv_cb(void *arg, nni_aio *rxaio, quic_substream *stream, nni_m
 		if (nni_lmq_full(&p->rxlmq)) {
 			nni_msg_free(msg);
 			// lost counter in stats msg_recv_drop
-			log_warn("msg from substream lost!");
+			log_warn("msg type %d from substream lost!", type);
 		} else {
 			log_debug("cache msg from substream first");
 			if (nni_lmq_put(&p->rxlmq, msg) != 0) {
@@ -1230,12 +1230,15 @@ mqtt_quictran_pipe_send_start(mqtt_quictran_pipe *p)
 		}
 	}
 	// 2 data stream with low priority 2 sub stream 
-	if (nni_msg_get_type(msg) == CMD_PUBLISH)
+	if (nni_msg_get_type(msg) == CMD_PUBLISH) {
 		txaio = &p->substreams[nni_random()%2 + 2].saio;
-	else if (nni_msg_get_type(msg) == CMD_SUBSCRIBE) {
+		log_debug("send on sub aio %p", txaio);
+	} else if (nni_msg_get_type(msg) == CMD_SUBSCRIBE) {
 		txaio = &p->substreams[nni_random()%2].saio;
+		log_debug("send on sub aio %p", txaio);
 	} else {
 		txaio = p->txaio;
+		log_debug("send on main aio %p", txaio);
 	}
 	// check max packet size for v311 and v5
 	if (nni_msg_header_len(msg) + nni_msg_len(msg) > p->packmax) {
@@ -1302,7 +1305,7 @@ mqtt_quictran_pipe_recv_cancel(nni_aio *aio, void *arg, int rv)
 {
 	mqtt_quictran_pipe *p = arg;
 
-	log_debug("mqtt_quictran_pipe_recv_cancel triggered!");
+	log_warn("mqtt_quictran_pipe_recv_cancel triggered!");
 	nni_mtx_lock(&p->mtx);
 	if (!nni_aio_list_active(aio)) {
 		nni_mtx_unlock(&p->mtx);
@@ -1325,6 +1328,7 @@ mqtt_quictran_pipe_recv_start(mqtt_quictran_pipe *p, nni_aio *aio)
 	nni_iov  iov;
 
 	if (nni_atomic_get_bool(&p->closed)) {
+		log_warn("recv canceled due to disconnect!");
 		while ((aio = nni_list_first(&p->recvq)) != NULL) {
 			nni_list_remove(&p->recvq, aio);
 			nni_aio_finish_error(aio, NNG_ECONNABORTED);
@@ -1332,10 +1336,12 @@ mqtt_quictran_pipe_recv_start(mqtt_quictran_pipe *p, nni_aio *aio)
 		return;
 	}
 	if (nni_list_empty(&p->recvq)) {
+		log_error("recv stopped due to empty recvq!");
 		return;
 	}
 
 	int *flags = nni_aio_get_prov_data(aio);
+
 	// Schedule a read of the header.
 	if (flags) {
 		int strmid = (*flags & QUIC_MULTISTREAM_FLAGS);
@@ -1349,11 +1355,11 @@ mqtt_quictran_pipe_recv_start(mqtt_quictran_pipe *p, nni_aio *aio)
 			sub_iov.iov_len   = 2;
 			memset(stream->rxlen, '\0', sizeof(uint64_t) * sizeof(stream->rxlen[0]));
 			nni_aio_set_iov(&stream->raio, 1, &sub_iov);
-			log_debug(" start recv on sub aio %p", &stream->raio);
+			log_info(" start recv on sub aio %p", &stream->raio);
 			nni_aio_set_prov_data(&stream->raio, &stream->id);
 			nng_stream_recv(p->conn, &stream->raio);
 		} else {
-			log_warn("Init Receving action on a scheduled aio!");
+			log_error("Init Receving action on a scheduled aio!");
 		}
 	} else if (!nni_aio_list_active(p->rxaio)) {
 		p->gotrxhead  = 0;
@@ -1363,8 +1369,10 @@ mqtt_quictran_pipe_recv_start(mqtt_quictran_pipe *p, nni_aio *aio)
 		iov.iov_len   = 2;
 		memset(p->rxlen, '\0', sizeof(uint64_t) * sizeof(p->rxlen[0]));
 		nni_aio_set_iov(p->rxaio, 1, &iov);
+		log_info(" start recv on main aio %p", p->rxaio);
 		nng_stream_recv(p->conn, p->rxaio);
 	} else {
+		// wait last recv action to finish
 		log_error("Main stream aio schedule failed! Aio is already active");
 	}
 }
@@ -1376,6 +1384,7 @@ mqtt_quictran_pipe_recv(void *arg, nni_aio *aio)
 	int                rv;
 	nni_msg *msg = NULL;
 	if (nni_aio_begin(aio) != 0) {
+		log_error("recv canceld due to misused aio");
 		return;
 	}
 	nni_mtx_lock(&p->mtx);
