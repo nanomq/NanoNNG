@@ -482,8 +482,11 @@ static int
 open_conn_handshake(nng_tls_engine_conn *ec)
 {
 	int rv;
-	if (ec->ok == 1)
+	if (ec->ok == 1) {
+		log_warn("handshake is already done");
 		return 0;
+	}
+	log_info("Doing handshake ...");
 	rv = SSL_do_handshake(ec->ssl);
 	if (rv != 0) {
 		rv = SSL_get_error(ec->ssl, rv);
@@ -535,7 +538,7 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 				goto finished;
 			}
 		}
-
+		log_info("Wait for next handshake ...")
 		return NNG_EAGAIN;
 	}
 	if (rv == SSL_ERROR_NONE) {
@@ -545,6 +548,7 @@ finished:
 		ec->ok = 1;
 		return 0;
 	}
+	log_info("return NNG_ECRYPTO ...")
 	return NNG_ECRYPTO;
 }
 
