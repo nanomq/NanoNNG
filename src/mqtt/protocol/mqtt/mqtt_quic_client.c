@@ -1152,7 +1152,7 @@ static int
 mqtt_quic_pipe_init(void *arg, nni_pipe *pipe, void *sock)
 {
 	mqtt_pipe_t *p = arg;
-	conf_bridge_node *node = p->mqtt_sock->bridge_conf;
+	conf_bridge_node *node;
 
 	nni_atomic_init_bool(&p->closed);
 	nni_atomic_set_bool(&p->closed, true);
@@ -1161,6 +1161,7 @@ mqtt_quic_pipe_init(void *arg, nni_pipe *pipe, void *sock)
 	p->rid = 1;
 	p->pingcnt = 0;
 	p->pingmsg = NULL;
+	node = p->mqtt_sock->bridge_conf;
 
 	nni_msg_alloc(&p->pingmsg, 0);
 	if (p->pingmsg == NULL) {
