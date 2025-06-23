@@ -473,10 +473,10 @@ nano_ctx_send(void *arg, nni_aio *aio)
 			topic =
 			    nni_mqtt_msg_get_publish_topic(msg, &topic_len);
 			payload = nni_mqtt_msg_get_publish_payload(msg, &plen);
-			log_info("Local: Send QoS %d Msg to %.*s time %ld "
-			         "payload %.*s",
-			    qos_pac, topic_len, topic, nni_clock(), plen,
-			    payload);
+			// log_info("Local: Send QoS %d Msg to %.*s time %ld "
+			//          "payload %.*s",
+			//     qos_pac, topic_len, topic, nni_clock(), plen,
+			//     payload);
 
 		} else {
 			log_info("wrong publish msg");
