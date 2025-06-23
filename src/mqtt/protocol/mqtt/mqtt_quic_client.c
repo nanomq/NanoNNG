@@ -869,7 +869,7 @@ mqtt_timer_cb(void *arg)
 			if (ptype == NNG_MQTT_PUBLISH) {
 				nni_mqtt_msg_set_publish_dup(msg, true);
 			}
-		   	if (!p->busy) {
+			if (!p->busy) {
 				g_qos_sent ++;
 				p->busy = true;
 				nni_msg_clone(msg);
