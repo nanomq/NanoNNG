@@ -894,9 +894,6 @@ tcptran_pipe_recv_cb(void *arg)
 		    qmsg, packet_id, reason_code, prop, p->pro_ver);
 		property_free(prop);
 		nni_mqtt_pubres_header_encode(qmsg, ack_cmd);
-		// if (prop != NULL) {
-		// nni_msg_proto_set_property(qmsg, prop);
-		// }
 		if (p->busy == false) {
 			iov[0].iov_len = nni_msg_header_len(qmsg);
 			iov[0].iov_buf = nni_msg_header(qmsg);
@@ -936,7 +933,6 @@ tcptran_pipe_recv_cb(void *arg)
 	}
 
 	// keep connection & Schedule next receive
-	// nni_pipe_bump_rx(p->npipe, n);
 	if (!nni_list_empty(&p->recvq)) {
 		tcptran_pipe_recv_start(p);
 	}
@@ -1863,7 +1859,6 @@ tcptran_ep_init(tcptran_ep **epp, nng_url *url, nni_sock *sock)
 	NNI_LIST_INIT(&ep->waitpipes, tcptran_pipe, node);
 	NNI_LIST_INIT(&ep->negopipes, tcptran_pipe, node);
 
-	// ep->proto = nni_sock_proto_id(sock);
 	ep->url = url;
 #ifdef NNG_ENABLE_STATS
 	static const nni_stat_info rcv_max_info = {
