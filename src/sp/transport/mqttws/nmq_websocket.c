@@ -168,7 +168,7 @@ wstran_pipe_recv_cb(void *arg)
 	}
 	ptr = nni_msg_body(msg);
 	p->gotrxhead += nni_msg_len(msg);
-	log_info("#### wstran_pipe_recv_cb got %ld msg: %p %x %ld",
+	log_debug("#### wstran_pipe_recv_cb got %ld msg: %p %x %ld",
 	    p->gotrxhead, ptr, *ptr, nni_msg_len(msg));
 	// first we collect complete Fixheader
 	if (p->tmp_msg == NULL && p->gotrxhead > 0) {
@@ -225,7 +225,7 @@ wstran_pipe_recv_cb(void *arg)
 		if (smsg == NULL) {
 			smsg = new;
 		} else {
-			// nni_lmq_put(&p->recvlmq, new);
+			nni_lmq_put(&p->recvlmq, new);
 		}
 		cvector_push_back(msg_vec, new);
 		ptr = ptr + len + pos;
@@ -504,6 +504,7 @@ wstran_pipe_recv_cancel(nni_aio *aio, void *arg, int rv)
 static void
 wstran_pipe_recv(void *arg, nni_aio *aio)
 {
+	nni_msg *msg = NULL;
 	ws_pipe *p = arg;
 	int      rv;
 
@@ -516,6 +517,13 @@ wstran_pipe_recv(void *arg, nni_aio *aio)
 		return;
 	}
 	nni_mtx_lock(&p->mtx);
+	// Get msg from recv lmq
+	if (nni_lmq_get(&p->recvlmq, &msg) == 0) {
+		nni_aio_set_msg(aio, msg);
+		nni_mtx_unlock(&p->mtx);
+		nni_aio_finish(aio, 0, nni_msg_len(msg));
+		return;
+	}
 	if ((rv = nni_aio_schedule(aio, wstran_pipe_recv_cancel, p)) != 0) {
 		nni_mtx_unlock(&p->mtx);
 		nni_aio_finish_error(aio, rv);
@@ -525,7 +533,6 @@ wstran_pipe_recv(void *arg, nni_aio *aio)
 	nng_stream_recv(p->ws, p->rxaio);
 	nni_mtx_unlock(&p->mtx);
 }
-
 static void
 wstran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 {
