@@ -162,6 +162,7 @@ wstran_pipe_recv_cb(void *arg)
 	}
 	msg = nni_aio_get_msg(raio);
 	if (nni_msg_header_len(msg) == 0 && nni_msg_len(msg) == 0) {
+		nni_msg_free(msg);
 		log_trace("empty msg received! continue next receive");
 		goto recv;
 	}
@@ -430,7 +431,7 @@ done:
 		}
 	}
 
-	
+	// Return the first msg this time
 	nni_aio_set_msg(uaio, smsg);
 skip:
 	nni_aio_set_output(uaio, 0, p);
@@ -440,6 +441,7 @@ skip:
 		cvector_free(msg_vec);
 	return;
 reset:
+	// TODO memleak in reset state ....
 	p->gotrxhead  = 0;
 	p->wantrxhead = 0;
 	// a potential memleak case here
@@ -978,11 +980,16 @@ wstran_pipe_send_start(ws_pipe *p)
 
 	if (msg == NULL || p->ws_param == NULL) {
 		// TODO error handler
-		nni_println("ERROR: sending NULL msg or pipe is invalid!");
-		nni_aio_finish(aio, NNG_ECANCELED, 0);
+		log_error("ERROR: sending NULL msg or pipe is invalid!");
+		nni_aio_finish_error(aio, NNG_ECANCELED);
 		return;
 	}
-
+	if (p->closed) {
+		log_error("ERROR: sending NULL msg or pipe is closed!");
+		nni_aio_finish_error(aio, NNG_ECANCELED);
+		nni_msg_free(msg);
+		return;
+	}
 	if (p->ws_param->pro_ver == 4) {
 		wstran_pipe_send_start_v4(p, msg, aio);
 		return;
