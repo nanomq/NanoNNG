@@ -142,13 +142,12 @@ wstran_pipe_recv_cb(void *arg)
 	ws_pipe *p = arg;
 	nni_iov  iov[2];
 	uint8_t  rv, count = 0, pos = 1;
-	uint64_t len = 0, conn_len = 0;
+	uint64_t len = 0;
 	uint8_t *ptr;
 	nni_msg *smsg = NULL, *msg = NULL;
 	nni_msg **msg_vec = NULL;
 	nni_aio *raio = p->rxaio;
 	nni_aio *uaio = NULL;
-	bool ack = false;
 
 	nni_mtx_lock(&p->mtx);
 	p->err_code = MQTT_SUCCESS;
@@ -301,7 +300,6 @@ done:
 		goto reset;
 	}
 	for (size_t i = 0; i < cvector_size(msg_vec); i++) {
-		log_info("msg id %d", i);
 		bool     ack  = false;
 		nni_msg  *vmsg = msg_vec[i];
 		uint8_t   qos_pac;
@@ -376,10 +374,6 @@ done:
 				p->qsend_quota++;
 			}
 		} 
-		// else if (cmd == CMD_PINGREQ) {
-		// 	// reply PINGRESP
-		// 	ack = true;
-		// }
 
 		if (ack == true) {
 			// alloc a msg here costs memory. However we must do it for the
@@ -392,61 +386,47 @@ done:
 				p->err_code = SERVER_UNAVAILABLE;
 				goto reset;
 			}
-			if (cmd == CMD_PINGREQ) {
-				uint8_t buf[2] = { CMD_PINGRESP, 0x00 };
-				nni_msg_set_cmd_type(qmsg, CMD_PINGRESP);
-				nni_msg_header_append(qmsg, buf, 2);
-				// we sacrifice performance for safety in WebSocket
-				nng_aio_wait(p->qsaio);
+			// TODO set reason code or property here if necessary
+			nni_msg_set_cmd_type(qmsg, ack_cmd);
+			nni_mqtt_msgack_encode(qmsg, packet_id, reason_code,
+			    prop, p->ws_param->pro_ver);
+			nni_mqtt_pubres_header_encode(qmsg, ack_cmd);
+			if (nni_aio_busy(p->qsaio)) {
 				iov[0].iov_len = nni_msg_header_len(qmsg);
 				iov[0].iov_buf = nni_msg_header(qmsg);
+				iov[1].iov_len = nni_msg_len(qmsg);
+				iov[1].iov_buf = nni_msg_body(qmsg);
 				nni_aio_set_msg(p->qsaio, qmsg);
 				// send ACK down...
-				nni_aio_set_iov(p->qsaio, 1, iov);
+				nni_aio_set_iov(p->qsaio, 2, iov);
 				nng_stream_send(p->ws, p->qsaio);
-				//ignore PING msg, only notify
 			} else {
-				// TODO set reason code or property here if necessary
-				nni_msg_set_cmd_type(qmsg, ack_cmd);
-				nni_mqtt_msgack_encode(qmsg, packet_id, reason_code,
-				    prop, p->ws_param->pro_ver);
-				nni_mqtt_pubres_header_encode(qmsg, ack_cmd);
-				if (nni_aio_busy(p->qsaio)) {
-					iov[0].iov_len = nni_msg_header_len(qmsg);
-					iov[0].iov_buf = nni_msg_header(qmsg);
-					iov[1].iov_len = nni_msg_len(qmsg);
-					iov[1].iov_buf = nni_msg_body(qmsg);
-					nni_aio_set_msg(p->qsaio, qmsg);
-					// send ACK down...
-					nni_aio_set_iov(p->qsaio, 2, iov);
-					nng_stream_send(p->ws, p->qsaio);
-				} else {
-					if (nni_lmq_full(&p->rslmq)) {
-						// Make space for the new message.
-						if (nni_lmq_cap(&p->rslmq) <= NANO_MAX_QOS_PACKET) {
-							if ((rv = nni_lmq_resize(&p->rslmq,
-							         nni_lmq_cap(&p->rslmq) * 2)) == 0) {
-								if (nni_lmq_put(&p->rslmq, qmsg) != 0)
-									nni_msg_free(qmsg);
-							} else {
-								log_warn("QoS Ack msg lost!");
-								nni_msg_free(qmsg);
-							}
-						} else {
-							nni_msg *old;
-							(void) nni_lmq_get(&p->rslmq, &old);
-							log_warn("QoS Ack msg lost!");
-							nni_msg_free(old);
+				if (nni_lmq_full(&p->rslmq)) {
+					// Make space for the new message.
+					if (nni_lmq_cap(&p->rslmq) <= NANO_MAX_QOS_PACKET) {
+						if ((rv = nni_lmq_resize(&p->rslmq,
+						         nni_lmq_cap(&p->rslmq) * 2)) == 0) {
 							if (nni_lmq_put(&p->rslmq, qmsg) != 0)
 								nni_msg_free(qmsg);
+						} else {
+							log_warn("QoS Ack msg lost!");
+							nni_msg_free(qmsg);
 						}
 					} else {
+						nni_msg *old;
+						(void) nni_lmq_get(&p->rslmq, &old);
+						log_warn("QoS Ack msg lost!");
+						nni_msg_free(old);
 						if (nni_lmq_put(&p->rslmq, qmsg) != 0)
 							nni_msg_free(qmsg);
 					}
+				} else {
+					if (nni_lmq_put(&p->rslmq, qmsg) != 0)
+						nni_msg_free(qmsg);
 				}
-				ack = false;
 			}
+			ack = false;
+			
 		}
 	}
 
