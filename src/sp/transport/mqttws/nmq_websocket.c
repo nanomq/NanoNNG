@@ -1,5 +1,5 @@
 //
-// Copyright 2022 NanoMQ Team, Inc. <jaylin@emqx.io>
+// Copyright 2025 NanoMQ Team, Inc. <jaylin@emqx.io>
 //
 // MQTT over WebSocket dosen't enjoy same security fix and performance
 // enhancement as tls/tcp. This could be brought down by malformed packets
@@ -49,8 +49,10 @@ struct ws_pipe {
 	uint16_t    peer;
 	size_t      gotrxhead;
 	size_t      wantrxhead;
+	nni_lmq     recvlmq;
+	nni_lmq     rslmq;	// Only for QoS msg ack cache
 	conf       *conf;
-	nni_msg    *tmp_msg;
+	nni_msg    *tmp_msg;	// Serving as recv buffer, convergence all msg from nng ws
 	nni_aio    *user_txaio;
 	nni_aio    *user_rxaio;
 	nni_aio    *ep_aio;
@@ -63,7 +65,7 @@ struct ws_pipe {
 	uint8_t    *qos_buf; // msg trunk for qos & V4/V5 conversion
 	size_t      qlength; // length of qos_buf
 	// MQTT V5
-	uint16_t    qrecv_quota;
+	uint16_t    qrecv_quota;	//Not valid yet, due to NNG websocket limitation
 	uint32_t    qsend_quota;
 	reason_code err_code; // work with closed flag
 };
@@ -102,20 +104,38 @@ static void
 wstran_pipe_qos_send_cb(void *arg)
 {
 	int rv;
+	nni_msg *qmsg;
 	ws_pipe *p     = arg;
 	nni_aio *qsaio = p->qsaio;
+	nni_aio *uaio  = p->user_txaio;
 
-	nni_mtx_lock(&p->mtx);
 	if ((rv = nni_aio_result(qsaio)) != 0) {
 		log_warn(" send aio error %s", nng_strerror(rv));
 		nni_msg *msg;
 		if ((msg = nni_aio_get_msg(p->qsaio)) != NULL) {
 			nni_msg_free(msg);
 		}
+		if (uaio != NULL) {
+			nni_aio_finish_error(uaio, rv);
+		}
+	}
+
+	nni_mtx_lock(&p->mtx);
+	if (nni_lmq_get(&p->rslmq, &qmsg) == 0) {
+		nni_iov iov[2];
+		iov[0].iov_len = nni_msg_header_len(qmsg);
+		iov[0].iov_buf = nni_msg_header(qmsg);
+		iov[1].iov_len = nni_msg_len(qmsg);
+		iov[1].iov_buf = nni_msg_body(qmsg);
+		nni_aio_set_msg(p->qsaio, qmsg);
+		// send ACK down...
+		nni_aio_set_iov(p->qsaio, 2, iov);
+		nng_stream_send(p->ws, p->qsaio);
 	}
 	nni_mtx_unlock(&p->mtx);
 	return;
 }
+
 static void
 wstran_pipe_recv_cb(void *arg)
 {
@@ -401,29 +421,29 @@ done:
 					nni_aio_set_iov(p->qsaio, 2, iov);
 					nng_stream_send(p->ws, p->qsaio);
 				} else {
-					// if (nni_lmq_full(&p->rslmq)) {
-					// 	// Make space for the new message.
-					// 	if (nni_lmq_cap(&p->rslmq) <= NANO_MAX_QOS_PACKET) {
-					// 		if ((rv = nni_lmq_resize(&p->rslmq,
-					// 		         nni_lmq_cap(&p->rslmq) * 2)) == 0) {
-					// 			if (nni_lmq_put(&p->rslmq, qmsg) != 0)
-					// 				nni_msg_free(qmsg);
-					// 		} else {
-					// 			log_warn("QoS Ack msg lost!");
-					// 			nni_msg_free(qmsg);
-					// 		}
-					// 	} else {
-					// 		nni_msg *old;
-					// 		(void) nni_lmq_get(&p->rslmq, &old);
-					// 		log_warn("QoS Ack msg lost!");
-					// 		nni_msg_free(old);
-					// 		if (nni_lmq_put(&p->rslmq, qmsg) != 0)
-					// 			nni_msg_free(qmsg);
-					// 	}
-					// } else {
-					// 	if (nni_lmq_put(&p->rslmq, qmsg) != 0)
-					// 		nni_msg_free(qmsg);
-					// }
+					if (nni_lmq_full(&p->rslmq)) {
+						// Make space for the new message.
+						if (nni_lmq_cap(&p->rslmq) <= NANO_MAX_QOS_PACKET) {
+							if ((rv = nni_lmq_resize(&p->rslmq,
+							         nni_lmq_cap(&p->rslmq) * 2)) == 0) {
+								if (nni_lmq_put(&p->rslmq, qmsg) != 0)
+									nni_msg_free(qmsg);
+							} else {
+								log_warn("QoS Ack msg lost!");
+								nni_msg_free(qmsg);
+							}
+						} else {
+							nni_msg *old;
+							(void) nni_lmq_get(&p->rslmq, &old);
+							log_warn("QoS Ack msg lost!");
+							nni_msg_free(old);
+							if (nni_lmq_put(&p->rslmq, qmsg) != 0)
+								nni_msg_free(qmsg);
+						}
+					} else {
+						if (nni_lmq_put(&p->rslmq, qmsg) != 0)
+							nni_msg_free(qmsg);
+					}
 				}
 				ack = false;
 			}
@@ -436,6 +456,8 @@ skip:
 	nni_aio_set_output(uaio, 0, p);
 	nni_mtx_unlock(&p->mtx);
 	nni_aio_finish(uaio, 0, 0);
+	if (msg_vec)
+		cvector_free(msg_vec);
 	return;
 reset:
 	p->gotrxhead  = 0;
@@ -460,6 +482,8 @@ reset:
 		nni_msg_free(p->tmp_msg);
 		p->tmp_msg = NULL;
 	}
+	if (msg_vec)
+		cvector_free(msg_vec);
 	if (msg != NULL)
 		nni_msg_free(msg);
 	return;
@@ -1040,6 +1064,8 @@ wstran_pipe_init(void *arg, nni_pipe *pipe)
 			   id, clientid_key, rv);
 
 	p->qos_buf = nng_zalloc(16 + NNI_NANO_MAX_PACKET_SIZE);
+	nni_lmq_init(&p->recvlmq, 1024);
+	nni_lmq_init(&p->rslmq, 1024);
 	// the size limit of qos_buf reserve 1 byte for property length
 	p->qlength = 16 + NNI_NANO_MAX_PACKET_SIZE;
 	if (!p->conf->sqlite.enable && pipe->nano_qos_db == NULL) {
@@ -1065,6 +1091,10 @@ wstran_pipe_fini(void *arg)
 	nni_mtx_unlock(&p->mtx);
 	nni_mtx_fini(&p->mtx);
 	nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
+	nni_lmq_flush(&p->recvlmq);
+	nni_lmq_fini(&p->recvlmq);
+	nni_lmq_flush(&p->rslmq);
+	nni_lmq_fini(&p->rslmq);
 	NNI_FREE_STRUCT(p);
 }
 
