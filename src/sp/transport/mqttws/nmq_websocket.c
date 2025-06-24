@@ -121,13 +121,14 @@ wstran_pipe_recv_cb(void *arg)
 {
 	ws_pipe *p = arg;
 	nni_iov  iov[2];
-	uint8_t  rv, pos = 1;
-	uint64_t len = 0;
+	uint8_t  rv, count = 0, pos = 1;
+	uint64_t len = 0, conn_len = 0;
 	uint8_t *ptr;
 	nni_msg *smsg = NULL, *msg = NULL;
+	nni_msg **msg_vec = NULL;
 	nni_aio *raio = p->rxaio;
 	nni_aio *uaio = NULL;
-	bool     ack  = false;
+	bool ack = false;
 
 	nni_mtx_lock(&p->mtx);
 	p->err_code = MQTT_SUCCESS;
@@ -147,7 +148,7 @@ wstran_pipe_recv_cb(void *arg)
 	}
 	ptr = nni_msg_body(msg);
 	p->gotrxhead += nni_msg_len(msg);
-	log_trace("#### wstran_pipe_recv_cb got %ld msg: %p %x %ld",
+	log_info("#### wstran_pipe_recv_cb got %ld msg: %p %x %ld",
 	    p->gotrxhead, ptr, *ptr, nni_msg_len(msg));
 	// first we collect complete Fixheader
 	if (p->tmp_msg == NULL && p->gotrxhead > 0) {
@@ -156,7 +157,7 @@ wstran_pipe_recv_cb(void *arg)
 			goto reset;
 		}
 	}
-	// TODO use IOV instead of appending msg
+
 	nni_msg_append(p->tmp_msg, ptr, nni_msg_len(msg));
 	ptr = nni_msg_body(p->tmp_msg); // packet might be sticky?
 
@@ -172,16 +173,60 @@ wstran_pipe_recv_cb(void *arg)
 				rv = NNG_EMSGSIZE;
 				goto reset;
 			}
+			goto recv;
 		} else {
 			// Fixed header finished
 			p->wantrxhead = len + pos;
 			nni_msg_set_cmd_type(p->tmp_msg, *ptr & 0xf0);
 		}
 	}
-	if (p->gotrxhead >= p->wantrxhead) {
+	if (p->wantrxhead > p->gotrxhead)
+		goto recv;
+	// Negotiation shall be processed alone
+	if ((*ptr & 0xF0) == CMD_CONNECT) {
 		goto done;
 	}
 
+	// if (nni_msg_alloc(&smsg, 0) != 0) {
+	// 		p->err_code = SERVER_UNAVAILABLE;
+	// 		goto skip;
+	// 	}
+	// 	// parse fixed header
+	// 	ws_msg_adaptor(ptr, smsg);
+
+	// 	nni_msg_set_conn_param(smsg, p->ws_param);
+	// goto done;
+
+	size_t index = 0;
+	pos = 1;
+	while (p->gotrxhead > index) {
+		len = get_var_integer(ptr, &pos);
+		// Fixed header finished
+		index += len + pos;
+		nni_msg *new;
+		count ++;
+		if (nni_msg_alloc(&new, 0) != 0) {
+			p->err_code = SERVER_UNAVAILABLE;
+			goto skip;
+		}
+		// parse fixed header
+		ws_msg_adaptor(ptr, new);
+		nni_msg_set_conn_param(new, p->ws_param);
+		if (smsg == NULL) {
+			smsg = new;
+		} else {
+			// nni_lmq_put(&p->recvlmq, new);
+		}
+		cvector_push_back(msg_vec, new);
+		ptr = ptr + len + pos;
+		pos = 1;
+	}
+	if (p->gotrxhead < index) {
+		log_error("Decoding error!");
+		goto skip;
+	} else if (p->gotrxhead == index) {
+		goto done;
+	}
 recv:
 	nni_msg_free(msg);
 	msg = NULL;
@@ -189,189 +234,193 @@ recv:
 	nni_mtx_unlock(&p->mtx);
 	return;
 done:
+	nni_msg_free(msg);
+	msg = NULL;
 	if (uaio == NULL) {
 		// Processing CONNECT
 		uaio = p->ep_aio;
 	}
-	if (uaio != NULL) {
-		if (p->gotrxhead+p->wantrxhead > p->conf->max_packet_size) {
-			log_trace("size error 0x95\n");
-			rv = NMQ_PACKET_TOO_LARGE;
-			nni_msg_free(msg);
-			msg = NULL;
-			p->err_code = NMQ_PACKET_TOO_LARGE;
-			goto skip;
-		}
-		p->gotrxhead  = 0;
-		p->wantrxhead = 0;
-		nni_msg_free(msg);
-		msg = NULL;
-		if (nni_msg_cmd_type(p->tmp_msg) == CMD_CONNECT) {
-			// end of nego
-			if (p->ws_param == NULL) {
-				conn_param_alloc(&p->ws_param);
-			}
-			if (conn_handler(nni_msg_body(p->tmp_msg), p->ws_param,
-			        nni_msg_len(p->tmp_msg)) != 0) {
-				p->closed = true;
-				p->err_code = PROTOCOL_ERROR;
-				goto skip;
-			}
-			log_trace("MQTT Clientid is %s", p->ws_param->clientid.body);
-			if (p->ws_param->pro_ver == 5) {
-				p->qsend_quota = p->ws_param->rx_max;
-			}
-			if (p->ws_param->max_packet_size == 0) {
-				// set default max packet size for client
-				p->ws_param->max_packet_size =
-				    p->conf->client_max_packet_size;
-			}
-			log_info("max_packet_size of %.*s is %d",
-					p->ws_param->clientid.len, p->ws_param->clientid.body,
-					p->ws_param->max_packet_size);
-			nni_msg_free(p->tmp_msg);
-			p->tmp_msg = NULL;
-			nni_aio_set_output(uaio, 0, p);
-			// pipe_start_cb send CONNACK
-			nni_aio_finish(uaio, 0, 0);
-			nni_mtx_unlock(&p->mtx);
-			return;
-		} else {
-			if (nni_msg_alloc(&smsg, 0) != 0) {
-				p->err_code = SERVER_UNAVAILABLE;
-				goto skip;
-			}
-			// parse fixed header
-			ws_msg_adaptor(ptr, smsg);
-			nni_msg_free(p->tmp_msg);
-			p->tmp_msg = NULL;
-			nni_msg_set_conn_param(smsg, p->ws_param);
-		}
-
-		uint8_t   qos_pac;
-		property *prop        = NULL;
-		uint8_t   reason_code = 0;
-		uint8_t   ack_cmd     = 0;
-
-		uint16_t packet_id = 0;
-		nni_msg *qmsg;
-		uint8_t  cmd = nni_msg_cmd_type(smsg);
-		if (cmd == CMD_PUBLISH) {
-			qos_pac = nni_msg_get_pub_qos(smsg);
-			if (qos_pac > 0) {
-				// flow control, check rx_max
-				// recv_quota as length of lmq
-				if (p->ws_param->pro_ver == 5) {
-					if (p->qrecv_quota > 0) {
-						p->qrecv_quota--;
-					} else {
-						rv = NNG_ECLOSED;
-						p->err_code = QUOTA_EXCEEDED;
-						goto skip;
-					}
-				}
-
-				if (qos_pac == 1) {
-					ack_cmd = CMD_PUBACK;
-				} else if (qos_pac == 2) {
-					ack_cmd = CMD_PUBREC;
-				} else {
-					log_warn("Wrong QoS level!");
-					rv = NNG_ECLOSED;
-					p->err_code = PROTOCOL_ERROR;
-					goto skip;
-				}
-				if ((packet_id = nni_msg_get_pub_pid(smsg)) ==
-				    0) {
-					log_warn("0 Packet ID in QoS Message!");
-					rv = NNG_ECLOSED;
-					p->err_code = PROTOCOL_ERROR;
-					goto skip;
-				}
-				ack = true;
-			}
-		} else if (cmd == CMD_PUBREC) {
-			if ((rv = nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
-			        p->ws_param->pro_ver)) != 0) {
-				log_warn("decode PUBREC variable header failed!");
-				p->err_code = PROTOCOL_ERROR;
-				goto skip;
-			}
-			ack_cmd = CMD_PUBREL;
-			ack     = true;
-		} else if (cmd == CMD_PUBREL) {
-			if ((rv = nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
-			        p->ws_param->pro_ver)) != 0) {
-				log_warn("decode PUBREL variable header failed!");
-				p->err_code = PROTOCOL_ERROR;
-				goto skip;
-			}
-			ack_cmd = CMD_PUBCOMP;
-			ack     = true;
-		} else if (cmd == CMD_PUBACK || cmd == CMD_PUBCOMP) {
-			if ((rv = nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
-			        p->ws_param->pro_ver)) != 0) {
-				log_warn("decode PUBACK or PUBCOMP variable header "
-				          "failed!");
-				p->err_code = PROTOCOL_ERROR;
-				goto skip;
-			}
-			// MQTT V5 flow control
-			if (p->ws_param->pro_ver == 5) {
-				property_free(prop);
-				p->qsend_quota++;
-			}
-		} else if (cmd == CMD_PINGREQ) {
-			// reply PINGRESP
-			ack = true;
-		}
-
-		if (ack == true) {
-			// alloc a msg here costs memory. However we must do it for the
-			// sake of compatibility with nng.
-			if ((rv = nni_msg_alloc(&qmsg, 0)) != 0) {
-				ack = false;
-				rv  = NMQ_SERVER_BUSY;
-				log_error("ERROR: OOM in WebSocket");
-				p->err_code = SERVER_UNAVAILABLE;
-				goto skip;
-			}
-			if (cmd == CMD_PINGREQ) {
-				uint8_t buf[2] = { CMD_PINGRESP, 0x00 };
-				nni_msg_set_cmd_type(qmsg, CMD_PINGRESP);
-				nni_msg_header_append(qmsg, buf, 2);
-				// we sacrifice performance for safety in WebSocket
-				nng_aio_wait(p->qsaio);
-				iov[0].iov_len = nni_msg_header_len(qmsg);
-				iov[0].iov_buf = nni_msg_header(qmsg);
-				nni_aio_set_msg(p->qsaio, qmsg);
-				// send ACK down...
-				nni_aio_set_iov(p->qsaio, 1, iov);
-				nng_stream_send(p->ws, p->qsaio);
-				//ignore PING msg, only notify
-			} else {
-				// TODO set reason code or property here if
-				// necessary
-				nni_msg_set_cmd_type(qmsg, ack_cmd);
-				nni_mqtt_msgack_encode(qmsg, packet_id, reason_code,
-				    prop, p->ws_param->pro_ver);
-				nni_mqtt_pubres_header_encode(qmsg, ack_cmd);
-				nng_aio_wait(p->qsaio);
-				iov[0].iov_len = nni_msg_header_len(qmsg);
-				iov[0].iov_buf = nni_msg_header(qmsg);
-				iov[1].iov_len = nni_msg_len(qmsg);
-				iov[1].iov_buf = nni_msg_body(qmsg);
-				nni_aio_set_msg(p->qsaio, qmsg);
-				// send ACK down...
-				nni_aio_set_iov(p->qsaio, 2, iov);
-				nng_stream_send(p->ws, p->qsaio);
-			}
-		}
-		nni_aio_set_msg(uaio, smsg);
-	} else {
+	if (uaio == NULL) {
 		log_warn("No AIO waitting, unable to process websocket packet");
 		goto reset;
 	}
+	if (p->gotrxhead+p->wantrxhead > p->conf->max_packet_size) {
+		log_trace("size error 0x95\n");
+		rv = NMQ_PACKET_TOO_LARGE;
+		p->err_code = NMQ_PACKET_TOO_LARGE;
+		goto skip;
+	}
+	p->gotrxhead  = 0;
+	p->wantrxhead = 0;
+	if (nni_msg_cmd_type(p->tmp_msg) == CMD_CONNECT) {
+		// end of nego
+		if (p->ws_param == NULL) {
+			conn_param_alloc(&p->ws_param);
+		}
+		// CONNECT shall be sent & decode alone, or is a bug from Client
+		if (conn_handler(nni_msg_body(p->tmp_msg), p->ws_param,
+		        nni_msg_len(p->tmp_msg)) != 0) {
+			p->closed = true;
+			p->err_code = PROTOCOL_ERROR;
+			goto skip;
+		}
+		log_trace("MQTT Clientid is %s", p->ws_param->clientid.body);
+		if (p->ws_param->pro_ver == 5) {
+			p->qsend_quota = p->ws_param->rx_max;
+		}
+		if (p->ws_param->max_packet_size == 0) {
+			// set default max packet size for client
+			p->ws_param->max_packet_size =
+			    p->conf->client_max_packet_size;
+		}
+		log_info("max_packet_size of %.*s is %d",
+				p->ws_param->clientid.len, p->ws_param->clientid.body,
+				p->ws_param->max_packet_size);
+		nni_msg_free(p->tmp_msg);
+		p->tmp_msg = NULL;
+		nni_aio_set_output(uaio, 0, p);
+		// pipe_start_cb send CONNACK
+		nni_aio_finish(uaio, 0, 0);
+		nni_mtx_unlock(&p->mtx);
+		return;
+	}
+	// else {
+	// 	if (nni_msg_alloc(&smsg, 0) != 0) {
+	// 		p->err_code = SERVER_UNAVAILABLE;
+	// 		goto skip;
+	// 	}
+	// 	// parse fixed header
+	// 	ws_msg_adaptor(ptr, smsg);
+	// 	nni_msg_free(p->tmp_msg);
+	// 	p->tmp_msg = NULL;
+	// 	nni_msg_set_conn_param(smsg, p->ws_param);
+	// }
+	nni_msg_free(p->tmp_msg);
+	p->tmp_msg = NULL;
+	if (p->ws_param == NULL) {
+		log_warn("Malformed Packet!");
+		goto reset;
+	}
+	uint8_t   qos_pac;
+	property *prop        = NULL;
+	uint8_t   reason_code = 0;
+	uint8_t   ack_cmd     = 0;
+
+	uint16_t packet_id = 0;
+	nni_msg *qmsg;
+	uint8_t  cmd = nni_msg_cmd_type(smsg);
+	if (cmd == CMD_PUBLISH) {
+		qos_pac = nni_msg_get_pub_qos(smsg);
+		if (qos_pac > 0) {
+			// flow control, check rx_max
+			// recv_quota as length of lmq
+			if (p->ws_param->pro_ver == 5) {
+				if (p->qrecv_quota > 0) {
+					p->qrecv_quota--;
+				} else {
+					rv = NNG_ECLOSED;
+					p->err_code = QUOTA_EXCEEDED;
+					goto skip;
+				}
+			}
+
+			if (qos_pac == 1) {
+				ack_cmd = CMD_PUBACK;
+			} else if (qos_pac == 2) {
+				ack_cmd = CMD_PUBREC;
+			} else {
+				log_warn("Wrong QoS level!");
+				rv = NNG_ECLOSED;
+				p->err_code = PROTOCOL_ERROR;
+				goto skip;
+			}
+			if ((packet_id = nni_msg_get_pub_pid(smsg)) ==
+			    0) {
+				log_warn("0 Packet ID in QoS Message!");
+				rv = NNG_ECLOSED;
+				p->err_code = PROTOCOL_ERROR;
+				goto skip;
+			}
+			ack = true;
+		}
+	} else if (cmd == CMD_PUBREC) {
+		if ((rv = nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
+		        p->ws_param->pro_ver)) != 0) {
+			log_warn("decode PUBREC variable header failed!");
+			p->err_code = PROTOCOL_ERROR;
+			goto skip;
+		}
+		ack_cmd = CMD_PUBREL;
+		ack     = true;
+	} else if (cmd == CMD_PUBREL) {
+		if ((rv = nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
+		        p->ws_param->pro_ver)) != 0) {
+			log_warn("decode PUBREL variable header failed!");
+			p->err_code = PROTOCOL_ERROR;
+			goto skip;
+		}
+		ack_cmd = CMD_PUBCOMP;
+		ack     = true;
+	} else if (cmd == CMD_PUBACK || cmd == CMD_PUBCOMP) {
+		if ((rv = nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
+		        p->ws_param->pro_ver)) != 0) {
+			log_warn("decode PUBACK or PUBCOMP variable header "
+			          "failed!");
+			p->err_code = PROTOCOL_ERROR;
+			goto skip;
+		}
+		// MQTT V5 flow control
+		if (p->ws_param->pro_ver == 5) {
+			property_free(prop);
+			p->qsend_quota++;
+		}
+	} else if (cmd == CMD_PINGREQ) {
+		// reply PINGRESP
+		ack = true;
+	}
+
+	if (ack == true) {
+		// alloc a msg here costs memory. However we must do it for the
+		// sake of compatibility with nng.
+		if ((rv = nni_msg_alloc(&qmsg, 0)) != 0) {
+			ack = false;
+			rv  = NMQ_SERVER_BUSY;
+			log_error("ERROR: OOM in WebSocket");
+			p->err_code = SERVER_UNAVAILABLE;
+			goto skip;
+		}
+		if (cmd == CMD_PINGREQ) {
+			uint8_t buf[2] = { CMD_PINGRESP, 0x00 };
+			nni_msg_set_cmd_type(qmsg, CMD_PINGRESP);
+			nni_msg_header_append(qmsg, buf, 2);
+			// we sacrifice performance for safety in WebSocket
+			nng_aio_wait(p->qsaio);
+			iov[0].iov_len = nni_msg_header_len(qmsg);
+			iov[0].iov_buf = nni_msg_header(qmsg);
+			nni_aio_set_msg(p->qsaio, qmsg);
+			// send ACK down...
+			nni_aio_set_iov(p->qsaio, 1, iov);
+			nng_stream_send(p->ws, p->qsaio);
+			//ignore PING msg, only notify
+		} else {
+			// TODO set reason code or property here if
+			// necessary
+			nni_msg_set_cmd_type(qmsg, ack_cmd);
+			nni_mqtt_msgack_encode(qmsg, packet_id, reason_code,
+			    prop, p->ws_param->pro_ver);
+			nni_mqtt_pubres_header_encode(qmsg, ack_cmd);
+			nng_aio_wait(p->qsaio);
+			iov[0].iov_len = nni_msg_header_len(qmsg);
+			iov[0].iov_buf = nni_msg_header(qmsg);
+			iov[1].iov_len = nni_msg_len(qmsg);
+			iov[1].iov_buf = nni_msg_body(qmsg);
+			nni_aio_set_msg(p->qsaio, qmsg);
+			// send ACK down...
+			nni_aio_set_iov(p->qsaio, 2, iov);
+			nng_stream_send(p->ws, p->qsaio);
+		}
+	}
+	nni_aio_set_msg(uaio, smsg);
 skip:
 	nni_aio_set_output(uaio, 0, p);
 	nni_mtx_unlock(&p->mtx);
