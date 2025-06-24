@@ -34,7 +34,7 @@ static void        nano_pipe_recv_cb(void *);
 static void        nano_pipe_fini(void *);
 static int         nano_pipe_close(void *);
 static inline void close_pipe(nano_pipe *p);
-static tmp_id = 1;
+static tmp_id = 1000;
 // huge context/ dynamic context?
 struct nano_ctx {
 	nano_sock *sock;
