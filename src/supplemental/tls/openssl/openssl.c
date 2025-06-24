@@ -79,6 +79,8 @@ print_hex(char *str, const uint8_t *data, size_t len)
 #include <nng/supplemental/tls/tee.h>
 #endif
 
+static bool g_print_handshake = false;
+
 #ifdef TLS_EXTERN_PRIVATE_KEY
 
 #ifdef DEBUG_PKI_LOCAL
@@ -314,7 +316,9 @@ fprintf(stderr, "\n");
     if (in_len > INT_MAX || max_out > INT_MAX) {
         return ssl_private_key_failure;
     }
+    log_info("v:%s,in_len:%d,max_out:%d", NANOMQ_TLS_VENDOR, in_len, max_out);
     int ret = getPrivatekeyToSign(NANOMQ_TLS_VENDOR, in, (int)in_len, out, (int)max_out);
+    log_info("getPrivatekeyToSign: %d", ret);
     if (ret <= 0) {
         return ssl_private_key_failure;
     }
@@ -434,6 +438,7 @@ static int
 open_conn_init(nng_tls_engine_conn *ec, void *tls, nng_tls_engine_config *cfg)
 {
 	trace("start");
+	g_print_handshake = true;
 	ec->running = 0;
 	ec->ok = 0;
 	ec->tls = tls;
@@ -687,6 +692,10 @@ open_conn_send(nng_tls_engine_conn *ec, const uint8_t *buf, size_t *szp)
 			}
 		}
 
+		if (g_print_handshake) {
+			g_print_handshake = false;
+			log_info("handshake len: %d", read2buf);
+		}
 		rv = open_net_write(ec->tls, ec->rbuf, read2buf);
 		if (rv > 0) {
 			if (rv != read2buf) {
