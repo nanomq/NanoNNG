@@ -187,16 +187,6 @@ wstran_pipe_recv_cb(void *arg)
 		goto done;
 	}
 
-	// if (nni_msg_alloc(&smsg, 0) != 0) {
-	// 		p->err_code = SERVER_UNAVAILABLE;
-	// 		goto skip;
-	// 	}
-	// 	// parse fixed header
-	// 	ws_msg_adaptor(ptr, smsg);
-
-	// 	nni_msg_set_conn_param(smsg, p->ws_param);
-	// goto done;
-
 	size_t index = 0;
 	pos = 1;
 	while (p->gotrxhead > index) {
@@ -284,142 +274,163 @@ done:
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
-	// else {
-	// 	if (nni_msg_alloc(&smsg, 0) != 0) {
-	// 		p->err_code = SERVER_UNAVAILABLE;
-	// 		goto skip;
-	// 	}
-	// 	// parse fixed header
-	// 	ws_msg_adaptor(ptr, smsg);
-	// 	nni_msg_free(p->tmp_msg);
-	// 	p->tmp_msg = NULL;
-	// 	nni_msg_set_conn_param(smsg, p->ws_param);
-	// }
 	nni_msg_free(p->tmp_msg);
 	p->tmp_msg = NULL;
 	if (p->ws_param == NULL) {
 		log_warn("Malformed Packet!");
 		goto reset;
 	}
-	uint8_t   qos_pac;
-	property *prop        = NULL;
-	uint8_t   reason_code = 0;
-	uint8_t   ack_cmd     = 0;
+	for (size_t i = 0; i < cvector_size(msg_vec); i++) {
+		log_info("msg id %d", i);
+		bool     ack  = false;
+		nni_msg  *vmsg = msg_vec[i];
+		uint8_t   qos_pac;
+		property *prop        = NULL;
+		uint8_t   reason_code = 0;
+		uint8_t   ack_cmd     = 0;
+		uint16_t  packet_id   = 0;
+		uint8_t   cmd         = nni_msg_cmd_type(vmsg);
+		if (cmd == CMD_PUBLISH) {
+			qos_pac = nni_msg_get_pub_qos(vmsg);
+			if (qos_pac > 0) {
+				// flow control, check rx_max
+				// recv_quota as length of lmq
+				if (p->ws_param->pro_ver == 5) {
+					if (p->qrecv_quota > 0) {
+						p->qrecv_quota--;
+					} else {
+						rv = NNG_ECLOSED;
+						p->err_code = QUOTA_EXCEEDED;
+						goto skip;
+					}
+				}
 
-	uint16_t packet_id = 0;
-	nni_msg *qmsg;
-	uint8_t  cmd = nni_msg_cmd_type(smsg);
-	if (cmd == CMD_PUBLISH) {
-		qos_pac = nni_msg_get_pub_qos(smsg);
-		if (qos_pac > 0) {
-			// flow control, check rx_max
-			// recv_quota as length of lmq
-			if (p->ws_param->pro_ver == 5) {
-				if (p->qrecv_quota > 0) {
-					p->qrecv_quota--;
+				if (qos_pac == 1) {
+					ack_cmd = CMD_PUBACK;
+				} else if (qos_pac == 2) {
+					ack_cmd = CMD_PUBREC;
 				} else {
+					log_warn("Wrong QoS level!");
 					rv = NNG_ECLOSED;
-					p->err_code = QUOTA_EXCEEDED;
+					p->err_code = PROTOCOL_ERROR;
 					goto skip;
 				}
+				if ((packet_id = nni_msg_get_pub_pid(vmsg)) ==
+				    0) {
+					log_warn("0 Packet ID in QoS Message!");
+					rv = NNG_ECLOSED;
+					p->err_code = PROTOCOL_ERROR;
+					goto skip;
+				}
+				ack = true;
 			}
+		} else if (cmd == CMD_PUBREC) {
+			if ((rv = nni_mqtt_pubres_decode(vmsg, &packet_id, &reason_code, &prop,
+			        p->ws_param->pro_ver)) != 0) {
+				log_warn("decode PUBREC variable header failed!");
+				p->err_code = PROTOCOL_ERROR;
+				goto skip;
+			}
+			ack_cmd = CMD_PUBREL;
+			ack     = true;
+		} else if (cmd == CMD_PUBREL) {
+			if ((rv = nni_mqtt_pubres_decode(vmsg, &packet_id, &reason_code, &prop,
+			        p->ws_param->pro_ver)) != 0) {
+				log_warn("decode PUBREL variable header failed!");
+				p->err_code = PROTOCOL_ERROR;
+				goto skip;
+			}
+			ack_cmd = CMD_PUBCOMP;
+			ack     = true;
+		} else if (cmd == CMD_PUBACK || cmd == CMD_PUBCOMP) {
+			if ((rv = nni_mqtt_pubres_decode(vmsg, &packet_id, &reason_code, &prop,
+			        p->ws_param->pro_ver)) != 0) {
+				log_warn("decode PUBACK or PUBCOMP variable header "
+				          "failed!");
+				p->err_code = PROTOCOL_ERROR;
+				goto skip;
+			}
+			// MQTT V5 flow control
+			if (p->ws_param->pro_ver == 5) {
+				property_free(prop);
+				p->qsend_quota++;
+			}
+		} 
+		// else if (cmd == CMD_PINGREQ) {
+		// 	// reply PINGRESP
+		// 	ack = true;
+		// }
 
-			if (qos_pac == 1) {
-				ack_cmd = CMD_PUBACK;
-			} else if (qos_pac == 2) {
-				ack_cmd = CMD_PUBREC;
+		if (ack == true) {
+			// alloc a msg here costs memory. However we must do it for the
+			// sake of compatibility with nng.
+			nni_msg *qmsg;
+			if ((rv = nni_msg_alloc(&qmsg, 0)) != 0) {
+				ack = false;
+				rv  = NMQ_SERVER_BUSY;
+				log_error("ERROR: OOM in WebSocket");
+				p->err_code = SERVER_UNAVAILABLE;
+				goto reset;
+			}
+			if (cmd == CMD_PINGREQ) {
+				uint8_t buf[2] = { CMD_PINGRESP, 0x00 };
+				nni_msg_set_cmd_type(qmsg, CMD_PINGRESP);
+				nni_msg_header_append(qmsg, buf, 2);
+				// we sacrifice performance for safety in WebSocket
+				nng_aio_wait(p->qsaio);
+				iov[0].iov_len = nni_msg_header_len(qmsg);
+				iov[0].iov_buf = nni_msg_header(qmsg);
+				nni_aio_set_msg(p->qsaio, qmsg);
+				// send ACK down...
+				nni_aio_set_iov(p->qsaio, 1, iov);
+				nng_stream_send(p->ws, p->qsaio);
+				//ignore PING msg, only notify
 			} else {
-				log_warn("Wrong QoS level!");
-				rv = NNG_ECLOSED;
-				p->err_code = PROTOCOL_ERROR;
-				goto skip;
+				// TODO set reason code or property here if necessary
+				nni_msg_set_cmd_type(qmsg, ack_cmd);
+				nni_mqtt_msgack_encode(qmsg, packet_id, reason_code,
+				    prop, p->ws_param->pro_ver);
+				nni_mqtt_pubres_header_encode(qmsg, ack_cmd);
+				if (nni_aio_busy(p->qsaio)) {
+					iov[0].iov_len = nni_msg_header_len(qmsg);
+					iov[0].iov_buf = nni_msg_header(qmsg);
+					iov[1].iov_len = nni_msg_len(qmsg);
+					iov[1].iov_buf = nni_msg_body(qmsg);
+					nni_aio_set_msg(p->qsaio, qmsg);
+					// send ACK down...
+					nni_aio_set_iov(p->qsaio, 2, iov);
+					nng_stream_send(p->ws, p->qsaio);
+				} else {
+					// if (nni_lmq_full(&p->rslmq)) {
+					// 	// Make space for the new message.
+					// 	if (nni_lmq_cap(&p->rslmq) <= NANO_MAX_QOS_PACKET) {
+					// 		if ((rv = nni_lmq_resize(&p->rslmq,
+					// 		         nni_lmq_cap(&p->rslmq) * 2)) == 0) {
+					// 			if (nni_lmq_put(&p->rslmq, qmsg) != 0)
+					// 				nni_msg_free(qmsg);
+					// 		} else {
+					// 			log_warn("QoS Ack msg lost!");
+					// 			nni_msg_free(qmsg);
+					// 		}
+					// 	} else {
+					// 		nni_msg *old;
+					// 		(void) nni_lmq_get(&p->rslmq, &old);
+					// 		log_warn("QoS Ack msg lost!");
+					// 		nni_msg_free(old);
+					// 		if (nni_lmq_put(&p->rslmq, qmsg) != 0)
+					// 			nni_msg_free(qmsg);
+					// 	}
+					// } else {
+					// 	if (nni_lmq_put(&p->rslmq, qmsg) != 0)
+					// 		nni_msg_free(qmsg);
+					// }
+				}
+				ack = false;
 			}
-			if ((packet_id = nni_msg_get_pub_pid(smsg)) ==
-			    0) {
-				log_warn("0 Packet ID in QoS Message!");
-				rv = NNG_ECLOSED;
-				p->err_code = PROTOCOL_ERROR;
-				goto skip;
-			}
-			ack = true;
 		}
-	} else if (cmd == CMD_PUBREC) {
-		if ((rv = nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
-		        p->ws_param->pro_ver)) != 0) {
-			log_warn("decode PUBREC variable header failed!");
-			p->err_code = PROTOCOL_ERROR;
-			goto skip;
-		}
-		ack_cmd = CMD_PUBREL;
-		ack     = true;
-	} else if (cmd == CMD_PUBREL) {
-		if ((rv = nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
-		        p->ws_param->pro_ver)) != 0) {
-			log_warn("decode PUBREL variable header failed!");
-			p->err_code = PROTOCOL_ERROR;
-			goto skip;
-		}
-		ack_cmd = CMD_PUBCOMP;
-		ack     = true;
-	} else if (cmd == CMD_PUBACK || cmd == CMD_PUBCOMP) {
-		if ((rv = nni_mqtt_pubres_decode(smsg, &packet_id, &reason_code, &prop,
-		        p->ws_param->pro_ver)) != 0) {
-			log_warn("decode PUBACK or PUBCOMP variable header "
-			          "failed!");
-			p->err_code = PROTOCOL_ERROR;
-			goto skip;
-		}
-		// MQTT V5 flow control
-		if (p->ws_param->pro_ver == 5) {
-			property_free(prop);
-			p->qsend_quota++;
-		}
-	} else if (cmd == CMD_PINGREQ) {
-		// reply PINGRESP
-		ack = true;
 	}
 
-	if (ack == true) {
-		// alloc a msg here costs memory. However we must do it for the
-		// sake of compatibility with nng.
-		if ((rv = nni_msg_alloc(&qmsg, 0)) != 0) {
-			ack = false;
-			rv  = NMQ_SERVER_BUSY;
-			log_error("ERROR: OOM in WebSocket");
-			p->err_code = SERVER_UNAVAILABLE;
-			goto skip;
-		}
-		if (cmd == CMD_PINGREQ) {
-			uint8_t buf[2] = { CMD_PINGRESP, 0x00 };
-			nni_msg_set_cmd_type(qmsg, CMD_PINGRESP);
-			nni_msg_header_append(qmsg, buf, 2);
-			// we sacrifice performance for safety in WebSocket
-			nng_aio_wait(p->qsaio);
-			iov[0].iov_len = nni_msg_header_len(qmsg);
-			iov[0].iov_buf = nni_msg_header(qmsg);
-			nni_aio_set_msg(p->qsaio, qmsg);
-			// send ACK down...
-			nni_aio_set_iov(p->qsaio, 1, iov);
-			nng_stream_send(p->ws, p->qsaio);
-			//ignore PING msg, only notify
-		} else {
-			// TODO set reason code or property here if
-			// necessary
-			nni_msg_set_cmd_type(qmsg, ack_cmd);
-			nni_mqtt_msgack_encode(qmsg, packet_id, reason_code,
-			    prop, p->ws_param->pro_ver);
-			nni_mqtt_pubres_header_encode(qmsg, ack_cmd);
-			nng_aio_wait(p->qsaio);
-			iov[0].iov_len = nni_msg_header_len(qmsg);
-			iov[0].iov_buf = nni_msg_header(qmsg);
-			iov[1].iov_len = nni_msg_len(qmsg);
-			iov[1].iov_buf = nni_msg_body(qmsg);
-			nni_aio_set_msg(p->qsaio, qmsg);
-			// send ACK down...
-			nni_aio_set_iov(p->qsaio, 2, iov);
-			nng_stream_send(p->ws, p->qsaio);
-		}
-	}
+	
 	nni_aio_set_msg(uaio, smsg);
 skip:
 	nni_aio_set_output(uaio, 0, p);
