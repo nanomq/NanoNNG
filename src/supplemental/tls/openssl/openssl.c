@@ -543,7 +543,7 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 				goto finished;
 			}
 		}
-		log_info("Wait for next handshake ...")
+		log_info("Wait for next handshake ...");
 		return NNG_EAGAIN;
 	}
 	if (rv == SSL_ERROR_NONE) {
@@ -553,7 +553,7 @@ finished:
 		ec->ok = 1;
 		return 0;
 	}
-	log_info("return NNG_ECRYPTO ...")
+	log_info("return NNG_ECRYPTO ...");
 	return NNG_ECRYPTO;
 }
 
