@@ -4131,9 +4131,9 @@ get_params(const char *value, size_t *count)
 		char *str = nng_strdup(tk);
 		char *key = calloc(1, strlen(str));
 		conf_http_param *param = NNI_ALLOC_STRUCT(param);
-		param->name            = nng_strdup(key);
 		char  c   = 0;
 		int   res = sscanf(str, "%[^=]=%%%c", key, &c);
+		param->name            = nng_strdup(key);
 		if (res == 2) {
 			switch (c) {
 			case 'A':
