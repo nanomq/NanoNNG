@@ -935,6 +935,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->daemon           = false;
 	nanomq_conf->enable           = true;
 	nanomq_conf->bridge_mode      = false;
+	nanomq_conf->raft_mode        = false;
 
 #if defined(ENABLE_LOG)
 	conf_log_init(&nanomq_conf->log);
@@ -951,6 +952,7 @@ conf_init(conf *nanomq_conf)
 
 	conf_bridge_init(&nanomq_conf->bridge);
 	conf_bridge_init(&nanomq_conf->aws_bridge);
+	conf_raft_init(&nanomq_conf->raft);
 
 	nanomq_conf->web_hook.enable         = false;
 	nanomq_conf->web_hook.url            = NULL;
@@ -3103,6 +3105,34 @@ conf_session_node_init(conf_session_node *node)
 {
 	node->clientid = NULL;
 	node->sub_list = NULL;
+}
+
+static void 
+conf_raft_init(conf_raft *raft)
+{
+	raft->raft_group_count = 0;
+	raft->majority_quorum_count = 0;
+	raft->raft_group = NULL;
+	conf_raft_node_init(&raft->raft_group);
+}
+
+static void
+conf_raft_node_init(conf_raft_node *raft_node)
+{
+	raft_node->address = NULL;
+	raft_node->host = NULL;
+	raft_node->port = 0;
+	raft_node->leader_election_timeout = 0;
+	conf_raft_conn_init(&raft_node->raft_packets);
+	raft_node->raft_node_dialer = NULL;
+	raft_node->raft_node_aio = NULL;
+}
+
+static void
+conf_raft_conn_init(conf_raft_conn *raft_conn)
+{
+	raft_conn->max_election_packet_size = 0;
+	raft_conn->max_replication_packet_size = 0;
 }
 
 static void
