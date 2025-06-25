@@ -1488,6 +1488,7 @@ print_conf(conf *nanomq_conf)
 static void
 conf_auth_init(conf_auth *auth)
 {
+	auth->enable    = false;
 	auth->count     = 0;
 	auth->usernames = NULL;
 	auth->passwords = NULL;
@@ -1546,6 +1547,7 @@ conf_auth_parse(conf_auth *auth, const char *path)
 
 			auth->usernames[auth->count - 1] = name;
 			auth->passwords[auth->count - 1] = pass;
+			auth->enable = true;
 
 			get_name = false;
 			get_pass = false;
