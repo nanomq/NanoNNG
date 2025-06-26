@@ -3366,6 +3366,10 @@ conf_bridge_node_parse_with_name(const char *path,const char *key_prefix, const 
 			node->cancel_timeout = atoi(value);
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                key_prefix, name, ".retry_qos0")) != NULL) {
+			node->retry_qos_0 = nni_strcasecmp(value, "true") == 0;
+			free(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".resend_wait")) != NULL) {
 			node->resend_wait = atoi(value);
 			free(value);

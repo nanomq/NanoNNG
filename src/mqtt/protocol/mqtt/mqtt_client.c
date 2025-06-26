@@ -91,6 +91,7 @@ struct mqtt_pipe_s {
 
 // A mqtt_sock_s is our per-socket protocol private structure.
 struct mqtt_sock_s {
+	bool            retry_qos_0;	// define if flush QoS 0 msg to disk
 	nni_mtx         mtx;    		// more fine grained mutual exclusion
 	uint8_t         mqtt_ver;       // mqtt version.
 	nni_atomic_bool closed;
@@ -106,7 +107,6 @@ struct mqtt_sock_s {
 	reason_code     disconnect_code; // disconnect reason code
 	property       *dis_prop;        // disconnect property
 	nni_id_map      sent_unack;      // send messages unacknowledged
-	bool            retry_qos_0;
 #ifdef NNG_SUPP_SQLITE
 	nni_mqtt_sqlite_option *sqlite_opt;
 #endif
