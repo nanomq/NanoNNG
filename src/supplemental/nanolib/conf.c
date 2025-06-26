@@ -469,6 +469,12 @@ conf_basic_parse(conf *config, const char *path)
 			    nni_strcasecmp(value, "yes") == 0 ||
 			    nni_strcasecmp(value, "true") == 0;
 			nng_strfree(value);
+		} else if ((value = get_conf_value(
+		                line, sz, "auth_enable")) != NULL) {
+			config->auths.enable =
+			    nni_strcasecmp(value, "yes") == 0 ||
+			    nni_strcasecmp(value, "true") == 0;
+			nng_strfree(value);
 		} else if ((value = get_conf_value(line, sz, "acl_nomatch")) !=
 		    NULL) {
 			config->acl_nomatch =
@@ -1523,7 +1529,6 @@ conf_auth_parse(conf_auth *auth, const char *path)
 			    auth->usernames, sizeof(char *) * auth->count);
 			auth->passwords = realloc(
 			    auth->passwords, sizeof(char *) * auth->count);
-			auth->enable = true;
 
 			auth->usernames[auth->count - 1] = name;
 			auth->passwords[auth->count - 1] = pass;
