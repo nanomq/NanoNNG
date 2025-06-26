@@ -1467,6 +1467,7 @@ print_conf(conf *nanomq_conf)
 static void
 conf_auth_init(conf_auth *auth)
 {
+	auth->enable    = false;
 	auth->count     = 0;
 	auth->usernames = NULL;
 	auth->passwords = NULL;
@@ -1522,6 +1523,7 @@ conf_auth_parse(conf_auth *auth, const char *path)
 			    auth->usernames, sizeof(char *) * auth->count);
 			auth->passwords = realloc(
 			    auth->passwords, sizeof(char *) * auth->count);
+			auth->enable = true;
 
 			auth->usernames[auth->count - 1] = name;
 			auth->passwords[auth->count - 1] = pass;
@@ -4106,10 +4108,10 @@ get_params(const char *value, size_t *count)
 	while (tk != NULL) {
 		char *str = nng_strdup(tk);
 		char *key = calloc(1, strlen(str));
-		conf_http_param *param = NNI_ALLOC_STRUCT(param);
-		param->name            = nng_strdup(key);
 		char  c   = 0;
 		int   res = sscanf(str, "%[^=]=%%%c", key, &c);
+		conf_http_param *param = NNI_ALLOC_STRUCT(param);
+		param->name            = nng_strdup(key);
 		if (res == 2) {
 			switch (c) {
 			case 'A':

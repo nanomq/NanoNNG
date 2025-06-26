@@ -1280,7 +1280,7 @@ verify_connect(conn_param *cparam, conf *conf)
 
 	if ((!conf->auths.enable) || conf->auths.count == 0 ||
 	    conf->allow_anonymous == true) {
-		log_trace("no valid entry in auth list");
+		log_info("no valid entry in auth list");
 		return 0;
 	}
 
