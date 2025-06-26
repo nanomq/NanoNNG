@@ -331,6 +331,8 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	hocon_read_enum_base(config, acl_deny_action, "deny_action", jso_auth,
 	    auth_deny_action);
 	hocon_read_bool(config, allow_anonymous, jso_auth);
+	conf_auth *auth = &(config->auths);
+	hocon_read_bool(auth, enable, jso_auth);
 
 	cJSON *jso_auth_cache = hocon_get_obj("cache", jso_auth);
 	if (jso_auth_cache) {
