@@ -979,7 +979,7 @@ delete_dbtree_node(dbtree_node *node, size_t index)
 	// TODO plus && well
 
 	if (cvector_empty(node_t->child) && cvector_empty(node_t->clients)) {
-		log_debug("Delete node: [%s]", node_t->topic);
+		log_info("Delete retain msg at node: [%s]", node_t->topic);
 		cvector_free(node_t->child);
 		cvector_free(node_t->clients);
 		cvector_erase(node->child, index);
@@ -1374,7 +1374,6 @@ dbtree_delete_retain(dbtree *db, char *topic)
 			cvector_push_back(node_buf, node);
 			cvector_push_back(vec, index);
 			node = node_t;
-
 		} else if (*(topic_queue + 1) == NULL) {
 			log_debug("Search and delete retain");
 			log_debug("node->topic: %s", node->topic);
@@ -1394,15 +1393,14 @@ dbtree_delete_retain(dbtree *db, char *topic)
 
 	// dbtree_print(dbtree);
 
-	while (!cvector_empty(node_buf) && !cvector_empty(vec)) {
-		dbtree_node *t = *(cvector_end(node_buf) - 1);
-		int          i = *(cvector_end(vec) - 1);
-		cvector_pop_back(node_buf);
-		cvector_pop_back(vec);
-
-		delete_dbtree_node(t, i);
-		// dbtree_print(dbtree);
-	}
+	// while (!cvector_empty(node_buf) && !cvector_empty(vec)) {
+	// 	dbtree_node *t = *(cvector_end(node_buf) - 1);
+	// 	int          i = *(cvector_end(vec) - 1);
+	// 	cvector_pop_back(node_buf);
+	// 	cvector_pop_back(vec);
+	// 	delete_dbtree_node(t, i);
+	// 	// dbtree_print(dbtree);
+	// }
 
 mem_free:
 	cvector_free(node_buf);
