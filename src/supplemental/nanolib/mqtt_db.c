@@ -1376,7 +1376,7 @@ dbtree_delete_retain(dbtree *db, char *topic)
 			node = node_t;
 		} else if (*(topic_queue + 1) == NULL) {
 			log_debug("Search and delete retain");
-			log_debug("node->topic: %s", node->topic);
+			log_debug("parent node->topic: %s", node->topic);
 			break;
 		} else {
 			log_debug("No node and client need to be delete");
