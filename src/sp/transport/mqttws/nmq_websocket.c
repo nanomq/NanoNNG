@@ -392,7 +392,7 @@ done:
 			nni_mqtt_msgack_encode(qmsg, packet_id, reason_code,
 			    prop, p->ws_param->pro_ver);
 			nni_mqtt_pubres_header_encode(qmsg, ack_cmd);
-			if (nni_aio_busy(p->qsaio)) {
+			if (!nni_aio_busy(p->qsaio)) {
 				iov[0].iov_len = nni_msg_header_len(qmsg);
 				iov[0].iov_buf = nni_msg_header(qmsg);
 				iov[1].iov_len = nni_msg_len(qmsg);
