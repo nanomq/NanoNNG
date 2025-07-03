@@ -911,7 +911,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->cmd_ipc_url      = NULL;
 	nanomq_conf->url              = NULL;
 	nanomq_conf->conf_file        = NULL;
-#if defined(SUPP_LICENSE)
+#if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE)
 	nanomq_conf->license_file     = NULL;
 #endif
 
