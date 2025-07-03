@@ -364,11 +364,6 @@ mqtt_quic_send_msg(nni_aio *aio, mqtt_sock_t *s)
 		g_qos0_sent ++;
 		nni_pipe_send(p->qpipe, &p->send_aio);
 	} else {
-		if (nni_mqtt_msg_get_publish_qos(msg) == 0) {
-			nni_msg_free(msg);
-			// log_warn("QOS 0Message lost");
-			goto out;
-		}
 		if (nni_lmq_full(&p->send_messages)) {
 			//log_warn("Cached Message lost! pipe is busy and lmq is full\n");
 			(void) nni_lmq_get(&p->send_messages, &tmsg);
@@ -451,8 +446,6 @@ mqtt_quic_send_cb(void *arg)
 	if (nni_lmq_get(&p->send_messages, &msg) == 0) {
 		p->busy = true;
 		nni_aio_set_msg(&p->send_aio, msg);
-		// Only QoS > 0 went into lmq
-		g_qos_sent ++;
 		nni_pipe_send(p->qpipe, &p->send_aio);
 		nni_mtx_unlock(&s->mtx);
 		if (s->cb.msg_send_cb)
@@ -568,7 +561,7 @@ mqtt_quic_recv_cb(void *arg)
 			if (nni_lmq_full(&p->send_messages)) {
 				nni_msg     *tmsg;
 				(void) nni_lmq_get(&p->send_messages, &tmsg);
-				log_warn("cached msg lost due to flight window is full");
+				log_debug("cached msg lost due to flight window is full");
 				nni_msg_free(tmsg);
 			}
 			if (0 != nni_lmq_put(&p->send_messages, msg)) {
