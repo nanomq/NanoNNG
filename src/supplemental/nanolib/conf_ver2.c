@@ -319,7 +319,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_str(config, hook_ipc_url, jso_sys);
 		hocon_read_str(config, exchange_ipc_url, jso_sys);
 		hocon_read_str(config, cmd_ipc_url, jso_sys);
-#ifdef SUPP_LICENSE
+#if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE)
 		hocon_read_str(config, license_file, jso_sys);
 #endif
 	}
