@@ -1355,7 +1355,7 @@ mqtt_quictran_pipe_recv_start(mqtt_quictran_pipe *p, nni_aio *aio)
 			sub_iov.iov_len   = 2;
 			memset(stream->rxlen, '\0', sizeof(uint64_t) * sizeof(stream->rxlen[0]));
 			nni_aio_set_iov(&stream->raio, 1, &sub_iov);
-			log_info(" start recv on sub aio %p", &stream->raio);
+			log_debug(" start recv on sub aio %p", &stream->raio);
 			nni_aio_set_prov_data(&stream->raio, &stream->id);
 			nng_stream_recv(p->conn, &stream->raio);
 		} else {
@@ -1369,7 +1369,7 @@ mqtt_quictran_pipe_recv_start(mqtt_quictran_pipe *p, nni_aio *aio)
 		iov.iov_len   = 2;
 		memset(p->rxlen, '\0', sizeof(uint64_t) * sizeof(p->rxlen[0]));
 		nni_aio_set_iov(p->rxaio, 1, &iov);
-		log_info(" start recv on main aio %p", p->rxaio);
+		log_debug(" start recv on main aio %p", p->rxaio);
 		nng_stream_recv(p->conn, p->rxaio);
 	} else {
 		// wait last recv action to finish
