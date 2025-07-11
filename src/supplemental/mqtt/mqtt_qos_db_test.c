@@ -228,7 +228,8 @@ test_get_client_msg(void)
 	nni_msg *msg = nni_mqtt_qos_db_get_client_msg(db, 12345, 54321, "emqx");
 	TEST_CHECK(msg != NULL);
 	TEST_CHECK(nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNECT);
-	TEST_CHECK(nni_mqtt_msg_get_connect_proto_version(msg) == 0x84);
+	// TEST_CHECK(nni_mqtt_msg_get_connect_proto_version(msg) == 0x84);	// for hacked CONNECT
+	TEST_CHECK(nni_mqtt_msg_get_connect_proto_version(msg) == 0x04);
 	TEST_CHECK(nni_mqtt_msg_get_connect_keep_alive(msg) == 60);
 	TEST_CHECK(strcmp(nni_mqtt_msg_get_connect_client_id(msg),
 	               "nanomq-client-0FADECF") == 0);
@@ -294,7 +295,8 @@ test_get_client_offline_msg(void)
 	nni_msg *msg = nni_mqtt_qos_db_get_client_offline_msg(db, &row_id, "emqx");
 	TEST_CHECK(msg != NULL);
 	TEST_CHECK(nni_mqtt_msg_get_packet_type(msg) == NNG_MQTT_CONNECT);
-	TEST_CHECK(nni_mqtt_msg_get_connect_proto_version(msg) == 0x84);
+	// TEST_CHECK(nni_mqtt_msg_get_connect_proto_version(msg) == 0x84);	// for hacked CONNECT
+	TEST_CHECK(nni_mqtt_msg_get_connect_proto_version(msg) == 0x04);
 	TEST_CHECK(nni_mqtt_msg_get_connect_keep_alive(msg) == 60);
 	TEST_CHECK(strcmp(nni_mqtt_msg_get_connect_client_id(msg),
 	               "nanomq-client-0FADECF") == 0);
