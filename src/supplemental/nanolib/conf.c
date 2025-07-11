@@ -49,6 +49,7 @@ static void conf_sqlite_destroy(conf_sqlite *sqlite);
 
 static void conf_web_hook_parse(conf_web_hook *webhook, const char *path);
 static void conf_web_hook_destroy(conf_web_hook *web_hook);
+static void conf_preset_sessions_init(conf_preset_session *session);
 
 #if defined(ENABLE_LOG)
 static void conf_log_init(conf_log *log);
@@ -1001,6 +1002,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->auth_http.connect_timeout = 5;
 	nanomq_conf->auth_http.pool_size       = 32;
 	nanomq_conf->ext_qos_db                = NULL;
+	conf_preset_sessions_init(&nanomq_conf->pre_sessions);
 }
 
 static void
