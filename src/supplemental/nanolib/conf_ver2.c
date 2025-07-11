@@ -2054,9 +2054,11 @@ conf_parse_ver2(conf *config)
 		conf_pre_session_parse_ver2(config, jso);
 		conf_authorization_prase_ver2(config, jso);
 		conf_bridge_parse_ver2(config, jso);
+#if defined(SUPP_PARQUET)
 		conf_exchange_parse_ver2(config, jso);
 		conf_parquet_parse_ver2(config, jso);
 		conf_blf_parse_ver2(config, jso);
+#endif
 #if defined(SUPP_PLUGIN)
 		conf_plugin_parse_ver2(config, jso);
 #endif

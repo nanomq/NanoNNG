@@ -762,7 +762,7 @@ static inline int splitstr(char *str, char *delim, char *result[], int max_num)
 	return count;
 }
 
-#ifdef SUPP_PARQUET
+#if defined(SUPP_PARQUET)
 static inline int find_keys_in_file(ringBuffer_t *rb, uint64_t *keys, uint32_t count, cJSON *obj)
 {
 	int ret = 0;
