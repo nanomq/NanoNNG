@@ -51,6 +51,7 @@ static void conf_sqlite_destroy(conf_sqlite *sqlite);
 
 static void conf_web_hook_parse(conf_web_hook *webhook, const char *path);
 static void conf_web_hook_destroy(conf_web_hook *web_hook);
+static void conf_preset_sessions_init(conf_preset_session *session);
 
 static void conf_preset_sessions_init(conf_preset_session *session);
 
