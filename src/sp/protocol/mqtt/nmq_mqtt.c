@@ -1262,7 +1262,7 @@ nano_pipe_recv_cb(void *arg)
 			}
 		}
 		nni_mtx_unlock(&p->lk);
-		break;
+		goto drop;
 	default:
 		goto drop;
 	}
@@ -1282,6 +1282,7 @@ nano_pipe_recv_cb(void *arg)
 
 	if ((ctx = nni_list_first(&s->recvq)) == NULL) {
 		// No one waiting to receive yet, holding pattern.
+		// use wait lmq? TODO
 		nni_list_append(&s->recvpipes, p);
 		nni_pollable_raise(&s->readable);
 		nni_mtx_unlock(&s->lk);
@@ -1294,9 +1295,6 @@ nano_pipe_recv_cb(void *arg)
 	aio       = ctx->raio;
 	ctx->raio = NULL;
 	nni_aio_set_msg(&p->aio_recv, NULL);
-	if ((ctx == &s->ctx) && !p->busy) {
-		nni_pollable_raise(&s->writable);
-	}
 
 	ctx->pipe_id = p->id;
 	log_trace("currently processing pipe_id: %d", p->id);
