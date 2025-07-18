@@ -763,19 +763,29 @@ nni_msg_get_proto_data(nng_msg *m)
 uint8_t
 nni_msg_get_type(nni_msg *m)
 {
-	return ((uint8_t) m->m_header_buf[0] & 0xF0);
+	// Get MSB from UINT32
+	uint32_t val;
+	uint8_t *dst, type;
+	dst = (void *) m->m_header_buf;
+	NNI_GET32(dst, val);
+	type = (uint8_t)(val >> 24);
+
+	return type & 0XF0;
 }
 
 uint8_t
 nni_msg_get_pub_qos(nni_msg *m)
 {
-	uint8_t qos;
-
-	if (nni_msg_get_type(m) != 0x30) {
+	// Get MSB from UINT32
+	uint32_t val;
+	uint8_t *dst, type;
+	dst = (void *) m->m_header_buf;
+	NNI_GET32(dst, val);
+	type = (uint8_t)(val >> 24);
+	if ((type & 0XF0) != CMD_PUBLISH)
 		return -1;
-	}
-	qos = (m->m_header_buf[0] & 0x06) >> 1;
-	return qos;
+
+	return (type & 0x06) >> 1;
 }
 
 uint16_t
