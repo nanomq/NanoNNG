@@ -1112,9 +1112,6 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 		nni_pollable_clear(&s->readable);
 	}
 	nni_pipe_recv(p->pipe, &p->aio_recv);
-	if ((ctx == &s->ctx) && !p->busy) {
-		nni_pollable_raise(&s->writable);
-	}
 
 	ctx->pipe_id = nni_pipe_id(p->pipe);
 	log_trace("nano_ctx_recv ends %p pipe: %p pipe_id: %d", ctx, p,
@@ -1292,9 +1289,8 @@ nano_pipe_recv_cb(void *arg)
 
 	if ((ctx = nni_list_first(&s->recvq)) == NULL) {
 		// No one waiting to receive yet, holding pattern.
-		// use wait lmq? TODO
+		// Dont use waitlmq cache, cause back-pressure.
 		nni_list_append(&s->recvpipes, p);
-		nni_pollable_raise(&s->readable);
 		nni_mtx_unlock(&s->lk);
 		// this gonna cause broker lagging
 		log_warn("no ctx found!! create more ctxs!");

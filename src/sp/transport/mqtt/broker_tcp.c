@@ -406,7 +406,7 @@ tcptran_pipe_nego_cb(void *arg)
 					    					   p->tcp_cparam->max_packet_size));
 				}
 			}
-			log_info("max_packet_size of %.*s is %d",
+			log_debug("max_packet_size of %.*s is %d",
 					p->tcp_cparam->clientid.len, p->tcp_cparam->clientid.body,
 					p->tcp_cparam->max_packet_size);
 			nni_mtx_unlock(&ep->mtx);
