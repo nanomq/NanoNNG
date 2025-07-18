@@ -34,7 +34,9 @@ static void        nano_pipe_recv_cb(void *);
 static void        nano_pipe_fini(void *);
 static int         nano_pipe_close(void *);
 static inline void close_pipe(nano_pipe *p);
-static int         tmp_id = 1000;
+
+static uint32_t tmp_id = 1000;
+static uint32_t rotate = 0;
 // huge context/ dynamic context?
 struct nano_ctx {
 	nano_sock *sock;
@@ -1108,9 +1110,6 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 	msg = nni_aio_get_msg(&p->aio_recv);
 	nni_aio_set_msg(&p->aio_recv, NULL);
 	nni_list_remove(&s->recvpipes, p);
-	if (nni_list_empty(&s->recvpipes)) {
-		nni_pollable_clear(&s->readable);
-	}
 	nni_pipe_recv(p->pipe, &p->aio_recv);
 
 	ctx->pipe_id = nni_pipe_id(p->pipe);
@@ -1290,10 +1289,17 @@ nano_pipe_recv_cb(void *arg)
 	if ((ctx = nni_list_first(&s->recvq)) == NULL) {
 		// No one waiting to receive yet, holding pattern.
 		// Dont use waitlmq cache, cause back-pressure.
-		nni_list_append(&s->recvpipes, p);
+		if (!nni_list_active(&s->recvpipes, p))
+			nni_list_append(&s->recvpipes, p);
+		else
+			log_error("Unscheduled receving!");
 		nni_mtx_unlock(&s->lk);
-		// this gonna cause broker lagging
-		log_warn("no ctx found!! create more ctxs!");
+		// this gonna cause broker lagging, so we reduce outputs 1 in 256
+		rotate ++;
+		if (rotate >>8 & 0x01) {
+			log_warn("no ctx found!! create more ctxs!");
+			rotate  = rotate >> 8 ;
+		}
 		return;
 	}
 
