@@ -999,9 +999,11 @@ nano_pipe_close(void *arg)
 					log_error("wait lmq resize failed.");
 					conn_param_free(p->conn_param);
 					nni_msg_free(msg);
-				}
+				} else
+					nni_lmq_put(&s->waitlmq, msg);
+			} else {
+				nni_lmq_put(&s->waitlmq, msg);
 			}
-			nni_lmq_put(&s->waitlmq, msg);
 		}
 	}
 	nni_mtx_unlock(&p->lk);
