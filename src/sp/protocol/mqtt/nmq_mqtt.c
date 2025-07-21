@@ -35,7 +35,7 @@ static void        nano_pipe_fini(void *);
 static int         nano_pipe_close(void *);
 static inline void close_pipe(nano_pipe *p);
 
-static uint32_t tmp_id = 1000;
+static uint16_t tmp_id = 1000;
 static uint32_t rotate = 0;
 // huge context/ dynamic context?
 struct nano_ctx {
