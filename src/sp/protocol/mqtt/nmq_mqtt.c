@@ -35,6 +35,8 @@ static void        nano_pipe_fini(void *);
 static int         nano_pipe_close(void *);
 static inline void close_pipe(nano_pipe *p);
 
+static uint32_t tmp_id = 0;
+static uint32_t rotate = 0;
 // huge context/ dynamic context?
 struct nano_ctx {
 	nano_sock *sock;
@@ -407,10 +409,10 @@ nano_ctx_send(void *arg, nni_aio *aio)
 			if (nni_msg_get_type(msg) == CMD_PUBLISH &&
 			    nni_msg_get_pub_qos(msg) > 0) {
 				nni_msg_clone(msg); // for line 422
-				packetid = nni_msg_get_pub_pid(msg);
 				nni_qos_db_set(is_sqlite, qos_db,
-				    pipe, packetid, msg);
-				log_debug("msg cached for preset session");
+				    pipe, tmp_id, msg);
+				tmp_id ++;
+				log_debug("msg cached for preset session %d", pipe);
 			}
 		}
 		// Pipe is gone.  Make this look like a good send to avoid
@@ -988,9 +990,11 @@ nano_pipe_close(void *arg)
 					log_error("wait lmq resize failed.");
 					conn_param_free(p->conn_param);
 					nni_msg_free(msg);
-				}
+				} else
+					nni_lmq_put(&s->waitlmq, msg);
+			} else {
+				nni_lmq_put(&s->waitlmq, msg);
 			}
-			nni_lmq_put(&s->waitlmq, msg);
 		}
 	}
 	nni_mtx_unlock(&p->lk);
@@ -1099,13 +1103,7 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 	msg = nni_aio_get_msg(&p->aio_recv);
 	nni_aio_set_msg(&p->aio_recv, NULL);
 	nni_list_remove(&s->recvpipes, p);
-	if (nni_list_empty(&s->recvpipes)) {
-		nni_pollable_clear(&s->readable);
-	}
 	nni_pipe_recv(p->pipe, &p->aio_recv);
-	if ((ctx == &s->ctx) && !p->busy) {
-		nni_pollable_raise(&s->writable);
-	}
 
 	ctx->pipe_id = nni_pipe_id(p->pipe);
 	log_trace("nano_ctx_recv ends %p pipe: %p pipe_id: %d", ctx, p,
@@ -1262,7 +1260,7 @@ nano_pipe_recv_cb(void *arg)
 			}
 		}
 		nni_mtx_unlock(&p->lk);
-		break;
+		goto drop;
 	default:
 		goto drop;
 	}
@@ -1282,11 +1280,18 @@ nano_pipe_recv_cb(void *arg)
 
 	if ((ctx = nni_list_first(&s->recvq)) == NULL) {
 		// No one waiting to receive yet, holding pattern.
-		nni_list_append(&s->recvpipes, p);
-		nni_pollable_raise(&s->readable);
+		// Dont use waitlmq cache, cause back-pressure.
+		if (!nni_list_active(&s->recvpipes, p))
+			nni_list_append(&s->recvpipes, p);
+		else
+			log_error("Unscheduled receving!");
 		nni_mtx_unlock(&s->lk);
-		// this gonna cause broker lagging
-		log_warn("no ctx found!! create more ctxs!");
+		// this gonna cause broker lagging, so we reduce outputs 1 in 256
+		rotate ++;
+		if (rotate >>8 & 0x01) {
+			log_warn("no ctx found!! create more ctxs!");
+			rotate  = rotate >> 8 ;
+		}
 		return;
 	}
 
@@ -1294,9 +1299,6 @@ nano_pipe_recv_cb(void *arg)
 	aio       = ctx->raio;
 	ctx->raio = NULL;
 	nni_aio_set_msg(&p->aio_recv, NULL);
-	if ((ctx == &s->ctx) && !p->busy) {
-		nni_pollable_raise(&s->writable);
-	}
 
 	ctx->pipe_id = p->id;
 	log_trace("currently processing pipe_id: %d", p->id);
