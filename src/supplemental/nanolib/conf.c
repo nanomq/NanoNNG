@@ -3218,6 +3218,7 @@ conf_raft_node_init(conf_raft_node *raft_node)
 	raft_node->host = NULL;
 	raft_node->port = 0;
 	raft_node->leader_election_timeout = 0;
+	conf_raft_conn_init(&raft_node->raft_packets);
 	raft_node->raft_node_dialer = NULL;
 	raft_node->raft_node_aio = NULL;
 }
@@ -3228,6 +3229,7 @@ conf_raft_conn_init(conf_raft_conn *raft_conn)
 	raft_conn->max_election_packet_size = 0;
 	raft_conn->max_replication_packet_size = 0;
 }
+
 
 static void
 conf_raft_destroy(conf_raft *raft) 
