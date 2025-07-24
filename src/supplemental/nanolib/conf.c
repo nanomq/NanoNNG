@@ -36,6 +36,12 @@ static void conf_auth_init(conf_auth *auth);
 static void conf_auth_parse(conf_auth *auth, const char *path);
 static void conf_auth_destroy(conf_auth *auth);
 static void conf_auth_http_req_init(conf_auth_http_req *req);
+static void conf_raft_parse(conf *raft, const char *path);
+static void conf_raft_init(conf_raft *raft);
+static void conf_raft_node_init(conf_raft_node *raft_conn);
+static void conf_raft_conn_init(conf_raft_conn *raft_conn);
+static void conf_raft_destroy(conf_raft *raft);
+static void print_raft_conf(conf_raft *raft);
 
 static void conf_auth_http_parse(conf_auth_http *auth_http, const char *path);
 static void conf_auth_http_destroy(conf_auth_http *auth_http);
@@ -659,6 +665,7 @@ conf_parse(conf *nanomq_conf)
 	conf_sqlite_parse(&config->sqlite, conf_path, "sqlite");
 	conf_web_hook_parse(&config->web_hook, conf_path);
 	conf_bridge_parse(config, conf_path);
+	conf_raft_parse(config, conf_path);
 	conf_aws_bridge_parse(config, conf_path);
 #if defined(ENABLE_LOG)
 	conf_log_parse(&config->log, conf_path);
@@ -674,6 +681,80 @@ conf_parse(conf *nanomq_conf)
 	log_clear_callback();
 
 }
+
+static void
+conf_raft_parse(conf *nanomq, const char *path)
+{
+	FILE *fp;
+	char *line = NULL;
+	char *value = NULL;
+	size_t sz;
+	uint16_t seed_heartbeat = 500; // 500ms
+	uint16_t increment_delta = 80; // 80ms
+	conf_raft *raft = &nanomq->raft;
+
+	if ((fp = fopen(path, "r")) == NULL) {
+		log_error("File %s open failed", path);
+		return;
+	}
+
+	while (nano_getline(&line, &sz, fp) != -1) {
+		if ((value = get_conf_value(line, sz, "maximum_replication_packet_size")) != NULL) {
+			raft->raft_packets.max_replication_packet_size = (uint32_t) atoi(value);
+			nanomq->raft_mode = true;
+		} else if ((value = get_conf_value(line, sz, "maximum_election_packet_size")) != NULL) {
+			raft->raft_packets.max_election_packet_size = (uint16_t) atoi(value);
+		} else if ((value = get_conf_value(line, sz, "raft_node_address")) != NULL) {
+			conf_raft_node *node = NNI_ALLOC_STRUCT(node);
+    		conf_raft_node_init(node);
+
+  			char *address_copy = strdup(value);
+    		if (!address_copy) {
+        		return;
+    		}
+
+    		char *host = strtok(address_copy, ":");
+    		char *port_str = strtok(NULL, ":");
+
+    		if (host == NULL || port_str == NULL) {
+        		free(address_copy);
+        		free(node);
+        		return;
+    		}
+
+    		node->address = strdup(value);  
+    		node->host = strdup(host);
+    		node->port = (uint16_t) atoi(port_str);
+
+    		cvector_push_back(raft->raft_group, node);
+    		free(address_copy);
+		}
+		free(line);
+		line = NULL;
+	}
+	free(value);
+	fclose(fp);
+
+	if (!(nanomq->raft_mode)) {
+		return;
+	}
+
+	// imposing the heartbeating timeout
+	for (size_t i = 0; i < cvector_size(raft->raft_group); i++) {
+		if (i == 0) {
+			raft->raft_group[i]->leader_election_timeout = seed_heartbeat;
+		} else {
+			uint16_t tmp_election_timeout = raft->raft_group[i - 1]->leader_election_timeout;	
+			raft->raft_group[i]->leader_election_timeout = tmp_election_timeout;
+			raft->raft_group[i]->leader_election_timeout += increment_delta;
+		}
+	}
+
+	size_t raft_group_size = cvector_size(raft->raft_group);
+	raft->raft_group_count = raft_group_size;
+	raft->majority_quorum_count = (raft_group_size / 2) + 1;
+}
+
 
 #if defined(ENABLE_LOG)
 static void
@@ -1416,6 +1497,7 @@ print_conf(conf *nanomq_conf)
 		}
 	}
 
+
 	if (nanomq_conf->sqlite.enable) {
 		conf_sqlite sql = nanomq_conf->sqlite;
 		log_info("sqlite:");
@@ -1460,6 +1542,7 @@ print_conf(conf *nanomq_conf)
 	print_parquet_conf(parquet);
 	print_blf_conf(blf);
 	print_bridge_conf(&nanomq_conf->bridge, "");
+	print_raft_conf(&nanomq_conf->raft);
 #if defined(SUPP_AWS_BRIDGE)
 	print_bridge_conf(&nanomq_conf->aws_bridge, "aws.");
 #endif
@@ -3120,7 +3203,10 @@ conf_raft_init(conf_raft *raft)
 	raft->raft_group_count = 0;
 	raft->majority_quorum_count = 0;
 	raft->raft_group = NULL;
-	conf_raft_node_init(&raft->raft_group);
+	raft->leader_status = false;
+	raft->raft_retry_frequency = 5;
+	raft->raft_broadcast_backoff = 5;
+	conf_raft_conn_init(&raft->raft_packets);
 }
 
 static void
@@ -3130,7 +3216,6 @@ conf_raft_node_init(conf_raft_node *raft_node)
 	raft_node->host = NULL;
 	raft_node->port = 0;
 	raft_node->leader_election_timeout = 0;
-	conf_raft_conn_init(&raft_node->raft_packets);
 	raft_node->raft_node_dialer = NULL;
 	raft_node->raft_node_aio = NULL;
 }
@@ -3140,6 +3225,37 @@ conf_raft_conn_init(conf_raft_conn *raft_conn)
 {
 	raft_conn->max_election_packet_size = 0;
 	raft_conn->max_replication_packet_size = 0;
+}
+
+static void
+conf_raft_destroy(conf_raft *raft) 
+{
+	if (raft->raft_group == NULL || raft->raft_group_count == 0) {
+		return;
+	}
+
+	raft->majority_quorum_count = 0;
+	raft->raft_group_count = 0;
+	raft->raft_broadcast_backoff = 0;
+	raft->raft_retry_frequency = 0;
+	raft->raft_packets.max_election_packet_size = 0;
+	raft->raft_packets.max_replication_packet_size = 0;
+	raft->leader_status = false;
+
+	for (size_t i = 0; i < raft->raft_group_count; i++) {
+		conf_raft_node *replica = raft->raft_group[i];
+		free(replica->address);
+		free(replica->host);
+		replica->leader_election_timeout = 0;
+		replica->port = 0;
+		free(replica->raft_node_aio);
+		free(replica->raft_node_dialer);
+		free(replica);
+		replica = NULL;
+	}
+
+	cvector_free(raft->raft_group);
+	raft->raft_group = NULL;
 }
 
 static void
@@ -3698,6 +3814,30 @@ conf_bridge_destroy(conf_bridge *bridge)
 		cvector_free(bridge->nodes);
 		bridge->nodes = NULL;
 		conf_sqlite_destroy(&bridge->sqlite);
+	}
+}
+
+static void
+print_raft_conf(conf_raft *raft) 
+{
+	if (raft->raft_group_count == 0 || raft->raft_group == NULL) {
+		return;
+	}
+
+	log_info("raft majority quorum count: %d", raft->raft_group_count);
+	log_info("raft replication packet size: %d", raft->raft_packets.max_replication_packet_size);
+	log_info("raft election packaet size: %d", raft->raft_packets.max_election_packet_size);
+	log_info("raft initial broadcasting backoff: %d", raft->raft_broadcast_backoff);
+	log_info("raft retry frequency: %d", raft->raft_retry_frequency);
+
+	// print the raft group
+	for (size_t i = 0; i < raft->raft_group_count; i++) {
+		conf_raft_node *raft_node = raft->raft_group[i];
+		
+		log_info("raft node address: %s", raft_node->address);
+		log_info("raft node listen port: %d", raft_node->port);
+		log_info("raft node complete address: %s", raft_node->host);
+		log_info("raft node heartbeat timeout: %d", raft_node->leader_election_timeout);
 	}
 }
 
@@ -4527,6 +4667,7 @@ conf_fini(conf *nanomq_conf)
 #endif
 	conf_bridge_destroy(&nanomq_conf->bridge);
 	conf_bridge_destroy(&nanomq_conf->aws_bridge);
+	conf_raft_destroy(&nanomq_conf->raft);
 	conf_web_hook_destroy(&nanomq_conf->web_hook);
 	conf_auth_http_destroy(&nanomq_conf->auth_http);
 	conf_auth_destroy(&nanomq_conf->auths);

@@ -447,22 +447,11 @@ struct conf_preset_session {
 
 typedef struct conf_preset_session conf_preset_session;
 
-struct conf_raft {
-	size_t raft_group_count;
-	uint16_t majority_quorum_count;
-	conf_raft_node **raft_group;
-	bool leader_status;
-};
-
-typedef struct conf_raft conf_raft;
-
 struct conf_raft_node {
 	char *address;
 	char *host;
 	uint16_t port;
 	uint16_t leader_election_timeout;
-	conf_tcp raft_tcp_conf;
-	conf_raft_conn raft_packets;
 	nng_dialer *raft_node_dialer;
 	nng_aio **raft_node_aio;
 };
@@ -475,6 +464,19 @@ struct conf_raft_conn {
 };
 
 typedef struct conf_raft_conn conf_raft_conn;
+
+struct conf_raft {
+	size_t raft_group_count;
+	uint16_t majority_quorum_count;
+	conf_raft_conn raft_packets;
+	conf_tcp raft_tcp;
+	conf_raft_node **raft_group;
+	bool leader_status;
+	uint16_t raft_broadcast_backoff;
+	uint16_t raft_retry_frequency;
+};
+
+typedef struct conf_raft conf_raft;
 
 typedef struct {
 	char *zmq_sub_url;
