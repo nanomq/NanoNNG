@@ -1011,6 +1011,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->auth_http.pool_size       = 32;
 	nanomq_conf->ext_qos_db                = NULL;
 	conf_preset_sessions_init(&nanomq_conf->pre_sessions);
+	memset(nanomq_conf->exec_path, 0, 512);
 }
 
 static void
