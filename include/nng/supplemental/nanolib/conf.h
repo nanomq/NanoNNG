@@ -20,6 +20,7 @@
 
 #define PID_PATH_NAME "/tmp/nanomq/nanomq.pid"
 #define CONF_PATH_NAME "/etc/nanomq.conf"
+#define CONF_NAME "/nanomq.conf"
 #define CONF_ZMQ_GATEWAY_PATH_NAME "/etc/nanomq_zmq_gateway.conf"
 #define CONF_VSOMEIP_GATEWAY_PATH_NAME "/etc/nanomq_vsomeip_gateway.conf"
 
@@ -593,10 +594,11 @@ typedef enum {
 } persistence_type;
 
 struct conf {
+	char       exec_path[512];	// binary path
 	char      *vin;
 	char      *cmd_ipc_url;
 	char      *hook_ipc_url;
-	char      *conf_file;
+	char      *conf_file;		// config path
 	char      *url;
 	bool       enable;
 	int        property_size;
