@@ -1627,6 +1627,8 @@ nng_dialer_reload_tls(conf_bridge_node *node, nni_dialer *ndialer)
 	nng_tls_config *cfg;
 	conf_tls       *tls = &node->tls;
 
+	if (node == NULL)
+		return;
 	nng_free(tls->key, sizeof(tls->key));
 	if (tls->keyfile) {
 		if (tls->cert_encrypted == false) {
