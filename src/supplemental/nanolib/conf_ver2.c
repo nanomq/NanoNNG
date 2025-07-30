@@ -396,7 +396,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 		cJSON *jso_websocket      = hocon_get_obj("listeners.ws", jso);
 		conf_websocket *websocket = &(config->websocket);
 		if (NULL == jso_websocket) {
-			log_error("Read config nanomq ws failed!");
+			log_warn("Read websocket config failed!");
 			websocket->enable = false;
 
 		} else {
