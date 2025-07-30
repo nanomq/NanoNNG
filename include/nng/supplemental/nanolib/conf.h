@@ -21,6 +21,7 @@
 #define PID_PATH_NAME "/tmp/nanomq/nanomq.pid"
 #define CONF_PATH_NAME "/etc/nanomq.conf"
 #define CONF_NAME "/nanomq.conf"
+#define LICENSE_NAME "/nanomq.lic"
 #define CONF_ZMQ_GATEWAY_PATH_NAME "/etc/nanomq_zmq_gateway.conf"
 #define CONF_VSOMEIP_GATEWAY_PATH_NAME "/etc/nanomq_vsomeip_gateway.conf"
 
@@ -658,6 +659,9 @@ struct conf {
 	size_t     acl_cache_max_size;
 	size_t     acl_cache_ttl;
 	enum { ACL_IGNORE, ACL_DISCONNECT } acl_deny_action;
+#endif
+#if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
+	char       lic_path[512];	// licnese path
 #endif
 	conf_auth         auths;
 	conf_auth_http    auth_http;
