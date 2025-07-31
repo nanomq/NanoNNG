@@ -912,6 +912,9 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->cmd_ipc_url      = NULL;
 	nanomq_conf->url              = NULL;
 	nanomq_conf->conf_file        = NULL;
+#if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
+	nanomq_conf->license_path     = NULL;
+#endif
 
 #if defined(SUPP_RULE_ENGINE)
 	conf_rule_init(&nanomq_conf->rule_eng);
@@ -1012,9 +1015,6 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->ext_qos_db                = NULL;
 	conf_preset_sessions_init(&nanomq_conf->pre_sessions);
 	memset(nanomq_conf->exec_path, 0, 512);
-#if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
-	memset(nanomq_conf->lic_path, 0, 512);
-#endif
 }
 
 static void
