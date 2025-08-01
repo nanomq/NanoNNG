@@ -396,13 +396,13 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 		cJSON *jso_websocket      = hocon_get_obj("listeners.ws", jso);
 		conf_websocket *websocket = &(config->websocket);
 		if (NULL == jso_websocket) {
-			log_warn("Read websocket config failed!");
+			log_info("Read websocket config failed!");
 			websocket->enable = false;
-
 		} else {
 			hocon_read_address_base(websocket, url, "bind",
 			    "nmq-ws://", jso_websocket);
 			websocket->enable = true;
+			hocon_read_bool_base(websocket, enable, "enable", jso_websocket);
 		}
 
 		conf_tls *tls = &(config->tls);
@@ -412,8 +412,12 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 			if (jso_websocket_tls != NULL) {
 				hocon_read_address_base(websocket, tls_url,
 				    "bind", "nmq-wss://", jso_websocket_tls);
+				websocket->tls_enable = true;
+				hocon_read_bool_base(websocket, tls_enable, "enable", jso_websocket_tls);
+			} else {
+				websocket->tls_enable = false;
 			}
-			websocket->tls_enable = true;
+			log_info("websocket tls :%d", websocket->tls_enable);
 		}
 	}
 
