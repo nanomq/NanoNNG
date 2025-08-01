@@ -419,6 +419,7 @@ nmq_auth_http_sub_pub(
 
 	char *topic_str = parse_topics(topics);
 	if (topic_str == NULL) {
+		log_warn("Parsing topic failed for ACL");
 		return SUCCESS;
 	}
 
@@ -436,8 +437,9 @@ nmq_auth_http_sub_pub(
 		// .common = ,
 		// .subject = ,
 	};
-	int status = 0;
-	if (conf->super_req.url) {
+	int status = NNG_HTTP_STATUS_OK;
+
+	if (conf->super_req.enable) {
 		status = send_request(conf, &conf->super_req, &auth_params);
 		if (status == NNG_HTTP_STATUS_OK) {
 			nni_free(topic_str, strlen(topic_str) + 1);
@@ -445,11 +447,11 @@ nmq_auth_http_sub_pub(
 		}
 	}
 
-	status = conf->acl_req.url == NULL
-	    ? NNG_HTTP_STATUS_OK
-	    : send_request(conf, &conf->acl_req, &auth_params);
-
+	if (conf->acl_req.enable) {
+		status = conf->acl_req.url == NULL
+		    ? NNG_HTTP_STATUS_OK
+		    : send_request(conf, &conf->acl_req, &auth_params);
+	}
 	nni_free(topic_str, strlen(topic_str) + 1);
-
 	return status == NNG_HTTP_STATUS_OK ? SUCCESS : NOT_AUTHORIZED;
 }
