@@ -781,6 +781,7 @@ conf_auth_http_req_parse_ver2(conf_auth_http_req *config, cJSON *jso)
 {
 	if (jso == NULL)
 		return;
+	hocon_read_bool(config, enable, jso);
 	hocon_read_str(config, url, jso);
 	hocon_read_str(config, method, jso);
 	if (nni_strcasecmp(config->method, "POST") != 0 &&
@@ -865,6 +866,7 @@ conf_auth_http_parse_ver2(conf *config, cJSON *jso)
 
 	if (jso) {
 		auth_http->enable = true;
+		hocon_read_bool(auth_http, enable, jso);
 		char *timeout =
 		    cJSON_GetStringValue(hocon_get_obj("timeout", jso));
 		if (timeout)
@@ -1608,7 +1610,7 @@ conf_exchange_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *node_array = hocon_get_obj("exchange_client", jso);
 	cJSON *node_item  = NULL;
-
+	// TODO, skip duplicated node name
 	cJSON_ArrayForEach(node_item, node_array)
 	{
 		conf_exchange_node *node = NNI_ALLOC_STRUCT(node);

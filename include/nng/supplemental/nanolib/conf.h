@@ -148,6 +148,7 @@ struct conf_http_param {
 typedef struct conf_http_param conf_http_param;
 
 struct conf_auth_http_req {
+	bool  enable;
 	char *url;
 	char *method;
 	size_t header_count;
