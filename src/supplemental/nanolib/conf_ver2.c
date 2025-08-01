@@ -428,6 +428,7 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 	size_t len;
 	if (jso_tls) {
 		tls->enable = true;
+		hocon_read_bool(tls, enable, jso_tls);
 		hocon_read_str(tls, keyfile, jso_tls);
 		hocon_read_str(tls, certfile, jso_tls);
 		hocon_read_str_base(tls, cafile, "cacertfile", jso_tls);
