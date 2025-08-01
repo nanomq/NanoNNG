@@ -2008,6 +2008,23 @@ tlstran_ep_set_conf(void *arg, const void *v, size_t sz, nni_opt_type t)
 }
 
 static int
+tlstran_ep_get_broker_connections(void *arg, void *v, size_t *szp, nni_type t)
+{
+	tlstran_ep   *ep = arg;
+	int           rv, cnt = 0;
+	tlstran_pipe *p;
+
+	NNI_LIST_FOREACH (&ep->busypipes, p) {
+		cnt ++;
+	}
+
+	nni_mtx_lock(&ep->mtx);
+	rv = nni_copyout_size(cnt, v, szp, t);
+	nni_mtx_unlock(&ep->mtx);
+	return rv;
+}
+
+static int
 tlstran_ep_get_recvmaxsz(void *arg, void *v, size_t *szp, nni_opt_type t)
 {
 	tlstran_ep *ep = arg;
@@ -2119,6 +2136,10 @@ static const nni_option tlstran_ep_opts[] = {
 	{
 	    .o_name = NANO_CONF,
 	    .o_set  = tlstran_ep_set_conf,
+	},
+	{
+	    .o_name = NNG_OPT_MQTT_BROKER_TLS_CONNECTIONS,
+	    .o_get  = tlstran_ep_get_broker_connections,
 	},
 	// terminate list
 	{
