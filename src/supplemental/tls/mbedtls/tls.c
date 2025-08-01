@@ -600,22 +600,11 @@ config_ca_chain(nng_tls_engine_config *cfg, const char *certs, const char *crl)
 	// Certs and CRL are in PEM data, with terminating NUL byte.
 	pem = (const uint8_t *) certs;
 	len = strlen(certs) + 1;
-	// mbedtls_x509_crt_parse_file
-	// mbedtls_x509_crt_parse_path
 	if ((rv = mbedtls_x509_crt_parse(&cfg->ca_certs, pem, len)) != 0) {
 		tls_log_err("NNG-TLS-CA-FAIL",
 		    "Failed to parse CA certificate(s)", rv);
 		return (tls_mk_err(rv));
 	}
-	mbedtls_x509_crt *pp = &cfg->ca_certs;
-	do
-	{
-		/* code */
-		unsigned char zbuff[2048];
-		mbedtls_x509_crt_info(zbuff, sizeof(zbuff), "test", pp);
-		log_debug("%s \r\n", zbuff);
-		pp = pp->next;
-	} while ( pp != NULL);
 
 	if (crl != NULL) {
 		pem = (const uint8_t *) crl;
