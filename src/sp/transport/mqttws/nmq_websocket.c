@@ -362,10 +362,12 @@ done:
 			ack_cmd = CMD_PUBCOMP;
 			ack     = true;
 		} else if (cmd == CMD_PUBACK || cmd == CMD_PUBCOMP) {
-			if ((rv = nni_mqtt_pubres_decode(vmsg, &packet_id, &reason_code, &prop,
-			        p->ws_param->pro_ver)) != 0) {
-				log_warn("decode PUBACK or PUBCOMP variable header "
-				          "failed!");
+			if ((rv = nni_mqtt_pubres_decode(vmsg, &packet_id,
+			         &reason_code, &prop, p->ws_param->pro_ver)) !=
+			    0) {
+				log_warn(
+				    "decode PUBACK or PUBCOMP variable header "
+				    "failed!");
 				p->err_code = PROTOCOL_ERROR;
 				goto skip;
 			}
@@ -374,7 +376,16 @@ done:
 				property_free(prop);
 				p->qsend_quota++;
 			}
-		} 
+		} else if (cmd == CMD_UNSUBSCRIBE) {
+			// extract sub id
+			// Remove Subid RAP Topic stored
+			if (nmq_unsubinfo_decode(vmsg, p->npipe->subinfol,
+			        p->ws_param->pro_ver) < 0) {
+				log_error("Invalid unsubscribe packet!");
+				p->err_code = PROTOCOL_ERROR;
+				goto skip;
+			}
+		}
 
 		if (ack == true) {
 			// alloc a msg here costs memory. However we must do it for the
