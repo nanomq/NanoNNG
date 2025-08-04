@@ -14,7 +14,6 @@
 #include "core/nng_impl.h"
 #include "core/sockimpl.h"
 
-#include "nng/nng.h"
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "nng/supplemental/nanolib/conf.h"
@@ -1962,24 +1961,7 @@ tcptran_ep_set_conf(void *arg, const void *v, size_t sz, nni_opt_type t)
 }
 
 static int
-tcptran_ep_get_broker_connections(void *arg, void *v, size_t *szp, nni_type t)
-{
-	tcptran_ep   *ep = arg;
-	int           rv, cnt = 0;
-	tcptran_pipe *p;
-
-	NNI_LIST_FOREACH (&ep->busypipes, p) {
-		cnt ++;
-	}
-
-	nni_mtx_lock(&ep->mtx);
-	rv = nni_copyout_size(cnt, v, szp, t);
-	nni_mtx_unlock(&ep->mtx);
-	return rv;
-}
-
-static int
-tcptran_ep_get_recvmaxsz(void *arg, void *v, size_t *szp, nni_type t)
+tcptran_ep_get_recvmaxsz(void *arg, void *v, size_t *szp, nni_opt_type t)
 {
 	tcptran_ep *ep = arg;
 	int         rv;
@@ -2089,10 +2071,6 @@ static const nni_option tcptran_ep_opts[] = {
 	{
 	    .o_name = NANO_CONF,
 	    .o_set  = tcptran_ep_set_conf,
-	},
-	{
-	    .o_name = NNG_OPT_MQTT_BROKER_TCP_CONNECTIONS,
-	    .o_get  = tcptran_ep_get_broker_connections,
 	},
 	// terminate list
 	{
