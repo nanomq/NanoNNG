@@ -277,6 +277,8 @@ tlstran_ep_match(tlstran_ep *ep)
 	}
 	nni_list_remove(&ep->waitpipes, p);
 	nni_list_append(&ep->busypipes, p);
+	if (ep->conf)
+		ep->conf->lic_status.tls_connections++;
 	ep->useraio = NULL;
 	p->rcvmax   = ep->rcvmax;
 	p->conf     = ep->conf;
@@ -1725,6 +1727,8 @@ tlstran_ep_close(void *arg)
 		tlstran_pipe_close(p);
 	}
 	NNI_LIST_FOREACH (&ep->busypipes, p) {
+		if (ep->conf)
+			ep->conf->lic_status.tls_connections--;
 		tlstran_pipe_close(p);
 	}
 	if (ep->useraio != NULL) {
