@@ -199,6 +199,8 @@ tlstran_pipe_fini(void *arg)
 	if ((ep = p->ep) != NULL) {
 		nni_mtx_lock(&ep->mtx);
 		nni_list_node_remove(&p->node);
+		if (ep->conf)
+			ep->conf->lic_status.tls_connections++;
 		ep->refcnt--;
 		if (ep->fini && (ep->refcnt == 0)) {
 			nni_reap(&tlstran_ep_reap_list, ep);
