@@ -603,6 +603,13 @@ typedef enum {
 	sqlite,
 } persistence_type;
 
+struct license_status {
+	int tls_connections;
+	int tcp_connections;
+};
+
+typedef struct license_status license_status;
+
 struct conf {
 	char       exec_path[512];	// binary path
 	char      *vin;
@@ -631,6 +638,7 @@ struct conf {
 	bool       ipc_internal;
 	bool       bridge_mode;				// global switch of bridging for hot update
 
+	license_status       lic_status;
 	conf_tcp_list        tcp_list;
 	conf_tls_list        tls_list;
 	conf_sqlite          sqlite;
