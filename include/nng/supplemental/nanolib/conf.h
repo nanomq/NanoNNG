@@ -661,9 +661,9 @@ struct conf {
 	enum { ACL_IGNORE, ACL_DISCONNECT } acl_deny_action;
 #endif
 #if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
-	char           *license_path; // licnese path
-	nng_atomic_int *lc;
+	char           *license_path; // licnese path	
 #endif
+	nng_atomic_int   *lc;		// connections in total
 	conf_auth         auths;
 	conf_auth_http    auth_http;
 	struct hashmap_s *cid_table;

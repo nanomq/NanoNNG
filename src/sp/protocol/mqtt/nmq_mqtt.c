@@ -791,8 +791,6 @@ session_keeping:
 #endif
 	// pipe_id is just random value of id_dyn_val with self-increment.
 	nni_id_set(&s->pipes, p->id, p);
-	int total = nni_id_count(&s->pipes);
-	log_debug("Total connection num %d", total);
 	p->conn_param->nano_qos_db = p->pipe->nano_qos_db;
 	p->nano_qos_db             = p->pipe->nano_qos_db;
 
@@ -804,6 +802,9 @@ session_keeping:
 			    p->conn_param, &s->conf->auth_http);
 		}
 	}
+	int total = nni_id_count(&s->pipes);
+	log_debug("Total connection num %d", total);
+	nng_atomic_set(s->conf->lc, total);
 #if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
 	if (total > s->lc) {
 		rv = QUOTA_EXCEEDED;
@@ -886,8 +887,10 @@ close_pipe(nano_pipe *p)
 	}
 	// only remove matched pipe, could have been overwritten
 	t = nni_id_get(&s->pipes, nni_pipe_id(p->pipe));
-	if (t == p)
+	if (t == p) {
 		nni_id_remove(&s->pipes, nni_pipe_id(p->pipe));
+		nng_atomic_set(s->conf->lc, nni_id_count(&s->pipes));
+	}
 	nano_nni_lmq_flush(&p->rlmq, false);
 }
 
@@ -1367,6 +1370,16 @@ nano_sock_set_max_client(void *arg, const void *v, size_t sz, nni_opt_type t)
 	}
 	return (rv);
 }
+
+static int
+nano_sock_get_num_client(void *arg, void *v, size_t *szp, nni_opt_type t)
+{
+	nano_sock *s = arg;
+	int          rv;
+
+	rv = nni_copyout_ptr(nni_id_count(&s->pipes), v, szp, t);
+	return (rv);
+}
 #endif
 
 static int
@@ -1517,6 +1530,10 @@ static nni_option nano_sock_options[] = {
 	{
 	    .o_name = NMQ_OPT_MAX_CLIENTS,
 	    .o_set  = nano_sock_set_max_client,
+	},
+	{
+	    .o_name = NMQ_OPT_GET_CLIENTS,
+	    .o_get  = nano_sock_get_num_client,
 	},
 #endif
 #if defined(NNG_SUPP_SQLITE)
