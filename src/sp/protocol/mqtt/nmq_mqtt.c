@@ -1377,7 +1377,7 @@ nano_sock_get_num_client(void *arg, void *v, size_t *szp, nni_opt_type t)
 	nano_sock *s = arg;
 	int          rv;
 
-	rv = nni_copyout_ptr(nni_id_count(&s->pipes), v, szp, t);
+	rv = nni_copyout_int(nni_id_count(&s->pipes), v, szp, t);
 	return (rv);
 }
 #endif
