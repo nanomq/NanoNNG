@@ -17,7 +17,6 @@
 #include "nng/supplemental/util/idhash.h"
 
 
-
 #define PID_PATH_NAME "/tmp/nanomq/nanomq.pid"
 #define CONF_PATH_NAME "/etc/nanomq.conf"
 #define CONF_NAME "/nanomq.conf"
@@ -662,7 +661,8 @@ struct conf {
 	enum { ACL_IGNORE, ACL_DISCONNECT } acl_deny_action;
 #endif
 #if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
-	char      *license_path;	// licnese path
+	char           *license_path; // licnese path
+	nng_atomic_int *lc;
 #endif
 	conf_auth         auths;
 	conf_auth_http    auth_http;
