@@ -788,6 +788,8 @@ session_keeping:
 #endif
 	// pipe_id is just random value of id_dyn_val with self-increment.
 	nni_id_set(&s->pipes, p->id, p);
+	int total = nni_id_count(&s->pipes);
+	log_debug("Total connection num %d", total);
 	p->conn_param->nano_qos_db = p->pipe->nano_qos_db;
 	p->nano_qos_db             = p->pipe->nano_qos_db;
 
@@ -799,11 +801,15 @@ session_keeping:
 			    p->conn_param, &s->conf->auth_http);
 		}
 	}
+	if (total > 25) {
+		rv = QUOTA_EXCEEDED;
+		log_info("Max Quota exceed, %s disconneted", clientid);
+	}
 	nmq_connack_encode(msg, p->conn_param, rv);
 	conn_param_free(p->conn_param);
 	if (rv != 0) {
 		// send connack with reason code 0x05
-		log_warn("Invalid auth info.");
+		log_warn("Invalid auth info or exceed max limits.");
 	}
 
 	// Dont need to manage id_map while enable SQLite.
