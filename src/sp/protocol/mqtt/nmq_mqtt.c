@@ -54,6 +54,9 @@ struct nano_sock {
 	nni_mtx        lk;
 	nni_msg       *pingmsg;
 	nni_atomic_int ttl;
+#if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
+	uint64_t 	   lc;
+#endif
 	nni_id_map     pipes;
 	nni_id_map     cached_sessions;
 	nni_lmq        waitlmq;   // this is for receving
@@ -801,10 +804,13 @@ session_keeping:
 			    p->conn_param, &s->conf->auth_http);
 		}
 	}
-	if (total > 25) {
+#if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
+	if (total > s->lc) {
 		rv = QUOTA_EXCEEDED;
-		log_info("Max Quota exceed, %s disconneted", clientid);
+		log_warn("Max Quota %d exceed, %s disconneted",
+			s->lc, clientid);
 	}
+#endif
 	nmq_connack_encode(msg, p->conn_param, rv);
 	conn_param_free(p->conn_param);
 	if (rv != 0) {
@@ -1348,6 +1354,21 @@ nano_sock_set_max_ttl(void *arg, const void *buf, size_t sz, nni_opt_type t)
 	return (rv);
 }
 
+#if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
+static int
+nano_sock_set_max_client(void *arg, const void *v, size_t sz, nni_opt_type t)
+{
+	nano_sock *s = arg;
+	uint64_t    tmp;
+	int rv;
+
+	if ((rv = nni_copyin_u64(&tmp, v, sz, t)) == 0) {
+		s->lc = tmp;
+	}
+	return (rv);
+}
+#endif
+
 static int
 nano_sock_get_max_ttl(void *arg, void *buf, size_t *szp, nni_opt_type t)
 {
@@ -1492,6 +1513,12 @@ static nni_option nano_sock_options[] = {
 	    .o_name = NMQ_OPT_MQTT_PIPES,
 	    .o_get  = nano_sock_get_idmap,
 	},
+#if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
+	{
+	    .o_name = NMQ_OPT_MAX_CLIENTS,
+	    .o_set  = nano_sock_set_max_client,
+	},
+#endif
 #if defined(NNG_SUPP_SQLITE)
 	{
 	    .o_name = NMQ_OPT_MQTT_QOS_DB,
