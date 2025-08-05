@@ -952,9 +952,6 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->enable           = true;
 	nanomq_conf->bridge_mode      = false;
 
-	nanomq_conf->lic_status.tcp_connections = 0;
-	nanomq_conf->lic_status.tls_connections = 0;
-
 #if defined(ENABLE_LOG)
 	conf_log_init(&nanomq_conf->log);
 #endif

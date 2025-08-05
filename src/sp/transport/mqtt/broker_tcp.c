@@ -270,8 +270,6 @@ tcptran_ep_match(tcptran_ep *ep)
 	}
 	nni_list_remove(&ep->waitpipes, p);
 	nni_list_append(&ep->busypipes, p);
-	if (ep->conf)
-		ep->conf->lic_status.tcp_connections++;
 	ep->useraio = NULL;
 	p->rcvmax   = ep->rcvmax;
 	p->conf     = ep->conf;
@@ -1719,8 +1717,6 @@ tcptran_ep_close(void *arg)
 		tcptran_pipe_close(p);
 	}
 	NNI_LIST_FOREACH (&ep->busypipes, p) {
-		if (ep->conf)
-			ep->conf->lic_status.tcp_connections--;
 		tcptran_pipe_close(p);
 	}
 	if (ep->useraio != NULL) {
