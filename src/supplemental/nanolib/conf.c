@@ -3679,6 +3679,7 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 			if (node->hybrid_servers[i])
 				free(node->hybrid_servers[i]);
 		cvector_free(node->hybrid_servers);
+		node->hybrid_servers = NULL;
 	}
 	conf_tls_destroy(&node->tls);
 }
