@@ -97,7 +97,9 @@ struct mqtts_tcptran_ep {
 	nng_stream_dialer *  dialer;
 	nng_stream_listener *listener;
 	nni_dialer *         ndialer;
+#ifdef NNG_HAVE_MQTT_BROKER
 	conf_bridge_node *   bridge_conf; // only for reload TLS certs
+#endif
 	void *               property;  // property
 	void *               connmsg;
 	bool                 enable_scram;
@@ -1478,7 +1480,9 @@ mqtts_tcptran_ep_init(mqtts_tcptran_ep **epp, nng_url *url, nni_sock *sock)
 	ep->connmsg     = NULL;
 	ep->reason_code = 0;
 	ep->property    = NULL;
+#ifdef NNG_HAVE_MQTT_BROKER
 	ep->bridge_conf = NULL;
+#endif
 	ep->backoff     = 0;
 
 	*epp = ep;
@@ -1765,8 +1769,9 @@ mqtts_tcptran_ep_connect(void *arg, nni_aio *aio)
 		return;
 	}
 	ep->useraio = aio;
-
+#ifdef NNG_HAVE_MQTT_BROKER
 	nng_dialer_reload_tls(ep->bridge_conf, ep->ndialer);
+#endif
 	nng_stream_dialer_dial(ep->dialer, ep->connaio);
 	nni_mtx_unlock(&ep->mtx);
 }
@@ -1839,6 +1844,7 @@ mqtts_tcptran_ep_set_connmsg(
 	return (rv);
 }
 
+#ifdef NNG_HAVE_MQTT_BROKER
 static int
 mqtts_tcptran_ep_set_conf(
     void *arg, const void *v, size_t sz, nni_opt_type t)
@@ -1852,6 +1858,7 @@ mqtts_tcptran_ep_set_conf(
 
 	return (rv);
 }
+#endif
 
 // NanoSDK use exponential backoff strategy as default
 // Backoff for random time that exponentially curving
