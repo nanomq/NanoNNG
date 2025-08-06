@@ -1628,7 +1628,7 @@ nng_dialer_reload_tls(conf_bridge_node *node, nni_dialer *ndialer)
 {
 	int             rv;
 	int             len;
-	nng_tls_config *cfg;
+	nng_tls_config *cfg = NULL;
 	conf_tls       *tls = &node->tls;
 
 	if (node == NULL)
@@ -1696,8 +1696,8 @@ nng_dialer_reload_tls(conf_bridge_node *node, nni_dialer *ndialer)
 		    ndialer, NNG_OPT_TLS_CONFIG, &cfg, NULL, NNI_TYPE_POINTER);
 		nni_dialer_rele(ndialer);
 	}
-
-	nng_tls_config_free(cfg);
+	if (cfg != NULL)
+		nng_tls_config_free(cfg);
 	if ((rv = nng_tls_config_alloc(&cfg, NNG_TLS_MODE_CLIENT)) != 0) {
 		log_error("alloc tls config failed!");
 		return;
