@@ -114,6 +114,11 @@ void *nng_hocon_parse_str(char *str, size_t len)
 	return hocon_parse_str(str, len);
 }
 
+void *nng_hocon_parse_file(char *str)
+{
+	return hocon_parse_file(str);
+}
+
 char *
 nng_strndup(const char *src, size_t len)
 {
