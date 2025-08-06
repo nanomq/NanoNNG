@@ -1505,7 +1505,10 @@ nmq_subinfol_add_or(nni_list *l, struct subinfo *n)
 	struct subinfo *sn = NULL;
 	NNI_LIST_FOREACH(l, sn) {
 		if (0 == strcmp(n->topic, sn->topic)) {
-			return -1;
+			nni_list_remove(l, sn);
+			nng_free(sn->topic, strlen(sn->topic));
+			nng_free(sn, sizeof(*sn));
+			break;
 		}
 	}
 	nni_list_append(l, n);
