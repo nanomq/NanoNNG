@@ -662,8 +662,8 @@ struct conf {
 #endif
 #if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
 	char           *license_path; // licnese path	
-	nng_atomic_int   *lc;		// connections in total
 #endif
+	nng_atomic_int   *lc;		// connections in total
 	conf_auth         auths;
 	conf_auth_http    auth_http;
 	struct hashmap_s *cid_table;
