@@ -1368,6 +1368,7 @@ typedef struct pub_packet_struct pub_packet_struct;
 typedef struct pipe_db           nano_pipe_db;
 
 NNG_DECL void *nng_hocon_parse_str(char *str, size_t len);
+NNG_DECL void *nng_hocon_parse_file(char *str);
 NNG_DECL int nng_access(const char* name, int flag);
 
 // NANOMQ MQTT API ends
