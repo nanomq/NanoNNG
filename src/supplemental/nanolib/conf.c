@@ -1015,9 +1015,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->ext_qos_db                = NULL;
 	conf_preset_sessions_init(&nanomq_conf->pre_sessions);
 	memset(nanomq_conf->exec_path, 0, 512);
-#if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
-	nng_atomic_alloc(&nanomq_conf->lc);	//Maybe atomic is redundant
-#endif
+	nng_atomic_alloc(&nanomq_conf->lc);	// Marks current total connections
 }
 
 static void

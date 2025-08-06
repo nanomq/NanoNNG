@@ -804,8 +804,8 @@ session_keeping:
 	}
 	int total = nni_id_count(&s->pipes);
 	log_debug("Total connection num %d", total);
-#if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
 	nng_atomic_set(s->conf->lc, total);
+#if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
 	if (total > s->lc) {
 		rv = QUOTA_EXCEEDED;
 		log_warn("Max Quota %d exceed, %s disconneted",
@@ -889,9 +889,7 @@ close_pipe(nano_pipe *p)
 	t = nni_id_get(&s->pipes, nni_pipe_id(p->pipe));
 	if (t == p) {
 		nni_id_remove(&s->pipes, nni_pipe_id(p->pipe));
-#if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
 		nng_atomic_set(s->conf->lc, nni_id_count(&s->pipes));
-#endif
 	}
 	nano_nni_lmq_flush(&p->rlmq, false);
 }
