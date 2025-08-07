@@ -784,6 +784,7 @@ session_keeping:
 #endif
 	// pipe_id is just random value of id_dyn_val with self-increment.
 	nni_id_set(&s->pipes, p->id, p);
+	nng_atomic_set(s->conf->lc, nni_id_count(&s->pipes));
 	p->conn_param->nano_qos_db = p->pipe->nano_qos_db;
 	p->nano_qos_db             = p->pipe->nano_qos_db;
 
@@ -866,8 +867,10 @@ close_pipe(nano_pipe *p)
 	}
 	// only remove matched pipe, could have been overwritten
 	t = nni_id_get(&s->pipes, nni_pipe_id(p->pipe));
-	if (t == p)
+	if (t == p) {
 		nni_id_remove(&s->pipes, nni_pipe_id(p->pipe));
+		nng_atomic_set(s->conf->lc, nni_id_count(&s->pipes));
+	}
 	nano_nni_lmq_flush(&p->rlmq, false);
 }
 

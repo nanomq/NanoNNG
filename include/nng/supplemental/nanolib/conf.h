@@ -654,7 +654,8 @@ struct conf {
 	conf_auth_http    auth_http;
 	struct hashmap_s *cid_table;
 	nng_mtx          *restapi_lk; // No other option for bride reload
-	nng_id_map *ext_qos_db; // store nano_qos_db for pre-configured sessions
+	nng_id_map		 *ext_qos_db; // store nano_qos_db for pre-configured sessions
+	nng_atomic_int   *lc;
 };
 
 typedef struct conf conf;
