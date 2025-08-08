@@ -4520,5 +4520,7 @@ conf_fini(conf *nanomq_conf)
 #if defined(SUPP_PARQUET)
 	conf_parquet_destroy(&nanomq_conf->parquet);
 #endif
+
+	nng_atomic_free(nanomq_conf->lc);
 	free(nanomq_conf);
 }
