@@ -1368,6 +1368,18 @@ print_conf(conf *nanomq_conf)
 		log_info("websocket tls url:        %s",
 		    nanomq_conf->websocket.tls_url);
 	}
+	if (nanomq_conf->cmd_ipc_url) {
+		log_info("cmd_ipc_url:        %s",
+		    nanomq_conf->cmd_ipc_url);
+	}
+	if (nanomq_conf->hook_ipc_url) {
+		log_info("hook_ipc_url:        %s",
+		    nanomq_conf->hook_ipc_url);
+	}
+	if (nanomq_conf->exchange_ipc_url) {
+		log_info("exchange_ipc_url:        %s",
+		    nanomq_conf->exchange_ipc_url);
+	}
 	if (nanomq_conf->tls.enable) {
 		conf_tls tls = nanomq_conf->tls;
 		log_info("tls url:                  %s", nanomq_conf->tls.url);
