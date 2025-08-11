@@ -1,6 +1,7 @@
 #include "nng/supplemental/nanolib/cvector.h"
 #include "nng/supplemental/nanolib/hocon.h"
 #include "nng/supplemental/nanolib/parser.h"
+#include "nng/supplemental/nanolib/scanner.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -189,28 +190,33 @@ deduplication_and_merging(cJSON *jso)
 cJSON *
 hocon_parse_file(const char *file)
 {
-	// yydebug = 1;
-	if (!(yyin = fopen(file, "r"))) {
-		perror((file));
-		return NULL;
-	}
+    FILE *fp = fopen(file, "rb");
+    if (!fp) {
+        perror(file);
+        return NULL;
+    }
 
-	cJSON *jso = NULL;
-	int    rv  = yyparse(&jso);
-	if (0 != rv) {
-		fprintf(stderr, "invalid data to parse!\n");
-		return NULL;
-	}
-	if (cJSON_False != cJSON_IsInvalid(jso)) {
-		jso = path_expression_parse(jso);
-		return deduplication_and_merging(jso);
-	}
-	return NULL;
+    YY_BUFFER_STATE buffer = yy_create_buffer(fp, YY_BUF_SIZE);
+    yy_switch_to_buffer(buffer);
+
+    cJSON *jso = NULL;
+    int rv = yyparse(&jso);
+
+    yy_delete_buffer(buffer);
+    fclose(fp);
+
+    if (rv != 0) {
+        fprintf(stderr, "invalid data to parse!\n");
+        return NULL;
+    }
+
+    if (cJSON_False != cJSON_IsInvalid(jso)) {
+        jso = path_expression_parse(jso);
+        return deduplication_and_merging(jso);
+    }
+    return NULL;
 }
 
-typedef struct yy_buffer_state *YY_BUFFER_STATE;
-extern YY_BUFFER_STATE          yy_scan_bytes(char *buffer, size_t size);
-extern void yy_delete_buffer(struct yy_buffer_state *buffer);
 
 void *
 hocon_parse_str(char *str, size_t len)
