@@ -77,18 +77,26 @@ NNG_DECL void log_log(int level, const char *file, int line, const char *func,
 NNG_DECL void log_clear_callback();
 #ifdef ENABLE_LOG
 
+#if defined(NANO_PLATFORM_LINUX)
+#define __FILENAME__ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
+#elif defined(NANO_PLATFORM_WINDOWS)
+#define __FILENAME__ (strrchr(__FILE__, '\\') ? strrchr(__FILE__, '\\') + 1 : __FILE__)
+#else
+#define __FILENAME__ __FILE__
+#endif
+
 #define log_trace(...) \
-    log_log(NNG_LOG_TRACE, __FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
+    log_log(NNG_LOG_TRACE, __FILENAME__, __LINE__, __FUNCTION__, __VA_ARGS__)
 #define log_debug(...) \
-    log_log(NNG_LOG_DEBUG, __FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
+    log_log(NNG_LOG_DEBUG, __FILENAME__, __LINE__, __FUNCTION__, __VA_ARGS__)
 #define log_info(...) \
-    log_log(NNG_LOG_INFO, __FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
+    log_log(NNG_LOG_INFO, __FILENAME__, __LINE__, __FUNCTION__, __VA_ARGS__)
 #define log_warn(...) \
-    log_log(NNG_LOG_WARN, __FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
+    log_log(NNG_LOG_WARN, __FILENAME__, __LINE__, __FUNCTION__, __VA_ARGS__)
 #define log_error(...) \
-    log_log(NNG_LOG_ERROR, __FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
+    log_log(NNG_LOG_ERROR, __FILENAME__, __LINE__, __FUNCTION__, __VA_ARGS__)
 #define log_fatal(...) \
-    log_log(NNG_LOG_FATAL, __FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
+    log_log(NNG_LOG_FATAL, __FILENAME__, __LINE__, __FUNCTION__, __VA_ARGS__)
 
 #else
 
