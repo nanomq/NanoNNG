@@ -1776,6 +1776,7 @@ conf_rule_repub_parse(conf_rule *cr, char *path)
 	fclose(fp);
 }
 
+#if defined(SUPP_TIMESCALEDB)
 static void
 conf_rule_timescaledb_parse(conf_rule *cr, char *path)
 {
@@ -1906,7 +1907,9 @@ conf_rule_timescaledb_parse(conf_rule *cr, char *path)
 
 	fclose(fp);
 }
+#endif
 
+#if defined(SUPP_POSTGRESQL)
 static void
 conf_rule_postgresql_parse(conf_rule *cr, char *path)
 {
@@ -2037,7 +2040,9 @@ conf_rule_postgresql_parse(conf_rule *cr, char *path)
 
 	fclose(fp);
 }
+#endif
 
+#if defined(SUPP_MYSQL)
 static void
 conf_rule_mysql_parse(conf_rule *cr, char *path)
 {
@@ -2168,7 +2173,9 @@ conf_rule_mysql_parse(conf_rule *cr, char *path)
 
 	fclose(fp);
 }
+#endif
 
+#if defined(NNG_SUPP_SQLITE)
 static bool
 conf_rule_sqlite_parse(conf_rule *cr, char *path)
 {
@@ -2251,7 +2258,9 @@ conf_rule_sqlite_parse(conf_rule *cr, char *path)
 	}
 
 	fclose(fp);
+	return true;
 }
+#endif
 
 static void
 conf_rule_fdb_parse(conf_rule *cr, char *path)
@@ -2370,7 +2379,7 @@ conf_rule_parse(conf_rule *rule, const char *path)
 			if (0 == nni_strcasecmp(value, "enable")) {
 #if defined(NNG_SUPP_SQLITE)
 				rule->option |= RULE_ENG_SDB;
-				conf_rule_sqlite_parse(cr, path);
+				conf_rule_sqlite_parse(cr, (char *)path);
 #else
 				log_error("If you want use sqlite rule, recompile nanomq with option `-DNNG_ENABLE_SQLITE=ON`");
 #endif
@@ -2390,7 +2399,7 @@ conf_rule_parse(conf_rule *rule, const char *path)
 		                line, sz, "rule_option.repub")) != NULL) {
 			if (0 == nni_strcasecmp(value, "enable")) {
 				rule->option |= RULE_ENG_RPB;
-				conf_rule_repub_parse(cr, path);
+				conf_rule_repub_parse(cr, (char *)path);
 			} else {
 				if (0 != nni_strcasecmp(value, "disable")) {
 					log_error(
@@ -4470,7 +4479,7 @@ conf_rule_destroy(conf_rule *re)
 	nng_strfree(re->mysql_db);
 	nng_strfree(re->postgresql_db);
 	nng_strfree(re->timescale_db);
-	for (int i = 0; i < cvector_size(re->rules); ++i) {
+	for (int i = 0; i < (int)cvector_size(re->rules); ++i) {
 		rule_repub_free(re->rules[i].repub);
 		rule_mysql_free(re->rules[i].mysql);
         rule_postgresql_free(re->rules[i].postgresql);
