@@ -48,19 +48,6 @@ static enum_map http_server_auth_type[] = {
 	{ -1, NULL },
 };
 
-static enum_map compress_type[] = {
-	{ UNCOMPRESSED, "uncompressed" },
-	{ SNAPPY, "snappy" },
-	{ GZIP, "gzip" },
-	{ BROTLI, "brotli" },
-	{ ZSTD, "zstd" },
-	{ LZ4, "lz4" },
-	{ -1, NULL },
-};
-
-static enum_map encryption_type[] = { { AES_GCM_V1, "aes_gcm_v1" },
-	{ AES_GCM_CTR_V1, "aes_gcm_ctr_v1" } };
-
 cJSON *hocon_get_obj(char *key, cJSON *jso);
 
 // Read json value into struct
@@ -1017,16 +1004,6 @@ update_subscription_vin(conf_bridge_node *node, const char *vin)
 	}
 }
 
-static void
-update_parquet_vin(conf_parquet *parquet)
-{
-	if (parquet->file_name_prefix &&
-	    0 == nng_strcasecmp(parquet->file_name_prefix, "${VIN}")) {
-		nng_strfree(parquet->file_name_prefix);
-		parquet->file_name_prefix = strdup(gvin);
-	}
-}
-
 #define CONF_NODE_CLIENTID 0
 #define CONF_NODE_SUBSCRIPTION 1
 #define CONF_NODE_FORWARD 2
@@ -1474,93 +1451,6 @@ conf_exchange_encryption_parse(conf_exchange_encryption *node, cJSON *obj)
 	if (node->enable == true && node->key == NULL) {
 		log_error("invalid exchange encryption configuration!");
 		return;
-	}
-
-	return;
-}
-
-static void
-conf_exchange_parse_ver2(conf *config, cJSON *jso)
-{
-	cJSON *node_array = hocon_get_obj("exchange_client", jso);
-	cJSON *node_item  = NULL;
-
-	cJSON_ArrayForEach(node_item, node_array)
-	{
-		conf_exchange_node *node = NNI_ALLOC_STRUCT(node);
-		node->sock               = NULL;
-		node->topic              = NULL;
-		node->name               = NULL;
-		node->rbufs              = NULL;
-		node->rbufs_sz           = 0;
-		node->exchange_url       = NULL;
-
-		hocon_read_str(node, exchange_url, node_item);
-
-		conf_exchange_node_parse(node, node_item);
-
-		conf_exchange_encryption *enc = NNI_ALLOC_STRUCT(enc);
-		enc->enable                   = false;
-		enc->key                      = NULL;
-		conf_exchange_encryption_parse(enc, node_item);
-		config->exchange.encryption = enc;
-
-		nng_mtx_alloc(&node->mtx);
-		cvector_push_back(config->exchange.nodes, node);
-	}
-	config->exchange.count = cvector_size(config->exchange.nodes);
-
-	return;
-}
-
-static void
-conf_parquet_parse_ver2(conf *config, cJSON *jso)
-{
-	cJSON *jso_parquet = cJSON_GetObjectItem(jso, "parquet");
-	if (jso_parquet) {
-		conf_parquet *parquet = &(config->parquet);
-		parquet->enable       = true;
-		hocon_read_bool_base(parquet, enable, "enable", jso_parquet);
-		hocon_read_num(parquet, limit_frequency, jso_parquet);
-		hocon_read_num(parquet, file_count, jso_parquet);
-		hocon_read_size(parquet, file_size, jso_parquet);
-		hocon_read_str(parquet, dir, jso_parquet);
-		hocon_read_str(parquet, file_name_prefix, jso_parquet);
-		update_parquet_vin(parquet);
-		hocon_read_enum_base(parquet, comp_type, "compress",
-		    jso_parquet, compress_type);
-		cJSON *jso_parquet_encryption =
-		    cJSON_GetObjectItem(jso_parquet, "encryption");
-		if (jso_parquet_encryption) {
-			conf_parquet_encryption *encryption =
-			    &(parquet->encryption);
-			encryption->enable = true;
-			hocon_read_str(
-			    encryption, key_id, jso_parquet_encryption);
-			hocon_read_str(
-			    encryption, key, jso_parquet_encryption);
-			hocon_read_enum(encryption, type,
-			    jso_parquet_encryption, encryption_type);
-		}
-	}
-
-	return;
-}
-
-static void
-conf_blf_parse_ver2(conf *config, cJSON *jso)
-{
-	cJSON *jso_blf = cJSON_GetObjectItem(jso, "blf");
-
-	if (jso_blf) {
-		conf_blf *blf = &(config->blf);
-		blf->enable   = true;
-		hocon_read_num(blf, file_count, jso_blf);
-		hocon_read_size(blf, file_size, jso_blf);
-		hocon_read_str(blf, dir, jso_blf);
-		hocon_read_str(blf, file_name_prefix, jso_blf);
-		hocon_read_enum_base(
-		    blf, comp_type, "compress", jso_blf, compress_type);
 	}
 
 	return;
@@ -2047,11 +1937,6 @@ conf_parse_ver2(conf *config)
 		conf_pre_session_parse_ver2(config, jso);
 		conf_authorization_prase_ver2(config, jso);
 		conf_bridge_parse_ver2(config, jso);
-#if defined(SUPP_PARQUET)
-		conf_exchange_parse_ver2(config, jso);
-		conf_parquet_parse_ver2(config, jso);
-		conf_blf_parse_ver2(config, jso);
-#endif
 #if defined(SUPP_PLUGIN)
 		conf_plugin_parse_ver2(config, jso);
 #endif
