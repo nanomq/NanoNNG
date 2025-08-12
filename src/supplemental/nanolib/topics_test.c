@@ -13,8 +13,8 @@ test_generate_repub_topics(void)
     topic->remote_topic_len = strlen(remote_topic);
     topic->local_topic_len  = strlen(local_topic);
     char *test_topic = strdup("785fa9a4-1382-4c58-a11e-c89d94569f6b/zb/abc/abv/adasdasd/asdasda");
-    preprocess_topics(topic);
-    char * new_topic = generate_repub_topic(topic, test_topic);
+    preprocess_topics(topic, true);
+    char * new_topic = generate_repub_topic(topic, test_topic, true);
     NUTS_MATCH(new_topic, "abc/abv/adasdasd/asdasda");
 
     nng_strfree(new_topic);
@@ -31,8 +31,8 @@ test_generate_repub_topics(void)
     topic1->remote_topic_len = strlen(remote_topic1);
     topic1->local_topic_len  = strlen(local_topic1);
     char *test_topic1 = strdup("785fa9a4-1382-4c58-a11e-c89d94569f6b/zb/abc/abv/adasdasd/asdasda");
-    preprocess_topics(topic1);
-    char * new_topic1 = generate_repub_topic(topic1, test_topic1);
+    preprocess_topics(topic1, true);
+    char * new_topic1 = generate_repub_topic(topic1, test_topic1, true);
     NUTS_MATCH(new_topic1, "abc");
 
     nng_strfree(new_topic1);
@@ -51,8 +51,8 @@ test_generate_repub_topics(void)
     topic2->local_topic_len  = strlen(local_topic2);
 
     char *test_topic2 = strdup("785fa9a4-1382-4c58-a11e-c89d94569f6b/zb/abc/abv/adasdasd/asdasda");
-    preprocess_topics(topic2);
-    char * new_topic2 = generate_repub_topic(topic2, test_topic2);
+    preprocess_topics(topic2, true);
+    char * new_topic2 = generate_repub_topic(topic2, test_topic2, true);
     NUTS_MATCH(new_topic2, "zb/abc");
 
     nng_strfree(new_topic2);
@@ -70,8 +70,8 @@ test_generate_repub_topics(void)
     topic3->local_topic_len  = strlen(local_topic3);
 
     char *test_topic3 = strdup("785fa9a4-1382-4c58-a11e-c89d94569f6b/zb/abc/abv/adasdasd/asdasda");
-    preprocess_topics(topic3);
-    char * new_topic3 = generate_repub_topic(topic3, test_topic3);
+    preprocess_topics(topic3, true);
+    char * new_topic3 = generate_repub_topic(topic3, test_topic3, true);
     NUTS_MATCH(new_topic3, "adasdasd/asdasda");
 
     nng_strfree(new_topic3);
@@ -89,8 +89,8 @@ test_generate_repub_topics(void)
     topic4->local_topic_len  = strlen(local_topic4);
 
     char *test_topic4 = strdup("785fa9a4-1382-4c58-a11e-c89d94569f6b/zb/abc/abv/adasdasd");
-    preprocess_topics(topic4);
-    char * new_topic4 = generate_repub_topic(topic4, test_topic4);
+    preprocess_topics(topic4, true);
+    char * new_topic4 = generate_repub_topic(topic4, test_topic4, true);
     NUTS_MATCH(new_topic4, "adasdasd");
 
     nng_strfree(new_topic4);
@@ -109,8 +109,8 @@ test_generate_repub_topics(void)
 
     char *test_topic5 = strdup("785fa9a4-1382-4c58-a11e-c89d94569f6b/zb/abc/abv/adasdasd");
 
-    preprocess_topics(topic5);
-    char * new_topic5 = generate_repub_topic(topic5, test_topic5);
+    preprocess_topics(topic5, true);
+    char * new_topic5 = generate_repub_topic(topic5, test_topic5, true);
     NUTS_MATCH(new_topic5, "abc");
 
     nng_strfree(new_topic5);
@@ -130,8 +130,8 @@ test_generate_repub_topics(void)
 
     char *test_topic6 = strdup("785fa9a4-1382-4c58-a11e-c89d94569f6b/zb/abc/abv/adasdasd");
 
-    preprocess_topics(topic6);
-    char * new_topic6 = generate_repub_topic(topic6, test_topic6);
+    preprocess_topics(topic6, true);
+    char * new_topic6 = generate_repub_topic(topic6, test_topic6, true);
     NUTS_NULL(new_topic6);
 
     nng_strfree(test_topic6);
@@ -150,8 +150,8 @@ test_generate_repub_topics(void)
 
     char *test_topic7 = strdup("785fa9a4-1382-4c58-a11e-c89d94569f6b/zb/abc/abv/adasdasd");
 
-    preprocess_topics(topic7);
-    char * new_topic7 = generate_repub_topic(topic7, test_topic7);
+    preprocess_topics(topic7, true);
+    char * new_topic7 = generate_repub_topic(topic7, test_topic7, true);
     NUTS_NULL(new_topic7);
 
     nng_strfree(test_topic7);
@@ -170,8 +170,8 @@ test_generate_repub_topics(void)
 
     char *test_topic8 = strdup("785fa9a4-1382-4c58-a11e-c89d94569f6b/zb/abc/abv/adasdasd");
 
-    preprocess_topics(topic8);
-    char * new_topic8 = generate_repub_topic(topic8, test_topic8);
+    preprocess_topics(topic8, true);
+    char * new_topic8 = generate_repub_topic(topic8, test_topic8, true);
     NUTS_NULL(new_topic8);
 
     nng_strfree(test_topic8);
@@ -189,8 +189,8 @@ test_generate_repub_topics(void)
 
     char *test_topic9 = strdup("785fa9a4-1382-4c58-a11e-c89d94569f6b/zb/abc/abv/adasdasd");
 
-    preprocess_topics(topic9);
-    char * new_topic9 = generate_repub_topic(topic9, test_topic9);
+    preprocess_topics(topic9, true);
+    char * new_topic9 = generate_repub_topic(topic9, test_topic9, true);
     NUTS_MATCH(new_topic9, "abc/abv");
 
     nng_strfree(new_topic9);

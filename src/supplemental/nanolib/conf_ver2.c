@@ -1261,7 +1261,7 @@ conf_bridge_node_parse(
 		}
 		s->remote_topic_len = strlen(s->remote_topic);
 		s->local_topic_len  = strlen(s->local_topic);
-		preprocess_topics2(s);
+		preprocess_topics(s, false);
 		cvector_push_back(node->forwards_list, s);
 	}
 	node->forwards_count = cvector_size(node->forwards_list);
@@ -1321,7 +1321,7 @@ conf_bridge_node_parse(
 
 		s->stream_id = 0;
 		hocon_read_num(s, stream_id, subscription);
-		preprocess_topics(s);
+		preprocess_topics(s, true);
 		cvector_push_back(node->sub_list, s);
 	}
 	node->sub_count = cvector_size(node->sub_list);

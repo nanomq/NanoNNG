@@ -18,11 +18,21 @@ count_slashes(const char *str, size_t len)
 	return count;
 }
 
+// is_sub true for downward msg (produce local topic)
+// is_sub false for upward msg (produce remote topic)
 void
-preprocess_topics2(topics *s)
+preprocess_topics(topics *s, bool is_sub)
 {
-	const char *current      = s->remote_topic;
-	const char *end          = s->remote_topic + s->remote_topic_len;
+	char    *topic, *ori_topic;
+	uint32_t topic_len, ori_topic_len;
+
+	topic = (is_sub == true) ? s->local_topic : s->remote_topic;
+	topic_len = (is_sub == true) ? s->local_topic_len : s->remote_topic_len;
+	ori_topic = (is_sub == true) ? s->remote_topic : s->local_topic;
+	ori_topic_len = (is_sub == true) ? s->remote_topic_len : s->local_topic_len;
+
+	const char *current      = topic;
+	const char *end          = topic + topic_len;
 	bool        has_wildcard = false;
 	SET_LEVEL(s, LOCAL_TOPIC_DEFAULT_LEVEL);
 
@@ -38,8 +48,8 @@ preprocess_topics2(topics *s)
 		current++;
 	}
 
-	current = s->local_topic;
-	end     = s->local_topic + s->local_topic_len;
+	current = ori_topic;
+	end     = ori_topic + ori_topic_len;
 	while ((current = strpbrk(current, "#")) != NULL) {
 		if (*current == '#') {
 			if (current != end - 1) {
@@ -51,7 +61,7 @@ preprocess_topics2(topics *s)
 		current++;
 	}
 
-	char *substr_pos = strstr(s->local_topic, s->remote_topic);
+	char *substr_pos = strstr(ori_topic, topic);
 	if (has_wildcard) {
 		if (!substr_pos) {
 			SET_LEVEL(s, LOCAL_TOPIC_INVALID_LEVEL);
@@ -60,78 +70,23 @@ preprocess_topics2(topics *s)
 			return;
 		}
 
-		size_t prefix_length = substr_pos - s->local_topic;
+		size_t prefix_length = substr_pos - ori_topic;
 		s->local_skip_level =
-		    count_slashes(s->local_topic, prefix_length);
+		    count_slashes(ori_topic, prefix_length);
 
 		size_t remaining_len = strlen(substr_pos);
-		if (remaining_len == s->remote_topic_len) {
+		if (remaining_len == topic_len) {
 			s->local_save_level = -1;
-		} else if (remaining_len > s->remote_topic_len) {
+		} else if (remaining_len > topic_len) {
 			s->local_save_level = 1 +
-			    count_slashes(s->remote_topic, s->remote_topic_len);
+			    count_slashes(topic, topic_len);
 		}
 	}
 }
 
-void
-preprocess_topics(topics *s)
-{
-	const char *current      = s->local_topic;
-	const char *end          = s->local_topic + s->local_topic_len;
-	bool        has_wildcard = false;
-	SET_LEVEL(s, LOCAL_TOPIC_DEFAULT_LEVEL);
-
-	while ((current = strpbrk(current, "+#")) != NULL) {
-		has_wildcard = true;
-		if (*current == '#') {
-			if (current != end - 1) {
-				SET_LEVEL(s, LOCAL_TOPIC_INVALID_LEVEL);
-				log_error("# must be last element");
-				return;
-			}
-		}
-		current++;
-	}
-
-	current = s->remote_topic;
-	end     = s->remote_topic + s->remote_topic_len;
-	while ((current = strpbrk(current, "#")) != NULL) {
-		if (*current == '#') {
-			if (current != end - 1) {
-				SET_LEVEL(s, LOCAL_TOPIC_INVALID_LEVEL);
-				log_error("# must be last element");
-				return;
-			}
-		}
-		current++;
-	}
-
-	char *substr_pos = strstr(s->remote_topic, s->local_topic);
-	if (has_wildcard) {
-		if (!substr_pos) {
-			SET_LEVEL(s, LOCAL_TOPIC_INVALID_LEVEL);
-			log_error("local_topic has wildcard but it's not "
-			          "substring of remote topic");
-			return;
-		}
-
-		size_t prefix_length = substr_pos - s->remote_topic;
-		s->local_skip_level =
-		    count_slashes(s->remote_topic, prefix_length);
-
-		size_t remaining_len = strlen(substr_pos);
-		if (remaining_len == s->local_topic_len) {
-			s->local_save_level = -1;
-		} else if (remaining_len > s->local_topic_len) {
-			s->local_save_level = 1 +
-			    count_slashes(s->local_topic, s->local_topic_len);
-		}
-	}
-}
-
+// is_sub takes same effect like preprocess_topics()
 char *
-generate_repub_topic(const topics *s, char *topic)
+generate_repub_topic(const topics *s, char *topic, bool is_sub)
 {
 	const char *current_pos = topic;
 	for (int i = 0; i < s->local_skip_level && current_pos; ++i) {
@@ -148,47 +103,8 @@ generate_repub_topic(const topics *s, char *topic)
 		new_topic = nng_strdup(current_pos ? current_pos : "");
 		break;
 	case LOCAL_TOPIC_DEFAULT_LEVEL:
-		new_topic = nng_strdup(s->local_topic);
-		break;
-	case LOCAL_TOPIC_INVALID_LEVEL:
-		new_topic = NULL;
-		break;
-
-	default:
-		for (int i = 0; end_pos && i < s->local_save_level; ++i) {
-			end_pos = strchr(end_pos, '/');
-			if (end_pos)
-				++end_pos;
-		}
-		new_topic = end_pos
-		    ? nng_strndup(current_pos, end_pos - current_pos - 1)
-		    : nng_strdup(current_pos);
-		break;
-	}
-
-	log_debug("new repub topic: %s", new_topic);
-	return new_topic;
-}
-
-char *
-generate_repub_topic2(const topics *s, char *topic)
-{
-	const char *current_pos = topic;
-	for (int i = 0; i < s->local_skip_level && current_pos; ++i) {
-		current_pos = strchr(current_pos, '/');
-		if (current_pos)
-			++current_pos;
-	}
-
-	char *new_topic = NULL;
-	const char *end_pos = current_pos;
-
-	switch (s->local_save_level) {
-	case LOCAL_TOPIC_INFINITE_LEVEL:
-		new_topic = nng_strdup(current_pos ? current_pos : "");
-		break;
-	case LOCAL_TOPIC_DEFAULT_LEVEL:
-		new_topic = nng_strdup(s->remote_topic);
+		new_topic = (is_sub == true) ? nng_strdup(s->local_topic)
+		                             : nng_strdup(s->remote_topic);
 		break;
 	case LOCAL_TOPIC_INVALID_LEVEL:
 		new_topic = NULL;
