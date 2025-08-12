@@ -86,11 +86,11 @@ NNG_DECL void log_clear_callback();
 #endif
 
 #define log_trace(...) \
-    log_log(NNG_LOG_TRACE, __FILENAME__, __LINE__, __FUNCTION__, __VA_ARGS__)
+    log_log(NNG_LOG_TRACE, __FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
 #define log_debug(...) \
-    log_log(NNG_LOG_DEBUG, __FILENAME__, __LINE__, __FUNCTION__, __VA_ARGS__)
+    log_log(NNG_LOG_DEBUG, __FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
 #define log_info(...) \
-    log_log(NNG_LOG_INFO, __FILENAME__, __LINE__, __FUNCTION__, __VA_ARGS__)
+    log_log(NNG_LOG_INFO, __FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
 #define log_warn(...) \
     log_log(NNG_LOG_WARN, __FILENAME__, __LINE__, __FUNCTION__, __VA_ARGS__)
 #define log_error(...) \
