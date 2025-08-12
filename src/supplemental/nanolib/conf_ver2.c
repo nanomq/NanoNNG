@@ -1311,14 +1311,7 @@ conf_bridge_node_parse(
 		}
 		s->remote_topic_len = strlen(s->remote_topic);
 		s->local_topic_len  = strlen(s->local_topic);
-		for (int i = 0; i < (int) s->remote_topic_len; ++i)
-			if (s->remote_topic[i] == '+' ||
-			    s->remote_topic[i] == '#') {
-				log_error(
-				    "No wildcard +/# should be contained in "
-				    "remote topic in forward rules.");
-				break;
-			}
+		preprocess_topics2(s);
 		cvector_push_back(node->forwards_list, s);
 	}
 	node->forwards_count = cvector_size(node->forwards_list);
