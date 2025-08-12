@@ -87,7 +87,7 @@ NNG_DECL void log_clear_callback();
 #endif
 #else
 #ifndef __FILE_NAME__
-#define __FILENAME__ __FILE__
+#define __FILE_NAME__ __FILE__
 #endif
 #endif
 
