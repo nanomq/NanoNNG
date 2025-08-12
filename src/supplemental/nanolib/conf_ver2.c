@@ -418,7 +418,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 			} else {
 				websocket->tls_enable = false;
 			}
-			log_info("websocket tls :%d", websocket->tls_enable);
+			//log_info("websocket tls: %d", websocket->tls_enable);
 		}
 	}
 
@@ -444,7 +444,7 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 			if (tls->cert_encrypted == false) {
 				len = file_load_data(tls->keyfile, (void **) &tls->key);
 				if (len == 0)
-					log_error("Read keyfile %s failed!", tls->keyfile);
+					log_warn("Failed to read keyfile %s! tls service will not start", tls->keyfile);
 			} else {
 #ifdef SUPP_PARQUET
 				len = file_load_aes_decrypt(tls->keyfile, (void **) &tls->key);
@@ -455,13 +455,13 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 #endif
 			}
 		} else {
-			log_error("keyfile %s is null!", tls->keyfile);
+			log_error("keyfile %s in config is null!", tls->keyfile);
 		}
 		if (tls->certfile) {
 			if (tls->cert_encrypted == false) {
 				len = file_load_data(tls->certfile, (void **) &tls->cert);
 				if (len == 0)
-					log_error("Read certfile %s failed!", tls->certfile);
+					log_warn("Failed to read certfile %s! tls service will not start", tls->certfile);
 			} else {
 #ifdef SUPP_PARQUET
 				len = file_load_aes_decrypt(tls->certfile, (void **) &tls->cert);
@@ -472,14 +472,14 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 #endif
 			}
 		} else {
-			log_error("certfile %s is null!", tls->certfile);
+			log_error("certfile %s in config is null!", tls->certfile);
 		}
 
 		if (tls->cafile) {
 			if (tls->cert_encrypted == false) {
 				len = file_load_data(tls->cafile, (void **) &tls->ca);
 				if (len == 0)
-					log_error("Read cafile %s failed!", tls->cafile);
+					log_warn("Failed to read cafile %s! tls service will not start", tls->cafile);
 			} else {
 #ifdef SUPP_PARQUET
 				len = file_load_aes_decrypt(tls->cafile, (void **) &tls->ca);
@@ -490,7 +490,7 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 #endif
 			}
 		} else {
-			log_error("cafile %s is null!", tls->cafile);
+			log_error("cafile %s in config is null!", tls->cafile);
 		}
 	}
 
