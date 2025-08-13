@@ -242,4 +242,5 @@ read_env_conf(conf *config)
 #endif
 
 	set_string_var(&config->conf_file, NANOMQ_CONF_PATH);
+	printf("Set new conf path from env: %s\n", config->conf_file);
 }
