@@ -226,7 +226,18 @@ extern char *yytext;
  * down here because we want the user's section 1 to have been scanned first.
  * The user has a chance to override it with an option.
  */
+
+#ifdef _WIN32
+#include <io.h>     // for _read, _write, _close
+#include <process.h>
+#define read    _read
+#define write   _write
+#define close   _close
+#define isatty  _isatty
+#else
 #include <unistd.h>
+#endif
+
 #endif
 
 #ifndef YY_EXTRA_TYPE
