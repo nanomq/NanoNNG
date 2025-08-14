@@ -240,7 +240,8 @@ set_data(
 
 	if (nni_strcasecmp(req_conf->method, "post") == 0 ||
 	    nni_strcasecmp(req_conf->method, "put") == 0) {
-		nng_http_req_copy_data(req, req_data, strlen(req_data));
+		if (req_data)
+			nng_http_req_copy_data(req, req_data, strlen(req_data));
 	} else {
 		size_t uri_len =
 		    strlen(nng_http_req_get_uri(req)) + strlen(req_data) + 2;
