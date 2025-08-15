@@ -1274,13 +1274,12 @@ nano_pubmsg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
 uint8_t
 verify_connect(conn_param *cparam, conf *conf)
 {
-	int   i, n = conf->auths.count;
+	int   i, n;
 	char *username = (char *) cparam->username.body;
 	char *password = (char *) cparam->password.body;
 
-	if ((!conf->auths.enable) || conf->auths.count == 0 ||
-	    conf->allow_anonymous == true) {
-		log_debug("no valid entry in auth list");
+	if (conf->allow_anonymous == true) {
+		log_debug("allow anonymous connect");
 		return 0;
 	}
 
@@ -1292,12 +1291,21 @@ verify_connect(conn_param *cparam, conf *conf)
 		}
 	}
 
+	nng_mtx_lock(conf->auths.mtx);
+	if ((!conf->auths.enable) || conf->auths.count == 0) {
+		log_debug("authentication is not enabled");
+		nng_mtx_unlock(conf->auths.mtx);
+		return 0;
+	}
+	n = conf->auths.count;
 	for (i = 0; i < n; i++) {
 		if (strcmp(username, conf->auths.usernames[i]) == 0 &&
 		    strcmp(password, conf->auths.passwords[i]) == 0) {
+			nng_mtx_unlock(conf->auths.mtx);
 			return 0;
 		}
 	}
+	nng_mtx_unlock(conf->auths.mtx);
 	if (cparam->pro_ver == 5) {
 		return BAD_USER_NAME_OR_PASSWORD;
 	} else {
