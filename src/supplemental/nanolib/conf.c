@@ -845,6 +845,7 @@ conf_tls_destroy(conf_tls *tls)
 static void
 conf_auth_http_req_init(conf_auth_http_req *req)
 {
+	req->enable       = false;
 	req->url          = NULL;
 	req->method       = NULL;
 	req->header_count = 0;
