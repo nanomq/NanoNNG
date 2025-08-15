@@ -56,10 +56,11 @@
 	}
 
 struct conf_auth {
-	bool   enable;
-	size_t count;
-	char **usernames;
-	char **passwords;
+	nng_mtx *mtx;
+	bool     enable;
+	size_t   count;
+	char   **usernames;
+	char   **passwords;
 };
 
 typedef struct conf_auth conf_auth;

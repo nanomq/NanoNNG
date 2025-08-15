@@ -1509,6 +1509,7 @@ print_conf(conf *nanomq_conf)
 static void
 conf_auth_init(conf_auth *auth)
 {
+	nng_mtx_alloc(&auth->mtx);
 	auth->enable    = false;
 	auth->count     = 0;
 	auth->usernames = NULL;
@@ -1592,6 +1593,8 @@ conf_auth_destroy(conf_auth *auth)
 	free(auth->usernames);
 	free(auth->passwords);
 	auth->count = 0;
+	if (auth->mtx != NULL)
+		nng_mtx_free(auth->mtx);
 }
 
 #if defined(SUPP_RULE_ENGINE)
