@@ -147,12 +147,13 @@ struct conf_http_param {
 typedef struct conf_http_param conf_http_param;
 
 struct conf_auth_http_req {
-	char *url;
-	char *method;
-	size_t header_count;
+	bool               enable;
+	char              *url;
+	char              *method;
+	size_t             header_count;
 	conf_http_header **headers;
-	size_t param_count;
-	conf_http_param **params;
+	size_t             param_count;
+	conf_http_param  **params;
 	// TODO not support yet
 	conf_tls tls;
 };
