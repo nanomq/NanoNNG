@@ -28,9 +28,7 @@
 	"\"ts\":" PRIu64_FORMAT ",\"proto_name\":\"%s\",\"keepalive\":%d,\"return_code\":" \
 	"\"%x\",\"proto_ver\":%d,\"client_id\":\"%s\",\"clean_start\":%d, \"IPv4\":\"%s\"}"
 
-#define DISCONNECT_TOPIC "$SYS/brokers/disconnected"
-
-#define CONNECT_TOPIC "$SYS/brokers/connected"
+#define CLIENT_STATUS_TOPIC "$SYS/brokers/client_status"
 
 //Strip off and return the QoS bits
 #define NANO_NNI_LMQ_GET_QOS_BITS(msg) ((size_t) (msg) &0x03)
@@ -102,8 +100,7 @@ NNG_DECL nng_msg *nano_pubmsg_composer(nng_msg **, uint8_t retain, uint8_t qos,
     nng_time time, mqtt_string *clientid);
 NNG_DECL nng_msg *nano_dismsg_composer(
     reason_code code, char *rstr, uint8_t *ref, property *prop);
-NNG_DECL nng_msg *nano_msg_notify_disconnect(conn_param *cparam, uint8_t code);
-NNG_DECL nng_msg *nano_msg_notify_connect(conn_param *cparam, uint8_t code);
+NNG_DECL nng_msg *nano_msg_notify(conn_param *cparam, uint8_t code, bool online);
 NNG_DECL nano_pipe_db *nano_msg_get_subtopic(
     nng_msg *msg, nano_pipe_db *root, conn_param *cparam);
 NNG_DECL void nano_msg_free_pipedb(nano_pipe_db *db);

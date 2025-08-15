@@ -983,7 +983,7 @@ nano_pipe_close(void *arg)
 	// create disconnect event msg
 	log_warn("%s pipe close!", p->conn_param->clientid.body);
 	if (p->event) {
-		msg = nano_msg_notify_disconnect(p->conn_param, p->reason_code);
+		msg = nano_msg_notify(p->conn_param, p->reason_code, false);
 		if (msg == NULL) {
 			nni_mtx_unlock(&p->lk);
 			nni_mtx_unlock(&s->lk);
