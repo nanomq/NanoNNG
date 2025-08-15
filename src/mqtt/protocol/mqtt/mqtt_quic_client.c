@@ -1326,7 +1326,7 @@ mqtt_quic_pipe_close(void *arg)
 	nni_aio     *user_aio;
 	uint16_t 	 count = 0;
 	mqtt_quic_ctx *ctx;
-	nni_msg *tmsg = nano_msg_notify(p->cparam, s->disconnect_code, false);
+	nni_msg *tmsg = nano_msg_notify(p->cparam, s->disconnect_code, 1, false);
 	nni_msg_set_cmd_type(tmsg, CMD_DISCONNECT_EV);
 	// clone once for pub DISCONNECT_EV
 	conn_param_clone(p->cparam);

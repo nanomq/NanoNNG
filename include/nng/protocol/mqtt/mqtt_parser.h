@@ -20,11 +20,11 @@
 
 // Do not change to %lu! just suppress the warning of the compiler!
 #define DISCONNECT_MSG          \
-	"{\"username\":\"%s\"," \
+	"{\"status\":\"offline\", \"username\":\"%s\"," \
 	"\"ts\":" PRIu64_FORMAT ",\"reason_code\":\"%x\",\"client_id\":\"%s\",\"IPv4\":\"%s\"}"
 
 #define CONNECT_MSG                                                           \
-	"{\"username\":\"%s\", "                                              \
+	"{\"status\":\"online\", \"username\":\"%s\", "                                              \
 	"\"ts\":" PRIu64_FORMAT ",\"proto_name\":\"%s\",\"keepalive\":%d,\"return_code\":" \
 	"\"%x\",\"proto_ver\":%d,\"client_id\":\"%s\",\"clean_start\":%d, \"IPv4\":\"%s\"}"
 
@@ -100,7 +100,7 @@ NNG_DECL nng_msg *nano_pubmsg_composer(nng_msg **, uint8_t retain, uint8_t qos,
     nng_time time, mqtt_string *clientid);
 NNG_DECL nng_msg *nano_dismsg_composer(
     reason_code code, char *rstr, uint8_t *ref, property *prop);
-NNG_DECL nng_msg *nano_msg_notify(conn_param *cparam, uint8_t code, bool online);
+NNG_DECL nng_msg *nano_msg_notify(conn_param *cparam, uint8_t code, uint8_t retain, bool online);
 NNG_DECL nano_pipe_db *nano_msg_get_subtopic(
     nng_msg *msg, nano_pipe_db *root, conn_param *cparam);
 NNG_DECL void nano_msg_free_pipedb(nano_pipe_db *db);

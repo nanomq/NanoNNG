@@ -761,7 +761,8 @@ mqtt_pipe_close(void *arg)
 	// Return disconnect event to broker, only when compiled with nanomq
 	uint16_t count = 0;
 	mqtt_ctx_t *ctx;
-	nni_msg *tmsg = nano_msg_notify(p->cparam, SERVER_SHUTTING_DOWN, false);
+	// event msg with retain flag, only for bridging
+	nni_msg *tmsg = nano_msg_notify(p->cparam, SERVER_SHUTTING_DOWN, 1, false);
 	nni_msg_set_cmd_type(tmsg, CMD_DISCONNECT_EV);
 	// clone once for DISCONNECT_EV state
 	conn_param_clone(p->cparam);
