@@ -99,7 +99,7 @@ NNG_DECL uint8_t  verify_connect(conn_param *cparam, conf *conf);
 NNG_DECL void nano_msg_set_dup(nng_msg *msg);
 NNG_DECL nng_msg *nano_pubmsg_composer(nng_msg **, uint8_t retain, uint8_t qos,
     mqtt_string *payload, mqtt_string *topic, uint8_t proto_ver,
-    nng_time time);
+    nng_time time, mqtt_string *clientid);
 NNG_DECL nng_msg *nano_dismsg_composer(
     reason_code code, char *rstr, uint8_t *ref, property *prop);
 NNG_DECL nng_msg *nano_msg_notify_disconnect(conn_param *cparam, uint8_t code);
