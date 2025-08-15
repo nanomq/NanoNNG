@@ -1320,7 +1320,7 @@ verify_connect(conn_param *cparam, conf *conf)
 }
 
 nng_msg *
-nano_msg_notify(conn_param *cparam, uint8_t code, bool online)
+nano_msg_notify(conn_param *cparam, uint8_t code, uint8_t retain, bool online)
 {
 	nni_msg *   msg = NULL;
 	mqtt_string string, topic;
@@ -1341,8 +1341,8 @@ nano_msg_notify(conn_param *cparam, uint8_t code, bool online)
 	string.len  = strlen(string.body);
 	topic.body  = CLIENT_STATUS_TOPIC;
 	topic.len   = strlen(CLIENT_STATUS_TOPIC);
-	// V4 notification msg as default
-	msg         = nano_pubmsg_composer(&msg, 1, 0, &string, &topic,
+	// V4 notification msg as default, use retain by default.
+	msg         = nano_pubmsg_composer(&msg, retain, 0, &string, &topic,
 	            cparam->pro_ver, nng_clock(), &cparam->clientid);
 	return msg;
 }

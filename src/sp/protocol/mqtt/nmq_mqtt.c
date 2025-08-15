@@ -962,7 +962,7 @@ nano_pipe_close(void *arg)
 	// depends on MQTT V5 reason code
 	// create disconnect event msg
 	if (p->event) {
-		msg = nano_msg_notify(p->conn_param, p->reason_code, false);
+		msg = nano_msg_notify(p->conn_param, p->reason_code, 0, false);
 		if (msg == NULL) {
 			nni_mtx_unlock(&p->lk);
 			nni_mtx_unlock(&s->lk);
