@@ -1320,39 +1320,29 @@ verify_connect(conn_param *cparam, conf *conf)
 }
 
 nng_msg *
-nano_msg_notify_disconnect(conn_param *cparam, uint8_t code)
-{
-	nni_msg *   msg = NULL;
-	mqtt_string string, topic;
-	char        buff[512];
-	snprintf(buff, 256, DISCONNECT_MSG, (char *) cparam->username.body,
-	    nni_timestamp(), code, (char *) cparam->clientid.body, cparam->ip_addr_v4);
-	string.body = buff;
-	string.len  = strlen(string.body);
-	topic.body  = DISCONNECT_TOPIC;
-	topic.len   = strlen(DISCONNECT_TOPIC);
-	// V4 notification msg as default
-	msg = nano_pubmsg_composer(&msg, 0, 0, &string, &topic,
-	    cparam->pro_ver, nng_clock(), &cparam->clientid);
-	return msg;
-}
-
-nng_msg *
-nano_msg_notify_connect(conn_param *cparam, uint8_t code)
+nano_msg_notify(conn_param *cparam, uint8_t code, bool online)
 {
 	nni_msg *   msg = NULL;
 	mqtt_string string, topic;
 	char        buff[512];
 
-	snprintf(buff, 256, CONNECT_MSG, cparam->username.body,
-	    nni_timestamp(), cparam->pro_name.body, cparam->keepalive_mqtt,
-	    code, cparam->pro_ver, cparam->clientid.body, cparam->clean_start, cparam->ip_addr_v4);
+	if (online) {
+		snprintf(buff, 256, CONNECT_MSG, cparam->username.body,
+		    nni_timestamp(), cparam->pro_name.body, cparam->keepalive_mqtt,
+		    code, cparam->pro_ver, cparam->clientid.body, cparam->clean_start, cparam->ip_addr_v4);
+		log_warn("%s online!", cparam->clientid.body);
+	} else {
+		snprintf(buff, 256, DISCONNECT_MSG, (char *) cparam->username.body,
+		    nni_timestamp(), code, (char *) cparam->clientid.body, cparam->ip_addr_v4);
+		log_warn("%s offline!", cparam->clientid.body);
+	}
 
     string.body = buff;
 	string.len  = strlen(string.body);
-	topic.body  = CONNECT_TOPIC;
-	topic.len   = strlen(CONNECT_TOPIC);
-	msg         = nano_pubmsg_composer(&msg, 0, 0, &string, &topic,
+	topic.body  = CLIENT_STATUS_TOPIC;
+	topic.len   = strlen(CLIENT_STATUS_TOPIC);
+	// V4 notification msg as default
+	msg         = nano_pubmsg_composer(&msg, 1, 0, &string, &topic,
 	            cparam->pro_ver, nng_clock(), &cparam->clientid);
 	return msg;
 }
