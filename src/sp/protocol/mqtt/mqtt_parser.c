@@ -1204,27 +1204,27 @@ nano_dismsg_composer(reason_code code, char* rstr, uint8_t *ref, property *prop)
 }
 /**
  *  Alloc a publish msg according to the connect msg
- *  Caller is responsible for msg management
+ *  Caller is responsible for msg life cycle
+ *  @clientid append str to topic if not null
  *  TODO: validation of last-will msg 
 */
 nng_msg *
 nano_pubmsg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
-    mqtt_string *payload, mqtt_string *topic, uint8_t proto_ver, nng_time time)
+    mqtt_string *payload, mqtt_string *topic, uint8_t proto_ver,
+	nng_time time, mqtt_string *clientid)
 {
 	size_t   rlen;
-	uint8_t *ptr, buf[5] = { '\0' };
+	uint8_t *ptr, buf[5] = { '\0' }, tlen[2] = { '\0' };
 	uint32_t len;
 	nni_msg *msg;
 
 	len = payload->len + topic->len + 2;
 	len += proto_ver == MQTT_PROTOCOL_VERSION_v5 ? 1 : 0;
+	if (clientid != NULL)
+		len += clientid->len + 1;
 
+	nni_msg_alloc(msgp, 0);
 	msg = *msgp;
-	if (msg == NULL) {
-		nni_msg_alloc(&msg, len + (qos > 0 ? 2 : 0));
-	} else {
-		nni_msg_realloc(msg, len + (qos > 0 ? 2 : 0));
-	}
 
 	nni_msg_set_timestamp(msg, time);
 	if (qos > 0) {
@@ -1234,7 +1234,7 @@ nano_pubmsg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
 		} else if (qos == 2) {
 			buf[0] = CMD_PUBLISH | 0x04;
 		} else {
-			nni_println("ERROR: will msg qos invalid");
+			log_warn("ERROR: qos setting in will msg is invalid");
 			nni_msg_free(msg);
 			return NULL;
 		}
@@ -1242,30 +1242,37 @@ nano_pubmsg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
 		rlen = put_var_integer(buf + 1, len);
 		buf[0] = CMD_PUBLISH;
 	}
-	ptr = nni_msg_header(msg);
 	if (retain > 0) {
 		buf[0] = buf[0] | 0x01;
 	}
-	memcpy(ptr, buf, rlen + 1);
+	nni_msg_header_append(msg, buf, rlen + 1);
+	// memcpy(ptr, buf, rlen + 1);
 
 	ptr = nni_msg_body(msg);
-	NNI_PUT16(ptr, topic->len);
-	ptr = ptr + 2;
-	memcpy(ptr, topic->body, topic->len);
-	ptr += topic->len;
+	if (clientid != NULL) {
+		NNI_PUT16(tlen, topic->len + clientid->len + 1);
+		nni_msg_append(msg, tlen, 2);
+		nni_msg_append(msg, topic->body, topic->len);
+		nni_msg_append(msg, "\\", 1);
+		nni_msg_append(msg, clientid->body, clientid->len);
+	} else {
+		NNI_PUT16(tlen, topic->len);
+		ptr += 2;
+		nni_msg_append(msg, tlen, 2);
+		nni_msg_append(msg, topic->body, topic->len);
+	}
+
 	if (qos > 0) {
-		// Set pid?
-		NNI_PUT16(ptr, 0x10);
-		ptr = ptr + 2;
+		// Set a random pid in case collision
+		NNI_PUT16(tlen, nni_random()%8000);
+		nni_msg_append(msg, tlen, 2);
 	}
 
 	if (proto_ver == MQTT_PROTOCOL_VERSION_v5) {
 		uint8_t property_len = 0;
-		memcpy(ptr, &property_len, 1);
-		++ptr;
+		nni_msg_append(msg, &property_len, 1);
 	}
-
-	memcpy(ptr, payload->body, payload->len);
+	nni_msg_append(msg, payload->body, payload->len);
 	nni_msg_set_payload_ptr(msg, ptr);
 
 	return msg;
@@ -1327,8 +1334,8 @@ nano_msg_notify_disconnect(conn_param *cparam, uint8_t code)
 	topic.body  = DISCONNECT_TOPIC;
 	topic.len   = strlen(DISCONNECT_TOPIC);
 	// V4 notification msg as default
-	msg = nano_pubmsg_composer(
-	    &msg, 0, 0, &string, &topic, cparam->pro_ver, nng_clock());
+	msg = nano_pubmsg_composer(&msg, 0, 0, &string, &topic,
+	    cparam->pro_ver, nng_clock(), &cparam->clientid);
 	return msg;
 }
 
@@ -1347,8 +1354,8 @@ nano_msg_notify_connect(conn_param *cparam, uint8_t code)
 	string.len  = strlen(string.body);
 	topic.body  = CONNECT_TOPIC;
 	topic.len   = strlen(CONNECT_TOPIC);
-	msg         = nano_pubmsg_composer(
-            &msg, 0, 0, &string, &topic, cparam->pro_ver, nng_clock());
+	msg         = nano_pubmsg_composer(&msg, 0, 0, &string, &topic,
+	            cparam->pro_ver, nng_clock(), &cparam->clientid);
 	return msg;
 }
 
