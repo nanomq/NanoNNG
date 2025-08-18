@@ -162,7 +162,6 @@ wstran_pipe_recv_cb(void *arg)
 	}
 	msg = nni_aio_get_msg(raio);
 	if (nni_msg_header_len(msg) == 0 && nni_msg_len(msg) == 0) {
-		nni_msg_free(msg);
 		log_trace("empty msg received! continue next receive");
 		goto recv;
 	}
