@@ -359,11 +359,11 @@ nmq_auth_http_connect(conn_param *cparam, conf_auth_http *conf)
 	}
 
 	auth_http_params auth_params = {
-		.clientid = (const char *) conn_param_get_clientid(cparam),
-		.username = (const char *) conn_param_get_username(cparam),
-		.password = (const char *) conn_param_get_password(cparam),
+		.clientid  = (const char *) conn_param_get_clientid(cparam),
+		.username  = (const char *) conn_param_get_username(cparam),
+		.password  = (const char *) conn_param_get_password(cparam),
+		.ipaddress = (const char *) conn_param_get_ip_addr_v4(cparam),
 		// TODO incompleted fields, needs NNG core to support
-		// .ipaddress = ,
 		// .protocol = ,
 		// .sockport = ,
 		// .common = ,
@@ -425,14 +425,14 @@ nmq_auth_http_sub_pub(
 	}
 
 	auth_http_params auth_params = {
-		.clientid = (const char *) conn_param_get_clientid(cparam),
-		.username = (const char *) conn_param_get_username(cparam),
-		.password = (const char *) conn_param_get_password(cparam),
-		.access   = is_sub ? "1" : "2",
-		.topic    = topic_str,
+		.clientid  = (const char *) conn_param_get_clientid(cparam),
+		.username  = (const char *) conn_param_get_username(cparam),
+		.password  = (const char *) conn_param_get_password(cparam),
+		.access    = is_sub ? "1" : "2",
+		.topic     = topic_str,
+		.ipaddress = conn_param_get_ip_addr_v4(cparam),
 		// TODO incompleted fields
 		// .mountpoint = ,
-		// .ipaddress = ,
 		// .protocol = ,
 		// .sockport = ,
 		// .common = ,
