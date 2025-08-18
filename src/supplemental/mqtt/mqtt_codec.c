@@ -3136,11 +3136,12 @@ read_packet_length(struct pos_buf *buf, uint32_t *length)
 int
 mqtt_buf_create(mqtt_buf *mbuf, const uint8_t *buf, uint32_t length)
 {
-	if ((mbuf->buf = nni_alloc(length)) != NULL) {
-		mbuf->length = length;
-		memcpy(mbuf->buf, buf, mbuf->length);
-		return (0);
-	}
+	if (length > 0)
+		if ((mbuf->buf = nni_alloc(length)) != NULL) {
+			mbuf->length = length;
+			memcpy(mbuf->buf, buf, mbuf->length);
+			return (0);
+		}
 	return NNG_ENOMEM;
 }
 
@@ -3649,6 +3650,7 @@ property_set_value_str(
 	property *prop     = property_alloc();
 	prop->id           = prop_id;
 	prop->data.is_copy = copy_value;
+
 	if (copy_value) {
 		mqtt_buf_create(
 		    &prop->data.p_value.str, (uint8_t *) value, len);
