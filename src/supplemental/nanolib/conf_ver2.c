@@ -767,6 +767,43 @@ conf_webhook_parse_ver2(conf *config, cJSON *jso)
 	return;
 }
 
+#ifdef SUPP_LICENSE_STD
+static void
+conf_auth_parse_cipher(conf_auth *auth, const char *key)
+{
+	if (!auth->enable) {
+		return;
+	}
+	for (int i = 0; i<(int)auth->count; ++i) {
+		char *password = auth->passwords[i];
+		if (!password)
+			continue;
+		char * cipher = nng_alloc(sizeof(char) * strlen(password));
+		size_t cipher_sz;
+		cipher_sz = nni_base64_decode((const char*)password,
+				strlen(password), (uint8_t *)cipher, strlen(password));
+		if (cipher_sz <= 32) {
+			nng_free(cipher, cipher_sz);
+			log_error("failed to base64 decode auth.password");
+		} else {
+			char  tag[32];
+			memcpy(tag, cipher, 32);
+			int   plain_sz;
+			char *plain = nni_aes_gcm_decrypt(
+					cipher, cipher_sz, (char *)key, tag, &plain_sz);
+			nng_free(cipher, cipher_sz);
+			if (plain == NULL || plain_sz == 0) {
+				log_error("failed to decrypt auth.password");
+			} else {
+				nng_free(password, strlen(password));
+				auth->passwords[i] = plain;
+				log_trace("auth.password: %s", plain);
+			}
+		}
+	}
+}
+#endif
+
 static void
 conf_auth_parse_ver2(conf *config, cJSON *jso)
 {
@@ -778,32 +815,7 @@ conf_auth_parse_ver2(conf *config, cJSON *jso)
 		if (cJSON_IsString(ele)) {
 			cvector_push_back(
 			    auth->usernames, nng_strdup(ele->string));
-			char *password = nng_strdup(ele->valuestring);
-#ifdef SUPP_LICENSE_STD
-			char * cipher = nng_alloc(sizeof(char) * strlen(password));
-			size_t cipher_sz;
-			cipher_sz = nni_base64_decode((const char*)password,
-					strlen(password), (uint8_t *)cipher, strlen(password));
-			if (cipher_sz <= 32) {
-				nng_free(cipher, cipher_sz);
-				log_error("failed to base64 decode auth.password");
-			} else {
-				char  tag[32];
-				memcpy(tag, cipher, 32);
-				int   plain_sz;
-				char *plain = nni_aes_gcm_decrypt(cipher, cipher_sz,
-						"todoaeskeyaeskey", tag, &plain_sz);
-				nng_free(cipher, cipher_sz);
-				if (plain == NULL || plain_sz == 0) {
-					log_error("failed to decrypt auth.password");
-				} else {
-					nng_free(password, strlen(password));
-					password = plain;
-					log_trace("auth.password: %s", password);
-				}
-			}
-#endif
-			cvector_push_back(auth->passwords, password);
+			cvector_push_back(auth->passwords, nng_strdup(ele->valuestring));
 		}
 	}
 	auth->count = cvector_size(auth->usernames);
@@ -2142,6 +2154,14 @@ conf_authorization_prase_ver2(conf *config, cJSON *jso)
 	if (jso_auth_acl) {
 		conf_acl_parse_ver2(config, jso_auth_acl);
 	}
+}
+
+void
+conf_parse_cipher(conf *config, const char *key)
+{
+#ifdef SUPP_LICENSE_STD
+	conf_auth_parse_cipher(&config->auths, key);
+#endif
 }
 
 void
