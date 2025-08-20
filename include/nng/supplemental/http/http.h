@@ -236,6 +236,8 @@ typedef struct nng_http_conn nng_http_conn;
 // not use this channel after this operation is performed.
 NNG_DECL void nng_http_conn_close(nng_http_conn *);
 
+NNG_DECL void nng_http_fr_cb(nng_aio *aio, void *arg, int rv);
+
 // nng_http_conn_read attempts to read data from the connection.  This
 // completes as soon as at least one byte is read; it does not wait
 // for the entire aio to be filled.

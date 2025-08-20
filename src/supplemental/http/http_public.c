@@ -836,7 +836,6 @@ int
 nng_http_client_alloc(nng_http_client **clip, const nng_url *url)
 {
 #ifdef NNG_SUPP_HTTP
-	nni_init();
 	return (nni_http_client_init(clip, url));
 #else
 	NNI_ARG_UNUSED(clip);
