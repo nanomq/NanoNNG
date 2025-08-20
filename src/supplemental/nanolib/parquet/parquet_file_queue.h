@@ -31,6 +31,7 @@ class parquet_file_queue {
 	void           update_queue(const char *filename);
 	int            remove_old_file(CircularQueue &queue);
 	conf_parquet  *get_conf();
+	uint64_t get_sum();
 
     private:
 	static optional<long> extract_start_time(const string &file_name);
