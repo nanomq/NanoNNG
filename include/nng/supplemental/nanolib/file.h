@@ -16,6 +16,7 @@ NNG_DECL int    file_create_dir(const char *fpath);
 NNG_DECL size_t file_load_data(const char *filepath, void **data);
 #ifdef SUPP_PARQUET
 NNG_DECL size_t file_load_aes_decrypt(const char *filepath, void **data);
+NNG_DECL void file_load_set_aes_key(const char *aeskey);
 #endif
 
 #endif
