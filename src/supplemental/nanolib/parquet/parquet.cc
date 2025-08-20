@@ -1494,20 +1494,32 @@ parquet_get_file_ranges(uint64_t start_key, uint64_t end_key, char *topic)
 	return NULL;
 }
 
-uint64_t *
-parquet_get_key_span(const char **topicl, uint32_t sz)
+bool
+parquet_get_key_span(
+    const char **topicl, uint32_t sz, uint64_t **key_span, uint64_t **sums)
 {
-	uint64_t *key_span = (uint64_t *)nng_alloc(sz * 2 * sizeof(uint64_t));
-	void     *elem = NULL;
-	memset(key_span, 0, sz * 2 * sizeof(uint64_t));
+	*key_span = (uint64_t *) nng_alloc(sz * 2 * sizeof(uint64_t));
+	*sums     = (uint64_t *) nng_alloc(sz * sizeof(uint64_t));
+	if (!*key_span || !*sums) {
+		if (*key_span)
+			nng_free(*key_span, sz * 2 * sizeof(uint64_t));
+		if (*sums)
+			nng_free(*sums, sz * sizeof(uint64_t));
+		log_error("malloc memory failed!");
+		return false; // allocation failed
+	}
+	void *elem = NULL;
+	memset(*key_span, 0, sz * 2 * sizeof(uint64_t));
+	memset(*sums, 0, sz * sizeof(uint64_t));
 
 	pthread_mutex_lock(&parquet_queue_mutex);
 
-	for (int idx=0; idx<(int)sz; ++idx) {
-		char     *first_file = NULL;
-		char     *last_file  = NULL;
-		uint64_t  file_key_span[2] = { 0 };
-		auto queue = file_manager.fetch_queue(topicl[idx]);
+	for (int idx = 0; idx < (int) sz; ++idx) {
+		char    *first_file       = NULL;
+		char    *last_file        = NULL;
+		uint64_t file_key_span[2] = { 0 };
+		auto     queue = file_manager.fetch_queue(topicl[idx]);
+
 		if (NULL != queue) {
 
 			FOREACH_QUEUE(*queue, elem)
@@ -1520,17 +1532,29 @@ parquet_get_key_span(const char **topicl, uint32_t sz)
 				}
 			}
 			if (first_file) {
-				get_range(first_file, key_span + 2 * idx);
+				get_range(first_file, (*key_span) + 2 * idx);
 			}
 			if (last_file) {
 				get_range(last_file, file_key_span);
 			}
-			key_span[2 * idx + 1] = file_key_span[1];
+			(*key_span)[2 * idx + 1] = file_key_span[1];
+			(*sums)[idx] = file_manager.get_queue_sum(topicl[idx]);
 		}
 	}
 
 	pthread_mutex_unlock(&parquet_queue_mutex);
-	return key_span;
+	return true;
+}
+
+void
+parquet_free_key_span(uint64_t *key_span, uint64_t *sums, uint32_t sz)
+{
+	if (key_span) {
+		nng_free(key_span, sz * 2 * sizeof(uint64_t));
+	}
+	if (sums) {
+		nng_free(sums, sz * sizeof(uint64_t));
+	}
 }
 
 parquet_data_ret **

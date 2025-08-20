@@ -83,9 +83,11 @@ int parquet_write_batch_tmp_async(parquet_object *elem);
 int parquet_write_launcher(conf_exchange *conf);
 
 const char  *parquet_find(const char *topic, uint64_t key);
-const char **parquet_find_span(const char *topic,
-    uint64_t start_key, uint64_t end_key, uint32_t *size);
-uint64_t *parquet_get_key_span(const char **topicl, uint32_t size);
+const char **parquet_find_span(
+    const char *topic, uint64_t start_key, uint64_t end_key, uint32_t *size);
+bool parquet_get_key_span(
+    const char **topicl, uint32_t sz, uint64_t **key_span, uint64_t **sums);
+void parquet_free_key_span(uint64_t *key_span, uint64_t *sums, uint32_t sz);
 
 parquet_data_packet *parquet_find_data_packet(
     conf_parquet *conf, char *filename, uint64_t key);
