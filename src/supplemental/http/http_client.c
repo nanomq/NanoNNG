@@ -26,6 +26,7 @@ struct nng_http_client {
 	nni_mtx            mtx;
 	bool               closed;
 	nni_aio *          aio;
+	nni_aio *          free_aio;
 	nng_stream_dialer *dialer;
 };
 
@@ -39,6 +40,20 @@ http_dial_start(nni_http_client *c)
 }
 
 static void
+http_free_cb(void *arg)
+{
+	nni_http_client *c = arg;
+	if (c->closed) {
+		nni_mtx_fini(&c->mtx);
+		nng_stream_dialer_free(c->dialer);
+		NNI_FREE_STRUCT(c);
+		return;
+	} else {
+		log_error("memleak");
+	}
+}
+
+static void
 http_dial_cb(void *arg)
 {
 	nni_http_client *c = arg;
@@ -47,6 +62,9 @@ http_dial_cb(void *arg)
 	nng_stream *     stream;
 	nni_http_conn *  conn;
 
+	if (c->closed) {
+		return;
+	}
 	nni_mtx_lock(&c->mtx);
 	rv = nni_aio_result(c->aio);
 
@@ -91,11 +109,13 @@ http_dial_cb(void *arg)
 void
 nni_http_client_fini(nni_http_client *c)
 {
-	nni_aio_free(c->aio);
+	c->closed = true;
+	// nni_aio_finish_error(c->aio, );
+	nni_aio_reap(c->aio);
+	// nni_aio_free(c->aio);
 	c->aio = NULL;
-	nng_stream_dialer_free(c->dialer);
-	nni_mtx_fini(&c->mtx);
-	NNI_FREE_STRUCT(c);
+	// nng_stream_dialer_free(c->dialer);
+	nni_aio_reap(c->free_aio);
 }
 
 int
@@ -134,6 +154,12 @@ nni_http_client_init(nni_http_client **cp, const nni_url *url)
 		return (rv);
 	}
 
+	if ((rv = nni_aio_alloc(&c->free_aio, http_free_cb, c)) != 0) {
+		nni_http_client_fini(c);
+		return (rv);
+	}
+
+	c->closed = false;
 	*cp = c;
 	return (0);
 }

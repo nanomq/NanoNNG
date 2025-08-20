@@ -270,6 +270,13 @@ http_rd_start(nni_http_conn *conn)
 	}
 }
 
+void
+nng_http_fr_cb(nng_aio *aio, void *arg, int rv)
+{
+	nni_http_conn *conn = arg;
+	NNI_FREE_STRUCT(conn);
+}
+
 static void
 http_rd_cb(void *arg)
 {
@@ -281,6 +288,9 @@ http_rd_cb(void *arg)
 	unsigned       niov;
 	nni_iov       *iov;
 
+	if (conn->closed) {
+		return;
+	}
 	nni_mtx_lock(&conn->mtx);
 
 	if ((rv = nni_aio_result(aio)) != 0) {
@@ -351,7 +361,8 @@ http_rd_cancel(nni_aio *aio, void *arg, int rv)
 	nni_mtx_lock(&conn->mtx);
 	if (aio == conn->rd_uaio) {
 		conn->rd_uaio = NULL;
-		nni_aio_abort(conn->rd_aio, rv);
+		if (nni_aio_busy(conn->rd_aio) && !conn->closed)
+			nni_aio_abort(conn->rd_aio, rv);
 		nni_aio_finish_error(aio, rv);
 	} else if (nni_aio_list_active(aio)) {
 		nni_aio_list_remove(aio);
@@ -413,6 +424,9 @@ http_wr_cb(void *arg)
 	int            rv;
 	size_t         n;
 
+	if (conn->closed) {
+		return;
+	}
 	nni_mtx_lock(&conn->mtx);
 
 	uaio = conn->wr_uaio;
@@ -665,8 +679,10 @@ nni_http_conn_setopt(nni_http_conn *conn, const char *name, const void *buf,
 void
 nni_http_conn_fini(nni_http_conn *conn)
 {
-	nni_aio_stop(conn->wr_aio);
-	nni_aio_stop(conn->rd_aio);
+	// nni_aio_close(conn->wr_aio);
+	// nni_aio_close(conn->rd_aio);
+	// nni_aio_stop(conn->wr_aio);
+	// nni_aio_stop(conn->rd_aio);
 
 	nni_mtx_lock(&conn->mtx);
 	http_close(conn);
@@ -676,11 +692,16 @@ nni_http_conn_fini(nni_http_conn *conn)
 	}
 	nni_mtx_unlock(&conn->mtx);
 
-	nni_aio_free(conn->wr_aio);
-	nni_aio_free(conn->rd_aio);
+	nni_aio_reap(conn->wr_aio);
+	nni_aio_reap(conn->rd_aio);
 	nni_free(conn->rd_buf, conn->rd_bufsz);
-	nni_mtx_fini(&conn->mtx);
-	NNI_FREE_STRUCT(conn);
+	// nni_aio_reap(conn->fe_aio);
+}
+
+static int
+http_finit(nni_http_conn **connp)
+{
+
 }
 
 static int
