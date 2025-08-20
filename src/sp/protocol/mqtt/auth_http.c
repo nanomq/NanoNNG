@@ -264,6 +264,7 @@ send_request(conf_auth_http *conf, conf_auth_http_req *conf_req,
 	nng_http_conn *  conn   = NULL;
 	nng_url *        url    = NULL;
 	nng_aio *        aio    = NULL;
+	nng_aio *        fe_aio = NULL;
 	nng_http_req *   req    = NULL;
 	nng_http_res *   res    = NULL;
 	int              status = 0;
@@ -291,14 +292,17 @@ send_request(conf_auth_http *conf, conf_auth_http_req *conf_req,
 
 	// Get the connection, at the 0th output.
 	conn = nng_aio_get_output(aio, 0);
-
+	rv = nni_aio_alloc(&fe_aio, NULL, conn);
+	if ((rv = nni_aio_schedule(fe_aio, nng_http_fr_cb, conn)) != 0) {
+		log_error("Non recoverable error, aio schedule failed!");
+		exit(EXIT_FAILURE);
+	}
 	// Request is already set up with URL, and for GET via HTTP/1.1.
 	// The Host: header is already set up too.
 	set_data(req, conf_req, params);
 	// Send the request, and wait for that to finish.
 	nng_http_conn_write_req(conn, req, aio);
-	nng_aio_set_timeout(aio, conf->timeout * 1000);
-	// TODO It could cause some problems.
+	// nng_aio_set_timeout(aio, conf->timeout * 1000);
 	nng_aio_wait(aio);
 
 	if ((rv = nng_aio_result(aio)) != 0) {
@@ -307,13 +311,15 @@ send_request(conf_auth_http *conf, conf_auth_http_req *conf_req,
 	}
 
 	// Read a response.
-	nng_aio_set_timeout(aio, conf->timeout * 1000);
+	// nng_aio_set_timeout(aio, conf->timeout * 1000);
 	nng_http_conn_read_res(conn, res, aio);
-	// TODO It could cause some problems.
 	nng_aio_wait(aio);
 
 	if ((rv = nng_aio_result(aio)) != 0) {
 		log_error("Read response: %s", nng_strerror(rv));
+		// Now attempt to receive the data.
+		// nng_http_conn_read_all(conn, aio);
+		// nng_aio_wait(aio);
 		goto out;
 	}
 
@@ -328,18 +334,19 @@ out:
 	if (url) {
 		nng_url_free(url);
 	}
-	if (conn) {
-		nng_http_conn_close(conn);
-	}
-	if (client) {
-		nng_http_client_free(client);
-	}
 	if (req) {
 		nng_http_req_free(req);
 	}
 	if (res) {
 		nng_http_res_free(res);
 	}
+	if (client) {
+		nng_http_client_free(client);
+	}
+	if (conn) {
+		nng_http_conn_close(conn);
+	}
+	nng_aio_reap(fe_aio);
 	if (aio) {
 		nng_aio_free(aio);
 	}
