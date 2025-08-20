@@ -38,3 +38,9 @@ parquet_file_manager::update_queue(
 {
 	file_queue_map[topic]->update_queue(md5_file_name);
 }
+
+uint64_t
+parquet_file_manager::get_queue_sum(const string &topic)
+{
+    return file_queue_map[topic]->get_sum();
+}

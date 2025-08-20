@@ -11,6 +11,7 @@ class parquet_file_manager {
 	void add_queue(conf_exchange_node *node);
     CircularQueue* fetch_queue(const string &topic);
 	conf_parquet* fetch_conf(const string &topic);
+	uint64_t get_queue_sum(const string &topic);
 	void remove_queue();
 
     private:
