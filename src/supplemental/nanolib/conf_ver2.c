@@ -450,34 +450,20 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 				len = file_load_data(tls->keyfile, (void **) &tls->key);
 				if (len == 0)
 					log_warn("Failed to read keyfile %s! tls service will not start", tls->keyfile);
-			} else {
-#ifdef SUPP_PARQUET
-				len = file_load_aes_decrypt(tls->keyfile, (void **) &tls->key);
-				if (len == 0)
-					log_error("Read encrypted keyfile %s failed!", tls->keyfile);
-#else
-				log_error("Recompile with Parquet enabled!");
-#endif
 			}
+			// if cert_encrypted is true. conf_bridge_parse_cipher will decrypt it.
 		} else {
-			log_error("keyfile %s in config is null!", tls->keyfile);
+			log_warn("keyfile %s in config is null!", tls->keyfile);
 		}
 		if (tls->certfile) {
 			if (tls->cert_encrypted == false) {
 				len = file_load_data(tls->certfile, (void **) &tls->cert);
 				if (len == 0)
 					log_warn("Failed to read certfile %s! tls service will not start", tls->certfile);
-			} else {
-#ifdef SUPP_PARQUET
-				len = file_load_aes_decrypt(tls->certfile, (void **) &tls->cert);
-				if (len == 0)
-					log_error("Read encrypted certfile %s failed!", tls->certfile);
-#else
-				log_error("Recompile with Parquet enabled!");
-#endif
 			}
+			// if cert_encrypted is true. conf_bridge_parse_cipher will decrypt it.
 		} else {
-			log_error("certfile %s in config is null!", tls->certfile);
+			log_warn("certfile %s in config is null!", tls->certfile);
 		}
 
 		if (tls->cafile) {
@@ -485,17 +471,10 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 				len = file_load_data(tls->cafile, (void **) &tls->ca);
 				if (len == 0)
 					log_warn("Failed to read cafile %s! tls service will not start", tls->cafile);
-			} else {
-#ifdef SUPP_PARQUET
-				len = file_load_aes_decrypt(tls->cafile, (void **) &tls->ca);
-				if (len == 0)
-					log_error("Read encrypted cafile %s failed!", tls->cafile);
-#else
-				log_error("Recompile with Parquet enabled!");
-#endif
 			}
+			// if cert_encrypted is true. conf_bridge_parse_cipher will decrypt it.
 		} else {
-			log_error("cafile %s in config is null!", tls->cafile);
+			log_warn("cafile %s in config is null!", tls->cafile);
 		}
 	}
 
@@ -1443,6 +1422,53 @@ conf_bridge_node_parse(
 }
 
 static void
+conf_bridge_parse_cipher(conf_bridge *bridge, const char *key)
+{
+	size_t len;
+#ifndef SUPP_PARQUET
+	log_error("Recompile with Parquet enabled!");
+	return;
+#else
+	file_load_set_aes_key(key);
+	for (int i=0; i<(int)bridge->count; i++) {
+		conf_bridge_node *node = bridge->nodes[i];
+		if (!node)
+			continue;
+		conf_tls *tls = &node->tls;
+		if (tls->keyfile) {
+			if (tls->cert_encrypted == false) {
+				// ignore
+			} else {
+				len = file_load_aes_decrypt(tls->keyfile, (void **) &tls->key);
+				if (len == 0)
+					log_error("Read encrypted keyfile %s failed!", tls->keyfile);
+			}
+		}
+
+		if (tls->certfile) {
+			if (tls->cert_encrypted == false) {
+				// ignore
+			} else {
+				len = file_load_aes_decrypt(tls->certfile, (void **) &tls->cert);
+				if (len == 0)
+					log_error("Read encrypted certfile %s failed!", tls->certfile);
+			}
+		}
+
+		if (tls->cafile) {
+			if (tls->cert_encrypted == false) {
+				// ignore
+			} else {
+				len = file_load_aes_decrypt(tls->cafile, (void **) &tls->ca);
+				if (len == 0)
+					log_error("Read encrypted cafile %s failed!", tls->cafile);
+			}
+		}
+	}
+#endif
+}
+
+static void
 conf_bridge_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *node_array = hocon_get_obj("bridges.mqtt", jso);
@@ -2157,11 +2183,12 @@ conf_authorization_prase_ver2(conf *config, cJSON *jso)
 }
 
 void
-conf_parse_cipher(conf *config, const char *key)
+conf_parse_cipher(conf *config, const char *key, const char *key2)
 {
 #ifdef SUPP_LICENSE_STD
 	conf_auth_parse_cipher(&config->auths, key);
 #endif
+	conf_bridge_parse_cipher(&config->bridge, key2);
 }
 
 void

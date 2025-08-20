@@ -9,6 +9,7 @@
 
 #ifdef SUPP_PARQUET
 #include "supplemental/aes/aes.h"
+static char *file_load_aes_key = NULL;
 #endif
 
 #ifdef NNG_PLATFORM_WINDOWS
@@ -126,6 +127,12 @@ file_load_data(const char *filepath, void **data)
 
 #ifdef SUPP_PARQUET
 
+void
+file_load_set_aes_key(const char *aeskey)
+{
+	file_load_aes_key = (char *)aeskey;
+}
+
 size_t
 file_load_aes_decrypt(const char *filepath, void **data)
 {
@@ -133,11 +140,17 @@ file_load_aes_decrypt(const char *filepath, void **data)
 	int   plainsz;
 	char *plain = NULL;
 	char *cipher = NULL;
-	char *aeskey = "givemeacoffeeplz";
 
 	len = file_load_data(filepath, (void **)&cipher);
 	if (len == 0 || cipher == NULL)
 		return 0;
+
+	if (file_load_aes_key == NULL) {
+		log_error("no aes key was set when decrypt file %s", filepath);
+		nng_free(cipher, 0);
+		return 0;
+	}
+	char *aeskey = file_load_aes_key;
 
 	char tag[32];
 	memcpy(tag, cipher, 32);
