@@ -204,3 +204,9 @@ parquet_file_queue::remove_old_file(CircularQueue &queue)
 	free(filename);
 	return ret;
 }
+
+uint64_t
+parquet_file_queue::get_sum()
+{
+	return sum;
+}
