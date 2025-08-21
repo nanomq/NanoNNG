@@ -15,7 +15,7 @@
 #include "ringbuffer.h"
 #include "nng/supplemental/util/platform.h"
 #include "nng/supplemental/util/idhash.h"
-
+#include "nng/supplemental/http/http.h"
 
 
 #define PID_PATH_NAME "/tmp/nanomq/nanomq.pid"
@@ -147,6 +147,7 @@ struct conf_http_param {
 typedef struct conf_http_param conf_http_param;
 
 struct conf_auth_http_req {
+	nng_mtx           *mtx;
 	bool               enable;
 	char              *url;
 	char              *method;
@@ -154,6 +155,9 @@ struct conf_auth_http_req {
 	conf_http_header **headers;
 	size_t             param_count;
 	conf_http_param  **params;
+	nng_http_client *client;
+	nng_http_conn *  conn;
+	nng_url *        url_ptr;
 	// TODO not support yet
 	conf_tls tls;
 };

@@ -262,6 +262,8 @@ send_request(conf_auth_http *conf, conf_auth_http_req *conf_req,
 {
 	nng_http_client *client = NULL;
 	nng_http_conn *  conn   = NULL;
+	nng_atomic_ptr   *conn_ptr;
+	nng_atomic_ptr   *client_ptr;
 	nng_url *        url    = NULL;
 	nng_aio *        aio    = NULL;
 	nng_aio *        fe_aio = NULL;
@@ -270,6 +272,7 @@ send_request(conf_auth_http *conf, conf_auth_http_req *conf_req,
 	int              status = 0;
 	int              rv;
 
+	nng_mtx_lock(conf_req->mtx);
 	if (((rv = nng_url_parse(&url, conf_req->url)) != 0) ||
 	    ((rv = nng_http_client_alloc(&client, url)) != 0) ||
 	    ((rv = nng_http_req_alloc(&req, url)) != 0) ||
@@ -292,11 +295,6 @@ send_request(conf_auth_http *conf, conf_auth_http_req *conf_req,
 
 	// Get the connection, at the 0th output.
 	conn = nng_aio_get_output(aio, 0);
-	rv = nni_aio_alloc(&fe_aio, NULL, conn);
-	if ((rv = nni_aio_schedule(fe_aio, nng_http_fr_cb, conn)) != 0) {
-		log_error("Non recoverable error, aio schedule failed!");
-		exit(EXIT_FAILURE);
-	}
 	// Request is already set up with URL, and for GET via HTTP/1.1.
 	// The Host: header is already set up too.
 	set_data(req, conf_req, params);
@@ -317,9 +315,6 @@ send_request(conf_auth_http *conf, conf_auth_http_req *conf_req,
 
 	if ((rv = nng_aio_result(aio)) != 0) {
 		log_error("Read response: %s", nng_strerror(rv));
-		// Now attempt to receive the data.
-		// nng_http_conn_read_all(conn, aio);
-		// nng_aio_wait(aio);
 		goto out;
 	}
 
@@ -340,17 +335,16 @@ out:
 	if (res) {
 		nng_http_res_free(res);
 	}
-	if (client) {
-		nng_http_client_free(client);
-	}
 	if (conn) {
 		nng_http_conn_close(conn);
 	}
-	nng_aio_reap(fe_aio);
+	if (client) {
+		nng_http_client_free(client);
+	}
 	if (aio) {
 		nng_aio_free(aio);
 	}
-
+	nng_mtx_unlock(conf_req->mtx);
 	return status;
 }
 

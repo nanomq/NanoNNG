@@ -44,6 +44,7 @@ struct nng_http_conn {
 	nng_stream *sock;
 	void       *ctx;
 	bool        closed;
+	bool        rd_close, wr_close, both_close;
 	nni_list    rdq; // high level http read requests
 	nni_list    wrq; // high level http write requests
 
@@ -51,6 +52,7 @@ struct nng_http_conn {
 	nni_aio *wr_uaio; // user aio for write
 	nni_aio *rd_aio;  // bottom half read operations
 	nni_aio *wr_aio;  // bottom half write operations
+	nni_aio *fe_aio;  // bottom half write operations
 
 	nni_mtx mtx;
 
@@ -87,8 +89,12 @@ http_close(nni_http_conn *conn)
 	}
 
 	conn->closed = true;
-	nni_aio_close(conn->wr_aio);
-	nni_aio_close(conn->rd_aio);
+	// nni_aio_abort(conn->wr_aio, NNG_ECANCELED);
+	// nni_aio_abort(conn->rd_aio, NNG_ECANCELED);
+	// nni_aio_stop(conn->wr_aio);
+	// nni_aio_stop(conn->rd_aio);
+	// nni_aio_close(conn->wr_aio);
+	// nni_aio_close(conn->rd_aio);
 
 	if ((aio = conn->rd_uaio) != NULL) {
 		conn->rd_uaio = NULL;
@@ -274,23 +280,29 @@ void
 nng_http_fr_cb(nng_aio *aio, void *arg, int rv)
 {
 	nni_http_conn *conn = arg;
+	// nni_mtx_lock(&conn->mtx);
+	// if (conn->rd_aio != NULL)
+	// 	nni_aio_wait(conn->rd_aio);
+	// nni_mtx_unlock(&conn->mtx);
+	if (conn->closed) {
+	nni_mtx_fini(&conn->mtx);
 	NNI_FREE_STRUCT(conn);
+	} else {
+		log_error("memleak!");
+	}
+
 }
 
 static void
 http_rd_cb(void *arg)
 {
 	nni_http_conn *conn = arg;
-	nni_aio       *aio  = conn->rd_aio;
 	nni_aio       *uaio;
 	size_t         cnt;
 	int            rv;
 	unsigned       niov;
 	nni_iov       *iov;
-
-	if (conn->closed) {
-		return;
-	}
+	nni_aio       *aio  = conn->rd_aio;
 	nni_mtx_lock(&conn->mtx);
 
 	if ((rv = nni_aio_result(aio)) != 0) {
@@ -299,10 +311,23 @@ http_rd_cb(void *arg)
 			nni_aio_finish_error(uaio, rv);
 		}
 		http_close(conn);
+		conn->rd_aio = NULL;
+		conn->rd_close = true;
+			nni_aio_reap(conn->fe_aio);
+			conn->fe_aio = NULL;
+
 		nni_mtx_unlock(&conn->mtx);
 		return;
 	}
+	if (conn->closed) {
+		conn->rd_aio = NULL;
+		conn->rd_close = true;
+			nni_aio_reap(conn->fe_aio);
+			conn->fe_aio = NULL;
 
+		nni_mtx_unlock(&conn->mtx);
+		return;
+	}
 	cnt = nni_aio_count(aio);
 
 	// If we were reading into the buffer, then advance location(s).
@@ -361,8 +386,7 @@ http_rd_cancel(nni_aio *aio, void *arg, int rv)
 	nni_mtx_lock(&conn->mtx);
 	if (aio == conn->rd_uaio) {
 		conn->rd_uaio = NULL;
-		if (nni_aio_busy(conn->rd_aio) && !conn->closed)
-			nni_aio_abort(conn->rd_aio, rv);
+		nni_aio_abort(conn->rd_aio, rv);
 		nni_aio_finish_error(aio, rv);
 	} else if (nni_aio_list_active(aio)) {
 		nni_aio_list_remove(aio);
@@ -424,11 +448,8 @@ http_wr_cb(void *arg)
 	int            rv;
 	size_t         n;
 
-	if (conn->closed) {
-		return;
-	}
-	nni_mtx_lock(&conn->mtx);
 
+	nni_mtx_lock(&conn->mtx);
 	uaio = conn->wr_uaio;
 
 	if ((rv = nni_aio_result(aio)) != 0) {
@@ -438,10 +459,25 @@ http_wr_cb(void *arg)
 			nni_aio_finish_error(uaio, rv);
 		}
 		http_close(conn);
+		conn->wr_aio = NULL;
+		conn->wr_close = true;
+			nni_aio_reap(conn->fe_aio);
+			conn->fe_aio = NULL;
+			
 		nni_mtx_unlock(&conn->mtx);
 		return;
 	}
-
+	if (conn->closed) {
+		conn->wr_aio = NULL;
+		conn->wr_close = true;
+		if (conn->rd_close) {
+			nni_aio_reap(conn->fe_aio);
+			conn->fe_aio = NULL;
+		}
+			
+		nni_mtx_unlock(&conn->mtx);
+		return;
+	}
 	if (uaio == NULL) {
 		// Write canceled?  This happens pretty much only during
 		// shutdown/close, so we don't want to resume writing.
@@ -679,11 +715,7 @@ nni_http_conn_setopt(nni_http_conn *conn, const char *name, const void *buf,
 void
 nni_http_conn_fini(nni_http_conn *conn)
 {
-	// nni_aio_close(conn->wr_aio);
-	// nni_aio_close(conn->rd_aio);
-	// nni_aio_stop(conn->wr_aio);
-	// nni_aio_stop(conn->rd_aio);
-
+	bool zzz = false;
 	nni_mtx_lock(&conn->mtx);
 	http_close(conn);
 	if (conn->sock != NULL) {
@@ -691,17 +723,19 @@ nni_http_conn_fini(nni_http_conn *conn)
 		conn->sock = NULL;
 	}
 	nni_mtx_unlock(&conn->mtx);
-
-	nni_aio_reap(conn->wr_aio);
-	nni_aio_reap(conn->rd_aio);
-	nni_free(conn->rd_buf, conn->rd_bufsz);
-	// nni_aio_reap(conn->fe_aio);
-}
-
-static int
-http_finit(nni_http_conn **connp)
-{
-
+	if (!nni_aio_busy(conn->rd_aio) && !nni_aio_busy(conn->wr_aio)) {
+		zzz = true;
+		nni_free(conn->rd_buf, conn->rd_bufsz);
+		nni_aio_free(conn->wr_aio);
+		nni_aio_free(conn->rd_aio);
+		nni_aio_reap(conn->fe_aio);
+		conn->fe_aio = NULL;
+	} else {
+		nni_free(conn->rd_buf, conn->rd_bufsz);
+		nni_aio_reap(conn->wr_aio);
+		nni_aio_reap(conn->rd_aio);
+		// nni_aio_reap(conn->fe_aio);
+	}
 }
 
 static int
@@ -724,12 +758,20 @@ http_init(nni_http_conn **connp, nng_stream *data)
 	conn->rd_bufsz = HTTP_BUFSIZE;
 
 	if (((rv = nni_aio_alloc(&conn->wr_aio, http_wr_cb, conn)) != 0) ||
+		((rv = nni_aio_alloc(&conn->fe_aio, NULL, conn)) != 0) ||
 	    ((rv = nni_aio_alloc(&conn->rd_aio, http_rd_cb, conn)) != 0)) {
 		nni_http_conn_fini(conn);
 		return (rv);
 	}
-
+	if ((rv = nni_aio_schedule(conn->fe_aio, nng_http_fr_cb, conn)) != 0) {
+		log_error("Non recoverable error, aio schedule failed!");
+		exit(EXIT_FAILURE);
+	}
 	conn->sock = data;
+	conn->closed = false;
+	conn->wr_close = false;
+	conn->rd_close = false;
+	conn->both_close = false;
 
 	*connp = conn;
 
