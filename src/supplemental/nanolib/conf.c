@@ -852,6 +852,7 @@ conf_auth_http_req_init(conf_auth_http_req *req)
 	req->headers      = NULL;
 	req->param_count  = 0;
 	req->params       = NULL;
+	nng_mtx_alloc(&req->mtx);
 	conf_tls_init(&req->tls);
 }
 
@@ -4351,6 +4352,7 @@ conf_auth_http_req_destroy(conf_auth_http_req *req)
 		}
 		cvector_free(req->params);
 	}
+	nng_mtx_free(req->mtx);
 	conf_tls_destroy(&req->tls);
 }
 
