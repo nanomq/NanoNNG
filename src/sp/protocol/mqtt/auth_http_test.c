@@ -35,6 +35,7 @@ void test_auth_http_connect(void)
 	NUTS_TRUE(conf != NULL);
 	char *url = "http://127.0.0.1:8064/mqtt/auth";
 	conf->auth_req.url = nng_alloc(strlen(url) + 1);
+	nng_mtx_alloc(&conf->auth_req.mtx);
 	strncpy(conf->auth_req.url, url, strlen(url));
 	conf->auth_req.url[strlen(url)] = '\0';
 
@@ -46,6 +47,7 @@ void test_auth_http_connect(void)
 	/* send_request will be failed */
 	NUTS_TRUE(rc != 0);
 
+	nng_mtx_free(conf->auth_req.mtx);
 	nng_free(conf->auth_req.url, strlen(conf->auth_req.url) + 1);
 	nng_free(conf, sizeof(conf_auth_http));
 	conn_param_free(conn_param);
@@ -68,6 +70,10 @@ void test_auth_http_sub_pub(void)
 	conn_param *conn_param = NULL;
 	conn_param_init(&conn_param);
 	NUTS_TRUE(conn_param != NULL);
+	nng_mtx_alloc(&conf->acl_req.mtx);
+	NUTS_TRUE(conf->acl_req.mtx != NULL);
+	nng_mtx_alloc(&conf->super_req.mtx);
+	NUTS_TRUE(conf->super_req.mtx != NULL);
 
 	topic_queue *tq = topic_queue_init("topic1", strlen("topic1"));
 
@@ -83,6 +89,8 @@ void test_auth_http_sub_pub(void)
 	NUTS_TRUE(rc != 0);
 
 	topic_queue_release(tq);
+	nng_mtx_free(conf->acl_req.mtx);
+	nng_mtx_free(conf->super_req.mtx);
 	nng_free(conf->acl_req.url, strlen(conf->acl_req.url) + 1);
 	nng_free(conf, sizeof(conf_auth_http));
 	conn_param_free(conn_param);
