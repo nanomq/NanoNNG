@@ -152,9 +152,7 @@ file_load_aes_decrypt(const char *filepath, void **data)
 	}
 	char *aeskey = file_load_aes_key;
 
-	char tag[32];
-	memcpy(tag, cipher, 32);
-	plain = nni_aes_gcm_decrypt(cipher, len - 1, aeskey, tag, &plainsz);
+	plain = nni_aes_gcm_decrypt(cipher, len - 1, aeskey, &plainsz);
 	nng_free(cipher, 0);
 
 	if (!plain || plainsz == 0) {
