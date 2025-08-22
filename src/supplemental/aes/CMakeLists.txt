@@ -7,4 +7,5 @@
 
 if (NNG_ENABLE_PARQUET OR ENABLE_LICENSE_STD OR ENABLE_LICENSE_DK)
     nng_sources(aes.c aes.h)
+    nng_test(aes_test)
 endif ()
