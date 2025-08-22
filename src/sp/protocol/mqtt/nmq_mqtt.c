@@ -246,7 +246,8 @@ nano_pipe_timer_cb(void *arg)
 		p->reason_code = NMQ_KEEP_ALIVE_TIMEOUT;
 		nni_sleep_aio(qos_duration * 1000, &p->aio_timer);
 		nni_mtx_unlock(&p->lk);
-		nni_aio_finish_error(&p->aio_recv, NNG_ECONNREFUSED);
+		p->reason_code = KEEP_ALIVE_TIMEOUT;
+		nni_pipe_close(p->pipe);
 		return;
 	}
 	p->ka_refresh++;
