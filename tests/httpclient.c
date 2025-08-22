@@ -176,9 +176,6 @@ TestMain("HTTP Client", {
 				nng_http_req_free(req);
 				nng_http_res_free(res1);
 				nng_http_res_free(res2);
-				if (conn != NULL) {
-					nng_http_conn_close(conn);
-				}
 				nng_msleep(1000);
 			});
 
