@@ -149,19 +149,6 @@ http_dial_cancel(nni_aio *aio, void *arg, int rv)
 	nni_mtx_unlock(&c->mtx);
 }
 
-static void
-http_dial_cancel2(nni_aio *aio, void *arg, int rv)
-{
-	nni_http_client *c = arg;
-
-	nni_mtx_lock(&c->mtx);
-	if (c->aio != NULL && nni_aio_list_active(c->aio)) {
-		nni_aio_list_remove(c->aio);
-		nni_aio_finish_error(c->aio, rv);
-	}
-	nni_mtx_unlock(&c->mtx);
-}
-
 int
 nni_http_client_init(nni_http_client **cp, const nni_url *url)
 {
@@ -203,13 +190,9 @@ nni_http_client_init(nni_http_client **cp, const nni_url *url)
 		return (rv);
 	}
 
-	// if ((rv = nni_aio_schedule(c->aio, http_dial_cancel2, c)) != 0) {
-	// 	log_error("cancel fn schedule failed!");
-	// 	return;
-	// }
 	if ((rv = nni_aio_schedule(c->free_aio, http_free_cb, c)) != 0) {
 		log_error("cancel fn schedule failed!");
-		return;
+		return (0);
 	}
 	c->closed = false;
 	*cp = c;
