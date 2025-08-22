@@ -155,9 +155,6 @@ struct conf_auth_http_req {
 	conf_http_header **headers;
 	size_t             param_count;
 	conf_http_param  **params;
-	nng_http_client *client;
-	nng_http_conn *  conn;
-	nng_url *        url_ptr;
 	// TODO not support yet
 	conf_tls tls;
 };
