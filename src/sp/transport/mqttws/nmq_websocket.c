@@ -445,8 +445,11 @@ done:
 	nni_aio_set_msg(uaio, smsg);
 skip:
 	nni_aio_set_output(uaio, 0, p);
+	if (!nni_aio_list_active(uaio)) // in case abort action from protocol layer 
+		nni_aio_finish(uaio, 0, 0);
+	else
+		log_warn("WebSocket uaio is aborted already!");
 	nni_mtx_unlock(&p->mtx);
-	nni_aio_finish(uaio, 0, 0);
 	if (msg_vec)
 		cvector_free(msg_vec);
 	return;
