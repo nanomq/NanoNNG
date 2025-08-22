@@ -89,6 +89,8 @@ http_close(nni_http_conn *conn)
 	}
 
 	conn->closed = true;
+	// nni_aio_abort(conn->wr_aio, NNG_ECANCELED);
+	// nni_aio_abort(conn->rd_aio, NNG_ECANCELED);
 	// nni_aio_close(conn->wr_aio);
 	// nni_aio_close(conn->rd_aio);
 
@@ -121,8 +123,6 @@ nni_http_conn_close(nni_http_conn *conn)
 {
 	nni_mtx_lock(&conn->mtx);
 	http_close(conn);
-	nni_aio_close(conn->wr_aio);
-	nni_aio_close(conn->rd_aio);
 	nni_mtx_unlock(&conn->mtx);
 }
 
@@ -450,7 +450,7 @@ http_wr_cb(void *arg)
 		}
 		http_close(conn);
 		conn->wr_close = true;
-		// fe_aio shall be scheduled after the last action of rd_aio & wr_aio 
+		// fe_aio shall be scheduled after the last action of rd_aio & wr_aio
 		if (conn->rd_close || !nni_aio_busy(conn->rd_aio)) {
 			// Make sure only nng_http_conn_close trigger fe_aio
 			if (conn->free) {
