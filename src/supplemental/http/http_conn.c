@@ -89,8 +89,7 @@ http_close(nni_http_conn *conn)
 	}
 
 	conn->closed = true;
-	// nni_aio_abort(conn->wr_aio, NNG_ECANCELED);
-	// nni_aio_abort(conn->rd_aio, NNG_ECANCELED);
+	// Do not abort aio here, memleak risk!
 	// nni_aio_close(conn->wr_aio);
 	// nni_aio_close(conn->rd_aio);
 
@@ -709,6 +708,7 @@ free:
 		nni_aio_free(conn->rd_aio);
 		nni_aio_reap(conn->fe_aio);
 	} else {
+		// abort aio here is a must for resources clean
 		nni_aio_abort(conn->wr_aio, NNG_ECLOSED);
 		nni_aio_abort(conn->rd_aio, NNG_ECLOSED);
 		nni_aio_reap(conn->wr_aio);
