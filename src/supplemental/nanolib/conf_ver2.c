@@ -765,11 +765,9 @@ conf_auth_parse_cipher(conf_auth *auth, const char *key)
 			nng_free(cipher, cipher_sz);
 			log_error("failed to base64 decode auth.password");
 		} else {
-			char  tag[32];
-			memcpy(tag, cipher, 32);
 			int   plain_sz;
 			char *plain = nni_aes_gcm_decrypt(
-					cipher, cipher_sz, (char *)key, tag, &plain_sz);
+					cipher, cipher_sz, (char *)key, &plain_sz);
 			nng_free(cipher, cipher_sz);
 			if (plain == NULL || plain_sz == 0) {
 				log_error("failed to decrypt auth.password");
