@@ -298,7 +298,7 @@ send_request(conf_auth_http *conf, conf_auth_http_req *conf_req,
 	set_data(req, conf_req, params);
 	// Send the request, and wait for that to finish.
 	nng_http_conn_write_req(conn, req, aio);
-	// nng_aio_set_timeout(aio, conf->timeout * 1000);
+	nng_aio_set_timeout(aio, conf->timeout * 1000);
 	nng_aio_wait(aio);
 
 	if ((rv = nng_aio_result(aio)) != 0) {
@@ -307,7 +307,7 @@ send_request(conf_auth_http *conf, conf_auth_http_req *conf_req,
 	}
 
 	// Read a response.
-	// nng_aio_set_timeout(aio, conf->timeout * 1000);
+	nng_aio_set_timeout(aio, conf->timeout * 1000);
 	nng_http_conn_read_res(conn, res, aio);
 	nng_aio_wait(aio);
 
