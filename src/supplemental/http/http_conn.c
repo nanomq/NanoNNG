@@ -309,11 +309,22 @@ http_rd_cb(void *arg)
 		conn->rd_close = true;
 		if (conn->wr_close || !nni_aio_busy(conn->wr_aio)) {
 			if (conn->free) {
-				nni_aio_reap(conn->fe_aio);
+				nni_aio_free(conn->fe_aio);
 				conn->fe_aio = NULL;
 			}
 		}
 
+		nni_mtx_unlock(&conn->mtx);
+		return;
+	}
+	if (conn->free) {
+		conn->rd_close = true;
+		if (conn->fe_aio != NULL && conn->wr_aio != NULL)
+			if (conn->wr_close || !nni_aio_busy(conn->wr_aio)) {
+				nni_aio_reap(conn->fe_aio);
+				conn->fe_aio = NULL;
+			}
+		log_error("checkmate");
 		nni_mtx_unlock(&conn->mtx);
 		return;
 	}
@@ -453,11 +464,22 @@ http_wr_cb(void *arg)
 		if (conn->rd_close || !nni_aio_busy(conn->rd_aio)) {
 			// Make sure only nng_http_conn_close trigger fe_aio
 			if (conn->free) {
-				nni_aio_reap(conn->fe_aio);
+				nni_aio_free(conn->fe_aio);
 				conn->fe_aio = NULL;
 			}
 		}
 			
+		nni_mtx_unlock(&conn->mtx);
+		return;
+	}
+	if (conn->free) {
+		conn->wr_close = true;
+		if (conn->fe_aio != NULL && conn->rd_aio != NULL)
+			if (conn->rd_close || !nni_aio_busy(conn->rd_aio)) {
+				nni_aio_reap(conn->fe_aio);
+				conn->fe_aio = NULL;
+			}
+		log_error("checkmate");
 		nni_mtx_unlock(&conn->mtx);
 		return;
 	}
@@ -702,7 +724,7 @@ nni_http_conn_fini(nni_http_conn *conn)
 	conn->free = true;
 	http_close(conn);
 	nni_mtx_unlock(&conn->mtx);
-free:
+
 	if (!nni_aio_busy(conn->rd_aio) && !nni_aio_busy(conn->wr_aio)) {
 		nni_aio_free(conn->wr_aio);
 		nni_aio_free(conn->rd_aio);
@@ -713,6 +735,7 @@ free:
 		nni_aio_abort(conn->rd_aio, NNG_ECLOSED);
 		nni_aio_reap(conn->wr_aio);
 		nni_aio_reap(conn->rd_aio);
+		// nni_aio_reap(conn->fe_aio);
 	}
 }
 
