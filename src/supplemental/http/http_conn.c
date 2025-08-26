@@ -324,7 +324,6 @@ http_rd_cb(void *arg)
 				nni_aio_reap(conn->fe_aio);
 				conn->fe_aio = NULL;
 			}
-		log_error("checkmate");
 		nni_mtx_unlock(&conn->mtx);
 		return;
 	}
@@ -479,7 +478,6 @@ http_wr_cb(void *arg)
 				nni_aio_reap(conn->fe_aio);
 				conn->fe_aio = NULL;
 			}
-		log_error("checkmate");
 		nni_mtx_unlock(&conn->mtx);
 		return;
 	}
