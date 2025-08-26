@@ -62,6 +62,8 @@ void test_auth_http_sub_pub(void)
 	NUTS_TRUE(conf != NULL);
 	char *url = "http://10.1.0.1:8964/mqtt/acl";
 	conf->super_req.enable = false;
+	conf->acl_req.enable = true;
+	conf->enable = true;
 	conf->acl_req.url = nng_alloc(strlen(url) + 1);
 	strncpy(conf->acl_req.url, url, strlen(url));
 	conf->acl_req.url[strlen(url)] = '\0';
