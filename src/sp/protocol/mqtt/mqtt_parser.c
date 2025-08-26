@@ -1253,7 +1253,7 @@ nano_pubmsg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
 		NNI_PUT16(tlen, topic->len + clientid->len + 1);
 		nni_msg_append(msg, tlen, 2);
 		nni_msg_append(msg, topic->body, topic->len);
-		nni_msg_append(msg, "\\", 1);
+		nni_msg_append(msg, "/", 1);
 		nni_msg_append(msg, clientid->body, clientid->len);
 	} else {
 		NNI_PUT16(tlen, topic->len);
