@@ -43,14 +43,10 @@ static void
 http_free_cb(nng_aio *aio, void *arg, int rv)
 {
 	nni_http_client *c = arg;
-	if (c->closed) {
-		nni_mtx_fini(&c->mtx);
-		nng_stream_dialer_free(c->dialer);
-		NNI_FREE_STRUCT(c);
-		return;
-	} else {
-		log_error("memleak");
-	}
+	nni_mtx_fini(&c->mtx);
+	nng_stream_dialer_free(c->dialer);
+	NNI_FREE_STRUCT(c);
+	return;
 }
 
 static void
@@ -81,7 +77,6 @@ http_dial_cb(void *arg)
 		return;
 	}
 	if (c->closed) {
-		log_error("free stream in dial_cb");
 		nni_aio_reap(c->free_aio);
 		c->free_aio = NULL;
 		if (rv == 0) {
