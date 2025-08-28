@@ -1294,9 +1294,9 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		// reconnect here
 		d->qconn = NULL;
 		nni_mtx_unlock(&d->mtx);
+		// we fed nng aio to msquic thread pool. one cb one aio finish
 		if (nni_aio_busy(d->qconaio))
-			log_error("qconaio busy");
-		nni_aio_finish_error(d->qconaio, d->reason_code);
+			nni_aio_finish_error(d->qconaio, d->reason_code);
 		break;
 	case QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED:
 		// A resumption ticket (also called New Session Ticket or NST)
