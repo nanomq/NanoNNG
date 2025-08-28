@@ -276,6 +276,8 @@ http_rd_start(nni_http_conn *conn)
 void
 nng_http_fr_cb(nng_aio *aio, void *arg, int rv)
 {
+	NNI_ARG_UNUSED(aio);
+	NNI_ARG_UNUSED(rv);
 	nni_http_conn *conn = arg;
 	nni_mtx_lock(&conn->mtx);
 	if (conn->sock != NULL) {
