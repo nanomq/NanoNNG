@@ -264,7 +264,6 @@ send_request(conf_auth_http *conf, conf_auth_http_req *conf_req,
 	nng_http_conn *  conn   = NULL;
 	nng_url *        url    = NULL;
 	nng_aio *        aio    = NULL;
-	nng_aio *        fe_aio = NULL;
 	nng_http_req *   req    = NULL;
 	nng_http_res *   res    = NULL;
 	int              status = 0;

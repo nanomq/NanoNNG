@@ -787,6 +787,7 @@ conf_auth_parse_ver2(conf *config, cJSON *jso)
 	conf_auth *auth = &(config->auths);
 	cJSON     *ele  = NULL;
 	auth->enable    = true;
+	hocon_read_bool(auth, enable, jso);
 	cJSON_ArrayForEach(ele, jso)
 	{
 		if (cJSON_IsString(ele)) {
@@ -2169,7 +2170,6 @@ conf_authorization_prase_ver2(conf *config, cJSON *jso)
 	if (jso_auth_http) {
 		conf_auth_http_parse_ver2(config, jso_auth_http);
 	}
-	// TODO if not use include, we should read file manually.
 	cJSON *jso_auth_pwd = hocon_get_obj("auth.password", jso);
 	if (jso_auth_pwd) {
 		conf_auth_parse_ver2(config, jso_auth_pwd);
