@@ -1295,7 +1295,7 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		d->qconn = NULL;
 		nni_mtx_unlock(&d->mtx);
 		if (nni_aio_busy(d->qconaio))
-			log_error("@bug!!##!@$!=!@#!");
+			log_error("qconaio busy");
 		nni_aio_finish_error(d->qconaio, d->reason_code);
 		break;
 	case QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED:

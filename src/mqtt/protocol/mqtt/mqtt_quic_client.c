@@ -332,8 +332,9 @@ mqtt_quic_send_msg(nni_aio *aio, mqtt_sock_t *s)
 				nni_aio_finish_error(aio, rv);
 				return NNG_ECANCELED;
 			}
+		} else {
+			log_info("Packet ID %d cached in QoS first case!", packet_id);
 		}
-		// log_info("send qos msg %p id %d!", msg, packet_id);
 		break;
 	default:
 		log_error("Undefined msg type");
@@ -353,8 +354,9 @@ mqtt_quic_send_msg(nni_aio *aio, mqtt_sock_t *s)
 			nni_aio_set_prov_data(aio, &prior_flags);
 			g_qos_sent ++;
 			nni_pipe_send(p->qpipe, aio);
-			log_debug("sending high priority QoS msg in parallel");
 			nni_mtx_unlock(&s->mtx);
+			if (ptype == NNG_MQTT_PUBLISH)
+				log_info("send high priority QoS msg %d in parallel", packet_id);;
 			return 0;
 		}
 
@@ -364,11 +366,11 @@ mqtt_quic_send_msg(nni_aio *aio, mqtt_sock_t *s)
 		g_qos0_sent ++;
 		nni_pipe_send(p->qpipe, &p->send_aio);
 	} else {
-		if (nni_mqtt_msg_get_publish_qos(msg) == 0) {
-			nni_msg_free(msg);
-			// log_warn("QOS 0Message lost");
-			goto out;
-		}
+		// if (nni_mqtt_msg_get_publish_qos(msg) == 0) {
+		// 	nni_msg_free(msg);
+		// 	// log_warn("QOS 0Message lost");
+		// 	goto out;
+		// }
 		if (nni_lmq_full(&p->send_messages)) {
 			//log_warn("Cached Message lost! pipe is busy and lmq is full\n");
 			(void) nni_lmq_get(&p->send_messages, &tmsg);
@@ -874,7 +876,7 @@ mqtt_timer_cb(void *arg)
 				p->busy = true;
 				nni_msg_clone(msg);
 				nni_aio_set_msg(&p->send_aio, msg);
-				log_info("msg packetid%d resend start, sent: qos %d acked %d qos 0 %d",
+				log_info("msg packetid %d resend start, sent: qos %d acked %d qos 0 %d",
 						pid, g_qos_sent, g_qos_acked, g_qos0_sent);
 				nni_pipe_send(p->qpipe, &p->send_aio);
 				nni_msg_set_timestamp(msg, now);

@@ -3060,6 +3060,7 @@ conf_bridge_node_parse_forwards(
 			s->remote_topic_len = strlen(remote_topic);
 			s->local_topic_len  = strlen(local_topic);
 			s->retain           = retain;
+			s->qos              = NO_QOS;
 
 			for (int i=0; i<(int)s->remote_topic_len; ++i)
 				if (s->remote_topic[i] == '+' || s->remote_topic[i] == '#') {
