@@ -42,6 +42,8 @@ http_dial_start(nni_http_client *c)
 static void
 http_free_cb(nng_aio *aio, void *arg, int rv)
 {
+	NNI_ARG_UNUSED(aio);
+	NNI_ARG_UNUSED(rv);
 	nni_http_client *c = arg;
 	nni_mtx_fini(&c->mtx);
 	nng_stream_dialer_free(c->dialer);
