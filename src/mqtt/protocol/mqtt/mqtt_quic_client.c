@@ -114,6 +114,7 @@ struct mqtt_sock_s {
 	nni_stat_item msg_resend;
 	nni_stat_item msg_send_drop;
 	nni_stat_item msg_recv_drop;
+	nni_stat_item msg_bytes_cached;
 #endif
 };
 
@@ -1004,10 +1005,19 @@ static void mqtt_quic_sock_init(void *arg, nni_sock *sock)
 		.si_atomic = true,
 	};
 	nni_stat_init(&s->msg_recv_drop, &msg_recv_drop);
-	nni_sock_add_stat(sock, &s->mqtt_reconnect);
-	nni_sock_add_stat(sock, &s->msg_resend);
-	nni_sock_add_stat(sock, &s->msg_send_drop);
-	nni_sock_add_stat(sock, &s->msg_recv_drop);
+	static const nni_stat_info msg_bytes_cached = {
+		.si_name   = "mqtt_msg_bytes_cached",
+		.si_desc   = "cached msg payload size",
+		.si_type   = NNG_STAT_COUNTER,
+		.si_unit   = NNG_UNIT_BYTES,
+		.si_atomic = true,
+	};
+	nni_stat_init(&s->msg_bytes_cached, &msg_bytes_cached);
+	nni_sock_add_stat(s->nsock, &s->mqtt_reconnect);
+	nni_sock_add_stat(s->nsock, &s->msg_resend);
+	nni_sock_add_stat(s->nsock, &s->msg_send_drop);
+	nni_sock_add_stat(s->nsock, &s->msg_recv_drop);
+	nni_sock_add_stat(s->nsock, &s->msg_bytes_cached);
 #endif
 }
 
@@ -1490,21 +1500,54 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 			}
 		}
 #endif
-		if (!nni_list_active(&s->send_queue, aio) && qos > 0) {
-			// cache aio
-			nni_list_append(&s->send_queue, aio);
-			nni_mtx_unlock(&s->mtx);
-			log_warn("client sending msg while disconnected! cached");
+		nni_mtx_unlock(&s->mtx);
+		if (qos > 0) {
+#ifdef NNG_HAVE_MQTT_BROKER
+			if (nni_lmq_full(s->bridge_conf->ctx_msgs)) {
+				log_warn("Rolling update overwrites old Message");
+				nni_msg *tmsg;
+				(void) nni_lmq_get(s->bridge_conf->ctx_msgs, &tmsg);
+#ifdef NNG_ENABLE_STATS
+				nni_stat_inc(&s->msg_send_drop, 1);
+#endif
+				nni_msg_free(tmsg);
+			}
+			if (nng_lmq_put(s->bridge_conf->ctx_msgs, msg) != 0) {
+				log_warn("Msg lost! put msg to ctx_msgs failed!");
+				nni_msg_free(msg);
+#ifdef NNG_ENABLE_STATS
+				nni_stat_inc(&s->msg_send_drop, 1);
+#endif
+			} else {
+#ifdef NNG_ENABLE_STATS
+				nni_stat_inc(&s->msg_bytes_cached, nni_msg_len(msg));
+#endif
+			}
+#else
+			nni_mtx_lock(&s->mtx);
+			if (!nni_list_active(&s->send_queue, aio)) {
+				// cache aio
+				nni_list_append(&s->send_queue, aio);
+				nni_mtx_unlock(&s->mtx);
+				log_warn("client sending msg while disconnected! cached");
+			} else {
+				nni_msg_free(msg);
+				nni_mtx_unlock(&s->mtx);
+#ifdef NNG_ENABLE_STATS
+				nni_stat_inc(&s->msg_send_drop, 1);
+#endif
+				log_info("aio is already cached! drop qos 0 msg");
+			}
+#endif
 		} else {
 			nni_msg_free(msg);
-			nni_mtx_unlock(&s->mtx);
+			log_info("Discard QoS 0 msg while disconnected!");
 #ifdef NNG_ENABLE_STATS
 			nni_stat_inc(&s->msg_send_drop, 1);
 #endif
-			nni_aio_set_msg(aio, NULL);
-			nni_aio_finish_error(aio, NNG_EBUSY);
-			log_info("aio is already cached! drop qos 0 msg");
 		}
+		nni_aio_set_msg(aio, NULL);
+		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
 	}
 	mqtt_quic_send_msg(aio, s);
