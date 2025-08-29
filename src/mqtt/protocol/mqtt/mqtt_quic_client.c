@@ -366,27 +366,30 @@ mqtt_quic_send_msg(nni_aio *aio, mqtt_sock_t *s)
 		g_qos0_sent ++;
 		nni_pipe_send(p->qpipe, &p->send_aio);
 	} else {
-		// Set option let user decide if qos 0 goes to lmq
-		// if (nni_mqtt_msg_get_publish_qos(msg) == 0) {
-		// 	nni_msg_free(msg);
-		// 	goto out;
-		// }
-		if (nni_lmq_full(&p->send_messages)) {
-			//log_warn("Cached Message lost! pipe is busy and lmq is full\n");
-			(void) nni_lmq_get(&p->send_messages, &tmsg);
-			nni_msg_free(tmsg);
+		if (s->retry_qos_0 || qos > 0) {
+			if (nni_lmq_full(&p->send_messages)) {
+				//log_warn("Cached Message lost! pipe is busy and lmq is full\n");
+				(void) nni_lmq_get(&p->send_messages, &tmsg);
+				nni_msg_free(tmsg);
 #ifdef NNG_ENABLE_STATS
-			nni_stat_inc(&s->msg_send_drop, 1);
+				nni_stat_inc(&s->msg_send_drop, 1);
 #endif
-		}
-		if (0 != nni_lmq_put(&p->send_messages, msg)) {
+			}
+			if (0 != nni_lmq_put(&p->send_messages, msg)) {
+				nni_msg_free(msg);
+#ifdef NNG_ENABLE_STATS
+				nni_stat_inc(&s->msg_send_drop, 1);
+#endif
+				log_warn("Message lost while enqueing");
+			}
+			// let qos msg retry/cancel take care of user aio
+		} else {
 			nni_msg_free(msg);
 #ifdef NNG_ENABLE_STATS
 			nni_stat_inc(&s->msg_send_drop, 1);
 #endif
-			log_warn("Message lost while enqueing");
+			log_info("drop qos 0 msg due to busy aio");
 		}
-		// let qos msg retry/cancel take care of user aio
 	}
 out:
 	nni_mtx_unlock(&s->mtx);
@@ -1131,6 +1134,7 @@ mqtt_quic_sock_set_bridge_config(
 		s->bridge_conf = *(conf_bridge_node **) v;
 		s->qos_first = s->bridge_conf->qos_first;
 		s->retry     = s->bridge_conf->resend_interval;
+		s->retry_qos_0 = s->bridge_conf->retry_qos_0;
 		nni_mtx_unlock(&s->mtx);
 		return (0);
 	}
