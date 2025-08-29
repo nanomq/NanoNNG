@@ -601,20 +601,28 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg)
 		}
 		return;
 	}
-	if (nni_lmq_full(&p->send_messages)) {
-		log_warn("Cached Message lost! pipe is busy and lmq is full\n");
-		(void) nni_lmq_get(&p->send_messages, &tmsg);
-		nni_msg_free(tmsg);
+	if (s->retry_qos_0 || qos > 0) {
+		if (nni_lmq_full(&p->send_messages)) {
+			log_warn("Cached Message lost! pipe is busy and lmq is full\n");
+			(void) nni_lmq_get(&p->send_messages, &tmsg);
+			nni_msg_free(tmsg);
+#ifdef NNG_ENABLE_STATS
+			nni_stat_inc(&s->msg_send_drop, 1);
+			log_info("inflight window size %d", nng_lmq_len(&p->send_messages));
+#endif
+		}
+		if (0 != nni_lmq_put(&p->send_messages, msg)) {
+			nni_msg_free(msg);
+#ifdef NNG_ENABLE_STATS
+			nni_stat_inc(&s->msg_send_drop, 1);
+#endif
+			log_warn("Message lost while enqueing");
+		}
+	} else {
 #ifdef NNG_ENABLE_STATS
 		nni_stat_inc(&s->msg_send_drop, 1);
 #endif
-	}
-	if (0 != nni_lmq_put(&p->send_messages, msg)) {
 		nni_msg_free(msg);
-#ifdef NNG_ENABLE_STATS
-		nni_stat_inc(&s->msg_send_drop, 1);
-#endif
-		log_warn("Message lost while enqueing");
 	}
 out:
 	nni_mtx_unlock(&s->mtx);
