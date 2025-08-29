@@ -86,6 +86,7 @@ struct mqtt_sock_s {
 	uint8_t         mqtt_ver; // mqtt version.
 	bool            multi_stream;
 	bool            qos_first;
+	bool            retry_qos_0;
 	nni_mtx         mtx; // more fine grained mutual exclusion
 	nni_atomic_bool closed;
 	nni_atomic_int  next_packet_id; // next packet id to use, shared by multiple pipes
@@ -144,6 +145,7 @@ struct mqtt_pipe_s {
 static void
 mqtt_quic_cancel_send(nni_aio *aio, void *arg, int rv)
 {
+	NNI_ARG_UNUSED(rv);
 	nni_msg             *msg, *tmsg;
 	uint16_t             packet_id;
 	mqtt_sock_t         *s   = arg;
@@ -817,6 +819,10 @@ mqtt_timer_cb(void *arg)
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
 
+	if (nng_aio_result(&p->time_aio) != 0) {
+		log_warn("sleep aio finish error!");
+		return;
+	}
 	nni_mtx_lock(&s->mtx);
 	p = s->pipe;
 	if (NULL == p || nni_atomic_get_bool(&p->closed)) {
@@ -824,13 +830,7 @@ mqtt_timer_cb(void *arg)
 		nni_mtx_unlock(&s->mtx);
 		return;
 	}
-	// Ping would be send at transport layer
-	if (nng_aio_result(&p->time_aio) != 0) {
-		log_warn("sleep aio finish error!");
-		nni_mtx_unlock(&s->mtx);
-		return;
-	}
-	if (p->pingcnt > 1) {
+	if (p->pingcnt > s->bridge_conf->backoff_max) {
 		log_warn("MQTT Timeout and disconnect");
 		s->disconnect_code = KEEP_ALIVE_TIMEOUT;
 		nni_mtx_unlock(&s->mtx);
@@ -840,7 +840,7 @@ mqtt_timer_cb(void *arg)
 
 	// Update left time to send pingreq
 	s->timeleft -= s->retry;
-
+	// Ping would be send at transport layer
 	if (!p->busy && p->pingmsg && s->timeleft <= 0) {
 		p->busy = true;
 		s->timeleft = s->keepalive;
@@ -862,11 +862,12 @@ mqtt_timer_cb(void *arg)
 	if (msg != NULL) {
 		nni_time now  = nni_clock();
 		nni_time time = now - nni_msg_get_timestamp(msg);
-		if (time > 3000) {
+		if (time > s->bridge_conf->resend_wait) {
 			nni_mqtt_packet_type ptype;	//uint16_t
 			ptype = nni_mqtt_msg_get_packet_type(msg);
 			if (ptype == NNG_MQTT_PUBLISH) {
-				nni_mqtt_msg_set_publish_dup(msg, true);
+				uint8_t *header = nni_msg_header(msg);
+				*header |= 0X08;
 			}
 			if (!p->busy) {
 				g_qos_sent ++;
@@ -885,6 +886,9 @@ mqtt_timer_cb(void *arg)
 				return;
 			} else {
 				log_info("msg id %d resend canceld due to blocked pipe", pid);
+#ifdef NNG_ENABLE_STATS
+				nni_stat_inc(&s->msg_send_drop, 1);
+#endif
 			}
 		}
 	}
@@ -946,7 +950,7 @@ static void mqtt_quic_sock_init(void *arg, nni_sock *sock)
 	mqtt_quic_ctx_init(&s->master, s);
 
 	s->bridge_conf = NULL;
-
+	s->retry_qos_0 = true;
 	// this is "semi random" start for request IDs.
 	s->retry      = NNI_SECOND * MQTT_QUIC_RETRTY;
 	s->keepalive  = NNI_SECOND * 10; // default mqtt keepalive
@@ -1116,6 +1120,7 @@ mqtt_quic_sock_set_bridge_config(
 		nni_mtx_lock(&s->mtx);
 		s->bridge_conf = *(conf_bridge_node **) v;
 		s->qos_first = s->bridge_conf->qos_first;
+		s->retry     = s->bridge_conf->resend_interval;
 		nni_mtx_unlock(&s->mtx);
 		return (0);
 	}
@@ -1555,6 +1560,33 @@ wait:
 	return;
 }
 
+static int
+mqtt_quic_sock_get_disconnect_code(void *arg, void *v, size_t *sz, nni_opt_type t)
+{
+	NNI_ARG_UNUSED(sz);
+	mqtt_sock_t *s = arg;
+	int          rv;
+
+	nni_mtx_lock(&s->mtx);
+	rv = nni_copyin_int(
+	    v, &s->disconnect_code, sizeof(reason_code), 0, 256, t);
+	nni_mtx_unlock(&s->mtx);
+	return (rv);
+}
+
+static int
+mqtt_quic_sock_set_retry_qos_0(void *arg, const void *v, size_t sz, nni_opt_type t)
+{
+	mqtt_sock_t *s = arg;
+	bool tmp;
+	int rv;
+
+	if ((rv = nni_copyin_bool(&tmp, v, sz, t)) == 0) {
+		s->retry_qos_0 = tmp;
+	}
+	return (rv);
+}
+
 static nni_proto_pipe_ops mqtt_quic_pipe_ops = {
 	.pipe_size  = sizeof(mqtt_pipe_t),
 	.pipe_init  = mqtt_quic_pipe_init,
@@ -1591,6 +1623,14 @@ static nni_option mqtt_quic_sock_options[] = {
 	{
 	    .o_name = NNG_OPT_MQTT_BRIDGE_CONF,
 	    .o_set  = mqtt_quic_sock_set_bridge_config,
+	},
+	{
+	    .o_name = NNG_OPT_MQTT_DISCONNECT_REASON,
+	    .o_get  = mqtt_quic_sock_get_disconnect_code,
+	},
+	{
+	    .o_name = NNG_OPT_MQTT_RETRY_QOS_0,
+	    .o_set  = mqtt_quic_sock_set_retry_qos_0,
 	},
 	// terminate list
 	{
