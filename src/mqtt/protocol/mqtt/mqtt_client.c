@@ -106,7 +106,7 @@ struct mqtt_sock_s {
 	nni_list        recv_queue; // ctx pending to receive
 	nni_list        send_queue; // ctx pending to send (only offline msg)
 	reason_code     disconnect_code; // disconnect reason code
-	property       *dis_prop;        // disconnect property
+	property       *dis_prop;        // TODO disconnect property
 	nni_id_map      sent_unack;      // send messages unacknowledged
 #ifdef NNG_SUPP_SQLITE
 	nni_mqtt_sqlite_option *sqlite_opt;
@@ -138,7 +138,9 @@ mqttv5_sock_init(void *arg, nni_sock *sock)
 	mqtt_sock_t *s = arg;
 	mqtt_sock_init(arg, sock);
 	s->mqtt_ver    = MQTT_PROTOCOL_VERSION_v5;
+#ifdef NNG_HAVE_MQTT_BROKER
 	s->bridge_conf = NULL;
+#endif
 }
 
 static void
@@ -328,6 +330,7 @@ mqtt_sock_get_pipeid(void *arg, void *buf, size_t *szp, nni_type t)
 	return (nni_copyout_u64(pid, buf, szp, t));
 }
 
+#ifdef NNG_HAVE_MQTT_BROKER
 static int
 mqtt_sock_set_bridge_config(
     void *arg, const void *v, size_t sz, nni_opt_type t)
@@ -342,6 +345,7 @@ mqtt_sock_set_bridge_config(
 	}
 	return NNG_EUNREACHABLE;
 }
+#endif
 
 static int
 mqtt_sock_set_sqlite_option(
@@ -449,16 +453,18 @@ mqtt_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	// We start at a random point, to minimize likelihood of
 	// accidental collision across restarts.
 	nni_id_map_init(&p->recv_unack, 0x0000u, 0xffffu, true);
+#ifdef NNG_HAVE_MQTT_BROKER
 	if (p->mqtt_sock->bridge_conf != NULL) {
 		nni_lmq_init(&p->recv_messages,
 		    p->mqtt_sock->bridge_conf->max_recv_queue_len);
 		nni_lmq_init(&p->send_messages,
 		    p->mqtt_sock->bridge_conf->max_send_queue_len);
 	} else {
+#endif
 		nni_lmq_init(&p->recv_messages, NNG_MAX_RECV_LMQ);
 		nni_lmq_init(&p->send_messages, NNG_MAX_SEND_LMQ);
-	}
 #ifdef NNG_HAVE_MQTT_BROKER
+	}
 	p->cparam = NULL;
 #endif
 
@@ -679,7 +685,6 @@ mqtt_pipe_start(void *arg)
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
 	mqtt_ctx_t  *c = NULL;
-	nni_aio		*aio;
 
 	nni_mtx_lock(&s->mtx);
 	nni_atomic_set_bool(&p->closed, false);
@@ -1355,9 +1360,9 @@ mqtt_ctx_fini(void *arg)
 static void
 mqtt_cancel_send(nni_aio *aio, void *arg, int rv)
 {
+	NNI_ARG_UNUSED(rv);
 	uint16_t             packet_id;
 	mqtt_sock_t         *s = arg;
-	nni_aio			    *taio;
 	nni_mqtt_proto_data *proto_data;
 
 	nni_mtx_lock(&s->mtx);
