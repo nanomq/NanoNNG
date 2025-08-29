@@ -933,10 +933,14 @@ mqtt_tcptran_pipe_send_start(mqtt_tcptran_pipe *p)
 			if (qos > 0)
 				p->sndmax --;
 			if (qos > p->qosmax) {
+				// may cause issue in little endian system
 				p->qosmax == 1 ? ((*header &= 0XF9), (*header |= 0X02)) : NNI_ARG_UNUSED(*header);
 				p->qosmax == 0 ? *header &= 0XF9 : NNI_ARG_UNUSED(*header);
 			}
 		}
+	}
+	if (nni_mqtt_msg_get_publish_dup(msg)) {
+		*header |= 0X08;
 	}
 
 	// check max packet size
