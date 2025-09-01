@@ -353,7 +353,7 @@ int
 nmq_auth_http_connect(conn_param *cparam, conf_auth_http *conf)
 {
 	if (conf->enable == false || conf->auth_req.url == NULL) {
-		return NNG_HTTP_STATUS_OK;
+		return SUCCESS;
 	}
 
 	auth_http_params auth_params = {
