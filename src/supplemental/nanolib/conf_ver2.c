@@ -2144,7 +2144,7 @@ conf_acl_parse_ver2(conf *config, cJSON *jso)
 #ifdef ACL_SUPP
 	conf_acl *acl = &config->acl;
 	acl->enable   = true;
-
+	hocon_read_bool(acl, enable, jso);
 	cJSON *rule_list = hocon_get_obj("rules", jso);
 	if (cJSON_IsArray(rule_list)) {
 		size_t count = (size_t) cJSON_GetArraySize(rule_list);
