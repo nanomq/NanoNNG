@@ -796,8 +796,9 @@ mqtt_timer_cb(void *arg)
 		nni_time time = now - nni_msg_get_timestamp(msg);
 		if (time > s->retry_wait && msg != NULL) {
 			ptype = nni_mqtt_msg_get_packet_type(msg);
-			if (ptype == NNG_MQTT_PUBLISH) {
-				nni_mqtt_msg_set_publish_dup(msg, true);
+			if (ptype == NNG_MQTT_PUBLISH) {		
+				uint8_t *header = nni_msg_header(msg);
+				*header |= 0X08;
 			}
 			log_debug("trying to resend QoS msg %d", pid);
 			nni_msg_clone(msg);
