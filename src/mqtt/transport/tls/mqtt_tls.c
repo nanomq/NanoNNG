@@ -943,9 +943,6 @@ mqtts_tcptran_pipe_send_start(mqtts_tcptran_pipe *p)
 			}
 		}
 	}
-	if (nni_mqtt_msg_get_publish_dup(msg)) {
-		*header |= 0X08;
-	}
 
 	// check max packet size
 	if (nni_msg_header_len(msg) + nni_msg_len(msg) > p->packmax) {
