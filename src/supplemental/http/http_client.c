@@ -142,7 +142,6 @@ http_dial_cancel(nni_aio *aio, void *arg, int rv)
 	nni_http_client *c = arg;
 
 	nni_mtx_lock(&c->mtx);
-	c->closed = true;
 	if (c->aio != NULL)
 		nni_aio_abort(c->aio, rv);
 	if (nni_aio_list_active(aio)) {
