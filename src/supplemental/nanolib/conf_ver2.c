@@ -716,6 +716,7 @@ conf_webhook_parse_ver2(conf *config, cJSON *jso)
 	if (jso_webhook) {
 		conf_web_hook *webhook = &(config->web_hook);
 		webhook->enable        = true;
+		hocon_read_bool(webhook, enable, jso_webhook);
 		hocon_read_str(webhook, url, jso_webhook);
 		cJSON *webhook_headers = hocon_get_obj("headers", jso_webhook);
 		cJSON *webhook_header  = NULL;
