@@ -929,7 +929,8 @@ mqtt_tcptran_pipe_send_start(mqtt_tcptran_pipe *p)
 	if (msg != NULL && p->proto == MQTT_PROTOCOL_VERSION_v5) {
 		if ((*header & 0XF0) == CMD_PUBLISH) {
 			// check max qos
-			uint8_t qos = nni_mqtt_msg_get_publish_qos(msg);
+			uint8_t qos = nni_msg_get_pub_qos(msg);
+			
 			if (qos > 0)
 				p->sndmax --;
 			if (qos > p->qosmax) {
