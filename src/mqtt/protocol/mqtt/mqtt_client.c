@@ -313,6 +313,21 @@ mqtt_sock_set_retry_qos_0(void *arg, const void *v, size_t sz, nni_opt_type t)
 }
 
 static int
+mqtt_sock_dec_cached_byte(void *arg, const void *v, size_t sz, nni_opt_type t)
+{
+	mqtt_sock_t *s = arg;
+	size_t    tmp;
+	int rv;
+
+	if ((rv = nni_copyin_u64(&tmp, v, sz, t)) == 0) {
+#ifdef NNG_ENABLE_STATS
+		nni_stat_dec(&s->msg_bytes_cached, tmp);
+#endif
+	}
+	return (rv);
+}
+
+static int
 mqtt_sock_get_pipeid(void *arg, void *buf, size_t *szp, nni_type t)
 {
 	// For MQTT Client, only has one pipe
@@ -1669,6 +1684,10 @@ static nni_option mqtt_sock_options[] = {
 	{
 		.o_name = NNG_OPT_MQTT_BRIDGE_CONF,
 	    .o_set  = mqtt_sock_set_bridge_config,
+	},
+	{
+		.o_name = NNG_OPT_MQTT_BRIDGE_CACHE_BYTE,
+	    .o_set  = mqtt_sock_dec_cached_byte,
 	},
 	{
 		.o_name = NNG_OPT_MQTT_CLIENT_PIPEID,
