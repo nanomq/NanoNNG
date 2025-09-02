@@ -1141,6 +1141,22 @@ mqtt_quic_sock_set_bridge_config(
 	return NNG_EUNREACHABLE;
 }
 
+
+static int
+mqtt_quic_sock_dec_cached_byte(void *arg, const void *v, size_t sz, nni_opt_type t)
+{
+	mqtt_sock_t *s = arg;
+	size_t    tmp;
+	int rv;
+
+	if ((rv = nni_copyin_u64(&tmp, v, sz, t)) == 0) {
+#ifdef NNG_ENABLE_STATS
+		nni_stat_dec(&s->msg_bytes_cached, tmp);
+#endif
+	}
+	return (rv);
+}
+
 static int
 mqtt_quic_sock_set_sqlite_option(
     void *arg, const void *v, size_t sz, nni_opt_type t)
@@ -1674,6 +1690,10 @@ static nni_option mqtt_quic_sock_options[] = {
 	{
 	    .o_name = NNG_OPT_MQTT_DISCONNECT_REASON,
 	    .o_get  = mqtt_quic_sock_get_disconnect_code,
+	},
+	{
+		.o_name = NNG_OPT_MQTT_BRIDGE_CACHE_BYTE,
+	    .o_set  = mqtt_quic_sock_dec_cached_byte,
 	},
 	{
 	    .o_name = NNG_OPT_MQTT_RETRY_QOS_0,
