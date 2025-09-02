@@ -334,15 +334,22 @@ if (NNG_ENABLE_SCRAM)
     add_definitions(-DSUPP_SCRAM)
 endif ()
 
-if (NNG_ENABLE_PARQUET OR ENABLE_LICENSE_STD OR ENABLE_LICENSE_DK)
+if (ENABLE_LICENSE_STD OR ENABLE_LICENSE_DK)
   message(STATUS "nng openssl root dir: ${OPENSSL_ROOT_DIR} ${OPENSSL_INCLUDE_DIR} ${OPENSSL_LIB_DIR}")
   if(OPENSSL_ROOT_DIR)
     set(OPENSSL_INCLUDE_DIR ${OPENSSL_ROOT_DIR}/include)
     set(OPENSSL_LIB_DIR ${OPENSSL_ROOT_DIR}/lib)
-    nng_link_libraries(
-      ${OPENSSL_LIB_DIR}/libssl.a
-      ${OPENSSL_LIB_DIR}/libcrypto.a
-	)
+    if (NNG_PLATFORM_POSIX)
+      nng_link_libraries(
+        ${OPENSSL_LIB_DIR}/libssl.a
+        ${OPENSSL_LIB_DIR}/libcrypto.a
+	  )
+    else()
+      nng_link_libraries(
+        ${OPENSSL_LIB_DIR}/VC/x64/MT/libssl_static.lib
+        ${OPENSSL_LIB_DIR}/VC/x64/MT/libcrypto_static.lib
+	  )
+    endif(NNG_PLATFORM_POSIX)
     include_directories(${OPENSSL_INCLUDE_DIR})
   else()
     find_package(OpenSSL REQUIRED)
