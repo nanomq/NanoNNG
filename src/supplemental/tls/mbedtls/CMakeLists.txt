@@ -45,7 +45,7 @@ if (NNG_TLS_ENGINE STREQUAL "mbed")
           nng_link_libraries(
             ${MBEDTLS_ROOT}/lib/mbedcrypto.lib
             ${MBEDTLS_ROOT}/lib/mbedx509.lib
-            ${MBEDTLS_ROOT}/lib/mbedxtls.lib
+            ${MBEDTLS_ROOT}/lib/mbedtls.lib
           )
         endif(NNG_PLATFORM_POSIX)
     endif()
