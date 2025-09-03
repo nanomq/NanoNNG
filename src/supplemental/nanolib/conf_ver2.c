@@ -1480,6 +1480,8 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 	{
 		if (nng_strcasecmp(node_item->string, "cache") == 0) {
 			bridge_sqlite->enable = true;
+			hocon_read_bool(
+				bridge_sqlite, enable, node_item);
 			hocon_read_num(
 			    bridge_sqlite, disk_cache_size, node_item);
 			hocon_read_num(
