@@ -36,6 +36,9 @@ if (NOT _MBEDTLS_ROOT_HINTS)
     set(_MBEDTLS_ROOT_HINTS ${MBEDTLS_ROOT_DIR} ENV MBEDTLS_ROOT_DIR)
 endif()
 
+message(STATUS "mbedtls root: ${MBEDTLS_ROOT}")
+message(STATUS "mbedtls root dir: ${MBEDTLS_ROOT_DIR}")
+
 set(_MBED_REQUIRED_VARS MbedTLS_TARGET MbedX509_TARGET MbedCrypto_TARGET MbedTLS_VERSION)
 
 include(FindPackageHandleStandardArgs)
@@ -46,6 +49,7 @@ find_path(_MBEDTLS_INCLUDE_DIR
         HINTS ${_MBEDTLS_ROOT_HINTS}
         # PATHS /usr/local
         PATH_SUFFIXES include)
+message(STATUS "mbedtls include dir: ${_MBEDTLS_INCLUDE_DIR}")
 
 find_library(_MBEDCRYPTO_LIBRARY
         NAMES mbedcrypto
@@ -53,6 +57,7 @@ find_library(_MBEDCRYPTO_LIBRARY
         # PATHS /usr/local
         # PATH_SUFFIXES lib
         )
+message(STATUS "mbedtls lib dir: ${_MBEDCRYPTO_LIBRARY}")
 
 find_library(_MBEDX509_LIBRARY
         NAMES mbedx509
@@ -60,6 +65,7 @@ find_library(_MBEDX509_LIBRARY
         #PATHS /usr/local
         # PATH_SUFFIXES lib
         )
+message(STATUS "mbedtls x509 dir: ${_MBEDX509_LIBRARY}")
 
 find_library(_MBEDTLS_LIBRARY
         NAMES mbedtls
@@ -67,6 +73,7 @@ find_library(_MBEDTLS_LIBRARY
         #PATHS /usr/local
         #PATH_SUFFIXES lib
         )
+message(STATUS "mbedtls lib dir: ${_MBEDTLS_LIBRARY}")
 
 if ("${_MBEDTLS_TLS_LIBRARY}" STREQUAL "_MBEDTLS_TLS_LIBRARY-NOTFOUND")
     message("Failed to find Mbed TLS library")
