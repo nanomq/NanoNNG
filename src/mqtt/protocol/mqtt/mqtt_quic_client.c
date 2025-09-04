@@ -1692,7 +1692,7 @@ static nni_option mqtt_quic_sock_options[] = {
 	    .o_get  = mqtt_quic_sock_get_disconnect_code,
 	},
 	{
-		.o_name = NNG_OPT_MQTT_BRIDGE_CACHE_BYTE,
+		.o_name = NNG_OPT_MQTT_BRIDGE_CACHE_BYTE_DEC,
 	    .o_set  = mqtt_quic_sock_dec_cached_byte,
 	},
 	{

@@ -328,6 +328,27 @@ mqtt_sock_dec_cached_byte(void *arg, const void *v, size_t sz, nni_opt_type t)
 }
 
 static int
+mqtt_sock_inc_cached_byte(void *arg, const void *buf, size_t sz, nni_type t)
+{
+	int len;
+	int rv;
+	mqtt_sock_t *s = arg;
+
+	if ((rv = nni_copyin_int(&len, buf, sz,
+			NANO_MAX_PACKET_SIZE_NEG, NANO_MAX_PACKET_SIZE, t)) == 0) {
+#ifdef NNG_ENABLE_STATS
+		if (len > 0)
+			nni_stat_inc(&s->msg_bytes_cached, len);
+		else if (len < 0) {
+			len = -len;
+			nni_stat_inc(&s->msg_bytes_cached, len);
+		}
+#endif
+	}
+	return (rv);
+}
+
+static int
 mqtt_sock_get_pipeid(void *arg, void *buf, size_t *szp, nni_type t)
 {
 	// For MQTT Client, only has one pipe
@@ -1686,8 +1707,12 @@ static nni_option mqtt_sock_options[] = {
 	    .o_set  = mqtt_sock_set_bridge_config,
 	},
 	{
-		.o_name = NNG_OPT_MQTT_BRIDGE_CACHE_BYTE,
+		.o_name = NNG_OPT_MQTT_BRIDGE_CACHE_BYTE_DEC,
 	    .o_set  = mqtt_sock_dec_cached_byte,
+	},
+	{
+		.o_name = NNG_OPT_MQTT_BRIDGE_CACHE_BYTE_INC,
+	    .o_set  = mqtt_sock_inc_cached_byte,
 	},
 	{
 		.o_name = NNG_OPT_MQTT_CLIENT_PIPEID,
