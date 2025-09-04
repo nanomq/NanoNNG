@@ -398,7 +398,7 @@ tlstran_pipe_nego_cb(void *arg)
 				// set default max packet size for client
 				p->tcp_cparam->max_packet_size =
 				    p->conf == NULL
-				    ? NANO_MAX_RECV_PACKET_SIZE
+				    ? NANO_MAX_PACKET_SIZE
 				    : p->conf->client_max_packet_size;
 				if (p->tcp_cparam->properties != NULL) {
 					property_remove(
