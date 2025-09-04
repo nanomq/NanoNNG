@@ -55,7 +55,7 @@ find_library(_MBEDCRYPTO_LIBRARY
         NAMES mbedcrypto
         HINTS ${_MBEDTLS_ROOT_HINTS}
         # PATHS /usr/local
-        # PATH_SUFFIXES lib
+        PATH_SUFFIXES lib
         )
 message(STATUS "mbedtls lib dir: ${_MBEDCRYPTO_LIBRARY}")
 
@@ -63,7 +63,7 @@ find_library(_MBEDX509_LIBRARY
         NAMES mbedx509
         HINTS ${_MBEDTLS_ROOT_HINTS}
         #PATHS /usr/local
-        # PATH_SUFFIXES lib
+        PATH_SUFFIXES lib
         )
 message(STATUS "mbedtls x509 dir: ${_MBEDX509_LIBRARY}")
 
@@ -71,7 +71,7 @@ find_library(_MBEDTLS_LIBRARY
         NAMES mbedtls
         HINTS ${_MBEDTLS_ROOT_HINTS}
         #PATHS /usr/local
-        #PATH_SUFFIXES lib
+        PATH_SUFFIXES lib
         )
 message(STATUS "mbedtls lib dir: ${_MBEDTLS_LIBRARY}")
 
@@ -84,6 +84,10 @@ else()
     list(APPEND CMAKE_REQUIRED_LIBRARIES ${_MBEDTLS_LIBRARY} ${_MBEDX509_LIBRARY} ${_MBEDCRYPTO_LIBRARY})
     check_symbol_exists(mbedtls_ssl_init "mbedtls/ssl.h" _MBEDTLS_V2_OR_NEWER)
     cmake_pop_check_state()
+
+    if (NNG_PLATFORM_WINDOWS)
+        set(_MBEDTLS_V2_OR_NEWER ON) # check_symbol_exists doesn't work on windows
+    endif(NNG_PLATFORM_WINDOWS)
 
     if (NOT _MBEDTLS_V2_OR_NEWER)
         message("Mbed TLS too old (must be version 2 or newer) ${_MBEDTLS_V2_OR_NEWER} UP ${_MbedTLS_V2}")
@@ -107,7 +111,6 @@ endif()
 add_library(MbedTLS::mbedtls UNKNOWN IMPORTED)
 add_library(MbedTLS::mbedx509 UNKNOWN IMPORTED)
 add_library(MbedTLS::mbedcrypto UNKNOWN IMPORTED)
-
 
 set_target_properties(MbedTLS::mbedtls PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${_MBEDTLS_INCLUDE_DIR}")
 set_target_properties(MbedTLS::mbedx509 PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${_MBEDTLS_INCLUDE_DIR}")

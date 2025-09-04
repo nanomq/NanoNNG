@@ -30,24 +30,27 @@ if (NNG_TLS_ENGINE STREQUAL "mbed")
         # mbedTLS v3 has a config file, which should work better than
         # what we do here.  We only make this override locally, to
         # avoid confounding any other package consumers, and we honor overrides.
-        if (NNG_PLATFORM_POSIX)
-          if (NOT (DEFINED CMAKE_FIND_PACKAGE_PREFER_CONFIG))
-              set(CMAKE_FIND_PACKAGE_PREFER_CONFIG TRUE)
-              find_package(MbedTLS REQUIRED)
-              unset(CMAKE_FIND_PACKAGE_PREFER_CONFIG)
-          else()
-              find_package(MbedTLS REQUIRED)
-          endif()
-          nng_link_libraries_public(MbedTLS::mbedtls MbedTLS::mbedcrypto MbedTLS::mbedx509)
+        #if (NNG_PLATFORM_POSIX)
+        if (NOT (DEFINED CMAKE_FIND_PACKAGE_PREFER_CONFIG))
+            set(CMAKE_FIND_PACKAGE_PREFER_CONFIG TRUE)
+            find_package(MbedTLS REQUIRED)
+            unset(CMAKE_FIND_PACKAGE_PREFER_CONFIG)
         else()
-          message(STATUS "nng mbedtls root:" ${MBEDTLS_ROOT})
-          nng_include_directories(${MBEDTLS_ROOT}/include)
-          nng_link_libraries(
-            ${MBEDTLS_ROOT}/lib/mbedcrypto.lib
-            ${MBEDTLS_ROOT}/lib/mbedx509.lib
-            ${MBEDTLS_ROOT}/lib/mbedtls.lib
-            bcrypt.lib
-          )
-        endif(NNG_PLATFORM_POSIX)
+            find_package(MbedTLS REQUIRED)
+        endif()
+        nng_link_libraries_public(MbedTLS::mbedtls MbedTLS::mbedcrypto MbedTLS::mbedx509)
+        if (NNG_PLATFORM_WINDOWS)
+          nng_link_libraries(bcrypt.lib)
+        endif (NNG_PLATFORM_WINDOWS)
+        #else()
+        #  message(STATUS "nng mbedtls root:" ${MBEDTLS_ROOT})
+        #  nng_include_directories(${MBEDTLS_ROOT}/include)
+        #  nng_link_libraries(
+        #    ${MBEDTLS_ROOT}/lib/mbedcrypto.lib
+        #    ${MBEDTLS_ROOT}/lib/mbedx509.lib
+        #    ${MBEDTLS_ROOT}/lib/mbedtls.lib
+        #    bcrypt.lib
+        #  )
+        #endif(NNG_PLATFORM_POSIX)
     endif()
 endif()
