@@ -21,8 +21,9 @@
 
 
 /* Length defination */
-// Maximum Packet Size of broker
-#define NANO_MAX_RECV_PACKET_SIZE (2*1024*1024)
+// Default Maximum Packet Size of broker
+#define NANO_MAX_PACKET_SIZE 0X0FFFFFFF
+#define NANO_MAX_PACKET_SIZE_NEG 0XF0000001
 #define NANO_MIN_PACKET_LEN sizeof(uint8_t) * 8
 #define NANO_CONNECT_PACKET_LEN sizeof(uint8_t) * 12
 #define NANO_MIN_FIXED_HEADER_LEN sizeof(uint8_t) * 2
