@@ -313,22 +313,7 @@ mqtt_sock_set_retry_qos_0(void *arg, const void *v, size_t sz, nni_opt_type t)
 }
 
 static int
-mqtt_sock_dec_cached_byte(void *arg, const void *v, size_t sz, nni_opt_type t)
-{
-	mqtt_sock_t *s = arg;
-	size_t    tmp;
-	int rv;
-
-	if ((rv = nni_copyin_u64(&tmp, v, sz, t)) == 0) {
-#ifdef NNG_ENABLE_STATS
-		nni_stat_dec(&s->msg_bytes_cached, tmp);
-#endif
-	}
-	return (rv);
-}
-
-static int
-mqtt_sock_inc_cached_byte(void *arg, const void *buf, size_t sz, nni_type t)
+mqtt_sock_set_cached_byte(void *arg, const void *buf, size_t sz, nni_type t)
 {
 	int len;
 	int rv;
@@ -341,7 +326,7 @@ mqtt_sock_inc_cached_byte(void *arg, const void *buf, size_t sz, nni_type t)
 			nni_stat_inc(&s->msg_bytes_cached, len);
 		else if (len < 0) {
 			len = -len;
-			nni_stat_inc(&s->msg_bytes_cached, len);
+			nni_stat_dec(&s->msg_bytes_cached, len);
 		}
 #endif
 	}
@@ -1707,12 +1692,8 @@ static nni_option mqtt_sock_options[] = {
 	    .o_set  = mqtt_sock_set_bridge_config,
 	},
 	{
-		.o_name = NNG_OPT_MQTT_BRIDGE_CACHE_BYTE_DEC,
-	    .o_set  = mqtt_sock_dec_cached_byte,
-	},
-	{
-		.o_name = NNG_OPT_MQTT_BRIDGE_CACHE_BYTE_INC,
-	    .o_set  = mqtt_sock_inc_cached_byte,
+		.o_name = NNG_OPT_MQTT_BRIDGE_CACHE_BYTE,
+	    .o_set  = mqtt_sock_set_cached_byte,
 	},
 	{
 		.o_name = NNG_OPT_MQTT_CLIENT_PIPEID,
