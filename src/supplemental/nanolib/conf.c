@@ -852,7 +852,6 @@ conf_auth_http_req_init(conf_auth_http_req *req)
 	req->headers      = NULL;
 	req->param_count  = 0;
 	req->params       = NULL;
-	nng_mtx_alloc(&req->mtx);
 	conf_tls_init(&req->tls);
 }
 
@@ -1511,7 +1510,6 @@ print_conf(conf *nanomq_conf)
 static void
 conf_auth_init(conf_auth *auth)
 {
-	nng_mtx_alloc(&auth->mtx);
 	auth->enable    = false;
 	auth->count     = 0;
 	auth->usernames = NULL;
@@ -1539,6 +1537,7 @@ conf_auth_parse(conf_auth *auth, const char *path)
 		log_error("File %s open failed", path);
 		return;
 	}
+	nng_mtx_alloc(&auth->mtx);
 
 	while (nano_getline(&line, &sz, fp) != -1) {
 		snprintf(name_key, 256, "auth.%ld.login", index);
@@ -4273,6 +4272,7 @@ conf_auth_http_req_parse(
 
 	req->headers =
 	    conf_parse_http_headers(path, key_prefix, &req->header_count);
+	nng_mtx_alloc(&req->mtx);
 }
 
 static void

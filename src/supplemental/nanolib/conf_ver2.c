@@ -788,6 +788,7 @@ conf_auth_parse_ver2(conf *config, cJSON *jso)
 	conf_auth *auth = &(config->auths);
 	cJSON     *ele  = NULL;
 	auth->enable    = true;
+	nng_mtx_alloc(&auth->mtx);
 	hocon_read_bool(auth, enable, jso);
 	cJSON_ArrayForEach(ele, jso)
 	{
@@ -810,6 +811,7 @@ conf_auth_http_req_parse_ver2(conf_auth_http_req *config, cJSON *jso)
 	hocon_read_bool(config, enable, jso);
 	hocon_read_str(config, url, jso);
 	hocon_read_str(config, method, jso);
+	nng_mtx_alloc(&config->mtx);
 	if (nni_strcasecmp(config->method, "POST") != 0 &&
 	    nni_strcasecmp(config->method, "GET") != 0) {
 		nng_strfree(config->method);
