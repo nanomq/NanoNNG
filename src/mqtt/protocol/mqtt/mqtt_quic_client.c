@@ -1143,15 +1143,21 @@ mqtt_quic_sock_set_bridge_config(
 
 
 static int
-mqtt_quic_sock_dec_cached_byte(void *arg, const void *v, size_t sz, nni_opt_type t)
+mqtt_quic_sock_set_cached_byte(void *arg, const void *buf, size_t sz, nni_type t)
 {
-	mqtt_sock_t *s = arg;
-	size_t    tmp;
+	int len;
 	int rv;
+	mqtt_sock_t *s = arg;
 
-	if ((rv = nni_copyin_u64(&tmp, v, sz, t)) == 0) {
+	if ((rv = nni_copyin_int(&len, buf, sz,
+			NANO_MAX_PACKET_SIZE_NEG, NANO_MAX_PACKET_SIZE, t)) == 0) {
 #ifdef NNG_ENABLE_STATS
-		nni_stat_dec(&s->msg_bytes_cached, tmp);
+		if (len > 0)
+			nni_stat_inc(&s->msg_bytes_cached, len);
+		else if (len < 0) {
+			len = -len;
+			nni_stat_dec(&s->msg_bytes_cached, len);
+		}
 #endif
 	}
 	return (rv);
@@ -1692,8 +1698,8 @@ static nni_option mqtt_quic_sock_options[] = {
 	    .o_get  = mqtt_quic_sock_get_disconnect_code,
 	},
 	{
-		.o_name = NNG_OPT_MQTT_BRIDGE_CACHE_BYTE_DEC,
-	    .o_set  = mqtt_quic_sock_dec_cached_byte,
+		.o_name = NNG_OPT_MQTT_BRIDGE_CACHE_BYTE,
+	    .o_set  = mqtt_quic_sock_set_cached_byte,
 	},
 	{
 	    .o_name = NNG_OPT_MQTT_RETRY_QOS_0,
