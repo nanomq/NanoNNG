@@ -260,6 +260,10 @@ mqtt_quic_send_msg(nni_aio *aio, mqtt_sock_t *s)
 				sqlite_flush_offline_cache(sqlite);
 			}
 			msg = sqlite_get_cache_msg(sqlite);
+#ifdef NNG_ENABLE_STATS
+			nni_stat_inc(&s->msg_resend, 1);
+			nni_stat_dec(&s->msg_bytes_cached, nng_msg_len(msg));
+#endif
 		}
 #endif
 		if (msg == NULL) {
@@ -475,6 +479,10 @@ mqtt_quic_send_cb(void *arg)
 		if (NULL != (msg = sqlite_get_cache_msg(sqlite))) {
 			p->busy = true;
 			nni_aio_set_msg(&p->send_aio, msg);
+#ifdef NNG_ENABLE_STATS
+			nni_stat_inc(&s->msg_resend, 1);
+			nni_stat_dec(&s->msg_bytes_cached, nng_msg_len(msg));
+#endif
 			nni_pipe_send(p->qpipe, &p->send_aio);
 			nni_mtx_unlock(&s->mtx);
 			return;
@@ -908,11 +916,12 @@ mqtt_timer_cb(void *arg)
 			if (NULL != (msg = sqlite_get_cache_msg(sqlite))) {
 				p->busy = true;
 				nni_aio_set_msg(&p->send_aio, msg);
-				nni_pipe_send(p->qpipe, &p->send_aio);
-				nni_mtx_unlock(&s->mtx);
 #ifdef NNG_ENABLE_STATS
 				nni_stat_inc(&s->msg_resend, 1);
+				nni_stat_dec(&s->msg_bytes_cached, nng_msg_len(msg));
 #endif
+				nni_pipe_send(p->qpipe, &p->send_aio);
+				nni_mtx_unlock(&s->mtx);
 				nni_sleep_aio(s->retry, &p->time_aio);
 				return;
 			}
@@ -1520,6 +1529,9 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 					sqlite_flush_offline_cache(sqlite);
 				}
 				nni_mtx_unlock(&s->mtx);
+#ifdef NNG_ENABLE_STATS
+				nni_stat_inc(&s->msg_bytes_cached, nng_msg_len(msg));
+#endif
 				nni_aio_set_msg(aio, NULL);
 				nni_aio_finish_error(aio, NNG_ECLOSED);
 				return;

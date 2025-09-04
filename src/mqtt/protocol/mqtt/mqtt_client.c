@@ -579,6 +579,10 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg, mqtt_sock_t *s)
 				sqlite_flush_offline_cache(sqlite);
 			}
 			msg = sqlite_get_cache_msg(sqlite);
+#ifdef NNG_ENABLE_STATS
+			nni_stat_inc(&s->msg_resend, 1);
+			nni_stat_dec(&s->msg_bytes_cached, nng_msg_len(msg));
+#endif
 		}
 #endif
 		if (msg == NULL) {
@@ -922,11 +926,12 @@ mqtt_timer_cb(void *arg)
 			if (NULL != (msg = sqlite_get_cache_msg(sqlite))) {
 				p->busy = true;
 				nni_aio_set_msg(&p->send_aio, msg);
-				nni_pipe_send(p->pipe, &p->send_aio);
-				nni_mtx_unlock(&s->mtx);
 #ifdef NNG_ENABLE_STATS
 				nni_stat_inc(&s->msg_resend, 1);
+				nni_stat_dec(&s->msg_bytes_cached, nng_msg_len(msg));
 #endif
+				nni_pipe_send(p->pipe, &p->send_aio);
+				nni_mtx_unlock(&s->mtx);
 				nni_sleep_aio(s->retry, &p->time_aio);
 				return;
 			}
@@ -1524,13 +1529,15 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 		    mqtt_sock_get_sqlite_option(s);
 		if (sqlite_is_enabled(sqlite)
 				&& (qos > 0 || s->retry_qos_0)) {
-			// the msg order is exactly as same as the ctx
-			// in send_queue
+			// the msg order is exactly as same as the ctx in send_queue
 			nni_lmq_put(&sqlite->offline_cache, msg);
 			if (nni_lmq_full(&sqlite->offline_cache)) {
 				sqlite_flush_offline_cache(sqlite);
 			}
 			nni_mtx_unlock(&s->mtx);
+#ifdef NNG_ENABLE_STATS
+			nni_stat_inc(&s->msg_bytes_cached, nng_msg_len(msg));
+#endif
 			nni_aio_set_msg(aio, NULL);
 			nni_aio_finish_error(aio, NNG_ECLOSED);
 			return;
@@ -1688,15 +1695,15 @@ static nni_option mqtt_sock_options[] = {
 	    .o_set  = mqtt_sock_set_sqlite_option,
 	},
 	{
-		.o_name = NNG_OPT_MQTT_BRIDGE_CONF,
+	    .o_name = NNG_OPT_MQTT_BRIDGE_CONF,
 	    .o_set  = mqtt_sock_set_bridge_config,
 	},
 	{
-		.o_name = NNG_OPT_MQTT_BRIDGE_CACHE_BYTE,
+	    .o_name = NNG_OPT_MQTT_BRIDGE_CACHE_BYTE,
 	    .o_set  = mqtt_sock_set_cached_byte,
 	},
 	{
-		.o_name = NNG_OPT_MQTT_CLIENT_PIPEID,
+	    .o_name = NNG_OPT_MQTT_CLIENT_PIPEID,
 	    .o_get  = mqtt_sock_get_pipeid,
 	},
 	// terminate list
