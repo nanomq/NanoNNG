@@ -57,7 +57,7 @@ find_library(_MBEDCRYPTO_LIBRARY
         # PATHS /usr/local
         PATH_SUFFIXES lib
         )
-message(STATUS "mbedtls lib dir: ${_MBEDCRYPTO_LIBRARY}")
+message(STATUS "mbedtls crypto lib dir: ${_MBEDCRYPTO_LIBRARY}")
 
 find_library(_MBEDX509_LIBRARY
         NAMES mbedx509
@@ -65,7 +65,6 @@ find_library(_MBEDX509_LIBRARY
         #PATHS /usr/local
         PATH_SUFFIXES lib
         )
-message(STATUS "mbedtls x509 dir: ${_MBEDX509_LIBRARY}")
 
 find_library(_MBEDTLS_LIBRARY
         NAMES mbedtls
@@ -73,7 +72,6 @@ find_library(_MBEDTLS_LIBRARY
         #PATHS /usr/local
         PATH_SUFFIXES lib
         )
-message(STATUS "mbedtls lib dir: ${_MBEDTLS_LIBRARY}")
 
 if ("${_MBEDTLS_TLS_LIBRARY}" STREQUAL "_MBEDTLS_TLS_LIBRARY-NOTFOUND")
     message("Failed to find Mbed TLS library")
