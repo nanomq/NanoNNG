@@ -606,6 +606,7 @@ typedef enum {
 
 struct conf {
 	char       exec_path[512];	// binary path
+	char       exec_fname[64];	// binary filename
 	char      *vin;
 	char      *cmd_ipc_url;
 	char      *hook_ipc_url;
