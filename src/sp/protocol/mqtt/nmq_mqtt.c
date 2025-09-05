@@ -1181,32 +1181,7 @@ nano_pipe_recv_cb(void *arg)
 	type = nng_msg_cmd_type(msg);
 	switch (type) {
 	case CMD_SUBSCRIBE:
-		// 1. Clone for App layer 2. Clone should be called before being used
-		conn_param_clone(cparam);
-		// extract sub id
-		// Store Subid RAP Topic for sub
-		nni_mtx_lock(&p->lk);
-		rv = nmq_subinfo_decode(msg, npipe->subinfol, cparam->pro_ver);
-		log_debug("Processing subinfo done");
-		if (rv < 0) {
-			log_error("Invalid subscribe packet!");
-			nni_msg_free(msg);
-			conn_param_free(cparam);
-			p->reason_code = PROTOCOL_ERROR;
-			nni_mtx_unlock(&p->lk);
-			nni_pipe_close(p->pipe);
-			return;
-		}
-		nni_mtx_unlock(&p->lk);
-
-		if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
-			len = get_var_integer(ptr + 2, &len_of_varint);
-			nni_msg_set_payload_ptr(
-			    msg, ptr + 2 + len + len_of_varint);
-		} else {
-			nni_msg_set_payload_ptr(msg, ptr + 2);
-		}
-		break;
+		// Fall through
 	case CMD_UNSUBSCRIBE:
 		// 1. Clone for App layer 2. Clone should be called before being used
 		conn_param_clone(cparam);
