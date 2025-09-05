@@ -878,6 +878,15 @@ tcptran_pipe_recv_cb(void *arg)
 			rv = PROTOCOL_ERROR;
 			goto recv_error;
 		}
+	} else if (type == CMD_SUBSCRIBE) {
+		// extract sub id
+		// Store Subid RAP Topic for sub
+		if (nmq_subinfo_decode(msg, p->npipe->subinfol,
+								  p->tcp_cparam->pro_ver) < 0) {
+			log_error("Invalid subscribe packet!");
+			rv = PROTOCOL_ERROR;
+			goto recv_error;
+		}
 	}
 
 	if (ack == true) {
