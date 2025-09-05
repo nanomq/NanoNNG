@@ -1016,6 +1016,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->ext_qos_db                = NULL;
 	conf_preset_sessions_init(&nanomq_conf->pre_sessions);
 	memset(nanomq_conf->exec_path, 0, 512);
+	memset(nanomq_conf->exec_fname, 0, 64);
 	nng_atomic_alloc(&nanomq_conf->lc);	// Marks current total connections
 }
 
