@@ -130,8 +130,7 @@ nni_http_client_fini(nni_http_client *c)
 		nni_aio_reap(c->aio);
 	else {
 		nni_aio_free(c->aio);
-		nni_aio_reap(c->free_aio);
-		c->free_aio = NULL;
+		nni_aio_free(c->free_aio);
 	}
 	nni_mtx_unlock(&c->mtx);
 }
