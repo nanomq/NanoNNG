@@ -44,7 +44,7 @@ struct nng_http_conn {
 	nng_stream *sock;
 	void       *ctx;
 	bool        closed, free;
-	bool        rd_close, wr_close, both_close;
+	bool        rd_close, wr_close;
 	nni_list    rdq; // high level http read requests
 	nni_list    wrq; // high level http write requests
 
@@ -274,6 +274,36 @@ http_rd_start(nni_http_conn *conn)
 }
 
 void
+nng_wr_fr_cb(nng_aio *aio, void *arg, int rv)
+{
+	NNI_ARG_UNUSED(aio);
+	NNI_ARG_UNUSED(rv);
+	nni_http_conn *conn = arg;
+	nni_mtx_lock(&conn->mtx);
+	conn->wr_close = true;
+	if (conn->rd_close) {
+		nni_aio_reap(conn->fe_aio);
+		conn->fe_aio = NULL;
+	}
+	nni_mtx_unlock(&conn->mtx);
+}
+
+void
+nng_rd_fr_cb(nng_aio *aio, void *arg, int rv)
+{
+	NNI_ARG_UNUSED(aio);
+	NNI_ARG_UNUSED(rv);
+	nni_http_conn *conn = arg;
+	nni_mtx_lock(&conn->mtx);
+	conn->rd_close = true;
+	if (conn->wr_close) {
+		nni_aio_reap(conn->fe_aio);
+		conn->fe_aio = NULL;
+	}
+	nni_mtx_unlock(&conn->mtx);
+}
+
+void
 nng_http_fr_cb(nng_aio *aio, void *arg, int rv)
 {
 	NNI_ARG_UNUSED(aio);
@@ -301,31 +331,16 @@ http_rd_cb(void *arg)
 	nni_iov       *iov;
 	nni_aio       *aio  = conn->rd_aio;
 	nni_mtx_lock(&conn->mtx);
-
+	if ((rv = nni_aio_schedule(conn->rd_aio, nng_rd_fr_cb, conn)) != 0) {
+		log_error("Non recoverable error, aio schedule failed!");
+		exit(EXIT_FAILURE);
+	}
 	if ((rv = nni_aio_result(aio)) != 0) {
 		if ((uaio = conn->rd_uaio) != NULL) {
 			conn->rd_uaio = NULL;
 			nni_aio_finish_error(uaio, rv);
 		}
 		http_close(conn);
-		conn->rd_close = true;
-		if (conn->wr_close || !nni_aio_busy(conn->wr_aio)) {
-			if (conn->free) {
-				nni_aio_free(conn->fe_aio);
-				conn->fe_aio = NULL;
-			}
-		}
-
-		nni_mtx_unlock(&conn->mtx);
-		return;
-	}
-	if (conn->free) {
-		conn->rd_close = true;
-		if (conn->fe_aio != NULL && conn->wr_aio != NULL)
-			if (conn->wr_close || !nni_aio_busy(conn->wr_aio)) {
-				nni_aio_reap(conn->fe_aio);
-				conn->fe_aio = NULL;
-			}
 		nni_mtx_unlock(&conn->mtx);
 		return;
 	}
@@ -452,7 +467,10 @@ http_wr_cb(void *arg)
 
 	nni_mtx_lock(&conn->mtx);
 	uaio = conn->wr_uaio;
-
+	// prepare for reaping aio
+	if ((rv = nni_aio_schedule(conn->wr_aio, nng_wr_fr_cb, conn)) != 0) {
+		log_error("Non recoverable error, aio schedule failed!");
+	}
 	if ((rv = nni_aio_result(aio)) != 0) {
 		// We failed to complete the aio.
 		if (uaio != NULL) {
@@ -460,29 +478,10 @@ http_wr_cb(void *arg)
 			nni_aio_finish_error(uaio, rv);
 		}
 		http_close(conn);
-		conn->wr_close = true;
-		// fe_aio shall be scheduled after the last action of rd_aio & wr_aio
-		if (conn->rd_close || !nni_aio_busy(conn->rd_aio)) {
-			// Make sure only nng_http_conn_close trigger fe_aio
-			if (conn->free) {
-				nni_aio_free(conn->fe_aio);
-				conn->fe_aio = NULL;
-			}
-		}
-			
 		nni_mtx_unlock(&conn->mtx);
 		return;
 	}
-	if (conn->free) {
-		conn->wr_close = true;
-		if (conn->fe_aio != NULL && conn->rd_aio != NULL)
-			if (conn->rd_close || !nni_aio_busy(conn->rd_aio)) {
-				nni_aio_reap(conn->fe_aio);
-				conn->fe_aio = NULL;
-			}
-		nni_mtx_unlock(&conn->mtx);
-		return;
-	}
+
 	if (uaio == NULL) {
 		// Write canceled?  This happens pretty much only during
 		// shutdown/close, so we don't want to resume writing.
@@ -730,12 +729,8 @@ nni_http_conn_fini(nni_http_conn *conn)
 		nni_aio_free(conn->rd_aio);
 		nni_aio_reap(conn->fe_aio);
 	} else {
-		// abort aio here is a must for resources clean
-		nni_aio_abort(conn->wr_aio, NNG_ECLOSED);
-		nni_aio_abort(conn->rd_aio, NNG_ECLOSED);
 		nni_aio_reap(conn->wr_aio);
 		nni_aio_reap(conn->rd_aio);
-		// nni_aio_reap(conn->fe_aio);
 	}
 }
 
@@ -768,11 +763,18 @@ http_init(nni_http_conn **connp, nng_stream *data)
 		log_error("Non recoverable error, aio schedule failed!");
 		exit(EXIT_FAILURE);
 	}
+	if ((rv = nni_aio_schedule(conn->wr_aio, nng_wr_fr_cb, conn)) != 0) {
+		log_error("Non recoverable error, aio schedule failed!");
+		exit(EXIT_FAILURE);
+	}
+	if ((rv = nni_aio_schedule(conn->rd_aio, nng_rd_fr_cb, conn)) != 0) {
+		log_error("Non recoverable error, aio schedule failed!");
+		exit(EXIT_FAILURE);
+	}
 	conn->sock = data;
 	conn->closed = false;
 	conn->wr_close = false;
 	conn->rd_close = false;
-	conn->both_close = false;
 	conn->free = false;
 
 	*connp = conn;
