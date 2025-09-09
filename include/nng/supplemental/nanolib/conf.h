@@ -585,7 +585,7 @@ struct conf_web_hook {
 	hook_payload_type    encode_payload;
 	size_t               header_count;
 	conf_http_header   **headers;
-	size_t               cancel_time;
+	size_t               cancel_timeout;
 	uint16_t             rule_count;
 	conf_web_hook_rule **rules;
 
