@@ -330,11 +330,8 @@ http_rd_cb(void *arg)
 	unsigned       niov;
 	nni_iov       *iov;
 	nni_aio       *aio  = conn->rd_aio;
+
 	nni_mtx_lock(&conn->mtx);
-	if ((rv = nni_aio_schedule(conn->rd_aio, nng_rd_fr_cb, conn)) != 0) {
-		log_error("Non recoverable error, aio schedule failed!");
-		exit(EXIT_FAILURE);
-	}
 	if ((rv = nni_aio_result(aio)) != 0) {
 		if ((uaio = conn->rd_uaio) != NULL) {
 			conn->rd_uaio = NULL;
@@ -467,10 +464,6 @@ http_wr_cb(void *arg)
 
 	nni_mtx_lock(&conn->mtx);
 	uaio = conn->wr_uaio;
-	// prepare for reaping aio
-	if ((rv = nni_aio_schedule(conn->wr_aio, nng_wr_fr_cb, conn)) != 0) {
-		log_error("Non recoverable error, aio schedule failed!");
-	}
 	if ((rv = nni_aio_result(aio)) != 0) {
 		// We failed to complete the aio.
 		if (uaio != NULL) {
@@ -720,6 +713,14 @@ void
 nni_http_conn_fini(nni_http_conn *conn)
 {
 	nni_mtx_lock(&conn->mtx);
+	if ((nni_aio_schedule(conn->wr_aio, nng_wr_fr_cb, conn)) != 0) {
+		log_error("Non recoverable error, aio schedule failed!");
+		exit(EXIT_FAILURE);
+	}
+	if ((nni_aio_schedule(conn->rd_aio, nng_rd_fr_cb, conn)) != 0) {
+		log_error("Non recoverable error, aio schedule failed!");
+		exit(EXIT_FAILURE);
+	}
 	conn->free = true;
 	http_close(conn);
 	nni_mtx_unlock(&conn->mtx);
@@ -727,7 +728,6 @@ nni_http_conn_fini(nni_http_conn *conn)
 	if (!nni_aio_busy(conn->rd_aio) && !nni_aio_busy(conn->wr_aio)) {
 		nni_aio_free(conn->wr_aio);
 		nni_aio_free(conn->rd_aio);
-		nni_aio_reap(conn->fe_aio);
 	} else {
 		nni_aio_reap(conn->wr_aio);
 		nni_aio_reap(conn->rd_aio);
@@ -760,14 +760,6 @@ http_init(nni_http_conn **connp, nng_stream *data)
 		return (rv);
 	}
 	if ((rv = nni_aio_schedule(conn->fe_aio, nng_http_fr_cb, conn)) != 0) {
-		log_error("Non recoverable error, aio schedule failed!");
-		exit(EXIT_FAILURE);
-	}
-	if ((rv = nni_aio_schedule(conn->wr_aio, nng_wr_fr_cb, conn)) != 0) {
-		log_error("Non recoverable error, aio schedule failed!");
-		exit(EXIT_FAILURE);
-	}
-	if ((rv = nni_aio_schedule(conn->rd_aio, nng_rd_fr_cb, conn)) != 0) {
 		log_error("Non recoverable error, aio schedule failed!");
 		exit(EXIT_FAILURE);
 	}
