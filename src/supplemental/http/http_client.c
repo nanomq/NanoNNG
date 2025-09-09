@@ -52,6 +52,16 @@ http_free_cb(nng_aio *aio, void *arg, int rv)
 }
 
 static void
+http_dial_free(nng_aio *aio, void *arg, int rv)
+{
+	nni_http_client *c = arg;
+	nni_mtx_lock(&c->mtx);
+	nni_aio_reap(c->free_aio);
+	nni_mtx_unlock(&c->mtx);
+	return;
+}
+
+static void
 http_dial_cb(void *arg)
 {
 	nni_http_client *c = arg;
@@ -61,29 +71,34 @@ http_dial_cb(void *arg)
 	nni_http_conn *  conn;
 
 	nni_mtx_lock(&c->mtx);
-
+	if ((rv = nni_aio_schedule(c->aio, http_dial_free, c)) != 0) {
+		log_error("cancel fn schedule failed!");
+		return (0);
+	}
 	rv = nni_aio_result(c->aio);
 
 	if ((aio = nni_list_first(&c->aios)) == NULL) {
 		// User abandoned request, and no residuals left.
-		if (c->closed) {
-			nni_aio_reap(c->free_aio);
-			c->free_aio = NULL;
-		}
+		// if (c->closed) {
+		// 	nni_aio_reap(c->free_aio);
+		// 	c->free_aio = NULL;
+		// }
 		nni_mtx_unlock(&c->mtx);
 		log_info("http dial cancelded %p", c->aio);
 		if (rv == 0) {
 			stream = nni_aio_get_output(c->aio, 0);
 			nng_stream_free(stream);
+			nni_aio_set_output(c->aio, 0, NULL);
 		}
 		return;
 	}
 	if (c->closed) {
-		nni_aio_reap(c->free_aio);
-		c->free_aio = NULL;
+		// nni_aio_reap(c->free_aio);
+		// c->free_aio = NULL;
 		if (rv == 0) {
 			stream = nni_aio_get_output(c->aio, 0);
 			nng_stream_free(stream);
+			nni_aio_set_output(c->aio, 0, NULL);
 		}
 		nni_aio_list_remove(aio);
 		nni_mtx_unlock(&c->mtx);
@@ -122,17 +137,17 @@ nni_http_client_fini(nni_http_client *c)
 {
 	nni_mtx_lock(&c->mtx);
 	c->closed = true;
-	nni_aio_abort(c->aio, NNG_ECANCELED);
-	nni_aio_close(c->aio);
+	// nni_aio_abort(c->aio, NNG_ECANCELED);
+	// nni_aio_close(c->aio);
+
 	if (nni_aio_list_active(c->aio))
 		nni_aio_list_remove(c->aio);
+	nni_mtx_unlock(&c->mtx);
 	if (nni_aio_busy(c->aio))
 		nni_aio_reap(c->aio);
 	else {
 		nni_aio_free(c->aio);
-		nni_aio_free(c->free_aio);
 	}
-	nni_mtx_unlock(&c->mtx);
 }
 
 static void
@@ -186,6 +201,11 @@ nni_http_client_init(nni_http_client **cp, const nni_url *url)
 		return (rv);
 	}
 
+	if ((rv = nni_aio_schedule(c->aio, http_dial_free, c)) != 0) {
+		log_error("cancel fn schedule failed!");
+		return (rv);
+	}
+
 	if ((rv = nni_aio_alloc(&c->free_aio, NULL, c)) != 0) {
 		nni_http_client_fini(c);
 		return (rv);
@@ -193,7 +213,7 @@ nni_http_client_init(nni_http_client **cp, const nni_url *url)
 
 	if ((rv = nni_aio_schedule(c->free_aio, http_free_cb, c)) != 0) {
 		log_error("cancel fn schedule failed!");
-		return (0);
+		return (rv);
 	}
 	c->closed = false;
 	*cp = c;
