@@ -968,7 +968,8 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->web_hook.header_count   = 0;
 	nanomq_conf->web_hook.rules          = NULL;
 	nanomq_conf->web_hook.rule_count     = 0;
-	nanomq_conf->web_hook.cancel_time 	 = (nng_duration) 5000;
+	nanomq_conf->web_hook.cancel_timeout = (nng_duration) 5000;
+	nanomq_conf->web_hook.saios          = NULL;
 	conf_tls_init(&nanomq_conf->web_hook.tls);
 
 	nanomq_conf->exchange.count           = 0;
@@ -1180,7 +1181,7 @@ print_webhook_conf(conf_web_hook *webhook)
 		    get_webhook_type(webhook->encode_payload);
 		log_info("webhook encoding:  %s", encode_type);
 		log_info("webhook pool size: %d", webhook->pool_size);
-		log_info("webhook cancel time: %d", webhook->cancel_time);
+		log_info("webhook cancel time: %d", webhook->cancel_timeout);
 		log_info("webhook rule:");
 		for (size_t i = 0; i < webhook->rule_count; i++) {
 			conf_web_hook_rule *rule = webhook->rules[i];
@@ -3968,8 +3969,8 @@ conf_web_hook_parse(conf_web_hook *webhook, const char *path)
 			webhook->pool_size = (size_t) atol(value);
 			free(value);
 		} else if ((value = get_conf_value(
-		                line, sz, "web.hook.cancel_time")) != NULL) {
-			webhook->cancel_time = (size_t) atol(value);
+		                line, sz, "web.hook.cancel_timeout")) != NULL) {
+			webhook->cancel_timeout = (size_t) atol(value);
 			free(value);
 		} else if ((value = get_conf_value(line, sz,
 		                "web.hook.body.encoding_of_payload_field")) !=
