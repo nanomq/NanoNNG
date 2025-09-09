@@ -55,9 +55,7 @@ static void
 http_dial_free(nng_aio *aio, void *arg, int rv)
 {
 	nni_http_client *c = arg;
-	nni_mtx_lock(&c->mtx);
 	nni_aio_reap(c->free_aio);
-	nni_mtx_unlock(&c->mtx);
 	return;
 }
 
@@ -71,10 +69,6 @@ http_dial_cb(void *arg)
 	nni_http_conn *  conn;
 
 	nni_mtx_lock(&c->mtx);
-	if ((rv = nni_aio_schedule(c->aio, http_dial_free, c)) != 0) {
-		log_error("cancel fn schedule failed!");
-		return (0);
-	}
 	rv = nni_aio_result(c->aio);
 
 	if ((aio = nni_list_first(&c->aios)) == NULL) {
@@ -137,9 +131,11 @@ nni_http_client_fini(nni_http_client *c)
 {
 	nni_mtx_lock(&c->mtx);
 	c->closed = true;
-	// nni_aio_abort(c->aio, NNG_ECANCELED);
-	// nni_aio_close(c->aio);
-
+	// schedule a cancel func to reap
+	if ((nni_aio_schedule(c->aio, http_dial_free, c)) != 0) {
+		log_error("cancel fn schedule failed!");
+		return;
+	}
 	if (nni_aio_list_active(c->aio))
 		nni_aio_list_remove(c->aio);
 	nni_mtx_unlock(&c->mtx);
