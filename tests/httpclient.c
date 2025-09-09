@@ -184,6 +184,7 @@ TestMain("HTTP Client", {
 			// So(nng_aio_result(aio) == 0);
 			conn = nng_aio_get_output(aio, 0);
 			printf("conn %p\n", conn);
+			nng_aio_set_timeout(aio, 1400);
 			nng_http_conn_transact(conn, req, res1, aio);
 			nng_aio_wait(aio);
 			// So(nng_aio_result(aio) == 0);
@@ -193,6 +194,7 @@ TestMain("HTTP Client", {
 			nni_sha1(data, len, digest);
 			// So(memcmp(digest, example_sum, 20) == 0);
 			printf("conn %p\n", conn);
+			nng_aio_set_timeout(aio, 1400);
 			nng_http_conn_transact(conn, req, res2, aio);
 			nng_aio_wait(aio);
 			// So(nng_aio_result(aio) == 0);
