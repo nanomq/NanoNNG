@@ -438,10 +438,14 @@ nni_http_transact_conn(
 	http_txn *txn;
 	int       rv;
 
-	if (nni_aio_begin(aio) != 0 || conn == NULL) {
+	if (nni_aio_begin(aio) != 0) {
 		return;
 	}
-	if ((txn = NNI_ALLOC_STRUCT(txn)) == NULL) {
+	if (conn == NULL) {
+		nni_aio_finish_error(aio, NNG_ECONNABORTED);
+		return;
+	}
+	if ((txn = NNI_ALLOC_STRUCT(txn)) == NULL || conn == NULL) {
 		nni_aio_finish_error(aio, NNG_ENOMEM);
 		return;
 	}
