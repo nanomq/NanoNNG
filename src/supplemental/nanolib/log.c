@@ -8,6 +8,7 @@
 #define MAX_CALLBACKS 10
 
 #if NNG_PLATFORM_WINDOWS
+#include <share.h>
 #define nano_localtime(t, pTm) localtime_s(pTm, t)
 #else
 #if defined(SUPP_SYSLOG)
@@ -108,8 +109,13 @@ file_callback(log_event *ev)
 		return;
 	}
 #endif
-	if (ev->config->fp == NULL)
+	if (ev->config->fp == NULL) {
+#ifdef NANO_PLATFORM_WINDOWS
+		ev->config->fp = _fsopen(ev->config->abs_path, "a", _SH_DENYNO);
+#else
 		ev->config->fp = fopen(ev->config->abs_path, "a");
+#endif
+	}
 	FILE *fp = ev->config->fp;
 	buf[strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &ev->time)] = '\0';
 	fprintf(fp, "%s [%i] %-5s %s:%d: ", buf, pid,
@@ -381,7 +387,11 @@ file_rotation(FILE *fp, conf_log *config)
 				return;
 			}
 
+#ifdef NANO_PLATFORM_WINDOWS
+			fp         = _fsopen(config->abs_path, "a", _SH_DENYNO);
+#else
 			config->fp = fopen(config->abs_path, "a");
+#endif
 			fp             = config->fp;
 		}
 		return;
@@ -425,7 +435,11 @@ file_rotation(FILE *fp, conf_log *config)
 			return;
 		}
 #endif
+#ifdef NANO_PLATFORM_WINDOWS
+		fp           = _fsopen(config->abs_path, "a", _SH_DENYNO);
+#else
 		fp           = fopen(config->abs_path, "a");
+#endif
 		config->fp   = fp;
 		char num[20] = { 0 };
 		index++; // increase index
