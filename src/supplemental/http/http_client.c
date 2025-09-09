@@ -197,11 +197,6 @@ nni_http_client_init(nni_http_client **cp, const nni_url *url)
 		return (rv);
 	}
 
-	if ((rv = nni_aio_schedule(c->aio, http_dial_free, c)) != 0) {
-		log_error("cancel fn schedule failed!");
-		return (rv);
-	}
-
 	if ((rv = nni_aio_alloc(&c->free_aio, NULL, c)) != 0) {
 		nni_http_client_fini(c);
 		return (rv);
