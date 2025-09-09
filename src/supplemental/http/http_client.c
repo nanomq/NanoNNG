@@ -438,7 +438,7 @@ nni_http_transact_conn(
 	http_txn *txn;
 	int       rv;
 
-	if (nni_aio_begin(aio) != 0) {
+	if (nni_aio_begin(aio) != 0 || conn == NULL) {
 		return;
 	}
 	if ((txn = NNI_ALLOC_STRUCT(txn)) == NULL) {
