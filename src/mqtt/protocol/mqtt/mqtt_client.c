@@ -753,8 +753,6 @@ static void
 mqtt_pipe_stop(void *arg)
 {
 	mqtt_pipe_t *p = arg;
-	if (nni_aio_busy(&p->send_aio))
-		nni_aio_finish_error(&p->send_aio, NNG_ECLOSED);
 	nni_aio_stop(&p->send_aio);
 	nni_aio_stop(&p->recv_aio);
 	nni_aio_stop(&p->time_aio);
@@ -1635,7 +1633,7 @@ mqtt_ctx_recv(void *arg, nni_aio *aio)
 wait:
 	if (ctx->raio != NULL) {
 		nni_mtx_unlock(&s->mtx);
-		// nni_println("ERROR! former aio not finished!");
+		log_error("ERROR! former aio not finished!");
 		nni_aio_finish_error(aio, NNG_ESTATE);
 		return;
 	}
