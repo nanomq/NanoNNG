@@ -1423,14 +1423,11 @@ conf_bridge_node_parse(
 	hocon_read_num(node, cancel_timeout, obj);
 }
 
+#ifdef SUPP_PARQUET
 static void
 conf_bridge_parse_cipher(conf_bridge *bridge, const char *key)
 {
 	size_t len;
-#ifndef SUPP_PARQUET
-	log_error("Recompile with Parquet enabled!");
-	return;
-#else
 	file_load_set_aes_key(key);
 	for (int i=0; i<(int)bridge->count; i++) {
 		conf_bridge_node *node = bridge->nodes[i];
@@ -1467,8 +1464,8 @@ conf_bridge_parse_cipher(conf_bridge *bridge, const char *key)
 			}
 		}
 	}
-#endif
 }
+#endif
 
 static void
 conf_bridge_parse_ver2(conf *config, cJSON *jso)
@@ -2191,7 +2188,11 @@ conf_parse_cipher(conf *config, const char *key, const char *key2)
 #ifdef SUPP_LICENSE_STD
 	conf_auth_parse_cipher(&config->auths, key);
 #endif
+#ifdef SUPP_PARQUET
 	conf_bridge_parse_cipher(&config->bridge, key2);
+#endif
+	NNI_ARG_UNUSED(key);
+	NNI_ARG_UNUSED(key2);
 }
 
 void
