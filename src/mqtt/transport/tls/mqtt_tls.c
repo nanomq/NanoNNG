@@ -137,10 +137,23 @@ mqtts_tcptran_fini(void)
 static void
 mqtts_tcptran_pipe_close(void *arg)
 {
+	nni_aio *aio;
 	mqtts_tcptran_pipe *p = arg;
 
 	nni_atomic_set_bool(&p->closed, true);
-
+	// in case reap blocking
+	nni_mtx_lock(&p->mtx);
+	while ((aio = nni_list_first(&p->sendq)) != NULL) {
+		nni_list_remove(&p->sendq, aio);
+		log_warn("pipe %p closed! clean sendq", p->npipe);
+		nni_aio_finish_error(aio, SERVER_SHUTTING_DOWN);
+	}
+	if (nni_aio_busy(p->txaio)) {
+		log_warn("pipe %p closed!! finish txaio", p->npipe);
+		nni_aio_list_remove(p->txaio);
+		nni_aio_finish_error(p->txaio, NNG_ECLOSED);
+	}
+	nni_mtx_unlock(&p->mtx);
 	nni_aio_close(p->rxaio);
 	nni_aio_close(p->txaio);
 	nni_aio_close(p->negoaio);
@@ -152,7 +165,6 @@ static void
 mqtts_tcptran_pipe_stop(void *arg)
 {
 	mqtts_tcptran_pipe *p = arg;
-
 	nni_aio_stop(p->rxaio);
 	nni_aio_stop(p->txaio);
 	nni_aio_stop(p->negoaio);
