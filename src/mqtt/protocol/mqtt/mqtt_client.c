@@ -1500,7 +1500,7 @@ mqtt_ctx_recv(void *arg, nni_aio *aio)
 wait:
 	if (ctx->raio != NULL) {
 		nni_mtx_unlock(&s->mtx);
-		// nni_println("ERROR! former aio not finished!");
+		log_error("ERROR! former aio not finished!");
 		nni_aio_finish_error(aio, NNG_ESTATE);
 		return;
 	}
