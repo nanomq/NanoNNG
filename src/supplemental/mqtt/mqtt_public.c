@@ -1028,6 +1028,20 @@ nng_mqtt_subscribe(nng_socket sock, nng_mqtt_topic_qos *sbs, uint32_t count, pro
 	return rv;
 }
 
+static void
+nng_mqtt_destroy_sub_proto(nng_msg *msg)
+{
+	nni_mqtt_proto_data *proto_data = nng_msg_get_proto_data(msg);
+	nni_mqtt_topic_qos  *topic_qos =
+	    proto_data->payload.subscribe.topic_arr;
+	size_t n = proto_data->payload.subscribe.topic_count;
+	for (size_t i = 0; i < n; i++) {
+		nni_free(topic_qos[i].topic.buf,
+		    topic_qos[i].topic.length + 1 * sizeof(uint8_t));
+		topic_qos[i].topic.length = 0;
+	}
+}
+
 int
 nng_mqtt_unsubscribe_async(nng_mqtt_client *client, nng_mqtt_topic *sbs, size_t count, property *pl)
 {
@@ -1041,6 +1055,7 @@ nng_mqtt_unsubscribe_async(nng_mqtt_client *client, nng_mqtt_topic *sbs, size_t 
 	}
 	if (nng_aio_busy(client->send_aio)) {
 		if (nni_lmq_put((nni_lmq *)client->msgq, unsubmsg) != 0) {
+			nng_mqtt_destroy_sub_proto(unsubmsg);
 			nng_msg_free(unsubmsg);
 			log_warn("unsubscribe failed!");
 			return -1;
@@ -1067,6 +1082,7 @@ nng_mqtt_subscribe_async(nng_mqtt_client *client, nng_mqtt_topic_qos *sbs, size_
 	}
 	if (nng_aio_busy(client->send_aio)) {
 		if (nni_lmq_put((nni_lmq *)client->msgq, submsg) != 0) {
+			nng_mqtt_destroy_sub_proto(submsg);
 			nng_msg_free(submsg);
 			log_warn("subscribe failed due to busy aio & full lmq!");
 			return -1;
