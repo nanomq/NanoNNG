@@ -4016,6 +4016,8 @@ conf_web_hook_parse(conf_web_hook *webhook, const char *path)
 				webhook->encode_payload = base62;
 			} else if (nni_strcasecmp(value, "plain") == 0) {
 				webhook->encode_payload = plain;
+			} else {
+				log_warn("invalid webhook encode type [%s].");
 			}
 			free(value);
 		}

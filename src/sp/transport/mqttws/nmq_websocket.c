@@ -384,6 +384,15 @@ done:
 				p->err_code = PROTOCOL_ERROR;
 				goto skip;
 			}
+		} else if (cmd == CMD_SUBSCRIBE) {
+			// extract sub id
+			// Store Subid RAP Topic for sub
+			if (nmq_subinfo_decode(vmsg, p->npipe->subinfol,
+					p->ws_param->pro_ver) < 0) {
+				log_error("Invalid subscribe packet!");
+				rv = PROTOCOL_ERROR;
+				goto skip;
+			}
 		}
 
 		if (ack == true) {
