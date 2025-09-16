@@ -624,9 +624,11 @@ mqtts_tcptran_pipe_send_cb(void *arg)
 		// usable, with a partial transfer.
 		// The protocol should see this error, and close the
 		// pipe itself, we hope.
-		nni_aio_list_remove(aio);
+		if (aio) {
+			nni_aio_list_remove(aio);
+			nni_aio_finish_error(aio, rv);
+		}
 		nni_mtx_unlock(&p->mtx);
-		nni_aio_finish_error(aio, rv);
 		return;
 	}
 
