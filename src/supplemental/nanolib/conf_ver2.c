@@ -1425,9 +1425,8 @@ conf_bridge_node_parse(
 	hocon_read_num(node, cancel_timeout, obj);
 }
 
-#ifdef SUPP_PARQUET
 static void
-conf_bridge_parse_cipher(conf_bridge *bridge, const char *key)
+conf_bridge_parse_cipher(conf_bridge *bridge, const char *commonkey, const char *key)
 {
 	size_t len;
 	file_load_set_aes_key(key);
@@ -1435,6 +1434,7 @@ conf_bridge_parse_cipher(conf_bridge *bridge, const char *key)
 		conf_bridge_node *node = bridge->nodes[i];
 		if (!node)
 			continue;
+		// --- bridge tls certs ---
 		conf_tls *tls = &node->tls;
 		if (tls->keyfile) {
 			if (tls->cert_encrypted == false) {
@@ -1465,9 +1465,36 @@ conf_bridge_parse_cipher(conf_bridge *bridge, const char *key)
 					log_error("Read encrypted cafile %s failed!", tls->cafile);
 			}
 		}
+		// --- bridge password ---
+		if (node->password_encrypted && node->password) {
+			char * password = node->password;
+			size_t cipher_sz;
+			char * cipher = nng_alloc(sizeof(char) * strlen(password));
+			if (!cipher) {
+				log_error("Failed to alloc cipher. NOMEM");
+				continue;
+			}
+			cipher_sz = nni_base64_decode((const char*)password,
+				strlen(password), (uint8_t *)cipher, strlen(password));
+			if (cipher_sz <= 32) {
+				nng_free(cipher, cipher_sz);
+				log_error("failed to base64 decode bridge.password");
+			} else {
+				int   plain_sz;
+				char *plain = nni_aes_gcm_decrypt(
+					cipher, cipher_sz, (char *)commonkey, &plain_sz);
+				nng_free(cipher, cipher_sz);
+				if (plain == NULL || plain_sz == 0) {
+					log_error("failed to decrypt auth.password");
+				} else {
+					nng_free(password, strlen(password));
+					node->password = plain;
+					log_warn("bridge.password: %s", plain);
+				}
+			}
+		}
 	}
 }
-#endif
 
 static void
 conf_bridge_parse_ver2(conf *config, cJSON *jso)
@@ -2192,9 +2219,7 @@ conf_parse_cipher(conf *config, const char *key, const char *key2)
 #ifdef SUPP_LICENSE_STD
 	conf_auth_parse_cipher(&config->auths, key);
 #endif
-#ifdef SUPP_PARQUET
-	conf_bridge_parse_cipher(&config->bridge, key2);
-#endif
+	conf_bridge_parse_cipher(&config->bridge, key, key2);
 	NNI_ARG_UNUSED(key);
 	NNI_ARG_UNUSED(key2);
 }
