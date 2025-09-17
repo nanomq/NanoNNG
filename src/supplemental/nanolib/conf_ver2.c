@@ -1426,83 +1426,95 @@ conf_bridge_node_parse(
 }
 
 void
+conf_bridge_node_parse_cipher_certs(conf_bridge_node *node)
+{
+	// --- bridge tls certs ---
+	size_t len;
+	conf_tls *tls = &node->tls;
+	if (tls->keyfile) {
+		if (tls->cert_encrypted == false) {
+			// ignore
+		} else {
+			len = file_load_aes_decrypt(tls->keyfile, (void **) &tls->key);
+			if (len == 0) {
+				printf("conf: Read encrypted keyfile %s failed!\n", tls->keyfile);
+				log_error("Read encrypted keyfile %s failed!", tls->keyfile);
+			}
+		}
+	}
+
+	if (tls->certfile) {
+		if (tls->cert_encrypted == false) {
+			// ignore
+		} else {
+			len = file_load_aes_decrypt(tls->certfile, (void **) &tls->cert);
+			if (len == 0) {
+				printf("conf: Read encrypted certfile %s failed!\n", tls->certfile);
+				log_error("Read encrypted certfile %s failed!", tls->certfile);
+			}
+		}
+	}
+
+	if (tls->cafile) {
+		if (tls->cert_encrypted == false) {
+			// ignore
+		} else {
+			len = file_load_aes_decrypt(tls->cafile, (void **) &tls->ca);
+			if (len == 0) {
+				printf("conf: Read encrypted cafile %s failed!\n", tls->cafile);
+				log_error("Read encrypted cafile %s failed!", tls->cafile);
+			}
+		}
+	}
+}
+
+void
+conf_bridge_node_parse_cipher_password(conf_bridge_node *node, const char *commonkey)
+{
+	// --- bridge password ---
+	if (node->password_encrypted && node->password) {
+		char * password = node->password;
+		size_t cipher_sz;
+		char * cipher = nng_alloc(sizeof(char) * strlen(password));
+		if (!cipher) {
+			printf("conf: Failed to alloc cipher. NOMEM\n");
+			log_error("Failed to alloc cipher. NOMEM");
+			return;
+		}
+		cipher_sz = nni_base64_decode((const char*)password,
+			strlen(password), (uint8_t *)cipher, strlen(password));
+		if (cipher_sz <= 32) {
+			nng_free(cipher, cipher_sz);
+			printf("conf: failed to base64 decode bridge.password\n");
+			log_error("failed to base64 decode bridge.password");
+		} else {
+			int   plain_sz;
+			char *plain = nni_aes_gcm_decrypt(
+				cipher, cipher_sz, (char *)commonkey, &plain_sz);
+			nng_free(cipher, cipher_sz);
+			if (plain == NULL || plain_sz == 0) {
+				printf("conf: failed to decrypt bridge.password\n");
+				log_error("failed to decrypt bridge.password");
+			} else {
+				nng_free(password, strlen(password));
+				node->password = plain;
+				printf("conf: bridge.password: ****** (%ld)\n", strlen(plain));
+				log_info("bridge.password: ****** (%ld)", strlen(plain));
+			}
+		}
+	}
+}
+
+static void
 conf_bridge_parse_cipher(conf_bridge *bridge, const char *commonkey, const char *key)
 {
-	size_t len;
 	file_load_set_aes_key(key);
 	for (int i=0; i<(int)bridge->count; i++) {
 		conf_bridge_node *node = bridge->nodes[i];
 		if (!node)
 			continue;
-		// --- bridge tls certs ---
-		conf_tls *tls = &node->tls;
-		if (tls->keyfile) {
-			if (tls->cert_encrypted == false) {
-				// ignore
-			} else {
-				len = file_load_aes_decrypt(tls->keyfile, (void **) &tls->key);
-				if (len == 0) {
-					printf("conf: Read encrypted keyfile %s failed!\n", tls->keyfile);
-					log_error("Read encrypted keyfile %s failed!", tls->keyfile);
-				}
-			}
-		}
-
-		if (tls->certfile) {
-			if (tls->cert_encrypted == false) {
-				// ignore
-			} else {
-				len = file_load_aes_decrypt(tls->certfile, (void **) &tls->cert);
-				if (len == 0) {
-					printf("conf: Read encrypted certfile %s failed!\n", tls->certfile);
-					log_error("Read encrypted certfile %s failed!", tls->certfile);
-				}
-			}
-		}
-
-		if (tls->cafile) {
-			if (tls->cert_encrypted == false) {
-				// ignore
-			} else {
-				len = file_load_aes_decrypt(tls->cafile, (void **) &tls->ca);
-				if (len == 0) {
-					printf("conf: Read encrypted cafile %s failed!\n", tls->cafile);
-					log_error("Read encrypted cafile %s failed!", tls->cafile);
-				}
-			}
-		}
-		// --- bridge password ---
-		if (node->password_encrypted && node->password) {
-			char * password = node->password;
-			size_t cipher_sz;
-			char * cipher = nng_alloc(sizeof(char) * strlen(password));
-			if (!cipher) {
-				printf("conf: Failed to alloc cipher. NOMEM\n");
-				log_error("Failed to alloc cipher. NOMEM");
-				continue;
-			}
-			cipher_sz = nni_base64_decode((const char*)password,
-				strlen(password), (uint8_t *)cipher, strlen(password));
-			if (cipher_sz <= 32) {
-				nng_free(cipher, cipher_sz);
-				printf("conf: failed to base64 decode bridge.password\n");
-				log_error("failed to base64 decode bridge.password");
-			} else {
-				int   plain_sz;
-				char *plain = nni_aes_gcm_decrypt(
-					cipher, cipher_sz, (char *)commonkey, &plain_sz);
-				nng_free(cipher, cipher_sz);
-				if (plain == NULL || plain_sz == 0) {
-					printf("conf: failed to decrypt bridge.password\n");
-					log_error("failed to decrypt bridge.password");
-				} else {
-					nng_free(password, strlen(password));
-					node->password = plain;
-					printf("conf: bridge.password: ****** (%ld)\n", strlen(plain));
-					log_info("bridge.password: ****** (%ld)", strlen(plain));
-				}
-			}
-		}
+		conf_bridge_node_parse_cipher_certs(node);
+		conf_bridge_node_parse_cipher_password(node, commonkey);
 	}
 }
 
