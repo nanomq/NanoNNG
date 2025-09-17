@@ -1425,6 +1425,7 @@ conf_bridge_node_parse(
 	hocon_read_num(node, cancel_timeout, obj);
 }
 
+#ifdef SUPP_PARQUET
 void
 conf_bridge_node_parse_cipher_certs(conf_bridge_node *node)
 {
@@ -1467,7 +1468,9 @@ conf_bridge_node_parse_cipher_certs(conf_bridge_node *node)
 		}
 	}
 }
+#endif
 
+#if defined(SUPP_PARQUET) || defined(SUPP_LICENSE_STD)
 void
 conf_bridge_node_parse_cipher_password(conf_bridge_node *node, const char *commonkey)
 {
@@ -1504,17 +1507,24 @@ conf_bridge_node_parse_cipher_password(conf_bridge_node *node, const char *commo
 		}
 	}
 }
+#endif
 
 static void
 conf_bridge_parse_cipher(conf_bridge *bridge, const char *commonkey, const char *key)
 {
+#ifdef SUPP_PARQUET
 	file_load_set_aes_key(key);
+#endif
 	for (int i=0; i<(int)bridge->count; i++) {
 		conf_bridge_node *node = bridge->nodes[i];
 		if (!node)
 			continue;
+#ifdef SUPP_PARQUET
 		conf_bridge_node_parse_cipher_certs(node);
+#endif
+#if defined(SUPP_PARQUET) || defined(SUPP_LICENSE_STD)
 		conf_bridge_node_parse_cipher_password(node, commonkey);
+#endif
 	}
 }
 
