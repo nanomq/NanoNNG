@@ -1442,7 +1442,7 @@ conf_bridge_parse_cipher(conf_bridge *bridge, const char *commonkey, const char 
 			} else {
 				len = file_load_aes_decrypt(tls->keyfile, (void **) &tls->key);
 				if (len == 0)
-					log_error("Read encrypted keyfile %s failed!", tls->keyfile);
+					printf("conf: Read encrypted keyfile %s failed!\n", tls->keyfile);
 			}
 		}
 
@@ -1452,7 +1452,7 @@ conf_bridge_parse_cipher(conf_bridge *bridge, const char *commonkey, const char 
 			} else {
 				len = file_load_aes_decrypt(tls->certfile, (void **) &tls->cert);
 				if (len == 0)
-					log_error("Read encrypted certfile %s failed!", tls->certfile);
+					printf("conf: Read encrypted certfile %s failed!\n", tls->certfile);
 			}
 		}
 
@@ -1462,7 +1462,7 @@ conf_bridge_parse_cipher(conf_bridge *bridge, const char *commonkey, const char 
 			} else {
 				len = file_load_aes_decrypt(tls->cafile, (void **) &tls->ca);
 				if (len == 0)
-					log_error("Read encrypted cafile %s failed!", tls->cafile);
+					printf("conf: Read encrypted cafile %s failed!\n", tls->cafile);
 			}
 		}
 		// --- bridge password ---
@@ -1471,25 +1471,25 @@ conf_bridge_parse_cipher(conf_bridge *bridge, const char *commonkey, const char 
 			size_t cipher_sz;
 			char * cipher = nng_alloc(sizeof(char) * strlen(password));
 			if (!cipher) {
-				log_error("Failed to alloc cipher. NOMEM");
+				printf("conf: Failed to alloc cipher. NOMEM\n");
 				continue;
 			}
 			cipher_sz = nni_base64_decode((const char*)password,
 				strlen(password), (uint8_t *)cipher, strlen(password));
 			if (cipher_sz <= 32) {
 				nng_free(cipher, cipher_sz);
-				log_error("failed to base64 decode bridge.password");
+				printf("conf: failed to base64 decode bridge.password\n");
 			} else {
 				int   plain_sz;
 				char *plain = nni_aes_gcm_decrypt(
 					cipher, cipher_sz, (char *)commonkey, &plain_sz);
 				nng_free(cipher, cipher_sz);
 				if (plain == NULL || plain_sz == 0) {
-					log_error("failed to decrypt auth.password");
+					printf("conf: failed to decrypt bridge.password\n");
 				} else {
 					nng_free(password, strlen(password));
 					node->password = plain;
-					log_warn("bridge.password: %s", plain);
+					printf("bridge.password: ****** (%ld)\n", strlen(plain));
 				}
 			}
 		}
