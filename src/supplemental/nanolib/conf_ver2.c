@@ -1153,6 +1153,8 @@ conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 	hocon_read_bool(node, enable, jso_connector);
 	hocon_read_str(node, username, jso_connector);
 	hocon_read_str(node, password, jso_connector);
+	hocon_read_bool(node, password_encrypted, jso_connector);
+	// if password_encrypted is true. conf_bridge_parse_cipher will decrypt it.
 
 	cJSON    *jso_tls         = hocon_get_obj("ssl", jso_connector);
 	conf_tls *bridge_node_tls = &(node->tls);

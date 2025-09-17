@@ -295,6 +295,7 @@ struct conf_bridge_node {
 	char        *clientid;
 	char        *username;
 	char        *password;
+	bool         password_encrypted;
 	char        *will_payload;
 	char        *will_topic;
 	uint8_t      proto_ver;
