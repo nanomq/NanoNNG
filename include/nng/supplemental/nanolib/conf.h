@@ -684,7 +684,7 @@ NNG_DECL int  get_time(const char *str, uint64_t *second);
 NNG_DECL void conf_parse(conf *nanomq_conf);
 NNG_DECL void conf_parse_ver2(conf *nanomq_conf);
 NNG_DECL void conf_parse_cipher(conf *nanomq_conf, const char *key, const char *key2);
-NNG_DECL void conf_bridge_parse_cipher(conf_bridge *bridge, const char *key, const char *key2);
+NNG_DECL void conf_bridge_node_parse_cipher_password(conf_bridge_node *bridge, const char *key);
 NNG_DECL void conf_gateway_parse_ver2(zmq_gateway_conf *gateway);
 NNG_DECL void conf_vsomeip_gateway_parse_ver2(vsomeip_gateway_conf *config);
 NNG_DECL void conf_dds_gateway_init(dds_gateway_conf *config);
