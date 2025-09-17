@@ -1298,12 +1298,11 @@ verify_connect(conn_param *cparam, conf *conf)
 		}
 	}
 
-	nng_mtx_lock(conf->auths.mtx);
 	if ((!conf->auths.enable) || conf->auths.count == 0) {
 		log_debug("authentication is not enabled");
-		nng_mtx_unlock(conf->auths.mtx);
 		return 0;
 	}
+	nng_mtx_lock(conf->auths.mtx);
 	n = conf->auths.count;
 	for (i = 0; i < n; i++) {
 		if (strcmp(username, conf->auths.usernames[i]) == 0 &&
