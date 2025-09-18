@@ -46,7 +46,20 @@ sqlite_flush_offline_cache(nni_mqtt_sqlite_option *sqlite)
 	sqlite_flush_lmq(sqlite, &sqlite->offline_cache);
 }
 
+inline uint64_t
+sqlite_get_cache_msg_count(nni_mqtt_sqlite_option *sqlite)
+{
+	return nni_mqtt_qos_db_get_client_offline_msg_count(
+		sqlite->db, sqlite->bridge->name);
+}
+
 #else
+
+inline uint64_t
+sqlite_get_cache_msg_count(nni_mqtt_sqlite_option *sqlite)
+{
+	return 0;
+}
 
 inline bool
 sqlite_is_enabled(nni_mqtt_sqlite_option *sqlite)

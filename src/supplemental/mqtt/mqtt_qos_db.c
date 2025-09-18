@@ -1127,6 +1127,30 @@ nni_mqtt_qos_db_set_client_offline_msg_batch(
 	return rv;
 }
 
+int
+nni_mqtt_qos_db_get_client_offline_msg_count(
+    sqlite3 *db, const char *config_name)
+{
+	int count = 0;
+	sqlite3_stmt *stmt;
+
+	char sql[] = "SELECT COUNT(*) FROM " table_client_offline_msg
+	             " WHERE info_id = (SELECT id FROM " table_client_info
+	             " WHERE config_name = ? LIMIT 1) ";
+
+	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
+	sqlite3_reset(stmt);
+	sqlite3_bind_text(
+	    stmt, 1, config_name, strlen(config_name), SQLITE_TRANSIENT);
+
+	if (SQLITE_ROW == sqlite3_step(stmt)) {
+		count = sqlite3_column_int(stmt, 0);
+	}
+	sqlite3_finalize(stmt);
+
+	return count;
+}
+
 nng_msg *
 nni_mqtt_qos_db_get_client_offline_msg(
     sqlite3 *db, int64_t *row_id, const char *config_name)

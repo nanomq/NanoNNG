@@ -139,8 +139,10 @@ extern int nni_mqtt_qos_db_set_client_offline_msg(
 extern int nni_mqtt_qos_db_set_client_offline_msg_batch(
     sqlite3 *, nni_lmq *, const char *, uint8_t);
 extern nng_msg *nni_mqtt_qos_db_get_client_offline_msg(sqlite3 *, int64_t *,const char *);
-extern int      nni_mqtt_qos_db_remove_client_offline_msg(sqlite3 *, int64_t);
-extern int      nni_mqtt_qos_db_remove_all_client_offline_msg(sqlite3 *,const char *);
+
+extern int nni_mqtt_qos_db_get_client_offline_msg_count(sqlite3 *, const char *);
+extern int nni_mqtt_qos_db_remove_client_offline_msg(sqlite3 *, int64_t);
+extern int nni_mqtt_qos_db_remove_all_client_offline_msg(sqlite3 *,const char *);
 
 extern int nni_mqtt_qos_db_set_client_info(
     sqlite3 *, const char *, const char *, const char *, uint8_t);
