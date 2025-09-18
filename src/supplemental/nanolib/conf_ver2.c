@@ -15,7 +15,7 @@
 #include <ctype.h>
 #include <string.h>
 
-#ifdef SUPP_LICENSE_STD
+#if defined(SUPP_LICENSE_STD) || defined(SUPP_PARQUET)
 #include "supplemental/aes/aes.h"
 #include "supplemental/base64/base64.h"
 #endif
