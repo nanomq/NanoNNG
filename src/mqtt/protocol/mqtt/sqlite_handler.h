@@ -5,7 +5,7 @@
 #include "nng/nng.h"
 #include "supplemental/mqtt/mqtt_qos_db.h"
 
-extern uint64_t sqlite_get_cache_msg_count(nni_mqtt_sqlite_option *);
+extern uint32_t sqlite_get_cache_msg_count(nni_mqtt_sqlite_option *);
 extern bool     sqlite_is_enabled(nni_mqtt_sqlite_option *);
 extern nni_msg *sqlite_get_cache_msg(nni_mqtt_sqlite_option *);
 extern void     sqlite_flush_lmq(nni_mqtt_sqlite_option *, nni_lmq *);

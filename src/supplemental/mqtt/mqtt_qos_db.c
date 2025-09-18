@@ -1131,7 +1131,7 @@ int
 nni_mqtt_qos_db_get_client_offline_msg_count(
     sqlite3 *db, const char *config_name)
 {
-	int count = 0;
+	uint32_t count = 0;
 	sqlite3_stmt *stmt;
 
 	char sql[] = "SELECT COUNT(*) FROM " table_client_offline_msg

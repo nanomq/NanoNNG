@@ -125,6 +125,7 @@ struct mqtt_sock_s {
 	nni_stat_item msg_send_drop;
 	nni_stat_item msg_recv_drop;
 	nni_stat_item msg_bytes_cached;
+	nni_stat_item msg_sqlite_cached;
 #endif
 };
 
@@ -206,17 +207,26 @@ mqtt_sock_init(void *arg, nni_sock *sock)
 	nni_stat_init(&s->msg_recv_drop, &msg_recv_drop);
 	static const nni_stat_info msg_bytes_cached = {
 		.si_name   = "mqtt_msg_bytes_cached",
-		.si_desc   = "cached msg payload size",
+		.si_desc   = "total payload size of cached msg in memory",
 		.si_type   = NNG_STAT_COUNTER,
 		.si_unit   = NNG_UNIT_BYTES,
 		.si_atomic = true,
 	};
 	nni_stat_init(&s->msg_bytes_cached, &msg_bytes_cached);
+	static const nni_stat_info msg_sqlite_cached = {
+		.si_name   = "mqtt_msg_sqlite_cached",
+		.si_desc   = "count all cached msg in sqlite",
+		.si_type   = NNG_STAT_COUNTER,
+		.si_unit   = NNG_UNIT_BYTES,
+		.si_atomic = true,
+	};
+	nni_stat_init(&s->msg_sqlite_cached, &msg_sqlite_cached);
 	nni_sock_add_stat(s->nsock, &s->mqtt_reconnect);
 	nni_sock_add_stat(s->nsock, &s->msg_resend);
 	nni_sock_add_stat(s->nsock, &s->msg_send_drop);
 	nni_sock_add_stat(s->nsock, &s->msg_recv_drop);
 	nni_sock_add_stat(s->nsock, &s->msg_bytes_cached);
+	nni_sock_add_stat(s->nsock, &s->msg_sqlite_cached);
 #endif
 }
 
@@ -322,9 +332,9 @@ mqtt_sock_set_cached_byte(void *arg, const void *buf, size_t sz, nni_type t)
 	if ((rv = nni_copyin_int(&len, buf, sz,
 			NANO_MAX_PACKET_SIZE_NEG, NANO_MAX_PACKET_SIZE, t)) == 0) {
 #ifdef NNG_ENABLE_STATS
-		if (len > 0)
+		if (len > 0) {
 			nni_stat_inc(&s->msg_bytes_cached, len);
-		else if (len < 0) {
+		} else if (len < 0) {
 			len = -len;
 			nni_stat_dec(&s->msg_bytes_cached, len);
 		}
@@ -581,7 +591,8 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg, mqtt_sock_t *s)
 			msg = sqlite_get_cache_msg(sqlite);
 #ifdef NNG_ENABLE_STATS
 			nni_stat_inc(&s->msg_resend, 1);
-			nni_stat_dec(&s->msg_bytes_cached, nng_msg_len(msg));
+			nni_stat_set_value(&s->msg_sqlite_cached,
+				sqlite_get_cache_msg_count(s->sqlite_opt));
 #endif
 		}
 #endif
@@ -776,8 +787,9 @@ mqtt_pipe_close(void *arg)
 	// flush to disk
 	if (!nni_lmq_empty(&p->send_messages)) {
 		log_info("cached msg into sqlite");
-		sqlite_flush_lmq(
-		    mqtt_sock_get_sqlite_option(s), &p->send_messages);
+		sqlite_flush_lmq(s->sqlite_opt, &p->send_messages);
+		nni_stat_set_value(&s->msg_sqlite_cached,
+			sqlite_get_cache_msg_count(s->sqlite_opt));
 	}
 #endif
 
@@ -924,9 +936,11 @@ mqtt_timer_cb(void *arg)
 			if (NULL != (msg = sqlite_get_cache_msg(sqlite))) {
 				p->busy = true;
 				nni_aio_set_msg(&p->send_aio, msg);
+				log_info("resend sqlite msg");
 #ifdef NNG_ENABLE_STATS
 				nni_stat_inc(&s->msg_resend, 1);
-				nni_stat_dec(&s->msg_bytes_cached, nng_msg_len(msg));
+				nni_stat_set_value(&s->msg_sqlite_cached,
+				    sqlite_get_cache_msg_count(sqlite));
 #endif
 				nni_pipe_send(p->pipe, &p->send_aio);
 				nni_mtx_unlock(&s->mtx);
@@ -1531,11 +1545,12 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 			nni_lmq_put(&sqlite->offline_cache, msg);
 			if (nni_lmq_full(&sqlite->offline_cache)) {
 				sqlite_flush_offline_cache(sqlite);
+#ifdef NNG_ENABLE_STATS
+				nni_stat_set_value(&s->msg_sqlite_cached,
+					sqlite_get_cache_msg_count(sqlite));
+#endif
 			}
 			nni_mtx_unlock(&s->mtx);
-#ifdef NNG_ENABLE_STATS
-			nni_stat_inc(&s->msg_bytes_cached, nng_msg_len(msg));
-#endif
 			nni_aio_set_msg(aio, NULL);
 			nni_aio_finish_error(aio, NNG_ECLOSED);
 			return;
