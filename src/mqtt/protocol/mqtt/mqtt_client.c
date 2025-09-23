@@ -681,6 +681,8 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg, mqtt_sock_t *s)
 		nni_aio_set_msg(&p->send_aio, msg);
 		nni_aio_bump_count(
 		    aio, nni_msg_header_len(msg) + nni_msg_len(msg));
+		if (ptype == NNG_MQTT_PUBLISH)
+			log_info("sending publish msg now! %p %d", msg, nni_msg_len(msg));
 		nni_pipe_send(p->pipe, &p->send_aio);
 		nni_mtx_unlock(&s->mtx);
 		if (0 == qos && ptype != NNG_MQTT_SUBSCRIBE &&
@@ -706,6 +708,8 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg, mqtt_sock_t *s)
 			nni_stat_inc(&s->msg_send_drop, 1);
 #endif
 			log_warn("Message lost while enqueing");
+		} else {
+			log_warn("cached msg in lmq!");
 		}
 	} else {
 #ifdef NNG_ENABLE_STATS

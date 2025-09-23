@@ -657,6 +657,7 @@ mqtts_tcptran_pipe_send_cb(void *arg)
 	nni_sock_bump_tx(p->ep->nsock, n);
 #endif
 	nni_aio_set_msg(aio, NULL);
+	log_info("msg sent complete %p %d", msg, n);
 	nni_msg_free(msg);
 	nni_aio_finish_sync(aio, rv, n);
 }
@@ -985,6 +986,7 @@ mqtts_tcptran_pipe_send_start(mqtts_tcptran_pipe *p)
 		niov++;
 	}
 	nni_aio_set_iov(txaio, niov, iov);
+	log_info("tls transport start sending msg %p %d", msg, nni_msg_len(msg));
 	nng_stream_send(p->conn, txaio);
 }
 
