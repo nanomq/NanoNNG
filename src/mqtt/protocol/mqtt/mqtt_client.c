@@ -1226,6 +1226,9 @@ mqtt_recv_cb(void *arg)
 			nni_id_remove(&s->sent_unack, packet_id);
 			// in case data race in cancel
 			nni_aio_set_prov_data(user_aio, NULL);
+			nni_msg *tt = nni_aio_get_msg(user_aio);
+			log_warn("msg %p %d acked", tt, nni_msg_len(tt));
+
 			nni_msg_free(nni_aio_get_msg(user_aio));
 			nni_aio_set_msg(user_aio, NULL);
 			if (packet_type == NNG_MQTT_SUBACK ||
@@ -1233,6 +1236,7 @@ mqtt_recv_cb(void *arg)
 				nni_msg_clone(msg);
 				nni_aio_set_msg(user_aio, msg);
 			}
+			
 		} else
 			log_warn("QoS msg ack failed %d", packet_id);
 		nni_msg_free(msg);
