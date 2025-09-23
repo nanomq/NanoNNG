@@ -657,7 +657,7 @@ mqtts_tcptran_pipe_send_cb(void *arg)
 	nni_sock_bump_tx(p->ep->nsock, n);
 #endif
 	nni_aio_set_msg(aio, NULL);
-	log_info("msg sent complete %p %d", msg, n);
+	log_debug("msg sent complete %p %d", msg, n);
 	nni_msg_free(msg);
 	nni_aio_finish_sync(aio, rv, n);
 }

@@ -660,7 +660,7 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg, mqtt_sock_t *s)
 					nni_aio_finish(aio, rv, 0);
 				return;
 			}
-			log_info("qos msg in hashmap %p %d", msg, nni_msg_len(msg));
+			log_debug("qos msg in hashmap %p %d", msg, nni_msg_len(msg));
 			// pass proto_data to cached aio, either it is freed in ack or in cancel
 			nni_aio_set_prov_data(aio, nni_msg_get_proto_data(msg));
 			nni_msg_clone(msg);
@@ -683,7 +683,7 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg, mqtt_sock_t *s)
 		nni_aio_bump_count(
 		    aio, nni_msg_header_len(msg) + nni_msg_len(msg));
 		if (ptype == NNG_MQTT_PUBLISH)
-			log_info("sending publish msg now! %p %d", msg, nni_msg_len(msg));
+			log_debug("sending publish msg now! %p %d", msg, nni_msg_len(msg));
 		nni_pipe_send(p->pipe, &p->send_aio);
 		nni_mtx_unlock(&s->mtx);
 		if (0 == qos && ptype != NNG_MQTT_SUBSCRIBE &&
@@ -693,30 +693,23 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg, mqtt_sock_t *s)
 		}
 		return;
 	}
-	if (s->retry_qos_0 || qos > 0) {
-		if (nni_lmq_full(&p->send_messages)) {
-			log_warn("Cached Message lost! pipe is busy and lmq is full\n");
-			(void) nni_lmq_get(&p->send_messages, &tmsg);
-			nni_msg_free(tmsg);
+	if (nni_lmq_full(&p->send_messages)) {
+		log_warn("Cached Message lost! pipe is busy and lmq is full\n");
+		(void) nni_lmq_get(&p->send_messages, &tmsg);
+		nni_msg_free(tmsg);
 #ifdef NNG_ENABLE_STATS
-			nni_stat_inc(&s->msg_send_drop, 1);
-			log_info("inflight window size %d", nng_lmq_len(&p->send_messages));
+		nni_stat_inc(&s->msg_send_drop, 1);
+		log_info("inflight window size %d", nng_lmq_len(&p->send_messages));
 #endif
-		}
-		if (0 != nni_lmq_put(&p->send_messages, msg)) {
-			nni_msg_free(msg);
-#ifdef NNG_ENABLE_STATS
-			nni_stat_inc(&s->msg_send_drop, 1);
-#endif
-			log_warn("Message lost while enqueing");
-		} else {
-			log_warn("cached msg in lmq!");
-		}
-	} else {
+	}
+	if (0 != nni_lmq_put(&p->send_messages, msg)) {
+		nni_msg_free(msg);
 #ifdef NNG_ENABLE_STATS
 		nni_stat_inc(&s->msg_send_drop, 1);
 #endif
-		nni_msg_free(msg);
+		log_warn("Message lost while enqueing");
+	} else {
+		log_debug("cached msg in lmq!");
 	}
 out:
 	nni_mtx_unlock(&s->mtx);
@@ -1009,7 +1002,7 @@ mqtt_send_cb(void *arg)
 	if (nni_lmq_get(&p->send_messages, &msg) == 0) {
 		p->busy = true;
 		nni_aio_set_msg(&p->send_aio, msg);
-		log_warn("resend msg %p %d again", msg, nni_msg_len(msg));
+		log_info("resend msg %p %d", msg, nni_msg_len(msg));
 		nni_pipe_send(p->pipe, &p->send_aio);
 		nni_mtx_unlock(&s->mtx);
 		return;
@@ -1229,7 +1222,7 @@ mqtt_recv_cb(void *arg)
 			// in case data race in cancel
 			nni_aio_set_prov_data(user_aio, NULL);
 			nni_msg *tt = nni_aio_get_msg(user_aio);
-			log_warn("msg %p %d acked", tt, nni_msg_len(tt));
+			log_debug("msg %p %d acked", tt, nni_msg_len(tt));
 
 			nni_msg_free(nni_aio_get_msg(user_aio));
 			nni_aio_set_msg(user_aio, NULL);
@@ -1321,7 +1314,7 @@ mqtt_recv_cb(void *arg)
 			         &p->recv_unack, packet_id)) != NULL) {
 				// packetid already exists.
 				// sth wrong with the broker replace old with new
-				log_error("packet id %d duplicates, old msg lost", packet_id);
+				log_debug("packet id %d duplicates, old msg lost", packet_id);
 				nni_msg_free(cached_msg);
 #ifdef NNG_HAVE_MQTT_BROKER
 				conn_param_free(p->cparam);
