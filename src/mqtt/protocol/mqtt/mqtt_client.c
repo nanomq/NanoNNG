@@ -660,6 +660,7 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg, mqtt_sock_t *s)
 					nni_aio_finish(aio, rv, 0);
 				return;
 			}
+			log_info("qos msg in hashmap %p %d", msg, nni_msg_len(msg));
 			// pass proto_data to cached aio, either it is freed in ack or in cancel
 			nni_aio_set_prov_data(aio, nni_msg_get_proto_data(msg));
 			nni_msg_clone(msg);
@@ -1008,6 +1009,7 @@ mqtt_send_cb(void *arg)
 	if (nni_lmq_get(&p->send_messages, &msg) == 0) {
 		p->busy = true;
 		nni_aio_set_msg(&p->send_aio, msg);
+		log_warn("resend msg %p %d again", msg, nni_msg_len(msg));
 		nni_pipe_send(p->pipe, &p->send_aio);
 		nni_mtx_unlock(&s->mtx);
 		return;
