@@ -371,6 +371,7 @@ mqtt_sock_set_bridge_config(
 	if (t == NNI_TYPE_POINTER) {
 		nni_mtx_lock(&s->mtx);
 		s->bridge_conf = *(conf_bridge_node **) v;
+		s->retry_qos_0 = s->bridge_conf->retry_qos_0;
 		nni_mtx_unlock(&s->mtx);
 		return (0);
 	}
