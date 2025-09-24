@@ -3638,8 +3638,15 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 				free(s->local_topic);
 				s->local_topic = NULL;
 			}
+			if (s->prefix) {
+				free(s->prefix);
+				s->prefix = NULL;
+			}
+			if (s->suffix) {
+				free(s->suffix);
+				s->suffix = NULL;
+			}
 			NNI_FREE_STRUCT(s);
-
 		}
 		node->forwards_count = 0;
 		cvector_free(node->forwards_list);
@@ -3655,6 +3662,14 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 			if (s->local_topic) {
 				free(s->local_topic);
 				s->local_topic = NULL;
+			}
+			if (s->prefix) {
+				free(s->prefix);
+				s->prefix = NULL;
+			}
+			if (s->suffix) {
+				free(s->suffix);
+				s->suffix= NULL;
 			}
 			NNI_FREE_STRUCT(s);
 		}
