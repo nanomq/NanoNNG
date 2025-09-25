@@ -1288,14 +1288,14 @@ conf_bridge_node_parse(
 		hocon_read_str(s, prefix, forward);
 		hocon_read_str(s, suffix, forward);
 		if (s->suffix != NULL) {
-		 s->suffix_len = strlen(s->suffix);
-		 if (strstr(s->suffix, "+") != NULL ||
-		     strstr(s->suffix, "#") != NULL) {
-			 log_error(
-			     "No wildcard +/# should be contained in "
-			     "prefix/suffix in forward rules.");
-			 break;
-		 }
+			s->suffix_len = strlen(s->suffix);
+			if (strstr(s->suffix, "+") != NULL ||
+			    strstr(s->suffix, "#") != NULL) {
+				log_error(
+				    "No wildcard +/# should be contained in "
+				    "prefix/suffix in forward rules.");
+				break;
+			}
 		}
 
 		if (s->prefix != NULL) {

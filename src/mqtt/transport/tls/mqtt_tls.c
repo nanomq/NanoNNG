@@ -643,6 +643,7 @@ mqtts_tcptran_pipe_send_cb(void *arg)
 	if (nni_atomic_get_bool(&p->closed) || aio == NULL) {
 		// connection aborted at other place.
 		nni_mtx_unlock(&p->mtx);
+		log_info("txaio finished after disconnection!");
 		return;
 	}
 	nni_aio_list_remove(aio);
@@ -1718,8 +1719,7 @@ nng_dialer_reload_tls(conf_bridge_node *node, nni_dialer *ndialer)
 		}
 	}
 	if (node->tls.ca != NULL) {
-		if ((rv = nng_tls_config_ca_chain(cfg, node->tls.ca, NULL)) !=
-		    0) {
+		if ((rv = nng_tls_config_ca_chain(cfg, node->tls.ca, NULL)) != 0) {
 			log_error("restart tls config failed!");
 		}
 	}
