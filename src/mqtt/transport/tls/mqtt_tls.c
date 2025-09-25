@@ -148,11 +148,6 @@ mqtts_tcptran_pipe_close(void *arg)
 		log_warn("pipe %p closed! clean sendq", p->npipe);
 		nni_aio_finish_error(aio, SERVER_SHUTTING_DOWN);
 	}
-	if (nni_aio_busy(p->txaio)) {
-		log_warn("pipe %p closed!! finish txaio", p->npipe);
-		nni_aio_list_remove(p->txaio);
-		nni_aio_finish_error(p->txaio, NNG_ECLOSED);
-	}
 	nni_mtx_unlock(&p->mtx);
 	nni_aio_close(p->rxaio);
 	nni_aio_close(p->txaio);
@@ -639,7 +634,11 @@ mqtts_tcptran_pipe_send_cb(void *arg)
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
-
+	if (nni_atomic_get_bool(&p->closed) || aio == NULL) {
+		// connection aborted at other place.
+		nni_mtx_unlock(&p->mtx);
+		return;
+	}
 	nni_aio_list_remove(aio);
 	mqtts_tcptran_pipe_send_start(p);
 
@@ -1525,8 +1524,7 @@ mqtts_tcptran_dialer_init(void **dp, nng_url *url, nni_dialer *ndialer)
 #endif
 
 	if ((rv != 0) ||
-	    ((rv = nni_aio_alloc(&ep->connaio, mqtts_tcptran_dial_cb, ep)) !=
-	        0) ||
+	    ((rv = nni_aio_alloc(&ep->connaio, mqtts_tcptran_dial_cb, ep)) != 0) ||
 	    ((rv = nng_stream_dialer_alloc_url(&ep->dialer, &myurl)) != 0)) {
 		mqtts_tcptran_ep_fini(ep);
 		return (rv);
