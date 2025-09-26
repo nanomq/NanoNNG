@@ -77,13 +77,28 @@ stdout_callback(log_event *ev)
 
 	buf[strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &ev->time)] = '\0';
 #ifdef LOG_USE_COLOR
+#ifdef ENABLE_LOG_LINE
 	fprintf(ev->udata,
 	    "%s [%i] %s%-5s\x1b[0m \x1b[0m%s:%d \x1b[0m %s: ", buf, pid,
 	    level_colors[ev->level], level_strings[ev->level], ev->file,
 	    ev->line, ev->func);
 #else
+	fprintf(ev->udata,
+	    "%s [%i] %s%-5s\x1b[0m \x1b[0m%s \x1b[0m %s: ", buf, pid,
+	    level_colors[ev->level], level_strings[ev->level], ev->file,
+	    ev->func);
+#endif // ENABLE_LOG_LINE
+
+#else // LOG_USE_COLOR
+
+#ifdef ENABLE_LOG_LINE
 	fprintf(ev->udata, "%s [%i] %-5s %s:%d %s: ", buf, pid,
 	    level_strings[ev->level], ev->file, ev->line, ev->func);
+#else
+	fprintf(ev->udata, "%s [%i] %-5s %s %s: ", buf, pid,
+	    level_strings[ev->level], ev->file, ev->func);
+#endif
+
 #endif
 	vfprintf(ev->udata, ev->fmt, ev->ap);
 	fprintf(ev->udata, "\n");
@@ -118,8 +133,13 @@ file_callback(log_event *ev)
 	}
 	FILE *fp = ev->config->fp;
 	buf[strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &ev->time)] = '\0';
+#ifdef ENABLE_LOG_LINE
 	fprintf(fp, "%s [%i] %-5s %s:%d: ", buf, pid,
 	    level_strings[ev->level], ev->file, ev->line);
+#else
+	fprintf(fp, "%s [%i] %-5s %s: ", buf, pid,
+	    level_strings[ev->level], ev->file);
+#endif
 	vfprintf(fp, ev->fmt, ev->ap);
 	fprintf(fp, "\n");
 	fflush(fp);
@@ -161,8 +181,13 @@ syslog_callback(log_event *ev)
 
 	// Create buffer for the log prefix
 	char buf[256];
+#ifdef ENABLE_LOG_LINE
 	snprintf(buf, sizeof(buf), "[%i] %-5s %s:%d %s: ", pid,
 	    level_strings[ev->level], ev->file, ev->line, ev->func);
+#else
+	snprintf(buf, sizeof(buf), "[%i] %-5s %s %s: ", pid,
+	    level_strings[ev->level], ev->file, ev->func);
+#endif
 
 	// Concatenate buf and ev->fmt
 	char final_fmt[512]; // Adjust size as needed
@@ -269,8 +294,13 @@ uds_syslog_callback(log_event *ev)
 
 	// Create buffer for the log prefix
 	char buf[256];
+#ifdef ENABLE_LOG_LINE
 	snprintf(buf, sizeof(buf), "[%i] %-5s %s:%d %s: ", pid,
 	    level_strings[ev->level], ev->file, ev->line, ev->func);
+#else
+	snprintf(buf, sizeof(buf), "[%i] %-5s %s %s: ", pid,
+	    level_strings[ev->level], ev->file, ev->func);
+#endif
 
 	// Concatenate buf and ev->fmt
 	char final_fmt[512]; // Adjust size as needed
