@@ -54,6 +54,8 @@ parquet_file_queue::init()
 
 				auto start_time =
 				    extract_start_time(file_name);
+				// TODO extract id from filename and
+				// compare with config id
 				if (!start_time.has_value()) {
 					log_error("Failed to extract start "
 					          "time from file: %s",
@@ -94,11 +96,6 @@ parquet_file_queue::init()
 	}
 }
 
-CircularQueue *
-parquet_file_queue::get_queue()
-{
-	return &queue;
-}
 
 void
 parquet_file_queue::update_queue(const char *filename)
@@ -120,12 +117,6 @@ parquet_file_queue::update_queue(const char *filename)
 			remove_old_file(queue);
 		}
 	}
-}
-
-conf_parquet *
-parquet_file_queue::get_conf()
-{
-	return node;
 }
 
 optional<long>
@@ -203,10 +194,4 @@ parquet_file_queue::remove_old_file(CircularQueue &queue)
 
 	free(filename);
 	return ret;
-}
-
-uint64_t
-parquet_file_queue::get_sum()
-{
-	return sum;
 }
