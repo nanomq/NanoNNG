@@ -33,6 +33,7 @@ class parquet_file_queue {
 	conf_parquet  *get_conf() const { return node; }
 	CircularQueue *get_queue() const { return &queue; }
 	uint64_t       get_sum() const { return sum; }
+	uint32_t       get_index() const { return index; }
 
     private:
 	static optional<long> extract_start_time(const string &file_name);
@@ -44,6 +45,7 @@ class parquet_file_queue {
 
 	conf_parquet *node;
 	CircularQueue queue;
+	uint32_t      index = 0;
 	uint64_t      sum   = 0;
 };
 
