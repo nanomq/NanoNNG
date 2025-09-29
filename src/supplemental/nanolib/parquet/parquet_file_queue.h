@@ -31,9 +31,10 @@ class parquet_file_queue {
 	int            remove_old_file(CircularQueue &queue);
 	// Make it inline
 	conf_parquet  *get_conf() const { return node; }
-	CircularQueue *get_queue() const { return &queue; }
+	CircularQueue *get_queue() { return &queue; }
 	uint64_t       get_sum() const { return sum; }
-	uint32_t       get_index() const { return index; }
+	uint32_t       get_index() { return idx++; }
+	void           set_index(uint32_t index) { idx = index; }
 
     private:
 	static optional<long> extract_start_time(const string &file_name);
@@ -45,7 +46,7 @@ class parquet_file_queue {
 
 	conf_parquet *node;
 	CircularQueue queue;
-	uint32_t      index = 0;
+	uint32_t      idx = 0;
 	uint64_t      sum   = 0;
 };
 
