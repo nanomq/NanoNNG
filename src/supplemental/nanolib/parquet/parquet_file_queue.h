@@ -19,7 +19,7 @@ using namespace std;
 
 struct ParquetFile {
 	string file_path;
-	long   start_time;
+	long   order_key; // start_time or seq_id
 };
 
 class parquet_file_queue {
@@ -33,11 +33,12 @@ class parquet_file_queue {
 	conf_parquet  *get_conf() const { return node; }
 	CircularQueue *get_queue() { return &queue; }
 	uint64_t       get_sum() const { return sum; }
-	uint32_t       get_index() { return idx++; }
+	uint32_t       get_index() { return idx++ % (node->file_count+2); }
 	void           set_index(uint32_t index) { idx = index; }
 
     private:
 	static optional<long> extract_start_time(const string &file_name);
+	static optional<long> extract_seq_id(const string &file_name);
 	static int  compare_files(const ParquetFile &a, const ParquetFile &b);
 	static bool directory_exists(const string &directory_path);
 	static bool create_directory(const string &directory_path);

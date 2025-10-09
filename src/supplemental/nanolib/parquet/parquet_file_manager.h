@@ -59,6 +59,7 @@ class parquet_file_manager {
 		if (it != file_queue_map.end()) {
 			index = it->second->get_index();
 		}
+		// std::cout << "get_queue_index: " << index << std::endl;
 		return index;
 	}
 	void remove_queue() { };
