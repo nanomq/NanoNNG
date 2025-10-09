@@ -27,7 +27,7 @@ parquet_file_queue::init()
 {
 	DIR                *dir;
 	struct dirent      *ent;
-	vector<ParquetFile> files;
+	vector<ParquetFile> files_start_time, files_seq_id;
 	conf_parquet       *parquet = node;
 
 	if ((dir = opendir(parquet->dir)) != nullptr) {
@@ -52,36 +52,83 @@ parquet_file_queue::init()
 					continue;
 				}
 
-				auto start_time =
-				    extract_start_time(file_name);
-				// TODO extract id from filename and
-				// compare with config id
-				if (!start_time.has_value()) {
-					log_error("Failed to extract start "
-					          "time from file: %s",
-					    file_name.c_str());
+				//
+				auto file_seq_id = extract_seq_id(file_name);
+				if (!file_seq_id.has_value()) {
+					auto start_time =
+					    extract_start_time(file_name);
+
+					// If start time extraction fails, skip
+					// the file
+					if (!start_time.has_value()) {
+						log_error(
+						    "Failed to extract start "
+						    "time from file: %s",
+						    file_name.c_str());
+						continue;
+					}
+					files_start_time.push_back(
+					    { file_path, start_time.value() });
 					continue;
 				}
 
-				files.push_back({ file_path, start_time.value() });
+				files_seq_id.push_back(
+				    { file_path, file_seq_id.value() });
 			}
 		}
 		closedir(dir);
 
 		// Sort files by start time
-		sort(files.begin(), files.end(),
+		sort(files_start_time.begin(), files_start_time.end(),
 		    [](const ParquetFile &a, const ParquetFile &b) {
-			    return a.start_time < b.start_time;
+			    return a.order_key < b.order_key;
 		    });
 
+		// Step1: Sort files by seq id
+		sort(files_seq_id.begin(), files_seq_id.end(),
+		    [](const ParquetFile &a, const ParquetFile &b) {
+			    return a.order_key < b.order_key;
+		    });
+
+		// Step 2: find first discontinuity
+		size_t break_pos = files_seq_id.size();
+		for (size_t i = 0; i + 1 < files_seq_id.size(); ++i) {
+			if (files_seq_id[i + 1].order_key !=
+			    files_seq_id[i].order_key + 1) {
+				break_pos = i + 1; // next element is where
+				                   // discontinuity starts
+				break;
+			}
+		}
+
+		// Step 3: if found discontinuity, rotate vector
+		if (break_pos < files_seq_id.size()) {
+			std::rotate(files_seq_id.begin(),
+			    files_seq_id.begin() + break_pos,
+			    files_seq_id.end());
+		}
+
 		// Enqueue sorted files
-		for (const auto &file : files) {
+		for (const auto &file : files_start_time) {
 			char *file_name = strdup(file.file_path.c_str());
 			update_queue(file_name);
 
-			log_debug("Loaded %zu parquet file %s, %p in time "
+			log_warn("Loaded %zu parquet file %s, %p in time "
 			         "order from %s.",
-			    files.size(), parquet->dir, file_name, file_name);
+			    files_start_time.size(), parquet->dir, file_name,
+			    file_name);
+		}
+
+		for (const auto &file : files_seq_id) {
+			char *file_name = strdup(file.file_path.c_str());
+			update_queue(file_name);
+			std::cout << "file.order_key: " << file.order_key
+			          << std::endl;
+			set_index(file.order_key + 1);
+			log_warn("Loaded %zu parquet file %s, %p in time "
+			         "order from %s.",
+			    files_seq_id.size(), parquet->dir, file_name,
+			    file_name);
 		}
 	} else {
 		log_info("Parquet directory not found, creating new one.");
@@ -95,7 +142,6 @@ parquet_file_queue::init()
 		}
 	}
 }
-
 
 void
 parquet_file_queue::update_queue(const char *filename)
@@ -123,6 +169,25 @@ optional<long>
 parquet_file_queue::extract_start_time(const std::string &file_name)
 {
 	regex  pattern("-([0-9]+)~");
+	smatch matches;
+
+	try {
+		if (regex_search(file_name, matches, pattern) &&
+		    matches.size() > 1) {
+			return stol(matches[1].str());
+		}
+	} catch (const std::exception &e) {
+		log_error("Error extracting start time: %s", e.what());
+	}
+
+	return std::nullopt;
+}
+
+
+optional<long>
+parquet_file_queue::extract_seq_id(const std::string &file_name)
+{
+	regex  pattern("_([0-9]+)_");
 	smatch matches;
 
 	try {
