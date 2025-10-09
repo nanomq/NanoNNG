@@ -82,6 +82,7 @@ get_file_name(conf_parquet
 		return NULL;
 	}
 
+
 	sprintf(file_name, "%s/%s-%" PRIu64 "~%" PRIu64 ".parquet", dir,
 	    prefix, key_start, key_end);
 	return file_name;
@@ -342,74 +343,157 @@ update_parquet_file_ranges(
 	}
 }
 
+std::string
+compute_and_rename_file_withMD5_CXX(const std::string &filename,
+    const conf_parquet *conf, const std::string &topic)
+{
+	char md5_buffer[MD5_LEN + 1] = { 0 };
+	log_debug("Computing MD5...");
+
+	// Step 1: Compute MD5 checksum of the file
+	if (ComputeFileMD5(filename.c_str(), md5_buffer) != 0) {
+		log_error("Failed to calculate md5sum");
+		if (remove(filename.c_str()) != 0) {
+			log_error("Failed to remove file %s errno: %d",
+			    filename.c_str(), errno);
+		}
+		return {};
+	}
+
+	// Step 2: Extract timestamp substring from the original filename
+	std::string prefix =
+	    std::string(conf->dir) + "/" + conf->file_name_prefix;
+	size_t ts_start_pos =
+	    prefix.size() + 1; // assumes an extra separator ("/" or "_")
+	size_t ts_end_pos = filename.rfind('.');
+	if (ts_end_pos == std::string::npos || ts_end_pos <= ts_start_pos) {
+		log_error("Invalid filename format: %s", filename.c_str());
+		if (remove(filename.c_str()) != 0) {
+			log_error("Failed to remove file %s errno: %d",
+			    filename.c_str(), errno);
+		}
+
+		return {};
+	}
+	std::string timestamp =
+	    filename.substr(ts_start_pos, ts_end_pos - ts_start_pos);
+
+	// Step 3: Get queue index for the topic
+	uint32_t    index  = file_manager.get_queue_index(topic);
+	std::string sindex = std::to_string(index); // NOTE: currently unused
+
+	log_error("Index: %u, sindex: %s", index, sindex.c_str());
+	// Step 4: Build new filename:
+	// <dir+prefix>_<topic>-<timestamp>_<md5>.parquet
+	std::string new_name = prefix + "_" + topic + "-" + timestamp + "_" +
+	    sindex + "_" + md5_buffer + ".parquet";
+
+	// Step 5: Rename the file to the new name
+	log_error(
+	    "Trying to rename %s to %s", filename.c_str(), new_name.c_str());
+	if (rename(filename.c_str(), new_name.c_str()) != 0) {
+		log_error("Failed to rename file %s to %s errno: %d",
+		    filename.c_str(), new_name.c_str(), errno);
+		if (remove(filename.c_str()) != 0) {
+			log_error("Failed to remove file %s errno: %d",
+			    filename.c_str(), errno);
+		}
+		return {};
+	}
+
+	return new_name;
+}
+
 char *
 compute_and_rename_file_withMD5(
-    char *filename, conf_parquet *conf, char *topic)
+    const char *filename, const conf_parquet *conf, const char *topic)
 {
-	char md5_buffer[MD5_LEN + 1];
-	log_debug("compute md5");
-	int ret = ComputeFileMD5(filename, md5_buffer);
-	if (ret != 0) {
-		log_error("Failed to calculate md5sum");
-		ret = remove(filename);
-		if (ret != 0) {
-			log_error("Failed to remove file %s errno: %d",
-			    filename, errno);
-		}
-
-		free(filename);
+	std::string result =
+	    compute_and_rename_file_withMD5_CXX(filename, conf, topic);
+	if (filename) {
+		free((void *) filename); // Free the original filename as it's no longer needed
+	}
+	if (result.empty()) {
 		return NULL;
 	}
 
-	char *md5_file_name = (char *) malloc(strlen(filename) + strlen("_") +
-	    strlen(topic) + strlen("_") + strlen(md5_buffer) + 2);
-	if (md5_file_name == NULL) {
-		log_error("Failed to allocate memory for file name.");
-		ret = remove(filename);
-		if (ret != 0) {
-			log_error("Failed to remove file %s errno: %d",
-			    filename, errno);
-		}
-
-		free(filename);
-		return NULL;
-	}
-
-	strncpy(md5_file_name, filename,
-	    strlen(conf->dir) + strlen(conf->file_name_prefix) + 1);
-	md5_file_name[strlen(conf->dir) + strlen(conf->file_name_prefix) + 1] =
-	    '\0';
-
-	strcat(md5_file_name, "_");
-	strcat(md5_file_name, topic);
-	strcat(md5_file_name, "-");
-	char *ts_start = filename + strlen(conf->dir) + strlen(conf->file_name_prefix) + 2;
-	char *ts_end = strrchr(ts_start, '.');
-	long ts_len = ts_end - ts_start;
-	strncat(md5_file_name,
-	    filename + strlen(conf->dir) + strlen(conf->file_name_prefix) + 2, ts_len);
-	strcat(md5_file_name, "_");
-	strcat(md5_file_name, md5_buffer);
-	strcat(md5_file_name, ".parquet");
-	log_info("trying to rename... %s to %s", filename, md5_file_name);
-	ret = rename(filename, md5_file_name);
-	if (ret != 0) {
-		log_error("Failed to rename file %s to %s errno: %d", filename,
-		    md5_file_name, errno);
-		ret = remove(filename);
-		if (ret != 0) {
-			log_error("Failed to remove file %s errno: %d",
-			    filename, errno);
-		}
-
-		free(filename);
-		free(md5_file_name);
-		return NULL;
-	}
-
-	free(filename);
-	return md5_file_name;
+	char *out = (char *) malloc(result.size() + 1);
+	if (out)
+		strcpy(out, result.c_str());
+	return out;
 }
+
+// char *
+// compute_and_rename_file_withMD5(
+//     char *filename, conf_parquet *conf, char *topic)
+// {
+// 	char md5_buffer[MD5_LEN + 1];
+// 	log_debug("compute md5");
+// 	int ret = ComputeFileMD5(filename, md5_buffer);
+// 	if (ret != 0) {
+// 		log_error("Failed to calculate md5sum");
+// 		ret = remove(filename);
+// 		if (ret != 0) {
+// 			log_error("Failed to remove file %s errno: %d",
+// 			    filename, errno);
+// 		}
+// 
+// 		free(filename);
+// 		return NULL;
+// 	}
+// 
+// 	uint32_t index = file_manager.get_queue_index(topic);
+// 	std::string sindex = std::to_string(index);
+// 
+// 	char *md5_file_name = (char *) malloc(strlen(filename) + strlen("_") +
+// 	    strlen(topic) + strlen("_") + strlen(md5_buffer) + 2) + sindex.size();
+// 	if (md5_file_name == NULL) {
+// 		log_error("Failed to allocate memory for file name.");
+// 		ret = remove(filename);
+// 		if (ret != 0) {
+// 			log_error("Failed to remove file %s errno: %d",
+// 			    filename, errno);
+// 		}
+// 
+// 		free(filename);
+// 		return NULL;
+// 	}
+// 
+// 	strncpy(md5_file_name, filename,
+// 	    strlen(conf->dir) + strlen(conf->file_name_prefix) + 1);
+// 	md5_file_name[strlen(conf->dir) + strlen(conf->file_name_prefix) + 1] =
+// 	    '\0';
+// 
+// 	strcat(md5_file_name, "_");
+// 	strcat(md5_file_name, topic);
+// 	strcat(md5_file_name, "-");
+// 	char *ts_start = filename + strlen(conf->dir) + strlen(conf->file_name_prefix) + 2;
+// 	char *ts_end = strrchr(ts_start, '.');
+// 	long ts_len = ts_end - ts_start;
+// 	strncat(md5_file_name,
+// 	    filename + strlen(conf->dir) + strlen(conf->file_name_prefix) + 2, ts_len);
+// 	strcat(md5_file_name, "_");
+// 	strcat(md5_file_name, md5_buffer);
+// 	strcat(md5_file_name, ".parquet");
+// 	log_info("trying to rename... %s to %s", filename, md5_file_name);
+// 	ret = rename(filename, md5_file_name);
+// 	if (ret != 0) {
+// 		log_error("Failed to rename file %s to %s errno: %d", filename,
+// 		    md5_file_name, errno);
+// 		ret = remove(filename);
+// 		if (ret != 0) {
+// 			log_error("Failed to remove file %s errno: %d",
+// 			    filename, errno);
+// 		}
+// 
+// 		free(filename);
+// 		free(md5_file_name);
+// 		return NULL;
+// 	}
+// 
+// 	free(filename);
+// 	return md5_file_name;
+// }
 
 int
 parquet_write_core(conf_parquet *conf, char *filename,

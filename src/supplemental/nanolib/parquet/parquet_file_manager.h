@@ -2,7 +2,7 @@
 #define PARQUET_FILE_MANAGER_H
 
 #include "parquet_file_queue.h"
-
+#include "nng/supplemental/nanolib/log.h"
 #include <unordered_map>
 
 // Make it default inline
@@ -59,7 +59,7 @@ class parquet_file_manager {
 		if (it != file_queue_map.end()) {
 			index = it->second->get_index();
 		}
-		// std::cout << "get_queue_index: " << index << std::endl;
+		log_info("get_queue_index: %u for topic %s", index, topic.c_str());
 		return index;
 	}
 	void remove_queue() { };
