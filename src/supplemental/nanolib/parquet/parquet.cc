@@ -327,7 +327,7 @@ void
 update_parquet_file_ranges(
     conf_parquet *conf, parquet_object *elem, parquet_file_range *range)
 {
-	if (elem->ranges->size != conf->file_count) {
+	if (elem->ranges->size != (int) conf->file_count) {
 		elem->ranges->range =
 		    (parquet_file_range **) realloc(elem->ranges->range,
 		        sizeof(parquet_file_range *) * (++elem->ranges->size));
@@ -380,16 +380,15 @@ compute_and_rename_file_withMD5_CXX(const std::string &filename,
 
 	// Step 3: Get queue index for the topic
 	uint32_t    index  = file_manager.get_queue_index(topic);
-	std::string sindex = std::to_string(index); // NOTE: currently unused
+	std::string sindex = std::to_string(index);
 
-	log_error("Index: %u, sindex: %s", index, sindex.c_str());
 	// Step 4: Build new filename:
 	// <dir+prefix>_<topic>-<timestamp>_<md5>.parquet
 	std::string new_name = prefix + "_" + topic + "-" + timestamp + "_" +
 	    sindex + "_" + md5_buffer + ".parquet";
 
 	// Step 5: Rename the file to the new name
-	log_error(
+	log_info(
 	    "Trying to rename %s to %s", filename.c_str(), new_name.c_str());
 	if (rename(filename.c_str(), new_name.c_str()) != 0) {
 		log_error("Failed to rename file %s to %s errno: %d",
@@ -758,11 +757,19 @@ static void
 get_range(const char *name, uint64_t range[2])
 {
 	// {prefix}_{topic}-{start_ts}~{end_ts}_{md5}.parquet
-	const char *ts_start = strrchr(name, '-') + 1;
-	char *md5[32];
-	sscanf(ts_start, "%ld~%ld_%s.parquet", &range[0], &range[1], md5);
+	const char *ts_start = strrchr(name, '-');
+	if (!ts_start) {
+		range[0] = range[1] = 0;
+		return;
+	}
+	ts_start++;
 
-	return;
+	char md5[33] = { 0 };
+
+	if (sscanf(ts_start, "%lu~%lu_%32[^.]", &range[0], &range[1], md5) !=
+	    3) {
+		range[0] = range[1] = 0;
+	}
 }
 
 static bool
