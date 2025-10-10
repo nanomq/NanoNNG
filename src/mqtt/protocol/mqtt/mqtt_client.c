@@ -695,11 +695,7 @@ mqtt_pipe_close(void *arg)
 		    mqtt_sock_get_sqlite_option(s), &p->send_messages);
 	}
 #endif
-
 	nni_lmq_flush(&p->send_messages);
-
-	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
-
 #ifdef NNG_HAVE_MQTT_BROKER
 	nni_aio     *user_aio;
 
@@ -738,6 +734,7 @@ mqtt_pipe_close(void *arg)
 	}
 	// particular for NanoSDK in bridging
 	nni_lmq_flush_cp(&p->recv_messages, true);
+	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
 #endif
 	nni_mtx_unlock(&s->mtx);
 
@@ -761,7 +758,7 @@ mqtt_timer_cb(void *arg)
 		return;
 	}
 
-	if (p->pingcnt > s->timeout_backoff) {	// expose it
+	if (p->pingcnt >= s->timeout_backoff) {	// expose it
 		log_warn("MQTT Timeout and disconnect");
 		nni_mtx_unlock(&s->mtx);
 		nni_pipe_close(p->pipe);
@@ -1072,7 +1069,7 @@ mqtt_recv_cb(void *arg)
 			}
 
 			if (rv != MQTT_SUCCESS) {
-				nni_plat_printf("Error in encoding CONNACK.\n");
+				log_error("Error in encoding CONNACK.\n");
 			}
 			conn_param_clone(p->cparam);
 			if ((ctx = nni_list_first(&s->recv_queue)) == NULL) {
@@ -1170,7 +1167,7 @@ mqtt_recv_cb(void *arg)
 		// we have received a PUBLISH
 		qos = nni_mqtt_msg_get_publish_qos(msg);
 #ifdef NNG_HAVE_MQTT_BROKER
-		// clone for bridging
+		// clone for bridging, bind to lmq.
 		conn_param_clone(p->cparam);
 #endif
 		nng_msg_set_cmd_type(msg, CMD_PUBLISH);
@@ -1211,10 +1208,10 @@ mqtt_recv_cb(void *arg)
 #endif
 				// nni_id_remove(&pipe->nano_qos_db, pid);
 			}
-#ifdef NNG_HAVE_MQTT_BROKER
-			// clone again for using in QoS hashmap
-			conn_param_clone(p->cparam);
-#endif
+// #ifdef NNG_HAVE_MQTT_BROKER
+// 			// clone again for using in QoS hashmap
+// 			conn_param_clone(p->cparam);
+// #endif
 			nni_id_set(&p->recv_unack, packet_id, msg);
 		}
 		break;

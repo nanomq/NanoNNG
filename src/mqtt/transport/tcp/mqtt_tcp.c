@@ -140,6 +140,9 @@ mqtt_tcptran_pipe_close(void *arg)
 	nni_aio_close(p->negoaio);
 	nni_aio_close(p->rpaio);
 	nng_stream_close(p->conn);
+#ifdef NNG_HAVE_MQTT_BROKER
+	conn_param_free(p->cparam);
+#endif
 }
 
 static void
@@ -257,6 +260,7 @@ mqtt_tcptran_ep_match(mqtt_tcptran_ep *ep)
 		if (p->keepalive != 0)
 			p->cparam->keepalive_mqtt = p->keepalive;
 		nni_msg_set_conn_param(ep->connmsg, p->cparam);
+		conn_param_clone(p->cparam);
 	}
 #endif
 	nni_aio_set_output(aio, 0, p);
