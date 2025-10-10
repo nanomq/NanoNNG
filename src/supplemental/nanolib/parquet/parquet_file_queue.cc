@@ -1,8 +1,8 @@
-#include"parquet_file_queue.h"
+#include "parquet_file_queue.h"
 #include <unistd.h>
 
-#include <unistd.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 // Constructor
 parquet_file_queue::parquet_file_queue(conf_parquet *node)
@@ -113,22 +113,17 @@ parquet_file_queue::init()
 			char *file_name = strdup(file.file_path.c_str());
 			update_queue(file_name);
 
-			log_warn("Loaded %zu parquet file %s, %p in time "
-			         "order from %s.",
-			    files_start_time.size(), parquet->dir, file_name,
-			    file_name);
+			log_warn("Loaded %zu parquet files in time order %s.",
+			    files_start_time.size(), file_name);
 		}
 
 		for (const auto &file : files_seq_id) {
 			char *file_name = strdup(file.file_path.c_str());
 			update_queue(file_name);
-			std::cout << "file.order_key: " << file.order_key
-			          << std::endl;
+			log_debug("file.order_key: %ld", file.order_key);
 			set_index(file.order_key + 1);
-			log_warn("Loaded %zu parquet file %s, %p in time "
-			         "order from %s.",
-			    files_seq_id.size(), parquet->dir, file_name,
-			    file_name);
+			log_debug("Loaded %zu parquet file %s in time order.",
+			    files_seq_id.size(), file_name);
 		}
 	} else {
 		log_info("Parquet directory not found, creating new one.");
@@ -159,7 +154,7 @@ parquet_file_queue::update_queue(const char *filename)
 			remove_old_file(queue);
 		}
 
-		if (QUEUE_SIZE(queue) > node->file_count) {
+		if (QUEUE_SIZE(queue) > (int) node->file_count) {
 			remove_old_file(queue);
 		}
 	}
@@ -182,7 +177,6 @@ parquet_file_queue::extract_start_time(const std::string &file_name)
 
 	return std::nullopt;
 }
-
 
 optional<long>
 parquet_file_queue::extract_seq_id(const std::string &file_name)
@@ -219,7 +213,6 @@ parquet_file_queue::has_md5_sum(const string &file_name)
 {
 	return file_name.find("_") != string::npos;
 }
-
 
 bool
 parquet_file_queue::directory_exists(const std::string &directory_path)

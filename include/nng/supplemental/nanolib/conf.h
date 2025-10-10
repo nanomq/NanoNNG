@@ -378,7 +378,7 @@ struct conf_parquet {
 	uint32_t                file_count;
 	uint32_t                limit_frequency;
 	uint8_t                 file_index;
-	int32_t                 file_size;
+	uint64_t                 file_size;
 	compression_type        comp_type;
 	conf_parquet_encryption encryption;
 };

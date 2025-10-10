@@ -39,7 +39,6 @@ class parquet_file_manager {
 			conf = it->second->get_conf();
 		}
 		return conf;
-		;
 	}
 
 	uint64_t get_queue_sum(const string &topic) const
