@@ -1330,10 +1330,6 @@ mqtt_recv_cb(void *arg)
 #endif
 				// nni_id_remove(&pipe->nano_qos_db, pid);
 			}
-// #ifdef NNG_HAVE_MQTT_BROKER
-// 			// clone again for using in QoS hashmap
-// 			conn_param_clone(p->cparam);
-// #endif
 			nni_id_set(&p->recv_unack, packet_id, msg);
 		}
 		break;
