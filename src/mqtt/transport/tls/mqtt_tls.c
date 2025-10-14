@@ -463,8 +463,12 @@ mqtts_tcptran_pipe_nego_cb(void *arg)
 			property_free(ep->property);
 			ep->property = NULL;
 			property *prop = nni_mqtt_msg_get_connack_property(p->rxmsg);
-			if (property_dup((property **) &ep->property, prop) != 0)
+			if (property_dup((property **) &ep->property, prop) != 0) {
+				log_warn("Malformed packet found in Property!");
+				rv = MQTT_ERR_PROTOCOL;
+				ep->reason_code = rv;
 				goto mqtt_error;
+			}
 			if (ep->property != NULL) {
 				property_data *data;
 				data = property_get_value(ep->property, RECEIVE_MAXIMUM);
@@ -533,14 +537,12 @@ mqtts_tcptran_pipe_nego_cb(void *arg)
 		}
 		ep->reason_code = nni_mqtt_msg_get_connack_return_code(p->rxmsg);
 	}
-	// put 
+
+mqtt_error:
 #ifdef NNG_HAVE_MQTT_BROKER
 	nni_msg_clone(p->rxmsg);
 	p->connack = p->rxmsg;
 #endif
-
-
-mqtt_error:
 	// We are ready now.  We put this in the wait list, and
 	// then try to run the matcher.
 	nni_list_remove(&ep->negopipes, p);
