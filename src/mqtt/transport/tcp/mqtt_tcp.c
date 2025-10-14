@@ -365,8 +365,9 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 		if (p->proto == MQTT_PROTOCOL_VERSION_v5) {
 			rv = nni_mqttv5_msg_decode(p->rxmsg);
 			ep->reason_code = rv;
-			if (rv != 0)
+			if (rv != 0) {
 				goto mqtt_error;
+			}
 #ifdef SUPP_SCRAM
 			if (ep->scram_ctx &&
 				nni_mqtt_msg_get_packet_type(p->rxmsg) == NNG_MQTT_AUTH) {
@@ -457,8 +458,12 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 			property_free(ep->property);
 			ep->property = NULL;
 			property *prop = nni_mqtt_msg_get_connack_property(p->rxmsg);
-			if (property_dup((property **) &ep->property, prop) != 0)
+			if (property_dup((property **) &ep->property, prop) != 0) {
+				log_warn("Malformed packet found in Property!");
+				rv = MQTT_ERR_PROTOCOL;
+				ep->reason_code = rv;
 				goto mqtt_error;
+			}
 			if (ep->property != NULL) {
 				property_data *data;
 				data = property_get_value(ep->property, RECEIVE_MAXIMUM);
@@ -527,14 +532,12 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 		}
 		ep->reason_code = nni_mqtt_msg_get_connack_return_code(p->rxmsg);
 	}
-	// put 
+mqtt_error:
+
 #ifdef NNG_HAVE_MQTT_BROKER
 	nni_msg_clone(p->rxmsg);
 	p->connack = p->rxmsg;
 #endif
-
-
-mqtt_error:
 	// We are ready now.  We put this in the wait list, and
 	// then try to run the matcher.
 	nni_list_remove(&ep->negopipes, p);
@@ -549,7 +552,7 @@ mqtt_error:
 	} else {
 		// Fail but still match to let user know ack has arrived
 		mqtt_tcptran_ep_match(ep);
-		// send DISCONNECT
+		// send DISCONNECT, rely on remote side to close socket
 		nni_iov iov;
 		p->txlen[0] = CMD_DISCONNECT;
 		if (p->proto == MQTT_PROTOCOL_VERSION_v5) {
@@ -647,10 +650,12 @@ mqtt_tcptran_pipe_send_cb(void *arg)
 static void
 mqtt_tcptran_pipe_rp_send_cb(void *arg)
 {
-	mqtt_tcptran_pipe *p = arg;
-	nni_aio      *rpaio = p->rpaio;
-	size_t        n;
-	int           rv;
+	int                rv;
+	size_t             n;
+	mqtt_tcptran_pipe *p     = arg;
+	mqtt_tcptran_ep   *ep    = p->ep;
+	nni_aio           *rpaio = p->rpaio;
+
 
 	if ((rv = nni_aio_result(rpaio)) != 0) {
 		log_warn(" send aio error %s", nng_strerror(rv));
