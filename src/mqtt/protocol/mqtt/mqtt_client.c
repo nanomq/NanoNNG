@@ -1128,6 +1128,17 @@ mqtt_recv_cb(void *arg)
 	int32_t       packet_id;
 	uint8_t       qos;
 
+#ifdef NNG_HAVE_MQTT_BROKER
+	if (p->cparam == NULL && packet_type != NNG_MQTT_CONNACK) {
+		log_warn("Malicious action from remote broker! \
+				  CONNACK shall always be the first packet.");
+		nni_mtx_unlock(&s->mtx);
+		nni_msg_free(msg);
+		// close pipe directly
+		nni_pipe_close(p->pipe);
+		return;
+	}
+#endif
 	// schedule another receive
 	nni_pipe_recv(p->pipe, &p->recv_aio);
 
