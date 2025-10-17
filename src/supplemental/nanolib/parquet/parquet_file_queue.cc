@@ -55,16 +55,22 @@ parquet_file_queue::init()
 				//
 				auto file_seq_id = extract_seq_id(file_name);
 				if (!file_seq_id.has_value()) {
-					auto start_time =
-					    extract_start_time(file_name);
-
-					// If start time extraction fails, skip
-					// the file
+					auto start_time = extract_start_time(file_name);
+					// If start time extraction fails, skip & delete the file
 					if (!start_time.has_value()) {
 						log_error(
 						    "Failed to extract start "
 						    "time from file: %s",
 						    file_name.c_str());
+						if (unlink(file_path.c_str()) != 0) {
+							log_error("Failed to remove "
+							          "file %s, errno: %d",
+							    file_path.c_str(), errno);
+						} else {
+							log_warn("Deleted file "
+							         "without md5sum: %s",
+							    file_path.c_str());
+						}
 						continue;
 					}
 					files_start_time.push_back(
@@ -190,7 +196,7 @@ parquet_file_queue::extract_seq_id(const std::string &file_name)
 			return stol(matches[1].str());
 		}
 	} catch (const std::exception &e) {
-		log_error("Error extracting start time: %s", e.what());
+		log_error("Error extracting seq id, might be old file: %s", e.what());
 	}
 
 	return std::nullopt;
