@@ -92,6 +92,7 @@ struct mqtt_pipe_s {
 
 // A mqtt_sock_s is our per-socket protocol private structure.
 struct mqtt_sock_s {
+	bool            connected;	 	// a stupid tmp status of network
 	bool            retry_qos_0;	// define if flush QoS 0 msg to disk
 	nni_mtx         mtx;    		// more fine grained mutual exclusion
 	uint8_t         mqtt_ver;       // mqtt version.
@@ -320,6 +321,15 @@ mqtt_sock_set_retry_qos_0(void *arg, const void *v, size_t sz, nni_opt_type t)
 		s->retry_qos_0 = tmp;
 	}
 	return (rv);
+}
+
+static int
+mqtt_sock_get_connect_status(void *s, void *buf, size_t *szp, nni_type t)
+{
+	mqtt_sock_t *sock = s;
+	bool status = sock->connected;
+	log_info("current status %d", status);
+	return (nni_copyout_bool(status, buf, szp, t));
 }
 
 static int
@@ -735,6 +745,7 @@ mqtt_pipe_start(void *arg)
 	s->mqtt_pipe       = p;
 	s->disconnect_code = SUCCESS;
 	s->dis_prop        = NULL;
+	s->connected       = true;
 	p->busy			   = false;
 
 	if ((c = nni_list_first(&s->send_queue)) != NULL) {
@@ -780,6 +791,7 @@ mqtt_pipe_close(void *arg)
 	nni_mtx_lock(&s->mtx);
 	nni_atomic_set_bool(&p->closed, true);
 	s->mqtt_pipe = NULL;
+	s->connected = false;
 	nni_aio_close(&p->send_aio);
 	nni_aio_close(&p->recv_aio);
 	nni_aio_close(&p->time_aio);
@@ -1729,6 +1741,10 @@ static nni_option mqtt_sock_options[] = {
 	{
 	    .o_name = NNG_OPT_MQTT_CLIENT_PIPEID,
 	    .o_get  = mqtt_sock_get_pipeid,
+	},
+	{
+	    .o_name = NNG_OPT_MQTT_CLIENT_CONNECT_BOOL,
+	    .o_get  = mqtt_sock_get_connect_status,
 	},
 	// terminate list
 	{

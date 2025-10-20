@@ -52,6 +52,7 @@ extern "C" {
 
 // Only work for MQTT Protocol layer
 #define NNG_OPT_MQTT_CLIENT_PIPEID "nng-nano-pipe-id"
+#define NNG_OPT_MQTT_CLIENT_CONNECT_BOOL "nng-nano-connect-status"
 
 // Only work for MQTT Protocol layer
 #define NNG_OPT_MQTT_BROKER_PIPEID "nano-broker-pipe-id"
