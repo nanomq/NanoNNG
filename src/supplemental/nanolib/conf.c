@@ -1024,6 +1024,8 @@ static void
 print_auth_conf(conf_auth *auth)
 {
 	if (auth && auth->enable) {
+		log_info("MQTT username/password enable: %s",
+				 auth->enable ? "true" : "false");
 		for (size_t i = 0; i < auth->count; i++) {
 			log_info("[%d] username: %s", i, auth->usernames[i]);
 		}
