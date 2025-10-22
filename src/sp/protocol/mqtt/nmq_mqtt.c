@@ -793,6 +793,7 @@ session_keeping:
 	rv = verify_connect(p->conn_param, s->conf);
 	if (rv == SUCCESS) {
 		if (s->conf->auth_http.enable) {
+			log_debug("HTTP Authentication start!");
 			rv = nmq_auth_http_connect(		// potential dead lock if HTTP fails
 			    p->conn_param, &s->conf->auth_http);
 		}

@@ -1290,6 +1290,7 @@ verify_connect(conn_param *cparam, conf *conf)
 	}
 
 	if (cparam->username.len == 0 || cparam->password.len == 0) {
+		log_warn("Client Username/Password is NULL!");
 		if (cparam->pro_ver == 5) {
 			return BAD_USER_NAME_OR_PASSWORD;
 		} else {
@@ -1306,6 +1307,7 @@ verify_connect(conn_param *cparam, conf *conf)
 	for (i = 0; i < n; i++) {
 		if (strcmp(username, conf->auths.usernames[i]) == 0 &&
 		    strcmp(password, conf->auths.passwords[i]) == 0) {
+			log_debug("Found matched Username/Password!");
 			nng_mtx_unlock(conf->auths.mtx);
 			return 0;
 		}
