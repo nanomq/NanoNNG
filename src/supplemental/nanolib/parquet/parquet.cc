@@ -1322,6 +1322,7 @@ read_column_data(shared_ptr<parquet::ColumnReader> column_reader,
         }
     }
 
+	// TODO mem leaks here
     return nullptr;
 }
 
