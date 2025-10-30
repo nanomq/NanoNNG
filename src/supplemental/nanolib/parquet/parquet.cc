@@ -1340,13 +1340,35 @@ read_column_data(shared_ptr<parquet::ColumnReader> column_reader,
     return nullptr;
 }
 
+static vector<SchemaColumn>
+get_all_schema_except_ts(shared_ptr<parquet::RowGroupReader> row_group_reader,
+    shared_ptr<parquet::FileMetaData> file_metadata)
+{
+	vector<SchemaColumn> schema_vec;
+	int num_columns = file_metadata->num_columns();
+	for (int i = 1; i < num_columns; i++) {
+		SchemaColumn col;
+		col.name = strdup(file_metadata->schema()->Column(i)->name().c_str());
+		col.reader = row_group_reader->Column(i);
+		schema_vec.push_back(col);
+	}
+	return schema_vec;
+}
+
 static parquet_data_ret *parquet_read_payload(shared_ptr<parquet::RowGroupReader> row_group_reader, 
                                               shared_ptr<parquet::FileMetaData> file_metadata, 
                                               const char **schema, 
                                               uint16_t schema_len, 
                                               vector<int> &index_vector) {
     parquet_data_ret *ret = nullptr;
-    vector<SchemaColumn> schema_vec = get_filtered_schema(row_group_reader, file_metadata, schema, schema_len);
+    vector<SchemaColumn> schema_vec;
+    if (schema_len > 0) {
+        schema_vec = get_filtered_schema(row_group_reader, file_metadata, schema, schema_len);
+    } else {
+        //all schema, do not include ts column
+        log_warn("schema len <= 0 get all schema don't include ts column");
+        schema_vec = get_all_schema_except_ts(row_group_reader, file_metadata);
+    }
     vector<parquet_data_packet **> ret_rows_vec;
     int64_t batch_size = index_vector[1] - index_vector[0] + 1;
 
