@@ -200,6 +200,9 @@ parquet_data_free(parquet_data *data)
 			for (uint32_t r = 0; r < data->row_len; r++) {
 				parquet_data_packet *payload =
 				    data->payload_arr[c][r];
+				if (payload && payload->data && payload->size > 0) {
+					nng_free(payload->data, payload->size);
+				}
 				FREE_IF_NOT_NULL(payload, sizeof(*payload));
 			}
 			FREE_IF_NOT_NULL(data->payload_arr[c], data->row_len);
