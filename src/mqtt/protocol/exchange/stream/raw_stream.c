@@ -55,13 +55,16 @@ static void output_stream_free(struct stream_data_out *output_stream)
 			if (output_stream->payload_arr[i] != NULL) {
 				for (uint32_t j = 0; j < output_stream->col_len; j++) {
 					if (output_stream->payload_arr[i][j] != NULL) {
-						nng_free(output_stream->payload_arr[i][j], sizeof(output_stream->payload_arr[i][j]));
+						if (output_stream->payload_arr[i][j]->data != NULL && output_stream->payload_arr[i][j]->size > 0) {
+							nng_free(output_stream->payload_arr[i][j]->data, output_stream->payload_arr[i][j]->size);
+						}
+						nng_free(output_stream->payload_arr[i][j], sizeof(parquet_data_packet));
 					}
 				}
-				nng_free(output_stream->payload_arr[i], sizeof(parquet_data_packet) * output_stream->col_len);
+				nng_free(output_stream->payload_arr[i], sizeof(parquet_data_packet *) * output_stream->col_len);
 			}
 		}
-		nng_free(output_stream->payload_arr, sizeof(parquet_data_packet *) * output_stream->row_len * output_stream->col_len);
+		nng_free(output_stream->payload_arr, sizeof(parquet_data_packet **) * output_stream->row_len);
 	}
 
 	nng_free(output_stream, sizeof(struct stream_data_out));
@@ -116,13 +119,22 @@ static struct stream_data_out *output_stream_init(void *data)
 
 	for (uint32_t i = 0; i < output_stream->row_len; i++) {
 		output_stream->payload_arr[0][i] = NULL;
-		output_stream->payload_arr[0][i] = nng_alloc(sizeof(parquet_data_packet) * output_stream->col_len);
+		output_stream->payload_arr[0][i] = nng_alloc(sizeof(parquet_data_packet));
 		if (output_stream->payload_arr[0][i] == NULL) {
 			output_stream_free(output_stream);
 			return NULL;
 		}
 		output_stream->payload_arr[0][i]->size = input_stream->lens[i];
-		output_stream->payload_arr[0][i]->data = input_stream->datas[i];
+		if (input_stream->lens[i] > 0) {
+			output_stream->payload_arr[0][i]->data = nng_alloc(input_stream->lens[i]);
+			if (output_stream->payload_arr[0][i]->data == NULL) {
+				output_stream_free(output_stream);
+				return NULL;
+			}
+			memcpy(output_stream->payload_arr[0][i]->data, input_stream->datas[i], input_stream->lens[i]);
+		} else {
+			output_stream->payload_arr[0][i]->data = NULL;
+		}
 	}
 
 	void *encoded_stream_data = parquet_data_alloc(output_stream->schema,

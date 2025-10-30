@@ -224,7 +224,10 @@ void parquet_data_free(parquet_data *data)
 				parquet_data_packet *payload =
 				    data->payload_arr[c][r];
 				if (payload != NULL) {
-					nng_free(payload, sizeof(payload));
+					if (payload->data != NULL && payload->size > 0) {
+						nng_free(payload->data, payload->size);
+					}
+					nng_free(payload, sizeof(parquet_data_packet));
 				}
 			}
 			if (data->payload_arr[c] != NULL) {
