@@ -1282,34 +1282,37 @@ read_column_data(shared_ptr<parquet::ColumnReader> column_reader,
             ba_reader->ReadBatch(batch_size, def_levels.data(),
                 rep_levels.data(), values.data(), &values_read);
 
+        // No more rows; avoid infinite loop
+        if (rows_read == 0) {
+            break;
+        }
+
         for (int64_t r = 0, i = 0; r < rows_read; r++) {
 
-            if (def_levels[r] ==
-                0) { // Assuming definition level 0 indicates NULL
+            if (def_levels[r] == 0) { // NULL value
                 log_trace("Row %lld is NULL", r);
                 ret_vec.push_back(nullptr);
-                continue;
-            }
-
-            total_values_read += 1;
-
-            parquet_data_packet *pack =
-                (parquet_data_packet *) malloc(
-                    sizeof(parquet_data_packet));
-            if (!pack) {
-                log_error("Memory allocation failed for "
-                          "parquet_data_packet");
-                for (auto p : ret_vec) {
-                    free(p->data);
-                    free(p);
+            } else {
+                parquet_data_packet *pack =
+                    (parquet_data_packet *) malloc(
+                        sizeof(parquet_data_packet));
+                if (!pack) {
+                    log_error("Memory allocation failed for parquet_data_packet");
+                    for (auto p : ret_vec) {
+                        if (p) {
+                            free(p->data);
+                            free(p);
+                        }
+                    }
+                    return nullptr;
                 }
-                return nullptr;
+                pack->data = (uint8_t *) malloc(values[i].len * sizeof(uint8_t));
+                memcpy(pack->data, values[i].ptr, values[i].len);
+                pack->size = values[i++].len;
+                ret_vec.push_back(pack);
             }
-            pack->data = (uint8_t *) malloc(
-                values[i].len * sizeof(uint8_t));
-            memcpy(pack->data, values[i].ptr, values[i].len);
-            pack->size = values[i++].len;
-            ret_vec.push_back(pack);
+
+            total_values_read += 1; // advance for every row, including NULLs
 
             if (batch_size == total_values_read) {
                 parquet_data_packet **payload_arr = nullptr;
@@ -1326,7 +1329,14 @@ read_column_data(shared_ptr<parquet::ColumnReader> column_reader,
         }
     }
 
-	// TODO mem leaks here
+    // Early exit without fulfilling batch_size: free partial buffers and return nullptr
+    for (auto p : ret_vec) {
+        if (p) {
+            free(p->data);
+            free(p);
+        }
+    }
+
     return nullptr;
 }
 
