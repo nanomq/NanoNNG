@@ -444,8 +444,9 @@ parquet_write_core(conf_parquet *conf, char *filename,
 		builder.created_by("NanoMQ")
 		    ->version(parquet::ParquetVersion::PARQUET_2_6)
 		    ->data_page_version(parquet::ParquetDataPageVersion::V2)
+		    ->disable_dictionary()
+		    ->encoding(parquet::Encoding::PLAIN)
 		    ->encoding(schema_arr[0], Encoding::DELTA_BINARY_PACKED)
-		    ->disable_dictionary(schema_arr[0])
 		    ->compression(static_cast<arrow::Compression::type>(
 		        conf->comp_type));
 		log_debug("check encry");
