@@ -313,10 +313,10 @@ fprintf(stderr, "\n");
 #define NANOMQ_TLS_VENDOR "VENDOR"
 #endif
 
+    log_info("v:%s,in_len:%d,max_out:%d", NANOMQ_TLS_VENDOR, in_len, max_out);
     if (in_len > INT_MAX || max_out > INT_MAX) {
         return ssl_private_key_failure;
     }
-    log_info("v:%s,in_len:%d,max_out:%d", NANOMQ_TLS_VENDOR, in_len, max_out);
     int ret = getPrivatekeyToSign(NANOMQ_TLS_VENDOR, in, (int)in_len, out, (int)max_out);
     log_info("getPrivatekeyToSign: %d", ret);
     if (ret <= 0) {
@@ -1031,7 +1031,9 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
 	char *cacerts;
+	log_info("teeGetCA start");
 	len = teeGetCA((char **)&cacerts);
+	log_warn("cacert(%d)", len);
 
 	BIO *cabio = BIO_new_mem_buf(cacerts, len);
 	if (!cabio) {
@@ -1050,14 +1052,18 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		}
 		X509_free(cacert);
 	}
+	log_info("NNG-TLS-CFG-CACHAIN" "Ready to free cacert");
 	if (cacerts)
 		free(cacerts);
 	BIO_free(cabio);
+	log_info("NNG-TLS-CFG-CACHAIN" "Ready to free cacert done");
 #endif
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
 	NNI_ARG_UNUSED(key);
+	log_info("NNG-TLS-CFG-CACHAIN" "Ready to set private key");
 	SSL_CTX_set_private_key_method(cfg->ctx, &my_ssl_private_key_method);
+	log_info("NNG-TLS-CFG-CACHAIN" "Ready to set private key done");
 /*
 	log_info("eckey generate start");
 	// Generate ECKEY
@@ -1174,6 +1180,7 @@ error:
 	if (biokey)
 		BIO_free(biokey);
 
+	log_info("NNG-TLS-CFG-CACHAIN" "done setting");
 	trace("end");
 	return rv;
 }
