@@ -1725,11 +1725,9 @@ nng_dialer_reload_tls(conf_bridge_node *node, nni_dialer *ndialer)
 			log_error("restart tls config failed!");
 		}
 	}
-	const nng_url *url = nni_dialer_url(ndialer);
-	if (url)
-		nng_tls_config_server_name(cfg, url->u_hostname);
-	else
-		log_warn("failed to get url %p from dialer %p", url, ndialer);
+	if (node->tls.sni != NULL) {
+		nng_tls_config_server_name(cfg, node->tls.sni);
+	}
 
 	if (ndialer != NULL) {
 		nni_dialer_hold(ndialer);
