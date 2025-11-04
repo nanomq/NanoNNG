@@ -78,6 +78,7 @@ struct conf_tls {
 	bool  verify_peer;
 	bool  set_fail; // fail_if_no_peer_cert
 	bool  cert_encrypted;
+	char *sni;
 };
 
 typedef struct conf_tls conf_tls;

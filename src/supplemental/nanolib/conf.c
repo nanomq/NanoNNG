@@ -803,6 +803,7 @@ conf_tls_init(conf_tls *tls)
 	tls->set_fail       = false;
 	tls->verify_peer    = false;
 	tls->cert_encrypted = false;
+	tls->sni            = NULL;
 }
 
 void
@@ -839,6 +840,10 @@ conf_tls_destroy(conf_tls *tls)
 	if (tls->ca) {
 		free(tls->ca);
 		tls->ca = NULL;
+	}
+	if (tls->sni) {
+		free(tls->sni);
+		tls->sni = NULL;
 	}
 }
 
@@ -3815,7 +3820,8 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 			log_info("	key file:         %s", node->tls.keyfile);
 			log_info("	cert file:        %s", node->tls.certfile);
 			log_info("	cacert file:      %s", node->tls.cafile);
-			log_info("	cert_encrypted:    %s", node->tls.cert_encrypted ? "true" : "false");
+			log_info("	cert_encrypted:   %s", node->tls.cert_encrypted ? "true" : "false");
+			log_info("	sni:              %s", node->tls.sni);
 		}
 		log_info("%sbridge.mqtt.%s.forwards: ", prefix, node->name);
 
