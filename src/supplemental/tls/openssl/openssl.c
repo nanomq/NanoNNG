@@ -466,7 +466,9 @@ open_conn_init(nng_tls_engine_conn *ec, void *tls, nng_tls_engine_config *cfg)
 	ec->wnext = NULL;
 
 	if (cfg->server_name != NULL) {
+		log_info("set openssl %p SNI to %s", ec->ssl, cfg->server_name);
 		SSL_set_tlsext_host_name(ec->ssl, cfg->server_name);
+		log_info("set openssl SNI done");
 	}
 	trace("end");
 
@@ -808,6 +810,7 @@ open_config_server(nng_tls_engine_config *cfg, const char *name)
 		nng_strfree(cfg->server_name);
 	}
 	cfg->server_name = dup;
+	log_info("set openssl SNI to %s", name);
 	trace("end");
 	return (0);
 }
@@ -1052,18 +1055,16 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		}
 		X509_free(cacert);
 	}
-	log_info("NNG-TLS-CFG-CACHAIN" "Ready to free cacert");
 	if (cacerts)
 		free(cacerts);
 	BIO_free(cabio);
-	log_info("NNG-TLS-CFG-CACHAIN" "Ready to free cacert done");
 #endif
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
 	NNI_ARG_UNUSED(key);
-	log_info("NNG-TLS-CFG-CACHAIN" "Ready to set private key");
+	log_debug("NNG-TLS-CFG-CACHAIN" "Ready to set private key");
 	SSL_CTX_set_private_key_method(cfg->ctx, &my_ssl_private_key_method);
-	log_info("NNG-TLS-CFG-CACHAIN" "Ready to set private key done");
+	log_debug("NNG-TLS-CFG-CACHAIN" "Ready to set private key done");
 /*
 	log_info("eckey generate start");
 	// Generate ECKEY
@@ -1180,7 +1181,7 @@ error:
 	if (biokey)
 		BIO_free(biokey);
 
-	log_info("NNG-TLS-CFG-CACHAIN" "done setting");
+	log_debug("NNG-TLS-CFG-CACHAIN" "done setting");
 	trace("end");
 	return rv;
 }
