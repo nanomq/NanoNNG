@@ -119,7 +119,7 @@ parquet_file_queue::init()
 			char *file_name = strdup(file.file_path.c_str());
 			update_queue(file_name);
 
-			log_warn("Loaded %zu parquet files in time order %s.",
+			log_debug("Loaded %zu parquet files in time order %s.",
 			    files_start_time.size(), file_name);
 		}
 
