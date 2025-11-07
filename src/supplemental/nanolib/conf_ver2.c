@@ -449,33 +449,36 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 		if (tls->keyfile) {
 			if (tls->cert_encrypted == false) {
 				len = file_load_data(tls->keyfile, (void **) &tls->key);
-				if (len == 0)
-					log_warn("Failed to read keyfile %s! tls service will not start", tls->keyfile);
+				if (len == 0 && tls->enable == true)
+					log_warn("Failed to read keyfile %s! tls service may not start", tls->keyfile);
 			}
 			// if cert_encrypted is true. conf_bridge_parse_cipher will decrypt it.
 		} else {
-			log_warn("keyfile %s in config is null!", tls->keyfile);
+			if (tls->enable)
+				log_warn("keyfile %s in config is null!", tls->keyfile);
 		}
 		if (tls->certfile) {
 			if (tls->cert_encrypted == false) {
 				len = file_load_data(tls->certfile, (void **) &tls->cert);
-				if (len == 0)
-					log_warn("Failed to read certfile %s! tls service will not start", tls->certfile);
+				if (len == 0 && tls->enable == true)
+					log_warn("Failed to read certfile %s! tls service may not start", tls->certfile);
 			}
 			// if cert_encrypted is true. conf_bridge_parse_cipher will decrypt it.
 		} else {
-			log_warn("certfile %s in config is null!", tls->certfile);
+			if (tls->enable)
+				log_warn("certfile %s in config is null!", tls->certfile);
 		}
 
 		if (tls->cafile) {
 			if (tls->cert_encrypted == false) {
 				len = file_load_data(tls->cafile, (void **) &tls->ca);
-				if (len == 0)
-					log_warn("Failed to read cafile %s! tls service will not start", tls->cafile);
+				if (len == 0 && tls->enable == true)
+					log_warn("Failed to read cafile %s! tls service may not start", tls->cafile);
 			}
 			// if cert_encrypted is true. conf_bridge_parse_cipher will decrypt it.
 		} else {
-			log_warn("cafile %s in config is null!", tls->cafile);
+			if (tls->enable)
+				log_warn("cafile %s in config is null!", tls->cafile);
 		}
 	}
 

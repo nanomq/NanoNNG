@@ -1660,7 +1660,7 @@ nng_dialer_reload_tls(conf_bridge_node *node, nni_dialer *ndialer)
 #endif
 		}
 	} else {
-		log_error("keyfile %s is null!", tls->keyfile);
+		log_warn("keyfile %s is null!", tls->keyfile);
 	}
 
 	nng_free(tls->cert, sizeof(tls->cert));
@@ -1679,7 +1679,7 @@ nng_dialer_reload_tls(conf_bridge_node *node, nni_dialer *ndialer)
 #endif
 		}
 	} else {
-		log_error("certfile %s is null!", tls->certfile);
+		log_warn("certfile %s is null!", tls->certfile);
 	}
 
 	nng_free(tls->ca, sizeof(tls->ca));
