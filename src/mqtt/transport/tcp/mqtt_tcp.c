@@ -133,7 +133,9 @@ mqtt_tcptran_pipe_close(void *arg)
 {
 	mqtt_tcptran_pipe *p = arg;
 
-	nni_atomic_set_bool(&p->closed, true);
+	if (true == nni_atomic_swap_bool(&p->closed, true)) {
+		return;
+	}
 
 	nni_aio_close(p->rxaio);
 	nni_aio_close(p->txaio);
