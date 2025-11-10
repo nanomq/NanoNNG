@@ -1597,12 +1597,13 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 			if (nni_lmq_full(s->bridge_conf->ctx_msgs)) {
 				log_warn("Rolling update overwrites old Message");
 				nni_msg *tmsg;
-				(void) nni_lmq_get(s->bridge_conf->ctx_msgs, &tmsg);
+				if (nni_lmq_get(s->bridge_conf->ctx_msgs, &tmsg) == 0) {
 #ifdef NNG_ENABLE_STATS
-				nni_stat_inc(&s->msg_send_drop, 1);
-				nni_stat_dec(&s->msg_bytes_cached, nni_msg_len(tmsg));
+					nni_stat_inc(&s->msg_send_drop, 1);
+					nni_stat_dec(&s->msg_bytes_cached, nni_msg_len(tmsg));
 #endif
-				nni_msg_free(tmsg);
+					nni_msg_free(tmsg);
+				}
 			}
 			if (nng_lmq_put(s->bridge_conf->ctx_msgs, msg) != 0) {
 				log_warn("Msg lost! put msg to ctx_msgs failed!");
