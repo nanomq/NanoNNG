@@ -1582,10 +1582,10 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 				// cache ctx
 				ctx->saio = aio;
 				nni_list_append(&s->send_queue, ctx);
-				nni_mtx_unlock(&s->mtx);
 #ifdef NNG_ENABLE_STATS
 				nni_stat_inc(&s->msg_bytes_cached, nng_msg_len(msg));
 #endif
+				nni_mtx_unlock(&s->mtx);
 				log_warn("client sending msg while "
 				         "disconnected! ctx cached");
 				return;
