@@ -1591,7 +1591,6 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 				return;
 			}
 		}
-		nni_mtx_unlock(&s->mtx);
 		if (qos > 0) {
 #ifdef NNG_HAVE_MQTT_BROKER
 			if (nni_lmq_full(s->bridge_conf->ctx_msgs)) {
@@ -1627,6 +1626,7 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 			nni_stat_inc(&s->msg_send_drop, 1);
 #endif
 		}
+		nni_mtx_unlock(&s->mtx);
 		nni_aio_set_msg(aio, NULL);
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
