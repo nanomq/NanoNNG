@@ -3222,6 +3222,8 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->cancel_timeout     = 10000;
 	node->sleep              = true;
 	node->password_encrypted = false;
+	node->max_send_queue_len = 24;
+	node->max_recv_queue_len = 24;
 
 #if defined(SUPP_QUIC)
 	node->multi_stream       = false;
