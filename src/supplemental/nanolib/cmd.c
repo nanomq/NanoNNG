@@ -21,7 +21,60 @@
 char *cmd_output_buff = NULL;
 int   cmd_output_len  = 0;
 
-#ifndef NNG_PLATFORM_WINDOWS
+#ifdef NNG_PLATFORM_WINDOWS
+
+// The difference between nano_cmd_run and nano_cmd_run_status on windows is
+// nano_cmd_run doesn't get output like command line does. But it knows the result code.
+// nano_cmd_status get output but it doesn't know the result code.
+
+int
+nano_cmd_run(const char *cmd)
+{
+	log_info("cmd = %s", cmd);
+
+	if (cmd == NULL)
+	  return (-1);
+
+	int rv = system(cmd);
+
+	if (rv != 0) {
+		log_error("failed to run '%s' rv %d", cmd, rv);
+		return -2;
+	}
+
+	return 0;
+}
+
+int
+nano_cmd_run_status(const char *cmd)
+{
+	log_info("cmd = %s", cmd);
+
+	if (cmd == NULL)
+	  return (-1);
+	if (!cmd_output_buff)
+		cmd_output_buff = malloc(CMD_BUFF_LEN);
+	if (!cmd_output_buff)
+		return -1;
+
+	FILE* pipe = _popen(cmd, "r");
+	if (!pipe) {
+		log_warn("could not create a pipe for '%s'", cmd);
+		return -1;
+	}
+
+	if (NULL == fgets(cmd_output_buff, CMD_BUFF_LEN, pipe)) {
+		log_warn("Get no output after running '%s'", cmd);
+		_pclose(pipe);
+		return -2;
+	}
+
+	_pclose(pipe);
+	return 0;
+}
+
+#else // Not NNG_PLATFORM_WINDOWS
+
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <unistd.h>
