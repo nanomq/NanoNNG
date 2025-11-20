@@ -268,8 +268,7 @@ init_topic_queue_with_topic_node(topic_node *tn)
 				return NULL;
 			}
 			curtq = tq;
-
-			curtq->topic = nng_strdup(tn->topic.body);
+			curtq->topic = nng_strndup(tn->topic.body, tn->topic.len);
 			if (curtq->topic == NULL) {
 				log_error("nng_strdup failed");
 				topic_queue_release(tq);
@@ -284,7 +283,7 @@ init_topic_queue_with_topic_node(topic_node *tn)
 				return NULL;
 			}
 
-			curtq->next->topic = nng_strdup(tn->topic.body);
+			curtq->next->topic = nng_strndup(tn->topic.body, tn->topic.len);
 			if (curtq->next->topic == NULL) {
 				log_error("nng_strdup failed");
 				topic_queue_release(tq);
