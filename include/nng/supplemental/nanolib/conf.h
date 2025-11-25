@@ -593,6 +593,7 @@ struct conf_web_hook {
 
 	nng_mtx  *ex_mtx; // mutex for saios
 	nng_aio  *ex_aio; // Await flush
+	nng_aio  *ex_stream_aio; // Await streaming flush
 	nng_aio **saios;  // Aios for sending message
 
 	// TODO not support yet
