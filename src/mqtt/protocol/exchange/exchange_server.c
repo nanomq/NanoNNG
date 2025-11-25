@@ -812,7 +812,18 @@ exchange_do_send(exchange_node_t *ex_node, nni_msg *msg, nni_aio *user_aio)
 			char *topic = ex_node->ex->topic;
 			nng_msg_set_conn_param(tmsg, topic);
 			nng_msg_set_cmd_type(tmsg, ex_node->ex->streamType);
-			nng_msg_set_payload_ptr(tmsg, (uint8_t *)ex_node->ex->chunk_size);
+			/* Embed exchange pointer for optional downstream use */
+			nng_msg_set_payload_ptr(tmsg, (uint8_t *)ex_node->ex);
+			/* Also pass current fullOp via aio input[1] for clarity */
+			if (ex_node->ex->rb_count > 0 && ex_node->ex->rbs[0] != NULL) {
+				nni_aio_set_input(user_aio, 1,
+				    (void *)(uintptr_t)ex_node->ex->rbs[0]->fullOp);
+			}
+			/* If webhook provided a preferred streaming AIO in input[2], store it */
+			void *stream_aio = nni_aio_get_input(user_aio, 2);
+			if (stream_aio != NULL) {
+				ex_node->ex->streamAio = (nng_aio *)stream_aio;
+			}
 			nni_aio_set_msg(user_aio, tmsg);
 		}
 		nni_aio_finish(user_aio, 0, 0);

@@ -52,6 +52,7 @@ exchange_init(exchange_t **ex, char *name, char *topic, uint8_t streamType, uint
 
 	newEx->streamType = streamType;
 	newEx->chunk_size = chunk_size;
+	newEx->streamAio = NULL;
 
 	for (unsigned int i = 0; i < RINGBUFFER_MAX; i++) {
 		newEx->rbs[i] = NULL;
