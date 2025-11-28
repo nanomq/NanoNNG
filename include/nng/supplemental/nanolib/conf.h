@@ -591,10 +591,17 @@ struct conf_web_hook {
 	uint16_t             rule_count;
 	conf_web_hook_rule **rules;
 
-	nng_mtx  *ex_mtx; // mutex for saios
-	nng_aio  *ex_aio; // Await flush
-	nng_aio  *ex_stream_aio; // Await streaming flush
-	nng_aio **saios;  // Aios for sending message
+	nng_mtx  *ex_mtx;        // mutex for saios
+	nng_aio  *ex_aio;        // Await flush (batch)
+	nng_aio  *ex_stream_aio; // Legacy single streaming AIO (fallback)
+	nng_aio **saios;         // Aios for sending message
+
+	// Per-exchange streaming AIOs, one for each conf_exchange_node when
+	// parquet streaming is enabled. This allows different topics/streams
+	// to have their own asynchronous pipeline instead of sharing a single
+	// global ex_stream_aio.
+	nng_aio **ex_stream_aios;
+	size_t    ex_stream_aios_cnt;
 
 	// TODO not support yet
 	conf_tls tls;
