@@ -14,6 +14,16 @@ typedef struct parquet_data_ret parquet_data_ret;
 typedef struct parquet_payload  parquet_payload;
 typedef void (*parquet_cb)(parquet_object *arg);
 
+// Streaming input wrapper for decoupling parquet from webhook internals.
+#define PARQUET_STREAM_IN_MAGIC 0x504B5354 /* 'PKST' */
+struct stream_data_in;
+typedef struct parquet_stream_in {
+	uint32_t               magic;
+	struct stream_data_in *sdata;       // Input rows
+	void                  *user_cbdata; // Opaque pointer passed back to caller
+	uint8_t                stream_id;   // Stream type used by encode_stream
+} parquet_stream_in;
+
 typedef enum {
 	WRITE_RAW,
 	WRITE_CAN,
@@ -81,6 +91,10 @@ int  parquet_write_batch_async(parquet_object *elem);
 // single file is sufficient for writing, sending, and subsequent deletion.
 int parquet_write_batch_tmp_async(parquet_object *elem);
 int parquet_write_launcher(conf_exchange *conf);
+
+// Hint streaming writer of given topic to finish as soon as possible
+// (used by webhook when a new flush arrives while previous is still running).
+void parquet_stream_force_flush(const char *topic);
 
 const char  *parquet_find(const char *topic, uint64_t key);
 const char **parquet_find_span(

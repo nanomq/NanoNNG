@@ -934,7 +934,7 @@ int ringBuffer_enqueue(ringBuffer_t *rb,
 		if (rb->fullOp == RB_FULL_DROP) {
 			ringBuffer_clean_msgs(rb, 1);
 		}
-		if (rb->fullOp == RB_FULL_RETURN) {
+		if (rb->fullOp == RB_FULL_RETURN || rb->fullOp == RB_FULL_RETURN_STREAM) {
 			log_info("RB_FULL_RETURN");
 			ret = put_msgs_to_aio(rb, aio);
 			if (ret != 0) {
@@ -942,6 +942,8 @@ int ringBuffer_enqueue(ringBuffer_t *rb,
 				nng_mtx_unlock(rb->ring_lock);
 				return -1;
 			}
+			/* Pass fullOp to webhook via aio input[0] so it knows how to flush */
+			nng_aio_set_input(aio, 0, (void *)(uintptr_t)rb->fullOp);
 		}
 		if (rb->fullOp == RB_FULL_FILE) {
 			ret = write_msgs_to_file(rb);
