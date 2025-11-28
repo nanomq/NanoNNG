@@ -23,6 +23,7 @@
 #include <dirent.h>
 #include <regex.h>
 #include <unordered_map>
+#include <queue>
 using namespace std;
 using parquet::ConvertedType;
 using parquet::Encoding;
@@ -71,16 +72,36 @@ CircularQueue        parquet_queue;
 pthread_mutex_t      parquet_queue_mutex     = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t       parquet_queue_not_empty = PTHREAD_COND_INITIALIZER;
 
-// Streaming control: per-topic flags to accelerate finishing when new job arrives
+// Streaming control: per-topic flags & worker context for streaming writes.
 struct StreamingCtrl {
 	nng_mtx *mtx;
 	bool     running;
 	bool     flush_now;
-	StreamingCtrl() : mtx(nullptr), running(false), flush_now(false) {
+	// Dedicated per-topic worker thread & queue for streaming parquet writes.
+	std::queue<parquet_object *> q;
+	pthread_mutex_t              q_mtx;
+	pthread_cond_t               q_cv;
+	bool                         thread_started;
+	bool                         stop;
+	pthread_t                    thread;
+
+	StreamingCtrl()
+	    : mtx(nullptr)
+	    , running(false)
+	    , flush_now(false)
+	    , thread_started(false)
+	    , stop(false)
+	{
 		nng_mtx_alloc(&mtx);
+		pthread_mutex_init(&q_mtx, NULL);
+		pthread_cond_init(&q_cv, NULL);
 	}
 	~StreamingCtrl() {
-		if (mtx) nng_mtx_free(mtx);
+		if (mtx) {
+			nng_mtx_free(mtx);
+		}
+		pthread_mutex_destroy(&q_mtx);
+		pthread_cond_destroy(&q_cv);
 	}
 };
 static std::unordered_map<std::string, StreamingCtrl *> g_stream_ctrl;
@@ -100,12 +121,111 @@ static StreamingCtrl *get_stream_ctrl(const std::string &topic)
 	return it->second;
 }
 
+// Forward declarations for writer helpers used by per-topic streaming workers.
+int  parquet_write_tmp(parquet_object *elem);
+int  parquet_write(parquet_object *elem);
+
+// Dedicated worker thread for a single streaming topic. It consumes
+// parquet_object tasks from the per-topic queue and performs the actual
+// write (streaming or non-streaming).
+static void *
+parquet_stream_worker(void *arg)
+{
+	StreamingCtrl *ctrl = (StreamingCtrl *) arg;
+
+	for (;;) {
+		pthread_mutex_lock(&ctrl->q_mtx);
+		while (ctrl->q.empty() && !ctrl->stop) {
+			pthread_cond_wait(&ctrl->q_cv, &ctrl->q_mtx);
+		}
+		if (ctrl->stop && ctrl->q.empty()) {
+			pthread_mutex_unlock(&ctrl->q_mtx);
+			break;
+		}
+		parquet_object *ele = ctrl->q.front();
+		ctrl->q.pop();
+		pthread_mutex_unlock(&ctrl->q_mtx);
+
+		if (ele == nullptr) {
+			continue;
+		}
+
+		// For streaming tmp writes WRITE_TEMP_RAW we reuse parquet_write_tmp(),
+		// which internally dispatches to parquet_write_streaming().
+		if (ele->type == WRITE_TEMP_RAW) {
+			parquet_write_tmp(ele);
+		} else {
+			// Fallback for non-streaming tasks if ever enqueued here.
+			switch (ele->type) {
+			case WRITE_RAW:
+			case WRITE_CAN:
+				parquet_write(ele);
+				break;
+			default:
+				parquet_object_free(ele);
+				break;
+			}
+		}
+	}
+
+	return NULL;
+}
+
+// Enqueue a streaming parquet_object into the per-topic worker queue,
+// starting the worker thread on first use. This gives each topic/stream
+// its own dedicated thread processing its streaming writes sequentially.
+static int
+parquet_stream_enqueue(parquet_object *elem)
+{
+	if (elem == nullptr || elem->topic == nullptr) {
+		return -1;
+	}
+
+	StreamingCtrl *ctrl = get_stream_ctrl(std::string(elem->topic));
+	if (ctrl == nullptr) {
+		return -1;
+	}
+
+	bool need_start = false;
+	pthread_mutex_lock(&ctrl->q_mtx);
+	if (!ctrl->thread_started) {
+		ctrl->thread_started = true;
+		need_start           = true;
+	}
+	// Push task into this topic's queue.
+	ctrl->q.push(elem);
+	pthread_cond_signal(&ctrl->q_cv);
+	pthread_mutex_unlock(&ctrl->q_mtx);
+
+	// Create the worker thread lazily on first enqueue.
+	if (need_start) {
+		int ret = pthread_create(
+		    &ctrl->thread, NULL, parquet_stream_worker, ctrl);
+		if (ret != 0) {
+			log_error(
+			    "Failed to create parquet stream thread for topic %s",
+			    elem->topic);
+			// Fallback: perform streaming write synchronously here.
+			parquet_write_tmp(elem);
+			return -1;
+		}
+		pthread_detach(ctrl->thread);
+	}
+
+	return 0;
+}
+
 static void parquet_stream_release_ctrl(StreamingCtrl *ctrl)
 {
 	if (ctrl == nullptr || ctrl->mtx == nullptr) {
 		return;
 	}
 	nng_mtx_lock(ctrl->mtx);
+	// End the current streaming write cycle, clear the accelerate flag.
+	if (ctrl->running || ctrl->flush_now) {
+		log_info("parquet stream: release ctrl, running=%d flush_now=%d",
+		    (int) ctrl->running, (int) ctrl->flush_now);
+	}
 	ctrl->running   = false;
 	ctrl->flush_now = false;
 	nng_mtx_unlock(ctrl->mtx);
@@ -124,7 +244,17 @@ parquet_stream_force_flush(const char *topic)
 		return;
 	}
 	nng_mtx_lock(ctrl->mtx);
-	ctrl->flush_now = true;
+	// If there is already a force_flush request pending (flush_now still true),
+	// don't set it again to avoid unnecessary repetition.
+	if (!ctrl->flush_now) {
+		log_info("parquet stream: force_flush requested for topic %s",
+		    topic);
+		ctrl->flush_now = true;
+	} else {
+		log_info("parquet stream: force_flush for topic %s ignored, "
+		          "already pending",
+		    topic);
+	}
 	nng_mtx_unlock(ctrl->mtx);
 }
 
@@ -224,7 +354,15 @@ static inline void parquet_stream_throttle(streaming_ctx *ctx)
 		nng_mtx_unlock(ctx->ctrl->mtx);
 	}
 	ctx->budget_ms = (ctx->last_ts > ctx->first_ts) ? (ctx->last_ts - ctx->first_ts) : 0;
-	if (!skip_throttle && ctx->budget_ms > 0 && ctx->total_bytes > 0) {
+	if (skip_throttle) {
+		// In accelerate mode, we don't need to sleep, so we return directly.
+//		log_info("parquet stream: throttle skipped, force_flush in effect "
+//		          "(budget_ms=%" PRIu64 ", written_bytes=%zu, total_bytes=%zu)",
+//		    (uint64_t) ctx->budget_ms, ctx->written_bytes, ctx->total_bytes);
+		return;
+	}
+
+	if (ctx->budget_ms > 0 && ctx->total_bytes > 0) {
 		auto now  = std::chrono::steady_clock::now();
 		uint64_t elapsed_ms =
 		    (uint64_t) std::chrono::duration_cast<std::chrono::milliseconds>(now - ctx->t0).count();
@@ -527,16 +665,25 @@ parquet_write_batch_async(parquet_object *elem)
 		return -1;
 	}
 
-	// If a new streaming task arrives while previous is still running, set flush_now
-	if (elem->type == WRITE_TEMP_RAW && elem->topic) {
-		StreamingCtrl *ctrl = get_stream_ctrl(elem->topic);
-		nng_mtx_lock(ctrl->mtx);
-		if (ctrl->running) {
-			ctrl->flush_now = true;
+	// Streaming path: hand off to per-topic worker thread so that each
+	// topic/stream has its own dedicated writer thread.
+	if (elem->type == WRITE_TEMP_RAW) {
+		if (elem->topic) {
+			// If a new streaming task arrives while previous is still
+			// running, set flush_now so the current streaming writer
+			// will try to finish as soon as possible.
+			StreamingCtrl *ctrl = get_stream_ctrl(elem->topic);
+			nng_mtx_lock(ctrl->mtx);
+			if (ctrl->running) {
+				ctrl->flush_now = true;
+			}
+			nng_mtx_unlock(ctrl->mtx);
 		}
-		nng_mtx_unlock(ctrl->mtx);
+		return parquet_stream_enqueue(elem);
 	}
 
+	// Non-streaming path: use global parquet_queue and single worker
+	// thread (see parquet_write_launcher/parquet_write_loop_v2).
 	log_debug("WAIT_FOR_AVAILABLE");
 	WAIT_FOR_AVAILABLE
 	log_debug("WAIT_FOR parquet_queue_mutex");
@@ -563,19 +710,8 @@ parquet_write_batch_tmp_async(parquet_object *elem)
 	}
 
 	elem->type = WRITE_TEMP_RAW;
-	log_debug("WAIT_FOR_AVAILABLE");
-	WAIT_FOR_AVAILABLE
-	log_debug("WAIT_FOR parquet_queue_mutex");
-	pthread_mutex_lock(&parquet_queue_mutex);
-	if (IS_EMPTY(parquet_queue)) {
-		pthread_cond_broadcast(&parquet_queue_not_empty);
-	}
-	ENQUEUE(parquet_queue, elem);
-	log_debug("enqueue element.");
-
-	pthread_mutex_unlock(&parquet_queue_mutex);
-
-	return 0;
+	// Reuse the same streaming async path as parquet_write_batch_async.
+	return parquet_write_batch_async(elem);
 }
 
 shared_ptr<parquet::FileEncryptionProperties>
