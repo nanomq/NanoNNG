@@ -1219,7 +1219,6 @@ nano_pubmsg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
 	nni_msg *msg;
 
 	len = payload->len + topic->len + 2;
-	len += proto_ver == MQTT_PROTOCOL_VERSION_v5 ? 1 : 0;
 	if (clientid != NULL)
 		len += clientid->len + 1;
 
@@ -1268,10 +1267,13 @@ nano_pubmsg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
 	}
 
 	if (proto_ver == MQTT_PROTOCOL_VERSION_v5) {
-		uint8_t property_len = 0;
-		nni_msg_append(msg, &property_len, 1);
+		// Set V4/V5 flag for msg adaptor in transport layer
+		nng_msg_set_cmd_type(msg, CMD_PUBLISH_V5);
+	} else {
+		nng_msg_set_cmd_type(msg, CMD_PUBLISH);
 	}
 	nni_msg_append(msg, payload->body, payload->len);
+	uint8_t *start_char = (uint8_t*)payload->body;
 	nni_msg_set_payload_ptr(msg, ptr);
 
 	return msg;
