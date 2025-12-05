@@ -353,27 +353,8 @@ static inline void parquet_stream_throttle(streaming_ctx *ctx)
 		skip_throttle = ctx->ctrl->flush_now;
 		nng_mtx_unlock(ctx->ctrl->mtx);
 	}
-	ctx->budget_ms = (ctx->last_ts > ctx->first_ts) ? (ctx->last_ts - ctx->first_ts) : 0;
-	if (skip_throttle) {
-		// In accelerate mode, we don't need to sleep, so we return directly.
-//		log_info("parquet stream: throttle skipped, force_flush in effect "
-//		          "(budget_ms=%" PRIu64 ", written_bytes=%zu, total_bytes=%zu)",
-//		    (uint64_t) ctx->budget_ms, ctx->written_bytes, ctx->total_bytes);
-		return;
-	}
-
-	if (ctx->budget_ms > 0 && ctx->total_bytes > 0) {
-		auto now  = std::chrono::steady_clock::now();
-		uint64_t elapsed_ms =
-		    (uint64_t) std::chrono::duration_cast<std::chrono::milliseconds>(now - ctx->t0).count();
-		uint64_t desired_ms_so_far =
-		    (uint64_t) ((ctx->budget_ms * (long double) ctx->written_bytes) / (long double) ctx->total_bytes + 0.5L);
-		if (desired_ms_so_far > ctx->budget_ms) desired_ms_so_far = ctx->budget_ms;
-		if (desired_ms_so_far > elapsed_ms) {
-			uint64_t extra = desired_ms_so_far - elapsed_ms;
-			if (extra > 200) extra = 200;
-			if (extra > 0) nng_msleep((int) extra);
-		}
+	if (!skip_throttle) {
+		nng_msleep(200);
 	}
 }
 
@@ -1019,7 +1000,7 @@ parquet_write_streaming(parquet_object *elem)
 		nng_aio *laio = NULL;
 		nng_aio_alloc(&laio, parquet_stream_aio_cb, &ctx);
 		ctx.aio = laio;
-		int encode_ret = stream_encode_stream(sin->stream_id, sin->sdata, laio, 5 * 1024);
+		int encode_ret = stream_encode_stream(sin->stream_id, sin->sdata, laio, 500 * 1024);
 		if (encode_ret != 0) {
 			nng_aio_free(laio);
 			nng_cv_free(ctx.cv);
