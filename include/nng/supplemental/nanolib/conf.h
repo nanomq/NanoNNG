@@ -391,6 +391,11 @@ struct ringBuffer_node {
 	char    *name;
 	uint32_t fullOp;
 	uint64_t cap;
+	// Streaming related options for ringbus full operations.
+	// All are optional; 0 means "use built-in default".
+	uint32_t stream_chunk_bytes;  // Max bytes per parquet streaming chunk
+	uint32_t stream_throttle_ms;  // Sleep interval between streaming rowgroups
+	uint32_t stream_lmq_cap;      // In-memory queue size for pending streaming flush tasks
 };
 
 typedef struct conf_exchange_node conf_exchange_node;

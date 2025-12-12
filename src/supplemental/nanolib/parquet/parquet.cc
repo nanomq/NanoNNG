@@ -345,7 +345,29 @@ static inline size_t parquet_stream_write_one_column(
 	return batch_bytes;
 }
 
-static inline void parquet_stream_throttle(streaming_ctx *ctx)
+// Default streaming parameters (can be overridden via configuration).
+// Max payload bytes per streaming chunk.
+static size_t   g_stream_chunk_bytes  = (size_t) (500 * 1024); // 500KB
+// Sleep interval between row groups when streaming, in milliseconds.
+static uint32_t g_stream_throttle_ms  = 200;
+
+extern "C" void
+parquet_stream_set_chunk_bytes(size_t bytes)
+{
+	if (bytes > 0) {
+		g_stream_chunk_bytes = bytes;
+	}
+}
+
+extern "C" void
+parquet_stream_set_throttle_ms(uint32_t ms)
+{
+	// 0 means no throttle
+	g_stream_throttle_ms = ms;
+}
+
+static inline void
+parquet_stream_throttle(streaming_ctx *ctx)
 {
 	bool skip_throttle = false;
 	if (ctx->ctrl) {
@@ -353,8 +375,8 @@ static inline void parquet_stream_throttle(streaming_ctx *ctx)
 		skip_throttle = ctx->ctrl->flush_now;
 		nng_mtx_unlock(ctx->ctrl->mtx);
 	}
-	if (!skip_throttle) {
-		nng_msleep(200);
+	if (!skip_throttle && g_stream_throttle_ms > 0) {
+		nng_msleep((int) g_stream_throttle_ms);
 	}
 }
 
@@ -1000,7 +1022,8 @@ parquet_write_streaming(parquet_object *elem)
 		nng_aio *laio = NULL;
 		nng_aio_alloc(&laio, parquet_stream_aio_cb, &ctx);
 		ctx.aio = laio;
-		int encode_ret = stream_encode_stream(sin->stream_id, sin->sdata, laio, 500 * 1024);
+		int encode_ret = stream_encode_stream(
+		    sin->stream_id, sin->sdata, laio, g_stream_chunk_bytes);
 		if (encode_ret != 0) {
 			nng_aio_free(laio);
 			nng_cv_free(ctx.cv);

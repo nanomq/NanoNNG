@@ -119,6 +119,12 @@ parquet_data_packet **parquet_find_data_span_packets_specify_file(
 parquet_filename_range **parquet_get_file_ranges(
     uint64_t start_key, uint64_t end_key, char *topic);
 
+// Streaming parameters customization (configured from ringbus section).
+// bytes: max payload bytes per parquet streaming chunk (0 keeps default).
+void parquet_stream_set_chunk_bytes(size_t bytes);
+// ms: sleep interval between streaming row groups (0 disables throttling).
+void parquet_stream_set_throttle_ms(uint32_t ms);
+
 // If filename in range is NULL return all results, else one parquet file results.
 parquet_data_ret **parquet_get_data_packets_in_range_by_column(
     parquet_filename_range *range, const char *topic, const char **schema,
