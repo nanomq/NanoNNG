@@ -471,13 +471,16 @@ rule_sql_parse(conf_rule *cr, char *sql)
 	if (NULL != srt) {
 		int   len_srt, len_mid, len_end;
 		char *mid = nng_strcasestr(srt, "FROM");
-		char *end = nng_strcasestr(mid, "WHERE");
+		char *end = NULL;
+		if (mid != NULL) {
+			end =nng_strcasestr(mid, "WHERE");
+		}
 
 		rule re;
 		memset(&re, 0, sizeof(re));
 
 		// function select parser.
-		len_srt = mid - srt;
+		len_srt = (mid == NULL) ? strlen(srt) + 1 : (size_t)(mid - srt);
 		srt += strlen("SELECT ");
 		len_srt -= strlen("SELECT ");
 		char *select = (char *) nni_alloc(sizeof(char) * len_srt);
@@ -490,24 +493,25 @@ rule_sql_parse(conf_rule *cr, char *sql)
 
 		nni_free(select, len_srt * sizeof(char));
 
+
 		// function from parser
 		if (mid != NULL && end != NULL) {
 			len_mid = end - mid;
-		} else {
+		} else if (mid != NULL) {
 			char *p = mid;
-			while (*p != '\n' && *p != '\0')
-				p++;
+			while (*p != '\n' && *p != '\0') p++;
 			len_mid = p - mid + 1;
+			mid += strlen("FROM ");
+			len_mid -= strlen("FROM ");
 		}
 
-		mid += strlen("FROM ");
-		len_mid -= strlen("FROM ");
-
-		char *from = (char *) nni_alloc(sizeof(char) * len_mid);
-		memcpy(from, mid, len_mid);
-		from[len_mid - 1] = '\0';
-		parse_from(from, &re);
-		nni_free(from, len_mid);
+		if (len_mid <= 0) {
+			char *from = (char *) nni_alloc(sizeof(char) * len_mid);
+			memcpy(from, mid, len_mid);
+			from[len_mid - 1] = '\0';
+			parse_from(from, &re);
+			nni_free(from, len_mid);
+		}
 
 		// function where parser
 		if (end != NULL) {
