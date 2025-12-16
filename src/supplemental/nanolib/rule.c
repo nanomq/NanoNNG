@@ -473,7 +473,7 @@ rule_sql_parse(conf_rule *cr, char *sql)
 		char *mid = nng_strcasestr(srt, "FROM");
 		char *end = NULL;
 		if (mid != NULL) {
-			end =nng_strcasestr(mid, "WHERE");
+			end = nng_strcasestr(mid, "WHERE");
 		}
 
 		rule re;
@@ -505,7 +505,7 @@ rule_sql_parse(conf_rule *cr, char *sql)
 			len_mid -= strlen("FROM ");
 		}
 
-		if (len_mid <= 0) {
+		if (mid != NULL && len_mid > 0) {
 			char *from = (char *) nni_alloc(sizeof(char) * len_mid);
 			memcpy(from, mid, len_mid);
 			from[len_mid - 1] = '\0';
