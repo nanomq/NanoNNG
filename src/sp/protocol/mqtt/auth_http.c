@@ -25,6 +25,10 @@ struct auth_http_params {
 
 typedef struct auth_http_params auth_http_params;
 
+static nni_id_map   acl_cache_map;
+static nng_mtx *    acl_cache_mtx = NULL;
+static nng_aio *    acl_cache_reset_aio = NULL;
+
 static size_t
 str_append(char **dest, const char *str)
 {
@@ -408,6 +412,37 @@ char *parse_topics(topic_queue *head)
 	return result;
 }
 
+static void
+nmq_acl_cache_reset_cb(void *k, void *v)
+{
+	uint64_t key = *(uint64_t *)k;
+	nni_id_remove(&acl_cache_map, key);
+	NNI_ARG_UNUSED(v);
+}
+
+static void
+nmq_acl_cache_reset_timer_cb()
+{
+	log_info("timer ring... %ld", nni_id_count(&acl_cache_map));
+	nng_mtx_lock(acl_cache_mtx);
+	if (nni_id_count(&acl_cache_map) > 0) {
+		nni_id_map_foreach(&acl_cache_map, nmq_acl_cache_reset_cb);
+	}
+	nng_mtx_unlock(acl_cache_mtx);
+
+	int interval = 3000;
+	nng_sleep_aio(interval, acl_cache_reset_aio);
+}
+
+static void
+nmq_acl_cache_init()
+{
+	nni_id_map_init(&acl_cache_map, 0, 0xffff, false);
+	nng_mtx_alloc(&acl_cache_mtx);
+	nng_aio_alloc(&acl_cache_reset_aio, nmq_acl_cache_reset_timer_cb, NULL);
+	nng_sleep_aio(3000, acl_cache_reset_aio);
+}
+
 int
 nmq_auth_http_sub_pub(
     conn_param *cparam, bool is_sub, topic_queue *topics, conf_auth_http *conf)
@@ -436,19 +471,66 @@ nmq_auth_http_sub_pub(
 		// .common = ,
 		// .subject = ,
 	};
-	int status = 0;
-	if (conf->super_req.url) {
+	int status = NNG_HTTP_STATUS_OK;
+
+	// TODO ACL Cache
+	// The key of ACL Cache Map is hash(clientid,username,password,access,topic,ip)
+	// The ACL Cache Map will be reset after every interval.
+	char acl_cache_k_str[1024];
+	sprintf(acl_cache_k_str, "ACLK%s,%s,%s,%s,%s,%s",
+		auth_params.clientid, auth_params.username, auth_params.password,
+		auth_params.access, topic_str, auth_params.ipaddress);
+	acl_cache_k_str[1023] = '\0'; // Avoid StackOverFlow
+	uint32_t acl_cache_k = DJBHash(acl_cache_k_str);
+
+	// Init once
+	if (!acl_cache_mtx) {
+		nmq_acl_cache_init();
+	}
+
+	if (conf->super_req.enable) {
+		nng_mtx_lock(acl_cache_mtx);
+		void *acl_cache_v = nni_id_get(&acl_cache_map, (uint64_t)acl_cache_k);
+		nng_mtx_unlock(acl_cache_mtx);
+		if (acl_cache_v != NULL) {
+			log_info("cache hit %ld, %s", acl_cache_k, acl_cache_k_str);
+			nni_free(topic_str, strlen(topic_str) + 1);
+			return SUCCESS; // cache hit
+		}
+
 		status = send_request(conf, &conf->super_req, &auth_params);
 		if (status == NNG_HTTP_STATUS_OK) {
+			nng_mtx_lock(acl_cache_mtx);
+			nni_id_set(&acl_cache_map, (uint64_t)acl_cache_k, (void*)&acl_cache_k);
+			nng_mtx_unlock(acl_cache_mtx);
+
 			nni_free(topic_str, strlen(topic_str) + 1);
 			return SUCCESS;
 		}
 	}
 
-	status = conf->acl_req.url == NULL
-	    ? NNG_HTTP_STATUS_OK
-	    : send_request(conf, &conf->acl_req, &auth_params);
+	if (conf->acl_req.enable) {
+		nng_mtx_lock(acl_cache_mtx);
+		void *acl_cache_v = nni_id_get(&acl_cache_map, (uint64_t)acl_cache_k);
+		nng_mtx_unlock(acl_cache_mtx);
+		if (acl_cache_v != NULL) {
+			log_info("cache hit %ld, %s", acl_cache_k, acl_cache_k_str);
+			nni_free(topic_str, strlen(topic_str) + 1);
+			return SUCCESS; // cache hit
+		}
 
+		status = conf->acl_req.url == NULL
+		    ? NNG_HTTP_STATUS_OK
+		    : send_request(conf, &conf->acl_req, &auth_params);
+		if (status == NNG_HTTP_STATUS_OK) {
+			nng_mtx_lock(acl_cache_mtx);
+			nni_id_set(&acl_cache_map, (uint64_t)acl_cache_k, (void*)&acl_cache_k);
+			nng_mtx_unlock(acl_cache_mtx);
+
+			nni_free(topic_str, strlen(topic_str) + 1);
+			return SUCCESS;
+		}
+	}
 	nni_free(topic_str, strlen(topic_str) + 1);
 
 	return status == NNG_HTTP_STATUS_OK ? SUCCESS : NOT_AUTHORIZED;
