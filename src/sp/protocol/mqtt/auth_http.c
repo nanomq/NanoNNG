@@ -477,10 +477,23 @@ nmq_auth_http_sub_pub(
 
 	// The key of ACL Cache Map is hash(clientid,username,password,access,topic,ip)
 	// The ACL Cache Map will be reset after every interval.
+	char *auth_params_clientid = "null";
+	if (auth_params.clientid)
+		auth_params_clientid = (char*) auth_params.clientid;
+	char *auth_params_username = "null";
+	if (auth_params.username)
+		auth_params_username = (char*) auth_params.username;
+	char *auth_params_password = "null";
+	if (auth_params.password)
+		auth_params_password = (char*) auth_params.password;
+	char *auth_params_ipaddress = "null";
+	if (auth_params.ipaddress)
+		auth_params_ipaddress = (char*) auth_params.ipaddress;
+
 	char acl_cache_k_str[1024];
-	sprintf(acl_cache_k_str, "ACLK%s,%s,%s,%s,%s,%s",
-		auth_params.clientid, auth_params.username, auth_params.password,
-		auth_params.access, topic_str, auth_params.ipaddress);
+	snprintf(acl_cache_k_str, 1024, "ACLK%s,%s,%s,%s,%s,%s",
+		auth_params_clientid, auth_params_username, auth_params_password,
+		auth_params.access, topic_str, auth_params_ipaddress);
 	acl_cache_k_str[1023] = '\0'; // Avoid StackOverFlow
 	uint32_t acl_cache_k = DJBHash(acl_cache_k_str);
 
