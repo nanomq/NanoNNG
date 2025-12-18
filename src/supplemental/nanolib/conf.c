@@ -483,22 +483,6 @@ conf_basic_parse(conf *config, const char *path)
 			                                        : ACL_DENY;
 			nng_strfree(value);
 		} else if ((value = get_conf_value(
-		                line, sz, "enable_acl_cache")) != NULL) {
-			config->enable_acl_cache =
-			    nni_strcasecmp(value, "on") == 0;
-			nng_strfree(value);
-		} else if ((value = get_conf_value(
-		                line, sz, "acl_cache_max_size")) != NULL) {
-			config->acl_cache_max_size = (size_t) atol(value);
-			nng_strfree(value);
-		} else if ((value = get_conf_value(
-		                line, sz, "acl_cache_ttl")) != NULL) {
-			uint64_t ttl = 0;
-			if (get_time(value, &ttl) == 0) {
-				config->acl_cache_ttl = ttl;
-			}
-			nng_strfree(value);
-		} else if ((value = get_conf_value(
 		                line, sz, "acl_deny_action")) != NULL) {
 			if (nni_strcasecmp(value, "ignore") == 0) {
 				config->acl_deny_action = ACL_IGNORE;
@@ -934,9 +918,6 @@ conf_init(conf *nanomq_conf)
 
 #ifdef ACL_SUPP
 	nanomq_conf->acl_nomatch        = ACL_ALLOW;
-	nanomq_conf->enable_acl_cache   = true;
-	nanomq_conf->acl_cache_max_size = 32;
-	nanomq_conf->acl_cache_ttl      = 60;
 	nanomq_conf->acl_deny_action    = ACL_IGNORE;
 	conf_acl_init(&nanomq_conf->acl);
 #endif
@@ -1452,11 +1433,6 @@ print_conf(conf *nanomq_conf)
 #ifdef ACL_SUPP
 	log_info("acl_nomatch:              %s",
 	    nanomq_conf->acl_nomatch == ACL_ALLOW ? "allow" : "deny");
-	log_info("enable_acl_cache:         %s",
-	    nanomq_conf->enable_acl_cache ? "on" : "off");
-	log_info(
-	    "acl_cache_max_size:       %d", nanomq_conf->acl_cache_max_size);
-	log_info("acl_cache_ttl:            %d", nanomq_conf->acl_cache_ttl);
 	log_info("acl_deny_action:          %s",
 	    nanomq_conf->acl_deny_action == ACL_IGNORE ? "ignore"
 	                                               : "disconnect");
