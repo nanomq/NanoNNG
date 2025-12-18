@@ -75,29 +75,34 @@ static void wstran_pipe_close(void *arg);
 static void
 wstran_pipe_send_cb(void *arg)
 {
+	int rv;
 	ws_pipe *p = arg;
 	nni_aio *taio;
 	nni_aio *uaio;
 
-	nni_mtx_lock(&p->mtx);
-	taio          = p->txaio;
-	uaio          = p->user_txaio;
+	taio = p->txaio;
+	uaio = p->user_txaio;
+	// nni_mtx_lock(&p->mtx);
+	rv   = nni_aio_result(taio);
+	if (nni_aio_result(taio) != 0) {
+		log_warn(" send aio error %s", nng_strerror(rv));
+		nni_msg_free(nni_aio_get_msg(taio));
+	}
 	p->user_txaio = NULL;
 
 	if (uaio != NULL) {
 		if (p->closed){
 			nni_aio_finish_error(uaio, p->err_code);
-			nni_mtx_unlock(&p->mtx);
+			// nni_mtx_unlock(&p->mtx);
 			return;
 		}
-		int rv;
-		if ((rv = nni_aio_result(taio)) != 0) {
+		if (rv != 0) {
 			nni_aio_finish_error(uaio, rv);
 		} else {
 			nni_aio_finish(uaio, 0, 0);
 		}
 	}
-	nni_mtx_unlock(&p->mtx);
+	// nni_mtx_unlock(&p->mtx);
 }
 
 static void
@@ -713,9 +718,8 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	nni_msg_free(msg);
 	msg = smsg;
 
-// normal sending if it is not PUBLISH
+	// normal sending if it is not PUBLISH
 send:
-	nni_aio_set_msg(aio, msg);
 	nni_aio_set_msg(p->txaio, msg);
 	nni_aio_set_msg(aio, NULL);
 	// verify connect
@@ -888,15 +892,12 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 					if ((old = nni_qos_db_get(is_sqlite,
 					         pipe->nano_qos_db, pipe->p_id,
 					         pid)) != NULL) {
-						// TODO packetid already
-						// exists. we need to
+						// TODO packetid already exists. we need to
 						// replace old with new one
 						// print warning to users
-						nni_println("ERROR: packet id "
-						            "duplicates in "
-						            "nano_qos_db");
-						nni_qos_db_remove_msg(
-						    is_sqlite,
+						log_warn("ERROR: packet id "
+						         "duplicates in nano_qos_db");
+						nni_qos_db_remove_msg(is_sqlite,
 						    pipe->nano_qos_db, old);
 					}
 					old = msg;
