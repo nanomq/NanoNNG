@@ -421,7 +421,7 @@ nmq_acl_cache_reset_cb(void *k, void *v)
 }
 
 static void
-nmq_acl_cache_reset_timer_cb()
+nmq_acl_cache_reset_timer_cb(void *arg)
 {
 	nng_mtx_lock(acl_cache_mtx);
 	if (nni_id_count(&acl_cache_map) > 0) {
@@ -429,17 +429,18 @@ nmq_acl_cache_reset_timer_cb()
 	}
 	nng_mtx_unlock(acl_cache_mtx);
 
-	int interval = 10000;
+	int interval = (int)(uint64_t)arg;
 	nng_sleep_aio(interval, acl_cache_reset_aio);
 }
 
 static void
-nmq_acl_cache_init()
+nmq_acl_cache_init(uint64_t cache_ttl)
 {
+	void *ttl = (void *)(uintptr_t)cache_ttl;
 	nni_id_map_init(&acl_cache_map, 0, 0xffff, false);
 	nng_mtx_alloc(&acl_cache_mtx);
-	nng_aio_alloc(&acl_cache_reset_aio, nmq_acl_cache_reset_timer_cb, NULL);
-	nng_sleep_aio(10000, acl_cache_reset_aio);
+	nng_aio_alloc(&acl_cache_reset_aio, nmq_acl_cache_reset_timer_cb, ttl);
+	nng_sleep_aio(cache_ttl, acl_cache_reset_aio);
 }
 
 int
@@ -485,7 +486,7 @@ nmq_auth_http_sub_pub(
 
 	// Init once
 	if (!acl_cache_mtx) {
-		nmq_acl_cache_init();
+		nmq_acl_cache_init(conf->cache_ttl * 1000);
 	}
 
 	if (conf->super_req.enable) {
