@@ -981,11 +981,14 @@ conf_init(conf *nanomq_conf)
 	conf_auth_http_req_init(&nanomq_conf->auth_http.auth_req);
 	conf_auth_http_req_init(&nanomq_conf->auth_http.super_req);
 	conf_auth_http_req_init(&nanomq_conf->auth_http.acl_req);
-	nanomq_conf->auth_http.timeout         = 5;
-	nanomq_conf->auth_http.connect_timeout = 5;
-	nanomq_conf->auth_http.pool_size       = 32;
-	nanomq_conf->auth_http.cache_ttl       = 0;
-	nanomq_conf->ext_qos_db                = NULL;
+	nanomq_conf->auth_http.timeout             = 5;
+	nanomq_conf->auth_http.connect_timeout     = 5;
+	nanomq_conf->auth_http.pool_size           = 32;
+	nanomq_conf->auth_http.cache_ttl           = 0;
+	nanomq_conf->auth_http.acl_cache_map       = NULL;
+	nanomq_conf->auth_http.acl_cache_mtx       = NULL;
+	nanomq_conf->auth_http.acl_cache_reset_aio = NULL;
+	nanomq_conf->ext_qos_db                    = NULL;
 	conf_preset_sessions_init(&nanomq_conf->pre_sessions);
 	memset(nanomq_conf->exec_path, 0, 512);
 	nng_atomic_alloc(&nanomq_conf->lc);		// Marks current total connections
