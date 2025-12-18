@@ -242,7 +242,7 @@ void test_stream_data_in_free_null(void)
 {
 	// Should handle NULL gracefully
 	stream_data_in_free(NULL);
-	NUTS_PASS("stream data in free null test");
+	NUTS_PASS(1);
 }
 
 // Test stream_decoded_data_free
@@ -263,7 +263,7 @@ void test_stream_decoded_data_free(void)
 void test_stream_decoded_data_free_null(void)
 {
 	stream_decoded_data_free(NULL);
-	NUTS_PASS("stream decoded data free null test");
+	NUTS_PASS(1);
 }
 
 // Test parquet_data_alloc (fallback implementation)
