@@ -825,6 +825,11 @@ conf_auth_http_parse_ver2(conf *config, cJSON *jso)
 
 		hocon_read_num(auth_http, pool_size, jso);
 
+		char *cache_ttl = cJSON_GetStringValue(
+		    hocon_get_obj("cache_ttl", jso));
+		if (cache_ttl)
+			get_time(cache_ttl, &auth_http->cache_ttl);
+
 		conf_auth_http_req *auth_http_req = &(auth_http->auth_req);
 		cJSON *jso_auth_http_req = hocon_get_obj("auth_req", jso);
 		conf_auth_http_req_parse_ver2(
