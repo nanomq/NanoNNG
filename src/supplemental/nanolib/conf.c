@@ -1057,8 +1057,11 @@ print_auth_http_conf(conf_auth_http *auth_http)
 		print_auth_http_req(&auth_http->auth_req, "auth");
 		print_auth_http_req(&auth_http->super_req, "super");
 		print_auth_http_req(&auth_http->acl_req, "acl");
+		log_info("auth_http_timeout:         %lds", auth_http->timeout);
+		log_info("auth_http_connect_timeout: %lds", auth_http->connect_timeout);
+		log_info("auth_http_pool_size:       %ld", auth_http->pool_size);
+		log_info("auth_http_cache_ttl:       %lds", auth_http->cache_ttl);
 	}
-
 }
 
 static char *
