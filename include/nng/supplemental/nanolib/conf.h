@@ -661,9 +661,6 @@ struct conf {
 #ifdef ACL_SUPP
 	conf_acl   acl;
 	acl_permit acl_nomatch;
-	bool       enable_acl_cache;
-	size_t     acl_cache_max_size;
-	size_t     acl_cache_ttl;
 	enum { ACL_IGNORE, ACL_DISCONNECT } acl_deny_action;
 #endif
 #if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
