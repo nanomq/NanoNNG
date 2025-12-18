@@ -25,6 +25,7 @@ NNG_DECL void  nng_id_map_foreach(
      nng_id_map *map, void (*)(void *, void *));
 NNG_DECL void nng_id_map_foreach2(nng_id_map *map,
     void (*)(void *, void *, void *), void *);
+NNG_DECL uint32_t nng_id_count(nng_id_map *map);
 
 NNG_DECL int nng_id_map_alloc(
     nng_id_map **map, uint64_t lo, uint64_t hi, int flags);
