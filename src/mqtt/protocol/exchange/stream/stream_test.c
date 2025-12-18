@@ -108,6 +108,11 @@ void test_stream_data_in_free_null(void)
 	NUTS_TRUE(1);
 }
 
+void *dummy_func(void *data) {
+	UNUSED(data);
+	return NULL;
+}
+
 void test_stream_register_twice(void)
 {
 	int ret = 0;
@@ -116,11 +121,6 @@ void test_stream_register_twice(void)
 
 	char *name = nng_strdup("test_stream");
 	NUTS_TRUE(name != NULL);
-
-	void *dummy_func(void *data) {
-		UNUSED(data);
-		return NULL;
-	}
 
 	ret = stream_register(name, 0x5, dummy_func, dummy_func, dummy_func);
 	NUTS_TRUE(ret == 0);
