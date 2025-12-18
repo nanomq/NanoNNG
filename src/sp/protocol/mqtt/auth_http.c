@@ -423,14 +423,13 @@ nmq_acl_cache_reset_cb(void *k, void *v)
 static void
 nmq_acl_cache_reset_timer_cb()
 {
-	log_info("timer ring... %ld", nni_id_count(&acl_cache_map));
 	nng_mtx_lock(acl_cache_mtx);
 	if (nni_id_count(&acl_cache_map) > 0) {
 		nni_id_map_foreach(&acl_cache_map, nmq_acl_cache_reset_cb);
 	}
 	nng_mtx_unlock(acl_cache_mtx);
 
-	int interval = 3000;
+	int interval = 10000;
 	nng_sleep_aio(interval, acl_cache_reset_aio);
 }
 
@@ -440,7 +439,7 @@ nmq_acl_cache_init()
 	nni_id_map_init(&acl_cache_map, 0, 0xffff, false);
 	nng_mtx_alloc(&acl_cache_mtx);
 	nng_aio_alloc(&acl_cache_reset_aio, nmq_acl_cache_reset_timer_cb, NULL);
-	nng_sleep_aio(3000, acl_cache_reset_aio);
+	nng_sleep_aio(10000, acl_cache_reset_aio);
 }
 
 int
@@ -494,13 +493,13 @@ nmq_auth_http_sub_pub(
 		void *acl_cache_v = nni_id_get(&acl_cache_map, (uint64_t)acl_cache_k);
 		nng_mtx_unlock(acl_cache_mtx);
 		if (acl_cache_v != NULL) {
-			log_info("cache hit %ld, %s", acl_cache_k, acl_cache_k_str);
 			nni_free(topic_str, strlen(topic_str) + 1);
 			return SUCCESS; // cache hit
 		}
 
 		status = send_request(conf, &conf->super_req, &auth_params);
 		if (status == NNG_HTTP_STATUS_OK) {
+			log_debug("acl passed, add cache %ld, %s", acl_cache_k, acl_cache_k_str);
 			nng_mtx_lock(acl_cache_mtx);
 			nni_id_set(&acl_cache_map, (uint64_t)acl_cache_k, (void*)&acl_cache_k);
 			nng_mtx_unlock(acl_cache_mtx);
@@ -515,7 +514,6 @@ nmq_auth_http_sub_pub(
 		void *acl_cache_v = nni_id_get(&acl_cache_map, (uint64_t)acl_cache_k);
 		nng_mtx_unlock(acl_cache_mtx);
 		if (acl_cache_v != NULL) {
-			log_info("cache hit %ld, %s", acl_cache_k, acl_cache_k_str);
 			nni_free(topic_str, strlen(topic_str) + 1);
 			return SUCCESS; // cache hit
 		}
@@ -524,6 +522,7 @@ nmq_auth_http_sub_pub(
 		    ? NNG_HTTP_STATUS_OK
 		    : send_request(conf, &conf->acl_req, &auth_params);
 		if (status == NNG_HTTP_STATUS_OK) {
+			log_debug("acl passed, add cache %ld, %s", acl_cache_k, acl_cache_k_str);
 			nng_mtx_lock(acl_cache_mtx);
 			nni_id_set(&acl_cache_map, (uint64_t)acl_cache_k, (void*)&acl_cache_k);
 			nng_mtx_unlock(acl_cache_mtx);
