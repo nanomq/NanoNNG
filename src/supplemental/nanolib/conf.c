@@ -1018,6 +1018,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->auth_http.timeout         = 5;
 	nanomq_conf->auth_http.connect_timeout = 5;
 	nanomq_conf->auth_http.pool_size       = 32;
+	nanomq_conf->auth_http.cache_ttl       = 0;
 	nanomq_conf->ext_qos_db                = NULL;
 	conf_preset_sessions_init(&nanomq_conf->pre_sessions);
 	memset(nanomq_conf->exec_path, 0, 512);
@@ -4334,8 +4335,8 @@ conf_auth_http_parse(conf_auth_http *auth_http, const char *path)
 			get_time(value, &auth_http->connect_timeout);
 			free(value);
 		} else if ((value = get_conf_value(line, sz,
-		                "auth.http.connect_timeout")) != NULL) {
-			get_time(value, &auth_http->connect_timeout);
+		                "auth.http.cache_ttl")) != NULL) {
+			get_time(value, &auth_http->cache_ttl);
 			free(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "auth.http.pool_size")) != NULL) {
