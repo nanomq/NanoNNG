@@ -483,51 +483,65 @@ nmq_auth_http_sub_pub(
 	uint32_t acl_cache_k = DJBHash(acl_cache_k_str);
 
 	// Init once
-	if (!acl_cache_mtx) {
-		nmq_acl_cache_init();
+	if (!acl_cache_mtx && conf->cache_ttl > 0) {
+		nmq_acl_cache_init(conf->cache_ttl * 1000);
 	}
 
 	if (conf->super_req.enable) {
-		nng_mtx_lock(acl_cache_mtx);
-		void *acl_cache_v = nni_id_get(&acl_cache_map, (uint64_t)acl_cache_k);
-		nng_mtx_unlock(acl_cache_mtx);
-		if (acl_cache_v != NULL) {
-			nni_free(topic_str, strlen(topic_str) + 1);
-			return SUCCESS; // cache hit
+		if (conf->cache_ttl > 0) {
+			nng_mtx_lock(acl_cache_mtx);
+			void *acl_cache_v = nni_id_get(
+					&acl_cache_map, (uint64_t)acl_cache_k);
+			nng_mtx_unlock(acl_cache_mtx);
+			if (acl_cache_v != NULL) {
+				nni_free(topic_str, strlen(topic_str) + 1);
+				return SUCCESS; // cache hit
+			}
 		}
 
 		status = send_request(conf, &conf->super_req, &auth_params);
 		if (status == NNG_HTTP_STATUS_OK) {
-			log_debug("acl passed, add cache %ld, %s", acl_cache_k, acl_cache_k_str);
-			nng_mtx_lock(acl_cache_mtx);
-			nni_id_set(&acl_cache_map, (uint64_t)acl_cache_k, (void*)&acl_cache_k);
-			nng_mtx_unlock(acl_cache_mtx);
+			if (conf->cache_ttl > 0) {
+				log_debug("acl passed, add cache %ld, %s",
+						acl_cache_k, acl_cache_k_str);
+				nng_mtx_lock(acl_cache_mtx);
+				nni_id_set(&acl_cache_map,
+						(uint64_t)acl_cache_k, (void*)&acl_cache_k);
+				nng_mtx_unlock(acl_cache_mtx);
 
-			nni_free(topic_str, strlen(topic_str) + 1);
-			return SUCCESS;
+				nni_free(topic_str, strlen(topic_str) + 1);
+				return SUCCESS;
+			}
 		}
 	}
 
 	if (conf->acl_req.enable) {
-		nng_mtx_lock(acl_cache_mtx);
-		void *acl_cache_v = nni_id_get(&acl_cache_map, (uint64_t)acl_cache_k);
-		nng_mtx_unlock(acl_cache_mtx);
-		if (acl_cache_v != NULL) {
-			nni_free(topic_str, strlen(topic_str) + 1);
-			return SUCCESS; // cache hit
+		if (conf->cache_ttl > 0) {
+			nng_mtx_lock(acl_cache_mtx);
+			void *acl_cache_v = nni_id_get(
+					&acl_cache_map, (uint64_t)acl_cache_k);
+			nng_mtx_unlock(acl_cache_mtx);
+			if (acl_cache_v != NULL) {
+				nni_free(topic_str, strlen(topic_str) + 1);
+				return SUCCESS; // cache hit
+			}
 		}
 
 		status = conf->acl_req.url == NULL
 		    ? NNG_HTTP_STATUS_OK
 		    : send_request(conf, &conf->acl_req, &auth_params);
 		if (status == NNG_HTTP_STATUS_OK) {
-			log_debug("acl passed, add cache %ld, %s", acl_cache_k, acl_cache_k_str);
-			nng_mtx_lock(acl_cache_mtx);
-			nni_id_set(&acl_cache_map, (uint64_t)acl_cache_k, (void*)&acl_cache_k);
-			nng_mtx_unlock(acl_cache_mtx);
+			if (conf->cache_ttl > 0) {
+				log_debug("acl passed, add cache %ld, %s",
+						acl_cache_k, acl_cache_k_str);
+				nng_mtx_lock(acl_cache_mtx);
+				nni_id_set(&acl_cache_map,
+						(uint64_t)acl_cache_k, (void*)&acl_cache_k);
+				nng_mtx_unlock(acl_cache_mtx);
 
-			nni_free(topic_str, strlen(topic_str) + 1);
-			return SUCCESS;
+				nni_free(topic_str, strlen(topic_str) + 1);
+				return SUCCESS;
+			}
 		}
 	}
 	nni_free(topic_str, strlen(topic_str) + 1);
