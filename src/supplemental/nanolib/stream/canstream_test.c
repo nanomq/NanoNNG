@@ -152,7 +152,7 @@ test_free_canstream_basic(void)
 	
 	freeCanStream(stream);
 	// If we reach here without crash, test passes
-	NUTS_PASS();
+	NUTS_PASS(1);
 }
 
 // Test freeCanStream with complex structure
@@ -179,7 +179,7 @@ test_free_canstream_complex(void)
 	}
 	
 	freeCanStream(stream);
-	NUTS_PASS();
+	NUTS_PASS(1);
 }
 
 // Test parseCanStream with NULL input
@@ -302,7 +302,7 @@ test_canstream_add_row_null_stream(void)
 	// This will likely crash, but documents behavior
 	// int ret = canStreamAddRow(NULL, 1000);
 	// Skipping this test as it would cause segfault
-	NUTS_PASS();
+	NUTS_PASS(1);
 }
 
 // Test edge case: Empty payload
