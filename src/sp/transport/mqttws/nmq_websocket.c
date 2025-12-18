@@ -82,7 +82,7 @@ wstran_pipe_send_cb(void *arg)
 
 	taio = p->txaio;
 	uaio = p->user_txaio;
-	// nni_mtx_lock(&p->mtx);
+	nni_mtx_lock(&p->mtx);
 	rv   = nni_aio_result(taio);
 	if (nni_aio_result(taio) != 0) {
 		log_warn(" send aio error %s", nng_strerror(rv));
@@ -93,7 +93,7 @@ wstran_pipe_send_cb(void *arg)
 	if (uaio != NULL) {
 		if (p->closed){
 			nni_aio_finish_error(uaio, p->err_code);
-			// nni_mtx_unlock(&p->mtx);
+			nni_mtx_unlock(&p->mtx);
 			return;
 		}
 		if (rv != 0) {
@@ -102,7 +102,7 @@ wstran_pipe_send_cb(void *arg)
 			nni_aio_finish(uaio, 0, 0);
 		}
 	}
-	// nni_mtx_unlock(&p->mtx);
+	nni_mtx_unlock(&p->mtx);
 }
 
 static void
