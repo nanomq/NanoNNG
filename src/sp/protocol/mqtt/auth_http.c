@@ -430,13 +430,18 @@ nmq_acl_cache_reset_timer_cb()
 	nng_sleep_aio(conf->cache_ttl * 1000, conf->acl_cache_reset_aio);
 }
 
-static void
+static int
 nmq_acl_cache_init(conf_auth_http *conf)
 {
-	nng_id_map_alloc(&conf->acl_cache_map, 0, 0xffff, false);
-	nng_mtx_alloc(&conf->acl_cache_mtx);
-	nng_aio_alloc(&conf->acl_cache_reset_aio, nmq_acl_cache_reset_timer_cb, conf);
+	int rv = 0;
+	rv = nng_id_map_alloc(&conf->acl_cache_map, 0, 0xffff, false);
+	if (rv != 0)
+		return rv;
+	rv = nng_aio_alloc(&conf->acl_cache_reset_aio, nmq_acl_cache_reset_timer_cb, conf);
+	if (rv != 0)
+		return rv;
 	nng_sleep_aio(conf->cache_ttl * 1000, conf->acl_cache_reset_aio);
+	return rv;
 }
 
 int
@@ -470,7 +475,6 @@ nmq_auth_http_sub_pub(
 	};
 	int status = NNG_HTTP_STATUS_OK;
 
-	// TODO ACL Cache
 	// The key of ACL Cache Map is hash(clientid,username,password,access,topic,ip)
 	// The ACL Cache Map will be reset after every interval.
 	char acl_cache_k_str[1024];
@@ -481,10 +485,17 @@ nmq_auth_http_sub_pub(
 	uint32_t acl_cache_k = DJBHash(acl_cache_k_str);
 
 	// Init once
-	if (!conf->acl_cache_mtx && conf->cache_ttl > 0) {
-		nmq_acl_cache_init(conf);
-		log_info("ACL Cache was started, interval %ds", conf->cache_ttl);
+	nng_mtx_lock(conf->acl_cache_mtx);
+	if (!conf->acl_cache_map && conf->cache_ttl > 0) {
+		int rv = nmq_acl_cache_init(conf);
+		log_info("ACL Cache was started, interval %ds, rv%d", conf->cache_ttl, rv);
+		if (rv != 0) {
+			log_error("ACL Cache init failed");
+			nng_mtx_unlock(conf->acl_cache_mtx);
+			return SUCCESS;
+		}
 	}
+	nng_mtx_unlock(conf->acl_cache_mtx);
 
 	if (conf->super_req.enable) {
 		if (conf->cache_ttl > 0) {
@@ -505,7 +516,7 @@ nmq_auth_http_sub_pub(
 						acl_cache_k, acl_cache_k_str);
 				nng_mtx_lock(conf->acl_cache_mtx);
 				nng_id_set(conf->acl_cache_map,
-						(uint64_t)acl_cache_k, (void*)&acl_cache_k);
+						(uint64_t)acl_cache_k, (void*)conf);
 				nng_mtx_unlock(conf->acl_cache_mtx);
 
 				nni_free(topic_str, strlen(topic_str) + 1);
@@ -535,7 +546,7 @@ nmq_auth_http_sub_pub(
 						acl_cache_k, acl_cache_k_str);
 				nng_mtx_lock(conf->acl_cache_mtx);
 				nng_id_set(conf->acl_cache_map,
-						(uint64_t)acl_cache_k, (void*)&acl_cache_k);
+						(uint64_t)acl_cache_k, (void*)conf);
 				nng_mtx_unlock(conf->acl_cache_mtx);
 
 				nni_free(topic_str, strlen(topic_str) + 1);
