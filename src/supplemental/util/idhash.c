@@ -30,6 +30,12 @@ nng_id_map_foreach2(nng_id_map *map,
 	nni_id_map_foreach2(&map->m, cb, user_arg);
 }
 
+uint32_t
+nng_id_count(nng_id_map *map)
+{
+	return nni_id_count(&map->m);
+}
+
 int
 nng_id_map_alloc(nng_id_map **map, uint64_t lo, uint64_t hi, int flags)
 {
