@@ -170,6 +170,9 @@ struct conf_auth_http {
 	uint64_t           connect_timeout; // seconds
 	size_t             pool_size;
 	uint64_t           cache_ttl; // seconds
+	nng_id_map        *acl_cache_map;
+	nng_mtx           *acl_cache_mtx;
+	nng_aio           *acl_cache_reset_aio;
 };
 
 typedef struct conf_auth_http conf_auth_http;
