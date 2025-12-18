@@ -1002,6 +1002,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->auth_http.cache_ttl           = 0;
 	nanomq_conf->auth_http.acl_cache_map       = NULL;
 	nanomq_conf->auth_http.acl_cache_mtx       = NULL;
+	nng_mtx_alloc(&nanomq_conf->auth_http.acl_cache_mtx);
 	nanomq_conf->auth_http.acl_cache_reset_aio = NULL;
 	nanomq_conf->ext_qos_db                    = NULL;
 	conf_preset_sessions_init(&nanomq_conf->pre_sessions);
