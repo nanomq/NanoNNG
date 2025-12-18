@@ -316,15 +316,6 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	hocon_read_bool(config, allow_anonymous, jso_auth);
 	conf_auth *auth = &(config->auths);
 	hocon_read_bool(auth, enable, jso_auth);
-
-	cJSON *jso_auth_cache = hocon_get_obj("cache", jso_auth);
-	if (jso_auth_cache) {
-		config->enable_acl_cache = true;
-		hocon_read_num_base(
-		    config, acl_cache_max_size, "max_size", jso_auth_cache);
-		hocon_read_num_base(
-		    config, acl_cache_ttl, "ttl", jso_auth_cache);
-	}
 #endif
 	cJSON *jso_mqtt = hocon_get_obj("mqtt", jso);
 	if (jso_mqtt) {
