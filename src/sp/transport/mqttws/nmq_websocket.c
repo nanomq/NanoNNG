@@ -502,12 +502,15 @@ static void
 wstran_pipe_recv_cancel(nni_aio *aio, void *arg, int rv)
 {
 	ws_pipe *p = arg;
+	nni_mtx_lock(&p->mtx);
 	if (p->user_rxaio != aio) {
+		nni_mtx_unlock(&p->mtx);
 		return;
 	}
 	p->user_rxaio = NULL;
 	nni_aio_abort(p->rxaio, rv);
 	nni_aio_finish_error(aio, rv);
+	nni_mtx_unlock(&p->mtx);
 }
 
 static void
