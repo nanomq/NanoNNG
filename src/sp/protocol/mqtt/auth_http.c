@@ -487,6 +487,7 @@ nmq_auth_http_sub_pub(
 	// Init once
 	if (!acl_cache_mtx && conf->cache_ttl > 0) {
 		nmq_acl_cache_init(conf->cache_ttl * 1000);
+		log_info("ACL Cache was started, interval %ds", conf->cache_ttl);
 	}
 
 	if (conf->super_req.enable) {
