@@ -501,11 +501,11 @@ rule_sql_parse(conf_rule *cr, char *sql)
 			char *p = mid;
 			while (*p != '\n' && *p != '\0') p++;
 			len_mid = p - mid + 1;
-			mid += strlen("FROM ");
-			len_mid -= strlen("FROM ");
 		}
 
 		if (mid != NULL && len_mid > 0) {
+			mid += strlen("FROM ");
+			len_mid -= strlen("FROM ");
 			char *from = (char *) nni_alloc(sizeof(char) * len_mid);
 			memcpy(from, mid, len_mid);
 			from[len_mid - 1] = '\0';
