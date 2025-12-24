@@ -610,13 +610,33 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		// check length
 		log_trace("Decoding MQTT V5 Properties");
 		if (pos + 3 > max) {
-			log_info("Malformed CONNECT: incomplete len");
+			log_warn("Malformed CONNECT: incomplete len");
 			return PROTOCOL_ERROR;
 		}
-		cparam->prop_len = (uint32_t) get_var_integer(packet + pos,
-													  &len_of_var);
-		if (cparam->prop_len > (max - pos - 1 - cparam->will_flag * 2 )) {
-			log_info("Malformed CONNECT: incomplete len");
+		// cparam->prop_len = (uint32_t) get_var_integer(packet + pos,
+		// 											  &len_of_var);
+
+		uint8_t  temp, *tbuf;
+		uint32_t result = 0;
+
+		len_of_var = 0;
+		tbuf       = packet + pos;
+		int i      = 0;
+
+		do {
+			temp             = *(packet + pos + len_of_var);
+			cparam->prop_len = cparam->prop_len +
+			    (uint32_t) (temp & 0x7f) * (power(0x80, i));
+			len_of_var++;
+			if (pos + len_of_var >= max) {
+				log_warn("Malformed CONNECT: var len > packet len");
+				return PROTOCOL_ERROR;
+			}
+		} while ((temp & 0x80) > 0 && i++ < 4);
+
+		if (cparam->prop_len >
+		    (max - pos - 1 - cparam->will_flag * 2)) {
+			log_warn("Malformed CONNECT: incomplete len");
 			return PROTOCOL_ERROR;
 		}
 		log_debug("remain len %d max len %d prop len %d pos %d",
@@ -627,7 +647,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 			conn_param_set_property(cparam, cparam->properties);
 			if ((rv = check_properties(cparam->properties, NULL)) !=
 			    SUCCESS) {
-				log_info("Malformed CONNECT: property check failed");
+				log_warn("Malformed CONNECT: property check failed");
 				return rv;
 			}
 		}
