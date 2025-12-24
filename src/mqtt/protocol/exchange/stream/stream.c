@@ -15,6 +15,7 @@ int stream_register(char *name,
 					uint8_t id,
 					void *(*decode)(void *),
 					void *(*encode)(void *),
+					void (*encode_stream)(void *, nng_aio *, size_t),
 					void *(*cmd_parser)(void *))
 {
 	stream_node *snode = NULL;
@@ -37,6 +38,7 @@ int stream_register(char *name,
 	snode->id     = id;
 	snode->decode = decode;
 	snode->encode = encode;
+	snode->encode_stream = encode_stream;
 	snode->cmd_parser = cmd_parser;
 
 	nng_id_set(stream_node_map, id, snode);
@@ -80,6 +82,17 @@ void *stream_encode(uint8_t id, void *buf)
 	}
 
 	return snode->encode(buf);
+}
+
+int stream_encode_stream(uint8_t id, void *buf, nng_aio *aio, size_t chunk_bytes)
+{
+	stream_node *snode = NULL;
+	snode = nng_id_get(stream_node_map, id);
+	if (snode == NULL || snode->encode_stream == NULL) {
+		return NNG_ENOTSUP;
+	}
+	snode->encode_stream(buf, aio, chunk_bytes);
+	return 0;
 }
 
 void *stream_cmd_parser(uint8_t id, void *buf)

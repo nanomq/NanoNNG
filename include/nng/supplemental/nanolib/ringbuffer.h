@@ -44,6 +44,8 @@ enum fullOption {
 	RB_FULL_NONE,
 	RB_FULL_DROP,
 	RB_FULL_RETURN,
+	/* Return messages immediately and indicate streaming write */
+	RB_FULL_RETURN_STREAM,
 	RB_FULL_FILE,
 
 	RB_FULL_MAX
