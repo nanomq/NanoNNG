@@ -13,3 +13,8 @@ nng_headers(
 	nng/supplemental/util/options.h
 	nng/supplemental/util/platform.h)
 nng_test(idhash_test)
+
+# Test for nng_id_count function
+if (NNG_TESTS)
+    nng_test(idhash_count_test)
+endif()
