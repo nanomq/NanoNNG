@@ -147,6 +147,7 @@ add_nng_test(mqttv5_broker_tcp 60)
 add_nng_test(tcp6 60)
 add_nng_test(ws 30)
 add_nng_test(wss 30)
+add_nng_test(mqttws 30)
 add_nng_test1(zt 60 NNG_TRANSPORT_ZEROTIER)
 
 add_nng_test(reqctx 5)
