@@ -420,7 +420,7 @@ nmq_acl_cache_reset_cb(void *k, void *v, void *arg)
 }
 
 static void
-nmq_acl_cache_reset_timer_cb()
+nmq_acl_cache_reset_timer_cb(void *arg)
 {
 	conf_auth_http *conf = arg;
 	nng_mtx_lock(conf->acl_cache_mtx);
@@ -512,7 +512,7 @@ nmq_auth_http_sub_pub(
 	}
 	nng_mtx_unlock(conf->acl_cache_mtx);
 
-	if (conf->super_req.enable) {
+	if (conf->super_req.url) {
 		if (conf->cache_ttl > 0) {
 			nng_mtx_lock(conf->acl_cache_mtx);
 			void *acl_cache_v = nng_id_get(
@@ -540,7 +540,7 @@ nmq_auth_http_sub_pub(
 		}
 	}
 
-	if (conf->acl_req.enable) {
+	if (conf->acl_req.url) {
 		if (conf->cache_ttl > 0) {
 			nng_mtx_lock(conf->acl_cache_mtx);
 			void *acl_cache_v = nng_id_get(
