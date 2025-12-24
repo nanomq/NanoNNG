@@ -615,14 +615,11 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		}
 		// cparam->prop_len = (uint32_t) get_var_integer(packet + pos,
 		// 											  &len_of_var);
-
-		uint8_t  temp, *tbuf;
+		int i      = 0;
+		uint8_t  temp;
 		uint32_t result = 0;
 
 		len_of_var = 0;
-		tbuf       = packet + pos;
-		int i      = 0;
-
 		do {
 			temp             = *(packet + pos + len_of_var);
 			cparam->prop_len = cparam->prop_len +
