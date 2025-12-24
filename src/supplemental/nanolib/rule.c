@@ -503,7 +503,7 @@ rule_sql_parse(conf_rule *cr, char *sql)
 			len_mid = p - mid + 1;
 		}
 
-		if (mid != NULL && len_mid > 0) {
+		if (mid != NULL && len_mid > (int) strlen("FROM ")) {
 			mid += strlen("FROM ");
 			len_mid -= strlen("FROM ");
 			char *from = (char *) nni_alloc(sizeof(char) * len_mid);
