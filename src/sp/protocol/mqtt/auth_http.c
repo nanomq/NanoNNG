@@ -240,13 +240,15 @@ set_data(
 
 	if (nni_strcasecmp(req_conf->method, "post") == 0 ||
 	    nni_strcasecmp(req_conf->method, "put") == 0) {
-		if (req_data)
-			nng_http_req_copy_data(req, req_data, strlen(req_data));
-	} else {
-		size_t uri_len =
-		    strlen(nng_http_req_get_uri(req)) + strlen(req_data) + 2;
-		char *uri = nng_alloc(uri_len);
-		sprintf(uri, "%s?%s", nng_http_req_get_uri(req), req_data);
+		if (req_data && req_data[0] != '\0') {
+			nng_http_req_copy_data(
+			    req, req_data, strlen(req_data));
+		}
+	} else if (req_data && req_data[0] != '\0') {
+		const char *base_uri = nng_http_req_get_uri(req);
+		size_t      uri_len  = strlen(base_uri) + strlen(req_data) + 2;
+		char *      uri      = nng_alloc(uri_len);
+		snprintf(uri, uri_len, "%s?%s", base_uri, req_data);
 		nng_http_req_set_uri(req, uri);
 		nng_free(uri, uri_len);
 	}
