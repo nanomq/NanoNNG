@@ -1054,12 +1054,11 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 
 		char *sub_topic = info->topic;
 		if (sub_topic[0] == '$') {
-			if (0 ==
-			    strncmp(sub_topic, "$share/", strlen("$share/"))) {
+			if (0 == strncmp(sub_topic, "$share/", strlen("$share/"))) {
 				sub_topic = strchr(sub_topic, '/');
-				sub_topic++;
+				sub_topic != NULL ? sub_topic++ : NULL;
 				sub_topic = strchr(sub_topic, '/');
-				sub_topic++;
+				sub_topic != NULL ? sub_topic++ : NULL;
 			}
 		}
 		// And we never modify msg itself
@@ -1325,9 +1324,9 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			if (0 ==
 			    strncmp(sub_topic, "$share/", strlen("$share/"))) {
 				sub_topic = strchr(sub_topic, '/');
-				sub_topic++;
+				sub_topic != NULL ? sub_topic++ : NULL;
 				sub_topic = strchr(sub_topic, '/');
-				sub_topic++;
+				sub_topic != NULL ? sub_topic++ : NULL;
 			}
 		}
 		if (topic_filtern(sub_topic, (char *) (body + 2), tlen)) {
