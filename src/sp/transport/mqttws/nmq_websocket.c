@@ -614,9 +614,9 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 		if (sub_topic[0] == '$') {
 			if (0 == strncmp(sub_topic, "$share/", strlen("$share/"))) {
 				sub_topic = strchr(sub_topic, '/');
-				sub_topic++;
+				sub_topic != NULL ? sub_topic++ : NULL;
 				sub_topic = strchr(sub_topic, '/');
-				sub_topic++;
+				sub_topic != NULL ? sub_topic++ : NULL;
 			}
 		}
 		if (topic_filtern(sub_topic, (char *) (body + 2), tlen)) {
@@ -817,9 +817,9 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			if (0 ==
 			    strncmp(sub_topic, "$share/", strlen("$share/"))) {
 				sub_topic = strchr(sub_topic, '/');
-				sub_topic++;
+				sub_topic != NULL ? sub_topic++ : NULL;
 				sub_topic = strchr(sub_topic, '/');
-				sub_topic++;
+				sub_topic != NULL ? sub_topic++ : NULL;
 			}
 		}
 		if (topic_filtern(sub_topic, (char *) (body + 2), tlen)) {
