@@ -196,7 +196,7 @@ tcptran_pipe_fini(void *arg)
 		}
 		nni_mtx_unlock(&ep->mtx);
 	}
-
+	nni_mtx_lock(&p->mtx);
 	if (p->tcp_cparam) {
 		conn_param_free(p->tcp_cparam);
 		p->tcp_cparam = NULL;
@@ -206,6 +206,8 @@ tcptran_pipe_fini(void *arg)
 
 	nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
 	nni_lmq_flush(&p->rslmq);
+	nni_mtx_unlock(&p->mtx);
+
 	nng_stream_free(p->conn);
 	nni_aio_free(p->qsaio);
 	nni_aio_free(p->rpaio);
@@ -1480,8 +1482,6 @@ send:
     nni_aio_set_iov(txaio, niov, iov);
 	nng_stream_send(p->conn, txaio);
 	return;
-
-
 }
 
 /**
@@ -1538,6 +1538,7 @@ tcptran_pipe_send(void *arg, nni_aio *aio)
 {
 	tcptran_pipe *p = arg;
 	int           rv;
+	nni_pipe *old = NULL;
 
 	log_trace("########### tcptran_pipe_send ###########");
 	if ((rv = nni_aio_begin(aio)) != 0) {
@@ -1547,6 +1548,58 @@ tcptran_pipe_send(void *arg, nni_aio *aio)
 		return;
 	}
 	nni_mtx_lock(&p->mtx);
+	nni_msg *msg = nni_aio_get_msg(aio);
+	if (msg == NULL || p->tcp_cparam == NULL) {
+		log_error("sending NULL msg or pipe is invalid!");
+		nni_mtx_unlock(&p->mtx);
+		if(msg) {
+			nni_aio_set_msg(aio, NULL);
+			nni_msg_free(msg);
+		}
+		nni_aio_finish(aio, NNG_ECANCELED, 0);
+		return;
+	}
+	if (p->npipe->cache) {
+		int        tlen_pac = 0;
+		uint8_t    qos_pac = 0, qos = 0;
+		uint16_t   packetid;
+		char      *pld_pac  = NULL;
+		if (nni_msg_get_type(msg) == CMD_PUBLISH) {
+			qos_pac = nni_msg_get_pub_qos(msg);
+			pld_pac = nni_msg_get_pub_topic(msg, &tlen_pac);
+		}
+		subinfo *info = NULL;
+
+		// if (p->npipe->subinfol != NULL)
+			NNI_LIST_FOREACH(p->npipe->subinfol, info) {
+				if (!info)
+					continue;
+				if (topic_filtern(info->topic, pld_pac, tlen_pac)) {
+					qos = qos_pac > info->qos ? info->qos : qos_pac; // MIN
+					break;
+				}
+			}
+
+		if (qos > 0) {
+			packetid = nni_pipe_inc_packetid(p->npipe);
+			// TODO potential qos msg overwrite?
+			nni_qos_db_set(p->conf->sqlite.enable, p->npipe->nano_qos_db,
+			    p->npipe->p_id, packetid, msg);
+			nni_qos_db_remove_oldest(p->conf->sqlite.enable,
+			    p->npipe->nano_qos_db,
+			    p->conf->sqlite.disk_cache_size);
+			log_debug("msg cached for session");
+		} else {
+			// only cache QoS messages
+			log_debug("Drop msg due to qos == 0");
+			nni_msg_free(msg);
+		}
+		nni_mtx_unlock(&p->mtx);
+		nni_aio_set_msg(aio, NULL);
+		nni_aio_finish(aio, 0, 0);
+		return;
+	}
+
 	if ((rv = nni_aio_schedule(aio, tcptran_pipe_send_cancel, p)) != 0) {
 		nni_mtx_unlock(&p->mtx);
 		nni_aio_finish_error(aio, rv);
@@ -2050,6 +2103,31 @@ tcptran_ep_accept(void *arg, nni_aio *aio)
 	nni_mtx_unlock(&ep->mtx);
 }
 
+static uint16_t
+tcptran_pipe_peer(void *arg)
+{
+	nni_pipe     *npipe, *old;
+	tcptran_pipe *p = arg;
+
+	nni_mtx_lock(&p->mtx);
+	npipe           = p->npipe;
+	old             = (nni_pipe *) npipe->old;
+	nni_list *l     = npipe->subinfol;
+	npipe->subinfol = old->subinfol;
+	old->subinfol   = l;
+
+	// replace nano_qos_db and pid with old one.
+	npipe->packet_id = old->packet_id;
+	npipe->nano_qos_db = old->nano_qos_db;
+
+	old->nano_qos_db = NULL;
+	// set event of old pipe to false and discard it.
+	// old->event       = false;
+	// old->pipe->cache = false;
+	nni_mtx_unlock(&p->mtx);
+	return 0;
+}
+
 static nni_sp_pipe_ops tcptran_pipe_ops = {
 	.p_init  = tcptran_pipe_init,
 	.p_fini  = tcptran_pipe_fini,
@@ -2057,7 +2135,7 @@ static nni_sp_pipe_ops tcptran_pipe_ops = {
 	.p_send  = tcptran_pipe_send,
 	.p_recv  = tcptran_pipe_recv,
 	.p_close = tcptran_pipe_close,
-	//.p_peer   = tcptran_pipe_peer,
+	.p_peer  = tcptran_pipe_peer,
 	.p_getopt = tcptran_pipe_getopt,
 };
 
