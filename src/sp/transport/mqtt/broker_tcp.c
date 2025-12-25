@@ -1417,10 +1417,8 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 					nni_msg_clone(msg);
 					if ((old = nni_qos_db_get(is_sqlite, pipe->nano_qos_db,
 											  pipe->p_id, pid)) != NULL) {
-						// TODO packetid already
-						// exists. do we need to
-						// replace old with new one ?
-						// print warning to users
+						// TODO packetid already exists. do we need to
+						// replace old with new one ? print warning to users
 						log_error("packet id duplicates in nano_qos_db");
 						nni_qos_db_remove_msg(
 						    is_sqlite,
@@ -1604,6 +1602,14 @@ tcptran_pipe_send(void *arg, nni_aio *aio)
 		if (qos > 0) {
 			packetid = nni_pipe_inc_packetid(p->npipe);
 			// TODO potential qos msg overwrite?
+			nni_msg *tmsg;
+			if ((tmsg = nni_qos_db_get(p->conf->sqlite.enable, p->npipe->nano_qos_db,
+									   p->npipe->p_id, packetid)) != NULL) {
+						log_error("packet id duplicates while caching msg");
+						nni_qos_db_remove_msg(
+						    p->conf->sqlite.enable,
+						    p->npipe->nano_qos_db, tmsg);
+					}
 			nni_qos_db_set(p->conf->sqlite.enable, p->npipe->nano_qos_db,
 			    p->npipe->p_id, packetid, msg);
 			nni_qos_db_remove_oldest(p->conf->sqlite.enable,
@@ -1612,7 +1618,7 @@ tcptran_pipe_send(void *arg, nni_aio *aio)
 			log_debug("msg cached for session");
 		} else {
 			// only cache QoS messages
-			log_debug("Drop msg due to qos == 0");
+			log_error("Drop msg due to qos == 0");
 			nni_msg_free(msg);
 		}
 		nni_mtx_unlock(&p->mtx);
@@ -2133,9 +2139,43 @@ tcptran_pipe_peer(void *arg)
 	nni_mtx_lock(&p->mtx);
 	npipe           = p->npipe;
 	old             = (nni_pipe *) npipe->old;
-	nni_list *l     = npipe->subinfol;
-	npipe->subinfol = old->subinfol;
-	old->subinfol   = l;
+	// nni_list *l     = npipe->subinfol;
+	// npipe->subinfol = old->subinfol;
+	// old->subinfol   = NULL;
+
+	subinfo *info = nni_list_first(old->subinfol);
+	subinfo *last = nni_list_last(old->subinfol);
+	do {
+		if (!info) {
+			log_error("got error topic!");
+			continue;
+		}
+		char           *topic;
+		struct subinfo *sn = NULL;
+		if ((sn = nng_zalloc(sizeof(struct subinfo))) == NULL)
+			return (-2);
+		log_debug("info topic : %s %d %d", info->topic, info->qos,
+		    strlen(info->topic));
+		if ((topic = nng_zalloc(strlen(info->topic) + 1)) == NULL) {
+			nng_free(sn, sizeof(struct subinfo));
+			return (-2);
+		}
+		strncpy(topic, info->topic, strlen(info->topic));
+		log_debug("copy topic %s %d", topic, strlen(topic));
+		sn->topic           = topic;
+		sn->qos             = info->qos;
+		sn->subid           = info->subid;
+		sn->no_local        = info->no_local;
+		sn->rap             = info->rap;
+		sn->retain_handling = info->retain_handling;
+		NNI_LIST_NODE_INIT(&sn->node);
+		nni_list_append(npipe->subinfol, sn);
+		if (info == last)
+			break;
+		else
+			info = nni_list_next(old->subinfol, info);
+	} while (info != NULL);
+
 
 	// replace nano_qos_db and pid with old one.
 	npipe->packet_id = old->packet_id;
