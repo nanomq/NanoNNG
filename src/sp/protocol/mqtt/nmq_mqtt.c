@@ -716,23 +716,14 @@ session_keeping:
 	if (p->conn_param->clean_start == 0) {
 		old = nni_id_get(&s->cached_sessions, p->pipe->p_id);
 		if (old != NULL) {
-			// replace nano_qos_db and pid with old one.
-			p->pipe->packet_id = old->pipe->packet_id;
 			// there should be no msg in this map
-
 			if (!is_sqlite && p->pipe->nano_qos_db!= NULL) {
 				nni_qos_db_fini_id_hash(p->pipe->nano_qos_db);
 				p->pipe->nano_qos_db = NULL;
 			}
-
-			p->pipe->nano_qos_db = old->nano_qos_db;
 			log_info("resuming session %d with %d", npipe->p_id, old->pipe->p_id);
 			npipe->old = old->pipe;
 			nni_pipe_peer(npipe);
-
-			    //           nni_list *l = npipe->subinfol;
-                    //   npipe->subinfol = old->pipe->subinfol;
-                    //   old->pipe->subinfol = l;
 			p->id = nni_pipe_id(npipe);
 			// set event to false so that no notification will be sent
 			p->event = false;
@@ -942,16 +933,18 @@ nano_pipe_close(void *arg)
 		nni_aio_close(&p->aio_send);
 		nni_aio_close(&p->aio_recv);
 		// take params from npipe to new pipe
-		new_pipe->packet_id = npipe->packet_id;
+		// new_pipe->packet_id = npipe->packet_id;
 		// there should be no msg in this map
 		if (!s->conf->sqlite.enable && new_pipe->nano_qos_db != NULL)
 			nni_qos_db_fini_id_hash(new_pipe->nano_qos_db);
-		new_pipe->nano_qos_db = npipe->nano_qos_db;
-		npipe->nano_qos_db = NULL;
+		// new_pipe->nano_qos_db = npipe->nano_qos_db;
+		// npipe->nano_qos_db = NULL;
 
 		// nni_list *l        = new_pipe->subinfol;
 		// new_pipe->subinfol = npipe->subinfol;
 		// npipe->subinfol    = l;
+		new_pipe->old = npipe;
+		nni_pipe_peer(new_pipe);
 		log_info("client kick itself while keeping session!");
 	} else {
 		nni_aio_close(&p->aio_send);
