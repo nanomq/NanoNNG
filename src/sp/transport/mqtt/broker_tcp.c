@@ -132,6 +132,20 @@ tcptran_pipe_close(void *arg)
 	}
 	nni_mtx_lock(&p->mtx);
 	p->closed = true;
+	// Freed here
+	struct subinfo *s = NULL;
+	if (p->npipe->subinfol != NULL) {
+		while (!nni_list_empty(p->npipe->subinfol)) {
+			s = nni_list_last(p->npipe->subinfol);
+			if (s && s->topic != NULL) {
+				nni_list_remove(p->npipe->subinfol, s);
+				nng_free(s->topic, strlen(s->topic));
+				nng_free(s, sizeof(*s));
+			}
+		}
+		nni_free(p->npipe->subinfol, sizeof(nni_list));
+		p->npipe->subinfol = NULL;
+	}
 	nni_mtx_unlock(&p->mtx);
 
 	nng_stream_close(p->conn);
@@ -1569,6 +1583,13 @@ tcptran_pipe_send(void *arg, nni_aio *aio)
 		uint8_t    qos_pac = 0, qos = 0;
 		uint16_t   packetid;
 		char      *pld_pac  = NULL;
+
+		// nni_msg_free(msg);
+		// nni_mtx_unlock(&p->mtx);
+		// nni_aio_set_msg(aio, NULL);
+		// nni_aio_finish(aio, 0, 0);
+		// return;
+
 		if (nni_msg_get_type(msg) == CMD_PUBLISH) {
 			qos_pac = nni_msg_get_pub_qos(msg);
 			pld_pac = nni_msg_get_pub_topic(msg, &tlen_pac);
