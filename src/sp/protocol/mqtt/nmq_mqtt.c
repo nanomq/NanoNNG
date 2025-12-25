@@ -430,39 +430,6 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	nni_mtx_lock(&p->lk);
 	nni_mtx_unlock(&s->lk);
 
-	if (p->pipe->cache) {
-		if (nni_msg_get_type(msg) == CMD_PUBLISH) {
-			qos_pac = nni_msg_get_pub_qos(msg);
-			pld_pac = nni_msg_get_pub_topic(msg, &tlen_pac);
-		}
-		subinfo *info = NULL;
-		NNI_LIST_FOREACH(p->pipe->subinfol, info) {
-			if (!info)
-				continue;
-			if (topic_filtern(info->topic, pld_pac, tlen_pac)) {
-				qos = qos_pac > info->qos ? info->qos : qos_pac; // MIN
-				break;
-			}
-		}
-		if (qos > 0) {
-			packetid = nni_pipe_inc_packetid(p->pipe);
-			// TODO potential qos msg overwrite?
-			nni_qos_db_set(is_sqlite, p->pipe->nano_qos_db,
-			    p->pipe->p_id, packetid, msg);
-			nni_qos_db_remove_oldest(is_sqlite,
-			    p->pipe->nano_qos_db,
-			    s->conf->sqlite.disk_cache_size);
-			log_debug("msg cached for session");
-		} else {
-			// only cache QoS messages
-			log_debug("Drop msg due to qos == 0");
-			nni_msg_free(msg);
-		}
-		nni_mtx_unlock(&p->lk);
-		nni_aio_set_msg(aio, NULL);
-		return;
-	}
-
 	if (!p->busy) {
 		p->busy = true;
 		nni_aio_set_msg(&p->aio_send, msg);
@@ -749,9 +716,12 @@ session_keeping:
 
 			p->pipe->nano_qos_db = old->nano_qos_db;
 			log_info("resuming session %d with %d", npipe->p_id, old->pipe->p_id);
-			nni_list *l = npipe->subinfol;
-			npipe->subinfol = old->pipe->subinfol;
-			old->pipe->subinfol = l;
+			npipe->old = old->pipe;
+			nni_pipe_peer(npipe);
+
+			    //           nni_list *l = npipe->subinfol;
+                    //   npipe->subinfol = old->pipe->subinfol;
+                    //   old->pipe->subinfol = l;
 			p->id = nni_pipe_id(npipe);
 			// set event to false so that no notification will be sent
 			p->event = false;
@@ -774,8 +744,8 @@ session_keeping:
 			nni_qos_db_remove_unused_msg(
 			    is_sqlite, old->nano_qos_db);
 #endif
-			nni_qos_db_remove_all_msg(is_sqlite, old->nano_qos_db,
-			    nmq_close_unack_msg_cb);
+			// nni_qos_db_remove_all_msg(is_sqlite, old->nano_qos_db,
+			//     nmq_close_unack_msg_cb);
 			nni_id_remove(&s->cached_sessions, p->pipe->p_id);
 			log_info("cleaning session %d from cache", p->pipe->p_id);
 		}
@@ -800,6 +770,8 @@ session_keeping:
 	}
 	nmq_connack_encode(msg, p->conn_param, rv);
 	conn_param_free(p->conn_param);
+	if (old)
+		nni_msg_set_proto_data(msg, NULL, old->pipe);
 	if (rv != 0) {
 		// send connack with reason code 0x05
 		log_warn("Invalid auth info.");
@@ -949,9 +921,9 @@ nano_pipe_close(void *arg)
 		new_pipe->nano_qos_db = npipe->nano_qos_db;
 		npipe->nano_qos_db = NULL;
 
-		nni_list *l        = new_pipe->subinfol;
-		new_pipe->subinfol = npipe->subinfol;
-		npipe->subinfol    = l;
+		// nni_list *l        = new_pipe->subinfol;
+		// new_pipe->subinfol = npipe->subinfol;
+		// npipe->subinfol    = l;
 		log_info("client kick itself while keeping session!");
 	} else {
 		nni_aio_close(&p->aio_send);
