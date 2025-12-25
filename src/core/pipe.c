@@ -61,19 +61,19 @@ pipe_destroy(void *arg)
 		p->p_tran_ops.p_stop(p->p_tran_data);
 	}
 
-	// Freed here
-	struct subinfo *s = NULL;
-	if (p->subinfol != NULL) {
-		while (!nni_list_empty(p->subinfol)) {
-			s = nni_list_last(p->subinfol);
-			if (s && s->topic != NULL) {
-				nni_list_remove(p->subinfol, s);
-				nng_free(s->topic, strlen(s->topic));
-				nng_free(s, sizeof(*s));
-			}
-		}
-		nni_free(p->subinfol, sizeof(nni_list));
-	}
+	// // Freed here
+	// struct subinfo *s = NULL;
+	// if (p->subinfol != NULL) {
+	// 	while (!nni_list_empty(p->subinfol)) {
+	// 		s = nni_list_last(p->subinfol);
+	// 		if (s && s->topic != NULL) {
+	// 			nni_list_remove(p->subinfol, s);
+	// 			nng_free(s->topic, strlen(s->topic));
+	// 			nng_free(s, sizeof(*s));
+	// 		}
+	// 	}
+	// 	nni_free(p->subinfol, sizeof(nni_list));
+	// }
 
 #ifdef NNG_ENABLE_STATS
 	nni_stat_unregister(&p->st_root);
