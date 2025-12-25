@@ -141,6 +141,7 @@ struct nni_pipe {
 	nni_list *subinfol;    // additional info for sub
 	//	nano_qos_db stores qos msgs in 'sqlite' or 'nni_id_hash_map'
 	void    *nano_qos_db; // protected by pipe lock.
+	void    *old;
 };
 
 extern int  nni_sock_add_dialer(nni_sock *, nni_dialer *);
