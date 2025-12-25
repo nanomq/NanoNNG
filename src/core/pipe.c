@@ -74,7 +74,6 @@ pipe_destroy(void *arg)
 		nni_free(p->subinfol, sizeof(nni_list));
 	}
 
-
 #ifdef NNG_ENABLE_STATS
 	nni_stat_unregister(&p->st_root);
 #endif
@@ -470,34 +469,11 @@ nni_pipe_inc_packetid(nni_pipe *p)
 }
 
 /**
- * @brief swap pipe_id & subinfol of 2 pipes
+ * @brief replace pid with input uint32 value
  * 
- * @param old_id 
- * @param new_id 
+ * @param new_pipe 
+ * @param id 
  */
-void
-nni_pipe_id_swap(uint32_t old_id, uint32_t new_id)
-{
-	// q is the new pipe, p is the old one
-	nni_pipe *p, *q;
-	if ((p = nni_id_get(&pipes, old_id)) != NULL &&
-	    (q = nni_id_get(&pipes, new_id)) != NULL) {
-		nni_list *l = q->subinfol;
-		q->subinfol = p->subinfol;
-		p->subinfol = l;
-		nni_id_set(&pipes, new_id, p);
-		nni_id_set(&pipes, old_id, q);
-		p->p_id = new_id;
-		q->p_id = old_id;
-	}
-}
-
-/**
- * replace pid with input uint32 value
- * return 0     : successed
- * 		  others: failed
- *
-*/
 int
 nni_pipe_set_pid(nni_pipe *new_pipe, uint32_t id)
 {
