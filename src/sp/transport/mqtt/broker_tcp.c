@@ -1549,7 +1549,7 @@ tcptran_pipe_send(void *arg, nni_aio *aio)
 	}
 	nni_mtx_lock(&p->mtx);
 	nni_msg *msg = nni_aio_get_msg(aio);
-	if (msg == NULL || p->tcp_cparam == NULL) {
+	if (msg == NULL || p->tcp_cparam == NULL || p->closed == true) {
 		log_error("sending NULL msg or pipe is invalid!");
 		nni_mtx_unlock(&p->mtx);
 		if(msg) {
