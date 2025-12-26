@@ -804,6 +804,7 @@ conf_auth_http_parse_ver2(conf *config, cJSON *jso)
 
 	if (jso) {
 		auth_http->enable = true;
+		hocon_read_bool(auth_http, enable, jso);
 		char *timeout =
 		    cJSON_GetStringValue(hocon_get_obj("timeout", jso));
 		if (timeout)

@@ -33,7 +33,7 @@ static void
 pipe_destroy(void *arg)
 {
 	nni_pipe *p = arg;
-	if (p == NULL || p->cache) {
+	if (p == NULL || nni_atomic_get_bool(&p->cache)) {
 		return;
 	}
 
@@ -60,20 +60,19 @@ pipe_destroy(void *arg)
 		p->p_tran_ops.p_stop(p->p_tran_data);
 	}
 
-	// Freed here
-	struct subinfo *s = NULL;
-	if (p->subinfol != NULL) {
-		while (!nni_list_empty(p->subinfol)) {
-			s = nni_list_last(p->subinfol);
-			if (s && s->topic != NULL) {
-				nni_list_remove(p->subinfol, s);
-				nng_free(s->topic, strlen(s->topic));
-				nng_free(s, sizeof(*s));
-			}
-		}
-		nni_free(p->subinfol, sizeof(nni_list));
-	}
-
+	// // Freed here
+	// struct subinfo *s = NULL;
+	// if (p->subinfol != NULL) {
+	// 	while (!nni_list_empty(p->subinfol)) {
+	// 		s = nni_list_last(p->subinfol);
+	// 		if (s && s->topic != NULL) {
+	// 			nni_list_remove(p->subinfol, s);
+	// 			nng_free(s->topic, strlen(s->topic));
+	// 			nng_free(s, sizeof(*s));
+	// 		}
+	// 	}
+	// 	nni_free(p->subinfol, sizeof(nni_list));
+	// }
 
 #ifdef NNG_ENABLE_STATS
 	nni_stat_unregister(&p->st_root);
@@ -275,7 +274,7 @@ pipe_create(nni_pipe **pp, nni_sock *sock, nni_sp_tran *tran, void *tran_data)
 	p->p_ref        = 1;
 	// NanoMQ
 	p->packet_id = 0;
-	p->cache     = false;
+	nni_atomic_set_bool(&p->cache, false);
 	p->subinfol = nni_zalloc(sizeof(nni_list));
 	NNI_LIST_INIT(p->subinfol, struct subinfo, node);
 
@@ -457,7 +456,7 @@ nni_pipe_get_conn_param(nni_pipe *p)
 bool
 nni_pipe_get_status(nni_pipe *p)
 {
-	return p->cache;
+	return nni_atomic_get_bool(&p->cache);
 }
 
 uint16_t
@@ -470,34 +469,11 @@ nni_pipe_inc_packetid(nni_pipe *p)
 }
 
 /**
- * @brief swap pipe_id & subinfol of 2 pipes
+ * @brief replace pid with input uint32 value
  * 
- * @param old_id 
- * @param new_id 
+ * @param new_pipe 
+ * @param id 
  */
-void
-nni_pipe_id_swap(uint32_t old_id, uint32_t new_id)
-{
-	// q is the new pipe, p is the old one
-	nni_pipe *p, *q;
-	if ((p = nni_id_get(&pipes, old_id)) != NULL &&
-	    (q = nni_id_get(&pipes, new_id)) != NULL) {
-		nni_list *l = q->subinfol;
-		q->subinfol = p->subinfol;
-		p->subinfol = l;
-		nni_id_set(&pipes, new_id, p);
-		nni_id_set(&pipes, old_id, q);
-		p->p_id = new_id;
-		q->p_id = old_id;
-	}
-}
-
-/**
- * replace pid with input uint32 value
- * return 0     : successed
- * 		  others: failed
- *
-*/
 int
 nni_pipe_set_pid(nni_pipe *new_pipe, uint32_t id)
 {
@@ -516,7 +492,7 @@ nni_pipe_set_pid(nni_pipe *new_pipe, uint32_t id)
 		rv = nni_id_set(&pipes, id, new_pipe);
 		// Kick out duplicated Client ID
 		nni_mtx_unlock(&pipes_lk);
-		if (!p->cache || rv != 0) {
+		if (!nni_atomic_get_bool(&p->cache) || rv != 0) {
 			log_error("Client ID collision or set ID failed!");
 			// Must close old pipe first to make it like a normal disconnect
 			// so that new pipe can inherit.
