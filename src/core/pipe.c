@@ -33,7 +33,7 @@ static void
 pipe_destroy(void *arg)
 {
 	nni_pipe *p = arg;
-	if (p == NULL || p->cache) {
+	if (p == NULL || nni_atomic_get_bool(&p->cache)) {
 		return;
 	}
 
@@ -274,7 +274,7 @@ pipe_create(nni_pipe **pp, nni_sock *sock, nni_sp_tran *tran, void *tran_data)
 	p->p_ref        = 1;
 	// NanoMQ
 	p->packet_id = 0;
-	p->cache     = false;
+	nni_atomic_set_bool(&p->cache, false);
 	p->subinfol = nni_zalloc(sizeof(nni_list));
 	NNI_LIST_INIT(p->subinfol, struct subinfo, node);
 
@@ -456,7 +456,7 @@ nni_pipe_get_conn_param(nni_pipe *p)
 bool
 nni_pipe_get_status(nni_pipe *p)
 {
-	return p->cache;
+	return nni_atomic_get_bool(&p->cache);
 }
 
 uint16_t
@@ -492,7 +492,7 @@ nni_pipe_set_pid(nni_pipe *new_pipe, uint32_t id)
 		rv = nni_id_set(&pipes, id, new_pipe);
 		// Kick out duplicated Client ID
 		nni_mtx_unlock(&pipes_lk);
-		if (!p->cache || rv != 0) {
+		if (!nni_atomic_get_bool(&p->cache) || rv != 0) {
 			log_error("Client ID collision or set ID failed!");
 			// Must close old pipe first to make it like a normal disconnect
 			// so that new pipe can inherit.
