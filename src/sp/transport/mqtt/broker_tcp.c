@@ -2178,12 +2178,12 @@ tcptran_pipe_peer(void *arg)
 		char           *topic;
 		struct subinfo *sn = NULL;
 		if ((sn = nng_zalloc(sizeof(struct subinfo))) == NULL)
-			return (-2);
+			return (1);
 		log_debug("info topic : %s %d %d", info->topic, info->qos,
 		    strlen(info->topic));
 		if ((topic = nng_zalloc(strlen(info->topic) + 1)) == NULL) {
 			nng_free(sn, sizeof(struct subinfo));
-			return (-2);
+			return (2);
 		}
 		strncpy(topic, info->topic, strlen(info->topic));
 		log_debug("copy topic %s %d", topic, strlen(topic));
