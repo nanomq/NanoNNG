@@ -96,15 +96,6 @@ struct nano_pipe {
 	nni_atomic_bool closed;
 };
 
-void
-nmq_close_unack_msg_cb(void *key, void *val)
-{
-	NNI_ARG_UNUSED(key);
-
-	nni_msg *msg = val;
-	nni_msg_free(msg);
-}
-
 // Flush lmq and conn_param
 void
 nano_nni_lmq_flush(nni_lmq *lmq, bool cp)
@@ -378,10 +369,6 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	int        rv;
 	uint32_t   pipe = 0;
 	uint32_t  *pipeid;
-	uint8_t    qos_pac = 0, qos = 0;
-	char      *pld_pac  = NULL;
-	int        tlen_pac = 0;
-	uint16_t   packetid;
 
 	bool is_sqlite = s->conf->sqlite.enable;
 
@@ -709,8 +696,6 @@ session_keeping:
 		if (old != NULL) {
 			// there should be no msg in this map
 			if (!is_sqlite && p->pipe->nano_qos_db!= NULL) {
-				nni_qos_db_remove_all_msg(false,
-				p->pipe->nano_qos_db, nmq_close_unack_msg_cb);
 				nni_qos_db_fini_id_hash(p->pipe->nano_qos_db);
 				p->pipe->nano_qos_db = NULL;
 			}
@@ -910,30 +895,13 @@ nano_pipe_close(void *arg)
 				nni_list_remove(&s->recvpipes, p);
 			}
 			nano_nni_lmq_flush(&p->rlmq, false);
-			nni_mtx_unlock(&s->lk);
 			nni_mtx_unlock(&p->lk);
+			nni_mtx_unlock(&s->lk);
 			return -1;
+		} else {
+			// What if a Unknown pipe with session keeping is closed?
+			log_error("A untracked pipe is closing!");
 		}
-
-		// have to close & stop aio timer first, otherwise we hit null qos_db
-		// nni_aio_finish_error(&p->aio_timer, NNG_ECANCELED);
-		// nni_aio_close(&p->aio_timer);
-		// nni_aio_close(&p->aio_send);
-		// nni_aio_close(&p->aio_recv);
-		// // take params from npipe to new pipe
-		// // new_pipe->packet_id = npipe->packet_id;
-		// // there should be no msg in this map
-		// if (!s->conf->sqlite.enable && new_pipe->nano_qos_db != NULL)
-		// 	nni_qos_db_fini_id_hash(new_pipe->nano_qos_db);
-		// // new_pipe->nano_qos_db = npipe->nano_qos_db;
-		// // npipe->nano_qos_db = NULL;
-
-		// // nni_list *l        = new_pipe->subinfol;
-		// // new_pipe->subinfol = npipe->subinfol;
-		// // npipe->subinfol    = l;
-		// new_pipe->old = npipe;
-		// nni_pipe_peer(new_pipe);
-		// log_info("client kick itself while keeping session!");
 	} else {
 		nni_aio_close(&p->aio_send);
 		nni_aio_close(&p->aio_recv);
@@ -1112,12 +1080,9 @@ nano_pipe_recv_cb(void *arg)
 	nano_sock  *s      = p->broker;
 	conn_param *cparam = NULL;
 	nano_ctx   *ctx;
-	nni_msg    *msg, *qos_msg = NULL;
+	nni_msg    *msg;
 	nni_aio    *aio;
-	nni_pipe   *npipe = p->pipe;
 	int         rv = 0;
-
-	bool is_sqlite = s->conf->sqlite.enable;
 
 	if ((rv = nni_aio_result(&p->aio_recv)) != 0) {
 		// unexpected disconnect, dont mind the TSAN here
@@ -1192,19 +1157,10 @@ nano_pipe_recv_cb(void *arg)
 		break;
 	case CMD_PUBACK:
 	case CMD_PUBCOMP:
+		// rid marks packet ID of resend QoS msg
 		nni_mtx_lock(&p->lk);
 		NNI_GET16(ptr, ackid);
 		p->rid = ackid + 1;
-		if (npipe->nano_qos_db != NULL)
-			if ((qos_msg = nni_qos_db_get(is_sqlite, npipe->nano_qos_db,
-					npipe->p_id, ackid)) != NULL) {
-				nni_qos_db_remove_msg(
-					is_sqlite, npipe->nano_qos_db, qos_msg);
-				nni_qos_db_remove(
-					is_sqlite, npipe->nano_qos_db, npipe->p_id, ackid);
-			} else {
-				log_warn("ACK failed! qos msg %ld not found!", ackid);
-			}
 		nni_mtx_unlock(&p->lk);
 	case CMD_CONNECT:
 	case CMD_PUBREC:
