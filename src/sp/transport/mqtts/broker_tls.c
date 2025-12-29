@@ -131,7 +131,7 @@ tlstran_pipe_close(void *arg)
 {
 	tlstran_pipe *p = arg;
 
-	if (p->npipe->cache) {
+	if (nni_atomic_get_bool(&p->npipe->cache)) {
 		nng_stream_close(p->conn);
 		return;
 	}
