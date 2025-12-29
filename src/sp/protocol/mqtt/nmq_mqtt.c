@@ -691,16 +691,14 @@ session_keeping:
 				p->pipe->nano_qos_db = NULL;
 			}
 			log_info("resuming session %d with %d", npipe->p_id, old->pipe->p_id);
-			// npipe->old = old->pipe;
-			old->pipe->old = npipe;
-			// nni_pipe_peer(npipe);
+			// move session swap work to old pipe' transport for security
+			old->pipe->tpipe = npipe;
 			nni_pipe_peer(old->pipe);
 			p->id = nni_pipe_id(npipe);
 			// set event to false so that no notification will be sent
 			p->event = false;
 			// set event of old pipe to false and discard it.
-			old->event       = false;
-			// old->pipe->cache = false;
+			old->event = false;
 			nni_id_remove(&s->cached_sessions, p->pipe->p_id);
 		}
 	} else {
