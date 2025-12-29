@@ -298,7 +298,7 @@ copyn_str(const uint8_t *src, uint32_t *pos, int *str_len, int limit)
 		*str_len = -1;
 	}
 	if (*str_len > 0) {
-		if ((dest = nng_alloc(*str_len + 1)) == NULL || (src + (*pos) == NULL)) {
+		if ((dest = nng_zalloc(*str_len + 1)) == NULL) {
 			*str_len = 0;
 			return NULL;
 		}
@@ -615,9 +615,8 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		}
 		// cparam->prop_len = (uint32_t) get_var_integer(packet + pos,
 		// 											  &len_of_var);
-		int i      = 0;
-		uint8_t  temp;
-		uint32_t result = 0;
+		int     i = 0;
+		uint8_t temp;
 
 		len_of_var = 0;
 		do {

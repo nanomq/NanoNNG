@@ -899,7 +899,7 @@ nano_pipe_close(void *arg)
 			nni_mtx_unlock(&s->lk);
 			return -1;
 		} else {
-			// What if a Unknown pipe with session keeping is closed?
+			// An Unknown pipe with session keeping shall never happen
 			log_error("A untracked pipe is closing!");
 		}
 	} else {
