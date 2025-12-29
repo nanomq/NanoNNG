@@ -135,13 +135,13 @@ struct nni_pipe {
 #endif
 
 	// NanoMQ
-	void    *conn_param;
-	bool     cache;
-	uint16_t packet_id;
-	nni_list *subinfol;    // additional info for sub
-	//	nano_qos_db stores qos msgs in 'sqlite' or 'nni_id_hash_map'
-	void    *nano_qos_db; // protected by pipe lock.
-	void    *old;
+	void     *conn_param;
+	void     *nano_qos_db; // protected by pipe lock of transport.
+						   //	nano_qos_db stores qos msgs in 'sqlite' or 'nni_id_hash_map'
+	void     *old;
+	uint16_t  packet_id;
+	nni_list *subinfol; // additional info for sub
+	nni_atomic_bool cache;
 };
 
 extern int  nni_sock_add_dialer(nni_sock *, nni_dialer *);
