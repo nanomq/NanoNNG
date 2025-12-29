@@ -2162,20 +2162,19 @@ tcptran_ep_accept(void *arg, nni_aio *aio)
 	nni_mtx_unlock(&ep->mtx);
 }
 
+// Customized NNG session/pipe peer API for MQTT Broker transport only.
 static uint16_t
 tcptran_pipe_peer(void *arg)
 {
-	nni_pipe     *npipe, *old;
+	nni_pipe     *npipe, *cpipe;
 	tcptran_pipe *p = arg;
 
 	nni_mtx_lock(&p->mtx);
-	// npipe           = p->npipe;
-	// old             = (nni_pipe *) npipe->old;
-	old  	          = p->npipe;
-	npipe             = (nni_pipe *) old->old;
+	cpipe  	          = p->npipe;
+	npipe             = (nni_pipe *) cpipe->tpipe;
 
-	subinfo *info = nni_list_first(old->subinfol);
-	subinfo *last = nni_list_last(old->subinfol);
+	subinfo *info = nni_list_first(cpipe->subinfol);
+	subinfo *last = nni_list_last(cpipe->subinfol);
 	do {
 		if (!info) {
 			log_error("got error topic!");
@@ -2204,19 +2203,19 @@ tcptran_pipe_peer(void *arg)
 		if (info == last)
 			break;
 		else
-			info = nni_list_next(old->subinfol, info);
+			info = nni_list_next(cpipe->subinfol, info);
 	} while (info != NULL);
 
 
 	// replace nano_qos_db and pid with old one.
-	npipe->packet_id = old->packet_id;
-	npipe->nano_qos_db = old->nano_qos_db;
+	npipe->packet_id = cpipe->packet_id;
+	npipe->nano_qos_db = cpipe->nano_qos_db;
 
 	// nni_atomic_set_bool(&old->p_closed, true);
 	nni_atomic_set_bool(&p->closed, true);
 	// set event of old pipe to false and discard it.
-	nni_atomic_swap_bool(&old->cache, false);
-	old->nano_qos_db = NULL;
+	nni_atomic_swap_bool(&cpipe->cache, false);
+	cpipe->nano_qos_db = NULL;
 	nni_mtx_unlock(&p->mtx);
 	return 0;
 }
