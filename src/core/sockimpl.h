@@ -137,8 +137,8 @@ struct nni_pipe {
 	// NanoMQ
 	void     *conn_param;
 	void     *nano_qos_db; // protected by pipe lock of transport.
-						   //	nano_qos_db stores qos msgs in 'sqlite' or 'nni_id_hash_map'
-	void     *old;
+						   // nano_qos_db stores qos msgs in 'sqlite' or 'nni_id_hash_map'
+	void     *tpipe;		   // Target pipe to replace
 	uint16_t  packet_id;
 	nni_list *subinfol; // additional info for sub
 	nni_atomic_bool cache;
