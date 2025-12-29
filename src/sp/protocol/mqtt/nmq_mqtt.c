@@ -700,10 +700,13 @@ session_keeping:
 				nni_qos_db_fini_id_hash(p->pipe->nano_qos_db);
 				p->pipe->nano_qos_db = NULL;
 			}
-			log_info("resuming session %d with %d", npipe->p_id, old->pipe->p_id);
 			// move session swap work to old pipe' transport for security
 			old->pipe->tpipe = npipe;
-			nni_pipe_peer(old->pipe);
+			if (nni_pipe_peer(old->pipe) != 0) {
+				log_error("Session restore failed!");
+			} else {
+				log_info("resuming session %d with %d", npipe->p_id, old->pipe->p_id);
+			}
 			p->id = nni_pipe_id(npipe);
 			// set event to false so that no notification will be sent
 			p->event = false;
