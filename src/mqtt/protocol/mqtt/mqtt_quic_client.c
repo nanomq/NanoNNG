@@ -1027,11 +1027,20 @@ static void mqtt_quic_sock_init(void *arg, nni_sock *sock)
 		.si_atomic = true,
 	};
 	nni_stat_init(&s->msg_bytes_cached, &msg_bytes_cached);
+	static const nni_stat_info msg_sqlite_cached = {
+		.si_name   = "mqtt_msg_sqlite_cached",
+		.si_desc   = "count all cached msg in sqlite",
+		.si_type   = NNG_STAT_COUNTER,
+		.si_unit   = NNG_UNIT_BYTES,
+		.si_atomic = true,
+	};
+	nni_stat_init(&s->msg_sqlite_cached, &msg_sqlite_cached);
 	nni_sock_add_stat(s->nsock, &s->mqtt_reconnect);
 	nni_sock_add_stat(s->nsock, &s->msg_resend);
 	nni_sock_add_stat(s->nsock, &s->msg_send_drop);
 	nni_sock_add_stat(s->nsock, &s->msg_recv_drop);
 	nni_sock_add_stat(s->nsock, &s->msg_bytes_cached);
+	nni_sock_add_stat(s->nsock, &s->msg_sqlite_cached);
 #endif
 }
 

@@ -1162,6 +1162,10 @@ mqtt_quictran_pipe_send_prior(mqtt_quictran_pipe *p, nni_aio *aio)
 	// *flag |= p->substreams[nni_random()%2].id;
 	// nni_aio_set_prov_data(aio, flag);
 	nng_stream_send(p->conn, aio);
+#ifdef NNG_ENABLE_STATS
+	// assume it is already sent, since we cannot access user cb.
+	nni_sock_bump_tx(p->ep->nsock, nni_msg_len(msg));
+#endif
 }
 
 static void
