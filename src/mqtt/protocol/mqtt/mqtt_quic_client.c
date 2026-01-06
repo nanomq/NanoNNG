@@ -87,7 +87,8 @@ struct mqtt_sock_s {
 	bool            multi_stream;
 	bool            qos_first;
 	bool            retry_qos_0;
-	nni_mtx         mtx; // more fine grained mutual exclusion
+	bool            connected;	 	// a stupid tmp status of network
+	nni_mtx         mtx; 			// more fine grained mutual exclusion
 	nni_atomic_bool closed;
 	nni_atomic_int  next_packet_id; // next packet id to use, shared by multiple pipes
 	nni_duration  retry;
@@ -115,6 +116,7 @@ struct mqtt_sock_s {
 	nni_stat_item msg_send_drop;
 	nni_stat_item msg_recv_drop;
 	nni_stat_item msg_bytes_cached;
+	nni_stat_item msg_sqlite_cached;
 #endif
 };
 
@@ -1150,28 +1152,6 @@ mqtt_quic_sock_set_bridge_config(
 	return NNG_EUNREACHABLE;
 }
 
-
-static int
-mqtt_quic_sock_set_cached_byte(void *arg, const void *buf, size_t sz, nni_type t)
-{
-	int len;
-	int rv;
-	mqtt_sock_t *s = arg;
-
-	if ((rv = nni_copyin_int(&len, buf, sz,
-			NANO_MAX_PACKET_SIZE_NEG, NANO_MAX_PACKET_SIZE, t)) == 0) {
-#ifdef NNG_ENABLE_STATS
-		if (len > 0)
-			nni_stat_inc(&s->msg_bytes_cached, len);
-		else if (len < 0) {
-			len = -len;
-			nni_stat_dec(&s->msg_bytes_cached, len);
-		}
-#endif
-	}
-	return (rv);
-}
-
 static int
 mqtt_quic_sock_set_sqlite_option(
     void *arg, const void *v, size_t sz, nni_opt_type t)
@@ -1191,6 +1171,54 @@ mqtt_quic_sock_set_sqlite_option(
 	NNI_ARG_UNUSED(t);
 #endif
 	return NNG_EUNREACHABLE;
+}
+
+static int
+mqtt_quic_sock_set_cached_byte(void *arg, const void *buf, size_t sz, nni_type t)
+{
+	int len;
+	int rv;
+	mqtt_sock_t *s = arg;
+
+	if ((rv = nni_copyin_int(&len, buf, sz,
+			NANO_MAX_PACKET_SIZE_NEG, NANO_MAX_PACKET_SIZE, t)) == 0) {
+#ifdef NNG_ENABLE_STATS
+		if (len > 0) {
+			nni_stat_inc(&s->msg_bytes_cached, len);
+		} else if (len < 0) {
+			len = -len;
+			nni_stat_dec(&s->msg_bytes_cached, len);
+		}
+#endif
+	}
+	return (rv);
+}
+
+static int
+mqtt_quic_sock_get_pipeid(void *arg, void *buf, size_t *szp, nni_type t)
+{
+	// For MQTT Client, only has one pipe
+	mqtt_sock_t *s = arg;
+	uint32_t     pid;
+	if (s->pipe == NULL) {
+		pid = 0xffffffff;
+		nni_copyout_u64(pid, buf, szp, t);
+		return NNG_ECLOSED;
+	}
+
+	void *npipe = s->pipe->qpipe;
+	pid = nni_pipe_id(npipe);
+
+	return (nni_copyout_u64(pid, buf, szp, t));
+}
+
+static int
+mqtt_quic_sock_get_connect_status(void *s, void *buf, size_t *szp, nni_type t)
+{
+	mqtt_sock_t *sock = s;
+	bool status = sock->connected;
+	log_trace("current status %d", status);
+	return (nni_copyout_bool(status, buf, szp, t));
 }
 
 /******************************************************************************
@@ -1300,11 +1328,11 @@ mqtt_quic_pipe_start(void *arg)
 	// p_dialer is not available when pipe init and sock init. Until pipe start.
 	nni_mtx_lock(&s->mtx);
 	nni_atomic_set_bool(&p->closed, false);
-	s->pipe       = p;
+	s->pipe            = p;
 	s->disconnect_code = SUCCESS;
-	// s->dis_prop        = NULL;
-	p->ready = true;
-	p->busy  = false;
+	p->ready           = true;
+	s->connected       = true;
+	p->busy            = false;
 
 	// deal with cached send aio
 	if ((aio = nni_list_first(&s->send_queue)) != NULL) {
@@ -1349,8 +1377,9 @@ mqtt_quic_pipe_close(void *arg)
 
 	nni_mtx_lock(&s->mtx);
 	nni_atomic_set_bool(&p->closed, true);
-	p->ready = false;
-	s->pipe  = NULL;
+	p->ready     = false;
+	s->pipe      = NULL;
+	s->connected = false;
 
 	nni_aio_close(&p->send_aio);
 	nni_aio_close(&p->recv_aio);
@@ -1668,6 +1697,19 @@ mqtt_quic_sock_set_retry_qos_0(void *arg, const void *v, size_t sz, nni_opt_type
 	return (rv);
 }
 
+static int
+mqtt_quic_sock_set_retry_interval(void *arg, const void *v, size_t sz, nni_opt_type t)
+{
+	mqtt_sock_t *s = arg;
+	nni_duration    tmp;
+	int rv;
+
+	if ((rv = nni_copyin_ms(&tmp, v, sz, t)) == 0) {
+		s->retry = tmp > 600000 ? 360000 : tmp;
+	}
+	return (rv);
+}
+
 static nni_proto_pipe_ops mqtt_quic_pipe_ops = {
 	.pipe_size  = sizeof(mqtt_pipe_t),
 	.pipe_init  = mqtt_quic_pipe_init,
@@ -1694,17 +1736,15 @@ static nni_proto_ctx_ops mqtt_quic_ctx_ops = {
 
 static nni_option mqtt_quic_sock_options[] = {
 	{
-	    .o_name = NNG_OPT_MQTT_SQLITE,
-	    .o_set  = mqtt_quic_sock_set_sqlite_option,
-	},
-	{
 	    .o_name = NNG_OPT_QUIC_ENABLE_MULTISTREAM,
 	    .o_set  = mqtt_quic_sock_set_multi_stream,
 	},
+#ifdef NNG_HAVE_MQTT_BROKER
 	{
 	    .o_name = NNG_OPT_MQTT_BRIDGE_CONF,
 	    .o_set  = mqtt_quic_sock_set_bridge_config,
 	},
+#endif
 	{
 	    .o_name = NNG_OPT_MQTT_DISCONNECT_REASON,
 	    .o_get  = mqtt_quic_sock_get_disconnect_code,
@@ -1714,8 +1754,24 @@ static nni_option mqtt_quic_sock_options[] = {
 	    .o_set  = mqtt_quic_sock_set_cached_byte,
 	},
 	{
+	    .o_name = NNG_OPT_MQTT_RETRY_INTERVAL,
+	    .o_set  = mqtt_quic_sock_set_retry_interval,
+	},
+	{
 	    .o_name = NNG_OPT_MQTT_RETRY_QOS_0,
 	    .o_set  = mqtt_quic_sock_set_retry_qos_0,
+	},
+	{
+	    .o_name = NNG_OPT_MQTT_SQLITE,
+	    .o_set  = mqtt_quic_sock_set_sqlite_option,
+	},
+	{
+	    .o_name = NNG_OPT_MQTT_CLIENT_PIPEID,
+	    .o_get  = mqtt_quic_sock_get_pipeid,
+	},
+	{
+	    .o_name = NNG_OPT_MQTT_CLIENT_CONNECT_BOOL,
+	    .o_get  = mqtt_quic_sock_get_connect_status,
 	},
 	// terminate list
 	{
