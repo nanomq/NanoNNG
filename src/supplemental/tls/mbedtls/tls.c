@@ -366,6 +366,30 @@ conn_peer_cn(nng_tls_engine_conn *ec)
 	return (rv);
 }
 
+static char *
+conn_peer_subject(nng_tls_engine_conn *ec)
+{
+	const mbedtls_x509_crt *crt = mbedtls_ssl_get_peer_cert(&ec->ctx);
+	if (!crt) {
+		return (NULL);
+	}
+
+	char buf[0x400];
+	int  len = mbedtls_x509_dn_gets(buf, sizeof(buf), &crt->subject);
+	if (len <= 0) {
+		return (NULL);
+	}
+
+	// mbedtls_x509_dn_gets writes a NUL-terminated string into buf.
+	// Allocate and copy the entire subject string.
+	char *rv = malloc((size_t) len + 1);
+	if (rv == NULL) {
+		return (NULL);
+	}
+	memcpy(rv, buf, (size_t) len + 1);
+	return (rv);
+}
+
 static char **
 conn_peer_alt_names(nng_tls_engine_conn *ec)
 {
@@ -779,6 +803,7 @@ static nng_tls_engine_conn_ops conn_ops = {
 	.verified       = conn_verified,
 	.peer_cn        = conn_peer_cn,
 	.peer_alt_names = conn_peer_alt_names,
+	.peer_subject   = conn_peer_subject,
 };
 
 static nng_tls_engine tls_engine_mbed = {

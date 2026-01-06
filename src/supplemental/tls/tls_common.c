@@ -771,6 +771,10 @@ tls_get_peer_cn(void *arg, void *buf, size_t *szp, nni_type t)
 
 	tls_conn *conn = arg;
 	nni_mtx_lock(&conn->lock);
+	if (conn->ops.peer_cn == NULL) {
+		nni_mtx_unlock(&conn->lock);
+		return (NNG_ENOTSUP);
+	}
 	*(char **) buf = conn->ops.peer_cn((void *) (conn + 1));
 	nni_mtx_unlock(&conn->lock);
 	return (0);
@@ -787,7 +791,31 @@ tls_get_peer_alt_names(void *arg, void *buf, size_t *szp, nni_type t)
 
 	tls_conn *conn = arg;
 	nni_mtx_lock(&conn->lock);
+	if (conn->ops.peer_alt_names == NULL) {
+		nni_mtx_unlock(&conn->lock);
+		return (NNG_ENOTSUP);
+	}
 	*(char ***) buf = conn->ops.peer_alt_names((void *) (conn + 1));
+	nni_mtx_unlock(&conn->lock);
+	return (0);
+}
+
+static int
+tls_get_peer_subject(void *arg, void *buf, size_t *szp, nni_type t)
+{
+	NNI_ARG_UNUSED(szp);
+
+	if (t != NNI_TYPE_STRING) {
+		return (NNG_EBADTYPE);
+	}
+
+	tls_conn *conn = arg;
+	nni_mtx_lock(&conn->lock);
+	if (conn->ops.peer_subject == NULL) {
+		nni_mtx_unlock(&conn->lock);
+		return (NNG_ENOTSUP);
+	}
+	*(char **) buf = conn->ops.peer_subject((void *) (conn + 1));
 	nni_mtx_unlock(&conn->lock);
 	return (0);
 }
@@ -804,6 +832,10 @@ static const nni_option tls_options[] = {
 	{
 	    .o_name = NNG_OPT_TLS_PEER_ALT_NAMES,
 	    .o_get  = tls_get_peer_alt_names,
+	},
+	{
+	    .o_name = NNG_OPT_TLS_PEER_SUBJECT,
+	    .o_get  = tls_get_peer_subject,
 	},
 	{
 	    .o_name = NULL,
