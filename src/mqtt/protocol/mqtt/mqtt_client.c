@@ -328,7 +328,7 @@ mqtt_sock_get_connect_status(void *s, void *buf, size_t *szp, nni_type t)
 {
 	mqtt_sock_t *sock = s;
 	bool status = sock->connected;
-	log_info("current status %d", status);
+	log_trace("current status %d", status);
 	return (nni_copyout_bool(status, buf, szp, t));
 }
 
@@ -1731,10 +1731,12 @@ static nni_option mqtt_sock_options[] = {
 	    .o_name = NNG_OPT_MQTT_SQLITE,
 	    .o_set  = mqtt_sock_set_sqlite_option,
 	},
+#ifdef NNG_HAVE_MQTT_BROKER
 	{
 	    .o_name = NNG_OPT_MQTT_BRIDGE_CONF,
 	    .o_set  = mqtt_sock_set_bridge_config,
 	},
+#endif
 	{
 	    .o_name = NNG_OPT_MQTT_BRIDGE_CACHE_BYTE,
 	    .o_set  = mqtt_sock_set_cached_byte,
