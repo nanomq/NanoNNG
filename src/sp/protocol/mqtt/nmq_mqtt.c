@@ -8,6 +8,7 @@
 //
 
 #include <string.h>
+#include <arpa/inet.h>
 
 #include "core/nng_impl.h"
 #include "core/sockimpl.h"
@@ -679,6 +680,51 @@ nano_pipe_start(void *arg)
 	} else if (addr.s_family == NNG_AF_INET6) {
 		arr = (uint8_t *) &addr.s_in6.sa_addr;
 		log_warn("IPv6 address is not supported in event msg yet");
+	}
+
+	// Get local listening port (server side) for HTTP auth %p
+	nng_sockaddr laddr;
+	if (nng_pipe_get_addr(nng_pipe, NNG_OPT_LOCADDR, &laddr) == 0 &&
+	    laddr.s_family == NNG_AF_INET) {
+		char portstr[8] = { 0 };
+		uint16_t port = ntohs(laddr.s_in.sa_port);
+		snprintf(portstr, sizeof(portstr), "%u", (unsigned) port);
+		if (p->conn_param->sockport) {
+			nng_strfree(p->conn_param->sockport);
+		}
+		p->conn_param->sockport = nng_strdup(portstr);
+	}
+
+	// Set protocol string for HTTP auth %r
+	if (p->conn_param->protocol == NULL) {
+		char *proto = nng_strdup("mqtt");
+		if (proto == NULL) {
+			log_warn("Failed to allocate memory for protocol string, skip %%r");
+		} else {
+			p->conn_param->protocol = proto;
+		}
+	}
+
+	// Get TLS client certificate common name for HTTP auth %C
+	char *peer_cn = NULL;
+	if (nng_pipe_getopt_string(
+	        nng_pipe, NNG_OPT_TLS_PEER_CN, &peer_cn) == 0 &&
+	    peer_cn != NULL) {
+		if (p->conn_param->tls_peer_cn) {
+			nng_strfree(p->conn_param->tls_peer_cn);
+		}
+		p->conn_param->tls_peer_cn = peer_cn;
+	}
+
+	// Get TLS client certificate subject for HTTP auth %d
+	char *peer_subject = NULL;
+	if (nng_pipe_getopt_string(
+	        nng_pipe, NNG_OPT_TLS_PEER_SUBJECT, &peer_subject) == 0 &&
+	    peer_subject != NULL) {
+		if (p->conn_param->tls_subject) {
+			nng_strfree(p->conn_param->tls_subject);
+		}
+		p->conn_param->tls_subject = peer_subject;
 	}
 
 	log_debug("client connected! addr [%s port [%d]\n",

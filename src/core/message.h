@@ -104,7 +104,15 @@ struct conn_param {
 	nng_time           will_delay_interval;
 	nng_time           msg_expiry_interval;
 	nni_atomic_int     refcnt;
-	char			   ip_addr_v4[16];
+	char               ip_addr_v4[16];
+	// Server-side listening port (string), used by HTTP auth %p
+	char              *sockport;
+	// Protocol string (e.g. "mqtt"), used by HTTP auth %r
+	char              *protocol;
+	// TLS client certificate common name, used by HTTP auth %C
+	char              *tls_peer_cn;
+	// TLS client certificate subject, used by HTTP auth %d
+	char              *tls_subject;
 	uint32_t           session_expiry_interval;
 	uint32_t           max_packet_size;
 	uint16_t           rx_max;
