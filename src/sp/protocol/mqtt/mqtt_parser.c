@@ -861,6 +861,10 @@ conn_param_init(conn_param *cparam)
 	cparam->assignedid      = false;
 
 	memset(cparam->ip_addr_v4, '\0', 16);
+	cparam->sockport   = NULL;
+	cparam->protocol   = NULL;
+	cparam->tls_peer_cn = NULL;
+	cparam->tls_subject = NULL;
 
 	// MQTT_v5 Variable header
 	cparam->session_expiry_interval = 0;
@@ -918,6 +922,19 @@ conn_param_free(conn_param *cparam)
 	nng_free(cparam->will_msg.body, cparam->will_msg.len);
 	nng_free(cparam->username.body, cparam->username.len);
 	nng_free(cparam->password.body, cparam->password.len);
+
+	if (cparam->sockport) {
+		nng_strfree(cparam->sockport);
+	}
+	if (cparam->protocol) {
+		nng_strfree(cparam->protocol);
+	}
+	if (cparam->tls_peer_cn) {
+		nng_strfree(cparam->tls_peer_cn);
+	}
+	if (cparam->tls_subject) {
+		nng_strfree(cparam->tls_subject);
+	}
 
 	property_free(cparam->properties);
 	property_free(cparam->will_properties);
