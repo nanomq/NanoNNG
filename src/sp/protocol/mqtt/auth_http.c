@@ -410,42 +410,6 @@ char *parse_topics(topic_queue *head)
 	return result;
 }
 
-static void
-nmq_acl_cache_reset_cb(void *k, void *v, void *arg)
-{
-	conf_auth_http *conf = arg;
-	uint64_t key = *(uint64_t *)k;
-	nng_id_remove(conf->acl_cache_map, key);
-	NNI_ARG_UNUSED(v);
-}
-
-static void
-nmq_acl_cache_reset_timer_cb(void *arg)
-{
-	conf_auth_http *conf = arg;
-	nng_mtx_lock(conf->acl_cache_mtx);
-	if (nng_id_count(conf->acl_cache_map) > 0) {
-		nng_id_map_foreach2(conf->acl_cache_map, nmq_acl_cache_reset_cb, arg);
-	}
-	nng_mtx_unlock(conf->acl_cache_mtx);
-
-	nng_sleep_aio(conf->cache_ttl * 1000, conf->acl_cache_reset_aio);
-}
-
-static int
-nmq_acl_cache_init(conf_auth_http *conf)
-{
-	int rv = 0;
-	rv = nng_id_map_alloc(&conf->acl_cache_map, 0, 0xffff, false);
-	if (rv != 0)
-		return rv;
-	rv = nng_aio_alloc(&conf->acl_cache_reset_aio, nmq_acl_cache_reset_timer_cb, conf);
-	if (rv != 0)
-		return rv;
-	nng_sleep_aio(conf->cache_ttl * 1000, conf->acl_cache_reset_aio);
-	return rv;
-}
-
 int
 nmq_auth_http_sub_pub(
     conn_param *cparam, bool is_sub, topic_queue *topics, conf_auth_http *conf)
@@ -499,19 +463,6 @@ nmq_auth_http_sub_pub(
 	acl_cache_k_str[1023] = '\0'; // Avoid StackOverFlow
 	uint32_t acl_cache_k = DJBHash(acl_cache_k_str);
 
-	// Init once
-	nng_mtx_lock(conf->acl_cache_mtx);
-	if (!conf->acl_cache_map && conf->cache_ttl > 0) {
-		int rv = nmq_acl_cache_init(conf);
-		log_info("ACL Cache was started, interval %ds, rv%d", conf->cache_ttl, rv);
-		if (rv != 0) {
-			log_error("ACL Cache init failed");
-			nng_mtx_unlock(conf->acl_cache_mtx);
-			return SUCCESS;
-		}
-	}
-	nng_mtx_unlock(conf->acl_cache_mtx);
-
 	if (conf->super_req.url) {
 		if (conf->cache_ttl > 0) {
 			nng_mtx_lock(conf->acl_cache_mtx);
@@ -533,10 +484,9 @@ nmq_auth_http_sub_pub(
 				nng_id_set(conf->acl_cache_map,
 						(uint64_t)acl_cache_k, (void*)conf);
 				nng_mtx_unlock(conf->acl_cache_mtx);
-
-				nni_free(topic_str, strlen(topic_str) + 1);
-				return SUCCESS;
 			}
+			nni_free(topic_str, strlen(topic_str) + 1);
+			return SUCCESS;
 		}
 	}
 
@@ -563,9 +513,6 @@ nmq_auth_http_sub_pub(
 				nng_id_set(conf->acl_cache_map,
 						(uint64_t)acl_cache_k, (void*)conf);
 				nng_mtx_unlock(conf->acl_cache_mtx);
-
-				nni_free(topic_str, strlen(topic_str) + 1);
-				return SUCCESS;
 			}
 		}
 	}
