@@ -140,9 +140,13 @@ tlstran_pipe_close(void *arg)
 	if (p->npipe->subinfol != NULL) {
 		while (!nni_list_empty(p->npipe->subinfol)) {
 			s = nni_list_last(p->npipe->subinfol);
-			if (s && s->topic != NULL) {
+			if (s->topic != NULL) {
 				nni_list_remove(p->npipe->subinfol, s);
-				nng_free(s->topic, strlen(s->topic));
+				nng_free(s->topic, strlen(s->topic) + 1);
+				nng_free(s, sizeof(*s));
+			} else {
+				log_error("Invalid node/topic detected in subinfol !");
+				nni_list_remove(p->npipe->subinfol, s);
 				nng_free(s, sizeof(*s));
 			}
 		}
@@ -615,7 +619,7 @@ tlstran_pipe_send_cb(void *arg)
 		// push error to protocol layer
 		nni_aio_set_msg(aio, NULL);
 		nni_msg_free(msg);
-		nni_aio_finish_error(aio, rv);
+		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
 	}
 
@@ -702,6 +706,7 @@ tlstran_pipe_recv_cb(void *arg)
 		goto recv_error;
 	}
 	if (nni_atomic_get_bool(&p->closed)) {
+		rv = NMQ_UNSEPECIFY_ERROR;
 		goto recv_error;
 	}
 	p->gotrxhead += nni_aio_count(rxaio);
@@ -1626,6 +1631,13 @@ tlstran_pipe_send(void *arg, nni_aio *aio)
 		if (nni_msg_get_type(msg) == CMD_PUBLISH) {
 			qos_pac = nni_msg_get_pub_qos(msg);
 			pld_pac = nni_msg_get_pub_topic(msg, &tlen_pac);
+		} else {
+			log_warn("Invalid msg type to a cached session");
+			nni_msg_free(msg);
+			nni_mtx_unlock(&p->mtx);
+			nni_aio_set_msg(aio, NULL);
+			nni_aio_finish(aio, 0, 0);
+			return;
 		}
 		subinfo *info = NULL;
 
@@ -2231,8 +2243,8 @@ tlstran_pipe_peer(void *arg)
 	subinfo *last = nni_list_last(cpipe->subinfol);
 	do {
 		if (!info) {
-			log_error("got error topic!");
-			continue;
+			log_error("got error topic from subinfol!");
+			break;
 		}
 		char           *topic;
 		struct subinfo *sn = NULL;

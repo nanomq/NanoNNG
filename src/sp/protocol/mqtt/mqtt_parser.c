@@ -1786,7 +1786,7 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 
 		if (0 != nmq_subinfol_add_or(ll, sn)) {
 			// already exists
-			nng_free(sn->topic, strlen(sn->topic));
+			nng_free(sn->topic, strlen(sn->topic) + 1);
 			nng_free(sn, sizeof(*sn));
 		}
 

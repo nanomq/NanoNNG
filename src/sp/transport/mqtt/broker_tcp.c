@@ -137,9 +137,13 @@ tcptran_pipe_close(void *arg)
 	if (p->npipe->subinfol != NULL) {
 		while (!nni_list_empty(p->npipe->subinfol)) {
 			s = nni_list_last(p->npipe->subinfol);
-			if (s && s->topic != NULL) {
+			if (s->topic != NULL) {
 				nni_list_remove(p->npipe->subinfol, s);
-				nng_free(s->topic, strlen(s->topic));
+				nng_free(s->topic, strlen(s->topic) + 1);
+				nng_free(s, sizeof(*s));
+			} else {
+				log_error("Invalid node/topic detected in subinfol !");
+				nni_list_remove(p->npipe->subinfol, s);
 				nng_free(s, sizeof(*s));
 			}
 		}
@@ -638,7 +642,7 @@ nmq_tcptran_pipe_send_cb(void *arg)
 		// push error to protocol layer
 		nni_aio_set_msg(aio, NULL);
 		nni_msg_free(msg);
-		nni_aio_finish_error(aio, rv);
+		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
 	}
 
@@ -2172,17 +2176,20 @@ tcptran_pipe_peer(void *arg)
 	subinfo *last = nni_list_last(cpipe->subinfol);
 	do {
 		if (!info) {
-			log_error("got error topic!");
-			continue;
+			log_error("got error topic from subinfol!");
+			break;
 		}
 		char           *topic;
 		struct subinfo *sn = NULL;
-		if ((sn = nng_zalloc(sizeof(struct subinfo))) == NULL)
+		if ((sn = nng_zalloc(sizeof(struct subinfo))) == NULL) {
+			nni_mtx_unlock(&p->mtx);
 			return (1);
+		}
 		log_debug("info topic : %s %d %d", info->topic, info->qos,
 		    strlen(info->topic));
 		if ((topic = nng_zalloc(strlen(info->topic) + 1)) == NULL) {
 			nng_free(sn, sizeof(struct subinfo));
+			nni_mtx_unlock(&p->mtx);
 			return (2);
 		}
 		strncpy(topic, info->topic, strlen(info->topic));
