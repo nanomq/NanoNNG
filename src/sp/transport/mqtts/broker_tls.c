@@ -248,8 +248,8 @@ tlstran_pipe_fini(void *arg)
 
 	nni_lmq_fini(&p->rslmq);
 	nni_mtx_fini(&p->mtx);
-	NNI_FREE_STRUCT(p);
 	log_trace(" ************ tlstran_pipe_finit [%p] ************ ", p);
+	NNI_FREE_STRUCT(p);
 }
 
 static void
@@ -2226,7 +2226,6 @@ tlstran_ep_accept(void *arg, nni_aio *aio)
 	}
 	nni_mtx_unlock(&ep->mtx);
 }
-
 
 // Customized NNG session/pipe peer API for MQTT Broker transport only.
 static uint16_t
