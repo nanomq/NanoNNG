@@ -1241,9 +1241,12 @@ print_exchange_conf(conf_exchange *exchange)
 		log_info("exchange limit_frequency %d", n->limit_frequency);
 		for (int j=0; j< (int) n->rbufs_sz; j++) {
 			ringBuffer_node *r = n->rbufs[j];
-			log_info("exchange ringbus name      %s", r->name);
-			log_info("exchange ringbus cap       %d", r->cap);
-			log_info("exchange ringbus fullOp    %d", r->fullOp);
+			log_info("exchange ringbus name              %s", r->name);
+			log_info("exchange ringbus cap               %d", r->cap);
+			log_info("exchange ringbus fullOp            %d", r->fullOp);
+			log_info("exchange ringbus stream_chunk_bytes %u", r->stream_chunk_bytes);
+			log_info("exchange ringbus stream_throttle_ms %u", r->stream_throttle_ms);
+			log_info("exchange ringbus stream_lmq_cap     %u", r->stream_lmq_cap);
 		}
 
 		if (n->parquet != NULL) {
