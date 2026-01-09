@@ -180,9 +180,10 @@ nano_pipe_timer_cb(void *arg)
 	if (nng_aio_result(&p->aio_timer) != 0) {
 		return;
 	}
-	nni_mtx_lock(&p->lk);
-	// TODO pipe lock or sock lock?
+	// lock sock first for cached_sessions
+	nano_sock *sock = p->broker;
 	if (nni_atomic_get_bool(&npipe->cache)) {
+		nni_mtx_lock(&sock->lk);
 		nng_time will_intval = p->conn_param->will_delay_interval;
 		nng_time session_int = p->conn_param->session_expiry_interval;
 		p->ka_refresh++;
@@ -211,18 +212,20 @@ nano_pipe_timer_cb(void *arg)
 				nni_qos_db_remove_unused_msg(
 				    is_sqlite, old->nano_qos_db);
 #endif
+				log_error("remove pipe %ld", p->pipe->p_id);
 				nni_id_remove(
 				    &s->cached_sessions, p->pipe->p_id);
 			}
 			p->reason_code = 0x8E;
-			nni_mtx_unlock(&p->lk);
+			nni_mtx_unlock(&sock->lk);
 			nni_pipe_close(p->pipe);
 			return;
 		}
 		nni_sleep_aio(qos_duration * 1000, &p->aio_timer);
-		nni_mtx_unlock(&p->lk);
+		nni_mtx_unlock(&sock->lk);
 		return;
 	}
+	nni_mtx_lock(&p->lk);
 	qos_backoff = p->ka_refresh * (qos_duration) *1000 -
 	    p->keepalive * qos_backoff * 1000;
 	log_trace("check pipe keepalive interval %d backoff %f, ka %d",
