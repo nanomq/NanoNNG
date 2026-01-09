@@ -354,6 +354,11 @@ out:
 int
 nmq_auth_http_connect(conn_param *cparam, conf_auth_http *conf)
 {
+	if (cparam == NULL) {
+		log_error("nmq_auth_http_connect: cparam is NULL");
+		return NOT_AUTHORIZED;
+	}
+
 	if (conf->enable == false || conf->auth_req.url == NULL) {
 		log_info("HTTP Authentication is not enabled!");
 		return SUCCESS;
@@ -364,11 +369,10 @@ nmq_auth_http_connect(conn_param *cparam, conf_auth_http *conf)
 		.username  = (const char *) conn_param_get_username(cparam),
 		.password  = (const char *) conn_param_get_password(cparam),
 		.ipaddress = (const char *) conn_param_get_ip_addr_v4(cparam),
-		// TODO incompleted fields, needs NNG core to support
-		// .protocol = ,
-		// .sockport = ,
-		// .common = ,
-		// .subject = ,
+		.protocol = cparam->protocol,
+		.sockport = cparam->sockport,
+		.common   = cparam->tls_peer_cn,
+		.subject  = cparam->tls_subject,
 	};
 
 	int status = send_request(conf, &conf->auth_req, &auth_params);
@@ -434,10 +438,10 @@ nmq_auth_http_sub_pub(
 		.ipaddress = conn_param_get_ip_addr_v4(cparam),
 		// TODO incompleted fields
 		// .mountpoint = ,
-		// .protocol = ,
-		// .sockport = ,
-		// .common = ,
-		// .subject = ,
+		.protocol = cparam->protocol,
+		.sockport = cparam->sockport,
+		.common   = cparam->tls_peer_cn,
+		.subject  = cparam->tls_subject,
 	};
 	int status = NNG_HTTP_STATUS_OK;
 
