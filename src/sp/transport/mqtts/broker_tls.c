@@ -2231,28 +2231,30 @@ tlstran_ep_accept(void *arg, nni_aio *aio)
 static uint16_t
 tlstran_pipe_peer(void *arg)
 {
+	subinfo      *info;
 	nni_pipe     *npipe, *cpipe;
 	tlstran_pipe *p = arg;
 
-	nni_mtx_lock(&p->mtx);
-	cpipe  	          = p->npipe;
-	npipe             = (nni_pipe *) cpipe->tpipe;
+	cpipe = p->npipe;                  // current pipe
+	npipe = (nni_pipe *) cpipe->tpipe; // target pipe
 
-	subinfo *info = nni_list_first(cpipe->subinfol);
-	subinfo *last = nni_list_last(cpipe->subinfol);
-	do {
+	nni_mtx_lock(&p->mtx);
+	NNI_LIST_FOREACH(cpipe->subinfol, info) {
 		if (!info) {
 			log_error("got error topic from subinfol!");
 			break;
 		}
 		char           *topic;
 		struct subinfo *sn = NULL;
-		if ((sn = nng_zalloc(sizeof(struct subinfo))) == NULL)
+		if ((sn = nng_zalloc(sizeof(struct subinfo))) == NULL) {
+			nni_mtx_unlock(&p->mtx);
 			return (1);
+		}
 		log_debug("info topic : %s %d %d", info->topic, info->qos,
 		    strlen(info->topic));
 		if ((topic = nng_zalloc(strlen(info->topic) + 1)) == NULL) {
 			nng_free(sn, sizeof(struct subinfo));
+			nni_mtx_unlock(&p->mtx);
 			return (2);
 		}
 		strncpy(topic, info->topic, strlen(info->topic));
@@ -2265,12 +2267,7 @@ tlstran_pipe_peer(void *arg)
 		sn->retain_handling = info->retain_handling;
 		NNI_LIST_NODE_INIT(&sn->node);
 		nni_list_append(npipe->subinfol, sn);
-		if (info == last)
-			break;
-		else
-			info = nni_list_next(cpipe->subinfol, info);
-	} while (info != NULL);
-
+	}
 
 	// replace nano_qos_db and pid with old one.
 	npipe->packet_id = cpipe->packet_id;
