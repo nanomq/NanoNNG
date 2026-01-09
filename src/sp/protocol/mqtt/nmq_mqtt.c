@@ -194,8 +194,8 @@ nano_pipe_timer_cb(void *arg)
 	}
 	// lock sock first for cached_sessions
 	nano_sock *sock = p->broker;
-	if (nni_atomic_get_bool(&npipe->cache)) {
-		nni_mtx_lock(&sock->lk);
+	nni_mtx_lock(&sock->lk);
+	if (npipe->cache) {
 		nng_time will_intval = p->conn_param->will_delay_interval;
 		nng_time session_int = p->conn_param->session_expiry_interval;
 		p->ka_refresh++;
