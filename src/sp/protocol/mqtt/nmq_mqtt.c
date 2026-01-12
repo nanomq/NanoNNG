@@ -237,6 +237,7 @@ nano_pipe_timer_cb(void *arg)
 		nni_mtx_unlock(&sock->lk);
 		return;
 	}
+	nni_mtx_unlock(&sock->lk);
 	nni_mtx_lock(&p->lk);
 	qos_backoff = p->ka_refresh * (qos_duration) *1000 -
 	    p->keepalive * qos_backoff * 1000;
