@@ -1115,8 +1115,8 @@ int
 nng_mqtt_free_sqlite_opt(nng_mqtt_sqlite_option *opt)
 {
 	if (opt) {
-		nni_free(opt, sizeof(nng_mqtt_sqlite_option));
 		nng_strfree(opt->bridge_name);
+		nni_free(opt, sizeof(nng_mqtt_sqlite_option));
 	}
 	return 0;
 }
