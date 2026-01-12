@@ -146,7 +146,7 @@ wstran_pipe_recv_cb(void *arg)
 {
 	ws_pipe *p = arg;
 	nni_iov  iov[2];
-	uint8_t  rv, count = 0, pos = 1;
+	uint8_t  rv, pos = 1;
 	uint64_t len = 0;
 	uint8_t *ptr;
 	nni_msg *smsg = NULL, *msg = NULL;
@@ -218,7 +218,6 @@ wstran_pipe_recv_cb(void *arg)
 		// Fixed header finished
 		index += len + pos;
 		nni_msg *new;
-		count ++;
 		if (nni_msg_alloc(&new, 0) != 0) {
 			p->err_code = SERVER_UNAVAILABLE;
 			goto skip;

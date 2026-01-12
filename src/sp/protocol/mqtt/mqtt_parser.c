@@ -616,11 +616,9 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		// cparam->prop_len = (uint32_t) get_var_integer(packet + pos,
 		// 											  &len_of_var);
 
-		uint8_t  temp, *tbuf;
-		uint32_t result = 0;
+		uint8_t  temp;
 
 		len_of_var = 0;
-		tbuf       = packet + pos;
 		int i      = 0;
 
 		do {
@@ -1294,7 +1292,6 @@ nano_pubmsg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
 		nng_msg_set_cmd_type(msg, CMD_PUBLISH);
 	}
 	nni_msg_append(msg, payload->body, payload->len);
-	uint8_t *start_char = (uint8_t*)payload->body;
 	nni_msg_set_payload_ptr(msg, ptr);
 
 	return msg;
