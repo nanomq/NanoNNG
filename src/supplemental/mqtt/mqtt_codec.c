@@ -934,6 +934,7 @@ nni_mqttv5_msg_encode_connect(nni_msg *msg)
 	nni_msg_clear(msg);
 
 	int poslength = 6;
+	NNI_ARG_UNUSED(poslength);
 	int rv = 0;
 
 	mqtt_connect_vhdr *var_header = &mqtt->var_header.connect;
