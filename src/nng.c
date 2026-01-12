@@ -2430,10 +2430,16 @@ nng_msg_get_cmd_type(nng_msg *m)
 	return nni_msg_get_cmd_type(m);
 }
 
-const uint8_t *
+const char *
 conn_param_get_clientid(conn_param *cparam)
 {
-	return (const uint8_t *) cparam->clientid.body;
+	return (const char *) cparam->clientid.body;
+}
+
+uint32_t
+conn_param_get_clientid_len(conn_param *cparam)
+{
+	return (const uint32_t) cparam->clientid.len;
 }
 
 const uint8_t *

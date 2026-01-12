@@ -603,7 +603,7 @@ typedef struct nng_mqtt_sqlite_option nng_mqtt_sqlite_option;
 NNG_DECL int  nng_mqtt_alloc_sqlite_opt(nng_mqtt_sqlite_option **);
 NNG_DECL int  nng_mqtt_free_sqlite_opt(nng_mqtt_sqlite_option *);
 NNG_DECL void nng_mqtt_set_sqlite_conf(
-    nng_mqtt_sqlite_option *sqlite, void *config);
+    nng_mqtt_sqlite_option *sqlite, void *config, const char *bridge_name);
 NNG_DECL void nng_mqtt_sqlite_db_init(nng_mqtt_sqlite_option *, const char *);
 NNG_DECL void nng_mqtt_sqlite_db_fini(nng_mqtt_sqlite_option *);
 #endif
