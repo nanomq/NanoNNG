@@ -73,9 +73,11 @@ struct nng_mqtt_sqlite_option {
 #if defined(NNG_HAVE_MQTT_BROKER)
 	char             *bridge_name; // copy bridge name here for safety
 	conf_bridge_node *bridge;
+	conf_sqlite      *sqlite_conf;
 #else
 	void *bridge;
 #endif
+	uint8_t proto_ver;
 	char   *db_name;
 	nni_lmq offline_cache;
 #if defined(NNG_SUPP_SQLITE)

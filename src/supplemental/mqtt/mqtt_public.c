@@ -1139,10 +1139,13 @@ nng_mqtt_free_sqlite_opt(nng_mqtt_sqlite_option *opt)
 }
 
 void
-nng_mqtt_set_sqlite_conf(nng_mqtt_sqlite_option *opt, void *config, const char *bridge_name)
+nng_mqtt_set_sqlite_conf(nng_mqtt_sqlite_option *opt, void *config,
+    const char *bridge_name, uint8_t pro_ver, void *conf_sqlite)
 {
-	opt->bridge = config;
-	opt->bridge_name = nng_strdup(bridge_name);
+	opt->bridge          = config;
+	opt->bridge_name     = nng_strdup(bridge_name);
+	opt->proto_ver       = pro_ver;
+	opt->sqlite_conf     = conf_sqlite;
 }
 
 int
