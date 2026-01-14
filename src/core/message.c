@@ -720,6 +720,12 @@ nni_msg_set_cmd_type(nni_msg *m, uint8_t cmd)
 	m->CMD_TYPE = cmd;
 }
 
+uint8_t
+nni_msg_get_cmd_type(nni_msg *m)
+{
+	return m->CMD_TYPE;
+}
+
 /**
  * @brief get MQTT packet flag from CMD_TYPE
  * 
