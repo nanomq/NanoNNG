@@ -1168,7 +1168,7 @@ wstran_pipe_init(void *arg, nni_pipe *pipe)
 	char    *cid;
 	uint32_t clientid_key = 0;
 	cid = (char *) conn_param_get_clientid(p->ws_param);
-	clientid_key = DJBHashn(cid, strlen(cid));
+	clientid_key = DJBHashn(cid, conn_param_get_clientid_len(p->ws_param));
 	id = nni_pipe_id(pipe);
 	rv = nni_pipe_set_pid(pipe, clientid_key);
 	log_debug("change p_id by hashing from %d to %d rv %d",
