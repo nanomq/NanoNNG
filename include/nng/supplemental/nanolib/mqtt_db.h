@@ -146,6 +146,7 @@ NNG_DECL void ***dbtree_get_tree(dbtree *db, void *(*cb)(uint32_t pipe_id));
  */
 NNG_DECL void ***dbtree_get_retain_tree(dbtree *db, void *(*cb)(nng_msg *retain));
 
+/**
  * @brief tran_close_unack_msg_cb - This function is used as callback func to
  * free all cached msg in nano_qos_db
  * @param val - nni_msg

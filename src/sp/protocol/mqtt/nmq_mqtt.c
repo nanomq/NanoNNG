@@ -370,6 +370,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	int        rv;
 	uint32_t   pipe = 0;
 	uint32_t  *pipeid;
+	uint16_t   packetid;
 
 	bool is_sqlite = s->conf->sqlite.enable;
 
