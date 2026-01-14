@@ -195,7 +195,7 @@ tlstran_pipe_init(void *arg, nni_pipe *npipe)
 
 	nni_pipe_set_conn_param(npipe, p->tcp_cparam);
 	cid = (char *) conn_param_get_clientid(p->tcp_cparam);
-	clientid_key = DJBHashn(cid, strlen(cid));
+	clientid_key = DJBHashn(cid, conn_param_get_clientid_len(p->tcp_cparam));
 	rv = nni_pipe_set_pid(npipe, clientid_key);
 	log_debug("change p_id by hashing %d rv %d", clientid_key, rv);
 	p->npipe = npipe;

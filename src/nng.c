@@ -2424,12 +2424,6 @@ nng_msg_set_cmd_type(nng_msg *m, uint8_t cmd)
 	nni_msg_set_cmd_type(m, cmd);
 }
 
-uint8_t
-nng_msg_get_cmd_type(nng_msg *m)
-{
-	return nni_msg_get_cmd_type(m);
-}
-
 const char *
 conn_param_get_clientid(conn_param *cparam)
 {
