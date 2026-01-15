@@ -1509,3 +1509,12 @@ dbtree_find_shared_clients(dbtree *db, char *topic)
 	cvector_free(ids);
 	return ret;
 }
+
+void
+tran_close_unack_msg_cb(void *key, void *val)
+{
+	NNI_ARG_UNUSED(key);
+
+	nni_msg *msg = val;
+	nni_msg_free(msg);
+}

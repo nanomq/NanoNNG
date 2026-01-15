@@ -298,7 +298,7 @@ copyn_str(const uint8_t *src, uint32_t *pos, int *str_len, int limit)
 		*str_len = -1;
 	}
 	if (*str_len > 0) {
-		if ((dest = nng_alloc(*str_len + 1)) == NULL || (src + (*pos) == NULL)) {
+		if ((dest = nng_zalloc(*str_len + 1)) == NULL) {
 			*str_len = 0;
 			return NULL;
 		}
@@ -615,12 +615,10 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		}
 		// cparam->prop_len = (uint32_t) get_var_integer(packet + pos,
 		// 											  &len_of_var);
-
-		uint8_t  temp;
+		int     i = 0;
+		uint8_t temp;
 
 		len_of_var = 0;
-		int i      = 0;
-
 		do {
 			temp             = *(packet + pos + len_of_var);
 			cparam->prop_len = cparam->prop_len +
@@ -1789,7 +1787,7 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 
 		if (0 != nmq_subinfol_add_or(ll, sn)) {
 			// already exists
-			nng_free(sn->topic, strlen(sn->topic));
+			nng_free(sn->topic, strlen(sn->topic) + 1);
 			nng_free(sn, sizeof(*sn));
 		}
 

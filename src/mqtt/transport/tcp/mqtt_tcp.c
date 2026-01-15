@@ -655,9 +655,7 @@ mqtt_tcptran_pipe_rp_send_cb(void *arg)
 	int                rv;
 	size_t             n;
 	mqtt_tcptran_pipe *p     = arg;
-	mqtt_tcptran_ep   *ep    = p->ep;
 	nni_aio           *rpaio = p->rpaio;
-
 
 	if ((rv = nni_aio_result(rpaio)) != 0) {
 		log_warn(" send aio error %s", nng_strerror(rv));

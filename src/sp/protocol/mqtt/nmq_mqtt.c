@@ -97,15 +97,6 @@ struct nano_pipe {
 	nni_atomic_bool closed;
 };
 
-void
-nmq_close_unack_msg_cb(void *key, void *val)
-{
-	NNI_ARG_UNUSED(key);
-
-	nni_msg *msg = val;
-	nni_msg_free(msg);
-}
-
 // Flush lmq and conn_param
 void
 nano_nni_lmq_flush(nni_lmq *lmq, bool cp)
@@ -195,8 +186,8 @@ nano_pipe_timer_cb(void *arg)
 	}
 	// lock sock first for cached_sessions
 	nano_sock *sock = p->broker;
-	nni_mtx_lock(&sock->lk);
-	if (npipe->cache) {
+	if (nni_atomic_get_bool(&npipe->cache)) {
+		nni_mtx_lock(&sock->lk);
 		nng_time will_intval = p->conn_param->will_delay_interval;
 		nng_time session_int = p->conn_param->session_expiry_interval;
 		p->ka_refresh++;
@@ -216,7 +207,7 @@ nano_pipe_timer_cb(void *arg)
 			old = nni_id_get(&s->cached_sessions, p->pipe->p_id);
 			if (old != NULL) {
 				old->event       = true;
-				old->pipe->cache = false;
+				nni_atomic_set_bool(&old->pipe->cache, false);
 #ifdef NNG_SUPP_SQLITE
 				nni_qos_db_remove_by_pipe(is_sqlite,
 				    old->nano_qos_db, old->pipe->p_id);
@@ -237,7 +228,6 @@ nano_pipe_timer_cb(void *arg)
 		nni_mtx_unlock(&sock->lk);
 		return;
 	}
-	nni_mtx_unlock(&sock->lk);
 	nni_mtx_lock(&p->lk);
 	qos_backoff = p->ka_refresh * (qos_duration) *1000 -
 	    p->keepalive * qos_backoff * 1000;
@@ -380,9 +370,6 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	int        rv;
 	uint32_t   pipe = 0;
 	uint32_t  *pipeid;
-	uint8_t    qos_pac = 0, qos = 0;
-	char      *pld_pac  = NULL;
-	int        tlen_pac = 0;
 	uint16_t   packetid;
 
 	bool is_sqlite = s->conf->sqlite.enable;
@@ -411,8 +398,9 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	if ((p = nni_id_get(&s->pipes, pipe)) == NULL) {
 		// pre-configured session
 		void *qos_db = NULL;
-		if (s->conf->ext_qos_db)
-			 qos_db = nng_id_get(s->conf->ext_qos_db, pipe);
+		if (s->conf->ext_qos_db) {
+			qos_db = nng_id_get(s->conf->ext_qos_db, pipe);
+		}
 		if (qos_db != NULL) {
 			if (nni_msg_get_type(msg) == CMD_PUBLISH &&
 			    nni_msg_get_pub_qos(msg) > 0) {
@@ -441,39 +429,6 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	nni_mtx_lock(&p->lk);
 	nni_mtx_unlock(&s->lk);
 
-	if (p->pipe->cache) {
-		if (nni_msg_get_type(msg) == CMD_PUBLISH) {
-			qos_pac = nni_msg_get_pub_qos(msg);
-			pld_pac = nni_msg_get_pub_topic(msg, &tlen_pac);
-		}
-		subinfo *info = NULL;
-		NNI_LIST_FOREACH(p->pipe->subinfol, info) {
-			if (!info)
-				continue;
-			if (topic_filtern(info->topic, pld_pac, tlen_pac)) {
-				qos = qos_pac > info->qos ? info->qos : qos_pac; // MIN
-				break;
-			}
-		}
-		if (qos > 0) {
-			packetid = nni_pipe_inc_packetid(p->pipe);
-			// TODO potential qos msg overwrite?
-			nni_qos_db_set(is_sqlite, p->pipe->nano_qos_db,
-			    p->pipe->p_id, packetid, msg);
-			nni_qos_db_remove_oldest(is_sqlite,
-			    p->pipe->nano_qos_db,
-			    s->conf->sqlite.disk_cache_size);
-			log_debug("msg cached for session");
-		} else {
-			// only cache QoS messages
-			log_debug("Drop msg due to qos == 0");
-			nni_msg_free(msg);
-		}
-		nni_mtx_unlock(&p->lk);
-		nni_aio_set_msg(aio, NULL);
-		return;
-	}
-
 	if (!p->busy) {
 		p->busy = true;
 		nni_aio_set_msg(&p->aio_send, msg);
@@ -486,6 +441,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	if ((rv = nni_aio_schedule(aio, nano_ctx_cancel_send, ctx)) != 0) {
 		nni_msg_free(msg);
 		nni_mtx_unlock(&p->lk);
+		nni_aio_set_msg(aio, NULL);
 		return;
 	}
 	log_debug("pipe %d occupied! resending in cb!", pipe);
@@ -596,7 +552,7 @@ static void
 nano_pipe_stop(void *arg)
 {
 	nano_pipe *p = arg;
-	if (p->pipe->cache)
+	if (nni_atomic_get_bool(&p->pipe->cache))
 		return; // your time is yet to come
 
 	log_trace(" ########## nano_pipe_stop ########## ");
@@ -614,7 +570,7 @@ nano_pipe_fini(void *arg)
 	nng_msg   *msg;
 
 	log_trace(" ########## nano_pipe_fini ########## ");
-	if (p->pipe->cache) {
+	if (nni_atomic_get_bool(&p->pipe->cache)) {
 		return; // your time is yet to come
 	}
 	nni_mtx_lock(&s->lk);
@@ -627,16 +583,7 @@ nano_pipe_fini(void *arg)
 		nni_msg_free(msg);
 	}
 
-	//Safely free the msgs in qos_db, only when nano_qos_db is not taken by new pipe
-	void *nano_qos_db = p->pipe->nano_qos_db;
-	if (p->event == true) {
-		if (!p->broker->conf->sqlite.enable && nano_qos_db != NULL) {
-			nni_qos_db_remove_all_msg(false,
-				nano_qos_db, nmq_close_unack_msg_cb);
-			nni_qos_db_fini_id_hash(nano_qos_db);
-			p->pipe->nano_qos_db = NULL;
-		}
-	} else {
+	if (!p->event) {
 		// we keep all structs in broker layer, except this conn_param
 		conn_param_free(p->conn_param);
 	}
@@ -749,34 +696,31 @@ session_keeping:
 	if (p->conn_param->clean_start == 0) {
 		old = nni_id_get(&s->cached_sessions, p->pipe->p_id);
 		if (old != NULL) {
-			// replace nano_qos_db and pid with old one.
-			p->pipe->packet_id = old->pipe->packet_id;
 			// there should be no msg in this map
-
 			if (!is_sqlite && p->pipe->nano_qos_db!= NULL) {
 				nni_qos_db_fini_id_hash(p->pipe->nano_qos_db);
 				p->pipe->nano_qos_db = NULL;
 			}
-
-			p->pipe->nano_qos_db = old->nano_qos_db;
-			log_info("resuming session %d with %d", npipe->p_id, old->pipe->p_id);
-			nni_list *l = npipe->subinfol;
-			npipe->subinfol = old->pipe->subinfol;
-			old->pipe->subinfol = l;
+			// move session swap work to old pipe' transport for security
+			old->pipe->tpipe = npipe;
+			if (nni_pipe_peer(old->pipe) != 0) {
+				log_error("Session restore failed!");
+			} else {
+				log_info("resuming session %d with %d", npipe->p_id, old->pipe->p_id);
+			}
 			p->id = nni_pipe_id(npipe);
 			// set event to false so that no notification will be sent
 			p->event = false;
 			// set event of old pipe to false and discard it.
-			old->event       = false;
-			old->pipe->cache = false;
+			old->event = false;
 			nni_id_remove(&s->cached_sessions, p->pipe->p_id);
 		}
 	} else {
 		// clean previous session
 		old = nni_id_get(&s->cached_sessions, p->pipe->p_id);
 		if (old != NULL) {
-			old->event       = true;
-			old->pipe->cache = false;
+			old->event = true;
+			nni_atomic_swap_bool(&old->pipe->cache, false);
 #ifdef NNG_SUPP_SQLITE
 			nni_qos_db_remove_by_pipe(
 			    is_sqlite, old->nano_qos_db, old->pipe->p_id);
@@ -785,8 +729,6 @@ session_keeping:
 			nni_qos_db_remove_unused_msg(
 			    is_sqlite, old->nano_qos_db);
 #endif
-			nni_qos_db_remove_all_msg(is_sqlite, old->nano_qos_db,
-			    nmq_close_unack_msg_cb);
 			nni_id_remove(&s->cached_sessions, p->pipe->p_id);
 			log_info("cleaning session %d from cache", p->pipe->p_id);
 		}
@@ -829,13 +771,14 @@ session_keeping:
 		log_warn("Invalid auth info or exceed max limits.");
 	}
 
-	// Dont need to manage id_map while enable SQLite.
+	// Recover preset sessions
 	void *qos_db = NULL;
 	if (s->conf->ext_qos_db) {
 		qos_db = nng_id_get(s->conf->ext_qos_db, p->pipe->p_id);
 		if (qos_db)
 			log_info("Restore %p preset session from %d", qos_db, p->pipe->p_id);
 	}
+	// Dont need to manage id_map while enable SQLite.
 	if (qos_db != NULL && !s->conf->sqlite.enable) {
 		// check sqlite compatibility
 		if (p->nano_qos_db != NULL)
@@ -916,7 +859,7 @@ nano_pipe_close(void *arg)
 	char      *clientid     = NULL;
 
 	log_trace(" ############## nano_pipe_close [%p] ############## ", p);
-	if (npipe->cache == true) {
+	if (nni_atomic_get_bool(&npipe->cache)) {
 		// not first time we trying to close stored session pipe
 		nni_atomic_swap_bool(&npipe->p_closed, false);
 		return -1;
@@ -931,7 +874,7 @@ nano_pipe_close(void *arg)
 		clientid = (char *) conn_param_get_clientid(p->conn_param);
 	}
 	if (clientid) {
-		nni_pipe *new_pipe;
+		nni_pipe *new_pipe = NULL;
 		if (nni_pipe_find(&new_pipe, npipe->p_id) == 0) {
 			log_debug("keep session id [%s] ", p->conn_param->clientid.body);
 			nni_pipe_rele(new_pipe);
@@ -940,15 +883,15 @@ nano_pipe_close(void *arg)
 			} else {
 				// client with session stored is kicking itself
 				log_info("A keeping Session is kicked out");
+				// also cache kicked session
+				// merging 2 pipes together in pipe start
 			}
 			log_info("session stored %d", npipe->p_id);
 			nni_id_set(&s->cached_sessions, npipe->p_id, p);
-			// set event to false avoid of sending the
-			// disconnecting msg
+			// set event to false avoid of sending the disconnecting msg
 			p->event     = false;
-			npipe->cache = true;
-			// set clean start to 1, prevent caching
-			// session twice
+			nni_atomic_set_bool(&npipe->cache, true);
+			// set clean start to 1, prevent caching session twice
 			p->conn_param->clean_start = 1;
 			nni_atomic_swap_bool(&npipe->p_closed, false);
 			if (nni_list_active(&s->recvpipes, p)) {
@@ -959,28 +902,13 @@ nano_pipe_close(void *arg)
 				nni_list_remove(&s->recvpipes, p);
 			}
 			nano_nni_lmq_flush(&p->rlmq, false);
-			nni_mtx_unlock(&s->lk);
 			nni_mtx_unlock(&p->lk);
+			nni_mtx_unlock(&s->lk);
 			return -1;
+		} else {
+			// An Unknown pipe with session keeping shall never happen
+			log_error("A untracked pipe is closing!");
 		}
-
-		// have to close & stop aio timer first, otherwise we hit null qos_db
-		nni_aio_finish_error(&p->aio_timer, NNG_ECANCELED);
-		nni_aio_close(&p->aio_timer);
-		nni_aio_close(&p->aio_send);
-		nni_aio_close(&p->aio_recv);
-		// take params from npipe to new pipe
-		new_pipe->packet_id = npipe->packet_id;
-		// there should be no msg in this map
-		if (!s->conf->sqlite.enable && new_pipe->nano_qos_db != NULL)
-			nni_qos_db_fini_id_hash(new_pipe->nano_qos_db);
-		new_pipe->nano_qos_db = npipe->nano_qos_db;
-		npipe->nano_qos_db = NULL;
-
-		nni_list *l        = new_pipe->subinfol;
-		new_pipe->subinfol = npipe->subinfol;
-		npipe->subinfol    = l;
-		log_info("client kick itself while keeping session!");
 	} else {
 		nni_aio_close(&p->aio_send);
 		nni_aio_close(&p->aio_recv);
@@ -1159,12 +1087,9 @@ nano_pipe_recv_cb(void *arg)
 	nano_sock  *s      = p->broker;
 	conn_param *cparam = NULL;
 	nano_ctx   *ctx;
-	nni_msg    *msg, *qos_msg = NULL;
+	nni_msg    *msg;
 	nni_aio    *aio;
-	nni_pipe   *npipe = p->pipe;
 	int         rv = 0;
-
-	bool is_sqlite = s->conf->sqlite.enable;
 
 	if ((rv = nni_aio_result(&p->aio_recv)) != 0) {
 		// unexpected disconnect, dont mind the TSAN here
@@ -1239,19 +1164,10 @@ nano_pipe_recv_cb(void *arg)
 		break;
 	case CMD_PUBACK:
 	case CMD_PUBCOMP:
+		// rid marks packet ID of resend QoS msg
 		nni_mtx_lock(&p->lk);
 		NNI_GET16(ptr, ackid);
 		p->rid = ackid + 1;
-		if ((qos_msg = nni_qos_db_get(is_sqlite, npipe->nano_qos_db,
-		         npipe->p_id, ackid)) != NULL) {
-			nni_qos_db_remove_msg(
-			    is_sqlite, npipe->nano_qos_db, qos_msg);
-			nni_qos_db_remove(
-			    is_sqlite, npipe->nano_qos_db, npipe->p_id, ackid);
-			log_debug("QoS msg of %ld acked id %ld",npipe->p_id, ackid);
-		} else {
-			log_warn("ACK failed! qos msg %ld not found!", ackid);
-		}
 		nni_mtx_unlock(&p->lk);
 	case CMD_CONNECT:
 	case CMD_PUBREC:
