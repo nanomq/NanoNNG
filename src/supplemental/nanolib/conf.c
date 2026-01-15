@@ -4507,6 +4507,7 @@ conf_parquet_destroy(conf_parquet *parquet)
 {
 	if (parquet) {
 		nng_strfree(parquet->dir);
+		nng_strfree(parquet->name);
 		nng_strfree(parquet->file_name_prefix);
 
 		if (parquet->encryption.enable) {
