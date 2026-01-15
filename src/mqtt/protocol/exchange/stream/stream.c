@@ -85,6 +85,15 @@ void *stream_encode(uint8_t id, void *buf)
 void *stream_cmd_parser(uint8_t id, void *buf)
 {
 	stream_node *snode = NULL;
+
+	// If input buffer is NULL, parser should return NULL directly.
+	// This avoids passing a NULL pointer down to specific cmd parsers
+	// (e.g. raw_cmd_parser) which expect a valid string and would
+	// otherwise trigger undefined behavior.
+	if (buf == NULL) {
+		return NULL;
+	}
+
 	snode = nng_id_get(stream_node_map, id);
 	if (snode == NULL) {
 		return NULL;
@@ -175,6 +184,12 @@ int stream_sys_init(void)
 {
 	int ret = 0;
 
+	// Allow stream_sys_init to be called multiple times safely.
+	// If already initialized, just return success.
+	if (stream_node_map != NULL) {
+		return 0;
+	}
+
 	ret = nng_id_map_alloc(&stream_node_map, 0, 0, false);
 	if (ret != 0) {
 		return ret;
@@ -187,8 +202,15 @@ int stream_sys_init(void)
 
 void stream_sys_fini(void)
 {
+	// Make stream_sys_fini idempotent so that double fini
+	// does not lead to double-free on the id map.
+	if (stream_node_map == NULL) {
+		return;
+	}
+
 	nng_id_map_foreach(stream_node_map, stream_node_destory);
 	nng_id_map_free(stream_node_map);
+	stream_node_map = NULL;
 
 	return;
 }
