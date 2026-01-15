@@ -27,6 +27,7 @@ NNG_DECL int nng_nmq_tcp0_open(nng_socket *);
 
 #define NMQ_OPT_MAX_CLIENTS "mqtt-max-clients-ee"
 #define NMQ_OPT_GET_CLIENTS "mqtt-get-clients-ee"
+#define NMQ_OPT_LIC_VALID "mqtt-lic-valid-ee"
 
 #define NMQ_OPT_MQTT_PIPES "mqtt-clients-pipes"
 #define NMQ_OPT_MQTT_QOS_DB "mqtt-clients-qos-db"
