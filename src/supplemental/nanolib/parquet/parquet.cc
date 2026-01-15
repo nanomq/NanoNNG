@@ -957,7 +957,7 @@ get_keys_indexes_fuzing(
 		    &repetition_level, &value, &values_read);
 		if (1 == rows_read && 1 == values_read) {
 			log_trace("read value: %lu", value);
-			if (((uint64_t) value) >= start_key) {
+			if (((uint64_t) value) >= start_key && ((uint64_t) value) <= end_key) {
 				index_vector.push_back(index++);
 				ts.push_back(value);
 				found = true;
