@@ -369,8 +369,8 @@ nmq_auth_http_connect(conn_param *cparam, conf_auth_http *conf)
 		.username  = (const char *) conn_param_get_username(cparam),
 		.password  = (const char *) conn_param_get_password(cparam),
 		.ipaddress = (const char *) conn_param_get_ip_addr_v4(cparam),
-		.protocol = cparam->protocol,
-		.sockport = cparam->sockport,
+		.protocol = cparam->pro_name.body,
+		.sockport = cparam->server_port,
 		.common   = cparam->tls_peer_cn,
 		.subject  = cparam->tls_subject,
 	};
@@ -438,8 +438,8 @@ nmq_auth_http_sub_pub(
 		.ipaddress = conn_param_get_ip_addr_v4(cparam),
 		// TODO incompleted fields
 		// .mountpoint = ,
-		.protocol = cparam->protocol,
-		.sockport = cparam->sockport,
+		.protocol = cparam->pro_name.body,
+		.sockport = cparam->server_port,
 		.common   = cparam->tls_peer_cn,
 		.subject  = cparam->tls_subject,
 	};

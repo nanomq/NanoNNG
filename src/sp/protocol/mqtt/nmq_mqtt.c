@@ -8,8 +8,8 @@
 //
 
 #include <string.h>
-#include <arpa/inet.h>
 
+#include "mqtt_api.h"
 #include "core/nng_impl.h"
 #include "core/sockimpl.h"
 #include "nng/nng.h"
@@ -669,32 +669,17 @@ nano_pipe_start(void *arg)
 		}
 		sprintf(p->conn_param->ip_addr_v4, "%d.%d.%d.%d", arr[0],
 		    arr[1], arr[2], arr[3]);
+		// Get local listening port (server side) for HTTP auth %p
+		snprintf(p->conn_param->server_port,
+		    sizeof(p->conn_param->server_port), "%u",
+		    nano_pipe_get_local_port(nng_pipe));
+
 	} else if (addr.s_family == NNG_AF_INET6) {
 		arr = (uint8_t *) &addr.s_in6.sa_addr;
-		log_warn("IPv6 address is not supported in event msg yet");
-	}
-
-	// Get local listening port (server side) for HTTP auth %p
-	nng_sockaddr laddr;
-	if (nng_pipe_get_addr(nng_pipe, NNG_OPT_LOCADDR, &laddr) == 0 &&
-	    laddr.s_family == NNG_AF_INET) {
-		char portstr[8] = { 0 };
-		uint16_t port = ntohs(laddr.s_in.sa_port);
-		snprintf(portstr, sizeof(portstr), "%u", (unsigned) port);
-		if (p->conn_param->sockport) {
-			nng_strfree(p->conn_param->sockport);
-		}
-		p->conn_param->sockport = nng_strdup(portstr);
-	}
-
-	// Set protocol string for HTTP auth %r
-	if (p->conn_param->protocol == NULL) {
-		char *proto = nng_strdup("mqtt");
-		if (proto == NULL) {
-			log_warn("Failed to allocate memory for protocol string, skip %%r");
-		} else {
-			p->conn_param->protocol = proto;
-		}
+		log_warn("IPv6 address is not supported in event msg & ACL yet");
+		snprintf(p->conn_param->server_port,
+		    sizeof(p->conn_param->server_port), "%u",
+		    nano_pipe_get_local_port6(nng_pipe));
 	}
 
 	// Get TLS client certificate common name for HTTP auth %C
