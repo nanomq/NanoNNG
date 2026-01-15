@@ -385,9 +385,11 @@ compute_and_rename_file_withMD5_CXX(const std::string &filename,
 	uint32_t    index  = file_manager.get_queue_index(topic);
 	std::string sindex = std::to_string(index);
 
+	auto node = file_manager.fetch_conf(topic);
+
 	// Step 4: Build new filename:
-	// <dir+prefix>_<topic>-<timestamp>_<md5>.parquet
-	std::string new_name = prefix + "_" + topic + "-" + timestamp + "_" +
+	// <dir+prefix>_<name>-<timestamp>_<md5>.parquet
+	std::string new_name = prefix + "_" + node->name + "-" + timestamp + "_" +
 	    sindex + "_" + md5_buffer + ".parquet";
 
 	// Step 5: Rename the file to the new name
@@ -957,7 +959,7 @@ get_keys_indexes_fuzing(
 		    &repetition_level, &value, &values_read);
 		if (1 == rows_read && 1 == values_read) {
 			log_trace("read value: %lu", value);
-			if (((uint64_t) value) >= start_key) {
+			if (((uint64_t) value) >= start_key && (uint64_t) value <= end_key) {
 				index_vector.push_back(index++);
 				ts.push_back(value);
 				found = true;

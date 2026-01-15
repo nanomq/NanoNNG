@@ -1695,6 +1695,7 @@ conf_parquet_parse_ver2(conf *config, conf_exchange_node *node, cJSON *jso)
 		// Use the default settings. One should be careful when it's free.
 		node->parquet = &config->parquet;
 	}
+	node->parquet->name = nng_strdup(node->name);
 
 	return;
 }
