@@ -416,9 +416,11 @@ compute_and_rename_file_withMD5_CXX(const std::string &filename,
 	uint32_t    index  = file_manager.get_queue_index(topic);
 	std::string sindex = std::to_string(index);
 
+	auto node = file_manager.fetch_conf(topic);
+
 	// Step 4: Build new filename:
-	// <dir+prefix>_<topic>-<timestamp>_<md5>.parquet
-	std::string new_name = prefix + "_" + topic + "-" + timestamp + "_" +
+	// <dir+prefix>_<name>-<timestamp>_<md5>.parquet
+	std::string new_name = prefix + "_" + node->name + "-" + timestamp + "_" +
 	    sindex + "_" + md5_buffer + ".parquet";
 
 	// Step 5: Rename the file to the new name
