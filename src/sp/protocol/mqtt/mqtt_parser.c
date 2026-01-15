@@ -861,8 +861,7 @@ conn_param_init(conn_param *cparam)
 	cparam->assignedid      = false;
 
 	memset(cparam->ip_addr_v4, '\0', 16);
-	cparam->sockport   = NULL;
-	cparam->protocol   = NULL;
+	memset(cparam->server_port, '\0', 8);
 	cparam->tls_peer_cn = NULL;
 	cparam->tls_subject = NULL;
 
@@ -923,12 +922,6 @@ conn_param_free(conn_param *cparam)
 	nng_free(cparam->username.body, cparam->username.len);
 	nng_free(cparam->password.body, cparam->password.len);
 
-	if (cparam->sockport) {
-		nng_strfree(cparam->sockport);
-	}
-	if (cparam->protocol) {
-		nng_strfree(cparam->protocol);
-	}
 	if (cparam->tls_peer_cn) {
 		nng_strfree(cparam->tls_peer_cn);
 	}
