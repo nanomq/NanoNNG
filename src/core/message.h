@@ -106,9 +106,7 @@ struct conn_param {
 	nni_atomic_int     refcnt;
 	char               ip_addr_v4[16];
 	// Server-side listening port (string), used by HTTP auth %p
-	char              *sockport;
-	// Protocol string (e.g. "mqtt"), used by HTTP auth %r
-	char              *protocol;
+	char               server_port[8];
 	// TLS client certificate common name, used by HTTP auth %C
 	char              *tls_peer_cn;
 	// TLS client certificate subject, used by HTTP auth %d
