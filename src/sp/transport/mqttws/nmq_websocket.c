@@ -1175,6 +1175,8 @@ wstran_pipe_init(void *arg, nni_pipe *pipe)
 			   id, clientid_key, rv);
 
 	p->qos_buf = nng_zalloc(16 + NNI_NANO_MAX_PACKET_SIZE);
+	p->npipe->subinfol = nni_zalloc(sizeof(nni_list));
+	NNI_LIST_INIT(p->npipe->subinfol, struct subinfo, node);
 	nni_lmq_init(&p->recvlmq, 1024);
 	nni_lmq_init(&p->rslmq, 1024);
 	// the size limit of qos_buf reserve 1 byte for property length
