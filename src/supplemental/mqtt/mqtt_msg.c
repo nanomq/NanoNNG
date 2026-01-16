@@ -1047,6 +1047,8 @@ nni_get_conn_param_from_msg(nni_msg *msg)
 	if ((conn_ctx = nng_alloc(sizeof(conn_param))) == NULL) {
 		return NULL;
 	}
+	conn_ctx->tls_peer_cn = NULL;
+	conn_ctx->tls_subject = NULL;
 	nni_atomic_init(&conn_ctx->refcnt);
 	nni_atomic_set(&conn_ctx->refcnt, 1);
 
