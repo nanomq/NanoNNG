@@ -1453,6 +1453,7 @@ out:
 	return NULL;
 }
 
+#ifdef NNG_SUPP_SQLITE
 void
 nni_mqtt_sqlite_db_init(nng_mqtt_sqlite_option *opt, const char *db_name)
 {
@@ -1478,3 +1479,4 @@ nni_mqtt_sqlite_db_fini(nni_mqtt_sqlite_option *sqlite_opt)
 		nni_mqtt_qos_db_close(sqlite_opt->db);
 	}
 }
+#endif

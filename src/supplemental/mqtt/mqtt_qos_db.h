@@ -148,7 +148,9 @@ extern int      nni_mqtt_qos_db_remove_all_client_offline_msg(sqlite3 *,const ch
 extern int nni_mqtt_qos_db_set_client_info(
     sqlite3 *, const char *, const char *, const char *, uint8_t);
 
+#ifdef NNG_SUPP_SQLITE
 extern void nni_mqtt_sqlite_db_init(nni_mqtt_sqlite_option *, const char *);
 extern void nni_mqtt_sqlite_db_fini(nni_mqtt_sqlite_option *);
+#endif
 
 #endif
