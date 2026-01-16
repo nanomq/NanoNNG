@@ -202,6 +202,9 @@ tcptran_pipe_init(void *arg, nni_pipe *npipe)
 	nni_lmq_init(&p->rslmq, 16);
 	p->qos_buf = nng_zalloc(16 + NNI_NANO_MAX_PACKET_SIZE);
 	p->npipe->subinfol = nni_zalloc(sizeof(nni_list));
+	if (p->npipe->subinfol == NULL) {
+		return (NNG_ENOMEM);
+	}
 	NNI_LIST_INIT(p->npipe->subinfol, struct subinfo, node);
 	log_trace(" ************ tcptran_pipe_init [%p] ************ ", p);
 	return (0);
