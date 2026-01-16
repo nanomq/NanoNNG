@@ -4378,6 +4378,21 @@ conf_auth_http_destroy(conf_auth_http *auth_http)
 	conf_auth_http_req_destroy(&auth_http->auth_req);
 	conf_auth_http_req_destroy(&auth_http->super_req);
 	conf_auth_http_req_destroy(&auth_http->acl_req);
+
+	// Release ACL cache related resources to avoid memory leaks.
+	if (auth_http->acl_cache_reset_aio != NULL) {
+		nng_aio_stop(auth_http->acl_cache_reset_aio);
+		nng_aio_free(auth_http->acl_cache_reset_aio);
+		auth_http->acl_cache_reset_aio = NULL;
+	}
+	if (auth_http->acl_cache_map != NULL) {
+		nng_id_map_free(auth_http->acl_cache_map);
+		auth_http->acl_cache_map = NULL;
+	}
+	if (auth_http->acl_cache_mtx != NULL) {
+		nng_mtx_free(auth_http->acl_cache_mtx);
+		auth_http->acl_cache_mtx = NULL;
+	}
 }
 
 static void
