@@ -3,13 +3,44 @@
 
 static void conf_auth_http_init(conf_auth_http **conf)
 {
-	*conf = nng_alloc(sizeof(conf_auth_http));
+	*conf = nng_zalloc(sizeof(conf_auth_http));
 	if (*conf == NULL) {
 		return;
 	}
-	(*conf)->enable = true;
-	(*conf)->acl_req.header_count = 0;
+
+	// Explicitly initialize key fields to avoid using uninitialized
+	// cache_ttl/acl_cache_mtx in nmq_auth_http_sub_pub during tests.
+	(*conf)->enable          = true;
+	(*conf)->timeout         = 0;
+	(*conf)->connect_timeout = 0;
+	(*conf)->pool_size       = 0;
+	(*conf)->cache_ttl       = 0;     // Ensure ACL cache branch is skipped
+	(*conf)->acl_cache_map   = NULL;
+	(*conf)->acl_cache_mtx   = NULL;  // No mutex allocated when cache_ttl is 0
+
+	(*conf)->auth_req.enable       = false;
+	(*conf)->auth_req.url          = NULL;
+	(*conf)->auth_req.method       = NULL;
 	(*conf)->auth_req.header_count = 0;
+	(*conf)->auth_req.headers      = NULL;
+	(*conf)->auth_req.param_count  = 0;
+	(*conf)->auth_req.params       = NULL;
+
+	(*conf)->super_req.enable       = false;
+	(*conf)->super_req.url          = NULL;
+	(*conf)->super_req.method       = NULL;
+	(*conf)->super_req.header_count = 0;
+	(*conf)->super_req.headers      = NULL;
+	(*conf)->super_req.param_count  = 0;
+	(*conf)->super_req.params       = NULL;
+
+	(*conf)->acl_req.enable       = false;
+	(*conf)->acl_req.url          = NULL;
+	(*conf)->acl_req.method       = NULL;
+	(*conf)->acl_req.header_count = 0;
+	(*conf)->acl_req.headers      = NULL;
+	(*conf)->acl_req.param_count  = 0;
+	(*conf)->acl_req.params       = NULL;
 
 	return;
 }
