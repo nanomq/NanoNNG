@@ -208,6 +208,8 @@ tlstran_pipe_init(void *arg, nni_pipe *npipe)
 	nni_lmq_init(&p->rslmq, 16);
 	nni_atomic_init_bool(&p->closed);
 	p->qos_buf = nng_zalloc(16 + NNI_NANO_MAX_PACKET_SIZE);
+	p->npipe->subinfol = nni_zalloc(sizeof(nni_list));
+	NNI_LIST_INIT(p->npipe->subinfol, struct subinfo, node);
 	log_trace(" ************ tlstran_pipe_init [%p] ************ ", p);
 	return (0);
 }
