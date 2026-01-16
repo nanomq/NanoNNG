@@ -142,7 +142,7 @@ extern void trantest_test_all(const char *addr);
 #endif
 
 void
-fatal(const char *msg, int rv)
+fatal_print(const char *msg, int rv)
 {
 	fprintf(stderr, "%s: %s\n", msg, nng_strerror(rv));
 }
@@ -502,17 +502,17 @@ client_connect(nng_socket *sock, nng_dialer *dialer, const char *url, uint8_t pr
 
 	if (proto_version == MQTT_PROTOCOL_VERSION_v311) {
 		if ((rv = nng_mqtt_client_open(sock)) != 0) {
-			fatal("nng_socket", rv);
+			fatal_print("nng_socket", rv);
 		}
 	}
 	else if(proto_version == MQTT_PROTOCOL_VERSION_v5){
 		if ((rv = nng_mqttv5_client_open(sock)) != 0) {
-			fatal("nng_socket", rv);
+			fatal_print("nng_socket", rv);
 		}
 	}
 
 	if ((rv = nng_dialer_create(dialer, *sock, url)) != 0) {
-		fatal("nng_dialer_create", rv);
+		fatal_print("nng_dialer_create", rv);
 	}
 
 	// create a CONNECT message
