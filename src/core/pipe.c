@@ -263,8 +263,6 @@ pipe_create(nni_pipe **pp, nni_sock *sock, nni_sp_tran *tran, void *tran_data)
 	p->packet_id = 0;
 	nni_atomic_init_bool(&p->cache);
 	nni_atomic_set_bool(&p->cache, false);
-	p->subinfol = nni_zalloc(sizeof(nni_list));
-	NNI_LIST_INIT(p->subinfol, struct subinfo, node);
 
 	nni_atomic_init_bool(&p->p_closed);
 	nni_atomic_flag_reset(&p->p_stop);
