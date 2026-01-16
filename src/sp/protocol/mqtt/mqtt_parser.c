@@ -922,9 +922,11 @@ conn_param_free(conn_param *cparam)
 
 	if (cparam->tls_peer_cn) {
 		nng_strfree(cparam->tls_peer_cn);
+		cparam->tls_peer_cn = NULL;
 	}
 	if (cparam->tls_subject) {
 		nng_strfree(cparam->tls_subject);
+		cparam->tls_subject = NULL;
 	}
 
 	property_free(cparam->properties);
