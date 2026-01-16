@@ -78,6 +78,8 @@ void test_auth_http_sub_pub(void)
 	NUTS_TRUE(conf->acl_req.mtx != NULL);
 	nng_mtx_alloc(&conf->super_req.mtx);
 	NUTS_TRUE(conf->super_req.mtx != NULL);
+	nng_mtx_alloc(&conf->acl_cache_mtx);
+	NUTS_TRUE(conf->acl_cache_mtx != NULL);
 
 	topic_queue *tq = topic_queue_init("topic1", strlen("topic1"));
 
