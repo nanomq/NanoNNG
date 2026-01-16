@@ -4378,6 +4378,7 @@ conf_auth_http_destroy(conf_auth_http *auth_http)
 	conf_auth_http_req_destroy(&auth_http->auth_req);
 	conf_auth_http_req_destroy(&auth_http->super_req);
 	conf_auth_http_req_destroy(&auth_http->acl_req);
+	nng_mtx_free(auth_http->acl_cache_mtx);
 }
 
 static void
