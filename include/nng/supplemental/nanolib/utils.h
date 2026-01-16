@@ -7,5 +7,6 @@
 
 NNG_DECL void fatal(const char *msg, ...);
 NNG_DECL void nng_fatal(const char *msg, int rv);
-
+NNG_DECL uint16_t nano_pipe_get_local_port(nng_pipe p);
+NNG_DECL uint16_t nano_pipe_get_local_port6(nng_pipe p);
 #endif

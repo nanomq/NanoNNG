@@ -9,7 +9,6 @@
 
 #include <string.h>
 
-#include "mqtt_api.h"
 #include "core/nng_impl.h"
 #include "core/sockimpl.h"
 #include "nng/nng.h"
@@ -19,6 +18,7 @@
 #include "supplemental/mqtt/mqtt_msg.h"
 #include "nng/supplemental/nanolib/conf.h"
 #include "nng/supplemental/nanolib/file.h"
+#include "nng/supplemental/nanolib/utils.h"
 #include "nng/supplemental/nanolib/hash_table.h"
 #include "nng/supplemental/nanolib/mqtt_db.h"
 #include "supplemental/mqtt/mqtt_qos_db_api.h"
