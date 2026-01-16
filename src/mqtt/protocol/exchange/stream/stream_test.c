@@ -61,7 +61,7 @@ void test_stream_sys_register(void)
 	ret = stream_sys_init();
 	NUTS_TRUE(ret == 0);
 
-	ret = stream_register("raw", RAW_STREAM_ID, NULL, NULL, NULL);
+	ret = stream_register("raw", RAW_STREAM_ID, NULL, NULL, NULL, NULL);
 	NUTS_TRUE(ret != 0);
 
 	stream_sys_fini();
