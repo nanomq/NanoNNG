@@ -109,6 +109,22 @@ compose_url(char *head, char *address)
 		}                                                             \
 	} while (0);
 
+#define hocon_read_time_ms(structure, field, key, jso)                      \
+	do {                                                                  \
+		cJSON *jso_key = cJSON_GetObjectItem(jso, key);               \
+		if (NULL == jso_key) {                                        \
+			log_debug("Config %s is not set, use default!", key); \
+			break;                                                \
+		}                                                             \
+		if (cJSON_IsString(jso_key)) {                                \
+			if (NULL != jso_key->valuestring) {                   \
+				uint64_t msec = 0;                         \
+				get_time_ms(jso_key->valuestring, &msec);     \
+				(structure)->field = msec;                 \
+			}                                                     \
+		}                                                             \
+	} while (0);
+
 #define hocon_read_size_base(structure, field, key, jso)                      \
 	do {                                                                  \
 		cJSON *jso_key = cJSON_GetObjectItem(jso, key);               \
@@ -1105,9 +1121,9 @@ conf_bridge_quic_parse_ver2(conf_bridge_node *node, cJSON *jso_bridge_node)
 	    node, qdiscon_timeout, "quic_discon_timeout", jso_bridge_node);
 	hocon_read_time_base(node, qsend_idle_timeout,
 	    "quic_send_idle_timeout", jso_bridge_node);
-	hocon_read_time_base(
+	hocon_read_time_ms(
 	    node, qinitial_rtt_ms, "quic_initial_rtt_ms", jso_bridge_node);
-	hocon_read_time_base(
+	hocon_read_time_ms(
 	    node, qmax_ack_delay_ms, "quic_max_ack_delay_ms", jso_bridge_node);
 	hocon_read_time_base(
 	    node, qconnect_timeout, "quic_handshake_timeout", jso_bridge_node);
