@@ -4096,6 +4096,27 @@ get_size(const char *str, uint64_t *size)
 }
 
 int
+get_time_ms(const char *str, uint64_t *msec)
+{
+	char     unit[3] = { 0 };
+	uint64_t ms   = 0;
+	if (2 == sscanf(str, "%lu%02s", &ms, unit)) {
+		if (0 == strncmp(unit, "ms", 2)) {
+			*msec = ms;
+			return 0;
+		} else if (unit[0] == ' ') {
+			*msec = ms;
+			return 0;
+		} else if (unit[0] == 's') {
+			*msec = 1000 * ms;
+			return 0;
+		}
+		return -2;
+	}
+	return -1;
+}
+
+int
 get_time(const char *str, uint64_t *second)
 {
 	char     unit = 0;
