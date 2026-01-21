@@ -562,7 +562,8 @@ typedef enum {
 typedef enum {
 	plain,
 	base64,
-	base62
+	base62,
+	base64_no_padding
 } hook_payload_type;
 
 struct conf_web_hook_rule {
