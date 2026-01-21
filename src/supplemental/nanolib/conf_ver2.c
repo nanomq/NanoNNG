@@ -1221,6 +1221,10 @@ conf_bridge_quic_parse_ver2(conf_bridge_node *node, cJSON *jso_bridge_node)
 	    node, qinitial_rtt_ms, "quic_initial_rtt_ms", jso_bridge_node);
 	hocon_read_time_ms(
 	    node, qmax_ack_delay_ms, "quic_max_ack_delay_ms", jso_bridge_node);
+	if (node->qmax_ack_delay_ms > 16000) {
+		node->qmax_ack_delay_ms = 16000;
+		log_warn("max ack delay ms is too large, reset to 16000ms");
+	}
 	hocon_read_time_base(
 	    node, qconnect_timeout, "quic_handshake_timeout", jso_bridge_node);
 	hocon_read_bool_base(node, quic_0rtt, "quic_0rtt", jso_bridge_node);
