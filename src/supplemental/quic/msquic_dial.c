@@ -600,8 +600,10 @@ quic_dialer_fini(nni_quic_dialer *d)
 {
 	// dialer is bound to QUIC connection
 	log_info("connection %p fini", d->qconn);
-	msquic_conn_close(d->qconn, 0);
-	msquic_conn_fini(d->qconn);
+	if (d->qconn) {
+		msquic_conn_close(d->qconn, 0);
+		msquic_conn_fini(d->qconn);
+	}
 	nni_aio_abort(d->qconaio, NNG_ECLOSED);
 	nni_aio_wait(d->qconaio);
 	nni_aio_free(d->qconaio);
@@ -1528,6 +1530,7 @@ msquic_close()
 	if (MsQuic != NULL) {
 		if (configuration != NULL) {
 			MsQuic->ConfigurationClose(configuration);
+			configuration = NULL;
 		}
 		if (registration != NULL) {
 			// This will block until all outstanding child objects
@@ -1580,7 +1583,7 @@ msquic_load_config(QUIC_SETTINGS *settings, nni_quic_dialer *d)
 	QUIC_STATUS rv = QUIC_STATUS_SUCCESS;
 	if (QUIC_FAILED(rv = MsQuic->ConfigurationOpen(registration,
 	    &quic_alpn, 1, settings, sizeof(*settings), NULL, &configuration))) {
-		log_error("ConfigurationOpen failed, 0x%x!\n", rv);
+		log_error("ConfigurationOpen failed, 0x%x! settings%p\n", rv, settings);
 		return FALSE;
 	}
 
