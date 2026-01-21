@@ -167,6 +167,10 @@ conf_update_var2(const char *fpath, const char *key1, const char *key2,
 {
 	size_t sz  = strlen(key1) + strlen(key2) + strlen(key3) + 2;
 	char * key = nni_zalloc(sz);
+	if (key == NULL) {
+		log_error("Cannot allocate memory");
+		return;
+	}
 	snprintf(key, sz, "%s%s%s", key1, key2, key3);
 	conf_update_var(fpath, key, type, var);
 	nng_free(key, sz);
@@ -245,6 +249,10 @@ conf_update2(const char *fpath, const char *key1, const char *key2,
 {
 	size_t sz  = strlen(key1) + strlen(key2) + strlen(key3) + 2;
 	char * key = nni_zalloc(sz);
+	if (key == NULL) {
+		log_error("Cannot allocate memory");
+		return;
+	}
 	snprintf(key, sz, "%s%s%s", key1, key2, key3);
 	conf_update(fpath, key, value);
 	nng_free(key, sz);
@@ -271,8 +279,19 @@ get_conf_value(char *line, size_t len, const char *key)
     }
 
 	char *prefix = nni_zalloc(len);
-	char *trim   = strtrim_head_tail(line, len);
+	if (prefix == NULL) {
+		log_error("Cannot allocate memory");
+		return NULL;
+	}
+
 	char *value  = nni_zalloc(len);
+	if (value == NULL) {
+		nni_free(prefix, len);
+		log_error("Cannot allocate memory");
+		return NULL;
+	}
+
+	char *trim   = strtrim_head_tail(line, len);
 	int   match  = sscanf(trim, "%[^=]=%[^\n]s", prefix, value);
 	char *res    = NULL;
 	nni_strfree(trim);
@@ -296,6 +315,10 @@ get_conf_value_with_prefix(
 {
 	size_t sz  = strlen(prefix) + strlen(key) + 2;
 	char * str = nni_zalloc(sz);
+	if (str == NULL) {
+		log_error("Cannot allocate memory");
+		return NULL;
+	}
 	snprintf(str, sz, "%s%s", prefix, key);
 	char *value = get_conf_value(line, len, str);
 	free(str);
@@ -311,6 +334,10 @@ get_conf_value_with_prefix2(char *line, size_t len, const char *prefix,
 	size_t sz        = prefix_sz + name_sz + strlen(key) + 2;
 
 	char *str = nni_zalloc(sz);
+	if (str == NULL) {
+		log_error("Cannot allocate memory");
+		return NULL;
+	}
 	snprintf(str, sz, "%s%s%s", prefix, name ? name : "", key ? key : "");
 	char *value = get_conf_value(line, len, str);
 	free(str);
@@ -2234,6 +2261,10 @@ conf_rule_fdb_parse(conf_rule *cr, char *path)
 	size_t    sz   = 0;
 	FILE *    fp;
 	rule_key *rk = (rule_key *) nni_zalloc(sizeof(rule_key));
+	if (rk == NULL) {
+		log_error("Cannot allocate memory");
+		return;
+	}
 	memset(rk, 0, sizeof(rule_key));
 
 	if (NULL == (fp = fopen(path, "r"))) {
@@ -3209,6 +3240,10 @@ get_bridge_group_names(const char *path, const char *prefix, size_t *count)
 
 	size_t len     = strlen(prefix) + 34;
 	char * pattern = nni_zalloc(len);
+	if (pattern == NULL) {
+		log_error("Cannot allocate memory");
+		return NULL;
+	}
 	snprintf(
 	    pattern, len, "%sbridge.mqtt.%%[^.].%%*[^=]=%%*[^\n]", prefix);
 
@@ -3457,6 +3492,10 @@ conf_bridge_content_parse(conf *nanomq_conf, conf_bridge *bridge,
 	// 1. parse sqlite config from nanomq_bridge.conf
 	size_t sz = strlen(prefix) + 15;
 	char * key = nni_zalloc(sz);
+	if (key == NULL) {
+		log_error("Cannot allocate memory");
+		return;
+	}
 	snprintf(key, sz, "%sbridge.sqlite", prefix);
 	conf_sqlite_parse(&bridge->sqlite, path, "bridge.sqlite");
 	nni_strfree(key);
@@ -4109,6 +4148,10 @@ conf_parse_http_headers(
 
 	size_t len     = strlen(key_prefix) + 23;
 	char * pattern = nni_zalloc(len);
+	if (pattern == NULL) {
+		log_error("Cannot allocate memory");
+		return NULL;
+	}
 	snprintf(pattern, len, "%s.headers.%%[^=]=%%[^\n]", key_prefix);
 
 	while (nano_getline(&line, &sz, fp) != -1) {

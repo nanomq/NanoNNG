@@ -395,6 +395,9 @@ file_rotation(FILE *fp, conf_log *config)
 
 		size_t log_name_len = strlen(config->abs_path) + 20;
 		char * log_name     = nni_zalloc(log_name_len);
+		if (log_name == NULL) {
+			return;
+		}
 		snprintf(
 		    log_name, log_name_len, "%s.%lu", config->file, index);
 		char *backup_log_path =

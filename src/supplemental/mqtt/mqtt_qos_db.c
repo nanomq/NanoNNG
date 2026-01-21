@@ -797,6 +797,10 @@ nni_mqtt_qos_db_find_retain(sqlite3 *db, const char *topic_pattern)
 
 	size_t full_sql_sz = strlen(sql) + strlen(topic_str) + 10;
 	char * full_sql    = nni_zalloc(full_sql_sz);
+	if (full_sql == NULL) {
+		log_error("Cannot allocate memory");
+		return NULL;
+	}
 	snprintf(full_sql, full_sql_sz, "%s '%s'", sql, topic_str);
 
 	sqlite3_stmt *stmt;
@@ -1270,6 +1274,10 @@ nni_mqtt_msg_serialize(nni_msg *msg, size_t *out_len, uint8_t proto_ver)
 	// time:	nni_time(uint64)
 	// aio:		address value
 	uint8_t *bytes = nng_zalloc(len);
+	if (bytes == NULL) {
+		log_error("Cannot allocate memory");
+		return NULL;
+	}
 
 	struct pos_buf buf = { .curpos = &bytes[0], .endpos = &bytes[len] };
 
@@ -1377,6 +1385,10 @@ nni_msg_serialize(nni_msg *msg, size_t *out_len)
 	// body:	body_len(uint32) + body(body_len)
 	// time:	nni_time(uint64)
 	uint8_t *bytes = nng_zalloc(len);
+	if (bytes == NULL) {
+		log_error("Cannot allocate memory");
+		return NULL;
+	}
 
 	struct pos_buf buf = { .curpos = &bytes[0], .endpos = &bytes[len] };
 

@@ -135,11 +135,23 @@ topic_parse(char *topic)
 
 	// Here we will get (cnt + 1) memory, one for NULL end
 	char **topic_queue = (char **) nni_zalloc(sizeof(char *) * (cnt + 1));
+	if (topic_queue == NULL) {
+		log_error("Cannot allocate memory");
+		return NULL;
+	}
 
 	while ((pos = strchr(b_pos, '/')) != NULL) {
 
 		len              = pos - b_pos + 1;
 		topic_queue[row] = (char *) nni_zalloc(sizeof(char) * len);
+		if (topic_queue[row] == NULL) {
+			for (int i = 0; i < row; i++) {
+				nni_strfree(topic_queue[i]);
+			}
+			nni_free(topic_queue, sizeof(char *) * (cnt + 1));
+			log_error("Cannot allocate memory");
+			return NULL;
+		}
 		memcpy(topic_queue[row], b_pos, (len - 1));
 		topic_queue[row][len - 1] = '\0';
 		b_pos                     = pos + 1;
@@ -149,6 +161,15 @@ topic_parse(char *topic)
 	len = strlen(b_pos);
 
 	topic_queue[row] = (char *) nni_zalloc(sizeof(char) * (len + 1));
+	if (topic_queue[row] == NULL) {
+		for (int i = 0; i < row; i++) {
+			nni_strfree(topic_queue[i]);
+		}
+		nni_free(topic_queue, sizeof(char *) * (cnt + 1));
+		log_error("Cannot allocate memory");
+		return NULL;
+	}
+
 	memcpy(topic_queue[row], b_pos, (len));
 	topic_queue[row][len] = '\0';
 	topic_queue[++row]    = NULL;
@@ -199,6 +220,14 @@ dbtree_get_tree(dbtree *db, void *(*cb)(uint32_t pipe_id))
 		dbtree_info **ret_line_ping = NULL;
 		for (size_t i = 0; i < cvector_size(nodes); i++) {
 			dbtree_info *vn = nni_zalloc(sizeof(dbtree_info));
+			if (vn == NULL) {
+				for (int j = 0; j < cvector_size(ret_line_ping); j++) {
+					nni_free(ret_line_ping[j], sizeof(dbtree_info));
+				}
+				cvector_free(ret_line_ping);
+				log_error("Cannot allocate memory");
+				return NULL;
+			}
 			vn->clients     = NULL;
 			if (cb) {
 				for (size_t j = 0;
@@ -228,6 +257,14 @@ dbtree_get_tree(dbtree *db, void *(*cb)(uint32_t pipe_id))
 		dbtree_info **ret_line_pang = NULL;
 		for (size_t i = 0; i < cvector_size(nodes_t); i++) {
 			dbtree_info *vn = nni_zalloc(sizeof(dbtree_info));
+			if (vn == NULL) {
+				for (int j = 0; j < cvector_size(ret_line_pang); j++) {
+					nni_free(ret_line_pang[j], sizeof(dbtree_info));
+				}
+				cvector_free(ret_line_pang);
+				log_error("Cannot allocate memory");
+				return NULL;
+			}
 			vn->clients     = NULL;
 			if (cb) {
 				for (size_t j = 0;
@@ -424,6 +461,10 @@ void
 dbtree_create(dbtree **db)
 {
 	*db = (dbtree *) nni_zalloc(sizeof(dbtree));
+	if (*db == NULL) {
+		log_error("Cannot allocate memory");
+		return;
+	}
 	memset(*db, 0, sizeof(dbtree));
 
 	dbtree_node *node = dbtree_node_new("\0");

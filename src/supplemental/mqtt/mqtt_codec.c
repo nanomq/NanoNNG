@@ -3532,6 +3532,10 @@ property *
 property_alloc(void)
 {
 	property *p = nni_zalloc(sizeof(property));
+	if (p == NULL) {
+		log_error("Cannot allocate memory");
+		return NULL;
+	}
 	p->next     = NULL;
 	return p;
 }
@@ -4420,6 +4424,10 @@ nni_mqtt_msgack_encode(nng_msg *msg, uint16_t packet_id, uint8_t reason_code,
     property *prop, uint8_t proto_ver)
 {
 	uint8_t *rbuf = nni_zalloc(2);
+	if (rbuf == NULL) {
+		log_error("Cannot allocate memory");
+		return MQTT_ERR_NOMEM;
+	}
 	NNI_PUT16(rbuf, packet_id);
 	nni_msg_clear(msg);
 	nni_msg_append(msg, rbuf, 2);

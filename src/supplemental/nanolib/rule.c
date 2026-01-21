@@ -442,6 +442,10 @@ parse_where(char *where, rule *info)
 	char *p_b = where;
 
 	info->filter = (char **) nni_zalloc(sizeof(char *) * 8);
+	if (info->filter == NULL) {
+		log_error("Cannot allocate memory");
+		return NNG_ENOMEM;
+	}
 	memset(info->filter, 0, 8 * sizeof(char *));
 
 	while ((p = nng_strcasestr(p, "and"))) {
