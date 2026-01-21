@@ -683,7 +683,7 @@ nano_pipe_start(void *arg)
 
 	// Get TLS client certificate common name for HTTP auth %C
 	char *peer_cn = NULL;
-	if (nng_pipe_getopt_string(
+	if (nng_pipe_get_string(
 	        nng_pipe, NNG_OPT_TLS_PEER_CN, &peer_cn) == 0 &&
 	    peer_cn != NULL) {
 		if (p->conn_param->tls_peer_cn) {
@@ -694,7 +694,7 @@ nano_pipe_start(void *arg)
 
 	// Get TLS client certificate subject for HTTP auth %d
 	char *peer_subject = NULL;
-	if (nng_pipe_getopt_string(
+	if (nng_pipe_get_string(
 	        nng_pipe, NNG_OPT_TLS_PEER_SUBJECT, &peer_subject) == 0 &&
 	    peer_subject != NULL) {
 		if (p->conn_param->tls_subject) {
