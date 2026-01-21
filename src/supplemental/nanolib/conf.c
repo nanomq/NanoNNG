@@ -3174,7 +3174,7 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->qidle_timeout      = 60; // Disconnect after idle
 	node->qsend_idle_timeout = 2;
 	node->qinitial_rtt_ms    = 800; // Ms
-	node->qmax_ack_delay_ms  = 100;
+	node->qmax_ack_delay_ms  = 100; // Ms
 	node->qcongestion_control = 1; // QUIC_CONGESTION_CONTROL_ALGORITHM_CUBIC
 	node->quic_0rtt          = true;
 #endif
