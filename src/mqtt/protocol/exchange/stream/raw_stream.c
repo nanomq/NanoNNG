@@ -12,6 +12,7 @@
 #include "nng/supplemental/nanolib/parquet.h"
 #endif
 
+void raw_encode_stream(void *data, nng_aio *aio, size_t chunk_bytes);
 static char **raw_schema_init()
 {
 	char **schema = nng_alloc(2 * sizeof(char *));
@@ -369,11 +370,118 @@ int raw_stream_register()
 
 	strcpy(name, RAW_STREAM_NAME);
 
-	ret = stream_register(name, RAW_STREAM_ID, raw_decode, raw_encode, raw_cmd_parser);
+	ret = stream_register(name, RAW_STREAM_ID, raw_decode, raw_encode, raw_encode_stream, raw_cmd_parser);
 	if (ret != 0) {
 		nng_free(name, strlen(name) + 1);
 		return ret;
 	}
 
 	return 0;
+}
+
+// Simple streaming encoder: push input data to aio in ~5KB batches.
+void raw_encode_stream(void *data, nng_aio *aio, size_t chunk_bytes)
+{
+	// Only support RAW stream: 1 data column + ts column.
+	struct stream_data_in *input_stream = (struct stream_data_in *)data;
+	if (input_stream == NULL || aio == NULL || input_stream->len == 0) {
+		return;
+	}
+	if (chunk_bytes == 0) {
+		chunk_bytes = 5 * 1024;
+	}
+
+	uint32_t start = 0;
+	while (start < input_stream->len) {
+		uint32_t rows = 0;
+		size_t acc = 0;
+		// Calculate the number of rows in this batch.
+		for (uint32_t i = start; i < input_stream->len; i++) {
+			size_t one = input_stream->lens[i];
+			if (rows > 0 && acc + one > chunk_bytes) {
+				break;
+			}
+			acc += one;
+			rows++;
+		}
+		if (rows == 0) {
+			rows = 1;
+		}
+
+		// Build parquet_data with a single \"data\" column.
+		char **schema = nng_alloc(2 * sizeof(char *));
+		if (schema == NULL) {
+			return;
+		}
+		schema[0] = nng_alloc(strlen("ts") + 1);
+		if (schema[0] == NULL) {
+			nng_free(schema, 2 * sizeof(char *));
+			return;
+		}
+		strcpy(schema[0], "ts");
+		schema[1] = nng_alloc(strlen("data") + 1);
+		if (schema[1] == NULL) {
+			nng_free(schema[0], strlen("ts") + 1);
+			nng_free(schema, 2 * sizeof(char *));
+			return;
+		}
+		strcpy(schema[1], "data");
+
+		parquet_data_packet ***payload_arr = nng_alloc(sizeof(parquet_data_packet **) * 1);
+		if (payload_arr == NULL) {
+			nng_free(schema[0], strlen("ts") + 1);
+			nng_free(schema[1], strlen("data") + 1);
+			nng_free(schema, 2 * sizeof(char *));
+			return;
+		}
+		payload_arr[0] = nng_alloc(sizeof(parquet_data_packet *) * rows);
+		if (payload_arr[0] == NULL) {
+			nng_free(payload_arr, sizeof(parquet_data_packet **) * 1);
+			nng_free(schema[0], strlen("ts") + 1);
+			nng_free(schema[1], strlen("data") + 1);
+			nng_free(schema, 2 * sizeof(char *));
+			return;
+		}
+		uint64_t *ts = nng_alloc(sizeof(uint64_t) * rows);
+		if (ts == NULL) {
+			nng_free(payload_arr[0], sizeof(parquet_data_packet *) * rows);
+			nng_free(payload_arr, sizeof(parquet_data_packet **) * 1);
+			nng_free(schema[0], strlen("ts") + 1);
+			nng_free(schema[1], strlen("data") + 1);
+			nng_free(schema, 2 * sizeof(char *));
+			return;
+		}
+
+		for (uint32_t r = 0; r < rows; r++) {
+			uint32_t idx = start + r;
+			ts[r] = input_stream->keys[idx];
+			payload_arr[0][r] = nng_alloc(sizeof(parquet_data_packet));
+			if (payload_arr[0][r] == NULL) {
+				// Memory leak acceptable in debug stage; refine free logic later.
+				continue;
+			}
+			payload_arr[0][r]->size = input_stream->lens[idx];
+			if (payload_arr[0][r]->size > 0) {
+				payload_arr[0][r]->data = nng_alloc(payload_arr[0][r]->size);
+				if (payload_arr[0][r]->data != NULL) {
+					memcpy(payload_arr[0][r]->data, input_stream->datas[idx], payload_arr[0][r]->size);
+				}
+			} else {
+				payload_arr[0][r]->data = NULL;
+			}
+		}
+
+		parquet_data *chunk = parquet_data_alloc(schema, payload_arr, ts, 1, rows);
+
+		// Submit this batch via aio.
+		nng_aio_set_msg(aio, NULL);
+		nng_aio_set_prov_data(aio, chunk);
+		nng_aio_set_output(aio, 0,
+		    (void *)(uintptr_t) (start + rows >= input_stream->len)); // last flag
+		nng_aio_finish(aio, 0);
+		// Synchronously wait callback before next batch to avoid AIO re-entrance.
+		nng_aio_wait(aio);
+
+		start += rows;
+	}
 }

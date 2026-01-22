@@ -1642,8 +1642,11 @@ conf_exchange_node_parse(conf_exchange_node *node, cJSON *exchange)
 		return;
 	}
 
-	rb_node->cap    = 0;
-	rb_node->fullOp = 0;
+	rb_node->cap               = 0;
+	rb_node->fullOp            = 0;
+	rb_node->stream_chunk_bytes = 0;
+	rb_node->stream_throttle_ms = 0;
+	rb_node->stream_lmq_cap     = 0;
 
 	hocon_read_str(rb_node, name, rb);
 	hocon_read_num(rb_node, cap, rb);
@@ -1651,6 +1654,9 @@ conf_exchange_node_parse(conf_exchange_node *node, cJSON *exchange)
 		log_error("exchange: ringbuffer: name/cap is exceeding limit");
 	}
 	hocon_read_num(rb_node, fullOp, rb);
+	hocon_read_num(rb_node, stream_chunk_bytes, rb);
+	hocon_read_num(rb_node, stream_throttle_ms, rb);
+	hocon_read_num(rb_node, stream_lmq_cap, rb);
 
 	if (rb_node->name == NULL || rb_node->cap == 0) {
 		log_error("exchange: ringbuffer: name/cap not found");

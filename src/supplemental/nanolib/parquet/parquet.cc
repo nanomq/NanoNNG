@@ -5,6 +5,8 @@
 #include "nng/supplemental/nanolib/log.h"
 #include "nng/supplemental/nanolib/md5.h"
 #include "nng/supplemental/nanolib/parquet.h"
+#include "nng/exchange/stream/stream.h"
+#include "nng/exchange/stream/raw_stream.h"
 #include "nng/supplemental/nanolib/queue.h"
 #include "parquet_file_manager.h"
 #include <assert.h>
@@ -16,9 +18,12 @@
 #include <string>
 #include <sys/stat.h>
 #include <thread>
+#include <chrono>
 #include <vector>
 #include <dirent.h>
 #include <regex.h>
+#include <unordered_map>
+#include <queue>
 using namespace std;
 using parquet::ConvertedType;
 using parquet::Encoding;
@@ -67,6 +72,406 @@ CircularQueue        parquet_queue;
 pthread_mutex_t      parquet_queue_mutex     = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t       parquet_queue_not_empty = PTHREAD_COND_INITIALIZER;
 
+// Streaming control: per-topic flags & worker context for streaming writes.
+struct StreamingCtrl {
+	nng_mtx *mtx;
+	bool     running;
+	bool     flush_now;
+	// Dedicated per-topic worker thread & queue for streaming parquet writes.
+	std::queue<parquet_object *> q;
+	pthread_mutex_t              q_mtx;
+	pthread_cond_t               q_cv;
+	bool                         thread_started;
+	bool                         stop;
+	pthread_t                    thread;
+
+	StreamingCtrl()
+	    : mtx(nullptr)
+	    , running(false)
+	    , flush_now(false)
+	    , thread_started(false)
+	    , stop(false)
+	{
+		nng_mtx_alloc(&mtx);
+		pthread_mutex_init(&q_mtx, NULL);
+		pthread_cond_init(&q_cv, NULL);
+	}
+	~StreamingCtrl() {
+		if (mtx) {
+			nng_mtx_free(mtx);
+		}
+		pthread_mutex_destroy(&q_mtx);
+		pthread_cond_destroy(&q_cv);
+	}
+};
+static std::unordered_map<std::string, StreamingCtrl *> g_stream_ctrl;
+static pthread_mutex_t g_stream_ctrl_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static StreamingCtrl *get_stream_ctrl(const std::string &topic)
+{
+	pthread_mutex_lock(&g_stream_ctrl_mutex);
+	auto it = g_stream_ctrl.find(topic);
+	if (it == g_stream_ctrl.end()) {
+		auto ctrl = new StreamingCtrl();
+		g_stream_ctrl.emplace(topic, ctrl);
+		pthread_mutex_unlock(&g_stream_ctrl_mutex);
+		return ctrl;
+	}
+	pthread_mutex_unlock(&g_stream_ctrl_mutex);
+	return it->second;
+}
+
+// Forward declarations for writer helpers used by per-topic streaming workers.
+int  parquet_write_tmp(parquet_object *elem);
+int  parquet_write(parquet_object *elem);
+
+// Dedicated worker thread for a single streaming topic. It consumes
+// parquet_object tasks from the per-topic queue and performs the actual
+// write (streaming or non-streaming).
+static void *
+parquet_stream_worker(void *arg)
+{
+	StreamingCtrl *ctrl = (StreamingCtrl *) arg;
+
+	for (;;) {
+		pthread_mutex_lock(&ctrl->q_mtx);
+		while (ctrl->q.empty() && !ctrl->stop) {
+			pthread_cond_wait(&ctrl->q_cv, &ctrl->q_mtx);
+		}
+		if (ctrl->stop && ctrl->q.empty()) {
+			pthread_mutex_unlock(&ctrl->q_mtx);
+			break;
+		}
+		parquet_object *ele = ctrl->q.front();
+		ctrl->q.pop();
+		pthread_mutex_unlock(&ctrl->q_mtx);
+
+		if (ele == nullptr) {
+			continue;
+		}
+
+		// For streaming tmp writes WRITE_TEMP_RAW we reuse parquet_write_tmp(),
+		// which internally dispatches to parquet_write_streaming().
+		if (ele->type == WRITE_TEMP_RAW) {
+			parquet_write_tmp(ele);
+		} else {
+			// Fallback for non-streaming tasks if ever enqueued here.
+			switch (ele->type) {
+			case WRITE_RAW:
+			case WRITE_CAN:
+				parquet_write(ele);
+				break;
+			default:
+				parquet_object_free(ele);
+				break;
+			}
+		}
+	}
+
+	return NULL;
+}
+
+// Enqueue a streaming parquet_object into the per-topic worker queue,
+// starting the worker thread on first use. This gives each topic/stream
+// its own dedicated thread processing its streaming writes sequentially.
+static int
+parquet_stream_enqueue(parquet_object *elem)
+{
+	if (elem == nullptr || elem->topic == nullptr) {
+		return -1;
+	}
+
+	StreamingCtrl *ctrl = get_stream_ctrl(std::string(elem->topic));
+	if (ctrl == nullptr) {
+		return -1;
+	}
+
+	bool need_start = false;
+	pthread_mutex_lock(&ctrl->q_mtx);
+	if (!ctrl->thread_started) {
+		ctrl->thread_started = true;
+		need_start           = true;
+	}
+	// Push task into this topic's queue.
+	ctrl->q.push(elem);
+	pthread_cond_signal(&ctrl->q_cv);
+	pthread_mutex_unlock(&ctrl->q_mtx);
+
+	// Create the worker thread lazily on first enqueue.
+	if (need_start) {
+		int ret = pthread_create(
+		    &ctrl->thread, NULL, parquet_stream_worker, ctrl);
+		if (ret != 0) {
+			log_error(
+			    "Failed to create parquet stream thread for topic %s",
+			    elem->topic);
+			// Fallback: perform streaming write synchronously here.
+			parquet_write_tmp(elem);
+			return -1;
+		}
+		pthread_detach(ctrl->thread);
+	}
+
+	return 0;
+}
+
+static void parquet_stream_release_ctrl(StreamingCtrl *ctrl)
+{
+	if (ctrl == nullptr || ctrl->mtx == nullptr) {
+		return;
+	}
+	nng_mtx_lock(ctrl->mtx);
+	// End the current streaming write cycle, clear the accelerate flag.
+	if (ctrl->running || ctrl->flush_now) {
+		log_info("parquet stream: release ctrl, running=%d flush_now=%d",
+		    (int) ctrl->running, (int) ctrl->flush_now);
+	}
+	ctrl->running   = false;
+	ctrl->flush_now = false;
+	nng_mtx_unlock(ctrl->mtx);
+}
+
+// Helper API for external modules: ask streaming writer of a topic to finish
+// as soon as possible by setting flush_now flag.
+void
+parquet_stream_force_flush(const char *topic)
+{
+	if (topic == nullptr) {
+		return;
+	}
+	StreamingCtrl *ctrl = get_stream_ctrl(std::string(topic));
+	if (ctrl == nullptr || ctrl->mtx == nullptr) {
+		return;
+	}
+	nng_mtx_lock(ctrl->mtx);
+	// If there is already a force_flush request pending (flush_now still true),
+	// don't set it again to avoid unnecessary repetition.
+	if (!ctrl->flush_now) {
+		log_info("parquet stream: force_flush requested for topic %s",
+		    topic);
+		ctrl->flush_now = true;
+	} else {
+		log_info("parquet stream: force_flush for topic %s ignored, "
+		          "already pending",
+		    topic);
+	}
+	nng_mtx_unlock(ctrl->mtx);
+}
+
+// Forward declarations for helpers defined elsewhere in this file
+static shared_ptr<GroupNode> setup_schema(char **schema, uint32_t schema_col);
+shared_ptr<parquet::FileEncryptionProperties> parquet_set_encryption(conf_parquet *conf);
+static char *get_file_name(conf_parquet *conf, uint64_t key_start, uint64_t key_end);
+char *compute_and_rename_file_withMD5(const char *filename, const conf_parquet *conf, const char *topic);
+void update_parquet_file_ranges(conf_parquet *conf, parquet_object *elem, parquet_file_range *range);
+
+// Streaming writer context (multi-column)
+struct streaming_ctx {
+	shared_ptr<parquet::ParquetFileWriter> file_writer;
+	uint32_t                               col_num; // data columns count (exclude ts)
+	bool                                   inited;
+	uint64_t                               first_ts;
+	uint64_t                               last_ts;
+	uint32_t                               total_rows;
+	size_t                                  total_bytes;
+	size_t                                  written_bytes;
+	uint64_t                                budget_ms;
+	std::chrono::steady_clock::time_point   t0;
+	conf_parquet                           *conf;
+	char                                   *tmp_name;
+	StreamingCtrl                          *ctrl;
+	// sync
+	nng_aio                                *aio;
+	nng_mtx                                *mtx;
+	nng_cv                                 *cv;
+	bool                                    done;
+	int                                     status;
+};
+
+static int parquet_stream_open(streaming_ctx *ctx, parquet_data *first_chunk)
+{
+	shared_ptr<GroupNode> schema = setup_schema(first_chunk->schema, first_chunk->col_len);
+	parquet::WriterProperties::Builder builder;
+	builder.compression(static_cast<arrow::Compression::type>(ctx->conf->comp_type));
+	if (ctx->conf->encryption.enable) {
+		shared_ptr<parquet::FileEncryptionProperties> enc;
+		enc = parquet_set_encryption(ctx->conf);
+		builder.encryption(enc);
+	}
+	shared_ptr<parquet::WriterProperties> props = builder.build();
+	using FileClass = arrow::io::FileOutputStream;
+	shared_ptr<FileClass> out_file;
+	PARQUET_ASSIGN_OR_THROW(out_file, FileClass::Open(ctx->tmp_name));
+	ctx->file_writer = parquet::ParquetFileWriter::Open(out_file, schema, props);
+	ctx->col_num     = (first_chunk->col_len > 0) ? (first_chunk->col_len - 1) : 0;
+	ctx->inited = true;
+	ctx->t0 = std::chrono::steady_clock::now();
+	return 0;
+}
+
+static inline void parquet_stream_write_ts(streaming_ctx *ctx, parquet_data *chunk, parquet::Int64Writer *iw)
+{
+	for (uint32_t r = 0; r < chunk->row_len; r++) {
+		int16_t def = 1;
+		int64_t ts = (int64_t) chunk->ts[r];
+		iw->WriteBatch(1, &def, nullptr, &ts);
+	}
+	if (ctx->total_rows == 0 && chunk->row_len > 0) ctx->first_ts = chunk->ts[0];
+	if (chunk->row_len > 0) ctx->last_ts = chunk->ts[chunk->row_len - 1];
+	ctx->total_rows += chunk->row_len;
+}
+
+// Write a single data column. Do NOT keep ColumnWriter pointers across columns:
+// RowGroupSerializer::NextColumn may close/free the previous ColumnWriter, which
+// would cause use-after-free if reused.
+static inline size_t parquet_stream_write_one_column(
+    parquet_data *chunk, parquet::ByteArrayWriter *writer, uint32_t col_idx)
+{
+	size_t batch_bytes = 0;
+	for (uint32_t r = 0; r < chunk->row_len; r++) {
+		if (chunk->payload_arr[col_idx][r] == NULL ||
+		    chunk->payload_arr[col_idx][r]->size == 0) {
+			int16_t def0 = 0;
+			writer->WriteBatch(1, &def0, nullptr, nullptr);
+		} else {
+			int16_t          def = 1;
+			parquet::ByteArray v;
+			v.ptr = chunk->payload_arr[col_idx][r]->data;
+			v.len = chunk->payload_arr[col_idx][r]->size;
+			writer->WriteBatch(1, &def, nullptr, &v);
+			batch_bytes += chunk->payload_arr[col_idx][r]->size;
+		}
+	}
+	return batch_bytes;
+}
+
+// Default streaming parameters (can be overridden via configuration).
+// Max payload bytes per streaming chunk.
+static size_t   g_stream_chunk_bytes  = (size_t) (500 * 1024); // 500KB
+// Sleep interval between row groups when streaming, in milliseconds.
+static uint32_t g_stream_throttle_ms  = 200;
+
+extern "C" void
+parquet_stream_set_chunk_bytes(size_t bytes)
+{
+	if (bytes > 0) {
+		g_stream_chunk_bytes = bytes;
+	}
+}
+
+extern "C" void
+parquet_stream_set_throttle_ms(uint32_t ms)
+{
+	// 0 means no throttle
+	g_stream_throttle_ms = ms;
+}
+
+static inline void
+parquet_stream_throttle(streaming_ctx *ctx)
+{
+	bool skip_throttle = false;
+	if (ctx->ctrl) {
+		nng_mtx_lock(ctx->ctrl->mtx);
+		skip_throttle = ctx->ctrl->flush_now;
+		nng_mtx_unlock(ctx->ctrl->mtx);
+	}
+	if (!skip_throttle && g_stream_throttle_ms > 0) {
+		nng_msleep((int) g_stream_throttle_ms);
+	}
+}
+
+static void parquet_stream_aio_cb(void *arg)
+{
+	streaming_ctx *ctx = (streaming_ctx *) arg;
+	nng_aio *aio = ctx->aio;
+	parquet_data *chunk = (parquet_data *) nng_aio_get_prov_data(aio);
+	bool is_last = (bool)(uintptr_t) nng_aio_get_output(aio, 0);
+	int result = nng_aio_result(aio);
+	if (result != 0) {
+		if (chunk != NULL) {
+			parquet_data_free(chunk);
+		}
+		nng_mtx_lock(ctx->mtx);
+		ctx->status = result;
+		ctx->done   = true;
+		nng_cv_wake(ctx->cv);
+		nng_mtx_unlock(ctx->mtx);
+		return;
+	}
+	if (chunk != NULL) {
+		if (!ctx->inited) {
+			(void) parquet_stream_open(ctx, chunk);
+		}
+		parquet::RowGroupWriter *rg = ctx->file_writer->AppendRowGroup();
+		// First write the ts column, then fetch and write each data column.
+		// Note: RowGroupSerializer::NextColumn automatically closes/frees the
+		// previous ColumnWriter when a new one is requested, so we MUST NOT
+		// keep ColumnWriter pointers across columns, otherwise use-after-free
+		// will occur.
+		parquet::Int64Writer *iw =
+		    static_cast<parquet::Int64Writer *>(rg->NextColumn());
+		parquet_stream_write_ts(ctx, chunk, iw);
+		if (iw) {
+			iw->Close();
+		}
+
+		// For each data column, fetch a ByteArrayWriter, write this column and
+		// close it immediately to avoid holding stale pointers across columns.
+		for (uint32_t c = 0; c < ctx->col_num; c++) {
+			parquet::ByteArrayWriter *writer =
+			    static_cast<parquet::ByteArrayWriter *>(rg->NextColumn());
+			if (writer == nullptr) {
+				continue;
+			}
+			ctx->written_bytes += parquet_stream_write_one_column(
+			    chunk, writer, c);
+			writer->Close();
+		}
+
+		parquet_stream_throttle(ctx);
+		rg->Close();
+
+		parquet_stream_throttle(ctx);
+		parquet_data_free(chunk);
+	}
+	if (is_last) {
+		nng_mtx_lock(ctx->mtx);
+		ctx->done = true;
+		nng_cv_wake(ctx->cv);
+		nng_mtx_unlock(ctx->mtx);
+	}
+}
+
+static int parquet_stream_finalize(streaming_ctx *ctx, parquet_object *elem)
+{
+	if (ctx->file_writer) ctx->file_writer->Close();
+	char *final_name = get_file_name(ctx->conf, ctx->first_ts, ctx->last_ts);
+	if (final_name == NULL) {
+		parquet_object_free(elem);
+		free(ctx->tmp_name);
+		return -1;
+	}
+	if (rename(ctx->tmp_name, final_name) != 0) {
+		log_error("Failed to rename tmp %s to %s errno: %d", ctx->tmp_name, final_name, errno);
+		free(final_name);
+		final_name = ctx->tmp_name;
+	} else {
+		free(ctx->tmp_name);
+	}
+	char *md5_file_name = compute_and_rename_file_withMD5(final_name, ctx->conf, elem->topic);
+	if (md5_file_name == nullptr) {
+		parquet_object_free(elem);
+		return -1;
+	}
+	parquet_file_range *range = parquet_file_range_alloc(
+		0, ctx->total_rows > 0 ? (ctx->total_rows - 1) : 0, md5_file_name);
+	update_parquet_file_ranges(ctx->conf, elem, range);
+	pthread_mutex_lock(&parquet_queue_mutex);
+	file_manager.update_queue(elem->topic, md5_file_name);
+	pthread_mutex_unlock(&parquet_queue_mutex);
+	return 0;
+}
+
 static char *
 get_file_name(conf_parquet
  *conf, uint64_t key_start, uint64_t key_end)
@@ -104,10 +509,9 @@ gen_random(const int len)
 }
 
 static char *
-get_random_file_name(char *prefix, uint64_t key_start, uint64_t key_end)
+get_random_file_name(const char *dir, char *prefix, uint64_t key_start, uint64_t key_end)
 {
 	char *file_name = NULL;
-	char  dir[]     = "/tmp";
 
 	file_name = (char *) malloc(strlen(prefix) + strlen(dir) +
 	    UINT64_MAX_DIGITS + UINT64_MAX_DIGITS + 16);
@@ -264,6 +668,25 @@ parquet_write_batch_async(parquet_object *elem)
 		return -1;
 	}
 
+	// Streaming path: hand off to per-topic worker thread so that each
+	// topic/stream has its own dedicated writer thread.
+	if (elem->type == WRITE_TEMP_RAW) {
+		if (elem->topic) {
+			// If a new streaming task arrives while previous is still
+			// running, set flush_now so the current streaming writer
+			// will try to finish as soon as possible.
+			StreamingCtrl *ctrl = get_stream_ctrl(elem->topic);
+			nng_mtx_lock(ctrl->mtx);
+			if (ctrl->running) {
+				ctrl->flush_now = true;
+			}
+			nng_mtx_unlock(ctrl->mtx);
+		}
+		return parquet_stream_enqueue(elem);
+	}
+
+	// Non-streaming path: use global parquet_queue and single worker
+	// thread (see parquet_write_launcher/parquet_write_loop_v2).
 	log_debug("WAIT_FOR_AVAILABLE");
 	WAIT_FOR_AVAILABLE
 	log_debug("WAIT_FOR parquet_queue_mutex");
@@ -290,19 +713,8 @@ parquet_write_batch_tmp_async(parquet_object *elem)
 	}
 
 	elem->type = WRITE_TEMP_RAW;
-	log_debug("WAIT_FOR_AVAILABLE");
-	WAIT_FOR_AVAILABLE
-	log_debug("WAIT_FOR parquet_queue_mutex");
-	pthread_mutex_lock(&parquet_queue_mutex);
-	if (IS_EMPTY(parquet_queue)) {
-		pthread_cond_broadcast(&parquet_queue_not_empty);
-	}
-	ENQUEUE(parquet_queue, elem);
-	log_debug("enqueue element.");
-
-	pthread_mutex_unlock(&parquet_queue_mutex);
-
-	return 0;
+	// Reuse the same streaming async path as parquet_write_batch_async.
+	return parquet_write_batch_async(elem);
 }
 
 shared_ptr<parquet::FileEncryptionProperties>
@@ -390,17 +802,40 @@ compute_and_rename_file_withMD5_CXX(const std::string &filename,
 	std::string new_name = prefix + "_" + topic + "-" + timestamp + "_" +
 	    sindex + "_" + md5_buffer + ".parquet";
 
-	// Step 5: Rename the file to the new name
+	// Step 5: Rename the file to the new name (fallback to copy if cross-device)
 	log_info(
 	    "Trying to rename %s to %s", filename.c_str(), new_name.c_str());
 	if (rename(filename.c_str(), new_name.c_str()) != 0) {
+		int err = errno;
 		log_error("Failed to rename file %s to %s errno: %d",
-		    filename.c_str(), new_name.c_str(), errno);
-		if (remove(filename.c_str()) != 0) {
-			log_error("Failed to remove file %s errno: %d",
-			    filename.c_str(), errno);
+		    filename.c_str(), new_name.c_str(), err);
+		if (err == EXDEV || err == EEXIST) {
+			std::ifstream src(filename, std::ios::binary);
+			std::ofstream dst(new_name, std::ios::binary | std::ios::trunc);
+			if (src && dst) {
+				dst << src.rdbuf();
+				dst.flush();
+				src.close();
+				dst.close();
+				if (remove(filename.c_str()) != 0) {
+					log_error("Failed to remove temp file %s errno: %d",
+					    filename.c_str(), errno);
+				}
+			} else {
+				log_error("Copy file failed from %s to %s", filename.c_str(), new_name.c_str());
+				if (remove(filename.c_str()) != 0) {
+					log_error("Failed to remove file %s errno: %d",
+					    filename.c_str(), errno);
+				}
+				return {};
+			}
+		} else {
+			if (remove(filename.c_str()) != 0) {
+				log_error("Failed to remove file %s errno: %d",
+				    filename.c_str(), errno);
+			}
+			return {};
 		}
-		return {};
 	}
 
 	return new_name;
@@ -519,6 +954,132 @@ parquet_write_core(conf_parquet *conf, char *filename,
 	return 0;
 }
 
+static int
+parquet_write_streaming(parquet_object *elem)
+{
+	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
+	if (conf->enable == false) {
+		log_error("Parquet %s is not ready or not launch!", elem->topic);
+		return -1;
+	}
+
+	parquet_stream_in *sin = (parquet_stream_in *) elem->aio_arg;
+	if (sin == nullptr || sin->magic != PARQUET_STREAM_IN_MAGIC || sin->sdata == nullptr) {
+		log_error("streaming cbdata invalid");
+		parquet_object_free(elem);
+		return -1;
+	}
+
+	// Mark this topic streaming as running and observe flush-now flag if set later
+	StreamingCtrl *ctrl = get_stream_ctrl(elem->topic);
+	nng_mtx_lock(ctrl->mtx);
+	ctrl->running = true;
+	nng_mtx_unlock(ctrl->mtx);
+
+	// Create a temporary filename under /tmp (avoid cross-device rename issues).
+	string prefix  = gen_random(6);
+	prefix         = "nanomq_stream_" + prefix;
+	char *tmp_name = get_random_file_name(conf->dir, (char *) prefix.c_str(), 0, 0);
+	if (tmp_name == NULL) {
+		log_error("Failed to get temp file name");
+		parquet_stream_release_ctrl(ctrl);
+		parquet_object_free(elem);
+		return -1;
+	}
+
+	try {
+		streaming_ctx ctx;
+		ctx.file_writer = nullptr;
+		ctx.col_num = 0;
+		ctx.inited = false;
+		ctx.first_ts = 0;
+		ctx.last_ts = 0;
+		ctx.total_rows = 0;
+		ctx.total_bytes = 0;
+		ctx.written_bytes = 0;
+		ctx.budget_ms = 0;
+		ctx.t0 = std::chrono::steady_clock::now();
+		ctx.conf = conf;
+		ctx.tmp_name = tmp_name;
+		ctx.ctrl = ctrl;
+		ctx.aio = NULL;
+		ctx.mtx = NULL;
+		ctx.cv = NULL;
+		ctx.done = false;
+		ctx.status = 0;
+
+		nng_mtx_alloc(&ctx.mtx);
+		nng_cv_alloc(&ctx.cv, ctx.mtx);
+
+		// callback moved to parquet_stream_aio_cb
+		// Pre-calculate total bytes across all columns for throttling.
+		if (sin && sin->sdata && sin->sdata->lens) {
+			for (uint32_t i = 0; i < sin->sdata->len; ++i) {
+				ctx.total_bytes += sin->sdata->lens[i];
+			}
+		}
+		// run streaming
+		nng_aio *laio = NULL;
+		nng_aio_alloc(&laio, parquet_stream_aio_cb, &ctx);
+		ctx.aio = laio;
+		int encode_ret = stream_encode_stream(
+		    sin->stream_id, sin->sdata, laio, g_stream_chunk_bytes);
+		if (encode_ret != 0) {
+			nng_aio_free(laio);
+			nng_cv_free(ctx.cv);
+			nng_mtx_free(ctx.mtx);
+			if (ctx.tmp_name) {
+				free(ctx.tmp_name);
+				ctx.tmp_name = NULL;
+				tmp_name = NULL;
+			}
+			parquet_stream_release_ctrl(ctrl);
+			parquet_object_free(elem);
+			return encode_ret;
+		}
+		nng_mtx_lock(ctx.mtx);
+		while (!ctx.done) {
+			nng_cv_wait(ctx.cv);
+		}
+		nng_mtx_unlock(ctx.mtx);
+		nng_aio_free(laio);
+		nng_cv_free(ctx.cv);
+		nng_mtx_free(ctx.mtx);
+
+		if (ctx.status != 0) {
+			if (ctx.file_writer) ctx.file_writer->Close();
+			if (ctx.tmp_name) {
+				remove(ctx.tmp_name);
+				free(ctx.tmp_name);
+				ctx.tmp_name = NULL;
+			}
+			parquet_stream_release_ctrl(ctrl);
+			parquet_object_free(elem);
+			return ctx.status;
+		}
+
+		if (parquet_stream_finalize(&ctx, elem) != 0) {
+			parquet_stream_release_ctrl(ctrl);
+			return -1;
+		}
+
+		parquet_stream_release_ctrl(ctrl);
+
+		parquet_object_free(elem);
+		return 0;
+	} catch (const exception &e) {
+		log_error("streaming tmp write exception: %s", e.what());
+		if (tmp_name) {
+			remove(tmp_name);
+			free(tmp_name);
+			tmp_name = NULL;
+		}
+		parquet_stream_release_ctrl(ctrl);
+		parquet_object_free(elem);
+		return -1;
+	}
+}
+
 int
 parquet_write_tmp(parquet_object *elem)
 {
@@ -529,6 +1090,12 @@ parquet_write_tmp(parquet_object *elem)
 		return -1;
 	}
 
+	// Streaming write: when data is NULL and aio_arg is provided.
+	if (elem->data == nullptr && elem->aio != nullptr) {
+		return parquet_write_streaming(elem);
+	}
+
+	// Non-streaming (legacy) write path.
 	char    **schema_arr = elem->data->schema;
 	uint32_t  col_len    = elem->data->col_len;
 	uint32_t  row_len    = elem->data->row_len;
@@ -546,7 +1113,7 @@ parquet_write_tmp(parquet_object *elem)
 	string prefix  = gen_random(6);
 	prefix         = "nanomq" + prefix;
 	char *filename = get_random_file_name(
-	    prefix.data(), ts_arr[0], ts_arr[row_len - 1]);
+	    conf->dir, prefix.data(), ts_arr[0], ts_arr[row_len - 1]);
 	if (filename == NULL) {
 		log_error("Failed to get file name");
 		parquet_object_free(elem);
