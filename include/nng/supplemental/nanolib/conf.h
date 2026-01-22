@@ -454,6 +454,38 @@ struct conf_preset_session {
 };
 
 typedef struct conf_preset_session conf_preset_session;
+
+struct conf_raft_node {
+	char *address;
+	char *host;
+	uint16_t port;
+	uint16_t leader_election_timeout;
+	nng_dialer *raft_node_dialer;
+	nng_aio **raft_node_aio;
+};
+
+typedef struct conf_raft_node conf_raft_node;
+
+struct conf_raft_conn {
+	uint32_t max_replication_packet_size;
+	uint16_t max_election_packet_size;
+};
+
+typedef struct conf_raft_conn conf_raft_conn;
+
+struct conf_raft {
+	size_t raft_group_count;
+	uint16_t majority_quorum_count;
+	conf_raft_conn raft_packets;
+	conf_tcp raft_tcp;
+	conf_raft_node **raft_group;
+	bool leader_status;
+	uint16_t raft_broadcast_backoff;
+	uint16_t raft_retry_frequency;
+};
+
+typedef struct conf_raft conf_raft;
+
 typedef struct {
 	char *zmq_sub_url;
 	char *zmq_pub_url;
@@ -627,6 +659,7 @@ struct conf {
 	bool       daemon;
 	bool       ipc_internal;
 	bool       bridge_mode;				// global switch of bridging for hot update
+	bool 	   raft_mode;
 
 	conf_tcp_list        tcp_list;
 	conf_tls_list        tls_list;
@@ -637,6 +670,7 @@ struct conf {
 	conf_preset_session  pre_sessions;
 	conf_bridge          bridge;		//standard MQTT
 	conf_bridge          aws_bridge;	// AWS IoT Core
+	conf_raft            raft;
 	conf_exchange        exchange;
 	conf_parquet         parquet;
 	conf_blf             blf;
