@@ -604,6 +604,12 @@ quic_dialer_fini(nni_quic_dialer *d)
 		msquic_conn_close(d->qconn, 0);
 		msquic_conn_fini(d->qconn);
 	}
+	if (d->ca)
+		nng_free(d->ca, 0);
+	if (d->key)
+		nng_free(d->key, 0);
+	if (d->cacert)
+		nng_free(d->cacert, 0);
 	nni_aio_abort(d->qconaio, NNG_ECLOSED);
 	nni_aio_wait(d->qconaio);
 	nni_aio_free(d->qconaio);
