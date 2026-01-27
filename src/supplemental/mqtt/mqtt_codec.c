@@ -3738,7 +3738,7 @@ property_parse(struct pos_buf *buf, property *prop, uint8_t prop_id,
 			if (read_utf8_str(buf, &str) != 0)
 				log_warn("Property decode error: Not UTF-8!");
 			else
-				mqtt_buf_dup(&prop->data.p_value.binary, &str);
+				mqtt_buf_dup(&prop->data.p_value.str, &str);
 		} else {
 			read_utf8_str(buf, &prop->data.p_value.str);
 		}
