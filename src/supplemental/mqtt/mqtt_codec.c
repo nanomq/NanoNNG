@@ -4051,16 +4051,21 @@ decode_buf_properties(uint8_t *packet, uint32_t packet_len, uint32_t *pos,
 	list            = property_alloc();
 	/* Check properties appearance time */
 	// TODO
-
 	while (buf.curpos < buf.endpos) {
 		if (0 != read_byte(&buf, &prop_id)) {
 			property_free(list);
-			break;
+			list = NULL;
+			goto out;
 		}
 		property *         cur_prop = NULL;
 		property_type_enum type     = property_get_value_type(prop_id);
 		cur_prop =
 		    property_parse(&buf, cur_prop, prop_id, type, copy_value);
+		if (cur_prop == NULL) {
+			property_free(list);
+			list = NULL;
+			goto out;
+		}
 		property_append(list, cur_prop);
 	}
 
