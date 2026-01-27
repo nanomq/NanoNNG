@@ -496,7 +496,7 @@ conn_param_set_property(conn_param *cparam, property *prop)
 
 	prop_data = property_get_value(prop, AUTHENTICATION_DATA);
 	if (prop_data) {
-		cparam->auth_method = &prop_data->p_value.binary;
+		cparam->auth_data = &prop_data->p_value.binary;
 	}
 
 	prop_data = property_get_value(prop, USER_PROPERTY);
