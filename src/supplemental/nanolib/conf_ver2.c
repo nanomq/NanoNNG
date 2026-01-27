@@ -1495,7 +1495,7 @@ void
 conf_bridge_node_parse_cipher_password(conf_bridge_node *node, const char *commonkey)
 {
 	// --- bridge password ---
-	if (node->password_encrypted && node->password) {
+	if (node->password_encrypted && node->password && strlen(node->password) > 0) {
 		char * password = node->password;
 		size_t cipher_sz;
 		char * cipher = nng_alloc(sizeof(char) * strlen(password));
