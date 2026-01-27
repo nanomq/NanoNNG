@@ -1176,6 +1176,12 @@ conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 	conf_tls *bridge_node_tls = &(node->tls);
 
 	conf_tls_parse_ver2_base(bridge_node_tls, jso_tls);
+#if defined(SUPP_QUIC)
+	if (node->address && strlen(node->address) > 9) {
+		if (0 == strncmp("mqtt-quic", node->address, 9))
+			bridge_node_tls->enable = true;
+	}
+#endif
 
 	cJSON    *jso_tcp         = hocon_get_obj("tcp", jso_connector);
 	conf_tcp *bridge_node_tcp = &(node->tcp);
