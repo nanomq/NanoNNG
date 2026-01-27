@@ -3211,10 +3211,10 @@ conf_bridge_node_init(conf_bridge_node *node)
 
 #if defined(SUPP_QUIC)
 	node->multi_stream       = false;
-	node->qkeepalive         = 30;
+	node->qkeepalive         = 120;
 	node->qconnect_timeout   = 20; // HandshakeIdleTimeoutMs of QUIC
 	node->qdiscon_timeout    = 20; // DisconnectTimeoutMs
-	node->qidle_timeout      = 60; // Disconnect after idle
+	node->qidle_timeout      = 120; // Disconnect after idle
 	node->qsend_idle_timeout = 2;
 	node->qinitial_rtt_ms    = 800; // Ms
 	node->qmax_ack_delay_ms  = 100; // Ms
