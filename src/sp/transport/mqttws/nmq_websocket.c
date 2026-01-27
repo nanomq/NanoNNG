@@ -14,6 +14,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <limits.h>
 
 #include "core/nng_impl.h"
 #include "core/sockimpl.h"
@@ -31,6 +32,41 @@
 
 typedef struct ws_listener ws_listener;
 typedef struct ws_pipe     ws_pipe;
+
+// Safe parser for MQTT Remaining Length (variable byte integer).
+// `pos` is the offset where Remaining Length starts (usually 1).
+// On success, returns 0. If more bytes are needed, sets *need_more = true and
+// returns 0 without reading out-of-bounds. On malformed varint, returns NNG_EMSGSIZE.
+static int
+nmq_parse_remaining_length(const uint8_t *buf, size_t avail, uint8_t *pos,
+    uint64_t *len, bool *need_more)
+{
+	uint64_t result     = 0;
+	uint32_t multiplier = 1;
+	uint8_t  p          = *pos;
+
+	*need_more = false;
+	*len       = 0;
+
+	// MQTT Remaining Length uses up to 4 bytes.
+	for (int i = 0; i < 4; i++) {
+		if ((size_t) p >= avail) {
+			*need_more = true;
+			return 0;
+		}
+		uint8_t encoded = buf[p++];
+		result += (uint64_t) (encoded & 0x7f) * multiplier;
+		if ((encoded & 0x80) == 0) {
+			*pos = p;
+			*len = result;
+			return 0;
+		}
+		multiplier *= 128;
+	}
+
+	// More than 4 bytes means malformed Remaining Length.
+	return NNG_EMSGSIZE;
+}
 
 struct ws_listener {
 	uint16_t             peer; // remote protocol
@@ -150,6 +186,8 @@ wstran_pipe_recv_cb(void *arg)
 	nni_iov  iov[2];
 	uint8_t  rv, pos = 1;
 	uint64_t len = 0;
+	bool     need_more = false;
+	bool     keep_tmp  = false;
 	uint8_t *ptr;
 	nni_msg *smsg = NULL, *msg = NULL;
 	nni_msg **msg_vec = NULL;
@@ -191,8 +229,14 @@ wstran_pipe_recv_cb(void *arg)
 		if (p->gotrxhead == 1) {
 			goto recv;
 		}
-		len = get_var_integer(ptr, &pos);
-		if (*(ptr + pos - 1) > 0x7f) {
+		pos = 1;
+		need_more = false;
+		len = 0;
+		rv = nmq_parse_remaining_length(ptr, p->gotrxhead, &pos, &len, &need_more);
+		if (rv != 0) {
+			goto reset;
+		}
+		if (need_more) {
 			// continue to next byte of remaining length
 			if (p->gotrxhead >= NNI_NANO_MAX_HEADER_SIZE) {
 				// length error
@@ -200,11 +244,19 @@ wstran_pipe_recv_cb(void *arg)
 				goto reset;
 			}
 			goto recv;
-		} else {
-			// Fixed header finished
-			p->wantrxhead = len + pos;
-			nni_msg_set_cmd_type(p->tmp_msg, *ptr & 0xf0);
 		}
+		// Fixed header finished; sanity check size and overflow before storing.
+		if (len > (uint64_t) p->conf->max_packet_size) {
+			rv = NNG_EMSGSIZE;
+			p->err_code = NMQ_PACKET_TOO_LARGE;
+			goto reset;
+		}
+		if (len > (uint64_t) SIZE_MAX - (size_t) pos) {
+			rv = NNG_EMSGSIZE;
+			goto reset;
+		}
+		p->wantrxhead = (size_t) len + (size_t) pos;
+		nni_msg_set_cmd_type(p->tmp_msg, *ptr & 0xf0);
 	}
 	if (p->wantrxhead > p->gotrxhead)
 		goto recv;
@@ -213,19 +265,50 @@ wstran_pipe_recv_cb(void *arg)
 		goto done;
 	}
 
-	size_t index = 0;
-	pos = 1;
-	while (p->gotrxhead > index) {
-		len = get_var_integer(ptr, &pos);
-		// Fixed header finished
-		index += len + pos;
+	// Parse as many complete MQTT packets as possible from tmp_msg without
+	// trusting Remaining Length blindly (prevents OOB reads).
+	size_t  index    = 0;
+	uint8_t *baseptr = ptr;
+	while (index < p->gotrxhead) {
+		size_t avail = p->gotrxhead - index;
+		if (avail < 2) {
+			// Need at least 1 byte fixed header + 1 byte Remaining Length.
+			break;
+		}
+		pos = 1;
+		need_more = false;
+		len = 0;
+		rv = nmq_parse_remaining_length(baseptr + index, avail, &pos, &len, &need_more);
+		if (rv != 0) {
+			log_error("Malformed Remaining Length!");
+			goto reset;
+		}
+		if (need_more) {
+			// Wait for more bytes of Remaining Length.
+			break;
+		}
+		if (len > (uint64_t) p->conf->max_packet_size) {
+			rv = NNG_EMSGSIZE;
+			p->err_code = NMQ_PACKET_TOO_LARGE;
+			goto reset;
+		}
+		if (len > (uint64_t) SIZE_MAX - (size_t) pos) {
+			rv = NNG_EMSGSIZE;
+			goto reset;
+		}
+		size_t pkt_len = (size_t) len + (size_t) pos;
+		if (pkt_len > avail) {
+			// Packet not fully received yet.
+			break;
+		}
+
 		nni_msg *new;
 		if (nni_msg_alloc(&new, 0) != 0) {
 			p->err_code = SERVER_UNAVAILABLE;
 			goto skip;
 		}
-		// parse fixed header
-		ws_msg_adaptor(ptr, new);
+		// parse fixed header (safe because pkt_len bytes are present)
+		ws_msg_adaptor(baseptr + index, new);
 		nni_msg_set_conn_param(new, p->ws_param);
 		if (smsg == NULL) {
 			smsg = new;
@@ -233,15 +316,31 @@ wstran_pipe_recv_cb(void *arg)
 			nni_lmq_put(&p->recvlmq, new);
 		}
 		cvector_push_back(msg_vec, new);
-		ptr = ptr + len + pos;
-		pos = 1;
+		index += pkt_len;
 	}
-	if (p->gotrxhead < index) {
-		log_error("Decoding error!");
-		goto skip;
-	} else if (p->gotrxhead == index) {
-		goto done;
+
+	// If we didn't decode any complete packet, wait for more bytes.
+	if (index == 0) {
+		goto recv;
 	}
+
+	// Keep any leftover bytes (partial next packet) in tmp_msg for the next recv.
+	if (index < p->gotrxhead) {
+		nni_msg *left = NULL;
+		if ((rv = nni_msg_alloc(&left, 0)) != 0) {
+			goto reset;
+		}
+		(void) nni_msg_append(left, baseptr + index, p->gotrxhead - index);
+		nni_msg_free(p->tmp_msg);
+		p->tmp_msg   = left;
+		p->gotrxhead = p->gotrxhead - index;
+		p->wantrxhead = 0;
+		keep_tmp = true;
+	} else {
+		// Fully consumed current buffer; done() will free tmp_msg later.
+		keep_tmp = false;
+	}
+	goto done;
 recv:
 	nni_msg_free(msg);
 	msg = NULL;
@@ -265,7 +364,10 @@ done:
 		p->err_code = NMQ_PACKET_TOO_LARGE;
 		goto skip;
 	}
-	p->gotrxhead  = 0;
+	// If we preserved leftover bytes for next recv, do not reset/clear tmp_msg.
+	if (!keep_tmp) {
+		p->gotrxhead = 0;
+	}
 	p->wantrxhead = 0;
 	if (nni_msg_cmd_type(p->tmp_msg) == CMD_CONNECT) {
 		// end of nego
@@ -299,8 +401,10 @@ done:
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
-	nni_msg_free(p->tmp_msg);
-	p->tmp_msg = NULL;
+	if (!keep_tmp) {
+		nni_msg_free(p->tmp_msg);
+		p->tmp_msg = NULL;
+	}
 	if (p->ws_param == NULL) {
 		log_warn("Malformed Packet!");
 		goto reset;
