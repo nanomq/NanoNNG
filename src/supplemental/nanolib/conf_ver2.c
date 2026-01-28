@@ -1756,7 +1756,19 @@ conf_parquet_parse_default_ver2(conf *config, cJSON *jso)
 static void
 conf_exchange_parse_ver2(conf *config, cJSON *jso)
 {
-	cJSON *node_array = hocon_get_obj("exchange_client", jso);
+	// Compat: allow using "flow" in config file while keeping internal
+	// semantics as "exchange". Support both old and new keys:
+	// - exchange_client  <-> flow_client
+	// - exchange         <-> flow
+	//
+	// Precedence: prefer "flow_*" when both exist.
+	cJSON *node_array = hocon_get_obj("flow_client", jso);
+	if (node_array == NULL) {
+		node_array = hocon_get_obj("exchange_client", jso);
+	}
+	if (node_array == NULL) {
+		return;
+	}
 	cJSON *node_item  = NULL;
 	// TODO, skip duplicated node name
 	cJSON_ArrayForEach(node_item, node_array)
@@ -1772,10 +1784,19 @@ conf_exchange_parse_ver2(conf *config, cJSON *jso)
 		node->exchange_url       = NULL;
 		node->limit_frequency    = 5;
 
-		hocon_read_str(node, exchange_url, node_item);
+		// Compat: allow "flow_url" as alias of "exchange_url".
+		// Prefer flow_url when it's present and non-empty; otherwise fallback to
+		// exchange_url for backward compatibility.
+		hocon_read_str_base(node, exchange_url, "flow_url", node_item);
+		if (node->exchange_url == NULL || node->exchange_url[0] == '\0') {
+			hocon_read_str(node, exchange_url, node_item);
+		}
 		hocon_read_num(node, limit_frequency, node_item);
 
-		cJSON *exchange = hocon_get_obj("exchange", node_item);
+		cJSON *exchange = hocon_get_obj("flow", node_item);
+		if (exchange == NULL) {
+			exchange = hocon_get_obj("exchange", node_item);
+		}
 
 		conf_exchange_node_parse(node, exchange);
 		conf_parquet_parse_ver2(config, node, exchange);
