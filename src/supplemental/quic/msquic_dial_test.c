@@ -10,6 +10,7 @@
 #include <nuts.h>
 #include "nng/mqtt/mqtt_client.h"
 #include "nng/mqtt/mqtt_quic_client.h"
+#include "nng/protocol/mqtt/mqtt_parser.h"
 
 //static const char *quic_test_url  = "mqtt-quic://us.432121.xyz:14567";
 static const char *quic_test_url  = "mqtt-quic://13.49.223.253:14567";
