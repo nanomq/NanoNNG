@@ -186,9 +186,10 @@ wstran_pipe_recv_cb(void *arg)
 	bool     need_more = false;
 	ws_pipe *p = arg;
 	nni_iov  iov[2];
-	uint8_t  rv, pos = 1;
-	uint64_t len = 0;
+	int      rv = 0;
+	uint8_t  pos = 1;
 	uint8_t *ptr;
+	uint64_t len = 0;
 	nni_msg *smsg = NULL, *msg = NULL, *conn_msg = NULL;
 	nni_msg **msg_vec = NULL;
 	nni_aio *raio = p->rxaio;
@@ -265,6 +266,10 @@ wstran_pipe_recv_cb(void *arg)
 	}
 	if (p->wantrxhead > p->gotrxhead)
 		goto recv;
+
+	// Parse as many complete MQTT packets as possible from tmp_msg without
+	// trusting Remaining Length blindly (prevents OOB reads).
+	size_t  index    = 0;
 	// Negotiation shall be processed alone
 	if ((*ptr & 0xF0) == CMD_CONNECT) {
 		conn_msg = p->tmp_msg;
@@ -272,9 +277,6 @@ wstran_pipe_recv_cb(void *arg)
 		goto done;
 	}
 
-	// Parse as many complete MQTT packets as possible from tmp_msg without
-	// trusting Remaining Length blindly (prevents OOB reads).
-	size_t  index    = 0;
 	uint8_t *baseptr = ptr;
 	// At least one msg is ready when we got here.
 	while (index < p->gotrxhead) {
@@ -298,7 +300,7 @@ wstran_pipe_recv_cb(void *arg)
 		}
 		if (len > (uint64_t) p->conf->max_packet_size) {
 			rv = NNG_EMSGSIZE;
-			p->err_code = NMQ_PACKET_TOO_LARGE;
+			p->err_code = PACKET_TOO_LARGE;
 			goto reset;
 		}
 		if (len > (uint64_t) SIZE_MAX - (size_t) pos) {
@@ -377,7 +379,7 @@ done:
 	}
 	if (p->gotrxhead+p->wantrxhead > p->conf->max_packet_size) {
 		log_trace("size error 0x95\n");
-		rv = NMQ_PACKET_TOO_LARGE;
+		rv = NNG_ECLOSED;
 		p->err_code = PACKET_TOO_LARGE;
 		goto skip;
 	}
@@ -518,7 +520,7 @@ done:
 			if (nmq_unsubinfo_decode(vmsg, p->npipe->subinfol,
 			        p->ws_param->pro_ver) < 0) {
 				log_error("Invalid unsubscribe packet!");
-				p->err_code = PROTOCOL_ERROR;
+				rv = PROTOCOL_ERROR;
 				goto skip;
 			}
 		} else if (cmd == CMD_SUBSCRIBE) {
@@ -527,7 +529,7 @@ done:
 			if (nmq_subinfo_decode(vmsg, p->npipe->subinfol,
 					p->ws_param->pro_ver) < 0) {
 				log_error("Invalid subscribe packet!");
-				p->err_code = PROTOCOL_ERROR;
+				rv = PROTOCOL_ERROR;
 				goto skip;
 			}
 		}
@@ -596,7 +598,7 @@ skip:
 	else
 		log_warn("WebSocket uaio is aborted already!");
 	nni_mtx_unlock(&p->mtx);
-	if (p->err_code != SUCCESS && msg_vec != NULL) {
+	if (rv != SUCCESS && msg_vec != NULL) {
 		// Cannot trust the rest msgs
 		nni_lmq_flush(&p->recvlmq);
 		nni_msg_free(smsg);
@@ -668,7 +670,6 @@ wstran_pipe_recv(void *arg, nni_aio *aio)
 	nni_mtx_lock(&p->mtx);
 	// Get msg from recv lmq
 	if (nni_lmq_get(&p->recvlmq, &msg) == 0) {
-		log_error("out lmq msg %p", msg);
 		nni_aio_set_msg(aio, msg);
 		nni_mtx_unlock(&p->mtx);
 		nni_aio_finish(aio, 0, nni_msg_len(msg));
