@@ -323,7 +323,7 @@ wstran_pipe_recv_cb(void *arg)
 				new = NULL;
 			}
 		}
-		if (msg_vec != NULL) {
+		if (new != NULL) {
 			cvector_push_back(msg_vec, new);
 		}
 		index += pkt_len;
