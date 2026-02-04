@@ -441,24 +441,6 @@ ws_msg_adaptor(uint8_t *packet, nng_msg *dst)
 
 	return rv;
 }
-/*
-int variable_header_adaptor(uint8_t *packet, nni_msg *dst)
-{
-        nni_msg  *m;
-        int      pos = 0;
-        uint32_t len;
-        return 0;
-}
-*/
-/*
-static char *client_id_gen(int *idlen, const char *auto_id_prefix, int
-auto_id_prefix_len)
-{
-        char *client_id;
-        return client_id;
-}
-}
-*/
 
 void
 conn_param_set_property(conn_param *cparam, property *prop)
