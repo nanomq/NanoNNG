@@ -507,7 +507,6 @@ done:
 			        p->ws_param->pro_ver) < 0) {
 				log_error("Invalid unsubscribe packet!");
 				p->err_code = PROTOCOL_ERROR;
-				nni_msg_free(vmsg);
 				goto skip;
 			}
 		} else if (cmd == CMD_SUBSCRIBE) {
@@ -516,8 +515,7 @@ done:
 			if (nmq_subinfo_decode(vmsg, p->npipe->subinfol,
 					p->ws_param->pro_ver) < 0) {
 				log_error("Invalid subscribe packet!");
-				rv = PROTOCOL_ERROR;
-				nni_msg_free(vmsg);
+				p->err_code = PROTOCOL_ERROR;
 				goto skip;
 			}
 		}
@@ -586,6 +584,12 @@ skip:
 	else
 		log_warn("WebSocket uaio is aborted already!");
 	nni_mtx_unlock(&p->mtx);
+	if (p->err_code != SUCCESS && msg_vec != NULL) {
+		// Cannot trust the rest msgs
+		for (size_t i = 0; i < cvector_size(msg_vec); i++) {
+			nni_msg_free(msg_vec[i]);
+		}
+	}
 	if (msg_vec)
 		cvector_free(msg_vec);
 	return;
@@ -1289,7 +1293,7 @@ wstran_pipe_init(void *arg, nni_pipe *pipe)
 		return (NNG_ENOMEM);
 	}
 	NNI_LIST_INIT(p->npipe->subinfol, struct subinfo, node);
-	nni_lmq_init(&p->recvlmq, 10240);
+	nni_lmq_init(&p->recvlmq, 1024);
 	nni_lmq_init(&p->rslmq, 1024);
 	// the size limit of qos_buf reserve 1 byte for property length
 	p->qlength = 16 + NNI_NANO_MAX_PACKET_SIZE;
