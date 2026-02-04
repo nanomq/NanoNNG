@@ -582,12 +582,13 @@ done:
 skip:
 	nni_aio_set_output(uaio, 0, p);
 	if (!nni_aio_list_active(uaio)) // in case abort action from protocol layer 
-		nni_aio_finish(uaio, 0, 0);
+		nni_aio_finish(uaio, p->err_code, 0);
 	else
 		log_warn("WebSocket uaio is aborted already!");
 	nni_mtx_unlock(&p->mtx);
 	if (p->err_code != SUCCESS && msg_vec != NULL) {
 		// Cannot trust the rest msgs
+		nni_lmq_flush(&p->recvlmq);
 		for (size_t i = 0; i < cvector_size(msg_vec); i++) {
 			nni_msg_free(msg_vec[i]);
 		}
