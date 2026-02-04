@@ -599,9 +599,7 @@ skip:
 	if (p->err_code != SUCCESS && msg_vec != NULL) {
 		// Cannot trust the rest msgs
 		nni_lmq_flush(&p->recvlmq);
-		for (size_t i = 0; i < cvector_size(msg_vec); i++) {
-			nni_msg_free(msg_vec[i]);
-		}
+		nni_msg_free(smsg);
 	}
 	if (msg_vec)
 		cvector_free(msg_vec);
@@ -629,13 +627,6 @@ reset:
 	if (p->tmp_msg != NULL) {
 		nni_msg_free(p->tmp_msg);
 		p->tmp_msg = NULL;
-	}
-	if (msg_vec != NULL) {
-		// Cannot trust the rest msgs
-		nni_lmq_flush(&p->recvlmq);
-		for (size_t i = 0; i < cvector_size(msg_vec); i++) {
-			nni_msg_free(msg_vec[i]);
-		}
 	}
 	if (msg_vec)
 		cvector_free(msg_vec);
