@@ -311,7 +311,6 @@ wstran_pipe_recv_cb(void *arg)
 			goto skip;
 		}
 		p->count++;
-		log_error("count %d", p->count);
 		// parse fixed header (safe because pkt_len bytes are present)
 		ws_msg_adaptor(baseptr + index, new);
 		nni_msg_set_conn_param(new, p->ws_param);
@@ -321,9 +320,12 @@ wstran_pipe_recv_cb(void *arg)
 			if (nni_lmq_put(&p->recvlmq, new) != 0) {
 				log_warn(" WebSocket msg drop due to full lmq");
 				nni_msg_free(new);
+				new = NULL;
 			}
 		}
-		cvector_push_back(msg_vec, new);
+		if (msg_vec != NULL) {
+			cvector_push_back(msg_vec, new);
+		}
 		index += pkt_len;
 	}
 
