@@ -38,7 +38,7 @@ typedef struct ws_pipe     ws_pipe;
 // On success, returns 0. If more bytes are needed, sets *need_more = true and
 // returns 0 without reading out-of-bounds. On malformed varint, returns NNG_EMSGSIZE.
 static int
-nmq_parse_remaining_length(const uint8_t *buf, size_t avail, uint8_t *pos,
+ws_parse_remaining_length(const uint8_t *buf, size_t avail, uint8_t *pos,
     uint64_t *len, bool *need_more)
 {
 	uint64_t result     = 0;
@@ -183,14 +183,13 @@ wstran_pipe_qos_send_cb(void *arg)
 static void
 wstran_pipe_recv_cb(void *arg)
 {
+	bool     need_more = false;
 	ws_pipe *p = arg;
 	nni_iov  iov[2];
 	uint8_t  rv, pos = 1;
 	uint64_t len = 0;
-	bool     need_more = false;
-	bool     keep_tmp  = false;
 	uint8_t *ptr;
-	nni_msg *smsg = NULL, *msg = NULL;
+	nni_msg *smsg = NULL, *msg = NULL, *conn_msg = NULL;
 	nni_msg **msg_vec = NULL;
 	nni_aio *raio = p->rxaio;
 	nni_aio *uaio = NULL;
@@ -233,7 +232,7 @@ wstran_pipe_recv_cb(void *arg)
 		pos = 1;
 		need_more = false;
 		len = 0;
-		rv = nmq_parse_remaining_length(ptr, p->gotrxhead, &pos, &len, &need_more);
+		rv = ws_parse_remaining_length(ptr, p->gotrxhead, &pos, &len, &need_more);
 		if (rv != 0) {
 			goto reset;
 		}
@@ -263,6 +262,8 @@ wstran_pipe_recv_cb(void *arg)
 		goto recv;
 	// Negotiation shall be processed alone
 	if ((*ptr & 0xF0) == CMD_CONNECT) {
+		conn_msg = p->tmp_msg;
+		p->tmp_msg = NULL;
 		goto done;
 	}
 
@@ -270,6 +271,7 @@ wstran_pipe_recv_cb(void *arg)
 	// trusting Remaining Length blindly (prevents OOB reads).
 	size_t  index    = 0;
 	uint8_t *baseptr = ptr;
+	// At least one msg is ready when we got here.
 	while (index < p->gotrxhead) {
 		size_t avail = p->gotrxhead - index;
 		if (avail < 2) {
@@ -279,7 +281,7 @@ wstran_pipe_recv_cb(void *arg)
 		pos = 1;
 		need_more = false;
 		len = 0;
-		rv = nmq_parse_remaining_length(baseptr + index, avail, &pos, &len, &need_more);
+		rv = ws_parse_remaining_length(baseptr + index, avail, &pos, &len, &need_more);
 		if (rv != 0) {
 			log_error("Malformed Remaining Length!");
 			goto reset;
@@ -317,21 +319,15 @@ wstran_pipe_recv_cb(void *arg)
 			smsg = new;
 		} else {
 			if (nni_lmq_put(&p->recvlmq, new) != 0) {
+				log_warn(" WebSocket msg drop due to full lmq");
 				nni_msg_free(new);
 			}
-			log_error("in lmq msg %p", new);
 		}
 		cvector_push_back(msg_vec, new);
 		index += pkt_len;
 	}
 
-	// If we didn't decode any complete packet, wait for more bytes.
-	if (index == 0) {
-		goto recv;
-	}
-
-	// Keep any leftover bytes (partial next packet) in tmp_msg for the next recv.
-	if (index < p->gotrxhead) {
+	if (p->gotrxhead > index && index != 0) {
 		nni_msg *left = NULL;
 		if ((rv = nni_msg_alloc(&left, 0)) != 0) {
 			goto reset;
@@ -341,12 +337,16 @@ wstran_pipe_recv_cb(void *arg)
 		p->tmp_msg   = left;
 		p->gotrxhead = p->gotrxhead - index;
 		p->wantrxhead = 0;
-		keep_tmp = true;
-	} else {
+		goto done;
+	} else if (index == p->gotrxhead) {
 		// Fully consumed current buffer; done() will free tmp_msg later.
-		keep_tmp = false;
+		nni_msg_free(p->tmp_msg);
+		p->tmp_msg = NULL;
+		goto done;
+	} else {
+		// drop msg & try to recover
+		log_error("Decoding error!");
 	}
-	goto done;
 recv:
 	nni_msg_free(msg);
 	msg = NULL;
@@ -371,18 +371,17 @@ done:
 		goto skip;
 	}
 	// If we preserved leftover bytes for next recv, do not reset/clear tmp_msg.
-	if (!keep_tmp) {
+	if (p->gotrxhead == index)
 		p->gotrxhead = 0;
-	}
 	p->wantrxhead = 0;
-	if (nni_msg_cmd_type(p->tmp_msg) == CMD_CONNECT) {
+	if (conn_msg != NULL && nni_msg_cmd_type(conn_msg) == CMD_CONNECT) {
 		// end of nego
 		if (p->ws_param == NULL) {
 			conn_param_alloc(&p->ws_param);
 		}
 		// CONNECT shall be sent & decode alone, or is a bug from Client
-		if (conn_handler(nni_msg_body(p->tmp_msg), p->ws_param,
-		        nni_msg_len(p->tmp_msg)) != 0) {
+		if (conn_handler(nni_msg_body(conn_msg), p->ws_param,
+		        nni_msg_len(conn_msg)) != 0) {
 			nni_atomic_set_bool(&p->closed, true);
 			p->err_code = PROTOCOL_ERROR;
 			goto skip;
@@ -399,18 +398,15 @@ done:
 		log_info("max_packet_size of %.*s is %d",
 				p->ws_param->clientid.len, p->ws_param->clientid.body,
 				p->ws_param->max_packet_size);
-		nni_msg_free(p->tmp_msg);
-		p->tmp_msg = NULL;
+		nni_msg_free(conn_msg);
+		conn_msg = NULL;
 		nni_aio_set_output(uaio, 0, p);
 		// pipe_start_cb send CONNACK
 		nni_aio_finish(uaio, 0, 0);
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
-	if (!keep_tmp) {
-		nni_msg_free(p->tmp_msg);
-		p->tmp_msg = NULL;
-	}
+	// CONNECT shall always be first msg
 	if (p->ws_param == NULL) {
 		log_warn("Malformed Packet!");
 		goto reset;
@@ -511,6 +507,7 @@ done:
 			        p->ws_param->pro_ver) < 0) {
 				log_error("Invalid unsubscribe packet!");
 				p->err_code = PROTOCOL_ERROR;
+				nni_msg_free(vmsg);
 				goto skip;
 			}
 		} else if (cmd == CMD_SUBSCRIBE) {
