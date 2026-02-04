@@ -203,6 +203,7 @@ wstran_pipe_recv_cb(void *arg)
 	// process scatterd msgs
 	if ((rv = nni_aio_result(raio)) != 0) {
 		log_warn(" recv aio error %s", nng_strerror(rv));
+		p->err_code = UNSPECIFIED_ERROR;
 		goto reset;
 	}
 	msg = nni_aio_get_msg(raio);
@@ -218,6 +219,7 @@ wstran_pipe_recv_cb(void *arg)
 	if (p->tmp_msg == NULL && p->gotrxhead > 0) {
 		if ((rv = nni_msg_alloc(&p->tmp_msg, 0)) != 0) {
 			log_error("mem error %ld\n", (size_t) len);
+			p->err_code = SERVER_UNAVAILABLE;
 			goto reset;
 		}
 	}
@@ -234,6 +236,7 @@ wstran_pipe_recv_cb(void *arg)
 		len = 0;
 		rv = ws_parse_remaining_length(ptr, p->gotrxhead, &pos, &len, &need_more);
 		if (rv != 0) {
+			p->err_code = MALFORMED_PACKET;
 			goto reset;
 		}
 		if (need_more) {
@@ -241,6 +244,7 @@ wstran_pipe_recv_cb(void *arg)
 			if (p->gotrxhead >= NNI_NANO_MAX_HEADER_SIZE) {
 				// length error
 				rv = NNG_EMSGSIZE;
+				p->err_code = MALFORMED_PACKET;
 				goto reset;
 			}
 			goto recv;
@@ -248,11 +252,12 @@ wstran_pipe_recv_cb(void *arg)
 		// Fixed header finished; sanity check size and overflow before storing.
 		if (len > (uint64_t) p->conf->max_packet_size) {
 			rv = NNG_EMSGSIZE;
-			p->err_code = NMQ_PACKET_TOO_LARGE;
+			p->err_code = PACKET_TOO_LARGE;
 			goto reset;
 		}
 		if (len > (uint64_t) SIZE_MAX - (size_t) pos) {
 			rv = NNG_EMSGSIZE;
+			p->err_code = PROTOCOL_ERROR;
 			goto reset;
 		}
 		p->wantrxhead = (size_t) len + (size_t) pos;
@@ -284,6 +289,7 @@ wstran_pipe_recv_cb(void *arg)
 		rv = ws_parse_remaining_length(baseptr + index, avail, &pos, &len, &need_more);
 		if (rv != 0) {
 			log_error("Malformed Remaining Length!");
+			p->err_code = MALFORMED_PACKET;
 			goto reset;
 		}
 		if (need_more) {
@@ -297,6 +303,7 @@ wstran_pipe_recv_cb(void *arg)
 		}
 		if (len > (uint64_t) SIZE_MAX - (size_t) pos) {
 			rv = NNG_EMSGSIZE;
+			p->err_code = PROTOCOL_ERROR;
 			goto reset;
 		}
 		size_t pkt_len = (size_t) len + (size_t) pos;
@@ -332,6 +339,7 @@ wstran_pipe_recv_cb(void *arg)
 	if (p->gotrxhead > index && index != 0) {
 		nni_msg *left = NULL;
 		if ((rv = nni_msg_alloc(&left, 0)) != 0) {
+			p->err_code = SERVER_UNAVAILABLE;
 			goto reset;
 		}
 		(void) nni_msg_append(left, baseptr + index, p->gotrxhead - index);
@@ -363,13 +371,14 @@ done:
 		uaio = p->ep_aio;
 	}
 	if (uaio == NULL) {
-		log_warn("No AIO waitting, unable to process websocket packet");
+		log_warn("No AIO waitting, Application error!");
+		p->err_code = SERVER_UNAVAILABLE;
 		goto reset;
 	}
 	if (p->gotrxhead+p->wantrxhead > p->conf->max_packet_size) {
 		log_trace("size error 0x95\n");
 		rv = NMQ_PACKET_TOO_LARGE;
-		p->err_code = NMQ_PACKET_TOO_LARGE;
+		p->err_code = PACKET_TOO_LARGE;
 		goto skip;
 	}
 	// If we preserved leftover bytes for next recv, do not reset/clear tmp_msg.
@@ -411,6 +420,7 @@ done:
 	// CONNECT shall always be first msg
 	if (p->ws_param == NULL) {
 		log_warn("Malformed Packet!");
+		p->err_code = MALFORMED_PACKET;
 		goto reset;
 	}
 	for (size_t i = 0; i < cvector_size(msg_vec); i++) {
@@ -597,11 +607,8 @@ skip:
 		cvector_free(msg_vec);
 	return;
 reset:
-	// TODO memleak in reset state ....
 	p->gotrxhead  = 0;
 	p->wantrxhead = 0;
-	// a potential memleak case here
-	nng_stream_close(p->ws);
 	if (p->ep_aio != NULL) {
 	// If the connection is closed during MQTT Connect, we need to pass back a fixed
 	// error code to nng_listener which is NNG_ECONNABORTED. Otherwise it is confused 
@@ -611,7 +618,10 @@ reset:
 		nni_aio_finish_error(p->ep_aio, rv);
 	} else if (uaio != NULL) {
 		nni_aio_set_msg(uaio, NULL);
-		nni_aio_finish_error(uaio, rv);
+		nni_aio_finish_error(uaio, p->err_code);
+	} else {
+		// Let protocol layer do the close first.
+		nng_stream_close(p->ws);
 	}
 	nni_mtx_unlock(&p->mtx);
 	if (smsg != NULL)
@@ -619,6 +629,13 @@ reset:
 	if (p->tmp_msg != NULL) {
 		nni_msg_free(p->tmp_msg);
 		p->tmp_msg = NULL;
+	}
+	if (msg_vec != NULL) {
+		// Cannot trust the rest msgs
+		nni_lmq_flush(&p->recvlmq);
+		for (size_t i = 0; i < cvector_size(msg_vec); i++) {
+			nni_msg_free(msg_vec[i]);
+		}
 	}
 	if (msg_vec)
 		cvector_free(msg_vec);
