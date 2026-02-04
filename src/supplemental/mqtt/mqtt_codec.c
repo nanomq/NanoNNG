@@ -4055,7 +4055,7 @@ decode_buf_properties(uint8_t *packet, uint32_t packet_len, uint32_t *pos,
 		if (0 != read_byte(&buf, &prop_id)) {
 			property_free(list);
 			list = NULL;
-			goto out;
+			break;
 		}
 		property *         cur_prop = NULL;
 		property_type_enum type     = property_get_value_type(prop_id);
@@ -4064,7 +4064,7 @@ decode_buf_properties(uint8_t *packet, uint32_t packet_len, uint32_t *pos,
 		if (cur_prop == NULL) {
 			property_free(list);
 			list = NULL;
-			goto out;
+			break;
 		}
 		property_append(list, cur_prop);
 	}
