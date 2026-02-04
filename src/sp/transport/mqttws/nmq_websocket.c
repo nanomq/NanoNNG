@@ -83,6 +83,7 @@ struct ws_pipe {
 	uint8_t     txlen[NANO_MIN_PACKET_LEN];
 	uint8_t    *qos_buf; // msg trunk for qos & V4/V5 conversion
 	uint16_t    peer;
+	uint8_t     count;
 	size_t      gotrxhead;
 	size_t      qlength; // length of qos_buf
 	size_t      wantrxhead;
@@ -307,13 +308,18 @@ wstran_pipe_recv_cb(void *arg)
 			p->err_code = SERVER_UNAVAILABLE;
 			goto skip;
 		}
+		p->count++;
+		log_error("count %d", p->count);
 		// parse fixed header (safe because pkt_len bytes are present)
 		ws_msg_adaptor(baseptr + index, new);
 		nni_msg_set_conn_param(new, p->ws_param);
 		if (smsg == NULL) {
 			smsg = new;
 		} else {
-			nni_lmq_put(&p->recvlmq, new);
+			if (nni_lmq_put(&p->recvlmq, new) != 0) {
+				nni_msg_free(new);
+			}
+			log_error("in lmq msg %p", new);
 		}
 		cvector_push_back(msg_vec, new);
 		index += pkt_len;
@@ -514,6 +520,7 @@ done:
 					p->ws_param->pro_ver) < 0) {
 				log_error("Invalid subscribe packet!");
 				rv = PROTOCOL_ERROR;
+				nni_msg_free(vmsg);
 				goto skip;
 			}
 		}
@@ -649,6 +656,7 @@ wstran_pipe_recv(void *arg, nni_aio *aio)
 	nni_mtx_lock(&p->mtx);
 	// Get msg from recv lmq
 	if (nni_lmq_get(&p->recvlmq, &msg) == 0) {
+		log_error("out lmq msg %p", msg);
 		nni_aio_set_msg(aio, msg);
 		nni_mtx_unlock(&p->mtx);
 		nni_aio_finish(aio, 0, nni_msg_len(msg));
@@ -1284,7 +1292,7 @@ wstran_pipe_init(void *arg, nni_pipe *pipe)
 		return (NNG_ENOMEM);
 	}
 	NNI_LIST_INIT(p->npipe->subinfol, struct subinfo, node);
-	nni_lmq_init(&p->recvlmq, 1024);
+	nni_lmq_init(&p->recvlmq, 10240);
 	nni_lmq_init(&p->rslmq, 1024);
 	// the size limit of qos_buf reserve 1 byte for property length
 	p->qlength = 16 + NNI_NANO_MAX_PACKET_SIZE;
