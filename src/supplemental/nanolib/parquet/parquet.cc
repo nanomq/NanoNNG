@@ -315,7 +315,7 @@ parquet_set_encryption(conf_parquet *conf)
 	// Encrypt all columns and the footer with
 	// the same key. (uniform encryption)
 	parquet::FileEncryptionProperties::Builder file_encryption_builder(
-	    conf->encryption.key);
+	    arrow::util::SecureString(conf->encryption.key));
 	encryption_configurations =
 	    file_encryption_builder
 	        .footer_key_metadata(conf->encryption.key_id)
@@ -805,22 +805,22 @@ parquet_read_set_property(
     parquet::ReaderProperties &reader_properties, conf_parquet *conf)
 {
 	if (conf->encryption.enable) {
-		map<string,
-		    shared_ptr<parquet::ColumnDecryptionProperties>>
+		map<string, shared_ptr<parquet::ColumnDecryptionProperties>>
 		    decryption_cols;
 		parquet::FileDecryptionProperties::Builder
 		    file_decryption_builder_3;
 		shared_ptr<parquet::FileDecryptionProperties>
 		    decryption_configuration =
 		        file_decryption_builder_3
-		            .footer_key(conf->encryption.key)
+		            .footer_key(arrow::util::SecureString(
+		                conf->encryption.key))
 		            ->column_keys(decryption_cols)
 		            ->build();
 
 		// Add the current decryption configuration to
 		// ReaderProperties.
 		reader_properties.file_decryption_properties(
-		    decryption_configuration->DeepClone());
+		    decryption_configuration);
 	}
 
 	return;
