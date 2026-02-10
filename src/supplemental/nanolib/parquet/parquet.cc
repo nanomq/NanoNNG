@@ -724,7 +724,7 @@ const char *
 parquet_find(const char *topic, uint64_t key)
 {
 	conf_parquet *conf = file_manager.fetch_conf(topic);
-	if (conf->enable == false) {
+	if (conf == NULL || conf->enable == false) {
 		log_error("Parquet %s is not ready or not launch!", topic);
 		return NULL;
 	}
@@ -734,15 +734,20 @@ parquet_find(const char *topic, uint64_t key)
 	void       *elem  = NULL;
 	pthread_mutex_lock(&parquet_queue_mutex);
 	auto queue = file_manager.fetch_queue(topic);
+	if (queue == NULL) {
+		pthread_mutex_unlock(&parquet_queue_mutex);
+		return NULL;
+	}
 	FOREACH_QUEUE(*queue, elem)
 	{
 		if (elem) {
 			if (compare_callback(elem, key)) {
 				value = nng_strdup((char *) elem);
-				break;
+				goto found;
 			}
 		}
 	}
+found:
 	pthread_mutex_unlock(&parquet_queue_mutex);
 	return value;
 }
@@ -769,6 +774,11 @@ parquet_find_span(
 	pthread_mutex_lock(&parquet_queue_mutex);
 
 	auto queue = file_manager.fetch_queue(topic);
+	if (queue == NULL) {
+		pthread_mutex_unlock(&parquet_queue_mutex);
+		*size = 0;
+		return NULL;
+	}
 	if (queue->size != 0) {
 		array = (const char **) nng_alloc(sizeof(char *) * queue->size);
 
@@ -1114,7 +1124,7 @@ parquet_find_data_packet(
 	vector<parquet_data_packet *> ret_vec;
 	string topic = extract_topic(filename);
 	conf         = file_manager.fetch_conf(topic);
-	if (conf->enable == false) {
+	if (conf == NULL || conf->enable == false) {
 		log_error("Parquet %s is not ready or not launch!", topic.c_str());
 		return ret_vec;
 	}
@@ -1124,6 +1134,11 @@ parquet_find_data_packet(
 	void *elem = NULL;
 	auto queue = file_manager.fetch_queue(topic);
 	pthread_mutex_lock(&parquet_queue_mutex);
+	if (queue == NULL) {
+		pthread_mutex_unlock(&parquet_queue_mutex);
+		ret_vec.resize(keys.size(), nullptr);
+		return ret_vec;
+	}
 	FOREACH_QUEUE(*queue, elem)
 	{
 		if (elem && nng_strcasecmp((char *) elem, filename) == 0) {
@@ -1149,7 +1164,7 @@ parquet_find_data_packet(conf_parquet *conf, char *filename, uint64_t key)
 {
 	string topic = extract_topic(filename);
 	conf         = file_manager.fetch_conf(topic);
-	if (conf->enable == false) {
+	if (conf == NULL || conf->enable == false) {
 		log_error("Parquet %s is not ready or not launch!", topic.c_str());
 		return NULL;
 	}
@@ -1158,6 +1173,10 @@ parquet_find_data_packet(conf_parquet *conf, char *filename, uint64_t key)
 	auto  queue = file_manager.fetch_queue(topic);
 
 	pthread_mutex_lock(&parquet_queue_mutex);
+	if (queue == NULL) {
+		pthread_mutex_unlock(&parquet_queue_mutex);
+		return NULL;
+	}
 	FOREACH_QUEUE(*queue, elem)
 	{
 		if (elem && nng_strcasecmp((char *) elem, filename) == 0) {
@@ -1225,8 +1244,7 @@ parquet_find_data_packets(
 		copy(ret_vec.begin(), ret_vec.end(), packets);
 	}
 
-	// return packets;
-	return nullptr;
+	return packets;
 }
 
 static vector<SchemaColumn>
