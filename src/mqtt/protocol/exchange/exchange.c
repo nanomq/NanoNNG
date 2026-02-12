@@ -126,8 +126,14 @@ exchange_handle_msg(exchange_t *ex, uint64_t key, void *msg, nng_aio *aio)
 
 	for (i = 0; i < ex->rb_count; i++) {
 		log_debug("handling msg key %ld", key);
+		if (i > 0) {
+			nng_msg_clone(msg);
+		}
 		ret = ringBuffer_enqueue(ex->rbs[i], key, msg, -1, aio);
 		if (ret != 0) {
+			if (i > 0) {
+				nng_msg_free(msg);
+			}
 			log_error("Ring Buffer enqueue failed\n");
 			return -1;
 		} else {
