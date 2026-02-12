@@ -861,6 +861,10 @@ put_msgs_to_aio(ringBuffer_t *rb, nng_aio *aio)
 {
 	int ret = 0;
 	int *list_len = NULL;
+	if (aio == NULL) {
+		log_error("aio is NULL for RB_FULL_RETURN\n");
+		return -1;
+	}
 
 	/* get all msgs and clean ringbuffer */
 	nni_msg **list = NULL;
@@ -936,6 +940,11 @@ int ringBuffer_enqueue(ringBuffer_t *rb,
 		}
 		if (rb->fullOp == RB_FULL_RETURN) {
 			log_info("RB_FULL_RETURN");
+			if (aio == NULL) {
+				log_error("Ring buffer is full but aio is NULL under RB_FULL_RETURN\n");
+				nng_mtx_unlock(rb->ring_lock);
+				return -1;
+			}
 			ret = put_msgs_to_aio(rb, aio);
 			if (ret != 0) {
 				log_error("Ring buffer is full and put msgs to aio failed!\n");
