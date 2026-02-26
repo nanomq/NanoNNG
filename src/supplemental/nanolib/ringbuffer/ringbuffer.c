@@ -1282,7 +1282,9 @@ int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint64_t key, uint32_t count
 			for (j = 0; j < count; j++) {
 				nng_msg *msg = rb->msgs[i].data;
 
-				nng_msg_set_proto_data(msg, NULL, (void *)(uintptr_t)rb->msgs[i].key);
+				if (msg != NULL) {
+					nng_msg_set_proto_data(msg, NULL, (void *)(uintptr_t)rb->msgs[i].key);
+				}
 
 				newList[j] = msg;
 
