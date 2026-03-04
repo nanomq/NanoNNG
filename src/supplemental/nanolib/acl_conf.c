@@ -1,5 +1,6 @@
-#include "nng/supplemental/nanolib/acl_conf.h"
 #include "core/nng_impl.h"
+#include "nng/supplemental/nanolib/cvector.h"
+#include "nng/supplemental/nanolib/acl_conf.h"
 #include "nng/supplemental/nanolib/cJSON.h"
 #include "nng/supplemental/nanolib/file.h"
 #include "nng/supplemental/nanolib/log.h"
@@ -200,10 +201,7 @@ conf_acl_parse(conf_acl *acl, const char *path)
 			if (cJSON_IsObject(obj)) {
 				if (acl_parse_json_rule(obj, id, &rule)) {
 					acl->rule_count++;
-					acl->rules = realloc(acl->rules,
-					    acl->rule_count *
-					        sizeof(acl_rule));
-					acl->rules[acl->rule_count - 1] = rule;
+					cvector_push_back(acl->rules, rule);
 				}
 				cJSON_Delete(obj);
 			} else {
@@ -285,8 +283,9 @@ conf_acl_destroy(conf_acl *acl)
 	}
 
 	if (acl->rule_count > 0) {
-		nni_free(acl->rules, acl->rule_count * sizeof(acl_rule *));
+		cvector_free(acl->rules);
 		acl->rule_count = 0;
+		acl->rules = NULL;
 	}
 }
 
