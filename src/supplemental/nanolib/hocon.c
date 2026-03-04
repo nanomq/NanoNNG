@@ -205,9 +205,10 @@ hocon_parse_file(const char *file)
     yy_delete_buffer(buffer);
     fclose(fp);
 
+    hocon_scanner_cleanup();
     if (rv != 0) {
-        fprintf(stderr, "invalid data to parse!\n");
-        return NULL;
+	    fprintf(stderr, "invalid data to parse!\n");
+	    return NULL;
     }
 
     if (cJSON_False != cJSON_IsInvalid(jso)) {
@@ -227,9 +228,12 @@ hocon_parse_str(char *str, size_t len)
 	int    rv  = yyparse(&jso);
 	if (0 != rv) {
 		fprintf(stderr, "invalid data to parse!\n");
+		yy_delete_buffer(buffer);
+		hocon_scanner_cleanup();
 		return NULL;
 	}
 	yy_delete_buffer(buffer);
+	hocon_scanner_cleanup();
 	if (cJSON_False != cJSON_IsInvalid(jso)) {
 		jso = path_expression_parse(jso);
 		return deduplication_and_merging(jso);

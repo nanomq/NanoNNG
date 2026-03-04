@@ -246,6 +246,7 @@ extern char *yytext;
 
 /* Accessor methods to globals.
    These are made visible to non-reentrant scanners for convenience. */
+extern void hocon_scanner_cleanup(void);
 
 int yylex_destroy ( void );
 
