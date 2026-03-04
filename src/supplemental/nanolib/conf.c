@@ -1555,8 +1555,8 @@ conf_auth_destroy(conf_auth *auth)
 		free(auth->usernames[i]);
 		free(auth->passwords[i]);
 	}
-	free(auth->usernames);
-	free(auth->passwords);
+	cvector_free(auth->usernames);
+	cvector_free(auth->passwords);
 	auth->count = 0;
 	if (auth->mtx != NULL)
 		nng_mtx_free(auth->mtx);
