@@ -831,6 +831,7 @@ conf_auth_http_req_init(conf_auth_http_req *req)
 	req->headers      = NULL;
 	req->param_count  = 0;
 	req->params       = NULL;
+	req->mtx          = NULL;
 	conf_tls_init(&req->tls);
 }
 
@@ -1477,6 +1478,7 @@ conf_auth_init(conf_auth *auth)
 	auth->count     = 0;
 	auth->usernames = NULL;
 	auth->passwords = NULL;
+	auth->mtx       = NULL;
 }
 
 static void
