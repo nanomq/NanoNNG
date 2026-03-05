@@ -2121,16 +2121,23 @@ int count_brace(char *str)
   return count;
 }
 
-void hocon_scanner_cleanup(void)
+void
+hocon_scanner_cleanup(void)
 {
-    // 1. Clean up custom user-defined include stack (Fixes the ASAN crash!)
-    while (include_stack_ptr > 0) {
-        include_stack_ptr--;
-        yy_delete_buffer(include_stack[include_stack_ptr]);
-    }
-    include_stack_ptr = 0;
-    bcount = 0;
+	YY_BUFFER_STATE current = YY_CURRENT_BUFFER;
+	// 1. Clean up custom user-defined include stack (Fixes the ASAN
+	// crash!)
+	while (include_stack_ptr > 0) {
+		include_stack_ptr--;
+		YY_BUFFER_STATE b = include_stack[include_stack_ptr];
+		include_stack[include_stack_ptr] = NULL;
+		if (b != NULL && b != current) {
+			yy_delete_buffer(b);
+		}
+	}
+	include_stack_ptr = 0;
+	bcount            = 0;
 
-    // 2. Call the built-in flex cleanup
-    yylex_destroy();
+	// 2. Call the built-in flex cleanup
+	yylex_destroy();
 }
