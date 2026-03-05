@@ -1478,7 +1478,7 @@ conf_auth_init(conf_auth *auth)
 	auth->count     = 0;
 	auth->usernames = NULL;
 	auth->passwords = NULL;
-	auth->mtx       = NULL;
+	nng_mtx_alloc(&auth->mtx);
 }
 
 static void
@@ -1502,7 +1502,6 @@ conf_auth_parse(conf_auth *auth, const char *path)
 		log_error("File %s open failed", path);
 		return;
 	}
-	nng_mtx_alloc(&auth->mtx);
 
 	while (nano_getline(&line, &sz, fp) != -1) {
 		snprintf(name_key, 256, "auth.%ld.login", index);
