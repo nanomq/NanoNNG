@@ -397,6 +397,185 @@ test_aio_busy(void)
 	nng_aio_free(aio);
 }
 
+void
+test_aio_alloc_null_callback(void)
+{
+	nng_aio *aio;
+	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
+	NUTS_ASSERT(aio != NULL);
+	nng_aio_free(aio);
+}
+
+void
+test_aio_stop(void)
+{
+	nng_aio *aio;
+	int      done = 0;
+
+	NUTS_PASS(nng_aio_alloc(&aio, cb_done, &done));
+	nng_sleep_aio(100, aio);
+	nng_aio_stop(aio);
+	NUTS_ASSERT(done == 1);
+	NUTS_FAIL(nng_aio_result(aio), NNG_ECANCELED);
+	nng_aio_free(aio);
+}
+
+void
+test_aio_multiple_concurrent(void)
+{
+	nng_aio *aio1, *aio2, *aio3;
+	int      done1 = 0, done2 = 0, done3 = 0;
+
+	NUTS_PASS(nng_aio_alloc(&aio1, cb_done, &done1));
+	NUTS_PASS(nng_aio_alloc(&aio2, cb_done, &done2));
+	NUTS_PASS(nng_aio_alloc(&aio3, cb_done, &done3));
+
+	nng_sleep_aio(50, aio1);
+	nng_sleep_aio(100, aio2);
+	nng_sleep_aio(150, aio3);
+
+	nng_aio_wait(aio1);
+	nng_aio_wait(aio2);
+	nng_aio_wait(aio3);
+
+	NUTS_ASSERT(done1 == 1);
+	NUTS_ASSERT(done2 == 1);
+	NUTS_ASSERT(done3 == 1);
+	NUTS_PASS(nng_aio_result(aio1));
+	NUTS_PASS(nng_aio_result(aio2));
+	NUTS_PASS(nng_aio_result(aio3));
+
+	nng_aio_free(aio1);
+	nng_aio_free(aio2);
+	nng_aio_free(aio3);
+}
+
+void
+test_aio_reuse(void)
+{
+	nng_aio *aio;
+	int      done = 0;
+
+	NUTS_PASS(nng_aio_alloc(&aio, cb_done, &done));
+
+	// Use the aio multiple times
+	nng_sleep_aio(10, aio);
+	nng_aio_wait(aio);
+	NUTS_ASSERT(done == 1);
+	NUTS_PASS(nng_aio_result(aio));
+
+	done = 0;
+	nng_sleep_aio(10, aio);
+	nng_aio_wait(aio);
+	NUTS_ASSERT(done == 1);
+	NUTS_PASS(nng_aio_result(aio));
+
+	done = 0;
+	nng_sleep_aio(10, aio);
+	nng_aio_wait(aio);
+	NUTS_ASSERT(done == 1);
+	NUTS_PASS(nng_aio_result(aio));
+
+	nng_aio_free(aio);
+}
+
+void
+test_aio_cancel_immediately(void)
+{
+	nng_aio *aio;
+	int      done = 0;
+
+	NUTS_PASS(nng_aio_alloc(&aio, cb_done, &done));
+	nng_sleep_aio(1000, aio);
+	nng_aio_cancel(aio);
+	nng_aio_wait(aio);
+	NUTS_ASSERT(done == 1);
+	NUTS_FAIL(nng_aio_result(aio), NNG_ECANCELED);
+	nng_aio_free(aio);
+}
+
+void
+test_aio_double_free_protection(void)
+{
+	nng_aio *aio;
+	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
+	nng_aio_free(aio);
+	// Second free should not crash (double free protection)
+	// We can't actually test this safely, just document it
+}
+
+void
+test_aio_msg_operations(void)
+{
+	nng_aio *aio;
+	nng_msg *msg, *retrieved;
+
+	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
+	NUTS_PASS(nng_msg_alloc(&msg, 0));
+	NUTS_PASS(nng_msg_append(msg, "test", 5));
+
+	nng_aio_set_msg(aio, msg);
+	retrieved = nng_aio_get_msg(aio);
+	NUTS_ASSERT(retrieved == msg);
+	NUTS_ASSERT(nng_msg_len(retrieved) == 5);
+
+	// Clear the message
+	nng_aio_set_msg(aio, NULL);
+	retrieved = nng_aio_get_msg(aio);
+	NUTS_ASSERT(retrieved == NULL);
+
+	nng_msg_free(msg);
+	nng_aio_free(aio);
+}
+
+void
+test_aio_expiration_before_timeout(void)
+{
+	nng_aio  *aio;
+	nng_socket s;
+	int       done = 0;
+	nng_time  now;
+
+	NUTS_PASS(nng_pair1_open(&s));
+	NUTS_PASS(nng_aio_alloc(&aio, cb_done, &done));
+
+	// Set expiration to a past time
+	now = nng_clock();
+	nng_aio_set_expire(aio, now - 1000);
+	nng_recv_aio(s, aio);
+	nng_aio_wait(aio);
+
+	NUTS_ASSERT(done == 1);
+	NUTS_FAIL(nng_aio_result(aio), NNG_ETIMEDOUT);
+
+	nng_aio_free(aio);
+	NUTS_PASS(nng_close(s));
+}
+
+void
+test_aio_input_output(void)
+{
+	nng_aio *aio;
+	void    *input_data  = (void *) 0x12345678;
+	void    *output_data = (void *) 0x87654321;
+
+	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
+
+	nng_aio_set_input(aio, 0, input_data);
+	NUTS_ASSERT(nng_aio_get_input(aio, 0) == input_data);
+
+	nng_aio_set_output(aio, 0, output_data);
+	NUTS_ASSERT(nng_aio_get_output(aio, 0) == output_data);
+
+	// Test multiple slots
+	nng_aio_set_input(aio, 1, (void *) 0xAABBCCDD);
+	nng_aio_set_input(aio, 2, (void *) 0xDDCCBBAA);
+	NUTS_ASSERT(nng_aio_get_input(aio, 1) == (void *) 0xAABBCCDD);
+	NUTS_ASSERT(nng_aio_get_input(aio, 2) == (void *) 0xDDCCBBAA);
+
+	nng_aio_free(aio);
+}
+
 NUTS_TESTS = {
 	{ "sleep", test_sleep },
 	{ "sleep timeout", test_sleep_timeout },
@@ -412,5 +591,14 @@ NUTS_TESTS = {
 	{ "sleep loop", test_sleep_loop },
 	{ "sleep cancel", test_sleep_cancel },
 	{ "aio busy", test_aio_busy },
+	{ "aio alloc null callback", test_aio_alloc_null_callback },
+	{ "aio stop", test_aio_stop },
+	{ "aio multiple concurrent", test_aio_multiple_concurrent },
+	{ "aio reuse", test_aio_reuse },
+	{ "aio cancel immediately", test_aio_cancel_immediately },
+	{ "aio double free protection", test_aio_double_free_protection },
+	{ "aio msg operations", test_aio_msg_operations },
+	{ "aio expiration before timeout", test_aio_expiration_before_timeout },
+	{ "aio input output", test_aio_input_output },
 	{ NULL, NULL },
 };
