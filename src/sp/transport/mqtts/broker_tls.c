@@ -2244,6 +2244,11 @@ tlstran_pipe_peer(void *arg)
 	npipe = (nni_pipe *) cpipe->tpipe; // target pipe
 
 	nni_mtx_lock(&p->mtx);
+	if (npipe == NULL || cpipe->subinfol == NULL) {
+		log_error("target pipe is NULL!");
+		nni_mtx_unlock(&p->mtx);
+		return 2;
+	}
 	NNI_LIST_FOREACH(cpipe->subinfol, info) {
 		if (!info) {
 			log_error("got error topic from subinfol!");
