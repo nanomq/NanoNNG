@@ -2260,8 +2260,7 @@ conf_authorization_prase_ver2(conf *config, cJSON *jso)
 		conf_auth_http_parse_ver2(config, jso_auth_http);
 	}
 	cJSON *jso_auth_pwd = hocon_get_obj("auth.password", jso);
-	// alloc here, in case hot update of username/passwd
-	nng_mtx_alloc(&config->auths.mtx);
+
 	if (jso_auth_pwd) {
 		conf_auth_parse_ver2(config, jso_auth_pwd);
 	}
