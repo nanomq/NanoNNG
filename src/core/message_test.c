@@ -539,6 +539,273 @@ test_msg_insert_stress(void)
 	}
 }
 
+void
+test_msg_alloc_zero(void)
+{
+	nng_msg *msg;
+	NUTS_PASS(nng_msg_alloc(&msg, 0));
+	NUTS_ASSERT(nng_msg_len(msg) == 0);
+	NUTS_ASSERT(nng_msg_body(msg) != NULL);
+	nng_msg_free(msg);
+}
+
+void
+test_msg_alloc_large(void)
+{
+	nng_msg *msg;
+	size_t   size = 1024 * 1024; // 1MB
+	NUTS_PASS(nng_msg_alloc(&msg, size));
+	NUTS_ASSERT(nng_msg_len(msg) == size);
+	nng_msg_free(msg);
+}
+
+void
+test_msg_append_zero_bytes(void)
+{
+	nng_msg *msg;
+	NUTS_PASS(nng_msg_alloc(&msg, 0));
+	NUTS_PASS(nng_msg_append(msg, "", 0));
+	NUTS_ASSERT(nng_msg_len(msg) == 0);
+	nng_msg_free(msg);
+}
+
+void
+test_msg_insert_zero_bytes(void)
+{
+	nng_msg *msg;
+	NUTS_PASS(nng_msg_alloc(&msg, 0));
+	NUTS_PASS(nng_msg_append(msg, "test", 4));
+	NUTS_PASS(nng_msg_insert(msg, "", 0));
+	NUTS_ASSERT(nng_msg_len(msg) == 4);
+	NUTS_ASSERT(strcmp(nng_msg_body(msg), "test") == 0);
+	nng_msg_free(msg);
+}
+
+void
+test_msg_trim_entire_body(void)
+{
+	nng_msg *msg;
+	NUTS_PASS(nng_msg_alloc(&msg, 0));
+	NUTS_PASS(nng_msg_append(msg, "test", 4));
+	NUTS_PASS(nng_msg_trim(msg, 4));
+	NUTS_ASSERT(nng_msg_len(msg) == 0);
+	nng_msg_free(msg);
+}
+
+void
+test_msg_chop_entire_body(void)
+{
+	nng_msg *msg;
+	NUTS_PASS(nng_msg_alloc(&msg, 0));
+	NUTS_PASS(nng_msg_append(msg, "test", 4));
+	NUTS_PASS(nng_msg_chop(msg, 4));
+	NUTS_ASSERT(nng_msg_len(msg) == 0);
+	nng_msg_free(msg);
+}
+
+void
+test_msg_append_after_clear(void)
+{
+	nng_msg *msg;
+	NUTS_PASS(nng_msg_alloc(&msg, 0));
+	NUTS_PASS(nng_msg_append(msg, "first", 6));
+	nng_msg_clear(msg);
+	NUTS_PASS(nng_msg_append(msg, "second", 7));
+	NUTS_ASSERT(nng_msg_len(msg) == 7);
+	NUTS_ASSERT(strcmp(nng_msg_body(msg), "second") == 0);
+	nng_msg_free(msg);
+}
+
+void
+test_msg_header_append_after_clear(void)
+{
+	nng_msg *msg;
+	NUTS_PASS(nng_msg_alloc(&msg, 0));
+	NUTS_PASS(nng_msg_header_append(msg, "first", 6));
+	nng_msg_header_clear(msg);
+	NUTS_PASS(nng_msg_header_append(msg, "second", 7));
+	NUTS_ASSERT(nng_msg_header_len(msg) == 7);
+	NUTS_ASSERT(strcmp(nng_msg_header(msg), "second") == 0);
+	nng_msg_free(msg);
+}
+
+void
+test_msg_realloc_zero(void)
+{
+	nng_msg *msg;
+	NUTS_PASS(nng_msg_alloc(&msg, 100));
+	NUTS_PASS(nng_msg_realloc(msg, 0));
+	NUTS_ASSERT(nng_msg_len(msg) == 0);
+	nng_msg_free(msg);
+}
+
+void
+test_msg_realloc_shrink_grow(void)
+{
+	nng_msg *msg;
+	NUTS_PASS(nng_msg_alloc(&msg, 100));
+	NUTS_PASS(nng_msg_append(msg, "data", 4));
+
+	// Shrink
+	NUTS_PASS(nng_msg_realloc(msg, 50));
+	NUTS_ASSERT(nng_msg_len(msg) == 50);
+
+	// Grow
+	NUTS_PASS(nng_msg_realloc(msg, 200));
+	NUTS_ASSERT(nng_msg_len(msg) == 200);
+
+	nng_msg_free(msg);
+}
+
+void
+test_msg_reserve_multiple_times(void)
+{
+	nng_msg *msg;
+	char    *body;
+
+	NUTS_PASS(nng_msg_alloc(&msg, 0));
+	NUTS_PASS(nng_msg_append(msg, "test", 4));
+
+	body = nng_msg_body(msg);
+	NUTS_PASS(nng_msg_reserve(msg, 64));
+	NUTS_ASSERT(nng_msg_capacity(msg) == 64);
+	NUTS_ASSERT(body != nng_msg_body(msg));
+
+	body = nng_msg_body(msg);
+	NUTS_PASS(nng_msg_reserve(msg, 128));
+	NUTS_ASSERT(nng_msg_capacity(msg) == 128);
+	NUTS_ASSERT(body != nng_msg_body(msg));
+
+	nng_msg_free(msg);
+}
+
+void
+test_msg_boundary_u16(void)
+{
+	nng_msg *msg;
+	uint16_t v;
+
+	NUTS_PASS(nng_msg_alloc(&msg, 0));
+
+	// Test boundary values
+	NUTS_PASS(nng_msg_append_u16(msg, 0));
+	NUTS_PASS(nng_msg_append_u16(msg, 65535));
+	NUTS_PASS(nng_msg_append_u16(msg, 32768));
+
+	NUTS_PASS(nng_msg_trim_u16(msg, &v));
+	NUTS_ASSERT(v == 0);
+	NUTS_PASS(nng_msg_trim_u16(msg, &v));
+	NUTS_ASSERT(v == 65535);
+	NUTS_PASS(nng_msg_trim_u16(msg, &v));
+	NUTS_ASSERT(v == 32768);
+
+	nng_msg_free(msg);
+}
+
+void
+test_msg_boundary_u32(void)
+{
+	nng_msg *msg;
+	uint32_t v;
+
+	NUTS_PASS(nng_msg_alloc(&msg, 0));
+
+	// Test boundary values
+	NUTS_PASS(nng_msg_append_u32(msg, 0));
+	NUTS_PASS(nng_msg_append_u32(msg, 0xFFFFFFFF));
+	NUTS_PASS(nng_msg_append_u32(msg, 0x80000000));
+
+	NUTS_PASS(nng_msg_trim_u32(msg, &v));
+	NUTS_ASSERT(v == 0);
+	NUTS_PASS(nng_msg_trim_u32(msg, &v));
+	NUTS_ASSERT(v == 0xFFFFFFFF);
+	NUTS_PASS(nng_msg_trim_u32(msg, &v));
+	NUTS_ASSERT(v == 0x80000000);
+
+	nng_msg_free(msg);
+}
+
+void
+test_msg_boundary_u64(void)
+{
+	nng_msg *msg;
+	uint64_t v;
+
+	NUTS_PASS(nng_msg_alloc(&msg, 0));
+
+	// Test boundary values
+	NUTS_PASS(nng_msg_append_u64(msg, 0));
+	NUTS_PASS(nng_msg_append_u64(msg, 0xFFFFFFFFFFFFFFFFULL));
+	NUTS_PASS(nng_msg_append_u64(msg, 0x8000000000000000ULL));
+
+	NUTS_PASS(nng_msg_trim_u64(msg, &v));
+	NUTS_ASSERT(v == 0);
+	NUTS_PASS(nng_msg_trim_u64(msg, &v));
+	NUTS_ASSERT(v == 0xFFFFFFFFFFFFFFFFULL);
+	NUTS_PASS(nng_msg_trim_u64(msg, &v));
+	NUTS_ASSERT(v == 0x8000000000000000ULL);
+
+	nng_msg_free(msg);
+}
+
+void
+test_msg_mixed_operations(void)
+{
+	nng_msg *msg;
+	uint32_t v32;
+
+	NUTS_PASS(nng_msg_alloc(&msg, 0));
+
+	// Mix different operations
+	NUTS_PASS(nng_msg_append(msg, "start", 5));
+	NUTS_PASS(nng_msg_append_u32(msg, 12345));
+	NUTS_PASS(nng_msg_append(msg, "end", 3));
+
+	// Verify total length
+	NUTS_ASSERT(nng_msg_len(msg) == 5 + 4 + 3);
+
+	// Trim the end
+	NUTS_PASS(nng_msg_chop(msg, 3));
+	NUTS_PASS(nng_msg_chop_u32(msg, &v32));
+	NUTS_ASSERT(v32 == 12345);
+	NUTS_ASSERT(nng_msg_len(msg) == 5);
+	NUTS_ASSERT(memcmp(nng_msg_body(msg), "start", 5) == 0);
+
+	nng_msg_free(msg);
+}
+
+void
+test_msg_dup_empty(void)
+{
+	nng_msg *msg;
+	nng_msg *dup;
+
+	NUTS_PASS(nng_msg_alloc(&msg, 0));
+	NUTS_PASS(nng_msg_dup(&dup, msg));
+
+	NUTS_ASSERT(msg != dup);
+	NUTS_ASSERT(nng_msg_len(msg) == nng_msg_len(dup));
+	NUTS_ASSERT(nng_msg_header_len(msg) == nng_msg_header_len(dup));
+
+	nng_msg_free(msg);
+	nng_msg_free(dup);
+}
+
+void
+test_msg_pipe_invalid(void)
+{
+	nng_msg *msg;
+	nng_pipe p = NNG_PIPE_INITIALIZER;
+
+	NUTS_PASS(nng_msg_alloc(&msg, 0));
+
+	// Get pipe from new message (should be invalid)
+	p = nng_msg_get_pipe(msg);
+	NUTS_ASSERT(nng_pipe_id(p) < 0);
+
+	nng_msg_free(msg);
+}
+
 TEST_LIST = {
 	{ "msg option", test_msg_option },
 	{ "msg empty", test_msg_empty },
@@ -566,5 +833,22 @@ TEST_LIST = {
 	{ "msg capacity", test_msg_capacity },
 	{ "msg reserve", test_msg_reserve },
 	{ "msg insert stress", test_msg_insert_stress },
+	{ "msg alloc zero", test_msg_alloc_zero },
+	{ "msg alloc large", test_msg_alloc_large },
+	{ "msg append zero bytes", test_msg_append_zero_bytes },
+	{ "msg insert zero bytes", test_msg_insert_zero_bytes },
+	{ "msg trim entire body", test_msg_trim_entire_body },
+	{ "msg chop entire body", test_msg_chop_entire_body },
+	{ "msg append after clear", test_msg_append_after_clear },
+	{ "msg header append after clear", test_msg_header_append_after_clear },
+	{ "msg realloc zero", test_msg_realloc_zero },
+	{ "msg realloc shrink grow", test_msg_realloc_shrink_grow },
+	{ "msg reserve multiple times", test_msg_reserve_multiple_times },
+	{ "msg boundary u16", test_msg_boundary_u16 },
+	{ "msg boundary u32", test_msg_boundary_u32 },
+	{ "msg boundary u64", test_msg_boundary_u64 },
+	{ "msg mixed operations", test_msg_mixed_operations },
+	{ "msg dup empty", test_msg_dup_empty },
+	{ "msg pipe invalid", test_msg_pipe_invalid },
 	{ NULL, NULL },
 };
