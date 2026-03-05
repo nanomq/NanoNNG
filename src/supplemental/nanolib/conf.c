@@ -952,32 +952,10 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->web_hook.rule_count     = 0;
 	nanomq_conf->web_hook.cancel_timeout = (nng_duration) 5000;
 	nanomq_conf->web_hook.saios          = NULL;
+
 	conf_tls_init(&nanomq_conf->web_hook.tls);
-
-	nanomq_conf->exchange.count           = 0;
-	nanomq_conf->exchange.nodes           = NULL;
-
-	nanomq_conf->parquet.enable           = false;
-	nanomq_conf->parquet.encryption.enable= false;
-	nanomq_conf->parquet.encryption.key   = NULL;
-	nanomq_conf->parquet.encryption.key_id= NULL;
-	nanomq_conf->parquet.encryption.type  = AES_GCM_V1;
-
-	nanomq_conf->parquet.limit_frequency  = 5;
-	nanomq_conf->parquet.file_count       = 5;
-	nanomq_conf->parquet.file_size        = (10240 * 1024);
-	nanomq_conf->parquet.comp_type        = UNCOMPRESSED;
-	nanomq_conf->parquet.file_name_prefix = NULL;
-	nanomq_conf->parquet.dir              = NULL;
-
-	nanomq_conf->blf.enable           = false;
-	nanomq_conf->blf.file_count       = 5;
-	nanomq_conf->blf.file_size        = (10240 * 1024);
-	nanomq_conf->blf.comp_type        = UNCOMPRESSED;
-	nanomq_conf->blf.file_name_prefix = NULL;
-	nanomq_conf->blf.dir              = NULL;
-
 	conf_auth_init(&nanomq_conf->auths);
+
 	nanomq_conf->auth_http.enable = false;
 	conf_auth_http_req_init(&nanomq_conf->auth_http.auth_req);
 	conf_auth_http_req_init(&nanomq_conf->auth_http.super_req);
