@@ -21,6 +21,7 @@
 #endif
 
 static const char *gvin = NULL;
+static void conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls);
 
 typedef struct {
 	uint8_t enumerate;
@@ -309,10 +310,11 @@ conf_http_server_parse_ver2(conf_http_server *http_server, cJSON *json)
 		hocon_read_str(http_server, password, jso_http_server);
 		hocon_read_enum(http_server, auth_type, jso_http_server,
 		    http_server_auth_type);
-		conf_jwt *jwt = &(http_server->jwt);
 
+		conf_jwt *jwt = &(http_server->jwt);
 		cJSON *jso_pub_key_file =
 		    hocon_get_obj("jwt.public", jso_http_server);
+
 		if (cJSON_IsObject(jso_pub_key_file)) {
 			hocon_read_str_base(
 			    jwt, public_keyfile, "keyfile", jso_pub_key_file);
@@ -323,6 +325,10 @@ conf_http_server_parse_ver2(conf_http_server *http_server, cJSON *json)
 				jwt->public_key_len = strlen(jwt->public_key);
 			}
 		}
+
+		cJSON    *jso_tls         = hocon_get_obj("ssl", jso_http_server);
+		conf_tls *http_server_tls = &(http_server->tls);
+		conf_tls_parse_ver2_base(http_server_tls, jso_tls);
 	}
 }
 
