@@ -207,6 +207,7 @@ struct conf_http_server {
 	size_t      max_body;
 	auth_type_t auth_type;
 	conf_jwt    jwt;
+	conf_tls    tls;
 	nng_socket *broker_sock;
 };
 

@@ -880,6 +880,7 @@ conf_http_server_init(conf_http_server *http, uint16_t port)
 	http->jwt.public_key      = NULL;
 	http->jwt.private_keyfile = NULL;
 	http->jwt.public_keyfile  = NULL;
+	conf_tls_init(&http->tls);
 }
 
 void
@@ -892,6 +893,7 @@ conf_http_server_destroy(conf_http_server *http)
 	nng_strfree(http->jwt.public_key);
 	nng_strfree(http->jwt.private_keyfile);
 	nng_strfree(http->jwt.public_keyfile);
+	conf_tls_destroy(&http->tls);
 }
 
 void
@@ -1446,6 +1448,16 @@ print_conf(conf *nanomq_conf)
 		if (hs.jwt.public_keyfile) {
 			log_info("	public key file:      %s",
 			    hs.jwt.public_keyfile);
+		}
+		if (hs.tls.enable) {
+			log_info("http server tls enable:   true");
+			conf_tls tls = hs.tls;
+			log_info("    tls key file:         %s", tls.keyfile);
+			log_info("    tls cert file:        %s", tls.certfile);
+			log_info("    tls cacert file:      %s", tls.cafile);
+			log_info("    tls verify peer:      %s", tls.verify_peer ? "true" : "false");
+		} else {
+			log_info("http server tls enable:   false");
 		}
 	}
 
