@@ -216,7 +216,7 @@
 				    !cv_cap ? cv_cap + 1 : cv_cap * 2);    \
 			}                                                  \
 			const size_t cv_sz = cvector_size(vec);            \
-			if ((i) < cv_sz) {                                 \
+			if ((i) <= cv_sz) {                                \
 				cvector_set_size((vec), cv_sz + 1);        \
 				size_t cv_x;                               \
 				for (cv_x = (cv_sz); cv_x > (i); cv_x--) { \
