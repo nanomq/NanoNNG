@@ -405,13 +405,51 @@ dbtree_node_free(dbtree_node *node)
 	if (node) {
 		if (node->topic) {
 			log_debug("Delete node: [%s]", node->topic);
-			free(node->topic);
+			nni_strfree(node->topic);
 			node->topic = NULL;
 		}
 		nni_rwlock_fini(&node->rwlock);
-		free(node);
+		nni_free(node, sizeof(dbtree_node));
 		node = NULL;
 	}
+}
+
+static void
+dbtree_node_destroy_tree(dbtree_node *root)
+{
+	dbtree_node **stack = NULL;
+	if (root != NULL) {
+		cvector_push_back(stack, root);
+	}
+
+	while (!cvector_empty(stack)) {
+		dbtree_node *node = *(cvector_end(stack) - 1);
+		cvector_pop_back(stack);
+
+		if (node->child) {
+			for (size_t i = 0; i < cvector_size(node->child); i++) {
+				if (node->child[i]) {
+					cvector_push_back(stack, node->child[i]);
+				}
+			}
+			cvector_free(node->child);
+			node->child = NULL;
+		}
+
+		if (node->clients) {
+			cvector_free(node->clients);
+			node->clients = NULL;
+		}
+
+		if (node->retain) {
+			nng_msg_free(node->retain);
+			node->retain = NULL;
+		}
+
+		dbtree_node_free(node);
+	}
+
+	cvector_free(stack);
 }
 
 /**
@@ -444,8 +482,10 @@ void
 dbtree_destory(dbtree *db)
 {
 	if (db) {
-		dbtree_node_free(db->root);
-		free(db);
+		dbtree_node_destroy_tree(db->root);
+		db->root = NULL;
+		nni_rwlock_fini(&db->rwlock);
+		nni_free(db, sizeof(dbtree));
 		db = NULL;
 	}
 
