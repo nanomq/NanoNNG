@@ -589,6 +589,39 @@ conf_basic_parse(conf *config, const char *path)
 				    strlen(
 				        config->http_server.jwt.private_key);
 			}
+		} else if ((value = get_conf_value(line, sz,
+		                "http_server.tls.enable")) != NULL) {
+			config->http_server.tls.enable =
+				nni_strcasecmp(value, "true") == 0;
+			nng_strfree(value);
+		} else if ((value = get_conf_value(line, sz,
+		                "http_server.tls.keyfile")) != NULL) {
+			FREE_NONULL(config->http_server.tls.keyfile);
+			FREE_NONULL(config->http_server.tls.key);
+			config->http_server.tls.keyfile = value;
+			file_load_data(config->http_server.tls.keyfile,
+			        (void **) &config->http_server.tls.key);
+		} else if ((value = get_conf_value(line, sz,
+		                "http_server.tls.cacertfile")) != NULL) {
+			FREE_NONULL(config->http_server.tls.cafile);
+			FREE_NONULL(config->http_server.tls.ca);
+			config->http_server.tls.cafile = value;
+			file_load_data(config->http_server.tls.cafile,
+			        (void **) &config->http_server.tls.ca);
+		} else if ((value = get_conf_value(line, sz,
+		                "http_server.tls.key_password")) != NULL) {
+			FREE_NONULL(config->http_server.tls.key_password);
+			config->http_server.tls.key_password = value;
+		} else if ((value = get_conf_value(line, sz,
+		                "http_server.tls.verify_peer")) != NULL) {
+			config->http_server.tls.verify_peer =
+				nni_strcasecmp(value, "true") == 0;
+			nng_strfree(value);
+		} else if ((value = get_conf_value(line, sz,
+		                "http_server.tls.fail_if_no_peer_cert")) != NULL) {
+			config->http_server.tls.set_fail =
+				nni_strcasecmp(value, "true") == 0;
+			nng_strfree(value);
 		}
 		free(line);
 		line = NULL;
