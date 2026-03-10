@@ -1456,22 +1456,25 @@ conf_auth_init(conf_auth *auth)
 	auth->count     = 0;
 	auth->usernames = NULL;
 	auth->passwords = NULL;
-	nng_mtx_alloc(&auth->mtx);
+	if (nng_mtx_alloc(&auth->mtx) != 0) {
+		log_error("Failed to allocate mutex for auth config");
+		auth->mtx = NULL;
+	}
 }
 
 static void
 conf_auth_parse(conf_auth *auth, const char *path)
 {
-	char   name_key[256] = "";
-	char   pass_key[256] = "";
-	char * name          = NULL;
-	char * pass          = NULL;
 	size_t index         = 1;
+	size_t sz            = 0;
 	bool   get_name      = false;
 	bool   get_pass      = false;
-	char * line          = NULL;
-	size_t sz       = 0;
-	char * value;
+	char   name_key[256] = "";
+	char   pass_key[256] = "";
+	char  *name          = NULL;
+	char  *pass          = NULL;
+	char  *line          = NULL;
+	char  *value;
 
 	auth->count = 0;
 
