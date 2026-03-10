@@ -1456,6 +1456,7 @@ print_conf(conf *nanomq_conf)
 			log_info("    tls cert file:        %s", tls.certfile);
 			log_info("    tls cacert file:      %s", tls.cafile);
 			log_info("    tls verify peer:      %s", tls.verify_peer ? "true" : "false");
+			log_info("    tls set fail:         %s", tls.set_fail ? "true" : "false");
 		} else {
 			log_info("http server tls enable:   false");
 		}

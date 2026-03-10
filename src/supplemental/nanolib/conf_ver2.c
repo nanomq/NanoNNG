@@ -456,6 +456,8 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 		hocon_read_str(tls, certfile, jso_tls);
 		hocon_read_str_base(tls, cafile, "cacertfile", jso_tls);
 		hocon_read_str(tls, key_password, jso_tls);
+		hocon_read_bool(tls, verify_peer, jso_tls);
+		hocon_read_bool_base(tls, set_fail, "fail_if_no_peer_cert", jso_tls);
 		hocon_read_bool(tls, cert_encrypted, jso_tls);
 		hocon_read_str(tls, sni, jso_tls);
 
