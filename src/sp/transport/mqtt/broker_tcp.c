@@ -2180,7 +2180,7 @@ tcptran_pipe_peer(void *arg)
 	npipe = (nni_pipe *) cpipe->tpipe; // target pipe
 
 	nni_mtx_lock(&p->mtx);
-	if (cpipe->subinfol != NULL && npipe != NULL) {
+	if (cpipe->subinfol != NULL) {
 		NNI_LIST_FOREACH(cpipe->subinfol, info) {
 			if (!info) {
 				log_error("got error topic from subinfol!");
