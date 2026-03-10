@@ -160,6 +160,7 @@ tlstran_pipe_close(void *arg)
 		nni_qos_db_fini_id_hash(nano_qos_db);
 		p->npipe->nano_qos_db = NULL;
 	}
+	nni_lmq_flush(&p->rslmq);
 	nni_mtx_unlock(&p->mtx);
 
 	nng_stream_close(p->conn);
@@ -241,7 +242,6 @@ tlstran_pipe_fini(void *arg)
 	if (p->rxmsg != NULL)
         nni_msg_free(p->rxmsg);
 	nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
-	nni_lmq_flush(&p->rslmq);
 	nni_mtx_unlock(&p->mtx);
 
 	nng_stream_free(p->conn);
