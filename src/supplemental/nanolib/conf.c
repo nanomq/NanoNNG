@@ -1556,15 +1556,9 @@ conf_auth_parse(conf_auth *auth, const char *path)
 		if (get_name && get_pass) {
 			index++;
 			auth->count++;
-			auth->usernames = realloc(
-			    auth->usernames, sizeof(char *) * auth->count);
-			auth->passwords = realloc(
-			    auth->passwords, sizeof(char *) * auth->count);
-
-			auth->usernames[auth->count - 1] = name;
-			auth->passwords[auth->count - 1] = pass;
+			cvector_push_back(auth->usernames, nng_strdup(name));
+			cvector_push_back(auth->passwords, nng_strdup(pass));
 			auth->enable = true;
-
 			get_name = false;
 			get_pass = false;
 		}
