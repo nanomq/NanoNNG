@@ -1420,7 +1420,7 @@ wstran_pipe_peer(void *arg)
 	cpipe = p->npipe;                  // current pipe
 	npipe = (nni_pipe *) cpipe->tpipe; // target pipe
 	if (npipe == NULL) {
-		return 2
+		return 2;
 	}
 	nni_mtx_lock(&p->mtx);
 	if (cpipe->subinfol != NULL && npipe->subinfol != NULL) {
