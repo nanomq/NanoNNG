@@ -1419,9 +1419,11 @@ wstran_pipe_peer(void *arg)
 
 	cpipe = p->npipe;                  // current pipe
 	npipe = (nni_pipe *) cpipe->tpipe; // target pipe
-
+	if (npipe == NULL) {
+		return 2
+	}
 	nni_mtx_lock(&p->mtx);
-	if (cpipe->subinfol != NULL && npipe != NULL) {
+	if (cpipe->subinfol != NULL) {
 		NNI_LIST_FOREACH(cpipe->subinfol, info) {
 			if (!info) {
 				log_error("got error topic from subinfol!");
@@ -1438,7 +1440,7 @@ wstran_pipe_peer(void *arg)
 			if ((topic = nng_zalloc(strlen(info->topic) + 1)) == NULL) {
 				nng_free(sn, sizeof(struct subinfo));
 				nni_mtx_unlock(&p->mtx);
-				return (2);
+				return (1);
 			}
 			strncpy(topic, info->topic, strlen(info->topic));
 			log_debug("copy topic %s %d", topic, strlen(topic));

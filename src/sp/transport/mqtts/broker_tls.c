@@ -2236,7 +2236,7 @@ tlstran_ep_accept(void *arg, nni_aio *aio)
 static uint16_t
 tlstran_pipe_peer(void *arg)
 {
-	int rv = 0;
+	int           rv = 0;
 	subinfo      *info;
 	nni_pipe     *npipe, *cpipe;
 	tlstran_pipe *p = arg;
@@ -2245,7 +2245,7 @@ tlstran_pipe_peer(void *arg)
 	npipe = (nni_pipe *) cpipe->tpipe; // target pipe
 
 	nni_mtx_lock(&p->mtx);
-	if (cpipe->subinfol != NULL && npipe != NULL) {
+	if (cpipe->subinfol != NULL) {
 		NNI_LIST_FOREACH(cpipe->subinfol, info) {
 			if (!info) {
 				log_error("got error topic from subinfol!");
@@ -2262,7 +2262,7 @@ tlstran_pipe_peer(void *arg)
 			if ((topic = nng_zalloc(strlen(info->topic) + 1)) == NULL) {
 				nng_free(sn, sizeof(struct subinfo));
 				nni_mtx_unlock(&p->mtx);
-				return (2);
+				return (1);
 			}
 			strncpy(topic, info->topic, strlen(info->topic));
 			log_debug("copy topic %s %d", topic, strlen(topic));
