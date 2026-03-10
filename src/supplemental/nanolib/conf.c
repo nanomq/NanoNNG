@@ -1556,9 +1556,11 @@ conf_auth_parse(conf_auth *auth, const char *path)
 		if (get_name && get_pass) {
 			index++;
 			auth->count++;
-			cvector_push_back(auth->usernames, nng_strdup(name));
-			cvector_push_back(auth->passwords, nng_strdup(pass));
+			cvector_push_back(auth->usernames, name);
+			cvector_push_back(auth->passwords, pass);
 			auth->enable = true;
+			name = NULL;
+			pass = NULL;
 			get_name = false;
 			get_pass = false;
 		}
