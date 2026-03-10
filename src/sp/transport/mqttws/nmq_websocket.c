@@ -540,7 +540,6 @@ done:
 			nni_msg *qmsg;
 			if ((rv = nni_msg_alloc(&qmsg, 0)) != 0) {
 				ack = false;
-				rv  = NMQ_SERVER_BUSY;
 				log_error("ERROR: OOM in WebSocket");
 				p->err_code = SERVER_UNAVAILABLE;
 				goto reset;
@@ -609,6 +608,7 @@ skip:
 reset:
 	p->gotrxhead  = 0;
 	p->wantrxhead = 0;
+	nni_lmq_flush(&p->recvlmq);
 	if (p->ep_aio != NULL) {
 	// If the connection is closed during MQTT Connect, we need to pass back a fixed
 	// error code to nng_listener which is NNG_ECONNABORTED. Otherwise it is confused 
