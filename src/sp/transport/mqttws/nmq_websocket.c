@@ -1423,7 +1423,7 @@ wstran_pipe_peer(void *arg)
 		return 2
 	}
 	nni_mtx_lock(&p->mtx);
-	if (cpipe->subinfol != NULL) {
+	if (cpipe->subinfol != NULL && npipe->subinfol != NULL) {
 		NNI_LIST_FOREACH(cpipe->subinfol, info) {
 			if (!info) {
 				log_error("got error topic from subinfol!");
@@ -1461,7 +1461,6 @@ wstran_pipe_peer(void *arg)
 	npipe->packet_id = cpipe->packet_id;
 	npipe->nano_qos_db = cpipe->nano_qos_db;
 
-	// nni_atomic_set_bool(&old->p_closed, true);
 	nni_atomic_set_bool(&p->closed, true);
 	// set event of old pipe to false and discard it.
 	nni_atomic_swap_bool(&cpipe->cache, false);
