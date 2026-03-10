@@ -1324,7 +1324,6 @@ wstran_pipe_fini(void *arg)
 	// We have to free msg here for a failed send
 	// due to the messy design of NNG WebSocket
 	nni_msg_free(p->tmp_msg);
-	nni_lmq_flush(&p->rslmq);
 	nni_lmq_flush(&p->recvlmq);
 	nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
 	nni_mtx_unlock(&p->mtx);
@@ -1376,6 +1375,7 @@ wstran_pipe_close(void *arg)
 		nni_qos_db_fini_id_hash(nano_qos_db);
 		p->npipe->nano_qos_db = NULL;
 	}
+	nni_lmq_flush(&p->rslmq);
 	nni_mtx_unlock(&p->mtx);
 	nng_stream_close(p->ws);
 	nni_aio_close(p->rxaio);
