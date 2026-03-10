@@ -602,6 +602,13 @@ conf_basic_parse(conf *config, const char *path)
 			file_load_data(config->http_server.tls.keyfile,
 			        (void **) &config->http_server.tls.key);
 		} else if ((value = get_conf_value(line, sz,
+		                "http_server.tls.certfile")) != NULL) {
+			FREE_NONULL(config->http_server.tls.certfile);
+			FREE_NONULL(config->http_server.tls.cert);
+			config->http_server.tls.certfile = value;
+			file_load_data(config->http_server.tls.certfile,
+			        (void **) &config->http_server.tls.cert);
+		} else if ((value = get_conf_value(line, sz,
 		                "http_server.tls.cacertfile")) != NULL) {
 			FREE_NONULL(config->http_server.tls.cafile);
 			FREE_NONULL(config->http_server.tls.ca);
