@@ -200,7 +200,7 @@ get_utf8_str(char **dest, const uint8_t *src, uint32_t *pos, size_t max)
 	int32_t  str_len = 0;
 	uint32_t len;
 	if (max > 0)
-		if (max - *pos < 2)
+		if (*pos > max - 2)
 			return -1;
 	// still vulnerable to attack
 	const uint8_t *ptr = src + (*pos);
