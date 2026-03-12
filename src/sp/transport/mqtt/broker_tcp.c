@@ -957,6 +957,7 @@ tcptran_pipe_recv_cb(void *arg)
 		    qmsg, packet_id, reason_code, prop, p->pro_ver);
 		property_free(prop);
 		nni_mqtt_pubres_header_encode(qmsg, ack_cmd);
+		// TODO move ack msg logic to protocol layer for safety.
 		if (p->busy == false) {
 			iov[0].iov_len = nni_msg_header_len(qmsg);
 			iov[0].iov_buf = nni_msg_header(qmsg);
