@@ -1454,6 +1454,21 @@ nng_tls_config_auth_mode(nng_tls_config *cfg, nng_tls_auth_mode mode)
 }
 
 int
+nng_tls_config_option(nng_tls_config *cfg, const char *name, void *v, size_t sz)
+{
+	int rv;
+
+	nni_mtx_lock(&cfg->lock);
+	if (cfg->busy) {
+		rv = NNG_EBUSY;
+	} else {
+		rv = cfg->ops.option((void *) (cfg + 1), name, v, sz);
+	}
+	nni_mtx_unlock(&cfg->lock);
+	return (rv);
+}
+
+int
 nng_tls_config_alloc(nng_tls_config **cfg_p, nng_tls_mode mode)
 {
 	nng_tls_config *      cfg;
@@ -1634,6 +1649,16 @@ nng_tls_config_auth_mode(nng_tls_config *cfg, nng_tls_auth_mode mode)
 {
 	NNI_ARG_UNUSED(cfg);
 	NNI_ARG_UNUSED(mode);
+	return (NNG_ENOTSUP);
+}
+
+int
+nng_tls_config_option(nng_tls_config *cfg, const char *name, void *v, size_t sz)
+{
+	NNI_ARG_UNUSED(cfg);
+	NNI_ARG_UNUSED(name);
+	NNI_ARG_UNUSED(v);
+	NNI_ARG_UNUSED(sz);
 	return (NNG_ENOTSUP);
 }
 

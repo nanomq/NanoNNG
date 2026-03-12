@@ -1199,6 +1199,17 @@ open_config_version(nng_tls_engine_config *cfg, nng_tls_version min_ver,
 	return (0);
 }
 
+static int
+open_config_option(nng_tls_engine_config *cfg, const char *name, void *v, size_t sz)
+{
+	if (!name)
+		return NNG_EINVAL;
+	NNI_ARG_UNUSED(cfg);
+	NNI_ARG_UNUSED(v);
+	NNI_ARG_UNUSED(sz);
+	return (NNG_ENOTSUP);
+}
+
 static nng_tls_engine_config_ops open_config_ops = {
 	.init     = open_config_init,
 	.fini     = open_config_fini,
@@ -1209,6 +1220,7 @@ static nng_tls_engine_config_ops open_config_ops = {
 	.server   = open_config_server,
 	.psk      = open_config_psk,
 	.version  = open_config_version,
+	.option   = open_config_option,
 };
 
 static nng_tls_engine_conn_ops open_conn_ops = {

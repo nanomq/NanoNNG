@@ -102,6 +102,9 @@ NNG_DECL int nng_tls_config_pass(nng_tls_config *, const char *);
 // practice.
 NNG_DECL int nng_tls_config_auth_mode(nng_tls_config *, nng_tls_auth_mode);
 
+// nng_tls_config_option is used to configure other options that we need.
+NNG_DECL int nng_tls_config_option(nng_tls_config *, const char *, void *, size_t);
+
 // nng_tls_config_ca_file is used to pass a CA chain and optional CRL
 // via the filesystem.  If CRL data is present, it must be contained
 // in the file, along with the CA certificate data.  The format is PEM.

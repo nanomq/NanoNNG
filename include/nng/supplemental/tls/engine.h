@@ -169,6 +169,10 @@ typedef struct nng_tls_engine_config_ops_s {
 	// for v1.3, then NNG_ENOTSUP should be returned.
 	int (*version)(
 	    nng_tls_engine_config *, nng_tls_version, nng_tls_version);
+
+	// options configure other TLS options that we need
+	int (*option)(
+	    nng_tls_engine_config *, const char *, void *, size_t);
 } nng_tls_engine_config_ops;
 
 typedef enum nng_tls_engine_version_e {
