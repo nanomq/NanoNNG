@@ -181,8 +181,13 @@ nano_pipe_timer_cb(void *arg)
 	int 		 rv = 0;
 
 	bool is_sqlite = p->broker->conf->sqlite.enable;
-
-	if (nng_aio_result(&p->aio_timer) != 0) {
+	rv = nng_aio_result(&p->aio_timer);
+	if (rv != 0) {
+		log_warn("sleep aio error %d", rv);
+		if (rv == NNG_ECONNABORTED) {
+			log_warn("closing pipe due to session conflict");
+			nni_pipe_close(p->pipe);
+		}
 		return;
 	}
 	// lock sock first for cached_sessions
@@ -557,7 +562,6 @@ nano_pipe_stop(void *arg)
 		return; // your time is yet to come
 
 	log_trace(" ########## nano_pipe_stop ########## ");
-	// nni_aio_abort(&p->aio_send, NNG_ECANCELED);
 	nni_aio_stop(&p->aio_send);
 	nni_aio_stop(&p->aio_timer);
 	nni_aio_stop(&p->aio_recv);
@@ -830,8 +834,9 @@ session_keeping:
 			// it is not your time yet, do not send will msg
 			old->conn_param->will_flag = 0;
 		}
+		// Try aio abort to close old pipe due to data racing in reaper.
+		nni_aio_abort(&old->aio_timer, NNG_ECONNABORTED);
 		nni_mtx_unlock(&s->lk);
-		nni_pipe_close(old->pipe);
 	} else {
 		nni_mtx_unlock(&s->lk);
 	}
