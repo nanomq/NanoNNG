@@ -1442,7 +1442,7 @@ wstran_pipe_peer(void *arg)
 				nni_mtx_unlock(&p->mtx);
 				return (1);
 			}
-			strncpy(topic, info->topic, strlen(info->topic));
+			memcpy(topic, info->topic, strlen(info->topic) + 1);
 			log_debug("copy topic %s %d", topic, strlen(topic));
 			sn->topic           = topic;
 			sn->qos             = info->qos;
