@@ -858,6 +858,9 @@ NNG_DECL nng_listener nng_pipe_listener(nng_pipe);
 // peer authentication is disabled with `NNG_TLS_AUTH_MODE_NONE`.
 #define NNG_OPT_TLS_PEER_SUBJECT "tls-peer-subject"
 
+// NNG_OPT_TLS_ALPN is used for setting alpn for a tls connection.
+#define NNG_OPT_TLS_ALPN "tls-opt-alpn"
+
 // TCP options.  These may be supported on various transports that use
 // TCP underneath such as TLS, or not.
 

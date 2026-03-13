@@ -589,6 +589,46 @@ conf_basic_parse(conf *config, const char *path)
 				    strlen(
 				        config->http_server.jwt.private_key);
 			}
+		} else if ((value = get_conf_value(line, sz,
+		                "http_server.tls.enable")) != NULL) {
+			config->http_server.tls.enable =
+				nni_strcasecmp(value, "true") == 0;
+			nng_strfree(value);
+		} else if ((value = get_conf_value(line, sz,
+		                "http_server.tls.keyfile")) != NULL) {
+			FREE_NONULL(config->http_server.tls.keyfile);
+			FREE_NONULL(config->http_server.tls.key);
+			config->http_server.tls.keyfile = value;
+			file_load_data(config->http_server.tls.keyfile,
+			        (void **) &config->http_server.tls.key);
+		} else if ((value = get_conf_value(line, sz,
+		                "http_server.tls.certfile")) != NULL) {
+			FREE_NONULL(config->http_server.tls.certfile);
+			FREE_NONULL(config->http_server.tls.cert);
+			config->http_server.tls.certfile = value;
+			file_load_data(config->http_server.tls.certfile,
+			        (void **) &config->http_server.tls.cert);
+		} else if ((value = get_conf_value(line, sz,
+		                "http_server.tls.cacertfile")) != NULL) {
+			FREE_NONULL(config->http_server.tls.cafile);
+			FREE_NONULL(config->http_server.tls.ca);
+			config->http_server.tls.cafile = value;
+			file_load_data(config->http_server.tls.cafile,
+			        (void **) &config->http_server.tls.ca);
+		} else if ((value = get_conf_value(line, sz,
+		                "http_server.tls.key_password")) != NULL) {
+			FREE_NONULL(config->http_server.tls.key_password);
+			config->http_server.tls.key_password = value;
+		} else if ((value = get_conf_value(line, sz,
+		                "http_server.tls.verify_peer")) != NULL) {
+			config->http_server.tls.verify_peer =
+				nni_strcasecmp(value, "true") == 0;
+			nng_strfree(value);
+		} else if ((value = get_conf_value(line, sz,
+		                "http_server.tls.fail_if_no_peer_cert")) != NULL) {
+			config->http_server.tls.set_fail =
+				nni_strcasecmp(value, "true") == 0;
+			nng_strfree(value);
 		}
 		free(line);
 		line = NULL;
@@ -880,6 +920,7 @@ conf_http_server_init(conf_http_server *http, uint16_t port)
 	http->jwt.public_key      = NULL;
 	http->jwt.private_keyfile = NULL;
 	http->jwt.public_keyfile  = NULL;
+	conf_tls_init(&http->tls);
 }
 
 void
@@ -892,6 +933,7 @@ conf_http_server_destroy(conf_http_server *http)
 	nng_strfree(http->jwt.public_key);
 	nng_strfree(http->jwt.private_keyfile);
 	nng_strfree(http->jwt.public_keyfile);
+	conf_tls_destroy(&http->tls);
 }
 
 void
@@ -1446,6 +1488,17 @@ print_conf(conf *nanomq_conf)
 		if (hs.jwt.public_keyfile) {
 			log_info("	public key file:      %s",
 			    hs.jwt.public_keyfile);
+		}
+		if (hs.tls.enable) {
+			log_info("http server tls enable:   true");
+			conf_tls tls = hs.tls;
+			log_info("    tls key file:         %s", tls.keyfile);
+			log_info("    tls cert file:        %s", tls.certfile);
+			log_info("    tls cacert file:      %s", tls.cafile);
+			log_info("    tls verify peer:      %s", tls.verify_peer ? "true" : "false");
+			log_info("    tls set fail:         %s", tls.set_fail ? "true" : "false");
+		} else {
+			log_info("http server tls enable:   false");
 		}
 	}
 

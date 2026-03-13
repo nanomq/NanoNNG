@@ -446,6 +446,7 @@ config_fini(nng_tls_engine_config *cfg)
 	if (cfg->server_name) {
 		nni_strfree(cfg->server_name);
 	}
+
 	while ((p = nni_list_first(&cfg->pairs)) != NULL) {
 		nni_list_remove(&cfg->pairs, p);
 		mbedtls_x509_crt_free(&p->crt);
@@ -511,6 +512,25 @@ config_init(nng_tls_engine_config *cfg, enum nng_tls_mode mode)
 	mbedtls_ssl_conf_dbg(&cfg->cfg_ctx, tls_dbg, cfg);
 
 	return (0);
+}
+
+static int
+config_option(nng_tls_engine_config *cfg, const char *name, void *v, size_t sz)
+{
+	if (!name)
+		return NNG_EINVAL;
+	if (0 == strcmp(name, NNG_OPT_TLS_ALPN)) {
+		const char **alpn_list = v;
+		int rv = mbedtls_ssl_conf_alpn_protocols(&cfg->cfg_ctx, alpn_list);
+		if (rv != 0) {
+			tls_log_err("NNG-TLS-CONFIG-OPTION-FAIL",
+			    "Failed to initialize TLS ALPN configuration", rv);
+			return (tls_mk_err(rv));
+		}
+		NNI_ARG_UNUSED(sz);
+		return (0);
+	}
+	return (NNG_ENOTSUP);
 }
 
 static int
@@ -790,6 +810,7 @@ static nng_tls_engine_config_ops config_ops = {
 	.server   = config_server_name,
 	.psk      = config_psk,
 	.version  = config_version,
+	.option   = config_option,
 };
 
 static nng_tls_engine_conn_ops conn_ops = {
