@@ -968,10 +968,6 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	X509 *xcert = NULL;
 	EVP_PKEY *pkey = NULL;
 
-#ifdef TLS_EXTERN_SS_CERTS
-    get_engin_info_in_passwd(pass);
-#endif /* TLS_EXTERN_SS_CERTS */
-
 #if NNG_OPENSSL_HAVE_PASSWORD
 	char *dup = NULL;
 

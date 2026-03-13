@@ -211,7 +211,7 @@ char *get_value_of_key_value_pair(const char *pair, const char *key, const char 
     }
     else
     {
-        log_info("not find key:%s", key);
+        log_warn("not find key:%s", key);
     }
 
     return value_pointer;
