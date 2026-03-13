@@ -79,6 +79,12 @@ print_hex(char *str, const uint8_t *data, size_t len)
 #include <nng/supplemental/tls/tee.h>
 #endif
 
+#ifdef TLS_EXTERN_SS_CERTS
+#define NNG_OPENSSL_HAVE_PASSWORD 1
+#include <nng/supplemental/tls/tee2.h>
+#include "openssl/engine.h"
+#endif
+
 static bool g_print_handshake = false;
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
@@ -793,6 +799,10 @@ open_config_init(nng_tls_engine_config *cfg, enum nng_tls_mode mode)
 	//SSL_CTX_set_mode(cfg->ctx, SSL_MODE_AUTO_RETRY);
 	//SSL_CTX_set_options(cfg->ctx, SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
 
+#ifdef TLS_EXTERN_SS_CERTS
+	SSL_CTX_set1_sigalgs_list(cfg->ctx, "rsa_pkcs1_sha256");
+#endif
+
 	trace("start end %p ctx %p", cfg, cfg->ctx);
 	cfg->auth_mode = nng_auth;
 	return (0);
@@ -958,13 +968,33 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	X509 *xcert = NULL;
 	EVP_PKEY *pkey = NULL;
 
+#ifdef TLS_EXTERN_SS_CERTS
+    get_engin_info_in_passwd(pass);
+#endif /* TLS_EXTERN_SS_CERTS */
+
 #if NNG_OPENSSL_HAVE_PASSWORD
 	char *dup = NULL;
+
+#ifdef TLS_EXTERN_SS_CERTS
+	get_engin_info_in_passwd(pass);
+	static ENGINE * engineptr = NULL;
+	char *engine_name = tee_get_engine_name();
+	char *engine_path = tee_get_engine_path();
+	if ((NULL == engine_name) && (NULL == engine_path)) {
+		if (pass != NULL) {
+			if ((dup = nng_strdup(pass)) == NULL) {
+				return (NNG_ENOMEM);
+			}
+		}
+	}
+#else
 	if (pass != NULL) {
 		if ((dup = nng_strdup(pass)) == NULL) {
 			return (NNG_ENOMEM);
 		}
 	}
+#endif /* TLS_EXTERN_SS_CERTS */
+
 	if (cfg->pass != NULL) {
 		nng_strfree(cfg->pass);
 	}
@@ -974,6 +1004,57 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 #else
 	(void) pass;
 #endif
+
+#ifdef TLS_EXTERN_SS_CERTS
+	if ((NULL != engine_name) || (NULL != engine_path)) {
+		// loading engine
+		if ((NULL == engineptr) &&
+		    (NULL == (engineptr = engine_init(engine_name, engine_path)))) {
+			log_error("engine_init is failed");
+			rv = NNG_ENOMEM;
+
+			goto ENGINE_OVER;
+		}
+
+		if (!loading_owner_cert_from_engine(engineptr, cfg->ctx)) {
+			log_error("Failed to loading_owner_cert_from_engine");
+			rv = NNG_ENOMEM;
+
+			goto ENGINE_OVER;
+		}
+		if (!loading_owner_key_from_engine(engineptr, cfg->ctx)) {
+			log_error("Failed to loading_owner_key_from_engine");
+			rv = NNG_ENOMEM;
+
+			goto ENGINE_OVER;
+		}
+
+		if (SSL_CTX_check_private_key(cfg->ctx) != 1) {
+			log_error("Failed to check key in SSL_CTX");
+			rv = NNG_ECRYPTO;
+		}
+
+	ENGINE_OVER:
+		if (NULL != engineptr) {
+			log_info("free engineptr");
+			ENGINE_finish(engineptr);
+			ENGINE_free(engineptr);
+			engineptr = NULL;
+		}
+
+		if (NULL != engine_name) {
+			nng_free(engine_name, 0);
+			engine_name = NULL;
+		}
+
+		if (NULL != engine_path) {
+			nng_free(engine_path, 0);
+			engine_path = NULL;
+		}
+
+		return rv;
+	}
+#endif /* TLS_EXTERN_SS_CERTS */
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
 	//int getCertificateFromKeystore(const char* alias, uint8_t* out, int outlen_chk);
