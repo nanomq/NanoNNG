@@ -39,6 +39,7 @@ std::string teeGetTeeRootCert()
 
 #endif // DEBUG_PKI_LOCAL
 
+#ifdef TLS_EXTERN_PRIVATE_KEY
 int teeGetCA(char **cacert) {
 	string ca = teeGetTeeRootCert();
 	// overwrite certs
@@ -48,4 +49,5 @@ int teeGetCA(char **cacert) {
 	*cacert = certs;
 	return len;
 }
+#endif //TLS_EXTERN_PRIVATE_KEY
 

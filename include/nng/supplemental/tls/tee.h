@@ -7,7 +7,9 @@
 extern "C" {
 #endif
 
+#ifdef TLS_EXTERN_PRIVATE_KEY
 int teeGetCA(char **);
+#endif
 
 #ifdef __cplusplus
 }
