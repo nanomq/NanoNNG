@@ -874,6 +874,8 @@ conf_http_server_init(conf_http_server *http, uint16_t port)
 	http->max_body			  = 1024 * 1024;
 	http->username            = NULL;
 	http->password            = NULL;
+	http->usernames           = NULL;
+	http->passwords           = NULL;
 	http->auth_type           = BASIC;
 	http->jwt.iss             = NULL;
 	http->jwt.private_key     = NULL;
@@ -887,6 +889,20 @@ conf_http_server_destroy(conf_http_server *http)
 {
 	nng_strfree(http->username);
 	nng_strfree(http->password);
+	if (http->usernames) {
+		for (size_t i = 0; i < cvector_size(http->usernames); ++i) {
+			if (http->usernames[i])
+				nng_strfree(http->usernames[i]);
+		}
+		cvector_free(http->usernames);
+	}
+	if (http->passwords) {
+		for (size_t i = 0; i < cvector_size(http->passwords); ++i) {
+			if (http->passwords[i])
+				nng_strfree(http->passwords[i]);
+		}
+		cvector_free(http->passwords);
+	}
 
 	nng_strfree(http->jwt.private_key);
 	nng_strfree(http->jwt.public_key);
@@ -1435,6 +1451,12 @@ print_conf(conf *nanomq_conf)
 		log_info("http server limit_conn:   %u", hs.parallel);
 		log_info("http server max body:     %ld", hs.max_body);
 		log_info("http server username:     %s", hs.username);
+		if (hs.usernames) {
+			for (size_t i = 0; i < cvector_size(hs.usernames); ++i) {
+				log_info("http server username:     %s", hs.usernames[i]);
+			}
+		}
+
 		const char *type = get_http_auth_type(hs.auth_type);
 		log_info("http server auth type:    %s", type);
 		if (hs.jwt.private_keyfile) {

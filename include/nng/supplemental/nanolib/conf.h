@@ -203,6 +203,8 @@ struct conf_http_server {
 	uint16_t    port;
 	char       *username;
 	char       *password;
+	char      **usernames; // Extension of username and password
+	char      **passwords; // While keep the compatiblity
 	size_t      parallel;
 	size_t      max_body;
 	auth_type_t auth_type;
