@@ -306,8 +306,18 @@ conf_http_server_parse_ver2(conf_http_server *http_server, cJSON *json)
 		hocon_read_num_base(
 		    http_server, max_body, "max_body", jso_http_server);
 		hocon_read_str(http_server, username, jso_http_server);
-		hocon_read_str(http_server, ip_addr, jso_http_server);
 		hocon_read_str(http_server, password, jso_http_server);
+		cJSON *usernames_obj = hocon_get_obj("usernames", jso_http_server);
+		cJSON *username_obj = NULL;
+		cJSON_ArrayForEach(usernames_obj, username_obj) {
+			cvector_push_back(http_server->usernames, strdup(username_obj->valuestring));
+		}
+		cJSON *passwords_obj = hocon_get_obj("passwords", jso_http_server);
+		cJSON *password_obj = NULL;
+		cJSON_ArrayForEach(passwords_obj, password_obj) {
+			cvector_push_back(http_server->passwords, strdup(password_obj->valuestring));
+		}
+		hocon_read_str(http_server, ip_addr, jso_http_server);
 		hocon_read_enum(http_server, auth_type, jso_http_server,
 		    http_server_auth_type);
 
