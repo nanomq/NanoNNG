@@ -309,16 +309,20 @@ conf_http_server_parse_ver2(conf_http_server *http_server, cJSON *json)
 		cJSON *usernames_obj = hocon_get_obj("usernames", jso_http_server);
 		cJSON *username_obj = NULL;
 		cJSON_ArrayForEach(username_obj, usernames_obj) {
-			cvector_push_back(http_server->usernames, strdup(username_obj->valuestring));
+			if (cJSON_IsString(username_obj))
+				cvector_push_back(http_server->usernames,
+						nng_strdup(username_obj->valuestring));
 		}
 		cJSON *passwords_obj = hocon_get_obj("passwords", jso_http_server);
 		cJSON *password_obj = NULL;
 		cJSON_ArrayForEach(password_obj, passwords_obj) {
-			cvector_push_back(http_server->passwords, strdup(password_obj->valuestring));
+			if (cJSON_IsString(password_obj))
+				cvector_push_back(http_server->passwords,
+						nng_strdup(password_obj->valuestring));
 		}
 		if (cvector_size(http_server->passwords) !=
 				cvector_size(http_server->usernames)) {
-			log_warn("Http Server: count of usernames and passwords are different");
+			log_error("Http Server: count of usernames and passwords are different");
 		}
 		hocon_read_str(http_server, ip_addr, jso_http_server);
 		hocon_read_enum(http_server, auth_type, jso_http_server,
