@@ -801,6 +801,8 @@ open_config_init(nng_tls_engine_config *cfg, enum nng_tls_mode mode)
 
 #ifdef TLS_EXTERN_SS_CERTS
 	SSL_CTX_set1_sigalgs_list(cfg->ctx, "rsa_pkcs1_sha256");
+	SSL_CTX_set_min_proto_version(cfg->ctx, TLS1_2_VERSION); // minimum TLS 1.2
+	SSL_CTX_set_max_proto_version(cfg->ctx, TLS1_2_VERSION); // maximum TLS 1.2
 #endif
 
 	trace("start end %p ctx %p", cfg, cfg->ctx);
