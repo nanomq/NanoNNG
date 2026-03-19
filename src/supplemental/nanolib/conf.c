@@ -922,6 +922,9 @@ conf_http_server_init(conf_http_server *http, uint16_t port)
 	http->jwt.public_key      = NULL;
 	http->jwt.private_keyfile = NULL;
 	http->jwt.public_keyfile  = NULL;
+	if (0 != nng_mtx_alloc(&http->mtx)) {
+		log_error("failed to alloc mtx for http server");
+	}
 	conf_tls_init(&http->tls);
 }
 
@@ -950,6 +953,7 @@ conf_http_server_destroy(conf_http_server *http)
 	nng_strfree(http->jwt.private_keyfile);
 	nng_strfree(http->jwt.public_keyfile);
 	conf_tls_destroy(&http->tls);
+	nng_mtx_free(http->mtx);
 }
 
 void
