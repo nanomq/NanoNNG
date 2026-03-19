@@ -817,6 +817,64 @@ conf_auth_parse_cipher(conf_auth *auth, const char *key)
 		}
 	}
 }
+
+static void
+conf_http_server_parse_cipher(conf_http_server *http, const char *key)
+{
+	if (!http->enable) {
+		return;
+	}
+
+	if (http->password) {
+		char *password = http->password;
+		char *cipher = nng_alloc(sizeof(char) * strlen(password));
+		size_t cipher_sz;
+		cipher_sz = nni_base64_decode((const char*)password,
+				strlen(password), (uint8_t *)cipher, strlen(password));
+		if (cipher_sz <= 32) {
+			nng_free(cipher, cipher_sz);
+			log_error("failed to base64 decode http_server.password");
+		} else {
+			int   plain_sz;
+			char *plain = nni_aes_gcm_decrypt(
+					cipher, cipher_sz, (char *)key, &plain_sz);
+			nng_free(cipher, cipher_sz);
+			if (plain == NULL || plain_sz == 0) {
+				log_error("failed to decrypt http_server.password");
+			} else {
+				nng_free(password, strlen(password));
+				http->password = plain;
+				log_info("http_server.password: %s", plain);
+			}
+		}
+	}
+
+	for (int i = 0; i<(int)cvector_size(http->passwords); ++i) {
+		char *password = http->passwords[i];
+		if (!password)
+			continue;
+		char * cipher = nng_alloc(sizeof(char) * strlen(password));
+		size_t cipher_sz;
+		cipher_sz = nni_base64_decode((const char*)password,
+				strlen(password), (uint8_t *)cipher, strlen(password));
+		if (cipher_sz <= 32) {
+			nng_free(cipher, cipher_sz);
+			log_error("failed to base64 decode http_server.passwords[%d]", i);
+		} else {
+			int   plain_sz;
+			char *plain = nni_aes_gcm_decrypt(
+					cipher, cipher_sz, (char *)key, &plain_sz);
+			nng_free(cipher, cipher_sz);
+			if (plain == NULL || plain_sz == 0) {
+				log_error("failed to decrypt http_server.passwords[%d]", i);
+			} else {
+				nng_free(password, strlen(password));
+				http->passwords[i] = plain;
+				log_info("http_server.passwords[%d]: %s", i, plain);
+			}
+		}
+	}
+}
 #endif
 
 static void
@@ -2301,6 +2359,7 @@ conf_parse_cipher(conf *config, const char *key, const char *key2)
 {
 #ifdef SUPP_LICENSE_STD
 	conf_auth_parse_cipher(&config->auths, key);
+	conf_http_server_parse_cipher(&config->http_server, key);
 #endif
 	conf_bridge_parse_cipher(&config->bridge, key, key2);
 	NNI_ARG_UNUSED(key);
