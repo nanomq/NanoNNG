@@ -953,7 +953,10 @@ conf_http_server_destroy(conf_http_server *http)
 	nng_strfree(http->jwt.private_keyfile);
 	nng_strfree(http->jwt.public_keyfile);
 	conf_tls_destroy(&http->tls);
-	nng_mtx_free(http->mtx);
+	if (http->mtx) {
+		nng_mtx_free(http->mtx);
+		http->mtx = NULL;
+	}
 }
 
 void

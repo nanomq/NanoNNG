@@ -827,13 +827,17 @@ conf_http_server_parse_cipher(conf_http_server *http, const char *key)
 
 	if (http->password) {
 		char *password = http->password;
-		char *cipher = nng_alloc(sizeof(char) * strlen(password));
-		size_t cipher_sz;
-		cipher_sz = nni_base64_decode((const char*)password,
+		size_t cipher_sz = 0;
+		char * cipher = nng_alloc(sizeof(char) * strlen(password));
+		if (!cipher) {
+			log_error("failed to alloc cipher sz%ld", strlen(password));
+		} else {
+			cipher_sz = nni_base64_decode((const char*)password,
 				strlen(password), (uint8_t *)cipher, strlen(password));
+		}
 		if (cipher_sz <= 32) {
 			nng_free(cipher, cipher_sz);
-			log_error("failed to base64 decode http_server.password");
+			log_error("failed to base64 decode http_server.password sz%ld", cipher_sz);
 		} else {
 			int   plain_sz;
 			char *plain = nni_aes_gcm_decrypt(
@@ -844,7 +848,7 @@ conf_http_server_parse_cipher(conf_http_server *http, const char *key)
 			} else {
 				nng_free(password, strlen(password));
 				http->password = plain;
-				log_info("http_server.password: %s", plain);
+				log_trace("http_server.password: %s", plain);
 			}
 		}
 	}
@@ -853,13 +857,17 @@ conf_http_server_parse_cipher(conf_http_server *http, const char *key)
 		char *password = http->passwords[i];
 		if (!password)
 			continue;
+		size_t cipher_sz = 0;
 		char * cipher = nng_alloc(sizeof(char) * strlen(password));
-		size_t cipher_sz;
+		if (!cipher) {
+			log_error("failed to alloc cipher[%d] sz%ld", i, strlen(password));
+			continue;
+		}
 		cipher_sz = nni_base64_decode((const char*)password,
 				strlen(password), (uint8_t *)cipher, strlen(password));
 		if (cipher_sz <= 32) {
 			nng_free(cipher, cipher_sz);
-			log_error("failed to base64 decode http_server.passwords[%d]", i);
+			log_error("failed to base64 decode http_server.passwords[%d] sz%ld", i, cipher_sz);
 		} else {
 			int   plain_sz;
 			char *plain = nni_aes_gcm_decrypt(
@@ -870,7 +878,7 @@ conf_http_server_parse_cipher(conf_http_server *http, const char *key)
 			} else {
 				nng_free(password, strlen(password));
 				http->passwords[i] = plain;
-				log_info("http_server.passwords[%d]: %s", i, plain);
+				log_trace("http_server.passwords[%d]: %s", i, plain);
 			}
 		}
 	}
