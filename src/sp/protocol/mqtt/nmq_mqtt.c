@@ -226,20 +226,24 @@ nano_pipe_timer_cb(void *arg)
 		return;
 	}
 	nni_mtx_lock(&p->lk);
-	qos_backoff = p->ka_refresh * (qos_duration) *1000 -
-	    p->keepalive * qos_backoff * 1000;
-	log_trace("check pipe keepalive interval %d backoff %f, ka %d",
-			  p->keepalive, qos_backoff, p->ka_refresh);
-	if (qos_backoff > 0) {
-		log_warn(
-		    "Warning: close pipe & kick client due to KeepAlive "
-		    "timeout!");
-		p->reason_code = NMQ_KEEP_ALIVE_TIMEOUT;
-		nni_sleep_aio(qos_duration * 1000, &p->aio_timer);
-		nni_mtx_unlock(&p->lk);
-		p->reason_code = KEEP_ALIVE_TIMEOUT;
-		nni_pipe_close(p->pipe);
-		return;
+
+	// According to MQTT protocol, when keepalive is 0, the server should not check the keepalive timeout.
+	if (p->keepalive != 0) {
+		qos_backoff = p->ka_refresh * (qos_duration) * 1000 -
+		    p->keepalive * qos_backoff * 1000;
+		log_trace("check pipe keepalive interval %d backoff %f, ka %d",
+		    p->keepalive, qos_backoff, p->ka_refresh);
+		if (qos_backoff > 0) {
+			log_warn("Warning: close pipe & kick client due to "
+			         "KeepAlive "
+			         "timeout!");
+			p->reason_code = NMQ_KEEP_ALIVE_TIMEOUT;
+			nni_sleep_aio(qos_duration * 1000, &p->aio_timer);
+			nni_mtx_unlock(&p->lk);
+			p->reason_code = KEEP_ALIVE_TIMEOUT;
+			nni_pipe_close(p->pipe);
+			return;
+		}
 	}
 	p->ka_refresh++;
 
@@ -274,7 +278,7 @@ nano_pipe_timer_cb(void *arg)
 			    (long unsigned) qos_duration * 1250) {
 				p->busy = true;
 				// TODO set max retrying times in nanomq.conf
-				// nano_msg_set_dup(rmsg);
+				nano_msg_set_dup(rmsg);
 				// deliver packet id to transport here
 				nni_aio_set_prov_data(&p->aio_send, (void *)(uintptr_t)pid);
 				// put original msg into sending
