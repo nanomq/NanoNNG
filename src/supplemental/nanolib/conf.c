@@ -3723,7 +3723,7 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		    node->name, node->resend_wait);
 		log_info("%sbridge.mqtt.%s.cancel_timeout:             %ld", prefix,
 		    node->name, node->cancel_timeout);
-		log_info("%sbridge.mqtt.%s.hybrid_bridging       :     %s", prefix,
+		log_info("%sbridge.mqtt.%s.hybrid_bridging:            %s", prefix,
 		    node->name, node->hybrid ? "true" : "false");
 		log_info("%sbridge.mqtt.%s.hybrid_servers: ", prefix, node->name);
 		for (size_t j = 0; j < cvector_size(node->hybrid_servers); j++) {
@@ -3767,13 +3767,23 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 
 		for (size_t j = 0; j < node->forwards_count; j++) {
 			log_info(
-			    "\t[%ld] remote topic:        %.*s", j,
+			    "\t[%ld] remote topic:\t\t%.*s", j,
 										node->forwards_list[j]->remote_topic_len,
 										node->forwards_list[j]->remote_topic);
 			log_info(
-			    "\t[%ld] local topic:        %.*s", j,
+			    "\t[%ld] local topic:\t\t%.*s", j,
 										node->forwards_list[j]->local_topic_len,
 										node->forwards_list[j]->local_topic);
+			if (node->forwards_list[j]->exclusions_count > 0) {
+				log_info(
+					"\t[%ld] exclusions:", j);
+			}
+			for (size_t k = 0; k < node->forwards_list[j]->exclusions_count; k++) {
+				log_info(
+					"\t\t[%ld] topic:\t\t%.*s", k, 
+					node->forwards_list[j]->exclusion_topics[k]->topic_len,
+					node->forwards_list[j]->exclusion_topics[k]->topic);
+			}
 		}
 		log_info(
 		    "%sbridge.mqtt.%s.subscription: ", prefix, node->name);

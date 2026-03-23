@@ -1233,6 +1233,22 @@ conf_bridge_node_parse(
 			s->prefix_len = strlen(s->prefix);
 		}
 
+		cJSON *exclusions_list = hocon_get_obj("exclusions", forward);
+		cJSON *exclusion = NULL;
+		cJSON_ArrayForEach(exclusion, exclusions_list)
+		{
+			exclusions *exc = NNI_ALLOC_STRUCT(exc);
+			hocon_read_str(exc, topic, exclusion);
+			size_t topic_len = exc->topic ? strlen(exc->topic) : 0;
+			if (topic_len == 0) {
+				log_error("Exclusion topic should not be null or empty");
+				break;
+			}
+			exc->topic_len = topic_len;
+			cvector_push_back(s->exclusion_topics, exc);
+		}
+		s->exclusions_count = cvector_size(s->exclusion_topics);
+
 		cJSON *jso_key = cJSON_GetObjectItem(forward, "retain");
 		if (cJSON_IsNumber(jso_key) &&
 		    (jso_key->valuedouble == 0 || jso_key->valuedouble == 1)) {

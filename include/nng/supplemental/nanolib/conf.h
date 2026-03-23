@@ -223,12 +223,19 @@ typedef struct conf_websocket conf_websocket;
 #define NO_QOS    3 // default QoS level value for forwarding bridge msg, 3 = keep old qos
 
 typedef struct {
+	char       *topic;
+	size_t 		  topic_len;
+} exclusions;
+
+typedef struct {
 	char       *remote_topic;
 	uint32_t    remote_topic_len;
 	char       *local_topic;
 	uint32_t    local_topic_len;
 	int16_t     local_skip_level;
 	int16_t     local_save_level;
+	uint32_t   	exclusions_count;
+	exclusions **exclusion_topics;
 	char       *prefix;
 	uint32_t    prefix_len;
 	char       *suffix;
