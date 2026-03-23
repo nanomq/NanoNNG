@@ -1242,12 +1242,13 @@ conf_bridge_node_parse(
 			size_t topic_len = exc->topic ? strlen(exc->topic) : 0;
 			if (topic_len == 0) {
 				log_error("Exclusion topic should not be null or empty");
+				NNI_FREE_STRUCT(exc); 
 				break;
 			}
 			exc->topic_len = topic_len;
-			cvector_push_back(s->exclusion_topics, exc);
+			cvector_push_back(s->exclusions_list, exc);
 		}
-		s->exclusions_count = cvector_size(s->exclusion_topics);
+		s->exclusions_count = cvector_size(s->exclusions_list);
 
 		cJSON *jso_key = cJSON_GetObjectItem(forward, "retain");
 		if (cJSON_IsNumber(jso_key) &&

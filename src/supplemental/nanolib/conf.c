@@ -3587,6 +3587,19 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 				free(s->local_topic);
 				s->local_topic = NULL;
 			}
+			if (s->exclusions_count > 0 && s->exclusions_list) {
+				for (size_t j = 0; j < s->exclusions_count; j++) {
+					exclusions *e = s->exclusions_list[j];
+					if (e->topic) {
+						free(e->topic);
+						e->topic = NULL;
+					}
+					NNI_FREE_STRUCT(e);
+				}
+				s->exclusions_count = 0;
+				cvector_free(s->exclusions_list);
+				s->exclusions_list = NULL;
+			}
 			if (s->prefix) {
 				free(s->prefix);
 				s->prefix = NULL;
@@ -3781,8 +3794,8 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 			for (size_t k = 0; k < node->forwards_list[j]->exclusions_count; k++) {
 				log_info(
 					"\t\t[%ld] topic:\t\t%.*s", k, 
-					node->forwards_list[j]->exclusion_topics[k]->topic_len,
-					node->forwards_list[j]->exclusion_topics[k]->topic);
+					node->forwards_list[j]->exclusions_list[k]->topic_len,
+					node->forwards_list[j]->exclusions_list[k]->topic);
 			}
 		}
 		log_info(

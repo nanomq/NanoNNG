@@ -235,7 +235,7 @@ typedef struct {
 	int16_t     local_skip_level;
 	int16_t     local_save_level;
 	uint32_t   	exclusions_count;
-	exclusions **exclusion_topics;
+	exclusions **exclusions_list;
 	char       *prefix;
 	uint32_t    prefix_len;
 	char       *suffix;
