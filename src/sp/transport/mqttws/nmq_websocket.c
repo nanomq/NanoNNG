@@ -764,6 +764,12 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			qos            = info->qos;
 			fixheader      = *header;
 
+			if (info->rap == 0 &&
+			    !nni_mqtt_msg_get_sub_retain_bool(msg)) {
+				// reset retain flag to 0
+				fixheader = fixheader & 0xFE;
+			}
+
 			// get final qos
 			qos = qos_pac > qos ? qos : qos_pac;
 
