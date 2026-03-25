@@ -101,7 +101,7 @@ extern void     nni_mqtt_qos_db_set(sqlite3 *, uint32_t, uint16_t, nni_msg *);
 extern nni_msg *nni_mqtt_qos_db_get(sqlite3 *, uint32_t, uint16_t);
 extern nni_msg *nni_mqtt_qos_db_get_one(sqlite3 *, uint32_t, uint16_t *);
 extern void     nni_mqtt_qos_db_remove(sqlite3 *, uint32_t, uint16_t);
-extern void     nni_mqtt_qos_db_remove_oldest(sqlite3 *, uint64_t);
+extern void     nni_mqtt_qos_db_remove_oldest(sqlite3 *, uint64_t) NNG_DEPRECATED;
 extern void     nni_mqtt_qos_db_remove_by_pipe(sqlite3 *, uint32_t);
 extern void     nni_mqtt_qos_db_remove_msg(sqlite3 *, nni_msg *);
 extern void     nni_mqtt_qos_db_remove_unused_msg(sqlite3 *);

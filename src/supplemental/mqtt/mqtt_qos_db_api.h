@@ -44,6 +44,8 @@ extern void nni_qos_db_remove_by_pipe(
     bool is_sqlite, void *db, uint32_t pipe_id);
 extern void nni_qos_db_remove_msg(bool is_sqlite, void *db, nng_msg *msg);
 extern void nni_qos_db_remove_unused_msg(bool is_sqlite, void *db);
+extern void nni_mqtt_qos_db_remove_oldest_and_unused(
+    sqlite3 *db, uint64_t limit);
 extern void nni_qos_db_remove_all_msg(
     bool is_sqlite, void *db, nni_idhash_cb cb);
 extern void nni_qos_db_reset_pipe(bool is_sqlite, void *db);
