@@ -1179,6 +1179,12 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		qos = info->qos;
 		log_trace("qos_pac %d sub %d\n", qos_pac, qos);
 		fixheader = *header;
+
+		if (info->rap == 0 && !nni_mqtt_msg_get_sub_retain_bool(msg)) {
+			// reset retain flag to 0
+			fixheader = fixheader & 0xFE;
+		}
+
 		// get final qos
 		qos = qos_pac > qos ? qos : qos_pac;
 
