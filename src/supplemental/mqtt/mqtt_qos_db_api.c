@@ -86,8 +86,7 @@ nni_qos_db_remove_oldest(bool is_sqlite, void *db, uint64_t limit)
 {
 	if (is_sqlite) {
 #ifdef NNG_SUPP_SQLITE
-		nni_mqtt_qos_db_remove_oldest((sqlite3 *) (db), limit);
-		nni_mqtt_qos_db_remove_unused_msg((sqlite3 *) (db));
+		nni_mqtt_qos_db_remove_oldest_and_unused((sqlite3 *) (db), limit);
 #endif
 	} else if (db != NULL) {
 		NNI_ARG_UNUSED(db);

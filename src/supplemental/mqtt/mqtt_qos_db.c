@@ -32,7 +32,7 @@ static char *   get_db_path(
        char *dest_path, const char *user_path, const char *db_name);
 static void    set_db_pragma(sqlite3 *db);
 static void    remove_oldest_msg(
-       sqlite3 *db, const char *table_name, const char *col_name, uint64_t limit);
+       sqlite3 *db, const char *table_name, const char *col_name, uint64_t limit) NNG_DEPRECATED;
 static void    remove_oldest_client_msg(sqlite3 *db, const char *table_name,
        const char *col_name, uint64_t limit, const char *config_name);
 static int64_t get_id_by_msg(sqlite3 *db, nni_msg *msg);
@@ -524,14 +524,37 @@ nni_mqtt_qos_db_remove_unused_msg(sqlite3 *db)
 {
 	sqlite3_stmt *stmt;
 	// remove the msg if it was not referenced by table `t_main`
-	char sql[] = "DELETE FROM " table_msg
-	             " WHERE id NOT IN (SELECT m_id FROM t_main)";
+	char sql[] = { "DELETE FROM " table_msg
+		       " WHERE NOT EXISTS (SELECT 1 FROM " table_main
+		       " WHERE m_id = " table_msg ".id AND m_id > 0)" };
+
 	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
 	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
 	sqlite3_reset(stmt);
 	sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
 	sqlite3_exec(db, "COMMIT;", 0, 0, 0);
+}
+
+void
+nni_mqtt_qos_db_remove_oldest_and_unused(sqlite3 *db, uint64_t limit)
+{
+	char sql[512] = { 0 };
+
+	snprintf(sql, 512,
+	    "DELETE FROM " table_main
+	    " WHERE id NOT IN ( SELECT id FROM " table_main " ORDER BY"
+	    " ts DESC LIMIT %llu);"
+	    "DELETE FROM " table_msg
+	    " WHERE NOT EXISTS (SELECT 1 FROM " table_main
+	    " WHERE m_id = " table_msg ".id AND m_id > 0);",
+	    (unsigned long long) limit);
+
+	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
+	sqlite3_exec(db, sql, 0, 0, 0);
+	sqlite3_exec(db, "COMMIT;", 0, 0, 0);
+
+	log_debug("sql: %s", sql);
 }
 
 void
