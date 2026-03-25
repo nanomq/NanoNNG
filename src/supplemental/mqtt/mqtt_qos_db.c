@@ -540,6 +540,7 @@ void
 nni_mqtt_qos_db_remove_oldest_and_unused(sqlite3 *db, uint64_t limit)
 {
 	char sql[512] = { 0 };
+	int  rc;
 
 	snprintf(sql, 512,
 	    "DELETE FROM " table_main
@@ -551,10 +552,17 @@ nni_mqtt_qos_db_remove_oldest_and_unused(sqlite3 *db, uint64_t limit)
 	    (unsigned long long) limit);
 
 	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
-	sqlite3_exec(db, sql, 0, 0, 0);
-	sqlite3_exec(db, "COMMIT;", 0, 0, 0);
 
-	log_debug("sql: %s", sql);
+	rc = sqlite3_exec(db, sql, 0, 0, 0);
+
+	if (rc != SQLITE_OK) {
+		log_error("Failed execute sql to remove oldest and unused: %s",
+		    sqlite3_errmsg(db));
+		sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
+		return;
+	}
+
+	sqlite3_exec(db, "COMMIT;", 0, 0, 0);
 }
 
 void
