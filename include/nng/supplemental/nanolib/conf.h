@@ -223,22 +223,24 @@ typedef struct conf_websocket conf_websocket;
 #define NO_QOS    3 // default QoS level value for forwarding bridge msg, 3 = keep old qos
 
 typedef struct {
-	char       *remote_topic;
-	uint32_t    remote_topic_len;
-	char       *local_topic;
-	uint32_t    local_topic_len;
-	int16_t     local_skip_level;
-	int16_t     local_save_level;
-	char       *prefix;
-	uint32_t    prefix_len;
 	char       *suffix;
-	uint32_t    suffix_len;
+	char       *prefix;
+	char       *remote_topic;
+	char       *local_topic;
 	uint8_t     nolocal;
 	uint8_t     retain; // override for retain
 	uint8_t     qos;    // override for QoS
 	uint8_t     retain_as_published;
 	uint8_t     retain_handling;
+	int16_t     local_skip_level;
+	int16_t     local_save_level;
 	uint32_t    stream_id; // only effective when multi_stream is enabled
+	uint32_t    remote_topic_len;
+	uint32_t    local_topic_len;
+	uint32_t    prefix_len;
+	uint32_t    suffix_len;
+	size_t      max_send_queue_len;		// max len for topic_lmq
+	nng_lmq     *topic_lmq;	// msg cache for this particular bridging topic
 } topics;
 
 typedef struct {

@@ -1204,15 +1204,21 @@ conf_bridge_node_parse(
 	cJSON *forward = NULL;
 	cJSON_ArrayForEach(forward, forwards)
 	{
-		topics *s = NNI_ALLOC_STRUCT(s);
-		s->retain = NO_RETAIN;
-		s->qos    = NO_QOS;
+		topics *s             = NNI_ALLOC_STRUCT(s);
+		s->retain             = NO_RETAIN;
+		s->qos                = NO_QOS;
+		s->max_send_queue_len = 0;
+		s->topic_lmq		  = NULL;
 		hocon_read_str(s, remote_topic, forward);
 		hocon_read_str(s, local_topic, forward);
 		hocon_read_str(s, prefix, forward);
 		hocon_read_str(s, suffix, forward);
+		hocon_read_num(s, max_send_queue_len, forward);
+		// only forwards has a unique lmq for each topic
+		if (s->max_send_queue_len > 0)
+			nng_lmq_alloc(&s->topic_lmq, s->max_send_queue_len);
 		if (s->suffix != NULL) {
-		 s->suffix_len = strlen(s->suffix);
+			s->suffix_len = strlen(s->suffix);
 		 if (strstr(s->suffix, "+") != NULL ||
 		     strstr(s->suffix, "#") != NULL) {
 			 log_error(
