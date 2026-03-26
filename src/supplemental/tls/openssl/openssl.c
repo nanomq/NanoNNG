@@ -362,6 +362,7 @@ struct nng_tls_engine_config {
 	nng_tls_mode mode;
 	char        *pass;
 	char        *server_name;
+	char        *alpns;
 	int          auth_mode;
 	nni_list     psks;
 };
@@ -759,6 +760,8 @@ open_config_fini(nng_tls_engine_config *cfg)
 	if (cfg->pass != NULL) {
 		nng_strfree(cfg->pass);
 	}
+	if (cfg->alpns)
+		nng_free(cfg->alpns, 0);
 	trace("end");
 }
 
@@ -795,6 +798,7 @@ open_config_init(nng_tls_engine_config *cfg, enum nng_tls_mode mode)
 
 	trace("start end %p ctx %p", cfg, cfg->ctx);
 	cfg->auth_mode = nng_auth;
+	cfg->alpns = NULL;
 	return (0);
 }
 
@@ -1199,13 +1203,53 @@ open_config_version(nng_tls_engine_config *cfg, nng_tls_version min_ver,
 	return (0);
 }
 
+static int alpn_select_cb(SSL *ssl, const unsigned char **out,
+		unsigned char *outlen, const unsigned char *in,
+		unsigned int inlen, void *arg)
+{
+	nng_tls_engine_config *cfg = arg;
+	log_info("alpn: %s", cfg->alpns);
+	int rv = SSL_select_next_proto((unsigned char **)out, outlen,
+			(const unsigned char *)cfg->alpns, strlen(cfg->alpns), in, inlen);
+	if (rv != OPENSSL_NPN_NEGOTIATED) {
+		// No overlap between client and server protocols.
+		// Return NOACK to ignore ALPN, or FATAL_ALERT to terminate the connection.
+		return SSL_TLSEXT_ERR_NOACK;
+	}
+	NNI_ARG_UNUSED(ssl);
+	return SSL_TLSEXT_ERR_OK;
+}
+
 static int
 open_config_option(nng_tls_engine_config *cfg, const char *name, void *v, size_t sz)
 {
 	if (!name)
 		return NNG_EINVAL;
-	NNI_ARG_UNUSED(cfg);
-	NNI_ARG_UNUSED(v);
+	if (0 == strcmp(name, NNG_OPT_TLS_ALPN)) {
+		if (!v)
+			return NNG_EINVAL;
+		char **alpn_list = v;
+		size_t alpn_len = 0;
+		char * alpn_str = NULL;
+		size_t alpn_idx = 0;
+		for (char *proto = alpn_list[0]; proto != NULL; proto = *(alpn_list ++))
+			alpn_len += (1+strlen(proto));
+		if ((alpn_str = nng_alloc(sizeof(char) * (alpn_len + 1))) == NULL)
+			return NNG_ENOMEM;
+		alpn_list = v;
+		for (char *proto = alpn_list[0]; proto != NULL; proto = *(++ alpn_list)){
+			alpn_str[alpn_idx++] = (unsigned char)strlen(proto);
+			memcpy(alpn_str + alpn_idx, proto, strlen(proto));
+			alpn_idx += strlen(proto);
+		}
+		alpn_str[alpn_idx] = '\0';
+		if (cfg->alpns)
+			nng_free(cfg->alpns, 0);
+		cfg->alpns = alpn_str;
+		SSL_CTX_set_alpn_select_cb(cfg->ctx, alpn_select_cb, cfg);
+		return 0;
+	}
+
 	NNI_ARG_UNUSED(sz);
 	return (NNG_ENOTSUP);
 }
