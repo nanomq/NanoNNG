@@ -3120,6 +3120,7 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->username       = NULL;
 	node->password       = NULL;
 	node->proto_ver      = 4;
+	node->try_private    = true;
 	node->keepalive      = 60;
 	node->backoff_max    = 5;
 	node->forwards_count = 0;
@@ -3692,6 +3693,8 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		    node->name, node->username);
 		log_info("%sbridge.mqtt.%s.keepalive:                  %d", prefix,
 		    node->name, node->keepalive);
+		log_info("%sbridge.mqtt.%s.try_private:                %s", prefix,
+		    node->name, node->try_private ? "true" : "false");
 		log_info("%sbridge.mqtt.%s.backoff_max:                %d", prefix,
 		    node->name, node->backoff_max);
 		log_info("%sbridge.mqtt.%s.max_parallel_processes:     %ld", prefix,
