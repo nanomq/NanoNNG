@@ -298,6 +298,7 @@ struct conf_bridge_node {
 	bool         will_retain;
 	bool         retry_qos_0;
 	bool         hybrid;  // enable/disable hybrid bridging
+	bool         try_private; // set bridge bit (0x80) on protocol version byte
 	void        *sock;
 	void        *bridge_arg;	// for reloading bridge case
 	char        *name;
