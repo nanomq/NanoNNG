@@ -1207,8 +1207,8 @@ static int alpn_select_cb(SSL *ssl, const unsigned char **out,
 		unsigned char *outlen, const unsigned char *in,
 		unsigned int inlen, void *arg)
 {
+	NNI_ARG_UNUSED(ssl);
 	nng_tls_engine_config *cfg = arg;
-	log_info("alpn: %s", cfg->alpns);
 	int rv = SSL_select_next_proto((unsigned char **)out, outlen,
 			(const unsigned char *)cfg->alpns, strlen(cfg->alpns), in, inlen);
 	if (rv != OPENSSL_NPN_NEGOTIATED) {
@@ -1216,7 +1216,6 @@ static int alpn_select_cb(SSL *ssl, const unsigned char **out,
 		// Return NOACK to ignore ALPN, or FATAL_ALERT to terminate the connection.
 		return SSL_TLSEXT_ERR_NOACK;
 	}
-	NNI_ARG_UNUSED(ssl);
 	return SSL_TLSEXT_ERR_OK;
 }
 
@@ -1234,6 +1233,8 @@ open_config_option(nng_tls_engine_config *cfg, const char *name, void *v, size_t
 		size_t alpn_idx = 0;
 		for (char *proto = alpn_list[0]; proto != NULL; proto = *(alpn_list ++))
 			alpn_len += (1+strlen(proto));
+		if (alpn_len == 0)
+			return NNG_EINVAL;
 		if ((alpn_str = nng_alloc(sizeof(char) * (alpn_len + 1))) == NULL)
 			return NNG_ENOMEM;
 		alpn_list = v;
@@ -1246,7 +1247,15 @@ open_config_option(nng_tls_engine_config *cfg, const char *name, void *v, size_t
 		if (cfg->alpns)
 			nng_free(cfg->alpns, 0);
 		cfg->alpns = alpn_str;
-		SSL_CTX_set_alpn_select_cb(cfg->ctx, alpn_select_cb, cfg);
+		if (cfg->mode == NNG_TLS_MODE_SERVER) {
+			SSL_CTX_set_alpn_select_cb(cfg->ctx, alpn_select_cb, cfg);
+		} else {
+			if (SSL_CTX_set_alpn_protos(cfg->ctx,
+						(const unsigned char *)cfg->alpns, alpn_idx) != 0) {
+				ERR_print_errors_fp(stderr);
+				return NNG_ECRYPTO;
+			}
+		}
 		return 0;
 	}
 
