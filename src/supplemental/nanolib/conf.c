@@ -3268,10 +3268,6 @@ conf_bridge_node_parse_with_name(const char *path,const char *key_prefix, const 
 		                key_prefix, name, ".backoff_max")) != NULL) {
 			node->backoff_max = atoi(value);
 			free(value);
-		} else if ((value = get_conf_value_with_prefix2(line, sz,
-		                key_prefix, name, ".try_private")) != NULL) {
-			node->try_private = nni_strcasecmp(value, "true") == 0;
-			free(value);
 #if defined(SUPP_QUIC)
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".quic_keepalive")) != NULL) {
