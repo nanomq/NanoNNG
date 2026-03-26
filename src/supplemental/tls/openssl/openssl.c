@@ -1213,8 +1213,8 @@ static int alpn_select_cb(SSL *ssl, const unsigned char **out,
 			(const unsigned char *)cfg->alpns, strlen(cfg->alpns), in, inlen);
 	if (rv != OPENSSL_NPN_NEGOTIATED) {
 		// No overlap between client and server protocols.
-		// Return NOACK to ignore ALPN, or FATAL_ALERT to terminate the connection.
-		return SSL_TLSEXT_ERR_NOACK;
+		// Return FATAL_ALERT to terminate the connection.
+		return SSL_TLSEXT_ERR_ALERT_FATAL;
 	}
 	return SSL_TLSEXT_ERR_OK;
 }
@@ -1231,7 +1231,7 @@ open_config_option(nng_tls_engine_config *cfg, const char *name, void *v, size_t
 		size_t alpn_len = 0;
 		char * alpn_str = NULL;
 		size_t alpn_idx = 0;
-		for (char *proto = alpn_list[0]; proto != NULL; proto = *(alpn_list ++))
+		for (char *proto = alpn_list[0]; proto != NULL; proto = *(++ alpn_list))
 			alpn_len += (1+strlen(proto));
 		if (alpn_len == 0)
 			return NNG_EINVAL;
@@ -1239,6 +1239,10 @@ open_config_option(nng_tls_engine_config *cfg, const char *name, void *v, size_t
 			return NNG_ENOMEM;
 		alpn_list = v;
 		for (char *proto = alpn_list[0]; proto != NULL; proto = *(++ alpn_list)){
+			if (strlen(proto) > 255 || strlen(proto) == 0) {
+				log_warn("proto length over 255 or eq 0 is NOT supported (%s). Skip", proto);
+				continue;
+			}
 			alpn_str[alpn_idx++] = (unsigned char)strlen(proto);
 			memcpy(alpn_str + alpn_idx, proto, strlen(proto));
 			alpn_idx += strlen(proto);
