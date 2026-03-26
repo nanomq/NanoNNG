@@ -3718,6 +3718,10 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 				free(s->suffix);
 				s->suffix = NULL;
 			}
+			if (s->topic_lmq) {
+				nng_lmq_flush(s->topic_lmq);
+				nng_lmq_free(s->topic_lmq);
+			}
 			NNI_FREE_STRUCT(s);
 		}
 		node->forwards_count = 0;
