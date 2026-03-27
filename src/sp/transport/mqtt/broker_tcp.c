@@ -617,7 +617,7 @@ nmq_tcptran_pipe_send_cb(void *arg)
 	log_trace(" ############ nmq_tcptran_pipe_send_cb [%p] ############ ", p);
 
 	if ((rv = nni_aio_result(txaio)) != 0) {
-		log_warn(" send aio error %s", nng_strerror(rv));
+		log_warn(" send aio error %s(%d)", nng_strerror(rv), rv);
 		// nni_pipe_bump_error(p->npipe, rv);
 		nni_aio_list_remove(aio);
 		nni_mtx_unlock(&p->mtx);
@@ -1528,8 +1528,16 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		}
 	}
 send:
-    nni_aio_set_iov(txaio, niov, iov);
-	nng_stream_send(p->conn, txaio);
+	if (niov == 0) {
+		nni_msg_free(msg);
+		nni_aio_set_prov_data(txaio, NULL);
+		nni_list_remove(&p->sendq, aio);
+		nni_aio_set_msg(aio, NULL);
+		nni_aio_finish(aio, 0, 0);
+	} else {
+		nni_aio_set_iov(txaio, niov, iov);
+		nng_stream_send(p->conn, txaio);
+	}
 	return;
 }
 
