@@ -1293,6 +1293,84 @@ nano_pubmsg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
 	return msg;
 }
 
+nng_msg *
+nano_encode_publish_msg(uint8_t proto_ver, uint8_t qos, bool retain, bool dup,
+    const uint8_t *payload, uint32_t payload_len, property *prop,
+    const char *topic, const char *topic_suffix)
+{
+	nng_msg *msg = NULL;
+
+	int rv = 0;
+
+	if ((rv = nni_mqtt_msg_alloc(&msg, 0)) != 0) {
+		log_error("nni_mqtt_msg_alloc failed, rv = %d", rv);
+		return NULL;
+	}
+
+	nni_mqtt_msg_set_packet_type(msg, NNG_MQTT_PUBLISH);
+	nni_mqtt_msg_set_publish_dup(msg, dup);
+	nni_mqtt_msg_set_publish_retain(msg, retain);
+	nni_mqtt_msg_set_publish_proto_version(msg, proto_ver);
+	nni_mqtt_msg_set_publish_qos(msg, qos);
+
+	if (qos > 0) {
+		nni_mqtt_msg_set_publish_packet_id(msg, nni_random() % 0xFFFF);
+	}
+
+	if (topic_suffix != NULL) {
+		uint32_t new_topic_len =
+		    strlen(topic) + strlen(topic_suffix) + 2;
+		char *topic_str = nni_zalloc(new_topic_len);
+		if (topic_str == NULL) {
+			log_error(
+			    "nni_zalloc failed when building topic string");
+			nng_msg_free(msg);
+			return NULL;
+		}
+		snprintf(
+		    topic_str, new_topic_len, "%s/%s", topic, topic_suffix);
+		nni_mqtt_msg_set_publish_topic(msg, topic_str);
+
+		nng_strfree(topic_str);
+	} else {
+		nni_mqtt_msg_set_publish_topic(msg, topic);
+	}
+
+	rv = nni_mqtt_msg_set_publish_payload(
+	    msg, (uint8_t *) payload, payload_len);
+	if (rv != 0) {
+		log_error(
+		    "nni_mqtt_msg_set_publish_payload failed, rv = %d", rv);
+		nni_msg_free(msg);
+		return NULL;
+	}
+
+	if (proto_ver == MQTT_PROTOCOL_VERSION_v5) {
+		if (prop != NULL) {
+			property *prop_dup = NULL;
+			rv                 = property_dup(&prop_dup, prop);
+			if (rv != 0) {
+				log_error("property_dup failed, rv = %d", rv);
+				nni_msg_free(msg);
+				return NULL;
+			}
+		}
+		rv = nni_mqttv5_msg_encode(msg);
+		nni_msg_set_cmd_type(msg, CMD_PUBLISH_V5);
+	} else {
+		rv = nni_mqtt_msg_encode(msg);
+		nni_msg_set_cmd_type(msg, CMD_PUBLISH);
+	}
+
+	if (rv != 0) {
+		log_error("nni_mqtt_msg_encode failed, rv = %d", rv);
+		nni_msg_free(msg);
+		return NULL;
+	}
+
+	return msg;
+}
+
 uint8_t
 verify_connect(conn_param *cparam, conf *conf)
 {
@@ -1358,9 +1436,11 @@ nano_msg_notify(conn_param *cparam, uint8_t code, uint8_t retain, bool online)
 	string.len  = strlen(string.body);
 	topic.body  = CLIENT_STATUS_TOPIC;
 	topic.len   = strlen(CLIENT_STATUS_TOPIC);
-	// V4 notification msg as default, use retain by default.
-	msg         = nano_pubmsg_composer(&msg, retain, 0, &string, &topic,
-	            cparam->pro_ver, nng_clock(), &cparam->clientid);
+
+	msg = nano_encode_publish_msg(cparam->pro_ver, 0, retain, false,
+	    (uint8_t *) string.body, string.len, NULL, topic.body,
+	    cparam->clientid.body);
+
 	return msg;
 }
 
