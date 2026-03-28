@@ -97,7 +97,7 @@ NNG_DECL uint8_t  verify_connect(conn_param *cparam, conf *conf);
 NNG_DECL void nano_msg_set_dup(nng_msg *msg);
 NNG_DECL nng_msg *nano_pubmsg_composer(nng_msg **, uint8_t retain, uint8_t qos,
     mqtt_string *payload, mqtt_string *topic, uint8_t proto_ver,
-    nng_time time, mqtt_string *clientid);
+    nng_time time, mqtt_string *clientid) NNG_DEPRECATED;
 NNG_DECL nng_msg *nano_dismsg_composer(
     reason_code code, char *rstr, uint8_t *ref, property *prop);
 NNG_DECL nng_msg *nano_msg_notify(conn_param *cparam, uint8_t code, uint8_t retain, bool online);
@@ -108,6 +108,9 @@ NNG_DECL void nano_msg_ubsub_free(nano_pipe_db *db);
 NNG_DECL void nmq_connack_encode(
     nng_msg *msg, conn_param *cparam, uint8_t reason);
 NNG_DECL void nmq_connack_session(nng_msg *msg, bool session);
+NNG_DECL nng_msg *nano_encode_publish_msg(uint8_t proto_ver, uint8_t qos,
+    bool retain, bool dup, const uint8_t *payload, uint32_t payload_len,
+    property *prop, const char *topic, const char *topic_suffix);
 // TODO : check duplicated declaration
 NNG_DECL reason_code check_properties(property *prop, nng_msg *msg);
 NNG_DECL property *decode_buf_properties(uint8_t *packet, uint32_t packet_len,
