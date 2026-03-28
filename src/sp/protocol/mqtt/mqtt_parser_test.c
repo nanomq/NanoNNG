@@ -63,6 +63,46 @@ test_get_utf8_str()
 }
 
 static void
+test_get_utf8_str_bounds()
+{
+	/* src: len=5, "$MQTT" */
+	uint8_t src[] = { 0x00, 0x05, 0x24, 0x4D, 0x51, 0x54, 0x54, '\0' };
+	uint32_t pos;
+	char    *dest;
+
+	/* max=0 means skip bounds check, should succeed */
+	pos = 0;
+	NUTS_ASSERT(get_utf8_str(&dest, src, &pos, 0) == 5);
+	NUTS_MATCH((char *) dest, "$MQTT");
+
+	/* max > 0 but max - *pos < 2: should return -1 */
+	/* pos=0, max=1: max - pos = 1 < 2 */
+	pos = 0;
+	NUTS_FAIL(get_utf8_str(&dest, src, &pos, 1), -1);
+
+	/* pos=0, max=2: max - pos = 2, NOT < 2, valid; len=5 > max=2: return -1 */
+	pos = 0;
+	NUTS_FAIL(get_utf8_str(&dest, src, &pos, 2), -1);
+
+	/* pos=1, max=2: max - pos = 1 < 2: return -1 */
+	pos = 1;
+	NUTS_FAIL(get_utf8_str(&dest, src, &pos, 2), -1);
+
+	/* len=5 and max=4: len > max, should return -1 */
+	pos = 0;
+	NUTS_FAIL(get_utf8_str(&dest, src, &pos, 4), -1);
+
+	/* len=5 and max=5: len == max, should succeed (len > max is false) */
+	pos = 0;
+	NUTS_ASSERT(get_utf8_str(&dest, src, &pos, 5) == 5);
+
+	/* Sufficient max: len=5, max=10, pos=0: should succeed */
+	pos = 0;
+	NUTS_ASSERT(get_utf8_str(&dest, src, &pos, 10) == 5);
+	NUTS_MATCH((char *) dest, "$MQTT");
+}
+
+static void
 test_copyn_utf8_str()
 {
 	uint8_t  src[]   = { 0x00, 0x05, 0x24, 0x4D, 0x51, 0x54, 0x54, '\0' };
@@ -169,13 +209,12 @@ NUTS_TESTS = {
 	{ "mqtt_parser pub_extras", test_pub_extra },
 	{ "mqtt_parser utf8_check", test_utf8_check },
 	{ "mqtt_parser get_utf8_str", test_get_utf8_str },
+	{ "mqtt_parser get_utf8_str bounds", test_get_utf8_str_bounds },
 	{ "mqtt_parser copyn_utf8_str", test_copyn_utf8_str },
 	{ "mqtt_parser copyn_str", test_copyn_str },
 	{ "mqtt_parser get_variable_binary", test_get_variable_binary },
 	{ "mqtt_parser ws_msg_adaptor", test_ws_msg_adaptor },
-	// TODO more tests needed.
 	{ "mqtt_parser hash", test_hash },
-	// TODO more tests needed.
 	{ "mqtt_parser topic_filter", test_topic_filter },
 	{ "mqtt_parser topic_filtern", test_topic_filtern },
 
