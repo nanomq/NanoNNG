@@ -1290,6 +1290,64 @@ nano_pubmsg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
 	return msg;
 }
 
+nng_msg *
+nano_encode_publish_msg(uint8_t proto_ver, uint8_t qos, bool retain, bool dup,
+    const uint8_t *payload, uint32_t payload_len, property *prop,
+    const char *topic, const char *topic_suffix)
+{
+	nng_msg *msg = NULL;
+
+	int rv = 0;
+
+	if ((rv = nng_mqtt_msg_alloc(&msg, 0)) != 0) {
+		log_error("nng_mqtt_msg_alloc failed, rv = %d", rv);
+		return NULL;
+	}
+
+	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_PUBLISH);
+	nng_mqtt_msg_set_publish_dup(msg, dup);
+	nng_mqtt_msg_set_publish_retain(msg, retain);
+	nng_mqtt_msg_set_publish_proto_version(msg, proto_ver);
+	nng_mqtt_msg_set_publish_qos(msg, qos);
+
+	if (topic_suffix != NULL) {
+		uint32_t new_topic_len =
+		    strlen(topic) + strlen(topic_suffix) + 2;
+		char *topic_str = nni_zalloc(new_topic_len);
+		snprintf(
+		    topic_str, new_topic_len, "%s/%s", topic, topic_suffix);
+		nng_mqtt_msg_set_publish_topic(msg, topic_str);
+
+		nng_strfree(topic_str);
+	} else {
+		nng_mqtt_msg_set_publish_topic(msg, topic);
+	}
+
+	nng_mqtt_msg_set_publish_payload(
+	    msg, (uint8_t *) payload, payload_len);
+
+	if (proto_ver == MQTT_PROTOCOL_VERSION_v5) {
+		if (prop != NULL) {
+			property *prop_dup = NULL;
+			property_dup(&prop_dup ,prop);
+			nng_mqtt_msg_set_publish_property(msg, prop_dup);
+		}
+		rv = nng_mqttv5_msg_encode(msg);
+		nng_msg_set_cmd_type(msg, CMD_PUBLISH_V5);
+	} else {
+		rv = nng_mqtt_msg_encode(msg);
+		nng_msg_set_cmd_type(msg, CMD_PUBLISH);
+	}
+
+	if (rv != 0) {
+		log_error("nng_mqtt_msg_encode failed, rv = %d", rv);
+		nng_msg_free(msg);
+		return NULL;
+	}
+
+	return msg;
+}
+
 uint8_t
 verify_connect(conn_param *cparam, conf *conf)
 {
@@ -1355,9 +1413,11 @@ nano_msg_notify(conn_param *cparam, uint8_t code, uint8_t retain, bool online)
 	string.len  = strlen(string.body);
 	topic.body  = CLIENT_STATUS_TOPIC;
 	topic.len   = strlen(CLIENT_STATUS_TOPIC);
-	// V4 notification msg as default, use retain by default.
-	msg         = nano_pubmsg_composer(&msg, retain, 0, &string, &topic,
-	            cparam->pro_ver, nng_clock(), &cparam->clientid);
+
+	msg = nano_encode_publish_msg(cparam->pro_ver, 0, retain, false,
+	    (uint8_t *) string.body, string.len, NULL, topic.body,
+	    cparam->clientid.body);
+
 	return msg;
 }
 
