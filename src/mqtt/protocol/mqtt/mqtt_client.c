@@ -354,6 +354,24 @@ mqtt_sock_set_cached_byte(void *arg, const void *buf, size_t sz, nni_type t)
 }
 
 static int
+mqtt_sock_set_send_drop(void *arg, const void *v, size_t sz, nni_opt_type t)
+{
+	mqtt_sock_t *s = arg;
+	bool tmp;
+	int rv;
+#ifdef NNG_ENABLE_STATS
+	if ((rv = nni_copyin_bool(&tmp, v, sz, t)) == 0) {
+		if (tmp) {
+			nni_stat_inc(&s->msg_send_drop, 1);
+		} else {
+			nni_stat_dec(&s->msg_send_drop, 1);
+		}
+	}
+#endif
+	return (rv);
+}
+
+static int
 mqtt_sock_get_pipeid(void *arg, void *buf, size_t *szp, nni_type t)
 {
 	// For MQTT Client, only has one pipe
@@ -1593,10 +1611,15 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 		}
 		if (qos > 0) {
 #ifdef NNG_HAVE_MQTT_BROKER
-			if (nni_lmq_full(s->bridge_conf->ctx_msgs)) {
+			nng_lmq *lmq = (nng_lmq *)nni_aio_get_input(aio, 0);
+			char *btopic = (topics *)nni_aio_get_input(aio, 1);
+			if (lmq == NULL)
+				lmq = s->bridge_conf->ctx_msgs;
+			log_info("put msg from topic %s to lmq %p", btopic, lmq);
+			if (nni_lmq_full(lmq)) {
 				log_warn("Rolling update overwrites old Message");
 				nni_msg *tmsg;
-				if (nni_lmq_get(s->bridge_conf->ctx_msgs, &tmsg) == 0) {
+				if (nni_lmq_get(lmq, &tmsg) == 0) {
 #ifdef NNG_ENABLE_STATS
 					nni_stat_inc(&s->msg_send_drop, 1);
 					nni_stat_dec(&s->msg_bytes_cached, nni_msg_len(tmsg));
@@ -1604,7 +1627,7 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 					nni_msg_free(tmsg);
 				}
 			}
-			if (nng_lmq_put(s->bridge_conf->ctx_msgs, msg) != 0) {
+			if (nng_lmq_put(lmq, msg) != 0) {
 				log_warn("Msg lost! put msg to ctx_msgs failed!");
 #ifdef NNG_ENABLE_STATS
 				nni_stat_inc(&s->msg_send_drop, 1);
@@ -1740,6 +1763,10 @@ static nni_option mqtt_sock_options[] = {
 	{
 	    .o_name = NNG_OPT_MQTT_BRIDGE_CACHE_BYTE,
 	    .o_set  = mqtt_sock_set_cached_byte,
+	},
+	{
+	    .o_name = NNG_OPT_MQTT_BRIDGE_SEND_DROP,
+	    .o_set  = mqtt_sock_set_send_drop,
 	},
 	{
 	    .o_name = NNG_OPT_MQTT_CLIENT_PIPEID,
