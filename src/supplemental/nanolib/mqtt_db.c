@@ -794,11 +794,12 @@ dbtree_insert_client(dbtree *db, char *topic, uint32_t pipe_id)
  * @param nodes - all node need to be compare
  * @param nodes_t - all node need to be compare next time
  * @param topic_queue - topic queue position
+ * @param node_index - current topic level (traversal depth)
  * @return all clients on lots of nodes
  */
 static uint32_t **
 collect_clients(uint32_t **vec, dbtree_node **nodes, dbtree_node ***nodes_t,
-    char **topic_queue)
+    char **topic_queue, int node_index)
 {
 	// TODO insert sort for clients
 	while (!cvector_empty(nodes)) {
@@ -815,27 +816,34 @@ collect_clients(uint32_t **vec, dbtree_node **nodes, dbtree_node ***nodes_t,
 		dbtree_node **child = node_t->child;
 
 		if (node_t->well != -1) {
-			if (!cvector_empty(child[node_t->well]->clients)) {
-				log_debug("Find # tag");
-				cvector_push_back(
-				    vec, child[node_t->well]->clients);
+			if (!(node_index == 0 && *topic_queue[0] == '$')) {
+				if (!cvector_empty(
+				        child[node_t->well]->clients)) {
+					log_debug("Find # tag");
+					cvector_push_back(
+					    vec, child[node_t->well]->clients);
+				}
 			}
 		}
 
 		if (node_t->plus != -1) {
-			if (*(topic_queue + 1) == NULL) {
-				log_debug("add + clients");
-				if (!cvector_empty(
-				        child[node_t->plus]->clients)) {
-					cvector_push_back(
-					    vec, child[node_t->plus]->clients);
-				}
+			if (!(node_index == 0 && *topic_queue[0] == '$')) {
+				if (*(topic_queue + 1) == NULL) {
+					log_debug("add + clients");
+					if (!cvector_empty(child[node_t->plus]
+					            ->clients)) {
+						cvector_push_back(vec,
+						    child[node_t->plus]
+						        ->clients);
+					}
 
-			} else {
-				cvector_push_back(
-				    (*nodes_t), child[node_t->plus]);
-				log_debug("add node_t: %s",
-				    (*(cvector_end((*nodes_t)) - 1))->topic);
+				} else {
+					cvector_push_back(
+					    (*nodes_t), child[node_t->plus]);
+					log_debug("add node_t: %s",
+					    (*(cvector_end((*nodes_t)) - 1))
+					        ->topic);
+				}
 			}
 		}
 
@@ -938,16 +946,20 @@ search_client(dbtree *db, char *topic)
 		cvector_push_back(nodes, node);
 	}
 
+	int node_index = 0;
 	while (*topic_queue && (!cvector_empty(nodes))) {
 		pipe_ids =
-		    collect_clients(pipe_ids, nodes, &nodes_t, topic_queue);
+		    collect_clients(pipe_ids, nodes, &nodes_t, topic_queue, node_index);
 		topic_queue++;
+		node_index++;
+
 		if (*topic_queue == NULL) {
 			break;
 		}
 		pipe_ids =
-		    collect_clients(pipe_ids, nodes_t, &nodes, topic_queue);
+		    collect_clients(pipe_ids, nodes_t, &nodes, topic_queue, node_index);
 		topic_queue++;
+		node_index++;
 	}
 
 	ret = iterate_client(pipe_ids);
@@ -1530,15 +1542,23 @@ dbtree_find_shared_clients(dbtree *db, char *topic)
 	}
 
 	log_debug("nodes size: %lu", cvector_size(nlist));
+
+	int node_index = 0;
+
 	while (*topic_queue && (!cvector_empty(nodes_p))) {
 
-		ids = collect_clients(ids, nodes_p, &nodes_q, topic_queue);
+		ids = collect_clients(
+		    ids, nodes_p, &nodes_q, topic_queue, node_index);
 		topic_queue++;
+		node_index++;
+
 		if (*topic_queue == NULL) {
 			break;
 		}
-		ids = collect_clients(ids, nodes_q, &nodes_p, topic_queue);
+		ids = collect_clients(
+		    ids, nodes_q, &nodes_p, topic_queue, node_index);
 		topic_queue++;
+		node_index++;
 	}
 
 	uint32_t *ret = iterate_shared_client(ids);
