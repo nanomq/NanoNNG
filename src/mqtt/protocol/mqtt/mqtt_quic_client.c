@@ -1204,6 +1204,24 @@ mqtt_quic_sock_set_cached_byte(void *arg, const void *buf, size_t sz, nni_type t
 }
 
 static int
+mqtt_quic_sock_set_send_drop(void *arg, const void *v, size_t sz, nni_opt_type t)
+{
+	mqtt_sock_t *s = arg;
+	bool tmp;
+	int rv;
+#ifdef NNG_ENABLE_STATS
+	if ((rv = nni_copyin_bool(&tmp, v, sz, t)) == 0) {
+		if (tmp) {
+			nni_stat_inc(&s->msg_send_drop, 1);
+		} else {
+			nni_stat_dec(&s->msg_send_drop, 1);
+		}
+	}
+#endif
+	return (rv);
+}
+
+static int
 mqtt_quic_sock_get_pipeid(void *arg, void *buf, size_t *szp, nni_type t)
 {
 	// For MQTT Client, only has one pipe
@@ -1761,6 +1779,10 @@ static nni_option mqtt_quic_sock_options[] = {
 	{
 		.o_name = NNG_OPT_MQTT_BRIDGE_CACHE_BYTE,
 	    .o_set  = mqtt_quic_sock_set_cached_byte,
+	},
+	{
+	    .o_name = NNG_OPT_MQTT_BRIDGE_SEND_DROP,
+	    .o_set  = mqtt_quic_sock_set_send_drop,
 	},
 	{
 	    .o_name = NNG_OPT_MQTT_RETRY_INTERVAL,
