@@ -3247,6 +3247,7 @@ conf_bridge_node_init(conf_bridge_node *node)
 {
 	node->sock           = NULL;
 	node->name           = NULL;
+	node->connected      = false;
 	node->busy           = false;
 	node->enable         = false;
 	node->parallel       = 2;
@@ -3283,10 +3284,11 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->resend_interval    = 5000;
 	node->resend_wait        = 3000;
 	node->cancel_timeout     = 10000;
-	node->sleep              = true;
 	node->password_encrypted = false;
 	node->max_send_queue_len = 24;
 	node->max_recv_queue_len = 24;
+
+	nng_atomic_alloc_bool(&node->connected);
 
 #if defined(SUPP_QUIC)
 	node->multi_stream       = false;
@@ -3698,6 +3700,9 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 		nng_lmq_flush(node->ctx_msgs);
 		nng_lmq_free(node->ctx_msgs);
 		node->ctx_msgs = NULL;
+	}
+	if (node->connected) {
+		nng_atomic_free_bool(node->connected);
 	}
 	if (node->forwards_count > 0 && node->forwards_list) {
 		for (size_t i = 0; i < node->forwards_count; i++) {
