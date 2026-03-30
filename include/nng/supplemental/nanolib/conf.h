@@ -291,13 +291,13 @@ struct conf_session_node {
 };
 struct conf_bridge_node {
 	bool         enable;
-	bool         dynamic;
 	bool         busy;
 	bool         clean_start;
 	bool         transparent;
 	bool         will_flag;
 	bool         will_retain;
 	bool         retry_qos_0;
+	bool         hybrid;  // enable/disable hybrid bridging
 	void        *sock;
 	void        *bridge_arg;	// for reloading bridge case
 	char        *name;
@@ -309,6 +309,7 @@ struct conf_bridge_node {
 	bool         password_encrypted;
 	char        *will_payload;
 	char        *will_topic;
+	char       **hybrid_servers;
 	uint8_t      proto_ver;
 	uint8_t      will_qos;
 	uint16_t     port;
@@ -317,12 +318,12 @@ struct conf_bridge_node {
 	uint64_t     cancel_timeout;
 	uint64_t     resend_interval; // resend caching message interval (ms)
 	uint64_t     resend_wait;
+	uint64_t     parallel;
 	size_t       sub_count;
 	size_t       forwards_count;
 	size_t       max_recv_queue_len;
 	size_t       max_send_queue_len;
 	topics     **forwards_list;
-	uint64_t     parallel;
 	topics     **sub_list;
 	conf_tls     tls;
 	conf_tcp     tcp;
@@ -332,10 +333,8 @@ struct conf_bridge_node {
 	nng_dialer  *dialer;
 	nng_lmq		*ctx_msgs;  // only cache qos msg blocked by aio busy
 	nng_mtx     *mtx;
-	bool         sleep;
-
-	bool         hybrid;  // enable/disable hybrid bridging
-	char       **hybrid_servers;
+	// the connect flag in nng_stats is private...
+	nng_atomic_bool *connected;
 
 	// MQTT v5 property
 	conf_bridge_conn_properties *     conn_properties;
