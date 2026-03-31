@@ -358,7 +358,7 @@ mqtt_sock_set_send_drop(void *arg, const void *v, size_t sz, nni_opt_type t)
 {
 	mqtt_sock_t *s = arg;
 	bool tmp;
-	int rv;
+	int rv = 0;
 #ifdef NNG_ENABLE_STATS
 	if ((rv = nni_copyin_bool(&tmp, v, sz, t)) == 0) {
 		if (tmp) {
@@ -1604,7 +1604,7 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 				nni_stat_inc(&s->msg_bytes_cached, nng_msg_len(msg));
 #endif
 				nni_mtx_unlock(&s->mtx);
-				log_warn("client sending msg while "
+				log_info("client sending msg while "
 				         "disconnected! ctx cached");
 				return;
 			}
@@ -1612,10 +1612,10 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 		if (qos > 0) {
 #ifdef NNG_HAVE_MQTT_BROKER
 			nng_lmq *lmq = (nng_lmq *)nni_aio_get_input(aio, 0);
-			char *btopic = (topics *)nni_aio_get_input(aio, 1);
+			char *btopic = (char *)nni_aio_get_input(aio, 1);
 			if (lmq == NULL)
 				lmq = s->bridge_conf->ctx_msgs;
-			log_info("put msg from topic %s to lmq %p", btopic, lmq);
+			log_debug("put msg from topic %s to lmq %p", btopic, lmq);
 			if (nni_lmq_full(lmq)) {
 				log_warn("Rolling update overwrites old Message");
 				nni_msg *tmsg;

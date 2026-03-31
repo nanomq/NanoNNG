@@ -1208,7 +1208,7 @@ mqtt_quic_sock_set_send_drop(void *arg, const void *v, size_t sz, nni_opt_type t
 {
 	mqtt_sock_t *s = arg;
 	bool tmp;
-	int rv;
+	int rv = 0;
 #ifdef NNG_ENABLE_STATS
 	if ((rv = nni_copyin_bool(&tmp, v, sz, t)) == 0) {
 		if (tmp) {
@@ -1594,44 +1594,50 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 			}
 		}
 #endif
-		nni_mtx_unlock(&s->mtx);
+		if (!nni_atomic_get_bool(&s->closed)) {
+			if (!nni_list_active(&s->send_queue, aio)) {
+				// cache aio
+				nni_list_append(&s->send_queue, aio);
+#ifdef NNG_ENABLE_STATS
+				nni_stat_inc(&s->msg_bytes_cached, nng_msg_len(msg));
+#endif
+				nni_mtx_unlock(&s->mtx);
+				log_info("client sending msg while disconnected! aio cached");
+				return;
+			}
+		}
 		if (qos > 0) {
 #ifdef NNG_HAVE_MQTT_BROKER
-			if (nni_lmq_full(s->bridge_conf->ctx_msgs)) {
+			nng_lmq *lmq = (nng_lmq *)nni_aio_get_input(aio, 0);
+			char *btopic = (char *)nni_aio_get_input(aio, 1);
+			if (lmq == NULL)
+				lmq = s->bridge_conf->ctx_msgs;
+			log_debug("put msg from topic %s to lmq %p", btopic, lmq);
+			if (nni_lmq_full(lmq)) {
 				log_warn("Rolling update overwrites old Message");
 				nni_msg *tmsg;
-				(void) nni_lmq_get(s->bridge_conf->ctx_msgs, &tmsg);
+				if (nni_lmq_get(lmq, &tmsg) == 0) {
 #ifdef NNG_ENABLE_STATS
-				nni_stat_inc(&s->msg_send_drop, 1);
+					nni_stat_inc(&s->msg_send_drop, 1);
+					nni_stat_dec(&s->msg_bytes_cached, nni_msg_len(tmsg));
 #endif
-				nni_msg_free(tmsg);
+					nni_msg_free(tmsg);
+				}
 			}
-			if (nng_lmq_put(s->bridge_conf->ctx_msgs, msg) != 0) {
+			if (nng_lmq_put(lmq, msg) != 0) {
 				log_warn("Msg lost! put msg to ctx_msgs failed!");
-				nni_msg_free(msg);
 #ifdef NNG_ENABLE_STATS
 				nni_stat_inc(&s->msg_send_drop, 1);
+				nni_stat_dec(&s->msg_bytes_cached, nni_msg_len(msg));
 #endif
+				nni_msg_free(msg);
 			} else {
 #ifdef NNG_ENABLE_STATS
 				nni_stat_inc(&s->msg_bytes_cached, nni_msg_len(msg));
 #endif
 			}
 #else
-			nni_mtx_lock(&s->mtx);
-			if (!nni_list_active(&s->send_queue, aio)) {
-				// cache aio
-				nni_list_append(&s->send_queue, aio);
-				nni_mtx_unlock(&s->mtx);
-				log_warn("client sending msg while disconnected! cached");
-			} else {
-				nni_msg_free(msg);
-				nni_mtx_unlock(&s->mtx);
-#ifdef NNG_ENABLE_STATS
-				nni_stat_inc(&s->msg_send_drop, 1);
-#endif
-				log_info("aio is already cached! drop qos 0 msg");
-			}
+			nni_msg_free(msg);
 #endif
 		} else {
 			nni_msg_free(msg);
@@ -1640,6 +1646,7 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 			nni_stat_inc(&s->msg_send_drop, 1);
 #endif
 		}
+		nni_mtx_unlock(&s->mtx);
 		nni_aio_set_msg(aio, NULL);
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
