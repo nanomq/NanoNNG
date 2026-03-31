@@ -156,7 +156,11 @@ parquet_file_queue::update_queue(const char *filename)
 		uint64_t file_size = (uint64_t) st.st_size;
 		sum += file_size;
 
+		log_debug("Added file '%s' of size %lu bytes. Total size: %lu bytes, limit: %lu bytes.",
+		    filename, file_size, sum, node->file_size);
 		while (sum > node->file_size) {
+			log_debug("Total file size %lu exceeds limit %lu, removing old files.",
+			    sum, node->file_size);
 			remove_old_file(queue);
 		}
 
