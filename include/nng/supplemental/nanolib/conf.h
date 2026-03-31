@@ -333,8 +333,6 @@ struct conf_bridge_node {
 	nng_dialer  *dialer;
 	nng_lmq		*ctx_msgs;  // only cache qos msg blocked by aio busy
 	nng_mtx     *mtx;
-	// the connect flag in nng_stats is private...
-	nng_atomic_bool *connected;
 
 	// MQTT v5 property
 	conf_bridge_conn_properties *     conn_properties;

@@ -1402,7 +1402,7 @@ conf_bridge_node_parse(
 		s->retain             = NO_RETAIN;
 		s->qos                = NO_QOS;
 		s->max_send_queue_len = 0;
-		s->topic_lmq		  = NULL;
+		s->topic_lmq          = NULL;
 		hocon_read_str(s, remote_topic, forward);
 		hocon_read_str(s, local_topic, forward);
 		hocon_read_str(s, prefix, forward);
