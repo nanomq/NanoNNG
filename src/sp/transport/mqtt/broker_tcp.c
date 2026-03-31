@@ -1531,9 +1531,10 @@ send:
 	if (niov == 0) {
 		nni_msg_free(msg);
 		nni_aio_set_prov_data(txaio, NULL);
-		nni_list_remove(&p->sendq, aio);
+		nni_aio_list_remove(aio);
 		nni_aio_set_msg(aio, NULL);
 		nni_aio_finish(aio, 0, 0);
+		tcptran_pipe_send_start(p);
 	} else {
 		nni_aio_set_iov(txaio, niov, iov);
 		nng_stream_send(p->conn, txaio);
