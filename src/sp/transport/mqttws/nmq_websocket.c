@@ -927,6 +927,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 		nni_msg_free(msg);
 		nni_aio_set_msg(aio, NULL);
 		nni_aio_list_remove(aio);
+		wstran_pipe_send_start(p);
 		nni_aio_finish(aio, 0, 0);
 		return;
 	}
@@ -1121,6 +1122,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			nni_msg_free(msg);
 			// nni_aio_set_prov_data(txaio, NULL);
 			nni_aio_set_msg(aio, NULL);
+			wstran_pipe_send_start(p);
 			nni_aio_finish(aio, 0, 0);
 			return;
 		}

@@ -1328,6 +1328,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 		nni_msg_free(msg);
 		nni_aio_set_msg(aio, NULL);
 		nni_aio_list_remove(aio);
+		tlstran_pipe_send_start(p);
 		nni_aio_finish(aio, 0, 0);
 		return;
 	}
@@ -1444,8 +1445,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 						// replace old with new one ? print warning to users
 						log_error("packet id duplicates in nano_qos_db");
 
-						nni_qos_db_remove_msg(
-						    is_sqlite,
+						nni_qos_db_remove_msg(is_sqlite,
 						    pipe->nano_qos_db, old);
 					}
 					old = msg;
@@ -1511,6 +1511,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			nni_aio_set_prov_data(txaio, NULL);
 			nni_list_remove(&p->sendq, aio);
 			nni_aio_set_msg(aio, NULL);
+			tcptran_pipe_send_start(p);
 			nni_aio_finish(aio, 0, 0);
 			return;
 		}
@@ -1521,6 +1522,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 		nni_aio_set_prov_data(txaio, NULL);
 		nni_list_remove(&p->sendq, aio);
 		nni_aio_set_msg(aio, NULL);
+		tlstran_pipe_send_start(p);
 		nni_aio_finish(aio, 0, 0);
 		return;
 	}
