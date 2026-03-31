@@ -1511,7 +1511,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			nni_aio_set_prov_data(txaio, NULL);
 			nni_list_remove(&p->sendq, aio);
 			nni_aio_set_msg(aio, NULL);
-			tcptran_pipe_send_start(p);
+			tlstran_pipe_send_start(p);
 			nni_aio_finish(aio, 0, 0);
 			return;
 		}
