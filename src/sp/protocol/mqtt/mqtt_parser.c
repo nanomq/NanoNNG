@@ -1315,7 +1315,9 @@ nano_encode_publish_msg(uint8_t proto_ver, uint8_t qos, bool retain, bool dup,
 	nni_mqtt_msg_set_publish_qos(msg, qos);
 
 	if (qos > 0) {
-		nni_mqtt_msg_set_publish_packet_id(msg, nni_random() % 0xFFFF);
+		uint16_t packet_id = nni_random() % 0xFFFF;
+		nni_mqtt_msg_set_publish_packet_id(
+		    msg, packet_id == 0 ? 1 : packet_id);
 	}
 
 	if (topic_suffix != NULL) {
