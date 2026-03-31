@@ -1277,8 +1277,17 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		}
 	}
 send:
-	nni_aio_set_iov(txaio, niov, iov);
-	nng_stream_send(p->conn, txaio);
+	if (niov == 0) {
+		log_error("niov 0 detected! Report it to NanoMQ official!");
+		nni_msg_free(msg);
+		nni_aio_set_prov_data(txaio, NULL);
+		nni_aio_list_remove(aio);
+		nni_aio_set_msg(aio, NULL);
+		nni_aio_finish(aio, 0, 0);
+	} else {
+		nni_aio_set_iov(txaio, niov, iov);
+		nng_stream_send(p->conn, txaio);
+	}
 	return;
 }
 
@@ -1530,11 +1539,11 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			p->qsend_quota--;
 		} else {
 			// what should broker does when exceed
-			// max_recv? msg lost, make it look like a
+			// max quota? msg lost, make it look like a
 			// normal send. qos msg will be resend afterwards
 			nni_msg_free(msg);
 			nni_aio_set_prov_data(txaio, NULL);
-			nni_list_remove(&p->sendq, aio);
+			nni_aio_list_remove(aio);
 			nni_aio_set_msg(aio, NULL);
 			nni_aio_finish(aio, 0, 0);
 			return;
@@ -1547,12 +1556,12 @@ send:
 		nni_aio_list_remove(aio);
 		nni_aio_set_msg(aio, NULL);
 		nni_aio_finish(aio, 0, 0);
-		tcptran_pipe_send_start(p);
 	} else {
 		nni_aio_set_iov(txaio, niov, iov);
 		nng_stream_send(p->conn, txaio);
 	}
 	return;
+
 }
 
 /**
