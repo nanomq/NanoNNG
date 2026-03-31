@@ -33,6 +33,8 @@
 typedef struct ws_listener ws_listener;
 typedef struct ws_pipe     ws_pipe;
 
+static void wstran_pipe_send_start(ws_pipe *p);
+
 // Safe parser for MQTT Remaining Length (variable byte integer).
 // `pos` is the offset where Remaining Length starts (usually 1).
 // On success, returns 0. If more bytes are needed, sets *need_more = true and
