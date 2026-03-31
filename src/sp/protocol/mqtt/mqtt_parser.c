@@ -1349,11 +1349,14 @@ nano_encode_publish_msg(uint8_t proto_ver, uint8_t qos, bool retain, bool dup,
 		if (prop != NULL) {
 			property *prop_dup = NULL;
 			rv                 = property_dup(&prop_dup, prop);
-			if (rv != 0) {
-				log_error("property_dup failed, rv = %d", rv);
+			if (rv != 0 || prop_dup == NULL) {
+				log_error("property_dup failed, rv = %d, "
+				          "prop_dup = %p",
+				    rv, prop_dup);
 				nni_msg_free(msg);
 				return NULL;
 			}
+			nng_mqtt_msg_set_publish_property(msg, prop_dup);
 		}
 		rv = nni_mqttv5_msg_encode(msg);
 		nni_msg_set_cmd_type(msg, CMD_PUBLISH_V5);
