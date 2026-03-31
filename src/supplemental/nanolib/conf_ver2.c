@@ -1409,8 +1409,13 @@ conf_bridge_node_parse(
 		hocon_read_str(s, suffix, forward);
 		hocon_read_num(s, max_send_queue_len, forward);
 		// only forwards has a unique lmq for each topic
-		if (s->max_send_queue_len > 0)
-			nng_lmq_alloc(&s->topic_lmq, s->max_send_queue_len);
+		if (s->max_send_queue_len > 0) {
+			if (nng_lmq_alloc(&s->topic_lmq, s->max_send_queue_len) != 0) {
+				log_error("Failed to allocate topic_lmq for forward topic");
+				s->max_send_queue_len = 0;
+				s->topic_lmq = NULL;
+			}
+		}
 		if (s->suffix != NULL) {
 			s->suffix_len = strlen(s->suffix);
 			if (strstr(s->suffix, "+") != NULL ||
