@@ -24,6 +24,8 @@
 #define NNG_MQTT_PEER_NAME "mqtt-server"
 #define MQTT_QUIC_RETRTY 5  // 5 seconds as default minimum timer
 #define MQTT_QUIC_KEEPALIVE 5  // 5 seconds as default
+#define MQTT_QUIC_TIMER_BACKOFF_MAX 5 // No resp after 5 ping then timeout as default
+#define MQTT_QUIC_TIMER_RESEND_WAIT 3000 // Wait 3000 ms then start resend as default
 
 typedef struct mqtt_sock_s   mqtt_sock_t;
 typedef struct mqtt_pipe_s   mqtt_pipe_t;
@@ -822,6 +824,10 @@ mqtt_timer_cb(void *arg)
 {
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
+	uint16_t backoff_max = s->bridge_conf == NULL
+		? MQTT_QUIC_TIMER_BACKOFF_MAX : s->bridge_conf->backoff_max;
+	uint64_t resend_wait = s->bridge_conf == NULL
+		? MQTT_QUIC_TIMER_RESEND_WAIT : s->bridge_conf->resend_wait;
 
 	if (nng_aio_result(&p->time_aio) != 0) {
 		log_warn("sleep aio finish error!");
@@ -834,7 +840,7 @@ mqtt_timer_cb(void *arg)
 		nni_mtx_unlock(&s->mtx);
 		return;
 	}
-	if (p->pingcnt > s->bridge_conf->backoff_max) {
+	if (p->pingcnt > backoff_max) {
 		log_warn("MQTT Timeout and disconnect");
 		s->disconnect_code = KEEP_ALIVE_TIMEOUT;
 		nni_mtx_unlock(&s->mtx);
@@ -866,7 +872,7 @@ mqtt_timer_cb(void *arg)
 	if (msg != NULL) {
 		nni_time now  = nni_clock();
 		nni_time time = now - nni_msg_get_timestamp(msg);
-		if (time > s->bridge_conf->resend_wait) {
+		if (time > resend_wait) {
 			nni_mqtt_packet_type ptype;	//uint16_t
 			ptype = nni_mqtt_msg_get_packet_type(msg);
 			if (ptype == NNG_MQTT_PUBLISH) {
