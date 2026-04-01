@@ -1261,6 +1261,9 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		case QUIC_STATUS_UNREACHABLE:
 			log_warn("[conn][%p] Host unreachable.\n", qconn);
 			break;
+		case QUIC_STATUS_HANDSHAKE_FAILURE:
+			log_warn("[conn][%p] Handshake failed.\n", qconn);
+			break;
 		default:
 			log_warn("No network available. Random errcode is used");
 			break;
