@@ -1386,7 +1386,7 @@ nano_msg_notify(conn_param *cparam, uint8_t code, uint8_t retain, bool online)
 nano_pipe_db *
 nano_msg_get_subtopic(nni_msg *msg, nano_pipe_db *root, conn_param *cparam)
 {
-	char *        topic;
+	char * topic;
 	nano_pipe_db *db = NULL, *tmp = NULL, *iter = NULL;
 	uint8_t       len_of_topic = 0, len_of_varint = 0, *payload_ptr;
 	uint32_t      len;
@@ -1428,6 +1428,12 @@ nano_msg_get_subtopic(nni_msg *msg, nano_pipe_db *root, conn_param *cparam)
 				        iter->topic, len_of_topic)) {
 					repeat = true;
 					bpos += (2 + len_of_topic);
+
+					// Safety check before peeking at QoS byte
+					if (bpos >= remain) {
+						return NULL;
+					}
+
 					if (iter->qos !=
 					    *(payload_ptr + bpos)) {
 						iter->qos =
@@ -1473,6 +1479,13 @@ nano_msg_get_subtopic(nni_msg *msg, nano_pipe_db *root, conn_param *cparam)
 			NNI_ASSERT("ERROR : topic length error.");
 			return NULL;
 		}
+
+		// Ensure at least 1 byte is left for QoS
+		if (bpos >= remain) {
+			log_error("Invalid subscribe packet: missing QoS byte");
+			return NULL;
+		}
+
 		db->qos  = *(payload_ptr + bpos);
 		db->next = NULL;
 		log_trace("sub topic: %s qos : %x\n", db->topic, db->qos);
@@ -1562,10 +1575,9 @@ nmq_subinfol_rm_or(nni_list *l, struct subinfo *n)
 	}
 	return NULL;
 }
-
 /**
  * @brief decode sub for subid, topics and RAP to subinfol
- * 	  warning only use with sub msg & V5 client
+ * warning only use with sub msg & V5 client
  *
  * @param msg
  * @param ptr to subinfol
@@ -1665,8 +1677,9 @@ nmq_subtopic_decode(nng_msg *msg, uint8_t ver, topic_queue **ptq)
 		}
 
 		bpos += len_of_topic;
-		// Check the index of topic option
-		if (bpos > remain)
+
+		//Ensure at least 1 byte is left for subscription options
+		if (bpos >= remain)
 			return (-3);
 
 		bpos += 1;
@@ -1679,7 +1692,7 @@ nmq_subtopic_decode(nng_msg *msg, uint8_t ver, topic_queue **ptq)
 
 /**
  * @brief decode sub for subid, topics and RAP to subinfol
- * 	  warning only use with sub msg & V5 client
+ * warning only use with sub msg & V5 client
  *
  * @param msg
  * @param ptr to subinfol
@@ -1781,9 +1794,13 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 
 		sn->topic = topic;
 		bpos += len_of_topic;
-		// Check the index of topic option
-		if (bpos > remain)
+
+		// Ensure at least 1 byte is left for subscription options
+		if (bpos >= remain) {
+			nng_free(sn->topic, len_of_topic + 1);
+			nng_free(sn, sizeof(*sn));
 			return (-3);
+		}
 
 		sn->subid = subid;
 		// qos no_local rap retain_handling
