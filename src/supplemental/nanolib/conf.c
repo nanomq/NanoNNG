@@ -3580,6 +3580,19 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 		cvector_free(node->forwards_list);
 		node->forwards_list = NULL;
 	}
+	if (node->exclusions_count > 0 && node->exclusions_list) {
+		for (size_t j = 0; j < node->exclusions_count; j++) {
+			exclusions *e = node->exclusions_list[j];
+			if (e->topic) {
+				free(e->topic);
+				e->topic = NULL;
+			}
+			NNI_FREE_STRUCT(e);
+		}
+		node->exclusions_count = 0;
+		cvector_free(node->exclusions_list);
+		node->exclusions_list = NULL;
+	}
 	if (node->sub_count > 0 && node->sub_list) {
 		for (size_t i = 0; i < node->sub_count; i++) {
 			topics *s = node->sub_list[i];
@@ -3702,7 +3715,7 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		    node->name, node->resend_wait);
 		log_info("%sbridge.mqtt.%s.cancel_timeout:             %ld", prefix,
 		    node->name, node->cancel_timeout);
-		log_info("%sbridge.mqtt.%s.hybrid_bridging       :     %s", prefix,
+		log_info("%sbridge.mqtt.%s.hybrid_bridging:            %s", prefix,
 		    node->name, node->hybrid ? "true" : "false");
 		log_info("%sbridge.mqtt.%s.hybrid_servers: ", prefix, node->name);
 		for (size_t j = 0; j < cvector_size(node->hybrid_servers); j++) {
@@ -3746,13 +3759,20 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 
 		for (size_t j = 0; j < node->forwards_count; j++) {
 			log_info(
-			    "\t[%ld] remote topic:        %.*s", j,
+			    "\t[%ld] remote topic:\t\t%.*s", j,
 										node->forwards_list[j]->remote_topic_len,
 										node->forwards_list[j]->remote_topic);
 			log_info(
-			    "\t[%ld] local topic:        %.*s", j,
+			    "\t[%ld] local topic:\t\t%.*s", j,
 										node->forwards_list[j]->local_topic_len,
 										node->forwards_list[j]->local_topic);
+		}
+		log_info("%sbridge.mqtt.%s.exclusions: ", prefix, node->name);
+		for (size_t j = 0; j < node->exclusions_count; j++) {
+			log_info(
+				"\t[%ld] topic:\t\t%.*s", j, 
+				node->exclusions_list[j]->topic_len,
+				node->exclusions_list[j]->topic);
 		}
 		log_info(
 		    "%sbridge.mqtt.%s.subscription: ", prefix, node->name);
