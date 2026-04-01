@@ -824,16 +824,20 @@ mqtt_timer_cb(void *arg)
 {
 	mqtt_pipe_t *p = arg;
 	mqtt_sock_t *s = p->mqtt_sock;
-	uint16_t backoff_max = s->bridge_conf == NULL
-		? MQTT_QUIC_TIMER_BACKOFF_MAX : s->bridge_conf->backoff_max;
-	uint64_t resend_wait = s->bridge_conf == NULL
-		? MQTT_QUIC_TIMER_RESEND_WAIT : s->bridge_conf->resend_wait;
+	uint16_t backoff_max = MQTT_QUIC_TIMER_BACKOFF_MAX;
+	uint64_t resend_wait = MQTT_QUIC_TIMER_RESEND_WAIT;
 
 	if (nng_aio_result(&p->time_aio) != 0) {
 		log_warn("sleep aio finish error!");
 		return;
 	}
 	nni_mtx_lock(&s->mtx);
+
+	if (s->bridge_conf) {
+		backoff_max = s->bridge_conf->backoff_max;
+		resend_wait = s->bridge_conf->resend_wait;
+	}
+
 	p = s->pipe;
 	if (NULL == p || nni_atomic_get_bool(&p->closed)) {
 		// QUIC connection has been shut down
