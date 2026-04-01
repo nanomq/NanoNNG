@@ -1177,6 +1177,77 @@ nano_msg_set_dup(nng_msg *msg)
 	header  = nni_msg_header(msg);
 	*header = *header | 0x08;
 }
+
+nng_msg *
+nano_pubmsg_composer(nng_msg **msgp, uint8_t retain, uint8_t qos,
+    mqtt_string *payload, mqtt_string *topic, uint8_t proto_ver,
+	nng_time time, mqtt_string *clientid)
+{
+	size_t   rlen;
+	uint8_t *ptr, buf[5] = { '\0' }, tlen[2] = { '\0' };
+	uint32_t len;
+	nni_msg *msg;
+
+	len = payload->len + topic->len + 2;
+	if (clientid != NULL)
+		len += clientid->len + 1;
+
+	nni_msg_alloc(msgp, 0);
+	msg = *msgp;
+
+	nni_msg_set_timestamp(msg, time);
+	if (qos > 0) {
+		rlen = put_var_integer(buf + 1, len + 2);
+		if (qos == 1) {
+			buf[0] = CMD_PUBLISH | 0x02;
+		} else if (qos == 2) {
+			buf[0] = CMD_PUBLISH | 0x04;
+		} else {
+			log_warn("ERROR: qos setting in will msg is invalid");
+			nni_msg_free(msg);
+			return NULL;
+		}
+	} else {
+		rlen = put_var_integer(buf + 1, len);
+		buf[0] = CMD_PUBLISH;
+	}
+	if (retain > 0) {
+		buf[0] = buf[0] | 0x01;
+	}
+	nni_msg_header_append(msg, buf, rlen + 1);
+
+	ptr = nni_msg_body(msg);
+	if (clientid != NULL) {
+		NNI_PUT16(tlen, topic->len + clientid->len + 1);
+		nni_msg_append(msg, tlen, 2);
+		nni_msg_append(msg, topic->body, topic->len);
+		nni_msg_append(msg, "/", 1);
+		nni_msg_append(msg, clientid->body, clientid->len);
+	} else {
+		NNI_PUT16(tlen, topic->len);
+		ptr += 2;
+		nni_msg_append(msg, tlen, 2);
+		nni_msg_append(msg, topic->body, topic->len);
+	}
+
+	if (qos > 0) {
+		// Set a random pid in case collision
+		NNI_PUT16(tlen, nni_random()%8000);
+		nni_msg_append(msg, tlen, 2);
+	}
+
+	if (proto_ver == MQTT_PROTOCOL_VERSION_v5) {
+		// Set V4/V5 flag for msg adaptor in transport layer
+		nng_msg_set_cmd_type(msg, CMD_PUBLISH_V5);
+	} else {
+		nng_msg_set_cmd_type(msg, CMD_PUBLISH);
+	}
+	nni_msg_append(msg, payload->body, payload->len);
+	nni_msg_set_payload_ptr(msg, ptr);
+
+	return msg;
+}
+
 /**
  * @brief compose a MQTT V5 DISCONNECT msg from server side
  *        ref & rstr is not effective yet
