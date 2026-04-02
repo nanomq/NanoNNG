@@ -848,7 +848,8 @@ mqtt_timer_cb(void *arg)
 		nni_mtx_unlock(&s->mtx);
 		return;
 	}
-	if (p->pingcnt > s->bridge_conf->backoff_max) {
+	uint64_t backoff_max = s->bridge_conf ? s->bridge_conf->backoff_max : 2;
+	if (p->pingcnt > backoff_max) {
 		log_warn("MQTT Timeout and disconnect");
 		s->disconnect_code = KEEP_ALIVE_TIMEOUT;
 		nni_mtx_unlock(&s->mtx);
@@ -880,7 +881,8 @@ mqtt_timer_cb(void *arg)
 	if (msg != NULL) {
 		nni_time now  = nni_clock();
 		nni_time time = now - nni_msg_get_timestamp(msg);
-		if (time > s->bridge_conf->resend_wait) {
+		uint64_t resend_wait = s->bridge_conf ? s->bridge_conf->resend_wait : 5000;
+		if (time > resend_wait) {
 			nni_mqtt_packet_type ptype;	//uint16_t
 			ptype = nni_mqtt_msg_get_packet_type(msg);
 			if (ptype == NNG_MQTT_PUBLISH) {
@@ -1153,6 +1155,7 @@ mqtt_quic_sock_set_bridge_config(
 {
 	NNI_ARG_UNUSED(sz);
 	mqtt_sock_t *s = arg;
+#ifdef NNG_HAVE_MQTT_BROKER
 	if (t == NNI_TYPE_POINTER) {
 		nni_mtx_lock(&s->mtx);
 		s->bridge_conf = *(conf_bridge_node **) v;
@@ -1162,6 +1165,7 @@ mqtt_quic_sock_set_bridge_config(
 		nni_mtx_unlock(&s->mtx);
 		return (0);
 	}
+#endif
 	return NNG_EUNREACHABLE;
 }
 
@@ -1618,7 +1622,7 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 #ifdef NNG_HAVE_MQTT_BROKER
 			nng_lmq *lmq = (nng_lmq *)nni_aio_get_input(aio, 0);
 			char *btopic = (char *)nni_aio_get_input(aio, 1);
-			if (lmq == NULL)
+			if (lmq == NULL&& s->bridge_conf != NULL)
 				lmq = s->bridge_conf->ctx_msgs;
 			log_debug("put msg from topic %s to lmq %p", btopic, lmq);
 			if (nni_lmq_full(lmq)) {

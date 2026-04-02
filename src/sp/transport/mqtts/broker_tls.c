@@ -846,7 +846,7 @@ tlstran_pipe_recv_cb(void *arg)
 				goto recv_error;
 			}
 			if ((packet_id = nni_msg_get_pub_pid(msg)) == 0) {
-				log_warn("0 Packet ID in QoS Message!");
+				log_warn("get 0 Packet ID in QoS Message!");
 				rv = PROTOCOL_ERROR;
 				goto recv_error;
 			}
