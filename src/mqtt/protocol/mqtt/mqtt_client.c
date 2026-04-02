@@ -1614,7 +1614,7 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 #ifdef NNG_HAVE_MQTT_BROKER
 			nng_lmq *lmq = (nng_lmq *)nni_aio_get_input(aio, 0);
 			char *btopic = (char *)nni_aio_get_input(aio, 1);
-			if (lmq == NULL)
+			if (lmq == NULL&& s->bridge_conf != NULL)
 				lmq = s->bridge_conf->ctx_msgs;
 			log_debug("put msg from topic %s to lmq %p", btopic, lmq);
 			if (nni_lmq_full(lmq)) {
