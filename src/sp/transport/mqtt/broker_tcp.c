@@ -784,8 +784,8 @@ tcptran_pipe_recv_cb(void *arg)
 		// the caller will shut down the pipe.
 		if (len > p->conf->max_packet_size) {
 			log_error("Size of packet exceeds limitation: 0x95\n");
-			rv = NMQ_PACKET_TOO_LARGE;
-			goto recv_error;
+			// rv = NMQ_PACKET_TOO_LARGE;
+			// goto recv_error;
 		}
 
 		if ((rv = nni_msg_alloc(&p->rxmsg, (size_t) len)) != 0) {
