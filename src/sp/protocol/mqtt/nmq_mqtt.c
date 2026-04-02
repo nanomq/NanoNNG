@@ -412,12 +412,11 @@ nano_ctx_send(void *arg, nni_aio *aio)
 			if (nni_msg_get_type(msg) == CMD_PUBLISH &&
 			    nni_msg_get_pub_qos(msg) > 0) {
 				nni_msg_clone(msg); // for line 422
-				// packetid = nni_msg_get_pub_pid(msg);
 				packetid = tmp_id;
 				nni_qos_db_set(is_sqlite, qos_db,
 				    pipe, packetid, msg);
 				log_info("msg %d cached for preset session", packetid);
-				tmp_id ++;
+				tmp_id ++;	// client may collide with 1000
 			}
 		} else {
 			log_info("NULL qos_db, cache failed!");
