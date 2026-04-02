@@ -1295,8 +1295,7 @@ mqtt_recv_cb(void *arg)
 		nni_id_remove(&p->recv_unack, packet_id);
 		// return msg to user APP
 		if ((ctx = nni_list_first(&s->recv_queue)) == NULL) {
-			// No one waiting to receive yet, putting msg
-			// into lmq
+			// No one waiting to receive yet, putting msg into lmq
 			if (mqtt_pipe_recv_msgq_putq(p, cached_msg) != 0) {
 #ifdef NNG_HAVE_MQTT_BROKER
 				conn_param_free(p->cparam);
@@ -1498,6 +1497,7 @@ mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
 	// 	return;
 	nni_mtx_lock(&s->mtx);
 	if (nni_list_active(&s->send_queue, ctx)) {
+		// shall never reach here in bridge mode
 		nni_list_remove(&s->send_queue, ctx);
 		nni_list_node_remove(&ctx->sqnode);
 	}
@@ -1595,6 +1595,7 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 			return;
 		}
 #endif
+		// TODO: do not need cache ctx if work in bridge mode.
 		if (!nni_atomic_get_bool(&s->closed)) {
 			if (!nni_list_active(&s->send_queue, ctx)) {
 				// cache ctx
