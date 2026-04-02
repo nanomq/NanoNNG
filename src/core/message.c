@@ -792,10 +792,13 @@ uint16_t
 nni_msg_get_pub_pid(nni_msg *m)
 {
 	uint16_t pid;
-	uint8_t *pos, len;
+	uint8_t *pos;
+	uint16_t len;
 
 	pos = nni_msg_body(m);
 	NNI_GET16(pos, len);
+
+	// Prevent out-of-bounds read if the packet is malformed
 	if (len > nni_msg_len(m) - 2)
 		return 0;
 	else {
