@@ -452,6 +452,10 @@ mqtt_quic_send_cb(void *arg)
 	if ((aio = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, aio);
 		p->busy = false;
+#ifdef NNG_ENABLE_STATS
+		nni_stat_dec(&s->msg_bytes_cached,
+			nng_msg_len(nni_aio_get_msg(aio)));
+#endif
 		mqtt_quic_send_msg(aio, s);
 		if (s->cb.msg_send_cb)
 			s->cb.msg_send_cb(NULL, s->cb.sendarg);
@@ -1364,6 +1368,10 @@ mqtt_quic_pipe_start(void *arg)
 	// deal with cached send aio
 	if ((aio = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, aio);
+#ifdef NNG_ENABLE_STATS
+		nni_stat_dec(&s->msg_bytes_cached,
+			nng_msg_len(nni_aio_get_msg(aio)));
+#endif
 		mqtt_quic_send_msg(aio, s);
 		nni_pipe_recv(npipe, &p->recv_aio);
 		nni_sleep_aio(s->retry, &p->time_aio);
@@ -1628,7 +1636,6 @@ mqtt_quic_ctx_send(void *arg, nni_aio *aio)
 				log_warn("Msg lost! put msg to ctx_msgs failed!");
 #ifdef NNG_ENABLE_STATS
 				nni_stat_inc(&s->msg_send_drop, 1);
-				nni_stat_dec(&s->msg_bytes_cached, nni_msg_len(msg));
 #endif
 				nni_msg_free(msg);
 			} else {

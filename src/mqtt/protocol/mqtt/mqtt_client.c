@@ -768,14 +768,14 @@ mqtt_pipe_start(void *arg)
 
 	if ((c = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, c);
-		log_debug("resend cached ctx");
-		nni_pipe_recv(p->pipe, &p->recv_aio);
-		mqtt_send_msg(c->saio, c, s);
 #ifdef NNG_ENABLE_STATS
-		if (nni_aio_get_msg(c->saio) != NULL)
+		if (nni_aio_get_msg(c->saio) != NULL) {
 			nni_stat_dec(&s->msg_bytes_cached,
 			    nng_msg_len(nni_aio_get_msg(c->saio)));
+		}
 #endif
+		nni_pipe_recv(p->pipe, &p->recv_aio);
+		mqtt_send_msg(c->saio, c, s);
 		c->saio = NULL;
 		nni_sleep_aio(s->retry, &p->time_aio);
 		return (0);
@@ -1019,12 +1019,12 @@ mqtt_send_cb(void *arg)
 	if ((c = nni_list_first(&s->send_queue)) != NULL) {
 		log_debug("resend cached ctx");
 		nni_list_remove(&s->send_queue, c);
-		mqtt_send_msg(c->saio, c, s);
 #ifdef NNG_ENABLE_STATS
 		if (nni_aio_get_msg(c->saio) != NULL)
 			nni_stat_dec(&s->msg_bytes_cached,
 			    nng_msg_len(nni_aio_get_msg(c->saio)));
 #endif
+		mqtt_send_msg(c->saio, c, s);
 		c->saio = NULL;
 		return;
 	}
@@ -1631,7 +1631,6 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 				log_warn("Msg lost! put msg to ctx_msgs failed!");
 #ifdef NNG_ENABLE_STATS
 				nni_stat_inc(&s->msg_send_drop, 1);
-				nni_stat_dec(&s->msg_bytes_cached, nni_msg_len(msg));
 #endif
 				nni_msg_free(msg);
 			} else {
