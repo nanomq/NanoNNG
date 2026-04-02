@@ -880,10 +880,23 @@ nano_pipe_close(void *arg)
 	log_info("%s pipe close!", p->conn_param->clientid.body);
 	// we freed the conn_param when restoring pipe
 	// so check status of conn_param. just let it close silently
-	if (p->conn_param->clean_start == 0) {
-		// cache this pipe
-		clientid = (char *) conn_param_get_clientid(p->conn_param);
+
+	bool should_cache = false;
+
+	if (p->conn_param->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
+		// MQTT 5.0: cache if session_expiry_interval > 0 (regardless
+		// of clean_start)
+		should_cache = (p->conn_param->session_expiry_interval > 0);
+	} else {
+		// MQTT 3.1.1: cache if clean_start == 0
+		should_cache = (p->conn_param->clean_start == 0);
 	}
+
+	if (should_cache) {
+		clientid = (char *) conn_param_get_clientid(p->conn_param);
+		log_debug("cache clientid: %s", clientid);
+	}
+
 	if (clientid) {
 		nni_pipe *new_pipe = NULL;
 		if (nni_pipe_find(&new_pipe, npipe->p_id) == 0) {
@@ -924,6 +937,7 @@ nano_pipe_close(void *arg)
 		nni_aio_close(&p->aio_send);
 		nni_aio_close(&p->aio_recv);
 		nni_aio_close(&p->aio_timer);
+		nni_id_remove(&s->cached_sessions, p->pipe->p_id);
 	}
 	close_pipe(p);
 
