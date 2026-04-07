@@ -1325,11 +1325,9 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 		// pretend it has been sent
 		log_warn("msg dropped due to exceed max packet size %ld %ld!",
 				total_len, p->tcp_cparam->max_packet_size);
-		nni_msg_free(msg);
-		nni_aio_set_msg(aio, NULL);
-		nni_aio_list_remove(aio);
-		tlstran_pipe_send_start(p);
-		nni_aio_finish(aio, 0, 0);
+		nni_aio_begin(txaio);
+		nni_aio_set_iov(txaio, 0, NULL);
+		nni_aio_finish(txaio, 0, 0);
 		return;
 	}
 	if (nni_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
@@ -1505,25 +1503,19 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 		} else {
 			// what should broker does when exceed
 			// max_recv? msg lost, make it look like a
-			// normal send. qos msg will be resend
-			// afterwards
-			nni_msg_free(msg);
-			nni_aio_set_prov_data(txaio, NULL);
-			nni_list_remove(&p->sendq, aio);
-			nni_aio_set_msg(aio, NULL);
-			tlstran_pipe_send_start(p);
-			nni_aio_finish(aio, 0, 0);
+			// normal send. qos msg will be resend afterwards
+			nni_aio_begin(txaio);
+			nni_aio_set_iov(txaio, 0, NULL);
+			nni_aio_finish(txaio, 0, 0);
 			return;
 		}
 	}
 	if (niov == 0) {
 		// No content to send
-		nni_msg_free(msg);
 		nni_aio_set_prov_data(txaio, NULL);
-		nni_list_remove(&p->sendq, aio);
-		nni_aio_set_msg(aio, NULL);
-		tlstran_pipe_send_start(p);
-		nni_aio_finish(aio, 0, 0);
+		nni_aio_begin(txaio);
+		nni_aio_set_iov(txaio, 0, NULL);
+		nni_aio_finish(txaio, 0, 0);
 		return;
 	}
 	nni_msg_alloc(&tmsg, 0);
