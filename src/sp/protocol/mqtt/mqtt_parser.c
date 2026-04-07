@@ -197,30 +197,32 @@ get_var_integer(const uint8_t *buf, uint8_t *pos)
 int32_t
 get_utf8_str(char **dest, const uint8_t *src, uint32_t *pos, size_t max)
 {
-	int32_t  str_len = 0;
-	uint32_t len;
-	if (max != (size_t)-1) {
-		if (max < 2 || *pos > max - 2) {
+	uint16_t str_len;
+
+	if (max < 2 || *pos > max - 2) {
+		return -1;
+	}
+
+	NNI_GET16(src + *pos, str_len);
+
+	if (str_len > max - *pos - 2) {
+		return -1;
+	}
+
+	if (str_len > 0) {
+		if (utf8_check((const char *) (src + *pos + 2), str_len) !=
+		    ERR_SUCCESS) {
 			return -1;
 		}
 	}
-	// still vulnerable to attack
-	const uint8_t *ptr = src + (*pos);
-	NNI_GET16(ptr, len);
-	if (max > 0 && (len > max - *pos - 2))
-		return -1;
-	str_len = len;
-	*pos = (*pos) + 2;
-	if (str_len > 0) {
-		if (utf8_check((const char *) (src + *pos), str_len) ==
-		    ERR_SUCCESS) {
-			*dest = (char *) (src + (*pos));
-			*pos  = (*pos) + str_len;
-		} else {
-			str_len = -1;
-		}
+
+	if (dest != NULL) {
+		*dest = (char *) (src + *pos + 2);
 	}
-	return str_len;
+
+	*pos += 2 + str_len;
+
+	return (int32_t) str_len;
 }
 
 /**
