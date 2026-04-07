@@ -1275,12 +1275,10 @@ send:
 	if (niov == 0) {
 		// V4 shall not has such condition
 		log_error("niov 0 detected! Report it to NanoMQ official!");
-		nni_msg_free(msg);
 		nni_aio_set_prov_data(txaio, NULL);
-		nni_aio_list_remove(aio);
-		nni_aio_set_msg(aio, NULL);
-		tcptran_pipe_send_start(p);
-		nni_aio_finish(aio, 0, 0);
+		nni_aio_begin(txaio);
+		nni_aio_set_iov(txaio, 0, NULL);
+		nni_aio_finish(txaio, 0, 0);
 	} else {
 		nni_aio_set_iov(txaio, niov, iov);
 		nng_stream_send(p->conn, txaio);
@@ -1355,11 +1353,9 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		// pretend it has been sent
 		log_warn("msg dropped due to exceed max packet size %ld %ld!",
 				total_len, p->tcp_cparam->max_packet_size);
-		nni_msg_free(msg);
-		nni_aio_set_msg(aio, NULL);
-		nni_aio_list_remove(aio);
-		tcptran_pipe_send_start(p);
-		nni_aio_finish(aio, 0, 0);
+		nni_aio_begin(txaio);
+		nni_aio_set_iov(txaio, 0, NULL);
+		nni_aio_finish(txaio, 0, 0);
 		return;
 	}
 	if (nni_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
