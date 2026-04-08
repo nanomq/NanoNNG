@@ -400,6 +400,12 @@ struct ringBuffer_node {
 	uint64_t cap;
 };
 
+typedef struct conf_exchange_encryption conf_exchange_encryption;
+struct conf_exchange_encryption {
+	bool  enable;
+	char *key;
+};
+
 typedef struct conf_exchange_node conf_exchange_node;
 struct conf_exchange_node {
 	char             *name;
@@ -410,23 +416,17 @@ struct conf_exchange_node {
 	uint32_t          chunk_size;
 	uint32_t          limit_frequency;
 	conf_parquet      *parquet;
+	nng_socket        *sock;
+	nng_mtx           *mtx;
+	char              *exchange_url;
 
-	nng_socket       *sock;
-	nng_mtx          *mtx;
-	char             *exchange_url;
-};
-
-typedef struct conf_exchange_encryption conf_exchange_encryption;
-struct conf_exchange_encryption {
-	bool  enable;
-	char *key;
+	conf_exchange_encryption encryption;
 };
 
 typedef struct conf_exchange conf_exchange;
 struct conf_exchange {
 	size_t                    count;
 	conf_exchange_node      **nodes;
-	conf_exchange_encryption *encryption;
 	conf_parquet             *default_parquet;
 };
 

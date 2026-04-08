@@ -1311,16 +1311,16 @@ print_exchange_conf(conf_exchange *exchange)
 			log_info("exchange ringbus cap       %d", r->cap);
 			log_info("exchange ringbus fullOp    %d", r->fullOp);
 		}
+		if (n->encryption.enable) {
+			log_info("exchange encryption:       true");
+			log_info("exchange encryption key    ******");
+		} else {
+			log_info("exchange encryption:       false");
+		}
 
 		if (n->parquet != NULL) {
 			print_parquet_conf(n->parquet);
 		}
-	}
-	if (exchange->encryption != NULL) {
-		log_info("exchange encryption:       %s",
-				exchange->encryption->enable ? "true" : "false");
-		log_info("exchange encryption key:   %s",
-				exchange->encryption->key == NULL ? "null" : exchange->encryption->key);
 	}
 }
 
@@ -4546,6 +4546,7 @@ conf_exchange_node_destory(conf_exchange_node *node)
 		nng_strfree(node->exchange_url);
 		nng_strfree(node->topic);
 		nng_strfree(node->name);
+		nng_strfree(node->encryption.key);
 		nng_mtx_free(node->mtx);
 		for (size_t i = 0; i < node->rbufs_sz; i++) {
 			if (node->rbufs[i]) {
@@ -4557,7 +4558,6 @@ conf_exchange_node_destory(conf_exchange_node *node)
 		cvector_free(node->rbufs);
 		NNI_FREE_STRUCT(node);
 	}
-
 }
 
 #if defined(SUPP_PARQUET)
@@ -4590,11 +4590,6 @@ conf_exchange_destroy(conf_exchange *exchange)
 		}
 
 		conf_exchange_node_destory(node);
-	}
-
-	if (exchange->encryption) {
-		nng_strfree(exchange->encryption->key);
-		NNI_FREE_STRUCT(exchange->encryption);
 	}
 
 	cvector_free(exchange->nodes);
