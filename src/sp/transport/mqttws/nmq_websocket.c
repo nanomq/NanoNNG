@@ -120,16 +120,15 @@ wstran_pipe_send_cb(void *arg)
 	nni_aio *taio;
 	nni_aio *uaio;
 
+	nni_mtx_lock(&p->mtx);
 	taio = p->txaio;
 	uaio = p->user_txaio;
-	nni_mtx_lock(&p->mtx);
 	rv   = nni_aio_result(taio);
 	if (nni_aio_result(taio) != 0) {
 		log_warn(" send aio error %s", nng_strerror(rv));
 		nni_msg_free(nni_aio_get_msg(taio));
 	}
 	p->user_txaio = NULL;
-
 	if (uaio != NULL) {
 		if (nni_atomic_get_bool(&p->closed)){
 			nni_msg_free(nni_aio_get_msg(taio));
@@ -594,10 +593,7 @@ done:
 	nni_aio_set_msg(uaio, smsg);
 skip:
 	nni_aio_set_output(uaio, 0, p);
-	if (!nni_aio_list_active(uaio)) // in case abort action from protocol layer 
-		nni_aio_finish(uaio, p->err_code, 0);
-	else
-		log_warn("WebSocket uaio is aborted already!");
+	nni_aio_finish(uaio, p->err_code, 0);
 	nni_mtx_unlock(&p->mtx);
 	if (rv != SUCCESS && msg_vec != NULL) {
 		// Cannot trust the rest msgs
@@ -620,7 +616,7 @@ reset:
 		nni_aio_finish_error(p->ep_aio, rv);
 	} else if (uaio != NULL) {
 		nni_aio_set_msg(uaio, NULL);
-		nni_aio_finish_error(uaio, p->err_code);
+		nni_aio_finish_error(uaio, p->err_code == MQTT_SUCCESS ? rv : p->err_code);
 	} else {
 		// Let protocol layer do the close first.
 		nng_stream_close(p->ws);
@@ -650,7 +646,7 @@ wstran_pipe_recv_cancel(nni_aio *aio, void *arg, int rv)
 	}
 	p->user_rxaio = NULL;
 	nni_aio_abort(p->rxaio, rv);
-	nni_aio_finish_error(aio, rv);
+	// nni_aio_finish_error(aio, rv);
 	nni_mtx_unlock(&p->mtx);
 }
 
@@ -690,12 +686,13 @@ static void
 wstran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 {
 	ws_pipe *p = arg;
+	nni_mtx_lock(&p->mtx);
 	if (p->user_txaio != aio) {
 		return;
 	}
 	p->user_txaio = NULL;
 	nni_aio_abort(p->txaio, rv);
-	nni_aio_finish_error(aio, rv);
+	nni_mtx_unlock(&p->mtx);
 }
 
 static inline void
@@ -1118,10 +1115,8 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 		} else {
 			// what should broker does when exceed
 			// max_recv? msg lost, make it look like a
-			// normal send. qos msg will be resend
-			// afterwards
+			// normal send. qos msg will be resend afterwards
 			nni_msg_free(msg);
-			// nni_aio_set_prov_data(txaio, NULL);
 			nni_aio_set_msg(aio, NULL);
 			p->user_txaio = NULL;
 			nni_aio_finish(aio, 0, 0);
@@ -1212,6 +1207,7 @@ wstran_pipe_send(void *arg, nni_aio *aio)
 			nni_msg_free(msg);
 			nni_mtx_unlock(&p->mtx);
 			nni_aio_set_msg(aio, NULL);
+			p->user_txaio = NULL;
 			nni_aio_finish(aio, 0, 0);
 			return;
 		}
@@ -1230,6 +1226,7 @@ wstran_pipe_send(void *arg, nni_aio *aio)
 			nni_msg_free(msg);
 			nni_mtx_unlock(&p->mtx);
 			nni_aio_set_msg(aio, NULL);
+			p->user_txaio = NULL;
 			nni_aio_finish(aio, 0, 0);
 			return;
 		}
