@@ -1,7 +1,9 @@
 #ifdef NANO_PLATFORM_WINDOWS
 #include <winsock.h>
 #else
+#ifndef _WIN32
 #include <arpa/inet.h>
+#endif
 #endif
 
 #include "nng/supplemental/nanolib/utils.h"
