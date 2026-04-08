@@ -72,13 +72,13 @@ nni_aes_gcm_decrypt(char *cipher, int cipher_len, char *key, int *plain_lenp)
 	}
 
 	/* Initialise key and IV */
-	if((res = EVP_DecryptInit_ex(ctx, NULL, NULL, key, aes_gcm_iv)) != 1) {
+	if((res = EVP_DecryptInit_ex(ctx, NULL, NULL, (const unsigned char *)key, (const unsigned char *)aes_gcm_iv)) != 1) {
 		log_error("error in decrypted init");
 		goto out;
 	}
 
 	/* Provide any AAD data. This can be called zero or more times as required */
-	if((res = EVP_DecryptUpdate(ctx, NULL, &len, aes_gcm_aad, aes_gcm_aad_sz)) != 1) {
+	if((res = EVP_DecryptUpdate(ctx, NULL, &len, (const unsigned char *)aes_gcm_aad, aes_gcm_aad_sz)) != 1) {
 		log_error("error in decrypted update1");
 		goto out;
 	}
@@ -89,7 +89,7 @@ nni_aes_gcm_decrypt(char *cipher, int cipher_len, char *key, int *plain_lenp)
      * Provide the message to be decrypted, and obtain the plain output.
      * EVP_DecryptUpdate can be called multiple times if necessary
      */
-	if((res = EVP_DecryptUpdate(ctx, plain, &len, cipher, cipher_len)) != 1) {
+	if((res = EVP_DecryptUpdate(ctx, (unsigned char *)plain, &len, (const unsigned char *)cipher, cipher_len)) != 1) {
 		log_error("error in decrypted update1");
 		goto out;
 	}
@@ -105,7 +105,7 @@ nni_aes_gcm_decrypt(char *cipher, int cipher_len, char *key, int *plain_lenp)
 	 * Finalise the decryption. A positive return value indicates success,
 	 * anything else is a failure - the plain is not trustworthy.
 	 */
-	res = EVP_DecryptFinal_ex(ctx, plain + len, &len);
+	res = EVP_DecryptFinal_ex(ctx, (unsigned char *)plain + len, &len);
 out:
 	/* Clean up */
 	if (ctx)
@@ -162,20 +162,20 @@ nni_aes_gcm_encrypt(char *plain, int plainsz, char *key, int *cipher_lenp)
 		log_error("aes error ctx ctrl");
 		goto out;
 	}
-	if ((res = EVP_EncryptInit_ex(ctx, NULL, NULL, key, aes_gcm_iv)) != 1) {
+	if ((res = EVP_EncryptInit_ex(ctx, NULL, NULL, (const unsigned char *)key, (const unsigned char *)aes_gcm_iv)) != 1) {
 		log_error("aes error encryption init ex2");
 		goto out;
 	}
-	if ((res = EVP_EncryptUpdate(ctx, NULL, &len, aes_gcm_aad, aes_gcm_aad_sz)) != 1) {
+	if ((res = EVP_EncryptUpdate(ctx, NULL, &len, (const unsigned char *)aes_gcm_aad, aes_gcm_aad_sz)) != 1) {
 		log_error("aes error encryption update1");
 		goto out;
 	}
-	if ((res = EVP_EncryptUpdate(ctx, buf + 32, &len, plain, plainsz)) != 1) {
+	if ((res = EVP_EncryptUpdate(ctx, (unsigned char *)buf + 32, &len, (const unsigned char *)plain, plainsz)) != 1) {
 		log_error("aes error encryption update2");
 		goto out;
 	}
 	cipher_len = len;
-	if ((res = EVP_EncryptFinal_ex(ctx, buf + 32 + cipher_len, &len)) != 1) {
+	if ((res = EVP_EncryptFinal_ex(ctx, (unsigned char *)buf + 32 + cipher_len, &len)) != 1) {
 		log_error("aes error encryption final");
 		goto out;
 	}
