@@ -1772,11 +1772,10 @@ conf_exchange_node_parse(conf_exchange_node *node, cJSON *exchange)
 }
 
 void
-conf_exchange_encryption_parse(conf_exchange_encryption *node, cJSON *obj)
+conf_exchange_encryption_parse(conf_exchange_encryption *node, cJSON *encryption)
 {
-
-	cJSON *encryption = hocon_get_obj("encryption", obj);
-
+	if (!encryption)
+		return;
 	hocon_read_bool_base(node, enable, "enable", encryption);
 	hocon_read_str(node, key, encryption);
 
@@ -1784,7 +1783,6 @@ conf_exchange_encryption_parse(conf_exchange_encryption *node, cJSON *obj)
 		log_error("invalid exchange encryption configuration!");
 		return;
 	}
-
 	return;
 }
 
@@ -1880,6 +1878,8 @@ conf_exchange_parse_ver2(conf *config, cJSON *jso)
 		node->rbufs_sz           = 0;
 		node->exchange_url       = NULL;
 		node->limit_frequency    = 5;
+		node->encryption.enable  = false;
+		node->encryption.key     = NULL;
 
 		hocon_read_str(node, exchange_url, node_item);
 		hocon_read_num(node, limit_frequency, node_item);
@@ -1889,11 +1889,8 @@ conf_exchange_parse_ver2(conf *config, cJSON *jso)
 		conf_exchange_node_parse(node, exchange);
 		conf_parquet_parse_ver2(config, node, exchange);
 
-		conf_exchange_encryption *enc = NNI_ALLOC_STRUCT(enc);
-		enc->enable                   = false;
-		enc->key                      = NULL;
-		conf_exchange_encryption_parse(enc, node_item);
-		config->exchange.encryption = enc;
+		cJSON *encryption = hocon_get_obj("encryption", node_item);
+		conf_exchange_encryption_parse(&node->encryption, encryption);
 
 		nng_mtx_alloc(&node->mtx);
 		cvector_push_back(config->exchange.nodes, node);
