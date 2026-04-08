@@ -688,6 +688,7 @@ wstran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 	ws_pipe *p = arg;
 	nni_mtx_lock(&p->mtx);
 	if (p->user_txaio != aio) {
+		nni_mtx_unlock(&p->mtx);
 		return;
 	}
 	p->user_txaio = NULL;
