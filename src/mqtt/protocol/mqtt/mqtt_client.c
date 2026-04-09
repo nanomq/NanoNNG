@@ -448,6 +448,12 @@ mqtt_sock_close(void *arg)
 		aio       = ctx->saio;
 		ctx->saio = NULL;
 		msg       = nni_aio_get_msg(aio);
+#ifdef NNG_ENABLE_STATS
+		if (msg) {
+			nni_stat_inc(&s->msg_send_drop, 1);
+			nni_stat_dec(&s->msg_bytes_cached, nni_msg_len(msg));
+		}
+#endif
 		nni_aio_set_msg(aio, NULL);
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 		nni_msg_free(msg);
