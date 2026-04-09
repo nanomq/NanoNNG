@@ -1475,7 +1475,7 @@ conf_exchange_encryption_parse(conf_exchange_encryption *node, cJSON *obj)
 
 	if (node->enable == true && node->key == NULL) {
 		log_error("invalid exchange encryption configuration!");
-		return;
+		node->enable = false;
 	}
 
 	return;
