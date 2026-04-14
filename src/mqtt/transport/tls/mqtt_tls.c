@@ -1714,6 +1714,16 @@ nng_dialer_reload_tls(conf_bridge_node *node, nni_dialer *ndialer)
 		return;
 	}
 
+	nng_tls_auth_mode auth_mode = tls->verify_peer
+	    ? NNG_TLS_AUTH_MODE_REQUIRED
+	    : NNG_TLS_AUTH_MODE_NONE;
+
+	if ((rv = nng_tls_config_auth_mode(cfg, auth_mode)) != 0) {
+		log_error("failed to set auth mode");
+		nng_tls_config_free(cfg);
+		return;
+	}
+
 	if (node->tls.cert != NULL && node->tls.key != NULL) {
 		if ((rv = nng_tls_config_own_cert(cfg, node->tls.cert,
 		         node->tls.key, node->tls.key_password)) != 0) {
