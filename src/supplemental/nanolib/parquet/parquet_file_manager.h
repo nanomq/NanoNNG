@@ -4,6 +4,7 @@
 #include "parquet_file_queue.h"
 #include "nng/supplemental/nanolib/log.h"
 #include <unordered_map>
+#include <cstring>
 
 // Make it default inline
 class parquet_file_manager {
@@ -60,6 +61,29 @@ class parquet_file_manager {
 		}
 		log_info("get_queue_index: %u for topic %s", index, topic.c_str());
 		return index;
+	}
+
+	string find_topic_by_filename(const char *filename) const
+	{
+		if (filename == nullptr) {
+			return "";
+		}
+
+		for (const auto &entry : file_queue_map) {
+			CircularQueue *queue = entry.second->get_queue();
+			if (queue == nullptr || queue->size == 0) {
+				continue;
+			}
+			void *elem = nullptr;
+			FOREACH_QUEUE(*queue, elem)
+			{
+				if (elem != nullptr &&
+				    strcmp((const char *) elem, filename) == 0) {
+					return entry.first;
+				}
+			}
+		}
+		return "";
 	}
 	void remove_queue() { };
 
