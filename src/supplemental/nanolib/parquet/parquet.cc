@@ -455,6 +455,74 @@ parquet_base64_encode(const string &src)
 	return out;
 }
 
+static int
+parquet_base64_decode_val(char c)
+{
+	if (c >= 'A' && c <= 'Z') {
+		return c - 'A';
+	}
+	if (c >= 'a' && c <= 'z') {
+		return c - 'a' + 26;
+	}
+	if (c >= '0' && c <= '9') {
+		return c - '0' + 52;
+	}
+	if (c == '+') {
+		return 62;
+	}
+	if (c == '/') {
+		return 63;
+	}
+	return -1;
+}
+
+static bool
+parquet_base64_decode(const string &src, string *out)
+{
+	if (out == nullptr) {
+		return false;
+	}
+	out->clear();
+
+	if (src.empty() || (src.size() % 4) != 0) {
+		return false;
+	}
+
+	out->reserve((src.size() / 4) * 3);
+	for (size_t i = 0; i < src.size(); i += 4) {
+		char c0 = src[i];
+		char c1 = src[i + 1];
+		char c2 = src[i + 2];
+		char c3 = src[i + 3];
+
+		int v0 = parquet_base64_decode_val(c0);
+		int v1 = parquet_base64_decode_val(c1);
+		if (v0 < 0 || v1 < 0) {
+			return false;
+		}
+
+		int v2 = (c2 == '=') ? 0 : parquet_base64_decode_val(c2);
+		int v3 = (c3 == '=') ? 0 : parquet_base64_decode_val(c3);
+		if ((c2 != '=' && v2 < 0) || (c3 != '=' && v3 < 0)) {
+			return false;
+		}
+
+		uint32_t triple =
+		    ((uint32_t) v0 << 18) | ((uint32_t) v1 << 12) |
+		    ((uint32_t) v2 << 6) | (uint32_t) v3;
+
+		out->push_back((char) ((triple >> 16) & 0xFF));
+		if (c2 != '=') {
+			out->push_back((char) ((triple >> 8) & 0xFF));
+		}
+		if (c3 != '=') {
+			out->push_back((char) (triple & 0xFF));
+		}
+	}
+
+	return true;
+}
+
 static const char *
 parquet_cipher_to_str(conf_parquet *conf)
 {
@@ -472,10 +540,12 @@ parquet_cipher_to_str(conf_parquet *conf)
 }
 
 static shared_ptr<arrow::KeyValueMetadata>
-parquet_build_nmq_metadata(conf_parquet *conf, const char *topic)
+parquet_build_nmq_metadata(
+    conf_parquet *conf, const char *topic, parquet_type write_type)
 {
 	shared_ptr<arrow::KeyValueMetadata> kv =
 	    make_shared<arrow::KeyValueMetadata>();
+	static std::atomic<uint64_t> raw_stream_number { 0 };
 
 	const char *topic_value =
 	    topic != NULL ? topic : (conf && conf->name ? conf->name : "");
@@ -496,12 +566,19 @@ parquet_build_nmq_metadata(conf_parquet *conf, const char *topic)
 	kv->Append("nmq.created_by", "NanoMQ");
 	kv->Append("nmq.created_at", std::to_string((long long) time(NULL)));
 	kv->Append("nmq.file.topic_source", "metadata");
+
+	// Backward compatibility: keep legacy self-increment key for raw stream parquet.
+	if (write_type == WRITE_RAW || write_type == WRITE_TEMP_RAW) {
+		kv->Append(
+		    "number", std::to_string(raw_stream_number.fetch_add(1)));
+	}
 	return kv;
 }
 
 int
 parquet_write_core(conf_parquet *conf, char *filename,
-    shared_ptr<GroupNode> schema, parquet_data *data, const char *topic)
+    shared_ptr<GroupNode> schema, parquet_data *data, const char *topic,
+    parquet_type write_type)
 {
 
 	char                 **schema_arr  = data->schema;
@@ -540,7 +617,7 @@ parquet_write_core(conf_parquet *conf, char *filename,
 		    parquet::ParquetFileWriter::Open(out_file, schema, props);
 
 		shared_ptr<arrow::KeyValueMetadata> key_value_metadata =
-		    parquet_build_nmq_metadata(conf, topic);
+		    parquet_build_nmq_metadata(conf, topic, write_type);
 		file_writer->AddKeyValueMetadata(key_value_metadata);
 
 		// Append a RowGroup with a specific number of rows.
@@ -631,7 +708,8 @@ parquet_write_tmp(parquet_object *elem)
 		return -1;
 	}
 
-	parquet_write_core(conf, filename, schema, elem->data, elem->topic);
+	parquet_write_core(
+	    conf, filename, schema, elem->data, elem->topic, elem->type);
 	parquet_file_range *range =
 	    parquet_file_range_alloc(0, row_len - 1, filename);
 	free(filename);
@@ -674,7 +752,8 @@ parquet_write(parquet_object *elem)
 		return -1;
 	}
 
-	parquet_write_core(conf, filename, schema, elem->data, elem->topic);
+	parquet_write_core(
+	    conf, filename, schema, elem->data, elem->topic, elem->type);
 	char *md5_file_name =
 	    compute_and_rename_file_withMD5(filename, conf, elem->topic);
 	if (md5_file_name == nullptr) {
@@ -882,7 +961,7 @@ void
 parquet_read_set_property(
     parquet::ReaderProperties &reader_properties, conf_parquet *conf)
 {
-	if (conf->encryption.enable) {
+	if (conf != NULL && conf->encryption.enable && conf->encryption.key != NULL) {
 		map<string,
 		    shared_ptr<parquet::ColumnDecryptionProperties>>
 		    decryption_cols;
@@ -1182,24 +1261,40 @@ parquet_read(conf_parquet *conf, char *filename, vector<uint64_t> keys)
 }
 
 string extract_topic(const string &file_path) {
-    // Define the regex pattern to match the file format
-    std::regex pattern(R"(.*?/[^/]*_(.*?)_[a-fA-F0-9]{32}-\d+~\d+\.parquet)");
-    std::smatch matches;
+	// New format: <prefix>_<topic>-<start>~<end>_<index>_<md5>.parquet
+	std::regex new_fmt(
+	    R"(.*?/[^/]*_(.*)-\d+~\d+_(?:\d+_)?[a-fA-F0-9]{32}\.parquet)");
+	std::smatch matches;
+	if (std::regex_match(file_path, matches, new_fmt) &&
+	    matches.size() > 1) {
+		return matches[1];
+	}
 
-    // Perform regex matching
-    if (std::regex_match(file_path, matches, pattern) && matches.size() > 1) {
-        return matches[1]; // Return the captured 'topic' group
-    }
+	// Legacy format fallback.
+	std::regex old_fmt(
+	    R"(.*?/[^/]*_(.*?)_[a-fA-F0-9]{32}-\d+~\d+\.parquet)");
+	if (std::regex_match(file_path, matches, old_fmt) &&
+	    matches.size() > 1) {
+		return matches[1];
+	}
 
-    // If no match, return an empty string
-    return "";
+	return "";
 }
 
-static string
-parquet_topic_from_metadata(conf_parquet *conf, const char *filename)
+struct parquet_runtime_metadata {
+	string topic;
+	string key_id;
+	string wrapped_key;
+	string wrap_alg;
+	string cipher;
+};
+
+static bool
+parquet_get_runtime_metadata(
+    conf_parquet *conf, const char *filename, parquet_runtime_metadata *out)
 {
-	if (filename == NULL) {
-		return "";
+	if (filename == NULL || out == NULL) {
+		return false;
 	}
 
 	parquet::ReaderProperties reader_properties =
@@ -1213,16 +1308,44 @@ parquet_topic_from_metadata(conf_parquet *conf, const char *filename)
 		shared_ptr<parquet::FileMetaData> file_metadata =
 		    parquet_reader->metadata();
 		auto kv = file_metadata->key_value_metadata();
-		if (kv != nullptr) {
-			int idx = kv->FindKey("nmq.topic");
-			if (idx >= 0) {
-				return kv->value(idx);
-			}
+		if (kv == nullptr) {
+			return false;
 		}
-	} catch (const exception &e) {
-		log_debug("read parquet metadata topic failed: %s", e.what());
-	}
 
+		int idx = kv->FindKey("nmq.topic");
+		if (idx >= 0) {
+			out->topic = kv->value(idx);
+		}
+		idx = kv->FindKey("nmq.key.id");
+		if (idx >= 0) {
+			out->key_id = kv->value(idx);
+		}
+		idx = kv->FindKey("nmq.key.wrapped");
+		if (idx >= 0) {
+			out->wrapped_key = kv->value(idx);
+		}
+		idx = kv->FindKey("nmq.key.wrap_alg");
+		if (idx >= 0) {
+			out->wrap_alg = kv->value(idx);
+		}
+		idx = kv->FindKey("nmq.enc.cipher");
+		if (idx >= 0) {
+			out->cipher = kv->value(idx);
+		}
+		return true;
+	} catch (const exception &e) {
+		log_debug("read parquet metadata failed: %s", e.what());
+		return false;
+	}
+}
+
+static string
+parquet_topic_from_metadata(conf_parquet *conf, const char *filename)
+{
+	parquet_runtime_metadata md;
+	if (parquet_get_runtime_metadata(conf, filename, &md)) {
+		return md.topic;
+	}
 	return "";
 }
 
@@ -1233,7 +1356,47 @@ resolve_topic_with_fallback(conf_parquet *conf, const char *filename)
 	if (!topic.empty()) {
 		return topic;
 	}
-	return extract_topic(filename == NULL ? "" : filename);
+	topic = extract_topic(filename == NULL ? "" : filename);
+	if (!topic.empty()) {
+		return topic;
+	}
+	return file_manager.find_topic_by_filename(filename);
+}
+
+static int
+cipher_from_metadata_str(const string &cipher)
+{
+	if (cipher == "AES_GCM_CTR_V1") {
+		return AES_GCM_CTR_V1;
+	}
+	return AES_GCM_V1;
+}
+
+static bool
+load_key_from_metadata(
+    conf_parquet *conf, const parquet_runtime_metadata &md, string *decoded_key)
+{
+	if (conf == NULL || decoded_key == NULL) {
+		return false;
+	}
+	if (conf->encryption.key != NULL) {
+		return true;
+	}
+	if (md.wrap_alg != "CONFIG_KEY_BASE64" || md.wrapped_key.empty()) {
+		return false;
+	}
+
+	if (!parquet_base64_decode(md.wrapped_key, decoded_key)) {
+		return false;
+	}
+	if (decoded_key->empty()) {
+		return false;
+	}
+	conf->encryption.key = (char *) decoded_key->c_str();
+	conf->encryption.enable = true;
+	conf->encryption.type =
+	    (cipher_type) cipher_from_metadata_str(md.cipher);
+	return true;
 }
 
 vector<parquet_data_packet *>
@@ -1241,8 +1404,27 @@ parquet_find_data_packet(
     conf_parquet *conf, char *filename, vector<uint64_t> keys)
 {
 	vector<parquet_data_packet *> ret_vec;
-	string topic = extract_topic(filename);
-	conf         = file_manager.fetch_conf(topic);
+	string topic = resolve_topic_with_fallback(conf, filename);
+	if (conf == NULL && !topic.empty()) {
+		conf = file_manager.fetch_conf(topic);
+	}
+	if (conf == NULL) {
+		ret_vec.resize(keys.size(), nullptr);
+		log_error("cannot resolve conf for parquet file %s",
+		    filename == NULL ? "(null)" : filename);
+		return ret_vec;
+	}
+
+	parquet_runtime_metadata md;
+	string                  key_from_md;
+	parquet_get_runtime_metadata(conf, filename, &md);
+	load_key_from_metadata(conf, md, &key_from_md);
+	if (topic.empty() && !md.topic.empty()) {
+		topic = md.topic;
+	}
+	if (topic.empty() && conf->name != NULL) {
+		topic = conf->name;
+	}
 	if (conf->enable == false) {
 		log_error("Parquet %s is not ready or not launch!", topic.c_str());
 		return ret_vec;
@@ -1281,8 +1463,26 @@ find:
 parquet_data_packet *
 parquet_find_data_packet(conf_parquet *conf, char *filename, uint64_t key)
 {
-	string topic = extract_topic(filename);
-	conf         = file_manager.fetch_conf(topic);
+	string topic = resolve_topic_with_fallback(conf, filename);
+	if (conf == NULL && !topic.empty()) {
+		conf = file_manager.fetch_conf(topic);
+	}
+	if (conf == NULL) {
+		log_error("cannot resolve conf for parquet file %s",
+		    filename == NULL ? "(null)" : filename);
+		return NULL;
+	}
+
+	parquet_runtime_metadata md;
+	string                  key_from_md;
+	parquet_get_runtime_metadata(conf, filename, &md);
+	load_key_from_metadata(conf, md, &key_from_md);
+	if (topic.empty() && !md.topic.empty()) {
+		topic = md.topic;
+	}
+	if (topic.empty() && conf->name != NULL) {
+		topic = conf->name;
+	}
 	if (conf->enable == false) {
 		log_error("Parquet %s is not ready or not launch!", topic.c_str());
 		return NULL;
