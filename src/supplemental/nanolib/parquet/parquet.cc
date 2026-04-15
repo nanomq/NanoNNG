@@ -17,6 +17,7 @@
 #include <string>
 #include <sys/stat.h>
 #include <thread>
+#include <ctime>
 #include <vector>
 #include <dirent.h>
 #include <regex.h>
@@ -426,9 +427,81 @@ compute_and_rename_file_withMD5(
 	return out;
 }
 
+static string
+parquet_base64_encode(const string &src)
+{
+	static const char table[] =
+	    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+	string out;
+	out.reserve(((src.size() + 2) / 3) * 4);
+	size_t i = 0;
+	while (i < src.size()) {
+		uint32_t octet_a = i < src.size() ? (uint8_t) src[i++] : 0;
+		uint32_t octet_b = i < src.size() ? (uint8_t) src[i++] : 0;
+		uint32_t octet_c = i < src.size() ? (uint8_t) src[i++] : 0;
+		uint32_t triple  = (octet_a << 16) | (octet_b << 8) | octet_c;
+		out.push_back(table[(triple >> 18) & 0x3F]);
+		out.push_back(table[(triple >> 12) & 0x3F]);
+		out.push_back(table[(triple >> 6) & 0x3F]);
+		out.push_back(table[triple & 0x3F]);
+	}
+	size_t mod = src.size() % 3;
+	if (mod > 0) {
+		out[out.size() - 1] = '=';
+		if (mod == 1) {
+			out[out.size() - 2] = '=';
+		}
+	}
+	return out;
+}
+
+static const char *
+parquet_cipher_to_str(conf_parquet *conf)
+{
+	if (conf == NULL || conf->encryption.enable == false) {
+		return "NONE";
+	}
+	switch (conf->encryption.type) {
+	case AES_GCM_V1:
+		return "AES_GCM_V1";
+	case AES_GCM_CTR_V1:
+		return "AES_GCM_CTR_V1";
+	default:
+		return "UNKNOWN";
+	}
+}
+
+static shared_ptr<arrow::KeyValueMetadata>
+parquet_build_nmq_metadata(conf_parquet *conf, const char *topic)
+{
+	shared_ptr<arrow::KeyValueMetadata> kv =
+	    make_shared<arrow::KeyValueMetadata>();
+
+	const char *topic_value =
+	    topic != NULL ? topic : (conf && conf->name ? conf->name : "");
+	const char *key_id =
+	    (conf && conf->encryption.key_id) ? conf->encryption.key_id : "";
+	const char *wrap_alg =
+	    (conf && conf->encryption.enable) ? "CONFIG_KEY_BASE64" : "NONE";
+	string wrapped_key =
+	    (conf && conf->encryption.key) ? parquet_base64_encode(conf->encryption.key) : "";
+
+	kv->Append("nmq.meta.version", "1");
+	kv->Append("nmq.topic", topic_value);
+	kv->Append("nmq.enc.cipher", parquet_cipher_to_str(conf));
+	kv->Append("nmq.key.id", key_id);
+	kv->Append("nmq.key.wrap_alg", wrap_alg);
+	kv->Append("nmq.key.wrapped", wrapped_key);
+
+	kv->Append("nmq.created_by", "NanoMQ");
+	kv->Append("nmq.created_at", std::to_string((long long) time(NULL)));
+	kv->Append("nmq.file.topic_source", "metadata");
+	return kv;
+}
+
 int
 parquet_write_core(conf_parquet *conf, char *filename,
-    shared_ptr<GroupNode> schema, parquet_data *data)
+    shared_ptr<GroupNode> schema, parquet_data *data, const char *topic)
 {
 
 	char                 **schema_arr  = data->schema;
@@ -466,12 +539,10 @@ parquet_write_core(conf_parquet *conf, char *filename,
 		shared_ptr<parquet::ParquetFileWriter> file_writer =
 		    parquet::ParquetFileWriter::Open(out_file, schema, props);
 
-		static int num = 0;
-		shared_ptr<arrow::KeyValueMetadata> key_value_metadata = make_shared<arrow::KeyValueMetadata>();
-		key_value_metadata->Append("number", std::to_string(num++));
-
+		shared_ptr<arrow::KeyValueMetadata> key_value_metadata =
+		    parquet_build_nmq_metadata(conf, topic);
 		file_writer->AddKeyValueMetadata(key_value_metadata);
-		
+
 		// Append a RowGroup with a specific number of rows.
 		parquet::RowGroupWriter *rg_writer =
 		    file_writer->AppendRowGroup();
@@ -560,7 +631,7 @@ parquet_write_tmp(parquet_object *elem)
 		return -1;
 	}
 
-	parquet_write_core(conf, filename, schema, elem->data);
+	parquet_write_core(conf, filename, schema, elem->data, elem->topic);
 	parquet_file_range *range =
 	    parquet_file_range_alloc(0, row_len - 1, filename);
 	free(filename);
@@ -603,7 +674,7 @@ parquet_write(parquet_object *elem)
 		return -1;
 	}
 
-	parquet_write_core(conf, filename, schema, elem->data);
+	parquet_write_core(conf, filename, schema, elem->data, elem->topic);
 	char *md5_file_name =
 	    compute_and_rename_file_withMD5(filename, conf, elem->topic);
 	if (md5_file_name == nullptr) {
@@ -1124,6 +1195,47 @@ string extract_topic(const string &file_path) {
     return "";
 }
 
+static string
+parquet_topic_from_metadata(conf_parquet *conf, const char *filename)
+{
+	if (filename == NULL) {
+		return "";
+	}
+
+	parquet::ReaderProperties reader_properties =
+	    parquet::default_reader_properties();
+	parquet_read_set_property(reader_properties, conf);
+
+	try {
+		unique_ptr<parquet::ParquetFileReader> parquet_reader =
+		    parquet::ParquetFileReader::OpenFile(
+		        filename, false, reader_properties);
+		shared_ptr<parquet::FileMetaData> file_metadata =
+		    parquet_reader->metadata();
+		auto kv = file_metadata->key_value_metadata();
+		if (kv != nullptr) {
+			int idx = kv->FindKey("nmq.topic");
+			if (idx >= 0) {
+				return kv->value(idx);
+			}
+		}
+	} catch (const exception &e) {
+		log_debug("read parquet metadata topic failed: %s", e.what());
+	}
+
+	return "";
+}
+
+static string
+resolve_topic_with_fallback(conf_parquet *conf, const char *filename)
+{
+	string topic = parquet_topic_from_metadata(conf, filename);
+	if (!topic.empty()) {
+		return topic;
+	}
+	return extract_topic(filename == NULL ? "" : filename);
+}
+
 vector<parquet_data_packet *>
 parquet_find_data_packet(
     conf_parquet *conf, char *filename, vector<uint64_t> keys)
@@ -1131,7 +1243,7 @@ parquet_find_data_packet(
 	vector<parquet_data_packet *> ret_vec;
 	string topic = extract_topic(filename);
 	conf         = file_manager.fetch_conf(topic);
-	if (conf == NULL || conf->enable == false) {
+	if (conf->enable == false) {
 		log_error("Parquet %s is not ready or not launch!", topic.c_str());
 		return ret_vec;
 	}
@@ -1171,7 +1283,7 @@ parquet_find_data_packet(conf_parquet *conf, char *filename, uint64_t key)
 {
 	string topic = extract_topic(filename);
 	conf         = file_manager.fetch_conf(topic);
-	if (conf == NULL || conf->enable == false) {
+	if (conf->enable == false) {
 		log_error("Parquet %s is not ready or not launch!", topic.c_str());
 		return NULL;
 	}
