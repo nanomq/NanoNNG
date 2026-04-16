@@ -328,10 +328,18 @@ if (NNG_ENABLE_SCRAM)
     find_package(OpenSSL)
     if (NNG_ENABLE_QUIC)
     else ()
-        target_link_libraries(nng PRIVATE OpenSSL::SSL OpenSSL:Crypto)
+        target_link_libraries(nng PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+        target_link_libraries(nng_testing PRIVATE OpenSSL::SSL OpenSSL::Crypto)
     endif (NNG_ENABLE_QUIC)
 
     add_definitions(-DSUPP_SCRAM)
+endif ()
+
+if (NNG_ENABLE_PARQUET)
+    find_package(OpenSSL REQUIRED)
+    # parquet enables AES helpers that require EVP_* symbols from libcrypto.
+    target_link_libraries(nng PRIVATE OpenSSL::Crypto)
+    target_link_libraries(nng_testing PRIVATE OpenSSL::Crypto)
 endif ()
 
 if (ENABLE_LICENSE_STD OR ENABLE_LICENSE_DK)
