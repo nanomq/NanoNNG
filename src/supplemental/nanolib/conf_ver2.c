@@ -1813,6 +1813,9 @@ conf_parquet_parse_ver2(conf *config, conf_exchange_node *node, cJSON *jso)
 			    encryption, key_id, jso_parquet_encryption);
 			hocon_read_str(
 			    encryption, key, jso_parquet_encryption);
+			if (encryption->key) {
+				encryption->key_cipher = nng_strdup(encryption->key);
+			}
 			hocon_read_enum(encryption, type,
 			    jso_parquet_encryption, encryption_type);
 		}
@@ -1852,6 +1855,9 @@ conf_parquet_parse_default_ver2(conf *config, cJSON *jso)
 			    encryption, key_id, jso_parquet_encryption);
 			hocon_read_str(
 			    encryption, key, jso_parquet_encryption);
+			if (encryption->key) {
+				encryption->key_cipher = nng_strdup(encryption->key);
+			}
 			hocon_read_enum(encryption, type,
 			    jso_parquet_encryption, encryption_type);
 		}
@@ -2370,6 +2376,69 @@ conf_authorization_prase_ver2(conf *config, cJSON *jso)
 	}
 }
 
+#ifdef SUPP_PARQUET
+static void
+conf_parquet_parse_cipher_one(conf_parquet *parquet, const char *commonkey)
+{
+	if (parquet == NULL || !parquet->enable) {
+		return;
+	}
+
+	conf_parquet_encryption *enc = &parquet->encryption;
+	if (!enc->enable || enc->key == NULL || strlen(enc->key) == 0) {
+		return;
+	}
+
+	if (enc->key_cipher == NULL) {
+		enc->key_cipher = nng_strdup(enc->key);
+	}
+
+	char  *cipher_txt = enc->key_cipher;
+	size_t cipher_sz  = 0;
+	char  *cipher     = nng_alloc(sizeof(char) * strlen(cipher_txt));
+	if (!cipher) {
+		log_error("failed to alloc cipher for parquet key");
+		return;
+	}
+
+	cipher_sz = nni_base64_decode((const char *) cipher_txt,
+	    strlen(cipher_txt), (uint8_t *) cipher, strlen(cipher_txt));
+	if (cipher_sz <= 32) {
+		nng_free(cipher, cipher_sz);
+		log_error("failed to base64 decode parquet.encryption.key");
+		return;
+	}
+
+	int   plain_sz = 0;
+	char *plain = nni_aes_gcm_decrypt(
+	    cipher, (int) cipher_sz, (char *) commonkey, &plain_sz);
+	nng_free(cipher, cipher_sz);
+	if (plain == NULL || plain_sz == 0) {
+		log_error("failed to decrypt parquet.encryption.key");
+		return;
+	}
+
+	if (enc->key) {
+		nng_free(enc->key, strlen(enc->key));
+	}
+	enc->key = plain;
+}
+
+static void
+conf_parquet_parse_cipher(conf *config, const char *commonkey)
+{
+	conf_parquet_parse_cipher_one(&config->parquet, commonkey);
+	for (size_t i = 0; i < config->exchange.count; i++) {
+		conf_exchange_node *node = config->exchange.nodes[i];
+		if (node == NULL || node->parquet == NULL ||
+		    node->parquet == &config->parquet) {
+			continue;
+		}
+		conf_parquet_parse_cipher_one(node->parquet, commonkey);
+	}
+}
+#endif
+
 void
 conf_parse_cipher(conf *config, const char *key, const char *key2)
 {
@@ -2378,6 +2447,9 @@ conf_parse_cipher(conf *config, const char *key, const char *key2)
 	conf_http_server_parse_cipher(&config->http_server, key);
 #endif
 	conf_bridge_parse_cipher(&config->bridge, key, key2);
+#ifdef SUPP_PARQUET
+	conf_parquet_parse_cipher(config, key);
+#endif
 	NNI_ARG_UNUSED(key);
 	NNI_ARG_UNUSED(key2);
 }

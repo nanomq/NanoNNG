@@ -373,6 +373,7 @@ struct conf_parquet_encryption {
 	bool        enable;
 	char       *key_id;
 	char       *key;
+	char       *key_cipher;
 	cipher_type type;
 };
 

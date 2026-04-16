@@ -427,102 +427,6 @@ compute_and_rename_file_withMD5(
 	return out;
 }
 
-static string
-parquet_base64_encode(const string &src)
-{
-	static const char table[] =
-	    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-	string out;
-	out.reserve(((src.size() + 2) / 3) * 4);
-	size_t i = 0;
-	while (i < src.size()) {
-		uint32_t octet_a = i < src.size() ? (uint8_t) src[i++] : 0;
-		uint32_t octet_b = i < src.size() ? (uint8_t) src[i++] : 0;
-		uint32_t octet_c = i < src.size() ? (uint8_t) src[i++] : 0;
-		uint32_t triple  = (octet_a << 16) | (octet_b << 8) | octet_c;
-		out.push_back(table[(triple >> 18) & 0x3F]);
-		out.push_back(table[(triple >> 12) & 0x3F]);
-		out.push_back(table[(triple >> 6) & 0x3F]);
-		out.push_back(table[triple & 0x3F]);
-	}
-	size_t mod = src.size() % 3;
-	if (mod > 0) {
-		out[out.size() - 1] = '=';
-		if (mod == 1) {
-			out[out.size() - 2] = '=';
-		}
-	}
-	return out;
-}
-
-static int
-parquet_base64_decode_val(char c)
-{
-	if (c >= 'A' && c <= 'Z') {
-		return c - 'A';
-	}
-	if (c >= 'a' && c <= 'z') {
-		return c - 'a' + 26;
-	}
-	if (c >= '0' && c <= '9') {
-		return c - '0' + 52;
-	}
-	if (c == '+') {
-		return 62;
-	}
-	if (c == '/') {
-		return 63;
-	}
-	return -1;
-}
-
-static bool
-parquet_base64_decode(const string &src, string *out)
-{
-	if (out == nullptr) {
-		return false;
-	}
-	out->clear();
-
-	if (src.empty() || (src.size() % 4) != 0) {
-		return false;
-	}
-
-	out->reserve((src.size() / 4) * 3);
-	for (size_t i = 0; i < src.size(); i += 4) {
-		char c0 = src[i];
-		char c1 = src[i + 1];
-		char c2 = src[i + 2];
-		char c3 = src[i + 3];
-
-		int v0 = parquet_base64_decode_val(c0);
-		int v1 = parquet_base64_decode_val(c1);
-		if (v0 < 0 || v1 < 0) {
-			return false;
-		}
-
-		int v2 = (c2 == '=') ? 0 : parquet_base64_decode_val(c2);
-		int v3 = (c3 == '=') ? 0 : parquet_base64_decode_val(c3);
-		if ((c2 != '=' && v2 < 0) || (c3 != '=' && v3 < 0)) {
-			return false;
-		}
-
-		uint32_t triple =
-		    ((uint32_t) v0 << 18) | ((uint32_t) v1 << 12) |
-		    ((uint32_t) v2 << 6) | (uint32_t) v3;
-
-		out->push_back((char) ((triple >> 16) & 0xFF));
-		if (c2 != '=') {
-			out->push_back((char) ((triple >> 8) & 0xFF));
-		}
-		if (c3 != '=') {
-			out->push_back((char) (triple & 0xFF));
-		}
-	}
-
-	return true;
-}
-
 static const char *
 parquet_cipher_to_str(conf_parquet *conf)
 {
@@ -551,10 +455,15 @@ parquet_build_nmq_metadata(
 	    topic != NULL ? topic : (conf && conf->name ? conf->name : "");
 	const char *key_id =
 	    (conf && conf->encryption.key_id) ? conf->encryption.key_id : "";
-	const char *wrap_alg =
-	    (conf && conf->encryption.enable) ? "CONFIG_KEY_BASE64" : "NONE";
-	string wrapped_key =
-	    (conf && conf->encryption.key) ? parquet_base64_encode(conf->encryption.key) : "";
+	const char *wrap_alg = (conf && conf->encryption.enable)
+	    ? "NMQ_CONF_CIPHER_AES_GCM_BASE64"
+	    : "NONE";
+	const char *wrapped_key = "";
+	if (conf && conf->encryption.key_cipher) {
+		wrapped_key = conf->encryption.key_cipher;
+	} else if (conf && conf->encryption.key) {
+		wrapped_key = conf->encryption.key;
+	}
 
 	kv->Append("nmq.meta.version", "1");
 	kv->Append("nmq.topic", topic_value);
@@ -1363,40 +1272,19 @@ resolve_topic_with_fallback(conf_parquet *conf, const char *filename)
 	return file_manager.find_topic_by_filename(filename);
 }
 
-static int
-cipher_from_metadata_str(const string &cipher)
-{
-	if (cipher == "AES_GCM_CTR_V1") {
-		return AES_GCM_CTR_V1;
-	}
-	return AES_GCM_V1;
-}
-
 static bool
 load_key_from_metadata(
     conf_parquet *conf, const parquet_runtime_metadata &md, string *decoded_key)
 {
-	if (conf == NULL || decoded_key == NULL) {
+	if (conf == NULL) {
 		return false;
 	}
-	if (conf->encryption.key != NULL) {
+	(void) md;
+	(void) decoded_key;
+	if (conf->encryption.key != NULL && strlen(conf->encryption.key) > 0) {
 		return true;
 	}
-	if (md.wrap_alg != "CONFIG_KEY_BASE64" || md.wrapped_key.empty()) {
-		return false;
-	}
-
-	if (!parquet_base64_decode(md.wrapped_key, decoded_key)) {
-		return false;
-	}
-	if (decoded_key->empty()) {
-		return false;
-	}
-	conf->encryption.key = (char *) decoded_key->c_str();
-	conf->encryption.enable = true;
-	conf->encryption.type =
-	    (cipher_type) cipher_from_metadata_str(md.cipher);
-	return true;
+	return false;
 }
 
 vector<parquet_data_packet *>
