@@ -78,6 +78,8 @@ struct mqtts_tcptran_ep {
 	bool                 fini;
 	bool                 started;
 	bool                 closed;
+	bool                 no_local_v4;
+	bool                 enable_scram;
 	nng_url *            url;
 	const char *         host; // for dialers
 	nng_sockaddr         src;
@@ -98,7 +100,6 @@ struct mqtts_tcptran_ep {
 	nni_dialer *         ndialer;
 	void *               property;  // property
 	void *               connmsg;
-	bool                 enable_scram;
 #ifdef SUPP_SCRAM
 	void *               scram_ctx;
 	nni_msg *            authmsg;
@@ -1141,9 +1142,17 @@ mqtts_tcptran_pipe_start(
 		mqtt_version = nni_mqtt_msg_get_connect_proto_version(connmsg);
 	}
 
-	if (mqtt_version == MQTT_PROTOCOL_VERSION_v311)
+	if (mqtt_version == MQTT_PROTOCOL_VERSION_v311) {
+		if (ep->no_local_v4) {
+			uint8_t proto_ver = mqtt_version;
+			proto_ver |= 0x80;
+			nni_mqtt_msg_set_connect_proto_version(
+			    connmsg, proto_ver);
+		}
 		rv = nni_mqtt_msg_encode(connmsg);
-	else if (mqtt_version == MQTT_PROTOCOL_VERSION_v5) {
+		// Stupid Mosquitto hack.
+		nni_mqtt_msg_set_connect_proto_version(connmsg, mqtt_version);
+	} else if (mqtt_version == MQTT_PROTOCOL_VERSION_v5) {
 		property *prop = nni_mqtt_msg_get_connect_property(connmsg);
 		property_data *data;
 		data = property_get_value(prop, MAXIMUM_PACKET_SIZE);
@@ -1798,6 +1807,21 @@ mqtts_tcptran_ep_set_enable_scram(void *arg, const void *v, size_t sz, nni_opt_t
 }
 
 static int
+mqtts_tcptran_ep_set_nolocal_v4(void *arg, const void *v, size_t sz, nni_opt_type t)
+{
+	mqtts_tcptran_ep *ep = arg;
+	bool             tmp;
+	int              rv;
+
+	if ((rv = nni_copyin_bool(&tmp, v, sz, t)) == 0) {
+		nni_mtx_lock(&ep->mtx);
+		ep->no_local_v4 = tmp;
+		nni_mtx_unlock(&ep->mtx);
+	}
+	return (rv);
+}
+
+static int
 mqtts_tcptran_ep_bind(void *arg)
 {
 	mqtts_tcptran_ep *ep = arg;
@@ -1885,6 +1909,10 @@ static const nni_option mqtts_tcptran_ep_opts[] = {
 	{
 	    .o_name = NNG_OPT_MQTT_ENABLE_SCRAM,
 	    .o_set  = mqtts_tcptran_ep_set_enable_scram,
+	},
+	{
+	    .o_name = NNG_OPT_MQTT_NO_LOCAL_V4,
+	    .o_set  = mqtts_tcptran_ep_set_nolocal_v4,
 	},
 	// terminate list
 	{
