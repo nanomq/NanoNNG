@@ -420,6 +420,7 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 {
 	if (jso_tls) {
 		tls->enable = true;
+		hocon_read_bool(tls, enable, jso_tls);
 		hocon_read_str(tls, keyfile, jso_tls);
 		hocon_read_str(tls, certfile, jso_tls);
 		hocon_read_str_base(tls, cafile, "cacertfile", jso_tls);
@@ -1070,7 +1071,7 @@ conf_bridge_connector_parse_ver2(conf_bridge_node *node, cJSON *jso_connector)
 	hocon_read_time(node, backoff_max, jso_connector);
 	hocon_read_bool(node, clean_start, jso_connector);
 	hocon_read_bool(node, retry_qos_0, jso_connector);
-	hocon_read_bool(node, try_private, jso_connector);
+	hocon_read_bool(node, no_local_v4, jso_connector);
 	hocon_read_bool(node, transparent, jso_connector);
 	hocon_read_bool(node, enable, jso_connector);
 	hocon_read_str(node, username, jso_connector);
