@@ -88,7 +88,9 @@ extern "C" {
 #define NNG_OPT_MQTT_ENABLE_SCRAM "mqtt-scram-option"
 
 //only for reload TLS certs
-#define NNG_OPT_MQTT_TLS_BRIDGE_CONF "mqtt-tls-bridge-conf"
+#define NNG_OPT_MQTT_TLS_BRIDGE_CONF "mqtt-tls-bridge-conf"\
+
+#define NNG_OPT_MQTT_NO_LOCAL_V4 "mqtt-no_local-v4"
 
 // NNG_OPT_MQTT_QOS is a byte (only lower two bits significant) representing
 // the quality of service.  At this time, only level zero is supported.
