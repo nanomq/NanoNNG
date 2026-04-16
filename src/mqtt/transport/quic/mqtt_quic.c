@@ -93,6 +93,7 @@ struct mqtt_quictran_ep {
 	bool                 fini;
 	bool                 started;
 	bool                 closed;
+	bool                 no_local_v4;
 	nng_url *            url;
 	const char *         host; // for dialers
 	nng_sockaddr         src;
@@ -1463,9 +1464,17 @@ mqtt_quictran_pipe_start(
 		mqtt_version = nni_mqtt_msg_get_connect_proto_version(connmsg);
 	}
 
-	if (mqtt_version == MQTT_PROTOCOL_VERSION_v311)
+	if (mqtt_version == MQTT_PROTOCOL_VERSION_v311) {
+		if (ep->no_local_v4) {
+			uint8_t proto_ver = mqtt_version;
+			proto_ver |= 0x80;
+			nni_mqtt_msg_set_connect_proto_version(
+			    connmsg, proto_ver);
+		}
 		rv = nni_mqtt_msg_encode(connmsg);
-	else if (mqtt_version == MQTT_PROTOCOL_VERSION_v5) {
+		// Stupid Mosquitto hack.
+		nni_mqtt_msg_set_connect_proto_version(connmsg, mqtt_version);
+	} else if (mqtt_version == MQTT_PROTOCOL_VERSION_v5) {
 		property *prop = nni_mqtt_msg_get_connect_property(connmsg);
 		property_data *data;
 		data = property_get_value(prop, MAXIMUM_PACKET_SIZE);
@@ -1973,6 +1982,21 @@ mqtt_quictran_ep_set_priority(void *arg, const void *v, size_t sz, nni_opt_type 
 	return (rv);
 }
 
+static int
+mqtt_quictran_ep_set_nolocal_v4(void *arg, const void *v, size_t sz, nni_opt_type t)
+{
+	mqtt_quictran_ep *ep = arg;
+	bool             tmp;
+	int              rv;
+
+	if ((rv = nni_copyin_bool(&tmp, v, sz, t)) == 0) {
+		nni_mtx_lock(&ep->mtx);
+		ep->no_local_v4 = tmp;
+		nni_mtx_unlock(&ep->mtx);
+	}
+	return (rv);
+}
+
 /*
 static int
 mqtt_quictran_ep_bind(void *arg)
@@ -2064,7 +2088,10 @@ static const nni_option mqtt_quictran_ep_opts[] = {
 	    .o_name = NNG_OPT_MQTT_QUIC_PRIORITY,
 	    .o_set  = mqtt_quictran_ep_set_priority,
 	},
-
+	{
+	    .o_name = NNG_OPT_MQTT_NO_LOCAL_V4,
+	    .o_set  = mqtt_quictran_ep_set_nolocal_v4,
+	},
 	// terminate list
 	{
 	    .o_name = NULL,
