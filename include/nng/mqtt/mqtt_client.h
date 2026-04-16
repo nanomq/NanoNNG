@@ -86,6 +86,8 @@ extern "C" {
 
 #define NNG_OPT_MQTT_ENABLE_SCRAM "mqtt-scram-option"
 
+#define NNG_OPT_MQTT_NO_LOCAL_V4 "mqtt-no_local-v4"
+
 // NNG_OPT_MQTT_QOS is a byte (only lower two bits significant) representing
 // the quality of service.  At this time, only level zero is supported.
 // TODO: level 1 and level 2 QoS
