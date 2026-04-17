@@ -308,22 +308,32 @@ parquet_write_batch_tmp_async(parquet_object *elem)
 }
 
 shared_ptr<parquet::FileEncryptionProperties>
-parquet_set_encryption(conf_parquet *conf)
+parquet_set_encryption(char **schema_arr, uint32_t schema_len, conf_parquet *conf)
 {
+	shared_ptr<parquet::FileEncryptionProperties> encryption_configurations;
 
-	shared_ptr<parquet::FileEncryptionProperties>
-	    encryption_configurations;
+	// Encrypt all columns with a same key. left footer plain (uniform encryption)
+	std::map<std::string, std::shared_ptr<parquet::ColumnEncryptionProperties>>
+		column_encryption_map;
 
-	// Encrypt all columns and the footer with
-	// the same key. (uniform encryption)
+	for (int i=0; i<(int)schema_len; ++i) {
+		const char *col_name = schema_arr[i];
+		const char *col_key = conf->encryption.key;
+		parquet::ColumnEncryptionProperties::Builder col_builder(col_name);
+		col_builder.key(col_key)->key_metadata("col_key_metadata");
+		column_encryption_map[col_name] = col_builder.build();
+	}
+
 	parquet::FileEncryptionProperties::Builder file_encryption_builder(
-	    conf->encryption.key);
+			conf->encryption.key);
 	encryption_configurations =
-	    file_encryption_builder
-	        .footer_key_metadata(conf->encryption.key_id)
-	        ->algorithm(static_cast<parquet::ParquetCipher::type>(
-	            conf->encryption.type))
-	        ->build();
+		file_encryption_builder
+			.footer_key_metadata(conf->encryption.key_id)
+			->encrypted_columns(column_encryption_map)
+			->algorithm(static_cast<parquet::ParquetCipher::type>(
+					conf->encryption.type))
+			->set_plaintext_footer()
+			->build();
 
 	return encryption_configurations;
 }
@@ -461,8 +471,6 @@ parquet_build_nmq_metadata(
 	const char *wrapped_key = "";
 	if (conf && conf->encryption.key_cipher) {
 		wrapped_key = conf->encryption.key_cipher;
-	} else if (conf && conf->encryption.key) {
-		wrapped_key = conf->encryption.key;
 	}
 
 	kv->Append("nmq.meta.version", "1");
@@ -514,7 +522,7 @@ parquet_write_core(conf_parquet *conf, char *filename,
 			shared_ptr<parquet::FileEncryptionProperties>
 			    encryption_configurations;
 			encryption_configurations =
-			    parquet_set_encryption(conf);
+			    parquet_set_encryption(schema_arr, col_len, conf);
 			builder.encryption(encryption_configurations);
 		}
 
