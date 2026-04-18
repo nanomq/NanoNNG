@@ -39,6 +39,10 @@ extern void nni_aio_reap(nni_aio *);
 // place, and the aio is used for the argument.
 extern int nni_aio_alloc(nni_aio **, nni_cb, void *arg);
 
+// nni_aio_long_alloc allocates a special aio. The callback is called at
+// longtask thread instead of regular task thread.
+extern int nni_aio_long_alloc(nni_aio **, nni_cb, void *arg);
+
 // nni_aio_free frees the aio, releasing resources (locks)
 // associated with it. This is safe to call on zeroed memory.
 // This must only be called on an object that was allocated

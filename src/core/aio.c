@@ -90,6 +90,17 @@ nni_aio_init(nni_aio *aio, nni_cb cb, void *arg)
 }
 
 void
+nni_aio_long_init(nni_aio *aio, nni_cb cb, void *arg)
+{
+	memset(aio, 0, sizeof(*aio));
+	nni_task_init(&aio->a_task, nni_taskq_get_longtq(), cb, arg);
+	aio->a_expire  = NNI_TIME_NEVER;
+	aio->a_timeout = NNG_DURATION_INFINITE;
+	aio->a_expire_q =
+	    nni_aio_expire_q_list[nni_random() % nni_aio_expire_q_cnt];
+}
+
+void
 nni_aio_fini(nni_aio *aio)
 {
 	nni_aio_cancel_fn fn;
@@ -130,6 +141,19 @@ nni_aio_alloc(nni_aio **aio_p, nni_cb cb, void *arg)
 		return (NNG_ENOMEM);
 	}
 	nni_aio_init(aio, cb, arg);
+	*aio_p = aio;
+	return (0);
+}
+
+int
+nni_aio_long_alloc(nni_aio **aio_p, nni_cb cb, void *arg)
+{
+	nni_aio *aio;
+
+	if ((aio = NNI_ALLOC_STRUCT(aio)) == NULL) {
+		return (NNG_ENOMEM);
+	}
+	nni_aio_long_init(aio, cb, arg);
 	*aio_p = aio;
 	return (0);
 }
