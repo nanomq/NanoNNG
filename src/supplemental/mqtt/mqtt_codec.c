@@ -538,6 +538,13 @@ nni_mqtt_msg_dup(void **dest, const void *src)
 			    s->var_header.suback.properties);
 		}
 		break;
+	case NNG_MQTT_UNSUBACK:
+		dup_unsuback(mqtt, s);
+		if (s->var_header.unsuback.properties) {
+			rv += property_dup(&mqtt->var_header.unsuback.properties,
+			    s->var_header.unsuback.properties);
+		}
+		break;
 	case NNG_MQTT_UNSUBSCRIBE:
 		if (mqtt->is_copied) {
 			dup_unsubscribe(mqtt, s);
@@ -555,13 +562,6 @@ nni_mqtt_msg_dup(void **dest, const void *src)
 		if (s->var_header.unsubscribe.properties) {
 			rv += property_dup(&mqtt->var_header.unsubscribe.properties,
 			    s->var_header.unsubscribe.properties);
-		}
-		break;
-
-	case NNG_MQTT_UNSUBACK:
-		if (mqtt->var_header.unsuback.properties) {
-			rv += property_dup(&mqtt->var_header.unsuback.properties,
-			    s->var_header.unsuback.properties);
 		}
 		break;
 
@@ -644,6 +644,22 @@ dup_suback(nni_mqtt_proto_data *dest, nni_mqtt_proto_data *src)
 	memcpy(dest->payload.suback.ret_code_arr,
 	    src->payload.suback.ret_code_arr,
 	    src->payload.suback.ret_code_count);
+}
+
+static void
+dup_unsuback(nni_mqtt_proto_data *dest, nni_mqtt_proto_data *src)
+{
+	if (src->payload.unsuback.ret_code_count > 0) {
+		dest->payload.unsuback.ret_code_arr =
+		    nni_alloc(src->payload.unsuback.ret_code_count);
+		dest->payload.unsuback.ret_code_count =
+		    src->payload.unsuback.ret_code_count;
+		memcpy(dest->payload.unsuback.ret_code_arr,
+		    src->payload.unsuback.ret_code_arr,
+		    src->payload.unsuback.ret_code_count);
+	} else {
+		dest->payload.unsuback.ret_code_arr = NULL;
+	}
 }
 
 static void
