@@ -76,12 +76,13 @@ static void destory_publish(nni_mqtt_proto_data *);
 static void destory_subscribe(nni_mqtt_proto_data *);
 static void destory_suback(nni_mqtt_proto_data *);
 static void destory_unsubscribe(nni_mqtt_proto_data *);
-static void destory_unsuback(nni_mqtt_proto_data *mqtt);
+static void destory_unsuback(nni_mqtt_proto_data *);
 
 static void dup_connect(nni_mqtt_proto_data *, nni_mqtt_proto_data *);
 static void dup_publish(nni_mqtt_proto_data *, nni_mqtt_proto_data *);
 static void dup_subscribe(nni_mqtt_proto_data *, nni_mqtt_proto_data *);
 static void dup_suback(nni_mqtt_proto_data *, nni_mqtt_proto_data *);
+static void dup_unsuback(nni_mqtt_proto_data *, nni_mqtt_proto_data *);
 static void dup_unsubscribe(nni_mqtt_proto_data *, nni_mqtt_proto_data *);
 
 static void mqtt_msg_content_free(nni_mqtt_proto_data *);
