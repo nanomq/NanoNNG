@@ -337,9 +337,11 @@ endif ()
 
 if (NNG_ENABLE_PARQUET)
     find_package(OpenSSL REQUIRED)
-    # parquet enables AES helpers that require EVP_* symbols from libcrypto.
-    target_link_libraries(nng PRIVATE OpenSSL::Crypto)
-    target_link_libraries(nng_testing PRIVATE OpenSSL::Crypto)
+    if (NOT NNG_ENABLE_QUIC)
+        # parquet enables AES helpers that require EVP_* symbols from libcrypto.
+        target_link_libraries(nng PRIVATE OpenSSL::Crypto)
+        target_link_libraries(nng_testing PRIVATE OpenSSL::Crypto)
+    endif (NNG_ENABLE_QUIC)
 endif ()
 
 if (ENABLE_LICENSE_STD OR ENABLE_LICENSE_DK)
