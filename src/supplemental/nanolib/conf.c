@@ -4160,22 +4160,34 @@ conf_web_hook_destroy(conf_web_hook *web_hook)
 int
 get_size(const char *str, uint64_t *size)
 {
+	if (str == NULL || size == NULL) {
+		return -1;
+	}
+
+	if (strchr(str, '-') != NULL) {
+		return -1;
+	}
+
 	uint64_t num      = 0;
 	char     unit[10] = { 0 };
 	int      res      = sscanf(str, "%lu%s", &num, unit);
+
 	if (res == 2) {
-		if (nni_strcasecmp(unit, "KB") == 0) {
+		if (nni_strcasecmp(unit, "KB") == 0 || nni_strcasecmp(unit, "K") == 0) {
 			num *= 1024;
-		} else if (nni_strcasecmp(unit, "MB") == 0) {
+		} else if (nni_strcasecmp(unit, "MB") == 0 || nni_strcasecmp(unit, "M") == 0) {
 			num *= 1024 * 1024;
-		} else if (nni_strcasecmp(unit, "GB") == 0) {
+		} else if (nni_strcasecmp(unit, "GB") == 0 || nni_strcasecmp(unit, "G") == 0) {
 			num *= 1024 * 1024 * 1024;
+		} else if (nni_strcasecmp(unit, "B") == 0) {
+			num *= 1;
 		} else {
 			return -1;
 		}
-	} else if (res != 1 || num == 0) {
+	} else {
 		return -1;
 	}
+
 	*size = num;
 	return 0;
 }
@@ -4183,9 +4195,18 @@ get_size(const char *str, uint64_t *size)
 int
 get_time_ms(const char *str, uint64_t *msec)
 {
+	if (str == NULL || msec == NULL) {
+		return -1;
+	}
+	if (strchr(str, '-') != NULL) {
+		return -1;
+	}
+
 	char     unit[3] = { 0 };
 	uint64_t ms   = 0;
-	if (2 == sscanf(str, "%lu%02s", &ms, unit)) {
+	int res = sscanf(str, "%lu%02s", &ms, unit);
+
+	if (res == 2) {
 		if (0 == strncmp(unit, "ms", 2)) {
 			*msec = ms;
 			return 0;
@@ -4195,8 +4216,21 @@ get_time_ms(const char *str, uint64_t *msec)
 		} else if (unit[0] == 's') {
 			*msec = 1000 * ms;
 			return 0;
+		} else if (unit[0] == 'm') {
+			*msec = 60 * 1000 * ms;
+			return 0;
+		} else if (unit[0] == 'h') {
+			*msec = 3600 * 1000 * ms;
+			return 0;
+		} else if (unit[0] == 'd') {
+			*msec = 24 * 3600 * 1000 * ms;
+			return 0;
 		}
 		return -2;
+	} else if (res == 1) {
+		//Default to ms
+		*msec = ms;
+		return 0;
 	}
 	return -1;
 }
@@ -4204,6 +4238,13 @@ get_time_ms(const char *str, uint64_t *msec)
 int
 get_time(const char *str, uint64_t *second)
 {
+	if (str == NULL || second == NULL) {
+		return -1;
+	}
+	if (strchr(str, '-') != NULL) {
+		return -1;
+	}
+
 	char     unit = 0;
 	uint64_t s    = 0;
 	if (2 == sscanf(str, "%lu%c", &s, &unit)) {
@@ -4217,9 +4258,11 @@ get_time(const char *str, uint64_t *second)
 		case 'h':
 			*second = s * 3600;
 			break;
-		// FIXME need to consider `ms` @ Xinyi
-		default:
+		case 'd':
+			*second = s * 24 * 3600;
 			break;
+		default:
+			return -1; // 拒绝所有不支持的单位
 		}
 		return 0;
 	}
@@ -4659,6 +4702,9 @@ conf_tlslist_destroy(conf_tls_list *tlslist)
 void
 conf_fini(conf *nanomq_conf)
 {
+	if (nanomq_conf == NULL) {
+		return;
+	}
 	nng_strfree(nanomq_conf->url);
 	nng_strfree(nanomq_conf->conf_file);
 	if (nanomq_conf->vin)
