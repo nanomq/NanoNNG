@@ -2398,7 +2398,8 @@ conf_parquet_parse_cipher_one(conf_parquet *parquet, const char *commonkey)
 	size_t cipher_sz  = 0;
 	char  *cipher     = nng_alloc(sizeof(char) * strlen(cipher_txt));
 	if (!cipher) {
-		log_error("failed to alloc cipher for parquet key");
+		log_error("failed to alloc cipher for parquet key, fallback to unencrypted");
+		enc->enable = false;
 		return;
 	}
 
@@ -2406,7 +2407,8 @@ conf_parquet_parse_cipher_one(conf_parquet *parquet, const char *commonkey)
 	    strlen(cipher_txt), (uint8_t *) cipher, strlen(cipher_txt));
 	if (cipher_sz <= 32) {
 		nng_free(cipher, cipher_sz);
-		log_error("failed to base64 decode parquet.encryption.key");
+		log_error("failed to base64 decode parquet.encryption.key, fallback to unencrypted");
+		enc->enable = false;
 		return;
 	}
 
@@ -2415,7 +2417,8 @@ conf_parquet_parse_cipher_one(conf_parquet *parquet, const char *commonkey)
 	    cipher, (int) cipher_sz, (char *) commonkey, &plain_sz);
 	nng_free(cipher, cipher_sz);
 	if (plain == NULL || plain_sz == 0) {
-		log_error("failed to decrypt parquet.encryption.key");
+		log_error("failed to decrypt parquet.encryption.key, fallback to unencrypted");
+		enc->enable = false;
 		return;
 	}
 

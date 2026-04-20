@@ -1282,7 +1282,7 @@ print_parquet_conf(conf_parquet *parquet)
 	log_info("parquet encryption:       %s",
 	    encryption->enable ? "enable" : "disable");
 	if (encryption->enable) {
-		log_info("parquet encryption key:   %s", encryption->key);
+		log_info("parquet encryption key:   %s", encryption->key_cipher);
 		log_info("parquet encryption key_id:%s", encryption->key_id);
 		log_info("parquet encryption type:  %s",
 		    encryption->type == 0 ? "AES_GCM_V1" : "AES_GCM_CTR_V1");
