@@ -88,7 +88,7 @@ extern "C" {
 #define NNG_OPT_MQTT_ENABLE_SCRAM "mqtt-scram-option"
 
 //only for reload TLS certs
-#define NNG_OPT_MQTT_TLS_BRIDGE_CONF "mqtt-tls-bridge-conf"\
+#define NNG_OPT_MQTT_TLS_BRIDGE_CONF "mqtt-tls-bridge-conf"
 
 #define NNG_OPT_MQTT_NO_LOCAL_V4 "mqtt-no_local-v4"
 
