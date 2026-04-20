@@ -298,6 +298,8 @@ struct conf_bridge_node {
 	bool         will_retain;
 	bool         retry_qos_0;
 	bool         no_local_v4; // set bridge bit (0x80) on protocol version byte
+	bool         password_encrypted;
+	bool         hybrid;
 	void        *sock;
 	void        *bridge_arg;	// for reloading bridge case
 	char        *name;
@@ -306,7 +308,6 @@ struct conf_bridge_node {
 	char        *clientid;
 	char        *username;
 	char        *password;
-	bool         password_encrypted;
 	char        *will_payload;
 	char        *will_topic;
 	char       **hybrid_servers;
