@@ -469,7 +469,7 @@ parquet_build_nmq_metadata(
 	    ? "NMQ_CONF_CIPHER_AES_GCM_BASE64"
 	    : "NONE";
 	const char *wrapped_key = "";
-	if (conf && conf->encryption.key_cipher) {
+	if (conf && conf->encryption.enable && conf->encryption.key_cipher) {
 		wrapped_key = conf->encryption.key_cipher;
 	}
 
@@ -1312,7 +1312,7 @@ parquet_find_data_packet(
 	}
 
 	parquet_runtime_metadata md;
-	string                  key_from_md;
+	string                   key_from_md;
 	parquet_get_runtime_metadata(conf, filename, &md);
 	load_key_from_metadata(conf, md, &key_from_md);
 	if (topic.empty() && !md.topic.empty()) {
@@ -1446,7 +1446,7 @@ parquet_find_data_packets(
 
 	// Traverse the map and get the vector of parquet_data_packet
 	for (const auto &entry : file_name_map) {
-		char                        *filename = entry.first;
+		char                   *filename = entry.first;
 		const vector<uint64_t> &sizes    = entry.second;
 
 		auto tmp = parquet_find_data_packet(conf, filename, sizes);
