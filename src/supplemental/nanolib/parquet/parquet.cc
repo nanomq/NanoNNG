@@ -906,10 +906,55 @@ parquet_read(conf_parquet *conf, char *filename, uint64_t key, uint32_t *len)
 	parquet::ReaderProperties reader_properties =
 	    parquet::default_reader_properties();
 
-	parquet_read_set_property(reader_properties, conf);
-
-	// Create a ParquetReader instance
 	string exception_msg = "";
+	bool is_compat_mode = false;
+	bool is_encrypted = false;
+
+	// Access MetaData and decide if we need a decryption_configuration
+	try {
+		unique_ptr<parquet::ParquetFileReader> parquet_reader =
+		    parquet::ParquetFileReader::OpenFile(
+		        filename, false, reader_properties);
+
+		// Get the File MetaData
+		shared_ptr<parquet::FileMetaData> file_metadata =
+		    parquet_reader->metadata();
+		auto kv = file_metadata->key_value_metadata();
+		if (kv == nullptr) {
+			is_compat_mode = true;
+			is_encrypted   = false;
+		} else {
+			int idx;
+			if (((idx = kv->FindKey("nmq.created_by")) > 0) &&
+			     (kv->value(idx).compare("NanoMQ") == 0)) {
+				// Yes. It's a parquet file owned by NanoMQ
+				if (((idx = kv->FindKey("nmq.key.wrap_alg")) > 0) &&
+				     (kv->value(idx).compare("NMQ_CONF_CIPHER_AES_GCM_BASE64") == 0) &&
+					((idx = kv->FindKey("nmq.key.wrapped")) > 0) &&
+					 (kv->value(idx).length() > 0)) {
+					is_compat_mode = false;
+					is_encrypted = true;
+				}
+			} else {
+				is_compat_mode = true;
+				is_encrypted   = false;
+			}
+		}
+
+	} catch (const exception &e) {
+		exception_msg = e.what();
+		log_error("access metadata exception_msg=[%s]", exception_msg.c_str());
+		return NULL;
+	}
+
+	// TODO Should we use wrapped_key built-in metadata?
+	if (is_compat_mode == false && is_encrypted == true) {
+		parquet_read_set_property(reader_properties, conf);
+		log_debug("parquet file %s: [v1] [encrypted]", filename);
+	} else {
+		log_debug("parquet file %s: [compat]", filename);
+	}
+
 	try {
 		unique_ptr<parquet::ParquetFileReader> parquet_reader =
 		    parquet::ParquetFileReader::OpenFile(
@@ -1095,11 +1140,57 @@ parquet_read(conf_parquet *conf, char *filename, vector<uint64_t> keys)
 	parquet::ReaderProperties     reader_properties =
 	    parquet::default_reader_properties();
 
-	parquet_read_set_property(reader_properties, conf);
+	string exception_msg = "";
+	bool is_compat_mode = false;
+	bool is_encrypted = false;
+
+	// Access MetaData and decide if we need a decryption_configuration
+	try {
+		unique_ptr<parquet::ParquetFileReader> parquet_reader =
+		    parquet::ParquetFileReader::OpenFile(
+		        filename, false, reader_properties);
+
+		// Get the File MetaData
+		shared_ptr<parquet::FileMetaData> file_metadata =
+		    parquet_reader->metadata();
+		auto kv = file_metadata->key_value_metadata();
+		if (kv == nullptr) {
+			is_compat_mode = true;
+			is_encrypted   = false;
+		} else {
+			int idx;
+			if (((idx = kv->FindKey("nmq.created_by")) > 0) &&
+			     (kv->value(idx).compare("NanoMQ") == 0)) {
+				// Yes. It's a parquet file owned by NanoMQ
+				if (((idx = kv->FindKey("nmq.key.wrap_alg")) > 0) &&
+				     (kv->value(idx).compare("NMQ_CONF_CIPHER_AES_GCM_BASE64") == 0) &&
+					((idx = kv->FindKey("nmq.key.wrapped")) > 0) &&
+					 (kv->value(idx).length() > 0)) {
+					is_compat_mode = false;
+					is_encrypted = true;
+				}
+			} else {
+				is_compat_mode = true;
+				is_encrypted   = false;
+			}
+		}
+
+	} catch (const exception &e) {
+		exception_msg = e.what();
+		log_error("access metadata exception_msg=[%s]", exception_msg.c_str());
+		return ret_vec;
+	}
+
+	// TODO Should we use wrapped_key built-in metadata?
+	if (is_compat_mode == false && is_encrypted == true) {
+		parquet_read_set_property(reader_properties, conf);
+		log_warn("parquet file %s: [v1] [encrypted]", filename);
+	} else {
+		log_warn("parquet file %s: [compat]", filename);
+	}
+
 	vector<int> index_vector(keys.size());
 
-	// Create a ParquetReader instance
-	string exception_msg = "";
 	try {
 		unique_ptr<parquet::ParquetFileReader> parquet_reader =
 		    parquet::ParquetFileReader::OpenFile(
@@ -1213,10 +1304,10 @@ parquet_get_runtime_metadata(
 	if (filename == NULL || out == NULL) {
 		return false;
 	}
+	(void) conf;
 
 	parquet::ReaderProperties reader_properties =
 	    parquet::default_reader_properties();
-	parquet_read_set_property(reader_properties, conf);
 
 	try {
 		unique_ptr<parquet::ParquetFileReader> parquet_reader =
@@ -1251,7 +1342,7 @@ parquet_get_runtime_metadata(
 		}
 		return true;
 	} catch (const exception &e) {
-		log_debug("read parquet metadata failed: %s", e.what());
+		log_warn("read parquet metadata failed: %s", e.what());
 		return false;
 	}
 }
@@ -1642,11 +1733,57 @@ parquet_read_span_by_column(conf_parquet *conf, const char *filename, uint64_t k
 	parquet::ReaderProperties reader_properties =
 	    parquet::default_reader_properties();
 
-	parquet_read_set_property(reader_properties, conf);
+	string exception_msg = "";
+	bool is_compat_mode = false;
+	bool is_encrypted = false;
+
+	// Access MetaData and decide if we need a decryption_configuration
+	try {
+		unique_ptr<parquet::ParquetFileReader> parquet_reader =
+		    parquet::ParquetFileReader::OpenFile(
+		        filename, false, reader_properties);
+
+		// Get the File MetaData
+		shared_ptr<parquet::FileMetaData> file_metadata =
+		    parquet_reader->metadata();
+		auto kv = file_metadata->key_value_metadata();
+		if (kv == nullptr) {
+			is_compat_mode = true;
+			is_encrypted   = false;
+		} else {
+			int idx;
+			if (((idx = kv->FindKey("nmq.created_by")) > 0) &&
+			     (kv->value(idx).compare("NanoMQ") == 0)) {
+				// Yes. It's a parquet file owned by NanoMQ
+				if (((idx = kv->FindKey("nmq.key.wrap_alg")) > 0) &&
+				     (kv->value(idx).compare("NMQ_CONF_CIPHER_AES_GCM_BASE64") == 0) &&
+					((idx = kv->FindKey("nmq.key.wrapped")) > 0) &&
+					 (kv->value(idx).length() > 0)) {
+					is_compat_mode = false;
+					is_encrypted = true;
+				}
+			} else {
+				is_compat_mode = true;
+				is_encrypted   = false;
+			}
+		}
+
+	} catch (const exception &e) {
+		exception_msg = e.what();
+		log_error("access metadata exception_msg=[%s]", exception_msg.c_str());
+		return NULL;
+	}
+
+	// TODO Should we use wrapped_key built-in metadata?
+	if (is_compat_mode == false && is_encrypted == true) {
+		parquet_read_set_property(reader_properties, conf);
+		log_warn("parquet file %s: [v1] [encrypted]", filename);
+	} else {
+		log_warn("parquet file %s: [compat]", filename);
+	}
+
 	vector<int> index_vector(2);
 
-	// Create a ParquetReader instance
-	string exception_msg = "";
 	try {
 		unique_ptr<parquet::ParquetFileReader> parquet_reader =
 		    parquet::ParquetFileReader::OpenFile(
