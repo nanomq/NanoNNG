@@ -489,7 +489,6 @@ parquet_build_nmq_metadata(
 
 	kv->Append("nmq.created_by", "NanoMQ");
 	kv->Append("nmq.created_at", std::to_string((long long) time(NULL)));
-	kv->Append("nmq.file.topic_source", "metadata");
 
 	// Backward compatibility: keep legacy self-increment key for raw stream parquet.
 	if (write_type == WRITE_RAW || write_type == WRITE_TEMP_RAW) {
