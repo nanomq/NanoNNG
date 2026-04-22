@@ -64,6 +64,13 @@ atomic_bool is_available = false;
 
 #define UINT64_MAX_DIGITS 20
 
+class UniformKeyRetriever : public parquet::DecryptionKeyRetriever {
+	std::string key_;
+public:
+	UniformKeyRetriever(const std::string& key) : key_(key) {}
+	std::string GetKey(const std::string&) override { return key_; }
+};
+
 parquet_file_manager file_manager;
 CircularQueue        parquet_queue;
 pthread_mutex_t      parquet_queue_mutex     = PTHREAD_MUTEX_INITIALIZER;
@@ -879,17 +886,13 @@ parquet_read_set_property(
     parquet::ReaderProperties &reader_properties, conf_parquet *conf)
 {
 	if (conf != NULL && conf->encryption.enable && conf->encryption.key != NULL) {
-		map<string,
-		    shared_ptr<parquet::ColumnDecryptionProperties>>
-		    decryption_cols;
-		parquet::FileDecryptionProperties::Builder
-		    file_decryption_builder_3;
+		parquet::FileDecryptionProperties::Builder builder;
 		shared_ptr<parquet::FileDecryptionProperties>
 		    decryption_configuration =
-		        file_decryption_builder_3
-		            .footer_key(conf->encryption.key)
-		            ->column_keys(decryption_cols)
-		            ->build();
+				builder.footer_key(conf->encryption.key)
+				->key_retriever(std::make_shared<UniformKeyRetriever>(
+						conf->encryption.key))
+				->build();
 
 		// Add the current decryption configuration to
 		// ReaderProperties.
