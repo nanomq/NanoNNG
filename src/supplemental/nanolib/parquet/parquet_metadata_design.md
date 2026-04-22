@@ -30,18 +30,12 @@
 - `nmq.key.id` : 密钥标识（key id）
 - `nmq.key.wrap_alg` : 密钥封装算法（当前为 `NMQ_CONF_CIPHER_AES_GCM_BASE64`）
 - `nmq.key.wrapped` : 配置文件中的密文 key（Base64 密文串，非明文 key）
+- `nmq.created_by` : `NanoMQ`
 
 ### 3.2 建议字段
 
-- `nmq.created_by` : `NanoMQ`
 - `nmq.created_at` : Unix 时间戳（秒或毫秒，需统一）
-- `nmq.file.topic_source` : `metadata|filename|runtime`（便于调试链路）
 - `number` : Raw stream parquet 的自增序号（兼容保留字段，非 `nmq.*`）
-
-### 3.3 可选完整性字段（推荐）
-
-- `nmq.meta.sig_alg` : `HMAC-SHA256` / `ECDSA-P256-SHA256`
-- `nmq.meta.sig` : 对关键字段签名值（Base64）
 
 ## 4. 写入方案
 
@@ -54,7 +48,7 @@
 1. 收集 metadata 输入：topic、cipher、key id、wrapped key、wrap alg。
 2. 运行时先通过 `conf_parse_cipher` 解密配置中的 parquet key，供落盘与查询使用。
 3. 组装 `KeyValueMetadata`，其中 `nmq.key.wrapped` 写入配置密文 key。
-4. 可选写入建议字段与完整性字段。
+4. 可选写入建议字段字段。
 5. 对 Raw stream parquet 同步写入兼容字段 `number`（自增序号）。
 6. 执行字段有效性检查（空值、版本合法性、Base64 合法性）。
 7. 关闭 writer 并落盘。
@@ -84,9 +78,8 @@
 
 ### 5.3 容错策略
 
-- 不识别 `nmq.meta.version`：按旧文件处理。
+- 不识别 `nmq.meta.version` 或 `nmq.created_by`：按旧文件处理。
 - 可选字段缺失：记录 `debug/warn`，不失败。
-- 签名校验失败（若启用）：记录 `warn/error`，可配置为“拒绝读取”或“回退读取”。
 
 ## 6. 历史查询影响评估
 
@@ -100,7 +93,6 @@
 
 - 明确禁止存储明文 data key、口令、token 等敏感信息。
 - `nmq.key.wrapped` 仅为密钥密文，要求由 KMS/HSM 或公钥机制生成。
-- 若启用 `nmq.meta.sig`，签名覆盖至少包含所有必选字段，防止字段替换攻击。
 - 日志中不得打印完整 `nmq.key.wrapped` 与签名值。
 
 ## 8. 迁移与上线计划
