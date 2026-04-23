@@ -150,13 +150,6 @@ tcptran_pipe_close(void *arg)
 		nni_free(p->npipe->subinfol, sizeof(nni_list));
 		p->npipe->subinfol = NULL;
 	}
-	void *nano_qos_db = p->npipe->nano_qos_db;
-	if (!p->conf->sqlite.enable && nano_qos_db != NULL) {
-		nni_qos_db_remove_all_msg(
-		    false, nano_qos_db, tran_close_unack_msg_cb);
-		nni_qos_db_fini_id_hash(nano_qos_db);
-		p->npipe->nano_qos_db = NULL;
-	}
 	nni_lmq_flush(&p->rslmq);
 	nni_mtx_unlock(&p->mtx);
 
@@ -228,6 +221,13 @@ tcptran_pipe_fini(void *arg)
 		nni_mtx_unlock(&ep->mtx);
 	}
 	nni_mtx_lock(&p->mtx);
+	void *nano_qos_db = p->npipe->nano_qos_db;
+	if (!p->conf->sqlite.enable && nano_qos_db != NULL) {
+		nni_qos_db_remove_all_msg(
+		    false, nano_qos_db, tran_close_unack_msg_cb);
+		nni_qos_db_fini_id_hash(nano_qos_db);
+		p->npipe->nano_qos_db = NULL;
+	}
 	if (p->tcp_cparam) {
 		conn_param_free(p->tcp_cparam);	//reap thread working
 		p->tcp_cparam = NULL;

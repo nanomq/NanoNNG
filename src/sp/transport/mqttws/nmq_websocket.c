@@ -616,7 +616,8 @@ reset:
 		nni_aio_finish_error(p->ep_aio, rv);
 	} else if (uaio != NULL) {
 		nni_aio_set_msg(uaio, NULL);
-		nni_aio_finish_error(uaio, p->err_code == MQTT_SUCCESS ? rv : p->err_code);
+		nni_aio_finish_error(uaio,
+		    p->err_code == MQTT_SUCCESS ? rv : (int) p->err_code);
 	} else {
 		// Let protocol layer do the close first.
 		nng_stream_close(p->ws);
@@ -1333,6 +1334,14 @@ wstran_pipe_fini(void *arg)
 	nni_msg_free(p->tmp_msg);
 	nni_lmq_flush(&p->recvlmq);
 	nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
+	// must free nano_qos_db in fini for safety
+	void *nano_qos_db = p->npipe->nano_qos_db;
+	if (!p->conf->sqlite.enable && nano_qos_db != NULL) {
+		nni_qos_db_remove_all_msg(
+		    false, nano_qos_db, tran_close_unack_msg_cb);
+		nni_qos_db_fini_id_hash(nano_qos_db);
+		p->npipe->nano_qos_db = NULL;
+	}
 	nni_mtx_unlock(&p->mtx);
 
 	nng_stream_free(p->ws);
@@ -1375,13 +1384,7 @@ wstran_pipe_close(void *arg)
 		nni_free(p->npipe->subinfol, sizeof(nni_list));
 		p->npipe->subinfol = NULL;
 	}
-	void *nano_qos_db = p->npipe->nano_qos_db;
-	if (!p->conf->sqlite.enable && nano_qos_db != NULL) {
-		nni_qos_db_remove_all_msg(
-		    false, nano_qos_db, tran_close_unack_msg_cb);
-		nni_qos_db_fini_id_hash(nano_qos_db);
-		p->npipe->nano_qos_db = NULL;
-	}
+
 	nni_lmq_flush(&p->rslmq);
 	nni_mtx_unlock(&p->mtx);
 	nng_stream_close(p->ws);
