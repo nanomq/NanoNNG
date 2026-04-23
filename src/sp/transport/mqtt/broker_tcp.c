@@ -229,7 +229,7 @@ tcptran_pipe_fini(void *arg)
 	}
 	nni_mtx_lock(&p->mtx);
 	if (p->tcp_cparam) {
-		conn_param_free(p->tcp_cparam);
+		conn_param_free(p->tcp_cparam);	//reap thread working
 		p->tcp_cparam = NULL;
 	}
 	if (p->rxmsg != NULL)

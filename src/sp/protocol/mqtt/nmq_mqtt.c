@@ -869,9 +869,13 @@ close_pipe(nano_pipe *p)
 	nni_atomic_set_bool(&p->closed, true);
 	if (nni_list_active(&s->recvpipes, p)) {
 		nni_msg *msg = nni_aio_get_msg(&p->aio_recv);
+					uint8_t type = nng_msg_cmd_type(msg);
+	if (type == CMD_SUBSCRIBE || type == CMD_UNSUBSCRIBE ||
+		   		type == CMD_CONNACK || type == CMD_PUBLISH)
+		conn_param_free(p->conn_param);
 		if (msg)
 			nni_msg_free(msg);
-		conn_param_free(p->conn_param);
+
 		nni_list_remove(&s->recvpipes, p);
 	}
 	// only remove matched pipe, could have been overwritten
@@ -932,9 +936,13 @@ nano_pipe_close(void *arg)
 			nni_atomic_swap_bool(&npipe->p_closed, false);
 			if (nni_list_active(&s->recvpipes, p)) {
 				nni_msg *tmsg = nni_aio_get_msg(&p->aio_recv);
+							uint8_t type = nng_msg_cmd_type(tmsg);
+	if (type == CMD_SUBSCRIBE || type == CMD_UNSUBSCRIBE ||
+		   		type == CMD_CONNACK || type == CMD_PUBLISH)
+		conn_param_free(p->conn_param);
 				if (tmsg)
 					nni_msg_free(tmsg);
-				conn_param_free(p->conn_param);
+
 				nni_list_remove(&s->recvpipes, p);
 			}
 			nano_nni_lmq_flush(&p->rlmq, false);
@@ -1243,10 +1251,16 @@ nano_pipe_recv_cb(void *arg)
 	if ((ctx = nni_list_first(&s->recvq)) == NULL) {
 		// No one waiting to receive yet, holding pattern.
 		// Dont use waitlmq cache, cause back-pressure.
-		if (!nni_list_active(&s->recvpipes, p))
+		if (!nni_list_active(&s->recvpipes, p)) {
 			nni_list_append(&s->recvpipes, p);
-		else
+		} else {
+			nni_aio_set_msg(&p->aio_recv, NULL);
+			nni_msg_free(msg);
 			log_error("Unscheduled receving!");
+			if (type == CMD_SUBSCRIBE || type == CMD_UNSUBSCRIBE ||
+			    type == CMD_CONNACK || type == CMD_PUBLISH)
+				conn_param_free(cparam);
+		}
 		nni_mtx_unlock(&s->lk);
 		// this gonna cause broker lagging, so we reduce outputs 1 in 256
 		rotate ++;
