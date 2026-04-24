@@ -6,10 +6,15 @@
 // found online at https://opensource.org/licenses/MIT.
 #ifndef STREAM_H
 #define STREAM_H
+#include "nng/nng.h"
 #include "nng/supplemental/util/idhash.h"
 #include "nng/supplemental/nanolib/log.h"
 #ifdef SUPP_PARQUET
 #include "nng/supplemental/nanolib/parquet.h"
+#endif
+
+#ifdef __cplusplus
+extern "C" {
 #endif
 
 typedef struct stream_node {
@@ -17,6 +22,7 @@ typedef struct stream_node {
 	uint8_t id;
 	void *(*decode)(void *);
 	void *(*encode)(void *);
+	void (*encode_stream)(void *, nng_aio *, size_t);
 	void *(*cmd_parser)(void *);
 } stream_node;
 
@@ -89,13 +95,16 @@ struct cmd_data {
 	char **schema;
 };
 
+// Unified registration API: supports optional streaming encode callback (may be NULL)
 int stream_register(char *name, uint8_t id,
 					void *(*decode)(void *),
 					void *(*encode)(void *),
+					void (*encode_stream)(void *, nng_aio *, size_t),
 					void *(*cmd_parser)(void *));
 int stream_unregister(uint8_t id);
 void *stream_decode(uint8_t id, void *buf);
 void *stream_encode(uint8_t id, void *buf);
+int stream_encode_stream(uint8_t id, void *buf, nng_aio *aio, size_t chunk_bytes);
 void *stream_cmd_parser(uint8_t id, void *buf);
 int stream_sys_init(void);
 void stream_sys_fini(void);
@@ -103,4 +112,8 @@ void stream_sys_fini(void);
 void stream_decoded_data_free(struct stream_decoded_data *data);
 void stream_data_out_free(struct stream_data_out *data);
 void stream_data_in_free(struct stream_data_in *sdata);
+
+#ifdef __cplusplus
+}
+#endif
 #endif

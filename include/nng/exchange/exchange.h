@@ -22,6 +22,8 @@ struct exchange_s {
 	unsigned int rb_count;
 	uint8_t streamType;
 	uint32_t chunk_size;
+	/* Optional per-exchange streaming AIO hint for webhook */
+	nng_aio *streamAio;
 };
 
 NNG_DECL int exchange_client_get_msg_by_key(void *arg, uint64_t key, nng_msg **msg);

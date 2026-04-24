@@ -14,6 +14,16 @@ typedef struct parquet_data_ret parquet_data_ret;
 typedef struct parquet_payload  parquet_payload;
 typedef void (*parquet_cb)(parquet_object *arg);
 
+// Streaming input wrapper for decoupling parquet from webhook internals.
+#define PARQUET_STREAM_IN_MAGIC 0x504B5354 /* 'PKST' */
+struct stream_data_in;
+typedef struct parquet_stream_in {
+	uint32_t               magic;
+	struct stream_data_in *sdata;       // Input rows
+	void                  *user_cbdata; // Opaque pointer passed back to caller
+	uint8_t                stream_id;   // Stream type used by encode_stream
+} parquet_stream_in;
+
 typedef enum {
 	WRITE_RAW,
 	WRITE_CAN,
@@ -82,6 +92,10 @@ int  parquet_write_batch_async(parquet_object *elem);
 int parquet_write_batch_tmp_async(parquet_object *elem);
 int parquet_write_launcher(conf_exchange *conf);
 
+// Hint streaming writer of given topic to finish as soon as possible
+// (used by webhook when a new flush arrives while previous is still running).
+void parquet_stream_force_flush(const char *topic);
+
 const char  *parquet_find(const char *topic, uint64_t key);
 const char **parquet_find_span(
     const char *topic, uint64_t start_key, uint64_t end_key, uint32_t *size);
@@ -104,6 +118,12 @@ parquet_data_packet **parquet_find_data_span_packets_specify_file(
 
 parquet_filename_range **parquet_get_file_ranges(
     uint64_t start_key, uint64_t end_key, char *topic);
+
+// Streaming parameters customization (configured from ringbus section).
+// bytes: max payload bytes per parquet streaming chunk (0 keeps default).
+void parquet_stream_set_chunk_bytes(size_t bytes);
+// ms: sleep interval between streaming row groups (0 disables throttling).
+void parquet_stream_set_throttle_ms(uint32_t ms);
 
 // If filename in range is NULL return all results, else one parquet file results.
 parquet_data_ret **parquet_get_data_packets_in_range_by_column(
