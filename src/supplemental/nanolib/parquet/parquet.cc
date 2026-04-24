@@ -926,12 +926,12 @@ parquet_check_is_compat_and_decrypt(
 			is_encrypted   = false;
 		} else {
 			int idx;
-			if (((idx = kv->FindKey("nmq.created_by")) > 0) &&
+			if (((idx = kv->FindKey("nmq.created_by")) >= 0) &&
 			     (kv->value(idx).compare("NanoMQ") == 0)) {
 				// Yes. It's a parquet file owned by NanoMQ
-				if (((idx = kv->FindKey("nmq.key.wrap_alg")) > 0) &&
+				if (((idx = kv->FindKey("nmq.key.wrap_alg")) >= 0) &&
 				     (kv->value(idx).compare("NMQ_CONF_CIPHER_AES_GCM_BASE64") == 0) &&
-					((idx = kv->FindKey("nmq.key.wrapped")) > 0) &&
+					((idx = kv->FindKey("nmq.key.wrapped")) >= 0) &&
 					 (kv->value(idx).length() > 0)) {
 					is_compat_mode = false;
 					is_encrypted = true;
@@ -1402,7 +1402,7 @@ parquet_find_data_packet(
 	parquet_runtime_metadata md;
 	string                   key_from_md;
 	parquet_get_runtime_metadata(conf, filename, &md);
-	load_key_from_metadata(conf, md, &key_from_md);
+	// TODO load_key_from_metadata(conf, md, &key_from_md);
 	if (topic.empty() && !md.topic.empty()) {
 		topic = md.topic;
 	}
@@ -1460,7 +1460,7 @@ parquet_find_data_packet(conf_parquet *conf, char *filename, uint64_t key)
 	parquet_runtime_metadata md;
 	string                  key_from_md;
 	parquet_get_runtime_metadata(conf, filename, &md);
-	load_key_from_metadata(conf, md, &key_from_md);
+	// TODO load_key_from_metadata(conf, md, &key_from_md);
 	if (topic.empty() && !md.topic.empty()) {
 		topic = md.topic;
 	}

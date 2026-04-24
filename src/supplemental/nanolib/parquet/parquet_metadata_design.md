@@ -26,9 +26,9 @@
 
 - `nmq.meta.version` : `1`
 - `nmq.topic` : 主题名
-- `nmq.enc.cipher` : 数据加密方式（如 `AES_GCM_V1` / `AES_GCM_CTR_V1`）
+- `nmq.enc.cipher` : 数据加密方式（如 `AES_GCM_V1` / `AES_GCM_CTR_V1`/ `NONE`）
 - `nmq.key.id` : 密钥标识（key id）
-- `nmq.key.wrap_alg` : 密钥封装算法（当前为 `NMQ_CONF_CIPHER_AES_GCM_BASE64`）
+- `nmq.key.wrap_alg` : 密钥封装算法（当前为 `NMQ_CONF_CIPHER_AES_GCM_BASE64`/`NONE`）
 - `nmq.key.wrapped` : 配置文件中的密文 key（Base64 密文串，非明文 key）
 - `nmq.created_by` : `NanoMQ`
 
