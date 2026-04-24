@@ -233,13 +233,14 @@ nano_pipe_timer_cb(void *arg)
 		nni_sleep_aio(qos_duration * 1000, &p->aio_timer);
 		nni_mtx_unlock(&sock->lk);
 		return;
-	} else if (nni_atomic_get_bool(&p->closed)) {
+	}
+	nni_mtx_lock(&p->lk);
+	if (nni_atomic_get_bool(&p->closed)) {
 		// stop sending msg to closed pipe
+		nni_mtx_unlock(&p->lk);
 		log_warn("pipe is already closed");
 		return;
 	}
-	nni_mtx_lock(&p->lk);
-
 	// According to the MQTT protocol, when keepalive is 0, the server should not check the keepalive timeout.
 	if (p->keepalive != 0) {
 		qos_backoff = p->ka_refresh * (qos_duration) * 1000 -
