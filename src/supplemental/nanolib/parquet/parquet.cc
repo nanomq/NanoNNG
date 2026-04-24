@@ -880,7 +880,7 @@ parquet_find_span(
 	return ret;
 }
 
-void
+bool
 parquet_read_set_property(
     parquet::ReaderProperties &reader_properties, conf_parquet *conf)
 {
@@ -897,9 +897,9 @@ parquet_read_set_property(
 		// ReaderProperties.
 		reader_properties.file_decryption_properties(
 		    decryption_configuration->DeepClone());
+		return true;
 	}
-
-	return;
+	return false;
 }
 
 // Return 0 when no exception happened.
@@ -967,8 +967,11 @@ parquet_read(conf_parquet *conf, char *filename, uint64_t key, uint32_t *len)
 
 	// TODO Should we use wrapped_key built-in metadata?
 	if (is_compat_mode == false && is_encrypted == true) {
-		parquet_read_set_property(reader_properties, conf);
 		log_info("parquet mode [v1] [encrypted]: %s", filename);
+		if (false == parquet_read_set_property(reader_properties, conf)) {
+			log_error("Can't read encrypted parquet due to no encryption config");
+			return NULL;
+		}
 	} else if (is_compat_mode == false && is_encrypted == false) {
 		log_info("parquet mode [v1]: %s", filename);
 	} else {
@@ -1172,8 +1175,11 @@ parquet_read(conf_parquet *conf, char *filename, vector<uint64_t> keys)
 
 	// TODO Should we use wrapped_key built-in metadata?
 	if (is_compat_mode == false && is_encrypted == true) {
-		parquet_read_set_property(reader_properties, conf);
 		log_info("parquet mode [v1] [encrypted]: %s", filename);
+		if (false == parquet_read_set_property(reader_properties, conf)) {
+			log_error("Can't read encrypted parquet due to no encryption config");
+			return ret_vec;
+		}
 	} else if (is_compat_mode == false && is_encrypted == false) {
 		log_info("parquet mode [v1]: %s", filename);
 	} else {
@@ -1736,8 +1742,11 @@ parquet_read_span_by_column(conf_parquet *conf, const char *filename, uint64_t k
 
 	// TODO Should we use wrapped_key built-in metadata?
 	if (is_compat_mode == false && is_encrypted == true) {
-		parquet_read_set_property(reader_properties, conf);
 		log_info("parquet mode [v1] [encrypted]: %s", filename);
+		if (false == parquet_read_set_property(reader_properties, conf)) {
+			log_error("Can't read encrypted parquet due to no encryption config");
+			return NULL;
+		}
 	} else if (is_compat_mode == false && is_encrypted == false) {
 		log_info("parquet mode [v1]: %s", filename);
 	} else {
@@ -1990,7 +1999,7 @@ parquet_get_data_packets_in_range_by_column(parquet_filename_range *range,
 		    parquet_find_span(topic, start_key, end_key, &len);
 
 		for (uint32_t i = 0; i < len; i++) {
-			log_info("filename: %s", filenames[i]);
+			log_debug("filename: %s", filenames[i]);
 
 			uint64_t keys[2];
 			keys[0] = start_key;
