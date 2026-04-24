@@ -4616,9 +4616,9 @@ conf_parquet_destroy(conf_parquet *parquet)
 
 		if (parquet->encryption.enable) {
 			nng_strfree(parquet->encryption.key);
-			nng_strfree(parquet->encryption.key_cipher);
 			nng_strfree(parquet->encryption.key_id);
 		}
+		nng_strfree(parquet->encryption.key_cipher);
 	}
 
 }
