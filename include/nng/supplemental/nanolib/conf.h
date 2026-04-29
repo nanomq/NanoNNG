@@ -16,6 +16,7 @@
 #include "nng/supplemental/util/platform.h"
 #include "nng/supplemental/util/idhash.h"
 #include "nng/supplemental/http/http.h"
+#include "nng/mqtt/mqtt_client.h"
 
 #define PID_PATH_NAME "/tmp/nanomq/nanomq.pid"
 #define CONF_PATH_NAME "/etc/nanomq.conf"
@@ -78,6 +79,12 @@ struct conf_tls {
 	bool  verify_peer;
 	bool  set_fail; // fail_if_no_peer_cert
 	bool  cert_encrypted;
+	char *encrypt_method;    // Certificate decryption algorithm, it takes
+	                         // effect when cert_encrypted = true.
+	char *encrypted_key_b64; // This key is used to decrypt the final key
+	                         // required for the decryption certificate.
+	mqtt_buf
+	      encrypted_key; // binary after base64 decode of encrypted_key_b64
 	char *sni;
 };
 
@@ -711,6 +718,8 @@ NNG_DECL void conf_update2(const char *fpath, const char *key1,
 NNG_DECL void conf_bridge_node_parse(conf_bridge_node *node, conf_sqlite *bridge_sqlite, cJSON *obj);
 NNG_DECL void conf_bridge_node_destroy(conf_bridge_node *node);
 NNG_DECL void conf_session_node_parse(conf_session_node *node, cJSON *obj);
+
+NNG_DECL void conf_tls_parse_encrypted_key(conf_tls *tls);
 
 NNG_DECL void conf_update_var(
     const char *fpath, const char *key, uint8_t type, void *var);

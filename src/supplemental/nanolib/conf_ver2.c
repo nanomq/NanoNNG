@@ -463,6 +463,50 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	return;
 }
 
+void
+conf_tls_parse_encrypted_key(conf_tls *tls)
+{
+	if (tls->encrypted_key_b64 != NULL &&
+	    strlen(tls->encrypted_key_b64) > 0) {
+
+		if (tls->encrypted_key.buf) {
+			nni_free(
+			    tls->encrypted_key.buf, tls->encrypted_key.length);
+			tls->encrypted_key.buf    = NULL;
+			tls->encrypted_key.length = 0;
+		}
+
+		size_t   cipher_len = strlen(tls->encrypted_key_b64);
+		uint8_t *cipher     = nni_zalloc(cipher_len);
+		if (cipher == NULL) {
+			log_error("Failed to alloc encrypted_key "
+			          "decode buffer");
+			return;
+		}
+
+		size_t decoded_len =
+		    nni_base64_decode((const char *) tls->encrypted_key_b64,
+		        cipher_len, cipher, cipher_len);
+		if (decoded_len <= 32) {
+			log_error(
+			    "failed to base64 decode "
+			    "tls.encrypted_key, decoded length is too short");
+			nni_free(cipher, cipher_len);
+			return;
+		}
+
+		tls->encrypted_key.buf    = cipher;
+		tls->encrypted_key.length = decoded_len;
+	} else {
+		if (tls->encrypted_key.buf) {
+			nni_free(
+			    tls->encrypted_key.buf, tls->encrypted_key.length);
+			tls->encrypted_key.buf    = NULL;
+			tls->encrypted_key.length = 0;
+		}
+	}
+}
+
 static void
 conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 {
@@ -478,6 +522,12 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 		hocon_read_bool_base(tls, set_fail, "fail_if_no_peer_cert", jso_tls);
 		hocon_read_bool(tls, cert_encrypted, jso_tls);
 		hocon_read_str(tls, sni, jso_tls);
+
+		hocon_read_str(tls, encrypt_method, jso_tls);
+		hocon_read_str_base(
+		    tls, encrypted_key_b64, "encrypted_key", jso_tls);
+
+		conf_tls_parse_encrypted_key(tls);
 
 		if (tls->keyfile) {
 			if (tls->cert_encrypted == false) {
@@ -804,8 +854,11 @@ conf_auth_parse_cipher(conf_auth *auth, const char *key)
 			log_error("failed to base64 decode auth.password");
 		} else {
 			int   plain_sz;
-			char *plain = nni_aes_gcm_decrypt(
-					cipher, cipher_sz, (char *)key, &plain_sz);
+			const char *method =
+			    aes_gcm_get_method_by_key_len(strlen(key));
+			uint8_t *plain = nni_aes_gcm_decrypt(
+			    (uint8_t *) cipher, cipher_sz, (uint8_t *) key,
+			    strlen(key), &plain_sz, method);
 			nng_free(cipher, cipher_sz);
 			if (plain == NULL || plain_sz == 0) {
 				log_error("failed to decrypt auth.password");
@@ -840,8 +893,11 @@ conf_http_server_parse_cipher(conf_http_server *http, const char *key)
 			log_error("failed to base64 decode http_server.password sz%ld", cipher_sz);
 		} else {
 			int   plain_sz;
-			char *plain = nni_aes_gcm_decrypt(
-					cipher, cipher_sz, (char *)key, &plain_sz);
+			const char *method =
+			    aes_gcm_get_method_by_key_len(strlen(key));
+			char *plain = (char *) nni_aes_gcm_decrypt(
+			    (uint8_t *) cipher, cipher_sz, (uint8_t *) key,
+			    strlen(key), &plain_sz, method);
 			nng_free(cipher, cipher_sz);
 			if (plain == NULL || plain_sz == 0) {
 				log_error("failed to decrypt http_server.password");
@@ -870,8 +926,11 @@ conf_http_server_parse_cipher(conf_http_server *http, const char *key)
 			log_error("failed to base64 decode http_server.passwords[%d] sz%ld", i, cipher_sz);
 		} else {
 			int   plain_sz;
-			char *plain = nni_aes_gcm_decrypt(
-					cipher, cipher_sz, (char *)key, &plain_sz);
+			const char *method =
+			    aes_gcm_get_method_by_key_len(strlen(key));
+			char *plain = (char *) nni_aes_gcm_decrypt(
+			    (uint8_t *) cipher, cipher_sz, (uint8_t *) key,
+			    strlen(key), &plain_sz, method);
 			nng_free(cipher, cipher_sz);
 			if (plain == NULL || plain_sz == 0) {
 				log_error("failed to decrypt http_server.passwords[%d]", i);
@@ -1566,7 +1625,9 @@ conf_bridge_node_parse_cipher_certs(conf_bridge_node *node)
 		if (tls->cert_encrypted == false) {
 			// ignore
 		} else {
-			len = file_load_aes_decrypt(tls->keyfile, (void **) &tls->key);
+			len = file_load_aes_decrypt(tls->keyfile,
+			    (void **) &tls->key, tls->encrypted_key.buf,
+			    tls->encrypted_key.length, tls->encrypt_method);
 			if (len == 0) {
 				printf("conf: Read encrypted keyfile %s failed!\n", tls->keyfile);
 				log_error("Read encrypted keyfile %s failed!", tls->keyfile);
@@ -1578,7 +1639,9 @@ conf_bridge_node_parse_cipher_certs(conf_bridge_node *node)
 		if (tls->cert_encrypted == false) {
 			// ignore
 		} else {
-			len = file_load_aes_decrypt(tls->certfile, (void **) &tls->cert);
+			len = file_load_aes_decrypt(tls->certfile,
+			    (void **) &tls->cert, tls->encrypted_key.buf,
+			    tls->encrypted_key.length, tls->encrypt_method);
 			if (len == 0) {
 				printf("conf: Read encrypted certfile %s failed!\n", tls->certfile);
 				log_error("Read encrypted certfile %s failed!", tls->certfile);
@@ -1590,7 +1653,9 @@ conf_bridge_node_parse_cipher_certs(conf_bridge_node *node)
 		if (tls->cert_encrypted == false) {
 			// ignore
 		} else {
-			len = file_load_aes_decrypt(tls->cafile, (void **) &tls->ca);
+			len = file_load_aes_decrypt(tls->cafile,
+			    (void **) &tls->ca, tls->encrypted_key.buf,
+			    tls->encrypted_key.length, tls->encrypt_method);
 			if (len == 0) {
 				printf("conf: Read encrypted cafile %s failed!\n", tls->cafile);
 				log_error("Read encrypted cafile %s failed!", tls->cafile);
@@ -1608,22 +1673,26 @@ conf_bridge_node_parse_cipher_password(conf_bridge_node *node, const char *commo
 	if (node->password_encrypted && node->password && strlen(node->password) > 0) {
 		char * password = node->password;
 		size_t cipher_sz;
-		char * cipher = nng_alloc(sizeof(char) * strlen(password));
+		uint8_t *cipher = nng_alloc(sizeof(char) * strlen(password));
 		if (!cipher) {
 			printf("conf: Failed to alloc cipher. NOMEM\n");
 			log_error("Failed to alloc cipher. NOMEM");
 			return;
 		}
-		cipher_sz = nni_base64_decode((const char*)password,
-			strlen(password), (uint8_t *)cipher, strlen(password));
+		cipher_sz = nni_base64_decode((const char *) password,
+		    strlen(password), cipher, strlen(password));
 		if (cipher_sz <= 32) {
 			nng_free(cipher, cipher_sz);
 			printf("conf: failed to base64 decode bridge.password\n");
 			log_error("failed to base64 decode bridge.password");
 		} else {
 			int   plain_sz;
-			char *plain = nni_aes_gcm_decrypt(
-				cipher, cipher_sz, (char *)commonkey, &plain_sz);
+			const char *method =
+			    aes_gcm_get_method_by_key_len(strlen(commonkey));
+			char *plain =
+			    (char *) nni_aes_gcm_decrypt((uint8_t *) cipher,
+			        cipher_sz, (uint8_t *) commonkey,
+			        strlen(commonkey), &plain_sz, method);
 			nng_free(cipher, cipher_sz);
 			if (plain == NULL || plain_sz == 0) {
 				printf("conf: failed to decrypt bridge.password\n");

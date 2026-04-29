@@ -17,6 +17,8 @@
 #include "nng/supplemental/tls/tls.h"
 #include "nng/supplemental/nanolib/nanolib.h"
 #include "nng/supplemental/util/idhash.h"
+#include "supplemental/base64/base64.h"
+
 #include <ctype.h>
 
 static void conf_bridge_parse(conf *nanomq_conf, const char *path);
@@ -348,6 +350,17 @@ conf_tls_parse(
 		    NULL) {
 			FREE_NONULL(tls->key_password);
 			tls->key_password = value;
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                prefix1, prefix2, "tls.encrypt_method")) !=
+		    NULL) {
+			FREE_NONULL(tls->encrypt_method);
+			tls->encrypt_method = value;
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                prefix1, prefix2, "tls.encrypted_key_b64")) !=
+		    NULL) {
+			FREE_NONULL(tls->encrypted_key_b64);
+			tls->encrypted_key_b64 = value;
+			conf_tls_parse_encrypted_key(tls);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                prefix1, prefix2, "tls.keyfile")) != NULL) {
 			FREE_NONULL(tls->key);
@@ -828,6 +841,10 @@ conf_tls_init(conf_tls *tls)
 	tls->verify_peer    = false;
 	tls->cert_encrypted = false;
 	tls->sni            = NULL;
+
+	tls->encrypt_method    = NULL;
+	tls->encrypted_key_b64 = NULL;
+	tls->encrypted_key     = (mqtt_buf) { .buf = NULL, .length = 0 };
 }
 
 void
@@ -856,6 +873,19 @@ conf_tls_destroy(conf_tls *tls)
 	if (tls->key_password) {
 		free(tls->key_password);
 		tls->key_password = NULL;
+	}
+	if (tls->encrypt_method) {
+		free(tls->encrypt_method);
+		tls->encrypt_method = NULL;
+	}
+	if (tls->encrypted_key.buf) {
+		nni_free(tls->encrypted_key.buf, tls->encrypted_key.length);
+		tls->encrypted_key.buf    = NULL;
+		tls->encrypted_key.length = 0;
+	}
+	if (tls->encrypted_key_b64) {
+		free(tls->encrypted_key_b64);
+		tls->encrypted_key_b64 = NULL;
 	}
 	if (tls->cert) {
 		free(tls->cert);
@@ -3889,9 +3919,15 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		if (node->tls.enable) {
 			log_info("%sbridge.mqtt.%s.tls:", prefix, node->name);
 			log_info("	key file:         %s", node->tls.keyfile);
-			log_info("	cert file:        %s", node->tls.certfile);
+			log_info(
+			    "	cert file:        %s", node->tls.certfile);
 			log_info("	cacert file:      %s", node->tls.cafile);
-			log_info("	cert_encrypted:   %s", node->tls.cert_encrypted ? "true" : "false");
+			log_info("	cert_encrypted:   %s",
+			    node->tls.cert_encrypted ? "true" : "false");
+			log_info("	encrypt_method:   %s",
+			    node->tls.encrypt_method);
+			log_info("	encrypted_key:     %s",
+			    node->tls.encrypted_key_b64 ? "true" : "false");
 			log_info("	sni:              %s", node->tls.sni);
 		}
 		log_info("%sbridge.mqtt.%s.forwards: ", prefix, node->name);
