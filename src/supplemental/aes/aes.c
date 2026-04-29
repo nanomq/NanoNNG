@@ -9,33 +9,103 @@
 
 // Refer to nanomq/extern/aes_gcm.c.
 
-static const char aes_gcm_aad[] =
+static const uint8_t aes_gcm_aad[] =
 {0x4d, 0x23, 0xc3, 0xce, 0xc3, 0x34, 0xb4, 0x9b, 0xdb, 0x37, 0x0c, 0x43,
  0x7f, 0xec, 0x78, 0xde};
 static const int  aes_gcm_aad_sz = 16;
-static const char aes_gcm_iv[] =
+static const uint8_t aes_gcm_iv[] =
 {0x99, 0xaa, 0x3e, 0x68, 0xed, 0x81, 0x73, 0xa0, 0xee, 0xd0, 0x66, 0x84};
 
-char*
-nni_aes_gcm_decrypt(char *cipher, int cipher_len, char *key, int *plain_lenp)
+const char *
+aes_gcm_get_method_by_key_len(size_t key_len)
 {
-	const EVP_CIPHER *cipher_handle;
-	switch (strlen(key) * 8) {
-	case 128:
-		cipher_handle = EVP_aes_128_gcm();
-		break;
-	case 192:
-		cipher_handle = EVP_aes_192_gcm();
-		break;
-	case 256:
-		cipher_handle = EVP_aes_256_gcm();
-		break;
+	switch (key_len) {
+	case 16:
+		return "AES128-GCM";
+	case 24:
+		return "AES192-GCM";
+	case 32:
+		return "AES256-GCM";
 	default:
-		log_error("Unsupported aes key length");
+		return NULL;
+	}
+}
+
+static int
+aes_gcm_expected_key_len(const char *encrypt_method)
+{
+	if (encrypt_method == NULL || strlen(encrypt_method) == 0) {
+		log_error(
+		    "encrypt_method is null or empty, please set "
+		    "encrypt_method in conf file when cert_encrypted is true");
+		return 0;
+	}
+
+	if (nng_strcasecmp(encrypt_method, "AES128-GCM") == 0) {
+		return 16;
+	}
+	if (nng_strcasecmp(encrypt_method, "AES192-GCM") == 0) {
+		return 24;
+	}
+	if (nng_strcasecmp(encrypt_method, "AES256-GCM") == 0) {
+		return 32;
+	}
+
+	log_error("Unsupported encrypt method: %s", encrypt_method);
+	return 0;
+}
+
+static const EVP_CIPHER *
+aes_gcm_select_cipher(const char *encrypt_method)
+{
+	int key_len = aes_gcm_expected_key_len(encrypt_method);
+	if (key_len == 16) {
+		return EVP_aes_128_gcm();
+	}
+	if (key_len == 24) {
+		return EVP_aes_192_gcm();
+	}
+	if (key_len == 32) {
+		return EVP_aes_256_gcm();
+	}
+	return NULL;
+}
+
+static bool
+aes_gcm_validate_key(
+    const uint8_t *key, size_t key_len, const char *encrypt_method)
+{
+	int expected = aes_gcm_expected_key_len(encrypt_method);
+	if (expected == 0) {
+		return false;
+	}
+	if (key == NULL) {
+		log_error("AES key is NULL");
+		return false;
+	}
+	if ((int) key_len != expected) {
+		log_error("AES key length mismatch for %s", encrypt_method);
+		return false;
+	}
+	return true;
+}
+
+uint8_t *
+nni_aes_gcm_decrypt(uint8_t *cipher, int cipher_len, uint8_t *key,
+	size_t key_len, int *plain_lenp, const char *encrypt_method)
+{
+	if (!aes_gcm_validate_key(key, key_len, encrypt_method)) {
 		return NULL;
 	}
 
-	if (cipher_len <= 32) {
+	const EVP_CIPHER *cipher_handle =
+	    aes_gcm_select_cipher(encrypt_method);
+
+	if (cipher_handle == NULL) {
+		return NULL;
+	}
+
+	if (cipher_len < 32) {
 		log_error("cipher text sz%d is invalid (too short)", cipher_len);
 		return NULL;
 	}
@@ -49,7 +119,7 @@ nni_aes_gcm_decrypt(char *cipher, int cipher_len, char *key, int *plain_lenp)
 	EVP_CIPHER_CTX *ctx;
 	int   len;
 	int   plain_len;
-	char *plain = NULL;
+	uint8_t *plain = NULL;
 	int   res;
 
 	/* Create and initialise the context */
@@ -72,7 +142,7 @@ nni_aes_gcm_decrypt(char *cipher, int cipher_len, char *key, int *plain_lenp)
 	}
 
 	/* Initialise key and IV */
-	if((res = EVP_DecryptInit_ex(ctx, NULL, NULL, (const unsigned char *)key, (const unsigned char *)aes_gcm_iv)) != 1) {
+	if((res = EVP_DecryptInit_ex(ctx, NULL, NULL, key, (const unsigned char *)aes_gcm_iv)) != 1) {
 		log_error("error in decrypted init");
 		goto out;
 	}
@@ -124,27 +194,24 @@ out:
 	return NULL;
 }
 
-char *
-nni_aes_gcm_encrypt(char *plain, int plainsz, char *key, int *cipher_lenp)
+uint8_t *
+nni_aes_gcm_encrypt(uint8_t *plain, int plainsz, char *key, size_t key_len,
+    int *cipher_lenp,
+    const char *encrypt_method)
 {
-	const EVP_CIPHER *cipher_handle;
-	switch (strlen(key) * 8) {
-	case 128:
-		cipher_handle = EVP_aes_128_gcm();
-		break;
-	case 192:
-		cipher_handle = EVP_aes_192_gcm();
-		break;
-	case 256:
-		cipher_handle = EVP_aes_256_gcm();
-		break;
-	default:
-		log_error("Unsupported aes key length");
+	if (!aes_gcm_validate_key((uint8_t *) key, key_len, encrypt_method)) {
+		return NULL;
+	}
+
+	const EVP_CIPHER *cipher_handle =
+	    aes_gcm_select_cipher(encrypt_method);
+
+	if (cipher_handle == NULL) {
 		return NULL;
 	}
 
 	int res = 0;
-	char *buf = malloc(sizeof(char) * (plainsz+40));
+	uint8_t *buf = malloc(sizeof(char) * (plainsz+40));
 	int cipher_len, len;
 
 	EVP_CIPHER_CTX *ctx;

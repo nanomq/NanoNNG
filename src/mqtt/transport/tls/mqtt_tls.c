@@ -1661,7 +1661,9 @@ nng_dialer_reload_tls(conf_bridge_node *node, nni_dialer *ndialer)
 				log_error("Read keyfile %s failed!", tls->keyfile);
 		} else {
 #ifdef SUPP_PARQUET
-			len = file_load_aes_decrypt(tls->keyfile, (void **) &tls->key);
+			len = file_load_aes_decrypt(tls->keyfile,
+			    (void **) &tls->key, tls->encrypted_key.buf,
+			    tls->encrypted_key.length, tls->encrypt_method);
 			if (len == 0)
 				log_error("Read encrypted keyfile %s failed!", tls->keyfile);
 #else
@@ -1680,7 +1682,9 @@ nng_dialer_reload_tls(conf_bridge_node *node, nni_dialer *ndialer)
 				log_error("Read certfile %s failed!", tls->certfile);
 		} else {
 #ifdef SUPP_PARQUET
-			len = file_load_aes_decrypt(tls->certfile, (void **) &tls->cert);
+			len = file_load_aes_decrypt(tls->certfile,
+			    (void **) &tls->cert, tls->encrypted_key.buf,
+			    tls->encrypted_key.length, tls->encrypt_method);
 			if (len == 0)
 				log_error("Read encrypted certfile %s failed!", tls->certfile);
 #else
@@ -1699,7 +1703,9 @@ nng_dialer_reload_tls(conf_bridge_node *node, nni_dialer *ndialer)
 				log_error("Read cafile %s failed!", tls->cafile);
 		} else {
 #ifdef SUPP_PARQUET
-			len = file_load_aes_decrypt(tls->cafile, (void **) &tls->ca);
+			len = file_load_aes_decrypt(tls->cafile,
+			    (void **) &tls->ca, tls->encrypted_key.buf,
+			    tls->encrypted_key.length, tls->encrypt_method);
 			if (len == 0)
 				log_error("Read encrypted cafile %s failed!", tls->cafile);
 #else
