@@ -2463,9 +2463,9 @@ conf_parquet_parse_cipher_one(conf_parquet *parquet, const char *commonkey)
 		enc->key_cipher = nng_strdup(enc->key);
 	}
 
-	char  *cipher_txt = enc->key_cipher;
-	size_t cipher_sz  = 0;
-	char  *cipher     = nng_alloc(sizeof(char) * strlen(cipher_txt));
+	char    *cipher_txt = enc->key_cipher;
+	size_t   cipher_sz  = 0;
+	uint8_t *cipher     = nng_alloc(sizeof(uint8_t) * strlen(cipher_txt));
 	if (!cipher) {
 		log_error("failed to alloc cipher for parquet key, fallback to unencrypted");
 		enc->enable = false;
@@ -2482,8 +2482,9 @@ conf_parquet_parse_cipher_one(conf_parquet *parquet, const char *commonkey)
 	}
 
 	int   plain_sz = 0;
-	char *plain = nni_aes_gcm_decrypt(
-	    cipher, (int) cipher_sz, (char *) commonkey, &plain_sz);
+	uint8_t *plain    = nni_aes_gcm_decrypt(cipher, (int) cipher_sz,
+	    (uint8_t *) commonkey, strlen(commonkey), &plain_sz,
+	    aes_gcm_get_method_by_key_len(strlen(commonkey)));
 	nng_free(cipher, cipher_sz);
 	if (plain == NULL || plain_sz == 0) {
 		log_error("failed to decrypt parquet.encryption.key, fallback to unencrypted");
@@ -2494,7 +2495,7 @@ conf_parquet_parse_cipher_one(conf_parquet *parquet, const char *commonkey)
 	if (enc->key) {
 		nng_free(enc->key, strlen(enc->key));
 	}
-	enc->key = plain;
+	enc->key = (char *)plain;
 }
 
 static void
