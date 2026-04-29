@@ -134,26 +134,58 @@ file_load_set_aes_key(const char *aeskey)
 }
 
 size_t
-file_load_aes_decrypt(const char *filepath, void **data)
+file_load_aes_decrypt(const char *filepath, void **data,
+	const uint8_t *encrypted_key, size_t encrypted_key_len,
+	const char *encrypt_method)
 {
 	int   len;
 	int   plainsz;
-	char *plain = NULL;
+	uint8_t *plain = NULL;
 	char *cipher = NULL;
+
+	uint8_t    *aeskey    = NULL;
+	size_t aeskey_len = 0;
+	const char *algorithm = NULL;
 
 	len = file_load_data(filepath, (void **)&cipher);
 	if (len == 0 || cipher == NULL)
 		return 0;
 
-	if (file_load_aes_key == NULL) {
+	if (encrypted_key != NULL && encrypted_key_len > 0) {
+
+		log_debug("Decrypting file %s with encrypted_key", filepath);
+		aeskey_len = strlen(file_load_aes_key);
+
+		aeskey     = nni_aes_gcm_decrypt((uint8_t *) encrypted_key,
+		    encrypted_key_len, (uint8_t *) file_load_aes_key,
+		    aeskey_len, &plainsz,
+		    aes_gcm_get_method_by_key_len(aeskey_len));
+
+		if (aeskey == NULL || plainsz == 0) {
+			log_error("AES decrypt encrypted_key failed!");
+			nng_free(cipher, 0);
+			return 0;
+		}
+		algorithm  = encrypt_method;
+		aeskey_len = plainsz;
+	} else {
+		log_debug("Decrypting file %s with built_in_key", filepath);
+		aeskey     = (uint8_t *) nng_strdup(file_load_aes_key);
+		aeskey_len = strlen(file_load_aes_key);
+		algorithm  = aes_gcm_get_method_by_key_len(aeskey_len);
+	}
+
+	if (aeskey == NULL) {
 		log_error("no aes key was set when decrypt file %s", filepath);
 		nng_free(cipher, 0);
 		return 0;
 	}
-	char *aeskey = file_load_aes_key;
 
-	plain = nni_aes_gcm_decrypt(cipher, len - 1, aeskey, &plainsz);
+	plainsz = 0;
+	plain   = nni_aes_gcm_decrypt((uint8_t *) cipher, len - 1, aeskey,
+	    aeskey_len, &plainsz, algorithm);
 	nng_free(cipher, 0);
+	nng_free(aeskey, aeskey_len);
 
 	if (!plain || plainsz == 0) {
 		log_error("AES decrypt %s len %d failed!", filepath, len);
