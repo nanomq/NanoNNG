@@ -385,6 +385,7 @@ mqtt_msg_content_free(nni_mqtt_proto_data *mqtt)
 			nni_free(mqtt->payload.subscribe.topic_arr,
 			    mqtt->payload.subscribe.topic_count *
 			        sizeof(nni_mqtt_topic_qos));
+			mqtt->payload.subscribe.topic_arr   = NULL;
 			mqtt->payload.subscribe.topic_count = 0;
 		}
 		if (mqtt->var_header.subscribe.properties) {
@@ -404,6 +405,7 @@ mqtt_msg_content_free(nni_mqtt_proto_data *mqtt)
 			nni_free(mqtt->payload.unsubscribe.topic_arr,
 			    mqtt->payload.unsubscribe.topic_count *
 			        sizeof(nni_mqtt_topic));
+			mqtt->payload.unsubscribe.topic_arr   = NULL;
 			mqtt->payload.unsubscribe.topic_count = 0;
 		}
 		if (mqtt->var_header.unsubscribe.properties) {
@@ -2135,6 +2137,8 @@ nni_mqtt_msg_decode_subscribe(nni_msg *msg)
 
 err:
 	nni_free(spld->topic_arr, sizeof(mqtt_topic_qos) * topic_count);
+	spld->topic_arr   = NULL;
+	spld->topic_count = 0;
 	return ret;
 }
 
@@ -2216,6 +2220,8 @@ nni_mqttv5_msg_decode_subscribe(nni_msg *msg)
 
 err:
 	nni_free(spld->topic_arr, sizeof(mqtt_topic_qos) * topic_count);
+	spld->topic_arr   = NULL;
+	spld->topic_count = 0;
 	return ret;
 }
 
@@ -2258,6 +2264,8 @@ nni_mqtt_msg_decode_suback(nni_msg *msg)
 err:
 	nni_free(mqtt->payload.suback.ret_code_arr,
 	    mqtt->payload.suback.ret_code_count);
+	mqtt->payload.suback.ret_code_arr   = NULL;
+	mqtt->payload.suback.ret_code_count = 0;
 	return ret;
 }
 
@@ -2307,6 +2315,8 @@ nni_mqttv5_msg_decode_suback(nni_msg *msg)
 err:
 	nni_free(mqtt->payload.suback.ret_code_arr,
 	    mqtt->payload.suback.ret_code_count);
+	mqtt->payload.suback.ret_code_arr   = NULL;
+	mqtt->payload.suback.ret_code_count = 0;
 	return ret;
 }
 
@@ -2702,6 +2712,8 @@ nni_mqtt_msg_decode_unsubscribe(nni_msg *msg)
 
 err:
 	nni_free(uspld->topic_arr, topic_count * sizeof(mqtt_buf));
+	uspld->topic_arr   = NULL;
+	uspld->topic_count = 0;
 
 	return ret;
 }
@@ -2771,6 +2783,8 @@ nni_mqttv5_msg_decode_unsubscribe(nni_msg *msg)
 
 err:
 	nni_free(uspld->topic_arr, topic_count * sizeof(mqtt_buf));
+	uspld->topic_arr   = NULL;
+	uspld->topic_count = 0;
 
 	return ret;
 }
