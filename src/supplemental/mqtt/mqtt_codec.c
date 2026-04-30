@@ -704,6 +704,7 @@ destory_subscribe(nni_mqtt_proto_data *mqtt)
 {
 	nni_mqtt_topic_qos_array_free(mqtt->payload.subscribe.topic_arr,
 	    mqtt->payload.subscribe.topic_count);
+	mqtt->payload.subscribe.topic_arr   = NULL;	
 	mqtt->payload.subscribe.topic_count = 0;
 }
 
@@ -734,6 +735,7 @@ destory_unsubscribe(nni_mqtt_proto_data *mqtt)
 {
 	nni_mqtt_topic_array_free(mqtt->payload.unsubscribe.topic_arr,
 	    mqtt->payload.unsubscribe.topic_count);
+	mqtt->payload.unsubscribe.topic_arr   = NULL;
 	mqtt->payload.unsubscribe.topic_count = 0;
 }
 
