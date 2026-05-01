@@ -424,23 +424,47 @@ tcptran_pipe_nego_cb(void *arg)
 			nni_list_append(&ep->waitpipes, p);
 			// Match happens before accept_cb. Make pipe id ready
 			tcptran_ep_match(ep);
-			if (p->tcp_cparam->max_packet_size == 0) {
+			conn_param *cparam = p->tcp_cparam;
+			property   *props  = cparam->properties;
+			if (props != NULL) {
+				// CONNECT's Topic Alias Maximum is client
+				// capability and must not be reused as
+				// broker's CONNACK capability.
+				property_remove(props, TOPIC_ALIAS_MAXIMUM);
+			}
+			if (cparam->max_packet_size == 0) {
 				// set default max packet size for client
-				p->tcp_cparam->max_packet_size =
-				    p->conf == NULL
+				cparam->max_packet_size = p->conf == NULL
 				    ? NANO_MAX_PACKET_SIZE
 				    : p->conf->client_max_packet_size;
-				if (p->tcp_cparam->properties != NULL) {
-					property_remove(p->tcp_cparam->properties,
-					    MAXIMUM_PACKET_SIZE);
-					property_append(p->tcp_cparam->properties,
-					    property_set_value_u32(MAXIMUM_PACKET_SIZE,
-					    					   p->tcp_cparam->max_packet_size));
+				if (props != NULL) {
+					property_remove(
+					    props, MAXIMUM_PACKET_SIZE);
+					property_append(props,
+					    property_set_value_u32(
+					        MAXIMUM_PACKET_SIZE,
+					        cparam->max_packet_size));
+				}
+			}
+			// Advertise broker's Topic Alias Maximum in CONNACK
+			// for MQTT v5. Default to 65535 to allow clients to
+			// use Topic Aliases.
+			if (p->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
+				if (props == NULL) {
+					props              = property_alloc();
+					cparam->properties = props;
+				}
+				if (props != NULL) {
+					cparam->topic_alias_max_out = 65535;
+					property_append(props,
+					    property_set_value_u16(
+					        TOPIC_ALIAS_MAXIMUM,
+					        cparam->topic_alias_max_out));
 				}
 			}
 			log_debug("max_packet_size of %.*s is %d",
-					p->tcp_cparam->clientid.len, p->tcp_cparam->clientid.body,
-					p->tcp_cparam->max_packet_size);
+			    cparam->clientid.len, cparam->clientid.body,
+			    cparam->max_packet_size);
 			nni_mtx_unlock(&ep->mtx);
 			return;
 		} else {

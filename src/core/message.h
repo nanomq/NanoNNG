@@ -116,6 +116,7 @@ struct conn_param {
 	uint16_t           rx_max;
 	uint16_t           keepalive_mqtt;
 	uint16_t           topic_alias_max;
+	uint16_t           topic_alias_max_out;
 	uint8_t            pro_ver;
 	uint8_t            con_flag;
 	uint8_t            clean_start;

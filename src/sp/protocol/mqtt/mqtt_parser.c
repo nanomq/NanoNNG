@@ -858,6 +858,7 @@ conn_param_init(conn_param *cparam)
 	cparam->rx_max                  = 65535;
 	cparam->max_packet_size         = 0;
 	cparam->topic_alias_max         = 0;
+	cparam->topic_alias_max_out     = 0;
 	cparam->req_resp_info           = 0;
 	cparam->req_problem_info        = 1;
 	cparam->auth_method             = NULL;

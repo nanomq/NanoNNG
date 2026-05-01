@@ -2518,6 +2518,12 @@ conn_param_get_keepalive(conn_param *cparam)
 	return cparam->keepalive_mqtt;
 }
 
+uint16_t
+conn_param_get_topic_alias_max_out(conn_param *cparam)
+{
+	return cparam->topic_alias_max_out;
+}
+
 uint8_t
 conn_param_get_protover(conn_param *cparam)
 {

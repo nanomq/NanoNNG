@@ -1119,6 +1119,7 @@ nni_get_conn_param_from_msg(nni_msg *msg)
 	conn_ctx->rx_max                  = 65535;
 	conn_ctx->max_packet_size         = 0;
 	conn_ctx->topic_alias_max         = 0;
+	conn_ctx->topic_alias_max_out     = 0;
 	conn_ctx->req_resp_info           = 0;
 	conn_ctx->req_problem_info        = 1;
 	conn_ctx->auth_method             = NULL;
