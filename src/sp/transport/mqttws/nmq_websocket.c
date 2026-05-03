@@ -403,6 +403,9 @@ done:
 		log_trace("MQTT Clientid is %s", p->ws_param->clientid.body);
 		if (p->ws_param->pro_ver == 5) {
 			p->qsend_quota = p->ws_param->rx_max;
+			property_append(p->ws_param->properties,
+				    property_set_value_u16(TOPIC_ALIAS_MAXIMUM,
+				        p->conf->max_topic_alias));
 		}
 		if (p->ws_param->max_packet_size == 0) {
 			// set default max packet size for client
