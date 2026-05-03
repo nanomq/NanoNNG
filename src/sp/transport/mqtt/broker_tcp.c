@@ -419,6 +419,10 @@ tcptran_pipe_nego_cb(void *arg)
 			p->pro_ver = p->tcp_cparam->pro_ver;
 			if (p->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 				p->qsend_quota = p->tcp_cparam->rx_max;
+				// add broker config to property for CONNACK
+				property_append(p->tcp_cparam->properties,
+				    property_set_value_u16(TOPIC_ALIAS_MAXIMUM,
+				        p->conf->max_topic_alias));
 			}
 			nni_list_remove(&ep->negopipes, p);
 			nni_list_append(&ep->waitpipes, p);
@@ -431,16 +435,21 @@ tcptran_pipe_nego_cb(void *arg)
 				    ? NANO_MAX_PACKET_SIZE
 				    : p->conf->client_max_packet_size;
 				if (p->tcp_cparam->properties != NULL) {
-					property_remove(p->tcp_cparam->properties,
+					property_remove(
+					    p->tcp_cparam->properties,
 					    MAXIMUM_PACKET_SIZE);
-					property_append(p->tcp_cparam->properties,
-					    property_set_value_u32(MAXIMUM_PACKET_SIZE,
-					    					   p->tcp_cparam->max_packet_size));
+					property_append(
+					    p->tcp_cparam->properties,
+					    property_set_value_u32(
+					        MAXIMUM_PACKET_SIZE,
+					        p->tcp_cparam
+					            ->max_packet_size));
 				}
 			}
 			log_debug("max_packet_size of %.*s is %d",
-					p->tcp_cparam->clientid.len, p->tcp_cparam->clientid.body,
-					p->tcp_cparam->max_packet_size);
+			    p->tcp_cparam->clientid.len,
+			    p->tcp_cparam->clientid.body,
+			    p->tcp_cparam->max_packet_size);
 			nni_mtx_unlock(&ep->mtx);
 			return;
 		} else {
