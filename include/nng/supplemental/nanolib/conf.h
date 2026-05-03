@@ -624,6 +624,8 @@ typedef enum {
 } persistence_type;
 
 struct conf {
+	int        num_taskq_thread;
+	int        max_taskq_thread;
 	char       exec_path[512];	// binary path
 	char       exec_fname[64];	// binary filename
 	char      *vin;
@@ -633,10 +635,9 @@ struct conf {
 	char      *conf_file;		// config file path
 	char      *url;
 	bool       enable;
-	int        property_size;
-	int        msq_len;
-	int        num_taskq_thread;
-	int        max_taskq_thread;
+	size_t     property_size;
+	size_t     msq_len;
+    uint16_t   max_topic_alias;
 	uint32_t   parallel;			   // broker ctx
 	uint64_t   total_ctx;		       // Total ctx of work (bridge + AWS + broker + HTTP)
 	uint64_t   max_packet_size;        // byte
