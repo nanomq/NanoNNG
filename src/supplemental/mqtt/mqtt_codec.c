@@ -3949,90 +3949,103 @@ property_free(property *prop)
 }
 
 // Check if repeated properties exist, for broker use only.
+// Check if repeated properties exist and validate property bounds, for broker use only.
 reason_code
 check_properties(property *prop, nni_msg *msg)
 {
 	uint8_t type = 0x00;
-	if (msg != NULL)
+	if (msg != NULL) {
 		type = nni_msg_get_type(msg);
+	}
 	if (prop == NULL) {
 		return SUCCESS;
 	}
-	// uint32_t pos = 0;
-#ifdef MQTTV5_VERIFY
-	bool mei = false; // MESSAGE_EXPIRY_INTERVAL:
-#endif
-	for (property *p1 = prop->next; p1 != NULL; p1 = p1->next) {
 
-		switch (p1->id) {
-		case PAYLOAD_FORMAT_INDICATOR:
-			if (p1->data.p_value.u8 > 1)
+	// MQTT 5.0 Property ID up to 0x2A (42)
+	bool seen_properties[256] = { false };
+
+	for (property *p1 = prop->next; p1 != NULL; p1 = p1->next) {
+		uint8_t prop_id = p1->id;
+
+		if (prop_id != USER_PROPERTY && prop_id != SUBSCRIPTION_IDENTIFIER) {
+			if (seen_properties[prop_id]) {
+				log_warn("Duplicated property ID: 0x%02X!", prop_id);
 				return PROTOCOL_ERROR;
-			break;
-#ifdef MQTTV5_VERIFY
-		case RESPONSE_TOPIC:
-			if (memchr((const char *) p1->data.p_value.str.buf,
-			        '+', p1->data.p_value.str.length) != NULL ||
-			    memchr((const char *) p1->data.p_value.str.buf,
-			        '#', p1->data.p_value.str.length) != NULL)
-				return PROTOCOL_ERROR;
-			break;
-		case CONTENT_TYPE:
-			// pos = 0;
-			// if (get_utf8_str(p1->data.p_value.str.buf,
-			//         p1->data.p_value.str.buf, &pos, p1->data.p_value.str.length) < 0) {
-			// 	log_warn("CONTENT TYPE error: Not UTF-8");
-			// 	return PROTOCOL_ERROR;
-			// }
-			break;
-		case SUBSCRIPTION_IDENTIFIER:
-			if (type == CMD_PUBLISH) {
-				log_warn("SUBSCRIPTION_IDENTIFIER detected in PUBLISH!");
-				return PROTOCOL_ERROR;
-			} else{
-				if (p1->data.p_value.u32 > 268435455) {
-					log_warn("SUBSCRIPTION_IDENTIFIER too large!");
-					return PROTOCOL_ERROR;
-				}
 			}
-			break;
-		case REQUEST_RESPONSE_INFORMATION:
-		case REQUEST_PROBLEM_INFORMATION:
-			if (p1->data.p_value.u8 != 0 && p1->data.p_value.u8 != 1) {
-				log_warn("REQUEST_PROBLEM_INFORMATION/REQUEST_RESPONSE_INFORMATION	\
-						  malformed value detected %x!", p1->data.p_value.u8);
-				return PROTOCOL_ERROR;	
-			}
-			break;
-		case AUTHENTICATION_DATA:
-			//It is a Protocol Error to include Authentication Data if there is no Authentication Method.
-			break;
-		case USER_PROPERTY:
-			// pos = 0;
-			// if (get_utf8_str(p1->data.p_value.str.buf,
-			//         p1->data.p_value.str.buf, &pos, p1->data.p_value.str.length) < 0) {
-			// 	log_warn("USER Property error: Not UTF-8");
-			// 	return PROTOCOL_ERROR;
-			// }
-			break;
-		case MESSAGE_EXPIRY_INTERVAL:
-			if (mei) {
-				log_warn("Duplicated MESSAGE_EXPIRY_INTERVAL!");
-				return PROTOCOL_ERROR;
-			} else {
-				mei = true;
-			}
-			break;
-#endif
-		default:
-			break;
+			seen_properties[prop_id] = true;
 		}
 
-		for (property *p2 = p1->next; p2 != NULL; p2 = p2->next) {
-			if (p1->id == p2->id &&
-			    p1->data.p_type != STR_PAIR) {
+		switch (prop_id) {
+		case PAYLOAD_FORMAT_INDICATOR:          // 0x01
+		case REQUEST_PROBLEM_INFORMATION:       // 0x17
+		case REQUEST_RESPONSE_INFORMATION:      // 0x19
+		case RETAIN_AVAILABLE:                  // 0x25
+		case WILDCARD_SUBSCRIPTION_AVAILABLE:   // 0x28
+		case SUBSCRIPTION_IDENTIFIER_AVAILABLE: // 0x29
+		case SHARED_SUBSCRIPTION_AVAILABLE:     // 0x2A
+			if (p1->data.p_value.u8 > 1) {
+				log_warn("Invalid boolean value for property 0x%02X: %d", prop_id, p1->data.p_value.u8);
 				return PROTOCOL_ERROR;
 			}
+			break;
+
+		case RECEIVE_MAXIMUM: // 0x21
+			if (p1->data.p_value.u16 == 0) {
+				log_warn("RECEIVE_MAXIMUM cannot be 0!");
+				return PROTOCOL_ERROR;
+			}
+			break;
+
+		case MAXIMUM_PACKET_SIZE: // 0x27
+			if (p1->data.p_value.u32 == 0) {
+				log_warn("MAXIMUM_PACKET_SIZE cannot be 0!");
+				return PROTOCOL_ERROR;
+			}
+			break;
+
+		// blocking TOPIC_ALIAS_MAXIMUM
+		case TOPIC_ALIAS_MAXIMUM: // 0x22
+			if (type == 0x00 || type == CMD_CONNECT) {
+				log_warn("Client carried TOPIC_ALIAS_MAXIMUM. Connection rejected!");
+				return PROTOCOL_ERROR;
+			}
+			break;
+
+		case TOPIC_ALIAS: // 0x23
+			if (p1->data.p_value.u16 == 0) {
+				log_warn("TOPIC_ALIAS cannot be 0!");
+				return TOPIC_ALIAS_INVALID;
+			}
+
+			if (type == CMD_PUBLISH) {
+				log_warn("Topic Alias is explicitly rejected for security! Disconnecting...");
+				return TOPIC_ALIAS_INVALID;
+			}
+			break;
+
+		case RESPONSE_TOPIC: // 0x08
+			if (memchr((const char *) p1->data.p_value.str.buf, '+', p1->data.p_value.str.length) != NULL ||
+			    memchr((const char *) p1->data.p_value.str.buf, '#', p1->data.p_value.str.length) != NULL) {
+				log_warn("RESPONSE_TOPIC contains wildcard!");
+				return PROTOCOL_ERROR;
+			}
+			break;
+
+		case SUBSCRIPTION_IDENTIFIER: // 0x0B
+			// shall not be 0，up to (268,435,455)
+			if (p1->data.p_value.varint == 0 || p1->data.p_value.varint > 268435455) {
+				log_warn("SUBSCRIPTION_IDENTIFIER invalid value: %d", p1->data.p_value.varint);
+				return PROTOCOL_ERROR;
+			}
+			// PUBLISH from client to broker shall not contain Subscription Identifier
+			if (type == CMD_PUBLISH) {
+				log_warn("SUBSCRIPTION_IDENTIFIER detected in upstream PUBLISH!");
+				return PROTOCOL_ERROR;
+			}
+			break;
+
+		default:
+			break;
 		}
 	}
 
@@ -4332,9 +4345,6 @@ encode_properties(nni_msg *msg, property *prop, uint8_t cmd)
 			nni_mqtt_msg_append_u8(msg, p->data.p_value.u8);
 			break;
 		case U16:
-			if (p->id == TOPIC_ALIAS_MAXIMUM)
-				nni_mqtt_msg_append_u16(msg, 0xFFFF);
-			else
 				nni_mqtt_msg_append_u16(msg, p->data.p_value.u16);
 			break;
 		case U32:
