@@ -420,9 +420,13 @@ tcptran_pipe_nego_cb(void *arg)
 			if (p->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 				p->qsend_quota = p->tcp_cparam->rx_max;
 				// add broker config to property for CONNACK
-				property_append(p->tcp_cparam->properties,
-				    property_set_value_u16(TOPIC_ALIAS_MAXIMUM,
-				        p->conf->max_topic_alias));
+				if (p->tcp_cparam->properties == NULL) {
+                    p->tcp_cparam->properties = property_alloc();
+                }
+				if (p->conf != NULL && p->conf->max_topic_alias > 0) {
+                    property_append(p->tcp_cparam->properties,
+                        property_set_value_u16(TOPIC_ALIAS_MAXIMUM,
+                            p->conf->max_topic_alias));
 			}
 			nni_list_remove(&ep->negopipes, p);
 			nni_list_append(&ep->waitpipes, p);
