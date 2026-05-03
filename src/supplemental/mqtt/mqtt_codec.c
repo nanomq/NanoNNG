@@ -3863,6 +3863,7 @@ property_dup(property **dup, const property *src)
 		return -1;
 	}
 	property *list = property_alloc();
+	property *tail = list;
 
 	for (property *p = src->next; p != NULL; p = p->next) {
 		property_type_enum type = property_get_value_type(p->id);
@@ -3904,7 +3905,8 @@ property_dup(property **dup, const property *src)
 			break;
 		}
 		if (item) {
-			property_append(list, item);
+			tail->next = item;
+			tail = item;
 		}
 		item = NULL;
 	}
@@ -4082,6 +4084,8 @@ decode_buf_properties(uint8_t *packet, uint32_t packet_len, uint32_t *pos,
 	}
 	uint8_t prop_id = 0;
 	list            = property_alloc();
+	// for security sake
+	property *tail  = list;
 	/* Check properties appearance time */
 	// TODO
 	while (buf.curpos < buf.endpos) {
@@ -4099,7 +4103,9 @@ decode_buf_properties(uint8_t *packet, uint32_t packet_len, uint32_t *pos,
 			list = NULL;
 			break;
 		}
-		property_append(list, cur_prop);
+		// O(1) complexity
+		tail->next = cur_prop;
+		tail = cur_prop;
 	}
 
 out:
