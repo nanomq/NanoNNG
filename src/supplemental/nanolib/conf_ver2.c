@@ -340,6 +340,8 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 		config->client_max_packet_size = config->max_packet_size;
 		hocon_read_num_base(
 		    config, msq_len, "max_mqueue_len", jso_mqtt);
+		hocon_read_num_base(
+		    config, msq_len, "max_topic_alias", jso_mqtt);
 		hocon_read_time_base(
 		    config, qos_duration, "retry_interval", jso_mqtt);
 		hocon_read_num_base(
