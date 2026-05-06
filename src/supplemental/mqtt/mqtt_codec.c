@@ -1877,8 +1877,8 @@ nni_mqttv5_msg_decode_connect(nni_msg *msg)
 			if ((ret = check_properties(will_prop, msg)) != SUCCESS)
 				return ret;
 			// Check Invalid properties
-			for (property *p = prop->next; p != NULL;
-			     p           = p->next) {
+			for (property *p = will_prop->next; p != NULL;
+			    p            = p->next) {
 				switch (p->id) {
 				case PAYLOAD_FORMAT_INDICATOR:
 					if (p->data.p_value.u8 > 1)
