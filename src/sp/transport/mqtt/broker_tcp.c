@@ -427,6 +427,7 @@ tcptran_pipe_nego_cb(void *arg)
                     property_append(p->tcp_cparam->properties,
                         property_set_value_u16(TOPIC_ALIAS_MAXIMUM,
                             p->conf->max_topic_alias));
+				}
 			}
 			nni_list_remove(&ep->negopipes, p);
 			nni_list_append(&ep->waitpipes, p);
