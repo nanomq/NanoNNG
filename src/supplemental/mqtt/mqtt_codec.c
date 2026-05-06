@@ -472,7 +472,8 @@ nni_mqtt_msg_dup(void **dest, const void *src)
 			    s->var_header.connect.properties);
 		}
 		if (s->payload.connect.will_properties) {
-			rv += property_dup(&mqtt->var_header.connect.properties,
+			rv += property_dup(
+			    &mqtt->payload.connect.will_properties,
 			    s->payload.connect.will_properties);
 		}
 		break;
