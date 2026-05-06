@@ -411,6 +411,7 @@ done:
 				    property_set_value_u16(TOPIC_ALIAS_MAXIMUM,
 				        p->conf->max_topic_alias));
 			}
+		}
 		if (p->ws_param->max_packet_size == 0) {
 			// set default max packet size for client
 			p->ws_param->max_packet_size =
