@@ -577,12 +577,13 @@ nni_quic_dialer_close(void *arg)
 		nni_aio *aio;
 		d->closed = true;
 		while ((aio = nni_list_first(&d->connq)) != NULL) {
-			ex_quic_conn *ec;
+			nni_quic_conn *c;
 			nni_list_remove(&d->connq, aio);
-			if ((ec = nni_aio_get_prov_data(aio)) != NULL) {
-				ec->main->dial_aio = NULL;
+			if ((c = nni_aio_get_prov_data(aio)) != NULL) {
+				c->dial_aio = NULL;
 				// nni_aio_set_prov_data(aio, NULL);
-				nng_stream_close(&ec->stream);
+				if (c->ec)
+					nng_stream_close(&c->ec->stream);
 				// We don't need to free the quic stream. Because it would be free
 				// in QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE state.
 				// QUIC_STREAM_EVENT_START_COMPLETE is not necessary to trigger
