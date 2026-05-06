@@ -3960,6 +3960,10 @@ check_properties(property *prop, nni_msg *msg)
 	uint8_t type = 0x00;
 	if (msg != NULL) {
 		type = nni_msg_get_type(msg);
+		if (type == 0x00) {
+			log_warn("Invalid msg type found!");
+			return UNSPECIFIED_ERROR;
+		}
 	}
 	if (prop == NULL) {
 		return SUCCESS;
@@ -4009,7 +4013,7 @@ check_properties(property *prop, nni_msg *msg)
 
 		// blocking TOPIC_ALIAS_MAXIMUM
 		case TOPIC_ALIAS_MAXIMUM: // 0x22
-			if (type == 0x00 || type == CMD_CONNECT) {
+			if (type != CMD_CONNECT && type != CMD_CONNACK) {
 				log_warn("Client carried TOPIC_ALIAS_MAXIMUM. Connection rejected!");
 				return PROTOCOL_ERROR;
 			}
