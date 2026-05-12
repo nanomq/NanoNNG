@@ -597,15 +597,37 @@ struct conf_web_hook {
 };
 
 typedef struct conf_web_hook  conf_web_hook;
+
+struct conf_nng_pub_node {
+	char       *name;
+	nng_socket  pub_sock;
+	char       *pub_url;
+	char       *clientid;
+	conn_param *client; // For ACL usage
+	topics    **pub_list;
+	size_t      forwards_count;
+};
+typedef struct conf_nng_pub_node conf_nng_pub_node;
+
+struct conf_nng_sub_node {
+	char      *name;
+	nng_socket sub_sock;
+	char      *sub_url;
+	char       *clientid;
+	conn_param *client; // For ACL usage
+	// NNG topics must be topic/payload, no multiple "/"
+	topics **sub_list;
+	size_t   inwards_count;
+};
+typedef struct conf_nng_sub_node conf_nng_sub_node;
+
 struct conf_nng_bridge {
-	bool                 enable;
-	char                *sub_url;
-	char                *pub_url;
-	char                 protocol;
-	char                 transport;
-	nng_socket           pub_sock;
-	nng_socket           sub_sock;
-	conn_param          *vclient;
+	bool                pub_enable;
+	bool                sub_enable;
+	conf_nng_pub_node **pnodes;
+	conf_nng_sub_node **snodes;
+	size_t              pub_count;
+	size_t              sub_count;
 };
 
 typedef struct conf_nng_bridge  conf_nng_bridge;
