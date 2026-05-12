@@ -1207,6 +1207,7 @@ conf_nng_pnode_parse(
 		s->qos    = NO_QOS;
 		hocon_read_str(s, remote_topic, forward);
 		hocon_read_str(s, local_topic, forward);
+		hocon_read_str(s, nng_delimiter, forward);
 		hocon_read_num(s, qos, forward);
 		cJSON *jso_key2 = cJSON_GetObjectItem(forward, "qos");
 		if (cJSON_IsNumber(jso_key2) &&
@@ -1221,6 +1222,8 @@ conf_nng_pnode_parse(
 			s->remote_topic_len = strlen(s->remote_topic);
 		if (s->local_topic)
 			s->local_topic_len  = strlen(s->local_topic);
+		if (s->nng_delimiter)
+			s->nng_delimiter_len = strlen(s->nng_delimiter);
 		cvector_push_back(node->pub_list, s);
 	}
 	node->forwards_count = cvector_size(node->pub_list);
@@ -1242,6 +1245,7 @@ conf_nng_snode_parse(
 		s->qos    = NO_QOS;
 		hocon_read_str(s, remote_topic, subscription);
 		hocon_read_str(s, local_topic, subscription);
+		hocon_read_str(s, nng_delimiter, subscription);
 		hocon_read_num(s, qos, subscription);
 		cJSON *jso_key2 = cJSON_GetObjectItem(subscription, "qos");
 		if (cJSON_IsNumber(jso_key2) &&
@@ -1256,6 +1260,8 @@ conf_nng_snode_parse(
 			s->remote_topic_len = strlen(s->remote_topic);
 		if (s->local_topic)
 			s->local_topic_len  = strlen(s->local_topic);
+		if (s->nng_delimiter)
+			s->nng_delimiter_len = strlen(s->nng_delimiter);
 		cvector_push_back(node->sub_list, s);
 	}
 	node->inwards_count = cvector_size(node->sub_list);
