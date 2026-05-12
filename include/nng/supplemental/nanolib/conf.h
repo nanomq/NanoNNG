@@ -605,6 +605,7 @@ struct conf_nng_bridge {
 	char                 transport;
 	nng_socket           pub_sock;
 	nng_socket           sub_sock;
+	conn_param          *vclient;
 };
 
 typedef struct conf_nng_bridge  conf_nng_bridge;
