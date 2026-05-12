@@ -2143,23 +2143,59 @@ mqtt_get_remaining_length(uint8_t *packet, uint32_t len,
 /**
  * @brief convert NNG sub0 msg to standard MQTT V4 msg.
  * 
- * @param origin topic with wildcard 
- * @param input  topic in pub packet
- * @return true 
- * @return false 
+ * @param origin original NNG Sub msg
+ * @param topic  overwrite original topic of NNG
+ * @return nng_msg
  */
 nng_msg *
 nng_sub0_msg_adapter(nng_msg *origin, char *topic)
 {
 	nng_msg *mqtt_msg = NULL;
-	const uint8_t *payload     = nng_msg_body(origin);
-	size_t         payload_len = nng_msg_len(origin);
+	const uint8_t *body     = nng_msg_body(origin);
+	size_t         body_len = nng_msg_len(origin);
+
+	if (body == NULL || body_len == 0) {
+		log_error("Empty origin message");
+		return NULL;
+	}
+
+	// Find the last '/' to separate topic and payload.
+	// NNG SUB msg format: "topic/path/payload" -> Topic: "topic/path", Payload: "payload"
+	const char *ptr = (const char *)body;
+	char       *sep = NULL;
+
+	for (size_t i = 0; i < body_len; i++) {
+		if (ptr[i] == '/') {
+			sep = &ptr[i];
+		}
+	}
+
+	// If no separator found, or starts with '/', fallback to using the whole message as payload.
+	if (sep == NULL || sep == ptr) {
+		log_warn("No valid topic/payload separator found in NNG sub0 msg.");
+		mqtt_msg = nano_encode_publish_msg(MQTT_PROTOCOL_VERSION_v311,
+		    0, false, false, body, body_len, NULL, topic, NULL);
+		return mqtt_msg;
+	}
+
+	size_t   topic_len    = sep - ptr;
+	char    *topic_buf    = nng_zalloc(topic_len + 1);
+	uint8_t *payload_data = (uint8_t *) sep + 1;
+	size_t   payload_len  = body_len - (topic_len + 1);
+
+	if (!topic_buf) {
+		log_error("Failed to allocate memory for topic");
+		return NULL;
+	}
+
+	memcpy(topic_buf, ptr, topic_len);
 
 	mqtt_msg = nano_encode_publish_msg(MQTT_PROTOCOL_VERSION_v311, 0,
-	    false, false, payload, payload_len, NULL, topic, NULL);
+	    false, false, payload_data, payload_len, NULL, topic_buf, NULL);
+
+	nng_free(topic_buf, topic_len + 1);
 	if (mqtt_msg == NULL) {
 		log_error("Build MQTT msg from NNG sub0 msg failed");
 	}
-
 	return mqtt_msg;
 }
