@@ -3095,9 +3095,24 @@ conf_bridge_init(conf_bridge *bridge)
 static void
 conf_nng_proxy_init(conf_nng_bridge *proxy)
 {
-	proxy->enable = true;
-	proxy->sub_url = nng_strdup("tcp://localhost:9900");
-	proxy->pub_url = nng_strdup("tcp://localhost:9901");
+	proxy->pub_enable = false;
+	proxy->sub_enable = false;
+	proxy->pnodes = NULL;
+	proxy->snodes = NULL;
+}
+
+void
+conf_bridge_pnode_init(conf_nng_pub_node *node)
+{
+	node->pub_url = NULL;
+	node->pub_list = NULL;
+}
+
+void
+conf_bridge_snode_init(conf_nng_sub_node *node)
+{
+	node->sub_url = NULL;
+	node->sub_list = NULL;
 }
 
 void
