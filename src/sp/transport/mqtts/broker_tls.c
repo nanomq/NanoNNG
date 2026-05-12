@@ -228,7 +228,10 @@ tlstran_pipe_fini(void *arg)
 		nni_mtx_unlock(&ep->mtx);
 	}
 	nni_mtx_lock(&p->mtx);
-	void *nano_qos_db = p->npipe->nano_qos_db;
+	void *nano_qos_db = NULL;
+	if (p->npipe != NULL) {
+		nano_qos_db = p->npipe->nano_qos_db;
+	}
 	if (p->npipe != NULL && p->conf != NULL &&
 		!p->conf->sqlite.enable && nano_qos_db != NULL) {
 		nni_qos_db_remove_all_msg(

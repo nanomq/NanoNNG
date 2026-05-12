@@ -1343,7 +1343,10 @@ wstran_pipe_fini(void *arg)
 	nni_lmq_flush(&p->recvlmq);
 	nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
 	// must free nano_qos_db in fini for safety
-	void *nano_qos_db = p->npipe->nano_qos_db;
+	void *nano_qos_db = NULL;
+	if (p->npipe != NULL) {
+		nano_qos_db = p->npipe->nano_qos_db;
+	}
 	if (p->npipe != NULL && p->conf != NULL &&
 		!p->conf->sqlite.enable && nano_qos_db != NULL) {
 		nni_qos_db_remove_all_msg(
