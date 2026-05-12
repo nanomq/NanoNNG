@@ -597,6 +597,17 @@ struct conf_web_hook {
 };
 
 typedef struct conf_web_hook  conf_web_hook;
+struct conf_nng_bridge {
+	bool                 enable;
+	char                *sub_url;
+	char                *pub_url;
+	char                 protocol;
+	char                 transport;
+	nng_socket           pub_sock;
+	nng_socket           sub_sock;
+};
+
+typedef struct conf_nng_bridge  conf_nng_bridge;
 
 typedef enum {
 	memory,
@@ -617,7 +628,7 @@ struct conf {
 	size_t     msq_len;
     uint16_t   max_topic_alias;
 	uint32_t   parallel;			   // broker ctx
-	uint64_t   total_ctx;		       // Total ctx of work (bridge + AWS + broker + HTTP)
+	uint64_t   total_ctx;		       // aio number of any ctx will send msg to bridge. (bridge + AWS + broker + HTTP + nng_sub)
 	uint64_t   max_packet_size;        // byte
 	uint32_t   client_max_packet_size; // byte
 	uint32_t   max_inflight_window;
@@ -642,7 +653,7 @@ struct conf {
 	conf_bridge          aws_bridge;	// AWS IoT Core
 	conf_exchange        exchange;
 	conf_parquet         parquet;
-	conf_blf             blf;
+	conf_nng_bridge      nng_proxy;
 #if defined(SUPP_PLUGIN)
 	conf_plugin          plugin;
 #endif

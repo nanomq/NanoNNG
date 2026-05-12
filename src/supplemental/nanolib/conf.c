@@ -50,6 +50,7 @@ static void conf_sqlite_destroy(conf_sqlite *sqlite);
 static void conf_web_hook_parse(conf_web_hook *webhook, const char *path);
 static void conf_web_hook_destroy(conf_web_hook *web_hook);
 static void conf_preset_sessions_init(conf_preset_session *session);
+static void conf_nng_proxy_init(conf_nng_bridge *proxy);
 
 #if defined(ENABLE_LOG)
 static void conf_log_init(conf_log *log);
@@ -970,7 +971,9 @@ conf_init(conf *nanomq_conf)
 	nng_mtx_alloc(&nanomq_conf->auth_http.acl_cache_mtx);
 	nanomq_conf->auth_http.acl_cache_reset_aio = NULL;
 	nanomq_conf->ext_qos_db                    = NULL;
+
 	conf_preset_sessions_init(&nanomq_conf->pre_sessions);
+	conf_nng_proxy_init(&nanomq_conf->nng_proxy);
 	memset(nanomq_conf->exec_path, 0, 512);
 	nng_atomic_alloc(&nanomq_conf->lc);		// Marks current total connections
 }
@@ -1223,19 +1226,6 @@ print_parquet_conf(conf_parquet *parquet)
 	log_info("parquet limit_frequency:  %d", parquet->limit_frequency);
 }
 
-static void
-print_blf_conf(conf_blf *blf)
-{
-	if (!blf->enable)
-		return;
-	log_info("blf dir:              %s", blf->dir);
-	const char *encode_type = get_compress_type(blf->comp_type);
-	log_info("blf compress:         %s", encode_type);
-	log_info("blf file_name_prefix: %s", blf->file_name_prefix);
-	log_info("blf file_count:       %d", blf->file_count);
-	log_info("blf file_size:        %d", blf->file_size);
-}
-
 #if defined(SUPP_RULE_ENGINE)
 static void
 print_rule_engine_conf(conf_rule *rule_eng)
@@ -1429,14 +1419,12 @@ print_conf(conf *nanomq_conf)
 	conf_auth_http *auth_http = &(nanomq_conf->auth_http);
 	conf_web_hook  *webhook   = &(nanomq_conf->web_hook);
 	conf_parquet   *parquet   = &(nanomq_conf->parquet);
-	conf_blf       *blf       = &(nanomq_conf->blf);
 	conf_exchange  *exchange  = &(nanomq_conf->exchange);
 	print_auth_conf(auth);
 	print_auth_http_conf(auth_http);
 	print_webhook_conf(webhook);
 	print_exchange_conf(exchange);
 	print_parquet_conf(parquet);
-	print_blf_conf(blf);
 	print_bridge_conf(&nanomq_conf->bridge, "");
 #if defined(SUPP_AWS_BRIDGE)
 	print_bridge_conf(&nanomq_conf->aws_bridge, "aws.");
@@ -3102,6 +3090,14 @@ conf_bridge_init(conf_bridge *bridge)
 	bridge->count = 0;
 	bridge->nodes = NULL;
 	conf_sqlite_init(&bridge->sqlite);
+}
+
+static void
+conf_nng_proxy_init(conf_nng_bridge *proxy)
+{
+	proxy->enable = true;
+	proxy->sub_url = nng_strdup("tcp://localhost:9900");
+	proxy->pub_url = nng_strdup("tcp://localhost:9901");
 }
 
 void
