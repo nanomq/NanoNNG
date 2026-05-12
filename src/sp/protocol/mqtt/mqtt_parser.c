@@ -2140,6 +2140,133 @@ mqtt_get_remaining_length(uint8_t *packet, uint32_t len,
 	return MQTT_ERR_INVAL;
 }
 
+
+typedef struct {
+	topics *        topic;
+	const uint8_t * body;
+	size_t          remote_len;
+	size_t          topic_len;
+	bool            strict_mode;
+	char *          dynamic_topic;
+	size_t          dynamic_topic_len;
+} nng_sub0_dest_topic_ctx;
+
+typedef struct {
+	const uint8_t *body;
+	size_t         body_len;
+	size_t         remote_len;
+	const char *   delimiter;
+	size_t         delimiter_len;
+	bool           strict_mode;
+	size_t         topic_len;
+	size_t         payload_off;
+} nng_sub0_payload_ctx;
+
+/**
+ * @brief Extract payload offset and final topic_len from NNG message body.
+ * 
+ * Handles two modes of topic extraction:
+ * - strict_mode (delimiter == "/"): requires "/" after remote_topic prefix, 
+ *   topic does not extend beyond remote_len.
+ * - non-strict (delimiter != "/"): searches for delimiter in message body after 
+ *   remote_topic prefix; topic can extend to delimiter position.
+ * 
+ * Optimization: single-char delimiters use memchr() for O(n) linear search,
+ * multi-char delimiters fall back to byte-by-byte memcmp().
+ *
+ * @param ctx payload context with body, body_len, remote_len, delimiter info
+ * @return true if payload extraction succeeded, false if validation failed
+ *         (e.g., missing "/" in strict mode or delimiter not found in non-strict).
+ *         On success, ctx->payload_off and ctx->topic_len are updated.
+ */
+static bool
+nng_sub0_extract_payload(nng_sub0_payload_ctx *ctx)
+{
+	ctx->topic_len   = ctx->remote_len;
+	ctx->payload_off = ctx->remote_len;
+
+	if (ctx->strict_mode) {
+		if (ctx->body_len > ctx->remote_len) {
+			if (ctx->body[ctx->remote_len] != '/') {
+				return false;
+			}
+			ctx->payload_off = ctx->remote_len + 1;
+		}
+		return true;
+	}
+
+	if (ctx->body_len > ctx->remote_len) {
+		const uint8_t *delim_pos = NULL;
+		if (ctx->delimiter_len == 1) {
+			delim_pos = memchr(ctx->body + ctx->remote_len,
+			    (unsigned char) ctx->delimiter[0],
+			    ctx->body_len - ctx->remote_len);
+		} else {
+			for (size_t off = ctx->remote_len;
+			     off + ctx->delimiter_len <= ctx->body_len; off++) {
+				if (memcmp(ctx->body + off, ctx->delimiter,
+				        ctx->delimiter_len) == 0) {
+					delim_pos = ctx->body + off;
+					break;
+				}
+			}
+		}
+		if (delim_pos == NULL) {
+			return false;
+		}
+		ctx->topic_len   = (size_t) (delim_pos - ctx->body);
+		ctx->payload_off = ctx->topic_len + ctx->delimiter_len;
+	}
+
+	return true;
+}
+
+/**
+ * @brief Resolve destination MQTT topic for NNG->MQTT conversion.
+ * 
+ * Topic resolution priority:
+ * 1. If local_topic is configured in rule, use it directly (no allocation).
+ * 2. If strict_mode AND topic did not extend (topic_len == remote_len) AND 
+ *    remote_topic is complete (remote_topic_len == remote_len), 
+ *    reuse remote_topic as-is (optimization: avoids heap allocation).
+ * 3. Otherwise, allocate a new string from message body[0..topic_len] 
+ *    and store in ctx->dynamic_topic.
+ *
+ * Optimization: Avoids dynamic allocation when remote_topic can be safely reused
+ * in strict mode (no topic extension occurred).
+ *
+ * @param ctx dest_topic context with topic rule, body, topic_len, strict_mode
+ * @return pointer to destination MQTT topic string:
+ *         - ctx->topic->local_topic if set
+ *         - ctx->topic->remote_topic if reusable (strict + no extension)
+ *         - dynamically allocated string from body otherwise
+ *         - NULL if memory allocation fails
+ *         Caller must free dynamic_topic via ctx->dynamic_topic after use.
+ */
+static char *
+nng_sub0_resolve_dest_topic(nng_sub0_dest_topic_ctx *ctx)
+{
+	if (ctx->topic->local_topic != NULL && ctx->topic->local_topic_len > 0) {
+		return ctx->topic->local_topic;
+	}
+
+	if (ctx->strict_mode && ctx->topic_len == ctx->remote_len &&
+	    ctx->topic->remote_topic_len == ctx->remote_len) {
+		return ctx->topic->remote_topic;
+	}
+
+	ctx->dynamic_topic = nng_alloc(ctx->topic_len + 1);
+	if (ctx->dynamic_topic == NULL) {
+		return NULL;
+	}
+
+	memcpy(ctx->dynamic_topic, ctx->body, ctx->topic_len);
+	ctx->dynamic_topic[ctx->topic_len] = '\0';
+	ctx->dynamic_topic_len             = ctx->topic_len;
+
+	return ctx->dynamic_topic;
+}
+
 /**
  * @brief convert NNG sub0 msg to standard MQTT V4 msg.
  *
@@ -2152,9 +2279,11 @@ nng_msg *
 nng_sub0_msg_adapter(
     nng_msg *origin, conf_nng_sub_node *snode, char *default_topic)
 {
-	nng_msg       *mqtt_msg = NULL;
-	const uint8_t *body     = nng_msg_body(origin);
-	size_t         body_len = nng_msg_len(origin);
+	nng_msg       *mqtt_msg          = NULL;
+	char          *dynamic_topic     = NULL;
+	size_t         dynamic_topic_len = 0;
+	const uint8_t *body              = nng_msg_body(origin);
+	size_t         body_len          = nng_msg_len(origin);
 
 	if (body == NULL || body_len == 0) {
 		log_error("Empty origin message");
@@ -2175,40 +2304,66 @@ nng_sub0_msg_adapter(
 				continue;
 			}
 
+			const char *delimiter     = "/";
+			size_t      delimiter_len = 1;
+			bool        strict_mode   = true;
+
+			if (topic->nng_delimiter != NULL &&
+			    topic->nng_delimiter_len > 0) {
+				delimiter     = topic->nng_delimiter;
+				delimiter_len = topic->nng_delimiter_len;
+				strict_mode   = (delimiter_len == 1 && delimiter[0] == '/');
+			}
+
 			size_t remote_len = topic->remote_topic_len;
-			if (remote_len > 0 &&
-			    topic->remote_topic[remote_len - 1] == '/') {
-				remote_len--;
+			if (remote_len >= delimiter_len &&
+			    memcmp(topic->remote_topic + remote_len - delimiter_len,
+			        delimiter, delimiter_len) == 0) {
+				remote_len -= delimiter_len;
 			}
 			if (remote_len == 0) {
 				continue;
 			}
-			if (body_len < remote_len ||
-			    body[0] != topic->remote_topic[0] ||
-			    memcmp(body, topic->remote_topic, remote_len) !=
-			        0) {
+			if (body_len < remote_len || body[0] != topic->remote_topic[0] ||
+			    memcmp(body, topic->remote_topic, remote_len) != 0) {
 				continue;
 			}
 
-			if (body_len > remote_len && body[remote_len] != '/') {
+			nng_sub0_payload_ctx payload_ctx = {
+				.body          = body,
+				.body_len      = body_len,
+				.remote_len    = remote_len,
+				.delimiter     = delimiter,
+				.delimiter_len = delimiter_len,
+				.strict_mode   = strict_mode,
+				.topic_len     = remote_len,
+				.payload_off   = remote_len,
+			};
+			if (!nng_sub0_extract_payload(&payload_ctx)) {
 				continue;
 			}
 
 			matched_remote = topic->remote_topic;
-			dest_topic     = (topic->local_topic != NULL &&
-			                     topic->local_topic_len > 0)
-			    ? topic->local_topic
-			    : topic->remote_topic;
+			nng_sub0_dest_topic_ctx dest_ctx = {
+				.topic             = topic,
+				.body              = body,
+				.remote_len        = remote_len,
+				.topic_len         = payload_ctx.topic_len,
+				.strict_mode       = strict_mode,
+				.dynamic_topic     = NULL,
+				.dynamic_topic_len = 0,
+			};
+			dest_topic = nng_sub0_resolve_dest_topic(&dest_ctx);
+			if (dest_topic == NULL) {
+				log_error("Alloc topic buffer failed");
+				return NULL;
+			}
+			dynamic_topic     = dest_ctx.dynamic_topic;
+			dynamic_topic_len = dest_ctx.dynamic_topic_len;
 
 			qos = topic->qos;
-
-			if (body_len > remote_len) {
-				payload_data = body + remote_len + 1;
-				payload_len  = body_len - remote_len - 1;
-			} else {
-				payload_data = body + remote_len;
-				payload_len  = 0;
-			}
+			payload_data = body + payload_ctx.payload_off;
+			payload_len  = body_len - payload_ctx.payload_off;
 			break;
 		}
 	}
@@ -2227,6 +2382,9 @@ nng_sub0_msg_adapter(
 
 	if (mqtt_msg == NULL) {
 		log_error("Build MQTT msg from NNG sub0 msg failed");
+	}
+	if (dynamic_topic != NULL) {
+		nng_free(dynamic_topic, dynamic_topic_len + 1);
 	}
 	return mqtt_msg;
 }
