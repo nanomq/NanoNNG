@@ -221,9 +221,9 @@ tcptran_pipe_fini(void *arg)
 		nni_mtx_unlock(&ep->mtx);
 	}
 	nni_mtx_lock(&p->mtx);
-	void *nano_qos_db = p->npipe->nano_qos_db;
 	if (p->npipe != NULL && p->conf != NULL &&
-	    !p->conf->sqlite.enable && nano_qos_db != NULL) {
+	    !p->conf->sqlite.enable && p->npipe->nano_qos_db != NULL) {
+		void *nano_qos_db = p->npipe->nano_qos_db;
 		nni_qos_db_remove_all_msg(
 		    false, nano_qos_db, tran_close_unack_msg_cb);
 		nni_qos_db_fini_id_hash(nano_qos_db);
