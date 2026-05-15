@@ -1853,6 +1853,9 @@ conf_nng_proxy_pub_parse_ver2(conf *config, cJSON *jso)
 	cJSON *node_array = hocon_get_obj("bridges.nng.pub", jso);
 	cJSON *node_item  = NULL;
 
+	config->nng_proxy.pub_enable = false;
+	config->nng_proxy.pub_count  = 0;
+
 	config->nng_proxy.pnodes   = NULL;
 	cJSON_ArrayForEach(node_item, node_array)
 	{
@@ -1873,6 +1876,9 @@ conf_nng_proxy_sub_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *node_array = hocon_get_obj("bridges.nng.sub", jso);
 	cJSON *node_item  = NULL;
+
+	config->nng_proxy.sub_enable = false;
+	config->nng_proxy.sub_count  = 0;
 
 	config->nng_proxy.snodes   = NULL;
 	cJSON_ArrayForEach(node_item, node_array)
