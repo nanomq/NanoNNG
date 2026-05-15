@@ -713,13 +713,23 @@ void
 nni_http_conn_fini(nni_http_conn *conn)
 {
 	nni_mtx_lock(&conn->mtx);
-	if ((nni_aio_schedule(conn->wr_aio, nng_wr_fr_cb, conn)) != 0) {
-		log_error("Non recoverable error, aio schedule failed!");
-		exit(EXIT_FAILURE);
+	// nni_aio_schedule returns non-zero when the aio is already in a
+	// terminal state (aborted/timed-out/closed). That is the *expected*
+	// situation when fini runs after a timeout or peer-close — not a
+	// fatal error. Previously this aborted the whole broker process,
+	// which under sustained HTTP-auth load is a denial-of-service.
+	// If scheduling fails, the fr_cb callback will not run, so we
+	// mark that side closed inline and reap fe_aio ourselves once both
+	// sides have bypassed the callback path.
+	if (nni_aio_schedule(conn->wr_aio, nng_wr_fr_cb, conn) != 0) {
+		conn->wr_close = true;
 	}
-	if ((nni_aio_schedule(conn->rd_aio, nng_rd_fr_cb, conn)) != 0) {
-		log_error("Non recoverable error, aio schedule failed!");
-		exit(EXIT_FAILURE);
+	if (nni_aio_schedule(conn->rd_aio, nng_rd_fr_cb, conn) != 0) {
+		conn->rd_close = true;
+	}
+	if (conn->wr_close && conn->rd_close && conn->fe_aio != NULL) {
+		nni_aio_reap(conn->fe_aio);
+		conn->fe_aio = NULL;
 	}
 	conn->free = true;
 	http_close(conn);
