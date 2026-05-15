@@ -240,6 +240,8 @@ typedef struct {
 	char       *prefix;
 	char       *remote_topic;
 	char       *local_topic;
+	char       *nng_delimiter;
+	uint32_t    nng_delimiter_len;
 	uint8_t     nolocal;
 	uint8_t     retain; // override for retain
 	uint8_t     qos;    // override for QoS
@@ -635,7 +637,6 @@ struct conf_nng_sub_node {
 	char      *sub_url;
 	char       *clientid;
 	conn_param *client; // For ACL usage
-	// NNG topics must be topic/payload, no multiple "/"
 	topics **sub_list;
 	size_t   inwards_count;
 };
