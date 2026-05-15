@@ -12,12 +12,13 @@
 #include "nng/supplemental/nanolib/log.h"
 #include "nng/supplemental/nanolib/topics.h"
 #include "nng/supplemental/nanolib/ringbuffer.h"
+#include "supplemental/base64/base64.h"
 #include <ctype.h>
 #include <string.h>
 
+
 #if defined(SUPP_LICENSE_STD) || defined(SUPP_PARQUET)
 #include "supplemental/aes/aes.h"
-#include "supplemental/base64/base64.h"
 #endif
 
 static const char *gvin = NULL;
