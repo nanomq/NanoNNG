@@ -631,7 +631,7 @@ struct conf_nng_pub_node {
 	nng_socket  pub_sock;
 	char       *pub_url;
 	char       *clientid;
-	conn_param *client; // For ACL usage
+	conn_param *cparam; // For ACL usage
 	topics    **pub_list;
 	size_t      forwards_count;
 };
@@ -642,7 +642,7 @@ struct conf_nng_sub_node {
 	nng_socket sub_sock;
 	char      *sub_url;
 	char       *clientid;
-	conn_param *client; // For ACL usage
+	conn_param *cparam; // For ACL usage
 	topics **sub_list;
 	size_t   inwards_count;
 };
