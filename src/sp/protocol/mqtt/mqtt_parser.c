@@ -2172,6 +2172,7 @@ nng_sub0_msg_adapter(
 	size_t         payload_len    = body_len;
 	const char    *matched_remote = NULL;
 	char          *dest_topic     = default_topic;
+	uint8_t        qos            = 0;
 
 	if (snode != NULL && snode->sub_list != NULL) {
 		for (size_t i = 0; i < snode->inwards_count; i++) {
@@ -2206,6 +2207,8 @@ nng_sub0_msg_adapter(
 			    ? topic->local_topic
 			    : topic->remote_topic;
 
+			qos = topic->qos;
+
 			if (body_len > remote_len) {
 				payload_data = body + remote_len + 1;
 				payload_len  = body_len - remote_len - 1;
@@ -2226,7 +2229,7 @@ nng_sub0_msg_adapter(
 	    matched_remote ? matched_remote : "NULL",
 	    dest_topic ? dest_topic : "NULL");
 
-	mqtt_msg = nano_encode_publish_msg(MQTT_PROTOCOL_VERSION_v311, 0,
+	mqtt_msg = nano_encode_publish_msg(MQTT_PROTOCOL_VERSION_v311, qos,
 	    false, false, payload_data, payload_len, NULL, dest_topic, NULL);
 
 	if (mqtt_msg == NULL) {
