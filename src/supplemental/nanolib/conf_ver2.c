@@ -1470,7 +1470,13 @@ conf_nng_pnode_parse(
 			if (jso_key2 != NULL)
 				log_warn("invalid qos level detected in pub list");
 		}
+		if (s->remote_topic)
+			s->remote_topic_len = strlen(s->remote_topic);
+		if (s->local_topic)
+			s->local_topic_len  = strlen(s->local_topic);
+		cvector_push_back(node->pub_list, s);
 	}
+	node->forwards_count = cvector_size(node->pub_list);
 }
 
 void
@@ -1499,7 +1505,13 @@ conf_nng_snode_parse(
 			if (jso_key2 != NULL)
 				log_warn("invalid qos level detected in sub list");
 		}
+		if (s->remote_topic)
+			s->remote_topic_len = strlen(s->remote_topic);
+		if (s->local_topic)
+			s->local_topic_len  = strlen(s->local_topic);
+		cvector_push_back(node->sub_list, s);
 	}
+	node->inwards_count = cvector_size(node->sub_list);
 }
 
 void
@@ -1583,8 +1595,10 @@ conf_bridge_node_parse(
 			NNI_FREE_STRUCT(s);
 			continue;
 		}
-		s->remote_topic_len = strlen(s->remote_topic);
-		s->local_topic_len  = strlen(s->local_topic);
+		if (s->remote_topic)
+			s->remote_topic_len = strlen(s->remote_topic);
+		if (s->local_topic)
+			s->local_topic_len  = strlen(s->local_topic);
 		preprocess_topics(s, false);
 		cvector_push_back(node->forwards_list, s);
 	}
@@ -1640,8 +1654,10 @@ conf_bridge_node_parse(
 			NNI_FREE_STRUCT(s);
 			continue;
 		}
-		s->remote_topic_len = strlen(s->remote_topic);
-		s->local_topic_len  = strlen(s->local_topic);
+		if (s->remote_topic)
+			s->remote_topic_len = strlen(s->remote_topic);
+		if (s->local_topic)
+			s->local_topic_len  = strlen(s->local_topic);
 
 		s->stream_id = 0;
 		hocon_read_num(s, stream_id, subscription);
@@ -1836,7 +1852,7 @@ conf_nng_proxy_pub_parse_ver2(conf *config, cJSON *jso)
 	{
 		conf_nng_pub_node *node = NNI_ALLOC_STRUCT(node);
 		conf_bridge_pnode_init(node);
-		conf_nng_pnode_parse(node, jso);
+		conf_nng_pnode_parse(node, node_item);
 		cvector_push_back(config->nng_proxy.pnodes, node);
 		config->nng_proxy.pub_enable = true;
 	}
@@ -1857,7 +1873,7 @@ conf_nng_proxy_sub_parse_ver2(conf *config, cJSON *jso)
 	{
 		conf_nng_sub_node *node = NNI_ALLOC_STRUCT(node);
 		conf_bridge_snode_init(node);
-		conf_nng_snode_parse(node, jso);
+		conf_nng_snode_parse(node, node_item);
 		cvector_push_back(config->nng_proxy.snodes, node);
 		config->nng_proxy.sub_enable = true;
 	}
@@ -2147,8 +2163,10 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 				NNI_FREE_STRUCT(s);
 				continue;
 			}
-			s->remote_topic_len = strlen(s->remote_topic);
-			s->local_topic_len  = strlen(s->local_topic);
+			if (s->remote_topic)
+				s->remote_topic_len = strlen(s->remote_topic);
+			if (s->local_topic)
+				s->local_topic_len  = strlen(s->local_topic);
 
 			for (int i = 0; i < (int) s->remote_topic_len; ++i)
 				if (s->remote_topic[i] == '+' ||
@@ -2182,8 +2200,10 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 				NNI_FREE_STRUCT(s);
 				continue;
 			}
-			s->remote_topic_len = strlen(s->remote_topic);
-			s->local_topic_len  = strlen(s->local_topic);
+			if (s->remote_topic)
+				s->remote_topic_len = strlen(s->remote_topic);
+			if (s->local_topic)
+				s->local_topic_len  = strlen(s->local_topic);
 			s->stream_id        = 0;
 			hocon_read_num(s, stream_id, subscription);
 
