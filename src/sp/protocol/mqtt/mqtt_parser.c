@@ -874,6 +874,7 @@ conn_param_init(conn_param *cparam)
 	cparam->properties      = NULL;
 	cparam->will_prop_len   = 0;
 	cparam->will_properties = NULL;
+	cparam->nano_qos_db     = NULL;
 }
 
 int
@@ -2144,4 +2145,28 @@ mqtt_get_remaining_length(uint8_t *packet, uint32_t len,
 	}
 
 	return MQTT_ERR_INVAL;
+}
+
+/**
+ * @brief convert NNG sub0 msg to standard MQTT V4 msg.
+ * 
+ * @param origin topic with wildcard 
+ * @param input  topic in pub packet
+ * @return true 
+ * @return false 
+ */
+nng_msg *
+nng_sub0_msg_adapter(nng_msg *origin, char *topic)
+{
+	nng_msg *mqtt_msg = NULL;
+	const uint8_t *payload     = nng_msg_body(origin);
+	size_t         payload_len = nng_msg_len(origin);
+
+	mqtt_msg = nano_encode_publish_msg(MQTT_PROTOCOL_VERSION_v311, 0,
+	    false, false, payload, payload_len, NULL, topic, NULL);
+	if (mqtt_msg == NULL) {
+		log_error("Build MQTT msg from NNG sub0 msg failed");
+	}
+
+	return mqtt_msg;
 }
