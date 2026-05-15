@@ -54,8 +54,7 @@ static void conf_sqlite_destroy(conf_sqlite *sqlite);
 static void conf_web_hook_parse(conf_web_hook *webhook, const char *path);
 static void conf_web_hook_destroy(conf_web_hook *web_hook);
 static void conf_preset_sessions_init(conf_preset_session *session);
-
-static void conf_preset_sessions_init(conf_preset_session *session);
+static void conf_nng_proxy_init(conf_nng_bridge *proxy);
 
 #if defined(ENABLE_LOG)
 static void conf_log_init(conf_log *log);
@@ -1109,6 +1108,8 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->auth_http.acl_cache_reset_aio = NULL;
 	nanomq_conf->ext_qos_db                    = NULL;
 	conf_preset_sessions_init(&nanomq_conf->pre_sessions);
+	conf_nng_proxy_init(&nanomq_conf->nng_proxy);
+
 	memset(nanomq_conf->exec_path, 0, 512);
 	memset(nanomq_conf->exec_fname, 0, 64);
 	nng_atomic_alloc(&nanomq_conf->lc);	// Marks current total connections
@@ -3286,6 +3287,9 @@ conf_nng_proxy_init(conf_nng_bridge *proxy)
 	proxy->sub_enable = false;
 	proxy->pnodes = NULL;
 	proxy->snodes = NULL;
+
+	proxy->pub_count = 0;
+	proxy->sub_count = 0;
 }
 
 void

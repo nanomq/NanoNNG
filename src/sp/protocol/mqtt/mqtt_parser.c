@@ -2380,6 +2380,14 @@ nng_sub0_msg_adapter(
 		         "default topic");
 	}
 
+	if (dest_topic == NULL) {
+		log_error("No destination topic configured for NNG sub0 msg");
+		if (dynamic_topic != NULL) {
+			nng_free(dynamic_topic, dynamic_topic_len + 1);
+		}
+		return NULL;
+	}
+
 	log_debug("nng sub0 msg matched remote_topic %s, mapped to %s",
 	    matched_remote ? matched_remote : "NULL",
 	    dest_topic ? dest_topic : "NULL");
