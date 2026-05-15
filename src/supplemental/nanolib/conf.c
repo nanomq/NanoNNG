@@ -351,6 +351,12 @@ conf_tls_parse(
 			FREE_NONULL(tls->key_password);
 			tls->key_password = value;
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
+		                prefix1, prefix2, "tls.cert_encrypted")) !=
+		    NULL) {
+			tls->cert_encrypted =
+			    nni_strcasecmp(value, "true") == 0;
+			nng_strfree(value);
+		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                prefix1, prefix2, "tls.encrypt_method")) !=
 		    NULL) {
 			FREE_NONULL(tls->encrypt_method);
@@ -3949,7 +3955,8 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 			log_info("	cert_encrypted:   %s",
 			    node->tls.cert_encrypted ? "true" : "false");
 			log_info("	encrypt_method:   %s",
-			    node->tls.encrypt_method);
+			    node->tls.encrypt_method ? node->tls.encrypt_method
+			                             : "");
 			log_info("	encrypted_key:     %s",
 			    node->tls.encrypted_key_b64 ? "true" : "false");
 			log_info("	sni:              %s", node->tls.sni);
