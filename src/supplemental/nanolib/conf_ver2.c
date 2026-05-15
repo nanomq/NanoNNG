@@ -1445,6 +1445,64 @@ conf_session_node_parse(conf_session_node *node, cJSON *obj)
 }
 
 void
+conf_nng_pnode_parse(
+    conf_nng_pub_node *node, cJSON *obj)
+{
+	node->name = nng_strdup(obj->string);
+	hocon_read_str(node, clientid, obj);
+	hocon_read_str(node, pub_url, obj);
+	cJSON *forward = NULL;
+	cJSON *forwards = hocon_get_obj("forwards", obj);
+	cJSON_ArrayForEach(forward, forwards)
+	{
+		topics *s = NNI_ALLOC_STRUCT(s);
+		s->retain = NO_RETAIN;
+		s->qos    = NO_QOS;
+		hocon_read_str(s, remote_topic, forward);
+		hocon_read_str(s, local_topic, forward);
+		hocon_read_num(s, qos, forward);
+		cJSON *jso_key2 = cJSON_GetObjectItem(forward, "qos");
+		if (cJSON_IsNumber(jso_key2) &&
+		    (jso_key2->valuedouble == 0 || jso_key2->valuedouble == 1 ||
+			 jso_key2->valuedouble == 2)) {
+			s->qos = jso_key2->valuedouble;
+		} else {
+			if (jso_key2 != NULL)
+				log_warn("invalid qos level detected in pub list");
+		}
+	}
+}
+
+void
+conf_nng_snode_parse(
+    conf_nng_sub_node *node, cJSON *obj)
+{
+	node->name = nng_strdup(obj->string);
+	hocon_read_str(node, clientid, obj);
+	hocon_read_str(node, sub_url, obj);
+	cJSON *subscriptions = hocon_get_obj("subscription", obj);
+	cJSON *subscription = NULL;
+	cJSON_ArrayForEach(subscription, subscriptions)
+	{
+		topics *s = NNI_ALLOC_STRUCT(s);
+		s->retain = NO_RETAIN;
+		s->qos    = NO_QOS;
+		hocon_read_str(s, remote_topic, subscription);
+		hocon_read_str(s, local_topic, subscription);
+		hocon_read_num(s, qos, subscription);
+		cJSON *jso_key2 = cJSON_GetObjectItem(subscription, "qos");
+		if (cJSON_IsNumber(jso_key2) &&
+		    (jso_key2->valuedouble == 0 || jso_key2->valuedouble == 1 ||
+			 jso_key2->valuedouble == 2)) {
+			s->qos = jso_key2->valuedouble;
+		} else {
+			if (jso_key2 != NULL)
+				log_warn("invalid qos level detected in sub list");
+		}
+	}
+}
+
+void
 conf_bridge_node_parse(
     conf_bridge_node *node, conf_sqlite *bridge_sqlite, cJSON *obj)
 {
@@ -1763,6 +1821,48 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 	}
 
 	config->bridge.count = cvector_size(config->bridge.nodes);
+
+	return;
+}
+
+static void
+conf_nng_proxy_pub_parse_ver2(conf *config, cJSON *jso)
+{
+	cJSON *node_array = hocon_get_obj("bridges.nng.pub", jso);
+	cJSON *node_item  = NULL;
+
+	config->nng_proxy.pnodes   = NULL;
+	cJSON_ArrayForEach(node_item, node_array)
+	{
+		conf_nng_pub_node *node = NNI_ALLOC_STRUCT(node);
+		conf_bridge_pnode_init(node);
+		conf_nng_pnode_parse(node, jso);
+		cvector_push_back(config->nng_proxy.pnodes, node);
+		config->nng_proxy.pub_enable = true;
+	}
+
+	config->nng_proxy.pub_count = cvector_size(config->nng_proxy.pnodes);
+
+	return;
+}
+
+static void
+conf_nng_proxy_sub_parse_ver2(conf *config, cJSON *jso)
+{
+	cJSON *node_array = hocon_get_obj("bridges.nng.sub", jso);
+	cJSON *node_item  = NULL;
+
+	config->nng_proxy.snodes   = NULL;
+	cJSON_ArrayForEach(node_item, node_array)
+	{
+		conf_nng_sub_node *node = NNI_ALLOC_STRUCT(node);
+		conf_bridge_snode_init(node);
+		conf_nng_snode_parse(node, jso);
+		cvector_push_back(config->nng_proxy.snodes, node);
+		config->nng_proxy.sub_enable = true;
+	}
+
+	config->nng_proxy.sub_count = cvector_size(config->nng_proxy.snodes);
 
 	return;
 }
@@ -2565,6 +2665,8 @@ conf_parse_ver2(conf *config)
 		conf_parquet_parse_default_ver2(config, jso);
 		conf_exchange_parse_ver2(config, jso);
 		conf_blf_parse_ver2(config, jso);
+		conf_nng_proxy_sub_parse_ver2(config, jso);
+		conf_nng_proxy_pub_parse_ver2(config, jso);
 #if defined(SUPP_PLUGIN)
 		conf_plugin_parse_ver2(config, jso);
 #endif
