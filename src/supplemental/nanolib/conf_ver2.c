@@ -1461,7 +1461,7 @@ conf_nng_pnode_parse(
 		hocon_read_str(s, remote_topic, forward);
 		hocon_read_str(s, local_topic, forward);
 		hocon_read_str(s, nng_delimiter, forward);
-		hocon_read_num(s, qos, forward);
+	
 		cJSON *jso_key2 = cJSON_GetObjectItem(forward, "qos");
 		if (cJSON_IsNumber(jso_key2) &&
 		    (jso_key2->valuedouble == 0 || jso_key2->valuedouble == 1 ||
@@ -1499,7 +1499,7 @@ conf_nng_snode_parse(
 		hocon_read_str(s, remote_topic, subscription);
 		hocon_read_str(s, local_topic, subscription);
 		hocon_read_str(s, nng_delimiter, subscription);
-		hocon_read_num(s, qos, subscription);
+
 		cJSON *jso_key2 = cJSON_GetObjectItem(subscription, "qos");
 		if (cJSON_IsNumber(jso_key2) &&
 		    (jso_key2->valuedouble == 0 || jso_key2->valuedouble == 1 ||
