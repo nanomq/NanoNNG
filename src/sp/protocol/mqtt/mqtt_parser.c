@@ -2141,8 +2141,8 @@ mqtt_get_remaining_length(uint8_t *packet, uint32_t len,
 /**
  * @brief convert NNG sub0 msg to standard MQTT V4 msg.
  * 
- * @param origin original NNG Sub msg
- * @param topic  overwrite original topic of NNG
+ * @param origin original NNG sub msg
+ * @param topic  Default topic of NNG sub msg
  * @return nng_msg
  */
 nng_msg *
@@ -2157,14 +2157,15 @@ nng_sub0_msg_adapter(nng_msg *origin, char *topic)
 		return NULL;
 	}
 
-	// Find the last '/' to separate topic and payload.
-	// NNG SUB msg format: "topic/path/payload" -> Topic: "topic/path", Payload: "payload"
+	// Define '/' to separate topic and payload.
+	// NNG SUB msg format: "topic/path/payload" -> Topic: "topic", Payload: "path/payload"
 	const char *ptr = (const char *)body;
 	char       *sep = NULL;
 
 	for (size_t i = 0; i < body_len; i++) {
 		if (ptr[i] == '/') {
 			sep = &ptr[i];
+			break;
 		}
 	}
 
