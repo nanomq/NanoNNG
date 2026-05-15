@@ -385,7 +385,11 @@ open_net_read(void *ctx, char *buf, int len) {
 	size_t sz = len;
 	int    rv;
 
+	if (g_print_handshake)
+		log_info("handshake incomplete: receiving...");
 	rv = nng_tls_engine_recv(ctx, (uint8_t *) buf, &sz);
+	if (g_print_handshake)
+		log_info("handshake incomplete: read rv %d sz %ld/%d", rv, sz, len);
 	if (rv == 0)
 		log_debug("NNG-TLS-NET-RD" "Read From TCP %ld/%d rv%d", sz, len, rv);
 	trace("end");
@@ -413,7 +417,11 @@ open_net_write(void *ctx, const char *buf, int len) {
 	size_t sz = len;
 	int    rv;
 
+	if (g_print_handshake)
+		log_info("handshake incomplete: sending...");
 	rv = nng_tls_engine_send(ctx, (const uint8_t *) buf, &sz);
+	if (g_print_handshake)
+		log_info("handshake incomplete: write rv %d sz %ld/%d", rv, sz, len);
 	log_debug("NNG-TLS-NET-WR" "Sent To TCP %ld/%d rv%d", sz, len, rv);
 	trace("end");
 	switch (rv) {
@@ -496,14 +504,25 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 	}
 	log_info("Doing handshake ...");
 	rv = SSL_do_handshake(ec->ssl);
-	if (rv != 0) {
+	if (rv != 1) {
 		rv = SSL_get_error(ec->ssl, rv);
-		if (rv != 0) {
+		if (rv == SSL_ERROR_WANT_READ || rv == SSL_ERROR_WANT_WRITE) {
+			log_warn("NNG-TLS-CONN-HANDSHAKE"
+				"openssl handshake still in process rv%d", rv);
+			// continue
+		} else if (rv == SSL_ERROR_NONE) {
+			log_warn("NNG-TLS-CONN-HANDSHAKE" "should never reach here");
+		} else {
 			log_warn("NNG-TLS-CONN-HANDSHAKE"
 				"openssl handshake still in process rv%d", rv);
 			ERR_print_errors_fp(stderr);
+			return NNG_ECRYPTO;
 		}
 	}
+	if (SSL_is_init_finished(ec->ssl)) {
+		goto finished;
+	}
+
 	if (rv == SSL_ERROR_WANT_READ || rv == SSL_ERROR_WANT_WRITE) {
 		int ensz, sz;
 		while ((ensz = open_net_read(ec->tls, ec->wbuf, OPEN_BUF_SZ)) > 0) {
@@ -519,29 +538,51 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 				}
 				continue;
 			}
-			SSL_do_handshake(ec->ssl);
+			rv = SSL_do_handshake(ec->ssl);
+			if (rv != 1) {
+				rv = SSL_get_error(ec->ssl, rv);
+				if (rv == SSL_ERROR_WANT_READ || rv == SSL_ERROR_WANT_WRITE) {
+					continue;
+				} else if (rv == SSL_ERROR_NONE) {
+					log_warn("NNG-TLS-CONN-HANDSHAKE" "should never reach here");
+				} else {
+					log_error("NNG-TLS-CONN-HANDSHAKE"
+						"openssl handshake error %d", rv);
+					ERR_print_errors_fp(stderr);
+					return NNG_ECRYPTO;
+				}
+			}
 			if (SSL_is_init_finished(ec->ssl)) {
 				goto finished;
 			}
 		}
+		if (ensz < 0) {
+			if (ensz != 0 - SSL_ERROR_WANT_READ && ensz != 0 - SSL_ERROR_WANT_WRITE)
+				return (NNG_ECLOSED);
+		}
 
 		while ((ensz = BIO_read(ec->wbio, ec->rbuf, OPEN_BUF_SZ)) > 0) {
 			log_warn("NNG-TLS-CONN-HANDSHAKE" "BIO read rv%d", ensz);
-			if (ensz < 0) {
-				if (!BIO_should_retry(ec->wbio)) {
-					log_warn("NNG-TLS-CONN-HANDSHAKE"
-						"openssl BIO read failed rv%d", ensz);
-					return NNG_ECRYPTO;
-				}
-				continue;
-			}
 			sz = open_net_write(ec->tls, ec->rbuf, ensz);
 			log_warn("NNG-TLS-CONN-HANDSHAKE" "tcp write want%d real%d", ensz, sz);
 			if (sz == 0 - SSL_ERROR_WANT_READ || sz == 0 - SSL_ERROR_WANT_WRITE)
 				return (NNG_EAGAIN);
 			else if (sz < 0)
 				return (NNG_ECLOSED);
-			SSL_do_handshake(ec->ssl);
+			rv = SSL_do_handshake(ec->ssl);
+			if (rv != 1) {
+				rv = SSL_get_error(ec->ssl, rv);
+				if (rv == SSL_ERROR_WANT_READ || rv == SSL_ERROR_WANT_WRITE) {
+					continue;
+				} else if (rv == SSL_ERROR_NONE) {
+					log_warn("NNG-TLS-CONN-HANDSHAKE" "should never reach here");
+				} else {
+					log_error("NNG-TLS-CONN-HANDSHAKE"
+						"openssl handshake error %d", rv);
+					ERR_print_errors_fp(stderr);
+					return NNG_ECRYPTO;
+				}
+			}
 			if (SSL_is_init_finished(ec->ssl)) {
 				goto finished;
 			}
@@ -553,6 +594,7 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 finished:
 		log_warn("NNG-TLS-CONN-HANDSHAKE"
 				"openssl do handshake successfully");
+		g_print_handshake = false;
 		ec->ok = 1;
 		return 0;
 	}
@@ -639,17 +681,24 @@ open_conn_send(nng_tls_engine_conn *ec, const uint8_t *buf, size_t *szp)
 				ec->wnsz = dm;
 				log_debug("NNG-TLS-CONN-SEND"
 					"written%d remain%d bytes to put to kernel", rv, dm);
+				if (g_print_handshake)
+					log_info("handshake incomplete: written%d remain%d", rv, dm);
 				nng_free(wnext, 0);
 				return NNG_EAGAIN;
 			}
 			nng_free(wnext, 0);
 			written2tcp = ec->wntcpsz;
 			log_debug("writing done%d written2tcp%d", ec->wnsz, written2tcp);
+			if (g_print_handshake)
+				log_info("handshake incomplete: remain written done %d", rv);
 			goto end;
 		} else if (rv == 0 - SSL_ERROR_WANT_READ || rv == 0 - SSL_ERROR_WANT_WRITE) {
-			trace("end3");
+			if (g_print_handshake)
+				log_warn("handshake incomplete: try to write %d, tcp busy", ec->wnsz);
 			return (NNG_EAGAIN);
 		} else {
+			if (g_print_handshake)
+				log_error("handshake incomplete: broken tcp connection");
 			return (NNG_ECLOSED);
 		}
 	}
@@ -695,10 +744,9 @@ open_conn_send(nng_tls_engine_conn *ec, const uint8_t *buf, size_t *szp)
 			}
 		}
 
-		if (g_print_handshake) {
-			g_print_handshake = false;
+		if (g_print_handshake)
 			log_info("handshake len: %d", read2buf);
-		}
+
 		rv = open_net_write(ec->tls, ec->rbuf, read2buf);
 		if (rv > 0) {
 			if (rv != read2buf) {
@@ -709,6 +757,9 @@ open_conn_send(nng_tls_engine_conn *ec, const uint8_t *buf, size_t *szp)
 				log_debug("NNG-TLS-CONN-SEND"
 					"tcp%d ssl%d written%d remain%dbytes to put to kernel",
 					written2tcp, read2buf, rv, dm);
+				if (g_print_handshake)
+					log_info("handshake incomplete: tcp%d ssl%d written%d remain%d",
+						written2tcp, read2buf, rv, dm);
 				// written2tcp += written2ssl; // This may make wnext send after a long time
 				// So updated way is as following.
 				// Part of block of data sent failed. The return value size will not
@@ -718,18 +769,26 @@ open_conn_send(nng_tls_engine_conn *ec, const uint8_t *buf, size_t *szp)
 				goto end;
 			}
 			written2tcp += written2ssl;
+			if (g_print_handshake)
+				log_info("handshake incomplete: client hello sent%d wrssl%d", rv, written2ssl);
 			// A special case before handshake finished
 			if (written2tcp == 0) {
 				goto end;
 			}
 		} else if (rv == 0 - SSL_ERROR_WANT_READ || rv == 0 - SSL_ERROR_WANT_WRITE) {
 			trace("end2 read2buf%d written2tcp%d", read2buf, written2tcp);
+			if (g_print_handshake)
+				log_warn("handshake incomplete: tcp is busy, read2buf%d written2tcp%d",
+						read2buf, written2tcp);
 			if (written2tcp == 0)
 				return NNG_EAGAIN;
 			*szp = (size_t) written2tcp;
 			return 0;
-		} else
+		} else {
+			if (g_print_handshake)
+				log_error("handshake incomplete: broken tcp connection");
 			return (NNG_ECLOSED);
+		}
 	}
 end:
 	trace("end written2tcp%d", written2tcp);
