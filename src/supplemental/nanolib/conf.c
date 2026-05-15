@@ -18,6 +18,7 @@
 #include "nng/supplemental/nanolib/nanolib.h"
 #include "nng/supplemental/util/idhash.h"
 #include "supplemental/base64/base64.h"
+#include "nng/protocol/mqtt/mqtt_parser.h"
 
 #include <ctype.h>
 
@@ -55,6 +56,7 @@ static void conf_web_hook_parse(conf_web_hook *webhook, const char *path);
 static void conf_web_hook_destroy(conf_web_hook *web_hook);
 static void conf_preset_sessions_init(conf_preset_session *session);
 static void conf_nng_proxy_init(conf_nng_bridge *proxy);
+static void conf_nng_proxy_destroy(conf_nng_bridge *proxy);
 
 #if defined(ENABLE_LOG)
 static void conf_log_init(conf_log *log);
@@ -3296,8 +3298,10 @@ void
 conf_bridge_pnode_init(conf_nng_pub_node *node)
 {
 	node->name = NULL;
+	node->pub_sock = (nng_socket) NNG_SOCKET_INITIALIZER;
 	node->pub_url = NULL;
 	node->clientid = NULL;
+	node->cparam = NULL;
 	node->pub_list = NULL;
 	node->forwards_count = 0;
 }
@@ -3306,8 +3310,10 @@ void
 conf_bridge_snode_init(conf_nng_sub_node *node)
 {
 	node->name = NULL;
+	node->sub_sock = (nng_socket) NNG_SOCKET_INITIALIZER;
 	node->sub_url = NULL;
 	node->clientid = NULL;
+	node->cparam = NULL;
 	node->sub_list = NULL;
 	node->inwards_count = 0;
 }
@@ -3886,6 +3892,80 @@ conf_bridge_destroy(conf_bridge *bridge)
 		bridge->nodes = NULL;
 		conf_sqlite_destroy(&bridge->sqlite);
 	}
+}
+
+static void
+conf_nng_proxy_destroy(conf_nng_bridge *proxy)
+{
+	if (proxy->pnodes != NULL) {
+		for (size_t i = 0; i < proxy->pub_count; i++) {
+			conf_nng_pub_node *node = proxy->pnodes[i];
+			if (node == NULL) {
+				continue;
+			}
+			free(node->name);
+			free(node->pub_url);
+			free(node->clientid);
+			conn_param_free(node->cparam);
+			node->cparam = NULL;
+			if (node->pub_list != NULL) {
+				for (size_t j = 0; j < node->forwards_count;
+				    j++) {
+					topics *s = node->pub_list[j];
+					if (s == NULL) {
+						continue;
+					}
+					free(s->remote_topic);
+					free(s->local_topic);
+					free(s->nng_delimiter);
+					NNI_FREE_STRUCT(s);
+				}
+				cvector_free(node->pub_list);
+				node->pub_list = NULL;
+			}
+			node->forwards_count = 0;
+			NNI_FREE_STRUCT(node);
+		}
+		cvector_free(proxy->pnodes);
+		proxy->pnodes = NULL;
+	}
+	proxy->pub_count  = 0;
+	proxy->pub_enable = false;
+
+	if (proxy->snodes != NULL) {
+		for (size_t i = 0; i < proxy->sub_count; i++) {
+			conf_nng_sub_node *node = proxy->snodes[i];
+			if (node == NULL) {
+				continue;
+			}
+			free(node->name);
+			free(node->sub_url);
+			free(node->clientid);
+			conn_param_free(node->cparam);
+			node->cparam = NULL;
+			if (node->sub_list != NULL) {
+				for (size_t j = 0; j < node->inwards_count;
+				    j++) {
+					topics *s = node->sub_list[j];
+					if (s == NULL) {
+						continue;
+					}
+					free(s->remote_topic);
+					free(s->local_topic);
+					free(s->nng_delimiter);
+					NNI_FREE_STRUCT(s);
+				}
+				cvector_free(node->sub_list);
+				node->sub_list = NULL;
+			}
+			node->inwards_count = 0;
+			NNI_FREE_STRUCT(node);
+		}
+		cvector_free(proxy->snodes);
+		proxy->snodes = NULL;
+	}
+	proxy->sub_count  = 0;
+	proxy->sub_enable = false;
 }
 
 static void
@@ -4806,6 +4886,7 @@ conf_fini(conf *nanomq_conf)
 #endif
 	conf_bridge_destroy(&nanomq_conf->bridge);
 	conf_bridge_destroy(&nanomq_conf->aws_bridge);
+	conf_nng_proxy_destroy(&nanomq_conf->nng_proxy);
 	conf_web_hook_destroy(&nanomq_conf->web_hook);
 	conf_auth_http_destroy(&nanomq_conf->auth_http);
 	conf_auth_destroy(&nanomq_conf->auths);
