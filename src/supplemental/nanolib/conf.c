@@ -3898,7 +3898,7 @@ static void
 conf_nng_proxy_destroy(conf_nng_bridge *proxy)
 {
 	if (proxy->pnodes != NULL) {
-		for (size_t i = 0; i < proxy->pub_count; i++) {
+		for (size_t i = 0; i < cvector_size(proxy->pnodes); i++) {
 			conf_nng_pub_node *node = proxy->pnodes[i];
 			if (node == NULL) {
 				continue;
@@ -3909,7 +3909,7 @@ conf_nng_proxy_destroy(conf_nng_bridge *proxy)
 			conn_param_free(node->cparam);
 			node->cparam = NULL;
 			if (node->pub_list != NULL) {
-				for (size_t j = 0; j < node->forwards_count;
+				for (size_t j = 0; j < cvector_size(node->pub_list);
 				    j++) {
 					topics *s = node->pub_list[j];
 					if (s == NULL) {
@@ -3933,7 +3933,7 @@ conf_nng_proxy_destroy(conf_nng_bridge *proxy)
 	proxy->pub_enable = false;
 
 	if (proxy->snodes != NULL) {
-		for (size_t i = 0; i < proxy->sub_count; i++) {
+		for (size_t i = 0; i < cvector_size(proxy->snodes); i++) {
 			conf_nng_sub_node *node = proxy->snodes[i];
 			if (node == NULL) {
 				continue;
@@ -3944,7 +3944,7 @@ conf_nng_proxy_destroy(conf_nng_bridge *proxy)
 			conn_param_free(node->cparam);
 			node->cparam = NULL;
 			if (node->sub_list != NULL) {
-				for (size_t j = 0; j < node->inwards_count;
+				for (size_t j = 0; j < cvector_size(node->sub_list);
 				    j++) {
 					topics *s = node->sub_list[j];
 					if (s == NULL) {
