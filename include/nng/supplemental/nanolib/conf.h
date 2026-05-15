@@ -705,6 +705,7 @@ struct conf {
 	conf_bridge          aws_bridge;	// AWS IoT Core
 	conf_exchange        exchange;
 	conf_parquet         parquet;
+	conf_nng_bridge      nng_proxy;
 	conf_blf             blf;
 #if defined(SUPP_PLUGIN)
 	conf_plugin          plugin;
