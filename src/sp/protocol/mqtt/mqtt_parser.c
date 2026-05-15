@@ -2149,15 +2149,17 @@ mqtt_get_remaining_length(uint8_t *packet, uint32_t len,
 
 /**
  * @brief convert NNG sub0 msg to standard MQTT V4 msg.
- * 
+ *
  * @param origin original NNG sub msg
- * @param topic  Default topic of NNG sub msg
+ * @param snode  NNG subscription node config, used for topic mapping
+ * @param default_topic  Default topic of NNG sub msg
  * @return nng_msg
  */
 nng_msg *
-nng_sub0_msg_adapter(nng_msg *origin, char *topic)
+nng_sub0_msg_adapter(
+    nng_msg *origin, conf_nng_sub_node *snode, char *default_topic)
 {
-	nng_msg *mqtt_msg = NULL;
+	nng_msg       *mqtt_msg = NULL;
 	const uint8_t *body     = nng_msg_body(origin);
 	size_t         body_len = nng_msg_len(origin);
 
@@ -2166,42 +2168,67 @@ nng_sub0_msg_adapter(nng_msg *origin, char *topic)
 		return NULL;
 	}
 
-	// Define '/' to separate topic and payload.
-	// NNG SUB msg format: "topic/path/payload" -> Topic: "topic", Payload: "path/payload"
-	const char *ptr = (const char *)body;
-	char       *sep = NULL;
+	const uint8_t *payload_data   = body;
+	size_t         payload_len    = body_len;
+	const char    *matched_remote = NULL;
+	char          *dest_topic     = default_topic;
 
-	for (size_t i = 0; i < body_len; i++) {
-		if (ptr[i] == '/') {
-			sep = &ptr[i];
+	if (snode != NULL && snode->sub_list != NULL) {
+		for (size_t i = 0; i < snode->inwards_count; i++) {
+			topics *topic = snode->sub_list[i];
+			if (topic == NULL || topic->remote_topic == NULL ||
+			    topic->remote_topic_len == 0) {
+				continue;
+			}
+
+			size_t remote_len = topic->remote_topic_len;
+			if (remote_len > 0 &&
+			    topic->remote_topic[remote_len - 1] == '/') {
+				remote_len--;
+			}
+			if (remote_len == 0) {
+				continue;
+			}
+			if (body_len < remote_len ||
+			    body[0] != topic->remote_topic[0] ||
+			    memcmp(body, topic->remote_topic, remote_len) !=
+			        0) {
+				continue;
+			}
+
+			if (body_len > remote_len && body[remote_len] != '/') {
+				continue;
+			}
+
+			matched_remote = topic->remote_topic;
+			dest_topic     = (topic->local_topic != NULL &&
+			                     topic->local_topic_len > 0)
+			    ? topic->local_topic
+			    : topic->remote_topic;
+
+			if (body_len > remote_len) {
+				payload_data = body + remote_len + 1;
+				payload_len  = body_len - remote_len - 1;
+			} else {
+				payload_data = body + remote_len;
+				payload_len  = 0;
+			}
 			break;
 		}
 	}
 
-	// If no separator found, or starts with '/', fallback to using the whole message as payload.
-	if (sep == NULL || sep == ptr) {
-		log_warn("No valid topic/payload separator found in NNG sub0 msg.");
-		mqtt_msg = nano_encode_publish_msg(MQTT_PROTOCOL_VERSION_v311,
-		    0, false, false, body, body_len, NULL, topic, NULL);
-		return mqtt_msg;
+	if (matched_remote == NULL) {
+		log_warn("No matched remote_topic in NNG sub0 msg, use "
+		         "default topic");
 	}
 
-	size_t   topic_len    = sep - ptr;
-	char    *topic_buf    = nng_zalloc(topic_len + 1);
-	uint8_t *payload_data = (uint8_t *) sep + 1;
-	size_t   payload_len  = body_len - (topic_len + 1);
-
-	if (!topic_buf) {
-		log_error("Failed to allocate memory for topic");
-		return NULL;
-	}
-
-	memcpy(topic_buf, ptr, topic_len);
+	log_debug("nng sub0 msg matched remote_topic %s, mapped to %s",
+	    matched_remote ? matched_remote : "NULL",
+	    dest_topic ? dest_topic : "NULL");
 
 	mqtt_msg = nano_encode_publish_msg(MQTT_PROTOCOL_VERSION_v311, 0,
-	    false, false, payload_data, payload_len, NULL, topic_buf, NULL);
+	    false, false, payload_data, payload_len, NULL, dest_topic, NULL);
 
-	nng_free(topic_buf, topic_len + 1);
 	if (mqtt_msg == NULL) {
 		log_error("Build MQTT msg from NNG sub0 msg failed");
 	}
