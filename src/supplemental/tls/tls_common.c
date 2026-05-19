@@ -77,6 +77,7 @@ typedef struct {
 	size_t                  tcp_send_len;
 	size_t                  tcp_send_head;
 	size_t                  tcp_send_tail;
+	bool                    is_dialer;
 	nni_reap_node           reap;
 
 	// ... engine connection data follows
@@ -183,6 +184,7 @@ tls_dialer_dial(void *arg, nng_aio *aio)
 		nni_aio_finish_error(aio, rv);
 		return;
 	}
+	conn->is_dialer = true;
 
 	if ((rv = nni_aio_schedule(aio, tls_conn_cancel, conn)) != 0) {
 		nni_aio_finish_error(aio, rv);
@@ -458,6 +460,7 @@ tls_listener_accept(void *arg, nng_aio *aio)
 		nni_aio_finish_error(aio, rv);
 		return;
 	}
+	conn->is_dialer = false;
 
 	if ((rv = nni_aio_schedule(aio, tls_conn_cancel, conn)) != 0) {
 		nni_aio_finish_error(aio, rv);
@@ -901,6 +904,8 @@ tls_alloc(tls_conn **conn_p, nng_tls_config *cfg, nng_aio *user_aio)
 	conn->user_aio = user_aio;
 	conn->cfg      = cfg;
 
+	conn->is_dialer = false;
+
 	nni_aio_init(&conn->conn_aio, tls_conn_cb, conn);
 	nni_aio_init(&conn->tcp_recv, tls_tcp_recv_cb, conn);
 	nni_aio_init(&conn->tcp_send, tls_tcp_send_cb, conn);
@@ -1185,6 +1190,9 @@ tls_tcp_recv_start(tls_conn *conn)
 	conn->tcp_recv_pend = true;
 	nng_aio_set_iov(&conn->tcp_recv, 1, &iov);
 
+	if (conn->is_dialer) {
+		nni_aio_set_timeout(&conn->tcp_recv, 60000); // 60s
+	}
 	nng_stream_recv(conn->tcp, &conn->tcp_recv);
 }
 
