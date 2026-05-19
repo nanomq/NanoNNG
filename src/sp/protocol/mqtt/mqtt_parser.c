@@ -1617,20 +1617,21 @@ nmq_subtopic_decode(nng_msg *msg, uint8_t ver, topic_queue **ptq)
 	while (pos < target_pos) {
 		switch (*(var_ptr + pos)) {
 		case USER_PROPERTY:
-			// key
-			NNI_GET16(var_ptr + pos, len_of_str);
-			pos += len_of_str;
-			if (pos > target_pos)
-				return (-3);
-			len_of_str = 0;
-			// value
-			NNI_GET16(var_ptr + pos, len_of_str);
-			pos += len_of_str;
-			if (pos > target_pos)
-				return (-3);
-			len_of_str = 0;
+			pos++;
+			for (int j = 0; j < 2; j++) {
+				len_of_str = 0;
+				if (pos + 2 > target_pos)
+					return (-3);
+				NNI_GET16(var_ptr + pos, len_of_str);
+				pos += (2 + len_of_str);
+				if (pos > target_pos)
+					return (-3);
+			}
 			break;
 		case SUBSCRIPTION_IDENTIFIER:
+			pos++;
+			if (pos >= target_pos)
+				return (-3);
 			uint8_t prop_varint_len = 0;
 			subid = get_var_integer(var_ptr + pos, &prop_varint_len);
 			if (subid == 0)
@@ -1642,6 +1643,7 @@ nmq_subtopic_decode(nng_msg *msg, uint8_t ver, topic_queue **ptq)
 			return (-2);
 		}
 	}
+
 	if (pos > target_pos || nni_msg_len(msg) < target_pos)
 		return (-2);
 
@@ -1740,9 +1742,11 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 		switch (*(var_ptr + pos)) {
 		case USER_PROPERTY:
 			// ID Length
-			pos ++;
+			pos++;
 			for (int j = 0; j < 2; j++) {
 				len_of_str = 0;
+				if (pos + 2 > target_pos)
+					return (-3);
 				// key/Value length
 				NNI_GET16(var_ptr + pos, len_of_str);
 				pos += (2 + len_of_str);
@@ -1752,17 +1756,21 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 			}
 			break;
 		case SUBSCRIPTION_IDENTIFIER:
-			// count id length in len_of_varint
-			subid = get_var_integer(var_ptr + pos, &len_of_varint);
+			pos++;
+			if (pos >= target_pos)
+				return (-3);
+			uint8_t prop_varint_len = 0;
+			subid = get_var_integer(var_ptr + pos, &prop_varint_len);
 			if (subid == 0)
 				return (-1);
-			pos += len_of_varint;
+			pos += prop_varint_len;
 			break;
 		default:
 			log_error("Invalid property id");
 			return (-2);
 		}
 	}
+
 	if (pos > target_pos || nni_msg_len(msg) < target_pos)
 		return (-2);
 
@@ -1858,7 +1866,6 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 			return -1;
 	}
 
-
 	var_ptr     = (uint8_t *) nni_msg_body(msg);
 	payload_ptr = (uint8_t *) nni_msg_body(msg) + 2 + len + len_of_varint;
 	size_t pos = 2 + len_of_varint, target_pos = 2 + len_of_varint + len;
@@ -1872,9 +1879,11 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 		switch (*(var_ptr + pos)) {
 		case USER_PROPERTY:
 			// ID Length
-			pos ++;
+			pos++;
 			for (int j = 0; j < 2; j++) {
 				len_of_str = 0;
+				if (pos + 2 > target_pos)
+					return (-3);
 				// key/Value length
 				NNI_GET16(var_ptr + pos, len_of_str);
 				pos += (2 + len_of_str);
