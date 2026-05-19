@@ -1628,10 +1628,11 @@ nmq_subtopic_decode(nng_msg *msg, uint8_t ver, topic_queue **ptq)
 			len_of_str = 0;
 			break;
 		case SUBSCRIPTION_IDENTIFIER:
-			subid = get_var_integer(var_ptr + pos, &len_of_varint);
+			uint8_t prop_varint_len = 0;
+			subid = get_var_integer(var_ptr + pos, &prop_varint_len);
 			if (subid == 0)
 				return (-1);
-			pos += len_of_varint;
+			pos += prop_varint_len;
 			break;
 		default:
 			log_error("Invalid property id");
