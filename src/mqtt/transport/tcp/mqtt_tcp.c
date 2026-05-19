@@ -833,6 +833,12 @@ mqtt_tcptran_pipe_recv_cb(void *arg)
 		break;
 	case CMD_DISCONNECT:
 		break;
+	case CMD_CONNECT:
+	case CMD_SUBSCRIBE:
+	case CMD_UNSUBSCRIBE:
+		log_warn("Malicious Packet Type found from client side! Abort!");
+		rv = PROTOCOL_ERROR;
+		goto recv_error;
 	default:
 		break;
 	}
