@@ -37,6 +37,8 @@ static void conf_bridge_connect_properties_parse(conf_bridge_node *node,
 static void conf_bridge_connect_will_properties_parse(conf_bridge_node *node,
     const char *path, const char *key_prefix, const char *name);
 static void print_bridge_conf(conf_bridge *bridge, const char *prefix);
+static void print_nng_proxy_pub_conf(conf_nng_bridge *proxy);
+static void print_nng_proxy_sub_conf(conf_nng_bridge *proxy);
 static void conf_auth_init(conf_auth *auth);
 static void conf_auth_parse(conf_auth *auth, const char *path);
 static void conf_auth_destroy(conf_auth *auth);
@@ -1610,6 +1612,8 @@ print_conf(conf *nanomq_conf)
 	print_parquet_conf(parquet);
 	print_blf_conf(blf);
 	print_bridge_conf(&nanomq_conf->bridge, "");
+	print_nng_proxy_pub_conf(&nanomq_conf->nng_proxy);
+	print_nng_proxy_sub_conf(&nanomq_conf->nng_proxy);
 #if defined(SUPP_AWS_BRIDGE)
 	print_bridge_conf(&nanomq_conf->aws_bridge, "aws.");
 #endif
@@ -4090,6 +4094,88 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		    bridge->sqlite.flush_mem_threshold);
 	}
 }
+
+static void
+print_nng_proxy_pub_conf(conf_nng_bridge *proxy)
+{
+	if (!proxy->pub_enable || proxy->pub_count == 0 || proxy->pnodes == NULL) {
+		return;
+	}
+
+	for (size_t i = 0; i < proxy->pub_count; i++) {
+		conf_nng_pub_node *node = proxy->pnodes[i];
+		if (node == NULL) {
+			continue;
+		}
+
+		const char *name = node->name ? node->name : "";
+		log_info("bridges.nng.pub.%s.pub_url:   %s", name,
+		    node->pub_url ? node->pub_url : "");
+		log_info("bridges.nng.pub.%s.clientid:  %s", name,
+		    node->clientid ? node->clientid : "");
+		log_info("bridges.nng.pub.%s.forwards:", name);
+
+		if (node->pub_list == NULL || node->forwards_count == 0) {
+			continue;
+		}
+
+		for (size_t j = 0; j < node->forwards_count; j++) {
+			topics *s = node->pub_list[j];
+			if (s == NULL) {
+				continue;
+			}
+			log_info("\t[%zu] local_topic:        %s", j + 1,
+			    s->local_topic ? s->local_topic : "");
+			log_info("\t[%zu] remote_topic:       %s", j + 1,
+			    s->remote_topic ? s->remote_topic : "");
+			log_info("\t[%zu] nng_delimiter:      %s", j + 1,
+			    s->nng_delimiter ? s->nng_delimiter : "/");
+			log_info("\t[%zu] qos:                %d", j + 1, s->qos);
+		}
+	}
+}
+
+static void
+print_nng_proxy_sub_conf(conf_nng_bridge *proxy)
+{
+	if (!proxy->sub_enable || proxy->sub_count == 0 || proxy->snodes == NULL) {
+		return;
+	}
+
+	for (size_t i = 0; i < proxy->sub_count; i++) {
+		conf_nng_sub_node *node = proxy->snodes[i];
+		if (node == NULL) {
+			continue;
+		}
+
+		const char *name = node->name ? node->name : "";
+		log_info("bridges.nng.sub.%s.sub_url:   %s", name,
+		    node->sub_url ? node->sub_url : "");
+		log_info("bridges.nng.sub.%s.clientid:  %s", name,
+		    node->clientid ? node->clientid : "");
+		log_info("bridges.nng.sub.%s.subscription:", name);
+
+		if (node->sub_list == NULL || node->inwards_count == 0) {
+			continue;
+		}
+
+		for (size_t j = 0; j < node->inwards_count; j++) {
+			topics *s = node->sub_list[j];
+			if (s == NULL) {
+				continue;
+			}
+			log_info("\t[%zu] remote_topic:       %s", j + 1,
+			    s->remote_topic ? s->remote_topic : "");
+			log_info("\t[%zu] local_topic:        %s", j + 1,
+			    s->local_topic ? s->local_topic : "");
+			log_info("\t[%zu] nng_delimiter:      %s", j + 1,
+			    s->nng_delimiter ? s->nng_delimiter : "/");
+			log_info("\t[%zu] qos:                %d", j + 1, s->qos);
+		}
+	}
+}
+
+
 
 webhook_event
 get_webhook_event(const char *hook_type, const char *hook_name)
