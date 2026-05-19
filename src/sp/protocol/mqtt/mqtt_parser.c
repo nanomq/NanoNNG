@@ -546,7 +546,6 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	} else {
 		pos++;
 	}
-
 	// remaining length
 	len = get_var_integer(packet + pos, &rm_len);
 	pos += rm_len;
@@ -628,7 +627,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		log_debug("remain len %d max len %d prop len %d pos %d",
 				   len, max, cparam->prop_len, pos);
 		cparam->properties = decode_buf_properties(
-		    packet, len, &pos, &cparam->prop_len, true);
+		    packet, max, &pos, &cparam->prop_len, true);
 		if (cparam->properties) {
 			conn_param_set_property(cparam, cparam->properties);
 			if ((rv = check_properties(cparam->properties, NULL)) !=
@@ -677,7 +676,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	if (rv == 0 && cparam->will_flag != 0) {
 		if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 			cparam->will_properties = decode_buf_properties(
-			    packet, len, &pos, &cparam->will_prop_len, true);
+			    packet, max, &pos, &cparam->will_prop_len, true);
 			if (cparam->will_properties) {
 				conn_param_set_will_property(
 				    cparam, cparam->will_properties);
