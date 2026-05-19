@@ -361,21 +361,25 @@ mqtt_msg_content_free(nni_mqtt_proto_data *mqtt)
 	case NNG_MQTT_PUBACK:
 		if (mqtt->var_header.puback.properties) {
 			property_free(mqtt->var_header.puback.properties);
+			mqtt->var_header.puback.properties = NULL;
 		}
 		break;
 	case NNG_MQTT_PUBREC:
 		if (mqtt->var_header.pubrec.properties) {
 			property_free(mqtt->var_header.pubrec.properties);
+			mqtt->var_header.pubrec.properties = NULL;
 		}
 		break;
 	case NNG_MQTT_PUBREL:
 		if (mqtt->var_header.pubrel.properties) {
 			property_free(mqtt->var_header.pubrel.properties);
+			mqtt->var_header.pubrel.properties = NULL;
 		}
 		break;
 	case NNG_MQTT_PUBCOMP:
 		if (mqtt->var_header.pubcomp.properties) {
 			property_free(mqtt->var_header.pubcomp.properties);
+			mqtt->var_header.pubcomp.properties = NULL;
 		}
 		break;
 	case NNG_MQTT_SUBSCRIBE:
