@@ -2107,6 +2107,9 @@ nni_mqtt_msg_decode_subscribe(nni_msg *msg)
 	saved_current_pos = buf.curpos;
 	while (buf.curpos < buf.endpos) {
 		ret = read_uint16(&buf, &temp_length);
+		if (ret != MQTT_SUCCESS) {
+			return MQTT_ERR_PROTOCOL;
+		}
 		/* jump to the end of topic-name */
 		buf.curpos += temp_length;
 		/* skip QoS field */
@@ -2186,6 +2189,9 @@ nni_mqttv5_msg_decode_subscribe(nni_msg *msg)
 	saved_current_pos = buf.curpos;
 	while (buf.curpos < buf.endpos) {
 		ret = read_uint16(&buf, &temp_length);
+		if (ret != MQTT_SUCCESS) {
+			return MQTT_ERR_PROTOCOL;
+		}
 		/* jump to the end of topic-name */
 		buf.curpos += temp_length;
 		/* skip QoS field */
@@ -2687,6 +2693,9 @@ nni_mqtt_msg_decode_unsubscribe(nni_msg *msg)
 	saved_current_pos = buf.curpos;
 	while (buf.curpos < buf.endpos) {
 		ret = read_uint16(&buf, &temp_length);
+		if (ret != MQTT_SUCCESS) {
+			return MQTT_ERR_PROTOCOL;
+		}
 		/* jump to the end of topic-name */
 		buf.curpos += temp_length;
 		/* skip QoS field */
@@ -2758,6 +2767,9 @@ nni_mqttv5_msg_decode_unsubscribe(nni_msg *msg)
 	saved_current_pos = buf.curpos;
 	while (buf.curpos < buf.endpos) {
 		ret = read_uint16(&buf, &temp_length);
+		if (ret != MQTT_SUCCESS) {
+			return MQTT_ERR_PROTOCOL;
+		}
 		/* jump to the end of topic-name */
 		buf.curpos += temp_length;
 		/* skip QoS field */
@@ -3796,7 +3808,8 @@ property_parse(struct pos_buf *buf, property *prop, uint8_t prop_id,
 
 	default:
 		log_error("Unknown type %d", type);
-		break;
+		free(prop);
+		return NULL;
 	}
 
 	return prop;
