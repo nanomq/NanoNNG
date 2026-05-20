@@ -1,6 +1,10 @@
 #ifndef CONF_H
 #define CONF_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <ctype.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -705,15 +709,9 @@ NNG_DECL void conf_parse_ver2(conf *nanomq_conf);
 NNG_DECL void conf_parse_cipher(conf *nanomq_conf, const char *key, const char *key2);
 #if defined(SUPP_PARQUET) || defined(SUPP_LICENSE_STD)
 NNG_DECL void conf_bridge_node_parse_cipher_password(conf_bridge_node *bridge, const char *key);
-#ifdef __cplusplus
-extern "C" {
-#endif
 NNG_DECL bool conf_parquet_unwrap_runtime_key(
 	const char *wrapped_key, const char *wrap_alg, char **plain_key_out);
 NNG_DECL void conf_parquet_free_runtime_key(char *plain_key);
-#ifdef __cplusplus
-}
-#endif
 #endif
 NNG_DECL void conf_gateway_parse_ver2(zmq_gateway_conf *gateway);
 NNG_DECL void conf_vsomeip_gateway_parse_ver2(vsomeip_gateway_conf *config);
@@ -773,5 +771,9 @@ NNG_DECL void conf_free_vin();
 	conf_update_var2(path, key1, key2, key3, 6, (void *) &(var))
 #define conf_update2_bool(path, key1, key2, key3, var) \
 	conf_update_var2(path, key1, key2, key3, 7, (void *) &(var))
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

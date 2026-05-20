@@ -76,7 +76,6 @@ CircularQueue        parquet_queue;
 pthread_mutex_t      parquet_queue_mutex     = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t       parquet_queue_not_empty = PTHREAD_COND_INITIALIZER;
 
-struct parquet_runtime_metadata;
 static bool parquet_resolve_and_set_decryption_properties(
 	parquet::ReaderProperties &reader_properties, conf_parquet *conf,
 	const char *filename);
