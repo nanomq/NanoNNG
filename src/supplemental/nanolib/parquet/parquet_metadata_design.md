@@ -60,6 +60,26 @@
 
 ## 5. 读取与回退方案（兼容旧文件）
 
+### 5.0 当前实现状态
+
+当前代码已经完成 metadata 写入、兼容判断，以及基于 `nmq.key.wrapped` 的读取侧密钥恢复。
+
+- 写入侧：`nmq.key.wrapped` 会被写入文件 metadata。
+- 读取侧：先读 metadata 判断是不是 NanoMQ 文件、是不是加密文件。
+- 解密侧：支持本地 key 与 metadata key 双来源决策。
+
+metadata key 的恢复流程为：
+
+1. 对 `nmq.key.wrapped` 执行 Base64 解码。
+2. 使用与 `conf_parse_cipher` 相同的主密钥来源执行 AES-GCM 解密。
+3. 成功后得到可用 data key 并参与读取侧 key 决策。
+
+读取侧 key 决策规则为：
+
+1. 本地 key 缺失时，优先使用 metadata 恢复结果。
+2. 本地与 metadata 同时存在且不一致时，优先使用 metadata 恢复结果并记录告警。
+3. 两种来源均不可用时，判定加密读取失败。
+
 ### 5.1 读取优先级
 
 读取侧采用“metadata 优先、旧逻辑回退”：
