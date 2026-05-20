@@ -25,15 +25,18 @@ static const char *gvin = NULL;
 static void conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls);
 
 #ifdef SUPP_PARQUET
-static char *g_parquet_runtime_commonkey = NULL;
+static char   *g_parquet_runtime_commonkey = NULL;
+static nni_mtx g_parquet_commonkey_mutex   = NNI_MTX_INITIALIZER;
 
 static void
 conf_parquet_set_runtime_commonkey(const char *commonkey)
 {
+	nni_mtx_lock(&g_parquet_commonkey_mutex);
 	FREE_NONULL(g_parquet_runtime_commonkey);
 	if (commonkey != NULL && strlen(commonkey) > 0) {
 		g_parquet_runtime_commonkey = nng_strdup(commonkey);
 	}
+	nni_mtx_unlock(&g_parquet_commonkey_mutex);
 }
 #endif
 
@@ -2483,8 +2486,17 @@ conf_parquet_unwrap_runtime_key(
 		return false;
 	}
 
-	if (g_parquet_runtime_commonkey == NULL ||
-	    strlen(g_parquet_runtime_commonkey) == 0) {
+	/* Take a local copy of the key under the lock to avoid a race with
+	 * conf_parquet_set_runtime_commonkey during config reload. */
+	char *local_commonkey = NULL;
+	nni_mtx_lock(&g_parquet_commonkey_mutex);
+	if (g_parquet_runtime_commonkey != NULL &&
+	    strlen(g_parquet_runtime_commonkey) > 0) {
+		local_commonkey = strdup(g_parquet_runtime_commonkey);
+	}
+	nni_mtx_unlock(&g_parquet_commonkey_mutex);
+
+	if (local_commonkey == NULL) {
 		log_error("Parquet runtime common key is unavailable");
 		return false;
 	}
@@ -2492,6 +2504,7 @@ conf_parquet_unwrap_runtime_key(
 	const size_t wrapped_len = strlen(wrapped_key);
 	uint8_t     *cipher      = (uint8_t *) malloc(wrapped_len);
 	if (cipher == NULL) {
+		free(local_commonkey);
 		log_error("failed to alloc buffer for wrapped parquet key");
 		return false;
 	}
@@ -2500,16 +2513,18 @@ conf_parquet_unwrap_runtime_key(
 	    wrapped_len, (uint8_t *) cipher, wrapped_len);
 	if (cipher_sz <= 32) {
 		free(cipher);
+		free(local_commonkey);
 		log_error("failed to base64 decode nmq.key.wrapped");
 		return false;
 	}
 
 	int plain_sz = 0;
 	uint8_t *plain = nni_aes_gcm_decrypt(cipher, (int) cipher_sz,
-	    (uint8_t *) g_parquet_runtime_commonkey,
-	    strlen(g_parquet_runtime_commonkey), &plain_sz,
-	    aes_gcm_get_method_by_key_len(strlen(g_parquet_runtime_commonkey)));
+	    (uint8_t *) local_commonkey,
+	    strlen(local_commonkey), &plain_sz,
+	    aes_gcm_get_method_by_key_len(strlen(local_commonkey)));
 	free(cipher);
+	free(local_commonkey);
 	if (plain == NULL || plain_sz <= 0) {
 		log_error("failed to decrypt nmq.key.wrapped");
 		return false;
