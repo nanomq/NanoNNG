@@ -49,6 +49,8 @@
 #define RULE_ENG_PDB (1 << 4)
 #define RULE_ENG_TDB (1 << 5)
 
+#define PARQUET_WRAP_ALG_NMQ_CONF_CIPHER_AES_GCM_BASE64 \
+	"NMQ_CONF_CIPHER_AES_GCM_BASE64"
 
 #define FREE_NONULL(p)    \
 	if (p) {          \
@@ -703,6 +705,15 @@ NNG_DECL void conf_parse_ver2(conf *nanomq_conf);
 NNG_DECL void conf_parse_cipher(conf *nanomq_conf, const char *key, const char *key2);
 #if defined(SUPP_PARQUET) || defined(SUPP_LICENSE_STD)
 NNG_DECL void conf_bridge_node_parse_cipher_password(conf_bridge_node *bridge, const char *key);
+#ifdef __cplusplus
+extern "C" {
+#endif
+NNG_DECL bool conf_parquet_unwrap_runtime_key(
+	const char *wrapped_key, const char *wrap_alg, char **plain_key_out);
+NNG_DECL void conf_parquet_free_runtime_key(char *plain_key);
+#ifdef __cplusplus
+}
+#endif
 #endif
 NNG_DECL void conf_gateway_parse_ver2(zmq_gateway_conf *gateway);
 NNG_DECL void conf_vsomeip_gateway_parse_ver2(vsomeip_gateway_conf *config);

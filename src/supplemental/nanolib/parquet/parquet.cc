@@ -76,6 +76,11 @@ CircularQueue        parquet_queue;
 pthread_mutex_t      parquet_queue_mutex     = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t       parquet_queue_not_empty = PTHREAD_COND_INITIALIZER;
 
+struct parquet_runtime_metadata;
+static bool parquet_resolve_and_set_decryption_properties(
+	parquet::ReaderProperties &reader_properties, conf_parquet *conf,
+	const char *filename);
+
 static char *
 get_file_name(conf_parquet
  *conf, uint64_t key_start, uint64_t key_end)
@@ -472,8 +477,8 @@ parquet_build_nmq_metadata(
 	    topic != NULL ? topic : (conf && conf->name ? conf->name : "");
 	const char *key_id =
 	    (conf && conf->encryption.key_id) ? conf->encryption.key_id : "";
-	const char *wrap_alg = (conf && conf->encryption.enable)
-	    ? "NMQ_CONF_CIPHER_AES_GCM_BASE64"
+	const char *wrap_alg    = (conf && conf->encryption.enable)
+	    ? PARQUET_WRAP_ALG_NMQ_CONF_CIPHER_AES_GCM_BASE64
 	    : "NONE";
 	const char *wrapped_key = "";
 	if (conf && conf->encryption.enable && conf->encryption.key_cipher) {
@@ -882,15 +887,15 @@ parquet_find_span(
 
 bool
 parquet_read_set_property(
-    parquet::ReaderProperties &reader_properties, conf_parquet *conf)
+    parquet::ReaderProperties &reader_properties, const char *key)
 {
-	if (conf != NULL && conf->encryption.enable && conf->encryption.key != NULL) {
+	if (key != NULL && strlen(key) > 0) {
 		parquet::FileDecryptionProperties::Builder builder;
 		shared_ptr<parquet::FileDecryptionProperties>
 		    decryption_configuration =
-				builder.footer_key(conf->encryption.key)
+				builder.footer_key(key)
 				->key_retriever(std::make_shared<UniformKeyRetriever>(
-						conf->encryption.key))
+						key))
 				->build();
 
 		// Add the current decryption configuration to
@@ -930,7 +935,7 @@ parquet_check_is_compat_and_decrypt(
 			     (kv->value(idx).compare("NanoMQ") == 0)) {
 				// Yes. It's a parquet file owned by NanoMQ
 				if (((idx = kv->FindKey("nmq.key.wrap_alg")) >= 0) &&
-				     (kv->value(idx).compare("NMQ_CONF_CIPHER_AES_GCM_BASE64") == 0) &&
+				     (kv->value(idx).compare(PARQUET_WRAP_ALG_NMQ_CONF_CIPHER_AES_GCM_BASE64) == 0) &&
 					((idx = kv->FindKey("nmq.key.wrapped")) >= 0) &&
 					 (kv->value(idx).length() > 0)) {
 					is_compat_mode = false;
@@ -965,10 +970,10 @@ parquet_read(conf_parquet *conf, char *filename, uint64_t key, uint32_t *len)
 		return NULL;
 	}
 
-	// TODO Should we use wrapped_key built-in metadata?
 	if (is_compat_mode == false && is_encrypted == true) {
 		log_info("parquet mode [v1] [encrypted]: %s", filename);
-		if (false == parquet_read_set_property(reader_properties, conf)) {
+		if (false == parquet_resolve_and_set_decryption_properties(
+						reader_properties, conf, filename)) {
 			log_error("Can't read encrypted parquet due to no encryption config");
 			return NULL;
 		}
@@ -1173,10 +1178,10 @@ parquet_read(conf_parquet *conf, char *filename, vector<uint64_t> keys)
 		return ret_vec;
 	}
 
-	// TODO Should we use wrapped_key built-in metadata?
 	if (is_compat_mode == false && is_encrypted == true) {
 		log_info("parquet mode [v1] [encrypted]: %s", filename);
-		if (false == parquet_read_set_property(reader_properties, conf)) {
+		if (false == parquet_resolve_and_set_decryption_properties(
+						reader_properties, conf, filename)) {
 			log_error("Can't read encrypted parquet due to no encryption config");
 			return ret_vec;
 		}
@@ -1372,15 +1377,97 @@ static bool
 load_key_from_metadata(
     conf_parquet *conf, const parquet_runtime_metadata &md, string *decoded_key)
 {
-	if (conf == NULL) {
+	if (conf == NULL || decoded_key == NULL) {
 		return false;
 	}
-	(void) md;
-	(void) decoded_key;
-	if (conf->encryption.key != NULL && strlen(conf->encryption.key) > 0) {
+
+	if (md.wrap_alg.empty() || md.wrapped_key.empty()) {
+		return false;
+	}
+
+	char *plain_key = NULL;
+	if (!conf_parquet_unwrap_runtime_key(
+			md.wrapped_key.c_str(), md.wrap_alg.c_str(), &plain_key)) {
+		return false;
+	}
+
+	if (plain_key == NULL || strlen(plain_key) == 0) {
+		conf_parquet_free_runtime_key(plain_key);
+		return false;
+	}
+
+	decoded_key->assign(plain_key);
+	conf_parquet_free_runtime_key(plain_key);
+	if (!decoded_key->empty()) {
 		return true;
 	}
 	return false;
+}
+
+static bool
+parquet_resolve_selected_decryption_key(conf_parquet *conf,
+    const parquet_runtime_metadata *md, const char *filename,
+    string *selected_key)
+{
+	if (conf == NULL || selected_key == NULL) {
+		return false;
+	}
+
+	bool   has_local_key = (conf->encryption.key != NULL &&
+	      strlen(conf->encryption.key) > 0);
+	string local_key;
+	if (has_local_key) {
+		local_key = conf->encryption.key;
+	}
+
+	string metadata_key;
+	bool   has_metadata_key = false;
+	if (md != NULL) {
+		has_metadata_key = load_key_from_metadata(conf, *md, &metadata_key);
+		if (!has_metadata_key && !md->wrapped_key.empty()) {
+			log_warn("Failed to unwrap metadata key for parquet %s",
+			    filename == NULL ? "(null)" : filename);
+		}
+	}
+
+	if (!has_local_key && !has_metadata_key) {
+		log_error("No usable decryption key for parquet %s",
+		    filename == NULL ? "(null)" : filename);
+		return false;
+	}
+
+	if (has_metadata_key) {
+		if (has_local_key && local_key != metadata_key) {
+			log_warn(
+			    "Parquet key mismatch for %s, prefer metadata key",
+			    filename == NULL ? "(null)" : filename);
+		}
+		*selected_key = metadata_key;
+		return true;
+	}
+
+	*selected_key = local_key;
+	return true;
+}
+
+static bool
+parquet_resolve_and_set_decryption_properties(
+    parquet::ReaderProperties &reader_properties, conf_parquet *conf,
+    const char *filename)
+{
+	parquet_runtime_metadata md;
+	parquet_runtime_metadata *md_ptr = NULL;
+	if (parquet_get_runtime_metadata(conf, filename, &md)) {
+		md_ptr = &md;
+	}
+
+	string selected_key;
+	if (!parquet_resolve_selected_decryption_key(
+			conf, md_ptr, filename, &selected_key)) {
+		return false;
+	}
+
+	return parquet_read_set_property(reader_properties, selected_key.c_str());
 }
 
 vector<parquet_data_packet *>
@@ -1400,9 +1487,7 @@ parquet_find_data_packet(
 	}
 
 	parquet_runtime_metadata md;
-	string                   key_from_md;
 	parquet_get_runtime_metadata(conf, filename, &md);
-	// TODO load_key_from_metadata(conf, md, &key_from_md);
 	if (topic.empty() && !md.topic.empty()) {
 		topic = md.topic;
 	}
@@ -1458,9 +1543,7 @@ parquet_find_data_packet(conf_parquet *conf, char *filename, uint64_t key)
 	}
 
 	parquet_runtime_metadata md;
-	string                  key_from_md;
 	parquet_get_runtime_metadata(conf, filename, &md);
-	// TODO load_key_from_metadata(conf, md, &key_from_md);
 	if (topic.empty() && !md.topic.empty()) {
 		topic = md.topic;
 	}
@@ -1740,10 +1823,10 @@ parquet_read_span_by_column(conf_parquet *conf, const char *filename, uint64_t k
 		return NULL;
 	}
 
-	// TODO Should we use wrapped_key built-in metadata?
 	if (is_compat_mode == false && is_encrypted == true) {
 		log_info("parquet mode [v1] [encrypted]: %s", filename);
-		if (false == parquet_read_set_property(reader_properties, conf)) {
+		if (false == parquet_resolve_and_set_decryption_properties(
+						reader_properties, conf, filename)) {
 			log_error("Can't read encrypted parquet due to no encryption config");
 			return NULL;
 		}
