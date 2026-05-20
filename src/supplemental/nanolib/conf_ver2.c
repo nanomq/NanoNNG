@@ -24,6 +24,19 @@
 static const char *gvin = NULL;
 static void conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls);
 
+#ifdef SUPP_PARQUET
+static char *g_parquet_runtime_commonkey = NULL;
+
+static void
+conf_parquet_set_runtime_commonkey(const char *commonkey)
+{
+	FREE_NONULL(g_parquet_runtime_commonkey);
+	if (commonkey != NULL && strlen(commonkey) > 0) {
+		g_parquet_runtime_commonkey = nng_strdup(commonkey);
+	}
+}
+#endif
+
 typedef struct {
 	uint8_t enumerate;
 	char   *desc;
@@ -2450,6 +2463,80 @@ conf_authorization_prase_ver2(conf *config, cJSON *jso)
 }
 
 #ifdef SUPP_PARQUET
+
+bool
+conf_parquet_unwrap_runtime_key(
+    const char *wrapped_key, const char *wrap_alg, char **plain_key_out)
+{
+	if (plain_key_out == NULL) {
+		return false;
+	}
+	*plain_key_out = NULL;
+
+	if (wrapped_key == NULL || strlen(wrapped_key) == 0 || wrap_alg == NULL) {
+		return false;
+	}
+
+	if (strcmp(wrap_alg, PARQUET_WRAP_ALG_NMQ_CONF_CIPHER_AES_GCM_BASE64) !=
+	    0) {
+		log_warn("Unsupported parquet key wrap algorithm: %s", wrap_alg);
+		return false;
+	}
+
+	if (g_parquet_runtime_commonkey == NULL ||
+	    strlen(g_parquet_runtime_commonkey) == 0) {
+		log_error("Parquet runtime common key is unavailable");
+		return false;
+	}
+
+	const size_t wrapped_len = strlen(wrapped_key);
+	uint8_t     *cipher      = (uint8_t *) malloc(wrapped_len);
+	if (cipher == NULL) {
+		log_error("failed to alloc buffer for wrapped parquet key");
+		return false;
+	}
+
+	size_t cipher_sz = nni_base64_decode((const char *) wrapped_key,
+	    wrapped_len, (uint8_t *) cipher, wrapped_len);
+	if (cipher_sz <= 32) {
+		free(cipher);
+		log_error("failed to base64 decode nmq.key.wrapped");
+		return false;
+	}
+
+	int plain_sz = 0;
+	uint8_t *plain = nni_aes_gcm_decrypt(cipher, (int) cipher_sz,
+	    (uint8_t *) g_parquet_runtime_commonkey,
+	    strlen(g_parquet_runtime_commonkey), &plain_sz,
+	    aes_gcm_get_method_by_key_len(strlen(g_parquet_runtime_commonkey)));
+	free(cipher);
+	if (plain == NULL || plain_sz <= 0) {
+		log_error("failed to decrypt nmq.key.wrapped");
+		return false;
+	}
+
+	char *out = (char *) malloc((size_t) plain_sz + 1);
+	if (out == NULL) {
+		free(plain);
+		log_error("failed to alloc plain parquet key");
+		return false;
+	}
+	memcpy(out, plain, (size_t) plain_sz);
+	out[plain_sz] = '\0';
+	free(plain);
+
+	*plain_key_out = out;
+	return true;
+}
+
+void
+conf_parquet_free_runtime_key(char *plain_key)
+{
+	if (plain_key != NULL) {
+		free(plain_key);
+	}
+}
+
 static void
 conf_parquet_parse_cipher_one(conf_parquet *parquet, const char *commonkey)
 {
@@ -2525,6 +2612,7 @@ conf_parse_cipher(conf *config, const char *key, const char *key2)
 #endif
 	conf_bridge_parse_cipher(&config->bridge, key, key2);
 #ifdef SUPP_PARQUET
+	conf_parquet_set_runtime_commonkey(key);
 	conf_parquet_parse_cipher(config, key);
 #endif
 	NNI_ARG_UNUSED(key);
