@@ -1020,6 +1020,12 @@ conf_init(conf *nanomq_conf)
 
 	conf_bridge_init(&nanomq_conf->bridge);
 	conf_bridge_init(&nanomq_conf->aws_bridge);
+#if defined(SUPP_PLUGIN)
+	nanomq_conf->stream_inject.enable     = true;
+	nanomq_conf->stream_inject.queue_cap  = 4096;
+	nanomq_conf->stream_inject.worker_num = 1;
+	nanomq_conf->stream_inject.full_op    = STREAM_PLUGIN_FULL_DROP;
+#endif
 
 	nanomq_conf->web_hook.enable         = false;
 	nanomq_conf->web_hook.url            = NULL;
