@@ -458,6 +458,44 @@ struct conf_plugin {
 	struct conf_plugin_lib **libs;
 	size_t path_sz;
 };
+
+typedef enum {
+	STREAM_PLUGIN_MODE_SYNC  = 0,
+	STREAM_PLUGIN_MODE_ASYNC = 1,
+} stream_plugin_mode;
+
+typedef enum {
+	STREAM_PLUGIN_FULL_DROP  = 0,
+	STREAM_PLUGIN_FULL_BLOCK = 1,
+} stream_plugin_full_op;
+
+typedef struct conf_stream_plugin_node conf_stream_plugin_node;
+struct conf_stream_plugin_node {
+	char                 *path;
+	char                 *topic;
+	char                 *name;
+	stream_plugin_mode    mode;
+	uint32_t              queue_cap;
+	stream_plugin_full_op full_op;
+
+	// runtime
+	void *handle;
+	void *runtime;
+};
+
+typedef struct conf_stream_plugin conf_stream_plugin;
+struct conf_stream_plugin {
+	size_t                   count;
+	conf_stream_plugin_node **nodes;
+};
+
+typedef struct conf_stream_inject conf_stream_inject;
+struct conf_stream_inject {
+	bool                  enable;
+	uint32_t              queue_cap;
+	uint32_t              worker_num;
+	stream_plugin_full_op full_op; // drop|block
+};
 #endif
 
 struct conf_blf {
@@ -709,6 +747,8 @@ struct conf {
 	conf_blf             blf;
 #if defined(SUPP_PLUGIN)
 	conf_plugin          plugin;
+	conf_stream_plugin   stream_plugin;
+	conf_stream_inject   stream_inject;
 #endif
 	conf_web_hook        web_hook;
 #if defined(ENABLE_LOG)
