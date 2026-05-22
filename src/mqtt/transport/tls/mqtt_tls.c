@@ -1769,6 +1769,13 @@ mqtts_tcptran_ep_connect(void *arg, nni_aio *aio)
 	mqtts_tcptran_ep *ep = arg;
 	int               rv;
 
+	if (ep->useraio != NULL) {
+		log_error("ep->useraio is not NULL 111");
+		// log_info("--------- useraio finished %p", aio);
+		// nni_aio_finish_error(aio, NNG_EBUSY);
+		return;
+	}
+
 	if (nni_aio_begin(aio) != 0) {
 		log_error("ep connect aio begin error");
 		return;
@@ -1796,8 +1803,9 @@ mqtts_tcptran_ep_connect(void *arg, nni_aio *aio)
 	}
 	if (ep->useraio != NULL) {
 		nni_mtx_unlock(&ep->mtx);
-		log_error("ep->useraio is NULL");
-		nni_aio_finish_error(aio, NNG_EBUSY);
+		log_error("ep->useraio is not NULL");
+		// log_info("--------- useraio finished %p", aio);
+		// nni_aio_finish_error(aio, NNG_EBUSY);
 		return;
 	}
 	if ((rv = nni_aio_schedule(aio, mqtts_tcptran_ep_cancel, ep)) != 0) {
