@@ -1190,8 +1190,10 @@ tls_tcp_recv_start(tls_conn *conn)
 	conn->tcp_recv_pend = true;
 	nng_aio_set_iov(&conn->tcp_recv, 1, &iov);
 
-	if (conn->is_dialer) {
+	if (conn->is_dialer && !conn->hs_done) {
 		nni_aio_set_timeout(&conn->tcp_recv, 60000); // 60s
+	} else {
+		nni_aio_set_timeout(&conn->tcp_recv, NNG_DURATION_INFINITE);
 	}
 	nng_stream_recv(conn->tcp, &conn->tcp_recv);
 }
