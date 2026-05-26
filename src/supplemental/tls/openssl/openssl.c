@@ -518,8 +518,7 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 			ERR_print_errors_fp(stderr);
 			return NNG_ECRYPTO;
 		}
-	}
-	if (SSL_is_init_finished(ec->ssl)) {
+	} else {
 		goto finished;
 	}
 
@@ -551,8 +550,7 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 					ERR_print_errors_fp(stderr);
 					return NNG_ECRYPTO;
 				}
-			}
-			if (SSL_is_init_finished(ec->ssl)) {
+			} else {
 				goto finished;
 			}
 		}
@@ -582,8 +580,7 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 					ERR_print_errors_fp(stderr);
 					return NNG_ECRYPTO;
 				}
-			}
-			if (SSL_is_init_finished(ec->ssl)) {
+			} else {
 				goto finished;
 			}
 		}
@@ -635,12 +632,13 @@ open_conn_recv(nng_tls_engine_conn *ec, uint8_t *buf, size_t *szp)
 			"recv %d from tcp and written %d to BIO", rv, written);
 
 readopenssl:
-	if ((rv = SSL_read(ec->ssl, buf, (int) *szp)) < 0) {
+	if ((rv = SSL_read(ec->ssl, buf, (int) *szp)) <= 0) {
 		rv = SSL_get_error(ec->ssl, rv);
 		// TODO return codes according openssl documents
 		if (rv != SSL_ERROR_WANT_READ) {
 			log_error("NNG-TLS-CONN-RECV"
 				"openssl read failed rv%d", rv);
+			ERR_print_errors_fp(stderr);
 			return (NNG_ECRYPTO);
 		}
 		*szp = 0;
@@ -929,13 +927,13 @@ open_config_ca_chain(
 	// overwrite certs
 	log_info("teeGetCA start");
 	len = teeGetCA((char **)&certs);
-	log_warn("cacert(%d)", len);
 #else
 	if (certs == NULL) {
 		log_info("open_config_ca_chain" "NULL certs detected!");
 	}
 	len = strlen(certs);
 #endif //TLS_EXTERN_PRIVATE_KEY
+	log_warn("cacertlen:%d", len);
 
 	BIO *bio = BIO_new_mem_buf(certs, len);
 	if (!bio) {
@@ -954,6 +952,13 @@ open_config_ca_chain(
 			return (NNG_ECRYPTO);
 		}
 		X509_free(cert);
+	}
+	if (cert == NULL) {
+		unsigned long err = ERR_peek_last_error();
+		if (ERR_GET_LIB(err) == ERR_LIB_PEM &&
+			ERR_GET_REASON(err) == PEM_R_NO_START_LINE) {
+			ERR_clear_error(); /* normal EOF */
+		}
 	}
 	SSL_CTX_set_cert_store(cfg->ctx, store);
 
@@ -1118,6 +1123,13 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		}
 		X509_free(cacert);
 	}
+	if (cacert == NULL) {
+		unsigned long err = ERR_peek_last_error();
+		if (ERR_GET_LIB(err) == ERR_LIB_PEM &&
+			ERR_GET_REASON(err) == PEM_R_NO_START_LINE) {
+			ERR_clear_error(); /* normal EOF */
+		}
+	}
 	if (cacerts)
 		free(cacerts);
 	BIO_free(cabio);
@@ -1205,6 +1217,7 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 
 #else
 	len = strlen(key);
+	log_warn("keylen:%d", len);
 	biokey = BIO_new_mem_buf(key, len);
 	if (!biokey) {
 		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to create key BIO");
