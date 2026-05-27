@@ -2619,19 +2619,21 @@ conf_parquet_parse_cipher(conf *config, const char *commonkey)
 #endif
 
 void
-conf_parse_cipher(conf *config, const char *key, const char *key2)
+conf_parse_cipher(conf *config, const char *key_bridge, const char *key_cert,
+		const char *key_parquet_meta)
 {
 #ifdef SUPP_LICENSE_STD
-	conf_auth_parse_cipher(&config->auths, key);
-	conf_http_server_parse_cipher(&config->http_server, key);
+	conf_auth_parse_cipher(&config->auths, key_bridge);
+	conf_http_server_parse_cipher(&config->http_server, key_bridge);
 #endif
-	conf_bridge_parse_cipher(&config->bridge, key, key2);
+	conf_bridge_parse_cipher(&config->bridge, key_bridge, key_cert);
 #ifdef SUPP_PARQUET
-	conf_parquet_set_runtime_commonkey(key);
-	conf_parquet_parse_cipher(config, key);
+	conf_parquet_set_runtime_commonkey(key_parquet_meta);
+	conf_parquet_parse_cipher(config, key_parquet_meta);
 #endif
-	NNI_ARG_UNUSED(key);
-	NNI_ARG_UNUSED(key2);
+	NNI_ARG_UNUSED(key_bridge);
+	NNI_ARG_UNUSED(key_parquet_meta);
+	NNI_ARG_UNUSED(key_cert);
 }
 
 void
