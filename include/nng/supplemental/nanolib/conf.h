@@ -328,9 +328,9 @@ struct conf_bridge_node {
 	nng_lmq		*ctx_msgs;  // only cache qos msg blocked by aio busy
 	nng_mtx     *mtx;
 
-	bool         hybrid;  // enable/disable hybrid bridging
-	char       **hybrid_servers;
-
+	bool             hybrid; // enable/disable hybrid bridging
+	char           **hybrid_servers;
+	nng_atomic_bool *connected;
 	// MQTT v5 property
 	conf_bridge_conn_properties *     conn_properties;
 	conf_bridge_conn_will_properties *will_properties;
