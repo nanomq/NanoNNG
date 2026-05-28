@@ -3176,6 +3176,8 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->sub_properties  = NULL;
 	// TODO compatible with bridge reload
 	node->ctx_msgs = NULL;
+	// bridge connect status flag
+	nng_atomic_alloc_bool(&node->connected);
 }
 
 static void
@@ -3664,6 +3666,7 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 		node->hybrid_servers = NULL;
 	}
 	conf_tls_destroy(&node->tls);
+	nng_atomic_free_bool(node->connected);
 }
 
 void
