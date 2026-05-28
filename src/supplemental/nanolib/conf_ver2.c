@@ -2004,6 +2004,9 @@ conf_stream_plugin_parse_ver2(conf *config, cJSON *jso)
 
 		if (node->path == NULL || node->topic == NULL) {
 			log_error("stream_plugin: path/topic required");
+			if (node->path) nng_strfree(node->path);
+			if (node->topic) nng_strfree(node->topic);
+			if (node->name) nng_strfree(node->name);
 			NNI_FREE_STRUCT(node);
 			continue;
 		}
