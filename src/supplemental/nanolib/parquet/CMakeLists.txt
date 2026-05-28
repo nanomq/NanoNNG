@@ -1,7 +1,0 @@
-if(NNG_ENABLE_PARQUET)
-    nng_sources(parquet.cc)
-    find_package(Arrow CONFIG REQUIRED)
-    find_package(Parquet CONFIG REQUIRED)
-    nng_link_libraries(arrow_static parquet_static)
-    # nng_test(parquet_test)
-endif()

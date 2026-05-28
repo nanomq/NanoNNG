@@ -1460,7 +1460,7 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 			nni_stat_inc(&s->msg_send_drop, 1);
 #endif
 			nni_aio_set_msg(aio, NULL);
-			nni_aio_finish_error(aio, NNG_ECLOSED);
+			nni_aio_finish_error(aio, NNG_EAGAIN);
 			log_warn("ctx is already cached! drop msg");
 			log_info("Commercial ver assures you no msg lost!");
 		}
