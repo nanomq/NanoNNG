@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 
+#include "nng/nng.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -60,15 +61,15 @@ typedef struct
 	a += b; \
 }                                            
 
-int ComputeStringMD5(unsigned char *dest_str, unsigned int dest_len, char *md5_str);
-int ComputeFileMD5(const char *file_path, char *md5_str);
+NNG_DECL int ComputeStringMD5(unsigned char *dest_str, unsigned int dest_len, char *md5_str);
+NNG_DECL int ComputeFileMD5(const char *file_path, char *md5_str);
 
-void MD5Init(MD5_CTX *context);
-void MD5Update(MD5_CTX *context, unsigned char *input, unsigned int inputlen);
-void MD5Final(MD5_CTX *context, unsigned char digest[16]);
-void MD5Transform(unsigned int state[4], unsigned char block[64]);
-void MD5Encode(unsigned char *output, unsigned int *input, unsigned int len);
-void MD5Decode(unsigned int *output, unsigned char *input, unsigned int len);
+NNG_DECL void MD5Init(MD5_CTX *context);
+NNG_DECL void MD5Update(MD5_CTX *context, unsigned char *input, unsigned int inputlen);
+NNG_DECL void MD5Final(MD5_CTX *context, unsigned char digest[16]);
+NNG_DECL void MD5Transform(unsigned int state[4], unsigned char block[64]);
+NNG_DECL void MD5Encode(unsigned char *output, unsigned int *input, unsigned int len);
+NNG_DECL void MD5Decode(unsigned int *output, unsigned char *input, unsigned int len);
 
 #ifdef __cplusplus
 }
