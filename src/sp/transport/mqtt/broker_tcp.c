@@ -324,7 +324,6 @@ tcptran_pipe_nego_cb(void *arg)
 	tcptran_pipe *p   = arg;
 	tcptran_ep   *ep  = p->ep;
 	nni_aio      *aio = p->negoaio;
-	nni_aio      *uaio;
 	nni_iov       iov;
 	uint8_t       len_of_varint = 0;
 	uint32_t      len;
@@ -475,11 +474,10 @@ error:
 	}
 	nng_stream_close(p->conn);
 
-	if ((uaio = ep->useraio) != NULL) {
-		ep->useraio = NULL;
-		nni_aio_finish_error(uaio, rv);
-	}
 	nni_list_remove(&ep->negopipes, p);
+	// A negotiation failure belongs to this client pipe. Keep the listener
+	// accept aio pending so one bad or aborted MQTT CONNECT does not report
+	// accept failure for unrelated clients.
 	nni_mtx_unlock(&ep->mtx);
 	tcptran_pipe_reap(p);
 	log_error("connect nego error rv:(%d)", rv);
