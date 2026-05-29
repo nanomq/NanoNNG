@@ -6,6 +6,7 @@
 // found online at https://opensource.org/licenses/MIT.
 #ifndef STREAM_H
 #define STREAM_H
+#include "nng/nng.h"
 #include "nng/supplemental/util/idhash.h"
 #include "nng/supplemental/nanolib/log.h"
 #ifdef SUPP_PARQUET
@@ -52,13 +53,13 @@ struct parquet_data {
 	parquet_data_packet ***payload_arr;
 };
 
-parquet_data *parquet_data_alloc(char **schema,
-								 parquet_data_packet ***payload_arr,
-								 uint64_t *ts,
-								 uint32_t col_len,
-								 uint32_t row_len);
+NNG_DECL parquet_data *parquet_data_alloc(char **schema,
+								  parquet_data_packet ***payload_arr,
+								  uint64_t *ts,
+								  uint32_t col_len,
+								  uint32_t row_len);
 
-void parquet_data_free(parquet_data *data);
+NNG_DECL void parquet_data_free(parquet_data *data);
 #endif
 
 struct stream_data_out {
@@ -89,18 +90,18 @@ struct cmd_data {
 	char **schema;
 };
 
-int stream_register(char *name, uint8_t id,
-					void *(*decode)(void *),
-					void *(*encode)(void *),
-					void *(*cmd_parser)(void *));
-int stream_unregister(uint8_t id);
-void *stream_decode(uint8_t id, void *buf);
-void *stream_encode(uint8_t id, void *buf);
-void *stream_cmd_parser(uint8_t id, void *buf);
-int stream_sys_init(void);
-void stream_sys_fini(void);
+NNG_DECL int stream_register(char *name, uint8_t id,
+						 void *(*decode)(void *),
+						 void *(*encode)(void *),
+						 void *(*cmd_parser)(void *));
+NNG_DECL int stream_unregister(uint8_t id);
+NNG_DECL void *stream_decode(uint8_t id, void *buf);
+NNG_DECL void *stream_encode(uint8_t id, void *buf);
+NNG_DECL void *stream_cmd_parser(uint8_t id, void *buf);
+NNG_DECL int stream_sys_init(void);
+NNG_DECL void stream_sys_fini(void);
 
-void stream_decoded_data_free(struct stream_decoded_data *data);
-void stream_data_out_free(struct stream_data_out *data);
-void stream_data_in_free(struct stream_data_in *sdata);
+NNG_DECL void stream_decoded_data_free(struct stream_decoded_data *data);
+NNG_DECL void stream_data_out_free(struct stream_data_out *data);
+NNG_DECL void stream_data_in_free(struct stream_data_in *sdata);
 #endif
