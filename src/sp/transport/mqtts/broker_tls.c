@@ -332,7 +332,6 @@ tlstran_pipe_nego_cb(void *arg)
 	tlstran_pipe *p   = arg;
 	tlstran_ep   *ep  = p->ep;
 	nni_aio      *aio = p->negoaio;
-	nni_aio      *uaio;
 	nni_iov       iov;
 	uint8_t       len_of_varint = 0;
 	uint32_t      len;
@@ -481,10 +480,10 @@ error:
 	nni_list_remove(&ep->negopipes, p);
 	nng_stream_close(p->conn);
 
-	if ((uaio = ep->useraio) != NULL) {
-		ep->useraio = NULL;
-		nni_aio_finish_error(uaio, rv);
-	}
+	// A negotiation failure belongs to this client pipe. Do not fail
+	// ep->useraio here, otherwise bursts of malformed or aborted TLS/MQTT
+	// handshakes can surface as listener accept failures and disturb accept
+	// progress for unrelated clients.
 	nni_mtx_unlock(&ep->mtx);
 	tlstran_pipe_reap(p);
 	log_error("connect nego error rv:(%d) %s MQTT reason code %d",
