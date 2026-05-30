@@ -342,6 +342,36 @@ static SSL_PRIVATE_KEY_METHOD my_ssl_private_key_method = {
 
 #endif // TLS_EXTERN_PRIVATE_KEY
 
+static void
+open_log_ssl_error(const char *where, int ssl_error)
+{
+	unsigned long err;
+	char          errbuf[256];
+	bool          has_error = false;
+
+	while ((err = ERR_get_error()) != 0) {
+		ERR_error_string_n(err, errbuf, sizeof(errbuf));
+		log_error("%s ssl_error=%d openssl_error=0x%lx %s",
+		    where, ssl_error, err, errbuf);
+		has_error = true;
+	}
+
+	if (!has_error) {
+		log_error("%s ssl_error=%d openssl_error=none", where,
+		    ssl_error);
+	}
+}
+
+static bool
+open_ssl_error_is_established_close(unsigned long err)
+{
+	int reason = ERR_GET_REASON(err);
+
+	return reason == SSL_R_WRONG_VERSION_NUMBER ||
+	    reason == SSL_R_SHUTDOWN_WHILE_IN_INIT ||
+	    reason == SSL_R_SSLV3_ALERT_BAD_CERTIFICATE;
+}
+
 struct nng_tls_engine_conn {
 	void    *tls; // parent conn
 	SSL     *ssl;
@@ -533,6 +563,8 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 				if (!BIO_should_retry(ec->rbio)) {
 					log_warn("NNG-TLS-CONN-HANDSHAKE"
 						"openssl BIO write failed rv%d", ensz);
+					open_log_ssl_error(
+					    "NNG-TLS-CONN-HANDSHAKE BIO_write", 0);
 					return NNG_ECRYPTO;
 				}
 				continue;
@@ -560,7 +592,17 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 		}
 
 		while ((ensz = BIO_read(ec->wbio, ec->rbuf, OPEN_BUF_SZ)) > 0) {
-			log_warn("NNG-TLS-CONN-HANDSHAKE" "BIO read rv%d", ensz);
+			log_debug("NNG-TLS-CONN-HANDSHAKE" "BIO read rv%d", ensz);
+			if (ensz < 0) {
+				if (!BIO_should_retry(ec->wbio)) {
+					log_warn("NNG-TLS-CONN-HANDSHAKE"
+						"openssl BIO read failed rv%d", ensz);
+					open_log_ssl_error(
+					    "NNG-TLS-CONN-HANDSHAKE BIO_read", 0);
+					return NNG_ECRYPTO;
+				}
+				continue;
+			}
 			sz = open_net_write(ec->tls, ec->rbuf, ensz);
 			log_warn("NNG-TLS-CONN-HANDSHAKE" "tcp write want%d real%d", ensz, sz);
 			if (sz == 0 - SSL_ERROR_WANT_READ || sz == 0 - SSL_ERROR_WANT_WRITE)
@@ -595,7 +637,7 @@ finished:
 		ec->ok = 1;
 		return 0;
 	}
-	log_info("return NNG_ECRYPTO ...");
+	open_log_ssl_error("NNG-TLS-CONN-HANDSHAKE SSL_do_handshake", rv);
 	return NNG_ECRYPTO;
 }
 
@@ -624,7 +666,8 @@ open_conn_recv(nng_tls_engine_conn *ec, uint8_t *buf, size_t *szp)
 		log_debug("NNG-TLS-CONN-RECV" "bio write result %d", ensz);
 		if (!BIO_should_retry(ec->rbio)) {
 			log_error("NNG-TLS-CONN-RECV"
-				"[%d]openssl BIO write failed rv%d", ensz);
+				"openssl BIO write failed rv%d", ensz);
+			open_log_ssl_error("NNG-TLS-CONN-RECV BIO_write", 0);
 			return (NNG_ECRYPTO);
 		}
 	}
@@ -632,16 +675,43 @@ open_conn_recv(nng_tls_engine_conn *ec, uint8_t *buf, size_t *szp)
 			"recv %d from tcp and written %d to BIO", rv, written);
 
 readopenssl:
-	if ((rv = SSL_read(ec->ssl, buf, (int) *szp)) <= 0) {
-		rv = SSL_get_error(ec->ssl, rv);
+	ERR_clear_error();
+	rv = SSL_read(ec->ssl, buf, (int) *szp);
+	if (rv <= 0) {
+		int ssl_rv = SSL_get_error(ec->ssl, rv);
 		// TODO return codes according openssl documents
-		if (rv != SSL_ERROR_WANT_READ) {
+		if (ssl_rv == SSL_ERROR_WANT_READ ||
+		    ssl_rv == SSL_ERROR_WANT_WRITE) {
+			*szp = 0;
+		} else if (ssl_rv == SSL_ERROR_ZERO_RETURN) {
+			log_debug("NNG-TLS-CONN-RECV"
+			    "openssl read closed by TLS close_notify rv%d ssl_rv%d",
+			    rv, ssl_rv);
+			return (NNG_ECLOSED);
+		} else if (ssl_rv == SSL_ERROR_SYSCALL &&
+		    ERR_peek_error() == 0) {
+			log_debug("NNG-TLS-CONN-RECV"
+			    "openssl read closed by peer EOF rv%d ssl_rv%d",
+			    rv, ssl_rv);
+			return (NNG_ECLOSED);
+		} else if (ec->ok && ssl_rv == SSL_ERROR_SSL &&
+		    open_ssl_error_is_established_close(ERR_peek_error())) {
+			unsigned long err = ERR_peek_error();
+			char          errbuf[256];
+
+			ERR_error_string_n(err, errbuf, sizeof(errbuf));
+			log_warn("NNG-TLS-CONN-RECV"
+			    "openssl read mapped to closed after established TLS rv%d ssl_rv%d openssl_error=0x%lx %s",
+			    rv, ssl_rv, err, errbuf);
+			ERR_clear_error();
+			return (NNG_ECLOSED);
+		} else {
 			log_error("NNG-TLS-CONN-RECV"
-				"openssl read failed rv%d", rv);
-			ERR_print_errors_fp(stderr);
+				"openssl read failed rv%d ssl_rv%d", rv,
+				ssl_rv);
+			open_log_ssl_error("NNG-TLS-CONN-RECV SSL_read", ssl_rv);
 			return (NNG_ECRYPTO);
 		}
-		*szp = 0;
 	} else {
 		*szp = (size_t) rv;
 	}
