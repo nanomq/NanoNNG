@@ -712,6 +712,7 @@ tlstran_pipe_recv_cb(void *arg)
 	aio = nni_list_first(&p->recvq);
 
 	if ((rv = nni_aio_result(rxaio)) != 0) {
+		int raw_rv = rv;
 		log_warn("nni aio recv error!! %s\n", nng_strerror(rv));
 		nni_pipe_bump_error(p->npipe, rv);
 		if (rv == NNG_ECONNRESET || rv == NNG_ECONNSHUT || rv == NNG_ECLOSED) {
@@ -721,6 +722,19 @@ tlstran_pipe_recv_cb(void *arg)
 			rv = NMQ_SERVER_BUSY;
 		} else {
 			rv = NMQ_UNSEPECIFY_ERROR;
+		}
+		if (p->tcp_cparam != NULL) {
+			log_warn("mqtts recv error mapped clientid=%.*s username=%.*s ip=%s pipe=%u raw_rv=%d raw_error=%s reason_code=0x%02x",
+			    p->tcp_cparam->clientid.len,
+			    p->tcp_cparam->clientid.body,
+			    p->tcp_cparam->username.len,
+			    p->tcp_cparam->username.body,
+			    p->tcp_cparam->ip_addr_v4, nni_pipe_id(p->npipe),
+			    raw_rv, nng_strerror(raw_rv), rv);
+		} else {
+			log_warn("mqtts recv error mapped pipe=%u raw_rv=%d raw_error=%s reason_code=0x%02x",
+			    nni_pipe_id(p->npipe), raw_rv, nng_strerror(raw_rv),
+			    rv);
 		}
 		goto recv_error;
 	}
