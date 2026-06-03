@@ -16,6 +16,7 @@
 #include "nng/supplemental/nanolib/hocon.h"
 #include "nng/supplemental/nanolib/nanolib.h"
 #include <ctype.h>
+#include <inttypes.h>
 
 static void conf_bridge_parse(conf *nanomq_conf, const char *path);
 static void conf_aws_bridge_parse(conf *nanomq_conf, const char *path);
@@ -4034,7 +4035,7 @@ get_size(const char *str, uint64_t *size)
 
 	uint64_t num      = 0;
 	char     unit[10] = { 0 };
-	int      res      = sscanf(str, "%lu%s", &num, unit);
+	int      res      = sscanf(str, "%" SCNu64 "%s", &num, unit);
 
 	if (res == 2) {
 		if (nni_strcasecmp(unit, "KB") == 0 || nni_strcasecmp(unit, "K") == 0) {
@@ -4068,7 +4069,7 @@ get_time_ms(const char *str, uint64_t *msec)
 
 	char     unit[3] = { 0 };
 	uint64_t ms   = 0;
-	int res = sscanf(str, "%lu%02s", &ms, unit);
+	int res = sscanf(str, "%" SCNu64 "%02s", &ms, unit);
 
 	if (res == 2) {
 		if (0 == strncmp(unit, "ms", 2)) {
@@ -4111,7 +4112,7 @@ get_time(const char *str, uint64_t *second)
 
 	char     unit = 0;
 	uint64_t s    = 0;
-	if (2 == sscanf(str, "%lu%c", &s, &unit)) {
+	if (2 == sscanf(str, "%" SCNu64 "%c", &s, &unit)) {
 		switch (unit) {
 		case 's':
 			*second = s;

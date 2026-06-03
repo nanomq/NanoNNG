@@ -183,12 +183,12 @@ read_env_conf(conf *config)
 	set_int_var(&config->num_taskq_thread, NANOMQ_NUM_TASKQ_THREAD);
 	set_int_var(&config->max_taskq_thread, NANOMQ_MAX_TASKQ_THREAD);
 	set_long_var((long *) &config->parallel, NANOMQ_PARALLEL);
-	set_size_t_var((long *) &config->property_size, NANOMQ_PROPERTY_SIZE);
+	set_size_t_var(&config->property_size, NANOMQ_PROPERTY_SIZE);
 	set_long_var(
 	    (long *) &config->max_packet_size, NANOMQ_MAX_PACKET_SIZE);
 	set_long_var((long *) &config->client_max_packet_size,
 	    NANOMQ_CLIENT_MAX_PACKET_SIZE);
-	set_size_t_var((long *)&config->msq_len, NANOMQ_MSQ_LEN);
+	set_size_t_var(&config->msq_len, NANOMQ_MSQ_LEN);
 	set_long_var((long *) &config->qos_duration, NANOMQ_QOS_DURATION);
 	set_bool_var(&config->allow_anonymous, NANOMQ_ALLOW_ANONYMOUS);
 	set_bool_var(&config->websocket.enable, NANOMQ_WEBSOCKET_ENABLE);
