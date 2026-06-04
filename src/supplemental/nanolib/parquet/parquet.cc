@@ -1659,6 +1659,34 @@ get_filtered_schema(shared_ptr<parquet::RowGroupReader> row_group_reader,
 		col.reader = row_group_reader->Column(i);
 		schema_vec.push_back(col);
 	}
+
+	// Validate that every requested schema column exists in the file.
+	// Iterate over the requested names and check against matched results so
+	// that duplicate request entries do not cause a false mismatch.
+	// If any requested column is absent, return an empty vector so that
+	// callers treat this as "no matching data".
+	if (schema_len > 0) {
+		for (uint16_t j = 0; j < schema_len; j++) {
+			bool found = false;
+			for (const auto &col : schema_vec) {
+				if (strcmp(col.name, schema[j]) == 0) {
+					found = true;
+					break;
+				}
+			}
+			if (!found) {
+				log_warn("get_filtered_schema: schema column "
+				         "'%s' not found in parquet file",
+				    schema[j]);
+				for (auto &col : schema_vec) {
+					free(col.name);
+				}
+				schema_vec.clear();
+				break;
+			}
+		}
+	}
+
 	return schema_vec;
 }
 
