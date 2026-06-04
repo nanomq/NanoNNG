@@ -19,7 +19,7 @@ class parquet_file_manager {
 	void add_queue(conf_exchange_node *node)
 	{
 		file_queue_map[node->topic] =
-		    make_shared<parquet_file_queue>(node->parquet);
+		    make_shared<parquet_file_queue>(node->parquet, node->topic);
 		file_queue_map[node->topic]->init();
 	}
 	CircularQueue *fetch_queue(const string &topic) const
