@@ -88,7 +88,9 @@ get_file_name(conf_parquet
 	char *dir       = conf->dir;
 	char *prefix    = conf->file_name_prefix;
 
-	file_name = (char *) malloc(strlen(prefix) + strlen(dir) +
+	size_t prefix_len = prefix != NULL ? strlen(prefix) : 0;
+
+	file_name = (char *) malloc(prefix_len + strlen(dir) +
 	    UINT64_MAX_DIGITS + UINT64_MAX_DIGITS + 16);
 	if (file_name == NULL) {
 		log_error("Failed to allocate memory for file name.");
@@ -353,7 +355,12 @@ void
 update_parquet_file_ranges(
     conf_parquet *conf, parquet_object *elem, parquet_file_range *range)
 {
-	if (elem->ranges->size != (int) conf->file_count) {
+	if (conf->file_count == 0) {
+		// No file count limit configured, free the range and return
+		parquet_file_range_free(range);
+		return;
+	}
+	if (elem->ranges->size < (int) conf->file_count) {
 		elem->ranges->range =
 		    (parquet_file_range **) realloc(elem->ranges->range,
 		        sizeof(parquet_file_range *) * (++elem->ranges->size));

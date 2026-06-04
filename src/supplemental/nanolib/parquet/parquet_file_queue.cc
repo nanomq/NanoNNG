@@ -132,7 +132,7 @@ parquet_file_queue::init()
 			update_queue(file_name);
 
 			log_debug("Loaded %zu parquet files in time order %s.",
-			    files_start_time.size(), file_name);
+			    files_start_time.size(), file.file_path.c_str());
 		}
 
 		for (const auto &file : files_seq_id) {
@@ -141,7 +141,7 @@ parquet_file_queue::init()
 			log_debug("file.order_key: %ld", file.order_key);
 			set_index(file.order_key + 1);
 			log_debug("Loaded %zu parquet file %s in time order.",
-			    files_seq_id.size(), file_name);
+			    files_seq_id.size(), file.file_path.c_str());
 		}
 	} else {
 		log_info("Parquet directory not found, creating new one.");
