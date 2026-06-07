@@ -630,7 +630,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		    packet, max, &pos, &cparam->prop_len, true);
 		if (cparam->properties) {
 			conn_param_set_property(cparam, cparam->properties);
-			if ((rv = check_properties(cparam->properties, NULL)) !=
+			if ((rv = check_properties(cparam->properties, CMD_CONNECT)) !=
 			    SUCCESS) {
 				log_warn("Malformed CONNECT: property check failed");
 				return rv;
@@ -681,8 +681,10 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 				conn_param_set_will_property(
 				    cparam, cparam->will_properties);
 				if ((rv = check_properties(
-						cparam->will_properties, NULL)) != SUCCESS) {
-					log_info("Malformed CONNECT: check will property failed");
+				         cparam->will_properties,
+				         CMD_CONNECT)) != SUCCESS) {
+					log_info("Malformed CONNECT: check "
+					         "will property failed");
 					return PROTOCOL_ERROR;
 				}
 			}

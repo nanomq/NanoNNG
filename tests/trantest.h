@@ -804,7 +804,7 @@ decode_sub_msg(nano_work *work)
 	if (MQTT_PROTOCOL_VERSION_v5 == proto_ver) {
 		sub_pkt->properties =
 		    decode_properties(msg, (uint32_t *)&vpos, &sub_pkt->prop_len, true);
-		if (check_properties(sub_pkt->properties, NULL) != SUCCESS) {
+		if (check_properties(sub_pkt->properties, CMD_SUBSCRIBE) != SUCCESS) {
 			return PROTOCOL_ERROR;
 		}
 	}
@@ -994,7 +994,7 @@ decode_unsub_msg(nano_work *work)
 	if (MQTT_PROTOCOL_VERSION_v5 == proto_ver) {
 		unsub_pkt->properties =
 		    decode_properties(msg, &vpos, &unsub_pkt->prop_len, false);
-		if (check_properties(unsub_pkt->properties, NULL) != SUCCESS) {
+		if (check_properties(unsub_pkt->properties, CMD_UNSUBSCRIBE) != SUCCESS) {
 			return PROTOCOL_ERROR;
 		}
 	}
