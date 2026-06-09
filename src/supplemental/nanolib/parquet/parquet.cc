@@ -899,10 +899,12 @@ parquet_read_set_property(
 	if (key != NULL && strlen(key) > 0) {
 		parquet::FileDecryptionProperties::Builder builder;
 		shared_ptr<parquet::FileDecryptionProperties>
-			decryption_configuration = builder.footer_key(key)
-		             ->key_retriever(
-		                 std::make_shared<UniformKeyRetriever>(key))
-		             ->build();
+		    decryption_configuration =
+				builder.footer_key(key)
+				->key_retriever(std::make_shared<UniformKeyRetriever>(
+						key))
+				->build();
+
 		// Add the current decryption configuration to
 		// ReaderProperties.
 		reader_properties.file_decryption_properties(
