@@ -69,9 +69,7 @@ class UniformKeyRetriever : public parquet::DecryptionKeyRetriever {
 	std::string key_;
 public:
 	UniformKeyRetriever(const std::string& key) : key_(key) {}
-	arrow::util::SecureString GetKey(const std::string&) override { 
-    	return arrow::util::SecureString(std::string(key_)); 
-	}
+	std::string GetKey(const std::string&) override { return key_; }
 };
 
 parquet_file_manager file_manager;
@@ -335,13 +333,13 @@ parquet_set_encryption(char **schema_arr, uint32_t schema_len, conf_parquet *con
 	for (int i=0; i<(int)schema_len; ++i) {
 		const char *col_name = schema_arr[i];
 		const char *col_key = conf->encryption.key;
-		parquet::ColumnEncryptionProperties::Builder col_builder;
-		col_builder.key(arrow::util::SecureString(col_key))->key_metadata("col_key_metadata");
+		parquet::ColumnEncryptionProperties::Builder col_builder(col_name);
+		col_builder.key(col_key)->key_metadata("col_key_metadata");
 		column_encryption_map[col_name] = col_builder.build();
 	}
 
 	parquet::FileEncryptionProperties::Builder file_encryption_builder(
-	    arrow::util::SecureString(conf->encryption.key));
+	    conf->encryption.key);
 	encryption_configurations =
 		file_encryption_builder
 			.footer_key_metadata(conf->encryption.key_id)
@@ -902,7 +900,7 @@ parquet_read_set_property(
 		parquet::FileDecryptionProperties::Builder builder;
 		shared_ptr<parquet::FileDecryptionProperties>
 		    decryption_configuration =
-				builder.footer_key(arrow::util::SecureString(key))
+				builder.footer_key(key)
 				->key_retriever(std::make_shared<UniformKeyRetriever>(
 						key))
 				->build();
@@ -910,7 +908,7 @@ parquet_read_set_property(
 		// Add the current decryption configuration to
 		// ReaderProperties.
 		reader_properties.file_decryption_properties(
-		    decryption_configuration);
+		    decryption_configuration->DeepClone());
 		return true;
 	}
 	return false;
