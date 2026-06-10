@@ -748,6 +748,7 @@ NNG_DECL void conf_bridge_node_parse_cipher_password(conf_bridge_node *bridge, c
 NNG_DECL bool conf_parquet_unwrap_runtime_key(
 	const char *wrapped_key, const char *wrap_alg, char **plain_key_out);
 NNG_DECL void conf_parquet_free_runtime_key(char *plain_key);
+NNG_DECL void conf_parquet_init(conf_parquet *parquet);
 #endif
 NNG_DECL void conf_gateway_parse_ver2(zmq_gateway_conf *gateway);
 NNG_DECL void conf_vsomeip_gateway_parse_ver2(vsomeip_gateway_conf *config);

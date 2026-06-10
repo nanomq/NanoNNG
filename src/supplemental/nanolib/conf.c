@@ -1078,18 +1078,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->exchange.nodes           = NULL;
 	nanomq_conf->exchange.default_parquet = NULL;
 
-	nanomq_conf->parquet.enable           = false;
-	nanomq_conf->parquet.encryption.enable= false;
-	nanomq_conf->parquet.encryption.key   = NULL;
-	nanomq_conf->parquet.encryption.key_id= NULL;
-	nanomq_conf->parquet.encryption.type  = AES_GCM_V1;
-
-	nanomq_conf->parquet.limit_frequency  = 5;
-	nanomq_conf->parquet.file_count       = 5;
-	nanomq_conf->parquet.file_size        = (10240 * 1024);
-	nanomq_conf->parquet.comp_type        = UNCOMPRESSED;
-	nanomq_conf->parquet.file_name_prefix = NULL;
-	nanomq_conf->parquet.dir              = NULL;
+	conf_parquet_init(&nanomq_conf->parquet);
 
 	nanomq_conf->blf.enable           = false;
 	nanomq_conf->blf.file_count       = 5;
@@ -3308,6 +3297,23 @@ conf_nng_proxy_init(conf_nng_bridge *proxy)
 
 	proxy->pub_count = 0;
 	proxy->sub_count = 0;
+}
+
+void
+conf_parquet_init(conf_parquet *parquet)
+{
+	parquet->enable           = false;
+	parquet->encryption.enable= false;
+	parquet->encryption.key   = NULL;
+	parquet->encryption.key_id= NULL;
+	parquet->encryption.type  = AES_GCM_V1;
+
+	parquet->limit_frequency  = 5;
+	parquet->file_count       = 5;
+	parquet->file_size        = (10240 * 1024);
+	parquet->comp_type        = UNCOMPRESSED;
+	parquet->file_name_prefix = NULL;
+	parquet->dir              = NULL;
 }
 
 void
