@@ -3302,11 +3302,12 @@ conf_nng_proxy_init(conf_nng_bridge *proxy)
 void
 conf_parquet_init(conf_parquet *parquet)
 {
-	parquet->enable           = false;
-	parquet->encryption.enable= false;
-	parquet->encryption.key   = NULL;
-	parquet->encryption.key_id= NULL;
-	parquet->encryption.type  = AES_GCM_V1;
+	parquet->enable                = false;
+	parquet->encryption.enable     = false;
+	parquet->encryption.key        = NULL;
+	parquet->encryption.key_id     = NULL;
+	parquet->encryption.type       = AES_GCM_V1;
+	parquet->encryption.key_cipher = NULL;
 
 	parquet->limit_frequency  = 5;
 	parquet->file_count       = 5;
