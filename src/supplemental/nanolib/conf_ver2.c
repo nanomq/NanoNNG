@@ -1822,9 +1822,11 @@ conf_stream_inject_parse_ver2(conf *config, cJSON *jso)
 
 	cJSON *jfo = cJSON_GetObjectItem(jso_inject, "full_op");
 	if (jfo && cJSON_IsString(jfo) && jfo->valuestring) {
-		inj->full_op = (strcmp(jfo->valuestring, "block") == 0)
-		    ? STREAM_PLUGIN_FULL_BLOCK
-		    : STREAM_PLUGIN_FULL_DROP;
+		if (strcmp(jfo->valuestring, "drop") != 0) {
+			log_error("stream_inject.full_op=%s is unsupported, only 'drop' is allowed",
+			    jfo->valuestring);
+		}
+		inj->full_op = STREAM_PLUGIN_FULL_DROP;
 	}
 	if (inj->queue_cap == 0) {
 		inj->queue_cap = 4096;

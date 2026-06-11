@@ -478,7 +478,7 @@ struct conf_stream_inject {
 	bool                  enable;
 	uint32_t              queue_cap;
 	uint32_t              worker_num;
-	stream_plugin_full_op full_op; // drop|block
+	stream_plugin_full_op full_op; // drop only (block unsupported)
 };
 #endif
 
