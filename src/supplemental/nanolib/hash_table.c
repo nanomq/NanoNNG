@@ -468,32 +468,40 @@ dbhash_get_topic_queue(uint32_t id)
 struct topic_queue *
 dbhash_copy_topic_queue(uint32_t id)
 {
-
-	// dbhash_check_init(pipe_table, ph, pipe_lock);
-	struct topic_queue *ret = NNI_ALLOC_STRUCT(ret);
-	struct topic_queue *res = ret;
-	
+	struct topic_queue *head = NULL;
+	struct topic_queue **tail = &head;
 
 	nni_rwlock_wrlock(&pipe_lock);
 	khint_t k = kh_get(pipe_table, ph, id);
+
 	if (k != kh_end(ph)) {
 		struct topic_queue *tq = kh_val(ph, k);
 		while (tq) {
-			topic_queue *tmp;
-			tmp = ret;
-			tmp->qos = tq->qos;
-			tmp->topic = nng_strdup(tq->topic);
-			ret = ret->next; //???
-			tq = tq->next;
-			if (tq) {
-				ret = NNI_ALLOC_STRUCT(ret);
-				tmp->next = ret;
+
+			if (tq->topic == NULL) {
+				tq = tq->next;
+				continue;
 			}
+
+			struct topic_queue *new_node = nng_zalloc(sizeof(struct topic_queue));
+			if (new_node == NULL) {
+				log_error("Mem alloc failed!");
+				break; 
+			}
+
+			new_node->qos = tq->qos;
+			new_node->topic = nng_strdup(tq->topic);
+			new_node->next = NULL;
+
+			*tail = new_node;
+			tail = &(new_node->next);
+			
+			tq = tq->next;
 		}
 	}
 	nni_rwlock_unlock(&pipe_lock);
 
-	return res;
+	return head;
 }
 
 
