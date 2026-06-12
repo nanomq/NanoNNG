@@ -1077,9 +1077,9 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->exchange.count           = 0;
 	nanomq_conf->exchange.nodes           = NULL;
 	nanomq_conf->exchange.default_parquet = NULL;
-
+#ifdef SUPP_PARQUET
 	conf_parquet_init(&nanomq_conf->parquet);
-
+#endif
 	nanomq_conf->blf.enable           = false;
 	nanomq_conf->blf.file_count       = 5;
 	nanomq_conf->blf.file_size        = (10240 * 1024);
@@ -3298,7 +3298,7 @@ conf_nng_proxy_init(conf_nng_bridge *proxy)
 	proxy->pub_count = 0;
 	proxy->sub_count = 0;
 }
-
+#ifdef SUPP_PARQUET
 void
 conf_parquet_init(conf_parquet *parquet)
 {
@@ -3316,6 +3316,7 @@ conf_parquet_init(conf_parquet *parquet)
 	parquet->file_name_prefix = NULL;
 	parquet->dir              = NULL;
 }
+#endif
 
 void
 conf_bridge_pnode_init(conf_nng_pub_node *node)
