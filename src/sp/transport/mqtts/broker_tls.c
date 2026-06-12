@@ -1769,6 +1769,51 @@ tlstran_pipe_getopt(
     void *arg, const char *name, void *buf, size_t *szp, nni_type t)
 {
 	tlstran_pipe *p = arg;
+	if (strcmp(name, "mqtt_get_resend_msg") == 0) {
+		if (buf == NULL || szp == NULL || *szp < sizeof(nmq_req)) {
+			return NNG_EINVAL;
+		}
+		nmq_req *req = (nmq_req *)buf;
+		nni_msg *msg = NULL;
+		uint16_t pid = 1;
+		bool is_sqlite = false;
+
+		nni_mtx_lock(&p->mtx);
+		is_sqlite = p->conf->sqlite.enable;
+		uint32_t qos_duration = p->conf->qos_duration;
+		msg = nni_qos_db_get_one(p->conf->sqlite.enable, p->npipe->nano_qos_db, p->npipe->p_id, &pid);
+
+		if (msg != NULL) {
+			nni_msg       *rmsg = msg;
+			property      *prop = NULL;
+			property_data *data = NULL;
+			if (p->tcp_cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
+				if (nni_msg_get_proto_data(rmsg) != NULL)
+					prop = nni_mqtt_msg_get_publish_property(rmsg);
+			}
+			if (prop) {
+				data = property_get_value(prop, MESSAGE_EXPIRY_INTERVAL);
+			}
+			nni_time ntime = nni_clock();
+			nni_time mtime = nni_msg_get_timestamp(rmsg);
+			if (data && ntime > mtime + data->p_value.u32 * 1000) {
+				log_info("QoS msg id %d of pipe %p expired!", pid, p->npipe->p_id);
+				// remove expired msg from qos db
+				nni_qos_db_remove_msg(
+				    is_sqlite, p->npipe->nano_qos_db, rmsg);
+				nni_qos_db_remove(is_sqlite,
+				    p->npipe->nano_qos_db, p->npipe->p_id, pid);
+			} else if ((ntime - mtime) >= (long unsigned) qos_duration * 1250) {
+				nni_msg_clone(msg);
+				req->msg = msg;
+				req->packet_id = pid;
+				nni_mtx_unlock(&p->mtx);
+				return 0;
+			}
+		}
+		nni_mtx_unlock(&p->mtx);
+		return NNG_ENOENT;
+	}
 	return (nni_stream_get(p->conn, name, buf, szp, t));
 }
 
