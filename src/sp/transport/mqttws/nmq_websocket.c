@@ -166,6 +166,10 @@ wstran_pipe_qos_send_cb(void *arg)
 	}
 
 	nni_mtx_lock(&p->mtx);
+	qmsg = nni_aio_get_msg(qsaio);
+	if (qmsg != NULL)
+		nni_msg_free(qmsg);
+
 	if (nni_lmq_get(&p->rslmq, &qmsg) == 0) {
 		nni_iov iov[2];
 		iov[0].iov_len = nni_msg_header_len(qmsg);
