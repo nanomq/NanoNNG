@@ -255,45 +255,24 @@ nano_pipe_timer_cb(void *arg)
 	p->ka_refresh++;
 
 	if (!p->busy) {
-		nni_msg *msg, *rmsg;
-		uint16_t pid = p->rid;
-
-		// trying to resend msg
-		msg = nni_qos_db_get_one(
-		    is_sqlite, npipe->nano_qos_db, npipe->p_id, &pid);
-		if (msg != NULL) {
-			rmsg = msg;
-			property      *prop = NULL;
-			property_data *data = NULL;
-			if (p->conn_param->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
-				if (nni_msg_get_proto_data(rmsg) != NULL)
-					prop = nni_mqtt_msg_get_publish_property(rmsg);
-			}
-			if (prop) {
-				data = property_get_value(prop, MESSAGE_EXPIRY_INTERVAL);
-			}
-			nni_time ntime = nni_clock();
-			nni_time mtime = nni_msg_get_timestamp(rmsg);
-			if (data && ntime > mtime + data->p_value.u32 * 1000) {
-				log_info("QoS msg id %d of pipe %p expired!", pid, p->id);
-				// remove expired msg from qos db
-				nni_qos_db_remove_msg(
-				    is_sqlite, npipe->nano_qos_db, rmsg);
-				nni_qos_db_remove(is_sqlite,
-				    npipe->nano_qos_db, npipe->p_id, pid);
-			} else if ((ntime - mtime) >=
-			    (long unsigned) qos_duration * 1250) {
-				p->busy = true;
-				// TODO set max retrying times in nanomq.conf
-				nano_msg_set_dup(rmsg);
-				// deliver packet id to transport here
-				nni_aio_set_prov_data(&p->aio_send, (void *)(uintptr_t)pid);
-				// put original msg into sending
-				nni_msg_clone(rmsg);
-				nni_aio_set_msg(&p->aio_send, rmsg);
-				log_info("resending qos msg id %d to pipe %p", pid, p->id);
-				nni_pipe_send(p->pipe, &p->aio_send);
-			}
+		uint16_t       pid = p->rid;
+		nmq_req req;
+		size_t         sz = sizeof(nmq_req);
+		nni_mtx_unlock(&p->lk);
+		int rv_opt = nni_pipe_getopt(p->pipe, "mqtt_get_resend_msg",
+		    &req, &sz, NNI_TYPE_OPAQUE);
+		nni_mtx_lock(&p->lk);
+		if (rv_opt == 0 && req.msg != NULL) {
+			nni_msg *rmsg = req.msg;
+			uint16_t pid  = req.packet_id;
+			p->busy       = true;
+			nano_msg_set_dup(rmsg);
+			nni_aio_set_prov_data(
+			    &p->aio_send, (void *) (uintptr_t) pid);
+			nni_aio_set_msg(&p->aio_send, rmsg);
+			log_info("resending qos msg id %d to pipe %p",
+				pid, p->id);
+			nni_pipe_send(p->pipe, &p->aio_send);
 		}
 	}
 	nni_sleep_aio(qos_duration * 1000, &p->aio_timer);
