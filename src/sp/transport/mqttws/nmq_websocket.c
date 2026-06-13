@@ -127,11 +127,13 @@ wstran_pipe_send_cb(void *arg)
 	if (nni_aio_result(taio) != 0) {
 		log_warn(" send aio error %s", nng_strerror(rv));
 		nni_msg_free(nni_aio_get_msg(taio));
+		nni_aio_set_msg(taio, NULL);
 	}
 	p->user_txaio = NULL;
 	if (uaio != NULL) {
 		if (nni_atomic_get_bool(&p->closed)){
 			nni_msg_free(nni_aio_get_msg(taio));
+			nni_aio_set_msg(taio, NULL);
 			nni_aio_finish_error(uaio, p->err_code);
 			nni_mtx_unlock(&p->mtx);
 			return;
@@ -163,6 +165,8 @@ wstran_pipe_qos_send_cb(void *arg)
 		if (uaio != NULL) {
 			nni_aio_finish_error(uaio, rv);
 		}
+		// wstran_pipe_close(p);
+		return;
 	}
 
 	nni_mtx_lock(&p->mtx);
@@ -405,6 +409,7 @@ done:
 			goto skip;
 		}
 		log_trace("MQTT Clientid is %s", p->ws_param->clientid.body);
+		conn_param_clone(p->ws_param);
 		if (p->ws_param->pro_ver == 5) {
 			p->qsend_quota = p->ws_param->rx_max;
 			if (p->ws_param->properties == NULL) {
@@ -1368,6 +1373,10 @@ wstran_pipe_fini(void *arg)
 		    false, nano_qos_db, tran_close_unack_msg_cb);
 		nni_qos_db_fini_id_hash(nano_qos_db);
 		p->npipe->nano_qos_db = NULL;
+	}
+	if (p->ws_param) {
+		conn_param_free(p->ws_param);
+		p->ws_param = NULL;
 	}
 	nni_mtx_unlock(&p->mtx);
 
