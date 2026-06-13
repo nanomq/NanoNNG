@@ -434,6 +434,9 @@ void *
 nni_pipe_get_conn_param(nni_pipe *p)
 {
 	conn_param *cp = p->conn_param;
+
+	if (nni_atomic_get_bool(&p->p_closed))
+		return NULL;
 	if (cp != NULL)
 		nni_atomic_inc(&cp->refcnt);
 	return cp;
