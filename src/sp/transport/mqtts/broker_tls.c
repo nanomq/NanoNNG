@@ -416,6 +416,9 @@ tlstran_pipe_nego_cb(void *arg)
 		         p->conn_buf, p->tcp_cparam, p->wantrxhead)) == 0) {
 			nng_free(p->conn_buf, p->wantrxhead);
 			p->conn_buf = NULL;
+			nni_list_remove(&ep->negopipes, p);
+			nni_list_append(&ep->waitpipes, p);
+			tlstran_ep_match(ep);
 			// connection packet handled successfully. clone it for protocol or app layer
 			conn_param_clone(p->tcp_cparam);
 			// Connection is accepted.
@@ -425,18 +428,24 @@ tlstran_pipe_nego_cb(void *arg)
 				if (p->tcp_cparam->properties == NULL) {
 					p->tcp_cparam->properties = property_alloc();
 				}
-				if (p->conf != NULL &&
+				if (p->conf != NULL && p->tcp_cparam->topic_alias_max > 0 &&
 				    p->conf->max_topic_alias > 0) {
-					property_append(
-					    p->tcp_cparam->properties,
-					    property_set_value_u16(
-					        TOPIC_ALIAS_MAXIMUM,
-					        p->conf->max_topic_alias));
+					property *prop = property_get(p->tcp_cparam->properties,
+						TOPIC_ALIAS_MAXIMUM);
+					uint16_t alias_client = p->tcp_cparam->topic_alias_max;
+					uint16_t alias_conf   = p->conf->max_topic_alias;
+					if (prop != NULL) {
+						prop->data.p_value.u16 =
+						    alias_client > alias_conf
+						    ? alias_conf
+						    : alias_client;
+						p->tcp_cparam->topic_alias_max = prop->data.p_value.u16;
+					}
+				} else {
+					p->tcp_cparam->topic_alias_max = 0;
 				}
 			}
-			nni_list_remove(&ep->negopipes, p);
-			nni_list_append(&ep->waitpipes, p);
-			tlstran_ep_match(ep);
+
 			if (p->tcp_cparam->max_packet_size == 0) {
 				// set default max packet size for client
 				p->tcp_cparam->max_packet_size =
