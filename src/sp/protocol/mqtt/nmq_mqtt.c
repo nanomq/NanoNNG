@@ -244,7 +244,7 @@ nano_pipe_timer_cb(void *arg)
 		log_trace("check pipe keepalive interval %d backoff %f, ka %d",
 		    p->keepalive, qos_backoff, p->ka_refresh);
 		if (qos_backoff > 0) {
-			log_warn("Warning: close pipe %p & kick client due to "
+			log_warn("Warning: close pipe %u & kick client due to "
 			         "KeepAlive timeout!", p->id);
 			p->reason_code = NMQ_KEEP_ALIVE_TIMEOUT;
 			nni_mtx_unlock(&p->lk);
@@ -258,10 +258,8 @@ nano_pipe_timer_cb(void *arg)
 		uint16_t       pid = p->rid;
 		nmq_req req;
 		size_t         sz = sizeof(nmq_req);
-		nni_mtx_unlock(&p->lk);
-		int rv_opt = nni_pipe_getopt(p->pipe, "mqtt_get_resend_msg",
+		int rv_opt = nni_pipe_getopt(p->pipe, NMQ_OPT_MQTT_GET_QOS_RESEND,
 		    &req, &sz, NNI_TYPE_OPAQUE);
-		nni_mtx_lock(&p->lk);
 		if (rv_opt == 0 && req.msg != NULL) {
 			nni_msg *rmsg = req.msg;
 			uint16_t pid  = req.packet_id;
