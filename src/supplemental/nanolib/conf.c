@@ -1077,7 +1077,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->exchange.count           = 0;
 	nanomq_conf->exchange.nodes           = NULL;
 	nanomq_conf->exchange.default_parquet = NULL;
-#ifdef SUPP_PARQUET
+#if defined(SUPP_PARQUET) || defined(SUPP_LICENSE_STD)
 	conf_parquet_init(&nanomq_conf->parquet);
 #endif
 	nanomq_conf->blf.enable           = false;
@@ -3298,7 +3298,7 @@ conf_nng_proxy_init(conf_nng_bridge *proxy)
 	proxy->pub_count = 0;
 	proxy->sub_count = 0;
 }
-#ifdef SUPP_PARQUET
+#if defined(SUPP_PARQUET) || defined(SUPP_LICENSE_STD)
 void
 conf_parquet_init(conf_parquet *parquet)
 {
