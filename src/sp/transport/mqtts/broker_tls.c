@@ -1781,7 +1781,7 @@ tlstran_pipe_getopt(
     void *arg, const char *name, void *buf, size_t *szp, nni_type t)
 {
 	tlstran_pipe *p = arg;
-	if (strcmp(name, "mqtt_get_resend_msg") == 0) {
+	if (strcmp(name, NMQ_OPT_MQTT_GET_QOS_RESEND) == 0) {
 		if (buf == NULL || szp == NULL || *szp < sizeof(nmq_req)) {
 			return NNG_EINVAL;
 		}
