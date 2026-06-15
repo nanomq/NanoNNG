@@ -4065,6 +4065,10 @@ check_properties(property *prop, nni_msg *msg)
 
 			if (type == CMD_PUBLISH) {
 				conn_param *cparam = nni_msg_get_conn_param(msg);
+				if (cparam == NULL) {
+					log_error("Null conn_param found in PUBLISH msg!");
+					return SERVER_UNAVAILABLE;
+				}
 				if (cparam->topic_alias_max < p1->data.p_value.u16) {
 					log_warn("Topic Alias is explicitly rejected for clients without negotiation!");
 					return TOPIC_ALIAS_INVALID;
