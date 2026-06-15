@@ -408,12 +408,14 @@ tcptran_pipe_nego_cb(void *arg)
 			code = SERVER_UNAVAILABLE;
 			goto error;
 		}
-		if ((rv = conn_handler(
-		         p->conn_buf, p->tcp_cparam, p->wantrxhead)) == 0) {
+		if ((rv = conn_handler(p->conn_buf, p->tcp_cparam, p->wantrxhead)) == 0) {
 			nng_free(p->conn_buf, p->wantrxhead);
 			p->conn_buf = NULL;
-			// connection packet handled successfully. clone it for
-			// protocol or app layer
+			nni_list_remove(&ep->negopipes, p);
+			nni_list_append(&ep->waitpipes, p);
+			// Match happens before accept_cb. Make pipe id ready
+			tcptran_ep_match(ep);
+			// connection packet handled successfully. clone it for protocol or app layer
 			conn_param_clone(p->tcp_cparam);
 			// Connection is accepted.
 			p->pro_ver = p->tcp_cparam->pro_ver;
@@ -421,18 +423,25 @@ tcptran_pipe_nego_cb(void *arg)
 				p->qsend_quota = p->tcp_cparam->rx_max;
 				// add broker config to property for CONNACK
 				if (p->tcp_cparam->properties == NULL) {
-                    p->tcp_cparam->properties = property_alloc();
-                }
-				if (p->conf != NULL && p->conf->max_topic_alias > 0) {
-                    property_append(p->tcp_cparam->properties,
-                        property_set_value_u16(TOPIC_ALIAS_MAXIMUM,
-                            p->conf->max_topic_alias));
+					p->tcp_cparam->properties = property_alloc();
+				}
+				if (p->conf != NULL && p->tcp_cparam->topic_alias_max > 0 &&
+				    p->conf->max_topic_alias > 0) {
+					property *prop = property_get(p->tcp_cparam->properties,
+						TOPIC_ALIAS_MAXIMUM);
+					uint16_t alias_client = p->tcp_cparam->topic_alias_max;
+					uint16_t alias_conf   = p->conf->max_topic_alias;
+					if (prop != NULL) {
+						prop->data.p_value.u16 =
+						    alias_client > alias_conf
+						    ? alias_conf
+						    : alias_client;
+						p->tcp_cparam->topic_alias_max = prop->data.p_value.u16;
+					}
+				} else {
+					p->tcp_cparam->topic_alias_max = 0;
 				}
 			}
-			nni_list_remove(&ep->negopipes, p);
-			nni_list_append(&ep->waitpipes, p);
-			// Match happens before accept_cb. Make pipe id ready
-			tcptran_ep_match(ep);
 			if (p->tcp_cparam->max_packet_size == 0) {
 				// set default max packet size for client
 				p->tcp_cparam->max_packet_size =
@@ -2249,7 +2258,7 @@ tcptran_ep_accept(void *arg, nni_aio *aio)
 		ep->started = true;
 		nng_stream_listener_accept(ep->listener, ep->connaio);
 	} else {
-		tcptran_ep_match(ep);	// not necessary now.
+		tcptran_ep_match(ep);	// Double exec
 	}
 	nni_mtx_unlock(&ep->mtx);
 }
