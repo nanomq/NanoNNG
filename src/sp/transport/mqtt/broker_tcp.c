@@ -1785,13 +1785,14 @@ tcptran_pipe_getopt(
 		}
 		nmq_req *req = (nmq_req *)buf;
 		nni_msg *msg = NULL;
-		uint16_t pid = 1;
+		uint16_t pid = req->packet_id;
 		bool is_sqlite = false;
 
 		nni_mtx_lock(&p->mtx);
 		is_sqlite = p->conf->sqlite.enable;
 		uint32_t qos_duration = p->conf->qos_duration;
-		msg = nni_qos_db_get_one(p->conf->sqlite.enable, p->npipe->nano_qos_db, p->npipe->p_id, &pid);
+		msg = nni_qos_db_get_one(p->conf->sqlite.enable,
+			p->npipe->nano_qos_db, p->npipe->p_id, &pid);
 
 		if (msg != NULL) {
 			nni_msg       *rmsg = msg;
@@ -1807,7 +1808,7 @@ tcptran_pipe_getopt(
 			nni_time ntime = nni_clock();
 			nni_time mtime = nni_msg_get_timestamp(rmsg);
 			if (data && ntime > mtime + data->p_value.u32 * 1000) {
-				log_info("QoS msg id %d of pipe %p expired!", pid, p->npipe->p_id);
+				log_info("QoS msg id %u of pipe %u expired!", pid, p->npipe->p_id);
 				// remove expired msg from qos db
 				nni_qos_db_remove_msg(
 				    is_sqlite, p->npipe->nano_qos_db, rmsg);
