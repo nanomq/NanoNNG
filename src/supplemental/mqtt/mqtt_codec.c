@@ -3869,6 +3869,26 @@ property_remove(property *prop_list, uint8_t prop_id)
 	}
 }
 
+/**
+ * @brief Find and return a property pointer by its property ID
+ *
+ * @param prop The property list (usually has a dummy head)
+ * @param prop_id The property ID to search for
+ * @return property* Returns the property pointer if found, NULL otherwise
+ */
+property *
+property_get(property *prop, uint8_t prop_id)
+{
+	if (prop != NULL) {
+		for (property *p = prop->next; p != NULL; p = p->next) {
+			if (p->id == prop_id) {
+				return p;
+			}
+		}
+	}
+	return NULL;
+}
+
 int
 property_dup(property **dup, const property *src)
 {
@@ -3968,6 +3988,7 @@ property_free(property *prop)
 
 // Check if repeated properties exist, for broker use only.
 // Check if repeated properties exist and validate property bounds, for broker use only.
+// msg as NULL indicates it is a CONNECT aciton
 reason_code
 check_properties(property *prop, nni_msg *msg)
 {
@@ -4027,7 +4048,7 @@ check_properties(property *prop, nni_msg *msg)
 
 		// blocking TOPIC_ALIAS_MAXIMUM
 		case TOPIC_ALIAS_MAXIMUM: // 0x22
-			if (type != CMD_CONNECT && type != CMD_CONNACK) {
+			if (msg != NULL && type != CMD_CONNECT && type != CMD_CONNACK) {
 				log_warn("Client carried TOPIC_ALIAS_MAXIMUM. Connection rejected!");
 				return PROTOCOL_ERROR;
 			}
@@ -4040,8 +4061,11 @@ check_properties(property *prop, nni_msg *msg)
 			}
 
 			if (type == CMD_PUBLISH) {
-				log_warn("Topic Alias is explicitly rejected for security! Disconnecting...");
-				return TOPIC_ALIAS_INVALID;
+				conn_param *cparam = nni_msg_get_conn_param(msg);
+				if (cparam->topic_alias_max < p1->data.p_value.u16) {
+					log_warn("Topic Alias is explicitly rejected for clients without negotiation!");
+					return TOPIC_ALIAS_INVALID;
+				}
 			}
 			break;
 
