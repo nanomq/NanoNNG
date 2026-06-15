@@ -770,6 +770,7 @@ NNG_DECL nng_listener nng_pipe_listener(nng_pipe);
 #define NNG_OPT_MQTT_BRIDGE_CONF "mqtt-bridge-config"
 #define NNG_OPT_MQTT_BRIDGE_CACHE_BYTE "mqtt-bridge-set-cached-byte"
 #define NNG_OPT_MQTT_BRIDGE_SEND_DROP "mqtt-bridge-msg-send-drop"
+#define NMQ_OPT_MQTT_GET_QOS_RESEND "mqtt_get_resend_msg"
 
 // NNG-QUIC
 #define NNG_OPT_QUIC_ENABLE_0RTT "quic-0rtt"
