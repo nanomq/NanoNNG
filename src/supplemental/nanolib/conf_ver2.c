@@ -1946,6 +1946,111 @@ conf_plugin_parse_ver2(conf *config, cJSON *jso)
 
 	return;
 }
+
+static void
+conf_stream_plugin_parse_ver2(conf *config, cJSON *jso)
+{
+	cJSON *node_obj = hocon_get_obj("stream_plugin", jso);
+	cJSON *node_item  = NULL;
+
+	config->stream_plugin.nodes = NULL;
+	config->stream_plugin.count = 0;
+
+	if (node_obj == NULL || !cJSON_IsObject(node_obj)) {
+		return;
+	}
+
+	// Syntax:
+	// stream_plugin {
+	//   sp0 { path="..."; topic="..."; mode="async" }
+	//   sp1 { ... }
+	// }
+	cJSON_ArrayForEach(node_item, node_obj)
+	{
+		if (!cJSON_IsObject(node_item)) {
+			continue;
+		}
+		conf_stream_plugin_node *node = NNI_ALLOC_STRUCT(node);
+		if (node == NULL) {
+			continue;
+		}
+		memset(node, 0, sizeof(*node));
+		node->mode      = STREAM_PLUGIN_MODE_ASYNC;
+		node->queue_cap = 4096;
+		node->full_op   = STREAM_PLUGIN_FULL_DROP;
+
+		hocon_read_str(node, path, node_item);
+		hocon_read_str(node, topic, node_item);
+		hocon_read_str(node, name, node_item);
+		// default name from object key
+		if (node->name == NULL && node_item->string) {
+			node->name = nng_strdup(node_item->string);
+		}
+
+		cJSON *jmode = cJSON_GetObjectItem(node_item, "mode");
+		if (jmode && cJSON_IsString(jmode) && jmode->valuestring) {
+			node->mode = (strcmp(jmode->valuestring, "sync") == 0)
+			         ? STREAM_PLUGIN_MODE_SYNC
+			         : STREAM_PLUGIN_MODE_ASYNC;
+		}
+		hocon_read_num(node, queue_cap, node_item);
+
+		cJSON *jfo = cJSON_GetObjectItem(node_item, "full_op");
+		if (jfo && cJSON_IsString(jfo) && jfo->valuestring) {
+			node->full_op = (strcmp(jfo->valuestring, "block") == 0)
+			           ? STREAM_PLUGIN_FULL_BLOCK
+			           : STREAM_PLUGIN_FULL_DROP;
+		}
+
+		if (node->path == NULL || node->topic == NULL) {
+			log_error("stream_plugin: path/topic required");
+			if (node->path) nng_strfree(node->path);
+			if (node->topic) nng_strfree(node->topic);
+			if (node->name) nng_strfree(node->name);
+			NNI_FREE_STRUCT(node);
+			continue;
+		}
+
+		cvector_push_back(config->stream_plugin.nodes, node);
+	}
+	config->stream_plugin.count = cvector_size(config->stream_plugin.nodes);
+}
+
+static void
+conf_stream_inject_parse_ver2(conf *config, cJSON *jso)
+{
+	cJSON *jso_inject = hocon_get_obj("stream_inject", jso);
+	conf_stream_inject *inj = &config->stream_inject;
+
+	// defaults
+	inj->enable     = true;
+	inj->queue_cap  = 4096;
+	inj->worker_num = 1;
+	inj->full_op    = STREAM_PLUGIN_FULL_DROP;
+
+	if (jso_inject == NULL || !cJSON_IsObject(jso_inject)) {
+		return;
+	}
+
+	hocon_read_bool(inj, enable, jso_inject);
+	hocon_read_num(inj, queue_cap, jso_inject);
+	hocon_read_num(inj, worker_num, jso_inject);
+
+	cJSON *jfo = cJSON_GetObjectItem(jso_inject, "full_op");
+	if (jfo && cJSON_IsString(jfo) && jfo->valuestring) {
+		if (strcmp(jfo->valuestring, "drop") != 0) {
+			log_error("stream_inject.full_op=%s is unsupported, only 'drop' is allowed",
+			    jfo->valuestring);
+		}
+		inj->full_op = STREAM_PLUGIN_FULL_DROP;
+	}
+	if (inj->queue_cap == 0) {
+		inj->queue_cap = 4096;
+	}
+	if (inj->worker_num == 0) {
+		inj->worker_num = 1;
+	}
+}
 #endif
 
 void
@@ -2820,6 +2925,8 @@ conf_parse_ver2(conf *config)
 		conf_nng_proxy_pub_parse_ver2(config, jso);
 #if defined(SUPP_PLUGIN)
 		conf_plugin_parse_ver2(config, jso);
+		conf_stream_plugin_parse_ver2(config, jso);
+		conf_stream_inject_parse_ver2(config, jso);
 #endif
 #if defined(SUPP_AWS_BRIDGE)
 		conf_aws_bridge_parse_ver2(config, jso);
