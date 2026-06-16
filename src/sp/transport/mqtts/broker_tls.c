@@ -431,21 +431,14 @@ tlstran_pipe_nego_cb(void *arg)
 				if (p->tcp_cparam->properties == NULL) {
 					p->tcp_cparam->properties = property_alloc();
 				}
-				if (p->conf != NULL && p->tcp_cparam->topic_alias_max > 0 &&
-				    p->conf->max_topic_alias > 0) {
+				if (p->conf != NULL && p->conf->max_topic_alias > 0) {
 					property *prop = property_get(p->tcp_cparam->properties,
 						TOPIC_ALIAS_MAXIMUM);
-					uint16_t alias_client = p->tcp_cparam->topic_alias_max;
 					uint16_t alias_conf   = p->conf->max_topic_alias;
 					if (prop != NULL) {
-						prop->data.p_value.u16 =
-						    alias_client > alias_conf
-						    ? alias_conf
-						    : alias_client;
-						p->tcp_cparam->topic_alias_max = prop->data.p_value.u16;
+						// reuse client property to advertise max topic alias
+						prop->data.p_value.u16 = alias_conf;
 					}
-				} else {
-					p->tcp_cparam->topic_alias_max = 0;
 				}
 			}
 
