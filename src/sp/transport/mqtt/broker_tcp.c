@@ -306,6 +306,7 @@ tcptran_ep_match(tcptran_ep *ep)
 	p->rcvmax   = ep->rcvmax;
 	p->conf     = ep->conf;
 	nni_aio_set_output(aio, 0, p);
+	// which triggers tcptran_ep_accept
 	nni_aio_finish(aio, 0, 0);
 }
 
@@ -411,52 +412,21 @@ tcptran_pipe_nego_cb(void *arg)
 		if ((rv = conn_handler(p->conn_buf, p->tcp_cparam, p->wantrxhead)) == 0) {
 			nng_free(p->conn_buf, p->wantrxhead);
 			p->conn_buf = NULL;
-			nni_list_remove(&ep->negopipes, p);
-			nni_list_append(&ep->waitpipes, p);
-			// Match happens before accept_cb. Make pipe id ready
-			tcptran_ep_match(ep);
 			// connection packet handled successfully. clone it for protocol or app layer
 			conn_param_clone(p->tcp_cparam);
 			// Connection is accepted.
 			p->pro_ver = p->tcp_cparam->pro_ver;
 			if (p->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 				p->qsend_quota = p->tcp_cparam->rx_max;
-				// add broker config to property for CONNACK
+				// perpare properties in transport for CONNACK
 				if (p->tcp_cparam->properties == NULL) {
 					p->tcp_cparam->properties = property_alloc();
 				}
-				if (p->conf != NULL && p->conf->max_topic_alias > 0) {
-					property *prop = property_get(p->tcp_cparam->properties,
-						TOPIC_ALIAS_MAXIMUM);
-					uint16_t alias_conf   = p->conf->max_topic_alias;
-					if (prop != NULL) {
-						// reuse client property to advertise max topic alias
-						prop->data.p_value.u16 = alias_conf;
-					}
-				}
 			}
-			if (p->tcp_cparam->max_packet_size == 0) {
-				// set default max packet size for client
-				p->tcp_cparam->max_packet_size =
-				    p->conf == NULL
-				    ? NANO_MAX_PACKET_SIZE
-				    : p->conf->client_max_packet_size;
-				if (p->tcp_cparam->properties != NULL) {
-					property_remove(
-					    p->tcp_cparam->properties,
-					    MAXIMUM_PACKET_SIZE);
-					property_append(
-					    p->tcp_cparam->properties,
-					    property_set_value_u32(
-					        MAXIMUM_PACKET_SIZE,
-					        p->tcp_cparam
-					            ->max_packet_size));
-				}
-			}
-			log_debug("max_packet_size of %.*s is %d",
-			    p->tcp_cparam->clientid.len,
-			    p->tcp_cparam->clientid.body,
-			    p->tcp_cparam->max_packet_size);
+			nni_list_remove(&ep->negopipes, p);
+			nni_list_append(&ep->waitpipes, p);
+			// Match happens before accept_cb. Make pipe id ready
+			tcptran_ep_match(ep);
 			nni_mtx_unlock(&ep->mtx);
 			return;
 		} else {
