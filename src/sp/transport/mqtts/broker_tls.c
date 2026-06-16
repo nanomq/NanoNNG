@@ -428,38 +428,7 @@ tlstran_pipe_nego_cb(void *arg)
 				if (p->tcp_cparam->properties == NULL) {
 					p->tcp_cparam->properties = property_alloc();
 				}
-				if (p->conf != NULL && p->conf->max_topic_alias > 0) {
-					property *prop = property_get(p->tcp_cparam->properties,
-						TOPIC_ALIAS_MAXIMUM);
-					uint16_t alias_conf   = p->conf->max_topic_alias;
-					if (prop != NULL) {
-						// reuse client property to advertise max topic alias
-						prop->data.p_value.u16 = alias_conf;
-					}
-				}
 			}
-
-			if (p->tcp_cparam->max_packet_size == 0) {
-				// set default max packet size for client
-				p->tcp_cparam->max_packet_size =
-				    p->conf == NULL
-				    ? NANO_MAX_PACKET_SIZE
-				    : p->conf->client_max_packet_size;
-				if (p->tcp_cparam->properties != NULL) {
-					property_remove(
-					    p->tcp_cparam->properties,
-					    MAXIMUM_PACKET_SIZE);
-					property_append(
-					    p->tcp_cparam->properties,
-					    property_set_value_u32(
-					        MAXIMUM_PACKET_SIZE,
-					        p->tcp_cparam
-					            ->max_packet_size));
-				}
-			}
-			log_info("max_packet_size of %.*s is %d",
-					p->tcp_cparam->clientid.len, p->tcp_cparam->clientid.body,
-					p->tcp_cparam->max_packet_size);
 			nni_mtx_unlock(&ep->mtx);
 			return;
 		} else {
@@ -467,7 +436,7 @@ tlstran_pipe_nego_cb(void *arg)
 			nng_free(p->conn_buf, p->wantrxhead);
 			rv = NNG_EPROTO;
 			code = MALFORMED_PACKET;
-			if (p->tcp_cparam->pro_ver == 5) {
+			if (p->tcp_cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 				goto close;
 			} else {
 				goto error;

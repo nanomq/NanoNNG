@@ -412,19 +412,10 @@ done:
 		}
 		log_trace("MQTT Clientid is %s", p->ws_param->clientid.body);
 		conn_param_clone(p->ws_param);
-		if (p->ws_param->pro_ver == 5) {
+		if (p->ws_param->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 			p->qsend_quota = p->ws_param->rx_max;
 			if (p->ws_param->properties == NULL) {
 				p->ws_param->properties = property_alloc();
-			}
-			if (p->conf != NULL && p->conf->max_topic_alias > 0) {
-				property *prop = property_get(p->ws_param->properties,
-					TOPIC_ALIAS_MAXIMUM);
-				uint16_t alias_conf   = p->conf->max_topic_alias;
-				if (prop != NULL) {
-					// reuse client property to advertise max topic alias
-					prop->data.p_value.u16 = alias_conf;
-				}
 			}
 		}
 		if (p->ws_param->max_packet_size == 0) {
