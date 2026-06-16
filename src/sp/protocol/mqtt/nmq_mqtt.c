@@ -763,7 +763,7 @@ session_keeping:
 			    p->conn_param, &s->conf->auth_http);
 		}
 	}
-	nmq_connack_encode(msg, p->conn_param, rv);
+	nmq_connack_encode(msg, s->conf, p->conn_param, rv);
 	conn_param_free(p->conn_param);
 	if (rv != 0) {
 		// send connack with reason code 0x05
