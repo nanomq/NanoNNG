@@ -271,7 +271,7 @@ nano_pipe_timer_cb(void *arg)
 			nni_aio_set_prov_data(
 			    &p->aio_send, (void *) (uintptr_t) real_pid);
 			nni_aio_set_msg(&p->aio_send, rmsg);
-			log_info("resending qos msg id %d to pipe u",
+			log_info("resending qos msg id %u to pipe %u",
 				pid, p->id);
 			nni_pipe_send(p->pipe, &p->aio_send);
 		}
