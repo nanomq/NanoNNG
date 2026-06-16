@@ -789,15 +789,36 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
  * @brief handle and encode CONNACK packet
  */
 void
-nmq_connack_encode(nng_msg *msg, conn_param *cparam, uint8_t reason)
+nmq_connack_encode(nng_msg *msg, conf *conf, conn_param *cparam, uint8_t reason)
 {
 	uint8_t ack_flag = 0x00;
 	nni_msg_append(msg, &ack_flag, 1);
 	nni_msg_append(msg, &reason, 1);
 
-	if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
-		// TODO change properties if necessary.
-		// modify it in nego_cp while init cparam
+	if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5 && cparam->properties != NULL) {
+		property *prop = property_get(cparam->properties,
+						TOPIC_ALIAS_MAXIMUM);
+		if (prop != NULL) {
+			// reuse client property to advertise max topic alias
+			prop->data.p_value.u16 = conf->max_topic_alias;
+		} else {
+			property *prop_alias = property_set_value_u16(TOPIC_ALIAS_MAXIMUM,
+				conf->max_topic_alias);
+			property_append(cparam->properties, prop_alias);
+		}
+		prop = property_get(cparam->properties, NANO_MAX_PACKET_SIZE);
+		if (cparam->max_packet_size == 0) {
+			// set default max packet size for client
+			cparam->max_packet_size = conf == NULL
+			    ? NANO_MAX_PACKET_SIZE
+			    : conf->client_max_packet_size;
+			if (prop == NULL)
+				property_append(cparam->properties,
+				    property_set_value_u32(MAXIMUM_PACKET_SIZE,
+				        cparam->max_packet_size));
+			else
+				prop->data.p_value.u32 = cparam->max_packet_size;
+		}
 		encode_properties(msg, cparam->properties, CMD_CONNACK);
 	}
 
