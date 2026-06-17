@@ -280,7 +280,7 @@ typedef struct {
 struct conf_session_node {
 	char    *name;
 	char    *clientid;
-	uint32_t idhash;
+	uint64_t idhash;
 	size_t   sub_count;
 	topics **sub_list;
 };

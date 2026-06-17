@@ -62,8 +62,8 @@ _binary_search(
 }
 
 static inline bool
-_binary_search_uint32(uint32_t *vec, int l, size_t *index, uint32_t e,
-    int (*cmp)(uint32_t x, uint32_t y))
+_binary_search_uint64(uint64_t *vec, int l, size_t *index, uint64_t e,
+    int (*cmp)(uint64_t x, uint64_t y))
 {
 	int r = cvector_size(vec) - 1;
 	int m = 0;
@@ -110,7 +110,7 @@ _binary_search_uint32(uint32_t *vec, int l, size_t *index, uint32_t e,
 
 #define binary_search(vec, l, index, e, cmp) \
 	_binary_search(vec, l, index, e, cmp)
-#define binary_search_uint32(vec, l, index, e, cmp) \
-	_binary_search_uint32(vec, l, index, e, cmp)
+#define binary_search_uint64(vec, l, index, e, cmp) \
+	_binary_search_uint64(vec, l, index, e, cmp)
 
 #endif

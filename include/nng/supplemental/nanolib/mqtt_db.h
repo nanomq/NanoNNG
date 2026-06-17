@@ -54,7 +54,7 @@ NNG_DECL void dbtree_print(dbtree *db);
  * @return
  */
 NNG_DECL void *dbtree_insert_client(
-    dbtree *db, char *topic, uint32_t pipe_id);
+    dbtree *db, char *topic, uint64_t pipe_id);
 
 /**
  * @brief dbtree_find_client - check if this
@@ -80,7 +80,7 @@ NNG_DECL void *dbtree_insert_client(
  * @return
  */
 NNG_DECL void *dbtree_delete_client(
-    dbtree *db, char *topic, uint32_t pipe_id);
+    dbtree *db, char *topic, uint64_t pipe_id);
 
 /**
  * @brief dbtree_find_clients_and_cache_msg - Get all
@@ -89,7 +89,7 @@ NNG_DECL void *dbtree_delete_client(
  * @param topic - topic
  * @return pipe id array
  */
-NNG_DECL uint32_t *dbtree_find_clients(dbtree *db, char *topic);
+NNG_DECL uint64_t *dbtree_find_clients(dbtree *db, char *topic);
 
 /**
  * @brief dbtree_insert_retain - Insert retain message to this topic.
@@ -124,7 +124,7 @@ NNG_DECL nng_msg **dbtree_find_retain(dbtree *db, char *topic);
  * @param topic - topic
  * @return pipe id array
  */
-NNG_DECL uint32_t *dbtree_find_shared_clients(dbtree *db, char *topic);
+NNG_DECL uint64_t *dbtree_find_shared_clients(dbtree *db, char *topic);
 
 /**
  * @brief dbtree_get_tree - This function will
@@ -133,7 +133,7 @@ NNG_DECL uint32_t *dbtree_find_shared_clients(dbtree *db, char *topic);
  * @param cb - a callback function
  * @return all info about this tree
  */
-NNG_DECL void ***dbtree_get_tree(dbtree *db, void *(*cb)(uint32_t pipe_id));
+NNG_DECL void ***dbtree_get_tree(dbtree *db, void *(*cb)(uint64_t pipe_id));
 
 /**
  * @brief tran_close_unack_msg_cb - This function is used as callback func to
