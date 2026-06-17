@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <string.h>
 
+
 #if defined(__APPLE__)
 
 #include <libkern/OSByteOrder.h>
@@ -981,7 +982,7 @@ DJBHashn(char *str, uint16_t len)
 }
 
 uint64_t
-DJBHash64n(uint8_t* str, uint32_t len)
+DJBHash64n(char* str, uint32_t len)
 {
     uint64_t hash = 5381;
     uint64_t i    = 0;
@@ -993,16 +994,13 @@ DJBHash64n(uint8_t* str, uint32_t len)
     return hash;
 }
 
-uint64_t
-DJBHash64(char *str)
-{
-	uint64_t hash = 5381;
-	int      c;
-
-	while ((c = *str++))
-		hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
-	                                         // hash = hash * 33 + c;
-	return hash;
+uint64_t fnv1a_hash64n(const char *str, size_t len) {
+    uint64_t hash = 14695981039346656037ULL;
+    for (size_t i = 0; i < len; ++i) {
+        hash ^= (uint64_t)(unsigned char)str[i];
+        hash *= 1099511628211ULL;
+    }
+    return hash;
 }
 
 /* Fowler/Noll/Vo (FNV) hash function, variant 1a */
