@@ -24,7 +24,7 @@ extern "C" {
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-
+#include <inttypes.h> 
 // NNG_DECL is used on declarations to deal with scope.
 // For building Windows DLLs, it should be the appropriate __declspec().
 // For shared libraries with platforms that support hidden visibility,
@@ -95,7 +95,7 @@ typedef struct nng_listener_s {
 } nng_listener;
 
 typedef struct nng_pipe_s {
-	uint32_t id;
+	uint64_t id;
 } nng_pipe;
 
 typedef struct nng_socket_s {

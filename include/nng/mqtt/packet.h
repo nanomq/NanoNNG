@@ -47,7 +47,7 @@
 	} while (0)
 
 struct mqtt_msg_info {
-	uint32_t pipe;
+	uint64_t pipe;
 };
 typedef struct mqtt_msg_info mqtt_msg_info;
 
@@ -58,8 +58,8 @@ struct topic_node {
 	uint8_t retain_handling : 2;
 
 	struct {
-		char *body;
-		int   len;
+		char   *body;
+		size_t  len;
 	} topic;
 
 	uint8_t reason_code;
