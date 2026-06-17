@@ -23,7 +23,7 @@ struct nng_stat {
 	nni_list_node        s_node;
 	nni_time             s_timestamp;
 	union {
-		int      sv_id;
+		uint64_t sv_id;
 		bool     sv_bool;
 		uint64_t sv_value;
 		char    *sv_string;
@@ -153,7 +153,7 @@ nni_stat_dec(nni_stat_item *item, uint64_t inc)
 }
 
 void
-nni_stat_set_id(nni_stat_item *item, int id)
+nni_stat_set_id(nni_stat_item *item, uint64_t id)
 {
 #ifdef NNG_ENABLE_STATS
 	// IDs don't change, so just set it.
@@ -480,7 +480,7 @@ nng_stat_find_pipe(nng_stat *stat, uint64_t pipeid)
 }
 
 nng_stat *
-nng_stat_find_scope(nng_stat *stat, const char *name, int id)
+nng_stat_find_scope(nng_stat *stat, const char *name, uint64_t id)
 {
 	nng_stat *child;
 	if (stat == NULL || stat->s_info->si_type != NNG_STAT_SCOPE) {
@@ -526,7 +526,7 @@ stat_sprint_scope(nni_stat *stat, char **scope, int *lenp)
 		stat_sprint_scope(stat->s_parent, scope, lenp);
 	}
 	if (strlen(stat->s_info->si_name) > 0) {
-		snprintf(*scope, *lenp, "%s#%d.", stat->s_info->si_name,
+		snprintf(*scope, *lenp, "%s#%" PRIu64 ".", stat->s_info->si_name,
 		    stat->s_val.sv_id);
 	} else {
 		(*scope)[0] = '\0';

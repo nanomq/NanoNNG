@@ -44,7 +44,7 @@ struct nni_stat_item {
 		nni_atomic_u64 sv_atomic;
 		char *         sv_string;
 		bool           sv_bool;
-		int            sv_id;
+		uint64_t       sv_id;
 	} si_u;
 };
 
@@ -70,7 +70,7 @@ void nni_stat_register(nni_stat_item *);
 void nni_stat_unregister(nni_stat_item *);
 
 void nni_stat_set_value(nni_stat_item *, uint64_t);
-void nni_stat_set_id(nni_stat_item *, int);
+void nni_stat_set_id(nni_stat_item *, uint64_t);
 void nni_stat_set_bool(nni_stat_item *, bool);
 void nni_stat_set_string(nni_stat_item *, const char *);
 void nni_stat_init(nni_stat_item *, const nni_stat_info *);

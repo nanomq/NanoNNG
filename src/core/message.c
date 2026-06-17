@@ -30,7 +30,7 @@ struct nng_msg {
 	nni_chunk m_body; // equal to variable header + payload
 	nni_proto_msg_ops *m_proto_ops;
 	void *             m_proto_data;
-	uint32_t           m_pipe; // set on receive
+	uint64_t           m_pipe; // set on receive
 	nni_atomic_int     m_refcnt;
 	// FOR NANOMQ
 	uint8_t          CMD_TYPE;
@@ -676,7 +676,7 @@ nni_msg_set_pipe(nni_msg *m, uint32_t pid)
 	m->m_pipe = pid;
 }
 
-uint32_t
+uint64_t
 nni_msg_get_pipe(const nni_msg *m)
 {
 	return (m->m_pipe);

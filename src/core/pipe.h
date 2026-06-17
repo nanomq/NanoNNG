@@ -24,7 +24,7 @@ extern void nni_pipe_recv(nni_pipe *, nni_aio *);
 extern void nni_pipe_send(nni_pipe *, nni_aio *);
 
 // Pipe operations that protocols use.
-extern uint32_t nni_pipe_id(nni_pipe *);
+extern uint64_t nni_pipe_id(nni_pipe *);
 
 // nni_pipe_close closes the underlying transport for the pipe.  Further
 // operations against will return NNG_ECLOSED.  This is idempotent.  The
@@ -40,7 +40,7 @@ extern int nni_pipe_getopt(
 
 // nni_pipe_find finds a pipe given its ID.  It places a hold on the
 // pipe, which must be released by the caller when it is done.
-extern int nni_pipe_find(nni_pipe **, uint32_t);
+extern int nni_pipe_find(nni_pipe **, uint64_t);
 
 // nni_pipe_sock_id returns the socket id for the pipe (used by public API).
 extern uint32_t nni_pipe_sock_id(nni_pipe *);
@@ -66,8 +66,7 @@ extern void     nni_pipe_set_conn_param(nni_pipe *p, void *c);
 extern void *   nni_pipe_get_conn_param(nni_pipe *p);
 extern bool     nni_pipe_get_status(nni_pipe *p);
 extern uint16_t nni_pipe_inc_packetid(nni_pipe *p);
-extern void     nni_pipe_id_swap(uint32_t old_id, uint32_t new_id);
-extern int      nni_pipe_set_pid(nni_pipe *new_pipe, uint32_t id);
+extern int      nni_pipe_set_pid(nni_pipe *new_pipe, uint64_t id);
 // extern nni_id_map* nni_pipe_get_idhash(nni_pipe *p);
 
 #endif // CORE_PIPE_H

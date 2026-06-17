@@ -47,7 +47,7 @@ extern uint32_t nni_msg_trim_u32(nni_msg *);
 extern uint32_t nni_msg_header_peek_u32(nni_msg *);
 extern void     nni_msg_header_poke_u32(nni_msg *, uint32_t);
 extern void     nni_msg_set_pipe(nni_msg *, uint32_t);
-extern uint32_t nni_msg_get_pipe(const nni_msg *);
+extern uint64_t nni_msg_get_pipe(const nni_msg *);
 
 // Reference counting messages. This allows the same message to be
 // cheaply reused instead of copied over and over again.  Callers of

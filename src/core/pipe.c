@@ -19,7 +19,7 @@
 // performed in the context of the protocol.
 
 static nni_id_map pipes =
-    NNI_ID_MAP_INITIALIZER(1, 0x7fffffff, NNI_ID_FLAG_RANDOM);
+    NNI_ID_MAP_INITIALIZER(1, UINT64_MAX, NNI_ID_FLAG_RANDOM);
 static nni_mtx pipes_lk = NNI_MTX_INITIALIZER;
 
 static void pipe_destroy(void *);
@@ -76,7 +76,7 @@ pipe_destroy(void *arg)
 }
 
 int
-nni_pipe_find(nni_pipe **pp, uint32_t id)
+nni_pipe_find(nni_pipe **pp, uint64_t id)
 {
 	nni_pipe *p;
 
@@ -104,8 +104,8 @@ nni_pipe_rele(nni_pipe *p)
 	nni_mtx_unlock(&pipes_lk);
 }
 
-// nni_pipe_id returns the 32-bit pipe id, which can be used in backtraces.
-uint32_t
+// nni_pipe_id returns the 64-bit pipe id, which can be used in backtraces.
+uint64_t
 nni_pipe_id(nni_pipe *p)
 {
 	return (p->p_id);
@@ -226,7 +226,7 @@ pipe_stats_init(nni_pipe *p)
 	pipe_stat_init(p, &p->st_rx_bytes, &rx_bytes_info);
 	pipe_stat_init(p, &p->st_tx_bytes, &tx_bytes_info);
 
-	nni_stat_set_id(&p->st_root, (int) p->p_id);
+	nni_stat_set_id(&p->st_root, (int) p->p_id);	// FIX sv_id shall be uint64_t
 	nni_stat_set_id(&p->st_id, (int) p->p_id);
 	nni_stat_set_id(&p->st_sock_id, (int) nni_sock_id(p->p_sock));
 
@@ -271,7 +271,7 @@ pipe_create(nni_pipe **pp, nni_sock *sock, nni_sp_tran *tran, void *tran_data)
 	nni_cv_init(&p->p_cv, &pipes_lk);
 
 	nni_mtx_lock(&pipes_lk);
-	rv = nni_id_alloc32(&pipes, &p->p_id, p);
+	rv = nni_id_alloc(&pipes, &p->p_id, p);
 	nni_mtx_unlock(&pipes_lk);
 
 #ifdef NNG_ENABLE_STATS
@@ -463,7 +463,7 @@ nni_pipe_inc_packetid(nni_pipe *p)
  * @param id 
  */
 int
-nni_pipe_set_pid(nni_pipe *new_pipe, uint32_t id)
+nni_pipe_set_pid(nni_pipe *new_pipe, uint64_t id)
 {
 	int rv;
 	nni_pipe *p;
