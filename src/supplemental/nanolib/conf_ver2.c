@@ -352,7 +352,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_time(config, await_rel_timeout, jso_mqtt);
 	}
 	config->ext_qos_db = nni_zalloc(sizeof(nni_id_map));
-	nni_id_map_init((nni_id_map *)config->ext_qos_db, 0, 0, false);
+	nni_id_map_init((nni_id_map *)config->ext_qos_db, 0000u, UINT64_MAX, false);
 
 	cJSON *jso_listeners = cJSON_GetObjectItem(jso, "listeners");
 	if (jso_listeners) {

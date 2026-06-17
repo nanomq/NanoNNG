@@ -20,7 +20,7 @@
 		nni_rwlock_init(&lock);  \
 	}
 
-static dbhash_atpair_t *dbhash_atpair_alloc(uint32_t alias, const char *topic);
+static dbhash_atpair_t *dbhash_atpair_alloc(uint64_t alias, const char *topic);
 static void             dbhash_atpair_free(dbhash_atpair_t *atpair);
 
 KHASH_MAP_INIT_INT(alias_table, dbhash_atpair_t **)
@@ -34,7 +34,7 @@ dbhash_init_alias_table(void)
 }
 
 static dbhash_atpair_t **
-find_atpair_vec(uint32_t p)
+find_atpair_vec(uint64_t p)
 {
 	khint_t k = kh_get(alias_table, ah, p);
 	if (k == kh_end(ah)) {
@@ -45,7 +45,7 @@ find_atpair_vec(uint32_t p)
 }
 
 void
-dbhash_insert_atpair(uint32_t p, uint32_t a, const char *t)
+dbhash_insert_atpair(uint64_t p, uint64_t a, const char *t)
 {
 	int               absent;
 	dbhash_atpair_t * atpair = dbhash_atpair_alloc(a, t);
@@ -84,7 +84,7 @@ dbhash_insert_atpair(uint32_t p, uint32_t a, const char *t)
 }
 
 const char *
-dbhash_find_atpair(uint32_t p, uint32_t a)
+dbhash_find_atpair(uint64_t p, uint64_t a)
 {
 	nni_rwlock_rdlock(&alias_lock);
 	const char *t = NULL;
@@ -106,7 +106,7 @@ dbhash_find_atpair(uint32_t p, uint32_t a)
 }
 
 void
-dbhash_del_atpair_queue(uint32_t p)
+dbhash_del_atpair_queue(uint64_t p)
 {
 	nni_rwlock_wrlock(&alias_lock);
 
@@ -159,7 +159,7 @@ dbhash_destroy_pipe_table(void)
 }
 
 dbhash_ptpair_t *
-dbhash_ptpair_alloc(uint32_t p, char *t)
+dbhash_ptpair_alloc(uint64_t p, char *t)
 {
 	dbhash_ptpair_t *pt =
 	    (dbhash_ptpair_t *) nni_zalloc(sizeof(dbhash_ptpair_t));
@@ -367,7 +367,7 @@ delete_topic_queue(struct topic_queue *tq)
 // TODO If we have same topic to same id,
 // how to deal with ?
 void
-dbhash_insert_topic(uint32_t id, char *val, uint8_t qos)
+dbhash_insert_topic(uint64_t id, char *val, uint8_t qos)
 {
 	struct topic_queue *ntq = new_topic_queue(val, qos);
 	struct topic_queue *tq  = NULL;
@@ -398,7 +398,7 @@ dbhash_insert_topic(uint32_t id, char *val, uint8_t qos)
  */
 
 bool
-dbhash_check_topic(uint32_t id, char *val)
+dbhash_check_topic(uint64_t id, char *val)
 {
 
 	// dbhash_check_init(pipe_table, ph, pipe_lock);
@@ -427,7 +427,7 @@ dbhash_check_topic(uint32_t id, char *val)
 }
 
 char *
-dbhash_get_first_topic(uint32_t id)
+dbhash_get_first_topic(uint64_t id)
 {
 	char *topic = NULL;
 	nni_rwlock_wrlock(&pipe_lock);
@@ -449,7 +449,7 @@ dbhash_get_first_topic(uint32_t id)
  */
 
 struct topic_queue *
-dbhash_get_topic_queue(uint32_t id)
+dbhash_get_topic_queue(uint64_t id)
 {
 
 	// dbhash_check_init(pipe_table, ph, pipe_lock);
@@ -466,7 +466,7 @@ dbhash_get_topic_queue(uint32_t id)
 }
 
 struct topic_queue *
-dbhash_copy_topic_queue(uint32_t id)
+dbhash_copy_topic_queue(uint64_t id)
 {
 	struct topic_queue *head = NULL;
 	struct topic_queue **tail = &head;
@@ -512,7 +512,7 @@ dbhash_copy_topic_queue(uint32_t id)
 
 // TODO
 void
-dbhash_del_topic(uint32_t id, char *topic)
+dbhash_del_topic(uint64_t id, char *topic)
 {
 	// dbhash_check_init(pipe_table, ph, pipe_lock);
 	struct topic_queue *tt = NULL;
@@ -574,7 +574,7 @@ dbhash_del_topic(uint32_t id, char *topic)
  */
 
 void *
-del_topic_queue(uint32_t id, void *(*cb)(void *, char *), void *args)
+del_topic_queue(uint64_t id, void *(*cb)(void *, char *), void *args)
 {
 	struct topic_queue *tq = NULL;
 	khint_t             k  = kh_get(pipe_table, ph, id);
@@ -605,7 +605,7 @@ del_topic_queue(uint32_t id, void *(*cb)(void *, char *), void *args)
  */
 
 void *
-dbhash_del_topic_queue(uint32_t id, void *(*cb)(void *, char *), void *args)
+dbhash_del_topic_queue(uint64_t id, void *(*cb)(void *, char *), void *args)
 {
 	void *rv = NULL;
 	nni_rwlock_wrlock(&pipe_lock);
@@ -620,7 +620,7 @@ dbhash_del_topic_queue(uint32_t id, void *(*cb)(void *, char *), void *args)
  */
 
 static bool
-check_id(uint32_t id)
+check_id(uint64_t id)
 {
 	bool    ret = false;
 	khint_t k   = kh_get(pipe_table, ph, id);
@@ -635,7 +635,7 @@ check_id(uint32_t id)
  */
 
 bool
-dbhash_check_id(uint32_t id)
+dbhash_check_id(uint64_t id)
 {
 	bool ret = false;
 	nni_rwlock_rdlock(&pipe_lock);
@@ -645,7 +645,7 @@ dbhash_check_id(uint32_t id)
 }
 
 void *
-dbhash_check_id_and_do(uint32_t id, void *(*cb)(void *), void *arg)
+dbhash_check_id_and_do(uint64_t id, void *(*cb)(void *), void *arg)
 {
 	void *ret = NULL;
 	nni_rwlock_wrlock(&pipe_lock);
@@ -662,7 +662,7 @@ dbhash_check_id_and_do(uint32_t id, void *(*cb)(void *), void *arg)
  */
 
 void
-dbhash_print_topic_queue(uint32_t id)
+dbhash_print_topic_queue(uint64_t id)
 {
 	// dbhash_check_init(pipe_table, ph, pipe_lock);
 	struct topic_queue *tq = NULL;
@@ -681,13 +681,6 @@ dbhash_print_topic_queue(uint32_t id)
 	nni_rwlock_unlock(&pipe_lock);
 }
 
-/*
- * @obj. _cached_topic_hash.
- * @key. (DJBhashed) client_id.
- * @val. cached_topic_queue.
- */
-
-// mqtt_hash<uint32_t, topic_queue *> _cached_topic_hash;
 KHASH_MAP_INIT_INT(_cached_topic_hash, topic_queue *)
 static khash_t(_cached_topic_hash) *ch = NULL;
 static nni_rwlock cached_lock;
@@ -706,7 +699,7 @@ dbhash_destroy_cached_table(void)
 }
 
 static bool
-cached_check_id(uint32_t key)
+cached_check_id(uint64_t key)
 {
 	khint_t k = kh_get(_cached_topic_hash, ch, key);
 	if (k != kh_end(ch)) {
@@ -736,7 +729,7 @@ delete_cached_topic_one(struct topic_queue *ctq)
 }
 
 void
-del_cached_topic_all(uint32_t cid)
+del_cached_topic_all(uint64_t cid)
 {
 	struct topic_queue *ctq = NULL;
 	khint_t             k   = kh_get(_cached_topic_hash, ch, cid);
@@ -762,7 +755,7 @@ del_cached_topic_all(uint32_t cid)
  */
 
 void
-dbhash_cache_topic_all(uint32_t pid, uint32_t cid)
+dbhash_cache_topic_all(uint64_t pid, uint64_t cid)
 {
 	struct topic_queue *tq_in_topic_hash = NULL;
 	nni_rwlock_wrlock(&pipe_lock);
@@ -796,7 +789,7 @@ dbhash_cache_topic_all(uint32_t pid, uint32_t cid)
  */
 
 void
-dbhash_restore_topic_all(uint32_t cid, uint32_t pid)
+dbhash_restore_topic_all(uint64_t cid, uint64_t pid)
 {
 	struct topic_queue *tq_in_cached = NULL;
 	nni_rwlock_wrlock(&cached_lock);
@@ -830,7 +823,7 @@ dbhash_restore_topic_all(uint32_t cid, uint32_t pid)
 
 // FIXME Return pointer of topic_queue directly is not safe.
 struct topic_queue *
-dbhash_get_cached_topic(uint32_t cid)
+dbhash_get_cached_topic(uint64_t cid)
 {
 	struct topic_queue *ctq = NULL;
 	nni_rwlock_wrlock(&cached_lock);
@@ -848,7 +841,7 @@ dbhash_get_cached_topic(uint32_t cid)
  */
 
 void
-dbhash_del_cached_topic_all(uint32_t cid)
+dbhash_del_cached_topic_all(uint64_t cid)
 {
 	struct topic_queue *ctq = NULL;
 	nni_rwlock_wrlock(&cached_lock);
@@ -874,7 +867,7 @@ dbhash_del_cached_topic_all(uint32_t cid)
  */
 
 bool
-dbhash_cached_check_id(uint32_t key)
+dbhash_cached_check_id(uint64_t key)
 {
 	bool ret = false;
 	nni_rwlock_rdlock(&cached_lock);
@@ -884,7 +877,7 @@ dbhash_cached_check_id(uint32_t key)
 }
 
 dbhash_atpair_t *
-dbhash_atpair_alloc(uint32_t alias, const char *topic)
+dbhash_atpair_alloc(uint64_t alias, const char *topic)
 {
 	if (topic == NULL) {
 		log_error("Topic should not be NULL");

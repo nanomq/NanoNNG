@@ -219,7 +219,7 @@ static void
 test_search_client()
 {
 	puts("================test search client==============");
-	uint32_t *uv = dbtree_find_clients(db, topic0);
+	uint64_t *uv = dbtree_find_clients(db, topic0);
 	if (uv) {
 		cvector_free(uv);
 	}
@@ -231,7 +231,7 @@ test_search_shared_client()
 {
 	puts("================test search shared client==============");
 	for (int i = 0; i < 20; i++) {
-		uint32_t *v = dbtree_find_shared_clients(db, topic0);
+		uint64_t *v = dbtree_find_shared_clients(db, topic0);
 
 		if (v) {
 			cvector_free(v);

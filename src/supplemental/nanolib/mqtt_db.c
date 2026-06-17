@@ -30,7 +30,7 @@ struct dbtree_node {
 	int      plus;
 	int      well;
 	nng_msg *retain;
-	cvector(uint32_t) clients;
+	cvector(uint64_t) clients;
 	cvector(dbtree_node *) child;
 	nni_rwlock rwlock;
 };
@@ -62,7 +62,7 @@ node_cmp(void *x_, void *y_)
  * @return 0, minus or plus, based on strcmp
  */
 static inline int
-ids_cmp(uint32_t x, uint32_t y)
+ids_cmp(uint64_t x, uint64_t y)
 {
 	return y - x;
 }
@@ -73,7 +73,7 @@ ids_cmp(uint32_t x, uint32_t y)
  * @return void
  */
 static void
-print_client(uint32_t *v)
+print_client(uint64_t *v)
 {
 #ifdef NOLOG
 	NNI_ARG_UNUSED(v);
@@ -181,7 +181,7 @@ topic_queue_free(char **topic_queue)
 }
 
 void ***
-dbtree_get_tree(dbtree *db, void *(*cb)(uint32_t pipe_id))
+dbtree_get_tree(dbtree *db, void *(*cb)(uint64_t pipe_id))
 {
 	if (db == NULL) {
 		return NULL;
@@ -505,14 +505,14 @@ insert_client_cb(dbtree_node *node, void *pipe_id)
 	nni_rwlock_wrlock(&(node->rwlock));
 	size_t index = 0;
 	if (false ==
-	    binary_search_uint32(
-	        node->clients, 0, &index, *(uint32_t *) pipe_id, ids_cmp)) {
+	    binary_search_uint64(
+	        node->clients, 0, &index, *(uint64_t *) pipe_id, ids_cmp)) {
 		if (index == cvector_size(node->clients)) {
 			cvector_push_back(
-			    node->clients, *(uint32_t *) pipe_id);
+			    node->clients, *(uint64_t *) pipe_id);
 		} else {
 			cvector_insert(
-			    node->clients, index, *(uint32_t *) pipe_id);
+			    node->clients, index, *(uint64_t *) pipe_id);
 		}
 	}
 	nni_rwlock_unlock(&(node->rwlock));
@@ -705,7 +705,7 @@ search_insert_node(dbtree *db, char *topic, void *args,
 }
 
 void *
-dbtree_insert_client(dbtree *db, char *topic, uint32_t pipe_id)
+dbtree_insert_client(dbtree *db, char *topic, uint64_t pipe_id)
 {
 	return search_insert_node(
 	    db, topic, (void *) &pipe_id, insert_client_cb);
@@ -720,8 +720,8 @@ dbtree_insert_client(dbtree *db, char *topic, uint32_t pipe_id)
  * @param node_index - current topic level (traversal depth)
  * @return all clients on lots of nodes
  */
-static uint32_t **
-collect_clients(uint32_t **vec, dbtree_node **nodes, dbtree_node ***nodes_t,
+static uint64_t **
+collect_clients(uint64_t **vec, dbtree_node **nodes, dbtree_node ***nodes_t,
     char **topic_queue, int node_index)
 {
 	// TODO insert sort for clients
@@ -816,10 +816,10 @@ collect_clients(uint32_t **vec, dbtree_node **nodes, dbtree_node ***nodes_t,
  * @param v - client
  * @return pipe id vector
  */
-static uint32_t *
-iterate_client(uint32_t **v)
+static uint64_t *
+iterate_client(uint64_t **v)
 {
-	cvector(uint32_t) ids = NULL;
+	cvector(uint64_t) ids = NULL;
 
 	if (v) {
 		for (size_t i = 0; i < cvector_size(v); ++i) {
@@ -828,7 +828,7 @@ iterate_client(uint32_t **v)
 				size_t index = 0;
 
 				if (false ==
-				    binary_search_uint32(
+				    binary_search_uint64(
 				        ids, 0, &index, v[i][j], ids_cmp)) {
 					if (cvector_empty(ids) ||
 					    index == cvector_size(ids)) {
@@ -846,7 +846,7 @@ iterate_client(uint32_t **v)
 	return ids;
 }
 
-uint32_t *
+uint64_t *
 search_client(dbtree *db, char *topic)
 {
 	if (db == NULL || topic == NULL) {
@@ -856,12 +856,12 @@ search_client(dbtree *db, char *topic)
 
 	char **   topic_queue = topic_parse(topic);
 	char **   for_free    = topic_queue;
-	uint32_t *ret         = NULL;
+	uint64_t *ret         = NULL;
 
 	nni_rwlock_rdlock(&(db->rwlock));
 
 	dbtree_node *node              = db->root;
-	cvector(uint32_t *) pipe_ids   = NULL;
+	cvector(uint64_t *) pipe_ids   = NULL;
 	cvector(dbtree_node *) nodes   = NULL;
 	cvector(dbtree_node *) nodes_t = NULL;
 
@@ -896,7 +896,7 @@ search_client(dbtree *db, char *topic)
 	return ret;
 }
 
-uint32_t *
+uint64_t *
 dbtree_find_clients(dbtree *db, char *topic)
 {
 	return search_client(db, topic);
@@ -910,14 +910,14 @@ dbtree_find_clients(dbtree *db, char *topic)
  * @return
  */
 static void *
-delete_dbtree_client(dbtree_node *node, uint32_t pipe_id)
+delete_dbtree_client(dbtree_node *node, uint64_t pipe_id)
 {
 	size_t index = 0;
 	void * ctxt  = NULL;
 
 	nni_rwlock_wrlock(&(node->rwlock));
 	if (true ==
-	    binary_search_uint32(node->clients, 0, &index, pipe_id, ids_cmp)) {
+	    binary_search_uint64(node->clients, 0, &index, pipe_id, ids_cmp)) {
 		cvector_erase(node->clients, (size_t) index);
 		print_client(node->clients);
 
@@ -991,7 +991,7 @@ delete_dbtree_node(dbtree_node *node, size_t index)
 }
 
 void *
-dbtree_delete_client(dbtree *db, char *topic, uint32_t pipe_id)
+dbtree_delete_client(dbtree *db, char *topic, uint64_t pipe_id)
 {
 	if (db == NULL || topic == NULL) {
 		log_error("db or topic is NULL");
@@ -1366,10 +1366,10 @@ mem_free:
 }
 
 // TODO only use one of vector
-static uint32_t *
-iterate_shared_client(uint32_t **v)
+static uint64_t *
+iterate_shared_client(uint64_t **v)
 {
-	cvector(uint32_t) ids = NULL;
+	cvector(uint64_t) ids = NULL;
 
 	if (v) {
 		for (size_t i = 0; i < cvector_size(v); ++i) {
@@ -1386,7 +1386,7 @@ iterate_shared_client(uint32_t **v)
 			index = 0;
 			// Deduplicate id.
 			if (false ==
-			    binary_search_uint32(
+			    binary_search_uint64(
 			        ids, 0, &index, v[i][j], ids_cmp)) {
 				if (cvector_empty(ids) ||
 				    (size_t) index == cvector_size(ids)) {
@@ -1405,10 +1405,10 @@ iterate_shared_client(uint32_t **v)
 	return ids;
 }
 
-uint32_t *
+uint64_t *
 dbtree_find_shared_clients(dbtree *db, char *topic)
 {
-	cvector(uint32_t *) ids        = NULL;
+	cvector(uint64_t *) ids        = NULL;
 	cvector(dbtree_node *) nodes_p = NULL;
 	cvector(dbtree_node *) nodes_q = NULL;
 	bool   equal                   = false;
@@ -1463,7 +1463,7 @@ dbtree_find_shared_clients(dbtree *db, char *topic)
 		node_index++;
 	}
 
-	uint32_t *ret = iterate_shared_client(ids);
+	uint64_t *ret = iterate_shared_client(ids);
 	nni_rwlock_unlock(&(db->rwlock));
 	topic_queue_free(for_free);
 	cvector_free(nodes_p);

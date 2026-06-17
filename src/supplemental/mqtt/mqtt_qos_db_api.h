@@ -35,18 +35,18 @@ typedef struct {
 		nni_id_map_init((nni_id_map *) db, lo, hi, randomize); \
 	}
 
-extern void     nni_qos_db_set(bool is_sqlite, void *db, uint32_t pipe_id,
+extern void     nni_qos_db_set(bool is_sqlite, void *db, uint64_t pipe_id,
         uint16_t packet_id, nng_msg *msg);
 extern nng_msg *nni_qos_db_get(
-    bool is_sqlite, void *db, uint32_t pipe_id, uint16_t packet_id);
+    bool is_sqlite, void *db, uint64_t pipe_id, uint16_t packet_id);
 extern nng_msg *nni_qos_db_get_one(
-    bool is_sqlite, void *db, uint32_t pipe_id, uint16_t *packet_id);
+    bool is_sqlite, void *db, uint64_t pipe_id, uint16_t *packet_id);
 extern void nni_qos_db_remove(
-    bool is_sqlite, void *db, uint32_t pipe_id, uint16_t packet_id);
+    bool is_sqlite, void *db, uint64_t pipe_id, uint16_t packet_id);
 extern void nni_qos_db_remove_oldest(bool is_sqlite, void *db, uint64_t limit);
 
 extern void nni_qos_db_remove_by_pipe(
-    bool is_sqlite, void *db, uint32_t pipe_id);
+    bool is_sqlite, void *db, uint64_t pipe_id);
 extern void nni_qos_db_remove_msg(bool is_sqlite, void *db, nng_msg *msg);
 extern void nni_qos_db_remove_unused_msg(bool is_sqlite, void *db);
 extern void nni_mqtt_qos_db_remove_oldest_and_unused(
@@ -55,17 +55,17 @@ extern void nni_qos_db_remove_all_msg(
     bool is_sqlite, void *db, nni_idhash_cb cb);
 extern void nni_qos_db_reset_pipe(bool is_sqlite, void *db);
 extern void nni_qos_db_set_pipe(
-    bool is_sqlite, void *db, uint32_t pipe_id, const char *client_id);
-extern void nni_qos_db_remove_pipe(bool is_sqlite, void *db, uint32_t pipe_id);
+    bool is_sqlite, void *db, uint64_t pipe_id, const char *client_id);
+extern void nni_qos_db_remove_pipe(bool is_sqlite, void *db, uint64_t pipe_id);
 
 extern int      nni_qos_db_set_client_msg(bool is_sqlite, void *db,
-         uint32_t pipe_id, uint16_t packet_id, nng_msg *msg,
+         uint64_t pipe_id, uint16_t packet_id, nng_msg *msg,
          const char *config_name, uint8_t proto_ver);
 extern nng_msg *nni_qos_db_get_client_msg(
-    bool is_sqlite, void *db, uint32_t pipe_id, uint16_t packet_id,
+    bool is_sqlite, void *db, uint64_t pipe_id, uint16_t packet_id,
     const char *config_name);
 extern void nni_qos_db_remove_client_msg(bool is_sqlite, void *db,
-    uint32_t pipe_id, uint16_t packet_id, const char *config_name);
+    uint64_t pipe_id, uint16_t packet_id, const char *config_name);
 extern void nni_qos_db_remove_oldest_client_msg(
     bool is_sqlite, void *db, uint64_t limit, const char *config_name);
 extern void nni_qos_db_remove_client_msg_by_id(

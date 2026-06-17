@@ -97,22 +97,22 @@ typedef struct nng_mqtt_sqlite_option nni_mqtt_sqlite_option;
 
 extern void nni_mqtt_qos_db_init(sqlite3 **, const char *, const char *, bool);
 extern void nni_mqtt_qos_db_close(sqlite3 *);
-extern void     nni_mqtt_qos_db_set(sqlite3 *, uint32_t, uint16_t, nni_msg *);
-extern nni_msg *nni_mqtt_qos_db_get(sqlite3 *, uint32_t, uint16_t);
-extern nni_msg *nni_mqtt_qos_db_get_one(sqlite3 *, uint32_t, uint16_t *);
-extern void     nni_mqtt_qos_db_remove(sqlite3 *, uint32_t, uint16_t);
+extern void     nni_mqtt_qos_db_set(sqlite3 *, uint64_t, uint16_t, nni_msg *);
+extern nni_msg *nni_mqtt_qos_db_get(sqlite3 *, uint64_t, uint16_t);
+extern nni_msg *nni_mqtt_qos_db_get_one(sqlite3 *, uint64_t, uint16_t *);
+extern void     nni_mqtt_qos_db_remove(sqlite3 *, uint64_t, uint16_t);
 extern void     nni_mqtt_qos_db_remove_oldest(sqlite3 *, uint64_t) NNG_DEPRECATED;
-extern void     nni_mqtt_qos_db_remove_by_pipe(sqlite3 *, uint32_t);
+extern void     nni_mqtt_qos_db_remove_by_pipe(sqlite3 *, uint64_t);
 extern void     nni_mqtt_qos_db_remove_msg(sqlite3 *, nni_msg *);
 extern void     nni_mqtt_qos_db_remove_unused_msg(sqlite3 *);
 extern void     nni_mqtt_qos_db_remove_all_msg(sqlite3 *);
 extern void     nni_mqtt_qos_db_foreach(sqlite3 *, nni_idhash_cb);
-extern void     nni_mqtt_qos_db_set_pipe(sqlite3 *, uint32_t, const char *);
-extern void     nni_mqtt_qos_db_insert_pipe(sqlite3 *, uint32_t, const char *);
-extern void     nni_mqtt_qos_db_remove_pipe(sqlite3 *, uint32_t);
+extern void     nni_mqtt_qos_db_set_pipe(sqlite3 *, uint64_t, const char *);
+extern void     nni_mqtt_qos_db_insert_pipe(sqlite3 *, uint64_t, const char *);
+extern void     nni_mqtt_qos_db_remove_pipe(sqlite3 *, uint64_t);
 extern void     nni_mqtt_qos_db_update_pipe_by_clientid(
-        sqlite3 *, uint32_t, const char *);
-extern void nni_mqtt_qos_db_update_all_pipe(sqlite3 *, uint32_t);
+        sqlite3 *, uint64_t, const char *);
+extern void nni_mqtt_qos_db_update_all_pipe(sqlite3 *, uint64_t);
 extern void nni_mqtt_qos_db_check_remove_msg(sqlite3 *, nni_msg *);
 
 extern int nni_mqtt_qos_db_set_retain(
@@ -127,11 +127,11 @@ extern void nni_mqtt_qos_db_remove_oldest_client_offline_msg(
     sqlite3 *, uint64_t ,const char *);
 // Only work for client
 extern int nni_mqtt_qos_db_set_client_msg(
-    sqlite3 *, uint32_t, uint16_t, nni_msg *, const char *, uint8_t);
+    sqlite3 *, uint64_t, uint16_t, nni_msg *, const char *, uint8_t);
 extern nni_msg *nni_mqtt_qos_db_get_client_msg(
-    sqlite3 *, uint32_t, uint16_t, const char *);
+    sqlite3 *, uint64_t, uint16_t, const char *);
 extern void nni_mqtt_qos_db_remove_client_msg(
-    sqlite3 *, uint32_t, uint16_t, const char *);
+    sqlite3 *, uint64_t, uint16_t, const char *);
 extern void nni_mqtt_qos_db_remove_client_msg_by_id(sqlite3 *, uint64_t);
 extern nni_msg *nni_mqtt_qos_db_get_one_client_msg(
     sqlite3 *, uint64_t *, uint16_t *, const char *);

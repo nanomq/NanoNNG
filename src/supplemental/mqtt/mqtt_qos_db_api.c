@@ -4,7 +4,7 @@
 #endif
 
 void
-nni_qos_db_set(bool is_sqlite, void *db, uint32_t pipe_id, uint16_t packet_id,
+nni_qos_db_set(bool is_sqlite, void *db, uint64_t pipe_id, uint16_t packet_id,
     nng_msg *msg)
 {
 	if (db == NULL)
@@ -29,7 +29,7 @@ nni_qos_db_set(bool is_sqlite, void *db, uint32_t pipe_id, uint16_t packet_id,
 }
 
 nng_msg *
-nni_qos_db_get(bool is_sqlite, void *db, uint32_t pipe_id, uint16_t packet_id)
+nni_qos_db_get(bool is_sqlite, void *db, uint64_t pipe_id, uint16_t packet_id)
 {
 	if (db == NULL)
 		return NULL;
@@ -48,7 +48,7 @@ nni_qos_db_get(bool is_sqlite, void *db, uint32_t pipe_id, uint16_t packet_id)
 
 nng_msg *
 nni_qos_db_get_one(
-    bool is_sqlite, void *db, uint32_t pipe_id, uint16_t *packet_id)
+    bool is_sqlite, void *db, uint64_t pipe_id, uint16_t *packet_id)
 {
 	nng_msg *msg = NULL;
 	if (db == NULL)
@@ -67,7 +67,7 @@ nni_qos_db_get_one(
 
 void
 nni_qos_db_remove(
-    bool is_sqlite, void *db, uint32_t pipe_id, uint16_t packet_id)
+    bool is_sqlite, void *db, uint64_t pipe_id, uint16_t packet_id)
 {
 	if (db == NULL)
 		return;
@@ -95,7 +95,7 @@ nni_qos_db_remove_oldest(bool is_sqlite, void *db, uint64_t limit)
 }
 
 void
-nni_qos_db_remove_by_pipe(bool is_sqlite, void *db, uint32_t pipe_id)
+nni_qos_db_remove_by_pipe(bool is_sqlite, void *db, uint64_t pipe_id)
 {
 	if (is_sqlite) {
 #ifdef NNG_SUPP_SQLITE
@@ -159,7 +159,7 @@ nni_qos_db_reset_pipe(bool is_sqlite, void *db)
 
 void
 nni_qos_db_set_pipe(
-    bool is_sqlite, void *db, uint32_t pipe_id, const char *client_id)
+    bool is_sqlite, void *db, uint64_t pipe_id, const char *client_id)
 {
 	if (is_sqlite) {
 #ifdef NNG_SUPP_SQLITE
@@ -173,7 +173,7 @@ nni_qos_db_set_pipe(
 }
 
 void
-nni_qos_db_remove_pipe(bool is_sqlite, void *db, uint32_t pipe_id)
+nni_qos_db_remove_pipe(bool is_sqlite, void *db, uint64_t pipe_id)
 {
 	if (is_sqlite) {
 #ifdef NNG_SUPP_SQLITE
@@ -186,7 +186,7 @@ nni_qos_db_remove_pipe(bool is_sqlite, void *db, uint32_t pipe_id)
 }
 
 int
-nni_qos_db_set_client_msg(bool is_sqlite, void *db, uint32_t pipe_id,
+nni_qos_db_set_client_msg(bool is_sqlite, void *db, uint64_t pipe_id,
     uint16_t packet_id, nng_msg *msg, const char *config_name,
     uint8_t proto_ver)
 {
@@ -206,7 +206,7 @@ nni_qos_db_set_client_msg(bool is_sqlite, void *db, uint32_t pipe_id,
 }
 
 nng_msg *
-nni_qos_db_get_client_msg(bool is_sqlite, void *db, uint32_t pipe_id,
+nni_qos_db_get_client_msg(bool is_sqlite, void *db, uint64_t pipe_id,
     uint16_t packet_id, const char *config_name)
 {
 	nng_msg *msg = NULL;
@@ -225,7 +225,7 @@ nni_qos_db_get_client_msg(bool is_sqlite, void *db, uint32_t pipe_id,
 
 void
 nni_qos_db_remove_client_msg(
-    bool is_sqlite, void *db, uint32_t pipe_id, uint16_t packet_id, const char *config_name)
+    bool is_sqlite, void *db, uint64_t pipe_id, uint16_t packet_id, const char *config_name)
 {
 	if (is_sqlite) {
 #ifdef NNG_SUPP_SQLITE
