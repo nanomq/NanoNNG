@@ -809,7 +809,7 @@ nmq_connack_encode(nng_msg *msg, conf *conf, conn_param *cparam, uint8_t reason)
 				conf->max_topic_alias);
 			property_append(cparam->properties, prop_alias);
 		}
-		prop = property_get(cparam->properties, NANO_MAX_PACKET_SIZE);
+		prop = property_get(cparam->properties, MAXIMUM_PACKET_SIZE);
 		if (cparam->max_packet_size == 0) {
 			// set default max packet size for client
 			cparam->max_packet_size = conf == NULL
