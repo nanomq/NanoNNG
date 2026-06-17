@@ -175,8 +175,9 @@ nano_pipe_timer_cb(void *arg)
 	nni_pipe        *npipe        = p->pipe;
 	nni_time         time;
 	int 		 rv = 0;
-
+#ifdef NNG_SUPP_SQLITE
 	bool is_sqlite = p->broker->conf->sqlite.enable;
+#endif
 	rv = nng_aio_result(&p->aio_timer);
 	if (rv != 0) {
 		log_warn("sleep aio error %d", rv);
@@ -488,8 +489,8 @@ nano_sock_init(void *arg, nni_sock *sock)
 
 	nni_mtx_init(&s->lk);
 
-	nni_id_map_init(&s->pipes, 0, 0, false);
-	nni_id_map_init(&s->cached_sessions, 0, 0, false);
+	nni_id_map_init(&s->pipes, 0x0000u, UINT64_MAX, false);
+	nni_id_map_init(&s->cached_sessions, 0x0000u, UINT64_MAX, false);
 	nni_lmq_init(&s->waitlmq, 256);
 	NNI_LIST_INIT(&s->recvq, nano_ctx, rqnode);
 	NNI_LIST_INIT(&s->recvpipes, nano_pipe, rnode);
@@ -718,7 +719,7 @@ session_keeping:
 			if (nni_pipe_peer(old->pipe) != 0) {
 				log_error("Session restore failed!");
 			} else {
-				log_info("resuming session %d with %d", npipe->p_id, old->pipe->p_id);
+				log_info("resuming session %ld with %d", npipe->p_id, old->pipe->p_id);
 			}
 			p->id = nni_pipe_id(npipe);
 			// set event to false so that no notification will be sent
@@ -888,7 +889,7 @@ nano_pipe_close(void *arg)
 				// also cache kicked session
 				// merging 2 pipes together in pipe start
 			}
-			log_info("session stored %d", npipe->p_id);
+			log_info("session stored %ld", npipe->p_id);
 			nni_id_set(&s->cached_sessions, npipe->p_id, p);
 			// set event to false avoid of sending the disconnecting msg
 			p->event     = false;
@@ -1362,7 +1363,7 @@ nano_sock_setdb(void *arg, void *data)
 	// or switch to lmq for better msg rate?
 	for (size_t y = 0; y < nano_conf->pre_sessions.count; y++) {
 		conf_session_node *node = nano_conf->pre_sessions.nodes[y];
-		uint32_t hashn = DJBHashn(node->clientid, strlen(node->clientid));
+		uint64_t hashn = fnv1a_hash64n(node->clientid, strlen(node->clientid));
 		node->idhash = hashn;
 		if (!nano_conf->sqlite.enable) {
 			void *qos_db;

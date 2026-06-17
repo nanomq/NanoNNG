@@ -189,7 +189,7 @@ tlstran_pipe_init(void *arg, nni_pipe *npipe)
 
 	nni_pipe_set_conn_param(npipe, p->tcp_cparam);
 	cid = (char *) conn_param_get_clientid(p->tcp_cparam);
-	clientid_key = DJBHashn(cid, conn_param_get_clientid_len(p->tcp_cparam));
+	clientid_key = fnv1a_hash64n(cid, conn_param_get_clientid_len(p->tcp_cparam));
 	rv = nni_pipe_set_pid(npipe, clientid_key);
 	log_debug("change p_id by hashing %d rv %d", clientid_key, rv);
 	p->npipe = npipe;
@@ -874,7 +874,7 @@ tlstran_pipe_recv_cb(void *arg)
 			p->qsend_quota++;
 		}
 		uint8_t *ptr = nni_msg_body(msg);
-		uint16_t    ackid;
+		uint16_t ackid;
 		NNI_GET16(ptr, ackid);
 		nni_msg *qos_msg;
 		if ((qos_msg = nni_qos_db_get(p->conf->sqlite.enable, p->npipe->nano_qos_db,
