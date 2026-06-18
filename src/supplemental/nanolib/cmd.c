@@ -29,6 +29,11 @@ int   cmd_output_len  = 0;
 int
 nano_cmd_run_status(const char *cmd)
 {
+#ifdef __ZEPHYR__
+	(void) cmd;
+	log_warn("nano_cmd_run_status not supported on Zephyr");
+	return -1;
+#else
 	int          error, pipes[2], stderr_fd = -1, ret = 0;
 	unsigned int sock_opts;
 
@@ -78,6 +83,7 @@ nano_cmd_run_status(const char *cmd)
 
 	close(pipes[0]);
 	return ret;
+#endif
 }
 
 int

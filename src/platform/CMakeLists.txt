@@ -10,8 +10,12 @@
 #  Platforms.
 nng_directory(platform)
 
-add_subdirectory(posix)
-add_subdirectory(windows)
+if (NNG_PLATFORM_ZEPHYR)
+    add_subdirectory(zephyr)
+else ()
+    add_subdirectory(posix)
+    add_subdirectory(windows)
+endif ()
 
 nng_test(platform_test)
 nng_test(resolver_test)

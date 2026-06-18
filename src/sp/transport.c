@@ -90,6 +90,11 @@ extern void nni_sp_sfd_register(void);
 void
 nni_sp_tran_sys_init(void)
 {
+#ifdef NNG_PLATFORM_ZEPHYR
+	// Zephyr: static NNI_RWLOCK_INITIALIZER is insufficient;
+	// pthread_rwlock_init must be called to register in Zephyr's table.
+	nni_rwlock_init(&sp_tran_lk);
+#endif
 #ifdef NNG_TRANSPORT_INPROC
 	nni_sp_inproc_register();
 #endif

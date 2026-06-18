@@ -20,11 +20,22 @@ static int log_facility = LOG_USER;
 #endif
 #include <sys/types.h>
 #include <unistd.h>
+#ifndef __ZEPHYR__
 #include <sys/syscall.h>
+#endif
 #include <sys/socket.h>
+#ifndef __ZEPHYR__
 #include <sys/un.h>
+#endif
 #include <errno.h>
 #define nano_localtime(t, pTm) localtime_r(t, pTm)
+
+#ifdef __ZEPHYR__
+// Zephyr lacks W_OK from <unistd.h>
+#ifndef W_OK
+#define W_OK 2
+#endif
+#endif
 #endif
 
 
@@ -70,6 +81,8 @@ stdout_callback(log_event *ev)
 	char buf[64];
 #if (NNG_PLATFORM_WINDOWS || NNG_PLATFORM_DARWIN)
 	int pid = nni_plat_getpid();
+#elif defined(__ZEPHYR__)
+	int pid = 0;
 #else
 	pid_t pid = syscall(__NR_gettid);
 #endif
@@ -95,6 +108,8 @@ file_callback(log_event *ev)
 	char buf[64];
 #if (NNG_PLATFORM_WINDOWS || NNG_PLATFORM_DARWIN)
 	int pid = nni_plat_getpid();
+#elif defined(__ZEPHYR__)
+	int pid = 0;
 #else
 	pid_t pid = syscall(__NR_gettid);
 #endif

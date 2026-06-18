@@ -75,6 +75,12 @@ set(NNG_TEST_PREFIX nng)
 
 # Enable access to private APIs for our own use.
 add_definitions(-DNNG_PRIVATE)
+# Zephyr platform detection: when building under Zephyr, CMAKE_SYSTEM_NAME
+# is "Generic" (not "Zephyr"), so also check the CMake variable set by
+# the Zephyr module (zephyr/CMakeLists.txt).
+if (NNG_PLATFORM_ZEPHYR OR CMAKE_SYSTEM_NAME MATCHES "Zephyr")
+    add_definitions(-DNNG_PLATFORM_ZEPHYR)
+endif()
 
 if (NOT (BUILD_SHARED_LIBS))
     set(NNG_STATIC_LIB ON)
@@ -296,6 +302,17 @@ elseif (CMAKE_SYSTEM_NAME MATCHES "QNX")
     add_definitions(-D_QNX_SOURCE)
     add_definitions(-DNNG_PLATFORM_QNX)
     set(NNG_PLATFORM_POSIX ON)
+
+elseif (CMAKE_SYSTEM_NAME MATCHES "Zephyr")
+    # Zephyr RTOS: POSIX-compatible, but has limitations:
+    # - No AF_UNIX (IPC transport unavailable)
+    # - No eventfd (use pipe fallback)
+    # - No epoll/kqueue (use poll fallback)
+    # TLS/QUIC are disabled at the module level (zephyr/CMakeLists.txt)
+    add_definitions(-DNNG_PLATFORM_POSIX)
+    add_definitions(-DNNG_PLATFORM_ZEPHYR)
+    set(NNG_PLATFORM_POSIX ON)
+    set(NNG_PLATFORM_ZEPHYR ON)
 
 else ()
     message(AUTHOR_WARNING "WARNING: This platform may not be supported: ${CMAKE_SYSTEM_NAME}")
