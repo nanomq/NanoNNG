@@ -155,7 +155,7 @@ nni_id_get_min(nni_id_map *m, uint16_t *pid)
 				break;
 			}
 		} else {
-			*pid = m->id_entries[index].key;
+			*pid = (uint16_t) m->id_entries[index].key;
 			return (m->id_entries[index].val);
 		}
 	}

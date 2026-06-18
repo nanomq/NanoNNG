@@ -671,7 +671,7 @@ nni_msg_header_clear(nni_msg *m)
 }
 
 void
-nni_msg_set_pipe(nni_msg *m, uint32_t pid)
+nni_msg_set_pipe(nni_msg *m, uint64_t pid)
 {
 	m->m_pipe = pid;
 }

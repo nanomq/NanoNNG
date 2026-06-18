@@ -64,7 +64,11 @@ node_cmp(void *x_, void *y_)
 static inline int
 ids_cmp(uint64_t x, uint64_t y)
 {
-	return y - x;
+	if (y < x)
+		return -1;
+	if (y > x)
+		return 1;
+	return 0;
 }
 
 /**

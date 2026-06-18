@@ -226,8 +226,8 @@ pipe_stats_init(nni_pipe *p)
 	pipe_stat_init(p, &p->st_rx_bytes, &rx_bytes_info);
 	pipe_stat_init(p, &p->st_tx_bytes, &tx_bytes_info);
 
-	nni_stat_set_id(&p->st_root, (int) p->p_id);	// FIX sv_id shall be uint64_t
-	nni_stat_set_id(&p->st_id, (int) p->p_id);
+	nni_stat_set_id(&p->st_root, p->p_id);	// FIX sv_id shall be uint64_t
+	nni_stat_set_id(&p->st_id, p->p_id);
 	nni_stat_set_id(&p->st_sock_id, (int) nni_sock_id(p->p_sock));
 
 }
@@ -472,8 +472,8 @@ nni_pipe_set_pid(nni_pipe *new_pipe, uint64_t id)
 	nni_id_remove(&pipes, new_pipe->p_id);
 	new_pipe->p_id = id;
 	#ifdef NNG_ENABLE_STATS
-	nni_stat_set_id(&new_pipe->st_root, (int) new_pipe->p_id);
-	nni_stat_set_id(&new_pipe->st_id, (int) new_pipe->p_id);
+	nni_stat_set_id(&new_pipe->st_root, new_pipe->p_id);
+	nni_stat_set_id(&new_pipe->st_id, new_pipe->p_id);
 	#endif
 	// we leave session restore job to protocol layer.
 	if ((p = nni_id_get(&pipes, id)) != NULL) {

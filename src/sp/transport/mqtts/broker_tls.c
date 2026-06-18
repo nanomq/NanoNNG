@@ -185,7 +185,7 @@ tlstran_pipe_init(void *arg, nni_pipe *npipe)
 	int           rv;
 	char         *cid;
 	tlstran_pipe *p = arg;
-	uint32_t      clientid_key = 0;
+	uint64_t      clientid_key = 0;
 
 	nni_pipe_set_conn_param(npipe, p->tcp_cparam);
 	cid = (char *) conn_param_get_clientid(p->tcp_cparam);

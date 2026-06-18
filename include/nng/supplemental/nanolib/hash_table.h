@@ -44,12 +44,16 @@ struct dbhash_ptpair_s {
  * @param y - normally y is pointer of alias
  * @return 0, minus or plus
  */
-static inline uint64_t
+static inline int
 alias_cmp(void *x_, void *y_)
 {
 	uint64_t *       alias = (uint64_t *) y_;
 	dbhash_atpair_t *ele_x = (dbhash_atpair_t *) x_;
-	return *alias - ele_x->alias;
+	if (*alias < ele_x->alias)
+		return -1;
+	if (*alias > ele_x->alias)
+		return 1;
+	return 0;
 }
 
 NNG_DECL void dbhash_init_alias_table(void);

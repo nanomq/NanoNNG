@@ -1,3 +1,4 @@
+#include <sys/un.h>
 #include "nng/supplemental/nanolib/log.h"
 #include "nng/supplemental/nanolib/conf.h"
 #include "nng/supplemental/nanolib/file.h"

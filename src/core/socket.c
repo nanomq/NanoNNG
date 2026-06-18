@@ -1611,8 +1611,8 @@ nni_dialer_add_pipe(nni_dialer *d, void *tpipe)
 		return;
 	}
 #ifdef NNG_ENABLE_STATS
-	nni_stat_set_id(&p->st_root, (int) p->p_id);
-	nni_stat_set_id(&p->st_id, (int) p->p_id);
+	nni_stat_set_id(&p->st_root, p->p_id);
+	nni_stat_set_id(&p->st_id, p->p_id);
 	nni_stat_register(&p->st_root);
 #endif
 	nni_pipe_run_cb(p, NNG_PIPE_EV_ADD_POST);
@@ -1721,8 +1721,8 @@ nni_listener_add_pipe(nni_listener *l, void *tpipe)
 		return;
 	}
 #ifdef NNG_ENABLE_STATS
-	nni_stat_set_id(&p->st_root, (int) p->p_id);
-	nni_stat_set_id(&p->st_id, (int) p->p_id);
+	nni_stat_set_id(&p->st_root, p->p_id);
+	nni_stat_set_id(&p->st_id, p->p_id);
 	nni_stat_register(&p->st_root);
 #endif
 	nni_pipe_run_cb(p, NNG_PIPE_EV_ADD_POST);

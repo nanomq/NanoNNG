@@ -719,7 +719,8 @@ session_keeping:
 			if (nni_pipe_peer(old->pipe) != 0) {
 				log_error("Session restore failed!");
 			} else {
-				log_info("resuming session %ld with %d", npipe->p_id, old->pipe->p_id);
+				log_info("resuming session %" PRIu64 " with %" PRIu64,
+					npipe->p_id, old->pipe->p_id);
 			}
 			p->id = nni_pipe_id(npipe);
 			// set event to false so that no notification will be sent
@@ -889,7 +890,7 @@ nano_pipe_close(void *arg)
 				// also cache kicked session
 				// merging 2 pipes together in pipe start
 			}
-			log_info("session stored %ld", npipe->p_id);
+			log_info("session stored %" PRIu64, npipe->p_id);
 			nni_id_set(&s->cached_sessions, npipe->p_id, p);
 			// set event to false avoid of sending the disconnecting msg
 			p->event     = false;

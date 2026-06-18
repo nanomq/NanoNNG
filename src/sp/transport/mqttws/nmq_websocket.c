@@ -1311,7 +1311,7 @@ wstran_pipe_init(void *arg, nni_pipe *pipe)
 
 	nni_atomic_init_bool(&p->closed);
 	char    *cid;
-	uint32_t clientid_key = 0;
+	uint64_t clientid_key = 0;
 	cid = (char *) conn_param_get_clientid(p->ws_param);
 	clientid_key = fnv1a_hash64n(cid,
 		conn_param_get_clientid_len(p->ws_param));
