@@ -8,15 +8,19 @@
 #define MAX_CALLBACKS 10
 
 #include <sys/types.h>
-#include <unistd.h>
+
 #include <sys/syscall.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 #include <errno.h>
 #if NNG_PLATFORM_WINDOWS
 #include <share.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#define ssize_t int  /* Windows doesn't have ssize_t */
 #define nano_localtime(t, pTm) localtime_s(pTm, t)
 #else
+#include <unistd.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #if defined(SUPP_SYSLOG)
 #include <syslog.h>
 static int syslog_socket = -1;
