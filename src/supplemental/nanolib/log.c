@@ -3,10 +3,16 @@
 #include "nng/supplemental/nanolib/file.h"
 #include "core/nng_impl.h"
 #include "core/defs.h"
-#define INDEX_FILE_NAME ".idx"
 
+#define INDEX_FILE_NAME ".idx"
 #define MAX_CALLBACKS 10
 
+#include <sys/types.h>
+#include <unistd.h>
+#include <sys/syscall.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <errno.h>
 #if NNG_PLATFORM_WINDOWS
 #include <share.h>
 #define nano_localtime(t, pTm) localtime_s(pTm, t)
@@ -19,12 +25,6 @@ static const char *log_ident = NULL;
 static int log_option = 0;
 static int log_facility = LOG_USER;
 #endif
-#include <sys/types.h>
-#include <unistd.h>
-#include <sys/syscall.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <errno.h>
 #define nano_localtime(t, pTm) localtime_r(t, pTm)
 #endif
 

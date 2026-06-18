@@ -806,7 +806,7 @@ nmq_connack_encode(nng_msg *msg, conf *conf, conn_param *cparam, uint8_t reason)
 				conf->max_topic_alias);
 			property_append(cparam->properties, prop_alias);
 		}
-		prop = property_get(cparam->properties, NANO_MAX_PACKET_SIZE);
+		prop = property_get(cparam->properties, MAXIMUM_PACKET_SIZE);
 		if (cparam->max_packet_size == 0) {
 			// set default max packet size for client
 			cparam->max_packet_size = conf == NULL
@@ -952,55 +952,6 @@ conn_param_clone(conn_param *cparam)
 		return;
 	}
 	nni_atomic_inc(&cparam->refcnt);
-}
-
-uint32_t
-DJBHash(char *str)
-{
-	unsigned int hash = 5381;
-	while (*str) {
-		hash = ((hash << 5) + hash) + (*str++); /* times 33 */
-	}
-	hash &= ~(1U << 31); /* strip the highest bit */
-	return hash;
-}
-
-uint32_t
-DJBHashn(char *str, uint16_t len)
-{
-	unsigned int hash = 5381;
-	uint16_t     i    = 0;
-	while (i < len) {
-		hash = ((hash << 5) + hash) + (*str++); /* times 33 */
-		i++;
-	}
-	hash &= ~(1U << 31); /* strip the highest bit */
-	return hash;
-}
-
-uint64_t
-DJBHash64n(uint8_t* str, uint32_t len)
-{
-    uint64_t hash = 5381;
-    uint64_t i    = 0;
-
-    for(i = 0; i < len; str++, i++) {
-        hash = ((hash << 5) + hash) + (*str);
-    }
-
-    return hash;
-}
-
-uint64_t
-DJBHash64(char *str)
-{
-	uint64_t hash = 5381;
-	int      c;
-
-	while ((c = *str++))
-		hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
-	                                         // hash = hash * 33 + c;
-	return hash;
 }
 
 /* Fowler/Noll/Vo (FNV) hash function, variant 1a */
