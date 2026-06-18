@@ -176,7 +176,9 @@ nano_pipe_timer_cb(void *arg)
 	nni_time         time;
 	int 		 rv = 0;
 
+#ifdef NNG_SUPP_SQLITE
 	bool is_sqlite = p->broker->conf->sqlite.enable;
+#endif
 	rv = nng_aio_result(&p->aio_timer);
 	if (rv != 0) {
 		log_warn("sleep aio error %d", rv);
@@ -1362,7 +1364,8 @@ nano_sock_setdb(void *arg, void *data)
 	// or switch to lmq for better msg rate?
 	for (size_t y = 0; y < nano_conf->pre_sessions.count; y++) {
 		conf_session_node *node = nano_conf->pre_sessions.nodes[y];
-		uint32_t hashn = DJBHashn(node->clientid, strlen(node->clientid));
+		uint32_t hashn = nanomq_siphash_32(node->clientid,
+			strlen(node->clientid), NULL);
 		node->idhash = hashn;
 		if (!nano_conf->sqlite.enable) {
 			void *qos_db;
