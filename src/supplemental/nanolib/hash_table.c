@@ -13,6 +13,8 @@
 #include "nng/supplemental/nanolib/khash.h"
 #include "nng/supplemental/nanolib/mqtt_db.h"
 #include <stdio.h>
+#include <stdint.h>
+#include <stddef.h>
 
 #define dbhash_check_init(name, h, lock) \
 	if (h == NULL) {                 \
@@ -26,6 +28,166 @@ static void             dbhash_atpair_free(dbhash_atpair_t *atpair);
 KHASH_MAP_INIT_INT(alias_table, dbhash_atpair_t **)
 static nni_rwlock alias_lock;
 static khash_t(alias_table) *ah = NULL;
+// avoid hash collision
+static uint8_t g_nanomq_hash_seed[16];
+
+
+/* left operand */
+#define ROTL64(x, b) (uint64_t)(((x) << (b)) | ((x) >> (64 - (b))))
+
+/* SipRound compression */
+#define SIPROUND do { \
+    v0 += v1; v1 = ROTL64(v1, 13); v1 ^= v0; v0 = ROTL64(v0, 32); \
+    v2 += v3; v3 = ROTL64(v3, 16); v3 ^= v2; \
+    v0 += v3; v3 = ROTL64(v3, 21); v3 ^= v0; \
+    v2 += v1; v1 = ROTL64(v1, 17); v1 ^= v2; v2 = ROTL64(v2, 32); \
+} while(0)
+
+/* * Cross-platform safe macro: Assembles 8 uint8_t values into 1 uint64_t using little-endian byte order
+ * Provides consistent interpretation across architectures (ARM, MIPS, x86, etc.)
+ */
+static inline uint64_t U8TO64_LE(const uint8_t *p) {
+    return ((uint64_t)p[0]      ) | ((uint64_t)p[1] <<  8) |
+           ((uint64_t)p[2] << 16) | ((uint64_t)p[3] << 24) |
+           ((uint64_t)p[4] << 32) | ((uint64_t)p[5] << 40) |
+           ((uint64_t)p[6] << 48) | ((uint64_t)p[7] << 56);
+}
+
+/**
+ * @brief generate 16 byte (128bit) random Hash seed。
+ * ⚠️ Now only flood attack would generates CVE
+ */
+void nanomq_init_hash_seed(void) {
+    for (int i = 0; i < 4; i++) {
+        uint32_t r = nng_random();
+        g_nanomq_hash_seed[i * 4 + 0] = (uint8_t)(r & 0xFF);
+        g_nanomq_hash_seed[i * 4 + 1] = (uint8_t)((r >> 8) & 0xFF);
+        g_nanomq_hash_seed[i * 4 + 2] = (uint8_t)((r >> 16) & 0xFF);
+        g_nanomq_hash_seed[i * 4 + 3] = (uint8_t)((r >> 24) & 0xFF);
+    }
+}
+
+/**
+ * @brief Standard SipHash-2-4 Algo for 64bit
+ */
+uint64_t siphash24(const void *src, size_t src_sz, const uint8_t key[16]) {
+    const uint8_t *ni = (const uint8_t *)src;
+    const uint8_t *end = ni + (src_sz - (src_sz % 8));
+
+    uint64_t k0 = U8TO64_LE(key);
+    uint64_t k1 = U8TO64_LE(key + 8);
+
+    uint64_t v0 = k0 ^ 0x736f6d6570736575ULL;
+    uint64_t v1 = k1 ^ 0x646f72616e646f6dULL;
+    uint64_t v2 = k0 ^ 0x6c7967656e657261ULL;
+    uint64_t v3 = k1 ^ 0x7465646279746573ULL;
+
+    uint64_t m;
+
+    for (; ni != end; ni += 8) {
+        m = U8TO64_LE(ni);
+        v3 ^= m;
+        SIPROUND;
+        SIPROUND;
+        v0 ^= m;
+    }
+
+    int left = src_sz & 7;
+    m = ((uint64_t)(src_sz & 0xff)) << 56;
+    switch (left) {
+        case 7: m |= ((uint64_t)ni[6]) << 48; // fallthrough
+        case 6: m |= ((uint64_t)ni[5]) << 40; // fallthrough
+        case 5: m |= ((uint64_t)ni[4]) << 32; // fallthrough
+        case 4: m |= ((uint64_t)ni[3]) << 24; // fallthrough
+        case 3: m |= ((uint64_t)ni[2]) << 16; // fallthrough
+        case 2: m |= ((uint64_t)ni[1]) <<  8; // fallthrough
+        case 1: m |= ((uint64_t)ni[0]);       // fallthrough
+        case 0: break;
+    }
+
+    v3 ^= m;
+    SIPROUND;
+    SIPROUND;
+    v0 ^= m;
+
+    v2 ^= 0xff;
+    SIPROUND;
+    SIPROUND;
+    SIPROUND;
+    SIPROUND;
+
+    return v0 ^ v1 ^ v2 ^ v3;
+}
+
+/**
+ * @brief NanoMQ-adapted 32-bit folded hash function
+ * @param src String data (Client ID)
+ * @param src_sz Length of the string
+ * @param key Random seed key, 16 bytes (128 bits)
+ * @return uint32_t Collision-resistant secure hash value generated
+ *  
+ * Cryptographic recommendation: XOR the high and low 32 bits 
+ * of the 64-bit result for folding. This maximizes entropy 
+ * preservation across both halves while ensuring extremely 
+ * uniform distribution in the resulting 32-bit hash space.
+ */
+uint32_t nanomq_siphash_32(const void *src, size_t src_sz, const uint8_t *key) {
+	uint64_t hash64;
+	if (key != NULL)
+		hash64 = siphash24(src, src_sz, key);
+	else
+		hash64 = siphash24(src, src_sz, g_nanomq_hash_seed);
+    return (uint32_t)(hash64 ^ (hash64 >> 32));
+}
+
+uint32_t
+DJBHash(char *str)
+{
+	unsigned int hash = 5381;
+	while (*str) {
+		hash = ((hash << 5) + hash) + (*str++); /* times 33 */
+	}
+	hash &= ~(1U << 31); /* strip the highest bit */
+	return hash;
+}
+
+uint32_t
+DJBHashn(char *str, uint16_t len)
+{
+	unsigned int hash = 5381;
+	uint16_t     i    = 0;
+	while (i < len) {
+		hash = ((hash << 5) + hash) + (*str++); /* times 33 */
+		i++;
+	}
+	hash &= ~(1U << 31); /* strip the highest bit */
+	return hash;
+}
+
+uint64_t
+DJBHash64n(uint8_t* str, uint32_t len)
+{
+    uint64_t hash = 5381;
+    uint64_t i    = 0;
+
+    for(i = 0; i < len; str++, i++) {
+        hash = ((hash << 5) + hash) + (*str);
+    }
+
+    return hash;
+}
+
+uint64_t
+DJBHash64(char *str)
+{
+	uint64_t hash = 5381;
+	int      c;
+
+	while ((c = *str++))
+		hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+	                                         // hash = hash * 33 + c;
+	return hash;
+}
 
 void
 dbhash_init_alias_table(void)
