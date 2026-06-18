@@ -117,6 +117,12 @@ FreeBSD, Android, and iOS.  Most other POSIX platforms should work out of
 the box but have not been tested.  Very old versions of otherwise supported
 platforms might not work.
 
+=== Zephyr RTOS
+
+NNG has been ported to the https://www.zephyrproject.org/[Zephyr RTOS].
+See the <<docs/BUILD_ZEPHYR.md#,Zephyr Build Guide>> for environment setup,
+build instructions, and demo applications.
+
 == Requirements
 
 To build this project, you will need a C99 compatible compiler and
