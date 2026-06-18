@@ -118,4 +118,8 @@ NNG_DECL void dbhash_del_cached_topic_all(uint32_t key);
 
 NNG_DECL bool dbhash_cached_check_id(uint32_t key);
 
+NNG_DECL void nanomq_init_hash_seed(void);
+
+NNG_DECL uint32_t nanomq_siphash_32(const void *src, size_t src_sz, const uint8_t *key);
+	
 #endif
