@@ -7,10 +7,6 @@
 #define INDEX_FILE_NAME ".idx"
 #define MAX_CALLBACKS 10
 
-#include <sys/types.h>
-
-#include <sys/syscall.h>
-#include <errno.h>
 #if NNG_PLATFORM_WINDOWS
 #include <share.h>
 #include <winsock2.h>
@@ -21,6 +17,9 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/types.h>
+#include <sys/syscall.h>
+#include <errno.h>
 #if defined(SUPP_SYSLOG)
 #include <syslog.h>
 static int syslog_socket = -1;
