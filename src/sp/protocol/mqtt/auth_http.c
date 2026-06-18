@@ -465,7 +465,8 @@ nmq_auth_http_sub_pub(
 		auth_params_clientid, auth_params_username, auth_params_password,
 		auth_params.access, topic_str, auth_params_ipaddress);
 	acl_cache_k_str[1023] = '\0'; // Avoid StackOverFlow
-	uint32_t acl_cache_k = DJBHash(acl_cache_k_str);
+	uint32_t acl_cache_k = nanomq_siphash_32(acl_cache_k_str,
+		strlen(acl_cache_k_str), NULL);
 
 	if (conf->super_req.enable) {
 		if (conf->cache_ttl > 0) {
