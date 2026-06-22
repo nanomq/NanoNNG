@@ -28,6 +28,9 @@
 #ifndef AI_NUMERICSERV
 #define AI_NUMERICSERV 0
 #endif
+#ifndef AI_NUMERICHOST
+#define AI_NUMERICHOST 0
+#endif
 
 #ifndef NNG_HAVE_INET6
 #undef NNG_ENABLE_IPV6
@@ -58,6 +61,35 @@ resolv_free_item(resolv_item *item)
 	nni_strfree(item->serv);
 	nni_strfree(item->host);
 	NNI_FREE_STRUCT(item);
+}
+
+static int parse_ip(const char *, nng_sockaddr *, bool);
+
+static void
+resolv_cancel(nni_aio *aio, void *arg, int rv)
+{
+	resolv_item *item = arg;
+
+	nni_mtx_lock(&resolv_mtx);
+	if (item != nni_aio_get_prov_data(aio)) {
+		// Already canceled — resolved by a different path.
+		nni_mtx_unlock(&resolv_mtx);
+		return;
+	}
+	nni_aio_set_prov_data(aio, NULL);
+	if (nni_aio_list_active(aio)) {
+		// Not yet picked up — safe to discard.
+		nni_aio_list_remove(aio);
+		nni_mtx_unlock(&resolv_mtx);
+		resolv_free_item(item);
+	} else {
+		// resolv_task is running; let it finish but drop
+		// our interest in the result.
+		item->aio = NULL;
+		item->sa  = NULL;
+		nni_mtx_unlock(&resolv_mtx);
+	}
+	nni_aio_finish_error(aio, rv);
 }
 
 static int
@@ -181,6 +213,37 @@ nni_resolv_ip(const char *host, const char *serv, int af, bool passive,
 	if (nni_aio_begin(aio) != 0) {
 		return;
 	}
+
+	// Step 1 — fast path: try numeric IP via parse_ip (uses
+	// getaddrinfo with AI_NUMERICHOST).  Returns only for numeric
+	// IPs like "127.0.0.1" — hostnames fall through to step 2.
+	{
+		size_t hl = strlen(host);
+		size_t sl = serv ? strlen(serv) : 0;
+		char  *buf;
+		int    fast_ok = 0;
+
+		buf = nni_alloc(hl + sl + 2);
+		if (buf != NULL) {
+			memcpy(buf, host, hl);
+			if (sl > 0) {
+				buf[hl] = ':';
+				memcpy(buf + hl + 1, serv, sl + 1);
+			} else {
+				buf[hl] = '\0';
+			}
+			if (parse_ip(buf, sa, serv != NULL) == 0) {
+				fast_ok = 1;
+			}
+			nni_free(buf, hl + sl + 2);
+		}
+		if (fast_ok) {
+			nni_aio_finish(aio, 0, 0);
+			return;
+		}
+	}
+
+	// Step 2 — slow path: DNS resolution for hostnames.
 	switch (af) {
 	case NNG_AF_INET:
 		af = AF_INET;
@@ -207,6 +270,13 @@ nni_resolv_ip(const char *host, const char *serv, int af, bool passive,
 	item->aio     = aio;
 	item->sa      = sa;
 
+	// Guard against strdup failure.
+	if ((item->host == NULL) || (serv != NULL && item->serv == NULL)) {
+		resolv_free_item(item);
+		nni_aio_finish_error(aio, NNG_ENOMEM);
+		return;
+	}
+
 	nni_mtx_lock(&resolv_mtx);
 	if (resolv_fini) {
 		nni_mtx_unlock(&resolv_mtx);
@@ -214,12 +284,22 @@ nni_resolv_ip(const char *host, const char *serv, int af, bool passive,
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
 	}
-	// Zephyr: synchronous resolution (no worker threads).
-	// Call resolv_task directly instead of enqueuing.
+	nni_aio_set_prov_data(aio, item);
+	rv = nni_aio_schedule(aio, resolv_cancel, item);
+	if (rv != 0) {
+		nni_mtx_unlock(&resolv_mtx);
+		resolv_free_item(item);
+		nni_aio_finish_error(aio, rv);
+		return;
+	}
 	nni_mtx_unlock(&resolv_mtx);
 
+	// Synchronous resolution directly on caller's thread.
 	rv = resolv_task(item);
-	if (aio != NULL) {
+
+	// resolv_cancel may have fired via the expire thread; if so,
+	// item->aio is NULL and the aio was already finished.
+	if (item->aio != NULL) {
 		if (rv == 0) {
 			nni_aio_finish(aio, 0, 0);
 		} else {
@@ -266,6 +346,126 @@ resolv_worker(void *arg)
 			}
 		}
 	}
+}
+
+static int
+parse_ip(const char *addr, nng_sockaddr *sa, bool want_port)
+{
+	struct addrinfo  hints;
+	struct addrinfo *results;
+	int              rv;
+	char            *port;
+	char            *host;
+	char            *buf;
+	size_t           buf_len;
+
+#ifdef NNG_ENABLE_IPV6
+	bool  v6      = false;
+	bool  wrapped = false;
+	char *s;
+#endif
+
+	if (addr == NULL) {
+		addr = "";
+	}
+
+	buf_len = strlen(addr) + 1;
+	if ((buf = nni_alloc(buf_len)) == NULL) {
+		return (NNG_ENOMEM);
+	}
+	memcpy(buf, addr, buf_len);
+	host = buf;
+#ifdef NNG_ENABLE_IPV6
+	if (*host == '[') {
+		v6      = true;
+		wrapped = true;
+		host++;
+	} else {
+		for (s = host; *s != '\0'; s++) {
+			if (*s == '.') {
+				break;
+			}
+			if (*s == ':') {
+				v6 = true;
+				break;
+			}
+		}
+	}
+	for (port = host; *port != '\0'; port++) {
+		if (wrapped) {
+			if (*port == ']') {
+				*port++ = '\0';
+				wrapped = false;
+				break;
+			}
+		} else if (!v6) {
+			if (*port == ':') {
+				break;
+			}
+		}
+	}
+
+	if (wrapped) {
+		// Never got the closing bracket.
+		rv = NNG_EADDRINVAL;
+		goto done;
+	}
+#else  // NNG_ENABLE_IPV6
+	for (port = host; *port != '\0'; port++) {
+		if (*port == ':') {
+			break;
+		}
+	}
+#endif // NNG_ENABLE_IPV6
+
+	if ((!want_port) && (*port != '\0')) {
+		rv = NNG_EADDRINVAL;
+		goto done;
+	} else if (*port == ':') {
+		*port++ = '\0';
+	}
+
+	if (*port == '\0') {
+		port = "0";
+	}
+
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_flags = AI_NUMERICSERV | AI_NUMERICHOST | AI_PASSIVE;
+#ifdef NNG_ENABLE_IPV6
+	if (v6) {
+		hints.ai_family = AF_INET6;
+	}
+#else
+	hints.ai_family = AF_INET;
+#endif
+#ifdef AI_ADDRCONFIG
+	hints.ai_flags |= AI_ADDRCONFIG;
+#endif
+
+	rv = getaddrinfo(host, port, &hints, &results);
+	if ((rv != 0) || (results == NULL)) {
+		rv = posix_gai_errno(rv != 0 ? rv : EAI_NONAME);
+		goto done;
+	}
+	nni_posix_sockaddr2nn(
+	    sa, (void *) results->ai_addr, results->ai_addrlen);
+	freeaddrinfo(results);
+
+done:
+	nni_free(buf, buf_len);
+	return (rv);
+}
+
+int
+nni_parse_ip(const char *addr, nni_sockaddr *sa)
+{
+	return (parse_ip(addr, sa, false));
+}
+
+int
+nni_parse_ip_port(const char *addr, nni_sockaddr *sa)
+{
+	return (parse_ip(addr, sa, true));
 }
 
 int

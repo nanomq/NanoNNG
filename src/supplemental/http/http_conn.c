@@ -713,19 +713,30 @@ void
 nni_http_conn_fini(nni_http_conn *conn)
 {
 	nni_mtx_lock(&conn->mtx);
-	if ((nni_aio_schedule(conn->wr_aio, nng_wr_fr_cb, conn)) != 0) {
-		log_error("Non recoverable error, aio schedule failed!");
-		exit(EXIT_FAILURE);
+	if (conn->wr_aio != NULL) {
+		if ((nni_aio_schedule(conn->wr_aio, nng_wr_fr_cb, conn)) != 0) {
+			log_error("Non recoverable error, aio schedule failed!");
+			exit(EXIT_FAILURE);
+		}
 	}
-	if ((nni_aio_schedule(conn->rd_aio, nng_rd_fr_cb, conn)) != 0) {
-		log_error("Non recoverable error, aio schedule failed!");
-		exit(EXIT_FAILURE);
+	if (conn->rd_aio != NULL) {
+		if ((nni_aio_schedule(conn->rd_aio, nng_rd_fr_cb, conn)) != 0) {
+			log_error("Non recoverable error, aio schedule failed!");
+			exit(EXIT_FAILURE);
+		}
 	}
 	conn->free = true;
 	http_close(conn);
 	nni_mtx_unlock(&conn->mtx);
 
-	if (!nni_aio_busy(conn->rd_aio) && !nni_aio_busy(conn->wr_aio)) {
+	if (conn->wr_aio == NULL || conn->rd_aio == NULL) {
+		// Early init failure — just free what we have.
+		if (conn->wr_aio != NULL)
+			nni_aio_free(conn->wr_aio);
+		if (conn->rd_aio != NULL)
+			nni_aio_free(conn->rd_aio);
+	} else if (!nni_aio_busy(conn->rd_aio) &&
+	    !nni_aio_busy(conn->wr_aio)) {
 		nni_aio_free(conn->wr_aio);
 		nni_aio_free(conn->rd_aio);
 	} else {
