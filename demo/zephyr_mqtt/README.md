@@ -65,6 +65,25 @@ MQTT RECV: 'hello from host' FROM: '/zephyr/msg/2'
 MQTT SEND: 'hello from host' TO:   '/zephyr/msg/transfer'
 ```
 
+## Board Support
+
+| Board | Status |
+|-------|--------|
+| `qemu_x86` | ✅ Build & Run (SLIRP user networking) |
+| `native_sim` | ✅ Build & Run (host networking) |
+| `mps2/an385` | ⚠️ Builds (ARM Cortex-M3, 4MB RAM); runtime needs Ethernet TAP config |
+| `qemu_cortex_m3` | ⚠️ Builds but **cannot run** (64KB RAM insufficient) |
+
+Board-specific configs live in [`boards/`](boards/). To add a new board, create
+`boards/<BOARD>.conf` with the board's network and DNS settings.
+
+### ARM Cortex-M Notes
+
+On 32-bit ARM targets (Cortex-M3), NanoNNG uses a pthread-mutex fallback for
+64-bit atomics (`NNG_ZEPHYR_NO_STDATOMIC`). `CONFIG_MAX_PTHREAD_MUTEX_COUNT`
+should be set to at least 128 to accommodate the per-atomic mutex allocation.
+
 ## Configuration
 
-See [`prj.conf`](prj.conf) for Zephyr Kconfig settings — POSIX threads, TCP networking, DNS resolver, and memory pools.
+See [`prj.conf`](prj.conf) for Zephyr Kconfig settings — POSIX threads, TCP
+networking, DNS resolver, and memory pools.
