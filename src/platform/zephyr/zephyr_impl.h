@@ -83,9 +83,7 @@ struct nni_atomic_flag { atomic_flag f; };
 struct nni_atomic_int  { atomic_int v; };
 struct nni_atomic_bool { atomic_bool v; };
 struct nni_atomic_ptr  { atomic_uintptr_t v; };
-// 64-bit atomics are problematic on 32-bit Zephyr targets (need libatomic).
-// Use pthread-based fallback for u64 only.
-struct nni_atomic_u64  { uint64_t v; pthread_mutex_t m; };
+struct nni_atomic_u64  { uint64_t v; };
 #else
 struct nni_atomic_flag { bool v; pthread_mutex_t m; };
 struct nni_atomic_bool { bool v; pthread_mutex_t m; };

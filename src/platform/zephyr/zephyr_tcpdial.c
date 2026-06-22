@@ -603,6 +603,7 @@ tcp_dialer_bind_interface(void *arg, const void *buf, size_t sz, nni_type t)
 	}
 
 	nni_mtx_lock(&d->mtx);
+	nni_strfree(d->bind_interface);
 	d->bind_interface = str;
 	nni_mtx_unlock(&d->mtx);
 	return rv;

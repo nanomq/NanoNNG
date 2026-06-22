@@ -8,8 +8,9 @@
 //
 
 // Zephyr atomics.
-// Uses C11 stdatomic for 32-bit types; pthread-mutex for 64-bit to
-// avoid __atomic_store_8 / libatomic dependency on 32-bit targets.
+// Uses C11 stdatomic for 32-bit types; __sync builtins for 64-bit.
+// __sync generates inline lock cmpxchg8b even with -mno-mmx -mno-sse,
+// unlike C11 stdatomic / __atomic which regress to libatomic calls.
 
 #include "core/nng_impl.h"
 
@@ -18,7 +19,6 @@
 #ifdef NNG_HAVE_STDATOMIC
 
 #include <stdatomic.h>
-#include <pthread.h>
 
 bool
 nni_atomic_flag_test_and_set(nni_atomic_flag *f)
@@ -116,90 +116,63 @@ nni_atomic_cas(nni_atomic_int *v, int old, int new)
 	return (atomic_compare_exchange_strong(&v->v, &old, new));
 }
 
-// ---- 64-bit atomics (pthread fallback) ----
+// ---- 64-bit atomics (GCC __sync builtins) ----
+// __sync builtins work on plain uint64_t* and emit inline lock cmpxchg8b
+// even with -mno-mmx -mno-sse, unlike C11 stdatomic / __atomic builtins.
 
 void
 nni_atomic_init64(nni_atomic_u64 *v)
 {
-	pthread_mutex_init(&v->m, NULL);
 	v->v = 0;
 }
 
 void
 nni_atomic_add64(nni_atomic_u64 *v, uint64_t bump)
 {
-	pthread_mutex_lock(&v->m);
-	v->v += bump;
-	pthread_mutex_unlock(&v->m);
+	(void) __sync_fetch_and_add(&v->v, bump);
 }
 
 void
 nni_atomic_sub64(nni_atomic_u64 *v, uint64_t bump)
 {
-	pthread_mutex_lock(&v->m);
-	v->v -= bump;
-	pthread_mutex_unlock(&v->m);
+	(void) __sync_fetch_and_sub(&v->v, bump);
 }
 
 uint64_t
 nni_atomic_get64(nni_atomic_u64 *v)
 {
-	uint64_t rv;
-	pthread_mutex_lock(&v->m);
-	rv = v->v;
-	pthread_mutex_unlock(&v->m);
-	return (rv);
+	return (__sync_fetch_and_add(&v->v, 0));
 }
 
 void
 nni_atomic_set64(nni_atomic_u64 *v, uint64_t val)
 {
-	pthread_mutex_lock(&v->m);
-	v->v = val;
-	pthread_mutex_unlock(&v->m);
+	(void) __sync_lock_test_and_set(&v->v, val);
 }
 
 uint64_t
 nni_atomic_swap64(nni_atomic_u64 *v, uint64_t val)
 {
-	uint64_t rv;
-	pthread_mutex_lock(&v->m);
-	rv   = v->v;
-	v->v = val;
-	pthread_mutex_unlock(&v->m);
-	return (rv);
-}
-
-uint64_t
-nni_atomic_dec64_nv(nni_atomic_u64 *v)
-{
-	uint64_t rv;
-	pthread_mutex_lock(&v->m);
-	v->v -= 1;
-	rv = v->v;
-	pthread_mutex_unlock(&v->m);
-	return (rv);
+	return (__sync_lock_test_and_set(&v->v, val));
 }
 
 void
 nni_atomic_inc64(nni_atomic_u64 *v)
 {
-	pthread_mutex_lock(&v->m);
-	v->v += 1;
-	pthread_mutex_unlock(&v->m);
+	(void) __sync_fetch_and_add(&v->v, 1);
+}
+
+uint64_t
+nni_atomic_dec64_nv(nni_atomic_u64 *v)
+{
+	// __sync_sub_and_fetch returns the new value.
+	return (__sync_sub_and_fetch(&v->v, 1));
 }
 
 bool
-nni_atomic_cas64(nni_atomic_u64 *v, uint64_t old, uint64_t new)
+nni_atomic_cas64(nni_atomic_u64 *v, uint64_t comp, uint64_t new_v)
 {
-	bool rv = false;
-	pthread_mutex_lock(&v->m);
-	if (v->v == old) {
-		v->v = new;
-		rv   = true;
-	}
-	pthread_mutex_unlock(&v->m);
-	return (rv);
+	return (__sync_bool_compare_and_swap(&v->v, comp, new_v));
 }
 
 // ---- Pointer atomics (C11) ----

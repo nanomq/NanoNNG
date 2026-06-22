@@ -27,12 +27,12 @@
 // Zephyr lacks readv. Emulate via read in a loop.
 // (Zephyr's <sys/socket.h> already maps iovec -> net_iovec via macro.)
 #include <sys/socket.h>
-static inline int
+static inline ssize_t
 readv(int fd, struct net_iovec *iov, int niov)
 {
-	int n = 0;
+	ssize_t n = 0;
 	for (int i = 0; i < niov; i++) {
-		int r = (int)read(fd, iov[i].iov_base, iov[i].iov_len);
+		ssize_t r = read(fd, iov[i].iov_base, iov[i].iov_len);
 		if (r < 0) return r;
 		n += r;
 	}

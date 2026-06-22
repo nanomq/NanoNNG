@@ -61,7 +61,12 @@ nni_posix_pfd_init(nni_posix_pfd **pfdp, int fd)
 	nni_posix_pfd *  pfd;
 	nni_posix_pollq *pq = &nni_posix_global_pollq;
 
-	(void) fcntl(fd, F_SETFL, O_NONBLOCK);
+	{
+		int fl = fcntl(fd, F_GETFL);
+		if (fl >= 0) {
+			(void) fcntl(fd, F_SETFL, fl | O_NONBLOCK);
+		}
+	}
 #ifdef FD_CLOEXEC
 	(void) fcntl(fd, F_SETFD, FD_CLOEXEC);
 #endif

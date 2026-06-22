@@ -50,9 +50,12 @@ pthread_attr_t      nni_thrattr;
 void
 nni_plat_mtx_init(nni_plat_mtx *mtx)
 {
-	// Zephyr: try once with attr, then once without. No infinite retry.
-	if (pthread_mutex_init(&mtx->mtx, &nni_mxattr) != 0) {
-		(void) pthread_mutex_init(&mtx->mtx, NULL);
+	// Guarantee successful initialization. On Zephyr, init can only
+	// fail if the fixed-size pool (CONFIG_MAX_PTHREAD_MUTEX_COUNT)
+	// is exhausted. Retry until another thread releases a slot.
+	while ((pthread_mutex_init(&mtx->mtx, &nni_mxattr) != 0) &&
+	       (pthread_mutex_init(&mtx->mtx, NULL) != 0)) {
+		nni_msleep(10);
 	}
 }
 void
@@ -67,10 +70,13 @@ nni_plat_mtx_lock(nni_plat_mtx *mtx)
 	int rv;
 	rv = pthread_mutex_lock(&mtx->mtx);
 	if (rv == EINVAL) {
-		// Zephyr: static init may not have registered the mutex.
-		// Try to register now (best-effort; may fail if pool full).
-		(void) pthread_mutex_init(&mtx->mtx, NULL);
-		rv = pthread_mutex_lock(&mtx->mtx);
+		// Zephyr: lazy-init if the mutex was never initialized.
+		// Guard with sentinel check to avoid re-initializing a
+		// mutex that is already in use (which would leak its slot).
+		if (mtx->mtx == PTHREAD_MUTEX_INITIALIZER) {
+			(void) pthread_mutex_init(&mtx->mtx, NULL);
+			rv = pthread_mutex_lock(&mtx->mtx);
+		}
 	}
 	if (rv != 0) {
 		nni_panic("pthread_mutex_lock: %s", strerror(rv));
@@ -91,7 +97,11 @@ nni_plat_mtx_unlock(nni_plat_mtx *mtx)
 void
 nni_rwlock_init(nni_rwlock *rwl)
 {
+	int retries = 0;
 	while (pthread_rwlock_init(&rwl->rwl, NULL) != 0) {
+		if (++retries > 100) {
+			nni_panic("pthread_rwlock_init: pool exhausted");
+		}
 		nni_msleep(10);
 	}
 }
@@ -111,8 +121,11 @@ nni_rwlock_rdlock(nni_rwlock *rwl)
 	int rv;
 	rv = pthread_rwlock_rdlock(&rwl->rwl);
 	if (rv == EINVAL) {
-		(void) pthread_rwlock_init(&rwl->rwl, NULL);
-		rv = pthread_rwlock_rdlock(&rwl->rwl);
+		// Zephyr: lazy-init if the rwlock was never initialized.
+		if (rwl->rwl == PTHREAD_RWLOCK_INITIALIZER) {
+			(void) pthread_rwlock_init(&rwl->rwl, NULL);
+			rv = pthread_rwlock_rdlock(&rwl->rwl);
+		}
 	}
 	if (rv != 0) {
 		nni_panic("pthread_rwlock_rdlock: %s", strerror(rv));
@@ -125,8 +138,11 @@ nni_rwlock_wrlock(nni_rwlock *rwl)
 	int rv;
 	rv = pthread_rwlock_wrlock(&rwl->rwl);
 	if (rv == EINVAL) {
-		(void) pthread_rwlock_init(&rwl->rwl, NULL);
-		rv = pthread_rwlock_wrlock(&rwl->rwl);
+		// Zephyr: lazy-init if the rwlock was never initialized.
+		if (rwl->rwl == PTHREAD_RWLOCK_INITIALIZER) {
+			(void) pthread_rwlock_init(&rwl->rwl, NULL);
+			rv = pthread_rwlock_wrlock(&rwl->rwl);
+		}
 	}
 	if (rv != 0) {
 		nni_panic("pthread_rwlock_wrlock: %s", strerror(rv));
@@ -147,9 +163,11 @@ nni_rwlock_unlock(nni_rwlock *rwl)
 void
 nni_plat_cv_init(nni_plat_cv *cv, nni_plat_mtx *mtx)
 {
-	// Zephyr: try once. No infinite retry.
-	if (pthread_cond_init(&cv->cv, &nni_cvattr) != 0) {
-		(void) pthread_cond_init(&cv->cv, NULL);
+	// Guarantee successful initialization. On Zephyr, init can only
+	// fail if the fixed-size pool (CONFIG_MAX_PTHREAD_COND_COUNT)
+	// is exhausted. Retry until another thread releases a slot.
+	while (pthread_cond_init(&cv->cv, &nni_cvattr) != 0) {
+		nni_msleep(10);
 	}
 	cv->mtx = mtx;
 }
@@ -167,10 +185,17 @@ nni_plat_cv_fini(nni_plat_cv *cv)
 void
 nni_plat_cv_wake(nni_plat_cv *cv)
 {
-	int rv = pthread_cond_broadcast(&cv->cv);
+	int rv;
+	rv = pthread_cond_broadcast(&cv->cv);
 	if (rv == EINVAL) {
-		(void) pthread_cond_init(&cv->cv, NULL);
-		rv = pthread_cond_broadcast(&cv->cv);
+		// Zephyr: pthread_cond_broadcast uses get_posix_cond
+		// (no sentinel handling), unlike signal/wait which use
+		// to_posix_cond (with lazy allocation).  Init here if the
+		// condvar was never explicitly initialized.
+		if (cv->cv == PTHREAD_COND_INITIALIZER) {
+			(void) pthread_cond_init(&cv->cv, NULL);
+			rv = pthread_cond_broadcast(&cv->cv);
+		}
 	}
 	if (rv != 0) {
 		nni_panic("pthread_cond_broadcast: %s", strerror(rv));
@@ -180,10 +205,14 @@ nni_plat_cv_wake(nni_plat_cv *cv)
 void
 nni_plat_cv_wake1(nni_plat_cv *cv)
 {
-	int rv = pthread_cond_signal(&cv->cv);
+	int rv;
+	rv = pthread_cond_signal(&cv->cv);
 	if (rv == EINVAL) {
-		(void) pthread_cond_init(&cv->cv, NULL);
-		rv = pthread_cond_signal(&cv->cv);
+		// Zephyr: lazy-init if the condvar was never initialized.
+		if (cv->cv == PTHREAD_COND_INITIALIZER) {
+			(void) pthread_cond_init(&cv->cv, NULL);
+			rv = pthread_cond_signal(&cv->cv);
+		}
 	}
 	if (rv != 0) {
 		nni_panic("pthread_cond_signal: %s", strerror(rv));
@@ -193,10 +222,14 @@ nni_plat_cv_wake1(nni_plat_cv *cv)
 void
 nni_plat_cv_wait(nni_plat_cv *cv)
 {
-	int rv = pthread_cond_wait(&cv->cv, &cv->mtx->mtx);
+	int rv;
+	rv = pthread_cond_wait(&cv->cv, &cv->mtx->mtx);
 	if (rv == EINVAL) {
-		(void) pthread_cond_init(&cv->cv, NULL);
-		rv = pthread_cond_wait(&cv->cv, &cv->mtx->mtx);
+		// Zephyr: lazy-init if the condvar was never initialized.
+		if (cv->cv == PTHREAD_COND_INITIALIZER) {
+			(void) pthread_cond_init(&cv->cv, NULL);
+			rv = pthread_cond_wait(&cv->cv, &cv->mtx->mtx);
+		}
 	}
 	if (rv != 0) {
 		nni_panic("pthread_cond_wait: %s", strerror(rv));
