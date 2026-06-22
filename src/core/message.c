@@ -482,6 +482,7 @@ nni_msg_free(nni_msg *m)
 		    m->m_proto_ops->msg_free != NULL) {
 			m->m_proto_ops->msg_free(m->m_proto_data);
 		}
+		nni_atomic_fini(&m->m_refcnt);
 		NNI_FREE_STRUCT(m);
 	}
 }

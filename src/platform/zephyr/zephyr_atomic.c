@@ -16,7 +16,7 @@
 
 #ifdef NNG_PLATFORM_ZEPHYR
 
-#ifdef NNG_HAVE_STDATOMIC
+#if NNG_HAVE_STDATOMIC
 
 #include <stdatomic.h>
 
@@ -187,6 +187,306 @@ void *
 nni_atomic_get_ptr(nni_atomic_ptr *v)
 {
 	return (void *)(uintptr_t)atomic_load(&v->v);
+}
+
+// ---- fini (no-op for C11 stdatomic) ----
+
+void nni_atomic_fini_flag(nni_atomic_flag *f) { NNI_ARG_UNUSED(f); }
+void nni_atomic_fini_bool(nni_atomic_bool *b) { NNI_ARG_UNUSED(b); }
+void nni_atomic_fini64(nni_atomic_u64 *v)    { NNI_ARG_UNUSED(v); }
+void nni_atomic_fini(nni_atomic_int *v)      { NNI_ARG_UNUSED(v); }
+void nni_atomic_fini_ptr(nni_atomic_ptr *v)  { NNI_ARG_UNUSED(v); }
+
+#else // !NNG_HAVE_STDATOMIC — pthread mutex fallback
+
+// On architectures without lock-free 64-bit atomics (e.g., 32-bit ARM
+// Cortex-M/R), use pthread mutexes inside each atomic struct.  Slower
+// and not ISR-safe, but correct for all platforms.
+
+#include <pthread.h>
+
+#define MUTEX_LOCK(m)   pthread_mutex_lock(m)
+#define MUTEX_UNLOCK(m) pthread_mutex_unlock(m)
+
+bool
+nni_atomic_flag_test_and_set(nni_atomic_flag *f)
+{
+	bool old;
+	MUTEX_LOCK(&f->m);
+	old = f->v;
+	f->v = true;
+	MUTEX_UNLOCK(&f->m);
+	return (old);
+}
+
+void
+nni_atomic_flag_reset(nni_atomic_flag *f)
+{
+	MUTEX_LOCK(&f->m);
+	f->v = false;
+	MUTEX_UNLOCK(&f->m);
+}
+
+void
+nni_atomic_set_bool(nni_atomic_bool *v, bool b)
+{
+	MUTEX_LOCK(&v->m);
+	v->v = b;
+	MUTEX_UNLOCK(&v->m);
+}
+
+bool
+nni_atomic_get_bool(nni_atomic_bool *v)
+{
+	bool b;
+	MUTEX_LOCK(&v->m);
+	b = v->v;
+	MUTEX_UNLOCK(&v->m);
+	return (b);
+}
+
+bool
+nni_atomic_swap_bool(nni_atomic_bool *v, bool b)
+{
+	bool old;
+	MUTEX_LOCK(&v->m);
+	old = v->v;
+	v->v = b;
+	MUTEX_UNLOCK(&v->m);
+	return (old);
+}
+
+void
+nni_atomic_init_bool(nni_atomic_bool *v)
+{
+	v->v = false;
+	pthread_mutex_init(&v->m, NULL);
+}
+
+void
+nni_atomic_init(nni_atomic_int *v)
+{
+	v->v = 0;
+	pthread_mutex_init(&v->m, NULL);
+}
+
+void
+nni_atomic_add(nni_atomic_int *v, int bump)
+{
+	MUTEX_LOCK(&v->m);
+	v->v += bump;
+	MUTEX_UNLOCK(&v->m);
+}
+
+void
+nni_atomic_sub(nni_atomic_int *v, int bump)
+{
+	MUTEX_LOCK(&v->m);
+	v->v -= bump;
+	MUTEX_UNLOCK(&v->m);
+}
+
+int
+nni_atomic_get(nni_atomic_int *v)
+{
+	int val;
+	MUTEX_LOCK(&v->m);
+	val = v->v;
+	MUTEX_UNLOCK(&v->m);
+	return (val);
+}
+
+void
+nni_atomic_set(nni_atomic_int *v, int val)
+{
+	MUTEX_LOCK(&v->m);
+	v->v = val;
+	MUTEX_UNLOCK(&v->m);
+}
+
+int
+nni_atomic_swap(nni_atomic_int *v, int val)
+{
+	int old;
+	MUTEX_LOCK(&v->m);
+	old = v->v;
+	v->v = val;
+	MUTEX_UNLOCK(&v->m);
+	return (old);
+}
+
+void
+nni_atomic_inc(nni_atomic_int *v)
+{
+	MUTEX_LOCK(&v->m);
+	v->v++;
+	MUTEX_UNLOCK(&v->m);
+}
+
+void
+nni_atomic_dec(nni_atomic_int *v)
+{
+	MUTEX_LOCK(&v->m);
+	v->v--;
+	MUTEX_UNLOCK(&v->m);
+}
+
+int
+nni_atomic_dec_nv(nni_atomic_int *v)
+{
+	int nv;
+	MUTEX_LOCK(&v->m);
+	nv = --v->v;
+	MUTEX_UNLOCK(&v->m);
+	return (nv);
+}
+
+bool
+nni_atomic_cas(nni_atomic_int *v, int old, int new)
+{
+	bool rv;
+	MUTEX_LOCK(&v->m);
+	if ((rv = (v->v == old))) {
+		v->v = new;
+	}
+	MUTEX_UNLOCK(&v->m);
+	return (rv);
+}
+
+// ---- 64-bit atomics (pthread mutex) ----
+
+void
+nni_atomic_init64(nni_atomic_u64 *v)
+{
+	v->v = 0;
+	pthread_mutex_init(&v->m, NULL);
+}
+
+void
+nni_atomic_add64(nni_atomic_u64 *v, uint64_t bump)
+{
+	MUTEX_LOCK(&v->m);
+	v->v += bump;
+	MUTEX_UNLOCK(&v->m);
+}
+
+void
+nni_atomic_sub64(nni_atomic_u64 *v, uint64_t bump)
+{
+	MUTEX_LOCK(&v->m);
+	v->v -= bump;
+	MUTEX_UNLOCK(&v->m);
+}
+
+uint64_t
+nni_atomic_get64(nni_atomic_u64 *v)
+{
+	uint64_t val;
+	MUTEX_LOCK(&v->m);
+	val = v->v;
+	MUTEX_UNLOCK(&v->m);
+	return (val);
+}
+
+void
+nni_atomic_set64(nni_atomic_u64 *v, uint64_t val)
+{
+	MUTEX_LOCK(&v->m);
+	v->v = val;
+	MUTEX_UNLOCK(&v->m);
+}
+
+uint64_t
+nni_atomic_swap64(nni_atomic_u64 *v, uint64_t val)
+{
+	uint64_t old;
+	MUTEX_LOCK(&v->m);
+	old = v->v;
+	v->v = val;
+	MUTEX_UNLOCK(&v->m);
+	return (old);
+}
+
+void
+nni_atomic_inc64(nni_atomic_u64 *v)
+{
+	MUTEX_LOCK(&v->m);
+	v->v++;
+	MUTEX_UNLOCK(&v->m);
+}
+
+uint64_t
+nni_atomic_dec64_nv(nni_atomic_u64 *v)
+{
+	uint64_t nv;
+	MUTEX_LOCK(&v->m);
+	nv = --v->v;
+	MUTEX_UNLOCK(&v->m);
+	return (nv);
+}
+
+bool
+nni_atomic_cas64(nni_atomic_u64 *v, uint64_t comp, uint64_t new_v)
+{
+	bool rv;
+	MUTEX_LOCK(&v->m);
+	if ((rv = (v->v == comp))) {
+		v->v = new_v;
+	}
+	MUTEX_UNLOCK(&v->m);
+	return (rv);
+}
+
+// ---- Pointer atomics (pthread mutex) ----
+
+void
+nni_atomic_set_ptr(nni_atomic_ptr *v, void *p)
+{
+	MUTEX_LOCK(&v->m);
+	v->v = p;
+	MUTEX_UNLOCK(&v->m);
+}
+
+void *
+nni_atomic_get_ptr(nni_atomic_ptr *v)
+{
+	void *p;
+	MUTEX_LOCK(&v->m);
+	p = v->v;
+	MUTEX_UNLOCK(&v->m);
+	return (p);
+}
+
+// ---- fini (destroy embedded mutex) ----
+
+void
+nni_atomic_fini_flag(nni_atomic_flag *f)
+{
+	(void) pthread_mutex_destroy(&f->m);
+}
+
+void
+nni_atomic_fini_bool(nni_atomic_bool *b)
+{
+	(void) pthread_mutex_destroy(&b->m);
+}
+
+void
+nni_atomic_fini64(nni_atomic_u64 *v)
+{
+	(void) pthread_mutex_destroy(&v->m);
+}
+
+void
+nni_atomic_fini(nni_atomic_int *v)
+{
+	(void) pthread_mutex_destroy(&v->m);
+}
+
+void
+nni_atomic_fini_ptr(nni_atomic_ptr *v)
+{
+	(void) pthread_mutex_destroy(&v->m);
 }
 
 #endif // NNG_HAVE_STDATOMIC

@@ -88,6 +88,7 @@ inproc_pair_destroy(inproc_pair *pair)
 	for (int i = 0; i < 2; i++) {
 		nni_mtx_fini(&pair->queues[i].lock);
 	}
+	nni_atomic_fini(&pair->ref);
 	NNI_FREE_STRUCT(pair);
 }
 

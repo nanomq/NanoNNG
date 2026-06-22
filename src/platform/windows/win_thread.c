@@ -349,6 +349,13 @@ nni_atomic_cas(nni_atomic_int *v, int comp, int new)
 	return (old == comp);
 }
 
+// ---- fini (no-op for Windows Interlocked atomics) ----
+void nni_atomic_fini_flag(nni_atomic_flag *f) { NNI_ARG_UNUSED(f); }
+void nni_atomic_fini_bool(nni_atomic_bool *b) { NNI_ARG_UNUSED(b); }
+void nni_atomic_fini64(nni_atomic_u64 *v)    { NNI_ARG_UNUSED(v); }
+void nni_atomic_fini(nni_atomic_int *v)      { NNI_ARG_UNUSED(v); }
+void nni_atomic_fini_ptr(nni_atomic_ptr *v)  { NNI_ARG_UNUSED(v); }
+
 static unsigned int __stdcall nni_plat_thr_main(void *arg)
 {
 	nni_plat_thr *thr = arg;

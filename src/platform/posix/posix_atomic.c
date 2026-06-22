@@ -190,6 +190,13 @@ nni_atomic_cas64(nni_atomic_u64 *v, uint64_t comp, uint64_t new)
 	return (atomic_compare_exchange_strong(&v->v, &cv, nv));
 }
 
+// ---- fini (no-op for C11 stdatomic) ----
+void nni_atomic_fini_flag(nni_atomic_flag *f) { NNI_ARG_UNUSED(f); }
+void nni_atomic_fini_bool(nni_atomic_bool *b) { NNI_ARG_UNUSED(b); }
+void nni_atomic_fini64(nni_atomic_u64 *v)    { NNI_ARG_UNUSED(v); }
+void nni_atomic_fini(nni_atomic_int *v)      { NNI_ARG_UNUSED(v); }
+void nni_atomic_fini_ptr(nni_atomic_ptr *v)  { NNI_ARG_UNUSED(v); }
+
 #elif NNI_GCC_VERSION >= 40700 || \
     defined(__clang__) // we have "new" GCC __atomic builtins
 bool
@@ -355,6 +362,13 @@ nni_atomic_set_ptr(nni_atomic_ptr *v, void *p)
 {
 	__atomic_store_n(&v->v, p, __ATOMIC_SEQ_CST);
 }
+
+// ---- fini (no-op for GCC __atomic) ----
+void nni_atomic_fini_flag(nni_atomic_flag *f) { NNI_ARG_UNUSED(f); }
+void nni_atomic_fini_bool(nni_atomic_bool *b) { NNI_ARG_UNUSED(b); }
+void nni_atomic_fini64(nni_atomic_u64 *v)    { NNI_ARG_UNUSED(v); }
+void nni_atomic_fini(nni_atomic_int *v)      { NNI_ARG_UNUSED(v); }
+void nni_atomic_fini_ptr(nni_atomic_ptr *v)  { NNI_ARG_UNUSED(v); }
 
 #else
 
@@ -609,6 +623,13 @@ nni_atomic_cas(nni_atomic_int *v, int comp, int new)
 	pthread_mutex_unlock(&plat_atomic_lock);
 	return (result);
 }
+
+// ---- fini (no-op for global-lock mutex fallback) ----
+void nni_atomic_fini_flag(nni_atomic_flag *f) { NNI_ARG_UNUSED(f); }
+void nni_atomic_fini_bool(nni_atomic_bool *b) { NNI_ARG_UNUSED(b); }
+void nni_atomic_fini64(nni_atomic_u64 *v)    { NNI_ARG_UNUSED(v); }
+void nni_atomic_fini(nni_atomic_int *v)      { NNI_ARG_UNUSED(v); }
+void nni_atomic_fini_ptr(nni_atomic_ptr *v)  { NNI_ARG_UNUSED(v); }
 
 #endif
 

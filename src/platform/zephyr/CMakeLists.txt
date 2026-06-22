@@ -40,8 +40,15 @@ if (NNG_PLATFORM_ZEPHYR)
     # Poll: Zephyr supports poll() via CONFIG_POLL
     nng_defines(NNG_HAVE_POLL)
 
-    # Zephyr has <stdatomic.h> via its GCC/Clang toolchain
-    nng_defines(NNG_HAVE_STDATOMIC)
+    # Zephyr has <stdatomic.h> via its GCC/Clang toolchain.
+    # 32-bit ARM (Cortex-M/R) and other architectures without native
+    # 64-bit atomics can set NNG_ZEPHYR_NO_STDATOMIC=ON to use the
+    # pthread-mutex fallback, which avoids unresolved __sync_*_8 symbols.
+    set(NNG_HAVE_STDATOMIC 1)
+    if(NNG_ZEPHYR_NO_STDATOMIC)
+        set(NNG_HAVE_STDATOMIC 0)
+    endif()
+    nng_defines(NNG_HAVE_STDATOMIC=${NNG_HAVE_STDATOMIC})
 
     # Random: use /dev/urandom (simplest, works everywhere)
     nng_defines(NNG_USE_DEVURANDOM)

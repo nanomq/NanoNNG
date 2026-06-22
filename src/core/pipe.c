@@ -72,6 +72,9 @@ pipe_destroy(void *arg)
 		p->p_tran_ops.p_fini(p->p_tran_data);
 	}
 	nni_cv_fini(&p->p_cv);
+	nni_atomic_fini_bool(&p->p_closed);
+	nni_atomic_fini_flag(&p->p_stop);
+	nni_atomic_fini_bool(&p->cache);
 	nni_free(p, p->p_size);
 }
 

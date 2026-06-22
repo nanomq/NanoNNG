@@ -184,6 +184,7 @@ typedef struct nni_atomic_flag nni_atomic_flag;
 
 extern bool nni_atomic_flag_test_and_set(nni_atomic_flag *);
 extern void nni_atomic_flag_reset(nni_atomic_flag *);
+extern void nni_atomic_fini_flag(nni_atomic_flag *);
 
 // nni_atomic_bool is for boolean flags that need to be checked without
 // changing their value.  This might require a lock on some systems.
@@ -193,6 +194,7 @@ extern void nni_atomic_init_bool(nni_atomic_bool *);
 extern void nni_atomic_set_bool(nni_atomic_bool *, bool);
 extern bool nni_atomic_get_bool(nni_atomic_bool *);
 extern bool nni_atomic_swap_bool(nni_atomic_bool *, bool);
+extern void nni_atomic_fini_bool(nni_atomic_bool *);
 
 typedef struct nni_atomic_u64 nni_atomic_u64;
 
@@ -204,6 +206,7 @@ extern void     nni_atomic_set64(nni_atomic_u64 *, uint64_t);
 extern uint64_t nni_atomic_swap64(nni_atomic_u64 *, uint64_t);
 extern uint64_t nni_atomic_dec64_nv(nni_atomic_u64 *);
 extern void     nni_atomic_inc64(nni_atomic_u64 *);
+extern void     nni_atomic_fini64(nni_atomic_u64 *);
 
 // nni_atomic_cas64 is a compare and swap.  The second argument is the
 // value to compare against, and the third is the new value. Returns
@@ -226,6 +229,7 @@ extern int  nni_atomic_swap(nni_atomic_int *, int);
 extern int  nni_atomic_dec_nv(nni_atomic_int *);
 extern void nni_atomic_dec(nni_atomic_int *);
 extern void nni_atomic_inc(nni_atomic_int *);
+extern void nni_atomic_fini(nni_atomic_int *);
 
 // nni_atomic_cas is a compare and swap.  The second argument is the
 // value to compare against, and the third is the new value. Returns
@@ -236,6 +240,7 @@ extern bool nni_atomic_cas(nni_atomic_int *, int, int);
 typedef struct nni_atomic_ptr nni_atomic_ptr;
 extern void                   nni_atomic_set_ptr(nni_atomic_ptr *, void *);
 extern void                  *nni_atomic_get_ptr(nni_atomic_ptr *);
+extern void                   nni_atomic_fini_ptr(nni_atomic_ptr *);
 
 //
 // Clock Support

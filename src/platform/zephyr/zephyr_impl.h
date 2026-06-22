@@ -77,7 +77,7 @@ struct nni_plat_thr { pthread_t tid; void (*func)(void *); void *arg; };
 struct nni_plat_flock { int fd; };
 #define NNG_PLATFORM_DIR_SEP "/"
 
-#ifdef NNG_HAVE_STDATOMIC
+#if NNG_HAVE_STDATOMIC
 #include <stdatomic.h>
 struct nni_atomic_flag { atomic_flag f; };
 struct nni_atomic_int  { atomic_int v; };
