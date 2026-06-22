@@ -15,7 +15,7 @@ Minimum versions (from Zephyr v4.4):
 | Devicetree compiler | 1.4.6      |
 | Zephyr SDK        | 1.0.0        |
 
-The demos in this project target the `qemu_x86` board. Any Linux distribution supported by Zephyr (Ubuntu, Fedora, Debian, etc.) should work.
+The demos in this project target `qemu_x86`, `native_sim`, and `mps2/an385` (ARM Cortex-M3) boards. Any Linux distribution supported by Zephyr (Ubuntu, Fedora, Debian, etc.) should work.
 
 ## Environment Setup
 
@@ -41,6 +41,20 @@ source /opt/python/venv/bin/activate
 ```
 
 The host workspace is mounted at `/workdir` inside the container. NanoNNG source is at `/workdir/NanoNNG`.
+
+#### Install socat (required for QEMU SLIP)
+
+The Zephyr QEMU runner uses a SLIP serial socket (`/tmp/slip.sock`) for networking.
+`socat` must be installed to create this socket before running QEMU:
+
+```bash
+# Inside container
+apt-get update && apt-get install -y socat
+
+# Or on host
+sudo dnf install -y socat        # Fedora
+sudo apt-get install -y socat    # Debian/Ubuntu
+```
 
 ### 2. Manual Setup (Without Docker)
 
@@ -80,41 +94,115 @@ NanoNNG/
 
 ## Build & Run: inproc Demo
 
-A minimal PAIRv0 test over inproc transport. No networking required.
+A minimal PAIRv0 test over inproc transport with security-fix verification tests.
+No networking required — runs on any Zephyr board with POSIX API support.
+
+### QEMU Run Environment
+
+All QEMU-based targets require a SLIP serial socket for the Zephyr network stack.
+Create it with `socat` before running:
 
 ```bash
-cd demo/zephyr
-west build -b qemu_x86 .
-west build -t run
+socat UNIX-LISTEN:/tmp/slip.sock,fork,unlink-early PIPE &
 ```
+
+This keeps the socket alive until you `kill %1` or exit the shell.
+
+### Quick Start (Docker)
+
+```bash
+# Enter container and activate Zephyr venv
+docker exec -u root zephyr-tap bash
+source /opt/python/venv/bin/activate
+
+# --- qemu_x86 (fast, x86 QEMU) ---
+cd /workdir/NanoNNG/demo/zephyr
+west build -b qemu_x86 .
+socat UNIX-LISTEN:/tmp/slip.sock,fork,unlink-early PIPE &
+sleep 1
+timeout 30 west build -t run
+kill %1 2>/dev/null
+
+# --- native_sim (fastest, no QEMU) ---
+west build -b native_sim .
+west build -t run
+
+# --- mps2/an385 (ARM Cortex-M3, 4MB RAM; slow emulation) ---
+west build -b mps2/an385 .
+socat UNIX-LISTEN:/tmp/slip.sock,fork,unlink-early PIPE &
+sleep 1
+timeout 300 west build -t run
+kill %1 2>/dev/null
+
+# --- qemu_cortex_m3 (build only — 64KB RAM insufficient at runtime) ---
+west build -b qemu_cortex_m3 .
+```
+
+### Per-Board Summary
+
+| Board | Build | Run | Notes |
+|-------|-------|-----|-------|
+| `qemu_x86` | ✅ | ✅ | Full speed; `-march=atom` for inline 64-bit atomics |
+| `native_sim` | ✅ | ✅ | Fastest; no QEMU, no SLIP socket needed |
+| `mps2/an385` | ✅ 4.6% RAM | ✅ (slow) | ARM Cortex-M3; 4MB RAM; ~10s per socket op; needs socat |
+| `qemu_cortex_m3` | ⚠️ 80% RAM | ❌ | TI LM3S6965 64KB SRAM cannot fit NanoNNG heap |
 
 Expected output:
 ```
-=== NanoNNG Zephyr Demo ===
-PASS: pair_open  PASS: listen  PASS: dial
-PASS: send       PASS: recv    PASS: close
-ALL TESTS PASSED
+=== NanoNNG Zephyr - Security Fix Tests ===
+--- Test 1: Basic Inproc ---
+  PASS: nng_pair0_open(s1)
+  PASS: nng_pair0_open(s2)
+  PASS: nng_listen
+  PASS: nng_dial
+  PASS: nng_send
+  PASS: nng_recv('hello', 6 bytes)
+--- Test 2: Socket Lifecycle (30 cycles) ---
+  PASS: socket create/destroy cycle
+--- Test 3: Message Stress (100 msgs) ---
+  PASS: message send/recv stress
+--- Test 4: Batch Pair Lifecycle ---
+  PASS: batch pair lifecycle
+========================================
+  Results: 9 PASS, 0 FAIL, 0 TESTS FAILED
+========================================
 ```
 
-### Build System Notes
+### Board-Specific Configuration
 
-NanoNNG is built via CMake `ExternalProject_Add` at ninja time:
+Board-specific Kconfig fragments live in `boards/<BOARD>.conf` and are
+loaded automatically by the Zephyr build system. The common `prj.conf`
+contains only platform-independent settings.
 
-```cmake
--DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}    # Zephyr SDK cross-compiler
--DCMAKE_C_FLAGS=${external_cflags}         # Zephyr includes + defines
--DCMAKE_SYSTEM_NAME=Generic                # Cross-compilation mode
--DNNG_PLATFORM_ZEPHYR=ON                   # Enable Zephyr platform
--DNNG_TESTS=OFF -DNNG_TOOLS=OFF -DNNG_ENABLE_TLS=OFF
-```
+| File | Purpose |
+|------|---------|
+| `prj.conf` | Common config (POSIX API, threading, heap, networking headers) |
+| `boards/qemu_x86.conf` | Disable SLIP (inproc doesn't need networking) |
+| `boards/native_sim.conf` | Pre-allocated thread pool for POSIX arch, larger heap |
+| `boards/mps2_an385.conf` | ARM Cortex-M3 (4MB RAM): test entropy, increased mutex pool (128) |
+| `boards/qemu_cortex_m3.conf` | Minimal config; builds but **cannot run** (64KB RAM insufficient) |
 
 ## Build & Run: MQTT Demo
 
 Async state-machine MQTT client. Follows [`demo/mqtt_async`](../demo/mqtt_async/mqtt_async.c) pattern.
+Requires TCP networking — board must support `CONFIG_NET_TCP`.
+
+### Quick Start (Docker)
 
 ```bash
-cd demo/zephyr_mqtt
+docker exec -u root zephyr-tap bash
+source /opt/python/venv/bin/activate
+
+# --- qemu_x86 with SLIRP user networking (built-in NAT) ---
+cd /workdir/NanoNNG/demo/zephyr_mqtt
 west build -b qemu_x86 .
+socat UNIX-LISTEN:/tmp/slip.sock,fork,unlink-early PIPE &
+sleep 1
+timeout 30 west build -t run
+kill %1 2>/dev/null
+
+# --- native_sim (uses host network directly) ---
+west build -b native_sim .
 west build -t run
 ```
 
@@ -130,7 +218,16 @@ MQTT RECV: 'hello' FROM: '/zephyr/msg/1'
 MQTT SEND: 'hello' TO: '/zephyr/msg/transfer'
 ```
 
-See [`demo/zephyr_mqtt/README.md`](../demo/zephyr_mqtt/README.md) for testing with MQTTX.
+### Board-Specific Configuration
+
+| File | Purpose |
+|------|---------|
+| `prj.conf` | Common MQTT config (POSIX API, TCP, DNS resolver) |
+| `boards/qemu_x86.conf` | QEMU SLIRP NAT, static IP 10.0.2.15, DNS 10.0.2.3 |
+| `boards/native_sim.conf` | Host networking, DNS 8.8.8.8 |
+
+To add a new board, create `boards/<BOARD>.conf` with board-specific
+network/DNS settings. No CMakeLists.txt changes are needed.
 
 ## QEMU Networking
 
@@ -157,7 +254,7 @@ CONFIG_DNS_SERVER2="8.8.8.8"        # Fallback
 ## Platform Port Architecture
 
 - **Threading**: Zephyr native `pthread`; EINVAL retry for lazy mutex registration; `NULL` attr for thread creation
-- **Atomics**: `nni_atomic_u64` via `pthread_mutex` (32-bit x86 lacks `__atomic_store_8`)
+- **Atomics**: C11 `stdatomic` on x86/64-bit; pthread-mutex fallback (`NNG_ZEPHYR_NO_STDATOMIC`) on 32-bit ARM Cortex-M which lacks native 64-bit atomics. Each atomic struct embeds a `pthread_mutex_t`; cleanup paths call `nni_atomic_fini*` to release mutex pool slots.
 - **File I/O**: Full POSIX when `CONFIG_FILE_SYSTEM=y`; `access()` emulated via `stat()`; returns `NNG_ENOTSUP` otherwise
 - **DNS**: Synchronous `getaddrinfo` → `zsock_getaddrinfo`; no worker threads
 - **Event loop**: `poll(fds, nfds, 100)` with 100ms timeout
@@ -168,6 +265,8 @@ CONFIG_DNS_SERVER2="8.8.8.8"        # Fallback
 |-----------------------------------|-----------------------------|
 | `CONFIG_POSIX_API=y`              | POSIX threads, sockets, poll|
 | `CONFIG_DYNAMIC_THREAD=y`         | Runtime thread creation     |
-| `CONFIG_HEAP_MEM_POOL_SIZE=131072`| Heap (≥128KB)              |
-| `CONFIG_NET_QEMU_USER=y`          | SLIRP NAT (no host setup)  |
+| `CONFIG_HEAP_MEM_POOL_SIZE=131072`| Heap (≥128KB)               |
+| `CONFIG_MAX_PTHREAD_MUTEX_COUNT=128`| ARM: extra slots for mutex-fallback atomics |
+| `CONFIG_TEST_RANDOM_GENERATOR=y`  | Entropy on boards without hardware RNG |
+| `CONFIG_NET_QEMU_USER=y`          | SLIRP NAT (no host setup)   |
 | `CONFIG_DNS_SERVER1="10.0.2.3"`   | QEMU SLIRP DNS proxy        |
