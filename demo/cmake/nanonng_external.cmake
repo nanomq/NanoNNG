@@ -19,8 +19,14 @@
 zephyr_get_compile_options_for_lang_as_string(C options)
 set(arch_flags "")
 if(CONFIG_X86 AND NOT CONFIG_64BIT)
-  if(CONFIG_SOC_ATOM OR CONFIG_BOARD_QEMU_X86)
+  if(CONFIG_SOC_ATOM)
     set(arch_flags "-march=atom")
+  elseif(BOARD MATCHES "qemu_x86")
+    # QEMU uses "-cpu qemu32" which lacks SSE2+ and movbe.  i686 gives
+    # us cmpxchg8b (for 64-bit atomics) without SSE2+/movbe.
+    # Zephyr's SoC-level flags may add "-march=atom" — strip it;
+    # we supply the correct -march below.
+    set(arch_flags "-march=i686 -mno-sse2 -mno-sse3 -mno-ssse3 -mno-movbe")
   elseif(CONFIG_SOC_INTEL_ISH)
     set(arch_flags "-march=pentium-m")
   elseif(CONFIG_SOC_QUARK_SE)
@@ -42,6 +48,13 @@ zephyr_get_include_directories_for_lang_as_string(       C includes)
 zephyr_get_system_include_directories_for_lang_as_string(C system_includes)
 zephyr_get_compile_definitions_for_lang_as_string(       C definitions)
 
+# Zephyr's qemu_x86/atom SoC sets "-march=atom" which enables "movbe"
+# (Move Big-Endian, an Intel Atom instruction).  QEMU's "-cpu qemu32"
+# does NOT support movbe — execute it and you get #UD.
+# Strip -march=atom from the Zephyr options; our arch_flags below
+# supply the correct -march for each board.
+string(REGEX REPLACE "-march=atom" "" options "${options}")
+
 set(build_includes
   -I${PROJECT_BINARY_DIR}/zephyr/include/generated
   -I${PROJECT_BINARY_DIR}/zephyr/include/generated/zephyr
@@ -49,8 +62,12 @@ set(build_includes
 string(REPLACE ";" " " build_includes_str "${build_includes}")
 
 set(NNG_ROOT ${NNG_ROOT})  # ensure it's visible in this scope
+
+# Zephyr's qemu_x86/atom SoC enables "-march=atom" which includes "movbe"
+# (Move Big-Endian).  QEMU's "-cpu qemu32" does NOT support movbe and
+# raises #UD when it hits one.  -mno-movbe is a no-op on non-x86.
 set(external_cflags
-  "${includes} ${system_includes} ${definitions} ${options} ${arch_flags} ${build_includes_str}")
+  "${includes} ${system_includes} ${definitions} ${options} ${arch_flags} ${build_includes_str} -DNDEBUG -mno-movbe")
 
 # ── ExternalProject ──────────────────────────────────────────────
 include(ExternalProject)

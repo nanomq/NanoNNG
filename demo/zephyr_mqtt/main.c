@@ -67,15 +67,19 @@ alloc_work(nng_socket sock)
 
 /* ===== callbacks ===== */
 
+static volatile int connected = 0;
+
 static void
 connect_cb(nng_pipe p, nng_pipe_ev ev, void *arg)
 {
+	connected = 1;
 	printk("MQTT: connected\n");
 }
 
 static void
 disconnect_cb(nng_pipe p, nng_pipe_ev ev, void *arg)
 {
+	connected = 0;
 	printk("MQTT: disconnected\n");
 }
 
@@ -177,6 +181,7 @@ mqtt_connect(const char *url)
 	printk("MQTT: socket opened\n");
 
 	worker = alloc_work(sock);
+	printk("MQTT: work allocated\n");
 
 	nng_mqtt_msg_alloc(&conn_msg, 0);
 	nng_mqtt_msg_set_packet_type(conn_msg, NNG_MQTT_CONNECT);
@@ -189,17 +194,25 @@ mqtt_connect(const char *url)
 	nng_mqtt_set_connect_cb(sock, connect_cb, NULL);
 	nng_mqtt_set_disconnect_cb(sock, disconnect_cb, NULL);
 
+	printk("MQTT: creating dialer for %s\n", url);
 	if ((rv = nng_dialer_create(&dialer, sock, url)) != 0)
 		fatal("nng_dialer_create", rv);
+	printk("MQTT: dialer created\n");
 
 	nng_dialer_set_ptr(dialer, NNG_OPT_MQTT_CONNMSG, conn_msg);
-	if ((rv = nng_dialer_start(dialer, NNG_FLAG_ALLOC)) != 0){
-        fatal("nng_dialer_start", rv);
-    }
+	printk("MQTT: starting dialer (async)\n");
+	if ((rv = nng_dialer_start(dialer, NNG_FLAG_NONBLOCK)) != 0)
+		fatal("nng_dialer_start", rv);
 	printk("MQTT: dialer started for %s\n", url);
 
-	// allow connection to settle
-	nng_msleep(1000);
+	/* Wait for connect callback (10 s timeout); avoids blind sleep */
+	{
+		int timeout = 100; // 100 × 100 ms
+		while (!connected && timeout-- > 0)
+			nng_msleep(100);
+		if (!connected)
+			fatal("MQTT connect timeout", NNG_ETIMEDOUT);
+	}
 
 	nng_mqtt_topic_qos tq[] = {
 		{ .qos = 1, .topic = { strlen(SUB_TOPIC1), (uint8_t *)SUB_TOPIC1 } },
@@ -211,7 +224,8 @@ mqtt_connect(const char *url)
 	nng_mqtt_msg_set_packet_type(sub_msg, NNG_MQTT_SUBSCRIBE);
 	nng_mqtt_msg_set_subscribe_topics(sub_msg, tq, n);
 	printk("MQTT: subscribing %zu topics\n", n);
-	nng_sendmsg(sock, sub_msg, NNG_FLAG_ALLOC);
+	if ((rv = nng_sendmsg(sock, sub_msg, NNG_FLAG_ALLOC)) != 0)
+		printk("MQTT: subscribe failed: %s\n", nng_strerror(rv));
 
 	client_cb(worker);  // kick state machine
 

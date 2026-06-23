@@ -1,8 +1,6 @@
 # NanoNNG Zephyr MQTT Client Demo — async state-machine style
 #
-# Build: west build -b <board> demo/zephyr_mqtt
-#   west build -b qemu_x86   demo/zephyr_mqtt
-#   west build -b native_sim demo/zephyr_mqtt
+# Build: west build -b qemu_x86 demo/zephyr_mqtt
 
 cmake_minimum_required(VERSION 3.20.0)
 if(NOT DEFINED ZEPHYR_BASE)
