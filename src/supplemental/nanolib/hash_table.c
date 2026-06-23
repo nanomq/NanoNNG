@@ -54,8 +54,10 @@ static inline uint64_t U8TO64_LE(const uint8_t *p) {
 }
 
 /**
- * @brief generate 16 byte (128bit) random Hash seed。
- * ⚠️ Now only flood attack would generates CVE
+ * @brief generate 16 byte (128bit) random Hash seed
+ * ⚠️ Must be inited first with broker at start
+ * This mitigates CVE hash-flooding (collision) attacks by using a per-process random key.
+ *
  */
 void nanomq_init_hash_seed(void) {
     for (int i = 0; i < 4; i++) {
@@ -70,7 +72,9 @@ void nanomq_init_hash_seed(void) {
 /**
  * @brief Standard SipHash-2-4 Algo for 64bit
  */
-uint64_t siphash24(const void *src, size_t src_sz, const uint8_t key[16]) {
+static uint64_t
+siphash24(const void *src, size_t src_sz, const uint8_t key[16])
+{
     const uint8_t *ni = (const uint8_t *)src;
     const uint8_t *end = ni + (src_sz - (src_sz % 8));
 
