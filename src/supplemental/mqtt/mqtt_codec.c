@@ -2145,6 +2145,7 @@ nni_mqtt_msg_decode_subscribe(nni_msg *msg)
 	return MQTT_SUCCESS;
 
 err:
+	// shall leave it to unified destroy API
 	nni_free(spld->topic_arr, sizeof(mqtt_topic_qos) * topic_count);
 	spld->topic_arr   = NULL;
 	spld->topic_count = 0;
@@ -2231,6 +2232,7 @@ nni_mqttv5_msg_decode_subscribe(nni_msg *msg)
 	return MQTT_SUCCESS;
 
 err:
+	// shall leave it to unified destroy API
 	nni_free(spld->topic_arr, sizeof(mqtt_topic_qos) * topic_count);
 	spld->topic_arr   = NULL;
 	spld->topic_count = 0;
