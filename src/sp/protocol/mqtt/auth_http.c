@@ -469,7 +469,7 @@ nmq_auth_http_sub_pub(
 		strlen(acl_cache_k_str), NULL);
 
 	if (conf->super_req.url) {
-		if (conf->cache_ttl > 0) {
+		if (conf->cache_ttl > 0 && conf->acl_cache_map != NULL) {
 			nng_mtx_lock(conf->acl_cache_mtx);
 			void *acl_cache_v = nng_id_get(
 					conf->acl_cache_map, (uint64_t)acl_cache_k);
@@ -482,7 +482,7 @@ nmq_auth_http_sub_pub(
 
 		status = send_request(conf, &conf->super_req, &auth_params);
 		if (status == NNG_HTTP_STATUS_OK) {
-			if (conf->cache_ttl > 0) {
+			if (conf->cache_ttl > 0 && conf->acl_cache_map != NULL) {
 				log_debug("acl passed, add cache %ld, %s",
 						acl_cache_k, acl_cache_k_str);
 				nng_mtx_lock(conf->acl_cache_mtx);
@@ -496,7 +496,7 @@ nmq_auth_http_sub_pub(
 	}
 
 	if (conf->acl_req.url) {
-		if (conf->cache_ttl > 0) {
+		if (conf->cache_ttl > 0 && conf->acl_cache_map != NULL) {
 			nng_mtx_lock(conf->acl_cache_mtx);
 			void *acl_cache_v = nng_id_get(
 					conf->acl_cache_map, (uint64_t)acl_cache_k);
@@ -511,7 +511,7 @@ nmq_auth_http_sub_pub(
 		    ? NNG_HTTP_STATUS_OK
 		    : send_request(conf, &conf->acl_req, &auth_params);
 		if (status == NNG_HTTP_STATUS_OK) {
-			if (conf->cache_ttl > 0) {
+			if (conf->cache_ttl > 0 && conf->acl_cache_map != NULL) {
 				log_debug("acl passed, add cache %ld, %s",
 						acl_cache_k, acl_cache_k_str);
 				nng_mtx_lock(conf->acl_cache_mtx);
