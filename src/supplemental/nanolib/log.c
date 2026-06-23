@@ -455,6 +455,7 @@ file_rotation(FILE *fp, conf_log *config)
 			fprintf(stderr, "open path %s failed\n",
 					config->dir);
 			config->fp = NULL;
+			nni_strfree(index_file);
 			return;
 		}
 #endif
