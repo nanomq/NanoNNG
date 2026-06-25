@@ -641,6 +641,7 @@ nano_pipe_start(void *arg)
 	log_trace(" ########## nano_pipe_start ########## ");
 
 	nni_msg_alloc(&msg, 0);
+	conn_param_clone(p->conn_param);
 	nni_mtx_lock(&s->lk);
 
 #ifdef NNG_SUPP_SQLITE
@@ -701,8 +702,8 @@ nano_pipe_start(void *arg)
 	log_debug("client connected! addr [%s port [%d]\n",
 	    p->conn_param->ip_addr_v4, addr.s_in.sa_port);
 auth_verify:
-	conn_param_clone(p->conn_param);
 	rv = verify_connect(p->conn_param, s->conf);
+	// TODO Avoid holding s->lk across HTTP authentication.
 	if (rv == SUCCESS) {
 		if (s->conf->auth_http.enable) {
 			log_debug("HTTP Authentication start!");
@@ -711,7 +712,6 @@ auth_verify:
 		}
 	}
 	nmq_connack_encode(msg, s->conf, p->conn_param, rv);
-	conn_param_free(p->conn_param);
 	if (rv != 0) {
 		// send connack with reason code 0x05
 		log_warn("Invalid auth info or authentication denied");
@@ -725,6 +725,7 @@ auth_verify:
 	if (!clientid) {
 		log_warn("NULL clientid found when try to restore session.");
 		nni_mtx_unlock(&s->lk);
+		conn_param_free(p->conn_param);
 		return NNG_ECONNSHUT;
 	}
 	if (p->conn_param->clean_start == 0) {
@@ -816,6 +817,7 @@ out:
 		nmq_connack_session(msg, true);
 	}
 	nni_msg_set_conn_param(msg, p->conn_param);
+	conn_param_free(p->conn_param);
 	// There is no need to check the  state of aio_recv
 	// Since pipe_start is definetly the first cb to be excuted of pipe.
 	nni_aio_set_msg(&p->aio_recv, msg);
