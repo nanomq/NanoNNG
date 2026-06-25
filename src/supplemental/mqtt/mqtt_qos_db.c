@@ -839,6 +839,7 @@ nni_mqtt_qos_db_find_retain(sqlite3 *db, const char *topic_pattern)
 
 	rc = sqlite3_bind_text(stmt, 1, topic_str, strlen(topic_str), SQLITE_TRANSIENT);
 	if (rc != SQLITE_OK) {
+		sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
 		sqlite3_finalize(stmt);
 		nng_strfree(topic_str);
 		return NULL;
