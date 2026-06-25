@@ -25,15 +25,45 @@ struct auth_http_params {
 
 typedef struct auth_http_params auth_http_params;
 
+static char *
+url_encode(const char *str)
+{
+	if (str == NULL) {
+		return NULL;
+	}
+	const char *hex = "0123456789ABCDEF";
+	size_t len = strlen(str);
+	// turn every char to "%XX" + '\0'
+	char *encoded = calloc(len * 3 + 1, sizeof(char));
+	if (encoded == NULL) {
+		return NULL;
+	}
+	char *p = encoded;
+	for (size_t i = 0; i < len; i++) {
+		unsigned char c = (unsigned char)str[i];
+		if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+			*p++ = c;
+		} else {
+			*p++ = '%';
+			*p++ = hex[c >> 4];
+			*p++ = hex[c & 15];
+		}
+	}
+	*p = '\0';
+	return encoded;
+}
+
 static size_t
 str_append(char **dest, const char *str)
 {
 	char *old_str = *dest == NULL ? "" : (*dest);
 	char *new_str =
-	    calloc(strlen(old_str) + strlen(str) + 1, sizeof(char));
+	    calloc(strlen(old_str) + (str ? strlen(str) : 0) + 1, sizeof(char));
 
 	strcat(new_str, old_str);
-	strcat(new_str, str == NULL ? "" : str);
+	if (str) {
+		strcat(new_str, str);
+	}
 
 	if (*dest) {
 		free(*dest);
@@ -128,107 +158,55 @@ set_data(
 		cJSON_Delete(obj);
 	} else {
 		for (size_t i = 0; i < req_conf->param_count; i++) {
+			const char *val = NULL;
+
 			switch (req_conf->params[i]->type) {
 			case ACCESS:
-				if (params->access) {
-					str_append(&req_data,
-					    req_conf->params[i]->name);
-					str_append(&req_data, "=");
-					str_append(&req_data, params->access);
-					str_append(&req_data, "&");
-				}
+				val = params->access;
 				break;
 			case USERNAME:
-				if (params->username) {
-					str_append(&req_data,
-					    req_conf->params[i]->name);
-					str_append(&req_data, "=");
-					str_append(
-					    &req_data, params->username);
-					str_append(&req_data, "&");
-				}
+				val = params->username;
 				break;
 			case CLIENTID:
-				if (params->clientid) {
-					str_append(&req_data,
-					    req_conf->params[i]->name);
-					str_append(&req_data, "=");
-					str_append(
-					    &req_data, params->clientid);
-					str_append(&req_data, "&");
-				}
+				val = params->clientid;
 				break;
 			case IPADDRESS:
-				if (params->ipaddress) {
-					str_append(&req_data,
-					    req_conf->params[i]->name);
-					str_append(&req_data, "=");
-					str_append(
-					    &req_data, params->ipaddress);
-					str_append(&req_data, "&");
-				}
+				val = params->ipaddress;
 				break;
 			case PROTOCOL:
-				if (params->protocol) {
-					str_append(&req_data,
-					    req_conf->params[i]->name);
-					str_append(&req_data, "=");
-					str_append(
-					    &req_data, params->protocol);
-					str_append(&req_data, "&");
-				}
+				val = params->protocol;
 				break;
 			case PASSWORD:
-				if (params->password) {
-					str_append(&req_data,
-					    req_conf->params[i]->name);
-					str_append(&req_data, "=");
-					str_append(
-					    &req_data, params->password);
-					str_append(&req_data, "&");
-				}
+				val = params->password;
 				break;
 			case SOCKPORT:
-				if (params->sockport) {
-					str_append(&req_data,
-					    req_conf->params[i]->name);
-					str_append(&req_data, "=");
-					str_append(
-					    &req_data, params->sockport);
-					str_append(&req_data, "&");
-				}
+				val = params->sockport;
 				break;
 			case COMMON_NAME:
-				if (params->common) {
-					str_append(&req_data,
-					    req_conf->params[i]->name);
-					str_append(&req_data, "=");
-					str_append(&req_data, params->common);
-					str_append(&req_data, "&");
-				}
+				val = params->common;
 				break;
 			case SUBJECT:
-				if (params->subject) {
-					str_append(&req_data,
-					    req_conf->params[i]->name);
-					str_append(&req_data, "=");
-					str_append(&req_data, params->subject);
-					str_append(&req_data, "&");
-				}
+				val = params->subject;
 				break;
 			case TOPIC:
-				if (params->topic) {
-					str_append(&req_data,
-					    req_conf->params[i]->name);
-					str_append(&req_data, "=");
-					str_append(&req_data, params->topic);
-					str_append(&req_data, "&");
-				}
+				val = params->topic;
 				break;
 			default:
 				break;
 			}
+
+			if (val) {
+				char *encoded_val = url_encode(val);
+				if (encoded_val) {
+					str_append(&req_data, req_conf->params[i]->name);
+					str_append(&req_data, "=");
+					str_append(&req_data, encoded_val);
+					str_append(&req_data, "&");
+					free(encoded_val);
+				}
+			}
 		}
+
 		if (req_data != NULL &&
 		    req_data[strlen(req_data) - 1] == '&') {
 			req_data[strlen(req_data) - 1] = '\0';
@@ -387,16 +365,16 @@ char *parse_topics(topic_queue *head)
 	}
 	int total_length = 0;
 	topic_queue *current = head;
-	if (current->topic == NULL || strlen(current->topic) == 0) {
-		log_error("topic is empty");
-		return NULL;
-	}
 	while (current != NULL) {
+		if (current->topic == NULL || strlen(current->topic) == 0) {
+			log_error("topic is empty");
+			return NULL;
+		}
 	    total_length += strlen(current->topic);
 		total_length += 1; // for ','
 	    current = current->next;
 	}
-	char *result = (char *)malloc(total_length + 1);
+	char *result = (char *)nni_alloc(total_length + 1);
 	if (result == NULL) {
 		log_error("malloc failed");
 		return NULL;
