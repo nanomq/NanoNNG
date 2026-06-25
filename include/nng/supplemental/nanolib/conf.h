@@ -733,6 +733,8 @@ NNG_DECL void conf_update_var2(const char *fpath, const char *key1,
 NNG_DECL const char* conf_get_vin(void); 
 NNG_DECL void conf_free_vin();
 
+NNG_DECL void nmq_acl_cache_reset_cb(void *k, void *v, void *arg);
+
 #define conf_update_int(path, key, var) \
 	conf_update_var(path, key, 0, (void *) &(var))
 #define conf_update_u8(path, key, var) \

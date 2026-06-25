@@ -344,16 +344,20 @@ char *parse_topics(topic_queue *head)
 	if (head == NULL) {
 	    return NULL;
 	}
-	int total_length = 0;
+	size_t total_length = 0;
 	topic_queue *current = head;
 	while (current != NULL) {
 		if (current->topic == NULL || strlen(current->topic) == 0) {
 			log_error("topic is empty");
 			return NULL;
 		}
-	    total_length += strlen(current->topic);
-		total_length += 1; // for ','
-	    current = current->next;
+		size_t tlen = strlen(current->topic);
+		if (tlen > SIZE_MAX - total_length - 1) {
+			log_error("topic list too long");
+			return NULL;
+		}
+		total_length += tlen + 1; // for ','
+		current = current->next;
 	}
 	char *result = (char *)nni_alloc(total_length + 1);
 	if (result == NULL) {
@@ -385,7 +389,7 @@ nmq_auth_http_sub_pub(
 	char *topic_str = parse_topics(topics);
 	if (topic_str == NULL) {
 		log_warn("Parsing topic failed for ACL");
-		return SUCCESS;
+		return NOT_AUTHORIZED;
 	}
 
 	auth_http_params auth_params = {
