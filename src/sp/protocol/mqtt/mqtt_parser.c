@@ -225,6 +225,27 @@ get_utf8_str(char **dest, const uint8_t *src, uint32_t *pos, size_t max)
 	return (int32_t) str_len;
 }
 
+size_t
+str_append(char **dest, const char *str)
+{
+	char *old_str = *dest == NULL ? "" : (*dest);
+	char *new_str =
+	    calloc(strlen(old_str) + (str ? strlen(str) : 0) + 1, sizeof(char));
+	if (new_str == NULL) {
+		return *dest ? strlen(*dest) : 0;
+	}
+	strcat(new_str, old_str);
+	if (str) {
+		strcat(new_str, str);
+	}
+
+	if (*dest) {
+		free(*dest);
+	}
+	*dest = new_str;
+	return strlen(new_str);
+}
+
 /**
  * @brief safe copy limit size of src data to dest
  * 	  return null and -1 strlen if buffer overflow
