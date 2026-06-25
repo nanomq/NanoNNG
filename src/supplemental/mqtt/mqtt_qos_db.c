@@ -824,25 +824,33 @@ nni_mqtt_qos_db_find_retain(sqlite3 *db, const char *topic_pattern)
 		}
 	}
 
-	char sql[] = "SELECT msg, proto_ver FROM " table_retain " WHERE topic GLOB ";
-
-	size_t full_sql_sz = strlen(sql) + strlen(topic_str) + 10;
-	char * full_sql    = nni_zalloc(full_sql_sz);
-	snprintf(full_sql, full_sql_sz, "%s '%s'", sql, topic_str);
+	char sql[] = "SELECT msg, proto_ver FROM " table_retain " WHERE topic GLOB ?";
 
 	sqlite3_stmt *stmt;
 
 	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
-	sqlite3_prepare_v2(db, full_sql,
-	    strlen(full_sql), &stmt, 0);
-	sqlite3_reset(stmt);
+
+	int rc = sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
+	if (rc != SQLITE_OK) {
+		sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
+		nng_strfree(topic_str);
+		return NULL;
+	}
+
+	sqlite3_bind_text(stmt, 1, topic_str, strlen(topic_str), SQLITE_TRANSIENT);
 
 	while (SQLITE_ROW == sqlite3_step(stmt)) {
 		size_t   nbyte = (size_t) sqlite3_column_bytes16(stmt, 0);
 		uint8_t *bytes = sqlite3_malloc(nbyte);
 		memcpy(bytes, sqlite3_column_blob(stmt, 0), nbyte);
+		
 		msg = nni_msg_deserialize(bytes, nbyte);
 		sqlite3_free(bytes);
+
+		if (msg == NULL) {
+			continue;
+		}
+
 		uint8_t proto_ver = sqlite3_column_int(stmt, 1);
 		nni_mqtt_msg_proto_data_alloc(msg);
 		if(proto_ver == MQTT_PROTOCOL_VERSION_v5) {
@@ -856,8 +864,8 @@ nni_mqtt_qos_db_find_retain(sqlite3 *db, const char *topic_pattern)
 
 	sqlite3_finalize(stmt);
 	sqlite3_exec(db, "COMMIT;", 0, 0, 0);
+	
 	nng_strfree(topic_str);
-	nng_free(full_sql, full_sql_sz);
 
 	return msg_vec;
 }
