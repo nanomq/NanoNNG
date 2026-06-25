@@ -4964,6 +4964,28 @@ conf_tlslist_destroy(conf_tls_list *tlslist)
 }
 
 void
+nmq_acl_cache_reset_cb(void *k, void *v, void *arg)
+{
+	conf_auth_http *conf = arg;
+	uint64_t key = *(uint64_t *)k;
+	nng_id_remove(conf->acl_cache_map, key);
+}
+
+static void
+conf_auth_http_acl_cache_destroy(conf_auth_http *conf)
+{
+	nng_aio_stop(conf->acl_cache_reset_aio);
+	nng_mtx_lock(conf->acl_cache_mtx);
+	if (nng_id_count(conf->acl_cache_map) > 0) {
+		nng_id_map_foreach2(conf->acl_cache_map, nmq_acl_cache_reset_cb, conf);
+	}
+	nng_mtx_unlock(conf->acl_cache_mtx);
+	nng_id_map_free(conf->acl_cache_map);
+
+	nng_aio_free(conf->acl_cache_reset_aio);
+}
+
+void
 conf_fini(conf *nanomq_conf)
 {
 	if (nanomq_conf == NULL) {
@@ -4994,6 +5016,7 @@ conf_fini(conf *nanomq_conf)
 	conf_bridge_destroy(&nanomq_conf->aws_bridge);
 	conf_nng_proxy_destroy(&nanomq_conf->nng_proxy);
 	conf_web_hook_destroy(&nanomq_conf->web_hook);
+	conf_auth_http_acl_cache_destroy(&nanomq_conf->auth_http);
 	conf_auth_http_destroy(&nanomq_conf->auth_http);
 	conf_auth_destroy(&nanomq_conf->auths);
 	conf_exchange_destroy(&nanomq_conf->exchange);
@@ -5012,7 +5035,6 @@ conf_fini(conf *nanomq_conf)
 #if defined(SUPP_PARQUET)
 	conf_parquet_destroy(&nanomq_conf->parquet);
 #endif
-
 	nng_atomic_free(nanomq_conf->lc);
 	free(nanomq_conf);
 }
