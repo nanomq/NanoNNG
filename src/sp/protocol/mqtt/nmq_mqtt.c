@@ -684,14 +684,14 @@ nano_pipe_start(void *arg)
 		}
 		p->conn_param->tls_subject = peer_subject;
 	}
-	rv = nng_pipe_get_addr(nng_pipe, NNG_OPT_REMADDR, &addr);
 
+	int addr_rv = nng_pipe_get_addr(nng_pipe, NNG_OPT_REMADDR, &addr);
+	if (addr_rv != 0) {
+		log_warn("Fail to get remote addr from client pipe: %s", nng_strerror(addr_rv));
+		goto auth_verify;
+	}
 	if (addr.s_family == NNG_AF_INET) {
 		arr = (uint8_t *) &addr.s_in.sa_addr;
-		if (arr == NULL) {
-			log_warn("Fail to get IP addr from client pipe!");
-			goto auth_verify;
-		}
 		sprintf(p->conn_param->ip_addr_v4, "%d.%d.%d.%d", arr[0],
 		    arr[1], arr[2], arr[3]);
 		// Get local listening port (server side) for HTTP auth %p
@@ -815,7 +815,7 @@ auth_verify:
 		nng_id_remove(s->conf->ext_qos_db, p->pipe->p_id);
 		log_info("Replace qos db");
 	}
-
+out:
 	// close old one (bool to prevent disconnect_ev)
 	// check if pointer is different later
 	if (old) {
@@ -831,7 +831,7 @@ auth_verify:
 	} else {
 		nni_mtx_unlock(&s->lk);
 	}
-out:
+
 	if (rv == 0) {
 		nni_sleep_aio(s->conf->qos_duration * 1500, &p->aio_timer);
 	}
