@@ -1332,6 +1332,7 @@ trantest_mqttv5_broker_send_recv(trantest *tt)
 		conn_param_free(cp);
 		// for offline event msg
 		conn_param_free(cp);
+		nng_msleep(1000);
 		nng_mqtt_client_free(client, true);
 	});
 }
