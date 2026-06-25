@@ -395,6 +395,11 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		if (s->conf->ext_qos_db) {
 			qos_db = nng_id_get(s->conf->ext_qos_db, pipe);
 		}
+#ifdef NNG_SUPP_SQLITE
+		if (is_sqlite && s->sqlite_db != NULL) {
+			qos_db = s->sqlite_db;
+		}
+#endif
 		if (qos_db != NULL) {
 			if (nni_msg_get_type(msg) == CMD_PUBLISH &&
 			    nni_msg_get_pub_qos(msg) > 0) {
@@ -1443,8 +1448,9 @@ nano_sock_setdb(void *arg, void *data)
 #ifdef NNG_SUPP_SQLITE
 			nni_qos_db_set_pipe(s->conf->sqlite.enable,
 				s->sqlite_db, hashn, node->clientid);
-#endif
+			nng_id_set(nano_conf->ext_qos_db, hashn, s->sqlite_db);
 			log_warn("Not recommend to use Preset session with SQLite ");
+#endif
 		}
 	}
 
