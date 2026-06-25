@@ -238,7 +238,7 @@ TestMain("WebSocket Secure (TLS) Transport", {
 	if (strcmp(nng_tls_engine_name(), "none") == 0) {
 		Skip("TLS not enabled");
 	}
-
+	nng_wss_register();
 	tt.dialer_init   = init_dialer_wss;
 	tt.listener_init = init_listener_wss;
 	tt.tmpl          = "wss://localhost:";
