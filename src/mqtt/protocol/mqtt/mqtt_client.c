@@ -1242,8 +1242,8 @@ mqtt_recv_cb(void *arg)
 			user_aio  = ctx->raio;
 			ctx->raio = NULL;
 			nni_aio_set_msg(user_aio, msg);
-			nni_mtx_unlock(&s->mtx);
 			nni_aio_finish(user_aio, 0, 0);
+			nni_mtx_unlock(&s->mtx);
 			return;
 		}
 #endif
@@ -1274,6 +1274,8 @@ mqtt_recv_cb(void *arg)
 				nni_msg_clone(msg);
 				nni_aio_set_msg(user_aio, msg);
 			}
+			nni_aio_finish(user_aio, 0, 0);
+			user_aio = NULL; // 置空，防止函数末尾重复 finish
 		} else
 			log_warn("QoS msg ack failed %d", packet_id);
 		nni_msg_free(msg);
@@ -1316,8 +1318,8 @@ mqtt_recv_cb(void *arg)
 		user_aio  = ctx->raio;
 		ctx->raio = NULL;
 		nni_aio_set_msg(user_aio, cached_msg);
-		nni_mtx_unlock(&s->mtx);
 		nni_aio_finish(user_aio, 0, 0);
+		nni_mtx_unlock(&s->mtx);
 		return;
 
 	case NNG_MQTT_PUBLISH:
@@ -1346,8 +1348,8 @@ mqtt_recv_cb(void *arg)
 			user_aio  = ctx->raio;
 			ctx->raio = NULL;
 			nni_aio_set_msg(user_aio, msg);
-			nni_mtx_unlock(&s->mtx);
 			nni_aio_finish(user_aio, 0, 0);
+			nni_mtx_unlock(&s->mtx);
 			return;
 		} else {
 			packet_id = nni_mqtt_msg_get_publish_packet_id(msg);
@@ -1397,11 +1399,10 @@ mqtt_recv_cb(void *arg)
 		nni_pipe_close(p->pipe);
 		return;
 	}
-
-	nni_mtx_unlock(&s->mtx);
 	if (user_aio) {
 		nni_aio_finish(user_aio, 0, 0);
 	}
+	nni_mtx_unlock(&s->mtx);
 
 	return;
 }
