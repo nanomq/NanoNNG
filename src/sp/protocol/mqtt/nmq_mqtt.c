@@ -642,7 +642,6 @@ nano_pipe_start(void *arg)
 
 	nni_msg_alloc(&msg, 0);
 	conn_param_clone(p->conn_param);
-	nni_mtx_lock(&s->lk);
 
 #ifdef NNG_SUPP_SQLITE
 	if (is_sqlite) {
@@ -716,9 +715,10 @@ auth_verify:
 		// send connack with reason code 0x05
 		log_warn("Invalid auth info or authentication denied");
 		p->conn_param->will_flag = 0;
-		goto out;
+		goto end;
 	}
 
+	nni_mtx_lock(&s->lk);
 	// Clientid should not be NULL since broker will assign one
 	// TODO use p_id
 	clientid = (char *) conn_param_get_clientid(p->conn_param);
@@ -791,7 +791,7 @@ auth_verify:
 		p->pipe->nano_qos_db = qos_db;
 		nng_id_remove(s->conf->ext_qos_db, p->pipe->p_id);
 	}
-out:
+
 	// close old one (bool to prevent disconnect_ev)
 	// check if pointer is different later
 	if (old) {
@@ -807,7 +807,7 @@ out:
 	} else {
 		nni_mtx_unlock(&s->lk);
 	}
-
+end:
 	if (rv == 0) {
 		nni_sleep_aio(s->conf->qos_duration * 1500, &p->aio_timer);
 	}
