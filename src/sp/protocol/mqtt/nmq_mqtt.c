@@ -658,29 +658,6 @@ nano_pipe_start(void *arg)
 	nng_pipe     nng_pipe;
 	nng_pipe.id = npipe->p_id;
 
-	rv = nng_pipe_get_addr(nng_pipe, NNG_OPT_REMADDR, &addr);
-	// TODO: addr.s_in.sa_port
-	if (addr.s_family == NNG_AF_INET) {
-		arr = (uint8_t *) &addr.s_in.sa_addr;
-		if (arr == NULL) {
-			log_warn("Fail to get IP addr from client pipe!");
-			goto session_keeping;
-		}
-		sprintf(p->conn_param->ip_addr_v4, "%d.%d.%d.%d", arr[0],
-		    arr[1], arr[2], arr[3]);
-		// Get local listening port (server side) for HTTP auth %p
-		snprintf(p->conn_param->server_port,
-		    sizeof(p->conn_param->server_port), "%u",
-		    nano_pipe_get_local_port(nng_pipe));
-
-	} else if (addr.s_family == NNG_AF_INET6) {
-		arr = (uint8_t *) &addr.s_in6.sa_addr;
-		log_warn("IPv6 address is not supported in event msg & ACL yet");
-		snprintf(p->conn_param->server_port,
-		    sizeof(p->conn_param->server_port), "%u",
-		    nano_pipe_get_local_port6(nng_pipe));
-	}
-
 	// Get TLS client certificate common name for HTTP auth %C
 	char *peer_cn = NULL;
 	if (nng_pipe_get_string(
@@ -702,9 +679,61 @@ nano_pipe_start(void *arg)
 		}
 		p->conn_param->tls_subject = peer_subject;
 	}
+	rv = nng_pipe_get_addr(nng_pipe, NNG_OPT_REMADDR, &addr);
 
+	if (addr.s_family == NNG_AF_INET) {
+		arr = (uint8_t *) &addr.s_in.sa_addr;
+		if (arr == NULL) {
+			log_warn("Fail to get IP addr from client pipe!");
+			goto auth_verify;
+		}
+		sprintf(p->conn_param->ip_addr_v4, "%d.%d.%d.%d", arr[0],
+		    arr[1], arr[2], arr[3]);
+		// Get local listening port (server side) for HTTP auth %p
+		snprintf(p->conn_param->server_port,
+		    sizeof(p->conn_param->server_port), "%u",
+		    nano_pipe_get_local_port(nng_pipe));
+
+	} else if (addr.s_family == NNG_AF_INET6) {
+		arr = (uint8_t *) &addr.s_in6.sa_addr;
+		log_warn("IPv6 address is not supported in event msg & ACL yet");
+		snprintf(p->conn_param->server_port,
+		    sizeof(p->conn_param->server_port), "%u",
+		    nano_pipe_get_local_port6(nng_pipe));
+	}
 	log_debug("client connected! addr [%s port [%d]\n",
 	    p->conn_param->ip_addr_v4, addr.s_in.sa_port);
+auth_verify:
+	conn_param_clone(p->conn_param);
+	rv = verify_connect(p->conn_param, s->conf);
+	if (rv == SUCCESS) {
+		if (s->conf->auth_http.enable) {
+			log_debug("HTTP Authentication start!");
+			rv = nmq_auth_http_connect(		// potential dead lock if HTTP fails
+			    p->conn_param, &s->conf->auth_http);
+		}
+	}
+	int total = nni_id_count(&s->pipes);
+	log_debug("Total connection num %d", total);
+	nng_atomic_set(s->conf->lc, total);
+#if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
+	if (total > (int)s->lc) {
+		rv = QUOTA_EXCEEDED;
+		log_warn("Max Quota %d exceed, %s disconneted",
+			s->lc, clientid);
+	}
+	if (s->lic_valid == false) {
+		rv = QUOTA_EXCEEDED;
+		log_warn("License expired, %s disconneted", clientid);
+	}
+#endif
+	nmq_connack_encode(msg, s->conf, p->conn_param, rv);
+	conn_param_free(p->conn_param);
+	if (rv != 0) {
+		// send connack with reason code 0x05
+		log_warn("Invalid auth info or authentication denied");
+		goto out;
+	}
 
 session_keeping:
 	// Clientid should not be NULL since broker will assign one
@@ -763,36 +792,6 @@ session_keeping:
 	p->conn_param->nano_qos_db = p->pipe->nano_qos_db;
 	p->nano_qos_db             = p->pipe->nano_qos_db;
 
-	conn_param_clone(p->conn_param);
-	rv = verify_connect(p->conn_param, s->conf);
-	if (rv == SUCCESS) {
-		log_debug("HTTP Authentication start!");
-		if (s->conf->auth_http.auth_req.enable) {
-			rv = nmq_auth_http_connect(
-			    p->conn_param, &s->conf->auth_http);
-		}
-	}
-	int total = nni_id_count(&s->pipes);
-	log_debug("Total connection num %d", total);
-	nng_atomic_set(s->conf->lc, total);
-#if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
-	if (total > (int)s->lc) {
-		rv = QUOTA_EXCEEDED;
-		log_warn("Max Quota %d exceed, %s disconneted",
-			s->lc, clientid);
-	}
-	if (s->lic_valid == false) {
-		rv = QUOTA_EXCEEDED;
-		log_warn("License expired, %s disconneted", clientid);
-	}
-#endif
-	nmq_connack_encode(msg, s->conf, p->conn_param, rv);
-	conn_param_free(p->conn_param);
-	if (rv != 0) {
-		// send connack with reason code 0x05
-		log_warn("Invalid auth info or exceed max limits.");
-	}
-
 	// Recover preset sessions
 	void *qos_db = NULL;
 	if (s->conf->ext_qos_db) {
@@ -827,7 +826,7 @@ session_keeping:
 	} else {
 		nni_mtx_unlock(&s->lk);
 	}
-	// TODO MQTT V5 check return code
+out:
 	if (rv == 0) {
 		nni_sleep_aio(s->conf->qos_duration * 1500, &p->aio_timer);
 	}
