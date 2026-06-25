@@ -53,25 +53,6 @@ url_encode(const char *str)
 	return encoded;
 }
 
-static size_t
-str_append(char **dest, const char *str)
-{
-	char *old_str = *dest == NULL ? "" : (*dest);
-	char *new_str =
-	    calloc(strlen(old_str) + (str ? strlen(str) : 0) + 1, sizeof(char));
-
-	strcat(new_str, old_str);
-	if (str) {
-		strcat(new_str, str);
-	}
-
-	if (*dest) {
-		free(*dest);
-	}
-	*dest = new_str;
-	return strlen(new_str);
-}
-
 static void
 set_data(
     nng_http_req *req, conf_auth_http_req *req_conf, auth_http_params *params)
