@@ -837,13 +837,23 @@ nni_mqtt_qos_db_find_retain(sqlite3 *db, const char *topic_pattern)
 		return NULL;
 	}
 
-	sqlite3_bind_text(stmt, 1, topic_str, strlen(topic_str), SQLITE_TRANSIENT);
-
+	rc = sqlite3_bind_text(stmt, 1, topic_str, strlen(topic_str), SQLITE_TRANSIENT);
+	if (rc != SQLITE_OK) {
+		sqlite3_finalize(stmt);
+		nng_strfree(topic_str);
+		return NULL;
+	}
 	while (SQLITE_ROW == sqlite3_step(stmt)) {
-		size_t   nbyte = (size_t) sqlite3_column_bytes16(stmt, 0);
+		size_t      nbyte = (size_t) sqlite3_column_bytes16(stmt, 0);
+		const void *blob  = sqlite3_column_blob(stmt, 0);
+		if (nbyte > 0 && blob == NULL) {
+			continue;
+		}
 		uint8_t *bytes = sqlite3_malloc(nbyte);
-		memcpy(bytes, sqlite3_column_blob(stmt, 0), nbyte);
-		
+		if (bytes == NULL) {
+			continue;
+		}
+		memcpy(bytes, blob, nbyte);
 		msg = nni_msg_deserialize(bytes, nbyte);
 		sqlite3_free(bytes);
 
