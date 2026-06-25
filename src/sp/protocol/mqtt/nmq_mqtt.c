@@ -710,6 +710,7 @@ auth_verify:
 	if (rv != 0) {
 		// send connack with reason code 0x05
 		log_warn("Invalid auth info or authentication denied");
+		conn_param_set_will_flag(p->conn_param, 0);
 		goto out;
 	}
 
