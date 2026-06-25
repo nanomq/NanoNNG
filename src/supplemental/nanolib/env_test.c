@@ -7,7 +7,7 @@ test_env(void)
 {
 	conf *conf_test = NULL;
 	NUTS_TRUE((conf_test = nng_zalloc(sizeof(conf))) != NULL);
-
+	conf_init(conf_test);
 	read_env_conf(conf_test);
 	conf_fini(conf_test);
 }
