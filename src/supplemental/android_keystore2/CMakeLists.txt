@@ -33,12 +33,22 @@ if(ENABLE_ANDROID_KEYSTORE2 AND ANDROID)
         ${CMAKE_CURRENT_SOURCE_DIR}/binder_headers/include_platform
     )
 
-    # --- 只编译 KeystoreAdapter.cpp (AIDL 代码已预编译在 .so 中) ---
+    # --- 编译适配代码 + AIDL 生成的 .cpp 文件 ---
     nng_sources(src/KeystoreAdapter.cpp)
 
-    # --- 链接从设备提取的预编译 .so 文件 ---
-    # 三个 .so 都来自目标 Android 设备的 /system/lib64/，NDK stub 库不包含所需符号
-    # 根据 Android ABI 选择对应的库子目录 (aarch64 / x86_64)
+    # 直接编译 AIDL 生成的 .cpp 文件替代预编译 .so
+    # 优势: 跨 ABI 自动适配、二进制体积更小(链接器剥离未使用符号)、符合 AOSP 标准实践
+    file(GLOB KEYSTORE2_AIDL_SOURCES
+        "${CMAKE_CURRENT_SOURCE_DIR}/keystore2_cpp_out/src/android/system/keystore2/*.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/keystore2_cpp_out/src/android/hardware/security/keymint/*.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/keystore2_cpp_out/src/android/hardware/security/secureclock/*.cpp"
+    )
+    target_sources(nng PRIVATE ${KEYSTORE2_AIDL_SOURCES})
+
+    # --- 链接从设备提取的 libbinder_ndk.so ---
+    # libbinder_ndk.so 提供 AServiceManager_waitForService、ABinderProcess_startThreadPool
+    # 等 platform API 符号，这些符号在 NDK r27c stub 中不存在，必须从设备 /system/lib64/ 提取
+    # 根据 Android ABI 选择对应的库子目录 (arm64-v8a / x86_64)
     if(ANDROID_ABI STREQUAL "arm64-v8a")
         set(KEYSTORE2_ABI_DIR "arm64-v8a")
     elseif(ANDROID_ABI STREQUAL "x86_64")
@@ -56,20 +66,8 @@ if(ENABLE_ANDROID_KEYSTORE2 AND ANDROID)
         IMPORTED_LOCATION "${KEYSTORE2_LIBS_DIR}/libbinder_ndk.so"
     )
 
-    # Keystore2 AIDL NDK 客户端库 (设备提取)
-    add_library(keystore2_ndk SHARED IMPORTED)
-    set_target_properties(keystore2_ndk PROPERTIES
-        IMPORTED_LOCATION "${KEYSTORE2_LIBS_DIR}/android.system.keystore2-V4-ndk.so"
-    )
-
-    # KeyMint AIDL NDK 客户端库 (设备提取)
-    add_library(keymint_ndk SHARED IMPORTED)
-    set_target_properties(keymint_ndk PROPERTIES
-        IMPORTED_LOCATION "${KEYSTORE2_LIBS_DIR}/android.hardware.security.keymint-V3-ndk.so"
-    )
-
-    # 链接到 nng 目标
-    nng_link_libraries(binder_ndk keystore2_ndk keymint_ndk log)
+    # 链接到 nng 目标 (AIDL 代码已直接编译，无需额外 .so)
+    nng_link_libraries(binder_ndk log)
 
     # --- Keystore2 自测工具 (keystore2_selftest) ---
     add_executable(keystore2_selftest src/keystore2_selftest.cpp)
@@ -81,8 +79,10 @@ if(ENABLE_ANDROID_KEYSTORE2 AND ANDROID)
         ${CMAKE_CURRENT_SOURCE_DIR}/binder_headers/include_platform
     )
     target_link_libraries(keystore2_selftest
-        binder_ndk keystore2_ndk keymint_ndk log
+        binder_ndk log
     )
+    # selftest 也需要编译 AIDL .cpp 文件 (与 nng 目标共享同一套源码)
+    target_sources(keystore2_selftest PRIVATE ${KEYSTORE2_AIDL_SOURCES})
 
     # 16KB 页对齐 (Android 15+)
     add_link_options("-Wl,-z,max-page-size=16384")
