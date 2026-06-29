@@ -107,7 +107,7 @@ extern "C" int keystore2_sign(const char *alias_cstr, int namespace_id,
 	AIBinder *rawBinder =
 		AServiceManager_waitForService(serviceName);
 	if (rawBinder == nullptr) {
-		log_error("[mTLS] 无法连接到 Keystore2 服务!");
+		log_error("[mTLS] Failed to connect to Keystore2 service!");
 		return -1;
 	}
 	SpAIBinder binder(rawBinder);
@@ -131,7 +131,7 @@ extern "C" int keystore2_sign(const char *alias_cstr, int namespace_id,
 	if (!status.isOk() || entryResponse.iSecurityLevel == nullptr) {
 		int excCode = status.getExceptionCode();
 		int svcErr  = status.getServiceSpecificError();
-		log_error("[mTLS] 获取密钥失败 (exc=%d svc=%d)", excCode, svcErr);
+		log_error("[mTLS] getKeyEntry failed (exc=%d svc=%d)", excCode, svcErr);
 
 		return -1;
 	}
@@ -171,7 +171,7 @@ extern "C" int keystore2_sign(const char *alias_cstr, int namespace_id,
 #endif
 
 	if (!parsed) {
-		log_warn("[mTLS] 无法识别的 sig_alg=0x%04x, 使用默认值 digest=%d padding=%d",
+		log_warn("[mTLS] Unrecognized sig_alg=0x%04x, falling back to digest=%d padding=%d",
 		         (int)sig_alg, (int)keymintDigest, (int)keymintPadding);
 	}
 
@@ -200,7 +200,7 @@ extern "C" int keystore2_sign(const char *alias_cstr, int namespace_id,
 	status = entryResponse.iSecurityLevel->createOperation(
 		keyDesc, opParams, true, &opResponse);
 	if (!status.isOk() || opResponse.iOperation == nullptr) {
-		log_error("[mTLS] createOperation 失败! exc=%d svc=%d",
+		log_error("[mTLS] createOperation failed! exc=%d svc=%d",
 		          status.getExceptionCode(), status.getServiceSpecificError());
 		return -1;
 	}
@@ -213,7 +213,7 @@ extern "C" int keystore2_sign(const char *alias_cstr, int namespace_id,
 	status = opResponse.iOperation->finish(input_data, std::nullopt,
 					       &output_signature);
 	if (!status.isOk() || !output_signature.has_value()) {
-		log_error("[mTLS] finish 失败! exc=%d svc=%d input_len=%d",
+		log_error("[mTLS] finish failed! exc=%d svc=%d input_len=%d",
 		          status.getExceptionCode(), status.getServiceSpecificError(),
 		          digest_len);
 		return -1;
@@ -225,7 +225,7 @@ extern "C" int keystore2_sign(const char *alias_cstr, int namespace_id,
 
 	std::copy(output_signature.value().begin(),
 		  output_signature.value().end(), sig_out);
-	log_info("[mTLS] TEE 硬件签名成功! sig_alg=0x%04x 长度: %d bytes",
+	log_info("[mTLS] TEE hardware signing succeeded! sig_alg=0x%04x size: %d bytes",
 	         (int)sig_alg, sig_len);
 
 	return sig_len;
@@ -243,7 +243,7 @@ extern "C" int keystore2_get_cert(const char *alias_cstr, int namespace_id,
 	AIBinder *rawBinder =
 		AServiceManager_waitForService(serviceName);
 	if (rawBinder == nullptr) {
-		log_error("[mTLS] 无法连接到 Keystore2 服务!");
+		log_error("[mTLS] Failed to connect to Keystore2 service!");
 		return -1;
 	}
 	SpAIBinder binder(rawBinder);
@@ -267,7 +267,7 @@ extern "C" int keystore2_get_cert(const char *alias_cstr, int namespace_id,
 	if (!status.isOk() || entryResponse.iSecurityLevel == nullptr) {
 		int excCode = status.getExceptionCode();
 		int svcErr  = status.getServiceSpecificError();
-		log_error("[mTLS] 获取密钥失败 (exc=%d svc=%d)", excCode, svcErr);
+		log_error("[mTLS] getKeyEntry failed (exc=%d svc=%d)", excCode, svcErr);
 
 		return -1;
 	}
@@ -281,6 +281,6 @@ extern "C" int keystore2_get_cert(const char *alias_cstr, int namespace_id,
 		return -1;
 
 	std::copy(cert_bytes.begin(), cert_bytes.end(), cert_out);
-	log_info("[mTLS] 从 Keystore2 成功提取证书! 长度: %d bytes", cert_len);
+	log_info("[mTLS] Successfully retrieved certificate from Keystore2! size: %d bytes", cert_len);
 	return cert_len;
 }
