@@ -763,7 +763,8 @@ auth_verify:
 			if (nni_pipe_peer(old->pipe) != 0) {
 				log_error("Session restore failed!");
 			} else {
-				log_info("resuming session %ld with %ld", npipe->p_id, old->pipe->p_id);
+				log_info("resuming session %u with %u",
+				    npipe->p_id, old->pipe->p_id);
 			}
 			p->id = nni_pipe_id(npipe);
 			// set event to false so that no notification will be sent
@@ -787,7 +788,7 @@ auth_verify:
 			    is_sqlite, old->nano_qos_db);
 #endif
 			nni_id_remove(&s->cached_sessions, p->pipe->p_id);
-			log_info("cleaning session %d from cache", p->pipe->p_id);
+			log_info("cleaning session %u from cache", p->pipe->p_id);
 		}
 	}
 #ifdef NNG_SUPP_SQLITE
