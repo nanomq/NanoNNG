@@ -1678,13 +1678,15 @@ wstran_accept_cb(void *arg)
 			// Make a pipe
 			nni_aio_list_remove(uaio);
 			if ((rv = wstran_pipe_alloc(&p, ws)) != 0) {
-				nng_stream_close(ws);
+				nng_stream_free(ws);
 				nni_aio_finish_error(uaio, rv);
 			} else {
 				p->peer = l->peer;
 				p->ep_aio = uaio;
 				ws_pipe_start(p, p->ws, l);
 			}
+		} else {
+			nng_stream_free(ws);
 		}
 	}
 
