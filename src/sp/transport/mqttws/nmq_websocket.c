@@ -1446,7 +1446,7 @@ wstran_pipe_peer(void *arg)
 	nni_pipe *npipe, *cpipe;
 	ws_pipe  *p = arg;
 
-	cpipe = p->npipe;                  // current pipe
+	cpipe = p->npipe;                  // current (old) pipe
 	npipe = (nni_pipe *) cpipe->tpipe; // target pipe
 	if (npipe == NULL) {
 		return 2;
