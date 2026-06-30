@@ -872,6 +872,7 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 				    smsg, iov[i].iov_buf, iov[i].iov_len);
 			}
 			niov = 0;
+			qlength = 0;
 		}
 	}
 
@@ -1116,6 +1117,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 				    smsg, iov[i].iov_buf, iov[i].iov_len);
 			}
 			niov = 0;
+			qlength = 0;
 		}
 	}
 
