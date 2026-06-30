@@ -793,16 +793,23 @@ uint16_t
 nni_msg_get_pub_pid(nni_msg *m)
 {
 	uint16_t pid;
-	uint8_t *pos, len;
+	uint16_t len;
+	uint8_t *pos;
+	size_t   msg_len = nni_msg_len(m);
+
+	if (msg_len < 2) {
+		return 0;
+	}
 
 	pos = nni_msg_body(m);
 	NNI_GET16(pos, len);
-	if (len > nni_msg_len(m) - 2)
+
+	if (msg_len < (size_t)len + 4) {
 		return 0;
-	else {
-		NNI_GET16(pos + len + 2, pid);
-		return pid;
 	}
+
+	NNI_GET16(pos + len + 2, pid);
+	return pid;
 }
 
 /**
