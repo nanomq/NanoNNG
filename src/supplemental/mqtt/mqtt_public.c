@@ -963,25 +963,51 @@ nng_mqtt_disconnect(nng_socket *sock, uint8_t reason_code, property *pl)
 
 	return (rv);
 }
-
 int
-nng_mqtt_unsubscribe(nng_socket sock, nng_mqtt_topic *sbs, size_t count, property *pl)
+nng_mqtt_unsubscribe(nng_socket sock, nng_mqtt_topic *topic, size_t topic_cnt, void *property)
 {
 	int rv = 0;
-	// create a SUBSCRIBE message
 	nng_msg *unsubmsg;
-	nng_mqtt_msg_alloc(&unsubmsg, 0);
+
+	// 1. Allocate and build the UNSUBSCRIBE message
+	if ((rv = nng_mqtt_msg_alloc(&unsubmsg, 0)) != 0) {
+		return rv;
+	}
 	nng_mqtt_msg_set_packet_type(unsubmsg, NNG_MQTT_UNSUBSCRIBE);
-	nng_mqtt_msg_set_unsubscribe_topics(unsubmsg, sbs, count);
+	nng_mqtt_msg_set_unsub_topics(unsubmsg, topic, topic_cnt);
 
-	if (pl) {
-		nng_mqtt_msg_set_unsubscribe_property(unsubmsg, pl);
+	if (property != NULL) {
+		nng_mqtt_msg_set_unsub_property(unsubmsg, property);
 	}
 
-	if ((rv = nng_sendmsg(sock, unsubmsg, NNG_FLAG_ALLOC)) != 0) {
+	// 2. Allocate a dedicated AIO to track the request and response
+	nng_aio *aio = NULL;
+	if ((rv = nng_aio_alloc(&aio, NULL, NULL)) != 0) {
 		nng_msg_free(unsubmsg);
+		return rv;
 	}
 
+	// 3. Set a timeout (5 seconds) to match subscribe behavior
+	nng_aio_set_timeout(aio, 5000);
+	nng_aio_set_msg(aio, unsubmsg);
+
+	// 4. Send the message asynchronously and block until complete
+	nng_send_aio(sock, aio);
+	nng_aio_wait(aio);
+
+	// 5. Check results and clean up the cloned UNSUBACK to prevent the leak
+	if ((rv = nng_aio_result(aio)) != 0) {
+		// If the send failed or timed out, the original message remains attached
+		nng_msg_free(unsubmsg);
+	} else {
+		// On success, the protocol layer replaced aio->a_msg with the cloned UNSUBACK
+		nng_msg *resp = nng_aio_get_msg(aio);
+		if (resp != NULL) {
+			nng_msg_free(resp);
+		}
+	}
+
+	nng_aio_free(aio);
 	return rv;
 }
 
