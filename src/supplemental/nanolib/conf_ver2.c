@@ -1346,6 +1346,23 @@ conf_bridge_node_parse(
 	}
 	node->forwards_count = cvector_size(node->forwards_list);
 
+	cJSON *exclusions_list = hocon_get_obj("exclusions", obj);
+	cJSON *exclusion = NULL;
+	cJSON_ArrayForEach(exclusion, exclusions_list)
+	{
+		exclusions *exc = NNI_ALLOC_STRUCT(exc);
+		hocon_read_str(exc, topic, exclusion);
+		size_t topic_len = exc->topic ? strlen(exc->topic) : 0;
+		if (topic_len == 0) {
+			log_error("Exclusion topic should not be null or empty");
+			NNI_FREE_STRUCT(exc); 
+			break;
+		}
+		exc->topic_len = topic_len;
+		cvector_push_back(node->exclusions_list, exc);
+	}
+	node->exclusions_count = cvector_size(node->exclusions_list);
+
 	cJSON *subscriptions = hocon_get_obj("subscription", obj);
 
 	cJSON *subscription = NULL;
@@ -2049,7 +2066,6 @@ conf_authorization_prase_ver2(conf *config, cJSON *jso)
 		conf_auth_http_parse_ver2(config, jso_auth_http);
 	}
 	cJSON *jso_auth_pwd = hocon_get_obj("auth.password", jso);
-
 	if (jso_auth_pwd) {
 		conf_auth_parse_ver2(config, jso_auth_pwd);
 	}
