@@ -323,8 +323,8 @@ mqtt_tcptran_pipe_nego_cb(void *arg)
 		return;
 	}
 	// only accept CONNACK/AUTH msg
-	if (((p->rxlen[0] & 0xF0) != CMD_CONNACK) &&
-	    ((p->rxlen[0] & 0xF0) != CMD_AUTH_V5)) {
+	if ((p->rxlen[0] != CMD_CONNACK) &&
+	    (p->rxlen[0] != CMD_AUTH_V5)) {
 		log_error("Invalid type received %x %x", p->rxlen[0], p->rxlen[1]);
 		rv = PROTOCOL_ERROR;
 		goto error;
