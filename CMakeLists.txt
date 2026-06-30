@@ -335,11 +335,18 @@ endif ()
 
 if (NNG_ENABLE_PARQUET)
     if (NOT NNG_ENABLE_QUIC)
-        find_package(OpenSSL REQUIRED)
-        # parquet enables AES helpers that require EVP_* symbols from libcrypto.
-        target_link_libraries(nng PRIVATE OpenSSL::Crypto)
-        target_link_libraries(nng_testing PRIVATE OpenSSL::Crypto)
-    endif (NNG_ENABLE_QUIC)
+        # 当已从 BoringSSL 源码编译时 (如 Android Keystore2 路径)，直接使用 crypto target
+        # 避免 find_package 拉入 NDK sysroot 的 libcrypto.so，后者缺少内部符号 (如 EC_GFp_mont_method)
+        if(ENABLE_ANDROID_KEYSTORE2 AND ANDROID)
+            target_link_libraries(nng PRIVATE crypto)
+            target_link_libraries(nng_testing PRIVATE crypto)
+        else()
+            find_package(OpenSSL REQUIRED)
+            # parquet enables AES helpers that require EVP_* symbols from libcrypto.
+            target_link_libraries(nng PRIVATE OpenSSL::Crypto)
+            target_link_libraries(nng_testing PRIVATE OpenSSL::Crypto)
+        endif()
+    endif ()
 endif ()
 
 if (ENABLE_LICENSE_STD OR ENABLE_LICENSE_DK)
