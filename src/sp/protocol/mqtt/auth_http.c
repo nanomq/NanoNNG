@@ -458,13 +458,8 @@ nmq_auth_http_sub_pub(
 		}
 	}
 
-<<<<<<< HEAD
-	if (conf->acl_req.enable) {
-		if (conf->cache_ttl > 0) {
-=======
-	if (conf->acl_req.url) {
+	if (conf->acl_req.enable && conf->acl_req.url) {
 		if (conf->cache_ttl > 0 && conf->acl_cache_map != NULL) {
->>>>>>> ed915301e (* MDF [auth_http] check acl_cache map before using it)
 			nng_mtx_lock(conf->acl_cache_mtx);
 			void *acl_cache_v = nng_id_get(
 					conf->acl_cache_map, (uint64_t)acl_cache_k);
