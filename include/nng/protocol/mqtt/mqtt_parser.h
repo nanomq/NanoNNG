@@ -141,6 +141,7 @@ NNG_DECL int  nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver);
 NNG_DECL int  nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver);
 NNG_DECL bool topic_filter(const char *origin, const char *input);
 NNG_DECL bool topic_filtern(const char *origin, const char *input, size_t n);
+NNG_DECL const char *shared_filter_skip(const char *filter);
 
 NNG_DECL int nmq_auth_http_connect(conn_param *cparam, conf_auth_http *conf);
 
