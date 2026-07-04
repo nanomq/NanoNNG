@@ -1650,7 +1650,8 @@ tlstran_pipe_send(void *arg, nni_aio *aio)
 			NNI_LIST_FOREACH(p->npipe->subinfol, info) {
 				if (!info)
 					continue;
-				if (topic_filtern(info->topic, pld_pac, tlen_pac)) {
+				if (topic_filtern(shared_filter_skip(info->topic),
+				        pld_pac, tlen_pac)) {
 					qos = qos_pac > info->qos ? info->qos : qos_pac; // MIN
 					break;
 				}
