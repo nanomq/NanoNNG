@@ -1761,7 +1761,6 @@ tcptran_pipe_getopt(
 		nni_mtx_lock(&p->mtx);
 		is_sqlite             = p->conf->sqlite.enable;
 		uint32_t qos_duration = p->conf->qos_duration;
-
 		while (1) {
 			msg = nni_qos_db_get_one(is_sqlite,
 			    p->npipe->nano_qos_db, p->npipe->p_id, &pid);
@@ -1769,6 +1768,11 @@ tcptran_pipe_getopt(
 			if (msg == NULL) {
 				break;
 			}
+
+			// sqlite's get_one returns a QoS-tagged pointer; strip the
+			// tag before any nni_msg use (broker rows carry tag 0 today,
+			// but the invariant should not depend on that)
+			msg = MQTT_DB_GET_MSG_POINTER(msg);
 
 			nni_msg       *rmsg = msg;
 			property      *prop = NULL;
