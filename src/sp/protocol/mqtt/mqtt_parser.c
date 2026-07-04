@@ -2116,6 +2116,31 @@ topic_filtern(const char *origin, const char *input, size_t n)
 }
 
 /**
+ * @brief skip the "$share/<group>/" prefix of a shared
+ * 		  subscription filter, so that the remainder can be
+ * 		  used for topic matching (topic_filter/topic_filtern)
+ *
+ * @param filter subscription topic filter
+ * @return const char* pointer into *filter right after the shared
+ *         prefix; the original filter if it is not a well-formed
+ *         shared subscription filter
+ */
+const char *
+shared_filter_skip(const char *filter)
+{
+	const char *pos;
+
+	if (filter == NULL || filter[0] != '$')
+		return filter;
+	if (strncmp(filter, "$share/", strlen("$share/")) != 0)
+		return filter;
+	pos = strchr(filter + strlen("$share/"), '/');
+	if (pos == NULL || *(pos + 1) == '\0')
+		return filter;
+	return pos + 1;
+}
+
+/**
  * packet: orginal buffer
  * len: max len to decode
  * remainning_length: result
