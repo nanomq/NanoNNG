@@ -165,6 +165,47 @@ test_topic_filtern()
 	NUTS_ASSERT(topic_filtern(orgin, input, 11) == false);
 }
 
+static void
+test_shared_filter_skip()
+{
+	const char *filter;
+
+	// shared subscription: strip "$share/<group>/" prefix
+	filter = shared_filter_skip("$share/g1/t/x");
+	NUTS_MATCH(filter, "t/x");
+	NUTS_ASSERT(topic_filtern(filter, "t/x", strlen("t/x")) == true);
+
+	// wildcard remainders still match after stripping
+	filter = shared_filter_skip("$share/g1/#");
+	NUTS_MATCH(filter, "#");
+	NUTS_ASSERT(topic_filtern(filter, "t/x", strlen("t/x")) == true);
+
+	filter = shared_filter_skip("$share/g1/t/+");
+	NUTS_MATCH(filter, "t/+");
+	NUTS_ASSERT(topic_filtern(filter, "t/x", strlen("t/x")) == true);
+
+	// non-shared filters pass through unchanged (same pointer)
+	const char *plain = "t/x";
+	NUTS_ASSERT(shared_filter_skip(plain) == plain);
+	const char *sys = "$sys/broker/uptime";
+	NUTS_ASSERT(shared_filter_skip(sys) == sys);
+
+	// malformed: no topic filter after the group
+	const char *broken = "$share/g1";
+	filter = shared_filter_skip(broken);
+	NUTS_ASSERT(filter == broken);
+	NUTS_ASSERT(topic_filtern(filter, "t/x", strlen("t/x")) == false);
+
+	// "$share/" alone and "$shareX/..." are not shared filters
+	const char *empty = "$share/";
+	NUTS_ASSERT(shared_filter_skip(empty) == empty);
+	const char *fake = "$shareX/g1/t";
+	NUTS_ASSERT(shared_filter_skip(fake) == fake);
+
+	// NULL is passed through without crashing
+	NUTS_ASSERT(shared_filter_skip(NULL) == NULL);
+}
+
 NUTS_TESTS = {
 	{ "mqtt_parser pub_extras", test_pub_extra },
 	{ "mqtt_parser utf8_check", test_utf8_check },
@@ -178,6 +219,7 @@ NUTS_TESTS = {
 	// TODO more tests needed.
 	{ "mqtt_parser topic_filter", test_topic_filter },
 	{ "mqtt_parser topic_filtern", test_topic_filtern },
+	{ "mqtt_parser shared_filter_skip", test_shared_filter_skip },
 
 	{ NULL, NULL },
 };
