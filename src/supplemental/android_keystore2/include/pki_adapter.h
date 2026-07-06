@@ -25,6 +25,12 @@ int keystore2_sign(const char *alias, int namespace_id,
 int keystore2_get_cert(const char *alias, int namespace_id,
 		       uint8_t *cert_out, int cert_max);
 
+// 获取客户端完整证书链 (DER 连续拼接: leaf + intermediate CA(s))
+// 当外部未配置 CA 证书时，用作构建 X509_STORE 的信任锚
+// 返回 DER blob 长度，失败返回 -1
+int keystore2_get_cert_chain(const char *alias, int namespace_id,
+			      uint8_t *chain_out, int chain_max);
+
 #ifdef __cplusplus
 }
 #endif

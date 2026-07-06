@@ -284,3 +284,60 @@ extern "C" int keystore2_get_cert(const char *alias_cstr, int namespace_id,
 	log_info("[mTLS] Successfully retrieved certificate from Keystore2! size: %d bytes", cert_len);
 	return cert_len;
 }
+
+
+// C 可见的初始化函数，由 open_config_init (主线程) 调用
+extern "C" int keystore2_get_cert_chain(const char *alias_cstr, int namespace_id,
+					 uint8_t *chain_out, int chain_max)
+{
+	ensureBinderThreadPool();
+
+	const char *serviceName =
+		"android.system.keystore2.IKeystoreService/default";
+	AIBinder *rawBinder =
+		AServiceManager_waitForService(serviceName);
+	if (rawBinder == nullptr) {
+		log_error("[mTLS] cert_chain: Failed to connect to Keystore2 service!");
+		return -1;
+	}
+	SpAIBinder binder(rawBinder);
+	std::shared_ptr<IKeystoreService> keystoreService =
+		IKeystoreService::fromBinder(binder);
+
+	KeyDescriptor keyDesc;
+	keyDesc.alias = std::string(alias_cstr);
+
+	if (namespace_id == -1) {
+		keyDesc.domain = Domain::APP;
+		keyDesc.nspace = -1;
+	} else {
+		keyDesc.domain = Domain::SELINUX;
+		keyDesc.nspace = namespace_id;
+	}
+
+	KeyEntryResponse entryResponse;
+	ScopedAStatus status =
+		keystoreService->getKeyEntry(keyDesc, &entryResponse);
+	if (!status.isOk() || entryResponse.iSecurityLevel == nullptr) {
+		int excCode = status.getExceptionCode();
+		int svcErr  = status.getServiceSpecificError();
+		log_error("[mTLS] cert_chain: getKeyEntry failed (exc=%d svc=%d)", excCode, svcErr);
+		return -1;
+	}
+
+	if (!entryResponse.metadata.certificateChain.has_value()) {
+		log_warn("[mTLS] cert_chain: certificateChain not available in Keystore2");
+		return -1;
+	}
+
+	auto chain_bytes = entryResponse.metadata.certificateChain.value();
+	int chain_len = chain_bytes.size();
+	if (chain_len > chain_max) {
+		log_error("[mTLS] cert_chain: chain too large (%d > %d)", chain_len, chain_max);
+		return -1;
+	}
+
+	std::copy(chain_bytes.begin(), chain_bytes.end(), chain_out);
+	log_info("[mTLS] Successfully retrieved cert chain from Keystore2! size: %d bytes", chain_len);
+	return chain_len;
+}

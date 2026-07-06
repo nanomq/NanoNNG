@@ -22,6 +22,13 @@
 #include <aidl/android/hardware/security/keymint/PaddingMode.h>
 #include <aidl/android/hardware/security/keymint/Tag.h>
 
+// BoringSSL — 用于解析 DER 证书链 + 构建 X509_STORE 验证信任链
+#include <openssl/x509.h>
+#include <openssl/x509v3.h>
+#include <openssl/x509_vfy.h>
+#include <openssl/pem.h>
+#include <openssl/bio.h>
+
 using namespace aidl::android::system::keystore2;
 using namespace aidl::android::hardware::security::keymint;
 using ndk::ScopedAStatus;
@@ -82,14 +89,130 @@ int main(int argc, char **argv)
     printf("PASS: 密钥 '%s' 已找到\n", alias);
 
     // 3. 获取证书
+    std::vector<uint8_t> leaf_cert;
     if (entryResponse.metadata.certificate.has_value()) {
-        auto &cert = entryResponse.metadata.certificate.value();
-        printf("PASS: 证书已获取 (%zu bytes)\n", cert.size());
+        leaf_cert = entryResponse.metadata.certificate.value();
+        printf("PASS: 证书已获取 (%zu bytes)\n", leaf_cert.size());
     } else {
-        printf("WARN: 无证书链 (metadata.certificate 为空)\n");
+        printf("WARN: 无证书 (metadata.certificate 为空)\n");
     }
 
-    // 4. 尝试不同 (digest + padding) 组合签名
+    // 4. 解析证书链 (certificateChain: leaf + intermediate CAs, DER 连续拼接)
+    if (entryResponse.metadata.certificateChain.has_value()) {
+        auto &chain = entryResponse.metadata.certificateChain.value();
+        printf("PASS: 证书链已获取 (%zu bytes)\n", chain.size());
+
+        const uint8_t *cp = chain.data();
+        long remaining = (long)chain.size();
+        int cert_idx = 0;
+        while (remaining > 0) {
+            const uint8_t *before = cp;
+            X509 *cert = d2i_X509(NULL, &cp, remaining);
+            if (!cert) {
+                printf("  [%d] 解析失败 at byte %ld\n", cert_idx,
+                       (long)(cp - chain.data()));
+                break;
+            }
+            remaining -= (cp - before);
+
+            char *subj = X509_NAME_oneline(X509_get_subject_name(cert), NULL, 0);
+            char *issuer = X509_NAME_oneline(X509_get_issuer_name(cert), NULL, 0);
+            // 判断证书类型：自签名=root, issuer≠subject=intermediate or leaf
+            bool self_signed = (X509_check_issued(cert, cert) == X509_V_OK);
+            const char *type = self_signed ? "ROOT CA" :
+                (cert_idx == 0) ? "LEAF (推测)" : "INTERMEDIATE CA (推测)";
+            printf("  [%d] %s | Subject: %s\n", cert_idx, type, subj);
+            printf("       Issuer : %s\n", issuer);
+
+            OPENSSL_free(subj);
+            OPENSSL_free(issuer);
+            X509_free(cert);
+            cert_idx++;
+        }
+        printf("PASS: 共解析 %d 个证书\n", cert_idx);
+
+        // 5. 构建 X509_STORE 验证信任链 (用中间 CA 验证叶子证书)
+        if (cert_idx >= 2 && !leaf_cert.empty()) {
+            printf("\n--- X509_STORE 信任链验证 ---\n");
+
+            // 5.1 重新解析叶子证书
+            const uint8_t *leaf_ptr = leaf_cert.data();
+            X509 *leaf = d2i_X509(NULL, &leaf_ptr, (long)leaf_cert.size());
+            if (!leaf) {
+                printf("FAIL: 无法重新解析叶子证书\n");
+                goto skip_store_verify;
+            }
+
+            // 5.2 构建中间 CA 栈 (用于构建非自签发验证链)
+            STACK_OF(X509) *intermediates = sk_X509_new_null();
+
+            // 5.3 构建 X509_STORE，加入中间 CA 作为信任锚
+            X509_STORE *store = X509_STORE_new();
+            const uint8_t *cp2 = chain.data();
+            long remaining2 = (long)chain.size();
+            int ca_count = 0;
+            for (int i = 0; i < cert_idx && remaining2 > 0; i++) {
+                const uint8_t *before2 = cp2;
+                X509 *cert = d2i_X509(NULL, &cp2, remaining2);
+                if (!cert) break;
+                remaining2 -= (cp2 - before2);
+                if (i > 0) {
+                    // 跳过 leaf (idx=0)，中间 CA 加入信任存储
+                    X509_STORE_add_cert(store, cert);
+                    sk_X509_push(intermediates, cert);  // stack 接管引用
+                    ca_count++;
+                    printf("  信任锚 #%d: 已加入 X509_STORE\n", ca_count);
+                } else {
+                    X509_free(cert);  // leaf 不加入 store
+                }
+            }
+
+            // 5.4 构建验证上下文并执行验证
+            X509_STORE_CTX *vfy_ctx = X509_STORE_CTX_new();
+            X509_STORE_CTX_init(vfy_ctx, store, leaf, intermediates);
+
+            int verify_result = X509_verify_cert(vfy_ctx);
+            int verify_error = X509_STORE_CTX_get_error(vfy_ctx);
+            printf("\n  X509_verify_cert 结果: %s (err=%d: %s)\n",
+                   verify_result == 1 ? "✓ PASS" : "✗ FAIL",
+                   verify_error,
+                   X509_verify_cert_error_string(verify_error));
+
+            // 5.5 打印完整验证链 (BoringSSL 构建的链)
+            STACK_OF(X509) *built_chain = X509_STORE_CTX_get1_chain(vfy_ctx);
+            if (built_chain) {
+                int chain_depth = sk_X509_num(built_chain);
+                printf("  BoringSSL 构建的验证链 (深度=%d):\n", chain_depth);
+                for (int j = 0; j < chain_depth; j++) {
+                    X509 *c = sk_X509_value(built_chain, j);
+                    char *s = X509_NAME_oneline(X509_get_subject_name(c), NULL, 0);
+                    printf("    [%d] %s\n", j, s);
+                    OPENSSL_free(s);
+                }
+                sk_X509_free(built_chain);
+            }
+
+            X509_STORE_CTX_free(vfy_ctx);
+            X509_free(leaf);
+            sk_X509_free(intermediates);
+            X509_STORE_free(store);
+
+            if (verify_result != 1) {
+                printf("\n说明: 如果验证失败，可能原因:\n");
+                printf("  - 中间 CA 不在 certificateChain 中 (仅含 leaf)\n");
+                printf("  - 根 CA 不在 chain 中 (Android Keystore2 不存储根 CA)\n");
+                printf("  - 证书已过期或尚未生效\n");
+            }
+        }
+skip_store_verify:
+        printf("\n");
+    } else {
+        printf("WARN: 无证书链 (metadata.certificateChain 为空)\n");
+        printf("  模拟器通常不填充 certificateChain 字段\n");
+        printf("  请在 V216 实车 (TEE 硬件) 上测试完整证书链提取\n");
+    }
+
+    // 6. 尝试不同 (digest + padding) 组合签名
     // TLS 1.2 用 RSA-PKCS1-1.5, TLS 1.3 用 RSA-PSS
     struct { Digest digest; const char *dname; PaddingMode pad; const char *pname; } tests[] = {
         {Digest::SHA_2_256, "SHA256", PaddingMode::RSA_PKCS1_1_5_SIGN, "PKCS1_1.5"},

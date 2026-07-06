@@ -1020,6 +1020,87 @@ open_config_auth_mode(nng_tls_engine_config *cfg, nng_tls_auth_mode mode)
 	return (NNG_EINVAL);
 }
 
+#if defined(ENABLE_ANDROID_KEYSTORE2)
+static int
+open_config_try_keystore2_ca_chain(
+    nng_tls_engine_config *cfg, bool *loaded)
+{
+	uint8_t chain_buf[8192];
+	int     chain_len;
+
+	*loaded  = false;
+	chain_len = keystore2_get_cert_chain(
+	    NANOMQ_KEYSTORE2_ALIAS, NANOMQ_KEYSTORE2_NAMESPACE,
+	    chain_buf, sizeof(chain_buf));
+
+	if (chain_len <= 0) {
+		log_warn("[mTLS] certificateChain not available, "
+		         "server verification may not work");
+		return (0);
+	}
+
+	const uint8_t *cp = chain_buf;
+	long           remaining = (long) chain_len;
+	X509_STORE    *store = X509_STORE_new();
+	if (!store) {
+		log_error("[mTLS] X509_STORE_new() failed (OOM)");
+		return (NNG_ENOMEM);
+	}
+
+	int cert_idx = 0;
+	int ca_count = 0;
+	while (remaining > 0) {
+		const uint8_t *before = cp;
+		X509          *cert   = d2i_X509(NULL, &cp, remaining);
+		if (!cert)
+			break;
+		remaining -= (cp - before);
+
+		// 判断是否可作为信任锚：
+		// - 自签名 → root CA，始终作为信任锚
+		// - cert_idx > 0 → 非首个证书（中间 CA），作为信任锚
+		int is_self_signed =
+		    (X509_check_issued(cert, cert) == X509_V_OK);
+		if (is_self_signed || cert_idx > 0) {
+			const char *cert_type = is_self_signed ?
+			    "self-signed root CA" : "intermediate CA";
+			int store_ok = X509_STORE_add_cert(store, cert);
+			int chain_ok = SSL_CTX_add1_chain_cert(cfg->ctx, cert);
+			if (store_ok) {
+				log_info("[mTLS] Trust anchor at cert [%d]: %s",
+				    cert_idx, cert_type);
+				ca_count++;
+			} else {
+				unsigned long err = ERR_peek_last_error();
+				log_error("[mTLS] X509_STORE_add_cert failed at cert [%d] (%s): %s",
+				    cert_idx, cert_type,
+				    ERR_reason_error_string(err));
+			}
+			if (!chain_ok) {
+				log_warn("[mTLS] SSL_CTX_add1_chain_cert failed at cert [%d]",
+				    cert_idx);
+			}
+		}
+		X509_free(cert);
+		cert_idx++;
+	}
+
+	if (ca_count > 0) {
+		SSL_CTX_set_cert_store(cfg->ctx, store);
+		log_info("[mTLS] Built trust store from Keystore2: %d trust anchors",
+		    ca_count);
+		*loaded = true;
+		return (0);
+	}
+
+	X509_STORE_free(store);
+	log_warn("[mTLS] certificateChain has %d cert(s) but 0 trust anchors",
+	    cert_idx);
+	log_warn("[mTLS] Server verification needs external CA (set cacertfile in config)");
+	return (0);
+}
+#endif
+
 static int
 open_config_ca_chain(
     nng_tls_engine_config *cfg, const char *certs, const char *crl)
@@ -1037,7 +1118,27 @@ open_config_ca_chain(
 	len = teeGetCA((char **)&certs);
 #else
 	if (certs == NULL) {
-		log_info("open_config_ca_chain" "NULL certs detected!");
+#if defined(ENABLE_ANDROID_KEYSTORE2)
+		// 降级：外部未配置 CA 证书时，从 Keystore2 certificateChain 构建信任锚
+		if (cfg->mode == NNG_TLS_MODE_CLIENT) {
+			bool loaded = false;
+			int  rv     = open_config_try_keystore2_ca_chain(cfg, &loaded);
+			if (rv != 0) {
+				return (rv);
+			}
+			if (loaded) {
+				return (0);
+			}
+		}
+#endif
+		// 无 CA 证书且降级未成功
+		// 若 auth_mode 要求验证对端证书则报错，否则允许不验证服务端的连接
+		if (cfg->auth_mode & SSL_VERIFY_PEER) {
+			log_error("open_config_ca_chain" "No CA certs but peer verification required!");
+			return (NNG_ECRYPTO);
+		}
+		log_info("open_config_ca_chain" "NULL certs detected, auth_mode=NONE, continuing");
+		return (0);
 	}
 	len = strlen(certs);
 #endif //TLS_EXTERN_PRIVATE_KEY

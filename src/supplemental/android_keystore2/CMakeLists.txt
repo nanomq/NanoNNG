@@ -71,15 +71,17 @@ if(ENABLE_ANDROID_KEYSTORE2 AND ANDROID)
 
     # --- Keystore2 自测工具 (keystore2_selftest) ---
     add_executable(keystore2_selftest src/keystore2_selftest.cpp)
+    set(BORINGSSL_SRC_DIR "${CMAKE_SOURCE_DIR}/nng/extern/msquic/submodules/openssl/boringssl")
     target_include_directories(keystore2_selftest PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/keystore2_cpp_out/include
         ${CMAKE_CURRENT_SOURCE_DIR}/binder_headers/include_ndk
         ${CMAKE_CURRENT_SOURCE_DIR}/binder_headers/include_cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/binder_headers/include_platform
+        ${BORINGSSL_SRC_DIR}/include
     )
     target_link_libraries(keystore2_selftest
-        binder_ndk log
+        binder_ndk log crypto
     )
     # selftest 也需要编译 AIDL .cpp 文件 (与 nng 目标共享同一套源码)
     target_sources(keystore2_selftest PRIVATE ${KEYSTORE2_AIDL_SOURCES})
