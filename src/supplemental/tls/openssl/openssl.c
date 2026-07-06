@@ -89,13 +89,27 @@ static bool g_print_handshake = false;
 
 #if defined(ENABLE_ANDROID_KEYSTORE2)
 
-// 用户可通过 CMake option 或编译定义覆盖以下默认值
+// 用户可通过 CMake option 或编译定义, 或运行时配置覆盖以下默认值
 #ifndef NANOMQ_KEYSTORE2_ALIAS
 #define NANOMQ_KEYSTORE2_ALIAS "ecu-client-certificate"
 #endif
 #ifndef NANOMQ_KEYSTORE2_NAMESPACE
 #define NANOMQ_KEYSTORE2_NAMESPACE -1
 #endif
+
+// 运行时可覆盖的 Keystore2 配置 (初始化为宏默认值)
+static char g_keystore2_alias[256]  = NANOMQ_KEYSTORE2_ALIAS;
+static int  g_keystore2_namespace   = NANOMQ_KEYSTORE2_NAMESPACE;
+
+void
+keystore2_engine_set_config(const char *alias, int namespace_id)
+{
+	snprintf(g_keystore2_alias, sizeof(g_keystore2_alias), "%s",
+	         alias ? alias : NANOMQ_KEYSTORE2_ALIAS);
+	g_keystore2_namespace = namespace_id;
+	log_info("[mTLS] Keystore2 config: alias=%s namespace=%d",
+	         g_keystore2_alias, g_keystore2_namespace);
+}
 
 // BoringSSL 需要 type 回调来确定密钥类型（RSA/EC），不检查 NULL 直接调用
 static int
@@ -136,7 +150,7 @@ keystore2_private_key_sign(SSL *ssl, uint8_t *out, size_t *out_len,
                            size_t max_out, uint16_t signature_algorithm,
                            const uint8_t *in, size_t in_len)
 {
-    int ret = keystore2_sign(NANOMQ_KEYSTORE2_ALIAS, NANOMQ_KEYSTORE2_NAMESPACE,
+    int ret = keystore2_sign(g_keystore2_alias, g_keystore2_namespace,
                              in, (int)in_len, signature_algorithm, out, (int)max_out);
     if (ret > 0) {
         *out_len = (size_t)ret;
@@ -937,8 +951,8 @@ open_config_init(nng_tls_engine_config *cfg, enum nng_tls_mode mode)
 
 		// 从 Keystore2 加载公钥证书 (DER 格式)，先解码为 X509 再注入
 		uint8_t cert_buf[4096];
-		int cert_len = keystore2_get_cert(NANOMQ_KEYSTORE2_ALIAS,
-		    NANOMQ_KEYSTORE2_NAMESPACE,
+		int cert_len = keystore2_get_cert(g_keystore2_alias,
+		    g_keystore2_namespace,
 		    cert_buf, sizeof(cert_buf));
 		if (cert_len > 0 && cert_len <= (int)sizeof(cert_buf)) {
 			log_info("NNG-TLS-CFG-INIT: " "Loaded certificate from Keystore2, length: %d", cert_len);
@@ -1025,12 +1039,12 @@ static int
 open_config_try_keystore2_ca_chain(
     nng_tls_engine_config *cfg, bool *loaded)
 {
-	uint8_t chain_buf[8192];
+	uint8_t chain_buf[8192] = { 0 };
 	int     chain_len;
 
 	*loaded  = false;
 	chain_len = keystore2_get_cert_chain(
-	    NANOMQ_KEYSTORE2_ALIAS, NANOMQ_KEYSTORE2_NAMESPACE,
+	    g_keystore2_alias, g_keystore2_namespace,
 	    chain_buf, sizeof(chain_buf));
 
 	if (chain_len <= 0) {

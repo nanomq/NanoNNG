@@ -532,6 +532,11 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 	size_t len;
 	if (jso_tls) {
 		tls->enable = true;
+
+		// Keystore2 defaults from compile-time macros (heap-allocated so hocon_read_str can free)
+		tls->keystore_alias = nng_strdup(NANOMQ_KEYSTORE2_ALIAS);
+		tls->keystore_namespace = NANOMQ_KEYSTORE2_NAMESPACE;
+
 		hocon_read_bool(tls, enable, jso_tls);
 		hocon_read_str(tls, keyfile, jso_tls);
 		hocon_read_str(tls, certfile, jso_tls);
@@ -541,6 +546,10 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 		hocon_read_bool_base(tls, set_fail, "fail_if_no_peer_cert", jso_tls);
 		hocon_read_bool(tls, cert_encrypted, jso_tls);
 		hocon_read_str(tls, sni, jso_tls);
+
+		// Android Keystore2 runtime config (overrides compile-time macros)
+		hocon_read_str(tls, keystore_alias, jso_tls);
+		hocon_read_num(tls, keystore_namespace, jso_tls);
 
 		hocon_read_str(tls, encrypt_method, jso_tls);
 		hocon_read_str_base(

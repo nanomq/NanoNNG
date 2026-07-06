@@ -909,6 +909,10 @@ conf_tls_destroy(conf_tls *tls)
 		free(tls->sni);
 		tls->sni = NULL;
 	}
+	if (tls->keystore_alias) {
+		free(tls->keystore_alias);
+		tls->keystore_alias = NULL;
+	}
 }
 
 static void
