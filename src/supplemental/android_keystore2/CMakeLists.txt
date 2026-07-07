@@ -20,6 +20,8 @@ if(ENABLE_ANDROID_KEYSTORE2 AND ANDROID)
     )
     if(KEYSTORE2_USE_DIGEST_NONE)
         target_compile_definitions(nng PRIVATE KEYSTORE2_USE_DIGEST_NONE=1)
+    else()
+        target_compile_definitions(nng PRIVATE KEYSTORE2_USE_DIGEST_NONE=0)
     endif()
 
     # --- 头文件包含目录 ---

@@ -89,26 +89,25 @@ static bool g_print_handshake = false;
 
 #if defined(ENABLE_ANDROID_KEYSTORE2)
 
-// 用户可通过 CMake option 或编译定义, 或运行时配置覆盖以下默认值
-#ifndef NANOMQ_KEYSTORE2_ALIAS
-#define NANOMQ_KEYSTORE2_ALIAS "ecu-client-certificate"
-#endif
-#ifndef NANOMQ_KEYSTORE2_NAMESPACE
-#define NANOMQ_KEYSTORE2_NAMESPACE -1
-#endif
-
 // 运行时可覆盖的 Keystore2 配置 (初始化为宏默认值)
 static char g_keystore2_alias[256]  = NANOMQ_KEYSTORE2_ALIAS;
 static int  g_keystore2_namespace   = NANOMQ_KEYSTORE2_NAMESPACE;
+#if KEYSTORE2_USE_DIGEST_NONE
+static bool g_keystore2_digest_none = true;
+#else
+static bool g_keystore2_digest_none = false;
+#endif
 
 void
-keystore2_engine_set_config(const char *alias, int namespace_id)
+keystore2_engine_set_config(const char *alias, int namespace_id, bool digest_none)
 {
 	snprintf(g_keystore2_alias, sizeof(g_keystore2_alias), "%s",
 	         alias ? alias : NANOMQ_KEYSTORE2_ALIAS);
 	g_keystore2_namespace = namespace_id;
-	log_info("[mTLS] Keystore2 config: alias=%s namespace=%d",
-	         g_keystore2_alias, g_keystore2_namespace);
+	g_keystore2_digest_none = digest_none;
+	keystore2_set_digest_none(digest_none);
+	log_info("[mTLS] Keystore2 config: alias=%s namespace=%d digest_none=%d",
+	         g_keystore2_alias, g_keystore2_namespace, (int)g_keystore2_digest_none);
 }
 
 // BoringSSL 需要 type 回调来确定密钥类型（RSA/EC），不检查 NULL 直接调用

@@ -1754,7 +1754,8 @@ nng_dialer_reload_tls(conf_bridge_node *node, nni_dialer *ndialer)
 	// conf_tls 字段已初始化为宏默认值，配置文件中的值会覆盖
 	keystore2_engine_set_config(
 		node->tls.keystore_alias,
-		node->tls.keystore_namespace);
+		node->tls.keystore_namespace,
+		node->tls.keystore_digest_none);
 	// Keystore2 路径：即使 cafile 为空也要调用 ca_chain，
 	// open_config_ca_chain 会从 Keystore2 certificateChain 构建信任锚
 	if ((rv = nng_tls_config_ca_chain(cfg, node->tls.ca, NULL)) != 0) {

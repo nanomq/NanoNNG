@@ -4078,6 +4078,17 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 			log_info("	encrypted_key:     %s",
 			    node->tls.encrypted_key_b64 ? "true" : "false");
 			log_info("	sni:              %s", node->tls.sni);
+
+#ifdef ENABLE_ANDROID_KEYSTORE2
+			log_info("	keystore_alias:   %s",
+			    node->tls.keystore_alias != NULL
+			        ? node->tls.keystore_alias
+			        : "");
+			log_info("	keystore_namespace: %d",
+			    node->tls.keystore_namespace);
+			log_info("	keystore_digest_none: %s",
+			    node->tls.keystore_digest_none ? "true" : "false");
+#endif
 		}
 		log_info("%sbridge.mqtt.%s.forwards: ", prefix, node->name);
 

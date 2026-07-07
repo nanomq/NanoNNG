@@ -219,6 +219,19 @@ compose_url(char *head, char *address)
 		}                                                             \
 	} while (0);
 
+#define hocon_read_signed_num_base(structure, field, key, jso)                       \
+	do {                                                                  \
+		cJSON *jso_key = cJSON_GetObjectItem(jso, key);               \
+		if (NULL == jso_key) {                                        \
+			log_debug("Config %s is not set, use default!", key); \
+			break;                                                \
+		}                                                             \
+		if (cJSON_IsNumber(jso_key)) {                                \
+			(structure)->field = jso_key->valuedouble;    \
+		}                                                             \
+	} while (0);
+
+
 #define hocon_read_enum_base(structure, field, key, jso, map)             \
 	{                                                                 \
 		do {                                                      \
@@ -270,6 +283,8 @@ compose_url(char *head, char *address)
 	hocon_read_address_base(structure, key, #key, head, jso)
 #define hocon_read_num(structure, key, jso) \
 	hocon_read_num_base(structure, key, #key, jso)
+#define hocon_read_signed_num(structure, key, jso) \
+	hocon_read_signed_num_base(structure, key, #key, jso)
 #define hocon_read_bool(structure, key, jso) \
 	hocon_read_bool_base(structure, key, #key, jso)
 #define hocon_read_str_arr(structure, key, jso) \
@@ -533,9 +548,13 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 	if (jso_tls) {
 		tls->enable = true;
 
-		// Keystore2 defaults from compile-time macros (heap-allocated so hocon_read_str can free)
-		tls->keystore_alias = nng_strdup(NANOMQ_KEYSTORE2_ALIAS);
-		tls->keystore_namespace = NANOMQ_KEYSTORE2_NAMESPACE;
+		// Keystore2 defaults matching compile-time macros
+		if (!tls->keystore_alias) {
+			tls->keystore_alias =
+			    nng_strdup(NANOMQ_KEYSTORE2_ALIAS);
+		}
+		tls->keystore_namespace   = NANOMQ_KEYSTORE2_NAMESPACE;
+		tls->keystore_digest_none = KEYSTORE2_USE_DIGEST_NONE;
 
 		hocon_read_bool(tls, enable, jso_tls);
 		hocon_read_str(tls, keyfile, jso_tls);
@@ -549,7 +568,8 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 
 		// Android Keystore2 runtime config (overrides compile-time macros)
 		hocon_read_str(tls, keystore_alias, jso_tls);
-		hocon_read_num(tls, keystore_namespace, jso_tls);
+		hocon_read_signed_num(tls, keystore_namespace, jso_tls);
+		hocon_read_bool(tls, keystore_digest_none, jso_tls);
 
 		hocon_read_str(tls, encrypt_method, jso_tls);
 		hocon_read_str_base(

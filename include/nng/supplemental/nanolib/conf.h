@@ -53,6 +53,17 @@ extern "C" {
 #define RULE_ENG_PDB (1 << 4)
 #define RULE_ENG_TDB (1 << 5)
 
+// 用户可通过 CMake option 或编译定义, 或运行时配置覆盖以下默认值
+#ifndef NANOMQ_KEYSTORE2_ALIAS
+#define NANOMQ_KEYSTORE2_ALIAS "ecu-client-certificate"
+#endif
+#ifndef NANOMQ_KEYSTORE2_NAMESPACE
+#define NANOMQ_KEYSTORE2_NAMESPACE -1
+#endif
+#ifndef KEYSTORE2_USE_DIGEST_NONE
+#define KEYSTORE2_USE_DIGEST_NONE true
+#endif
+
 #define PARQUET_WRAP_ALG_NMQ_CONF_CIPHER_AES_GCM_BASE64 \
 	"NMQ_CONF_CIPHER_AES_GCM_BASE64"
 
@@ -95,7 +106,8 @@ struct conf_tls {
 
 	// Android Keystore2 配置 (运行时覆盖编译期宏)
 	char *keystore_alias;     // 证书别名, 默认 NANOMQ_KEYSTORE2_ALIAS
-	int   keystore_namespace; // SELinux 命名空间, 默认 -1 (Domain::APP)
+	int   keystore_namespace; // SELinux 命名空间, 默认 NANOMQ_KEYSTORE2_NAMESPACE
+	bool  keystore_digest_none; // TEE DIGEST_NONE 模式, 默认 KEYSTORE2_USE_DIGEST_NONE
 };
 
 typedef struct conf_tls conf_tls;
