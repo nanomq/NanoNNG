@@ -403,11 +403,11 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		if (qos_db != NULL) {
 			if (nni_msg_get_type(msg) == CMD_PUBLISH &&
 			    nni_msg_get_pub_qos(msg) > 0) {
-				nni_msg_clone(msg); // for line 422
+				nni_msg_clone(msg);
 				packetid = tmp_id;
 				nni_qos_db_set(is_sqlite, qos_db,
 				    pipe, packetid, msg);
-				log_info("msg %d cached for preset session", packetid);
+				log_info("msg cached for preset session %u", pipe);
 				tmp_id ++;	// client may collide with 1000
 			}
 		} else {
@@ -418,7 +418,9 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		// lost interest in our reply.
 		nni_mtx_unlock(&s->lk);
 		nni_aio_set_msg(aio, NULL);
-		log_warn("pipe id %ld is gone, pub failed", pipe);
+		if (qos_db == NULL) {
+			log_warn("pipe id %ld is gone, pub failed", pipe);
+		}
 		nni_msg_free(msg);
 		return;
 	}
@@ -925,7 +927,7 @@ nano_pipe_close(void *arg)
 				// also cache kicked session
 				// merging 2 pipes together in pipe start
 			}
-			log_info("session stored %d", npipe->p_id);
+			log_info("session stored %u", npipe->p_id);
 			nni_id_set(&s->cached_sessions, npipe->p_id, p);
 			// set event to false avoid of sending the disconnecting msg
 			p->event     = false;

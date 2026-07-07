@@ -4447,6 +4447,8 @@ get_size(const char *str, uint64_t *size)
 		} else {
 			return -1;
 		}
+	} else if (res == 1) {
+		num *= 1;
 	} else {
 		return -1;
 	}
