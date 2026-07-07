@@ -116,8 +116,8 @@ test_get_size_edge_cases(void)
 	NUTS_PASS(get_size(str_mixed, &size));
 	NUTS_TRUE(size == 10 * 1024 * 1024);
 
-	// Test number without unit
-	NUTS_FAIL(get_size(str_no_unit, &size), -1);
+	NUTS_PASS(get_size(str_no_unit, &size));
+	NUTS_TRUE(size == 100);
 }
 
 void
