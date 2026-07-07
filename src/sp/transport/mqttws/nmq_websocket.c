@@ -1556,13 +1556,12 @@ static const nni_option ws_pipe_options[] = {
 	    .o_name = NULL,
 	}
 };
-
 static int
-wstran_pipe_getopt(
-    void *arg, const char *name, void *buf, size_t *szp, nni_type t)
+wstran_pipe_getopt(void *arg, const char *name, void *buf, size_t *szp, nni_type t)
 {
 	ws_pipe *p = arg;
 	int      rv;
+
 	if (strcmp(name, NMQ_OPT_MQTT_GET_QOS_RESEND) == 0) {
 		if (buf == NULL || szp == NULL || *szp < sizeof(nmq_req)) {
 			return NNG_EINVAL;
@@ -1575,12 +1574,19 @@ wstran_pipe_getopt(
 		nni_mtx_lock(&p->mtx);
 		is_sqlite = p->conf->sqlite.enable;
 		uint32_t qos_duration = p->conf->qos_duration;
-		msg = nni_qos_db_get_one(p->conf->sqlite.enable, p->npipe->nano_qos_db, p->npipe->p_id, &pid);
 
-		if (msg != NULL) {
+		while (1) {
+			msg = nni_qos_db_get_one(is_sqlite,
+			    p->npipe->nano_qos_db, p->npipe->p_id, &pid);
+
+			if (msg == NULL) {
+				break;
+			}
+
 			nni_msg       *rmsg = msg;
 			property      *prop = NULL;
 			property_data *data = NULL;
+
 			if (p->ws_param->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 				if (nni_msg_get_proto_data(rmsg) != NULL)
 					prop = nni_mqtt_msg_get_publish_property(rmsg);
@@ -1591,23 +1597,32 @@ wstran_pipe_getopt(
 			nni_time ntime = nni_clock();
 			nni_time mtime = nni_msg_get_timestamp(rmsg);
 			if (data && ntime > mtime + (nni_time)((uint64_t)data->p_value.u32 * 1000)) {
-				log_info("QoS msg id %d of pipe %u expired!", pid, p->npipe->p_id);
-				// remove expired msg from qos db
-				nni_qos_db_remove_msg(
-				    is_sqlite, p->npipe->nano_qos_db, rmsg);
-				nni_qos_db_remove(is_sqlite,
-				    p->npipe->nano_qos_db, p->npipe->p_id, pid);
+				log_info("QoS msg id %u of pipe %u expired!", pid, p->npipe->p_id);
+				nni_qos_db_remove_msg(is_sqlite, p->npipe->nano_qos_db, rmsg);
+				nni_qos_db_remove(is_sqlite, p->npipe->nano_qos_db, p->npipe->p_id, pid);
+				if (is_sqlite) {
+					nni_msg_free(rmsg);
+				}
+				continue;
 			} else if ((ntime - mtime) >= (long unsigned) qos_duration * 1250) {
-				nni_msg_clone(msg);
+				if (!is_sqlite) {
+					nni_msg_clone(msg);
+				}
 				req->msg = msg;
 				req->packet_id = pid;
 				nni_mtx_unlock(&p->mtx);
 				return 0;
+			} else {
+				if (is_sqlite) {
+					nni_msg_free(msg);
+				}
+				break;
 			}
 		}
 		nni_mtx_unlock(&p->mtx);
 		return NNG_ENOENT;
 	}
+
 	if ((rv = nni_stream_get(p->ws, name, buf, szp, t)) == NNG_ENOTSUP) {
 		rv = nni_getopt(ws_pipe_options, name, p, buf, szp, t);
 	}
