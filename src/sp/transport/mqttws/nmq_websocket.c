@@ -1600,9 +1600,6 @@ wstran_pipe_getopt(void *arg, const char *name, void *buf, size_t *szp, nni_type
 				log_info("QoS msg id %u of pipe %u expired!", pid, p->npipe->p_id);
 				nni_qos_db_remove_msg(is_sqlite, p->npipe->nano_qos_db, rmsg);
 				nni_qos_db_remove(is_sqlite, p->npipe->nano_qos_db, p->npipe->p_id, pid);
-				if (is_sqlite) {
-					nni_msg_free(rmsg);
-				}
 				continue;
 			} else if ((ntime - mtime) >= (long unsigned) qos_duration * 1250) {
 				if (!is_sqlite) {
