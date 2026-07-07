@@ -312,7 +312,7 @@ get_id_by_p_id(sqlite3 *db, int64_t p_id, uint16_t packet_id, uint8_t *out_qos,
 	sqlite3_reset(stmt);
 
 	sqlite3_bind_int64(stmt, 1, p_id);
-	sqlite3_bind_int(stmt, 2, packet_id);
+	sqlite3_bind_int64(stmt, 2, packet_id);
 	if (SQLITE_ROW == sqlite3_step(stmt)) {
 		id        = sqlite3_column_int64(stmt, 0);
 		*out_qos  = sqlite3_column_int(stmt, 1);
@@ -335,7 +335,7 @@ insert_main(
 	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
 	sqlite3_reset(stmt);
 	sqlite3_bind_int64(stmt, 1, p_id);
-	sqlite3_bind_int(stmt, 2, packet_id);
+	sqlite3_bind_int64(stmt, 2, packet_id);
 	sqlite3_bind_int(stmt, 3, qos);
 	sqlite3_bind_int64(stmt, 4, m_id);
 	sqlite3_step(stmt);
@@ -356,7 +356,7 @@ update_main(
 	sqlite3_bind_int(stmt, 1, qos);
 	sqlite3_bind_int64(stmt, 2, m_id);
 	sqlite3_bind_int64(stmt, 3, p_id);
-	sqlite3_bind_int(stmt, 4, packet_id);
+	sqlite3_bind_int64(stmt, 4, packet_id);
 	sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
 	return sqlite3_exec(db, "COMMIT;", 0, 0, 0);
@@ -655,7 +655,7 @@ nni_mqtt_qos_db_get_one(sqlite3 *db, uint32_t pipe_id, uint16_t *packet_id)
 	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
 	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
 	sqlite3_reset(stmt);
-	sqlite3_bind_int(stmt, 1, pipe_id);
+	sqlite3_bind_int64(stmt, 1, pipe_id);
 
 	if (SQLITE_ROW == sqlite3_step(stmt)) {
 		*packet_id     = sqlite3_column_int64(stmt, 0);
@@ -685,8 +685,8 @@ nni_mqtt_qos_db_remove(sqlite3 *db, uint32_t pipe_id, uint16_t packet_id)
 	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
 	sqlite3_reset(stmt);
 
-	sqlite3_bind_int(stmt, 1, pipe_id);
-	sqlite3_bind_int(stmt, 2, packet_id);
+	sqlite3_bind_int64(stmt, 1, pipe_id);
+	sqlite3_bind_int64(stmt, 2, packet_id);
 	sqlite3_step(stmt);
 
 	sqlite3_finalize(stmt);
@@ -704,7 +704,7 @@ nni_mqtt_qos_db_remove_by_pipe(sqlite3 *db, uint32_t pipe_id)
 	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
 	sqlite3_reset(stmt);
 
-	sqlite3_bind_int(stmt, 1, pipe_id);
+	sqlite3_bind_int64(stmt, 1, pipe_id);
 	sqlite3_step(stmt);
 
 	sqlite3_finalize(stmt);
@@ -918,7 +918,7 @@ nni_mqtt_qos_db_set_client_msg(sqlite3 *db, uint32_t pipe_id,
 	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
 	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
 	sqlite3_reset(stmt);
-	sqlite3_bind_int(stmt, 1, pipe_id);
+	sqlite3_bind_int64(stmt, 1, pipe_id);
 	sqlite3_bind_int64(stmt, 2, packet_id);
 	sqlite3_bind_blob64(stmt, 3, blob, len, SQLITE_TRANSIENT);
 	sqlite3_bind_int(stmt, 4, proto_ver);
@@ -947,7 +947,7 @@ nni_mqtt_qos_db_get_client_msg(
 	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
 	sqlite3_reset(stmt);
 	sqlite3_bind_int64(stmt, 1, pipe_id);
-	sqlite3_bind_int(stmt, 2, packet_id);
+	sqlite3_bind_int64(stmt, 2, packet_id);
 	sqlite3_bind_text(
 	    stmt, 3, config_name, strlen(config_name), SQLITE_TRANSIENT);
 
@@ -982,7 +982,7 @@ nni_mqtt_qos_db_remove_client_msg(
 	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
 	sqlite3_reset(stmt);
 	sqlite3_bind_int64(stmt, 1, pipe_id);
-	sqlite3_bind_int(stmt, 2, packet_id);
+	sqlite3_bind_int64(stmt, 2, packet_id);
 	sqlite3_bind_text(
 	    stmt, 3, config_name, strlen(config_name), SQLITE_TRANSIENT);
 	sqlite3_step(stmt);
