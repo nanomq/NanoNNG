@@ -419,7 +419,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		nni_mtx_unlock(&s->lk);
 		nni_aio_set_msg(aio, NULL);
 		if (qos_db == NULL) {
-			log_warn("pipe id %ld is gone, pub failed", pipe);
+			log_warn("pipe id %u is gone, pub failed", pipe);
 		}
 		nni_msg_free(msg);
 		return;
