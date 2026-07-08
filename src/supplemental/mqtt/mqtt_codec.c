@@ -3746,7 +3746,6 @@ property_set_value_strpair(uint8_t prop_id, const char *key, uint32_t key_len,
 	prop->data.p_type = STR_PAIR;
 	return prop;
 }
-
 property *
 property_parse(struct pos_buf *buf, property *prop, uint8_t prop_id,
     property_type_enum type, bool copy_value)
@@ -3760,81 +3759,81 @@ property_parse(struct pos_buf *buf, property *prop, uint8_t prop_id,
 	prop->id           = prop_id;
 	switch (type) {
 	case U8:
-		read_byte(buf, &prop->data.p_value.u8);
-		log_trace(
-		    "id: %d, value: %d (U8)", prop_id, prop->data.p_value.u8);
+		if (read_byte(buf, &prop->data.p_value.u8) != 0) goto err;
+		log_trace("id: %d, value: %d (U8)", prop_id, prop->data.p_value.u8);
 		break;
 	case U16:
-		read_uint16(buf, &prop->data.p_value.u16);
-		log_trace("id: %d, value: %d (U16)", prop_id,
-		    prop->data.p_value.u16);
+		if (read_uint16(buf, &prop->data.p_value.u16) != 0) goto err;
+		log_trace("id: %d, value: %d (U16)", prop_id, prop->data.p_value.u16);
 		break;
 	case U32:
-		read_uint32(buf, &prop->data.p_value.u32);
-		log_trace("id: %d, value: %u (U32)", prop_id,
-		    prop->data.p_value.u32);
+		if (read_uint32(buf, &prop->data.p_value.u32) != 0) goto err;
+		log_trace("id: %d, value: %u (U32)", prop_id, prop->data.p_value.u32);
 		break;
 	case VARINT:
 		if (read_variable_integer(buf, &prop->data.p_value.varint) != MQTT_SUCCESS) {
 			log_warn("parse varint failed!");
-			// TODO expose error in a handler
-			prop->data.p_value.varint = 0xFFFFFFFF;
+			goto err;
 		}
-		log_trace("id: %d, value: %d (VARINT)", prop_id,
-		    prop->data.p_value.varint);
+		log_trace("id: %d, value: %d (VARINT)", prop_id, prop->data.p_value.varint);
 		break;
 	case BINARY:
 		if (copy_value) {
 			mqtt_buf binary = { 0 };
-			if (read_utf8_str(buf, &binary) != 0)
+			if (read_utf8_str(buf, &binary) != 0) {
 				log_warn("Property decode error: Not UTF-8!");
-			else
+				goto err;
+			} else {
 				mqtt_buf_dup(&prop->data.p_value.binary, &binary);
+			}
 		} else {
-			read_utf8_str(buf, &prop->data.p_value.binary);
+			if (read_utf8_str(buf, &prop->data.p_value.binary) != 0) goto err;
 		}
-		log_trace("id: %d, value pointer: %p (BINARY)", prop_id,
-		    prop->data.p_value.binary.buf);
+		log_trace("id: %d, value pointer: %p (BINARY)", prop_id, prop->data.p_value.binary.buf);
 		break;
 	case STR:
 		if (copy_value) {
 			mqtt_buf str = { 0 };
-			if (read_utf8_str(buf, &str) != 0)
+			if (read_utf8_str(buf, &str) != 0) {
 				log_warn("Property decode error: Not UTF-8!");
-			else
+				goto err;
+			} else {
 				mqtt_buf_dup(&prop->data.p_value.str, &str);
+			}
 		} else {
-			read_utf8_str(buf, &prop->data.p_value.str);
+			if (read_utf8_str(buf, &prop->data.p_value.str) != 0) goto err;
 		}
 		log_trace("id: %d, value: %.*s (STR)", prop_id,
-		    prop->data.p_value.str.length,
-		    (const char *) prop->data.p_value.str.buf);
+		    prop->data.p_value.str.length, (const char *) prop->data.p_value.str.buf);
 		break;
 	case STR_PAIR:
 		if (copy_value) {
 			mqtt_kv kv = { 0 };
-			if (read_utf8_str(buf, &kv.key) != 0 || read_utf8_str(buf, &kv.value) != 0)
+			if (read_utf8_str(buf, &kv.key) != 0 || read_utf8_str(buf, &kv.value) != 0) {
 				log_warn("Property decode error: Not UTF-8!");
-			else
+				goto err;
+			} else {
 				mqtt_kv_dup(&prop->data.p_value.strpair, &kv);
+			}
 		} else {
-			read_utf8_str(buf, &prop->data.p_value.strpair.key);
-			read_utf8_str(buf, &prop->data.p_value.strpair.value);
+			if (read_utf8_str(buf, &prop->data.p_value.strpair.key) != 0) goto err;
+			if (read_utf8_str(buf, &prop->data.p_value.strpair.value) != 0) goto err;
 		}
 		log_debug("id: %d, value: '%.*s -> %.*s' (STR_PAIR)", prop_id,
-		    prop->data.p_value.strpair.key.length,
-		    prop->data.p_value.strpair.key.buf,
-		    prop->data.p_value.strpair.value.length,
-		    prop->data.p_value.strpair.value.buf);
+		    prop->data.p_value.strpair.key.length, prop->data.p_value.strpair.key.buf,
+		    prop->data.p_value.strpair.value.length, prop->data.p_value.strpair.value.buf);
 		break;
 
 	default:
 		log_error("Unknown type %d", type);
-		free(prop);
-		return NULL;
+		goto err;
 	}
 
 	return prop;
+
+err:
+	free(prop);
+	return NULL;
 }
 
 void
