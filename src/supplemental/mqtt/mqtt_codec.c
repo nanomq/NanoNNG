@@ -2423,10 +2423,22 @@ nni_mqttv5_msg_decode_publish(nni_msg *msg)
 	   calculated by subtracting the length of the variable header from the
 	   Remaining Length field that is in the Fixed Header. It is valid for
 	   a PUBLISH Packet to contain a zero length payload.*/
-	mqtt->payload.publish.payload.length =
-	    mqtt->fixed_header.remaining_length -
-	    (2 /* Length bytes of Topic Name */ + prop_sz +
-	        mqtt->var_header.publish.topic_name.length + packid_length);
+	uint32_t header_len = 2 /* Length bytes of Topic Name */ + prop_sz + 
+	                      mqtt->var_header.publish.topic_name.length + packid_length;
+
+	if (mqtt->fixed_header.remaining_length < header_len) {
+		log_error("Malformed packet: headers length exceeds remaining length!");
+		return MQTT_ERR_PROTOCOL; 
+	}
+
+	mqtt->payload.publish.payload.length = 
+	    mqtt->fixed_header.remaining_length - header_len;
+
+	if (buf.curpos > buf.endpos || (buf.endpos - buf.curpos) < mqtt->payload.publish.payload.length) {
+		log_error("Malformed packet: current position exceeds buffer limit!");
+		return MQTT_ERR_PROTOCOL;
+	}
+
 	mqtt->payload.publish.payload.buf =
 	    (mqtt->payload.publish.payload.length > 0) ? buf.curpos : NULL;
 
@@ -2505,6 +2517,7 @@ nni_mqttv5_msg_decode_puback(nni_msg *msg)
 	    decode_properties(msg, &pos, &prop_len, false);
 	if (check_properties(mqtt->var_header.puback.properties, msg) != SUCCESS) {
 		property_free(mqtt->var_header.puback.properties);
+		mqtt->var_header.puback.properties = NULL;
 		return PROTOCOL_ERROR;
 	}
 
@@ -2555,6 +2568,7 @@ nni_mqttv5_msg_decode_pubrec(nni_msg *msg)
 	    decode_properties(msg, &pos, &prop_len, false);
 	if (check_properties(mqtt->var_header.pubrec.properties, msg) != SUCCESS) {
 		property_free(mqtt->var_header.pubrec.properties);
+		mqtt->var_header.pubrec.properties = NULL;
 		return PROTOCOL_ERROR;
 	}
 
@@ -2612,6 +2626,7 @@ nni_mqttv5_msg_decode_pubrel(nni_msg *msg)
 	    decode_properties(msg, &pos, &prop_len, false);
 	if (check_properties(mqtt->var_header.pubrel.properties, msg) != SUCCESS) {
 		property_free(mqtt->var_header.pubrel.properties);
+		mqtt->var_header.pubrel.properties = NULL;
 		return PROTOCOL_ERROR;
 	}
 
@@ -2662,6 +2677,7 @@ nni_mqttv5_msg_decode_pubcomp(nni_msg *msg)
 	    decode_properties(msg, &pos, &prop_len, false);
 	if (check_properties(mqtt->var_header.pubcomp.properties, msg) != SUCCESS) {
 		property_free(mqtt->var_header.pubcomp.properties);
+		mqtt->var_header.pubcomp.properties = NULL;
 		return PROTOCOL_ERROR;
 	}
 
@@ -4072,6 +4088,10 @@ check_properties(property *prop, nni_msg *msg)
 					return SERVER_UNAVAILABLE;
 				}
 			}
+			if (msg == NULL || type == CMD_CONNECT) {
+				log_error("Topic Alias is not allowed in CONNECT msg!");
+				return SERVER_UNAVAILABLE;
+			}
 			break;
 
 		case RESPONSE_TOPIC: // 0x08
@@ -4140,7 +4160,10 @@ decode_buf_properties(uint8_t *packet, uint32_t packet_len, uint32_t *pos,
 	log_debug("remain len %d prop len %d curpos %p endpos %p", msg_len, prop_len, buf.curpos, buf.endpos);
 	if (msg_len - current_pos < prop_len) {
 		log_warn("Malformed packet: property len > remaining len!");
-		goto out;
+		if (list != NULL) {
+			property_free(list);
+		}
+		return NULL;
 	}
 	uint8_t prop_id = 0;
 	list            = property_alloc();
