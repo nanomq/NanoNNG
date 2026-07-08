@@ -344,6 +344,12 @@ mqtts_tcptran_pipe_nego_cb(void *arg)
 			rv = PAYLOAD_FORMAT_INVALID;
 			goto error;
 		}
+		size_t rcvmax = p->rcvmax > 0 ? p->rcvmax : NANO_MAX_PACKET_SIZE;
+		if ((size_t) var_int > rcvmax) {
+			log_error("Packet too large in negotiation: %zu > %zu", (size_t)var_int, rcvmax);
+			rv = PACKET_TOO_LARGE;
+			goto error;
+		}
 
 		if ((rv = nni_mqtt_msg_alloc(&p->rxmsg, var_int)) != 0) {
 			rv = NNG_ENOMEM;
@@ -739,8 +745,10 @@ mqtts_tcptran_pipe_recv_cb(void *arg)
 	if (NULL == p->rxmsg) {
 		// Make sure the message payload is not too big.  If it is
 		// the caller will shut down the pipe.
-		if ((len > p->rcvmax) && (p->rcvmax > 0)) {
-			rv = PACKET_TOO_LARGE;
+		size_t rcvmax = p->rcvmax > 0 ? p->rcvmax : NANO_MAX_PACKET_SIZE;
+		if (len > rcvmax) {
+			log_error("Packet too large in receive: %zu > %zu", (size_t)len, rcvmax);
+			rv = PACKET_TOO_LARGE; 
 			goto recv_error;
 		}
 
@@ -1127,7 +1135,7 @@ mqtts_tcptran_pipe_start(
 	p->ep      = ep;
 	p->qosmax  = 0;
 	p->packmax = 0;
-	p->rcvmax  = 0;
+	p->rcvmax  = NANO_MAX_PACKET_SIZE;
 	p->sndmax  = 65535;
 #ifdef NNG_HAVE_MQTT_BROKER
 	p->cparam = NULL;
