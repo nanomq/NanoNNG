@@ -720,6 +720,15 @@ auth_verify:
 			    p->conn_param, &s->conf->auth_http);
 		}
 	}
+	nni_mtx_lock(&s->lk);
+	clientid = (char *) conn_param_get_clientid(p->conn_param);
+	if (!clientid) {
+		log_warn("NULL clientid found when try to restore session.");
+		nni_mtx_unlock(&s->lk);
+		conn_param_free(p->conn_param);
+		nni_msg_free(msg);
+		return NNG_ECONNSHUT;
+	}
 	int total = nni_id_count(&s->pipes);
 	log_debug("Total connection num %d", total);
 	nng_atomic_set(s->conf->lc, total);
@@ -739,20 +748,10 @@ auth_verify:
 		// send connack with reason code 0x05
 		log_warn("Invalid auth info or authentication denied");
 		p->conn_param->will_flag = 0;
+		nni_mtx_unlock(&s->lk);
 		goto end;
 	}
 
-	nni_mtx_lock(&s->lk);
-	// Clientid should not be NULL since broker will assign one
-	// TODO use p_id
-	clientid = (char *) conn_param_get_clientid(p->conn_param);
-	if (!clientid) {
-		log_warn("NULL clientid found when try to restore session.");
-		nni_mtx_unlock(&s->lk);
-		conn_param_free(p->conn_param);
-		nni_msg_free(msg);
-		return NNG_ECONNSHUT;
-	}
 	if (p->conn_param->clean_start == 0) {
 		old = nni_id_get(&s->cached_sessions, p->pipe->p_id);
 		if (old != NULL) {
