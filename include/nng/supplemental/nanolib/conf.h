@@ -224,6 +224,11 @@ typedef struct conf_websocket conf_websocket;
 #define NO_QOS    3 // default QoS level value for forwarding bridge msg, 3 = keep old qos
 
 typedef struct {
+	char       *topic;
+	size_t 		  topic_len;
+} exclusions;
+
+typedef struct {
 	char       *remote_topic;
 	uint32_t    remote_topic_len;
 	char       *local_topic;
@@ -313,10 +318,12 @@ struct conf_bridge_node {
 	uint64_t     resend_interval; // resend caching message interval (ms)
 	uint64_t     resend_wait;
 	size_t       sub_count;
+	size_t       exclusions_count;
 	size_t       forwards_count;
 	size_t       max_recv_queue_len;
 	size_t       max_send_queue_len;
 	topics     **forwards_list;
+	exclusions **exclusions_list;
 	uint64_t     parallel;
 	topics     **sub_list;
 	conf_tls     tls;
