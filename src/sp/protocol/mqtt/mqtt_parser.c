@@ -659,7 +659,6 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 				case REQUEST_PROBLEM_INFORMATION:
 					if (p->data.p_value.u8 > 1) return PROTOCOL_ERROR;
 					break;
-				case CONTENT_TYPE:
 				case SESSION_EXPIRY_INTERVAL:
 				case RECEIVE_MAXIMUM:
 				case MAXIMUM_PACKET_SIZE:
