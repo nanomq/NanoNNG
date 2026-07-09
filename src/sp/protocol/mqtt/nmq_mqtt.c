@@ -750,6 +750,7 @@ auth_verify:
 		log_warn("NULL clientid found when try to restore session.");
 		nni_mtx_unlock(&s->lk);
 		conn_param_free(p->conn_param);
+		nni_msg_free(msg);
 		return NNG_ECONNSHUT;
 	}
 	if (p->conn_param->clean_start == 0) {
