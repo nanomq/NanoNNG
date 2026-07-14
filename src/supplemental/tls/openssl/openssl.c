@@ -348,6 +348,36 @@ static SSL_PRIVATE_KEY_METHOD my_ssl_private_key_method = {
 
 #endif // TLS_EXTERN_PRIVATE_KEY
 
+static void
+open_log_ssl_error(const char *where, int ssl_error)
+{
+	unsigned long err;
+	char          errbuf[256];
+	bool          has_error = false;
+
+	while ((err = ERR_get_error()) != 0) {
+		ERR_error_string_n(err, errbuf, sizeof(errbuf));
+		log_error("%s ssl_error=%d openssl_error=0x%lx %s",
+		    where, ssl_error, err, errbuf);
+		has_error = true;
+	}
+
+	if (!has_error) {
+		log_error("%s ssl_error=%d openssl_error=none", where,
+		    ssl_error);
+	}
+}
+
+static bool
+open_ssl_error_is_established_close(unsigned long err)
+{
+	int reason = ERR_GET_REASON(err);
+
+	return reason == SSL_R_WRONG_VERSION_NUMBER ||
+	    reason == SSL_R_SHUTDOWN_WHILE_IN_INIT ||
+	    reason == SSL_R_SSLV3_ALERT_BAD_CERTIFICATE;
+}
+
 struct nng_tls_engine_conn {
 	void    *tls; // parent conn
 	SSL     *ssl;
@@ -390,7 +420,11 @@ open_net_read(void *ctx, char *buf, int len) {
 	size_t sz = len;
 	int    rv;
 
+	if (g_print_handshake)
+		log_info("handshake incomplete: receiving...");
 	rv = nng_tls_engine_recv(ctx, (uint8_t *) buf, &sz);
+	if (g_print_handshake)
+		log_info("handshake incomplete: read rv %d sz %ld/%d", rv, sz, len);
 	if (rv == 0)
 		log_debug("NNG-TLS-NET-RD" "Read From TCP %ld/%d rv%d", sz, len, rv);
 	trace("end");
@@ -418,7 +452,11 @@ open_net_write(void *ctx, const char *buf, int len) {
 	size_t sz = len;
 	int    rv;
 
+	if (g_print_handshake)
+		log_info("handshake incomplete: sending...");
 	rv = nng_tls_engine_send(ctx, (const uint8_t *) buf, &sz);
+	if (g_print_handshake)
+		log_info("handshake incomplete: write rv %d sz %ld/%d", rv, sz, len);
 	log_debug("NNG-TLS-NET-WR" "Sent To TCP %ld/%d rv%d", sz, len, rv);
 	trace("end");
 	switch (rv) {
@@ -501,14 +539,24 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 	}
 	log_info("Doing handshake ...");
 	rv = SSL_do_handshake(ec->ssl);
-	if (rv != 0) {
+	if (rv != 1) {
 		rv = SSL_get_error(ec->ssl, rv);
-		if (rv != 0) {
+		if (rv == SSL_ERROR_WANT_READ || rv == SSL_ERROR_WANT_WRITE) {
+			log_warn("NNG-TLS-CONN-HANDSHAKE"
+					"openssl handshake still in process rv%d", rv);
+				// continue
+		} else if (rv == SSL_ERROR_NONE) {
+			log_warn("NNG-TLS-CONN-HANDSHAKE" "should never reach here");
+		} else {
 			log_warn("NNG-TLS-CONN-HANDSHAKE"
 				"openssl handshake still in process rv%d", rv);
 			ERR_print_errors_fp(stderr);
+			return NNG_ECRYPTO;
 		}
+	} else {
+		goto finished;
 	}
+
 	if (rv == SSL_ERROR_WANT_READ || rv == SSL_ERROR_WANT_WRITE) {
 		int ensz, sz;
 		while ((ensz = open_net_read(ec->tls, ec->wbuf, OPEN_BUF_SZ)) > 0) {
@@ -520,14 +568,32 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 				if (!BIO_should_retry(ec->rbio)) {
 					log_warn("NNG-TLS-CONN-HANDSHAKE"
 						"openssl BIO write failed rv%d", ensz);
+					open_log_ssl_error(
+							"NNG-TLS-CONN-HANDSHAKE BIO_write", 0);
 					return NNG_ECRYPTO;
 				}
 				continue;
 			}
-			SSL_do_handshake(ec->ssl);
-			if (SSL_is_init_finished(ec->ssl)) {
+			rv = SSL_do_handshake(ec->ssl);
+			if (rv != 1) {
+				rv = SSL_get_error(ec->ssl, rv);
+				if (rv == SSL_ERROR_WANT_READ || rv == SSL_ERROR_WANT_WRITE) {
+					continue;
+				} else if (rv == SSL_ERROR_NONE) {
+					log_warn("NNG-TLS-CONN-HANDSHAKE" "should never reach here");
+				} else {
+					log_error("NNG-TLS-CONN-HANDSHAKE"
+							"openssl handshake error %d", rv);
+					ERR_print_errors_fp(stderr);
+					return NNG_ECRYPTO;
+				}
+			} else {
 				goto finished;
 			}
+		}
+		if (ensz < 0) {
+			if (ensz != 0 - SSL_ERROR_WANT_READ && ensz != 0 - SSL_ERROR_WANT_WRITE)
+				return (NNG_ECLOSED);
 		}
 
 		while ((ensz = BIO_read(ec->wbio, ec->rbuf, OPEN_BUF_SZ)) > 0) {
@@ -536,6 +602,8 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 				if (!BIO_should_retry(ec->wbio)) {
 					log_warn("NNG-TLS-CONN-HANDSHAKE"
 						"openssl BIO read failed rv%d", ensz);
+					open_log_ssl_error(
+						"NNG-TLS-CONN-HANDSHAKE BIO_read", 0);
 					return NNG_ECRYPTO;
 				}
 				continue;
@@ -546,8 +614,20 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 				return (NNG_EAGAIN);
 			else if (sz < 0)
 				return (NNG_ECLOSED);
-			SSL_do_handshake(ec->ssl);
-			if (SSL_is_init_finished(ec->ssl)) {
+			rv = SSL_do_handshake(ec->ssl);
+			if (rv != 1) {
+				rv = SSL_get_error(ec->ssl, rv);
+				if (rv == SSL_ERROR_WANT_READ || rv == SSL_ERROR_WANT_WRITE) {
+					continue;
+				} else if (rv == SSL_ERROR_NONE) {
+					log_warn("NNG-TLS-CONN-HANDSHAKE" "should never reach here");
+				} else {
+					log_error("NNG-TLS-CONN-HANDSHAKE"
+						"openssl handshake error %d", rv);
+					ERR_print_errors_fp(stderr);
+					return NNG_ECRYPTO;
+				}
+			} else {
 				goto finished;
 			}
 		}
@@ -558,10 +638,11 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 finished:
 		log_warn("NNG-TLS-CONN-HANDSHAKE"
 				"openssl do handshake successfully");
+		g_print_handshake = false;
 		ec->ok = 1;
 		return 0;
 	}
-	log_info("return NNG_ECRYPTO ...");
+	open_log_ssl_error("NNG-TLS-CONN-HANDSHAKE SSL_do_handshake", rv);
 	return NNG_ECRYPTO;
 }
 
@@ -590,7 +671,8 @@ open_conn_recv(nng_tls_engine_conn *ec, uint8_t *buf, size_t *szp)
 		log_debug("NNG-TLS-CONN-RECV" "bio write result %d", ensz);
 		if (!BIO_should_retry(ec->rbio)) {
 			log_error("NNG-TLS-CONN-RECV"
-				"[%d]openssl BIO write failed rv%d", ensz);
+				"openssl BIO write failed rv%d", ensz);
+			open_log_ssl_error("NNG-TLS-CONN-RECV BIO_write", 0);
 			return (NNG_ECRYPTO);
 		}
 	}
@@ -598,15 +680,43 @@ open_conn_recv(nng_tls_engine_conn *ec, uint8_t *buf, size_t *szp)
 			"recv %d from tcp and written %d to BIO", rv, written);
 
 readopenssl:
-	if ((rv = SSL_read(ec->ssl, buf, (int) *szp)) < 0) {
-		rv = SSL_get_error(ec->ssl, rv);
+	ERR_clear_error();
+	rv = SSL_read(ec->ssl, buf, (int) *szp);
+	if (rv <= 0) {
+		int ssl_rv = SSL_get_error(ec->ssl, rv);
 		// TODO return codes according openssl documents
-		if (rv != SSL_ERROR_WANT_READ) {
+		if (ssl_rv == SSL_ERROR_WANT_READ ||
+		    ssl_rv == SSL_ERROR_WANT_WRITE) {
+			*szp = 0;
+		} else if (ssl_rv == SSL_ERROR_ZERO_RETURN) {
+			log_debug("NNG-TLS-CONN-RECV"
+			    "openssl read closed by TLS close_notify rv%d ssl_rv%d",
+			    rv, ssl_rv);
+			return (NNG_ECLOSED);
+		} else if (ssl_rv == SSL_ERROR_SYSCALL &&
+		    ERR_peek_error() == 0) {
+			log_debug("NNG-TLS-CONN-RECV"
+			    "openssl read closed by peer EOF rv%d ssl_rv%d",
+			    rv, ssl_rv);
+			return (NNG_ECLOSED);
+		} else if (ec->ok && ssl_rv == SSL_ERROR_SSL &&
+		    open_ssl_error_is_established_close(ERR_peek_error())) {
+			unsigned long err = ERR_peek_error();
+			char          errbuf[256];
+
+			ERR_error_string_n(err, errbuf, sizeof(errbuf));
+			log_warn("NNG-TLS-CONN-RECV"
+			    "openssl read mapped to closed after established TLS rv%d ssl_rv%d openssl_error=0x%lx %s",
+			    rv, ssl_rv, err, errbuf);
+			ERR_clear_error();
+			return (NNG_ECLOSED);
+		} else {
 			log_error("NNG-TLS-CONN-RECV"
-				"openssl read failed rv%d", rv);
+				"openssl read failed rv%d ssl_rv%d", rv,
+				ssl_rv);
+			open_log_ssl_error("NNG-TLS-CONN-RECV SSL_read", ssl_rv);
 			return (NNG_ECRYPTO);
 		}
-		*szp = 0;
 	} else {
 		*szp = (size_t) rv;
 	}
@@ -644,17 +754,24 @@ open_conn_send(nng_tls_engine_conn *ec, const uint8_t *buf, size_t *szp)
 				ec->wnsz = dm;
 				log_debug("NNG-TLS-CONN-SEND"
 					"written%d remain%d bytes to put to kernel", rv, dm);
+				if (g_print_handshake)
+					log_info("handshake incomplete: written%d remain%d", rv, dm);
 				nng_free(wnext, 0);
 				return NNG_EAGAIN;
 			}
 			nng_free(wnext, 0);
 			written2tcp = ec->wntcpsz;
 			log_debug("writing done%d written2tcp%d", ec->wnsz, written2tcp);
+			if (g_print_handshake)
+				log_info("handshake incomplete: remain written done %d", rv);
 			goto end;
 		} else if (rv == 0 - SSL_ERROR_WANT_READ || rv == 0 - SSL_ERROR_WANT_WRITE) {
-			trace("end3");
+			if (g_print_handshake)
+				log_warn("handshake incomplete: try to write %d, tcp busy", ec->wnsz);
 			return (NNG_EAGAIN);
 		} else {
+			if (g_print_handshake)
+				log_error("handshake incomplete: broken tcp connection");
 			return (NNG_ECLOSED);
 		}
 	}
@@ -700,10 +817,9 @@ open_conn_send(nng_tls_engine_conn *ec, const uint8_t *buf, size_t *szp)
 			}
 		}
 
-		if (g_print_handshake) {
-			g_print_handshake = false;
+		if (g_print_handshake)
 			log_info("handshake len: %d", read2buf);
-		}
+
 		rv = open_net_write(ec->tls, ec->rbuf, read2buf);
 		if (rv > 0) {
 			if (rv != read2buf) {
@@ -714,6 +830,9 @@ open_conn_send(nng_tls_engine_conn *ec, const uint8_t *buf, size_t *szp)
 				log_debug("NNG-TLS-CONN-SEND"
 					"tcp%d ssl%d written%d remain%dbytes to put to kernel",
 					written2tcp, read2buf, rv, dm);
+				if (g_print_handshake)
+					log_info("handshake incomplete: tcp%d ssl%d written%d remain%d",
+						written2tcp, read2buf, rv, dm);
 				// written2tcp += written2ssl; // This may make wnext send after a long time
 				// So updated way is as following.
 				// Part of block of data sent failed. The return value size will not
@@ -723,18 +842,26 @@ open_conn_send(nng_tls_engine_conn *ec, const uint8_t *buf, size_t *szp)
 				goto end;
 			}
 			written2tcp += written2ssl;
+			if (g_print_handshake)
+				log_info("handshake incomplete: client hello sent%d wrssl%d", rv, written2ssl);
 			// A special case before handshake finished
 			if (written2tcp == 0) {
 				goto end;
 			}
 		} else if (rv == 0 - SSL_ERROR_WANT_READ || rv == 0 - SSL_ERROR_WANT_WRITE) {
 			trace("end2 read2buf%d written2tcp%d", read2buf, written2tcp);
+			if (g_print_handshake)
+				log_warn("handshake incomplete: tcp is busy, read2buf%d written2tcp%d",
+						read2buf, written2tcp);
 			if (written2tcp == 0)
 				return NNG_EAGAIN;
 			*szp = (size_t) written2tcp;
 			return 0;
-		} else
+		} else {
+			if (g_print_handshake)
+				log_error("handshake incomplete: broken tcp connection");
 			return (NNG_ECLOSED);
+		}
 	}
 end:
 	trace("end written2tcp%d", written2tcp);
@@ -878,13 +1005,13 @@ open_config_ca_chain(
 	// overwrite certs
 	log_info("teeGetCA start");
 	len = teeGetCA((char **)&certs);
-	log_warn("cacert(%d)", len);
 #else
 	if (certs == NULL) {
 		log_info("open_config_ca_chain" "NULL certs detected!");
 	}
 	len = strlen(certs);
 #endif //TLS_EXTERN_PRIVATE_KEY
+	log_warn("cacertlen:%d", len);
 
 	BIO *bio = BIO_new_mem_buf(certs, len);
 	if (!bio) {
@@ -903,6 +1030,13 @@ open_config_ca_chain(
 			return (NNG_ECRYPTO);
 		}
 		X509_free(cert);
+	}
+	if (cert == NULL) {
+		unsigned long err = ERR_peek_last_error();
+		if (ERR_GET_LIB(err) == ERR_LIB_PEM &&
+			ERR_GET_REASON(err) == PEM_R_NO_START_LINE) {
+			ERR_clear_error(); /* normal EOF */
+		}
 	}
 	SSL_CTX_set_cert_store(cfg->ctx, store);
 
@@ -1134,6 +1268,13 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		}
 		X509_free(cacert);
 	}
+	if (cacert == NULL) {
+		unsigned long err = ERR_peek_last_error();
+		if (ERR_GET_LIB(err) == ERR_LIB_PEM &&
+			ERR_GET_REASON(err) == PEM_R_NO_START_LINE) {
+			ERR_clear_error(); /* normal EOF */
+		}
+	}
 	if (cacerts)
 		free(cacerts);
 	BIO_free(cabio);
@@ -1221,6 +1362,7 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 
 #else
 	len = strlen(key);
+	log_warn("keylen:%d", len);
 	biokey = BIO_new_mem_buf(key, len);
 	if (!biokey) {
 		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to create key BIO");
