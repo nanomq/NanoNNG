@@ -93,7 +93,7 @@ test_conf_parse_ver2(void)
 {
 	conf *conf = get_test_conf(CONF_PATH);
 	NUTS_TRUE(conf != NULL);
-	conf_parse_ver2(conf);
+	conf_parse_ver2(conf, false);
 	NUTS_TRUE(strncmp(conf->url, "nmq-tcp://0.0.0.0:1883", 22) == 0);
 
 	print_conf(conf);
