@@ -1308,10 +1308,12 @@ print_rule_engine_conf(conf_rule *rule_eng)
 				log_info("[%d] server:     %s", i, repub->address);
 				log_info("[%d] topic:      %s", i, repub->topic);
 				log_info("[%d] proto_ver:  %d", i, repub->proto_ver);
-				log_info("[%d] clientid:   %s", i, repub->clientid);
+				log_info("[%d] clientid:   ***", i);
+				log_debug("[%d] clientid:   %s", i, repub->clientid);
 				log_info("[%d] keepalive:  %d", i, repub->keepalive);
 				log_info("[%d] clean start:%d", i, repub->clean_start);
-				log_info("[%d] username:   %s", i, repub->username);
+				log_info("[%d] username:   ***", i);
+				log_debug("[%d] username:   %s", i, repub->username);
 				log_info("[%d] password:   ******", i);
 
 			}
@@ -3744,11 +3746,15 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		    node->name, node->address);
 		log_info("%sbridge.mqtt.%s.proto_ver:                  %d", prefix,
 		    node->name, node->proto_ver);
-		log_info("%sbridge.mqtt.%s.clientid:                   %s", prefix,
+		log_info("%sbridge.mqtt.%s.clientid:                   ***", prefix,
+		    node->name);
+		log_debug("%sbridge.mqtt.%s.clientid:                   %s", prefix,
 		    node->name, node->clientid);
 		log_info("%sbridge.mqtt.%s.clean_start:                %d", prefix,
 		    node->name, node->clean_start);
-		log_info("%sbridge.mqtt.%s.username:                   %s", prefix,
+		log_info("%sbridge.mqtt.%s.username:                   ***", prefix,
+		    node->name);
+		log_debug("%sbridge.mqtt.%s.username:                   %s", prefix,
 		    node->name, node->username);
 		log_info("%sbridge.mqtt.%s.password_encrypted:         %s", prefix,
 		    node->name, node->password_encrypted ? "true" : "false");
