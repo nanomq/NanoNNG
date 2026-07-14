@@ -741,7 +741,7 @@ NNG_DECL int  get_size(const char *str, uint64_t *size);
 NNG_DECL int  get_time(const char *str, uint64_t *second);
 NNG_DECL int  get_time_ms(const char *str, uint64_t *second);
 NNG_DECL void conf_parse(conf *nanomq_conf);
-NNG_DECL void conf_parse_ver2(conf *nanomq_conf);
+NNG_DECL void conf_parse_ver2(conf *nanomq_conf, bool is_reload);
 NNG_DECL void conf_parse_cipher(conf *nanomq_conf, const char *key, const char *key2, const char *key3);
 #if defined(SUPP_PARQUET) || defined(SUPP_LICENSE_STD)
 NNG_DECL void conf_bridge_node_parse_cipher_password(conf_bridge_node *bridge, const char *key);
