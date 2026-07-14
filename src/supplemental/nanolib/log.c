@@ -350,6 +350,16 @@ log_level_num(const char *level)
 	}
 	return -1;
 }
+// for log level hot update
+void
+log_update_level(int new_level)
+{
+    L.level = new_level;
+    for (int i = 0; i < MAX_CALLBACKS && L.callbacks[i].fn; i++) {
+		// let it race, mordern CPU will take care of it.
+        L.callbacks[i].level = new_level;
+    }
+}
 
 void
 log_set_level(int level)
