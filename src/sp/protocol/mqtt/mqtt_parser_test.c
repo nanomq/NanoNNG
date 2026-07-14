@@ -196,11 +196,21 @@ test_shared_filter_skip()
 	NUTS_ASSERT(filter == broken);
 	NUTS_ASSERT(topic_filtern(filter, "t/x", strlen("t/x")) == false);
 
+	// malformed: empty remainder after the group separator
+	const char *trailing = "$share/g1/";
+	NUTS_ASSERT(shared_filter_skip(trailing) == trailing);
+
 	// "$share/" alone and "$shareX/..." are not shared filters
 	const char *empty = "$share/";
 	NUTS_ASSERT(shared_filter_skip(empty) == empty);
 	const char *fake = "$shareX/g1/t";
 	NUTS_ASSERT(shared_filter_skip(fake) == fake);
+
+	// "$share" without any separator and the empty string
+	const char *bare = "$share";
+	NUTS_ASSERT(shared_filter_skip(bare) == bare);
+	const char *blank = "";
+	NUTS_ASSERT(shared_filter_skip(blank) == blank);
 
 	// NULL is passed through without crashing
 	NUTS_ASSERT(shared_filter_skip(NULL) == NULL);
