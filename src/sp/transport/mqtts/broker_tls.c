@@ -1652,8 +1652,13 @@ tlstran_pipe_send(void *arg, nni_aio *aio)
 					continue;
 				if (topic_filtern(shared_filter_skip(info->topic),
 				        pld_pac, tlen_pac)) {
-					qos = qos_pac > info->qos ? info->qos : qos_pac; // MIN
-					break;
+					// keep the strongest matching subscription:
+					// an overlapping QoS>0 filter must not be
+					// shadowed by a QoS0 one matching first
+					uint8_t eff =
+					    qos_pac > info->qos ? info->qos : qos_pac;
+					if (eff > qos)
+						qos = eff;
 				}
 			}
 		} else {
