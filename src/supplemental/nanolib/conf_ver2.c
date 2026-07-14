@@ -2781,9 +2781,10 @@ conf_parse_cipher(conf *config, const char *key_bridge, const char *key_cert,
 }
 
 void
-conf_parse_ver2(conf *config)
+conf_parse_ver2(conf *config, bool is_reload)
 {
-	log_add_console(NNG_LOG_INFO, NULL);
+	if (!is_reload)
+		log_add_console(NNG_LOG_INFO, NULL);
 	const char *conf_path = config->conf_file;
 	if (conf_path == NULL || !nano_file_exists(conf_path)) {
 		if (!nano_file_exists(CONF_PATH_NAME)) {
@@ -2831,8 +2832,8 @@ conf_parse_ver2(conf *config)
 
 		cJSON_Delete(jso);
 	}
-
-	log_clear_callback();
+	if (!is_reload)
+		log_clear_callback();
 
 	return;
 }
