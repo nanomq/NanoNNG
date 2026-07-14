@@ -877,6 +877,10 @@ conf_http_server_init(conf_http_server *http, uint16_t port)
 void
 conf_http_server_destroy(conf_http_server *http)
 {
+	if (http->ip_addr) {
+		nng_strfree(http->ip_addr);
+		http->ip_addr = NULL;
+	}
 	nng_strfree(http->username);
 	nng_strfree(http->password);
 
@@ -4585,6 +4589,79 @@ conf_auth_http_acl_cache_destroy(conf_auth_http *conf)
 	nng_aio_free(conf->acl_cache_reset_aio);
 }
 
+
+static void
+conf_nng_bridge_destroy(conf_nng_bridge *proxy)
+{
+	if (proxy == NULL) {
+		return;
+	}
+
+	if (proxy->pub_count > 0 && proxy->pnodes != NULL) {
+		for (size_t i = 0; i < proxy->pub_count; i++) {
+			conf_nng_pub_node *node = proxy->pnodes[i];
+			if (node) {
+				if (node->name) nng_strfree(node->name);
+				if (node->pub_url) nng_strfree(node->pub_url);
+				if (node->clientid) nng_strfree(node->clientid);
+
+				if (node->forwards_count > 0 && node->pub_list) {
+					for (size_t j = 0; j < node->forwards_count; j++) {
+						topics *s = node->pub_list[j];
+						if (s) {
+							if (s->remote_topic) nng_strfree(s->remote_topic);
+							if (s->local_topic) nng_strfree(s->local_topic);
+							if (s->prefix) nng_strfree(s->prefix);
+							if (s->suffix) nng_strfree(s->suffix);
+							if (s->nng_delimiter) nng_strfree(s->nng_delimiter);
+							NNI_FREE_STRUCT(s);
+						}
+					}
+					cvector_free(node->pub_list);
+					node->pub_list = NULL;
+					node->forwards_count = 0;
+				}
+				nng_free(node, sizeof(conf_nng_pub_node));
+			}
+		}
+		cvector_free(proxy->pnodes);
+		proxy->pnodes = NULL;
+		proxy->pub_count = 0;
+	}
+
+	if (proxy->sub_count > 0 && proxy->snodes != NULL) {
+		for (size_t i = 0; i < proxy->sub_count; i++) {
+			conf_nng_sub_node *node = proxy->snodes[i];
+			if (node) {
+				if (node->name) nng_strfree(node->name);
+				if (node->sub_url) nng_strfree(node->sub_url);
+				if (node->clientid) nng_strfree(node->clientid);
+
+				if (node->inwards_count > 0 && node->sub_list) {
+					for (size_t j = 0; j < node->inwards_count; j++) {
+						topics *s = node->sub_list[j];
+						if (s) {
+							if (s->remote_topic) nng_strfree(s->remote_topic);
+							if (s->local_topic) nng_strfree(s->local_topic);
+							if (s->prefix) nng_strfree(s->prefix);
+							if (s->suffix) nng_strfree(s->suffix);
+							if (s->nng_delimiter) nng_strfree(s->nng_delimiter);
+							NNI_FREE_STRUCT(s);
+						}
+					}
+					cvector_free(node->sub_list);
+					node->sub_list = NULL;
+					node->inwards_count = 0;
+				}
+				nng_free(node, sizeof(conf_nng_sub_node));
+			}
+		}
+		cvector_free(proxy->snodes);
+		proxy->snodes = NULL;
+		proxy->sub_count = 0;
+	}
+}
+
 void
 conf_fini(conf *nanomq_conf)
 {
@@ -4618,6 +4695,7 @@ conf_fini(conf *nanomq_conf)
 	conf_auth_http_destroy(&nanomq_conf->auth_http);
 	conf_auth_destroy(&nanomq_conf->auths);
 	conf_exchange_destroy(&nanomq_conf->exchange);
+	conf_nng_bridge_destroy(&nanomq_conf->nng_proxy);
 #if defined(ENABLE_LOG)
 	conf_log_destroy(&nanomq_conf->log);
 #endif
