@@ -66,6 +66,7 @@ enum {
 NNG_DECL const char *log_level_string(int level);
 NNG_DECL int         log_level_num(const char *level);
 NNG_DECL void        log_set_level(int level);
+NNG_DECL void        log_update_level(int new_level);
 NNG_DECL int         log_add_callback(
             log_func fn, void *udata, int level, void *mtx, conf_log *config);
 NNG_DECL void log_add_console(int level, void *mtx);
