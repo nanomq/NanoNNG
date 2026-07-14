@@ -95,6 +95,7 @@ test_conf_parse_ver2(void)
 	NUTS_TRUE(conf != NULL);
 	conf_parse_ver2(conf);
 	NUTS_TRUE(strncmp(conf->url, "nmq-tcp://0.0.0.0:1883", 22) == 0);
+	NUTS_TRUE(!conf->log_dropped_messages);
 
 	print_conf(conf);
 
@@ -242,6 +243,7 @@ test_conf_init(void)
 	NUTS_TRUE(nmq_conf->enable == true);
 	NUTS_TRUE(nmq_conf->parallel > 0);
 	NUTS_TRUE(nmq_conf->property_size > 0);
+	NUTS_TRUE(nmq_conf->log_dropped_messages);
 
 	conf_fini(nmq_conf);
 }
