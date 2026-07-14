@@ -1347,11 +1347,11 @@ nano_msg_notify(conn_param *cparam, uint8_t code, uint8_t retain, bool online)
 		snprintf(buff, 256, CONNECT_MSG, cparam->username.body,
 		    nni_timestamp(), cparam->pro_name.body, cparam->keepalive_mqtt,
 		    code, cparam->pro_ver, cparam->clientid.body, cparam->clean_start, cparam->ip_addr_v4);
-		log_warn("%s online!", cparam->clientid.body);
+		log_debug("%s online!", cparam->clientid.body);
 	} else {
 		snprintf(buff, 256, DISCONNECT_MSG, (char *) cparam->username.body,
 		    nni_timestamp(), code, (char *) cparam->clientid.body, cparam->ip_addr_v4);
-		log_warn("%s offline!", cparam->clientid.body);
+		log_debug("%s offline!", cparam->clientid.body);
 	}
 
     string.body = buff;

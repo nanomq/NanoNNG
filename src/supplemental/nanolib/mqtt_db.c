@@ -1019,7 +1019,8 @@ delete_dbtree_node(dbtree_node *node, size_t index)
 	// TODO plus && well
 
 	if (cvector_empty(node_t->child) && (cvector_empty(node_t->clients) && node_t->retain == NULL)) {
-		log_info("Delete retain msg at node: [%s]", node_t->topic);
+		log_info("Delete retain msg at node: [***]");
+		log_debug("Delete retain msg at node: [%s]", node_t->topic);
 		cvector_free(node_t->child);
 		cvector_free(node_t->clients);
 		cvector_erase(node->child, index);
