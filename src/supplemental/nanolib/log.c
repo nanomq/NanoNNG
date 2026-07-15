@@ -318,9 +318,10 @@ void
 log_update_level(int new_level)
 {
     L.level = new_level;
-    for (int i = 0; i < MAX_CALLBACKS && L.callbacks[i].fn; i++) {
-		// let it race, mordern CPU will take care of it.
-        L.callbacks[i].level = new_level;
+    for (int i = 0; i < MAX_CALLBACKS; i++) {
+		// let it race, modern CPU will take care of it.
+        if (L.callbacks[i].fn)
+			L.callbacks[i].level = new_level;
     }
 }
 
