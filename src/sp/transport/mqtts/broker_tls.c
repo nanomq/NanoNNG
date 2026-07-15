@@ -154,6 +154,7 @@ tlstran_pipe_close(void *arg)
 		p->npipe->subinfol = NULL;
 	}
 	nni_lmq_flush(&p->rslmq);
+	conn_param_free(p->tcp_cparam);
 	nni_mtx_unlock(&p->mtx);
 
 	nng_stream_close(p->conn);
