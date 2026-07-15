@@ -181,7 +181,6 @@ nano_pipe_timer_cb(void *arg)
 #endif
 	rv = nng_aio_result(&p->aio_timer);
 	if (rv != 0) {
-		log_warn("sleep aio error %d", rv);
 		if (rv == NNG_ECONNABORTED) {
 			log_warn("closing pipe due to session conflict");
 			nni_pipe_close(p->pipe);
@@ -609,7 +608,6 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	nni_aio_init(&p->aio_recv, nano_pipe_recv_cb, p);
 
 	p->conn_param  = nni_pipe_get_conn_param(pipe);
-	conn_param_free(p->conn_param);
 	p->id          = nni_pipe_id(pipe);
 	p->rid         = 1;
 	p->pipe        = pipe;
@@ -806,9 +804,6 @@ auth_verify:
 		}
 		// Try aio abort to close old pipe due to data racing in reaper.
 		nni_aio_abort(&old->aio_timer, NNG_ECONNABORTED);
-		nni_mtx_unlock(&s->lk);
-	} else {
-		nni_mtx_unlock(&s->lk);
 	}
 end:
 	if (rv == 0) {
@@ -824,6 +819,7 @@ end:
 	// There is no need to check the  state of aio_recv
 	// Since pipe_start is definetly the first cb to be excuted of pipe.
 	nni_aio_set_msg(&p->aio_recv, msg);
+	nni_mtx_unlock(&s->lk);
 	// connection rate is not fast enough in this way.
 	nni_aio_finish_sync(&p->aio_recv, 0, nni_msg_len(msg));
 	nni_atomic_set_bool(&p->closed, false);
@@ -879,10 +875,6 @@ nano_pipe_close(void *arg)
 	}
 	nni_mtx_lock(&s->lk);
 	nni_mtx_lock(&p->lk);
-	log_info("%s pipe close! pipe=%u reason_code=0x%02x ip=%s clean_start=%u event=%u cache=%u",
-	    p->conn_param->clientid.body, nni_pipe_id(npipe), p->reason_code,
-	    p->conn_param->ip_addr_v4, p->conn_param->clean_start, p->event,
-	    nni_atomic_get_bool(&npipe->cache));
 	// we freed the conn_param when restoring pipe
 	// so check status of conn_param. just let it close silently
 	if (p->conn_param->clean_start == 0) {
@@ -963,7 +955,7 @@ nano_pipe_close(void *arg)
 			nni_mtx_unlock(&p->lk);
 			nni_mtx_unlock(&s->lk);
 			nni_aio_set_msg(aio, msg);
-			nni_aio_finish(aio, 0, nni_msg_len(msg));
+			nni_aio_finish_sync(aio, 0, nni_msg_len(msg));
 			return 0;
 		} else {
 			// no enough ctx, so cache to waitlmq
@@ -1055,9 +1047,8 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 	nni_mtx_lock(&s->lk);
 
 	if (nni_lmq_get(&s->waitlmq, &msg) == 0) {
-		nni_mtx_unlock(&s->lk);
-		log_trace("handle msg in waitlmq.");
 		nni_aio_set_msg(aio, msg);
+		nni_mtx_unlock(&s->lk);
 		nni_aio_finish(aio, 0, nni_msg_len(msg));
 		return;
 	}
