@@ -653,24 +653,6 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 				log_warn("Malformed CONNECT: property check failed");
 				return rv;
 			}
-			for (property *p = cparam->properties->next; p != NULL; p = p->next) {
-				switch (p->id) {
-				case REQUEST_RESPONSE_INFORMATION:
-				case REQUEST_PROBLEM_INFORMATION:
-					if (p->data.p_value.u8 > 1) return PROTOCOL_ERROR;
-					break;
-				case SESSION_EXPIRY_INTERVAL:
-				case RECEIVE_MAXIMUM:
-				case MAXIMUM_PACKET_SIZE:
-				case TOPIC_ALIAS_MAXIMUM:
-				case USER_PROPERTY:
-				case AUTHENTICATION_METHOD:
-				case AUTHENTICATION_DATA:
-					break;
-				default:
-					return PROTOCOL_ERROR;
-				}
-			}
 		}
 	}
 	log_trace("pos after property: [%d]", pos);
@@ -720,22 +702,6 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 						cparam->will_properties, NULL)) != SUCCESS) {
 					log_info("Malformed CONNECT: check will property failed");
 					return PROTOCOL_ERROR;
-				}
-				for (property *p = cparam->will_properties->next; p != NULL; p = p->next) {
-					switch (p->id) {
-					case PAYLOAD_FORMAT_INDICATOR:
-						if (p->data.p_value.u8 > 1) return PAYLOAD_FORMAT_INVALID;
-						break;
-					case WILL_DELAY_INTERVAL:
-					case MESSAGE_EXPIRY_INTERVAL:
-					case CONTENT_TYPE:
-					case RESPONSE_TOPIC:
-					case CORRELATION_DATA:
-					case USER_PROPERTY:
-						break;
-					default:
-						return PROTOCOL_ERROR;
-					}
 				}
 			} else {
 				log_warn("property decode failed!");
@@ -957,7 +923,7 @@ conn_param_free(conn_param *cparam)
 		log_trace("%p is not freed yet!! %d", cparam, nni_atomic_get(&cparam->refcnt));
 		return;
 	}
-	log_trace("destroy conn param");
+	log_trace("destroy conn param %p %s", cparam, cparam->clientid.body);
 	nng_free(cparam->pro_name.body, cparam->pro_name.len);
 	nng_free(cparam->clientid.body, cparam->clientid.len);
 	nng_free(cparam->will_topic.body, cparam->will_topic.len);
@@ -980,6 +946,15 @@ conn_param_free(conn_param *cparam)
 
 	nng_free(cparam, sizeof(struct conn_param));
 	cparam = NULL;
+}
+
+int
+conn_param_ref(conn_param *cparam)
+{
+	if (cparam == NULL) {
+		return -1;
+	}
+	return nni_atomic_get(&cparam->refcnt);
 }
 
 void
