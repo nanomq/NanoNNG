@@ -81,7 +81,8 @@ struct nano_pipe {
 	nano_sock  *broker;
 	conn_param *conn_param;
 	nni_lmq     rlmq; // only for sending cache
-	uint8_t     reason_code;
+	// disconnect reason; set from cb threads, read while closing
+	nni_atomic_int reason_code;
 	uint32_t    id;  // pipe id of nni_pipe
 	uint16_t    rid; // index of packet ID for resending
 	uint16_t    keepalive;
@@ -226,7 +227,7 @@ nano_pipe_timer_cb(void *arg)
 				nni_id_remove(
 				    &s->cached_sessions, p->pipe->p_id);
 			}
-			p->reason_code = 0x8E;
+			nni_atomic_set(&p->reason_code, 0x8E);
 			nni_mtx_unlock(&sock->lk);
 			nni_pipe_close(p->pipe);
 			return;
@@ -251,7 +252,7 @@ nano_pipe_timer_cb(void *arg)
 		if (qos_backoff > 0) {
 			log_warn("Warning: close pipe %u & kick client due to "
 			         "KeepAlive timeout!", p->id);
-			p->reason_code = NMQ_KEEP_ALIVE_TIMEOUT;
+			nni_atomic_set(&p->reason_code, NMQ_KEEP_ALIVE_TIMEOUT);
 			nni_mtx_unlock(&p->lk);
 			nni_pipe_close(p->pipe);
 			return;
@@ -619,7 +620,7 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	p->id          = nni_pipe_id(pipe);
 	p->rid         = 1;
 	p->pipe        = pipe;
-	p->reason_code = 0x00;
+	nni_atomic_init(&p->reason_code);
 	p->broker      = s;
 	p->ka_refresh  = 0;
 	p->event       = true;
@@ -961,7 +962,8 @@ nano_pipe_close(void *arg)
 	// create disconnect event msg
 	log_warn("%s pipe close!", p->conn_param->clientid.body);
 	if (p->event) {
-		msg = nano_msg_notify(p->conn_param, p->reason_code, 0, false);
+		msg = nano_msg_notify(p->conn_param,
+		    (uint8_t) nni_atomic_get(&p->reason_code), 0, false);
 		if (msg == NULL) {
 			nni_mtx_unlock(&p->lk);
 			nni_mtx_unlock(&s->lk);
@@ -1018,7 +1020,7 @@ nano_pipe_send_cb(void *arg)
 		msg = nni_aio_get_msg(&p->aio_send);
 		nni_msg_free(msg);
 		nni_aio_set_msg(&p->aio_send, NULL);
-		p->reason_code = rv;
+		nni_atomic_set(&p->reason_code, rv);
 		nni_pipe_close(p->pipe);
 		return;
 	}
@@ -1131,8 +1133,8 @@ nano_pipe_recv_cb(void *arg)
 	int         rv = 0;
 
 	if ((rv = nni_aio_result(&p->aio_recv)) != 0) {
-		// unexpected disconnect, dont mind the TSAN here
-		p->reason_code = rv;
+		// unexpected disconnect
+		nni_atomic_set(&p->reason_code, rv);
 		nni_pipe_close(p->pipe);
 		return;
 	}
@@ -1189,10 +1191,11 @@ nano_pipe_recv_cb(void *arg)
 					    prop_data->p_value.u32;
 				}
 			} else {
-				p->reason_code = MQTT_ERR_MALFORMED;
+				nni_atomic_set(
+				    &p->reason_code, MQTT_ERR_MALFORMED);
 			}
 		} else {
-			p->reason_code = 0x00;
+			nni_atomic_set(&p->reason_code, 0x00);
 		}
 		nni_pipe_close(p->pipe);
 		break;
