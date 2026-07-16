@@ -1948,8 +1948,29 @@ conf_plugin_parse_ver2(conf *config, cJSON *jso)
 }
 
 static void
+conf_stream_plugin_destroy(conf_stream_plugin *sp)
+{
+	if (sp == NULL || sp->nodes == NULL) {
+		return;
+	}
+	for (size_t i = 0; i < sp->count; i++) {
+		conf_stream_plugin_node *n = sp->nodes[i];
+		if (!n)
+			continue;
+		nng_strfree(n->path);
+		nng_strfree(n->topic);
+		nng_strfree(n->name);
+		NNI_FREE_STRUCT(n);
+	}
+	cvector_free(sp->nodes);
+	sp->nodes = NULL;
+	sp->count = 0;
+}
+
+static void
 conf_stream_plugin_parse_ver2(conf *config, cJSON *jso)
 {
+	conf_stream_plugin_destroy(&config->stream_plugin);
 	cJSON *node_obj = hocon_get_obj("stream_plugin", jso);
 	cJSON *node_item  = NULL;
 

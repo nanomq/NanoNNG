@@ -745,6 +745,53 @@ conf_log_init(conf_log *log)
 }
 
 static void
+conf_stream_plugin_free(conf *config)
+{
+	if (config == NULL) {
+		return;
+	}
+
+#if defined(SUPP_PLUGIN)
+	if (config->plugin.libs != NULL) {
+		for (size_t i = 0; i < config->plugin.path_sz; i++) {
+			if (config->plugin.libs[i] != NULL) {
+				if (config->plugin.libs[i]->path) {
+					nng_strfree(config->plugin.libs[i]->path);
+				}
+				NNI_FREE_STRUCT(config->plugin.libs[i]);
+			}
+		}
+		nng_free(config->plugin.libs, config->plugin.path_sz * sizeof(struct conf_plugin_lib *));
+		config->plugin.libs = NULL;
+		config->plugin.path_sz = 0;
+	}
+
+	if (config->stream_plugin.nodes != NULL) {
+		for (size_t i = 0; i < config->stream_plugin.count; i++) {
+			conf_stream_plugin_node *node = config->stream_plugin.nodes[i];
+			if (node != NULL) {
+				if (node->path) {
+					nng_strfree(node->path);
+				}
+				if (node->topic) {
+					nng_strfree(node->topic);
+				}
+				if (node->name) {
+					nng_strfree(node->name);
+				}
+				NNI_FREE_STRUCT(node);
+			}
+		}
+		cvector_free(config->stream_plugin.nodes);
+		config->stream_plugin.nodes = NULL;
+		config->stream_plugin.count = 0;
+	}
+
+	memset(&config->stream_inject, 0, sizeof(conf_stream_inject));
+#endif
+}
+
+static void
 conf_log_destroy(conf_log *log)
 {
 	log->level = NNG_LOG_WARN;
@@ -1066,6 +1113,8 @@ conf_init(conf *nanomq_conf)
 	conf_bridge_init(&nanomq_conf->bridge);
 	conf_bridge_init(&nanomq_conf->aws_bridge);
 #if defined(SUPP_PLUGIN)
+	nanomq_conf->stream_plugin.count      = 0;
+	nanomq_conf->stream_plugin.nodes      = NULL;
 	nanomq_conf->stream_inject.enable     = true;
 	nanomq_conf->stream_inject.queue_cap  = 4096;
 	nanomq_conf->stream_inject.worker_num = 1;
@@ -5110,7 +5159,9 @@ conf_fini(conf *nanomq_conf)
 #if defined(ENABLE_LOG)
 	conf_log_destroy(&nanomq_conf->log);
 #endif
-
+#if defined(SUPP_PLUGIN)
+	conf_stream_plugin_free(nanomq_conf);
+#endif
 	conf_tcplist_destroy(&nanomq_conf->tcp_list);
 	conf_tlslist_destroy(&nanomq_conf->tls_list);
 
