@@ -923,7 +923,7 @@ conn_param_free(conn_param *cparam)
 		log_trace("%p is not freed yet!! %d", cparam, nni_atomic_get(&cparam->refcnt));
 		return;
 	}
-	log_trace("destroy conn param %p %s", cparam, cparam->clientid.body);
+	log_trace("destroy conn param %p", cparam);
 	nng_free(cparam->pro_name.body, cparam->pro_name.len);
 	nng_free(cparam->clientid.body, cparam->clientid.len);
 	nng_free(cparam->will_topic.body, cparam->will_topic.len);
