@@ -279,13 +279,19 @@ nng_wr_fr_cb(nng_aio *aio, void *arg, int rv)
 	NNI_ARG_UNUSED(aio);
 	NNI_ARG_UNUSED(rv);
 	nni_http_conn *conn = arg;
+	nni_aio       *fe   = NULL;
 	nni_mtx_lock(&conn->mtx);
 	conn->wr_close = true;
 	if (conn->rd_close) {
-		nni_aio_reap(conn->fe_aio);
+		fe           = conn->fe_aio;
 		conn->fe_aio = NULL;
 	}
 	nni_mtx_unlock(&conn->mtx);
+	// Reaping fe_aio frees the conn (nng_http_fr_cb), so do it only
+	// after we are done touching conn.
+	if (fe != NULL) {
+		nni_aio_reap(fe);
+	}
 }
 
 void
@@ -294,13 +300,19 @@ nng_rd_fr_cb(nng_aio *aio, void *arg, int rv)
 	NNI_ARG_UNUSED(aio);
 	NNI_ARG_UNUSED(rv);
 	nni_http_conn *conn = arg;
+	nni_aio       *fe   = NULL;
 	nni_mtx_lock(&conn->mtx);
 	conn->rd_close = true;
 	if (conn->wr_close) {
-		nni_aio_reap(conn->fe_aio);
+		fe           = conn->fe_aio;
 		conn->fe_aio = NULL;
 	}
 	nni_mtx_unlock(&conn->mtx);
+	// Reaping fe_aio frees the conn (nng_http_fr_cb), so do it only
+	// after we are done touching conn.
+	if (fe != NULL) {
+		nni_aio_reap(fe);
+	}
 }
 
 void
@@ -713,6 +725,8 @@ void
 nni_http_conn_fini(nni_http_conn *conn)
 {
 	nni_aio *fe = NULL;
+	nni_aio *waio;
+	nni_aio *raio;
 
 	nni_mtx_lock(&conn->mtx);
 	// If the aio carries a latched abort (a user operation was canceled
@@ -737,15 +751,20 @@ nni_http_conn_fini(nni_http_conn *conn)
 		conn->fe_aio = NULL;
 	}
 	conn->free = true;
+	waio       = conn->wr_aio;
+	raio       = conn->rd_aio;
 	http_close(conn);
 	nni_mtx_unlock(&conn->mtx);
 
-	if (!nni_aio_busy(conn->rd_aio) && !nni_aio_busy(conn->wr_aio)) {
-		nni_aio_free(conn->wr_aio);
-		nni_aio_free(conn->rd_aio);
+	// Once either aio below is freed or reaped, its free callback may
+	// run and (via fe_aio) free the conn, so past this point only the
+	// local copies may be touched.
+	if (!nni_aio_busy(raio) && !nni_aio_busy(waio)) {
+		nni_aio_free(waio);
+		nni_aio_free(raio);
 	} else {
-		nni_aio_reap(conn->wr_aio);
-		nni_aio_reap(conn->rd_aio);
+		nni_aio_reap(waio);
+		nni_aio_reap(raio);
 	}
 	if (fe != NULL) {
 		nni_aio_reap(fe);
