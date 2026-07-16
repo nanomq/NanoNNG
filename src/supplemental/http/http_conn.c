@@ -712,14 +712,29 @@ nni_http_conn_setopt(nni_http_conn *conn, const char *name, const void *buf,
 void
 nni_http_conn_fini(nni_http_conn *conn)
 {
+	nni_aio *fe = NULL;
+
 	nni_mtx_lock(&conn->mtx);
-	if ((nni_aio_schedule(conn->wr_aio, nng_wr_fr_cb, conn)) != 0) {
-		log_error("Non recoverable error, aio schedule failed!");
-		exit(EXIT_FAILURE);
+	// If the aio carries a latched abort (a user operation was canceled
+	// while the internal aio was idle) or was already stopped, schedule
+	// fails.  No operation is in flight in that case, so simply mark
+	// that side finished instead of treating it as fatal.
+	if (nni_aio_schedule(conn->wr_aio, nng_wr_fr_cb, conn) != 0) {
+		log_debug("conn %p fini: wr_aio aborted/stopped, "
+		          "finishing write side directly", conn);
+		conn->wr_close = true;
 	}
-	if ((nni_aio_schedule(conn->rd_aio, nng_rd_fr_cb, conn)) != 0) {
-		log_error("Non recoverable error, aio schedule failed!");
-		exit(EXIT_FAILURE);
+	if (nni_aio_schedule(conn->rd_aio, nng_rd_fr_cb, conn) != 0) {
+		log_debug("conn %p fini: rd_aio aborted/stopped, "
+		          "finishing read side directly", conn);
+		conn->rd_close = true;
+	}
+	if (conn->wr_close && conn->rd_close && (conn->fe_aio != NULL)) {
+		// Neither free callback will fire, so the final free is on
+		// us.  Reap fe_aio only after we are done touching conn --
+		// its callback frees the conn.
+		fe           = conn->fe_aio;
+		conn->fe_aio = NULL;
 	}
 	conn->free = true;
 	http_close(conn);
@@ -731,6 +746,9 @@ nni_http_conn_fini(nni_http_conn *conn)
 	} else {
 		nni_aio_reap(conn->wr_aio);
 		nni_aio_reap(conn->rd_aio);
+	}
+	if (fe != NULL) {
+		nni_aio_reap(fe);
 	}
 }
 
