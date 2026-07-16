@@ -110,6 +110,7 @@ nni_reap_sys_init(void)
 	if ((rv = nni_thr_init(&reap_thr, reap_worker, NULL)) != 0) {
 		return (rv);
 	}
+	reap_exit = false; // may be left set by a prior nni_reap_sys_fini
 	nni_thr_run(&reap_thr);
 	return (0);
 }
