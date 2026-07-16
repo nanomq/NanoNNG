@@ -956,7 +956,7 @@ nano_pipe_close(void *arg)
 			nni_mtx_unlock(&p->lk);
 			nni_mtx_unlock(&s->lk);
 			nni_aio_set_msg(aio, msg);
-			nni_aio_finish_sync(aio, 0, nni_msg_len(msg));
+			nni_aio_finish(aio, 0, nni_msg_len(msg));
 			return 0;
 		} else {
 			// no enough ctx, so cache to waitlmq
