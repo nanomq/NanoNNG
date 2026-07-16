@@ -1140,10 +1140,11 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 		So((client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true)) != NULL);
 
 		// server recv CONNECT msg.
-		nng_ctx_recv(work->ctx, work->aio);
-
-		nng_msleep(20);
-		So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
+		// recv synchronously: it establishes a happens-before edge
+		// with the broker worker threads, unlike sleeping and
+		// peeking at work->aio (which cannot be waited on, since
+		// nano_ctx_send never finishes it)
+		So(nng_ctx_recvmsg(work->ctx, &rmsg, 0) == 0);
 
 		// we don't need conn_parm in trantest so we just free it.
 		So((cp = nng_msg_get_conn_param(rmsg)) != NULL);
@@ -1163,9 +1164,7 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 
 		// client send sub & server send suback.
 		trantest_mqtt_sub_send(tt->reqsock, client, true);
-		nng_msleep(20);
-		nng_ctx_recv(work->ctx, work->aio);
-		So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
+		So(nng_ctx_recvmsg(work->ctx, &rmsg, 0) == 0);
 		So(nng_msg_get_type(rmsg) == CMD_SUBSCRIBE);
 		// decode sub msg and encode suback msg.
 		So((work->sub_pkt = nng_alloc(sizeof(packet_subscribe))) != NULL);
@@ -1183,9 +1182,7 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 
 		// client send pub msg & server send pub msg.
 		trantest_mqtt_pub(tt->reqsock, false);
-		nng_msleep(20);
-		nng_ctx_recv(work->ctx, work->aio);
-		So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
+		So(nng_ctx_recvmsg(work->ctx, &rmsg, 0) == 0);
 		So(nng_msg_get_type(rmsg) == CMD_PUBLISH);
 		nng_aio_set_msg(work->aio, rmsg);
 		nng_aio_set_prov_data(work->aio, &pipe.id);
@@ -1196,9 +1193,7 @@ trantest_mqtt_broker_send_recv(trantest *tt)
 
 		// client send unsub msg and server recv unsub msg.
 		trantest_mqtt_unsub_send(tt->reqsock, client, true);
-		nng_msleep(20);
-		nng_ctx_recv(work->ctx, work->aio);
-		So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
+		So(nng_ctx_recvmsg(work->ctx, &rmsg, 0) == 0);
 		So(nng_msg_get_type(rmsg) == CMD_UNSUBSCRIBE);
 		So((work->unsub_pkt = nng_alloc(sizeof(packet_unsubscribe))) != NULL);
 		work->msg = rmsg;
@@ -1252,11 +1247,11 @@ trantest_mqttv5_broker_send_recv(trantest *tt)
 		So((client = nng_mqtt_client_alloc(tt->reqsock, &send_callback, true)) != NULL);
 
 		// server recv CONNECT msg.
-		nng_ctx_recv(work->ctx, work->aio);
-
-		// recv aio may be slightly behind.
-		nng_msleep(20);
-		So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
+		// recv synchronously: it establishes a happens-before edge
+		// with the broker worker threads, unlike sleeping and
+		// peeking at work->aio (which cannot be waited on, since
+		// nano_ctx_send never finishes it)
+		So(nng_ctx_recvmsg(work->ctx, &rmsg, 0) == 0);
 
 		// we don't need conn_parm in trantest so we just free it.
 		So((cp = nng_msg_get_conn_param(rmsg)) != NULL);
@@ -1276,9 +1271,7 @@ trantest_mqttv5_broker_send_recv(trantest *tt)
 
 		// client send sub & server send suback.
 		trantest_mqtt_sub_send(tt->reqsock, client, true);
-		nng_msleep(20);
-		nng_ctx_recv(work->ctx, work->aio);
-		So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
+		So(nng_ctx_recvmsg(work->ctx, &rmsg, 0) == 0);
 		So(nng_msg_get_type(rmsg) == CMD_SUBSCRIBE);
 		// decode sub msg and encode suback msg.
 		So((work->sub_pkt = nng_alloc(sizeof(packet_subscribe))) != NULL);
@@ -1296,9 +1289,7 @@ trantest_mqttv5_broker_send_recv(trantest *tt)
 
 		// client send pub msg & server send pub msg.
 		trantest_mqtt_pub(tt->reqsock, false);
-		nng_msleep(100);
-		nng_ctx_recv(work->ctx, work->aio);
-		So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
+		So(nng_ctx_recvmsg(work->ctx, &rmsg, 0) == 0);
 		So(nng_msg_get_type(rmsg) == CMD_PUBLISH);
 		nng_msg_set_cmd_type(rmsg, CMD_PUBLISH_V5);
 		nng_aio_set_msg(work->aio, rmsg);
@@ -1310,9 +1301,7 @@ trantest_mqttv5_broker_send_recv(trantest *tt)
 
 		// client send unsub msg and server recv unsub msg.
 		trantest_mqtt_unsub_send(tt->reqsock, client, true);
-		nng_msleep(100);
-		nng_ctx_recv(work->ctx, work->aio);
-		So((rmsg = nng_aio_get_msg(work->aio)) != NULL);
+		So(nng_ctx_recvmsg(work->ctx, &rmsg, 0) == 0);
 		So(nng_msg_get_type(rmsg) == CMD_UNSUBSCRIBE);
 		So((work->unsub_pkt = nng_alloc(sizeof(packet_unsubscribe))) != NULL);
 		work->msg = rmsg;
