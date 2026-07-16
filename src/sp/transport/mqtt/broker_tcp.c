@@ -1790,6 +1790,12 @@ tcptran_pipe_getopt(
 				    is_sqlite, p->npipe->nano_qos_db, rmsg);
 				nni_qos_db_remove(is_sqlite,
 				    p->npipe->nano_qos_db, p->npipe->p_id, pid);
+				// sqlite get_one returns a solely-owned deserialized
+				// msg; free it on the expired path like the sibling
+				// branch below does, otherwise it leaks
+				if (is_sqlite) {
+					nni_msg_free(rmsg);
+				}
 				continue;
 
 			} else if ((ntime - mtime) >= (long unsigned) qos_duration * 1250) {
