@@ -920,7 +920,6 @@ conn_param_free(conn_param *cparam)
 		return;
 	}
 	if (nni_atomic_dec_nv(&cparam->refcnt) != 0) {
-		log_trace("%p is not freed yet!! %d", cparam, nni_atomic_get(&cparam->refcnt));
 		return;
 	}
 	log_trace("destroy conn param %p", cparam);
