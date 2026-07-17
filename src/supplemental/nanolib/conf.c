@@ -52,6 +52,7 @@ static void conf_web_hook_parse(conf_web_hook *webhook, const char *path);
 static void conf_web_hook_destroy(conf_web_hook *web_hook);
 static void conf_preset_sessions_init(conf_preset_session *session);
 static void conf_nng_proxy_init(conf_nng_bridge *proxy);
+static void conf_nng_proxy_init(conf_nng_bridge *proxy);
 
 #if defined(ENABLE_LOG)
 static void conf_log_init(conf_log *log);
@@ -3104,6 +3105,9 @@ conf_nng_proxy_init(conf_nng_bridge *proxy)
 	proxy->sub_enable = false;
 	proxy->pnodes = NULL;
 	proxy->snodes = NULL;
+
+	proxy->pub_count = 0;
+	proxy->sub_count = 0;
 }
 
 void
