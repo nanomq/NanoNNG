@@ -1129,8 +1129,9 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->web_hook.header_count   = 0;
 	nanomq_conf->web_hook.rules          = NULL;
 	nanomq_conf->web_hook.rule_count     = 0;
-	nanomq_conf->web_hook.cancel_timeout 	 = (nng_duration) 5000;
+	nanomq_conf->web_hook.cancel_timeout = (nng_duration) 5000;
 	nanomq_conf->web_hook.saios          = NULL;
+	nanomq_conf->web_hook.ex_lmq_size    = 0;
 	conf_tls_init(&nanomq_conf->web_hook.tls);
 
 	nanomq_conf->exchange.count           = 0;
@@ -1359,6 +1360,7 @@ print_webhook_conf(conf_web_hook *webhook)
 			}
 		}
 	}
+	log_info("webhook ex lmq size: %zu", webhook->ex_lmq_size);
 }
 
 static void
@@ -4421,6 +4423,10 @@ conf_web_hook_parse(conf_web_hook *webhook, const char *path)
 		} else if ((value = get_conf_value(
 		                line, sz, "web.hook.pool_size")) != NULL) {
 			webhook->pool_size = (size_t) atol(value);
+			free(value);
+		} else if ((value = get_conf_value(
+		                line, sz, "web.hook.ex_lmq_size")) != NULL) {
+			webhook->ex_lmq_size = (size_t) atol(value);
 			free(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "web.hook.cancel_timeout")) != NULL) {

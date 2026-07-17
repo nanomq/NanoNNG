@@ -844,6 +844,7 @@ conf_webhook_parse_ver2(conf *config, cJSON *jso)
 		    webhook, pool_size, "pool_size", jso_webhook);
 		hocon_read_num_base(
 		    webhook, cancel_timeout, "cancel_timeout", jso_webhook);
+		hocon_read_num(webhook, ex_lmq_size, jso_webhook);
 		cJSON    *jso_webhook_tls = hocon_get_obj("ssl", jso_webhook);
 		conf_tls *webhook_tls     = &(webhook->tls);
 		conf_tls_parse_ver2_base(webhook_tls, jso_webhook_tls);
