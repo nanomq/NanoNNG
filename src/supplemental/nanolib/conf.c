@@ -15,6 +15,8 @@
 #include "nng/supplemental/nanolib/log.h"
 #include "nng/supplemental/nanolib/hocon.h"
 #include "nng/supplemental/nanolib/nanolib.h"
+#include "nng/protocol/mqtt/mqtt_parser.h"
+
 #include <ctype.h>
 #include <inttypes.h>
 
