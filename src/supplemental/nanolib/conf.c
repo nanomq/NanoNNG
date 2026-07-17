@@ -3113,15 +3113,21 @@ conf_nng_proxy_init(conf_nng_bridge *proxy)
 void
 conf_bridge_pnode_init(conf_nng_pub_node *node)
 {
+	node->name = NULL;
 	node->pub_url = NULL;
+	node->clientid = NULL;
 	node->pub_list = NULL;
+	node->forwards_count = 0;
 }
 
 void
 conf_bridge_snode_init(conf_nng_sub_node *node)
 {
+	node->name = NULL;
 	node->sub_url = NULL;
+	node->clientid = NULL;
 	node->sub_list = NULL;
+	node->inwards_count = 0;
 }
 
 void
