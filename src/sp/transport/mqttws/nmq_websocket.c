@@ -154,18 +154,20 @@ wstran_pipe_qos_send_cb(void *arg)
 	nni_msg *qmsg;
 	ws_pipe *p     = arg;
 	nni_aio *qsaio = p->qsaio;
-	nni_aio *uaio  = p->user_txaio;
 
 	if ((rv = nni_aio_result(qsaio)) != 0) {
-		log_warn(" send aio error %s", nng_strerror(rv));
 		nni_msg *msg;
+		log_warn(" send aio error %s", nng_strerror(rv));
+		nni_mtx_lock(&p->mtx);
 		if ((msg = nni_aio_get_msg(p->qsaio)) != NULL) {
 			nni_msg_free(msg);
+			nni_aio_set_msg(p->qsaio, NULL);
 		}
-		if (uaio != NULL) {
-			nni_aio_finish_error(uaio, rv);
-		}
-		// wstran_pipe_close(p);
+		nni_mtx_unlock(&p->mtx);
+		// qsaio only ever carries broker-generated QoS ACKs, never a user
+		// send.  Finishing p->user_txaio here (unlocked) raced the locked
+		// finish in wstran_pipe_send_cb and double-dispatched the same
+		// aio's completion task -> nni_list_append panic / stuck task_busy.
 		return;
 	}
 
