@@ -713,13 +713,15 @@ void
 nni_http_conn_fini(nni_http_conn *conn)
 {
 	nni_mtx_lock(&conn->mtx);
+	// A stopped aio (the peer connection is being torn down concurrently)
+	// makes nni_aio_schedule fail; that is not fatal here -- the aio is then
+	// not busy and is freed directly below.  Killing the whole broker on a
+	// routine teardown race is wrong, so log and continue.
 	if ((nni_aio_schedule(conn->wr_aio, nng_wr_fr_cb, conn)) != 0) {
-		log_error("Non recoverable error, aio schedule failed!");
-		exit(EXIT_FAILURE);
+		log_warn("wr_aio schedule failed during http conn fini");
 	}
 	if ((nni_aio_schedule(conn->rd_aio, nng_rd_fr_cb, conn)) != 0) {
-		log_error("Non recoverable error, aio schedule failed!");
-		exit(EXIT_FAILURE);
+		log_warn("rd_aio schedule failed during http conn fini");
 	}
 	conn->free = true;
 	http_close(conn);
