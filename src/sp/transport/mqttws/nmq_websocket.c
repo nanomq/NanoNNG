@@ -604,6 +604,12 @@ done:
 	// Return the first msg this time
 	nni_aio_set_msg(uaio, smsg);
 skip:
+	// Release ownership of the user recv aio before finishing it, so a
+	// concurrent wstran_pipe_recv_cancel sees user_rxaio != aio and does
+	// not finish it a second time (mirrors wstran_pipe_send_cb).
+	if (uaio == p->user_rxaio) {
+		p->user_rxaio = NULL;
+	}
 	nni_aio_set_output(uaio, 0, p);
 	nni_aio_finish(uaio, p->err_code, 0);
 	nni_mtx_unlock(&p->mtx);
@@ -627,6 +633,9 @@ reset:
 		rv = NNG_ECONNABORTED;
 		nni_aio_finish_error(p->ep_aio, rv);
 	} else if (uaio != NULL) {
+		if (uaio == p->user_rxaio) {
+			p->user_rxaio = NULL;
+		}
 		nni_aio_set_msg(uaio, NULL);
 		nni_aio_finish_error(uaio,
 		    p->err_code == MQTT_SUCCESS ? rv : (int) p->err_code);
@@ -659,8 +668,13 @@ wstran_pipe_recv_cancel(nni_aio *aio, void *arg, int rv)
 	}
 	p->user_rxaio = NULL;
 	nni_aio_abort(p->rxaio, rv);
-	// nni_aio_finish_error(aio, rv);
 	nni_mtx_unlock(&p->mtx);
+	// The rxaio-completion path finishes the user recv aio only while
+	// p->user_rxaio still points at it; we just cleared it, so complete it
+	// here.  Otherwise its task_busy never drains and a later
+	// nni_aio_stop(&p->aio_recv) during pipe teardown -- run on the single
+	// nng reap thread -- blocks forever, halting all pipe reaping.
+	nni_aio_finish_error(aio, rv);
 }
 
 static void
@@ -707,6 +721,10 @@ wstran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 	p->user_txaio = NULL;
 	nni_aio_abort(p->txaio, rv);
 	nni_mtx_unlock(&p->mtx);
+	// See wstran_pipe_recv_cancel: the send-completion path only finishes
+	// the user tx aio while p->user_txaio still points at it, so finish it
+	// here now that we cleared it, otherwise nni_aio_stop() on it hangs.
+	nni_aio_finish_error(aio, rv);
 }
 
 static inline void
