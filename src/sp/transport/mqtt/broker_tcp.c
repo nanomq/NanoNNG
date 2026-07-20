@@ -946,43 +946,7 @@ tcptran_pipe_recv_cb(void *arg)
 		    qmsg, packet_id, reason_code, prop, p->pro_ver);
 		property_free(prop);
 		nni_mqtt_pubres_header_encode(qmsg, ack_cmd);
-		// TODO move ack msg logic to protocol layer for safety.
-		if (p->busy == false) {
-			iov[0].iov_len = nni_msg_header_len(qmsg);
-			iov[0].iov_buf = nni_msg_header(qmsg);
-			iov[1].iov_len = nni_msg_len(qmsg);
-			iov[1].iov_buf = nni_msg_body(qmsg);
-			p->busy        = true;
-			nni_aio_set_msg(p->qsaio, qmsg);
-			// send ACK down...
-			nni_aio_set_iov(p->qsaio, 2, iov);
-			nng_stream_send(p->conn, p->qsaio);
-		} else {
-			log_debug("resend ack later");
-			if (nni_lmq_full(&p->rslmq)) {
-				// Make space for the new message.
-				if (nni_lmq_cap(&p->rslmq) <= NANO_MAX_QOS_PACKET) {
-					if ((rv = nni_lmq_resize(&p->rslmq,
-					         nni_lmq_cap(&p->rslmq) * 2)) == 0) {
-						if (nni_lmq_put(&p->rslmq, qmsg) != 0)
-							nni_msg_free(qmsg);
-					} else {
-						// memory error.
-						nni_msg_free(qmsg);
-						log_error("Failed to resize ACK lmq %d", rv);
-					}
-				} else {
-					nni_msg *old;
-					(void) nni_lmq_get(&p->rslmq, &old);
-					nni_msg_free(old);
-					if (nni_lmq_put(&p->rslmq, qmsg) != 0)
-						nni_msg_free(qmsg);
-				}
-			} else {
-				if (nni_lmq_put(&p->rslmq, qmsg) != 0)
-					nni_msg_free(qmsg);
-			}
-		}
+		nni_aio_set_prov_data(aio, qmsg);
 		ack = false;
 	}
 

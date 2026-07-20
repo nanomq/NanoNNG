@@ -507,8 +507,7 @@ done:
 			ack     = true;
 		} else if (cmd == CMD_PUBACK || cmd == CMD_PUBCOMP) {
 			if ((rv = nni_mqtt_pubres_decode(vmsg, &packet_id,
-			         &reason_code, &prop, p->ws_param->pro_ver)) !=
-			    0) {
+			         &reason_code, &prop, p->ws_param->pro_ver)) != 0) {
 				log_warn(
 				    "decode PUBACK or PUBCOMP variable header "
 				    "failed!");
@@ -568,40 +567,7 @@ done:
 			nni_mqtt_msgack_encode(qmsg, packet_id, reason_code,
 			    prop, p->ws_param->pro_ver);
 			nni_mqtt_pubres_header_encode(qmsg, ack_cmd);
-			if (!nni_aio_busy(p->qsaio)) {
-				iov[0].iov_len = nni_msg_header_len(qmsg);
-				iov[0].iov_buf = nni_msg_header(qmsg);
-				iov[1].iov_len = nni_msg_len(qmsg);
-				iov[1].iov_buf = nni_msg_body(qmsg);
-				nni_aio_set_msg(p->qsaio, qmsg);
-				// send ACK down...
-				nni_aio_set_iov(p->qsaio, 2, iov);
-				nng_stream_send(p->ws, p->qsaio);
-			} else {
-				if (nni_lmq_full(&p->rslmq)) {
-					// Make space for the new message.
-					if (nni_lmq_cap(&p->rslmq) <= NANO_MAX_QOS_PACKET) {
-						if ((rv = nni_lmq_resize(&p->rslmq,
-						         nni_lmq_cap(&p->rslmq) * 2)) == 0) {
-							if (nni_lmq_put(&p->rslmq, qmsg) != 0)
-								nni_msg_free(qmsg);
-						} else {
-							log_warn("QoS Ack msg lost!");
-							nni_msg_free(qmsg);
-						}
-					} else {
-						nni_msg *old;
-						(void) nni_lmq_get(&p->rslmq, &old);
-						log_warn("QoS Ack msg lost!");
-						nni_msg_free(old);
-						if (nni_lmq_put(&p->rslmq, qmsg) != 0)
-							nni_msg_free(qmsg);
-					}
-				} else {
-					if (nni_lmq_put(&p->rslmq, qmsg) != 0)
-						nni_msg_free(qmsg);
-				}
-			}
+			nni_aio_set_prov_data(uaio, qmsg);
 			ack = false;
 			
 		}
