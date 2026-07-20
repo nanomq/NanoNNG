@@ -91,7 +91,6 @@ struct tlstran_ep {
 static void tlstran_pipe_send_start(tlstran_pipe *);
 static void tlstran_pipe_recv_start(tlstran_pipe *);
 static void tlstran_pipe_send_cb(void *);
-static void tlstran_pipe_qos_send_cb(void *);
 static void tlstran_pipe_recv_cb(void *);
 static void tlstran_pipe_nego_cb(void *);
 static void tlstran_ep_fini(void *);
