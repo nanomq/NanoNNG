@@ -87,7 +87,6 @@ struct tcptran_ep {
 static void tcptran_pipe_send_start(tcptran_pipe *);
 static void tcptran_pipe_recv_start(tcptran_pipe *);
 static void nmq_tcptran_pipe_send_cb(void *);
-static void nmq_tcptran_pipe_qos_send_cb(void *);
 static void nmq_tcptran_pipe_rp_send_cb(void *arg);
 static void tcptran_pipe_recv_cb(void *);
 static void tcptran_pipe_nego_cb(void *);
@@ -189,7 +188,6 @@ tcptran_pipe_init(void *arg, nni_pipe *npipe)
 	p->conn_buf = NULL;
 	p->busy     = false;
 
-	nni_lmq_init(&p->rslmq, 16);
 	p->qos_buf = nng_zalloc(16 + NNI_NANO_MAX_PACKET_SIZE);
 	p->npipe->subinfol = nni_zalloc(sizeof(nni_list));
 	if (p->npipe->subinfol == NULL) {

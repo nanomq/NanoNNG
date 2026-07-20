@@ -1363,7 +1363,6 @@ wstran_pipe_fini(void *arg)
 	nni_aio_free(p->txaio);
 	nni_mtx_fini(&p->mtx);
 	nni_lmq_fini(&p->recvlmq);
-	nni_lmq_fini(&p->rslmq);
 	log_trace(" ************ wstran_pipe_fini [%p] ************ ", p);
 	NNI_FREE_STRUCT(p);
 }
