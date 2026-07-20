@@ -1141,15 +1141,32 @@ nano_pipe_recv_cb(void *arg)
 	log_trace(" ######### nano_pipe_recv_cb ######### ");
 	p->ka_refresh = 0;
 	msg           = nni_aio_get_msg(&p->aio_recv);
+	nni_aio_set_msg(&p->aio_recv, NULL);
 	if (msg == NULL) {
 		goto end;
 	}
 	if (nni_atomic_get_bool(&p->closed)) {
+		// If we are closed, then we can't return data.
+		// This drops DISCONNECT packet.
 		nni_msg_free(msg);
+		log_trace("pipe is closed abruptly!");
 		return;
 	}
-
-	// ttl = nni_atomic_get(&s->ttl);
+	nni_mtx_lock(&p->lk);
+	nni_msg *ack_msg = NULL;
+	if ((ack_msg = nni_aio_get_prov_data(&p->aio_recv)) != NULL) {
+		nni_aio_set_prov_data(&p->aio_recv, NULL);
+		if (!p->busy) {
+			p->busy = true;
+			nni_aio_set_msg(&p->aio_send, ack_msg);
+			nni_pipe_send(p->pipe, &p->aio_send);
+		} else {
+			if (0 != nni_lmq_put(&p->rlmq, ack_msg)) {
+				log_warn("Warning! ack msg lost due to busy socket");
+				nni_msg_free(ack_msg);
+			}
+		}
+	}
 	nni_msg_set_pipe(msg, p->id);
 	ptr    = nni_msg_body(msg);
 	cparam = p->conn_param;
@@ -1172,7 +1189,7 @@ nano_pipe_recv_cb(void *arg)
 		if (p->conn_param) {
 			p->conn_param->will_flag = 0;
 		} else {
-			nni_pipe_close(p->pipe);
+			// nni_pipe_close(p->pipe);
 			break;
 		}
 		if (p->conn_param->pro_ver == MQTT_VERSION_V5) {
@@ -1197,7 +1214,7 @@ nano_pipe_recv_cb(void *arg)
 		} else {
 			nni_atomic_set(&p->reason_code, 0x00);
 		}
-		nni_pipe_close(p->pipe);
+		// pipe close must be called without lock
 		break;
 	case CMD_CONNACK:
 	case CMD_PUBLISH:
@@ -1207,16 +1224,14 @@ nano_pipe_recv_cb(void *arg)
 	case CMD_PUBACK:
 	case CMD_PUBCOMP:
 		// rid marks packet ID of resend QoS msg
-		nni_mtx_lock(&p->lk);
 		NNI_GET16(ptr, ackid);
 		p->rid = ackid + 1;
-		nni_mtx_unlock(&p->lk);
 	case CMD_CONNECT:
 	case CMD_PUBREC:
 	case CMD_PUBREL:
+		nni_mtx_unlock(&p->lk);
 		goto drop;
 	case CMD_PINGREQ:
-		nni_mtx_lock(&p->lk);
 		nni_msg_clone(s->pingmsg);
 		if (!p->busy) {
 			p->busy = true;
@@ -1230,21 +1245,11 @@ nano_pipe_recv_cb(void *arg)
 		nni_mtx_unlock(&p->lk);
 		goto drop;
 	default:
+		nni_mtx_unlock(&p->lk);
 		goto drop;
 	}
+	nni_mtx_unlock(&p->lk);
 	nni_mtx_lock(&s->lk);
-	if (nni_atomic_get_bool(&p->closed)) {
-		// If we are closed, then we can't return data.
-		// This drops DISCONNECT packet.
-		nni_aio_set_msg(&p->aio_recv, NULL);
-		nni_msg_free(msg);
-		if (type == CMD_SUBSCRIBE || type == CMD_UNSUBSCRIBE ||
-		    type == CMD_CONNACK || type == CMD_PUBLISH)
-			conn_param_free(cparam);
-		log_trace("pipe is closed abruptly!");
-		nni_mtx_unlock(&s->lk);
-		return;
-	}
 
 	if ((ctx = nni_list_first(&s->recvq)) == NULL) {
 		// No one waiting to receive yet, holding pattern.
@@ -1277,9 +1282,12 @@ nano_pipe_recv_cb(void *arg)
 	ctx->pipe_id = p->id;
 	log_trace("currently processing pipe_id: %d", p->id);
 	nni_mtx_unlock(&s->lk);
-
-	// schedule another receive
-	nni_pipe_recv(p->pipe, &p->aio_recv);
+	if (type == CMD_DISCONNECT) {
+		nni_pipe_close(p->pipe);
+	} else {
+		// schedule another receive
+		nni_pipe_recv(p->pipe, &p->aio_recv);
+	}
 	nni_aio_set_msg(aio, msg);
 	nni_aio_finish(aio, 0, nni_msg_len(msg));
 	log_trace("end of nano_pipe_recv_cb %p", ctx);
