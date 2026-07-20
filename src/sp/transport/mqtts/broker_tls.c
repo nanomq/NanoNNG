@@ -926,50 +926,13 @@ tlstran_pipe_recv_cb(void *arg)
 			goto recv_error;
 		}
 		// TODO set reason code or property here if necessary
-
 		nni_msg_set_cmd_type(qmsg, ack_cmd);
 		nni_mqtt_msgack_encode(
 		    qmsg, packet_id, reason_code, prop, p->pro_ver);
 		property_free(prop);
 		nni_mqtt_pubres_header_encode(qmsg, ack_cmd);
-		// if (prop != NULL) {
-		// nni_msg_proto_set_property(qmsg, prop);
-		// }
-		if (p->busy == false) {
-			nni_msg_insert(qmsg, nni_msg_header(qmsg),
-			    nni_msg_header_len(qmsg));
-			iov[0].iov_len = nni_msg_len(qmsg);
-			iov[0].iov_buf = nni_msg_body(qmsg);
-			p->busy        = true;
-			nni_aio_set_msg(p->qsaio, qmsg);
-			// send ACK down...
-			nni_aio_set_iov(p->qsaio, 1, iov);
-			nng_stream_send(p->conn, p->qsaio);
-			log_trace("QoS ACK msg sent!");
-		} else {
-			if (nni_lmq_full(&p->rslmq)) {
-				// Make space for the new message. TODO add max
-				// limit of msgq len in conf
-				if (nni_lmq_cap(&p->rslmq) <=
-				    NANO_MAX_QOS_PACKET) {
-					if ((rv = nni_lmq_resize(&p->rslmq,
-					         nni_lmq_cap(&p->rslmq) *
-					             2)) == 0) {
-						nni_lmq_put(&p->rslmq, qmsg);
-					} else {
-						// memory error.
-						nni_msg_free(qmsg);
-					}
-				} else {
-					nni_msg *old;
-					(void) nni_lmq_get(&p->rslmq, &old);
-					nni_msg_free(old);
-					nni_lmq_put(&p->rslmq, qmsg);
-				}
-			} else {
-				nni_lmq_put(&p->rslmq, qmsg);
-			}
-		}
+		nni_aio_set_prov_data(aio, qmsg);
+		nni_aio_set_prov_data(aio, qmsg);
 		ack = false;
 	}
 
