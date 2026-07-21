@@ -1157,8 +1157,7 @@ nano_pipe_recv_cb(void *arg)
 		return;
 	}
 	nni_mtx_lock(&p->lk);
-	nni_msg *ack_msg = NULL;
-	if ((ack_msg = nni_aio_get_prov_data(&p->aio_recv)) != NULL) {
+	if (ack_msg  != NULL) {
 		nni_aio_set_prov_data(&p->aio_recv, NULL);
 		if (!p->busy) {
 			p->busy = true;
