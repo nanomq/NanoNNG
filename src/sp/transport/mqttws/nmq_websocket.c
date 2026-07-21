@@ -451,6 +451,10 @@ done:
 		uint16_t  packet_id   = 0;
 		uint8_t   cmd         = nni_msg_cmd_type(vmsg);
 		if (cmd == CMD_PUBLISH) {
+			// timestamp at receipt, mirroring broker_tcp/broker_tls:
+			// the qos db's retry age gate relies on it to age
+			// stored msgs
+			nni_msg_set_timestamp(vmsg, nng_clock());
 			qos_pac = nni_msg_get_pub_qos(vmsg);
 			if (qos_pac > 0) {
 				// flow control, check rx_max
