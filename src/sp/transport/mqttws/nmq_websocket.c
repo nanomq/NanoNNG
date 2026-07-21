@@ -90,6 +90,7 @@ struct ws_pipe {
 	size_t      qlength; // length of qos_buf
 	size_t      wantrxhead;
 	nni_lmq     recvlmq;
+	nni_lmq     rslmq;	// Only for QoS msg ack cache
 	conf       *conf;
 	nni_msg    *tmp_msg;	// Serving as recv buffer, convergence all msg from nng ws
 	nni_aio    *user_txaio;
@@ -97,6 +98,7 @@ struct ws_pipe {
 	nni_aio    *ep_aio;
 	nni_aio    *txaio;
 	nni_aio    *rxaio;
+	nni_aio    *qsaio;
 	nni_pipe   *npipe;
 	conn_param *ws_param;
 	nng_stream *ws;
@@ -505,7 +507,8 @@ done:
 			ack     = true;
 		} else if (cmd == CMD_PUBACK || cmd == CMD_PUBCOMP) {
 			if ((rv = nni_mqtt_pubres_decode(vmsg, &packet_id,
-			         &reason_code, &prop, p->ws_param->pro_ver)) != 0) {
+			         &reason_code, &prop, p->ws_param->pro_ver)) !=
+			    0) {
 				log_warn(
 				    "decode PUBACK or PUBCOMP variable header "
 				    "failed!");
@@ -565,7 +568,40 @@ done:
 			nni_mqtt_msgack_encode(qmsg, packet_id, reason_code,
 			    prop, p->ws_param->pro_ver);
 			nni_mqtt_pubres_header_encode(qmsg, ack_cmd);
-			nni_aio_set_prov_data(uaio, qmsg);
+			if (!nni_aio_busy(p->qsaio)) {
+				iov[0].iov_len = nni_msg_header_len(qmsg);
+				iov[0].iov_buf = nni_msg_header(qmsg);
+				iov[1].iov_len = nni_msg_len(qmsg);
+				iov[1].iov_buf = nni_msg_body(qmsg);
+				nni_aio_set_msg(p->qsaio, qmsg);
+				// send ACK down...
+				nni_aio_set_iov(p->qsaio, 2, iov);
+				nng_stream_send(p->ws, p->qsaio);
+			} else {
+				if (nni_lmq_full(&p->rslmq)) {
+					// Make space for the new message.
+					if (nni_lmq_cap(&p->rslmq) <= NANO_MAX_QOS_PACKET) {
+						if ((rv = nni_lmq_resize(&p->rslmq,
+						         nni_lmq_cap(&p->rslmq) * 2)) == 0) {
+							if (nni_lmq_put(&p->rslmq, qmsg) != 0)
+								nni_msg_free(qmsg);
+						} else {
+							log_warn("QoS Ack msg lost!");
+							nni_msg_free(qmsg);
+						}
+					} else {
+						nni_msg *old;
+						(void) nni_lmq_get(&p->rslmq, &old);
+						log_warn("QoS Ack msg lost!");
+						nni_msg_free(old);
+						if (nni_lmq_put(&p->rslmq, qmsg) != 0)
+							nni_msg_free(qmsg);
+					}
+				} else {
+					if (nni_lmq_put(&p->rslmq, qmsg) != 0)
+						nni_msg_free(qmsg);
+				}
+			}
 			ack = false;
 			
 		}
@@ -1286,6 +1322,7 @@ wstran_pipe_stop(void *arg)
 
 	nni_aio_stop(p->rxaio);
 	nni_aio_stop(p->txaio);
+	nni_aio_stop(p->qsaio);
 }
 
 static int
@@ -1321,6 +1358,7 @@ wstran_pipe_init(void *arg, nni_pipe *pipe)
 	}
 	NNI_LIST_INIT(p->npipe->subinfol, struct subinfo, node);
 	nni_lmq_init(&p->recvlmq, 1024);
+	nni_lmq_init(&p->rslmq, 1024);
 	// the size limit of qos_buf reserve 1 byte for property length
 	p->qlength = 16 + NNI_NANO_MAX_PACKET_SIZE;
 	if (!p->conf->sqlite.enable && pipe->nano_qos_db == NULL) {
@@ -1361,8 +1399,11 @@ wstran_pipe_fini(void *arg)
 	nng_stream_free(p->ws);
 	nni_aio_free(p->rxaio);
 	nni_aio_free(p->txaio);
+	nni_aio_wait(p->qsaio);
+	nni_aio_free(p->qsaio);
 	nni_mtx_fini(&p->mtx);
 	nni_lmq_fini(&p->recvlmq);
+	nni_lmq_fini(&p->rslmq);
 	log_trace(" ************ wstran_pipe_fini [%p] ************ ", p);
 	NNI_FREE_STRUCT(p);
 }
@@ -1396,10 +1437,13 @@ wstran_pipe_close(void *arg)
 		p->npipe->subinfol = NULL;
 	}
 
+	nni_lmq_flush(&p->rslmq);
 	conn_param_free(p->ws_param);
 	nni_mtx_unlock(&p->mtx);
 	nng_stream_close(p->ws);
 	nni_aio_close(p->rxaio);
+	nni_aio_abort(p->qsaio, NNG_ECANCELED);
+	nni_aio_close(p->qsaio);
 	nni_aio_close(p->txaio);
 }
 
@@ -1416,6 +1460,7 @@ wstran_pipe_alloc(ws_pipe **pipep, void *ws)
 
 	// Initialize AIOs.
 	if (((rv = nni_aio_alloc(&p->txaio, wstran_pipe_send_cb, p)) != 0) ||
+	    ((rv = nni_aio_alloc(&p->qsaio, wstran_pipe_qos_send_cb, p)) != 0) ||
 	    ((rv = nni_aio_alloc(&p->rxaio, wstran_pipe_recv_cb, p)) != 0)) {
 		wstran_pipe_fini(p);
 		return (rv);
