@@ -8,6 +8,7 @@ if (NNG_PROTO_MQTT_BROKER)
     nng_sources_if(NNG_PROTO_MQTT_BROKER mqtt_parser.c nmq_mqtt.c auth_http.c)
     nng_headers_if(NNG_PROTO_MQTT_BROKER nng/protocol/mqtt/mqtt_parser.h nng/protocol/mqtt/nmq_mqtt.h)
     nng_defines_if(NNG_PROTO_MQTT_BROKER NNG_HAVE_MQTT_BROKER)
+    nng_test(nmq_mqtt_test)
 endif ()
 
 nng_test(mqtt_parser_test)

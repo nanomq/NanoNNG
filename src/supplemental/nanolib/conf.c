@@ -922,6 +922,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->await_rel_timeout = 10;
 
 	nanomq_conf->allow_anonymous = true;
+	nanomq_conf->log_dropped_messages = true;
 	nanomq_conf->ipc_internal    = true;
 
 #ifdef ACL_SUPP
@@ -1367,6 +1368,8 @@ print_conf(conf *nanomq_conf)
 	log_info("client_max_packet_size:   %d",
 	    nanomq_conf->client_max_packet_size);
 	log_info("max_mqueue_len:           %d", nanomq_conf->msq_len);
+	log_info("log_dropped_messages:     %s",
+	    nanomq_conf->log_dropped_messages ? "true" : "false");
 	log_info("max_inflight_window:      %d", nanomq_conf->max_inflight_window);
 	log_info("max_awaiting_rel:         %ds", nanomq_conf->max_awaiting_rel);
 	log_info("await_rel_timeout:        %ds", nanomq_conf->await_rel_timeout);

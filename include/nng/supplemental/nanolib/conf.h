@@ -648,6 +648,7 @@ struct conf {
 	char      *conf_file;		// config path
 	char      *url;
 	bool       enable;
+	bool       log_dropped_messages;
 	size_t     property_size;
 	size_t     msq_len;
     uint16_t   max_topic_alias;

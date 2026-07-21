@@ -27,6 +27,9 @@ NNG_DECL int nng_nmq_tcp0_open(nng_socket *);
 
 #define NMQ_OPT_MQTT_PIPES "mqtt-clients-pipes"
 #define NMQ_OPT_MQTT_QOS_DB "mqtt-clients-qos-db"
+#define NMQ_OPT_MQTT_MSGS_DROPPED "mqtt-messages-dropped"
+#define NMQ_OPT_MQTT_MSGS_SENT "mqtt-messages-sent"
+#define NMQ_OPT_MQTT_LOG_DROPS "mqtt-log-drops"
 
 #ifdef __cplusplus
 }

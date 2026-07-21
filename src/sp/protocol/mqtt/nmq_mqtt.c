@@ -37,7 +37,6 @@ static int         nano_pipe_close(void *);
 static inline void close_pipe(nano_pipe *p);
 
 static uint16_t tmp_id = 1000;
-static uint32_t rotate = 0;
 // huge context/ dynamic context?
 struct nano_ctx {
 	nano_sock *sock;
@@ -55,6 +54,10 @@ struct nano_sock {
 	nni_mtx        lk;
 	nni_msg       *pingmsg;
 	nni_atomic_int ttl;
+	nni_atomic_u64 msgs_dropped;
+	nni_atomic_u64 msgs_sent;
+	nni_atomic_bool log_drops;
+	bool           no_ctx_warned;
 	nni_id_map     pipes;
 	nni_id_map     cached_sessions;
 	nni_lmq        waitlmq;   // this is for receving
@@ -78,12 +81,14 @@ struct nano_pipe {
 	conn_param *conn_param;
 	nni_lmq     rlmq; // only for sending cache
 	uint8_t     reason_code;
+	uint8_t     send_cmd;
 	uint32_t    id;  // pipe id of nni_pipe
 	uint16_t    rid; // index of packet ID for resending
 	uint16_t    keepalive;
 	uint16_t 	ka_refresh; // ka_refresh count how many times the keepalive
 	                     	// timer has been triggered
 	bool          busy;
+	bool          queue_full_warned;
 	bool          event; // indicates if exposure disconnect event is valid
 	void         *tree;  // root node of db tree
 	void         *nano_qos_db; // 'sqlite' or 'nni_id_hash_map'
@@ -272,6 +277,7 @@ nano_pipe_timer_cb(void *arg)
 			nni_aio_set_prov_data(
 			    &p->aio_send, (void *) (uintptr_t) real_pid);
 			nni_aio_set_msg(&p->aio_send, rmsg);
+			p->send_cmd = nni_msg_get_type(rmsg);
 			log_info("resending qos msg id %u to pipe %u",
 				pid, p->id);
 			nni_pipe_send(p->pipe, &p->aio_send);
@@ -357,6 +363,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	nano_pipe *p;
 	nni_msg   *msg;
 	int        rv;
+	bool       warn_queue_full = false;
 	uint32_t   pipe = 0;
 	uint32_t  *pipeid;
 
@@ -410,7 +417,8 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		nni_mtx_unlock(&s->lk);
 		nni_aio_set_msg(aio, NULL);
 		if (qos_db == NULL) {
-			log_warn("pipe id %u is gone, pub failed", pipe);
+			nni_atomic_inc64(&s->msgs_dropped);
+			log_debug("pipe id %u is gone, pub dropped", pipe);
 		}
 		nni_msg_free(msg);
 		return;
@@ -423,6 +431,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	if (!p->busy) {
 		p->busy = true;
 		nni_aio_set_msg(&p->aio_send, msg);
+		p->send_cmd = nni_msg_get_type(msg);
 		nni_pipe_send(p->pipe, &p->aio_send);
 		nni_mtx_unlock(&p->lk);
 		nni_aio_set_msg(aio, NULL);
@@ -441,17 +450,25 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		if (nni_lmq_cap(&p->rlmq) <= NANO_MAX_QOS_PACKET) {
 			if ((rv = nano_nni_lmq_resize(
 			         &p->rlmq, nni_lmq_cap(&p->rlmq) * 2)) != 0) {
-				log_warn("warning msg dropped!");
 				nni_msg *old;
 				nni_lmq_get(&p->rlmq, &old);
 				nni_msg_free(old);
+				nni_atomic_inc64(&s->msgs_dropped);
+				warn_queue_full = nni_atomic_get_bool(&s->log_drops) &&
+				    !p->queue_full_warned;
+				p->queue_full_warned = true;
 			}
 		} else {
-			// Warning msg lost due to reach the limit of lmq
-			log_warn(
-			    "Warning: msg lost due to reach the limit of lmq");
-			nni_msg_free(msg);
+			bool warn = nni_atomic_get_bool(&s->log_drops) &&
+			    !p->queue_full_warned;
+			p->queue_full_warned = true;
+			nni_atomic_inc64(&s->msgs_dropped);
 			nni_mtx_unlock(&p->lk);
+			if (warn) {
+				log_warn("pipe %u egress queue is full; "
+				         "subsequent drops will not be logged", pipe);
+			}
+			nni_msg_free(msg);
 			nni_aio_set_msg(aio, NULL);
 			return;
 		}
@@ -460,6 +477,10 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	nni_lmq_put(&p->rlmq, msg);
 
 	nni_mtx_unlock(&p->lk);
+	if (warn_queue_full) {
+		log_warn("pipe %u egress queue resize failed; "
+		         "subsequent drops will not be logged", pipe);
+	}
 	nni_aio_set_msg(aio, NULL);
 	return;
 }
@@ -504,6 +525,11 @@ nano_sock_init(void *arg, nni_sock *sock)
 
 	nni_atomic_init(&s->ttl);
 	nni_atomic_set(&s->ttl, 8);
+	nni_atomic_init64(&s->msgs_dropped);
+	nni_atomic_init64(&s->msgs_sent);
+	nni_atomic_init_bool(&s->log_drops);
+	nni_atomic_set_bool(&s->log_drops, true);
+	s->no_ctx_warned = false;
 
 	(void) nano_ctx_init(&s->ctx, s);
 
@@ -612,9 +638,11 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	p->rid         = 1;
 	p->pipe        = pipe;
 	p->reason_code = 0x00;
+	p->send_cmd    = 0;
 	p->broker      = s;
 	p->ka_refresh  = 0;
 	p->event       = true;
+	p->queue_full_warned = false;
 	p->tree        = sock->db;
 	if (p->conn_param != NULL)
 		p->keepalive   = p->conn_param->keepalive_mqtt;
@@ -998,10 +1026,14 @@ nano_pipe_send_cb(void *arg)
 		return;
 	}
 	nni_mtx_lock(&p->lk);
+	if (p->send_cmd == CMD_PUBLISH && nni_aio_count(&p->aio_send) > 0) {
+		nni_atomic_inc64(&p->broker->msgs_sent);
+	}
 
 	nni_aio_set_prov_data(&p->aio_send, 0);
 	if (nni_lmq_get(&p->rlmq, &msg) == 0) {
 		nni_aio_set_msg(&p->aio_send, msg);
+		p->send_cmd = nni_msg_get_type(msg);
 		log_trace("rlmq msg resending! %ld msgs left\n",
 		    nni_lmq_len(&p->rlmq));
 		nni_pipe_send(p->pipe, &p->aio_send);
@@ -1193,6 +1225,7 @@ nano_pipe_recv_cb(void *arg)
 		if (!p->busy) {
 			p->busy = true;
 			nni_aio_set_msg(&p->aio_send, s->pingmsg);
+			p->send_cmd = nni_msg_get_type(s->pingmsg);
 			nni_pipe_send(p->pipe, &p->aio_send);
 		} else {
 			if (nni_lmq_put(&p->rlmq, s->pingmsg) != 0) {
@@ -1219,6 +1252,9 @@ nano_pipe_recv_cb(void *arg)
 	}
 
 	if ((ctx = nni_list_first(&s->recvq)) == NULL) {
+		bool warn = nni_atomic_get_bool(&s->log_drops) &&
+		    !s->no_ctx_warned;
+		s->no_ctx_warned = true;
 		// No one waiting to receive yet, holding pattern.
 		// Dont use waitlmq cache, cause back-pressure.
 		if (!nni_list_active(&s->recvpipes, p)) {
@@ -1232,11 +1268,8 @@ nano_pipe_recv_cb(void *arg)
 				conn_param_free(cparam);
 		}
 		nni_mtx_unlock(&s->lk);
-		// this gonna cause broker lagging, so we reduce outputs 1 in 256
-		rotate ++;
-		if (rotate >>8 & 0x01) {
+		if (warn) {
 			log_warn("no ctx found!! create more ctxs!");
-			rotate  = rotate >> 8 ;
 		}
 		return;
 	}
@@ -1292,6 +1325,47 @@ nano_sock_get_idmap(void *arg, void *buf, size_t *szp, nni_opt_type t)
 	nano_sock *s = arg;
 
 	return (nni_copyout_ptr(&s->pipes, buf, szp, t));
+}
+
+static int
+nano_sock_get_msgs_dropped(void *arg, void *buf, size_t *szp, nni_opt_type t)
+{
+	nano_sock *s = arg;
+
+	return (nni_copyout_u64(
+	    nni_atomic_get64(&s->msgs_dropped), buf, szp, t));
+}
+
+static int
+nano_sock_get_msgs_sent(void *arg, void *buf, size_t *szp, nni_opt_type t)
+{
+	nano_sock *s = arg;
+
+	return (nni_copyout_u64(
+	    nni_atomic_get64(&s->msgs_sent), buf, szp, t));
+}
+
+static int
+nano_sock_get_log_drops(void *arg, void *buf, size_t *szp, nni_opt_type t)
+{
+	nano_sock *s = arg;
+
+	return (nni_copyout_bool(
+	    nni_atomic_get_bool(&s->log_drops), buf, szp, t));
+}
+
+static int
+nano_sock_set_log_drops(
+    void *arg, const void *buf, size_t sz, nni_opt_type t)
+{
+	nano_sock *s = arg;
+	bool       enabled;
+	int        rv;
+
+	if ((rv = nni_copyin_bool(&enabled, buf, sz, t)) == 0) {
+		nni_atomic_set_bool(&s->log_drops, enabled);
+	}
+	return (rv);
 }
 
 #if defined(NNG_SUPP_SQLITE)
@@ -1423,6 +1497,19 @@ static nni_option nano_sock_options[] = {
 	{
 	    .o_name = NMQ_OPT_MQTT_PIPES,
 	    .o_get  = nano_sock_get_idmap,
+	},
+	{
+	    .o_name = NMQ_OPT_MQTT_MSGS_DROPPED,
+	    .o_get  = nano_sock_get_msgs_dropped,
+	},
+	{
+	    .o_name = NMQ_OPT_MQTT_MSGS_SENT,
+	    .o_get  = nano_sock_get_msgs_sent,
+	},
+	{
+	    .o_name = NMQ_OPT_MQTT_LOG_DROPS,
+	    .o_get  = nano_sock_get_log_drops,
+	    .o_set  = nano_sock_set_log_drops,
 	},
 #if defined(NNG_SUPP_SQLITE)
 	{
