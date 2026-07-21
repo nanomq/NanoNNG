@@ -90,7 +90,6 @@ struct ws_pipe {
 	size_t      qlength; // length of qos_buf
 	size_t      wantrxhead;
 	nni_lmq     recvlmq;
-	nni_lmq     rslmq;	// Only for QoS msg ack cache
 	conf       *conf;
 	nni_msg    *tmp_msg;	// Serving as recv buffer, convergence all msg from nng ws
 	nni_aio    *user_txaio;
@@ -98,7 +97,6 @@ struct ws_pipe {
 	nni_aio    *ep_aio;
 	nni_aio    *txaio;
 	nni_aio    *rxaio;
-	nni_aio    *qsaio;
 	nni_pipe   *npipe;
 	conn_param *ws_param;
 	nng_stream *ws;
@@ -1289,7 +1287,6 @@ wstran_pipe_stop(void *arg)
 
 	nni_aio_stop(p->rxaio);
 	nni_aio_stop(p->txaio);
-	nni_aio_stop(p->qsaio);
 }
 
 static int
@@ -1325,7 +1322,6 @@ wstran_pipe_init(void *arg, nni_pipe *pipe)
 	}
 	NNI_LIST_INIT(p->npipe->subinfol, struct subinfo, node);
 	nni_lmq_init(&p->recvlmq, 1024);
-	nni_lmq_init(&p->rslmq, 1024);
 	// the size limit of qos_buf reserve 1 byte for property length
 	p->qlength = 16 + NNI_NANO_MAX_PACKET_SIZE;
 	if (!p->conf->sqlite.enable && pipe->nano_qos_db == NULL) {
@@ -1363,8 +1359,6 @@ wstran_pipe_fini(void *arg)
 	nng_stream_free(p->ws);
 	nni_aio_free(p->rxaio);
 	nni_aio_free(p->txaio);
-	nni_aio_wait(p->qsaio);
-	nni_aio_free(p->qsaio);
 	nni_mtx_fini(&p->mtx);
 	nni_lmq_fini(&p->recvlmq);
 	nni_lmq_fini(&p->rslmq);
@@ -1401,13 +1395,10 @@ wstran_pipe_close(void *arg)
 		p->npipe->subinfol = NULL;
 	}
 
-	nni_lmq_flush(&p->rslmq);
 	conn_param_free(p->ws_param);
 	nni_mtx_unlock(&p->mtx);
 	nng_stream_close(p->ws);
 	nni_aio_close(p->rxaio);
-	nni_aio_abort(p->qsaio, NNG_ECANCELED);
-	nni_aio_close(p->qsaio);
 	nni_aio_close(p->txaio);
 }
 
@@ -1424,7 +1415,6 @@ wstran_pipe_alloc(ws_pipe **pipep, void *ws)
 
 	// Initialize AIOs.
 	if (((rv = nni_aio_alloc(&p->txaio, wstran_pipe_send_cb, p)) != 0) ||
-	    ((rv = nni_aio_alloc(&p->qsaio, wstran_pipe_qos_send_cb, p)) != 0) ||
 	    ((rv = nni_aio_alloc(&p->rxaio, wstran_pipe_recv_cb, p)) != 0)) {
 		wstran_pipe_fini(p);
 		return (rv);

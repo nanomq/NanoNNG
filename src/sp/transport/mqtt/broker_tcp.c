@@ -44,10 +44,8 @@ struct tcptran_pipe {
 	uint8_t        *qos_buf; // msg trunk for qos & V4/V5 conversion
 	nni_aio        *txaio;
 	nni_aio        *rxaio;
-	nni_aio        *qsaio;   // send qos ack/rel
 	nni_aio        *rpaio;   // reply DISCONNECT/PING
 	nni_aio        *negoaio; // deal with connect
-	nni_lmq         rslmq;
 	nni_msg        *rxmsg, *cnmsg;
 	nni_mtx         mtx;
 	conn_param     *tcp_cparam;
@@ -150,7 +148,6 @@ tcptran_pipe_close(void *arg)
 		nni_free(p->npipe->subinfol, sizeof(nni_list));
 		p->npipe->subinfol = NULL;
 	}
-	nni_lmq_flush(&p->rslmq);
 	conn_param_free(p->tcp_cparam);
 	nni_mtx_unlock(&p->mtx);
 
@@ -158,7 +155,6 @@ tcptran_pipe_close(void *arg)
 	nni_aio_close(p->rxaio);
 	nni_aio_close(p->rpaio);
 	nni_aio_close(p->txaio);
-	nni_aio_close(p->qsaio);
 	nni_aio_close(p->negoaio);
 
 	log_trace("tcptran_pipe_close\n");
@@ -169,7 +165,6 @@ tcptran_pipe_stop(void *arg)
 {
 	tcptran_pipe *p = arg;
 
-	nni_aio_stop(p->qsaio);
 	nni_aio_stop(p->rpaio);
 	nni_aio_stop(p->rxaio);
 	nni_aio_stop(p->txaio);
@@ -240,12 +235,10 @@ tcptran_pipe_fini(void *arg)
 	nni_mtx_unlock(&p->mtx);
 
 	nng_stream_free(p->conn);
-	nni_aio_free(p->qsaio);
 	nni_aio_free(p->rpaio);
 	nni_aio_free(p->rxaio);
 	nni_aio_free(p->txaio);
 	nni_aio_free(p->negoaio);
-	nni_lmq_fini(&p->rslmq);
 	nni_mtx_fini(&p->mtx);
 	NNI_FREE_STRUCT(p);
 }
@@ -271,14 +264,10 @@ tcptran_pipe_alloc(tcptran_pipe **pipep)
 		return (NNG_ENOMEM);
 	}
 	nni_mtx_init(&p->mtx);
-	if (((rv = nni_aio_alloc(&p->txaio, nmq_tcptran_pipe_send_cb, p)) !=
-	        0) ||
-	    ((rv = nni_aio_alloc(
-	          &p->qsaio, nmq_tcptran_pipe_qos_send_cb, p)) != 0) ||
+	if (((rv = nni_aio_alloc(&p->txaio, nmq_tcptran_pipe_send_cb, p)) != 0) ||
 	    ((rv = nni_aio_alloc(&p->rpaio, nmq_tcptran_pipe_rp_send_cb, p)) != 0) ||
 	    ((rv = nni_aio_alloc(&p->rxaio, tcptran_pipe_recv_cb, p)) != 0) ||
-	    ((rv = nni_aio_alloc(&p->negoaio, tcptran_pipe_nego_cb, p)) !=
-	        0)) {
+	    ((rv = nni_aio_alloc(&p->negoaio, tcptran_pipe_nego_cb, p)) != 0)) {
 		tcptran_pipe_fini(p);
 		return (rv);
 	}
@@ -484,76 +473,6 @@ error:
 	log_error("connect nego error rv:(%d)", rv);
 	return;
 }
-
-static void
-nmq_tcptran_pipe_qos_send_cb(void *arg)
-{
-	tcptran_pipe *p = arg;
-	nni_msg      *msg;
-	nni_aio      *qsaio = p->qsaio;
-	uint8_t       type;
-	size_t        n;
-	int           rv;
-
-	if ((rv = nni_aio_result(qsaio)) != 0) {
-		log_warn(" send aio error %s", nng_strerror(rv));
-		nni_msg_free(nni_aio_get_msg(qsaio));
-		nni_aio_set_msg(qsaio, NULL);
-		tcptran_pipe_close(p);
-		return;
-	}
-	if (nni_atomic_get_bool(&p->closed)) {
-		msg = nni_aio_get_msg(qsaio);
-		nni_msg_free(msg);
-		return;
-	}
-	nni_mtx_lock(&p->mtx);
-	n = nni_aio_count(qsaio);
-	nni_aio_iov_advance(qsaio, n);
-
-	// more bytes to send
-	if (nni_aio_iov_count(qsaio) > 0) {
-		nng_stream_send(p->conn, qsaio);
-		nni_mtx_unlock(&p->mtx);
-		return;
-	}
-	msg = nni_aio_get_msg(qsaio);
-	if (msg != NULL)
-		type = nni_msg_cmd_type(msg);
-	else {
-		log_warn("NULL msg detected in send_cb");
-		nni_mtx_unlock(&p->mtx);
-		tcptran_pipe_close(p);
-		return;
-	}
-
-	if (p->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
-		(type == CMD_PUBCOMP || type == CMD_PUBACK) ? p->qrecv_quota++
-		                                            : p->qrecv_quota;
-	}
-	nni_msg_free(msg);
-	nni_aio_set_msg(qsaio, NULL);
-	if (nni_lmq_get(&p->rslmq, &msg) == 0) {
-		nni_iov iov[2];
-		iov[0].iov_len = nni_msg_header_len(msg);
-		iov[0].iov_buf = nni_msg_header(msg);
-		iov[1].iov_len = nni_msg_len(msg);
-		iov[1].iov_buf = nni_msg_body(msg);
-		nni_aio_set_msg(qsaio, msg);
-		// send it down...
-		nni_aio_set_iov(qsaio, 2, iov);
-		nng_stream_send(p->conn, qsaio);
-		p->busy = true;
-		nni_mtx_unlock(&p->mtx);
-		return;
-	}
-
-	p->busy = false;
-	nni_aio_set_msg(qsaio, NULL);
-	nni_mtx_unlock(&p->mtx);
-	return;
-}
-
 
 static void
 nmq_tcptran_pipe_rp_send_cb(void *arg)
@@ -999,7 +918,6 @@ tcptran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
-	nni_aio_abort(p->qsaio, rv);
 	nni_aio_list_remove(aio);
 	nni_mtx_unlock(&p->mtx);
 
