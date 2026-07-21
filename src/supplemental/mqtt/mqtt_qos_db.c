@@ -650,7 +650,7 @@ nni_mqtt_qos_db_get_one(sqlite3 *db, uint32_t pipe_id, uint16_t *packet_id)
 	    "" table_main " AS main ON  main.p_id = pipe.id JOIN " table_msg ""
 	    " AS msg ON "
 	    " main.m_id = msg.id WHERE pipe.pipe_id = ? AND main.m_id > 0 "
-	    "LIMIT 1";
+	    "ORDER BY main.id LIMIT 1";
 
 	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
 	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
