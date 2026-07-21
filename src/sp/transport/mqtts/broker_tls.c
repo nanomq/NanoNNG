@@ -857,7 +857,6 @@ tlstran_pipe_recv_cb(void *arg)
 		property_free(prop);
 		nni_mqtt_pubres_header_encode(qmsg, ack_cmd);
 		nni_aio_set_prov_data(aio, qmsg);
-		nni_aio_set_prov_data(aio, qmsg);
 		ack = false;
 	}
 
