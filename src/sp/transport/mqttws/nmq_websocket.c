@@ -1623,7 +1623,8 @@ wstran_pipe_getopt(void *arg, const char *name, void *buf, size_t *szp, nni_type
 					nni_msg_free(rmsg);
 				}
 				continue;
-			} else if ((ntime - mtime) >= (long unsigned) qos_duration * 1250) {
+			} else if (req->drain ||
+			    (ntime - mtime) >= (long unsigned) qos_duration * 1250) {
 				if (!is_sqlite) {
 					nni_msg_clone(msg);
 				}

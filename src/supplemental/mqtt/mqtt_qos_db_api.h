@@ -12,6 +12,8 @@
 typedef struct {
     uint16_t packet_id;
     nni_msg *msg;
+    bool     drain; // session-resume backlog drain: bypass the
+                    // qos_duration age gate in the transport getopt
 } nmq_req;
 
 #define nni_qos_db_init_sqlite(db, user_path, db_name, is_broker) \

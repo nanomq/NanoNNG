@@ -1802,7 +1802,8 @@ tcptran_pipe_getopt(
 				}
 				continue;
 
-			} else if ((ntime - mtime) >= (long unsigned) qos_duration * 1250) {
+			} else if (req->drain ||
+			    (ntime - mtime) >= (long unsigned) qos_duration * 1250) {
 				if (!is_sqlite) {
 					nni_msg_clone(msg);
 				}

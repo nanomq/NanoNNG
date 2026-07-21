@@ -25,6 +25,10 @@
 
 #define DB_NAME "nano_qos_db.db"
 
+// session-resume backlog drain: kickoff retry budget and backoff (ms)
+#define NANO_DRAIN_RETRY 10
+#define NANO_DRAIN_INTERVAL 100
+
 typedef struct nano_pipe   nano_pipe;
 typedef struct nano_sock   nano_sock;
 typedef struct nano_ctx    nano_ctx;
@@ -32,6 +36,7 @@ typedef struct cs_msg_list cs_msg_list;
 
 static void        nano_pipe_send_cb(void *);
 static void        nano_pipe_recv_cb(void *);
+static void        nano_pipe_drain_cb(void *);
 static void        nano_pipe_fini(void *);
 static int         nano_pipe_close(void *);
 static inline void close_pipe(nano_pipe *p);
@@ -85,11 +90,29 @@ struct nano_pipe {
 	                     	// timer has been triggered
 	bool          busy;
 	bool          event; // indicates if exposure disconnect event is valid
+	bool          resumed;  // session resumed; drain armed once CONNACK
+	                        // enters the send path
+	bool          draining; // backlog drain in progress: ACK-clocked
+	                        // fetches of stored QoS msgs (age gate bypassed)
+	bool          drain_fetch_due; // one-shot: fetch when pipe goes idle
+	                               // (set at CONNACK dispatch and on ACK
+	                               // arriving while a send is in flight)
+	bool          drain_sent;  // drain delivered at least one msg
+	bool          drain_wait;  // aio_drain retry sleep is armed
+	uint8_t       drain_retry; // remaining kickoff retries
+	uint16_t      drain_pid;   // packet id of the in-flight drained msg
+	                           // (0 when none): only its own terminal ack
+	                           // chains the next fetch, so acks of
+	                           // interleaved live traffic cannot re-fetch
+	                           // an un-PUBCOMP'd QoS2 head
+	nni_time      resume_time; // when the session resumed; stored msgs newer
+	                           // than this are in-flight, not backlog
 	void         *tree;  // root node of db tree
 	void         *nano_qos_db; // 'sqlite' or 'nni_id_hash_map'
 	nni_aio       aio_send;
 	nni_aio       aio_recv;
 	nni_aio       aio_timer;
+	nni_aio       aio_drain; // backlog-drain retry timer
 	nni_list_node rnode; // receivable list linkage
 	nni_atomic_bool closed;
 };
@@ -164,6 +187,23 @@ nano_nni_lmq_fini(nni_lmq *lmq)
 	}
 
 	nni_free(lmq->lmq_msgs, lmq->lmq_alloc * sizeof(nng_msg *));
+}
+
+// put a fetched stored QoS msg on the wire: roll the resend cursor, mark
+// the pipe busy and resend req->msg with DUP set, carrying its packet id
+// through aio prov_data so the transport reuses it instead of assigning
+// a fresh one. Caller must hold p->lk with p->busy == false.
+static void
+nano_pipe_dispatch_qos(nano_pipe *p, nmq_req *req)
+{
+	uint16_t real_pid = req->packet_id;
+
+	p->rid  = real_pid == 0xFFFF ? 1 : real_pid + 1;
+	p->busy = true;
+	nano_msg_set_dup(req->msg);
+	nni_aio_set_prov_data(&p->aio_send, (void *) (uintptr_t) real_pid);
+	nni_aio_set_msg(&p->aio_send, req->msg);
+	nni_pipe_send(p->pipe, &p->aio_send);
 }
 
 static void
@@ -255,26 +295,23 @@ nano_pipe_timer_cb(void *arg)
 	}
 	p->ka_refresh++;
 
-	if (!p->busy) {
+	// while the session-resume backlog drain is active it is the sole
+	// owner of QoS redelivery; the periodic timer must not also re-send
+	// the drain's un-acked head (that duplicates the PUBLISH). the timer
+	// resumes once the drain disarms.
+	if (!p->busy && !p->draining) {
 		nmq_req req;
 		uint16_t       pid = p->rid;
 		req.packet_id  = pid;
 		req.msg = NULL;
+		req.drain = false;
 		size_t         sz = sizeof(nmq_req);
 		int rv_opt = nni_pipe_getopt(p->pipe, NMQ_OPT_MQTT_GET_QOS_RESEND,
 		    &req, &sz, NNI_TYPE_OPAQUE);
 		if (rv_opt == 0 && req.msg != NULL) {
-			nni_msg *rmsg = req.msg;
-			uint16_t real_pid  = req.packet_id;
-			p->rid        = real_pid == 0xFFFF ? 1 : real_pid + 1;
-			p->busy       = true;
-			nano_msg_set_dup(rmsg);
-			nni_aio_set_prov_data(
-			    &p->aio_send, (void *) (uintptr_t) real_pid);
-			nni_aio_set_msg(&p->aio_send, rmsg);
 			log_info("resending qos msg id %u to pipe %u",
 				pid, p->id);
-			nni_pipe_send(p->pipe, &p->aio_send);
+			nano_pipe_dispatch_qos(p, &req);
 		}
 	}
 	nni_sleep_aio(qos_duration * 1000, &p->aio_timer);
@@ -420,6 +457,15 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	nni_mtx_lock(&p->lk);
 	nni_mtx_unlock(&s->lk);
 
+	// resumed session: the CONNACK entering the send path arms the
+	// backlog drain; its send completion fires the first fetch, which
+	// keeps CONNACK-before-PUBLISH ordering causal (MQTT-3.2.0-1)
+	if (p->resumed && nni_msg_get_type(msg) == CMD_CONNACK) {
+		p->resumed         = false;
+		p->draining        = true;
+		p->drain_fetch_due = true;
+	}
+
 	if (!p->busy) {
 		p->busy = true;
 		nni_aio_set_msg(&p->aio_send, msg);
@@ -550,6 +596,7 @@ nano_pipe_stop(void *arg)
 	nni_aio_stop(&p->aio_send);
 	nni_aio_stop(&p->aio_timer);
 	nni_aio_stop(&p->aio_recv);
+	nni_aio_stop(&p->aio_drain);
 }
 
 static void
@@ -590,6 +637,7 @@ nano_pipe_fini(void *arg)
 	nni_aio_fini(&p->aio_send);
 	nni_aio_fini(&p->aio_recv);
 	nni_aio_fini(&p->aio_timer);
+	nni_aio_fini(&p->aio_drain);
 	nano_nni_lmq_fini(&p->rlmq);
 }
 
@@ -606,6 +654,7 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	nni_aio_init(&p->aio_send, nano_pipe_send_cb, p);
 	nni_aio_init(&p->aio_timer, nano_pipe_timer_cb, p);
 	nni_aio_init(&p->aio_recv, nano_pipe_recv_cb, p);
+	nni_aio_init(&p->aio_drain, nano_pipe_drain_cb, p);
 
 	p->conn_param  = nni_pipe_get_conn_param(pipe);
 	p->id          = nni_pipe_id(pipe);
@@ -615,6 +664,14 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	p->broker      = s;
 	p->ka_refresh  = 0;
 	p->event       = true;
+	p->resumed         = false;
+	p->draining        = false;
+	p->drain_fetch_due = false;
+	p->drain_sent      = false;
+	p->drain_wait      = false;
+	p->drain_retry     = 0;
+	p->drain_pid       = 0;
+	p->resume_time     = 0;
 	p->tree        = sock->db;
 	if (p->conn_param != NULL)
 		p->keepalive   = p->conn_param->keepalive_mqtt;
@@ -732,6 +789,18 @@ auth_verify:
 	if (p->conn_param->clean_start == 0) {
 		old = nni_id_get(&s->cached_sessions, p->pipe->p_id);
 		if (old != NULL) {
+			// arm the backlog drain: stored QoS msgs are sent
+			// right after the CONNACK instead of waiting for the
+			// resend timer. Live in-flight rows are told apart
+			// from backlog by msg timestamp, which is only
+			// comparable within one process - sessions restored
+			// from SQLite across a broker restart keep relying
+			// on the resend timer instead.
+			p->resumed     = true;
+			p->resume_time = nng_clock();
+			p->drain_sent  = false;
+			p->drain_retry = NANO_DRAIN_RETRY;
+			p->drain_pid   = 0;
 			// there should be no msg in this map
 			if (!is_sqlite && p->pipe->nano_qos_db!= NULL) {
 				nni_qos_db_fini_id_hash(p->pipe->nano_qos_db);
@@ -918,6 +987,15 @@ nano_pipe_close(void *arg)
 				nni_list_remove(&s->recvpipes, p);
 			}
 			nano_nni_lmq_flush(&p->rlmq, false);
+			// disarm the backlog drain: a pending drain fetch on the
+			// now-cached pipe would go through the transport cache
+			// branch, which stores it as a NEW row (duplicate). The
+			// resend timer takes over on the next resume instead.
+			p->resumed         = false;
+			p->draining        = false;
+			p->drain_fetch_due = false;
+			p->drain_wait      = false;
+			nni_aio_abort(&p->aio_drain, NNG_ECANCELED);
 			nni_mtx_unlock(&p->lk);
 			nni_mtx_unlock(&s->lk);
 			return -1;
@@ -929,6 +1007,7 @@ nano_pipe_close(void *arg)
 		nni_aio_close(&p->aio_send);
 		nni_aio_close(&p->aio_recv);
 		nni_aio_close(&p->aio_timer);
+		nni_aio_close(&p->aio_drain);
 	}
 	close_pipe(p);
 
@@ -979,6 +1058,80 @@ nano_pipe_close(void *arg)
 	return 0;
 }
 
+// Fetch one stored QoS msg (drain mode: transport age gate bypassed) and
+// resend it on p->aio_send. Caller must hold p->lk with p->busy == false
+// and p->draining == true. Returns true when a msg was put on the wire.
+// Disarms the drain when the store is empty or the oldest row was stored
+// after session resume (an in-flight msg of the live pipe, not backlog -
+// resending those on every ACK would duplicate normal traffic; they stay
+// owned by the resend timer).
+static bool
+nano_pipe_drain_qos(nano_pipe *p)
+{
+	nmq_req  req;
+	size_t   sz  = sizeof(nmq_req);
+	uint16_t pid = p->rid;
+
+	req.packet_id = pid;
+	req.msg       = NULL;
+	req.drain     = true;
+	if (nni_pipe_getopt(p->pipe, NMQ_OPT_MQTT_GET_QOS_RESEND, &req, &sz,
+	        NNI_TYPE_OPAQUE) != 0 ||
+	    req.msg == NULL) {
+		// nothing fetched: either the backlog is fully drained, or a
+		// concurrent qos_db user raced this fetch. Retry on a short
+		// backoff until something was drained at least once.
+		if (!p->drain_sent && p->drain_retry > 0 &&
+		    !p->drain_wait) {
+			p->drain_retry--;
+			p->drain_wait = true;
+			nni_sleep_aio(NANO_DRAIN_INTERVAL, &p->aio_drain);
+			return false;
+		}
+		if (!p->drain_sent)
+			log_info("session backlog drain of pipe %u handed "
+			         "over to the resend timer", p->id);
+		p->draining = false;
+		return false;
+	}
+	if (nni_msg_get_timestamp(req.msg) > p->resume_time) {
+		// backlog exhausted; remaining rows are live in-flight msgs
+		nni_msg_free(req.msg);
+		p->draining = false;
+		return false;
+	}
+	p->drain_sent = true;
+	p->drain_pid  = req.packet_id;
+	log_info("draining session qos msg id %u to pipe %u", req.packet_id,
+	    p->id);
+	nano_pipe_dispatch_qos(p, &req);
+	return true;
+}
+
+// backlog-drain retry timer: fires when a kickoff fetch came back empty
+// while nothing had been drained yet (a fetch can transiently race other
+// users of the shared qos_db right at session resume)
+static void
+nano_pipe_drain_cb(void *arg)
+{
+	nano_pipe *p = arg;
+
+	if (nng_aio_result(&p->aio_drain) != 0)
+		return; // canceled: pipe is closing
+	nni_mtx_lock(&p->lk);
+	p->drain_wait = false;
+	if (nni_atomic_get_bool(&p->closed) || !p->draining ||
+	    nni_atomic_get_bool(&p->pipe->cache)) {
+		nni_mtx_unlock(&p->lk);
+		return;
+	}
+	if (!p->busy)
+		nano_pipe_drain_qos(p);
+	else
+		p->drain_fetch_due = true;
+	nni_mtx_unlock(&p->lk);
+}
+
 static void
 nano_pipe_send_cb(void *arg)
 {
@@ -1007,6 +1160,18 @@ nano_pipe_send_cb(void *arg)
 		nni_pipe_send(p->pipe, &p->aio_send);
 		nni_mtx_unlock(&p->lk);
 		return;
+	}
+
+	// session backlog drain: fetch only when one is due (CONNACK just
+	// dispatched, or an ACK arrived while a send was in flight). Fetching
+	// on every send completion would re-fetch the still-unacked oldest
+	// row and spin.
+	if (p->draining && p->drain_fetch_due) {
+		p->drain_fetch_due = false;
+		if (nano_pipe_drain_qos(p)) {
+			nni_mtx_unlock(&p->lk);
+			return;
+		}
 	}
 
 	p->busy = false;
@@ -1182,6 +1347,21 @@ nano_pipe_recv_cb(void *arg)
 		nni_mtx_lock(&p->lk);
 		NNI_GET16(ptr, ackid);
 		p->rid = ackid + 1;
+		// ACK-clocked backlog drain: the transport already removed
+		// the acked row, so fetching here returns the next stored
+		// msg of the resumed session. Only the drained msg's own
+		// terminal ack chains the fetch - an ack for interleaved
+		// live traffic must not re-fetch the FIFO head (a QoS2 row
+		// stays stored until PUBCOMP and would be re-PUBLISHed
+		// after PUBREL). If a send is in flight, defer the fetch
+		// to its send completion.
+		if (p->draining && ackid == p->drain_pid) {
+			p->drain_pid = 0;
+			if (!p->busy)
+				nano_pipe_drain_qos(p);
+			else
+				p->drain_fetch_due = true;
+		}
 		nni_mtx_unlock(&p->lk);
 	case CMD_CONNECT:
 	case CMD_PUBREC:
