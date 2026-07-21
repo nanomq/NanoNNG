@@ -1158,10 +1158,10 @@ nano_pipe_recv_cb(void *arg)
 			nni_msg_free(ack_msg);
 		}
 		log_trace("pipe is closed abruptly!");
+		nni_mtx_unlock(&p->lk);
 		return;
 	}
 	if (ack_msg  != NULL) {
-		nni_aio_set_prov_data(&p->aio_recv, NULL);
 		if (!p->busy) {
 			p->busy = true;
 			nni_aio_set_msg(&p->aio_send, ack_msg);
