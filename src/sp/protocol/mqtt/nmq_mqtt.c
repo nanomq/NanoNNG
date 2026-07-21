@@ -1103,7 +1103,8 @@ nano_pipe_recv_cb(void *arg)
 	nano_sock  *s      = p->broker;
 	conn_param *cparam = NULL;
 	nano_ctx   *ctx;
-	nni_msg    *msg;
+	nni_msg    *msg     = NULL;
+	nni_msg    *ack_msg = NULL;
 	nni_aio    *aio;
 	int         rv = 0;
 
@@ -1116,14 +1117,17 @@ nano_pipe_recv_cb(void *arg)
 	log_trace(" ######### nano_pipe_recv_cb ######### ");
 	p->ka_refresh = 0;
 	msg           = nni_aio_get_msg(&p->aio_recv);
+	ack_msg       = nni_aio_get_prov_data(&p->aio_recv);
+	nni_aio_set_prov_data(&p->aio_recv, NULL);
 	nni_aio_set_msg(&p->aio_recv, NULL);
-	if (msg == NULL) {
-		goto end;
-	}
 	if (nni_atomic_get_bool(&p->closed)) {
 		// If we are closed, then we can't return data.
 		// This drops DISCONNECT packet.
-		nni_msg_free(msg);
+		if (msg)
+			nni_msg_free(msg);
+		if (ack_msg != NULL) {
+			nni_msg_free(ack_msg);
+		}
 		log_trace("pipe is closed abruptly!");
 		return;
 	}
@@ -1141,6 +1145,10 @@ nano_pipe_recv_cb(void *arg)
 				nni_msg_free(ack_msg);
 			}
 		}
+	}
+	if (msg == NULL) {
+		nni_mtx_unlock(&p->lk);
+		goto end;
 	}
 	nni_msg_set_pipe(msg, p->id);
 	ptr    = nni_msg_body(msg);
