@@ -1140,11 +1140,12 @@ nano_pipe_recv_cb(void *arg)
 		return;
 	}
 	log_trace(" ######### nano_pipe_recv_cb ######### ");
+	nni_mtx_lock(&p->lk);
 	p->ka_refresh = 0;
 	msg           = nni_aio_get_msg(&p->aio_recv);
 	ack_msg       = nni_aio_get_prov_data(&p->aio_recv);
 	nni_aio_set_prov_data(&p->aio_recv, NULL);
-	nni_aio_set_msg(&p->aio_recv, NULL);
+	// nni_aio_set_msg(&p->aio_recv, NULL);
 	if (nni_atomic_get_bool(&p->closed)) {
 		// If we are closed, then we can't return data.
 		// This drops DISCONNECT packet.
@@ -1156,7 +1157,6 @@ nano_pipe_recv_cb(void *arg)
 		log_trace("pipe is closed abruptly!");
 		return;
 	}
-	nni_mtx_lock(&p->lk);
 	if (ack_msg  != NULL) {
 		nni_aio_set_prov_data(&p->aio_recv, NULL);
 		if (!p->busy) {
