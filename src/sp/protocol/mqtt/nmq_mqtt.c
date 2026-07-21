@@ -1120,12 +1120,13 @@ nano_pipe_recv_cb(void *arg)
 	msg           = nni_aio_get_msg(&p->aio_recv);
 	ack_msg       = nni_aio_get_prov_data(&p->aio_recv);
 	nni_aio_set_prov_data(&p->aio_recv, NULL);
-	// nni_aio_set_msg(&p->aio_recv, NULL);
 	if (nni_atomic_get_bool(&p->closed)) {
 		// If we are closed, then we can't return data.
 		// This drops DISCONNECT packet.
-		if (msg)
+		if (msg) {
+			nni_aio_set_msg(&p->aio_recv, NULL);
 			nni_msg_free(msg);
+		}
 		if (ack_msg != NULL) {
 			nni_msg_free(ack_msg);
 		}
