@@ -1164,7 +1164,7 @@ nano_pipe_recv_cb(void *arg)
 		if (p->conn_param) {
 			p->conn_param->will_flag = 0;
 		} else {
-			// nni_pipe_close(p->pipe);
+			log_warn("Null conn_param detected!");
 			break;
 		}
 		if (p->conn_param->pro_ver == MQTT_VERSION_V5) {
