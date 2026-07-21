@@ -1056,6 +1056,8 @@ mqtt_recv_cb(void *arg)
 	mqtt_sock_t *s          = p->mqtt_sock;
 	nni_aio     *user_aio   = NULL;
 	nni_msg     *cached_msg = NULL;
+	nni_msg     *msg	    = NULL;
+	nni_msg     *ack_msg    = NULL;
 	mqtt_ctx_t  *ctx;
 
 	if ((rv = nni_aio_result(&p->recv_aio)) != 0) {
@@ -1066,8 +1068,11 @@ mqtt_recv_cb(void *arg)
 	}
 
 	nni_mtx_lock(&s->mtx);
-	nni_msg *msg = nni_aio_get_msg(&p->recv_aio);
+	msg = nni_aio_get_msg(&p->recv_aio);
+	ack_msg = nni_aio_get_prov_data(&p->recv_aio);
 	nni_aio_set_msg(&p->recv_aio, NULL);
+	nni_aio_set_prov_data(&p->recv_aio, NULL);
+
 	if (nni_atomic_get_bool(&s->closed) ||
 	    nni_atomic_get_bool(&p->closed)) {
 		// free msg and dont return data when pipe is closed.
@@ -1077,12 +1082,17 @@ mqtt_recv_cb(void *arg)
 			nni_stat_inc(&s->msg_recv_drop, 1);
 #endif
 		}
+		if (ack_msg) {
+			nni_msg_free(ack_msg);
+#ifdef NNG_ENABLE_STATS
+			nni_stat_inc(&s->msg_send_drop, 1);
+#endif
+		}
 		nni_mtx_unlock(&s->mtx);
 		return;
 	}
-	nni_msg *ack_msg = NULL;
-	if ((ack_msg = nni_aio_get_prov_data(&p->recv_aio)) != NULL) {
-		nni_aio_set_prov_data(&p->recv_aio, NULL);
+
+	if (ack_msg  != NULL) {
 		if (!p->busy) {
 			p->busy = true;
 			nni_aio_set_msg(&p->send_aio, ack_msg);
