@@ -159,6 +159,139 @@ test_pipe_remove(void)
 }
 
 void
+test_qos_db_get_one_fifo(void)
+{
+	sqlite3 *db = NULL;
+	nni_mqtt_qos_db_init(&db, NULL, test_db, true);
+
+	uint32_t pipe_id = 3221225473U; // > INT32_MAX: pins 64-bit binds
+	nni_mqtt_qos_db_set_pipe(db, pipe_id, "nanomq-client-fifo");
+
+	char *   header = "uvwxyz";
+	nni_time ts     = 1648004331;
+	// insertion order differs from packet id order on purpose,
+	// fetch order must follow insertion order, not packet id order
+	uint16_t packet_ids[] = { 3, 1, 2 };
+	char *   bodies[]     = { "fifo-msg-a", "fifo-msg-b", "fifo-msg-c" };
+
+	for (int i = 0; i < 3; i++) {
+		nni_msg *msg;
+		nni_msg_alloc(&msg, 0);
+		nni_msg_header_append(msg, header, strlen(header));
+		nni_msg_append(msg, bodies[i], strlen(bodies[i]));
+		nni_msg_set_timestamp(msg, ts);
+		msg = MQTT_DB_PACKED_MSG_QOS(msg, 1);
+		nni_mqtt_qos_db_set(db, pipe_id, packet_ids[i], msg);
+		msg = MQTT_DB_GET_MSG_POINTER(msg);
+		nni_msg_free(msg);
+	}
+
+	for (int i = 0; i < 3; i++) {
+		uint16_t packet_id = 0;
+		nni_msg *msg =
+		    nni_mqtt_qos_db_get_one(db, pipe_id, &packet_id);
+		// be careful nni_msg had been changed in
+		// nni_mqtt_qos_db_get_one();
+		msg = MQTT_DB_GET_MSG_POINTER(msg);
+		NUTS_ASSERT(msg != NULL);
+		TEST_CHECK(packet_id == packet_ids[i]);
+		TEST_CHECK(strncmp(bodies[i], nni_msg_body(msg),
+		               nni_msg_len(msg)) == 0);
+		// remove the returned row the same way the transport does
+		nni_mqtt_qos_db_remove_msg(db, msg);
+		nni_mqtt_qos_db_remove(db, pipe_id, packet_id);
+		nni_msg_free(msg);
+	}
+
+	uint16_t packet_id = 0;
+	TEST_CHECK(nni_mqtt_qos_db_get_one(db, pipe_id, &packet_id) == NULL);
+
+	nni_mqtt_qos_db_remove_pipe(db, pipe_id);
+	nni_mqtt_qos_db_close(db);
+}
+
+void
+test_qos_db_get_one_pipe_rebind(void)
+{
+	sqlite3 *db = NULL;
+	nni_mqtt_qos_db_init(&db, NULL, test_db, true);
+
+	uint32_t old_pipe_id = 3221225474U; // > INT32_MAX
+	uint32_t new_pipe_id = 3221225475U;
+	uint16_t packet_id   = 77;
+	char *   client_id   = "nanomq-client-rebind";
+	char *   header      = "uvwxyz";
+	char *   body        = "rebind-msg";
+
+	nni_mqtt_qos_db_set_pipe(db, old_pipe_id, client_id);
+
+	nni_msg *msg;
+	nni_msg_alloc(&msg, 0);
+	nni_msg_header_append(msg, header, strlen(header));
+	nni_msg_append(msg, body, strlen(body));
+	nni_msg_set_timestamp(msg, 1648004331);
+	msg = MQTT_DB_PACKED_MSG_QOS(msg, 1);
+	nni_mqtt_qos_db_set(db, old_pipe_id, packet_id, msg);
+	msg = MQTT_DB_GET_MSG_POINTER(msg);
+	nni_msg_free(msg);
+
+	// simulate a broker restart: all pipes are reset to 0, then the
+	// client reconnects and its client id is bound to a new pipe id
+	nni_mqtt_qos_db_update_all_pipe(db, 0);
+	nni_mqtt_qos_db_set_pipe(db, new_pipe_id, client_id);
+
+	uint16_t got_packet_id = 0;
+	msg = nni_mqtt_qos_db_get_one(db, new_pipe_id, &got_packet_id);
+	// be careful nni_msg had been changed in nni_mqtt_qos_db_get_one();
+	msg = MQTT_DB_GET_MSG_POINTER(msg);
+	NUTS_ASSERT(msg != NULL);
+	TEST_CHECK(got_packet_id == packet_id);
+	TEST_CHECK(strncmp(body, nni_msg_body(msg), nni_msg_len(msg)) == 0);
+
+	nni_mqtt_qos_db_remove_msg(db, msg);
+	nni_mqtt_qos_db_remove(db, new_pipe_id, got_packet_id);
+	nni_msg_free(msg);
+	nni_mqtt_qos_db_remove_pipe(db, new_pipe_id);
+	nni_mqtt_qos_db_close(db);
+}
+
+void
+test_qos_db_remove_by_pipe(void)
+{
+	sqlite3 *db = NULL;
+	nni_mqtt_qos_db_init(&db, NULL, test_db, true);
+
+	uint32_t pipe_id   = 3221225476U; // > INT32_MAX: pins 64-bit bind
+	uint16_t packet_id = 11;
+	char *   client_id = "nanomq-client-rm-by-pipe";
+	char *   header    = "uvwxyz";
+	char *   body      = "remove-by-pipe-msg";
+
+	nni_mqtt_qos_db_set_pipe(db, pipe_id, client_id);
+
+	nni_msg *msg;
+	nni_msg_alloc(&msg, 0);
+	nni_msg_header_append(msg, header, strlen(header));
+	nni_msg_append(msg, body, strlen(body));
+	nni_msg_set_timestamp(msg, 1648004331);
+	msg = MQTT_DB_PACKED_MSG_QOS(msg, 1);
+	nni_mqtt_qos_db_set(db, pipe_id, packet_id, msg);
+	msg = MQTT_DB_GET_MSG_POINTER(msg);
+	nni_msg_free(msg);
+
+	// the session-expiry cleanup path removes all rows of the pipe
+	nni_mqtt_qos_db_remove_by_pipe(db, pipe_id);
+	nni_mqtt_qos_db_remove_unused_msg(db);
+
+	uint16_t got_packet_id = 0;
+	msg = nni_mqtt_qos_db_get_one(db, pipe_id, &got_packet_id);
+	NUTS_ASSERT(msg == NULL);
+
+	nni_mqtt_qos_db_remove_pipe(db, pipe_id);
+	nni_mqtt_qos_db_close(db);
+}
+
+void
 test_pipe_update_all(void)
 {
 	sqlite3 *db = NULL;
@@ -428,6 +561,9 @@ TEST_LIST = {
 	{ "db_remove", test_qos_db_remove },
 	{ "db_check_remove_msg", test_qos_db_check_remove_msg },
 	{ "db_pipe_remove", test_pipe_remove },
+	{ "db_get_one_fifo", test_qos_db_get_one_fifo },
+	{ "db_get_one_pipe_rebind", test_qos_db_get_one_pipe_rebind },
+	{ "db_remove_by_pipe", test_qos_db_remove_by_pipe },
 	{ "db_set_retain", test_set_retain_msg },
 	{ "db_get_retain", test_get_retain_msg },
 	{ "db_find_retain", test_find_retain_msg },
