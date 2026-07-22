@@ -656,7 +656,7 @@ struct conf_web_hook {
 
 	nng_mtx  *ex_mtx; // mutex for saios
 	nng_aio  *ex_aio; // Await flush
-	nng_aio  *ex_midaio; // Forward flush reqs in ex_aio cb
+	bool      ex_busy; // Is busy in flush
 	nng_aio **saios;  // Aios for sending message
 	nng_lmq  *ex_lmq; // Lmq for await flush
 	size_t    ex_lmq_size; // Capacity of ex lmq
