@@ -101,9 +101,9 @@ struct pipe_db {
 
 // TODO use ZALLOC later
 struct conn_param {
+	nni_atomic_int     refcnt;
 	nng_time           will_delay_interval;
 	nng_time           msg_expiry_interval;
-	nni_atomic_int     refcnt;
 	char               ip_addr_v4[16];
 	// Server-side listening port (string), used by HTTP auth %p
 	char               server_port[8];
