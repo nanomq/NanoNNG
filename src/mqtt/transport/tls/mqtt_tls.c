@@ -145,6 +145,15 @@ mqtts_tcptran_pipe_close(void *arg)
 	nni_aio *aio;
 	mqtts_tcptran_pipe *p = arg;
 
+#ifdef NNG_HAVE_MQTT_BROKER
+	log_warn("pipe_close pipe=%p npipe=%p cparam=%p closed=%d",
+	    (void *)p, p->npipe, (void *)p->cparam,
+	    (int)nni_atomic_get_bool(&p->closed));
+#else
+	log_warn("pipe_close pipe=%p npipe=%p closed=%d",
+	    (void *)p, p->npipe, (int)nni_atomic_get_bool(&p->closed));
+#endif
+
 	nni_atomic_set_bool(&p->closed, true);
 	// in case reap blocking
 	nni_mtx_lock(&p->mtx);
@@ -165,12 +174,18 @@ static void
 mqtts_tcptran_pipe_stop(void *arg)
 {
 	mqtts_tcptran_pipe *p = arg;
-	log_warn("Start pipe reaper of %p !", p->npipe);
+#ifdef NNG_HAVE_MQTT_BROKER
+	log_warn("Start pipe reaper of npipe=%p pipe=%p cparam=%p",
+	    p->npipe, (void *)p, (void *)p->cparam);
+#else
+	log_warn("Start pipe reaper of npipe=%p pipe=%p",
+	    p->npipe, (void *)p);
+#endif
 	nni_aio_stop(p->rxaio);
 	nni_aio_stop(p->txaio);
 	nni_aio_stop(p->negoaio);
 	nni_aio_stop(p->rpaio);
-	log_warn("%p pipe stopped!", p->npipe);
+	log_warn("pipe=%p npipe=%p stopped!", (void *)p, p->npipe);
 }
 
 static int
@@ -178,6 +193,12 @@ mqtts_tcptran_pipe_init(void *arg, nni_pipe *npipe)
 {
 	mqtts_tcptran_pipe *p = arg;
 
+#ifdef NNG_HAVE_MQTT_BROKER
+	log_warn("pipe_init pipe=%p npipe=%p cparam=%p",
+	    (void *)p, (void *)npipe, (void *)p->cparam);
+#else
+	log_warn("pipe_init pipe=%p npipe=%p", (void *)p, (void *)npipe);
+#endif
 	p->npipe = npipe;
 	// nni_lmq_init(&p->rslmq, 16);
 	nni_atomic_init_bool(&p->closed);
@@ -194,6 +215,14 @@ mqtts_tcptran_pipe_fini(void *arg)
 {
 	mqtts_tcptran_pipe *p = arg;
 	mqtts_tcptran_ep *  ep;
+
+#ifdef NNG_HAVE_MQTT_BROKER
+	log_warn("pipe_fini pipe=%p npipe=%p cparam=%p ep=%p",
+	    (void *)p, p->npipe, (void *)p->cparam, (void *)p->ep);
+#else
+	log_warn("pipe_fini pipe=%p npipe=%p ep=%p",
+	    (void *)p, p->npipe, (void *)p->ep);
+#endif
 
 	mqtts_tcptran_pipe_stop(p);
 	if ((ep = p->ep) != NULL) {
@@ -225,10 +254,20 @@ static void
 mqtts_tcptran_pipe_reap(mqtts_tcptran_pipe *p)
 {
 	if (!nni_atomic_flag_test_and_set(&p->reaped)) {
+#ifdef NNG_HAVE_MQTT_BROKER
+		log_warn("pipe_reap pipe=%p npipe=%p cparam=%p FIRST reap",
+		    (void *)p, p->npipe, (void *)p->cparam);
+#else
+		log_warn("pipe_reap pipe=%p npipe=%p FIRST reap",
+		    (void *)p, p->npipe);
+#endif
 		if (p->conn != NULL) {
 			nng_stream_close(p->conn);
 		}
 		nni_reap(&tcptran_pipe_reap_list, p);
+	} else {
+		log_warn("pipe_reap pipe=%p ALREADY reaped! (double-reap prevented)",
+		    (void *)p);
 	}
 }
 
@@ -710,7 +749,8 @@ mqtts_tcptran_pipe_recv_cb(void *arg)
 	aio = nni_list_first(&p->recvq);
 
 	if ((rv = nni_aio_result(rxaio)) != 0) {
-		log_warn("recv aio result %s", nng_strerror(rv));
+		log_warn("recv aio result %s pipe=%p npipe=%p",
+		    nng_strerror(rv), (void *)p, p->npipe);
 		rv = SERVER_UNAVAILABLE;
 		goto recv_error;
 	}

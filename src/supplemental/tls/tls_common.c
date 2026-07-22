@@ -933,6 +933,9 @@ tls_reap(void *arg)
 {
 	tls_conn *conn = arg;
 
+	log_warn("tls_reap conn=%p tcp=%p cfg=%p",
+	    (void *)conn, (void *)conn->tcp, (void *)conn->cfg);
+
 	// Shut it all down first.  We should be freed.
 	if (conn->tcp != NULL) {
 		nng_stream_close(conn->tcp);
@@ -982,7 +985,8 @@ static void
 tls_tcp_error(tls_conn *conn, int rv)
 {
 	// An error here is fatal.  Shut it all down.
-	log_warn("TLS encounter error %d Shut it all down.", rv);
+	log_warn("TLS encounter error %d Shut it all down. conn=%p tcp=%p cfg=%p",
+	    rv, (void *)conn, (void *)conn->tcp, (void *)conn->cfg);
 	nni_aio *aio;
 	nng_stream_close(conn->tcp);
 	nni_aio_close(&conn->tcp_send);

@@ -1235,7 +1235,8 @@ mqtt_recv_cb(void *arg)
 				if (mqtt_pipe_recv_msgq_putq(p, msg) != 0)
 					conn_param_free(p->cparam);
 				nni_mtx_unlock(&s->mtx);
-				log_info("Warning: no ctx found! CONNACK lost! plz create more ctxs!");
+				log_warn("Warning: no ctx found! CONNACK lost! plz create more ctxs! pipe=%p cparam=%p",
+				    (void *)p, (void *)p->cparam);
 				return;
 			}
 			nni_list_remove(&s->recv_queue, ctx);
@@ -1306,7 +1307,7 @@ mqtt_recv_cb(void *arg)
 #ifdef NNG_HAVE_MQTT_BROKER
 				conn_param_free(p->cparam);
 #endif
-				log_warn("ERROR: no ctx found! msg queue full! QoS2 msg lost!");
+				log_warn("ERROR: no ctx found! msg queue full! QoS2 msg lost! pipe=%p", (void *)p);
 			}
 			nni_mtx_unlock(&s->mtx);
 			return;
@@ -1336,7 +1337,7 @@ mqtt_recv_cb(void *arg)
 				if (mqtt_pipe_recv_msgq_putq(p, msg) != 0) {
 #ifdef NNG_HAVE_MQTT_BROKER
 					conn_param_free(p->cparam);
-					log_warn("Warning: no ctx found!! PUB msg lost!");
+					log_warn("Warning: no ctx found!! PUB msg lost! pipe=%p", (void *)p);
 #endif
 				}
 				nni_mtx_unlock(&s->mtx);

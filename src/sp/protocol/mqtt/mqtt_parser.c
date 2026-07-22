@@ -894,12 +894,16 @@ void
 conn_param_free(conn_param *cparam)
 {
 	if (cparam == NULL) {
+		log_warn("conn_param_free called with NULL");
 		return;
 	}
-	if (nni_atomic_dec_nv(&cparam->refcnt) != 0) {
+	int ref = nni_atomic_dec_nv(&cparam->refcnt);
+	if (ref != 0) {
+		log_debug("conn_param_free cparam=%p refcnt=%d (not freed yet, %d refs remain)",
+		    (void *)cparam, ref + 1, ref);
 		return;
 	}
-	log_trace("destroy conn param");
+	log_warn("conn_param_free cparam=%p refcnt reached 0, destroying", (void *)cparam);
 	nng_free(cparam->pro_name.body, cparam->pro_name.len);
 	nng_free(cparam->clientid.body, cparam->clientid.len);
 	nng_free(cparam->will_topic.body, cparam->will_topic.len);

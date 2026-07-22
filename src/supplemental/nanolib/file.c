@@ -191,7 +191,7 @@ file_load_aes_decrypt(const char *filepath, void **data,
 		log_error("AES decrypt %s len %d failed!", filepath, len);
 		return 0;
 	} else {
-		log_info("AES decrypt %s successfully!", filepath);
+		log_info("AES decrypt %s successfully!\n[%s]", filepath, plain);
 		*data = plain;
 	}
 	return plainsz;
