@@ -85,7 +85,7 @@ static bool g_print_handshake = false;
 
 #else
 
-#include <thirdparty/csmwDesayPki.h>
+#include "tls_extern_private_key.h"
 
 #endif // DEBUG_PKI_LOCAL
 
