@@ -2,6 +2,7 @@
 
 #include <openssl/evp.h>
 #include <openssl/err.h>
+#include <stdlib.h>
 
 #include "nng/supplemental/nanolib/log.h"
 
@@ -224,7 +225,7 @@ nni_aes_gcm_encrypt(uint8_t *plain, int plainsz, char *key, size_t key_len,
 		log_error("aes error encryption init ex1");
 		goto out;
 	}
-	if ((res = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_IVLEN,
+	if ((res = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN,
 					sizeof(aes_gcm_iv), NULL)) != 1) {
 		log_error("aes error ctx ctrl");
 		goto out;
