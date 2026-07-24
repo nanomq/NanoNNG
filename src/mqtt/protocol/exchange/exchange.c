@@ -120,7 +120,7 @@ exchange_handle_msg(exchange_t *ex, uint64_t key, void *msg, nng_aio *aio)
 	unsigned int i = 0;
 	int ret = 0;
 
-	if (ex == NULL || msg == NULL) {
+	if (ex == NULL || msg == NULL || ex->rb_count != 1) {
 		return -1;
 	}
 
