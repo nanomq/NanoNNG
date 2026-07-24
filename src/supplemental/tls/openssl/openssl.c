@@ -76,165 +76,12 @@ print_hex(char *str, const uint8_t *data, size_t len)
 #include <nng/supplemental/tls/engine.h>
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
-#include <nng/supplemental/tls/tee.h>
+
 #endif
 
 static bool g_print_handshake = false;
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
-
-#ifdef DEBUG_PKI_LOCAL
-
-RSA *
-create_rsa_key_from_file(const char *private_key_file)
-{
-	FILE   *file  = NULL;
-	RSA    *key = NULL;
-
-	// Open the private key file
-	file = fopen(private_key_file, "r");
-	if (!file) {
-		fprintf(stderr, "Failed to open private key: %s\n",
-		    private_key_file);
-		return NULL;
-	}
-
-	// Read the EC private key
-	key = PEM_read_RSAPrivateKey(file, NULL, NULL, NULL);
-	if (!key) {
-		fprintf(stderr, "Failed to read RSA private key: %s\n",
-		    ERR_error_string(ERR_get_error(), NULL));
-		fclose(file);
-		return NULL;
-	}
-
-	fclose(file);
-
-	// Verify that the key has both private and public components
-	if (!RSA_check_key(key)) {
-		fprintf(stderr, "Invalid RSA key: %s\n",
-		    ERR_error_string(ERR_get_error(), NULL));
-		RSA_free(key);
-		return NULL;
-	}
-
-fprintf(stderr, "---------Loaded Private key from file----\n");
-	return key;
-}
-
-EC_KEY *
-create_ec_key_from_file(const char *private_key_file)
-{
-	FILE   *file  = NULL;
-	EC_KEY *eckey = NULL;
-
-	// Open the private key file
-	file = fopen(private_key_file, "r");
-	if (!file) {
-		fprintf(stderr, "Failed to open private key: %s\n",
-		    private_key_file);
-		return NULL;
-	}
-
-	// Read the EC private key
-	eckey = PEM_read_ECPrivateKey(file, NULL, NULL, NULL);
-	if (!eckey) {
-		fprintf(stderr, "Failed to read EC private key: %s\n",
-		    ERR_error_string(ERR_get_error(), NULL));
-		fclose(file);
-		return NULL;
-	}
-
-	fclose(file);
-
-	// Verify that the EC key has both private and public components
-	if (!EC_KEY_check_key(eckey)) {
-		fprintf(stderr, "Invalid EC key: %s\n",
-		    ERR_error_string(ERR_get_error(), NULL));
-		EC_KEY_free(eckey);
-		return NULL;
-	}
-
-fprintf(stderr, "---------Loaded Private key from file----\n");
-	return eckey;
-}
-
-int
-getPrivatekeyToSign(const char *v, const uint8_t *dgst, int dlen,
-    uint8_t *sig, int sigmaxlen)
-{
-	NNI_ARG_UNUSED(v);
-	NNI_ARG_UNUSED(sigmaxlen);
-	RSA *rsakey = create_rsa_key_from_file("/home/wangha/Documents/NanoMQ_mirror/etc/certs/client-key.pem");
-	uint8_t hash[2048];
-	int sig_len = sigmaxlen;
-	if (SHA256((unsigned char *)dgst, dlen, hash) == NULL) {
-        log_error("Error hashing the data.\n");
-    }
-	if (RSA_sign(NID_sha256, hash, 2048, sig, (unsigned int *)&sig_len, rsakey) != 1) {
-		log_error("Error signing the data.\n");
-	}
-	return sig_len;
-	/*
-	EC_KEY *eckey = create_ec_key_from_file("/home/wangha/Downloads/geely/ssl_tee_test/certs/client.key");
-	// ECDSA_SIG *signature = ECDSA_do_sign_ex(dgst, dlen, kinv, r, eckey);
-	ECDSA_SIG *signature = ECDSA_do_sign(dgst, dlen, eckey);
-	if (!signature) {
-		fprintf(stderr, "ECDSA_do_sign_ex failed: %s\n",
-		    ERR_error_string(ERR_get_error(), NULL));
-		return 0; // Failure
-	}
-	// Encode the signature into DER format
-	unsigned char *der    = sig;
-	int            derlen = i2d_ECDSA_SIG(signature, &der);
-	if (derlen <= 0) {
-		fprintf(stderr, "i2d_ECDSA_SIG failed: %s\n",
-		    ERR_error_string(ERR_get_error(), NULL));
-		ECDSA_SIG_free(signature);
-		return 0; // Failure
-	}
-
-	ECDSA_SIG_free(signature);
-	EC_KEY_free(eckey);
-	return derlen;
-	*/
-}
-
-int
-getCertificateFromKeystore(const char* alias, uint8_t* out, int outlen_chk)
-{
-	(void) outlen_chk;
-	(void) alias;
-	char cert[2048];
-	sprintf(cert, "-----BEGIN CERTIFICATE-----\n"
-"MIIDEzCCAfugAwIBAgIBATANBgkqhkiG9w0BAQsFADA/MQswCQYDVQQGEwJDTjER"
-"MA8GA1UECAwIaGFuZ3pob3UxDDAKBgNVBAoMA0VNUTEPMA0GA1UEAwwGUm9vdENB"
-"MB4XDTIwMDUwODA4MDY1N1oXDTMwMDUwNjA4MDY1N1owPzELMAkGA1UEBhMCQ04x"
-"ETAPBgNVBAgMCGhhbmd6aG91MQwwCgYDVQQKDANFTVExDzANBgNVBAMMBkNsaWVu"
-"dDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMy4hoksKcZBDbY680u6"
-"TS25U51nuB1FBcGMlF9B/t057wPOlxF/OcmbxY5MwepS41JDGPgulE1V7fpsXkiW"
-"1LUimYV/tsqBfymIe0mlY7oORahKji7zKQ2UBIVFhdlvQxunlIDnw6F9popUgyHt"
-"dMhtlgZK8oqRwHxO5dbfoukYd6J/r+etS5q26sgVkf3C6dt0Td7B25H9qW+f7oLV"
-"PbcHYCa+i73u9670nrpXsC+Qc7Mygwa2Kq/jwU+ftyLQnOeW07DuzOwsziC/fQZa"
-"nbxR+8U9FNftgRcC3uP/JMKYUqsiRAuaDokARZxVTV5hUElfpO6z6/NItSDvvh3i"
-"eikCAwEAAaMaMBgwCQYDVR0TBAIwADALBgNVHQ8EBAMCBeAwDQYJKoZIhvcNAQEL"
-"BQADggEBABchYxKo0YMma7g1qDswJXsR5s56Czx/I+B41YcpMBMTrRqpUC0nHtLk"
-"M7/tZp592u/tT8gzEnQjZLKBAhFeZaR3aaKyknLqwiPqJIgg0pgsBGITrAK3Pv4z"
-"5/YvAJJKgTe5UdeTz6U4lvNEux/4juZ4pmqH4qSFJTOzQS7LmgSmNIdd072rwXBd"
-"UzcSHzsJgEMb88u/LDLjj1pQ7AtZ4Tta8JZTvcgBFmjB0QUi6fgkHY6oGat/W4kR"
-"jSRUBlMUbM/drr2PVzRc2dwbFIl3X+ZE6n5Sl3ZwRAC/s92JU6CPMRW02muVu6xl"
-"goraNgPISnrbpR6KjxLZkVembXzjNNc=\n"
-"-----END CERTIFICATE-----\n");
-	BIO * biocert = BIO_new_mem_buf(cert, strlen(cert));
-	X509 * xcert = PEM_read_bio_X509(biocert, NULL, 0, NULL);
-	if (!xcert) {
-		log_error("Null xcert");
-	}
-	int len = i2d_X509(xcert, &out);
-	BIO_free(biocert);
-	X509_free(xcert);
-	return len;
-}
 
 #else
 
@@ -867,10 +714,7 @@ open_config_ca_chain(
 #endif
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
-	// overwrite certs
-	log_info("teeGetCA start");
-	len = teeGetCA((char **)&certs);
-	log_warn("cacert(%d)", len);
+
 #else
 	if (certs == NULL) {
 		log_info("open_config_ca_chain" "NULL certs detected!");
@@ -901,8 +745,7 @@ open_config_ca_chain(
 	BIO_free(bio);
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
-	if (certs)
-		nng_free((void *)certs, len);
+
 #endif //TLS_EXTERN_PRIVATE_KEY
 
 	if (crl == NULL) {
@@ -980,16 +823,7 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 #endif
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
-	//int getCertificateFromKeystore(const char* alias, uint8_t* out, int outlen_chk);
-	// overwrite cert
-	NNI_ARG_UNUSED(cert);
-	log_info("Try to read Certs from keystore(%s)", NANOMQ_TLS_VENDOR);
-	char *cert1 = malloc(sizeof(char) * 4096);
-	memset(cert1, 0, 4096);
-	len = getCertificateFromKeystore(NANOMQ_TLS_VENDOR, (uint8_t *)cert1, 4096);
-	if (len <= 0) {
-		log_warn("open_config_ca_chain" "Failed to read Certs from keystore");
-	}
+
 #else
 	char *cert1 = cert;
 	len = strlen(cert1);
@@ -1003,26 +837,7 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	}
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
-	if (len > 5 && 0 == strncmp(cert1, "-----", 5)) {
-		xcert = PEM_read_bio_X509(biocert, NULL, NULL, NULL);
-		if (!xcert) {
-			log_error("NNG-TLS-CFG-OWNCHAIN" "Fail to convert pem certificate to x509");
-			rv = NNG_EINVAL;
-			goto error;
-		}
-	} else {
-		xcert = d2i_X509_bio(biocert, NULL);
-		if (!xcert) {
-			log_error("NNG-TLS-CFG-OWNCHAIN" "Fail to convert der certificate to x509");
-			rv = NNG_EINVAL;
-			goto error;
-		}
-	}
-	// Print the certificate in PEM format to stdout
-	if (PEM_write_X509(stdout, xcert) != 1) {
-		log_error("Error writing PEM certificate: %s\n", ERR_error_string(ERR_get_error(), NULL));
-	}
-	rv = SSL_CTX_clear_mode(cfg->ctx, SSL_MODE_NO_AUTO_CHAIN);
+
 #else
 	xcert = PEM_read_bio_X509(biocert, NULL, 0, NULL);
 #endif // TLS_EXTERN_PRIVATE_KEY
@@ -1037,112 +852,11 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	rv = 0;
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
-	char *cacerts;
-	log_info("teeGetCA start");
-	len = teeGetCA((char **)&cacerts);
-	log_warn("cacert(%d)", len);
 
-	BIO *cabio = BIO_new_mem_buf(cacerts, len);
-	if (!cabio) {
-		log_error("NNG-TLS-CFG-CACHAIN" "Failed to create BIO");
-		return (NNG_ENOMEM);
-	}
-
-	X509 *cacert = NULL;
-	while ((cacert = PEM_read_bio_X509(cabio, NULL, 0, NULL)) != NULL) {
-		log_info("Add a CACert to Certs");
-		if (SSL_CTX_add1_chain_cert(cfg->ctx, cacert) == 0) {
-			log_error("NNG-TLS-CFG-CACHAIN" "Failed to add certificate to store");
-			X509_free(cacert);
-			BIO_free(cabio);
-			return (NNG_ECRYPTO);
-		}
-		X509_free(cacert);
-	}
-	if (cacerts)
-		free(cacerts);
-	BIO_free(cabio);
 #endif
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
-	NNI_ARG_UNUSED(key);
-	log_debug("NNG-TLS-CFG-CACHAIN" "Ready to set private key");
-	SSL_CTX_set_private_key_method(cfg->ctx, &my_ssl_private_key_method);
-	log_debug("NNG-TLS-CFG-CACHAIN" "Ready to set private key done");
-/*
-	log_info("eckey generate start");
-	// Generate ECKEY
-	EC_KEY *eckey = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
-	if (eckey == NULL) {
-		log_error("EC_KEY_new_by_curve_name failed");
-		goto error;
-	}
-	// XXX Remove?
-	if (0 == EC_KEY_generate_key(eckey)) {
-		log_error("EC_KEY_generate_key failed");
-		goto error;
-	}
 
-	// Update the sign
-	const EC_KEY_METHOD *eckeyMethodOld = EC_KEY_get_method(eckey);
-	EC_KEY_METHOD *eckeyMethodNew = EC_KEY_METHOD_new(eckeyMethodOld);
-
-	SignFunction sign;
-	SignSetup    signsetup;
-	SignSig      signsig;
-	EC_KEY_METHOD_get_sign(eckeyMethodNew, &sign, &signsetup, &signsig);
-	sign = gSign;
-	EC_KEY_METHOD_set_sign(eckeyMethodNew, sign, signsetup, signsig);
-
-	if (EC_KEY_set_method(eckey, eckeyMethodNew) != 1) {
-		log_error("EC_KEY_set_method failed");
-		goto error;
-	}
-
-	// Create a fake Private key and set private key to ctx
-	X509 *x509 = SSL_CTX_get0_certificate(cfg->ctx);
-	if (!x509) {
-		log_error("SSL_CTX_get0_certificate failed");
-		goto error;
-	}
-	EVP_PKEY *pubkey = X509_get0_pubkey(x509);
-	if (!pubkey) {
-		log_error("X509_get0_pubkey failed");
-		goto error;
-	}
-	EC_KEY *pubeckey = EVP_PKEY_get1_EC_KEY(pubkey);
-	if (!pubeckey) {
-		log_error("EVP_PKEY_get1_EC_KEY failed");
-		goto error;
-	}
-	const EC_POINT *pubecpoint = EC_KEY_get0_public_key((const EC_KEY *)pubeckey);
-	if (!pubecpoint) {
-		log_error("EC_KEY_get0_public_key failed");
-		goto error;
-	}
-	EVP_PKEY *prik = EVP_PKEY_new();
-	if (!prik) {
-		log_error("EVP_PKEY_new failed");
-		goto error;
-	}
-	// Load the ECC private key
-	if (1 != EC_KEY_set_public_key(eckey, pubecpoint) ||
-	    1 != EVP_PKEY_set1_EC_KEY(prik, eckey)) {
-		log_error("EC_KEY_set_public_key || EVP_PKEY_set1_EC_KEY failed");
-		goto error;
-	}
-	if (SSL_CTX_use_PrivateKey(cfg->ctx, prik) <= 0) {
-		log_error("SSL_CTX_use_PrivateKey failed");
-		ERR_print_errors_fp(stderr);
-		goto error;
-	}
-
-	// check the ECC private key
-	if (!SSL_CTX_check_private_key(cfg->ctx)) {
-		log_error("Private key does not match the certificate public key");
-		goto error;
-	}
-*/
 
 #else
 	len = strlen(key);
@@ -1174,7 +888,7 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 
 error:
 #ifdef TLS_EXTERN_PRIVATE_KEY
-	nng_free(cert1, len);
+
 #endif // TLS_EXTERN_PRIVATE_KEY
 	if (xcert)
 		X509_free(xcert);
