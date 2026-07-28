@@ -1454,7 +1454,6 @@ conf_session_node_parse(conf_session_node *node, cJSON *obj)
 		}
 		hocon_read_num(s, retain_as_published, subscription);
 		hocon_read_num(s, retain_handling, subscription);
-		hocon_read_bool(s, nolocal, subscription);
 		s->remote_topic_len = strlen(s->remote_topic);
 		s->stream_id = 0;
 		hocon_read_num(s, stream_id, subscription);
@@ -1669,6 +1668,7 @@ conf_bridge_node_parse(
 		}
 		hocon_read_num(s, retain_as_published, subscription);
 		hocon_read_num(s, retain_handling, subscription);
+		hocon_read_bool(s, nolocal, subscription);
 		if (!s->remote_topic || !s->local_topic) {
 			log_warn("remote_topic/local_topic not found");
 			if (s->remote_topic) {
