@@ -706,8 +706,10 @@ typedef enum {
 } persistence_type;
 
 struct conf {
+	void      *db_root;
 	int        num_taskq_thread;
 	int        max_taskq_thread;
+	float      backoff;
 	char       exec_path[512];	// binary path
 	char       exec_fname[64];	// binary filename
 	char      *vin;
@@ -716,7 +718,12 @@ struct conf {
 	char      *exchange_ipc_url;
 	char      *conf_file;		// config file path
 	char      *url;
-	bool       enable;
+	bool       enable;			// Broker listener
+	bool       allow_anonymous;
+	bool       daemon;
+	bool       batch_resend;	// resend QoS cache msg in batch
+	bool       ipc_internal;
+	bool       bridge_mode;				// global switch of bridging for hot update
 	size_t     property_size;
 	size_t     msq_len;
     uint16_t   max_topic_alias;
@@ -728,12 +735,6 @@ struct conf {
 	uint32_t   max_awaiting_rel;
 	uint32_t   await_rel_timeout;
 	uint32_t   qos_duration;
-	float      backoff;
-	void      *db_root;
-	bool       allow_anonymous;
-	bool       daemon;
-	bool       ipc_internal;
-	bool       bridge_mode;				// global switch of bridging for hot update
 
 	conf_tcp_list        tcp_list;
 	conf_tls_list        tls_list;
