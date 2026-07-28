@@ -1037,6 +1037,7 @@ nano_pipe_send_cb(void *arg)
 	}
 
 	p->busy = false;
+	log_info("set busy false %d!", p->busy);
 	nni_mtx_unlock(&p->lk);
 	return;
 }
@@ -1236,6 +1237,38 @@ nano_pipe_recv_cb(void *arg)
 		// rid marks packet ID of resend QoS msg
 		NNI_GET16(ptr, ackid);
 		p->rid = ackid + 1;
+		// resend QoS cache msg if in batch mode
+		if (s->conf->batch_resend) {
+			nmq_req req;
+			uint16_t       pid = p->rid;
+			req.packet_id  = pid;
+			req.msg = NULL;
+			size_t         sz = sizeof(nmq_req);
+			int rv_opt = nni_pipe_getopt(p->pipe, NMQ_OPT_MQTT_GET_QOS_RESEND,
+				&req, &sz, NNI_TYPE_OPAQUE);
+			if (rv_opt == 0 && req.msg != NULL) {
+				nni_msg *rmsg = req.msg;
+				uint16_t real_pid  = req.packet_id;
+				p->rid        = real_pid == 0xFFFF ? 1 : real_pid + 1;
+				nano_msg_set_dup(rmsg);
+				nni_aio_set_prov_data(
+					&p->aio_send, (void *) (uintptr_t) real_pid);
+				if (!p->busy) {
+					p->busy = true;
+					nni_aio_set_msg(&p->aio_send, rmsg);
+					log_info("resending qos msg id %u to pipe %u",
+						pid, p->id);
+					nni_pipe_send(p->pipe, &p->aio_send);
+				} else {
+					if (nni_lmq_put(&p->rlmq, rmsg) != 0) {
+						nni_msg_free(rmsg);
+					}
+					log_error("wait next PUBACK!");
+				}
+			}
+		}
+		nni_mtx_unlock(&p->lk);
+		goto drop;
 	case CMD_CONNECT:
 	case CMD_PUBREC:
 	case CMD_PUBREL:
