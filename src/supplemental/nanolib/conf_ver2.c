@@ -350,6 +350,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_num(config, max_inflight_window, jso_mqtt);
 		hocon_read_time(config, max_awaiting_rel, jso_mqtt);
 		hocon_read_time(config, await_rel_timeout, jso_mqtt);
+		hocon_read_bool(config, batch_resend, jso_mqtt);
 	}
 	config->ext_qos_db = nni_zalloc(sizeof(nni_id_map));
 	nni_id_map_init((nni_id_map *)config->ext_qos_db, 0, 0, false);
