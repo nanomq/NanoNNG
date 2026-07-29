@@ -52,17 +52,20 @@ alias_cmp(void *x_, void *y_)
 	return *alias - ele_x->alias;
 }
 
-NNG_DECL void dbhash_init_alias_table(void);
+// Topic aliases are per-connection state (MQTT 5 spec 3.3.2.3.4), so the
+// vector of alias/topic pairs belongs to the connection that registered them
+// (its conn_param) rather than to a global table keyed on pipe id. A NULL
+// vector is an empty one, and the owner is responsible for serialising
+// access; see conn_param_set_topic_alias().
 
-NNG_DECL void dbhash_destroy_alias_table(void);
 // This function do not verify value of alias and topic,
 // therefore you should make sure alias and topic is
 // not illegal.
-NNG_DECL void dbhash_insert_atpair(uint32_t pipe_id, uint32_t alias, const char *topic);
+NNG_DECL void dbhash_atpair_insert(dbhash_atpair_t ***vecp, uint32_t alias, const char *topic);
 
-NNG_DECL const char *dbhash_find_atpair(uint32_t pipe_id, uint32_t alias);
+NNG_DECL const char *dbhash_atpair_find(dbhash_atpair_t **vec, uint32_t alias);
 
-NNG_DECL void dbhash_del_atpair_queue(uint32_t pipe_id);
+NNG_DECL void dbhash_atpair_free_all(dbhash_atpair_t **vec);
 
 NNG_DECL void dbhash_init_pipe_table(void);
 
