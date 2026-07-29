@@ -1237,7 +1237,7 @@ nano_pipe_recv_cb(void *arg)
 		NNI_GET16(ptr, ackid);
 		p->rid = ackid == UINT16_MAX ? 1 : ackid + 1;
 		// resend QoS cache msg if in batch mode
-		if (s->conf->batch_resend) {
+		if (s->conf->batch_resend && !p->busy) {
 			nmq_req req;
 			uint16_t       pid = p->rid;
 			req.packet_id  = pid;
@@ -1248,18 +1248,17 @@ nano_pipe_recv_cb(void *arg)
 			if (rv_opt == 0 && req.msg != NULL) {
 				nni_msg *rmsg = req.msg;
 				uint16_t real_pid  = req.packet_id;
-				// Packet ID is lost if put it to lmq. only resend when pipe is free
-				if (!p->busy) {
-					p->busy = true;
-					nano_msg_set_dup(rmsg);
-					p->rid = real_pid == 0xFFFF ? 1 : real_pid + 1;
-					nni_aio_set_prov_data(&p->aio_send,
-					    (void *) (uintptr_t) real_pid);
-					nni_aio_set_msg(&p->aio_send, rmsg);
-					log_info("resending qos msg id %u to "
-					         "pipe %u", pid, p->id);
-					nni_pipe_send(p->pipe, &p->aio_send);
-				}
+				// Packet ID is lost if put it to lmq
+				// only resend when pipe is free
+				p->busy = true;
+				nano_msg_set_dup(rmsg);
+				p->rid = real_pid == 0xFFFF ? 1 : real_pid + 1;
+				nni_aio_set_prov_data(&p->aio_send,
+					(void *) (uintptr_t) real_pid);
+				nni_aio_set_msg(&p->aio_send, rmsg);
+				log_info("resending qos msg id %u to "
+							"pipe %u", pid, p->id);
+				nni_pipe_send(p->pipe, &p->aio_send);
 			}
 		}
 		nni_mtx_unlock(&p->lk);
