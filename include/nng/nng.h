@@ -1684,7 +1684,8 @@ NNG_DECL void           conn_param_set_password(
 NNG_DECL void        conn_param_set_proto_ver(conn_param *cparam, uint8_t ver);
 // Topic aliases belong to the connection that registered them (MQTT 5 spec
 // 3.3.2.3.4). conn_param_get_topic_alias returns a copy owned by the caller,
-// or NULL if this connection never registered that alias.
+// which releases it with nng_strfree(), or NULL if this connection never
+// registered that alias.
 NNG_DECL void        conn_param_set_topic_alias(
            conn_param *cparam, uint32_t alias, const char *topic);
 NNG_DECL char       *conn_param_get_topic_alias(
