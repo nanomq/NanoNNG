@@ -200,6 +200,12 @@ dbhash_atpair_insert(dbhash_atpair_t ***vecp, uint32_t a, const char *t)
 	dbhash_atpair_t **vec    = *vecp;
 	size_t            index  = 0;
 
+	if (atpair == NULL) {
+		// Keep the vector free of holes: alias_cmp would dereference
+		// one on the next lookup. The alias simply stays unregistered.
+		return;
+	}
+
 	if (true == binary_search((void **) vec, 0, &index, &a, alias_cmp)) {
 		dbhash_atpair_free(vec[index]);
 		vec[index] = atpair;
