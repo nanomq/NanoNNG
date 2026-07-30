@@ -485,6 +485,12 @@ mqtt_quictran_pipe_nego_cb(void *arg)
 			ep->property = NULL;
 		}
 		ep->reason_code = nni_mqtt_msg_get_connack_return_code(p->rxmsg);
+		if (ep->reason_code != MQTT_SUCCESS) {
+			log_warn("Broker rejected CONNECT with reason code %d",
+			    ep->reason_code);
+			rv = NNG_ECONNREFUSED;
+			goto error;
+		}
 	}
 #ifdef NNG_HAVE_MQTT_BROKER
 	nni_msg_clone(p->rxmsg);
