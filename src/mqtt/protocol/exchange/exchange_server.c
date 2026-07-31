@@ -755,7 +755,11 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 		return -1;
 	}
 
-	ret = nni_id_set(&ex_node->sock->rbmsgmap, key, msg);
+	// Currently only allow single ringbus
+	if (ex_node->ex->rb_count == 1)
+		ret = nni_id_set(&ex_node->sock->rbmsgmap, key, msg);
+	else
+		ret = NNG_EINVAL;
 	if (ret != 0) {
 		log_error("[%s]rbmsgmap set failed", ex_node->ex->topic);
 		/* free msg here! */
