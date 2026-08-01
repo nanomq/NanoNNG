@@ -566,6 +566,10 @@ nano_pipe_fini(void *arg)
 	}
 	nni_mtx_lock(&s->lk);
 	nni_mtx_lock(&p->lk);
+	if (nni_list_active(&s->recvpipes, p)) {
+		// Session handoff can bypass the normal close path.
+		nni_list_remove(&s->recvpipes, p);
+	}
 	if ((msg = nni_aio_get_msg(&p->aio_recv)) != NULL) {
 		nni_aio_set_msg(&p->aio_recv, NULL);
 	}
