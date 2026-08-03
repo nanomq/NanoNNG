@@ -1,5 +1,5 @@
 //
-// Copyright 2026 Brendan Miesch <brendan@picogrid.com>
+// Copyright 2026 NanoMQ Team, Inc.
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -7,9 +7,9 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 
-#include <nuts.h>
-
 #include "http_api.h"
+
+#include <nuts.h>
 
 extern void nni_http_conn_test_set_fe_timeout(nng_duration);
 extern void nni_http_conn_test_reset_fini_count(void);
