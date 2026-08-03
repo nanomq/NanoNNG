@@ -716,14 +716,13 @@ auth_verify:
 		}
 	}
 	nmq_connack_encode(msg, s->conf, p->conn_param, rv);
+	nni_mtx_lock(&s->lk);
 	if (rv != 0) {
 		// send connack with reason code 0x05
 		log_warn("Invalid auth info or authentication denied");
 		p->conn_param->will_flag = 0;
 		goto end;
 	}
-
-	nni_mtx_lock(&s->lk);
 	// Clientid should not be NULL since broker will assign one
 	// TODO use p_id
 	clientid = (char *) conn_param_get_clientid(p->conn_param);
