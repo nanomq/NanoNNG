@@ -2,6 +2,7 @@
 // Copyright 2021 Staysail Systems, Inc. <info@staysail.tech>
 // Copyright 2018 Capitar IT Group BV <info@capitar.com>
 // Copyright 2019 Devolutions <info@devolutions.net>
+// Copyright 2026 Brendan Miesch <brendan@picogrid.com>
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -23,6 +24,29 @@
 // We insist that individual headers fit in 8K.
 // If you need more than that, you need something we can't do.
 #define HTTP_BUFSIZE 8192
+
+#ifdef NNG_TEST_LIB
+static nng_duration   http_conn_test_fe_timeout = NNG_DURATION_INFINITE;
+static nni_atomic_int http_conn_test_fini_count;
+
+void
+nni_http_conn_test_set_fe_timeout(nng_duration timeout)
+{
+	http_conn_test_fe_timeout = timeout;
+}
+
+void
+nni_http_conn_test_reset_fini_count(void)
+{
+	nni_atomic_init(&http_conn_test_fini_count);
+}
+
+int
+nni_http_conn_test_get_fini_count(void)
+{
+	return (nni_atomic_get(&http_conn_test_fini_count));
+}
+#endif
 
 // types of reads
 enum read_flavor {
@@ -65,6 +89,14 @@ struct nng_http_conn {
 
 	enum write_flavor wr_flavor;
 };
+
+#ifdef NNG_TEST_LIB
+void
+nni_http_conn_test_stop_write(nni_http_conn *conn)
+{
+	nni_aio_stop(conn->wr_aio);
+}
+#endif
 
 void
 nni_http_conn_set_ctx(nni_http_conn *conn, void *ctx)
@@ -318,6 +350,9 @@ nng_http_fr_cb(nng_aio *aio, void *arg, int rv)
 	nni_free(conn->rd_buf, conn->rd_bufsz);
 	nni_mtx_fini(&conn->mtx);
 	NNI_FREE_STRUCT(conn);
+#ifdef NNG_TEST_LIB
+	nni_atomic_inc(&http_conn_test_fini_count);
+#endif
 }
 
 static void
@@ -712,28 +747,51 @@ nni_http_conn_setopt(nni_http_conn *conn, const char *name, const void *buf,
 void
 nni_http_conn_fini(nni_http_conn *conn)
 {
+	nni_aio *fe_aio = NULL;
+	nni_aio *rd_aio = conn->rd_aio;
+	nni_aio *wr_aio = conn->wr_aio;
+
 	nni_mtx_lock(&conn->mtx);
-	// A stopped aio (the peer connection is being torn down concurrently)
-	// makes nni_aio_schedule fail; that is not fatal here -- the aio is then
-	// not busy and is freed directly below.  Killing the whole broker on a
-	// routine teardown race is wrong, so log and continue.
-	if ((nni_aio_schedule(conn->wr_aio, nng_wr_fr_cb, conn)) != 0) {
+	// A stopped AIO cannot install the cancellation callback that marks
+	// its direction closed, so account for it here before freeing it
+	// below.
+	if ((nni_aio_schedule(wr_aio, nng_wr_fr_cb, conn)) != 0) {
 		log_warn("wr_aio schedule failed during http conn fini");
+		conn->wr_close = true;
 	}
-	if ((nni_aio_schedule(conn->rd_aio, nng_rd_fr_cb, conn)) != 0) {
+	if ((nni_aio_schedule(rd_aio, nng_rd_fr_cb, conn)) != 0) {
 		log_warn("rd_aio schedule failed during http conn fini");
+		conn->rd_close = true;
+	}
+	if (conn->wr_close && conn->rd_close && (conn->fe_aio != NULL)) {
+		fe_aio       = conn->fe_aio;
+		conn->fe_aio = NULL;
 	}
 	conn->free = true;
 	http_close(conn);
 	nni_mtx_unlock(&conn->mtx);
 
-	if (!nni_aio_busy(conn->rd_aio) && !nni_aio_busy(conn->wr_aio)) {
-		nni_aio_free(conn->wr_aio);
-		nni_aio_free(conn->rd_aio);
+	if (!nni_aio_busy(rd_aio) && !nni_aio_busy(wr_aio)) {
+		nni_aio_free(wr_aio);
+		nni_aio_free(rd_aio);
 	} else {
-		nni_aio_reap(conn->wr_aio);
-		nni_aio_reap(conn->rd_aio);
+		nni_aio_reap(wr_aio);
+		nni_aio_reap(rd_aio);
 	}
+	if (fe_aio != NULL) {
+		nni_aio_reap(fe_aio);
+	}
+}
+
+static void
+http_init_fini(nni_http_conn *conn)
+{
+	nni_aio_free(conn->wr_aio);
+	nni_aio_free(conn->rd_aio);
+	nni_aio_free(conn->fe_aio);
+	nni_free(conn->rd_buf, conn->rd_bufsz);
+	nni_mtx_fini(&conn->mtx);
+	NNI_FREE_STRUCT(conn);
 }
 
 static int
@@ -750,7 +808,7 @@ http_init(nni_http_conn **connp, nng_stream *data)
 	nni_aio_list_init(&conn->wrq);
 
 	if ((conn->rd_buf = nni_alloc(HTTP_BUFSIZE)) == NULL) {
-		nni_http_conn_fini(conn);
+		http_init_fini(conn);
 		return (NNG_ENOMEM);
 	}
 	conn->rd_bufsz = HTTP_BUFSIZE;
@@ -758,12 +816,17 @@ http_init(nni_http_conn **connp, nng_stream *data)
 	if (((rv = nni_aio_alloc(&conn->wr_aio, http_wr_cb, conn)) != 0) ||
 		((rv = nni_aio_alloc(&conn->fe_aio, NULL, conn)) != 0) ||
 	    ((rv = nni_aio_alloc(&conn->rd_aio, http_rd_cb, conn)) != 0)) {
-		nni_http_conn_fini(conn);
+		http_init_fini(conn);
 		return (rv);
 	}
+#ifdef NNG_TEST_LIB
+	nni_aio_set_timeout(conn->fe_aio, http_conn_test_fe_timeout);
+#endif
 	if ((rv = nni_aio_schedule(conn->fe_aio, nng_http_fr_cb, conn)) != 0) {
-		log_error("Non recoverable error, aio schedule failed!");
-		exit(EXIT_FAILURE);
+		log_error("HTTP conn free AIO schedule failed: %s",
+		    nng_strerror(rv));
+		http_init_fini(conn);
+		return (rv);
 	}
 	conn->sock = data;
 	conn->closed = false;

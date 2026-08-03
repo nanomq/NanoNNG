@@ -1,6 +1,7 @@
 #
 # Copyright 2020 Staysail Systems, Inc. <info@staysail.tech>
 # Copyright 2018 Capitar IT Group BV <info@capitar.com>
+# Copyright 2026 Brendan Miesch <brendan@picogrid.com>
 #
 # This software is supplied under the terms of the MIT License, a
 # copy of which should be located in the distribution where this
@@ -26,3 +27,5 @@ nng_sources_if(NNG_SUPP_HTTP
         http_public.c
         http_schemes.c
         http_server.c)
+
+nng_test_if(NNG_SUPP_HTTP http_conn_test)
