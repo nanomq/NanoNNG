@@ -2068,6 +2068,7 @@ nni_mqttv5_msg_decode_connack(nni_msg *msg)
 			case SERVER_REFERENCE:
 			case AUTHENTICATION_METHOD:
 			case AUTHENTICATION_DATA:
+			case SESSION_EXPIRY_INTERVAL:
 				break;
 			default:
 				return PROTOCOL_ERROR;
