@@ -751,7 +751,6 @@ auth_verify:
 		// send connack with reason code 0x05
 		log_warn("Invalid auth info or authentication denied");
 		p->conn_param->will_flag = 0;
-		nni_mtx_unlock(&s->lk);
 		goto end;
 	}
 
