@@ -6,6 +6,7 @@
 // file was obtained (LICENSE.txt).  A copy of the license may also be
 // found online at https://opensource.org/licenses/MIT.
 //
+#include "nng/nng.h"
 #include <sys/types.h>
 
 #define CMD_BUFF_LEN 1024
@@ -28,10 +29,10 @@ extern int   cmd_output_len;
 			goto err;                       \
 	} while (0)
 
-extern int nano_cmd_frun(const char *format, ...);
+NNG_DECL int nano_cmd_frun(const char *format, ...);
 
 #endif
 
-extern int nano_cmd_run(const char *cmd);
-extern int nano_cmd_run_status(const char *cmd);
-extern void nano_cmd_cleanup(void);
+NNG_DECL int nano_cmd_run(const char *cmd);
+NNG_DECL int nano_cmd_run_status(const char *cmd);
+NNG_DECL void nano_cmd_cleanup(void);

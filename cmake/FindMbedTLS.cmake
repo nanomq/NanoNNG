@@ -44,6 +44,11 @@ set(_MBED_REQUIRED_VARS MbedTLS_TARGET MbedX509_TARGET MbedCrypto_TARGET MbedTLS
 include(FindPackageHandleStandardArgs)
 include(CMakePushCheckState)
 
+if(BUILD_STATIC_LIB)
+    set(_MBEDTLS_FIND_LIBRARY_SUFFIXES_SAVED ${CMAKE_FIND_LIBRARY_SUFFIXES})
+    set(CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_STATIC_LIBRARY_SUFFIX})
+endif()
+
 find_path(_MBEDTLS_INCLUDE_DIR
         NAMES mbedtls/ssl.h
         HINTS ${_MBEDTLS_ROOT_HINTS}
@@ -72,6 +77,10 @@ find_library(_MBEDTLS_LIBRARY
         #PATHS /usr/local
         PATH_SUFFIXES lib
         )
+
+if(BUILD_STATIC_LIB)
+    set(CMAKE_FIND_LIBRARY_SUFFIXES ${_MBEDTLS_FIND_LIBRARY_SUFFIXES_SAVED})
+endif()
 
 if ("${_MBEDTLS_TLS_LIBRARY}" STREQUAL "_MBEDTLS_TLS_LIBRARY-NOTFOUND")
     message("Failed to find Mbed TLS library")

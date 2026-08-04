@@ -148,21 +148,21 @@ typedef struct {
 	nng_mtx *rule_mutex;
 } conf_rule;
 
-int         rule_find_key(const char *str, size_t len);
-uint32_t    rule_generate_rule_id(void);
-char       *rule_get_key_arr(char *p, rule_key *key);
-bool        rule_sql_parse(conf_rule *cr, char *sql);
-repub_t    *rule_repub_init(void);
-void        rule_repub_free(repub_t *repub);
-void        rule_free(rule *r);
-bool        rule_mysql_check(rule_mysql *mysql);
-void        rule_mysql_free(rule_mysql *mysql);
-rule_mysql *rule_mysql_init(void);
-bool        rule_postgresql_check(rule_postgresql *postgresql);
-void        rule_postgresql_free(rule_postgresql *postgresql);
-rule_postgresql *rule_postgresql_init(void);
-bool        rule_timescaledb_check(rule_timescaledb *timescaledb);
-void        rule_timescaledb_free(rule_timescaledb *timescaledb);
-rule_timescaledb *rule_timescaledb_init(void);
+NNG_DECL int         rule_find_key(const char *str, size_t len);
+NNG_DECL uint32_t    rule_generate_rule_id(void);
+NNG_DECL char       *rule_get_key_arr(char *p, rule_key *key);
+NNG_DECL bool        rule_sql_parse(conf_rule *cr, char *sql);
+NNG_DECL repub_t    *rule_repub_init(void);
+NNG_DECL void        rule_repub_free(repub_t *repub);
+NNG_DECL void        rule_free(rule *r);
+NNG_DECL bool        rule_mysql_check(rule_mysql *mysql);
+NNG_DECL void        rule_mysql_free(rule_mysql *mysql);
+NNG_DECL rule_mysql *rule_mysql_init(void);
+NNG_DECL bool        rule_postgresql_check(rule_postgresql *postgresql);
+NNG_DECL void        rule_postgresql_free(rule_postgresql *postgresql);
+NNG_DECL rule_postgresql *rule_postgresql_init(void);
+NNG_DECL bool        rule_timescaledb_check(rule_timescaledb *timescaledb);
+NNG_DECL void        rule_timescaledb_free(rule_timescaledb *timescaledb);
+NNG_DECL rule_timescaledb *rule_timescaledb_init(void);
 
 #endif
