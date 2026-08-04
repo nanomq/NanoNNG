@@ -4946,7 +4946,9 @@ conf_parquet_destroy(conf_parquet *parquet)
 		nng_strfree(parquet->dir);
 		nng_strfree(parquet->name);
 		nng_strfree(parquet->file_name_prefix);
-
+		parquet->dir              = NULL;
+		parquet->name             = NULL;
+		parquet->file_name_prefix = NULL;
 		if (parquet->encryption.enable) {
 			nng_strfree(parquet->encryption.key);
 			nng_strfree(parquet->encryption.key_id);
