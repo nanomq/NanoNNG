@@ -1281,10 +1281,12 @@ update_subscription_vin(conf_bridge_node *node, const char *vin)
 static void
 update_parquet_vin(conf_parquet *parquet)
 {
-	if (parquet->file_name_prefix &&
-	    0 == nng_strcasecmp(parquet->file_name_prefix, "${VIN}")) {
-		nng_strfree(parquet->file_name_prefix);
-		parquet->file_name_prefix = strdup(gvin);
+	if (gvin != NULL) {
+		if (parquet->file_name_prefix &&
+		    0 == nng_strcasecmp(parquet->file_name_prefix, "${VIN}")) {
+			nng_strfree(parquet->file_name_prefix);
+			parquet->file_name_prefix = nng_strdup(gvin);
+		}
 	}
 }
 
