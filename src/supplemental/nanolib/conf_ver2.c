@@ -1641,6 +1641,10 @@ conf_exchange_node_parse(conf_exchange_node *node, cJSON *exchange)
 		return;
 	}
 
+	// Replace ${VIN} placeholder with actual VIN.
+	// Falls back to empty string if NANOMQ_VIN env var is not set.
+	node->topic = check_and_replace_vin(node->topic, gvin ? gvin : "");
+
 	cJSON *rb = hocon_get_obj("ringbus", exchange);
 
 	ringBuffer_node *rb_node = NNI_ALLOC_STRUCT(rb_node);
