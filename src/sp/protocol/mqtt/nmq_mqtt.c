@@ -747,6 +747,29 @@ auth_verify:
 	}
 #endif
 	nmq_connack_encode(msg, s->conf, p->conn_param, rv);
+	// CONNECT verification and the HTTP auth callback above run outside
+	// s->lk, so the pipe may have been closed in the meantime (client
+	// disconnect, or a client-ID collision kick via nni_pipe_set_pid ->
+	// nni_pipe_close). Do not register a dead pipe in s->pipes
+	if (nni_pipe_is_closed(npipe) || nni_atomic_get_bool(&npipe->cache)) {
+		if (nni_atomic_get_bool(&npipe->cache)) {
+			if (rv != SUCCESS) {
+				if (nni_id_get(&s->cached_sessions,
+				        npipe->p_id) == p) {
+					nni_id_remove(
+					    &s->cached_sessions, npipe->p_id);
+				}
+				nni_atomic_set_bool(&npipe->cache, false);
+			} else {
+				nni_sleep_aio(
+				    s->conf->qos_duration * 1500, &p->aio_timer);
+			}
+		}
+		nni_mtx_unlock(&s->lk);
+		conn_param_free(p->conn_param);
+		nni_msg_free(msg);
+		return NNG_ECLOSED;
+	}
 	if (rv != 0) {
 		// send connack with reason code 0x05
 		log_warn("Invalid auth info or authentication denied");
