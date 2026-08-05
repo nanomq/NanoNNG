@@ -224,15 +224,15 @@ bool
 parquet_file_queue::is_topic_match(const string &file_name) const
 {
 	// Final parquet filename format after rename:
-	//   {prefix}_{topic}-{ts_start}~{ts_end}_{idx}_{md5}.parquet
-	// The topic name is always wrapped as "_{topic}-" immediately
+	//   {prefix}_{node_name}-{ts_start}~{ts_end}_{idx}_{md5}.parquet
+	// The node name is always wrapped as "_{node_name}-" immediately
 	// after the file_name_prefix.  We match on that delimiter pair
 	// so that different topics sharing the same directory do not
 	// interfere with each other's file_count / file_size limits.
 	if (topic_.empty()) {
 		return true; // no topic filter — accept all (backward compat)
 	}
-	string pattern = "_" + topic_ + "-";
+	string pattern = "_" + string(node->name) + "-";
 	return file_name.find(pattern) != string::npos;
 }
 
