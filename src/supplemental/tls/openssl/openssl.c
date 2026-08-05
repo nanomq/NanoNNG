@@ -1,5 +1,6 @@
 //
 // Copyright 2024 NanoMQ Team, Inc. <wangwei@emqx.io>
+// Copyright 2026 Liebherr-Digital Development Center (LDC) <peter.bestler@liebherr.de>
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -90,6 +91,15 @@ print_hex(char *str, const uint8_t *data, size_t len)
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#if !defined(LIBRESSL_VERSION_NUMBER) && \
+    OPENSSL_VERSION_NUMBER >= 0x30000000L
+#define NNG_OPENSSL_HAVE_PKCS11 1
+#include <openssl/provider.h>
+#include <openssl/store.h>
+#include <openssl/ui.h>
+#else
+#define NNG_OPENSSL_HAVE_PKCS11 0
+#endif
 
 #include "core/nng_impl.h"
 #include "nng/nng.h"
@@ -151,6 +161,19 @@ struct nng_tls_engine_config {
 };
 
 static int open_conn_handshake(nng_tls_engine_conn *ec);
+static bool open_is_pkcs11_uri(const char *value);
+static int  open_check_pkcs11_provider(void);
+static int open_load_x509_from_uri(
+    nng_tls_engine_config *cfg, const char *uri, X509 **xcertp);
+static int open_load_pkey_from_uri(
+    nng_tls_engine_config *cfg, const char *uri, EVP_PKEY **pkeyp);
+
+#if NNG_OPENSSL_HAVE_PKCS11
+static nni_mtx        open_pkcs11_lock = NNI_MTX_INITIALIZER;
+static OSSL_PROVIDER *open_pkcs11_provider = NULL;
+static bool           open_pkcs11_checked  = false;
+static int            open_pkcs11_status   = NNG_ENOTSUP;
+#endif
 
 /************************* SSL Connection ***********************/
 
@@ -657,8 +680,28 @@ open_config_ca_chain(
 	size_t len;
 	trace("start");
 	if (certs == NULL) {
-		log_info("open_config_ca_chain" "NULL certs detected!");
+		log_error("NNG-TLS-CFG-CACHAIN" "No certificates supplied");
+		return (NNG_EINVAL);
 	}
+
+	if (open_is_pkcs11_uri(certs)) {
+		X509 *      cert  = NULL;
+		X509_STORE *store = SSL_CTX_get_cert_store(cfg->ctx);
+		int         rv;
+
+		if ((rv = open_load_x509_from_uri(cfg, certs, &cert)) != 0) {
+			return (rv);
+		}
+		if (X509_STORE_add_cert(store, cert) == 0) {
+			log_error("NNG-TLS-CFG-CACHAIN"
+			          "Failed to add PKCS#11 certificate to store");
+			X509_free(cert);
+			return (NNG_ECRYPTO);
+		}
+		X509_free(cert);
+		return (0);
+	}
+
 	len = strlen(certs);
 
 	BIO *bio = BIO_new_mem_buf(certs, len);
@@ -704,44 +747,262 @@ open_config_ca_chain(
 	return (0);
 }
 
-#if NNG_OPENSSL_HAVE_PASSWORD
 static int
 open_get_password(char *passwd, int size, int rw, void *ctx)
 {
-	// password is *not* NUL terminated in wolf
-	trace("start");
 	nng_tls_engine_config *cfg = ctx;
 	size_t                 len;
 
 	(void) rw;
 
-	if (cfg->pass == NULL) {
+	if ((cfg == NULL) || (cfg->pass == NULL) || (size <= 0)) {
 		return (0);
 	}
-	len = strlen(cfg->pass); // Our "ctx" is really the password.
-	if (len > (size_t) size) {
-		len = size;
+	len = strlen(cfg->pass);
+	if (len >= (size_t) size) {
+		len = (size_t) size - 1;
 	}
 	memcpy(passwd, cfg->pass, len);
-	trace("end");
-	return (len);
+	passwd[len] = '\0';
+	return ((int) len);
+}
+
+static bool
+open_is_pkcs11_uri(const char *value)
+{
+	return ((value != NULL) &&
+	    (nni_strncasecmp(value, "pkcs11:", sizeof("pkcs11:") - 1) == 0));
+}
+
+static int
+open_check_pkcs11_provider(void)
+{
+#if NNG_OPENSSL_HAVE_PKCS11
+	int rv;
+
+	nni_mtx_lock(&open_pkcs11_lock);
+
+	if (open_pkcs11_checked) {
+		rv = open_pkcs11_status;
+		goto out;
+	}
+
+	open_pkcs11_status = NNG_ECRYPTO;
+	if (!OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CONFIG, NULL)) {
+		log_error("NNG-TLS-CFG-OWNCHAIN"
+		          "Failed to initialize OpenSSL configuration for "
+		          "PKCS#11 support");
+		goto done;
+	}
+
+	open_pkcs11_provider = OSSL_PROVIDER_load(NULL, "pkcs11");
+	if (open_pkcs11_provider == NULL) {
+		log_error("NNG-TLS-CFG-OWNCHAIN"
+		          "Failed to load OpenSSL pkcs11 provider; configure "
+		          "openssl.cnf or OPENSSL_MODULES");
+		goto done;
+	}
+
+	open_pkcs11_status = 0;
+
+done:
+	open_pkcs11_checked = true;
+	rv                  = open_pkcs11_status;
+
+out:
+	nni_mtx_unlock(&open_pkcs11_lock);
+	return (rv);
+#else
+	log_error("NNG-TLS-CFG-OWNCHAIN"
+	          "PKCS#11 URI support requires OpenSSL >= 3");
+	return (NNG_ENOTSUP);
+#endif
+}
+
+#if NNG_OPENSSL_HAVE_PKCS11
+static int
+open_store_uri(nng_tls_engine_config *cfg, const char *uri,
+    OSSL_STORE_CTX **storep, UI_METHOD **uip)
+{
+	OSSL_STORE_CTX *store;
+	UI_METHOD      *ui = NULL;
+	int             rv;
+
+	if ((rv = open_check_pkcs11_provider()) != 0) {
+		return (rv);
+	}
+	if ((cfg != NULL) && (cfg->pass != NULL) &&
+	    ((ui = UI_UTIL_wrap_read_pem_callback(
+	          open_get_password, 0)) == NULL)) {
+		log_error("NNG-TLS-CFG-OWNCHAIN"
+		          "Failed to create PKCS#11 PIN callback");
+		return (NNG_ENOMEM);
+	}
+	store = OSSL_STORE_open(uri, ui, cfg, NULL, NULL);
+	if (store == NULL) {
+		log_error("NNG-TLS-CFG-OWNCHAIN"
+		          "Failed to open PKCS#11 URI: %s",
+		    uri);
+		open_log_ssl_error("NNG-TLS-CFG-OWNCHAIN OSSL_STORE_open", 0);
+		if (ui != NULL) {
+			UI_destroy_method(ui);
+		}
+		return (NNG_ECRYPTO);
+	}
+	*storep = store;
+	*uip    = ui;
+	return (0);
+}
+
+static void
+open_store_close(OSSL_STORE_CTX *store, UI_METHOD *ui)
+{
+	if ((store != NULL) && (OSSL_STORE_close(store) == 0)) {
+		open_log_ssl_error("NNG-TLS-CFG-OWNCHAIN OSSL_STORE_close", 0);
+	}
+	if (ui != NULL) {
+		UI_destroy_method(ui);
+	}
 }
 #endif
+
+static int
+open_load_x509_from_uri(
+    nng_tls_engine_config *cfg, const char *uri, X509 **xcertp)
+{
+#if NNG_OPENSSL_HAVE_PKCS11
+	OSSL_STORE_CTX * store = NULL;
+	OSSL_STORE_INFO *info  = NULL;
+	UI_METHOD *      ui    = NULL;
+	X509 *           xcert = NULL;
+	int              rv;
+
+	if ((rv = open_store_uri(cfg, uri, &store, &ui)) != 0) {
+		return (rv);
+	}
+
+	while ((info = OSSL_STORE_load(store)) != NULL) {
+		if (OSSL_STORE_INFO_get_type(info) == OSSL_STORE_INFO_CERT) {
+			xcert = OSSL_STORE_INFO_get1_CERT(info);
+			OSSL_STORE_INFO_free(info);
+			info = NULL;
+			break;
+		}
+		OSSL_STORE_INFO_free(info);
+		info = NULL;
+	}
+
+	if (xcert == NULL) {
+		log_error("NNG-TLS-CFG-OWNCHAIN"
+		          "No certificate found in PKCS#11 URI: %s",
+		    uri);
+		if (OSSL_STORE_error(store)) {
+			open_log_ssl_error(
+			    "NNG-TLS-CFG-OWNCHAIN OSSL_STORE_load", 0);
+		}
+		rv = NNG_ECRYPTO;
+		goto out;
+	}
+
+	*xcertp = xcert;
+	xcert   = NULL;
+	rv      = 0;
+
+out:
+	if (info) {
+		OSSL_STORE_INFO_free(info);
+	}
+	open_store_close(store, ui);
+	if (xcert) {
+		X509_free(xcert);
+	}
+	return (rv);
+#else
+	NNI_ARG_UNUSED(cfg);
+	NNI_ARG_UNUSED(uri);
+	NNI_ARG_UNUSED(xcertp);
+	log_error("NNG-TLS-CFG-OWNCHAIN"
+	          "PKCS#11 URI support requires OpenSSL >= 3");
+	return (NNG_ENOTSUP);
+#endif
+}
+
+static int
+open_load_pkey_from_uri(
+    nng_tls_engine_config *cfg, const char *uri, EVP_PKEY **pkeyp)
+{
+#if NNG_OPENSSL_HAVE_PKCS11
+	OSSL_STORE_CTX * store = NULL;
+	OSSL_STORE_INFO *info  = NULL;
+	UI_METHOD *      ui    = NULL;
+	EVP_PKEY *       pkey  = NULL;
+	int              rv;
+
+	if ((rv = open_store_uri(cfg, uri, &store, &ui)) != 0) {
+		return (rv);
+	}
+
+	while ((info = OSSL_STORE_load(store)) != NULL) {
+		if (OSSL_STORE_INFO_get_type(info) == OSSL_STORE_INFO_PKEY) {
+			pkey = OSSL_STORE_INFO_get1_PKEY(info);
+			OSSL_STORE_INFO_free(info);
+			info = NULL;
+			break;
+		}
+		OSSL_STORE_INFO_free(info);
+		info = NULL;
+	}
+
+	if (pkey == NULL) {
+		log_error("NNG-TLS-CFG-OWNCHAIN"
+		          "No private key found in PKCS#11 URI: %s",
+		    uri);
+		if (OSSL_STORE_error(store)) {
+			open_log_ssl_error(
+			    "NNG-TLS-CFG-OWNCHAIN OSSL_STORE_load", 0);
+		}
+		rv = NNG_ECRYPTO;
+		goto out;
+	}
+
+	*pkeyp = pkey;
+	pkey   = NULL;
+	rv     = 0;
+
+out:
+	if (info) {
+		OSSL_STORE_INFO_free(info);
+	}
+	open_store_close(store, ui);
+	if (pkey) {
+		EVP_PKEY_free(pkey);
+	}
+	return (rv);
+#else
+	NNI_ARG_UNUSED(cfg);
+	NNI_ARG_UNUSED(uri);
+	NNI_ARG_UNUSED(pkeyp);
+	log_error("NNG-TLS-CFG-OWNCHAIN"
+	          "PKCS#11 URI support requires OpenSSL >= 3");
+	return (NNG_ENOTSUP);
+#endif
+}
 
 static int
 open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
     const char *key, const char *pass)
 {
-	int len;
-	int rv = 0;
-	BIO *biokey = NULL;
-	BIO *biocert = NULL;
-	X509 *xcert = NULL;
-	EVP_PKEY *pkey = NULL;
+	int       len;
+	int       rv          = 0;
+	bool      cert_pkcs11 = open_is_pkcs11_uri(cert);
+	bool      key_pkcs11  = open_is_pkcs11_uri(key);
+	BIO *     biokey      = NULL;
+	BIO *     biocert     = NULL;
+	X509 *    xcert       = NULL;
+	EVP_PKEY *pkey        = NULL;
+	char *    dup         = NULL;
 	trace("start");
 
-#if NNG_OPENSSL_HAVE_PASSWORD
-	char *dup = NULL;
 	if (pass != NULL) {
 		if ((dup = nng_strdup(pass)) == NULL) {
 			return (NNG_ENOMEM);
@@ -753,22 +1014,33 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	cfg->pass = dup;
 	SSL_CTX_set_default_passwd_cb_userdata(cfg->ctx, cfg);
 	SSL_CTX_set_default_passwd_cb(cfg->ctx, open_get_password);
-#else
-	(void) pass;
-#endif
 
-	len = strlen(cert);
-	biocert = BIO_new_mem_buf(cert, len);
-	if (!biocert) {
-		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to create BIO");
-		rv = NNG_ENOMEM;
-		goto error;
-	}
-	xcert = PEM_read_bio_X509(biocert, NULL, 0, NULL);
-	if (!xcert) {
-		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to load certificate from buffer");
+	if (cert_pkcs11 != key_pkcs11) {
+		log_error("NNG-TLS-CFG-OWNCHAIN"
+		          "PKCS#11 strict mode: cert and key must both be PKCS#11 URIs");
 		rv = NNG_EINVAL;
 		goto error;
+	}
+
+	if (cert_pkcs11) {
+		if ((rv = open_load_x509_from_uri(cfg, cert, &xcert)) != 0) {
+			goto error;
+		}
+	} else {
+		len = strlen(cert);
+		biocert = BIO_new_mem_buf(cert, len);
+		if (!biocert) {
+			log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to create BIO");
+			rv = NNG_ENOMEM;
+			goto error;
+		}
+		xcert = PEM_read_bio_X509(biocert, NULL, 0, NULL);
+		if (!xcert) {
+			log_error("NNG-TLS-CFG-OWNCHAIN"
+			          "Failed to load certificate from buffer");
+			rv = NNG_EINVAL;
+			goto error;
+		}
 	}
 	if (SSL_CTX_use_certificate(cfg->ctx, xcert) <= 0) {
 		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to set certificate to SSL_CTX");
@@ -776,18 +1048,26 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		goto error;
 	}
 
-	len = strlen(key);
-	biokey = BIO_new_mem_buf(key, len);
-	if (!biokey) {
-		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to create key BIO");
-		rv = NNG_ENOMEM;
-		goto error;
-	}
-	pkey = PEM_read_bio_PrivateKey(biokey, NULL, NULL, NULL);
-	if (!pkey) {
-		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to load key from buffer");
-		rv = NNG_EINVAL;
-		goto error;
+	if (key_pkcs11) {
+		if ((rv = open_load_pkey_from_uri(cfg, key, &pkey)) != 0) {
+			goto error;
+		}
+	} else {
+		len = strlen(key);
+		biokey = BIO_new_mem_buf(key, len);
+		if (!biokey) {
+			log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to create key BIO");
+			rv = NNG_ENOMEM;
+			goto error;
+		}
+		pkey = PEM_read_bio_PrivateKey(
+		    biokey, NULL, open_get_password, cfg);
+		if (!pkey) {
+			log_error("NNG-TLS-CFG-OWNCHAIN"
+			          "Failed to load key from buffer");
+			rv = NNG_EINVAL;
+			goto error;
+		}
 	}
 	if (SSL_CTX_use_PrivateKey(cfg->ctx, pkey) <= 0) {
 		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to set key to SSL_CTX");
@@ -802,17 +1082,21 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	}
 
 error:
-	if (xcert)
+	if (xcert) {
 		X509_free(xcert);
-	if (biocert)
+	}
+	if (biocert) {
 		BIO_free(biocert);
-	if (pkey)
+	}
+	if (pkey) {
 		EVP_PKEY_free(pkey);
-	if (biokey)
+	}
+	if (biokey) {
 		BIO_free(biokey);
+	}
 
 	trace("end");
-	return rv;
+	return (rv);
 }
 
 static int
@@ -858,7 +1142,7 @@ static nng_tls_engine open_engine = {
 	.config_ops  = &open_config_ops,
 	.conn_ops    = &open_conn_ops,
 	.name        = "open",
-	.description = "OpenSSL 1.1.1",
+	.description = "OpenSSL",
 	.fips_mode   = false, // commercial users only
 };
 
@@ -890,6 +1174,16 @@ void
 nng_tls_engine_fini_open(void)
 {
 	trace("start");
+#if NNG_OPENSSL_HAVE_PKCS11
+	nni_mtx_lock(&open_pkcs11_lock);
+	if (open_pkcs11_provider != NULL) {
+		OSSL_PROVIDER_unload(open_pkcs11_provider);
+		open_pkcs11_provider = NULL;
+	}
+	open_pkcs11_checked = false;
+	open_pkcs11_status  = NNG_ENOTSUP;
+	nni_mtx_unlock(&open_pkcs11_lock);
+#endif
 	EVP_cleanup();
 	trace("end");
 }

@@ -1,4 +1,13 @@
+// Copyright 2026 Liebherr-Digital Development Center (LDC) <peter.bestler@liebherr.de>
+//
+// This software is supplied under the terms of the MIT License, a
+// copy of which should be located in the distribution where this
+// file was obtained (LICENSE.txt).  A copy of the license may also be
+// found online at https://opensource.org/licenses/MIT.
+//
+
 #include "nng/supplemental/nanolib/conf.h"
+#include "nng/supplemental/nanolib/nanolib.h"
 
 #include "nuts.h"
 
@@ -6,19 +15,41 @@
 #define OLD_CONF_PATH \
 	NANOMQ_TEST_CONF_DIR "/nmq_old_test.conf"
 #define CONF_PATH NANOMQ_TEST_CONF_DIR "/nmq_test.conf"
+#define PKCS11_OLD_CONF_PATH \
+	NANOMQ_TEST_CONF_DIR "/nmq_tls_pkcs11_old_test.conf"
+#define PKCS11_CONF_PATH \
+	NANOMQ_TEST_CONF_DIR "/nmq_tls_pkcs11_test.conf"
 #elif defined(ENABLE_NANOMQ_TESTS)
 #define OLD_CONF_PATH                                            \
 	"../../../../../nng/src/supplemental/nanolib/test_conf/" \
 	"nmq_old_test.conf"
 #define CONF_PATH \
 	"../../../../../nng/src/supplemental/nanolib/test_conf/nmq_test.conf"
+#define PKCS11_OLD_CONF_PATH                                    \
+	"../../../../../nng/src/supplemental/nanolib/test_conf/" \
+	"nmq_tls_pkcs11_old_test.conf"
+#define PKCS11_CONF_PATH                                         \
+	"../../../../../nng/src/supplemental/nanolib/test_conf/" \
+	"nmq_tls_pkcs11_test.conf"
 #else
 #define OLD_CONF_PATH \
 	"../../../../src/supplemental/nanolib/test_conf/nmq_old_test.conf"
 #define CONF_PATH \
 	"../../../../src/supplemental/nanolib/test_conf/nmq_test.conf"
+#define PKCS11_OLD_CONF_PATH                               \
+	"../../../../src/supplemental/nanolib/test_conf/" \
+	"nmq_tls_pkcs11_old_test.conf"
+#define PKCS11_CONF_PATH                                   \
+	"../../../../src/supplemental/nanolib/test_conf/" \
+	"nmq_tls_pkcs11_test.conf"
 #endif
 
+#define PKCS11_KEY_URI \
+	"pkcs11:token=NanoMQ;object=broker-key;type=private"
+#define PKCS11_CERT_URI \
+	"pkcs11:token=NanoMQ;object=broker-cert;type=cert"
+#define PKCS11_CA_URI \
+	"pkcs11:token=NanoMQ;object=broker-ca;type=cert"
 
 conf *
 get_test_conf(const char *conf_path)
@@ -303,10 +334,73 @@ test_get_time_days(void)
 	// If not supported, should fail gracefully
 }
 
+void
+test_conf_parse_tls_pkcs11_old(void)
+{
+	conf_tls tls;
+	conf_tls_init(&tls);
+	conf_tls_parse(&tls, PKCS11_OLD_CONF_PATH, "\0", "\0");
+
+	NUTS_TRUE(NULL != tls.keyfile);
+	NUTS_TRUE(NULL != tls.key);
+	NUTS_TRUE(strcmp(tls.keyfile, PKCS11_KEY_URI) == 0);
+	NUTS_TRUE(0 == strcmp(tls.key, tls.keyfile));
+
+	NUTS_TRUE(NULL != tls.certfile);
+	NUTS_TRUE(NULL != tls.cert);
+	NUTS_TRUE(strcmp(tls.certfile, PKCS11_CERT_URI) == 0);
+	NUTS_TRUE(0 == strcmp(tls.cert, tls.certfile));
+	NUTS_TRUE(NULL != tls.cafile);
+	NUTS_TRUE(NULL != tls.ca);
+	NUTS_TRUE(strcmp(tls.cafile, PKCS11_CA_URI) == 0);
+	NUTS_TRUE(0 == strcmp(tls.ca, tls.cafile));
+
+	conf_tls_destroy(&tls);
+}
+
+void
+test_conf_parse_ver2_tls_pkcs11(void)
+{
+	conf *conf = get_test_conf(PKCS11_CONF_PATH);
+	NUTS_TRUE(conf != NULL);
+	conf_parse_ver2(conf, false);
+
+	NUTS_TRUE(NULL != conf->tls.url);
+	NUTS_TRUE(
+	    0 == strcmp(conf->tls.url, "tls+nmq-tcp://0.0.0.0:8883"));
+
+	NUTS_TRUE(NULL != conf->tls.keyfile);
+	NUTS_TRUE(NULL != conf->tls.key);
+	NUTS_TRUE(strcmp(conf->tls.keyfile, PKCS11_KEY_URI) == 0);
+	NUTS_TRUE(0 == strcmp(conf->tls.key, conf->tls.keyfile));
+
+	NUTS_TRUE(NULL != conf->tls.certfile);
+	NUTS_TRUE(NULL != conf->tls.cert);
+	NUTS_TRUE(strcmp(conf->tls.certfile, PKCS11_CERT_URI) == 0);
+	NUTS_TRUE(0 == strcmp(conf->tls.cert, conf->tls.certfile));
+	NUTS_TRUE(NULL != conf->tls.cafile);
+	NUTS_TRUE(NULL != conf->tls.ca);
+	NUTS_TRUE(strcmp(conf->tls.cafile, PKCS11_CA_URI) == 0);
+	NUTS_TRUE(0 == strcmp(conf->tls.ca, conf->tls.cafile));
+
+	conf_fini(conf);
+}
+
+void
+test_conf_tls_is_pkcs11_uri(void)
+{
+	NUTS_TRUE(conf_tls_is_pkcs11_uri(PKCS11_KEY_URI));
+	NUTS_TRUE(conf_tls_is_pkcs11_uri(
+	    "PKCS11:token=NanoMQ;object=broker-key;type=private"));
+	NUTS_TRUE(!conf_tls_is_pkcs11_uri("/etc/certs/key.pem"));
+	NUTS_TRUE(!conf_tls_is_pkcs11_uri(NULL));
+}
+
 NUTS_TESTS = {
    {"get size", test_get_size},
    {"get time", test_get_time},
    {"conf parse v2", test_conf_parse_ver2},
+   {"conf parse v2 pkcs11", test_conf_parse_ver2_tls_pkcs11},
    {"conf parse", test_conf_parse},
    {"get size edge cases", test_get_size_edge_cases},
    {"get size null params", test_get_size_null_params},
@@ -321,5 +415,7 @@ NUTS_TESTS = {
    {"conf fini null", test_conf_fini_null},
    {"get size bytes unit", test_get_size_bytes_unit},
    {"get time days", test_get_time_days},
+   {"conf parse pkcs11", test_conf_parse_tls_pkcs11_old},
+   {"identify pkcs11 URIs", test_conf_tls_is_pkcs11_uri},
    {NULL, NULL}
 };

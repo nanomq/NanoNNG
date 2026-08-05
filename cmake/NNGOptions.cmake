@@ -1,5 +1,6 @@
 #
 # Copyright 2024 Staysail Systems, Inc. <info@staysail.tech>
+# Copyright 2026 Liebherr-Digital Development Center (LDC) <peter.bestler@liebherr.de>
 #
 # This software is supplied under the terms of the MIT License, a
 # copy of which should be located in the distribution where this
@@ -134,6 +135,36 @@ if (NNG_ENABLE_TLS)
 else ()
     set(NNG_TLS_ENGINE none)
 endif ()
+
+option (NNG_REQUIRE_PKCS11_PROVIDER
+    "Require OpenSSL 3 provider support for PKCS#11 credentials."
+    OFF)
+if (NNG_REQUIRE_PKCS11_PROVIDER)
+    if (NOT NNG_ENABLE_TLS)
+        message(FATAL_ERROR
+            "NNG_REQUIRE_PKCS11_PROVIDER requires NNG_ENABLE_TLS=ON.")
+    endif ()
+    if (NOT NNG_TLS_ENGINE STREQUAL "open")
+        message(FATAL_ERROR
+            "NNG_REQUIRE_PKCS11_PROVIDER requires NNG_TLS_ENGINE=open.")
+    endif ()
+endif ()
+
+option (NNG_TEST_PKCS11_PROVIDER
+    "Run the PKCS#11 provider integration test."
+    OFF)
+if (NNG_TEST_PKCS11_PROVIDER)
+    if (NOT NNG_TESTS)
+        message(FATAL_ERROR
+            "NNG_TEST_PKCS11_PROVIDER requires NNG_TESTS=ON.")
+    endif ()
+    if (NOT NNG_REQUIRE_PKCS11_PROVIDER)
+        message(FATAL_ERROR
+            "NNG_TEST_PKCS11_PROVIDER requires "
+            "NNG_REQUIRE_PKCS11_PROVIDER=ON.")
+    endif ()
+endif ()
+mark_as_advanced(NNG_TEST_PKCS11_PROVIDER)
 
 # HTTP API support.
 option (NNG_ENABLE_HTTP "Enable HTTP API." ON)

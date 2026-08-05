@@ -1,0 +1,108 @@
+name: pkcs11
+
+# Copyright 2026 Liebherr-Digital Development Center (LDC) <peter.bestler@liebherr.de>
+#
+# This software is supplied under the terms of the MIT License, a
+# copy of which should be located in the distribution where this
+# file was obtained (LICENSE.txt).
+
+on:
+  workflow_dispatch:
+
+jobs:
+  integration:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            libssl-dev ninja-build opensc pkcs11-provider softhsm2
+
+      - name: Initialize SoftHSM token
+        env:
+          TOKEN_PIN: "123456"
+        run: |
+          mkdir -p "${RUNNER_TEMP}/softhsm/tokens"
+          printf 'directories.tokendir = %s\n' \
+            "${RUNNER_TEMP}/softhsm/tokens" \
+            > "${RUNNER_TEMP}/softhsm/softhsm2.conf"
+          echo "SOFTHSM2_CONF=${RUNNER_TEMP}/softhsm/softhsm2.conf" \
+            >> "${GITHUB_ENV}"
+          export SOFTHSM2_CONF="${RUNNER_TEMP}/softhsm/softhsm2.conf"
+
+          softhsm_module="$(dpkg -L libsofthsm2 | \
+            sed -n '/\/libsofthsm2\.so$/p' | head -n 1)"
+          provider_module="$(dpkg -L pkcs11-provider | \
+            sed -n '/\/pkcs11\.so$/p' | head -n 1)"
+          test -n "${softhsm_module}"
+          test -n "${provider_module}"
+
+          cat > "${RUNNER_TEMP}/softhsm/openssl.cnf" <<EOF
+          openssl_conf = openssl_init
+
+          [openssl_init]
+          providers = providers
+
+          [providers]
+          default = default_provider
+          pkcs11 = pkcs11_provider
+
+          [default_provider]
+          activate = 1
+
+          [pkcs11_provider]
+          module = ${provider_module}
+          pkcs11-module-path = ${softhsm_module}
+          activate = 1
+          EOF
+          echo "OPENSSL_CONF=${RUNNER_TEMP}/softhsm/openssl.cnf" \
+            >> "${GITHUB_ENV}"
+          export OPENSSL_CONF="${RUNNER_TEMP}/softhsm/openssl.cnf"
+
+          softhsm2-util --init-token --free --label NanoMQ \
+            --so-pin 12345678 --pin "${TOKEN_PIN}"
+
+          pkcs11-tool --module "${softhsm_module}" --login \
+            --pin "${TOKEN_PIN}" --token-label NanoMQ \
+            --keypairgen --key-type rsa:2048 --id 01 \
+            --label server-key --usage-sign
+
+          key_uri='pkcs11:token=NanoMQ;object=server-key;type=private'
+          openssl req -new -x509 \
+            -key "${key_uri};pin-value=${TOKEN_PIN}" \
+            -out "${RUNNER_TEMP}/softhsm/server-cert.pem" \
+            -days 1 -subj '/CN=localhost' \
+            -addext 'subjectAltName=DNS:localhost'
+          openssl x509 -in "${RUNNER_TEMP}/softhsm/server-cert.pem" \
+            -outform DER -out "${RUNNER_TEMP}/softhsm/server-cert.der"
+
+          pkcs11-tool --module "${softhsm_module}" --login \
+            --pin "${TOKEN_PIN}" --token-label NanoMQ \
+            --write-object "${RUNNER_TEMP}/softhsm/server-cert.der" \
+            --type cert --id 01 --label server-cert
+
+          echo 'NNG_PKCS11_KEY_URI=pkcs11:token=NanoMQ;object=server-key;type=private' \
+            >> "${GITHUB_ENV}"
+          echo 'NNG_PKCS11_CERT_URI=pkcs11:token=NanoMQ;object=server-cert;type=cert' \
+            >> "${GITHUB_ENV}"
+          echo 'NNG_PKCS11_CA_URI=pkcs11:token=NanoMQ;object=server-cert;type=cert' \
+            >> "${GITHUB_ENV}"
+          echo "NNG_PKCS11_PIN=${TOKEN_PIN}" >> "${GITHUB_ENV}"
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DNNG_ENABLE_TLS=ON \
+            -DNNG_TLS_ENGINE=open \
+            -DNNG_REQUIRE_PKCS11_PROVIDER=ON \
+            -DNNG_TEST_PKCS11_PROVIDER=ON
+
+      - name: Build
+        run: cmake --build build --target pkcs11_test
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure -R '\.pkcs11_test$'

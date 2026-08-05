@@ -1,5 +1,6 @@
 //
 // Copyright 2021 NanoMQ Team, Inc. <jaylin@emqx.io> //
+// Copyright 2026 Liebherr-Digital Development Center (LDC) <peter.bestler@liebherr.de>
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
 // file was obtained (LICENSE.txt).  A copy of the license may also be
@@ -324,6 +325,26 @@ get_conf_value_with_prefix2(char *line, size_t len, const char *prefix,
 	return value;
 }
 
+bool
+conf_tls_is_pkcs11_uri(const char *value)
+{
+	return ((value != NULL) &&
+	    (nng_strncasecmp(value, "pkcs11:", sizeof("pkcs11:") - 1) == 0));
+}
+
+static void
+conf_tls_load_inline_or_file(char **dst, const char *value)
+{
+	FREE_NONULL(*dst);
+	if (conf_tls_is_pkcs11_uri(value)) {
+		*dst = nng_strdup(value);
+		return;
+	}
+	if (0 == file_load_data(value, (void **) dst)) {
+		log_warn("Read cert/key file %s failed!", value);
+	}
+}
+
 void
 conf_tls_parse(
     conf_tls *tls, const char *path, const char *prefix1, const char *prefix2)
@@ -353,22 +374,19 @@ conf_tls_parse(
 			tls->key_password = value;
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                prefix1, prefix2, "tls.keyfile")) != NULL) {
-			FREE_NONULL(tls->key);
 			FREE_NONULL(tls->keyfile);
 			tls->keyfile = value;
-			file_load_data(tls->keyfile, (void **) &tls->key);
+			conf_tls_load_inline_or_file(&tls->key, tls->keyfile);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                prefix1, prefix2, "tls.certfile")) != NULL) {
-			FREE_NONULL(tls->cert);
 			FREE_NONULL(tls->certfile);
 			tls->certfile = value;
-			file_load_data(tls->certfile, (void **) &tls->cert);
+			conf_tls_load_inline_or_file(&tls->cert, tls->certfile);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                prefix1, prefix2, "tls.cacertfile")) != NULL) {
-			FREE_NONULL(tls->ca);
 			FREE_NONULL(tls->cafile);
 			tls->cafile = value;
-			file_load_data(tls->cafile, (void **) &tls->ca);
+			conf_tls_load_inline_or_file(&tls->ca, tls->cafile);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                prefix1, prefix2, "tls.verify_peer")) !=
 		    NULL) {
