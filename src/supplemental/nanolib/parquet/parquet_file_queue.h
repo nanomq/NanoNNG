@@ -17,12 +17,6 @@
 
 using namespace std;
 
-// URL encode/decode helpers for sanitizing topic names in filenames.
-// Reserved characters (A-Z a-z 0-9 - _ . ~) are left as-is; all others
-// are percent-encoded.
-string url_encode(const string &str);
-string url_decode(const string &str);
-
 struct ParquetFile {
 	string file_path;
 	long   order_key; // start_time or seq_id

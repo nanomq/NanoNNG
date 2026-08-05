@@ -1,49 +1,8 @@
 #include "parquet_file_queue.h"
-#include <cctype>
 #include <unistd.h>
 
 #include <sys/stat.h>
 #include <unistd.h>
-
-// URL-encode a string: keep alphanum, '-', '_', '.', '~' as-is;
-// encode everything else as "%XX".
-string
-url_encode(const string &str)
-{
-	static const char hex[] = "0123456789ABCDEF";
-	string          encoded;
-	encoded.reserve(str.size() * 3);
-	for (unsigned char c : str) {
-		if (isalnum(c) || c == '-' || c == '_' || c == '.' ||
-		    c == '~') {
-			encoded += static_cast<char>(c);
-		} else {
-			encoded += '%';
-			encoded += hex[c >> 4];
-			encoded += hex[c & 15];
-		}
-	}
-	return encoded;
-}
-
-// URL-decode a percent-encoded string.
-string
-url_decode(const string &str)
-{
-	string decoded;
-	decoded.reserve(str.size());
-	for (size_t i = 0; i < str.size(); i++) {
-		if (str[i] == '%' && i + 2 < str.size() &&
-		    isxdigit(str[i + 1]) && isxdigit(str[i + 2])) {
-			char hex_buf[3] = { str[i + 1], str[i + 2], '\0' };
-			decoded += static_cast<char>(strtol(hex_buf, nullptr, 16));
-			i += 2;
-		} else {
-			decoded += str[i];
-		}
-	}
-	return decoded;
-}
 
 // Constructor
 parquet_file_queue::parquet_file_queue(conf_parquet *node)
@@ -270,19 +229,11 @@ parquet_file_queue::is_topic_match(const string &file_name) const
 	// after the file_name_prefix.  We match on that delimiter pair
 	// so that different topics sharing the same directory do not
 	// interfere with each other's file_count / file_size limits.
-	//
-	// Topics containing "/" are URL-encoded in the filename (the
-	// "/" becomes "%2F") to avoid path-segment ambiguity.
-	// We try both the encoded and raw topic patterns so that both
-	// new and old-format files are matched correctly.
 	if (topic_.empty()) {
 		return true; // no topic filter — accept all (backward compat)
 	}
-	string pattern     = "_" + topic_ + "-";
-	string encoded_topic = url_encode(topic_);
-	string enc_pattern = "_" + encoded_topic + "-";
-	return file_name.find(pattern) != string::npos ||
-	       file_name.find(enc_pattern) != string::npos;
+	string pattern = "_" + topic_ + "-";
+	return file_name.find(pattern) != string::npos;
 }
 
 bool
