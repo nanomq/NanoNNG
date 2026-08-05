@@ -913,7 +913,8 @@ nano_pipe_close(void *arg)
 	}
 	nni_mtx_lock(&s->lk);
 	nni_mtx_lock(&p->lk);
-	log_info("%s pipe close!", p->conn_param->clientid.body);
+	log_info("*** pipe close!");
+	log_debug("%s pipe close!", p->conn_param->clientid.body);
 	// we freed the conn_param when restoring pipe
 	// so check status of conn_param. just let it close silently
 	if (p->conn_param->clean_start == 0) {
@@ -973,7 +974,8 @@ nano_pipe_close(void *arg)
 	// TODO send disconnect msg to client if needed.
 	// depends on MQTT V5 reason code
 	// create disconnect event msg
-	log_warn("%s pipe close!", p->conn_param->clientid.body);
+	log_warn("*** pipe close!");
+	log_debug("%s pipe close!", p->conn_param->clientid.body);
 	if (p->event) {
 		msg = nano_msg_notify(p->conn_param, p->reason_code, 0, false);
 		if (msg == NULL) {

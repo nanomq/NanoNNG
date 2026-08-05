@@ -1404,7 +1404,8 @@ print_rule_engine_conf(conf_rule *rule_eng)
 				log_info("[%d] server:     %s", i, repub->address);
 				log_info("[%d] topic:      %s", i, repub->topic);
 				log_info("[%d] proto_ver:  %d", i, repub->proto_ver);
-				log_info("[%d] clientid:   %s", i, repub->clientid);
+				log_info("[%d] clientid:   ***", i);
+				log_debug("[%d] clientid:   %s", i, repub->clientid);
 				log_info("[%d] keepalive:  %d", i, repub->keepalive);
 				log_info("[%d] clean start:%d", i, repub->clean_start);
 				log_info("[%d] username:   %s", i, repub->username);
@@ -3861,7 +3862,9 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		    node->name, node->address);
 		log_info("%sbridge.mqtt.%s.proto_ver:                  %d", prefix,
 		    node->name, node->proto_ver);
-		log_info("%sbridge.mqtt.%s.clientid:                   %s", prefix,
+		log_info("%sbridge.mqtt.%s.clientid:                   ***", prefix,
+		    node->name);
+		log_debug("%sbridge.mqtt.%s.clientid:                   %s", prefix,
 		    node->name, node->clientid);
 		log_info("%sbridge.mqtt.%s.clean_start:                %d", prefix,
 		    node->name, node->clean_start);
@@ -3946,7 +3949,8 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		log_info(
 		    "%sbridge.mqtt.%s.subscription: ", prefix, node->name);
 		for (size_t k = 0; k < node->sub_count; k++) {
-			log_info("\t[%ld] remote topic:        %.*s", k + 1,
+			log_info("\t[%ld] remote topic:        ***", k + 1);
+			log_debug("\t[%ld] remote topic:        %.*s", k + 1,
 			    node->sub_list[k]->remote_topic_len,
 			    node->sub_list[k]->remote_topic);
 			log_info("\t[%ld] local topic:        %.*s", k + 1,
