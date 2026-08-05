@@ -419,8 +419,11 @@ compute_and_rename_file_withMD5_CXX(const std::string &filename,
 	auto node = file_manager.fetch_conf(topic);
 
 	// Step 4: Build new filename:
-	// <dir+prefix>_<name>-<timestamp>_<md5>.parquet
-	std::string new_name = prefix + "_" + node->name + "-" + timestamp + "_" +
+	// <dir+prefix>_<url_encoded_topic>-<timestamp>_<md5>.parquet
+	// Topics containing "/" are URL-encoded to avoid path-segment
+	// ambiguity in the filename.
+	std::string enc_topic = url_encode(topic);
+	std::string new_name = prefix + "_" + enc_topic + "-" + timestamp + "_" +
 	    sindex + "_" + md5_buffer + ".parquet";
 
 	// Step 5: Rename the file to the new name
@@ -1279,12 +1282,13 @@ parquet_read(conf_parquet *conf, char *filename, vector<uint64_t> keys)
 
 string extract_topic(const string &file_path) {
 	// New format: <prefix>_<topic>-<start>~<end>_<index>_<md5>.parquet
+	// Topic may be URL-encoded; decode it before returning.
 	std::regex new_fmt(
 	    R"(.*?/[^/]*_(.*)-\d+~\d+_(?:\d+_)?[a-fA-F0-9]{32}\.parquet)");
 	std::smatch matches;
 	if (std::regex_match(file_path, matches, new_fmt) &&
 	    matches.size() > 1) {
-		return matches[1];
+		return url_decode(matches[1]);
 	}
 
 	// Legacy format fallback.
@@ -1292,7 +1296,7 @@ string extract_topic(const string &file_path) {
 	    R"(.*?/[^/]*_(.*?)_[a-fA-F0-9]{32}-\d+~\d+\.parquet)");
 	if (std::regex_match(file_path, matches, old_fmt) &&
 	    matches.size() > 1) {
-		return matches[1];
+		return url_decode(matches[1]);
 	}
 
 	return "";
