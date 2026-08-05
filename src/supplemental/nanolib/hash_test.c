@@ -50,34 +50,38 @@ assert_str(const char *s1, const char *s2)
 static void
 test_check_alias_table(void)
 {
-	const char *r = NULL;
+	dbhash_atpair_t **vec = NULL;
+	const char       *r   = NULL;
 
-	// Make sure delete on an empty table is OK!
+	// Make sure lookup on an empty vector is OK!
 	for (int i = 0; i < TABLE_SZ; i++) {
-		dbhash_del_atpair_queue(table1[i].pipe);
-		r = dbhash_find_atpair(table1[i].pipe, table1[i].key);
+		r = dbhash_atpair_find(vec, table1[i].key);
 		NUTS_TRUE(!r);
 	}
 	// Check if insert many is OK!
 	for (int i = 0; i < TABLE_SZ; i++) {
-		dbhash_insert_atpair(
-		    table1[i].pipe, table1[i].key, table1[i].topic);
-		r = dbhash_find_atpair(table1[i].pipe, table1[i].key);
+		dbhash_atpair_insert(&vec, table1[i].key, table1[i].topic);
+		r = dbhash_atpair_find(vec, table1[i].key);
 		NUTS_TRUE(NULL != r);
 		assert_str(r, table1[i].topic);
 	}
-
+	// and that the earlier aliases survived the later inserts
 	for (int i = 0; i < TABLE_SZ; i++) {
-		r = dbhash_find_atpair(table1[i].pipe, table1[i].key);
+		r = dbhash_atpair_find(vec, table1[i].key);
 		NUTS_TRUE(NULL != r);
 		assert_str(r, table1[i].topic);
 	}
-
+	// Re-registering an alias replaces the topic it maps to
 	for (int i = 0; i < TABLE_SZ; i++) {
-		dbhash_del_atpair_queue(table1[i].pipe);
-		r = dbhash_find_atpair(table1[i].pipe, table1[i].key);
-		NUTS_TRUE(NULL == r);
+		dbhash_atpair_insert(&vec, table1[i].key, table2[i].topic);
+		r = dbhash_atpair_find(vec, table1[i].key);
+		NUTS_TRUE(NULL != r);
+		assert_str(r, table2[i].topic);
 	}
+
+	dbhash_atpair_free_all(vec);
+	// Make sure free on an empty vector is OK!
+	dbhash_atpair_free_all(NULL);
 
 	return;
 }
@@ -85,17 +89,16 @@ test_check_alias_table(void)
 static void
 test_alias_table(void)
 {
-	for (size_t i = 0; i < TABLE_SZ; i++) {
-		dbhash_insert_atpair(
-		    table1[i].pipe, table1[i].key, table1[i].topic);
-		dbhash_find_atpair(table1[i].pipe, table1[i].key);
-		dbhash_del_atpair_queue(table1[i].pipe);
+	dbhash_atpair_t **vec = NULL;
 
-		dbhash_insert_atpair(
-		    table2[i].pipe, table2[i].key, table2[i].topic);
-		dbhash_find_atpair(table2[i].pipe, table2[i].key);
-		dbhash_del_atpair_queue(table2[i].pipe);
+	for (size_t i = 0; i < TABLE_SZ; i++) {
+		dbhash_atpair_insert(&vec, table1[i].key, table1[i].topic);
+		dbhash_atpair_find(vec, table1[i].key);
+
+		dbhash_atpair_insert(&vec, table2[i].key, table2[i].topic);
+		dbhash_atpair_find(vec, table2[i].key);
 	}
+	dbhash_atpair_free_all(vec);
 
 	return;
 }
@@ -301,20 +304,11 @@ test_single_thread(void *args)
 void
 hash_test(void)
 {
-	dbhash_init_alias_table();
 	dbhash_init_pipe_table();
 	dbhash_init_cached_table();
 	test_check();
 	// test_concurrent(test_single_thread);
 	test_single_thread(NULL);
-
-	for (size_t i = 0; i < TABLE_SZ; i++) {
-		const char *r =
-		    dbhash_find_atpair(table1[i].pipe, table1[i].key);
-		NUTS_TRUE(!r);
-		r = dbhash_find_atpair(table2[i].pipe, table2[i].key);
-		NUTS_TRUE(!r);
-	}
 
 	for (size_t j = 0; j < TABLE_SZ; j++) {
 		topic_queue *tq = dbhash_get_topic_queue(table1[j].key);
@@ -324,7 +318,6 @@ hash_test(void)
 		NUTS_TRUE(NULL != tq);
 	}
 
-	dbhash_destroy_alias_table();
 	dbhash_destroy_pipe_table();
 	dbhash_destroy_cached_table();
 
