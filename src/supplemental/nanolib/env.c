@@ -1,3 +1,11 @@
+// Copyright 2026 Liebherr-Digital Development Center (LDC) <peter.bestler@liebherr.de>
+//
+// This software is supplied under the terms of the MIT License, a
+// copy of which should be located in the distribution where this
+// file was obtained (LICENSE.txt).  A copy of the license may also be
+// found online at https://opensource.org/licenses/MIT.
+//
+
 #include "nng/supplemental/nanolib/env.h"
 #include "core/nng_impl.h"
 #include "nng/nng.h"
@@ -66,6 +74,24 @@ set_data_from_path_var(void **var, const char *env_str)
 
 	if ((env = getenv(env_str)) != NULL) {
 		file_load_data(env, var);
+	}
+}
+
+static void
+set_tls_data_from_path_or_uri_var(void **var, const char *env_str)
+{
+	char *env = NULL;
+
+	if ((env = getenv(env_str)) != NULL) {
+		if (*var) {
+			free(*var);
+			*var = NULL;
+		}
+		if (conf_tls_is_pkcs11_uri(env)) {
+			*var = nni_strdup(env);
+		} else {
+			file_load_data(env, var);
+		}
 	}
 }
 
@@ -220,11 +246,11 @@ read_env_conf(conf *config)
 	set_string_var(&config->tls.certfile, NANOMQ_TLS_CERT_PATH);
 	set_string_var(&config->tls.keyfile, NANOMQ_TLS_KEY_PATH);
 
-	set_data_from_path_var(
+	set_tls_data_from_path_or_uri_var(
 	    (void **) &config->tls.ca, NANOMQ_TLS_CA_CERT_PATH);
-	set_data_from_path_var(
+	set_tls_data_from_path_or_uri_var(
 	    (void **) &config->tls.cert, NANOMQ_TLS_CERT_PATH);
-	set_data_from_path_var(
+	set_tls_data_from_path_or_uri_var(
 	    (void **) &config->tls.key, NANOMQ_TLS_KEY_PATH);
 
 	set_string_var(&config->tls.key_password, NANOMQ_TLS_KEY_PASSWORD);

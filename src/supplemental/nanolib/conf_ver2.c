@@ -1,3 +1,11 @@
+// Copyright 2026 Liebherr-Digital Development Center (LDC) <peter.bestler@liebherr.de>
+//
+// This software is supplied under the terms of the MIT License, a
+// copy of which should be located in the distribution where this
+// file was obtained (LICENSE.txt).  A copy of the license may also be
+// found online at https://opensource.org/licenses/MIT.
+//
+
 #include "core/nng_impl.h"
 
 #include "nng/exchange/exchange.h"
@@ -71,10 +79,25 @@ cJSON *hocon_get_obj(char *key, cJSON *jso);
 char *
 compose_url(char *head, char *address)
 {
-	size_t url_len = strlen(head) + strlen(address) + 1;
-	char  *url     = nng_alloc(url_len + 1);
+	size_t url_len;
+	char  *url;
+
+	if (address == NULL) {
+		return (NULL);
+	}
+	if (strstr(address, "://") != NULL) {
+		return (nng_strdup(address));
+	}
+	if (head == NULL) {
+		return (nng_strdup(address));
+	}
+
+	url_len = strlen(head) + strlen(address) + 1;
+	if ((url = nng_alloc(url_len)) == NULL) {
+		return (NULL);
+	}
 	snprintf(url, url_len, "%s%s", head, address);
-	return url;
+	return (url);
 }
 
 #define hocon_read_address_base(structure, field, key, head, jso)             \
@@ -419,6 +442,19 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 }
 
 static void
+conf_tls_read_inline_or_file(char **dst, const char *value, const char *name)
+{
+	FREE_NONULL(*dst);
+	if (conf_tls_is_pkcs11_uri(value)) {
+		*dst = nng_strdup(value);
+		return;
+	}
+	if (0 == file_load_data(value, (void **) dst)) {
+		log_warn("Read %s %s failed!", name, value);
+	}
+}
+
+static void
 conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 {
 	if (jso_tls) {
@@ -429,17 +465,23 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 		hocon_read_str_base(tls, cafile, "cacertfile", jso_tls);
 		hocon_read_str(tls, key_password, jso_tls);
 
-		if (NULL == tls->keyfile ||
-		    0 == file_load_data(tls->keyfile, (void **) &tls->key)) {
+		if (NULL == tls->keyfile) {
 			log_warn("Read keyfile %s failed!", tls->keyfile);
+		} else {
+			conf_tls_read_inline_or_file(
+			    &tls->key, tls->keyfile, "keyfile");
 		}
-		if (NULL == tls->certfile ||
-		    0 == file_load_data(tls->certfile, (void **) &tls->cert)) {
+		if (NULL == tls->certfile) {
 			log_warn("Read certfile %s failed!", tls->certfile);
+		} else {
+			conf_tls_read_inline_or_file(
+			    &tls->cert, tls->certfile, "certfile");
 		}
-		if (NULL == tls->cafile ||
-		    0 == file_load_data(tls->cafile, (void **) &tls->ca)) {
+		if (NULL == tls->cafile) {
 			log_error("Read cacertfile %s failed!", tls->cafile);
+		} else {
+			conf_tls_read_inline_or_file(
+			    &tls->ca, tls->cafile, "cacertfile");
 		}
 	}
 
