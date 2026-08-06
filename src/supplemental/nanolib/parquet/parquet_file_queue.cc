@@ -245,8 +245,9 @@ parquet_file_queue::is_topic_match(const string &file_name) const
 	// after the file_name_prefix.  We match on that delimiter pair
 	// so that different topics sharing the same directory do not
 	// interfere with each other's file_count / file_size limits.
-	if (topic_.empty()) {
-		return true; // no topic filter — accept all (backward compat)
+
+	if (node->name == NULL) {
+		return false;
 	}
 	string pattern = "_" + string(node->name) + "-";
 	return file_name.find(pattern) != string::npos;
