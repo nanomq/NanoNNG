@@ -38,13 +38,16 @@ jobs:
         uses: actions/checkout@v1
 
       - name: Install mbedTLS
-        run: brew install mbedtls
+        # Homebrew's mbedtls formula is now 4.x, whose CMake config package no
+        # longer provides the MbedTLS::mbedcrypto target and whose headers
+        # removed ctr_drbg.h/entropy.h (source is not yet 4.x compatible).
+        run: brew install mbedtls@3
 
       - name: Install ninja
         run: brew install ninja
 
       - name: Configure
-        run:  mkdir build && cd build && cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DNNG_ENABLE_COVERAGE=ON -DNNG_ENABLE_TLS=ON ..
+        run:  mkdir build && cd build && cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DNNG_ENABLE_COVERAGE=ON -DNNG_ENABLE_TLS=ON -DCMAKE_PREFIX_PATH="$(brew --prefix mbedtls@3)" ..
 
       - name: build
         run: cd build && ninja
