@@ -3868,7 +3868,9 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		    node->name, node->clientid);
 		log_info("%sbridge.mqtt.%s.clean_start:                %d", prefix,
 		    node->name, node->clean_start);
-		log_info("%sbridge.mqtt.%s.username:                   %s", prefix,
+		log_info("%sbridge.mqtt.%s.username:                   ***", prefix,
+		    node->name);
+		log_debug("%sbridge.mqtt.%s.username:                   %s", prefix,
 		    node->name, node->username);
 		log_info("%sbridge.mqtt.%s.password_encrypted:         %s", prefix,
 		    node->name, node->password_encrypted ? "true" : "false");
