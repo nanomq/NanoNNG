@@ -3378,6 +3378,7 @@ conf_parquet_init(conf_parquet *parquet)
 	parquet->comp_type        = UNCOMPRESSED;
 	parquet->file_name_prefix = NULL;
 	parquet->dir              = NULL;
+	parquet->name             = NULL;
 }
 #endif
 
