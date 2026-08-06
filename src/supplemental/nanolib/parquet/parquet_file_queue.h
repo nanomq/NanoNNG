@@ -44,6 +44,7 @@ class parquet_file_queue {
 	static bool create_directory(const string &directory_path);
 	static bool is_parquet_file(const string &file_name);
 	static bool has_md5_sum(const string &file_name);
+	bool        is_topic_match(const string &file_name) const;
 
 	conf_parquet *node;
 	CircularQueue queue;

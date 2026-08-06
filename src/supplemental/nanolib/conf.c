@@ -3162,17 +3162,6 @@ conf_bridge_init(conf_bridge *bridge)
 	conf_sqlite_init(&bridge->sqlite);
 }
 
-static void
-conf_nng_proxy_init(conf_nng_bridge *proxy)
-{
-	proxy->pub_enable = false;
-	proxy->sub_enable = false;
-	proxy->pnodes = NULL;
-	proxy->snodes = NULL;
-
-	proxy->pub_count = 0;
-	proxy->sub_count = 0;
-}
 #if defined(SUPP_PARQUET) || defined(SUPP_LICENSE_STD)
 void
 conf_parquet_init(conf_parquet *parquet)
@@ -3182,7 +3171,6 @@ conf_parquet_init(conf_parquet *parquet)
 	parquet->encryption.key        = NULL;
 	parquet->encryption.key_id     = NULL;
 	parquet->encryption.type       = AES_GCM_V1;
-	parquet->encryption.key_cipher = NULL;
 
 	parquet->limit_frequency  = 5;
 	parquet->file_count       = 5;
@@ -3193,30 +3181,6 @@ conf_parquet_init(conf_parquet *parquet)
 	parquet->name             = NULL;
 }
 #endif
-
-void
-conf_bridge_pnode_init(conf_nng_pub_node *node)
-{
-	node->name = NULL;
-	node->pub_sock = (nng_socket) NNG_SOCKET_INITIALIZER;
-	node->pub_url = NULL;
-	node->clientid = NULL;
-	node->cparam = NULL;
-	node->pub_list = NULL;
-	node->forwards_count = 0;
-}
-
-void
-conf_bridge_snode_init(conf_nng_sub_node *node)
-{
-	node->name = NULL;
-	node->sub_sock = (nng_socket) NNG_SOCKET_INITIALIZER;
-	node->sub_url = NULL;
-	node->clientid = NULL;
-	node->cparam = NULL;
-	node->sub_list = NULL;
-	node->inwards_count = 0;
-}
 
 void
 conf_bridge_node_init(conf_bridge_node *node)
