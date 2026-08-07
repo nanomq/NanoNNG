@@ -1254,6 +1254,10 @@ nano_encode_publish_msg(uint8_t proto_ver, uint8_t qos, bool retain, bool dup,
 	if (rv != 0) {
 		log_error(
 		    "nni_mqtt_msg_set_publish_payload failed, rv = %d", rv);
+		// Topic buf was already allocated by mqtt_buf_create but
+		// is_copied is not set until encode, so free it explicitly
+		// to avoid leaking it in nni_msg_free.
+		nng_mqtt_msg_free_publish_buf(msg);
 		nni_msg_free(msg);
 		return NULL;
 	}
@@ -1266,6 +1270,9 @@ nano_encode_publish_msg(uint8_t proto_ver, uint8_t qos, bool retain, bool dup,
 				log_error("property_dup failed, rv = %d, "
 				          "prop_dup = %p",
 				    rv, prop_dup);
+				// See note above: free allocated publish bufs
+				// before is_copied is set by encode.
+				nng_mqtt_msg_free_publish_buf(msg);
 				nni_msg_free(msg);
 				return NULL;
 			}
@@ -2161,7 +2168,6 @@ typedef struct {
 	const uint8_t * body;
 	size_t          remote_len;
 	size_t          topic_len;
-	bool            strict_mode;
 	char *          dynamic_topic;
 	size_t          dynamic_topic_len;
 } nng_sub0_dest_topic_ctx;
@@ -2172,26 +2178,23 @@ typedef struct {
 	size_t         remote_len;
 	const char *   delimiter;
 	size_t         delimiter_len;
-	bool           strict_mode;
 	size_t         topic_len;
 	size_t         payload_off;
 } nng_sub0_payload_ctx;
 
 /**
  * @brief Extract payload offset and final topic_len from NNG message body.
- * 
- * Handles two modes of topic extraction:
- * - strict_mode (delimiter == "/"): requires "/" after remote_topic prefix, 
- *   topic does not extend beyond remote_len.
- * - non-strict (delimiter != "/"): searches for delimiter in message body after 
- *   remote_topic prefix; topic can extend to delimiter position.
- * 
- * Optimization: single-char delimiters use memchr() for O(n) linear search,
- * multi-char delimiters fall back to byte-by-byte memcmp().
+ *
+ * Exact-topic matching regardless of delimiter: the message topic must be
+ * identical to remote_topic, i.e. the delimiter must immediately follow the
+ * remote_topic prefix in the message body. A body extending the topic beyond
+ * remote_topic (e.g. "topic_can1234:payload" against remote_topic "topic_can")
+ * does not match and is rejected. If body_len == remote_len (bare topic with
+ * no delimiter), the message is accepted with an empty payload.
  *
  * @param ctx payload context with body, body_len, remote_len, delimiter info
  * @return true if payload extraction succeeded, false if validation failed
- *         (e.g., missing "/" in strict mode or delimiter not found in non-strict).
+ *         (delimiter not immediately after remote_topic).
  *         On success, ctx->payload_off and ctx->topic_len are updated.
  */
 static bool
@@ -2200,37 +2203,13 @@ nng_sub0_extract_payload(nng_sub0_payload_ctx *ctx)
 	ctx->topic_len   = ctx->remote_len;
 	ctx->payload_off = ctx->remote_len;
 
-	if (ctx->strict_mode) {
-		if (ctx->body_len > ctx->remote_len) {
-			if (ctx->body[ctx->remote_len] != '/') {
-				return false;
-			}
-			ctx->payload_off = ctx->remote_len + 1;
-		}
-		return true;
-	}
-
 	if (ctx->body_len > ctx->remote_len) {
-		const uint8_t *delim_pos = NULL;
-		if (ctx->delimiter_len == 1) {
-			delim_pos = memchr(ctx->body + ctx->remote_len,
-			    (unsigned char) ctx->delimiter[0],
-			    ctx->body_len - ctx->remote_len);
-		} else {
-			for (size_t off = ctx->remote_len;
-			     off + ctx->delimiter_len <= ctx->body_len; off++) {
-				if (memcmp(ctx->body + off, ctx->delimiter,
-				        ctx->delimiter_len) == 0) {
-					delim_pos = ctx->body + off;
-					break;
-				}
-			}
-		}
-		if (delim_pos == NULL) {
+		if (ctx->body_len < ctx->remote_len + ctx->delimiter_len ||
+		    memcmp(ctx->body + ctx->remote_len, ctx->delimiter,
+		        ctx->delimiter_len) != 0) {
 			return false;
 		}
-		ctx->topic_len   = (size_t) (delim_pos - ctx->body);
-		ctx->payload_off = ctx->topic_len + ctx->delimiter_len;
+		ctx->payload_off = ctx->remote_len + ctx->delimiter_len;
 	}
 
 	return true;
@@ -2238,22 +2217,23 @@ nng_sub0_extract_payload(nng_sub0_payload_ctx *ctx)
 
 /**
  * @brief Resolve destination MQTT topic for NNG->MQTT conversion.
- * 
+ *
  * Topic resolution priority:
  * 1. If local_topic is configured in rule, use it directly (no allocation).
- * 2. If strict_mode AND topic did not extend (topic_len == remote_len) AND 
- *    remote_topic is complete (remote_topic_len == remote_len), 
- *    reuse remote_topic as-is (optimization: avoids heap allocation).
- * 3. Otherwise, allocate a new string from message body[0..topic_len] 
+ * 2. If remote_topic does not carry a trailing delimiter (remote_topic_len ==
+ *    remote_len), reuse remote_topic as-is (optimization: avoids heap
+ *    allocation).
+ * 3. Otherwise, allocate a new string from message body[0..topic_len]
  *    and store in ctx->dynamic_topic.
  *
- * Optimization: Avoids dynamic allocation when remote_topic can be safely reused
- * in strict mode (no topic extension occurred).
+ * With exact-topic matching, topic_len always equals remote_len; the dynamic
+ * allocation path only remains for rules whose remote_topic ends with the
+ * delimiter itself (e.g. remote_topic "topic_can:").
  *
- * @param ctx dest_topic context with topic rule, body, topic_len, strict_mode
+ * @param ctx dest_topic context with topic rule, body, topic_len
  * @return pointer to destination MQTT topic string:
  *         - ctx->topic->local_topic if set
- *         - ctx->topic->remote_topic if reusable (strict + no extension)
+ *         - ctx->topic->remote_topic if reusable (no trailing delimiter)
  *         - dynamically allocated string from body otherwise
  *         - NULL if memory allocation fails
  *         Caller must free dynamic_topic via ctx->dynamic_topic after use.
@@ -2265,8 +2245,7 @@ nng_sub0_resolve_dest_topic(nng_sub0_dest_topic_ctx *ctx)
 		return ctx->topic->local_topic;
 	}
 
-	if (ctx->strict_mode && ctx->topic_len == ctx->remote_len &&
-	    ctx->topic->remote_topic_len == ctx->remote_len) {
+	if (ctx->topic->remote_topic_len == ctx->remote_len) {
 		return ctx->topic->remote_topic;
 	}
 
@@ -2287,12 +2266,11 @@ nng_sub0_resolve_dest_topic(nng_sub0_dest_topic_ctx *ctx)
  *
  * @param origin original NNG sub msg
  * @param snode  NNG subscription node config, used for topic mapping
- * @param default_topic  Default topic of NNG sub msg
- * @return nng_msg
+ * @return nng_msg, or NULL if the message does not exactly match any rule
+ *         (in which case the message is discarded by the caller)
  */
 nng_msg *
-nng_sub0_msg_adapter(
-    nng_msg *origin, conf_nng_sub_node *snode, char *default_topic)
+nng_sub0_msg_adapter(nng_msg *origin, conf_nng_sub_node *snode)
 {
 	nng_msg       *mqtt_msg          = NULL;
 	char          *dynamic_topic     = NULL;
@@ -2308,7 +2286,7 @@ nng_sub0_msg_adapter(
 	const uint8_t *payload_data   = body;
 	size_t         payload_len    = body_len;
 	const char    *matched_remote = NULL;
-	char          *dest_topic     = default_topic;
+	char          *dest_topic     = NULL;
 	uint8_t        qos            = 0;
 
 	if (snode != NULL && snode->sub_list != NULL) {
@@ -2321,13 +2299,11 @@ nng_sub0_msg_adapter(
 
 			const char *delimiter     = "/";
 			size_t      delimiter_len = 1;
-			bool        strict_mode   = true;
 
 			if (topic->nng_delimiter != NULL &&
 			    topic->nng_delimiter_len > 0) {
 				delimiter     = topic->nng_delimiter;
 				delimiter_len = topic->nng_delimiter_len;
-				strict_mode   = (delimiter_len == 1 && delimiter[0] == '/');
 			}
 
 			size_t remote_len = topic->remote_topic_len;
@@ -2350,7 +2326,6 @@ nng_sub0_msg_adapter(
 				.remote_len    = remote_len,
 				.delimiter     = delimiter,
 				.delimiter_len = delimiter_len,
-				.strict_mode   = strict_mode,
 				.topic_len     = remote_len,
 				.payload_off   = remote_len,
 			};
@@ -2364,7 +2339,6 @@ nng_sub0_msg_adapter(
 				.body              = body,
 				.remote_len        = remote_len,
 				.topic_len         = payload_ctx.topic_len,
-				.strict_mode       = strict_mode,
 				.dynamic_topic     = NULL,
 				.dynamic_topic_len = 0,
 			};
@@ -2384,8 +2358,9 @@ nng_sub0_msg_adapter(
 	}
 
 	if (matched_remote == NULL) {
-		log_warn("No matched remote_topic in NNG sub0 msg, use "
-		         "default topic");
+		log_warn("NNG sub0 msg does not exactly match any remote_topic, "
+		         "discard it");
+		return NULL;
 	}
 
 	if (dest_topic == NULL) {
