@@ -2185,16 +2185,16 @@ typedef struct {
 /**
  * @brief Extract payload offset and final topic_len from NNG message body.
  *
- * Exact-topic matching regardless of delimiter: the message topic must be
- * identical to remote_topic, i.e. the delimiter must immediately follow the
- * remote_topic prefix in the message body. A body extending the topic beyond
- * remote_topic (e.g. "topic_can1234:payload" against remote_topic "topic_can")
- * does not match and is rejected. If body_len == remote_len (bare topic with
- * no delimiter), the message is accepted with an empty payload.
+ * Exact-topic matching: the message topic must be identical to remote_topic,
+ * i.e. the configured delimiter must immediately follow the remote_topic
+ * prefix in the message body and be followed by a non-empty payload. A body
+ * extending the topic beyond remote_topic (e.g. "topic_can1234:payload"
+ * against remote_topic "topic_can"), a bare topic (no delimiter), or a body
+ * too short to hold topic + delimiter + payload is rejected.
  *
  * @param ctx payload context with body, body_len, remote_len, delimiter info
  * @return true if payload extraction succeeded, false if validation failed
- *         (delimiter not immediately after remote_topic).
+ *         (body too short, or delimiter not immediately after remote_topic).
  *         On success, ctx->payload_off and ctx->topic_len are updated.
  */
 static bool
@@ -2203,14 +2203,12 @@ nng_sub0_extract_payload(nng_sub0_payload_ctx *ctx)
 	ctx->topic_len   = ctx->remote_len;
 	ctx->payload_off = ctx->remote_len;
 
-	if (ctx->body_len > ctx->remote_len) {
-		if (ctx->body_len < ctx->remote_len + ctx->delimiter_len ||
-		    memcmp(ctx->body + ctx->remote_len, ctx->delimiter,
-		        ctx->delimiter_len) != 0) {
-			return false;
-		}
-		ctx->payload_off = ctx->remote_len + ctx->delimiter_len;
+	if (ctx->body_len <= ctx->remote_len + ctx->delimiter_len ||
+	    memcmp(ctx->body + ctx->remote_len, ctx->delimiter,
+	        ctx->delimiter_len) != 0) {
+		return false;
 	}
+	ctx->payload_off = ctx->remote_len + ctx->delimiter_len;
 
 	return true;
 }
