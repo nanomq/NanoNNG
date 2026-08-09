@@ -150,7 +150,6 @@ tlstran_pipe_close(void *arg)
 		nni_free(p->npipe->subinfol, sizeof(nni_list));
 		p->npipe->subinfol = NULL;
 	}
-	conn_param_free(p->tcp_cparam);
 	nni_mtx_unlock(&p->mtx);
 
 	nng_stream_close(p->conn);
