@@ -621,6 +621,7 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	nni_aio_init(&p->aio_recv, nano_pipe_recv_cb, p);
 
 	p->conn_param  = nni_pipe_get_conn_param(pipe);
+	// Must keep one free here for safety decoupled transport & protocol 
 	conn_param_free(p->conn_param);
 	p->id          = nni_pipe_id(pipe);
 	p->rid         = 1;

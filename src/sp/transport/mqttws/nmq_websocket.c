@@ -1436,7 +1436,6 @@ wstran_pipe_close(void *arg)
 	}
 
 	nni_lmq_flush(&p->rslmq);
-	conn_param_free(p->ws_param);
 	nni_mtx_unlock(&p->mtx);
 	nng_stream_close(p->ws);
 	nni_aio_close(p->rxaio);
