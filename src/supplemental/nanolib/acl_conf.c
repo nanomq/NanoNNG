@@ -316,17 +316,20 @@ print_acl_conf(conf_acl *acl)
 			    rule->rule_type != ACL_OR) {
 				switch (rule->rule_ct.ct.type) {
 				case ACL_RULE_SINGLE_STRING:
-					log_info("[%zu] \t%s", rule->id,
+					log_debug("[%zu] \t%s", rule->id,
 					    rule->rule_ct.ct.value.str);
+					log_info("[%zu] \t***", rule->id);
 					break;
 
 				case ACL_RULE_STRING_ARRAY:
 					for (size_t j = 0;
 					     j < rule->rule_ct.ct.count; j++) {
-						log_info("[%zu] \t%s",
+						log_debug("[%zu] \t%s",
 						    rule->id,
 						    rule->rule_ct.ct.value
 						        .str_array[j]);
+						log_info("[%zu] \t***",
+						    rule->id);
 					}
 					break;
 				case ACL_RULE_ALL:
@@ -364,22 +367,27 @@ print_acl_conf(conf_acl *acl)
 
 					switch (sub_rule->rule_ct.type) {
 					case ACL_RULE_SINGLE_STRING:
-						log_info("[%zu][%zu] \t%s",
+						log_debug("[%zu][%zu] \t%s",
 						    rule->id, j,
 						    sub_rule->rule_ct.value
 						        .str);
+						log_info("[%zu][%zu] \t***",
+						    rule->id, j);
 						break;
 
 					case ACL_RULE_STRING_ARRAY:
 						for (size_t k = 0; k <
 						     sub_rule->rule_ct.count;
 						     k++) {
-							log_info("[%zu][%zu][%"
+							log_debug("[%zu][%zu][%"
 							         "zu] \t%s",
 							    rule->id, j, k,
 							    sub_rule->rule_ct
 							        .value
 							        .str_array[k]);
+							log_info("[%zu][%zu][%"
+							         "zu] \t***",
+							    rule->id, j, k);
 						}
 						break;
 
@@ -395,8 +403,9 @@ print_acl_conf(conf_acl *acl)
 
 			log_info("[%zu] topics:", rule->id);
 			for (size_t k = 0; k < rule->topic_count; k++) {
-				log_info(
+				log_debug(
 				    "[%zu] \t%s", rule->id, rule->topics[k]);
+				log_info("[%zu] \t***", rule->id);
 			}
 			log_info("");
 		}

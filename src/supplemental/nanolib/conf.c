@@ -1217,12 +1217,15 @@ print_parquet_conf(conf_parquet *parquet)
 	log_info("parquet encryption:       %s",
 	    encryption->enable ? "enable" : "disable");
 	if (encryption->enable) {
-		log_info("parquet encryption key:   %s", encryption->key);
-		log_info("parquet encryption key_id:%s", encryption->key_id);
+		log_debug("parquet encryption key:   %s", encryption->key);
+		log_info("parquet encryption key:   ***");
+		log_debug("parquet encryption key_id:%s", encryption->key_id);
+		log_info("parquet encryption key_id: ***");
 		log_info("parquet encryption type:  %s",
 		    encryption->type == 0 ? "AES_GCM_V1" : "AES_GCM_CTR_V1");
 	}
-	log_info("parquet file_name_prefix: %s", parquet->file_name_prefix);
+	log_debug("parquet file_name_prefix: %s", parquet->file_name_prefix);
+	log_info("parquet file_name_prefix: ***");
 	log_info("parquet file_count:       %d", parquet->file_count);
 	log_info("parquet file_size:        %d", parquet->file_size);
 	log_info("parquet limit_frequency:  %d", parquet->limit_frequency);
@@ -1235,7 +1238,8 @@ print_exchange_conf(conf_exchange *exchange)
 	for (int i=0; i < (int) exchange->count; ++i) {
 		conf_exchange_node *n = exchange->nodes[i];
 		log_info("exchange name            %s", n->name);
-		log_info("exchange topic           %s", n->topic);
+		log_debug("exchange topic           %s", n->topic);
+		log_info("exchange topic           ***");
 		log_info("exchange streamType	   %d", n->streamType);
 		log_info("exchange chunk_size      %d", n->chunk_size);
 		log_info("exchange url             %s", n->exchange_url);
@@ -1305,8 +1309,10 @@ print_rule_engine_conf(conf_rule *rule_eng)
 			if (r[i].forword_type == RULE_FORWORD_REPUB) {
 				repub_t *repub = r[i].repub;
 				log_info("[%d] sql:        %s", i, r[i].raw_sql);
-				log_info("[%d] server:     %s", i, repub->address);
-				log_info("[%d] topic:      %s", i, repub->topic);
+				log_debug("[%d] server:     %s", i, repub->address);
+				log_info("[%d] server:     ***", i);
+				log_debug("[%d] topic:      %s", i, repub->topic);
+				log_info("[%d] topic:      ***", i);
 				log_info("[%d] proto_ver:  %d", i, repub->proto_ver);
 				log_info("[%d] clientid:   ***", i);
 				log_debug("[%d] clientid:   %s", i, repub->clientid);
@@ -2493,9 +2499,13 @@ printf_gateway_conf(zmq_gateway_conf *gateway)
 	log_info("zmq sub pre: %s", gateway->zmq_sub_pre);
 	log_info("zmq pub pre: %s", gateway->zmq_pub_pre);
 	log_info("mqtt url: %s", gateway->mqtt_url);
-	log_info("mqtt sub url: %s", gateway->sub_topic);
-	log_info("mqtt pub url: %s", gateway->pub_topic);
-	log_info("mqtt username: %s", gateway->username);
+	log_info("mqtt url: ***");
+	log_debug("mqtt sub url: %s", gateway->sub_topic);
+	log_info("mqtt sub url: ***");
+	log_debug("mqtt pub url: %s", gateway->pub_topic);
+	log_info("mqtt pub url: ***");
+	log_debug("mqtt username: %s", gateway->username);
+	log_info("mqtt username: ***");
 	log_info("mqtt proto version: %d", gateway->proto_ver);
 	log_info("mqtt keepalive: %d", gateway->keepalive);
 	log_info("mqtt clean start: %d", gateway->clean_start);
@@ -3835,24 +3845,27 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		log_info("%sbridge.mqtt.%s.forwards: ", prefix, node->name);
 
 		for (size_t j = 0; j < node->forwards_count; j++) {
-			log_info(
-			    "\t[%ld] remote topic:        %.*s", j,
-										node->forwards_list[j]->remote_topic_len,
-										node->forwards_list[j]->remote_topic);
-			log_info(
-			    "\t[%ld] local topic:        %.*s", j,
-										node->forwards_list[j]->local_topic_len,
-										node->forwards_list[j]->local_topic);
+			log_debug("\t[%ld] remote topic:        %.*s", j,
+			    node->forwards_list[j]->remote_topic_len,
+			    node->forwards_list[j]->remote_topic);
+			log_info("\t[%ld] remote topic:        ***", j);
+
+			log_debug("\t[%ld] local topic:        %.*s", j,
+			    node->forwards_list[j]->local_topic_len,
+			    node->forwards_list[j]->local_topic);
+			log_info("\t[%ld] local topic:        ***", j);
 		}
 		log_info(
 		    "%sbridge.mqtt.%s.subscription: ", prefix, node->name);
 		for (size_t k = 0; k < node->sub_count; k++) {
-			log_info("\t[%ld] remote topic:        %.*s", k + 1,
+			log_debug("\t[%ld] remote topic:        %.*s", k + 1,
 			    node->sub_list[k]->remote_topic_len,
 			    node->sub_list[k]->remote_topic);
-			log_info("\t[%ld] local topic:        %.*s", k + 1,
+			log_info("\t[%ld] remote topic:        ***", k + 1);
+			log_debug("\t[%ld] local topic:        %.*s", k + 1,
 			    node->sub_list[k]->local_topic_len,
 			    node->sub_list[k]->local_topic);
+			log_info("\t[%ld] local topic:        ***", k + 1);
 			log_info("\t[%ld] qos:          %d", k + 1,
 			    node->sub_list[k]->qos);
 			log_info("\t[%ld] rap:          %d", k + 1,

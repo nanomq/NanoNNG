@@ -270,7 +270,8 @@ void ringbuffer_parquet_cb(void *arg)
 		(void)strncpy(range->filename, file_range[i]->filename, strlen(file_range[i]->filename));
 
 		cvector_push_back(file->ranges, range);
-		log_warn("ringbus: parquet write to file: %s success\n", file_range[i]->filename);
+		log_debug("ringbus: parquet write to file: %s success\n", file_range[i]->filename);
+		log_warn("ringbus: parquet write to file success\n");
 	}
 	for (uint32_t i = 0; i < *szp && smsgs != NULL; i++) {
 		if (smsgs[i] != NULL) {

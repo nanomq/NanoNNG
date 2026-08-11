@@ -58,7 +58,8 @@ class parquet_file_manager {
 		if (it != file_queue_map.end()) {
 			index = it->second->get_index();
 		}
-		log_info("get_queue_index: %u for topic %s", index, topic.c_str());
+		log_debug("get_queue_index: %u for topic %s", index, topic.c_str());
+		log_info("get_queue_index: %u for topic ***", index);
 		return index;
 	}
 	void remove_queue() { };

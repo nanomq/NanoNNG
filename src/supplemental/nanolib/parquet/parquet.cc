@@ -118,7 +118,8 @@ get_random_file_name(char *prefix, uint64_t key_start, uint64_t key_end)
 
 	sprintf(file_name, "%s/%s-%" PRIu64 "~%" PRIu64 ".parquet", dir,
 	    prefix, key_start, key_end);
-	log_error("file_name: %s", file_name);
+	log_debug("file_name: %s", file_name);
+	log_error("file_name: ***");
 	return file_name;
 }
 
@@ -260,7 +261,8 @@ parquet_write_batch_async(parquet_object *elem)
 {
 	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
 	if (conf->enable == false) {
-		log_error("Parquet %s is not ready or not launch!", elem->topic);
+		log_debug("Parquet %s is not ready or not launch!", elem->topic);
+		log_error("Parquet *** is not ready or not launch!");
 		return -1;
 	}
 
@@ -285,7 +287,8 @@ parquet_write_batch_tmp_async(parquet_object *elem)
 {
 	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
 	if (conf->enable == false) {
-		log_error("Parquet %s is not ready or not launch!", elem->topic);
+		log_debug("Parquet %s is not ready or not launch!", elem->topic);
+		log_error("Parquet *** is not ready or not launch!");
 		return -1;
 	}
 
@@ -357,8 +360,10 @@ compute_and_rename_file_withMD5_CXX(const std::string &filename,
 	if (ComputeFileMD5(filename.c_str(), md5_buffer) != 0) {
 		log_error("Failed to calculate md5sum");
 		if (remove(filename.c_str()) != 0) {
-			log_error("Failed to remove file %s errno: %d",
+			log_debug("Failed to remove file %s errno: %d",
 			    filename.c_str(), errno);
+			log_error("Failed to remove file *** errno: %d",
+			    errno);
 		}
 		return {};
 	}
@@ -370,10 +375,13 @@ compute_and_rename_file_withMD5_CXX(const std::string &filename,
 	    prefix.size() + 1; // assumes an extra separator ("/" or "_")
 	size_t ts_end_pos = filename.rfind('.');
 	if (ts_end_pos == std::string::npos || ts_end_pos <= ts_start_pos) {
-		log_error("Invalid filename format: %s", filename.c_str());
+		log_debug("Invalid filename format: %s", filename.c_str());
+		log_error("Invalid filename format: ***");
 		if (remove(filename.c_str()) != 0) {
-			log_error("Failed to remove file %s errno: %d",
+			log_debug("Failed to remove file %s errno: %d",
 			    filename.c_str(), errno);
+			log_error("Failed to remove file *** errno: %d",
+			    errno);
 		}
 
 		return {};
@@ -393,14 +401,19 @@ compute_and_rename_file_withMD5_CXX(const std::string &filename,
 	    sindex + "_" + md5_buffer + ".parquet";
 
 	// Step 5: Rename the file to the new name
-	log_info(
+	log_debug(
 	    "Trying to rename %s to %s", filename.c_str(), new_name.c_str());
+	log_info("Trying to rename file *** to ***");
 	if (rename(filename.c_str(), new_name.c_str()) != 0) {
-		log_error("Failed to rename file %s to %s errno: %d",
+		log_debug("Failed to rename file %s to %s errno: %d",
 		    filename.c_str(), new_name.c_str(), errno);
+		log_error("Failed to rename file *** to *** errno: %d",
+		    errno);
 		if (remove(filename.c_str()) != 0) {
-			log_error("Failed to remove file %s errno: %d",
+			log_debug("Failed to remove file %s errno: %d",
 			    filename.c_str(), errno);
+			log_error("Failed to remove file *** errno: %d",
+			    errno);
 		}
 		return {};
 	}
@@ -527,7 +540,8 @@ parquet_write_tmp(parquet_object *elem)
 
 	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
 	if (conf->enable == false) {
-		log_error("Parquet %s is not ready or not launch!", elem->topic);
+		log_debug("Parquet %s is not ready or not launch!", elem->topic);
+		log_error("Parquet *** is not ready or not launch!");
 		return -1;
 	}
 
@@ -574,7 +588,8 @@ parquet_write(parquet_object *elem)
 
 	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
 	if (conf->enable == false) {
-		log_error("Parquet %s is not ready or not launch!", elem->topic);
+		log_debug("Parquet %s is not ready or not launch!", elem->topic);
+		log_error("Parquet *** is not ready or not launch!");
 		return -1;
 	}
 
@@ -727,7 +742,8 @@ parquet_find(const char *topic, uint64_t key)
 {
 	conf_parquet *conf = file_manager.fetch_conf(topic);
 	if (conf == NULL || conf->enable == false) {
-		log_error("Parquet %s is not ready or not launch!", topic);
+		log_debug("Parquet %s is not ready or not launch!", topic);
+		log_error("Parquet *** is not ready or not launch!");
 		return NULL;
 	}
 
@@ -1134,7 +1150,8 @@ parquet_find_data_packet(
 	string topic = extract_topic(filename);
 	conf         = file_manager.fetch_conf(topic);
 	if (conf == NULL || conf->enable == false) {
-		log_error("Parquet %s is not ready or not launch!", topic.c_str());
+		log_debug("Parquet %s is not ready or not launch!", topic.c_str());
+		log_error("Parquet *** is not ready or not launch!");
 		return ret_vec;
 	}
 
@@ -1174,7 +1191,8 @@ parquet_find_data_packet(conf_parquet *conf, char *filename, uint64_t key)
 	string topic = extract_topic(filename);
 	conf         = file_manager.fetch_conf(topic);
 	if (conf == NULL || conf->enable == false) {
-		log_error("Parquet %s is not ready or not launch!", topic.c_str());
+		log_debug("Parquet %s is not ready or not launch!", topic.c_str());
+		log_error("Parquet *** is not ready or not launch!");
 		return NULL;
 	}
 	WAIT_FOR_AVAILABLE
@@ -1525,10 +1543,12 @@ parquet_get_file_ranges(uint64_t start_key, uint64_t end_key, char *topic)
 {
 	uint32_t len = 0;
 	// Find filenames
-	log_info("topic: %s, start_key: %lu, end_key: %lu", topic, start_key, end_key);
+	log_debug("topic: %s, start_key: %lu, end_key: %lu", topic, start_key, end_key);
+	log_info("topic: ***, start_key: %lu, end_key: %lu", start_key, end_key);
 	conf_parquet *conf = file_manager.fetch_conf(topic);
 	if (conf->enable == false) {
-		log_error("Parquet %s is not ready or not launch!", topic);
+		log_debug("Parquet %s is not ready or not launch!", topic);
+		log_error("Parquet *** is not ready or not launch!");
 		return NULL;
 	}
 
@@ -1537,7 +1557,8 @@ parquet_get_file_ranges(uint64_t start_key, uint64_t end_key, char *topic)
 
 	// Get all keys
 	for (uint32_t i = 0; i < len; i++) {
-		log_info("filename: %s", filenames[i]);
+		log_debug("filename: %s", filenames[i]);
+		log_info("filename: ***");
 
 		parquet_filename_range *range =
 		    (parquet_filename_range *) nng_alloc(
@@ -1648,7 +1669,8 @@ parquet_get_data_packets_in_range_by_column(parquet_filename_range *range,
 
 	conf_parquet *conf = file_manager.fetch_conf(topic);
 	if (conf->enable == false) {
-		log_error("Parquet %s is not ready or not launch!", topic);
+		log_debug("Parquet %s is not ready or not launch!", topic);
+		log_error("Parquet *** is not ready or not launch!");
 		return NULL;
 	}
 
@@ -1680,12 +1702,14 @@ parquet_get_data_packets_in_range_by_column(parquet_filename_range *range,
 		uint64_t                   start_key = range->keys[0];
 		uint64_t                   end_key   = range->keys[1];
 
-		log_info("topic: %s, start_key: %lu, end_key: %lu", topic, start_key, end_key);
+		log_debug("topic: %s, start_key: %lu, end_key: %lu", topic, start_key, end_key);
+		log_info("topic: ***, start_key: %lu, end_key: %lu", start_key, end_key);
 		const char **filenames =
 		    parquet_find_span(topic, start_key, end_key, &len);
 
 		for (uint32_t i = 0; i < len; i++) {
-			log_info("filename: %s", filenames[i]);
+			log_debug("filename: %s", filenames[i]);
+		log_info("filename: ***");
 
 			uint64_t keys[2];
 			keys[0] = start_key;
