@@ -1832,6 +1832,8 @@ nni_mqttv5_msg_decode_connect(nni_msg *msg)
 	uint32_t prop_len = 0;
 	mqtt->var_header.connect.properties =
 	    decode_buf_properties(body, length, &pos, &prop_len, true);
+	if (prop_len == (uint32_t)-1)
+		return MQTT_ERR_PROTOCOL;
 	buf.curpos = &body[0] + pos;
 
 	// Check connect properties
@@ -1875,6 +1877,8 @@ nni_mqttv5_msg_decode_connect(nni_msg *msg)
 		prop_len = 0;
 		mqtt->payload.connect.will_properties =
 		    decode_buf_properties(body, length, &pos, &prop_len, true);
+		if (prop_len == (uint32_t)-1)
+			return MQTT_ERR_PROTOCOL;
 		buf.curpos = &body[0] + pos;
 
 		property *will_prop = mqtt->payload.connect.will_properties;
@@ -1953,6 +1957,8 @@ nni_mqttv5_msg_decode_disconnect(nni_msg *msg)
 	uint32_t prop_len = 0;
 	mqtt->var_header.disconnect.properties =
 	    decode_buf_properties(body, length, &pos, &prop_len, true);
+	if (prop_len == (uint32_t)-1)
+		return MQTT_ERR_PROTOCOL;
 	buf.curpos = &body[0] + pos;
 
 	return MQTT_SUCCESS;
@@ -1981,6 +1987,8 @@ nni_mqttv5_msg_decode_auth(nni_msg *msg)
 	uint32_t prop_len = 0;
 	mqtt->var_header.auth.properties =
 	    decode_buf_properties(body, length, &pos, &prop_len, true);
+	if (prop_len == (uint32_t)-1)
+		return MQTT_ERR_PROTOCOL;
 	buf.curpos = &body[0] + pos;
 
 	return MQTT_SUCCESS;
@@ -2040,6 +2048,8 @@ nni_mqttv5_msg_decode_connack(nni_msg *msg)
 	uint32_t prop_len = 0;
 	mqtt->var_header.connack.properties =
 	    decode_buf_properties(body, length, &pos, &prop_len, true);
+	if (prop_len == (uint32_t)-1)
+		return MQTT_ERR_PROTOCOL;
 	buf.curpos = &body[0] + pos;
 	// Check properties
 	property *prop = mqtt->var_header.connack.properties;
@@ -2179,6 +2189,8 @@ nni_mqttv5_msg_decode_subscribe(nni_msg *msg)
 	uint32_t prop_len = 0;
 	mqtt->var_header.subscribe.properties =
 	    decode_buf_properties(body, length, &pos, &prop_len, true);
+	if (prop_len == (uint32_t)-1)
+		return MQTT_ERR_PROTOCOL;
 	buf.curpos = &body[0] + pos;
 
 	uint8_t *saved_current_pos = NULL;
@@ -2307,6 +2319,8 @@ nni_mqttv5_msg_decode_suback(nni_msg *msg)
 	uint32_t prop_len = 0;
 	mqtt->var_header.suback.properties =
 	    decode_buf_properties(body, length, &pos, &prop_len, true);
+	if (prop_len == (uint32_t)-1)
+		return MQTT_ERR_PROTOCOL;
 	buf.curpos = &body[0] + pos;
 
 	/* Suback Return Codes */
@@ -2414,7 +2428,14 @@ nni_mqttv5_msg_decode_publish(nni_msg *msg)
 	uint32_t pos1 = pos;
 	mqtt->var_header.publish.properties =
 	    decode_buf_properties(body, length, &pos, &prop_len, true);
-	check_properties(mqtt->var_header.publish.properties, msg);
+	if (prop_len == (uint32_t)-1)
+		return MQTT_ERR_PROTOCOL;
+	if (check_properties(mqtt->var_header.publish.properties, msg) != SUCCESS) {
+		property_free(mqtt->var_header.publish.properties);
+		mqtt->var_header.publish.properties = NULL;
+		return MQTT_ERR_PROTOCOL;
+	}
+
 	buf.curpos = &body[0] + pos;
 	prop_sz = pos - pos1;
 
@@ -2516,6 +2537,10 @@ nni_mqttv5_msg_decode_puback(nni_msg *msg)
 
 	mqtt->var_header.puback.properties =
 	    decode_properties(msg, &pos, &prop_len, false);
+	if (prop_len == (uint32_t) -1) {
+		log_warn("Malformed Property");
+		return PROTOCOL_ERROR;
+	}
 	if (check_properties(mqtt->var_header.puback.properties, msg) != SUCCESS) {
 		property_free(mqtt->var_header.puback.properties);
 		mqtt->var_header.puback.properties = NULL;
@@ -2567,6 +2592,10 @@ nni_mqttv5_msg_decode_pubrec(nni_msg *msg)
 
 	mqtt->var_header.pubrec.properties =
 	    decode_properties(msg, &pos, &prop_len, false);
+	if (prop_len == (uint32_t) -1) {
+		log_warn("Malformed Property");
+		return PROTOCOL_ERROR;
+	}
 	if (check_properties(mqtt->var_header.pubrec.properties, msg) != SUCCESS) {
 		property_free(mqtt->var_header.pubrec.properties);
 		mqtt->var_header.pubrec.properties = NULL;
@@ -2625,6 +2654,10 @@ nni_mqttv5_msg_decode_pubrel(nni_msg *msg)
 
 	mqtt->var_header.pubrel.properties =
 	    decode_properties(msg, &pos, &prop_len, false);
+	if (prop_len == (uint32_t) -1) {
+		log_warn("Malformed Property");
+		return PROTOCOL_ERROR;
+	}
 	if (check_properties(mqtt->var_header.pubrel.properties, msg) != SUCCESS) {
 		property_free(mqtt->var_header.pubrel.properties);
 		mqtt->var_header.pubrel.properties = NULL;
@@ -2676,6 +2709,10 @@ nni_mqttv5_msg_decode_pubcomp(nni_msg *msg)
 
 	mqtt->var_header.pubcomp.properties =
 	    decode_properties(msg, &pos, &prop_len, false);
+	if (prop_len == (uint32_t) -1) {
+		log_warn("Malformed Property");
+		return PROTOCOL_ERROR;
+	}
 	if (check_properties(mqtt->var_header.pubcomp.properties, msg) != SUCCESS) {
 		property_free(mqtt->var_header.pubcomp.properties);
 		mqtt->var_header.pubcomp.properties = NULL;
@@ -2782,6 +2819,8 @@ nni_mqttv5_msg_decode_unsubscribe(nni_msg *msg)
 	uint32_t prop_len = 0;
 	mqtt->var_header.unsubscribe.properties =
 	    decode_buf_properties(body, length, &pos, &prop_len, true);
+	if (prop_len == (uint32_t)-1)
+		return MQTT_ERR_PROTOCOL;
 	buf.curpos = &body[0] + pos;
 
 	uint8_t *saved_current_pos = NULL;
@@ -2808,8 +2847,7 @@ nni_mqttv5_msg_decode_unsubscribe(nni_msg *msg)
 	buf.curpos = saved_current_pos;
 	while (buf.curpos < buf.endpos) {
 		/* Topic Name */
-		ret =
-		    read_utf8_str(&buf, &uspld->topic_arr[uspld->topic_count]);
+		ret = read_utf8_str(&buf, &uspld->topic_arr[uspld->topic_count]);
 		if (ret != MQTT_SUCCESS) {
 			ret = MQTT_ERR_PROTOCOL;
 			goto err;
@@ -2857,6 +2895,8 @@ nni_mqttv5_msg_decode_unsuback(nni_msg *msg)
 	uint32_t prop_len = 0;
 	mqtt->var_header.unsuback.properties =
 	    decode_buf_properties(body, length, &pos, &prop_len, true);
+	if (prop_len == (uint32_t)-1)
+		return MQTT_ERR_PROTOCOL;
 	buf.curpos = &body[0] + pos;
 
 	mqtt->payload.unsuback.ret_code_count = length - pos;
@@ -4149,33 +4189,35 @@ decode_buf_properties(uint8_t *packet, uint32_t packet_len, uint32_t *pos,
 		return NULL;
 	}
 	current_pos += bytes;
+
 	if (prop_len == 0) {
-		goto out;
+		*pos = current_pos;
+		*len = 0;
+		return NULL;
 	}
+
 	struct pos_buf buf = {
 		.curpos = &msg_body[current_pos],
 		.endpos = &msg_body[current_pos + prop_len],
 	};
 
 	log_debug("remain len %d prop len %d curpos %p endpos %p", msg_len, prop_len, buf.curpos, buf.endpos);
+	
 	if (msg_len - current_pos < prop_len) {
 		log_warn("Malformed packet: property len > remaining len!");
-		if (list != NULL) {
-			property_free(list);
-		}
+		*len = (uint32_t)-1;
 		return NULL;
 	}
+
 	uint8_t prop_id = 0;
 	list            = property_alloc();
-	// for security sake
 	property *tail  = list;
-	/* Check properties appearance time */
-	// TODO
+
 	while (buf.curpos < buf.endpos) {
 		if (0 != read_byte(&buf, &prop_id)) {
 			property_free(list);
-			list = NULL;
-			break;
+			*len = (uint32_t)-1;
+			return NULL;
 		}
 		property *         cur_prop = NULL;
 		property_type_enum type     = property_get_value_type(prop_id);
@@ -4183,15 +4225,13 @@ decode_buf_properties(uint8_t *packet, uint32_t packet_len, uint32_t *pos,
 		    property_parse(&buf, cur_prop, prop_id, type, copy_value);
 		if (cur_prop == NULL) {
 			property_free(list);
-			list = NULL;
-			break;
+			*len = (uint32_t)-1;
+			return NULL;
 		}
-		// O(1) complexity
 		tail->next = cur_prop;
 		tail = cur_prop;
 	}
 
-out:
 	current_pos += (prop_len);
 	*pos = current_pos;
 	*len = prop_len;
@@ -4496,6 +4536,10 @@ nni_mqtt_pubres_decode(nng_msg *msg, uint16_t *packet_id, uint8_t *reason_code,
 	uint32_t prop_len = 0;
 
 	*prop = decode_properties(msg, &pos, &prop_len, false);
+	if (prop_len == (uint32_t) -1) {
+		log_warn("Malformed Property");
+		return PROTOCOL_ERROR;
+	}
 	if (check_properties(*prop, msg) != SUCCESS) {
 		property_free(*prop);
 		*prop = NULL;
