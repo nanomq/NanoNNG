@@ -6,14 +6,11 @@
 // file was obtained (LICENSE.txt).  A copy of the license may also be
 // found online at https://opensource.org/licenses/MIT.
 //
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
 #include "core/nng_impl.h"
 #include "core/sockimpl.h"
-
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "nng/supplemental/nanolib/conf.h"
@@ -21,13 +18,10 @@
 #include "nng/supplemental/tls/tls.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 #include "supplemental/mqtt/mqtt_qos_db_api.h"
-
 // TLS over TCP transport.   Platform specific TLS Over TCP operations must be
 // supplied as well.
-
 typedef struct tlstran_pipe tlstran_pipe;
 typedef struct tlstran_ep   tlstran_ep;
-
 // tcp_pipe is one end of a TCP connection.
 struct tlstran_pipe {
 	nng_stream *conn;
@@ -63,7 +57,6 @@ struct tlstran_pipe {
 	uint16_t qrecv_quota;
 	uint32_t qsend_quota;
 };
-
 struct tlstran_ep {
 	nni_mtx mtx;
 	// uint16_t             proto;
@@ -89,7 +82,6 @@ struct tlstran_ep {
 	nni_stat_item st_rcv_max;
 #endif
 };
-
 static void tlstran_pipe_send_start(tlstran_pipe *);
 static void tlstran_pipe_recv_start(tlstran_pipe *);
 static void tlstran_pipe_send_cb(void *);
@@ -98,37 +90,30 @@ static void tlstran_pipe_recv_cb(void *);
 static void tlstran_pipe_nego_cb(void *);
 static void tlstran_ep_fini(void *);
 static void tlstran_pipe_fini(void *);
-
 static inline void
 tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio);
 static inline void
 tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio);
-
 static nni_reap_list tlstran_ep_reap_list = {
 	.rl_offset = offsetof(tlstran_ep, reap),
 	.rl_func   = tlstran_ep_fini,
 };
-
 static nni_reap_list tlstran_pipe_reap_list = {
 	.rl_offset = offsetof(tlstran_pipe, reap),
 	.rl_func   = tlstran_pipe_fini,
 };
-
 static void
 tlstran_init(void)
 {
 }
-
 static void
 tlstran_fini(void)
 {
 }
-
 static void
 tlstran_pipe_close(void *arg)
 {
 	tlstran_pipe *p = arg;
-
 	if (nni_atomic_get_bool(&p->npipe->cache)) {
 		nng_stream_close(p->conn);
 		return;
@@ -155,17 +140,14 @@ tlstran_pipe_close(void *arg)
 	}
 	nni_lmq_flush(&p->rslmq);
 	nni_mtx_unlock(&p->mtx);
-
 	nng_stream_close(p->conn);
 	nni_aio_close(p->rxaio);
 	nni_aio_close(p->rpaio);
 	nni_aio_close(p->txaio);
 	nni_aio_close(p->qsaio);
 	nni_aio_close(p->negoaio);
-
 	log_trace("tlstran_pipe_close\n");
 }
-
 static void
 tlstran_pipe_stop(void *arg)
 {
@@ -178,7 +160,6 @@ tlstran_pipe_stop(void *arg)
 	nni_aio_stop(p->negoaio);
 	log_trace(" ###### tlstran_pipe_stop ###### ");
 }
-
 static int
 tlstran_pipe_init(void *arg, nni_pipe *npipe)
 {
@@ -186,7 +167,6 @@ tlstran_pipe_init(void *arg, nni_pipe *npipe)
 	char         *cid;
 	tlstran_pipe *p = arg;
 	uint32_t      clientid_key = 0;
-
 	nni_pipe_set_conn_param(npipe, p->tcp_cparam);
 	cid = (char *) conn_param_get_clientid(p->tcp_cparam);
 	clientid_key = DJBHashn(cid, conn_param_get_clientid_len(p->tcp_cparam));
@@ -210,13 +190,11 @@ tlstran_pipe_init(void *arg, nni_pipe *npipe)
 	log_trace(" ************ tlstran_pipe_init [%p] ************ ", p);
 	return (0);
 }
-
 static void
 tlstran_pipe_fini(void *arg)
 {
 	tlstran_pipe *p = arg;
 	tlstran_ep   *ep;
-
 	tlstran_pipe_stop(p);
 	if ((ep = p->ep) != NULL) {
 		nni_mtx_lock(&ep->mtx);
@@ -244,7 +222,6 @@ tlstran_pipe_fini(void *arg)
         nni_msg_free(p->rxmsg);
 	nng_free(p->qos_buf, 16 + NNI_NANO_MAX_PACKET_SIZE);
 	nni_mtx_unlock(&p->mtx);
-
 	nng_stream_free(p->conn);
 	nni_aio_free(p->qsaio);
 	nni_aio_free(p->rpaio);
@@ -257,7 +234,6 @@ tlstran_pipe_fini(void *arg)
 	log_trace(" ************ tlstran_pipe_finit [%p] ************ ", p);
 	NNI_FREE_STRUCT(p);
 }
-
 static void
 tlstran_pipe_reap(tlstran_pipe *p)
 {
@@ -268,13 +244,11 @@ tlstran_pipe_reap(tlstran_pipe *p)
 		nni_reap(&tlstran_pipe_reap_list, p);
 	}
 }
-
 static int
 tlstran_pipe_alloc(tlstran_pipe **pipep)
 {
 	tlstran_pipe *p;
 	int           rv;
-
 	if ((p = NNI_ALLOC_STRUCT(p)) == NULL) {
 		return (NNG_ENOMEM);
 	}
@@ -291,18 +265,14 @@ tlstran_pipe_alloc(tlstran_pipe **pipep)
 	nni_aio_list_init(&p->recvq);
 	nni_aio_list_init(&p->sendq);
 	nni_atomic_flag_reset(&p->reaped);
-
 	*pipep = p;
-
 	return (0);
 }
-
 static void
 tlstran_ep_match(tlstran_ep *ep)
 {
 	nni_aio      *aio;
 	tlstran_pipe *p;
-
 	if (((aio = ep->useraio) == NULL) ||
 	    ((p = nni_list_first(&ep->waitpipes)) == NULL)) {
 		return;
@@ -315,7 +285,6 @@ tlstran_ep_match(tlstran_ep *ep)
 	nni_aio_set_output(aio, 0, p);
 	nni_aio_finish(aio, 0, 0);
 }
-
 /**
  * MQTT protocal negotiate
  * deal with CONNECT packet
@@ -335,11 +304,9 @@ tlstran_pipe_nego_cb(void *arg)
 	uint32_t      len;
 	reason_code   code;
 	int           rv;
-
 	log_trace("start tlstran_pipe_nego_cb max len %ld pipe_addr %p gotrx %d wantrx %d\n",
 	    NANO_CONNECT_PACKET_LEN, p, p->gotrxhead, p->wantrxhead);
 	nni_mtx_lock(&ep->mtx);
-
 	if ((rv = nni_aio_result(aio)) != 0) {
 		log_warn("nego aio error: %s", nng_strerror(rv));
 		if (p->conn_buf != NULL) {
@@ -349,12 +316,10 @@ tlstran_pipe_nego_cb(void *arg)
 		code = NORMAL_DISCONNECTION;
 		goto error;
 	}
-
 	// calculate number of bytes received
 	if (p->gotrxhead < p->wantrxhead) {
 		p->gotrxhead += nni_aio_count(aio);
 	}
-
 	// recv fixed header
 	if (p->gotrxhead < NNI_NANO_MAX_HEADER_SIZE) {
 		nni_iov iov;
@@ -387,7 +352,6 @@ tlstran_pipe_nego_cb(void *arg)
 			goto error;
 		}
 	}
-
 	// we have finished the fixed header
 	if (p->gotrxhead < p->wantrxhead) {
 		iov.iov_len = p->wantrxhead - p->gotrxhead;
@@ -402,10 +366,8 @@ tlstran_pipe_nego_cb(void *arg)
 		nni_mtx_unlock(&ep->mtx);
 		return;
 	}
-
 	// We have both sent and received the CONNECT headers.
 	// CONNECT packet serialization
-
 	if (p->gotrxhead >= p->wantrxhead) {
 		if (0 != conn_param_alloc(&p->tcp_cparam)) {
 			rv = NNG_ENOMEM;
@@ -472,11 +434,9 @@ tlstran_pipe_nego_cb(void *arg)
 			}
 		}
 	}
-
 	nni_mtx_unlock(&ep->mtx);
 	log_trace("^^^^^^^^^^ end of tlstran_pipe_nego_cb ^^^^^^^^^^\n");
 	return;
-
 close:
 	// if a malformated CONNECT packet is received
 	// reply CONNACK here for MQTT V5
@@ -517,7 +477,6 @@ error:
 			  rv, nng_strerror(rv), code);
 	return;
 }
-
 static void
 tlstran_pipe_qos_send_cb(void *arg)
 {
@@ -597,12 +556,9 @@ tlstran_pipe_send_cb(void *arg)
 	size_t        n;
 	nni_msg      *msg;
 	nni_aio      *txaio = p->txaio;
-
 	nni_mtx_lock(&p->mtx);
 	aio = nni_list_first(&p->sendq);
-
 	log_trace("############### tlstran_pipe_send_cb [%p] ################", p);
-
 	if ((rv = nni_aio_result(txaio)) != 0) {
 		log_warn(" send aio error %s", nng_strerror(rv));
 		nni_pipe_bump_error(p->npipe, rv);
@@ -612,18 +568,15 @@ tlstran_pipe_send_cb(void *arg)
 		nni_aio_finish_error(aio, rv);
 		return;
 	}
-
 	n = nni_aio_count(txaio);
 	nni_aio_iov_advance(txaio, n);
 	log_trace("tls over tcp socket sent %ld bytes iov %ld", n,
 	    nni_aio_iov_count(txaio));
-
 	if (nni_aio_iov_count(txaio) > 0) {
 		nng_stream_send(p->conn, txaio);
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
-
 	msg = nni_aio_get_msg(txaio);
 	nni_aio_set_msg(txaio, NULL);
 	if (msg != NULL) {
@@ -639,7 +592,6 @@ tlstran_pipe_send_cb(void *arg)
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 		return;
 	}
-
 	if (nni_aio_get_prov_data(txaio) != NULL) {
 		// msgs left behind due to multiple topics matched
 		if (p->pro_ver == MQTT_PROTOCOL_VERSION_v311 ||
@@ -654,10 +606,8 @@ tlstran_pipe_send_cb(void *arg)
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
-
 	nni_aio_list_remove(aio);
 	tlstran_pipe_send_start(p);
-
 	if (msg == NULL) {
 		nni_mtx_unlock(&p->mtx);
 		// msg is lost due to flow control
@@ -665,7 +615,6 @@ tlstran_pipe_send_cb(void *arg)
 		nni_aio_finish_sync(aio, 0, 0);
 		return;
 	}
-
 	n   = nni_msg_len(msg);
 	cmd = nni_msg_cmd_type(msg);
 	if (cmd == CMD_CONNACK) {
@@ -675,7 +624,6 @@ tlstran_pipe_send_cb(void *arg)
 	}
 	// nni_pipe_bump_tx(p->npipe, n);
 	nni_mtx_unlock(&p->mtx);
-
 	nni_aio_set_msg(aio, NULL);
 	nni_msg_free(msg);
 	if (cmd == CMD_CONNACK && flag != 0x00) {
@@ -686,7 +634,6 @@ tlstran_pipe_send_cb(void *arg)
 		nni_aio_finish_sync(aio, 0, n);
 	}
 }
-
 /*
  * deal with MQTT protocol
  * insure read complete MQTT packet from socket
@@ -703,12 +650,9 @@ tlstran_pipe_recv_cb(void *arg)
 	tlstran_pipe *p     = arg;
 	nni_aio      *rxaio = p->rxaio;
 	bool          ack = false;
-
 	log_trace("tlstran_pipe_recv_cb %p\n", p);
 	nni_mtx_lock(&p->mtx);
-
 	aio = nni_list_first(&p->recvq);
-
 	if ((rv = nni_aio_result(rxaio)) != 0) {
 		log_warn("nni aio recv error!! %s\n", nng_strerror(rv));
 		nni_pipe_bump_error(p->npipe, rv);
@@ -727,7 +671,6 @@ tlstran_pipe_recv_cb(void *arg)
 		goto recv_error;
 	}
 	p->gotrxhead += nni_aio_count(rxaio);
-
 	nni_aio_iov_advance(rxaio, nni_aio_count(rxaio));
 	log_trace("newly recevied %ld totoal received: %ld",
 	    nni_aio_count(rxaio), p->gotrxhead);
@@ -754,14 +697,12 @@ tlstran_pipe_recv_cb(void *arg)
 		nni_mtx_unlock(&p->mtx);
 		return;
 	}
-
 	if (p->rxmsg == NULL) {
 		if ((rv = mqtt_get_remaining_length(
 		         p->rxlen, p->gotrxhead, &len, &pos)) != 0) {
 			rv = PAYLOAD_FORMAT_INVALID;
 			goto recv_error;
 		}
-
 		// finish fixed header
 		p->wantrxhead = len + p->gotrxhead;
 		// We should have gotten a message header. len -> remaining
@@ -776,13 +717,11 @@ tlstran_pipe_recv_cb(void *arg)
 			rv = NMQ_PACKET_TOO_LARGE;
 			goto recv_error;
 		}
-
 		if ((rv = nni_msg_alloc(&p->rxmsg, (size_t) len)) != 0) {
 			log_error("Mem error %ld\n", (size_t) len);
 			rv = NMQ_SERVER_UNAVAILABLE;
 			goto recv_error;
 		}
-
 		if ((rv = nni_msg_header_append(p->rxmsg, p->rxlen, pos+1)) != 0) {
 			rv = NMQ_SERVER_UNAVAILABLE;
 			goto recv_error;
@@ -793,7 +732,6 @@ tlstran_pipe_recv_cb(void *arg)
 		if (len != 0) {
 			iov[0].iov_buf = nni_msg_body(p->rxmsg);
 			iov[0].iov_len = (size_t) len;
-
 			nni_aio_set_iov(rxaio, 1, iov);
 			// second recv action
 			nng_stream_recv(p->conn, rxaio);
@@ -801,14 +739,12 @@ tlstran_pipe_recv_cb(void *arg)
 			return;
 		}
 	}
-
 	// We read a message completely.  Let the user know the good news. use
 	// as application message callback of users
 	nni_aio_list_remove(aio);
 	msg      = p->rxmsg;
 	type     = p->rxlen[0] & 0xf0;
 	p->rxmsg = NULL;
-
 	if (nni_msg_len(msg) == 0 &&
 	    (type == CMD_SUBSCRIBE || type == CMD_PUBLISH ||
 	        type == CMD_UNSUBSCRIBE)) {
@@ -824,10 +760,8 @@ tlstran_pipe_recv_cb(void *arg)
 		rv = MALFORMED_PACKET;
 		goto recv_error;
 	}
-
 	nni_msg_set_conn_param(msg, p->tcp_cparam);
 	nni_msg_set_cmd_type(msg, type);
-
 	// set the payload pointer of msg according to packet_type
 	log_trace("The type of msg is %x", type);
 	uint16_t  packet_id   = 0;
@@ -931,7 +865,6 @@ tlstran_pipe_recv_cb(void *arg)
 			goto recv_error;
 		}
 	}
-
 	if (ack == true) {
 		// alloc a msg here costs memory. However we must do it for the
 		// sake of compatibility with nng.
@@ -987,19 +920,15 @@ tlstran_pipe_recv_cb(void *arg)
 		}
 		ack = false;
 	}
-
 	// keep connection & Schedule next receive
 	if (!nni_list_empty(&p->recvq)) {
 		tlstran_pipe_recv_start(p);
 	}
-
 	nni_mtx_unlock(&p->mtx);
-
 	nni_aio_set_msg(aio, msg);
 	nni_aio_finish_sync(aio, 0, nni_msg_len(msg));
 	log_trace("end of tlstran_pipe_recv_cb: synch! %p\n", p);
 	return;
-
 recv_error:
 	nni_aio_list_remove(aio);
 	if (msg != NULL)
@@ -1015,12 +944,10 @@ recv_error:
 	log_trace("tlstran_pipe_recv_cb: recv error rv: %d\n", rv);
 	return;
 }
-
 static void
 tlstran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 {
 	tlstran_pipe *p = arg;
-
 	nni_mtx_lock(&p->mtx);
 	if (!nni_aio_list_active(aio)) {
 		nni_mtx_unlock(&p->mtx);
@@ -1037,10 +964,8 @@ tlstran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 	nni_aio_abort(p->qsaio, rv);
 	nni_aio_list_remove(aio);
 	nni_mtx_unlock(&p->mtx);
-
 	nni_aio_finish_error(aio, rv);
 }
-
 /**
  * @brief send msg to V4 client
  * 
@@ -1056,30 +981,24 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	nni_msg  *tmsg;
 	// qos default to 0 if the msg is not PUBLISH
 	uint8_t qos = 0;
-
 	if (nni_msg_header_len(msg) == 0 ||
 	    nni_msg_get_type(msg) != CMD_PUBLISH) {
 		goto send;
 	}
-
 	bool      is_sqlite = p->conf->sqlite.enable;
 	int       qlen = 0, topic_len = 0;
 	subinfo  *tinfo = NULL, *info = NULL;
 	nni_list *subinfol = p->npipe->subinfol;
 	char     *topic    = nni_msg_get_pub_topic(msg, &topic_len);
-
 	txaio = p->txaio;
 	tinfo = nni_aio_get_prov_data(txaio);
 	nni_aio_set_prov_data(txaio, NULL);
-
 	// Recomposing for each msg
 	// never modify the original msg
 	NNI_LIST_FOREACH(subinfol, info) {
 		if (tinfo != NULL && info != tinfo)
 			continue;
-
 		tinfo = NULL;
-
 		char *sub_topic = info->topic;
 		if (sub_topic[0] == '$') {
 			if (0 == strncmp(sub_topic, "$share/", strlen("$share/"))) {
@@ -1096,7 +1015,6 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			nni_aio_set_prov_data(txaio, info);
 			break;
 		}
-
 		uint8_t  *body, *header, qos_pac, property_bytes = 0, pos = 1;
 		uint8_t   var_extra[2], fixheader, tmp[4] = { 0 };
 		int       len_offset = 0;
@@ -1104,11 +1022,9 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 		nni_pipe *pipe;
 		uint16_t  pid;
 		size_t    tlen, rlen, mlen, plength;
-
 		pipe   = p->npipe;
 		body   = nni_msg_body(msg);
 		header = nni_msg_header(msg);
-
 		plength = 0;
 		mlen    = nni_msg_len(msg);
 		qos_pac = nni_msg_get_pub_qos(msg);
@@ -1124,17 +1040,14 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			if (qos_pac > 0) {
 				property_len = get_var_integer(
 				    body + 4 + tlen, &property_bytes);
-
 			} else {
 				property_len = get_var_integer(
 				    body + 2 + tlen, &property_bytes);
 			}
 			// V5 msg sent to V4 client
 			// caculate property length and delete it
-
 			plength = property_len + property_bytes;
 		} else if (nni_msg_cmd_type(msg) == CMD_PUBLISH) {
-
 			if (qos_pac == 0) {
 				if (nni_msg_header_len(msg) > 0) {
 					iov[niov].iov_buf = nni_msg_header(msg);
@@ -1150,19 +1063,15 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 				continue;
 			}
 		}
-
 		qos = info->qos;
 		log_trace("qos_pac %d sub %d\n", qos_pac, qos);
 		fixheader = *header;
-
 		if (info->rap == 0 && !nni_mqtt_msg_get_sub_retain_bool(msg)) {
 			// reset retain flag to 0
 			fixheader = fixheader & 0xFE;
 		}
-
 		// get final qos
 		qos = qos_pac > qos ? qos : qos_pac;
-
 		// alter qos according to sub qos
 		if (qos_pac > qos) {
 			if (qos == 1) {
@@ -1181,7 +1090,6 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 		*(p->qos_buf + qlen) = fixheader;
 		// rlen : max 4 bytes
 		memcpy(p->qos_buf + 1 + qlen, tmp, rlen);
-
 		// 1st part of variable header: topic
 		len_offset = 0; // now use it to indicates the pid length
 		// packet id
@@ -1204,7 +1112,6 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 					// one ? print warning to users
 					log_error("packet id duplicates in "
 					          "nano_qos_db");
-
 					nni_qos_db_remove_msg(is_sqlite,
 					    pipe->nano_qos_db, old);
 				}
@@ -1247,7 +1154,6 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			niov++;
 		}
 	}
-
 	nni_msg_alloc(&tmsg, 0);
 	// apending directly
 	for (int i = 0; i < niov; i++) {
@@ -1259,16 +1165,13 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	iov[0].iov_len = nni_msg_len(tmsg);
 	nni_aio_set_msg(txaio, tmsg);
 	nni_aio_set_iov(txaio, 1, iov);
-
 	nng_stream_send(p->conn, txaio);
 	return;
-
 send:
 	// have to alloc new msg due to TLS doesn't support scatter
 	nni_msg_alloc(&tmsg, 0);
 	txaio = p->txaio;
 	niov  = 0;
-
 	if (nni_msg_header_len(msg) > 0) {
 		nni_msg_append(
 		    tmsg, nni_msg_header(msg), nni_msg_header_len(msg));
@@ -1282,7 +1185,6 @@ send:
 	nni_aio_set_iov(txaio, 1, iov);
 	nng_stream_send(p->conn, txaio);
 }
-
 /**
  * @brief we consider memory saving is prior to performance due
  * 	  to the requirement of our boss. so we use fragmented iov.
@@ -1299,22 +1201,18 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	int       niov;
 	nni_iov   iov[8];
 	nni_msg  *tmsg;
-
 	if (nni_msg_header_len(msg) == 0 ||
 	    nni_msg_get_type(msg) != CMD_PUBLISH) {
 		goto send;
 	}
 	// never modify the original msg
-
 	uint8_t *     body, *header, qos_pac, prop_bytes = 0;
 	target_prover target_prover = 0;
 	int           len_offset = 0, sub_id = 0, qos = 0;
 	uint16_t      pid;
 	uint32_t tprop_bytes, id_bytes = 0, property_len = 0;
 	size_t   tlen, rlen, mlen, hlen, qlength, plength;
-
 	bool is_sqlite = p->conf->sqlite.enable;
-
 	txaio   = p->txaio;
 	body    = nni_msg_body(msg);
 	header  = nni_msg_header(msg);
@@ -1324,7 +1222,6 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	mlen    = nni_msg_len(msg);
 	hlen    = nni_msg_header_len(msg);
 	qos_pac = nni_msg_get_pub_qos(msg);
-
 	NNI_GET16(body, tlen);
 	if (qos_pac == 0) {
 		// simply set DUP flag to 0 & correct error from client
@@ -1385,7 +1282,6 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			uint8_t  proplen[4] = { 0 }, var_subid[5] = { 0 };
 			sub_id       = info->subid;
 			qos          = info->qos;
-
 			fixheader = *header;
 			if (nni_msg_cmd_type(msg) == CMD_PUBLISH) {
 				// V4 to V5 add 0 property length
@@ -1405,7 +1301,6 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			}
 			// get final qos
 			qos = qos_pac > qos ? qos : qos_pac;
-
 			// alter qos according to sub qos
 			if (qos_pac > qos) {
 				if (qos == 1) {
@@ -1454,7 +1349,6 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 						// TODO packetid already exists. do we need to
 						// replace old with new one ? print warning to users
 						log_error("packet id duplicates in nano_qos_db");
-
 						nni_qos_db_remove_msg(is_sqlite,
 						    pipe->nano_qos_db, old);
 					}
@@ -1507,7 +1401,6 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			niov++;
 		}
 	}
-
 	// MQTT V5 flow control
 	if (qos > 0) {
 		if (p->qsend_quota > 0) {
@@ -1541,16 +1434,13 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	iov[0].iov_len = nni_msg_len(tmsg);
 	nni_aio_set_msg(txaio, tmsg);
 	nni_aio_set_iov(txaio, 1, iov);
-
 	nng_stream_send(p->conn, txaio);
 	return;
-
 send:
 	// have to alloc new msg due to TLS doesn't support scatter
 	nni_msg_alloc(&tmsg, 0);
 	txaio = p->txaio;
 	niov  = 0;
-
 	if (nni_msg_header_len(msg) > 0) {
 		nni_msg_append(
 		    tmsg, nni_msg_header(msg), nni_msg_header_len(msg));
@@ -1564,7 +1454,6 @@ send:
 	nni_aio_set_iov(txaio, 1, iov);
 	nng_stream_send(p->conn, txaio);
 }
-
 /**
  * @brief this is the func that responsible for sending msg while
  *        keeping zero-copy feature, doing all the jobs neccesary
@@ -1578,7 +1467,6 @@ tlstran_pipe_send_start(tlstran_pipe *p)
 {
 	nni_aio *aio;
 	nni_msg *msg;
-
 	log_trace("########### tlstran_pipe_send_start ###########");
 	if (nni_atomic_get_bool(&p->closed)) {
 		while ((aio = nni_list_first(&p->sendq)) != NULL) {
@@ -1587,12 +1475,10 @@ tlstran_pipe_send_start(tlstran_pipe *p)
 		}
 		return;
 	}
-
 	if ((aio = nni_list_first(&p->sendq)) == NULL) {
 		log_trace("aio not functioning");
 		return;
 	}
-
 	// This runs to send the message.
 	msg = nni_aio_get_msg(aio);
 	if (msg == NULL || p->tcp_cparam == NULL) {
@@ -1601,7 +1487,6 @@ tlstran_pipe_send_start(tlstran_pipe *p)
 		nni_aio_finish(aio, NNG_ECANCELED, 0);
 		return;
 	}
-
 	if (p->pro_ver == MQTT_PROTOCOL_VERSION_v311 ||
 	    p->pro_ver == MQTT_PROTOCOL_VERSION_v31) {
 		tlstran_pipe_send_start_v4(p, msg, aio);
@@ -1613,13 +1498,11 @@ tlstran_pipe_send_start(tlstran_pipe *p)
 	}
 	return;
 }
-
 static void
 tlstran_pipe_send(void *arg, nni_aio *aio)
 {
 	tlstran_pipe *p = arg;
 	int           rv;
-
 	log_trace("########### tlstran_pipe_send ###########");
 	if ((rv = nni_aio_begin(aio)) != 0) {
 		log_error("TLS transport send aio begin error %d!", rv);
@@ -1644,7 +1527,6 @@ tlstran_pipe_send(void *arg, nni_aio *aio)
 		uint8_t    qos_pac = 0, qos = 0;
 		uint16_t   packetid;
 		char      *pld_pac  = NULL;
-
 		if (nni_msg_get_type(msg) == CMD_PUBLISH) {
 			qos_pac = nni_msg_get_pub_qos(msg);
 			pld_pac = nni_msg_get_pub_topic(msg, &tlen_pac);
@@ -1657,7 +1539,6 @@ tlstran_pipe_send(void *arg, nni_aio *aio)
 			return;
 		}
 		subinfo *info = NULL;
-
 		if (p->npipe->subinfol != NULL) {
 			NNI_LIST_FOREACH(p->npipe->subinfol, info) {
 				if (!info)
@@ -1674,7 +1555,6 @@ tlstran_pipe_send(void *arg, nni_aio *aio)
 			nni_aio_finish(aio, 0, 0);
 			return;
 		}
-
 		if (qos > 0 && p->npipe->nano_qos_db != NULL) {
 			packetid = nni_pipe_inc_packetid(p->npipe);
 			nni_msg *tmsg;
@@ -1701,7 +1581,6 @@ tlstran_pipe_send(void *arg, nni_aio *aio)
 		nni_aio_finish(aio, 0, 0);
 		return;
 	}
-
 	if ((rv = nni_aio_schedule(aio, tlstran_pipe_send_cancel, p)) != 0) {
 		nni_mtx_unlock(&p->mtx);
 		nni_aio_finish_error(aio, rv);
@@ -1714,12 +1593,10 @@ tlstran_pipe_send(void *arg, nni_aio *aio)
 	}
 	nni_mtx_unlock(&p->mtx);
 }
-
 static void
 tlstran_pipe_recv_cancel(nni_aio *aio, void *arg, int rv)
 {
 	tlstran_pipe *p = arg;
-
 	nni_mtx_lock(&p->mtx);
 	if (!nni_aio_list_active(aio)) {
 		nni_mtx_unlock(&p->mtx);
@@ -1737,13 +1614,11 @@ tlstran_pipe_recv_cancel(nni_aio *aio, void *arg, int rv)
 	nni_mtx_unlock(&p->mtx);
 	nni_aio_finish_error(aio, rv);
 }
-
 static void
 tlstran_pipe_recv(void *arg, nni_aio *aio)
 {
 	tlstran_pipe *p = arg;
 	int           rv;
-
 	if (nni_aio_begin(aio) != 0) {
 		return;
 	}
@@ -1753,17 +1628,14 @@ tlstran_pipe_recv(void *arg, nni_aio *aio)
 		nni_aio_finish_error(aio, rv);
 		return;
 	}
-
 	if (nni_aio_list_active(aio) == 0) {
 		nni_list_append(&p->recvq, aio);
 	}
-
 	if (nni_list_first(&p->recvq) == aio) {
 		tlstran_pipe_recv_start(p);
 	}
 	nni_mtx_unlock(&p->mtx);
 }
-
 static int
 tlstran_pipe_getopt(
     void *arg, const char *name, void *buf, size_t *szp, nni_type t)
@@ -1771,14 +1643,12 @@ tlstran_pipe_getopt(
 	tlstran_pipe *p = arg;
 	return (nni_stream_get(p->conn, name, buf, szp, t));
 }
-
 static void
 tlstran_pipe_recv_start(tlstran_pipe *p)
 {
 	nni_aio *rxaio;
 	nni_iov  iov;
 	log_trace("*** tlstran_pipe_recv_start ***\n");
-
 	if (nni_atomic_get_bool(&p->closed)) {
 		nni_aio *aio;
 		while ((aio = nni_list_first(&p->recvq)) != NULL) {
@@ -1790,7 +1660,6 @@ tlstran_pipe_recv_start(tlstran_pipe *p)
 	if (nni_list_empty(&p->recvq)) {
 		return;
 	}
-
 	// Schedule a read of the fixed header.
 	rxaio         = p->rxaio;
 	p->gotrxhead  = 0;
@@ -1801,19 +1670,15 @@ tlstran_pipe_recv_start(tlstran_pipe *p)
 	nni_aio_set_iov(rxaio, 1, &iov);
 	nng_stream_recv(p->conn, rxaio);
 }
-
 // DEAL WITH CONNECT when PIPE INIT
 static void
 tlstran_pipe_start(tlstran_pipe *p, nng_stream *conn, tlstran_ep *ep)
 {
 	nni_iov iov;
 	// nni_tcp_conn *c;
-
 	ep->refcnt++;
-
 	p->conn = conn;
 	p->ep   = ep;
-
 	log_trace("tlstran_pipe_start!");
 	p->qrecv_quota = NANO_MAX_QOS_PACKET;
 	p->gotrxhead   = 0;
@@ -1822,21 +1687,16 @@ tlstran_pipe_start(tlstran_pipe *p, nng_stream *conn, tlstran_ep *ep)
 	// + flag 1 + keepalive 2 = 12
 	iov.iov_len = NNI_NANO_MAX_HEADER_SIZE; // dynamic
 	iov.iov_buf = p->rxlen;
-
 	nni_aio_set_iov(p->negoaio, 1, &iov);
 	nni_list_append(&ep->negopipes, p);
-
 	nni_aio_set_timeout(p->negoaio,
 	    15 * 1000); // 15 sec timeout to negotiate abide with emqx
-
 	nng_stream_recv(p->conn, p->negoaio);
 }
-
 static void
 tlstran_ep_fini(void *arg)
 {
 	tlstran_ep *ep = arg;
-
 	nni_mtx_lock(&ep->mtx);
 	ep->fini = true;
 	if (ep->refcnt != 0) {
@@ -1849,19 +1709,15 @@ tlstran_ep_fini(void *arg)
 	nng_stream_listener_free(ep->listener);
 	nni_aio_free(ep->timeaio);
 	nni_aio_free(ep->connaio);
-
 	nni_mtx_fini(&ep->mtx);
 	NNI_FREE_STRUCT(ep);
 }
-
 static void
 tlstran_ep_close(void *arg)
 {
 	tlstran_ep   *ep = arg;
 	tlstran_pipe *p;
-
 	nni_mtx_lock(&ep->mtx);
-
 	log_trace("tlstran_ep_close");
 	ep->closed = true;
 	nni_aio_close(ep->timeaio);
@@ -1881,10 +1737,8 @@ tlstran_ep_close(void *arg)
 		nni_aio_finish_error(ep->useraio, NNG_ECLOSED);
 		ep->useraio = NULL;
 	}
-
 	nni_mtx_unlock(&ep->mtx);
 }
-
 // This parses off the optional source address that this transport uses.
 // The special handling of this URL format is quite honestly an historical
 // mistake, which we would remove if we could.static int
@@ -1897,22 +1751,17 @@ tlstran_url_parse_source(nng_url *url, nng_sockaddr *sa, const nng_url *surl)
 	size_t   len;
 	int      rv;
 	nni_aio *aio;
-
 	// We modify the URL.  This relies on the fact that the underlying
 	// transport does not free this, so we can just use references.
-
 	url->u_scheme   = surl->u_scheme;
 	url->u_port     = surl->u_port;
 	url->u_hostname = surl->u_hostname;
-
 	if ((semi = strchr(url->u_hostname, ';')) == NULL) {
 		memset(sa, 0, sizeof(*sa));
 		return (0);
 	}
-
 	len             = (size_t) (semi - url->u_hostname);
 	url->u_hostname = semi + 1;
-
 	if (strcmp(surl->u_scheme, "tls+tcp") == 0) {
 		af = NNG_AF_UNSPEC;
 	} else if (strcmp(surl->u_scheme, "tls+tcp4") == 0) {
@@ -1922,18 +1771,15 @@ tlstran_url_parse_source(nng_url *url, nng_sockaddr *sa, const nng_url *surl)
 	} else {
 		return (NNG_EADDRINVAL);
 	}
-
 	if ((src = nni_alloc(len + 1)) == NULL) {
 		return (NNG_ENOMEM);
 	}
 	memcpy(src, surl->u_hostname, len);
 	src[len] = '\0';
-
 	if ((rv = nni_aio_alloc(&aio, NULL, NULL)) != 0) {
 		nni_free(src, len + 1);
 		return (rv);
 	}
-
 	nni_resolv_ip(src, "0", af, true, sa, aio);
 	nni_aio_wait(aio);
 	rv = nni_aio_result(aio);
@@ -1941,7 +1787,6 @@ tlstran_url_parse_source(nng_url *url, nng_sockaddr *sa, const nng_url *surl)
 	nni_free(src, len + 1);
 	return (rv);
 }
-
 static void
 tlstran_timer_cb(void *arg)
 {
@@ -1950,7 +1795,6 @@ tlstran_timer_cb(void *arg)
 		nng_stream_listener_accept(ep->listener, ep->connaio);
 	}
 }
-
 // TLS accpet trigger
 static void
 tlstran_accept_cb(void *arg)
@@ -1960,20 +1804,16 @@ tlstran_accept_cb(void *arg)
 	tlstran_pipe *p;
 	int           rv;
 	nng_stream   *conn;
-
 	nni_mtx_lock(&ep->mtx);
-
 	if ((rv = nni_aio_result(aio)) != 0) {
 		log_warn(" send aio error %s", nng_strerror(rv));
 		goto error;
 	}
-
 	conn = nni_aio_get_output(aio, 0);
 	if ((rv = tlstran_pipe_alloc(&p)) != 0) {
 		nng_stream_free(conn);
 		goto error;
 	}
-
 	if (ep->closed) {
 		tlstran_pipe_fini(p);
 		nng_stream_free(conn);
@@ -1984,7 +1824,6 @@ tlstran_accept_cb(void *arg)
 	nng_stream_listener_accept(ep->listener, ep->connaio);
 	nni_mtx_unlock(&ep->mtx);
 	return;
-
 error:
 	// When an error here occurs, let's send a notice up to the consumer.
 	// That way it can be reported properly.
@@ -1993,12 +1832,10 @@ error:
 		nni_aio_finish_error(aio, rv);
 	}
 	switch (rv) {
-
 	case NNG_ENOMEM:
 	case NNG_ENOFILES:
 		nng_sleep_aio(10, ep->timeaio);
 		break;
-
 	default:
 		if (!ep->closed) {
 			nng_stream_listener_accept(ep->listener, ep->connaio);
@@ -2007,13 +1844,11 @@ error:
 	}
 	nni_mtx_unlock(&ep->mtx);
 }
-
 static int
 tlstran_ep_init(tlstran_ep **epp, nng_url *url, nni_sock *sock)
 {
 	tlstran_ep *ep;
 	NNI_ARG_UNUSED(sock);
-
 	if ((ep = NNI_ALLOC_STRUCT(ep)) == NULL) {
 		return (NNG_ENOMEM);
 	}
@@ -2021,7 +1856,6 @@ tlstran_ep_init(tlstran_ep **epp, nng_url *url, nni_sock *sock)
 	NNI_LIST_INIT(&ep->busypipes, tlstran_pipe, node);
 	NNI_LIST_INIT(&ep->waitpipes, tlstran_pipe, node);
 	NNI_LIST_INIT(&ep->negopipes, tlstran_pipe, node);
-
 	// ep->proto = nni_sock_proto_id(sock);
 	ep->url = url;
 #ifdef NNG_ENABLE_STATS
@@ -2034,11 +1868,9 @@ tlstran_ep_init(tlstran_ep **epp, nng_url *url, nni_sock *sock)
 	};
 	nni_stat_init(&ep->st_rcv_max, &rcv_max_info);
 #endif
-
 	*epp = ep;
 	return (0);
 }
-
 static int
 tlstran_ep_init_listener(void **lp, nng_url *url, nni_listener *nlistener)
 {
@@ -2048,7 +1880,6 @@ tlstran_ep_init_listener(void **lp, nng_url *url, nni_listener *nlistener)
 	nni_aio    *aio;
 	int         rv;
 	nni_sock   *sock = nni_listener_sock(nlistener);
-
 	if (strcmp(url->u_scheme, "tls+nmq-tcp") == 0) {
 		af = NNG_AF_UNSPEC;
 	} else if (strcmp(url->u_scheme, "tls+nmq-tcp4") == 0) {
@@ -2066,26 +1897,21 @@ tlstran_ep_init_listener(void **lp, nng_url *url, nni_listener *nlistener)
 	    (url->u_query != NULL)) {
 		return (NNG_EADDRINVAL);
 	}
-
 	if (((rv = tlstran_ep_init(&ep, url, sock)) != 0) ||
 	    ((rv = nni_aio_alloc(&ep->connaio, tlstran_accept_cb, ep)) != 0) ||
 	    ((rv = nni_aio_alloc(&ep->timeaio, tlstran_timer_cb, ep)) != 0)) {
 		return (rv);
 	}
-
 	ep->authmode = NNG_TLS_AUTH_MODE_NONE;
-
 	if (strlen(host) == 0) {
 		host = NULL;
 	}
-
 	// XXX: We are doing lookup at listener initialization.  There
 	// is a valid argument that this should be done at bind time,
 	// but that would require making bind asynchronous.  In some
 	// ways this would be worse than the cost of just waiting here.
 	// We always recommend using local IP addresses rather than
 	// names when possible.
-
 	if ((rv = nni_aio_alloc(&aio, NULL, NULL)) != 0) {
 		tlstran_ep_fini(ep);
 		return (rv);
@@ -2094,7 +1920,6 @@ tlstran_ep_init_listener(void **lp, nng_url *url, nni_listener *nlistener)
 	nni_aio_wait(aio);
 	rv = nni_aio_result(aio);
 	nni_aio_free(aio);
-
 	if ((rv != 0) ||
 	    ((rv = nng_stream_listener_alloc_url(&ep->listener, url)) != 0) ||
 	    ((rv = nni_stream_listener_set(ep->listener, NNG_OPT_TLS_AUTH_MODE,
@@ -2103,14 +1928,12 @@ tlstran_ep_init_listener(void **lp, nng_url *url, nni_listener *nlistener)
 		tlstran_ep_fini(ep);
 		return (rv);
 	}
-
 #ifdef NNG_ENABLE_STATS
 	nni_listener_add_stat(nlistener, &ep->st_rcv_max);
 #endif
 	*lp = ep;
 	return (0);
 }
-
 static void
 tlstran_ep_cancel(nni_aio *aio, void *arg, int rv)
 {
@@ -2122,7 +1945,6 @@ tlstran_ep_cancel(nni_aio *aio, void *arg, int rv)
 	}
 	nni_mtx_unlock(&ep->mtx);
 }
-
 // TODO network interface bind
 static int
 tlstran_ep_get_url(void *arg, void *v, size_t *szp, nni_opt_type t)
@@ -2131,44 +1953,37 @@ tlstran_ep_get_url(void *arg, void *v, size_t *szp, nni_opt_type t)
 	char       *s;
 	int         rv;
 	int         port = 0;
-
 	if (ep->listener != NULL) {
 		(void) nng_stream_listener_get_int(
 		    ep->listener, NNG_OPT_TCP_BOUND_PORT, &port);
 	}
-
 	if ((rv = nni_url_asprintf_port(&s, ep->url, port)) == 0) {
 		rv = nni_copyout_str(s, v, szp, t);
 		nni_strfree(s);
 	}
 	return (rv);
 }
-
 static int
 tlstran_ep_set_conf(void *arg, const void *v, size_t sz, nni_opt_type t)
 {
 	tlstran_ep *ep = arg;
 	NNI_ARG_UNUSED(sz);
 	NNI_ARG_UNUSED(t);
-
 	nni_mtx_lock(&ep->mtx);
 	ep->conf = (conf *) v;
 	nni_mtx_unlock(&ep->mtx);
 	return 0;
 }
-
 static int
 tlstran_ep_get_recvmaxsz(void *arg, void *v, size_t *szp, nni_opt_type t)
 {
 	tlstran_ep *ep = arg;
 	int         rv;
-
 	nni_mtx_lock(&ep->mtx);
 	rv = nni_copyout_size(ep->rcvmax, v, szp, t);
 	nni_mtx_unlock(&ep->mtx);
 	return (rv);
 }
-
 static int
 tlstran_ep_set_recvmaxsz(void *arg, const void *v, size_t sz, nni_opt_type t)
 {
@@ -2195,26 +2010,21 @@ tlstran_ep_set_recvmaxsz(void *arg, const void *v, size_t sz, nni_opt_type t)
 	}
 	return (rv);
 }
-
 static int
 tlstran_ep_bind(void *arg)
 {
 	tlstran_ep *ep = arg;
 	int         rv;
-
 	nni_mtx_lock(&ep->mtx);
 	rv = nng_stream_listener_listen(ep->listener);
 	nni_mtx_unlock(&ep->mtx);
-
 	return (rv);
 }
-
 static void
 tlstran_ep_accept(void *arg, nni_aio *aio)
 {
 	tlstran_ep *ep = arg;
 	int         rv;
-
 	if (nni_aio_begin(aio) != 0) {
 		return;
 	}
@@ -2243,7 +2053,6 @@ tlstran_ep_accept(void *arg, nni_aio *aio)
 	}
 	nni_mtx_unlock(&ep->mtx);
 }
-
 // Customized NNG session/pipe peer API for MQTT Broker transport only.
 static uint16_t
 tlstran_pipe_peer(void *arg)
@@ -2252,10 +2061,8 @@ tlstran_pipe_peer(void *arg)
 	subinfo      *info;
 	nni_pipe     *npipe, *cpipe;
 	tlstran_pipe *p = arg;
-
 	cpipe = p->npipe;                  // current pipe
 	npipe = (nni_pipe *) cpipe->tpipe; // target pipe
-
 	nni_mtx_lock(&p->mtx);
 	if (cpipe->subinfol != NULL && npipe->subinfol != NULL) {
 		NNI_LIST_FOREACH(cpipe->subinfol, info) {
@@ -2269,7 +2076,7 @@ tlstran_pipe_peer(void *arg)
 				nni_mtx_unlock(&p->mtx);
 				return (1);
 			}
-			log_debug("info topic : %s %d %d", info->topic, info->qos,
+			log_info("info topic len: [%d] qos: [%d]", (int)strlen(info->topic), info->qos,
 				strlen(info->topic));
 			if ((topic = nng_zalloc(strlen(info->topic) + 1)) == NULL) {
 				nng_free(sn, sizeof(struct subinfo));
@@ -2277,7 +2084,7 @@ tlstran_pipe_peer(void *arg)
 				return (1);
 			}
 			memcpy(topic, info->topic, strlen(info->topic) + 1);
-			log_debug("copy topic %s %d", topic, strlen(topic));
+			log_info("copy topic len: [%d] qos: [%d]", (int)strlen(topic), sn->qos);
 			sn->topic           = topic;
 			sn->qos             = info->qos;
 			sn->subid           = info->subid;
@@ -2290,11 +2097,9 @@ tlstran_pipe_peer(void *arg)
 	} else {
 		rv = 2;
 	}
-
 	// replace nano_qos_db and pid with old one.
 	npipe->packet_id = cpipe->packet_id;
 	npipe->nano_qos_db = cpipe->nano_qos_db;
-
 	nni_atomic_set_bool(&p->closed, true);
 	// set event of old pipe to false and discard it.
 	nni_atomic_swap_bool(&cpipe->cache, false);
@@ -2302,7 +2107,6 @@ tlstran_pipe_peer(void *arg)
 	nni_mtx_unlock(&p->mtx);
 	return rv;
 }
-
 static nni_sp_pipe_ops tlstran_pipe_ops = {
 	.p_init  = tlstran_pipe_init,
 	.p_fini  = tlstran_pipe_fini,
@@ -2313,7 +2117,6 @@ static nni_sp_pipe_ops tlstran_pipe_ops = {
 	.p_peer   = tlstran_pipe_peer,
 	.p_getopt = tlstran_pipe_getopt,
 };
-
 static const nni_option tlstran_ep_opts[] = {
 	{
 	    .o_name = NNG_OPT_RECVMAXSZ,
@@ -2333,28 +2136,24 @@ static const nni_option tlstran_ep_opts[] = {
 	    .o_name = NULL,
 	},
 };
-
 static int
 tlstran_listener_get(
     void *arg, const char *name, void *buf, size_t *szp, nni_type t)
 {
 	tlstran_ep *ep = arg;
 	int         rv;
-
 	rv = nni_stream_listener_get(ep->listener, name, buf, szp, t);
 	if (rv == NNG_ENOTSUP) {
 		rv = nni_getopt(tlstran_ep_opts, name, ep, buf, szp, t);
 	}
 	return (rv);
 }
-
 static int
 tlstran_listener_set(
     void *arg, const char *name, const void *buf, size_t sz, nni_type t)
 {
 	tlstran_ep *ep = arg;
 	int         rv;
-
 	rv = nni_stream_listener_set(
 	    ep != NULL ? ep->listener : NULL, name, buf, sz, t);
 	if (rv == NNG_ENOTSUP) {
@@ -2362,7 +2161,6 @@ tlstran_listener_set(
 	}
 	return (rv);
 }
-
 static nni_sp_listener_ops tlstran_listener_ops = {
 	.l_init   = tlstran_ep_init_listener,
 	.l_fini   = tlstran_ep_fini,
@@ -2372,7 +2170,6 @@ static nni_sp_listener_ops tlstran_listener_ops = {
 	.l_getopt = tlstran_listener_get,
 	.l_setopt = tlstran_listener_set,
 };
-
 static nni_sp_tran tlstran_mqtt = {
 	.tran_scheme   = "tls+nmq-tcp",
 	.tran_listener = &tlstran_listener_ops,
@@ -2380,7 +2177,6 @@ static nni_sp_tran tlstran_mqtt = {
 	.tran_init     = tlstran_init,
 	.tran_fini     = tlstran_fini,
 };
-
 static nni_sp_tran tls_tcp4_tran_mqtt = {
 	.tran_scheme   = "tls+nmq-tcp4",
 	.tran_listener = &tlstran_listener_ops,
@@ -2388,7 +2184,6 @@ static nni_sp_tran tls_tcp4_tran_mqtt = {
 	.tran_init     = tlstran_init,
 	.tran_fini     = tlstran_fini,
 };
-
 static nni_sp_tran tls_tcp6_tran_mqtt = {
 	.tran_scheme   = "tls+nmq-tcp6",
 	.tran_listener = &tlstran_listener_ops,
@@ -2396,7 +2191,6 @@ static nni_sp_tran tls_tcp6_tran_mqtt = {
 	.tran_init     = tlstran_init,
 	.tran_fini     = tlstran_fini,
 };
-
 #ifndef NNG_ELIDE_DEPRECATED
 int
 nmq_mqtt_tls_register(void)
@@ -2404,7 +2198,6 @@ nmq_mqtt_tls_register(void)
 	return (nni_init());
 }
 #endif
-
 void
 nni_nmq_broker_tls_register(void)
 {
