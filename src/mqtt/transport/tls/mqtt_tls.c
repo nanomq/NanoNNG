@@ -303,20 +303,23 @@ mqtts_tcptran_pipe_nego_cb(void *arg)
 	}
 	// We start transmitting before we receive.
 	if (p->gottxhead < p->wanttxhead) {
-		p->gottxhead += nni_aio_count(aio);
+		size_t n = nni_aio_count(aio);
+
+		p->gottxhead += n;
+		nni_aio_iov_advance(aio, n);
+		if (nni_aio_iov_count(aio) > 0) {
+			nng_stream_send(p->conn, aio);
+			nni_mtx_unlock(&ep->mtx);
+			return;
+		}
 	} else if (p->gotrxhead < p->wantrxhead) {
 		p->gotrxhead += nni_aio_count(aio);
 	}
 
 	if (p->gottxhead < p->wanttxhead) {
-		nni_iov iov;
-		iov.iov_len = p->wanttxhead - p->gottxhead;
-		iov.iov_buf = &p->txlen[p->gottxhead];
-		// send it down...
-		nni_aio_set_iov(aio, 1, &iov);
-		nng_stream_send(p->conn, aio);
-		nni_mtx_unlock(&ep->mtx);
-		return;
+		log_error("MQTT negotiation send completed without consuming all IOVs");
+		rv = NNG_EPROTO;
+		goto error;
 	}
 
 	// receving fixed header
@@ -1248,9 +1251,12 @@ mqtts_tcptran_pipe_start(
 	p->rxmsg      = NULL;
 	p->proto      = mqtt_version;
 
+	if (nni_msg_header_len(connmsg) > 0) {
+		iov[niov].iov_buf = nni_msg_header(connmsg);
+		iov[niov].iov_len = nni_msg_header_len(connmsg);
+		niov++;
+	}
 	if (nni_msg_len(connmsg) > 0) {
-		nni_msg_insert(connmsg, nni_msg_header(connmsg),
-		    nni_msg_header_len(connmsg));
 		iov[niov].iov_buf = nni_msg_body(connmsg);
 		iov[niov].iov_len = nni_msg_len(connmsg);
 		niov++;
