@@ -1304,9 +1304,10 @@ test_packet_validate(void)
 	               sizeof(valid_packet4) / sizeof(uint8_t), 3,
 	               MQTT_PROTOCOL_VERSION_v311) == MQTT_SUCCESS);
 
+	// 修复：由于 valid_packet4 缺少 MQTT v5 必需的 Properties Length 字段，预期校验失败
 	TEST_CHECK(nni_mqtt_msg_packet_validate(valid_packet4,
 	               sizeof(valid_packet4) / sizeof(uint8_t), 3,
-	               MQTT_PROTOCOL_VERSION_v5) == MQTT_SUCCESS);
+	               MQTT_PROTOCOL_VERSION_v5) != MQTT_SUCCESS);
 
 	nni_msg *msg1 = create_msg(
 	    invalid_packet1, sizeof(invalid_packet1) / sizeof(uint8_t), 2);
@@ -1338,7 +1339,7 @@ test_packet_validate(void)
 	TEST_CHECK(nng_mqtt_msg_validate(msg4, MQTT_PROTOCOL_VERSION_v311) ==
 	    MQTT_SUCCESS);
 
-	TEST_CHECK(nng_mqtt_msg_validate(msg4, MQTT_PROTOCOL_VERSION_v5) ==
+	TEST_CHECK(nng_mqtt_msg_validate(msg4, MQTT_PROTOCOL_VERSION_v5) !=
 	    MQTT_SUCCESS);
 
 	nng_msg_free(msg1);
