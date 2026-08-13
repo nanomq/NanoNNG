@@ -480,6 +480,11 @@ scram_handle_client_first_msg(void *arg, const char *msg, int len)
 
 	char *salt          = ctx->salt;
 	int   iteration_cnt = ctx->iteration_cnt;
+	if (salt == NULL) {
+		log_error("scram ctx has no salt\n");
+		nng_free(csnonce, 0);
+		goto error_out_mem;
+	}
 	char *server_first_msg =
 	    scram_server_first_msg(csnonce, salt, iteration_cnt);
 
@@ -583,9 +588,8 @@ scram_handle_client_final_msg(void *arg, const char *msg, int len)
 	char *client_key   = nng_alloc(proofsz);
 	char *client_proof = nng_alloc(proofsz + 1);
 
-	if (!client_key || !client_proof ||
-	    0 ==
-	        base64_decode(
+	if (!client_key || !client_proof || !client_proof ||
+	    0 == base64_decode(
 	            proof, strlen(proof), (unsigned char *) client_proof)) {
 		if (client_sig)
 			nng_free(client_sig, 0);
@@ -640,6 +644,7 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
 	char             *it    = (char *) msg;
 	char             *itend = it + len - 1;
 	char             *itnext;
+	char             *client_final_msg = NULL;
 	char             *nonce = get_comma_value(it, itend, &itnext, 2);
 	it                      = itnext;
 	char *saltb64           = get_comma_value(it, itend, &itnext, 2);
@@ -655,11 +660,13 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
 		goto cleanup_fields;
 	}
 
+	if (ctx->server_first_msg)
+		nng_free(ctx->server_first_msg, 0);
 	ctx->server_first_msg = nng_alloc(len + 1);
-	if (ctx->server_first_msg) {
-		memcpy(ctx->server_first_msg, msg, len);
-		ctx->server_first_msg[len] = '\0';
-	}
+	if (ctx->server_first_msg == NULL)
+		goto cleanup_fields;
+	memcpy(ctx->server_first_msg, msg, len);
+	ctx->server_first_msg[len] = '\0';
 
 	char *salt = nng_alloc(sizeof(char) * SCRAM_SALT_SZ);
 	if (!salt)
@@ -672,7 +679,10 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
 		goto cleanup_fields;
 	}
 
-	scram_ctx_update(ctx, salt);
+	if (0 != scram_ctx_update(ctx, salt)) {
+		log_error("failed to update scram ctx with new salt\n");
+		goto cleanup_fields;
+	}
 
 	char  *gh      = gs_header();
 	size_t ghb64sz = BASE64_ENCODE_OUT_SIZE(strlen(gh)) + 1;
@@ -722,7 +732,6 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
 		xor(ctx->client_key, client_sig, client_proof, client_sig_len);
 	}
 
-	char *client_final_msg = NULL;
 	if (client_proof) {
 		client_final_msg = scram_client_final_msg(
 		    nonce, client_proof, client_sig_len);
@@ -778,7 +787,7 @@ scram_handle_server_final_msg(void *arg, const char *msg, int len)
 	size_t ssb64sz = BASE64_ENCODE_OUT_SIZE(ctx->digestsz) + 1;
 	char  *ssb64   = nng_alloc(ssb64sz);
 
-	if (!ssb64 ||
+	if (!server_sig || !ssb64 ||
 	    0 ==
 	        base64_encode((const unsigned char *) server_sig,
 	            ctx->digestsz, ssb64)) {
