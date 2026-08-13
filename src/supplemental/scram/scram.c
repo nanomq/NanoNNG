@@ -13,6 +13,7 @@
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 #include <openssl/sha.h>
+#include <openssl/crypto.h>
 
 #include "scram.h"
 
@@ -609,15 +610,13 @@ scram_handle_client_final_msg(void *arg, const char *msg, int len)
 	xor(client_proof, client_sig, client_key, proofsz);
 
 	char *hash_client_key = hash(ctx->digest, client_key, ctx->digestsz);
-	if (ctx->cached_nonce && 0 == strcmp(csnonce, ctx->cached_nonce) &&
-	    hash_client_key &&
-	    0 == strncmp(hash_client_key, ctx->stored_key, ctx->digestsz)) {
-
-		char *server_sig =
-		    scram_hmac(ctx, ctx->server_key, ctx->digestsz, authmsg);
+	if (ctx->cached_nonce &&
+	    0 == strcmp(csnonce, ctx->cached_nonce) &&
+	    hash_client_key && ctx->stored_key &&
+	    0 == CRYPTO_memcmp(hash_client_key, ctx->stored_key, ctx->digestsz)) {
+		char *server_sig = scram_hmac(ctx, ctx->server_key, ctx->digestsz, authmsg);
 		if (server_sig) {
-			char *server_final_msg = scram_server_final_msg(
-			    server_sig, ctx->digestsz, 0);
+			char *server_final_msg = scram_server_final_msg(server_sig, ctx->digestsz, 0);
 			result = server_final_msg;
 			nng_free(server_sig, 0);
 		}
