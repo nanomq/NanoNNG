@@ -4177,12 +4177,15 @@ decode_buf_properties(uint8_t *packet, uint32_t packet_len, uint32_t *pos,
 	property *list        = NULL;
 
 	if (current_pos >= msg_len) {
+		log_warn("msg len is not enough for decoding");
+		*len = (uint32_t)-1;
 		return NULL;
 	}
 
 	if ((rv = read_variable_int(msg_body + current_pos,
 	         msg_len - current_pos, &prop_len, &bytes)) != 0) {
-		*len = 0;
+		*len = (uint32_t)-1;
+		log_warn("reamining len is invalid");
 		return NULL;
 	}
 	current_pos += bytes;
