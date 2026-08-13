@@ -503,7 +503,6 @@ peek_client_final_msg_without_proof(const char *msg)
 	*end = '\0';
 	return m;
 }
-
 // %% = channel-binding "," nonce ["," extensions] "," proof
 char *
 scram_handle_client_final_msg(void *arg, const char *msg, int len)
@@ -520,46 +519,36 @@ scram_handle_client_final_msg(void *arg, const char *msg, int len)
 	char *proof            = get_comma_value(it, itend, &itnext, 2);
 	it = itnext;
 	// parse done
-	//AuthMessage = ([ ClientFirstMessageBare,ServerFirstMessage,ClientFinalMessageWithoutProof]),
+
+	// Fix: Ensure the proof base64 payload length does not exceed digest allocation
+	int  proofsz = ctx->digestsz;
+	if (strlen(proof) * 3 / 4 > proofsz) {
+		nng_free(gs2_cbind_flag, 0);
+		nng_free(csnonce, 0);
+		nng_free(proof, 0);
+		return NULL;
+	}
+
 	char *client_final_msg_without_proof = peek_client_final_msg_without_proof(msg);
 	char authmsg[512];
-	sprintf(authmsg, "%s,%s,%s",
+    // Fix: Replace sprintf with snprintf
+	snprintf(authmsg, sizeof(authmsg), "%s,%s,%s",
 	    ctx->client_first_msg_bare, ctx->server_first_msg, client_final_msg_without_proof);
 	log_trace("handle client final authmsg: %s\n", authmsg);
-	// ClientSignature = hmac(Algorithm, StoredKey, AuthMessage),
+
 	char *client_sig = scram_hmac(ctx, ctx->stored_key, ctx->digestsz, authmsg);
-	// ClientKey = crypto:exor(ClientProof, ClientSignature)
-	int  proofsz = ctx->digestsz;
 	char client_key[proofsz];
 	char client_proof[proofsz + 1];
 	if (0 == base64_decode(proof, strlen(proof), (unsigned char *)client_proof)) {
 		return NULL;
 	}
 	xor(client_proof, client_sig, client_key, proofsz);
-	/*
-	 case Nonce =:= CachedNonce andalso crypto:hash(Algorithm, ClientKey) =:= StoredKey of
-         true ->
-             ServerSignature = hmac(Algorithm, ServerKey, AuthMessage),
-             ServerFinalMessage = server_final_message(verifier, ServerSignature),
-             {ok, ServerFinalMessage};
-         false ->
-             {error, 'other-error'}
-     end;
-	*/
+	
 	char *hash_client_key = hash(ctx->digest, client_key, ctx->digestsz);
 	if (ctx->cached_nonce &&
 	    0 == strcmp(csnonce, ctx->cached_nonce) &&
 	    0 == strncmp(hash_client_key, ctx->stored_key, ctx->digestsz)) {
-	    //0 == strcmp(csnonce, ctx->cached_nonce)) {
 		char *server_sig = scram_hmac(ctx, ctx->server_key, ctx->digestsz, authmsg);
-
-		/*
-	printf(">>> server: SERVER_SIG ");
-	for (int i=0; i<ctx->digestsz; ++i)
-		printf("%d,", server_sig[i] & 0xff);
-	printf("<<<\n");
-		printf("server: server_key %.*s\n", ctx->digestsz, ctx->server_key);
-		*/
 		char *server_final_msg = scram_server_final_msg(server_sig, ctx->digestsz, 0);
 		result = server_final_msg;
 		nng_free(server_sig, 0);
@@ -573,11 +562,6 @@ scram_handle_client_final_msg(void *arg, const char *msg, int len)
 	return result;
 }
 
-/*
-client_final_message_without_proof(Nonce) ->
-    iolist_to_binary(["c=", base64:encode(gs2_header()), ",r=", Nonce]).
-*/
-// %% = [reserved-mext ","] nonce "," salt "," iteration-count ["," extensions]
 char *
 scram_handle_server_first_msg(void *arg, const char *msg, int len)
 {
@@ -591,10 +575,23 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
 	it = itnext;
 	char *iteration_cnt    = get_comma_value(it, itend, &itnext, 2);
 	// parse done
+
+	// Fix: Bound the base64 decode and validate server SCRAM field lengths
+	if (strlen(saltb64) * 3 / 4 > SCRAM_SALT_SZ || strlen(nonce) > 256) {
+		nng_free(nonce, 0);
+		nng_free(saltb64, 0);
+		nng_free(iteration_cnt, 0);
+		return NULL;
+	}
+
 	ctx->server_first_msg = strndup(msg, len);
 	char *salt = nng_alloc(sizeof(char) * SCRAM_SALT_SZ);
 	memset(salt, 0, SCRAM_SALT_SZ);
 	if (0 == base64_decode(saltb64, strlen(saltb64), (unsigned char *)salt)) {
+		nng_free(salt, 0);
+		nng_free(nonce, 0);
+		nng_free(saltb64, 0);
+		nng_free(iteration_cnt, 0);
 		return NULL;
 	}
 
@@ -607,22 +604,17 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
 		return NULL;
 	}
 	char client_final_msg_without_proof[32 + SCRAM_SALT_SZ];
-	sprintf(client_final_msg_without_proof, "c=%s,r=%s", ghb64, nonce);
+    // Fix: Replace sprintf with snprintf
+	snprintf(client_final_msg_without_proof, sizeof(client_final_msg_without_proof), "c=%s,r=%s", ghb64, nonce);
 	ctx->client_final_msg_without_proof = strdup(client_final_msg_without_proof);
 	// authmsg=[ClientFirstMessageBare,ServerFirstMessage,ClientFinalMessageWithoutProof]
 	char authmsg[512];
-	sprintf(authmsg, "%s,%s,%s",
+    // Fix: Replace sprintf with snprintf
+	snprintf(authmsg, sizeof(authmsg), "%s,%s,%s",
 	    ctx->client_first_msg_bare,
 		ctx->server_first_msg,
 		client_final_msg_without_proof);
-	//printf("handle server first authmsg: %s\n", authmsg);
-	/*
-	SaltedPassword = salted_password(Algorithm, Password, Salt, IterationCount),
-    ClientKey = client_key(Algorithm, SaltedPassword),
-    StoredKey = stored_key(Algorithm, ClientKey),
-    ClientSignature = hmac(Algorithm, StoredKey, AuthMessage),
-    ClientProof = crypto:exor(ClientKey, ClientSignature),
-	*/
+
 	char *client_sig = scram_hmac(ctx, ctx->stored_key, ctx->digestsz, authmsg);
 	int client_sig_len = ctx->digestsz;
 	char client_proof[client_sig_len];
@@ -636,7 +628,6 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
 	nng_free(iteration_cnt, 0);
 	return client_final_msg;
 }
-
 // %% = (server-error / verifier) ["," extensions]
 char *
 scram_handle_server_final_msg(void *arg, const char *msg, int len)
@@ -648,27 +639,16 @@ scram_handle_server_final_msg(void *arg, const char *msg, int len)
 	char *itnext;
 	char *verifier     = get_comma_value(it, itend, &itnext, 2);
 	it = itnext;
-	//char *extensions   = get_next_comma_value(it, itend);
-	//int   extensionssz = get_comma_value_len(it);
 	// parse done
-	/*
-	ClientFinalMessageWithoutProof = client_final_message_without_proof(Nonce),
-	authmsg=[ClientFirstMessageBare,ServerFirstMessage,ClientFinalMessageWithoutProof]
-	*/
+
 	char authmsg[512];
-	sprintf(authmsg, "%s,%s,%s",
+    // Fix: Replace sprintf with snprintf
+	snprintf(authmsg, sizeof(authmsg), "%s,%s,%s",
 	    ctx->client_first_msg_bare,
 	    ctx->server_first_msg,
 	    ctx->client_final_msg_without_proof);
 	log_trace("handle server final authmsg: %s\n", authmsg);
-	/*
-    case Verifier =:= hmac(Algorithm, ServerKey, AuthMessage) of
-        true ->
-            ok;
-        false ->
-            {error, 'other-error'}
-    end;
-	*/
+	
 	char *server_sig = scram_hmac(ctx, ctx->server_key, ctx->digestsz, authmsg);
 	log_trace("client: server_key %.*s\n", ctx->digestsz, ctx->server_key);
 	size_t ssb64sz = BASE64_ENCODE_OUT_SIZE(ctx->digestsz) + 1;
@@ -684,4 +664,3 @@ scram_handle_server_final_msg(void *arg, const char *msg, int len)
 	nng_free(verifier, 0);
 	return result;
 }
-
