@@ -268,12 +268,15 @@ static struct parquet_data_ret *ringbus_parquet_data_ret_init(struct stream_data
 	parquet_data_ret->ts = nng_alloc(sizeof(uint64_t) * stream_data_out->row_len);
 	memcpy(parquet_data_ret->ts, stream_data_out->ts, sizeof(uint64_t) * stream_data_out->row_len);
 
-	/* Don't copy ts column */
+	/* Don't copy ts column. schema[i] is the matched data column name;
+	 * payload_arr is 0-based without ts, so use payload_arr[i - 1]. */
 	for (uint32_t i = 1; i < stream_data_out->col_len; i++) {
 		for (uint32_t j = 0; j < cmd_data->schema_len; j++) {
 			if (strcmp(stream_data_out->schema[i], cmd_data->schema[j]) == 0) {
-				parquet_data_ret->schema[new_index] = stream_data_out->schema[i - 1];
-				parquet_data_ret->payload_arr[new_index] = stream_data_out->payload_arr[i - 1];
+				parquet_data_ret->schema[new_index] =
+				    stream_data_out->schema[i];
+				parquet_data_ret->payload_arr[new_index] =
+				    stream_data_out->payload_arr[i - 1];
 				new_index++;
 				break;
 			}
@@ -320,19 +323,26 @@ static struct stream_decoded_data *fuzz_search_result_cat(nng_msg **msgList,
 	decoded_data = stream_decode(stream_type, parquet_data_ele);
 	if (decoded_data == NULL) {
 		log_error("stream_decode failed!");
-		parquet_data_ret_free(parquet_data_ele);
-		parquet_data_free((parquet_data *)stream_data_out);
-		ringbus_stream_data_in_free(stream_data);
-		return NULL;
 	}
 
-	ringbus_stream_data_in_free(stream_data);
-	parquet_data_free((parquet_data *)stream_data_out);
-
-	nng_free(parquet_data_ele->schema, sizeof(char *) * parquet_data_ele->col_len);
-	nng_free(parquet_data_ele->payload_arr, sizeof(parquet_data_packet *) * parquet_data_ele->col_len);
-	nng_free(parquet_data_ele->ts, sizeof(uint64_t) * parquet_data_ele->row_len);
+	/* parquet_data_ele borrows schema/payload pointers from stream_data_out;
+	 * only free the wrapper arrays here — never parquet_data_ret_free(). */
+	if (parquet_data_ele->schema != NULL) {
+		nng_free(parquet_data_ele->schema,
+		    sizeof(char *) * parquet_data_ele->col_len);
+	}
+	if (parquet_data_ele->payload_arr != NULL) {
+		nng_free(parquet_data_ele->payload_arr,
+		    sizeof(parquet_data_packet *) * parquet_data_ele->col_len);
+	}
+	if (parquet_data_ele->ts != NULL) {
+		nng_free(parquet_data_ele->ts,
+		    sizeof(uint64_t) * parquet_data_ele->row_len);
+	}
 	nng_free(parquet_data_ele, sizeof(struct parquet_data_ret));
+
+	parquet_data_free((parquet_data *) stream_data_out);
+	ringbus_stream_data_in_free(stream_data);
 
 	return decoded_data;
 }
