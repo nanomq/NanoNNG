@@ -37,7 +37,7 @@ static int         nano_pipe_close(void *);
 static inline void close_pipe(nano_pipe *p);
 
 static uint16_t tmp_id = 1000;
-static uint32_t rotate = 0;
+static uint32_t rotate = 0, rotate2 = 0;
 // huge context/ dynamic context?
 struct nano_ctx {
 	nano_sock *sock;
@@ -411,7 +411,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 		nni_mtx_unlock(&s->lk);
 		nni_aio_set_msg(aio, NULL);
 		if (qos_db == NULL) {
-			log_warn("pipe id %u is gone, pub failed", pipe);
+			log_debug("pipe id %u is gone, pub failed", pipe);
 		}
 		nni_msg_free(msg);
 		return;
@@ -448,9 +448,13 @@ nano_ctx_send(void *arg, nni_aio *aio)
 				nni_msg_free(old);
 			}
 		} else {
+			rotate2 ++;
 			// Warning msg lost due to reach the limit of lmq
-			log_warn(
-			    "Warning: msg lost due to reach the limit of lmq");
+			if (rotate2 >> LOG_REDUCE_FACTOR & 0x01) {
+				log_warn("Warning: msg lost due to reach the limit of lmq");
+				rotate2 = rotate2 >> 8;
+			}
+
 			nni_msg_free(msg);
 			nni_mtx_unlock(&p->lk);
 			nni_aio_set_msg(aio, NULL);
@@ -1317,7 +1321,7 @@ nano_pipe_recv_cb(void *arg)
 		nni_mtx_unlock(&s->lk);
 		// this gonna cause broker lagging, so we reduce outputs 1 in 256
 		rotate ++;
-		if (rotate >>8 & 0x01) {
+		if (rotate >> LOG_REDUCE_FACTOR & 0x01) {
 			log_warn("no ctx found!! create more ctxs!");
 			rotate  = rotate >> 8 ;
 		}
