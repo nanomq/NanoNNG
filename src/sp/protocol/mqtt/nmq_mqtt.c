@@ -452,7 +452,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 			// Warning msg lost due to reach the limit of lmq
 			if (rotate2 >> LOG_REDUCE_FACTOR & 0x01) {
 				log_warn("Warning: msg lost due to reach the limit of lmq");
-				rotate2 = rotate2 >> 8;
+				rotate2 = rotate2 >> LOG_REDUCE_FACTOR;
 			}
 
 			nni_msg_free(msg);
@@ -1323,7 +1323,7 @@ nano_pipe_recv_cb(void *arg)
 		rotate ++;
 		if (rotate >> LOG_REDUCE_FACTOR & 0x01) {
 			log_warn("no ctx found!! create more ctxs!");
-			rotate  = rotate >> 8 ;
+			rotate  = rotate >> LOG_REDUCE_FACTOR;
 		}
 		return;
 	}
