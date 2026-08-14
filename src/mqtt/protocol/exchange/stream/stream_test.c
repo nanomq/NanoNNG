@@ -7,13 +7,49 @@
 
 #include "nng/exchange/stream/stream.h"
 #include "nng/exchange/stream/raw_stream.h"
+#include "nng/nng.h"
 #include <nuts.h>
+#include <string.h>
 
 #define UNUSED(x) ((void) x)
 
 #define RAW_STREAM_ID 0x0
 #define INVALID_STREAM_ID 0xf
 #define TEST_STREAM_ID 0x10
+
+static nng_msg *
+test_make_payload_msg(const void *data, size_t len)
+{
+	nng_msg *m = NULL;
+
+	if (nng_msg_alloc(&m, len) != 0) {
+		return NULL;
+	}
+	if (len > 0 && data != NULL) {
+		memcpy(nng_msg_body(m), data, len);
+	}
+	nng_msg_set_payload_ptr(m, nng_msg_body(m));
+	return m;
+}
+
+static void
+test_free_input_msgs(struct stream_data_in *input)
+{
+	if (input == NULL) {
+		return;
+	}
+	if (input->msgs != NULL) {
+		for (uint32_t i = 0; i < input->len; i++) {
+			if (input->msgs[i] != NULL) {
+				nng_msg_free(input->msgs[i]);
+			}
+		}
+		nng_free(input->msgs, sizeof(void *) * input->len);
+	}
+	if (input->keys != NULL) {
+		nng_free(input->keys, sizeof(uint64_t) * input->len);
+	}
+}
 
 // ============================================================================
 // Basic System Tests
@@ -149,22 +185,17 @@ void test_stream_encode_with_valid_data(void)
 	struct stream_data_in input;
 	input.len = 2;
 	input.keys = nng_alloc(sizeof(uint64_t) * 2);
-	input.lens = nng_alloc(sizeof(uint32_t) * 2);
-	input.datas = nng_alloc(sizeof(void*) * 2);
+	input.msgs = nng_alloc(sizeof(void*) * 2);
 	
 	NUTS_ASSERT(input.keys != NULL);
-	NUTS_ASSERT(input.lens != NULL);
-	NUTS_ASSERT(input.datas != NULL);
+	NUTS_ASSERT(input.msgs != NULL);
 	
 	input.keys[0] = 1000;
 	input.keys[1] = 2000;
-	input.lens[0] = 4;
-	input.lens[1] = 8;
-	input.datas[0] = nng_alloc(4);
-	input.datas[1] = nng_alloc(8);
-	
-	memcpy(input.datas[0], "test", 4);
-	memcpy(input.datas[1], "testdata", 8);
+	input.msgs[0] = test_make_payload_msg("test", 4);
+	input.msgs[1] = test_make_payload_msg("testdata", 8);
+	NUTS_ASSERT(input.msgs[0] != NULL);
+	NUTS_ASSERT(input.msgs[1] != NULL);
 	
 	void *output = stream_encode(RAW_STREAM_ID, &input);
 	
@@ -172,11 +203,7 @@ void test_stream_encode_with_valid_data(void)
 		parquet_data_free((parquet_data*)output);
 	}
 	
-	nng_free(input.datas[0], 4);
-	nng_free(input.datas[1], 8);
-	nng_free(input.datas, sizeof(void*) * 2);
-	nng_free(input.lens, sizeof(uint32_t) * 2);
-	nng_free(input.keys, sizeof(uint64_t) * 2);
+	test_free_input_msgs(&input);
 	
 	stream_sys_fini();
 }
@@ -189,8 +216,7 @@ void test_stream_encode_empty_data(void)
 	struct stream_data_in input;
 	input.len = 0;
 	input.keys = NULL;
-	input.lens = NULL;
-	input.datas = NULL;
+	input.msgs = NULL;
 	
 	void *output = stream_encode(RAW_STREAM_ID, &input);
 	NUTS_TRUE(output == NULL);
@@ -206,13 +232,11 @@ void test_stream_encode_single_element(void)
 	struct stream_data_in input;
 	input.len = 1;
 	input.keys = nng_alloc(sizeof(uint64_t));
-	input.lens = nng_alloc(sizeof(uint32_t));
-	input.datas = nng_alloc(sizeof(void*));
+	input.msgs = nng_alloc(sizeof(void*));
 	
 	input.keys[0] = 12345;
-	input.lens[0] = 5;
-	input.datas[0] = nng_alloc(5);
-	memcpy(input.datas[0], "hello", 5);
+	input.msgs[0] = test_make_payload_msg("hello", 5);
+	NUTS_ASSERT(input.msgs[0] != NULL);
 	
 	void *output = stream_encode(RAW_STREAM_ID, &input);
 	
@@ -220,10 +244,7 @@ void test_stream_encode_single_element(void)
 		parquet_data_free((parquet_data*)output);
 	}
 	
-	nng_free(input.datas[0], 5);
-	nng_free(input.datas, sizeof(void*));
-	nng_free(input.lens, sizeof(uint32_t));
-	nng_free(input.keys, sizeof(uint64_t));
+	test_free_input_msgs(&input);
 	
 	stream_sys_fini();
 }
@@ -235,31 +256,27 @@ void test_stream_encode_large_payload(void)
 	
 	struct stream_data_in input;
 	size_t large_size = 1024; // 1KB
+	uint8_t *buf;
 	
 	input.len = 1;
 	input.keys = nng_alloc(sizeof(uint64_t));
-	input.lens = nng_alloc(sizeof(uint32_t));
-	input.datas = nng_alloc(sizeof(void*));
+	input.msgs = nng_alloc(sizeof(void*));
 	
 	input.keys[0] = 99999;
-	input.lens[0] = large_size;
-	input.datas[0] = nng_alloc(large_size);
+	buf = nng_alloc(large_size);
+	NUTS_ASSERT(buf != NULL);
+	memset(buf, 0xAA, large_size);
+	input.msgs[0] = test_make_payload_msg(buf, large_size);
+	nng_free(buf, large_size);
+	NUTS_ASSERT(input.msgs[0] != NULL);
 	
-	if (input.datas[0] != NULL) {
-		memset(input.datas[0], 0xAA, large_size);
-		
-		void *output = stream_encode(RAW_STREAM_ID, &input);
-		
-		if (output != NULL) {
-			parquet_data_free((parquet_data*)output);
-		}
-		
-		nng_free(input.datas[0], large_size);
+	void *output = stream_encode(RAW_STREAM_ID, &input);
+	
+	if (output != NULL) {
+		parquet_data_free((parquet_data*)output);
 	}
 	
-	nng_free(input.datas, sizeof(void*));
-	nng_free(input.lens, sizeof(uint32_t));
-	nng_free(input.keys, sizeof(uint64_t));
+	test_free_input_msgs(&input);
 	
 	stream_sys_fini();
 }
@@ -272,12 +289,11 @@ void test_stream_encode_zero_length_payload(void)
 	struct stream_data_in input;
 	input.len = 1;
 	input.keys = nng_alloc(sizeof(uint64_t));
-	input.lens = nng_alloc(sizeof(uint32_t));
-	input.datas = nng_alloc(sizeof(void*));
+	input.msgs = nng_alloc(sizeof(void*));
 	
 	input.keys[0] = 100;
-	input.lens[0] = 0;
-	input.datas[0] = NULL;
+	input.msgs[0] = test_make_payload_msg(NULL, 0);
+	NUTS_ASSERT(input.msgs[0] != NULL);
 	
 	void *output = stream_encode(RAW_STREAM_ID, &input);
 	
@@ -285,9 +301,7 @@ void test_stream_encode_zero_length_payload(void)
 		parquet_data_free((parquet_data*)output);
 	}
 	
-	nng_free(input.datas, sizeof(void*));
-	nng_free(input.lens, sizeof(uint32_t));
-	nng_free(input.keys, sizeof(uint64_t));
+	test_free_input_msgs(&input);
 	
 	stream_sys_fini();
 }
@@ -473,14 +487,15 @@ void test_stream_multiple_elements(void)
 	
 	input.len = count;
 	input.keys = nng_alloc(sizeof(uint64_t) * count);
-	input.lens = nng_alloc(sizeof(uint32_t) * count);
-	input.datas = nng_alloc(sizeof(void*) * count);
+	input.msgs = nng_alloc(sizeof(void*) * count);
 	
 	for (uint32_t i = 0; i < count; i++) {
+		uint8_t buf[16];
+		uint32_t plen = (i % 10) + 1;
 		input.keys[i] = i * 1000;
-		input.lens[i] = (i % 10) + 1;
-		input.datas[i] = nng_alloc(input.lens[i]);
-		memset(input.datas[i], i & 0xFF, input.lens[i]);
+		memset(buf, i & 0xFF, plen);
+		input.msgs[i] = test_make_payload_msg(buf, plen);
+		NUTS_ASSERT(input.msgs[i] != NULL);
 	}
 	
 	void *output = stream_encode(RAW_STREAM_ID, &input);
@@ -489,12 +504,7 @@ void test_stream_multiple_elements(void)
 		parquet_data_free((parquet_data*)output);
 	}
 	
-	for (uint32_t i = 0; i < count; i++) {
-		nng_free(input.datas[i], input.lens[i]);
-	}
-	nng_free(input.datas, sizeof(void*) * count);
-	nng_free(input.lens, sizeof(uint32_t) * count);
-	nng_free(input.keys, sizeof(uint64_t) * count);
+	test_free_input_msgs(&input);
 	
 	stream_sys_fini();
 }

@@ -191,26 +191,11 @@ static inline void parquet_datas_ret_free(parquet_data_ret **parquet_datas, uint
 
 static inline void ringbus_stream_data_in_free(struct stream_data_in *stream_data_in)
 {
-	if (stream_data_in == NULL) {
-		return;
-	}
-	if (stream_data_in->keys != NULL) {
-		nng_free(stream_data_in->keys, sizeof(uint64_t) * stream_data_in->len);
-	}
-	if (stream_data_in->datas != NULL) {
-		nng_free(stream_data_in->datas, sizeof(void *) * stream_data_in->len);
-	}
-	if (stream_data_in->lens != NULL) {
-		nng_free(stream_data_in->lens, sizeof(uint32_t) * stream_data_in->len);
-	}
-	nng_free(stream_data_in, sizeof(struct stream_data_in));
-
-	return;
+	stream_data_in_free(stream_data_in);
 }
 
 static struct stream_data_in *ringbus_stream_data_in_init(uint32_t count, nng_msg **msgList)
 {
-	uint32_t diff = 0;
 	struct stream_data_in *stream_data = NULL;
 
 	if (msgList == NULL || count == 0) {
@@ -222,35 +207,23 @@ static struct stream_data_in *ringbus_stream_data_in_init(uint32_t count, nng_ms
 		log_error("Failed to allocate memory for stream_data\n");
 		return NULL;
 	}
-	stream_data->len = count;
-	stream_data->datas = nng_alloc(sizeof(void *) * count);
-	if (stream_data->datas == NULL) {
-		log_error("Failed to allocate memory for stream_data->datas\n");
+	stream_data->len  = count;
+	stream_data->msgs = nng_alloc(sizeof(void *) * count);
+	if (stream_data->msgs == NULL) {
+		log_error("Failed to allocate memory for stream_data->msgs\n");
 		nng_free(stream_data, sizeof(struct stream_data_in));
 		return NULL;
 	}
 	stream_data->keys = nng_alloc(sizeof(uint64_t) * count);
 	if (stream_data->keys == NULL) {
 		log_error("Failed to allocate memory for stream_data->keys\n");
-		nng_free(stream_data->datas, sizeof(void *) * count);
-		nng_free(stream_data, sizeof(struct stream_data_in));
-		return NULL;
-	}
-
-	stream_data->lens = nng_alloc(sizeof(uint32_t) * count);
-	if (stream_data->lens == NULL) {
-		log_error("Failed to allocate memory for stream_data->lens\n");
-		nng_free(stream_data->keys, sizeof(uint64_t) * count);
-		nng_free(stream_data->datas, sizeof(void *) * count);
+		nng_free(stream_data->msgs, sizeof(void *) * count);
 		nng_free(stream_data, sizeof(struct stream_data_in));
 		return NULL;
 	}
 
 	for (uint32_t i = 0; i < count; i++) {
-		diff = nng_msg_len(msgList[i]) -
-			((uintptr_t)nng_msg_payload_ptr(msgList[i]) - (uintptr_t)nng_msg_body(msgList[i]));
-		stream_data->lens[i] = diff;
-		stream_data->datas[i] = nng_msg_payload_ptr(msgList[i]);
+		stream_data->msgs[i] = msgList[i];
 		stream_data->keys[i] = nni_msg_get_timestamp(msgList[i]);
 	}
 
