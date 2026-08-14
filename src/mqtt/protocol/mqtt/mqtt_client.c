@@ -772,6 +772,7 @@ mqtt_timer_cb(void *arg)
 	if (p->pingcnt >= s->timeout_backoff) {	// expose it
 		log_warn("MQTT Timeout and disconnect");
 		nni_mtx_unlock(&s->mtx);
+		s->disconnect_code = KEEP_ALIVE_TIMEOUT;
 		nni_pipe_close(p->pipe);
 		return;
 	}
@@ -779,18 +780,22 @@ mqtt_timer_cb(void *arg)
 	// Update left time to send pingreq
 	s->timeleft -= s->retry;
 
-	if (!p->busy && p->pingmsg && s->timeleft <= 0) {
-		p->busy = true;
-		s->timeleft = s->keepalive;
-		// send pingreq
-		nni_msg_clone(p->pingmsg);
-		nni_aio_set_msg(&p->send_aio, p->pingmsg);
-		nni_pipe_send(p->pipe, &p->send_aio);
+	if (s->timeleft <= 0) {
 		p->pingcnt ++;
-		nni_mtx_unlock(&s->mtx);
-		log_debug("Send pingreq (sock%p)(%dms)", s, s->keepalive);
-		nni_sleep_aio(s->retry, &p->time_aio);
-		return;
+		s->timeleft = s->keepalive;
+
+		if (!p->busy && !nni_aio_busy(&p->send_aio) && p->pingmsg) {
+			p->busy = true;
+			// send pingreq
+			nni_msg_clone(p->pingmsg);
+			nni_aio_set_msg(&p->send_aio, p->pingmsg);
+			nng_log_info("PROTOCOL: mqtt_timer_cb", "send PINGREQ");
+			nni_pipe_send(p->pipe, &p->send_aio);
+			nni_mtx_unlock(&s->mtx);
+			log_debug("Send pingreq (sock%p)(%dms)", s, s->keepalive);
+			nni_sleep_aio(s->retry, &p->time_aio);
+			return;
+		}
 	}
 
 	// start message resending
