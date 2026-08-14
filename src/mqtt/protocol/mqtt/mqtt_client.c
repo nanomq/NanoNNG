@@ -789,7 +789,7 @@ mqtt_timer_cb(void *arg)
 			// send pingreq
 			nni_msg_clone(p->pingmsg);
 			nni_aio_set_msg(&p->send_aio, p->pingmsg);
-			nng_log_info("PROTOCOL: mqtt_timer_cb", "send PINGREQ");
+			log_info("PROTOCOL: mqtt_timer_cb", "send PINGREQ");
 			nni_pipe_send(p->pipe, &p->send_aio);
 			nni_mtx_unlock(&s->mtx);
 			log_debug("Send pingreq (sock%p)(%dms)", s, s->keepalive);
