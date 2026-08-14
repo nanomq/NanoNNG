@@ -70,11 +70,17 @@ struct stream_data_out {
 };
 
 struct stream_data_in {
-	void **datas;
+	/* msgs[i] is nng_msg*; not owned by stream_data_in (caller keeps lifetime). */
+	void    **msgs;
+	/* Exchange keys / timestamps, aligned with msgs. */
 	uint64_t *keys;
-	uint32_t *lens;
-	uint32_t len;
+	uint32_t  len;
 };
+
+/* Extract MQTT payload pointer and length from an nng_msg.
+ * Returns NULL when msg is NULL; *out_len is set to 0 in that case.
+ * out_len may be NULL when caller only needs the pointer. */
+uint8_t *stream_msg_payload(void *msg, uint32_t *out_len);
 
 struct stream_decoded_data {
 	void *data;
