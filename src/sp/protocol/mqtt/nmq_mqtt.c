@@ -723,6 +723,7 @@ auth_verify:
 	}
 	nmq_connack_encode(msg, s->conf, p->conn_param, rv);
 	nni_mtx_lock(&s->lk);
+<<<<<<< Updated upstream
 	// CONNECT verification and the HTTP auth callback above run outside
 	// s->lk, so the pipe may have been closed in the meantime (client
 	// disconnect, or a client-ID collision kick via nni_pipe_set_pid ->
@@ -756,12 +757,18 @@ auth_verify:
 		nni_msg_free(msg);
 		return NNG_ECLOSED;
 	}
+=======
+>>>>>>> Stashed changes
 	if (rv != 0) {
 		// send connack with reason code 0x05
 		log_warn("Invalid auth info or authentication denied");
 		p->conn_param->will_flag = 0;
 		goto end;
 	}
+<<<<<<< Updated upstream
+=======
+
+>>>>>>> Stashed changes
 	// Clientid should not be NULL since broker will assign one
 	// TODO use p_id
 	clientid = (char *) conn_param_get_clientid(p->conn_param);
