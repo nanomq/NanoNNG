@@ -21,7 +21,7 @@
 // IN THE SOFTWARE.
 //
 
-#include "base64.h"
+#include "supplemental/base64/base64.h"
 
 #include <ctype.h>
 

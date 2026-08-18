@@ -12,7 +12,7 @@
 
 #include <nng/nng.h>
 
-#include "nng/supplemental/nanolib/base64.h"
+#include "nng/supplemental/nanolib/nmq_base64.h"
 
 #include <acutest.h>
 
@@ -45,7 +45,7 @@ test_encode(void)
 
 		(void) snprintf(name, sizeof(name), "%d", i);
 		TEST_CASE(name);
-		rv = base64_encode(dec, strlen(dec), buf);
+		rv = nmq_base64_encode(dec, strlen(dec), buf, 1024);
 		TEST_CHECK(rv >= 0);
 		TEST_CHECK(rv == (int) strlen(cases[i].encoded));
 		buf[rv] = 0;
@@ -67,7 +67,7 @@ test_decode(void)
 		(void) snprintf(name, sizeof(name), "%d", i);
 		TEST_CASE(name);
 
-		sz = base64_decode(enc, strlen(enc), (void *) buf);
+		sz = nmq_base64_decode(enc, strlen(enc), (void *) buf, 1024);
 		TEST_CHECK(sz != (size_t) -1);
 		TEST_CHECK(sz == strlen(cases[i].decoded));
 		buf[sz] = 0;
