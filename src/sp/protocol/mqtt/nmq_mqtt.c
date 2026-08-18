@@ -722,21 +722,7 @@ auth_verify:
 	}
 	nmq_connack_encode(msg, s->conf, p->conn_param, rv);
 	nni_mtx_lock(&s->lk);
-<<<<<<< Updated upstream
-	// CONNECT verification and the HTTP auth callback above run outside
-	// s->lk, so the pipe may have been closed in the meantime (client
-	// disconnect, or a client-ID collision kick via nni_pipe_set_pid ->
-	// nni_pipe_close). Do not register a dead pipe in s->pipes: the stale
-	// entry would dangle after the pipe is reaped. A clean_start=0 close
-	// takes nano_pipe_close's session-cache path, which swaps p_closed
-	// back to false after caching, so the cache flag must be checked as
-	// well — a pipe still inside pipe_start can only be cached if it was
-	// closed during the auth window. When auth rejected the client, evict
-	// the cached entry — an unauthenticated CONNECT must not leave a
-	// stored session behind; when auth succeeded, keep the session and
-	// arm the expiry timer the successful-start path would have armed so
-	// nano_pipe_timer_cb finalizes it like any other stored session (the
-	// cached early-return in nano_pipe_close leaves aio_timer un-closed).
+
 	if (nni_pipe_is_closed(npipe) || nni_atomic_get_bool(&npipe->cache)) {
 		if (nni_atomic_get_bool(&npipe->cache)) {
 			if (rv != SUCCESS) {
@@ -756,18 +742,12 @@ auth_verify:
 		nni_msg_free(msg);
 		return NNG_ECLOSED;
 	}
-=======
->>>>>>> Stashed changes
 	if (rv != 0) {
 		// send connack with reason code 0x05
 		log_warn("Invalid auth info or authentication denied");
 		p->conn_param->will_flag = 0;
 		goto end;
 	}
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
 	// Clientid should not be NULL since broker will assign one
 	// TODO use p_id
 	clientid = (char *) conn_param_get_clientid(p->conn_param);
