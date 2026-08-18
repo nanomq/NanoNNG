@@ -1,0 +1,21 @@
+#ifndef NMQ_BASE64_H
+#define NMQ_BASE64_H
+#include "nng/nng.h"
+
+#define BASE64_ENCODE_OUT_SIZE(s)                                           \
+    (((uint64_t)(s) > (((uint64_t)SIZE_MAX - 1) / 4) * 3 - 2)               \
+        ? 0                                                                 \
+        : (size_t) ((((((uint64_t)(s)) + 2) / 3) * 4) + 1))
+
+#define BASE64_DECODE_OUT_SIZE(s)                                           \
+    ((size_t) (((((uint64_t)(s))) / 4) * 3))
+NNG_DECL size_t
+nmq_base64_encode(const uint8_t *in, size_t in_len, char *out, size_t out_len);
+
+/*
+ * return values is out length
+ */
+NNG_DECL size_t
+nmq_base64_decode(const char *in, size_t in_len, uint8_t *out, size_t out_len);
+
+#endif /* NMQ_BASE64_H */

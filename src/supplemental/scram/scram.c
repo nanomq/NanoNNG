@@ -17,7 +17,7 @@
 
 #include "scram.h"
 
-#include "nng/supplemental/nanolib/base64.h"
+#include "nng/supplemental/nanolib/nmq_base64.h"
 #include "nng/supplemental/nanolib/log.h"
 
 #define SCRAM_SALT_SZ 64
