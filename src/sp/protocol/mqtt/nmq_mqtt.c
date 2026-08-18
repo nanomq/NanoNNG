@@ -780,7 +780,6 @@ auth_verify:
 		p->conn_param->will_flag = 0;
 		goto end;
 	}
-
 	if (p->conn_param->clean_start == 0) {
 		old = nni_id_get(&s->cached_sessions, p->pipe->p_id);
 		if (old != NULL) {
