@@ -245,11 +245,10 @@ nano_pipe_timer_cb(void *arg)
 	}
 	// According to the MQTT protocol, when keepalive is 0, the server should not check the keepalive timeout.
 	if (p->keepalive != 0) {
-		qos_backoff = p->ka_refresh * (qos_duration) * 1000 -
-		    p->keepalive * qos_backoff * 1000;
+		float time_diff = p->ka_refresh * (qos_duration) * 1000 - p->keepalive * qos_backoff * 1000;
 		log_trace("check pipe keepalive interval %d backoff %f, ka %d",
 		    p->keepalive, qos_backoff, p->ka_refresh);
-		if (qos_backoff > 0) {
+		if (time_diff > 0) {
 			log_warn("Warning: close pipe %u & kick client due to "
 			         "KeepAlive timeout!", p->id);
 			nni_atomic_set(&p->reason_code, NMQ_KEEP_ALIVE_TIMEOUT);
@@ -1234,8 +1233,10 @@ nano_pipe_recv_cb(void *arg)
 			break;
 		}
 		if (p->conn_param->pro_ver == MQTT_VERSION_V5) {
-			rv |= nni_mqtt_msg_proto_data_alloc(msg);
-			rv |= nni_mqttv5_msg_decode(msg);
+			rv = nni_mqtt_msg_proto_data_alloc(msg);
+			if (rv == 0) {
+				rv = nni_mqttv5_msg_decode(msg);
+			}
 			if (rv == 0) {
 				nni_mqtt_proto_data *mqtt =
 				    nni_msg_get_proto_data(msg);
