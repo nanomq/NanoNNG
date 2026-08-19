@@ -76,7 +76,7 @@ nni_base64_decode(const char *in, size_t in_len, uint8_t *out, size_t out_len)
 
 		// Discard invalid characters as per RFC 2045.
 		if (ch == 0xFF) {
-			break;
+			return ((size_t)-1);
 		}
 
 		v = (v << 6u) | ch;
