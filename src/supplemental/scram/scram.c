@@ -338,10 +338,10 @@ scram_client_final_msg(char *nonce, const char *proof, int client_proofsz)
 	}
 
 	if (0 ==
-	        nmq_base64_encode((const unsigned char *) gh, strlen(gh), ghb64) ||
+	        nmq_base64_encode((const unsigned char *) gh, strlen(gh), ghb64, ghb64sz) ||
 	    0 ==
 	        nmq_base64_encode(
-	            (const unsigned char *) proof, client_proofsz, proofb64)) {
+	            (const unsigned char *) proof, client_proofsz, proofb64, proofb64sz)) {
 		nng_free(ghb64, 0);
 		nng_free(proofb64, 0);
 		return NULL;
@@ -371,7 +371,7 @@ scram_server_first_msg(char *nonce, const char *salt, int iteration_cnt)
 
 	if (0 ==
 	    nmq_base64_encode(
-	        (const unsigned char *) salt, strlen(salt), saltb64)) {
+	        (const unsigned char *) salt, strlen(salt), saltb64, saltb64sz)) {
 		nng_free(saltb64, 0);
 		return NULL;
 	}
@@ -402,7 +402,7 @@ scram_server_final_msg(const char *server_sig, int sz, int error)
 		return NULL;
 
 	if (0 ==
-	    nmq_base64_encode((const unsigned char *) server_sig, sz, ssb64)) {
+	    nmq_base64_encode((const unsigned char *) server_sig, sz, ssb64, ssb64sz)) {
 		nng_free(ssb64, 0);
 		return NULL;
 	}
@@ -596,7 +596,7 @@ scram_handle_client_final_msg(void *arg, const char *msg, int len)
 	if (!client_key || !client_proof ||
 	    0 ==
 	        nmq_base64_decode(
-	            proof, strlen(proof), (unsigned char *) client_proof)) {
+	            proof, strlen(proof), (unsigned char *) client_proof, proofsz + 1)) {
 		if (client_sig)
 			nng_free(client_sig, 0);
 		if (client_key)
@@ -677,7 +677,7 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
 	memset(salt, 0, SCRAM_SALT_SZ);
 
 	if (0 ==
-	    nmq_base64_decode(saltb64, strlen(saltb64), (unsigned char *) salt)) {
+	    nmq_base64_decode(saltb64, strlen(saltb64), (unsigned char *) salt, SCRAM_SALT_SZ)) {
 		nng_free(salt, 0);
 		goto cleanup_fields;
 	}
@@ -689,7 +689,7 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
 	char  *ghb64   = nng_alloc(ghb64sz);
 	if (!ghb64 ||
 	    0 ==
-	        nmq_base64_encode((const unsigned char *) gh, strlen(gh), ghb64)) {
+	        nmq_base64_encode((const unsigned char *) gh, strlen(gh), ghb64, ghb64sz)) {
 		if (ghb64)
 			nng_free(ghb64, 0);
 		goto cleanup_fields;
@@ -804,7 +804,7 @@ scram_handle_server_final_msg(void *arg, const char *msg, int len)
 	if (!ssb64 ||
 	    0 ==
 	        nmq_base64_encode((const unsigned char *) server_sig,
-	            ctx->digestsz, ssb64)) {
+	            ctx->digestsz, ssb64, ssb64sz)) {
 		nng_free(authmsg, authmsg_sz);
 		if (server_sig)
 			nng_free(server_sig, 0);
