@@ -7,8 +7,8 @@
         ? 0                                                                 \
         : (size_t) ((((((uint64_t)(s)) + 2) / 3) * 4) + 1))
 
-#define BASE64_DECODE_OUT_SIZE(s)                                           \
-    ((size_t) (((((uint64_t)(s))) / 4) * 3))
+ #define BASE64_DECODE_OUT_SIZE(s)                                           \
+    ((size_t) ((((((uint64_t)(s)) + 3)) / 4) * 3))
 NNG_DECL size_t
 nmq_base64_encode(const uint8_t *in, size_t in_len, char *out, size_t out_len);
 
