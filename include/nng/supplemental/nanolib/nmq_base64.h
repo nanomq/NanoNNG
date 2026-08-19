@@ -3,12 +3,14 @@
 #include "nng/nng.h"
 
 #define BASE64_ENCODE_OUT_SIZE(s)                                           \
-    (((uint64_t)(s) > (((uint64_t)SIZE_MAX - 1) / 4) * 3 - 2)               \
-        ? 0                                                                 \
-        : (size_t) ((((((uint64_t)(s)) + 2) / 3) * 4) + 1))
+    ( ((uint64_t)(s) > (UINT64_MAX - 2)) ? 0 :                              \
+      (((((uint64_t)(s) + 2) / 3) * 4) > ((uint64_t)SIZE_MAX - 1)) ? 0 :    \
+      (size_t) ((((((uint64_t)(s)) + 2) / 3) * 4) + 1) )
 
- #define BASE64_DECODE_OUT_SIZE(s)                                           \
-    ((size_t) ((((((uint64_t)(s)) + 3)) / 4) * 3))
+#define BASE64_DECODE_OUT_SIZE(s)                                           \
+    ( ((uint64_t)(s) > (UINT64_MAX - 3)) ? 0 :                              \
+      ((((((uint64_t)(s) + 3) / 4) * 3) > (uint64_t)SIZE_MAX) ? 0 :         \
+      (size_t) ((((((uint64_t)(s)) + 3) / 4) * 3))) )
 
 /*
  * Encodes in_len bytes into a NUL terminated base64 string.
