@@ -329,7 +329,7 @@ scram_client_final_msg(char *nonce, const char *proof, int client_proofsz)
 	size_t proofb64sz = BASE64_ENCODE_OUT_SIZE(client_proofsz) + 1;
 	char  *proofb64   = nng_alloc(proofb64sz);
 
-	if (!ghb64 || !proofb64) {
+	if (!ghb64 || !proofb64 || ghb64sz == 0 || proofb64sz == 0) {
 		if (ghb64)
 			nng_free(ghb64, 0);
 		if (proofb64)
@@ -366,7 +366,7 @@ scram_server_first_msg(char *nonce, const char *salt, int iteration_cnt)
 {
 	size_t saltb64sz = BASE64_ENCODE_OUT_SIZE(strlen(salt)) + 1;
 	char  *saltb64   = nng_alloc(saltb64sz);
-	if (!saltb64)
+	if (saltb64sz == 0 || !saltb64)
 		return NULL;
 
 	if (0 ==
@@ -398,7 +398,7 @@ scram_server_final_msg(const char *server_sig, int sz, int error)
 	}
 	size_t ssb64sz = BASE64_ENCODE_OUT_SIZE(sz) + 1;
 	char  *ssb64   = nng_alloc(ssb64sz);
-	if (!ssb64)
+	if (ssb64sz == 0 || !ssb64)
 		return NULL;
 
 	if (0 ==
@@ -687,9 +687,8 @@ scram_handle_server_first_msg(void *arg, const char *msg, int len)
 	char  *gh      = gs_header();
 	size_t ghb64sz = BASE64_ENCODE_OUT_SIZE(strlen(gh)) + 1;
 	char  *ghb64   = nng_alloc(ghb64sz);
-	if (!ghb64 ||
-	    0 ==
-	        nmq_base64_encode((const unsigned char *) gh, strlen(gh), ghb64, ghb64sz)) {
+	if (ghb64sz == 0 || !ghb64 ||
+	    0 == nmq_base64_encode((const unsigned char *) gh, strlen(gh), ghb64, ghb64sz)) {
 		if (ghb64)
 			nng_free(ghb64, 0);
 		goto cleanup_fields;
@@ -801,8 +800,7 @@ scram_handle_server_final_msg(void *arg, const char *msg, int len)
 	size_t ssb64sz = BASE64_ENCODE_OUT_SIZE(ctx->digestsz) + 1;
 	char  *ssb64   = nng_alloc(ssb64sz);
 
-	if (!ssb64 ||
-	    0 ==
+	if (ssb64sz == 0 || !ssb64 || 0 ==
 	        nmq_base64_encode((const unsigned char *) server_sig,
 	            ctx->digestsz, ssb64, ssb64sz)) {
 		nng_free(authmsg, authmsg_sz);
