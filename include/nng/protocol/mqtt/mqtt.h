@@ -29,6 +29,7 @@
 #define NANO_MIN_FIXED_HEADER_LEN sizeof(uint8_t) * 2
 //flow control:how many QoS packet broker willing to process at same time.
 #define NANO_MAX_QOS_PACKET 1024
+#define LOG_REDUCE_FACTOR 8
 
 #ifdef NANO_PACKET_SIZE
 #define NNI_NANO_MAX_PACKET_SIZE sizeof(uint8_t) * NANO_PACKET_SIZE
