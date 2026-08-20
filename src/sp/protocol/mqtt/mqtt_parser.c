@@ -1717,36 +1717,35 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 
 	// get variable length of properties
 	if (ver == MQTT_PROTOCOL_VERSION_v5) {
-		len = get_var_integer(
-		    (uint8_t *) nni_msg_body(msg) + 2, &len_of_varint);
+		len = get_var_integer((uint8_t *) var_ptr + 2, &len_of_varint);
 		if (len > nni_msg_len(msg))
 			return -1;
 	}
+
 	uint32_t pid = 0;
 	NNI_GET16(var_ptr, pid);
 	if (pid == 0) {
-		log_warn(" 0 Packetid in subscribe request");
+		log_warn("0 Packetid in subscribe request");
 		return -2;
 	}
 
 	log_trace("prop len %d varint %d remain %d", len, len_of_varint,
-		nni_msg_len(msg));
-	payload_ptr = (uint8_t *) nni_msg_body(msg) + 2 + len + len_of_varint;
+	    nni_msg_len(msg));
+	payload_ptr = (uint8_t *) var_ptr + 2 + len + len_of_varint;
 
-	size_t pos = 2 + len_of_varint, target_pos = 2 + len_of_varint + len;
+	size_t pos        = 2 + len_of_varint;
+	size_t target_pos = 2 + len_of_varint + len;
+
 	while (pos < target_pos) {
 		switch (*(var_ptr + pos)) {
 		case USER_PROPERTY:
-			// ID Length
 			pos++;
 			for (int j = 0; j < 2; j++) {
 				len_of_str = 0;
 				if (pos + 2 > target_pos)
 					return (-3);
-				// key/Value length
 				NNI_GET16(var_ptr + pos, len_of_str);
 				pos += (2 + len_of_str);
-				// Check the index of properties
 				if (pos > target_pos)
 					return (-3);
 			}
@@ -1776,54 +1775,50 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 		// Check the index of topic len
 		if (bpos + 2 > remain)
 			return (-3);
-		NNI_GET16(payload_ptr + bpos, len_of_topic);
-		if (len_of_str > remain)
-			return -1;
-		bpos += 2;
 
-		if (len_of_topic == 0)
-			continue;
-		// Check the index of topic body
-		if (bpos + len_of_topic > remain)
+		NNI_GET16(payload_ptr + bpos, len_of_topic);
+		bpos += 2;
+		if (len_of_topic + 1 > remain - bpos)
 			return (-3);
+
+		if (len_of_topic == 0) {
+			bpos += 1; // Skip the option byte even if topic is empty
+			continue;
+		}
 
 		if ((sn = nng_alloc(sizeof(struct subinfo))) == NULL)
 			return (-2);
+
 		if ((topic = nng_alloc(len_of_topic + 1)) == NULL) {
 			nng_free(sn, sizeof(struct subinfo));
 			return (-2);
 		}
 
-		strncpy(topic, (char *) payload_ptr + bpos, len_of_topic);
-		topic[len_of_topic] = 0x00;
+		memcpy(topic, payload_ptr + bpos, len_of_topic);
+		topic[len_of_topic] = '\0';
 
 		sn->topic = topic;
 		bpos += len_of_topic;
 
-		// Ensure at least 1 byte is left for subscription options
-		if (bpos >= remain) {
-			nng_free(sn->topic, len_of_topic + 1);
-			nng_free(sn, sizeof(*sn));
-			return (-3);
-		}
-
 		sn->subid = subid;
-		// qos no_local rap retain_handling
-		sn->qos      = (uint8_t) ((0x03 & *(payload_ptr + bpos)));
-		sn->no_local = (uint8_t) ((0x04 & *(payload_ptr + bpos)));
-		sn->rap      = (uint8_t) ((0x08 & *(payload_ptr + bpos)) > 0);
-		sn->retain_handling = (uint8_t) ((0x1f & *(payload_ptr + bpos)));
-		memcpy(sn, payload_ptr + bpos, 1);
+
+		uint8_t opt         = payload_ptr[bpos];
+		sn->qos             = opt & 0x03;        // Bit 0,1
+		sn->no_local        = (opt & 0x04) >> 2; // Bit 2
+		sn->rap             = (opt & 0x08) >> 3; // Bit 3
+		sn->retain_handling = (opt & 0x30) >> 4; // Bit 4,5
+
 		NNI_LIST_NODE_INIT(&sn->node);
 
 		if (0 != nmq_subinfol_add_or(ll, sn)) {
 			// already exists
-			nng_free(sn->topic, strlen(sn->topic) + 1);
+			nng_free(sn->topic, len_of_topic + 1);
 			nng_free(sn, sizeof(*sn));
+		} else {
+			num++;
 		}
 
 		bpos += 1;
-		num++;
 	}
 
 	return num;
