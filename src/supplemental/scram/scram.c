@@ -203,11 +203,12 @@ scram_ctx_update(void *arg, char *salt)
 {
 	struct scram_ctx *ctx   = arg;
 	int               keysz = ctx->digestsz;
-
-	ctx->salt = salt;
-	if (ctx->salt == NULL) {
+	if (salt == NULL) {
 		return -1;
 	}
+	if (ctx->salt)
+		nng_free(ctx->salt, 0);
+	ctx->salt = salt;
 
 	char *salt_pwd = nng_alloc(sizeof(char) * ctx->digestsz);
 	if (!salt_pwd)
@@ -223,12 +224,25 @@ scram_ctx_update(void *arg, char *salt)
 		ctx->salt = NULL;
 		return -2;
 	}
+	if (ctx->salt_pwd)
+		nng_free(ctx->salt_pwd, 0);
 	ctx->salt_pwd = salt_pwd;
 
+	if (ctx->client_key)
+		nng_free(ctx->client_key, 0);
+	if (ctx->server_key)
+		nng_free(ctx->server_key, 0);
+	if (ctx->stored_key)
+		nng_free(ctx->stored_key, 0);
 	ctx->client_key = client_key(ctx->digest, salt_pwd, keysz);
 	ctx->server_key = server_key(ctx->digest, salt_pwd, keysz);
+	if (ctx->client_key == NULL || ctx->server_key == NULL) {
+		return -3;
+	}
 	ctx->stored_key = stored_key(ctx->digest, ctx->client_key, keysz);
-
+	if (ctx->stored_key == NULL) {
+		return -3;
+	}
 	return 0;
 }
 
