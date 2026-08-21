@@ -3637,6 +3637,9 @@ property *
 property_alloc(void)
 {
 	property *p = nni_zalloc(sizeof(property));
+	if (p == NULL) {
+		return NULL;
+	}
 	p->next     = NULL;
 	return p;
 }
@@ -4196,13 +4199,7 @@ decode_buf_properties(uint8_t *packet, uint32_t packet_len, uint32_t *pos,
 		return NULL;
 	}
 
-	struct pos_buf buf = {
-		.curpos = &msg_body[current_pos],
-		.endpos = &msg_body[current_pos + prop_len],
-	};
 
-	log_debug("remain len %d prop len %d curpos %p endpos %p", msg_len, prop_len, buf.curpos, buf.endpos);
-	
 	if (msg_len - current_pos < prop_len) {
 		log_warn("Malformed packet: property len > remaining len!");
 		*len = (uint32_t)-1;
@@ -4211,6 +4208,15 @@ decode_buf_properties(uint8_t *packet, uint32_t packet_len, uint32_t *pos,
 
 	uint8_t prop_id = 0;
 	list            = property_alloc();
+	if (list == NULL) {
+		*len = (uint32_t) -1;
+		return NULL;
+	}
+	struct pos_buf buf = {
+		.curpos = &msg_body[current_pos],
+		.endpos = &msg_body[current_pos + prop_len],
+	};
+	log_debug("remain len %d prop len %d curpos %p endpos %p", msg_len, prop_len, buf.curpos, buf.endpos);
 	property *tail  = list;
 
 	while (buf.curpos < buf.endpos) {
