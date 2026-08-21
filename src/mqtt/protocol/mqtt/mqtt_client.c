@@ -1009,8 +1009,8 @@ mqtt_send_cb(void *arg)
 #endif
 		nni_aio_set_msg(&p->send_aio, NULL);
 		log_warn("MQTT client send error %d!", rv);
-		if (s->disconnect_code != 0)
-			s->disconnect_code = 0x8B; // TODO hardcode
+		if (s->disconnect_code == 0)
+			s->disconnect_code = 0x8B;
 		nni_pipe_close(p->pipe);
 		return;
 	}
