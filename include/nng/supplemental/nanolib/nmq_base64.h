@@ -20,10 +20,22 @@ nmq_base64_encode_out_size(size_t size)
 
 #define BASE64_ENCODE_OUT_SIZE(s) nmq_base64_encode_out_size((size_t) (s))
 
-#define BASE64_DECODE_OUT_SIZE(s)                                           \
-	(((uint64_t) (s) > (UINT64_MAX - 3)) ? 0 :                              \
-	    ((((((uint64_t) (s) + 3) / 4) * 3) > (uint64_t) SIZE_MAX) ? 0 :       \
-	        (size_t) (((((uint64_t) (s) + 3) / 4) * 3))))
+static inline size_t
+nmq_base64_decode_out_size(size_t size)
+{
+	uint64_t groups;
+
+	if ((uint64_t) size > UINT64_MAX - 3) {
+		return 0;
+	}
+	groups = ((uint64_t) size + 3) / 4;
+	if (groups > (((uint64_t) SIZE_MAX) / 3)) {
+		return 0;
+	}
+	return (size_t) (groups * 3);
+}
+
+#define BASE64_DECODE_OUT_SIZE(s) nmq_base64_decode_out_size((size_t) (s))
 
 /*
  * Encodes in_len bytes into a NUL-terminated Base64 string.

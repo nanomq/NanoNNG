@@ -28,10 +28,15 @@ test_decode_strict(void)
 void
 test_output_size(void)
 {
+	size_t input_len = 4;
+
 	TEST_CHECK(BASE64_ENCODE_OUT_SIZE(0) == 1);
 	TEST_CHECK(BASE64_ENCODE_OUT_SIZE(3) == 5);
 	TEST_CHECK(BASE64_ENCODE_OUT_SIZE(SIZE_MAX - 3) == 0);
 	TEST_CHECK(BASE64_ENCODE_OUT_SIZE(SIZE_MAX) == 0);
+	TEST_CHECK(BASE64_DECODE_OUT_SIZE(input_len++) == 3);
+	TEST_CHECK(input_len == 5);
+	TEST_CHECK(BASE64_DECODE_OUT_SIZE(SIZE_MAX) == 0);
 }
 
 TEST_LIST = {
