@@ -36,6 +36,7 @@ nng_test(conf_test)
 nng_test(env_test)
 nng_test(rule_test)
 nng_test(lib_base64_test)
+nng_test(nmq_base64_test)
 nng_test(topics_test)
 
 if (SUPP_RULE_ENGINE)
@@ -44,4 +45,3 @@ if (SUPP_RULE_ENGINE)
 endif (SUPP_RULE_ENGINE)
 
 add_subdirectory(linkedlist)
-
