@@ -2,7 +2,11 @@
 
 #include "nuts.h"
 
-#if defined(ENABLE_NANOMQ_TESTS)
+#if defined(NANOMQ_TEST_CONF_DIR)
+#define OLD_CONF_PATH \
+	NANOMQ_TEST_CONF_DIR "/nmq_old_test.conf"
+#define CONF_PATH NANOMQ_TEST_CONF_DIR "/nmq_test.conf"
+#elif defined(ENABLE_NANOMQ_TESTS)
 #define OLD_CONF_PATH                                            \
 	"../../../../../nng/src/supplemental/nanolib/test_conf/" \
 	"nmq_old_test.conf"
@@ -79,10 +83,15 @@ test_conf_parse(void)
 #ifndef NNG_PLATFORM_WINDOWS
 	conf *conf = get_test_conf(OLD_CONF_PATH);
 	NUTS_TRUE(conf != NULL);
+	if (conf == NULL) {
+		return;
+	}
 	conf_parse(conf);
-	NUTS_TRUE(strncmp(conf->url, "nmq-tcp://0.0.0.0:1883", 22) == 0);
-
-	print_conf(conf);
+	NUTS_TRUE(conf->url != NULL);
+	if (conf->url != NULL) {
+		NUTS_TRUE(strncmp(conf->url, "nmq-tcp://0.0.0.0:1883", 22) == 0);
+		print_conf(conf);
+	}
 
 	conf_fini(conf);
 #endif
@@ -93,10 +102,15 @@ test_conf_parse_ver2(void)
 {
 	conf *conf = get_test_conf(CONF_PATH);
 	NUTS_TRUE(conf != NULL);
+	if (conf == NULL) {
+		return;
+	}
 	conf_parse_ver2(conf, false);
-	NUTS_TRUE(strncmp(conf->url, "nmq-tcp://0.0.0.0:1883", 22) == 0);
-
-	print_conf(conf);
+	NUTS_TRUE(conf->url != NULL);
+	if (conf->url != NULL) {
+		NUTS_TRUE(strncmp(conf->url, "nmq-tcp://0.0.0.0:1883", 22) == 0);
+		print_conf(conf);
+	}
 
 	conf_fini(conf);
 }
