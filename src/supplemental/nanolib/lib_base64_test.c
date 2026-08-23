@@ -75,8 +75,19 @@ test_decode(void)
 	}
 }
 
+void
+test_decode_high_bit(void)
+{
+	const char invalid[] = { (char) 0x80 };
+	char       buf[1];
+
+	TEST_CHECK(nmq_base64_decode(invalid, sizeof(invalid), (uint8_t *) buf,
+	                   sizeof(buf)) == 0);
+}
+
 TEST_LIST = {
 	{ "encode", test_encode },
 	{ "decode", test_decode },
+	{ "decode_high_bit", test_decode_high_bit },
 	{ NULL, NULL },
 };
