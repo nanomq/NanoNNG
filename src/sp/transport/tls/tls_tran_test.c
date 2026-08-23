@@ -115,9 +115,10 @@ test_tls_port_zero_bind(void)
 	NUTS_PASS(nng_listener_get_addr(l, NNG_OPT_LOCADDR, &sa));
 	NUTS_TRUE(sa.s_in.sa_family == NNG_AF_INET);
 	NUTS_TRUE(sa.s_in.sa_port != 0);
-	NUTS_TRUE(sa.s_in.sa_addr = nuts_be32(0x7f000001));
+	NUTS_TRUE(sa.s_in.sa_addr == nuts_be32(0x7f000001));
 	NUTS_PASS(nng_dial(s2, addr, NULL, 0));
 	nng_strfree(addr);
+	NUTS_PASS(nng_listener_close(l));
 	NUTS_CLOSE(s2);
 	NUTS_CLOSE(s1);
 	nng_tls_config_free(c1);
