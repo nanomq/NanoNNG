@@ -64,15 +64,16 @@ nni_base64_decode(const char *in, size_t in_len, uint8_t *out, size_t out_len)
 		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 
 	for (io = 0, ii = 0, v = 0, rem = 0; ii < in_len; ii++) {
-		if (isspace(in[ii])) {
+		ch = (uint8_t) in[ii];
+		if (isspace(ch)) {
 			continue;
 		}
 
-		if (in[ii] == '=') {
+		if (ch == '=') {
 			break;
 		}
 
-		ch = decode[(int) (in[ii])];
+		ch = decode[ch];
 
 		// Discard invalid characters as per RFC 2045.
 		if (ch == 0xFF) {
