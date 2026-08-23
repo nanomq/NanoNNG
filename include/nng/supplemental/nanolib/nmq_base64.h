@@ -3,6 +3,10 @@
 
 #include "nng/nng.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 static inline size_t
 nmq_base64_encode_out_size(size_t size)
 {
@@ -59,5 +63,9 @@ nmq_base64_decode(const char *in, size_t in_len, uint8_t *out, size_t out_len);
 NNG_DECL size_t
 nmq_base64_decode_strict(
 	const char *in, size_t in_len, uint8_t *out, size_t out_len);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* NMQ_BASE64_H */
