@@ -234,6 +234,9 @@ scram_ctx_update(void *arg, char *salt)
 		nng_free(ctx->server_key, 0);
 	if (ctx->stored_key)
 		nng_free(ctx->stored_key, 0);
+	ctx->client_key = NULL;
+	ctx->server_key = NULL;
+	ctx->stored_key = NULL;
 	ctx->client_key = client_key(ctx->digest, salt_pwd, keysz);
 	ctx->server_key = server_key(ctx->digest, salt_pwd, keysz);
 	if (ctx->client_key == NULL || ctx->server_key == NULL) {
