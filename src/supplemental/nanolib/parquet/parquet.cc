@@ -16,6 +16,7 @@
 #include <inttypes.h>
 #include <iostream>
 #include <string>
+#include <errno.h>
 #include <sys/stat.h>
 #include <thread>
 #include <ctime>
@@ -132,11 +133,33 @@ gen_random(const int len)
 	return tmp_s;
 }
 
-static char *
-get_random_file_name(char *prefix, uint64_t key_start, uint64_t key_end)
+static void
+parquet_ensure_dir(const char *dir)
 {
-	char *file_name = NULL;
-	char  dir[]     = "/tmp";
+	struct stat st;
+	if (dir == NULL || dir[0] == '\0') {
+		return;
+	}
+	if (stat(dir, &st) == 0 && S_ISDIR(st.st_mode)) {
+		return;
+	}
+	if (mkdir(dir, 0755) != 0 && errno != EEXIST) {
+		log_error("Failed to create directory %s, errno: %d", dir,
+		    errno);
+	}
+}
+
+static char *
+get_random_file_name(conf_parquet *conf, char *prefix, uint64_t key_start,
+    uint64_t key_end)
+{
+	char       *file_name = NULL;
+	const char *dir       = "/tmp";
+
+	if (conf != NULL && conf->tmp_dir != NULL && conf->tmp_dir[0] != '\0') {
+		dir = conf->tmp_dir;
+	}
+	parquet_ensure_dir(dir);
 
 	file_name = (char *) malloc(strlen(prefix) + strlen(dir) +
 	    UINT64_MAX_DIGITS + UINT64_MAX_DIGITS + 16);
@@ -353,14 +376,16 @@ parquet_set_encryption(char **schema_arr, uint32_t schema_len, conf_parquet *con
 
 	parquet::FileEncryptionProperties::Builder file_encryption_builder(
 	    parquet_make_secure_string(conf->encryption.key));
-	encryption_configurations =
-		file_encryption_builder
-			.footer_key_metadata(conf->encryption.key_id)
-			->encrypted_columns(column_encryption_map)
-			->algorithm(static_cast<parquet::ParquetCipher::type>(
-					conf->encryption.type))
-			->set_plaintext_footer()
-			->build();
+	auto *enc_builder =
+	    file_encryption_builder
+	        .footer_key_metadata(conf->encryption.key_id)
+	        ->encrypted_columns(column_encryption_map)
+	        ->algorithm(static_cast<parquet::ParquetCipher::type>(
+	            conf->encryption.type));
+	if (conf->encryption.plaintext_footer) {
+		enc_builder->set_plaintext_footer();
+	}
+	encryption_configurations = enc_builder->build();
 
 	return encryption_configurations;
 }
@@ -562,11 +587,44 @@ parquet_write_core(conf_parquet *conf, char *filename,
 		builder.created_by("NanoMQ")
 		    ->version(parquet::ParquetVersion::PARQUET_2_6)
 		    ->data_page_version(parquet::ParquetDataPageVersion::V2)
-		    ->disable_dictionary()
 		    ->encoding(parquet::Encoding::PLAIN)
 		    ->encoding(schema_arr[0], Encoding::DELTA_BINARY_PACKED)
 		    ->compression(static_cast<arrow::Compression::type>(
 		        conf->comp_type));
+		if (conf->dictionary) {
+			builder.enable_dictionary();
+		} else {
+			builder.disable_dictionary();
+		}
+		if (conf->compression_level > 0 &&
+		    (conf->comp_type == GZIP || conf->comp_type == BROTLI ||
+		        conf->comp_type == ZSTD)) {
+			builder.compression_level(conf->compression_level);
+		} else if (conf->compression_level > 0) {
+			log_warn("compression_level is ignored for current "
+			         "compress type");
+		}
+		if (conf->data_page_size > 0) {
+			builder.data_pagesize((int64_t) conf->data_page_size);
+		}
+		if (conf->dictionary_page_size > 0) {
+			builder.dictionary_pagesize_limit(
+			    (int64_t) conf->dictionary_page_size);
+		}
+		if (conf->write_batch_size > 0) {
+			builder.write_batch_size(
+			    (int64_t) conf->write_batch_size);
+		}
+		if (conf->enable_statistics) {
+			builder.enable_statistics();
+		} else {
+			builder.disable_statistics();
+		}
+		if (conf->enable_page_checksum) {
+			builder.enable_page_checksum();
+		} else {
+			builder.disable_page_checksum();
+		}
 		log_debug("check encry");
 		if (conf->encryption.enable) {
 			shared_ptr<parquet::FileEncryptionProperties>
@@ -668,7 +726,7 @@ parquet_write_tmp(parquet_object *elem)
 	string prefix  = gen_random(6);
 	prefix         = "nanomq" + prefix;
 	char *filename = get_random_file_name(
-	    prefix.data(), ts_arr[0], ts_arr[row_len - 1]);
+	    conf, prefix.data(), ts_arr[0], ts_arr[row_len - 1]);
 	if (filename == NULL) {
 		log_error("Failed to get file name");
 		parquet_object_free(elem);
@@ -789,7 +847,6 @@ parquet_write_loop_v2(void *arg)
 int
 parquet_write_launcher(conf_exchange *conf)
 {
-
 	INIT_QUEUE(parquet_queue);
 
 	for (size_t i = 0; i < conf->count; i++) {
@@ -798,8 +855,7 @@ parquet_write_launcher(conf_exchange *conf)
 
 	is_available = true;
 	pthread_t write_thread;
-	int       result = 0;
-	result =
+	int       result =
 	    pthread_create(&write_thread, NULL, parquet_write_loop_v2, conf);
 	if (result != 0) {
 		log_error("Failed to create parquet write thread.");
