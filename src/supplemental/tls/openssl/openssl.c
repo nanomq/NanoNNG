@@ -298,9 +298,6 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 				continue;
 			}
 			SSL_do_handshake(ec->ssl);
-			if (SSL_is_init_finished(ec->ssl)) {
-				goto finished;
-			}
 		}
 
 		while ((ensz = BIO_read(ec->wbio, ec->rbuf, OPEN_BUF_SZ)) > 0) {
@@ -321,9 +318,9 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 			else if (sz < 0)
 				return (NNG_ECLOSED);
 			SSL_do_handshake(ec->ssl);
-			if (SSL_is_init_finished(ec->ssl)) {
-				goto finished;
-			}
+		}
+		if (SSL_is_init_finished(ec->ssl)) {
+			goto finished;
 		}
 
 		return NNG_EAGAIN;
