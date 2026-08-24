@@ -410,11 +410,8 @@ compute_and_rename_file_withMD5_CXX(const std::string &filename,
 	// Step 2: Extract timestamp substring from the original filename
 	if (conf == NULL || conf->dir == NULL ||
 	    conf->file_name_prefix == NULL) {
-		log_error("Invalid parquet conf for rename");
-		if (remove(filename.c_str()) != 0) {
-			log_error("Failed to remove file %s errno: %d",
-			    filename.c_str(), errno);
-		}
+		log_error("Invalid parquet conf for rename, keep file %s",
+		    filename.c_str());
 		return {};
 	}
 	std::string prefix =
@@ -438,20 +435,21 @@ compute_and_rename_file_withMD5_CXX(const std::string &filename,
 	uint32_t    index  = file_manager.get_queue_index(topic);
 	std::string sindex = std::to_string(index);
 
-	auto node = file_manager.fetch_conf(topic);
+	auto        node = file_manager.fetch_conf(topic);
 	const char *name = NULL;
 	if (node != NULL && node->name != NULL) {
 		name = node->name;
 	} else if (conf->name != NULL) {
 		name = conf->name;
-	} else if (!topic.empty()) {
-		name = topic.c_str();
-	} else {
-		name = "unknown";
+	}
+	if (name == NULL) {
+		log_error("parquet name is null, skip rename and keep file %s",
+		    filename.c_str());
+		return {};
 	}
 
 	// Step 4: Build new filename:
-	// <dir+prefix>_<name>-<timestamp>_<md5>.parquet
+	// <dir+prefix>_<name>-<timestamp>_<index>_<md5>.parquet
 	std::string new_name = prefix + "_" + name + "-" + timestamp + "_" +
 	    sindex + "_" + md5_buffer + ".parquet";
 
