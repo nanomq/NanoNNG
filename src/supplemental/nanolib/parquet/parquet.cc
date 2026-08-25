@@ -24,6 +24,7 @@
 #include <dirent.h>
 #include <fstream>
 #include <inttypes.h>
+#include <cstdint>
 #include <iostream>
 #include <string>
 #include <errno.h>
@@ -160,20 +161,26 @@ gen_random(const int len)
 	return tmp_s;
 }
 
-static void
+static bool
 parquet_ensure_dir(const char *dir)
 {
 	struct stat st;
 	if (dir == NULL || dir[0] == '\0') {
-		return;
+		return false;
 	}
 	if (stat(dir, &st) == 0 && S_ISDIR(st.st_mode)) {
-		return;
+		return true;
 	}
 	if (mkdir(dir, 0755) != 0 && errno != EEXIST) {
 		log_error("Failed to create directory %s, errno: %d", dir,
 		    errno);
+		return false;
 	}
+	if (stat(dir, &st) == 0 && S_ISDIR(st.st_mode)) {
+		return true;
+	}
+	log_error("Directory %s is not available after create", dir);
+	return false;
 }
 
 static char *
@@ -186,7 +193,11 @@ get_random_file_name(conf_parquet *conf, char *prefix, uint64_t key_start,
 	if (conf != NULL && conf->tmp_dir != NULL && conf->tmp_dir[0] != '\0') {
 		dir = conf->tmp_dir;
 	}
-	parquet_ensure_dir(dir);
+	if (!parquet_ensure_dir(dir)) {
+		log_error("Abort temp parquet filename: cannot use dir %s",
+		    dir);
+		return NULL;
+	}
 
 	file_name = (char *) malloc(strlen(prefix) + strlen(dir) +
 	    UINT64_MAX_DIGITS + UINT64_MAX_DIGITS + 16);
@@ -643,11 +654,26 @@ parquet_write_core(conf_parquet *conf, char *filename,
 			         "compress type");
 		}
 		if (conf->data_page_size > 0) {
-			builder.data_pagesize((int64_t) conf->data_page_size);
+			if (conf->data_page_size >
+			    (uint64_t) INT64_MAX) {
+				log_warn("data_page_size %" PRIu64
+				         " exceeds INT64_MAX, ignored",
+				    conf->data_page_size);
+			} else {
+				builder.data_pagesize(
+				    (int64_t) conf->data_page_size);
+			}
 		}
 		if (conf->dictionary_page_size > 0) {
-			builder.dictionary_pagesize_limit(
-			    (int64_t) conf->dictionary_page_size);
+			if (conf->dictionary_page_size >
+			    (uint64_t) INT64_MAX) {
+				log_warn("dictionary_page_size %" PRIu64
+				         " exceeds INT64_MAX, ignored",
+				    conf->dictionary_page_size);
+			} else {
+				builder.dictionary_pagesize_limit(
+				    (int64_t) conf->dictionary_page_size);
+			}
 		}
 		if (conf->write_batch_size > 0) {
 			builder.write_batch_size(
