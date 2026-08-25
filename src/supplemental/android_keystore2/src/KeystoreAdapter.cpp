@@ -38,7 +38,7 @@ static bool g_digest_none = false;
 void keystore2_set_digest_none(bool val)
 {
 	g_digest_none = val;
-	log_info("[mTLS] DIGEST_NONE mode: %s", val ? "ON (TEE)" : "OFF (software KeyMint)");
+	log_info("[mTLS] DIGEST_NONE mode: %s", val ? "ON (caller pre-hashes)" : "OFF (KeyMint hashes)");
 }
 
 // Binder 线程池初始化（确保在首次 AIDL 调用前完成）
@@ -107,6 +107,107 @@ static bool parsePSSSignatureScheme(uint16_t sig_alg, Digest &outDigest)
 }
 
 
+// KeyMint 的 ECDSA 签名输出是原始 r||s 拼接（P-256 各 32 字节），
+// 而 TLS CertificateVerify (RFC 5246 §7.4.8 / RFC 8446 §4.2.3)
+// 要求 DER 编码的 ECDSA-Sig-Value。BoringSSL 的 SSL_PRIVATE_KEY_METHOD
+// 会把 sign 回调的输出原样写入握手报文，因此必须先转换。
+// 这里手工编码 DER（SEQUENCE { INTEGER r, INTEGER s }），不依赖
+// BoringSSL/OpenSSL 头文件，避免引入额外的链接依赖。
+static void encodeDerInteger(std::vector<uint8_t> &out, const uint8_t *val, size_t len)
+{
+	size_t start = 0;
+	while (start + 1 < len && val[start] == 0)
+		start++; // 去掉前导 0 字节（至少保留 1 字节）
+
+	std::vector<uint8_t> body(val + start, val + len);
+	if (body[0] & 0x80)
+		body.insert(body.begin(), 0x00); // DER INTEGER 有符号，最高位为 1 时补 0x00
+
+	out.push_back(0x02); // INTEGER tag
+	out.push_back(static_cast<uint8_t>(body.size()));
+	out.insert(out.end(), body.begin(), body.end());
+}
+
+static bool ecdsaRawToDer(const std::vector<uint8_t> &raw, std::vector<uint8_t> &der)
+{
+	if (raw.size() < 2 || (raw.size() % 2) != 0)
+		return false;
+
+	const size_t half = raw.size() / 2;
+	der.clear();
+	encodeDerInteger(der, raw.data(), half);
+	encodeDerInteger(der, raw.data() + half, half);
+
+	// 总长 ≤ 72 字节（P-256 时 r/s 各 ≤ 33 字节），长度用单字节编码即可
+	der.insert(der.begin(), static_cast<uint8_t>(der.size()));
+	der.insert(der.begin(), 0x30); // SEQUENCE tag
+	return true;
+}
+
+// 读取 DER 长度字段（短格式 / 0x81、0x82 长格式），成功返回内容长度，失败返回 -1。
+// ECDSA 签名体最大约 139 字节（P-521：内容长 136 > 127，需要 0x81 长格式），
+// 长格式长度不会超过 2 字节；0x80（不定长，非 DER）和更长格式均非法。
+static int derReadLength(const std::vector<uint8_t> &in, size_t &pos)
+{
+	if (pos >= in.size())
+		return -1;
+	uint8_t b = in[pos++];
+	if ((b & 0x80) == 0)
+		return b; // 短格式 (0x00 ~ 0x7F)
+
+	int numBytes = b & 0x7F;
+	if (numBytes == 0 || numBytes > 2)
+		return -1; // 不定长格式 (0x80) / 超长格式，ECDSA 用不到
+	int len = 0;
+	for (int i = 0; i < numBytes; i++) {
+		if (pos >= in.size())
+			return -1;
+		len = (len << 8) | in[pos++];
+	}
+	return len;
+}
+
+// 判断签名是否已是合法的 DER ECDSA-Sig-Value: SEQUENCE { INTEGER r, INTEGER s }
+static bool looksLikeDerEcdsaSig(const std::vector<uint8_t> &in)
+{
+	if (in.size() < 6 || in[0] != 0x30)
+		return false;
+	size_t pos = 1;
+	int contentLen = derReadLength(in, pos);
+	if (contentLen < 4 || (size_t) contentLen + pos != in.size())
+		return false;
+
+	for (int i = 0; i < 2; i++) { // SEQUENCE 内应为两个 INTEGER
+		if (pos >= in.size() || in[pos] != 0x02)
+			return false;
+		pos++;
+		int intLen = derReadLength(in, pos);
+		if (intLen <= 0 || (size_t) intLen > in.size() - pos)
+			return false;
+		pos += intLen;
+	}
+	return pos == in.size();
+}
+
+// 将 KeyMint 的 ECDSA 签名统一为 TLS CertificateVerify 所需的
+// DER ECDSA-Sig-Value。签名输出格式因实现而异：
+//   - 模拟器 SW KeyMint 直接返回 DER 编码（P-256 约 70~72 字节）
+//   - 真机 TEE (KeyMint) 返回原始 r||s 拼接（P-256 固定 64 字节）
+// 因此先探测：已是合法 DER 则原样透传，否则按 raw r||s 转换。
+static bool ecdsaSignatureToDer(const std::vector<uint8_t> &in,
+                                std::vector<uint8_t> &der)
+{
+	if (looksLikeDerEcdsaSig(in)) {
+		der = in; // 已是 DER，直接透传
+		return true;
+	}
+	if (in.size() >= 2 && (in.size() % 2) == 0) {
+		return ecdsaRawToDer(in, der); // raw r||s → DER
+	}
+	return false;
+}
+
+
 // C 可见的初始化函数，由 open_config_init (主线程) 调用
 extern "C" int keystore2_sign(const char *alias_cstr, int namespace_id,
 			      const uint8_t *digest, int digest_len,
@@ -170,6 +271,14 @@ extern "C" int keystore2_sign(const char *alias_cstr, int namespace_id,
 		keymintDigest = Digest::NONE;
 	} else {
 		// 模拟器软件 KeyMint 模式：需要指定具体 digest（不支持 DIGEST_NONE）
+		//
+		// 注意 digest 模式必须与 TLS 版本匹配：
+		//   - TLS 1.2：BoringSSL 的自定义私钥回调收到的是未哈希的原始握手
+		//     转录（handshake_client.c::ssl3_send_cert_verify），必须由
+		//     KeyMint 做摘要 → digest_none 应为 false（本模式）
+		//   - TLS 1.3：BoringSSL 传入的是已预计算的摘要（tls13_both.c
+		//     tls13_add_certificate_verify），KeyMint 若再哈希一次签名
+		//     就会错误 → 应使用 digest_none=true 的 TEE 模式
 		if (parsePSSSignatureScheme(sig_alg, keymintDigest)) {
 			isPSS          = true;
 			keymintPadding = PaddingMode::RSA_PSS;
@@ -232,12 +341,26 @@ extern "C" int keystore2_sign(const char *alias_cstr, int namespace_id,
 		return -1;
 	}
 
-	int sig_len = output_signature.value().size();
+	// KeyMint 的 ECDSA 签名格式因实现而异（SW KeyMint 返回 DER、
+	// TEE 返回 raw r||s），统一转换为 TLS CertificateVerify 所需的
+	// DER ECDSA-Sig-Value 后写入握手报文
+	bool isEcdsa = ((sig_alg & 0xFF) == 0x03);
+	std::vector<uint8_t> sig_bytes;
+	if (isEcdsa) {
+		if (!ecdsaSignatureToDer(output_signature.value(), sig_bytes)) {
+			log_error("[mTLS] ECDSA signature format conversion failed! len=%zu",
+			          output_signature.value().size());
+			return -1;
+		}
+	} else {
+		sig_bytes = output_signature.value();
+	}
+
+	int sig_len = (int) sig_bytes.size();
 	if (sig_len > sig_max)
 		return -1;
 
-	std::copy(output_signature.value().begin(),
-		  output_signature.value().end(), sig_out);
+	std::copy(sig_bytes.begin(), sig_bytes.end(), sig_out);
 	log_info("[mTLS] TEE hardware signing succeeded! sig_alg=0x%04x size: %d bytes",
 	         (int)sig_alg, sig_len);
 

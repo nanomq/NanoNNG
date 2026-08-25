@@ -61,7 +61,10 @@ extern "C" {
 #define NANOMQ_KEYSTORE2_NAMESPACE -1
 #endif
 #ifndef KEYSTORE2_USE_DIGEST_NONE
-#define KEYSTORE2_USE_DIGEST_NONE true
+// 默认 OFF: BoringSSL SSL_PRIVATE_KEY_METHOD sign 回调传入未哈希输入
+// (TLS1.3 signed_content / TLS1.2 原始转录), 须由 KeyMint 自行哈希。
+// ON 仅适用于调用方已预哈希的场景 (Conscrypt/Java TLS 栈语义)。
+#define KEYSTORE2_USE_DIGEST_NONE false
 #endif
 
 #define PARQUET_WRAP_ALG_NMQ_CONF_CIPHER_AES_GCM_BASE64 \
