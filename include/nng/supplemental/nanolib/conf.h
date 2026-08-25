@@ -53,6 +53,20 @@ extern "C" {
 #define RULE_ENG_PDB (1 << 4)
 #define RULE_ENG_TDB (1 << 5)
 
+// 用户可通过 CMake option 或编译定义, 或运行时配置覆盖以下默认值
+#ifndef NANOMQ_KEYSTORE2_ALIAS
+#define NANOMQ_KEYSTORE2_ALIAS "ecu-client-certificate"
+#endif
+#ifndef NANOMQ_KEYSTORE2_NAMESPACE
+#define NANOMQ_KEYSTORE2_NAMESPACE -1
+#endif
+#ifndef KEYSTORE2_USE_DIGEST_NONE
+// 默认 OFF: BoringSSL SSL_PRIVATE_KEY_METHOD sign 回调传入未哈希输入
+// (TLS1.3 signed_content / TLS1.2 原始转录), 须由 KeyMint 自行哈希。
+// ON 仅适用于调用方已预哈希的场景 (Conscrypt/Java TLS 栈语义)。
+#define KEYSTORE2_USE_DIGEST_NONE false
+#endif
+
 #define PARQUET_WRAP_ALG_NMQ_CONF_CIPHER_AES_GCM_BASE64 \
 	"NMQ_CONF_CIPHER_AES_GCM_BASE64"
 
@@ -92,6 +106,11 @@ struct conf_tls {
 	mqtt_buf
 	      encrypted_key; // binary after base64 decode of encrypted_key_b64
 	char *sni;
+
+	// Android Keystore2 配置 (运行时覆盖编译期宏)
+	char *keystore_alias;     // 证书别名, 默认 NANOMQ_KEYSTORE2_ALIAS
+	int   keystore_namespace; // SELinux 命名空间, 默认 NANOMQ_KEYSTORE2_NAMESPACE
+	bool  keystore_digest_none; // TEE DIGEST_NONE 模式, 默认 KEYSTORE2_USE_DIGEST_NONE
 };
 
 typedef struct conf_tls conf_tls;
