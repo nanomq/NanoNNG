@@ -269,7 +269,10 @@ open_conn_close(nng_tls_engine_conn *ec)
 static int
 open_conn_handshake(nng_tls_engine_conn *ec)
 {
+	int ensz;
 	int rv;
+	int sz;
+
 	print_trace();
 	if (ec->ok == 1)
 		return 0;
@@ -281,7 +284,6 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 				"openssl handshake still in process rv%d", rv);
 	}
 	if (rv == SSL_ERROR_WANT_READ || rv == SSL_ERROR_WANT_WRITE) {
-		int ensz, sz;
 		while ((ensz = open_net_read(ec->tls, ec->wbuf, OPEN_BUF_SZ)) > 0) {
 			sz = BIO_write(ec->rbio, ec->wbuf, ensz);
 			log_debug("NNG-TLS-CONN-HANDSHAKE" "BIO write sz%d/%d", sz, ensz);
@@ -299,41 +301,38 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 			}
 			SSL_do_handshake(ec->ssl);
 		}
+	} else if (rv != SSL_ERROR_NONE) {
+		open_log_ssl_error("NNG-TLS-CONN-HANDSHAKE SSL_do_handshake", rv);
+		return NNG_ECRYPTO;
+	}
 
-		while ((ensz = BIO_read(ec->wbio, ec->rbuf, OPEN_BUF_SZ)) > 0) {
-			log_debug("NNG-TLS-CONN-HANDSHAKE" "BIO read rv%d", ensz);
-			if (ensz < 0) {
-				if (!BIO_should_retry(ec->wbio)) {
-					log_warn("NNG-TLS-CONN-HANDSHAKE"
-						"openssl BIO read failed rv%d", ensz);
-					open_log_ssl_error(
-					    "NNG-TLS-CONN-HANDSHAKE BIO_read", 0);
-					return NNG_ECRYPTO;
-				}
-				continue;
+	while ((ensz = BIO_read(ec->wbio, ec->rbuf, OPEN_BUF_SZ)) > 0) {
+		log_debug("NNG-TLS-CONN-HANDSHAKE" "BIO read rv%d", ensz);
+		if (ensz < 0) {
+			if (!BIO_should_retry(ec->wbio)) {
+				log_warn("NNG-TLS-CONN-HANDSHAKE"
+					"openssl BIO read failed rv%d", ensz);
+				open_log_ssl_error(
+				    "NNG-TLS-CONN-HANDSHAKE BIO_read", 0);
+				return NNG_ECRYPTO;
 			}
-			sz = open_net_write(ec->tls, ec->rbuf, ensz);
-			if (sz == 0 - SSL_ERROR_WANT_READ || sz == 0 - SSL_ERROR_WANT_WRITE)
-				return (NNG_EAGAIN);
-			else if (sz < 0)
-				return (NNG_ECLOSED);
-			SSL_do_handshake(ec->ssl);
+			continue;
 		}
-		if (SSL_is_init_finished(ec->ssl)) {
-			goto finished;
-		}
+		sz = open_net_write(ec->tls, ec->rbuf, ensz);
+		if (sz == 0 - SSL_ERROR_WANT_READ || sz == 0 - SSL_ERROR_WANT_WRITE)
+			return (NNG_EAGAIN);
+		else if (sz < 0)
+			return (NNG_ECLOSED);
+		SSL_do_handshake(ec->ssl);
+	}
+	if (!SSL_is_init_finished(ec->ssl)) {
+		return (NNG_EAGAIN);
+	}
 
-		return NNG_EAGAIN;
-	}
-	if (rv == SSL_ERROR_NONE) {
-finished:
-		log_warn("NNG-TLS-CONN-HANDSHAKE"
-				"openssl do handshake successfully");
-		ec->ok = 1;
-		return 0;
-	}
-	open_log_ssl_error("NNG-TLS-CONN-HANDSHAKE SSL_do_handshake", rv);
-	return NNG_ECRYPTO;
+	log_warn("NNG-TLS-CONN-HANDSHAKE"
+			"openssl do handshake successfully");
+	ec->ok = 1;
+	return 0;
 }
 
 static int
@@ -820,12 +819,14 @@ static int
 open_config_version(nng_tls_engine_config *cfg, nng_tls_version min_ver,
     nng_tls_version max_ver)
 {
-	if ((min_ver > max_ver) || (max_ver > NNG_TLS_1_3)) {
+	if ((min_ver < NNG_TLS_1_0) || (min_ver > max_ver) ||
+	    (max_ver > NNG_TLS_1_3)) {
 		return (NNG_ENOTSUP);
 	}
-	// TODO
-	(void) cfg;
-
+	if (!SSL_CTX_set_min_proto_version(cfg->ctx, min_ver) ||
+	    !SSL_CTX_set_max_proto_version(cfg->ctx, max_ver)) {
+		return (NNG_ECRYPTO);
+	}
 	return (0);
 }
 

@@ -149,6 +149,67 @@ test_tls_large_message(void)
 }
 
 void
+test_tls_mutual_auth(void)
+{
+	nng_stream_listener *l;
+	nng_stream_dialer *  d;
+	nng_aio *            aio1, *aio2;
+	nng_stream *         s1;
+	nng_stream *         s2;
+	nng_tls_config *     c1;
+	nng_tls_config *     c2;
+	char                 addr[32];
+	int                  port;
+
+	NUTS_PASS(nng_aio_alloc(&aio1, NULL, NULL));
+	NUTS_PASS(nng_aio_alloc(&aio2, NULL, NULL));
+	nng_aio_set_timeout(aio1, 5000);
+	nng_aio_set_timeout(aio2, 5000);
+
+	NUTS_PASS(nng_stream_listener_alloc(&l, "tls+tcp://127.0.0.1:0"));
+	NUTS_PASS(nng_tls_config_alloc(&c1, NNG_TLS_MODE_SERVER));
+	NUTS_PASS(nng_tls_config_version(c1, NNG_TLS_1_2, NNG_TLS_1_2));
+	NUTS_PASS(nng_tls_config_own_cert(
+	    c1, nuts_server_crt, nuts_server_key, NULL));
+	NUTS_PASS(nng_tls_config_ca_chain(c1, nuts_server_crt, NULL));
+	NUTS_PASS(
+	    nng_tls_config_auth_mode(c1, NNG_TLS_AUTH_MODE_REQUIRED));
+	NUTS_PASS(nng_stream_listener_set_ptr(l, NNG_OPT_TLS_CONFIG, c1));
+	NUTS_PASS(nng_stream_listener_listen(l));
+	NUTS_PASS(
+	    nng_stream_listener_get_int(l, NNG_OPT_TCP_BOUND_PORT, &port));
+
+	snprintf(addr, sizeof (addr), "tls+tcp://127.0.0.1:%d", port);
+	NUTS_PASS(nng_stream_dialer_alloc(&d, addr));
+	NUTS_PASS(nng_tls_config_alloc(&c2, NNG_TLS_MODE_CLIENT));
+	NUTS_PASS(nng_tls_config_version(c2, NNG_TLS_1_2, NNG_TLS_1_2));
+	NUTS_PASS(nng_tls_config_own_cert(
+	    c2, nuts_server_crt, nuts_server_key, NULL));
+	NUTS_PASS(nng_tls_config_ca_chain(c2, nuts_server_crt, NULL));
+	NUTS_PASS(nng_tls_config_server_name(c2, "localhost"));
+	NUTS_PASS(nng_stream_dialer_set_ptr(d, NNG_OPT_TLS_CONFIG, c2));
+
+	nng_stream_listener_accept(l, aio1);
+	nng_stream_dialer_dial(d, aio2);
+	nng_aio_wait(aio1);
+	nng_aio_wait(aio2);
+
+	NUTS_PASS(nng_aio_result(aio1));
+	NUTS_PASS(nng_aio_result(aio2));
+	NUTS_TRUE((s1 = nng_aio_get_output(aio1, 0)) != NULL);
+	NUTS_TRUE((s2 = nng_aio_get_output(aio2, 0)) != NULL);
+
+	nng_stream_free(s1);
+	nng_stream_free(s2);
+	nng_stream_dialer_free(d);
+	nng_stream_listener_free(l);
+	nng_tls_config_free(c1);
+	nng_tls_config_free(c2);
+	nng_aio_free(aio1);
+	nng_aio_free(aio2);
+}
+
+void
 test_tls_garbled_cert(void)
 {
 	nng_stream_listener *l;
@@ -476,6 +537,7 @@ TEST_LIST = {
 	{ "tls config version", test_tls_config_version },
 	{ "tls conn refused", test_tls_conn_refused },
 	{ "tls large message", test_tls_large_message },
+	{ "tls mutual auth", test_tls_mutual_auth },
 	{ "tls garbled cert", test_tls_garbled_cert },
 	{ "tls psk", test_tls_psk },
 	{ "tls psk server identities", test_tls_psk_server_identities },
