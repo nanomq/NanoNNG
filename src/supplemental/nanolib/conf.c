@@ -1383,14 +1383,14 @@ print_parquet_conf(conf_parquet *parquet)
 		    encryption->type == 0 ? "AES_GCM_V1" : "AES_GCM_CTR_V1");
 	}
 	log_info("parquet file_name_prefix: %s", parquet->file_name_prefix);
-	log_info("parquet file_count:       %d", parquet->file_count);
-	log_info("parquet file_size:        %d", parquet->file_size);
-	log_info("parquet limit_frequency:  %d", parquet->limit_frequency);
+	log_info("parquet file_count:       %u", parquet->file_count);
+	log_info("parquet file_size:        %" PRIu64, parquet->file_size);
+	log_info("parquet limit_frequency:  %u", parquet->limit_frequency);
 	log_info("parquet compression_level:%d", parquet->compression_level);
 	log_info("parquet dictionary:       %s",
 	    parquet->dictionary ? "enable" : "disable");
-	log_info("parquet data_page_size:   %lu", parquet->data_page_size);
-	log_info("parquet dictionary_page_size: %lu",
+	log_info("parquet data_page_size:   %" PRIu64, parquet->data_page_size);
+	log_info("parquet dictionary_page_size: %" PRIu64,
 	    parquet->dictionary_page_size);
 	log_info("parquet write_batch_size: %u", parquet->write_batch_size);
 	log_info("parquet enable_statistics:%s",
