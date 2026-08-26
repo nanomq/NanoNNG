@@ -5,12 +5,12 @@
 
 // Select Arrow encryption key API.
 // Default 14: std::string keys + FileDecryptionProperties::DeepClone().
-// Set NNG_ARROW_VERSION_MAJOR>=15 (CMake -DNNG_ARROW_VERSION_MAJOR=15) for
-// SecureString-based APIs (no DeepClone).
+// SecureString APIs landed in Arrow 22.0.0 (GH-31603 / #46017); set
+// NNG_ARROW_VERSION_MAJOR>=22 (CMake -DNNG_ARROW_VERSION_MAJOR=22).
 #ifndef NNG_ARROW_VERSION_MAJOR
 #define NNG_ARROW_VERSION_MAJOR 14
 #endif
-#if NNG_ARROW_VERSION_MAJOR >= 15
+#if NNG_ARROW_VERSION_MAJOR >= 22
 #include <arrow/util/secure_string.h>
 #endif
 
@@ -78,7 +78,7 @@ atomic_bool is_available = false;
 
 #define UINT64_MAX_DIGITS 20
 
-#if NNG_ARROW_VERSION_MAJOR >= 15
+#if NNG_ARROW_VERSION_MAJOR >= 22
 static arrow::util::SecureString
 parquet_make_secure_string(const char *key)
 {
@@ -408,7 +408,7 @@ parquet_set_encryption(char **schema_arr, uint32_t schema_len, conf_parquet *con
 		const char *col_name = schema_arr[i];
 		parquet::ColumnEncryptionProperties::Builder col_builder(
 		    col_name);
-#if NNG_ARROW_VERSION_MAJOR >= 15
+#if NNG_ARROW_VERSION_MAJOR >= 22
 		col_builder.key(parquet_make_secure_string(conf->encryption.key))
 		    ->key_metadata("col_key_metadata");
 #else
@@ -418,7 +418,7 @@ parquet_set_encryption(char **schema_arr, uint32_t schema_len, conf_parquet *con
 		column_encryption_map[col_name] = col_builder.build();
 	}
 
-#if NNG_ARROW_VERSION_MAJOR >= 15
+#if NNG_ARROW_VERSION_MAJOR >= 22
 	parquet::FileEncryptionProperties::Builder file_encryption_builder(
 	    parquet_make_secure_string(conf->encryption.key));
 #else
@@ -1050,7 +1050,7 @@ parquet_read_set_property(
 {
 	if (key != NULL && strlen(key) > 0) {
 		parquet::FileDecryptionProperties::Builder builder;
-#if NNG_ARROW_VERSION_MAJOR >= 15
+#if NNG_ARROW_VERSION_MAJOR >= 22
 		shared_ptr<parquet::FileDecryptionProperties>
 		    decryption_configuration =
 		        builder.footer_key(parquet_make_secure_string(key))
@@ -1066,7 +1066,7 @@ parquet_read_set_property(
 		            ->key_retriever(
 		                std::make_shared<UniformKeyRetriever>(key))
 		            ->build();
-		// Arrow 14 requires a deep clone before attaching to reader props.
+		// Arrow <22 requires a deep clone before attaching to reader props.
 		reader_properties.file_decryption_properties(
 		    decryption_configuration->DeepClone());
 #endif
