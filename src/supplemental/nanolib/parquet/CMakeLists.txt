@@ -9,10 +9,10 @@ if(NNG_ENABLE_PARQUET)
     endif(ENABLE_PARQUET_SHARED)
 
     # Arrow encryption key API: 14 = std::string + DeepClone (default),
-    # >=15 = SecureString (no DeepClone). Override with
+    # >=22 = SecureString (Arrow 22.0.0+, no DeepClone). Override with
     # -DNNG_ARROW_VERSION_MAJOR=<major>.
     set(NNG_ARROW_VERSION_MAJOR 14 CACHE STRING
-        "Arrow major version for parquet encryption API (14 or >=15)")
+        "Arrow major version for parquet encryption API (14 or >=22)")
     nng_defines(NNG_ARROW_VERSION_MAJOR=${NNG_ARROW_VERSION_MAJOR})
     message(STATUS "Parquet NNG_ARROW_VERSION_MAJOR=${NNG_ARROW_VERSION_MAJOR}")
 
