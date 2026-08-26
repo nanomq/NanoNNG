@@ -289,6 +289,26 @@ test_get_time_days(void)
 	// If not supported, should fail gracefully
 }
 
+void
+test_stream_codec_id_from_number(void)
+{
+	uint8_t id = 0;
+
+	NUTS_PASS(conf_stream_codec_id_from_number(0x10, &id));
+	NUTS_TRUE(id == 0x10);
+	NUTS_PASS(conf_stream_codec_id_from_number(17, &id));
+	NUTS_TRUE(id == 17);
+	NUTS_PASS(conf_stream_codec_id_from_number(0x7F, &id));
+	NUTS_TRUE(id == 0x7F);
+
+	NUTS_FAIL(conf_stream_codec_id_from_number(0, &id), -1);
+	NUTS_FAIL(conf_stream_codec_id_from_number(2, &id), -1);
+	NUTS_FAIL(conf_stream_codec_id_from_number(0x80, &id), -1);
+	NUTS_FAIL(conf_stream_codec_id_from_number(17.5, &id), -1);
+	NUTS_FAIL(conf_stream_codec_id_from_number(-1, &id), -1);
+	NUTS_FAIL(conf_stream_codec_id_from_number(17, NULL), -1);
+}
+
 NUTS_TESTS = {
    {"get size", test_get_size},
    {"get time", test_get_time},
@@ -307,5 +327,6 @@ NUTS_TESTS = {
    {"conf fini null", test_conf_fini_null},
    {"get size bytes unit", test_get_size_bytes_unit},
    {"get time days", test_get_time_days},
+   {"stream codec id range", test_stream_codec_id_from_number},
    {NULL, NULL}
 };
