@@ -478,6 +478,11 @@ struct conf_stream_plugin_node {
 	uint32_t              queue_cap;
 	stream_plugin_full_op full_op;
 
+	// Optional exchange schema codec (streamType 0x10~0x7F).
+	// When set, path is required; topic is optional (codec-only plugin).
+	uint8_t codec_id;
+	char   *codec_name;
+
 	// runtime
 	void *handle;
 	void *runtime;
