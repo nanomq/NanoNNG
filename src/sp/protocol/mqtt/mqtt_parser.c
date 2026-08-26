@@ -708,11 +708,15 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 			if (cparam->will_properties) {
 				conn_param_set_will_property(
 				    cparam, cparam->will_properties);
-				if ((rv = check_properties(
-						cparam->will_properties, NULL)) != SUCCESS) {
+				if ((rv = check_will_properties(
+						cparam->will_properties)) != SUCCESS) {
 					log_info("Malformed CONNECT: check will property failed");
-					return PROTOCOL_ERROR;
+					return rv;
 				}
+				// will_delay_interval is valid on reception
+				// but not when publishing the will message
+				property_remove(cparam->will_properties,
+				    WILL_DELAY_INTERVAL);
 			} else {
 				log_warn("property decode failed!");
 			}
@@ -1196,6 +1200,10 @@ nano_dismsg_composer(reason_code code, char* rstr, uint8_t *ref, property *prop)
 	{
 	case PROTOCOL_ERROR:
 		buf[0] = (uint8_t)PROTOCOL_ERROR;
+		nng_msg_append(msg, buf, 1);
+		break;
+	case MALFORMED_PACKET:
+		buf[0] = (uint8_t)MALFORMED_PACKET;
 		nng_msg_append(msg, buf, 1);
 		break;
 	default:
