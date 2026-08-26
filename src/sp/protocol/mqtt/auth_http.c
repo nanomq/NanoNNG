@@ -318,7 +318,8 @@ nmq_auth_http_connect(conn_param *cparam, conf_auth_http *conf)
 		return NOT_AUTHORIZED;
 	}
 
-	if (conf->enable == false || conf->auth_req.url == NULL) {
+	if (conf->enable == false || conf->auth_req.url == NULL ||
+	    conf->auth_req.enable == false) {
 		log_info("HTTP Authentication is not enabled!");
 		return SUCCESS;
 	}
