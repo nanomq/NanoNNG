@@ -480,6 +480,7 @@ struct conf_stream_plugin_node {
 
 	// Optional exchange schema codec (streamType 0x10~0x7F).
 	// When set, path is required; topic is optional (codec-only plugin).
+	// conf parse rejects codec.id outside integer range [16, 127].
 	uint8_t codec_id;
 	char   *codec_name;
 
@@ -789,6 +790,8 @@ webhook_event get_webhook_event(const char *hook_type, const char *hook_name);
 NNG_DECL int  get_size(const char *str, uint64_t *size);
 NNG_DECL int  get_time(const char *str, uint64_t *second);
 NNG_DECL int  get_time_ms(const char *str, uint64_t *second);
+/* Return 0 and set *out when v is an integer in [0x10, 0x7F]; else -1. */
+NNG_DECL int  conf_stream_codec_id_from_number(double v, uint8_t *out);
 NNG_DECL void conf_parse(conf *nanomq_conf);
 NNG_DECL void conf_parse_ver2(conf *nanomq_conf, bool is_reload);
 NNG_DECL void conf_parse_cipher(conf *nanomq_conf, const char *key, const char *key2, const char *key3);
