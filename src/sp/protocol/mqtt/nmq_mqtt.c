@@ -736,20 +736,6 @@ auth_verify:
 		nni_msg_free(msg);
 		return NNG_ECONNSHUT;
 	}
-	int total = nni_id_count(&s->pipes);
-	log_debug("Total connection num %d", total);
-	nng_atomic_set(s->conf->lc, total);
-#if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
-	if (total > (int)s->lc) {
-		rv = QUOTA_EXCEEDED;
-		log_warn("Max Quota %d exceed, %s disconneted",
-			s->lc, clientid);
-	}
-	if (s->lic_valid == false) {
-		rv = QUOTA_EXCEEDED;
-		log_warn("License expired, %s disconneted", clientid);
-	}
-#endif
 	nmq_connack_encode(msg, s->conf, p->conn_param, rv);
 	// CONNECT verification and the HTTP auth callback above run outside
 	// s->lk, so the pipe may have been closed in the meantime (client
@@ -829,6 +815,20 @@ auth_verify:
 	p->conn_param->nano_qos_db = p->pipe->nano_qos_db;
 	p->nano_qos_db             = p->pipe->nano_qos_db;
 
+	int total = nni_id_count(&s->pipes);
+	log_warn("Total connection num %d", total);
+	nng_atomic_set(s->conf->lc, total);
+#if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
+	if (total > (int)s->lc) {
+		rv = QUOTA_EXCEEDED;
+		log_warn("Max Quota %d exceed, %s disconneted",
+			s->lc, clientid);
+	}
+	if (s->lic_valid == false) {
+		rv = QUOTA_EXCEEDED;
+		log_warn("License expired, %s disconneted", clientid);
+	}
+#endif
 	// Recover preset sessions
 	void *qos_db = NULL;
 	if (s->conf->ext_qos_db) {
