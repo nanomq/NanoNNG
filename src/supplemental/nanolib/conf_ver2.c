@@ -1967,6 +1967,7 @@ conf_stream_plugin_destroy(conf_stream_plugin *sp)
 		nng_strfree(n->path);
 		nng_strfree(n->topic);
 		nng_strfree(n->name);
+		nng_strfree(n->codec_name);
 		NNI_FREE_STRUCT(n);
 	}
 	cvector_free(sp->nodes);
@@ -2030,11 +2031,24 @@ conf_stream_plugin_parse_ver2(conf *config, cJSON *jso)
 			           : STREAM_PLUGIN_FULL_DROP;
 		}
 
-		if (node->path == NULL || node->topic == NULL) {
-			log_error("stream_plugin: path/topic required");
+		cJSON *jcodec = cJSON_GetObjectItem(node_item, "codec");
+		if (jcodec && cJSON_IsObject(jcodec)) {
+			cJSON *jid = cJSON_GetObjectItem(jcodec, "id");
+			if (jid && cJSON_IsNumber(jid)) {
+				node->codec_id = (uint8_t) jid->valuedouble;
+			}
+			cJSON *jname = cJSON_GetObjectItem(jcodec, "name");
+			if (jname && cJSON_IsString(jname) && jname->valuestring) {
+				node->codec_name = nng_strdup(jname->valuestring);
+			}
+		}
+
+		if (node->path == NULL || (node->topic == NULL && node->codec_id == 0)) {
+			log_error("stream_plugin: path and (topic or codec.id) required");
 			if (node->path) nng_strfree(node->path);
 			if (node->topic) nng_strfree(node->topic);
 			if (node->name) nng_strfree(node->name);
+			if (node->codec_name) nng_strfree(node->codec_name);
 			NNI_FREE_STRUCT(node);
 			continue;
 		}
