@@ -168,8 +168,11 @@ keystore2_private_key_sign(SSL *ssl, uint8_t *out, size_t *out_len,
                            size_t max_out, uint16_t signature_algorithm,
                            const uint8_t *in, size_t in_len)
 {
+    log_info("TLS-PRIVKEY-SIGN sigalg=0x%04x in_len=%zu max_out=%zu",
+        signature_algorithm, in_len, max_out);
     int ret = keystore2_sign(g_keystore2_alias, g_keystore2_namespace,
                              in, (int)in_len, signature_algorithm, out, (int)max_out);
+    log_info("TLS-PRIVKEY-SIGN ret=%d", ret);
     if (ret > 0) {
         *out_len = (size_t)ret;
         return ssl_private_key_success;
@@ -602,6 +605,60 @@ open_conn_close(nng_tls_engine_conn *ec)
 	trace("end");
 }
 
+// 将 BoringSSL 错误队列导出到 nanomq 日志。
+// 替代 ERR_print_errors_fp(stderr)：stderr 不进日志文件，实车上无法看到具体错误原因。
+static void
+nng_tls_dump_ssl_errors(const char *tag)
+{
+	unsigned long err;
+	char          buf[256];
+	while ((err = ERR_get_error()) != 0) {
+		ERR_error_string_n(err, buf, sizeof(buf));
+		log_error("TLS-ERR[%s] %s", tag, buf);
+	}
+}
+
+// 握手失败瞬间的快照：验证结果 + 协商状态 + 对端证书身份
+static void
+nng_tls_log_hs_failure(nng_tls_engine_conn *ec, const char *tag)
+{
+	long vr = SSL_get_verify_result(ec->ssl);
+	log_error("TLS-HS-FAIL[%s] verify_result=%ld(%s) ssl_version=%d", tag, vr,
+	    X509_verify_cert_error_string(vr), SSL_version(ec->ssl));
+	const SSL_CIPHER *c = SSL_get_current_cipher(ec->ssl);
+	if (c) {
+		log_error("TLS-HS-FAIL[%s] cipher=%s", tag, SSL_CIPHER_get_name(c));
+	}
+	X509 *peer = SSL_get_peer_certificate(ec->ssl);
+	if (peer) {
+		char subj[256] = {0}, iss[256] = {0};
+		X509_NAME_oneline(X509_get_subject_name(peer), subj, sizeof(subj));
+		X509_NAME_oneline(X509_get_issuer_name(peer), iss, sizeof(iss));
+		log_error("TLS-HS-FAIL[%s] peer subject=[%s] issuer=[%s]", tag, subj,
+		    iss);
+		X509_free(peer);
+	} else {
+		log_error("TLS-HS-FAIL[%s] no peer certificate", tag);
+	}
+}
+
+// 链校验回调：逐层打印每张证书的校验结果，不改变校验结果
+static int
+nng_tls_verify_cb(int preverify_ok, X509_STORE_CTX *ctx)
+{
+	X509 *cur   = X509_STORE_CTX_get_current_cert(ctx);
+	int   depth = X509_STORE_CTX_get_error_depth(ctx);
+	int   err   = X509_STORE_CTX_get_error(ctx);
+	char  subj[256] = {0}, iss[256] = {0};
+	if (cur) {
+		X509_NAME_oneline(X509_get_subject_name(cur), subj, sizeof(subj));
+		X509_NAME_oneline(X509_get_issuer_name(cur), iss, sizeof(iss));
+	}
+	log_warn("TLS-VERIFY depth=%d ok=%d err=%d(%s) subj=[%s] iss=[%s]", depth,
+	    preverify_ok, err, X509_verify_cert_error_string(err), subj, iss);
+	return preverify_ok;
+}
+
 static int
 open_conn_handshake(nng_tls_engine_conn *ec)
 {
@@ -623,7 +680,8 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 		} else {
 			log_warn("NNG-TLS-CONN-HANDSHAKE"
 				"openssl handshake still in process rv%d", rv);
-			ERR_print_errors_fp(stderr);
+			nng_tls_dump_ssl_errors("hs");
+			nng_tls_log_hs_failure(ec, "hs");
 			return NNG_ECRYPTO;
 		}
 	} else {
@@ -649,13 +707,15 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 			if (rv != 1) {
 				rv = SSL_get_error(ec->ssl, rv);
 				if (rv == SSL_ERROR_WANT_READ || rv == SSL_ERROR_WANT_WRITE) {
+					log_debug("TLS-HS-STATE %s", SSL_state_string_long(ec->ssl));
 					continue;
 				} else if (rv == SSL_ERROR_NONE) {
 					log_warn("NNG-TLS-CONN-HANDSHAKE: " "should never reach here");
 				} else {
 					log_error("NNG-TLS-CONN-HANDSHAKE: "
 						"openssl handshake error %d", rv);
-					ERR_print_errors_fp(stderr);
+					nng_tls_dump_ssl_errors("hs");
+					nng_tls_log_hs_failure(ec, "hs");
 					return NNG_ECRYPTO;
 				}
 			} else {
@@ -679,13 +739,15 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 			if (rv != 1) {
 				rv = SSL_get_error(ec->ssl, rv);
 				if (rv == SSL_ERROR_WANT_READ || rv == SSL_ERROR_WANT_WRITE) {
+					log_debug("TLS-HS-STATE %s", SSL_state_string_long(ec->ssl));
 					continue;
 				} else if (rv == SSL_ERROR_NONE) {
 					log_warn("NNG-TLS-CONN-HANDSHAKE" "should never reach here");
 				} else {
 					log_error("NNG-TLS-CONN-HANDSHAKE"
 						"openssl handshake error %d", rv);
-					ERR_print_errors_fp(stderr);
+					nng_tls_dump_ssl_errors("hs");
+					nng_tls_log_hs_failure(ec, "hs");
 					return NNG_ECRYPTO;
 				}
 			} else {
@@ -746,7 +808,7 @@ readopenssl:
 		if (rv != SSL_ERROR_WANT_READ) {
 			log_error("NNG-TLS-CONN-RECV"
 				"openssl read failed rv%d", rv);
-			ERR_print_errors_fp(stderr);
+			nng_tls_dump_ssl_errors("recv");
 			return (NNG_ECRYPTO);
 		}
 		*szp = 0;
@@ -959,7 +1021,7 @@ open_config_init(nng_tls_engine_config *cfg, enum nng_tls_mode mode)
 	}
 	// Set max/min version TODO
 
-	SSL_CTX_set_verify(cfg->ctx, auth_mode, NULL);
+	SSL_CTX_set_verify(cfg->ctx, auth_mode, nng_tls_verify_cb);
 	//SSL_CTX_set_mode(cfg->ctx, SSL_MODE_AUTO_RETRY);
 	//SSL_CTX_set_options(cfg->ctx, SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
 
@@ -979,6 +1041,20 @@ open_config_init(nng_tls_engine_config *cfg, enum nng_tls_mode mode)
 			if (xcert != NULL) {
 				if (SSL_CTX_use_certificate(cfg->ctx, xcert) != 1) {
 					log_error("NNG-TLS-CFG-INIT: " "SSL_CTX_use_certificate failed");
+				}
+				{
+					char subj[256] = {0}, iss[256] = {0};
+					X509_NAME_oneline(X509_get_subject_name(xcert), subj,
+					    sizeof(subj));
+					X509_NAME_oneline(X509_get_issuer_name(xcert), iss,
+					    sizeof(iss));
+					ASN1_TIME *nb = X509_get_notBefore(xcert);
+					ASN1_TIME *na = X509_get_notAfter(xcert);
+					log_info("NNG-TLS-CFG-INIT: " "keystore cert subject=[%s] issuer=[%s] notBefore=%.*s notAfter=%.*s",
+					    subj, iss, nb ? (int) ASN1_STRING_length(nb) : 0,
+					    nb ? (const char *) ASN1_STRING_data(nb) : "",
+					    na ? (int) ASN1_STRING_length(na) : 0,
+					    na ? (const char *) ASN1_STRING_data(na) : "");
 				}
 				X509_free(xcert);
 				log_info("NNG-TLS-CFG-INIT: " "Keystore2 certificate installed successfully");
@@ -1034,17 +1110,17 @@ open_config_auth_mode(nng_tls_engine_config *cfg, nng_tls_auth_mode mode)
 	// XXX: REMOVE ME
 	switch (mode) {
 	case NNG_TLS_AUTH_MODE_NONE:
-		SSL_CTX_set_verify(cfg->ctx, SSL_VERIFY_NONE, NULL);
+		SSL_CTX_set_verify(cfg->ctx, SSL_VERIFY_NONE, nng_tls_verify_cb);
 		log_info("NNG-TLS-CFG-AUTH" "AUTH MODE: NONE");
 		return (0);
 	case NNG_TLS_AUTH_MODE_OPTIONAL:
-		SSL_CTX_set_verify(cfg->ctx, SSL_VERIFY_PEER, NULL);
+		SSL_CTX_set_verify(cfg->ctx, SSL_VERIFY_PEER, nng_tls_verify_cb);
 		log_info("NNG-TLS-CFG-AUTH" "AUTH MODE: OPTION");
 		return (0);
 	case NNG_TLS_AUTH_MODE_REQUIRED:
 	default:
 		SSL_CTX_set_verify(cfg->ctx,
-		    SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);
+		    SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, nng_tls_verify_cb);
 		log_info("NNG-TLS-CFG-AUTH" "AUTH MODE: REQUIRE");
 		return (0);
 	}
@@ -1184,8 +1260,10 @@ open_config_ca_chain(
 
 	X509 *cert = NULL;
 	X509_STORE *store = X509_STORE_new();
+	int nca = 0;
 
 	while ((cert = PEM_read_bio_X509(bio, NULL, 0, NULL)) != NULL) {
+		nca++;
 		if (X509_STORE_add_cert(store, cert) == 0) {
 			log_error("NNG-TLS-CFG-CACHAIN" "Failed to add certificate to store");
 			X509_free(cert);
@@ -1201,6 +1279,7 @@ open_config_ca_chain(
 			ERR_clear_error(); /* normal EOF */
 		}
 	}
+	log_info("cacert parsed %d certificates", nca);
 	SSL_CTX_set_cert_store(cfg->ctx, store);
 
 	BIO_free(bio);
@@ -1344,7 +1423,7 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	log_info("ctx %p cert %p rv%d", cfg->ctx, xcert, rv);
 	if ((rv = SSL_CTX_use_certificate(cfg->ctx, xcert)) <= 0) {
 		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to set certificate to SSL_CTX %d", rv);
-		ERR_print_errors_fp(stderr);
+		nng_tls_dump_ssl_errors("ownchain");
 		rv = NNG_EINVAL;
 		goto error;
 	}
@@ -1580,7 +1659,7 @@ open_config_option(nng_tls_engine_config *cfg, const char *name, void *v, size_t
 		} else {
 			if (SSL_CTX_set_alpn_protos(cfg->ctx,
 						(const unsigned char *)cfg->alpns, alpn_idx) != 0) {
-				ERR_print_errors_fp(stderr);
+				nng_tls_dump_ssl_errors("alpn");
 				return NNG_ECRYPTO;
 			}
 		}
