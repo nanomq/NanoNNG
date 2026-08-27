@@ -1588,6 +1588,40 @@ test_property_api(void)
 	NUTS_PASS(mqtt_property_free(plist));
 }
 
+void
+test_check_will_property_ids(void)
+{
+	property *plist = mqtt_property_alloc();
+
+	// The complete set of legal will properties.
+	mqtt_property_append(
+	    plist, mqtt_property_set_value_u32(WILL_DELAY_INTERVAL, 32));
+	mqtt_property_append(
+	    plist, mqtt_property_set_value_u8(PAYLOAD_FORMAT_INDICATOR, 1));
+	mqtt_property_append(
+	    plist, mqtt_property_set_value_u32(MESSAGE_EXPIRY_INTERVAL, 60));
+	mqtt_property_append(plist,
+	    mqtt_property_set_value_str(CONTENT_TYPE, "tp", 2, true));
+	mqtt_property_append(plist,
+	    mqtt_property_set_value_str(RESPONSE_TOPIC, "resp", 4, true));
+	mqtt_property_append(plist,
+	    mqtt_property_set_value_binary(
+	        CORRELATION_DATA, (uint8_t *) "cd", 2, true));
+	mqtt_property_append(plist,
+	    mqtt_property_set_value_strpair(
+	        USER_PROPERTY, "a", 1, "b", 1, true));
+
+	NUTS_TRUE(check_will_properties(plist) == SUCCESS);
+
+	// Session Expiry Interval is a CONNECT property, not a Will property.
+	mqtt_property_append(
+	    plist, mqtt_property_set_value_u32(SESSION_EXPIRY_INTERVAL, 10));
+
+	NUTS_TRUE(check_will_properties(plist) == MALFORMED_PACKET);
+
+	NUTS_PASS(mqtt_property_free(plist));
+}
+
 TEST_LIST = {
 	// TODO: there is still some encode & decode functions should be
 	// tested.
@@ -1640,5 +1674,6 @@ TEST_LIST = {
 	{ "test topic_qos create & free", test_topic_qos_array_create_free },
 	{ "test topic create & free", test_topic_array_create_free },
 	{ "test property api", test_property_api },
+	{ "check will property ids", test_check_will_property_ids },
 	{ NULL, NULL },
 };

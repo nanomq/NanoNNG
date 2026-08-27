@@ -4163,6 +4163,39 @@ check_properties(property *prop, nni_msg *msg)
 	return SUCCESS;
 }
 
+// Will properties live inside a CONNECT, so check_properties() cannot tell them
+// apart from the CONNECT's own properties, both reach it with a NULL msg.
+reason_code
+check_will_properties(property *prop)
+{
+	reason_code rc = check_properties(prop, NULL);
+
+	if (rc != SUCCESS || prop == NULL) {
+		return rc;
+	}
+
+	for (property *p = prop->next; p != NULL; p = p->next) {
+		switch (p->id) {
+		case WILL_DELAY_INTERVAL:
+		case PAYLOAD_FORMAT_INDICATOR:
+		case MESSAGE_EXPIRY_INTERVAL:
+		case CONTENT_TYPE:
+		case RESPONSE_TOPIC:
+		case CORRELATION_DATA:
+		case USER_PROPERTY:
+			break;
+
+		default:
+			log_warn("Property 0x%02X not allowed in Will "
+			         "Properties!",
+			    p->id);
+			return MALFORMED_PACKET;
+		}
+	}
+
+	return SUCCESS;
+}
+
 /**
  * packet_len: remaining length
  * len: property length

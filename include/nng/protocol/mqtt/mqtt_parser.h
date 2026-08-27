@@ -111,6 +111,7 @@ NNG_DECL nng_msg *nano_encode_publish_msg(uint8_t proto_ver, uint8_t qos,
     property *prop, const char *topic, const char *topic_suffix);
 // TODO : check duplicated declaration
 NNG_DECL reason_code check_properties(property *prop, nng_msg *msg);
+NNG_DECL reason_code check_will_properties(property *prop);
 NNG_DECL property *decode_buf_properties(uint8_t *packet, uint32_t packet_len,
     uint32_t *pos, uint32_t *len, bool copy_value);
 NNG_DECL property *decode_properties(
