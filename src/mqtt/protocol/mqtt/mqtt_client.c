@@ -825,8 +825,10 @@ mqtt_pipe_close(void *arg)
 	if (!nni_lmq_empty(&p->send_messages)) {
 		log_info("cached msg into sqlite");
 		sqlite_flush_lmq(s->sqlite_opt, &p->send_messages);
+#ifdef NNG_ENABLE_STATS
 		nni_stat_set_value(&s->msg_sqlite_cached,
 			sqlite_get_cache_msg_count(s->sqlite_opt));
+#endif
 	}
 #endif
 	nni_lmq_flush(&p->send_messages);
@@ -1511,8 +1513,8 @@ mqtt_cancel_send(nni_aio *aio, void *arg, int rv)
 			} else {
 #ifdef NNG_ENABLE_STATS
 				nni_stat_inc(&s->msg_send_drop, 1);
-			}
 #endif
+			}
 #else
 #ifdef NNG_ENABLE_STATS
 			nni_stat_inc(&s->msg_send_drop, 1);
