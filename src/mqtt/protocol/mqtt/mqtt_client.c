@@ -1470,13 +1470,11 @@ mqtt_cancel_send(nni_aio *aio, void *arg, int rv)
 {
 	NNI_ARG_UNUSED(rv);
 	uint16_t             packet_id = 1;
+	mqtt_sock_t         *s = arg;
 	nni_aio             *taio      = NULL;
 	nni_msg             *tmsg      = NULL;
-	mqtt_ctx_t          *ctx       = arg;
-	mqtt_sock_t         *s         = ctx->mqtt_sock;
 	nni_mqtt_proto_data *proto_data;
 
-	NNI_ARG_UNUSED(rv);
 	nni_mtx_lock(&s->mtx);
 	// deal with canceld QoS msg
 	proto_data = nni_aio_get_prov_data(aio);
