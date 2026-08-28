@@ -1504,6 +1504,11 @@ mqtt_cancel_send(nni_aio *aio, void *arg, int rv)
 					sqlite_get_cache_msg_count(sqlite));
 #endif
 				}
+				// assuming no one use SQLite built-in but disable it?
+			} else {
+#ifdef NNG_ENABLE_STATS
+				nni_stat_inc(&s->msg_send_drop, 1);
+#endif
 #else
 #ifdef NNG_ENABLE_STATS
 			nni_stat_inc(&s->msg_send_drop, 1);
