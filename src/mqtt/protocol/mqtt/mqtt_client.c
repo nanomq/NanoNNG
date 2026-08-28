@@ -53,7 +53,7 @@ static void mqtt_ctx_send(void *arg, nni_aio *aio);
 static void mqtt_ctx_recv(void *arg, nni_aio *aio);
 static void mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv);
 
-typedef nni_mqtt_packet_type packet_type_t;
+typedef nng_mqtt_packet_type packet_type_t;
 
 #if defined(NNG_SUPP_SQLITE)
 static void *mqtt_sock_get_sqlite_option(mqtt_sock_t *s);
@@ -746,6 +746,8 @@ mqtt_pipe_close(void *arg)
 	// particular for NanoSDK in bridging
 	nni_lmq_flush_cp(&p->recv_messages, true);
 	nni_id_map_foreach(&p->recv_unack, mqtt_close_unack_msg_cb);
+	// choose to preserve QoS msg state cross connections
+	// nni_id_map_foreach(&s->sent_unack, mqtt_close_unack_aio_cb);
 #endif
 	nni_mtx_unlock(&s->mtx);
 
@@ -1155,7 +1157,7 @@ mqtt_recv_cb(void *arg)
 				nni_aio_set_msg(user_aio, msg);
 			}
 			nni_aio_finish(user_aio, 0, 0);
-			user_aio = NULL; // 置空，防止函数末尾重复 finish
+			user_aio = NULL;
 		} else
 			log_warn("QoS msg ack failed %d", packet_id);
 		nni_msg_free(msg);
@@ -1359,28 +1361,26 @@ mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
 			packet_id = proto_data->var_header.subscribe.packet_id;
 		else if (type == NNG_MQTT_UNSUBSCRIBE)
 			packet_id = proto_data->var_header.unsubscribe.packet_id;
-		else
-			log_error("Canceling a non QoS msg!");
-		p = s->mqtt_pipe;
-		if (p != NULL) {
-			nni_aio *taio;
-			taio = nni_id_get(&s->sent_unack, packet_id);
-			if (taio != NULL) {
-				log_warn("Warning : QoS action of msg %d is canceled due to "
-								"timeout!", packet_id);
-				nni_id_remove(&s->sent_unack, packet_id);
-				nni_msg_free(nni_aio_get_msg(taio));
+		nni_aio *taio;
+		taio = nni_id_get(&s->sent_unack, packet_id);
+		if (taio != NULL) {
+			log_warn("Warning : aio %p QoS action of msg %d is canceled due to "
+							"timeout!", taio,  packet_id);
+			if (nni_id_remove(&s->sent_unack, packet_id) != 0)
+				log_error("canceling aio from sent_unack failed!");
+			nni_msg_free(nni_aio_get_msg(taio));
 #ifdef NNG_ENABLE_STATS
-				nni_stat_inc(&s->msg_send_drop, 1);
+			nni_stat_inc(&s->msg_send_drop, 1);
 #endif
-				nni_aio_set_msg(taio, NULL);
-				nni_aio_set_prov_data(taio, NULL);
-			}
-			if (taio == aio)
-				nni_aio_finish_error(aio, NNG_ECANCELED);
-			else
-				log_error("canceling wrong aio!");
+			nni_aio_set_msg(taio, NULL);
+			nni_aio_set_prov_data(taio, NULL);
 		}
+		if (taio == aio)
+			nni_aio_finish_error(aio, NNG_ECANCELED);
+		else
+			log_error("canceling wrong aio!");
+	} else {
+		log_error("canceling failed!");
 	}
 
 	if (nni_aio_list_active(aio)) {
@@ -1418,7 +1418,7 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 		return;
 	}
 	//set pid
-	nni_mqtt_packet_type ptype = nni_mqtt_msg_get_packet_type(msg);
+	nng_mqtt_packet_type ptype = nni_mqtt_msg_get_packet_type(msg);
 	switch (ptype)
 	{
 	case NNG_MQTT_PUBLISH:
@@ -1467,6 +1467,7 @@ mqtt_ctx_send(void *arg, nni_aio *aio)
 			// in send_queue
 			nni_lmq_put(&sqlite->offline_cache, msg);
 			if (nni_lmq_full(&sqlite->offline_cache)) {
+				log_info("flushed offline cache msg");
 				sqlite_flush_offline_cache(sqlite);
 			}
 			nni_mtx_unlock(&s->mtx);
