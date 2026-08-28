@@ -1368,10 +1368,28 @@ mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
 							"timeout!", taio,  packet_id);
 			if (nni_id_remove(&s->sent_unack, packet_id) != 0)
 				log_error("canceling aio from sent_unack failed!");
-			nni_msg_free(nni_aio_get_msg(taio));
+			nni_msg *tmsg = nni_aio_get_msg(taio);
+#if defined(NNG_SUPP_SQLITE)
+			nni_mqtt_sqlite_option *sqlite =
+				mqtt_sock_get_sqlite_option(s);
+			if (sqlite_is_enabled(sqlite)) {
+				nni_msg_clone(tmsg);
+				nni_lmq_put(&sqlite->offline_cache, tmsg);
+				if (nni_lmq_full(&sqlite->offline_cache)) {
+					log_info("flushed offline cache msg");
+					sqlite_flush_offline_cache(sqlite);
+#ifdef NNG_ENABLE_STATS
+				nni_stat_set_value(&s->msg_sqlite_cached,
+					sqlite_get_cache_msg_count(sqlite));
+#endif
+				}
+#else
 #ifdef NNG_ENABLE_STATS
 			nni_stat_inc(&s->msg_send_drop, 1);
 #endif
+#endif
+			}
+			nni_msg_free(tmsg);
 			nni_aio_set_msg(taio, NULL);
 			nni_aio_set_prov_data(taio, NULL);
 		}
