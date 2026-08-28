@@ -76,6 +76,7 @@ cJSON *hocon_get_obj(char *key, cJSON *jso);
 		}                                                             \
 	} while (0);
 
+/** Composes a URL unless address already contains a complete URL. */
 char *
 compose_url(char *head, char *address)
 {
@@ -441,6 +442,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	return;
 }
 
+/** Loads a version 2 TLS value from a PKCS#11 URI or referenced file. */
 static void
 conf_tls_read_inline_or_file(char **dst, const char *value, const char *name)
 {
@@ -454,6 +456,7 @@ conf_tls_read_inline_or_file(char **dst, const char *value, const char *name)
 	}
 }
 
+/** Parses the common version 2 TLS options from a JSON object. */
 static void
 conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 {

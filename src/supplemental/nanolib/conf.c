@@ -325,6 +325,7 @@ get_conf_value_with_prefix2(char *line, size_t len, const char *prefix,
 	return value;
 }
 
+/** Returns whether value is a PKCS#11 URI, matched case-insensitively. */
 bool
 conf_tls_is_pkcs11_uri(const char *value)
 {
@@ -332,6 +333,7 @@ conf_tls_is_pkcs11_uri(const char *value)
 	    (nng_strncasecmp(value, "pkcs11:", sizeof("pkcs11:") - 1) == 0));
 }
 
+/** Loads a TLS value from a PKCS#11 URI or from the referenced file. */
 static void
 conf_tls_load_inline_or_file(char **dst, const char *value)
 {
@@ -345,6 +347,7 @@ conf_tls_load_inline_or_file(char **dst, const char *value)
 	}
 }
 
+/** Parses legacy TLS settings, including file paths and PKCS#11 URIs. */
 void
 conf_tls_parse(
     conf_tls *tls, const char *path, const char *prefix1, const char *prefix2)

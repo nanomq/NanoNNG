@@ -719,6 +719,7 @@ NNG_DECL int  get_time(const char *str, uint64_t *second);
 NNG_DECL int  get_time_ms(const char *str, uint64_t *second);
 NNG_DECL void conf_parse(conf *nanomq_conf);
 NNG_DECL void conf_parse_ver2(conf *nanomq_conf, bool is_reload);
+/** Returns whether value is a PKCS#11 URI, matched case-insensitively. */
 NNG_DECL bool conf_tls_is_pkcs11_uri(const char *value);
 NNG_DECL void conf_gateway_parse_ver2(zmq_gateway_conf *gateway);
 NNG_DECL void conf_vsomeip_gateway_parse_ver2(vsomeip_gateway_conf *config);

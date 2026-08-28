@@ -77,6 +77,7 @@ set_data_from_path_var(void **var, const char *env_str)
 	}
 }
 
+/** Reads a TLS environment value as either a PKCS#11 URI or file path. */
 static void
 set_tls_data_from_path_or_uri_var(void **var, const char *env_str)
 {
@@ -200,6 +201,7 @@ read_env_pid_file()
 	return pid_file;
 }
 
+/** Applies supported environment variables to the NanoMQ configuration. */
 void
 read_env_conf(conf *config)
 {
