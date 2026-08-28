@@ -1336,13 +1336,13 @@ static void
 mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
 {
 	uint16_t             packet_id = 1;
-	mqtt_ctx_t          *ctx = arg;
-	mqtt_sock_t         *s   = ctx->mqtt_sock;
+	nni_aio             *taio      = NULL;
+	nni_msg             *tmsg      = NULL;
+	mqtt_ctx_t          *ctx       = arg;
+	mqtt_sock_t         *s         = ctx->mqtt_sock;
 	mqtt_pipe_t         *p;
 	nni_mqtt_proto_data *proto_data;
 
-	// if (rv != NNG_ETIMEDOUT)
-	// 	return;
 	NNI_ARG_UNUSED(rv);
 	nni_mtx_lock(&s->mtx);
 	if (nni_list_active(&s->send_queue, ctx)) {
@@ -1361,14 +1361,13 @@ mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
 			packet_id = proto_data->var_header.subscribe.packet_id;
 		else if (type == NNG_MQTT_UNSUBSCRIBE)
 			packet_id = proto_data->var_header.unsubscribe.packet_id;
-		nni_aio *taio;
 		taio = nni_id_get(&s->sent_unack, packet_id);
 		if (taio != NULL) {
 			log_warn("Warning : aio %p QoS action of msg %d is canceled due to "
 							"timeout!", taio,  packet_id);
 			if (nni_id_remove(&s->sent_unack, packet_id) != 0)
 				log_error("canceling aio from sent_unack failed!");
-			nni_msg *tmsg = nni_aio_get_msg(taio);
+			tmsg = nni_aio_get_msg(taio);
 #if defined(NNG_SUPP_SQLITE)
 			nni_mqtt_sqlite_option *sqlite =
 				mqtt_sock_get_sqlite_option(s);
