@@ -165,6 +165,8 @@ static bool open_is_pkcs11_uri(const char *value);
 static int  open_check_pkcs11_provider(void);
 static int open_load_x509_from_uri(
     nng_tls_engine_config *cfg, const char *uri, X509 **xcertp);
+static int open_load_ca_certs_from_uri(
+    nng_tls_engine_config *cfg, const char *uri, X509_STORE *xstore);
 static int open_load_pkey_from_uri(
     nng_tls_engine_config *cfg, const char *uri, EVP_PKEY **pkeyp);
 
@@ -689,21 +691,9 @@ open_config_ca_chain(
 	}
 
 	if (open_is_pkcs11_uri(certs)) {
-		X509 *      cert  = NULL;
 		X509_STORE *store = SSL_CTX_get_cert_store(cfg->ctx);
-		int         rv;
 
-		if ((rv = open_load_x509_from_uri(cfg, certs, &cert)) != 0) {
-			return (rv);
-		}
-		if (X509_STORE_add_cert(store, cert) == 0) {
-			log_error("NNG-TLS-CFG-CACHAIN"
-			          "Failed to add PKCS#11 certificate to store");
-			X509_free(cert);
-			return (NNG_ECRYPTO);
-		}
-		X509_free(cert);
-		return (0);
+		return (open_load_ca_certs_from_uri(cfg, certs, store));
 	}
 
 	len = strlen(certs);
@@ -926,6 +916,76 @@ out:
 	NNI_ARG_UNUSED(uri);
 	NNI_ARG_UNUSED(xcertp);
 	log_error("NNG-TLS-CFG-OWNCHAIN"
+	          "PKCS#11 URI support requires OpenSSL >= 3");
+	return (NNG_ENOTSUP);
+#endif
+}
+
+static int
+open_load_ca_certs_from_uri(
+    nng_tls_engine_config *cfg, const char *uri, X509_STORE *xstore)
+{
+#if NNG_OPENSSL_HAVE_PKCS11
+	OSSL_STORE_CTX * store = NULL;
+	OSSL_STORE_INFO *info  = NULL;
+	UI_METHOD *      ui    = NULL;
+	X509 *           xcert = NULL;
+	bool             found = false;
+	int              rv;
+
+	if ((rv = open_store_uri(cfg, uri, &store, &ui)) != 0) {
+		return (rv);
+	}
+
+	while ((info = OSSL_STORE_load(store)) != NULL) {
+		if (OSSL_STORE_INFO_get_type(info) == OSSL_STORE_INFO_CERT) {
+			xcert = OSSL_STORE_INFO_get1_CERT(info);
+			if (xcert == NULL) {
+				log_error("NNG-TLS-CFG-CACHAIN"
+				          "Failed to load PKCS#11 certificate");
+				rv = NNG_ECRYPTO;
+				goto out;
+			}
+			if (X509_STORE_add_cert(xstore, xcert) == 0) {
+				log_error("NNG-TLS-CFG-CACHAIN"
+				          "Failed to add PKCS#11 certificate to store");
+				rv = NNG_ECRYPTO;
+				goto out;
+			}
+			X509_free(xcert);
+			xcert = NULL;
+			found = true;
+		}
+		OSSL_STORE_INFO_free(info);
+		info = NULL;
+	}
+
+	if (OSSL_STORE_error(store)) {
+		open_log_ssl_error(
+		    "NNG-TLS-CFG-CACHAIN OSSL_STORE_load", 0);
+		rv = NNG_ECRYPTO;
+	} else if (!found) {
+		log_error("NNG-TLS-CFG-CACHAIN"
+		          "No certificate found in PKCS#11 URI");
+		rv = NNG_ECRYPTO;
+	} else {
+		rv = 0;
+	}
+
+out:
+	if (info != NULL) {
+		OSSL_STORE_INFO_free(info);
+	}
+	if (xcert != NULL) {
+		X509_free(xcert);
+	}
+	open_store_close(store, ui);
+	return (rv);
+#else
+	NNI_ARG_UNUSED(cfg);
+	NNI_ARG_UNUSED(uri);
+	NNI_ARG_UNUSED(xstore);
+	log_error("NNG-TLS-CFG-CACHAIN"
 	          "PKCS#11 URI support requires OpenSSL >= 3");
 	return (NNG_ENOTSUP);
 #endif
