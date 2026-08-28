@@ -36,12 +36,6 @@ test_pkcs11_credentials(void)
 	ca_uri   = pkcs11_test_env("NNG_PKCS11_CA_URI");
 	pin      = pkcs11_test_env("NNG_PKCS11_PIN");
 
-	NUTS_PASS(nng_tls_config_alloc(&invalid_cfg, NNG_TLS_MODE_SERVER));
-	NUTS_FAIL(nng_tls_config_own_cert(
-	              invalid_cfg, cert_uri, key_uri, "invalid-pin"),
-	    NNG_ECRYPTO);
-	nng_tls_config_free(invalid_cfg);
-
 	NUTS_PASS(nng_tls_config_alloc(&server_cfg, NNG_TLS_MODE_SERVER));
 	NUTS_PASS(
 	    nng_tls_config_own_cert(server_cfg, cert_uri, key_uri, pin));
@@ -49,6 +43,12 @@ test_pkcs11_credentials(void)
 	NUTS_PASS(nng_tls_config_ca_chain(client_cfg, ca_uri, NULL));
 	nng_tls_config_free(server_cfg);
 	nng_tls_config_free(client_cfg);
+
+	NUTS_PASS(nng_tls_config_alloc(&invalid_cfg, NNG_TLS_MODE_SERVER));
+	NUTS_FAIL(nng_tls_config_own_cert(
+	              invalid_cfg, cert_uri, key_uri, "invalid-pin"),
+	    NNG_ECRYPTO);
+	nng_tls_config_free(invalid_cfg);
 }
 
 NUTS_TESTS = {
