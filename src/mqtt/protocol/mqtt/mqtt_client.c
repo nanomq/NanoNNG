@@ -1340,7 +1340,6 @@ mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
 	nni_msg             *tmsg      = NULL;
 	mqtt_ctx_t          *ctx       = arg;
 	mqtt_sock_t         *s         = ctx->mqtt_sock;
-	mqtt_pipe_t         *p;
 	nni_mqtt_proto_data *proto_data;
 
 	NNI_ARG_UNUSED(rv);
@@ -1382,13 +1381,13 @@ mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
 			} else {
 #ifdef NNG_ENABLE_STATS
 				nni_stat_inc(&s->msg_send_drop, 1);
+			}
 #endif
 #else
 #ifdef NNG_ENABLE_STATS
 			nni_stat_inc(&s->msg_send_drop, 1);
 #endif
 #endif
-			}
 			nni_msg_free(tmsg);
 			nni_aio_set_msg(taio, NULL);
 			nni_aio_set_prov_data(taio, NULL);
