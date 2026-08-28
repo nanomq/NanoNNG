@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <nuts.h>
 
+/** Returns a required nonempty environment variable for PKCS#11 tests. */
 static const char *
 pkcs11_test_env(const char *name)
 {
@@ -20,6 +21,7 @@ pkcs11_test_env(const char *name)
 	return (value);
 }
 
+/** Verifies valid PKCS#11 credentials before exercising an invalid PIN. */
 void
 test_pkcs11_credentials(void)
 {

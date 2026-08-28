@@ -334,6 +334,7 @@ test_get_time_days(void)
 	// If not supported, should fail gracefully
 }
 
+/** Verifies that the legacy configuration preserves PKCS#11 TLS URIs. */
 void
 test_conf_parse_tls_pkcs11_old(void)
 {
@@ -358,6 +359,7 @@ test_conf_parse_tls_pkcs11_old(void)
 	conf_tls_destroy(&tls);
 }
 
+/** Verifies that version 2 configuration preserves PKCS#11 TLS URIs. */
 void
 test_conf_parse_ver2_tls_pkcs11(void)
 {
@@ -386,6 +388,7 @@ test_conf_parse_ver2_tls_pkcs11(void)
 	conf_fini(conf);
 }
 
+/** Verifies case-insensitive PKCS#11 URI detection and rejection cases. */
 void
 test_conf_tls_is_pkcs11_uri(void)
 {

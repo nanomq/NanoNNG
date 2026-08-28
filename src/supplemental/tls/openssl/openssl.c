@@ -679,6 +679,7 @@ open_config_auth_mode(nng_tls_engine_config *cfg, nng_tls_auth_mode mode)
 	return (NNG_EINVAL);
 }
 
+/** Adds PEM or PKCS#11 CA certificates to the OpenSSL trust store. */
 static int
 open_config_ca_chain(
     nng_tls_engine_config *cfg, const char *certs, const char *crl)
@@ -741,6 +742,7 @@ open_config_ca_chain(
 	return (0);
 }
 
+/** Supplies the configured PEM password or PKCS#11 PIN to OpenSSL. */
 static int
 open_get_password(char *passwd, int size, int rw, void *ctx)
 {
@@ -761,6 +763,7 @@ open_get_password(char *passwd, int size, int rw, void *ctx)
 	return ((int) len);
 }
 
+/** Returns whether value is a PKCS#11 URI, matched case-insensitively. */
 static bool
 open_is_pkcs11_uri(const char *value)
 {
@@ -768,6 +771,7 @@ open_is_pkcs11_uri(const char *value)
 	    (nni_strncasecmp(value, "pkcs11:", sizeof("pkcs11:") - 1) == 0));
 }
 
+/** Loads and caches the OpenSSL PKCS#11 provider availability status. */
 static int
 open_check_pkcs11_provider(void)
 {
@@ -814,6 +818,7 @@ out:
 }
 
 #if NNG_OPENSSL_HAVE_PKCS11
+/** Opens an OpenSSL object store for a PKCS#11 URI and optional PIN. */
 static int
 open_store_uri(nng_tls_engine_config *cfg, const char *uri,
     OSSL_STORE_CTX **storep, UI_METHOD **uip)
@@ -848,6 +853,7 @@ open_store_uri(nng_tls_engine_config *cfg, const char *uri,
 	return (0);
 }
 
+/** Closes an OpenSSL object store and releases its PIN UI method. */
 static void
 open_store_close(OSSL_STORE_CTX *store, UI_METHOD *ui)
 {
@@ -860,6 +866,7 @@ open_store_close(OSSL_STORE_CTX *store, UI_METHOD *ui)
 }
 #endif
 
+/** Loads the first certificate resolved by a PKCS#11 URI. */
 static int
 open_load_x509_from_uri(
     nng_tls_engine_config *cfg, const char *uri, X509 **xcertp)
@@ -921,6 +928,7 @@ out:
 #endif
 }
 
+/** Loads every certificate resolved by a PKCS#11 URI into a trust store. */
 static int
 open_load_ca_certs_from_uri(
     nng_tls_engine_config *cfg, const char *uri, X509_STORE *xstore)
@@ -991,6 +999,7 @@ out:
 #endif
 }
 
+/** Loads the first private key resolved by a PKCS#11 URI. */
 static int
 open_load_pkey_from_uri(
     nng_tls_engine_config *cfg, const char *uri, EVP_PKEY **pkeyp)
@@ -1052,6 +1061,7 @@ out:
 #endif
 }
 
+/** Configures a certificate and key from matching PEM data or PKCS#11 URIs. */
 static int
 open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
     const char *key, const char *pass)
@@ -1208,6 +1218,7 @@ static nng_tls_engine open_engine = {
 	.fips_mode   = false, // commercial users only
 };
 
+/** Registers the OpenSSL TLS engine with NNG. */
 int
 nng_tls_engine_init_open(void)
 {
@@ -1232,6 +1243,7 @@ nng_tls_engine_init_open(void)
 	return (nng_tls_engine_register(&open_engine));
 }
 
+/** Unregisters the OpenSSL TLS engine and releases its PKCS#11 provider. */
 void
 nng_tls_engine_fini_open(void)
 {
