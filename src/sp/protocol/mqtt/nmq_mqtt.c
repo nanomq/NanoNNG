@@ -736,7 +736,6 @@ auth_verify:
 		nni_msg_free(msg);
 		return NNG_ECONNSHUT;
 	}
-	nmq_connack_encode(msg, s->conf, p->conn_param, rv);
 	// CONNECT verification and the HTTP auth callback above run outside
 	// s->lk, so the pipe may have been closed in the meantime (client
 	// disconnect, or a client-ID collision kick via nni_pipe_set_pid ->
@@ -760,8 +759,20 @@ auth_verify:
 		nni_msg_free(msg);
 		return NNG_ECLOSED;
 	}
+	int total = nni_id_count(&s->pipes);
+#if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
+	if (total + 1 > (int)s->lc) {
+		rv = QUOTA_EXCEEDED;
+		log_warn("Max Quota %d exceed, %s disconneted",
+			s->lc, clientid);
+	}
+	if (s->lic_valid == false) {
+		rv = QUOTA_EXCEEDED;
+		log_warn("License expired, %s disconneted", clientid);
+	}
+#endif
+	nmq_connack_encode(msg, s->conf, p->conn_param, rv);
 	if (rv != 0) {
-		// send connack with reason code 0x05
 		log_warn("Invalid auth info or authentication denied");
 		p->conn_param->will_flag = 0;
 		goto end;
@@ -810,25 +821,13 @@ auth_verify:
 #ifdef NNG_SUPP_SQLITE
 	nni_qos_db_set_pipe(is_sqlite, p->pipe->nano_qos_db, p->id, clientid);
 #endif
-	// pipe_id is just random value of id_dyn_val with self-increment.
 	nni_id_set(&s->pipes, p->id, p);
 	p->conn_param->nano_qos_db = p->pipe->nano_qos_db;
 	p->nano_qos_db             = p->pipe->nano_qos_db;
 
-	int total = nni_id_count(&s->pipes);
-	log_warn("Total connection num %d", total);
+	total ++;
 	nng_atomic_set(s->conf->lc, total);
-#if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
-	if (total > (int)s->lc) {
-		rv = QUOTA_EXCEEDED;
-		log_warn("Max Quota %d exceed, %s disconneted",
-			s->lc, clientid);
-	}
-	if (s->lic_valid == false) {
-		rv = QUOTA_EXCEEDED;
-		log_warn("License expired, %s disconneted", clientid);
-	}
-#endif
+	log_debug("Total connection num %d", total);
 	// Recover preset sessions
 	void *qos_db = NULL;
 	if (s->conf->ext_qos_db) {
