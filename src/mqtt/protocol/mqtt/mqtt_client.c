@@ -1378,10 +1378,6 @@ mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
 				if (nni_lmq_full(&sqlite->offline_cache)) {
 					log_info("flushed offline cache msg");
 					sqlite_flush_offline_cache(sqlite);
-#ifdef NNG_ENABLE_STATS
-				nni_stat_set_value(&s->msg_sqlite_cached,
-					sqlite_get_cache_msg_count(sqlite));
-#endif
 				}
 				// assuming no one use SQLite built-in but disable it?
 			} else {
