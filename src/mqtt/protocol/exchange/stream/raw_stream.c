@@ -78,7 +78,8 @@ static struct stream_data_out *output_stream_init(void *data)
 	struct stream_data_in *input_stream = NULL;
 
 	input_stream = (struct stream_data_in *)data;
-	if (input_stream == NULL || input_stream->len == 0) {
+	if (input_stream == NULL || input_stream->len == 0 ||
+	    input_stream->msgs == NULL) {
 		return NULL;
 	}
 
@@ -118,20 +119,27 @@ static struct stream_data_out *output_stream_init(void *data)
 	}
 
 	for (uint32_t i = 0; i < output_stream->row_len; i++) {
+		uint32_t  plen    = 0;
+		uint8_t  *payload = NULL;
+
 		output_stream->payload_arr[0][i] = NULL;
 		output_stream->payload_arr[0][i] = nng_alloc(sizeof(parquet_data_packet));
 		if (output_stream->payload_arr[0][i] == NULL) {
 			output_stream_free(output_stream);
 			return NULL;
 		}
-		output_stream->payload_arr[0][i]->size = input_stream->lens[i];
-		if (input_stream->lens[i] > 0) {
-			output_stream->payload_arr[0][i]->data = nng_alloc(input_stream->lens[i]);
+
+		if (input_stream->msgs != NULL) {
+			payload = stream_msg_payload(input_stream->msgs[i], &plen);
+		}
+		output_stream->payload_arr[0][i]->size = plen;
+		if (plen > 0 && payload != NULL) {
+			output_stream->payload_arr[0][i]->data = nng_alloc(plen);
 			if (output_stream->payload_arr[0][i]->data == NULL) {
 				output_stream_free(output_stream);
 				return NULL;
 			}
-			memcpy(output_stream->payload_arr[0][i]->data, input_stream->datas[i], input_stream->lens[i]);
+			memcpy(output_stream->payload_arr[0][i]->data, payload, plen);
 		} else {
 			output_stream->payload_arr[0][i]->data = NULL;
 		}

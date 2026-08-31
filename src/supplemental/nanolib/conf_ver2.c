@@ -24,6 +24,19 @@
 static const char *gvin = NULL;
 static void conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls);
 
+int
+conf_stream_codec_id_from_number(double v, uint8_t *out)
+{
+	if (out == NULL) {
+		return -1;
+	}
+	if (v < 0x10 || v > 0x7F || v != (double) (uint8_t) v) {
+		return -1;
+	}
+	*out = (uint8_t) v;
+	return 0;
+}
+
 #ifdef SUPP_PARQUET
 static char   *g_parquet_runtime_commonkey = NULL;
 static nni_mtx g_parquet_commonkey_mutex   = NNI_MTX_INITIALIZER;
@@ -1967,6 +1980,7 @@ conf_stream_plugin_destroy(conf_stream_plugin *sp)
 		nng_strfree(n->path);
 		nng_strfree(n->topic);
 		nng_strfree(n->name);
+		nng_strfree(n->codec_name);
 		NNI_FREE_STRUCT(n);
 	}
 	cvector_free(sp->nodes);
@@ -2030,11 +2044,46 @@ conf_stream_plugin_parse_ver2(conf *config, cJSON *jso)
 			           : STREAM_PLUGIN_FULL_DROP;
 		}
 
-		if (node->path == NULL || node->topic == NULL) {
-			log_error("stream_plugin: path/topic required");
+		cJSON *jcodec = cJSON_GetObjectItem(node_item, "codec");
+		bool   codec_invalid = false;
+		if (jcodec && cJSON_IsObject(jcodec)) {
+			cJSON *jid = cJSON_GetObjectItem(jcodec, "id");
+			cJSON *jname = cJSON_GetObjectItem(jcodec, "name");
+			if (jname && cJSON_IsString(jname) && jname->valuestring) {
+				node->codec_name = nng_strdup(jname->valuestring);
+			}
+			if (jid == NULL || !cJSON_IsNumber(jid)) {
+				log_error(
+				    "stream_plugin: codec.id required (integer "
+				    "in [16, 127])");
+				codec_invalid = true;
+			} else {
+				double  v  = jid->valuedouble;
+				uint8_t id = 0;
+				if (conf_stream_codec_id_from_number(v, &id) !=
+				    0) {
+					log_error(
+					    "stream_plugin: codec.id must be "
+					    "integer in [16, 127], got %g",
+					    v);
+					codec_invalid = true;
+				} else {
+					node->codec_id = id;
+				}
+			}
+		}
+
+		if (codec_invalid || node->path == NULL ||
+		    (node->topic == NULL && node->codec_id == 0)) {
+			if (!codec_invalid) {
+				log_error(
+				    "stream_plugin: path and (topic or codec.id) "
+				    "required");
+			}
 			if (node->path) nng_strfree(node->path);
 			if (node->topic) nng_strfree(node->topic);
 			if (node->name) nng_strfree(node->name);
+			if (node->codec_name) nng_strfree(node->codec_name);
 			NNI_FREE_STRUCT(node);
 			continue;
 		}
