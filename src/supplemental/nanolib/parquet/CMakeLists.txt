@@ -1,5 +1,5 @@
 if(NNG_ENABLE_PARQUET)
-    nng_sources(parquet.cc parquet_file_queue.cc)
+    nng_sources(parquet.cc pq_batch.cc parquet_file_queue.cc)
     find_package(Arrow CONFIG REQUIRED)
     find_package(Parquet CONFIG REQUIRED)
     if(ENABLE_PARQUET_SHARED)
@@ -74,5 +74,5 @@ if(NNG_ENABLE_PARQUET)
         message(STATUS "Parquet NNG_ARROW_VERSION_MAJOR=${NNG_ARROW_VERSION_MAJOR} requires C++20")
     endif()
 
-    # nng_test(parquet_test)
+    nng_test(pq_batch_test)
 endif()
