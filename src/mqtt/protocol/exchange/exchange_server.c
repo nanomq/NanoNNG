@@ -139,6 +139,17 @@ static inline void parquet_data_ret_free(struct parquet_data_ret *parquet_data)
 	if (parquet_data == NULL) {
 		return;
 	}
+#if defined(SUPP_PARQUET)
+	if (parquet_data->root != NULL) {
+		pq_array_free(parquet_data->root);
+		parquet_data->root = NULL;
+		parquet_data->ts   = NULL;
+	}
+	if (parquet_data->schema_tree != NULL) {
+		pq_type_free(parquet_data->schema_tree);
+		parquet_data->schema_tree = NULL;
+	}
+#endif
 	if (parquet_data->payload_arr != NULL) {
 		for (uint32_t j = 0; j < parquet_data->col_len; j++) {
 			if (parquet_data->payload_arr[j] != NULL) {
@@ -246,6 +257,23 @@ static struct parquet_data_ret *ringbus_parquet_data_ret_init(struct stream_data
 		log_error("Failed to allocate memory for parquet_data_ret\n");
 		return NULL;
 	}
+	memset(parquet_data_ret, 0, sizeof(*parquet_data_ret));
+
+#if defined(SUPP_PARQUET)
+	{
+		parquet_data *batch = (parquet_data *) stream_data_out;
+
+		if (batch->root != NULL && !pq_batch_is_flat_ba(batch)) {
+			/* Nested pq_batch: decode walks root; pointers borrowed. */
+			parquet_data_ret->row_len     = batch->row_len;
+			parquet_data_ret->col_len     = batch->col_len;
+			parquet_data_ret->ts          = batch->ts;
+			parquet_data_ret->schema_tree = batch->schema_tree;
+			parquet_data_ret->root        = batch->root;
+			return parquet_data_ret;
+		}
+	}
+#endif
 
 	if (cmd_data->schema_len == 0 || cmd_data->schema == NULL) {
 		/* No column list: return every data column (schema[0] is ts). */
@@ -342,8 +370,9 @@ static struct stream_decoded_data *fuzz_search_result_cat(nng_msg **msgList,
 		log_error("stream_decode failed!");
 	}
 
-	/* parquet_data_ele borrows schema/payload pointers from stream_data_out;
-	 * only free the wrapper arrays here — never parquet_data_ret_free(). */
+	/* parquet_data_ele borrows schema/payload (flat) or root/ts (nested)
+	 * from encode output; only free wrapper arrays, never
+	 * parquet_data_ret_free() or borrowed nested ts/root. */
 	if (parquet_data_ele->schema != NULL) {
 		nng_free(parquet_data_ele->schema,
 		    sizeof(char *) * parquet_data_ele->col_len);
@@ -352,7 +381,7 @@ static struct stream_decoded_data *fuzz_search_result_cat(nng_msg **msgList,
 		nng_free(parquet_data_ele->payload_arr,
 		    sizeof(parquet_data_packet *) * parquet_data_ele->col_len);
 	}
-	if (parquet_data_ele->ts != NULL) {
+	if (parquet_data_ele->root == NULL && parquet_data_ele->ts != NULL) {
 		nng_free(parquet_data_ele->ts,
 		    sizeof(uint64_t) * parquet_data_ele->row_len);
 	}
