@@ -260,6 +260,8 @@ parquet_data *parquet_data_alloc(char **schema, parquet_data_packet ***payload_a
 	data->row_len     = row_len;
 	data->schema      = schema;
 	data->payload_arr = payload_arr;
+	data->schema_tree = NULL;
+	data->root        = NULL;
 	return data;
 }
 

@@ -1,5 +1,13 @@
+#include <arrow/api.h>
+#include <arrow/array.h>
+#include <arrow/array/builder_binary.h>
+#include <arrow/array/builder_nested.h>
+#include <arrow/array/builder_primitive.h>
 #include <arrow/io/file.h>
+#include <arrow/status.h>
 #include <arrow/util/key_value_metadata.h>
+#include <parquet/arrow/reader.h>
+#include <parquet/arrow/writer.h>
 #include <parquet/stream_reader.h>
 #include <parquet/stream_writer.h>
 
@@ -48,20 +56,6 @@ struct SchemaColumn {
 	char                             *name;
 	shared_ptr<parquet::ColumnReader> reader;
 };
-
-struct parquet_data {
-	// Payload_arr should col first.
-	// First column of schema should be
-	// ts, can not be changed.
-	// col_len is payload_arr col_len,
-	// schema len = col_len + 1, 1 is ts col.
-	uint32_t               col_len;
-	uint32_t               row_len;
-	uint64_t              *ts;
-	char                 **schema;
-	parquet_data_packet ***payload_arr;
-};
-
 
 #define DO_IT_IF_NOT_NULL(func, arg1, arg2) \
 	if (arg1) {                         \
@@ -122,6 +116,8 @@ pthread_cond_t       parquet_queue_not_empty = PTHREAD_COND_INITIALIZER;
 static bool parquet_resolve_and_set_decryption_properties(
 	parquet::ReaderProperties &reader_properties, conf_parquet *conf,
 	const char *filename);
+static int parquet_check_is_compat_and_decrypt(
+	char *filename, bool &is_compat_mode, bool &is_encrypted);
 
 static char *
 get_file_name(conf_parquet
@@ -208,7 +204,6 @@ get_random_file_name(conf_parquet *conf, char *prefix, uint64_t key_start,
 
 	sprintf(file_name, "%s/%s-%" PRIu64 "~%" PRIu64 ".parquet", dir,
 	    prefix, key_start, key_end);
-	log_error("file_name: %s", file_name);
 	return file_name;
 }
 
@@ -277,20 +272,43 @@ parquet_data_alloc(char **schema, parquet_data_packet ***payload_arr,
 	data->row_len     = row_len;
 	data->schema      = schema;
 	data->payload_arr = payload_arr;
+	data->schema_tree = NULL;
+	data->root        = NULL;
+	if (pq_batch_attach_flat(data) != 0) {
+		log_warn("pq_batch_attach_flat failed; using legacy flat buffers");
+		data->schema_tree = NULL;
+		data->root        = NULL;
+	}
 	return data;
 }
 
 void
 parquet_data_free(parquet_data *data)
 {
-	if (data) {
+	if (data == NULL) {
+		return;
+	}
+	if (data->root != NULL) {
+		pq_array_free(data->root);
+		data->root = NULL;
+		if (data->payload_arr == NULL) {
+			data->ts = NULL;
+		}
+	}
+	if (data->schema_tree != NULL) {
+		pq_type_free(data->schema_tree);
+		data->schema_tree = NULL;
+	}
+	if (data->payload_arr != NULL && data->schema != NULL &&
+	    data->col_len > 0) {
 		for (uint32_t c = 0; c < data->col_len - 1; c++) {
 			FREE_IF_NOT_NULL(
 			    data->schema[c], strlen(data->schema[c]));
 			for (uint32_t r = 0; r < data->row_len; r++) {
 				parquet_data_packet *payload =
 				    data->payload_arr[c][r];
-				if (payload && payload->data && payload->size > 0) {
+				if (payload && payload->data &&
+				    payload->size > 0) {
 					nng_free(payload->data, payload->size);
 				}
 				FREE_IF_NOT_NULL(payload, sizeof(*payload));
@@ -303,8 +321,8 @@ parquet_data_free(parquet_data *data)
 		FREE_IF_NOT_NULL(data->schema, data->col_len);
 		FREE_IF_NOT_NULL(data->ts, data->row_len);
 		FREE_IF_NOT_NULL(data->payload_arr, data->col_len);
-		delete data;
 	}
+	delete data;
 }
 
 parquet_object *
@@ -616,6 +634,596 @@ parquet_build_nmq_metadata(
 	return kv;
 }
 
+static std::shared_ptr<arrow::DataType>
+pq_type_to_arrow(const pq_type *t);
+
+static std::shared_ptr<arrow::Field>
+pq_type_to_field(const pq_type *t)
+{
+	bool nullable = (t->repetition == PQ_OPTIONAL);
+	const char *name = t->name != NULL ? t->name : "";
+	return arrow::field(name, pq_type_to_arrow(t), nullable);
+}
+
+static std::shared_ptr<arrow::DataType>
+pq_type_to_arrow(const pq_type *t)
+{
+	if (t->kind == PQ_PRIMITIVE) {
+		switch (t->phys) {
+		case PQ_INT32:
+			return arrow::int32();
+		case PQ_INT64:
+			return arrow::uint64();
+		case PQ_BYTE_ARRAY:
+		default:
+			return arrow::binary();
+		}
+	}
+	if (t->kind == PQ_LIST) {
+		return arrow::list(pq_type_to_field(&t->children[0]));
+	}
+	std::vector<std::shared_ptr<arrow::Field>> fields;
+	for (uint32_t i = 0; i < t->n_children; i++) {
+		fields.push_back(pq_type_to_field(&t->children[i]));
+	}
+	return arrow::struct_(fields);
+}
+
+static std::shared_ptr<arrow::ArrayBuilder>
+pq_make_builder(const pq_type *t)
+{
+	arrow::MemoryPool *pool = arrow::default_memory_pool();
+	if (t->kind == PQ_PRIMITIVE) {
+		switch (t->phys) {
+		case PQ_INT32:
+			return std::make_shared<arrow::Int32Builder>(pool);
+		case PQ_INT64:
+			return std::make_shared<arrow::UInt64Builder>(pool);
+		case PQ_BYTE_ARRAY:
+		default:
+			return std::make_shared<arrow::BinaryBuilder>(pool);
+		}
+	}
+	if (t->kind == PQ_LIST) {
+		auto vb        = pq_make_builder(&t->children[0]);
+		auto list_type = arrow::list(pq_type_to_field(&t->children[0]));
+		return std::make_shared<arrow::ListBuilder>(
+		    pool, vb, list_type);
+	}
+	std::vector<std::shared_ptr<arrow::Field>> fields;
+	std::vector<std::shared_ptr<arrow::ArrayBuilder>> builders;
+	for (uint32_t i = 0; i < t->n_children; i++) {
+		fields.push_back(pq_type_to_field(&t->children[i]));
+		builders.push_back(pq_make_builder(&t->children[i]));
+	}
+	return std::make_shared<arrow::StructBuilder>(
+	    arrow::struct_(fields), pool, builders);
+}
+
+static arrow::Status
+pq_append_one(arrow::ArrayBuilder *b, const pq_array *a, uint32_t i)
+{
+	bool is_null = (a->valid != NULL && a->valid[i] == 0);
+	if (a->type->kind == PQ_PRIMITIVE) {
+		if (is_null) {
+			return b->AppendNull();
+		}
+		if (a->type->phys == PQ_INT32) {
+			return static_cast<arrow::Int32Builder *>(b)->Append(
+			    a->i32[i]);
+		}
+		if (a->type->phys == PQ_INT64) {
+			return static_cast<arrow::UInt64Builder *>(b)->Append(
+			    (uint64_t) a->i64[i]);
+		}
+		if (a->bin == NULL || a->bin[i] == NULL) {
+			return b->AppendNull();
+		}
+		if (a->bin[i]->data == NULL || a->bin[i]->size == 0) {
+			return static_cast<arrow::BinaryBuilder *>(b)->Append(
+			    "", 0);
+		}
+		return static_cast<arrow::BinaryBuilder *>(b)->Append(
+		    a->bin[i]->data, a->bin[i]->size);
+	}
+	if (a->type->kind == PQ_LIST) {
+		auto *lb = static_cast<arrow::ListBuilder *>(b);
+		if (is_null) {
+			return lb->AppendNull();
+		}
+		ARROW_RETURN_NOT_OK(lb->Append());
+		uint32_t start = a->offsets[i];
+		uint32_t end   = a->offsets[i + 1];
+		for (uint32_t j = start; j < end; j++) {
+			ARROW_RETURN_NOT_OK(
+			    pq_append_one(lb->value_builder(), a->child, j));
+		}
+		return arrow::Status::OK();
+	}
+	auto *sb = static_cast<arrow::StructBuilder *>(b);
+	if (is_null) {
+		return sb->AppendNull();
+	}
+	ARROW_RETURN_NOT_OK(sb->Append());
+	for (uint32_t f = 0; f < a->type->n_children; f++) {
+		ARROW_RETURN_NOT_OK(
+		    pq_append_one(sb->field_builder(f), a->fields[f], i));
+	}
+	return arrow::Status::OK();
+}
+
+static int
+pq_delta_ok(pq_phys phys)
+{
+	return phys == PQ_INT32 || phys == PQ_INT64;
+}
+
+static void
+pq_apply_leaf_encoding(parquet::WriterProperties::Builder &builder,
+    const pq_type *t, const std::string &path)
+{
+	if (t->kind == PQ_PRIMITIVE) {
+		pq_enc enc = t->enc;
+		if (enc == PQ_ENC_ADAPTIVE) {
+			enc = PQ_ENC_DEFAULT;
+		}
+		if (enc == PQ_ENC_DEFAULT) {
+			if (t->phys == PQ_INT64) {
+				enc = PQ_ENC_DELTA;
+			} else if (t->phys == PQ_INT32) {
+				enc = PQ_ENC_RLE_DICT;
+			} else {
+				enc = PQ_ENC_PLAIN;
+			}
+		}
+		if (enc == PQ_ENC_RLE_DICT) {
+			builder.enable_dictionary(path);
+			return;
+		}
+		parquet::Encoding::type e = Encoding::PLAIN;
+		if (enc == PQ_ENC_DELTA && pq_delta_ok(t->phys)) {
+			e = Encoding::DELTA_BINARY_PACKED;
+		}
+		builder.disable_dictionary(path)->encoding(path, e);
+		return;
+	}
+	if (t->kind == PQ_LIST) {
+		pq_apply_leaf_encoding(
+		    builder, &t->children[0], path + ".list.element");
+		return;
+	}
+	for (uint32_t i = 0; i < t->n_children; i++) {
+		std::string next = path.empty()
+		    ? std::string(t->children[i].name)
+		    : path + "." + t->children[i].name;
+		pq_apply_leaf_encoding(builder, &t->children[i], next);
+	}
+}
+
+static void
+pq_collect_leaf_paths(
+    const pq_type *t, const std::string &path, std::vector<std::string> &out)
+{
+	if (t->kind == PQ_PRIMITIVE) {
+		out.push_back(path);
+		return;
+	}
+	if (t->kind == PQ_LIST) {
+		pq_collect_leaf_paths(
+		    &t->children[0], path + ".list.element", out);
+		return;
+	}
+	for (uint32_t i = 0; i < t->n_children; i++) {
+		std::string next = path.empty()
+		    ? std::string(t->children[i].name)
+		    : path + "." + t->children[i].name;
+		pq_collect_leaf_paths(&t->children[i], next, out);
+	}
+}
+
+static int
+parquet_write_nested(conf_parquet *conf, const char *filename,
+    parquet_data *data, const char *topic, parquet_type write_type)
+{
+	if (data->schema_tree == NULL || data->root == NULL ||
+	    data->schema_tree->kind != PQ_STRUCT) {
+		log_error("nested write requires a STRUCT schema tree");
+		return -1;
+	}
+
+	try {
+		std::vector<std::shared_ptr<arrow::Field>> fields;
+		std::vector<std::shared_ptr<arrow::Array>> arrays;
+		for (uint32_t i = 0; i < data->schema_tree->n_children; i++) {
+			const pq_type *ct = &data->schema_tree->children[i];
+			fields.push_back(pq_type_to_field(ct));
+			auto builder = pq_make_builder(ct);
+			for (uint32_t r = 0; r < data->row_len; r++) {
+				auto st = pq_append_one(
+				    builder.get(), data->root->fields[i], r);
+				if (!st.ok()) {
+					log_error("nested append failed: %s",
+					    st.ToString().c_str());
+					return -1;
+				}
+			}
+			std::shared_ptr<arrow::Array> arr;
+			auto st = builder->Finish(&arr);
+			if (!st.ok()) {
+				log_error("nested finish failed: %s",
+				    st.ToString().c_str());
+				return -1;
+			}
+			arrays.push_back(arr);
+		}
+
+		shared_ptr<arrow::KeyValueMetadata> kv =
+		    parquet_build_nmq_metadata(conf, topic, write_type);
+		auto arrow_schema = arrow::schema(fields, kv);
+		int64_t nrows =
+		    arrays.empty() ? 0 : arrays[0]->length();
+		auto rb = arrow::RecordBatch::Make(arrow_schema, nrows, arrays);
+		if (!rb) {
+			log_error("nested RecordBatch::Make failed");
+			return -1;
+		}
+		auto maybe_table = arrow::Table::FromRecordBatches({ rb });
+		if (!maybe_table.ok()) {
+			log_error("nested FromRecordBatches: %s",
+			    maybe_table.status().ToString().c_str());
+			return -1;
+		}
+		auto table = *maybe_table;
+		auto vst   = table->ValidateFull();
+		if (!vst.ok()) {
+			log_error("nested table invalid: %s",
+			    vst.ToString().c_str());
+			return -1;
+		}
+		if (table->num_rows() <= 0) {
+			log_error("nested table has 0 rows");
+			return -1;
+		}
+
+		parquet::WriterProperties::Builder props_builder;
+		props_builder.created_by("NanoMQ")
+		    ->version(parquet::ParquetVersion::PARQUET_2_6)
+		    ->data_page_version(parquet::ParquetDataPageVersion::V2)
+		    ->encoding(parquet::Encoding::PLAIN)
+		    ->compression(static_cast<arrow::Compression::type>(
+		        conf->comp_type));
+		if (conf->dictionary) {
+			props_builder.enable_dictionary();
+		} else {
+			props_builder.disable_dictionary();
+		}
+		if (conf->compression_level > 0 &&
+		    (conf->comp_type == GZIP || conf->comp_type == BROTLI ||
+		        conf->comp_type == ZSTD)) {
+			props_builder.compression_level(
+			    conf->compression_level);
+		} else if (conf->compression_level > 0) {
+			log_warn("compression_level is ignored for current "
+			         "compress type");
+		}
+		if (conf->data_page_size > 0 &&
+		    conf->data_page_size <= (uint64_t) INT64_MAX) {
+			props_builder.data_pagesize(
+			    (int64_t) conf->data_page_size);
+		}
+		if (conf->dictionary_page_size > 0 &&
+		    conf->dictionary_page_size <= (uint64_t) INT64_MAX) {
+			props_builder.dictionary_pagesize_limit(
+			    (int64_t) conf->dictionary_page_size);
+		}
+		if (conf->write_batch_size > 0) {
+			props_builder.write_batch_size(
+			    (int64_t) conf->write_batch_size);
+		}
+		if (conf->enable_statistics) {
+			props_builder.enable_statistics();
+		} else {
+			props_builder.disable_statistics();
+		}
+		if (conf->enable_page_checksum) {
+			props_builder.enable_page_checksum();
+		} else {
+			props_builder.disable_page_checksum();
+		}
+		pq_apply_leaf_encoding(props_builder, data->schema_tree, "");
+		if (conf->encryption.enable) {
+			std::vector<std::string> paths;
+			pq_collect_leaf_paths(data->schema_tree, "", paths);
+			std::vector<char *> names;
+			for (auto &p : paths) {
+				names.push_back(const_cast<char *>(p.c_str()));
+			}
+			props_builder.encryption(parquet_set_encryption(
+			    names.data(), (uint32_t) names.size(), conf));
+		}
+		shared_ptr<parquet::WriterProperties> props =
+		    props_builder.build();
+
+		using FileClass = arrow::io::FileOutputStream;
+		shared_ptr<FileClass> out_file;
+		PARQUET_ASSIGN_OR_THROW(out_file, FileClass::Open(filename));
+		auto st = parquet::arrow::WriteTable(*table,
+		    arrow::default_memory_pool(), out_file, table->num_rows(),
+		    props);
+		if (!st.ok()) {
+			log_error("nested WriteTable failed: %s",
+			    st.ToString().c_str());
+			return -1;
+		}
+	} catch (const exception &e) {
+		log_error("nested write exception=[%s]", e.what());
+		return -1;
+	}
+	return 0;
+}
+
+static pq_type *
+pq_type_from_arrow_field(const arrow::Field &field);
+
+static pq_type *
+pq_type_from_arrow(const char *name, const arrow::DataType &dt, bool nullable)
+{
+	pq_rep rep = nullable ? PQ_OPTIONAL : PQ_REQUIRED;
+	switch (dt.id()) {
+	case arrow::Type::INT32:
+		return pq_type_primitive(name, PQ_INT32, rep, PQ_ENC_DEFAULT);
+	case arrow::Type::INT64:
+	case arrow::Type::UINT64:
+		return pq_type_primitive(name, PQ_INT64, rep, PQ_ENC_DEFAULT);
+	case arrow::Type::BINARY:
+	case arrow::Type::LARGE_BINARY:
+	case arrow::Type::STRING:
+	case arrow::Type::LARGE_STRING:
+		return pq_type_primitive(
+		    name, PQ_BYTE_ARRAY, rep, PQ_ENC_DEFAULT);
+	case arrow::Type::LIST: {
+		const auto &lt = static_cast<const arrow::ListType &>(dt);
+		if (!lt.value_field()) {
+			return NULL;
+		}
+		pq_type *elem = pq_type_from_arrow_field(*lt.value_field());
+		return pq_type_list(name, rep, elem);
+	}
+	case arrow::Type::STRUCT: {
+		const auto &st = static_cast<const arrow::StructType &>(dt);
+		uint32_t    n  = (uint32_t) st.num_fields();
+		std::vector<pq_type *> fields(n);
+		for (uint32_t i = 0; i < n; i++) {
+			fields[i] = pq_type_from_arrow_field(*st.field(i));
+			if (fields[i] == NULL) {
+				for (uint32_t j = 0; j < i; j++) {
+					pq_type_free(fields[j]);
+				}
+				return NULL;
+			}
+		}
+		return pq_type_struct(name, rep, fields.data(), n);
+	}
+	default:
+		log_error("unsupported arrow type %s", dt.ToString().c_str());
+		return NULL;
+	}
+}
+
+static pq_type *
+pq_type_from_arrow_field(const arrow::Field &field)
+{
+	return pq_type_from_arrow(
+	    field.name().c_str(), *field.type(), field.nullable());
+}
+
+static void
+pq_copy_validity(pq_array *a, const arrow::Array &arr)
+{
+	if (arr.null_count() == 0) {
+		return;
+	}
+	if (a->valid == NULL && a->length > 0) {
+		a->valid = (uint8_t *) nng_alloc(a->length);
+		if (a->valid == NULL) {
+			return;
+		}
+		memset(a->valid, 1, a->length);
+	}
+	for (int64_t i = 0; i < arr.length(); i++) {
+		if (arr.IsNull(i) && a->valid != NULL) {
+			a->valid[i] = 0;
+		}
+	}
+}
+
+static pq_array *pq_array_from_arrow(const pq_type *t, const arrow::Array &arr);
+
+static parquet_data_packet *
+pq_packet_from_bytes(const uint8_t *p, int32_t n)
+{
+	if (n < 0) {
+		n = 0;
+	}
+	return pq_packet_copy(p, (uint32_t) n);
+}
+
+static pq_array *
+pq_array_from_arrow(const pq_type *t, const arrow::Array &arr)
+{
+	pq_array *a;
+
+	if (t == NULL) {
+		return NULL;
+	}
+	a = pq_array_from_type(t, (uint32_t) arr.length());
+	if (a == NULL) {
+		return NULL;
+	}
+	pq_copy_validity(a, arr);
+	if (t->kind == PQ_PRIMITIVE) {
+		if (t->phys == PQ_INT32) {
+			if (arr.type_id() != arrow::Type::INT32) {
+				pq_array_free(a);
+				return NULL;
+			}
+			const auto &ia =
+			    static_cast<const arrow::Int32Array &>(arr);
+			for (int64_t i = 0; i < arr.length(); i++) {
+				if (!arr.IsNull(i)) {
+					a->i32[i] = ia.Value(i);
+				}
+			}
+		} else if (t->phys == PQ_INT64) {
+			if (arr.type_id() == arrow::Type::UINT64) {
+				const auto &ua =
+				    static_cast<const arrow::UInt64Array &>(
+				        arr);
+				for (int64_t i = 0; i < arr.length(); i++) {
+					if (!arr.IsNull(i)) {
+						a->i64[i] = (int64_t) ua.Value(i);
+					}
+				}
+			} else {
+				const auto &ia =
+				    static_cast<const arrow::Int64Array &>(
+				        arr);
+				for (int64_t i = 0; i < arr.length(); i++) {
+					if (!arr.IsNull(i)) {
+						a->i64[i] = ia.Value(i);
+					}
+				}
+			}
+		} else {
+			const auto &ba =
+			    static_cast<const arrow::BinaryArray &>(arr);
+			for (int64_t i = 0; i < arr.length(); i++) {
+				if (arr.IsNull(i)) {
+					continue;
+				}
+				int32_t     len = 0;
+				const uint8_t *p = ba.GetValue(i, &len);
+				a->bin[i]        = pq_packet_from_bytes(p, len);
+			}
+		}
+		return a;
+	}
+	if (t->kind == PQ_LIST) {
+		if (arr.type_id() != arrow::Type::LIST) {
+			pq_array_free(a);
+			return NULL;
+		}
+		const auto &la = static_cast<const arrow::ListArray &>(arr);
+		if (arr.length() == 0) {
+			return a;
+		}
+		int32_t base = la.value_offset(0);
+		int32_t last = la.value_offset(arr.length());
+		if (last < base) {
+			pq_array_free(a);
+			return NULL;
+		}
+		for (int64_t i = 0; i <= arr.length(); i++) {
+			a->offsets[i] =
+			    (uint32_t) (la.value_offset(i) - base);
+		}
+		auto values = la.values()->Slice(base, last - base);
+		pq_array_free(a->child);
+		a->child = pq_array_from_arrow(&t->children[0], *values);
+		if (a->child == NULL) {
+			pq_array_free(a);
+			return NULL;
+		}
+		return a;
+	}
+	if (arr.type_id() != arrow::Type::STRUCT) {
+		return NULL;
+	}
+	const auto &sa = static_cast<const arrow::StructArray &>(arr);
+	for (uint32_t i = 0; i < t->n_children; i++) {
+		auto field_arr = sa.field(i);
+		pq_array_free(a->fields[i]);
+		a->fields[i] =
+		    pq_array_from_arrow(&t->children[i], *field_arr);
+		if (a->fields[i] == NULL) {
+			pq_array_free(a);
+			return NULL;
+		}
+	}
+	return a;
+}
+
+static std::shared_ptr<arrow::Array>
+pq_chunked_to_array(const std::shared_ptr<arrow::ChunkedArray> &ch)
+{
+	if (ch->num_chunks() == 1) {
+		return ch->chunk(0);
+	}
+	auto maybe =
+	    arrow::Concatenate(ch->chunks(), arrow::default_memory_pool());
+	if (!maybe.ok()) {
+		log_error("concatenate chunks: %s",
+		    maybe.status().ToString().c_str());
+		return nullptr;
+	}
+	return *maybe;
+}
+
+static bool
+parquet_file_schema_is_nested(const parquet::SchemaDescriptor *sd)
+{
+	if (sd == NULL) {
+		return false;
+	}
+	for (int i = 0; i < sd->num_columns(); i++) {
+		const parquet::ColumnDescriptor *col = sd->Column(i);
+		if (col->max_repetition_level() > 0) {
+			return true;
+		}
+		if (col->physical_type() == parquet::Type::INT32) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static shared_ptr<GroupNode>
+setup_schema_from_data(parquet_data *data)
+{
+	if (data->schema != NULL && data->col_len > 0) {
+		return setup_schema(data->schema, data->col_len);
+	}
+	if (data->schema_tree == NULL ||
+	    data->schema_tree->kind != PQ_STRUCT ||
+	    data->schema_tree->n_children == 0) {
+		return NULL;
+	}
+	std::vector<char *> names(data->schema_tree->n_children);
+	for (uint32_t i = 0; i < data->schema_tree->n_children; i++) {
+		names[i] = data->schema_tree->children[i].name;
+	}
+	return setup_schema(names.data(), data->schema_tree->n_children);
+}
+
+static parquet_data_packet *
+pq_flat_cell(parquet_data *data, uint32_t c, uint32_t r)
+{
+	if (data->payload_arr != NULL && data->payload_arr[c] != NULL) {
+		return data->payload_arr[c][r];
+	}
+	if (data->root != NULL && data->root->fields != NULL &&
+	    c + 1 < data->root->type->n_children) {
+		pq_array *f = data->root->fields[c + 1];
+		if (f->valid != NULL && f->valid[r] == 0) {
+			return NULL;
+		}
+		if (f->bin != NULL) {
+			return f->bin[r];
+		}
+	}
+	return NULL;
+}
+
 int
 parquet_write_core(conf_parquet *conf, char *filename,
     shared_ptr<GroupNode> schema, parquet_data *data, const char *topic,
@@ -626,7 +1234,18 @@ parquet_write_core(conf_parquet *conf, char *filename,
 	uint32_t               col_len     = data->col_len;
 	uint32_t               row_len     = data->row_len;
 	uint64_t              *ts_arr      = data->ts;
-	parquet_data_packet ***payload_arr = data->payload_arr;
+	const char            *ts_col      = "ts";
+
+	if (col_len == 0 && data->schema_tree != NULL) {
+		col_len = data->schema_tree->n_children;
+	}
+	if (schema_arr != NULL && schema_arr[0] != NULL) {
+		ts_col = schema_arr[0];
+	} else if (data->schema_tree != NULL &&
+	    data->schema_tree->n_children > 0 &&
+	    data->schema_tree->children[0].name != NULL) {
+		ts_col = data->schema_tree->children[0].name;
+	}
 
 	string exception_msg = "";
 	try {
@@ -637,7 +1256,7 @@ parquet_write_core(conf_parquet *conf, char *filename,
 		    ->version(parquet::ParquetVersion::PARQUET_2_6)
 		    ->data_page_version(parquet::ParquetDataPageVersion::V2)
 		    ->encoding(parquet::Encoding::PLAIN)
-		    ->encoding(schema_arr[0], Encoding::DELTA_BINARY_PACKED)
+		    ->encoding(ts_col, Encoding::DELTA_BINARY_PACKED)
 		    ->compression(static_cast<arrow::Compression::type>(
 		        conf->comp_type));
 		if (conf->dictionary) {
@@ -689,12 +1308,31 @@ parquet_write_core(conf_parquet *conf, char *filename,
 		} else {
 			builder.disable_page_checksum();
 		}
+		if (data->schema_tree != NULL) {
+			pq_apply_leaf_encoding(
+			    builder, data->schema_tree, "");
+		}
 		log_debug("check encry");
 		if (conf->encryption.enable) {
 			shared_ptr<parquet::FileEncryptionProperties>
 			    encryption_configurations;
-			encryption_configurations =
-			    parquet_set_encryption(schema_arr, col_len, conf);
+			if (schema_arr != NULL) {
+				encryption_configurations =
+				    parquet_set_encryption(
+				        schema_arr, col_len, conf);
+			} else {
+				std::vector<std::string> paths;
+				pq_collect_leaf_paths(
+				    data->schema_tree, "", paths);
+				std::vector<char *> names;
+				for (auto &p : paths) {
+					names.push_back(
+					    const_cast<char *>(p.c_str()));
+				}
+				encryption_configurations =
+				    parquet_set_encryption(names.data(),
+				        (uint32_t) names.size(), conf);
+			}
 			builder.encryption(encryption_configurations);
 		}
 
@@ -732,12 +1370,13 @@ parquet_write_core(conf_parquet *conf, char *filename,
 			    static_cast<parquet::ByteArrayWriter *>(
 			        rg_writer->NextColumn());
 			for (uint32_t r = 0; r < row_len; r++) {
-
-				if (payload_arr[c][r] != NULL) {
+				parquet_data_packet *pkt =
+				    pq_flat_cell(data, c, r);
+				if (pkt != NULL) {
 					int16_t definition_level = 1;
 					parquet::ByteArray value;
-					value.ptr = payload_arr[c][r]->data;
-					value.len = payload_arr[c][r]->size;
+					value.ptr = pkt->data;
+					value.len = pkt->size;
 					ba_writer->WriteBatch(1,
 					    &definition_level, nullptr,
 					    &value);
@@ -764,6 +1403,134 @@ parquet_write_core(conf_parquet *conf, char *filename,
 }
 
 int
+parquet_write_file(conf_parquet *conf, const char *filename, parquet_data *data,
+    const char *topic, parquet_type write_type)
+{
+	if (conf == NULL || filename == NULL || data == NULL ||
+	    data->row_len == 0) {
+		log_error("parquet_write_file invalid args");
+		return -1;
+	}
+	if (data->ts == NULL) {
+		pq_batch_bind_ts(data);
+	}
+	if (data->ts == NULL) {
+		log_error("parquet_write_file missing ts column");
+		return -1;
+	}
+	if (data->root != NULL && !pq_batch_is_flat_ba(data)) {
+		return parquet_write_nested(
+		    conf, filename, data, topic, write_type);
+	}
+	shared_ptr<GroupNode> schema = setup_schema_from_data(data);
+	if (schema == NULL) {
+		log_error("Schema set error.");
+		return -1;
+	}
+	return parquet_write_core(
+	    conf, (char *) filename, schema, data, topic, write_type);
+}
+
+int
+parquet_read_file(
+    conf_parquet *conf, const char *filename, parquet_data **out)
+{
+	if (filename == NULL || out == NULL) {
+		return -1;
+	}
+	*out = NULL;
+
+	parquet::ReaderProperties reader_properties =
+	    parquet::default_reader_properties();
+	bool is_compat_mode = false;
+	bool is_encrypted   = false;
+	if (0 != parquet_check_is_compat_and_decrypt(
+	             (char *) filename, is_compat_mode, is_encrypted)) {
+		log_warn("failed to check mode for parquet %s", filename);
+		return -1;
+	}
+	if (is_compat_mode == false && is_encrypted == true) {
+		if (false == parquet_resolve_and_set_decryption_properties(
+		                 reader_properties, conf, filename)) {
+			log_error("Can't read encrypted parquet");
+			return -1;
+		}
+	}
+
+	try {
+		parquet::arrow::FileReaderBuilder frb;
+		auto st = frb.OpenFile(filename, false, reader_properties);
+		if (!st.ok()) {
+			log_error("OpenFile %s: %s", filename,
+			    st.ToString().c_str());
+			return -1;
+		}
+		std::unique_ptr<parquet::arrow::FileReader> reader;
+		st = frb.Build(&reader);
+		if (!st.ok()) {
+			log_error("FileReader build: %s",
+			    st.ToString().c_str());
+			return -1;
+		}
+		std::shared_ptr<arrow::Table> table;
+		st = reader->ReadTable(&table);
+		if (!st.ok()) {
+			log_error("ReadTable: %s", st.ToString().c_str());
+			return -1;
+		}
+
+		uint32_t n = (uint32_t) table->num_columns();
+		std::vector<pq_type *> fields(n);
+		for (uint32_t i = 0; i < n; i++) {
+			fields[i] =
+			    pq_type_from_arrow_field(*table->schema()->field(i));
+			if (fields[i] == NULL) {
+				for (uint32_t j = 0; j < i; j++) {
+					pq_type_free(fields[j]);
+				}
+				return -1;
+			}
+		}
+		pq_type *root_t =
+		    pq_type_struct("schema", PQ_REQUIRED, fields.data(), n);
+		if (root_t == NULL) {
+			return -1;
+		}
+		parquet_data *data = pq_batch_from_type(
+		    root_t, (uint32_t) table->num_rows());
+		if (data == NULL) {
+			return -1;
+		}
+		pq_array_free(data->root);
+		data->root = pq_array_from_type(root_t, (uint32_t) table->num_rows());
+		if (data->root == NULL) {
+			parquet_data_free(data);
+			return -1;
+		}
+		for (uint32_t i = 0; i < n; i++) {
+			auto arr = pq_chunked_to_array(table->column(i));
+			if (arr == NULL) {
+				parquet_data_free(data);
+				return -1;
+			}
+			pq_array_free(data->root->fields[i]);
+			data->root->fields[i] = pq_array_from_arrow(
+			    &root_t->children[i], *arr);
+			if (data->root->fields[i] == NULL) {
+				parquet_data_free(data);
+				return -1;
+			}
+		}
+		pq_batch_bind_ts(data);
+		*out = data;
+		return 0;
+	} catch (const exception &e) {
+		log_error("parquet_read_file exception=[%s]", e.what());
+		return -1;
+	}
+}
+
+int
 parquet_write_tmp(parquet_object *elem)
 {
 
@@ -773,14 +1540,13 @@ parquet_write_tmp(parquet_object *elem)
 		return -1;
 	}
 
-	char    **schema_arr = elem->data->schema;
-	uint32_t  col_len    = elem->data->col_len;
-	uint32_t  row_len    = elem->data->row_len;
-	uint64_t *ts_arr     = elem->data->ts;
-
-	shared_ptr<GroupNode> schema = setup_schema(schema_arr, col_len);
-
-	if (NULL == schema) {
+	uint32_t  row_len = elem->data->row_len;
+	uint64_t *ts_arr  = elem->data->ts;
+	if (ts_arr == NULL) {
+		pq_batch_bind_ts(elem->data);
+		ts_arr = elem->data->ts;
+	}
+	if (ts_arr == NULL) {
 		log_error("Schema set error.");
 		return -1;
 	}
@@ -797,15 +1563,12 @@ parquet_write_tmp(parquet_object *elem)
 		return -1;
 	}
 
-	parquet_write_core(
-	    conf, filename, schema, elem->data, elem->topic, elem->type);
+	parquet_write_file(
+	    conf, filename, elem->data, elem->topic, elem->type);
 	parquet_file_range *range =
 	    parquet_file_range_alloc(0, row_len - 1, filename);
 	free(filename);
 	update_parquet_file_ranges(conf, elem, range);
-
-	// Create a ParquetFileWriter instance
-	parquet::WriterProperties::Builder builder;
 
 	parquet_object_free(elem);
 	return 0;
@@ -821,14 +1584,13 @@ parquet_write(parquet_object *elem)
 		return -1;
 	}
 
-	char    **schema_arr = elem->data->schema;
-	uint32_t  col_len    = elem->data->col_len;
-	uint32_t  row_len    = elem->data->row_len;
-	uint64_t *ts_arr     = elem->data->ts;
-
-	shared_ptr<GroupNode> schema = setup_schema(schema_arr, col_len);
-
-	if (NULL == schema) {
+	uint32_t  row_len = elem->data->row_len;
+	uint64_t *ts_arr  = elem->data->ts;
+	if (ts_arr == NULL) {
+		pq_batch_bind_ts(elem->data);
+		ts_arr = elem->data->ts;
+	}
+	if (ts_arr == NULL) {
 		log_error("Schema set error.");
 		return -1;
 	}
@@ -841,8 +1603,12 @@ parquet_write(parquet_object *elem)
 		return -1;
 	}
 
-	parquet_write_core(
-	    conf, filename, schema, elem->data, elem->topic, elem->type);
+	if (parquet_write_file(
+	        conf, filename, elem->data, elem->topic, elem->type) != 0) {
+		parquet_object_free(elem);
+		log_error("parquet_write_file failed");
+		return -1;
+	}
 	char *md5_file_name =
 	    compute_and_rename_file_withMD5(filename, conf, elem->topic);
 	if (md5_file_name == nullptr) {
@@ -1960,6 +2726,7 @@ static parquet_data_ret *parquet_read_payload(shared_ptr<parquet::RowGroupReader
             log_error("malloc failed");
             return ret;
         }
+        memset(ret, 0, sizeof(*ret));
         ret->col_len = schema_vec.size();
         ret->payload_arr = (parquet_data_packet ***)malloc(sizeof(parquet_data_packet **) * ret->col_len);
         ret->schema = (char **)malloc(sizeof(char *) * ret->col_len);
@@ -2014,6 +2781,32 @@ parquet_read_span_by_column(conf_parquet *conf, const char *filename, uint64_t k
 		// Get the File MetaData
 		shared_ptr<parquet::FileMetaData> file_metadata =
 		    parquet_reader->metadata();
+
+		if (parquet_file_schema_is_nested(file_metadata->schema())) {
+			parquet_data *batch = NULL;
+			if (parquet_read_file(conf, filename, &batch) != 0 ||
+			    batch == NULL) {
+				return NULL;
+			}
+			ret = (parquet_data_ret *) malloc(
+			    sizeof(parquet_data_ret));
+			if (ret == NULL) {
+				parquet_data_free(batch);
+				return NULL;
+			}
+			memset(ret, 0, sizeof(*ret));
+			ret->row_len     = batch->row_len;
+			ret->ts          = batch->ts;
+			ret->schema_tree = batch->schema_tree;
+			ret->root        = batch->root;
+			batch->ts          = NULL;
+			batch->schema_tree = NULL;
+			batch->root        = NULL;
+			parquet_data_free(batch);
+			(void) schema;
+			(void) schema_len;
+			return ret;
+		}
 
 		int num_row_groups =
 		    file_metadata
