@@ -3142,6 +3142,7 @@ void
 conf_bridge_pnode_init(conf_nng_pub_node *node)
 {
 	node->name = NULL;
+	node->enable = true;
 	node->pub_sock = (nng_socket) NNG_SOCKET_INITIALIZER;
 	node->pub_url = NULL;
 	node->clientid = NULL;
@@ -3154,6 +3155,7 @@ void
 conf_bridge_snode_init(conf_nng_sub_node *node)
 {
 	node->name = NULL;
+	node->enable = true;
 	node->sub_sock = (nng_socket) NNG_SOCKET_INITIALIZER;
 	node->sub_url = NULL;
 	node->clientid = NULL;
