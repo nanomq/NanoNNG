@@ -75,13 +75,9 @@ print_hex(char *str, const uint8_t *data, size_t len)
 #include "nng/supplemental/tls/tls.h"
 #include <nng/supplemental/tls/engine.h>
 
-#ifdef TLS_EXTERN_PRIVATE_KEY
-#endif
 
 static bool g_print_handshake = false;
 
-#ifdef TLS_EXTERN_PRIVATE_KEY
-#endif // TLS_EXTERN_PRIVATE_KEY
 
 static void
 open_log_ssl_error(const char *where, int ssl_error)
@@ -730,17 +726,10 @@ open_config_ca_chain(
 	size_t len;
 	trace("start");
 
-#ifndef NANOMQ_TLS_VENDOR
-#define NANOMQ_TLS_VENDOR "VENDOR"
-#endif
-
-#ifdef TLS_EXTERN_PRIVATE_KEY
-#else
 	if (certs == NULL) {
 		log_info("open_config_ca_chain" "NULL certs detected!");
 	}
 	len = strlen(certs);
-#endif //TLS_EXTERN_PRIVATE_KEY
 	log_warn("cacertlen:%d", len);
 
 	BIO *bio = BIO_new_mem_buf(certs, len);
@@ -772,8 +761,6 @@ open_config_ca_chain(
 
 	BIO_free(bio);
 
-#ifdef TLS_EXTERN_PRIVATE_KEY
-#endif //TLS_EXTERN_PRIVATE_KEY
 
 	if (crl == NULL) {
 		trace("end without crl");
@@ -849,11 +836,8 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	(void) pass;
 #endif
 
-#ifdef TLS_EXTERN_PRIVATE_KEY
-#else
 	char *cert1 = cert;
 	len = strlen(cert1);
-#endif // TLS_EXTERN_PRIVATE_KEY
 	log_warn("certlen:%d", len);
 	biocert = BIO_new_mem_buf(cert1, len);
 	if (!biocert) {
@@ -862,10 +846,7 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		goto error;
 	}
 
-#ifdef TLS_EXTERN_PRIVATE_KEY
-#else
 	xcert = PEM_read_bio_X509(biocert, NULL, 0, NULL);
-#endif // TLS_EXTERN_PRIVATE_KEY
 
 	log_info("ctx %p cert %p rv%d", cfg->ctx, xcert, rv);
 	if ((rv = SSL_CTX_use_certificate(cfg->ctx, xcert)) <= 0) {
@@ -876,12 +857,7 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	}
 	rv = 0;
 
-#ifdef TLS_EXTERN_PRIVATE_KEY
-#endif
 
-#ifdef TLS_EXTERN_PRIVATE_KEY
-
-#else
 	len = strlen(key);
 	log_warn("keylen:%d", len);
 	biokey = BIO_new_mem_buf(key, len);
@@ -908,11 +884,8 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		rv = NNG_ECRYPTO;
 		goto error;
 	}
-#endif // TLS_EXTERN_PRIVATE_KEY
 
 error:
-#ifdef TLS_EXTERN_PRIVATE_KEY
-#endif // TLS_EXTERN_PRIVATE_KEY
 	if (xcert)
 		X509_free(xcert);
 	if (biocert)

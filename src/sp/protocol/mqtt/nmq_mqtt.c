@@ -55,10 +55,6 @@ struct nano_sock {
 	nni_mtx        lk;
 	nni_msg       *pingmsg;
 	nni_atomic_int ttl;
-#if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
-	uint64_t       lc;
-	bool           lic_valid;
-#endif
 	nni_id_map     pipes;
 	nni_id_map     cached_sessions;
 	nni_lmq        waitlmq;   // this is for receving
@@ -759,18 +755,6 @@ auth_verify:
 		nni_msg_free(msg);
 		return NNG_ECLOSED;
 	}
-	int total = nni_id_count(&s->pipes);
-#if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
-	if (total + 1 > (int)s->lc) {
-		rv = QUOTA_EXCEEDED;
-		log_warn("Max Quota %d exceed, %s disconneted",
-			s->lc, clientid);
-	}
-	if (s->lic_valid == false) {
-		rv = QUOTA_EXCEEDED;
-		log_warn("License expired, %s disconneted", clientid);
-	}
-#endif
 	nmq_connack_encode(msg, s->conf, p->conn_param, rv);
 	if (rv != 0) {
 		log_warn("Invalid auth info or authentication denied");
@@ -825,9 +809,6 @@ auth_verify:
 	p->conn_param->nano_qos_db = p->pipe->nano_qos_db;
 	p->nano_qos_db             = p->pipe->nano_qos_db;
 
-	total ++;
-	nng_atomic_set(s->conf->lc, total);
-	log_debug("Total connection num %d", total);
 	// Recover preset sessions
 	void *qos_db = NULL;
 	if (s->conf->ext_qos_db) {
@@ -905,7 +886,6 @@ close_pipe(nano_pipe *p)
 	t = nni_id_get(&s->pipes, nni_pipe_id(p->pipe));
 	if (t == p) {
 		nni_id_remove(&s->pipes, nni_pipe_id(p->pipe));
-		nng_atomic_set(s->conf->lc, nni_id_count(&s->pipes));
 	}
 	nano_nni_lmq_flush(&p->rlmq, false);
 }
@@ -1381,45 +1361,6 @@ nano_sock_set_max_ttl(void *arg, const void *buf, size_t sz, nni_opt_type t)
 	return (rv);
 }
 
-#if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
-static int
-nano_sock_set_max_client(void *arg, const void *v, size_t sz, nni_opt_type t)
-{
-	nano_sock *s = arg;
-	uint64_t   tmp;
-	int rv;
-
-	if ((rv = nni_copyin_u64(&tmp, v, sz, t)) == 0) {
-		s->lc = tmp;
-	}
-	return (rv);
-}
-
-static int
-nano_sock_get_num_client(void *arg, void *v, size_t *szp, nni_opt_type t)
-{
-	nano_sock *s = arg;
-	int        rv;
-
-	rv = nni_copyout_int(nni_id_count(&s->pipes), v, szp, t);
-	return (rv);
-}
-
-static int
-nano_sock_set_lic_valid(void *arg, const void *v, size_t sz, nni_opt_type t)
-{
-	nano_sock *s = arg;
-	bool tmp;
-	int rv;
-
-	if ((rv = nni_copyin_bool(&tmp, v, sz, t)) == 0) {
-		s->lic_valid = tmp;
-	}
-	return (rv);
-}
-
-#endif
-
 static int
 nano_sock_get_max_ttl(void *arg, void *buf, size_t *szp, nni_opt_type t)
 {
@@ -1566,20 +1507,6 @@ static nni_option nano_sock_options[] = {
 	    .o_name = NMQ_OPT_MQTT_PIPES,
 	    .o_get  = nano_sock_get_idmap,
 	},
-#if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
-	{
-	    .o_name = NMQ_OPT_MAX_CLIENTS,
-	    .o_set  = nano_sock_set_max_client,
-	},
-	{
-	    .o_name = NMQ_OPT_GET_CLIENTS,
-	    .o_get  = nano_sock_get_num_client,
-	},
-	{
-	    .o_name = NMQ_OPT_LIC_VALID,
-	    .o_set  = nano_sock_set_lic_valid,
-	},
-#endif
 #if defined(NNG_SUPP_SQLITE)
 	{
 	    .o_name = NMQ_OPT_MQTT_QOS_DB,

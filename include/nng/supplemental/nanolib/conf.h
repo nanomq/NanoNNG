@@ -25,7 +25,6 @@ extern "C" {
 #define PID_PATH_NAME "/tmp/nanomq/nanomq.pid"
 #define CONF_PATH_NAME "/etc/nanomq.conf"
 #define CONF_NAME "/nanomq.conf"
-#define LICENSE_NAME "/nanomq.lic"
 #define CONF_ZMQ_GATEWAY_PATH_NAME "/etc/nanomq_zmq_gateway.conf"
 #define CONF_VSOMEIP_GATEWAY_PATH_NAME "/etc/nanomq_vsomeip_gateway.conf"
 
@@ -766,10 +765,6 @@ struct conf {
 	acl_permit acl_nomatch;
 	enum { ACL_IGNORE, ACL_DISCONNECT } acl_deny_action;
 #endif
-#if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
-	char           *license_path; // licnese path	
-#endif
-	nng_atomic_int   *lc;		// connections in total
 	conf_auth         auths;
 	conf_auth_http    auth_http;
 	struct hashmap_s *cid_table;
@@ -787,7 +782,7 @@ NNG_DECL int  get_time_ms(const char *str, uint64_t *second);
 NNG_DECL void conf_parse(conf *nanomq_conf);
 NNG_DECL void conf_parse_ver2(conf *nanomq_conf, bool is_reload);
 NNG_DECL void conf_parse_cipher(conf *nanomq_conf, const char *key, const char *key2, const char *key3);
-#if defined(SUPP_PARQUET) || defined(SUPP_LICENSE_STD)
+#if defined(SUPP_PARQUET)
 NNG_DECL void conf_bridge_node_parse_cipher_password(conf_bridge_node *bridge, const char *key);
 NNG_DECL bool conf_parquet_unwrap_runtime_key(
 	const char *wrapped_key, const char *wrap_alg, char **plain_key_out);

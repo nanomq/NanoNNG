@@ -1059,9 +1059,6 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->cmd_ipc_url      = NULL;
 	nanomq_conf->url              = NULL;
 	nanomq_conf->conf_file        = NULL;
-#if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
-	nanomq_conf->license_path     = NULL;
-#endif
 
 #if defined(SUPP_RULE_ENGINE)
 	conf_rule_init(&nanomq_conf->rule_eng);
@@ -1139,7 +1136,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->exchange.count           = 0;
 	nanomq_conf->exchange.nodes           = NULL;
 	nanomq_conf->exchange.default_parquet = NULL;
-#if defined(SUPP_PARQUET) || defined(SUPP_LICENSE_STD)
+#if defined(SUPP_PARQUET)
 	conf_parquet_init(&nanomq_conf->parquet);
 #endif
 	nanomq_conf->blf.enable           = false;
@@ -1168,7 +1165,6 @@ conf_init(conf *nanomq_conf)
 
 	memset(nanomq_conf->exec_path, 0, 512);
 	memset(nanomq_conf->exec_fname, 0, 64);
-	nng_atomic_alloc(&nanomq_conf->lc);	// Marks current total connections
 }
 
 static void
@@ -3361,7 +3357,7 @@ conf_nng_proxy_init(conf_nng_bridge *proxy)
 	proxy->pub_count = 0;
 	proxy->sub_count = 0;
 }
-#if defined(SUPP_PARQUET) || defined(SUPP_LICENSE_STD)
+#if defined(SUPP_PARQUET)
 void
 conf_parquet_init(conf_parquet *parquet)
 {
@@ -5185,6 +5181,5 @@ conf_fini(conf *nanomq_conf)
 #if defined(SUPP_PARQUET)
 	conf_parquet_destroy(&nanomq_conf->parquet);
 #endif
-	nng_atomic_free(nanomq_conf->lc);
 	free(nanomq_conf);
 }

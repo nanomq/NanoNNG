@@ -17,7 +17,7 @@
 #include <string.h>
 
 
-#if defined(SUPP_LICENSE_STD) || defined(SUPP_PARQUET)
+#if defined(SUPP_PARQUET)
 #include "supplemental/aes/aes.h"
 #endif
 
@@ -855,115 +855,6 @@ conf_webhook_parse_ver2(conf *config, cJSON *jso)
 	return;
 }
 
-#ifdef SUPP_LICENSE_STD
-static void
-conf_auth_parse_cipher(conf_auth *auth, const char *key)
-{
-	if (!auth->enable) {
-		return;
-	}
-	for (int i = 0; i<(int)auth->count; ++i) {
-		char *password = auth->passwords[i];
-		if (!password)
-			continue;
-		char * cipher = nng_alloc(sizeof(char) * strlen(password));
-		size_t cipher_sz;
-		cipher_sz = nni_base64_decode((const char*)password,
-				strlen(password), (uint8_t *)cipher, strlen(password));
-		if (cipher_sz <= 32) {
-			nng_free(cipher, cipher_sz);
-			log_error("failed to base64 decode auth.password");
-		} else {
-			int   plain_sz;
-			const char *method =
-			    aes_gcm_get_method_by_key_len(strlen(key));
-			uint8_t *plain = nni_aes_gcm_decrypt(
-			    (uint8_t *) cipher, cipher_sz, (uint8_t *) key,
-			    strlen(key), &plain_sz, method);
-			nng_free(cipher, cipher_sz);
-			if (plain == NULL || plain_sz == 0) {
-				log_error("failed to decrypt auth.password");
-			} else {
-				nng_free(password, strlen(password));
-				auth->passwords[i] = plain;
-				log_trace("auth.password: %s", plain);
-			}
-		}
-	}
-}
-
-static void
-conf_http_server_parse_cipher(conf_http_server *http, const char *key)
-{
-	if (!http->enable) {
-		return;
-	}
-
-	if (http->password) {
-		char *password = http->password;
-		size_t cipher_sz = 0;
-		char * cipher = nng_alloc(sizeof(char) * strlen(password));
-		if (!cipher) {
-			log_error("failed to alloc cipher sz%ld", strlen(password));
-		} else {
-			cipher_sz = nni_base64_decode((const char*)password,
-				strlen(password), (uint8_t *)cipher, strlen(password));
-		}
-		if (cipher_sz <= 32) {
-			nng_free(cipher, cipher_sz);
-			log_error("failed to base64 decode http_server.password sz%ld", cipher_sz);
-		} else {
-			int   plain_sz;
-			const char *method =
-			    aes_gcm_get_method_by_key_len(strlen(key));
-			char *plain = (char *) nni_aes_gcm_decrypt(
-			    (uint8_t *) cipher, cipher_sz, (uint8_t *) key,
-			    strlen(key), &plain_sz, method);
-			nng_free(cipher, cipher_sz);
-			if (plain == NULL || plain_sz == 0) {
-				log_error("failed to decrypt http_server.password");
-			} else {
-				nng_free(password, strlen(password));
-				http->password = plain;
-				log_trace("http_server.password: %s", plain);
-			}
-		}
-	}
-
-	for (int i = 0; i<(int)cvector_size(http->passwords); ++i) {
-		char *password = http->passwords[i];
-		if (!password)
-			continue;
-		size_t cipher_sz = 0;
-		char * cipher = nng_alloc(sizeof(char) * strlen(password));
-		if (!cipher) {
-			log_error("failed to alloc cipher[%d] sz%ld", i, strlen(password));
-			continue;
-		}
-		cipher_sz = nni_base64_decode((const char*)password,
-				strlen(password), (uint8_t *)cipher, strlen(password));
-		if (cipher_sz <= 32) {
-			nng_free(cipher, cipher_sz);
-			log_error("failed to base64 decode http_server.passwords[%d] sz%ld", i, cipher_sz);
-		} else {
-			int   plain_sz;
-			const char *method =
-			    aes_gcm_get_method_by_key_len(strlen(key));
-			char *plain = (char *) nni_aes_gcm_decrypt(
-			    (uint8_t *) cipher, cipher_sz, (uint8_t *) key,
-			    strlen(key), &plain_sz, method);
-			nng_free(cipher, cipher_sz);
-			if (plain == NULL || plain_sz == 0) {
-				log_error("failed to decrypt http_server.passwords[%d]", i);
-			} else {
-				nng_free(password, strlen(password));
-				http->passwords[i] = plain;
-				log_trace("http_server.passwords[%d]: %s", i, plain);
-			}
-		}
-	}
-}
-#endif
 
 static void
 conf_auth_parse_ver2(conf *config, cJSON *jso)
@@ -1771,7 +1662,7 @@ conf_bridge_node_parse_cipher_certs(conf_bridge_node *node)
 }
 #endif
 
-#if defined(SUPP_PARQUET) || defined(SUPP_LICENSE_STD)
+#if defined(SUPP_PARQUET)
 void
 conf_bridge_node_parse_cipher_password(conf_bridge_node *node, const char *commonkey)
 {
@@ -1827,7 +1718,7 @@ conf_bridge_parse_cipher(conf_bridge *bridge, const char *commonkey, const char 
 #ifdef SUPP_PARQUET
 		conf_bridge_node_parse_cipher_certs(node);
 #endif
-#if defined(SUPP_PARQUET) || defined(SUPP_LICENSE_STD)
+#if defined(SUPP_PARQUET)
 		conf_bridge_node_parse_cipher_password(node, commonkey);
 #endif
 	}
@@ -2904,10 +2795,6 @@ void
 conf_parse_cipher(conf *config, const char *key_bridge, const char *key_cert,
 		const char *key_parquet_meta)
 {
-#ifdef SUPP_LICENSE_STD
-	conf_auth_parse_cipher(&config->auths, key_bridge);
-	conf_http_server_parse_cipher(&config->http_server, key_bridge);
-#endif
 	conf_bridge_parse_cipher(&config->bridge, key_bridge, key_cert);
 #ifdef SUPP_PARQUET
 	conf_parquet_set_runtime_commonkey(key_parquet_meta);
