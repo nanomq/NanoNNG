@@ -4194,10 +4194,9 @@ print_nng_proxy_pub_conf(conf_nng_bridge *proxy)
 			continue;
 		}
 
-		log_info("bridges.nng.pub.%s.enable:    %s", node->name,
-		    node->enable ? "true" : "false");
-
 		const char *name = node->name ? node->name : "";
+		log_info("bridges.nng.pub.%s.enable:    %s", name,
+		    node->enable ? "true" : "false");
 		log_info("bridges.nng.pub.%s.pub_url:   %s", name,
 		    node->pub_url ? node->pub_url : "");
 		log_info("bridges.nng.pub.%s.clientid:  %s", name,
@@ -4237,10 +4236,9 @@ print_nng_proxy_sub_conf(conf_nng_bridge *proxy)
 			continue;
 		}
 
-		log_info("bridges.nng.sub.%s.enable:    %s", node->name,
-		    node->enable ? "true" : "false");
-
 		const char *name = node->name ? node->name : "";
+		log_info("bridges.nng.sub.%s.enable:    %s", name,
+		    node->enable ? "true" : "false");
 		log_info("bridges.nng.sub.%s.sub_url:   %s", name,
 		    node->sub_url ? node->sub_url : "");
 		log_info("bridges.nng.sub.%s.clientid:  %s", name,
