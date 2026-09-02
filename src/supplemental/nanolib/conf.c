@@ -4343,6 +4343,9 @@ print_nng_proxy_pub_conf(conf_nng_bridge *proxy)
 			continue;
 		}
 
+		log_info("bridges.nng.pub.%s.enable:    %s", node->name,
+		    node->enable ? "true" : "false");
+
 		const char *name = node->name ? node->name : "";
 		log_info("bridges.nng.pub.%s.enable:    %s", name,
 		    node->enable ? "true" : "false");
@@ -4384,6 +4387,9 @@ print_nng_proxy_sub_conf(conf_nng_bridge *proxy)
 		if (node == NULL) {
 			continue;
 		}
+
+		log_info("bridges.nng.sub.%s.enable:    %s", node->name,
+		    node->enable ? "true" : "false");
 
 		const char *name = node->name ? node->name : "";
 		log_info("bridges.nng.sub.%s.enable:    %s", name,
