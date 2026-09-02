@@ -669,6 +669,7 @@ typedef struct conf_web_hook  conf_web_hook;
 
 struct conf_nng_pub_node {
 	char       *name;
+	bool        enable;
 	nng_socket  pub_sock;
 	char       *pub_url;
 	char       *clientid;
@@ -680,6 +681,7 @@ typedef struct conf_nng_pub_node conf_nng_pub_node;
 
 struct conf_nng_sub_node {
 	char      *name;
+	bool       enable;
 	nng_socket sub_sock;
 	char      *sub_url;
 	char       *clientid;

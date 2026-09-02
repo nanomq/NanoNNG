@@ -1470,6 +1470,7 @@ conf_nng_pnode_parse(
     conf_nng_pub_node *node, cJSON *obj)
 {
 	node->name = nng_strdup(obj->string);
+	hocon_read_bool(node, enable, obj);
 	hocon_read_str(node, clientid, obj);
 	hocon_read_str(node, pub_url, obj);
 	cJSON *forward = NULL;
@@ -1508,6 +1509,7 @@ conf_nng_snode_parse(
     conf_nng_sub_node *node, cJSON *obj)
 {
 	node->name = nng_strdup(obj->string);
+	hocon_read_bool(node, enable, obj);
 	hocon_read_str(node, clientid, obj);
 	hocon_read_str(node, sub_url, obj);
 	cJSON *subscriptions = hocon_get_obj("subscription", obj);
