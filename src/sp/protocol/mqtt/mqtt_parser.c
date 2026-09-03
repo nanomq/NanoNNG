@@ -1196,6 +1196,7 @@ nano_dismsg_composer(reason_code code, char* rstr, uint8_t *ref, property *prop)
 		buf[0] = (uint8_t)PROTOCOL_ERROR;
 		nng_msg_append(msg, buf, 1);
 		break;
+	case NOT_AUTHORIZED:
 	case BANNED:
 		buf[0] = (uint8_t)NOT_AUTHORIZED;
 		nng_msg_append(msg, buf, 1);
