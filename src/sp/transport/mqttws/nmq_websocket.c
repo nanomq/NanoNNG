@@ -1564,7 +1564,7 @@ wstran_pipe_getopt(
 {
 	ws_pipe *p = arg;
 	int      rv;
-	if (strcmp(name, "mqtt_get_resend_msg") == 0) {
+	if (strcmp(name, NMQ_OPT_MQTT_GET_QOS_RESEND) == 0) {
 		if (buf == NULL || szp == NULL || *szp < sizeof(nmq_req)) {
 			return NNG_EINVAL;
 		}
