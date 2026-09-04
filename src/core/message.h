@@ -127,6 +127,15 @@ struct conn_param {
 	uint8_t            payload_format_indicator;
 	void              *nano_qos_db; // 'sqlite' or 'nni_id_hash_map'
 	bool               assignedid;
+	// Topic aliases this connection registered. Held here, and not in a
+	// table keyed on pipe id, so that they last exactly as long as the
+	// connection plus any publish of its own still in flight: a publish
+	// the broker already acked can never lose its mapping to a concurrent
+	// disconnect, and a reconnecting client cannot inherit them.
+	// topic_alias_mtx guards the vector, as several worker ctxs may be
+	// handling publishes from this connection at once.
+	nni_mtx                 topic_alias_mtx;
+	struct dbhash_atpair_s **topic_alias; // sorted by alias, NULL if empty
 	struct mqtt_string pro_name;
 	struct mqtt_string clientid;
 	struct mqtt_string will_topic;

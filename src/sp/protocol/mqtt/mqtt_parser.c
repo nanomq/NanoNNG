@@ -12,6 +12,7 @@
 #include "core/zmalloc.h"
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
+#include "nng/supplemental/nanolib/hash_table.h"
 #include "supplemental/mqtt/mqtt_msg.h"
 
 #include "nng/mqtt/packet.h"
@@ -911,6 +912,9 @@ conn_param_init(conn_param *cparam)
 	cparam->will_prop_len   = 0;
 	cparam->will_properties = NULL;
 	cparam->nano_qos_db     = NULL;
+
+	cparam->topic_alias = NULL;
+	nni_mtx_init(&cparam->topic_alias_mtx);
 }
 
 int
@@ -956,6 +960,11 @@ conn_param_free(conn_param *cparam)
 	property_free(cparam->properties);
 	property_free(cparam->will_properties);
 
+	// The last reference is gone, so no publish of this connection is
+	// still in flight and the aliases can go with it.
+	dbhash_atpair_free_all(cparam->topic_alias);
+	cparam->topic_alias = NULL;
+	nni_mtx_fini(&cparam->topic_alias_mtx);
 
 	nng_free(cparam, sizeof(struct conn_param));
 	cparam = NULL;
@@ -978,6 +987,43 @@ conn_param_clone(conn_param *cparam)
 	}
 	nni_atomic_inc(&cparam->refcnt);
 	log_trace("%p is cloned!! %d", cparam, nni_atomic_get(&cparam->refcnt));
+}
+
+// conn_param_set_topic_alias registers the alias -> topic mapping this
+// connection just published, replacing any previous topic for that alias.
+// Neither alias nor topic is validated here; the caller checks them against
+// the server's topic alias maximum first.
+void
+conn_param_set_topic_alias(conn_param *cparam, uint32_t alias, const char *topic)
+{
+	if (cparam == NULL || topic == NULL) {
+		return;
+	}
+	nni_mtx_lock(&cparam->topic_alias_mtx);
+	dbhash_atpair_insert(&cparam->topic_alias, alias, topic);
+	nni_mtx_unlock(&cparam->topic_alias_mtx);
+}
+
+// conn_param_get_topic_alias returns a copy of the topic this connection
+// registered for alias, or NULL if it registered none. The copy is made
+// under the lock, since a later publish on the same connection may replace
+// the mapping; the caller owns it and frees it with nng_strfree.
+char *
+conn_param_get_topic_alias(conn_param *cparam, uint32_t alias)
+{
+	const char *topic;
+	char       *dup = NULL;
+
+	if (cparam == NULL) {
+		return NULL;
+	}
+	nni_mtx_lock(&cparam->topic_alias_mtx);
+	if ((topic = dbhash_atpair_find(cparam->topic_alias, alias)) != NULL) {
+		dup = nng_strdup(topic);
+	}
+	nni_mtx_unlock(&cparam->topic_alias_mtx);
+
+	return dup;
 }
 
 /* Fowler/Noll/Vo (FNV) hash function, variant 1a */
