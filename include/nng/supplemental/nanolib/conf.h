@@ -92,6 +92,10 @@ struct conf_tls {
 	mqtt_buf
 	      encrypted_key; // binary after base64 decode of encrypted_key_b64
 	char *sni;
+
+	// Android Keystore2 配置 (运行时覆盖编译期宏)
+	char *keystore_alias;     // 证书别名, 默认 NANOMQ_KEYSTORE2_ALIAS
+	int   keystore_namespace; // SELinux 命名空间, 默认 -1 (Domain::APP)
 };
 
 typedef struct conf_tls conf_tls;

@@ -31,6 +31,10 @@ int keystore2_get_cert(const char *alias, int namespace_id,
 int keystore2_get_cert_chain(const char *alias, int namespace_id,
 			      uint8_t *chain_out, int chain_max);
 
+// 运行期覆盖 Keystore2 别名和命名空间 (在 open_config_init 之前调用)
+// 不调用此函数时使用编译期宏默认值
+void keystore2_engine_set_config(const char *alias, int namespace_id);
+
 #ifdef __cplusplus
 }
 #endif

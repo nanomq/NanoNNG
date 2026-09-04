@@ -19,6 +19,10 @@
 #include "nng/protocol/mqtt/mqtt_parser.h"
 #include "nng/supplemental/nanolib/file.h"
 
+#if defined(ENABLE_ANDROID_KEYSTORE2)
+#include "pki_adapter.h"
+#endif
+
 #ifdef SUPP_SCRAM
 #define SCRAM_ITERATION_CNT_DEFAULT 4096
 #define SCRAM_DIGEST_DEFAULT        SCRAM_SHA256
@@ -1746,6 +1750,11 @@ nng_dialer_reload_tls(conf_bridge_node *node, nni_dialer *ndialer)
 		}
 	}
 #if defined(ENABLE_ANDROID_KEYSTORE2)
+	// 将 Keystore2 参数传入 TLS 引擎
+	// conf_tls 字段已初始化为宏默认值，配置文件中的值会覆盖
+	keystore2_engine_set_config(
+		node->tls.keystore_alias,
+		node->tls.keystore_namespace);
 	// Keystore2 路径：即使 cafile 为空也要调用 ca_chain，
 	// open_config_ca_chain 会从 Keystore2 certificateChain 构建信任锚
 	if ((rv = nng_tls_config_ca_chain(cfg, node->tls.ca, NULL)) != 0) {
