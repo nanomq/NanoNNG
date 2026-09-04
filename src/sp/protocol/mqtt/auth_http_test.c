@@ -65,6 +65,7 @@ void test_auth_http_connect(void)
 	conf_auth_http_init(&conf);
 	NUTS_TRUE(conf != NULL);
 	char *url = "http://127.0.0.1:8064/mqtt/auth";
+	conf->auth_req.enable = true;
 	conf->auth_req.url = nng_alloc(strlen(url) + 1);
 	nng_mtx_alloc(&conf->auth_req.mtx);
 	strncpy(conf->auth_req.url, url, strlen(url));
@@ -141,8 +142,44 @@ void test_auth_http_sub_pub(void)
 	return;
 }
 
+// Regression for issue #658: with the http_auth section present (top
+// level enable true) but every sub request disabled while the urls stay
+// configured, the ACL flow must be skipped entirely. The empty topic
+// stands for a v5 PUBLISH that reuses a topic alias: reaching
+// parse_topics with it would reject the publish with NOT_AUTHORIZED.
+void
+test_auth_http_sub_pub_disabled(void)
+{
+	conf_auth_http *conf = NULL;
+	conf_auth_http_init(&conf);
+	NUTS_TRUE(conf != NULL);
+	conf->enable = true;
+	// keep the urls configured, flip only the per-request enables
+	conf->super_req.url = nng_strdup("http://127.0.0.1:8080/super");
+	conf->acl_req.url   = nng_strdup("http://127.0.0.1:8080/acl");
+	NUTS_TRUE(conf->super_req.url != NULL && conf->acl_req.url != NULL);
+
+	conn_param *conn_param = NULL;
+	conn_param_init(&conn_param);
+	NUTS_TRUE(conn_param != NULL);
+
+	topic_queue *tq = topic_queue_init("", 0); // empty topic
+	NUTS_TRUE(tq != NULL);
+	int rc = nmq_auth_http_sub_pub(conn_param, false, tq, conf);
+	NUTS_TRUE(rc == SUCCESS);
+
+	topic_queue_release(tq);
+	nng_free(conf->super_req.url, strlen(conf->super_req.url) + 1);
+	nng_free(conf->acl_req.url, strlen(conf->acl_req.url) + 1);
+	nng_free(conf, sizeof(conf_auth_http));
+	conn_param_free(conn_param);
+
+	return;
+}
+
 NUTS_TESTS = {
 	{ "auth_http_connect", test_auth_http_connect },
 	{ "auth_http_sub_pub", test_auth_http_sub_pub },
+	{ "auth_http_sub_pub_disabled", test_auth_http_sub_pub_disabled },
 	{ NULL, NULL },
 };
