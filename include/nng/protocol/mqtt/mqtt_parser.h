@@ -103,7 +103,7 @@ NNG_DECL nano_pipe_db *nano_msg_get_subtopic(
 NNG_DECL void nano_msg_free_pipedb(nano_pipe_db *db);
 NNG_DECL void nano_msg_ubsub_free(nano_pipe_db *db);
 NNG_DECL void nmq_connack_encode(
-    nng_msg *msg, conn_param *cparam, uint8_t reason);
+    nng_msg *msg, conf *conf, conn_param *cparam, uint8_t reason);
 NNG_DECL void nmq_connack_session(nng_msg *msg, bool session);
 NNG_DECL nng_msg *nano_encode_publish_msg(uint8_t proto_ver, uint8_t qos,
     bool retain, bool dup, const uint8_t *payload, uint32_t payload_len,
