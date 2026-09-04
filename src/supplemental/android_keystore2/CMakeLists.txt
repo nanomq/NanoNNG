@@ -3,7 +3,7 @@ set(NANOMQ_KEYSTORE2_ALIAS "ecu-client-certificate" CACHE STRING
     "Keystore2 certificate alias name")
 set(NANOMQ_KEYSTORE2_NAMESPACE "-1" CACHE STRING
     "Keystore2 SELinux namespace (-1 for Domain::APP, e.g. 30000 for vehicle)")
-option(KEYSTORE2_USE_DIGEST_NONE "Use DIGEST_NONE for TEE signing (V216 production, BoringSSL pre-hashes). OFF for emulator." ON)
+option(KEYSTORE2_USE_DIGEST_NONE "Use DIGEST_NONE for TEE signing (caller pre-hashes, e.g. Conscrypt semantics). Default OFF: BoringSSL sign callback passes un-hashed input (TLS1.3 signed_content / TLS1.2 transcript), KeyMint must hash (DIGEST=SHA256)." OFF)
 
 # Keystore2 SDK 路径 (AIDL 生成的 .cpp 源文件 + 预编译 libbinder_ndk.so)
 # 运行 install-keystore2-sdk.sh 可将头文件和 .so 安装到 NDK sysroot；

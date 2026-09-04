@@ -65,6 +65,7 @@ print_hex(char *str, const uint8_t *data, size_t len)
 #endif
 
 #include <openssl/evp.h>
+#include <openssl/ec.h>
 #include <openssl/x509.h>
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
@@ -123,6 +124,24 @@ keystore2_private_key_type(SSL *ssl)
 		return NID_rsaEncryption;
 	}
 	int type = EVP_PKEY_id(pkey);
+	if (type == EVP_PKEY_EC) {
+		// EC 密钥必须返回曲线 NID（如 NID_X9_62_prime256v1），而不是
+		// EVP_PKEY_id() 给出的通用类型 EVP_PKEY_EC，必须与 BoringSSL
+		// 文件密钥路径 ssl_privkey.c::ssl_private_key_type() 的
+		// EVP_PKEY_EC 分支保持一致。
+		//
+		// 原因：tls1_choose_signature_algorithm (t1_lib.c) 对每个候选
+		// 签名算法调用 ssl_private_key_supports_signature_algorithm()，
+		// ECDSA 算法要求 ssl_is_ecdsa_key_type(type)（仅接受曲线 NID），
+		// RSA 算法要求 type == NID_rsaEncryption；返回 EVP_PKEY_EC(408)
+		// 时两者都不满足，所有算法被跳过 →
+		// NO_COMMON_SIGNATURE_ALGORITHMS 握手失败（t1_lib.c:3308）。
+		// 本机 PEM 证书路径正常、Android keystore2 路径报此错即因此差异。
+		EC_KEY *ec_key = EVP_PKEY_get0_EC_KEY(pkey); // 借用引用，随 pkey 释放
+		if (ec_key != NULL && EC_KEY_get0_group(ec_key) != NULL) {
+			type = EC_GROUP_get_curve_name(EC_KEY_get0_group(ec_key));
+		}
+	}
 	EVP_PKEY_free(pkey);
 	return type;
 }
