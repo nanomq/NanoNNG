@@ -134,7 +134,8 @@ get_random_file_name(char *prefix, uint64_t key_start, uint64_t key_end)
 
 	sprintf(file_name, "%s/%s-%" PRIu64 "~%" PRIu64 ".parquet", dir,
 	    prefix, key_start, key_end);
-	log_error("file_name: %s", file_name);
+	log_debug("file_name: %s", file_name);
+	log_error("file_name: ***");
 	return file_name;
 }
 
@@ -276,7 +277,8 @@ parquet_write_batch_async(parquet_object *elem)
 {
 	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
 	if (conf->enable == false) {
-		log_error("Parquet %s is not ready or not launch!", elem->topic);
+		log_debug("Parquet %s is not ready or not launch!", elem->topic);
+		log_error("Parquet *** is not ready or not launch!");
 		return -1;
 	}
 
@@ -301,7 +303,8 @@ parquet_write_batch_tmp_async(parquet_object *elem)
 {
 	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
 	if (conf->enable == false) {
-		log_error("Parquet %s is not ready or not launch!", elem->topic);
+		log_debug("Parquet %s is not ready or not launch!", elem->topic);
+		log_error("Parquet *** is not ready or not launch!");
 		return -1;
 	}
 
@@ -388,7 +391,8 @@ compute_and_rename_file_withMD5_CXX(const std::string &filename,
 	if (ComputeFileMD5(filename.c_str(), md5_buffer) != 0) {
 		log_error("Failed to calculate md5sum");
 		if (remove(filename.c_str()) != 0) {
-			log_error("Failed to remove file %s errno: %d",
+			log_error("Failed to remove file *** errno: %d", errno);
+			log_debug("Failed to remove file %s errno: %d",
 			    filename.c_str(), errno);
 		}
 		return {};
@@ -401,9 +405,11 @@ compute_and_rename_file_withMD5_CXX(const std::string &filename,
 	    prefix.size() + 1; // assumes an extra separator ("/" or "_")
 	size_t ts_end_pos = filename.rfind('.');
 	if (ts_end_pos == std::string::npos || ts_end_pos <= ts_start_pos) {
-		log_error("Invalid filename format: %s", filename.c_str());
+		log_debug("Invalid filename format: %s", filename.c_str());
+		log_error("Invalid filename format: ***");
 		if (remove(filename.c_str()) != 0) {
-			log_error("Failed to remove file %s errno: %d",
+			log_error("Failed to remove file *** errno: %d", errno);
+			log_debug("Failed to remove file %s errno: %d",
 			    filename.c_str(), errno);
 		}
 
@@ -422,13 +428,16 @@ compute_and_rename_file_withMD5_CXX(const std::string &filename,
 	    sindex + "_" + md5_buffer + ".parquet";
 
 	// Step 5: Rename the file to the new name
-	log_info(
+	log_debug(
 	    "Trying to rename %s to %s", filename.c_str(), new_name.c_str());
+	log_info("Trying to rename file *** to ***");
 	if (rename(filename.c_str(), new_name.c_str()) != 0) {
-		log_error("Failed to rename file %s to %s errno: %d",
+		log_debug("Failed to rename file %s to %s errno: %d",
 		    filename.c_str(), new_name.c_str(), errno);
+		log_error("Failed to rename file *** to *** errno: %d", errno);
 		if (remove(filename.c_str()) != 0) {
-			log_error("Failed to remove file %s errno: %d",
+			log_error("Failed to remove file *** errno: %d", errno);
+			log_debug("Failed to remove file %s errno: %d",
 			    filename.c_str(), errno);
 		}
 		return {};
@@ -603,7 +612,8 @@ parquet_write_core(conf_parquet *conf, char *filename,
 
 	} catch (const exception &e) {
 		exception_msg = e.what();
-		log_error("exception_msg=[%s]", exception_msg.c_str());
+		log_error("exception_msg=[***]");
+		log_debug("exception_msg=[%s]", exception_msg.c_str());
 	}
 
 	return 0;
@@ -615,7 +625,8 @@ parquet_write_tmp(parquet_object *elem)
 
 	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
 	if (conf->enable == false) {
-		log_error("Parquet %s is not ready or not launch!", elem->topic);
+		log_debug("Parquet %s is not ready or not launch!", elem->topic);
+		log_error("Parquet *** is not ready or not launch!");
 		return -1;
 	}
 
@@ -663,7 +674,8 @@ parquet_write(parquet_object *elem)
 
 	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
 	if (conf->enable == false) {
-		log_error("Parquet %s is not ready or not launch!", elem->topic);
+		log_debug("Parquet %s is not ready or not launch!", elem->topic);
+		log_error("Parquet *** is not ready or not launch!");
 		return -1;
 	}
 
@@ -817,7 +829,8 @@ parquet_find(const char *topic, uint64_t key)
 {
 	conf_parquet *conf = file_manager.fetch_conf(topic);
 	if (conf == NULL || conf->enable == false) {
-		log_error("Parquet %s is not ready or not launch!", topic);
+		log_debug("Parquet %s is not ready or not launch!", topic);
+		log_error("Parquet *** is not ready or not launch!");
 		return NULL;
 	}
 
@@ -953,7 +966,8 @@ parquet_check_is_compat_and_decrypt(
 		}
 	} catch (const exception &e) {
 		exception_msg = e.what();
-		log_error("access metadata exception_msg=[%s]", exception_msg.c_str());
+		log_error("access metadata exception_msg=[***]");
+		log_debug("access metadata exception_msg=[%s]", exception_msg.c_str());
 		return -1;
 	}
 	return 0;
@@ -971,21 +985,25 @@ parquet_read(conf_parquet *conf, char *filename, uint64_t key, uint32_t *len)
 
 	if (0 != parquet_check_is_compat_and_decrypt(
 				filename, is_compat_mode, is_encrypted)) {
-		log_warn("failed to check mode and encryption for parquet %s, skip", filename);
+		log_warn("failed to check mode and encryption for parquet ***, skip");
+		log_debug("failed to check mode and encryption for parquet %s, skip", filename);
 		return NULL;
 	}
 
 	if (is_compat_mode == false && is_encrypted == true) {
-		log_info("parquet mode [v1] [encrypted]: %s", filename);
+		log_info("parquet mode [v1] [encrypted]: ***");
+		log_debug("parquet mode [v1] [encrypted]: %s", filename);
 		if (false == parquet_resolve_and_set_decryption_properties(
 						reader_properties, conf, filename)) {
 			log_error("Can't read encrypted parquet due to no encryption config");
 			return NULL;
 		}
 	} else if (is_compat_mode == false && is_encrypted == false) {
-		log_info("parquet mode [v1]: %s", filename);
+		log_info("parquet mode [v1]: ***");
+		log_debug("parquet mode [v1]: %s", filename);
 	} else {
-		log_info("parquet mode [compat]: %s", filename);
+		log_info("parquet mode [compat]: ***");
+		log_debug("parquet mode [compat]: %s", filename);
 	}
 
 	try {
@@ -1057,7 +1075,8 @@ parquet_read(conf_parquet *conf, char *filename, uint64_t key, uint32_t *len)
 
 	} catch (const exception &e) {
 		exception_msg = e.what();
-		log_error("exception_msg=[%s]", exception_msg.c_str());
+		log_error("exception_msg=[***]");
+		log_debug("exception_msg=[%s]", exception_msg.c_str());
 	}
 
 	return NULL;
@@ -1179,21 +1198,25 @@ parquet_read(conf_parquet *conf, char *filename, vector<uint64_t> keys)
 
 	if (0 != parquet_check_is_compat_and_decrypt(
 				filename, is_compat_mode, is_encrypted)) {
-		log_warn("failed to check mode and encryption for parquet %s, skip", filename);
+		log_warn("failed to check mode and encryption for parquet ***, skip");
+		log_debug("failed to check mode and encryption for parquet %s, skip", filename);
 		return ret_vec;
 	}
 
 	if (is_compat_mode == false && is_encrypted == true) {
-		log_info("parquet mode [v1] [encrypted]: %s", filename);
+		log_info("parquet mode [v1] [encrypted]: ***");
+		log_debug("parquet mode [v1] [encrypted]: %s", filename);
 		if (false == parquet_resolve_and_set_decryption_properties(
 						reader_properties, conf, filename)) {
 			log_error("Can't read encrypted parquet due to no encryption config");
 			return ret_vec;
 		}
 	} else if (is_compat_mode == false && is_encrypted == false) {
-		log_info("parquet mode [v1]: %s", filename);
+		log_info("parquet mode [v1]: ***");
+		log_debug("parquet mode [v1]: %s", filename);
 	} else {
-		log_info("parquet mode [compat]: %s", filename);
+		log_info("parquet mode [compat]: ***");
+		log_debug("parquet mode [compat]: %s", filename);
 	}
 
 	vector<int> index_vector(keys.size());
@@ -1269,7 +1292,8 @@ parquet_read(conf_parquet *conf, char *filename, vector<uint64_t> keys)
 
 	} catch (const exception &e) {
 		exception_msg = e.what();
-		log_error("exception_msg=[%s]", exception_msg.c_str());
+		log_error("exception_msg=[***]");
+		log_debug("exception_msg=[%s]", exception_msg.c_str());
 	}
 
 	return ret_vec;
@@ -1349,7 +1373,8 @@ parquet_get_runtime_metadata(
 		}
 		return true;
 	} catch (const exception &e) {
-		log_warn("read parquet metadata failed: %s", e.what());
+		log_warn("read parquet metadata failed: ***");
+		log_debug("read parquet metadata failed: %s", e.what());
 		return false;
 	}
 }
@@ -1430,13 +1455,15 @@ parquet_resolve_selected_decryption_key(conf_parquet *conf,
 	if (md != NULL) {
 		has_metadata_key = load_key_from_metadata(conf, *md, &metadata_key);
 		if (!has_metadata_key && !md->wrapped_key.empty()) {
-			log_warn("Failed to unwrap metadata key for parquet %s",
+			log_warn("Failed to unwrap metadata key for parquet ***");
+			log_debug("Failed to unwrap metadata key for parquet %s",
 			    filename == NULL ? "(null)" : filename);
 		}
 	}
 
 	if (!has_local_key && !has_metadata_key) {
-		log_error("No usable decryption key for parquet %s",
+		log_error("No usable decryption key for parquet ***");
+		log_debug("No usable decryption key for parquet %s",
 		    filename == NULL ? "(null)" : filename);
 		return false;
 	}
@@ -1486,7 +1513,8 @@ parquet_find_data_packet(
 	}
 	if (conf == NULL) {
 		ret_vec.resize(keys.size(), nullptr);
-		log_error("cannot resolve conf for parquet file %s",
+		log_error("cannot resolve conf for parquet file ***");
+		log_debug("cannot resolve conf for parquet file %s",
 		    filename == NULL ? "(null)" : filename);
 		return ret_vec;
 	}
@@ -1500,7 +1528,8 @@ parquet_find_data_packet(
 		topic = conf->name;
 	}
 	if (conf->enable == false) {
-		log_error("Parquet %s is not ready or not launch!", topic.c_str());
+		log_debug("Parquet %s is not ready or not launch!", topic.c_str());
+		log_error("Parquet *** is not ready or not launch!");
 		return ret_vec;
 	}
 
@@ -1542,7 +1571,8 @@ parquet_find_data_packet(conf_parquet *conf, char *filename, uint64_t key)
 		conf = file_manager.fetch_conf(topic);
 	}
 	if (conf == NULL) {
-		log_error("cannot resolve conf for parquet file %s",
+		log_error("cannot resolve conf for parquet file ***");
+		log_debug("cannot resolve conf for parquet file %s",
 		    filename == NULL ? "(null)" : filename);
 		return NULL;
 	}
@@ -1556,7 +1586,8 @@ parquet_find_data_packet(conf_parquet *conf, char *filename, uint64_t key)
 		topic = conf->name;
 	}
 	if (conf->enable == false) {
-		log_error("Parquet %s is not ready or not launch!", topic.c_str());
+		log_debug("Parquet %s is not ready or not launch!", topic.c_str());
+		log_error("Parquet *** is not ready or not launch!");
 		return NULL;
 	}
 	WAIT_FOR_AVAILABLE
@@ -1824,21 +1855,25 @@ parquet_read_span_by_column(conf_parquet *conf, const char *filename, uint64_t k
 
 	if (0 != parquet_check_is_compat_and_decrypt(
 				(char *)filename, is_compat_mode, is_encrypted)) {
-		log_warn("failed to check mode and encryption for parquet %s, skip", filename);
+		log_warn("failed to check mode and encryption for parquet ***, skip");
+		log_debug("failed to check mode and encryption for parquet %s, skip", filename);
 		return NULL;
 	}
 
 	if (is_compat_mode == false && is_encrypted == true) {
-		log_info("parquet mode [v1] [encrypted]: %s", filename);
+		log_info("parquet mode [v1] [encrypted]: ***");
+		log_debug("parquet mode [v1] [encrypted]: %s", filename);
 		if (false == parquet_resolve_and_set_decryption_properties(
 						reader_properties, conf, filename)) {
 			log_error("Can't read encrypted parquet due to no encryption config");
 			return NULL;
 		}
 	} else if (is_compat_mode == false && is_encrypted == false) {
-		log_info("parquet mode [v1]: %s", filename);
+		log_info("parquet mode [v1]: ***");
+		log_debug("parquet mode [v1]: %s", filename);
 	} else {
-		log_info("parquet mode [compat]: %s", filename);
+		log_info("parquet mode [compat]: ***");
+		log_debug("parquet mode [compat]: %s", filename);
 	}
 
 	vector<int> index_vector(2);
@@ -1895,7 +1930,8 @@ parquet_read_span_by_column(conf_parquet *conf, const char *filename, uint64_t k
 
 	} catch (const exception &e) {
 		exception_msg = e.what();
-		log_error("exception_msg=[%s]", exception_msg.c_str());
+		log_error("exception_msg=[***]");
+		log_debug("exception_msg=[%s]", exception_msg.c_str());
 	}
 
 	return ret;
@@ -1927,10 +1963,12 @@ parquet_get_file_ranges(uint64_t start_key, uint64_t end_key, char *topic)
 {
 	uint32_t len = 0;
 	// Find filenames
-	log_info("topic: %s, start_key: %lu, end_key: %lu", topic, start_key, end_key);
+	log_debug("topic: %s, start_key: %lu, end_key: %lu", topic, start_key, end_key);
+	log_info("topic: ***, start_key: %lu, end_key: %lu", start_key, end_key);
 	conf_parquet *conf = file_manager.fetch_conf(topic);
 	if (conf->enable == false) {
-		log_error("Parquet %s is not ready or not launch!", topic);
+		log_debug("Parquet %s is not ready or not launch!", topic);
+		log_error("Parquet *** is not ready or not launch!");
 		return NULL;
 	}
 
@@ -1939,7 +1977,8 @@ parquet_get_file_ranges(uint64_t start_key, uint64_t end_key, char *topic)
 
 	// Get all keys
 	for (uint32_t i = 0; i < len; i++) {
-		log_info("filename: %s", filenames[i]);
+		log_debug("filename: %s", filenames[i]);
+		log_info("filename: ***");
 
 		parquet_filename_range *range =
 		    (parquet_filename_range *) nng_alloc(
@@ -2050,7 +2089,8 @@ parquet_get_data_packets_in_range_by_column(parquet_filename_range *range,
 
 	conf_parquet *conf = file_manager.fetch_conf(topic);
 	if (conf->enable == false) {
-		log_error("Parquet %s is not ready or not launch!", topic);
+		log_debug("Parquet %s is not ready or not launch!", topic);
+		log_error("Parquet *** is not ready or not launch!");
 		return NULL;
 	}
 
@@ -2082,7 +2122,9 @@ parquet_get_data_packets_in_range_by_column(parquet_filename_range *range,
 		uint64_t                   start_key = range->keys[0];
 		uint64_t                   end_key   = range->keys[1];
 
-		log_info("topic: %s, start_key: %lu, end_key: %lu", topic, start_key, end_key);
+		log_debug("topic: %s, start_key: %lu, end_key: %lu", topic, start_key, end_key);
+
+		log_info("topic: ***, start_key: %lu, end_key: %lu", start_key, end_key);
 		const char **filenames =
 		    parquet_find_span(topic, start_key, end_key, &len);
 

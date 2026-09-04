@@ -1318,12 +1318,15 @@ print_parquet_conf(conf_parquet *parquet)
 	log_info("parquet encryption:       %s",
 	    encryption->enable ? "enable" : "disable");
 	if (encryption->enable) {
-		log_info("parquet encryption key:   %s", encryption->key_cipher);
-		log_info("parquet encryption key_id:%s", encryption->key_id);
+		log_info("parquet encryption key:   ***");
+		log_debug("parquet encryption key:   %s", encryption->key_cipher);
+		log_info("parquet encryption key_id:***");
+		log_debug("parquet encryption key_id:%s", encryption->key_id);
 		log_info("parquet encryption type:  %s",
 		    encryption->type == 0 ? "AES_GCM_V1" : "AES_GCM_CTR_V1");
 	}
-	log_info("parquet file_name_prefix: %s", parquet->file_name_prefix);
+	log_info("parquet file_name_prefix: ***");
+	log_debug("parquet file_name_prefix: %s", parquet->file_name_prefix);
 	log_info("parquet file_count:       %d", parquet->file_count);
 	log_info("parquet file_size:        %d", parquet->file_size);
 	log_info("parquet limit_frequency:  %d", parquet->limit_frequency);
@@ -1336,7 +1339,8 @@ print_exchange_conf(conf_exchange *exchange)
 	for (int i=0; i < (int) exchange->count; ++i) {
 		conf_exchange_node *n = exchange->nodes[i];
 		log_info("exchange name            %s", n->name);
-		log_info("exchange topic           %s", n->topic);
+		log_info("exchange topic           ***");
+		log_debug("exchange topic           %s", n->topic);
 		log_info("exchange streamType	   %d", n->streamType);
 		log_info("exchange chunk_size      %d", n->chunk_size);
 		log_info("exchange url             %s", n->exchange_url);
@@ -4098,12 +4102,12 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 		log_info("%sbridge.mqtt.%s.forwards: ", prefix, node->name);
 
 		for (size_t j = 0; j < node->forwards_count; j++) {
-			log_info(
-			    "\t[%ld] remote topic:        %.*s", j,
+			log_info("\t[%ld] remote topic:        ***", j);
+			log_debug("\t[%ld] remote topic:        %.*s", j,
 										node->forwards_list[j]->remote_topic_len,
 										node->forwards_list[j]->remote_topic);
-			log_info(
-			    "\t[%ld] local topic:        %.*s", j,
+			log_info("\t[%ld] local topic:        ***", j);
+			log_debug("\t[%ld] local topic:        %.*s", j,
 										node->forwards_list[j]->local_topic_len,
 										node->forwards_list[j]->local_topic);
 		}
@@ -4152,7 +4156,8 @@ print_nng_proxy_pub_conf(conf_nng_bridge *proxy)
 		const char *name = node->name ? node->name : "";
 		log_info("bridges.nng.pub.%s.pub_url:   %s", name,
 		    node->pub_url ? node->pub_url : "");
-		log_info("bridges.nng.pub.%s.clientid:  %s", name,
+		log_info("bridges.nng.pub.%s.clientid:  ***", name);
+		log_debug("bridges.nng.pub.%s.clientid:  %s", name,
 		    node->clientid ? node->clientid : "");
 		log_info("bridges.nng.pub.%s.forwards:", name);
 
@@ -4165,9 +4170,11 @@ print_nng_proxy_pub_conf(conf_nng_bridge *proxy)
 			if (s == NULL) {
 				continue;
 			}
-			log_info("\t[%zu] local_topic:        %s", j + 1,
+			log_info("\t[%zu] local_topic:        ***", j + 1);
+			log_debug("\t[%zu] local_topic:        %s", j + 1,
 			    s->local_topic ? s->local_topic : "");
-			log_info("\t[%zu] remote_topic:       %s", j + 1,
+			log_info("\t[%zu] remote_topic:       ***", j + 1);
+			log_debug("\t[%zu] remote_topic:       %s", j + 1,
 			    s->remote_topic ? s->remote_topic : "");
 			log_info("\t[%zu] nng_delimiter:      %s", j + 1,
 			    s->nng_delimiter ? s->nng_delimiter : "/");
@@ -4192,7 +4199,8 @@ print_nng_proxy_sub_conf(conf_nng_bridge *proxy)
 		const char *name = node->name ? node->name : "";
 		log_info("bridges.nng.sub.%s.sub_url:   %s", name,
 		    node->sub_url ? node->sub_url : "");
-		log_info("bridges.nng.sub.%s.clientid:  %s", name,
+		log_info("bridges.nng.sub.%s.clientid:  ***", name);
+		log_debug("bridges.nng.sub.%s.clientid:  %s", name,
 		    node->clientid ? node->clientid : "");
 		log_info("bridges.nng.sub.%s.subscription:", name);
 
@@ -4205,9 +4213,11 @@ print_nng_proxy_sub_conf(conf_nng_bridge *proxy)
 			if (s == NULL) {
 				continue;
 			}
-			log_info("\t[%zu] remote_topic:       %s", j + 1,
+			log_info("\t[%zu] remote_topic:       ***", j + 1);
+			log_debug("\t[%zu] remote_topic:       %s", j + 1,
 			    s->remote_topic ? s->remote_topic : "");
-			log_info("\t[%zu] local_topic:        %s", j + 1,
+			log_info("\t[%zu] local_topic:        ***", j + 1);
+			log_debug("\t[%zu] local_topic:        %s", j + 1,
 			    s->local_topic ? s->local_topic : "");
 			log_info("\t[%zu] nng_delimiter:      %s", j + 1,
 			    s->nng_delimiter ? s->nng_delimiter : "/");
