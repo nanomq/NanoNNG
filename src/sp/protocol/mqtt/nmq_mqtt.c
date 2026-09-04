@@ -1173,17 +1173,36 @@ nano_alias_preinsert(nano_sock *s, nano_pipe *p, nng_msg *msg)
 	if (p->conn_param->pro_ver != MQTT_PROTOCOL_VERSION_v5) {
 		return;
 	}
-	// [topic len u16][topic][prop len][properties...][payload]
+	// [topic len u16][topic][pid u16 if qos>0][prop len][properties...]
+	// [payload]
 	if (msg_len < 3) {
 		return;
 	}
 	NNI_GET16(body, tlen);
 	// only a PUBLISH carrying a topic name can (re-)register the alias;
 	// a reuse PUBLISH has an empty topic and must not touch the table
-	if (tlen == 0 || (uint32_t) 2 + tlen + 1 > msg_len) {
+	if (tlen == 0) {
 		return;
 	}
 	pos = 2 + tlen;
+	if (pos + 1 > msg_len) {
+		return;
+	}
+	// QoS 1/2 PUBLISHes carry a two-byte packet identifier between the
+	// topic name and the properties (see mqtt_codec.c decode_publish);
+	// it must be skipped, otherwise its first byte (typically 0x00) is
+	// parsed as a zero property length and the TOPIC_ALIAS is never
+	// registered, leaving the reuse race in place for QoS 1/2
+	uint8_t *hdr = nni_msg_header(msg);
+	uint8_t  qos = (hdr != NULL && nni_msg_header_len(msg) >= 1 &&
+	                    (hdr[0] & 0xf0) == CMD_PUBLISH) ?
+	                    (hdr[0] >> 1) & 0x03 : 0;
+	if (qos > 0) {
+		if (pos + 2 > msg_len) {
+			return;
+		}
+		pos += 2;
+	}
 	property *prop = decode_buf_properties(body, msg_len, &pos, &plen, false);
 	if (prop == NULL || plen == (uint32_t) -1) {
 		property_free(prop);
