@@ -24,7 +24,7 @@ struct ParquetFile {
 
 class parquet_file_queue {
     public:
-	explicit parquet_file_queue(conf_parquet *node);
+	explicit parquet_file_queue(conf_parquet *node, const string &topic);
 	~parquet_file_queue();
 	void           init();
 	void           update_queue(const char *filename);
@@ -44,11 +44,13 @@ class parquet_file_queue {
 	static bool create_directory(const string &directory_path);
 	static bool is_parquet_file(const string &file_name);
 	static bool has_md5_sum(const string &file_name);
+	bool        is_topic_match(const string &file_name) const;
 
 	conf_parquet *node;
 	CircularQueue queue;
 	uint32_t      idx = 0;
 	uint64_t      sum   = 0;
+	string        topic_;
 };
 
 #endif // PARQUET_FILE_QUEUE_H

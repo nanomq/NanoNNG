@@ -5,8 +5,8 @@
 #include <unistd.h>
 
 // Constructor
-parquet_file_queue::parquet_file_queue(conf_parquet *node)
-    : node(node)
+parquet_file_queue::parquet_file_queue(conf_parquet *node, const string &topic)
+    : node(node), topic_(topic)
 {
 	INIT_QUEUE(queue);
 }
@@ -49,6 +49,18 @@ parquet_file_queue::init()
 						         "without md5sum: %s",
 						    file_path.c_str());
 					}
+					continue;
+				}
+
+				// Skip files that do not belong to this topic.
+				// When multiple exchanges share the same parquet
+				// directory, each topic must only manage its own
+				// files to prevent one topic's file_count/file_size
+				// limits from deleting another topic's files.
+				if (!topic_.empty() && !is_topic_match(file_name)) {
+					log_debug("Skipping file %s: belongs to "
+					          "a different topic (current: %s)",
+					    file_name.c_str(), topic_.c_str());
 					continue;
 				}
 
@@ -222,6 +234,22 @@ bool
 parquet_file_queue::has_md5_sum(const string &file_name)
 {
 	return file_name.find("_") != string::npos;
+}
+
+bool
+parquet_file_queue::is_topic_match(const string &file_name) const
+{
+	// Final parquet filename format after rename:
+	//   {prefix}_{topic}-{ts_start}~{ts_end}_{idx}_{md5}.parquet
+	// The topic name is always wrapped as "_{topic}-" immediately
+	// after the file_name_prefix.  We match on that delimiter pair
+	// so that different topics sharing the same directory do not
+	// interfere with each other's file_count / file_size limits.
+	if (topic_.empty()) {
+		return true; // no topic filter — accept all (backward compat)
+	}
+	string pattern = "_" + topic_ + "-";
+	return file_name.find(pattern) != string::npos;
 }
 
 bool
