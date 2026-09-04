@@ -248,8 +248,8 @@ nano_pipe_timer_cb(void *arg)
 		log_trace("check pipe keepalive interval %d backoff %f, ka %d",
 		    p->keepalive, qos_backoff, p->ka_refresh);
 		if (qos_backoff > 0) {
-			log_warn("Warning: close pipe & kick client due to "
-			         "KeepAlive timeout!");
+			log_warn("Warning: close pipe %p & kick client due to "
+			         "KeepAlive timeout!", p->id);
 			p->reason_code = NMQ_KEEP_ALIVE_TIMEOUT;
 			nni_mtx_unlock(&p->lk);
 			nni_pipe_close(p->pipe);
@@ -279,7 +279,7 @@ nano_pipe_timer_cb(void *arg)
 			nni_time ntime = nni_clock();
 			nni_time mtime = nni_msg_get_timestamp(rmsg);
 			if (data && ntime > mtime + data->p_value.u32 * 1000) {
-				log_info("QoS msg %d expired!", pid);
+				log_info("QoS msg id %d of pipe %p expired!", pid, p->id);
 				// remove expired msg from qos db
 				nni_qos_db_remove_msg(
 				    is_sqlite, npipe->nano_qos_db, rmsg);
@@ -295,7 +295,7 @@ nano_pipe_timer_cb(void *arg)
 				// put original msg into sending
 				nni_msg_clone(rmsg);
 				nni_aio_set_msg(&p->aio_send, rmsg);
-				log_info("resending qos msg packetid: %d", pid);
+				log_info("resending qos msg id %d to pipe %p", pid, p->id);
 				nni_pipe_send(p->pipe, &p->aio_send);
 			}
 		}
