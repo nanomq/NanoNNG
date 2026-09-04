@@ -382,8 +382,14 @@ int
 nmq_auth_http_sub_pub(
     conn_param *cparam, bool is_sub, topic_queue *topics, conf_auth_http *conf)
 {
+	// Only run the ACL flow when at least one sub request is enabled
+	// with a valid url. The per-request enable flags must be honored
+	// here, otherwise the topic parsing below would reject messages
+	// with an empty topic (e.g. a v5 PUBLISH reusing a topic alias)
+	// even when all sub requests are disabled (issue #658)
 	if (conf->enable == false ||
-	    (conf->super_req.url == NULL && conf->acl_req.url == NULL)) {
+	    !((conf->super_req.enable && conf->super_req.url) ||
+	        (conf->acl_req.enable && conf->acl_req.url))) {
 		return SUCCESS;
 	}
 
