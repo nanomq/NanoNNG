@@ -4050,9 +4050,9 @@ property_free(property *prop)
 	return 0;
 }
 
-// Check properties for broker-to-client PUBLISH messages only.
+// Purge all invalid properties for broker-to-client PUBLISH messages only.
 reason_code
-check_out_pub_properties(property *prop)
+sanitize_out_pub_properties(property *prop)
 {
     if (prop == NULL) {
         return SUCCESS;
@@ -4061,68 +4061,108 @@ check_out_pub_properties(property *prop)
     // MQTT 5.0 Property ID up to 0x2A (42)
     bool seen_properties[256] = { false };
 
-    for (property *p1 = prop->next; p1 != NULL; p1 = p1->next) {
-        uint8_t prop_id = p1->id;
+    property *prev = prop;
+    property *curr = prop->next;
 
-        // Check if repeated properties exist
+    while (curr != NULL) {
+        uint8_t prop_id = curr->id;
+        bool is_valid = true;
+
+        // 1. Check for duplicates
+        // USER_PROPERTY and SUBSCRIPTION_IDENTIFIER can appear multiple times
         if (prop_id != USER_PROPERTY && prop_id != SUBSCRIPTION_IDENTIFIER) {
             if (seen_properties[prop_id]) {
-                log_warn("Duplicated property ID: 0x%02X in downstream PUBLISH!", prop_id);
-                return PROTOCOL_ERROR;
+                log_warn("Duplicated property ID: 0x%02X found, marking for removal.", prop_id);
+                is_valid = false;
+            } else {
+                seen_properties[prop_id] = true;
             }
-            seen_properties[prop_id] = true;
         }
 
-        // Validate specific PUBLISH properties
-        switch (prop_id) {
-        case PAYLOAD_FORMAT_INDICATOR: // 0x01
-            if (p1->data.p_value.u8 > 1) {
-                log_warn("Invalid boolean value for property 0x%02X: %d", prop_id, p1->data.p_value.u8);
+        // 2. Strict Whitelist & Value Validation for PUBLISH
+        if (is_valid) {
+            switch (prop_id) {
+            case PAYLOAD_FORMAT_INDICATOR: // 0x01
+                if (curr->data.p_value.u8 > 1) {
+                    log_warn("Invalid boolean value for property 0x%02X: %d", prop_id, curr->data.p_value.u8);
+                    is_valid = false;
+                }
+                break;
+
+            case RESPONSE_TOPIC: // 0x08
+                if (memchr((const char *) curr->data.p_value.str.buf, '+', curr->data.p_value.str.length) != NULL ||
+                    memchr((const char *) curr->data.p_value.str.buf, '#', curr->data.p_value.str.length) != NULL) {
+                    log_warn("RESPONSE_TOPIC contains wildcard!");
+                    is_valid = false;
+                }
+                break;
+
+            case SUBSCRIPTION_IDENTIFIER: // 0x0B
+                if (curr->data.p_value.varint == 0 || curr->data.p_value.varint > 268435455) {
+                    log_info("SUBSCRIPTION_IDENTIFIER invalid value: %d", curr->data.p_value.varint);
+                    is_valid = false;
+                }
+                break;
+
+            case TOPIC_ALIAS: // 0x23
+                if (curr->data.p_value.u16 == 0) {
+                    log_info("TOPIC_ALIAS cannot be 0!");
+                    is_valid = false;
+                }
+                break;
+
+            case MESSAGE_EXPIRY_INTERVAL: // 0x02
+            case CONTENT_TYPE:            // 0x03
+            case CORRELATION_DATA:        // 0x09
+            case USER_PROPERTY:           // 0x26
+                break;
+
+            case WILL_DELAY_INTERVAL:     // 0x18
+                log_info("Removing forbidden Will Delay Interval (0x18) from PUBLISH.");
+                is_valid = false;
+                break;
+
+            default:
+                // Any other property is strictly forbidden in a PUBLISH message
+                log_warn("found invalid property ID: 0x%02X from PUBLISH.", prop_id);
+                is_valid = false;
                 return PROTOCOL_ERROR;
             }
-            break;
+        }
 
-        case RESPONSE_TOPIC: // 0x08
-            if (memchr((const char *) p1->data.p_value.str.buf, '+', p1->data.p_value.str.length) != NULL ||
-                memchr((const char *) p1->data.p_value.str.buf, '#', p1->data.p_value.str.length) != NULL) {
-                log_warn("RESPONSE_TOPIC contains wildcard!");
-                return PROTOCOL_ERROR;
+        // 3. Remove invalid properties from the linked list
+        if (!is_valid) {
+            prev->next = curr->next;
+
+            // Free the memory of the string/binary payload inside the property if necessary
+            switch (curr->data.p_type) {
+            case STR:
+                mqtt_buf_free(&curr->data.p_value.str);
+                break;
+            case BINARY:
+                mqtt_buf_free(&curr->data.p_value.binary);
+                break;
+            case STR_PAIR:
+                mqtt_kv_free(&curr->data.p_value.strpair);
+                break;
+            default:
+                break;
             }
-            break;
 
-        case SUBSCRIPTION_IDENTIFIER: // 0x0B
-            // Broker to Client PUBLISH can contain Sub ID. Must be > 0 and <= 268,435,455.
-            if (p1->data.p_value.varint == 0 || p1->data.p_value.varint > 268435455) {
-                log_warn("SUBSCRIPTION_IDENTIFIER invalid value: %d", p1->data.p_value.varint);
-                return PROTOCOL_ERROR;
-            }
-            break;
+            // Free the node itself
+            free(curr);
 
-        case TOPIC_ALIAS: // 0x23
-            if (p1->data.p_value.u16 == 0) {
-                log_warn("TOPIC_ALIAS cannot be 0!");
-                return TOPIC_ALIAS_INVALID;
-            }
-            break;
-
-        case MESSAGE_EXPIRY_INTERVAL: // 0x02
-        case CONTENT_TYPE:            // 0x03
-        case CORRELATION_DATA:        // 0x09
-        case USER_PROPERTY:           // 0x26
-            // Valid PUBLISH properties that require no specific value bound checks here
-            break;
-
-        default:
-            // Any other property is strictly forbidden in a PUBLISH message
-            log_warn("Invalid property ID for PUBLISH message: 0x%02X!", prop_id);
-            return PROTOCOL_ERROR;
+            // Advance curr without moving prev
+            curr = prev->next;
+        } else {
+            prev = curr;
+            curr = curr->next;
         }
     }
 
     return SUCCESS;
 }
 
-// Check if repeated properties exist, for broker use only.
 // Check if repeated properties exist and validate property bounds, for broker use only.
 // msg as NULL indicates it is a CONNECT aciton
 reason_code
