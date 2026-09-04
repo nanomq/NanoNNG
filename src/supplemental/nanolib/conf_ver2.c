@@ -2036,6 +2036,11 @@ conf_parquet_parse_ver2(conf *config, conf_exchange_node *node, cJSON *jso)
 			}
 			hocon_read_enum(encryption, type,
 			    jso_parquet_encryption, encryption_type);
+			if (encryption->type == AES_GCM_CTR_V1) {
+				log_error("AES_GCM_CTR_V1 is not available at current,"
+				          " Fallback to AES_GCM_V1.");
+				encryption->type = AES_GCM_V1;
+			}
 		}
 
 		config->parquet.enable = true;
@@ -2078,6 +2083,11 @@ conf_parquet_parse_default_ver2(conf *config, cJSON *jso)
 			}
 			hocon_read_enum(encryption, type,
 			    jso_parquet_encryption, encryption_type);
+			if (encryption->type == AES_GCM_CTR_V1) {
+				log_error("AES_GCM_CTR_V1 is not available at current,"
+				          " Fallback to AES_GCM_V1.");
+				encryption->type = AES_GCM_V1;
+			}
 		}
 	}
 
