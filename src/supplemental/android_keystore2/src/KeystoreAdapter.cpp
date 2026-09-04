@@ -28,6 +28,19 @@ using namespace aidl::android::hardware::security::keymint;
 using ndk::ScopedAStatus;
 using ndk::SpAIBinder;
 
+// 运行时可覆盖的 DIGEST_NONE 开关 (初始值为编译期宏)
+#if KEYSTORE2_USE_DIGEST_NONE
+static bool g_digest_none = true;
+#else
+static bool g_digest_none = false;
+#endif
+
+void keystore2_set_digest_none(bool val)
+{
+	g_digest_none = val;
+	log_info("[mTLS] DIGEST_NONE mode: %s", val ? "ON (TEE)" : "OFF (software KeyMint)");
+}
+
 // Binder 线程池初始化（确保在首次 AIDL 调用前完成）
 static void ensureBinderThreadPool()
 {
@@ -142,33 +155,33 @@ extern "C" int keystore2_sign(const char *alias_cstr, int namespace_id,
 	bool        isPSS = false;
 	bool        parsed = false;
 
-#if KEYSTORE2_USE_DIGEST_NONE
-	// V216 实车 TEE 模式：BoringSSL 已完成数据摘要，KeyMint 直接签名原始数据
-	if (parsePSSSignatureScheme(sig_alg, keymintDigest)) {
-		isPSS          = true;
-		keymintPadding = PaddingMode::RSA_PSS;
-		keymintDigest  = Digest::NONE;
-		parsed         = true;
-	} else if (parseSignatureScheme(sig_alg, keymintDigest, keymintPadding)) {
+	if (g_digest_none) {
+		// V216 实车 TEE 模式：BoringSSL 已完成数据摘要，KeyMint 直接签名原始数据
+		if (parsePSSSignatureScheme(sig_alg, keymintDigest)) {
+			isPSS          = true;
+			keymintPadding = PaddingMode::RSA_PSS;
+			keymintDigest  = Digest::NONE;
+			parsed         = true;
+		} else if (parseSignatureScheme(sig_alg, keymintDigest, keymintPadding)) {
+			keymintDigest = Digest::NONE;
+			parsed        = true;
+		}
+		// 未识别时: keymintPadding 维持默认值 RSA_PKCS1_1_5_SIGN
 		keymintDigest = Digest::NONE;
-		parsed        = true;
+	} else {
+		// 模拟器软件 KeyMint 模式：需要指定具体 digest（不支持 DIGEST_NONE）
+		if (parsePSSSignatureScheme(sig_alg, keymintDigest)) {
+			isPSS          = true;
+			keymintPadding = PaddingMode::RSA_PSS;
+			parsed         = true;
+		} else if (parseSignatureScheme(sig_alg, keymintDigest, keymintPadding)) {
+			parsed = true;
+		}
+		if (!parsed) {
+			keymintDigest  = Digest::SHA_2_256;
+			keymintPadding = PaddingMode::RSA_PKCS1_1_5_SIGN;
+		}
 	}
-	// 未识别时: keymintPadding 维持默认值 RSA_PKCS1_1_5_SIGN
-	keymintDigest = Digest::NONE;
-#else
-	// 模拟器软件 KeyMint 模式：需要指定具体 digest（不支持 DIGEST_NONE）
-	if (parsePSSSignatureScheme(sig_alg, keymintDigest)) {
-		isPSS          = true;
-		keymintPadding = PaddingMode::RSA_PSS;
-		parsed         = true;
-	} else if (parseSignatureScheme(sig_alg, keymintDigest, keymintPadding)) {
-		parsed = true;
-	}
-	if (!parsed) {
-		keymintDigest  = Digest::SHA_2_256;
-		keymintPadding = PaddingMode::RSA_PKCS1_1_5_SIGN;
-	}
-#endif
 
 	if (!parsed) {
 		log_warn("[mTLS] Unrecognized sig_alg=0x%04x, falling back to digest=%d padding=%d",

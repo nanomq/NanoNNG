@@ -31,9 +31,12 @@ int keystore2_get_cert(const char *alias, int namespace_id,
 int keystore2_get_cert_chain(const char *alias, int namespace_id,
 			      uint8_t *chain_out, int chain_max);
 
-// 运行期覆盖 Keystore2 别名和命名空间 (在 open_config_init 之前调用)
+// 运行期覆盖 Keystore2 配置 (在 open_config_init 之前调用)
 // 不调用此函数时使用编译期宏默认值
-void keystore2_engine_set_config(const char *alias, int namespace_id);
+void keystore2_engine_set_config(const char *alias, int namespace_id, bool digest_none);
+
+// 运行期覆盖 DIGEST_NONE 模式 (TEE 硬件签名 vs 软件 KeyMint)
+void keystore2_set_digest_none(bool val);
 
 #ifdef __cplusplus
 }
