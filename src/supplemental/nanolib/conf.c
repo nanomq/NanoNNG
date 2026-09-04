@@ -1651,7 +1651,18 @@ conf_auth_parse(conf_auth *auth, const char *path)
 	size_t sz       = 0;
 	char * value;
 
-	auth->count = 0;
+	if (auth->count > 0) {
+		for (size_t i = 0; i < auth->count; i++) {
+			free(auth->usernames[i]);
+			free(auth->passwords[i]);
+		}
+		cvector_free(auth->usernames);
+		cvector_free(auth->passwords);
+		auth->usernames = NULL;
+		auth->passwords = NULL;
+		auth->count     = 0;
+		auth->enable    = false;
+	}
 
 	FILE *fp;
 	if ((fp = fopen(path, "r")) == NULL) {
@@ -1682,9 +1693,9 @@ conf_auth_parse(conf_auth *auth, const char *path)
 	check:
 		if (get_name && get_pass) {
 			index++;
-			auth->count++;
 			cvector_push_back(auth->usernames, name);
 			cvector_push_back(auth->passwords, pass);
+			auth->count = cvector_size(auth->usernames);
 			auth->enable = true;
 			name = NULL;
 			pass = NULL;
