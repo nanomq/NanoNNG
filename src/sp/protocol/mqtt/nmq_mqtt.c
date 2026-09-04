@@ -424,7 +424,7 @@ nano_ctx_send(void *arg, nni_aio *aio)
 				tmp_id ++;	// client may collide with 1000
 			}
 		} else {
-			log_info("NULL qos_db, cache failed!");
+			log_info("NULL qos_db, preset session cache failed!");
 		}
 		// Pipe is gone.  Make this look like a good send to avoid
 		// disrupting the state machine.  We don't care if the peer
