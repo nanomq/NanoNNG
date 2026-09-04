@@ -76,12 +76,87 @@ print_hex(char *str, const uint8_t *data, size_t len)
 #include <nng/supplemental/tls/engine.h>
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
+#if defined(ENABLE_ANDROID_KEYSTORE2)
+#include "pki_adapter.h"
+#else
 #include <nng/supplemental/tls/tee.h>
+#endif
 #endif
 
 static bool g_print_handshake = false;
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
+
+#if defined(ENABLE_ANDROID_KEYSTORE2)
+
+// 用户可通过 CMake option 或编译定义覆盖以下默认值
+#ifndef NANOMQ_KEYSTORE2_ALIAS
+#define NANOMQ_KEYSTORE2_ALIAS "ecu-client-certificate"
+#endif
+#ifndef NANOMQ_KEYSTORE2_NAMESPACE
+#define NANOMQ_KEYSTORE2_NAMESPACE -1
+#endif
+
+// BoringSSL 需要 type 回调来确定密钥类型（RSA/EC），不检查 NULL 直接调用
+static int
+keystore2_private_key_type(SSL *ssl)
+{
+	X509 *cert = SSL_get_certificate(ssl);
+	if (cert == NULL) {
+		return NID_rsaEncryption; // 默认 RSA
+	}
+	EVP_PKEY *pkey = X509_get_pubkey(cert);
+	if (pkey == NULL) {
+		return NID_rsaEncryption;
+	}
+	int type = EVP_PKEY_id(pkey);
+	EVP_PKEY_free(pkey);
+	return type;
+}
+
+// BoringSSL 需要 max_signature_len 回调来预分配签名缓冲区，不检查 NULL 直接调用
+static size_t
+keystore2_private_key_max_signature_len(SSL *ssl)
+{
+	X509 *cert = SSL_get_certificate(ssl);
+	if (cert == NULL) {
+		return 512; // RSA-4096 安全上限
+	}
+	EVP_PKEY *pkey = X509_get_pubkey(cert);
+	if (pkey == NULL) {
+		return 512;
+	}
+	size_t sz = (size_t)EVP_PKEY_size(pkey);
+	EVP_PKEY_free(pkey);
+	return sz;
+}
+
+static enum ssl_private_key_result_t
+keystore2_private_key_sign(SSL *ssl, uint8_t *out, size_t *out_len,
+                           size_t max_out, uint16_t signature_algorithm,
+                           const uint8_t *in, size_t in_len)
+{
+    int ret = keystore2_sign(NANOMQ_KEYSTORE2_ALIAS, NANOMQ_KEYSTORE2_NAMESPACE,
+                             in, (int)in_len, signature_algorithm, out, (int)max_out);
+    if (ret > 0) {
+        *out_len = (size_t)ret;
+        return ssl_private_key_success;
+    }
+    return ssl_private_key_failure;
+}
+
+// 必须按 BoringSSL 结构体字段顺序初始化所有 6 个回调:
+// type, max_signature_len, sign, sign_digest, decrypt, complete
+static const SSL_PRIVATE_KEY_METHOD keystore2_private_key_method = {
+    .type               = keystore2_private_key_type,
+    .max_signature_len  = keystore2_private_key_max_signature_len,
+    .sign               = keystore2_private_key_sign,
+    .sign_digest        = NULL,
+    .decrypt            = NULL,
+    .complete           = NULL,
+};
+
+#else  // !ENABLE_ANDROID_KEYSTORE2 — CSMW/Desay PKI path
 
 #ifdef DEBUG_PKI_LOCAL
 
@@ -340,6 +415,7 @@ static SSL_PRIVATE_KEY_METHOD my_ssl_private_key_method = {
 	.complete = NULL
 };
 
+#endif // !ENABLE_ANDROID_KEYSTORE2 — end CSMW path
 #endif // TLS_EXTERN_PRIVATE_KEY
 
 struct nng_tls_engine_conn {
@@ -543,9 +619,9 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 				if (rv == SSL_ERROR_WANT_READ || rv == SSL_ERROR_WANT_WRITE) {
 					continue;
 				} else if (rv == SSL_ERROR_NONE) {
-					log_warn("NNG-TLS-CONN-HANDSHAKE" "should never reach here");
+					log_warn("NNG-TLS-CONN-HANDSHAKE: " "should never reach here");
 				} else {
-					log_error("NNG-TLS-CONN-HANDSHAKE"
+					log_error("NNG-TLS-CONN-HANDSHAKE: "
 						"openssl handshake error %d", rv);
 					ERR_print_errors_fp(stderr);
 					return NNG_ECRYPTO;
@@ -829,7 +905,9 @@ open_config_init(nng_tls_engine_config *cfg, enum nng_tls_mode mode)
 	int               nng_auth;
 	const SSL_METHOD *method;
 	trace("start");
-
+#if defined(ENABLE_ANDROID_KEYSTORE2)
+	keystore2_init();
+#endif
 	cfg->mode = mode;
 	// TODO NNI_LIST_INIT(&cfg->psks, psk, node);
 	if (mode == NNG_TLS_MODE_SERVER) {
@@ -852,6 +930,36 @@ open_config_init(nng_tls_engine_config *cfg, enum nng_tls_mode mode)
 	SSL_CTX_set_verify(cfg->ctx, auth_mode, NULL);
 	//SSL_CTX_set_mode(cfg->ctx, SSL_MODE_AUTO_RETRY);
 	//SSL_CTX_set_options(cfg->ctx, SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
+
+#if defined(TLS_EXTERN_PRIVATE_KEY) && defined(ENABLE_ANDROID_KEYSTORE2)
+	if (mode == NNG_TLS_MODE_CLIENT) {
+
+
+		// 从 Keystore2 加载公钥证书 (DER 格式)，先解码为 X509 再注入
+		uint8_t cert_buf[4096];
+		int cert_len = keystore2_get_cert(NANOMQ_KEYSTORE2_ALIAS,
+		    NANOMQ_KEYSTORE2_NAMESPACE,
+		    cert_buf, sizeof(cert_buf));
+		if (cert_len > 0 && cert_len <= (int)sizeof(cert_buf)) {
+			log_info("NNG-TLS-CFG-INIT: " "Loaded certificate from Keystore2, length: %d", cert_len);
+			const uint8_t *p = cert_buf;
+			X509 *xcert = d2i_X509(NULL, &p, (long)cert_len);
+			if (xcert != NULL) {
+				if (SSL_CTX_use_certificate(cfg->ctx, xcert) != 1) {
+					log_error("NNG-TLS-CFG-INIT: " "SSL_CTX_use_certificate failed");
+				}
+				X509_free(xcert);
+				log_info("NNG-TLS-CFG-INIT: " "Keystore2 certificate installed successfully");
+			SSL_CTX_set_private_key_method(cfg->ctx,
+			    &keystore2_private_key_method);
+			} else {
+				log_error("NNG-TLS-CFG-INIT: " "d2i_X509 failed to parse Keystore2 cert");
+			}
+		} else {
+			log_error("NNG-TLS-CFG-INIT: " "keystore2_get_cert failed: %d", cert_len);
+		}
+	}
+#endif
 
 	trace("start end %p ctx %p", cfg, cfg->ctx);
 	cfg->auth_mode = nng_auth;
@@ -923,7 +1031,7 @@ open_config_ca_chain(
 #define NANOMQ_TLS_VENDOR "VENDOR"
 #endif
 
-#ifdef TLS_EXTERN_PRIVATE_KEY
+#if defined(TLS_EXTERN_PRIVATE_KEY) && !defined(ENABLE_ANDROID_KEYSTORE2)
 	// overwrite certs
 	log_info("teeGetCA start");
 	len = teeGetCA((char **)&certs);
@@ -964,7 +1072,7 @@ open_config_ca_chain(
 
 	BIO_free(bio);
 
-#ifdef TLS_EXTERN_PRIVATE_KEY
+#if defined(TLS_EXTERN_PRIVATE_KEY) && !defined(ENABLE_ANDROID_KEYSTORE2)
 	if (certs)
 		nng_free((void *)certs, len);
 #endif //TLS_EXTERN_PRIVATE_KEY
@@ -1026,6 +1134,15 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	X509 *xcert = NULL;
 	EVP_PKEY *pkey = NULL;
 
+#if defined(ENABLE_ANDROID_KEYSTORE2)
+	// Keystore2 模式：证书已在 open_config_init 中通过 keystore2_get_cert 加载
+	// 私钥签名由 SSL_PRIVATE_KEY_METHOD 劫持到 TEE，此处不需要 PEM 证书/密钥
+	(void) cert;
+	(void) key;
+	(void) pass;
+	return (0);
+#endif
+
 #if NNG_OPENSSL_HAVE_PASSWORD
 	char *dup = NULL;
 	if (pass != NULL) {
@@ -1043,7 +1160,7 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	(void) pass;
 #endif
 
-#ifdef TLS_EXTERN_PRIVATE_KEY
+#if defined(TLS_EXTERN_PRIVATE_KEY) && !defined(ENABLE_ANDROID_KEYSTORE2)
 	//int getCertificateFromKeystore(const char* alias, uint8_t* out, int outlen_chk);
 	// overwrite cert
 	NNI_ARG_UNUSED(cert);
@@ -1066,7 +1183,7 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		goto error;
 	}
 
-#ifdef TLS_EXTERN_PRIVATE_KEY
+#if defined(TLS_EXTERN_PRIVATE_KEY) && !defined(ENABLE_ANDROID_KEYSTORE2)
 	if (len > 5 && 0 == strncmp(cert1, "-----", 5)) {
 		xcert = PEM_read_bio_X509(biocert, NULL, NULL, NULL);
 		if (!xcert) {
@@ -1100,7 +1217,7 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	}
 	rv = 0;
 
-#ifdef TLS_EXTERN_PRIVATE_KEY
+#if defined(TLS_EXTERN_PRIVATE_KEY) && !defined(ENABLE_ANDROID_KEYSTORE2)
 	char *cacerts;
 	log_info("teeGetCA start");
 	len = teeGetCA((char **)&cacerts);
@@ -1136,6 +1253,7 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 #endif
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
+#if !defined(ENABLE_ANDROID_KEYSTORE2)
 	NNI_ARG_UNUSED(key);
 	log_debug("NNG-TLS-CFG-CACHAIN" "Ready to set private key");
 	SSL_CTX_set_private_key_method(cfg->ctx, &my_ssl_private_key_method);
@@ -1215,7 +1333,7 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	}
 */
 
-#else
+#elif !defined(ENABLE_ANDROID_KEYSTORE2)
 	len = strlen(key);
 	log_warn("keylen:%d", len);
 	biokey = BIO_new_mem_buf(key, len);
@@ -1242,10 +1360,11 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		rv = NNG_ECRYPTO;
 		goto error;
 	}
+#endif // !defined(ENABLE_ANDROID_KEYSTORE2)
 #endif // TLS_EXTERN_PRIVATE_KEY
 
 error:
-#ifdef TLS_EXTERN_PRIVATE_KEY
+#if defined(TLS_EXTERN_PRIVATE_KEY) && !defined(ENABLE_ANDROID_KEYSTORE2)
 	nng_free(cert1, len);
 #endif // TLS_EXTERN_PRIVATE_KEY
 	if (xcert)
