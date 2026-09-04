@@ -1789,7 +1789,7 @@ mqtts_tcptran_ep_connect(void *arg, nni_aio *aio)
 		ep->backoff = ep->backoff > ep->backoff_max
 		    ? (nni_duration) (nni_random() % 1000)
 		    : ep->backoff;
-		log_warn("reconnect to %s in %ld", ep->url->u_host, ep->backoff);
+		log_warn("reconnect to %s in %d", ep->url->u_host, ep->backoff);
 		nni_msleep(ep->backoff);
 	} else {
 		ep->backoff = nni_random()%2000;
