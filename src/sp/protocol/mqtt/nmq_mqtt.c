@@ -1145,6 +1145,69 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 	nni_aio_finish(aio, 0, nni_msg_len(msg));
 }
 
+// Register the TOPIC_ALIAS of a v5 PUBLISH into the per-pipe alias table
+// here, in the strictly serial receive path, before any ctx worker picks
+// the message up. Two consecutive PUBLISHes of one connection can be
+// processed concurrently by different ctx workers, so an alias-reusing
+// PUBLISH (empty topic name) may otherwise run its table lookup before
+// the establishing PUBLISH has inserted the mapping and get rejected
+// with TOPIC_ALIAS_INVALID (issue #658, rapid alias reuse). The aio_recv
+// chain is per-pipe serial, so the insert below is guaranteed to happen
+// before the next PUBLISH of the same connection is even received.
+// handle_pub still performs its own insert/lookup/substitution; this is
+// purely an ordering guarantee for the concurrent worker case.
+static void
+nano_alias_preinsert(nano_sock *s, nano_pipe *p, nng_msg *msg)
+{
+	uint8_t  *body    = nni_msg_body(msg);
+	uint32_t  msg_len = nni_msg_len(msg);
+	uint16_t  tlen;
+	uint32_t  pos;
+	uint32_t  plen;
+	uint16_t  alias = 0;
+
+	if (s == NULL || s->conf == NULL || p->conn_param == NULL ||
+	    body == NULL) {
+		return;
+	}
+	if (p->conn_param->pro_ver != MQTT_PROTOCOL_VERSION_v5) {
+		return;
+	}
+	// [topic len u16][topic][prop len][properties...][payload]
+	if (msg_len < 3) {
+		return;
+	}
+	NNI_GET16(body, tlen);
+	// only a PUBLISH carrying a topic name can (re-)register the alias;
+	// a reuse PUBLISH has an empty topic and must not touch the table
+	if (tlen == 0 || (uint32_t) 2 + tlen + 1 > msg_len) {
+		return;
+	}
+	pos = 2 + tlen;
+	property *prop = decode_buf_properties(body, msg_len, &pos, &plen, false);
+	if (prop == NULL || plen == (uint32_t) -1) {
+		property_free(prop);
+		return;
+	}
+	property_data *pdata = property_get_value(prop, TOPIC_ALIAS);
+	if (pdata != NULL) {
+		alias = pdata->p_value.u16;
+	}
+	property_free(prop);
+	if (alias == 0 || alias > s->conf->max_topic_alias) {
+		// invalid alias: leave it to handle_pub to report the error
+		return;
+	}
+	char *topic = nni_alloc(tlen + 1);
+	if (topic == NULL) {
+		return;
+	}
+	memcpy(topic, body + 2, tlen);
+	topic[tlen] = '\0';
+	dbhash_insert_atpair(p->id, alias, topic);
+	nni_free(topic, tlen + 1);
+}
+
 static void
 nano_pipe_recv_cb(void *arg)
 {
@@ -1260,6 +1323,12 @@ nano_pipe_recv_cb(void *arg)
 	case CMD_PUBLISH:
 		// 1. Clone for App layer 2. Clone should be called before being used
 		conn_param_clone(cparam);
+		if (type == CMD_PUBLISH) {
+			// register TOPIC_ALIAS in the serial recv path so a
+			// later alias-reusing PUBLISH always finds it, even
+			// though ctx workers process messages concurrently
+			nano_alias_preinsert(s, p, msg);
+		}
 		break;
 	case CMD_PUBACK:
 	case CMD_PUBCOMP:
