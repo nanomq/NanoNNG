@@ -38,7 +38,17 @@ if(ENABLE_ANDROID_KEYSTORE2 AND ANDROID)
 
     # --- 链接从设备提取的预编译 .so 文件 ---
     # 三个 .so 都来自目标 Android 设备的 /system/lib64/，NDK stub 库不包含所需符号
-    set(KEYSTORE2_LIBS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs")
+    # 根据 Android ABI 选择对应的库子目录 (aarch64 / x86_64)
+    if(ANDROID_ABI STREQUAL "arm64-v8a")
+        set(KEYSTORE2_ABI_DIR "arm64-v8a")
+    elseif(ANDROID_ABI STREQUAL "x86_64")
+        set(KEYSTORE2_ABI_DIR "x86_64")
+    else()
+        message(FATAL_ERROR "Unsupported ANDROID_ABI: ${ANDROID_ABI} (supported: arm64-v8a, x86_64)")
+    endif()
+    set(KEYSTORE2_LIBS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/${KEYSTORE2_ABI_DIR}")
+    message(STATUS "  - Android ABI: ${ANDROID_ABI} → ${KEYSTORE2_ABI_DIR}")
+    message(STATUS "  - Libs dir: ${KEYSTORE2_LIBS_DIR}")
 
     # libbinder_ndk.so — 提供 AServiceManager_waitForService 等 platform API 符号
     add_library(binder_ndk SHARED IMPORTED)
