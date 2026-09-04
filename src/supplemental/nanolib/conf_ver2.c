@@ -2002,7 +2002,7 @@ conf_exchange_encryption_parse(conf_exchange_encryption *node, cJSON *encryption
 	}
 	return;
 }
-
+#ifdef SUPP_PARQUET
 static void
 conf_parquet_parse_ver2(conf *config, conf_exchange_node *node, cJSON *jso)
 {
@@ -2051,6 +2051,7 @@ conf_parquet_parse_ver2(conf *config, conf_exchange_node *node, cJSON *jso)
 
 	return;
 }
+#endif
 
 static void
 conf_parquet_parse_default_ver2(conf *config, cJSON *jso)
@@ -2093,7 +2094,7 @@ conf_parquet_parse_default_ver2(conf *config, cJSON *jso)
 
 	return;
 }
-
+#ifdef SUPP_PARQUET
 static void
 conf_exchange_parse_ver2(conf *config, cJSON *jso)
 {
@@ -2134,7 +2135,7 @@ conf_exchange_parse_ver2(conf *config, cJSON *jso)
 
 	return;
 }
-
+#endif
 static void
 conf_blf_parse_ver2(conf *config, cJSON *jso)
 {
@@ -2810,9 +2811,11 @@ conf_parse_ver2(conf *config)
 		conf_pre_session_parse_ver2(config, jso);
 		conf_authorization_prase_ver2(config, jso);
 		conf_bridge_parse_ver2(config, jso);
+#ifdef SUPP_PARQUET
 		conf_parquet_parse_default_ver2(config, jso);
 		conf_exchange_parse_ver2(config, jso);
 		conf_blf_parse_ver2(config, jso);
+#endif
 		conf_nng_proxy_sub_parse_ver2(config, jso);
 		conf_nng_proxy_pub_parse_ver2(config, jso);
 #if defined(SUPP_PLUGIN)
