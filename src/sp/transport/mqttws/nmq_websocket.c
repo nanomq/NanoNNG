@@ -1588,7 +1588,7 @@ wstran_pipe_getopt(
 			}
 			nni_time ntime = nni_clock();
 			nni_time mtime = nni_msg_get_timestamp(rmsg);
-			if (data && ntime > mtime + data->p_value.u32 * 1000) {
+			if (data && ntime > mtime + (nni_time)((uint64_t)data->p_value.u32 * 1000)) {
 				log_info("QoS msg id %d of pipe %u expired!", pid, p->npipe->p_id);
 				// remove expired msg from qos db
 				nni_qos_db_remove_msg(
