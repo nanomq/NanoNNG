@@ -5,6 +5,22 @@ set(NANOMQ_KEYSTORE2_NAMESPACE "-1" CACHE STRING
     "Keystore2 SELinux namespace (-1 for Domain::APP, e.g. 30000 for vehicle)")
 option(KEYSTORE2_USE_DIGEST_NONE "Use DIGEST_NONE for TEE signing (V216 production, BoringSSL pre-hashes). OFF for emulator." ON)
 
+# Keystore2 SDK 路径 (AIDL 生成的 .cpp 源文件 + 预编译 libbinder_ndk.so)
+# 运行 install-keystore2-sdk.sh 可将头文件和 .so 安装到 NDK sysroot；
+# 安装后编译器自动从 sysroot 发现头文件
+# Android 构建默认指向 NDK sysroot，非 Android 回退到源树路径
+if(ANDROID)
+    set(NANOMQ_KEYSTORE2_SDK_SRC "${CMAKE_SYSROOT}/usr/src/nanomq-keystore2"
+        CACHE PATH "Path to Keystore2 AIDL-generated .cpp source files")
+    set(NANOMQ_KEYSTORE2_LIBS_DIR "${CMAKE_SYSROOT}/usr/lib"
+        CACHE PATH "Path to libbinder_ndk.so parent directory")
+else()
+    set(NANOMQ_KEYSTORE2_SDK_SRC "${CMAKE_CURRENT_SOURCE_DIR}/keystore2_cpp_out/src"
+        CACHE PATH "Path to Keystore2 AIDL-generated .cpp source files")
+    set(NANOMQ_KEYSTORE2_LIBS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs"
+        CACHE PATH "Path to libbinder_ndk.so parent directory")
+endif()
+
 if(ENABLE_ANDROID_KEYSTORE2 AND ANDROID)
     message(STATUS "Android Keystore2 mTLS feature is ENABLED")
     message(STATUS "  - Alias: ${NANOMQ_KEYSTORE2_ALIAS}")
@@ -26,10 +42,11 @@ if(ENABLE_ANDROID_KEYSTORE2 AND ANDROID)
 
     # --- 头文件包含目录 ---
     # Binder NDK 头文件来自 AOSP frameworks/native 仓库的 libs/binder/ndk/ 子目录
-    # 已内置到 binder_headers/ 下（include_ndk, include_cpp, include_platform），无需外部依赖
+    # 运行 install-keystore2-sdk.sh 后，这些头文件会安装到 NDK sysroot，
+    # 编译器自动从 sysroot/usr/include/ 发现，无需显式 -I 路径
     target_include_directories(nng PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/keystore2_cpp_out/include
+        ${NANOMQ_KEYSTORE2_SDK_SRC}/../include
         ${CMAKE_CURRENT_SOURCE_DIR}/binder_headers/include_ndk
         ${CMAKE_CURRENT_SOURCE_DIR}/binder_headers/include_cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/binder_headers/include_platform
@@ -41,31 +58,40 @@ if(ENABLE_ANDROID_KEYSTORE2 AND ANDROID)
     # 直接编译 AIDL 生成的 .cpp 文件替代预编译 .so
     # 优势: 跨 ABI 自动适配、二进制体积更小(链接器剥离未使用符号)、符合 AOSP 标准实践
     file(GLOB KEYSTORE2_AIDL_SOURCES
-        "${CMAKE_CURRENT_SOURCE_DIR}/keystore2_cpp_out/src/android/system/keystore2/*.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/keystore2_cpp_out/src/android/hardware/security/keymint/*.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/keystore2_cpp_out/src/android/hardware/security/secureclock/*.cpp"
+        "${NANOMQ_KEYSTORE2_SDK_SRC}/android/system/keystore2/*.cpp"
+        "${NANOMQ_KEYSTORE2_SDK_SRC}/android/hardware/security/keymint/*.cpp"
+        "${NANOMQ_KEYSTORE2_SDK_SRC}/android/hardware/security/secureclock/*.cpp"
     )
     target_sources(nng PRIVATE ${KEYSTORE2_AIDL_SOURCES})
 
     # --- 链接从设备提取的 libbinder_ndk.so ---
     # libbinder_ndk.so 提供 AServiceManager_waitForService、ABinderProcess_startThreadPool
     # 等 platform API 符号，这些符号在 NDK r27c stub 中不存在，必须从设备 /system/lib64/ 提取
-    # 根据 Android ABI 选择对应的库子目录 (arm64-v8a / x86_64)
+    # 运行 install-keystore2-sdk.sh 后，.so 会复制到 NDK sysroot/usr/lib/<ndk-triple>/
+    # 搜索策略：优先源码树 libs/<ANDROID_ABI>/，其次 sysroot/usr/lib/<ndk-triple>/
     if(ANDROID_ABI STREQUAL "arm64-v8a")
-        set(KEYSTORE2_ABI_DIR "arm64-v8a")
+        set(KEYSTORE2_LOCAL_ABI "arm64-v8a")
+        set(KEYSTORE2_NDK_ABI "aarch64-linux-android")
     elseif(ANDROID_ABI STREQUAL "x86_64")
-        set(KEYSTORE2_ABI_DIR "x86_64")
+        set(KEYSTORE2_LOCAL_ABI "x86_64")
+        set(KEYSTORE2_NDK_ABI "x86_64-linux-android")
     else()
         message(FATAL_ERROR "Unsupported ANDROID_ABI: ${ANDROID_ABI} (supported: arm64-v8a, x86_64)")
     endif()
-    set(KEYSTORE2_LIBS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/${KEYSTORE2_ABI_DIR}")
-    message(STATUS "  - Android ABI: ${ANDROID_ABI} → ${KEYSTORE2_ABI_DIR}")
-    message(STATUS "  - Libs dir: ${KEYSTORE2_LIBS_DIR}")
+
+    if(EXISTS "${NANOMQ_KEYSTORE2_LIBS_DIR}/${KEYSTORE2_LOCAL_ABI}/libbinder_ndk.so")
+        set(KEYSTORE2_SO_PATH "${NANOMQ_KEYSTORE2_LIBS_DIR}/${KEYSTORE2_LOCAL_ABI}/libbinder_ndk.so")
+    else()
+        set(KEYSTORE2_SO_PATH "${NANOMQ_KEYSTORE2_LIBS_DIR}/${KEYSTORE2_NDK_ABI}/libbinder_ndk.so")
+    endif()
+
+    message(STATUS "  - SDK src:  ${NANOMQ_KEYSTORE2_SDK_SRC}")
+    message(STATUS "  - libbinder_ndk.so: ${KEYSTORE2_SO_PATH}")
 
     # libbinder_ndk.so — 提供 AServiceManager_waitForService 等 platform API 符号
     add_library(binder_ndk SHARED IMPORTED)
     set_target_properties(binder_ndk PROPERTIES
-        IMPORTED_LOCATION "${KEYSTORE2_LIBS_DIR}/libbinder_ndk.so"
+        IMPORTED_LOCATION "${KEYSTORE2_SO_PATH}"
     )
 
     # 链接到 nng 目标 (AIDL 代码已直接编译，无需额外 .so)
@@ -76,7 +102,7 @@ if(ENABLE_ANDROID_KEYSTORE2 AND ANDROID)
     set(BORINGSSL_SRC_DIR "${CMAKE_SOURCE_DIR}/nng/extern/msquic/submodules/openssl/boringssl")
     target_include_directories(keystore2_selftest PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/keystore2_cpp_out/include
+        ${NANOMQ_KEYSTORE2_SDK_SRC}/../include
         ${CMAKE_CURRENT_SOURCE_DIR}/binder_headers/include_ndk
         ${CMAKE_CURRENT_SOURCE_DIR}/binder_headers/include_cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/binder_headers/include_platform
