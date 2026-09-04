@@ -628,8 +628,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 		    packet, max, &pos, &cparam->prop_len, true);
 		if (cparam->properties) {
 			conn_param_set_property(cparam, cparam->properties);
-			if ((rv = check_properties(cparam->properties, NULL)) !=
-			    SUCCESS) {
+			if ((rv = check_properties(cparam->properties, NULL)) != SUCCESS) {
 				log_warn("Malformed CONNECT: property check failed");
 				return rv;
 			}
