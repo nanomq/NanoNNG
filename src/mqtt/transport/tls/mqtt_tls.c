@@ -1745,11 +1745,20 @@ nng_dialer_reload_tls(conf_bridge_node *node, nni_dialer *ndialer)
 			log_error("restart tls config failed!");
 		}
 	}
+#if defined(ENABLE_ANDROID_KEYSTORE2)
+	// Keystore2 路径：即使 cafile 为空也要调用 ca_chain，
+	// open_config_ca_chain 会从 Keystore2 certificateChain 构建信任锚
+	if ((rv = nng_tls_config_ca_chain(cfg, node->tls.ca, NULL)) != 0) {
+		log_error("ca_chain failed (rv=%d): no trust anchors available, "
+		          "server verification will fail", rv);
+	}
+#else
 	if (node->tls.ca != NULL) {
 		if ((rv = nng_tls_config_ca_chain(cfg, node->tls.ca, NULL)) != 0) {
 			log_error("restart tls config failed!");
 		}
 	}
+#endif
 	if (node->tls.sni != NULL) {
 		nng_tls_config_server_name(cfg, node->tls.sni);
 	}
