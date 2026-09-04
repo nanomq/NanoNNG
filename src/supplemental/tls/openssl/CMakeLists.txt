@@ -50,6 +50,7 @@ if (NNG_TLS_ENGINE STREQUAL "open")
 
         # 直接链接 BoringSSL 的 ssl 和 crypto 目标
         target_include_directories(nng PRIVATE ${BORINGSSL_SRC_DIR}/include)
+        # (parquet 的 crypto 依赖由 nng/CMakeLists.txt 中 NNG_ENABLE_PARQUET 块统一处理)
         nng_link_libraries(ssl crypto)
         # 将 BoringSSL 目标加入 nng 导出集合，避免 install(EXPORT) 报错
         install(TARGETS ssl crypto EXPORT nng-target)
