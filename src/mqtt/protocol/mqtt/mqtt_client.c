@@ -1381,8 +1381,8 @@ mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
 			} else {
 #ifdef NNG_ENABLE_STATS
 				nni_stat_inc(&s->msg_send_drop, 1);
-			}
 #endif
+			}
 #else
 #ifdef NNG_ENABLE_STATS
 			nni_stat_inc(&s->msg_send_drop, 1);
