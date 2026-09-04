@@ -1791,8 +1791,6 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 		if (bpos + len_of_topic > remain)
 			return (-3);
 
-		log_trace(
-		    "The current process topic is %s", payload_ptr + bpos);
 		if ((sn = nng_alloc(sizeof(struct subinfo))) == NULL)
 			return (-2);
 		if ((topic = nng_alloc(len_of_topic + 1)) == NULL) {
