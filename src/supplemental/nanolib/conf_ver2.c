@@ -2009,14 +2009,12 @@ conf_parquet_parse_ver2(conf *config, conf_exchange_node *node, cJSON *jso)
 	cJSON *jso_parquet = cJSON_GetObjectItem(jso, "parquet");
 	if (jso_parquet) {
 		conf_parquet *parquet = NNI_ALLOC_STRUCT(parquet);
+		conf_parquet_init(parquet);
 		node->parquet = parquet;
-		parquet->enable       = true;
+		parquet->enable = true;
 		hocon_read_bool_base(parquet, enable, "enable", jso_parquet);
-		parquet->file_count       = 5;
 		hocon_read_num(parquet, file_count, jso_parquet);
-		parquet->limit_frequency  = 5;
 		hocon_read_num(parquet, limit_frequency, jso_parquet);
-		parquet->file_size        = (10240 * 1024);
 		hocon_read_size(parquet, file_size, jso_parquet);
 		hocon_read_str(parquet, dir, jso_parquet);
 		hocon_read_str(parquet, file_name_prefix, jso_parquet);
