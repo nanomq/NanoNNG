@@ -161,6 +161,7 @@ wstran_pipe_qos_send_cb(void *arg)
 		nni_msg *msg;
 		if ((msg = nni_aio_get_msg(p->qsaio)) != NULL) {
 			nni_msg_free(msg);
+			nni_aio_set_msg(qsaio, NULL);
 		}
 		if (uaio != NULL) {
 			nni_aio_finish_error(uaio, rv);
@@ -171,9 +172,10 @@ wstran_pipe_qos_send_cb(void *arg)
 
 	nni_mtx_lock(&p->mtx);
 	qmsg = nni_aio_get_msg(qsaio);
-	if (qmsg != NULL)
+	if (qmsg != NULL) {
+		nni_aio_set_msg(qsaio, NULL);
 		nni_msg_free(qmsg);
-
+	}
 	if (nni_lmq_get(&p->rslmq, &qmsg) == 0) {
 		nni_iov iov[2];
 		iov[0].iov_len = nni_msg_header_len(qmsg);
@@ -1570,7 +1572,7 @@ wstran_pipe_getopt(
 		}
 		nmq_req *req = (nmq_req *)buf;
 		nni_msg *msg = NULL;
-		uint16_t pid = 1;
+		uint16_t pid = req->packet_id;
 		bool is_sqlite = false;
 
 		nni_mtx_lock(&p->mtx);
@@ -1592,7 +1594,7 @@ wstran_pipe_getopt(
 			nni_time ntime = nni_clock();
 			nni_time mtime = nni_msg_get_timestamp(rmsg);
 			if (data && ntime > mtime + data->p_value.u32 * 1000) {
-				log_info("QoS msg id %d of pipe %p expired!", pid, p->npipe->p_id);
+				log_info("QoS msg id %d of pipe %u expired!", pid, p->npipe->p_id);
 				// remove expired msg from qos db
 				nni_qos_db_remove_msg(
 				    is_sqlite, p->npipe->nano_qos_db, rmsg);
