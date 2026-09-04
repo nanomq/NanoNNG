@@ -2141,45 +2141,62 @@ conf_exchange_encryption_parse(conf_exchange_encryption *node, cJSON *encryption
 }
 #ifdef SUPP_PARQUET
 static void
+conf_parquet_parse_fields(conf_parquet *parquet, cJSON *jso_parquet)
+{
+	hocon_read_bool_base(parquet, enable, "enable", jso_parquet);
+	hocon_read_num(parquet, file_count, jso_parquet);
+	hocon_read_num(parquet, limit_frequency, jso_parquet);
+	hocon_read_size(parquet, file_size, jso_parquet);
+	hocon_read_str(parquet, dir, jso_parquet);
+	hocon_read_str(parquet, file_name_prefix, jso_parquet);
+	hocon_read_str(parquet, tmp_dir, jso_parquet);
+	update_parquet_vin(parquet);
+	hocon_read_enum_base(parquet, comp_type, "compress", jso_parquet,
+	    compress_type);
+	hocon_read_num(parquet, compression_level, jso_parquet);
+	hocon_read_bool_base(parquet, dictionary, "dictionary", jso_parquet);
+	hocon_read_size_base(
+	    parquet, data_page_size, "data_page_size", jso_parquet);
+	hocon_read_size_base(parquet, dictionary_page_size,
+	    "dictionary_page_size", jso_parquet);
+	hocon_read_num(parquet, write_batch_size, jso_parquet);
+	hocon_read_bool_base(
+	    parquet, enable_statistics, "enable_statistics", jso_parquet);
+	hocon_read_bool_base(parquet, enable_page_checksum,
+	    "enable_page_checksum", jso_parquet);
+
+	cJSON *jso_parquet_encryption =
+	    cJSON_GetObjectItem(jso_parquet, "encryption");
+	if (jso_parquet_encryption) {
+		conf_parquet_encryption *encryption = &(parquet->encryption);
+		encryption->enable                  = true;
+		hocon_read_str(encryption, key_id, jso_parquet_encryption);
+		hocon_read_str(encryption, key, jso_parquet_encryption);
+		if (encryption->key) {
+			encryption->key_cipher = nng_strdup(encryption->key);
+		}
+		hocon_read_enum(
+		    encryption, type, jso_parquet_encryption, encryption_type);
+		hocon_read_bool_base(encryption, plaintext_footer,
+		    "plaintext_footer", jso_parquet_encryption);
+		if (encryption->type == AES_GCM_CTR_V1) {
+			log_error("AES_GCM_CTR_V1 is not available at current,"
+			          " Fallback to AES_GCM_V1.");
+			encryption->type = AES_GCM_V1;
+		}
+	}
+}
+
+static void
 conf_parquet_parse_ver2(conf *config, conf_exchange_node *node, cJSON *jso)
 {
 	cJSON *jso_parquet = cJSON_GetObjectItem(jso, "parquet");
 	if (jso_parquet) {
 		conf_parquet *parquet = NNI_ALLOC_STRUCT(parquet);
 		conf_parquet_init(parquet);
-		node->parquet = parquet;
+		node->parquet   = parquet;
 		parquet->enable = true;
-		hocon_read_bool_base(parquet, enable, "enable", jso_parquet);
-		hocon_read_num(parquet, file_count, jso_parquet);
-		hocon_read_num(parquet, limit_frequency, jso_parquet);
-		hocon_read_size(parquet, file_size, jso_parquet);
-		hocon_read_str(parquet, dir, jso_parquet);
-		hocon_read_str(parquet, file_name_prefix, jso_parquet);
-		update_parquet_vin(parquet);
-		hocon_read_enum_base(parquet, comp_type, "compress",
-		    jso_parquet, compress_type);
-		cJSON *jso_parquet_encryption =
-		    cJSON_GetObjectItem(jso_parquet, "encryption");
-		if (jso_parquet_encryption) {
-			conf_parquet_encryption *encryption =
-			    &(parquet->encryption);
-			encryption->enable = true;
-			hocon_read_str(
-			    encryption, key_id, jso_parquet_encryption);
-			hocon_read_str(
-			    encryption, key, jso_parquet_encryption);
-			if (encryption->key) {
-				encryption->key_cipher = nng_strdup(encryption->key);
-			}
-			hocon_read_enum(encryption, type,
-			    jso_parquet_encryption, encryption_type);
-			if (encryption->type == AES_GCM_CTR_V1) {
-				log_error("AES_GCM_CTR_V1 is not available at current,"
-				          " Fallback to AES_GCM_V1.");
-				encryption->type = AES_GCM_V1;
-			}
-		}
-
+		conf_parquet_parse_fields(parquet, jso_parquet);
 		config->parquet.enable = true;
 	} else {
 		// Use the default settings. One should be careful when it's free.
@@ -2189,7 +2206,6 @@ conf_parquet_parse_ver2(conf *config, conf_exchange_node *node, cJSON *jso)
 
 	return;
 }
-#endif
 
 static void
 conf_parquet_parse_default_ver2(conf *config, cJSON *jso)
@@ -2198,40 +2214,12 @@ conf_parquet_parse_default_ver2(conf *config, cJSON *jso)
 	if (jso_parquet) {
 		conf_parquet *parquet = &(config->parquet);
 		parquet->enable       = true;
-		hocon_read_bool_base(parquet, enable, "enable", jso_parquet);
-		hocon_read_num(parquet, limit_frequency, jso_parquet);
-		hocon_read_num(parquet, file_count, jso_parquet);
-		hocon_read_size(parquet, file_size, jso_parquet);
-		hocon_read_str(parquet, dir, jso_parquet);
-		hocon_read_str(parquet, file_name_prefix, jso_parquet);
-		update_parquet_vin(parquet);
-		hocon_read_enum_base(parquet, comp_type, "compress",
-		    jso_parquet, compress_type);
-		cJSON *jso_parquet_encryption =
-		    cJSON_GetObjectItem(jso_parquet, "encryption");
-		if (jso_parquet_encryption) {
-			conf_parquet_encryption *encryption =
-			    &(parquet->encryption);
-			encryption->enable = true;
-			hocon_read_str(
-			    encryption, key_id, jso_parquet_encryption);
-			hocon_read_str(
-			    encryption, key, jso_parquet_encryption);
-			if (encryption->key) {
-				encryption->key_cipher = nng_strdup(encryption->key);
-			}
-			hocon_read_enum(encryption, type,
-			    jso_parquet_encryption, encryption_type);
-			if (encryption->type == AES_GCM_CTR_V1) {
-				log_error("AES_GCM_CTR_V1 is not available at current,"
-				          " Fallback to AES_GCM_V1.");
-				encryption->type = AES_GCM_V1;
-			}
-		}
+		conf_parquet_parse_fields(parquet, jso_parquet);
 	}
 
 	return;
 }
+#endif
 #ifdef SUPP_PARQUET
 static void
 conf_exchange_parse_ver2(conf *config, cJSON *jso)

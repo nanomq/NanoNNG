@@ -1383,9 +1383,25 @@ print_parquet_conf(conf_parquet *parquet)
 		    encryption->type == 0 ? "AES_GCM_V1" : "AES_GCM_CTR_V1");
 	}
 	log_info("parquet file_name_prefix: %s", parquet->file_name_prefix);
-	log_info("parquet file_count:       %d", parquet->file_count);
-	log_info("parquet file_size:        %d", parquet->file_size);
-	log_info("parquet limit_frequency:  %d", parquet->limit_frequency);
+	log_info("parquet file_count:       %u", parquet->file_count);
+	log_info("parquet file_size:        %" PRIu64, parquet->file_size);
+	log_info("parquet limit_frequency:  %u", parquet->limit_frequency);
+	log_info("parquet compression_level:%d", parquet->compression_level);
+	log_info("parquet dictionary:       %s",
+	    parquet->dictionary ? "enable" : "disable");
+	log_info("parquet data_page_size:   %" PRIu64, parquet->data_page_size);
+	log_info("parquet dictionary_page_size: %" PRIu64,
+	    parquet->dictionary_page_size);
+	log_info("parquet write_batch_size: %u", parquet->write_batch_size);
+	log_info("parquet enable_statistics:%s",
+	    parquet->enable_statistics ? "true" : "false");
+	log_info("parquet enable_page_checksum: %s",
+	    parquet->enable_page_checksum ? "true" : "false");
+	log_info("parquet tmp_dir:          %s", parquet->tmp_dir);
+	if (encryption->enable) {
+		log_info("parquet plaintext_footer: %s",
+		    encryption->plaintext_footer ? "true" : "false");
+	}
 }
 
 
@@ -3371,14 +3387,23 @@ conf_parquet_init(conf_parquet *parquet)
 	parquet->encryption.key_id     = NULL;
 	parquet->encryption.type       = AES_GCM_V1;
 	parquet->encryption.key_cipher = NULL;
+	parquet->encryption.plaintext_footer = true;
 
-	parquet->limit_frequency  = 5;
-	parquet->file_count       = 5;
-	parquet->file_size        = (10240 * 1024);
-	parquet->comp_type        = UNCOMPRESSED;
-	parquet->file_name_prefix = NULL;
-	parquet->dir              = NULL;
-	parquet->name             = NULL;
+	parquet->limit_frequency       = 5;
+	parquet->file_count            = 5;
+	parquet->file_size             = (10240 * 1024);
+	parquet->comp_type             = UNCOMPRESSED;
+	parquet->compression_level     = 0;
+	parquet->dictionary            = false;
+	parquet->data_page_size        = 0;
+	parquet->dictionary_page_size  = 0;
+	parquet->write_batch_size      = 0;
+	parquet->enable_statistics     = true;
+	parquet->enable_page_checksum  = false;
+	parquet->file_name_prefix      = NULL;
+	parquet->tmp_dir               = NULL;
+	parquet->dir                   = NULL;
+	parquet->name                  = NULL;
 }
 #endif
 
@@ -4947,9 +4972,11 @@ conf_parquet_destroy(conf_parquet *parquet)
 		nng_strfree(parquet->dir);
 		nng_strfree(parquet->name);
 		nng_strfree(parquet->file_name_prefix);
+		nng_strfree(parquet->tmp_dir);
 		parquet->dir              = NULL;
 		parquet->name             = NULL;
 		parquet->file_name_prefix = NULL;
+		parquet->tmp_dir          = NULL;
 		if (parquet->encryption.enable) {
 			nng_strfree(parquet->encryption.key);
 			nng_strfree(parquet->encryption.key_id);

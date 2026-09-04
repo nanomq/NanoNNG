@@ -1,8 +1,18 @@
 #include <arrow/io/file.h>
 #include <arrow/util/key_value_metadata.h>
-#include <arrow/util/secure_string.h>
 #include <parquet/stream_reader.h>
 #include <parquet/stream_writer.h>
+
+// Select Arrow encryption key API.
+// Default 14: std::string keys + FileDecryptionProperties::DeepClone().
+// SecureString APIs landed in Arrow 22.0.0 (GH-31603 / #46017); set
+// NNG_ARROW_VERSION_MAJOR>=22 (CMake -DNNG_ARROW_VERSION_MAJOR=22).
+#ifndef NNG_ARROW_VERSION_MAJOR
+#define NNG_ARROW_VERSION_MAJOR 14
+#endif
+#if NNG_ARROW_VERSION_MAJOR >= 22
+#include <arrow/util/secure_string.h>
+#endif
 
 #include "nng/supplemental/nanolib/log.h"
 #include "nng/supplemental/nanolib/md5.h"
@@ -14,8 +24,10 @@
 #include <dirent.h>
 #include <fstream>
 #include <inttypes.h>
+#include <cstdint>
 #include <iostream>
 #include <string>
+#include <errno.h>
 #include <sys/stat.h>
 #include <thread>
 #include <ctime>
@@ -66,6 +78,7 @@ atomic_bool is_available = false;
 
 #define UINT64_MAX_DIGITS 20
 
+#if NNG_ARROW_VERSION_MAJOR >= 22
 static arrow::util::SecureString
 parquet_make_secure_string(const char *key)
 {
@@ -75,15 +88,31 @@ parquet_make_secure_string(const char *key)
 
 class UniformKeyRetriever : public parquet::DecryptionKeyRetriever {
 	arrow::util::SecureString key_;
+
 public:
 	explicit UniformKeyRetriever(const char *key)
 	    : key_(parquet_make_secure_string(key))
-	{}
-	arrow::util::SecureString GetKey(const std::string&) override
+	{
+	}
+	arrow::util::SecureString
+	GetKey(const std::string &) override
 	{
 		return key_;
 	}
 };
+#else
+class UniformKeyRetriever : public parquet::DecryptionKeyRetriever {
+	std::string key_;
+
+public:
+	explicit UniformKeyRetriever(const std::string &key) : key_(key) {}
+	std::string
+	GetKey(const std::string &) override
+	{
+		return key_;
+	}
+};
+#endif
 
 parquet_file_manager file_manager;
 CircularQueue        parquet_queue;
@@ -132,11 +161,43 @@ gen_random(const int len)
 	return tmp_s;
 }
 
-static char *
-get_random_file_name(char *prefix, uint64_t key_start, uint64_t key_end)
+static bool
+parquet_ensure_dir(const char *dir)
 {
-	char *file_name = NULL;
-	char  dir[]     = "/tmp";
+	struct stat st;
+	if (dir == NULL || dir[0] == '\0') {
+		return false;
+	}
+	if (stat(dir, &st) == 0 && S_ISDIR(st.st_mode)) {
+		return true;
+	}
+	if (mkdir(dir, 0755) != 0 && errno != EEXIST) {
+		log_error("Failed to create directory %s, errno: %d", dir,
+		    errno);
+		return false;
+	}
+	if (stat(dir, &st) == 0 && S_ISDIR(st.st_mode)) {
+		return true;
+	}
+	log_error("Directory %s is not available after create", dir);
+	return false;
+}
+
+static char *
+get_random_file_name(conf_parquet *conf, char *prefix, uint64_t key_start,
+    uint64_t key_end)
+{
+	char       *file_name = NULL;
+	const char *dir       = "/tmp";
+
+	if (conf != NULL && conf->tmp_dir != NULL && conf->tmp_dir[0] != '\0') {
+		dir = conf->tmp_dir;
+	}
+	if (!parquet_ensure_dir(dir)) {
+		log_error("Abort temp parquet filename: cannot use dir %s",
+		    dir);
+		return NULL;
+	}
 
 	file_name = (char *) malloc(strlen(prefix) + strlen(dir) +
 	    UINT64_MAX_DIGITS + UINT64_MAX_DIGITS + 16);
@@ -343,24 +404,37 @@ parquet_set_encryption(char **schema_arr, uint32_t schema_len, conf_parquet *con
 	std::map<std::string, std::shared_ptr<parquet::ColumnEncryptionProperties>>
 		column_encryption_map;
 
-	for (int i=0; i<(int)schema_len; ++i) {
+	for (int i = 0; i < (int) schema_len; ++i) {
 		const char *col_name = schema_arr[i];
-		parquet::ColumnEncryptionProperties::Builder col_builder;
+		parquet::ColumnEncryptionProperties::Builder col_builder(
+		    col_name);
+#if NNG_ARROW_VERSION_MAJOR >= 22
 		col_builder.key(parquet_make_secure_string(conf->encryption.key))
 		    ->key_metadata("col_key_metadata");
+#else
+		col_builder.key(conf->encryption.key)
+		    ->key_metadata("col_key_metadata");
+#endif
 		column_encryption_map[col_name] = col_builder.build();
 	}
 
+#if NNG_ARROW_VERSION_MAJOR >= 22
 	parquet::FileEncryptionProperties::Builder file_encryption_builder(
 	    parquet_make_secure_string(conf->encryption.key));
-	encryption_configurations =
-		file_encryption_builder
-			.footer_key_metadata(conf->encryption.key_id)
-			->encrypted_columns(column_encryption_map)
-			->algorithm(static_cast<parquet::ParquetCipher::type>(
-					conf->encryption.type))
-			->set_plaintext_footer()
-			->build();
+#else
+	parquet::FileEncryptionProperties::Builder file_encryption_builder(
+	    conf->encryption.key);
+#endif
+	auto *enc_builder =
+	    file_encryption_builder
+	        .footer_key_metadata(conf->encryption.key_id)
+	        ->encrypted_columns(column_encryption_map)
+	        ->algorithm(static_cast<parquet::ParquetCipher::type>(
+	            conf->encryption.type));
+	if (conf->encryption.plaintext_footer) {
+		enc_builder->set_plaintext_footer();
+	}
+	encryption_configurations = enc_builder->build();
 
 	return encryption_configurations;
 }
@@ -562,11 +636,59 @@ parquet_write_core(conf_parquet *conf, char *filename,
 		builder.created_by("NanoMQ")
 		    ->version(parquet::ParquetVersion::PARQUET_2_6)
 		    ->data_page_version(parquet::ParquetDataPageVersion::V2)
-		    ->disable_dictionary()
 		    ->encoding(parquet::Encoding::PLAIN)
 		    ->encoding(schema_arr[0], Encoding::DELTA_BINARY_PACKED)
 		    ->compression(static_cast<arrow::Compression::type>(
 		        conf->comp_type));
+		if (conf->dictionary) {
+			builder.enable_dictionary();
+		} else {
+			builder.disable_dictionary();
+		}
+		if (conf->compression_level > 0 &&
+		    (conf->comp_type == GZIP || conf->comp_type == BROTLI ||
+		        conf->comp_type == ZSTD)) {
+			builder.compression_level(conf->compression_level);
+		} else if (conf->compression_level > 0) {
+			log_warn("compression_level is ignored for current "
+			         "compress type");
+		}
+		if (conf->data_page_size > 0) {
+			if (conf->data_page_size >
+			    (uint64_t) INT64_MAX) {
+				log_warn("data_page_size %" PRIu64
+				         " exceeds INT64_MAX, ignored",
+				    conf->data_page_size);
+			} else {
+				builder.data_pagesize(
+				    (int64_t) conf->data_page_size);
+			}
+		}
+		if (conf->dictionary_page_size > 0) {
+			if (conf->dictionary_page_size >
+			    (uint64_t) INT64_MAX) {
+				log_warn("dictionary_page_size %" PRIu64
+				         " exceeds INT64_MAX, ignored",
+				    conf->dictionary_page_size);
+			} else {
+				builder.dictionary_pagesize_limit(
+				    (int64_t) conf->dictionary_page_size);
+			}
+		}
+		if (conf->write_batch_size > 0) {
+			builder.write_batch_size(
+			    (int64_t) conf->write_batch_size);
+		}
+		if (conf->enable_statistics) {
+			builder.enable_statistics();
+		} else {
+			builder.disable_statistics();
+		}
+		if (conf->enable_page_checksum) {
+			builder.enable_page_checksum();
+		} else {
+			builder.disable_page_checksum();
+		}
 		log_debug("check encry");
 		if (conf->encryption.enable) {
 			shared_ptr<parquet::FileEncryptionProperties>
@@ -668,7 +790,7 @@ parquet_write_tmp(parquet_object *elem)
 	string prefix  = gen_random(6);
 	prefix         = "nanomq" + prefix;
 	char *filename = get_random_file_name(
-	    prefix.data(), ts_arr[0], ts_arr[row_len - 1]);
+	    conf, prefix.data(), ts_arr[0], ts_arr[row_len - 1]);
 	if (filename == NULL) {
 		log_error("Failed to get file name");
 		parquet_object_free(elem);
@@ -789,7 +911,6 @@ parquet_write_loop_v2(void *arg)
 int
 parquet_write_launcher(conf_exchange *conf)
 {
-
 	INIT_QUEUE(parquet_queue);
 
 	for (size_t i = 0; i < conf->count; i++) {
@@ -798,8 +919,7 @@ parquet_write_launcher(conf_exchange *conf)
 
 	is_available = true;
 	pthread_t write_thread;
-	int       result = 0;
-	result =
+	int       result =
 	    pthread_create(&write_thread, NULL, parquet_write_loop_v2, conf);
 	if (result != 0) {
 		log_error("Failed to create parquet write thread.");
@@ -930,14 +1050,26 @@ parquet_read_set_property(
 {
 	if (key != NULL && strlen(key) > 0) {
 		parquet::FileDecryptionProperties::Builder builder;
+#if NNG_ARROW_VERSION_MAJOR >= 22
 		shared_ptr<parquet::FileDecryptionProperties>
-			decryption_configuration = builder
-		             .footer_key(parquet_make_secure_string(key))
-		             ->key_retriever(
-		                 std::make_shared<UniformKeyRetriever>(key))
-		             ->build();
+		    decryption_configuration =
+		        builder.footer_key(parquet_make_secure_string(key))
+		            ->key_retriever(
+		                std::make_shared<UniformKeyRetriever>(key))
+		            ->build();
 		reader_properties.file_decryption_properties(
 		    decryption_configuration);
+#else
+		shared_ptr<parquet::FileDecryptionProperties>
+		    decryption_configuration =
+		        builder.footer_key(key)
+		            ->key_retriever(
+		                std::make_shared<UniformKeyRetriever>(key))
+		            ->build();
+		// Arrow <22 requires a deep clone before attaching to reader props.
+		reader_properties.file_decryption_properties(
+		    decryption_configuration->DeepClone());
+#endif
 		return true;
 	}
 	return false;

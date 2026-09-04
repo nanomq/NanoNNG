@@ -391,6 +391,7 @@ struct conf_parquet_encryption {
 	char       *key;
 	char       *key_cipher;
 	cipher_type type;
+	bool        plaintext_footer;
 };
 
 typedef struct conf_parquet_encryption conf_parquet_encryption;
@@ -400,11 +401,19 @@ struct conf_parquet {
 	char                   *name;
 	char                   *dir;
 	char                   *file_name_prefix;
+	char                   *tmp_dir;
 	uint32_t                file_count;
 	uint32_t                limit_frequency;
 	uint8_t                 file_index;
 	uint64_t                 file_size;
 	compression_type        comp_type;
+	int32_t                 compression_level;
+	bool                    dictionary;
+	uint64_t                data_page_size;
+	uint64_t                dictionary_page_size;
+	uint32_t                write_batch_size;
+	bool                    enable_statistics;
+	bool                    enable_page_checksum;
 	conf_parquet_encryption encryption;
 };
 
