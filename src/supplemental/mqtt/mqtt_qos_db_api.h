@@ -8,6 +8,11 @@
 #ifdef NNG_HAVE_MQTT_BROKER
 #include "nng/supplemental/nanolib/conf.h"
 #endif
+// Obj passing through aio cb as indication of its origins
+typedef struct {
+    uint16_t packet_id;
+    nni_msg *msg;
+} nmq_req;
 
 #define nni_qos_db_init_sqlite(db, user_path, db_name, is_broker) \
 	nni_mqtt_qos_db_init((sqlite3 **) &(db), user_path, db_name, is_broker)
