@@ -64,6 +64,8 @@ void test_auth_http_connect(void)
 	conf_auth_http *conf = NULL;
 	conf_auth_http_init(&conf);
 	NUTS_TRUE(conf != NULL);
+	conf->auth_req.enable       = true;
+	conf->acl_req.enable       = true;
 	char *url = "http://127.0.0.1:8064/mqtt/auth";
 	conf->auth_req.url = nng_alloc(strlen(url) + 1);
 	nng_mtx_alloc(&conf->auth_req.mtx);
