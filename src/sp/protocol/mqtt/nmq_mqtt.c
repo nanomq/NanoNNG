@@ -136,7 +136,11 @@ nano_nni_lmq_resize(nni_lmq *lmq, size_t cap)
 	// Flush anything left over.
 	nano_nni_lmq_flush(lmq, false);
 
-	nni_free(lmq->lmq_msgs, lmq->lmq_alloc * sizeof(nng_msg *));
+	// nano_pipe's rlmq starts life as the in-struct lmq_buf (alloc == 0);
+	// only free when the array was heap-allocated.  Mirrors core/lmq.c.
+	if (lmq->lmq_alloc > 0) {
+		nni_free(lmq->lmq_msgs, lmq->lmq_alloc * sizeof(nng_msg *));
+	}
 	lmq->lmq_msgs  = newq;
 	lmq->lmq_cap   = cap;
 	lmq->lmq_alloc = alloc;
@@ -163,7 +167,12 @@ nano_nni_lmq_fini(nni_lmq *lmq)
 		nni_msg_free(msg);
 	}
 
-	nni_free(lmq->lmq_msgs, lmq->lmq_alloc * sizeof(nng_msg *));
+	// Only free a heap-allocated array: nni_lmq_init() keeps lmq_msgs on the
+	// in-struct lmq_buf (alloc == 0) when the resize failed or cap <= 2.
+	// Mirrors core/lmq.c.  Freeing the in-struct buffer corrupts the heap.
+	if (lmq->lmq_alloc > 0) {
+		nni_free(lmq->lmq_msgs, lmq->lmq_alloc * sizeof(nng_msg *));
+	}
 }
 
 static void
