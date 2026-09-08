@@ -19,6 +19,7 @@
 #include <nng/supplemental/tls/tls.h>
 
 #include "core/nng_impl.h"
+#include "supplemental/http/http_api.h"
 
 #include "supplemental/sha1/sha1.c"
 #include "supplemental/sha1/sha1.h"
@@ -56,6 +57,143 @@ static const char *chunked_reply[] = {
 	"\n\r\n",
 	NULL,
 };
+
+// The reply above is served over TCP, which does not preserve write
+// boundaries, so that exchange cannot guarantee that
+// nni_http_chunks_parse() ever had to resume mid token.  The streams below
+// are handed to the parser directly instead, in every piece size from a
+// single byte up to the whole stream, which does guarantee it.  Between
+// them they cover single and multi digit sizes, both hex letter cases,
+// chunk extensions, several trailer fields and no trailer at all.
+#define CHUNK_A "The quick brown fox jumps over " // 31 == 0x1f
+#define CHUNK_B "the lazy dog!!!"                 // 15 == 0xF
+#define CHUNK_C " Pack my box XYZ"                // 16 == 0x10
+
+static const char chunked_multi[] = "1f\r\n" CHUNK_A "\r\nF\r\n" CHUNK_B
+                                    "\r\n10\r\n" CHUNK_C
+                                    "\r\n0\r\nX-A: 1\r\nX-B: 2\r\n\r\n";
+static const char chunked_multi_body[] = CHUNK_A CHUNK_B CHUNK_C;
+
+static const char chunked_ext[]      = "1F;a=b;c\r\n" CHUNK_A "\r\n0\r\n\r\n";
+static const char chunked_ext_body[] = CHUNK_A;
+
+// Malformed streams; the parser has to reject every one of these.
+static const char *chunked_bad[] = {
+	"2\r\nabXX0\r\n\r\n",               // data not followed by CRLF
+	"2\r\nab\r\nzz\r\n\r\n",            // bad hex digit in a size line
+	"8;x\nchunked \r\n0\r\n\r\n",       // bare LF in a chunk extension
+	"1\r\na\r\n0\r\nX-\x01: 1\r\n\r\n", // control byte in the trailer
+	"8\rXchunked \r\n0\r\n\r\n",        // CR in a size line, no LF
+	"\r\n0\r\n\r\n",                    // size line starts with CR
+	";x=y\r\n0\r\n\r\n",                // size line starts with an extension
+	NULL,
+};
+
+// Parses one stream in fixed size pieces, so that the parser has to resume
+// wherever the piece boundaries fall.  Collects the chunk data into out.
+// A parse that finishes early, or that stops making progress, is a failure.
+static int
+chunk_feed(const char *str, size_t n, size_t piece, char *out, size_t outsz,
+    size_t *outlen)
+{
+	nni_http_chunks *cl;
+	nni_http_chunk * ch  = NULL;
+	size_t           i   = 0;
+	size_t           off = 0;
+	int              rv  = NNG_EAGAIN;
+
+	*outlen = 0;
+	if ((rv = nni_http_chunks_init(&cl, 0)) != 0) {
+		return (rv);
+	}
+	while (i < n) {
+		size_t len = 0;
+		size_t k   = piece < (n - i) ? piece : (n - i);
+
+		rv = nni_http_chunks_parse(cl, (void *) (str + i), k, &len);
+		if ((rv != 0) && (rv != NNG_EAGAIN)) {
+			nni_http_chunks_free(cl);
+			return (rv);
+		}
+		if ((rv == NNG_EAGAIN) && (len == 0)) {
+			nni_http_chunks_free(cl); // no forward progress
+			return (NNG_ESTATE);
+		}
+		i += len;
+		if (rv == 0) {
+			break;
+		}
+	}
+	// A finished parse has to land exactly on the end of the stream;
+	// stopping short means the parser lost track of where it was.
+	if ((rv == 0) && (i != n)) {
+		nni_http_chunks_free(cl);
+		return (NNG_ESTATE);
+	}
+	while ((rv == 0) &&
+	    ((ch = nni_http_chunks_iter(cl, ch)) != NULL)) {
+		if ((off + nni_http_chunk_size(ch)) > outsz) {
+			nni_http_chunks_free(cl);
+			return (NNG_EMSGSIZE);
+		}
+		memcpy(out + off, nni_http_chunk_data(ch),
+		    nni_http_chunk_size(ch));
+		off += nni_http_chunk_size(ch);
+	}
+	*outlen = off;
+	nni_http_chunks_free(cl);
+	return (rv);
+}
+
+// Runs one good stream through every piece size.  Returns the piece size
+// that failed, or zero if all of them parsed to the expected body.
+static size_t
+chunk_check_splits(const char *wire, const char *body)
+{
+	char   out[128];
+	size_t n = strlen(wire);
+	size_t piece;
+
+	for (piece = 1; piece <= n; piece++) {
+		size_t len = 0;
+		int    rv;
+
+		rv = chunk_feed(wire, n, piece, out, sizeof(out), &len);
+		if (rv != 0) {
+			printf("piece %u: parse failed: %s\n",
+			    (unsigned) piece, nng_strerror(rv));
+			return (piece);
+		}
+		if ((len != strlen(body)) || (memcmp(out, body, len) != 0)) {
+			printf("piece %u: body mismatch, got %u bytes\n",
+			    (unsigned) piece, (unsigned) len);
+			return (piece);
+		}
+	}
+	return (0);
+}
+
+// Returns the piece size at which a malformed stream was wrongly accepted,
+// or zero if it was rejected at every piece size.
+static size_t
+chunk_check_rejected(const char *wire)
+{
+	char   out[128];
+	size_t n = strlen(wire);
+	size_t piece;
+
+	for (piece = 1; piece <= n; piece++) {
+		size_t len = 0;
+
+		if (chunk_feed(wire, n, piece, out, sizeof(out), &len) !=
+		    NNG_EPROTO) {
+			printf("piece %u: bad stream was not rejected\n",
+			    (unsigned) piece);
+			return (piece);
+		}
+	}
+	return (0);
+}
 
 // Consumes a request, up to and including the end of its headers.
 static int
@@ -399,5 +537,28 @@ TestMain("HTTP Client", {
 			So(len == strlen(chunked_body));
 			So(memcmp(data, chunked_body, len) == 0);
 		});
+	});
+
+	Convey("Chunk parser resumes at every boundary", {
+		char        wire[256];
+		const char *chunks;
+		int         i;
+
+		wire[0] = '\0';
+		for (i = 0; chunked_reply[i] != NULL; i++) {
+			So(strlen(wire) + strlen(chunked_reply[i]) <
+			    sizeof(wire));
+			strcat(wire, chunked_reply[i]);
+		}
+		So((chunks = strstr(wire, "\r\n\r\n")) != NULL);
+		chunks += 4; // skip the status line and headers
+
+		So(chunk_check_splits(chunks, chunked_body) == 0);
+		So(chunk_check_splits(chunked_multi, chunked_multi_body) == 0);
+		So(chunk_check_splits(chunked_ext, chunked_ext_body) == 0);
+
+		for (i = 0; chunked_bad[i] != NULL; i++) {
+			So(chunk_check_rejected(chunked_bad[i]) == 0);
+		}
 	});
 })
