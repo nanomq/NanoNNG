@@ -229,7 +229,18 @@ nni_posix_poll_thr(void *arg)
 
 		// Zephyr: use 100ms timeout instead of blocking forever
 		// because we don't have a working pipe/eventfd wakeup.
-		(void) poll(fds, nfds, 100);
+		if (poll(fds, nfds, 100) < 0) {
+			// Zephyr's zvfs_poll() fails with -1/ENOMEM when the
+			// combined number of poll events across the whole fd
+			// set exceeds CONFIG_ZVFS_POLL_MAX; unlike POSIX it
+			// does not single out the offending descriptors with
+			// POLLNVAL, so there is nothing useful to dispatch
+			// here.  Yield instead of busy-spinning: I/O then
+			// proceeds at the polling cadence once descriptors
+			// drop out of the set (or the limit is raised).
+			nni_msleep(10);
+			continue;
+		}
 
 		if (fds[0].revents & POLLIN) {
 			nni_plat_pipe_clear(pq->wakerfd);
