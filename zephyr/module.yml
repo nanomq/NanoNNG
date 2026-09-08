@@ -1,0 +1,4 @@
+name: nanonng
+build:
+  cmake: zephyr
+  kconfig: zephyr/Kconfig

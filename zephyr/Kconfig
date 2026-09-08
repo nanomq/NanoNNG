@@ -1,0 +1,58 @@
+# NanoNNG Zephyr Kconfig options
+#
+# Enable this option to include NanoNNG in your Zephyr application.
+# Required Zephyr features are selected automatically.
+
+config NANONNG
+	bool "NanoNNG - nanomsg-next-generation messaging library"
+	select POSIX_API
+	select POSIX_THREADS
+	select NETWORKING
+	select NET_SOCKETS
+	select NET_TCP
+	select POLL
+	help
+	  Enable NanoNNG (nanomsg-next-generation), a high-performance
+	  messaging library with MQTT protocol support.
+	  This is the NanoMQ-optimized fork.
+
+if NANONNG
+
+config NANONNG_TRANSPORT_TCP
+	bool "TCP transport"
+	default y
+
+config NANONNG_TRANSPORT_MQTT_TCP
+	bool "MQTT TCP transport"
+	default y
+	select NANONNG_TRANSPORT_TCP
+
+config NANONNG_TRANSPORT_INPROC
+	bool "In-process transport"
+	default y
+
+config NANONNG_PROTO_MQTT_CLIENT
+	bool "MQTT Client protocol"
+	default y
+
+config NANONNG_PROTO_PAIR0
+	bool "PAIRv0 protocol"
+	default y
+
+config NANONNG_PROTO_PUB0
+	bool "PUBv0 protocol"
+	default y
+
+config NANONNG_PROTO_SUB0
+	bool "SUBv0 protocol"
+	default y
+
+config NANONNG_PROTO_PUSH0
+	bool "PUSHv0 protocol"
+	default y
+
+config NANONNG_PROTO_PULL0
+	bool "PULLv0 protocol"
+	default y
+
+endif # NANONNG
