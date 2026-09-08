@@ -30,9 +30,86 @@ const uint8_t example_sum[20] = { 0x4a, 0x3c, 0xe8, 0xee, 0x11, 0xe0, 0x91,
 	0xdd, 0x79, 0x23, 0xf4, 0xd8, 0xc6, 0xe5, 0xb5, 0xe4, 0x1e, 0xc7, 0xc0,
 	0x47 };
 
-const uint8_t chunked_sum[20] = { 0x9b, 0x06, 0xfb, 0xee, 0x51, 0xc6, 0x42,
-	0x69, 0x1c, 0xb3, 0xaa, 0x38, 0xce, 0xb8, 0x0b, 0x3a, 0xc8, 0x3b, 0x96,
-	0x68 };
+// The chunked transfer test serves its own response: our HTTP server always
+// emits a Content-Length, and the public demo site this test used to fetch
+// (anglesharp.azurewebsites.net) no longer resolves.  A raw TCP listener
+// lets us hand the client a hand written chunked response instead.
+static const char chunked_body[] = "chunked transfer works fine!!";
+
+// The reply goes out in pieces, each one written separately with Nagle
+// disabled and a short pause in between, so that they land in separate
+// reads.  The split points are deliberately awkward -- inside a header
+// value, between the CR and the LF that ends the headers, inside a chunk
+// size line, inside chunk data, and inside the trailer -- so the parser has
+// to carry state across reads the way it had to when this response still
+// came off the wire from a remote server.  The sizes cover a single digit as
+// well as lower and upper case hex, the first chunk carries a chunk
+// extension, and a trailer field follows the last chunk;
+// nni_http_chunks_parse() handles all of those.
+static const char *chunked_reply[] = {
+	"HTTP/1.1 200 OK\r\nContent-Type: text/pl",
+	"ain\r\nTransfer-Encoding: chunked\r\n\r",
+	"\n8;nng=1\r",
+	"\nchunked ",
+	"\r\na\r\ntransfer w\r\nB\r\norks fine!",
+	"!\r\n0\r\nX-Chunk-Trailer: nng\r",
+	"\n\r\n",
+	NULL,
+};
+
+// Consumes a request, up to and including the end of its headers.
+static int
+raw_read_req(nng_stream *s, nng_aio *aio)
+{
+	char   buf[1024];
+	size_t got = 0;
+
+	while (got < sizeof(buf) - 1) {
+		nng_iov iov;
+		int     rv;
+
+		iov.iov_buf = buf + got;
+		iov.iov_len = sizeof(buf) - 1 - got;
+		if ((rv = nng_aio_set_iov(aio, 1, &iov)) != 0) {
+			return (rv);
+		}
+		nng_stream_recv(s, aio);
+		nng_aio_wait(aio);
+		if ((rv = nng_aio_result(aio)) != 0) {
+			return (rv);
+		}
+		got += nng_aio_count(aio);
+		buf[got] = '\0';
+		if (strstr(buf, "\r\n\r\n") != NULL) {
+			return (0);
+		}
+	}
+	return (NNG_EMSGSIZE);
+}
+
+// Writes the whole buffer, tolerating short sends.
+static int
+raw_write_all(nng_stream *s, nng_aio *aio, const char *data, size_t len)
+{
+	while (len > 0) {
+		nng_iov iov;
+		int     rv;
+
+		iov.iov_buf = (void *) data;
+		iov.iov_len = len;
+		if ((rv = nng_aio_set_iov(aio, 1, &iov)) != 0) {
+			return (rv);
+		}
+		nng_stream_send(s, aio);
+		nng_aio_wait(aio);
+		if ((rv = nng_aio_result(aio)) != 0) {
+			return (rv);
+		}
+		data += nng_aio_count(aio);
+		len -= nng_aio_count(aio);
+	}
+	return (0);
+}
 
 TestMain("HTTP Client", {
 	Convey("Given a TCP connection to example.com", {
@@ -245,47 +322,82 @@ TestMain("HTTP Client", {
 	});
 
 	Convey("Given a client (chunked)", {
-		nng_aio *        aio;
-		nng_http_client *cli;
-		nng_url *        url;
+		nng_aio *            aio;
+		nng_aio *            saio;
+		nng_http_client *    cli;
+		nng_url *            url;
+		nng_stream_listener *l;
+		char                 portbuf[16];
+		char                 urlstr[64];
+		char                 tcpstr[64];
+
+		trantest_next_address(portbuf, "");
+		snprintf(urlstr, sizeof(urlstr), "http://127.0.0.1:%s/Chunked",
+		    portbuf);
+		snprintf(
+		    tcpstr, sizeof(tcpstr), "tcp://127.0.0.1:%s", portbuf);
 
 		So(nng_aio_alloc(&aio, NULL, NULL) == 0);
-
-		So(nng_url_parse(&url,
-		       "http://anglesharp.azurewebsites.net/Chunked") == 0);
-		//		       "https://jigsaw.w3.org/HTTP/ChunkedScript")
-		//== 0);
-
+		So(nng_aio_alloc(&saio, NULL, NULL) == 0);
+		So(nng_url_parse(&url, urlstr) == 0);
+		So(nng_stream_listener_alloc(&l, tcpstr) == 0);
+		So(nng_stream_listener_set_bool(
+		       l, NNG_OPT_TCP_NODELAY, true) == 0);
+		So(nng_stream_listener_listen(l) == 0);
 		So(nng_http_client_alloc(&cli, url) == 0);
-		nng_aio_set_timeout(aio, 10000); // 10 sec timeout
+		nng_aio_set_timeout(aio, 10000);  // 10 sec timeout
+		nng_aio_set_timeout(saio, 10000); // 10 sec timeout
 
 		Reset({
 			nng_http_client_free(cli);
+			nng_stream_listener_free(l);
 			nng_url_free(url);
+			nng_aio_free(saio);
 			nng_aio_free(aio);
 		});
 
 		Convey("One off exchange works", {
 			nng_http_req *req;
 			nng_http_res *res;
+			nng_stream *  s = NULL;
+			const char *  cstr;
 			void *        data;
 			size_t        len;
-			uint8_t       digest[20];
+			int           i;
 
 			So(nng_http_req_alloc(&req, url) == 0);
 			So(nng_http_res_alloc(&res) == 0);
 			Reset({
+				if (s != NULL) {
+					nng_stream_close(s);
+					nng_stream_free(s);
+				}
 				nng_http_req_free(req);
 				nng_http_res_free(res);
 			});
 
 			nng_http_client_transact(cli, req, res, aio);
+
+			nng_stream_listener_accept(l, saio);
+			nng_aio_wait(saio);
+			So(nng_aio_result(saio) == 0);
+			So((s = nng_aio_get_output(saio, 0)) != NULL);
+			So(raw_read_req(s, saio) == 0);
+			for (i = 0; chunked_reply[i] != NULL; i++) {
+				So(raw_write_all(s, saio, chunked_reply[i],
+				       strlen(chunked_reply[i])) == 0);
+				nng_msleep(5);
+			}
+
 			nng_aio_wait(aio);
 			So(nng_aio_result(aio) == 0);
 			So(nng_http_res_get_status(res) == 200);
+			cstr = nng_http_res_get_header(res, "Content-Type");
+			So(cstr != NULL);
+			So(strcmp(cstr, "text/plain") == 0);
 			nng_http_res_get_data(res, &data, &len);
-			nni_sha1(data, len, digest);
-			So(memcmp(digest, chunked_sum, 20) == 0);
+			So(len == strlen(chunked_body));
+			So(memcmp(data, chunked_body, len) == 0);
 		});
 	});
 })
