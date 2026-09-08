@@ -2660,6 +2660,18 @@ nng_file_is_dir(const char *path)
 	return nni_file_is_dir(path);
 }
 
+bool
+nng_file_exists(const char *path)
+{
+	return nni_file_exists(path);
+}
+
+int
+nng_file_size(const char *path, size_t *sizep)
+{
+	return nni_file_size(path, sizep);
+}
+
 int nng_access(const char* name, int flag)
 {
     return nni_plat_access(name, flag);

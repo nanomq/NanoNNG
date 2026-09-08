@@ -35,6 +35,18 @@ nni_file_delete(const char *name)
 }
 
 bool
+nni_file_exists(const char *name)
+{
+	return (nni_plat_file_exists(name));
+}
+
+int
+nni_file_size(const char *name, size_t *sizep)
+{
+	return (nni_plat_file_size(name, sizep));
+}
+
+bool
 nni_file_is_file(const char *name)
 {
 	int ft;

@@ -1649,6 +1649,8 @@ NNG_DECL int      nng_make_parent_dirs(const char *name);
 NNG_DECL int      nng_file_put(const char *name, const void *data, size_t sz);
 NNG_DECL int      nng_file_get(const char *name, void **datap, size_t *szp);
 NNG_DECL bool     nng_file_is_dir(const char *path);
+NNG_DECL bool     nng_file_exists(const char *path);
+NNG_DECL int      nng_file_size(const char *path, size_t *sizep);
 NNG_DECL int      nng_file_delete(const char *name);
 NNG_DECL void     nng_msg_set_timestamp(nng_msg *m, uint64_t time);
 NNG_DECL uint64_t nng_msg_get_timestamp(nng_msg *m);

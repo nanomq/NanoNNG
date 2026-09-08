@@ -51,6 +51,12 @@ enum nni_file_type_val {
 };
 
 // nni_file_exists checks if the named file exists.
+extern bool nni_file_exists(const char *);
+
+// nni_file_size returns the size of the named file.
+extern int nni_file_size(const char *, size_t *);
+
+// nni_file_type determines the type of the named file.
 extern int nni_file_type(const char *, int *);
 
 // nni_file_walk walks a list of files.
