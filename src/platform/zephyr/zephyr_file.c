@@ -77,6 +77,21 @@ nni_plat_file_type(const char *name, int *ftype)
 	return (NNG_ENOTSUP);
 }
 
+bool
+nni_plat_file_exists(const char *path)
+{
+	NNI_ARG_UNUSED(path);
+	return (false);
+}
+
+int
+nni_plat_file_size(const char *path, size_t *sizep)
+{
+	NNI_ARG_UNUSED(path);
+	NNI_ARG_UNUSED(sizep);
+	return (NNG_ENOTSUP);
+}
+
 int
 nni_plat_file_walk(const char *name, nni_plat_file_walker walker, void *arg,
     int flags)
@@ -232,6 +247,24 @@ nni_plat_file_type(const char *name, int *typep)
 		*typep = NNI_PLAT_FILE_TYPE_OTHER;
 		break;
 	}
+	return (0);
+}
+
+bool
+nni_plat_file_exists(const char *path)
+{
+	struct stat sbuf;
+	return (stat(path, &sbuf) == 0);
+}
+
+int
+nni_plat_file_size(const char *path, size_t *sizep)
+{
+	struct stat sbuf;
+	if (stat(path, &sbuf) != 0) {
+		return (nni_plat_errno(errno));
+	}
+	*sizep = (size_t) sbuf.st_size;
 	return (0);
 }
 
