@@ -1057,7 +1057,15 @@ out:
 #endif
 }
 
-/** Configures a certificate and key from matching PEM data or PKCS#11 URIs. */
+/**
+ * Configures our identity certificate and private key.
+ *
+ * The certificate and the key are resolved independently: each may be
+ * either PEM data or a PKCS#11 URI. This allows a certificate to stay in
+ * the filesystem while its key lives on a token, which is the common HSM
+ * deployment. OpenSSL confirms that the two belong together via
+ * SSL_CTX_check_private_key() below.
+ */
 static int
 open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
     const char *key, const char *pass)
@@ -1084,13 +1092,6 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	cfg->pass = dup;
 	SSL_CTX_set_default_passwd_cb_userdata(cfg->ctx, cfg);
 	SSL_CTX_set_default_passwd_cb(cfg->ctx, open_get_password);
-
-	if (cert_pkcs11 != key_pkcs11) {
-		log_error("NNG-TLS-CFG-OWNCHAIN"
-		          "PKCS#11 strict mode: cert and key must both be PKCS#11 URIs");
-		rv = NNG_EINVAL;
-		goto error;
-	}
 
 	if (cert_pkcs11) {
 		if ((rv = open_load_x509_from_uri(cfg, cert, &xcert)) != 0) {
