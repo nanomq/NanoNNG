@@ -4135,19 +4135,21 @@ sanitize_out_pub_properties(property *prop)
             prev->next = curr->next;
 
             // Free the memory of the string/binary payload inside the property if necessary
-            switch (curr->data.p_type) {
-            case STR:
-                mqtt_buf_free(&curr->data.p_value.str);
-                break;
-            case BINARY:
-                mqtt_buf_free(&curr->data.p_value.binary);
-                break;
-            case STR_PAIR:
-                mqtt_kv_free(&curr->data.p_value.strpair);
-                break;
-            default:
-                break;
-            }
+			if (curr->data.is_copy) {
+				switch (curr->data.p_type) {
+				case STR:
+					mqtt_buf_free(&curr->data.p_value.str);
+					break;
+				case BINARY:
+					mqtt_buf_free(&curr->data.p_value.binary);
+					break;
+				case STR_PAIR:
+					mqtt_kv_free(&curr->data.p_value.strpair);
+					break;
+				default:
+					break;
+				}
+			}
 
             // Free the node itself
             free(curr);

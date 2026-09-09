@@ -658,7 +658,10 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 		} else if (ssl_err == SSL_ERROR_WANT_WRITE) {
 			return NNG_EAGAIN;
 		} else {
-			log_error("NNG-TLS-CONN-HANDSHAKE", "OpenSSL do_handshake failed rv=%d ssl_err=%d", rv, ssl_err);
+			log_error(
+			    "NNG-TLS-CONN-HANDSHAKE"
+			    " OpenSSL do_handshake failed rv=%d ssl_err=%d",
+			    rv, ssl_err);
 			open_log_ssl_error("NNG-TLS-CONN-HANDSHAKE SSL_do_handshake", ssl_err);
 			return NNG_ECRYPTO;
 		}
