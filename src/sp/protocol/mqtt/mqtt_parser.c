@@ -768,8 +768,8 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	// password
 	if (rv == 0 && (cparam->con_flag & 0x40) > 0) {
 		if (cparam->username.body == NULL) {
-			// log_warn("Got password but no username!");
-			// return PROTOCOL_ERROR;
+			log_warn("Got password but no username!");
+			return PROTOCOL_ERROR;
 		}
 		cparam->password.body =
 		    copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
