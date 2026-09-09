@@ -19,6 +19,8 @@
 #include <openssl/crypto.h>
 #include <openssl/x509v3.h>
 
+#include "nng/supplemental/tls/tls.h"
+
 // Follow the suggestion from Sliepen. https://stackoverflow.com/questions/69079419/how-i-can-read-more-than-16384-bytes-using-openssl-tls
 #define OPEN_BUF_SZ 16000
 
@@ -990,10 +992,9 @@ open_config_ca_chain(
 #else
 	if (certs == NULL) {
 		log_info("open_config_ca_chain" "NULL certs detected!");
-		len = 0;
-	} else {
-		len = strlen(certs);
+		return (NNG_EINVAL);
 	}
+	len = strlen(certs);
 
 #endif //TLS_EXTERN_PRIVATE_KEY
 	log_warn("cacertlen:%d", len);
@@ -1329,11 +1330,14 @@ static int
 open_config_version(nng_tls_engine_config *cfg, nng_tls_version min_ver,
     nng_tls_version max_ver)
 {
-	if ((min_ver > max_ver) || (max_ver > NNG_TLS_1_3)) {
+	if ((min_ver < NNG_TLS_1_0) || (min_ver > max_ver) ||
+	    (max_ver > NNG_TLS_1_3)) {
 		return (NNG_ENOTSUP);
 	}
-	// TODO
-	(void) cfg;
+	if (!SSL_CTX_set_min_proto_version(cfg->ctx, min_ver) ||
+	    !SSL_CTX_set_max_proto_version(cfg->ctx, max_ver)) {
+		return (NNG_ECRYPTO);
+	}
 
 	return (0);
 }
