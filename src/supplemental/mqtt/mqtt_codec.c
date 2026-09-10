@@ -4265,11 +4265,12 @@ check_properties(property *prop, nni_msg *msg)
 				log_warn("SUBSCRIPTION_IDENTIFIER invalid value: %d", p1->data.p_value.varint);
 				return PROTOCOL_ERROR;
 			}
-			// PUBLISH from client to broker shall not contain Subscription Identifier
-			if (type == CMD_PUBLISH) {
-				log_warn("SUBSCRIPTION_IDENTIFIER detected in upstream PUBLISH!");
-				return PROTOCOL_ERROR;
-			}
+			// This codec is direction-agnostic: a server -> client PUBLISH
+			// may legally carry a Subscription Identifier echoing the
+			// subscriber's SUBSCRIBE (MQTT-3.3.4-6). The client -> server
+			// prohibition (MQTT-3.3.4-5) is enforced by direction-aware
+			// callers, e.g. NanoMQ's decode_pub_message() on the broker
+			// ingest path.
 			break;
 
 		default:
