@@ -649,14 +649,21 @@ dbhash_copy_topic_queue(uint32_t id)
 				continue;
 			}
 
-			struct topic_queue *new_node = calloc(1, sizeof(struct topic_queue));
+			/* nng_zalloc/nng_strdup, NOT calloc/strdup: the caller
+			 * (rest_api.c get_subscriptions) releases the copy
+			 * with nng_free/nng_strfree, i.e. into nng's heap.  On
+			 * Zephyr the libc heap and nng's heap are distinct
+			 * (NNG_ZEPHYR_ALLOC_SMH puts nng on PSRAM), so a libc
+			 * allocation freed through nng_free computes a chunk
+			 * id outside the heap and trips the canary check. */
+			struct topic_queue *new_node = nng_zalloc(sizeof(struct topic_queue));
 			if (new_node == NULL) {
 				log_error("Mem alloc failed!");
 				break; 
 			}
 
 			new_node->qos = tq->qos;
-			new_node->topic = strdup(tq->topic);
+			new_node->topic = nng_strdup(tq->topic);
 			new_node->next = NULL;
 
 			*tail = new_node;
