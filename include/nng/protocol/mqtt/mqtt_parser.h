@@ -61,6 +61,11 @@ NNG_DECL int32_t conn_handler(uint8_t *packet, conn_param *conn_param, size_t ma
 NNG_DECL int     conn_param_alloc(conn_param **cparam);
 NNG_DECL void    conn_param_free(conn_param *cparam);
 NNG_DECL void    conn_param_clone(conn_param *cparam);
+// Stamp a per-listener mount_point onto a freshly negotiated conn_param and,
+// when a will message is present, rewrite its topic to the prefixed form.
+// no-op when mount_point is NULL. Only call once, right after conn_handler().
+NNG_DECL void    conn_param_apply_mount_point(
+    conn_param *cparam, const char *mount_point);
 NNG_DECL int     conn_param_ref(conn_param *cparam);
 NNG_DECL int     ws_msg_adaptor(uint8_t *packet, nng_msg *dst);
 

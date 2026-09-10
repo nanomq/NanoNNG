@@ -58,6 +58,61 @@ static enum_map http_server_auth_type[] = {
 
 cJSON *hocon_get_obj(char *key, cJSON *jso);
 
+// mount_point must be non-empty, contain no '+'/'#', and not start with '$'
+// (leading '$' would make the mounted tree unreachable via '#' subscriptions,
+// see MQTT-3.1.1 4.7.2). Unset (NULL) is always valid.
+static bool
+mount_point_is_valid(const char *mp)
+{
+	if (mp == NULL) {
+		return true;
+	}
+	if (mp[0] == '\0' || mp[0] == '$') {
+		return false;
+	}
+	return strchr(mp, '+') == NULL && strchr(mp, '#') == NULL;
+}
+
+// Validate every configured mount_point before any listener is opened.
+// Exits non-zero naming the first offending listener (tcp/ssl/ws in that order).
+static void
+conf_mount_point_validate(conf *config)
+{
+	size_t i;
+
+	for (i = 0; i < config->tcp_list.count; i++) {
+		conf_tcp *node = config->tcp_list.nodes[i];
+		if (!mount_point_is_valid(node->mount_point)) {
+			log_error("Invalid mount_point '%s' on listener "
+			    "'%s': must be non-empty, must not contain '+' "
+			    "or '#', and must not start with '$'",
+			    node->mount_point ? node->mount_point : "",
+			    node->name ? node->name : "tcp");
+			exit(EXIT_FAILURE);
+		}
+	}
+	for (i = 0; i < config->tls_list.count; i++) {
+		conf_tls *node = config->tls_list.nodes[i];
+		if (!mount_point_is_valid(node->mount_point)) {
+			log_error("Invalid mount_point '%s' on listener "
+			    "'%s': must be non-empty, must not contain '+' "
+			    "or '#', and must not start with '$'",
+			    node->mount_point ? node->mount_point : "",
+			    node->name ? node->name : "ssl");
+			exit(EXIT_FAILURE);
+		}
+	}
+	if (!mount_point_is_valid(config->websocket.mount_point)) {
+		log_error("Invalid mount_point '%s' on listener 'ws': must "
+		    "be non-empty, must not contain '+' or '#', and must "
+		    "not start with '$'",
+		    config->websocket.mount_point
+		        ? config->websocket.mount_point
+		        : "");
+		exit(EXIT_FAILURE);
+	}
+}
+
 // Read json value into struct
 // use same struct fields and json keys
 #define hocon_read_str_base(structure, field, key, jso)                       \
@@ -405,6 +460,8 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 			    node, url, "bind", "nmq-tcp://", tcp_node);
 			hocon_read_bool_base(node, enable, "enable", tcp_node);
 			if (node->url) {
+				node->name = nng_strdup(tcp_node->string);
+				hocon_read_str(node, mount_point, tcp_node);
 				cvector_push_back(
 				    config->tcp_list.nodes, node);
 			} else {
@@ -422,6 +479,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 		} else {
 			hocon_read_address_base(websocket, url, "bind",
 			    "nmq-ws://", jso_websocket);
+			hocon_read_str(websocket, mount_point, jso_websocket);
 			websocket->enable = true;
 		}
 
@@ -432,6 +490,10 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 			if (jso_websocket_tls != NULL) {
 				hocon_read_address_base(websocket, tls_url,
 				    "bind", "nmq-wss://", jso_websocket_tls);
+				if (websocket->mount_point == NULL) {
+					hocon_read_str(websocket, mount_point,
+					    jso_websocket_tls);
+				}
 			}
 			websocket->tls_enable = true;
 		}
@@ -539,6 +601,8 @@ conf_tls_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_address_base(
 		    node, url, "bind", "tls+nmq-tcp://", node_item);
 		if (node->url) {
+			node->name = nng_strdup(node_item->string);
+			hocon_read_str(node, mount_point, node_item);
 			conf_tls_parse_ver2_base(node, node_item);
 			hocon_read_bool(node, verify_peer, node_item);
 			hocon_read_bool_base(
@@ -2139,6 +2203,7 @@ conf_parse_ver2(conf *config, bool is_reload)
 		conf_set_threads(config);
 		conf_sqlite_parse_ver2(config, jso);
 		conf_tls_parse_ver2(config, jso);
+		conf_mount_point_validate(config);
 #if defined(ENABLE_LOG)
 		conf_log_parse_ver2(config, jso);
 #endif

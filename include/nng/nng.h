@@ -1659,6 +1659,9 @@ NNG_DECL void  nng_msg_set_conn_param(nng_msg *msg, void *ptr);
 NNG_DECL const char    *conn_param_get_clientid(conn_param *cparam);
 NNG_DECL const uint8_t *conn_param_get_pro_name(conn_param *cparam);
 NNG_DECL const void *   conn_param_get_will_topic(conn_param *cparam);
+NNG_DECL const char    *conn_param_get_mount_point(conn_param *cparam);
+NNG_DECL void           conn_param_set_mount_point(
+              conn_param *cparam, const char *mount_point);
 NNG_DECL const void *   conn_param_get_will_msg(conn_param *cparam);
 NNG_DECL const uint8_t *conn_param_get_username(conn_param *cparam);
 NNG_DECL const uint8_t *conn_param_get_password(conn_param *cparam);
