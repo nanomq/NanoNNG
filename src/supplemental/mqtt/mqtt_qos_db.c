@@ -1354,7 +1354,7 @@ nni_mqtt_msg_serialize(nni_msg *msg, size_t *out_len, uint8_t proto_ver)
 	return bytes;
 
 out:
-	free(bytes);
+	nni_free(bytes, len);
 	return NULL;
 }
 
@@ -1457,7 +1457,7 @@ nni_msg_serialize(nni_msg *msg, size_t *out_len)
 	return bytes;
 
 out:
-	free(bytes);
+	nni_free(bytes, len);
 	return NULL;
 }
 
