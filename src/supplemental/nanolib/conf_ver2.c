@@ -1547,7 +1547,8 @@ void
 conf_bridge_node_parse(
     conf_bridge_node *node, conf_sqlite *bridge_sqlite, cJSON *obj)
 {
-	node->name = nng_strdup(obj->string);
+	// sock name max at 64 bytes
+	node->name = nng_strndup(obj->string, 64);
 	node->enable = true;	// from 0.23.3, enable option returned.
 	conf_bridge_connector_parse_ver2(node, obj);
 	node->sqlite = bridge_sqlite;
