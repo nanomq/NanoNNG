@@ -1118,6 +1118,27 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		goto error;
 	}
 
+	// certfile may contain intermediate CA certs after the leaf; load
+	// them as the server's own chain (independent of cacertfile/CA store,
+	// which is only for verifying peer certs) so the full chain is
+	// always presented to clients, matching what SSL_CTX_use_certificate
+	// alone does not do.
+	if (biocert != NULL) {
+		X509 *extra;
+		while ((extra = PEM_read_bio_X509(biocert, NULL, 0, NULL)) !=
+		    NULL) {
+			if (SSL_CTX_add_extra_chain_cert(cfg->ctx, extra) ==
+			    0) {
+				log_error("NNG-TLS-CFG-OWNCHAIN"
+				    "Failed to add chain certificate to SSL_CTX");
+				X509_free(extra);
+				rv = NNG_ECRYPTO;
+				goto error;
+			}
+			// ownership transferred to cfg->ctx on success
+		}
+	}
+
 	if (key_pkcs11) {
 		if ((rv = open_load_pkey_from_uri(cfg, key, &pkey)) != 0) {
 			goto error;
