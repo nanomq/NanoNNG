@@ -572,6 +572,71 @@ open_conn_verified(nng_tls_engine_conn *ec)
 	return (X509_V_OK == rv);
 }
 
+// SSL_get1_peer_certificate() replaces the deprecated SSL_get_peer_certificate()
+// in OpenSSL 3.0; both return a reference the caller must release with X509_free().
+static X509 *
+open_conn_get_peer_cert(nng_tls_engine_conn *ec)
+{
+#if OPENSSL_VERSION_MAJOR < 3
+	return (SSL_get_peer_certificate(ec->ssl));
+#else
+	return (SSL_get1_peer_certificate(ec->ssl));
+#endif
+}
+
+static char *
+open_conn_peer_cn(nng_tls_engine_conn *ec)
+{
+	X509 *cert = open_conn_get_peer_cert(ec);
+	if (cert == NULL) {
+		return (NULL);
+	}
+
+	char buf[256];
+	int  len = X509_NAME_get_text_by_NID(
+	    X509_get_subject_name(cert), NID_commonName, buf, sizeof(buf));
+	X509_free(cert);
+	if (len <= 0) {
+		return (NULL);
+	}
+
+	char *rv = malloc((size_t) len + 1);
+	if (rv == NULL) {
+		return (NULL);
+	}
+	memcpy(rv, buf, (size_t) len + 1);
+	return (rv);
+}
+
+static char *
+open_conn_peer_subject(nng_tls_engine_conn *ec)
+{
+	X509 *cert = open_conn_get_peer_cert(ec);
+	if (cert == NULL) {
+		return (NULL);
+	}
+
+	BIO *bio = BIO_new(BIO_s_mem());
+	if (bio == NULL) {
+		X509_free(cert);
+		return (NULL);
+	}
+
+	char *rv = NULL;
+	if (X509_NAME_print_ex(bio, X509_get_subject_name(cert), 0,
+	        XN_FLAG_RFC2253) > 0) {
+		char *data;
+		long  len = BIO_get_mem_data(bio, &data);
+		if (len > 0 && (rv = malloc((size_t) len + 1)) != NULL) {
+			memcpy(rv, data, (size_t) len);
+			rv[len] = '\0';
+		}
+	}
+	BIO_free(bio);
+	X509_free(cert);
+	return (rv);
+}
+
 /************************* SSL Configuration ***********************/
 
 static void
@@ -1197,14 +1262,16 @@ static nng_tls_engine_config_ops open_config_ops = {
 };
 
 static nng_tls_engine_conn_ops open_conn_ops = {
-	.size      = sizeof(nng_tls_engine_conn),
-	.init      = open_conn_init,
-	.fini      = open_conn_fini,
-	.close     = open_conn_close,
-	.recv      = open_conn_recv,
-	.send      = open_conn_send,
-	.handshake = open_conn_handshake,
-	.verified  = open_conn_verified,
+	.size         = sizeof(nng_tls_engine_conn),
+	.init         = open_conn_init,
+	.fini         = open_conn_fini,
+	.close        = open_conn_close,
+	.recv         = open_conn_recv,
+	.send         = open_conn_send,
+	.handshake    = open_conn_handshake,
+	.verified     = open_conn_verified,
+	.peer_cn      = open_conn_peer_cn,
+	.peer_subject = open_conn_peer_subject,
 };
 
 static nng_tls_engine open_engine = {
