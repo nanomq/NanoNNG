@@ -10,6 +10,9 @@
 #ifndef EXCHANGE_CLIENT_H
 #define EXCHANGE_CLIENT_H
 
+#include <stdbool.h>
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -35,9 +38,27 @@ NNG_DECL int nng_exchange_client_open(nng_socket *sock);
 #define nng_exchange_open nng_exchange_client_open
 #endif
 
+/* Callback used by pair0 "replay-" to publish one MQTT message into the broker.
+ * Return 0 on success, <0 on failure. Registered by nanomq (e.g. nano_mqtt_publish_async). */
+typedef int (*nng_exchange_mqtt_publish_fn)(const char *topic, const void *payload,
+    uint32_t len, uint8_t qos, bool retain);
+
+NNG_DECL void nng_exchange_set_mqtt_publish_fn(nng_exchange_mqtt_publish_fn fn);
+
+/* Parsed form of: replay-<start_key>-<end_key>-<interval_ms>-<pub_topic> */
+typedef struct nng_exchange_replay_cmd {
+	uint64_t start_key;
+	uint64_t end_key;
+	uint64_t interval_ms;
+	char    *pub_topic; /* owned; free with nng_exchange_replay_cmd_free */
+} nng_exchange_replay_cmd;
+
+/* Returns 0 on success, -1 on parse/alloc failure. */
+NNG_DECL int  nng_exchange_replay_cmd_parse(const char *input, nng_exchange_replay_cmd *out);
+NNG_DECL void nng_exchange_replay_cmd_free(nng_exchange_replay_cmd *cmd);
+
 #ifdef __cplusplus
 }
 #endif
 
 #endif // #define EXCHANGE_CLIENT_H
-
