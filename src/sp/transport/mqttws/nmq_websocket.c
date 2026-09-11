@@ -34,6 +34,7 @@ typedef struct ws_listener ws_listener;
 typedef struct ws_pipe     ws_pipe;
 
 static void wstran_pipe_send_start(ws_pipe *p);
+static void wstran_pipe_fini(void *arg);
 
 // Safe parser for MQTT Remaining Length (variable byte integer).
 // `pos` is the offset where Remaining Length starts (usually 1).
@@ -108,6 +109,22 @@ struct ws_pipe {
 	uint16_t    qrecv_quota;	//Not valid yet, due to NNG websocket limitation
 	uint32_t    qsend_quota;
 	reason_code err_code; // work with closed flag
+	// Deferred teardown for a pipe that died before nng took ownership.
+	nni_reap_node reap;
+};
+
+// A connection that completes the WebSocket handshake and then goes away
+// before a MQTT CONNECT arrives dies while p->ep_aio still points at the
+// listener's accept aio -- i.e. before nng turned the ws_pipe into an
+// nni_pipe.  The accept aio must be finished with NNG_ECONNABORTED so the
+// listener keeps listening, but that error also means wstran_pipe_init()
+// never runs and no one will ever call wstran_pipe_fini().  wstran_pipe_recv_cb
+// reaps such an orphan pipe through this list instead: wstran_pipe_fini()
+// waits on p->rxaio, which is the very aio whose callback would be running,
+// so the free has to happen on the reaper thread.
+static nni_reap_list ws_pipe_reap_list = {
+	.rl_offset = offsetof(ws_pipe, reap),
+	.rl_func   = wstran_pipe_fini,
 };
 
 static void wstran_pipe_close(void *arg);
@@ -195,6 +212,7 @@ static void
 wstran_pipe_recv_cb(void *arg)
 {
 	bool     need_more = false;
+	bool     orphan    = false;
 	ws_pipe *p = arg;
 	nni_iov  iov[2];
 	int      rv = 0;
@@ -638,6 +656,11 @@ reset:
 	// listener will treat this errorcode as TCP err. so NNG_ECLOSED shall not be used.
 		rv = NNG_ECONNABORTED;
 		nni_aio_finish_error(p->ep_aio, rv);
+		// That error means nng never takes this pipe: wstran_pipe_init()
+		// never runs, so wstran_pipe_fini() is never called either and the
+		// stream (hence the socket) leaks.  Reap it ourselves below.  See
+		// the ep_aio note on ws_pipe_reap_list.
+		orphan = true;
 	} else if (uaio != NULL) {
 		if (uaio == p->user_rxaio) {
 			p->user_rxaio = NULL;
@@ -660,6 +683,10 @@ reset:
 		cvector_free(msg_vec);
 	if (msg != NULL)
 		nni_msg_free(msg);
+	// Last: the reaper may free p as soon as this is queued.
+	if (orphan) {
+		nni_reap(&ws_pipe_reap_list, p);
+	}
 	return;
 }
 
