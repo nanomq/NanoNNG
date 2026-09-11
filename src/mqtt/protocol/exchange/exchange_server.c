@@ -6,6 +6,9 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 #include <inttypes.h>
+#include <limits.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "core/nng_impl.h"
 #include "nng/protocol/mqtt/mqtt.h"
@@ -33,6 +36,11 @@ typedef struct exchange_pipe_s         exchange_pipe_t;
 
 static nng_aio *query_reset_aio = NULL;
 static nng_atomic_int *query_limit = NULL;
+static nng_exchange_mqtt_publish_fn g_mqtt_publish_fn = NULL;
+
+#define REPLAY_CMD_PREFIX     "replay-"
+#define REPLAY_CMD_PREFIX_LEN 7
+#define REPLAY_DEFAULT_LIMIT  10000U
 
 // one MQ, one Sock(TBD), one PIPE
 struct exchange_pipe_s {
@@ -133,6 +141,227 @@ static void query_send_eof(nng_socket *sock, nng_aio *aio, int pcode, int rcode)
 
 	return;
 }
+
+void
+nng_exchange_set_mqtt_publish_fn(nng_exchange_mqtt_publish_fn fn)
+{
+	g_mqtt_publish_fn = fn;
+}
+
+void
+nng_exchange_replay_cmd_free(nng_exchange_replay_cmd *cmd)
+{
+	if (cmd == NULL) {
+		return;
+	}
+	if (cmd->pub_topic != NULL) {
+		nng_strfree(cmd->pub_topic);
+		cmd->pub_topic = NULL;
+	}
+	cmd->start_key   = 0;
+	cmd->end_key     = 0;
+	cmd->interval_ms = 0;
+}
+
+int
+nng_exchange_replay_cmd_parse(const char *input, nng_exchange_replay_cmd *out)
+{
+	const char *p;
+	char       *end;
+
+	if (input == NULL || out == NULL) {
+		return -1;
+	}
+	memset(out, 0, sizeof(*out));
+
+	if (strncmp(input, REPLAY_CMD_PREFIX, REPLAY_CMD_PREFIX_LEN) != 0) {
+		return -1;
+	}
+	p = input + REPLAY_CMD_PREFIX_LEN;
+	if (*p < '0' || *p > '9') {
+		return -1;
+	}
+	out->start_key = (uint64_t) strtoull(p, &end, 10);
+	if (end == p || *end != '-') {
+		return -1;
+	}
+	p = end + 1;
+
+	if (*p < '0' || *p > '9') {
+		return -1;
+	}
+	out->end_key = (uint64_t) strtoull(p, &end, 10);
+	if (end == p || *end != '-') {
+		return -1;
+	}
+	p = end + 1;
+
+	if (*p < '0' || *p > '9') {
+		return -1;
+	}
+	out->interval_ms = (uint64_t) strtoull(p, &end, 10);
+	if (end == p || *end != '-') {
+		return -1;
+	}
+	p = end + 1;
+
+	if (*p == '\0') {
+		return -1;
+	}
+	if (out->start_key > out->end_key) {
+		return -1;
+	}
+
+	out->pub_topic = nng_strdup(p);
+	if (out->pub_topic == NULL) {
+		return -1;
+	}
+	return 0;
+}
+
+static void
+query_send_replay_summary(nng_socket *sock, uint32_t sent, uint32_t failed,
+    uint32_t total)
+{
+	nng_msg *msg = NULL;
+	char     buf[96];
+	int      n;
+
+	if (nng_msg_alloc(&msg, 0) != 0) {
+		return;
+	}
+	n = snprintf(buf, sizeof(buf), "replay_ok,%u,%u,%u", sent, failed, total);
+	if (n > 0) {
+		nng_msg_append(msg, buf, (size_t) n);
+	}
+	nng_sendmsg(*sock, msg, 0);
+}
+
+#if defined(SUPP_PARQUET)
+static inline void parquet_datas_ret_free(
+    parquet_data_ret **parquet_datas, uint32_t size);
+
+static void
+query_replay(exchange_sock_t *s, const nng_exchange_replay_cmd *cmd, int rc[2])
+{
+	parquet_filename_range  file_range;
+	parquet_data_ret      **parquet_datas = NULL;
+	uint32_t                file_count    = 0;
+	const char             *schema[]      = { "data" };
+	uint32_t                sent          = 0;
+	uint32_t                failed        = 0;
+	uint32_t                total         = 0;
+	uint64_t                prev_ts       = 0;
+	bool                    have_prev     = false;
+	bool                    truncated     = false;
+	char                   *ex_topic;
+
+	rc[0] = EXCHANGE_ERR_OK;
+	rc[1] = EXCHANGE_ERR_OK;
+
+	if (g_mqtt_publish_fn == NULL) {
+		log_error("replay: mqtt publish callback not registered");
+		rc[0] = EXCHANGE_ERR_NOT_READY;
+		query_send_replay_summary(s->pair0_sock, 0, 0, 0);
+		return;
+	}
+
+	ex_topic = s->ex_node->ex->topic;
+	if (strcmp(cmd->pub_topic, ex_topic) == 0) {
+		log_warn("replay pub_topic equals exchange topic '%s' "
+		         "(write-back risk)",
+		    ex_topic);
+	}
+
+	file_range.filename = NULL;
+	file_range.keys[0]  = cmd->start_key;
+	file_range.keys[1]  = cmd->end_key;
+
+	parquet_datas = parquet_get_data_packets_in_range_by_column(&file_range,
+	    ex_topic, schema, 1, &file_count);
+	if (parquet_datas == NULL || file_count == 0) {
+		log_warn("replay: no parquet data in range");
+		rc[0] = EXCHANGE_ERR_NONE;
+		parquet_datas_ret_free(parquet_datas, file_count);
+		query_send_replay_summary(s->pair0_sock, 0, 0, 0);
+		return;
+	}
+
+	for (uint32_t fi = 0; fi < file_count && !truncated; fi++) {
+		parquet_data_ret *ret = parquet_datas[fi];
+		if (ret == NULL || ret->row_len == 0 || ret->col_len == 0 ||
+		    ret->ts == NULL || ret->payload_arr == NULL ||
+		    ret->payload_arr[0] == NULL) {
+			continue;
+		}
+
+		for (uint32_t row = 0; row < ret->row_len; row++) {
+			parquet_data_packet *pkt;
+			uint64_t             ts;
+			int                  prv;
+
+			if (total >= REPLAY_DEFAULT_LIMIT) {
+				truncated = true;
+				log_warn("replay: hit row limit %u, truncating",
+				    REPLAY_DEFAULT_LIMIT);
+				break;
+			}
+
+			pkt = ret->payload_arr[0][row];
+			if (pkt == NULL || pkt->data == NULL || pkt->size == 0) {
+				continue;
+			}
+
+			ts = ret->ts[row];
+			if (have_prev) {
+				if (cmd->interval_ms > 0) {
+					nng_msleep((nng_duration) cmd->interval_ms);
+				} else if (ts >= prev_ts) {
+					uint64_t delta = ts - prev_ts;
+					if (delta > 0) {
+						if (delta > (uint64_t) INT32_MAX) {
+							delta = (uint64_t) INT32_MAX;
+						}
+						nng_msleep((nng_duration) delta);
+					}
+				} else {
+					log_warn("replay: non-monotonic ts "
+					         "prev=%" PRIu64 " cur=%" PRIu64,
+					    prev_ts, ts);
+				}
+			}
+
+			prv = g_mqtt_publish_fn(cmd->pub_topic, pkt->data,
+			    pkt->size, 0, false);
+			total++;
+			if (prv == 0) {
+				sent++;
+			} else {
+				failed++;
+				log_warn("replay: publish failed rv=%d topic=%s",
+				    prv, cmd->pub_topic);
+			}
+			prev_ts   = ts;
+			have_prev = true;
+		}
+	}
+
+	parquet_datas_ret_free(parquet_datas, file_count);
+	query_send_replay_summary(s->pair0_sock, sent, failed, total);
+	log_info("replay done sent=%u failed=%u total=%u truncated=%d", sent,
+	    failed, total, truncated ? 1 : 0);
+}
+#else
+static void
+query_replay(exchange_sock_t *s, const nng_exchange_replay_cmd *cmd, int rc[2])
+{
+	NNI_ARG_UNUSED(cmd);
+	log_error("replay: parquet support not enabled");
+	rc[0] = EXCHANGE_ERR_NOT_READY;
+	rc[1] = EXCHANGE_ERR_OK;
+	query_send_replay_summary(s->pair0_sock, 0, 0, 0);
+}
+#endif
 
 static inline void parquet_data_ret_free(struct parquet_data_ret *parquet_data)
 {
@@ -627,6 +856,28 @@ query_cb(void *arg)
 	}
 
 	log_info("Recv command: %s topic: %s", keystr, topic);
+
+	/* replay-<start>-<end>-<interval_ms>-<pub_topic> (before stream_cmd_parser) */
+	if (strncmp(keystr, REPLAY_CMD_PREFIX, REPLAY_CMD_PREFIX_LEN) == 0) {
+		nng_exchange_replay_cmd rcmd;
+		int                     codes[2] = { EXCHANGE_ERR_OK, EXCHANGE_ERR_OK };
+
+		if (nng_exchange_replay_cmd_parse(keystr, &rcmd) != 0) {
+			log_error("replay cmd parse failed: %s", keystr);
+			query_send_eof(s->pair0_sock, &s->query_aio,
+			    EXCHANGE_ERR_CMD, EXCHANGE_ERR_CMD);
+			nng_recv_aio(*(s->pair0_sock), aio);
+			nng_msg_free(msg);
+			return;
+		}
+		query_replay(s, &rcmd, codes);
+		nng_exchange_replay_cmd_free(&rcmd);
+		query_send_eof(s->pair0_sock, &s->query_aio, codes[0], codes[1]);
+		nng_recv_aio(*(s->pair0_sock), aio);
+		nng_msg_free(msg);
+		return;
+	}
+
 	struct cmd_data *cmd_data = stream_cmd_parser(s->ex_node->ex->streamType, keystr);
 	if (cmd_data == NULL) {
 		log_error("stream_cmd_parser failed!");
