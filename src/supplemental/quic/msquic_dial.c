@@ -1291,21 +1291,22 @@ msquic_connection_cb(_In_ HQUIC Connection, _In_opt_ void *Context,
 		// ready to be safely cleaned up.
 		log_info("[conn][%p] QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE: All done\n", qconn);
 		nni_mtx_lock(&d->mtx);
-		msquic_conn_fini(qconn);
+		if (Event->SHUTDOWN_COMPLETE.PeerAcknowledgedShutdown) {
+			log_debug("[conn][%p] Peer acknowledged shutdown.", qconn);
+		} else {
+			log_warn("[conn][%p] Peer did NOT acknowledge shutdown.", qconn);
+		}
 		if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
-			log_debug("MsQUIC is closed!");
-			//MsQuic->ConnectionClose(qconn); // plz use msquic_conn_fini(qconn)
+			log_debug("[conn][%p] Closing connection handle in callback", qconn);
+			MsQuic->ConnectionClose(qconn);
 		}
-		if (!Event->SHUTDOWN_COMPLETE.PeerAcknowledgedShutdown) {
-			log_debug("Peer acked shutdown!");
-			//MsQuic->ConnectionClose(qconn); // plz use msquic_conn_fini(qconn)
-		}
-		// reconnect here
+
 		d->qconn = NULL;
 		nni_mtx_unlock(&d->mtx);
-		// we fed nng aio to msquic thread pool. one cb one aio finish
-		if (nni_aio_busy(d->qconaio))
+
+		if (nni_aio_busy(d->qconaio)) {
 			nni_aio_finish_error(d->qconaio, d->reason_code);
+		}
 		break;
 	case QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED:
 		// A resumption ticket (also called New Session Ticket or NST)
