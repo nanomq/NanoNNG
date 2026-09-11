@@ -91,6 +91,7 @@ print_hex(char *str, const uint8_t *data, size_t len)
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/pem.h>
 #if !defined(LIBRESSL_VERSION_NUMBER) && \
     OPENSSL_VERSION_NUMBER >= 0x30000000L
 #define NNG_OPENSSL_HAVE_PKCS11 1
@@ -1116,6 +1117,37 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to set certificate to SSL_CTX");
 		rv = NNG_EINVAL;
 		goto error;
+	}
+
+	// certfile may contain intermediate CA certs after the leaf; load
+	// them as the server's own chain (independent of cacertfile/CA store,
+	// which is only for verifying peer certs) so the full chain is
+	// always presented to clients, matching what SSL_CTX_use_certificate
+	// alone does not do.
+	if (biocert != NULL) {
+		X509 *extra;
+		while ((extra = PEM_read_bio_X509(biocert, NULL, 0, NULL)) !=
+		    NULL) {
+			if (SSL_CTX_add_extra_chain_cert(cfg->ctx, extra) ==
+			    0) {
+				log_error("NNG-TLS-CFG-OWNCHAIN"
+				    "Failed to add chain certificate to SSL_CTX");
+				X509_free(extra);
+				rv = NNG_ECRYPTO;
+				goto error;
+			}
+			// ownership transferred to cfg->ctx on success
+		}
+		// PEM_R_NO_START_LINE means we simply ran out of certs;
+		// anything else means a malformed trailing certificate.
+		if (ERR_GET_REASON(ERR_peek_last_error()) !=
+		    PEM_R_NO_START_LINE) {
+			open_log_ssl_error(
+			    "NNG-TLS-CFG-OWNCHAIN PEM_read_bio_X509", 0);
+			rv = NNG_ECRYPTO;
+			goto error;
+		}
+		ERR_clear_error();
 	}
 
 	if (key_pkcs11) {
