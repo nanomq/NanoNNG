@@ -91,6 +91,7 @@ print_hex(char *str, const uint8_t *data, size_t len)
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/pem.h>
 #if !defined(LIBRESSL_VERSION_NUMBER) && \
     OPENSSL_VERSION_NUMBER >= 0x30000000L
 #define NNG_OPENSSL_HAVE_PKCS11 1
@@ -1137,6 +1138,16 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 			}
 			// ownership transferred to cfg->ctx on success
 		}
+		// PEM_R_NO_START_LINE means we simply ran out of certs;
+		// anything else means a malformed trailing certificate.
+		if (ERR_GET_REASON(ERR_peek_last_error()) !=
+		    PEM_R_NO_START_LINE) {
+			open_log_ssl_error(
+			    "NNG-TLS-CFG-OWNCHAIN PEM_read_bio_X509", 0);
+			rv = NNG_ECRYPTO;
+			goto error;
+		}
+		ERR_clear_error();
 	}
 
 	if (key_pkcs11) {
