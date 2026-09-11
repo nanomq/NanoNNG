@@ -229,6 +229,31 @@ test_tls_garbled_cert(void)
 }
 
 void
+test_tls_own_cert_trailing_garbage(void)
+{
+	nng_stream_listener *l;
+	nng_tls_config      *c1;
+	char                  certs[4096];
+
+	NUTS_ENABLE_LOG(NNG_LOG_INFO);
+
+	// valid leaf followed by a truncated trailing certificate (no END line)
+	snprintf(certs, sizeof(certs),
+	    "%s"
+	    "-----BEGIN CERTIFICATE-----\n"
+	    "MIIDdzCCAl8CFEzqJgxMn+OTdw7RjLtz8FlhrQ0HMA0GCSqGSIb3DQEBCwUAMHcx\n",
+	    nuts_server_crt);
+
+	NUTS_PASS(nng_stream_listener_alloc(&l, "tls+tcp://127.0.0.1:0"));
+	NUTS_PASS(nng_tls_config_alloc(&c1, NNG_TLS_MODE_SERVER));
+	NUTS_FAIL(nng_tls_config_own_cert(c1, certs, nuts_server_key, NULL),
+	    NNG_ECRYPTO);
+
+	nng_stream_listener_free(l);
+	nng_tls_config_free(c1);
+}
+
+void
 test_tls_psk(void)
 {
 	nng_stream_listener *l;
@@ -539,6 +564,7 @@ TEST_LIST = {
 	{ "tls large message", test_tls_large_message },
 	{ "tls mutual auth", test_tls_mutual_auth },
 	{ "tls garbled cert", test_tls_garbled_cert },
+	{ "tls own cert trailing garbage", test_tls_own_cert_trailing_garbage },
 	{ "tls psk", test_tls_psk },
 	{ "tls psk server identities", test_tls_psk_server_identities },
 	{ "tls psk bad identity", test_tls_psk_bad_identity },
