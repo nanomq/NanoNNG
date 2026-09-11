@@ -40,7 +40,6 @@ static nng_exchange_mqtt_publish_fn g_mqtt_publish_fn = NULL;
 
 #define REPLAY_CMD_PREFIX     "replay-"
 #define REPLAY_CMD_PREFIX_LEN 7
-#define REPLAY_DEFAULT_LIMIT  10000U
 
 // one MQ, one Sock(TBD), one PIPE
 struct exchange_pipe_s {
@@ -253,7 +252,6 @@ query_replay(exchange_sock_t *s, const nng_exchange_replay_cmd *cmd, int rc[2])
 	uint32_t                total         = 0;
 	uint64_t                prev_ts       = 0;
 	bool                    have_prev     = false;
-	bool                    truncated     = false;
 	char                   *ex_topic;
 
 	rc[0] = EXCHANGE_ERR_OK;
@@ -287,7 +285,7 @@ query_replay(exchange_sock_t *s, const nng_exchange_replay_cmd *cmd, int rc[2])
 		return;
 	}
 
-	for (uint32_t fi = 0; fi < file_count && !truncated; fi++) {
+	for (uint32_t fi = 0; fi < file_count; fi++) {
 		parquet_data_ret *ret = parquet_datas[fi];
 		if (ret == NULL || ret->row_len == 0 || ret->col_len == 0 ||
 		    ret->ts == NULL || ret->payload_arr == NULL ||
@@ -299,13 +297,6 @@ query_replay(exchange_sock_t *s, const nng_exchange_replay_cmd *cmd, int rc[2])
 			parquet_data_packet *pkt;
 			uint64_t             ts;
 			int                  prv;
-
-			if (total >= REPLAY_DEFAULT_LIMIT) {
-				truncated = true;
-				log_warn("replay: hit row limit %u, truncating",
-				    REPLAY_DEFAULT_LIMIT);
-				break;
-			}
 
 			pkt = ret->payload_arr[0][row];
 			if (pkt == NULL || pkt->data == NULL || pkt->size == 0) {
@@ -348,8 +339,7 @@ query_replay(exchange_sock_t *s, const nng_exchange_replay_cmd *cmd, int rc[2])
 
 	parquet_datas_ret_free(parquet_datas, file_count);
 	query_send_replay_summary(s->pair0_sock, sent, failed, total);
-	log_info("replay done sent=%u failed=%u total=%u truncated=%d", sent,
-	    failed, total, truncated ? 1 : 0);
+	log_info("replay done sent=%u failed=%u total=%u", sent, failed, total);
 }
 #else
 static void
