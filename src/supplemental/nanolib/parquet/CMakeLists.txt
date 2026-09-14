@@ -3,10 +3,31 @@ if(NNG_ENABLE_PARQUET)
     find_package(Arrow CONFIG REQUIRED)
     find_package(Parquet CONFIG REQUIRED)
     if(ENABLE_PARQUET_SHARED)
-        nng_link_libraries(arrow_shared parquet_shared)
+        set(_nng_parquet_arrow_tgt arrow_shared)
+        set(_nng_parquet_parquet_tgt parquet_shared)
     else(ENABLE_PARQUET_SHARED)
-        nng_link_libraries(arrow_static parquet_static)
+        set(_nng_parquet_arrow_tgt arrow_static)
+        set(_nng_parquet_parquet_tgt parquet_static)
     endif(ENABLE_PARQUET_SHARED)
+
+    # Compile parquet.cc against Arrow headers/defs only. Do not
+    # nng_link_libraries(arrow_*): static nng would propagate
+    # OpenSSL::Crypto (libcrypto.so.1.1) to every consumer, including
+    # nanomq_cli. The broker links these targets after nng.
+    foreach(_nng_parquet_dep ${_nng_parquet_arrow_tgt} ${_nng_parquet_parquet_tgt})
+        get_target_property(_nng_parquet_incs ${_nng_parquet_dep} INTERFACE_INCLUDE_DIRECTORIES)
+        if(_nng_parquet_incs)
+            nng_include_directories(${_nng_parquet_incs})
+        endif()
+        get_target_property(_nng_parquet_defs ${_nng_parquet_dep} INTERFACE_COMPILE_DEFINITIONS)
+        if(_nng_parquet_defs)
+            nng_defines(${_nng_parquet_defs})
+        endif()
+    endforeach()
+    if(TARGET nng_testing)
+        target_link_libraries(nng_testing PRIVATE
+            ${_nng_parquet_arrow_tgt} ${_nng_parquet_parquet_tgt})
+    endif()
 
     # Arrow encryption key API: 14 = std::string + DeepClone (default),
     # >=22 = SecureString (Arrow 22.0.0+, no DeepClone). Override with
