@@ -114,6 +114,7 @@ NNG_DECL reason_code check_properties(property *prop, nng_msg *msg);
 NNG_DECL reason_code sanitize_out_pub_properties(property *prop);
 NNG_DECL property *decode_buf_properties(uint8_t *packet, uint32_t packet_len,
     uint32_t *pos, uint32_t *len, bool copy_value);
+NNG_DECL void      property_remove(property *prop_list, uint8_t prop_id);
 NNG_DECL property *decode_properties(
     nng_msg *msg, uint32_t *pos, uint32_t *len, bool copy_value);
 NNG_DECL int      encode_properties(nng_msg *msg, property *prop, uint8_t cmd);
