@@ -124,7 +124,7 @@ device_cb(void *arg)
 }
 
 static int
-device_init(device_data **dp, nni_sock *s1, nni_sock *s2)
+device_init_data(device_data **dp, nni_sock *s1, nni_sock *s2)
 {
 	int          num_paths = 2;
 	int          i;
@@ -229,7 +229,7 @@ nni_device(nni_aio *aio, nni_sock *s1, nni_sock *s2)
 		return;
 	}
 	nni_mtx_lock(&device_mtx);
-	if ((rv = device_init(&d, s1, s2)) != 0) {
+	if ((rv = device_init_data(&d, s1, s2)) != 0) {
 		nni_mtx_unlock(&device_mtx);
 		nni_aio_finish_error(aio, rv);
 		return;
