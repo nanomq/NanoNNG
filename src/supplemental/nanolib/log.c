@@ -191,13 +191,13 @@ syslog_callback(log_event *ev)
 	char final_fmt[512]; // Adjust size as needed
 	snprintf(final_fmt, sizeof(final_fmt), "%s%s", buf, ev->fmt);
 
-	vsyslog(ev->level, ev->fmt, ev->ap);
+	vsyslog(convert_syslog_level(ev->level), final_fmt, ev->ap);
 }
 
 void
 log_add_syslog(const char *log_name, uint8_t level, void *mtx)
 {
-	openlog(log_name, LOG_PID, LOG_DAEMON | convert_syslog_level(level));
+	openlog(log_name, LOG_PID, LOG_DAEMON);
 	log_add_callback(syslog_callback, NULL, level, mtx, NULL);
 }
 #ifndef NNG_PLATFORM_WINDOWS
@@ -300,13 +300,13 @@ uds_syslog_callback(log_event *ev)
 	snprintf(final_fmt, sizeof(final_fmt), "%s%s", buf, ev->fmt);
 
 	// Pass the modified format string to uds_vsyslog
-	uds_vsyslog(ev->level, final_fmt, ev->ap);
+	uds_vsyslog(convert_syslog_level(ev->level), final_fmt, ev->ap);
 }
 
 void
 log_add_uds(const char *uds_path, const char *log_name, uint8_t level, void *mtx)
 {
-	uds_openlog(uds_path, log_name, LOG_PID, LOG_DAEMON | convert_syslog_level(level));
+	uds_openlog(uds_path, log_name, LOG_PID, LOG_DAEMON);
 	log_add_callback(uds_syslog_callback, NULL, level, mtx, NULL);
 }
 #endif
