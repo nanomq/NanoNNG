@@ -995,6 +995,7 @@ mqtt_recv_cb(void *arg)
 			return;
 		}
 	} else if (s->mqtt_ver == MQTT_PROTOCOL_VERSION_v5) {
+		nni_msg_set_cmd_type(msg, CMD_PUBLISH_V5_RECV);
 		rv = nni_mqttv5_msg_decode(msg);
 		if (rv != MQTT_SUCCESS) {
 			// Msg should be clear if decode failed. We reuse it to send disconnect.
