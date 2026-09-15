@@ -304,12 +304,18 @@ elseif (CMAKE_SYSTEM_NAME MATCHES "QNX")
     add_definitions(-DNNG_PLATFORM_QNX)
     set(NNG_PLATFORM_POSIX ON)
 
-elseif (CMAKE_SYSTEM_NAME MATCHES "Zephyr")
+elseif (NNG_PLATFORM_ZEPHYR OR CMAKE_SYSTEM_NAME MATCHES "Zephyr")
     # Zephyr RTOS: POSIX-compatible, but has limitations:
     # - No AF_UNIX (IPC transport unavailable)
     # - No eventfd (use pipe fallback)
     # - No epoll/kqueue (use poll fallback)
     # TLS/QUIC are disabled at the module level (zephyr/CMakeLists.txt)
+    #
+    # NB: a Zephyr build sets CMAKE_SYSTEM_NAME to "Generic", not "Zephyr"
+    # (zephyr/cmake/modules/FindTargetTools.cmake), so the NNG_PLATFORM_ZEPHYR
+    # half is what matches when this file is reached from the Zephyr module
+    # or from an ExternalProject that sets the flag.  Without it the final
+    # else() calls the platform unsupported and emits an AUTHOR_WARNING.
     add_definitions(-DNNG_PLATFORM_POSIX)
     add_definitions(-DNNG_PLATFORM_ZEPHYR)
     set(NNG_PLATFORM_POSIX ON)
