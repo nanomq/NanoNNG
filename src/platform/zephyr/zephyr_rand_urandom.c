@@ -8,7 +8,13 @@
 //
 
 // Zephyr random number generator.
-// Use /dev/urandom -- the simplest and most portable option.
+//
+// nni_random() is documented as returning a cryptographically secure value
+// (core/platform.h), so it is served by Zephyr's CSPRNG whenever the build
+// has one.  That needs an entropy source: the ESP32-S3 has a hardware TRNG
+// (zephyr,entropy = &trng0), which an application enables by selecting
+// CONFIG_CSPRNG_NEEDED.  Targets with no entropy device -- qemu_x86 has
+// none -- keep the clearly-labelled non-secure fallback at the bottom.
 
 #include "core/nng_impl.h"
 
@@ -18,6 +24,36 @@
 #include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
+
+#if defined(CONFIG_CSPRNG_ENABLED)
+#include <zephyr/random/random.h>
+
+uint32_t
+nni_random(void)
+{
+	uint32_t val;
+
+	if (sys_csrand_get(&val, sizeof(val)) != 0) {
+		nni_panic("sys_csrand_get failed");
+	}
+	return (val);
+}
+
+void
+nni_plat_seed_prng(void *buf, size_t bufsz)
+{
+	if (sys_csrand_get(buf, bufsz) != 0) {
+		nni_panic("sys_csrand_get failed");
+	}
+}
+
+#else // !CONFIG_CSPRNG_ENABLED
+
+// No entropy device in this build, so there is no CSPRNG to draw from.
+// This is a plain xorshift32 seeded from the clock: adequate for the
+// identifiers and retry jitter nng uses it for, and NOT suitable for
+// anything secret.  A Zephyr application that handles secrets must enable
+// an entropy source so that CONFIG_CSPRNG_ENABLED becomes set.
 
 // Simple PRNG state seeded by clock
 static uint32_t zephyr_prng_state = 0;
@@ -94,5 +130,7 @@ nni_plat_seed_prng(void *buf, size_t bufsz)
 }
 
 #endif // NNG_USE_DEVURANDOM
+
+#endif // CONFIG_CSPRNG_ENABLED
 
 #endif // NNG_PLATFORM_ZEPHYR
