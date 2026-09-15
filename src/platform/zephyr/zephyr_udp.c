@@ -90,6 +90,13 @@ nni_posix_udp_dorecv(nni_plat_udp *udp)
 		int                     cnt = 0;
 
 		nni_aio_get_iov(aio, &niov, &aiov);
+		if (niov > NNI_NUM_ELEMENTS(iov)) {
+			// iov[] is fixed at 4 entries; the aio may ask for
+			// more.  nni_posix_udp_dosend() caps this too.
+			nni_list_remove(q, aio);
+			nni_aio_finish_error(aio, NNG_EINVAL);
+			continue;
+		}
 
 		for (unsigned i = 0; i < niov; i++) {
 			iov[i].iov_base = aiov[i].iov_buf;
