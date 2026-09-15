@@ -200,7 +200,7 @@ syslog_callback(log_event *ev)
 	char msg[1280];
 
 	format_syslog_msg(ev, msg, sizeof(msg));
-	vsyslog(convert_syslog_level(ev->level), "%s", msg);
+	syslog(convert_syslog_level(ev->level), "%s", msg);
 }
 
 void
