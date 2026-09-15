@@ -2432,7 +2432,6 @@ nni_mqttv5_msg_decode_publish(nni_msg *msg)
 	if (prop_len == (uint32_t)-1)
 		return MQTT_ERR_PROTOCOL;
 	uint8_t type = nni_msg_get_cmd_type(msg);
-	log_info("type %x", type);
 	if (type == CMD_PUBLISH_V5_RECV) {
 		nni_msg_set_cmd_type(msg, 0X00);
 		if (check_downstream_pub_properties(mqtt->var_header.publish.properties) != SUCCESS) {
@@ -5026,5 +5025,5 @@ decode_pub_msg_expiry_property(nng_msg *msg)
 
     mqtt->fixed_header.common.packet_type = NNG_MQTT_PUBLISH;
     mqtt->initialized = true;
-    mqtt->is_decoded   = true;
+    mqtt->is_decoded  = true;
 }

@@ -447,7 +447,7 @@ nng_stat_find(nng_stat *stat, const char *name)
 	if (stat == NULL) {
 		return (NULL);
 	}
-	// log_info("stat name: %s", stat->s_info->si_name);
+
 	if (strcmp(name, stat->s_info->si_name) == 0) {
 		return (stat);
 	}
