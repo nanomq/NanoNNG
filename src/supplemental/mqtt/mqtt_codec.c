@@ -2393,6 +2393,7 @@ nni_mqtt_msg_decode_publish(nni_msg *msg)
 	    (mqtt->payload.publish.payload.length > 0) ? buf.curpos : NULL;
 	return MQTT_SUCCESS;
 }
+
 // also responsible for verifying MQTTV5 protocol
 static int
 nni_mqttv5_msg_decode_publish(nni_msg *msg)
@@ -2430,11 +2431,23 @@ nni_mqttv5_msg_decode_publish(nni_msg *msg)
 	    decode_buf_properties(body, length, &pos, &prop_len, true);
 	if (prop_len == (uint32_t)-1)
 		return MQTT_ERR_PROTOCOL;
-	if (check_properties(mqtt->var_header.publish.properties, msg) != SUCCESS) {
-		property_free(mqtt->var_header.publish.properties);
-		mqtt->var_header.publish.properties = NULL;
-		return MQTT_ERR_PROTOCOL;
+	uint8_t type = nni_msg_get_cmd_type(msg);
+	log_info("type %x", type);
+	if (type == CMD_PUBLISH_V5_RECV) {
+		nni_msg_set_cmd_type(msg, 0X00);
+		if (check_downstream_pub_properties(mqtt->var_header.publish.properties) != SUCCESS) {
+			property_free(mqtt->var_header.publish.properties);
+			mqtt->var_header.publish.properties = NULL;
+			return MQTT_ERR_PROTOCOL;
+		}
+	} else {
+		if (check_properties(mqtt->var_header.publish.properties, msg) != SUCCESS) {
+			property_free(mqtt->var_header.publish.properties);
+			mqtt->var_header.publish.properties = NULL;
+			return MQTT_ERR_PROTOCOL;
+		}
 	}
+
 
 	buf.curpos = &body[0] + pos;
 	prop_sz = pos - pos1;
@@ -4165,6 +4178,85 @@ sanitize_out_pub_properties(property *prop)
     return SUCCESS;
 }
 
+// Check properties for broker-to-client PUBLISH messages only.
+// Strictly enforces MQTT v5.0 Section 3.3.2.3 (PUBLISH Properties).
+reason_code
+check_downstream_pub_properties(property *prop)
+{
+    if (prop == NULL) {
+        return SUCCESS;
+    }
+
+    // MQTT 5.0 Property ID up to 0x2A (42)
+    bool seen_properties[256] = { false };
+
+    for (property *p1 = prop->next; p1 != NULL; p1 = p1->next) {
+        uint8_t prop_id = p1->id;
+
+        // Check if repeated properties exist
+        // USER_PROPERTY and SUBSCRIPTION_IDENTIFIER can appear multiple times
+        if (prop_id != USER_PROPERTY && prop_id != SUBSCRIPTION_IDENTIFIER) {
+            if (seen_properties[prop_id]) {
+                log_warn("Duplicated property ID: 0x%02X in downstream PUBLISH!", prop_id);
+                return PROTOCOL_ERROR;
+            }
+            seen_properties[prop_id] = true;
+        }
+
+        // Validate specific PUBLISH properties using a strict whitelist approach
+        switch (prop_id) {
+        case PAYLOAD_FORMAT_INDICATOR: // 0x01
+            if (p1->data.p_value.u8 > 1) {
+                log_warn("Invalid boolean value for property 0x%02X: %d", prop_id, p1->data.p_value.u8);
+                return PROTOCOL_ERROR;
+            }
+            break;
+
+        case RESPONSE_TOPIC: // 0x08
+            if (memchr((const char *) p1->data.p_value.str.buf, '+', p1->data.p_value.str.length) != NULL ||
+                memchr((const char *) p1->data.p_value.str.buf, '#', p1->data.p_value.str.length) != NULL) {
+                log_warn("RESPONSE_TOPIC contains wildcard!");
+                return PROTOCOL_ERROR;
+            }
+            break;
+
+        case SUBSCRIPTION_IDENTIFIER: // 0x0B
+            // Broker to Client PUBLISH can contain Sub ID. Must be > 0 and <= 268,435,455.
+            if (p1->data.p_value.varint == 0 || p1->data.p_value.varint > 268435455) {
+                log_warn("SUBSCRIPTION_IDENTIFIER invalid value: %d", p1->data.p_value.varint);
+                return PROTOCOL_ERROR;
+            }
+            break;
+
+        case TOPIC_ALIAS: // 0x23
+            if (p1->data.p_value.u16 == 0) {
+                log_warn("TOPIC_ALIAS cannot be 0!");
+                return TOPIC_ALIAS_INVALID;
+            }
+            break;
+
+        case MESSAGE_EXPIRY_INTERVAL: // 0x02
+        case CONTENT_TYPE:            // 0x03
+        case CORRELATION_DATA:        // 0x09
+        case USER_PROPERTY:           // 0x26
+            // Valid PUBLISH properties that require no specific value bound checks here
+            break;
+
+        case WILL_DELAY_INTERVAL:     // 0x18
+            // Explicitly catch the known bug scenario for clearer logging
+            log_warn("Will Delay Interval (0x18) is strictly forbidden in PUBLISH packets!");
+            return PROTOCOL_ERROR;
+
+        default:
+            // STRICT WHITELIST: Any other property falls here and is rejected
+            log_warn("Invalid property ID leaked into PUBLISH message: 0x%02X!", prop_id);
+            return PROTOCOL_ERROR;
+        }
+    }
+
+    return SUCCESS;
+}
+
 // Check if repeated properties exist and validate property bounds, for broker use only.
 // msg as NULL indicates it is a CONNECT aciton
 reason_code
@@ -4746,4 +4838,193 @@ mqtt_get_next_packet_id(nni_atomic_int *id)
 		nni_atomic_set(id, 1);
 	}
 	return (uint16_t)(packet_id & 0xFFFF);
+}
+
+static inline int
+fast_read_varint(const uint8_t *ptr, uint32_t max_len, uint32_t *value, uint32_t *used_bytes)
+{
+	uint32_t val = 0;
+	uint32_t mult = 1;
+	for (uint32_t i = 0; i < 4; i++) {
+		if (i >= max_len) return -1;
+		uint8_t b = ptr[i];
+		val += (b & 0x7F) * mult;
+		mult *= 128;
+		if ((b & 0x80) == 0) {
+			*value = val;
+			*used_bytes = i + 1;
+			return 0;
+		}
+	}
+	return -1;
+}
+
+static inline bool
+fast_parse_msg_expiry_val(nng_msg *msg, uint32_t *expiry_val)
+{
+	if (msg == NULL) {
+		return false;
+	}
+
+	const uint8_t *body = (const uint8_t *) nng_msg_body(msg);
+	size_t len = nng_msg_len(msg);
+	uint32_t pos = 0;
+
+	if (pos + 2 > len) {
+		return false;
+	}
+	uint16_t tlen;
+	NNI_GET16(body + pos, tlen);
+	pos += 2 + tlen;
+
+	const uint8_t *header = (const uint8_t *) nni_msg_header(msg);
+	if (header == NULL) {
+		return false;
+	}
+	uint8_t qos = (header[0] & 0x06) >> 1;
+	if (qos > 0) {
+		pos += 2;
+	}
+
+	if (pos >= len) {
+		return false;
+	}
+
+	uint32_t prop_len = 0;
+	uint32_t used_bytes = 0;
+	if (fast_read_varint(body + pos, len - pos, &prop_len, &used_bytes) != 0) {
+		return false;
+	}
+	pos += used_bytes;
+
+	if (prop_len == 0 || pos + prop_len > len) {
+		return false;
+	}
+
+	uint32_t end_pos = pos + prop_len;
+
+	while (pos < end_pos) {
+		uint8_t prop_id = body[pos++];
+
+		if (prop_id == MESSAGE_EXPIRY_INTERVAL) {
+			if (pos + 4 > end_pos) {
+				return false;
+			}
+			NNI_GET32(body + pos, *expiry_val);
+			return true;
+		}
+
+		switch (prop_id) {
+		case PAYLOAD_FORMAT_INDICATOR:
+		case REQUEST_PROBLEM_INFORMATION:
+		case REQUEST_RESPONSE_INFORMATION:
+		case PUBLISH_MAXIMUM_QOS:
+		case RETAIN_AVAILABLE:
+		case WILDCARD_SUBSCRIPTION_AVAILABLE:
+		case SUBSCRIPTION_IDENTIFIER_AVAILABLE:
+		case SHARED_SUBSCRIPTION_AVAILABLE:
+			pos += 1;
+			break;
+
+		case SERVER_KEEP_ALIVE:
+		case RECEIVE_MAXIMUM:
+		case TOPIC_ALIAS_MAXIMUM:
+		case TOPIC_ALIAS:
+			pos += 2;
+			break;
+
+		case WILL_DELAY_INTERVAL:
+		case MAXIMUM_PACKET_SIZE:
+		case SESSION_EXPIRY_INTERVAL:
+			pos += 4;
+			break;
+
+		case SUBSCRIPTION_IDENTIFIER:
+			if (fast_read_varint(body + pos, end_pos - pos, &used_bytes, &used_bytes) != 0) {
+				return false;
+			}
+			pos += used_bytes;
+			break;
+
+		case CONTENT_TYPE:
+		case RESPONSE_TOPIC:
+		case ASSIGNED_CLIENT_IDENTIFIER:
+		case AUTHENTICATION_METHOD:
+		case AUTHENTICATION_DATA:
+		case RESPONSE_INFORMATION:
+		case SERVER_REFERENCE:
+		case REASON_STRING:
+		case CORRELATION_DATA:
+			if (pos + 2 > end_pos) {
+				return false;
+			}
+			uint16_t slen;
+			NNI_GET16(body + pos, slen);
+			pos += 2 + slen;
+			break;
+
+		case USER_PROPERTY:
+			if (pos + 2 > end_pos) {
+				return false;
+			}
+			uint16_t klen;
+			NNI_GET16(body + pos, klen);
+			pos += 2 + klen;
+			if (pos + 2 > end_pos) {
+				return false;
+			}
+			uint16_t vlen;
+			NNI_GET16(body + pos, vlen);
+			pos += 2 + vlen;
+			break;
+
+		default:
+			return false;
+		}
+	}
+
+	return false;
+}
+
+// For decoding necessary V5 PUBLISH Porperty to be used at Protocol & Transport (nmq_mqtt.c & broker_tcp.c) layer
+void
+decode_pub_msg_expiry_property(nng_msg *msg)
+{
+    uint32_t expiry_val = 0;
+    if (!fast_parse_msg_expiry_val(msg, &expiry_val)) {
+        return;
+    }
+
+    nni_mqtt_proto_data *mqtt = nni_msg_get_proto_data(msg);
+    if (mqtt == NULL) {
+        if (nni_mqtt_msg_proto_data_alloc(msg) != 0) {
+            return;
+        }
+        mqtt = nni_msg_get_proto_data(msg);
+    }
+
+    property *prop_list = nni_mqtt_msg_get_publish_property(msg);
+    if (prop_list == NULL) {
+        prop_list = property_alloc();
+        if (prop_list == NULL) {
+            return;
+        }
+        nni_mqtt_msg_set_publish_property(msg, prop_list);
+    }
+
+    property_data *data = property_get_value(prop_list, MESSAGE_EXPIRY_INTERVAL);
+    if (data != NULL) {
+        data->p_value.u32 = expiry_val;
+    } else {
+        property *new_node = property_set_value_u32(MESSAGE_EXPIRY_INTERVAL, expiry_val);
+        if (new_node != NULL) {
+            property_append(prop_list, new_node);
+        } else {
+            return;
+        }
+    }
+
+    mqtt->fixed_header.common.packet_type = NNG_MQTT_PUBLISH;
+    mqtt->initialized = true;
+    mqtt->is_decoded   = true;
 }
