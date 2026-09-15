@@ -170,25 +170,34 @@ convert_syslog_level(uint8_t level)
 }
 
 static void
-syslog_callback(log_event *ev)
+format_syslog_msg(log_event *ev, char *out, size_t out_sz)
 {
-
 #if (NNG_PLATFORM_WINDOWS || NNG_PLATFORM_DARWIN)
 	int pid = nni_plat_getpid();
 #else
 	pid_t pid = syscall(__NR_gettid);
 #endif
+	char    prefix[256];
+	char    body[1024];
+	va_list ap;
 
-	// Create buffer for the log prefix
-	char buf[256];
-	snprintf(buf, sizeof(buf), "[%i] %-5s %s:%d %s: ", pid,
+	snprintf(prefix, sizeof(prefix), "[%i] %-5s %s:%d %s: ", pid,
 	    level_strings[ev->level], ev->file, ev->line, ev->func);
 
-	// Concatenate buf and ev->fmt
-	char final_fmt[512]; // Adjust size as needed
-	snprintf(final_fmt, sizeof(final_fmt), "%s%s", buf, ev->fmt);
+	va_copy(ap, ev->ap);
+	vsnprintf(body, sizeof(body), ev->fmt, ap);
+	va_end(ap);
 
-	vsyslog(convert_syslog_level(ev->level), final_fmt, ev->ap);
+	snprintf(out, out_sz, "%s%s", prefix, body);
+}
+
+static void
+syslog_callback(log_event *ev)
+{
+	char msg[1280];
+
+	format_syslog_msg(ev, msg, sizeof(msg));
+	vsyslog(convert_syslog_level(ev->level), "%s", msg);
 }
 
 void
@@ -280,24 +289,10 @@ void uds_closelog(void) {
 static void
 uds_syslog_callback(log_event *ev)
 {
+	char msg[1280];
 
-#if (NNG_PLATFORM_WINDOWS || NNG_PLATFORM_DARWIN)
-	int pid = nni_plat_getpid();
-#else
-	pid_t pid = syscall(__NR_gettid);
-#endif
-
-	// Create buffer for the log prefix
-	char buf[256];
-	snprintf(buf, sizeof(buf), "[%i] %-5s %s:%d %s: ", pid,
-	    level_strings[ev->level], ev->file, ev->line, ev->func);
-
-	// Concatenate buf and ev->fmt
-	char final_fmt[512]; // Adjust size as needed
-	snprintf(final_fmt, sizeof(final_fmt), "%s%s", buf, ev->fmt);
-
-	// Pass the modified format string to uds_vsyslog
-	uds_vsyslog(convert_syslog_level(ev->level), final_fmt, ev->ap);
+	format_syslog_msg(ev, msg, sizeof(msg));
+	uds_syslog(convert_syslog_level(ev->level), "%s", msg);
 }
 
 void
