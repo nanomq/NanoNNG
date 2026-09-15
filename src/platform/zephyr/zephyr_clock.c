@@ -69,11 +69,17 @@ nni_msleep(nni_duration ms)
 {
 	struct timespec ts;
 
+	if (ms <= 0) {
+		return;
+	}
 	ts.tv_sec  = ms / 1000;
 	ts.tv_nsec = (ms % 1000) * 1000000;
 
-	while (ts.tv_sec || ts.tv_nsec) {
-		if (nanosleep(&ts, &ts) == 0) {
+	// nanosleep() reports the remaining time in ts and expects a retry
+	// on EINTR.  Any other failure leaves ts unchanged, so retrying
+	// would spin here forever; leave the loop instead.
+	while (nanosleep(&ts, &ts) != 0) {
+		if (errno != EINTR) {
 			break;
 		}
 	}

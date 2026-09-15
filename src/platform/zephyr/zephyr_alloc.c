@@ -68,7 +68,11 @@ nni_alloc(size_t sz)
 
 	if (sz > 0) {
 		nng_psram_heap_ensure();
-		p = k_heap_aligned_alloc(&nng_psram_heap, 8, sz, K_FOREVER);
+		// K_NO_WAIT, not K_FOREVER: nni_alloc() is allowed to fail
+		// and its callers turn NULL into NNG_ENOMEM.  Blocking here
+		// would stall a thread that may be holding the very
+		// resources needed to give the memory back.
+		p = k_heap_aligned_alloc(&nng_psram_heap, 8, sz, K_NO_WAIT);
 	}
 	return (p);
 }
@@ -80,7 +84,7 @@ nni_zalloc(size_t sz)
 
 	if (sz > 0) {
 		nng_psram_heap_ensure();
-		p = k_heap_aligned_alloc(&nng_psram_heap, 8, sz, K_FOREVER);
+		p = k_heap_aligned_alloc(&nng_psram_heap, 8, sz, K_NO_WAIT);
 		if (p != NULL) {
 			memset(p, 0, sz);
 		}
