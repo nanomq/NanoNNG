@@ -85,11 +85,34 @@ struct nni_atomic_bool { atomic_bool v; };
 struct nni_atomic_ptr  { atomic_uintptr_t v; };
 struct nni_atomic_u64  { uint64_t v; };
 #else
-struct nni_atomic_flag { bool v; pthread_mutex_t m; };
-struct nni_atomic_bool { bool v; pthread_mutex_t m; };
-struct nni_atomic_int  { int v; pthread_mutex_t m; };
-struct nni_atomic_u64  { uint64_t v; pthread_mutex_t m; };
-struct nni_atomic_ptr  { void *v; pthread_mutex_t m; };
+// Interface the atomics through an embedded mutex.  On Zephyr that has to
+// be a k_mutex rather than a pthread one: pthread_mutex_init() allocates
+// from a fixed pool (posix_mutex_pool via sys_bitarray_alloc in the POSIX
+// layer's mutex.c) and returns ENOMEM once it is exhausted, while nothing
+// in the tree calls the nni_atomic_fini*() hooks that would hand a slot
+// back -- so a long-lived process would consume one pooled mutex for every
+// atomic it ever creates and never return it.  k_mutex is embedded, needs
+// no pool, and has nothing to release.
+#if defined(__ZEPHYR__)
+#include <zephyr/kernel.h>
+#define NNI_ATOMIC_MUTEX_T         struct k_mutex
+#define NNI_ATOMIC_MUTEX_INIT(m)   ((void) k_mutex_init(m))
+#define NNI_ATOMIC_MUTEX_LOCK(m)   ((void) k_mutex_lock(m, K_FOREVER))
+#define NNI_ATOMIC_MUTEX_UNLOCK(m) ((void) k_mutex_unlock(m))
+#define NNI_ATOMIC_MUTEX_FINI(m)   ((void) 0)
+#else
+#define NNI_ATOMIC_MUTEX_T         pthread_mutex_t
+#define NNI_ATOMIC_MUTEX_INIT(m)   ((void) pthread_mutex_init(m, NULL))
+#define NNI_ATOMIC_MUTEX_LOCK(m)   ((void) pthread_mutex_lock(m))
+#define NNI_ATOMIC_MUTEX_UNLOCK(m) ((void) pthread_mutex_unlock(m))
+#define NNI_ATOMIC_MUTEX_FINI(m)   ((void) pthread_mutex_destroy(m))
+#endif
+
+struct nni_atomic_flag { bool v; NNI_ATOMIC_MUTEX_T m; };
+struct nni_atomic_bool { bool v; NNI_ATOMIC_MUTEX_T m; };
+struct nni_atomic_int  { int v; NNI_ATOMIC_MUTEX_T m; };
+struct nni_atomic_u64  { uint64_t v; NNI_ATOMIC_MUTEX_T m; };
+struct nni_atomic_ptr  { void *v; NNI_ATOMIC_MUTEX_T m; };
 #endif
 
 #endif // NNG_PLATFORM_POSIX_THREAD
