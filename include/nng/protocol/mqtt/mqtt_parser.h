@@ -111,7 +111,12 @@ NNG_DECL nng_msg *nano_encode_publish_msg(uint8_t proto_ver, uint8_t qos,
     property *prop, const char *topic, const char *topic_suffix);
 // TODO : check duplicated declaration
 NNG_DECL reason_code check_properties(property *prop, nng_msg *msg);
+<<<<<<< HEAD
 NNG_DECL reason_code check_will_properties(property *prop);
+=======
+NNG_DECL reason_code check_downstream_pub_properties(property *prop);
+NNG_DECL void decode_pub_msg_expiry_property(nng_msg *msg);
+>>>>>>> dab6f14c2 (* NEW [mqtt_parser] add decode_pub_msg_expiry_property for better performance of V5 Property)
 NNG_DECL reason_code sanitize_out_pub_properties(property *prop);
 NNG_DECL property *decode_buf_properties(uint8_t *packet, uint32_t packet_len,
     uint32_t *pos, uint32_t *len, bool copy_value);
