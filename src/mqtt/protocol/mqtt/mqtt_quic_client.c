@@ -1111,7 +1111,7 @@ mqtt_quic_sock_close(void *arg)
 		}
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
-	nni_id_map_foreach(&s->sent_unack, mqtt_close_unack_aio_cb);
+	nni_id_map_foreach(&s->sent_unack, mqtt_close_unack_msg_cb);
 	nni_sock_rele(s->nsock);
 	nni_mtx_unlock(&s->mtx);
 }
