@@ -293,10 +293,109 @@ test_scheme_b_roundtrip(void)
 	unlink(path);
 }
 
+static void
+test_can_frames_enc_and_row_groups(void)
+{
+	pq_type      *schema;
+	parquet_data *batch;
+	parquet_data *got = NULL;
+	pq_array     *b0;
+	pq_array     *b1;
+	conf_parquet  conf;
+	char          path[128];
+	uint32_t      n;
+	uint32_t      i;
+
+	schema = pq_type_schema_can_frames(2);
+	NUTS_TRUE(schema != NULL);
+	NUTS_TRUE(schema->children[0].enc == PQ_ENC_RLE_DICT);
+	NUTS_TRUE(schema->children[5].enc == PQ_ENC_ADAPTIVE);
+	NUTS_TRUE(schema->children[6].enc == PQ_ENC_ADAPTIVE);
+
+	n     = 256;
+	batch = pq_batch_from_type(schema, n);
+	NUTS_TRUE(batch != NULL);
+	schema = NULL;
+	for (i = 0; i < n; i++) {
+		NUTS_TRUE(pq_array_set_i64(pq_batch_field(batch, "ts"), i,
+		              (int64_t) (1000 + (i / 40))) == 0);
+		NUTS_TRUE(pq_array_set_i32(pq_batch_field(batch, "busid"), i,
+		              0) == 0);
+		NUTS_TRUE(pq_array_set_i32(pq_batch_field(batch, "canid"), i,
+		              (int32_t) (0x100 + (i / 10000))) == 0);
+		NUTS_TRUE(pq_array_set_i32(pq_batch_field(batch, "tsdiff"), i,
+		              (int32_t) (i % 100)) == 0);
+		NUTS_TRUE(
+		    pq_array_set_i32(pq_batch_field(batch, "len"), i, 2) == 0);
+		NUTS_TRUE(pq_array_set_i32(pq_batch_field(batch, "b0"), i,
+		              (int32_t) (i % 256)) == 0);
+		NUTS_TRUE(pq_array_set_i32(pq_batch_field(batch, "b1"), i,
+		              0xA1) == 0);
+	}
+	pq_batch_bind_ts(batch);
+	pq_batch_resolve_adaptive(batch);
+	NUTS_TRUE(batch->schema_tree->children[5].enc == PQ_ENC_DELTA);
+	NUTS_TRUE(batch->schema_tree->children[6].enc == PQ_ENC_RLE_DICT);
+
+	snprintf(path, sizeof(path), "/tmp/pq_batch_frames_%d.parquet",
+	    (int) getpid());
+	unlink(path);
+	conf = test_conf();
+	conf.dictionary = true;
+	NUTS_ASSERT(
+	    parquet_write_file(&conf, path, batch, "can", WRITE_CAN) == 0);
+	NUTS_TRUE(parquet_file_num_row_groups(path) == 1);
+	NUTS_ASSERT(parquet_read_file(&conf, path, &got) == 0);
+	NUTS_TRUE(got != NULL);
+	NUTS_TRUE(got->row_len == n);
+	NUTS_TRUE(got->ts[0] == 1000);
+	NUTS_TRUE(got->ts[n - 1] == (uint64_t) (1000 + ((n - 1) / 40)));
+	b0 = pq_batch_field(got, "b0");
+	b1 = pq_batch_field(got, "b1");
+	NUTS_TRUE(b0 != NULL && b1 != NULL);
+	NUTS_TRUE(b0->i32[0] == 0);
+	NUTS_TRUE(b0->i32[255] == 255);
+	NUTS_TRUE(b1->i32[0] == 0xA1);
+	NUTS_TRUE(b1->i32[n - 1] == 0xA1);
+
+	parquet_data_free(batch);
+	parquet_data_free(got);
+	unlink(path);
+}
+
+static void
+test_enc_choose_i32(void)
+{
+	pq_type  *t;
+	pq_array *a;
+	uint32_t  i;
+
+	t = pq_type_primitive("b0", PQ_INT32, PQ_OPTIONAL, PQ_ENC_ADAPTIVE);
+	NUTS_TRUE(t != NULL);
+	a = pq_array_from_type(t, 80);
+	NUTS_TRUE(a != NULL);
+	for (i = 0; i < 80; i++) {
+		NUTS_TRUE(pq_array_set_i32(a, i, 0xA1) == 0);
+	}
+	NUTS_TRUE(pq_enc_choose_i32(a) == PQ_ENC_RLE_DICT);
+	pq_array_free(a);
+
+	a = pq_array_from_type(t, 256);
+	NUTS_TRUE(a != NULL);
+	for (i = 0; i < 256; i++) {
+		NUTS_TRUE(pq_array_set_i32(a, i, (int32_t) i) == 0);
+	}
+	NUTS_TRUE(pq_enc_choose_i32(a) == PQ_ENC_DELTA);
+	pq_array_free(a);
+	pq_type_free(t);
+}
+
 NUTS_TESTS = {
 	{ "pq_batch flat alloc tree", test_flat_alloc_tree },
 	{ "pq_batch flat write/read", test_flat_write_read },
 	{ "pq_batch scheme A nested", test_scheme_a_roundtrip },
 	{ "pq_batch scheme B groups", test_scheme_b_roundtrip },
+	{ "pq_enc choose i32", test_enc_choose_i32 },
+	{ "pq_batch can frames enc", test_can_frames_enc_and_row_groups },
 	{ NULL, NULL },
 };

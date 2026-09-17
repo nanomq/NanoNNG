@@ -41,7 +41,7 @@ typedef enum {
 	PQ_ENC_PLAIN,
 	PQ_ENC_DELTA,
 	PQ_ENC_RLE_DICT,
-	PQ_ENC_ADAPTIVE, /* currently same as DEFAULT */
+	PQ_ENC_ADAPTIVE, /* INT32: dict vs DELTA from data; else DEFAULT */
 } pq_enc;
 
 typedef enum {
@@ -178,8 +178,15 @@ void          pq_batch_bind_ts(parquet_data *batch);
 pq_type *pq_type_schema_stream_nested(uint32_t n_planes);
 pq_type *pq_type_schema_dyn_groups(const char **group_names,
     uint32_t n_groups, uint32_t n_planes);
-/* One Parquet row per CAN frame: ts, busid, canid, tsdiff, len, b0..b{n-1}. */
+/* One Parquet row per CAN frame: ts, busid, canid, tsdiff, len, b0..b{n-1}.
+ * ts is RLE_DICT (few block_ts values). Payload planes start as ADAPTIVE. */
 pq_type *pq_type_schema_can_frames(uint32_t n_planes);
+/* Pick RLE_DICT (enum/status) or DELTA (byte counter) from column values. */
+pq_enc pq_enc_choose_i32(const pq_array *a);
+/* Replace PQ_ENC_ADAPTIVE leaves using the batch arrays. */
+void pq_batch_resolve_adaptive(parquet_data *data);
+
+int parquet_file_num_row_groups(const char *filename);
 parquet_data_packet *pq_packet_copy(const uint8_t *data, uint32_t size);
 
 int parquet_write_file(conf_parquet *conf, const char *filename,
