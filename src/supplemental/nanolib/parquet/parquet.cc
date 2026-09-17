@@ -765,6 +765,7 @@ pq_apply_leaf_encoding(parquet::WriterProperties::Builder &builder,
 	if (t->kind == PQ_PRIMITIVE) {
 		pq_enc enc = t->enc;
 		if (enc == PQ_ENC_ADAPTIVE) {
+			/* Unresolved: INT32 dict, INT64 delta, else plain. */
 			enc = PQ_ENC_DEFAULT;
 		}
 		if (enc == PQ_ENC_DEFAULT) {
@@ -832,15 +833,27 @@ parquet_write_nested(conf_parquet *conf, const char *filename,
 	}
 
 	try {
+		/*
+		 * Pick encodings from pq_array values first. After each
+		 * column is copied into Arrow, drop the matching pq_array
+		 * so the C batch and Arrow table do not both sit at peak.
+		 * Keep the ts leaf: parquet_write aliases data->ts to it.
+		 */
+		pq_batch_resolve_adaptive(data);
 		std::vector<std::shared_ptr<arrow::Field>> fields;
 		std::vector<std::shared_ptr<arrow::Array>> arrays;
 		for (uint32_t i = 0; i < data->schema_tree->n_children; i++) {
-			const pq_type *ct = &data->schema_tree->children[i];
+			const pq_type *ct  = &data->schema_tree->children[i];
+			pq_array      *col = data->root->fields[i];
+
+			if (col == NULL) {
+				log_error("nested missing column %u", i);
+				return -1;
+			}
 			fields.push_back(pq_type_to_field(ct));
 			auto builder = pq_make_builder(ct);
 			for (uint32_t r = 0; r < data->row_len; r++) {
-				auto st = pq_append_one(
-				    builder.get(), data->root->fields[i], r);
+				auto st = pq_append_one(builder.get(), col, r);
 				if (!st.ok()) {
 					log_error("nested append failed: %s",
 					    st.ToString().c_str());
@@ -855,6 +868,11 @@ parquet_write_nested(conf_parquet *conf, const char *filename,
 				return -1;
 			}
 			arrays.push_back(arr);
+			if (data->ts == NULL ||
+			    (uint64_t *) col->i64 != data->ts) {
+				pq_array_free(col);
+				data->root->fields[i] = NULL;
+			}
 		}
 
 		shared_ptr<arrow::KeyValueMetadata> kv =
@@ -1526,6 +1544,25 @@ parquet_read_file(
 		return 0;
 	} catch (const exception &e) {
 		log_error("parquet_read_file exception=[%s]", e.what());
+		return -1;
+	}
+}
+
+int
+parquet_file_num_row_groups(const char *filename)
+{
+	if (filename == NULL) {
+		return -1;
+	}
+	try {
+		unique_ptr<parquet::ParquetFileReader> reader =
+		    parquet::ParquetFileReader::OpenFile(filename, false);
+		if (!reader || !reader->metadata()) {
+			return -1;
+		}
+		return reader->metadata()->num_row_groups();
+	} catch (const exception &e) {
+		log_error("num_row_groups %s: %s", filename, e.what());
 		return -1;
 	}
 }
@@ -2811,7 +2848,6 @@ parquet_read_span_by_column(conf_parquet *conf, const char *filename, uint64_t k
 		int num_row_groups =
 		    file_metadata
 		        ->num_row_groups(); // Get the number of RowGroups
-		assert(num_row_groups == 1);
 
 		for (int r = 0; r < num_row_groups; ++r) {
 
@@ -2833,8 +2869,8 @@ parquet_read_span_by_column(conf_parquet *conf, const char *filename, uint64_t k
 			index_vector = get_keys_indexes_fuzing(
 			    int64_reader, ts, keys[0], keys[1]);
 			if (-1 == index_vector[0] || -1 == index_vector[1]) {
-				log_error("Not found data in key");
-				return ret;
+				log_debug("row group %d: no keys in range", r);
+				continue;
 			}
 
 			log_debug("start index: %lu, end index: %lu",
