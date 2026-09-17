@@ -1,7 +1,8 @@
+#include "nng/nng.h"
 #include "mqtt_qos_db.h"
 #include "nng/supplemental/nanolib/log.h"
 #include "core/nng_impl.h"
-#include "nng/nng.h"
+#include "nng/protocol/mqtt/mqtt_parser.h"
 #include "nng/supplemental/sqlite/sqlite3.h"
 #include "nng/supplemental/nanolib/cvector.h"
 #include "supplemental/mqtt/mqtt_msg.h"
@@ -818,6 +819,7 @@ nni_mqtt_qos_db_find_retain(sqlite3 *db, const char *topic_pattern)
 {
 	nni_msg * msg     = NULL;
 	nni_msg **msg_vec = NULL;
+	char **   expired_topics = NULL;
 
 	char *topic_str = nng_strdup(topic_pattern);
 
@@ -853,30 +855,45 @@ nni_mqtt_qos_db_find_retain(sqlite3 *db, const char *topic_pattern)
 		if (nbyte > 0 && blob == NULL) {
 			continue;
 		}
-		uint8_t *bytes = sqlite3_malloc(nbyte);
-		if (bytes == NULL) {
-			continue;
-		}
-		memcpy(bytes, blob, nbyte);
-		msg = nni_msg_deserialize(bytes, nbyte);
-		sqlite3_free(bytes);
-
-		if (msg == NULL) {
-			continue;
-		}
+		// uint8_t *bytes = sqlite3_malloc(nbyte);
+		// if (bytes == NULL) {
+		// 	continue;
+		// }
+		// memcpy(bytes, blob, nbyte);
+		// msg = nni_msg_deserialize(bytes, nbyte);
+		// sqlite3_free(bytes);
+		msg = nni_msg_deserialize((uint8_t *) blob, nbyte);
+        if (msg == NULL) {
+            continue;
+        }
 
 		uint8_t proto_ver = sqlite3_column_int(stmt, 1);
 		nni_mqtt_msg_proto_data_alloc(msg);
-		if(proto_ver == MQTT_PROTOCOL_VERSION_v5) {
+		if (proto_ver == MQTT_PROTOCOL_VERSION_v5) {
 			nni_mqttv5_msg_decode(msg);
-		}else {
+		} else {
 			nni_mqtt_msg_decode(msg);
 		}
-		nni_mqtt_msg_set_publish_proto_version(msg, proto_ver);
-		cvector_push_back(msg_vec, msg);
+		if (is_msg_expired(msg)) {
+			uint32_t tlen = 0;
+            const char *real_topic = nni_mqtt_msg_get_publish_topic(msg, &tlen);
+            if (real_topic != NULL && tlen > 0) {
+                cvector_push_back(expired_topics, nng_strdup(real_topic));
+            }
+            nni_msg_free(msg);
+        } else {
+            nni_mqtt_msg_set_publish_proto_version(msg, proto_ver);
+            cvector_push_back(msg_vec, msg);
+        }
+
 	}
 
 	sqlite3_finalize(stmt);
+	for (size_t i = 0; i < cvector_size(expired_topics); i++) {
+        nni_mqtt_qos_db_remove_retain(db, expired_topics[i]);
+        nng_strfree(expired_topics[i]);
+    }
+    cvector_free(expired_topics);
 	sqlite3_exec(db, "COMMIT;", 0, 0, 0);
 	
 	nng_strfree(topic_str);
