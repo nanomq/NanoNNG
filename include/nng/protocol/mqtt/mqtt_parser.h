@@ -162,4 +162,5 @@ NNG_DECL nng_msg *nng_sub0_msg_adapter(
     nng_msg *origin, conf_nng_sub_node *snode);
 NNG_DECL size_t str_append(char **dest, const char *str);
 
+NNG_DECL bool is_msg_expired(nng_msg *msg);
 #endif // NNG_MQTT_H
