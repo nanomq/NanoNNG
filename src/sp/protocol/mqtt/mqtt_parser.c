@@ -2390,3 +2390,26 @@ nng_sub0_msg_adapter(nng_msg *origin, conf_nng_sub_node *snode)
 	}
 	return mqtt_msg;
 }
+
+bool
+is_msg_expired(nng_msg *msg)
+{
+	if (msg == NULL) {
+		return false;
+	}
+	if (nng_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
+		property *prop = nng_mqtt_msg_get_publish_property(msg);
+		nng_time       rtime = nni_msg_get_timestamp(msg);
+		nng_time       ntime = nng_clock();
+		property_data *data  = property_get_value(prop, MESSAGE_EXPIRY_INTERVAL);
+		if (data && ntime > rtime + ((nng_time)data->p_value.u32 * 1000)) {
+			return true;
+		} else if (data) {
+			// TODO replace exp interval with new value without
+			// touching prop?
+			//  data->p_value.u32 =
+			//      data->p_value.u32 - (ntime - rtime) / 1000;
+		}
+	}
+	return false;
+}
