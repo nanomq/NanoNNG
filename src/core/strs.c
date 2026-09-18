@@ -64,7 +64,15 @@ nni_strndup(const char *src, size_t n)
 {
 	size_t len = strnlen(src, n);
 	char *dst = NULL;
-	dst = malloc(len + 1);
+
+	/* nni_alloc, NOT libc malloc: nni_strndup is exported as
+	 * nng_strndup and every caller releases the result with the nng
+	 * family (nng_free/nng_strfree), exactly like its siblings
+	 * nni_strdup/nni_strnins/nni_strncat above.  On Zephyr the libc
+	 * heap and nng's heap are distinct (NNG_ZEPHYR_ALLOC_SMH puts nng
+	 * on PSRAM), so a libc allocation freed through nng_free computes
+	 * a chunk id outside the heap and trips the heap canary check. */
+	dst = nni_alloc(len + 1);
 
 	if (!dst)
 		return NULL;

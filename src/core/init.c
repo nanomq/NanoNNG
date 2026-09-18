@@ -27,7 +27,9 @@ nni_init_helper(void)
 #ifdef NNG_TEST_LIB
 	static bool cleanup = false;
 	if (!cleanup) {
+#ifndef NNG_PLATFORM_ZEPHYR
 		atexit(nng_fini);
+#endif
 		cleanup = true;
 	}
 #endif

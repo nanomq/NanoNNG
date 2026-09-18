@@ -15,9 +15,13 @@
 #else
 #include <unistd.h>
 #include <sys/socket.h>
+#ifndef __ZEPHYR__
 #include <sys/un.h>
+#endif
 #include <sys/types.h>
+#ifndef __ZEPHYR__
 #include <sys/syscall.h>
+#endif
 #include <errno.h>
 #if defined(SUPP_SYSLOG)
 #include <syslog.h>
@@ -28,6 +32,12 @@ static int log_option = 0;
 static int log_facility = LOG_USER;
 #endif
 #define nano_localtime(t, pTm) localtime_r(t, pTm)
+
+#ifdef __ZEPHYR__
+#ifndef W_OK
+#define W_OK 2
+#endif
+#endif
 #endif
 
 
@@ -73,6 +83,8 @@ stdout_callback(log_event *ev)
 	char buf[64];
 #if (NNG_PLATFORM_WINDOWS || NNG_PLATFORM_DARWIN)
 	int pid = nni_plat_getpid();
+#elif defined(__ZEPHYR__)
+	int pid = 0; // no gettid() there; the id is only informational
 #else
 	pid_t pid = syscall(__NR_gettid);
 #endif
@@ -98,6 +110,8 @@ file_callback(log_event *ev)
 	char buf[64];
 #if (NNG_PLATFORM_WINDOWS || NNG_PLATFORM_DARWIN)
 	int pid = nni_plat_getpid();
+#elif defined(__ZEPHYR__)
+	int pid = 0; // no gettid() there; the id is only informational
 #else
 	pid_t pid = syscall(__NR_gettid);
 #endif
@@ -152,6 +166,8 @@ syslog_callback(log_event *ev)
 
 #if (NNG_PLATFORM_WINDOWS || NNG_PLATFORM_DARWIN)
 	int pid = nni_plat_getpid();
+#elif defined(__ZEPHYR__)
+	int pid = 0; // no gettid() there; the id is only informational
 #else
 	pid_t pid = syscall(__NR_gettid);
 #endif
@@ -249,6 +265,8 @@ uds_syslog_callback(log_event *ev)
 
 #if (NNG_PLATFORM_WINDOWS || NNG_PLATFORM_DARWIN)
 	int pid = nni_plat_getpid();
+#elif defined(__ZEPHYR__)
+	int pid = 0; // no gettid() there; the id is only informational
 #else
 	pid_t pid = syscall(__NR_gettid);
 #endif
