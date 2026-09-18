@@ -1103,8 +1103,10 @@ dbtree_insert_retain(dbtree *db, char *topic, nng_msg *ret_msg)
 	return search_insert_node(db, topic, ret_msg, insert_dbtree_retain);
 }
 
-nng_msg **
-collect_retain_well(void **vec, dbtree_node *node, char ***expired_topics)
+static bool is_duplicate_in_vec(void **vec, nng_msg *msg);
+
+nng_msg ***
+collect_retain_well(void ***vec, dbtree_node *node, char ***expired_topics)
 {
 	dbtree_node **nodes   = NULL;
 	dbtree_node **nodes_t = NULL;
@@ -1114,10 +1116,10 @@ collect_retain_well(void **vec, dbtree_node *node, char ***expired_topics)
 			if (nodes[i]->retain) {
 				if (is_msg_expired(nodes[i]->retain)) {
 					cvector_push_back(*expired_topics, nni_strdup(nodes[i]->topic));
-				} else {
+				} else if (!is_duplicate_in_vec(*vec, nodes[i]->retain)) {
 					nng_msg_clone(nodes[i]->retain);
 					log_warn("# got a retain!!!!!!");
-					cvector_push_back(vec, nodes[i]->retain);
+					cvector_push_back(*vec, nodes[i]->retain);
 				}
 			}
 
@@ -1133,10 +1135,10 @@ collect_retain_well(void **vec, dbtree_node *node, char ***expired_topics)
 			if (nodes_t[i]->retain) {
 				if (is_msg_expired(nodes_t[i]->retain)) {
 					cvector_push_back(*expired_topics, nni_strdup(nodes_t[i]->topic));
-				} else {
+				} else if (!is_duplicate_in_vec(*vec, nodes_t[i]->retain)) {
 					nng_msg_clone(nodes_t[i]->retain);
 					log_warn("# next node got a retain!!!!!!");
-					cvector_push_back(vec, nodes_t[i]->retain);
+					cvector_push_back(*vec, nodes_t[i]->retain);
 				}
 			}
 
@@ -1148,7 +1150,37 @@ collect_retain_well(void **vec, dbtree_node *node, char ***expired_topics)
 		nodes_t = NULL;
 	}
 
-	return (struct nng_msg **)vec;
+	return (struct nng_msg ***)vec;
+}
+
+/**
+ * @brief Check if a message with the same topic already exists in vec
+ * @param vec - vector of messages to check
+ * @param msg - message to look for
+ * @return true if duplicate found, false otherwise
+ */
+static bool
+is_duplicate_in_vec(void **vec, nng_msg *msg) {
+	if (vec == NULL || msg == NULL) return false;
+
+	uint32_t topic_add_len = 0;
+
+	const char *topic_add = nng_mqtt_msg_get_publish_topic(msg, &topic_add_len);
+	if (topic_add == NULL || topic_add_len == 0) return false;
+
+	for (size_t i = 0; i < cvector_size(vec); i++) {
+		nng_msg *exist = (nng_msg *)vec[i];
+		if (exist == NULL) continue;
+
+		uint32_t topic_exist_len = 0;
+		const char *topic_exist = nng_mqtt_msg_get_publish_topic(exist, &topic_exist_len);
+		if (topic_exist == NULL || topic_exist_len != topic_add_len) continue;
+
+		if (strncmp(topic_add, topic_exist, topic_add_len) == 0) {
+			return true;
+		}
+	}
+	return false;
 }
 
 /**
@@ -1159,8 +1191,8 @@ collect_retain_well(void **vec, dbtree_node *node, char ***expired_topics)
  * @param topic_queue - topic queue position
  * @return all clients on lots of nodes
  */
-static nng_msg **
-collect_retains(void **vec, dbtree_node **nodes,
+static nng_msg ***
+collect_retains(void ***vec, dbtree_node **nodes,
     dbtree_node ***nodes_t, char **topic_queue, char ***expired_topics)
 {
 	while (!cvector_empty(nodes)) {
@@ -1168,15 +1200,14 @@ collect_retains(void **vec, dbtree_node **nodes,
 		dbtree_node * node_t  = *node_t_;
 		cvector_pop_back(nodes);
 
-		if (node_t == NULL || node_t->child == NULL || (*(node_t->child)) == NULL) {
+		if (node_t == NULL || cvector_empty(node_t->child)) {
 			continue;
 		}
-
 		dbtree_node **child = node_t->child;
 
 		if (is_well(*topic_queue)) {
-			vec = (void **)collect_retain_well(vec, node_t, expired_topics);
-			return (struct nng_msg **)vec;
+			vec = (void ***)collect_retain_well(vec, node_t, expired_topics);
+			return (struct nng_msg ***)vec;
 		} else if (is_plus(*topic_queue)) {
 			if (*(topic_queue + 1) == NULL) {
 				for (size_t i = 0; i < cvector_size(child); i++) {
@@ -1184,10 +1215,10 @@ collect_retains(void **vec, dbtree_node **nodes,
 					if (node_t->retain) {
 						if (is_msg_expired(node_t->retain)) {
 							cvector_push_back(*expired_topics, nni_strdup(node_t->topic));
-						} else {
+						} else if (!is_duplicate_in_vec(*vec, node_t->retain)) {
 							nng_msg_clone(node_t->retain);
 							log_warn("+ got a retain!!!!!!");
-							cvector_push_back(vec, node_t->retain);
+							cvector_push_back(*vec, node_t->retain);
 						}
 					}
 				}
@@ -1213,10 +1244,10 @@ collect_retains(void **vec, dbtree_node **nodes,
 					if (t->retain) {
 						if (is_msg_expired(t->retain)) {
 							cvector_push_back(*expired_topics, nni_strdup(t->topic));
-						} else {
+						} else if (!is_duplicate_in_vec(*vec, t->retain)) {
 							nng_msg_clone(t->retain);
 							log_warn("precise got a retain!!!!!!");
-							cvector_push_back(vec, t->retain);
+							cvector_push_back(*vec, t->retain);
 						}
 					}
 				} else {
@@ -1226,11 +1257,11 @@ collect_retains(void **vec, dbtree_node **nodes,
 		}
 	}
 
-	return (struct nng_msg **)vec;
+	return (struct nng_msg ***)vec;
 }
 
-nng_msg **
-dbtree_find_retain(dbtree *db, char *topic)
+nng_msg ***
+dbtree_find_retain(dbtree *db, char *topic, nng_msg ***rets)
 {
 	if (db == NULL || topic == NULL) {
 		log_error("db or topic is NULL");
@@ -1244,7 +1275,7 @@ dbtree_find_retain(dbtree *db, char *topic)
 	nni_rwlock_rdlock(&(db->rwlock));
 
 	dbtree_node *node              = db->root;
-	cvector(nng_msg *) rets        = NULL;
+	// cvector(nng_msg *) rets        = NULL;
 	cvector(dbtree_node *) nodes   = NULL;
 	cvector(dbtree_node *) nodes_t = NULL;
 
@@ -1254,12 +1285,12 @@ dbtree_find_retain(dbtree *db, char *topic)
 
 	while (*topic_queue && (!cvector_empty(nodes))) {
 
-		rets = collect_retains((void **)rets, nodes, &nodes_t, topic_queue, &expired_topics);
+		rets = collect_retains((void ***)rets, nodes, &nodes_t, topic_queue, &expired_topics);
 		topic_queue++;
 		if (*topic_queue == NULL) {
 			break;
 		}
-		rets = collect_retains((void **)rets, nodes_t, &nodes, topic_queue, &expired_topics);
+		rets = collect_retains((void ***)rets, nodes_t, &nodes, topic_queue, &expired_topics);
 		topic_queue++;
 	}
 
