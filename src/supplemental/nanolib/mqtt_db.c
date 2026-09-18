@@ -1210,7 +1210,6 @@ collect_retain_well(void ***vec, dbtree_node *node, char ***expired_topics)
 					cvector_push_back(*expired_topics, nni_strdup(nodes[i]->topic));
 				} else if (!is_duplicate_in_vec(*vec, nodes[i]->retain)) {
 					nng_msg_clone(nodes[i]->retain);
-					log_warn("# got a retain!!!!!!");
 					cvector_push_back(*vec, nodes[i]->retain);
 				}
 			}
@@ -1229,7 +1228,6 @@ collect_retain_well(void ***vec, dbtree_node *node, char ***expired_topics)
 					cvector_push_back(*expired_topics, nni_strdup(nodes_t[i]->topic));
 				} else if (!is_duplicate_in_vec(*vec, nodes_t[i]->retain)) {
 					nng_msg_clone(nodes_t[i]->retain);
-					log_warn("# next node got a retain!!!!!!");
 					cvector_push_back(*vec, nodes_t[i]->retain);
 				}
 			}
@@ -1309,7 +1307,6 @@ collect_retains(void ***vec, dbtree_node **nodes,
 							cvector_push_back(*expired_topics, nni_strdup(node_t->topic));
 						} else if (!is_duplicate_in_vec(*vec, node_t->retain)) {
 							nng_msg_clone(node_t->retain);
-							log_warn("+ got a retain!!!!!!");
 							cvector_push_back(*vec, node_t->retain);
 						}
 					}
@@ -1338,7 +1335,6 @@ collect_retains(void ***vec, dbtree_node **nodes,
 							cvector_push_back(*expired_topics, nni_strdup(t->topic));
 						} else if (!is_duplicate_in_vec(*vec, t->retain)) {
 							nng_msg_clone(t->retain);
-							log_warn("precise got a retain!!!!!!");
 							cvector_push_back(*vec, t->retain);
 						}
 					}
