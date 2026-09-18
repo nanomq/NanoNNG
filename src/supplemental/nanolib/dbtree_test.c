@@ -357,7 +357,7 @@ dbtree_test(void)
 	dbtree_create(&db_ret);
 	test_insert_retain();
 	puts("=======================================");
-	nng_msg **r;
+	nng_msg **r = NULL;
 	dbtree_find_retain(db_ret, topic6, &r);
 	for (size_t i = 0; i < cvector_size(r); i++) {
 		if (r[i]) {
