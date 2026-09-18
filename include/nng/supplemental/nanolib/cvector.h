@@ -143,7 +143,6 @@
  */
 #define cvector_end(vec) ((vec) ? &((vec)[cvector_size(vec)]) : NULL)
 
-/* user request to use logarithmic growth algorithm */
 #ifdef CVECTOR_LOGARITHMIC_GROWTH
 
 /**
@@ -154,12 +153,13 @@
  */
 #define cvector_push_back(vec, value)                                  \
 	do {                                                           \
+		__typeof__(*(vec)) cv_val = (value);                   \
 		size_t cv_cap = cvector_capacity(vec);                 \
 		if (cv_cap <= cvector_size(vec)) {                     \
 			cvector_grow(                                  \
 			    (vec), !cv_cap ? cv_cap + 1 : cv_cap * 2); \
 		}                                                      \
-		vec[cvector_size(vec)] = (value);                      \
+		(vec)[cvector_size(vec)] = cv_val;                     \
 		cvector_set_size((vec), cvector_size(vec) + 1);        \
 	} while (0)
 
@@ -173,30 +173,16 @@
  */
 #define cvector_push_back(vec, value)                           \
 	do {                                                    \
+		__typeof__(*(vec)) cv_val = (value);            \
 		size_t cv_cap = cvector_capacity(vec);          \
 		if (cv_cap <= cvector_size(vec)) {              \
 			cvector_grow((vec), cv_cap + 1);        \
 		}                                               \
-		vec[cvector_size(vec)] = (value);               \
+		(vec)[cvector_size(vec)] = cv_val;              \
 		cvector_set_size((vec), cvector_size(vec) + 1); \
 	} while (0)
 
 #endif /* CVECTOR_LOGARITHMIC_GROWTH */
-
-/**
- * @brief cvector_copy - copy a vector
- * @param from - the original vector
- * @param to - destination to which the function copy to
- * @return void
- */
-#define cvector_copy(from, to)                                    \
-	do {                                                      \
-		for (size_t i = 0; i < cvector_size(from); i++) { \
-			cvector_push_back(to, from[i]);           \
-		}                                                 \
-	} while (0)
-
-#endif /* CVECTOR_H_ */
 
 /**
  * @brief cvector_insert - insert the element at index i to the vector
@@ -226,3 +212,19 @@
 			}                                                  \
 		}                                                          \
 	} while (0)
+
+
+/**
+ * @brief cvector_copy - copy a vector
+ * @param from - the original vector
+ * @param to - destination to which the function copy to
+ * @return void
+ */
+#define cvector_copy(from, to)                                    \
+	do {                                                      \
+		for (size_t i = 0; i < cvector_size(from); i++) { \
+			cvector_push_back(to, from[i]);           \
+		}                                                 \
+	} while (0)
+
+#endif /* CVECTOR_H_ */
