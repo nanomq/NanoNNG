@@ -242,7 +242,39 @@ test_exchange_client(void)
 	return;
 }
 
+static void
+test_exchange_replay_cmd_parse(void)
+{
+	nng_exchange_replay_cmd cmd;
+	int                     rv;
+
+	rv = nng_exchange_replay_cmd_parse(
+	    "replay-100-200-10-canudp/replay", &cmd);
+	NUTS_TRUE(rv == 0);
+	NUTS_TRUE(cmd.start_key == 100);
+	NUTS_TRUE(cmd.end_key == 200);
+	NUTS_TRUE(cmd.interval_ms == 10);
+	NUTS_TRUE(strcmp(cmd.pub_topic, "canudp/replay") == 0);
+	nng_exchange_replay_cmd_free(&cmd);
+
+	rv = nng_exchange_replay_cmd_parse(
+	    "replay-1788505150994-1788505162985-0-a/b-c", &cmd);
+	NUTS_TRUE(rv == 0);
+	NUTS_TRUE(cmd.start_key == 1788505150994ULL);
+	NUTS_TRUE(cmd.end_key == 1788505162985ULL);
+	NUTS_TRUE(cmd.interval_ms == 0);
+	NUTS_TRUE(strcmp(cmd.pub_topic, "a/b-c") == 0);
+	nng_exchange_replay_cmd_free(&cmd);
+
+	NUTS_TRUE(nng_exchange_replay_cmd_parse("sync-1-2", &cmd) != 0);
+	NUTS_TRUE(nng_exchange_replay_cmd_parse("replay-1-2-10-", &cmd) != 0);
+	NUTS_TRUE(nng_exchange_replay_cmd_parse("replay-1-2-10", &cmd) != 0);
+	NUTS_TRUE(nng_exchange_replay_cmd_parse("replay-5-1-10-t", &cmd) != 0);
+	NUTS_TRUE(nng_exchange_replay_cmd_parse(NULL, &cmd) != 0);
+}
+
 NUTS_TESTS = {
 	{ "Exchange client test", test_exchange_client },
+	{ "Exchange replay cmd parse", test_exchange_replay_cmd_parse },
 	{ NULL, NULL },
 };
