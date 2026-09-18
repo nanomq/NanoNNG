@@ -360,7 +360,8 @@ dbtree_test(void)
 	dbtree_create(&db_ret);
 	test_insert_retain();
 	puts("=======================================");
-	nng_msg **r = dbtree_find_retain(db_ret, topic6);
+	nng_msg **r;
+	dbtree_find_retain(db_ret, topic6, &r);
 	for (size_t i = 0; i < cvector_size(r); i++) {
 		if (r[i]) {
 			nng_msg_free(r[i]);
