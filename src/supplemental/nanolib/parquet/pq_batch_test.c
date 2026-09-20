@@ -329,8 +329,13 @@ test_can_frames_enc_and_row_groups(void)
 		    pq_array_set_i32(pq_batch_field(batch, "len"), i, 2) == 0);
 		NUTS_TRUE(pq_array_set_i32(pq_batch_field(batch, "b0"), i,
 		              (int32_t) (i % 256)) == 0);
-		NUTS_TRUE(pq_array_set_i32(pq_batch_field(batch, "b1"), i,
-		              0xA1) == 0);
+		if (i == 1) {
+			NUTS_TRUE(pq_array_set_null(
+			              pq_batch_field(batch, "b1"), i) == 0);
+		} else {
+			NUTS_TRUE(pq_array_set_i32(pq_batch_field(batch, "b1"),
+			              i, 0xA1) == 0);
+		}
 	}
 	pq_batch_bind_ts(batch);
 	pq_batch_resolve_adaptive(batch);
@@ -356,6 +361,7 @@ test_can_frames_enc_and_row_groups(void)
 	NUTS_TRUE(b0->i32[0] == 0);
 	NUTS_TRUE(b0->i32[255] == 255);
 	NUTS_TRUE(b1->i32[0] == 0xA1);
+	NUTS_TRUE(b1->valid != NULL && b1->valid[1] == 0);
 	NUTS_TRUE(b1->i32[n - 1] == 0xA1);
 
 	parquet_data_free(batch);

@@ -42,6 +42,9 @@
 #include <vector>
 #include <dirent.h>
 #include <regex.h>
+#ifdef __GLIBC__
+#include <malloc.h>
+#endif
 
 using namespace std;
 using parquet::ConvertedType;
@@ -822,6 +825,93 @@ pq_collect_leaf_paths(
 	}
 }
 
+static void
+parquet_release_unused_memory(void)
+{
+	arrow::MemoryPool *pool = arrow::default_memory_pool();
+
+	if (pool != NULL) {
+		pool->ReleaseUnused();
+	}
+#ifdef __GLIBC__
+	malloc_trim(0);
+#endif
+}
+
+static void
+parquet_object_free_and_trim(parquet_object *elem)
+{
+	parquet_object_free(elem);
+	parquet_release_unused_memory();
+}
+
+/*
+ * Pack pq_array byte-valid into an Arrow LSB bitmap. Empty *out means
+ * no nulls (bitmap may be omitted). Keep *out alive while arrays wrap it.
+ */
+static void
+pq_pack_valid_bits(const uint8_t *valid, uint32_t n,
+    std::vector<uint8_t> *out, int64_t *null_count)
+{
+	uint32_t i;
+	int64_t  nn = 0;
+
+	*null_count = 0;
+	out->clear();
+	if (valid == NULL || n == 0) {
+		return;
+	}
+	out->assign((n + 7) / 8, 0);
+	for (i = 0; i < n; i++) {
+		if (valid[i] != 0) {
+			(*out)[i >> 3] |= (uint8_t) (1u << (i & 7));
+		} else {
+			nn++;
+		}
+	}
+	*null_count = nn;
+	if (nn == 0) {
+		out->clear();
+	}
+}
+
+/* Wrap INT32 / UINT64 (PQ_INT64) columns; NULL means use the builder path. */
+static std::shared_ptr<arrow::Array>
+pq_primitive_as_arrow(const pq_array *col, std::vector<uint8_t> *bitmap_store)
+{
+	int64_t                         n;
+	int64_t                         null_count = 0;
+	std::shared_ptr<arrow::Buffer>  nulls;
+
+	if (col == NULL || col->type == NULL ||
+	    col->type->kind != PQ_PRIMITIVE) {
+		return nullptr;
+	}
+	if (col->type->phys != PQ_INT32 && col->type->phys != PQ_INT64) {
+		return nullptr;
+	}
+	n = (int64_t) col->length;
+	pq_pack_valid_bits(col->valid, col->length, bitmap_store, &null_count);
+	if (!bitmap_store->empty()) {
+		nulls = arrow::Buffer::Wrap(
+		    bitmap_store->data(), (int64_t) bitmap_store->size());
+	}
+	if (col->type->phys == PQ_INT32) {
+		if (n > 0 && col->i32 == NULL) {
+			return nullptr;
+		}
+		return std::make_shared<arrow::Int32Array>(
+		    n, arrow::Buffer::Wrap(col->i32, n), nulls, null_count);
+	}
+	if (n > 0 && col->i64 == NULL) {
+		return nullptr;
+	}
+	return std::make_shared<arrow::UInt64Array>(n,
+	    arrow::Buffer::Wrap(
+	        reinterpret_cast<const uint64_t *>(col->i64), n),
+	    nulls, null_count);
+}
+
 static int
 parquet_write_nested(conf_parquet *conf, const char *filename,
     parquet_data *data, const char *topic, parquet_type write_type)
@@ -834,45 +924,53 @@ parquet_write_nested(conf_parquet *conf, const char *filename,
 
 	try {
 		/*
-		 * Pick encodings from pq_array values first. After each
-		 * column is copied into Arrow, drop the matching pq_array
-		 * so the C batch and Arrow table do not both sit at peak.
-		 * Keep the ts leaf: parquet_write aliases data->ts to it.
+		 * Pick encodings from pq_array values first. Primitive
+		 * INT32/UINT64 columns wrap the C buffers (no builder copy);
+		 * those arrays must stay alive until WriteTable returns.
+		 * LIST/STRUCT/BYTE_ARRAY still copy via builders and can
+		 * drop the C column after Finish, except the ts leaf.
 		 */
 		pq_batch_resolve_adaptive(data);
 		std::vector<std::shared_ptr<arrow::Field>> fields;
 		std::vector<std::shared_ptr<arrow::Array>> arrays;
+		std::vector<std::vector<uint8_t>>          bitmaps(
+		            data->schema_tree->n_children);
 		for (uint32_t i = 0; i < data->schema_tree->n_children; i++) {
 			const pq_type *ct  = &data->schema_tree->children[i];
 			pq_array      *col = data->root->fields[i];
+			std::shared_ptr<arrow::Array> arr;
 
 			if (col == NULL) {
 				log_error("nested missing column %u", i);
 				return -1;
 			}
 			fields.push_back(pq_type_to_field(ct));
-			auto builder = pq_make_builder(ct);
-			for (uint32_t r = 0; r < data->row_len; r++) {
-				auto st = pq_append_one(builder.get(), col, r);
+			arr = pq_primitive_as_arrow(col, &bitmaps[i]);
+			if (arr == nullptr) {
+				auto builder = pq_make_builder(ct);
+				for (uint32_t r = 0; r < data->row_len; r++) {
+					auto st = pq_append_one(
+					    builder.get(), col, r);
+					if (!st.ok()) {
+						log_error(
+						    "nested append failed: %s",
+						    st.ToString().c_str());
+						return -1;
+					}
+				}
+				auto st = builder->Finish(&arr);
 				if (!st.ok()) {
-					log_error("nested append failed: %s",
+					log_error("nested finish failed: %s",
 					    st.ToString().c_str());
 					return -1;
 				}
-			}
-			std::shared_ptr<arrow::Array> arr;
-			auto st = builder->Finish(&arr);
-			if (!st.ok()) {
-				log_error("nested finish failed: %s",
-				    st.ToString().c_str());
-				return -1;
+				if (data->ts == NULL ||
+				    (uint64_t *) col->i64 != data->ts) {
+					pq_array_free(col);
+					data->root->fields[i] = NULL;
+				}
 			}
 			arrays.push_back(arr);
-			if (data->ts == NULL ||
-			    (uint64_t *) col->i64 != data->ts) {
-				pq_array_free(col);
-				data->root->fields[i] = NULL;
-			}
 		}
 
 		shared_ptr<arrow::KeyValueMetadata> kv =
@@ -977,6 +1075,7 @@ parquet_write_nested(conf_parquet *conf, const char *filename,
 		log_error("nested write exception=[%s]", e.what());
 		return -1;
 	}
+	parquet_release_unused_memory();
 	return 0;
 }
 
@@ -1596,7 +1695,7 @@ parquet_write_tmp(parquet_object *elem)
 	    conf, prefix.data(), ts_arr[0], ts_arr[row_len - 1]);
 	if (filename == NULL) {
 		log_error("Failed to get file name");
-		parquet_object_free(elem);
+		parquet_object_free_and_trim(elem);
 		return -1;
 	}
 
@@ -1607,7 +1706,7 @@ parquet_write_tmp(parquet_object *elem)
 	free(filename);
 	update_parquet_file_ranges(conf, elem, range);
 
-	parquet_object_free(elem);
+	parquet_object_free_and_trim(elem);
 	return 0;
 }
 
@@ -1635,21 +1734,21 @@ parquet_write(parquet_object *elem)
 	log_debug("parquet_write");
 	char *filename = get_file_name(conf, ts_arr[0], ts_arr[row_len - 1]);
 	if (filename == NULL) {
-		parquet_object_free(elem);
+		parquet_object_free_and_trim(elem);
 		log_error("Failed to get file name");
 		return -1;
 	}
 
 	if (parquet_write_file(
 	        conf, filename, elem->data, elem->topic, elem->type) != 0) {
-		parquet_object_free(elem);
+		parquet_object_free_and_trim(elem);
 		log_error("parquet_write_file failed");
 		return -1;
 	}
 	char *md5_file_name =
 	    compute_and_rename_file_withMD5(filename, conf, elem->topic);
 	if (md5_file_name == nullptr) {
-		parquet_object_free(elem);
+		parquet_object_free_and_trim(elem);
 		log_error("fail to get md5 from parquet file");
 		return -1;
 	}
@@ -1671,7 +1770,7 @@ parquet_write(parquet_object *elem)
 	pthread_mutex_unlock(&parquet_queue_mutex);
 
 	log_info("flush finished!");
-	parquet_object_free(elem);
+	parquet_object_free_and_trim(elem);
 	return 0;
 }
 
