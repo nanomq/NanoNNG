@@ -767,7 +767,8 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	}
 	// password
 	if (rv == 0 && (cparam->con_flag & 0x40) > 0) {
-		if (cparam->username.body == NULL) {
+		if (cparam->username.body == NULL &&
+		    cparam->pro_ver != MQTT_PROTOCOL_VERSION_v5) {
 			log_warn("Got password but no username!");
 			return PROTOCOL_ERROR;
 		}
