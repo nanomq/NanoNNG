@@ -889,12 +889,12 @@ nni_mqtt_qos_db_find_retain(sqlite3 *db, const char *topic_pattern)
 	}
 
 	sqlite3_finalize(stmt);
+	sqlite3_exec(db, "COMMIT;", 0, 0, 0);
 	for (size_t i = 0; i < cvector_size(expired_topics); i++) {
         nni_mqtt_qos_db_remove_retain(db, expired_topics[i]);
         nng_strfree(expired_topics[i]);
     }
     cvector_free(expired_topics);
-	sqlite3_exec(db, "COMMIT;", 0, 0, 0);
 	
 	nng_strfree(topic_str);
 
