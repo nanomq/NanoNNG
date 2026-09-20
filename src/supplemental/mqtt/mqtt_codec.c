@@ -5057,5 +5057,4 @@ decode_pub_msg_expiry_property(nng_msg *msg)
 
     mqtt->fixed_header.common.packet_type = NNG_MQTT_PUBLISH;
     mqtt->initialized = true;
-    mqtt->is_decoded  = true;
 }
