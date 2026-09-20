@@ -876,7 +876,7 @@ nni_mqtt_qos_db_find_retain(sqlite3 *db, const char *topic_pattern)
 		}
 		if (is_msg_expired(msg)) {
 			uint32_t tlen = 0;
-            const char *real_topic = nni_mqtt_msg_get_publish_topic(msg, &tlen);
+            const char *real_topic = nni_msg_get_pub_topic(msg, &tlen);
             if (real_topic != NULL && tlen > 0) {
                 cvector_push_back(expired_topics, nng_strdup(real_topic));
             }
