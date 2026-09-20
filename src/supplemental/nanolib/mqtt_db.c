@@ -1143,7 +1143,7 @@ collect_retain_well(void ***vec, dbtree_node *node, char ***expired_topics)
 					uint32_t    tlen = 0;
 					const char *ft =
 					    nni_msg_get_pub_topic(
-					        nodes[i]->retain, &tlen);
+					        nodes_t[i]->retain, &tlen);
 					if (ft != NULL && tlen > 0) {
 						cvector_push_back(*expired_topics,
 						    nni_strndup(ft, tlen));
@@ -1228,7 +1228,7 @@ collect_retains(void ***vec, dbtree_node **nodes,
 						if (is_msg_expired(node_t->retain)) {
 							uint32_t    tlen = 0;
 							const char *ft = nni_msg_get_pub_topic(
-									nodes[i]->retain, &tlen);
+									node_t->retain, &tlen);
 							if (ft != NULL && tlen > 0) {
 								cvector_push_back(*expired_topics,
 									nni_strndup(ft, tlen));
