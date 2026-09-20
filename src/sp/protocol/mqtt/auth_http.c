@@ -432,7 +432,7 @@ nmq_auth_http_sub_pub(
 	uint32_t acl_cache_k = nanomq_siphash_32(acl_cache_k_str,
 		strlen(acl_cache_k_str), NULL);
 
-	if (conf->super_req.url) {
+	if (conf->super_req.enable && conf->super_req.url) {
 		if (conf->cache_ttl > 0 && conf->acl_cache_map != NULL) {
 			nng_mtx_lock(conf->acl_cache_mtx);
 			void *acl_cache_v = nng_id_get(
@@ -459,7 +459,7 @@ nmq_auth_http_sub_pub(
 		}
 	}
 
-	if (conf->acl_req.url) {
+	if (conf->acl_req.enable && conf->acl_req.url) {
 		if (conf->cache_ttl > 0 && conf->acl_cache_map != NULL) {
 			nng_mtx_lock(conf->acl_cache_mtx);
 			void *acl_cache_v = nng_id_get(
