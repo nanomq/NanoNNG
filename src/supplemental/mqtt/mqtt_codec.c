@@ -2433,7 +2433,7 @@ nni_mqttv5_msg_decode_publish(nni_msg *msg)
 		return MQTT_ERR_PROTOCOL;
 	uint8_t type = nni_msg_get_cmd_type(msg);
 	if (type == CMD_PUBLISH_V5_RECV) {
-		nni_msg_set_cmd_type(msg, 0X00);
+		nni_msg_set_cmd_type(msg, CMD_PUBLISH_V5);
 		if (check_downstream_pub_properties(mqtt->var_header.publish.properties) != SUCCESS) {
 			property_free(mqtt->var_header.publish.properties);
 			mqtt->var_header.publish.properties = NULL;
@@ -4985,7 +4985,9 @@ fast_parse_msg_expiry_val(nng_msg *msg, uint32_t *expiry_val)
 	return false;
 }
 
-// For decoding necessary V5 PUBLISH Porperty to be used at Protocol & Transport (nmq_mqtt.c & broker_tcp.c) layer
+// Only used for decoding necessary V5 PUBLISH Porperty to be used at
+// Protocol & Transport (nmq_mqtt.c & broker_tcp.c) layer.
+// Will marks msg as decoded for performance, because only expiry prop is needed.
 void
 decode_pub_msg_expiry_property(nng_msg *msg)
 {
