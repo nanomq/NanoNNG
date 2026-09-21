@@ -173,12 +173,12 @@ topic_queue_free(char **topic_queue)
 	while (*topic_queue) {
 		t = *topic_queue;
 		topic_queue++;
-		free(t);
+		nni_free(t, 0);
 		t = NULL;
 	}
 
 	if (tt) {
-		free(tt);
+		nni_free(tt, 0);
 	}
 }
 
