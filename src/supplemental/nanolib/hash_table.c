@@ -25,9 +25,6 @@
 static dbhash_atpair_t *dbhash_atpair_alloc(uint32_t alias, const char *topic);
 static void             dbhash_atpair_free(dbhash_atpair_t *atpair);
 
-KHASH_MAP_INIT_INT(alias_table, dbhash_atpair_t **)
-static nni_rwlock alias_lock;
-static khash_t(alias_table) *ah = NULL;
 // avoid hash collision
 static uint8_t g_nanomq_hash_seed[16];
 
@@ -193,117 +190,70 @@ DJBHash64(char *str)
 	return hash;
 }
 
+// The alias vector is kept sorted by alias so that lookups, which happen on
+// every aliased publish, stay logarithmic. Its owner (the conn_param) holds
+// the vector and serialises access to it; see conn_param_set_topic_alias().
 void
-dbhash_init_alias_table(void)
+dbhash_atpair_insert(dbhash_atpair_t ***vecp, uint32_t a, const char *t)
 {
-	dbhash_check_init(alias_table, ah, alias_lock);
-}
-
-static dbhash_atpair_t **
-find_atpair_vec(uint32_t p)
-{
-	khint_t k = kh_get(alias_table, ah, p);
-	if (k == kh_end(ah)) {
-		return NULL;
-	}
-
-	return kh_val(ah, k);
-}
-
-void
-dbhash_insert_atpair(uint32_t p, uint32_t a, const char *t)
-{
-	int               absent;
 	dbhash_atpair_t * atpair = dbhash_atpair_alloc(a, t);
-	dbhash_atpair_t **vec    = NULL;
-	khint32_t         k      = 0;
+	dbhash_atpair_t **vec    = *vecp;
+	size_t            index  = 0;
 
-	nni_rwlock_wrlock(&alias_lock);
-	k = kh_get(alias_table, ah, p);
-	if (k == kh_end(ah)) {
-		k = kh_put(alias_table, ah, p, &absent);
-		cvector_push_back(vec, atpair);
-		kh_value(ah, k) = vec;
-
-	} else {
-		size_t index = 0;
-		vec          = kh_val(ah, k);
-
-		if (true ==
-		    binary_search((void **) vec, 0, &index, &a, alias_cmp)) {
-			dbhash_atpair_t *tmp = vec[index];
-			dbhash_atpair_free(tmp);
-			vec[index] = atpair;
-		} else {
-			if (cvector_size(vec) == index) {
-				cvector_push_back(vec, atpair);
-			} else {
-				cvector_insert(vec, index, atpair);
-			}
-		}
-
-		kh_val(ah, k) = vec;
-	}
-
-	nni_rwlock_unlock(&alias_lock);
-	return;
-}
-
-const char *
-dbhash_find_atpair(uint32_t p, uint32_t a)
-{
-	nni_rwlock_rdlock(&alias_lock);
-	const char *t = NULL;
-
-	dbhash_atpair_t **vec = find_atpair_vec(p);
-	if (vec) {
-		size_t index = 0;
-
-		if (true ==
-		    binary_search((void **) vec, 0, &index, &a, alias_cmp)) {
-			if (vec[index]) {
-				t = vec[index]->topic;
-			}
-		}
-	}
-
-	nni_rwlock_unlock(&alias_lock);
-	return t;
-}
-
-void
-dbhash_del_atpair_queue(uint32_t p)
-{
-	nni_rwlock_wrlock(&alias_lock);
-
-	khint32_t k = kh_get(alias_table, ah, p);
-	if (k == kh_end(ah)) {
-		nni_rwlock_unlock(&alias_lock);
+	if (atpair == NULL) {
+		// Keep the vector free of holes: alias_cmp would dereference
+		// one on the next lookup. The alias simply stays unregistered.
 		return;
 	}
 
-	dbhash_atpair_t **vec = kh_val(ah, k);
-	;
-	if (vec) {
-		size_t size = cvector_size(vec);
-		for (size_t i = 0; i < size; i++) {
-			if (vec[i]) {
-				dbhash_atpair_free(vec[i]);
-			}
-		}
-		cvector_free(vec);
+	if (true == binary_search((void **) vec, 0, &index, &a, alias_cmp)) {
+		dbhash_atpair_free(vec[index]);
+		vec[index] = atpair;
+	} else if (cvector_size(vec) == index) {
+		cvector_push_back(vec, atpair);
+	} else {
+		cvector_insert(vec, index, atpair);
 	}
 
-	kh_del(alias_table, ah, k);
-	nni_rwlock_unlock(&alias_lock);
+	*vecp = vec;
+	return;
+}
+
+// The returned topic is owned by the vector and is only valid while the
+// caller still holds the lock that guards it.
+const char *
+dbhash_atpair_find(dbhash_atpair_t **vec, uint32_t a)
+{
+	size_t index = 0;
+
+	if (vec == NULL) {
+		return NULL;
+	}
+	if (true == binary_search((void **) vec, 0, &index, &a, alias_cmp)) {
+		if (vec[index]) {
+			return vec[index]->topic;
+		}
+	}
+
+	return NULL;
 }
 
 void
-dbhash_destroy_alias_table(void)
+dbhash_atpair_free_all(dbhash_atpair_t **vec)
 {
-	// for each
-	kh_destroy(alias_table, ah);
-	ah = NULL;
+	size_t size;
+
+	if (vec == NULL) {
+		return;
+	}
+
+	size = cvector_size(vec);
+	for (size_t i = 0; i < size; i++) {
+		if (vec[i]) {
+			dbhash_atpair_free(vec[i]);
+		}
+	}
+	cvector_free(vec);
 }
 
 KHASH_MAP_INIT_INT(pipe_table, topic_queue *)
