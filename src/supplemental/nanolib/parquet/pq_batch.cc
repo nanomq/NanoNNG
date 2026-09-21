@@ -200,6 +200,15 @@ pq_array_init(pq_array *a, const pq_type *t, uint32_t length)
 				}
 			}
 			break;
+		case PQ_UINT8:
+			if (length > 0) {
+				a->u8 = (uint8_t *) pq_zalloc(
+				    sizeof(uint8_t) * length);
+				if (a->u8 == NULL) {
+					return -1;
+				}
+			}
+			break;
 		case PQ_BYTE_ARRAY:
 			if (length > 0) {
 				a->bin = (parquet_data_packet **) pq_zalloc(
@@ -300,6 +309,9 @@ pq_array_free(pq_array *a)
 		if (a->i64 != NULL) {
 			nng_free(a->i64, sizeof(int64_t) * a->length);
 		}
+		if (a->u8 != NULL) {
+			nng_free(a->u8, sizeof(uint8_t) * a->length);
+		}
 		if (a->bin != NULL) {
 			for (i = 0; i < a->length; i++) {
 				pq_packet_free(a->bin[i]);
@@ -310,6 +322,7 @@ pq_array_free(pq_array *a)
 	}
 	a->i32 = NULL;
 	a->i64 = NULL;
+	a->u8  = NULL;
 	a->bin = NULL;
 	if (a->child != NULL) {
 		pq_array_free(a->child);
@@ -363,6 +376,13 @@ pq_array_resize(pq_array *a, uint32_t length)
 			a->i64 = (int64_t *) pq_realloc(a->i64,
 			    sizeof(int64_t) * old, sizeof(int64_t) * length);
 			if (length > 0 && a->i64 == NULL) {
+				return -1;
+			}
+			break;
+		case PQ_UINT8:
+			a->u8 = (uint8_t *) pq_realloc(a->u8,
+			    sizeof(uint8_t) * old, sizeof(uint8_t) * length);
+			if (length > 0 && a->u8 == NULL) {
 				return -1;
 			}
 			break;
@@ -434,6 +454,19 @@ pq_array_set_i64(pq_array *a, uint32_t i, int64_t v)
 		return -1;
 	}
 	a->i64[i] = v;
+	if (a->valid != NULL) {
+		a->valid[i] = 1;
+	}
+	return 0;
+}
+
+int
+pq_array_set_u8(pq_array *a, uint32_t i, uint8_t v)
+{
+	if (pq_check_prim(a, i, PQ_UINT8) != 0) {
+		return -1;
+	}
+	a->u8[i] = v;
 	if (a->valid != NULL) {
 		a->valid[i] = 1;
 	}
@@ -1011,6 +1044,54 @@ pq_type_schema_can_frames(uint32_t n_planes)
 	return root;
 }
 
+pq_type *
+pq_type_schema_can_frames_compact(uint32_t n_planes)
+{
+	uint32_t  n_fields;
+	uint32_t  i;
+	pq_type **fields;
+	pq_type  *root;
+
+	if (n_planes > 64) {
+		n_planes = 64;
+	}
+	n_fields = 5 + n_planes;
+	fields   = (pq_type **) pq_zalloc(sizeof(pq_type *) * n_fields);
+	if (fields == NULL) {
+		return NULL;
+	}
+	fields[0] = pq_type_primitive(
+	    "ts", PQ_INT64, PQ_REQUIRED, PQ_ENC_RLE_DICT);
+	fields[1] = pq_type_primitive(
+	    "busid", PQ_INT32, PQ_REQUIRED, PQ_ENC_RLE_DICT);
+	fields[2] = pq_type_primitive(
+	    "canid", PQ_INT32, PQ_REQUIRED, PQ_ENC_RLE_DICT);
+	fields[3] = pq_type_primitive(
+	    "tsdiff", PQ_UINT8, PQ_REQUIRED, PQ_ENC_ADAPTIVE);
+	fields[4] = pq_type_primitive(
+	    "len", PQ_UINT8, PQ_REQUIRED, PQ_ENC_ADAPTIVE);
+	for (i = 0; i < n_planes; i++) {
+		char bname[8];
+
+		snprintf(bname, sizeof(bname), "b%u", i);
+		fields[5 + i] = pq_type_primitive(
+		    bname, PQ_UINT8, PQ_OPTIONAL, PQ_ENC_ADAPTIVE);
+	}
+	for (i = 0; i < n_fields; i++) {
+		if (fields[i] == NULL) {
+			uint32_t j;
+			for (j = 0; j < n_fields; j++) {
+				pq_type_free(fields[j]);
+			}
+			nng_free(fields, sizeof(pq_type *) * n_fields);
+			return NULL;
+		}
+	}
+	root = pq_type_struct("schema", PQ_REQUIRED, fields, n_fields);
+	nng_free(fields, sizeof(pq_type *) * n_fields);
+	return root;
+}
+
 pq_enc
 pq_enc_choose_i32(const pq_array *a)
 {
@@ -1078,6 +1159,69 @@ pq_enc_choose_i32(const pq_array *a)
 	return PQ_ENC_RLE_DICT;
 }
 
+pq_enc
+pq_enc_choose_u8(const pq_array *a)
+{
+	uint8_t  seen[256];
+	uint32_t i;
+	uint32_t n_present;
+	uint32_t n_unique;
+	uint32_t n_pairs;
+	uint32_t n_small;
+	int      have_prev;
+	uint8_t  prev;
+
+	if (a == NULL || a->u8 == NULL || a->length == 0) {
+		return PQ_ENC_RLE_DICT;
+	}
+	memset(seen, 0, sizeof(seen));
+	n_present = 0;
+	n_unique  = 0;
+	n_pairs   = 0;
+	n_small   = 0;
+	have_prev = 0;
+	prev      = 0;
+	for (i = 0; i < a->length; i++) {
+		uint8_t v;
+		int32_t d;
+
+		if (a->valid != NULL && a->valid[i] == 0) {
+			continue;
+		}
+		v = a->u8[i];
+		if (seen[v] == 0) {
+			seen[v] = 1;
+			n_unique++;
+		}
+		n_present++;
+		if (have_prev) {
+			n_pairs++;
+			d = (int32_t) v - (int32_t) prev;
+			if (d < 0) {
+				d = -d;
+			}
+			if (d > 128) {
+				d = 256 - d;
+			}
+			if (d <= 2) {
+				n_small++;
+			}
+		}
+		prev      = v;
+		have_prev = 1;
+	}
+	if (n_present < 2 || n_pairs == 0) {
+		return PQ_ENC_RLE_DICT;
+	}
+	if (n_unique <= 24) {
+		return PQ_ENC_RLE_DICT;
+	}
+	if (n_unique >= 40 && n_small * 100 >= n_pairs * 70) {
+		return PQ_ENC_DELTA;
+	}
+	return PQ_ENC_RLE_DICT;
+}
+
 static void
 pq_type_resolve_adaptive(pq_type *t, pq_array *a)
 {
@@ -1090,6 +1234,8 @@ pq_type_resolve_adaptive(pq_type *t, pq_array *a)
 		if (t->enc == PQ_ENC_ADAPTIVE) {
 			if (t->phys == PQ_INT32) {
 				t->enc = pq_enc_choose_i32(a);
+			} else if (t->phys == PQ_UINT8) {
+				t->enc = pq_enc_choose_u8(a);
 			} else {
 				t->enc = PQ_ENC_DEFAULT;
 			}

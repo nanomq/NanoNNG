@@ -688,6 +688,7 @@ pq_type_to_arrow(const pq_type *t)
 	if (t->kind == PQ_PRIMITIVE) {
 		switch (t->phys) {
 		case PQ_INT32:
+		case PQ_UINT8: /* memory uint8; on-disk INT32 for compatibility */
 			return arrow::int32();
 		case PQ_INT64:
 			return arrow::uint64();
@@ -713,6 +714,7 @@ pq_make_builder(const pq_type *t)
 	if (t->kind == PQ_PRIMITIVE) {
 		switch (t->phys) {
 		case PQ_INT32:
+		case PQ_UINT8:
 			return std::make_shared<arrow::Int32Builder>(pool);
 		case PQ_INT64:
 			return std::make_shared<arrow::UInt64Builder>(pool);
@@ -748,6 +750,10 @@ pq_append_one(arrow::ArrayBuilder *b, const pq_array *a, uint32_t i)
 		if (a->type->phys == PQ_INT32) {
 			return static_cast<arrow::Int32Builder *>(b)->Append(
 			    a->i32[i]);
+		}
+		if (a->type->phys == PQ_UINT8) {
+			return static_cast<arrow::Int32Builder *>(b)->Append(
+			    (int32_t) a->u8[i]);
 		}
 		if (a->type->phys == PQ_INT64) {
 			return static_cast<arrow::UInt64Builder *>(b)->Append(
@@ -792,7 +798,7 @@ pq_append_one(arrow::ArrayBuilder *b, const pq_array *a, uint32_t i)
 static int
 pq_delta_ok(pq_phys phys)
 {
-	return phys == PQ_INT32 || phys == PQ_INT64;
+	return phys == PQ_INT32 || phys == PQ_INT64 || phys == PQ_UINT8;
 }
 
 static void
@@ -808,7 +814,7 @@ pq_apply_leaf_encoding(parquet::WriterProperties::Builder &builder,
 		if (enc == PQ_ENC_DEFAULT) {
 			if (t->phys == PQ_INT64) {
 				enc = PQ_ENC_DELTA;
-			} else if (t->phys == PQ_INT32) {
+			} else if (t->phys == PQ_INT32 || t->phys == PQ_UINT8) {
 				enc = PQ_ENC_RLE_DICT;
 			} else {
 				enc = PQ_ENC_PLAIN;

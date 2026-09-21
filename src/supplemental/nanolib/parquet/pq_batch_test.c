@@ -396,12 +396,52 @@ test_enc_choose_i32(void)
 	pq_type_free(t);
 }
 
+static void
+test_enc_choose_u8_and_compact_schema(void)
+{
+	pq_type      *t;
+	pq_array     *a;
+	parquet_data *batch;
+	pq_array     *td;
+	uint32_t      i;
+
+	t = pq_type_primitive("tsdiff", PQ_UINT8, PQ_REQUIRED, PQ_ENC_ADAPTIVE);
+	NUTS_TRUE(t != NULL);
+	a = pq_array_from_type(t, 80);
+	NUTS_TRUE(a != NULL);
+	for (i = 0; i < 80; i++) {
+		NUTS_TRUE(pq_array_set_u8(a, i, 7) == 0);
+	}
+	NUTS_TRUE(pq_enc_choose_u8(a) == PQ_ENC_RLE_DICT);
+	pq_array_free(a);
+
+	a = pq_array_from_type(t, 256);
+	NUTS_TRUE(a != NULL);
+	for (i = 0; i < 256; i++) {
+		NUTS_TRUE(pq_array_set_u8(a, i, (uint8_t) i) == 0);
+	}
+	NUTS_TRUE(pq_enc_choose_u8(a) == PQ_ENC_DELTA);
+	pq_array_free(a);
+	pq_type_free(t);
+
+	t = pq_type_schema_can_frames_compact(2);
+	NUTS_TRUE(t != NULL);
+	batch = pq_batch_from_type(t, 3);
+	NUTS_TRUE(batch != NULL);
+	td = pq_batch_field(batch, "tsdiff");
+	NUTS_TRUE(td != NULL && td->u8 != NULL && td->i32 == NULL);
+	NUTS_TRUE(pq_array_set_u8(td, 0, 10) == 0);
+	NUTS_TRUE(td->u8[0] == 10);
+	parquet_data_free(batch);
+}
+
 NUTS_TESTS = {
 	{ "pq_batch flat alloc tree", test_flat_alloc_tree },
 	{ "pq_batch flat write/read", test_flat_write_read },
 	{ "pq_batch scheme A nested", test_scheme_a_roundtrip },
 	{ "pq_batch scheme B groups", test_scheme_b_roundtrip },
 	{ "pq_enc choose i32", test_enc_choose_i32 },
+	{ "pq_enc choose u8 compact", test_enc_choose_u8_and_compact_schema },
 	{ "pq_batch can frames enc", test_can_frames_enc_and_row_groups },
 	{ NULL, NULL },
 };

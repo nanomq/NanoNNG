@@ -25,9 +25,15 @@ typedef enum {
 } pq_kind;
 
 typedef enum {
-	PQ_INT32 = 0, /* tsdiff / len / busid / canid */
+	PQ_INT32 = 0, /* busid / canid (and legacy can_ba columns) */
 	PQ_INT64,     /* ts / block_ts */
 	PQ_BYTE_ARRAY,
+	/*
+	 * Compact 0..255 leaf stored as uint8_t[] in memory. On write it is
+	 * widened to Arrow/Parquet INT32 so existing can_ba readers stay
+	 * compatible; used by can_ba_split for tsdiff/len/b*.
+	 */
+	PQ_UINT8,
 } pq_phys;
 
 typedef enum {
@@ -93,6 +99,7 @@ struct pq_array {
 	/* PRIMITIVE */
 	int32_t              *i32;
 	int64_t              *i64;
+	uint8_t              *u8; /* PQ_UINT8 only */
 	parquet_data_packet **bin;
 };
 
@@ -160,6 +167,7 @@ void      pq_array_free(pq_array *a);
 int       pq_array_resize(pq_array *a, uint32_t length);
 int       pq_array_set_i32(pq_array *a, uint32_t i, int32_t v);
 int       pq_array_set_i64(pq_array *a, uint32_t i, int64_t v);
+int       pq_array_set_u8(pq_array *a, uint32_t i, uint8_t v);
 int       pq_array_set_bin(pq_array *a, uint32_t i, parquet_data_packet *pkt);
 int       pq_array_set_null(pq_array *a, uint32_t i);
 pq_array *pq_struct_field(pq_array *st, const char *name);
@@ -187,8 +195,15 @@ pq_type *pq_type_schema_dyn_groups(const char **group_names,
 /* One Parquet row per CAN frame: ts, busid, canid, tsdiff, len, b0..b{n-1}.
  * ts is RLE_DICT (few block_ts values). Payload planes start as ADAPTIVE. */
 pq_type *pq_type_schema_can_frames(uint32_t n_planes);
+/*
+ * can_ba_split compact schema: same logical columns / on-disk INT32 as
+ * pq_type_schema_can_frames, but tsdiff/len/b* are PQ_UINT8 in memory and
+ * use ADAPTIVE encoding (dict vs DELTA).
+ */
+pq_type *pq_type_schema_can_frames_compact(uint32_t n_planes);
 /* Pick RLE_DICT (enum/status) or DELTA (byte counter) from column values. */
 pq_enc pq_enc_choose_i32(const pq_array *a);
+pq_enc pq_enc_choose_u8(const pq_array *a);
 /* Replace PQ_ENC_ADAPTIVE leaves using the batch arrays. */
 void pq_batch_resolve_adaptive(parquet_data *data);
 
