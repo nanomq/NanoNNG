@@ -110,6 +110,10 @@ struct parquet_data {
 	parquet_data_packet ***payload_arr;
 	pq_type               *schema_tree;
 	pq_array              *root;
+	/* Optional multi-file flush chain (owned by head; free walks next). */
+	parquet_data          *next;
+	/* Optional filename tag inserted before ts range, e.g. "classic"/"fd". */
+	char                  *name_tag;
 };
 
 struct parquet_data_ret {
@@ -120,6 +124,8 @@ struct parquet_data_ret {
 	parquet_data_packet ***payload_arr;
 	pq_type               *schema_tree;
 	pq_array              *root;
+	parquet_data_ret      *next;
+	char                  *name_tag;
 };
 
 

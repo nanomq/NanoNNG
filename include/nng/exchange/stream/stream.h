@@ -40,6 +40,8 @@ struct parquet_data_ret {
 	parquet_data_packet ***payload_arr;
 	void                  *schema_tree;
 	void                  *root;
+	parquet_data_ret      *next;
+	char                  *name_tag;
 };
 
 struct parquet_data {
@@ -55,6 +57,8 @@ struct parquet_data {
 	parquet_data_packet ***payload_arr;
 	void                  *schema_tree;
 	void                  *root;
+	parquet_data          *next;
+	char                  *name_tag;
 };
 
 NNG_DECL parquet_data *parquet_data_alloc(char **schema,

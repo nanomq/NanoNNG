@@ -25,6 +25,9 @@
 #include "nng/supplemental/nanolib/blf.h"
 
 #define NANO_MAX_MQ_BUFFER_LEN 1024
+// Bound on linear probing when the millisecond-granularity rbmsgmap key
+// collides with an in-flight message (see exchange_client_handle_msg()).
+#define NANO_EX_RBMSGMAP_PROBE_MAX 4096
 
 #ifndef NNI_PROTO_EXCHANGE_V0
 #define NNI_PROTO_EXCHANGE_V0 NNI_PROTO(15, 0)
@@ -556,8 +559,11 @@ static struct stream_decoded_data *fuzz_search_result_cat(nng_msg **msgList,
 														 struct cmd_data *cmd_data)
 {
 	struct stream_data_in *stream_data = NULL;
-	struct stream_data_out *stream_data_out = NULL;
+	parquet_data *stream_data_out = NULL;
+	parquet_data *batch = NULL;
 	struct stream_decoded_data *decoded_data = NULL;
+	struct stream_decoded_data *part = NULL;
+	size_t total = 0;
 
 	if (msgList == NULL || count == 0) {
 		return NULL;
@@ -576,37 +582,66 @@ static struct stream_decoded_data *fuzz_search_result_cat(nng_msg **msgList,
 		return NULL;
 	}
 
-	parquet_data_ret *parquet_data_ele = ringbus_parquet_data_ret_init(stream_data_out, cmd_data);
-	if (parquet_data_ele == NULL) {
-		log_error("ringbus_parquet_data_ret_init failed!");
-		parquet_data_free((parquet_data *)stream_data_out);
-		ringbus_stream_data_in_free(stream_data);
-		return NULL;
+	/* Walk parquet_data.next chains (can_ba_split); concat decode output. */
+	for (batch = stream_data_out; batch != NULL; batch = batch->next) {
+		parquet_data_ret *parquet_data_ele =
+		    ringbus_parquet_data_ret_init(
+		        (struct stream_data_out *) batch, cmd_data);
+		if (parquet_data_ele == NULL) {
+			log_error("ringbus_parquet_data_ret_init failed!");
+			stream_decoded_data_free(decoded_data);
+			parquet_data_free(stream_data_out);
+			ringbus_stream_data_in_free(stream_data);
+			return NULL;
+		}
+
+		part = stream_decode(stream_type, parquet_data_ele);
+		if (parquet_data_ele->schema != NULL) {
+			nng_free(parquet_data_ele->schema,
+			    sizeof(char *) * parquet_data_ele->col_len);
+		}
+		if (parquet_data_ele->payload_arr != NULL) {
+			nng_free(parquet_data_ele->payload_arr,
+			    sizeof(parquet_data_packet *) *
+			        parquet_data_ele->col_len);
+		}
+		if (parquet_data_ele->root == NULL &&
+		    parquet_data_ele->ts != NULL) {
+			nng_free(parquet_data_ele->ts,
+			    sizeof(uint64_t) * parquet_data_ele->row_len);
+		}
+		nng_free(parquet_data_ele, sizeof(struct parquet_data_ret));
+
+		if (part == NULL || part->data == NULL || part->len == 0) {
+			stream_decoded_data_free(part);
+			continue;
+		}
+		if (decoded_data == NULL) {
+			decoded_data = part;
+			total        = part->len;
+			continue;
+		}
+		{
+			void *merged = nng_alloc(total + part->len);
+			if (merged == NULL) {
+				stream_decoded_data_free(part);
+				stream_decoded_data_free(decoded_data);
+				parquet_data_free(stream_data_out);
+				ringbus_stream_data_in_free(stream_data);
+				return NULL;
+			}
+			memcpy(merged, decoded_data->data, total);
+			memcpy((uint8_t *) merged + total, part->data,
+			    part->len);
+			nng_free(decoded_data->data, decoded_data->len);
+			decoded_data->data = merged;
+			decoded_data->len  = (uint32_t) (total + part->len);
+			total              = decoded_data->len;
+			stream_decoded_data_free(part);
+		}
 	}
 
-	decoded_data = stream_decode(stream_type, parquet_data_ele);
-	if (decoded_data == NULL) {
-		log_error("stream_decode failed!");
-	}
-
-	/* parquet_data_ele borrows schema/payload (flat) or root/ts (nested)
-	 * from encode output; only free wrapper arrays, never
-	 * parquet_data_ret_free() or borrowed nested ts/root. */
-	if (parquet_data_ele->schema != NULL) {
-		nng_free(parquet_data_ele->schema,
-		    sizeof(char *) * parquet_data_ele->col_len);
-	}
-	if (parquet_data_ele->payload_arr != NULL) {
-		nng_free(parquet_data_ele->payload_arr,
-		    sizeof(parquet_data_packet *) * parquet_data_ele->col_len);
-	}
-	if (parquet_data_ele->root == NULL && parquet_data_ele->ts != NULL) {
-		nng_free(parquet_data_ele->ts,
-		    sizeof(uint64_t) * parquet_data_ele->row_len);
-	}
-	nng_free(parquet_data_ele, sizeof(struct parquet_data_ret));
-
-	parquet_data_free((parquet_data *) stream_data_out);
+	parquet_data_free(stream_data_out);
 	ringbus_stream_data_in_free(stream_data);
 
 	return decoded_data;
@@ -1014,18 +1049,37 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 {
 	int ret = 0;
 	uint64_t key;
+	uint32_t probes = 0;
 	nni_msg *tmsg = NULL;
 
 	key  = nni_msg_get_timestamp(msg);
 	nni_aio_set_prov_data(aio, NULL);
 
-	tmsg = nni_id_get(&ex_node->sock->rbmsgmap, key);
-	if (tmsg != NULL) {
-		log_error("[***]msg already in rbmsgmap, overwirte is not allowed");
-		log_debug("[%s]msg already in rbmsgmap, overwirte is not allowed", ex_node->ex->topic);
-		/* free msg here! */
-		nni_msg_free(msg);
-		return -1;
+	/*
+	 * rbmsgmap is keyed by millisecond timestamp, but high-frequency
+	 * producers (e.g. CAN bus telemetry forwarded 1:1 as MQTT messages)
+	 * routinely emit many distinct messages within the same
+	 * millisecond. Treating that as "duplicate, drop it" silently
+	 * discards perfectly valid data and is the main reason batches can
+	 * end up empty/undersized under load. Probe forward for a free slot
+	 * instead, and persist the (possibly bumped) key back onto the
+	 * message itself so the later cleanup pass below - which
+	 * re-derives the key via nni_msg_get_timestamp() - removes the
+	 * exact same rbmsgmap entry we insert here.
+	 */
+	while ((tmsg = nni_id_get(&ex_node->sock->rbmsgmap, key)) != NULL) {
+		if (++probes >= NANO_EX_RBMSGMAP_PROBE_MAX) {
+			log_error("[***]msg already in rbmsgmap, overwirte is not allowed");
+			log_debug("[%s]msg already in rbmsgmap, overwirte is not allowed",
+			    ex_node->ex->topic);
+			/* free msg here! */
+			nni_msg_free(msg);
+			return -1;
+		}
+		key++;
+	}
+	if (probes > 0) {
+		nni_msg_set_timestamp(msg, key);
 	}
 
 	// Currently only allow single ringbus

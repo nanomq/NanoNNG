@@ -273,8 +273,79 @@ test_exchange_replay_cmd_parse(void)
 	NUTS_TRUE(nng_exchange_replay_cmd_parse(NULL, &cmd) != 0);
 }
 
+/*
+ * Regression test for rbmsgmap key collisions: high-frequency producers
+ * (e.g. CAN bus telemetry) routinely publish multiple distinct messages
+ * within the same millisecond timestamp. exchange_client_handle_msg()
+ * used to treat any rbmsgmap key collision as "duplicate, drop it",
+ * silently discarding the second (and any subsequent) message sharing a
+ * timestamp with one still buffered. Verify that publishing several
+ * messages with the exact same key all survive into the ringbuffer
+ * instead of being dropped.
+ */
+static void
+test_exchange_client_key_collision(void)
+{
+	int rv = 0;
+	uint64_t key = 42;
+	nng_socket sock;
+
+	nng_socket pair0_sock;
+	nng_rep0_open(&pair0_sock);
+	sock.data = &pair0_sock;
+
+	NUTS_TRUE(nng_exchange_client_open(&sock) == 0);
+
+	conf_exchange_node *conf = NULL;
+	conf = nng_alloc(sizeof(conf_exchange_node));
+	NUTS_TRUE(conf != NULL);
+	conf->name = "exchange1";
+	conf->topic = "topic1";
+
+	ringBuffer_node *rb_node = NNI_ALLOC_STRUCT(rb_node);
+	NUTS_TRUE(rb_node != NULL);
+	rb_node->name = "ringBuffer1";
+	rb_node->cap = 10;
+	rb_node->fullOp = RB_FULL_NONE;
+
+	conf->rbufs = NULL;
+
+	cvector_push_back(conf->rbufs, rb_node);
+	conf->rbufs_sz = cvector_size(conf->rbufs);
+
+	nng_socket_set_ptr(sock, NNG_OPT_EXCHANGE_BIND, conf);
+
+	nni_sock *nsock = NULL;
+	rv = nni_sock_find(&nsock, sock.id);
+	NUTS_TRUE(rv == 0 && nsock != NULL);
+	nni_sock_rele(nsock);
+
+	/* Publish 5 distinct messages that all collide on the same key. */
+	for (int i = 0; i < 5; i++) {
+		client_publish(sock, "topic1", key, NULL, 0, 0, 0);
+	}
+
+	uint32_t *lenp = nng_alloc(sizeof(uint32_t));
+	*lenp = 0;
+	nng_msg **msgList = NULL;
+	client_get_and_clean_msgs(sock, lenp, &msgList);
+	/* All 5 messages must have been retained, none silently dropped. */
+	NUTS_TRUE(*lenp == 5 && msgList != NULL);
+	free_msg_list(msgList, NULL, lenp, 1);
+
+	nni_sock_close(nsock);
+
+	cvector_free(conf->rbufs);
+	nng_free(conf, sizeof(conf_exchange_node));
+	nng_free(rb_node, sizeof(ringBuffer_node));
+
+	return;
+}
+
 NUTS_TESTS = {
 	{ "Exchange client test", test_exchange_client },
 	{ "Exchange replay cmd parse", test_exchange_replay_cmd_parse },
+	{ "Exchange client rbmsgmap key collision test",
+	    test_exchange_client_key_collision },
 	{ NULL, NULL },
 };

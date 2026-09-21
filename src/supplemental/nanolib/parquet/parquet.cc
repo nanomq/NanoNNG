@@ -123,25 +123,29 @@ static int parquet_check_is_compat_and_decrypt(
 	char *filename, bool &is_compat_mode, bool &is_encrypted);
 
 static char *
-get_file_name(conf_parquet
- *conf, uint64_t key_start, uint64_t key_end)
+get_file_name(conf_parquet *conf, uint64_t key_start, uint64_t key_end,
+    const char *name_tag)
 {
 	char *file_name = NULL;
 	char *dir       = conf->dir;
 	char *prefix    = conf->file_name_prefix;
-
 	size_t prefix_len = prefix != NULL ? strlen(prefix) : 0;
+	size_t tag_len    = name_tag != NULL ? strlen(name_tag) : 0;
 
-	file_name = (char *) malloc(prefix_len + strlen(dir) +
-	    UINT64_MAX_DIGITS + UINT64_MAX_DIGITS + 16);
+	file_name = (char *) malloc(prefix_len + tag_len + strlen(dir) +
+	    UINT64_MAX_DIGITS + UINT64_MAX_DIGITS + 24);
 	if (file_name == NULL) {
 		log_error("Failed to allocate memory for file name.");
 		return NULL;
 	}
 
-
-	sprintf(file_name, "%s/%s-%" PRIu64 "~%" PRIu64 ".parquet", dir,
-	    prefix, key_start, key_end);
+	if (tag_len > 0) {
+		sprintf(file_name, "%s/%s-%s-%" PRIu64 "~%" PRIu64 ".parquet",
+		    dir, prefix, name_tag, key_start, key_end);
+	} else {
+		sprintf(file_name, "%s/%s-%" PRIu64 "~%" PRIu64 ".parquet", dir,
+		    prefix, key_start, key_end);
+	}
 	return file_name;
 }
 
@@ -279,6 +283,8 @@ parquet_data_alloc(char **schema, parquet_data_packet ***payload_arr,
 	data->payload_arr = payload_arr;
 	data->schema_tree = NULL;
 	data->root        = NULL;
+	data->next        = NULL;
+	data->name_tag    = NULL;
 	if (pq_batch_attach_flat(data) != 0) {
 		log_warn("pq_batch_attach_flat failed; using legacy flat buffers");
 		data->schema_tree = NULL;
@@ -287,8 +293,8 @@ parquet_data_alloc(char **schema, parquet_data_packet ***payload_arr,
 	return data;
 }
 
-void
-parquet_data_free(parquet_data *data)
+static void
+parquet_data_free_one(parquet_data *data)
 {
 	if (data == NULL) {
 		return;
@@ -327,7 +333,23 @@ parquet_data_free(parquet_data *data)
 		FREE_IF_NOT_NULL(data->ts, data->row_len);
 		FREE_IF_NOT_NULL(data->payload_arr, data->col_len);
 	}
+	if (data->name_tag != NULL) {
+		nng_free(data->name_tag, strlen(data->name_tag) + 1);
+		data->name_tag = NULL;
+	}
 	delete data;
+}
+
+void
+parquet_data_free(parquet_data *data)
+{
+	while (data != NULL) {
+		parquet_data *next = data->next;
+
+		data->next = NULL;
+		parquet_data_free_one(data);
+		data = next;
+	}
 }
 
 parquet_object *
@@ -1735,54 +1757,79 @@ parquet_write(parquet_object *elem)
 		return -1;
 	}
 
-	uint32_t  row_len = elem->data->row_len;
-	uint64_t *ts_arr  = elem->data->ts;
-	if (ts_arr == NULL) {
-		pq_batch_bind_ts(elem->data);
-		ts_arr = elem->data->ts;
-	}
-	if (ts_arr == NULL) {
-		log_error("Schema set error.");
+	parquet_data *batch = elem->data;
+	if (batch == NULL) {
+		log_error("parquet_write missing data");
 		return -1;
 	}
 
 	log_debug("parquet_write");
-	char *filename = get_file_name(conf, ts_arr[0], ts_arr[row_len - 1]);
-	if (filename == NULL) {
-		parquet_object_free_and_trim(elem);
-		log_error("Failed to get file name");
-		return -1;
-	}
+	while (batch != NULL) {
+		uint32_t  row_len = batch->row_len;
+		uint64_t *ts_arr  = batch->ts;
 
-	if (parquet_write_file(
-	        conf, filename, elem->data, elem->topic, elem->type) != 0) {
-		parquet_object_free_and_trim(elem);
-		log_error("parquet_write_file failed");
-		return -1;
-	}
-	char *md5_file_name =
-	    compute_and_rename_file_withMD5(filename, conf, elem->topic);
-	if (md5_file_name == nullptr) {
-		parquet_object_free_and_trim(elem);
-		log_error("fail to get md5 from parquet file");
-		return -1;
-	}
+		if (ts_arr == NULL) {
+			pq_batch_bind_ts(batch);
+			ts_arr = batch->ts;
+		}
+		if (ts_arr == NULL || row_len == 0) {
+			log_error("Schema set error. topic=%s name_tag=%s",
+			    elem->topic,
+			    batch->name_tag != NULL ? batch->name_tag : "-");
+			parquet_object_free_and_trim(elem);
+			return -1;
+		}
 
-	char md5_buffer[MD5_LEN + 1];
-	log_debug("compute md5 after rename");
-	int ret = ComputeFileMD5(md5_file_name, md5_buffer);
-	if (ret != 0) {
-		log_error("Failed to calculate md5sum");
+		char *filename = get_file_name(
+		    conf, ts_arr[0], ts_arr[row_len - 1], batch->name_tag);
+		if (filename == NULL) {
+			parquet_object_free_and_trim(elem);
+			log_error("Failed to get file name. topic=%s "
+			          "name_tag=%s",
+			    elem->topic,
+			    batch->name_tag != NULL ? batch->name_tag : "-");
+			return -1;
+		}
+
+		if (parquet_write_file(
+		        conf, filename, batch, elem->topic, elem->type) != 0) {
+			free(filename);
+			parquet_object_free_and_trim(elem);
+			log_error("parquet_write_file failed. topic=%s "
+			          "name_tag=%s",
+			    elem->topic,
+			    batch->name_tag != NULL ? batch->name_tag : "-");
+			return -1;
+		}
+		char *md5_file_name =
+		    compute_and_rename_file_withMD5(filename, conf, elem->topic);
+		if (md5_file_name == nullptr) {
+			parquet_object_free_and_trim(elem);
+			log_error("fail to get md5 from parquet file. "
+			          "topic=%s name_tag=%s",
+			    elem->topic,
+			    batch->name_tag != NULL ? batch->name_tag : "-");
+			return -1;
+		}
+
+		char md5_buffer[MD5_LEN + 1];
+		log_debug("compute md5 after rename: %s", md5_file_name);
+		int ret = ComputeFileMD5(md5_file_name, md5_buffer);
+		if (ret != 0) {
+			log_error("Failed to calculate md5sum");
+		}
+
+		parquet_file_range *range = parquet_file_range_alloc(
+		    0, batch->row_len - 1, md5_file_name);
+		update_parquet_file_ranges(conf, elem, range);
+
+		log_debug("wait for parquet_queue_mutex");
+		pthread_mutex_lock(&parquet_queue_mutex);
+		file_manager.update_queue(elem->topic, md5_file_name);
+		pthread_mutex_unlock(&parquet_queue_mutex);
+
+		batch = batch->next;
 	}
-
-	parquet_file_range *range = parquet_file_range_alloc(
-	    0, elem->data->row_len - 1, md5_file_name);
-	update_parquet_file_ranges(conf, elem, range);
-
-	log_debug("wait for parquet_queue_mutex");
-	pthread_mutex_lock(&parquet_queue_mutex);
-	file_manager.update_queue(elem->topic, md5_file_name);
-	pthread_mutex_unlock(&parquet_queue_mutex);
 
 	log_info("flush finished!");
 	parquet_object_free_and_trim(elem);

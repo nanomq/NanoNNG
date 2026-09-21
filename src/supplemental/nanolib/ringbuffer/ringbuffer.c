@@ -12,7 +12,6 @@
 
 static inline int ringBuffer_get_msgs(ringBuffer_t *rb, unsigned int *count, nng_msg ***list)
 {
-	unsigned int i = 0;
 	unsigned int j = 0;
 
 	nng_msg **newList = NULL;
@@ -27,22 +26,24 @@ static inline int ringBuffer_get_msgs(ringBuffer_t *rb, unsigned int *count, nng
 		return -1;
 	}
 
-	for (i = rb->head; i < rb->size; i++) {
-		i = i % rb->cap;
+	/*
+	 * Walk exactly *count elements starting at rb->head, wrapping
+	 * around rb->cap. NOTE: the loop bound below must be the number of
+	 * elements walked (j), not a raw ring index compared against
+	 * rb->size - rb->head is not necessarily 0, so comparing an
+	 * unwrapped index against rb->size would stop early (or never
+	 * start) whenever head != 0.
+	 */
+	for (j = 0; j < *count; j++) {
+		unsigned int i = (rb->head + j) % rb->cap;
 		nng_msg *msg = rb->msgs[i].data;
 		nng_msg_set_proto_data(msg, NULL, (void *)(uintptr_t)rb->msgs[i].key);
 
 		newList[j] = msg;
-
-		j++;
-		if (j == *count) {
-			*list = newList;
-			return 0;
-		}
 	}
 
-	nng_free(newList, sizeof(*newList));
-	return -1;
+	*list = newList;
+	return 0;
 }
 
 static inline void ringBuffer_clean_msgs(ringBuffer_t *rb, int needFree)
