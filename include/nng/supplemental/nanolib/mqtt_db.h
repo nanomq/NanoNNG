@@ -7,12 +7,6 @@
 #include <string.h>
 #include "nng/nng.h"
 
-
-typedef enum {
-	MQTT_VERSION_V311 = 4,
-	MQTT_VERSION_V5   = 5,
-} mqtt_version_t;
-
 typedef struct dbtree            dbtree;
 
 typedef struct {
