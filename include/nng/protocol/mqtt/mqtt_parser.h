@@ -112,8 +112,12 @@ NNG_DECL nng_msg *nano_encode_publish_msg(uint8_t proto_ver, uint8_t qos,
 // TODO : check duplicated declaration
 NNG_DECL reason_code check_properties(property *prop, nng_msg *msg);
 NNG_DECL reason_code check_will_properties(property *prop);
+NNG_DECL reason_code check_downstream_pub_properties(property *prop);
+NNG_DECL void decode_pub_msg_expiry_property(nng_msg *msg);
+NNG_DECL reason_code sanitize_out_pub_properties(property *prop);
 NNG_DECL property *decode_buf_properties(uint8_t *packet, uint32_t packet_len,
     uint32_t *pos, uint32_t *len, bool copy_value);
+NNG_DECL void      property_remove(property *prop_list, uint8_t prop_id);
 NNG_DECL property *decode_properties(
     nng_msg *msg, uint32_t *pos, uint32_t *len, bool copy_value);
 NNG_DECL int      encode_properties(nng_msg *msg, property *prop, uint8_t cmd);
@@ -155,4 +159,5 @@ NNG_DECL nng_msg *nng_sub0_msg_adapter(
     nng_msg *origin, conf_nng_sub_node *snode);
 NNG_DECL size_t str_append(char **dest, const char *str);
 
+NNG_DECL bool is_msg_expired(nng_msg *msg);
 #endif // NNG_MQTT_H

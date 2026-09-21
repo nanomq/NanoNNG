@@ -3142,6 +3142,7 @@ void
 conf_bridge_pnode_init(conf_nng_pub_node *node)
 {
 	node->name = NULL;
+	node->enable = true;
 	node->pub_sock = (nng_socket) NNG_SOCKET_INITIALIZER;
 	node->pub_url = NULL;
 	node->clientid = NULL;
@@ -3154,6 +3155,7 @@ void
 conf_bridge_snode_init(conf_nng_sub_node *node)
 {
 	node->name = NULL;
+	node->enable = true;
 	node->sub_sock = (nng_socket) NNG_SOCKET_INITIALIZER;
 	node->sub_url = NULL;
 	node->clientid = NULL;
@@ -3935,6 +3937,8 @@ print_nng_proxy_pub_conf(conf_nng_bridge *proxy)
 		}
 
 		const char *name = node->name ? node->name : "";
+		log_info("bridges.nng.pub.%s.enable:    %s", name,
+		    node->enable ? "true" : "false");
 		log_info("bridges.nng.pub.%s.pub_url:   %s", name,
 		    node->pub_url ? node->pub_url : "");
 		log_info("bridges.nng.pub.%s.clientid:  %s", name,
@@ -3975,6 +3979,8 @@ print_nng_proxy_sub_conf(conf_nng_bridge *proxy)
 		}
 
 		const char *name = node->name ? node->name : "";
+		log_info("bridges.nng.sub.%s.enable:    %s", name,
+		    node->enable ? "true" : "false");
 		log_info("bridges.nng.sub.%s.sub_url:   %s", name,
 		    node->sub_url ? node->sub_url : "");
 		log_info("bridges.nng.sub.%s.clientid:  %s", name,

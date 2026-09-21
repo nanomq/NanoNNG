@@ -791,7 +791,7 @@ mqtt_timer_cb(void *arg)
 			// send pingreq
 			nni_msg_clone(p->pingmsg);
 			nni_aio_set_msg(&p->send_aio, p->pingmsg);
-			log_info("PROTOCOL: mqtt_timer_cb", "send PINGREQ");
+			log_debug("PROTOCOL: send PINGREQ");
 			nni_pipe_send(p->pipe, &p->send_aio);
 			nni_mtx_unlock(&s->mtx);
 			log_debug("Send pingreq (sock%p)(%dms)", s, s->keepalive);
@@ -995,6 +995,9 @@ mqtt_recv_cb(void *arg)
 			return;
 		}
 	} else if (s->mqtt_ver == MQTT_PROTOCOL_VERSION_v5) {
+		if ((*(uint8_t *) nni_msg_header(msg) & 0xF0) == CMD_PUBLISH) {
+			nni_msg_set_cmd_type(msg, CMD_PUBLISH_V5_RECV);
+		}
 		rv = nni_mqttv5_msg_decode(msg);
 		if (rv != MQTT_SUCCESS) {
 			// Msg should be clear if decode failed. We reuse it to send disconnect.
@@ -1381,8 +1384,8 @@ mqtt_ctx_cancel_send(nni_aio *aio, void *arg, int rv)
 			} else {
 #ifdef NNG_ENABLE_STATS
 				nni_stat_inc(&s->msg_send_drop, 1);
-			}
 #endif
+			}
 #else
 #ifdef NNG_ENABLE_STATS
 			nni_stat_inc(&s->msg_send_drop, 1);

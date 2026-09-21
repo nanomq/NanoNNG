@@ -113,9 +113,10 @@ NNG_DECL nng_msg *dbtree_delete_retain(dbtree *db, char *topic);
  * @brief dbtree_find_retain - Get all retain message to this topic.
  * @param db - dbtree
  * @param topic - topic
+ * @param rets - vector of retained msgs
  * @return dbtree_retain_msg pointer vector
  */
-NNG_DECL nng_msg **dbtree_find_retain(dbtree *db, char *topic);
+NNG_DECL nng_msg ***dbtree_find_retain(dbtree *db, char *topic, nng_msg ***vec);
 
 /**
  * @brief dbtree_find_shared_clients - This function

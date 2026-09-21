@@ -773,9 +773,10 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	}
 	// password
 	if (rv == 0 && (cparam->con_flag & 0x40) > 0) {
-		if (cparam->username.body == NULL) {
-			// log_warn("Got password but no username!");
-			// return PROTOCOL_ERROR;
+		if (cparam->username.body == NULL &&
+		    cparam->pro_ver != MQTT_PROTOCOL_VERSION_v5) {
+			log_warn("Got password but no username!");
+			return PROTOCOL_ERROR;
 		}
 		cparam->password.body =
 		    copyn_utf8_str(packet, &pos, &len_of_str, max-pos);
@@ -1204,6 +1205,11 @@ nano_dismsg_composer(reason_code code, char* rstr, uint8_t *ref, property *prop)
 		break;
 	case MALFORMED_PACKET:
 		buf[0] = (uint8_t)MALFORMED_PACKET;
+		nng_msg_append(msg, buf, 1);
+		break;
+	case NOT_AUTHORIZED:
+	case BANNED:
+		buf[0] = (uint8_t)NOT_AUTHORIZED;
 		nng_msg_append(msg, buf, 1);
 		break;
 	default:
@@ -2394,4 +2400,27 @@ nng_sub0_msg_adapter(nng_msg *origin, conf_nng_sub_node *snode)
 		nng_free(dynamic_topic, dynamic_topic_len + 1);
 	}
 	return mqtt_msg;
+}
+
+bool
+is_msg_expired(nng_msg *msg)
+{
+	if (msg == NULL) {
+		return false;
+	}
+	if (nng_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
+		property *prop = nng_mqtt_msg_get_publish_property(msg);
+		nng_time       rtime = nni_msg_get_timestamp(msg);
+		nng_time       ntime = nng_clock();
+		property_data *data  = property_get_value(prop, MESSAGE_EXPIRY_INTERVAL);
+		if (data && ntime > rtime + ((nng_time)data->p_value.u32 * 1000)) {
+			return true;
+		} else if (data) {
+			// TODO replace exp interval with new value without
+			// touching prop?
+			//  data->p_value.u32 =
+			//      data->p_value.u32 - (ntime - rtime) / 1000;
+		}
+	}
+	return false;
 }
