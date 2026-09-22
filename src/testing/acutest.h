@@ -273,13 +273,14 @@
 /* The unit test files should not rely on anything below. */
 
 #include <ctype.h>
+#include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <setjmp.h>
 
-#if defined(unix) || defined(__unix__) || defined(__unix) || defined(__APPLE__)
+#if defined(unix) || defined(__unix__) || defined(__unix) || defined(__APPLE__) || defined(__QNX__)
     #define ACUTEST_UNIX_       1
     #include <errno.h>
     #include <libgen.h>

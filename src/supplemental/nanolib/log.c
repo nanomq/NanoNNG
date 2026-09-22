@@ -18,7 +18,9 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/types.h>
+#if !defined(NNG_PLATFORM_QNX)
 #include <sys/syscall.h>
+#endif
 #include <errno.h>
 #if defined(SUPP_SYSLOG)
 #include <syslog.h>
@@ -72,7 +74,7 @@ static void
 stdout_callback(log_event *ev)
 {
 	char buf[64];
-#if (NNG_PLATFORM_WINDOWS || NNG_PLATFORM_DARWIN)
+#if (NNG_PLATFORM_WINDOWS || NNG_PLATFORM_DARWIN || NNG_PLATFORM_QNX)
 	int pid = nni_plat_getpid();
 #else
 	pid_t pid = syscall(__NR_gettid);
@@ -112,7 +114,7 @@ static void
 file_callback(log_event *ev)
 {
 	char buf[64];
-#if (NNG_PLATFORM_WINDOWS || NNG_PLATFORM_DARWIN)
+#if (NNG_PLATFORM_WINDOWS || NNG_PLATFORM_DARWIN || NNG_PLATFORM_QNX)
 	int pid = nni_plat_getpid();
 #else
 	pid_t pid = syscall(__NR_gettid);
@@ -175,7 +177,7 @@ convert_syslog_level(uint8_t level)
 static void
 format_syslog_msg(log_event *ev, char *out, size_t out_sz)
 {
-#if (NNG_PLATFORM_WINDOWS || NNG_PLATFORM_DARWIN)
+#if (NNG_PLATFORM_WINDOWS || NNG_PLATFORM_DARWIN || NNG_PLATFORM_QNX)
 	int pid = nni_plat_getpid();
 #else
 	pid_t pid = syscall(__NR_gettid);

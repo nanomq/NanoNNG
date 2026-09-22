@@ -16,6 +16,7 @@
 #include <netinet/tcp.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <unistd.h>
 #if defined(NNG_PLATFORM_DARWIN)
 #include <net/if.h>
@@ -143,22 +144,34 @@ tcp_params_set(nni_posix_pfd *pfd, nni_tcp_dialer *d)
 		sendtimeo.tv_sec = d->sendtimeo;
 		recvtimeo.tv_sec = d->recvtimeo;
 
-#if (!NNG_PLATFORM_DARWIN)
+#if defined(TCP_QUICKACK)
 		(void) setsockopt(nni_posix_pfd_fd(pfd), IPPROTO_TCP,
 		    TCP_QUICKACK, &quickack, sizeof(int));
+#else
+		(void) quickack;
+#endif
+#if defined(TCP_KEEPIDLE)
 		(void) setsockopt(nni_posix_pfd_fd(pfd), IPPROTO_TCP,
 		    TCP_KEEPIDLE, &keepidle, sizeof(int));
-#else
-		// TCP_QUICKACK is not supported in darwin
-		// (void) setsockopt(nni_posix_pfd_fd(pfd), IPPROTO_TCP,
-		//     TCP_QUICKACK, &quickack, sizeof(int));
+#elif defined(TCP_KEEPALIVE)
+		/* QNX 7.1 / Darwin: only TCP_KEEPALIVE (idle seconds). */
 		(void) setsockopt(nni_posix_pfd_fd(pfd), IPPROTO_TCP,
 		    TCP_KEEPALIVE, &keepidle, sizeof(int));
+#else
+		(void) keepidle;
 #endif
+#if defined(TCP_KEEPINTVL)
 		(void) setsockopt(nni_posix_pfd_fd(pfd), IPPROTO_TCP,
 		    TCP_KEEPINTVL, &keepintvl, sizeof(int));
+#else
+		(void) keepintvl;
+#endif
+#if defined(TCP_KEEPCNT)
 		(void) setsockopt(nni_posix_pfd_fd(pfd), IPPROTO_TCP,
 		    TCP_KEEPCNT, &keepcnt, sizeof(int));
+#else
+		(void) keepcnt;
+#endif
 		(void) setsockopt(nni_posix_pfd_fd(pfd), SOL_SOCKET,
 		    SO_SNDTIMEO, (char *) &sendtimeo, sizeof(struct timeval));
 		(void) setsockopt(nni_posix_pfd_fd(pfd), SOL_SOCKET,
