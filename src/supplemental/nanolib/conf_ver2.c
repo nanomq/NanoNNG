@@ -598,7 +598,18 @@ conf_tcp_parse_ver2_base(conf_tcp *tcp, cJSON *jso_tcp)
 		hocon_read_bool(tcp, quickack, jso_tcp);
 		hocon_read_time(tcp, keepidle, jso_tcp);
 		hocon_read_time(tcp, keepintvl, jso_tcp);
-		hocon_read_time(tcp, keepcnt, jso_tcp);
+		// keepcnt is a packet count (TCP_KEEPCNT), not a duration, so a plain
+		// number is the correct form. It was historically parsed as a
+		// duration, so a value such as "1000s" is still accepted as a
+		// fallback rather than being silently dropped.
+		cJSON *jso_keepcnt = cJSON_GetObjectItem(jso_tcp, "keepcnt");
+		if (jso_keepcnt != NULL && !cJSON_IsNumber(jso_keepcnt)) {
+			log_warn("Config \"keepcnt\" is a packet count, write it as a "
+			         "number (e.g. keepcnt = 3), not a duration");
+			hocon_read_time(tcp, keepcnt, jso_tcp);
+		} else {
+			hocon_read_num(tcp, keepcnt, jso_tcp);
+		}
 		hocon_read_time(tcp, sendtimeo, jso_tcp);
 		hocon_read_time(tcp, recvtimeo, jso_tcp);
 		hocon_read_str(tcp, bind_interface, jso_tcp);
@@ -1162,10 +1173,32 @@ conf_bridge_conn_properties_parse_ver2(conf_bridge_node *node, cJSON *jso_prop)
 
 	hocon_read_num(prop, session_expiry_interval, jso_prop);
 
-	hocon_read_num_base(prop, request_problem_info,
-	    "request_problem_infomation", jso_prop);
-	hocon_read_num_base(prop, request_response_info,
-	    "request_response_infomation", jso_prop);
+	// The correct spellings are read first. The historical misspelling
+	// ("infomation") is still honoured as a fallback, with a warning, so that
+	// configs written against it do not silently stop applying: an unmatched
+	// HOCON key is ignored with no diagnostic at all, so a hard rename would
+	// fail invisibly. See docs/adr/0003-backward-compatible-config-changes.md.
+	if (cJSON_GetObjectItem(jso_prop, "request_problem_information") != NULL) {
+		hocon_read_num_base(prop, request_problem_info,
+		    "request_problem_information", jso_prop);
+	} else if (cJSON_GetObjectItem(
+	               jso_prop, "request_problem_infomation") != NULL) {
+		log_warn("Config \"request_problem_infomation\" is misspelled and "
+		         "deprecated, use \"request_problem_information\"");
+		hocon_read_num_base(prop, request_problem_info,
+		    "request_problem_infomation", jso_prop);
+	}
+
+	if (cJSON_GetObjectItem(jso_prop, "request_response_information") != NULL) {
+		hocon_read_num_base(prop, request_response_info,
+		    "request_response_information", jso_prop);
+	} else if (cJSON_GetObjectItem(
+	               jso_prop, "request_response_infomation") != NULL) {
+		log_warn("Config \"request_response_infomation\" is misspelled and "
+		         "deprecated, use \"request_response_information\"");
+		hocon_read_num_base(prop, request_response_info,
+		    "request_response_infomation", jso_prop);
+	}
 	hocon_read_num(prop, receive_maximum, jso_prop);
 	hocon_read_num(prop, topic_alias_maximum, jso_prop);
 	hocon_read_num(prop, maximum_packet_size, jso_prop);
