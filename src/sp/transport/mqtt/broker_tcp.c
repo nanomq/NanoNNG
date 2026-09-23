@@ -573,9 +573,16 @@ nmq_tcptran_pipe_send_cb(void *arg)
 
 	if (msg == NULL) {
 		nni_mtx_unlock(&p->mtx);
+		log_warn("NULL msg detected in send_cb");
 		// msg is lost due to flow control
 		nni_aio_finish(aio, 0, 0);
 		return;
+	}
+	uint8_t type = nni_msg_cmd_type(msg);
+
+	if (p->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
+		(type == CMD_PUBCOMP || type == CMD_PUBACK) ? p->qrecv_quota++
+		                                            : p->qrecv_quota;
 	}
 
 	n   = nni_msg_len(msg);
