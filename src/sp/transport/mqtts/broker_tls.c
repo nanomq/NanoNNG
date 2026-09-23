@@ -557,7 +557,12 @@ tlstran_pipe_send_cb(void *arg)
 		nni_aio_finish_sync(aio, 0, 0);
 		return;
 	}
+	uint8_t type = nni_msg_cmd_type(msg);
 
+	if (p->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
+		(type == CMD_PUBCOMP || type == CMD_PUBACK) ? p->qrecv_quota++
+		                                            : p->qrecv_quota;
+	}
 	n   = nni_msg_len(msg);
 	cmd = nni_msg_cmd_type(msg);
 	if (cmd == CMD_CONNACK) {

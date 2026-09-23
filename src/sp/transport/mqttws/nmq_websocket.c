@@ -174,6 +174,11 @@ wstran_pipe_qos_send_cb(void *arg)
 	nni_mtx_lock(&p->mtx);
 	qmsg = nni_aio_get_msg(qsaio);
 	if (qmsg != NULL) {
+		uint8_t type = nni_msg_cmd_type(qmsg);
+		if (p->ws_param->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
+			(type == CMD_PUBCOMP || type == CMD_PUBACK) ? p->qrecv_quota++
+														: p->qrecv_quota;
+		}
 		nni_aio_set_msg(qsaio, NULL);
 		nni_msg_free(qmsg);
 	}
