@@ -37,6 +37,7 @@ struct tlstran_pipe {
 	size_t          gotrxhead;
 	size_t          wantrxhead;
 	bool            busy; // indicator for qos ack & aio
+	bool            resend;
 	uint8_t         txlen[NANO_MIN_PACKET_LEN];
 	uint8_t         rxlen[NNI_NANO_MAX_HEADER_SIZE];
 	uint8_t         pro_ver;
@@ -192,6 +193,7 @@ tlstran_pipe_init(void *arg, nni_pipe *npipe)
 	}
 	p->conn_buf = NULL;
 	p->busy     = false;
+	p->resend   = false;
 
 	nni_atomic_init_bool(&p->closed);
 	p->qos_buf = nng_zalloc(16 + NNI_NANO_MAX_PACKET_SIZE);
@@ -557,18 +559,18 @@ tlstran_pipe_send_cb(void *arg)
 		nni_aio_finish_sync(aio, 0, 0);
 		return;
 	}
-	uint8_t type = nni_msg_cmd_type(msg);
 
-	if (p->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
-		(type == CMD_PUBCOMP || type == CMD_PUBACK) ? p->qrecv_quota++
-		                                            : p->qrecv_quota;
-	}
 	n   = nni_msg_len(msg);
 	cmd = nni_msg_cmd_type(msg);
 	if (cmd == CMD_CONNACK) {
 		header = nni_msg_header(msg);
 		// parse result code TODO verify bug
 		flag = header[3];
+		p->resend = true;
+	}
+	if (p->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
+		(cmd == CMD_PUBCOMP || cmd == CMD_PUBACK) ? p->qrecv_quota++
+		                                            : p->qrecv_quota;
 	}
 	// nni_pipe_bump_tx(p->npipe, n);
 	nni_mtx_unlock(&p->mtx);
@@ -1657,6 +1659,10 @@ tlstran_pipe_getopt(
 		bool     is_sqlite = false;
 
 		nni_mtx_lock(&p->mtx);
+		if (p->resend != true) {
+			nni_mtx_unlock(&p->mtx);
+			return NNG_ENOENT;
+		}
 		is_sqlite             = p->conf->sqlite.enable;
 		uint32_t qos_duration = p->conf->qos_duration;
 		while (1) {
