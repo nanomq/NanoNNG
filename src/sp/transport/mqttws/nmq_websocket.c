@@ -85,7 +85,6 @@ struct ws_listener {
 
 struct ws_pipe {
 	nni_mtx     mtx;
-	bool        resend;
 	uint8_t     txlen[NANO_MIN_PACKET_LEN];
 	uint8_t    *qos_buf; // msg trunk for qos & V4/V5 conversion
 	uint16_t    peer;
@@ -978,8 +977,6 @@ send:
 		if (*(header_ptr + 3) != 0x00) {
 			nni_atomic_set_bool(&p->closed, true);
 			p->err_code = NOT_AUTHORIZED;
-		} else {
-			p->resend = true;
 		}
 	}
 	nng_stream_send(p->ws, p->txaio);
@@ -1254,8 +1251,6 @@ send:
 		if (*(header_ptr + 3) != 0x00) {
 			nni_atomic_set_bool(&p->closed, true);
 			p->err_code = NOT_AUTHORIZED;
-		} else {
-			p->resend = true;
 		}
 	}
 	nng_stream_send(p->ws, p->txaio);
@@ -1421,7 +1416,6 @@ wstran_pipe_init(void *arg, nni_pipe *pipe)
 	p->gotrxhead  = 0;
 	p->wantrxhead = 0;
 	p->ep_aio     = NULL;
-	p->resend     = false;
 
 	nni_atomic_init_bool(&p->closed);
 	char    *cid;
@@ -1697,10 +1691,6 @@ wstran_pipe_getopt(void *arg, const char *name, void *buf, size_t *szp, nni_type
 		bool is_sqlite = false;
 
 		nni_mtx_lock(&p->mtx);
-		if (p->resend != true) {
-			nni_mtx_unlock(&p->mtx);
-			return NNG_ENOENT;
-		}
 		is_sqlite = p->conf->sqlite.enable;
 		uint32_t qos_duration = p->conf->qos_duration;
 		while (1) {
