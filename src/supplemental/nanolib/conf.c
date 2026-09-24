@@ -983,6 +983,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->websocket.tls_enable = false;
 	nanomq_conf->websocket.url        = NULL;
 	nanomq_conf->websocket.tls_url    = NULL;
+	nanomq_conf->websocket.mount_point = NULL;
 
 	conf_bridge_init(&nanomq_conf->bridge);
 	conf_bridge_init(&nanomq_conf->aws_bridge);
