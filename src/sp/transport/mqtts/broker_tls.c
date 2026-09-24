@@ -33,6 +33,7 @@ struct tlstran_pipe {
 	nng_stream *conn;
 	nni_pipe   *npipe; // for statitical
 	conf       *conf;
+	char       *mount_point; // borrowed from ep->mount_point, may be NULL
 	size_t          rcvmax; // duplicate with conf->max_packet_size
 	size_t          gotrxhead;
 	size_t          wantrxhead;
@@ -72,6 +73,7 @@ struct tlstran_ep {
 	nng_url             *url;
 	nng_sockaddr         src;
 	conf                *conf;
+	char                *mount_point; // per-listener topic prefix, may be NULL
 	nng_sockaddr         sa;
 	int                  refcnt; // active pipes
 	int                  authmode;
@@ -305,6 +307,7 @@ tlstran_ep_match(tlstran_ep *ep)
 	ep->useraio = NULL;
 	p->rcvmax   = ep->rcvmax;
 	p->conf     = ep->conf;
+	p->mount_point = ep->mount_point;
 	nni_aio_set_output(aio, 0, p);
 	nni_aio_finish(aio, 0, 0);
 }
@@ -412,6 +415,7 @@ tlstran_pipe_nego_cb(void *arg)
 			nni_list_append(&ep->waitpipes, p);
 			tlstran_ep_match(ep);
 			// connection packet handled successfully. clone it for protocol or app layer
+			conn_param_apply_mount_point(p->tcp_cparam, p->mount_point);
 			conn_param_clone(p->tcp_cparam);
 			// Connection is accepted.
 			p->pro_ver = p->tcp_cparam->pro_ver;
@@ -2109,6 +2113,19 @@ tlstran_ep_set_conf(void *arg, const void *v, size_t sz, nni_opt_type t)
 }
 
 static int
+tlstran_ep_set_mount_point(void *arg, const void *v, size_t sz, nni_opt_type t)
+{
+	tlstran_ep *ep = arg;
+	NNI_ARG_UNUSED(sz);
+	NNI_ARG_UNUSED(t);
+
+	nni_mtx_lock(&ep->mtx);
+	ep->mount_point = (char *) v;
+	nni_mtx_unlock(&ep->mtx);
+	return 0;
+}
+
+static int
 tlstran_ep_get_recvmaxsz(void *arg, void *v, size_t *szp, nni_opt_type t)
 {
 	tlstran_ep *ep = arg;
@@ -2278,6 +2295,10 @@ static const nni_option tlstran_ep_opts[] = {
 	{
 	    .o_name = NANO_CONF,
 	    .o_set  = tlstran_ep_set_conf,
+	},
+	{
+	    .o_name = NANO_MOUNT_POINT,
+	    .o_set  = tlstran_ep_set_mount_point,
 	},
 	// terminate list
 	{

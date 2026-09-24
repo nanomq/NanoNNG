@@ -86,6 +86,8 @@ struct conf_tls {
 	bool  verify_peer;
 	bool  set_fail; // fail_if_no_peer_cert
 	char *sni;
+	char *name; // listener name, only set for tls_list nodes
+	char *mount_point; // topic prefix applied/stripped for this listener
 };
 
 typedef struct conf_tls conf_tls;
@@ -103,6 +105,8 @@ typedef struct {
 	uint16_t keepcnt;
 	uint16_t sendtimeo;
 	uint16_t recvtimeo;
+	char    *name; // listener name, only set for tcp_list nodes
+	char    *mount_point; // topic prefix applied/stripped for this listener
 } conf_tcp;
 
 typedef struct {
@@ -224,6 +228,7 @@ struct conf_websocket {
 	bool  tls_enable;
 	char *url;     // "nmq-ws://addr:port/path"
 	char *tls_url; // "nmq-wss://addr:port/path"
+	char *mount_point; // topic prefix applied/stripped, shared by ws+wss
 };
 
 typedef struct conf_websocket conf_websocket;

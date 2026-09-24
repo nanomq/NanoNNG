@@ -885,6 +885,7 @@ conn_param_init(conn_param *cparam)
 	memset(cparam->server_port, '\0', 8);
 	cparam->tls_peer_cn = NULL;
 	cparam->tls_subject = NULL;
+	cparam->mount_point = NULL;
 
 	// MQTT_v5 Variable header
 	cparam->session_expiry_interval = 0;
@@ -952,6 +953,10 @@ conn_param_free(conn_param *cparam)
 		nng_strfree(cparam->tls_subject);
 		cparam->tls_subject = NULL;
 	}
+	if (cparam->mount_point) {
+		nng_strfree(cparam->mount_point);
+		cparam->mount_point = NULL;
+	}
 
 	property_free(cparam->properties);
 	property_free(cparam->will_properties);
@@ -978,6 +983,35 @@ conn_param_clone(conn_param *cparam)
 	}
 	nni_atomic_inc(&cparam->refcnt);
 	log_trace("%p is cloned!! %d", cparam, nni_atomic_get(&cparam->refcnt));
+}
+
+void
+conn_param_apply_mount_point(conn_param *cparam, const char *mount_point)
+{
+	size_t mp_len, new_len;
+	char  *body;
+
+	if (cparam == NULL || mount_point == NULL || mount_point[0] == '\0') {
+		return;
+	}
+	cparam->mount_point = nng_strdup(mount_point);
+
+	if (!cparam->will_flag || cparam->will_topic.body == NULL) {
+		return;
+	}
+	mp_len  = strlen(mount_point);
+	new_len = mp_len + 1 + cparam->will_topic.len;
+	if ((body = nng_alloc(new_len + 1)) == NULL) {
+		return;
+	}
+	memcpy(body, mount_point, mp_len);
+	body[mp_len] = '/';
+	memcpy(body + mp_len + 1, cparam->will_topic.body,
+	    cparam->will_topic.len);
+	body[new_len] = '\0';
+	nng_free(cparam->will_topic.body, cparam->will_topic.len);
+	cparam->will_topic.body = body;
+	cparam->will_topic.len  = (uint32_t) new_len;
 }
 
 /* Fowler/Noll/Vo (FNV) hash function, variant 1a */

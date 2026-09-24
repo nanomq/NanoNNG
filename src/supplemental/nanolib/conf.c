@@ -810,6 +810,8 @@ conf_tls_init(conf_tls *tls)
 	tls->key_password = NULL;
 	tls->set_fail     = false;
 	tls->verify_peer  = false;
+	tls->name         = NULL;
+	tls->mount_point  = NULL;
 }
 
 void
@@ -846,6 +848,14 @@ conf_tls_destroy(conf_tls *tls)
 	if (tls->ca) {
 		free(tls->ca);
 		tls->ca = NULL;
+	}
+	if (tls->name) {
+		free(tls->name);
+		tls->name = NULL;
+	}
+	if (tls->mount_point) {
+		free(tls->mount_point);
+		tls->mount_point = NULL;
 	}
 }
 
@@ -4718,6 +4728,14 @@ conf_tcp_node_destroy(conf_tcp *node)
 		free(node->url);
 		node->url = NULL;
 	}
+	if (node->name) {
+		free(node->name);
+		node->name = NULL;
+	}
+	if (node->mount_point) {
+		free(node->mount_point);
+		node->mount_point = NULL;
+	}
 }
 
 static void
@@ -4873,6 +4891,7 @@ conf_fini(conf *nanomq_conf)
 	nng_strfree(nanomq_conf->hook_ipc_url);
 	nng_strfree(nanomq_conf->cmd_ipc_url);
 	nng_strfree(nanomq_conf->websocket.tls_url);
+	nng_strfree(nanomq_conf->websocket.mount_point);
 
 	conf_http_server_destroy(&nanomq_conf->http_server);
 
