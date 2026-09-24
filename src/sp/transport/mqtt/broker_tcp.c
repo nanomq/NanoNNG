@@ -417,10 +417,9 @@ tcptran_pipe_nego_cb(void *arg)
 			}
 			nni_list_remove(&ep->negopipes, p);
 			nni_list_append(&ep->waitpipes, p);
+			conn_param_apply_mount_point(p->tcp_cparam, ep->mount_point);
 			// Match happens before accept_cb. Make pipe id ready
 			tcptran_ep_match(ep);
-			// ep_match just copied ep->mount_point into p->mount_point
-			conn_param_apply_mount_point(p->tcp_cparam, p->mount_point);
 			nni_mtx_unlock(&ep->mtx);
 			return;
 		} else {
