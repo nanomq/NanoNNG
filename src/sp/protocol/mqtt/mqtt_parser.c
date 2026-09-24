@@ -996,7 +996,8 @@ conn_param_apply_mount_point(conn_param *cparam, const char *mount_point)
 	}
 	cparam->mount_point = nng_strdup(mount_point);
 
-	if (!cparam->will_flag || cparam->will_topic.body == NULL) {
+	if (!cparam->will_flag || cparam->will_topic.body == NULL ||
+	    cparam->will_topic.body[0] == '$') {
 		return;
 	}
 	mp_len  = strlen(mount_point);
