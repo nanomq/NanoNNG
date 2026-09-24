@@ -85,6 +85,12 @@ static void conf_rule_fdb_parse(conf_rule *cr, char *path);
 static void conf_rule_parse(conf_rule *rule, const char *path);
 #endif
 
+static const char *
+conf_safe_str(const char *s)
+{
+	return s != NULL ? s : "";
+}
+
 // static char *
 // strtrim(char *str, size_t len)
 // {
@@ -1338,15 +1344,16 @@ static void
 print_webhook_conf(conf_web_hook *webhook)
 {
 	if (webhook->enable) {
-		log_info("webhook url:       %s", webhook->url);
+		log_info("webhook url:       %s", conf_safe_str(webhook->url));
 		log_info("webhook_hearders:");
 		for (size_t i = 0; i < webhook->header_count; i++) {
 			conf_http_header *header = webhook->headers[i];
-			log_info("	%s: %s", header->key, header->value);
+			log_info("	%s: %s", conf_safe_str(header->key),
+			    conf_safe_str(header->value));
 		}
 		const char *encode_type =
 		    get_webhook_type(webhook->encode_payload);
-		log_info("webhook encoding:  %s", encode_type);
+		log_info("webhook encoding:  %s", conf_safe_str(encode_type));
 		log_info("webhook pool size: %d", webhook->pool_size);
 		log_info("webhook cancel time: %d", webhook->cancel_timeout);
 		log_info("webhook rule:");
@@ -1354,11 +1361,14 @@ print_webhook_conf(conf_web_hook *webhook)
 			conf_web_hook_rule *rule = webhook->rules[i];
 			const char         *event =
 			    get_webhook_event_type(rule->event);
-			log_info("[%d] event:          %s", i, event);
-			log_info("[%d] action:         %s", i, rule->action);
+			log_info("[%d] event:          %s", i,
+			    conf_safe_str(event));
+			log_info("[%d] action:         %s", i,
+			    conf_safe_str(rule->action));
 			if (rule->topic) {
 				log_info(
-				    "[%d] topic:          %s", i, rule->topic);
+				    "[%d] topic:          %s", i,
+				    conf_safe_str(rule->topic));
 			}
 		}
 	}
@@ -1370,15 +1380,17 @@ print_parquet_conf(conf_parquet *parquet)
 {
 	if (!parquet->enable)
 		return;
-	log_info("parquet dir:              %s", parquet->dir);
+	log_info("parquet dir:              %s", conf_safe_str(parquet->dir));
 	const char *encode_type = get_compress_type(parquet->comp_type);
-	log_info("parquet compress:         %s", encode_type);
+	log_info("parquet compress:         %s", conf_safe_str(encode_type));
 	conf_parquet_encryption *encryption = &(parquet->encryption);
 	log_info("parquet encryption:       %s",
 	    encryption->enable ? "enable" : "disable");
 	if (encryption->enable) {
-		log_info("parquet encryption key:   %s", encryption->key_cipher);
-		log_info("parquet encryption key_id:%s", encryption->key_id);
+		log_info("parquet encryption key:   %s",
+		    conf_safe_str(encryption->key_cipher));
+		log_info("parquet encryption key_id:%s",
+		    conf_safe_str(encryption->key_id));
 		log_info("parquet encryption type:  %s",
 		    encryption->type == 0 ? "AES_GCM_V1" : "AES_GCM_CTR_V1");
 	}
@@ -1410,15 +1422,17 @@ print_exchange_conf(conf_exchange *exchange)
 {
 	for (int i=0; i < (int) exchange->count; ++i) {
 		conf_exchange_node *n = exchange->nodes[i];
-		log_info("exchange name            %s", n->name);
-		log_info("exchange topic           %s", n->topic);
+		log_info("exchange name            %s", conf_safe_str(n->name));
+		log_info("exchange topic           %s", conf_safe_str(n->topic));
 		log_info("exchange streamType	   %d", n->streamType);
 		log_info("exchange chunk_size      %d", n->chunk_size);
-		log_info("exchange url             %s", n->exchange_url);
+		log_info("exchange url             %s",
+		    conf_safe_str(n->exchange_url));
 		log_info("exchange limit_frequency %d", n->limit_frequency);
 		for (int j=0; j< (int) n->rbufs_sz; j++) {
 			ringBuffer_node *r = n->rbufs[j];
-			log_info("exchange ringbus name      %s", r->name);
+			log_info("exchange ringbus name      %s",
+			    conf_safe_str(r->name));
 			log_info("exchange ringbus cap       %d", r->cap);
 			log_info("exchange ringbus fullOp    %d", r->fullOp);
 		}
@@ -1553,34 +1567,36 @@ print_conf(conf *nanomq_conf)
 	log_info("This NanoMQ instance configured as:");
 
 	if (nanomq_conf->enable) {
-		log_info("tcp url:                  %s ", nanomq_conf->url);
+		log_info("tcp url:                  %s ",
+		    conf_safe_str(nanomq_conf->url));
 	}
 	if (nanomq_conf->websocket.enable && nanomq_conf->websocket.url) {
 		log_info("websocket url:            %s",
-		    nanomq_conf->websocket.url);
+		    conf_safe_str(nanomq_conf->websocket.url));
 	}
 	if (nanomq_conf->websocket.tls_url && nanomq_conf->websocket.tls_enable) {
 		log_info("websocket tls url:        %s",
-		    nanomq_conf->websocket.tls_url);
+		    conf_safe_str(nanomq_conf->websocket.tls_url));
 	}
 	if (nanomq_conf->cmd_ipc_url) {
 		log_info("cmd_ipc_url:        %s",
-		    nanomq_conf->cmd_ipc_url);
+		    conf_safe_str(nanomq_conf->cmd_ipc_url));
 	}
 	if (nanomq_conf->hook_ipc_url) {
 		log_info("hook_ipc_url:        %s",
-		    nanomq_conf->hook_ipc_url);
+		    conf_safe_str(nanomq_conf->hook_ipc_url));
 	}
 	if (nanomq_conf->exchange_ipc_url) {
 		log_info("exchange_ipc_url:        %s",
-		    nanomq_conf->exchange_ipc_url);
+		    conf_safe_str(nanomq_conf->exchange_ipc_url));
 	}
 	if (nanomq_conf->tls.enable) {
 		conf_tls tls = nanomq_conf->tls;
-		log_info("tls url:                  %s", nanomq_conf->tls.url);
-		log_info("tls key file:             %s", tls.keyfile);
-		log_info("tls cert file:            %s", tls.certfile);
-		log_info("tls cacert file:          %s", tls.cafile);
+		log_info("tls url:                  %s",
+		    conf_safe_str(nanomq_conf->tls.url));
+		log_info("tls key file:             %s", conf_safe_str(tls.keyfile));
+		log_info("tls cert file:            %s", conf_safe_str(tls.certfile));
+		log_info("tls cacert file:          %s", conf_safe_str(tls.cafile));
 		log_info("tls verify peer:          %s",
 		    nanomq_conf->tls.verify_peer ? "true" : "false");
 		log_info("tls fail_if_no_peer_cert: %s",
@@ -1607,34 +1623,35 @@ print_conf(conf *nanomq_conf)
 	if (nanomq_conf->http_server.enable) {
 		conf_http_server hs = nanomq_conf->http_server;
 		log_info("http server port:         %d", hs.port);
-		log_info("http server url:          %s", hs.ip_addr);
+		log_info("http server url:          %s", conf_safe_str(hs.ip_addr));
 		log_info("http server limit_conn:   %u", hs.parallel);
 		log_info("http server max body:     %ld", hs.max_body);
-		log_info("http server username:     %s", hs.username);
+		log_info("http server username:     %s", conf_safe_str(hs.username));
 		if (hs.usernames) {
 			for (size_t i = 0; i < cvector_size(hs.usernames); ++i) {
-				log_info("http server username:     %s", hs.usernames[i]);
+				log_info("http server username:     %s",
+				    conf_safe_str(hs.usernames[i]));
 			}
 		}
 
 		const char *type = get_http_auth_type(hs.auth_type);
-		log_info("http server auth type:    %s", type);
+		log_info("http server auth type:    %s", conf_safe_str(type));
 		if (hs.jwt.private_keyfile) {
 			log_info("http server jwt:");
 			log_info("	private key file:     %s",
-			    hs.jwt.private_keyfile);
+			    conf_safe_str(hs.jwt.private_keyfile));
 		}
 
 		if (hs.jwt.public_keyfile) {
 			log_info("	public key file:      %s",
-			    hs.jwt.public_keyfile);
+			    conf_safe_str(hs.jwt.public_keyfile));
 		}
 		if (hs.tls.enable) {
 			log_info("http server tls enable:   true");
 			conf_tls tls = hs.tls;
-			log_info("    tls key file:         %s", tls.keyfile);
-			log_info("    tls cert file:        %s", tls.certfile);
-			log_info("    tls cacert file:      %s", tls.cafile);
+			log_info("    tls key file:         %s", conf_safe_str(tls.keyfile));
+			log_info("    tls cert file:        %s", conf_safe_str(tls.certfile));
+			log_info("    tls cacert file:      %s", conf_safe_str(tls.cafile));
 			log_info("    tls verify peer:      %s", tls.verify_peer ? "true" : "false");
 			log_info("    tls set fail:         %s", tls.set_fail ? "true" : "false");
 		} else {

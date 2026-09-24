@@ -28,6 +28,10 @@
 
 #define le64toh(x) (x)
 
+#elif defined(NNG_PLATFORM_QNX)
+
+#define le64toh(x) (x)
+
 #else
 
 #include <endian.h>
@@ -1355,16 +1359,29 @@ nano_msg_notify(conn_param *cparam, uint8_t code, uint8_t retain, bool online)
 	nni_msg *   msg = NULL;
 	mqtt_string string, topic;
 	char        buff[512];
+	const char *username = "";
+	const char *clientid = "";
+	const char *proto_name = "";
+	const char *ip_addr = cparam->ip_addr_v4;
 
+	if (cparam->username.body != NULL) {
+		username = (const char *) cparam->username.body;
+	}
+	if (cparam->clientid.body != NULL) {
+		clientid = (const char *) cparam->clientid.body;
+	}
+	if (cparam->pro_name.body != NULL) {
+		proto_name = (const char *) cparam->pro_name.body;
+	}
 	if (online) {
-		snprintf(buff, 256, CONNECT_MSG, cparam->username.body,
-		    nni_timestamp(), cparam->pro_name.body, cparam->keepalive_mqtt,
-		    code, cparam->pro_ver, cparam->clientid.body, cparam->clean_start, cparam->ip_addr_v4);
-		log_warn("%s online!", cparam->clientid.body);
+		snprintf(buff, 256, CONNECT_MSG, username, nni_timestamp(),
+		    proto_name, cparam->keepalive_mqtt, code, cparam->pro_ver,
+		    clientid, cparam->clean_start, ip_addr);
+		log_warn("%s online!", clientid);
 	} else {
-		snprintf(buff, 256, DISCONNECT_MSG, (char *) cparam->username.body,
-		    nni_timestamp(), code, (char *) cparam->clientid.body, cparam->ip_addr_v4);
-		log_warn("%s offline!", cparam->clientid.body);
+		snprintf(buff, 256, DISCONNECT_MSG, username, nni_timestamp(),
+		    code, clientid, ip_addr);
+		log_warn("%s offline!", clientid);
 	}
 
     string.body = buff;
@@ -1374,7 +1391,7 @@ nano_msg_notify(conn_param *cparam, uint8_t code, uint8_t retain, bool online)
 
 	msg = nano_encode_publish_msg(cparam->pro_ver, 0, retain, false,
 	    (uint8_t *) string.body, string.len, NULL, topic.body,
-	    cparam->clientid.body);
+	    clientid);
 
 	return msg;
 }

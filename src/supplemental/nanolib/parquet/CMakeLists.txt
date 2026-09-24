@@ -3,23 +3,38 @@ if(NNG_ENABLE_PARQUET)
     find_package(Arrow CONFIG REQUIRED)
     find_package(Parquet CONFIG REQUIRED)
     if(ENABLE_PARQUET_SHARED)
-        set(_nng_parquet_arrow_tgt arrow_shared)
-        set(_nng_parquet_parquet_tgt parquet_shared)
+        if(TARGET Arrow::arrow_shared AND TARGET Parquet::parquet_shared)
+            set(_nng_parquet_arrow_tgt Arrow::arrow_shared)
+            set(_nng_parquet_parquet_tgt Parquet::parquet_shared)
+        else()
+            set(_nng_parquet_arrow_tgt arrow_shared)
+            set(_nng_parquet_parquet_tgt parquet_shared)
+        endif()
     else(ENABLE_PARQUET_SHARED)
-        set(_nng_parquet_arrow_tgt arrow_static)
-        set(_nng_parquet_parquet_tgt parquet_static)
+        if(TARGET Arrow::arrow_static AND TARGET Parquet::parquet_static)
+            set(_nng_parquet_arrow_tgt Arrow::arrow_static)
+            set(_nng_parquet_parquet_tgt Parquet::parquet_static)
+        else()
+            set(_nng_parquet_arrow_tgt arrow_static)
+            set(_nng_parquet_parquet_tgt parquet_static)
+        endif()
     endif(ENABLE_PARQUET_SHARED)
-
-    # Regular INTERFACE targets are globally visible; Arrow imported
-    # targets / aliases are not. Wrap them so nanomq can link after nng.
+    # QNX: Arrow may pull in librt which does not exist.
+    if(CMAKE_SYSTEM_NAME MATCHES "QNX" AND TARGET ${_nng_parquet_arrow_tgt})
+        get_target_property(_nng_parquet_arrow_libs
+            ${_nng_parquet_arrow_tgt} INTERFACE_LINK_LIBRARIES)
+        if(_nng_parquet_arrow_libs)
+            list(REMOVE_ITEM _nng_parquet_arrow_libs rt)
+            set_target_properties(${_nng_parquet_arrow_tgt} PROPERTIES
+                INTERFACE_LINK_LIBRARIES "${_nng_parquet_arrow_libs}")
+        endif()
+    endif()
     add_library(nng_parquet_deps INTERFACE)
     target_link_libraries(nng_parquet_deps INTERFACE
         ${_nng_parquet_arrow_tgt} ${_nng_parquet_parquet_tgt})
-
-    # Compile parquet.cc against Arrow headers/defs only. Do not
-    # nng_link_libraries(arrow_*): static nng would propagate
-    # OpenSSL::Crypto (libcrypto.so.1.1) to every consumer, including
-    # nanomq_cli. The broker links nng_parquet_deps after nng.
+    if(CMAKE_SYSTEM_NAME MATCHES "QNX" AND NOT ENABLE_PARQUET_SHARED)
+        target_link_libraries(nng_parquet_deps INTERFACE m)
+    endif()
     foreach(_nng_parquet_dep ${_nng_parquet_arrow_tgt} ${_nng_parquet_parquet_tgt})
         get_target_property(_nng_parquet_incs ${_nng_parquet_dep} INTERFACE_INCLUDE_DIRECTORIES)
         if(_nng_parquet_incs)
