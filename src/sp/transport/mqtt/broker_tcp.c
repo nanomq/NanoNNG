@@ -32,6 +32,7 @@ struct tcptran_pipe {
 	nng_stream *conn;
 	nni_pipe   *npipe; // for statitical
 	conf       *conf;
+	char       *mount_point; // borrowed from ep->mount_point, may be NULL
 	// uint16_t        peer;		//reserved for MQTT sdk version
 	size_t          rcvmax; // duplicate with conf->max_packet_size
 	size_t          gotrxhead;
@@ -70,6 +71,7 @@ struct tcptran_ep {
 	nng_url             *url;
 	nng_sockaddr         src;
 	conf                *conf;
+	char                *mount_point; // per-listener topic prefix, may be NULL
 	int                  refcnt; // active pipes
 	nni_aio             *useraio;
 	nni_aio             *connaio;
@@ -295,6 +297,7 @@ tcptran_ep_match(tcptran_ep *ep)
 	ep->useraio = NULL;
 	p->rcvmax   = ep->rcvmax;
 	p->conf     = ep->conf;
+	p->mount_point = ep->mount_point;
 	nni_aio_set_output(aio, 0, p);
 	// which triggers tcptran_ep_accept
 	nni_aio_finish(aio, 0, 0);
@@ -416,6 +419,8 @@ tcptran_pipe_nego_cb(void *arg)
 			nni_list_append(&ep->waitpipes, p);
 			// Match happens before accept_cb. Make pipe id ready
 			tcptran_ep_match(ep);
+			// ep_match just copied ep->mount_point into p->mount_point
+			conn_param_apply_mount_point(p->tcp_cparam, p->mount_point);
 			nni_mtx_unlock(&ep->mtx);
 			return;
 		} else {
@@ -2051,6 +2056,19 @@ tcptran_ep_set_conf(void *arg, const void *v, size_t sz, nni_opt_type t)
 }
 
 static int
+tcptran_ep_set_mount_point(void *arg, const void *v, size_t sz, nni_opt_type t)
+{
+	tcptran_ep *ep = arg;
+	NNI_ARG_UNUSED(sz);
+	NNI_ARG_UNUSED(t);
+
+	nni_mtx_lock(&ep->mtx);
+	ep->mount_point = (char *) v;
+	nni_mtx_unlock(&ep->mtx);
+	return 0;
+}
+
+static int
 tcptran_ep_get_recvmaxsz(void *arg, void *v, size_t *szp, nni_opt_type t)
 {
 	tcptran_ep *ep = arg;
@@ -2219,6 +2237,10 @@ static const nni_option tcptran_ep_opts[] = {
 	{
 	    .o_name = NANO_CONF,
 	    .o_set  = tcptran_ep_set_conf,
+	},
+	{
+	    .o_name = NANO_MOUNT_POINT,
+	    .o_set  = tcptran_ep_set_mount_point,
 	},
 	// terminate list
 	{

@@ -18,6 +18,8 @@
 
 /* NNG OPTs */
 #define NANO_CONF "nano:conf"
+// per-listener MQTT topic mount_point prefix (char *, borrowed, not copied)
+#define NANO_MOUNT_POINT "nano:mount_point"
 
 
 /* Length defination */

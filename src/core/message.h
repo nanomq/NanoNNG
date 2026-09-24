@@ -111,6 +111,8 @@ struct conn_param {
 	char              *tls_peer_cn;
 	// TLS client certificate subject, used by HTTP auth %d
 	char              *tls_subject;
+	// per-listener topic prefix, NULL when the listener is unmounted
+	char              *mount_point;
 	uint32_t           session_expiry_interval;
 	uint32_t           max_packet_size;
 	uint16_t           rx_max;

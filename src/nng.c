@@ -2442,6 +2442,24 @@ conn_param_get_pro_name(conn_param *cparam)
 	return (const uint8_t *) cparam->pro_name.body;
 }
 
+const char *
+conn_param_get_mount_point(conn_param *cparam)
+{
+	return (const char *) cparam->mount_point;
+}
+
+void
+conn_param_set_mount_point(conn_param *cparam, const char *mount_point)
+{
+	if (cparam->mount_point) {
+		nng_strfree(cparam->mount_point);
+		cparam->mount_point = NULL;
+	}
+	if (mount_point != NULL) {
+		cparam->mount_point = nng_strdup(mount_point);
+	}
+}
+
 const void *
 conn_param_get_will_topic(conn_param *cparam)
 {
