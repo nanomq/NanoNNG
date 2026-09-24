@@ -80,6 +80,20 @@ conf_mount_point_validate(conf *config)
 {
 	size_t i;
 
+	if (!mount_point_is_valid(config->mount_point)) {
+		log_error("Invalid mount_point '%s' on listener 'tcp': must "
+		    "be non-empty, must not contain '+' or '#', and must "
+		    "not start with '$'",
+		    config->mount_point ? config->mount_point : "");
+		exit(EXIT_FAILURE);
+	}
+	if (!mount_point_is_valid(config->tls.mount_point)) {
+		log_error("Invalid mount_point '%s' on listener 'ssl': must "
+		    "be non-empty, must not contain '+' or '#', and must "
+		    "not start with '$'",
+		    config->tls.mount_point ? config->tls.mount_point : "");
+		exit(EXIT_FAILURE);
+	}
 	for (i = 0; i < config->tcp_list.count; i++) {
 		conf_tcp *node = config->tcp_list.nodes[i];
 		if (!mount_point_is_valid(node->mount_point)) {
@@ -447,6 +461,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 			    config, url, "bind", "nmq-tcp://", jso_tcp);
 			hocon_read_bool_base(
 			    config, enable, "enable", jso_tcp);
+			hocon_read_str(config, mount_point, jso_tcp);
 
 			config->enable = true;
 		}
@@ -589,6 +604,7 @@ conf_tls_parse_ver2(conf *config, cJSON *jso)
 			hocon_read_bool(tls, verify_peer, jso_tls);
 			hocon_read_bool_base(
 			    tls, set_fail, "fail_if_no_peer_cert", jso_tls);
+			hocon_read_str(tls, mount_point, jso_tls);
 		}
 	}
 
