@@ -73,6 +73,7 @@ ws_parse_remaining_length(const uint8_t *buf, size_t avail, uint8_t *pos,
 struct ws_listener {
 	uint16_t             peer; // remote protocol
 	conf                *conf;
+	char                *mount_point; // per-listener topic prefix, may be NULL
 	nni_list             aios;
 	nni_mtx              mtx;
 	nni_aio             *accaio;
@@ -92,6 +93,7 @@ struct ws_pipe {
 	nni_lmq     recvlmq;
 	nni_lmq     rslmq;	// Only for QoS msg ack cache
 	conf       *conf;
+	char       *mount_point; // borrowed from ws_listener->mount_point, may be NULL
 	nni_msg    *tmp_msg;	// Serving as recv buffer, convergence all msg from nng ws
 	nni_aio    *user_txaio;
 	nni_aio    *user_rxaio;
@@ -411,6 +413,7 @@ done:
 			goto skip;
 		}
 		log_trace("MQTT Clientid is %s", p->ws_param->clientid.body);
+		conn_param_apply_mount_point(p->ws_param, p->mount_point);
 		conn_param_clone(p->ws_param);
 		if (p->ws_param->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 			p->qsend_quota = p->ws_param->rx_max;
@@ -1707,6 +1710,7 @@ ws_pipe_start(ws_pipe *pipe, nng_stream *conn, ws_listener *l)
 	log_trace("ws_pipe_start!");
 	p->qrecv_quota = NANO_MAX_QOS_PACKET;
 	p->conf        = l->conf;
+	p->mount_point = l->mount_point;
 	nni_atomic_set_bool(&p->closed, false);
 	nng_stream_recv(p->ws, p->rxaio);
 }
@@ -1807,10 +1811,26 @@ wstran_ep_set_conf(void *arg, const void *v, size_t sz, nni_type t)
 	return 0;
 }
 
+static int
+wstran_ep_set_mount_point(void *arg, const void *v, size_t sz, nni_type t)
+{
+	ws_listener *l = arg;
+	NNI_ARG_UNUSED(sz);
+	NNI_ARG_UNUSED(t);
+	nni_mtx_lock(&l->mtx);
+	l->mount_point = (char *) v;
+	nni_mtx_unlock(&l->mtx);
+	return 0;
+}
+
 static const nni_option wstran_ep_opts[] = {
 	{
 	    .o_name = NANO_CONF,
 	    .o_set  = wstran_ep_set_conf,
+	},
+	{
+	    .o_name = NANO_MOUNT_POINT,
+	    .o_set  = wstran_ep_set_mount_point,
 	},
 	// terminate list
 	{
