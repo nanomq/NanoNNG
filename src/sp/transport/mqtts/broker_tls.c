@@ -413,9 +413,9 @@ tlstran_pipe_nego_cb(void *arg)
 			p->conn_buf = NULL;
 			nni_list_remove(&ep->negopipes, p);
 			nni_list_append(&ep->waitpipes, p);
+			conn_param_apply_mount_point(p->tcp_cparam, ep->mount_point);
 			tlstran_ep_match(ep);
 			// connection packet handled successfully. clone it for protocol or app layer
-			conn_param_apply_mount_point(p->tcp_cparam, p->mount_point);
 			conn_param_clone(p->tcp_cparam);
 			// Connection is accepted.
 			p->pro_ver = p->tcp_cparam->pro_ver;
