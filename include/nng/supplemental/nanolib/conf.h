@@ -662,6 +662,7 @@ struct conf {
 	char      *hook_ipc_url;
 	char      *conf_file;		// config path
 	char      *url;
+	char      *mount_point; // topic prefix applied/stripped for the default tcp listener
 	bool       enable;			// Broker listener
 	bool       allow_anonymous;
 	bool       daemon;

@@ -933,6 +933,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->hook_ipc_url = NULL;
 	nanomq_conf->cmd_ipc_url  = NULL;
 	nanomq_conf->url          = NULL;
+	nanomq_conf->mount_point  = NULL;
 	nanomq_conf->conf_file    = NULL;
 
 #if defined(SUPP_RULE_ENGINE)
@@ -4885,6 +4886,7 @@ conf_fini(conf *nanomq_conf)
 		return;
 	}
 	nng_strfree(nanomq_conf->url);
+	nng_strfree(nanomq_conf->mount_point);
 	nng_strfree(nanomq_conf->conf_file);
 	if (nanomq_conf->vin)
 		nng_strfree(nanomq_conf->vin);
