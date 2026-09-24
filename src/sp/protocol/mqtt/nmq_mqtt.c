@@ -90,6 +90,7 @@ struct nano_pipe {
 	                     	// timer has been triggered
 	bool          busy;
 	bool          event; // indicates if exposure disconnect event is valid
+	bool          connacked; // indicates if broker has replied CONNACK
 	void         *tree;  // root node of db tree
 	void         *nano_qos_db; // 'sqlite' or 'nni_id_hash_map'
 	nni_aio       aio_send;
@@ -259,7 +260,7 @@ nano_pipe_timer_cb(void *arg)
 	}
 	p->ka_refresh++;
 
-	if (!p->busy) {
+	if (!p->busy && p->connacked) {
 		nmq_req req;
 		uint16_t       pid = p->rid;
 		req.packet_id  = pid;
@@ -427,8 +428,9 @@ nano_ctx_send(void *arg, nni_aio *aio)
 	// 2 locks here cause performance degradation
 	nni_mtx_lock(&p->lk);
 	nni_mtx_unlock(&s->lk);
-
-	if (!p->busy) {
+	if (nni_msg_cmd_type(msg) == CMD_CONNACK)
+		p->connacked = true;
+	if (!p->busy && p->connacked == true) {
 		p->busy = true;
 		nni_aio_set_msg(&p->aio_send, msg);
 		nni_pipe_send(p->pipe, &p->aio_send);
@@ -632,6 +634,7 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	p->broker      = s;
 	p->ka_refresh  = 0;
 	p->event       = true;
+	p->connacked   = false;
 	p->tree        = sock->db;
 	if (p->conn_param != NULL)
 		p->keepalive   = p->conn_param->keepalive_mqtt;
@@ -921,7 +924,7 @@ nano_pipe_close(void *arg)
 	nni_pipe  *npipe        = p->pipe;
 	char      *clientid     = NULL;
 
-	log_trace(" ############## nano_pipe_close [%p] ############## ", p);
+	log_trace(" ########### nano_pipe_close clock [%p] ########### ", p);
 	if (nni_atomic_get_bool(&npipe->cache)) {
 		// not first time we trying to close stored session pipe
 		nni_atomic_swap_bool(&npipe->p_closed, false);
@@ -929,6 +932,7 @@ nano_pipe_close(void *arg)
 	}
 	nni_mtx_lock(&s->lk);
 	nni_mtx_lock(&p->lk);
+	p->connacked = false;
 	// we freed the conn_param when restoring pipe
 	// so check status of conn_param. just let it close silently
 	if (p->conn_param->clean_start == 0) {
@@ -1055,14 +1059,15 @@ nano_pipe_send_cb(void *arg)
 	nni_mtx_lock(&p->lk);
 
 	nni_aio_set_prov_data(&p->aio_send, 0);
-	if (nni_lmq_get(&p->rlmq, &msg) == 0) {
-		nni_aio_set_msg(&p->aio_send, msg);
-		log_trace("rlmq msg resending! %ld msgs left\n",
-		    nni_lmq_len(&p->rlmq));
-		nni_pipe_send(p->pipe, &p->aio_send);
-		nni_mtx_unlock(&p->lk);
-		return;
-	}
+	if (p->connacked)
+		if (nni_lmq_get(&p->rlmq, &msg) == 0) {
+			nni_aio_set_msg(&p->aio_send, msg);
+			log_trace("rlmq msg resending! %ld msgs left\n",
+				nni_lmq_len(&p->rlmq));
+			nni_pipe_send(p->pipe, &p->aio_send);
+			nni_mtx_unlock(&p->lk);
+			return;
+		}
 
 	p->busy = false;
 	nni_mtx_unlock(&p->lk);
