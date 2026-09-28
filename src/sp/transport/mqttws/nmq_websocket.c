@@ -429,7 +429,9 @@ done:
 			p->ws_param->max_packet_size =
 			    p->conf->client_max_packet_size;
 		}
-		log_info("max_packet_size of %.*s is %d",
+		log_info("max_packet_size of *** is %d",
+				p->ws_param->max_packet_size);
+		log_debug("max_packet_size of %.*s is %d",
 				p->ws_param->clientid.len, p->ws_param->clientid.body,
 				p->ws_param->max_packet_size);
 		nni_msg_free(conn_msg);

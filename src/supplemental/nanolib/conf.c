@@ -4194,7 +4194,8 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 			log_debug("\t[%ld] remote topic:        %.*s", k + 1,
 			    node->sub_list[k]->remote_topic_len,
 			    node->sub_list[k]->remote_topic);
-			log_info("\t[%ld] local topic:        %.*s", k + 1,
+			log_info("\t[%ld] local topic:        ***", k + 1);
+			log_debug("\t[%ld] local topic:        %.*s", k + 1,
 			    node->sub_list[k]->local_topic_len,
 			    node->sub_list[k]->local_topic);
 			log_info("\t[%ld] qos:          %d", k + 1,

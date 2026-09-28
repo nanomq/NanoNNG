@@ -766,12 +766,15 @@ auth_verify:
 #if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
 	if (total + 1 > (int)s->lc) {
 		rv = QUOTA_EXCEEDED;
-		log_warn("Max Quota %d exceed, %s disconneted",
+		log_warn("Max Quota %d exceed, *** disconneted",
+			s->lc);
+		log_debug("Max Quota %d exceed, %s disconneted",
 			s->lc, clientid);
 	}
 	if (s->lic_valid == false) {
 		rv = QUOTA_EXCEEDED;
-		log_warn("License expired, %s disconneted", clientid);
+		log_warn("License expired, *** disconneted");
+		log_debug("License expired, %s disconneted", clientid);
 	}
 #endif
 	nmq_connack_encode(msg, s->conf, p->conn_param, rv);

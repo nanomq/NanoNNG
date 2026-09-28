@@ -488,7 +488,8 @@ compute_and_rename_file_withMD5_CXX(const std::string &filename,
 	// Step 2: Extract timestamp substring from the original filename
 	if (conf == NULL || conf->dir == NULL ||
 	    conf->file_name_prefix == NULL) {
-		log_error("Invalid parquet conf for rename, keep file %s",
+		log_error("Invalid parquet conf for rename, keep file ***");
+		log_debug("Invalid parquet conf for rename, keep file %s",
 		    filename.c_str());
 		return {};
 	}
@@ -523,7 +524,8 @@ compute_and_rename_file_withMD5_CXX(const std::string &filename,
 		name = conf->name;
 	}
 	if (name == NULL) {
-		log_error("parquet name is null, skip rename and keep file %s",
+		log_error("parquet name is null, skip rename and keep file ***");
+		log_debug("parquet name is null, skip rename and keep file %s",
 		    filename.c_str());
 		return {};
 	}
@@ -1634,6 +1636,8 @@ parquet_resolve_selected_decryption_key(conf_parquet *conf,
 	if (has_metadata_key) {
 		if (has_local_key && local_key != metadata_key) {
 			log_warn(
+			    "Parquet key mismatch for ***, prefer metadata key");
+			log_debug(
 			    "Parquet key mismatch for %s, prefer metadata key",
 			    filename == NULL ? "(null)" : filename);
 		}

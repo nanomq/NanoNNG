@@ -42,11 +42,16 @@ parquet_file_queue::init()
 				if (!has_md5_sum(file_name)) {
 					if (unlink(file_path.c_str()) != 0) {
 						log_error("Failed to remove "
+						          "file ***, errno: %d",
+						    errno);
+						log_debug("Failed to remove "
 						          "file %s, errno: %d",
 						    file_path.c_str(), errno);
 					} else {
 						log_warn("Deleted file "
-						         "without md5sum: %s",
+						         "without md5sum: ***");
+						log_debug("Deleted file "
+						          "without md5sum: %s",
 						    file_path.c_str());
 					}
 					continue;
@@ -72,15 +77,23 @@ parquet_file_queue::init()
 					if (!start_time.has_value()) {
 						log_error(
 						    "Failed to extract start "
+						    "time from file: ***");
+						log_debug(
+						    "Failed to extract start "
 						    "time from file: %s",
 						    file_name.c_str());
 						if (unlink(file_path.c_str()) != 0) {
 							log_error("Failed to remove "
+							          "file ***, errno: %d",
+							    errno);
+							log_debug("Failed to remove "
 							          "file %s, errno: %d",
 							    file_path.c_str(), errno);
 						} else {
 							log_warn("Deleted file "
-							         "without md5sum: %s",
+							         "without md5sum: ***");
+							log_debug("Deleted file "
+							          "without md5sum: %s",
 							    file_path.c_str());
 						}
 						continue;
@@ -285,6 +298,8 @@ parquet_file_queue::remove_old_file(CircularQueue &queue)
 		log_debug("File '%s' removed successfully.\n", filename);
 	} else {
 		log_error(
+		    "Error removing the file *** errno: %d", errno);
+		log_debug(
 		    "Error removing the file %s errno: %d", filename, errno);
 		ret = -1;
 	}

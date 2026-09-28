@@ -562,7 +562,10 @@ tlstran_pipe_recv_cb(void *arg)
 			rv = NMQ_UNSEPECIFY_ERROR;
 		}
 		if (p->tcp_cparam != NULL) {
-			log_warn("mqtts recv error mapped clientid=%.*s username=%.*s ip=%s pipe=%u raw_rv=%d raw_error=%s reason_code=0x%02x",
+			log_warn("mqtts recv error mapped clientid=*** username=*** ip=%s pipe=%u raw_rv=%d raw_error=%s reason_code=0x%02x",
+			    p->tcp_cparam->ip_addr_v4, nni_pipe_id(p->npipe),
+			    raw_rv, nng_strerror(raw_rv), rv);
+			log_debug("mqtts recv error mapped clientid=%.*s username=%.*s ip=%s pipe=%u raw_rv=%d raw_error=%s reason_code=0x%02x",
 			    p->tcp_cparam->clientid.len,
 			    p->tcp_cparam->clientid.body,
 			    p->tcp_cparam->username.len,
