@@ -97,6 +97,17 @@ typedef struct nng_mqtt_sqlite_option nni_mqtt_sqlite_option;
 
 extern void nni_mqtt_qos_db_init(sqlite3 **, const char *, const char *, bool);
 extern void nni_mqtt_qos_db_close(sqlite3 *);
+// Turn on write-behind batching for the retained-message store.
+//
+// At most ONE database per process may be batched: the buffer is a
+// process-global with a single flush thread, so a second call naming a
+// different handle logs a warning and leaves that database on the
+// synchronous path.  A threshold of 0 selects the synchronous path
+// explicitly, which is what every non-broker user of this database and the
+// unit tests get.  Use nni_mqtt_qos_db_close() on the batched handle to
+// drain and release the buffer.
+extern void nni_mqtt_qos_db_retain_batch_setup(
+    sqlite3 *, size_t, uint64_t);
 extern void     nni_mqtt_qos_db_set(sqlite3 *, uint32_t, uint16_t, nni_msg *);
 extern nni_msg *nni_mqtt_qos_db_get(sqlite3 *, uint32_t, uint16_t);
 extern nni_msg *nni_mqtt_qos_db_get_one(sqlite3 *, uint32_t, uint16_t *);
