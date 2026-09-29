@@ -8,10 +8,24 @@
 
 #define test_db "test.db"
 
+// Timed waits compare against nni_clock(), but the condition variables only
+// share that clock's base once the platform has been initialised:
+// nni_plat_init() is what sets the global condvar attribute to
+// NNG_USE_CLOCKID.  Without this call every nni_cv_until() returns
+// immediately, so the batcher flushes on each pass instead of waiting out its
+// interval.  The broker always runs initialised; tests that assert on
+// deferral have to as well.
+static void
+test_platform_init(void)
+{
+	(void) nni_init();
+}
+
 void
 test_db_init(void)
 {
 	sqlite3 *db = NULL;
+	test_platform_init();
 	nni_mqtt_qos_db_init(&db, NULL, test_db, true);
 	nni_mqtt_qos_db_close(db);
 }
