@@ -86,6 +86,7 @@ typedef struct nni_retain_batch {
 	bool           initialized; // set once; the lock/buffer are never freed
 	bool           warned_off;  // one warning per runtime-disable attempt
 	sqlite3       *db;
+	sqlite3       *flush_db;    // owned connection the flush thread writes on
 	conf_sqlite   *conf;        // live broker config, re-read on every tick
 	nni_mtx        lk;
 	nni_cv         cv;
@@ -889,6 +890,11 @@ retain_batch_shutdown(void)
 	nni_cv_wake(&g_retain.cv);
 	nni_mtx_unlock(&g_retain.lk);
 	nni_thr_fini(&g_retain.thr);
+	// The flush thread has exited and every other caller reaches the flush
+	// only through the lock after re-checking `on`, which is now false, so
+	// the dedicated connection is idle and can be closed.
+	sqlite3_close(g_retain.flush_db);
+	g_retain.flush_db = NULL;
 	// g_retain.lk, .cv and .ops are deliberately left alive: a caller that
 	// passed the unlocked `on` check just before it cleared may still be
 	// about to take the lock, and would otherwise lock a finalized mutex or
@@ -957,7 +963,7 @@ retain_batch_atexit(void)
 static void
 retain_batch_flush(void)
 {
-	sqlite3      *db = g_retain.db;
+	sqlite3      *db = g_retain.flush_db;
 	sqlite3_stmt *ins = NULL, *del = NULL;
 	char          ins_sql[] = "INSERT OR REPLACE INTO " table_retain
 	             " ( topic, msg, proto_ver ) VALUES (?, ?, ?)";
@@ -967,11 +973,18 @@ retain_batch_flush(void)
 
 	// Deliberately does not test g_retain.on: the shutdown path clears the
 	// flag first (so new work goes synchronous) and still has to drain.
-	if (g_retain.ops == NULL || g_retain.count == 0) {
+	if (db == NULL || g_retain.ops == NULL || g_retain.count == 0) {
 		return;
 	}
 
-	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
+	if (sqlite3_exec(db, "BEGIN;", 0, 0, 0) != SQLITE_OK) {
+		// The broker's connection holds the write lock, or is mid
+		// transaction; retry the whole batch next tick.  Never run the
+		// statements without our own transaction: they would join
+		// whatever transaction is already open.
+		log_error("retain flush: begin failed: %s", sqlite3_errmsg(db));
+		return;
+	}
 	if (sqlite3_prepare_v2(db, ins_sql, strlen(ins_sql), &ins, 0) !=
 	        SQLITE_OK ||
 	    sqlite3_prepare_v2(db, del_sql, strlen(del_sql), &del, 0) !=
@@ -1105,7 +1118,8 @@ retain_batch_enqueue(const char *topic, nni_msg *msg, uint8_t proto_ver)
 			}
 			nng_free(blob, len);
 			nni_mtx_unlock(&g_retain.lk);
-			return (-1);
+			// Could not buffer it; write it synchronously instead.
+			return (RETAIN_BATCH_SYNC);
 		}
 		op->blob      = blob;
 		op->len       = len;
@@ -1116,7 +1130,9 @@ retain_batch_enqueue(const char *topic, nni_msg *msg, uint8_t proto_ver)
 		if (absent != 1 || k == kh_end(g_retain.ops)) {
 			retain_op_free(op);
 			nni_mtx_unlock(&g_retain.lk);
-			return (-1);
+			// Could not buffer it; write it synchronously
+			// instead.
+			return (RETAIN_BATCH_SYNC);
 		}
 		kh_value(g_retain.ops, k) = op;
 		g_retain.count++;
@@ -1191,7 +1207,9 @@ retain_batch_remove(const char *topic)
 	if (absent != 1 || k == kh_end(g_retain.ops)) {
 		retain_op_free(op);
 		nni_mtx_unlock(&g_retain.lk);
-		return (-1);
+		// Could not record the tombstone; let the caller delete
+		// synchronously rather than dropping the removal.
+		return (RETAIN_BATCH_SYNC);
 	}
 	kh_value(g_retain.ops, k) = op;
 	g_retain.count++;
@@ -1262,6 +1280,30 @@ nni_mqtt_qos_db_retain_batch_setup(sqlite3 *db, conf_sqlite *conf)
 	}
 	g_retain.stop  = false;
 	g_retain.count = 0;
+
+	// The flush thread writes on its own connection.  Sharing the broker's
+	// handle would mean the flush's BEGIN..COMMIT could interleave with a
+	// transaction another thread opened on that same handle, and one
+	// thread's COMMIT or ROLLBACK would then commit or undo the other's
+	// work.  A second connection to the same file is mediated by SQLite's
+	// own locking instead.  The buffer lock still serializes every access
+	// to the buffer itself.
+	{
+		const char *path = sqlite3_db_filename(db, "main");
+
+		if (path == NULL ||
+		    sqlite3_open(path, &g_retain.flush_db) != SQLITE_OK) {
+			log_error("retain batch: cannot open a flush connection "
+			          "for %s; batching stays off",
+			    path == NULL ? "?" : path);
+			sqlite3_close(g_retain.flush_db);
+			g_retain.flush_db = NULL;
+			return;
+		}
+		set_db_pragma(g_retain.flush_db);
+		// Wait rather than fail when the broker's connection is mid-write.
+		sqlite3_busy_timeout(g_retain.flush_db, 5000);
+	}
 
 	nni_mtx_init(&g_retain.lk);
 	nni_cv_init(&g_retain.cv, &g_retain.lk);
