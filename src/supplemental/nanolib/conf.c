@@ -870,6 +870,12 @@ conf_sqlite_init(conf_sqlite *sqlite)
 	sqlite->disk_cache_size     = 102400;
 	sqlite->mounted_file_path   = NULL;
 	sqlite->flush_mem_threshold = 100;
+	// far above the number of topics a broker normally writes retained state
+	// for at once, so the flush interval is what normally drives the batch
+	sqlite->retain_flush_threshold = 1000;
+	// Second-scale on purpose: a sub-second window flushes so often that
+	// the batching buys nothing over writing synchronously.
+	sqlite->flush_interval      = 5000;
 }
 
 #if defined(SUPP_RULE_ENGINE)
@@ -1432,6 +1438,10 @@ print_conf(conf *nanomq_conf)
 		}
 		log_info(
 		    "	flush_mem_threshold:  %ld", sql.flush_mem_threshold);
+		log_info("	retain_flush_threshold: %ld",
+		    sql.retain_flush_threshold);
+		log_info("	flush_interval:       %llu",
+		    (unsigned long long) sql.flush_interval);
 		log_info(
 		    "	resend_interval:      %ld", sql.resend_interval);
 	}

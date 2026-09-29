@@ -122,6 +122,12 @@ struct conf_sqlite {
 	size_t
 	    flush_mem_threshold; // flush to sqlite table when count of message
 	                         // is equal or greater than this value
+	size_t retain_flush_threshold; // flush the buffered retained-message
+	                               // store once this many entries are pending.
+	                               // Acts as a trigger, so keep it above the
+	                               // number of topics written concurrently.
+	uint64_t flush_interval; // flush buffered messages once this many
+	                         // milliseconds have elapsed (ms)
 	uint64_t resend_interval; // resend caching message interval (ms)
 };
 
