@@ -1442,9 +1442,8 @@ nano_sock_setdb(void *arg, void *data)
 		// Batch retained-message persistence: commit once per batch
 		// rather than once per retained publish, bounded by this many
 		// entries or this many milliseconds.
-		nni_mqtt_qos_db_retain_batch_setup(s->sqlite_db,
-		    s->conf->sqlite.retain_flush_threshold,
-		    s->conf->sqlite.flush_interval);
+		nni_mqtt_qos_db_retain_batch_setup(
+		    s->sqlite_db, &s->conf->sqlite);
 	}
 #endif
 

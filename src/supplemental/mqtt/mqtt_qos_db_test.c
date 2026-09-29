@@ -589,9 +589,25 @@ retain_test_msg(const char *body)
 static void
 retain_db_reset(void)
 {
+	// Each batch test starts from a clean process-global batcher.  A real
+	// broker never does this: it leaves the lock and buffer alive after a
+	// shutdown, so production's singleton is one-shot (mqtt_qos_db.c).
+	nni_mqtt_qos_db_retain_batch_reset_for_test();
 	remove(test_retain_db);
-	remove(test_retain_db ".wal");
-	remove(test_retain_db ".shm");
+	remove(test_retain_db "-wal");
+	remove(test_retain_db "-shm");
+}
+
+// The batcher reads its threshold and interval from this struct on every
+// tick, so a test can rewrite the fields to stand in for a config reload.
+static conf_sqlite test_sqlite_conf;
+
+static void
+retain_batch_setup(sqlite3 *db, size_t threshold, uint64_t interval_ms)
+{
+	test_sqlite_conf.retain_flush_threshold = threshold;
+	test_sqlite_conf.flush_interval        = interval_ms;
+	nni_mqtt_qos_db_retain_batch_setup(db, &test_sqlite_conf);
 }
 
 // Read a table through a second connection, which is the only way to see what
@@ -692,7 +708,7 @@ test_retain_batch_visible(void)
 
 	retain_db_reset();
 	nni_mqtt_qos_db_init(&db, NULL, test_retain_db, true);
-	nni_mqtt_qos_db_retain_batch_setup(db, 1000, 60000);
+	retain_batch_setup(db, 1000, 60000);
 
 	NUTS_TRUE(nni_mqtt_qos_db_set_retain(db, "a/b/c", msg, 4) == 0);
 	nni_msg_free(msg);
@@ -724,7 +740,7 @@ test_retain_batch_set_then_clear(void)
 
 	retain_db_reset();
 	nni_mqtt_qos_db_init(&db, NULL, test_retain_db, true);
-	nni_mqtt_qos_db_retain_batch_setup(db, 1000, 60000);
+	retain_batch_setup(db, 1000, 60000);
 
 	NUTS_TRUE(nni_mqtt_qos_db_set_retain(db, "x/1", msg, 4) == 0);
 	nni_msg_free(msg);
@@ -753,7 +769,7 @@ test_retain_batch_clear_after_flush(void)
 
 	retain_db_reset();
 	nni_mqtt_qos_db_init(&db, NULL, test_retain_db, true);
-	nni_mqtt_qos_db_retain_batch_setup(db, 1000, 60000);
+	retain_batch_setup(db, 1000, 60000);
 
 	// v1 reaches the file (find_retain flushes ahead of its query)
 	msg = retain_test_msg("v1");
@@ -786,7 +802,7 @@ test_retain_batch_last_write_wins(void)
 
 	retain_db_reset();
 	nni_mqtt_qos_db_init(&db, NULL, test_retain_db, true);
-	nni_mqtt_qos_db_retain_batch_setup(db, 1000, 60000);
+	retain_batch_setup(db, 1000, 60000);
 
 	for (int i = 0; i < 5; i++) {
 		char     body[16];
@@ -819,7 +835,7 @@ test_retain_batch_count_trigger(void)
 	retain_db_reset();
 	nni_mqtt_qos_db_init(&db, NULL, test_retain_db, true);
 	// a tiny threshold with a long interval, so only the count can trigger
-	nni_mqtt_qos_db_retain_batch_setup(db, 2, 60000);
+	retain_batch_setup(db, 2, 60000);
 
 	for (int i = 0; i < 3; i++) {
 		char     topic[24];
@@ -851,7 +867,7 @@ test_retain_batch_disabled_is_synchronous(void)
 
 	retain_db_reset();
 	nni_mqtt_qos_db_init(&db, NULL, test_retain_db, true);
-	nni_mqtt_qos_db_retain_batch_setup(db, 0, 100);
+	retain_batch_setup(db, 0, 100);
 
 	NUTS_TRUE(nni_mqtt_qos_db_set_retain(db, "sync/1", msg, 4) == 0);
 	nni_msg_free(msg);
@@ -869,7 +885,7 @@ test_retain_batch_concurrent_topics(void)
 
 	retain_db_reset();
 	nni_mqtt_qos_db_init(&db, NULL, test_retain_db, true);
-	nni_mqtt_qos_db_retain_batch_setup(db, 1000, 60000);
+	retain_batch_setup(db, 1000, 60000);
 
 	run_workers(db, conc_topic_worker);
 	nni_mqtt_qos_db_close(db);
@@ -887,7 +903,7 @@ test_retain_batch_concurrent_same_topic(void)
 
 	retain_db_reset();
 	nni_mqtt_qos_db_init(&db, NULL, test_retain_db, true);
-	nni_mqtt_qos_db_retain_batch_setup(db, 1000, 60000);
+	retain_batch_setup(db, 1000, 60000);
 
 	run_workers(db, conc_same_topic_worker);
 	nni_mqtt_qos_db_close(db);
@@ -914,15 +930,15 @@ test_retain_batch_second_db_ignored(void)
 	test_platform_init();
 	retain_db_reset();
 	remove(test_retain_db2);
-	remove(test_retain_db2 ".wal");
-	remove(test_retain_db2 ".shm");
+	remove(test_retain_db2 "-wal");
+	remove(test_retain_db2 "-shm");
 
 	nni_mqtt_qos_db_init(&db1, NULL, test_retain_db, true);
-	nni_mqtt_qos_db_retain_batch_setup(db1, 1000, 60000);
+	retain_batch_setup(db1, 1000, 60000);
 
 	// second database asks for batching while the first one holds it
 	nni_mqtt_qos_db_init(&db2, NULL, test_retain_db2, true);
-	nni_mqtt_qos_db_retain_batch_setup(db2, 5, 1000);
+	retain_batch_setup(db2, 5, 1000);
 
 	msg = retain_test_msg("first");
 	NUTS_TRUE(nni_mqtt_qos_db_set_retain(db1, "d1/t", msg, 4) == 0);
@@ -944,6 +960,174 @@ test_retain_batch_second_db_ignored(void)
 	// closing the batched handle drains it
 	nni_mqtt_qos_db_close(db1);
 	NUTS_TRUE(retain_count_of(test_retain_db) == 1);
+}
+
+// A config reload rewrites retain_flush_threshold / flush_interval in place;
+// the batcher re-reads them, so a change applies without a restart.
+void
+test_retain_batch_reconfigured(void)
+{
+	sqlite3 *db  = NULL;
+	nni_msg *msg = retain_test_msg("live");
+	int64_t  n   = 0;
+
+	test_platform_init();
+	retain_db_reset();
+	nni_mqtt_qos_db_init(&db, NULL, test_retain_db, true);
+	// wide open: nothing flushes on its own
+	retain_batch_setup(db, 1000, 60000);
+
+	NUTS_TRUE(nni_mqtt_qos_db_set_retain(db, "re/1", msg, 4) == 0);
+	nni_msg_free(msg);
+	NUTS_TRUE(retain_count() == 0);
+
+	// stand in for a reload that drops the threshold to one pending entry
+	test_sqlite_conf.retain_flush_threshold = 1;
+	msg = retain_test_msg("after-reload");
+	NUTS_TRUE(nni_mqtt_qos_db_set_retain(db, "re/2", msg, 4) == 0);
+	nni_msg_free(msg);
+
+	for (int i = 0; i < 200; i++) {
+		n = retain_count();
+		if (n >= 2) {
+			break;
+		}
+		nni_msleep(10);
+	}
+	NUTS_TRUE(n >= 2);
+
+	nni_mqtt_qos_db_close(db);
+}
+
+// A reload that sets retain_flush_threshold = 0 cannot disable batching at
+// runtime: the batcher keeps its last value rather than degenerating.
+void
+test_retain_batch_runtime_disable_refused(void)
+{
+	sqlite3 *db  = NULL;
+	nni_msg *msg;
+
+	test_platform_init();
+	retain_db_reset();
+	nni_mqtt_qos_db_init(&db, NULL, test_retain_db, true);
+	retain_batch_setup(db, 1000, 60000);
+
+	// stand in for the reload
+	test_sqlite_conf.retain_flush_threshold = 0;
+
+	msg = retain_test_msg("buffered");
+	NUTS_TRUE(nni_mqtt_qos_db_set_retain(db, "off/1", msg, 4) == 0);
+	nni_msg_free(msg);
+
+	// still buffered, not spilled to the synchronous path
+	NUTS_TRUE(retain_count() == 0);
+	nni_mqtt_qos_db_close(db);
+	NUTS_TRUE(retain_count() == 1);
+}
+
+// After the batcher is shut down the database may still be open -- that is
+// exactly what the broker's exit path leaves behind.  Every entry point must
+// fall back to the synchronous path instead of touching the retired buffer.
+void
+test_retain_batch_after_shutdown(void)
+{
+	sqlite3 *db  = NULL;
+	nni_msg *msg;
+	nni_msg *got;
+	nni_msg **vec;
+
+	test_platform_init();
+	retain_db_reset();
+	nni_mqtt_qos_db_init(&db, NULL, test_retain_db, true);
+	retain_batch_setup(db, 1000, 60000);
+
+	msg = retain_test_msg("before");
+	NUTS_TRUE(nni_mqtt_qos_db_set_retain(db, "sh/1", msg, 4) == 0);
+	nni_msg_free(msg);
+
+	// Shut the batcher down while the database stays open.
+	nni_mqtt_qos_db_retain_batch_shutdown_for_test();
+	NUTS_TRUE(retain_count() == 1); // drained on shutdown
+
+	// the same handle is now on the synchronous path
+	msg = retain_test_msg("after");
+	NUTS_TRUE(nni_mqtt_qos_db_set_retain(db, "sh/2", msg, 4) == 0);
+	nni_msg_free(msg);
+	NUTS_TRUE(retain_count() == 2);
+
+	NUTS_TRUE(nni_mqtt_qos_db_remove_retain(db, "sh/1") == 0);
+	NUTS_TRUE(retain_count() == 1);
+
+	got = nni_mqtt_qos_db_get_retain(db, "sh/2");
+	NUTS_ASSERT(got != NULL);
+	NUTS_TRUE(strcmp((const char *) nni_msg_body(got), "after") == 0);
+	nni_msg_free(got);
+
+	vec = nni_mqtt_qos_db_find_retain(db, "sh/#");
+	NUTS_ASSERT(vec != NULL);
+	NUTS_TRUE(cvector_size(vec) == 1);
+	nni_msg_free(vec[0]);
+	cvector_free(vec);
+
+	nni_mqtt_qos_db_close(db);
+}
+
+typedef struct race_arg {
+	sqlite3   *db;
+	volatile int stop;
+} race_arg;
+
+static void
+race_pub_worker(void *arg)
+{
+	race_arg *a = arg;
+
+	while (!a->stop) {
+		nni_msg *m = retain_test_msg("race");
+		(void) nni_mqtt_qos_db_set_retain(a->db, "race/t", m, 4);
+		nni_msg_free(m);
+	}
+}
+
+// Publishers race the batcher being switched off.  A caller that already
+// passed the unlocked enabled check must not touch a torn-down buffer, and a
+// later synchronous write must not be clobbered by a stale buffered value.
+void
+test_retain_batch_shutdown_race(void)
+{
+	sqlite3 *db = NULL;
+	nni_thr  thr[4];
+	race_arg args[4];
+
+	test_platform_init();
+	retain_db_reset();
+	nni_mqtt_qos_db_init(&db, NULL, test_retain_db, true);
+	retain_batch_setup(db, 1000, 60000);
+
+	for (int i = 0; i < 4; i++) {
+		args[i].db   = db;
+		args[i].stop = 0;
+		nni_thr_init(&thr[i], race_pub_worker, &args[i]);
+	}
+	for (int i = 0; i < 4; i++) {
+		nni_thr_run(&thr[i]);
+	}
+
+	nni_msleep(20);
+	// switch the batcher off underneath the publishers; the database stays
+	// open, so the fallback is a valid synchronous write
+	nni_mqtt_qos_db_retain_batch_shutdown_for_test();
+
+	for (int i = 0; i < 4; i++) {
+		args[i].stop = 1;
+	}
+	for (int i = 0; i < 4; i++) {
+		nni_thr_fini(&thr[i]);
+	}
+
+	// survived the race, and the single topic holds exactly one row
+	NUTS_TRUE(retain_count() == 1);
+	nni_mqtt_qos_db_close(db);
 }
 
 TEST_LIST = {
@@ -990,5 +1174,12 @@ TEST_LIST = {
 	    test_retain_batch_concurrent_same_topic },
 	{ "db_retain_batch_second_db_ignored",
 	    test_retain_batch_second_db_ignored },
+	{ "db_retain_batch_reconfigured", test_retain_batch_reconfigured },
+	{ "db_retain_batch_runtime_disable_refused",
+	    test_retain_batch_runtime_disable_refused },
+	{ "db_retain_batch_after_shutdown",
+	    test_retain_batch_after_shutdown },
+	{ "db_retain_batch_shutdown_race",
+	    test_retain_batch_shutdown_race },
 	{ NULL, NULL },
 };

@@ -83,7 +83,10 @@ KHASH_MAP_INIT_STR(retain_ops, nni_retain_op *)
 
 typedef struct nni_retain_batch {
 	bool           on;
+	bool           initialized; // set once; the lock/buffer are never freed
+	bool           warned_off;  // one warning per runtime-disable attempt
 	sqlite3       *db;
+	conf_sqlite   *conf;        // live broker config, re-read on every tick
 	nni_mtx        lk;
 	nni_cv         cv;
 	nni_thr        thr;
@@ -98,8 +101,12 @@ typedef struct nni_retain_batch {
 static nni_retain_batch g_retain;
 
 static void retain_batch_flush(void);
-static void retain_batch_teardown(void);
 static void retain_batch_shutdown(void);
+
+// Returned by retain_batch_enqueue()/remove() when batching was switched off
+// between the caller's unlocked check and the buffer lock, so the caller has
+// to use the synchronous path instead.  Distinct from 0 (handled) and -1.
+#define RETAIN_BATCH_SYNC 1
 
 static int
 create_client_msg_table(sqlite3 *db)
@@ -827,39 +834,43 @@ retain_op_free(nni_retain_op *op)
 	nng_free(op, sizeof(*op));
 }
 
-// Drop every pending entry without writing it.  Caller holds g_retain.lk.
+// Re-read the live batching parameters.  The broker rewrites these fields in
+// place on a config reload, so reading them here is what lets a reload change
+// the cadence without a restart.  Turning batching off at runtime is not
+// supported -- the flush thread and the buffer were created at setup -- so a
+// threshold of 0 keeps the last effective value and warns once.  Caller holds
+// g_retain.lk.
 static void
-retain_batch_clear(void)
+retain_batch_refresh(void)
 {
-	khint_t k;
+	size_t   threshold;
+	uint64_t interval;
 
-	for (k = kh_begin(g_retain.ops); k != kh_end(g_retain.ops); ++k) {
-		if (kh_exist(g_retain.ops, k)) {
-			retain_op_free(kh_value(g_retain.ops, k));
+	if (g_retain.conf == NULL) {
+		return;
+	}
+	threshold = g_retain.conf->retain_flush_threshold;
+	interval  = g_retain.conf->flush_interval;
+
+	if (threshold == 0) {
+		if (!g_retain.warned_off) {
+			log_warn("retain batch: retain_flush_threshold=0 cannot "
+			         "disable batching at runtime; keeping %zu until "
+			         "restart",
+			    g_retain.threshold);
+			g_retain.warned_off = true;
+		}
+	} else {
+		g_retain.warned_off = false;
+		g_retain.threshold  = threshold;
+		g_retain.hard_limit = threshold * 8;
+		if (g_retain.hard_limit < 1024) {
+			g_retain.hard_limit = 1024;
 		}
 	}
-	kh_clear(retain_ops, g_retain.ops);
-	g_retain.count = 0;
-}
-
-// The flush thread has already been joined when this runs.
-static void
-retain_batch_teardown(void)
-{
-	nni_mtx_lock(&g_retain.lk);
-	// Anything still buffered was accepted before batching was switched
-	// off, so it has to reach the file; clear() is for entries we have
-	// decided to drop, and at this point there are none.  The flush and
-	// the clear happen under one hold, so no enqueue can slip between
-	// them.
-	retain_batch_flush();
-	retain_batch_clear();
-	kh_destroy(retain_ops, g_retain.ops);
-	g_retain.ops = NULL;
-	nni_mtx_unlock(&g_retain.lk);
-	nni_cv_fini(&g_retain.cv);
-	nni_mtx_fini(&g_retain.lk);
-	g_retain.on = false;
+	if (interval != 0) {
+		g_retain.interval_ms = interval;
+	}
 }
 
 // Stop the flush thread and commit whatever it was still holding.  Shared by
@@ -867,17 +878,65 @@ retain_batch_teardown(void)
 static void
 retain_batch_shutdown(void)
 {
-	// Switch new work to the synchronous path *before* stopping the
-	// thread, so a publish racing with shutdown cannot enqueue into a
-	// buffer whose thread has already exited.
 	nni_mtx_lock(&g_retain.lk);
+	// Drain while the buffer is still authoritative, then switch new work to
+	// the synchronous path, both under one hold.  In that order the buffer
+	// is already empty when `on` clears, so a write that goes synchronous
+	// afterwards cannot be overwritten by a stale buffered value.
+	retain_batch_flush();
 	g_retain.on   = false;
 	g_retain.stop = true;
 	nni_cv_wake(&g_retain.cv);
 	nni_mtx_unlock(&g_retain.lk);
 	nni_thr_fini(&g_retain.thr);
-	retain_batch_teardown();
+	// g_retain.lk, .cv and .ops are deliberately left alive: a caller that
+	// passed the unlocked `on` check just before it cleared may still be
+	// about to take the lock, and would otherwise lock a finalized mutex or
+	// dereference a NULL ops.  The post-lock recheck in each entry point
+	// sends such a caller down the synchronous path.
 }
+
+#if defined(NNG_TEST_LIB)
+// Run the real shutdown (drain, stop, join) without closing the database, so
+// a test can drive callers that race the batcher going off.  This mirrors the
+// broker's exit hook, which shuts down while the handle stays open.
+void
+nni_mqtt_qos_db_retain_batch_shutdown_for_test(void)
+{
+	if (g_retain.on) {
+		retain_batch_shutdown();
+	}
+}
+
+// Tear the process-global batcher down completely so the next unit test
+// starts from a clean slate.  Production never does this: after a real
+// shutdown the lock and buffer stay alive for callers that raced the flag
+// going false (see retain_batch_shutdown()).  Tests are single-process and
+// join their own workers first, so there is no such caller here.
+void
+nni_mqtt_qos_db_retain_batch_reset_for_test(void)
+{
+	khint_t k;
+
+	if (g_retain.on) {
+		retain_batch_shutdown();
+	}
+	if (!g_retain.initialized) {
+		return;
+	}
+	nni_mtx_lock(&g_retain.lk);
+	for (k = kh_begin(g_retain.ops); k != kh_end(g_retain.ops); ++k) {
+		if (kh_exist(g_retain.ops, k)) {
+			retain_op_free(kh_value(g_retain.ops, k));
+		}
+	}
+	nni_mtx_unlock(&g_retain.lk);
+	kh_destroy(retain_ops, g_retain.ops);
+	nni_cv_fini(&g_retain.cv);
+	nni_mtx_fini(&g_retain.lk);
+	memset(&g_retain, 0, sizeof(g_retain));
+}
+#endif
 
 // The broker never closes its database connection: its shutdown path returns
 // from main and relies on atexit, and the socket fini that would call
@@ -954,7 +1013,14 @@ retain_batch_flush(void)
 
 	sqlite3_finalize(ins);
 	sqlite3_finalize(del);
-	sqlite3_exec(db, "COMMIT;", 0, 0, 0);
+	if (sqlite3_exec(db, "COMMIT;", 0, 0, 0) != SQLITE_OK) {
+		// Losing the commit loses the whole batch, not one message, so
+		// keep it for the next tick rather than dropping it.
+		log_error("retain flush: commit failed: %s",
+		    sqlite3_errmsg(db));
+		sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
+		return;
+	}
 
 	// the batch is now accounted for; release it
 	for (k = kh_begin(g_retain.ops); k != kh_end(g_retain.ops); ++k) {
@@ -973,8 +1039,11 @@ retain_batch_thread(void *arg)
 
 	nni_mtx_lock(&g_retain.lk);
 	while (!g_retain.stop) {
-		nni_time deadline = nni_clock() + g_retain.interval_ms;
+		nni_time deadline;
 
+		// Pick up any reloaded threshold/interval before each wait.
+		retain_batch_refresh();
+		deadline = nni_clock() + g_retain.interval_ms;
 		while (!g_retain.stop &&
 		    g_retain.count < g_retain.threshold) {
 			if (nni_cv_until(&g_retain.cv, deadline) ==
@@ -1005,6 +1074,13 @@ retain_batch_enqueue(const char *topic, nni_msg *msg, uint8_t proto_ver)
 	}
 
 	nni_mtx_lock(&g_retain.lk);
+	if (!g_retain.on) {
+		// Batching was switched off after the caller's unlocked check.
+		nni_mtx_unlock(&g_retain.lk);
+		nng_free(blob, len);
+		return (RETAIN_BATCH_SYNC);
+	}
+	retain_batch_refresh();
 
 	k = kh_get(retain_ops, g_retain.ops, topic);
 	if (k != kh_end(g_retain.ops)) {
@@ -1059,7 +1135,7 @@ retain_batch_enqueue(const char *topic, nni_msg *msg, uint8_t proto_ver)
 	return (0);
 }
 
-static void
+static int
 retain_batch_remove(const char *topic)
 {
 	nni_retain_op *op;
@@ -1067,6 +1143,12 @@ retain_batch_remove(const char *topic)
 	int            absent = 0;
 
 	nni_mtx_lock(&g_retain.lk);
+	if (!g_retain.on) {
+		// Batching was switched off after the caller's unlocked check.
+		nni_mtx_unlock(&g_retain.lk);
+		return (RETAIN_BATCH_SYNC);
+	}
+	retain_batch_refresh();
 
 	k = kh_get(retain_ops, g_retain.ops, topic);
 	if (k != kh_end(g_retain.ops)) {
@@ -1083,7 +1165,7 @@ retain_batch_remove(const char *topic)
 			op->proto_ver = 0;
 		}
 		nni_mtx_unlock(&g_retain.lk);
-		return;
+		return (0);
 	}
 
 	// Nothing buffered, but a row from an earlier flush may still exist,
@@ -1097,7 +1179,9 @@ retain_batch_remove(const char *topic)
 			nng_free(op, sizeof(*op));
 		}
 		nni_mtx_unlock(&g_retain.lk);
-		return;
+		// Could not record the tombstone; let the caller delete
+		// synchronously rather than dropping the removal.
+		return (RETAIN_BATCH_SYNC);
 	}
 	op->blob      = NULL;
 	op->len       = 0;
@@ -1107,11 +1191,12 @@ retain_batch_remove(const char *topic)
 	if (absent != 1 || k == kh_end(g_retain.ops)) {
 		retain_op_free(op);
 		nni_mtx_unlock(&g_retain.lk);
-		return;
+		return (-1);
 	}
 	kh_value(g_retain.ops, k) = op;
 	g_retain.count++;
 	nni_mtx_unlock(&g_retain.lk);
+	return (0);
 }
 
 // Decode a stored or buffered retained message.
@@ -1135,20 +1220,28 @@ retain_msg_from_blob(uint8_t *blob, size_t len, uint8_t proto_ver)
 
 // Turn on write-behind batching for the retained-message store.  A threshold
 // of 0 leaves the synchronous path in place, which is what every non-broker
-// user of this database (and the unit tests) gets.
+// user of this database (and the unit tests) gets.  The threshold and
+// interval are taken from `conf` and re-read from it on every flush tick, so
+// a broker config reload that rewrites those fields takes effect without a
+// restart.
 void
-nni_mqtt_qos_db_retain_batch_setup(
-    sqlite3 *db, size_t threshold, uint64_t interval_ms)
+nni_mqtt_qos_db_retain_batch_setup(sqlite3 *db, conf_sqlite *conf)
 {
-	if (threshold == 0) {
+	size_t   threshold;
+	uint64_t interval_ms;
+
+	if (conf == NULL || conf->retain_flush_threshold == 0) {
 		return;
 	}
-	if (g_retain.on) {
-		// One database per process may be batched.  A second database
-		// asking for it is a programming error rather than a setting
-		// the store can honour, so say so instead of returning
-		// silently and leaving the caller believing it took effect.
-		if (g_retain.db != db) {
+	if (g_retain.initialized) {
+		// The lock and the buffer are never freed, so the batcher is
+		// a one-shot: it cannot be re-armed on a second database, or
+		// after a shutdown, without a restart.
+		if (!g_retain.on) {
+			log_warn("retain batch: already retired; batching "
+			         "stays off for %p until restart",
+			    (void *) db);
+		} else if (g_retain.db != db) {
 			log_warn("retain batcher already serves another "
 			         "database: batching stays off for %p",
 			    (void *) db);
@@ -1156,7 +1249,11 @@ nni_mqtt_qos_db_retain_batch_setup(
 		return;
 	}
 
+	threshold   = conf->retain_flush_threshold;
+	interval_ms = conf->flush_interval;
+
 	g_retain.db          = db;
+	g_retain.conf        = conf;
 	g_retain.threshold   = threshold;
 	g_retain.interval_ms = interval_ms == 0 ? 100 : interval_ms;
 	g_retain.hard_limit  = threshold * 8;
@@ -1182,7 +1279,8 @@ nni_mqtt_qos_db_retain_batch_setup(
 		nni_mtx_fini(&g_retain.lk);
 		return;
 	}
-	g_retain.on = true;
+	g_retain.initialized = true;
+	g_retain.on          = true;
 	nni_thr_run(&g_retain.thr);
 
 	// Drains the batch if the process exits without closing the database.
@@ -1195,7 +1293,13 @@ nni_mqtt_qos_db_set_retain(
     sqlite3 *db, const char *topic, nni_msg *msg, uint8_t proto_ver)
 {
 	if (retain_batch_enabled(db)) {
-		return (retain_batch_enqueue(topic, msg, proto_ver));
+		int rv = retain_batch_enqueue(topic, msg, proto_ver);
+
+		if (rv != RETAIN_BATCH_SYNC) {
+			return (rv);
+		}
+		// Batching was switched off under us; fall through to the
+		// synchronous path.
 	}
 
 	char sql[] = "INSERT or REPLACE INTO " table_retain
@@ -1241,13 +1345,15 @@ nni_mqtt_qos_db_get_retain(sqlite3 *db, const char *topic)
 		khint_t  k;
 
 		nni_mtx_lock(&g_retain.lk);
-		k = kh_get(retain_ops, g_retain.ops, topic);
-		if (k != kh_end(g_retain.ops)) {
-			nni_retain_op *op = kh_value(g_retain.ops, k);
-			found = true;
-			if (op->blob != NULL) {
-				buffered = retain_msg_from_blob(
-				    op->blob, op->len, op->proto_ver);
+		if (g_retain.on) {
+			k = kh_get(retain_ops, g_retain.ops, topic);
+			if (k != kh_end(g_retain.ops)) {
+				nni_retain_op *op = kh_value(g_retain.ops, k);
+				found = true;
+				if (op->blob != NULL) {
+					buffered = retain_msg_from_blob(
+					    op->blob, op->len, op->proto_ver);
+				}
 			}
 		}
 		nni_mtx_unlock(&g_retain.lk);
@@ -1291,7 +1397,9 @@ nni_mqtt_qos_db_find_retain(sqlite3 *db, const char *topic_pattern)
 		// subscriber would miss a retained message published moments
 		// ago.  This runs on SUBSCRIBE only, not on the hot path.
 		nni_mtx_lock(&g_retain.lk);
-		retain_batch_flush();
+		if (g_retain.on) {
+			retain_batch_flush();
+		}
 		nni_mtx_unlock(&g_retain.lk);
 	}
 
@@ -1378,8 +1486,8 @@ nni_mqtt_qos_db_find_retain(sqlite3 *db, const char *topic_pattern)
 int
 nni_mqtt_qos_db_remove_retain(sqlite3 *db, const char *topic)
 {
-	if (retain_batch_enabled(db)) {
-		retain_batch_remove(topic);
+	if (retain_batch_enabled(db) &&
+	    retain_batch_remove(topic) != RETAIN_BATCH_SYNC) {
 		return (0);
 	}
 

@@ -4649,6 +4649,14 @@ conf_sqlite_parse(
 			sqlite->flush_mem_threshold = (size_t) atol(value);
 			free(value);
 		} else if ((value = get_conf_value_with_prefix(line, sz,
+		                key_prefix, ".retain_flush_threshold")) != NULL) {
+			sqlite->retain_flush_threshold = (size_t) atol(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix(line, sz,
+		                key_prefix, ".flush_interval")) != NULL) {
+			sqlite->flush_interval = (uint64_t) atoll(value);
+			free(value);
+		} else if ((value = get_conf_value_with_prefix(line, sz,
 		                key_prefix, ".resend_interval")) != NULL) {
 			sqlite->resend_interval = (uint64_t) atoll(value);
 			free(value);

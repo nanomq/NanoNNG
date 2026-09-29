@@ -123,6 +123,11 @@ test_conf_parse(void)
 		NUTS_TRUE(strncmp(conf->url, "nmq-tcp://0.0.0.0:1883", 22) == 0);
 		print_conf(conf);
 	}
+	// legacy flat-file parser must pick up the retain batch keys; the test
+	// file uses non-default values so an ignored key would show as the
+	// compiled default instead
+	NUTS_TRUE(conf->sqlite.retain_flush_threshold == 321);
+	NUTS_TRUE(conf->sqlite.flush_interval == 4321);
 
 	conf_fini(conf);
 #endif
