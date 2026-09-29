@@ -97,6 +97,29 @@ typedef struct nng_mqtt_sqlite_option nni_mqtt_sqlite_option;
 
 extern void nni_mqtt_qos_db_init(sqlite3 **, const char *, const char *, bool);
 extern void nni_mqtt_qos_db_close(sqlite3 *);
+// Turn on write-behind batching for the retained-message store.
+//
+// At most ONE database per process may be batched: the buffer is a
+// process-global with a single flush thread, so a second call naming a
+// different handle logs a warning and leaves that database on the
+// synchronous path.  A threshold of 0 in `conf` selects the synchronous path
+// explicitly, which is what every non-broker user of this database gets.
+// The threshold and interval are re-read from `conf` on every flush tick, so
+// a config reload that rewrites those fields applies without a restart; the
+// batcher itself is one-shot and cannot be re-armed after a shutdown.  Use
+// nni_mqtt_qos_db_close() on the batched handle to drain it.
+extern void nni_mqtt_qos_db_retain_batch_setup(sqlite3 *, conf_sqlite *);
+
+#ifdef NNG_TEST_LIB
+// Run the real shutdown without closing the database; the test-facing half of
+// the broker's exit hook.
+extern void nni_mqtt_qos_db_retain_batch_shutdown_for_test(void);
+
+// Fully tear the process-global batcher down so the next unit test can set it
+// up again.  Never call this outside tests: production deliberately keeps the
+// lock and buffer alive after shutdown (see mqtt_qos_db.c).
+extern void nni_mqtt_qos_db_retain_batch_reset_for_test(void);
+#endif
 extern void     nni_mqtt_qos_db_set(sqlite3 *, uint32_t, uint16_t, nni_msg *);
 extern nni_msg *nni_mqtt_qos_db_get(sqlite3 *, uint32_t, uint16_t);
 extern nni_msg *nni_mqtt_qos_db_get_one(sqlite3 *, uint32_t, uint16_t *);
