@@ -1,0 +1,12 @@
+openssl_conf = openssl_init
+
+[openssl_init]
+engines = my_engines
+
+[my_engines]
+easysec = easysec_config
+
+[easysec_config]
+engine_id = easysec
+dynamic_path =/mnt/lib64/libcn_x509_engine.so # 你的真实路径！！！
+init = 1
