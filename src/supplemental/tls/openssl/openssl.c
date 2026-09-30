@@ -77,8 +77,16 @@ print_hex(char *str, const uint8_t *data, size_t len)
 #include "nng/supplemental/tls/tls.h"
 #include <nng/supplemental/tls/engine.h>
 
+#if defined(TLS_EXTERN_PRIVATE_KEY) && defined(TLS_EXTERN_CORNEX_PKI)
+#error "TLS_EXTERN_PRIVATE_KEY and TLS_EXTERN_CORNEX_PKI are mutually exclusive"
+#endif
+
 #ifdef TLS_EXTERN_PRIVATE_KEY
 #include <nng/supplemental/tls/tee.h>
+#endif
+
+#ifdef TLS_EXTERN_CORNEX_PKI
+#include "cornex_pki.h"
 #endif
 
 static bool g_print_handshake = false;
@@ -950,6 +958,18 @@ open_config_init(nng_tls_engine_config *cfg, enum nng_tls_mode mode)
 	//SSL_CTX_set_mode(cfg->ctx, SSL_MODE_AUTO_RETRY);
 	//SSL_CTX_set_options(cfg->ctx, SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
 
+#ifdef TLS_EXTERN_CORNEX_PKI
+	if (mode == NNG_TLS_MODE_CLIENT) {
+		int crv = nni_cornex_pki_apply(cfg->ctx);
+		if (crv != 0) {
+			log_error("NNG-TLS-CFG-INIT" "Cornex PKI identity setup failed: %d", crv);
+			SSL_CTX_free(cfg->ctx);
+			cfg->ctx = NULL;
+			return (crv);
+		}
+	}
+#endif
+
 	trace("start end %p ctx %p", cfg, cfg->ctx);
 	cfg->auth_mode = nng_auth;
 	cfg->alpns = NULL;
@@ -1015,6 +1035,14 @@ open_config_ca_chain(
 {
 	size_t len;
 	trace("start");
+
+#ifdef TLS_EXTERN_CORNEX_PKI
+	NNI_ARG_UNUSED(len);
+	NNI_ARG_UNUSED(certs);
+	NNI_ARG_UNUSED(crl);
+	log_warn("NNG-TLS-CFG-CACHAIN" "cacertfile ignored: Cornex PKI mode uses the SDK certificate chain");
+	return (0);
+#endif
 
 #ifndef NANOMQ_TLS_VENDOR
 #define NANOMQ_TLS_VENDOR "VENDOR"
@@ -1124,6 +1152,23 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	BIO *biocert = NULL;
 	X509 *xcert = NULL;
 	EVP_PKEY *pkey = NULL;
+
+#ifdef TLS_EXTERN_CORNEX_PKI
+	NNI_ARG_UNUSED(cfg);
+	if (cert != NULL || key != NULL) {
+		log_warn("NNG-TLS-CFG-OWNCHAIN" "certfile/keyfile ignored: Cornex PKI mode uses the TEE-backed identity");
+	}
+	NNI_ARG_UNUSED(cert);
+	NNI_ARG_UNUSED(key);
+	NNI_ARG_UNUSED(pass);
+	NNI_ARG_UNUSED(len);
+	NNI_ARG_UNUSED(rv);
+	NNI_ARG_UNUSED(biokey);
+	NNI_ARG_UNUSED(biocert);
+	NNI_ARG_UNUSED(xcert);
+	NNI_ARG_UNUSED(pkey);
+	return (0);
+#endif
 
 #if NNG_OPENSSL_HAVE_PASSWORD
 	char *dup = NULL;
@@ -1473,7 +1518,7 @@ static nng_tls_engine open_engine = {
 	.config_ops  = &open_config_ops,
 	.conn_ops    = &open_conn_ops,
 	.name        = "open",
-	.description = "OpenSSL 1.1.1",
+	.description = "OpenSSL",
 	.fips_mode   = false, // commercial users only
 };
 
@@ -1498,6 +1543,13 @@ nng_tls_engine_init_open(void)
 		EVP_cleanup();
 		return (NNG_EINTERNAL);
 	}
+#ifdef TLS_EXTERN_CORNEX_PKI
+	if ((rv = nni_cornex_pki_init()) != 0) {
+		log_error("NNG-TLS-CORNEX" "PKI/TEE initialization failed: %d", rv);
+		return (rv);
+	}
+#endif
+
 	return (nng_tls_engine_register(&open_engine));
 }
 
