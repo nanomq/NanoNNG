@@ -183,6 +183,13 @@ mark_as_advanced(NNG_TRANSPORT_MQTT_TLS)
 option (TLS_EXTERN_PRIVATE_KEY "Load TLS Private key from externals" OFF)
 option (TLS_EXTERN_PRIVATE_KEY_8155 "Load TLS Private key from externals 8155" OFF)
 
+# Cornex (楚能) PKI: TEE-backed client identity via the easysec OpenSSL engine.
+# 与 TLS_EXTERN_PRIVATE_KEY 互斥；要求 NNG_TLS_ENGINE=open 且 OpenSSL 3.x。
+option (CORNEX_PKI "Enable Cornex PKI client identity (QNX, TEE-backed)" OFF)
+set (CORNEX_PKI_ROOT "" CACHE PATH "Cornex PKI SDK root (contains lib/, include/, conf/)")
+set (CORNEX_PKI_ENGINE_PATH "" CACHE STRING "Default absolute path of libcn_x509_engine.so; runtime env NANOMQ_CORNEX_PKI_ENGINE overrides")
+mark_as_advanced (CORNEX_PKI_ROOT CORNEX_PKI_ENGINE_PATH)
+
 # WebSocket
 option (NNG_TRANSPORT_WS "Enable WebSocket transport." ON)
 mark_as_advanced(NNG_TRANSPORT_WS)
