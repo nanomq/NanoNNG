@@ -478,6 +478,9 @@ nni_pipe_set_pid(nni_pipe *new_pipe, uint32_t id)
 	// we leave session restore job to protocol layer.
 	if ((p = nni_id_get(&pipes, id)) != NULL) {
 		rv = nni_id_set(&pipes, id, new_pipe);
+		// Hold the old pipe across the unlock: pipe_destroy drains
+		// p_ref under pipes_lk before it frees the pipe.
+		p->p_ref++;
 		// Kick out duplicated Client ID
 		nni_mtx_unlock(&pipes_lk);
 		if (!nni_atomic_get_bool(&p->cache) || rv != 0) {
@@ -486,6 +489,7 @@ nni_pipe_set_pid(nni_pipe *new_pipe, uint32_t id)
 			// so that new pipe can inherit.
 			nni_pipe_close(p);
 		}
+		nni_pipe_rele(p);
 		return rv;
 	}
 
