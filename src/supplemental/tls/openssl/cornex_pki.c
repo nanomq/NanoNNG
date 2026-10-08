@@ -17,6 +17,7 @@
 #include <openssl/ssl.h>
 #include <openssl/ui.h>
 #include <openssl/x509.h>
+#include <openssl/x509err.h>
 
 #include "core/nng_impl.h"
 
@@ -32,7 +33,6 @@
 // ENGINE_load_private_key 的 key id，见厂商 client_socket.c 示例
 #define CORNEX_PKI_KEY_ID "ec_key"
 #define CORNEX_PKI_CHAIN_MAX 8192
-#define CORNEX_PKI_CERT_MAX 4096
 
 static ENGINE *cornex_engine = NULL;
 
@@ -48,7 +48,7 @@ cornex_pki_log_errors(const char *what)
 	}
 }
 
-// 显式加载 dynamic engine（D8）：不依赖 openssl.cnf / OPENSSL_CONF
+// 显式加载 dynamic engine（D8）：engine 的加载不经过配置文件（openssl.cnf / OPENSSL_CONF）
 static ENGINE *
 cornex_pki_load_engine(void)
 {
@@ -95,6 +95,8 @@ cornex_pki_load_engine(void)
 	return (e);
 }
 
+// 只在 nng_tls_engine_init_open()（进程启动、单线程）里调用一次，因此这里不加锁；
+// 若将来改成懒加载/多线程调用，需要补锁。
 int
 nni_cornex_pki_init(void)
 {
@@ -187,13 +189,18 @@ cornex_pki_install_chain(SSL_CTX *ctx)
 	while ((cert = PEM_read_bio_X509(bio, NULL, 0, NULL)) != NULL) {
 		// 信任锚：用于校验对端服务端（D6）
 		if (X509_STORE_add_cert(store, cert) != 1) {
-			log_error("NNG-TLS-CORNEX" "X509_STORE_add_cert failed");
-			cornex_pki_log_errors("X509_STORE_add_cert");
-			X509_free(cert);
-			rv = NNG_ECRYPTO;
-			break;
+			unsigned long err = ERR_peek_last_error();
+			// 链里有重复项不是错误，忽略即可
+			if (ERR_GET_REASON(err) != X509_R_CERT_ALREADY_IN_HASH_TABLE) {
+				log_error("NNG-TLS-CORNEX" "X509_STORE_add_cert failed");
+				cornex_pki_log_errors("X509_STORE_add_cert");
+				X509_free(cert);
+				rv = NNG_ECRYPTO;
+				break;
+			}
+			ERR_clear_error();
 		}
-		// 自身链：把中间 CA 一并发出；自签（根）不加（D6）
+		// 自身链：把中间 CA 一并发出；自签发的根（issuer==subject，X509_check_issued 判定）不加（D6）
 		if (X509_check_issued(cert, cert) != X509_V_OK) {
 			(void) SSL_CTX_add1_chain_cert(ctx, cert);
 		}

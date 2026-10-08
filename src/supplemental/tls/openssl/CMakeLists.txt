@@ -26,7 +26,8 @@ if(CORNEX_PKI)
     if(CORNEX_PKI_ENGINE_PATH)
         nng_defines(NANOMQ_CORNEX_PKI_ENGINE_PATH="${CORNEX_PKI_ENGINE_PATH}")
     endif()
-    # 只链接证书管理库；libcn_x509_engine.so 由 cornex_pki.c 显式 dlopen（D8）
+    # 只链接证书管理库；libcn_x509_engine.so 由 cornex_pki.c 通过 dynamic engine
+    # 显式加载（不参与链接，D8）
     nng_link_libraries_public(
         "${CORNEX_PKI_ROOT}/lib/libcn_x509_proxy.so"
         "${CORNEX_PKI_ROOT}/lib/libcn_x509_crypto.so"
@@ -90,6 +91,12 @@ if (NNG_TLS_ENGINE STREQUAL "open")
         else()
             nng_link_libraries_public(OpenSSL::SSL OpenSSL::Crypto)
         endif()
+    endif()
+
+    # CORNEX_PKI 的前提：TLS 层必须是 OpenSSL 3.x（见 ADR-0001）。
+    # 误链 QNX 自带的 1.1.1 会让 engine 引用的 3.x 符号无法解析，这里提前拦住。
+    if(CORNEX_PKI AND OPENSSL_VERSION AND OPENSSL_VERSION VERSION_LESS 3.0)
+        message(FATAL_ERROR "CORNEX_PKI requires OpenSSL 3.x (found ${OPENSSL_VERSION})")
     endif()
 
     nng_defines(NNG_TLS_ENGINE_INIT=nng_tls_engine_init_open)

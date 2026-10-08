@@ -959,6 +959,8 @@ open_config_init(nng_tls_engine_config *cfg, enum nng_tls_mode mode)
 	//SSL_CTX_set_options(cfg->ctx, SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
 
 #ifdef TLS_EXTERN_CORNEX_PKI
+	// client 的身份来自 SDK/TEE，在 config 创建时就装好（D5/D9）；
+	// 失败让 config 分配失败，避免"没有身份的 client"悄悄跑起来。
 	if (mode == NNG_TLS_MODE_CLIENT) {
 		int crv = nni_cornex_pki_apply(cfg->ctx);
 		if (crv != 0) {
@@ -1037,11 +1039,14 @@ open_config_ca_chain(
 	trace("start");
 
 #ifdef TLS_EXTERN_CORNEX_PKI
-	NNI_ARG_UNUSED(len);
-	NNI_ARG_UNUSED(certs);
-	NNI_ARG_UNUSED(crl);
-	log_warn("NNG-TLS-CFG-CACHAIN" "cacertfile ignored: Cornex PKI mode uses the SDK certificate chain");
-	return (0);
+	// PKI 身份只用于 client（bridge 出站）；server（listener）仍走配置文件证书
+	if (cfg->mode == NNG_TLS_MODE_CLIENT) {
+		NNI_ARG_UNUSED(len);
+		NNI_ARG_UNUSED(certs);
+		NNI_ARG_UNUSED(crl);
+		log_warn("NNG-TLS-CFG-CACHAIN" "cacertfile ignored: Cornex PKI client uses the SDK certificate chain as trust anchor");
+		return (0);
+	}
 #endif
 
 #ifndef NANOMQ_TLS_VENDOR
@@ -1154,20 +1159,17 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	EVP_PKEY *pkey = NULL;
 
 #ifdef TLS_EXTERN_CORNEX_PKI
-	NNI_ARG_UNUSED(cfg);
-	if (cert != NULL || key != NULL) {
-		log_warn("NNG-TLS-CFG-OWNCHAIN" "certfile/keyfile ignored: Cornex PKI mode uses the TEE-backed identity");
+	// PKI 身份只用于 client（bridge 出站）；server（listener）仍走配置文件证书，
+	// 因此这里只对 client 忽略 certfile/keyfile（D4/D6）。
+	if (cfg->mode == NNG_TLS_MODE_CLIENT) {
+		if (cert != NULL || key != NULL) {
+			log_warn("NNG-TLS-CFG-OWNCHAIN" "certfile/keyfile ignored: Cornex PKI client uses the TEE-backed identity");
+		}
+		NNI_ARG_UNUSED(cert);
+		NNI_ARG_UNUSED(key);
+		NNI_ARG_UNUSED(pass);
+		return (0);
 	}
-	NNI_ARG_UNUSED(cert);
-	NNI_ARG_UNUSED(key);
-	NNI_ARG_UNUSED(pass);
-	NNI_ARG_UNUSED(len);
-	NNI_ARG_UNUSED(rv);
-	NNI_ARG_UNUSED(biokey);
-	NNI_ARG_UNUSED(biocert);
-	NNI_ARG_UNUSED(xcert);
-	NNI_ARG_UNUSED(pkey);
-	return (0);
 #endif
 
 #if NNG_OPENSSL_HAVE_PASSWORD
