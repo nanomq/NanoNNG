@@ -10,6 +10,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+// OpenSSL 3.x 把 ENGINE API 标为 deprecated，但楚能 PKI 只提供 engine 形态，
+// 这里是有意使用（见 ADR-0001）。屏蔽本 translation unit 的 deprecated 告警。
+#define OPENSSL_SUPPRESS_DEPRECATED
+
 #include <openssl/bio.h>
 #include <openssl/engine.h>
 #include <openssl/err.h>
@@ -18,6 +22,7 @@
 #include <openssl/ui.h>
 #include <openssl/x509.h>
 #include <openssl/x509err.h>
+#include <openssl/x509v3.h> // X509_check_issued()
 
 #include "core/nng_impl.h"
 
