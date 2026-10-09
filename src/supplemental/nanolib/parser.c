@@ -1281,7 +1281,7 @@ yyreduce:
 
   case 16: /* object: LCURLY RCURLY  */
 #line 76 "parser.y"
-                                { (yyval.jsonval) = NULL; printf("{}\n");}
+                                { (yyval.jsonval) = cJSON_CreateObject(); }
 #line 1218 "nng/src/supplemental/nanolib/parser.c"
     break;
 
@@ -1357,7 +1357,7 @@ yyreduce:
 
   case 26: /* array: LBRAC RBRAC  */
 #line 104 "parser.y"
-                                 { printf("[]\n");}
+                                 { (yyval.jsonval) = cJSON_CreateArray(); }
 #line 1290 "parser.c"
     break;
 
