@@ -1019,6 +1019,103 @@ conf_sqlite_reset(conf_sqlite *sqlite)
 	conf_sqlite_init(sqlite);
 }
 
+// Sanitise a Bridge Node name into a file-name-safe token: keep
+// [A-Za-z0-9._-] and replace everything else with '_', capped at
+// BRIDGE_CACHE_NAME_MAX characters. `out` must hold BRIDGE_CACHE_NAME_MAX + 1.
+static void
+bridge_cache_sanitize(const char *name, char *out)
+{
+	size_t j = 0;
+
+	for (const char *p = name; *p != '\0' && j < BRIDGE_CACHE_NAME_MAX; p++) {
+		unsigned char c = (unsigned char) *p;
+		if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+		    (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-') {
+			out[j++] = (char) c;
+		} else {
+			out[j++] = '_';
+		}
+	}
+	out[j] = '\0';
+}
+
+// A token made only of separators ("___") is not a usable file name fragment:
+// such a node name is almost certainly a mistake.
+static bool
+bridge_cache_name_usable(const char *safe)
+{
+	for (const char *p = safe; *p != '\0'; p++) {
+		if ((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') ||
+		    (*p >= '0' && *p <= '9')) {
+			return true;
+		}
+	}
+	return false;
+}
+
+int
+bridge_cache_db_name(const char *prefix, const char *node_name, char *buf,
+    size_t buflen)
+{
+	char safe[BRIDGE_CACHE_NAME_MAX + 1] = { 0 };
+	int  n;
+
+	if (prefix == NULL || node_name == NULL || buf == NULL || buflen == 0) {
+		return -1;
+	}
+	bridge_cache_sanitize(node_name, safe);
+	if (!bridge_cache_name_usable(safe)) {
+		return -1;
+	}
+	n = snprintf(buf, buflen, "%s_%s.db", prefix, safe);
+	if (n < 0 || (size_t) n >= buflen) {
+		return -1;
+	}
+	return n;
+}
+
+int
+conf_bridge_cache_validate(const conf_bridge *bridge)
+{
+	if (bridge == NULL) {
+		return 0;
+	}
+	for (size_t i = 0; i < bridge->count; i++) {
+		const char *name_i = bridge->nodes[i]->name;
+		char        safe_i[BRIDGE_CACHE_NAME_MAX + 1] = { 0 };
+
+		if (name_i == NULL) {
+			continue;
+		}
+		bridge_cache_sanitize(name_i, safe_i);
+		if (!bridge_cache_name_usable(safe_i)) {
+			log_error("Bridge '%s': the name has no alphanumeric "
+			          "characters usable in a cache file name",
+			    name_i);
+			return -1;
+		}
+		for (size_t j = i + 1; j < bridge->count; j++) {
+			const char *name_j   = bridge->nodes[j]->name;
+			char        safe_j[BRIDGE_CACHE_NAME_MAX + 1] = { 0 };
+
+			if (name_j == NULL) {
+				continue;
+			}
+			bridge_cache_sanitize(name_j, safe_j);
+			// Case-insensitive on purpose: Windows and usually macOS
+			// treat Hub and hub as one file, so accepting both would
+			// hand two bridges the same database.
+			if (nng_strcasecmp(safe_i, safe_j) == 0) {
+				log_error("Bridges '%s' and '%s' share the cache "
+				          "file name '%s'; rename one of them",
+				    name_i, name_j, safe_i);
+				return -1;
+			}
+		}
+	}
+	return 0;
+}
+
 #if defined(SUPP_RULE_ENGINE)
 static void
 conf_rule_init(conf_rule *rule_en)
