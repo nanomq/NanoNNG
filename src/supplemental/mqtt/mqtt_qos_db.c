@@ -36,7 +36,7 @@ static void    set_db_pragma(sqlite3 *db);
 static void    remove_oldest_msg(
        sqlite3 *db, const char *table_name, const char *col_name, uint64_t limit) NNG_DEPRECATED;
 static void    remove_oldest_client_msg(sqlite3 *db, const char *table_name,
-       const char *col_name, uint64_t limit, const char *config_name);
+       uint64_t limit, const char *config_name);
 static int64_t get_id_by_msg(sqlite3 *db, nni_msg *msg);
 static int64_t insert_msg(sqlite3 *db, nni_msg *msg);
 static int64_t get_id_by_pipe(sqlite3 *db, uint32_t pipe_id);
@@ -1049,19 +1049,29 @@ nni_mqtt_qos_db_reset_client_msg_pipe_id(sqlite3 *db, const char *config_name)
 }
 
 static void
-remove_oldest_client_msg(sqlite3 *db, const char *table_name,
-    const char *col_name, uint64_t limit, const char *config_name)
+remove_oldest_client_msg(
+    sqlite3 *db, const char *table_name, uint64_t limit, const char *config_name)
 {
 	sqlite3_stmt *stmt;
-	char          sql[256] = { 0 };
+	char          sql[512] = { 0 };
 
-	snprintf(sql, 256,
-	    "DELETE FROM %s WHERE %s NOT IN ( SELECT %s FROM %s WHERE info_id "
-	    "= (SELECT id "
-	    "FROM " table_client_info
-	    " WHERE config_name = ? LIMIT 1) ORDER BY"
-	    " %s DESC LIMIT ?)",
-	    table_name, col_name, col_name, table_name, col_name);
+	// 0 means "no cap": the shipped configs document it as
+	// "( 0 means ineffective )". Without this, LIMIT 0 makes the subquery
+	// empty and NOT IN () deletes the whole table.
+	if (limit == 0) {
+		return;
+	}
+
+	// Both the outer DELETE and the subquery must be scoped to this bridge;
+	// filtering only the subquery let one bridge's flush delete another
+	// bridge's cached rows (#2445). Order by id: it is unique and grows with
+	// insertion order, unlike the one-second ts.
+	snprintf(sql, sizeof(sql),
+	    "DELETE FROM %s WHERE info_id = (SELECT id FROM " table_client_info
+	    " WHERE config_name = ?1 LIMIT 1) AND id NOT IN (SELECT id FROM %s"
+	    " WHERE info_id = (SELECT id FROM " table_client_info
+	    " WHERE config_name = ?1 LIMIT 1) ORDER BY id DESC LIMIT ?2)",
+	    table_name, table_name);
 
 	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
 	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
@@ -1080,7 +1090,7 @@ nni_mqtt_qos_db_remove_oldest_client_msg(
     sqlite3 *db, uint64_t limit, const char *config_name)
 {
 	remove_oldest_client_msg(
-	    db, table_client_msg, "ts", limit, config_name);
+	    db, table_client_msg, limit, config_name);
 }
 
 nni_msg *
@@ -1237,7 +1247,7 @@ nni_mqtt_qos_db_remove_oldest_client_offline_msg(
     sqlite3 *db, uint64_t limit, const char *config_name)
 {
 	remove_oldest_client_msg(
-	    db, table_client_offline_msg, "ts", limit, config_name);
+	    db, table_client_offline_msg, limit, config_name);
 }
 
 int
