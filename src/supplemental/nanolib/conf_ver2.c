@@ -1316,15 +1316,45 @@ conf_nng_snode_parse(
 	node->inwards_count = cvector_size(node->sub_list);
 }
 
+// Parse one Bridge Cache block (the defaults block, or a node-level `cache {}`).
+// A present block implies enable = true unless the block says otherwise.
+static void
+bridge_cache_parse_ver2(conf_sqlite *sqlite, cJSON *jso)
+{
+	sqlite->enable = true;
+	hocon_read_bool(sqlite, enable, jso);
+	hocon_read_num(sqlite, disk_cache_size, jso);
+	hocon_read_num(sqlite, flush_mem_threshold, jso);
+	hocon_read_num(sqlite, resend_interval, jso);
+	hocon_read_str(sqlite, mounted_file_path, jso);
+
+	// resend_interval is parsed for compatibility but has no effect: the retry
+	// interval is the bridge node's own resend_interval. Do not wire this up.
+	// It was never consumed, and making it effective would silently change the
+	// retry timing of every configuration that already sets it.
+	if (cJSON_GetObjectItem(jso, "resend_interval") != NULL) {
+		log_warn("Bridge Cache: 'resend_interval' has no effect and is "
+		         "deprecated; use the bridge node's resend_interval");
+	}
+}
+
 void
 conf_bridge_node_parse(
-    conf_bridge_node *node, conf_sqlite *bridge_sqlite, cJSON *obj)
+    conf_bridge_node *node, conf_sqlite *defaults, cJSON *obj)
 {
 	// sock name max at 64 bytes
 	node->name = nng_strndup(obj->string, 64);
 	node->enable = true;	// from 0.23.3, enable option returned.
 	conf_bridge_connector_parse_ver2(node, obj);
-	node->sqlite = bridge_sqlite;
+
+	// Bridge Cache: inherit the defaults, then let a node-level `cache {}`
+	// replace them wholesale (ADR 0001/0002, design doc §3.1).
+	conf_sqlite_copy(&node->sqlite, defaults);
+	cJSON *node_cache = cJSON_GetObjectItem(obj, "cache");
+	if (node_cache != NULL) {
+		conf_sqlite_reset(&node->sqlite);
+		bridge_cache_parse_ver2(&node->sqlite, node_cache);
+	}
 #if defined(SUPP_QUIC)
 	conf_bridge_quic_parse_ver2(node, obj);
 #endif
@@ -1492,28 +1522,25 @@ conf_bridge_parse_ver2(conf *config, cJSON *jso)
 
 	conf_sqlite *bridge_sqlite = &(config->bridge.sqlite);
 	config->bridge.nodes       = NULL;
+
+	// Bridge Cache Defaults. Looked up directly instead of during iteration so
+	// the block may appear before or after the nodes that inherit it.
+	cJSON *cache_obj = cJSON_GetObjectItem(node_array, "cache");
+	if (cache_obj != NULL) {
+		bridge_cache_parse_ver2(bridge_sqlite, cache_obj);
+	}
+
 	cJSON_ArrayForEach(node_item, node_array)
 	{
 		if (nng_strcasecmp(node_item->string, "cache") == 0) {
-			bridge_sqlite->enable = true;
-			hocon_read_bool(
-				bridge_sqlite, enable, node_item);
-			hocon_read_num(
-			    bridge_sqlite, disk_cache_size, node_item);
-			hocon_read_num(
-			    bridge_sqlite, flush_mem_threshold, node_item);
-			hocon_read_num(
-			    bridge_sqlite, resend_interval, node_item);
-			hocon_read_str(
-			    bridge_sqlite, mounted_file_path, node_item);
-		} else {
-			conf_bridge_node *node = NNI_ALLOC_STRUCT(node);
-			nng_mtx_alloc(&node->mtx);
-			conf_bridge_node_init(node);
-			conf_bridge_node_parse(node, bridge_sqlite, node_item);
-			cvector_push_back(config->bridge.nodes, node);
-			config->bridge_mode = true;
+			continue;	// the defaults block, not a bridge node
 		}
+		conf_bridge_node *node = NNI_ALLOC_STRUCT(node);
+		nng_mtx_alloc(&node->mtx);
+		conf_bridge_node_init(node);
+		conf_bridge_node_parse(node, bridge_sqlite, node_item);
+		cvector_push_back(config->bridge.nodes, node);
+		config->bridge_mode = true;
 	}
 
 	config->bridge.count = cvector_size(config->bridge.nodes);

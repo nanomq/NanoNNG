@@ -870,6 +870,38 @@ conf_sqlite_init(conf_sqlite *sqlite)
 	sqlite->disk_cache_size     = 102400;
 	sqlite->mounted_file_path   = NULL;
 	sqlite->flush_mem_threshold = 100;
+	sqlite->resend_interval     = 5000;
+}
+
+// Deep-copy a Bridge Cache config. dst must already be initialised: its
+// mounted_file_path is released before the new one is assigned.
+void
+conf_sqlite_copy(conf_sqlite *dst, const conf_sqlite *src)
+{
+	if (dst == src) {
+		return;
+	}
+	if (dst->mounted_file_path) {
+		free(dst->mounted_file_path);
+	}
+	dst->enable              = src->enable;
+	dst->disk_cache_size     = src->disk_cache_size;
+	dst->flush_mem_threshold = src->flush_mem_threshold;
+	dst->resend_interval     = src->resend_interval;
+	dst->mounted_file_path   = src->mounted_file_path
+	    ? strdup(src->mounted_file_path)
+	    : NULL;
+}
+
+// Drop the current values and go back to the conf_sqlite_init() defaults.
+void
+conf_sqlite_reset(conf_sqlite *sqlite)
+{
+	if (sqlite->mounted_file_path) {
+		free(sqlite->mounted_file_path);
+		sqlite->mounted_file_path = NULL;
+	}
+	conf_sqlite_init(sqlite);
 }
 
 #if defined(SUPP_RULE_ENGINE)
@@ -3199,7 +3231,7 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->bridge_aio   = NULL;
 	node->bridge_arg   = NULL;
 
-	node->sqlite       = NULL;
+	conf_sqlite_init(&node->sqlite);
 
 	node->hybrid             = false;
 	node->hybrid_servers     = NULL;
@@ -3527,7 +3559,7 @@ conf_bridge_content_parse(conf *nanomq_conf, conf_bridge *bridge,
 		conf_bridge_node *node = conf_bridge_node_parse_with_name(
 		    path, key_prefix, group_names[i]);
 		node->name    = nng_strdup(group_names[i]);
-		node->sqlite  = &bridge->sqlite;
+		conf_sqlite_copy(&node->sqlite, &bridge->sqlite);
 		cvector_push_back(node_array, node);
 	}
 	bridge->nodes = node_array;
@@ -3715,6 +3747,7 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 		node->hybrid_servers = NULL;
 	}
 	conf_tls_destroy(&node->tls);
+	conf_sqlite_destroy(&node->sqlite);
 	nng_atomic_free_bool(node->connected);
 }
 
@@ -4657,6 +4690,7 @@ conf_sqlite_destroy(conf_sqlite *sqlite)
 {
 	if (sqlite->mounted_file_path) {
 		free(sqlite->mounted_file_path);
+		sqlite->mounted_file_path = NULL;
 	}
 }
 
