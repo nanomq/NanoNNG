@@ -750,6 +750,21 @@ NNG_DECL void conf_session_node_parse(conf_session_node *node, cJSON *obj);
 NNG_DECL void conf_sqlite_copy(conf_sqlite *dst, const conf_sqlite *src);
 NNG_DECL void conf_sqlite_reset(conf_sqlite *sqlite);
 
+// Longest sanitised Bridge Node name used in a Bridge Cache file name.
+#define BRIDGE_CACHE_NAME_MAX 64
+
+// Build the per-Bridge-Node Bridge Cache file name, e.g.
+// bridge_cache_db_name("mqtt_client", "hub", ...) -> "mqtt_client_hub.db".
+// The node name is sanitised (see conf_bridge_cache_validate()). Returns the
+// length written, or -1 when the name has no usable characters or buf is too
+// small.
+NNG_DECL int bridge_cache_db_name(const char *prefix, const char *node_name,
+    char *buf, size_t buflen);
+
+// Reject configs whose Bridge Nodes would share one Bridge Cache file, i.e.
+// names that sanitise to the same token. Returns 0 when the config is usable.
+NNG_DECL int conf_bridge_cache_validate(const conf_bridge *bridge);
+
 NNG_DECL void conf_update_var(
     const char *fpath, const char *key, uint8_t type, void *var);
 NNG_DECL void conf_update_var2(const char *fpath, const char *key1,
