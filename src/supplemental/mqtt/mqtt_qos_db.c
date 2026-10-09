@@ -1584,4 +1584,202 @@ nni_mqtt_sqlite_db_fini(nni_mqtt_sqlite_option *sqlite_opt)
 		nni_mqtt_qos_db_close(sqlite_opt->db);
 	}
 }
+
+// Format version of a per-node Bridge Cache database, kept in the fixed
+// SQLite pragma `user_version` (it has no renameable form). 0 means the one
+// time move out of the pre-per-node shared database has not finished yet.
+#define BRIDGE_CACHE_DB_VERSION_MIGRATED 1
+
+// Copy this Bridge Node's rows out of the pre-per-node shared database
+// (mounted_file_path/mqtt_client.db, where every bridge used to write) into its
+// own file, then drop them from the legacy file. Rows of other bridges stay
+// behind. Best effort: a failure must not stop the broker.
+void
+nni_mqtt_qos_db_migrate_legacy(sqlite3 *db, const char *legacy_dir,
+    const char *legacy_name, const char *config_name)
+{
+	char          legacy_path[1024] = { 0 };
+	sqlite3_stmt *stmt              = NULL;
+	int           ftype             = 0;
+	int           rc;
+	int           moved = 0;
+	int64_t       info_id;
+
+	// A NULL directory means the working directory, the same way
+	// nni_mqtt_sqlite_db_init() reads it, so a deployment that never set
+	// mounted_file_path still finds its legacy file.
+	if (db == NULL || config_name == NULL || legacy_name == NULL) {
+		return;
+	}
+	if (get_db_path(legacy_path, legacy_dir, legacy_name) == NULL ||
+	    nni_file_type(legacy_path, &ftype) != 0) {
+		log_debug("Bridge Cache: no legacy database at %s, skipping "
+		          "migration",
+		    legacy_path);
+		return;
+	}
+
+	info_id = get_client_info_id(db, config_name);
+	if (info_id <= 0) {
+		log_error("Bridge Cache: cannot migrate '%s', its client_info "
+		          "row is missing",
+		    config_name);
+		return;
+	}
+
+	// ATTACH cannot run inside a transaction.
+	if (sqlite3_prepare_v2(
+	        db, "ATTACH DATABASE ? AS legacy", -1, &stmt, NULL) != SQLITE_OK) {
+		log_error("Bridge Cache: cannot prepare ATTACH: %s",
+		    sqlite3_errmsg(db));
+		return;
+	}
+	sqlite3_bind_text(stmt, 1, legacy_path, -1, SQLITE_TRANSIENT);
+	rc = sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
+	if (rc != SQLITE_DONE) {
+		log_error("Bridge Cache: cannot attach %s: %s", legacy_path,
+		    sqlite3_errmsg(db));
+		return;
+	}
+
+	// The legacy file is the only database shared between bridges on this
+	// path, so wait for its lock rather than failing at once.
+	sqlite3_busy_timeout(db, 5000);
+
+	// Step 1: copy the rows and record completion, both in the node database.
+	// That transaction writes one database, so its commit is atomic on its
+	// own. Copying and deleting in a single transaction would not be: SQLite
+	// keeps WAL databases out of the super-journal, so a crash during such a
+	// commit could drop the legacy rows without keeping the copy.
+	if (sqlite3_exec(db, "BEGIN IMMEDIATE;", 0, 0, 0) != SQLITE_OK) {
+		log_error("Bridge Cache: cannot begin the migration for '%s': %s",
+		    config_name, sqlite3_errmsg(db));
+		sqlite3_exec(db, "DETACH DATABASE legacy;", 0, 0, 0);
+		return;
+	}
+	rc = sqlite3_prepare_v2(db,
+	    "INSERT INTO " table_client_offline_msg
+	    " (data, info_id, proto_ver, ts) SELECT m.data, ?1, m.proto_ver, "
+	    "m.ts FROM legacy." table_client_offline_msg
+	    " m WHERE m.info_id = (SELECT id FROM legacy." table_client_info
+	    " WHERE config_name = ?2 LIMIT 1)",
+	    -1, &stmt, NULL);
+	if (rc == SQLITE_OK) {
+		sqlite3_bind_int64(stmt, 1, info_id);
+		sqlite3_bind_text(stmt, 2, config_name, -1, SQLITE_TRANSIENT);
+		rc = sqlite3_step(stmt);
+		sqlite3_finalize(stmt);
+	}
+	if (rc != SQLITE_DONE) {
+		sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
+		log_error("Bridge Cache: copying the cached messages of '%s' out "
+		          "of %s failed: %s",
+		    config_name, legacy_path, sqlite3_errmsg(db));
+		sqlite3_exec(db, "DETACH DATABASE legacy;", 0, 0, 0);
+		return;
+	}
+	moved = sqlite3_changes(db);
+
+	char pragma[64];
+	// Committed with the copy, so "the rows moved" and "this file is marked
+	// as migrated" cannot be observed apart. A marker that cannot be written
+	// aborts the step instead of leaving an unmarked copy behind, which the
+	// next start would copy a second time.
+	snprintf(pragma, sizeof(pragma), "PRAGMA user_version = %d;",
+	    BRIDGE_CACHE_DB_VERSION_MIGRATED);
+	if (sqlite3_exec(db, pragma, 0, 0, 0) != SQLITE_OK) {
+		sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
+		log_error("Bridge Cache: cannot record the migration of '%s': %s",
+		    config_name, sqlite3_errmsg(db));
+		sqlite3_exec(db, "DETACH DATABASE legacy;", 0, 0, 0);
+		return;
+	}
+	if (sqlite3_exec(db, "COMMIT;", 0, 0, 0) != SQLITE_OK) {
+		sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
+		log_error("Bridge Cache: committing the copy for '%s' failed: %s",
+		    config_name, sqlite3_errmsg(db));
+		sqlite3_exec(db, "DETACH DATABASE legacy;", 0, 0, 0);
+		return;
+	}
+	if (moved > 0) {
+		log_info("Bridge Cache: migrated %d cached message(s) for '%s' "
+		         "from %s",
+		    moved, config_name, legacy_path);
+	} else {
+		log_debug("Bridge Cache: nothing to migrate for '%s'", config_name);
+	}
+
+	// Step 2: drop the copied rows from the legacy file. The node database
+	// already holds them and says the migration is done, so a failure here
+	// leaves an extra copy behind rather than losing anything. It also means
+	// the cleanup is not attempted again: the marker skips this whole path
+	// on the next start.
+	if (sqlite3_exec(db, "BEGIN IMMEDIATE;", 0, 0, 0) == SQLITE_OK) {
+		rc = sqlite3_prepare_v2(db,
+		    "DELETE FROM legacy." table_client_offline_msg
+		    " WHERE info_id = (SELECT id FROM legacy." table_client_info
+		    " WHERE config_name = ?1 LIMIT 1)",
+		    -1, &stmt, NULL);
+		if (rc == SQLITE_OK) {
+			sqlite3_bind_text(
+			    stmt, 1, config_name, -1, SQLITE_TRANSIENT);
+			rc = sqlite3_step(stmt);
+			sqlite3_finalize(stmt);
+		}
+		if (rc == SQLITE_DONE &&
+		    sqlite3_exec(db, "COMMIT;", 0, 0, 0) == SQLITE_OK) {
+			// done
+		} else {
+			sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
+			log_error("Bridge Cache: could not remove the copied "
+			          "messages of '%s' from %s, they stay there as a "
+			          "duplicate: %s",
+			    config_name, legacy_path, sqlite3_errmsg(db));
+		}
+	} else {
+		log_error("Bridge Cache: cannot clean up %s after copying '%s': %s",
+		    legacy_path, config_name, sqlite3_errmsg(db));
+	}
+	sqlite3_exec(db, "DETACH DATABASE legacy;", 0, 0, 0);
+}
+
+static bool
+bridge_cache_migration_done(sqlite3 *db)
+{
+	sqlite3_stmt *stmt = NULL;
+	bool          done = false;
+
+	if (sqlite3_prepare_v2(db, "PRAGMA user_version", -1, &stmt, NULL) !=
+	    SQLITE_OK) {
+		return false;
+	}
+	if (sqlite3_step(stmt) == SQLITE_ROW) {
+		done = (sqlite3_column_int(stmt, 0) >=
+		    BRIDGE_CACHE_DB_VERSION_MIGRATED);
+	}
+	sqlite3_finalize(stmt);
+	return done;
+}
+
+void
+nni_mqtt_sqlite_db_init_legacy(nng_mqtt_sqlite_option *opt,
+    const char *db_name, const char *legacy_dir, const char *legacy_name)
+{
+	nni_mqtt_sqlite_db_init(opt, db_name);
+
+	if (opt == NULL || opt->db == NULL) {
+		return;
+	}
+	// The per-node file is created by the init above, so "is the file new"
+	// cannot tell a first start from a start that died before the move
+	// finished. The node database records completion instead: a failed or
+	// interrupted move leaves the marker unset and is retried on the next
+	// start, while a finished one is skipped.
+	if (bridge_cache_migration_done(opt->db)) {
+		return;
+	}
+	nni_mqtt_qos_db_migrate_legacy(
+	    opt->db, legacy_dir, legacy_name, opt->bridge_name);
+}
 #endif
