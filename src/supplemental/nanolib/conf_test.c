@@ -477,6 +477,64 @@ test_conf_bridge_cache_per_node(void)
 	conf_fini(conf);
 }
 
+/** Per-Bridge-Node Bridge Cache file naming and collision rejection (§4, §12). */
+void
+test_bridge_cache_file_name(void)
+{
+	char buf[128];
+	char long_name[200];
+
+	NUTS_TRUE(bridge_cache_db_name("mqtt_client", "hub", buf, sizeof(buf)) > 0);
+	NUTS_TRUE(strcmp(buf, "mqtt_client_hub.db") == 0);
+
+	NUTS_TRUE(
+	    bridge_cache_db_name("mqtt_quic_client", "hub", buf, sizeof(buf)) > 0);
+	NUTS_TRUE(strcmp(buf, "mqtt_quic_client_hub.db") == 0);
+
+	// Path-hostile and spacing characters are replaced with '_'.
+	NUTS_TRUE(bridge_cache_db_name("mqtt_client", "a/b", buf, sizeof(buf)) > 0);
+	NUTS_TRUE(strcmp(buf, "mqtt_client_a_b.db") == 0);
+	NUTS_TRUE(
+	    bridge_cache_db_name("mqtt_client", "../x y", buf, sizeof(buf)) > 0);
+	NUTS_TRUE(strcmp(buf, "mqtt_client_.._x_y.db") == 0);
+
+	// Nothing usable, or no room for the result.
+	NUTS_FAIL(bridge_cache_db_name("mqtt_client", "///", buf, sizeof(buf)), -1);
+	NUTS_FAIL(bridge_cache_db_name(NULL, "hub", buf, sizeof(buf)), -1);
+	NUTS_FAIL(bridge_cache_db_name("mqtt_client", "hub", buf, 4), -1);
+
+	// Long names are truncated to BRIDGE_CACHE_NAME_MAX characters.
+	memset(long_name, 'a', sizeof(long_name) - 1);
+	long_name[sizeof(long_name) - 1] = '\0';
+	NUTS_TRUE(
+	    bridge_cache_db_name("mqtt_client", long_name, buf, sizeof(buf)) > 0);
+	NUTS_TRUE(strlen(buf) == strlen("mqtt_client_") +
+	        BRIDGE_CACHE_NAME_MAX + strlen(".db"));
+
+	// Two names that sanitise to the same token must be rejected.
+	conf_bridge_node  n1 = { 0 }, n2 = { 0 };
+	conf_bridge_node *nodes[2] = { &n1, &n2 };
+	conf_bridge      b         = { 0 };
+	b.nodes                    = nodes;
+	b.count                    = 2;
+
+	n1.name = "a/b";
+	n2.name = "a_b";
+	NUTS_FAIL(conf_bridge_cache_validate(&b), -1);
+
+	n1.name = "hub";
+	n2.name = "cloud";
+	NUTS_PASS(conf_bridge_cache_validate(&b));
+
+	n1.name = "///";
+	NUTS_FAIL(conf_bridge_cache_validate(&b), -1);
+
+	// Case-insensitive filesystems must not put two bridges on one file.
+	n1.name = "Hub";
+	n2.name = "hub";
+	NUTS_FAIL(conf_bridge_cache_validate(&b), -1);
+}
+
 NUTS_TESTS = {
    {"get size", test_get_size},
    {"get time", test_get_time},
@@ -499,5 +557,6 @@ NUTS_TESTS = {
    {"conf parse pkcs11", test_conf_parse_tls_pkcs11_old},
    {"identify pkcs11 URIs", test_conf_tls_is_pkcs11_uri},
    {"bridge cache per node", test_conf_bridge_cache_per_node},
+   {"bridge cache file name", test_bridge_cache_file_name},
    {NULL, NULL}
 };
