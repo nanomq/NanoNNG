@@ -197,16 +197,16 @@ void nni_atomic_fini64(nni_atomic_u64 *v)    { NNI_ARG_UNUSED(v); }
 void nni_atomic_fini(nni_atomic_int *v)      { NNI_ARG_UNUSED(v); }
 void nni_atomic_fini_ptr(nni_atomic_ptr *v)  { NNI_ARG_UNUSED(v); }
 
-#else // !NNG_HAVE_STDATOMIC — pthread mutex fallback
+#else // !NNG_HAVE_STDATOMIC — mutex fallback
 
 // On architectures without lock-free 64-bit atomics (e.g., 32-bit ARM
-// Cortex-M/R), use pthread mutexes inside each atomic struct.  Slower
-// and not ISR-safe, but correct for all platforms.
+// Cortex-M/R, and xtensa), put a mutex inside each atomic struct.  Slower
+// and not ISR-safe, but correct for all platforms.  The mutex type and its
+// operations come from zephyr_impl.h -- k_mutex on Zephyr, pthread
+// elsewhere; see the note there on why a pooled pthread mutex will not do.
 
-#include <pthread.h>
-
-#define MUTEX_LOCK(m)   pthread_mutex_lock(m)
-#define MUTEX_UNLOCK(m) pthread_mutex_unlock(m)
+#define MUTEX_LOCK(m)   NNI_ATOMIC_MUTEX_LOCK(m)
+#define MUTEX_UNLOCK(m) NNI_ATOMIC_MUTEX_UNLOCK(m)
 
 bool
 nni_atomic_flag_test_and_set(nni_atomic_flag *f)
@@ -260,14 +260,14 @@ void
 nni_atomic_init_bool(nni_atomic_bool *v)
 {
 	v->v = false;
-	pthread_mutex_init(&v->m, NULL);
+	NNI_ATOMIC_MUTEX_INIT(&v->m);
 }
 
 void
 nni_atomic_init(nni_atomic_int *v)
 {
 	v->v = 0;
-	pthread_mutex_init(&v->m, NULL);
+	NNI_ATOMIC_MUTEX_INIT(&v->m);
 }
 
 void
@@ -359,7 +359,7 @@ void
 nni_atomic_init64(nni_atomic_u64 *v)
 {
 	v->v = 0;
-	pthread_mutex_init(&v->m, NULL);
+	NNI_ATOMIC_MUTEX_INIT(&v->m);
 }
 
 void
@@ -462,31 +462,31 @@ nni_atomic_get_ptr(nni_atomic_ptr *v)
 void
 nni_atomic_fini_flag(nni_atomic_flag *f)
 {
-	(void) pthread_mutex_destroy(&f->m);
+	NNI_ATOMIC_MUTEX_FINI(&f->m);
 }
 
 void
 nni_atomic_fini_bool(nni_atomic_bool *b)
 {
-	(void) pthread_mutex_destroy(&b->m);
+	NNI_ATOMIC_MUTEX_FINI(&b->m);
 }
 
 void
 nni_atomic_fini64(nni_atomic_u64 *v)
 {
-	(void) pthread_mutex_destroy(&v->m);
+	NNI_ATOMIC_MUTEX_FINI(&v->m);
 }
 
 void
 nni_atomic_fini(nni_atomic_int *v)
 {
-	(void) pthread_mutex_destroy(&v->m);
+	NNI_ATOMIC_MUTEX_FINI(&v->m);
 }
 
 void
 nni_atomic_fini_ptr(nni_atomic_ptr *v)
 {
-	(void) pthread_mutex_destroy(&v->m);
+	NNI_ATOMIC_MUTEX_FINI(&v->m);
 }
 
 #endif // NNG_HAVE_STDATOMIC
