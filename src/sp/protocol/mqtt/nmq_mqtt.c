@@ -766,12 +766,15 @@ auth_verify:
 #if defined(SUPP_LICENSE_DK) || defined(SUPP_LICENSE_STD)
 	if (total + 1 > (int)s->lc) {
 		rv = QUOTA_EXCEEDED;
-		log_warn("Max Quota %d exceed, %s disconneted",
+		log_warn("Max Quota %d exceed, *** disconneted",
+			s->lc);
+		log_debug("Max Quota %d exceed, %s disconneted",
 			s->lc, clientid);
 	}
 	if (s->lic_valid == false) {
 		rv = QUOTA_EXCEEDED;
-		log_warn("License expired, %s disconneted", clientid);
+		log_warn("License expired, *** disconneted");
+		log_debug("License expired, %s disconneted", clientid);
 	}
 #endif
 	nmq_connack_encode(msg, s->conf, p->conn_param, rv);
@@ -992,7 +995,8 @@ nano_pipe_close(void *arg)
 	// TODO send disconnect msg to client if needed.
 	// depends on MQTT V5 reason code
 	// create disconnect event msg
-	log_warn("%s pipe close!", p->conn_param->clientid.body);
+	log_warn("*** pipe close!");
+	log_debug("%s pipe close!", p->conn_param->clientid.body);
 	if (p->event) {
 		msg = nano_msg_notify(p->conn_param,
 		    (uint8_t) nni_atomic_get(&p->reason_code), 0, false);

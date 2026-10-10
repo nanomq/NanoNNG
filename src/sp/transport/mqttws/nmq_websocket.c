@@ -429,7 +429,9 @@ done:
 			p->ws_param->max_packet_size =
 			    p->conf->client_max_packet_size;
 		}
-		log_info("max_packet_size of %.*s is %d",
+		log_info("max_packet_size of *** is %d",
+				p->ws_param->max_packet_size);
+		log_debug("max_packet_size of %.*s is %d",
 				p->ws_param->clientid.len, p->ws_param->clientid.body,
 				p->ws_param->max_packet_size);
 		nni_msg_free(conn_msg);
@@ -1500,7 +1502,7 @@ wstran_pipe_peer(void *arg)
 				nni_mtx_unlock(&p->mtx);
 				return (1);
 			}
-			log_debug("info topic : %s %d %d", info->topic, info->qos,
+			log_info("log_topic_info len: [%d] qos: [%d]", (int)strlen(info->topic), info->qos,
 				strlen(info->topic));
 			if ((topic = nng_zalloc(strlen(info->topic) + 1)) == NULL) {
 				nng_free(sn, sizeof(struct subinfo));
@@ -1508,7 +1510,7 @@ wstran_pipe_peer(void *arg)
 				return (1);
 			}
 			memcpy(topic, info->topic, strlen(info->topic) + 1);
-			log_debug("copy topic %s %d", topic, strlen(topic));
+			log_info("copy topic len: [%d] qos: [%d]", (int)strlen(topic), sn->qos);
 			sn->topic           = topic;
 			sn->qos             = info->qos;
 			sn->subid           = info->subid;

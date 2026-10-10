@@ -845,7 +845,9 @@ query_cb(void *arg)
 		return;
 	}
 
-	log_info("Recv command: %s topic: %s", keystr, topic);
+
+	log_info("Recv command: *** topic: ***");
+	log_debug("Recv command: %s topic: %s", keystr, topic);
 
 	/* replay-<start>-<end>-<interval_ms>-<pub_topic> (before stream_cmd_parser) */
 	if (strncmp(keystr, REPLAY_CMD_PREFIX, REPLAY_CMD_PREFIX_LEN) == 0) {
@@ -990,7 +992,8 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 
 	tmsg = nni_id_get(&ex_node->sock->rbmsgmap, key);
 	if (tmsg != NULL) {
-		log_error("[%s]msg already in rbmsgmap, overwirte is not allowed", ex_node->ex->topic);
+		log_error("[***]msg already in rbmsgmap, overwirte is not allowed");
+		log_debug("[%s]msg already in rbmsgmap, overwirte is not allowed", ex_node->ex->topic);
 		/* free msg here! */
 		nni_msg_free(msg);
 		return -1;
@@ -1002,7 +1005,8 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 	else
 		ret = NNG_EINVAL;
 	if (ret != 0) {
-		log_error("[%s]rbmsgmap set failed", ex_node->ex->topic);
+		log_error("[***]rbmsgmap set failed");
+		log_debug("[%s]rbmsgmap set failed", ex_node->ex->topic);
 		/* free msg here! */
 		nni_msg_free(msg);
 		return -1;
@@ -1010,7 +1014,8 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 
 	ret = exchange_handle_msg(ex_node->ex, key, msg, aio);
 	if (ret != 0) {
-		log_error("[%s]exchange_handle_msg failed!\n", ex_node->ex->topic);
+		log_error("[***]exchange_handle_msg failed!\n");
+		log_debug("[%s]exchange_handle_msg failed!\n", ex_node->ex->topic);
 		/* free msg here! */
 		nni_msg_free(msg);
 		return -1;
@@ -1042,14 +1047,16 @@ exchange_do_send(exchange_node_t *ex_node, nni_msg *msg, nni_aio *user_aio)
 	if (nni_atomic_get_bool(&s->closed)) {
 		// This occurs if the mqtt_pipe_close has been called.
 		// In that case we don't want any more processing.
-		log_error("[%s]exchange sock is closed!", ex_node->ex->topic);
+		log_error("[***]exchange sock is closed!");
+		log_debug("[%s]exchange sock is closed!", ex_node->ex->topic);
 		nni_aio_finish_error(user_aio, NNG_EINVAL);
 		return;
 	}
 
 	ret = exchange_client_handle_msg(ex_node, msg, user_aio);
 	if (ret != 0) {
-		log_error("[%s]exchange handle msg failed%d!", ex_node->ex->topic, ret);
+		log_error("[***]exchange handle msg failed%d!", ret);
+		log_debug("[%s]exchange handle msg failed%d!", ex_node->ex->topic, ret);
 		nni_aio_finish_error(user_aio, NNG_EINVAL);
 	} else {
 		nng_msg *tmsg = nng_aio_get_msg(user_aio);
