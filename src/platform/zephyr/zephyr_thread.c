@@ -351,10 +351,17 @@ nni_plat_init(int (*helper)(void))
 	}
 
 #if !defined(NNG_USE_GETTIMEOFDAY) && NNG_USE_CLOCKID != CLOCK_REALTIME
-	// Zephyr may or may not support pthread_condattr_setclock.
-	// If it fails, we fall back to CLOCK_REALTIME semantics.
+	// nni_clock() is k_uptime_get() -- a monotonic uptime -- and
+	// nni_plat_cv_until() hands that value straight to
+	// pthread_cond_timedwait() as an absolute deadline.  The condition
+	// variable therefore has to run on the same clock, or every timed wait
+	// compares an uptime against CLOCK_REALTIME and expires at once.
+	// Zephyr supports this with CONFIG_POSIX_CLOCK_SELECTION; if it is off,
+	// the port has no working timed waits at all, so fail loudly here
+	// rather than carry on with a clock that silently breaks every timeout.
 	if (pthread_condattr_setclock(&nni_cvattr, NNG_USE_CLOCKID) != 0) {
-		// Non-fatal: continue without monotonic clock support
+		nni_panic("pthread_condattr_setclock(CLOCK_MONOTONIC) failed; "
+		    "timed waits would use the wrong clock");
 	}
 #endif
 
