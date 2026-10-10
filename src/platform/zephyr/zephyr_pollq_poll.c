@@ -255,7 +255,20 @@ nni_posix_poll_thr(void *arg)
 				nni_mtx_lock(&pfd->mtx);
 				cb  = pfd->cb;
 				arg = pfd->arg;
-				pfd->events &= ~events;
+				// POLLERR/POLLHUP/POLLNVAL are reported
+				// whether or not they were requested, and
+				// masking them off cannot clear them: a
+				// descriptor armed for POLLOUT that only ever
+				// reports POLLERR would stay in the poll set
+				// and make poll() return immediately on every
+				// iteration, spinning the CPU.  Drop the armed
+				// interest so the callback decides whether to
+				// re-arm or tear the descriptor down.
+				if (events & (POLLERR | POLLHUP | POLLNVAL)) {
+					pfd->events = 0;
+				} else {
+					pfd->events &= ~events;
+				}
 				nni_mtx_unlock(&pfd->mtx);
 
 				if (cb) {
