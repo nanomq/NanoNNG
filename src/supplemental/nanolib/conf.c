@@ -4378,6 +4378,14 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 			log_info("\t[%ld] rh:           %d", k + 1,
 			    node->sub_list[k]->retain_handling);
 		}
+		if (node->sqlite.enable) {
+			log_info("%sbridge.mqtt.%s.sqlite.disk_cache_size: %ld", prefix,
+			    node->name, node->sqlite.disk_cache_size);
+			log_info("%sbridge.mqtt.%s.sqlite.mounted_file_path: %s", prefix,
+			    node->name, node->sqlite.mounted_file_path);
+			log_info("%sbridge.mqtt.%s.sqlite.flush_mem_threshold: %ld", prefix,
+			    node->name, node->sqlite.flush_mem_threshold);
+		}
 	}
 
 	if (bridge->sqlite.enable) {
