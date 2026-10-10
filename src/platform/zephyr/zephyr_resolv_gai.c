@@ -426,7 +426,18 @@ parse_ip(const char *addr, nng_sockaddr *sa, bool want_port)
 	}
 
 	if (*port == '\0') {
-		port = "0";
+		// Zephyr's getaddrinfo rejects the "0" placeholder the POSIX
+		// port uses: the literal-address path refuses a service < 1
+		// (getaddrinfo.c try_resolve_literal_addr → EAI_NONAME) and
+		// the DNS path returns EAI_FAIL whenever AI_NUMERICHOST is
+		// set, so every address-only parse would fail.  A failing
+		// nni_parse_ip("0.0.0.0") is not cosmetic: http_server.c
+		// nni_http_handler_set_host() then pins the handler to the
+		// literal "0.0.0.0" instead of recognising it as a wildcard,
+		// and every request carrying a real Host header gets 404 (MQTT
+		// over WebSocket never upgrades).  A NULL service is
+		// POSIX-legal and skips the port check.
+		port = NULL;
 	}
 
 	memset(&hints, 0, sizeof(hints));
