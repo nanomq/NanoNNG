@@ -279,6 +279,9 @@ nni_tcp_dial(nni_tcp_dialer *d, const nni_sockaddr *sa, nni_aio *aio)
 			// Disgused as NNG_ECONNREFUSED, therefore dialer_connect_cb would fire a normal reconnect
 			if (d->nodelay) {
 				// nodelay option also changes failover action of bounding
+				// fd has not been handed to a connection or a poll
+				// descriptor on this path, so close it here.
+				(void) close(fd);
 				nni_aio_finish_error(aio, NNG_ECONNREFUSED);
 				return;
 			}
@@ -596,26 +599,16 @@ tcp_dialer_get_locaddr(void *arg, void *buf, size_t *szp, nni_type t)
 static int
 tcp_dialer_bind_interface(void *arg, const void *buf, size_t sz, nni_type t)
 {
-	int             rv;
-	nni_tcp_dialer *d = arg;
-	char           *str;
-
-	if ((str = nng_alloc(sz + 1)) == NULL) {
-		return (NNG_ENOMEM);
-	}
-	memset(str, '\0', sz + 1);
-
-	if (((rv = nni_copyin_str(str, buf, sz, sz, t)) != 0) || (d == NULL)) {
-		nng_free(str, sz + 1);
-		log_error("Copy memory failed!");
-		return rv;
-	}
-
-	nni_mtx_lock(&d->mtx);
-	nni_strfree(d->bind_interface);
-	d->bind_interface = str;
-	nni_mtx_unlock(&d->mtx);
-	return rv;
+	// Zephyr's net stack has no SO_BINDTODEVICE, so refuse the option here:
+	// accepting it and then connecting on the default interface (which is
+	// what this platform used to do, logging success) tells the caller
+	// something that is not true.  Rejecting it at configuration time also
+	// keeps the connect path from ever seeing a bind_interface.
+	NNI_ARG_UNUSED(arg);
+	NNI_ARG_UNUSED(buf);
+	NNI_ARG_UNUSED(sz);
+	NNI_ARG_UNUSED(t);
+	return (NNG_ENOTSUP);
 }
 
 static int

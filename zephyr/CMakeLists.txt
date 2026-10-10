@@ -30,6 +30,17 @@ if(CONFIG_NANONNG)
   set(NNG_PROTO_PUSH0 ${CONFIG_NANONNG_PROTO_PUSH0} CACHE BOOL "" FORCE)
   set(NNG_PROTO_PULL0 ${CONFIG_NANONNG_PROTO_PULL0} CACHE BOOL "" FORCE)
 
+  # 32-bit targets other than x86 have no native 64-bit atomics, and the
+  # stdatomic path would emit __sync_*_8 calls that their libatomic cannot
+  # resolve on bare metal (see the note in src/platform/zephyr/CMakeLists.txt).
+  # x86_32 has cmpxchg8b and 64-bit targets are unaffected, so only the rest
+  # take the mutex fallback.  Deciding it here means an application that adds
+  # NanoNNG as a Zephyr module does not have to know about the flag at all --
+  # the demo/ ExternalProject, which drives the build by hand, still passes it.
+  if(NOT CONFIG_64BIT AND NOT CONFIG_X86)
+    set(NNG_ZEPHYR_NO_STDATOMIC ON CACHE BOOL "" FORCE)
+  endif()
+
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/.. ${PROJECT_BINARY_DIR}/nanonng_root)
 
   target_include_directories(nng PUBLIC
