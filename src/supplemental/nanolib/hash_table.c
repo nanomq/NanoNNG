@@ -601,7 +601,12 @@ dbhash_get_first_topic(uint32_t id)
 	if (k != kh_end(ph)) {
 		struct topic_queue *ret = kh_val(ph, k);
 		if (ret && ret->topic) {
-			topic = strdup(ret->topic);
+			// This is a detached copy handed to the caller, which
+			// releases it with nng_free() (see hash_test.c), so
+			// keep it in the nng allocator family.  The
+			// topic_queue it is copied from is libc-owned; this
+			// copy is not.
+			topic = nni_strdup(ret->topic);
 		}
 	}
 	nni_rwlock_unlock(&pipe_lock);
