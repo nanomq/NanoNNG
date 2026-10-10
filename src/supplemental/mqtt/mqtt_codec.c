@@ -4064,7 +4064,7 @@ reason_code
 sanitize_out_pub_properties(property *prop)
 {
     if (prop == NULL) {
-        return SUCCESS;
+        return NNG_MQTT_SUCCESS;
     }
 
     // MQTT 5.0 Property ID up to 0x2A (42)
@@ -4171,7 +4171,7 @@ sanitize_out_pub_properties(property *prop)
         }
     }
 
-    return SUCCESS;
+    return NNG_MQTT_SUCCESS;
 }
 
 // Check properties for broker-to-client PUBLISH messages only.
@@ -4180,7 +4180,7 @@ reason_code
 check_downstream_pub_properties(property *prop)
 {
     if (prop == NULL) {
-        return SUCCESS;
+        return NNG_MQTT_SUCCESS;
     }
 
     // MQTT 5.0 Property ID up to 0x2A (42)
@@ -4250,7 +4250,7 @@ check_downstream_pub_properties(property *prop)
         }
     }
 
-    return SUCCESS;
+    return NNG_MQTT_SUCCESS;
 }
 
 // Check if repeated properties exist and validate property bounds, for broker use only.
