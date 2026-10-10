@@ -220,7 +220,11 @@ nni_resolv_ip(const char *host, const char *serv, int af, bool passive,
 	// IPs like "127.0.0.1" — hostnames fall through to step 2.
 	// A NULL host is legal (wildcard listen, e.g. tcp://:1883): there
 	// is nothing numeric to try, so go straight to getaddrinfo below.
-	if (host != NULL) {
+	// An IPv6 literal is also left to step 2: appending the port to "::1"
+	// yields "::1:1883", which is itself a valid IPv6 address, so the
+	// "host:serv" trick this fast path depends on would resolve to a
+	// different host than the caller asked for.
+	if ((host != NULL) && (strchr(host, ':') == NULL)) {
 		size_t hl = strlen(host);
 		size_t sl = serv ? strlen(serv) : 0;
 		char  *buf;
@@ -526,6 +530,11 @@ nni_posix_resolv_sysfini(void)
 	resolv_thrs     = NULL;
 	resolv_num_thr  = 0;
 	resolv_fini     = false;
+
+	// sysinit() re-inits these on every nni_plat_init(), so tear them down
+	// here: re-initializing a live mutex or condvar is undefined.
+	nni_cv_fini(&resolv_cv);
+	nni_mtx_fini(&resolv_mtx);
 }
 
 #endif // NNG_PLATFORM_ZEPHYR

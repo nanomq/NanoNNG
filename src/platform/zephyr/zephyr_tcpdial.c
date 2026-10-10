@@ -269,7 +269,11 @@ nni_tcp_dial(nni_tcp_dialer *d, const nni_sockaddr *sa, nni_aio *aio)
 		if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, d->bind_interface,
 		        strlen(d->bind_interface) + 1) < 0) {
 #else
-		if (0) {	// not sure if Windows support interface binding as well
+		// No interface-binding mechanism here: Zephyr's net stack has no
+		// SO_BINDTODEVICE.  Take the error path rather than falling
+		// through to the success log below, which would report a bind
+		// that never happened.
+		if (1) {
 #endif
 			log_error("bind to interface %s failed!", d->bind_interface);
 			// Disgused as NNG_ECONNREFUSED, therefore dialer_connect_cb would fire a normal reconnect
@@ -285,6 +289,9 @@ nni_tcp_dial(nni_tcp_dialer *d, const nni_sockaddr *sa, nni_aio *aio)
 	nni_atomic_inc64(&d->ref);
 
 	if ((rv = nni_posix_tcp_alloc(&c, d)) != 0) {
+		// fd has not been handed to a connection or a poll descriptor
+		// yet, so this branch still owns it.
+		(void) close(fd);
 		nni_aio_finish_error(aio, rv);
 		nni_posix_tcp_dialer_rele(d);
 		return;
@@ -593,7 +600,9 @@ tcp_dialer_bind_interface(void *arg, const void *buf, size_t sz, nni_type t)
 	nni_tcp_dialer *d = arg;
 	char           *str;
 
-	str = nng_alloc(sz + 1);
+	if ((str = nng_alloc(sz + 1)) == NULL) {
+		return (NNG_ENOMEM);
+	}
 	memset(str, '\0', sz + 1);
 
 	if (((rv = nni_copyin_str(str, buf, sz, sz, t)) != 0) || (d == NULL)) {

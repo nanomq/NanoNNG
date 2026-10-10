@@ -168,8 +168,15 @@ nni_plat_file_put(const char *name, const void *data, size_t len)
 	if (fwrite(data, 1, len, f) != len) {
 		rv = nni_plat_errno(errno);
 		(void) unlink(name);
+		(void) fclose(f);
+		return (rv);
 	}
-	(void) fclose(f);
+	// A buffered write can fail only when fclose() flushes it, so a
+	// successful fwrite() is not yet a successful file.
+	if (fclose(f) != 0) {
+		rv = nni_plat_errno(errno);
+		(void) unlink(name);
+	}
 	return (rv);
 }
 
@@ -405,6 +412,60 @@ nni_plat_file_basename(const char *path)
 		return (end + 1);
 	}
 	return (path);
+}
+
+// The declarations in core/platform.h are part of the platform contract
+// even where this port cannot honour them.  Without a definition here any
+// caller -- the public nng_file API, the QoS database, the config loader --
+// fails to link on Zephyr rather than getting an error it can handle.
+
+char *
+nni_plat_join_dir(const char *prefix, const char *suffix)
+{
+	char *result;
+
+	if (nni_asprintf(&result, "%s/%s", prefix, suffix) == 0) {
+		return (result);
+	}
+	return (NULL);
+}
+
+char *
+nni_plat_temp_dir(void)
+{
+	// No scratch filesystem is guaranteed to be mounted.  This is the
+	// conventional location and a file operation there reports its own
+	// error if nothing is mounted; mirrors posix_file.c.
+	return (nni_strdup("/tmp"));
+}
+
+char *
+nni_plat_getcwd(char *buf, size_t size)
+{
+	// A unikernel-style target has no working directory to report.
+	NNI_ARG_UNUSED(buf);
+	NNI_ARG_UNUSED(size);
+	return (NULL);
+}
+
+int
+nni_plat_file_lock(const char *path, nni_plat_flock *lk)
+{
+	NNI_ARG_UNUSED(path);
+
+	// Zephyr has no file locking.  posix_file.c's own fallback for
+	// platforms without lockf/flock is to succeed without locking -- "If
+	// you're here, its probably an embedded scenario, and we can live with
+	// it" -- which is exactly this case, so mirror that rather than fail
+	// callers that have nothing to arbitrate against.
+	lk->fd = -1;
+	return (0);
+}
+
+void
+nni_plat_file_unlock(nni_plat_flock *lk)
+{
+	lk->fd = -1;
 }
 
 #endif // NNG_PLATFORM_ZEPHYR
