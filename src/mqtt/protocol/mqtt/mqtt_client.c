@@ -654,7 +654,7 @@ mqtt_pipe_start(void *arg)
 	nni_mtx_lock(&s->mtx);
 	nni_atomic_set_bool(&p->closed, false);
 	s->mqtt_pipe       = p;
-	s->disconnect_code = SUCCESS;
+	s->disconnect_code = NNG_MQTT_SUCCESS;
 	s->dis_prop        = NULL;
 	p->busy			   = false;
 

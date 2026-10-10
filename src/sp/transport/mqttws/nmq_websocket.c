@@ -642,7 +642,7 @@ skip:
 	nni_aio_set_output(uaio, 0, p);
 	nni_aio_finish(uaio, p->err_code, 0);
 	nni_mtx_unlock(&p->mtx);
-	if (rv != SUCCESS && msg_vec != NULL) {
+	if (rv != NNG_MQTT_SUCCESS && msg_vec != NULL) {
 		// Cannot trust the rest msgs
 		nni_lmq_flush(&p->recvlmq);
 		nni_msg_free(smsg);
@@ -725,7 +725,7 @@ wstran_pipe_recv(void *arg, nni_aio *aio)
 	if (nni_aio_begin(aio) != 0) {
 		return;
 	}
-	if (p->err_code != SUCCESS) {
+	if (p->err_code != NNG_MQTT_SUCCESS) {
 		log_warn("Close WebSocket connection due to err %d", p->err_code);
 		nni_aio_finish_error(aio, p->err_code);
 		return;

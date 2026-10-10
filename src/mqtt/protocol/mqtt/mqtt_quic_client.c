@@ -506,7 +506,7 @@ mqtt_quic_recv_cb(void *arg)
 	if (rv != 0) {
 		log_warn("MQTT client recv error %d!", rv);
 		if (rv == NNG_ECONNABORTED) {
-			if (s->disconnect_code == SUCCESS) {
+			if (s->disconnect_code == NNG_MQTT_SUCCESS) {
 				s->disconnect_code = SERVER_SHUTTING_DOWN;
 			}
 			nni_pipe_close(p->qpipe);
@@ -1280,7 +1280,7 @@ mqtt_quic_pipe_start(void *arg)
 	nni_mtx_lock(&s->mtx);
 	nni_atomic_set_bool(&p->closed, false);
 	s->pipe       = p;
-	s->disconnect_code = SUCCESS;
+	s->disconnect_code = NNG_MQTT_SUCCESS;
 	// s->dis_prop        = NULL;
 	p->ready = true;
 	p->busy  = false;

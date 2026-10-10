@@ -239,8 +239,15 @@ typedef enum {
 } nng_mqtt_packet_type;
 
 //TODO Enum is not fitting here
+//
+// The success code carries an NNG_ prefix instead of being plain SUCCESS:
+// CMSIS's ErrorStatus enum (stm32h7xx.h and its siblings) defines SUCCESS
+// too, and Zephyr pulls that header into every STM32 translation unit through
+// <zephyr/kernel.h> -> <soc.h>.  Two enumerators with the same name in one
+// scope are a hard error, so the collision has to be resolved on this side.
+// Only this member is prefixed because it is the only one that collides.
 typedef enum {
-	SUCCESS                                = 0,
+	NNG_MQTT_SUCCESS                       = 0,
 	NORMAL_DISCONNECTION                   = 0,
 	GRANTED_QOS_0                          = 0,
 	GRANTED_QOS_1                          = 1,
