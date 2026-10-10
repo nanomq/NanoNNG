@@ -587,7 +587,9 @@ extern int nni_plat_access(const char* name, int flag);
 //
 // Actual platforms we support.  This is included up front so that we can
 // get the specific types that are supplied by the platform.
-#if defined(NNG_PLATFORM_POSIX)
+#if defined(NNG_PLATFORM_ZEPHYR)
+#include "platform/zephyr/zephyr_impl.h"
+#elif defined(NNG_PLATFORM_POSIX)
 #include "platform/posix/posix_impl.h"
 #elif defined(NNG_PLATFORM_WINDOWS)
 #include "platform/windows/win_impl.h"
