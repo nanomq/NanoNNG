@@ -8,8 +8,9 @@
 //
 
 // Zephyr internal pipe for pollq wakeup.
-// Zephyr has no pipe()/eventfd. We use a dup of stdin as a dummy
-// readable fd; actual wakeup is via 100ms poll() timeout in pollq.
+// Zephyr has no pipe()/eventfd, so there is no wakeup descriptor to hand
+// out at all -- the pollq paces itself with its own timeout instead.  See
+// nni_plat_pipe_open() below for why fd 0 is not a usable stand-in.
 
 #include "core/nng_impl.h"
 
