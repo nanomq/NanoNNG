@@ -320,7 +320,7 @@ tcptran_pipe_nego_cb(void *arg)
 	nni_iov       iov;
 	uint8_t       len_of_varint = 0;
 	uint32_t      len;
-	reason_code   code = SUCCESS;
+	reason_code   code = NNG_MQTT_SUCCESS;
 	int           rv;
 
 	log_trace("start tcptran_pipe_nego_cb max len %ld pipe_addr %p gotrx "

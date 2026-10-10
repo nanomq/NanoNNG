@@ -1839,7 +1839,7 @@ nni_mqttv5_msg_decode_connect(nni_msg *msg)
 	// Check connect properties
 	property *prop = mqtt->var_header.connect.properties;
 	if (prop != NULL) {
-		if ((ret = check_properties(prop, msg)) != SUCCESS)
+		if ((ret = check_properties(prop, msg)) != NNG_MQTT_SUCCESS)
 			return ret;
 		// Check Invalid properties
 		for (property *p = prop->next; p != NULL; p = p->next) {
@@ -1883,7 +1883,7 @@ nni_mqttv5_msg_decode_connect(nni_msg *msg)
 
 		property *will_prop = mqtt->payload.connect.will_properties;
 		if (will_prop != NULL) {
-			if ((ret = check_properties(will_prop, msg)) != SUCCESS)
+			if ((ret = check_properties(will_prop, msg)) != NNG_MQTT_SUCCESS)
 				return ret;
 			// Check Invalid properties
 			for (property *p = will_prop->next; p != NULL;
@@ -2054,7 +2054,7 @@ nni_mqttv5_msg_decode_connack(nni_msg *msg)
 	// Check properties
 	property *prop = mqtt->var_header.connack.properties;
 	if (prop != NULL) {
-		if ((result = check_properties(prop, msg)) != SUCCESS)
+		if ((result = check_properties(prop, msg)) != NNG_MQTT_SUCCESS)
 			return result;
 		// Check Invalid properties
 		for (property *p = prop->next; p != NULL; p = p->next) {
@@ -2433,13 +2433,13 @@ nni_mqttv5_msg_decode_publish(nni_msg *msg)
 	uint8_t type = nni_msg_get_cmd_type(msg);
 	if (type == CMD_PUBLISH_V5_RECV) {
 		nni_msg_set_cmd_type(msg, CMD_PUBLISH_V5);
-		if (check_downstream_pub_properties(mqtt->var_header.publish.properties) != SUCCESS) {
+		if (check_downstream_pub_properties(mqtt->var_header.publish.properties) != NNG_MQTT_SUCCESS) {
 			property_free(mqtt->var_header.publish.properties);
 			mqtt->var_header.publish.properties = NULL;
 			return MQTT_ERR_PROTOCOL;
 		}
 	} else {
-		if (check_properties(mqtt->var_header.publish.properties, msg) != SUCCESS) {
+		if (check_properties(mqtt->var_header.publish.properties, msg) != NNG_MQTT_SUCCESS) {
 			property_free(mqtt->var_header.publish.properties);
 			mqtt->var_header.publish.properties = NULL;
 			return MQTT_ERR_PROTOCOL;
@@ -2529,7 +2529,7 @@ nni_mqttv5_msg_decode_puback(nni_msg *msg)
 		return rv;
 	}
 	if (length <= 2) {
-		mqtt->var_header.puback.code       = SUCCESS;
+		mqtt->var_header.puback.code       = NNG_MQTT_SUCCESS;
 		mqtt->var_header.puback.properties = NULL;
 		return MQTT_SUCCESS;
 	}
@@ -2552,7 +2552,7 @@ nni_mqttv5_msg_decode_puback(nni_msg *msg)
 		log_warn("Malformed Property");
 		return PROTOCOL_ERROR;
 	}
-	if (check_properties(mqtt->var_header.puback.properties, msg) != SUCCESS) {
+	if (check_properties(mqtt->var_header.puback.properties, msg) != NNG_MQTT_SUCCESS) {
 		property_free(mqtt->var_header.puback.properties);
 		mqtt->var_header.puback.properties = NULL;
 		return PROTOCOL_ERROR;
@@ -2584,7 +2584,7 @@ nni_mqttv5_msg_decode_pubrec(nni_msg *msg)
 		return rv;
 	}
 	if (length <= 2) {
-		mqtt->var_header.pubrec.code       = SUCCESS;
+		mqtt->var_header.pubrec.code       = NNG_MQTT_SUCCESS;
 		mqtt->var_header.pubrec.properties = NULL;
 		return MQTT_SUCCESS;
 	}
@@ -2607,7 +2607,7 @@ nni_mqttv5_msg_decode_pubrec(nni_msg *msg)
 		log_warn("Malformed Property");
 		return PROTOCOL_ERROR;
 	}
-	if (check_properties(mqtt->var_header.pubrec.properties, msg) != SUCCESS) {
+	if (check_properties(mqtt->var_header.pubrec.properties, msg) != NNG_MQTT_SUCCESS) {
 		property_free(mqtt->var_header.pubrec.properties);
 		mqtt->var_header.pubrec.properties = NULL;
 		return PROTOCOL_ERROR;
@@ -2646,7 +2646,7 @@ nni_mqttv5_msg_decode_pubrel(nni_msg *msg)
 		return rv;
 	}
 	if (length <= 2) {
-		mqtt->var_header.pubrel.code       = SUCCESS;
+		mqtt->var_header.pubrel.code       = NNG_MQTT_SUCCESS;
 		mqtt->var_header.pubrel.properties = NULL;
 		return MQTT_SUCCESS;
 	}
@@ -2669,7 +2669,7 @@ nni_mqttv5_msg_decode_pubrel(nni_msg *msg)
 		log_warn("Malformed Property");
 		return PROTOCOL_ERROR;
 	}
-	if (check_properties(mqtt->var_header.pubrel.properties, msg) != SUCCESS) {
+	if (check_properties(mqtt->var_header.pubrel.properties, msg) != NNG_MQTT_SUCCESS) {
 		property_free(mqtt->var_header.pubrel.properties);
 		mqtt->var_header.pubrel.properties = NULL;
 		return PROTOCOL_ERROR;
@@ -2701,7 +2701,7 @@ nni_mqttv5_msg_decode_pubcomp(nni_msg *msg)
 		return rv;
 	}
 	if (length <= 2) {
-		mqtt->var_header.pubcomp.code       = SUCCESS;
+		mqtt->var_header.pubcomp.code       = NNG_MQTT_SUCCESS;
 		mqtt->var_header.pubcomp.properties = NULL;
 		return MQTT_SUCCESS;
 	}
@@ -2724,7 +2724,7 @@ nni_mqttv5_msg_decode_pubcomp(nni_msg *msg)
 		log_warn("Malformed Property");
 		return PROTOCOL_ERROR;
 	}
-	if (check_properties(mqtt->var_header.pubcomp.properties, msg) != SUCCESS) {
+	if (check_properties(mqtt->var_header.pubcomp.properties, msg) != NNG_MQTT_SUCCESS) {
 		property_free(mqtt->var_header.pubcomp.properties);
 		mqtt->var_header.pubcomp.properties = NULL;
 		return PROTOCOL_ERROR;
@@ -4267,7 +4267,7 @@ check_properties(property *prop, nni_msg *msg)
 		}
 	}
 	if (prop == NULL) {
-		return SUCCESS;
+		return NNG_MQTT_SUCCESS;
 	}
 
 	// MQTT 5.0 Property ID up to 0x2A (42)
@@ -4365,7 +4365,7 @@ check_properties(property *prop, nni_msg *msg)
 		}
 	}
 
-	return SUCCESS;
+	return NNG_MQTT_SUCCESS;
 }
 
 // Will properties live inside a CONNECT, so check_properties() cannot tell them
@@ -4375,7 +4375,7 @@ check_will_properties(property *prop)
 {
 	reason_code rc = check_properties(prop, NULL);
 
-	if (rc != SUCCESS || prop == NULL) {
+	if (rc != NNG_MQTT_SUCCESS || prop == NULL) {
 		return rc;
 	}
 
@@ -4398,7 +4398,7 @@ check_will_properties(property *prop)
 		}
 	}
 
-	return SUCCESS;
+	return NNG_MQTT_SUCCESS;
 }
 
 /**
@@ -4784,7 +4784,7 @@ nni_mqtt_pubres_decode(nng_msg *msg, uint16_t *packet_id, uint8_t *reason_code,
 		log_warn("Malformed Property");
 		return PROTOCOL_ERROR;
 	}
-	if (check_properties(*prop, msg) != SUCCESS) {
+	if (check_properties(*prop, msg) != NNG_MQTT_SUCCESS) {
 		property_free(*prop);
 		*prop = NULL;
 		return PROTOCOL_ERROR;

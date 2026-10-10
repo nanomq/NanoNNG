@@ -320,7 +320,7 @@ nmq_auth_http_connect(conn_param *cparam, conf_auth_http *conf)
 
 	if (conf->enable == false || conf->auth_req.url == NULL) {
 		log_info("HTTP Authentication is not enabled!");
-		return SUCCESS;
+		return NNG_MQTT_SUCCESS;
 	}
 
 	auth_http_params auth_params = {
@@ -336,7 +336,7 @@ nmq_auth_http_connect(conn_param *cparam, conf_auth_http *conf)
 
 	int status = send_request(conf, &conf->auth_req, &auth_params);
 
-	return status == NNG_HTTP_STATUS_OK ? SUCCESS : NOT_AUTHORIZED;
+	return status == NNG_HTTP_STATUS_OK ? NNG_MQTT_SUCCESS : NOT_AUTHORIZED;
 }
 
 char *parse_topics(topic_queue *head)
@@ -384,7 +384,7 @@ nmq_auth_http_sub_pub(
 	if (conf->enable == false ||
 	    !((conf->super_req.enable && conf->super_req.url) ||
 	        (conf->acl_req.enable && conf->acl_req.url))) {
-		return SUCCESS;
+		return NNG_MQTT_SUCCESS;
 	}
 
 	char *topic_str = parse_topics(topics);
@@ -440,7 +440,7 @@ nmq_auth_http_sub_pub(
 			nng_mtx_unlock(conf->acl_cache_mtx);
 			if (acl_cache_v != NULL) {
 				nni_free(topic_str, strlen(topic_str) + 1);
-				return SUCCESS; // cache hit
+				return NNG_MQTT_SUCCESS; // cache hit
 			}
 		}
 
@@ -455,7 +455,7 @@ nmq_auth_http_sub_pub(
 				nng_mtx_unlock(conf->acl_cache_mtx);
 			}
 			nni_free(topic_str, strlen(topic_str) + 1);
-			return SUCCESS;
+			return NNG_MQTT_SUCCESS;
 		}
 	}
 
@@ -467,7 +467,7 @@ nmq_auth_http_sub_pub(
 			nng_mtx_unlock(conf->acl_cache_mtx);
 			if (acl_cache_v != NULL) {
 				nni_free(topic_str, strlen(topic_str) + 1);
-				return SUCCESS; // cache hit
+				return NNG_MQTT_SUCCESS; // cache hit
 			}
 		}
 
@@ -487,5 +487,5 @@ nmq_auth_http_sub_pub(
 	}
 	nni_free(topic_str, strlen(topic_str) + 1);
 
-	return status == NNG_HTTP_STATUS_OK ? SUCCESS : NOT_AUTHORIZED;
+	return status == NNG_HTTP_STATUS_OK ? NNG_MQTT_SUCCESS : NOT_AUTHORIZED;
 }

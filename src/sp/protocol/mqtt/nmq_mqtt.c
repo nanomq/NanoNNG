@@ -713,7 +713,7 @@ nano_pipe_start(void *arg)
 auth_verify:
 	rv = verify_connect(p->conn_param, s->conf);
 	// TODO Avoid holding s->lk across HTTP authentication.
-	if (rv == SUCCESS) {
+	if (rv == NNG_MQTT_SUCCESS) {
 		if (s->conf->auth_http.enable) {
 			log_debug("HTTP Authentication start!");
 			rv = nmq_auth_http_connect(		// potential dead lock if HTTP fails
@@ -725,7 +725,7 @@ auth_verify:
 
 	if (nni_pipe_is_closed(npipe) || nni_atomic_get_bool(&npipe->cache)) {
 		if (nni_atomic_get_bool(&npipe->cache)) {
-			if (rv != SUCCESS) {
+			if (rv != NNG_MQTT_SUCCESS) {
 				if (nni_id_get(&s->cached_sessions,
 				        npipe->p_id) == p) {
 					nni_id_remove(

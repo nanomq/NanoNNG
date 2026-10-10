@@ -1611,7 +1611,7 @@ test_check_will_property_ids(void)
 	    mqtt_property_set_value_strpair(
 	        USER_PROPERTY, "a", 1, "b", 1, true));
 
-	NUTS_TRUE(check_will_properties(plist) == SUCCESS);
+	NUTS_TRUE(check_will_properties(plist) == NNG_MQTT_SUCCESS);
 
 	// Session Expiry Interval is a CONNECT property, not a Will property.
 	mqtt_property_append(
