@@ -328,13 +328,13 @@ dbhash_ptpair_t *
 dbhash_ptpair_alloc(uint32_t p, char *t)
 {
 	dbhash_ptpair_t *pt =
-	    (dbhash_ptpair_t *) nni_zalloc(sizeof(dbhash_ptpair_t));
+	    (dbhash_ptpair_t *) calloc(1, sizeof(dbhash_ptpair_t));
 
 	if (pt == NULL) {
 		return NULL;
 	}
 	pt->pipe  = p;
-	pt->topic = nni_strdup(t);
+	pt->topic = strdup(t);
 	return pt;
 }
 
@@ -386,13 +386,13 @@ dbhash_get_ptpair_all(void)
 topic_queue *
 topic_queue_init(char *topic, int topic_len)
 {
-	topic_queue *tq = nni_alloc(sizeof(topic_queue));
+	topic_queue *tq = malloc(sizeof(topic_queue));
 	if (tq == NULL) {
 		return NULL;
 	}
-	tq->topic = nni_alloc(topic_len + 1);
+	tq->topic = malloc(topic_len + 1);
 	if (tq->topic == NULL) {
-		nni_free(tq, sizeof(topic_queue));
+		free(tq);
 		return NULL;
 	}
 	for(int i = 0; i < topic_len - 1; i++) {
@@ -412,9 +412,9 @@ topic_queue_release(topic_queue *tq)
 		topic_queue *tmp = tq;
 		tq = tq->next;
 		if (tmp->topic != NULL) {
-			nni_free(tmp->topic, strlen(tmp->topic) + 1);
+			free(tmp->topic);
 		}
-		nni_free(tmp, sizeof(topic_queue));
+		free(tmp);
 	}
 
 	return;
@@ -428,13 +428,13 @@ init_topic_queue_with_topic_node(topic_node *tn)
 
 	while (tn != NULL) {
 		if (tq == NULL) {
-			tq = nng_alloc(sizeof(topic_queue));
+			tq = malloc(sizeof(topic_queue));
 			if (tq == NULL) {
 				log_error("nng_alloc failed");
 				return NULL;
 			}
 			curtq = tq;
-			curtq->topic = nng_strndup(tn->topic.body, tn->topic.len);
+			curtq->topic = strndup((const char *) tn->topic.body, tn->topic.len);
 			if (curtq->topic == NULL) {
 				log_error("nng_strdup failed");
 				topic_queue_release(tq);
@@ -442,14 +442,14 @@ init_topic_queue_with_topic_node(topic_node *tn)
 			}
 			curtq->next = NULL;
 		} else {
-			curtq->next = nng_alloc(sizeof(topic_queue));
+			curtq->next = malloc(sizeof(topic_queue));
 			if (curtq->next == NULL) {
 				log_error("nng_alloc failed");
 				topic_queue_release(tq);
 				return NULL;
 			}
 
-			curtq->next->topic = nng_strndup(tn->topic.body, tn->topic.len);
+			curtq->next->topic = strndup((const char *) tn->topic.body, tn->topic.len);
 			if (curtq->next->topic == NULL) {
 				log_error("nng_strdup failed");
 				topic_queue_release(tq);
@@ -601,7 +601,7 @@ dbhash_get_first_topic(uint32_t id)
 	if (k != kh_end(ph)) {
 		struct topic_queue *ret = kh_val(ph, k);
 		if (ret && ret->topic) {
-			topic = nni_strdup(ret->topic);
+			topic = strdup(ret->topic);
 		}
 	}
 	nni_rwlock_unlock(&pipe_lock);
@@ -649,14 +649,14 @@ dbhash_copy_topic_queue(uint32_t id)
 				continue;
 			}
 
-			struct topic_queue *new_node = nng_zalloc(sizeof(struct topic_queue));
+			struct topic_queue *new_node = calloc(1, sizeof(struct topic_queue));
 			if (new_node == NULL) {
 				log_error("Mem alloc failed!");
 				break; 
 			}
 
 			new_node->qos = tq->qos;
-			new_node->topic = nng_strdup(tq->topic);
+			new_node->topic = strdup(tq->topic);
 			new_node->next = NULL;
 
 			*tail = new_node;
@@ -1056,13 +1056,13 @@ dbhash_atpair_alloc(uint32_t alias, const char *topic)
 		log_error("Topic should not be NULL");
 	}
 	dbhash_atpair_t *atpair =
-	    (dbhash_atpair_t *) nni_zalloc(sizeof(dbhash_atpair_t));
+	    (dbhash_atpair_t *) calloc(1, sizeof(dbhash_atpair_t));
 	if (atpair == NULL) {
 		log_error("Memory alloc error.");
 		return NULL;
 	}
 	atpair->alias = alias;
-	atpair->topic = nni_strdup(topic);
+	atpair->topic = strdup(topic);
 
 	return atpair;
 }
