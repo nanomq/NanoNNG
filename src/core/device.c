@@ -123,8 +123,14 @@ device_cb(void *arg)
 	}
 }
 
+
+#if defined(NNG_PLATFORM_ZEPHYR)
 static int
 device_init_data(device_data **dp, nni_sock *s1, nni_sock *s2)
+#else
+static int
+device_init(device_data **dp, nni_sock *s1, nni_sock *s2)
+#endif
 {
 	int          num_paths = 2;
 	int          i;
@@ -229,7 +235,11 @@ nni_device(nni_aio *aio, nni_sock *s1, nni_sock *s2)
 		return;
 	}
 	nni_mtx_lock(&device_mtx);
+#if defined(NNG_PLATFORM_ZEPHYR)
 	if ((rv = device_init_data(&d, s1, s2)) != 0) {
+#else
+	if ((rv = device_init(&d, s1, s2)) != 0) {
+#endif
 		nni_mtx_unlock(&device_mtx);
 		nni_aio_finish_error(aio, rv);
 		return;
