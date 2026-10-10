@@ -209,6 +209,7 @@ nni_resolv_ip(const char *host, const char *serv, int af, bool passive,
 {
 	resolv_item *item;
 	int          rv;
+	bool         mine = false;
 
 	if (nni_aio_begin(aio) != 0) {
 		return;
@@ -217,7 +218,9 @@ nni_resolv_ip(const char *host, const char *serv, int af, bool passive,
 	// Step 1 — fast path: try numeric IP via parse_ip (uses
 	// getaddrinfo with AI_NUMERICHOST).  Returns only for numeric
 	// IPs like "127.0.0.1" — hostnames fall through to step 2.
-	{
+	// A NULL host is legal (wildcard listen, e.g. tcp://:1883): there
+	// is nothing numeric to try, so go straight to getaddrinfo below.
+	if (host != NULL) {
 		size_t hl = strlen(host);
 		size_t sl = serv ? strlen(serv) : 0;
 		char  *buf;
@@ -265,13 +268,16 @@ nni_resolv_ip(const char *host, const char *serv, int af, bool passive,
 	}
 	item->family  = af;
 	item->passive = passive;
-	item->host    = nni_strdup(host);
+	item->host    = host ? nni_strdup(host) : NULL;
 	item->serv    = serv ? nni_strdup(serv) : NULL;
 	item->aio     = aio;
 	item->sa      = sa;
 
-	// Guard against strdup failure.
-	if ((item->host == NULL) || (serv != NULL && item->serv == NULL)) {
+	// Guard against strdup failure.  A NULL host is not a failure --
+	// getaddrinfo accepts a NULL node together with AI_PASSIVE -- so
+	// only test the duplicate when there was something to duplicate.
+	if ((host != NULL && item->host == NULL) ||
+	    (serv != NULL && item->serv == NULL)) {
 		resolv_free_item(item);
 		nni_aio_finish_error(aio, NNG_ENOMEM);
 		return;
@@ -297,9 +303,21 @@ nni_resolv_ip(const char *host, const char *serv, int af, bool passive,
 	// Synchronous resolution directly on caller's thread.
 	rv = resolv_task(item);
 
-	// resolv_cancel may have fired via the expire thread; if so,
-	// item->aio is NULL and the aio was already finished.
-	if (item->aio != NULL) {
+	// resolv_cancel may have fired via the expire thread; if so it has
+	// already finished the aio.  Claim the aio under the same lock it
+	// uses -- clearing the aio's prov data as well as item->aio -- so
+	// the two paths can never finish the same aio, and a cancel that
+	// arrives after this point bails out at its prov-data check instead
+	// of touching an item we are about to free.
+	nni_mtx_lock(&resolv_mtx);
+	mine = (item->aio != NULL);
+	if (mine) {
+		item->aio = NULL;
+		nni_aio_set_prov_data(aio, NULL);
+	}
+	nni_mtx_unlock(&resolv_mtx);
+
+	if (mine) {
 		if (rv == 0) {
 			nni_aio_finish(aio, 0, 0);
 		} else {

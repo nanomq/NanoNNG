@@ -22,6 +22,10 @@
 #ifdef __ZEPHYR__
 // Zephyr lacks readv/writev and <sys/uio.h>. Provide inline emulation
 // using Zephyr's net_iovec (mapped from iovec via Zephyr's <sys/socket.h>).
+// Stop at the first short transfer and report how much was moved:
+// carrying on into the next iovec would place the following bytes at the
+// wrong offset in the stream, and returning -1 after a partial transfer
+// would tell the caller that bytes it already sent were not sent.
 #include <sys/socket.h>
 static inline ssize_t
 readv(int fd, struct net_iovec *iov, int niov)
@@ -29,8 +33,9 @@ readv(int fd, struct net_iovec *iov, int niov)
 	ssize_t n = 0;
 	for (int i = 0; i < niov; i++) {
 		ssize_t r = read(fd, iov[i].iov_base, iov[i].iov_len);
-		if (r < 0) return r;
+		if (r < 0) return (n > 0) ? n : r;
 		n += r;
+		if ((size_t) r < iov[i].iov_len) break;
 	}
 	return n;
 }
@@ -40,8 +45,9 @@ writev(int fd, struct net_iovec *iov, int niov)
 	ssize_t n = 0;
 	for (int i = 0; i < niov; i++) {
 		ssize_t r = write(fd, iov[i].iov_base, iov[i].iov_len);
-		if (r < 0) return r;
+		if (r < 0) return (n > 0) ? n : r;
 		n += r;
+		if ((size_t) r < iov[i].iov_len) break;
 	}
 	return n;
 }
