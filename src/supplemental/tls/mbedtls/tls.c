@@ -2,6 +2,7 @@
 // Copyright 2024 Staysail Systems, Inc. <info@staysail.tech>
 // Copyright 2018 Capitar IT Group BV <info@capitar.com>
 // Copyright 2019 Devolutions <info@devolutions.net>
+// Copyright 2026 NanoMQ Team, Inc.
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -316,33 +317,40 @@ conn_verified(nng_tls_engine_conn *ec)
 	return (mbedtls_ssl_get_verify_result(&ec->ctx) == 0);
 }
 
+// Returns the first commonName attribute of the peer certificate subject,
+// found by OID rather than by searching the formatted DN, so other attributes
+// (or values containing "CN=") never become part of it. Only string types
+// whose bytes are already ASCII/UTF-8 are accepted; values containing NUL are
+// refused so the result cannot be truncated into a different name.
 static char *
 conn_peer_cn(nng_tls_engine_conn *ec)
 {
+	static const unsigned char cn_oid[] = { 0x55, 0x04, 0x03 }; // 2.5.4.3
 	const mbedtls_x509_crt *crt = mbedtls_ssl_get_peer_cert(&ec->ctx);
+	const mbedtls_x509_name *name;
+	char                    *rv;
+
 	if (!crt) {
 		return (NULL);
 	}
-
-	char buf[0x400];
-	int  len = mbedtls_x509_dn_gets(buf, sizeof(buf), &crt->subject);
-	if (len <= 0) {
+	for (name = &crt->subject; name != NULL; name = name->next) {
+		if (name->oid.len == sizeof(cn_oid) &&
+		    memcmp(name->oid.p, cn_oid, sizeof(cn_oid)) == 0) {
+			break;
+		}
+	}
+	if (name == NULL || name->val.len == 0 ||
+	    (name->val.tag != MBEDTLS_ASN1_UTF8_STRING &&
+	        name->val.tag != MBEDTLS_ASN1_PRINTABLE_STRING &&
+	        name->val.tag != MBEDTLS_ASN1_IA5_STRING) ||
+	    memchr(name->val.p, '\0', name->val.len) != NULL) {
 		return (NULL);
 	}
-
-	const char *pos = strstr(buf, "CN=");
-	if (!pos) {
+	if ((rv = malloc(name->val.len + 1)) == NULL) {
 		return (NULL);
 	}
-
-	pos += 3;
-	len -= (int) (pos - buf - 1);
-	if (len <= 1) {
-		return (NULL);
-	}
-
-	char *rv = malloc(len);
-	memcpy(rv, pos, len);
+	memcpy(rv, name->val.p, name->val.len);
+	rv[name->val.len] = '\0';
 	return (rv);
 }
 
