@@ -183,7 +183,10 @@ test_pipe_table()
 		dbhash_insert_topic(table2[i].key, table2[i].topic, 0);
 
 		char *first_topic = dbhash_get_first_topic(table1[i].key);
-		nng_free(first_topic, strlen(first_topic));
+		// dbhash_get_first_topic() returns an nni_strdup() copy;
+		// release it with the matching str-free, not nng_free() and a
+		// strlen() the allocator never used.
+		nng_strfree(first_topic);
 		dbhash_del_topic_queue(table1[i].key, NULL, NULL);
 	}
 
