@@ -91,6 +91,7 @@ print_hex(char *str, const uint8_t *data, size_t len)
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/pem.h>
 #if !defined(LIBRESSL_VERSION_NUMBER) && \
     OPENSSL_VERSION_NUMBER >= 0x30000000L
 #define NNG_OPENSSL_HAVE_PKCS11 1
@@ -570,6 +571,71 @@ open_conn_verified(nng_tls_engine_conn *ec)
 	long rv = SSL_get_verify_result(ec->ssl);
 	log_info("NNG-TLS-CONN-VERIFY" "verified result: %ld", rv);
 	return (X509_V_OK == rv);
+}
+
+// SSL_get1_peer_certificate() replaces the deprecated SSL_get_peer_certificate()
+// in OpenSSL 3.0; both return a reference the caller must release with X509_free().
+static X509 *
+open_conn_get_peer_cert(nng_tls_engine_conn *ec)
+{
+#if OPENSSL_VERSION_MAJOR < 3
+	return (SSL_get_peer_certificate(ec->ssl));
+#else
+	return (SSL_get1_peer_certificate(ec->ssl));
+#endif
+}
+
+static char *
+open_conn_peer_cn(nng_tls_engine_conn *ec)
+{
+	X509 *cert = open_conn_get_peer_cert(ec);
+	if (cert == NULL) {
+		return (NULL);
+	}
+
+	char buf[256];
+	int  len = X509_NAME_get_text_by_NID(
+	    X509_get_subject_name(cert), NID_commonName, buf, sizeof(buf));
+	X509_free(cert);
+	if (len <= 0) {
+		return (NULL);
+	}
+
+	char *rv = malloc((size_t) len + 1);
+	if (rv == NULL) {
+		return (NULL);
+	}
+	memcpy(rv, buf, (size_t) len + 1);
+	return (rv);
+}
+
+static char *
+open_conn_peer_subject(nng_tls_engine_conn *ec)
+{
+	X509 *cert = open_conn_get_peer_cert(ec);
+	if (cert == NULL) {
+		return (NULL);
+	}
+
+	BIO *bio = BIO_new(BIO_s_mem());
+	if (bio == NULL) {
+		X509_free(cert);
+		return (NULL);
+	}
+
+	char *rv = NULL;
+	if (X509_NAME_print_ex(bio, X509_get_subject_name(cert), 0,
+	        XN_FLAG_RFC2253) > 0) {
+		char *data;
+		long  len = BIO_get_mem_data(bio, &data);
+		if (len > 0 && (rv = malloc((size_t) len + 1)) != NULL) {
+			memcpy(rv, data, (size_t) len);
+			rv[len] = '\0';
+		}
+	}
+	BIO_free(bio);
+	X509_free(cert);
+	return (rv);
 }
 
 /************************* SSL Configuration ***********************/
@@ -1119,6 +1185,37 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		goto error;
 	}
 
+	// certfile may contain intermediate CA certs after the leaf; load
+	// them as the server's own chain (independent of cacertfile/CA store,
+	// which is only for verifying peer certs) so the full chain is
+	// always presented to clients, matching what SSL_CTX_use_certificate
+	// alone does not do.
+	if (biocert != NULL) {
+		X509 *extra;
+		while ((extra = PEM_read_bio_X509(biocert, NULL, 0, NULL)) !=
+		    NULL) {
+			if (SSL_CTX_add_extra_chain_cert(cfg->ctx, extra) ==
+			    0) {
+				log_error("NNG-TLS-CFG-OWNCHAIN"
+				    "Failed to add chain certificate to SSL_CTX");
+				X509_free(extra);
+				rv = NNG_ECRYPTO;
+				goto error;
+			}
+			// ownership transferred to cfg->ctx on success
+		}
+		// PEM_R_NO_START_LINE means we simply ran out of certs;
+		// anything else means a malformed trailing certificate.
+		if (ERR_GET_REASON(ERR_peek_last_error()) !=
+		    PEM_R_NO_START_LINE) {
+			open_log_ssl_error(
+			    "NNG-TLS-CFG-OWNCHAIN PEM_read_bio_X509", 0);
+			rv = NNG_ECRYPTO;
+			goto error;
+		}
+		ERR_clear_error();
+	}
+
 	if (key_pkcs11) {
 		if ((rv = open_load_pkey_from_uri(cfg, key, &pkey)) != 0) {
 			goto error;
@@ -1198,14 +1295,16 @@ static nng_tls_engine_config_ops open_config_ops = {
 };
 
 static nng_tls_engine_conn_ops open_conn_ops = {
-	.size      = sizeof(nng_tls_engine_conn),
-	.init      = open_conn_init,
-	.fini      = open_conn_fini,
-	.close     = open_conn_close,
-	.recv      = open_conn_recv,
-	.send      = open_conn_send,
-	.handshake = open_conn_handshake,
-	.verified  = open_conn_verified,
+	.size         = sizeof(nng_tls_engine_conn),
+	.init         = open_conn_init,
+	.fini         = open_conn_fini,
+	.close        = open_conn_close,
+	.recv         = open_conn_recv,
+	.send         = open_conn_send,
+	.handshake    = open_conn_handshake,
+	.verified     = open_conn_verified,
+	.peer_cn      = open_conn_peer_cn,
+	.peer_subject = open_conn_peer_subject,
 };
 
 static nng_tls_engine open_engine = {
