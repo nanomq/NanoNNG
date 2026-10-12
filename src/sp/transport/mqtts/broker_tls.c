@@ -411,10 +411,6 @@ tlstran_pipe_nego_cb(void *arg)
 		         p->conn_buf, p->tcp_cparam, p->wantrxhead)) == 0) {
 			nng_free(p->conn_buf, p->wantrxhead);
 			p->conn_buf = NULL;
-			nni_list_remove(&ep->negopipes, p);
-			nni_list_append(&ep->waitpipes, p);
-			conn_param_apply_mount_point(p->tcp_cparam, ep->mount_point);
-			tlstran_ep_match(ep);
 			// connection packet handled successfully. clone it for protocol or app layer
 			conn_param_clone(p->tcp_cparam);
 			// Connection is accepted.
@@ -425,6 +421,17 @@ tlstran_pipe_nego_cb(void *arg)
 					p->tcp_cparam->properties = property_alloc();
 				}
 			}
+			// Match last. tlstran_ep_match finishes ep->useraio, which lets a
+			// task thread run tlstran_pipe_init and start the protocol pipe
+			// (CONNACK, and a duplicate-clientid eviction) on this pipe while
+			// this thread still owns p->tcp_cparam. Only ep->mtx is held here,
+			// and neither the send path nor pipe teardown takes it, so matching
+			// first races conn_param_clone and the p->pro_ver store.
+			// broker_tcp.c already matches last; keep the two in step.
+			nni_list_remove(&ep->negopipes, p);
+			nni_list_append(&ep->waitpipes, p);
+      conn_param_apply_mount_point(p->tcp_cparam, ep->mount_point);
+			tlstran_ep_match(ep);
 			nni_mtx_unlock(&ep->mtx);
 			return;
 		} else {
