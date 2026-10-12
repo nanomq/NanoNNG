@@ -812,6 +812,7 @@ conf_tls_init(conf_tls *tls)
 	tls->verify_peer  = false;
 	tls->name         = NULL;
 	tls->mount_point  = NULL;
+	tls->peer_cert_as_username = PEER_CERT_AS_USERNAME_DISABLE;
 }
 
 void

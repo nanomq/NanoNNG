@@ -1,4 +1,5 @@
 // Copyright 2026 Liebherr-Digital Development Center (LDC) <peter.bestler@liebherr.de>
+// Copyright 2026 NanoMQ Team, Inc.
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -73,6 +74,13 @@ struct conf_auth {
 
 typedef struct conf_auth conf_auth;
 
+// Which field of the verified client certificate becomes the MQTT username
+typedef enum {
+	PEER_CERT_AS_USERNAME_DISABLE = 0, // keep the client-supplied username
+	PEER_CERT_AS_USERNAME_CN      = 1, // subject common name
+	PEER_CERT_AS_USERNAME_DN      = 2, // full subject distinguished name
+} peer_cert_as_username_mode;
+
 struct conf_tls {
 	bool  enable;
 	char *url; // "tls+nmq-tcp://addr:port"
@@ -88,6 +96,7 @@ struct conf_tls {
 	char *sni;
 	char *name; // listener name, only set for tls_list nodes
 	char *mount_point; // topic prefix applied/stripped for this listener
+	uint8_t peer_cert_as_username; // peer_cert_as_username_mode
 };
 
 typedef struct conf_tls conf_tls;

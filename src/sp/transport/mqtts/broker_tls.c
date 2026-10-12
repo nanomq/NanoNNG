@@ -34,6 +34,7 @@ struct tlstran_pipe {
 	nni_pipe   *npipe; // for statitical
 	conf       *conf;
 	char       *mount_point; // borrowed from ep->mount_point, may be NULL
+	int         peer_cert_as_username; // copied from ep
 	size_t          rcvmax; // duplicate with conf->max_packet_size
 	size_t          gotrxhead;
 	size_t          wantrxhead;
@@ -74,6 +75,7 @@ struct tlstran_ep {
 	nng_sockaddr         src;
 	conf                *conf;
 	char                *mount_point; // per-listener topic prefix, may be NULL
+	int                  peer_cert_as_username; // conf_tls value
 	nng_sockaddr         sa;
 	int                  refcnt; // active pipes
 	int                  authmode;
@@ -308,6 +310,7 @@ tlstran_ep_match(tlstran_ep *ep)
 	p->rcvmax   = ep->rcvmax;
 	p->conf     = ep->conf;
 	p->mount_point = ep->mount_point;
+	p->peer_cert_as_username = ep->peer_cert_as_username;
 	nni_aio_set_output(aio, 0, p);
 	nni_aio_finish(aio, 0, 0);
 }
@@ -1656,6 +1659,9 @@ tlstran_pipe_getopt(
     void *arg, const char *name, void *buf, size_t *szp, nni_type t)
 {
 	tlstran_pipe *p = arg;
+	if (strcmp(name, NANO_PEER_CERT_AS_USERNAME) == 0) {
+		return (nni_copyout_int(p->peer_cert_as_username, buf, szp, t));
+	}
 	if (strcmp(name, NMQ_OPT_MQTT_GET_QOS_RESEND) == 0) {
 		if (buf == NULL || szp == NULL || *szp < sizeof(nmq_req)) {
 			return NNG_EINVAL;
@@ -2133,6 +2139,23 @@ tlstran_ep_set_mount_point(void *arg, const void *v, size_t sz, nni_opt_type t)
 }
 
 static int
+tlstran_ep_set_peer_cert_as_username(
+    void *arg, const void *v, size_t sz, nni_opt_type t)
+{
+	tlstran_ep *ep = arg;
+	int         mode;
+	int         rv;
+
+	if ((rv = nni_copyin_int(&mode, v, sz, PEER_CERT_AS_USERNAME_DISABLE,
+	         PEER_CERT_AS_USERNAME_DN, t)) == 0) {
+		nni_mtx_lock(&ep->mtx);
+		ep->peer_cert_as_username = mode;
+		nni_mtx_unlock(&ep->mtx);
+	}
+	return (rv);
+}
+
+static int
 tlstran_ep_get_recvmaxsz(void *arg, void *v, size_t *szp, nni_opt_type t)
 {
 	tlstran_ep *ep = arg;
@@ -2306,6 +2329,10 @@ static const nni_option tlstran_ep_opts[] = {
 	{
 	    .o_name = NANO_MOUNT_POINT,
 	    .o_set  = tlstran_ep_set_mount_point,
+	},
+	{
+	    .o_name = NANO_PEER_CERT_AS_USERNAME,
+	    .o_set  = tlstran_ep_set_peer_cert_as_username,
 	},
 	// terminate list
 	{
