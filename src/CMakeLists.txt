@@ -13,6 +13,9 @@ nng_headers(nng/nng.h)
 
 target_include_directories(nng PRIVATE ${PROJECT_SOURCE_DIR}/src)
 target_include_directories(nng_testing PRIVATE ${PROJECT_SOURCE_DIR}/src)
+if (TARGET nng_static)
+    target_include_directories(nng_static PRIVATE ${PROJECT_SOURCE_DIR}/src)
+endif ()
 
 add_subdirectory(core)
 add_subdirectory(platform)
@@ -29,9 +32,13 @@ endif()
 # When building shared libraries we prefer to suppress default symbol
 # visibility, so that only the symbols that should be exposed in the
 # resulting library are.  This is the default with Windows.
+#
+# NNG_EXPORT_ALL_SYMBOLS: used by NanoMQ ENABLE_VELOFLUX so nanomq can
+# still resolve nanolib internals (e.g. DJBHash) against shared libnng,
+# while VeloFlux FFI shares the same libnng for inproc://.
 if (BUILD_SHARED_LIBS)
     target_compile_definitions(nng PRIVATE NNG_SHARED_LIB)
-    if (NNG_HIDDEN_VISIBILITY)
+    if (NNG_HIDDEN_VISIBILITY AND NOT NNG_EXPORT_ALL_SYMBOLS)
         target_compile_definitions(nng PRIVATE NNG_HIDDEN_VISIBILITY)
         set_target_properties(nng PROPERTIES C_VISIBILITY_PRESET hidden)
     endif ()
@@ -45,12 +52,22 @@ set_target_properties(nng PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_D
 set_target_properties(nng PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 set_target_properties(nng PROPERTIES ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 set_target_properties(nng PROPERTIES FRAMEWORK OFF)
+if (TARGET nng_static)
+    set_target_properties(nng_static PROPERTIES
+        ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+        FRAMEWORK OFF)
+endif ()
 
 target_include_directories(nng INTERFACE $<INSTALL_INTERFACE:include>
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>)
 
 target_include_directories(nng PRIVATE ${PROJECT_SOURCE_DIR}/include)
 target_include_directories(nng_testing PUBLIC ${PROJECT_SOURCE_DIR}/include)
+if (TARGET nng_static)
+    target_include_directories(nng_static INTERFACE $<INSTALL_INTERFACE:include>
+            $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>)
+    target_include_directories(nng_static PRIVATE ${PROJECT_SOURCE_DIR}/include)
+endif ()
 
 install(TARGETS ${PROJECT_NAME}
         EXPORT ${PROJECT_NAME}-target

@@ -507,6 +507,15 @@ struct conf_stream_inject {
 };
 #endif
 
+#if defined(SUPP_VELOFLUX)
+typedef struct conf_veloflux conf_veloflux;
+struct conf_veloflux {
+	bool  enable;
+	char *so_path;
+	char *config_path;
+};
+#endif
+
 struct conf_blf {
 	bool             enable;
 	char            *dir;
@@ -764,6 +773,9 @@ struct conf {
 	conf_plugin          plugin;
 	conf_stream_plugin   stream_plugin;
 	conf_stream_inject   stream_inject;
+#endif
+#if defined(SUPP_VELOFLUX)
+	conf_veloflux        veloflux;
 #endif
 	conf_web_hook        web_hook;
 #if defined(ENABLE_LOG)

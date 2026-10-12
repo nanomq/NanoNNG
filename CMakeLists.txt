@@ -86,10 +86,19 @@ endif ()
 # The "nng_private" library is an interface that allows some internal tools
 # to obtain details about how the public library was built, so that we can
 # include or not include code based on what's actually present.
+# ENABLE_VELOFLUX (from NanoMQ) forces shared libnng for inproc://; also
+# build "nng_static" so nanomq_cli can stay off that .so. Other shared
+# builds do not create nng_static.
 add_library(nng)
 
 add_library(nng_testing STATIC EXCLUDE_FROM_ALL)
 target_compile_definitions(nng_testing PUBLIC NNG_STATIC_LIB NNG_TEST_LIB NNG_PRIVATE)
+
+if (BUILD_SHARED_LIBS AND ENABLE_VELOFLUX)
+    add_library(nng_static STATIC)
+    target_compile_definitions(nng_static PUBLIC NNG_STATIC_LIB)
+    message(STATUS "Building nng_static alongside shared libnng (ENABLE_VELOFLUX)")
+endif ()
 
 add_library(nng_private INTERFACE)
 target_compile_definitions(nng_private INTERFACE NNG_PRIVATE)
@@ -328,6 +337,9 @@ if (NNG_ENABLE_SCRAM)
         find_package(OpenSSL)
         target_link_libraries(nng PRIVATE OpenSSL::SSL OpenSSL::Crypto)
         target_link_libraries(nng_testing PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+        if (TARGET nng_static)
+            target_link_libraries(nng_static PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+        endif ()
     endif (NNG_ENABLE_QUIC)
 
     add_definitions(-DSUPP_SCRAM)
@@ -339,6 +351,9 @@ if (NNG_ENABLE_PARQUET)
         # parquet enables AES helpers that require EVP_* symbols from libcrypto.
         target_link_libraries(nng PRIVATE OpenSSL::Crypto)
         target_link_libraries(nng_testing PRIVATE OpenSSL::Crypto)
+        if (TARGET nng_static)
+            target_link_libraries(nng_static PRIVATE OpenSSL::Crypto)
+        endif ()
     endif (NNG_ENABLE_QUIC)
 endif ()
 
