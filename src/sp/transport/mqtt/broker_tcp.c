@@ -964,6 +964,7 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	subinfo  *tinfo = NULL, *info = NULL;
 	nni_list *subinfol = p->npipe->subinfol;
 
+	// === 1. MountPoint 判定与剥离长度计算 ===
 	const char *mp        = p->mount_point;
 	char       *eff_topic = topic;
 	size_t      eff_tlen  = (size_t) topic_len;
@@ -998,15 +999,20 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				sub_topic != NULL ? sub_topic++ : NULL;
 			}
 		}
-		// And we never modify msg itself
+
+		// === 2. 传入剥离前缀后的有效主题进行匹配 ===
 		if (false == topic_filtern(sub_topic, eff_topic, eff_tlen)) {
 			continue;
 		}
-		if (niov > 4) {
-			// donot send too many msgs at a time
+
+		// === 3. 动态 niov 容量检查，防止 iov[8] 越界泄漏 ===
+		int needed_iov = (strip_len > 0) ? 5 : 4;
+		if (niov + needed_iov > 8) {
+			// 剩余订阅保留至下一次 aio 发送回调处理
 			nni_aio_set_prov_data(txaio, info);
 			break;
 		}
+
 		int       len_offset = 0;
 		uint8_t  *body, *header, qos_pac, property_bytes = 0;
 		uint8_t   var_extra[2], fixheader, tmp[4] = { 0 }, pos = 1;
@@ -1039,10 +1045,11 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				    body + 2 + tlen, &property_bytes);
 			}
 			// V5 msg sent to V4 client
-			// caculate property length and delete it
+			// calculate property length and delete it
 
 			plength = property_len + property_bytes;
 		} else if (nni_msg_cmd_type(msg) == CMD_PUBLISH) {
+			// === 4. 只有未剥离主题时才可使用 QoS 0 直通快轨 ===
 			if (qos_pac == 0 && strip_len == 0) {
 				if (nni_msg_header_len(msg) > 0) {
 					iov[niov].iov_buf =
@@ -1085,7 +1092,8 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				len_offset = len_offset - 2;
 			}
 		}
-		// copy remaining length
+
+		// === 5. 固定报头 Remaining Length 扣减 strip_len ===
 		rlen = put_var_integer(
 		    tmp, get_var_integer(header, &pos) + len_offset - plength - strip_len);
 		*(p->qos_buf + qlen) = fixheader;
@@ -1097,9 +1105,10 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		niov++;
 		qlen += rlen + 1;
 
+		// === 6. Variable Header Topic 拼装 ===
 		len_offset = 0; // now use it to indicates the pid length
 		if (strip_len > 0) {
-			// 将新的 Topic 长度 (eff_tlen) 编码写入 qos_buf
+			// 写入 2 字节新 Topic 长度 (eff_tlen)
 			uint16_t new_tlen = (uint16_t) eff_tlen;
 			NNI_PUT16(p->qos_buf + qlen, new_tlen);
 			iov[niov].iov_buf = p->qos_buf + qlen;
@@ -1107,7 +1116,7 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			niov++;
 			qlen += 2;
 
-			// 挂载剥离前缀后的有效 Topic 字符串内存
+			// 挂载剥离后的有效字符串
 			iov[niov].iov_buf = eff_topic;
 			iov[niov].iov_len = eff_tlen;
 			niov++;
@@ -1117,8 +1126,6 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			niov++;
 		}
 
-
-		// 1st part of variable header: topic
 		// packet id if any
 		if (qos > 0) {
 			// set pid
