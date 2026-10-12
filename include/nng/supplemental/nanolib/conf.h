@@ -781,7 +781,10 @@ NNG_DECL conf_http_user **conf_http_users_parse(
     cJSON *jso_users, size_t *count);
 NNG_DECL void conf_http_server_set_users(
     conf_http_server *http, conf_http_user **users, size_t count);
+NNG_DECL void conf_http_server_clear_users(conf_http_server *http);
 NNG_DECL void conf_http_server_update_legacy(
+    conf_http_server *http, const char *username, const char *password);
+NNG_DECL void conf_http_server_replace_legacy(
     conf_http_server *http, const char *username, const char *password);
 NNG_DECL bool conf_http_server_cred_check(
     conf_http_server *http, const char *userpass, size_t len);

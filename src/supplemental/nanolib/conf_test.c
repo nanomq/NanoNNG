@@ -219,6 +219,24 @@ test_conf_http_server_users(void)
 	NUTS_TRUE(!http_cred_ok(&http, "admin:public"));
 	NUTS_TRUE(http_cred_ok(&http, "legacy:pass"));
 
+	// clear_users() drops the table and the presence flag, leaving the
+	// legacy pair in charge again.
+	conf_http_server_clear_users(&http);
+	NUTS_TRUE(!http.users_present);
+	NUTS_TRUE(http.users_count == 0);
+	NUTS_TRUE(!http_cred_ok(&http, "admin:public"));
+	NUTS_TRUE(http_cred_ok(&http, "legacy:pass"));
+
+	// replace_legacy() replaces the pair as a whole; NULL clears a field.
+	conf_http_server_replace_legacy(&http, "onlyuser", NULL);
+	NUTS_TRUE(http.username != NULL);
+	NUTS_TRUE(strcmp(http.username, "onlyuser") == 0);
+	NUTS_TRUE(http.password == NULL);
+	NUTS_TRUE(!http_cred_ok(&http, "onlyuser:"));
+	conf_http_server_replace_legacy(&http, "u2", "p2");
+	NUTS_TRUE(http_cred_ok(&http, "u2:p2"));
+	NUTS_TRUE(!http_cred_ok(&http, "legacy:pass"));
+
 	// A non-array value counts as present with no valid entry.
 	cJSON           *not_array = cJSON_Parse("\"admin:public\"");
 	size_t           na_count  = 0;

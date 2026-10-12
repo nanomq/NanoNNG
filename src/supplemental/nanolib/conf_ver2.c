@@ -387,11 +387,28 @@ conf_http_server_parse_ver2(conf_http_server *http_server, cJSON *json)
 		    http_server, parallel, "limit_conn", jso_http_server);
 		hocon_read_num_base(
 		    http_server, max_body, "max_body", jso_http_server);
-		hocon_read_str(http_server, username, jso_http_server);
 		hocon_read_str(http_server, ip_addr, jso_http_server);
-		hocon_read_str(http_server, password, jso_http_server);
 		hocon_read_enum(http_server, auth_type, jso_http_server,
 		    http_server_auth_type);
+
+		// Credentials are replaced as a whole here: this parse may run on a
+		// configuration that already holds credentials, and the file is the
+		// only source of truth. Both updates take cred_mtx.
+		cJSON *jso_username =
+		    cJSON_GetObjectItem(jso_http_server, "username");
+		if (jso_username != NULL && !cJSON_IsString(jso_username)) {
+			log_warn("http_server.username is not a string, ignored");
+			jso_username = NULL;
+		}
+		cJSON *jso_password =
+		    cJSON_GetObjectItem(jso_http_server, "password");
+		if (jso_password != NULL && !cJSON_IsString(jso_password)) {
+			log_warn("http_server.password is not a string, ignored");
+			jso_password = NULL;
+		}
+		conf_http_server_replace_legacy(http_server,
+		    jso_username != NULL ? jso_username->valuestring : NULL,
+		    jso_password != NULL ? jso_password->valuestring : NULL);
 
 		cJSON *jso_users =
 		    cJSON_GetObjectItem(jso_http_server, "users");
@@ -401,6 +418,10 @@ conf_http_server_parse_ver2(conf_http_server *http_server, cJSON *json)
 			    conf_http_users_parse(jso_users, &count);
 			conf_http_server_set_users(
 			    http_server, users, count);
+		} else {
+			// No `users` key: drop any table left over from an earlier
+			// parse of the same configuration.
+			conf_http_server_clear_users(http_server);
 		}
 
 		conf_jwt *jwt = &(http_server->jwt);
