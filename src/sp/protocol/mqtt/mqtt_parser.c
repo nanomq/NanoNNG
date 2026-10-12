@@ -30,7 +30,8 @@
 
 #elif defined(NNG_PLATFORM_QNX)
 
-#define le64toh(x) (x)
+#include <gulliver.h>
+#define le64toh(x) ENDIAN_LE64(x)
 
 #else
 
