@@ -585,6 +585,11 @@ open_conn_get_peer_cert(nng_tls_engine_conn *ec)
 #endif
 }
 
+// Returns the first commonName attribute of the peer certificate subject. As
+// in the mbedTLS engine, only string types whose bytes are already
+// ASCII/UTF-8 are accepted and values containing NUL are refused, so both
+// engines give the same result for the same certificate and the value is
+// never truncated.
 static char *
 open_conn_peer_cn(nng_tls_engine_conn *ec)
 {
@@ -593,19 +598,26 @@ open_conn_peer_cn(nng_tls_engine_conn *ec)
 		return (NULL);
 	}
 
-	char buf[256];
-	int  len = X509_NAME_get_text_by_NID(
-	    X509_get_subject_name(cert), NID_commonName, buf, sizeof(buf));
+	const X509_NAME *name = X509_get_subject_name(cert);
+	int idx = X509_NAME_get_index_by_NID(name, NID_commonName, -1);
+	char *rv = NULL;
+	if (idx >= 0) {
+		const ASN1_STRING *val =
+		    X509_NAME_ENTRY_get_data(X509_NAME_get_entry(name, idx));
+		const unsigned char *data = ASN1_STRING_get0_data(val);
+		int                  len  = ASN1_STRING_length(val);
+		int                  type = ASN1_STRING_type(val);
+		if (len > 0 &&
+		    (type == V_ASN1_UTF8STRING ||
+		        type == V_ASN1_PRINTABLESTRING ||
+		        type == V_ASN1_IA5STRING) &&
+		    memchr(data, '\0', (size_t) len) == NULL &&
+		    (rv = malloc((size_t) len + 1)) != NULL) {
+			memcpy(rv, data, (size_t) len);
+			rv[len] = '\0';
+		}
+	}
 	X509_free(cert);
-	if (len <= 0) {
-		return (NULL);
-	}
-
-	char *rv = malloc((size_t) len + 1);
-	if (rv == NULL) {
-		return (NULL);
-	}
-	memcpy(rv, buf, (size_t) len + 1);
 	return (rv);
 }
 
