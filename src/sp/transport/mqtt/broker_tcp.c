@@ -964,6 +964,19 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	subinfo  *tinfo = NULL, *info = NULL;
 	nni_list *subinfol = p->npipe->subinfol;
 
+	const char *mp        = p->mount_point;
+	char       *eff_topic = topic;
+	size_t      eff_tlen  = (size_t) topic_len;
+	size_t      strip_len = 0;
+	size_t      mp_len    = (mp != NULL) ? strlen(mp) : 0;
+
+	if (mp_len > 0 && (size_t) topic_len > mp_len && topic[mp_len] == '/' &&
+	    strncmp(topic, mp, mp_len) == 0) {
+		strip_len = mp_len + 1;
+		eff_topic = topic + strip_len;
+		eff_tlen  = (size_t) topic_len - strip_len;
+	}
+
 	txaio = p->txaio;
 	tinfo = nni_aio_get_prov_data(txaio);
 	nni_aio_set_prov_data(txaio, NULL);
@@ -986,7 +999,7 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			}
 		}
 		// And we never modify msg itself
-		if (false == topic_filtern(sub_topic, topic, topic_len)) {
+		if (false == topic_filtern(sub_topic, eff_topic, eff_tlen)) {
 			continue;
 		}
 		if (niov > 4) {
@@ -1030,7 +1043,7 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 
 			plength = property_len + property_bytes;
 		} else if (nni_msg_cmd_type(msg) == CMD_PUBLISH) {
-			if (qos_pac == 0) {
+			if (qos_pac == 0 && strip_len == 0) {
 				if (nni_msg_header_len(msg) > 0) {
 					iov[niov].iov_buf =
 					    nni_msg_header(msg);
@@ -1074,14 +1087,39 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		}
 		// copy remaining length
 		rlen = put_var_integer(
-		    tmp, get_var_integer(header, &pos) + len_offset - plength);
+		    tmp, get_var_integer(header, &pos) + len_offset - plength - strip_len);
 		*(p->qos_buf + qlen) = fixheader;
 		// rlen : max 4 bytes
 		memcpy(p->qos_buf + 1 + qlen, tmp, rlen);
 
-		// 1st part of variable header: topic
+		iov[niov].iov_buf = p->qos_buf + qlen;
+		iov[niov].iov_len = 1 + rlen;
+		niov++;
+		qlen += rlen + 1;
+
 		len_offset = 0; // now use it to indicates the pid length
-		// packet id
+		if (strip_len > 0) {
+			// 将新的 Topic 长度 (eff_tlen) 编码写入 qos_buf
+			uint16_t new_tlen = (uint16_t) eff_tlen;
+			NNI_PUT16(p->qos_buf + qlen, new_tlen);
+			iov[niov].iov_buf = p->qos_buf + qlen;
+			iov[niov].iov_len = 2;
+			niov++;
+			qlen += 2;
+
+			// 挂载剥离前缀后的有效 Topic 字符串内存
+			iov[niov].iov_buf = eff_topic;
+			iov[niov].iov_len = eff_tlen;
+			niov++;
+		} else {
+			iov[niov].iov_buf = body;
+			iov[niov].iov_len = 2 + tlen;
+			niov++;
+		}
+
+
+		// 1st part of variable header: topic
+		// packet id if any
 		if (qos > 0) {
 			// set pid
 			len_offset = 2;
@@ -1112,27 +1150,17 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				    p->conf->sqlite.disk_cache_size);
 			}
 			NNI_PUT16(var_extra, pid);
-		} else if (qos_pac > 0) {
-			len_offset += 2;
-		}
-		// fixed header
-		iov[niov].iov_buf = p->qos_buf + qlen;
-		iov[niov].iov_len = 1 + rlen;
-		niov++;
-		qlen += rlen + 1;
-		// topic + tlen
-		iov[niov].iov_buf = body;
-		iov[niov].iov_len = 2 + tlen;
-		niov++;
-		// packet id if any
-		if (qos > 0) {
+
 			// copy packet id
-			memcpy(p->qos_buf + 5 + qlen, var_extra, 2);
-			iov[niov].iov_buf = p->qos_buf + 5 + qlen;
+			memcpy(p->qos_buf + qlen, var_extra, 2);
+			iov[niov].iov_buf = p->qos_buf + qlen;
 			iov[niov].iov_len = 2;
 			niov++;
 			qlen += 2;
+		} else if (qos_pac > 0) {
+			len_offset += 2;
 		}
+
 		// payload
 		if (mlen > 0) {
 			// determine if it needs to skip packet id field
