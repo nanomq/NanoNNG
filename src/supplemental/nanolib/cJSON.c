@@ -71,6 +71,16 @@
 
 /* define isnan and isinf for ANSI C, if in C99 or above, isnan and isinf has
  * been defined in math.h */
+#if defined(NNG_PLATFORM_QNX)
+#ifdef isinf
+#undef isinf
+#endif
+#ifdef isnan
+#undef isnan
+#endif
+#define isinf(d) __builtin_isinf(d)
+#define isnan(d) __builtin_isnan(d)
+#endif
 #ifndef isinf
 #define isinf(d) (isnan((d - d)) && !isnan(d))
 #endif
