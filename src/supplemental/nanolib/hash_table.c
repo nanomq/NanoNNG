@@ -16,6 +16,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
+
 #define dbhash_check_init(name, h, lock) \
 	if (h == NULL) {                 \
 		h = kh_init(name);       \
@@ -327,14 +328,14 @@ dbhash_destroy_pipe_table(void)
 dbhash_ptpair_t *
 dbhash_ptpair_alloc(uint32_t p, char *t)
 {
-	dbhash_ptpair_t *pt =
-	    (dbhash_ptpair_t *) calloc(1, sizeof(dbhash_ptpair_t));
+	dbhash_ptpair_t *pt = NULL;
 
+	pt = nni_zalloc(sizeof(*pt));
 	if (pt == NULL) {
 		return NULL;
 	}
 	pt->pipe  = p;
-	pt->topic = strdup(t);
+	pt->topic = nni_strdup(t);
 	return pt;
 }
 
@@ -343,10 +344,10 @@ dbhash_ptpair_free(dbhash_ptpair_t *pt)
 {
 	if (pt) {
 		if (pt->topic) {
-			free(pt->topic);
+			nni_strfree(pt->topic);
 			pt->topic = NULL;
 		}
-		free(pt);
+		nni_free(pt, 0);
 		pt = NULL;
 	}
 	return;
@@ -386,13 +387,15 @@ dbhash_get_ptpair_all(void)
 topic_queue *
 topic_queue_init(char *topic, int topic_len)
 {
-	topic_queue *tq = malloc(sizeof(topic_queue));
+	topic_queue *tq = NULL;
+
+	tq = nni_zalloc(sizeof(*tq));
 	if (tq == NULL) {
 		return NULL;
 	}
-	tq->topic = malloc(topic_len + 1);
+	tq->topic = nni_alloc(topic_len + 1);
 	if (tq->topic == NULL) {
-		free(tq);
+		nni_free(tq, 0);
 		return NULL;
 	}
 	for(int i = 0; i < topic_len - 1; i++) {
@@ -412,9 +415,9 @@ topic_queue_release(topic_queue *tq)
 		topic_queue *tmp = tq;
 		tq = tq->next;
 		if (tmp->topic != NULL) {
-			free(tmp->topic);
+			nni_strfree(tmp->topic);
 		}
-		free(tmp);
+		nni_free(tmp, 0);
 	}
 
 	return;
@@ -428,13 +431,14 @@ init_topic_queue_with_topic_node(topic_node *tn)
 
 	while (tn != NULL) {
 		if (tq == NULL) {
-			tq = malloc(sizeof(topic_queue));
+			tq = nni_zalloc(sizeof(*tq));
 			if (tq == NULL) {
 				log_error("nng_alloc failed");
 				return NULL;
 			}
 			curtq = tq;
-			curtq->topic = strndup((const char *) tn->topic.body, tn->topic.len);
+			curtq->topic = nni_strndup(
+			    (const char *) tn->topic.body, tn->topic.len);
 			if (curtq->topic == NULL) {
 				log_error("nng_strdup failed");
 				topic_queue_release(tq);
@@ -442,14 +446,15 @@ init_topic_queue_with_topic_node(topic_node *tn)
 			}
 			curtq->next = NULL;
 		} else {
-			curtq->next = malloc(sizeof(topic_queue));
+			curtq->next = nni_zalloc(sizeof(topic_queue));
 			if (curtq->next == NULL) {
 				log_error("nng_alloc failed");
 				topic_queue_release(tq);
 				return NULL;
 			}
 
-			curtq->next->topic = strndup((const char *) tn->topic.body, tn->topic.len);
+			curtq->next->topic = nni_strndup(
+			    (const char *) tn->topic.body, tn->topic.len);
 			if (curtq->next->topic == NULL) {
 				log_error("nng_strdup failed");
 				topic_queue_release(tq);
@@ -470,12 +475,22 @@ dbhash_get_topic_queue_all(size_t *sz)
 	nni_rwlock_wrlock(&pipe_lock);
 	size_t size = kh_size(ph);
 
+	// Returns a snapshot of the table's topic_queue pointers, not copies.
+	// The array is nng-allocated; the caller releases it with
+	// nni_free(res, *sz * sizeof(topic_queue *)) and must not touch the
+	// queues themselves (they belong to the table).
 	topic_queue **res =
-	    (topic_queue **) malloc(size * sizeof(topic_queue *));
+	    (topic_queue **) nni_alloc(size * sizeof(topic_queue *));
+	topic_queue **out = res;
 
+	if (res == NULL) {
+		nni_rwlock_unlock(&pipe_lock);
+		*sz = 0;
+		return NULL;
+	}
 	for (khint_t k = kh_begin(ph); k != kh_end(ph); ++k) {
 		if (kh_exist(ph, k)) {
-			*res++ = kh_value(ph, k);
+			*out++ = kh_value(ph, k);
 		}
 	}
 	nni_rwlock_unlock(&pipe_lock);
@@ -490,15 +505,15 @@ new_topic_queue(char *val, uint8_t qos)
 	struct topic_queue *tq  = NULL;
 	int                 len = strlen(val);
 
-	tq = (struct topic_queue *) malloc(sizeof(struct topic_queue));
+	tq = nni_zalloc(sizeof(*tq));
 	if (!tq) {
-		fprintf(stderr, "malloc: Out of memory\n");
+		fprintf(stderr, "nni_zalloc: Out of memory\n");
 		fflush(stderr);
 		abort();
 	}
-	tq->topic = (char *) malloc(sizeof(char) * (len + 1));
+	tq->topic = (char *) nni_alloc(sizeof(char) * (len + 1));
 	if (!tq->topic) {
-		fprintf(stderr, "malloc: Out of memory\n");
+		fprintf(stderr, "nni_alloc: Out of memory\n");
 		fflush(stderr);
 		abort();
 	}
@@ -515,10 +530,10 @@ delete_topic_queue(struct topic_queue *tq)
 {
 	if (tq) {
 		if (tq->topic) {
-			free(tq->topic);
+			nni_strfree(tq->topic);
 			tq->topic = NULL;
 		}
-		free(tq);
+		nni_free(tq, 0);
 		tq = NULL;
 	}
 	return;
@@ -601,11 +616,10 @@ dbhash_get_first_topic(uint32_t id)
 	if (k != kh_end(ph)) {
 		struct topic_queue *ret = kh_val(ph, k);
 		if (ret && ret->topic) {
-			// This is a detached copy handed to the caller, which
-			// releases it with nng_free() (see hash_test.c), so
-			// keep it in the nng allocator family.  The
-			// topic_queue it is copied from is libc-owned; this
-			// copy is not.
+			// A detached copy handed to the caller, which
+			// releases it with nng_strfree() (see hash_test.c).
+			// nni_strdup keeps it in nng's heap, which is where
+			// that free lands on Zephyr.
 			topic = nni_strdup(ret->topic);
 		}
 	}
@@ -654,21 +668,22 @@ dbhash_copy_topic_queue(uint32_t id)
 				continue;
 			}
 
-			/* nng_zalloc/nng_strdup, NOT calloc/strdup: the caller
+			/* nni_zalloc/nni_strdup, NOT calloc/strdup: the caller
 			 * (rest_api.c get_subscriptions) releases the copy
 			 * with nng_free/nng_strfree, i.e. into nng's heap.  On
 			 * Zephyr the libc heap and nng's heap are distinct
-			 * (NNG_ZEPHYR_ALLOC_SMH puts nng on PSRAM), so a libc
-			 * allocation freed through nng_free computes a chunk
-			 * id outside the heap and trips the canary check. */
-			struct topic_queue *new_node = nng_zalloc(sizeof(struct topic_queue));
+			 * (NNG_ZEPHYR_ALLOC_SMH puts nng on external RAM), so
+			 * a libc allocation freed through nng_free reaches a
+			 * heap that never handed it out. */
+			struct topic_queue *new_node = nni_zalloc(
+			    sizeof(struct topic_queue));
 			if (new_node == NULL) {
 				log_error("Mem alloc failed!");
 				break; 
 			}
 
 			new_node->qos = tq->qos;
-			new_node->topic = nng_strdup(tq->topic);
+			new_node->topic = nni_strdup(tq->topic);
 			new_node->next = NULL;
 
 			*tail = new_node;
@@ -904,10 +919,10 @@ delete_cached_topic_one(struct topic_queue *ctq)
 {
 	if (ctq) {
 		if (ctq->topic) {
-			free(ctq->topic);
+			nni_strfree(ctq->topic);
 			ctq->topic = NULL;
 		}
-		free(ctq);
+		nni_free(ctq, 0);
 		ctq = NULL;
 	}
 	return;
@@ -1067,14 +1082,15 @@ dbhash_atpair_alloc(uint32_t alias, const char *topic)
 	if (topic == NULL) {
 		log_error("Topic should not be NULL");
 	}
-	dbhash_atpair_t *atpair =
-	    (dbhash_atpair_t *) calloc(1, sizeof(dbhash_atpair_t));
+	dbhash_atpair_t *atpair = NULL;
+
+	atpair = nni_zalloc(sizeof(*atpair));
 	if (atpair == NULL) {
 		log_error("Memory alloc error.");
 		return NULL;
 	}
 	atpair->alias = alias;
-	atpair->topic = strdup(topic);
+	atpair->topic = nni_strdup(topic);
 
 	return atpair;
 }
@@ -1084,10 +1100,10 @@ dbhash_atpair_free(dbhash_atpair_t *atpair)
 {
 	if (atpair) {
 		if (atpair->topic) {
-			free(atpair->topic);
+			nni_strfree(atpair->topic);
 			atpair->topic = NULL;
 		}
-		free(atpair);
+		nni_free(atpair, 0);
 		atpair = NULL;
 	}
 }
