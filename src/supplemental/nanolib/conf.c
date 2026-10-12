@@ -1121,6 +1121,11 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->stream_inject.worker_num = 1;
 	nanomq_conf->stream_inject.full_op    = STREAM_PLUGIN_FULL_DROP;
 #endif
+#if defined(SUPP_VELOFLUX)
+	nanomq_conf->veloflux.enable      = false;
+	nanomq_conf->veloflux.so_path     = NULL;
+	nanomq_conf->veloflux.config_path = NULL;
+#endif
 
 	nanomq_conf->web_hook.enable         = false;
 	nanomq_conf->web_hook.url            = NULL;
@@ -5206,6 +5211,13 @@ conf_fini(conf *nanomq_conf)
 #endif
 #if defined(SUPP_PLUGIN)
 	conf_stream_plugin_free(nanomq_conf);
+#endif
+#if defined(SUPP_VELOFLUX)
+	nng_strfree(nanomq_conf->veloflux.so_path);
+	nng_strfree(nanomq_conf->veloflux.config_path);
+	nanomq_conf->veloflux.so_path     = NULL;
+	nanomq_conf->veloflux.config_path = NULL;
+	nanomq_conf->veloflux.enable      = false;
 #endif
 	conf_tcplist_destroy(&nanomq_conf->tcp_list);
 	conf_tlslist_destroy(&nanomq_conf->tls_list);

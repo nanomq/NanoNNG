@@ -2117,6 +2117,29 @@ conf_stream_inject_parse_ver2(conf *config, cJSON *jso)
 }
 #endif
 
+#if defined(SUPP_VELOFLUX)
+static void
+conf_veloflux_parse_ver2(conf *config, cJSON *jso)
+{
+	cJSON *jso_vf = hocon_get_obj("veloflux", jso);
+	conf_veloflux *vf = &config->veloflux;
+
+	vf->enable = false;
+	nng_strfree(vf->so_path);
+	nng_strfree(vf->config_path);
+	vf->so_path     = NULL;
+	vf->config_path = NULL;
+
+	if (jso_vf == NULL || !cJSON_IsObject(jso_vf)) {
+		return;
+	}
+
+	hocon_read_bool(vf, enable, jso_vf);
+	hocon_read_str(vf, so_path, jso_vf);
+	hocon_read_str(vf, config_path, jso_vf);
+}
+#endif
+
 void
 conf_exchange_node_parse(conf_exchange_node *node, cJSON *exchange)
 {
@@ -2985,6 +3008,9 @@ conf_parse_ver2(conf *config, bool is_reload)
 		conf_plugin_parse_ver2(config, jso);
 		conf_stream_plugin_parse_ver2(config, jso);
 		conf_stream_inject_parse_ver2(config, jso);
+#endif
+#if defined(SUPP_VELOFLUX)
+		conf_veloflux_parse_ver2(config, jso);
 #endif
 #if defined(SUPP_AWS_BRIDGE)
 		conf_aws_bridge_parse_ver2(config, jso);
