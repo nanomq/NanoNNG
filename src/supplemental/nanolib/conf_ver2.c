@@ -614,12 +614,21 @@ conf_log_trace_parse_ver2(conf *config, cJSON *jso_log)
 		    cJSON_GetStringValue(jso_cats));
 	}
 
-	hocon_read_num(trace, payload_limit, jso_trace);
-	if (trace->payload_limit > NMQ_TRACE_PAYLOAD_LIMIT_MAX) {
-		log_error("log.trace.payload_limit %zu exceeds the %d byte "
-		          "maximum, clamping",
-		    trace->payload_limit, NMQ_TRACE_PAYLOAD_LIMIT_MAX);
-		trace->payload_limit = NMQ_TRACE_PAYLOAD_LIMIT_MAX;
+	// Read by hand rather than through hocon_read_num, which assigns only
+	// values above zero and so could never set the 0 that means "the whole
+	// payload". There is no upper bound to clamp to: the body is written
+	// straight through to the sink, not into a buffer.
+	cJSON *jso_payload_limit = hocon_get_obj("payload_limit", jso_trace);
+	if (cJSON_IsNumber(jso_payload_limit)) {
+		if (jso_payload_limit->valuedouble < 0) {
+			log_error("log.trace.payload_limit %g is negative, "
+			          "keeping %zu",
+			    jso_payload_limit->valuedouble,
+			    trace->payload_limit);
+		} else {
+			trace->payload_limit =
+			    (size_t) jso_payload_limit->valuedouble;
+		}
 	}
 	// payload only adds the body to the PUBLISH line, so asking for it
 	// without pub would silently trace nothing.

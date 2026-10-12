@@ -87,6 +87,124 @@ static const char *level_colors[] = {
 
 static void file_rotation(FILE *fp, conf_log *config);
 
+#if defined(_MSC_VER)
+#define NMQ_THREAD_LOCAL __declspec(thread)
+#else
+#define NMQ_THREAD_LOCAL __thread
+#endif
+
+// Records inside one second all carry the same 19 characters, so rendering the
+// timestamp per record spends a localtime_r() and an strftime() to produce
+// bytes the thread already has. Thread local, so no two worker threads share
+// the buffer and no lock guards it.
+static NMQ_THREAD_LOCAL struct {
+	time_t sec;
+	char   text[20]; // "YYYY-MM-DD HH:MM:SS"
+	int    records;  // records written in this second, for the flush policy
+} trace_clock;
+
+// True when this record is the first of a new second on this thread, which is
+// what the trace sink flushes on.
+static bool
+trace_clock_tick(void)
+{
+	const time_t now = time(NULL);
+	struct tm    broken;
+
+	if (now == trace_clock.sec) {
+		trace_clock.records++;
+		return false;
+	}
+	trace_clock.sec     = now;
+	trace_clock.records = 1;
+	nano_localtime(&now, &broken);
+	strftime(trace_clock.text, sizeof(trace_clock.text),
+	    "%Y-%m-%d %H:%M:%S", &broken);
+	return true;
+}
+
+// gettid() is a syscall, and the answer cannot change for the life of the
+// thread, so a trace sink asks the kernel once per thread rather than once per
+// record.
+static long
+trace_thread_id(void)
+{
+#if (NNG_PLATFORM_WINDOWS || NNG_PLATFORM_DARWIN)
+	return (long) nni_plat_getpid();
+#else
+	static NMQ_THREAD_LOCAL long tid = 0;
+
+	if (tid == 0) {
+		tid = (long) syscall(__NR_gettid);
+	}
+	return tid;
+#endif
+}
+
+// A trace sink is written to by the worker thread that handled the packet, and
+// an fflush() per record is a write(2) per message. Records are flushed when
+// the second rolls over instead, which bounds how far behind a reader can be
+// at one second. The first few records of each second are flushed as they are
+// written, so tracing a quiet broker still shows the record immediately and
+// only a rate high enough to make the syscall hurt defers anything.
+#define NMQ_TRACE_FLUSH_BURST 16
+
+static bool
+trace_should_flush(bool second_rolled)
+{
+	return second_rolled || trace_clock.records <= NMQ_TRACE_FLUSH_BURST;
+}
+
+// stdio defaults to a 4KB buffer, so even with the flush policy above a trace
+// sink taking a record per message would still write(2) every few records. A
+// buffer this size turns a busy second into a handful of writes.
+#define NMQ_TRACE_BUF_SZ (256 * 1024)
+
+// Must be called before anything is written to the stream, so every place that
+// makes a trace file current calls it on the way in.
+static void
+trace_file_buffer(FILE *fp)
+{
+	if (fp != NULL) {
+		setvbuf(fp, NULL, _IOFBF, NMQ_TRACE_BUF_SZ);
+	}
+}
+
+// The rotation counter has to start at the size the file already has, since a
+// trace file is opened for append and may hold the records of earlier runs.
+// One stat() when the file becomes current, rather than one per record.
+static void
+trace_file_seed(conf_log *config)
+{
+	size_t sz = 0;
+
+	config->bytes_written =
+	    nni_plat_file_size(config->abs_path, &sz) == 0 ? (uint64_t) sz : 0;
+}
+
+// The payload is written as raw bytes, which is why it is the last field of a
+// record and why payload_len sits in front of it: a reader frames the body by
+// that length rather than by looking for the next newline. Escaping it would
+// cost a branch per byte and up to four output bytes per input byte, and the
+// escape buffer is what used to cap a traced payload at 1024 bytes.
+static size_t
+trace_write_data(FILE *fp, const void *data, size_t len)
+{
+	const size_t limit   = trace_payload_limit;
+	size_t       shown   = (limit != 0 && len > limit) ? limit : len;
+	size_t       written = 0;
+
+	if (data == NULL || len == 0) {
+		return 0;
+	}
+	written += fwrite(data, 1, shown, fp);
+	if (shown < len) {
+		written += fwrite(NMQ_TRACE_PAYLOAD_TRUNCATED, 1,
+		    sizeof(NMQ_TRACE_PAYLOAD_TRUNCATED) - 1, fp);
+	}
+	return written;
+}
+
 // A trace sink can write a line per message, where the build-time absolute
 // path is a third of the bytes and tells the reader nothing. Ordinary log
 // lines keep the full path they have always had.
@@ -128,6 +246,7 @@ stdout_callback(log_event *ev)
 	    tag_width, tag, event_source_file(ev), ev->line, ev->func);
 #endif
 	vfprintf(ev->udata, ev->fmt, ev->ap);
+	trace_write_data(ev->udata, ev->data, ev->data_len);
 	fprintf(ev->udata, "\n");
 	fflush(ev->udata);
 }
@@ -154,18 +273,76 @@ file_callback(log_event *ev)
 	if (ev->config->fp == NULL)
 		ev->config->fp = fopen(ev->config->abs_path, "a");
 	FILE *fp = ev->config->fp;
-	const char *tag = ev->category == 0
-	    ? level_strings[ev->level]
-	    : log_trace_category_string(ev->category);
-	int tag_width = ev->category == 0 ? 5 : 7;
 	buf[strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &ev->time)] = '\0';
-	fprintf(fp, "%s [%i] %-*s %s:%d: ", buf, pid,
-	    tag_width, tag, event_source_file(ev), ev->line);
+	fprintf(fp, "%s [%i] %-5s %s:%d: ", buf, pid,
+	    level_strings[ev->level], ev->file, ev->line);
 	vfprintf(fp, ev->fmt, ev->ap);
 	fprintf(fp, "\n");
 	fflush(fp);
 
 	file_rotation(fp, ev->config);
+}
+
+// The trace file sink is deliberately not file_callback. An ordinary log line
+// is rare enough that its per-line access(), stat() and fflush() cost nothing
+// worth counting, and they buy durability that an operator reading nanomq.log
+// after a crash wants. A trace record is written per message, so this sink pays
+// those three syscalls per second and per rotation instead of per record: the
+// directory is checked when the file is opened, rotation is driven by a byte
+// counter, and the flush policy is trace_should_flush(). Nothing here changes
+// how nanomq.log is written.
+static void
+trace_file_callback(log_event *ev)
+{
+	conf_log *config = ev->config;
+	FILE *    fp     = config->fp;
+	bool      rolled = trace_clock_tick();
+	int       n;
+
+	if (fp == NULL) {
+#ifndef NNG_PLATFORM_WINDOWS
+		if (nng_access(config->dir, W_OK) < 0) {
+			fprintf(stderr, "open path %s failed! close file!\n",
+			    config->dir);
+			return;
+		}
+#endif
+		if ((fp = fopen(config->abs_path, "a")) == NULL) {
+			fprintf(stderr, "open trace file %s failed\n",
+			    config->abs_path);
+			return;
+		}
+		trace_file_buffer(fp);
+		trace_file_seed(config);
+		config->fp = fp;
+	}
+
+	n = fprintf(fp, "%s [%ld] %-7s %s:%d: ", trace_clock.text,
+	    trace_thread_id(), log_trace_category_string(ev->category),
+	    event_source_file(ev), ev->line);
+	if (n > 0) {
+		config->bytes_written += (uint64_t) n;
+	}
+	n = vfprintf(fp, ev->fmt, ev->ap);
+	if (n > 0) {
+		config->bytes_written += (uint64_t) n;
+	}
+	config->bytes_written += trace_write_data(fp, ev->data, ev->data_len);
+	fputc('\n', fp);
+	config->bytes_written++;
+
+	if (trace_should_flush(rolled)) {
+		fflush(fp);
+	}
+
+	if (config->bytes_written >= config->rotation_sz) {
+		fflush(fp);
+		file_rotation(fp, config);
+		// file_rotation() renames and reopens, so the file to buffer
+		// and to count from is whichever one is current afterwards.
+		trace_file_buffer(config->fp);
+		trace_file_seed(config);
+	}
 }
 
 #if defined(SUPP_SYSLOG)
@@ -475,61 +652,6 @@ log_trace_set_payload_limit(size_t limit)
 	trace_payload_limit = limit;
 }
 
-size_t
-log_trace_get_payload_limit(void)
-{
-	return trace_payload_limit;
-}
-
-void
-log_trace_escape(
-    const void *data, size_t len, size_t limit, char *out, size_t out_sz)
-{
-	static const char hex[] = "0123456789abcdef";
-	const uint8_t    *src   = data;
-	size_t            used  = 0;
-	size_t            shown = len;
-	size_t            i;
-
-	// Needs room for the longest escape (4) plus the truncation marker (3)
-	// plus the NUL, so refuse a buffer that cannot hold them.
-	if (out == NULL || out_sz < 8) {
-		if (out != NULL && out_sz > 0) {
-			out[0] = '\0';
-		}
-		return;
-	}
-	out[0] = '\0';
-	if (src == NULL) {
-		return;
-	}
-	if (limit != 0 && shown > limit) {
-		shown = limit;
-	}
-	for (i = 0; i < shown && used + 8 <= out_sz; i++) {
-		uint8_t c = src[i];
-		if (c == '\\') {
-			out[used++] = '\\';
-			out[used++] = '\\';
-		} else if (c >= 0x20 && c < 0x7f) {
-			out[used++] = (char) c;
-		} else {
-			out[used++] = '\\';
-			out[used++] = 'x';
-			out[used++] = hex[c >> 4];
-			out[used++] = hex[c & 0x0f];
-		}
-	}
-	// i < len covers both causes of a short render: the configured limit
-	// and the buffer running out.
-	if (i < len) {
-		out[used++] = '.';
-		out[used++] = '.';
-		out[used++] = '.';
-	}
-	out[used] = '\0';
-}
-
 // for log level hot update
 void
 log_update_level(int new_level)
@@ -688,8 +810,10 @@ log_add_console(int level, void *mtx)
 int
 log_add_trace_fp(FILE *fp, void *mtx, conf_log *config)
 {
+	trace_file_buffer(fp);
+	trace_file_seed(config);
 	return log_add_callback_cat(
-	    file_callback, fp, NNG_LOG_TRACE, mtx, config, true);
+	    trace_file_callback, fp, NNG_LOG_TRACE, mtx, config, true);
 }
 
 void
@@ -713,7 +837,8 @@ init_event(log_event *ev, void *udata, conf_log *config)
 // enabling a trace category never floods nanomq.log.
 static void
 log_emit(int level, uint32_t category, const char *file, int line,
-    const char *func, const char *fmt, va_list ap)
+    const char *func, const void *data, size_t data_len, const char *fmt,
+    va_list ap)
 {
 	log_event ev = {
 		.fmt      = fmt,
@@ -722,6 +847,8 @@ log_emit(int level, uint32_t category, const char *file, int line,
 		.level    = level,
 		.category = category,
 		.func     = func,
+		.data     = data,
+		.data_len = data_len,
 	};
 
 	for (int i = 0; i < MAX_CALLBACKS && L.callbacks[i].fn; i++) {
@@ -753,7 +880,7 @@ log_log(int level, const char *file, int line, const char *func,
 	va_list ap;
 
 	va_start(ap, fmt);
-	log_emit(level, 0, file, line, func, fmt, ap);
+	log_emit(level, 0, file, line, func, NULL, 0, fmt, ap);
 	va_end(ap);
 }
 
@@ -764,6 +891,18 @@ log_log_trace(uint32_t category, const char *file, int line, const char *func,
 	va_list ap;
 
 	va_start(ap, fmt);
-	log_emit(NNG_LOG_TRACE, category, file, line, func, fmt, ap);
+	log_emit(NNG_LOG_TRACE, category, file, line, func, NULL, 0, fmt, ap);
+	va_end(ap);
+}
+
+void
+log_log_trace_data(uint32_t category, const char *file, int line,
+    const char *func, const void *data, size_t data_len, const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	log_emit(NNG_LOG_TRACE, category, file, line, func, data, data_len,
+	    fmt, ap);
 	va_end(ap);
 }

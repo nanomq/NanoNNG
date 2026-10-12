@@ -37,6 +37,10 @@ struct conf_log {
 	char    *rotation_sz_str; // 1000KB, 100MB, 10GB
 	uint64_t rotation_sz;     // unit: byte
 	size_t   rotation_count;  // rotation count
+	// Bytes written since the file was opened or last rotated. A sink that
+	// takes a record per message rotates off this counter instead of
+	// stat()ing the file on every record.
+	uint64_t bytes_written;
 };
 
 // MQTT protocol trace categories. Each one is switched on by itself so an
@@ -59,12 +63,15 @@ struct conf_log {
 
 // NMQ_TRACE_PAYLOAD is a modifier on NMQ_TRACE_PUB rather than a line of its
 // own: it adds the body to the PUBLISH line. Enabling it implies NMQ_TRACE_PUB.
-#define NMQ_TRACE_PAYLOAD_LIMIT_DEFAULT 256
-// Raw bytes of payload that may be rendered. Capped so the render buffer can
-// live on the stack of a worker callback.
-#define NMQ_TRACE_PAYLOAD_LIMIT_MAX 1024
-// Worst case is four output characters per input byte plus the "..." marker.
-#define NMQ_TRACE_PAYLOAD_RENDER_MAX (4 * NMQ_TRACE_PAYLOAD_LIMIT_MAX + 8)
+//
+// 0 means the whole payload, which is the default: the body is handed to the
+// sink as a pointer and a length and written with one fwrite(), so a long
+// payload costs the same per byte as a short one and there is no buffer to
+// size. A non-zero limit is a volume dial for the trace file, not a safety
+// one, and it has no upper bound.
+#define NMQ_TRACE_PAYLOAD_LIMIT_DEFAULT 0
+// Marker appended to a record whose payload the limit cut short.
+#define NMQ_TRACE_PAYLOAD_TRUNCATED "..."
 
 // Renders an MQTT string that the protocol allows to be absent, so a trace
 // line shows "-" instead of taking a NULL into printf.
@@ -82,9 +89,9 @@ struct conf_log {
 
 typedef struct conf_log_trace conf_log_trace;
 struct conf_log_trace {
-	conf_log sink;          // own sinks, so nanomq.log keeps its own level
-	uint32_t categories;    // NMQ_TRACE_* bitmask; 0 means trace nothing
-	size_t   payload_limit; // bytes of PUBLISH body rendered per message
+	conf_log sink;       // own sinks, so nanomq.log keeps its own level
+	uint32_t categories; // NMQ_TRACE_* bitmask; 0 means trace nothing
+	size_t   payload_limit; // bytes of PUBLISH body written, 0 for all of it
 };
 
 typedef struct {
@@ -94,6 +101,10 @@ typedef struct {
 	const char *func;
 	struct tm   time;
 	void *      udata;
+	// Raw bytes appended to the record after the formatted fields, written
+	// as they are. NULL on every event but a traced PUBLISH body.
+	const void *data;
+	size_t      data_len;
 	int         line;
 	int         level;
 	uint32_t    category; // NMQ_TRACE_*, or 0 for an ordinary log event
@@ -133,7 +144,6 @@ NNG_DECL void log_clear_callback();
 NNG_DECL void     log_trace_set_categories(uint32_t categories);
 NNG_DECL uint32_t log_trace_get_categories(void);
 NNG_DECL void     log_trace_set_payload_limit(size_t limit);
-NNG_DECL size_t   log_trace_get_payload_limit(void);
 // Returns the NMQ_TRACE_* bit for a category name, or 0 when the name is not
 // one. "all" returns every bit.
 NNG_DECL uint32_t log_trace_category_num(const char *name);
@@ -148,11 +158,11 @@ NNG_DECL int      log_add_trace_fp(FILE *fp, void *mtx, conf_log *config);
 NNG_DECL void     log_add_trace_console(void *mtx);
 NNG_DECL void     log_log_trace(uint32_t category, const char *file, int line,
         const char *func, const char *fmt, ...);
-// Renders len bytes of data into out as printable ASCII, escaping everything
-// else as \xNN, and appends "..." when the input was truncated. One format
-// serves JSON payloads and binary alike, so there is no mode to choose.
-NNG_DECL void log_trace_escape(
-    const void *data, size_t len, size_t limit, char *out, size_t out_sz);
+// Same, plus data_len raw bytes written after the formatted fields, cut at the
+// payload limit. The bytes go to the sink untouched, so the record is framed
+// by the length its own fields carry rather than by the trailing newline.
+NNG_DECL void log_log_trace_data(uint32_t category, const char *file, int line,
+    const char *func, const void *data, size_t data_len, const char *fmt, ...);
 #ifdef ENABLE_LOG
 
 #define log_trace(...) \
@@ -175,6 +185,13 @@ NNG_DECL void log_trace_escape(
 			log_log_trace((cat), __FILE__, __LINE__,          \
 			    __FUNCTION__, __VA_ARGS__);                   \
 	} while (0)
+#define nmq_trace_data(cat, data, data_len, ...)                          \
+	do {                                                              \
+		if (nmq_trace_on(cat))                                    \
+			log_log_trace_data((cat), __FILE__, __LINE__,     \
+			    __FUNCTION__, (data), (data_len),            \
+			    __VA_ARGS__);                                \
+	} while (0)
 
 #else
 
@@ -189,6 +206,8 @@ static inline void dummy_log_function(const char *fmt, ...) { (void)fmt;  }
 
 #define nmq_trace_on(cat) (false)
 #define nmq_trace(cat, ...) dummy_log_function(__VA_ARGS__)
+#define nmq_trace_data(cat, data, data_len, ...) \
+	dummy_log_function(__VA_ARGS__)
 
 #endif
 
