@@ -1192,6 +1192,27 @@ conf_http_server_set_users(
 	}
 }
 
+// Drops the user table and forgets that the `users` key was present, so a
+// config without the key keeps using the legacy credentials (or the built-in
+// default) instead of an empty user list.
+void
+conf_http_server_clear_users(conf_http_server *http)
+{
+	if (http == NULL) {
+		return;
+	}
+	if (http->cred_mtx != NULL) {
+		nng_mtx_lock(http->cred_mtx);
+	}
+	conf_http_users_free(http->users, http->users_count);
+	http->users         = NULL;
+	http->users_count   = 0;
+	http->users_present = false;
+	if (http->cred_mtx != NULL) {
+		nng_mtx_unlock(http->cred_mtx);
+	}
+}
+
 void
 conf_http_server_update_legacy(
     conf_http_server *http, const char *username, const char *password)
@@ -1210,6 +1231,29 @@ conf_http_server_update_legacy(
 		nng_strfree(http->password);
 		http->password = nng_strdup(password);
 	}
+	if (http->cred_mtx != NULL) {
+		nng_mtx_unlock(http->cred_mtx);
+	}
+}
+
+// Replaces the legacy pair as a whole; a NULL argument clears that field.
+// Used by config parsing, where the file is the only source of truth, unlike
+// conf_http_server_update_legacy() which leaves NULL fields untouched for
+// partial updates.
+void
+conf_http_server_replace_legacy(
+    conf_http_server *http, const char *username, const char *password)
+{
+	if (http == NULL) {
+		return;
+	}
+	if (http->cred_mtx != NULL) {
+		nng_mtx_lock(http->cred_mtx);
+	}
+	nng_strfree(http->username);
+	http->username = username != NULL ? nng_strdup(username) : NULL;
+	nng_strfree(http->password);
+	http->password = password != NULL ? nng_strdup(password) : NULL;
 	if (http->cred_mtx != NULL) {
 		nng_mtx_unlock(http->cred_mtx);
 	}
