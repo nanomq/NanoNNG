@@ -562,6 +562,7 @@ conn_handler(uint8_t *packet, conn_param *cparam, size_t max)
 	int      len_of_str = 0;
 	int32_t  rv         = 0;
 
+	cparam->mount_point = NULL;
 	if (packet[pos] != CMD_CONNECT) {
 		return PROTOCOL_ERROR;
 	} else {
