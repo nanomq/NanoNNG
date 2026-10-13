@@ -809,34 +809,27 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			}
 		}
 
-		// === 2. 匹配剥离前缀后的主题 ===
+		// === 2. 匹配剥离前缀后的有效主题 ===
 		if (false == topic_filtern(sub_topic, eff_topic, eff_tlen)) {
 			continue;
 		}
 
-		// 未剥离前缀且为 QoS 0 的发布消息，直接追加原始数据块进 smsg
-		if (nni_msg_cmd_type(msg) == CMD_PUBLISH && qos_pac == 0 && strip_len == 0) {
-			if (nni_msg_header_len(msg) > 0) {
-				nni_msg_append(smsg, nni_msg_header(msg), nni_msg_header_len(msg));
-			}
-			if (nni_msg_len(msg) > 0) {
-				nni_msg_append(smsg, nni_msg_body(msg), nni_msg_len(msg));
-			}
-			continue;
-		}
-
+		// === 3. 规范化重构固定报头，彻底消除协议状态机漏洞 ===
 		uint8_t pos = 1, var_extra[2], fixheader, tmp[4] = { 0 };
 		qos       = info->qos;
 		fixheader = *header;
 
+		// 规范修正 1: QoS 0 报文的 DUP 标志位强制清零
 		if (qos_pac == 0) {
 			fixheader &= ~(1 << 3);
 		}
 
+		// 规范修正 2: 普通实时下发或 RAP == 0 时，RETAIN 标志位强制清零
 		if (info->rap == 0 && !nni_mqtt_msg_get_sub_retain_bool(msg)) {
-			fixheader = fixheader & 0xFE;
+			fixheader &= 0xFE;
 		}
 
+		// 协商最终下发 QoS
 		qos = qos_pac > qos ? qos : qos_pac;
 
 		if (qos_pac > qos) {
@@ -849,13 +842,13 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			}
 		}
 
-		// === 3. Remaining Length 扣减 strip_len ===
+		// === 4. Remaining Length 扣减 strip_len ===
 		rlen = put_var_integer(tmp,
 		    get_var_integer(header, &pos) + len_offset - plength - strip_len);
 		*(p->qos_buf + qlength) = fixheader;
 		memcpy(p->qos_buf + qlength + 1, tmp, rlen);
 
-		// === 4. Fixed Header 与 Topic Length 合并为单个 IOV ===
+		// === 5. Fixed Header 与 2 字节 Topic Length 紧凑组装 ===
 		if (strip_len > 0) {
 			uint16_t new_tlen = (uint16_t) eff_tlen;
 			NNI_PUT16(p->qos_buf + qlength + 1 + rlen, new_tlen);
@@ -866,7 +859,7 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			niov++;
 			qlength += 1 + rlen + 2;
 
-			// IOV 1: [有效主题字符串切片] (零拷贝直接引用)
+			// IOV 1: [有效主题字符串切片] (直接指向原消息内存)
 			iov[niov].iov_buf = eff_topic;
 			iov[niov].iov_len = eff_tlen;
 			niov++;
@@ -920,7 +913,7 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			niov++;
 		}
 
-		// === 5. 追加当前匹配报文至 smsg，并重置游标与 IOV 计数 ===
+		// === 6. 线性追加至 smsg，重置 IOV 计数与 qlength ===
 		for (int i = 0; i < niov; i++) {
 			nni_msg_append(smsg, iov[i].iov_buf, iov[i].iov_len);
 		}
@@ -931,7 +924,7 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	nni_msg_free(msg);
 	msg = smsg;
 
-	// 若未命中任何订阅，安全释放并结束 AIO，不发送空 WebSocket 帧
+	// 若未匹配任何订阅，释放空报文并结束 AIO
 	if (nni_msg_len(msg) == 0) {
 		nni_msg_free(msg);
 		nni_aio_set_msg(aio, NULL);
@@ -984,7 +977,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	qos_pac = nni_msg_get_pub_qos(msg);
 	NNI_GET16(body, tlen);
 
-	// === 1. MountPoint 检查与有效主题截取 ===
+	// === 1. MountPoint topic strip ===
 	const char *mp        = p->mount_point;
 	size_t      mp_len    = (mp != NULL) ? strlen(mp) : 0;
 	size_t      strip_len = 0;
@@ -1042,7 +1035,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			}
 		}
 
-		// === 2. 匹配剥离前缀后的主题 ===
+		// === 2. find the matched & striped topic ===
 		if (topic_filtern(sub_topic, eff_topic, eff_tlen)) {
 			uint8_t pos = 1, var_extra[2], fixheader, tmp[4] = { 0 };
 			uint8_t proplen[4] = { 0 }, var_subid[5] = { 0 };
@@ -1084,7 +1077,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 				}
 			}
 
-			// === 3. Remaining Length 扣减 strip_len ===
+			// === 3. Remaining Length - strip_len ===
 			pos  = 1;
 			rlen = put_var_integer(
 			    tmp, get_var_integer(header, &pos) + len_offset - strip_len);
@@ -1092,7 +1085,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			*(p->qos_buf + qlength) = fixheader;
 			memcpy(p->qos_buf + qlength + 1, tmp, rlen);
 
-			// === 4. Fixed Header 与 Topic Length 合并为单个 IOV ===
+			// === 4. Fixed Header & Topic Length merged as one IOV ===
 			if (strip_len > 0) {
 				uint16_t new_tlen = (uint16_t) eff_tlen;
 				NNI_PUT16(p->qos_buf + qlength + 1 + rlen, new_tlen);
@@ -1103,7 +1096,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 				niov++;
 				qlength += 1 + rlen + 2;
 
-				// IOV 1: [有效主题字符串切片] (零拷贝直接引用)
+				// IOV 1: [valid topic str]
 				iov[niov].iov_buf = eff_topic;
 				iov[niov].iov_len = eff_tlen;
 				niov++;
@@ -1164,14 +1157,14 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 				}
 			}
 
-			// IOV 2: Packet ID + Properties (若有)
+			// IOV 2: Packet ID + Properties
 			if (plength > 0) {
 				iov[niov].iov_buf = p->qos_buf + qlength - plength;
 				iov[niov].iov_len = plength;
 				niov++;
 			}
 
-			// IOV 3: Payload 切片
+			// IOV 3: Payload
 			size_t payload_len = mlen - 2 - len_offset - tlen;
 			if (payload_len > 0) {
 				iov[niov].iov_buf = body + 2 + tlen + len_offset;
@@ -1179,7 +1172,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 				niov++;
 			}
 
-			// === 5. 追加当前匹配报文至 smsg，并重置游标与 IOV 计数 ===
+			// === 5. append all packets to smsg，reset niov & index ===
 			for (int i = 0; i < niov; i++) {
 				nni_msg_append(smsg, iov[i].iov_buf, iov[i].iov_len);
 			}
@@ -1191,7 +1184,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	nni_msg_free(msg);
 	msg = smsg;
 
-	// 若未命中任何订阅，安全释放并结束 AIO，不发送空 WebSocket 帧
+	// nothing to send
 	if (nni_msg_len(msg) == 0) {
 		nni_msg_free(msg);
 		nni_aio_set_msg(aio, NULL);
@@ -1200,7 +1193,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 		return;
 	}
 
-	// MQTT V5 配额流控
+	// MQTT V5 flow control
 	if (qos > 0) {
 		if (p->qsend_quota > 0) {
 			p->qsend_quota--;
