@@ -916,10 +916,11 @@ tlstran_pipe_send_cancel(nni_aio *aio, void *arg, int rv)
 }
 
 /**
- * @brief send msg to V4 client
- * 
- * @param p 
- * @param msg 
+ * @brief send msg to V4 TLS client with mount_point support
+ *
+ * @param p
+ * @param msg
+ * @param aio
  */
 static inline void
 tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
@@ -927,7 +928,7 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	nni_aio *txaio;
 	int      niov = 0;
 	nni_iov  iov[8];
-	nni_msg  *tmsg;
+	nni_msg *tmsg;
 	// qos default to 0 if the msg is not PUBLISH
 	uint8_t qos = 0;
 
@@ -941,6 +942,20 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	subinfo  *tinfo = NULL, *info = NULL;
 	nni_list *subinfol = p->npipe->subinfol;
 	char     *topic    = nni_msg_get_pub_topic(msg, &topic_len);
+
+	// === 1. MountPoint 判定与前缀剥离计算 ===
+	const char *mp        = p->mount_point;
+	size_t      mp_len    = (mp != NULL) ? strlen(mp) : 0;
+	size_t      strip_len = 0;
+	char       *eff_topic = topic;
+	size_t      eff_tlen  = (size_t) topic_len;
+
+	if (mp_len > 0 && (size_t) topic_len > mp_len && topic[mp_len] == '/' &&
+	    strncmp(topic, mp, mp_len) == 0) {
+		strip_len = mp_len + 1;
+		eff_topic = topic + strip_len;
+		eff_tlen  = (size_t) topic_len - strip_len;
+	}
 
 	txaio = p->txaio;
 	tinfo = nni_aio_get_prov_data(txaio);
@@ -963,10 +978,13 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 				sub_topic != NULL ? sub_topic++ : NULL;
 			}
 		}
-		if (false == topic_filtern(sub_topic, topic, topic_len))
+
+		// === 2. 匹配剥离前缀后的有效主题 ===
+		if (false == topic_filtern(sub_topic, eff_topic, eff_tlen))
 			continue;
+
+		// 单条消息最多占用 4 个暂存 IOV 槽位；若已使用超过 4 个，推迟至下次 AIO 发送
 		if (niov > 4) {
-			// donot send too many msgs at a time
 			nni_aio_set_prov_data(txaio, info);
 			break;
 		}
@@ -974,7 +992,7 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 		uint8_t  *body, *header, qos_pac, property_bytes = 0, pos = 1;
 		uint8_t   var_extra[2], fixheader, tmp[4] = { 0 };
 		int       len_offset = 0;
-		uint32_t  property_len = 0;;
+		uint32_t  property_len = 0;
 		nni_pipe *pipe;
 		uint16_t  pid;
 		size_t    tlen, rlen, mlen, plength;
@@ -988,28 +1006,20 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 		qos_pac = nni_msg_get_pub_qos(msg);
 		NNI_GET16(body, tlen);
 		if (qos_pac == 0) {
-			// simply set DUP flag to 0 & correct error from client
 			*header &= ~(1 << 3);
 		}
 		if (nni_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
-			// V5 to V4 shrink msg, remove property length
-			// APP layer must give topic name even if topic
-			// alias is set
 			if (qos_pac > 0) {
 				property_len = get_var_integer(
 				    body + 4 + tlen, &property_bytes);
-
 			} else {
 				property_len = get_var_integer(
 				    body + 2 + tlen, &property_bytes);
 			}
-			// V5 msg sent to V4 client
-			// caculate property length and delete it
-
 			plength = property_len + property_bytes;
 		} else if (nni_msg_cmd_type(msg) == CMD_PUBLISH) {
-
-			if (qos_pac == 0) {
+			// 仅在未剥离前缀且 QoS 0 时直通快轨
+			if (qos_pac == 0 && strip_len == 0) {
 				if (nni_msg_header_len(msg) > 0) {
 					iov[niov].iov_buf = nni_msg_header(msg);
 					iov[niov].iov_len = nni_msg_header_len(msg);
@@ -1020,7 +1030,6 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 					iov[niov].iov_len = nni_msg_len(msg);
 					niov++;
 				}
-				// save time & space for QoS 0 publish
 				continue;
 			}
 		}
@@ -1030,52 +1039,65 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 		fixheader = *header;
 
 		if (info->rap == 0 && !nni_mqtt_msg_get_sub_retain_bool(msg)) {
-			// reset retain flag to 0
 			fixheader = fixheader & 0xFE;
 		}
 
-		// get final qos
 		qos = qos_pac > qos ? qos : qos_pac;
 
-		// alter qos according to sub qos
 		if (qos_pac > qos) {
 			if (qos == 1) {
-				// set qos to 1
 				fixheader = fixheader & 0xF9;
 				fixheader = fixheader | 0x02;
 			} else {
-				// set qos to 0
 				fixheader  = fixheader & 0xF9;
 				len_offset = len_offset - 2;
 			}
 		}
-		// copy remaining length
+
+		// === 3. Remaining Length 扣减 strip_len ===
 		rlen = put_var_integer(
-		    tmp, get_var_integer(header, &pos) + len_offset - plength);
+		    tmp, get_var_integer(header, &pos) + len_offset - plength - strip_len);
 		*(p->qos_buf + qlen) = fixheader;
-		// rlen : max 4 bytes
 		memcpy(p->qos_buf + 1 + qlen, tmp, rlen);
 
-		// 1st part of variable header: topic
-		len_offset = 0; // now use it to indicates the pid length
-		// packet id
+		// === 4. Fixed Header 与 Topic Length 合并放入单个 IOV ===
+		if (strip_len > 0) {
+			uint16_t new_tlen = (uint16_t) eff_tlen;
+			NNI_PUT16(p->qos_buf + qlen + 1 + rlen, new_tlen);
+
+			// IOV 0: [Fixed Header + Remaining Length + Topic Length 2B]
+			iov[niov].iov_buf = p->qos_buf + qlen;
+			iov[niov].iov_len = 1 + rlen + 2;
+			niov++;
+			qlen += 1 + rlen + 2;
+
+			// IOV 1: [有效主题字符串切片] (零拷贝直接引用)
+			iov[niov].iov_buf = eff_topic;
+			iov[niov].iov_len = eff_tlen;
+			niov++;
+		} else {
+			iov[niov].iov_buf = p->qos_buf + qlen;
+			iov[niov].iov_len = 1 + rlen;
+			niov++;
+			qlen += 1 + rlen;
+
+			iov[niov].iov_buf = body;
+			iov[niov].iov_len = 2 + tlen;
+			niov++;
+		}
+
+		// packet id if any
+		len_offset = 0;
 		if (qos > 0) {
-			// set pid
 			len_offset = 2;
 			nni_msg *old;
-			// to differ resend msg
 			pid = (uint16_t) (size_t) nni_aio_get_prov_data(aio);
 			if (pid == 0) {
-				// first time send this msg
 				pid = nni_pipe_inc_packetid(pipe);
-				// store msg for qos retrying
 				nni_msg_clone(msg);
 				if ((old = nni_qos_db_get(is_sqlite,
 				         pipe->nano_qos_db, pipe->p_id,
 				         pid)) != NULL) {
-					// TODO packetid already exists.
-					// do we need to replace old with new
-					// one ? print warning to users
 					log_error("packet id duplicates in "
 					          "nano_qos_db");
 
@@ -1090,30 +1112,20 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 				    p->conf->sqlite.disk_cache_size);
 			}
 			NNI_PUT16(var_extra, pid);
-		} else if (qos_pac > 0) {
-			len_offset += 2;
-		}
-		// fixed header
-		iov[niov].iov_buf = p->qos_buf+qlen;
-		iov[niov].iov_len = 1+rlen;
-		niov++;
-		qlen += rlen + 1;
-		// topic + tlen
-		iov[niov].iov_buf = body;
-		iov[niov].iov_len = 2+tlen;
-		niov++;
-		// packet id if any
-		if (qos > 0) {
-			// copy packet id
-			memcpy(p->qos_buf + 5 + qlen, var_extra, 2);
-			iov[niov].iov_buf = p->qos_buf + 5 + qlen;
+
+			// IOV 2: Packet ID (严格按当前线性 qlen 追加)
+			memcpy(p->qos_buf + qlen, var_extra, 2);
+			iov[niov].iov_buf = p->qos_buf + qlen;
 			iov[niov].iov_len = 2;
 			niov++;
 			qlen += 2;
+		} else if (qos_pac > 0) {
+			len_offset += 2;
 		}
-		// variable header + payload
-		if (mlen > 0) {
-			// determine if it needs to skip packet id field
+
+		// === 5. Payload 切片 ===
+		if (mlen > 2 + tlen + len_offset + plength) {
+			// IOV 3: Payload
 			iov[niov].iov_buf =
 			    body + 2 + tlen + len_offset + plength;
 			iov[niov].iov_len =
@@ -1122,13 +1134,20 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 		}
 	}
 
+	if (niov == 0) {
+		nni_aio_set_prov_data(txaio, NULL);
+		nni_aio_begin(txaio);
+		nni_aio_set_iov(txaio, 0, NULL);
+		nni_aio_finish(txaio, 0, 0);
+		return;
+	}
+
+	// === 6. TLS 线性化：将全部暂存片段追加为单一 tmsg ===
 	nni_msg_alloc(&tmsg, 0);
-	// apending directly
 	for (int i = 0; i < niov; i++) {
 		nni_msg_append(tmsg, iov[i].iov_buf, iov[i].iov_len);
 	}
-	// tls_common only send 1 iov each time
-	// to avoid of racing we alloc a new msg for tls
+	// TLS 仅挂载 1 个连续报文 IOV 发送
 	iov[0].iov_buf = nni_msg_body(tmsg);
 	iov[0].iov_len = nni_msg_len(tmsg);
 	nni_aio_set_msg(txaio, tmsg);
@@ -1158,12 +1177,11 @@ send:
 }
 
 /**
- * @brief we consider memory saving is prior to performance due
- * 	  to the requirement of our boss. so we use fragmented iov.
- * 
- * @param p 
- * @param msg 
- * @param aio 
+ * @brief send msg to V5 TLS client with mount_point support
+ *
+ * @param p
+ * @param msg
+ * @param aio
  */
 static inline void
 tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
@@ -1178,14 +1196,13 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	    nni_msg_get_type(msg) != CMD_PUBLISH) {
 		goto send;
 	}
-	// never modify the original msg
 
-	uint8_t *     body, *header, qos_pac, prop_bytes = 0;
+	uint8_t      *body, *header, qos_pac, prop_bytes = 0;
 	target_prover target_prover = 0;
 	int           len_offset = 0, sub_id = 0, qos = 0;
 	uint16_t      pid;
-	uint32_t tprop_bytes = 0, id_bytes = 0, property_len = 0;
-	size_t   tlen, rlen, mlen, hlen, qlength, plength;
+	uint32_t      tprop_bytes = 0, id_bytes = 0, property_len = 0;
+	size_t        tlen, rlen, mlen, hlen, qlength, plength;
 
 	bool is_sqlite = p->conf->sqlite.enable;
 
@@ -1200,22 +1217,35 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	qos_pac = nni_msg_get_pub_qos(msg);
 
 	NNI_GET16(body, tlen);
+
+	// === 1. MountPoint 判定与前缀剥离计算 ===
+	const char *mp        = p->mount_point;
+	size_t      mp_len    = (mp != NULL) ? strlen(mp) : 0;
+	size_t      strip_len = 0;
+	char       *eff_topic = (char *) (body + 2);
+	size_t      eff_tlen  = tlen;
+
+	if (mp_len > 0 && tlen > mp_len && body[2 + mp_len] == '/' &&
+	    strncmp((char *) (body + 2), mp, mp_len) == 0) {
+		strip_len = mp_len + 1;
+		eff_topic = (char *) (body + 2 + strip_len);
+		eff_tlen  = tlen - strip_len;
+	}
+
 	if (qos_pac == 0) {
-		// simply set DUP flag to 0 & correct error from client
 		*header &= ~(1 << 3);
 	}
-	// check max packet size for this client/msg
+
 	uint32_t total_len = mlen + hlen;
 	if (total_len > p->tcp_cparam->max_packet_size) {
-		// drop msg and finish aio
-		// pretend it has been sent
 		log_warn("msg dropped due to exceed max packet size %ld %ld!",
-				total_len, p->tcp_cparam->max_packet_size);
+		    total_len, p->tcp_cparam->max_packet_size);
 		nni_aio_begin(txaio);
 		nni_aio_set_iov(txaio, 0, NULL);
 		nni_aio_finish(txaio, 0, 0);
 		return;
 	}
+
 	if (nni_msg_cmd_type(msg) == CMD_PUBLISH_V5) {
 		if (qos_pac > 0) {
 			property_len =
@@ -1227,42 +1257,49 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 		target_prover = MQTTV5;
 		tprop_bytes   = prop_bytes;
 	}
-	// subid
+
 	subinfo *info, *tinfo;
 	tinfo = nni_aio_get_prov_data(txaio);
 	nni_aio_set_prov_data(txaio, NULL);
+
 	NNI_LIST_FOREACH (p->npipe->subinfol, info) {
 		if (tinfo != NULL && info != tinfo) {
 			continue;
 		}
-		if (info->no_local == 1 && p->npipe->p_id == nni_msg_get_pipe(msg)) {
+		if (info->no_local == 1 &&
+		    p->npipe->p_id == nni_msg_get_pipe(msg)) {
 			continue;
 		}
-		tinfo           = NULL;
-		len_offset      = 0;
+		tinfo      = NULL;
+		len_offset = 0;
+
 		char *sub_topic = info->topic;
 		if (sub_topic[0] == '$') {
-			if (0 == strncmp(sub_topic, "$share/", strlen("$share/"))) {
+			if (0 ==
+			    strncmp(sub_topic, "$share/", strlen("$share/"))) {
 				sub_topic = strchr(sub_topic, '/');
 				sub_topic != NULL ? sub_topic++ : NULL;
 				sub_topic = strchr(sub_topic, '/');
 				sub_topic != NULL ? sub_topic++ : NULL;
 			}
 		}
-		if (topic_filtern(sub_topic, (char *)(body + 2), tlen)) {
-			if (niov >= 8) {
-				// nng aio only allow 2 msgs at a time
+
+		// === 2. 匹配剥离前缀后的有效主题 ===
+		if (topic_filtern(sub_topic, eff_topic, eff_tlen)) {
+
+			// 将守卫调整为 niov > 4，与 V4 规范对齐，彻底防止暂存 iov[8] 越界
+			if (niov > 4) {
 				nni_aio_set_prov_data(txaio, info);
 				break;
 			}
-			uint8_t  var_extra[2], fixheader, tmp[4] = { 0 }, pos = 1;
+
+			uint8_t  pos = 1, var_extra[2], fixheader, tmp[4] = { 0 };
 			uint8_t  proplen[4] = { 0 }, var_subid[5] = { 0 };
 			sub_id       = info->subid;
 			qos          = info->qos;
 
 			fixheader = *header;
 			if (nni_msg_cmd_type(msg) == CMD_PUBLISH) {
-				// V4 to V5 add 0 property length
 				target_prover = MQTTV4_V5;
 				prop_bytes    = 1;
 				tprop_bytes   = 1;
@@ -1273,83 +1310,91 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			}
 			if (sub_id != 0) {
 				var_subid[0] = 0x0B;
-				id_bytes = put_var_integer(var_subid+1, sub_id);
-				tprop_bytes = put_var_integer(proplen, property_len+1+id_bytes);
-				len_offset += (tprop_bytes - prop_bytes + 1 + id_bytes);
+				id_bytes =
+				    put_var_integer(var_subid + 1, sub_id);
+				tprop_bytes = put_var_integer(
+				    proplen, property_len + 1 + id_bytes);
+				len_offset +=
+				    (tprop_bytes - prop_bytes + 1 + id_bytes);
 			}
-			// get final qos
+
 			qos = qos_pac > qos ? qos : qos_pac;
 
-			// alter qos according to sub qos
 			if (qos_pac > qos) {
 				if (qos == 1) {
-					// set qos to 1
 					fixheader = fixheader & 0xF9;
 					fixheader = fixheader | 0x02;
 				} else {
-					// set qos to 0
 					fixheader  = fixheader & 0xF9;
 					len_offset = len_offset - 2;
 				}
 			}
-			// fixed header + remaining length
+
+			// === 3. Remaining Length 扣减 strip_len ===
 			pos  = 1;
 			rlen = put_var_integer(
-			    tmp, get_var_integer(header, &pos) + len_offset);
-			// or just copy to qosbuf directly?
+			    tmp, get_var_integer(header, &pos) + len_offset - strip_len);
+
 			*(p->qos_buf + qlength) = fixheader;
 			memcpy(p->qos_buf + qlength + 1, tmp, rlen);
-			iov[niov].iov_buf = p->qos_buf + qlength;
-			iov[niov].iov_len = rlen + 1;
-			niov++;
-			qlength += rlen + 1;
-			// 1st part of variable header: topic + topic len
-			iov[niov].iov_buf = body;
-			iov[niov].iov_len = tlen + 2;
-			niov++;
-			// len to indicate the offset in packet
+
+			// === 4. Fixed Header 与 Topic Length 合并为单个 IOV ===
+			if (strip_len > 0) {
+				uint16_t new_tlen = (uint16_t) eff_tlen;
+				NNI_PUT16(p->qos_buf + qlength + 1 + rlen, new_tlen);
+
+				// IOV 0: [Fixed Header + Remaining Length + Topic Length 2B]
+				iov[niov].iov_buf = p->qos_buf + qlength;
+				iov[niov].iov_len = 1 + rlen + 2;
+				niov++;
+				qlength += 1 + rlen + 2;
+
+				// IOV 1: [有效主题字符串切片] (零拷贝直接引用)
+				iov[niov].iov_buf = eff_topic;
+				iov[niov].iov_len = eff_tlen;
+				niov++;
+			} else {
+				iov[niov].iov_buf = p->qos_buf + qlength;
+				iov[niov].iov_len = 1 + rlen;
+				niov++;
+				qlength += 1 + rlen;
+
+				iov[niov].iov_buf = body;
+				iov[niov].iov_len = tlen + 2;
+				niov++;
+			}
+
 			len_offset = 0;
 			plength    = 0;
 			if (qos > 0) {
-				// set pid
 				len_offset = 2;
 				nni_msg *old;
-				// packetid in aio to differ resend msg
-				// TODO replace it with set prov data/pipe
-				pid = (uint16_t)(size_t) nni_aio_get_prov_data(aio);
+				pid = (uint16_t) (size_t) nni_aio_get_prov_data(aio);
 				if (pid == 0) {
-					// first time send this msg
 					pid = nni_pipe_inc_packetid(pipe);
-					// store msg for qos retry
 					nni_msg_clone(msg);
 					if ((old = nni_qos_db_get(is_sqlite,
-					         pipe->nano_qos_db, pipe->p_id,
-					         pid)) != NULL) {
-						// TODO packetid already exists. do we need to
-						// replace old with new one ? print warning to users
+					        pipe->nano_qos_db, pipe->p_id,
+					        pid)) != NULL) {
 						log_error("packet id duplicates in nano_qos_db");
-
-						nni_qos_db_remove_msg(is_sqlite,
-						    pipe->nano_qos_db, old);
+						nni_qos_db_remove_msg(
+						    is_sqlite, pipe->nano_qos_db, old);
 					}
 					old = msg;
 					nni_qos_db_set(is_sqlite,
-					    pipe->nano_qos_db, pipe->p_id, pid,
-					    old);
+					    pipe->nano_qos_db, pipe->p_id, pid, old);
 					nni_qos_db_remove_oldest(is_sqlite,
 					    pipe->nano_qos_db,
 					    p->conf->sqlite.disk_cache_size);
 				}
 				NNI_PUT16(var_extra, pid);
-				// copy packet id
 				memcpy(p->qos_buf + qlength, var_extra, 2);
 				qlength += 2;
 				plength += 2;
 			} else if (qos_pac > 0) {
-				//ignore the packet id of original packet
 				len_offset += 2;
 			}
-			// prop len + sub id if any
+
 			if (sub_id != 0) {
 				memcpy(p->qos_buf + qlength, proplen,
 				    tprop_bytes);
@@ -1362,55 +1407,56 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 				if (target_prover == MQTTV5)
 					len_offset += prop_bytes;
 			} else {
-				//need to add 0 len for V4 msg
 				if (target_prover == MQTTV4_V5) {
-					// add proplen even 0
 					memcpy(p->qos_buf + qlength, proplen,
 					    tprop_bytes);
 					qlength += tprop_bytes;
 					plength += tprop_bytes;
 				}
 			}
-			// 2nd part of variable header: pid + proplen+0x0B+subid
-			iov[niov].iov_buf = p->qos_buf+qlength-plength;
-			iov[niov].iov_len = plength;
-			niov++;
-			// prop + body
-			iov[niov].iov_buf = body + 2 + tlen + len_offset;
-			iov[niov].iov_len = mlen - 2 - len_offset - tlen;
-			niov++;
+
+			// IOV 2: Packet ID + Properties (若有)
+			if (plength > 0) {
+				iov[niov].iov_buf = p->qos_buf + qlength - plength;
+				iov[niov].iov_len = plength;
+				niov++;
+			}
+
+			// IOV 3: Payload 切片
+			size_t payload_len = mlen - 2 - len_offset - tlen;
+			if (payload_len > 0) {
+				iov[niov].iov_buf = body + 2 + tlen + len_offset;
+				iov[niov].iov_len = payload_len;
+				niov++;
+			}
 		}
 	}
 
-	// MQTT V5 flow control
 	if (qos > 0) {
 		if (p->qsend_quota > 0) {
 			p->qsend_quota--;
 		} else {
-			// what should broker does when exceed
-			// max_recv? msg lost, make it look like a
-			// normal send. qos msg will be resend afterwards
 			nni_aio_begin(txaio);
 			nni_aio_set_iov(txaio, 0, NULL);
 			nni_aio_finish(txaio, 0, 0);
 			return;
 		}
 	}
+
 	if (niov == 0) {
-		// No content to send
 		nni_aio_set_prov_data(txaio, NULL);
 		nni_aio_begin(txaio);
 		nni_aio_set_iov(txaio, 0, NULL);
 		nni_aio_finish(txaio, 0, 0);
 		return;
 	}
+
+	// === 5. TLS 线性化：将全部暂存片段追加为单一 tmsg ===
 	nni_msg_alloc(&tmsg, 0);
-	// apending directly
 	for (int i = 0; i < niov; i++) {
 		nni_msg_append(tmsg, iov[i].iov_buf, iov[i].iov_len);
 	}
-	// tls_common only send 1 iov each time
-	// to avoid of racing we alloc a new msg for tls
+	// TLS 仅挂载 1 个连续报文 IOV 发送
 	iov[0].iov_buf = nni_msg_body(tmsg);
 	iov[0].iov_len = nni_msg_len(tmsg);
 	nni_aio_set_msg(txaio, tmsg);
