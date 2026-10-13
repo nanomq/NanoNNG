@@ -475,10 +475,7 @@ dbhash_get_topic_queue_all(size_t *sz)
 	nni_rwlock_wrlock(&pipe_lock);
 	size_t size = kh_size(ph);
 
-	// Returns a snapshot of the table's topic_queue pointers, not copies.
-	// The array is nng-allocated; the caller releases it with
-	// nni_free(res, *sz * sizeof(topic_queue *)) and must not touch the
-	// queues themselves (they belong to the table).
+	// Snapshot of the table's topic_queue pointers, not copies: free the array with nni_free(res, *sz * sizeof(topic_queue *)).
 	topic_queue **res =
 	    (topic_queue **) nni_alloc(size * sizeof(topic_queue *));
 	topic_queue **out = res;
@@ -616,10 +613,7 @@ dbhash_get_first_topic(uint32_t id)
 	if (k != kh_end(ph)) {
 		struct topic_queue *ret = kh_val(ph, k);
 		if (ret && ret->topic) {
-			// A detached copy handed to the caller, which
-			// releases it with nng_strfree() (see hash_test.c).
-			// nni_strdup keeps it in nng's heap, which is where
-			// that free lands on Zephyr.
+			// Detached copy for the caller; nni_strdup so its nng_strfree() matches.
 			topic = nni_strdup(ret->topic);
 		}
 	}
@@ -668,13 +662,7 @@ dbhash_copy_topic_queue(uint32_t id)
 				continue;
 			}
 
-			/* nni_zalloc/nni_strdup, NOT calloc/strdup: the caller
-			 * (rest_api.c get_subscriptions) releases the copy
-			 * with nng_free/nng_strfree, i.e. into nng's heap.  On
-			 * Zephyr the libc heap and nng's heap are distinct
-			 * (NNG_ZEPHYR_ALLOC_SMH puts nng on external RAM), so
-			 * a libc allocation freed through nng_free reaches a
-			 * heap that never handed it out. */
+			// nni_zalloc/nni_strdup: rest_api.c frees this with the nng family (separate heaps on Zephyr).
 			struct topic_queue *new_node = nni_zalloc(
 			    sizeof(struct topic_queue));
 			if (new_node == NULL) {
