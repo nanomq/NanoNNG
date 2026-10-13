@@ -84,7 +84,7 @@ stdout_callback(log_event *ev)
 #if (NNG_PLATFORM_WINDOWS || NNG_PLATFORM_DARWIN)
 	int pid = nni_plat_getpid();
 #elif defined(__ZEPHYR__)
-	int pid = 0; // no gettid() there; the id is only informational
+	int pid = 0;
 #else
 	pid_t pid = syscall(__NR_gettid);
 #endif
@@ -111,7 +111,7 @@ file_callback(log_event *ev)
 #if (NNG_PLATFORM_WINDOWS || NNG_PLATFORM_DARWIN)
 	int pid = nni_plat_getpid();
 #elif defined(__ZEPHYR__)
-	int pid = 0; // no gettid() there; the id is only informational
+	int pid = 0;
 #else
 	pid_t pid = syscall(__NR_gettid);
 #endif
@@ -167,7 +167,7 @@ syslog_callback(log_event *ev)
 #if (NNG_PLATFORM_WINDOWS || NNG_PLATFORM_DARWIN)
 	int pid = nni_plat_getpid();
 #elif defined(__ZEPHYR__)
-	int pid = 0; // no gettid() there; the id is only informational
+	int pid = 0;
 #else
 	pid_t pid = syscall(__NR_gettid);
 #endif
@@ -266,7 +266,7 @@ uds_syslog_callback(log_event *ev)
 #if (NNG_PLATFORM_WINDOWS || NNG_PLATFORM_DARWIN)
 	int pid = nni_plat_getpid();
 #elif defined(__ZEPHYR__)
-	int pid = 0; // no gettid() there; the id is only informational
+	int pid = 0;
 #else
 	pid_t pid = syscall(__NR_gettid);
 #endif

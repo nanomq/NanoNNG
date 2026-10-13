@@ -55,4 +55,4 @@ config NANONNG_PROTO_PULL0
 	bool "PULLv0 protocol"
 	default y
 
-endif # NANONNG
+endif

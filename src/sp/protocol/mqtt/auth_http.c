@@ -440,7 +440,7 @@ nmq_auth_http_sub_pub(
 			nng_mtx_unlock(conf->acl_cache_mtx);
 			if (acl_cache_v != NULL) {
 				nni_free(topic_str, strlen(topic_str) + 1);
-				return NNG_MQTT_SUCCESS; // cache hit
+				return NNG_MQTT_SUCCESS;
 			}
 		}
 
@@ -467,7 +467,7 @@ nmq_auth_http_sub_pub(
 			nng_mtx_unlock(conf->acl_cache_mtx);
 			if (acl_cache_v != NULL) {
 				nni_free(topic_str, strlen(topic_str) + 1);
-				return NNG_MQTT_SUCCESS; // cache hit
+				return NNG_MQTT_SUCCESS;
 			}
 		}
 
