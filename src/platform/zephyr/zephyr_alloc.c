@@ -13,12 +13,12 @@
 // CONFIG_HEAP_MEM_POOL_SIZE > 0) — i.e. the libc heap, which on
 // ESP32-S3 is bounded by the ~512 KB internal SRAM.
 //
-// With NNG_ZEPHYR_ALLOC_SMH (defined by the demo/nanomq_zephyr_esp32s3
-// CMakeLists), allocations come from the external PSRAM window the linker
-// reserves inside .ext_ram.data (sized by ESP_SPIRAM_HEAP_SIZE).  The
-// NanoMQ broker needs this: its data plane (nng pipes, nanolib db, MQTT
-// messages) is several MB at the qemu demo scale and does not fit
-// internal SRAM.
+// With NNG_ZEPHYR_ALLOC_SMH (defined by the nanomq_zephyr_esp32s3 example in
+// nanomq/NanoMQ-Zephyr-Example), allocations come from the external PSRAM
+// window the linker reserves inside .ext_ram.data (sized by
+// ESP_SPIRAM_HEAP_SIZE).  The NanoMQ broker needs this: its data plane (nng
+// pipes, nanolib db, MQTT messages) is several MB at the qemu example scale
+// and does not fit internal SRAM.
 //
 // The window is managed with a plain struct k_heap, NOT with Zephyr's
 // shared multi-heap (shared_multi_heap_alloc/free): those are plain
