@@ -935,7 +935,6 @@ nano_pipe_close(void *arg)
 	}
 	nni_mtx_lock(&s->lk);
 	nni_mtx_lock(&p->lk);
-	p->connacked = false;
 	// we freed the conn_param when restoring pipe
 	// so check status of conn_param. just let it close silently
 	if (p->conn_param->clean_start == 0) {
