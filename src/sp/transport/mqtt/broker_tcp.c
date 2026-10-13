@@ -1,5 +1,5 @@
 //
-// Copyright 2022 NanoMQ Team, Inc. <jaylin@emqx.io>
+// Copyright 202 NanoMQ Team, Inc. <jaylin@emqx.io>
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -966,7 +966,6 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	subinfo  *tinfo = NULL, *info = NULL;
 	nni_list *subinfol = p->npipe->subinfol;
 
-	// === 1. MountPoint 前缀判定与长度裁剪 ===
 	const char *mp        = p->mount_point;
 	size_t      mp_len    = (mp != NULL) ? strlen(mp) : 0;
 	size_t      strip_len = 0;
@@ -1002,12 +1001,10 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			}
 		}
 
-		// === 2. 使用有效主题参与匹配 ===
 		if (false == topic_filtern(sub_topic, eff_topic, eff_tlen)) {
 			continue;
 		}
 
-		// 单个消息最多使用 4 个 IOV 槽位；若已使用超过 4 个，推迟至下次 AIO 发送
 		if (niov > 4) {
 			nni_aio_set_prov_data(txaio, info);
 			break;
@@ -1046,7 +1043,6 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			}
 			plength = property_len + property_bytes;
 		} else if (nni_msg_cmd_type(msg) == CMD_PUBLISH) {
-			// 未剥离前缀且 QoS 0 时直通快轨
 			if (qos_pac == 0 && strip_len == 0) {
 				if (nni_msg_header_len(msg) > 0) {
 					iov[niov].iov_buf =
@@ -1089,15 +1085,11 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			}
 		}
 
-		// === 3. Remaining Length 扣减 strip_len ===
 		rlen = put_var_integer(
 		    tmp, get_var_integer(header, &pos) + len_offset - plength - strip_len);
 		*(p->qos_buf + qlen) = fixheader;
 		memcpy(p->qos_buf + 1 + qlen, tmp, rlen);
-
-		// === 4. Fixed Header 与 Topic Length 合并为单个 IOV ===
 		if (strip_len > 0) {
-			// 在 qos_buf 的 rlen 后面紧接着写入 2 字节新主题长度
 			uint16_t new_tlen = (uint16_t) eff_tlen;
 			NNI_PUT16(p->qos_buf + qlen + 1 + rlen, new_tlen);
 
@@ -1107,18 +1099,16 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			niov++;
 			qlen += 1 + rlen + 2;
 
-			// IOV 1: [有效主题字符串切片] (零拷贝直接引用原始消息体)
 			iov[niov].iov_buf = eff_topic;
 			iov[niov].iov_len = eff_tlen;
 			niov++;
 		} else {
-			// 未剥离前缀：正常组装
 			iov[niov].iov_buf = p->qos_buf + qlen;
 			iov[niov].iov_len = 1 + rlen;
 			niov++;
 			qlen += 1 + rlen;
 
-			// IOV 1: 原始 Topic 字段 [Topic Length 2B + Topic String]
+			// IOV 1: original Topic  [Topic Length 2B + Topic String]
 			iov[niov].iov_buf = body;
 			iov[niov].iov_len = 2 + tlen;
 			niov++;
@@ -1160,7 +1150,7 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			len_offset += 2;
 		}
 
-		// === 5. Payload 挂载 (零拷贝切片) ===
+		// === 5. Payload ===
 		if (mlen > 2 + tlen + len_offset + plength) {
 			// IOV 3: Payload
 			iov[niov].iov_buf =
@@ -1240,7 +1230,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 
 	NNI_GET16(body, tlen);
 
-	// === 1. MountPoint 前缀判定与裁剪长度计算 ===
+	// === 1. MountPoint processing prefix len ===
 	const char *mp        = p->mount_point;
 	size_t      mp_len    = (mp != NULL) ? strlen(mp) : 0;
 	size_t      strip_len = 0;
@@ -1306,10 +1296,10 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			}
 		}
 
-		// === 2. 使用有效主题参与匹配 ===
+		// === 2. compare with valid topic str ===
 		if (topic_filtern(sub_topic, eff_topic, eff_tlen)) {
 
-			// 单个消息最多使用 4 个 IOV 槽位；若已使用超过 4 个，推迟至下次 AIO 发送
+			// limit to 4 niov and below, leave the rest for next send aio
 			if (niov > 4) {
 				nni_aio_set_prov_data(txaio, info);
 				break;
@@ -1352,7 +1342,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				}
 			}
 
-			// === 3. Remaining Length 扣减 strip_len ===
+			// === 3. Remaining Length - strip_len ===
 			pos  = 1;
 			rlen = put_var_integer(
 			    tmp, get_var_integer(header, &pos) + len_offset - strip_len);
@@ -1360,9 +1350,9 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			*(p->qos_buf + qlength) = fixheader;
 			memcpy(p->qos_buf + qlength + 1, tmp, rlen);
 
-			// === 4. Fixed Header 与 Topic Length 合并为单个 IOV ===
+			// === 4. Fixed Header & Topic Length merge as one IOV ===
 			if (strip_len > 0) {
-				// 在 qos_buf 的 rlen 后面紧接着写入 2 字节新主题长度
+				// write qos_buf + rlen with new 2 bytes of topic len
 				uint16_t new_tlen = (uint16_t) eff_tlen;
 				NNI_PUT16(p->qos_buf + qlength + 1 + rlen, new_tlen);
 
@@ -1372,18 +1362,18 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				niov++;
 				qlength += 1 + rlen + 2;
 
-				// IOV 1: [有效主题字符串切片] (零拷贝直接引用原始消息体)
+				// IOV 1: [valid topic fragment]
 				iov[niov].iov_buf = eff_topic;
 				iov[niov].iov_len = eff_tlen;
 				niov++;
 			} else {
-				// 未剥离前缀：正常组装
+				// no strip topic prefix
 				iov[niov].iov_buf = p->qos_buf + qlength;
 				iov[niov].iov_len = 1 + rlen;
 				niov++;
 				qlength += 1 + rlen;
 
-				// IOV 1: 原始 Topic 字段 [Topic Length 2B + Topic String]
+				// IOV 1: original Topic [Topic Length 2B + Topic String]
 				iov[niov].iov_buf = body;
 				iov[niov].iov_len = tlen + 2;
 				niov++;
@@ -1439,14 +1429,14 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				}
 			}
 
-			// IOV 2: Packet ID + Properties (若存在)
+			// IOV 2: Packet ID + Properties
 			if (plength > 0) {
 				iov[niov].iov_buf = p->qos_buf + qlength - plength;
 				iov[niov].iov_len = plength;
 				niov++;
 			}
 
-			// IOV 3: 原始 Property 剩余部分 + Payload (零拷贝)
+			// IOV 3: original Property restpart + Payload
 			size_t payload_len = mlen - 2 - len_offset - tlen;
 			if (payload_len > 0) {
 				iov[niov].iov_buf = body + 2 + tlen + len_offset;

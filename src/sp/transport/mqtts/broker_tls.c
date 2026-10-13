@@ -943,7 +943,6 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 	nni_list *subinfol = p->npipe->subinfol;
 	char     *topic    = nni_msg_get_pub_topic(msg, &topic_len);
 
-	// === 1. MountPoint 判定与前缀剥离计算 ===
 	const char *mp        = p->mount_point;
 	size_t      mp_len    = (mp != NULL) ? strlen(mp) : 0;
 	size_t      strip_len = 0;
@@ -979,11 +978,9 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			}
 		}
 
-		// === 2. 匹配剥离前缀后的有效主题 ===
 		if (false == topic_filtern(sub_topic, eff_topic, eff_tlen))
 			continue;
 
-		// 单条消息最多占用 4 个暂存 IOV 槽位；若已使用超过 4 个，推迟至下次 AIO 发送
 		if (niov > 4) {
 			nni_aio_set_prov_data(txaio, info);
 			break;
@@ -1018,7 +1015,6 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			}
 			plength = property_len + property_bytes;
 		} else if (nni_msg_cmd_type(msg) == CMD_PUBLISH) {
-			// 仅在未剥离前缀且 QoS 0 时直通快轨
 			if (qos_pac == 0 && strip_len == 0) {
 				if (nni_msg_header_len(msg) > 0) {
 					iov[niov].iov_buf = nni_msg_header(msg);
@@ -1054,24 +1050,20 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			}
 		}
 
-		// === 3. Remaining Length 扣减 strip_len ===
 		rlen = put_var_integer(
 		    tmp, get_var_integer(header, &pos) + len_offset - plength - strip_len);
 		*(p->qos_buf + qlen) = fixheader;
 		memcpy(p->qos_buf + 1 + qlen, tmp, rlen);
 
-		// === 4. Fixed Header 与 Topic Length 合并放入单个 IOV ===
 		if (strip_len > 0) {
 			uint16_t new_tlen = (uint16_t) eff_tlen;
 			NNI_PUT16(p->qos_buf + qlen + 1 + rlen, new_tlen);
 
-			// IOV 0: [Fixed Header + Remaining Length + Topic Length 2B]
 			iov[niov].iov_buf = p->qos_buf + qlen;
 			iov[niov].iov_len = 1 + rlen + 2;
 			niov++;
 			qlen += 1 + rlen + 2;
 
-			// IOV 1: [有效主题字符串切片] (零拷贝直接引用)
 			iov[niov].iov_buf = eff_topic;
 			iov[niov].iov_len = eff_tlen;
 			niov++;
@@ -1113,7 +1105,6 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			}
 			NNI_PUT16(var_extra, pid);
 
-			// IOV 2: Packet ID (严格按当前线性 qlen 追加)
 			memcpy(p->qos_buf + qlen, var_extra, 2);
 			iov[niov].iov_buf = p->qos_buf + qlen;
 			iov[niov].iov_len = 2;
@@ -1123,7 +1114,6 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			len_offset += 2;
 		}
 
-		// === 5. Payload 切片 ===
 		if (mlen > 2 + tlen + len_offset + plength) {
 			// IOV 3: Payload
 			iov[niov].iov_buf =
@@ -1142,12 +1132,11 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 		return;
 	}
 
-	// === 6. TLS 线性化：将全部暂存片段追加为单一 tmsg ===
 	nni_msg_alloc(&tmsg, 0);
 	for (int i = 0; i < niov; i++) {
 		nni_msg_append(tmsg, iov[i].iov_buf, iov[i].iov_len);
 	}
-	// TLS 仅挂载 1 个连续报文 IOV 发送
+
 	iov[0].iov_buf = nni_msg_body(tmsg);
 	iov[0].iov_len = nni_msg_len(tmsg);
 	nni_aio_set_msg(txaio, tmsg);
@@ -1218,7 +1207,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 
 	NNI_GET16(body, tlen);
 
-	// === 1. MountPoint 判定与前缀剥离计算 ===
+	// === 1. MountPoint processing prefix len ===
 	const char *mp        = p->mount_point;
 	size_t      mp_len    = (mp != NULL) ? strlen(mp) : 0;
 	size_t      strip_len = 0;
@@ -1284,7 +1273,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			}
 		}
 
-		// === 2. 匹配剥离前缀后的有效主题 ===
+		// === 2. compare with valid topic str ===
 		if (topic_filtern(sub_topic, eff_topic, eff_tlen)) {
 
 			// 将守卫调整为 niov > 4，与 V4 规范对齐，彻底防止暂存 iov[8] 越界
@@ -1330,7 +1319,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 				}
 			}
 
-			// === 3. Remaining Length 扣减 strip_len ===
+			// === 3. Remaining Length - strip_len ===
 			pos  = 1;
 			rlen = put_var_integer(
 			    tmp, get_var_integer(header, &pos) + len_offset - strip_len);
@@ -1338,7 +1327,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			*(p->qos_buf + qlength) = fixheader;
 			memcpy(p->qos_buf + qlength + 1, tmp, rlen);
 
-			// === 4. Fixed Header 与 Topic Length 合并为单个 IOV ===
+			// === 4. Fixed Header & Topic Length merge as one IOV ===
 			if (strip_len > 0) {
 				uint16_t new_tlen = (uint16_t) eff_tlen;
 				NNI_PUT16(p->qos_buf + qlength + 1 + rlen, new_tlen);
@@ -1349,7 +1338,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 				niov++;
 				qlength += 1 + rlen + 2;
 
-				// IOV 1: [有效主题字符串切片] (零拷贝直接引用)
+				// IOV 1: [valid topic fragment]
 				iov[niov].iov_buf = eff_topic;
 				iov[niov].iov_len = eff_tlen;
 				niov++;
@@ -1415,14 +1404,14 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 				}
 			}
 
-			// IOV 2: Packet ID + Properties (若有)
+			// IOV 2: Packet ID + Properties
 			if (plength > 0) {
 				iov[niov].iov_buf = p->qos_buf + qlength - plength;
 				iov[niov].iov_len = plength;
 				niov++;
 			}
 
-			// IOV 3: Payload 切片
+			// IOV 3: Payload fragment
 			size_t payload_len = mlen - 2 - len_offset - tlen;
 			if (payload_len > 0) {
 				iov[niov].iov_buf = body + 2 + tlen + len_offset;
@@ -1451,12 +1440,12 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 		return;
 	}
 
-	// === 5. TLS 线性化：将全部暂存片段追加为单一 tmsg ===
+	// === 5. TLS linearlization ===
 	nni_msg_alloc(&tmsg, 0);
 	for (int i = 0; i < niov; i++) {
 		nni_msg_append(tmsg, iov[i].iov_buf, iov[i].iov_len);
 	}
-	// TLS 仅挂载 1 个连续报文 IOV 发送
+	// TLS only supports one iov
 	iov[0].iov_buf = nni_msg_body(tmsg);
 	iov[0].iov_len = nni_msg_len(tmsg);
 	nni_aio_set_msg(txaio, tmsg);
