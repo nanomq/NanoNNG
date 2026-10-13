@@ -2451,6 +2451,8 @@ conn_param_get_mount_point(conn_param *cparam)
 void
 conn_param_set_mount_point(conn_param *cparam, const char *mount_point)
 {
+	if (cparam == NULL)
+		return;
 	if (cparam->mount_point) {
 		nng_strfree(cparam->mount_point);
 		cparam->mount_point = NULL;
