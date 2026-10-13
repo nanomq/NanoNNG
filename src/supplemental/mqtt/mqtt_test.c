@@ -172,6 +172,24 @@ test_dup_publish(void)
 }
 
 void
+test_connect_conn_param(void)
+{
+	nng_msg    *msg;
+	conn_param *cparam;
+
+	NUTS_PASS(nng_mqtt_msg_alloc(&msg, 0));
+	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_CONNECT);
+	nng_mqtt_msg_set_connect_client_id(msg, "conn-param-test");
+	NUTS_PASS(nng_mqtt_msg_encode(msg));
+
+	cparam = nng_get_conn_param_from_msg(msg);
+	NUTS_ASSERT(cparam != NULL);
+	NUTS_TRUE(cparam->mount_point == NULL);
+	conn_param_free(cparam);
+	nng_msg_free(msg);
+}
+
+void
 test_encode_connect(void)
 {
 	nng_msg *msg;
@@ -1631,6 +1649,7 @@ TEST_LIST = {
 	{ "dup suback message", test_dup_suback },
 	{ "dup publish message", test_dup_publish },
 	{ "encode connect", test_encode_connect },
+	{ "connect conn param", test_connect_conn_param },
 	{ "encode connect v5", test_encode_connect_v5 },
 	{ "encode conack", test_encode_connack },
 	{ "decode connack v5", test_decode_connack_v5 },
