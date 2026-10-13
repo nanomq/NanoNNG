@@ -1124,6 +1124,7 @@ nni_get_conn_param_from_msg(nni_msg *msg)
 	conn_ctx->auth_method             = NULL;
 	conn_ctx->auth_data               = NULL;
 	conn_ctx->user_property           = NULL;
+	conn_ctx->mount_point			  = NULL;
 	return conn_ctx;
 	// TODO  utlize MQTT V5 feature in bridging
 }
