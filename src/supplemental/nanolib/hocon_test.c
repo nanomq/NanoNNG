@@ -1,8 +1,7 @@
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
+#include "core/nng_impl.h"
 #include "nng/supplemental/nanolib/cJSON.h"
 #include "nng/supplemental/nanolib/hocon.h"
 
@@ -84,22 +83,25 @@ test_hocon_empty_object(void)
 void
 test_hocon_parse_file_empty_array(void)
 {
-	char  path[] = "/tmp/nanomq-hocon-empty-XXXXXX";
-	int   fd     = mkstemp(path);
-	FILE *fp;
-	cJSON *jso;
-	cJSON *log;
-	cJSON *to;
+	const char text[] = "log {\n  to = []\n  level = info\n}\n";
+	char       name[64];
+	char      *tmpdir;
+	char      *path;
+	cJSON     *jso;
+	cJSON     *log;
+	cJSON     *to;
 
-	NUTS_TRUE(fd >= 0);
-	fp = fdopen(fd, "w");
-	NUTS_TRUE(fp != NULL);
-	fputs("log {\n  to = []\n  level = info\n}\n", fp);
-	fclose(fp);
+	snprintf(name, sizeof(name), "nanomq-hocon-empty-%08x-%08x.conf",
+	    nng_random(), nng_random());
+	NUTS_ASSERT((tmpdir = nni_plat_temp_dir()) != NULL);
+	NUTS_ASSERT((path = nni_file_join(tmpdir, name)) != NULL);
+	nng_strfree(tmpdir);
+	NUTS_ASSERT(nni_file_put(path, text, strlen(text)) == 0);
 
 	jso = hocon_parse_file(path);
-	unlink(path);
-	NUTS_TRUE(jso != NULL);
+	NUTS_PASS(nni_file_delete(path));
+	nng_strfree(path);
+	NUTS_ASSERT(jso != NULL);
 	log = cJSON_GetObjectItem(jso, "log");
 	to  = cJSON_GetObjectItem(log, "to");
 	NUTS_TRUE(cJSON_IsArray(to));
