@@ -1423,14 +1423,8 @@ print_exchange_conf(conf_exchange *exchange)
 {
 	for (int i=0; i < (int) exchange->count; ++i) {
 		conf_exchange_node *n = exchange->nodes[i];
-<<<<<<< HEAD
-		log_info("exchange name            %s", n->name);
-		log_info("exchange topic           ***");
-		log_debug("exchange topic           %s", n->topic);
-=======
 		log_info("exchange name            %s", conf_safe_str(n->name));
-		log_info("exchange topic           %s", conf_safe_str(n->topic));
->>>>>>> f531d5918 (* NEW [qnx] add QNX platform build and runtime compatibility)
+		log_debug("exchange topic           %s", conf_safe_str(n->topic));
 		log_info("exchange streamType	   %d", n->streamType);
 		log_info("exchange chunk_size      %d", n->chunk_size);
 		log_info("exchange url             %s",
