@@ -1563,6 +1563,14 @@ tcptran_pipe_send(void *arg, nni_aio *aio)
 		if (nni_msg_get_type(msg) == CMD_PUBLISH) {
 			qos_pac = nni_msg_get_pub_qos(msg);
 			pld_pac = nni_msg_get_pub_topic(msg, &tlen_pac);
+			// Strip mountpoint
+			size_t mp_len = p->mount_point ? strlen(p->mount_point) : 0;
+			if (mp_len > 0 && pld_pac != NULL &&
+			    (size_t) tlen_pac > mp_len && pld_pac[mp_len] == '/' &&
+			    strncmp(pld_pac, p->mount_point, mp_len) == 0) {
+				pld_pac += mp_len + 1;
+				tlen_pac -= (int) (mp_len + 1);
+			}
 		}
 		subinfo *info = NULL;
 
