@@ -9,6 +9,7 @@
 
 #include "nng/supplemental/nanolib/conf.h"
 #include "nng/supplemental/nanolib/nanolib.h"
+#include "nng/supplemental/nanolib/cJSON.h"
 
 #include "nuts.h"
 
@@ -160,6 +161,89 @@ test_conf_parse_ver2(void)
 		print_conf(conf);
 	}
 
+	conf_fini(conf);
+}
+
+static bool
+http_cred_ok(conf_http_server *http, const char *userpass)
+{
+	return conf_http_server_cred_check(http, userpass, strlen(userpass));
+}
+
+void
+test_conf_http_server_users(void)
+{
+	cJSON *users = cJSON_Parse(
+	    "[{\"username\":\"admin\",\"password\":\"public\"},"
+	    "{\"username\":\"ops\",\"password\":\"s3cret\"},"
+	    "{\"username\":\"admin\",\"password\":\"other\"},"
+	    "{\"username\":\"nopass\"},"
+	    "{\"username\":\"\",\"password\":\"x\"},"
+	    "{\"username\":\"a:b\",\"password\":\"x\"}]");
+	NUTS_TRUE(cJSON_IsArray(users));
+
+	conf_http_server http;
+	conf_http_server_init(&http, 8081);
+
+	size_t           count  = 0;
+	conf_http_user **parsed = conf_http_users_parse(users, &count);
+	NUTS_TRUE(parsed != NULL);
+	NUTS_TRUE(count == 2);
+	NUTS_TRUE(strcmp(parsed[0]->username, "admin") == 0);
+	NUTS_TRUE(strcmp(parsed[0]->password, "public") == 0);
+	NUTS_TRUE(strcmp(parsed[1]->username, "ops") == 0);
+
+	conf_http_server_set_users(&http, parsed, count);
+	NUTS_TRUE(http.users_present);
+	NUTS_TRUE(http.users_count == 2);
+	NUTS_TRUE(http_cred_ok(&http, "admin:public"));
+	NUTS_TRUE(http_cred_ok(&http, "ops:s3cret"));
+	NUTS_TRUE(!http_cred_ok(&http, "admin:other"));
+	NUTS_TRUE(!http_cred_ok(&http, "admin:wrong"));
+	NUTS_TRUE(!http_cred_ok(&http, "admin:public:extra"));
+
+	// The legacy pair joins the union.
+	conf_http_server_update_legacy(&http, "legacy", "pass");
+	NUTS_TRUE(http_cred_ok(&http, "legacy:pass"));
+	NUTS_TRUE(http_cred_ok(&http, "admin:public"));
+
+	// Present but empty: no valid user entry, the legacy pair still works.
+	cJSON           *bad       = cJSON_Parse("[{\"username\":\"\"},{}]");
+	size_t           bad_count = 0;
+	conf_http_user **bad_users =
+	    conf_http_users_parse(bad, &bad_count);
+	NUTS_TRUE(bad_count == 0);
+	conf_http_server_set_users(&http, bad_users, bad_count);
+	NUTS_TRUE(http.users_present);
+	NUTS_TRUE(http.users_count == 0);
+	NUTS_TRUE(!http_cred_ok(&http, "admin:public"));
+	NUTS_TRUE(http_cred_ok(&http, "legacy:pass"));
+
+	// A non-array value counts as present with no valid entry.
+	cJSON           *not_array = cJSON_Parse("\"admin:public\"");
+	size_t           na_count  = 0;
+	conf_http_user **na =
+	    conf_http_users_parse(not_array, &na_count);
+	NUTS_TRUE(na == NULL);
+	NUTS_TRUE(na_count == 0);
+
+	cJSON_Delete(users);
+	cJSON_Delete(bad);
+	cJSON_Delete(not_array);
+	conf_http_server_destroy(&http);
+}
+
+void
+test_conf_http_server_users_from_file(void)
+{
+	conf *conf = get_test_conf(CONF_PATH);
+	NUTS_TRUE(conf != NULL);
+	if (conf == NULL) {
+		return;
+	}
+	conf_parse_ver2(conf, false);
+	NUTS_TRUE(conf->http_server.users_present);
+	NUTS_TRUE(conf->http_server.users_count == 2);
 	conf_fini(conf);
 }
 
@@ -571,6 +655,8 @@ NUTS_TESTS = {
    {"get size", test_get_size},
    {"get time", test_get_time},
    {"conf parse v2", test_conf_parse_ver2},
+   {"conf http server users", test_conf_http_server_users},
+   {"conf http server users in file", test_conf_http_server_users_from_file},
    {"conf parse v2 pkcs11", test_conf_parse_ver2_tls_pkcs11},
    {"conf parse", test_conf_parse},
    {"get size edge cases", test_get_size_edge_cases},

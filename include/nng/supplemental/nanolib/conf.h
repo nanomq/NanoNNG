@@ -217,17 +217,28 @@ typedef enum {
 	NONE_AUTH,
 } auth_type_t;
 
+struct conf_http_user {
+	char *username;
+	char *password;
+};
+
+typedef struct conf_http_user conf_http_user;
+
 struct conf_http_server {
-	bool        enable;
-	char       *ip_addr;	// only localhost or 0.0.0.0 is required
-	uint16_t    port;
-	char       *username;
-	char       *password;
-	size_t      parallel;
-	size_t      max_body;
-	auth_type_t auth_type;
-	conf_jwt    jwt;
-	nng_socket *broker_sock;
+	bool             enable;
+	char            *ip_addr;	// only localhost or 0.0.0.0 is required
+	uint16_t         port;
+	char            *username;      // legacy single credential
+	char            *password;      // legacy single credential
+	conf_http_user **users;         // cvector of HTTP Server Credentials
+	size_t           users_count;
+	bool             users_present; // the `users` key appeared in the config
+	nng_mtx         *cred_mtx;      // guards the credentials above
+	size_t           parallel;
+	size_t           max_body;
+	auth_type_t      auth_type;
+	conf_jwt         jwt;
+	nng_socket      *broker_sock;
 };
 
 typedef struct conf_http_server conf_http_server;
@@ -762,17 +773,18 @@ NNG_DECL void conf_sqlite_reset(conf_sqlite *sqlite);
 // Longest sanitised Bridge Node name used in a Bridge Cache file name.
 #define BRIDGE_CACHE_NAME_MAX 64
 
-// Build the per-Bridge-Node Bridge Cache file name, e.g.
-// bridge_cache_db_name("mqtt_client", "hub", ...) -> "mqtt_client_hub.db".
-// The node name is sanitised (see conf_bridge_cache_validate()). Returns the
-// length written, or -1 when the name has no usable characters or buf is too
-// small.
 NNG_DECL int bridge_cache_db_name(const char *prefix, const char *node_name,
     char *buf, size_t buflen);
 
-// Reject configs whose Bridge Nodes would share one Bridge Cache file, i.e.
-// names that sanitise to the same token. Returns 0 when the config is usable.
 NNG_DECL int conf_bridge_cache_validate(const conf_bridge *bridge);
+NNG_DECL conf_http_user **conf_http_users_parse(
+    cJSON *jso_users, size_t *count);
+NNG_DECL void conf_http_server_set_users(
+    conf_http_server *http, conf_http_user **users, size_t count);
+NNG_DECL void conf_http_server_update_legacy(
+    conf_http_server *http, const char *username, const char *password);
+NNG_DECL bool conf_http_server_cred_check(
+    conf_http_server *http, const char *userpass, size_t len);
 
 NNG_DECL void conf_update_var(
     const char *fpath, const char *key, uint8_t type, void *var);
