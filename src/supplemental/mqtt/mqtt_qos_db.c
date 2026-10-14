@@ -940,13 +940,13 @@ nni_mqtt_qos_db_set_client_msg(sqlite3 *db, uint32_t pipe_id,
 	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
 	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
 	sqlite3_reset(stmt);
-	
+
 	sqlite3_bind_int64(stmt, 1, pipe_id);
 	sqlite3_bind_int64(stmt, 2, packet_id);
 	sqlite3_bind_blob64(stmt, 3, blob, len, SQLITE_TRANSIENT);
 	sqlite3_bind_int(stmt, 4, proto_ver);
-	sqlite3_bind_int(stmt, 5, info_id); // 新增：直接绑定 info_id
-	
+	sqlite3_bind_int(stmt, 5, info_id);
+
 	sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
 	nng_free(blob, len);
@@ -1072,11 +1072,10 @@ remove_oldest_client_msg(
 	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
 	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
 	sqlite3_reset(stmt);
-	
-	// 直接绑定整型变量
+
 	sqlite3_bind_int(stmt, 1, info_id);
 	sqlite3_bind_int64(stmt, 2, limit);
-	
+
 	sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
 
