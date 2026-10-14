@@ -325,6 +325,11 @@ test_set_client_msg(void)
 	sqlite3 *db = NULL;
 	nni_mqtt_qos_db_init(&db, NULL, test_db, false);
 
+	nni_mqtt_qos_db_set_client_info(
+	    db, "emqx", "nanomq-client-0FADECF", "MQTT", 4);
+
+	int info_id = nni_mqtt_qos_db_get_client_info_id(db, "emqx");
+
 	nni_time ts        = 1650944298;
 	uint32_t pipe_id   = 12345;
 	uint16_t packet_id = 54321;
@@ -348,8 +353,9 @@ test_set_client_msg(void)
 
 	nni_mqtt_msg_encode(msg);
 
-	TEST_CHECK(
-	    nni_mqtt_qos_db_set_client_msg(db, pipe_id, packet_id, msg, "emqx", 4) == 0);
+	TEST_CHECK(nni_mqtt_qos_db_set_client_msg(
+	               db, pipe_id, packet_id, msg, info_id, 4) == 0);
+
 	nni_mqtt_qos_db_close(db);
 }
 
