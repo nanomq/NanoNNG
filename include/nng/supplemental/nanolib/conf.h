@@ -210,21 +210,29 @@ typedef enum {
 	NONE_AUTH,
 } auth_type_t;
 
+struct conf_http_user {
+	char *username;
+	char *password;
+};
+
+typedef struct conf_http_user conf_http_user;
+
 struct conf_http_server {
-	bool        enable;
-	char       *ip_addr;	// only localhost or 0.0.0.0 is required
-	uint16_t    port;
-	char       *username;
-	char       *password;
-	nng_mtx    *mtx;
-	char      **usernames; // Extension of username and password
-	char      **passwords; // While keep the compatiblity
-	size_t      parallel;
-	size_t      max_body;
-	auth_type_t auth_type;
-	conf_jwt    jwt;
-	conf_tls    tls;
-	nng_socket *broker_sock;
+	bool             enable;
+	char            *ip_addr;	// only localhost or 0.0.0.0 is required
+	uint16_t         port;
+	char            *username;      // legacy single credential
+	char            *password;      // legacy single credential
+	conf_http_user **users;         // cvector of HTTP Server Credentials
+	size_t           users_count;
+	bool             users_present; // the `users` key appeared in the config
+	nng_mtx         *cred_mtx;      // guards the credentials above
+	size_t           parallel;
+	size_t           max_body;
+	auth_type_t      auth_type;
+	conf_jwt         jwt;
+	conf_tls         tls;
+	nng_socket      *broker_sock;
 };
 
 typedef struct conf_http_server conf_http_server;
@@ -831,6 +839,14 @@ NNG_DECL void conf_bridge_node_parse(conf_bridge_node *node, conf_sqlite *bridge
 NNG_DECL void conf_bridge_node_destroy(conf_bridge_node *node);
 NNG_DECL void conf_session_node_parse(conf_session_node *node, cJSON *obj);
 
+NNG_DECL conf_http_user **conf_http_users_parse(
+    cJSON *jso_users, size_t *count);
+NNG_DECL void conf_http_server_set_users(
+    conf_http_server *http, conf_http_user **users, size_t count);
+NNG_DECL void conf_http_server_update_legacy(
+    conf_http_server *http, const char *username, const char *password);
+NNG_DECL bool conf_http_server_cred_check(
+    conf_http_server *http, const char *userpass, size_t len);
 NNG_DECL void conf_tls_parse_encrypted_key(conf_tls *tls);
 
 NNG_DECL void conf_update_var(

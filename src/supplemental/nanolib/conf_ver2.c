@@ -337,27 +337,19 @@ conf_http_server_parse_ver2(conf_http_server *http_server, cJSON *json)
 		    http_server, max_body, "max_body", jso_http_server);
 		hocon_read_str(http_server, username, jso_http_server);
 		hocon_read_str(http_server, password, jso_http_server);
-		cJSON *usernames_obj = hocon_get_obj("usernames", jso_http_server);
-		cJSON *username_obj = NULL;
-		cJSON_ArrayForEach(username_obj, usernames_obj) {
-			if (cJSON_IsString(username_obj))
-				cvector_push_back(http_server->usernames,
-						nng_strdup(username_obj->valuestring));
-		}
-		cJSON *passwords_obj = hocon_get_obj("passwords", jso_http_server);
-		cJSON *password_obj = NULL;
-		cJSON_ArrayForEach(password_obj, passwords_obj) {
-			if (cJSON_IsString(password_obj))
-				cvector_push_back(http_server->passwords,
-						nng_strdup(password_obj->valuestring));
-		}
-		if (cvector_size(http_server->passwords) !=
-				cvector_size(http_server->usernames)) {
-			log_error("Http Server: count of usernames and passwords are different");
-		}
 		hocon_read_str(http_server, ip_addr, jso_http_server);
 		hocon_read_enum(http_server, auth_type, jso_http_server,
 		    http_server_auth_type);
+
+		cJSON *jso_users =
+		    cJSON_GetObjectItem(jso_http_server, "users");
+		if (jso_users != NULL) {
+			size_t           count = 0;
+			conf_http_user **users =
+			    conf_http_users_parse(jso_users, &count);
+			conf_http_server_set_users(
+			    http_server, users, count);
+		}
 
 		conf_jwt *jwt = &(http_server->jwt);
 		cJSON *jso_pub_key_file =
@@ -950,39 +942,6 @@ conf_http_server_parse_cipher(conf_http_server *http, const char *key)
 				nng_free(password, strlen(password));
 				http->password = plain;
 				log_trace("http_server.password: %s", plain);
-			}
-		}
-	}
-
-	for (int i = 0; i<(int)cvector_size(http->passwords); ++i) {
-		char *password = http->passwords[i];
-		if (!password)
-			continue;
-		size_t cipher_sz = 0;
-		char * cipher = nng_alloc(sizeof(char) * strlen(password));
-		if (!cipher) {
-			log_error("failed to alloc cipher[%d] sz%ld", i, strlen(password));
-			continue;
-		}
-		cipher_sz = nni_base64_decode((const char*)password,
-				strlen(password), (uint8_t *)cipher, strlen(password));
-		if (cipher_sz <= 32) {
-			nng_free(cipher, cipher_sz);
-			log_error("failed to base64 decode http_server.passwords[%d] sz%ld", i, cipher_sz);
-		} else {
-			int   plain_sz;
-			const char *method =
-			    aes_gcm_get_method_by_key_len(strlen(key));
-			char *plain = (char *) nni_aes_gcm_decrypt(
-			    (uint8_t *) cipher, cipher_sz, (uint8_t *) key,
-			    strlen(key), &plain_sz, method);
-			nng_free(cipher, cipher_sz);
-			if (plain == NULL || plain_sz == 0) {
-				log_error("failed to decrypt http_server.passwords[%d]", i);
-			} else {
-				nng_free(password, strlen(password));
-				http->passwords[i] = plain;
-				log_trace("http_server.passwords[%d]: %s", i, plain);
 			}
 		}
 	}
