@@ -1439,6 +1439,11 @@ nano_sock_setdb(void *arg, void *data)
 		nni_qos_db_init_sqlite(s->sqlite_db,
 		    s->conf->sqlite.mounted_file_path, DB_NAME, true);
 		nni_qos_db_reset_pipe(s->conf->sqlite.enable, s->sqlite_db);
+		// Batch retained-message persistence: commit once per batch
+		// rather than once per retained publish, bounded by this many
+		// entries or this many milliseconds.
+		nni_mqtt_qos_db_retain_batch_setup(
+		    s->sqlite_db, &s->conf->sqlite);
 	}
 #endif
 
