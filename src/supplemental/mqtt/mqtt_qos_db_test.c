@@ -529,12 +529,11 @@ test_remove_oldest_client_offline_msg(void)
 	remove(test_db_cache);
 	nni_mqtt_qos_db_init(&db, NULL, test_db_cache, false);
 
-	// Two bridges with three cached messages each and distinct timestamps, so
-	// the old ts-based statement would have deleted the other bridge's rows.
 	sqlite3_exec(db,
 	    "INSERT INTO t_client_info"
 	    " (config_name) VALUES ('hub'), ('cloud');",
 	    NULL, NULL, NULL);
+
 	for (int i = 1; i <= 3; i++) {
 		snprintf(sql, sizeof(sql),
 		    "INSERT INTO t_client_offline_msg"
@@ -552,13 +551,16 @@ test_remove_oldest_client_offline_msg(void)
 		sqlite3_exec(db, sql, NULL, NULL, NULL);
 	}
 
+
+	int hub_info_id = nni_mqtt_qos_db_get_client_info_id(db, "hub");
+
+
 	// limit == 0 means "no cap": nothing may be removed.
-	nni_mqtt_qos_db_remove_oldest_client_offline_msg(db, 0, "hub");
+	nni_mqtt_qos_db_remove_oldest_client_offline_msg(db, 0, hub_info_id);
 	NUTS_TRUE(count_client_offline_rows(db, "hub") == 3);
 	NUTS_TRUE(count_client_offline_rows(db, "cloud") == 3);
 
-	// Keeping only the newest 2 of "hub" must not touch "cloud" (#2445).
-	nni_mqtt_qos_db_remove_oldest_client_offline_msg(db, 2, "hub");
+	nni_mqtt_qos_db_remove_oldest_client_offline_msg(db, 2, hub_info_id);
 	NUTS_TRUE(count_client_offline_rows(db, "hub") == 2);
 	NUTS_TRUE(count_client_offline_rows(db, "cloud") == 3);
 
