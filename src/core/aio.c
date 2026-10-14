@@ -346,6 +346,7 @@ nni_aio_begin(nni_aio *aio)
 	aio->a_count     = 0;
 	aio->a_cancel_fn = NULL;
 	aio->a_abort     = false;
+	aio->a_finished  = false;
 
 	// We should not reschedule anything at this point.
 	if (aio->a_stop) {
@@ -422,9 +423,15 @@ nni_aio_abort(nni_aio *aio, int rv)
 	arg               = aio->a_cancel_arg;
 	aio->a_cancel_fn  = NULL;
 	aio->a_cancel_arg = NULL;
-	if (fn == NULL) {
+	if (fn == NULL && !aio->a_finished) {
 		// We haven't been scheduled yet,
 		// so make sure that the schedule will abort.
+		//
+		// a_cancel_fn is also NULL once the provider has finished the
+		// aio, and in that case a_result already holds the real result
+		// and the completion callback is free to read it without the
+		// lock. Writing it here would both race that read and discard
+		// a successful result, so a_finished separates the two cases.
 		aio->a_abort  = true;
 		aio->a_result = rv;
 	}
@@ -451,6 +458,7 @@ nni_aio_finish_impl(
 	aio->a_count      = count;
 	aio->a_cancel_fn  = NULL;
 	aio->a_cancel_arg = NULL;
+	aio->a_finished   = true;
 	if (msg) {
 		aio->a_msg = msg;
 	}
