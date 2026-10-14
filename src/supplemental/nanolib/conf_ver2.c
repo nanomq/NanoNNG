@@ -384,6 +384,17 @@ conf_http_server_parse_ver2(conf_http_server *http_server, cJSON *json)
 		hocon_read_str(http_server, password, jso_http_server);
 		hocon_read_enum(http_server, auth_type, jso_http_server,
 		    http_server_auth_type);
+
+		cJSON *jso_users =
+		    cJSON_GetObjectItem(jso_http_server, "users");
+		if (jso_users != NULL) {
+			size_t           count = 0;
+			conf_http_user **users =
+			    conf_http_users_parse(jso_users, &count);
+			conf_http_server_set_users(
+			    http_server, users, count);
+		}
+
 		conf_jwt *jwt = &(http_server->jwt);
 
 		cJSON *jso_pub_key_file =
