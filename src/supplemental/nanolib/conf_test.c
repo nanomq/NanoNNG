@@ -8,11 +8,17 @@
 	"nmq_old_test.conf"
 #define CONF_PATH \
 	"../../../../../nng/src/supplemental/nanolib/test_conf/nmq_test.conf"
+#define EXCHANGE_CONF_PATH                                         \
+	"../../../../../nng/src/supplemental/nanolib/test_conf/" \
+	"nmq_exchange_test.conf"
 #else
 #define OLD_CONF_PATH \
 	"../../../../src/supplemental/nanolib/test_conf/nmq_old_test.conf"
 #define CONF_PATH \
 	"../../../../src/supplemental/nanolib/test_conf/nmq_test.conf"
+#define EXCHANGE_CONF_PATH                                         \
+	"../../../../src/supplemental/nanolib/test_conf/" \
+	"nmq_exchange_test.conf"
 #endif
 
 
@@ -97,6 +103,27 @@ test_conf_parse_ver2(void)
 	NUTS_TRUE(strncmp(conf->url, "nmq-tcp://0.0.0.0:1883", 22) == 0);
 
 	print_conf(conf);
+
+	conf_fini(conf);
+}
+
+void
+test_exchange_node_validate_ver2(void)
+{
+	conf *conf = get_test_conf(EXCHANGE_CONF_PATH);
+	NUTS_TRUE(conf != NULL);
+	conf_parse_ver2(conf);
+
+	// Only one of the three configured blocks survives: the second has no
+	// name, and the third reuses the first block's name, so one of those
+	// two is dropped as a duplicate.
+	NUTS_TRUE(conf->exchange.count == 1);
+	if (conf->exchange.count == 1 && conf->exchange.nodes[0] != NULL) {
+		NUTS_TRUE(
+		    strcmp(conf->exchange.nodes[0]->name, "good_node") == 0);
+		NUTS_TRUE(
+		    strcmp(conf->exchange.nodes[0]->topic, "e2e/good") == 0);
+	}
 
 	conf_fini(conf);
 }
@@ -313,6 +340,7 @@ NUTS_TESTS = {
    {"get size", test_get_size},
    {"get time", test_get_time},
    {"conf parse v2", test_conf_parse_ver2},
+   {"exchange node validate v2", test_exchange_node_validate_ver2},
    {"conf parse", test_conf_parse},
    {"get size edge cases", test_get_size_edge_cases},
    {"get size null params", test_get_size_null_params},
