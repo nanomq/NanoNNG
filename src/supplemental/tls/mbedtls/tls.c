@@ -618,10 +618,13 @@ static int
 config_own_cert(nng_tls_engine_config *cfg, const char *cert, const char *key,
     const char *pass)
 {
-	size_t         len;
-	const uint8_t *pem;
-	pair          *p;
-	int            rv;
+	size_t            len;
+	const uint8_t    *pem;
+	pair             *p;
+	int               rv;
+	int               cert_count = 0;
+	const char       *s;
+	mbedtls_x509_crt *c;
 
 	if ((p = NNI_ALLOC_STRUCT(p)) == NULL) {
 		return (NNG_ENOMEM);
@@ -631,10 +634,32 @@ config_own_cert(nng_tls_engine_config *cfg, const char *cert, const char *key,
 
 	pem = (const uint8_t *) cert;
 	len = strlen(cert) + 1;
+
 	if ((rv = mbedtls_x509_crt_parse(&p->crt, pem, len)) != 0) {
 		log_error("mbedtls_x509_crt_parse: rv: %d", rv);
 		rv = tls_mk_err(rv);
 		goto err;
+	}
+
+	// validate the Trailing garbage：
+	s = cert;
+	while ((s = strstr(s, "-----BEGIN CERTIFICATE-----")) != NULL) {
+		cert_count++;
+		s += 27;
+	}
+	if (cert_count > 0) {
+		c = &p->crt;
+		while (c != NULL && c->raw.p != NULL) {
+			cert_count--;
+			c = c->next;
+		}
+		if (cert_count != 0) {
+			log_error("mbedtls_x509_crt_parse: malformed trailing "
+			          "certificate");
+			rv = NNG_ECRYPTO;
+			goto err; // 发生错误，跳转到 err 统一释放 p->crt 和
+			          // p->key，避免内存泄漏
+		}
 	}
 
 	pem = (const uint8_t *) key;
