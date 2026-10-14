@@ -2117,7 +2117,15 @@ conf_stream_inject_parse_ver2(conf *config, cJSON *jso)
 }
 #endif
 
-void
+/**
+ * Parse one exchange_client block into node.
+ *
+ * @return true when the node carries a usable identity, that is a non-empty
+ *         name and topic, and the caller may keep it. false when the node has
+ *         to be dropped: a node without a name has no REST identity, and a
+ *         node without a topic has no key to store and query its data under.
+ */
+bool
 conf_exchange_node_parse(conf_exchange_node *node, cJSON *exchange)
 {
 	hocon_read_str(node, name, exchange);
@@ -2125,9 +2133,10 @@ conf_exchange_node_parse(conf_exchange_node *node, cJSON *exchange)
 	hocon_read_num(node, streamType, exchange);
 	hocon_read_num(node, chunk_size, exchange);
 
-	if (node->name == NULL || node->topic == NULL) {
+	if (node->name == NULL || node->topic == NULL ||
+	    node->name[0] == '\0' || node->topic[0] == '\0') {
 		log_error("invalid exchange configuration!");
-		return;
+		return (false);
 	}
 
  	// Replace ${VIN} placeholder with the configured VIN.
@@ -2138,7 +2147,8 @@ conf_exchange_node_parse(conf_exchange_node *node, cJSON *exchange)
 
 	ringBuffer_node *rb_node = NNI_ALLOC_STRUCT(rb_node);
 	if (rb_node == NULL) {
-		return;
+		// A node without a ringbus is still usable.
+		return (true);
 	}
 
 	rb_node->cap    = 0;
@@ -2153,12 +2163,16 @@ conf_exchange_node_parse(conf_exchange_node *node, cJSON *exchange)
 
 	if (rb_node->name == NULL || rb_node->cap == 0) {
 		log_error("exchange: ringbuffer: name/cap not found");
+		nng_strfree(rb_node->name);
 		NNI_FREE_STRUCT(rb_node);
-		return;
+		// A node without a ringbus is still usable.
+		return (true);
 	}
 
 	cvector_push_back(node->rbufs, rb_node);
 	node->rbufs_sz = cvector_size(node->rbufs);
+
+	return (true);
 }
 
 void
@@ -2255,14 +2269,41 @@ conf_parquet_parse_default_ver2(conf *config, cJSON *jso)
 
 	return;
 }
-#endif
-#ifdef SUPP_PARQUET
+
+/**
+ * Free one rejected exchange node and everything parsed into it.
+ *
+ * conf_exchange_node_destory() in conf.c does the same for accepted nodes but
+ * is static to that file, and it would also free the node mutex, which is only
+ * allocated once the node has been accepted.
+ *
+ * @param node Node to free, may be NULL.
+ */
+static void
+conf_exchange_node_free(conf_exchange_node *node)
+{
+	if (node == NULL) {
+		return;
+	}
+
+	nng_strfree(node->exchange_url);
+	nng_strfree(node->name);
+	nng_strfree(node->topic);
+	for (size_t i = 0; i < node->rbufs_sz; i++) {
+		if (node->rbufs[i] != NULL) {
+			nng_strfree(node->rbufs[i]->name);
+			NNI_FREE_STRUCT(node->rbufs[i]);
+		}
+	}
+	cvector_free(node->rbufs);
+	NNI_FREE_STRUCT(node);
+}
+
 static void
 conf_exchange_parse_ver2(conf *config, cJSON *jso)
 {
 	cJSON *node_array = hocon_get_obj("exchange_client", jso);
 	cJSON *node_item  = NULL;
-	// TODO, skip duplicated node name
 	cJSON_ArrayForEach(node_item, node_array)
 	{
 		conf_exchange_node *node = NNI_ALLOC_STRUCT(node);
@@ -2283,7 +2324,33 @@ conf_exchange_parse_ver2(conf *config, cJSON *jso)
 
 		cJSON *exchange = hocon_get_obj("exchange", node_item);
 
-		conf_exchange_node_parse(node, exchange);
+		// Node name and topic are required. A node without them has no
+		// identity to address it by, so drop it instead of carrying a
+		// half-configured node into the broker.
+		if (!conf_exchange_node_parse(node, exchange)) {
+			// conf_exchange_node_parse() logged the reason already.
+			conf_exchange_node_free(node);
+			continue;
+		}
+
+		// The node name is the identity callers address the node by, so
+		// a duplicated name would make that identity ambiguous.
+		bool duplicated = false;
+		for (size_t i = 0; i < cvector_size(config->exchange.nodes);
+		     i++) {
+			conf_exchange_node *kept = config->exchange.nodes[i];
+			if (kept != NULL && kept->name != NULL &&
+			    strcmp(kept->name, node->name) == 0) {
+				duplicated = true;
+				break;
+			}
+		}
+		if (duplicated) {
+			log_error("duplicated exchange node name, node dropped!");
+			conf_exchange_node_free(node);
+			continue;
+		}
+
 		conf_parquet_parse_ver2(config, node, exchange);
 
 		cJSON *encryption = hocon_get_obj("encryption", node_item);
