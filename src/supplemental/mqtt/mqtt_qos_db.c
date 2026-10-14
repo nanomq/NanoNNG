@@ -43,7 +43,6 @@ static int64_t get_id_by_pipe(sqlite3 *db, uint32_t pipe_id);
 static int64_t get_id_by_client_id(sqlite3 *db, const char *client_id);
 static int     get_id_by_p_id(sqlite3 *db, int64_t p_id, uint16_t packet_id,
         uint8_t *out_qos, int64_t *out_m_id);
-static int     get_client_info_id(sqlite3 *db, const char *config_name);
 static int     insert_main(
         sqlite3 *db, int64_t p_id, uint16_t packet_id, uint8_t qos, int64_t m_id);
 static int update_main(
@@ -1166,7 +1165,7 @@ int
 nni_mqtt_qos_db_set_client_offline_msg_batch(
     sqlite3 *db, nni_lmq *lmq, const char *config_name, uint8_t proto_ver)
 {
-	int info_id = get_client_info_id(db, config_name);
+	int info_id = nni_mqtt_qos_db_get_client_info_id(db, config_name);
 	if(info_id < 0) {
 		return -1;
 	}
@@ -1281,8 +1280,8 @@ nni_mqtt_qos_db_remove_all_client_offline_msg(sqlite3 *db, const char *config_na
 	return sqlite3_exec(db, "COMMIT;", 0, 0, 0);
 }
 
-static int
-get_client_info_id(sqlite3 *db, const char *config_name)
+int
+nni_mqtt_qos_db_get_client_info_id(sqlite3 *db, const char *config_name)
 {
 	int           id = -1;
 	sqlite3_stmt *stmt;
@@ -1544,7 +1543,8 @@ nni_mqtt_sqlite_db_init(nng_mqtt_sqlite_option *opt, const char *db_name)
 		    opt->sqlite_conf->mounted_file_path, db_name, false);
 		nni_mqtt_qos_db_set_client_info(opt->db, opt->bridge_name,
 		    NULL, "MQTT", opt->proto_ver);
-		opt->info_id = get_client_info_id(opt->db, opt->bridge_name);
+		opt->info_id = nni_mqtt_qos_db_get_client_info_id(
+			opt->db, opt->bridge_name);
 	}
 }
 
@@ -1593,7 +1593,7 @@ nni_mqtt_qos_db_migrate_legacy(sqlite3 *db, const char *legacy_dir,
 		return;
 	}
 
-	info_id = get_client_info_id(db, config_name);
+	info_id = nni_mqtt_qos_db_get_client_info_id(db, config_name);
 	if (info_id <= 0) {
 		log_error("Bridge Cache: cannot migrate '%s', its client_info "
 		          "row is missing",
