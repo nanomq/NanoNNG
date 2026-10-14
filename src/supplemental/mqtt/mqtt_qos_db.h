@@ -76,6 +76,7 @@ struct nng_mqtt_sqlite_option {
 #else
 	void *bridge;
 #endif
+    int     info_id;
 	uint8_t proto_ver;
 	char   *db_name;
 	nni_lmq offline_cache;
@@ -122,7 +123,7 @@ extern int      nni_mqtt_qos_db_remove_retain(sqlite3 *, const char *);
 extern nni_msg **nni_mqtt_qos_db_find_retain(sqlite3 *, const char *);
 
 extern void nni_mqtt_qos_db_remove_oldest_client_msg(
-    sqlite3 *, uint64_t ,const char *);
+    sqlite3 *, uint64_t , int);
 extern void nni_mqtt_qos_db_remove_oldest_client_offline_msg(
     sqlite3 *, uint64_t ,const char *);
 // One-time carry-over of a Bridge Node's rows from the pre-per-node shared
@@ -131,7 +132,7 @@ extern void nni_mqtt_qos_db_migrate_legacy(
     sqlite3 *, const char *, const char *, const char *);
 // Only work for client
 extern int nni_mqtt_qos_db_set_client_msg(
-    sqlite3 *, uint32_t, uint16_t, nni_msg *, const char *, uint8_t);
+    sqlite3 *, uint32_t, uint16_t, nni_msg *, int, uint8_t);
 extern nni_msg *nni_mqtt_qos_db_get_client_msg(
     sqlite3 *, uint32_t, uint16_t, const char *);
 extern void nni_mqtt_qos_db_remove_client_msg(
