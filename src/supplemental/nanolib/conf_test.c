@@ -16,6 +16,8 @@
 #define OLD_CONF_PATH \
 	NANOMQ_TEST_CONF_DIR "/nmq_old_test.conf"
 #define CONF_PATH NANOMQ_TEST_CONF_DIR "/nmq_test.conf"
+#define BRIDGE_CACHE_CONF_PATH \
+	NANOMQ_TEST_CONF_DIR "/nmq_bridge_cache_test.conf"
 #define PKCS11_OLD_CONF_PATH \
 	NANOMQ_TEST_CONF_DIR "/nmq_tls_pkcs11_old_test.conf"
 #define PKCS11_CONF_PATH \
@@ -28,6 +30,9 @@
 	"nmq_old_test.conf"
 #define CONF_PATH \
 	"../../../../../nng/src/supplemental/nanolib/test_conf/nmq_test.conf"
+#define BRIDGE_CACHE_CONF_PATH                                          \
+	"../../../../../nng/src/supplemental/nanolib/test_conf/"       \
+	"nmq_bridge_cache_test.conf"
 #define PKCS11_OLD_CONF_PATH                                    \
 	"../../../../../nng/src/supplemental/nanolib/test_conf/" \
 	"nmq_tls_pkcs11_old_test.conf"
@@ -42,6 +47,9 @@
 	"../../../../src/supplemental/nanolib/test_conf/nmq_old_test.conf"
 #define CONF_PATH \
 	"../../../../src/supplemental/nanolib/test_conf/nmq_test.conf"
+#define BRIDGE_CACHE_CONF_PATH \
+	"../../../../src/supplemental/nanolib/test_conf/" \
+	"nmq_bridge_cache_test.conf"
 #define PKCS11_OLD_CONF_PATH                               \
 	"../../../../src/supplemental/nanolib/test_conf/" \
 	"nmq_tls_pkcs11_old_test.conf"
@@ -431,6 +439,76 @@ test_conf_tls_is_pkcs11_uri(void)
 	NUTS_TRUE(!conf_tls_is_pkcs11_uri(NULL));
 }
 
+static conf_bridge_node *
+find_bridge_node(conf *conf, const char *name)
+{
+	for (size_t i = 0; i < conf->bridge.count; i++) {
+		conf_bridge_node *node = conf->bridge.nodes[i];
+		if (node->name != NULL && strcmp(node->name, name) == 0) {
+			return node;
+		}
+	}
+	return NULL;
+}
+
+/** Per-Bridge-Node Bridge Cache resolution (design doc §3, ADR 0001/0002). */
+void
+test_conf_bridge_cache_per_node(void)
+{
+	conf *conf = get_test_conf(BRIDGE_CACHE_CONF_PATH);
+	NUTS_TRUE(conf != NULL);
+	if (conf == NULL) {
+		return;
+	}
+	conf_parse_ver2(conf, false);
+
+	// The defaults block is stored on the conf_bridge itself.
+	NUTS_TRUE(conf->bridge.sqlite.enable == true);
+	NUTS_TRUE(conf->bridge.sqlite.disk_cache_size == 4096);
+	NUTS_TRUE(conf->bridge.sqlite.flush_mem_threshold == 7);
+	NUTS_TRUE(conf->bridge.sqlite.mounted_file_path != NULL);
+	NUTS_TRUE(strcmp(conf->bridge.sqlite.mounted_file_path,
+	             "/tmp/nmq_bridge_cache_defaults/") == 0);
+
+	// A node without a cache block inherits the defaults verbatim.
+	conf_bridge_node *inherits = find_bridge_node(conf, "inherits");
+	NUTS_TRUE(inherits != NULL);
+	NUTS_TRUE(inherits->sqlite.enable == true);
+	NUTS_TRUE(inherits->sqlite.disk_cache_size == 4096);
+	NUTS_TRUE(inherits->sqlite.flush_mem_threshold == 7);
+	NUTS_TRUE(inherits->sqlite.mounted_file_path != NULL);
+	NUTS_TRUE(strcmp(inherits->sqlite.mounted_file_path,
+	             "/tmp/nmq_bridge_cache_defaults/") == 0);
+
+	// A node-level block replaces the defaults wholesale: the fields it does
+	// not set fall back to the type defaults, not to the block above.
+	conf_bridge_node *overrides = find_bridge_node(conf, "overrides");
+	NUTS_TRUE(overrides != NULL);
+	NUTS_TRUE(overrides->sqlite.enable == true);
+	NUTS_TRUE(overrides->sqlite.disk_cache_size == 32);
+	NUTS_TRUE(overrides->sqlite.flush_mem_threshold == 100);
+	NUTS_TRUE(overrides->sqlite.mounted_file_path != NULL);
+	NUTS_TRUE(strcmp(overrides->sqlite.mounted_file_path,
+	             "/tmp/nmq_bridge_cache_overrides/") == 0);
+
+	// The two nodes must not share storage any more.
+	NUTS_TRUE(inherits->sqlite.mounted_file_path !=
+	    overrides->sqlite.mounted_file_path);
+
+	// Presence implies enable, but an explicit false wins.
+	conf_bridge_node *disabled = find_bridge_node(conf, "disabled");
+	NUTS_TRUE(disabled != NULL);
+	NUTS_TRUE(disabled->sqlite.enable == false);
+
+	// A node-level `sqlite { }` is not an alias: the node inherits the defaults.
+	conf_bridge_node *noalias = find_bridge_node(conf, "noalias");
+	NUTS_TRUE(noalias != NULL);
+	NUTS_TRUE(noalias->sqlite.enable == true);
+	NUTS_TRUE(noalias->sqlite.disk_cache_size == 4096);
+
+	conf_fini(conf);
+}
+
 NUTS_TESTS = {
    {"get size", test_get_size},
    {"get time", test_get_time},
@@ -454,5 +532,6 @@ NUTS_TESTS = {
    {"identify pkcs11 URIs", test_conf_tls_is_pkcs11_uri},
    {"conf parse v2 peer_cert_as_username",
        test_conf_parse_ver2_tls_peer_cert_as_username},
+   {"bridge cache per node", test_conf_bridge_cache_per_node},
    {NULL, NULL}
 };
