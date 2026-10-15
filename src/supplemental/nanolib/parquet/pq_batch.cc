@@ -1055,27 +1055,28 @@ pq_type_schema_can_frames_compact(uint32_t n_planes)
 	if (n_planes > 64) {
 		n_planes = 64;
 	}
-	n_fields = 5 + n_planes;
+	/* ts, busid, canid, len, b0..b{n-1} — no tsdiff (folded into ts). */
+	n_fields = 4 + n_planes;
 	fields   = (pq_type **) pq_zalloc(sizeof(pq_type *) * n_fields);
 	if (fields == NULL) {
 		return NULL;
 	}
 	fields[0] = pq_type_primitive(
-	    "ts", PQ_INT64, PQ_REQUIRED, PQ_ENC_RLE_DICT);
+	    "ts", PQ_INT64, PQ_REQUIRED, PQ_ENC_DELTA);
 	fields[1] = pq_type_primitive(
 	    "busid", PQ_INT32, PQ_REQUIRED, PQ_ENC_RLE_DICT);
 	fields[2] = pq_type_primitive(
 	    "canid", PQ_INT32, PQ_REQUIRED, PQ_ENC_RLE_DICT);
+	/* INT32 (not UINT8): Parquet DELTA_BINARY_PACKED is INT32/64 only;
+	 * UINT8 adaptive DELTA falls back to dict and hurts counter bytes. */
 	fields[3] = pq_type_primitive(
-	    "tsdiff", PQ_UINT8, PQ_REQUIRED, PQ_ENC_ADAPTIVE);
-	fields[4] = pq_type_primitive(
-	    "len", PQ_UINT8, PQ_REQUIRED, PQ_ENC_ADAPTIVE);
+	    "len", PQ_INT32, PQ_REQUIRED, PQ_ENC_RLE_DICT);
 	for (i = 0; i < n_planes; i++) {
 		char bname[8];
 
 		snprintf(bname, sizeof(bname), "b%u", i);
-		fields[5 + i] = pq_type_primitive(
-		    bname, PQ_UINT8, PQ_OPTIONAL, PQ_ENC_ADAPTIVE);
+		fields[4 + i] = pq_type_primitive(
+		    bname, PQ_INT32, PQ_OPTIONAL, PQ_ENC_ADAPTIVE);
 	}
 	for (i = 0; i < n_fields; i++) {
 		if (fields[i] == NULL) {
