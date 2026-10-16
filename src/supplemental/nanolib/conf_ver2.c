@@ -30,7 +30,7 @@ conf_stream_codec_id_from_number(double v, uint8_t *out)
 	if (out == NULL) {
 		return -1;
 	}
-	if (v < 0x10 || v > 0x7F || v != (double) (uint8_t) v) {
+	if (!(v >= 0x10 && v <= 0x7F) || v != (double) (uint8_t) v) {
 		return -1;
 	}
 	*out = (uint8_t) v;
@@ -2107,6 +2107,8 @@ conf_stream_plugin_parse_ver2(conf *config, cJSON *jso)
 					node->codec_id = id;
 				}
 			}
+		} else {
+			codec_invalid = true;
 		}
 
 		if (codec_invalid || node->path == NULL ||
