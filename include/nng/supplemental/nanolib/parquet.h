@@ -196,8 +196,9 @@ pq_type *pq_type_schema_dyn_groups(const char **group_names,
  * ts is RLE_DICT (few block_ts values). Payload planes start as ADAPTIVE. */
 pq_type *pq_type_schema_can_frames(uint32_t n_planes);
 /*
- * can_ba_split classic: absolute frame ts_us (block_ts + tsdiff_ms*1000),
- * no tsdiff column; len/b* are INT32 so ADAPTIVE can pick DELTA_BINARY_PACKED.
+ * can_ba_split: absolute frame ts_us (block_ts + tsdiff_ms*1000), no tsdiff.
+ * len/b* are PQ_UINT8 in memory; write widens to Arrow/Parquet INT32 so
+ * ADAPTIVE can still pick DELTA_BINARY_PACKED.
  */
 pq_type *pq_type_schema_can_frames_compact(uint32_t n_planes);
 /* Pick RLE_DICT (enum/status) or DELTA (byte counter) from column values. */

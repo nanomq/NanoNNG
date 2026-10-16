@@ -1067,16 +1067,16 @@ pq_type_schema_can_frames_compact(uint32_t n_planes)
 	    "busid", PQ_INT32, PQ_REQUIRED, PQ_ENC_RLE_DICT);
 	fields[2] = pq_type_primitive(
 	    "canid", PQ_INT32, PQ_REQUIRED, PQ_ENC_RLE_DICT);
-	/* INT32 (not UINT8): Parquet DELTA_BINARY_PACKED is INT32/64 only;
-	 * UINT8 adaptive DELTA falls back to dict and hurts counter bytes. */
+	/* Memory UINT8, widened to Arrow/Parquet INT32 on write so
+	 * DELTA_BINARY_PACKED stays available (true UINT8 on-disk does not). */
 	fields[3] = pq_type_primitive(
-	    "len", PQ_INT32, PQ_REQUIRED, PQ_ENC_RLE_DICT);
+	    "len", PQ_UINT8, PQ_REQUIRED, PQ_ENC_RLE_DICT);
 	for (i = 0; i < n_planes; i++) {
 		char bname[8];
 
 		snprintf(bname, sizeof(bname), "b%u", i);
 		fields[4 + i] = pq_type_primitive(
-		    bname, PQ_INT32, PQ_OPTIONAL, PQ_ENC_ADAPTIVE);
+		    bname, PQ_UINT8, PQ_OPTIONAL, PQ_ENC_ADAPTIVE);
 	}
 	for (i = 0; i < n_fields; i++) {
 		if (fields[i] == NULL) {

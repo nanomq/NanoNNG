@@ -688,9 +688,8 @@ pq_type_to_arrow(const pq_type *t)
 	if (t->kind == PQ_PRIMITIVE) {
 		switch (t->phys) {
 		case PQ_INT32:
+		case PQ_UINT8: /* memory uint8; on-disk INT32 for compatibility */
 			return arrow::int32();
-		case PQ_UINT8:
-			return arrow::uint8();
 		case PQ_INT64:
 			return arrow::uint64();
 		case PQ_BYTE_ARRAY:
@@ -715,9 +714,8 @@ pq_make_builder(const pq_type *t)
 	if (t->kind == PQ_PRIMITIVE) {
 		switch (t->phys) {
 		case PQ_INT32:
-			return std::make_shared<arrow::Int32Builder>(pool);
 		case PQ_UINT8:
-			return std::make_shared<arrow::UInt8Builder>(pool);
+			return std::make_shared<arrow::Int32Builder>(pool);
 		case PQ_INT64:
 			return std::make_shared<arrow::UInt64Builder>(pool);
 		case PQ_BYTE_ARRAY:
@@ -754,8 +752,8 @@ pq_append_one(arrow::ArrayBuilder *b, const pq_array *a, uint32_t i)
 			    a->i32[i]);
 		}
 		if (a->type->phys == PQ_UINT8) {
-			return static_cast<arrow::UInt8Builder *>(b)->Append(
-			    a->u8[i]);
+			return static_cast<arrow::Int32Builder *>(b)->Append(
+			    (int32_t) a->u8[i]);
 		}
 		if (a->type->phys == PQ_INT64) {
 			return static_cast<arrow::UInt64Builder *>(b)->Append(
@@ -800,8 +798,8 @@ pq_append_one(arrow::ArrayBuilder *b, const pq_array *a, uint32_t i)
 static int
 pq_delta_ok(pq_phys phys)
 {
-	/* Parquet DELTA_BINARY_PACKED is INT32/INT64 only. */
-	return phys == PQ_INT32 || phys == PQ_INT64;
+	/* On-disk INT32/INT64 only; PQ_UINT8 widens to INT32 on write. */
+	return phys == PQ_INT32 || phys == PQ_INT64 || phys == PQ_UINT8;
 }
 
 static void
@@ -833,10 +831,6 @@ pq_apply_leaf_encoding(parquet::WriterProperties::Builder &builder,
 		} else if (enc == PQ_ENC_DELTA && t->phys == PQ_BYTE_ARRAY) {
 			/* Prefix-sharing BINARY (can_ba_split FD payloads). */
 			e = Encoding::DELTA_BYTE_ARRAY;
-		} else if (enc == PQ_ENC_DELTA && t->phys == PQ_UINT8) {
-			/* UINT8 has no DELTA_BINARY_PACKED; fall back to dict. */
-			builder.enable_dictionary(path);
-			return;
 		}
 		builder.disable_dictionary(path)->encoding(path, e);
 		return;
@@ -925,7 +919,8 @@ pq_pack_valid_bits(const uint8_t *valid, uint32_t n,
 	}
 }
 
-/* Wrap INT32 / UINT8 / UINT64 (PQ_INT64) columns; NULL means use the builder path. */
+/* Wrap INT32 / UINT64 (PQ_INT64) columns; NULL means use the builder path.
+ * PQ_UINT8 widens to INT32 via builder (cannot zero-copy wrap as Int32Array). */
 static std::shared_ptr<arrow::Array>
 pq_primitive_as_arrow(const pq_array *col, std::vector<uint8_t> *bitmap_store)
 {
@@ -937,8 +932,7 @@ pq_primitive_as_arrow(const pq_array *col, std::vector<uint8_t> *bitmap_store)
 	    col->type->kind != PQ_PRIMITIVE) {
 		return nullptr;
 	}
-	if (col->type->phys != PQ_INT32 && col->type->phys != PQ_INT64 &&
-	    col->type->phys != PQ_UINT8) {
+	if (col->type->phys != PQ_INT32 && col->type->phys != PQ_INT64) {
 		return nullptr;
 	}
 	n = (int64_t) col->length;
@@ -953,13 +947,6 @@ pq_primitive_as_arrow(const pq_array *col, std::vector<uint8_t> *bitmap_store)
 		}
 		return std::make_shared<arrow::Int32Array>(
 		    n, arrow::Buffer::Wrap(col->i32, n), nulls, null_count);
-	}
-	if (col->type->phys == PQ_UINT8) {
-		if (n > 0 && col->u8 == NULL) {
-			return nullptr;
-		}
-		return std::make_shared<arrow::UInt8Array>(
-		    n, arrow::Buffer::Wrap(col->u8, n), nulls, null_count);
 	}
 	if (n > 0 && col->i64 == NULL) {
 		return nullptr;

@@ -448,10 +448,10 @@ test_enc_choose_u8_and_compact_schema(void)
 	NUTS_TRUE(batch != NULL);
 	NUTS_TRUE(pq_batch_field(batch, "tsdiff") == NULL);
 	td = pq_batch_field(batch, "len");
-	NUTS_TRUE(td != NULL && td->i32 != NULL && td->u8 == NULL);
-	NUTS_TRUE(pq_array_set_i32(td, 0, 10) == 0);
-	NUTS_TRUE(td->i32[0] == 10);
-	NUTS_TRUE(pq_batch_field(batch, "b0")->i32 != NULL);
+	NUTS_TRUE(td != NULL && td->u8 != NULL && td->i32 == NULL);
+	NUTS_TRUE(pq_array_set_u8(td, 0, 10) == 0);
+	NUTS_TRUE(td->u8[0] == 10);
+	NUTS_TRUE(pq_batch_field(batch, "b0")->u8 != NULL);
 	parquet_data_free(batch);
 }
 
