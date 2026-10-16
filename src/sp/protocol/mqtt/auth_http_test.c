@@ -168,7 +168,7 @@ test_auth_http_sub_pub_disabled(void)
 	topic_queue *tq = topic_queue_init("", 0); // empty topic
 	NUTS_TRUE(tq != NULL);
 	int rc = nmq_auth_http_sub_pub(conn_param, false, tq, conf);
-	NUTS_TRUE(rc == SUCCESS);
+	NUTS_TRUE(rc == NNG_MQTT_SUCCESS);
 
 	topic_queue_release(tq);
 	nng_free(conf->super_req.url, strlen(conf->super_req.url) + 1);

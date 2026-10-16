@@ -717,7 +717,7 @@ auth_verify:
 	rv = nano_pipe_peer_cert_as_username(p, nng_pipe, &cert_auth);
 	// A verified certificate replaces the username/password check;
 	// HTTP authentication still runs and sees the certificate username.
-	if (rv == SUCCESS && !cert_auth) {
+	if (rv == NNG_MQTT_SUCCESS && !cert_auth) {
 		rv = verify_connect(p->conn_param, s->conf);
 	}
 	// TODO Avoid holding s->lk across HTTP authentication.
@@ -1207,12 +1207,6 @@ nano_pipe_recv_cb(void *arg)
 		}
 		break;
 	case CMD_DISCONNECT:
-		if (p->conn_param) {
-			p->conn_param->will_flag = 0;
-		} else {
-			log_warn("Null conn_param detected!");
-			break;
-		}
 		if (p->conn_param->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 			rv = nni_mqtt_msg_proto_data_alloc(msg);
 			if (rv == 0) {
@@ -1221,6 +1215,8 @@ nano_pipe_recv_cb(void *arg)
 			if (rv == 0) {
 				nni_mqtt_proto_data *mqtt =
 				    nni_msg_get_proto_data(msg);
+				if(mqtt->var_header.disconnect.reason_code == 0)
+					p->conn_param->will_flag = 0;
 				property *prop =
 				    mqtt->var_header.disconnect.properties;
 				property_data *prop_data = property_get_value(
@@ -1235,7 +1231,16 @@ nano_pipe_recv_cb(void *arg)
 				    &p->reason_code, MQTT_ERR_MALFORMED);
 			}
 		} else {
-			nni_atomic_set(&p->reason_code, 0x00);
+			rv = nni_mqtt_msg_proto_data_alloc(msg);
+			if (rv == 0) {
+				rv = nni_mqtt_msg_decode(msg);
+			}
+			nni_mqtt_proto_data *mqtt =
+			    nni_msg_get_proto_data(msg);
+			int rcode = mqtt->var_header.disconnect.reason_code;
+			if (rcode == 0)
+				p->conn_param->will_flag = 0;
+			nni_atomic_set(&p->reason_code, rcode);
 		}
 		// pipe close must be called without lock
 		break;
@@ -1495,7 +1500,7 @@ nano_pipe_peer_cert_as_username(nano_pipe *p, nng_pipe np, bool *cert_auth)
 	rv = nng_pipe_get_int(np, NANO_PEER_CERT_AS_USERNAME, &mode);
 	if (rv == NNG_ENOTSUP ||
 	    (rv == 0 && mode == PEER_CERT_AS_USERNAME_DISABLE)) {
-		return (SUCCESS);
+		return (NNG_MQTT_SUCCESS);
 	}
 	if (rv != 0) {
 		log_warn("peer_cert_as_username: cannot read listener "
@@ -1524,7 +1529,7 @@ nano_pipe_peer_cert_as_username(nano_pipe *p, nng_pipe np, bool *cert_auth)
 	cp->password.len  = 0;
 	cp->con_flag      = (cp->con_flag | 0x80) & ~0x40;
 	*cert_auth        = true;
-	return (SUCCESS);
+	return (NNG_MQTT_SUCCESS);
 }
 
 // This is the global protocol structure -- our linkage to the core.
