@@ -1035,6 +1035,7 @@ parquet_find_span(
 	auto queue = file_manager.fetch_queue(topic);
 	if (queue == NULL) {
 		pthread_mutex_unlock(&parquet_queue_mutex);
+		log_warn("No parquet file queue for the requested stream!");
 		*size = 0;
 		return NULL;
 	}

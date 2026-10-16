@@ -107,6 +107,9 @@ test_conf_parse_ver2(void)
 	conf_fini(conf);
 }
 
+#if defined(SUPP_PARQUET)
+// Exchange nodes are only parsed into conf when Parquet support is compiled
+// in (conf_ver2.c conf_parse_ver2), so this test only applies then.
 void
 test_exchange_node_validate_ver2(void)
 {
@@ -127,6 +130,7 @@ test_exchange_node_validate_ver2(void)
 
 	conf_fini(conf);
 }
+#endif
 
 void
 test_get_size_edge_cases(void)
@@ -340,7 +344,9 @@ NUTS_TESTS = {
    {"get size", test_get_size},
    {"get time", test_get_time},
    {"conf parse v2", test_conf_parse_ver2},
+#if defined(SUPP_PARQUET)
    {"exchange node validate v2", test_exchange_node_validate_ver2},
+#endif
    {"conf parse", test_conf_parse},
    {"get size edge cases", test_get_size_edge_cases},
    {"get size null params", test_get_size_null_params},
