@@ -957,6 +957,42 @@ pq_primitive_as_arrow(const pq_array *col, std::vector<uint8_t> *bitmap_store)
 	    nulls, null_count);
 }
 
+/*
+ * Build one leaf column as an Arrow Array. INT32/INT64 wrap C buffers
+ * (zero-copy); PQ_UINT8 / nested / BINARY go through builders and widen
+ * UINT8→INT32. Caller may free the C column after WriteColumnChunk.
+ */
+static int
+pq_column_to_arrow_array(const pq_type *ct, pq_array *col, uint32_t row_len,
+    std::vector<uint8_t> *bitmap, std::shared_ptr<arrow::Array> *out)
+{
+	std::shared_ptr<arrow::Array> arr;
+
+	if (ct == NULL || col == NULL || out == NULL) {
+		return -1;
+	}
+	arr = pq_primitive_as_arrow(col, bitmap);
+	if (arr == nullptr) {
+		auto builder = pq_make_builder(ct);
+		for (uint32_t r = 0; r < row_len; r++) {
+			auto st = pq_append_one(builder.get(), col, r);
+			if (!st.ok()) {
+				log_error("nested append failed: %s",
+				    st.ToString().c_str());
+				return -1;
+			}
+		}
+		auto st = builder->Finish(&arr);
+		if (!st.ok()) {
+			log_error("nested finish failed: %s",
+			    st.ToString().c_str());
+			return -1;
+		}
+	}
+	*out = arr;
+	return 0;
+}
+
 static int
 parquet_write_nested(conf_parquet *conf, const char *filename,
     parquet_data *data, const char *topic, parquet_type write_type)
@@ -966,85 +1002,33 @@ parquet_write_nested(conf_parquet *conf, const char *filename,
 		log_error("nested write requires a STRUCT schema tree");
 		return -1;
 	}
+	if (data->row_len == 0 || data->schema_tree->n_children == 0) {
+		log_error("nested table has 0 rows/cols");
+		return -1;
+	}
 
 	try {
 		/*
-		 * Pick encodings from pq_array values first. Primitive
-		 * INT32/UINT64 columns wrap the C buffers (no builder copy);
-		 * those arrays must stay alive until WriteTable returns.
-		 * LIST/STRUCT/BYTE_ARRAY still copy via builders and can
-		 * drop the C column after Finish, except the ts leaf.
+		 * Column-by-column write: widen/build one leaf, WriteColumnChunk,
+		 * then drop the Arrow array (and free the C column). Avoids
+		 * holding 64 INT32 widen buffers at once for can_ba_split FD.
 		 */
 		pq_batch_resolve_adaptive(data);
 		std::vector<std::shared_ptr<arrow::Field>> fields;
-		std::vector<std::shared_ptr<arrow::Array>> arrays;
-		std::vector<std::vector<uint8_t>>          bitmaps(
-		            data->schema_tree->n_children);
+		fields.reserve(data->schema_tree->n_children);
 		for (uint32_t i = 0; i < data->schema_tree->n_children; i++) {
-			const pq_type *ct  = &data->schema_tree->children[i];
-			pq_array      *col = data->root->fields[i];
-			std::shared_ptr<arrow::Array> arr;
-
-			if (col == NULL) {
+			if (data->root->fields[i] == NULL) {
 				log_error("nested missing column %u", i);
 				return -1;
 			}
-			fields.push_back(pq_type_to_field(ct));
-			arr = pq_primitive_as_arrow(col, &bitmaps[i]);
-			if (arr == nullptr) {
-				auto builder = pq_make_builder(ct);
-				for (uint32_t r = 0; r < data->row_len; r++) {
-					auto st = pq_append_one(
-					    builder.get(), col, r);
-					if (!st.ok()) {
-						log_error(
-						    "nested append failed: %s",
-						    st.ToString().c_str());
-						return -1;
-					}
-				}
-				auto st = builder->Finish(&arr);
-				if (!st.ok()) {
-					log_error("nested finish failed: %s",
-					    st.ToString().c_str());
-					return -1;
-				}
-				if (data->ts == NULL ||
-				    (uint64_t *) col->i64 != data->ts) {
-					pq_array_free(col);
-					data->root->fields[i] = NULL;
-				}
-			}
-			arrays.push_back(arr);
+			fields.push_back(
+			    pq_type_to_field(&data->schema_tree->children[i]));
 		}
 
 		shared_ptr<arrow::KeyValueMetadata> kv =
 		    parquet_build_nmq_metadata(conf, topic, write_type);
-		auto arrow_schema = arrow::schema(fields, kv);
-		int64_t nrows =
-		    arrays.empty() ? 0 : arrays[0]->length();
-		auto rb = arrow::RecordBatch::Make(arrow_schema, nrows, arrays);
-		if (!rb) {
-			log_error("nested RecordBatch::Make failed");
-			return -1;
-		}
-		auto maybe_table = arrow::Table::FromRecordBatches({ rb });
-		if (!maybe_table.ok()) {
-			log_error("nested FromRecordBatches: %s",
-			    maybe_table.status().ToString().c_str());
-			return -1;
-		}
-		auto table = *maybe_table;
-		auto vst   = table->ValidateFull();
-		if (!vst.ok()) {
-			log_error("nested table invalid: %s",
-			    vst.ToString().c_str());
-			return -1;
-		}
-		if (table->num_rows() <= 0) {
-			log_error("nested table has 0 rows");
-			return -1;
-		}
+		auto    arrow_schema = arrow::schema(fields, kv);
+		int64_t nrows        = (int64_t) data->row_len;
 
 		parquet::WriterProperties::Builder props_builder;
 		props_builder.created_by("NanoMQ")
@@ -1108,11 +1092,65 @@ parquet_write_nested(conf_parquet *conf, const char *filename,
 		using FileClass = arrow::io::FileOutputStream;
 		shared_ptr<FileClass> out_file;
 		PARQUET_ASSIGN_OR_THROW(out_file, FileClass::Open(filename));
-		auto st = parquet::arrow::WriteTable(*table,
-		    arrow::default_memory_pool(), out_file, table->num_rows(),
-		    props);
+
+		arrow::MemoryPool *pool = arrow::default_memory_pool();
+		auto maybe_writer       = parquet::arrow::FileWriter::Open(
+		          *arrow_schema, pool, out_file, props);
+		if (!maybe_writer.ok()) {
+			log_error("nested FileWriter::Open failed: %s",
+			    maybe_writer.status().ToString().c_str());
+			return -1;
+		}
+		std::unique_ptr<parquet::arrow::FileWriter> writer =
+		    std::move(*maybe_writer);
+
+		auto st = writer->NewRowGroup(nrows);
 		if (!st.ok()) {
-			log_error("nested WriteTable failed: %s",
+			log_error("nested NewRowGroup failed: %s",
+			    st.ToString().c_str());
+			return -1;
+		}
+
+		std::vector<uint8_t> bitmap;
+		for (uint32_t i = 0; i < data->schema_tree->n_children; i++) {
+			const pq_type                *ct = &data->schema_tree
+			                            ->children[i];
+			pq_array                     *col = data->root->fields[i];
+			std::shared_ptr<arrow::Array> arr;
+
+			bitmap.clear();
+			if (pq_column_to_arrow_array(
+			        ct, col, data->row_len, &bitmap, &arr) != 0) {
+				return -1;
+			}
+			if (arr == nullptr || arr->length() != nrows) {
+				log_error("nested column %u bad length", i);
+				return -1;
+			}
+
+			st = writer->WriteColumnChunk(*arr);
+			if (!st.ok()) {
+				log_error("nested WriteColumnChunk %u: %s", i,
+				    st.ToString().c_str());
+				return -1;
+			}
+
+			/* Drop Arrow buffer before widening the next plane. */
+			arr.reset();
+			if (data->ts != NULL && col->i64 != NULL &&
+			    (uint64_t *) col->i64 == data->ts) {
+				data->ts = NULL;
+			}
+			pq_array_free(col);
+			data->root->fields[i] = NULL;
+			if (pool != NULL) {
+				pool->ReleaseUnused();
+			}
+		}
+
+		st = writer->Close();
+		if (!st.ok()) {
+			log_error("nested FileWriter::Close failed: %s",
 			    st.ToString().c_str());
 			return -1;
 		}
