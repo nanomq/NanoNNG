@@ -81,7 +81,7 @@ struct stream_data_in {
 /* Extract MQTT payload pointer and length from an nng_msg.
  * Returns NULL when msg is NULL; *out_len is set to 0 in that case.
  * out_len may be NULL when caller only needs the pointer. */
-uint8_t *stream_msg_payload(void *msg, uint32_t *out_len);
+NNG_DECL uint8_t *stream_msg_payload(void *msg, uint32_t *out_len);
 
 struct stream_decoded_data {
 	void *data;
