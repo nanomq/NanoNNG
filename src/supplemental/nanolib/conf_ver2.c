@@ -2143,6 +2143,14 @@ conf_exchange_node_parse(conf_exchange_node *node, cJSON *exchange)
  	// If VIN isn't configured (gvin == NULL), replace it with an empty string.
 	node->topic = check_and_replace_vin(node->topic, gvin ? gvin : "");
 
+	// Substitution can empty the topic (topic = "${VIN}" with no VIN
+	// configured), which would leave a node that nothing can be stored or
+	// queried under, so validate the final value, not just the raw one.
+	if (node->topic[0] == '\0') {
+		log_error("invalid exchange configuration!");
+		return (false);
+	}
+
 	cJSON *rb = hocon_get_obj("ringbus", exchange);
 
 	ringBuffer_node *rb_node = NNI_ALLOC_STRUCT(rb_node);
