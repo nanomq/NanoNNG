@@ -1,4 +1,5 @@
 // Copyright 2026 Liebherr-Digital Development Center (LDC) <peter.bestler@liebherr.de>
+// Copyright 2026 NanoMQ Team, Inc.
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -53,6 +54,13 @@ static enum_map http_server_auth_type[] = {
 	{ BASIC, "basic" },
 	{ JWT, "jwt" },
 	{ NONE_AUTH, "no_auth" },
+	{ -1, NULL },
+};
+
+static enum_map peer_cert_as_username_map[] = {
+	{ PEER_CERT_AS_USERNAME_DISABLE, "disable" },
+	{ PEER_CERT_AS_USERNAME_CN, "cn" },
+	{ PEER_CERT_AS_USERNAME_DN, "dn" },
 	{ -1, NULL },
 };
 
@@ -619,6 +627,45 @@ conf_tcp_parse_ver2_base(conf_tcp *tcp, cJSON *jso_tcp)
 	return;
 }
 
+// Reads peer_cert_as_username; call after verify_peer is read. An unknown
+// value would silently keep the client-supplied username, and without
+// verify_peer no client certificate is ever requested, so every client would
+// be refused. Both stop startup, like an invalid mount_point.
+static void
+conf_tls_peer_cert_as_username_parse(
+    conf_tls *tls, cJSON *jso_tls, const char *listener)
+{
+	cJSON *jso_key = cJSON_GetObjectItem(jso_tls, "peer_cert_as_username");
+	char  *str;
+	int    i;
+
+	if (jso_key == NULL) {
+		return;
+	}
+	str = cJSON_GetStringValue(jso_key);
+	for (i = 0; str != NULL && peer_cert_as_username_map[i].desc != NULL;
+	     i++) {
+		if (nni_strcasecmp(
+		        str, peer_cert_as_username_map[i].desc) == 0) {
+			break;
+		}
+	}
+	if (str == NULL || peer_cert_as_username_map[i].desc == NULL) {
+		log_error("Invalid peer_cert_as_username '%s' on listener "
+		          "'%s': must be one of disable, cn, dn",
+		    str != NULL ? str : "", listener);
+		exit(EXIT_FAILURE);
+	}
+	tls->peer_cert_as_username = peer_cert_as_username_map[i].enumerate;
+	if (tls->peer_cert_as_username != PEER_CERT_AS_USERNAME_DISABLE &&
+	    !tls->verify_peer) {
+		log_error("peer_cert_as_username = %s on listener '%s' "
+		          "requires verify_peer = true",
+		    str, listener);
+		exit(EXIT_FAILURE);
+	}
+}
+
 static void
 conf_tls_parse_ver2(conf *config, cJSON *jso)
 {
@@ -637,6 +684,8 @@ conf_tls_parse_ver2(conf *config, cJSON *jso)
 			hocon_read_bool_base(
 			    tls, set_fail, "fail_if_no_peer_cert", jso_tls);
 			hocon_read_str(tls, mount_point, jso_tls);
+			conf_tls_peer_cert_as_username_parse(
+			    tls, jso_tls, "ssl");
 		}
 	}
 
@@ -655,6 +704,8 @@ conf_tls_parse_ver2(conf *config, cJSON *jso)
 			hocon_read_bool(node, verify_peer, node_item);
 			hocon_read_bool_base(
 			    node, set_fail, "fail_if_no_peer_cert", node_item);
+			conf_tls_peer_cert_as_username_parse(
+			    node, node_item, node->name);
 			cvector_push_back(config->tls_list.nodes, node);
 		} else {
 			nng_free(node, sizeof(node));

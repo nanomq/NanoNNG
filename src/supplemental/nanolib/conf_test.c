@@ -1,4 +1,5 @@
 // Copyright 2026 Liebherr-Digital Development Center (LDC) <peter.bestler@liebherr.de>
+// Copyright 2026 NanoMQ Team, Inc.
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -22,6 +23,8 @@
 	NANOMQ_TEST_CONF_DIR "/nmq_tls_pkcs11_old_test.conf"
 #define PKCS11_CONF_PATH \
 	NANOMQ_TEST_CONF_DIR "/nmq_tls_pkcs11_test.conf"
+#define PEER_CERT_CONF_PATH \
+	NANOMQ_TEST_CONF_DIR "/nmq_tls_peer_cert_test.conf"
 #elif defined(ENABLE_NANOMQ_TESTS)
 #define OLD_CONF_PATH                                            \
 	"../../../../../nng/src/supplemental/nanolib/test_conf/" \
@@ -37,6 +40,9 @@
 #define PKCS11_CONF_PATH                                         \
 	"../../../../../nng/src/supplemental/nanolib/test_conf/" \
 	"nmq_tls_pkcs11_test.conf"
+#define PEER_CERT_CONF_PATH                                      \
+	"../../../../../nng/src/supplemental/nanolib/test_conf/" \
+	"nmq_tls_peer_cert_test.conf"
 #else
 #define OLD_CONF_PATH \
 	"../../../../src/supplemental/nanolib/test_conf/nmq_old_test.conf"
@@ -51,6 +57,9 @@
 #define PKCS11_CONF_PATH                                   \
 	"../../../../src/supplemental/nanolib/test_conf/" \
 	"nmq_tls_pkcs11_test.conf"
+#define PEER_CERT_CONF_PATH                                \
+	"../../../../src/supplemental/nanolib/test_conf/" \
+	"nmq_tls_peer_cert_test.conf"
 #endif
 
 #define PKCS11_KEY_URI \
@@ -498,6 +507,29 @@ test_conf_parse_ver2_tls_pkcs11(void)
 	conf_fini(conf);
 }
 
+/** Verifies peer_cert_as_username per named listener, case-insensitively. */
+void
+test_conf_parse_ver2_tls_peer_cert_as_username(void)
+{
+	conf *conf = get_test_conf(PEER_CERT_CONF_PATH);
+	NUTS_TRUE(conf != NULL);
+	conf_parse_ver2(conf, false);
+
+	NUTS_TRUE(conf->tls_list.count == 3);
+	for (size_t i = 0; i < conf->tls_list.count; i++) {
+		conf_tls *node = conf->tls_list.nodes[i];
+		uint8_t   want = PEER_CERT_AS_USERNAME_DISABLE;
+		if (strcmp(node->name, "by_cn") == 0) {
+			want = PEER_CERT_AS_USERNAME_CN;
+		} else if (strcmp(node->name, "by_dn") == 0) {
+			want = PEER_CERT_AS_USERNAME_DN;
+		}
+		NUTS_TRUE(node->peer_cert_as_username == want);
+	}
+
+	conf_fini(conf);
+}
+
 /** Verifies case-insensitive PKCS#11 URI detection and rejection cases. */
 void
 test_conf_tls_is_pkcs11_uri(void)
@@ -660,6 +692,8 @@ NUTS_TESTS = {
    {"get time days", test_get_time_days},
    {"conf parse pkcs11", test_conf_parse_tls_pkcs11_old},
    {"identify pkcs11 URIs", test_conf_tls_is_pkcs11_uri},
+   {"conf parse v2 peer_cert_as_username",
+       test_conf_parse_ver2_tls_peer_cert_as_username},
    {"bridge cache per node", test_conf_bridge_cache_per_node},
    {"bridge cache file name", test_bridge_cache_file_name},
    {NULL, NULL}

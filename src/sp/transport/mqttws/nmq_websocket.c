@@ -74,6 +74,7 @@ struct ws_listener {
 	uint16_t             peer; // remote protocol
 	conf                *conf;
 	char                *mount_point; // per-listener topic prefix, may be NULL
+	int                  peer_cert_as_username; // conf_tls value
 	nni_list             aios;
 	nni_mtx              mtx;
 	nni_aio             *accaio;
@@ -94,6 +95,7 @@ struct ws_pipe {
 	nni_lmq     rslmq;	// Only for QoS msg ack cache
 	conf       *conf;
 	char       *mount_point; // borrowed from ws_listener->mount_point, may be NULL
+	int         peer_cert_as_username; // copied from ws_listener
 	nni_msg    *tmp_msg;	// Serving as recv buffer, convergence all msg from nng ws
 	nni_aio    *user_txaio;
 	nni_aio    *user_rxaio;
@@ -1622,7 +1624,19 @@ wstran_listener_accept(void *arg, nni_aio *aio)
 	nni_mtx_unlock(&l->mtx);
 }
 
+static int
+wstran_pipe_get_peer_cert_as_username(
+    void *arg, void *buf, size_t *szp, nni_type t)
+{
+	ws_pipe *p = arg;
+	return (nni_copyout_int(p->peer_cert_as_username, buf, szp, t));
+}
+
 static const nni_option ws_pipe_options[] = {
+	{
+	    .o_name = NANO_PEER_CERT_AS_USERNAME,
+	    .o_get  = wstran_pipe_get_peer_cert_as_username,
+	},
 	// terminate list
 	{
 	    .o_name = NULL,
@@ -1749,6 +1763,7 @@ ws_pipe_start(ws_pipe *pipe, nng_stream *conn, ws_listener *l)
 	p->qrecv_quota = NANO_MAX_QOS_PACKET;
 	p->conf        = l->conf;
 	p->mount_point = l->mount_point;
+	p->peer_cert_as_username = l->peer_cert_as_username;
 	nni_atomic_set_bool(&p->closed, false);
 	nng_stream_recv(p->ws, p->rxaio);
 }
@@ -1861,6 +1876,23 @@ wstran_ep_set_mount_point(void *arg, const void *v, size_t sz, nni_type t)
 	return 0;
 }
 
+static int
+wstran_ep_set_peer_cert_as_username(
+    void *arg, const void *v, size_t sz, nni_type t)
+{
+	ws_listener *l = arg;
+	int          mode;
+	int          rv;
+
+	if ((rv = nni_copyin_int(&mode, v, sz, PEER_CERT_AS_USERNAME_DISABLE,
+	         PEER_CERT_AS_USERNAME_DN, t)) == 0) {
+		nni_mtx_lock(&l->mtx);
+		l->peer_cert_as_username = mode;
+		nni_mtx_unlock(&l->mtx);
+	}
+	return (rv);
+}
+
 static const nni_option wstran_ep_opts[] = {
 	{
 	    .o_name = NANO_CONF,
@@ -1869,6 +1901,10 @@ static const nni_option wstran_ep_opts[] = {
 	{
 	    .o_name = NANO_MOUNT_POINT,
 	    .o_set  = wstran_ep_set_mount_point,
+	},
+	{
+	    .o_name = NANO_PEER_CERT_AS_USERNAME,
+	    .o_set  = wstran_ep_set_peer_cert_as_username,
 	},
 	// terminate list
 	{
