@@ -34,11 +34,13 @@ static void        nano_pipe_send_cb(void *);
 static void        nano_pipe_recv_cb(void *);
 static void        nano_pipe_fini(void *);
 static int         nano_pipe_close(void *);
+
 static inline void close_pipe(nano_pipe *p);
+static uint8_t     nano_pipe_peer_cert_as_username(
+    nano_pipe *p, nng_pipe np, bool *cert_auth);
 
 static uint16_t tmp_id = 1000;
 static uint32_t rotate = 0, rotate2 = 0;
-// huge context/ dynamic context?
 struct nano_ctx {
 	nano_sock *sock;
 	uint32_t   pipe_id;
@@ -633,59 +635,6 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	}
 
 	return (0);
-}
-
-// Applies the listener's peer_cert_as_username setting. When it is enabled,
-// the verified client certificate is the client's identity: the username
-// becomes the certificate's common name or subject, and the username and
-// password the client sent are discarded. Returns SUCCESS, with *cert_auth
-// set when the certificate replaced the credentials, or a CONNACK reason code
-// refusing a client without a verified certificate carrying that field.
-static uint8_t
-nano_pipe_peer_cert_as_username(nano_pipe *p, nng_pipe np, bool *cert_auth)
-{
-	conn_param *cp       = p->conn_param;
-	bool        is_v5    = cp->pro_ver == MQTT_PROTOCOL_VERSION_v5;
-	int         mode     = PEER_CERT_AS_USERNAME_DISABLE;
-	bool        verified = false;
-	const char *field;
-	char       *username;
-	int         rv;
-
-	*cert_auth = false;
-	rv = nng_pipe_get_int(np, NANO_PEER_CERT_AS_USERNAME, &mode);
-	if (rv == NNG_ENOTSUP ||
-	    (rv == 0 && mode == PEER_CERT_AS_USERNAME_DISABLE)) {
-		return (SUCCESS);
-	}
-	if (rv != 0) {
-		log_warn("peer_cert_as_username: cannot read listener "
-		         "setting: %s",
-		    nng_strerror(rv));
-		return (is_v5 ? NOT_AUTHORIZED : 0x05);
-	}
-	field = mode == PEER_CERT_AS_USERNAME_CN ? cp->tls_peer_cn
-	                                         : cp->tls_subject;
-	if (nng_pipe_get_bool(np, NNG_OPT_TLS_VERIFIED, &verified) != 0 ||
-	    !verified || field == NULL || field[0] == '\0') {
-		log_warn("peer_cert_as_username: refusing client without a "
-		         "verified certificate %s",
-		    mode == PEER_CERT_AS_USERNAME_CN ? "common name"
-		                                     : "subject");
-		return (is_v5 ? NOT_AUTHORIZED : 0x05);
-	}
-	if ((username = nng_strdup(field)) == NULL) {
-		return (is_v5 ? SERVER_UNAVAILABLE : 0x03);
-	}
-	nng_free(cp->username.body, cp->username.len);
-	nng_free(cp->password.body, cp->password.len);
-	cp->username.body = username;
-	cp->username.len  = strlen(username);
-	cp->password.body = NULL;
-	cp->password.len  = 0;
-	cp->con_flag      = (cp->con_flag | 0x80) & ~0x40;
-	*cert_auth        = true;
-	return (SUCCESS);
 }
 
 static int
@@ -1522,6 +1471,60 @@ nano_sock_setdb(void *arg, void *data)
 		}
 	}
 
+}
+
+
+// Applies the listener's peer_cert_as_username setting. When it is enabled,
+// the verified client certificate is the client's identity: the username
+// becomes the certificate's common name or subject, and the username and
+// password the client sent are discarded. Returns SUCCESS, with *cert_auth
+// set when the certificate replaced the credentials, or a CONNACK reason code
+// refusing a client without a verified certificate carrying that field.
+static uint8_t
+nano_pipe_peer_cert_as_username(nano_pipe *p, nng_pipe np, bool *cert_auth)
+{
+	conn_param *cp       = p->conn_param;
+	bool        is_v5    = cp->pro_ver == MQTT_PROTOCOL_VERSION_v5;
+	int         mode     = PEER_CERT_AS_USERNAME_DISABLE;
+	bool        verified = false;
+	const char *field;
+	char       *username;
+	int         rv;
+
+	*cert_auth = false;
+	rv = nng_pipe_get_int(np, NANO_PEER_CERT_AS_USERNAME, &mode);
+	if (rv == NNG_ENOTSUP ||
+	    (rv == 0 && mode == PEER_CERT_AS_USERNAME_DISABLE)) {
+		return (SUCCESS);
+	}
+	if (rv != 0) {
+		log_warn("peer_cert_as_username: cannot read listener "
+		         "setting: %s",
+		    nng_strerror(rv));
+		return (is_v5 ? NOT_AUTHORIZED : 0x05);
+	}
+	field = mode == PEER_CERT_AS_USERNAME_CN ? cp->tls_peer_cn
+	                                         : cp->tls_subject;
+	if (nng_pipe_get_bool(np, NNG_OPT_TLS_VERIFIED, &verified) != 0 ||
+	    !verified || field == NULL || field[0] == '\0') {
+		log_warn("peer_cert_as_username: refusing client without a "
+		         "verified certificate %s",
+		    mode == PEER_CERT_AS_USERNAME_CN ? "common name"
+		                                     : "subject");
+		return (is_v5 ? NOT_AUTHORIZED : 0x05);
+	}
+	if ((username = nng_strdup(field)) == NULL) {
+		return (is_v5 ? SERVER_UNAVAILABLE : 0x03);
+	}
+	nng_free(cp->username.body, cp->username.len + 1);
+	nng_free(cp->password.body, cp->password.len + 1);
+	cp->username.body = username;
+	cp->username.len  = strlen(username);
+	cp->password.body = NULL;
+	cp->password.len  = 0;
+	cp->con_flag      = (cp->con_flag | 0x80) & ~0x40;
+	*cert_auth        = true;
+	return (SUCCESS);
 }
 
 // This is the global protocol structure -- our linkage to the core.
