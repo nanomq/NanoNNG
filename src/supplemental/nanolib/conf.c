@@ -1417,6 +1417,34 @@ print_parquet_conf(conf_parquet *parquet)
 	}
 }
 
+/**
+ * Look up one exchange node by the name callers address it by.
+ *
+ * Clients select a node by its exchange name (JSON "stream", REST `?name=`),
+ * while the exchange and parquet layers key their data by the node topic.
+ * Keeping the lookup in one place stops the two identifiers from drifting.
+ *
+ * @param exchange Exchange configuration, may be NULL.
+ * @param name     Node name to look for, may be NULL.
+ * @return The matching node, or NULL when there is no such node.
+ */
+conf_exchange_node *
+conf_exchange_find_node_by_name(conf_exchange *exchange, const char *name)
+{
+	if (exchange == NULL || name == NULL) {
+		return NULL;
+	}
+
+	for (size_t i = 0; i < exchange->count; i++) {
+		conf_exchange_node *node = exchange->nodes[i];
+		if (node != NULL && node->name != NULL &&
+		    strcmp(node->name, name) == 0) {
+			return node;
+		}
+	}
+
+	return NULL;
+}
 
 static void
 print_exchange_conf(conf_exchange *exchange)
