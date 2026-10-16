@@ -720,7 +720,8 @@ struct conf {
 #endif
 	conf_web_hook        web_hook;
 #if defined(ENABLE_LOG)
-	conf_log  log;
+	conf_log       log;
+	conf_log_trace log_trace;
 #endif
 #if defined(SUPP_RULE_ENGINE)
 	conf_rule rule_eng;

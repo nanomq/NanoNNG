@@ -732,6 +732,84 @@ conf_sqlite_parse_ver2(conf *config, cJSON *jso)
 }
 
 #if defined(ENABLE_LOG)
+// Parses the log.trace block: its own sinks, its own rotation and the category
+// set that gates every nmq_trace() call site. Kept beside the log block because
+// the shapes are identical apart from categories and payload_limit.
+static void
+conf_log_trace_parse_ver2(conf *config, cJSON *jso_log)
+{
+	cJSON *jso_trace = hocon_get_obj("trace", jso_log);
+	if (jso_trace == NULL) {
+		return;
+	}
+
+	conf_log_trace *trace = &(config->log_trace);
+	conf_log       *sink  = &(trace->sink);
+
+	cJSON *jso_to     = hocon_get_obj("to", jso_trace);
+	cJSON *jso_to_ele = NULL;
+	cJSON_ArrayForEach(jso_to_ele, jso_to)
+	{
+		const char *to = cJSON_GetStringValue(jso_to_ele);
+		if (to == NULL) {
+			continue;
+		}
+		if (!strcmp("file", to)) {
+			sink->type |= LOG_TO_FILE;
+		} else if (!strcmp("console", to)) {
+			sink->type |= LOG_TO_CONSOLE;
+		} else {
+			log_error("Unsupported log.trace to %s: only file and "
+			          "console keep trace volume off syslog",
+			    to);
+		}
+	}
+
+	cJSON *jso_cats     = hocon_get_obj("categories", jso_trace);
+	cJSON *jso_cats_ele = NULL;
+	cJSON_ArrayForEach(jso_cats_ele, jso_cats)
+	{
+		trace->categories |= log_trace_category_num(
+		    cJSON_GetStringValue(jso_cats_ele));
+	}
+	if (cJSON_IsString(jso_cats)) {
+		trace->categories |= log_trace_categories_parse(
+		    cJSON_GetStringValue(jso_cats));
+	}
+
+	// Read by hand rather than through hocon_read_num, which assigns only
+	// values above zero and so could never set the 0 that means "the whole
+	// payload". There is no upper bound to clamp to: the body is written
+	// straight through to the sink, not into a buffer.
+	cJSON *jso_payload_limit = hocon_get_obj("payload_limit", jso_trace);
+	if (cJSON_IsNumber(jso_payload_limit)) {
+		if (jso_payload_limit->valuedouble < 0) {
+			log_error("log.trace.payload_limit %g is negative, "
+			          "keeping %zu",
+			    jso_payload_limit->valuedouble,
+			    trace->payload_limit);
+		} else {
+			trace->payload_limit =
+			    (size_t) jso_payload_limit->valuedouble;
+		}
+	}
+	// payload only adds the body to the PUBLISH line, so asking for it
+	// without pub would silently trace nothing.
+	if (0 != (trace->categories & NMQ_TRACE_PAYLOAD)) {
+		trace->categories |= NMQ_TRACE_PUB;
+	}
+	hocon_read_str(sink, dir, jso_trace);
+	hocon_read_str(sink, file, jso_trace);
+	cJSON *jso_rotation = hocon_get_obj("rotation", jso_trace);
+	hocon_read_size_base(sink, rotation_sz, "size", jso_rotation);
+	hocon_read_num_base(sink, rotation_count, "count", jso_rotation);
+
+	if (trace->categories != 0 && sink->type == 0) {
+		log_error("log.trace.categories is set but log.trace.to is "
+		          "empty, so nothing will be traced");
+	}
+}
+
 static void
 conf_log_parse_ver2(conf *config, cJSON *jso)
 {
@@ -782,6 +860,8 @@ conf_log_parse_ver2(conf *config, cJSON *jso)
 		    log, rotation_sz, "size", jso_log_rotation);
 		hocon_read_num_base(
 		    log, rotation_count, "count", jso_log_rotation);
+
+		conf_log_trace_parse_ver2(config, jso_log);
 	}
 	return;
 }

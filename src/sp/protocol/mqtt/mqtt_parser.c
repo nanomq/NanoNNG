@@ -1361,11 +1361,21 @@ verify_connect(conn_param *cparam, conf *conf)
 
 	if (conf->allow_anonymous == true) {
 		log_debug("allow anonymous connect");
+		nmq_trace(NMQ_TRACE_AUTH,
+		    "auth allow clientid=%s username=%s reason=allow_anonymous",
+		    NMQ_TRACE_STR(cparam->clientid.body),
+		    NMQ_TRACE_STR(cparam->username.body));
 		return 0;
 	}
 
 	if (cparam->username.len == 0 || cparam->password.len == 0) {
 		log_warn("Client Username/Password is NULL!");
+		nmq_trace(NMQ_TRACE_AUTH,
+		    "auth deny clientid=%s username=%s "
+		    "reason=empty_credential username_len=%d password_len=%d",
+		    NMQ_TRACE_STR(cparam->clientid.body),
+		    NMQ_TRACE_STR(cparam->username.body), cparam->username.len,
+		    cparam->password.len);
 		if (cparam->pro_ver == 5) {
 			return BAD_USER_NAME_OR_PASSWORD;
 		} else {
@@ -1375,6 +1385,10 @@ verify_connect(conn_param *cparam, conf *conf)
 
 	if ((!conf->auths.enable) || conf->auths.count == 0) {
 		log_debug("authentication is not enabled");
+		nmq_trace(NMQ_TRACE_AUTH,
+		    "auth allow clientid=%s username=%s reason=no_password_file",
+		    NMQ_TRACE_STR(cparam->clientid.body),
+		    NMQ_TRACE_STR(cparam->username.body));
 		return 0;
 	}
 	nng_mtx_lock(conf->auths.mtx);
@@ -1384,10 +1398,22 @@ verify_connect(conn_param *cparam, conf *conf)
 		    strcmp(password, conf->auths.passwords[i]) == 0) {
 			log_debug("Found matched Username/Password!");
 			nng_mtx_unlock(conf->auths.mtx);
+			nmq_trace(NMQ_TRACE_AUTH,
+			    "auth allow clientid=%s username=%s "
+			    "reason=password_entry entry=%d",
+			    NMQ_TRACE_STR(cparam->clientid.body),
+			    NMQ_TRACE_STR(cparam->username.body), i);
 			return 0;
 		}
 	}
 	nng_mtx_unlock(conf->auths.mtx);
+	// Never says which half was wrong: the trace file is readable by whoever
+	// reads the broker log, and "this username exists" is already a hint.
+	nmq_trace(NMQ_TRACE_AUTH,
+	    "auth deny clientid=%s username=%s reason=no_password_entry "
+	    "entries=%d",
+	    NMQ_TRACE_STR(cparam->clientid.body),
+	    NMQ_TRACE_STR(cparam->username.body), n);
 	if (cparam->pro_ver == 5) {
 		return BAD_USER_NAME_OR_PASSWORD;
 	} else {

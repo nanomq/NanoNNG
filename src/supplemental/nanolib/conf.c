@@ -63,6 +63,8 @@ static void conf_nng_proxy_destroy(conf_nng_bridge *proxy);
 static void conf_log_init(conf_log *log);
 static void conf_log_destroy(conf_log *log);
 static void conf_log_parse(conf_log *log, const char *path);
+static void conf_log_trace_init(conf_log_trace *trace);
+static void conf_log_trace_destroy(conf_log_trace *trace);
 #endif
 
 #if defined(SUPP_RULE_ENGINE)
@@ -730,6 +732,32 @@ conf_log_destroy(conf_log *log)
 	log->rotation_sz    = 10 * 1024;
 }
 
+// The trace sink defaults to no sink and no category, so a broker that says
+// nothing about log.trace behaves exactly as it did before protocol tracing
+// existed and pays nothing for it.
+static void
+conf_log_trace_init(conf_log_trace *trace)
+{
+	conf_log_init(&trace->sink);
+	trace->sink.type           = 0;
+	trace->sink.level          = NNG_LOG_TRACE;
+	trace->sink.rotation_sz    = NMQ_TRACE_ROTATION_SZ_DEFAULT;
+	trace->sink.rotation_count = NMQ_TRACE_ROTATION_COUNT_DEFAULT;
+	trace->categories          = 0;
+	trace->payload_limit       = NMQ_TRACE_PAYLOAD_LIMIT_DEFAULT;
+}
+
+static void
+conf_log_trace_destroy(conf_log_trace *trace)
+{
+	conf_log_destroy(&trace->sink);
+	trace->sink.type           = 0;
+	trace->sink.rotation_sz    = NMQ_TRACE_ROTATION_SZ_DEFAULT;
+	trace->sink.rotation_count = NMQ_TRACE_ROTATION_COUNT_DEFAULT;
+	trace->categories          = 0;
+	trace->payload_limit       = NMQ_TRACE_PAYLOAD_LIMIT_DEFAULT;
+}
+
 static void
 conf_log_parse(conf_log *log, const char *path)
 {
@@ -1359,6 +1387,7 @@ conf_init(conf *nanomq_conf)
 
 #if defined(ENABLE_LOG)
 	conf_log_init(&nanomq_conf->log);
+	conf_log_trace_init(&nanomq_conf->log_trace);
 #endif
 	conf_sqlite_init(&nanomq_conf->sqlite);
 	conf_tls_init(&nanomq_conf->tls);
@@ -5320,6 +5349,7 @@ conf_fini(conf *nanomq_conf)
 	conf_exchange_destroy(&nanomq_conf->exchange);
 	conf_nng_bridge_destroy(&nanomq_conf->nng_proxy);
 #if defined(ENABLE_LOG)
+	conf_log_trace_destroy(&nanomq_conf->log_trace);
 	conf_log_destroy(&nanomq_conf->log);
 #endif
 

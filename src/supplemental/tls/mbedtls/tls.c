@@ -307,6 +307,19 @@ conn_handshake(nng_tls_engine_conn *ec)
 		return (0);
 
 	default:
+		// tls_mk_err() collapses most mbed-tls failures into
+		// NNG_ECRYPTO, so the only place the real cause exists is
+		// here. The raw code is what the mbed-tls headers are grepped
+		// for, and the verify flags separate a rejected client
+		// certificate from an unusable cipher suite or a protocol
+		// mismatch.
+		nmq_trace(NMQ_TRACE_TLS,
+		    "tls handshake failed mbedtls_err=-0x%04x verify=0x%08x "
+		    "nng_err=%d peer_cn=%s",
+		    (unsigned int) -rv,
+		    mbedtls_ssl_get_verify_result(&ec->ctx), tls_mk_err(rv),
+		    mbedtls_ssl_get_peer_cert(&ec->ctx) == NULL ? "none"
+		                                                : "present");
 		return (tls_mk_err(rv));
 	}
 }

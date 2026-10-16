@@ -186,6 +186,13 @@ nano_pipe_timer_cb(void *arg)
 	if (rv != 0) {
 		if (rv == NNG_ECONNABORTED) {
 			log_warn("closing pipe due to session conflict");
+			nmq_trace(NMQ_TRACE_SESSION,
+			    "session kicked clientid=%s pipe=%u "
+			    "reason=duplicate_clientid",
+			    NMQ_TRACE_STR(p->conn_param == NULL
+			            ? NULL
+			            : p->conn_param->clientid.body),
+			    p->id);
 			nni_pipe_close(p->pipe);
 		}
 		return;
@@ -226,6 +233,12 @@ nano_pipe_timer_cb(void *arg)
 				    &s->cached_sessions, p->pipe->p_id);
 			}
 			nni_atomic_set(&p->reason_code, 0x8E);
+			nmq_trace(NMQ_TRACE_SESSION,
+			    "session expired clientid=%s pipe=%u alive_ms=%lu "
+			    "session_expiry=%u",
+			    NMQ_TRACE_STR(p->conn_param->clientid.body), p->id,
+			    (unsigned long) time,
+			    p->conn_param->session_expiry_interval);
 			nni_mtx_unlock(&sock->lk);
 			nni_pipe_close(p->pipe);
 			return;
@@ -249,6 +262,13 @@ nano_pipe_timer_cb(void *arg)
 		if (time_diff > 0) {
 			log_warn("Warning: close pipe %u & kick client due to "
 			         "KeepAlive timeout!", p->id);
+			nmq_trace(NMQ_TRACE_SESSION,
+			    "keepalive expired clientid=%s pipe=%u "
+			    "keepalive=%u backoff=%.2f overdue_ms=%.0f",
+			    NMQ_TRACE_STR(p->conn_param == NULL
+			            ? NULL
+			            : p->conn_param->clientid.body),
+			    p->id, p->keepalive, qos_backoff, time_diff);
 			nni_atomic_set(&p->reason_code, NMQ_KEEP_ALIVE_TIMEOUT);
 			nni_mtx_unlock(&p->lk);
 			nni_pipe_close(p->pipe);
@@ -726,9 +746,30 @@ auth_verify:
 			log_debug("HTTP Authentication start!");
 			rv = nmq_auth_http_connect(		// potential dead lock if HTTP fails
 			    p->conn_param, &s->conf->auth_http);
+			nmq_trace(NMQ_TRACE_AUTH,
+			    "auth %s clientid=%s username=%s "
+			    "reason=http_auth result=0x%02x",
+			    rv == 0 ? "allow" : "deny",
+			    NMQ_TRACE_STR(p->conn_param->clientid.body),
+			    NMQ_TRACE_STR(p->conn_param->username.body), rv);
 		}
 	}
 	nmq_connack_encode(msg, s->conf, p->conn_param, rv);
+	// One line per CONNECT, emitted once the CONNACK reason code is known
+	// so the request and its outcome never have to be correlated by hand.
+	nmq_trace(NMQ_TRACE_CONNECT,
+	    "CONNECT pipe=%u clientid=%s username=%s proto_ver=%d "
+	    "clean_start=%d keepalive=%u will=%d will_topic=%s "
+	    "assigned_id=%d peer=%s server_port=%s tls_cn=%s "
+	    "connack_reason=0x%02x",
+	    npipe->p_id, NMQ_TRACE_STR(p->conn_param->clientid.body),
+	    NMQ_TRACE_STR(p->conn_param->username.body),
+	    p->conn_param->pro_ver, p->conn_param->clean_start,
+	    p->conn_param->keepalive_mqtt, p->conn_param->will_flag,
+	    NMQ_TRACE_STR(p->conn_param->will_topic.body),
+	    p->conn_param->assignedid ? 1 : 0, p->conn_param->ip_addr_v4,
+	    p->conn_param->server_port,
+	    NMQ_TRACE_STR(p->conn_param->tls_peer_cn), rv);
 	nni_mtx_lock(&s->lk);
 
 	if (nni_pipe_is_closed(npipe) || nni_atomic_get_bool(&npipe->cache)) {
@@ -781,6 +822,11 @@ auth_verify:
 			} else {
 				log_info("resuming session %u with %u",
 				    npipe->p_id, old->pipe->p_id);
+				nmq_trace(NMQ_TRACE_SESSION,
+				    "session resume clientid=%s pipe=%u "
+				    "old_pipe=%u",
+				    NMQ_TRACE_STR(clientid), npipe->p_id,
+				    old->pipe->p_id);
 			}
 			p->id = nni_pipe_id(npipe);
 			// set event to false so that no notification will be sent
@@ -805,6 +851,10 @@ auth_verify:
 #endif
 			nni_id_remove(&s->cached_sessions, p->pipe->p_id);
 			log_info("cleaning session %u from cache", p->pipe->p_id);
+			nmq_trace(NMQ_TRACE_SESSION,
+			    "session clean clientid=%s pipe=%u "
+			    "reason=clean_start",
+			    NMQ_TRACE_STR(clientid), p->pipe->p_id);
 		}
 	}
 #ifdef NNG_SUPP_SQLITE
@@ -840,6 +890,14 @@ auth_verify:
 			// it is not your time yet, do not send will msg
 			old->conn_param->will_flag = 0;
 		}
+		// The broker overwrites the pipe id with a hash of the client
+		// id, so one pipe id means one client id: this is the
+		// duplicate-client-ID takeover.
+		nmq_trace(NMQ_TRACE_SESSION,
+		    "session takeover clientid=%s new_pipe=%u kicked_pipe=%u "
+		    "peer=%s",
+		    NMQ_TRACE_STR(clientid), npipe->p_id, old->pipe->p_id,
+		    p->conn_param->ip_addr_v4);
 		// Try aio abort to close old pipe due to data racing in reaper.
 		nni_aio_abort(&old->aio_timer, NNG_ECONNABORTED);
 	}
@@ -1213,6 +1271,16 @@ nano_pipe_recv_cb(void *arg)
 			log_warn("Null conn_param detected!");
 			break;
 		}
+		// MQTT v5 puts the reason code first in the variable header.
+		// v3.1.1 DISCONNECT carries no body, so report normal closure.
+		nmq_trace(NMQ_TRACE_SESSION,
+		    "DISCONNECT pipe=%u clientid=%s proto_ver=%d reason=0x%02x",
+		    p->id, NMQ_TRACE_STR(p->conn_param->clientid.body),
+		    p->conn_param->pro_ver,
+		    (p->conn_param->pro_ver == MQTT_PROTOCOL_VERSION_v5 &&
+		        nni_msg_len(msg) > 0)
+		        ? ((uint8_t *) nni_msg_body(msg))[0]
+		        : 0x00);
 		if (p->conn_param->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
 			rv = nni_mqtt_msg_proto_data_alloc(msg);
 			if (rv == 0) {
