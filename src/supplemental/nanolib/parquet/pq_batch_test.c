@@ -386,12 +386,22 @@ test_enc_choose_i32(void)
 	NUTS_TRUE(pq_enc_choose_i32(a) == PQ_ENC_RLE_DICT);
 	pq_array_free(a);
 
+	/* Small nearly-injective smooth sequence → DELTA. */
 	a = pq_array_from_type(t, 256);
 	NUTS_TRUE(a != NULL);
 	for (i = 0; i < 256; i++) {
 		NUTS_TRUE(pq_array_set_i32(a, i, (int32_t) i) == 0);
 	}
 	NUTS_TRUE(pq_enc_choose_i32(a) == PQ_ENC_DELTA);
+	pq_array_free(a);
+
+	/* Long repeating counter plane (n ≫ unique): prefer DICT. */
+	a = pq_array_from_type(t, 2000);
+	NUTS_TRUE(a != NULL);
+	for (i = 0; i < 2000; i++) {
+		NUTS_TRUE(pq_array_set_i32(a, i, (int32_t) (i % 80)) == 0);
+	}
+	NUTS_TRUE(pq_enc_choose_i32(a) == PQ_ENC_RLE_DICT);
 	pq_array_free(a);
 	pq_type_free(t);
 }
@@ -421,6 +431,14 @@ test_enc_choose_u8_and_compact_schema(void)
 		NUTS_TRUE(pq_array_set_u8(a, i, (uint8_t) i) == 0);
 	}
 	NUTS_TRUE(pq_enc_choose_u8(a) == PQ_ENC_DELTA);
+	pq_array_free(a);
+
+	a = pq_array_from_type(t, 2000);
+	NUTS_TRUE(a != NULL);
+	for (i = 0; i < 2000; i++) {
+		NUTS_TRUE(pq_array_set_u8(a, i, (uint8_t) (i % 80)) == 0);
+	}
+	NUTS_TRUE(pq_enc_choose_u8(a) == PQ_ENC_RLE_DICT);
 	pq_array_free(a);
 	pq_type_free(t);
 

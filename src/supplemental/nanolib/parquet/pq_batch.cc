@@ -1093,6 +1093,17 @@ pq_type_schema_can_frames_compact(uint32_t n_planes)
 	return root;
 }
 
+/*
+ * ADAPTIVE INT32/UINT8: DICT vs DELTA.
+ *
+ * Old rule (unique>=40 && |Δ|<=2 ≥70%) over-picked DELTA on can_ba / FD
+ * byte planes under zstd12: ≤256 uniques with n_present ≫ 256 are
+ * canid-major runs that RLE_DICTIONARY+zstd compresses better than
+ * DELTA_BINARY_PACKED (measured: ~55 planes/file would shrink on DICT).
+ *
+ * Keep DELTA only for small, nearly-injective smooth sequences
+ * (n_present not much larger than n_unique), e.g. unit-test 0..255.
+ */
 pq_enc
 pq_enc_choose_i32(const pq_array *a)
 {
@@ -1152,6 +1163,10 @@ pq_enc_choose_i32(const pq_array *a)
 		return PQ_ENC_RLE_DICT;
 	}
 	if (n_unique <= 24) {
+		return PQ_ENC_RLE_DICT;
+	}
+	/* Repeating byte plane: dict wins once rows outnumber the alphabet. */
+	if (n_present > (n_unique * 2u) || n_present > 512u) {
 		return PQ_ENC_RLE_DICT;
 	}
 	if (n_unique >= 40 && n_small * 100 >= n_pairs * 70) {
@@ -1215,6 +1230,9 @@ pq_enc_choose_u8(const pq_array *a)
 		return PQ_ENC_RLE_DICT;
 	}
 	if (n_unique <= 24) {
+		return PQ_ENC_RLE_DICT;
+	}
+	if (n_present > (n_unique * 2u) || n_present > 512u) {
 		return PQ_ENC_RLE_DICT;
 	}
 	if (n_unique >= 40 && n_small * 100 >= n_pairs * 70) {

@@ -47,7 +47,7 @@ typedef enum {
 	PQ_ENC_PLAIN,
 	PQ_ENC_DELTA,
 	PQ_ENC_RLE_DICT,
-	PQ_ENC_ADAPTIVE, /* INT32: dict vs DELTA from data; else DEFAULT */
+	PQ_ENC_ADAPTIVE, /* INT32/UINT8: dict vs DELTA; prefer dict when n≫unique */
 } pq_enc;
 
 typedef enum {
