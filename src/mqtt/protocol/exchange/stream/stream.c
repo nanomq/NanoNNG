@@ -12,36 +12,6 @@
 
 nng_id_map *stream_node_map = NULL;
 
-uint8_t *
-stream_msg_payload(void *msg, uint32_t *out_len)
-{
-	nng_msg *m = msg;
-	uint8_t *payload;
-	uint32_t  plen;
-
-	if (m == NULL) {
-		if (out_len != NULL) {
-			*out_len = 0;
-		}
-		return NULL;
-	}
-
-	payload = nng_msg_payload_ptr(m);
-	if (payload == NULL) {
-		if (out_len != NULL) {
-			*out_len = 0;
-		}
-		return NULL;
-	}
-
-	plen = (uint32_t) (nng_msg_len(m) -
-	    ((uintptr_t) payload - (uintptr_t) nng_msg_body(m)));
-	if (out_len != NULL) {
-		*out_len = plen;
-	}
-	return payload;
-}
-
 int stream_register(char *name,
 					uint8_t id,
 					void *(*decode)(void *),
