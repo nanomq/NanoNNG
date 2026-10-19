@@ -1848,7 +1848,7 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 
 		NNI_GET16(payload_ptr + bpos, len_of_topic);
 		bpos += 2;
-		if (len_of_topic + 1 > remain - bpos)
+		if ((size_t)len_of_topic + 1 > remain - bpos)
 			return (-3);
 
 		if (len_of_topic == 0) {

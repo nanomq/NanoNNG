@@ -185,7 +185,7 @@ extern void *nni_msg_get_proto_data(nng_msg *m);
 // the message is set by it alone.
 extern void *nni_msg_get_proto_data(nng_msg *);
 
-extern char *nni_msg_get_pub_topic(nng_msg *, int *topic_len);
+extern char *nni_msg_get_pub_topic(nng_msg *, uint16_t *topic_len);
 
 extern uint8_t nni_msg_get_pub_qos(nng_msg *m);
 

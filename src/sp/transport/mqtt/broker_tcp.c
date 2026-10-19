@@ -965,7 +965,8 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	}
 
 	bool      is_sqlite = p->conf->sqlite.enable;
-	int       qlen = 0, topic_len = 0;
+	int       qlen = 0;
+	uint16_t  topic_len = 0;
 	char     *topic       = nni_msg_get_pub_topic(msg, &topic_len);
 	subinfo  *tinfo = NULL, *info = NULL;
 	nni_list *subinfol = p->npipe->subinfol;
@@ -1549,7 +1550,7 @@ tcptran_pipe_send(void *arg, nni_aio *aio)
 		return;
 	}
 	if (nni_atomic_get_bool(&p->npipe->cache)) {
-		int        tlen_pac = 0;
+		uint16_t   tlen_pac = 0;
 		uint8_t    qos_pac = 0, qos = 0;
 		uint16_t   packetid;
 		char      *pld_pac  = NULL;

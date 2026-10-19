@@ -1795,10 +1795,10 @@ print_conf(conf *nanomq_conf)
 		log_info("http server limit_conn:   %u", hs.parallel);
 		log_info("http server max body:     %ld", hs.max_body);
 		log_info("http server username:     %s", conf_safe_str(hs.username));
-		if (hs.usernames) {
-			for (size_t i = 0; i < cvector_size(hs.usernames); ++i) {
+		if (hs.users) {
+			for (size_t i = 0; i < cvector_size(hs.users); ++i) {
 				log_info("http server username:     %s",
-				    conf_safe_str(hs.usernames[i]));
+				    conf_safe_str(hs.users[i]->username));
 			}
 		}
 
@@ -1813,17 +1813,6 @@ print_conf(conf *nanomq_conf)
 		if (hs.jwt.public_keyfile) {
 			log_info("	public key file:      %s",
 			    conf_safe_str(hs.jwt.public_keyfile));
-		}
-		if (hs.tls.enable) {
-			log_info("http server tls enable:   true");
-			conf_tls tls = hs.tls;
-			log_info("    tls key file:         %s", conf_safe_str(tls.keyfile));
-			log_info("    tls cert file:        %s", conf_safe_str(tls.certfile));
-			log_info("    tls cacert file:      %s", conf_safe_str(tls.cafile));
-			log_info("    tls verify peer:      %s", tls.verify_peer ? "true" : "false");
-			log_info("    tls set fail:         %s", tls.set_fail ? "true" : "false");
-		} else {
-			log_info("http server tls enable:   false");
 		}
 	}
 
