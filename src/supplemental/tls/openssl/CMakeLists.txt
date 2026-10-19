@@ -32,21 +32,34 @@ if (NNG_TLS_ENGINE STREQUAL "open")
     # instance of it, instead of configuring our own.
     if(ENABLE_ANDROID_KEYSTORE2 AND ANDROID)
         # --- 编译 BoringSSL 源码 ---
-        # BoringSSL 使用 -Werror + 新版 Clang 会产生大量编译警告
-        # 暂时 patch BoringSSL CMakeLists.txt 移除 -Werror
+        # BoringSSL 源码树必须显式指定（构建脚本按固定 SHA 拉取后传入）。
+        # 不再回退到 msquic 嵌套的 2017 版库：那种库 TLS1.3 默认关闭且是
+        # draft 线格式，能编过但握手必失败，这里直接硬失败。
+        # 注意：外部 BoringSSL 源码保持 pristine，不在配置期改写其文件。
+        set(NNG_BORINGSSL_SOURCE_DIR "" CACHE PATH
+            "BoringSSL source tree used for Android Keystore2 mTLS")
+        if(NOT NNG_BORINGSSL_SOURCE_DIR)
+            message(FATAL_ERROR
+                "Android Keystore2 build requires -DNNG_BORINGSSL_SOURCE_DIR=<BoringSSL source tree>")
+        endif()
+        if(NOT EXISTS "${NNG_BORINGSSL_SOURCE_DIR}/include/openssl/ssl.h")
+            message(FATAL_ERROR
+                "NNG_BORINGSSL_SOURCE_DIR='${NNG_BORINGSSL_SOURCE_DIR}' is not a BoringSSL source tree")
+        endif()
+        set(BORINGSSL_SRC_DIR "${NNG_BORINGSSL_SOURCE_DIR}")
         # 禁用 ASM 优化以避免 ARM AES/SHA 指令集兼容问题
-        set(BORINGSSL_SRC_DIR "${CMAKE_SOURCE_DIR}/nng/extern/msquic/submodules/openssl/boringssl")
-        set(BORINGSSL_CMAKE "${BORINGSSL_SRC_DIR}/CMakeLists.txt")
-        file(READ "${BORINGSSL_CMAKE}" BORINGSSL_CMAKE_ORIG)
-        string(REPLACE "-Werror " "" BORINGSSL_CMAKE_PATCHED "${BORINGSSL_CMAKE_ORIG}")
-        string(REPLACE "\"-Werror\"" "\"\"" BORINGSSL_CMAKE_PATCHED "${BORINGSSL_CMAKE_PATCHED}")
-        file(WRITE "${BORINGSSL_CMAKE}" "${BORINGSSL_CMAKE_PATCHED}")
         set(OPENSSL_NO_ASM ON CACHE BOOL "Disable BoringSSL assembly" FORCE)
 
+        # BoringSSL 作为子目录编译时会继承本项目的告警开关，其自身的
+        # -Werror 会把本项目开启的 -Wunused-parameter 变成错误。这里仅在
+        # 子目录作用域内关闭该告警，不改写外部源码（保持 pristine）。
+        set(NNG_SAVED_C_FLAGS "${CMAKE_C_FLAGS}")
+        set(NNG_SAVED_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+        string(APPEND CMAKE_C_FLAGS " -Wno-unused-parameter")
+        string(APPEND CMAKE_CXX_FLAGS " -Wno-unused-parameter")
         add_subdirectory(${BORINGSSL_SRC_DIR} ${CMAKE_BINARY_DIR}/boringssl)
-
-        # 恢复 BoringSSL CMakeLists.txt 原始内容
-        file(WRITE "${BORINGSSL_CMAKE}" "${BORINGSSL_CMAKE_ORIG}")
+        set(CMAKE_C_FLAGS "${NNG_SAVED_C_FLAGS}")
+        set(CMAKE_CXX_FLAGS "${NNG_SAVED_CXX_FLAGS}")
 
         # 直接链接 BoringSSL 的 ssl 和 crypto 目标
         target_include_directories(nng PRIVATE ${BORINGSSL_SRC_DIR}/include)
