@@ -4,6 +4,7 @@
 #include "nng/supplemental/nanolib/conf.h"
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -86,7 +87,7 @@ struct pq_type {
 struct pq_array {
 	const pq_type *type;
 	uint32_t       length;
-	uint8_t       *valid; /* 1=present, 0=null; REQUIRED may be NULL */
+	uint8_t       *valid; /* LSB bitmap, 1=present; REQUIRED may be NULL */
 	uint8_t        borrowed; /* 1: do not free i32/i64/bin packets */
 
 	/* LIST: child->length == offsets[length] */
@@ -102,6 +103,53 @@ struct pq_array {
 	uint8_t              *u8; /* PQ_UINT8 only */
 	parquet_data_packet **bin;
 };
+
+/* OPTIONAL validity is one bit per row (LSB within each byte). */
+static inline size_t
+pq_valid_nbytes(uint32_t n)
+{
+	return (size_t) ((n + 7u) / 8u);
+}
+
+static inline int
+pq_valid_present(const uint8_t *valid, uint32_t i)
+{
+	if (valid == NULL) {
+		return 1;
+	}
+	return (valid[i >> 3] & (uint8_t) (1u << (i & 7u))) != 0;
+}
+
+static inline void
+pq_valid_set(uint8_t *valid, uint32_t i, int present)
+{
+	uint8_t bit;
+
+	if (valid == NULL) {
+		return;
+	}
+	bit = (uint8_t) (1u << (i & 7u));
+	if (present) {
+		valid[i >> 3] |= bit;
+	} else {
+		valid[i >> 3] &= (uint8_t) ~bit;
+	}
+}
+
+static inline void
+pq_valid_fill(uint8_t *valid, uint32_t n)
+{
+	size_t nb;
+
+	if (valid == NULL || n == 0) {
+		return;
+	}
+	nb = pq_valid_nbytes(n);
+	memset(valid, 0xff, nb);
+	if ((n & 7u) != 0) {
+		valid[nb - 1] = (uint8_t) ((1u << (n & 7u)) - 1u);
+	}
+}
 
 /*
  * parquet_data is a pq_batch. First five fields keep the historic

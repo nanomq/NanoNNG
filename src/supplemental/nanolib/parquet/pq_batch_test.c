@@ -279,9 +279,11 @@ test_scheme_b_roundtrip(void)
 		pq_array *rg0 = pq_batch_field(got, "s_0_100");
 		pq_array *rg1 = pq_batch_field(got, "s_0_200");
 		NUTS_TRUE(rg0 != NULL && rg1 != NULL);
-		NUTS_TRUE(rg0->valid == NULL || rg0->valid[0] == 1);
-		NUTS_TRUE(rg0->valid != NULL && rg0->valid[1] == 0);
-		NUTS_TRUE(rg1->valid != NULL && rg1->valid[0] == 0);
+		NUTS_TRUE(pq_valid_present(rg0->valid, 0));
+		NUTS_TRUE(rg0->valid != NULL &&
+		    !pq_valid_present(rg0->valid, 1));
+		NUTS_TRUE(rg1->valid != NULL &&
+		    !pq_valid_present(rg1->valid, 0));
 		NUTS_TRUE(pq_struct_field(rg0, "tsdiff")->child->i32[0] == 10);
 		NUTS_TRUE(pq_struct_field(rg0, "tsdiff")->child->i32[1] == 20);
 		NUTS_TRUE(pq_struct_field(rg1, "tsdiff")->offsets[1] ==
@@ -361,7 +363,7 @@ test_can_frames_enc_and_row_groups(void)
 	NUTS_TRUE(b0->i32[0] == 0);
 	NUTS_TRUE(b0->i32[255] == 255);
 	NUTS_TRUE(b1->i32[0] == 0xA1);
-	NUTS_TRUE(b1->valid != NULL && b1->valid[1] == 0);
+	NUTS_TRUE(b1->valid != NULL && !pq_valid_present(b1->valid, 1));
 	NUTS_TRUE(b1->i32[n - 1] == 0xA1);
 
 	parquet_data_free(batch);

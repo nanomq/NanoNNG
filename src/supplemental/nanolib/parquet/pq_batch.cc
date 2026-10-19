@@ -173,11 +173,11 @@ pq_array_init(pq_array *a, const pq_type *t, uint32_t length)
 	a->type   = t;
 	a->length = length;
 	if (t->repetition == PQ_OPTIONAL && length > 0) {
-		a->valid = (uint8_t *) nng_alloc(length);
+		a->valid = (uint8_t *) nng_alloc(pq_valid_nbytes(length));
 		if (a->valid == NULL) {
 			return -1;
 		}
-		memset(a->valid, 1, length);
+		pq_valid_fill(a->valid, length);
 	}
 	switch (t->kind) {
 	case PQ_PRIMITIVE:
@@ -295,7 +295,7 @@ pq_array_free(pq_array *a)
 		return;
 	}
 	if (a->valid != NULL) {
-		nng_free(a->valid, a->length);
+		nng_free(a->valid, pq_valid_nbytes(a->length));
 		a->valid = NULL;
 	}
 	if (a->offsets != NULL) {
@@ -352,15 +352,30 @@ pq_array_resize(pq_array *a, uint32_t length)
 		return 0;
 	}
 	if (a->type->repetition == PQ_OPTIONAL || a->valid != NULL) {
-		uint8_t *nv = (uint8_t *) pq_realloc(
-		    a->valid, old, length);
-		if (length > 0 && nv == NULL) {
-			return -1;
+		size_t   old_n = pq_valid_nbytes(old);
+		size_t   new_n = pq_valid_nbytes(length);
+		uint8_t *nv    = NULL;
+
+		if (length > 0) {
+			nv = (uint8_t *) nng_alloc(new_n);
+			if (nv == NULL) {
+				return -1;
+			}
+			pq_valid_fill(nv, length);
+			if (a->valid != NULL && old > 0) {
+				uint32_t i;
+				uint32_t ncopy = old < length ? old : length;
+
+				for (i = 0; i < ncopy; i++) {
+					pq_valid_set(nv, i,
+					    pq_valid_present(a->valid, i));
+				}
+			}
+		}
+		if (a->valid != NULL) {
+			nng_free(a->valid, old_n);
 		}
 		a->valid = nv;
-		if (length > old && a->valid != NULL) {
-			memset(a->valid + old, 1, length - old);
-		}
 	}
 	switch (a->type->kind) {
 	case PQ_PRIMITIVE:
@@ -441,9 +456,7 @@ pq_array_set_i32(pq_array *a, uint32_t i, int32_t v)
 		return -1;
 	}
 	a->i32[i] = v;
-	if (a->valid != NULL) {
-		a->valid[i] = 1;
-	}
+	pq_valid_set(a->valid, i, 1);
 	return 0;
 }
 
@@ -454,9 +467,7 @@ pq_array_set_i64(pq_array *a, uint32_t i, int64_t v)
 		return -1;
 	}
 	a->i64[i] = v;
-	if (a->valid != NULL) {
-		a->valid[i] = 1;
-	}
+	pq_valid_set(a->valid, i, 1);
 	return 0;
 }
 
@@ -467,9 +478,7 @@ pq_array_set_u8(pq_array *a, uint32_t i, uint8_t v)
 		return -1;
 	}
 	a->u8[i] = v;
-	if (a->valid != NULL) {
-		a->valid[i] = 1;
-	}
+	pq_valid_set(a->valid, i, 1);
 	return 0;
 }
 
@@ -483,9 +492,7 @@ pq_array_set_bin(pq_array *a, uint32_t i, parquet_data_packet *pkt)
 		pq_packet_free(a->bin[i]);
 	}
 	a->bin[i] = pkt;
-	if (a->valid != NULL) {
-		a->valid[i] = (pkt != NULL) ? 1 : 0;
-	}
+	pq_valid_set(a->valid, i, pkt != NULL);
 	return 0;
 }
 
@@ -499,15 +506,13 @@ pq_array_set_null(pq_array *a, uint32_t i)
 		return -1;
 	}
 	if (a->valid == NULL && a->length > 0) {
-		a->valid = (uint8_t *) nng_alloc(a->length);
+		a->valid = (uint8_t *) nng_alloc(pq_valid_nbytes(a->length));
 		if (a->valid == NULL) {
 			return -1;
 		}
-		memset(a->valid, 1, a->length);
+		pq_valid_fill(a->valid, a->length);
 	}
-	if (a->valid != NULL) {
-		a->valid[i] = 0;
-	}
+	pq_valid_set(a->valid, i, 0);
 	return 0;
 }
 
@@ -562,9 +567,7 @@ pq_list_put_n(pq_array *list, uint32_t row, uint32_t n)
 		return -1;
 	}
 	list->offsets[row + 1] = start + n;
-	if (list->valid != NULL) {
-		list->valid[row] = 1;
-	}
+	pq_valid_set(list->valid, row, 1);
 	return 0;
 }
 
@@ -603,9 +606,7 @@ pq_list_put_i32(pq_array *list, uint32_t row, const int32_t *v, uint32_t n)
 		memcpy(list->child->i32 + start, v, sizeof(int32_t) * n);
 	}
 	list->offsets[row + 1] = start + n;
-	if (list->valid != NULL) {
-		list->valid[row] = 1;
-	}
+	pq_valid_set(list->valid, row, 1);
 	return 0;
 }
 
@@ -632,7 +633,7 @@ pq_list_put_bin(
 	}
 	list->offsets[row + 1] = start + n;
 	if (list->valid != NULL) {
-		list->valid[row] = 1;
+		pq_valid_set(list->valid, row, 1);
 	}
 	return 0;
 }
@@ -1132,7 +1133,7 @@ pq_enc_choose_i32(const pq_array *a)
 		int32_t v;
 		int32_t d;
 
-		if (a->valid != NULL && a->valid[i] == 0) {
+		if (!pq_valid_present(a->valid, i)) {
 			continue;
 		}
 		v = a->i32[i];
@@ -1201,7 +1202,7 @@ pq_enc_choose_u8(const pq_array *a)
 		uint8_t v;
 		int32_t d;
 
-		if (a->valid != NULL && a->valid[i] == 0) {
+		if (!pq_valid_present(a->valid, i)) {
 			continue;
 		}
 		v = a->u8[i];

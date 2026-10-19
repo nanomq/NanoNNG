@@ -742,7 +742,7 @@ pq_make_builder(const pq_type *t)
 static arrow::Status
 pq_append_one(arrow::ArrayBuilder *b, const pq_array *a, uint32_t i)
 {
-	bool is_null = (a->valid != NULL && a->valid[i] == 0);
+	bool is_null = !pq_valid_present(a->valid, i);
 	if (a->type->kind == PQ_PRIMITIVE) {
 		if (is_null) {
 			return b->AppendNull();
@@ -890,7 +890,7 @@ parquet_object_free_and_trim(parquet_object *elem)
 }
 
 /*
- * Pack pq_array byte-valid into an Arrow LSB bitmap. Empty *out means
+ * Copy pq_array LSB validity into an Arrow bitmap. Empty *out means
  * no nulls (bitmap may be omitted). Keep *out alive while arrays wrap it.
  */
 static void
@@ -905,18 +905,16 @@ pq_pack_valid_bits(const uint8_t *valid, uint32_t n,
 	if (valid == NULL || n == 0) {
 		return;
 	}
-	out->assign((n + 7) / 8, 0);
 	for (i = 0; i < n; i++) {
-		if (valid[i] != 0) {
-			(*out)[i >> 3] |= (uint8_t) (1u << (i & 7));
-		} else {
+		if (!pq_valid_present(valid, i)) {
 			nn++;
 		}
 	}
 	*null_count = nn;
 	if (nn == 0) {
-		out->clear();
+		return;
 	}
+	out->assign(valid, valid + pq_valid_nbytes(n));
 }
 
 /* Wrap INT32 / UINT64 (PQ_INT64) columns; NULL means use the builder path.
@@ -1226,15 +1224,15 @@ pq_copy_validity(pq_array *a, const arrow::Array &arr)
 		return;
 	}
 	if (a->valid == NULL && a->length > 0) {
-		a->valid = (uint8_t *) nng_alloc(a->length);
+		a->valid = (uint8_t *) nng_alloc(pq_valid_nbytes(a->length));
 		if (a->valid == NULL) {
 			return;
 		}
-		memset(a->valid, 1, a->length);
+		pq_valid_fill(a->valid, a->length);
 	}
 	for (int64_t i = 0; i < arr.length(); i++) {
-		if (arr.IsNull(i) && a->valid != NULL) {
-			a->valid[i] = 0;
+		if (arr.IsNull(i)) {
+			pq_valid_set(a->valid, (uint32_t) i, 0);
 		}
 	}
 }
@@ -1428,7 +1426,7 @@ pq_flat_cell(parquet_data *data, uint32_t c, uint32_t r)
 	if (data->root != NULL && data->root->fields != NULL &&
 	    c + 1 < data->root->type->n_children) {
 		pq_array *f = data->root->fields[c + 1];
-		if (f->valid != NULL && f->valid[r] == 0) {
+		if (!pq_valid_present(f->valid, r)) {
 			return NULL;
 		}
 		if (f->bin != NULL) {
