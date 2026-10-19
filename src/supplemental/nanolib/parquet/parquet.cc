@@ -1828,8 +1828,17 @@ parquet_write(parquet_object *elem)
 
 	log_debug("parquet_write");
 	while (batch != NULL) {
-		uint32_t  row_len = batch->row_len;
-		uint64_t *ts_arr  = batch->ts;
+		parquet_data *next    = batch->next;
+		uint32_t      row_len = batch->row_len;
+		uint64_t     *ts_arr  = batch->ts;
+
+		/*
+		 * Detach before write so a successful file can be freed
+		 * immediately; keep elem->data as the remaining chain for
+		 * error cleanup / final trim.
+		 */
+		batch->next = NULL;
+		elem->data  = batch;
 
 		if (ts_arr == NULL) {
 			pq_batch_bind_ts(batch);
@@ -1839,6 +1848,8 @@ parquet_write(parquet_object *elem)
 			log_error("Schema set error. topic=%s name_tag=%s",
 			    elem->topic,
 			    batch->name_tag != NULL ? batch->name_tag : "-");
+			batch->next = next;
+			elem->data  = batch;
 			parquet_object_free_and_trim(elem);
 			return -1;
 		}
@@ -1846,6 +1857,8 @@ parquet_write(parquet_object *elem)
 		char *filename = get_file_name(
 		    conf, ts_arr[0], ts_arr[row_len - 1], batch->name_tag);
 		if (filename == NULL) {
+			batch->next = next;
+			elem->data  = batch;
 			parquet_object_free_and_trim(elem);
 			log_error("Failed to get file name. topic=%s "
 			          "name_tag=%s",
@@ -1857,6 +1870,8 @@ parquet_write(parquet_object *elem)
 		if (parquet_write_file(
 		        conf, filename, batch, elem->topic, elem->type) != 0) {
 			free(filename);
+			batch->next = next;
+			elem->data  = batch;
 			parquet_object_free_and_trim(elem);
 			log_error("parquet_write_file failed. topic=%s "
 			          "name_tag=%s",
@@ -1867,6 +1882,8 @@ parquet_write(parquet_object *elem)
 		char *md5_file_name =
 		    compute_and_rename_file_withMD5(filename, conf, elem->topic);
 		if (md5_file_name == nullptr) {
+			batch->next = next;
+			elem->data  = batch;
 			parquet_object_free_and_trim(elem);
 			log_error("fail to get md5 from parquet file. "
 			          "topic=%s name_tag=%s",
@@ -1891,7 +1908,10 @@ parquet_write(parquet_object *elem)
 		file_manager.update_queue(elem->topic, md5_file_name);
 		pthread_mutex_unlock(&parquet_queue_mutex);
 
-		batch = batch->next;
+		/* Bound peak: drop this batch before encoding/writing next. */
+		parquet_data_free_one(batch);
+		elem->data = next;
+		batch      = next;
 	}
 
 	log_info("flush finished!");

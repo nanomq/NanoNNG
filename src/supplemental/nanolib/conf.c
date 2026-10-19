@@ -1406,6 +1406,7 @@ print_parquet_conf(conf_parquet *parquet)
 	log_info("parquet dictionary_page_size: %" PRIu64,
 	    parquet->dictionary_page_size);
 	log_info("parquet write_batch_size: %u", parquet->write_batch_size);
+	log_info("parquet flush_chunk_msgs:%u", parquet->flush_chunk_msgs);
 	log_info("parquet enable_statistics:%s",
 	    parquet->enable_statistics ? "true" : "false");
 	log_info("parquet enable_page_checksum: %s",
@@ -3445,6 +3446,7 @@ conf_parquet_init(conf_parquet *parquet)
 	parquet->data_page_size        = 0;
 	parquet->dictionary_page_size  = 0;
 	parquet->write_batch_size      = 0;
+	parquet->flush_chunk_msgs      = 0;
 	parquet->enable_statistics     = true;
 	parquet->enable_page_checksum  = false;
 	parquet->file_name_prefix      = NULL;

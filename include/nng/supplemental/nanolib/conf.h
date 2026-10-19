@@ -412,6 +412,9 @@ struct conf_parquet {
 	uint64_t                data_page_size;
 	uint64_t                dictionary_page_size;
 	uint32_t                write_batch_size;
+	/* 0: encode a whole drain in one file. >0: can_ba / can_ba_split
+	 * encode+write+free every N mqtt messages. */
+	uint32_t                flush_chunk_msgs;
 	bool                    enable_statistics;
 	bool                    enable_page_checksum;
 	conf_parquet_encryption encryption;

@@ -2269,6 +2269,7 @@ conf_parquet_parse_fields(conf_parquet *parquet, cJSON *jso_parquet)
 	hocon_read_size_base(parquet, dictionary_page_size,
 	    "dictionary_page_size", jso_parquet);
 	hocon_read_num(parquet, write_batch_size, jso_parquet);
+	hocon_read_num(parquet, flush_chunk_msgs, jso_parquet);
 	hocon_read_bool_base(
 	    parquet, enable_statistics, "enable_statistics", jso_parquet);
 	hocon_read_bool_base(parquet, enable_page_checksum,
