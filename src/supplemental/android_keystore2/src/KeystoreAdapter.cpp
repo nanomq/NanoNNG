@@ -270,15 +270,14 @@ extern "C" int keystore2_sign(const char *alias_cstr, int namespace_id,
 		// 未识别时: keymintPadding 维持默认值 RSA_PKCS1_1_5_SIGN
 		keymintDigest = Digest::NONE;
 	} else {
-		// 模拟器软件 KeyMint 模式：需要指定具体 digest（不支持 DIGEST_NONE）
+		// KeyMint 自行哈希模式（digest_none=false，默认）：需要指定具体 digest
 		//
-		// 注意 digest 模式必须与 TLS 版本匹配：
-		//   - TLS 1.2：BoringSSL 的自定义私钥回调收到的是未哈希的原始握手
-		//     转录（handshake_client.c::ssl3_send_cert_verify），必须由
-		//     KeyMint 做摘要 → digest_none 应为 false（本模式）
-		//   - TLS 1.3：BoringSSL 传入的是已预计算的摘要（tls13_both.c
-		//     tls13_add_certificate_verify），KeyMint 若再哈希一次签名
-		//     就会错误 → 应使用 digest_none=true 的 TEE 模式
+		// BoringSSL 的 sign 回调在 TLS 1.2 / 1.3 下收到的都是**未哈希**数据：
+		//   - TLS 1.2：原始握手转录（handshake_client.cc::ssl3_send_cert_verify）
+		//   - TLS 1.3：完整 signed_content（tls13_both.cc::
+		//     tls13_get_cert_verify_signature_input，SHA-256 时 130 字节）
+		// 因此两个版本都必须由 KeyMint 做摘要 → digest_none=false（本模式）。
+		// digest_none=true 仅适用于调用方已预哈希的场景（Conscrypt 语义）。
 		if (parsePSSSignatureScheme(sig_alg, keymintDigest)) {
 			isPSS          = true;
 			keymintPadding = PaddingMode::RSA_PSS;

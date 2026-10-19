@@ -90,6 +90,13 @@ static bool g_print_handshake = false;
 
 #if defined(ENABLE_ANDROID_KEYSTORE2)
 
+// 旧版 BoringSSL（2017，TLS1.3 draft-18）以 TLS1_3_DRAFT_VERSION 表示 TLS1.3，
+// 且默认把协议上限锁在 TLS1.2。这种库无法与要求 RFC 8446 的服务端互通，
+// 但代码仍能编译通过，这里提前在编译期拦截。
+#if defined(TLS1_3_DRAFT_VERSION)
+#error "Android Keystore2 mTLS requires a modern BoringSSL with RFC 8446 TLS 1.3; upgrade the vendored BoringSSL."
+#endif
+
 // 运行时可覆盖的 Keystore2 配置 (初始化为宏默认值)
 static char g_keystore2_alias[256]  = NANOMQ_KEYSTORE2_ALIAS;
 static int  g_keystore2_namespace   = NANOMQ_KEYSTORE2_NAMESPACE;
@@ -111,58 +118,6 @@ keystore2_engine_set_config(const char *alias, int namespace_id, bool digest_non
 	         g_keystore2_alias, g_keystore2_namespace, (int)g_keystore2_digest_none);
 }
 
-// BoringSSL 需要 type 回调来确定密钥类型（RSA/EC），不检查 NULL 直接调用
-static int
-keystore2_private_key_type(SSL *ssl)
-{
-	X509 *cert = SSL_get_certificate(ssl);
-	if (cert == NULL) {
-		return NID_rsaEncryption; // 默认 RSA
-	}
-	EVP_PKEY *pkey = X509_get_pubkey(cert);
-	if (pkey == NULL) {
-		return NID_rsaEncryption;
-	}
-	int type = EVP_PKEY_id(pkey);
-	if (type == EVP_PKEY_EC) {
-		// EC 密钥必须返回曲线 NID（如 NID_X9_62_prime256v1），而不是
-		// EVP_PKEY_id() 给出的通用类型 EVP_PKEY_EC，必须与 BoringSSL
-		// 文件密钥路径 ssl_privkey.c::ssl_private_key_type() 的
-		// EVP_PKEY_EC 分支保持一致。
-		//
-		// 原因：tls1_choose_signature_algorithm (t1_lib.c) 对每个候选
-		// 签名算法调用 ssl_private_key_supports_signature_algorithm()，
-		// ECDSA 算法要求 ssl_is_ecdsa_key_type(type)（仅接受曲线 NID），
-		// RSA 算法要求 type == NID_rsaEncryption；返回 EVP_PKEY_EC(408)
-		// 时两者都不满足，所有算法被跳过 →
-		// NO_COMMON_SIGNATURE_ALGORITHMS 握手失败（t1_lib.c:3308）。
-		// 本机 PEM 证书路径正常、Android keystore2 路径报此错即因此差异。
-		EC_KEY *ec_key = EVP_PKEY_get0_EC_KEY(pkey); // 借用引用，随 pkey 释放
-		if (ec_key != NULL && EC_KEY_get0_group(ec_key) != NULL) {
-			type = EC_GROUP_get_curve_name(EC_KEY_get0_group(ec_key));
-		}
-	}
-	EVP_PKEY_free(pkey);
-	return type;
-}
-
-// BoringSSL 需要 max_signature_len 回调来预分配签名缓冲区，不检查 NULL 直接调用
-static size_t
-keystore2_private_key_max_signature_len(SSL *ssl)
-{
-	X509 *cert = SSL_get_certificate(ssl);
-	if (cert == NULL) {
-		return 512; // RSA-4096 安全上限
-	}
-	EVP_PKEY *pkey = X509_get_pubkey(cert);
-	if (pkey == NULL) {
-		return 512;
-	}
-	size_t sz = (size_t)EVP_PKEY_size(pkey);
-	EVP_PKEY_free(pkey);
-	return sz;
-}
-
 static enum ssl_private_key_result_t
 keystore2_private_key_sign(SSL *ssl, uint8_t *out, size_t *out_len,
                            size_t max_out, uint16_t signature_algorithm,
@@ -180,13 +135,11 @@ keystore2_private_key_sign(SSL *ssl, uint8_t *out, size_t *out_len,
     return ssl_private_key_failure;
 }
 
-// 必须按 BoringSSL 结构体字段顺序初始化所有 6 个回调:
-// type, max_signature_len, sign, sign_digest, decrypt, complete
+// 新版 BoringSSL 的 SSL_PRIVATE_KEY_METHOD 只有 sign/decrypt/complete 三个
+// 回调：密钥类型由 SSL_CTX 上安装的证书公钥推断，签名缓冲区由库按签名算法
+// 分配（不再需要 type / max_signature_len），因此这里只注册 sign。
 static const SSL_PRIVATE_KEY_METHOD keystore2_private_key_method = {
-    .type               = keystore2_private_key_type,
-    .max_signature_len  = keystore2_private_key_max_signature_len,
     .sign               = keystore2_private_key_sign,
-    .sign_digest        = NULL,
     .decrypt            = NULL,
     .complete           = NULL,
 };
@@ -1005,11 +958,14 @@ open_config_init(nng_tls_engine_config *cfg, enum nng_tls_mode mode)
 	cfg->mode = mode;
 	// TODO NNI_LIST_INIT(&cfg->psks, psk, node);
 	if (mode == NNG_TLS_MODE_SERVER) {
-		method    = SSLv23_server_method();
+		// BoringSSL 已移除 SSLv23_server_method，TLS_method 由
+		// SSL_set_accept_state()（conn_init 中调用）决定服务端模式。
+		method    = TLS_method();
 		auth_mode = SSL_VERIFY_NONE;
 		nng_auth  = NNG_TLS_AUTH_MODE_NONE;
 	} else {
-		method    = SSLv23_client_method();
+		// 同理，客户端模式由 SSL_set_connect_state() 决定。
+		method    = TLS_method();
 		auth_mode = SSL_VERIFY_PEER;
 		nng_auth  = NNG_TLS_AUTH_MODE_REQUIRED;
 	}
@@ -1019,7 +975,14 @@ open_config_init(nng_tls_engine_config *cfg, enum nng_tls_mode mode)
 		log_error("NNG-TLS-CFG-INIT" "error in new ctx");
 		return (NNG_ENOMEM);
 	}
-	// Set max/min version TODO
+	// 显式声明协议范围：TLS1.2 ~ TLS1.3。新版 BoringSSL 默认已启用
+	// TLS1.3，这里固定下限以禁止回退到 TLS1.0/1.1，并为仅支持
+	// TLS1.2 的对端保留兼容性。
+	if (SSL_CTX_set_min_proto_version(cfg->ctx, TLS1_2_VERSION) != 1 ||
+	    SSL_CTX_set_max_proto_version(cfg->ctx, TLS1_3_VERSION) != 1) {
+		log_error("NNG-TLS-CFG-INIT" "error setting TLS version range");
+		return (NNG_EINVAL);
+	}
 
 	SSL_CTX_set_verify(cfg->ctx, auth_mode, nng_tls_verify_cb);
 	//SSL_CTX_set_mode(cfg->ctx, SSL_MODE_AUTO_RETRY);
