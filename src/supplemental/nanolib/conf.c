@@ -1861,7 +1861,6 @@ print_conf(conf *nanomq_conf)
 	print_auth_conf(auth);
 	print_auth_http_conf(auth_http);
 	print_webhook_conf(webhook);
-	print_exchange_conf(exchange);
 	print_parquet_conf(parquet);
 	print_bridge_conf(&nanomq_conf->bridge, "");
 	print_nng_proxy_pub_conf(&nanomq_conf->nng_proxy);
