@@ -4418,7 +4418,7 @@ decode_buf_properties(uint8_t *packet, uint32_t packet_len, uint32_t *pos,
 	property *list        = NULL;
 
 	if (current_pos >= msg_len) {
-		log_warn("msg len is not enough for decoding");
+		log_debug("msg len is not enough for decoding");
 		*len = (uint32_t)-1;
 		return NULL;
 	}

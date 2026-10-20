@@ -833,7 +833,8 @@ tcptran_pipe_recv_cb(void *arg)
 			nni_qos_db_remove(
 			    p->conf->sqlite.enable, p->npipe->nano_qos_db, p->npipe->p_id, ackid);
 		} else {
-			log_warn("ACK failed! qos msg %d not found!", ackid);
+			// false warning if there are multiple topic matches of 1 msg
+			log_info("ACK failed! qos msg %d not found!", ackid);
 		}
 
 	} else if (type == CMD_UNSUBSCRIBE) {
