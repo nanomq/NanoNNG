@@ -60,7 +60,7 @@ NNG_DECL void dbhash_destroy_alias_table(void);
 // not illegal.
 NNG_DECL void dbhash_insert_atpair(uint32_t pipe_id, uint32_t alias, const char *topic);
 
-NNG_DECL const char *dbhash_find_atpair(uint32_t pipe_id, uint32_t alias);
+NNG_DECL char *dbhash_find_atpair(uint32_t pipe_id, uint32_t alias);
 
 NNG_DECL void dbhash_del_atpair_queue(uint32_t pipe_id);
 
