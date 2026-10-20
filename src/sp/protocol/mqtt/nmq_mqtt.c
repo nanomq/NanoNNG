@@ -1246,6 +1246,10 @@ nano_pipe_recv_cb(void *arg)
 			if (rv == 0) {
 				nni_mqtt_proto_data *mqtt =
 				    nni_msg_get_proto_data(msg);
+				if(mqtt->var_header.disconnect.reason_code == 0) {
+					p->conn_param->clean_start = 1;
+					p->conn_param->will_flag = 0;
+				}
 				property *prop =
 				    mqtt->var_header.disconnect.properties;
 				property_data *prop_data = property_get_value(
@@ -1260,7 +1264,18 @@ nano_pipe_recv_cb(void *arg)
 				    &p->reason_code, MQTT_ERR_MALFORMED);
 			}
 		} else {
-			nni_atomic_set(&p->reason_code, 0x00);
+			rv = nni_mqtt_msg_proto_data_alloc(msg);
+			if (rv == 0) {
+				rv = nni_mqtt_msg_decode(msg);
+			}
+			nni_mqtt_proto_data *mqtt =
+			    nni_msg_get_proto_data(msg);
+			int rcode = mqtt->var_header.disconnect.reason_code;
+			if (rcode == 0) {
+				p->conn_param->will_flag = 0;
+				p->conn_param->clean_start = 1;
+			}
+			nni_atomic_set(&p->reason_code, rcode);
 		}
 		// pipe close must be called without lock
 		break;
