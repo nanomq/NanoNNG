@@ -250,11 +250,11 @@ dbhash_insert_atpair(uint32_t p, uint32_t a, const char *t)
 	return;
 }
 
-const char *
+char *
 dbhash_find_atpair(uint32_t p, uint32_t a)
 {
 	nni_rwlock_rdlock(&alias_lock);
-	const char *t = NULL;
+	char *t = NULL;
 
 	dbhash_atpair_t **vec = find_atpair_vec(p);
 	if (vec) {
@@ -262,8 +262,8 @@ dbhash_find_atpair(uint32_t p, uint32_t a)
 
 		if (true ==
 		    binary_search((void **) vec, 0, &index, &a, alias_cmp)) {
-			if (vec[index]) {
-				t = vec[index]->topic;
+			if (vec[index] && vec[index]->topic) {
+				t = nni_strdup(vec[index]->topic);
 			}
 		}
 	}
