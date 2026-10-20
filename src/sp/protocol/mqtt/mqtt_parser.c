@@ -1463,6 +1463,8 @@ nano_msg_get_subtopic(nni_msg *msg, nano_pipe_db *root, conn_param *cparam)
 
 	if (nni_msg_get_type(msg) != CMD_SUBSCRIBE)
 		return NULL;
+	if (nni_msg_len(msg) < 2)
+		return NULL;
 
 	if (root != NULL) {
 		db = root;
@@ -1472,6 +1474,8 @@ nano_msg_get_subtopic(nni_msg *msg, nano_pipe_db *root, conn_param *cparam)
 	}
 
 	if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5) {
+		if (nni_msg_len(msg) < 3)
+			return NULL;
 		len = get_var_integer(
 		    (uint8_t *) nni_msg_body(msg) + 2, &len_of_varint);
 		payload_ptr =
@@ -1662,7 +1666,7 @@ nmq_subtopic_decode(nng_msg *msg, uint8_t ver, topic_queue **ptq)
 	topic_queue     *tq = NULL;
 	topic_queue     *curtq = NULL;
 
-	if (!msg)
+	if (!msg || nni_msg_len(msg) < 2)
 		return (-1);
 
 	var_ptr = nni_msg_body(msg);
@@ -1670,6 +1674,8 @@ nmq_subtopic_decode(nng_msg *msg, uint8_t ver, topic_queue **ptq)
 	len_of_varint = 0;
 	// get variable length of properties
 	if (ver == MQTT_PROTOCOL_VERSION_v5) {
+		if (nni_msg_len(msg) < 3)
+			return (-1);
 		len = get_var_integer(
 		    (uint8_t *) nni_msg_body(msg) + 2, &len_of_varint);
 		if (len > nni_msg_len(msg))
@@ -1780,13 +1786,15 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 	struct subinfo *sn = NULL;
 	nni_list       *ll = l;
 
-	if (!l || !msg)
+	if (!l || !msg || nni_msg_len(msg) < 2)
 		return (-1);
 
 	var_ptr = nni_msg_body(msg);
 
 	// get variable length of properties
 	if (ver == MQTT_PROTOCOL_VERSION_v5) {
+		if (nni_msg_len(msg) < 3)
+			return (-1);
 		len = get_var_integer((uint8_t *) var_ptr + 2, &len_of_varint);
 		if (len > nni_msg_len(msg))
 			return -1;
