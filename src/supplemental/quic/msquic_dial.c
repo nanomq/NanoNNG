@@ -145,7 +145,6 @@ verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *ca)
 		return QUIC_STATUS_ABORTED;
 	}
 
-	// if (!X509_LOOKUP_load_file(lookup, cacertfile, X509_FILETYPE_PEM)) {
 	if (!X509_LOOKUP_load_file(lookup, ca, X509_FILETYPE_PEM)) {
 		log_warn("No load cacertfile be found");
 		X509_STORE_free(trusted);
@@ -155,65 +154,35 @@ verify_peer_cert_tls(QUIC_CERTIFICATE* cert, QUIC_CERTIFICATE* chain, char *ca)
 		return QUIC_STATUS_ABORTED;
 	}
 
-	// @TODO peer_certificate_received
-	// Only with QUIC_CREDENTIAL_FLAG_INDICATE_CERTIFICATE_RECEIVED
-	// set
-	// assert(QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED == Event->Type);
-
-	// Validate against CA certificates using OpenSSL API:s
 	X509 *crt = (X509 *) cert;
 	X509_STORE_CTX *x509_ctx = (X509_STORE_CTX *) chain;
 	STACK_OF(X509) *untrusted = X509_STORE_CTX_get0_untrusted(x509_ctx);
 
-	if (crt == NULL)
+	if (crt == NULL) {
+		X509_STORE_free(trusted);
 		return QUIC_STATUS_BAD_CERTIFICATE;
+	}
 
 	X509_STORE_CTX *ctx = X509_STORE_CTX_new();
-	// X509_STORE_CTX_init(ctx, c_ctx->trusted, crt, untrusted);
+	if (ctx == NULL) {
+		X509_STORE_free(trusted);
+		return QUIC_STATUS_ABORTED;
+	}
+
 	X509_STORE_CTX_init(ctx, trusted, crt, untrusted);
 	int res = X509_verify_cert(ctx);
-	X509_STORE_CTX_free(ctx);
+	int errorcode = (res <= 0) ? X509_STORE_CTX_get_error(ctx) : 0;
 
+	X509_STORE_CTX_free(ctx);
 	X509_STORE_free(trusted);
 	trusted = NULL;
 
 	if (res <= 0) {
-		int errorcode = X509_STORE_CTX_get_error(ctx);
 		log_error("rv %d: %s", res, X509_verify_cert_error_string(errorcode));
 		return QUIC_STATUS_BAD_CERTIFICATE;
-	} else
-		return QUIC_STATUS_SUCCESS;
-
-	/* @TODO validate SNI */
-
-/*
-	int rv;
-	uint32_t flags = 0;
-	// cert and chain are as quic_buffer when QUIC_CREDENTIAL_FLAG_USE_PORTABLE_CERTIFICATES is set
-	// refer. https://github.com/microsoft/msquic/blob/main/docs/api/QUIC_CONNECTION_EVENT.md#quic_connection_event_peer_certificate_received
-	QUIC_BUFFER *ce = (QUIC_BUFFER *)cert;
-	QUIC_BUFFER *ch = (QUIC_BUFFER *)chain;
-	mbedtls_x509_crt crt;
-	mbedtls_x509_crt chn;
-	mbedtls_x509_crt_init(&crt);
-	mbedtls_x509_crt_init(&chn);
-	log_info("chain %p %d cert %p %d\n", ch->Buffer, ch->Length, ce->Buffer, ce->Length);
-	mbedtls_x509_crt_parse_der(&crt, ce->Buffer, ce->Length);
-	mbedtls_x509_crt_parse(&chn, ch->Buffer, ch->Length);
-	rv = mbedtls_x509_crt_verify(&chn, &crt, NULL, NULL, &flags, my_verify, NULL);
-	if (rv != 0) {
-		char vrfy_buf[512];
-		log_warn(" failed\n");
-		mbedtls_x509_crt_verify_info(vrfy_buf, sizeof(vrfy_buf), "  ! ", flags);
-		log_warn("%s\n", vrfy_buf);
 	} else {
-		log_warn(" Verify OK\n");
+		return QUIC_STATUS_SUCCESS;
 	}
-	if (rv != 0)
-		log_warn("Error: 0x%04x; flag: %u\n", rv, flags);
-	return QUIC_STATUS_SUCCESS;
-*/
-
 }
 
 static void
