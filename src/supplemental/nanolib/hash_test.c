@@ -50,7 +50,7 @@ assert_str(const char *s1, const char *s2)
 static void
 test_check_alias_table(void)
 {
-	const char *r = NULL;
+	char *r = NULL;
 
 	// Make sure delete on an empty table is OK!
 	for (int i = 0; i < TABLE_SZ; i++) {
@@ -65,12 +65,14 @@ test_check_alias_table(void)
 		r = dbhash_find_atpair(table1[i].pipe, table1[i].key);
 		NUTS_TRUE(NULL != r);
 		assert_str(r, table1[i].topic);
+		nng_strfree(r);
 	}
 
 	for (int i = 0; i < TABLE_SZ; i++) {
 		r = dbhash_find_atpair(table1[i].pipe, table1[i].key);
 		NUTS_TRUE(NULL != r);
 		assert_str(r, table1[i].topic);
+		nng_strfree(r);
 	}
 
 	for (int i = 0; i < TABLE_SZ; i++) {
@@ -88,12 +90,12 @@ test_alias_table(void)
 	for (size_t i = 0; i < TABLE_SZ; i++) {
 		dbhash_insert_atpair(
 		    table1[i].pipe, table1[i].key, table1[i].topic);
-		dbhash_find_atpair(table1[i].pipe, table1[i].key);
+		nng_strfree(dbhash_find_atpair(table1[i].pipe, table1[i].key));
 		dbhash_del_atpair_queue(table1[i].pipe);
 
 		dbhash_insert_atpair(
 		    table2[i].pipe, table2[i].key, table2[i].topic);
-		dbhash_find_atpair(table2[i].pipe, table2[i].key);
+		nng_strfree(dbhash_find_atpair(table2[i].pipe, table2[i].key));
 		dbhash_del_atpair_queue(table2[i].pipe);
 	}
 
@@ -312,7 +314,7 @@ hash_test(void)
 	test_single_thread(NULL);
 
 	for (size_t i = 0; i < TABLE_SZ; i++) {
-		const char *r =
+		char *r =
 		    dbhash_find_atpair(table1[i].pipe, table1[i].key);
 		NUTS_TRUE(!r);
 		r = dbhash_find_atpair(table2[i].pipe, table2[i].key);
