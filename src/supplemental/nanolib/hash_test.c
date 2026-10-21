@@ -47,6 +47,8 @@ assert_str(const char *s1, const char *s2)
 	return;
 }
 
+/** Checks topic alias lookups on an empty table, after inserting, and after
+ * deleting each pipe's queue. Lookups return a copy, freed here. */
 static void
 test_check_alias_table(void)
 {
@@ -84,6 +86,8 @@ test_check_alias_table(void)
 	return;
 }
 
+/** Inserts, looks up and deletes one topic alias per pipe for both tables,
+ * freeing each looked-up copy. */
 static void
 test_alias_table(void)
 {
@@ -303,6 +307,8 @@ test_single_thread(void *args)
 	return NULL;
 }
 
+/** Runs the alias, pipe and cached-topic table checks, then verifies that no
+ * alias or topic queue is left and that each cached topic is still present. */
 void
 hash_test(void)
 {
