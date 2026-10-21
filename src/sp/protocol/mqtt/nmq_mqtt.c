@@ -1219,10 +1219,6 @@ nano_pipe_recv_cb(void *arg)
 			if (rv == 0) {
 				nni_mqtt_proto_data *mqtt =
 				    nni_msg_get_proto_data(msg);
-				if(mqtt->var_header.disconnect.reason_code == 0) {
-					p->conn_param->clean_start = 1;
-					p->conn_param->will_flag = 0;
-				}
 				property *prop =
 				    mqtt->var_header.disconnect.properties;
 				property_data *prop_data = property_get_value(
@@ -1231,6 +1227,11 @@ nano_pipe_recv_cb(void *arg)
 					p->conn_param
 					    ->session_expiry_interval =
 					    prop_data->p_value.u32;
+				}
+				if(mqtt->var_header.disconnect.reason_code == 0) {
+					p->conn_param->will_flag = 0;
+					if (p->conn_param->session_expiry_interval == 0)
+						p->conn_param->clean_start = 1;
 				}
 			} else {
 				nni_atomic_set(
@@ -1246,7 +1247,6 @@ nano_pipe_recv_cb(void *arg)
 			int rcode = mqtt->var_header.disconnect.reason_code;
 			if (rcode == 0) {
 				p->conn_param->will_flag = 0;
-				p->conn_param->clean_start = 1;
 			}
 			nni_atomic_set(&p->reason_code, rcode);
 		}
