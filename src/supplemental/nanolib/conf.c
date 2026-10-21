@@ -3673,6 +3673,8 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->sub_properties  = NULL;
 	// TODO compatible with bridge reload
 	node->ctx_msgs = NULL;
+	// bridge connect status flag
+	nng_atomic_alloc_bool(&node->connected);
 }
 
 static void
