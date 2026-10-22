@@ -245,6 +245,7 @@ open_net_write(void *ctx, const char *buf, int len) {
 	}
 }
 
+/** Creates a TLS connection and configures the expected server identity. */
 static int
 open_conn_init(nng_tls_engine_conn *ec, void *tls, nng_tls_engine_config *cfg)
 {
@@ -275,8 +276,20 @@ open_conn_init(nng_tls_engine_conn *ec, void *tls, nng_tls_engine_config *cfg)
 
 	ec->wnext = NULL;
 
-	if (cfg->server_name != NULL) {
-		SSL_set_tlsext_host_name(ec->ssl, cfg->server_name);
+	if (cfg->mode == NNG_TLS_MODE_CLIENT && cfg->server_name != NULL &&
+	    cfg->server_name[0] != '\0') {
+		const char        *name = cfg->server_name;
+		X509_VERIFY_PARAM *param = SSL_get0_param(ec->ssl);
+
+		// IP literals must match IP SANs and must not be sent as SNI.
+		if (X509_VERIFY_PARAM_set1_ip_asc(param, name) != 1) {
+			ERR_clear_error();
+			if (strchr(name, ':') != NULL ||
+			    X509_VERIFY_PARAM_set1_host(param, name, 0) != 1 ||
+			    SSL_set_tlsext_host_name(ec->ssl, name) != 1) {
+				return (NNG_EINVAL);
+			}
+		}
 	}
 	trace("end");
 

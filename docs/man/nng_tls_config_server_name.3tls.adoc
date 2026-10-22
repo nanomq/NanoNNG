@@ -28,10 +28,16 @@ int nng_tls_config_server_name(nng_tls_config *cfg, const char *name);
 The `nng_tls_config_server_name()` function configures the remote server name
 to be used by a client when connection to a server.
 The supplied _name_ is used when comparing the identity in the
-server's certificate.
-Furthermore, when ((Server Name Indication)) (SNI) is used, the _name_ may
-be sent to the server as a hint to tell it which of several possible
-certificates should be used.
+server's certificate when peer authentication is enabled.
+For OpenSSL clients, DNS names are matched against the certificate's DNS
+identities; IP literals are matched against IP address subject alternative
+names. A trusted certificate for a different name does not authenticate the
+configured server. DNS names are also sent as ((Server Name Indication))
+(SNI) to help the server select a certificate. IP literals are not sent as SNI.
+
+Dialers set the expected name from their URL by default. When supplying a
+custom TLS configuration, applications should set the expected name with
+this function to enable server identity verification.
 
 TIP: This function is only useful in configuring client behavior.
 
