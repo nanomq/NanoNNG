@@ -15,10 +15,16 @@
 #include "convey.h"
 #include "stubs.h"
 
+/** Checks TCP stream connections, addresses and message exchange. */
 TestMain("Supplemental TCP", {
+	// Declared out here: Reset runs after its Convey block has
+	// been left, so it must not use variables from that block.
+	nng_stream_dialer *  d;
+	nng_stream_listener *l;
+
 	Convey("We can create a dialer and listener", {
-		nng_stream_dialer *  d = NULL;
-		nng_stream_listener *l = NULL;
+		d = NULL;
+		l = NULL;
 		Reset({
 			nng_stream_listener_free(l);
 			nng_stream_dialer_free(d);
@@ -29,6 +35,11 @@ TestMain("Supplemental TCP", {
 			nng_sockaddr sa;
 			size_t       sz;
 			uint8_t      ip[4];
+			nng_aio *    daio;
+			nng_aio *    laio;
+			nng_aio *    maio;
+			nng_stream * c1;
+			nng_stream * c2;
 
 			So(nng_stream_listener_alloc(&l, "tcp://127.0.0.1") ==
 			    0);
@@ -46,13 +57,15 @@ TestMain("Supplemental TCP", {
 			So(memcmp(&sa.s_in.sa_addr, ip, 4) == 0);
 
 			Convey("We can dial it", {
-				nng_aio *   daio = NULL;
-				nng_aio *   laio = NULL;
-				nng_aio *   maio = NULL;
-				nng_stream *c1   = NULL;
-				nng_stream *c2   = NULL;
+				char     uri[64];
+				nng_aio *aio1;
+				nng_aio *aio2;
 
-				char uri[64];
+				daio = NULL;
+				laio = NULL;
+				maio = NULL;
+				c1   = NULL;
+				c2   = NULL;
 				snprintf(uri, sizeof(uri),
 				    "tcp://127.0.0.1:%d",
 				    test_htons(sa.s_in.sa_port));
@@ -93,8 +106,6 @@ TestMain("Supplemental TCP", {
 				So(c2 != NULL);
 
 				Convey("They exchange messages", {
-					nng_aio *    aio1;
-					nng_aio *    aio2;
 					nng_iov      iov;
 					nng_sockaddr sa2;
 					char         buf1[5];

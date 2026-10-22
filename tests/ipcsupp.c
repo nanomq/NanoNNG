@@ -18,11 +18,15 @@
 
 static int num = 0;
 
+/** Checks IPC stream allocation, connections and message exchange. */
 TestMain("Supplemental IPC", {
+	// Declared out here: Reset runs after its Convey block has
+	// been left, so it must not use variables from that block.
+	nng_stream_dialer *  d;
+	nng_stream_listener *l;
+
 	Convey("We can create a dialer and listener", {
-		nng_stream_dialer *  d;
-		nng_stream_listener *l;
-		char                 url[64];
+		char url[64];
 
 		snprintf(url, sizeof(url), "ipc:///tmp/ipcsupp_test%d", num);
 		num++;
@@ -35,14 +39,23 @@ TestMain("Supplemental IPC", {
 			nng_stream_dialer_free(d);
 		});
 		Convey("Listener listens", {
+			nng_aio *   daio;
+			nng_aio *   laio;
+			nng_aio *   maio;
+			nng_stream *c1;
+			nng_stream *c2;
+
 			So(nng_stream_listener_listen(l) == 0);
 
 			Convey("We can dial it", {
-				nng_aio *   daio = NULL;
-				nng_aio *   laio = NULL;
-				nng_aio *   maio = NULL;
-				nng_stream *c1   = NULL;
-				nng_stream *c2   = NULL;
+				nng_aio *aio1;
+				nng_aio *aio2;
+
+				daio = NULL;
+				laio = NULL;
+				maio = NULL;
+				c1   = NULL;
+				c2   = NULL;
 
 				So(nng_aio_alloc(&daio, NULL, NULL) == 0);
 				So(nng_aio_alloc(&laio, NULL, NULL) == 0);
@@ -77,8 +90,6 @@ TestMain("Supplemental IPC", {
 				So(c2 != NULL);
 
 				Convey("They exchange messages", {
-					nng_aio *    aio1;
-					nng_aio *    aio2;
 					nng_iov      iov;
 					nng_sockaddr sa2;
 					char         buf1[5];
