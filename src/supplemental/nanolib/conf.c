@@ -1007,19 +1007,24 @@ conf_http_server_init(conf_http_server *http, uint16_t port)
 	http->max_body			  = 1024 * 1024;
 	http->username            = NULL;
 	http->password            = NULL;
-	http->usernames           = NULL;
-	http->passwords           = NULL;
+	http->users               = NULL;
+	http->users_count         = 0;
+	http->users_present       = false;
+	http->cred_mtx            = NULL;
+	if (nng_mtx_alloc(&http->cred_mtx) != 0) {
+		log_error("Failed to allocate mutex for http_server config");
+		http->cred_mtx = NULL;
+	}
 	http->auth_type           = BASIC;
 	http->jwt.iss             = NULL;
 	http->jwt.private_key     = NULL;
 	http->jwt.public_key      = NULL;
 	http->jwt.private_keyfile = NULL;
 	http->jwt.public_keyfile  = NULL;
-	if (0 != nng_mtx_alloc(&http->mtx)) {
-		log_error("failed to alloc mtx for http server");
-	}
 	conf_tls_init(&http->tls);
 }
+
+static void conf_http_users_free(conf_http_user **users, size_t count);
 
 void
 conf_http_server_destroy(conf_http_server *http)
@@ -1030,19 +1035,12 @@ conf_http_server_destroy(conf_http_server *http)
 	}
 	nng_strfree(http->username);
 	nng_strfree(http->password);
-	if (http->usernames) {
-		for (size_t i = 0; i < cvector_size(http->usernames); ++i) {
-			if (http->usernames[i])
-				nng_strfree(http->usernames[i]);
-		}
-		cvector_free(http->usernames);
-	}
-	if (http->passwords) {
-		for (size_t i = 0; i < cvector_size(http->passwords); ++i) {
-			if (http->passwords[i])
-				nng_strfree(http->passwords[i]);
-		}
-		cvector_free(http->passwords);
+	conf_http_users_free(http->users, http->users_count);
+	http->users       = NULL;
+	http->users_count = 0;
+	if (http->cred_mtx != NULL) {
+		nng_mtx_free(http->cred_mtx);
+		http->cred_mtx = NULL;
 	}
 
 	nng_strfree(http->jwt.private_key);
@@ -1050,10 +1048,305 @@ conf_http_server_destroy(conf_http_server *http)
 	nng_strfree(http->jwt.private_keyfile);
 	nng_strfree(http->jwt.public_keyfile);
 	conf_tls_destroy(&http->tls);
-	if (http->mtx) {
-		nng_mtx_free(http->mtx);
-		http->mtx = NULL;
+}
+
+static void
+conf_http_user_free(conf_http_user *user)
+{
+	if (user == NULL) {
+		return;
 	}
+	nng_strfree(user->username);
+	nng_strfree(user->password);
+	NNI_FREE_STRUCT(user);
+}
+
+static void
+conf_http_users_free(conf_http_user **users, size_t count)
+{
+	if (users == NULL) {
+		return;
+	}
+	for (size_t i = 0; i < count; i++) {
+		conf_http_user_free(users[i]);
+	}
+	cvector_free(users);
+}
+
+// A credential matches when the decoded "username:password" equals the
+// configured pair byte for byte, matching the legacy strcmp semantics.
+static bool
+conf_http_cred_match(const char *username, const char *password,
+    const char *userpass, size_t len)
+{
+	size_t ulen;
+	size_t plen;
+
+	if (username == NULL || password == NULL || userpass == NULL) {
+		return false;
+	}
+	ulen = strlen(username);
+	plen = strlen(password);
+	if (ulen + plen + 1 != len) {
+		return false;
+	}
+	if (memcmp(userpass, username, ulen) != 0) {
+		return false;
+	}
+	if (userpass[ulen] != ':') {
+		return false;
+	}
+	return memcmp(userpass + ulen + 1, password, plen) == 0;
+}
+
+conf_http_user **
+conf_http_users_parse(cJSON *jso_users, size_t *count)
+{
+	conf_http_user **users = NULL;
+	cJSON           *ele   = NULL;
+
+	if (count != NULL) {
+		*count = 0;
+	}
+	if (!cJSON_IsArray(jso_users)) {
+		log_error("http_server.users must be an array, ignoring");
+		return NULL;
+	}
+
+	cJSON_ArrayForEach(ele, jso_users)
+	{
+		cJSON *jso_username;
+		cJSON *jso_password;
+		char  *username;
+		char  *password;
+		bool   dup = false;
+
+		if (!cJSON_IsObject(ele)) {
+			log_warn("http_server.users: entry is not an "
+			         "object, skipped");
+			continue;
+		}
+		jso_username = cJSON_GetObjectItem(ele, "username");
+		jso_password = cJSON_GetObjectItem(ele, "password");
+		if (!cJSON_IsString(jso_username) ||
+		    !cJSON_IsString(jso_password)) {
+			log_warn("http_server.users: entry without "
+			         "username/password, skipped");
+			continue;
+		}
+		username = jso_username->valuestring;
+		password = jso_password->valuestring;
+		if (username[0] == '\0' || password[0] == '\0') {
+			log_warn("http_server.users: empty username or "
+			         "password, skipped");
+			continue;
+		}
+		if (strchr(username, ':') != NULL) {
+			log_warn("http_server.users: username '%s' "
+			         "contains ':', skipped",
+			    username);
+			continue;
+		}
+		for (size_t i = 0; i < cvector_size(users); i++) {
+			if (strcmp(users[i]->username, username) == 0) {
+				dup = true;
+				break;
+			}
+		}
+		if (dup) {
+			log_warn("http_server.users: duplicate username "
+			         "'%s', keeping the first",
+			    username);
+			continue;
+		}
+
+		conf_http_user *user = NNI_ALLOC_STRUCT(user);
+		user->username       = nng_strdup(username);
+		user->password       = nng_strdup(password);
+		cvector_push_back(users, user);
+	}
+
+	if (count != NULL) {
+		*count = cvector_size(users);
+	}
+	return users;
+}
+
+bool
+conf_http_users_validate(cJSON *jso_users)
+{
+	cJSON *ele;
+
+	if (!cJSON_IsArray(jso_users)) {
+		return false;
+	}
+
+	cJSON_ArrayForEach(ele, jso_users)
+	{
+		cJSON *jso_username;
+		cJSON *jso_password;
+		cJSON *prev;
+
+		if (!cJSON_IsObject(ele)) {
+			log_warn("http_server.users: entry is not an object");
+			return false;
+		}
+		jso_username = cJSON_GetObjectItem(ele, "username");
+		jso_password = cJSON_GetObjectItem(ele, "password");
+		if (!cJSON_IsString(jso_username) ||
+		    !cJSON_IsString(jso_password) ||
+		    jso_username->valuestring == NULL ||
+		    jso_password->valuestring == NULL) {
+			log_warn("http_server.users: entry without username/password");
+			return false;
+		}
+		if (jso_username->valuestring[0] == '\0' ||
+		    jso_password->valuestring[0] == '\0') {
+			log_warn("http_server.users: empty username or password");
+			return false;
+		}
+		if (strchr(jso_username->valuestring, ':') != NULL) {
+			log_warn("http_server.users: username '%s' contains ':'",
+			    jso_username->valuestring);
+			return false;
+		}
+
+		for (prev = jso_users->child; prev != ele; prev = prev->next) {
+			cJSON *prev_username;
+
+			if (!cJSON_IsObject(prev)) {
+				continue;
+			}
+			prev_username = cJSON_GetObjectItem(prev, "username");
+			if (cJSON_IsString(prev_username) &&
+			    prev_username->valuestring != NULL &&
+			    strcmp(prev_username->valuestring,
+			        jso_username->valuestring) == 0) {
+				log_warn("http_server.users: duplicate username '%s'",
+				    jso_username->valuestring);
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
+void
+conf_http_server_set_users(
+    conf_http_server *http, conf_http_user **users, size_t count)
+{
+	if (http == NULL) {
+		conf_http_users_free(users, count);
+		return;
+	}
+	if (http->cred_mtx != NULL) {
+		nng_mtx_lock(http->cred_mtx);
+	}
+	conf_http_users_free(http->users, http->users_count);
+	http->users         = users;
+	http->users_count   = count;
+	http->users_present = true;
+	if (http->cred_mtx != NULL) {
+		nng_mtx_unlock(http->cred_mtx);
+	}
+}
+
+// Drops the user table and forgets that the `users` key was present, so a
+// config without the key keeps using the legacy credentials (or the built-in
+// default) instead of an empty user list.
+void
+conf_http_server_clear_users(conf_http_server *http)
+{
+	if (http == NULL) {
+		return;
+	}
+	if (http->cred_mtx != NULL) {
+		nng_mtx_lock(http->cred_mtx);
+	}
+	conf_http_users_free(http->users, http->users_count);
+	http->users         = NULL;
+	http->users_count   = 0;
+	http->users_present = false;
+	if (http->cred_mtx != NULL) {
+		nng_mtx_unlock(http->cred_mtx);
+	}
+}
+
+void
+conf_http_server_update_legacy(
+    conf_http_server *http, const char *username, const char *password)
+{
+	if (http == NULL) {
+		return;
+	}
+	if (http->cred_mtx != NULL) {
+		nng_mtx_lock(http->cred_mtx);
+	}
+	if (username != NULL) {
+		nng_strfree(http->username);
+		http->username = nng_strdup(username);
+	}
+	if (password != NULL) {
+		nng_strfree(http->password);
+		http->password = nng_strdup(password);
+	}
+	if (http->cred_mtx != NULL) {
+		nng_mtx_unlock(http->cred_mtx);
+	}
+}
+
+// Replaces the legacy pair as a whole; a NULL argument clears that field.
+// Used by config parsing, where the file is the only source of truth, unlike
+// conf_http_server_update_legacy() which leaves NULL fields untouched for
+// partial updates.
+void
+conf_http_server_replace_legacy(
+    conf_http_server *http, const char *username, const char *password)
+{
+	if (http == NULL) {
+		return;
+	}
+	if (http->cred_mtx != NULL) {
+		nng_mtx_lock(http->cred_mtx);
+	}
+	nng_strfree(http->username);
+	http->username = username != NULL ? nng_strdup(username) : NULL;
+	nng_strfree(http->password);
+	http->password = password != NULL ? nng_strdup(password) : NULL;
+	if (http->cred_mtx != NULL) {
+		nng_mtx_unlock(http->cred_mtx);
+	}
+}
+
+bool
+conf_http_server_cred_check(
+    conf_http_server *http, const char *userpass, size_t len)
+{
+	bool ok = false;
+
+	if (http == NULL || userpass == NULL) {
+		return false;
+	}
+	if (http->cred_mtx != NULL) {
+		nng_mtx_lock(http->cred_mtx);
+	}
+	for (size_t i = 0; i < http->users_count; i++) {
+		conf_http_user *user = http->users[i];
+		if (user != NULL && conf_http_cred_match(
+		        user->username, user->password, userpass, len)) {
+			ok = true;
+			break;
+		}
+	}
+	if (!ok) {
+		ok = conf_http_cred_match(
+		    http->username, http->password, userpass, len);
+	}
+	if (http->cred_mtx != NULL) {
+		nng_mtx_unlock(http->cred_mtx);
+	}
+	return ok;
 }
 
 void
@@ -1657,10 +1950,10 @@ print_conf(conf *nanomq_conf)
 		log_info("http server limit_conn:   %u", hs.parallel);
 		log_info("http server max body:     %ld", hs.max_body);
 		log_info("http server username:     %s", conf_safe_str(hs.username));
-		if (hs.usernames) {
-			for (size_t i = 0; i < cvector_size(hs.usernames); ++i) {
+		if (hs.users) {
+			for (size_t i = 0; i < hs.users_count; ++i) {
 				log_info("http server username:     %s",
-				    conf_safe_str(hs.usernames[i]));
+				    conf_safe_str(hs.users[i]->username));
 			}
 		}
 
