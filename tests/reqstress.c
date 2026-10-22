@@ -265,6 +265,7 @@ reqrep_test(int ntests)
 	}
 }
 
+/** Runs concurrent request/reply exchanges across randomized transports. */
 Main({
 	int   i;
 	int   tmo;
@@ -281,13 +282,17 @@ Main({
 	    ((ncases = atoi(str)) < 1)) {
 		ncases = 32;
 	}
+	if (ncases > 5000) {
+		fprintf(stderr, "STRESSPRESSURE must be at most 5000\n");
+		exit(1);
+	}
 
 	// Each run should truly be random.
 	srand((int) time(NULL));
 
 	// Reduce the likelihood of address in use conflicts between
 	// subsequent runs.
-	next_port += (rand() % 100) * 100;
+	next_port += rand() % (5001 - ncases);
 
 	i = ncases;
 

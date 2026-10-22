@@ -179,17 +179,32 @@ httpecho(nng_aio *aio)
 	nng_aio_finish(aio, 0);
 }
 
+/** Checks HTTP handlers, directory serving, redirects and server cleanup. */
 TestMain("HTTP Server", {
 	nng_http_server * s;
 	nng_http_handler *h;
+	// Declared out here: Reset runs after its Convey block has
+	// been left, so it must not use variables from that block.
+	nng_aio *aio;
+	nng_url *url;
+	char *   tmpdir;
+	char *   workdir;
+	char *   workdir2;
+	char *   file1;
+	char *   file2;
+	char *   file3;
+	char *   subdir1;
+	char *   subdir2;
 
 	nni_init();
 
 	Convey("We can start an HTTP server", {
-		nng_aio *aio;
-		char     portbuf[16];
-		char     urlstr[48];
-		nng_url *url;
+		char             portbuf[16];
+		char             urlstr[48];
+		nng_http_client *cli;
+		nng_http_conn *  conn;
+		nng_http_req *   req;
+		nng_http_res *   res;
 
 		trantest_next_address(portbuf, "");
 
@@ -213,36 +228,31 @@ TestMain("HTTP Server", {
 		So(nng_http_server_start(s) == 0);
 
 		Convey("We can connect a client to it", {
-			nng_http_client *cli;
-			nng_http_conn *  h;
-			nng_http_req *   req;
-			nng_http_res *   res;
-
 			So(nng_http_client_alloc(&cli, url) == 0);
 			nng_http_client_connect(cli, aio);
 			nng_aio_wait(aio);
 
 			So(nng_aio_result(aio) == 0);
-			h = nng_aio_get_output(aio, 0);
-			So(h != NULL);
+			conn = nng_aio_get_output(aio, 0);
+			So(conn != NULL);
 			So(nng_http_req_alloc(&req, url) == 0);
 			So(nng_http_res_alloc(&res) == 0);
 
 			Reset({
 				nng_http_client_free(cli);
-				nng_http_conn_close(h);
+				nng_http_conn_close(conn);
 				nng_http_req_free(req);
 				nng_http_res_free(res);
 			});
 
 			Convey("404 works", {
 				So(nng_http_req_set_uri(req, "/bogus") == 0);
-				nng_http_conn_write_req(h, req, aio);
+				nng_http_conn_write_req(conn, req, aio);
 
 				nng_aio_wait(aio);
 				So(nng_aio_result(aio) == 0);
 
-				nng_http_conn_read_res(h, res, aio);
+				nng_http_conn_read_res(conn, res, aio);
 				nng_aio_wait(aio);
 				So(nng_aio_result(aio) == 0);
 
@@ -256,12 +266,12 @@ TestMain("HTTP Server", {
 
 				So(nng_http_req_set_uri(req, "/home.html") ==
 				    0);
-				nng_http_conn_write_req(h, req, aio);
+				nng_http_conn_write_req(conn, req, aio);
 
 				nng_aio_wait(aio);
 				So(nng_aio_result(aio) == 0);
 
-				nng_http_conn_read_res(h, res, aio);
+				nng_http_conn_read_res(conn, res, aio);
 				nng_aio_wait(aio);
 				So(nng_aio_result(aio) == 0);
 
@@ -275,7 +285,7 @@ TestMain("HTTP Server", {
 				iov.iov_len = strlen(doc1);
 				iov.iov_buf = chunk;
 				So(nng_aio_set_iov(aio, 1, &iov) == 0);
-				nng_http_conn_read_all(h, aio);
+				nng_http_conn_read_all(conn, aio);
 				nng_aio_wait(aio);
 				So(nng_aio_result(aio) == 0);
 				So(nng_aio_count(aio) == strlen(doc1));
@@ -286,14 +296,6 @@ TestMain("HTTP Server", {
 
 	Convey("Directory serving works (root)", {
 		char     urlstr[32];
-		nng_url *url;
-		char *   tmpdir;
-		char *   workdir;
-		char *   file1;
-		char *   file2;
-		char *   file3;
-		char *   subdir1;
-		char *   subdir2;
 
 		trantest_next_address(urlstr, "http://127.0.0.1:");
 		So(nng_url_parse(&url, urlstr) == 0);
@@ -508,14 +510,6 @@ TestMain("HTTP Server", {
 
 	Convey("Directory serving works", {
 		char     urlstr[32];
-		nng_url *url;
-		char *   tmpdir;
-		char *   workdir;
-		char *   file1;
-		char *   file2;
-		char *   file3;
-		char *   subdir1;
-		char *   subdir2;
 
 		trantest_next_address(urlstr, "http://127.0.0.1:");
 		So(nng_url_parse(&url, urlstr) == 0);
@@ -713,12 +707,6 @@ TestMain("HTTP Server", {
 
 	Convey("Multiple tree handlers works", {
 		char     urlstr[32];
-		nng_url *url;
-		char *   tmpdir;
-		char *   workdir;
-		char *   workdir2;
-		char *   file1;
-		char *   file2;
 
 		trantest_next_address(urlstr, "http://127.0.0.1:");
 		So(nng_url_parse(&url, urlstr) == 0);
@@ -808,7 +796,6 @@ TestMain("HTTP Server", {
 
 	Convey("Custom POST handler works", {
 		char     urlstr[32];
-		nng_url *url;
 
 		trantest_next_address(urlstr, "http://127.0.0.1:");
 		So(nng_url_parse(&url, urlstr) == 0);
@@ -879,7 +866,6 @@ TestMain("HTTP Server", {
 
 	Convey("Redirect handler works", {
 		char     urlstr[32];
-		nng_url *url;
 
 		trantest_next_address(urlstr, "http://127.0.0.1:");
 		So(nng_url_parse(&url, urlstr) == 0);
@@ -998,7 +984,6 @@ TestMain("HTTP Server", {
 
 	Convey("Root tree handler works", {
 		char     urlstr[32];
-		nng_url *url;
 
 		trantest_next_address(urlstr, "http://127.0.0.1:");
 		So(nng_url_parse(&url, urlstr) == 0);

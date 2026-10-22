@@ -113,11 +113,14 @@ reject(nng_pipe p, nng_pipe_ev act, void *arg)
 char       addr[64];
 static int cnt;
 
+/** Checks pipe notifications, reconnection and rejection callbacks. */
 TestMain("Pipe notify works", {
+	// Declared out here: Reset runs after its Convey block has
+	// been left, so it must not use variables from that block.
+	struct testcase push;
+	struct testcase pull;
 
 	Convey("We can create a pipeline", {
-		struct testcase push;
-		struct testcase pull;
 		sprintf(addr, "inproc://test%d", cnt++);
 
 		memset(&pull, 0, sizeof(pull));

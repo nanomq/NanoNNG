@@ -37,31 +37,34 @@ dodev(void *arg)
 
 #define SECOND(x) ((x) *1000)
 
+/** Exercises cooked/raw PAIR device setup, forwarding and shutdown. */
 Main({
 
 	Test("PAIRv1 device", {
 		const char *addr1 = "inproc://dev1";
 		const char *addr2 = "inproc://dev2";
+		// Declared out here: Reset runs after its Convey block has
+		// been left, so it must not use variables from that block.
+		nng_socket      s1;
+		nng_socket      dev1;
+		nng_socket      dev2;
+		nng_thread *    thr;
+		struct dev_data ddata;
 
 		Convey("We cannot create cooked mode device", {
-			nng_socket s1;
 			So(nng_pair1_open(&s1) == 0);
 			Reset({ nng_close(s1); });
 			So(nng_device(s1, s1) == NNG_EINVAL);
 		});
 		Convey("We can create a PAIRv1 device", {
-			nng_socket   dev1;
-			nng_socket   dev2;
 			nng_socket   end1;
 			nng_socket   end2;
 			nng_duration tmo;
 			nng_msg *    msg;
-			nng_thread * thr;
 
 			So(nng_pair1_open_raw(&dev1) == 0);
 			So(nng_pair1_open_raw(&dev2) == 0);
 
-			struct dev_data ddata;
 			ddata.s1 = dev1;
 			ddata.s2 = dev2;
 

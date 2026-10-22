@@ -89,16 +89,19 @@ nng_aio *raios[NCTX];
 bool     recd[NCTX];
 bool     sent[NCTX];
 
+/** Checks concurrent REQ contexts, cancellation and socket teardown. */
 TestMain("REQ concurrent contexts", {
 	int         rv;
 	const char *addr = "inproc://test";
 	int         i;
+	// Declared out here: Reset runs after its Convey block has
+	// been left, so it must not use variables from that block.
+	nng_socket  req;
+	nng_aio *   aio;
 
 	memset(recv_order, 0, NCTX * sizeof(int));
 
 	Convey("We can use REQ contexts concurrently", {
-		nng_socket req;
-
 		So(nng_mtx_alloc(&rep_state.mtx) == 0);
 		So(nng_aio_alloc(&rep_state.aio, rep_cb, NULL) == 0);
 		So(nng_rep_open(&rep_state.s) == 0);
@@ -228,9 +231,7 @@ TestMain("REQ concurrent contexts", {
 	});
 
 	Convey("Given a socket and a context", {
-		nng_socket req;
-		nng_ctx    ctx;
-		nng_aio *  aio;
+		nng_ctx ctx;
 
 		So(nng_req0_open(&req) == 0);
 		So(nng_ctx_open(&ctx, req) == 0);
