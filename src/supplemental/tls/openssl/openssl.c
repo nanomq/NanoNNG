@@ -217,6 +217,8 @@ open_net_read(void *ctx, char *buf, int len) {
 	}
 }
 
+/** Passes encrypted bytes to the transport and maps NNG results to the
+ * negated SSL_ERROR_* codes understood by the engine's I/O loop. */
 static int
 open_net_write(void *ctx, const char *buf, int len) {
 	trace("start %d", len);
@@ -664,6 +666,8 @@ open_conn_peer_cn(nng_tls_engine_conn *ec)
 	return (rv);
 }
 
+/** Returns the peer certificate subject in RFC 2253 form, allocated with
+ * malloc for the caller, or NULL without a peer certificate. */
 static char *
 open_conn_peer_subject(nng_tls_engine_conn *ec)
 {
@@ -818,6 +822,8 @@ open_config_init(nng_tls_engine_config *cfg, enum nng_tls_mode mode)
 	return (0);
 }
 
+/** Stores a copy of the expected server name, used for SNI and identity
+ * checks when connections are created. */
 static int
 open_config_server(nng_tls_engine_config *cfg, const char *name)
 {
