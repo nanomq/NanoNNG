@@ -190,6 +190,8 @@ req_recv_cb(void *arg)
 	nng_sleep_aio(rand() % 10, c->time_aio);
 }
 
+/** Counts a finished request and starts receiving its reply; on error the
+ * message is freed and the failure recorded. */
 static void
 req_send_cb(void *arg)
 {
@@ -206,6 +208,8 @@ req_send_cb(void *arg)
 	nng_recv_aio(c->socket, c->recv_aio);
 }
 
+/** Opens one rep socket and ntests - 1 req sockets on fresh addresses and
+ * starts their request/reply exchanges. */
 void
 reqrep_test(int ntests)
 {

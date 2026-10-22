@@ -155,6 +155,7 @@ fail:
 	return (rv);
 }
 
+/** Handler that echoes the request body back as a text/plain 200 reply. */
 static void
 httpecho(nng_aio *aio)
 {
