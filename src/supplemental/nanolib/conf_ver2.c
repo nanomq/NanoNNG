@@ -14,6 +14,7 @@
 #include "nng/supplemental/nanolib/ringbuffer.h"
 #include "supplemental/base64/base64.h"
 #include <ctype.h>
+#include <limits.h>
 #include <string.h>
 
 
@@ -330,6 +331,12 @@ conf_http_server_parse_ver2(conf_http_server *http_server, cJSON *json)
 	cJSON *jso_http_server = cJSON_GetObjectItem(json, "http_server");
 	if (jso_http_server) {
 		http_server->enable = true;
+		if (cJSON_GetObjectItem(jso_http_server, "usernames") != NULL ||
+		    cJSON_GetObjectItem(jso_http_server, "passwords") != NULL) {
+			log_warn("http_server.usernames/passwords are deprecated "
+			         "and ignored; migrate to http_server.users = "
+			         "[{ username = \"...\", password = \"...\" }]");
+		}
 		hocon_read_num(http_server, port, jso_http_server);
 		hocon_read_num_base(
 		    http_server, parallel, "limit_conn", jso_http_server);
@@ -930,42 +937,132 @@ conf_auth_parse_cipher(conf_auth *auth, const char *key)
 }
 
 static void
+conf_http_server_parse_password_cipher(
+    char **password, const char *key, const char *name)
+{
+	char       *cipher;
+	char       *plain;
+	const char *method;
+	size_t      password_len;
+	size_t      cipher_sz;
+	int         plain_sz = 0;
+
+	if (password == NULL || *password == NULL || (*password)[0] == '\0') {
+		return;
+	}
+	if (key == NULL) {
+		log_error("failed to decrypt %s: AES key is NULL", name);
+		return;
+	}
+
+	password_len = strlen(*password);
+	cipher       = nng_alloc(password_len + 1);
+	if (cipher == NULL) {
+		log_error("failed to alloc cipher for %s sz%zu", name,
+		    password_len);
+		return;
+	}
+	cipher_sz = nni_base64_decode(*password, password_len,
+	    (uint8_t *) cipher, password_len);
+	if (cipher_sz == (size_t) -1 || cipher_sz <= 32) {
+		log_error("failed to base64 decode %s sz%zu", name, cipher_sz);
+		nng_free(cipher, password_len + 1);
+		return;
+	}
+
+	method = aes_gcm_get_method_by_key_len(strlen(key));
+	plain  = (char *) nni_aes_gcm_decrypt((uint8_t *) cipher,
+	     (int) cipher_sz, (uint8_t *) key, strlen(key), &plain_sz, method);
+	nng_free(cipher, password_len + 1);
+	if (plain == NULL || plain_sz <= 0) {
+		log_error("failed to decrypt %s", name);
+		return;
+	}
+
+	nng_free(*password, password_len);
+	*password = plain;
+	log_trace("%s decrypted", name);
+}
+
+void
+conf_http_server_decrypt_password(char **password, const char *key)
+{
+	conf_http_server_parse_password_cipher(
+	    password, key, "http_server.password");
+}
+
+void
+conf_http_server_decrypt_users(
+    conf_http_user **users, size_t count, const char *key)
+{
+	if (users == NULL) {
+		return;
+	}
+	for (size_t i = 0; i < count; i++) {
+		char name[64];
+
+		if (users[i] == NULL) {
+			continue;
+		}
+		snprintf(name, sizeof(name),
+		    "http_server.users[%zu].password", i);
+		conf_http_server_parse_password_cipher(
+		    &users[i]->password, key, name);
+	}
+}
+
+char *
+conf_http_server_encrypt_password(const char *password, const char *key)
+{
+	uint8_t *cipher;
+	char    *encoded;
+	size_t   password_len;
+	size_t   encoded_len;
+	int      cipher_len = 0;
+
+	if (password == NULL || key == NULL) {
+		return NULL;
+	}
+	password_len = strlen(password);
+	if (password_len > INT_MAX) {
+		log_error("http_server password is too long: %zu", password_len);
+		return NULL;
+	}
+
+	cipher = nni_aes_gcm_encrypt((uint8_t *) password,
+	    (int) password_len, (char *) key, strlen(key), &cipher_len,
+	    aes_gcm_get_method_by_key_len(strlen(key)));
+	if (cipher == NULL || cipher_len <= 0) {
+		log_error("failed to encrypt http_server password");
+		return NULL;
+	}
+
+	encoded_len = ((size_t) cipher_len + 2) / 3 * 4 + 1;
+	encoded     = nng_alloc(encoded_len);
+	if (encoded == NULL) {
+		nng_free(cipher, cipher_len);
+		return NULL;
+	}
+	if (nni_base64_encode(cipher, cipher_len, encoded, encoded_len) ==
+	    (size_t) -1) {
+		log_error("failed to base64 encode http_server password");
+		nng_free(encoded, encoded_len);
+		encoded = NULL;
+	}
+	nng_free(cipher, cipher_len);
+	return encoded;
+}
+
+static void
 conf_http_server_parse_cipher(conf_http_server *http, const char *key)
 {
 	if (!http->enable) {
 		return;
 	}
 
-	if (http->password) {
-		char *password = http->password;
-		size_t cipher_sz = 0;
-		char * cipher = nng_alloc(sizeof(char) * strlen(password));
-		if (!cipher) {
-			log_error("failed to alloc cipher sz%ld", strlen(password));
-		} else {
-			cipher_sz = nni_base64_decode((const char*)password,
-				strlen(password), (uint8_t *)cipher, strlen(password));
-		}
-		if (cipher_sz <= 32) {
-			nng_free(cipher, cipher_sz);
-			log_error("failed to base64 decode http_server.password sz%ld", cipher_sz);
-		} else {
-			int   plain_sz;
-			const char *method =
-			    aes_gcm_get_method_by_key_len(strlen(key));
-			char *plain = (char *) nni_aes_gcm_decrypt(
-			    (uint8_t *) cipher, cipher_sz, (uint8_t *) key,
-			    strlen(key), &plain_sz, method);
-			nng_free(cipher, cipher_sz);
-			if (plain == NULL || plain_sz == 0) {
-				log_error("failed to decrypt http_server.password");
-			} else {
-				nng_free(password, strlen(password));
-				http->password = plain;
-				log_trace("http_server.password: %s", plain);
-			}
-		}
-	}
+	conf_http_server_decrypt_password(&http->password, key);
+	conf_http_server_decrypt_users(
+	    http->users, http->users_count, key);
 }
 #endif
 
@@ -3104,8 +3201,6 @@ conf_parse_ver2(conf *config, bool is_reload)
 	}
 	if (!is_reload)
 		log_clear_callback();
-
-	return;
 }
 
 #if defined(SUPP_ZMQ_GATEWAY)

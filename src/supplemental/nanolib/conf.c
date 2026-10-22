@@ -1172,6 +1172,66 @@ conf_http_users_parse(cJSON *jso_users, size_t *count)
 	return users;
 }
 
+bool
+conf_http_users_validate(cJSON *jso_users)
+{
+	cJSON *ele;
+
+	if (!cJSON_IsArray(jso_users)) {
+		return false;
+	}
+
+	cJSON_ArrayForEach(ele, jso_users)
+	{
+		cJSON *jso_username;
+		cJSON *jso_password;
+		cJSON *prev;
+
+		if (!cJSON_IsObject(ele)) {
+			log_warn("http_server.users: entry is not an object");
+			return false;
+		}
+		jso_username = cJSON_GetObjectItem(ele, "username");
+		jso_password = cJSON_GetObjectItem(ele, "password");
+		if (!cJSON_IsString(jso_username) ||
+		    !cJSON_IsString(jso_password) ||
+		    jso_username->valuestring == NULL ||
+		    jso_password->valuestring == NULL) {
+			log_warn("http_server.users: entry without username/password");
+			return false;
+		}
+		if (jso_username->valuestring[0] == '\0' ||
+		    jso_password->valuestring[0] == '\0') {
+			log_warn("http_server.users: empty username or password");
+			return false;
+		}
+		if (strchr(jso_username->valuestring, ':') != NULL) {
+			log_warn("http_server.users: username '%s' contains ':'",
+			    jso_username->valuestring);
+			return false;
+		}
+
+		for (prev = jso_users->child; prev != ele; prev = prev->next) {
+			cJSON *prev_username;
+
+			if (!cJSON_IsObject(prev)) {
+				continue;
+			}
+			prev_username = cJSON_GetObjectItem(prev, "username");
+			if (cJSON_IsString(prev_username) &&
+			    prev_username->valuestring != NULL &&
+			    strcmp(prev_username->valuestring,
+			        jso_username->valuestring) == 0) {
+				log_warn("http_server.users: duplicate username '%s'",
+				    jso_username->valuestring);
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
 void
 conf_http_server_set_users(
     conf_http_server *http, conf_http_user **users, size_t count)

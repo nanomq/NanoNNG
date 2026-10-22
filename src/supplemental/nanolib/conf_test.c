@@ -2,6 +2,11 @@
 #include "nng/supplemental/nanolib/nanolib.h"
 #include "nng/supplemental/nanolib/cJSON.h"
 
+#ifdef SUPP_LICENSE_STD
+#include "nng/supplemental/nanolib/nmq_base64.h"
+#include "supplemental/aes/aes.h"
+#endif
+
 #include "nuts.h"
 
 #if defined(ENABLE_NANOMQ_TESTS)
@@ -151,6 +156,19 @@ test_conf_http_server_users(void)
 	    "{\"username\":\"\",\"password\":\"x\"},"
 	    "{\"username\":\"a:b\",\"password\":\"x\"}]");
 	NUTS_TRUE(cJSON_IsArray(users));
+	NUTS_TRUE(!conf_http_users_validate(users));
+
+	cJSON *valid_users = cJSON_Parse(
+	    "[{\"username\":\"admin\",\"password\":\"public\"},"
+	    "{\"username\":\"ops\",\"password\":\"s3cret\"}]");
+	NUTS_TRUE(conf_http_users_validate(valid_users));
+	cJSON *missing_password =
+	    cJSON_Parse("[{\"username\":\"admin\"}]");
+	NUTS_TRUE(!conf_http_users_validate(missing_password));
+	cJSON *duplicate_users = cJSON_Parse(
+	    "[{\"username\":\"admin\",\"password\":\"public\"},"
+	    "{\"username\":\"admin\",\"password\":\"other\"}]");
+	NUTS_TRUE(!conf_http_users_validate(duplicate_users));
 
 	conf_http_server http;
 	conf_http_server_init(&http, 8081);
@@ -216,6 +234,9 @@ test_conf_http_server_users(void)
 	NUTS_TRUE(na_count == 0);
 
 	cJSON_Delete(users);
+	cJSON_Delete(valid_users);
+	cJSON_Delete(missing_password);
+	cJSON_Delete(duplicate_users);
 	cJSON_Delete(bad);
 	cJSON_Delete(not_array);
 	conf_http_server_destroy(&http);
@@ -234,6 +255,103 @@ test_conf_http_server_users_from_file(void)
 	NUTS_TRUE(conf->http_server.users_count == 2);
 	conf_fini(conf);
 }
+
+#ifdef SUPP_LICENSE_STD
+void
+test_conf_http_server_users_cipher(void)
+{
+	const char *key     = "nanomqAESKey4Four4AuthPassCipher";
+	const char *plain   = "alice-secret";
+	char        encoded[512] = { 0 };
+	int         cipher_len   = 0;
+	uint8_t    *cipher       = nni_aes_gcm_encrypt((uint8_t *) plain,
+	    strlen(plain), (char *) key, strlen(key), &cipher_len,
+	    aes_gcm_get_method_by_key_len(strlen(key)));
+
+	NUTS_TRUE(cipher != NULL);
+	if (cipher == NULL) {
+		return;
+	}
+	size_t encoded_len = nmq_base64_encode(
+	    cipher, cipher_len, encoded, sizeof(encoded) - 1);
+	NUTS_TRUE(encoded_len != (size_t) -1);
+	if (encoded_len == (size_t) -1) {
+		nng_free(cipher, cipher_len);
+		return;
+	}
+	encoded[encoded_len] = '\0';
+
+	conf *config = nng_zalloc(sizeof(*config));
+	NUTS_TRUE(config != NULL);
+	if (config == NULL) {
+		nng_free(cipher, cipher_len);
+		return;
+	}
+	conf_init(config);
+	config->http_server.enable   = true;
+	config->http_server.username = nng_strdup("legacy");
+	config->http_server.password = nng_strdup(encoded);
+
+	conf_http_user *user = nng_zalloc(sizeof(*user));
+	NUTS_TRUE(user != NULL);
+	if (user == NULL) {
+		nng_free(cipher, cipher_len);
+		conf_fini(config);
+		return;
+	}
+	user->username = nng_strdup("alice");
+	user->password = nng_strdup(encoded);
+
+	conf_http_user **users = NULL;
+	cvector_push_back(users, user);
+	conf_http_server_set_users(&config->http_server, users, 1);
+
+	conf_parse_cipher(config, key, key, key);
+
+	NUTS_TRUE(strcmp(config->http_server.password, plain) == 0);
+	NUTS_TRUE(config->http_server.users_count == 1);
+	if (config->http_server.users_count == 1) {
+		NUTS_TRUE(config->http_server.users[0] != NULL);
+		if (config->http_server.users[0] != NULL) {
+			NUTS_TRUE(strcmp(
+			    config->http_server.users[0]->password, plain) == 0);
+		}
+	}
+	NUTS_TRUE(conf_http_server_cred_check(&config->http_server,
+	    "legacy:alice-secret", strlen("legacy:alice-secret")));
+	NUTS_TRUE(conf_http_server_cred_check(&config->http_server,
+	    "alice:alice-secret", strlen("alice:alice-secret")));
+
+	char *encrypted = conf_http_server_encrypt_password(plain, key);
+	NUTS_TRUE(encrypted != NULL);
+	if (encrypted != NULL) {
+		NUTS_TRUE(strcmp(encrypted, encoded) == 0);
+		char *decrypted = nng_strdup(encrypted);
+		conf_http_server_decrypt_password(&decrypted, key);
+		NUTS_TRUE(strcmp(decrypted, plain) == 0);
+		nng_strfree(decrypted);
+		nng_strfree(encrypted);
+	}
+
+	conf_http_user *rest_user = nng_zalloc(sizeof(*rest_user));
+	NUTS_TRUE(rest_user != NULL);
+	if (rest_user != NULL) {
+		rest_user->username = nng_strdup("rest");
+		rest_user->password = nng_strdup(encoded);
+		conf_http_user **rest_users = NULL;
+		cvector_push_back(rest_users, rest_user);
+		conf_http_server_decrypt_users(rest_users, 1, key);
+		NUTS_TRUE(strcmp(rest_users[0]->password, plain) == 0);
+		nng_strfree(rest_users[0]->username);
+		nng_strfree(rest_users[0]->password);
+		nng_free(rest_users[0], sizeof(*rest_users[0]));
+		cvector_free(rest_users);
+	}
+
+	nng_free(cipher, cipher_len);
+	conf_fini(config);
+}
+#endif
 
 void
 test_get_size_edge_cases(void)
@@ -449,6 +567,9 @@ NUTS_TESTS = {
    {"conf parse v2", test_conf_parse_ver2},
    {"conf http server users", test_conf_http_server_users},
    {"conf http server users in file", test_conf_http_server_users_from_file},
+#if defined(SUPP_LICENSE_STD)
+   {"conf http server users cipher", test_conf_http_server_users_cipher},
+#endif
 #if defined(SUPP_PARQUET)
    {"exchange node validate v2", test_exchange_node_validate_ver2},
 #endif

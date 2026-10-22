@@ -816,6 +816,16 @@ NNG_DECL void conf_parse_ver2(conf *nanomq_conf, bool is_reload);
 NNG_DECL conf_exchange_node *conf_exchange_find_node_by_name(
     conf_exchange *exchange, const char *name);
 NNG_DECL void conf_parse_cipher(conf *nanomq_conf, const char *key, const char *key2, const char *key3);
+#if defined(SUPP_LICENSE_STD)
+// Decrypts owned password storage in place. Invalid input is left unchanged.
+NNG_DECL void conf_http_server_decrypt_password(
+    char **password, const char *key);
+NNG_DECL void conf_http_server_decrypt_users(
+    conf_http_user **users, size_t count, const char *key);
+// Returns an owned Base64 ciphertext, or NULL on failure.
+NNG_DECL char *conf_http_server_encrypt_password(
+    const char *password, const char *key);
+#endif
 #if defined(SUPP_PARQUET) || defined(SUPP_LICENSE_STD)
 NNG_DECL void conf_bridge_node_parse_cipher_password(conf_bridge_node *bridge, const char *key);
 NNG_DECL bool conf_parquet_unwrap_runtime_key(
@@ -841,6 +851,7 @@ NNG_DECL void conf_session_node_parse(conf_session_node *node, cJSON *obj);
 
 NNG_DECL conf_http_user **conf_http_users_parse(
     cJSON *jso_users, size_t *count);
+NNG_DECL bool conf_http_users_validate(cJSON *jso_users);
 NNG_DECL void conf_http_server_set_users(
     conf_http_server *http, conf_http_user **users, size_t count);
 NNG_DECL void conf_http_server_clear_users(conf_http_server *http);
