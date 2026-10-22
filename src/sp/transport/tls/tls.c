@@ -164,6 +164,8 @@ tlstran_pipe_fini(void *arg)
 	NNI_FREE_STRUCT(p);
 }
 
+/** Allocates a pipe with its lock, AIOs and queues; the pipe is not yet
+ * bound to an endpoint. */
 static int
 tlstran_pipe_alloc(tlstran_pipe **pipep)
 {
@@ -190,6 +192,7 @@ tlstran_pipe_alloc(tlstran_pipe **pipep)
 	return (0);
 }
 
+/** Closes the stream and queues the pipe for reaping, at most once. */
 static void
 tlstran_pipe_reap(tlstran_pipe *p)
 {
@@ -201,6 +204,8 @@ tlstran_pipe_reap(tlstran_pipe *p)
 	}
 }
 
+/** Hands the first waiting pipe to the pending user AIO, if both exist.
+ * Called with ep->mtx held. */
 static void
 tlstran_ep_match(tlstran_ep *ep)
 {
@@ -570,6 +575,7 @@ tlstran_pipe_recv_start(tlstran_pipe *p)
 	nng_stream_recv(p->tls, aio);
 }
 
+/** Queues a receive AIO and starts the receive if none is in progress. */
 static void
 tlstran_pipe_recv(void *arg, nni_aio *aio)
 {
@@ -593,6 +599,7 @@ tlstran_pipe_recv(void *arg, nni_aio *aio)
 	nni_mtx_unlock(&p->mtx);
 }
 
+/** Returns the peer protocol number learned during negotiation. */
 static uint16_t
 tlstran_pipe_peer(void *arg)
 {
@@ -601,6 +608,8 @@ tlstran_pipe_peer(void *arg)
 	return (p->peer);
 }
 
+/** Binds a pipe to its stream and endpoint, queues it as negotiating and
+ * sends the SP header. Called with ep->mtx held. */
 static void
 tlstran_pipe_start(tlstran_pipe *p, nng_stream *conn, tlstran_ep *ep)
 {

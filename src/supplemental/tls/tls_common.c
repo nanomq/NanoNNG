@@ -105,6 +105,7 @@ typedef struct {
 	nni_mtx            lk; // protects the config
 } tls_dialer;
 
+/** Closes the underlying TCP dialer. */
 static void
 tls_dialer_close(void *arg)
 {
@@ -112,6 +113,7 @@ tls_dialer_close(void *arg)
 	nng_stream_dialer_close(d->d);
 }
 
+/** Releases a TLS dialer with its TCP dialer, TLS configuration and lock. */
 static void
 tls_dialer_free(void *arg)
 {

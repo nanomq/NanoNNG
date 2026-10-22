@@ -163,6 +163,7 @@ tcptran_pipe_fini(void *arg)
 	NNI_FREE_STRUCT(p);
 }
 
+/** Closes the stream and queues the pipe for reaping, at most once. */
 static void
 tcptran_pipe_reap(tcptran_pipe *p)
 {
@@ -174,6 +175,8 @@ tcptran_pipe_reap(tcptran_pipe *p)
 	}
 }
 
+/** Allocates a pipe with its lock, AIOs and queues; the pipe is not yet
+ * bound to an endpoint. */
 static int
 tcptran_pipe_alloc(tcptran_pipe **pipep)
 {
@@ -200,6 +203,8 @@ tcptran_pipe_alloc(tcptran_pipe **pipep)
 	return (0);
 }
 
+/** Hands the first waiting pipe to the pending user AIO, if both exist.
+ * Called with ep->mtx held. */
 static void
 tcptran_ep_match(tcptran_ep *ep)
 {
@@ -619,6 +624,7 @@ tcptran_pipe_recv(void *arg, nni_aio *aio)
 	nni_mtx_unlock(&p->mtx);
 }
 
+/** Returns the peer protocol number learned during negotiation. */
 static uint16_t
 tcptran_pipe_peer(void *arg)
 {
@@ -627,6 +633,7 @@ tcptran_pipe_peer(void *arg)
 	return (p->peer);
 }
 
+/** Reads a pipe option from the underlying stream. */
 static int
 tcptran_pipe_getopt(
     void *arg, const char *name, void *buf, size_t *szp, nni_type t)
@@ -635,6 +642,8 @@ tcptran_pipe_getopt(
 	return (nni_stream_get(p->conn, name, buf, szp, t));
 }
 
+/** Binds a pipe to its stream and endpoint, queues it as negotiating and
+ * sends the SP header. Called with ep->mtx held. */
 static void
 tcptran_pipe_start(tcptran_pipe *p, nng_stream *conn, tcptran_ep *ep)
 {
