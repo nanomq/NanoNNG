@@ -162,6 +162,7 @@ struct nng_tls_engine_config {
 };
 
 static int open_conn_handshake(nng_tls_engine_conn *ec);
+static X509 *open_conn_get_peer_cert(nng_tls_engine_conn *ec);
 static bool open_is_pkcs11_uri(const char *value);
 static int  open_check_pkcs11_provider(void);
 static int open_load_x509_from_uri(
@@ -361,6 +362,7 @@ open_conn_handshake(nng_tls_engine_conn *ec)
 	return 0;
 }
 
+/** Receives plaintext after progressing the handshake and draining TCP input. */
 static int
 open_conn_recv(nng_tls_engine_conn *ec, uint8_t *buf, size_t *szp)
 {
@@ -368,33 +370,43 @@ open_conn_recv(nng_tls_engine_conn *ec, uint8_t *buf, size_t *szp)
 	int rv;
 	int ensz = OPEN_BUF_SZ;
 
-	rv = open_net_read(ec->tls, ec->wbuf, ensz);
-	if (rv == 0 - SSL_ERROR_WANT_READ || rv == 0 - SSL_ERROR_WANT_WRITE) {
-		rv = NNG_EAGAIN;
-		goto readopenssl;
+	// SSL_read can only advance the handshake into the memory BIOs; the
+	// handshake routine is what moves those records over TCP.
+	if (!ec->ok && (rv = open_conn_handshake(ec)) != 0) {
+		return (rv);
 	}
-	else if (rv < 0)
-		return (NNG_ECLOSED);
 
-	int written = 0;
-	while ((ensz = BIO_write(ec->rbio, ec->wbuf + written, rv - written)) > 0) {
-		written += ensz;
-		if (written == rv)
+	// Move everything TCP has buffered into the BIO. Bytes left in the TCP
+	// buffer keep tls_tcp_recv_start from receiving more, so a record
+	// split across that boundary would never complete.
+	for (;;) {
+		rv = open_net_read(ec->tls, ec->wbuf, OPEN_BUF_SZ);
+		if (rv == 0 - SSL_ERROR_WANT_READ ||
+		    rv == 0 - SSL_ERROR_WANT_WRITE) {
 			break;
-	}
-	if (ensz < 0) {
-		log_debug("NNG-TLS-CONN-RECV" "bio write result %d", ensz);
-		if (!BIO_should_retry(ec->rbio)) {
-			log_error("NNG-TLS-CONN-RECV"
-				"openssl BIO write failed rv%d", ensz);
-			open_log_ssl_error("NNG-TLS-CONN-RECV BIO_write", 0);
-			return (NNG_ECRYPTO);
+		} else if (rv < 0) {
+			return (NNG_ECLOSED);
 		}
-	}
-	log_debug("NNG-TLS-CONN-RECV"
-			"recv %d from tcp and written %d to BIO", rv, written);
 
-readopenssl:
+		int written = 0;
+		while ((ensz = BIO_write(ec->rbio, ec->wbuf + written, rv - written)) > 0) {
+			written += ensz;
+			if (written == rv)
+				break;
+		}
+		if (ensz < 0) {
+			log_debug("NNG-TLS-CONN-RECV" "bio write result %d", ensz);
+			if (!BIO_should_retry(ec->rbio)) {
+				log_error("NNG-TLS-CONN-RECV"
+					"openssl BIO write failed rv%d", ensz);
+				open_log_ssl_error("NNG-TLS-CONN-RECV BIO_write", 0);
+				return (NNG_ECRYPTO);
+			}
+		}
+		log_debug("NNG-TLS-CONN-RECV"
+				"recv %d from tcp and written %d to BIO", rv, written);
+	}
+
 	ERR_clear_error();
 	rv = SSL_read(ec->ssl, buf, (int) *szp);
 	if (rv <= 0) {
@@ -445,6 +457,7 @@ readopenssl:
 	return (0);
 }
 
+/** Sends plaintext, retaining encrypted records until TCP can accept them. */
 static int
 open_conn_send(nng_tls_engine_conn *ec, const uint8_t *buf, size_t *szp)
 {
@@ -454,6 +467,10 @@ open_conn_send(nng_tls_engine_conn *ec, const uint8_t *buf, size_t *szp)
 	int written2ssl = 0;
 	int written2tcp = 0;
 	trace("start");
+
+	if (!ec->ok && (rv = open_conn_handshake(ec)) != 0) {
+		return (rv);
+	}
 
 	if (ec->wnext) {
 		log_debug("NNG-TLS-CONN-SEND"
@@ -525,37 +542,40 @@ open_conn_send(nng_tls_engine_conn *ec, const uint8_t *buf, size_t *szp)
 			}
 		}
 
+		if (read2buf == 0) {
+			// SSL_write neither took data nor produced records.
+			break;
+		}
+
 		rv = open_net_write(ec->tls, ec->rbuf, read2buf);
-		if (rv > 0) {
-			if (rv != read2buf) {
-				int dm = read2buf - rv;
-				ec->wnext = nng_alloc(sizeof(char) * dm);
-				memcpy(ec->wnext, ec->rbuf + rv, dm);
-				ec->wnsz = dm;
-				log_debug("NNG-TLS-CONN-SEND"
-					"tcp%d ssl%d written%d remain%dbytes to put to kernel",
-					written2tcp, read2buf, rv, dm);
-				// written2tcp += written2ssl; // This may make wnext send after a long time
-				// So updated way is as following.
-				// Part of block of data sent failed. The return value size will not
-				// contains the length of this block. So Upper layer will send again.
-				// So the `wnext` will be sent next immediately.
-				ec->wntcpsz = written2ssl;
-				goto end;
-			}
-			written2tcp += written2ssl;
-			// A special case before handshake finished
-			if (written2tcp == 0) {
-				goto end;
-			}
-		} else if (rv == 0 - SSL_ERROR_WANT_READ || rv == 0 - SSL_ERROR_WANT_WRITE) {
-			trace("end2 read2buf%d written2tcp%d", read2buf, written2tcp);
-			if (written2tcp == 0)
-				return NNG_EAGAIN;
-			*szp = (size_t) written2tcp;
-			return 0;
-		} else
+		if (rv == 0 - SSL_ERROR_WANT_READ || rv == 0 - SSL_ERROR_WANT_WRITE) {
+			// The TCP send buffer is full. SSL has consumed the
+			// plaintext already, so the records must not be dropped.
+			rv = 0;
+		} else if (rv < 0) {
 			return (NNG_ECLOSED);
+		}
+		if (rv != read2buf) {
+			int dm = read2buf - rv;
+			ec->wnext = nng_alloc(sizeof(char) * dm);
+			memcpy(ec->wnext, ec->rbuf + rv, dm);
+			ec->wnsz = dm;
+			log_debug("NNG-TLS-CONN-SEND"
+				"tcp%d ssl%d written%d remain%dbytes to put to kernel",
+				written2tcp, read2buf, rv, dm);
+			// written2tcp += written2ssl; // This may make wnext send after a long time
+			// So updated way is as following.
+			// Part of block of data sent failed. The return value size will not
+			// contains the length of this block. So Upper layer will send again.
+			// So the `wnext` will be sent next immediately.
+			ec->wntcpsz = written2ssl;
+			goto end;
+		}
+		written2tcp += written2ssl;
+		// A special case before handshake finished
+		if (written2tcp == 0) {
+			goto end;
+		}
 	}
 end:
 	trace("end written2tcp%d", written2tcp);
@@ -565,16 +585,25 @@ end:
 	return (0);
 }
 
+/** Reports whether the peer supplied a certificate that passed verification. */
 static bool
 open_conn_verified(nng_tls_engine_conn *ec)
 {
-	long rv = SSL_get_verify_result(ec->ssl);
+	// SSL_get_verify_result() is X509_V_OK when the peer sent no
+	// certificate at all, so that alone does not mean verified.
+	X509 *cert = open_conn_get_peer_cert(ec);
+	long  rv   = SSL_get_verify_result(ec->ssl);
+
 	log_info("NNG-TLS-CONN-VERIFY" "verified result: %ld", rv);
+	if (cert == NULL) {
+		return (false);
+	}
+	X509_free(cert);
 	return (X509_V_OK == rv);
 }
 
-// SSL_get1_peer_certificate() replaces the deprecated SSL_get_peer_certificate()
-// in OpenSSL 3.0; both return a reference the caller must release with X509_free().
+/** Returns an owned peer-certificate reference, or NULL if none was supplied.
+ * The caller must release a returned reference with X509_free(). */
 static X509 *
 open_conn_get_peer_cert(nng_tls_engine_conn *ec)
 {
@@ -652,10 +681,80 @@ open_conn_peer_subject(nng_tls_engine_conn *ec)
 
 /************************* SSL Configuration ***********************/
 
+// open_psk holds an identity and preshared key, as in the mbedTLS engine.
+typedef struct {
+	char         *identity;
+	uint8_t      *key;
+	size_t        keylen;
+	nni_list_node node;
+} open_psk;
+
+/** Releases an unlinked PSK entry and its owned identity and key storage. */
+static void
+open_psk_free(open_psk *p)
+{
+	if (p != NULL) {
+		NNI_ASSERT(!nni_list_node_active(&p->node));
+		if (p->identity != NULL) {
+			nni_strfree(p->identity);
+		}
+		if (p->key != NULL && p->keylen != 0) {
+			nni_free(p->key, p->keylen);
+		}
+		NNI_FREE_STRUCT(p);
+	}
+}
+
+/** Client side: offers the most recently configured identity and key. */
+static unsigned int
+open_psk_client_cb(SSL *ssl, const char *hint, char *identity,
+    unsigned int max_identity_len, unsigned char *key, unsigned int max_key_len)
+{
+	nng_tls_engine_config *cfg = SSL_CTX_get_app_data(SSL_get_SSL_CTX(ssl));
+	open_psk              *psk = nni_list_last(&cfg->psks);
+
+	NNI_ARG_UNUSED(hint);
+	if (psk == NULL || strlen(psk->identity) >= max_identity_len ||
+	    psk->keylen > max_key_len) {
+		return (0);
+	}
+	memcpy(identity, psk->identity, strlen(psk->identity) + 1);
+	memcpy(key, psk->key, psk->keylen);
+	return ((unsigned int) psk->keylen);
+}
+
+/** Server side: selects the key that belongs to the client's identity. */
+static unsigned int
+open_psk_server_cb(SSL *ssl, const char *identity, unsigned char *key,
+    unsigned int max_key_len)
+{
+	nng_tls_engine_config *cfg = SSL_CTX_get_app_data(SSL_get_SSL_CTX(ssl));
+	open_psk              *psk;
+
+	if (identity == NULL) {
+		return (0);
+	}
+	NNI_LIST_FOREACH (&cfg->psks, psk) {
+		if (strcmp(identity, psk->identity) == 0 &&
+		    psk->keylen <= max_key_len) {
+			memcpy(key, psk->key, psk->keylen);
+			return ((unsigned int) psk->keylen);
+		}
+	}
+	return (0);
+}
+
+/** Releases the TLS context, configured PSKs and owned configuration strings. */
 static void
 open_config_fini(nng_tls_engine_config *cfg)
 {
+	open_psk *psk;
+
 	trace("start cfg %p ctx %p", cfg, cfg->ctx);
+	while ((psk = nni_list_first(&cfg->psks)) != NULL) {
+		nni_list_remove(&cfg->psks, psk);
+		open_psk_free(psk);
+	}
 	SSL_CTX_free(cfg->ctx);
 	if (cfg->server_name != NULL) {
 		nng_strfree(cfg->server_name);
@@ -666,6 +765,7 @@ open_config_fini(nng_tls_engine_config *cfg)
 	trace("end");
 }
 
+/** Creates a client/server TLS context with its default verification policy. */
 static int
 open_config_init(nng_tls_engine_config *cfg, enum nng_tls_mode mode)
 {
@@ -675,7 +775,7 @@ open_config_init(nng_tls_engine_config *cfg, enum nng_tls_mode mode)
 	trace("start");
 
 	cfg->mode = mode;
-	// TODO NNI_LIST_INIT(&cfg->psks, psk, node);
+	NNI_LIST_INIT(&cfg->psks, open_psk, node);
 	if (mode == NNG_TLS_MODE_SERVER) {
 		method    = SSLv23_server_method();
 		auth_mode = SSL_VERIFY_NONE;
@@ -693,6 +793,8 @@ open_config_init(nng_tls_engine_config *cfg, enum nng_tls_mode mode)
 	}
 	// Set max/min version TODO
 
+	// The PSK callbacks find the configuration through the context.
+	SSL_CTX_set_app_data(cfg->ctx, cfg);
 	SSL_CTX_set_verify(cfg->ctx, auth_mode, NULL);
 	//SSL_CTX_set_mode(cfg->ctx, SSL_MODE_AUTO_RETRY);
 	//SSL_CTX_set_options(cfg->ctx, SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
@@ -718,14 +820,45 @@ open_config_server(nng_tls_engine_config *cfg, const char *name)
 	return (0);
 }
 
+/**
+ * Adds an identity and preshared key. A server accepts every configured
+ * identity; a client offers the last one. Configuring an identity again
+ * replaces its key.
+ */
 static int
 open_config_psk(nng_tls_engine_config *cfg, const char *identity,
     const uint8_t *key, size_t key_len)
 {
-	NNI_ARG_UNUSED(cfg);
-	NNI_ARG_UNUSED(identity);
-	NNI_ARG_UNUSED(key);
-	NNI_ARG_UNUSED(key_len);
+	open_psk *srch;
+	open_psk *newpsk;
+
+	if (key_len > PSK_MAX_PSK_LEN ||
+	    strlen(identity) > PSK_MAX_IDENTITY_LEN) {
+		return (NNG_ECRYPTO);
+	}
+	if (((newpsk = NNI_ALLOC_STRUCT(newpsk)) == NULL) ||
+	    ((newpsk->identity = nni_strdup(identity)) == NULL) ||
+	    ((newpsk->key = nni_alloc(key_len)) == NULL)) {
+		open_psk_free(newpsk);
+		return (NNG_ENOMEM);
+	}
+	newpsk->keylen = key_len;
+	memcpy(newpsk->key, key, key_len);
+
+	if (cfg->mode == NNG_TLS_MODE_SERVER) {
+		SSL_CTX_set_psk_server_callback(cfg->ctx, open_psk_server_cb);
+	} else {
+		SSL_CTX_set_psk_client_callback(cfg->ctx, open_psk_client_cb);
+	}
+
+	NNI_LIST_FOREACH (&cfg->psks, srch) {
+		if (strcmp(srch->identity, identity) == 0) {
+			nni_list_remove(&cfg->psks, srch);
+			open_psk_free(srch);
+			break;
+		}
+	}
+	nni_list_append(&cfg->psks, newpsk);
 	return (0);
 }
 
@@ -1187,13 +1320,13 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		if (!xcert) {
 			log_error("NNG-TLS-CFG-OWNCHAIN"
 			          "Failed to load certificate from buffer");
-			rv = NNG_EINVAL;
+			rv = NNG_ECRYPTO;
 			goto error;
 		}
 	}
 	if (SSL_CTX_use_certificate(cfg->ctx, xcert) <= 0) {
 		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to set certificate to SSL_CTX");
-		rv = NNG_EINVAL;
+		rv = NNG_ECRYPTO;
 		goto error;
 	}
 
@@ -1245,13 +1378,13 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		if (!pkey) {
 			log_error("NNG-TLS-CFG-OWNCHAIN"
 			          "Failed to load key from buffer");
-			rv = NNG_EINVAL;
+			rv = NNG_ECRYPTO;
 			goto error;
 		}
 	}
 	if (SSL_CTX_use_PrivateKey(cfg->ctx, pkey) <= 0) {
 		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to set key to SSL_CTX");
-		rv = NNG_EINVAL;
+		rv = NNG_ECRYPTO;
 		goto error;
 	}
 
