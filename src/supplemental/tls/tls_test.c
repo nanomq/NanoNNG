@@ -65,6 +65,7 @@ test_tls_conn_refused(void)
 	nng_stream_dialer_free(dialer);
 }
 
+/** Transfers a 450001-byte buffer over a TLS stream pair and compares it. */
 void
 test_tls_large_message(void)
 {
