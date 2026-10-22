@@ -124,27 +124,33 @@ tls_dialer_free(void *arg)
 	}
 }
 
-// For dialing, we need to have our own completion callback, instead of
-// the user's completion callback.
-
+/** Completes TCP connect/accept, queuing failed TLS connection cleanup before
+ * notifying the user's AIO. */
 static void
 tls_conn_cb(void *arg)
 {
 	tls_conn *  conn = arg;
 	nng_stream *tcp;
+	nni_aio *   uaio;
 	int         rv;
 
 	if ((rv = nni_aio_result(&conn->conn_aio)) != 0) {
-		nni_aio_finish_error(conn->user_aio, rv);
+		// Free before finishing, so the reap is queued before
+		// anyone waiting on the user aio can go on to nng_fini.
+		uaio = conn->user_aio;
 		nng_stream_free(&conn->stream);
+		nni_aio_finish_error(uaio, rv);
 		return;
 	}
 
 	tcp = nni_aio_get_output(&conn->conn_aio, 0);
 
 	if ((rv = tls_start(conn, tcp)) != 0) {
-		nni_aio_finish_error(conn->user_aio, rv);
+		// Free before finishing, so the reap is queued before
+		// anyone waiting on the user aio can go on to nng_fini.
+		uaio = conn->user_aio;
 		nng_stream_free(&conn->stream);
+		nni_aio_finish_error(uaio, rv);
 		return;
 	}
 
@@ -166,6 +172,8 @@ tls_conn_cancel(nni_aio *aio, void *arg, int rv)
 	nni_aio_abort(&conn->conn_aio, rv);
 }
 
+/** Starts a TLS dial on the user's AIO, queuing connection cleanup before
+ * failing it when the AIO can no longer be scheduled. */
 static void
 tls_dialer_dial(void *arg, nng_aio *aio)
 {
@@ -182,8 +190,10 @@ tls_dialer_dial(void *arg, nng_aio *aio)
 	}
 
 	if ((rv = nni_aio_schedule(aio, tls_conn_cancel, conn)) != 0) {
-		nni_aio_finish_error(aio, rv);
+		// Free before finishing, so the reap is queued before
+		// anyone waiting on the user aio can go on to nng_fini.
 		tls_free(conn);
+		nni_aio_finish_error(aio, rv);
 		return;
 	}
 
@@ -440,6 +450,8 @@ tls_listener_listen(void *arg)
 	return (nng_stream_listener_listen(l->l));
 }
 
+/** Starts a TLS accept on the user's AIO, queuing connection cleanup before
+ * failing it when the AIO can no longer be scheduled. */
 static void
 tls_listener_accept(void *arg, nng_aio *aio)
 {
@@ -456,8 +468,10 @@ tls_listener_accept(void *arg, nng_aio *aio)
 	}
 
 	if ((rv = nni_aio_schedule(aio, tls_conn_cancel, conn)) != 0) {
-		nni_aio_finish_error(aio, rv);
+		// Free before finishing, so the reap is queued before
+		// anyone waiting on the user aio can go on to nng_fini.
 		tls_free(conn);
+		nni_aio_finish_error(aio, rv);
 		return;
 	}
 

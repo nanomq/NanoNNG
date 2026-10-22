@@ -57,6 +57,7 @@ struct tlstran_pipe {
 // Stuff that is common to both dialers and listeners.
 struct tlstran_ep {
 	nni_mtx              mtx;
+	nni_cv               negocv; // signaled when a negopipe leaves
 	uint16_t             proto;
 	size_t               rcvmax;
 	bool                 started;
@@ -218,6 +219,8 @@ tlstran_ep_match(tlstran_ep *ep)
 	nni_aio_finish(aio, 0, 0);
 }
 
+/** Completes SP negotiation, matching successful pipes or queuing failed ones
+ * for reaping before waking endpoint finalization. */
 static void
 tlstran_pipe_nego_cb(void *arg)
 {
@@ -229,6 +232,12 @@ tlstran_pipe_nego_cb(void *arg)
 
 	nni_mtx_lock(&ep->mtx);
 	if ((rv = nni_aio_result(aio)) != 0) {
+		goto error;
+	}
+	// The endpoint may have closed negoaio after this completion was
+	// queued; resubmitting on a closed aio never calls us back.
+	if (ep->closed) {
+		rv = NNG_ECLOSED;
 		goto error;
 	}
 
@@ -290,12 +299,16 @@ error:
 	nni_list_remove(&ep->negopipes, p);
 	nng_stream_close(p->tls);
 
+	// Reap under the lock, so tlstran_ep_fini cannot see the pipe gone
+	// from negopipes before its reap is queued, and before the user aio
+	// completes, so a waiter cannot reach nng_fini first.
+	tlstran_pipe_reap(p);
+	nni_cv_wake(&ep->negocv);
 	if ((uaio = ep->useraio) != NULL) {
 		ep->useraio = NULL;
 		nni_aio_finish_error(uaio, rv);
 	}
 	nni_mtx_unlock(&ep->mtx);
-	tlstran_pipe_reap(p);
 }
 
 static void
@@ -619,12 +632,21 @@ tlstran_pipe_start(tlstran_pipe *p, nng_stream *conn, tlstran_ep *ep)
 	nng_stream_send(p->tls, p->negoaio);
 }
 
+/** Waits for negotiation cleanup and releases an endpoint once its pipe
+ * references are gone; the last pipe reschedules deferred finalization. */
 static void
 tlstran_ep_fini(void *arg)
 {
 	tlstran_ep *ep = arg;
 
 	nni_mtx_lock(&ep->mtx);
+	// The socket does not track negotiating pipes, so wait for their
+	// callbacks here, or their cleanup can race with nng_fini.
+	// tlstran_ep_close has already closed their negoaio. Set fini only
+	// afterwards: once it is set, the last pipe_fini frees the endpoint.
+	while (!nni_list_empty(&ep->negopipes)) {
+		nni_cv_wait(&ep->negocv);
+	}
 	ep->fini = true;
 	if (ep->refcnt != 0) {
 		nni_mtx_unlock(&ep->mtx);
@@ -638,10 +660,12 @@ tlstran_ep_fini(void *arg)
 	nni_aio_free(ep->timeaio);
 	nni_aio_free(ep->connaio);
 
+	nni_cv_fini(&ep->negocv);
 	nni_mtx_fini(&ep->mtx);
 	NNI_FREE_STRUCT(ep);
 }
 
+/** Closes endpoint activity and reaps waiting pipes not yet owned by a socket. */
 static void
 tlstran_ep_close(void *arg)
 {
@@ -663,6 +687,8 @@ tlstran_ep_close(void *arg)
 	}
 	NNI_LIST_FOREACH (&ep->waitpipes, p) {
 		tlstran_pipe_close(p);
+		// Not yet handed to the socket, so nobody else will reap it.
+		tlstran_pipe_reap(p);
 	}
 	NNI_LIST_FOREACH (&ep->busypipes, p) {
 		tlstran_pipe_close(p);
@@ -842,6 +868,7 @@ error:
 	nni_mtx_unlock(&ep->mtx);
 }
 
+/** Allocates an endpoint and initializes its pipe lists and synchronization. */
 static int
 tlstran_ep_init(tlstran_ep **epp, nng_url *url, nni_sock *sock)
 {
@@ -851,6 +878,7 @@ tlstran_ep_init(tlstran_ep **epp, nng_url *url, nni_sock *sock)
 		return (NNG_ENOMEM);
 	}
 	nni_mtx_init(&ep->mtx);
+	nni_cv_init(&ep->negocv, &ep->mtx);
 	NNI_LIST_INIT(&ep->busypipes, tlstran_pipe, node);
 	NNI_LIST_INIT(&ep->waitpipes, tlstran_pipe, node);
 	NNI_LIST_INIT(&ep->negopipes, tlstran_pipe, node);
