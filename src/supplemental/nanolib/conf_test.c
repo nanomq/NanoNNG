@@ -669,7 +669,53 @@ test_bridge_cache_file_name(void)
 	NUTS_FAIL(conf_bridge_cache_validate(&b), -1);
 }
 
+/** Verifies bridge TLS policy, defaults, and ownership of the SNI string. */
+void
+test_bridge_tls_verification_config(void)
+{
+	const char *cases[] = {
+	    "{\"verify_peer\":true,\"sni\":\"server.test\","
+	    "\"fail_if_no_peer_cert\":true}",
+	    "{\"verify_peer\":false,\"fail_if_no_peer_cert\":false}",
+	    "{}"
+	};
+
+	for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+		conf_bridge_node node = { 0 };
+		conf_sqlite      sqlite = { 0 };
+		cJSON           *obj = cJSON_Parse(
+		    "{\"test\":{\"server\":\"tls+nmq-tcp://server.test:8883\"}}");
+		cJSON           *tls = cJSON_Parse(cases[i]);
+
+		NUTS_ASSERT(obj != NULL && tls != NULL);
+		cJSON_AddItemToObject(cJSON_GetObjectItem(obj, "test"), "ssl", tls);
+		conf_bridge_node_init(&node);
+		// Explicit false must overwrite a previously enabled policy.
+		if (i == 1) {
+			node.tls.verify_peer = true;
+			node.tls.set_fail = true;
+		}
+		conf_bridge_node_parse(&node, &sqlite,
+		    cJSON_GetObjectItem(obj, "test"));
+		cJSON_Delete(obj);
+		NUTS_TRUE(node.tls.enable);
+		NUTS_TRUE(node.tls.verify_peer == (i == 0));
+		NUTS_TRUE(node.tls.set_fail == (i == 0));
+		if (i == 0) {
+			NUTS_TRUE(node.tls.sni != NULL);
+			if (node.tls.sni != NULL) {
+				NUTS_TRUE(strcmp(node.tls.sni, "server.test") == 0);
+			}
+		} else {
+			NUTS_TRUE(node.tls.sni == NULL);
+		}
+		conf_bridge_node_destroy(&node);
+		NUTS_TRUE(node.tls.sni == NULL);
+	}
+}
+
 NUTS_TESTS = {
+   {"bridge TLS verification config", test_bridge_tls_verification_config},
    {"get size", test_get_size},
    {"get time", test_get_time},
    {"conf parse v2", test_conf_parse_ver2},
