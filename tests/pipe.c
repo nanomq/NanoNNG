@@ -96,6 +96,8 @@ notify(nng_pipe p, nng_pipe_ev act, void *arg)
 	nng_mtx_unlock(t->lk);
 }
 
+/** Pipe event callback that forwards to notify and closes the first pipe it
+ * sees. */
 void
 reject(nng_pipe p, nng_pipe_ev act, void *arg)
 {

@@ -27,6 +27,7 @@ struct dev_data {
 	nng_socket s2;
 };
 
+/** Thread body that runs nng_device between the two sockets of a test. */
 void
 dodev(void *arg)
 {

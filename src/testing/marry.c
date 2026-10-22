@@ -35,6 +35,9 @@
 #define TEST_NO_MAIN
 #include "nuts.h"
 
+/** Writes a fresh test address for scheme into addr: random inproc or
+ * abstract names, the next port on 127.0.0.1 for tcp, tls and ws, and a
+ * random name in the temporary directory for ipc and unix. */
 void
 nuts_scratch_addr(const char *scheme, size_t sz, char *addr)
 {

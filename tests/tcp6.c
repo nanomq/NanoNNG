@@ -19,6 +19,7 @@
 
 #include "stubs.h"
 
+/** Reports whether an IPv6 loopback UDP socket can be opened on this host. */
 static int
 has_v6(void)
 {
@@ -38,6 +39,8 @@ has_v6(void)
 	return (rv == 0 ? 1 : 0);
 }
 
+/** Verifies that a received message's pipe reports IPv6 loopback local and
+ * remote addresses with non-zero ports. */
 static int
 check_props_v6(nng_msg *msg)
 {

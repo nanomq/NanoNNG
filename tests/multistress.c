@@ -694,6 +694,7 @@ pipeline0_pusher(void *arg)
 	}
 }
 
+/** Thread body that receives on a pull socket until the stress run ends. */
 void
 pipeline0_puller(void *arg)
 {
@@ -715,6 +716,8 @@ pipeline0_puller(void *arg)
 	}
 }
 
+/** Opens one push socket and ntests - 1 pull sockets on fresh addresses and
+ * starts their exchanges. */
 void
 pipeline0_test(int ntests)
 {

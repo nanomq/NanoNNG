@@ -194,12 +194,16 @@ out:
 	return (0);
 }
 
+/** Configures the listener with the test certificate and no client
+ * authentication. */
 static int
 init_listener_tls(nng_listener l)
 {
 	return (init_listener_tls_ex(l, NNG_TLS_AUTH_MODE_NONE));
 }
 
+/** Writes the test CA certificate to a temporary PEM file, points the dialer
+ * at it and deletes the file again. */
 static int
 init_dialer_tls_file(nng_dialer d)
 {
@@ -228,6 +232,8 @@ init_dialer_tls_file(nng_dialer d)
 	return (rv);
 }
 
+/** Writes the test certificate and key to a temporary PEM file, points the
+ * listener at it and deletes the file again. */
 static int
 init_listener_tls_file(nng_listener l)
 {

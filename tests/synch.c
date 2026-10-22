@@ -21,6 +21,8 @@ struct notifyarg {
 	nng_cv *     cv;
 };
 
+/** Thread body that sets did and wakes the condition variable after
+ * na->when milliseconds. */
 void
 notifyafter(void *a)
 {
