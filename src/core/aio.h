@@ -232,6 +232,7 @@ struct nng_aio {
 	bool         a_expiring;   // Expiration in progress
 	bool         a_use_expire; // Use expire instead of timeout
 	bool         a_abort;      // Abort the operation.
+	bool         a_finished;   // Result is set and the callback is pending.
 	nni_task     a_task;
 
 	// Read/write operations.
