@@ -1967,7 +1967,6 @@ conf_nng_proxy_sub_parse_ver2(conf *config, cJSON *jso)
 	return;
 }
 
-#if defined(SUPP_PLUGIN)
 static void
 conf_plugin_parse_ver2(conf *config, cJSON *jso)
 {
@@ -2166,7 +2165,55 @@ conf_stream_inject_parse_ver2(conf *config, cJSON *jso)
 		inj->worker_num = 1;
 	}
 }
-#endif
+
+static void
+conf_plugin_nodes_parse_ver2(conf *config, cJSON *jso)
+{
+	cJSON *arr  = hocon_get_obj("plugin.nodes", jso);
+	cJSON *item = NULL;
+
+	if (config->plugin_nodes.nodes != NULL) {
+		for (size_t i = 0; i < config->plugin_nodes.count; i++) {
+			conf_plugin_node *n = config->plugin_nodes.nodes[i];
+			if (n == NULL) {
+				continue;
+			}
+			nng_strfree(n->name);
+			nng_strfree(n->path);
+			NNI_FREE_STRUCT(n);
+		}
+		cvector_free(config->plugin_nodes.nodes);
+		config->plugin_nodes.nodes = NULL;
+		config->plugin_nodes.count = 0;
+	}
+
+	if (arr == NULL) {
+		return;
+	}
+
+	cJSON_ArrayForEach(item, arr)
+	{
+		if (!cJSON_IsObject(item)) {
+			continue;
+		}
+		conf_plugin_node *node = NNI_ALLOC_STRUCT(node);
+		if (node == NULL) {
+			continue;
+		}
+		memset(node, 0, sizeof(*node));
+		node->enable = true;
+		hocon_read_str(node, name, item);
+		hocon_read_bool(node, enable, item);
+		hocon_read_str(node, path, item);
+		if (node->name == NULL) {
+			nng_strfree(node->path);
+			NNI_FREE_STRUCT(node);
+			continue;
+		}
+		cvector_push_back(config->plugin_nodes.nodes, node);
+	}
+	config->plugin_nodes.count = cvector_size(config->plugin_nodes.nodes);
+}
 
 /**
  * Parse one exchange_client block into node.
@@ -3107,11 +3154,10 @@ conf_parse_ver2(conf *config, bool is_reload)
 #endif
 		conf_nng_proxy_sub_parse_ver2(config, jso);
 		conf_nng_proxy_pub_parse_ver2(config, jso);
-#if defined(SUPP_PLUGIN)
 		conf_plugin_parse_ver2(config, jso);
+		conf_plugin_nodes_parse_ver2(config, jso);
 		conf_stream_plugin_parse_ver2(config, jso);
 		conf_stream_inject_parse_ver2(config, jso);
-#endif
 #if defined(SUPP_AWS_BRIDGE)
 		conf_aws_bridge_parse_ver2(config, jso);
 #endif

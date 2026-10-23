@@ -757,7 +757,6 @@ conf_stream_plugin_free(conf *config)
 		return;
 	}
 
-#if defined(SUPP_PLUGIN)
 	if (config->plugin.libs != NULL) {
 		for (size_t i = 0; i < config->plugin.path_sz; i++) {
 			if (config->plugin.libs[i] != NULL) {
@@ -770,6 +769,24 @@ conf_stream_plugin_free(conf *config)
 		nng_free(config->plugin.libs, config->plugin.path_sz * sizeof(struct conf_plugin_lib *));
 		config->plugin.libs = NULL;
 		config->plugin.path_sz = 0;
+	}
+
+	if (config->plugin_nodes.nodes != NULL) {
+		for (size_t i = 0; i < config->plugin_nodes.count; i++) {
+			conf_plugin_node *node = config->plugin_nodes.nodes[i];
+			if (node != NULL) {
+				if (node->name) {
+					nng_strfree(node->name);
+				}
+				if (node->path) {
+					nng_strfree(node->path);
+				}
+				NNI_FREE_STRUCT(node);
+			}
+		}
+		cvector_free(config->plugin_nodes.nodes);
+		config->plugin_nodes.nodes = NULL;
+		config->plugin_nodes.count = 0;
 	}
 
 	if (config->stream_plugin.nodes != NULL) {
@@ -785,6 +802,9 @@ conf_stream_plugin_free(conf *config)
 				if (node->name) {
 					nng_strfree(node->name);
 				}
+				if (node->codec_name) {
+					nng_strfree(node->codec_name);
+				}
 				NNI_FREE_STRUCT(node);
 			}
 		}
@@ -794,7 +814,6 @@ conf_stream_plugin_free(conf *config)
 	}
 
 	memset(&config->stream_inject, 0, sizeof(conf_stream_inject));
-#endif
 }
 
 static void
@@ -1119,14 +1138,16 @@ conf_init(conf *nanomq_conf)
 
 	conf_bridge_init(&nanomq_conf->bridge);
 	conf_bridge_init(&nanomq_conf->aws_bridge);
-#if defined(SUPP_PLUGIN)
+	nanomq_conf->plugin.libs              = NULL;
+	nanomq_conf->plugin.path_sz           = 0;
+	nanomq_conf->plugin_nodes.count       = 0;
+	nanomq_conf->plugin_nodes.nodes       = NULL;
 	nanomq_conf->stream_plugin.count      = 0;
 	nanomq_conf->stream_plugin.nodes      = NULL;
 	nanomq_conf->stream_inject.enable     = true;
 	nanomq_conf->stream_inject.queue_cap  = 4096;
 	nanomq_conf->stream_inject.worker_num = 1;
 	nanomq_conf->stream_inject.full_op    = STREAM_PLUGIN_FULL_DROP;
-#endif
 
 	nanomq_conf->web_hook.enable         = false;
 	nanomq_conf->web_hook.url            = NULL;
@@ -1478,15 +1499,26 @@ print_exchange_conf(conf_exchange *exchange)
 	}
 }
 
-#if defined(SUPP_PLUGIN)
 static void
 print_plugin_conf(conf_plugin *plugin)
 {
-	for (int i = 0; i < (int)plugin->path_sz; i++) {
+	for (int i = 0; i < (int) plugin->path_sz; i++) {
 		log_info("plugin path: %s", plugin->libs[i]->path);
 	}
 }
-#endif
+
+static void
+print_plugin_nodes_conf(conf_plugin_nodes *nodes)
+{
+	for (size_t i = 0; i < nodes->count; i++) {
+		conf_plugin_node *n = nodes->nodes[i];
+		if (n == NULL || n->name == NULL) {
+			continue;
+		}
+		log_info("plugin.nodes[%zu] name=%s enable=%d path=%s", i,
+		    n->name, n->enable, n->path ? n->path : "");
+	}
+}
 
 static void
 print_blf_conf(conf_blf *blf)
@@ -1733,9 +1765,8 @@ print_conf(conf *nanomq_conf)
 #if defined(SUPP_AWS_BRIDGE)
 	print_bridge_conf(&nanomq_conf->aws_bridge, "aws.");
 #endif
-#if defined(SUPP_PLUGIN)
 	print_plugin_conf(&nanomq_conf->plugin);
-#endif
+	print_plugin_nodes_conf(&nanomq_conf->plugin_nodes);
 #if defined(SUPP_RULE_ENGINE)
 	conf_rule *rule_eng = &(nanomq_conf->rule_eng);
 	print_rule_engine_conf(rule_eng);
@@ -5263,9 +5294,7 @@ conf_fini(conf *nanomq_conf)
 #if defined(ENABLE_LOG)
 	conf_log_destroy(&nanomq_conf->log);
 #endif
-#if defined(SUPP_PLUGIN)
 	conf_stream_plugin_free(nanomq_conf);
-#endif
 	conf_tcplist_destroy(&nanomq_conf->tcp_list);
 	conf_tlslist_destroy(&nanomq_conf->tls_list);
 
