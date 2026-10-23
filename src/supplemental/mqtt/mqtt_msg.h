@@ -518,7 +518,9 @@ NNG_DECL int encode_properties(nng_msg *msg, property *prop, uint8_t cmd);
 
 NNG_DECL uint32_t  get_properties_len(property *prop, uint8_t cmd);
 NNG_DECL int       property_free(property *prop);
-NNG_DECL property *property_get(property *prop, uint8_t prop_id);
+/* Not property_get: that name is bionic libcutils, and an exported
+ * copy is called from libdirect-coredump.so before main. */
+NNG_DECL property *mqtt_property_get(property *prop, uint8_t prop_id);
 NNG_DECL void      property_foreach(property *prop, void (*cb)(property *));
 NNG_DECL int       property_dup(property **dup, const property *src);
 NNG_DECL property *property_pub_by_will(property *will_prop);
