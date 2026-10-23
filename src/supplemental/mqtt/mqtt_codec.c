@@ -3953,7 +3953,7 @@ property_remove(property *prop_list, uint8_t prop_id)
  * @return property* Returns the property pointer if found, NULL otherwise
  */
 property *
-property_get(property *prop, uint8_t prop_id)
+mqtt_property_get(property *prop, uint8_t prop_id)
 {
 	if (prop != NULL) {
 		for (property *p = prop->next; p != NULL; p = p->next) {
