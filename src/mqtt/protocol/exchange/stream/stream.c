@@ -51,7 +51,8 @@ stream_msg_is_mqttv5(nng_msg *m)
 static int
 stream_msg_try_decode(nng_msg *m)
 {
-	int rv;
+	int                  rv;
+	nni_mqtt_proto_data *pd;
 
 	if (nng_msg_header_len(m) < 2) {
 		return -1;
@@ -59,8 +60,13 @@ stream_msg_try_decode(nng_msg *m)
 	if (stream_msg_already_decoded(m)) {
 		return 0;
 	}
-	if (nng_mqtt_msg_proto_data_alloc(m) != 0) {
-		return -1;
+	/* Ringbuffer may stash a key in proto_data with ops=NULL; alloc
+	 * replaces that stub (key remains available via msg timestamp).
+	 * Reuse existing mqtt proto_data when ops are already set. */
+	if (!nni_msg_has_proto_ops(m)) {
+		if (nng_mqtt_msg_proto_data_alloc(m) != 0) {
+			return -1;
+		}
 	}
 
 	if (stream_msg_is_mqttv5(m)) {
@@ -68,7 +74,14 @@ stream_msg_try_decode(nng_msg *m)
 	} else {
 		rv = nng_mqtt_msg_decode(m);
 	}
-	return (rv == 0) ? 0 : -1;
+	if (rv != 0) {
+		pd = nni_msg_get_proto_data(m);
+		if (pd != NULL) {
+			pd->is_decoded = false;
+		}
+		return -1;
+	}
+	return 0;
 }
 
 uint8_t *
