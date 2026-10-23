@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "nng/exchange/stream/raw_stream.h"
-#include "nng/mqtt/mqtt_client.h"
+#include "nng/exchange/stream/stream.h"
 
 #if defined(SUPP_PARQUET)
 #include "nng/supplemental/nanolib/parquet.h"
@@ -132,7 +132,7 @@ static struct stream_data_out *output_stream_init(void *data)
 		}
 
 		if (input_stream->msgs != NULL) {
-			payload = nng_mqtt_msg_get_publish_payload(input_stream->msgs[i], &plen);
+			payload = stream_msg_payload(input_stream->msgs[i], &plen);
 		}
 		output_stream->payload_arr[0][i]->size = plen;
 		if (plen > 0 && payload != NULL) {
