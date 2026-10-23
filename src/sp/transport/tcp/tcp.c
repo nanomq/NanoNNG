@@ -49,6 +49,7 @@ struct tcptran_pipe {
 
 struct tcptran_ep {
 	nni_mtx              mtx;
+	nni_cv               negocv; // signaled when a negopipe leaves
 	uint16_t             proto;
 	size_t               rcvmax;
 	bool                 fini;
@@ -162,6 +163,7 @@ tcptran_pipe_fini(void *arg)
 	NNI_FREE_STRUCT(p);
 }
 
+/** Closes the stream and queues the pipe for reaping, at most once. */
 static void
 tcptran_pipe_reap(tcptran_pipe *p)
 {
@@ -173,6 +175,8 @@ tcptran_pipe_reap(tcptran_pipe *p)
 	}
 }
 
+/** Allocates a pipe with its lock, AIOs and queues; the pipe is not yet
+ * bound to an endpoint. */
 static int
 tcptran_pipe_alloc(tcptran_pipe **pipep)
 {
@@ -199,6 +203,8 @@ tcptran_pipe_alloc(tcptran_pipe **pipep)
 	return (0);
 }
 
+/** Hands the first waiting pipe to the pending user AIO, if both exist.
+ * Called with ep->mtx held. */
 static void
 tcptran_ep_match(tcptran_ep *ep)
 {
@@ -217,6 +223,8 @@ tcptran_ep_match(tcptran_ep *ep)
 	nni_aio_finish(aio, 0, 0);
 }
 
+/** Completes SP negotiation, matching successful pipes or queuing failed ones
+ * for reaping before waking endpoint finalization. */
 static void
 tcptran_pipe_nego_cb(void *arg)
 {
@@ -229,6 +237,12 @@ tcptran_pipe_nego_cb(void *arg)
 	nni_mtx_lock(&ep->mtx);
 
 	if ((rv = nni_aio_result(aio)) != 0) {
+		goto error;
+	}
+	// The endpoint may have closed negoaio after this completion was
+	// queued; resubmitting on a closed aio never calls us back.
+	if (ep->closed) {
+		rv = NNG_ECLOSED;
 		goto error;
 	}
 
@@ -289,14 +303,17 @@ error:
 	}
 	nng_stream_close(p->conn);
 
+	nni_list_remove(&ep->negopipes, p);
+	// Reap under the lock, so tcptran_ep_fini cannot see the pipe gone
+	// from negopipes before its reap is queued, and before the user aio
+	// completes, so a waiter cannot reach nng_fini first.
+	tcptran_pipe_reap(p);
+	nni_cv_wake(&ep->negocv);
 	if ((uaio = ep->useraio) != NULL) {
 		ep->useraio = NULL;
 		nni_aio_finish_error(uaio, rv);
 	}
-	nni_list_remove(&ep->negopipes, p);
 	nni_mtx_unlock(&ep->mtx);
-
-	tcptran_pipe_reap(p);
 }
 
 static void
@@ -607,6 +624,7 @@ tcptran_pipe_recv(void *arg, nni_aio *aio)
 	nni_mtx_unlock(&p->mtx);
 }
 
+/** Returns the peer protocol number learned during negotiation. */
 static uint16_t
 tcptran_pipe_peer(void *arg)
 {
@@ -615,6 +633,7 @@ tcptran_pipe_peer(void *arg)
 	return (p->peer);
 }
 
+/** Reads a pipe option from the underlying stream. */
 static int
 tcptran_pipe_getopt(
     void *arg, const char *name, void *buf, size_t *szp, nni_type t)
@@ -623,6 +642,8 @@ tcptran_pipe_getopt(
 	return (nni_stream_get(p->conn, name, buf, szp, t));
 }
 
+/** Binds a pipe to its stream and endpoint, queues it as negotiating and
+ * sends the SP header. Called with ep->mtx held. */
 static void
 tcptran_pipe_start(tcptran_pipe *p, nng_stream *conn, tcptran_ep *ep)
 {
@@ -654,12 +675,21 @@ tcptran_pipe_start(tcptran_pipe *p, nng_stream *conn, tcptran_ep *ep)
 	nng_stream_send(p->conn, p->negoaio);
 }
 
+/** Waits for negotiation cleanup and releases an endpoint once its pipe
+ * references are gone; the last pipe reschedules deferred finalization. */
 static void
 tcptran_ep_fini(void *arg)
 {
 	tcptran_ep *ep = arg;
 
 	nni_mtx_lock(&ep->mtx);
+	// The socket does not track negotiating pipes, so wait for their
+	// callbacks here, or their cleanup can race with nng_fini.
+	// tcptran_ep_close has already closed their negoaio. Set fini only
+	// afterwards: once it is set, the last pipe_fini frees the endpoint.
+	while (!nni_list_empty(&ep->negopipes)) {
+		nni_cv_wait(&ep->negocv);
+	}
 	ep->fini = true;
 	if (ep->refcnt != 0) {
 		nni_mtx_unlock(&ep->mtx);
@@ -673,10 +703,12 @@ tcptran_ep_fini(void *arg)
 	nni_aio_free(ep->timeaio);
 	nni_aio_free(ep->connaio);
 
+	nni_cv_fini(&ep->negocv);
 	nni_mtx_fini(&ep->mtx);
 	NNI_FREE_STRUCT(ep);
 }
 
+/** Closes endpoint activity and reaps waiting pipes not yet owned by a socket. */
 static void
 tcptran_ep_close(void *arg)
 {
@@ -698,6 +730,8 @@ tcptran_ep_close(void *arg)
 	}
 	NNI_LIST_FOREACH (&ep->waitpipes, p) {
 		tcptran_pipe_close(p);
+		// Not yet handed to the socket, so nobody else will reap it.
+		tcptran_pipe_reap(p);
 	}
 	NNI_LIST_FOREACH (&ep->busypipes, p) {
 		tcptran_pipe_close(p);
@@ -875,6 +909,7 @@ error:
 	nni_mtx_unlock(&ep->mtx);
 }
 
+/** Allocates an endpoint and initializes its pipe lists and synchronization. */
 static int
 tcptran_ep_init(tcptran_ep **epp, nng_url *url, nni_sock *sock)
 {
@@ -884,6 +919,7 @@ tcptran_ep_init(tcptran_ep **epp, nng_url *url, nni_sock *sock)
 		return (NNG_ENOMEM);
 	}
 	nni_mtx_init(&ep->mtx);
+	nni_cv_init(&ep->negocv, &ep->mtx);
 	NNI_LIST_INIT(&ep->busypipes, tcptran_pipe, node);
 	NNI_LIST_INIT(&ep->waitpipes, tcptran_pipe, node);
 	NNI_LIST_INIT(&ep->negopipes, tcptran_pipe, node);
