@@ -2,11 +2,14 @@
 
 #include "mqtt_msg.h"
 #include "mqtt_qos_db.h"
+#include "nng/mqtt/mqtt_client.h"
 #include "nng/nng.h"
 #include "nuts.h"
 #include "nng/supplemental/nanolib/cvector.h"
 
 #define test_db "test.db"
+#define test_db_cache "test_bridge_cache.db"
+#define test_db_legacy "test_bridge_legacy.db"
 
 void
 test_db_init(void)
@@ -322,6 +325,11 @@ test_set_client_msg(void)
 	sqlite3 *db = NULL;
 	nni_mqtt_qos_db_init(&db, NULL, test_db, false);
 
+	nni_mqtt_qos_db_set_client_info(
+	    db, "emqx", "nanomq-client-0FADECF", "MQTT", 4);
+
+	int info_id = nni_mqtt_qos_db_get_client_info_id(db, "emqx");
+
 	nni_time ts        = 1650944298;
 	uint32_t pipe_id   = 12345;
 	uint16_t packet_id = 54321;
@@ -345,8 +353,9 @@ test_set_client_msg(void)
 
 	nni_mqtt_msg_encode(msg);
 
-	TEST_CHECK(
-	    nni_mqtt_qos_db_set_client_msg(db, pipe_id, packet_id, msg, "emqx", 4) == 0);
+	TEST_CHECK(nni_mqtt_qos_db_set_client_msg(
+	               db, pipe_id, packet_id, msg, info_id, 4) == 0);
+
 	nni_mqtt_qos_db_close(db);
 }
 
@@ -476,13 +485,388 @@ test_batch_insert_client_offline_msg(void)
 	nni_mqtt_qos_db_close(db);
 }
 
+static int
+count_client_offline_rows(sqlite3 *db, const char *config_name)
+{
+	sqlite3_stmt *stmt = NULL;
+	int           n    = -1;
+	char sql[] = "SELECT count(*) FROM t_client_offline_msg WHERE info_id = "
+	             "(SELECT id FROM t_client_info WHERE config_name = ? LIMIT 1)";
+
+	if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
+		sqlite3_bind_text(stmt, 1, config_name, -1, SQLITE_TRANSIENT);
+		if (sqlite3_step(stmt) == SQLITE_ROW) {
+			n = sqlite3_column_int(stmt, 0);
+		}
+	}
+	sqlite3_finalize(stmt);
+	return n;
+}
+
+/* The format version the per-node Bridge Cache records in PRAGMA user_version. */
+static int
+read_user_version(sqlite3 *db)
+{
+	sqlite3_stmt *stmt = NULL;
+	int           v    = -1;
+
+	if (sqlite3_prepare_v2(db, "PRAGMA user_version", -1, &stmt, NULL) ==
+	    SQLITE_OK) {
+		if (sqlite3_step(stmt) == SQLITE_ROW) {
+			v = sqlite3_column_int(stmt, 0);
+		}
+	}
+	sqlite3_finalize(stmt);
+	return v;
+}
+
 void
 test_remove_oldest_client_offline_msg(void)
 {
 	sqlite3 *db = NULL;
-	nni_mqtt_qos_db_init(&db, NULL, test_db, false);
-	nni_mqtt_qos_db_remove_oldest_client_offline_msg(db, 0, "emqx");
+	char     sql[256];
+
+	remove(test_db_cache);
+	nni_mqtt_qos_db_init(&db, NULL, test_db_cache, false);
+
+	sqlite3_exec(db,
+	    "INSERT INTO t_client_info"
+	    " (config_name) VALUES ('hub'), ('cloud');",
+	    NULL, NULL, NULL);
+
+	for (int i = 1; i <= 3; i++) {
+		snprintf(sql, sizeof(sql),
+		    "INSERT INTO t_client_offline_msg"
+		    " (data, info_id, ts) VALUES ('hub%d', (SELECT id FROM "
+		    " t_client_info"
+		    " WHERE config_name = 'hub'), '2026-01-01 10:00:0%d');",
+		    i, i);
+		sqlite3_exec(db, sql, NULL, NULL, NULL);
+		snprintf(sql, sizeof(sql),
+		    "INSERT INTO t_client_offline_msg"
+		    " (data, info_id, ts) VALUES ('cloud%d', (SELECT id FROM "
+		    " t_client_info"
+		    " WHERE config_name = 'cloud'), '2026-01-01 09:00:0%d');",
+		    i, i);
+		sqlite3_exec(db, sql, NULL, NULL, NULL);
+	}
+
+
+	int hub_info_id = nni_mqtt_qos_db_get_client_info_id(db, "hub");
+
+
+	// limit == 0 means "no cap": nothing may be removed.
+	nni_mqtt_qos_db_remove_oldest_client_offline_msg(db, 0, hub_info_id);
+	NUTS_TRUE(count_client_offline_rows(db, "hub") == 3);
+	NUTS_TRUE(count_client_offline_rows(db, "cloud") == 3);
+
+	nni_mqtt_qos_db_remove_oldest_client_offline_msg(db, 2, hub_info_id);
+	NUTS_TRUE(count_client_offline_rows(db, "hub") == 2);
+	NUTS_TRUE(count_client_offline_rows(db, "cloud") == 3);
+
 	nni_mqtt_qos_db_close(db);
+	remove(test_db_cache);
+}
+
+void
+test_migrate_legacy_bridge_cache(void)
+{
+	const char *dir = ".";
+	sqlite3    *db  = NULL;
+	sqlite3    *legacy = NULL;
+	char        sql[512];
+
+	remove(test_db_cache);
+	remove(test_db_legacy);
+
+	// The pre-per-node shared database: two bridges in one file.
+	nni_mqtt_qos_db_init(&legacy, dir, test_db_legacy, false);
+	sqlite3_exec(legacy,
+	    "INSERT INTO t_client_info (config_name) VALUES ('hub'), ('cloud');",
+	    NULL, NULL, NULL);
+	for (int i = 1; i <= 2; i++) {
+		snprintf(sql, sizeof(sql),
+		    "INSERT INTO t_client_offline_msg (data, info_id, ts) VALUES "
+		    "('hub%d', (SELECT id FROM t_client_info WHERE "
+		    "config_name = 'hub'), '2026-01-01 10:00:0%d');",
+		    i, i);
+		sqlite3_exec(legacy, sql, NULL, NULL, NULL);
+	}
+	sqlite3_exec(legacy,
+	    "INSERT INTO t_client_offline_msg (data, info_id, ts) VALUES "
+	    "('cloud1', (SELECT id FROM t_client_info WHERE "
+	    "config_name = 'cloud'), '2026-01-01 09:00:01');",
+	    NULL, NULL, NULL);
+	nni_mqtt_qos_db_close(legacy);
+
+	// First start of "hub"'s own file: its two rows are carried over.
+	nni_mqtt_qos_db_init(&db, dir, test_db_cache, false);
+	nni_mqtt_qos_db_set_client_info(db, "hub", NULL, "MQTT", 4);
+	nni_mqtt_qos_db_migrate_legacy(db, dir, test_db_legacy, "hub");
+	NUTS_TRUE(count_client_offline_rows(db, "hub") == 2);
+
+	// Running it again copies nothing: the legacy rows were deleted.
+	nni_mqtt_qos_db_migrate_legacy(db, dir, test_db_legacy, "hub");
+	NUTS_TRUE(count_client_offline_rows(db, "hub") == 2);
+	nni_mqtt_qos_db_close(db);
+
+	// The other bridge's rows are left for its own migration.
+	nni_mqtt_qos_db_init(&legacy, dir, test_db_legacy, false);
+	NUTS_TRUE(count_client_offline_rows(legacy, "hub") == 0);
+	NUTS_TRUE(count_client_offline_rows(legacy, "cloud") == 1);
+	nni_mqtt_qos_db_close(legacy);
+
+	remove(test_db_cache);
+	remove(test_db_legacy);
+}
+
+/**
+ * A deployment that never set mounted_file_path keeps its cache in the working
+ * directory. The legacy lookup has to fall back there as well, otherwise the
+ * backlog of such an installation is never moved.
+ */
+void
+test_migrate_legacy_with_default_path(void)
+{
+	const char *name   = "hub";
+	sqlite3    *db     = NULL;
+	sqlite3    *legacy = NULL;
+	char        sql[512];
+
+	remove(test_db_cache);
+	remove(test_db_legacy);
+
+	nni_mqtt_qos_db_init(&legacy, NULL, test_db_legacy, false);
+	sqlite3_exec(legacy,
+	    "INSERT INTO t_client_info (config_name) VALUES ('hub');",
+	    NULL, NULL, NULL);
+	for (int i = 1; i <= 2; i++) {
+		snprintf(sql, sizeof(sql),
+		    "INSERT INTO t_client_offline_msg (data, info_id, ts) VALUES "
+		    "('hub%d', (SELECT id FROM t_client_info WHERE "
+		    "config_name = 'hub'), '2026-01-01 10:00:0%d');",
+		    i, i);
+		sqlite3_exec(legacy, sql, NULL, NULL, NULL);
+	}
+	nni_mqtt_qos_db_close(legacy);
+
+	nni_mqtt_qos_db_init(&db, NULL, test_db_cache, false);
+	nni_mqtt_qos_db_set_client_info(db, name, NULL, "MQTT", 4);
+	nni_mqtt_qos_db_migrate_legacy(db, NULL, test_db_legacy, name);
+
+	NUTS_TRUE(count_client_offline_rows(db, name) == 2);
+	NUTS_TRUE(read_user_version(db) == 1);
+	nni_mqtt_qos_db_close(db);
+
+	nni_mqtt_qos_db_init(&legacy, NULL, test_db_legacy, false);
+	NUTS_TRUE(count_client_offline_rows(legacy, name) == 0);
+	nni_mqtt_qos_db_close(legacy);
+
+	remove(test_db_cache);
+	remove(test_db_legacy);
+}
+
+/**
+ * A start that created the per-node file but never finished the migration must
+ * not strand the legacy rows: the next start has to pick them up again.
+ */
+void
+test_migrate_legacy_retry_after_failed_start(void)
+{
+	const char *dir  = ".";
+	const char *name = "hub";
+	sqlite3    *db    = NULL;
+	sqlite3    *legacy = NULL;
+	char        sql[512];
+
+	conf_sqlite             sq    = { 0 };
+	int                     dummy = 0;
+	nng_mqtt_sqlite_option *opt   = NULL;
+
+	remove(test_db_cache);
+	remove(test_db_legacy);
+
+	// The per-node file already exists, as it would after a start that died
+	// between creating it and migrating.
+	nni_mqtt_qos_db_init(&db, dir, test_db_cache, false);
+	nni_mqtt_qos_db_set_client_info(db, name, NULL, "MQTT", 4);
+	nni_mqtt_qos_db_close(db);
+
+	// And the legacy rows are still sitting there.
+	nni_mqtt_qos_db_init(&legacy, dir, test_db_legacy, false);
+	sqlite3_exec(legacy,
+	    "INSERT INTO t_client_info (config_name) VALUES ('hub');",
+	    NULL, NULL, NULL);
+	for (int i = 1; i <= 2; i++) {
+		snprintf(sql, sizeof(sql),
+		    "INSERT INTO t_client_offline_msg (data, info_id, ts) VALUES "
+		    "('hub%d', (SELECT id FROM t_client_info WHERE "
+		    "config_name = 'hub'), '2026-01-01 10:00:0%d');",
+		    i, i);
+		sqlite3_exec(legacy, sql, NULL, NULL, NULL);
+	}
+	nni_mqtt_qos_db_close(legacy);
+
+	// The next start runs the migration again and carries them over.
+	sq.enable              = true;
+	sq.mounted_file_path   = (char *) dir;
+	sq.flush_mem_threshold = 1;
+
+	NUTS_PASS(nng_mqtt_alloc_sqlite_opt(&opt));
+	nng_mqtt_set_sqlite_conf(opt, &dummy, name, 4, &sq);
+	nng_mqtt_sqlite_db_init_legacy(opt, test_db_cache, dir, test_db_legacy);
+	nni_mqtt_sqlite_db_fini(opt);
+	nng_mqtt_free_sqlite_opt(opt);
+
+	nni_mqtt_qos_db_init(&db, dir, test_db_cache, false);
+	NUTS_TRUE(count_client_offline_rows(db, name) == 2);
+	nni_mqtt_qos_db_close(db);
+
+	nni_mqtt_qos_db_init(&legacy, dir, test_db_legacy, false);
+	NUTS_TRUE(count_client_offline_rows(legacy, name) == 0);
+	nni_mqtt_qos_db_close(legacy);
+
+	remove(test_db_cache);
+	remove(test_db_legacy);
+}
+
+/**
+ * Once the move has finished the node database says so, and later starts skip
+ * it instead of reading the legacy file again.
+ */
+void
+test_migrate_legacy_skipped_once_marked(void)
+{
+	const char *dir  = ".";
+	const char *name = "hub";
+	sqlite3    *db    = NULL;
+	sqlite3    *legacy = NULL;
+	char        sql[512];
+
+	conf_sqlite             sq    = { 0 };
+	int                     dummy = 0;
+	nng_mqtt_sqlite_option *opt   = NULL;
+
+	remove(test_db_cache);
+	remove(test_db_legacy);
+
+	// A legacy file holding two rows for this bridge.
+	nni_mqtt_qos_db_init(&legacy, dir, test_db_legacy, false);
+	sqlite3_exec(legacy,
+	    "INSERT INTO t_client_info (config_name) VALUES ('hub');",
+	    NULL, NULL, NULL);
+	for (int i = 1; i <= 2; i++) {
+		snprintf(sql, sizeof(sql),
+		    "INSERT INTO t_client_offline_msg (data, info_id, ts) VALUES "
+		    "('hub%d', (SELECT id FROM t_client_info WHERE "
+		    "config_name = 'hub'), '2026-01-01 10:00:0%d');",
+		    i, i);
+		sqlite3_exec(legacy, sql, NULL, NULL, NULL);
+	}
+	nni_mqtt_qos_db_close(legacy);
+
+	sq.enable              = true;
+	sq.mounted_file_path   = (char *) dir;
+	sq.flush_mem_threshold = 1;
+
+	// First start: the rows move and the file records that it is done.
+	NUTS_PASS(nng_mqtt_alloc_sqlite_opt(&opt));
+	nng_mqtt_set_sqlite_conf(opt, &dummy, name, 4, &sq);
+	nng_mqtt_sqlite_db_init_legacy(opt, test_db_cache, dir, test_db_legacy);
+	nni_mqtt_sqlite_db_fini(opt);
+	nng_mqtt_free_sqlite_opt(opt);
+
+	nni_mqtt_qos_db_init(&db, dir, test_db_cache, false);
+	NUTS_TRUE(count_client_offline_rows(db, name) == 2);
+	NUTS_TRUE(read_user_version(db) == 1);
+	nni_mqtt_qos_db_close(db);
+
+	// A row appears in the legacy file afterwards, as a restored backup would.
+	nni_mqtt_qos_db_init(&legacy, dir, test_db_legacy, false);
+	sqlite3_exec(legacy,
+	    "INSERT INTO t_client_offline_msg (data, info_id, ts) VALUES "
+	    "('late', (SELECT id FROM t_client_info WHERE config_name = 'hub'), "
+	    "'2026-01-02 10:00:00');",
+	    NULL, NULL, NULL);
+	nni_mqtt_qos_db_close(legacy);
+
+	// Second start: marked, so the migration is skipped and nothing moves.
+	opt = NULL;
+	NUTS_PASS(nng_mqtt_alloc_sqlite_opt(&opt));
+	nng_mqtt_set_sqlite_conf(opt, &dummy, name, 4, &sq);
+	nng_mqtt_sqlite_db_init_legacy(opt, test_db_cache, dir, test_db_legacy);
+	nni_mqtt_sqlite_db_fini(opt);
+	nng_mqtt_free_sqlite_opt(opt);
+
+	nni_mqtt_qos_db_init(&db, dir, test_db_cache, false);
+	NUTS_TRUE(count_client_offline_rows(db, name) == 2);
+	nni_mqtt_qos_db_close(db);
+
+	nni_mqtt_qos_db_init(&legacy, dir, test_db_legacy, false);
+	NUTS_TRUE(count_client_offline_rows(legacy, name) == 1);
+	nni_mqtt_qos_db_close(legacy);
+
+	remove(test_db_cache);
+	remove(test_db_legacy);
+}
+
+/**
+ * A migration that cannot open its transaction must leave both sides alone.
+ * Copying without deleting would duplicate the messages on the next start.
+ */
+void
+test_migrate_legacy_aborts_when_legacy_is_locked(void)
+{
+	const char *dir     = ".";
+	const char *name    = "hub";
+	sqlite3    *db      = NULL;
+	sqlite3    *legacy  = NULL;
+	sqlite3    *blocker = NULL;
+	char        sql[512];
+
+	remove(test_db_cache);
+	remove(test_db_legacy);
+
+	// Two rows waiting in the legacy file.
+	nni_mqtt_qos_db_init(&legacy, dir, test_db_legacy, false);
+	sqlite3_exec(legacy,
+	    "INSERT INTO t_client_info (config_name) VALUES ('hub');",
+	    NULL, NULL, NULL);
+	for (int i = 1; i <= 2; i++) {
+		snprintf(sql, sizeof(sql),
+		    "INSERT INTO t_client_offline_msg (data, info_id, ts) VALUES "
+		    "('hub%d', (SELECT id FROM t_client_info WHERE "
+		    "config_name = 'hub'), '2026-01-01 10:00:0%d');",
+		    i, i);
+		sqlite3_exec(legacy, sql, NULL, NULL, NULL);
+	}
+	nni_mqtt_qos_db_close(legacy);
+
+	nni_mqtt_qos_db_init(&db, dir, test_db_cache, false);
+	nni_mqtt_qos_db_set_client_info(db, name, NULL, "MQTT", 4);
+
+	// A second connection holds the legacy file, the way a second broker on
+	// the same spool directory would. This makes the migration wait out its
+	// busy timeout before giving up.
+	NUTS_TRUE(sqlite3_open(test_db_legacy, &blocker) == SQLITE_OK);
+	NUTS_TRUE(sqlite3_exec(blocker, "BEGIN IMMEDIATE;", 0, 0, 0) ==
+	    SQLITE_OK);
+
+	nni_mqtt_qos_db_migrate_legacy(db, dir, test_db_legacy, name);
+
+	// Nothing was copied, and the legacy rows are untouched.
+	NUTS_TRUE(count_client_offline_rows(db, name) == 0);
+	NUTS_TRUE(read_user_version(db) == 0);
+	sqlite3_exec(blocker, "ROLLBACK;", 0, 0, 0);
+	sqlite3_close(blocker);
+	nni_mqtt_qos_db_close(db);
+
+	nni_mqtt_qos_db_init(&legacy, dir, test_db_legacy, false);
+	NUTS_TRUE(count_client_offline_rows(legacy, name) == 2);
+	nni_mqtt_qos_db_close(legacy);
+
+	remove(test_db_cache);
+	remove(test_db_legacy);
 }
 
 void 
@@ -579,5 +963,14 @@ TEST_LIST = {
 	    test_batch_insert_client_offline_msg },
 	{ "db_remove_oldest_client_offline_msg",
 	    test_remove_oldest_client_offline_msg },
+	{ "db_migrate_legacy_bridge_cache", test_migrate_legacy_bridge_cache },
+	{ "db_migrate_legacy_retry_after_failed_start",
+	    test_migrate_legacy_retry_after_failed_start },
+	{ "db_migrate_legacy_skipped_once_marked",
+	    test_migrate_legacy_skipped_once_marked },
+	{ "db_migrate_legacy_aborts_when_legacy_is_locked",
+	    test_migrate_legacy_aborts_when_legacy_is_locked },
+	{ "db_migrate_legacy_with_default_path",
+	    test_migrate_legacy_with_default_path },
 	{ NULL, NULL },
 };
