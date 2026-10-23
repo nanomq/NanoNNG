@@ -35,6 +35,9 @@
 #define TEST_NO_MAIN
 #include "nuts.h"
 
+/** Writes a fresh test address for scheme into addr: random inproc or
+ * abstract names, the next port on 127.0.0.1 for tcp, tls and ws, and a
+ * random name in the temporary directory for ipc and unix. */
 void
 nuts_scratch_addr(const char *scheme, size_t sz, char *addr)
 {
@@ -87,16 +90,10 @@ nuts_scratch_addr(const char *scheme, size_t sz, char *addr)
 	abort();
 }
 
-// nuts_next_port returns a "next" allocation port.
-// Ports are chosen by starting from a random point within a
-// range (normally 38000-40000, but other good places to choose
-// might be 36000-37000, 42000-43000, 45000-47000, 48000-49000.
-// These are non-ephemeral ports.  Successive calls to this function
-// will return the next port in the range (wrapping).  This works even
-// across process boundaries, as the range is tracked in a file named
-// by $TEST_PORT_FILE.  The range of ports can be configured by using
-// $TEST_PORT_RANGE (the range is specified as "lo:hi" where the actual
-// port will be in the range [lo,hi).
+/** Returns the next test port in [lo,hi), wrapping within NUTS_PORT_RANGE.
+ * The default range is 30000:32000, below the usual Linux ephemeral range.
+ * NUTS_PORT_FILE selects the file used to track the allocation counter across
+ * processes; the default file is .nuts_ports. */
 uint16_t
 nuts_next_port(void)
 {
@@ -115,10 +112,11 @@ nuts_next_port(void)
 		name = ".nuts_ports";
 	}
 	if (((str = getenv("NUTS_PORT_RANGE")) == NULL) ||
-	    ((sscanf(str, "%hu:%hu", &base, &end)) != 1) ||
+	    ((sscanf(str, "%hu:%hu", &base, &end)) != 2) ||
 	    ((int) end - (int) base) < 1) {
-		base = 38000;
-		end  = 40000;
+		// Below 32768, where the Linux ephemeral range starts.
+		base = 30000;
+		end  = 32000;
 	}
 
 	if (((f = fopen(name, "r+")) == NULL) &&
@@ -154,7 +152,7 @@ nuts_next_port(void)
 #endif
 	}
 	port++;
-	if ((port < base) || (port >= (base + end))) {
+	if ((port < base) || (port >= end)) {
 		port = base;
 	}
 

@@ -38,7 +38,8 @@
 #define dprintf printf
 #endif
 
-static int next_port = 20000; // port number kind of.
+// Keep this test in 25000-29999; reqstress uses 20000-24999.
+static int next_port = 25000; // port number kind of.
 
 const char *tcp4_template   = "tcp://127.0.0.1:%d";
 const char *tcp6_template   = "tcp://[::1]:%d";
@@ -693,6 +694,7 @@ pipeline0_pusher(void *arg)
 	}
 }
 
+/** Thread body that receives on a pull socket until the stress run ends. */
 void
 pipeline0_puller(void *arg)
 {
@@ -714,6 +716,8 @@ pipeline0_puller(void *arg)
 	}
 }
 
+/** Opens one push socket and ntests - 1 pull sockets on fresh addresses and
+ * starts their exchanges. */
 void
 pipeline0_test(int ntests)
 {
@@ -765,6 +769,7 @@ pipeline0_test(int ntests)
 	nng_sleep_aio(1, srv->woke);
 }
 
+/** Runs randomized protocol/transport stress in its dedicated port range. */
 Main({
 	int   i;
 	char *str;
@@ -783,10 +788,14 @@ Main({
 	    ((ncases = atoi(str)) < 1)) {
 		ncases = 32;
 	}
+	if (ncases > 5000) {
+		fprintf(stderr, "STRESSPRESSURE must be at most 5000\n");
+		exit(1);
+	}
 
 	// Reduce the likelihood of address in use conflicts between
 	// subsequent runs.
-	next_port += (rand() % 100) * 100;
+	next_port += rand() % (5001 - ncases);
 
 	i = ncases;
 

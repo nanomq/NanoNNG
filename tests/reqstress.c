@@ -190,6 +190,8 @@ req_recv_cb(void *arg)
 	nng_sleep_aio(rand() % 10, c->time_aio);
 }
 
+/** Counts a finished request and starts receiving its reply; on error the
+ * message is freed and the failure recorded. */
 static void
 req_send_cb(void *arg)
 {
@@ -206,6 +208,8 @@ req_send_cb(void *arg)
 	nng_recv_aio(c->socket, c->recv_aio);
 }
 
+/** Opens one rep socket and ntests - 1 req sockets on fresh addresses and
+ * starts their request/reply exchanges. */
 void
 reqrep_test(int ntests)
 {
@@ -265,6 +269,7 @@ reqrep_test(int ntests)
 	}
 }
 
+/** Runs concurrent request/reply exchanges across randomized transports. */
 Main({
 	int   i;
 	int   tmo;
@@ -281,13 +286,17 @@ Main({
 	    ((ncases = atoi(str)) < 1)) {
 		ncases = 32;
 	}
+	if (ncases > 5000) {
+		fprintf(stderr, "STRESSPRESSURE must be at most 5000\n");
+		exit(1);
+	}
 
 	// Each run should truly be random.
 	srand((int) time(NULL));
 
 	// Reduce the likelihood of address in use conflicts between
 	// subsequent runs.
-	next_port += (rand() % 100) * 100;
+	next_port += rand() % (5001 - ncases);
 
 	i = ncases;
 

@@ -38,11 +38,15 @@
 #include "convey.h"
 #include "stubs.h"
 
+/** Checks readiness descriptors and unsupported send/receive operations. */
 TestMain("Poll FDs", {
-	Convey("Given a connected pair of sockets", {
-		nng_socket s1;
-		nng_socket s2;
+	// Declared out here: Reset runs after its Convey block has
+	// been left, so it must not use variables from that block.
+	nng_socket s1;
+	nng_socket s2;
+	nng_socket s3;
 
+	Convey("Given a connected pair of sockets", {
 		So(nng_pair1_open(&s1) == 0);
 		So(nng_pair1_open(&s2) == 0);
 		Reset({
@@ -114,16 +118,14 @@ TestMain("Poll FDs", {
 	});
 
 	Convey("We cannot get a send FD for PULL", {
-		nng_socket s3;
-		int        fd;
+		int fd;
 		So(nng_pull0_open(&s3) == 0);
 		Reset({ nng_close(s3); });
 		So(nng_socket_get_int(s3, NNG_OPT_SENDFD, &fd) == NNG_ENOTSUP);
 	});
 
 	Convey("We cannot get a recv FD for PUSH", {
-		nng_socket s3;
-		int        fd;
+		int fd;
 		So(nng_push0_open(&s3) == 0);
 		Reset({ nng_close(s3); });
 		So(nng_socket_get_int(s3, NNG_OPT_RECVFD, &fd) == NNG_ENOTSUP);

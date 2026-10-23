@@ -194,12 +194,16 @@ out:
 	return (0);
 }
 
+/** Configures the listener with the test certificate and no client
+ * authentication. */
 static int
 init_listener_tls(nng_listener l)
 {
 	return (init_listener_tls_ex(l, NNG_TLS_AUTH_MODE_NONE));
 }
 
+/** Writes the test CA certificate to a temporary PEM file, points the dialer
+ * at it and deletes the file again. */
 static int
 init_dialer_tls_file(nng_dialer d)
 {
@@ -228,6 +232,8 @@ init_dialer_tls_file(nng_dialer d)
 	return (rv);
 }
 
+/** Writes the test certificate and key to a temporary PEM file, points the
+ * listener at it and deletes the file again. */
 static int
 init_listener_tls_file(nng_listener l)
 {
@@ -272,6 +278,7 @@ init_listener_tls_file(nng_listener l)
 	return (rv);
 }
 
+/** Exercises TLS transport connections, authentication and socket options. */
 TestMain("TLS Transport", {
 	static trantest tt;
 
@@ -289,9 +296,14 @@ TestMain("TLS Transport", {
 	Convey("We can register the TLS transport",
 	    { So(nng_tls_register() == 0); });
 
+	// Declared out here: Reset runs after its Convey block has
+	// been left, so it must not use variables from that block.
+	nng_socket s;
+	nng_socket s1;
+	nng_socket s2;
+
 	Convey("We cannot connect to wild cards", {
-		nng_socket s;
-		char       addr[NNG_MAXADDRLEN];
+		char addr[NNG_MAXADDRLEN];
 
 		So(nng_tls_register() == 0);
 		So(nng_pair_open(&s) == 0);
@@ -301,8 +313,6 @@ TestMain("TLS Transport", {
 	});
 
 	Convey("We can bind to wild card", {
-		nng_socket   s1;
-		nng_socket   s2;
 		char         addr[NNG_MAXADDRLEN];
 		nng_listener l;
 		nng_dialer   d;
@@ -354,8 +364,6 @@ TestMain("TLS Transport", {
 	});
 
 	Convey("Malformed TLS addresses do not panic", {
-		nng_socket s1;
-
 		So(nng_tls_register() == 0);
 		So(nng_pair_open(&s1) == 0);
 		Reset({ nng_close(s1); });
@@ -378,8 +386,6 @@ TestMain("TLS Transport", {
 	});
 
 	Convey("We can use local interface to connect", {
-		nng_socket   s1;
-		nng_socket   s2;
 		nng_listener l;
 		nng_dialer   d;
 		char         addr[NNG_MAXADDRLEN];
@@ -402,8 +408,6 @@ TestMain("TLS Transport", {
 	});
 
 	Convey("Botched local interfaces fail reasonably", {
-		nng_socket s1;
-
 		So(nng_pair_open(&s1) == 0);
 		Reset({ nng_close(s1); });
 		So(nng_dial(s1, "tcp://1x.2;127.0.0.1:80", NULL, 0) ==
@@ -411,8 +415,6 @@ TestMain("TLS Transport", {
 	});
 
 	Convey("Can't specify address that isn't ours", {
-		nng_socket s1;
-
 		So(nng_pair_open(&s1) == 0);
 		Reset({ nng_close(s1); });
 		So(nng_dial(s1, "tcp://8.8.8.8;127.0.0.1:80", NULL, 0) ==
@@ -450,8 +452,6 @@ TestMain("TLS Transport", {
 	});
 
 	Convey("No verify works", {
-		nng_socket   s1; // server
-		nng_socket   s2; // client
 		nng_listener l;
 		char         addr[NNG_MAXADDRLEN];
 		nng_msg *    msg;
@@ -495,8 +495,6 @@ TestMain("TLS Transport", {
 	});
 
 	Convey("Valid verify works", {
-		nng_socket   s1;
-		nng_socket   s2;
 		nng_listener l;
 		nng_dialer   d;
 		char         addr[NNG_MAXADDRLEN];
@@ -544,7 +542,6 @@ TestMain("TLS Transport", {
 	});
 
 	Convey("No delay option", {
-		nng_socket   s;
 		nng_dialer   d;
 		nng_listener l;
 		bool         v;
@@ -594,7 +591,6 @@ TestMain("TLS Transport", {
 	});
 
 	Convey("Keepalive option", {
-		nng_socket   s;
 		nng_dialer   d;
 		nng_listener l;
 		bool         v;

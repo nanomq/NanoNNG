@@ -30,13 +30,17 @@ const uint8_t chunked_sum[20] = { 0x9b, 0x06, 0xfb, 0xee, 0x51, 0xc6, 0x42,
 	0x69, 0x1c, 0xb3, 0xaa, 0x38, 0xce, 0xb8, 0x0b, 0x3a, 0xc8, 0x3b, 0x96,
 	0x68 };
 
+/** Checks HTTP client requests, response bodies and connection reuse. */
 TestMain("HTTP Client", {
-	Convey("Given a TCP connection to httpbin.org", {
-		nng_aio         *aio;
-		nng_http_client *cli;
-		nng_http_conn   *http;
-		nng_url         *url;
+	// Reset runs after its Convey block has been left.
+	nng_aio         *aio;
+	nng_http_client *cli;
+	nng_http_conn   *http;
+	nng_url         *url;
+	nng_http_req    *req;
+	nng_http_res    *res;
 
+	Convey("Given a TCP connection to httpbin.org", {
 		So(nng_aio_alloc(&aio, NULL, NULL) == 0);
 
 		So(nng_url_parse(&url, "http://httpbin.org/") == 0);
@@ -55,8 +59,8 @@ TestMain("HTTP Client", {
 		});
 
 		Convey("We can initiate a message", {
-			nng_http_req *req;
-			nng_http_res *res;
+			void  *data;
+			size_t sz;
 
 			So(http != NULL);
 
@@ -76,9 +80,7 @@ TestMain("HTTP Client", {
 			So(nng_http_res_get_status(res) == 200);
 
 			Convey("The message contents are correct", {
-				void       *data;
 				const char *cstr;
-				size_t      sz;
 				nng_iov     iov;
 
 				cstr = nng_http_res_get_header(
@@ -106,9 +108,9 @@ TestMain("HTTP Client", {
 	});
 
 	Convey("Given a client", {
-		nng_aio         *aio;
-		nng_http_client *cli;
-		nng_url         *url;
+		nng_http_res  *res1;
+		nng_http_res  *res2;
+		nng_http_conn *conn;
 
 		So(nng_aio_alloc(&aio, NULL, NULL) == 0);
 
@@ -124,8 +126,6 @@ TestMain("HTTP Client", {
 		});
 
 		Convey("One off exchange works", {
-			nng_http_req *req;
-			nng_http_res *res;
 			void         *data;
 			size_t        len;
 
@@ -144,12 +144,10 @@ TestMain("HTTP Client", {
 		});
 
 		Convey("Connection reuse works", {
-			nng_http_req  *req;
-			nng_http_res  *res1;
-			nng_http_res  *res2;
 			void          *data;
 			size_t         len;
-			nng_http_conn *conn = NULL;
+
+			conn = NULL;
 
 			So(nng_http_req_alloc(&req, url) == 0);
 			So(nng_http_res_alloc(&res1) == 0);
@@ -187,12 +185,6 @@ TestMain("HTTP Client", {
 	// are unavoidable in the infrastructure.  We will revisit when we
 	// provide our own HTTP test server on localhost.
 	SkipConvey("Client times out", {
-		nng_aio         *aio;
-		nng_http_client *cli;
-		nng_url         *url;
-		nng_http_req    *req;
-		nng_http_res    *res;
-
 		So(nng_aio_alloc(&aio, NULL, NULL) == 0);
 
 		So(nng_url_parse(&url, "http://httpbin.org/delay/30") == 0);
@@ -221,10 +213,6 @@ TestMain("HTTP Client", {
   // service we were relying upon is gone.  New (2.0) has
   // a better test for this; for this 1.x  branch we'll just skip.
 	SkipConvey("Given a client (chunked)", {
-		nng_aio         *aio;
-		nng_http_client *cli;
-		nng_url         *url;
-
 		So(nng_aio_alloc(&aio, NULL, NULL) == 0);
 
 		So(nng_url_parse(&url,
@@ -242,8 +230,6 @@ TestMain("HTTP Client", {
 		});
 
 		Convey("One off exchange works", {
-			nng_http_req *req;
-			nng_http_res *res;
 			void         *data;
 			size_t        len;
 			uint8_t       digest[20];

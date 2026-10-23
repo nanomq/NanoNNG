@@ -19,6 +19,7 @@
 
 #include "stubs.h"
 
+/** Reports whether an IPv6 loopback UDP socket can be opened on this host. */
 static int
 has_v6(void)
 {
@@ -38,6 +39,8 @@ has_v6(void)
 	return (rv == 0 ? 1 : 0);
 }
 
+/** Verifies that a received message's pipe reports IPv6 loopback local and
+ * remote addresses with non-zero ports. */
 static int
 check_props_v6(nng_msg *msg)
 {
@@ -74,6 +77,7 @@ check_props_v6(nng_msg *msg)
 	return (0);
 }
 
+/** Exercises IPv6 TCP addressing, connections and transport options. */
 TestMain("TCP (IPv6) Transport", {
 	nni_init();
 
@@ -83,9 +87,11 @@ TestMain("TCP (IPv6) Transport", {
 		SkipSo("IPv6 not available");
 	}
 
-	Convey("Malformed TCPv6 addresses do not panic", {
-		nng_socket s1;
+	// Declared out here: Reset runs after its Convey block has
+	// been left, so it must not use variables from that block.
+	nng_socket s1;
 
+	Convey("Malformed TCPv6 addresses do not panic", {
 		So(nng_pair_open(&s1) == 0);
 		Reset({ nng_close(s1); });
 		So(nng_dial(s1, "tcp://::1", NULL, 0) == NNG_EADDRINVAL);

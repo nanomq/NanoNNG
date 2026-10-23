@@ -19,20 +19,11 @@ extern void nni_tls_sys_fini(void);
 
 static bool nni_inited = false;
 
+/** Initializes NNG subsystems and registers test cleanup after TLS startup. */
 static int
 nni_init_helper(void)
 {
 	int rv;
-
-#ifdef NNG_TEST_LIB
-	static bool cleanup = false;
-	if (!cleanup) {
-#ifndef NNG_PLATFORM_ZEPHYR
-		atexit(nng_fini);
-#endif
-		cleanup = true;
-	}
-#endif
 
 	if (((rv = nni_taskq_sys_init()) != 0) ||
 	    ((rv = nni_reap_sys_init()) != 0) ||
@@ -48,7 +39,17 @@ nni_init_helper(void)
 
 	nni_inited = true;
 
-	nni_inited = true;
+#ifdef NNG_TEST_LIB
+	// Register after TLS initialization, so our workers exit before
+	// OpenSSL's atexit cleanup.
+	static bool cleanup = false;
+	if (!cleanup) {
+#ifndef NNG_PLATFORM_ZEPHYR
+		atexit(nng_fini);
+#endif
+		cleanup = true;
+	}
+#endif
 
 	return (0);
 }
