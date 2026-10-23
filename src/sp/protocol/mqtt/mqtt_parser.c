@@ -807,7 +807,7 @@ nmq_connack_encode(nng_msg *msg, conf *conf, conn_param *cparam, uint8_t reason)
 	nni_msg_append(msg, &reason, 1);
 
 	if (cparam->pro_ver == MQTT_PROTOCOL_VERSION_v5 && cparam->properties != NULL) {
-		property *prop = property_get(cparam->properties,
+		property *prop = mqtt_property_get(cparam->properties,
 						TOPIC_ALIAS_MAXIMUM);
 		if (prop != NULL) {
 			// reuse client property to advertise max topic alias
@@ -817,7 +817,7 @@ nmq_connack_encode(nng_msg *msg, conf *conf, conn_param *cparam, uint8_t reason)
 				conf->max_topic_alias);
 			property_append(cparam->properties, prop_alias);
 		}
-		prop = property_get(cparam->properties, MAXIMUM_PACKET_SIZE);
+		prop = mqtt_property_get(cparam->properties, MAXIMUM_PACKET_SIZE);
 		if (cparam->max_packet_size == 0) {
 			// set default max packet size for client
 			cparam->max_packet_size = conf == NULL
