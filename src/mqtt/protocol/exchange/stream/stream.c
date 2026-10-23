@@ -6,11 +6,121 @@
 // found online at https://opensource.org/licenses/MIT.
 
 #include <string.h>
+#include "core/nng_impl.h"
 #include "nng/nng.h"
+#include "nng/mqtt/mqtt_client.h"
 #include "nng/exchange/stream/stream.h"
 #include "nng/exchange/stream/raw_stream.h"
+#include "supplemental/mqtt/mqtt_msg.h"
 
 nng_id_map *stream_node_map = NULL;
+
+/*
+ * Prefer MQTT decode + nng_mqtt_msg_get_publish_payload.
+ *
+ * Exchange ringbuffer may plant a timestamp key into proto_data with
+ * ops=NULL (not a real mqtt_msg). proto_data_alloc() replaces that safely.
+ * Body-only frames (no fixed header, e.g. unit-test helpers) fall back to
+ * nng_msg_payload_ptr().
+ */
+static bool
+stream_msg_already_decoded(nng_msg *m)
+{
+	nni_mqtt_proto_data *pd;
+
+	if (!nni_msg_has_proto_ops(m)) {
+		return false;
+	}
+	pd = nni_msg_get_proto_data(m);
+	return (pd != NULL && pd->is_decoded);
+}
+
+static bool
+stream_msg_is_mqttv5(nng_msg *m)
+{
+	uint8_t cmd = nng_msg_get_cmd_type(m);
+
+	/* Wire fixed header is always 0x3x for PUBLISH; v5 is marked via
+	 * CMD_TYPE (CMD_PUBLISH_V5 / _RECV), not the header type nibble. */
+	if (cmd == 0) {
+		cmd = nng_msg_get_type(m);
+	}
+	return (cmd == CMD_PUBLISH_V5 || cmd == CMD_PUBLISH_V5_RECV);
+}
+
+static int
+stream_msg_try_decode(nng_msg *m)
+{
+	int                  rv;
+	nni_mqtt_proto_data *pd;
+
+	if (nng_msg_header_len(m) < 2) {
+		return -1;
+	}
+	if (stream_msg_already_decoded(m)) {
+		return 0;
+	}
+	/* Ringbuffer may stash a key in proto_data with ops=NULL; alloc
+	 * replaces that stub (key remains available via msg timestamp).
+	 * Reuse existing mqtt proto_data when ops are already set. */
+	if (!nni_msg_has_proto_ops(m)) {
+		if (nng_mqtt_msg_proto_data_alloc(m) != 0) {
+			return -1;
+		}
+	}
+
+	if (stream_msg_is_mqttv5(m)) {
+		rv = nng_mqttv5_msg_decode(m);
+	} else {
+		rv = nng_mqtt_msg_decode(m);
+	}
+	if (rv != 0) {
+		pd = nni_msg_get_proto_data(m);
+		if (pd != NULL) {
+			pd->is_decoded = false;
+		}
+		return -1;
+	}
+	return 0;
+}
+
+uint8_t *
+stream_msg_payload(void *msg, uint32_t *out_len)
+{
+	nng_msg *m = msg;
+	uint8_t *payload;
+	uint32_t plen = 0;
+
+	if (m == NULL) {
+		if (out_len != NULL) {
+			*out_len = 0;
+		}
+		return NULL;
+	}
+
+	if (stream_msg_try_decode(m) == 0) {
+		payload = nng_mqtt_msg_get_publish_payload(m, &plen);
+		if (out_len != NULL) {
+			*out_len = plen;
+		}
+		return payload;
+	}
+
+	payload = nng_msg_payload_ptr(m);
+	if (payload == NULL) {
+		if (out_len != NULL) {
+			*out_len = 0;
+		}
+		return NULL;
+	}
+
+	plen = (uint32_t) (nng_msg_len(m) -
+	    ((uintptr_t) payload - (uintptr_t) nng_msg_body(m)));
+	if (out_len != NULL) {
+		*out_len = plen;
+	}
+	return payload;
+}
 
 int stream_register(char *name,
 					uint8_t id,
