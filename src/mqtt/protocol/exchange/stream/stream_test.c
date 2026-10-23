@@ -7,6 +7,7 @@
 
 #include "nng/exchange/stream/stream.h"
 #include "nng/exchange/stream/raw_stream.h"
+#include "nng/mqtt/mqtt_client.h"
 #include "nng/nng.h"
 #include <nuts.h>
 #include <string.h>
@@ -477,6 +478,85 @@ void test_raw_stream_register_unregister(void)
 	stream_sys_fini();
 }
 
+static nng_msg *
+test_make_wire_publish(const char *topic, const char *payload, uint8_t cmd)
+{
+	nng_msg *m    = NULL;
+	nng_msg *wire = NULL;
+
+	NUTS_PASS(nng_mqtt_msg_alloc(&m, 0));
+	nng_mqtt_msg_set_packet_type(m, NNG_MQTT_PUBLISH);
+	nng_mqtt_msg_set_publish_topic(m, topic);
+	nng_mqtt_msg_set_publish_qos(m, 0);
+	nng_mqtt_msg_set_publish_payload(
+	    m, (uint8_t *) payload, strlen(payload));
+	if (cmd == CMD_PUBLISH_V5) {
+		NUTS_PASS(nng_mqttv5_msg_encode(m));
+	} else {
+		NUTS_PASS(nng_mqtt_msg_encode(m));
+	}
+	nng_msg_set_cmd_type(m, cmd);
+
+	NUTS_PASS(nng_msg_alloc(&wire, 0));
+	NUTS_PASS(nng_msg_header_append(
+	    wire, nng_msg_header(m), nng_msg_header_len(m)));
+	NUTS_PASS(nng_msg_append(wire, nng_msg_body(m), nng_msg_len(m)));
+	nng_msg_set_cmd_type(wire, cmd);
+	nng_msg_free(m);
+	return wire;
+}
+
+void
+test_stream_msg_payload_v3_and_skip(void)
+{
+	uint32_t plen = 0;
+	uint8_t *p;
+	nng_msg *m = test_make_wire_publish("t/v3", "hello-v3", CMD_PUBLISH);
+
+	p = stream_msg_payload(m, &plen);
+	NUTS_ASSERT(p != NULL);
+	NUTS_TRUE(plen == 8);
+	NUTS_TRUE(memcmp(p, "hello-v3", 8) == 0);
+
+	/* Second call must skip re-decode and return the same payload. */
+	p = stream_msg_payload(m, &plen);
+	NUTS_ASSERT(p != NULL);
+	NUTS_TRUE(plen == 8);
+	NUTS_TRUE(memcmp(p, "hello-v3", 8) == 0);
+
+	nng_msg_free(m);
+}
+
+void
+test_stream_msg_payload_v5(void)
+{
+	uint32_t plen = 0;
+	uint8_t *p;
+	nng_msg *m = test_make_wire_publish("t/v5", "hello-v5", CMD_PUBLISH_V5);
+
+	p = stream_msg_payload(m, &plen);
+	NUTS_ASSERT(p != NULL);
+	NUTS_TRUE(plen == 8);
+	NUTS_TRUE(memcmp(p, "hello-v5", 8) == 0);
+
+	nng_msg_free(m);
+}
+
+void
+test_stream_msg_payload_body_fallback(void)
+{
+	uint32_t plen = 0;
+	uint8_t *p;
+	nng_msg *m = test_make_payload_msg("RAWDATA!", 8);
+
+	p = stream_msg_payload(m, &plen);
+	NUTS_ASSERT(p != NULL);
+	NUTS_TRUE(plen == 8);
+	NUTS_TRUE(memcmp(p, "RAWDATA!", 8) == 0);
+
+	nng_msg_free(m);
+}
+
 void test_stream_multiple_elements(void)
 {
 	int ret = stream_sys_init();
@@ -540,5 +620,8 @@ NUTS_TESTS = {
 	{ "parquet data free null", test_parquet_data_free_null },
 	{ "raw stream register unregister", test_raw_stream_register_unregister },
 	{ "stream multiple elements", test_stream_multiple_elements },
+	{ "stream_msg_payload v3 and skip", test_stream_msg_payload_v3_and_skip },
+	{ "stream_msg_payload v5", test_stream_msg_payload_v5 },
+	{ "stream_msg_payload body fallback", test_stream_msg_payload_body_fallback },
 	{ NULL, NULL },
 };
