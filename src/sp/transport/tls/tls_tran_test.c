@@ -415,6 +415,69 @@ test_tls_psk(void)
 	nng_tls_config_free(c1);
 }
 
+// Closing a listener must reap a pipe that finished negotiating while the
+// socket had no accept pending.  After an accept fails with NNG_EPROTO the
+// socket backs off for 100 ms, so a bogus SP header on one connection
+// leaves the next negotiated pipe waiting on the endpoint.
+void
+test_tls_close_waiting_pipe(void)
+{
+	nng_socket         s;
+	nng_tls_config    *sc;
+	nng_tls_config    *cc;
+	nng_stream_dialer *d;
+	nng_aio           *aio;
+	nng_stream        *bad;
+	nng_stream        *good;
+	char              *addr;
+	uint8_t            hdr[8];
+	uint8_t            bogus[8] = { 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X' };
+	uint8_t            sp[8]    = { 0, 'S', 'P', 0, 0, 0, 0, 0 };
+
+	NUTS_ADDR(addr, "tls+tcp");
+	sc = tls_server_config();
+	cc = tls_client_config();
+	NUTS_OPEN(s);
+	nng_socket_set_ptr(s, NNG_OPT_TLS_CONFIG, sc);
+	NUTS_PASS(nng_listen(s, addr, NULL, 0));
+	NUTS_PASS(nng_stream_dialer_alloc(&d, addr));
+	NUTS_PASS(nng_stream_dialer_set_ptr(d, NNG_OPT_TLS_CONFIG, cc));
+	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
+	nng_aio_set_timeout(aio, 5000);
+
+	nng_stream_dialer_dial(d, aio);
+	nng_aio_wait(aio);
+	NUTS_PASS(nng_aio_result(aio));
+	bad = nng_aio_get_output(aio, 0);
+
+	nng_stream_dialer_dial(d, aio);
+	nng_aio_wait(aio);
+	NUTS_PASS(nng_aio_result(aio));
+	good = nng_aio_get_output(aio, 0);
+
+	// Both pipes are negotiating and have sent their headers.
+	NUTS_PASS(nuts_stream_wait(nuts_stream_recv_start(bad, hdr, 8)));
+	NUTS_PASS(nuts_stream_wait(nuts_stream_recv_start(good, hdr, 8)));
+
+	// The bogus header fails the pending accept; the transport closes
+	// the connection, and the socket does not accept again for 100 ms.
+	NUTS_PASS(nuts_stream_wait(nuts_stream_send_start(bad, bogus, 8)));
+	NUTS_TRUE(nuts_stream_wait(nuts_stream_recv_start(bad, hdr, 8)) != 0);
+
+	// This negotiation completes with nobody to hand the pipe to.
+	NUTS_PASS(nuts_stream_wait(nuts_stream_send_start(good, sp, 8)));
+	NUTS_SLEEP(20);
+
+	NUTS_CLOSE(s);
+
+	nng_stream_free(good);
+	nng_stream_free(bad);
+	nng_stream_dialer_free(d);
+	nng_aio_free(aio);
+	nng_tls_config_free(cc);
+	nng_tls_config_free(sc);
+}
+
 NUTS_TESTS = {
 
 	{ "tls wild card connect fail", test_tls_wild_card_connect_fail },
@@ -428,5 +491,6 @@ NUTS_TESTS = {
 	{ "tls keep alive option", test_tls_keep_alive_option },
 	{ "tls recv max", test_tls_recv_max },
 	{ "tls preshared key", test_tls_psk },
+	{ "tls close waiting pipe", test_tls_close_waiting_pipe },
 	{ NULL, NULL },
 };
