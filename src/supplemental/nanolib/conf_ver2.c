@@ -1967,6 +1967,7 @@ conf_nng_proxy_sub_parse_ver2(conf *config, cJSON *jso)
 	return;
 }
 
+#if defined(SUPP_PLUGIN)
 static void
 conf_plugin_parse_ver2(conf *config, cJSON *jso)
 {
@@ -2214,6 +2215,7 @@ conf_plugin_nodes_parse_ver2(conf *config, cJSON *jso)
 	}
 	config->plugin_nodes.count = cvector_size(config->plugin_nodes.nodes);
 }
+#endif /* SUPP_PLUGIN */
 
 /**
  * Parse one exchange_client block into node.
@@ -3154,10 +3156,12 @@ conf_parse_ver2(conf *config, bool is_reload)
 #endif
 		conf_nng_proxy_sub_parse_ver2(config, jso);
 		conf_nng_proxy_pub_parse_ver2(config, jso);
+#if defined(SUPP_PLUGIN)
 		conf_plugin_parse_ver2(config, jso);
 		conf_plugin_nodes_parse_ver2(config, jso);
 		conf_stream_plugin_parse_ver2(config, jso);
 		conf_stream_inject_parse_ver2(config, jso);
+#endif
 #if defined(SUPP_AWS_BRIDGE)
 		conf_aws_bridge_parse_ver2(config, jso);
 #endif

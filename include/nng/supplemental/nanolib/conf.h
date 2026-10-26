@@ -456,8 +456,9 @@ struct conf_exchange {
 	conf_parquet             *default_parquet;
 };
 
-/* Plugin / stream-plugin / inject config is always present.
- * ENABLE_PLUGIN / SUPP_PLUGIN only gates dlopen of .so modules. */
+#if defined(SUPP_PLUGIN)
+/* Plugin feature (hook .so / stream_plugin / inject / plugin.nodes).
+ * Compiled and packaged only when ENABLE_PLUGIN → SUPP_PLUGIN. */
 typedef struct conf_plugin_lib conf_plugin_lib;
 struct conf_plugin_lib {
 	char *path;
@@ -469,7 +470,7 @@ struct conf_plugin {
 	size_t path_sz;
 };
 
-/* Unified plugin.nodes[] — enable/disable builtins or name a .so node. */
+/* plugin.nodes[] — enable/disable builtins or name a .so node. */
 typedef struct conf_plugin_node conf_plugin_node;
 struct conf_plugin_node {
 	char *name;
@@ -526,6 +527,7 @@ struct conf_stream_inject {
 	uint32_t              worker_num;
 	stream_plugin_full_op full_op; // drop only (block unsupported)
 };
+#endif
 
 struct conf_blf {
 	bool             enable;
@@ -780,10 +782,12 @@ struct conf {
 	conf_parquet         parquet;
 	conf_nng_bridge      nng_proxy;
 	conf_blf             blf;
+#if defined(SUPP_PLUGIN)
 	conf_plugin          plugin;
 	conf_plugin_nodes    plugin_nodes;
 	conf_stream_plugin   stream_plugin;
 	conf_stream_inject   stream_inject;
+#endif
 	conf_web_hook        web_hook;
 #if defined(ENABLE_LOG)
 	conf_log  log;

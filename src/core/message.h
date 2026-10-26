@@ -180,7 +180,6 @@ extern void *nni_msg_get_proto_data(nng_msg *m);
 
 // True when protocol ops were set (real proto_data with lifetime callbacks).
 // False for empty proto_data or ringbuffer key stubs (ops == NULL).
-extern bool nni_msg_has_proto_ops(nng_msg *m);
 
 // nni_msg_get_proto_data returns the data previously set on the message.
 // Note that the protocol is responsible for ensuring that the data on

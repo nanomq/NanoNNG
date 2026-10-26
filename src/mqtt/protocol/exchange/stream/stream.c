@@ -16,23 +16,24 @@
 nng_id_map *stream_node_map = NULL;
 
 /*
- * Prefer MQTT decode + nng_mqtt_msg_get_publish_payload.
+ * Payload for exchange / stream codecs from mixed sources:
+ *   - Broker MQTT and non-MQTT stream frames usually set payload_ptr.
+ *   - Wire MQTT PUBLISH without payload_ptr needs a one-shot decode.
  *
- * Exchange ringbuffer may plant a timestamp key into proto_data with
- * ops=NULL (not a real mqtt_msg). proto_data_alloc() replaces that safely.
- * Body-only frames (no fixed header, e.g. unit-test helpers) fall back to
- * nng_msg_payload_ptr().
+ * Prefer payload_ptr so non-MQTT traffic never enters the MQTT decoder.
+ * After a successful decode, cache payload_ptr so later calls stay ops-free
+ * (ringbuffer may park a key in proto_data with ops=NULL).
  */
 static bool
-stream_msg_already_decoded(nng_msg *m)
+stream_msg_is_mqtt_publish(nng_msg *m)
 {
-	nni_mqtt_proto_data *pd;
+	uint8_t cmd = nng_msg_get_cmd_type(m);
 
-	if (!nni_msg_has_proto_ops(m)) {
-		return false;
+	if (cmd == 0) {
+		cmd = nng_msg_get_type(m);
 	}
-	pd = nni_msg_get_proto_data(m);
-	return (pd != NULL && pd->is_decoded);
+	return (cmd == CMD_PUBLISH || cmd == CMD_PUBLISH_V5 ||
+	    cmd == CMD_PUBLISH_V5_RECV);
 }
 
 static bool
@@ -40,8 +41,6 @@ stream_msg_is_mqttv5(nng_msg *m)
 {
 	uint8_t cmd = nng_msg_get_cmd_type(m);
 
-	/* Wire fixed header is always 0x3x for PUBLISH; v5 is marked via
-	 * CMD_TYPE (CMD_PUBLISH_V5 / _RECV), not the header type nibble. */
 	if (cmd == 0) {
 		cmd = nng_msg_get_type(m);
 	}
@@ -54,19 +53,13 @@ stream_msg_try_decode(nng_msg *m)
 	int                  rv;
 	nni_mqtt_proto_data *pd;
 
-	if (nng_msg_header_len(m) < 2) {
+	if (nng_msg_header_len(m) < 2 || !stream_msg_is_mqtt_publish(m)) {
 		return -1;
 	}
-	if (stream_msg_already_decoded(m)) {
-		return 0;
-	}
-	/* Ringbuffer may stash a key in proto_data with ops=NULL; alloc
-	 * replaces that stub (key remains available via msg timestamp).
-	 * Reuse existing mqtt proto_data when ops are already set. */
-	if (!nni_msg_has_proto_ops(m)) {
-		if (nng_mqtt_msg_proto_data_alloc(m) != 0) {
-			return -1;
-		}
+
+	/* Install / replace mqtt proto_data (clears ringbuffer key stubs). */
+	if (nng_mqtt_msg_proto_data_alloc(m) != 0) {
+		return -1;
 	}
 
 	if (stream_msg_is_mqttv5(m)) {
@@ -98,24 +91,30 @@ stream_msg_payload(void *msg, uint32_t *out_len)
 		return NULL;
 	}
 
-	if (stream_msg_try_decode(m) == 0) {
-		payload = nng_mqtt_msg_get_publish_payload(m, &plen);
+	/* 1) Non-MQTT + broker paths: never force MQTT decode. */
+	payload = nng_msg_payload_ptr(m);
+	if (payload != NULL) {
+		plen = (uint32_t) (nng_msg_len(m) -
+		    ((uintptr_t) payload - (uintptr_t) nng_msg_body(m)));
 		if (out_len != NULL) {
 			*out_len = plen;
 		}
 		return payload;
 	}
 
-	payload = nng_msg_payload_ptr(m);
-	if (payload == NULL) {
+	/* 2) Wire MQTT PUBLISH without payload_ptr. */
+	if (stream_msg_try_decode(m) != 0) {
 		if (out_len != NULL) {
 			*out_len = 0;
 		}
 		return NULL;
 	}
 
-	plen = (uint32_t) (nng_msg_len(m) -
-	    ((uintptr_t) payload - (uintptr_t) nng_msg_body(m)));
+	payload = nng_mqtt_msg_get_publish_payload(m, &plen);
+	if (payload != NULL) {
+		/* Cache so a later call hits path (1) without re-alloc/decode. */
+		nng_msg_set_payload_ptr(m, payload);
+	}
 	if (out_len != NULL) {
 		*out_len = plen;
 	}

@@ -78,11 +78,10 @@ struct stream_data_in {
 	uint32_t  len;
 };
 
-/* Extract MQTT PUBLISH payload from an nng_msg.
- * Decodes the message first when a fixed header is present, then uses
- * nng_mqtt_msg_get_publish_payload(); otherwise falls back to payload_ptr.
- * Returns NULL when msg is NULL; *out_len is set to 0 in that case.
- * out_len may be NULL when caller only needs the pointer. */
+/* Extract payload from an nng_msg for stream / exchange codecs.
+ * Prefers nng_msg_payload_ptr (broker MQTT and non-MQTT frames). Only when
+ * that is unset and CMD marks MQTT PUBLISH does it decode once and cache
+ * payload_ptr. Returns NULL when msg is NULL; *out_len may be NULL. */
 NNG_DECL uint8_t *stream_msg_payload(void *msg, uint32_t *out_len);
 
 struct stream_decoded_data {

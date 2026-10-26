@@ -733,6 +733,7 @@ conf_parse(conf *nanomq_conf)
 
 }
 
+#if defined(SUPP_PLUGIN)
 static void
 conf_stream_plugin_free(conf *config)
 {
@@ -798,6 +799,7 @@ conf_stream_plugin_free(conf *config)
 
 	memset(&config->stream_inject, 0, sizeof(conf_stream_inject));
 }
+#endif
 
 #if defined(ENABLE_LOG)
 static void
@@ -1138,6 +1140,7 @@ conf_init(conf *nanomq_conf)
 
 	conf_bridge_init(&nanomq_conf->bridge);
 	conf_bridge_init(&nanomq_conf->aws_bridge);
+#if defined(SUPP_PLUGIN)
 	nanomq_conf->plugin.libs              = NULL;
 	nanomq_conf->plugin.path_sz           = 0;
 	nanomq_conf->plugin_nodes.count       = 0;
@@ -1148,6 +1151,7 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->stream_inject.queue_cap  = 4096;
 	nanomq_conf->stream_inject.worker_num = 1;
 	nanomq_conf->stream_inject.full_op    = STREAM_PLUGIN_FULL_DROP;
+#endif
 
 	nanomq_conf->web_hook.enable         = false;
 	nanomq_conf->web_hook.url            = NULL;
@@ -1499,6 +1503,7 @@ print_exchange_conf(conf_exchange *exchange)
 	}
 }
 
+#if defined(SUPP_PLUGIN)
 static void
 print_plugin_conf(conf_plugin *plugin)
 {
@@ -1519,6 +1524,7 @@ print_plugin_nodes_conf(conf_plugin_nodes *nodes)
 		    n->name, n->enable, n->path ? n->path : "");
 	}
 }
+#endif
 
 static void
 print_blf_conf(conf_blf *blf)
@@ -1765,8 +1771,10 @@ print_conf(conf *nanomq_conf)
 #if defined(SUPP_AWS_BRIDGE)
 	print_bridge_conf(&nanomq_conf->aws_bridge, "aws.");
 #endif
+#if defined(SUPP_PLUGIN)
 	print_plugin_conf(&nanomq_conf->plugin);
 	print_plugin_nodes_conf(&nanomq_conf->plugin_nodes);
+#endif
 #if defined(SUPP_RULE_ENGINE)
 	conf_rule *rule_eng = &(nanomq_conf->rule_eng);
 	print_rule_engine_conf(rule_eng);
@@ -5294,7 +5302,9 @@ conf_fini(conf *nanomq_conf)
 #if defined(ENABLE_LOG)
 	conf_log_destroy(&nanomq_conf->log);
 #endif
+#if defined(SUPP_PLUGIN)
 	conf_stream_plugin_free(nanomq_conf);
+#endif
 	conf_tcplist_destroy(&nanomq_conf->tcp_list);
 	conf_tlslist_destroy(&nanomq_conf->tls_list);
 
