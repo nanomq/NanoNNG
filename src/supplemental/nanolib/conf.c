@@ -733,23 +733,6 @@ conf_parse(conf *nanomq_conf)
 
 }
 
-#if defined(ENABLE_LOG)
-static void
-conf_log_init(conf_log *log)
-{
-	log->level    = NNG_LOG_WARN;
-	log->file     = NULL;
-	log->dir      = NULL;
-	log->type     = 0x00;
-	log->fp       = NULL;
-	log->uds_addr = NULL;
-
-	log->abs_path        = NULL;
-	log->rotation_sz_str = NULL;
-	log->rotation_sz     = 10 * 1024;
-	log->rotation_count  = 5;
-}
-
 static void
 conf_stream_plugin_free(conf *config)
 {
@@ -814,6 +797,23 @@ conf_stream_plugin_free(conf *config)
 	}
 
 	memset(&config->stream_inject, 0, sizeof(conf_stream_inject));
+}
+
+#if defined(ENABLE_LOG)
+static void
+conf_log_init(conf_log *log)
+{
+	log->level    = NNG_LOG_WARN;
+	log->file     = NULL;
+	log->dir      = NULL;
+	log->type     = 0x00;
+	log->fp       = NULL;
+	log->uds_addr = NULL;
+
+	log->abs_path        = NULL;
+	log->rotation_sz_str = NULL;
+	log->rotation_sz     = 10 * 1024;
+	log->rotation_count  = 5;
 }
 
 static void
