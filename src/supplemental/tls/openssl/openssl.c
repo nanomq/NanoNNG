@@ -145,9 +145,9 @@ struct nng_tls_engine_conn {
 	// 2 * OPEN_BUF_SZ should be enough to put encrypted data
 	char     rbuf[2 * OPEN_BUF_SZ];
 	char     wbuf[2 * OPEN_BUF_SZ];
-	char    *wnext;
+	char    *wnext;   // encrypted records TCP has not accepted yet
 	int      wnsz;
-	int      wntcpsz;
+	int      wntcpsz; // plaintext bytes of the pending send they carry
 	int      running;
 	int      ok;
 };
@@ -473,7 +473,10 @@ open_conn_recv(nng_tls_engine_conn *ec, uint8_t *buf, size_t *szp)
 	return (0);
 }
 
-/** Sends plaintext, retaining encrypted records until TCP can accept them. */
+/** Sends plaintext, retaining encrypted records until TCP can accept them.
+ * Retained records belong to the buffer being sent: the call returns
+ * NNG_EAGAIN, and the caller presents the same buffer again, which resumes
+ * behind the plaintext those records already carry. */
 static int
 open_conn_send(nng_tls_engine_conn *ec, const uint8_t *buf, size_t *szp)
 {
@@ -506,9 +509,11 @@ open_conn_send(nng_tls_engine_conn *ec, const uint8_t *buf, size_t *szp)
 				return NNG_EAGAIN;
 			}
 			nng_free(wnext, 0);
+			// The records carried this many bytes of buf, so
+			// continue behind them with the rest of the buffer.
 			written2tcp = ec->wntcpsz;
+			ec->wntcpsz = 0;
 			log_debug("writing done%d written2tcp%d", ec->wnsz, written2tcp);
-			goto end;
 		} else if (rv == 0 - SSL_ERROR_WANT_READ || rv == 0 - SSL_ERROR_WANT_WRITE) {
 			trace("end3");
 			return (NNG_EAGAIN);
@@ -579,13 +584,12 @@ open_conn_send(nng_tls_engine_conn *ec, const uint8_t *buf, size_t *szp)
 			log_debug("NNG-TLS-CONN-SEND"
 				"tcp%d ssl%d written%d remain%dbytes to put to kernel",
 				written2tcp, read2buf, rv, dm);
-			// written2tcp += written2ssl; // This may make wnext send after a long time
-			// So updated way is as following.
-			// Part of block of data sent failed. The return value size will not
-			// contains the length of this block. So Upper layer will send again.
-			// So the `wnext` will be sent next immediately.
-			ec->wntcpsz = written2ssl;
-			goto end;
+			// SSL consumed the plaintext up to here. A partial count
+			// would complete this send and credit the retained records
+			// to whatever buffer comes next, so hold the send until
+			// they are out and resume behind them.
+			ec->wntcpsz = written2tcp + written2ssl;
+			return (NNG_EAGAIN);
 		}
 		written2tcp += written2ssl;
 		// A special case before handshake finished

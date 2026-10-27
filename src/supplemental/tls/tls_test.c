@@ -149,6 +149,116 @@ test_tls_large_message(void)
 	nng_aio_free(aio2);
 }
 
+/** Sends two buffers on one stream at the same time and checks that each
+ * arrives complete and in order, even though the engine has to retain
+ * encrypted records whenever the TLS send buffer is full. */
+void
+test_tls_concurrent_sends(void)
+{
+	nng_stream_listener *l;
+	nng_stream_dialer *  d;
+	nng_aio *            aio1, *aio2;
+	nng_stream *         s1;
+	nng_stream *         s2;
+	nng_tls_config *     c1;
+	nng_tls_config *     c2;
+	char                 addr[32];
+	uint8_t *            bufa;
+	uint8_t *            bufb;
+	uint8_t *            bufr;
+	size_t               size = 1 << 20;
+	size_t               ia   = 0;
+	size_t               ib   = 0;
+	uint32_t             seed;
+	bool                 ok   = true;
+	void *               ta;
+	void *               tb;
+	void *               tr;
+	int                  port;
+
+	NUTS_ASSERT((bufa = nng_alloc(size)) != NULL);
+	NUTS_ASSERT((bufb = nng_alloc(size)) != NULL);
+	NUTS_ASSERT((bufr = nng_alloc(2 * size)) != NULL);
+	// Stream A uses bytes 0x00-0x7f and stream B bytes 0x80-0xff, each
+	// as its own pseudo-random sequence, so the receiver can split the
+	// interleaved result and check both sequences for gaps and repeats.
+	seed = 1;
+	for (size_t i = 0; i < size; i++) {
+		seed    = seed * 1103515245u + 12345u;
+		bufa[i] = (seed >> 16) & 0x7f;
+	}
+	seed = 2;
+	for (size_t i = 0; i < size; i++) {
+		seed    = seed * 1103515245u + 12345u;
+		bufb[i] = 0x80 | ((seed >> 16) & 0x7f);
+	}
+	memset(bufr, 0, 2 * size);
+
+	NUTS_PASS(nng_aio_alloc(&aio1, NULL, NULL));
+	NUTS_PASS(nng_aio_alloc(&aio2, NULL, NULL));
+	nng_aio_set_timeout(aio1, 5000);
+	nng_aio_set_timeout(aio2, 5000);
+
+	NUTS_PASS(nng_stream_listener_alloc(&l, "tls+tcp://127.0.0.1:0"));
+	NUTS_PASS(nng_tls_config_alloc(&c1, NNG_TLS_MODE_SERVER));
+	NUTS_PASS(nng_tls_config_own_cert(
+	    c1, nuts_server_crt, nuts_server_key, NULL));
+	NUTS_PASS(nng_stream_listener_set_ptr(l, NNG_OPT_TLS_CONFIG, c1));
+	NUTS_PASS(nng_stream_listener_listen(l));
+	NUTS_PASS(
+	    nng_stream_listener_get_int(l, NNG_OPT_TCP_BOUND_PORT, &port));
+
+	snprintf(addr, sizeof (addr), "tls+tcp://127.0.0.1:%d", port);
+	NUTS_PASS(nng_stream_dialer_alloc(&d, addr));
+	NUTS_PASS(nng_tls_config_alloc(&c2, NNG_TLS_MODE_CLIENT));
+	NUTS_PASS(nng_tls_config_ca_chain(c2, nuts_server_crt, NULL));
+	NUTS_PASS(nng_tls_config_server_name(c2, "localhost"));
+	NUTS_PASS(nng_stream_dialer_set_ptr(d, NNG_OPT_TLS_CONFIG, c2));
+
+	nng_stream_listener_accept(l, aio1);
+	nng_stream_dialer_dial(d, aio2);
+	nng_aio_wait(aio1);
+	nng_aio_wait(aio2);
+	NUTS_PASS(nng_aio_result(aio1));
+	NUTS_PASS(nng_aio_result(aio2));
+	NUTS_TRUE((s1 = nng_aio_get_output(aio1, 0)) != NULL);
+	NUTS_TRUE((s2 = nng_aio_get_output(aio2, 0)) != NULL);
+
+	// Both sends queue on the same connection. Each helper resubmits
+	// its remainder after a partial completion, like the transports do.
+	ta = nuts_stream_send_start(s1, bufa, size);
+	tb = nuts_stream_send_start(s1, bufb, size);
+	tr = nuts_stream_recv_start(s2, bufr, 2 * size);
+
+	NUTS_PASS(nuts_stream_wait(ta));
+	NUTS_PASS(nuts_stream_wait(tb));
+	NUTS_PASS(nuts_stream_wait(tr));
+
+	// The sends may interleave, but no byte may be lost or repeated.
+	for (size_t i = 0; i < 2 * size && ok; i++) {
+		if (bufr[i] & 0x80) {
+			ok = (ib < size) && (bufr[i] == bufb[ib++]);
+		} else {
+			ok = (ia < size) && (bufr[i] == bufa[ia++]);
+		}
+	}
+	NUTS_TRUE(ok);
+	NUTS_TRUE(ia == size);
+	NUTS_TRUE(ib == size);
+
+	nng_free(bufa, size);
+	nng_free(bufb, size);
+	nng_free(bufr, 2 * size);
+	nng_stream_free(s1);
+	nng_stream_free(s2);
+	nng_stream_dialer_free(d);
+	nng_stream_listener_free(l);
+	nng_tls_config_free(c1);
+	nng_tls_config_free(c2);
+	nng_aio_free(aio1);
+	nng_aio_free(aio2);
+}
+
 /** Exercises peer authentication under TLS 1.2 and TLS 1.3. client_cert selects
  * whether the client supplies credentials; trust_client controls whether the
  * server trusts their issuer. Checks rejection errors or bidirectional data
@@ -654,6 +764,7 @@ TEST_LIST = {
 	{ "tls config version", test_tls_config_version },
 	{ "tls conn refused", test_tls_conn_refused },
 	{ "tls large message", test_tls_large_message },
+	{ "tls concurrent sends", test_tls_concurrent_sends },
 	{ "tls mutual auth", test_tls_mutual_auth },
 	{ "tls mutual auth missing cert", test_tls_mutual_auth_missing_cert },
 	{ "tls mutual auth untrusted cert", test_tls_mutual_auth_untrusted_cert },
