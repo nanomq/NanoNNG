@@ -58,14 +58,13 @@ stream_msg_try_decode(nng_msg *m)
 		return -1;
 	}
 
-
 	nni_mqtt_proto_data *mqtt = nni_msg_get_proto_data(m);
-    if (mqtt == NULL) {
+	if (mqtt == NULL) {
 		if (nng_mqtt_msg_proto_data_alloc(m) != 0) {
 			return -1;
 		}
-        mqtt = nni_msg_get_proto_data(m);
-    }
+		mqtt = nni_msg_get_proto_data(m);
+	}
 
 	if (stream_msg_is_mqttv5(m)) {
 		rv = nng_mqttv5_msg_decode(m);
