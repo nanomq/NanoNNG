@@ -23,3 +23,26 @@ jobs:
 
     - name: Test
       run: cd build && ctest --output-on-failure
+
+  build-openssl:
+    name: build (openssl)
+    runs-on: [ ubuntu-latest ]
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v1
+
+    # NanoMQ builds this engine for its TLS bridges, so test it next to mbedTLS.
+    - name: Install OpenSSL
+      run: sudo apt-get install libssl-dev
+
+    - name: Install ninja
+      run: sudo apt-get install ninja-build
+
+    - name: Configure
+      run: mkdir build && cd build && cmake -G Ninja -D NNG_ENABLE_TLS=ON -D NNG_TLS_ENGINE=open ..
+
+    - name: Build
+      run: cd build && ninja
+
+    - name: Test
+      run: cd build && ctest --output-on-failure

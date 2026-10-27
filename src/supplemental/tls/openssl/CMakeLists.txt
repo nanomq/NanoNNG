@@ -86,6 +86,8 @@ if (NNG_TLS_ENGINE STREQUAL "open")
     nng_defines(NNG_SUPP_TLS)
     nng_defines(NNG_TLS_ENGINE_OPENSSL)
 
+    nng_test(tls_peer_identity_test)
+
     if (NNG_TEST_PKCS11_PROVIDER)
         nng_test(pkcs11_test)
     endif ()
