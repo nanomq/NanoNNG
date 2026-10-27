@@ -412,6 +412,8 @@ struct conf_parquet {
 	uint64_t                data_page_size;
 	uint64_t                dictionary_page_size;
 	uint32_t                write_batch_size;
+	/* 0: encode the whole drain at once. >0: max MQTT msgs per parquet file. */
+	uint32_t                flush_chunk_msgs;
 	bool                    enable_statistics;
 	bool                    enable_page_checksum;
 	conf_parquet_encryption encryption;

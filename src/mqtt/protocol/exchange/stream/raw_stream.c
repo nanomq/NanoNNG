@@ -57,9 +57,7 @@ static void output_stream_free(struct stream_data_out *output_stream)
 			if (output_stream->payload_arr[i] != NULL) {
 				for (uint32_t j = 0; j < output_stream->col_len; j++) {
 					if (output_stream->payload_arr[i][j] != NULL) {
-						if (output_stream->payload_arr[i][j]->data != NULL && output_stream->payload_arr[i][j]->size > 0) {
-							nng_free(output_stream->payload_arr[i][j]->data, output_stream->payload_arr[i][j]->size);
-						}
+						/* data aliases the MQTT payload; the msg owns it. */
 						nng_free(output_stream->payload_arr[i][j], sizeof(parquet_data_packet));
 					}
 				}
@@ -131,20 +129,35 @@ static struct stream_data_out *output_stream_init(void *data)
 			return NULL;
 		}
 
-		if (input_stream->msgs != NULL) {
-			payload = nng_mqtt_msg_get_publish_payload(input_stream->msgs[i], &plen);
-		}
-		output_stream->payload_arr[0][i]->size = plen;
-		if (plen > 0 && payload != NULL) {
-			output_stream->payload_arr[0][i]->data = nng_alloc(plen);
-			if (output_stream->payload_arr[0][i]->data == NULL) {
-				output_stream_free(output_stream);
-				return NULL;
+		/*
+		 * Exchange may store a shallow-dup'd nng_msg that only has
+		 * body + payload_ptr (no MQTT proto_data). Prefer payload_ptr
+		 * (same as canstream); fall back to MQTT API when proto exists.
+		 */
+		if (input_stream->msgs != NULL && input_stream->msgs[i] != NULL) {
+			nng_msg *m = input_stream->msgs[i];
+			uint8_t *body = nng_msg_body(m);
+			uint8_t *pp   = nng_msg_payload_ptr(m);
+			size_t   blen = nng_msg_len(m);
+
+			if (pp != NULL && body != NULL && pp >= body &&
+			    (size_t) (pp - body) <= blen) {
+				payload = pp;
+				plen    = (uint32_t) (blen - (size_t) (pp - body));
+			} else if (nng_msg_get_proto_data(m) != NULL) {
+				payload = nng_mqtt_msg_get_publish_payload(m, &plen);
+			} else if (body != NULL && blen > 0) {
+				payload = body;
+				plen    = (uint32_t) blen;
 			}
-			memcpy(output_stream->payload_arr[0][i]->data, payload, plen);
-		} else {
-			output_stream->payload_arr[0][i]->data = NULL;
 		}
+		/*
+		 * Point at the live message payload. parquet_data_free must not
+		 * release it; the flush path frees the nng_msg after write.
+		 */
+		output_stream->payload_arr[0][i]->size = plen;
+		output_stream->payload_arr[0][i]->data =
+		    (plen > 0 && payload != NULL) ? payload : NULL;
 	}
 
 	void *encoded_stream_data = parquet_data_alloc(output_stream->schema,
@@ -154,6 +167,8 @@ static struct stream_data_out *output_stream_init(void *data)
 												   output_stream->row_len);
 	if (encoded_stream_data == NULL) {
 		log_error("parquet_data_alloc failed\n");
+	} else {
+		parquet_data_payloads_borrowed(encoded_stream_data);
 	}
 
 	nng_free(output_stream, sizeof(struct stream_data_out));

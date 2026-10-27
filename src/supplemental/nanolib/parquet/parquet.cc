@@ -60,6 +60,8 @@ struct parquet_data {
 	uint64_t              *ts;
 	char                 **schema;
 	parquet_data_packet ***payload_arr;
+	/* When true, payload->data points into caller msgs; do not nng_free it. */
+	bool payload_borrowed;
 };
 
 
@@ -273,12 +275,21 @@ parquet_data_alloc(char **schema, parquet_data_packet ***payload_arr,
 	if (data == NULL) {
 		return NULL; // Memory allocation failed
 	}
-	data->ts          = ts;
-	data->col_len     = col_len + 1;
-	data->row_len     = row_len;
-	data->schema      = schema;
-	data->payload_arr = payload_arr;
+	data->ts               = ts;
+	data->col_len          = col_len + 1;
+	data->row_len          = row_len;
+	data->schema           = schema;
+	data->payload_arr      = payload_arr;
+	data->payload_borrowed = false;
 	return data;
+}
+
+void
+parquet_data_payloads_borrowed(parquet_data *data)
+{
+	if (data != NULL) {
+		data->payload_borrowed = true;
+	}
 }
 
 void
@@ -291,7 +302,8 @@ parquet_data_free(parquet_data *data)
 			for (uint32_t r = 0; r < data->row_len; r++) {
 				parquet_data_packet *payload =
 				    data->payload_arr[c][r];
-				if (payload && payload->data && payload->size > 0) {
+				if (!data->payload_borrowed && payload &&
+				    payload->data && payload->size > 0) {
 					nng_free(payload->data, payload->size);
 				}
 				FREE_IF_NOT_NULL(payload, sizeof(*payload));
