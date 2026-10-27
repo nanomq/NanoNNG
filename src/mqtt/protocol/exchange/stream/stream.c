@@ -15,46 +15,21 @@
 
 nng_id_map *stream_node_map = NULL;
 
-/*
- * Payload for exchange / stream codecs from mixed sources:
- *   - Broker MQTT and non-MQTT stream frames usually set payload_ptr.
- *   - Wire MQTT PUBLISH without payload_ptr needs a one-shot decode.
- *
- * Prefer payload_ptr so non-MQTT traffic never enters the MQTT decoder.
- * After a successful decode, cache payload_ptr so later calls stay ops-free
- * (ringbuffer may park a key in proto_data with ops=NULL).
- */
-static bool
-stream_msg_is_mqtt_publish(nng_msg *m)
-{
-	uint8_t cmd = nng_msg_get_cmd_type(m);
-
-	if (cmd == 0) {
-		cmd = nng_msg_get_type(m);
-	}
-	return (cmd == CMD_PUBLISH || cmd == CMD_PUBLISH_V5 ||
-	    cmd == CMD_PUBLISH_V5_RECV);
-}
-
-// Must ensure msg being processed at RECV state for protocol level
-static bool
-stream_msg_is_mqttv5(nng_msg *m)
-{
-	uint8_t cmd = nng_msg_get_cmd_type(m);
-
-	if (cmd == 0) {
-		cmd = nng_msg_get_type(m);
-	}
-	return (cmd == CMD_PUBLISH_V5 || cmd == CMD_PUBLISH_V5_RECV);
-}
-
 static int
 stream_msg_try_decode(nng_msg *m)
 {
 	int                  rv;
+	uint8_t 			 cmd;
 	nni_mqtt_proto_data *pd;
 
-	if (nng_msg_header_len(m) < 2 || !stream_msg_is_mqtt_publish(m)) {
+	if (nng_msg_header_len(m) < 2) {
+		// invalid msg
+		return -1;
+	}
+
+	cmd = nng_msg_get_cmd_type(m);
+	if (cmd == 0) {
+		// only decoded msg is allowed in stream plugin
 		return -1;
 	}
 
@@ -66,10 +41,13 @@ stream_msg_try_decode(nng_msg *m)
 		mqtt = nni_msg_get_proto_data(m);
 	}
 
-	if (stream_msg_is_mqttv5(m)) {
+	// Must ensure msg being processed at RECV state for protocol level
+	if (cmd == CMD_PUBLISH_V5 || CMD_PUBLISH_V5_RECV) {
 		rv = nng_mqttv5_msg_decode(m);
-	} else {
+	} else if (cmd == CMD_PUBLISH) {
 		rv = nng_mqtt_msg_decode(m);
+	} else {
+		return -1;
 	}
 	return 0;
 }
@@ -103,6 +81,7 @@ stream_msg_payload(void *msg, uint32_t *out_len)
 
 	/* 2) Wire MQTT PUBLISH without payload_ptr. */
 	if (stream_msg_try_decode(m) != 0) {
+		// Non MQTT msg or decode failure
 		if (out_len != NULL) {
 			*out_len = 0;
 		}
