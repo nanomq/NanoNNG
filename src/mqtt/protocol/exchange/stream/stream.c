@@ -36,6 +36,7 @@ stream_msg_is_mqtt_publish(nng_msg *m)
 	    cmd == CMD_PUBLISH_V5_RECV);
 }
 
+// Must ensure msg being processed at RECV state for protocol level
 static bool
 stream_msg_is_mqttv5(nng_msg *m)
 {
@@ -57,26 +58,24 @@ stream_msg_try_decode(nng_msg *m)
 		return -1;
 	}
 
-	/* Install / replace mqtt proto_data (clears ringbuffer key stubs). */
-	if (nng_mqtt_msg_proto_data_alloc(m) != 0) {
-		return -1;
-	}
+
+	nni_mqtt_proto_data *mqtt = nni_msg_get_proto_data(m);
+    if (mqtt == NULL) {
+		if (nng_mqtt_msg_proto_data_alloc(m) != 0) {
+			return -1;
+		}
+        mqtt = nni_msg_get_proto_data(m);
+    }
 
 	if (stream_msg_is_mqttv5(m)) {
 		rv = nng_mqttv5_msg_decode(m);
 	} else {
 		rv = nng_mqtt_msg_decode(m);
 	}
-	if (rv != 0) {
-		pd = nni_msg_get_proto_data(m);
-		if (pd != NULL) {
-			pd->is_decoded = false;
-		}
-		return -1;
-	}
 	return 0;
 }
 
+// Rewrite it as an adaptor to Convert any vanilla msg
 uint8_t *
 stream_msg_payload(void *msg, uint32_t *out_len)
 {
@@ -94,6 +93,7 @@ stream_msg_payload(void *msg, uint32_t *out_len)
 	/* 1) Non-MQTT + broker paths: never force MQTT decode. */
 	payload = nng_msg_payload_ptr(m);
 	if (payload != NULL) {
+		// only msg decoded at decode_pub_message
 		plen = (uint32_t) (nng_msg_len(m) -
 		    ((uintptr_t) payload - (uintptr_t) nng_msg_body(m)));
 		if (out_len != NULL) {
