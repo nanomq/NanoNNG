@@ -55,9 +55,7 @@ static void output_stream_free(struct stream_data_out *output_stream)
 			if (output_stream->payload_arr[i] != NULL) {
 				for (uint32_t j = 0; j < output_stream->col_len; j++) {
 					if (output_stream->payload_arr[i][j] != NULL) {
-						if (output_stream->payload_arr[i][j]->data != NULL && output_stream->payload_arr[i][j]->size > 0) {
-							nng_free(output_stream->payload_arr[i][j]->data, output_stream->payload_arr[i][j]->size);
-						}
+						/* data aliases the MQTT payload; the msg owns it. */
 						nng_free(output_stream->payload_arr[i][j], sizeof(parquet_data_packet));
 					}
 				}
@@ -78,7 +76,8 @@ static struct stream_data_out *output_stream_init(void *data)
 	struct stream_data_in *input_stream = NULL;
 
 	input_stream = (struct stream_data_in *)data;
-	if (input_stream == NULL || input_stream->len == 0) {
+	if (input_stream == NULL || input_stream->len == 0 ||
+	    input_stream->keys == NULL) {
 		return NULL;
 	}
 
@@ -118,23 +117,32 @@ static struct stream_data_out *output_stream_init(void *data)
 	}
 
 	for (uint32_t i = 0; i < output_stream->row_len; i++) {
+		uint32_t  plen    = 0;
+		uint8_t  *payload = NULL;
+
 		output_stream->payload_arr[0][i] = NULL;
 		output_stream->payload_arr[0][i] = nng_alloc(sizeof(parquet_data_packet));
 		if (output_stream->payload_arr[0][i] == NULL) {
 			output_stream_free(output_stream);
 			return NULL;
 		}
-		output_stream->payload_arr[0][i]->size = input_stream->lens[i];
-		if (input_stream->lens[i] > 0) {
-			output_stream->payload_arr[0][i]->data = nng_alloc(input_stream->lens[i]);
-			if (output_stream->payload_arr[0][i]->data == NULL) {
-				output_stream_free(output_stream);
-				return NULL;
-			}
-			memcpy(output_stream->payload_arr[0][i]->data, input_stream->datas[i], input_stream->lens[i]);
-		} else {
-			output_stream->payload_arr[0][i]->data = NULL;
+
+		/* Preserve legacy payload views; msgs-only producers use the same
+		 * validated getter as SPI/CANP and in-memory queries. */
+		if (input_stream->datas != NULL && input_stream->lens != NULL) {
+			payload = input_stream->datas[i];
+			plen = input_stream->lens[i];
+		} else if (input_stream->msgs != NULL) {
+			payload = stream_msg_payload(input_stream->msgs[i], &plen);
 		}
+
+		/*
+		 * Point at the live message payload. parquet_data_free must not
+		 * release it; the flush path frees the nng_msg after write.
+		 */
+		output_stream->payload_arr[0][i]->size = plen;
+		output_stream->payload_arr[0][i]->data =
+		    (plen > 0 && payload != NULL) ? payload : NULL;
 	}
 
 	void *encoded_stream_data = parquet_data_alloc(output_stream->schema,
@@ -144,6 +152,8 @@ static struct stream_data_out *output_stream_init(void *data)
 												   output_stream->row_len);
 	if (encoded_stream_data == NULL) {
 		log_error("parquet_data_alloc failed\n");
+	} else {
+		parquet_data_payloads_borrowed(encoded_stream_data);
 	}
 
 	nng_free(output_stream, sizeof(struct stream_data_out));
