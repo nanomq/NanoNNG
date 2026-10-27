@@ -143,8 +143,34 @@ test_tls_peer_identity_auth_modes(void)
 	}
 }
 
+/** Checks the PSK identity limits: a client identity must leave room for
+ * the terminator in OpenSSL's PSK_MAX_IDENTITY_LEN bytes, a server may
+ * match identities of the full length. */
+static void
+test_tls_psk_identity_length(void)
+{
+	nng_tls_config *cfg;
+	uint8_t         key[32] = { 0 };
+	char            identity[257];
+
+	memset(identity, 'i', 256);
+	identity[256] = '\0';
+	NUTS_PASS(nng_tls_config_alloc(&cfg, NNG_TLS_MODE_CLIENT));
+	NUTS_FAIL(nng_tls_config_psk(cfg, identity, key, sizeof(key)),
+	    NNG_ECRYPTO);
+	identity[255] = '\0';
+	NUTS_PASS(nng_tls_config_psk(cfg, identity, key, sizeof(key)));
+	nng_tls_config_free(cfg);
+
+	identity[255] = 'i';
+	NUTS_PASS(nng_tls_config_alloc(&cfg, NNG_TLS_MODE_SERVER));
+	NUTS_PASS(nng_tls_config_psk(cfg, identity, key, sizeof(key)));
+	nng_tls_config_free(cfg);
+}
+
 TEST_LIST = {
 	{ "tls peer identity", test_tls_peer_identity },
 	{ "tls peer identity auth modes", test_tls_peer_identity_auth_modes },
+	{ "tls psk identity length", test_tls_psk_identity_length },
 	{ NULL, NULL },
 };

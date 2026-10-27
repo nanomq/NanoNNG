@@ -855,9 +855,14 @@ open_config_psk(nng_tls_engine_config *cfg, const char *identity,
 {
 	open_psk *srch;
 	open_psk *newpsk;
+	size_t    max_identity = PSK_MAX_IDENTITY_LEN;
 
-	if (key_len > PSK_MAX_PSK_LEN ||
-	    strlen(identity) > PSK_MAX_IDENTITY_LEN) {
+	// A client offers the identity through open_psk_client_cb, which
+	// has to fit the terminator into the same PSK_MAX_IDENTITY_LEN bytes.
+	if (cfg->mode != NNG_TLS_MODE_SERVER) {
+		max_identity--;
+	}
+	if (key_len > PSK_MAX_PSK_LEN || strlen(identity) > max_identity) {
 		return (NNG_ECRYPTO);
 	}
 	if (((newpsk = NNI_ALLOC_STRUCT(newpsk)) == NULL) ||
