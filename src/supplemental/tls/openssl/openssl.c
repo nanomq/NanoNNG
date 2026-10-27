@@ -476,7 +476,9 @@ open_conn_recv(nng_tls_engine_conn *ec, uint8_t *buf, size_t *szp)
 /** Sends plaintext, retaining encrypted records until TCP can accept them.
  * Retained records belong to the buffer being sent: the call returns
  * NNG_EAGAIN, and the caller presents the same buffer again, which resumes
- * behind the plaintext those records already carry. */
+ * behind the plaintext those records already carry. The TLS stream keeps
+ * that send at the head of its queue until the engine completes it;
+ * cancelling it fails the connection instead of swapping the buffer. */
 static int
 open_conn_send(nng_tls_engine_conn *ec, const uint8_t *buf, size_t *szp)
 {
