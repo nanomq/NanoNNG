@@ -66,6 +66,8 @@ parquet_data *parquet_data_alloc(char **schema,
     parquet_data_packet ***payload_arr, uint64_t *ts, uint32_t col_len,
     uint32_t row_len);
 void          parquet_data_free(parquet_data *data);
+/* Payload bytes are owned by the caller (live nng_msg) until after free. */
+void          parquet_data_payloads_borrowed(parquet_data *data);
 
 parquet_object *parquet_object_alloc(parquet_data *data, parquet_type type,
     nng_aio *aio, void *aio_arg, char *topic);
