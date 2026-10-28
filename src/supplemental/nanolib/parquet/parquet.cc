@@ -307,6 +307,7 @@ parquet_object_alloc(parquet_data *data, parquet_type type, nng_aio *aio,
 	elem->aio            = aio;
 	elem->aio_arg        = aio_arg;
 	elem->topic          = topic;
+	elem->rv             = 0;
 	elem->ranges        = new parquet_file_ranges;
 	elem->ranges->range = NULL;
 	elem->ranges->start = 0;
@@ -324,7 +325,9 @@ parquet_object_free(parquet_object *elem)
 		nng_aio_set_prov_data(elem->aio, elem->aio_arg);
 		nng_aio_set_output(elem->aio, 1, elem->ranges);
 		log_debug("finish write aio");
-		DO_IT_IF_NOT_NULL(nng_aio_finish_sync, elem->aio, 0);
+		/* rv carries the write result (aio_arg was handed over via
+		 * prov_data above; it is NOT the result code). */
+		DO_IT_IF_NOT_NULL(nng_aio_finish_sync, elem->aio, elem->rv);
 
 		for (int i = 0; i < elem->ranges->size; i++) {
 			parquet_file_range_free(elem->ranges->range[i]);
@@ -668,6 +671,9 @@ parquet_write_core(conf_parquet *conf, char *filename,
 	} catch (const exception &e) {
 		exception_msg = e.what();
 		log_error("exception_msg=[%s]", exception_msg.c_str());
+		/* A partial/corrupt file may be on disk; report failure so the
+		 * caller can clean it up instead of persisting it. */
+		return -1;
 	}
 
 	return 0;
@@ -703,12 +709,22 @@ parquet_write_tmp(parquet_object *elem)
 	    prefix.data(), ts_arr[0], ts_arr[row_len - 1]);
 	if (filename == NULL) {
 		log_error("Failed to get file name");
+		elem->rv = -1;
 		parquet_object_free(elem);
 		return -1;
 	}
 
-	parquet_write_core(
-	    conf, filename, schema, elem->data, elem->topic, elem->type);
+	if (parquet_write_core(
+	        conf, filename, schema, elem->data, elem->topic,
+	        elem->type) != 0) {
+		log_error("parquet_write_core failed for %s", filename);
+		/* Drop the partial temp file; propagate failure via aio. */
+		remove(filename);
+		free(filename);
+		elem->rv = -1;
+		parquet_object_free(elem);
+		return -1;
+	}
 	parquet_file_range *range =
 	    parquet_file_range_alloc(0, row_len - 1, filename);
 	free(filename);
@@ -746,16 +762,28 @@ parquet_write(parquet_object *elem)
 	log_debug("parquet_write");
 	char *filename = get_file_name(conf, ts_arr[0], ts_arr[row_len - 1]);
 	if (filename == NULL) {
+		elem->rv = -1;
 		parquet_object_free(elem);
 		log_error("Failed to get file name");
 		return -1;
 	}
 
-	parquet_write_core(
-	    conf, filename, schema, elem->data, elem->topic, elem->type);
+	if (parquet_write_core(
+	        conf, filename, schema, elem->data, elem->topic,
+	        elem->type) != 0) {
+		log_error("parquet_write_core failed for %s", filename);
+		/* Drop the partial file before it gets an md5 name or is
+		 * registered for queries; propagate failure via aio. */
+		remove(filename);
+		free(filename);
+		elem->rv = -1;
+		parquet_object_free(elem);
+		return -1;
+	}
 	char *md5_file_name =
 	    compute_and_rename_file_withMD5(filename, conf, elem->topic);
 	if (md5_file_name == nullptr) {
+		elem->rv = -1;
 		parquet_object_free(elem);
 		log_error("fail to get md5 from parquet file");
 		return -1;
