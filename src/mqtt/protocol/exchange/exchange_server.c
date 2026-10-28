@@ -467,12 +467,9 @@ static struct parquet_data_ret *ringbus_parquet_data_ret_init(struct stream_data
 	}
 
 	if (cmd_data->schema_len == 0 || cmd_data->schema == NULL) {
-		/* No column list: return every data column (schema[0] is ts). */
-		if (stream_data_out->col_len > 1) {
-			new_col_len = stream_data_out->col_len - 1;
-		}
+		new_col_len = stream_data_out->col_len;
 	} else {
-		for (uint32_t i = 1; i < stream_data_out->col_len; i++) {
+		for (uint32_t i = 1; i <= stream_data_out->col_len; i++) {
 			for (uint32_t j = 0; j < cmd_data->schema_len; j++) {
 				if (strcmp(stream_data_out->schema[i],
 				        cmd_data->schema[j]) == 0) {
