@@ -68,6 +68,12 @@ parquet_data *parquet_data_alloc(char **schema,
 void          parquet_data_free(parquet_data *data);
 /* Payload bytes are owned by the caller (live nng_msg) until after free. */
 void          parquet_data_payloads_borrowed(parquet_data *data);
+/* ts points at caller-owned memory (e.g. stream_data_in keys); not freed. */
+void          parquet_data_ts_borrowed(parquet_data *data);
+/* schema strings and array are caller-owned constants; not freed. */
+void          parquet_data_schema_borrowed(parquet_data *data);
+/* packet structs are one contiguous block per column; freed as a whole. */
+void          parquet_data_packets_contiguous(parquet_data *data);
 
 parquet_object *parquet_object_alloc(parquet_data *data, parquet_type type,
     nng_aio *aio, void *aio_arg, char *topic);
