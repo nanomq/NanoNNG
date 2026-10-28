@@ -2436,7 +2436,7 @@ conn_param_get_clientid(conn_param *cparam)
 	return (const char *) cparam->clientid.body;
 }
 
-uint32_t
+const uint32_t
 conn_param_get_clientid_len(conn_param *cparam)
 {
 	return (const uint32_t) cparam->clientid.len;
