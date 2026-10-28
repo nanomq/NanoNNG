@@ -127,8 +127,11 @@ int stream_register(char *name,
 	snode->encode = encode;
 	snode->cmd_parser = cmd_parser;
 
-	nng_id_set(stream_node_map, id, snode);
-
+	int rv = nng_id_set(stream_node_map, id, snode);
+	if (rv != 0) {
+		nng_free(snode, sizeof(*snode));
+		return rv;
+	}
 	return 0;
 }
 
