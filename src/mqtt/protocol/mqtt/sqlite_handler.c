@@ -35,7 +35,7 @@ sqlite_flush_lmq(nni_mqtt_sqlite_option *sqlite, nni_lmq *lmq)
 		    sqlite->bridge_name, sqlite->proto_ver);
 		nni_mqtt_qos_db_remove_oldest_client_offline_msg(sqlite->db,
 		    sqlite->sqlite_conf->disk_cache_size,
-		    sqlite->bridge_name);
+		    sqlite->info_id);
 	}
 }
 
