@@ -55,6 +55,8 @@ struct parquet_object {
 	void                *aio_arg;
 	parquet_file_ranges *ranges;
 	char                *topic;
+	/* Result code reported to the aio on completion (0 = success). */
+	int                   rv;
 };
 
 typedef struct {
