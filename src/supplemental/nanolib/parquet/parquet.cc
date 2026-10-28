@@ -12,6 +12,9 @@
 #include <atomic>
 #include <dirent.h>
 #include <fstream>
+#if defined(__linux__) && defined(__GLIBC__)
+#include <malloc.h>
+#endif
 #include <inttypes.h>
 #include <iostream>
 #include <string>
@@ -49,6 +52,12 @@ struct parquet_data {
 	parquet_data_packet ***payload_arr;
 	/* When true, payload->data points into caller msgs; do not nng_free it. */
 	bool payload_borrowed;
+	/* When true, ts aliases caller memory; do not free it. */
+	bool ts_borrowed;
+	/* When true, schema strings and array are caller-owned; do not free. */
+	bool schema_borrowed;
+	/* When true, packet structs are one contiguous block per column. */
+	bool packets_contiguous;
 };
 
 
@@ -206,6 +215,9 @@ parquet_data_alloc(char **schema, parquet_data_packet ***payload_arr,
 	data->schema           = schema;
 	data->payload_arr      = payload_arr;
 	data->payload_borrowed = false;
+	data->ts_borrowed      = false;
+	data->schema_borrowed  = false;
+	data->packets_contiguous = false;
 	return data;
 }
 
@@ -218,28 +230,68 @@ parquet_data_payloads_borrowed(parquet_data *data)
 }
 
 void
+parquet_data_ts_borrowed(parquet_data *data)
+{
+	if (data != NULL) {
+		data->ts_borrowed = true;
+	}
+}
+
+void
+parquet_data_schema_borrowed(parquet_data *data)
+{
+	if (data != NULL) {
+		data->schema_borrowed = true;
+	}
+}
+
+void
+parquet_data_packets_contiguous(parquet_data *data)
+{
+	if (data != NULL) {
+		data->packets_contiguous = true;
+	}
+}
+
+void
 parquet_data_free(parquet_data *data)
 {
 	if (data) {
 		for (uint32_t c = 0; c < data->col_len - 1; c++) {
-			FREE_IF_NOT_NULL(
-			    data->schema[c], strlen(data->schema[c]));
-			for (uint32_t r = 0; r < data->row_len; r++) {
-				parquet_data_packet *payload =
-				    data->payload_arr[c][r];
-				if (!data->payload_borrowed && payload &&
-				    payload->data && payload->size > 0) {
-					nng_free(payload->data, payload->size);
+			if (!data->schema_borrowed) {
+				FREE_IF_NOT_NULL(
+				    data->schema[c], strlen(data->schema[c]));
+			}
+			if (data->packets_contiguous) {
+				/* One block per column; free it once. */
+				if (data->payload_arr[c] != NULL &&
+				    data->payload_arr[c][0] != NULL) {
+					nng_free(data->payload_arr[c][0],
+					    data->row_len *
+					        sizeof(parquet_data_packet));
 				}
-				FREE_IF_NOT_NULL(payload, sizeof(*payload));
+			} else {
+				for (uint32_t r = 0; r < data->row_len; r++) {
+					parquet_data_packet *payload =
+					    data->payload_arr[c][r];
+					if (!data->payload_borrowed && payload &&
+					    payload->data && payload->size > 0) {
+						nng_free(payload->data, payload->size);
+					}
+					FREE_IF_NOT_NULL(payload, sizeof(*payload));
+				}
 			}
 			FREE_IF_NOT_NULL(data->payload_arr[c], data->row_len);
 		}
 
-		FREE_IF_NOT_NULL(data->schema[data->col_len - 1],
-		    strlen(data->schema[data->col_len - 1]));
-		FREE_IF_NOT_NULL(data->schema, data->col_len);
-		FREE_IF_NOT_NULL(data->ts, data->row_len);
+		if (!data->schema_borrowed) {
+			FREE_IF_NOT_NULL(data->schema[data->col_len - 1],
+			    strlen(data->schema[data->col_len - 1]));
+			FREE_IF_NOT_NULL(data->schema, data->col_len);
+		}
+		if (!data->ts_borrowed) {
+			FREE_IF_NOT_NULL(data->ts, data->row_len);
+		}
 		FREE_IF_NOT_NULL(data->payload_arr, data->col_len);
 		delete data;
 	}
@@ -758,6 +810,13 @@ parquet_write_loop_v2(void *arg)
 		default:
 			break;
 		}
+
+#if defined(__linux__) && defined(__GLIBC__)
+		/* The flush freed the batch buffers; hand the idle arena
+		 * pages back to the OS so RSS tracks live data instead of
+		 * staying at the high-water mark. */
+		malloc_trim(0);
+#endif
 	}
 	return NULL;
 }

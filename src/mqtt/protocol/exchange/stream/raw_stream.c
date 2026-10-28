@@ -14,28 +14,11 @@
 #include "nng/supplemental/nanolib/parquet.h"
 #endif
 
-static char **raw_schema_init()
-{
-	char **schema = nng_alloc(2 * sizeof(char *));
-	if (schema == NULL) {
-		return NULL;
-	}
-	schema[0] = nng_alloc(strlen("ts") + 1);
-	if (schema[0] == NULL) {
-		nng_free(schema, 2 * sizeof(char *));
-		return NULL;
-	}
-	strcpy(schema[0], "ts");
-	schema[1] = nng_alloc(strlen("data") + 1);
-	if (schema[1] == NULL) {
-		nng_free(schema[0], strlen("ts") + 1);
-		nng_free(schema, 2 * sizeof(char *));
-		return NULL;
-	}
-	strcpy(schema[1], "data");
-
-	return schema;
-}
+/* Compile-time constant schema for the raw stream; the parquet_data
+ * built on it is flagged schema_borrowed so parquet_data_free skips it. */
+static char  raw_ts_name[]   = "ts";
+static char  raw_data_name[] = "data";
+static char *raw_schema_cols[2] = { raw_ts_name, raw_data_name };
 
 static void output_stream_free(struct stream_data_out *output_stream)
 {
@@ -43,28 +26,23 @@ static void output_stream_free(struct stream_data_out *output_stream)
 		return;
 	}
 
-	if (output_stream->schema != NULL) {
-		for (uint32_t i = 0; i < output_stream->col_len; i++) {
-			if (output_stream->schema[i] != NULL) {
-				nng_free(output_stream->schema[i], strlen(output_stream->schema[i]) + 1);
-			}
-		}
-		nng_free(output_stream->schema, output_stream->col_len * sizeof(char *));
-	}
-
+	/*
+	 * schema is static and ts aliases the caller's stream_data_in keys;
+	 * neither is owned here. Packets are one contiguous block.
+	 */
 	if (output_stream->payload_arr != NULL) {
-		for (uint32_t i = 0; i < output_stream->row_len; i++) {
-			if (output_stream->payload_arr[i] != NULL) {
-				for (uint32_t j = 0; j < output_stream->col_len; j++) {
-					if (output_stream->payload_arr[i][j] != NULL) {
-						/* data aliases the MQTT payload; the msg owns it. */
-						nng_free(output_stream->payload_arr[i][j], sizeof(parquet_data_packet));
-					}
-				}
-				nng_free(output_stream->payload_arr[i], sizeof(parquet_data_packet *) * output_stream->col_len);
+		if (output_stream->payload_arr[0] != NULL) {
+			if (output_stream->payload_arr[0][0] != NULL) {
+				nng_free(output_stream->payload_arr[0][0],
+				    sizeof(parquet_data_packet) *
+				        output_stream->row_len);
 			}
+			nng_free(output_stream->payload_arr[0],
+			    sizeof(parquet_data_packet *) *
+			        output_stream->row_len);
 		}
-		nng_free(output_stream->payload_arr, sizeof(parquet_data_packet **) * output_stream->row_len);
+		nng_free(output_stream->payload_arr,
+		    sizeof(parquet_data_packet **) * output_stream->row_len);
 	}
 
 	nng_free(output_stream, sizeof(struct stream_data_out));
@@ -79,7 +57,7 @@ static struct stream_data_out *output_stream_init(void *data)
 
 	input_stream = (struct stream_data_in *)data;
 	if (input_stream == NULL || input_stream->len == 0 ||
-	    input_stream->msgs == NULL) {
+	    input_stream->msgs == NULL || input_stream->keys == NULL) {
 		return NULL;
 	}
 
@@ -89,27 +67,23 @@ static struct stream_data_out *output_stream_init(void *data)
 	}
 	output_stream->schema = NULL;
 	output_stream->payload_arr = NULL;
+	output_stream->ts = NULL;
 
 	output_stream->col_len = 1;
 	output_stream->row_len = input_stream->len;
-	output_stream->schema = raw_schema_init();
-	if (output_stream->schema == NULL) {
-		output_stream_free(output_stream);
-		return NULL;
-	}
+	/* Static constants owned by this translation unit. */
+	output_stream->schema = raw_schema_cols;
+	/*
+	 * Alias the caller's keys as ts. stream_data_in (and its keys)
+	 * outlives the parquet write; the flush path frees it after the
+	 * aio completes, so no copy is needed here.
+	 */
+	output_stream->ts = input_stream->keys;
+
 	output_stream->payload_arr = nng_alloc(sizeof(parquet_data_packet **) * output_stream->row_len);
 	if (output_stream->payload_arr == NULL) {
 		output_stream_free(output_stream);
 		return NULL;
-	}
-
-	output_stream->ts = nng_alloc(sizeof(uint64_t) * output_stream->row_len);
-	if (output_stream->ts == NULL) {
-		output_stream_free(output_stream);
-		return NULL;
-	}
-	for (uint32_t i = 0; i < output_stream->row_len; i++) {
-		output_stream->ts[i] = input_stream->keys[i];
 	}
 
 	output_stream->payload_arr[0] = nng_alloc(sizeof(parquet_data_packet *) * output_stream->row_len);
@@ -118,16 +92,20 @@ static struct stream_data_out *output_stream_init(void *data)
 		return NULL;
 	}
 
+	parquet_data_packet *pkts = NULL;
+
+	/* One contiguous block of packets instead of row_len small allocs. */
+	pkts = nng_alloc(sizeof(parquet_data_packet) * output_stream->row_len);
+	if (pkts == NULL) {
+		output_stream_free(output_stream);
+		return NULL;
+	}
+
 	for (uint32_t i = 0; i < output_stream->row_len; i++) {
 		uint32_t  plen    = 0;
 		uint8_t  *payload = NULL;
 
-		output_stream->payload_arr[0][i] = NULL;
-		output_stream->payload_arr[0][i] = nng_alloc(sizeof(parquet_data_packet));
-		if (output_stream->payload_arr[0][i] == NULL) {
-			output_stream_free(output_stream);
-			return NULL;
-		}
+		output_stream->payload_arr[0][i] = &pkts[i];
 
 		/*
 		 * Exchange may store a shallow-dup'd nng_msg that only has
@@ -155,9 +133,8 @@ static struct stream_data_out *output_stream_init(void *data)
 		 * Point at the live message payload. parquet_data_free must not
 		 * release it; the flush path frees the nng_msg after write.
 		 */
-		output_stream->payload_arr[0][i]->size = plen;
-		output_stream->payload_arr[0][i]->data =
-		    (plen > 0 && payload != NULL) ? payload : NULL;
+		pkts[i].size = plen;
+		pkts[i].data = (plen > 0 && payload != NULL) ? payload : NULL;
 	}
 
 	void *encoded_stream_data = parquet_data_alloc(output_stream->schema,
@@ -167,9 +144,13 @@ static struct stream_data_out *output_stream_init(void *data)
 												   output_stream->row_len);
 	if (encoded_stream_data == NULL) {
 		log_error("parquet_data_alloc failed\n");
-	} else {
-		parquet_data_payloads_borrowed(encoded_stream_data);
+		output_stream_free(output_stream);
+		return NULL;
 	}
+	parquet_data_payloads_borrowed(encoded_stream_data);
+	parquet_data_schema_borrowed(encoded_stream_data);
+	parquet_data_ts_borrowed(encoded_stream_data);
+	parquet_data_packets_contiguous(encoded_stream_data);
 
 	nng_free(output_stream, sizeof(struct stream_data_out));
 
