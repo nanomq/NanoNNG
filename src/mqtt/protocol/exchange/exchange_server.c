@@ -221,7 +221,8 @@ static struct stream_data_in *ringbus_stream_data_in_init(uint32_t count, nng_ms
 		log_error("Failed to allocate memory for stream_data\n");
 		return NULL;
 	}
-	stream_data->len = count;
+	stream_data->len   = count;
+	stream_data->msgs  = NULL;
 	stream_data->datas = nng_alloc(sizeof(void *) * count);
 	if (stream_data->datas == NULL) {
 		log_error("Failed to allocate memory for stream_data->datas\n");

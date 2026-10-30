@@ -72,6 +72,7 @@ struct stream_data_out {
 
 struct stream_data_in {
 	void **datas;
+	void **msgs;
 	uint64_t *keys;
 	uint32_t *lens;
 	uint32_t len;
