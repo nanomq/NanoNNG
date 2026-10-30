@@ -210,7 +210,6 @@ static inline void ringbus_stream_data_in_free(struct stream_data_in *stream_dat
 
 static struct stream_data_in *ringbus_stream_data_in_init(uint32_t count, nng_msg **msgList)
 {
-	uint32_t diff = 0;
 	struct stream_data_in *stream_data = NULL;
 
 	if (msgList == NULL || count == 0) {
@@ -222,7 +221,8 @@ static struct stream_data_in *ringbus_stream_data_in_init(uint32_t count, nng_ms
 		log_error("Failed to allocate memory for stream_data\n");
 		return NULL;
 	}
-	stream_data->len = count;
+	stream_data->len   = count;
+	stream_data->msgs  = NULL;
 	stream_data->datas = nng_alloc(sizeof(void *) * count);
 	if (stream_data->datas == NULL) {
 		log_error("Failed to allocate memory for stream_data->datas\n");
@@ -247,11 +247,18 @@ static struct stream_data_in *ringbus_stream_data_in_init(uint32_t count, nng_ms
 	}
 
 	for (uint32_t i = 0; i < count; i++) {
-		diff = nng_msg_len(msgList[i]) -
-			((uintptr_t)nng_msg_payload_ptr(msgList[i]) - (uintptr_t)nng_msg_body(msgList[i]));
-		stream_data->lens[i] = diff;
-		stream_data->datas[i] = nng_msg_payload_ptr(msgList[i]);
-		stream_data->keys[i] = nni_msg_get_timestamp(msgList[i]);
+		uint32_t plen = 0;
+
+		stream_data->datas[i] = NULL;
+		stream_data->lens[i]  = 0;
+		stream_data->keys[i]  = 0;
+		if (msgList[i] == NULL) {
+			continue;
+		}
+		/* Publish payload from the MQTT proto data, not the wire body. */
+		stream_data->datas[i] = stream_msg_payload(msgList[i], &plen);
+		stream_data->lens[i]  = plen;
+		stream_data->keys[i]  = nni_msg_get_timestamp(msgList[i]);
 	}
 
 	return stream_data;
@@ -412,21 +419,7 @@ static void query_send_sync(exchange_sock_t *s, struct cmd_data *cmd_data, int r
 		rc[0] = EXCHANGE_ERR_NONE;
 	}
 #endif
-#if defined(SUPP_BLF)
-	/* not support */
-	const char **blf_fnames = NULL;
-	uint32_t     blf_sz     = 0;
-	/* blf not support fuzz search now */
-	blf_fnames = blf_find_span(startKey, endKey, &blf_sz);
-	if (blf_fnames && blf_sz > 0) {
-		ret = get_persistence_files(blf_sz, (char **) blf_fnames, obj);
-		if (ret != 0) {
-			log_error("get_blf_files failed!");
-		}
-	} else {
-		log_error("blf_find_span failed! sz: %d", blf_sz);
-	}
-#endif
+	/* BLF has no fuzz-search API. Skip it so ENABLE_BLF still builds. */
 
 	nng_msg *msg = NULL;
 	nng_msg_alloc(&msg, 0);

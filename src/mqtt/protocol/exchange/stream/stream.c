@@ -6,10 +6,50 @@
 // found online at https://opensource.org/licenses/MIT.
 
 #include <string.h>
+#include "core/nng_impl.h"
+#include "nng/nng.h"
 #include "nng/exchange/stream/stream.h"
 #include "nng/exchange/stream/raw_stream.h"
+#include "nng/mqtt/mqtt_client.h"
 
 nng_id_map *stream_node_map = NULL;
+
+/* Held across codec calls so unregister/dlclose cannot free the node
+ * or unmap the function while a reader is inside it. Codecs do not
+ * call back into stream_*; pthread_rwlock is not recursive. */
+static nni_rwlock stream_map_lk = NNI_RWLOCK_INITIALIZER;
+
+enum {
+	STREAM_OP_DECODE = 0,
+	STREAM_OP_ENCODE = 1,
+	STREAM_OP_CMD    = 2,
+};
+
+static void *
+stream_invoke(uint8_t id, void *buf, int op)
+{
+	void *(*fn)(void *) = NULL;
+	void *rv = NULL;
+
+	nni_rwlock_rdlock(&stream_map_lk);
+	if (stream_node_map != NULL) {
+		stream_node *snode = nng_id_get(stream_node_map, id);
+		if (snode != NULL) {
+			if (op == STREAM_OP_DECODE) {
+				fn = snode->decode;
+			} else if (op == STREAM_OP_ENCODE) {
+				fn = snode->encode;
+			} else {
+				fn = snode->cmd_parser;
+			}
+		}
+	}
+	if (fn != NULL) {
+		rv = fn(buf);
+	}
+	nni_rwlock_unlock(&stream_map_lk);
+	return rv;
+}
 
 int stream_register(char *name,
 					uint8_t id,
@@ -23,13 +63,21 @@ int stream_register(char *name,
 		return NNG_EINVAL;
 	}
 
+	nni_rwlock_wrlock(&stream_map_lk);
+	if (stream_node_map == NULL) {
+		nni_rwlock_unlock(&stream_map_lk);
+		return NNG_EINVAL;
+	}
+
 	snode = nng_id_get(stream_node_map, id);
 	if (snode != NULL) {
+		nni_rwlock_unlock(&stream_map_lk);
 		return NNG_EEXIST;
 	}
 
 	snode = nng_alloc(sizeof(*snode));
 	if (snode == NULL) {
+		nni_rwlock_unlock(&stream_map_lk);
 		return NNG_ENOMEM;
 	}
 
@@ -40,6 +88,7 @@ int stream_register(char *name,
 	snode->cmd_parser = cmd_parser;
 
 	nng_id_set(stream_node_map, id, snode);
+	nni_rwlock_unlock(&stream_map_lk);
 
 	return 0;
 }
@@ -47,12 +96,20 @@ int stream_register(char *name,
 int stream_unregister(uint8_t id)
 {
 	stream_node *snode = NULL;
+
+	nni_rwlock_wrlock(&stream_map_lk);
+	if (stream_node_map == NULL) {
+		nni_rwlock_unlock(&stream_map_lk);
+		return NNG_ENOENT;
+	}
 	snode = nng_id_get(stream_node_map, id);
 	if (snode == NULL) {
+		nni_rwlock_unlock(&stream_map_lk);
 		return NNG_ENOENT;
 	}
 
 	nng_id_remove(stream_node_map, id);
+	nni_rwlock_unlock(&stream_map_lk);
 
 	nng_free(snode->name, strlen(snode->name) + 1);
 	nng_free(snode, sizeof(*snode));
@@ -62,30 +119,16 @@ int stream_unregister(uint8_t id)
 
 void *stream_decode(uint8_t id, void *buf)
 {
-	stream_node *snode = NULL;
-	snode = nng_id_get(stream_node_map, id);
-	if (snode == NULL) {
-		return NULL;
-	}
-
-	return (snode->decode(buf));
+	return stream_invoke(id, buf, STREAM_OP_DECODE);
 }
 
 void *stream_encode(uint8_t id, void *buf)
 {
-	stream_node *snode = NULL;
-	snode = nng_id_get(stream_node_map, id);
-	if (snode == NULL) {
-		return NULL;
-	}
-
-	return snode->encode(buf);
+	return stream_invoke(id, buf, STREAM_OP_ENCODE);
 }
 
 void *stream_cmd_parser(uint8_t id, void *buf)
 {
-	stream_node *snode = NULL;
-
 	// If input buffer is NULL, parser should return NULL directly.
 	// This avoids passing a NULL pointer down to specific cmd parsers
 	// (e.g. raw_cmd_parser) which expect a valid string and would
@@ -94,12 +137,26 @@ void *stream_cmd_parser(uint8_t id, void *buf)
 		return NULL;
 	}
 
-	snode = nng_id_get(stream_node_map, id);
-	if (snode == NULL) {
+	return stream_invoke(id, buf, STREAM_OP_CMD);
+}
+
+uint8_t *
+stream_msg_payload(void *msg, uint32_t *out_len)
+{
+	uint32_t plen = 0;
+	uint8_t *payload;
+
+	if (out_len != NULL) {
+		*out_len = 0;
+	}
+	if (msg == NULL) {
 		return NULL;
 	}
-
-	return (snode->cmd_parser(buf));
+	payload = nng_mqtt_msg_get_publish_payload(msg, &plen);
+	if (out_len != NULL) {
+		*out_len = plen;
+	}
+	return payload;
 }
 
 #define UNUSED(x) ((void) x)
@@ -167,6 +224,11 @@ void stream_data_in_free(struct stream_data_in *sdata)
 		nng_free(sdata->datas, sizeof(void *) * sdata->len);
 	}
 
+	/* msgs holds borrowed nng_msg pointers. Free the array only. */
+	if (sdata->msgs != NULL) {
+		nng_free(sdata->msgs, sizeof(void *) * sdata->len);
+	}
+
 	if (sdata->keys != NULL) {
 		nng_free(sdata->keys, sizeof(uint64_t) * sdata->len);
 	}
@@ -186,11 +248,16 @@ int stream_sys_init(void)
 
 	// Allow stream_sys_init to be called multiple times safely.
 	// If already initialized, just return success.
+	// Unlock before raw_stream_register(): it calls stream_register(),
+	// which takes the same write lock.
+	nni_rwlock_wrlock(&stream_map_lk);
 	if (stream_node_map != NULL) {
+		nni_rwlock_unlock(&stream_map_lk);
 		return 0;
 	}
 
 	ret = nng_id_map_alloc(&stream_node_map, 0, 0, false);
+	nni_rwlock_unlock(&stream_map_lk);
 	if (ret != 0) {
 		return ret;
 	}
@@ -204,13 +271,16 @@ void stream_sys_fini(void)
 {
 	// Make stream_sys_fini idempotent so that double fini
 	// does not lead to double-free on the id map.
+	nni_rwlock_wrlock(&stream_map_lk);
 	if (stream_node_map == NULL) {
+		nni_rwlock_unlock(&stream_map_lk);
 		return;
 	}
 
 	nng_id_map_foreach(stream_node_map, stream_node_destory);
 	nng_id_map_free(stream_node_map);
 	stream_node_map = NULL;
+	nni_rwlock_unlock(&stream_map_lk);
 
 	return;
 }

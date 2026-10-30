@@ -72,6 +72,7 @@ struct stream_data_out {
 
 struct stream_data_in {
 	void **datas;
+	void **msgs;
 	uint64_t *keys;
 	uint32_t *lens;
 	uint32_t len;
@@ -98,6 +99,7 @@ NNG_DECL int stream_unregister(uint8_t id);
 NNG_DECL void *stream_decode(uint8_t id, void *buf);
 NNG_DECL void *stream_encode(uint8_t id, void *buf);
 NNG_DECL void *stream_cmd_parser(uint8_t id, void *buf);
+NNG_DECL uint8_t *stream_msg_payload(void *msg, uint32_t *out_len);
 NNG_DECL int stream_sys_init(void);
 NNG_DECL void stream_sys_fini(void);
 
