@@ -10,6 +10,7 @@
 #include "nng/nng.h"
 #include "nng/exchange/stream/stream.h"
 #include "nng/exchange/stream/raw_stream.h"
+#include "nng/mqtt/mqtt_client.h"
 
 nng_id_map *stream_node_map = NULL;
 
@@ -137,6 +138,25 @@ void *stream_cmd_parser(uint8_t id, void *buf)
 	}
 
 	return stream_invoke(id, buf, STREAM_OP_CMD);
+}
+
+uint8_t *
+stream_msg_payload(void *msg, uint32_t *out_len)
+{
+	uint32_t plen = 0;
+	uint8_t *payload;
+
+	if (out_len != NULL) {
+		*out_len = 0;
+	}
+	if (msg == NULL) {
+		return NULL;
+	}
+	payload = nng_mqtt_msg_get_publish_payload(msg, &plen);
+	if (out_len != NULL) {
+		*out_len = plen;
+	}
+	return payload;
 }
 
 #define UNUSED(x) ((void) x)
