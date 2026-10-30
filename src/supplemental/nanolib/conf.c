@@ -773,6 +773,7 @@ conf_stream_plugin_free(conf *config)
 		config->plugin_nodes.count = 0;
 	}
 
+#if defined(SUPP_STREAM_PLUGIN)
 	if (config->stream_plugin.nodes != NULL) {
 		for (size_t i = 0; i < config->stream_plugin.count; i++) {
 			conf_stream_plugin_node *node = config->stream_plugin.nodes[i];
@@ -798,6 +799,7 @@ conf_stream_plugin_free(conf *config)
 	}
 
 	memset(&config->stream_inject, 0, sizeof(conf_stream_inject));
+#endif
 }
 #endif
 
@@ -1145,12 +1147,14 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->plugin.path_sz           = 0;
 	nanomq_conf->plugin_nodes.count       = 0;
 	nanomq_conf->plugin_nodes.nodes       = NULL;
+#if defined(SUPP_STREAM_PLUGIN)
 	nanomq_conf->stream_plugin.count      = 0;
 	nanomq_conf->stream_plugin.nodes      = NULL;
-	nanomq_conf->stream_inject.enable     = true;
+	nanomq_conf->stream_inject.enable     = false;
 	nanomq_conf->stream_inject.queue_cap  = 4096;
 	nanomq_conf->stream_inject.worker_num = 1;
 	nanomq_conf->stream_inject.full_op    = STREAM_PLUGIN_FULL_DROP;
+#endif
 #endif
 
 	nanomq_conf->web_hook.enable         = false;

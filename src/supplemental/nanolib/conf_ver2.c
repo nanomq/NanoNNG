@@ -2003,6 +2003,7 @@ conf_plugin_parse_ver2(conf *config, cJSON *jso)
 	return;
 }
 
+#if defined(SUPP_STREAM_PLUGIN)
 static void
 conf_stream_plugin_destroy(conf_stream_plugin *sp)
 {
@@ -2107,7 +2108,8 @@ conf_stream_plugin_parse_ver2(conf *config, cJSON *jso)
 					node->codec_id = id;
 				}
 			}
-		} else {
+		} else if (jcodec != NULL) {
+			/* codec is optional for a message-only stream plugin. */
 			codec_invalid = true;
 		}
 
@@ -2138,7 +2140,7 @@ conf_stream_inject_parse_ver2(conf *config, cJSON *jso)
 	conf_stream_inject *inj = &config->stream_inject;
 
 	// defaults
-	inj->enable     = true;
+	inj->enable     = config->stream_plugin.count > 0 || config->exchange.count > 0;
 	inj->queue_cap  = 4096;
 	inj->worker_num = 1;
 	inj->full_op    = STREAM_PLUGIN_FULL_DROP;
@@ -2167,6 +2169,7 @@ conf_stream_inject_parse_ver2(conf *config, cJSON *jso)
 	}
 }
 
+#endif
 static void
 conf_plugin_nodes_parse_ver2(conf *config, cJSON *jso)
 {
@@ -2230,6 +2233,13 @@ conf_exchange_node_parse(conf_exchange_node *node, cJSON *exchange)
 {
 	hocon_read_str(node, name, exchange);
 	hocon_read_str(node, topic, exchange);
+	cJSON *stream_type = cJSON_GetObjectItem(exchange, "streamType");
+	if (stream_type != NULL && (!cJSON_IsNumber(stream_type) ||
+	        !(stream_type->valuedouble >= 0 && stream_type->valuedouble <= UINT8_MAX) ||
+	        stream_type->valuedouble != (uint8_t) stream_type->valuedouble)) {
+		log_error("exchange.streamType must be an integer in [0, 255]");
+		return false;
+	}
 	hocon_read_num(node, streamType, exchange);
 	hocon_read_num(node, chunk_size, exchange);
 
@@ -3159,8 +3169,10 @@ conf_parse_ver2(conf *config, bool is_reload)
 #if defined(SUPP_PLUGIN)
 		conf_plugin_parse_ver2(config, jso);
 		conf_plugin_nodes_parse_ver2(config, jso);
+#if defined(SUPP_STREAM_PLUGIN)
 		conf_stream_plugin_parse_ver2(config, jso);
 		conf_stream_inject_parse_ver2(config, jso);
+#endif
 #endif
 #if defined(SUPP_AWS_BRIDGE)
 		conf_aws_bridge_parse_ver2(config, jso);

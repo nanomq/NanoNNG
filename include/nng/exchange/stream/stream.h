@@ -60,8 +60,11 @@ NNG_DECL parquet_data *parquet_data_alloc(char **schema,
 								  uint32_t row_len);
 
 NNG_DECL void parquet_data_free(parquet_data *data);
+/* Borrow data columns (excluding ts) until data is freed. No allocations. */
+NNG_DECL int parquet_data_view(const parquet_data *data, parquet_data_ret *view);
 #endif
 
+/* col_len counts data columns; schema also contains ts at index 0. */
 struct stream_data_out {
 	uint32_t col_len;
 	uint32_t row_len;
@@ -101,7 +104,14 @@ NNG_DECL int stream_register(char *name, uint8_t id,
 						 void *(*decode)(void *),
 						 void *(*encode)(void *),
 						 void *(*cmd_parser)(void *));
+/* Waits for callbacks to finish. Do not unregister a codec from inside its
+ * own callback (or call stream_sys_fini from any codec callback). */
 NNG_DECL int stream_unregister(uint8_t id);
+NNG_DECL bool stream_is_registered(uint8_t id);
+/* Parse sync|async-<uint64 start>-<uint64 end>[-schema]. The schema pointer
+ * borrows input; NULL means no schema suffix. Rejects overflow/empty ranges. */
+NNG_DECL int stream_parse_cmd_range(const char *input, bool *sync,
+    uint64_t *start, uint64_t *end, const char **schema);
 NNG_DECL void *stream_decode(uint8_t id, void *buf);
 NNG_DECL void *stream_encode(uint8_t id, void *buf);
 NNG_DECL void *stream_cmd_parser(uint8_t id, void *buf);

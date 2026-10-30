@@ -589,11 +589,109 @@ void test_stream_multiple_elements(void)
 	stream_sys_fini();
 }
 
+static void
+test_payload_invalid_bounds_and_decode(void)
+{
+	nng_msg *msg = test_make_payload_msg("abc", 3);
+	uint32_t len = 123;
+	uintptr_t body = (uintptr_t) nng_msg_body(msg);
+	nng_msg_set_payload_ptr(msg, (uint8_t *) (body - 1));
+	NUTS_NULL(stream_msg_payload(msg, &len));
+	NUTS_TRUE(len == 0);
+	nng_msg_set_payload_ptr(msg, (uint8_t *) (body + 4));
+	NUTS_NULL(stream_msg_payload(msg, &len));
+	NUTS_TRUE(len == 0);
+	nng_msg_set_payload_ptr(msg, (uint8_t *) (body + 3));
+	NUTS_ASSERT(stream_msg_payload(msg, &len) != NULL);
+	NUTS_TRUE(len == 0);
+	nng_msg_free(msg);
+	msg = test_make_wire_publish("t", "x", CMD_PUBLISH);
+	/* A truncated MQTT body must not produce a cached payload. */
+	NUTS_PASS(nng_msg_chop(msg, nng_msg_len(msg) - 1));
+	NUTS_NULL(stream_msg_payload(msg, &len));
+	NUTS_TRUE(len == 0);
+	NUTS_NULL(nng_msg_payload_ptr(msg));
+	nng_msg_free(msg);
+}
+
+static nng_mtx *call_lock;
+static nng_cv *call_cv;
+static bool call_entered, call_release, unregister_started, unregister_done;
+
+static void *
+blocking_encode(void *arg)
+{
+	nng_mtx_lock(call_lock);
+	call_entered = true;
+	nng_cv_wake(call_cv);
+	while (!call_release) nng_cv_wait(call_cv);
+	nng_mtx_unlock(call_lock);
+	return arg;
+}
+
+static void
+codec_call_thread(void *unused)
+{
+	(void) unused;
+	NUTS_ASSERT(stream_encode(TEST_STREAM_ID, &call_entered) == &call_entered);
+}
+
+static void
+codec_unregister_thread(void *unused)
+{
+	(void) unused;
+	nng_mtx_lock(call_lock);
+	unregister_started = true;
+	nng_cv_wake(call_cv);
+	nng_mtx_unlock(call_lock);
+	NUTS_PASS(stream_unregister(TEST_STREAM_ID));
+	nng_mtx_lock(call_lock);
+	unregister_done = true;
+	nng_cv_wake(call_cv);
+	nng_mtx_unlock(call_lock);
+}
+
+static void
+test_unregister_waits_for_callback(void)
+{
+	nng_thread *caller, *remover;
+	NUTS_PASS(stream_sys_init());
+	NUTS_PASS(nng_mtx_alloc(&call_lock));
+	NUTS_PASS(nng_cv_alloc(&call_cv, call_lock));
+	call_entered = call_release = unregister_started = unregister_done = false;
+	NUTS_PASS(stream_register(nng_strdup("blocking"), TEST_STREAM_ID,
+	    blocking_encode, blocking_encode, blocking_encode));
+	NUTS_PASS(nng_thread_create(&caller, codec_call_thread, NULL));
+	nng_mtx_lock(call_lock);
+	while (!call_entered) nng_cv_wait(call_cv);
+	nng_mtx_unlock(call_lock);
+	NUTS_PASS(nng_thread_create(&remover, codec_unregister_thread, NULL));
+	nng_mtx_lock(call_lock);
+	while (!unregister_started) nng_cv_wait(call_cv);
+	nng_mtx_unlock(call_lock);
+	/* Give an incorrectly non-blocking unregister time to return. */
+	nng_msleep(20);
+	nng_mtx_lock(call_lock);
+	NUTS_TRUE(!unregister_done);
+	call_release = true;
+	nng_cv_wake(call_cv);
+	nng_mtx_unlock(call_lock);
+	nng_thread_destroy(caller);
+	nng_thread_destroy(remover);
+	NUTS_TRUE(unregister_done);
+	NUTS_NULL(stream_encode(TEST_STREAM_ID, NULL));
+	nng_cv_free(call_cv);
+	nng_mtx_free(call_lock);
+	stream_sys_fini();
+}
+
 // ============================================================================
 // Test List
 // ============================================================================
 
 NUTS_TESTS = {
+	{ "payload invalid bounds and decode", test_payload_invalid_bounds_and_decode },
+	{ "unregister waits for callback", test_unregister_waits_for_callback },
 	{ "stream sys basic test", test_stream_sys_basic },
 	{ "stream sys double init", test_stream_sys_double_init },
 	{ "stream sys double fini", test_stream_sys_double_fini },

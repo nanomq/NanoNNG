@@ -785,8 +785,10 @@ struct conf {
 #if defined(SUPP_PLUGIN)
 	conf_plugin          plugin;
 	conf_plugin_nodes    plugin_nodes;
+#if defined(SUPP_STREAM_PLUGIN)
 	conf_stream_plugin   stream_plugin;
 	conf_stream_inject   stream_inject;
+#endif
 #endif
 	conf_web_hook        web_hook;
 #if defined(ENABLE_LOG)
