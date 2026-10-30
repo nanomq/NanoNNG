@@ -224,6 +224,11 @@ void stream_data_in_free(struct stream_data_in *sdata)
 		nng_free(sdata->datas, sizeof(void *) * sdata->len);
 	}
 
+	/* msgs holds borrowed nng_msg pointers. Free the array only. */
+	if (sdata->msgs != NULL) {
+		nng_free(sdata->msgs, sizeof(void *) * sdata->len);
+	}
+
 	if (sdata->keys != NULL) {
 		nng_free(sdata->keys, sizeof(uint64_t) * sdata->len);
 	}
