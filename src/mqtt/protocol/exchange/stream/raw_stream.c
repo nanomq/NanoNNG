@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "nng/exchange/stream/raw_stream.h"
-#include "nng/mqtt/mqtt_client.h"
+#include "nng/exchange/stream/stream.h"
 
 #if defined(SUPP_PARQUET)
 #include "nng/supplemental/nanolib/parquet.h"
@@ -37,41 +37,9 @@ static char **raw_schema_init()
 	return schema;
 }
 
-static void output_stream_free(struct stream_data_out *output_stream)
+static void output_stream_free(struct stream_data_out *out)
 {
-	if (output_stream == NULL) {
-		return;
-	}
-
-	if (output_stream->schema != NULL) {
-		for (uint32_t i = 0; i < output_stream->col_len; i++) {
-			if (output_stream->schema[i] != NULL) {
-				nng_free(output_stream->schema[i], strlen(output_stream->schema[i]) + 1);
-			}
-		}
-		nng_free(output_stream->schema, output_stream->col_len * sizeof(char *));
-	}
-
-	if (output_stream->payload_arr != NULL) {
-		for (uint32_t i = 0; i < output_stream->row_len; i++) {
-			if (output_stream->payload_arr[i] != NULL) {
-				for (uint32_t j = 0; j < output_stream->col_len; j++) {
-					if (output_stream->payload_arr[i][j] != NULL) {
-						if (output_stream->payload_arr[i][j]->data != NULL && output_stream->payload_arr[i][j]->size > 0) {
-							nng_free(output_stream->payload_arr[i][j]->data, output_stream->payload_arr[i][j]->size);
-						}
-						nng_free(output_stream->payload_arr[i][j], sizeof(parquet_data_packet));
-					}
-				}
-				nng_free(output_stream->payload_arr[i], sizeof(parquet_data_packet *) * output_stream->col_len);
-			}
-		}
-		nng_free(output_stream->payload_arr, sizeof(parquet_data_packet **) * output_stream->row_len);
-	}
-
-	nng_free(output_stream, sizeof(struct stream_data_out));
-
-	return;
+	stream_data_out_free(out);
 }
 
 static struct stream_data_out *output_stream_init(void *data)
@@ -81,7 +49,7 @@ static struct stream_data_out *output_stream_init(void *data)
 
 	input_stream = (struct stream_data_in *)data;
 	if (input_stream == NULL || input_stream->len == 0 ||
-	    input_stream->msgs == NULL) {
+	    input_stream->msgs == NULL || input_stream->keys == NULL) {
 		return NULL;
 	}
 
@@ -89,8 +57,7 @@ static struct stream_data_out *output_stream_init(void *data)
 	if (output_stream == NULL) {
 		return NULL;
 	}
-	output_stream->schema = NULL;
-	output_stream->payload_arr = NULL;
+	memset(output_stream, 0, sizeof(*output_stream));
 
 	output_stream->col_len = 1;
 	output_stream->row_len = input_stream->len;
@@ -99,12 +66,13 @@ static struct stream_data_out *output_stream_init(void *data)
 		output_stream_free(output_stream);
 		return NULL;
 	}
-	output_stream->payload_arr = nng_alloc(sizeof(parquet_data_packet **) * output_stream->row_len);
+	output_stream->payload_arr = nng_alloc(sizeof(parquet_data_packet **));
 	if (output_stream->payload_arr == NULL) {
 		output_stream_free(output_stream);
 		return NULL;
 	}
 
+	output_stream->payload_arr[0] = NULL;
 	output_stream->ts = nng_alloc(sizeof(uint64_t) * output_stream->row_len);
 	if (output_stream->ts == NULL) {
 		output_stream_free(output_stream);
@@ -120,6 +88,8 @@ static struct stream_data_out *output_stream_init(void *data)
 		return NULL;
 	}
 
+	memset(output_stream->payload_arr[0], 0,
+	    sizeof(parquet_data_packet *) * output_stream->row_len);
 	for (uint32_t i = 0; i < output_stream->row_len; i++) {
 		uint32_t  plen    = 0;
 		uint8_t  *payload = NULL;
@@ -132,7 +102,7 @@ static struct stream_data_out *output_stream_init(void *data)
 		}
 
 		if (input_stream->msgs != NULL) {
-			payload = nng_mqtt_msg_get_publish_payload(input_stream->msgs[i], &plen);
+			payload = stream_msg_payload(input_stream->msgs[i], &plen);
 		}
 		output_stream->payload_arr[0][i]->size = plen;
 		if (plen > 0 && payload != NULL) {
@@ -154,6 +124,8 @@ static struct stream_data_out *output_stream_init(void *data)
 												   output_stream->row_len);
 	if (encoded_stream_data == NULL) {
 		log_error("parquet_data_alloc failed\n");
+		output_stream_free(output_stream);
+		return NULL;
 	}
 
 	nng_free(output_stream, sizeof(struct stream_data_out));
@@ -165,6 +137,7 @@ static struct stream_decoded_data *raw_stream_decode(struct parquet_data_ret *pa
 {
 	struct stream_decoded_data *decoded_data = NULL;
 
+	if (parquet_data->payload_arr == NULL) return NULL;
 	decoded_data = nng_alloc(sizeof(struct stream_decoded_data));
 	if (decoded_data == NULL) {
 		log_warn("decoded_data is NULL");
@@ -189,6 +162,11 @@ static struct stream_decoded_data *raw_stream_decode(struct parquet_data_ret *pa
 
 				continue;
 			}
+			if (parquet_data->payload_arr[i][j]->data == NULL ||
+			    parquet_data->payload_arr[i][j]->size > UINT32_MAX - decoded_data->len) {
+				nng_free(decoded_data, sizeof(*decoded_data));
+				return NULL;
+			}
 			decoded_data->len += parquet_data->payload_arr[i][j]->size;
 		}
 	}
@@ -202,11 +180,13 @@ static struct stream_decoded_data *raw_stream_decode(struct parquet_data_ret *pa
 	decoded_data->data = nng_alloc(decoded_data->len);
 	if (decoded_data->data == NULL) {
 		log_warn("decoded_data data is null");
+		nng_free(decoded_data, sizeof(*decoded_data));
 		return NULL;
 	}
 
 	uint32_t decoded_data_index = 0;
 	for (uint32_t i = 0; i < parquet_data->col_len; i++) {
+		if (parquet_data->payload_arr[i] == NULL) continue;
 		for (uint32_t j = 0; j < parquet_data->row_len; j++) {
 			if (parquet_data->payload_arr[i][j] == NULL) {
 				log_warn("parquet_data->payload_arr[%d][%d] is NULL", i, j);
@@ -254,82 +234,22 @@ void *raw_encode(void *data)
 	return output_stream;
 }
 
-static int checkInput(const char *input,
-					  uint32_t *start_key_index,
-					  uint32_t *end_key_index)
-{
-	int count = 0;
-
-	*start_key_index = 0;
-	*end_key_index = 0;
-
-	if (strncmp(input, "sync", 4) != 0 && strncmp(input, "async", 5) != 0) {
-		log_error("Error: Invalid input format\n");
-		return -1;
-	}
-
-	for (unsigned int i = 0; i < strlen(input); i++) {
-		if (input[i] == '-') {
-			if (count == 0) {
-				*start_key_index = i + 1;
-			} else if (count == 1) {
-				*end_key_index = i + 1;
-			}
-			count++;
-		}
-	}
-
-	if (count != 2) {
-		log_error("Error: Invalid input format\n");
-		return -1;
-	}
-
-	for (unsigned int i = *start_key_index; i < *end_key_index - 1; i++) {
-		if (input[i] < '0' || input[i] > '9') {
-			log_error("Error: Invalid input format\n");
-			return -1;
-		}
-	}
-
-	for (unsigned int i = *end_key_index; i < strlen(input); i++) {
-		if (input[i] < '0' || input[i] > '9') {
-			log_error("Error: Invalid input format\n");
-			return -1;
-		}
-	}
-
-	return 0;
-}
-
 static struct cmd_data *parse_input_cmd(const char *input)
 {
 	struct cmd_data *cmd_data = NULL;
-	uint32_t start_key_index = 0;
-	uint32_t end_key_index = 0;
+	const char *schema_suffix = NULL;
 
 	cmd_data = (struct cmd_data *)nng_alloc(sizeof(struct cmd_data));
 	if (cmd_data == NULL) {
 		return NULL;
 	}
 
-	if (checkInput(input, &start_key_index, &end_key_index) != 0) {
-		log_error("checkInput failed\n");
-		nng_free(cmd_data, sizeof(struct cmd_data));
+	if (stream_parse_cmd_range(input, &cmd_data->is_sync,
+	        &cmd_data->start_key, &cmd_data->end_key, &schema_suffix) != 0 ||
+	    schema_suffix != NULL) {
+		nng_free(cmd_data, sizeof(*cmd_data));
 		return NULL;
 	}
-
-	if (strncmp(input, "sync", 4) == 0) {
-		cmd_data->is_sync = true;
-	} else if (strncmp(input, "async", 5) == 0) {
-		cmd_data->is_sync = false;
-	} else {
-		log_error("Error: Invalid input format\n");
-		nng_free(cmd_data, sizeof(struct cmd_data));
-		return NULL;
-	}
-
-	cmd_data->start_key = (uint64_t)atoll(input + start_key_index);
-	cmd_data->end_key = (uint64_t)atoll(input + end_key_index);
 
 	cmd_data->schema_len = 2;
 	cmd_data->schema = nng_alloc(cmd_data->schema_len * sizeof(char *));

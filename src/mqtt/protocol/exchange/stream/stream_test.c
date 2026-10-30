@@ -7,6 +7,7 @@
 
 #include "nng/exchange/stream/stream.h"
 #include "nng/exchange/stream/raw_stream.h"
+#include "nng/mqtt/mqtt_client.h"
 #include "nng/nng.h"
 #include <nuts.h>
 #include <string.h>
@@ -477,6 +478,85 @@ void test_raw_stream_register_unregister(void)
 	stream_sys_fini();
 }
 
+static nng_msg *
+test_make_wire_publish(const char *topic, const char *payload, uint8_t cmd)
+{
+	nng_msg *m    = NULL;
+	nng_msg *wire = NULL;
+
+	NUTS_PASS(nng_mqtt_msg_alloc(&m, 0));
+	nng_mqtt_msg_set_packet_type(m, NNG_MQTT_PUBLISH);
+	nng_mqtt_msg_set_publish_topic(m, topic);
+	nng_mqtt_msg_set_publish_qos(m, 0);
+	nng_mqtt_msg_set_publish_payload(
+	    m, (uint8_t *) payload, strlen(payload));
+	if (cmd == CMD_PUBLISH_V5) {
+		NUTS_PASS(nng_mqttv5_msg_encode(m));
+	} else {
+		NUTS_PASS(nng_mqtt_msg_encode(m));
+	}
+	nng_msg_set_cmd_type(m, cmd);
+
+	NUTS_PASS(nng_msg_alloc(&wire, 0));
+	NUTS_PASS(nng_msg_header_append(
+	    wire, nng_msg_header(m), nng_msg_header_len(m)));
+	NUTS_PASS(nng_msg_append(wire, nng_msg_body(m), nng_msg_len(m)));
+	nng_msg_set_cmd_type(wire, cmd);
+	nng_msg_free(m);
+	return wire;
+}
+
+void
+test_stream_msg_payload_v3_and_skip(void)
+{
+	uint32_t plen = 0;
+	uint8_t *p;
+	nng_msg *m = test_make_wire_publish("t/v3", "hello-v3", CMD_PUBLISH);
+
+	p = stream_msg_payload(m, &plen);
+	NUTS_ASSERT(p != NULL);
+	NUTS_TRUE(plen == 8);
+	NUTS_TRUE(memcmp(p, "hello-v3", 8) == 0);
+
+	/* Second call must skip re-decode and return the same payload. */
+	p = stream_msg_payload(m, &plen);
+	NUTS_ASSERT(p != NULL);
+	NUTS_TRUE(plen == 8);
+	NUTS_TRUE(memcmp(p, "hello-v3", 8) == 0);
+
+	nng_msg_free(m);
+}
+
+void
+test_stream_msg_payload_v5(void)
+{
+	uint32_t plen = 0;
+	uint8_t *p;
+	nng_msg *m = test_make_wire_publish("t/v5", "hello-v5", CMD_PUBLISH_V5);
+
+	p = stream_msg_payload(m, &plen);
+	NUTS_ASSERT(p != NULL);
+	NUTS_TRUE(plen == 8);
+	NUTS_TRUE(memcmp(p, "hello-v5", 8) == 0);
+
+	nng_msg_free(m);
+}
+
+void
+test_stream_msg_payload_body_fallback(void)
+{
+	uint32_t plen = 0;
+	uint8_t *p;
+	nng_msg *m = test_make_payload_msg("RAWDATA!", 8);
+
+	p = stream_msg_payload(m, &plen);
+	NUTS_ASSERT(p != NULL);
+	NUTS_TRUE(plen == 8);
+	NUTS_TRUE(memcmp(p, "RAWDATA!", 8) == 0);
+
+	nng_msg_free(m);
+}
+
 void test_stream_multiple_elements(void)
 {
 	int ret = stream_sys_init();
@@ -509,11 +589,109 @@ void test_stream_multiple_elements(void)
 	stream_sys_fini();
 }
 
+static void
+test_payload_invalid_bounds_and_decode(void)
+{
+	nng_msg *msg = test_make_payload_msg("abc", 3);
+	uint32_t len = 123;
+	uintptr_t body = (uintptr_t) nng_msg_body(msg);
+	nng_msg_set_payload_ptr(msg, (uint8_t *) (body - 1));
+	NUTS_NULL(stream_msg_payload(msg, &len));
+	NUTS_TRUE(len == 0);
+	nng_msg_set_payload_ptr(msg, (uint8_t *) (body + 4));
+	NUTS_NULL(stream_msg_payload(msg, &len));
+	NUTS_TRUE(len == 0);
+	nng_msg_set_payload_ptr(msg, (uint8_t *) (body + 3));
+	NUTS_ASSERT(stream_msg_payload(msg, &len) != NULL);
+	NUTS_TRUE(len == 0);
+	nng_msg_free(msg);
+	msg = test_make_wire_publish("t", "x", CMD_PUBLISH);
+	/* A truncated MQTT body must not produce a cached payload. */
+	NUTS_PASS(nng_msg_chop(msg, nng_msg_len(msg) - 1));
+	NUTS_NULL(stream_msg_payload(msg, &len));
+	NUTS_TRUE(len == 0);
+	NUTS_NULL(nng_msg_payload_ptr(msg));
+	nng_msg_free(msg);
+}
+
+static nng_mtx *call_lock;
+static nng_cv *call_cv;
+static bool call_entered, call_release, unregister_started, unregister_done;
+
+static void *
+blocking_encode(void *arg)
+{
+	nng_mtx_lock(call_lock);
+	call_entered = true;
+	nng_cv_wake(call_cv);
+	while (!call_release) nng_cv_wait(call_cv);
+	nng_mtx_unlock(call_lock);
+	return arg;
+}
+
+static void
+codec_call_thread(void *unused)
+{
+	(void) unused;
+	NUTS_ASSERT(stream_encode(TEST_STREAM_ID, &call_entered) == &call_entered);
+}
+
+static void
+codec_unregister_thread(void *unused)
+{
+	(void) unused;
+	nng_mtx_lock(call_lock);
+	unregister_started = true;
+	nng_cv_wake(call_cv);
+	nng_mtx_unlock(call_lock);
+	NUTS_PASS(stream_unregister(TEST_STREAM_ID));
+	nng_mtx_lock(call_lock);
+	unregister_done = true;
+	nng_cv_wake(call_cv);
+	nng_mtx_unlock(call_lock);
+}
+
+static void
+test_unregister_waits_for_callback(void)
+{
+	nng_thread *caller, *remover;
+	NUTS_PASS(stream_sys_init());
+	NUTS_PASS(nng_mtx_alloc(&call_lock));
+	NUTS_PASS(nng_cv_alloc(&call_cv, call_lock));
+	call_entered = call_release = unregister_started = unregister_done = false;
+	NUTS_PASS(stream_register(nng_strdup("blocking"), TEST_STREAM_ID,
+	    blocking_encode, blocking_encode, blocking_encode));
+	NUTS_PASS(nng_thread_create(&caller, codec_call_thread, NULL));
+	nng_mtx_lock(call_lock);
+	while (!call_entered) nng_cv_wait(call_cv);
+	nng_mtx_unlock(call_lock);
+	NUTS_PASS(nng_thread_create(&remover, codec_unregister_thread, NULL));
+	nng_mtx_lock(call_lock);
+	while (!unregister_started) nng_cv_wait(call_cv);
+	nng_mtx_unlock(call_lock);
+	/* Give an incorrectly non-blocking unregister time to return. */
+	nng_msleep(20);
+	nng_mtx_lock(call_lock);
+	NUTS_TRUE(!unregister_done);
+	call_release = true;
+	nng_cv_wake(call_cv);
+	nng_mtx_unlock(call_lock);
+	nng_thread_destroy(caller);
+	nng_thread_destroy(remover);
+	NUTS_TRUE(unregister_done);
+	NUTS_NULL(stream_encode(TEST_STREAM_ID, NULL));
+	nng_cv_free(call_cv);
+	nng_mtx_free(call_lock);
+	stream_sys_fini();
+}
+
 // ============================================================================
 // Test List
 // ============================================================================
 
 NUTS_TESTS = {
+	{ "payload invalid bounds and decode", test_payload_invalid_bounds_and_decode },
+	{ "unregister waits for callback", test_unregister_waits_for_callback },
 	{ "stream sys basic test", test_stream_sys_basic },
 	{ "stream sys double init", test_stream_sys_double_init },
 	{ "stream sys double fini", test_stream_sys_double_fini },
@@ -540,5 +718,8 @@ NUTS_TESTS = {
 	{ "parquet data free null", test_parquet_data_free_null },
 	{ "raw stream register unregister", test_raw_stream_register_unregister },
 	{ "stream multiple elements", test_stream_multiple_elements },
+	{ "stream_msg_payload v3 and skip", test_stream_msg_payload_v3_and_skip },
+	{ "stream_msg_payload v5", test_stream_msg_payload_v5 },
+	{ "stream_msg_payload body fallback", test_stream_msg_payload_body_fallback },
 	{ NULL, NULL },
 };

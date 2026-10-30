@@ -182,7 +182,7 @@ nng_mqtt_msg_get_connect_proto_version(nng_msg *msg)
 {
 	return nni_mqtt_msg_get_connect_proto_version(msg);
 }
-
+// useless API, only left here for potential usage in msg conversion
 uint8_t
 nng_mqtt_msg_get_publish_proto_version(nng_msg *msg)
 {

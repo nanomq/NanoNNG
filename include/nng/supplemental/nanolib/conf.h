@@ -457,6 +457,8 @@ struct conf_exchange {
 };
 
 #if defined(SUPP_PLUGIN)
+/* Plugin feature (hook .so / stream_plugin / inject / plugin.nodes).
+ * Compiled and packaged only when ENABLE_PLUGIN → SUPP_PLUGIN. */
 typedef struct conf_plugin_lib conf_plugin_lib;
 struct conf_plugin_lib {
 	char *path;
@@ -466,6 +468,20 @@ typedef struct conf_plugin conf_plugin;
 struct conf_plugin {
 	struct conf_plugin_lib **libs;
 	size_t path_sz;
+};
+
+/* plugin.nodes[] — enable/disable builtins or name a .so node. */
+typedef struct conf_plugin_node conf_plugin_node;
+struct conf_plugin_node {
+	char *name;
+	bool  enable;
+	char *path; /* optional; empty means builtin */
+};
+
+typedef struct conf_plugin_nodes conf_plugin_nodes;
+struct conf_plugin_nodes {
+	size_t              count;
+	conf_plugin_node  **nodes;
 };
 
 typedef enum {
@@ -768,8 +784,11 @@ struct conf {
 	conf_blf             blf;
 #if defined(SUPP_PLUGIN)
 	conf_plugin          plugin;
+	conf_plugin_nodes    plugin_nodes;
+#if defined(SUPP_STREAM_PLUGIN)
 	conf_stream_plugin   stream_plugin;
 	conf_stream_inject   stream_inject;
+#endif
 #endif
 	conf_web_hook        web_hook;
 #if defined(ENABLE_LOG)

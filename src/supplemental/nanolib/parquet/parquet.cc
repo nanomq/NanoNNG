@@ -1,3 +1,4 @@
+#include <new>
 #include <arrow/io/file.h>
 #include <arrow/util/key_value_metadata.h>
 #include <parquet/stream_reader.h>
@@ -264,12 +265,13 @@ parquet_data *
 parquet_data_alloc(char **schema, parquet_data_packet ***payload_arr,
     uint64_t *ts, uint32_t col_len, uint32_t row_len)
 {
-	if (payload_arr == NULL || schema == NULL || col_len == 0 ||
-	    row_len == 0) {
+	if (payload_arr == NULL || schema == NULL || ts == NULL ||
+	    col_len == 0 || col_len == UINT32_MAX || row_len == 0) {
 		log_error("payload || schema should not be NULL, col || row "
 		          "len should't == 0");
+		return NULL;
 	}
-	parquet_data *data = new parquet_data;
+	parquet_data *data = new (std::nothrow) parquet_data;
 	if (data == NULL) {
 		return NULL; // Memory allocation failed
 	}
@@ -281,31 +283,59 @@ parquet_data_alloc(char **schema, parquet_data_packet ***payload_arr,
 	return data;
 }
 
+int
+parquet_data_view(const parquet_data *data, parquet_data_ret *view)
+{
+	if (data == NULL || view == NULL || data->col_len < 2 ||
+	    data->schema == NULL || data->payload_arr == NULL || data->ts == NULL) {
+		return NNG_EINVAL;
+	}
+	view->col_len = data->col_len - 1;
+	view->row_len = data->row_len;
+	view->ts = data->ts;
+	view->schema = data->schema + 1;
+	view->payload_arr = data->payload_arr;
+	return 0;
+}
+
 void
 parquet_data_free(parquet_data *data)
 {
-	if (data) {
-		for (uint32_t c = 0; c < data->col_len - 1; c++) {
-			FREE_IF_NOT_NULL(
-			    data->schema[c], strlen(data->schema[c]));
-			for (uint32_t r = 0; r < data->row_len; r++) {
-				parquet_data_packet *payload =
-				    data->payload_arr[c][r];
-				if (payload && payload->data && payload->size > 0) {
-					nng_free(payload->data, payload->size);
-				}
-				FREE_IF_NOT_NULL(payload, sizeof(*payload));
-			}
-			FREE_IF_NOT_NULL(data->payload_arr[c], data->row_len);
-		}
-
-		FREE_IF_NOT_NULL(data->schema[data->col_len - 1],
-		    strlen(data->schema[data->col_len - 1]));
-		FREE_IF_NOT_NULL(data->schema, data->col_len);
-		FREE_IF_NOT_NULL(data->ts, data->row_len);
-		FREE_IF_NOT_NULL(data->payload_arr, data->col_len);
-		delete data;
+	if (data == NULL) {
+		return;
 	}
+	uint32_t cols = data->col_len > 0 ? data->col_len - 1 : 0;
+	if (data->payload_arr != NULL) {
+		for (uint32_t c = 0; c < cols; c++) {
+			if (data->payload_arr[c] == NULL) {
+				continue;
+			}
+			for (uint32_t r = 0; r < data->row_len; r++) {
+				parquet_data_packet *cell = data->payload_arr[c][r];
+				if (cell != NULL) {
+					if (cell->data != NULL) {
+						nng_free(cell->data, cell->size);
+					}
+					nng_free(cell, sizeof(*cell));
+				}
+			}
+			nng_free(data->payload_arr[c],
+			    data->row_len * sizeof(parquet_data_packet *));
+		}
+		nng_free(data->payload_arr, cols * sizeof(parquet_data_packet **));
+	}
+	if (data->schema != NULL) {
+		for (uint32_t c = 0; c < data->col_len; c++) {
+			if (data->schema[c] != NULL) {
+				nng_strfree(data->schema[c]);
+			}
+		}
+		nng_free(data->schema, data->col_len * sizeof(char *));
+	}
+	if (data->ts != NULL) {
+		nng_free(data->ts, data->row_len * sizeof(uint64_t));
+	}
+	delete data;
 }
 
 parquet_object *
@@ -350,7 +380,7 @@ int
 parquet_write_batch_async(parquet_object *elem)
 {
 	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
-	if (conf->enable == false) {
+	if (conf == NULL || conf->enable == false) {
 		log_debug("Parquet %s is not ready or not launch!", elem->topic);
 		log_error("Parquet *** is not ready or not launch!");
 		return -1;
@@ -376,7 +406,7 @@ int
 parquet_write_batch_tmp_async(parquet_object *elem)
 {
 	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
-	if (conf->enable == false) {
+	if (conf == NULL || conf->enable == false) {
 		log_debug("Parquet %s is not ready or not launch!", elem->topic);
 		log_error("Parquet *** is not ready or not launch!");
 		return -1;
@@ -780,7 +810,7 @@ parquet_write_tmp(parquet_object *elem)
 {
 
 	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
-	if (conf->enable == false) {
+	if (conf == NULL || conf->enable == false) {
 		log_debug("Parquet %s is not ready or not launch!", elem->topic);
 		log_error("Parquet *** is not ready or not launch!");
 		return -1;
@@ -829,7 +859,7 @@ parquet_write(parquet_object *elem)
 {
 
 	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
-	if (conf->enable == false) {
+	if (conf == NULL || conf->enable == false) {
 		log_debug("Parquet %s is not ready or not launch!", elem->topic);
 		log_error("Parquet *** is not ready or not launch!");
 		return -1;
@@ -1695,7 +1725,7 @@ parquet_find_data_packet(
 	if (topic.empty() && conf->name != NULL) {
 		topic = conf->name;
 	}
-	if (conf->enable == false) {
+	if (conf == NULL || conf->enable == false) {
 		log_debug("Parquet %s is not ready or not launch!", topic.c_str());
 		log_error("Parquet *** is not ready or not launch!");
 		return ret_vec;
@@ -1753,7 +1783,7 @@ parquet_find_data_packet(conf_parquet *conf, char *filename, uint64_t key)
 	if (topic.empty() && conf->name != NULL) {
 		topic = conf->name;
 	}
-	if (conf->enable == false) {
+	if (conf == NULL || conf->enable == false) {
 		log_debug("Parquet %s is not ready or not launch!", topic.c_str());
 		log_error("Parquet *** is not ready or not launch!");
 		return NULL;
@@ -2134,7 +2164,7 @@ parquet_get_file_ranges(uint64_t start_key, uint64_t end_key, char *topic)
 	log_debug("topic: %s, start_key: %lu, end_key: %lu", topic, start_key, end_key);
 	log_info("topic: ***, start_key: %lu, end_key: %lu", start_key, end_key);
 	conf_parquet *conf = file_manager.fetch_conf(topic);
-	if (conf->enable == false) {
+	if (conf == NULL || conf->enable == false) {
 		log_debug("Parquet %s is not ready or not launch!", topic);
 		log_error("Parquet *** is not ready or not launch!");
 		return NULL;
@@ -2256,7 +2286,7 @@ parquet_get_data_packets_in_range_by_column(parquet_filename_range *range,
 {
 
 	conf_parquet *conf = file_manager.fetch_conf(topic);
-	if (conf->enable == false) {
+	if (conf == NULL || conf->enable == false) {
 		log_debug("Parquet %s is not ready or not launch!", topic);
 		log_error("Parquet *** is not ready or not launch!");
 		return NULL;

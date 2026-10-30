@@ -2003,6 +2003,7 @@ conf_plugin_parse_ver2(conf *config, cJSON *jso)
 	return;
 }
 
+#if defined(SUPP_STREAM_PLUGIN)
 static void
 conf_stream_plugin_destroy(conf_stream_plugin *sp)
 {
@@ -2107,7 +2108,8 @@ conf_stream_plugin_parse_ver2(conf *config, cJSON *jso)
 					node->codec_id = id;
 				}
 			}
-		} else {
+		} else if (jcodec != NULL) {
+			/* codec is optional for a message-only stream plugin. */
 			codec_invalid = true;
 		}
 
@@ -2138,7 +2140,7 @@ conf_stream_inject_parse_ver2(conf *config, cJSON *jso)
 	conf_stream_inject *inj = &config->stream_inject;
 
 	// defaults
-	inj->enable     = true;
+	inj->enable     = config->stream_plugin.count > 0 || config->exchange.count > 0;
 	inj->queue_cap  = 4096;
 	inj->worker_num = 1;
 	inj->full_op    = STREAM_PLUGIN_FULL_DROP;
@@ -2166,7 +2168,57 @@ conf_stream_inject_parse_ver2(conf *config, cJSON *jso)
 		inj->worker_num = 1;
 	}
 }
+
 #endif
+static void
+conf_plugin_nodes_parse_ver2(conf *config, cJSON *jso)
+{
+	cJSON *arr  = hocon_get_obj("plugin.nodes", jso);
+	cJSON *item = NULL;
+
+	if (config->plugin_nodes.nodes != NULL) {
+		for (size_t i = 0; i < config->plugin_nodes.count; i++) {
+			conf_plugin_node *n = config->plugin_nodes.nodes[i];
+			if (n == NULL) {
+				continue;
+			}
+			nng_strfree(n->name);
+			nng_strfree(n->path);
+			NNI_FREE_STRUCT(n);
+		}
+		cvector_free(config->plugin_nodes.nodes);
+		config->plugin_nodes.nodes = NULL;
+		config->plugin_nodes.count = 0;
+	}
+
+	if (arr == NULL) {
+		return;
+	}
+
+	cJSON_ArrayForEach(item, arr)
+	{
+		if (!cJSON_IsObject(item)) {
+			continue;
+		}
+		conf_plugin_node *node = NNI_ALLOC_STRUCT(node);
+		if (node == NULL) {
+			continue;
+		}
+		memset(node, 0, sizeof(*node));
+		node->enable = true;
+		hocon_read_str(node, name, item);
+		hocon_read_bool(node, enable, item);
+		hocon_read_str(node, path, item);
+		if (node->name == NULL) {
+			nng_strfree(node->path);
+			NNI_FREE_STRUCT(node);
+			continue;
+		}
+		cvector_push_back(config->plugin_nodes.nodes, node);
+	}
+	config->plugin_nodes.count = cvector_size(config->plugin_nodes.nodes);
+}
+#endif /* SUPP_PLUGIN */
 
 /**
  * Parse one exchange_client block into node.
@@ -2181,6 +2233,13 @@ conf_exchange_node_parse(conf_exchange_node *node, cJSON *exchange)
 {
 	hocon_read_str(node, name, exchange);
 	hocon_read_str(node, topic, exchange);
+	cJSON *stream_type = cJSON_GetObjectItem(exchange, "streamType");
+	if (stream_type != NULL && (!cJSON_IsNumber(stream_type) ||
+	        !(stream_type->valuedouble >= 0 && stream_type->valuedouble <= UINT8_MAX) ||
+	        stream_type->valuedouble != (uint8_t) stream_type->valuedouble)) {
+		log_error("exchange.streamType must be an integer in [0, 255]");
+		return false;
+	}
 	hocon_read_num(node, streamType, exchange);
 	hocon_read_num(node, chunk_size, exchange);
 
@@ -3109,8 +3168,11 @@ conf_parse_ver2(conf *config, bool is_reload)
 		conf_nng_proxy_pub_parse_ver2(config, jso);
 #if defined(SUPP_PLUGIN)
 		conf_plugin_parse_ver2(config, jso);
+		conf_plugin_nodes_parse_ver2(config, jso);
+#if defined(SUPP_STREAM_PLUGIN)
 		conf_stream_plugin_parse_ver2(config, jso);
 		conf_stream_inject_parse_ver2(config, jso);
+#endif
 #endif
 #if defined(SUPP_AWS_BRIDGE)
 		conf_aws_bridge_parse_ver2(config, jso);

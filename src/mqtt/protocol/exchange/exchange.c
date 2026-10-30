@@ -15,7 +15,8 @@ exchange_init(exchange_t **ex, char *name, char *topic, uint8_t streamType, uint
 		return -1;
 	}
 
-	if (name == NULL || strlen(name) > EXCHANGE_NAME_LEN) {
+	if (name == NULL || strlen(name) >= EXCHANGE_NAME_LEN ||
+	    topic == NULL || strlen(topic) >= TOPIC_NAME_LEN) {
 		log_error("Exchange init failed, name invalid!\n");
 		return -1;
 	}

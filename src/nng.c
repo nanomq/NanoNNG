@@ -2436,7 +2436,7 @@ conn_param_get_clientid(conn_param *cparam)
 	return (const char *) cparam->clientid.body;
 }
 
-uint32_t
+const uint32_t
 conn_param_get_clientid_len(conn_param *cparam)
 {
 	return (const uint32_t) cparam->clientid.len;
@@ -2582,8 +2582,13 @@ conn_param_set_clientid(conn_param *cparam, const char *clientid)
 void
 conn_param_set_username(conn_param *cparam, const char *username)
 {
-	cparam->username.body = nng_strdup(username);
-	cparam->username.len  = strlen(username) + 1;
+	char *copy = username ? nng_strdup(username) : NULL;
+	if (username != NULL && copy == NULL) return;
+	nng_strfree(cparam->username.body);
+	cparam->username.body = copy;
+	cparam->username.len = copy ? strlen(copy) + 1 : 0;
+	if (copy) cparam->con_flag |= 0x80;
+	else cparam->con_flag &= ~0x80;
 }
 
 void

@@ -733,6 +733,76 @@ conf_parse(conf *nanomq_conf)
 
 }
 
+#if defined(SUPP_PLUGIN)
+static void
+conf_stream_plugin_free(conf *config)
+{
+	if (config == NULL) {
+		return;
+	}
+
+	if (config->plugin.libs != NULL) {
+		for (size_t i = 0; i < config->plugin.path_sz; i++) {
+			if (config->plugin.libs[i] != NULL) {
+				if (config->plugin.libs[i]->path) {
+					nng_strfree(config->plugin.libs[i]->path);
+				}
+				NNI_FREE_STRUCT(config->plugin.libs[i]);
+			}
+		}
+		nng_free(config->plugin.libs, config->plugin.path_sz * sizeof(struct conf_plugin_lib *));
+		config->plugin.libs = NULL;
+		config->plugin.path_sz = 0;
+	}
+
+	if (config->plugin_nodes.nodes != NULL) {
+		for (size_t i = 0; i < config->plugin_nodes.count; i++) {
+			conf_plugin_node *node = config->plugin_nodes.nodes[i];
+			if (node != NULL) {
+				if (node->name) {
+					nng_strfree(node->name);
+				}
+				if (node->path) {
+					nng_strfree(node->path);
+				}
+				NNI_FREE_STRUCT(node);
+			}
+		}
+		cvector_free(config->plugin_nodes.nodes);
+		config->plugin_nodes.nodes = NULL;
+		config->plugin_nodes.count = 0;
+	}
+
+#if defined(SUPP_STREAM_PLUGIN)
+	if (config->stream_plugin.nodes != NULL) {
+		for (size_t i = 0; i < config->stream_plugin.count; i++) {
+			conf_stream_plugin_node *node = config->stream_plugin.nodes[i];
+			if (node != NULL) {
+				if (node->path) {
+					nng_strfree(node->path);
+				}
+				if (node->topic) {
+					nng_strfree(node->topic);
+				}
+				if (node->name) {
+					nng_strfree(node->name);
+				}
+				if (node->codec_name) {
+					nng_strfree(node->codec_name);
+				}
+				NNI_FREE_STRUCT(node);
+			}
+		}
+		cvector_free(config->stream_plugin.nodes);
+		config->stream_plugin.nodes = NULL;
+		config->stream_plugin.count = 0;
+	}
+
+	memset(&config->stream_inject, 0, sizeof(conf_stream_inject));
+#endif
+}
+#endif
+
 #if defined(ENABLE_LOG)
 static void
 conf_log_init(conf_log *log)
@@ -748,53 +818,6 @@ conf_log_init(conf_log *log)
 	log->rotation_sz_str = NULL;
 	log->rotation_sz     = 10 * 1024;
 	log->rotation_count  = 5;
-}
-
-static void
-conf_stream_plugin_free(conf *config)
-{
-	if (config == NULL) {
-		return;
-	}
-
-#if defined(SUPP_PLUGIN)
-	if (config->plugin.libs != NULL) {
-		for (size_t i = 0; i < config->plugin.path_sz; i++) {
-			if (config->plugin.libs[i] != NULL) {
-				if (config->plugin.libs[i]->path) {
-					nng_strfree(config->plugin.libs[i]->path);
-				}
-				NNI_FREE_STRUCT(config->plugin.libs[i]);
-			}
-		}
-		nng_free(config->plugin.libs, config->plugin.path_sz * sizeof(struct conf_plugin_lib *));
-		config->plugin.libs = NULL;
-		config->plugin.path_sz = 0;
-	}
-
-	if (config->stream_plugin.nodes != NULL) {
-		for (size_t i = 0; i < config->stream_plugin.count; i++) {
-			conf_stream_plugin_node *node = config->stream_plugin.nodes[i];
-			if (node != NULL) {
-				if (node->path) {
-					nng_strfree(node->path);
-				}
-				if (node->topic) {
-					nng_strfree(node->topic);
-				}
-				if (node->name) {
-					nng_strfree(node->name);
-				}
-				NNI_FREE_STRUCT(node);
-			}
-		}
-		cvector_free(config->stream_plugin.nodes);
-		config->stream_plugin.nodes = NULL;
-		config->stream_plugin.count = 0;
-	}
-
-	memset(&config->stream_inject, 0, sizeof(conf_stream_inject));
-#endif
 }
 
 static void
@@ -1120,12 +1143,18 @@ conf_init(conf *nanomq_conf)
 	conf_bridge_init(&nanomq_conf->bridge);
 	conf_bridge_init(&nanomq_conf->aws_bridge);
 #if defined(SUPP_PLUGIN)
+	nanomq_conf->plugin.libs              = NULL;
+	nanomq_conf->plugin.path_sz           = 0;
+	nanomq_conf->plugin_nodes.count       = 0;
+	nanomq_conf->plugin_nodes.nodes       = NULL;
+#if defined(SUPP_STREAM_PLUGIN)
 	nanomq_conf->stream_plugin.count      = 0;
 	nanomq_conf->stream_plugin.nodes      = NULL;
-	nanomq_conf->stream_inject.enable     = true;
+	nanomq_conf->stream_inject.enable     = false;
 	nanomq_conf->stream_inject.queue_cap  = 4096;
 	nanomq_conf->stream_inject.worker_num = 1;
 	nanomq_conf->stream_inject.full_op    = STREAM_PLUGIN_FULL_DROP;
+#endif
 #endif
 
 	nanomq_conf->web_hook.enable         = false;
@@ -1482,8 +1511,21 @@ print_exchange_conf(conf_exchange *exchange)
 static void
 print_plugin_conf(conf_plugin *plugin)
 {
-	for (int i = 0; i < (int)plugin->path_sz; i++) {
+	for (int i = 0; i < (int) plugin->path_sz; i++) {
 		log_info("plugin path: %s", plugin->libs[i]->path);
+	}
+}
+
+static void
+print_plugin_nodes_conf(conf_plugin_nodes *nodes)
+{
+	for (size_t i = 0; i < nodes->count; i++) {
+		conf_plugin_node *n = nodes->nodes[i];
+		if (n == NULL || n->name == NULL) {
+			continue;
+		}
+		log_info("plugin.nodes[%zu] name=%s enable=%d path=%s", i,
+		    n->name, n->enable, n->path ? n->path : "");
 	}
 }
 #endif
@@ -1735,6 +1777,7 @@ print_conf(conf *nanomq_conf)
 #endif
 #if defined(SUPP_PLUGIN)
 	print_plugin_conf(&nanomq_conf->plugin);
+	print_plugin_nodes_conf(&nanomq_conf->plugin_nodes);
 #endif
 #if defined(SUPP_RULE_ENGINE)
 	conf_rule *rule_eng = &(nanomq_conf->rule_eng);

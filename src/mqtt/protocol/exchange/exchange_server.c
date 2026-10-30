@@ -5,6 +5,7 @@
 // file was obtained (LICENSE.txt).  A copy of the license may also be
 // found online at https://opensource.org/licenses/MIT.
 //
+#include <errno.h>
 #include <inttypes.h>
 #include <limits.h>
 #include <stdlib.h>
@@ -125,20 +126,15 @@ static void query_send_eof(nng_socket *sock, nng_aio *aio, int pcode, int rcode)
 {
 	NNI_ARG_UNUSED(aio);
 	nng_msg *msg = NULL;
-	nng_msg_alloc(&msg, 0);
-
-	unsigned char eof[2];
-	eof[0] = 0x0B;
-	eof[1] = 0xAD;
-
 	char rc[32];
-	sprintf(rc, "%d,%d", pcode, rcode);
-
-	nng_msg_append(msg, eof, 2);
-	nng_msg_append(msg, rc, strlen(rc));
-	nng_sendmsg(*sock, msg, 0);
-
-	return;
+	int len = snprintf(rc, sizeof(rc), "%d,%d", pcode, rcode);
+	unsigned char eof[2] = { 0x0B, 0xAD };
+	if (nng_msg_alloc(&msg, 0) != 0) return;
+	if (nng_msg_append(msg, eof, sizeof(eof)) != 0 ||
+	    nng_msg_append(msg, rc, (size_t) len) != 0 ||
+	    nng_sendmsg(*sock, msg, 0) != 0) {
+		nng_msg_free(msg);
+	}
 }
 
 void
@@ -180,8 +176,9 @@ nng_exchange_replay_cmd_parse(const char *input, nng_exchange_replay_cmd *out)
 	if (*p < '0' || *p > '9') {
 		return -1;
 	}
+	errno = 0;
 	out->start_key = (uint64_t) strtoull(p, &end, 10);
-	if (end == p || *end != '-') {
+	if (errno == ERANGE || end == p || *end != '-') {
 		return -1;
 	}
 	p = end + 1;
@@ -189,8 +186,9 @@ nng_exchange_replay_cmd_parse(const char *input, nng_exchange_replay_cmd *out)
 	if (*p < '0' || *p > '9') {
 		return -1;
 	}
+	errno = 0;
 	out->end_key = (uint64_t) strtoull(p, &end, 10);
-	if (end == p || *end != '-') {
+	if (errno == ERANGE || end == p || *end != '-') {
 		return -1;
 	}
 	p = end + 1;
@@ -198,8 +196,10 @@ nng_exchange_replay_cmd_parse(const char *input, nng_exchange_replay_cmd *out)
 	if (*p < '0' || *p > '9') {
 		return -1;
 	}
+	errno = 0;
 	out->interval_ms = (uint64_t) strtoull(p, &end, 10);
-	if (end == p || *end != '-') {
+	if (errno == ERANGE || end == p || *end != '-' ||
+	    out->interval_ms > INT32_MAX) {
 		return -1;
 	}
 	p = end + 1;
@@ -363,10 +363,10 @@ static inline void parquet_data_ret_free(struct parquet_data_ret *parquet_data)
 			if (parquet_data->payload_arr[j] != NULL) {
 				for (uint32_t k = 0; k < parquet_data->row_len; k++) {
 					if (parquet_data->payload_arr[j][k] != NULL) {
-						if (parquet_data->payload_arr[j][k]->data != NULL && parquet_data->payload_arr[j][k]->size > 0) {
+						if (parquet_data->payload_arr[j][k]->data != NULL) {
 							nng_free(parquet_data->payload_arr[j][k]->data, parquet_data->payload_arr[j][k]->size);
 						}
-						nng_free(parquet_data->payload_arr[j][k], parquet_data->payload_arr[j][k]->size);
+						nng_free(parquet_data->payload_arr[j][k], sizeof(parquet_data_packet));
 					}
 				}
 				nng_free(parquet_data->payload_arr[j], sizeof(parquet_data_packet *) * parquet_data->row_len);
@@ -378,7 +378,7 @@ static inline void parquet_data_ret_free(struct parquet_data_ret *parquet_data)
 	if (parquet_data->schema != NULL) {
 		for (uint32_t i = 0; i < parquet_data->col_len; i++) {
 			if (parquet_data->schema[i] != NULL) {
-				nng_free(parquet_data->schema[i], strlen(parquet_data->schema[i]));
+				nng_free(parquet_data->schema[i], strlen(parquet_data->schema[i]) + 1);
 			}
 		}
 		nng_free(parquet_data->schema, sizeof(char *) * parquet_data->col_len);
@@ -449,231 +449,159 @@ static struct stream_data_in *ringbus_stream_data_in_init(uint32_t count, nng_ms
 	return stream_data;
 }
 
-static struct parquet_data_ret *ringbus_parquet_data_ret_init(struct stream_data_out *stream_data_out, struct cmd_data *cmd_data)
+static void
+ringbus_projection_free(parquet_data_ret *view)
 {
-	uint32_t new_index = 0;
-	uint32_t new_col_len = 0;
-	struct parquet_data_ret *parquet_data_ret = NULL;
-
-	if (stream_data_out == NULL || cmd_data == NULL) {
-		log_error("stream_data_out or cmd_data is null");
-		return NULL;
-	}
-
-	parquet_data_ret = nng_alloc(sizeof(struct parquet_data_ret));
-	if (parquet_data_ret == NULL) {
-		log_error("Failed to allocate memory for parquet_data_ret\n");
-		return NULL;
-	}
-
-	if (cmd_data->schema_len == 0 || cmd_data->schema == NULL) {
-		/* No column list: return every data column (schema[0] is ts). */
-		if (stream_data_out->col_len > 1) {
-			new_col_len = stream_data_out->col_len - 1;
-		}
-	} else {
-		for (uint32_t i = 1; i < stream_data_out->col_len; i++) {
-			for (uint32_t j = 0; j < cmd_data->schema_len; j++) {
-				if (strcmp(stream_data_out->schema[i],
-				        cmd_data->schema[j]) == 0) {
-					new_col_len++;
-					break;
-				}
-			}
-		}
-	}
-	if (new_col_len == 0) {
-		log_error("new_col_len is 0");
-		nng_free(parquet_data_ret, sizeof(struct parquet_data_ret));
-		return NULL;
-	}
-
-	parquet_data_ret->col_len = new_col_len;
-	parquet_data_ret->row_len = stream_data_out->row_len;
-	parquet_data_ret->payload_arr = nng_alloc(sizeof(parquet_data_packet *) * new_col_len);
-	parquet_data_ret->schema = nng_alloc(sizeof(char *) * new_col_len);
-	parquet_data_ret->ts = nng_alloc(sizeof(uint64_t) * stream_data_out->row_len);
-	memcpy(parquet_data_ret->ts, stream_data_out->ts, sizeof(uint64_t) * stream_data_out->row_len);
-
-	/* Don't copy ts column. schema[i] is the matched data column name;
-	 * payload_arr is 0-based without ts, so use payload_arr[i - 1]. */
-	for (uint32_t i = 1; i < stream_data_out->col_len; i++) {
-		bool match = (cmd_data->schema_len == 0 ||
-		    cmd_data->schema == NULL);
-		if (!match) {
-			for (uint32_t j = 0; j < cmd_data->schema_len; j++) {
-				if (strcmp(stream_data_out->schema[i],
-				        cmd_data->schema[j]) == 0) {
-					match = true;
-					break;
-				}
-			}
-		}
-		if (!match) {
-			continue;
-		}
-		parquet_data_ret->schema[new_index] =
-		    stream_data_out->schema[i];
-		parquet_data_ret->payload_arr[new_index] =
-		    stream_data_out->payload_arr[i - 1];
-		new_index++;
-	}
-
-	return parquet_data_ret;
+	if (view == NULL) return;
+	nng_free(view->schema, sizeof(char *) * view->col_len);
+	nng_free(view->payload_arr,
+	    sizeof(parquet_data_packet **) * view->col_len);
+	nng_free(view, sizeof(*view));
 }
 
-static struct stream_decoded_data *fuzz_search_result_cat(nng_msg **msgList,
-														 uint32_t count,
-														 uint8_t stream_type,
-														 struct cmd_data *cmd_data)
+static parquet_data_ret *
+ringbus_parquet_data_ret_init(const parquet_data *encoded, const struct cmd_data *cmd)
 {
-	struct stream_data_in *stream_data = NULL;
-	struct stream_data_out *stream_data_out = NULL;
-	struct stream_decoded_data *decoded_data = NULL;
-
-	if (msgList == NULL || count == 0) {
+	parquet_data_ret source;
+	if (cmd == NULL || parquet_data_view(encoded, &source) != 0) {
 		return NULL;
 	}
-
-	stream_data = ringbus_stream_data_in_init(count, msgList);
-	if (stream_data == NULL) {
-		log_error("Failed to allocate memory for stream_data\n");
+	uint32_t cols = 0;
+	for (uint32_t c = 0; c < source.col_len; c++) {
+		bool match = cmd->schema_len == 0;
+		for (uint32_t j = 0; !match && j < cmd->schema_len; j++) {
+			match = strcmp(source.schema[c], cmd->schema[j]) == 0;
+		}
+		if (match) cols++;
+	}
+	if (cols == 0) return NULL;
+	parquet_data_ret *view = nng_alloc(sizeof(*view));
+	if (view == NULL) return NULL;
+	*view = source;
+	view->col_len = cols;
+	view->schema = nng_alloc(sizeof(char *) * cols);
+	view->payload_arr = nng_alloc(sizeof(parquet_data_packet **) * cols);
+	if (view->schema == NULL || view->payload_arr == NULL) {
+		ringbus_projection_free(view);
 		return NULL;
 	}
-
-	stream_data_out = stream_encode(stream_type, stream_data);
-	if (stream_data_out == NULL) {
-		log_error("stream_encode failed!");
-		ringbus_stream_data_in_free(stream_data);
-		return NULL;
+	uint32_t dst = 0;
+	for (uint32_t c = 0; c < source.col_len; c++) {
+		bool match = cmd->schema_len == 0;
+		for (uint32_t j = 0; !match && j < cmd->schema_len; j++) {
+			match = strcmp(source.schema[c], cmd->schema[j]) == 0;
+		}
+		if (match) {
+			view->schema[dst] = source.schema[c];
+			view->payload_arr[dst++] = source.payload_arr[c];
+		}
 	}
-
-	parquet_data_ret *parquet_data_ele = ringbus_parquet_data_ret_init(stream_data_out, cmd_data);
-	if (parquet_data_ele == NULL) {
-		log_error("ringbus_parquet_data_ret_init failed!");
-		parquet_data_free((parquet_data *)stream_data_out);
-		ringbus_stream_data_in_free(stream_data);
-		return NULL;
-	}
-
-	decoded_data = stream_decode(stream_type, parquet_data_ele);
-	if (decoded_data == NULL) {
-		log_error("stream_decode failed!");
-	}
-
-	/* parquet_data_ele borrows schema/payload pointers from stream_data_out;
-	 * only free the wrapper arrays here — never parquet_data_ret_free(). */
-	if (parquet_data_ele->schema != NULL) {
-		nng_free(parquet_data_ele->schema,
-		    sizeof(char *) * parquet_data_ele->col_len);
-	}
-	if (parquet_data_ele->payload_arr != NULL) {
-		nng_free(parquet_data_ele->payload_arr,
-		    sizeof(parquet_data_packet *) * parquet_data_ele->col_len);
-	}
-	if (parquet_data_ele->ts != NULL) {
-		nng_free(parquet_data_ele->ts,
-		    sizeof(uint64_t) * parquet_data_ele->row_len);
-	}
-	nng_free(parquet_data_ele, sizeof(struct parquet_data_ret));
-
-	parquet_data_free((parquet_data *) stream_data_out);
-	ringbus_stream_data_in_free(stream_data);
-
-	return decoded_data;
+	return view;
 }
 
-static void query_send_sync(exchange_sock_t *s, struct cmd_data *cmd_data, int rc[2])
+static struct stream_decoded_data *
+fuzz_search_result_cat(nng_msg **msgs, uint32_t count, uint8_t type,
+    struct cmd_data *cmd)
 {
-	int ret = 0;
-	uint32_t count = 0;
-	nng_msg **msgList = NULL;
-	struct stream_decoded_data *ringbus_decoded_data = NULL;
-
-	ret = exchange_client_get_msgs_fuzz(s, cmd_data->start_key, cmd_data->end_key, &count, &msgList);
-	if (ret == 0 && count != 0 && msgList != NULL) {
-		ringbus_decoded_data = fuzz_search_result_cat(msgList, count, s->ex_node->ex->streamType, cmd_data);
-		if (ringbus_decoded_data == NULL) {
-			rc[1] = EXCHANGE_ERR_RB_DECODE;
-			log_error("get decoded data from ringbus failed!");
-		}
-		nng_free(msgList, sizeof(nng_msg *) * count);
+	struct stream_data_in *in = ringbus_stream_data_in_init(count, msgs);
+	if (in == NULL) return NULL;
+	parquet_data *encoded = stream_encode(type, in);
+	ringbus_stream_data_in_free(in);
+	if (encoded == NULL) return NULL;
+	parquet_data_ret all;
+	struct stream_decoded_data *decoded = NULL;
+	if (cmd->schema_len == 0 && parquet_data_view(encoded, &all) == 0) {
+		decoded = stream_decode(type, &all);
 	} else {
-		rc[1] = EXCHANGE_ERR_NONE;
-		log_warn("exchange_client_get_msgs_fuzz failed! count: %d", count);
+		parquet_data_ret *view = ringbus_parquet_data_ret_init(encoded, cmd);
+		decoded = view ? stream_decode(type, view) : NULL;
+		ringbus_projection_free(view);
 	}
+	parquet_data_free(encoded);
+	return decoded;
+}
 
-#if defined(SUPP_PARQUET)
-	uint32_t parquet_decoded_data_len = 0;
-	struct stream_decoded_data **parquet_decoded_data = NULL;
-	parquet_data_ret **parquet_datas = NULL;
-	parquet_filename_range file_range;
+/* A query owns deep copies, so a concurrent flush may release the ringbus. */
+static void
+query_msgs_free(nng_msg **msgs, uint32_t count)
+{
+	if (msgs == NULL) return;
+	for (uint32_t i = 0; i < count; i++) nng_msg_free(msgs[i]);
+	nng_free(msgs, sizeof(*msgs) * count);
+}
 
-	file_range.filename = NULL;
-	file_range.keys[0] = cmd_data->start_key;
-	file_range.keys[1] = cmd_data->end_key;
-	parquet_datas = parquet_get_data_packets_in_range_by_column(&file_range,
-																s->ex_node->ex->topic,
-																(const char **)cmd_data->schema,
-																cmd_data->schema_len,
-																&parquet_decoded_data_len);
-	if (parquet_datas != NULL && parquet_decoded_data_len > 0) {
-		parquet_decoded_data = nng_alloc(sizeof(struct stream_decoded_data *) * parquet_decoded_data_len);
-		for (uint32_t i = 0; i < parquet_decoded_data_len; i++) {
-			if (parquet_datas[i] != NULL) {
-				parquet_decoded_data[i] = stream_decode(s->ex_node->ex->streamType, parquet_datas[i]);
-			} else {
-				parquet_decoded_data[i] = NULL;
-			}
-		}
-		parquet_datas_ret_free(parquet_datas, parquet_decoded_data_len);
-	} else {
-		rc[0] = EXCHANGE_ERR_NONE;
-	}
-#endif
-#if defined(SUPP_BLF)
-	/* not support */
-	const char **blf_fnames = NULL;
-	uint32_t     blf_sz     = 0;
-	/* blf not support fuzz search now */
-	blf_fnames = blf_find_span(startKey, endKey, &blf_sz);
-	if (blf_fnames && blf_sz > 0) {
-		ret = get_persistence_files(blf_sz, (char **) blf_fnames, obj);
-		if (ret != 0) {
-			log_error("get_blf_files failed!");
-		}
-	} else {
-		log_error("blf_find_span failed! sz: %d", blf_sz);
-	}
-#endif
+static int
+query_snapshot(exchange_sock_t *s, uint64_t start, uint64_t end,
+    uint32_t *count, nng_msg ***msgs)
+{
+	return ringBuffer_search_msgs_fuzz_snapshot(
+	    s->ex_node->ex->rbs[0], start, end, count, msgs);
+}
 
+static int
+query_send_buffer(exchange_sock_t *s, const void *data, size_t len)
+{
 	nng_msg *msg = NULL;
-	nng_msg_alloc(&msg, 0);
+	int rv = nng_msg_alloc(&msg, len);
+	if (rv != 0) return rv;
+	if (len != 0) memcpy(nng_msg_body(msg), data, len);
+	if (s->pair0_sock == NULL) {
+		nng_msg_free(msg);
+		return NNG_ECLOSED;
+	}
+	rv = nng_sendmsg(*s->pair0_sock, msg, 0);
+	if (rv != 0) nng_msg_free(msg);
+	return rv;
+}
+
+static void
+query_send_sync(exchange_sock_t *s, struct cmd_data *cmd, int rc[2])
+{
+	nng_msg *reply = NULL;
+	if (nng_msg_alloc(&reply, 0) != 0) {
+		rc[0] = rc[1] = EXCHANGE_ERR_PAR_DATA_DECODE;
+		return;
+	}
+	uint32_t count_rb = 0;
+	nng_msg **msgs = NULL;
+	int rb_status = query_snapshot(s, cmd->start_key, cmd->end_key, &count_rb, &msgs);
 #if defined(SUPP_PARQUET)
-	if (parquet_decoded_data != NULL && parquet_decoded_data_len > 0) {
-		for (uint32_t i = 0; i < parquet_decoded_data_len; i++) {
-			if (parquet_decoded_data[i] != NULL && parquet_decoded_data[i]->len > 0) {
-				log_info("parquet_decoded_data[%d] size: %d", i, parquet_decoded_data[i]->len);
-				nng_msg_append(msg, parquet_decoded_data[i]->data, parquet_decoded_data[i]->len);
-				stream_decoded_data_free(parquet_decoded_data[i]);
-			} else {
-				log_info("parquet_decoded_data[%d] is NULL", i);
+	uint32_t count = 0;
+	parquet_filename_range range = { NULL, { cmd->start_key, cmd->end_key } };
+	parquet_data_ret **rows = parquet_get_data_packets_in_range_by_column(
+	    &range, s->ex_node->ex->topic, (const char **) cmd->schema,
+	    cmd->schema_len, &count);
+	if (rows == NULL) {
+		rc[0] = EXCHANGE_ERR_NONE;
+	} else {
+		/* Decode and release each result immediately, avoiding an additional
+		 * array of all decoded files alongside the assembled reply. */
+		for (uint32_t i = 0; i < count; i++) {
+			struct stream_decoded_data *decoded = rows[i] ?
+			    stream_decode(s->ex_node->ex->streamType, rows[i]) : NULL;
+			if (decoded == NULL || nng_msg_append(reply,
+			        decoded->data, decoded->len) != 0) {
 				rc[0] = EXCHANGE_ERR_PAR_DATA_DECODE;
 			}
+			stream_decoded_data_free(decoded);
+			parquet_data_ret_free(rows[i]);
 		}
-		nng_free(parquet_decoded_data, sizeof(struct stream_decoded_data *) * parquet_decoded_data_len);
+		nng_free(rows, sizeof(*rows) * count);
 	}
 #endif
-
-	if (ringbus_decoded_data != NULL && ringbus_decoded_data->len > 0) {
-		log_info("ringbus_decoded_data size: %d", ringbus_decoded_data->len);
-		nng_msg_append(msg, ringbus_decoded_data->data, ringbus_decoded_data->len);
-		stream_decoded_data_free(ringbus_decoded_data);
+	if (rb_status == 0) {
+		struct stream_decoded_data *decoded = fuzz_search_result_cat(
+		    msgs, count_rb, s->ex_node->ex->streamType, cmd);
+		query_msgs_free(msgs, count_rb);
+		if (decoded == NULL || nng_msg_append(reply, decoded->data,
+		        decoded->len) != 0) {
+			rc[1] = EXCHANGE_ERR_RB_DECODE;
+		}
+		stream_decoded_data_free(decoded);
+	} else {
+		rc[1] = EXCHANGE_ERR_NONE;
 	}
-
-	nng_sendmsg(*(s->pair0_sock), msg, 0);
-
-	return;
+	if (nng_sendmsg(*s->pair0_sock, reply, 0) != 0) nng_msg_free(reply);
 }
 
 static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data, int rc[2])
@@ -716,16 +644,10 @@ static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data, int 
 						parquet_decoded_data = stream_decode(s->ex_node->ex->streamType, parquet_datas[i]);
 						if (parquet_decoded_data != NULL && parquet_decoded_data->len > 0) {
 							log_info("parquet_decoded_data[%d] size: %d", i, parquet_decoded_data->len);
-							nng_msg *newmsg = NULL;
-							nng_msg_alloc(&newmsg, 0);
-							nni_msg_append(newmsg, parquet_decoded_data->data, parquet_decoded_data->len);
-							if (s->pair0_sock)
-								nng_sendmsg(*(s->pair0_sock), newmsg, 0);
-							else
-								log_error("pair0_sock is null!!!!!!!!!");
-							/* NOTE: sleep 1000ms */
-							nng_msleep(1000);
-							stream_decoded_data_free(parquet_decoded_data);
+							if (query_send_buffer(s, parquet_decoded_data->data,
+							        parquet_decoded_data->len) != 0) {
+								rc[0] = EXCHANGE_ERR_PAR_DATA_DECODE;
+							}
 						} else {
 							rc[0] = EXCHANGE_ERR_PAR_DATA_DECODE;
 							if (parquet_decoded_data == NULL) {
@@ -734,6 +656,7 @@ static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data, int 
 								log_warn("parquet_decoded_data len : %d", parquet_decoded_data->len);
 							}
 						}
+						stream_decoded_data_free(parquet_decoded_data);
 					} else {
 						rc[0] = EXCHANGE_ERR_PAR_DECODE;
 						log_error("parquet_datas[%d] is NULL", i);
@@ -744,7 +667,7 @@ static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data, int 
 				rc[0] = EXCHANGE_ERR_PAR_SEARCH;
 				log_error("parquet_get_data_packets_in_range_by_column failed!");
 			}
-			nng_free((void *)file_range->filename, strlen(file_range->filename));
+			nng_free((void *)file_range->filename, strlen(file_range->filename) + 1);
 			nng_free(file_range, sizeof(parquet_filename_range));
 			file_range = file_ranges[file_range_idx++];
 		}
@@ -756,27 +679,24 @@ static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data, int 
 	}
 #endif
 
-	ret = exchange_client_get_msgs_fuzz(s, cmd_data->start_key, cmd_data->end_key, &count, &msgList);
+	ret = query_snapshot(s, cmd_data->start_key, cmd_data->end_key, &count, &msgList);
 	if (ret == 0 && count != 0 && msgList != NULL) {
 		ringbus_decoded_data = fuzz_search_result_cat(msgList, count, s->ex_node->ex->streamType, cmd_data);
 		if (ringbus_decoded_data == NULL) {
 			rc[1] = EXCHANGE_ERR_RB_DECODE;
 			log_error("fuzz_search_result_cat failed!");
 		}
-		nng_free(msgList, sizeof(nng_msg *) * count);
+		query_msgs_free(msgList, count);
 	} else {
 		rc[1] = EXCHANGE_ERR_NONE;
 		log_warn("ringbus failed! count: %d", count);
 	}
 
-	if (ringbus_decoded_data != NULL && ringbus_decoded_data->len > 0) {
-		log_info("ringbus_decoded_data size: %d", ringbus_decoded_data->len);
-		nng_msg *newmsg = NULL;
-		nng_msg_alloc(&newmsg, 0);
-		nni_msg_append(newmsg, ringbus_decoded_data->data, ringbus_decoded_data->len);
-		nng_sendmsg(*(s->pair0_sock), newmsg, 0);
-		/* NOTE: sleep 1000ms */
-		nng_msleep(1000);
+	if (ringbus_decoded_data != NULL) {
+		if (ringbus_decoded_data->len > 0 && query_send_buffer(s,
+		        ringbus_decoded_data->data, ringbus_decoded_data->len) != 0) {
+			rc[1] = EXCHANGE_ERR_RB_DECODE;
+		}
 		stream_decoded_data_free(ringbus_decoded_data);
 	}
 
@@ -789,7 +709,7 @@ static void cmd_data_free(struct cmd_data *cmd_data)
 		if (cmd_data->schema != NULL) {
 			for (uint32_t i = 0; i < cmd_data->schema_len; i++) {
 				if (cmd_data->schema[i] != NULL) {
-					nng_free(cmd_data->schema[i], strlen(cmd_data->schema[i]));
+					nng_free(cmd_data->schema[i], strlen(cmd_data->schema[i]) + 1);
 				}
 			}
 			nng_free(cmd_data->schema, sizeof(char *) * cmd_data->schema_len);
@@ -808,6 +728,11 @@ query_cb(void *arg)
 
 	nni_aio *aio = &s->query_aio;
 	nng_msg *msg = nng_aio_get_msg(aio);
+	nng_aio_set_msg(aio, NULL);
+	if (nng_aio_result(aio) != 0 || nni_atomic_get_bool(&s->closed)) {
+		nng_msg_free(msg);
+		return;
+	}
 	if (msg == NULL) {
 		nng_recv_aio(*(s->pair0_sock), aio);
 		log_error("NUll Commanding msg!");
@@ -837,7 +762,9 @@ query_cb(void *arg)
 	char *topic = s->ex_node->ex->topic;
 
 	char *keystr = (char *)nng_msg_body(msg);
-	if (keystr == NULL) {
+	size_t keylen = nng_msg_len(msg);
+	if (keystr == NULL || keylen == 0 || keystr[keylen - 1] != '\0' ||
+	    memchr(keystr, '\0', keylen - 1) != NULL) {
 		query_send_eof(s->pair0_sock, &s->query_aio, EXCHANGE_ERR_KEY, EXCHANGE_ERR_KEY);
 		nng_recv_aio(*(s->pair0_sock), aio);
 		log_error("error in parsing keystr");
@@ -880,7 +807,11 @@ query_cb(void *arg)
 	}
 
 	int codes[2] = { EXCHANGE_ERR_OK };
-	if (cmd_data->is_sync) {
+	if (cmd_data->start_key > cmd_data->end_key ||
+	    (cmd_data->schema_len > UINT16_MAX ||
+	        (cmd_data->schema_len > 0 && cmd_data->schema == NULL))) {
+		codes[0] = codes[1] = EXCHANGE_ERR_CMD;
+	} else if (cmd_data->is_sync) {
 		query_send_sync(s, cmd_data, codes);
 	} else {
 		query_send_async(s, cmd_data, codes);
