@@ -1162,8 +1162,16 @@ int ringBuffer_search_msg_by_key(ringBuffer_t *rb, uint64_t key, nng_msg **msg)
 	return -1;
 }
 
+/* Logical slot i lives at (head + i) % cap, including after the ring wraps. */
+static unsigned int
+ring_logical_index(const ringBuffer_t *rb, unsigned int logical)
+{
+	return (rb->head + logical) % rb->cap;
+}
+
 /*
- * binary search, only for ringbuffer head is 0
+ * Binary search over the live range. Keys are ordered along the logical
+ * sequence, so a wrapped ring (head != 0) is searched the same way.
  */
 int ringBuffer_search_msgs_fuzz(ringBuffer_t *rb,
 								uint64_t start,
@@ -1176,60 +1184,63 @@ int ringBuffer_search_msgs_fuzz(ringBuffer_t *rb,
 	uint32_t mid = 0;
 	uint32_t start_index = 0;
 	uint32_t end_index = 0;
+	uint64_t first_key;
+	uint64_t last_key;
+
+	if (rb == NULL || count == NULL || list == NULL) {
+		return -1;
+	}
 
 	nng_mtx_lock(rb->ring_lock);
-	if (rb == NULL || rb->size == 0 || count == NULL || list == NULL) {
+	if (rb->size == 0 || rb->cap == 0 || rb->msgs == NULL) {
 		nng_mtx_unlock(rb->ring_lock);
 		return -1;
 	}
 
-	if (start > end ||
-		start > rb->msgs[rb->head + rb->size - 1].key ||
-		end < rb->msgs[rb->head].key) {
+	first_key = rb->msgs[rb->head].key;
+	last_key  = rb->msgs[ring_logical_index(rb, rb->size - 1)].key;
+	if (start > end || start > last_key || end < first_key) {
 		nng_mtx_unlock(rb->ring_lock);
 		return -1;
 	}
 
-	if (rb->head != 0) {
-		log_error("Ringbuffer head is not 0, can not use binary search\n");
-		nng_mtx_unlock(rb->ring_lock);
-		return -1;
-	}
-
-	low	= rb->head;
-	high = rb->head + rb->size - 1;
+	low  = 0;
+	high = rb->size - 1;
 	while (low < high) {
 		mid = (low + high) / 2;
-		if (rb->msgs[mid].key < start) {
+		if (rb->msgs[ring_logical_index(rb, mid)].key < start) {
 			low = mid + 1;
 		} else {
 			high = mid;
 		}
 	}
 
-	if (rb->msgs[high].key >= start) {
+	if (rb->msgs[ring_logical_index(rb, high)].key >= start) {
 		start_index = high;
 	} else {
 		nng_mtx_unlock(rb->ring_lock);
 		return -1;
 	}
 
-	low	= rb->head;
-	high = rb->head + rb->size - 1;
+	low  = 0;
+	high = rb->size - 1;
 	while (low < high) {
 		mid = (low + high + 1) / 2;
-		if (rb->msgs[mid].key <= end) {
+		if (rb->msgs[ring_logical_index(rb, mid)].key <= end) {
 			low = mid;
 		} else {
 			high = mid - 1;
 		}
 	}
 
-	if (rb->msgs[low].key > end) {
+	if (rb->msgs[ring_logical_index(rb, low)].key > end) {
 		nng_mtx_unlock(rb->ring_lock);
 		return -1;
-	} else {
-		end_index = low;
+	}
+	end_index = low;
+	if (start_index > end_index) {
+		nng_mtx_unlock(rb->ring_lock);
+		return -1;
 	}
 
 	*count = end_index - start_index + 1;
@@ -1240,14 +1251,15 @@ int ringBuffer_search_msgs_fuzz(ringBuffer_t *rb,
 	}
 
 	for (uint32_t i = start_index; i <= end_index; i++) {
-		nng_msg *msg = rb->msgs[i].data;
+		unsigned int slot = ring_logical_index(rb, i);
+		nng_msg *msg = rb->msgs[slot].data;
 		if (msg == NULL) {
-			nng_free(newList, sizeof(*newList));
+			nng_free(newList, (*count) * sizeof(nng_msg *));
 			nng_mtx_unlock(rb->ring_lock);
 			log_error("msg is NULL and some error occured\n");
 			return -1;
 		}
-		nng_msg_set_proto_data(msg, NULL, (void *)(uintptr_t)rb->msgs[i].key);
+		nng_msg_set_proto_data(msg, NULL, (void *)(uintptr_t)rb->msgs[slot].key);
 		newList[i - start_index] = msg;
 	}
 

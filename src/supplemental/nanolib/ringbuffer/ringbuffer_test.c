@@ -474,6 +474,26 @@ void test_ringBuffer_search_msgs_fuzz()
 		free_msg_list(msgList, NULL, lenp, 0);
 	}
 
+	/* After the ring wraps, logical order is no longer the physical index. */
+	for (int i = 0; i < 3; i++) {
+		void *dropped = NULL;
+		NUTS_TRUE(ringBuffer_dequeue(rb, &dropped) == 0);
+		nng_msg_free((nng_msg *) dropped);
+	}
+	for (int i = 0; i < 3; i++) {
+		tmp = alloc_pub_msg("topic1");
+		NUTS_TRUE(tmp != NULL);
+		NUTS_TRUE(ringBuffer_enqueue(rb, 100 + (uint64_t) i * 10, tmp, -1, NULL) == 0);
+	}
+	NUTS_TRUE(rb->head != 0);
+	{
+		uint32_t *lenp = nng_alloc(sizeof(uint32_t));
+		msgList = NULL;
+		NUTS_TRUE(ringBuffer_search_msgs_fuzz(rb, 100, 120, lenp, &msgList) == 0);
+		NUTS_TRUE(*lenp == 3);
+		free_msg_list(msgList, NULL, lenp, 0);
+	}
+
 	NUTS_TRUE(ringBuffer_release(rb) == 0);
 
 }
