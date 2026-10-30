@@ -412,21 +412,7 @@ static void query_send_sync(exchange_sock_t *s, struct cmd_data *cmd_data, int r
 		rc[0] = EXCHANGE_ERR_NONE;
 	}
 #endif
-#if defined(SUPP_BLF)
-	/* not support */
-	const char **blf_fnames = NULL;
-	uint32_t     blf_sz     = 0;
-	/* blf not support fuzz search now */
-	blf_fnames = blf_find_span(startKey, endKey, &blf_sz);
-	if (blf_fnames && blf_sz > 0) {
-		ret = get_persistence_files(blf_sz, (char **) blf_fnames, obj);
-		if (ret != 0) {
-			log_error("get_blf_files failed!");
-		}
-	} else {
-		log_error("blf_find_span failed! sz: %d", blf_sz);
-	}
-#endif
+	/* BLF has no fuzz-search API. Skip it so ENABLE_BLF still builds. */
 
 	nng_msg *msg = NULL;
 	nng_msg_alloc(&msg, 0);
