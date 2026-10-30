@@ -19,12 +19,14 @@
 #ifndef CN_X509_KEY_TYPE_DEFINED
 #define CN_X509_KEY_TYPE_DEFINED
 typedef enum {
-    X509_KEY_TYPE_DiaConfigScriptDecKey = 0,  /* 诊断配置脚本解密密钥：AES-256-GCM */
-    X509_KEY_TYPE_DCScriptDecKey = 1,         /* 数采配置脚本解密密钥：AES-256-GCM */
+    X509_KEY_TYPE_DiaConfigScriptDecKey = 0,  /* CCU：诊断配置脚本解密密钥，AES-256-GCM */
+    X509_KEY_TYPE_DCScriptDecKey = 1,         /* CCU：数采配置脚本解密密钥，AES-256-GCM */
     /* 数值 2 已废弃，保留用于兼容旧版 ABI，不得重新分配。 */
-    X509_KEY_TYPE_OtaPackageKEK = 3,          /* OTA 解密密钥的密钥：AES-256-CBC */
-    X509_KEY_TYPE_EcbCryptoKey = 4,           /* 通用加密密钥：AES-256-ECB-PKCS7 */
-    X509_KEY_TYPE_MAX = 5
+    X509_KEY_TYPE_OtaPackageKEK = 3,          /* CCU：OTA 解密密钥的密钥，AES-256-GCM */
+    /* 数值 4 已废弃，保留为空洞，不得重新分配。 */
+    X509_KEY_TYPE_TBOX_DATA_ENC_DEC = 5,      /* TBOX：本地数据加解密密钥，AES-128-CBC */
+    X509_KEY_TYPE_TBOX_CLOUD_DATA_ENC_DEC = 6, /* TBOX：云端数据加解密密钥，AES-256-GCM */
+    X509_KEY_TYPE_MAX = 7
 } X509KeyType_t;
 #endif
 
@@ -110,9 +112,9 @@ void HashFree(HashContext *context);
 /**
  * @brief 使用已灌装的业务密钥初始化流式 AES-GCM 或 AES-CBC 上下文
  *
- * SDK 根据 keyType 在内部获取固定 keyName 并从 CCU 安全存储读取密钥。
- * 密钥对应的模式由 SDK 配置决定：0～2 为 GCM，3 为 CBC；类型4的
- * ECB 密钥不适用于当前流式接口。GCM 使用12字节 nonce，CBC 使用16字节IV。
+ * 当前流式 AES 接口适用于 CCU。SDK 根据 keyType 读取对应的 CCU 业务密钥：
+ * 类型0、1、3均使用 AES-256-GCM。类型4已废弃，不适用于本接口。
+ * TBOX 类型5、6不适用于本流式接口。GCM 使用12字节 nonce。
  *
  * @param[out] ctx     输出 AES 上下文指针
  * @param[in]  keyType 已通过 importKeyGeneric 灌装的业务密钥类型
@@ -244,6 +246,28 @@ int32_t getX509CertState(CertInfo *certInfo);
 */
 int32_t generateX509CertUpdateRequest(uint8_t *certApplyReq, int32_t *certApplyReqLen);
 
+
+/**
+ * @brief 私钥签名
+ * 
+ * 
+ * 
+ * @param[in] data 签名数据
+ * @param[in] dataLen 签名数据长度
+ * @param[in,out] sig 签名值
+ * @param[in,out] sigLen 签名值长度
+ * @param[in] hashAlg hash算法  1-SHA256 2-SHA384
+ * 
+ * 
+ * 
+ * @return 0-成功 其他-错误
+ */
+
+int32_t generateSignatureByPrivatekey(const uint8_t* data, uint32_t dataLen, uint8_t* sig, uint32_t* sigLen, int hashAlg);
+
+
+
+
 /**
 * @brief 更新证书
 *
@@ -326,50 +350,15 @@ int32_t generateX509CertApplyRequest( char *id, char *certApplyReq, int32_t *cer
 int32_t importIdentityCert(char* id, uint8_t *certData, int32_t certDataLen);
 
 /**
- * @brief OTA密钥解密
+ * @brief 导入通用业务密钥
  *
- * @param[in]  keyCipher      密钥密文
- * @param[in]  keyCipherLen   密钥密文长度
- * @param[in]  mode           模式（0-ECB，1-CBC）
- * @param[in]  iv             初始向量（CBC模式使用）
- * @param[out] keyData        密钥数据
- * @param[in,out] keyDataLen  输入为缓冲区容量，输出为密钥数据长度
+ * 按构建平台和 keyType 选择预配置的业务密钥槽位；调用方不传入密钥标识。
+ * CCU 支持类型0、1、3，密钥均为32字节；TBOX 支持类型5（16字节）和
+ * 类型6（32字节）。其他平台/类型组合不受支持。
  *
- * @return 错误码
- * @retval 0-成功 其他-错误
- */
-int32_t decryptEncKeyByOTAKey(uint8_t *keyCipher, int32_t keyCipherLen, uint8_t mode,
-                             uint8_t *iv, uint8_t *keyData, int32_t *keyDataLen);
-
-/**
- * @brief OTA密钥导入
- *
- * @param[in] keyData     密钥数据
- * @param[in] keyDataLen  密钥数据长度
- *
- * @return 错误码
- * @retval 0-成功 其他-错误
- */
-int32_t importOTAKey(uint8_t *keyData, int32_t keyDataLen);
-
-/**
- * @brief 获取OTA密钥状态
- *
- * @param[out] keyState  密钥状态
- *
- * @return 错误码
- * @retval 0-成功 其他-错误
- */
-int32_t getOTAKeyState(uint8_t *keyState);
-
-/**
- * @brief 通用密钥导入
- *
- * @param[in]  keyType          密钥类型
- * @param[in]  keyData          密钥数据
- * @param[in]  keyDataLen       密钥数据长度
- *                              当前所有业务密钥均为 AES-256，长度必须为32字节；
- *                              实际长度以 SDK 内置业务密钥配置为准
+ * @param[in]  keyType     业务密钥类型，须受当前构建平台支持
+ * @param[in]  keyData     待导入密钥数据
+ * @param[in]  keyDataLen  密钥数据长度，须符合该 keyType 对应的密钥长度
  *
  * @return 错误码
  * @retval 0-成功 其他-错误
@@ -377,12 +366,14 @@ int32_t getOTAKeyState(uint8_t *keyState);
 int32_t importKeyGeneric(X509KeyType_t keyType, uint8_t *keyData, uint16_t keyDataLen);
 
 /**
- * @brief 获取通用密钥状态
+ * @brief 查询通用业务密钥状态
  *
- * 通过能否从 CCU TEE 正常导出指定密钥判断密钥是否存在，导出的密钥数据不会返回给调用方。
+ * 检查当前构建平台上指定 keyType 对应的业务密钥是否可用。密钥材料不会返回
+ * 给调用方。接口调用成功时，keyState 为0表示密钥可用，非0表示密钥不可用；
+ * 接口返回非0表示查询本身失败，不能据此判断密钥状态。
  *
  * @param[in]  keyType     密钥类型
- * @param[out] keyState    密钥状态：0-密钥存在，无需灌装；非0-密钥不存在，需要灌装
+ * @param[out] keyState    密钥状态：0-密钥可用；非0-密钥不可用
  *
  * @return 错误码
  * @retval 0-成功 其他-错误
@@ -392,16 +383,22 @@ int32_t getCryptoKeyState(X509KeyType_t keyType, uint8_t *keyState);
 /**
  * @brief 通用加解密参数结构体
  *
- * ECB 不使用 IV、AAD 和 Tag，对应指针应传 NULL、长度应传 0。
- * padding 可设置为 CN_X509_PADDING_PKCS7 或 CN_X509_PADDING_NO_PAD，
- * 用于选择 GCM/CBC/ECB 的填充方式。padding 为 0（默认值）或其他未支持值时，
+ * 平台和算法由 keyType 决定：CCU 支持类型0/1的 AES-256-GCM、类型3的
+ * AES-256-GCM；TBOX 支持类型5的 AES-128-CBC-PKCS7
+ * 与类型6的 AES-256-GCM。仅 TBOX GCM 不支持 AAD，aad 必须为 NULL 且
+ * aadLen 必须为0；加密时 tag 为16字节输出缓冲区，解密时 tag 为16字节输入。
+ * CCU GCM 使用独立的 AAD 和 Tag 参数。
+ *
+ * CCU 当前业务密钥均使用 GCM，IV 为12字节；AAD 可以为空，Tag 为16字节。
+ * TBOX 类型5使用 CBC，类型6使用 GCM。padding 可设置为
+ * CN_X509_PADDING_PKCS7 或 CN_X509_PADDING_NO_PAD。padding 为 0（默认值）或其他未支持值时，
  * SDK 使用对应密钥配置中的默认填充方式，以保持既有调用行为不变。
  */
 typedef struct {
     X509KeyType_t keyType;      /* 密钥类型 */
     uint8_t *in;                /* 输入数据 */
     uint32_t inLen;             /* 输入数据长度 */
-    uint8_t *iv;                /* 初始向量（ECB传NULL, CBC传16字节, GCM传12字节） */
+    uint8_t *iv;                /* 初始向量（CBC传16字节，GCM传12字节） */
     uint32_t ivLen;             /* IV长度 */
     uint8_t *aad;               /* 附加认证数据（GCM专用，其他传NULL） */
     uint32_t aadLen;            /* AAD长度 */
