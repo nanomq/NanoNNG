@@ -7,7 +7,9 @@
 
 #include "nng/exchange/stream/stream.h"
 #include "nng/exchange/stream/raw_stream.h"
+#include "nng/mqtt/mqtt_client.h"
 #include <nuts.h>
+#include <string.h>
 
 #define UNUSED(x) ((void) x)
 
@@ -261,6 +263,115 @@ void test_stream_encode_large_payload(void)
 	nng_free(input.lens, sizeof(uint32_t));
 	nng_free(input.keys, sizeof(uint64_t));
 	
+	stream_sys_fini();
+}
+
+static nng_msg *
+mqtt_publish_msg(const char *topic, const uint8_t *payload, uint32_t plen,
+    uint64_t ts)
+{
+	nng_msg *msg = NULL;
+	uint8_t *header;
+
+	if (nng_mqtt_msg_alloc(&msg, 0) != 0) {
+		return NULL;
+	}
+	header  = nng_msg_header(msg);
+	*header = (uint8_t) (*header | CMD_PUBLISH);
+	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_PUBLISH);
+	nng_mqtt_msg_set_publish_dup(msg, false);
+	nng_mqtt_msg_set_publish_qos(msg, 0);
+	nng_mqtt_msg_set_publish_retain(msg, false);
+	nng_mqtt_msg_set_publish_topic(msg, topic);
+	nng_mqtt_msg_set_publish_topic_len(msg, (uint32_t) strlen(topic));
+	if (nng_mqtt_msg_set_publish_payload(msg, (uint8_t *) payload, plen) != 0) {
+		nng_msg_free(msg);
+		return NULL;
+	}
+	nng_msg_set_timestamp(msg, ts);
+	if (nng_mqtt_msg_encode(msg) != 0) {
+		nng_msg_free(msg);
+		return NULL;
+	}
+	/* The wire body starts with the topic. Point the legacy cursor there
+	 * so a regression to nng_msg_payload_ptr cannot still match. */
+	nng_msg_set_payload_ptr(msg, nng_msg_body(msg));
+	return msg;
+}
+
+void test_stream_msg_payload_mqtt_publish(void)
+{
+	const char *topic = "vehicle/speed/front";
+	const uint8_t payload0[] = "mqtt-payload-42";
+	const uint8_t payload1[] = "second-row";
+	const uint32_t len0 = (uint32_t) strlen((const char *) payload0);
+	const uint32_t len1 = (uint32_t) strlen((const char *) payload1);
+	nng_msg *msgs[2];
+	uint32_t plen = 99;
+	uint8_t *got;
+	struct stream_data_in input;
+	/* parquet_data is opaque when SUPP_PARQUET is on. Same field order
+	 * as the object raw_encode returns. */
+	struct {
+		uint32_t               col_len;
+		uint32_t               row_len;
+		uint64_t              *ts;
+		char                 **schema;
+		parquet_data_packet ***payload_arr;
+	} *out;
+
+	NUTS_TRUE(stream_msg_payload(NULL, &plen) == NULL);
+	NUTS_TRUE(plen == 0);
+	NUTS_TRUE(stream_msg_payload(NULL, NULL) == NULL);
+
+	msgs[0] = mqtt_publish_msg(topic, payload0, len0, 1000);
+	msgs[1] = mqtt_publish_msg(topic, payload1, len1, 2000);
+	NUTS_TRUE(msgs[0] != NULL);
+	NUTS_TRUE(msgs[1] != NULL);
+	NUTS_TRUE(nng_msg_len(msgs[0]) > len0);
+
+	got = stream_msg_payload(msgs[0], &plen);
+	NUTS_TRUE(got != NULL);
+	NUTS_TRUE(plen == len0);
+	NUTS_TRUE(memcmp(got, payload0, len0) == 0);
+	NUTS_TRUE(got != nng_msg_body(msgs[0]));
+	NUTS_TRUE(got != nng_msg_payload_ptr(msgs[0]));
+
+	NUTS_TRUE(stream_sys_init() == 0);
+
+	input.len   = 2;
+	input.keys  = nng_alloc(sizeof(uint64_t) * 2);
+	input.lens  = nng_alloc(sizeof(uint32_t) * 2);
+	input.datas = nng_alloc(sizeof(void *) * 2);
+	NUTS_TRUE(input.keys != NULL);
+	NUTS_TRUE(input.lens != NULL);
+	NUTS_TRUE(input.datas != NULL);
+
+	for (uint32_t i = 0; i < 2; i++) {
+		input.keys[i] = nng_msg_get_timestamp(msgs[i]);
+		input.datas[i] = stream_msg_payload(msgs[i], &input.lens[i]);
+	}
+
+	out = stream_encode(RAW_STREAM_ID, &input);
+	NUTS_TRUE(out != NULL);
+	NUTS_TRUE(out->row_len == 2);
+	NUTS_TRUE(out->ts[0] == 1000);
+	NUTS_TRUE(out->ts[1] == 2000);
+	NUTS_TRUE(out->payload_arr[0][0] != NULL);
+	NUTS_TRUE(out->payload_arr[0][0]->size == len0);
+	NUTS_TRUE(memcmp(out->payload_arr[0][0]->data, payload0, len0) == 0);
+	NUTS_TRUE(out->payload_arr[0][1] != NULL);
+	NUTS_TRUE(out->payload_arr[0][1]->size == len1);
+	NUTS_TRUE(memcmp(out->payload_arr[0][1]->data, payload1, len1) == 0);
+	NUTS_TRUE(memcmp(out->payload_arr[0][0]->data, nng_msg_body(msgs[0]),
+	              len0) != 0);
+
+	parquet_data_free((parquet_data *) out);
+	nng_free(input.datas, sizeof(void *) * 2);
+	nng_free(input.lens, sizeof(uint32_t) * 2);
+	nng_free(input.keys, sizeof(uint64_t) * 2);
+	nng_msg_free(msgs[0]);
+	nng_msg_free(msgs[1]);
 	stream_sys_fini();
 }
 
@@ -518,6 +629,7 @@ NUTS_TESTS = {
 	{ "stream encode single element", test_stream_encode_single_element },
 	{ "stream encode large payload", test_stream_encode_large_payload },
 	{ "stream encode zero length payload", test_stream_encode_zero_length_payload },
+	{ "stream msg payload mqtt publish", test_stream_msg_payload_mqtt_publish },
 	{ "stream sys decode test", test_stream_sys_decode },
 	{ "stream cmd parser null", test_stream_cmd_parser_null },
 	{ "stream cmd parser invalid id", test_stream_cmd_parser_invalid_id },

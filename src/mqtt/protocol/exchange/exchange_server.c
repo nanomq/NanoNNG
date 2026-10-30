@@ -210,7 +210,6 @@ static inline void ringbus_stream_data_in_free(struct stream_data_in *stream_dat
 
 static struct stream_data_in *ringbus_stream_data_in_init(uint32_t count, nng_msg **msgList)
 {
-	uint32_t diff = 0;
 	struct stream_data_in *stream_data = NULL;
 
 	if (msgList == NULL || count == 0) {
@@ -247,11 +246,18 @@ static struct stream_data_in *ringbus_stream_data_in_init(uint32_t count, nng_ms
 	}
 
 	for (uint32_t i = 0; i < count; i++) {
-		diff = nng_msg_len(msgList[i]) -
-			((uintptr_t)nng_msg_payload_ptr(msgList[i]) - (uintptr_t)nng_msg_body(msgList[i]));
-		stream_data->lens[i] = diff;
-		stream_data->datas[i] = nng_msg_payload_ptr(msgList[i]);
-		stream_data->keys[i] = nni_msg_get_timestamp(msgList[i]);
+		uint32_t plen = 0;
+
+		stream_data->datas[i] = NULL;
+		stream_data->lens[i]  = 0;
+		stream_data->keys[i]  = 0;
+		if (msgList[i] == NULL) {
+			continue;
+		}
+		/* Publish payload from the MQTT proto data, not the wire body. */
+		stream_data->datas[i] = stream_msg_payload(msgList[i], &plen);
+		stream_data->lens[i]  = plen;
+		stream_data->keys[i]  = nni_msg_get_timestamp(msgList[i]);
 	}
 
 	return stream_data;
