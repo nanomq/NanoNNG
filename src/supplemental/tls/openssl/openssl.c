@@ -286,18 +286,38 @@ open_conn_init(nng_tls_engine_conn *ec, void *tls, nng_tls_engine_config *cfg)
 	return (0);
 }
 
+static int open_conn_handshake_flush(nng_tls_engine_conn *ec);
+
+/** Sends close_notify, as the mbedTLS engine does, before the TCP connection
+ * is closed. A peer that starts its next receive only after seeing the TCP
+ * close then still finds the close_notify record and fails that receive. */
 static void
 open_conn_close(nng_tls_engine_conn *ec)
 {
 	trace("start");
 	if (ec->wnext) {
-		// The transports can close a reaped pipe a second time.
+		// Retained records carry the tail of a record whose head is
+		// already on the wire; close_notify may only follow a record
+		// boundary. The transports can also close a reaped pipe a
+		// second time, so clear the retained state either way.
+		int rv = open_net_write(ec->tls, ec->wnext, ec->wnsz);
+		int sz = ec->wnsz;
+
 		nng_free(ec->wnext, 0);
 		ec->wnext   = NULL;
 		ec->wnsz    = 0;
 		ec->wntcpsz = 0;
+		if (rv != sz) {
+			// The transport did not take the whole record, so a
+			// close_notify behind it would arrive garbled.
+			trace("end");
+			return;
+		}
 	}
 	SSL_shutdown(ec->ssl);
+	// Consume only what the transport accepts; a plain BIO_read would
+	// discard whatever part of the close_notify TCP has no room for.
+	(void) open_conn_handshake_flush(ec);
 	trace("end");
 }
 
