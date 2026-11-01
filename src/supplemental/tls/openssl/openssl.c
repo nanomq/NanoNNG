@@ -163,6 +163,7 @@ struct nng_tls_engine_config {
 };
 
 static int open_conn_handshake(nng_tls_engine_conn *ec);
+static X509 *open_conn_get_peer_cert(nng_tls_engine_conn *ec);
 static bool open_is_pkcs11_uri(const char *value);
 static int  open_check_pkcs11_provider(void);
 static int open_load_x509_from_uri(
@@ -614,16 +615,25 @@ end:
 	return (0);
 }
 
+/** Reports whether the peer supplied a certificate that passed verification. */
 static bool
 open_conn_verified(nng_tls_engine_conn *ec)
 {
-	long rv = SSL_get_verify_result(ec->ssl);
+	// SSL_get_verify_result() is X509_V_OK when the peer sent no
+	// certificate at all, so that alone does not mean verified.
+	X509 *cert = open_conn_get_peer_cert(ec);
+	long  rv   = SSL_get_verify_result(ec->ssl);
+
 	log_info("NNG-TLS-CONN-VERIFY" "verified result: %ld", rv);
+	if (cert == NULL) {
+		return (false);
+	}
+	X509_free(cert);
 	return (X509_V_OK == rv);
 }
 
-// SSL_get1_peer_certificate() replaces the deprecated SSL_get_peer_certificate()
-// in OpenSSL 3.0; both return a reference the caller must release with X509_free().
+/** Returns an owned peer-certificate reference, or NULL if none was supplied.
+ * The caller must release a returned reference with X509_free(). */
 static X509 *
 open_conn_get_peer_cert(nng_tls_engine_conn *ec)
 {
