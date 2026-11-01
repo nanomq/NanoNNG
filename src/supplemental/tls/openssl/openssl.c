@@ -1236,13 +1236,13 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		if (!xcert) {
 			log_error("NNG-TLS-CFG-OWNCHAIN"
 			          "Failed to load certificate from buffer");
-			rv = NNG_EINVAL;
+			rv = NNG_ECRYPTO;
 			goto error;
 		}
 	}
 	if (SSL_CTX_use_certificate(cfg->ctx, xcert) <= 0) {
 		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to set certificate to SSL_CTX");
-		rv = NNG_EINVAL;
+		rv = NNG_ECRYPTO;
 		goto error;
 	}
 
@@ -1294,13 +1294,13 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 		if (!pkey) {
 			log_error("NNG-TLS-CFG-OWNCHAIN"
 			          "Failed to load key from buffer");
-			rv = NNG_EINVAL;
+			rv = NNG_ECRYPTO;
 			goto error;
 		}
 	}
 	if (SSL_CTX_use_PrivateKey(cfg->ctx, pkey) <= 0) {
 		log_error("NNG-TLS-CFG-OWNCHAIN" "Failed to set key to SSL_CTX");
-		rv = NNG_EINVAL;
+		rv = NNG_ECRYPTO;
 		goto error;
 	}
 
