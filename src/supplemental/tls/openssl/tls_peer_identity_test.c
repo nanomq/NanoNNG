@@ -1,6 +1,7 @@
 // This software is supplied under the MIT License (LICENSE.txt).
 
 #include <nuts.h>
+#include <openssl/ssl.h>
 
 #include "tls_peer_identity_certs.h"
 
@@ -146,8 +147,38 @@ test_tls_peer_identity_auth_modes(void)
 	}
 }
 
+#ifndef OPENSSL_NO_PSK
+/** Checks the PSK identity limits: a client identity must leave room for
+ * the terminator in OpenSSL's PSK_MAX_IDENTITY_LEN bytes, a server may
+ * match identities of the full length. */
+static void
+test_tls_psk_identity_length(void)
+{
+	nng_tls_config *cfg;
+	uint8_t         key[32] = { 0 };
+	char            identity[PSK_MAX_IDENTITY_LEN + 1];
+
+	memset(identity, 'i', PSK_MAX_IDENTITY_LEN);
+	identity[PSK_MAX_IDENTITY_LEN] = '\0';
+	NUTS_PASS(nng_tls_config_alloc(&cfg, NNG_TLS_MODE_CLIENT));
+	NUTS_FAIL(nng_tls_config_psk(cfg, identity, key, sizeof(key)),
+	    NNG_ECRYPTO);
+	identity[PSK_MAX_IDENTITY_LEN - 1] = '\0';
+	NUTS_PASS(nng_tls_config_psk(cfg, identity, key, sizeof(key)));
+	nng_tls_config_free(cfg);
+
+	identity[PSK_MAX_IDENTITY_LEN - 1] = 'i';
+	NUTS_PASS(nng_tls_config_alloc(&cfg, NNG_TLS_MODE_SERVER));
+	NUTS_PASS(nng_tls_config_psk(cfg, identity, key, sizeof(key)));
+	nng_tls_config_free(cfg);
+}
+#endif
+
 TEST_LIST = {
 	{ "tls peer identity", test_tls_peer_identity },
 	{ "tls peer identity auth modes", test_tls_peer_identity_auth_modes },
+#ifndef OPENSSL_NO_PSK
+	{ "tls psk identity length", test_tls_psk_identity_length },
+#endif
 	{ NULL, NULL },
 };

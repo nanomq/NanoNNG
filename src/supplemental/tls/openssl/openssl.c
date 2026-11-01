@@ -757,10 +757,82 @@ open_conn_peer_subject(nng_tls_engine_conn *ec)
 
 /************************* SSL Configuration ***********************/
 
+// open_psk holds an identity and preshared key, as in the mbedTLS engine.
+typedef struct {
+	char         *identity;
+	uint8_t      *key;
+	size_t        keylen;
+	nni_list_node node;
+} open_psk;
+
+/** Releases an unlinked PSK entry and its owned identity and key storage. */
+static void
+open_psk_free(open_psk *p)
+{
+	if (p != NULL) {
+		NNI_ASSERT(!nni_list_node_active(&p->node));
+		if (p->identity != NULL) {
+			nni_strfree(p->identity);
+		}
+		if (p->key != NULL && p->keylen != 0) {
+			nni_free(p->key, p->keylen);
+		}
+		NNI_FREE_STRUCT(p);
+	}
+}
+
+#ifndef OPENSSL_NO_PSK
+/** Client side: offers the most recently configured identity and key. */
+static unsigned int
+open_psk_client_cb(SSL *ssl, const char *hint, char *identity,
+    unsigned int max_identity_len, unsigned char *key, unsigned int max_key_len)
+{
+	nng_tls_engine_config *cfg = SSL_CTX_get_app_data(SSL_get_SSL_CTX(ssl));
+	open_psk              *psk = nni_list_last(&cfg->psks);
+
+	NNI_ARG_UNUSED(hint);
+	if (psk == NULL || strlen(psk->identity) >= max_identity_len ||
+	    psk->keylen > max_key_len) {
+		return (0);
+	}
+	memcpy(identity, psk->identity, strlen(psk->identity) + 1);
+	memcpy(key, psk->key, psk->keylen);
+	return ((unsigned int) psk->keylen);
+}
+
+/** Server side: selects the key that belongs to the client's identity. */
+static unsigned int
+open_psk_server_cb(SSL *ssl, const char *identity, unsigned char *key,
+    unsigned int max_key_len)
+{
+	nng_tls_engine_config *cfg = SSL_CTX_get_app_data(SSL_get_SSL_CTX(ssl));
+	open_psk              *psk;
+
+	if (identity == NULL) {
+		return (0);
+	}
+	NNI_LIST_FOREACH (&cfg->psks, psk) {
+		if (strcmp(identity, psk->identity) == 0 &&
+		    psk->keylen <= max_key_len) {
+			memcpy(key, psk->key, psk->keylen);
+			return ((unsigned int) psk->keylen);
+		}
+	}
+	return (0);
+}
+#endif
+
+/** Releases the TLS context, configured PSKs and owned configuration strings. */
 static void
 open_config_fini(nng_tls_engine_config *cfg)
 {
+	open_psk *psk;
+
 	trace("start cfg %p ctx %p", cfg, cfg->ctx);
+	while ((psk = nni_list_first(&cfg->psks)) != NULL) {
+		nni_list_remove(&cfg->psks, psk);
+		open_psk_free(psk);
+	}
 	SSL_CTX_free(cfg->ctx);
 	if (cfg->server_name != NULL) {
 		nng_strfree(cfg->server_name);
@@ -771,6 +843,7 @@ open_config_fini(nng_tls_engine_config *cfg)
 	trace("end");
 }
 
+/** Creates a client/server TLS context with its default verification policy. */
 static int
 open_config_init(nng_tls_engine_config *cfg, enum nng_tls_mode mode)
 {
@@ -780,7 +853,7 @@ open_config_init(nng_tls_engine_config *cfg, enum nng_tls_mode mode)
 	trace("start");
 
 	cfg->mode = mode;
-	// TODO NNI_LIST_INIT(&cfg->psks, psk, node);
+	NNI_LIST_INIT(&cfg->psks, open_psk, node);
 	if (mode == NNG_TLS_MODE_SERVER) {
 		method    = SSLv23_server_method();
 		auth_mode = SSL_VERIFY_NONE;
@@ -798,6 +871,8 @@ open_config_init(nng_tls_engine_config *cfg, enum nng_tls_mode mode)
 	}
 	// Set max/min version TODO
 
+	// The PSK callbacks find the configuration through the context.
+	SSL_CTX_set_app_data(cfg->ctx, cfg);
 	SSL_CTX_set_verify(cfg->ctx, auth_mode, NULL);
 	//SSL_CTX_set_mode(cfg->ctx, SSL_MODE_AUTO_RETRY);
 	//SSL_CTX_set_options(cfg->ctx, SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
@@ -825,15 +900,59 @@ open_config_server(nng_tls_engine_config *cfg, const char *name)
 	return (0);
 }
 
+/**
+ * Adds an identity and preshared key. A server accepts every configured
+ * identity; a client offers the last one. Configuring an identity again
+ * replaces its key.
+ */
 static int
 open_config_psk(nng_tls_engine_config *cfg, const char *identity,
     const uint8_t *key, size_t key_len)
 {
+#ifdef OPENSSL_NO_PSK
 	NNI_ARG_UNUSED(cfg);
 	NNI_ARG_UNUSED(identity);
 	NNI_ARG_UNUSED(key);
 	NNI_ARG_UNUSED(key_len);
+	return (NNG_ENOTSUP);
+#else
+	open_psk *srch;
+	open_psk *newpsk;
+	size_t    max_identity = PSK_MAX_IDENTITY_LEN;
+
+	// A client offers the identity through open_psk_client_cb, which
+	// has to fit the terminator into the same PSK_MAX_IDENTITY_LEN bytes.
+	if (cfg->mode != NNG_TLS_MODE_SERVER) {
+		max_identity--;
+	}
+	if (key_len > PSK_MAX_PSK_LEN || strlen(identity) > max_identity) {
+		return (NNG_ECRYPTO);
+	}
+	if (((newpsk = NNI_ALLOC_STRUCT(newpsk)) == NULL) ||
+	    ((newpsk->identity = nni_strdup(identity)) == NULL) ||
+	    ((newpsk->key = nni_alloc(key_len)) == NULL)) {
+		open_psk_free(newpsk);
+		return (NNG_ENOMEM);
+	}
+	newpsk->keylen = key_len;
+	memcpy(newpsk->key, key, key_len);
+
+	if (cfg->mode == NNG_TLS_MODE_SERVER) {
+		SSL_CTX_set_psk_server_callback(cfg->ctx, open_psk_server_cb);
+	} else {
+		SSL_CTX_set_psk_client_callback(cfg->ctx, open_psk_client_cb);
+	}
+
+	NNI_LIST_FOREACH (&cfg->psks, srch) {
+		if (strcmp(srch->identity, identity) == 0) {
+			nni_list_remove(&cfg->psks, srch);
+			open_psk_free(srch);
+			break;
+		}
+	}
+	nni_list_append(&cfg->psks, newpsk);
 	return (0);
+#endif
 }
 
 static int
