@@ -802,6 +802,7 @@ conf_log_parse(conf_log *log, const char *path)
 }
 #endif
 
+/** Initializes TLS options, including the optional expected server name. */
 void
 conf_tls_init(conf_tls *tls)
 {
@@ -819,11 +820,17 @@ conf_tls_init(conf_tls *tls)
 	tls->name         = NULL;
 	tls->mount_point  = NULL;
 	tls->peer_cert_as_username = PEER_CERT_AS_USERNAME_DISABLE;
+	tls->sni          = NULL;
 }
 
+/** Releases TLS configuration strings and certificate data. */
 void
 conf_tls_destroy(conf_tls *tls)
 {
+	if (tls->sni) {
+		free(tls->sni);
+		tls->sni = NULL;
+	}
 	if (tls->url) {
 		free(tls->url);
 		tls->url = NULL;

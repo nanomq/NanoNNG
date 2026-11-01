@@ -580,6 +580,9 @@ conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls)
 	if (jso_tls) {
 		tls->enable = true;
 		hocon_read_bool(tls, enable, jso_tls);
+		hocon_read_bool(tls, verify_peer, jso_tls);
+		hocon_read_bool_base(tls, set_fail, "fail_if_no_peer_cert", jso_tls);
+		hocon_read_str(tls, sni, jso_tls);
 		hocon_read_str(tls, keyfile, jso_tls);
 		hocon_read_str(tls, certfile, jso_tls);
 		hocon_read_str_base(tls, cafile, "cacertfile", jso_tls);
@@ -691,9 +694,6 @@ conf_tls_parse_ver2(conf *config, cJSON *jso)
 		    tls, url, "bind", "tls+nmq-tcp://", jso_tls);
 		if (tls->url) {
 			conf_tls_parse_ver2_base(tls, jso_tls);
-			hocon_read_bool(tls, verify_peer, jso_tls);
-			hocon_read_bool_base(
-			    tls, set_fail, "fail_if_no_peer_cert", jso_tls);
 			hocon_read_str(tls, mount_point, jso_tls);
 			conf_tls_peer_cert_as_username_parse(
 			    tls, jso_tls, "ssl");
@@ -712,9 +712,6 @@ conf_tls_parse_ver2(conf *config, cJSON *jso)
 			node->name = nng_strdup(node_item->string);
 			hocon_read_str(node, mount_point, node_item);
 			conf_tls_parse_ver2_base(node, node_item);
-			hocon_read_bool(node, verify_peer, node_item);
-			hocon_read_bool_base(
-			    node, set_fail, "fail_if_no_peer_cert", node_item);
 			conf_tls_peer_cert_as_username_parse(
 			    node, node_item, node->name);
 			cvector_push_back(config->tls_list.nodes, node);
