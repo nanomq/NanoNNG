@@ -1,5 +1,6 @@
 //
 // Copyright 2020 Staysail Systems, Inc. <info@staysail.tech>
+// Copyright 2026 Wolfgang Petroschka <wp@seadex.de>
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -159,6 +160,17 @@ test_tls_mutual_auth(void)
 	nng_tls_config *     c1;
 	nng_tls_config *     c2;
 	char                 addr[32];
+	char                 message[] = "client speaks first";
+	char                 received[sizeof(message)];
+	void *               t1;
+	void *               t2;
+#ifdef NNG_TLS_ENGINE_OPENSSL
+	enum { CHAIN_CERTS = 32 };
+	size_t cert_len = strlen(nuts_server_crt);
+	size_t chain_len = CHAIN_CERTS * cert_len + 1;
+	char * chain;
+	int    rv;
+#endif
 	int                  port;
 
 	NUTS_PASS(nng_aio_alloc(&aio1, NULL, NULL));
@@ -169,8 +181,20 @@ test_tls_mutual_auth(void)
 	NUTS_PASS(nng_stream_listener_alloc(&l, "tls+tcp://127.0.0.1:0"));
 	NUTS_PASS(nng_tls_config_alloc(&c1, NNG_TLS_MODE_SERVER));
 	NUTS_PASS(nng_tls_config_version(c1, NNG_TLS_1_2, NNG_TLS_1_2));
+#ifdef NNG_TLS_ENGINE_OPENSSL
+	NUTS_ASSERT((chain = nng_alloc(chain_len)) != NULL);
+	// Force the TLS handshake flight beyond the transport send buffer.
+	for (size_t i = 0; i < CHAIN_CERTS; i++) {
+		memcpy(chain + i * cert_len, nuts_server_crt, cert_len);
+	}
+	chain[chain_len - 1] = '\0';
+	rv = nng_tls_config_own_cert(c1, chain, nuts_server_key, NULL);
+	nng_free(chain, chain_len);
+	NUTS_PASS(rv);
+#else
 	NUTS_PASS(nng_tls_config_own_cert(
 	    c1, nuts_server_crt, nuts_server_key, NULL));
+#endif
 	NUTS_PASS(nng_tls_config_ca_chain(c1, nuts_server_crt, NULL));
 	NUTS_PASS(
 	    nng_tls_config_auth_mode(c1, NNG_TLS_AUTH_MODE_REQUIRED));
@@ -198,6 +222,12 @@ test_tls_mutual_auth(void)
 	NUTS_PASS(nng_aio_result(aio2));
 	NUTS_TRUE((s1 = nng_aio_get_output(aio1, 0)) != NULL);
 	NUTS_TRUE((s2 = nng_aio_get_output(aio2, 0)) != NULL);
+
+	t1 = nuts_stream_recv_start(s1, received, sizeof(received));
+	t2 = nuts_stream_send_start(s2, message, sizeof(message));
+	NUTS_PASS(nuts_stream_wait(t1));
+	NUTS_PASS(nuts_stream_wait(t2));
+	NUTS_TRUE(memcmp(message, received, sizeof(message)) == 0);
 
 	nng_stream_free(s1);
 	nng_stream_free(s2);
