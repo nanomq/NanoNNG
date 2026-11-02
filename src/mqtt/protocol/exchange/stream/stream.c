@@ -152,7 +152,26 @@ stream_msg_payload(void *msg, uint32_t *out_len)
 	if (msg == NULL) {
 		return NULL;
 	}
-	payload = nng_mqtt_msg_get_publish_payload(msg, &plen);
+
+	if (nng_msg_get_proto_data(msg) != NULL) {
+		/* Built by nng_mqtt_msg_alloc: the publish payload lives in
+		 * the MQTT proto data, and payload_ptr is not set. */
+		payload = nng_mqtt_msg_get_publish_payload(msg, &plen);
+	} else {
+		/* Broker copy made by hook_entry: plain nng_msg_alloc with
+		 * header and body appended, no proto data. payload_ptr is
+		 * a cursor into the body, so check it before using it. */
+		uint8_t *body = nng_msg_body(msg);
+		uint8_t *pptr = nng_msg_payload_ptr(msg);
+		size_t   blen = nng_msg_len(msg);
+
+		payload = NULL;
+		if (body != NULL && pptr != NULL && pptr >= body &&
+		    (size_t) (pptr - body) <= blen) {
+			payload = pptr;
+			plen    = (uint32_t) (blen - (size_t) (pptr - body));
+		}
+	}
 	if (out_len != NULL) {
 		*out_len = plen;
 	}
