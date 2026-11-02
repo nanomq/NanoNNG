@@ -6,6 +6,7 @@
 // found online at https://opensource.org/licenses/MIT.
 //
 #include <inttypes.h>
+#include <string.h>
 
 #include "core/nng_impl.h"
 #include "nng/protocol/mqtt/mqtt.h"
@@ -229,9 +230,18 @@ static struct stream_data_in *ringbus_stream_data_in_init(uint32_t count, nng_ms
 		nng_free(stream_data, sizeof(struct stream_data_in));
 		return NULL;
 	}
+	stream_data->msgs = nng_alloc(sizeof(void *) * count);
+	if (stream_data->msgs == NULL) {
+		log_error("Failed to allocate memory for stream_data->msgs\n");
+		nng_free(stream_data->datas, sizeof(void *) * count);
+		nng_free(stream_data, sizeof(struct stream_data_in));
+		return NULL;
+	}
+	memset(stream_data->msgs, 0, sizeof(void *) * count);
 	stream_data->keys = nng_alloc(sizeof(uint64_t) * count);
 	if (stream_data->keys == NULL) {
 		log_error("Failed to allocate memory for stream_data->keys\n");
+		nng_free(stream_data->msgs, sizeof(void *) * count);
 		nng_free(stream_data->datas, sizeof(void *) * count);
 		nng_free(stream_data, sizeof(struct stream_data_in));
 		return NULL;
@@ -241,6 +251,7 @@ static struct stream_data_in *ringbus_stream_data_in_init(uint32_t count, nng_ms
 	if (stream_data->lens == NULL) {
 		log_error("Failed to allocate memory for stream_data->lens\n");
 		nng_free(stream_data->keys, sizeof(uint64_t) * count);
+		nng_free(stream_data->msgs, sizeof(void *) * count);
 		nng_free(stream_data->datas, sizeof(void *) * count);
 		nng_free(stream_data, sizeof(struct stream_data_in));
 		return NULL;
@@ -255,7 +266,9 @@ static struct stream_data_in *ringbus_stream_data_in_init(uint32_t count, nng_ms
 		if (msgList[i] == NULL) {
 			continue;
 		}
-		/* Publish payload from the MQTT proto data, not the wire body. */
+		/* Borrow the message and a payload view. Both fields stay
+		 * valid: raw reads datas/lens, spi/canp read msgs. */
+		stream_data->msgs[i]  = msgList[i];
 		stream_data->datas[i] = stream_msg_payload(msgList[i], &plen);
 		stream_data->lens[i]  = plen;
 		stream_data->keys[i]  = nni_msg_get_timestamp(msgList[i]);
