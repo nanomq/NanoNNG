@@ -30,7 +30,7 @@ static inline int ringBuffer_get_msgs(ringBuffer_t *rb, unsigned int *count, nng
 	for (i = rb->head; i < rb->size; i++) {
 		i = i % rb->cap;
 		nng_msg *msg = rb->msgs[i].data;
-		nng_msg_set_proto_data(msg, NULL, (void *)(uintptr_t)rb->msgs[i].key);
+		nng_msg_set_timestamp(msg, rb->msgs[i].key);
 
 		newList[j] = msg;
 
@@ -294,67 +294,11 @@ static parquet_object *init_parquet_object(ringBuffer_t *rb, ringBufferFile_t *f
 		log_error("parquet object or ringbuffer is NULL\n");
 		return NULL;
 	}
-
-	uint8_t **darray = nng_alloc(sizeof(uint8_t *) * rb->size);
-	uint32_t *dsize = nng_alloc(sizeof(uint32_t) * rb->size);
-	uint64_t *keys = nng_alloc(sizeof(uint64_t) * rb->size);
-
-	if (keys == NULL || darray == NULL || dsize == NULL) {
-		log_error("alloc new keys darray dsize failed! no memory! msg will be freed\n");
-
-		if (keys != NULL) {
-			nng_free(keys, sizeof(uint64_t) * rb->size);
-		}
-		if (darray != NULL) {
-			nng_free(darray, sizeof(uint8_t *) * rb->size);
-		}
-		if (dsize != NULL) {
-			nng_free(dsize, sizeof(uint32_t) * rb->size);
-		}
-
-		return NULL;
-	}
-
-	nng_msg **smsgs = nng_alloc(sizeof(nng_msg *) * rb->size);
-	for (unsigned int i = 0; i < rb->size; i++) {
-		keys[i] = rb->msgs[i].key;
-		darray[i] = nng_msg_payload_ptr((nng_msg *) rb->msgs[i].data);
-		dsize[i]  = nng_msg_len((nng_msg *) rb->msgs[i].data) -
-		    (nng_msg_payload_ptr((nng_msg *) rb->msgs[i].data) -
-		        (uint8_t *) nng_msg_body(
-		            (nng_msg *) rb->msgs[i].data));
-
-		nng_msg_clone((nng_msg *) rb->msgs[i].data);
-		smsgs[i] = rb->msgs[i].data;
-	}
-
-	nng_aio *aio;
-	nng_aio_alloc(&aio, ringbuffer_parquet_cb, file);
-	if(aio == NULL) {
-		log_error("alloc new aio failed! no memory! msg will be freed\n");
-		nng_free(keys, sizeof(uint64_t) * rb->size);
-		nng_free(darray, sizeof(uint8_t *) * rb->size);
-		nng_free(dsize, sizeof(uint32_t) * rb->size);
-		return NULL;
-	}
-
-	file->aio = aio;
-	file->ranges = NULL;
-
-	nng_aio_begin(aio);
-
-	/* fix */
-	parquet_object *newObj = NULL;
-//	parquet_object *newObj = parquet_object_alloc(keys, darray, dsize, rb->size, aio, smsgs);
-//	if (newObj == NULL) {
-//		log_error("alloc new parquet object failed! no memory! msg will be freed\n");
-//		nng_free(keys, sizeof(uint64_t) * rb->size);
-//		nng_free(darray, sizeof(uint8_t *) * rb->size);
-//		nng_free(dsize, sizeof(uint32_t) * rb->size);
-//		return NULL;
-//	}
-
-	return newObj;
+	/* The old object constructor was removed when the Parquet API changed.
+	 * This path already returned NULL unconditionally; avoid allocating an
+	 * unfinishable AIO and cloning messages before reporting that result. */
+	log_error("legacy ringbuffer Parquet file mode is not supported\n");
+	return NULL;
 }
 
 static inline void free_msgs_from_file(uint64_t *keys, char **filenames,
@@ -867,33 +811,31 @@ put_msgs_to_aio(ringBuffer_t *rb, nng_aio *aio)
 		return -1;
 	}
 
-	/* get all msgs and clean ringbuffer */
-	nni_msg **list = NULL;
-	ret = ringBuffer_get_and_clean_msgs(rb, &rb->cap, &list);
-	if (ret != 0 || list == NULL) {
-		log_error("Ring buffer is full and clean ringbuffer failed!\n");
-		return -1;
-	}
-
-	/* Put list len in msg proto data */
+	/* Allocate the notification before taking message ownership out of the
+	 * ring. An allocation failure must leave the existing batch intact. */
 	list_len = nng_alloc(sizeof(int));
 	if (list_len == NULL) {
-		// TODO Free msgs in list?
-		nng_free(list, rb->cap * sizeof(nng_msg *));
 		log_error("alloc new list_len failed! no memory!\n");
 		return -1;
 	}
-	*list_len = rb->cap;
 
-	nng_msg *tmsg;
+	nng_msg *tmsg = NULL;
 	ret = nng_msg_alloc(&tmsg, 0);
 	if (ret != 0 || tmsg == NULL) {
-		// TODO Free msgs in list?
-		nng_free(list, rb->cap * sizeof(nng_msg *));
 		nng_free(list_len, sizeof(int));
 		log_error("alloc new msg failed! no memory!\n");
 		return -1;
 	}
+	unsigned int count = 0;
+	nni_msg **list = NULL;
+	ret = ringBuffer_get_and_clean_msgs(rb, &count, &list);
+	if (ret != 0 || list == NULL) {
+		nng_msg_free(tmsg);
+		nng_free(list_len, sizeof(int));
+		log_error("Ring buffer is full and clean ringbuffer failed!\n");
+		return -1;
+	}
+	*list_len = count;
 
 	// just use aio count : nni_aio_count(nni_aio *aio)
 	nng_msg_set_proto_data(tmsg, NULL, (void *)list_len);
@@ -1165,11 +1107,11 @@ int ringBuffer_search_msg_by_key(ringBuffer_t *rb, uint64_t key, nng_msg **msg)
 /*
  * binary search, only for ringbuffer head is 0
  */
-int ringBuffer_search_msgs_fuzz(ringBuffer_t *rb,
+static int ringBuffer_search_msgs_fuzz_impl(ringBuffer_t *rb,
 								uint64_t start,
 								uint64_t end,
 								uint32_t *count,
-								nng_msg ***list)
+								nng_msg ***list, bool snapshot)
 {
 	uint32_t low = 0;
 	uint32_t high = 0;
@@ -1177,8 +1119,12 @@ int ringBuffer_search_msgs_fuzz(ringBuffer_t *rb,
 	uint32_t start_index = 0;
 	uint32_t end_index = 0;
 
+	if (count == NULL || list == NULL) return -1;
+	*count = 0;
+	*list = NULL;
+	if (rb == NULL) return -1;
 	nng_mtx_lock(rb->ring_lock);
-	if (rb == NULL || rb->size == 0 || count == NULL || list == NULL) {
+	if (rb->size == 0 || rb->head != 0) {
 		nng_mtx_unlock(rb->ring_lock);
 		return -1;
 	}
@@ -1232,28 +1178,71 @@ int ringBuffer_search_msgs_fuzz(ringBuffer_t *rb,
 		end_index = low;
 	}
 
-	*count = end_index - start_index + 1;
-	nng_msg **newList = nng_alloc((*count) * sizeof(nng_msg *));
+	if (end_index < start_index) {
+		nng_mtx_unlock(rb->ring_lock);
+		return -1;
+	}
+	uint32_t found = end_index - start_index + 1;
+	nng_msg **newList = nng_alloc(found * sizeof(nng_msg *));
 	if (newList == NULL) {
 		nng_mtx_unlock(rb->ring_lock);
 		return -1;
 	}
 
+	uint32_t copied = 0;
 	for (uint32_t i = start_index; i <= end_index; i++) {
 		nng_msg *msg = rb->msgs[i].data;
-		if (msg == NULL) {
-			nng_free(newList, sizeof(*newList));
-			nng_mtx_unlock(rb->ring_lock);
-			log_error("msg is NULL and some error occured\n");
-			return -1;
+		if (msg == NULL) goto fail;
+		if (snapshot) {
+			/* Copy only the wire body and header: the generic dup helper
+			 * does not preserve broker metadata or rebase payload_ptr. */
+			nng_msg *copy = NULL;
+			if (nng_msg_alloc(&copy, 0) != 0) goto fail;
+			if (nng_msg_header_append(copy, nng_msg_header(msg),
+			        nng_msg_header_len(msg)) != 0 ||
+			    nng_msg_append(copy, nng_msg_body(msg), nng_msg_len(msg)) != 0) {
+				nng_msg_free(copy);
+				goto fail;
+			}
+			nng_msg_set_cmd_type(copy, nng_msg_get_cmd_type(msg));
+			nng_msg_set_timestamp(copy, rb->msgs[i].key);
+			uintptr_t body = (uintptr_t) nng_msg_body(msg);
+			uintptr_t ptr = (uintptr_t) nng_msg_payload_ptr(msg);
+			if (ptr != 0 && ptr >= body && ptr - body <= nng_msg_len(msg)) {
+				nng_msg_set_payload_ptr(copy,
+				    (uint8_t *) nng_msg_body(copy) + (ptr - body));
+			}
+			newList[copied++] = copy;
+		} else {
+			newList[copied++] = msg;
 		}
-		nng_msg_set_proto_data(msg, NULL, (void *)(uintptr_t)rb->msgs[i].key);
-		newList[i - start_index] = msg;
 	}
 
+	*count = found;
 	*list = newList;
 	nng_mtx_unlock(rb->ring_lock);
 	return 0;
+fail:
+	if (snapshot) {
+		for (uint32_t i = 0; i < copied; i++) nng_msg_free(newList[i]);
+	}
+	nng_free(newList, found * sizeof(*newList));
+	nng_mtx_unlock(rb->ring_lock);
+	return -1;
+}
+
+int
+ringBuffer_search_msgs_fuzz(ringBuffer_t *rb, uint64_t start, uint64_t end,
+    uint32_t *count, nng_msg ***list)
+{
+	return ringBuffer_search_msgs_fuzz_impl(rb, start, end, count, list, false);
+}
+
+int
+ringBuffer_search_msgs_fuzz_snapshot(ringBuffer_t *rb, uint64_t start, uint64_t end,
+    uint32_t *count, nng_msg ***list)
+{
+	return ringBuffer_search_msgs_fuzz_impl(rb, start, end, count, list, true);
 }
 
 int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint64_t key, uint32_t count, nng_msg ***list)
@@ -1284,7 +1273,7 @@ int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint64_t key, uint32_t count
 				nng_msg *msg = rb->msgs[i].data;
 
 				if (msg != NULL) {
-					nng_msg_set_proto_data(msg, NULL, (void *)(uintptr_t)rb->msgs[i].key);
+					nng_msg_set_timestamp(msg, rb->msgs[i].key);
 				}
 
 				newList[j] = msg;
