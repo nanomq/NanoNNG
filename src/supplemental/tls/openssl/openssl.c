@@ -1,6 +1,7 @@
 //
 // Copyright 2024 NanoMQ Team, Inc. <wangwei@emqx.io>
 // Copyright 2026 Liebherr-Digital Development Center (LDC) <peter.bestler@liebherr.de>
+// Copyright 2026 Wolfgang Petroschka <wp@seadex.de>
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -293,72 +294,87 @@ open_conn_close(nng_tls_engine_conn *ec)
 }
 
 static int
+open_conn_handshake_flush(nng_tls_engine_conn *ec)
+{
+	char *buf;
+	long  pending;
+	int   rv;
+
+	while ((pending = BIO_get_mem_data(ec->wbio, &buf)) > 0) {
+		size_t sz = pending > OPEN_BUF_SZ ?
+		    OPEN_BUF_SZ :
+		    (size_t) pending;
+		// Consume only bytes accepted by the transport.
+		if ((rv = nng_tls_engine_send(
+		         ec->tls, (const uint8_t *) buf, &sz)) != 0) {
+			return (rv);
+		}
+		if (sz == 0) {
+			return (NNG_EAGAIN);
+		}
+		if (sz > (size_t) pending ||
+		    BIO_read(ec->wbio, ec->rbuf, (int) sz) != (int) sz) {
+			open_log_ssl_error(
+			    "NNG-TLS-CONN-HANDSHAKE drain output BIO", 0);
+			return (NNG_ECRYPTO);
+		}
+	}
+	if (pending < 0) {
+		open_log_ssl_error(
+		    "NNG-TLS-CONN-HANDSHAKE inspect output BIO", 0);
+		return (NNG_ECRYPTO);
+	}
+	return (0);
+}
+
+static int
 open_conn_handshake(nng_tls_engine_conn *ec)
 {
-	int ensz;
 	int rv;
-	int sz;
+	int ssl_error;
 
 	print_trace();
-	if (ec->ok == 1)
-		return 0;
-	rv = SSL_do_handshake(ec->ssl);
-	if (rv != 0) {
-		rv = SSL_get_error(ec->ssl, rv);
-		if (rv != 0)
+	if (ec->ok == 1) {
+		return (0);
+	}
+	for (;;) {
+		ERR_clear_error();
+		rv = SSL_do_handshake(ec->ssl);
+		ssl_error = SSL_get_error(ec->ssl, rv);
+		if (rv != 1 && ssl_error != SSL_ERROR_WANT_READ &&
+		    ssl_error != SSL_ERROR_WANT_WRITE) {
+			open_log_ssl_error(
+			    "NNG-TLS-CONN-HANDSHAKE SSL_do_handshake", ssl_error);
+			return (NNG_ECRYPTO);
+		}
+
+		if ((rv = open_conn_handshake_flush(ec)) != 0) {
+			return (rv);
+		}
+		if (ssl_error == SSL_ERROR_NONE) {
 			log_warn("NNG-TLS-CONN-HANDSHAKE"
-				"openssl handshake still in process rv%d", rv);
-	}
-	if (rv == SSL_ERROR_WANT_READ || rv == SSL_ERROR_WANT_WRITE) {
-		while ((ensz = open_net_read(ec->tls, ec->wbuf, OPEN_BUF_SZ)) > 0) {
-			sz = BIO_write(ec->rbio, ec->wbuf, ensz);
-			log_debug("NNG-TLS-CONN-HANDSHAKE" "BIO write sz%d/%d", sz, ensz);
-			if (sz < 0) {
-				log_debug("NNG-TLS-CONN-HANDSHAKE"
-					"bio write failed %d", sz);
-				if (!BIO_should_retry(ec->rbio)) {
-					log_warn("NNG-TLS-CONN-HANDSHAKE"
-						"openssl BIO write failed rv%d", ensz);
-					open_log_ssl_error(
-					    "NNG-TLS-CONN-HANDSHAKE BIO_write", 0);
-					return NNG_ECRYPTO;
-				}
-				continue;
-			}
-			SSL_do_handshake(ec->ssl);
+				 "openssl do handshake successfully");
+			ec->ok = 1;
+			return (0);
 		}
-	} else if (rv != SSL_ERROR_NONE) {
-		open_log_ssl_error("NNG-TLS-CONN-HANDSHAKE SSL_do_handshake", rv);
-		return NNG_ECRYPTO;
-	}
-
-	while ((ensz = BIO_read(ec->wbio, ec->rbuf, OPEN_BUF_SZ)) > 0) {
-		log_debug("NNG-TLS-CONN-HANDSHAKE" "BIO read rv%d", ensz);
-		if (ensz < 0) {
-			if (!BIO_should_retry(ec->wbio)) {
-				log_warn("NNG-TLS-CONN-HANDSHAKE"
-					"openssl BIO read failed rv%d", ensz);
-				open_log_ssl_error(
-				    "NNG-TLS-CONN-HANDSHAKE BIO_read", 0);
-				return NNG_ECRYPTO;
-			}
-			continue;
-		}
-		sz = open_net_write(ec->tls, ec->rbuf, ensz);
-		if (sz == 0 - SSL_ERROR_WANT_READ || sz == 0 - SSL_ERROR_WANT_WRITE)
+		if (ssl_error == SSL_ERROR_WANT_WRITE) {
 			return (NNG_EAGAIN);
-		else if (sz < 0)
-			return (NNG_ECLOSED);
-		SSL_do_handshake(ec->ssl);
-	}
-	if (!SSL_is_init_finished(ec->ssl)) {
-		return (NNG_EAGAIN);
-	}
+		}
 
-	log_warn("NNG-TLS-CONN-HANDSHAKE"
-			"openssl do handshake successfully");
-	ec->ok = 1;
-	return 0;
+		size_t sz = OPEN_BUF_SZ;
+		if ((rv = nng_tls_engine_recv(
+		         ec->tls, (uint8_t *) ec->wbuf, &sz)) != 0) {
+			return (rv);
+		}
+		if (sz == 0) {
+			return (NNG_ECLOSED);
+		}
+		if (BIO_write(ec->rbio, ec->wbuf, (int) sz) != (int) sz) {
+			open_log_ssl_error(
+			    "NNG-TLS-CONN-HANDSHAKE BIO_write", 0);
+			return (NNG_ECRYPTO);
+		}
+	}
 }
 
 static int
