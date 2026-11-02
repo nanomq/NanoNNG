@@ -21,7 +21,9 @@
 #include "nng/protocol/mqtt/mqtt_parser.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <inttypes.h>
+#include <limits.h>
 
 static void conf_bridge_parse(conf *nanomq_conf, const char *path);
 static void conf_aws_bridge_parse(conf *nanomq_conf, const char *path);
@@ -462,9 +464,16 @@ conf_basic_parse(conf *config, const char *path)
 			nng_strfree(value);
 		} else if ((value = get_conf_value(line, sz, "parallel")) !=
 		    NULL) {
-			n = atoi(value);
-			if (n > 0)
-				config->parallel = n;
+			char *end = NULL;
+			errno = 0;
+			unsigned long long count = strtoull(value, &end, 10);
+			if (value[0] == '-' || end == value || *end != '\0' ||
+			    errno == ERANGE || count > INT_MAX) {
+				log_error("invalid system parallel value");
+				config->parallel = UINT32_MAX;
+			} else if (count > 0) {
+				config->parallel = (uint32_t) count;
+			}
 			nng_strfree(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "property_size")) != NULL) {
@@ -773,6 +782,7 @@ conf_stream_plugin_free(conf *config)
 		config->plugin_nodes.count = 0;
 	}
 
+#if defined(SUPP_STREAM_PLUGIN)
 	if (config->stream_plugin.nodes != NULL) {
 		for (size_t i = 0; i < config->stream_plugin.count; i++) {
 			conf_stream_plugin_node *node = config->stream_plugin.nodes[i];
@@ -798,6 +808,7 @@ conf_stream_plugin_free(conf *config)
 	}
 
 	memset(&config->stream_inject, 0, sizeof(conf_stream_inject));
+#endif
 }
 #endif
 
@@ -1145,12 +1156,14 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->plugin.path_sz           = 0;
 	nanomq_conf->plugin_nodes.count       = 0;
 	nanomq_conf->plugin_nodes.nodes       = NULL;
+#if defined(SUPP_STREAM_PLUGIN)
 	nanomq_conf->stream_plugin.count      = 0;
 	nanomq_conf->stream_plugin.nodes      = NULL;
-	nanomq_conf->stream_inject.enable     = true;
+	nanomq_conf->stream_inject.enable     = false;
 	nanomq_conf->stream_inject.queue_cap  = 4096;
 	nanomq_conf->stream_inject.worker_num = 1;
 	nanomq_conf->stream_inject.full_op    = STREAM_PLUGIN_FULL_DROP;
+#endif
 #endif
 
 	nanomq_conf->web_hook.enable         = false;
@@ -1164,6 +1177,9 @@ conf_init(conf *nanomq_conf)
 	nanomq_conf->web_hook.cancel_timeout = (nng_duration) 5000;
 	nanomq_conf->web_hook.saios          = NULL;
 	nanomq_conf->web_hook.ex_lmq_size    = 0;
+#if defined(SUPP_STREAM_PLUGIN)
+	nanomq_conf->web_hook.ex_lmq_size_configured = false;
+#endif
 	nanomq_conf->web_hook.ex_busy        = false;
 	conf_tls_init(&nanomq_conf->web_hook.tls);
 
@@ -3552,6 +3568,7 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->will_retain  = false;
 
 	node->bridge_aio   = NULL;
+	node->bridge_aio_count = 0;
 	node->bridge_arg   = NULL;
 
 	node->sqlite       = NULL;
@@ -3753,7 +3770,16 @@ conf_bridge_node_parse_with_name(const char *path,const char *key_prefix, const 
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".parallel")) != NULL) {
-			node->parallel = atoi(value);
+			char *end = NULL;
+			errno = 0;
+			unsigned long long count = strtoull(value, &end, 10);
+			if (value[0] == '-' || end == value || *end != '\0' ||
+			    errno == ERANGE || count > INT_MAX) {
+				log_error("invalid bridge parallel value");
+				node->parallel = UINT64_MAX;
+			} else {
+				node->parallel = count;
+			}
 			free(value);
 		} else if ((value = get_conf_value_with_prefix2(line, sz,
 		                key_prefix, name, ".max_send_queue_len")) != NULL) {
@@ -4559,6 +4585,9 @@ conf_web_hook_parse(conf_web_hook *webhook, const char *path)
 		} else if ((value = get_conf_value(
 		                line, sz, "web.hook.ex_lmq_size")) != NULL) {
 			webhook->ex_lmq_size = (size_t) atol(value);
+#if defined(SUPP_STREAM_PLUGIN)
+			webhook->ex_lmq_size_configured = true;
+#endif
 			free(value);
 		} else if ((value = get_conf_value(
 		                line, sz, "web.hook.cancel_timeout")) != NULL) {

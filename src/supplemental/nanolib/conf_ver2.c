@@ -14,6 +14,7 @@
 #include "nng/supplemental/nanolib/ringbuffer.h"
 #include "supplemental/base64/base64.h"
 #include <ctype.h>
+#include <limits.h>
 #include <string.h>
 
 
@@ -23,6 +24,23 @@
 
 static const char *gvin = NULL;
 static void conf_tls_parse_ver2_base(conf_tls *tls, cJSON *jso_tls);
+
+/* Validate before converting a JSON double to the unsigned bridge count. */
+static void
+conf_bridge_parallel_parse(conf_bridge_node *node, cJSON *object)
+{
+	cJSON *value = cJSON_GetObjectItem(object, "max_parallel_processes");
+	if (value == NULL) return;
+	if (!cJSON_IsNumber(value) || !(value->valuedouble >= 0 &&
+	    value->valuedouble <= INT_MAX) ||
+	    value->valuedouble != (double) (uint64_t) value->valuedouble) {
+		log_error("bridge max_parallel_processes must be a non-negative integer within range");
+		node->parallel = UINT64_MAX; /* broker startup rejects this sentinel */
+		return;
+	}
+	/* Historically zero leaves the default in place for HOCON. */
+	if (value->valuedouble > 0) node->parallel = (uint64_t) value->valuedouble;
+}
 
 int
 conf_stream_codec_id_from_number(double v, uint8_t *out)
@@ -388,7 +406,17 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_bool(config, daemon, jso_sys);
 		hocon_read_num(config, num_taskq_thread, jso_sys);
 		hocon_read_num(config, max_taskq_thread, jso_sys);
-		hocon_read_num(config, parallel, jso_sys);
+		cJSON *parallel = cJSON_GetObjectItem(jso_sys, "parallel");
+		if (parallel != NULL) {
+			double value = parallel->valuedouble;
+			if (!cJSON_IsNumber(parallel) || !(value >= 0 && value <= INT_MAX) ||
+			    value != (double) (uint32_t) value) {
+				log_error("system parallel must be a non-negative integer within range");
+				config->parallel = UINT32_MAX; /* rejected by broker startup */
+			} else if (value > 0) {
+				config->parallel = (uint32_t) value;
+			}
+		}
 		hocon_read_bool_base(
 		    config, ipc_internal, "enable_ipc_internal", jso_sys);
 		hocon_read_str(config, hook_ipc_url, jso_sys);
@@ -870,6 +898,10 @@ conf_webhook_parse_ver2(conf *config, cJSON *jso)
 		hocon_read_num_base(
 		    webhook, cancel_timeout, "cancel_timeout", jso_webhook);
 		hocon_read_num(webhook, ex_lmq_size, jso_webhook);
+#if defined(SUPP_STREAM_PLUGIN)
+		webhook->ex_lmq_size_configured =
+		    cJSON_GetObjectItem(jso_webhook, "ex_lmq_size") != NULL;
+#endif
 		cJSON    *jso_webhook_tls = hocon_get_obj("ssl", jso_webhook);
 		conf_tls *webhook_tls     = &(webhook->tls);
 		conf_tls_parse_ver2_base(webhook_tls, jso_webhook_tls);
@@ -1757,7 +1789,7 @@ conf_bridge_node_parse(
 		cvector_push_back(node->hybrid_servers, strdup(hybrid_server->valuestring));
 	}
 
-	hocon_read_num_base(node, parallel, "max_parallel_processes", obj);
+	conf_bridge_parallel_parse(node, obj);
 	update_bridge_node_vin(node, CONF_NODE_SUBSCRIPTION);
 	update_bridge_node_vin(node, CONF_NODE_FORWARD);
 	hocon_read_num(node, max_recv_queue_len, obj);
@@ -2003,6 +2035,7 @@ conf_plugin_parse_ver2(conf *config, cJSON *jso)
 	return;
 }
 
+#if defined(SUPP_STREAM_PLUGIN)
 static void
 conf_stream_plugin_destroy(conf_stream_plugin *sp)
 {
@@ -2107,16 +2140,15 @@ conf_stream_plugin_parse_ver2(conf *config, cJSON *jso)
 					node->codec_id = id;
 				}
 			}
-		} else {
+		} else if (jcodec != NULL) {
+			/* codec is optional for a message-only stream plugin. */
 			codec_invalid = true;
 		}
 
-		if (codec_invalid || node->path == NULL ||
-		    (node->topic == NULL && node->codec_id == 0)) {
+		if (codec_invalid || node->path == NULL) {
 			if (!codec_invalid) {
 				log_error(
-				    "stream_plugin: path and (topic or codec.id) "
-				    "required");
+				    "stream_plugin: path required");
 			}
 			if (node->path) nng_strfree(node->path);
 			if (node->topic) nng_strfree(node->topic);
@@ -2138,7 +2170,7 @@ conf_stream_inject_parse_ver2(conf *config, cJSON *jso)
 	conf_stream_inject *inj = &config->stream_inject;
 
 	// defaults
-	inj->enable     = true;
+	inj->enable     = config->stream_plugin.count > 0 || config->exchange.count > 0;
 	inj->queue_cap  = 4096;
 	inj->worker_num = 1;
 	inj->full_op    = STREAM_PLUGIN_FULL_DROP;
@@ -2167,6 +2199,7 @@ conf_stream_inject_parse_ver2(conf *config, cJSON *jso)
 	}
 }
 
+#endif
 static void
 conf_plugin_nodes_parse_ver2(conf *config, cJSON *jso)
 {
@@ -2230,6 +2263,13 @@ conf_exchange_node_parse(conf_exchange_node *node, cJSON *exchange)
 {
 	hocon_read_str(node, name, exchange);
 	hocon_read_str(node, topic, exchange);
+	cJSON *stream_type = cJSON_GetObjectItem(exchange, "streamType");
+	if (stream_type != NULL && (!cJSON_IsNumber(stream_type) ||
+	        !(stream_type->valuedouble >= 0 && stream_type->valuedouble <= UINT8_MAX) ||
+	        stream_type->valuedouble != (uint8_t) stream_type->valuedouble)) {
+		log_error("exchange.streamType must be an integer in [0, 255]");
+		return false;
+	}
 	hocon_read_num(node, streamType, exchange);
 	hocon_read_num(node, chunk_size, exchange);
 
@@ -2597,8 +2637,7 @@ conf_aws_bridge_parse_ver2(conf *config, cJSON *jso)
 
 		node->sub_count = cvector_size(node->sub_list);
 
-		hocon_read_num_base(
-		    node, parallel, "max_parallel_processes", bridge_aws_node);
+		conf_bridge_parallel_parse(node, bridge_aws_node);
 		cvector_push_back(config->aws_bridge.nodes, node);
 	}
 
@@ -3159,8 +3198,10 @@ conf_parse_ver2(conf *config, bool is_reload)
 #if defined(SUPP_PLUGIN)
 		conf_plugin_parse_ver2(config, jso);
 		conf_plugin_nodes_parse_ver2(config, jso);
+#if defined(SUPP_STREAM_PLUGIN)
 		conf_stream_plugin_parse_ver2(config, jso);
 		conf_stream_inject_parse_ver2(config, jso);
+#endif
 #endif
 #if defined(SUPP_AWS_BRIDGE)
 		conf_aws_bridge_parse_ver2(config, jso);

@@ -345,6 +345,7 @@ struct conf_bridge_node {
 	conf_tcp     tcp;
 	conf_sqlite *sqlite;
 	nng_aio    **bridge_aio;
+	size_t       bridge_aio_count; // allocated per-work sender slots
 	nng_aio		*resend_aio;
 	nng_dialer  *dialer;
 	nng_lmq		*ctx_msgs;  // only cache qos msg blocked by aio busy
@@ -691,6 +692,10 @@ struct conf_web_hook {
 	nng_aio **saios;  // Aios for sending message
 	nng_lmq  *ex_lmq; // Lmq for await flush
 	size_t    ex_lmq_size; // Capacity of ex lmq
+#if defined(SUPP_STREAM_PLUGIN)
+	bool      ex_lmq_size_configured; // preserve explicit zero for legacy behavior
+	bool      ex_flush_failed; // asynchronous archival failure observed
+#endif
 
 	// TODO not support yet
 	conf_tls tls;
@@ -785,8 +790,10 @@ struct conf {
 #if defined(SUPP_PLUGIN)
 	conf_plugin          plugin;
 	conf_plugin_nodes    plugin_nodes;
+#if defined(SUPP_STREAM_PLUGIN)
 	conf_stream_plugin   stream_plugin;
 	conf_stream_inject   stream_inject;
+#endif
 #endif
 	conf_web_hook        web_hook;
 #if defined(ENABLE_LOG)
