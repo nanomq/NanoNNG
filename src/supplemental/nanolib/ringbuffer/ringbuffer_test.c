@@ -1,6 +1,8 @@
 #include "nng/supplemental/nanolib/ringbuffer.h"
+#include "nng/exchange/stream/stream.h"
 #include "nng/mqtt/mqtt_client.h"
 #include <nuts.h>
+#include <string.h>
 
 #define UNUSED(x) ((void) x)
 
@@ -550,6 +552,40 @@ void test_ringBuffer_get_and_clean_up()
 
 }
 
+void test_ringBuffer_fuzz_keeps_mqtt_payload(void)
+{
+	ringBuffer_t *rb = NULL;
+	nng_msg *msg = NULL;
+	nng_msg **list = NULL;
+	uint32_t count = 0;
+	uint32_t plen = 0;
+	uint8_t *got = NULL;
+	const uint8_t payload[] = "keep-me";
+
+	NUTS_TRUE(ringBuffer_init(&rb, 4, RB_FULL_NONE, -1) == 0);
+	NUTS_TRUE(nng_mqtt_msg_alloc(&msg, 0) == 0);
+	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_PUBLISH);
+	nng_mqtt_msg_set_publish_dup(msg, 0);
+	nng_mqtt_msg_set_publish_retain(msg, 0);
+	nng_mqtt_msg_set_publish_topic(msg, "t/1");
+	nng_mqtt_msg_set_publish_topic_len(msg, 3);
+	NUTS_TRUE(nng_mqtt_msg_set_publish_payload(msg, (uint8_t *) payload, 7) == 0);
+	NUTS_TRUE(nng_mqtt_msg_encode(msg) == 0);
+	nng_msg_set_timestamp(msg, 42);
+	NUTS_TRUE(ringBuffer_enqueue(rb, 42, msg, -1, NULL) == 0);
+
+	NUTS_TRUE(ringBuffer_search_msgs_fuzz(rb, 42, 42, &count, &list) == 0);
+	NUTS_TRUE(count == 1);
+	NUTS_TRUE(list != NULL);
+	got = stream_msg_payload(list[0], &plen);
+	NUTS_TRUE(got != NULL);
+	NUTS_TRUE(plen == 7);
+	NUTS_TRUE(memcmp(got, payload, 7) == 0);
+
+	nng_free(list, sizeof(nng_msg *) * count);
+	NUTS_TRUE(ringBuffer_release(rb) == 0);
+}
+
 NUTS_TESTS = {
 	{ "Ring buffer init test", test_ringBuffer_init },
 	{ "Ring buffer release test", test_ringBuffer_release },
@@ -559,6 +595,7 @@ NUTS_TESTS = {
 	{ "Ring buffer search msg by key", test_ringBuffer_search_msg_by_key },
 	{ "Ring buffer search msgs by key", test_ringBuffer_search_msgs_by_key },
 	{ "Ring buffer search msgs fuzz", test_ringBuffer_search_msgs_fuzz },
+	{ "Ring buffer fuzz keeps mqtt payload", test_ringBuffer_fuzz_keeps_mqtt_payload },
 	{ "Ring buffer get and clean up test", test_ringBuffer_get_and_clean_up},
 	{ NULL, NULL },
 };
