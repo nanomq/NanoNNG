@@ -375,6 +375,79 @@ void test_stream_msg_payload_mqtt_publish(void)
 	stream_sys_fini();
 }
 
+/* hook_entry() copies the broker PUBLISH with plain nng_msg_alloc: header
+ * and body appended, payload_ptr rebased, no MQTT proto data. */
+void test_stream_msg_payload_hook_style(void)
+{
+	const uint8_t body[] = { 0, 3, 'a', '/', 'b', 'h', 'e', 'l', 'l', 'o' };
+	nng_msg *msg = NULL;
+	uint32_t plen = 99;
+	uint8_t *got;
+	struct stream_data_in input;
+	struct {
+		uint32_t               col_len;
+		uint32_t               row_len;
+		uint64_t              *ts;
+		char                 **schema;
+		parquet_data_packet ***payload_arr;
+	} *out;
+
+	NUTS_TRUE(nng_msg_alloc(&msg, 0) == 0);
+	NUTS_TRUE(nng_msg_append(msg, body, sizeof(body)) == 0);
+	NUTS_TRUE(nng_msg_get_proto_data(msg) == NULL);
+
+	/* payload_ptr never set: no payload, and no crash */
+	nng_msg_set_payload_ptr(msg, NULL);
+	got = stream_msg_payload(msg, &plen);
+	NUTS_TRUE(got == NULL);
+	NUTS_TRUE(plen == 0);
+
+	/* pointing outside the body is rejected */
+	nng_msg_set_payload_ptr(msg, (uint8_t *) nng_msg_body(msg) - 1);
+	NUTS_TRUE(stream_msg_payload(msg, &plen) == NULL);
+	NUTS_TRUE(plen == 0);
+	nng_msg_set_payload_ptr(msg, (uint8_t *) nng_msg_body(msg) + sizeof(body) + 1);
+	NUTS_TRUE(stream_msg_payload(msg, &plen) == NULL);
+	NUTS_TRUE(plen == 0);
+
+	/* at the end of the body: empty payload */
+	nng_msg_set_payload_ptr(msg, (uint8_t *) nng_msg_body(msg) + sizeof(body));
+	plen = 99;
+	got  = stream_msg_payload(msg, &plen);
+	NUTS_TRUE(plen == 0);
+
+	/* the normal case */
+	nng_msg_set_payload_ptr(msg, (uint8_t *) nng_msg_body(msg) + 5);
+	got = stream_msg_payload(msg, &plen);
+	NUTS_TRUE(got == (uint8_t *) nng_msg_body(msg) + 5);
+	NUTS_TRUE(plen == 5);
+	NUTS_TRUE(memcmp(got, "hello", 5) == 0);
+
+	/* and through the raw codec, as flush and query do */
+	NUTS_TRUE(stream_sys_init() == 0);
+	input.len   = 1;
+	input.keys  = nng_alloc(sizeof(uint64_t));
+	input.lens  = nng_alloc(sizeof(uint32_t));
+	input.datas = nng_alloc(sizeof(void *));
+	NUTS_TRUE(input.keys != NULL && input.lens != NULL && input.datas != NULL);
+	input.keys[0]  = 7;
+	input.datas[0] = stream_msg_payload(msg, &input.lens[0]);
+
+	out = stream_encode(RAW_STREAM_ID, &input);
+	NUTS_TRUE(out != NULL);
+	NUTS_TRUE(out->row_len == 1);
+	NUTS_TRUE(out->payload_arr[0][0] != NULL);
+	NUTS_TRUE(out->payload_arr[0][0]->size == 5);
+	NUTS_TRUE(memcmp(out->payload_arr[0][0]->data, "hello", 5) == 0);
+
+	parquet_data_free((parquet_data *) out);
+	nng_free(input.datas, sizeof(void *));
+	nng_free(input.lens, sizeof(uint32_t));
+	nng_free(input.keys, sizeof(uint64_t));
+	nng_msg_free(msg);
+	stream_sys_fini();
+}
+
 void test_stream_encode_zero_length_payload(void)
 {
 	int ret = stream_sys_init();
@@ -630,6 +703,7 @@ NUTS_TESTS = {
 	{ "stream encode large payload", test_stream_encode_large_payload },
 	{ "stream encode zero length payload", test_stream_encode_zero_length_payload },
 	{ "stream msg payload mqtt publish", test_stream_msg_payload_mqtt_publish },
+	{ "stream msg payload hook style", test_stream_msg_payload_hook_style },
 	{ "stream sys decode test", test_stream_sys_decode },
 	{ "stream cmd parser null", test_stream_cmd_parser_null },
 	{ "stream cmd parser invalid id", test_stream_cmd_parser_invalid_id },

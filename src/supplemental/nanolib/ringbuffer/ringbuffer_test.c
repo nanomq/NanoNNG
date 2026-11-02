@@ -586,6 +586,92 @@ void test_ringBuffer_fuzz_keeps_mqtt_payload(void)
 	NUTS_TRUE(ringBuffer_release(rb) == 0);
 }
 
+/* Build a message the way hook_entry() does: plain nng_msg_alloc, header
+ * and body copied from the broker's PUBLISH, payload_ptr rebased into the
+ * copy. There is no MQTT proto data on it. */
+static nng_msg *
+alloc_hook_style_msg(const char *topic, const uint8_t *payload, uint32_t plen,
+    uint64_t ts)
+{
+	nng_msg *src = NULL;
+	nng_msg *msg = NULL;
+	uint8_t  hdr[2] = { 0x30, 0 };
+	uint16_t tlen   = (uint16_t) strlen(topic);
+	uint8_t  tl[2]  = { (uint8_t) (tlen >> 8), (uint8_t) (tlen & 0xff) };
+	uint8_t *body_ptr;
+	ptrdiff_t offset;
+
+	/* Source message as the broker holds it: body is topic + payload,
+	 * payload_ptr points at the payload inside it. */
+	if (nng_msg_alloc(&src, 0) != 0) {
+		return NULL;
+	}
+	nng_msg_header_append(src, hdr, sizeof(hdr));
+	nng_msg_append(src, tl, sizeof(tl));
+	nng_msg_append(src, topic, tlen);
+	nng_msg_append(src, payload, plen);
+	nng_msg_set_payload_ptr(src, (uint8_t *) nng_msg_body(src) + 2 + tlen);
+
+	nng_msg_alloc(&msg, 0);
+	nng_msg_header_append(msg, nng_msg_header(src), nng_msg_header_len(src));
+	nng_msg_append(msg, nng_msg_body(src), nng_msg_len(src));
+	body_ptr = nng_msg_body(src);
+	offset   = (ptrdiff_t) (nng_msg_payload_ptr(src) - body_ptr);
+	nng_msg_set_payload_ptr(msg, (uint8_t *) nng_msg_body(msg) + offset);
+	nng_msg_set_timestamp(msg, ts);
+	nng_msg_free(src);
+	return msg;
+}
+
+void test_ringBuffer_hook_style_msg_payload(void)
+{
+	ringBuffer_t *rb = NULL;
+	nng_msg **list = NULL;
+	nng_msg **flush = NULL;
+	uint32_t count = 0;
+	uint32_t *lenp = NULL;
+	uint32_t plen = 99;
+	uint8_t *got = NULL;
+	const uint8_t p0[] = "hook-payload-0";
+	const uint8_t p1[] = "hook-1";
+	nng_msg *m0, *m1;
+
+	m0 = alloc_hook_style_msg("a/b", p0, (uint32_t) strlen((char *) p0), 10);
+	m1 = alloc_hook_style_msg("a/b", p1, (uint32_t) strlen((char *) p1), 20);
+	NUTS_TRUE(m0 != NULL && m1 != NULL);
+	NUTS_TRUE(nng_msg_get_proto_data(m0) == NULL);
+
+	NUTS_TRUE(ringBuffer_init(&rb, 4, RB_FULL_NONE, -1) == 0);
+	NUTS_TRUE(ringBuffer_enqueue(rb, 10, m0, -1, NULL) == 0);
+	NUTS_TRUE(ringBuffer_enqueue(rb, 20, m1, -1, NULL) == 0);
+
+	/* query path */
+	NUTS_TRUE(ringBuffer_search_msgs_fuzz(rb, 10, 20, &count, &list) == 0);
+	NUTS_TRUE(count == 2);
+	got = stream_msg_payload(list[0], &plen);
+	NUTS_TRUE(got != NULL);
+	NUTS_TRUE(plen == strlen((char *) p0));
+	NUTS_TRUE(memcmp(got, p0, plen) == 0);
+	got = stream_msg_payload(list[1], &plen);
+	NUTS_TRUE(got != NULL);
+	NUTS_TRUE(plen == strlen((char *) p1));
+	NUTS_TRUE(memcmp(got, p1, plen) == 0);
+	nng_free(list, sizeof(nng_msg *) * count);
+
+	/* flush path */
+	lenp = nng_alloc(sizeof(uint32_t));
+	*lenp = 0;
+	NUTS_TRUE(ringBuffer_get_and_clean_msgs(rb, lenp, &flush) == 0);
+	NUTS_TRUE(*lenp == 2);
+	got = stream_msg_payload(flush[0], &plen);
+	NUTS_TRUE(got != NULL);
+	NUTS_TRUE(plen == strlen((char *) p0));
+	NUTS_TRUE(memcmp(got, p0, plen) == 0);
+	free_msg_list(flush, NULL, lenp, 1);
+
+	NUTS_TRUE(ringBuffer_release(rb) == 0);
+}
+
 NUTS_TESTS = {
 	{ "Ring buffer init test", test_ringBuffer_init },
 	{ "Ring buffer release test", test_ringBuffer_release },
@@ -596,6 +682,7 @@ NUTS_TESTS = {
 	{ "Ring buffer search msgs by key", test_ringBuffer_search_msgs_by_key },
 	{ "Ring buffer search msgs fuzz", test_ringBuffer_search_msgs_fuzz },
 	{ "Ring buffer fuzz keeps mqtt payload", test_ringBuffer_fuzz_keeps_mqtt_payload },
+	{ "Ring buffer hook style msg payload", test_ringBuffer_hook_style_msg_payload },
 	{ "Ring buffer get and clean up test", test_ringBuffer_get_and_clean_up},
 	{ NULL, NULL },
 };
