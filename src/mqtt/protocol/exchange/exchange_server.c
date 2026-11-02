@@ -192,21 +192,8 @@ static inline void parquet_datas_ret_free(parquet_data_ret **parquet_datas, uint
 
 static inline void ringbus_stream_data_in_free(struct stream_data_in *stream_data_in)
 {
-	if (stream_data_in == NULL) {
-		return;
-	}
-	if (stream_data_in->keys != NULL) {
-		nng_free(stream_data_in->keys, sizeof(uint64_t) * stream_data_in->len);
-	}
-	if (stream_data_in->datas != NULL) {
-		nng_free(stream_data_in->datas, sizeof(void *) * stream_data_in->len);
-	}
-	if (stream_data_in->lens != NULL) {
-		nng_free(stream_data_in->lens, sizeof(uint32_t) * stream_data_in->len);
-	}
-	nng_free(stream_data_in, sizeof(struct stream_data_in));
-
-	return;
+	/* msgs[] is borrowed. stream_data_in_free releases the array only. */
+	stream_data_in_free(stream_data_in);
 }
 
 static struct stream_data_in *ringbus_stream_data_in_init(uint32_t count, nng_msg **msgList)
