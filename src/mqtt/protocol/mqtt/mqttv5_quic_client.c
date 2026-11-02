@@ -1589,14 +1589,16 @@ quic_mqtt_pipe_fini(void *arg)
 		nni_msg_free(msg);
 	}
 
-	uint16_t count = 0;
+	bool notified = false;
 	mqtt_quic_ctx *ctx;
 
-	nni_msg *tmsg = nano_msg_notify(p->cparam, p->reason_code, 1, false);
-	nni_msg_set_cmd_type(tmsg, CMD_DISCONNECT_EV);
-	// clone once for pub DISCONNECT_EV
-	conn_param_clone(p->cparam);
-	nni_msg_set_conn_param(tmsg, p->cparam);
+	nni_msg *tmsg = p->cparam != NULL ?
+	    nano_msg_notify(p->cparam, p->reason_code, 1, false) : NULL;
+	if (tmsg != NULL) {
+		nni_msg_set_cmd_type(tmsg, CMD_DISCONNECT_EV);
+		conn_param_clone(p->cparam);
+		nni_msg_set_conn_param(tmsg, p->cparam);
+	}
 
 	nni_mtx_lock(&p->lk);
 
@@ -1607,15 +1609,16 @@ quic_mqtt_pipe_fini(void *arg)
 		nni_list_remove(&p->recv_queue, ctx);
 		aio       = ctx->raio;
 		ctx->raio = NULL;
-		nni_aio_set_msg(aio, tmsg);
-		// only return pipe closed error once for notification
-		// sync action to avoid NULL conn param
-		count == 0 ? nni_aio_finish_sync(aio, NNG_ECONNSHUT, 0)
-		           : nni_aio_finish_error(aio, NNG_ECLOSED);
-		// there should be no msg waiting
-		count++;
+		if (!notified && tmsg != NULL) {
+			notified = true;
+			nni_aio_set_msg(aio, tmsg);
+			nni_aio_finish_sync(aio, NNG_ECONNSHUT, 0);
+		} else {
+			nni_aio_set_msg(aio, NULL);
+			nni_aio_finish_error(aio, NNG_ECLOSED);
+		}
 	}
-	if (count == 0) {
+	if (!notified && tmsg != NULL) {
 		log_warn("disconnect msg of bridging is lost due to no ctx "
 		            "on receving");
 		nni_msg_free(tmsg);
