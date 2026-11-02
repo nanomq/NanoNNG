@@ -66,6 +66,8 @@ parquet_data *parquet_data_alloc(char **schema,
     parquet_data_packet ***payload_arr, uint64_t *ts, uint32_t col_len,
     uint32_t row_len);
 void          parquet_data_free(parquet_data *data);
+/* Borrow data columns (excluding ts) until data is freed. No allocations. */
+NNG_DECL int parquet_data_view(const parquet_data *data, parquet_data_ret *view);
 
 parquet_object *parquet_object_alloc(parquet_data *data, parquet_type type,
     nng_aio *aio, void *aio_arg, char *topic);
@@ -76,6 +78,9 @@ parquet_file_range *parquet_file_range_alloc(
 void parquet_file_range_free(parquet_file_range *range);
 
 void parquet_object_set_cb(parquet_object *obj, parquet_cb cb);
+/* Both submission functions consume a non-NULL elem, including on rejection.
+ * A rejected write completes its AIO asynchronously with NNG_ESTATE and a NULL
+ * ranges output; aio_arg is still supplied for the caller's completion cleanup. */
 int  parquet_write_batch_async(parquet_object *elem);
 // Write a batch to a temporary Parquet file, utilize it in scenarios where a
 // single file is sufficient for writing, sending, and subsequent deletion.
