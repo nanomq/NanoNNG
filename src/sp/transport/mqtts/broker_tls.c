@@ -551,11 +551,12 @@ tlstran_pipe_send_cb(void *arg)
 
 	if (nni_aio_get_prov_data(txaio) != NULL) {
 		// msgs left behind due to multiple topics matched
+		// Keep the protocol AIO's packet ID for retransmissions.
 		if (p->pro_ver == MQTT_PROTOCOL_VERSION_v311 ||
 		    p->pro_ver == MQTT_PROTOCOL_VERSION_v31)
-			tlstran_pipe_send_start_v4(p, msg, txaio);
+			tlstran_pipe_send_start_v4(p, msg, aio);
 		else if (p->pro_ver == MQTT_PROTOCOL_VERSION_v5)
-			tlstran_pipe_send_start_v5(p, msg, txaio);
+			tlstran_pipe_send_start_v5(p, msg, aio);
 		else {
 			log_error("pro_ver of the msg is not 3, 4 or 5.");
 			nni_aio_finish_error(txaio, NNG_EPROTO);
@@ -1055,6 +1056,13 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 
 		qos = qos_pac > qos ? qos : qos_pac;
 
+		// DUP belongs to this delivery, not the incoming PUBLISH.
+		// A nonzero provider packet ID marks a broker retransmission.
+		fixheader &= ~0x08;
+		if (qos > 0 && nni_aio_get_prov_data(aio) != NULL) {
+			fixheader |= 0x08;
+		}
+
 		if (qos_pac > qos) {
 			if (qos == 1) {
 				fixheader = fixheader & 0xF9;
@@ -1323,6 +1331,13 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			}
 
 			qos = qos_pac > qos ? qos : qos_pac;
+
+			// DUP belongs to this delivery, not the incoming PUBLISH.
+			// A nonzero provider packet ID marks a broker retransmission.
+			fixheader &= ~0x08;
+			if (qos > 0 && nni_aio_get_prov_data(aio) != NULL) {
+				fixheader |= 0x08;
+			}
 
 			if (qos_pac > qos) {
 				if (qos == 1) {
