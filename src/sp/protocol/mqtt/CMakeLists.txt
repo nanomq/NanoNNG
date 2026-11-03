@@ -12,3 +12,7 @@ endif ()
 
 nng_test(mqtt_parser_test)
 nng_test(auth_http_test)
+if (TARGET auth_http_test)
+  target_compile_definitions(auth_http_test PRIVATE
+    NANOMQ_TEST_CONF_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../../supplemental/nanolib/test_conf")
+endif ()
