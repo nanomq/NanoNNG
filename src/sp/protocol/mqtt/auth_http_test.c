@@ -1,4 +1,5 @@
 #include "nng/protocol/mqtt/mqtt_parser.h"
+#include "nng/supplemental/nanolib/conf.h"
 #include <nuts.h>
 
 static void conf_auth_http_init(conf_auth_http **conf)
@@ -179,9 +180,98 @@ test_auth_http_sub_pub_disabled(void)
 	return;
 }
 
+#if defined(NANOMQ_TEST_CONF_DIR)
+// The tests above set the per-request enable flags by hand. These take
+// them from the config parser, the way the broker gets them. Every
+// request points at a closed port, so a request that is sent fails and
+// the publish is denied; a request that is skipped lets it through.
+static conf *
+parse_auth_http_conf(const char *name)
+{
+	conf *cfg = nng_zalloc(sizeof(conf));
+	NUTS_TRUE(cfg != NULL);
+	if (cfg == NULL) {
+		return NULL;
+	}
+	conf_init(cfg);
+	char path[1024];
+	snprintf(path, sizeof(path), "%s/%s", NANOMQ_TEST_CONF_DIR, name);
+	cfg->conf_file = nng_strdup(path);
+	conf_parse_ver2(cfg, false);
+	NUTS_TRUE(cfg->auth_http.enable);
+	NUTS_TRUE(cfg->auth_http.super_req.url != NULL);
+#ifdef ACL_SUPP
+	NUTS_TRUE(cfg->auth_http.acl_req.url != NULL);
+#endif
+	return cfg;
+}
+
+// A super_req or acl_req configured in http_auth must be sent.
+void
+test_auth_http_sub_pub_parsed_conf(void)
+{
+	conf *cfg = parse_auth_http_conf("nmq_auth_http_req_test.conf");
+	if (cfg == NULL) {
+		return;
+	}
+	conf_auth_http *auth = &cfg->auth_http;
+
+	conn_param *conn_param = NULL;
+	conn_param_init(&conn_param);
+	NUTS_TRUE(conn_param != NULL);
+	topic_queue *tq = topic_queue_init("topic1", strlen("topic1"));
+	NUTS_TRUE(tq != NULL);
+
+	NUTS_TRUE(nmq_auth_http_sub_pub(conn_param, false, tq, auth) ==
+	    NOT_AUTHORIZED);
+	NUTS_TRUE(nmq_auth_http_sub_pub(conn_param, true, tq, auth) ==
+	    NOT_AUTHORIZED);
+
+#ifdef ACL_SUPP
+	// acl_req alone must deny too, not only super_req failing first.
+	auth->super_req.enable = false;
+	NUTS_TRUE(nmq_auth_http_sub_pub(conn_param, false, tq, auth) ==
+	    NOT_AUTHORIZED);
+#endif
+
+	topic_queue_release(tq);
+	conn_param_free(conn_param);
+	conf_fini(cfg);
+}
+
+// A request configured with `enable = false` must be skipped.
+void
+test_auth_http_sub_pub_parsed_conf_disabled(void)
+{
+	conf *cfg = parse_auth_http_conf("nmq_auth_http_req_disabled_test.conf");
+	if (cfg == NULL) {
+		return;
+	}
+
+	conn_param *conn_param = NULL;
+	conn_param_init(&conn_param);
+	NUTS_TRUE(conn_param != NULL);
+	topic_queue *tq = topic_queue_init("topic1", strlen("topic1"));
+	NUTS_TRUE(tq != NULL);
+
+	NUTS_TRUE(nmq_auth_http_sub_pub(conn_param, false, tq,
+	              &cfg->auth_http) == NNG_MQTT_SUCCESS);
+
+	topic_queue_release(tq);
+	conn_param_free(conn_param);
+	conf_fini(cfg);
+}
+#endif
+
 NUTS_TESTS = {
 	{ "auth_http_connect", test_auth_http_connect },
 	{ "auth_http_sub_pub", test_auth_http_sub_pub },
 	{ "auth_http_sub_pub_disabled", test_auth_http_sub_pub_disabled },
+#if defined(NANOMQ_TEST_CONF_DIR)
+	{ "auth_http_sub_pub_parsed_conf",
+	    test_auth_http_sub_pub_parsed_conf },
+	{ "auth_http_sub_pub_parsed_conf_disabled",
+	    test_auth_http_sub_pub_parsed_conf_disabled },
+#endif
 	{ NULL, NULL },
 };
