@@ -25,6 +25,9 @@
 	NANOMQ_TEST_CONF_DIR "/nmq_tls_pkcs11_test.conf"
 #define PEER_CERT_CONF_PATH \
 	NANOMQ_TEST_CONF_DIR "/nmq_tls_peer_cert_test.conf"
+#define WSS_CONF_PATH NANOMQ_TEST_CONF_DIR "/nmq_wss_test.conf"
+#define WSS_NO_BIND_CONF_PATH \
+	NANOMQ_TEST_CONF_DIR "/nmq_wss_no_bind_test.conf"
 #elif defined(ENABLE_NANOMQ_TESTS)
 #define OLD_CONF_PATH                                            \
 	"../../../../../nng/src/supplemental/nanolib/test_conf/" \
@@ -43,6 +46,10 @@
 #define PEER_CERT_CONF_PATH                                      \
 	"../../../../../nng/src/supplemental/nanolib/test_conf/" \
 	"nmq_tls_peer_cert_test.conf"
+#define WSS_CONF_PATH \
+	"../../../../../nng/src/supplemental/nanolib/test_conf/nmq_wss_test.conf"
+#define WSS_NO_BIND_CONF_PATH \
+	"../../../../../nng/src/supplemental/nanolib/test_conf/nmq_wss_no_bind_test.conf"
 #else
 #define OLD_CONF_PATH \
 	"../../../../src/supplemental/nanolib/test_conf/nmq_old_test.conf"
@@ -60,6 +67,10 @@
 #define PEER_CERT_CONF_PATH                                \
 	"../../../../src/supplemental/nanolib/test_conf/" \
 	"nmq_tls_peer_cert_test.conf"
+#define WSS_CONF_PATH \
+	"../../../../src/supplemental/nanolib/test_conf/nmq_wss_test.conf"
+#define WSS_NO_BIND_CONF_PATH \
+	"../../../../src/supplemental/nanolib/test_conf/nmq_wss_no_bind_test.conf"
 #endif
 
 #define PKCS11_KEY_URI \
@@ -168,6 +179,74 @@ static bool
 http_cred_ok(conf_http_server *http, const char *userpass)
 {
 	return conf_http_server_cred_check(http, userpass, strlen(userpass));
+}
+
+void
+test_conf_wss_absent(void)
+{
+	conf *cfg = get_test_conf(PKCS11_CONF_PATH);
+	NUTS_TRUE(cfg != NULL);
+	if (cfg == NULL) {
+		return;
+	}
+	conf_parse_ver2(cfg, false);
+	NUTS_TRUE(cfg->tls.enable);
+	NUTS_TRUE(!cfg->websocket.tls_enable);
+	NUTS_TRUE(cfg->websocket.tls_url == NULL);
+	conf_fini(cfg);
+}
+
+void
+test_conf_wss_present(void)
+{
+	conf *cfg = get_test_conf(WSS_CONF_PATH);
+	NUTS_TRUE(cfg != NULL);
+	if (cfg == NULL) {
+		return;
+	}
+	conf_parse_ver2(cfg, false);
+	NUTS_TRUE(!cfg->websocket.enable);
+	NUTS_TRUE(cfg->websocket.tls_enable);
+	NUTS_TRUE(cfg->websocket.tls_url != NULL);
+	if (cfg->websocket.tls_url != NULL) {
+		NUTS_TRUE(strcmp(cfg->websocket.tls_url,
+		    "nmq-wss://127.0.0.1:8884/mqtt") == 0);
+	}
+	NUTS_TRUE(cfg->websocket.mount_point != NULL);
+	if (cfg->websocket.mount_point != NULL) {
+		NUTS_TRUE(strcmp(cfg->websocket.mount_point, "tenant/") == 0);
+	}
+	conf_fini(cfg);
+}
+
+void
+test_conf_wss_without_bind(void)
+{
+	conf *cfg = get_test_conf(WSS_NO_BIND_CONF_PATH);
+	NUTS_TRUE(cfg != NULL);
+	if (cfg == NULL) {
+		return;
+	}
+	conf_parse_ver2(cfg, false);
+	NUTS_TRUE(!cfg->websocket.tls_enable);
+	NUTS_TRUE(cfg->websocket.tls_url == NULL);
+	conf_fini(cfg);
+}
+
+void
+test_conf_wss_stale_url(void)
+{
+	conf *cfg = get_test_conf(PKCS11_CONF_PATH);
+	NUTS_TRUE(cfg != NULL);
+	if (cfg == NULL) {
+		return;
+	}
+	cfg->websocket.tls_enable = true;
+	cfg->websocket.tls_url = nng_strdup("nmq-wss://127.0.0.1:8884/mqtt");
+	conf_parse_ver2(cfg, false);
+	NUTS_TRUE(!cfg->websocket.tls_enable);
+	NUTS_TRUE(cfg->websocket.tls_url == NULL);
+	conf_fini(cfg);
 }
 
 void
@@ -673,6 +752,10 @@ NUTS_TESTS = {
    {"get size", test_get_size},
    {"get time", test_get_time},
    {"conf parse v2", test_conf_parse_ver2},
+   {"WSS absent", test_conf_wss_absent},
+   {"WSS present", test_conf_wss_present},
+   {"WSS without bind", test_conf_wss_without_bind},
+   {"WSS stale URL", test_conf_wss_stale_url},
    {"conf http server users", test_conf_http_server_users},
    {"conf http server users in file", test_conf_http_server_users_from_file},
    {"conf parse v2 pkcs11", test_conf_parse_ver2_tls_pkcs11},

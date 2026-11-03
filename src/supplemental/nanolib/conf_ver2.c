@@ -488,6 +488,10 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 	config->ext_qos_db = nni_zalloc(sizeof(nni_id_map));
 	nni_id_map_init((nni_id_map *)config->ext_qos_db, 0, 0, false);
 
+	conf_websocket *websocket = &(config->websocket);
+	FREE_NONULL(websocket->tls_url);
+	websocket->tls_enable = false;
+
 	cJSON *jso_listeners = cJSON_GetObjectItem(jso, "listeners");
 	if (jso_listeners) {
 		cJSON *jso_tcp = cJSON_GetObjectItem(jso_listeners, "tcp");
@@ -525,8 +529,7 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 		}
 		config->tcp_list.count = cvector_size(config->tcp_list.nodes);
 
-		cJSON *jso_websocket      = hocon_get_obj("listeners.ws", jso);
-		conf_websocket *websocket = &(config->websocket);
+		cJSON *jso_websocket = hocon_get_obj("listeners.ws", jso);
 		if (NULL == jso_websocket) {
 			log_warn("Read websocket config failed!");
 			websocket->enable = false;
@@ -538,19 +541,19 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 			websocket->enable = true;
 		}
 
-		conf_tls *tls = &(config->tls);
-		if (tls != NULL) {
-			cJSON *jso_websocket_tls =
-			    hocon_get_obj("listeners.wss", jso);
-			if (jso_websocket_tls != NULL) {
-				hocon_read_address_base(websocket, tls_url,
-				    "bind", "nmq-wss://", jso_websocket_tls);
-				if (websocket->mount_point == NULL) {
-					hocon_read_str(websocket, mount_point,
-					    jso_websocket_tls);
-				}
+		cJSON *jso_websocket_tls =
+		    hocon_get_obj("listeners.wss", jso);
+		if (jso_websocket_tls != NULL) {
+			hocon_read_address_base(websocket, tls_url,
+			    "bind", "nmq-wss://", jso_websocket_tls);
+			if (websocket->mount_point == NULL) {
+				hocon_read_str(websocket, mount_point,
+				    jso_websocket_tls);
 			}
-			websocket->tls_enable = true;
+			websocket->tls_enable = websocket->tls_url != NULL;
+			if (!websocket->tls_enable) {
+				log_warn("WSS listener has no bind URL; disabling");
+			}
 		}
 	}
 
