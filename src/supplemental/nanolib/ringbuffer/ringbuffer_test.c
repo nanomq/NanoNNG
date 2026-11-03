@@ -672,6 +672,65 @@ void test_ringBuffer_hook_style_msg_payload(void)
 	NUTS_TRUE(ringBuffer_release(rb) == 0);
 }
 
+/* CodeRabbit scenario: after the ring wraps, a range that matches keys
+ * enqueued later must still be found. Out-of-order keys are now rejected
+ * at enqueue, so the ordered keys stay searchable. */
+void test_ringBuffer_enqueue_rejects_out_of_order_key()
+{
+	ringBuffer_t *rb = NULL;
+	nng_msg *tmp = NULL;
+	nng_msg **msgList = NULL;
+
+	NUTS_TRUE(ringBuffer_init(&rb, 10, 0, -1) == 0);
+	NUTS_TRUE(rb != NULL);
+	for (int i = 0; i < 10; i++) {
+		tmp = alloc_pub_msg("topic1");
+		NUTS_TRUE(tmp != NULL);
+		NUTS_TRUE(ringBuffer_enqueue(rb, (uint64_t) i * 10, tmp, -1, NULL) == 0);
+	}
+
+	/* Wrap the ring: live keys become 30..90. */
+	for (int i = 0; i < 3; i++) {
+		void *dropped = NULL;
+		NUTS_TRUE(ringBuffer_dequeue(rb, &dropped) == 0);
+		nng_msg_free((nng_msg *) dropped);
+	}
+	NUTS_TRUE(rb->head != 0);
+
+	/* A key smaller than the last live key is rejected. */
+	tmp = alloc_pub_msg("topic1");
+	NUTS_TRUE(ringBuffer_enqueue(rb, 50, tmp, -1, NULL) != 0);
+	nng_msg_free(tmp);
+	NUTS_TRUE(rb->size == 7);
+
+	/* Equal and larger keys are still accepted. */
+	tmp = alloc_pub_msg("topic1");
+	NUTS_TRUE(ringBuffer_enqueue(rb, 90, tmp, -1, NULL) == 0);
+	tmp = alloc_pub_msg("topic1");
+	NUTS_TRUE(ringBuffer_enqueue(rb, 100, tmp, -1, NULL) == 0);
+	tmp = alloc_pub_msg("topic1");
+	NUTS_TRUE(ringBuffer_enqueue(rb, 110, tmp, -1, NULL) == 0);
+	NUTS_TRUE(rb->size == 10);
+
+	/* Range matching the keys enqueued after the wrap is found. */
+	{
+		uint32_t *lenp = nng_alloc(sizeof(uint32_t));
+		msgList = NULL;
+		NUTS_TRUE(ringBuffer_search_msgs_fuzz(rb, 100, 110, lenp, &msgList) == 0);
+		NUTS_TRUE(*lenp == 2);
+		free_msg_list(msgList, NULL, lenp, 0);
+
+		/* duplicate key is allowed and found */
+		lenp = nng_alloc(sizeof(uint32_t));
+		msgList = NULL;
+		NUTS_TRUE(ringBuffer_search_msgs_fuzz(rb, 90, 90, lenp, &msgList) == 0);
+		NUTS_TRUE(*lenp == 2);
+		free_msg_list(msgList, NULL, lenp, 0);
+	}
+
+	NUTS_TRUE(ringBuffer_release(rb) == 0);
+}
+
 NUTS_TESTS = {
 	{ "Ring buffer init test", test_ringBuffer_init },
 	{ "Ring buffer release test", test_ringBuffer_release },
@@ -683,6 +742,7 @@ NUTS_TESTS = {
 	{ "Ring buffer search msgs fuzz", test_ringBuffer_search_msgs_fuzz },
 	{ "Ring buffer fuzz keeps mqtt payload", test_ringBuffer_fuzz_keeps_mqtt_payload },
 	{ "Ring buffer hook style msg payload", test_ringBuffer_hook_style_msg_payload },
+	{ "Ring buffer enqueue rejects out of order key", test_ringBuffer_enqueue_rejects_out_of_order_key },
 	{ "Ring buffer get and clean up test", test_ringBuffer_get_and_clean_up},
 	{ NULL, NULL },
 };
