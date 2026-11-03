@@ -721,7 +721,10 @@ uint8_t
 nni_mqtt_msg_get_publish_proto_version(nni_msg *msg)
 {
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
-	return proto_data->var_header.publish.proto_ver;
+	if (proto_data)
+		return proto_data->var_header.publish.proto_ver;
+	else
+		return 0;
 }
 
 uint16_t

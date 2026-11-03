@@ -125,6 +125,9 @@ int ringBuffer_search_msgs_fuzz(ringBuffer_t *rb,
 								uint64_t end,
 								uint32_t *count,
 								nng_msg ***list);
+/* Query snapshot: caller frees every message and the pointer array. */
+int ringBuffer_search_msgs_fuzz_snapshot(ringBuffer_t *rb, uint64_t start,
+    uint64_t end, uint32_t *count, nng_msg ***list);
 int ringBuffer_get_and_clean_msgs(ringBuffer_t *rb,
 								  unsigned int *count, nng_msg ***list);
 

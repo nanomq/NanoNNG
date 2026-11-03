@@ -1262,8 +1262,16 @@ nano_pipe_recv_cb(void *arg)
 		} else {
 			nni_atomic_set(&p->reason_code, 0x00);
 		}
-		// pipe close must be called without lock
-		break;
+		/* DISCONNECT is consumed by the protocol. It borrows cparam, unlike
+		 * application packets below, so queuing it after close could race the
+		 * independently delivered offline event releasing the final refs. */
+		nni_aio_set_msg(&p->aio_recv, NULL);
+		nni_mtx_unlock(&p->lk);
+		nni_msg_free(msg);
+		/* Close outside p->lk; this emits the owned offline notification even
+		 * when no application context is currently waiting to receive. */
+		nni_pipe_close(p->pipe);
+		return;
 	case CMD_CONNACK:
 	case CMD_PUBLISH:
 		// 1. Clone for App layer 2. Clone should be called before being used
@@ -1357,12 +1365,8 @@ nano_pipe_recv_cb(void *arg)
 	ctx->pipe_id = p->id;
 	log_trace("currently processing pipe_id: %d", p->id);
 	nni_mtx_unlock(&s->lk);
-	if (type == CMD_DISCONNECT) {
-		nni_pipe_close(p->pipe);
-	} else {
-		// schedule another receive
-		nni_pipe_recv(p->pipe, &p->aio_recv);
-	}
+	// schedule another receive
+	nni_pipe_recv(p->pipe, &p->aio_recv);
 	nni_aio_set_msg(aio, msg);
 	nni_aio_finish(aio, 0, nni_msg_len(msg));
 	log_trace("end of nano_pipe_recv_cb %p", ctx);

@@ -91,14 +91,14 @@ static inline void client_get_msgs(nng_socket sock, uint64_t startKey, uint64_t 
 
 //
 // Publish a message to the given topic and with the given QoS.
-void
+int
 client_publish(nng_socket sock, const char *topic, uint64_t key, uint8_t *payload,
     uint32_t payload_len, uint8_t qos, bool verbose)
 {
 	UNUSED(verbose);
 	// create a PUBLISH message
 	nng_msg *pubmsg;
-	nng_mqtt_msg_alloc(&pubmsg, 0);
+	NUTS_PASS(nng_mqtt_msg_alloc(&pubmsg, 0));
 
 	uint8_t *header = nng_msg_header(pubmsg);
 	*header = *header | CMD_PUBLISH;
@@ -115,21 +115,27 @@ client_publish(nng_socket sock, const char *topic, uint64_t key, uint8_t *payloa
 
 
 	nng_msg_set_timestamp(pubmsg, key);
-	nng_mqtt_msg_encode(pubmsg);
+	NUTS_PASS(nng_mqtt_msg_encode(pubmsg));
 	nni_aio_set_msg(aio, pubmsg);
 
 	nng_send_aio(sock, aio);
 	nng_aio_wait(aio);
 
+	int rv = nng_aio_result(aio);
 	uint32_t *lenp = NULL;
-	nng_msg **msgList = (nng_msg **)nng_aio_get_prov_data(aio);
+	nng_msg **msgList = (nng_msg **) nng_aio_get_prov_data(aio);
 	nng_msg *msg = nng_aio_get_msg(aio);
-	if (msgList != NULL && msg != NULL) {
+	if (rv != 0) {
+		/* Failed sends retain caller ownership, including a full ring. */
+		NUTS_TRUE(msg == pubmsg && msgList == NULL);
+		nng_msg_free(msg);
+	} else if (msgList != NULL && msg != NULL) {
 		lenp = nng_msg_get_proto_data(msg);
 		free_msg_list(msgList, msg, lenp, 1);
 	}
-
+	nng_aio_set_msg(aio, NULL);
 	nng_aio_free(aio);
+	return rv;
 }
 
 void
@@ -146,7 +152,7 @@ test_exchange_client(void)
 	NUTS_TRUE(nng_exchange_client_open(&sock) == 0);
 
 	conf_exchange_node *conf = NULL;
-	conf = nng_alloc(sizeof(conf_exchange_node));
+	conf = nng_zalloc(sizeof(conf_exchange_node));
 	NUTS_TRUE(conf != NULL);
 	conf->name = "exchange1";
 	conf->topic = "topic1";
@@ -166,7 +172,7 @@ test_exchange_client(void)
 
 	key = 0;
 	char *payload = "message";
-	client_publish(sock, "topic1", key, payload, 0, 0, 0);
+	NUTS_PASS(client_publish(sock, "topic1", key, payload, 0, 0, 0));
 
 	nni_msg *msg = NULL;
 	nni_sock *nsock = NULL;
@@ -214,7 +220,7 @@ test_exchange_client(void)
 
 	for (int i = 1; i < 10; i++) {
 		key = i;
-		client_publish(sock, "topic1", key, NULL, 0, 0, 0);
+		NUTS_PASS(client_publish(sock, "topic1", key, NULL, 0, 0, 0));
 	}
 
 	/* Use aio recv to get msgs by key */
@@ -224,8 +230,11 @@ test_exchange_client(void)
 	NUTS_TRUE(*lenp == 9 && msgList != NULL);
 	free_msg_list(msgList, NULL, lenp, 0);
 
-	/* Ringbuffer is full and msgs returned need to free */
-	client_publish(sock, "topic1", 10, NULL, 0, 0, 0);
+	/* RB_FULL_NONE rejects the next send; no dangling key may remain. */
+	NUTS_TRUE(client_publish(sock, "topic1", 10, NULL, 0, 0, 0) == NNG_EINVAL);
+	msg = NULL;
+	NUTS_TRUE(exchange_client_get_msg_by_key(nni_sock_proto_data(nsock), 10, &msg) != 0);
+	NUTS_TRUE(msg == NULL);
 
 	/* get and clean up msgs */
 	lenp = nng_alloc(sizeof(uint32_t));
@@ -234,6 +243,7 @@ test_exchange_client(void)
 	NUTS_TRUE(*lenp == 10 && msgList != NULL);
 	free_msg_list(msgList, NULL, lenp, 1);
 	nni_sock_close(nsock);
+	nng_close(pair0_sock);
 
 	cvector_free(conf->rbufs);
 	nng_free(conf, sizeof(conf_exchange_node));

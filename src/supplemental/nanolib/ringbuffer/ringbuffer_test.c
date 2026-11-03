@@ -530,7 +530,33 @@ void test_ringBuffer_get_and_clean_up()
 
 }
 
+static void
+test_query_snapshot_lifetime(void)
+{
+	ringBuffer_t *rb = NULL;
+	nng_msg *msg = NULL, **snapshot = NULL;
+	uint32_t count = 0;
+	NUTS_PASS(ringBuffer_init(&rb, 10, RB_FULL_NONE, -1));
+	NUTS_PASS(nng_msg_alloc(&msg, 4));
+	memcpy(nng_msg_body(msg), "abcd", 4);
+	nng_msg_set_payload_ptr(msg, (uint8_t *) nng_msg_body(msg) + 1);
+	nng_msg_set_cmd_type(msg, CMD_PUBLISH);
+	NUTS_PASS(ringBuffer_enqueue(rb, 42, msg, -1, NULL));
+	NUTS_PASS(ringBuffer_search_msgs_fuzz_snapshot(rb, 0, 100, &count, &snapshot));
+	NUTS_TRUE(count == 1 && snapshot[0] != msg);
+	NUTS_NULL(nng_msg_get_proto_data(msg));
+	NUTS_PASS(ringBuffer_release(rb));
+	NUTS_TRUE(nng_msg_get_timestamp(snapshot[0]) == 42);
+	NUTS_TRUE(nng_msg_get_cmd_type(snapshot[0]) == CMD_PUBLISH);
+	NUTS_TRUE(memcmp(nng_msg_payload_ptr(snapshot[0]), "bcd", 3) == 0);
+	nng_msg_free(snapshot[0]);
+	nng_free(snapshot, sizeof(*snapshot));
+	NUTS_TRUE(ringBuffer_search_msgs_fuzz_snapshot(NULL, 0, 1, &count, &snapshot) != 0);
+	NUTS_TRUE(count == 0 && snapshot == NULL);
+}
+
 NUTS_TESTS = {
+	{ "query snapshot lifetime", test_query_snapshot_lifetime },
 	{ "Ring buffer init test", test_ringBuffer_init },
 	{ "Ring buffer release test", test_ringBuffer_release },
 	{ "Ring buffer enqueue test", test_ringBuffer_enqueue },

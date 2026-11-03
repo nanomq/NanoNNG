@@ -225,8 +225,11 @@ nni_mqtt_msg_decode(nni_msg *msg)
 				mqtt->is_copied   = false;
 			}
 			if (!mqtt->is_decoded) {
-				mqtt->is_decoded = true;
-				return codec_handler[i].decode(msg);
+				ret = codec_handler[i].decode(msg);
+				if (ret == MQTT_SUCCESS) {
+					mqtt->is_decoded = true;
+				}
+				return ret;
 			} else {
 				return MQTT_SUCCESS;
 			}
@@ -256,8 +259,11 @@ nni_mqttv5_msg_decode(nni_msg *msg)
 			}
 			if (!mqtt->is_decoded) {
 				mqtt_msg_content_free(mqtt);
-				mqtt->is_decoded = true;
-				return codec_v5_handler[i].decode(msg);
+				ret = codec_v5_handler[i].decode(msg);
+				if (ret == MQTT_SUCCESS) {
+					mqtt->is_decoded = true;
+				}
+				return ret;
 			} else {
 				return MQTT_SUCCESS;
 			}
