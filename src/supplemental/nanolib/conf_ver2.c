@@ -544,8 +544,12 @@ conf_basic_parse_ver2(conf *config, cJSON *jso)
 		cJSON *jso_websocket_tls =
 		    hocon_get_obj("listeners.wss", jso);
 		if (jso_websocket_tls != NULL) {
-			hocon_read_address_base(websocket, tls_url,
-			    "bind", "nmq-wss://", jso_websocket_tls);
+			cJSON *bind = cJSON_GetObjectItem(jso_websocket_tls, "bind");
+			if (cJSON_IsString(bind) && bind->valuestring != NULL &&
+			    bind->valuestring[0] != '\0') {
+				hocon_read_address_base(websocket, tls_url,
+				    "bind", "nmq-wss://", jso_websocket_tls);
+			}
 			if (websocket->mount_point == NULL) {
 				hocon_read_str(websocket, mount_point,
 				    jso_websocket_tls);

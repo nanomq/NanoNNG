@@ -28,6 +28,8 @@
 #define WSS_CONF_PATH NANOMQ_TEST_CONF_DIR "/nmq_wss_test.conf"
 #define WSS_NO_BIND_CONF_PATH \
 	NANOMQ_TEST_CONF_DIR "/nmq_wss_no_bind_test.conf"
+#define WSS_EMPTY_BIND_CONF_PATH \
+	NANOMQ_TEST_CONF_DIR "/nmq_wss_empty_bind_test.conf"
 #elif defined(ENABLE_NANOMQ_TESTS)
 #define OLD_CONF_PATH                                            \
 	"../../../../../nng/src/supplemental/nanolib/test_conf/" \
@@ -50,6 +52,8 @@
 	"../../../../../nng/src/supplemental/nanolib/test_conf/nmq_wss_test.conf"
 #define WSS_NO_BIND_CONF_PATH \
 	"../../../../../nng/src/supplemental/nanolib/test_conf/nmq_wss_no_bind_test.conf"
+#define WSS_EMPTY_BIND_CONF_PATH \
+	"../../../../../nng/src/supplemental/nanolib/test_conf/nmq_wss_empty_bind_test.conf"
 #else
 #define OLD_CONF_PATH \
 	"../../../../src/supplemental/nanolib/test_conf/nmq_old_test.conf"
@@ -71,6 +75,8 @@
 	"../../../../src/supplemental/nanolib/test_conf/nmq_wss_test.conf"
 #define WSS_NO_BIND_CONF_PATH \
 	"../../../../src/supplemental/nanolib/test_conf/nmq_wss_no_bind_test.conf"
+#define WSS_EMPTY_BIND_CONF_PATH \
+	"../../../../src/supplemental/nanolib/test_conf/nmq_wss_empty_bind_test.conf"
 #endif
 
 #define PKCS11_KEY_URI \
@@ -223,6 +229,20 @@ void
 test_conf_wss_without_bind(void)
 {
 	conf *cfg = get_test_conf(WSS_NO_BIND_CONF_PATH);
+	NUTS_TRUE(cfg != NULL);
+	if (cfg == NULL) {
+		return;
+	}
+	conf_parse_ver2(cfg, false);
+	NUTS_TRUE(!cfg->websocket.tls_enable);
+	NUTS_TRUE(cfg->websocket.tls_url == NULL);
+	conf_fini(cfg);
+}
+
+void
+test_conf_wss_empty_bind(void)
+{
+	conf *cfg = get_test_conf(WSS_EMPTY_BIND_CONF_PATH);
 	NUTS_TRUE(cfg != NULL);
 	if (cfg == NULL) {
 		return;
@@ -801,6 +821,7 @@ NUTS_TESTS = {
    {"WSS absent", test_conf_wss_absent},
    {"WSS present", test_conf_wss_present},
    {"WSS without bind", test_conf_wss_without_bind},
+   {"WSS empty bind", test_conf_wss_empty_bind},
    {"WSS stale URL", test_conf_wss_stale_url},
    {"conf http server users", test_conf_http_server_users},
    {"conf http server users in file", test_conf_http_server_users_from_file},
