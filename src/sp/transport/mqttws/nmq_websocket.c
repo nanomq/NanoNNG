@@ -800,7 +800,6 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	qos_pac = nni_msg_get_pub_qos(msg);
 	NNI_GET16(body, tlen);
 
-	// === 1. MountPoint 检查与有效主题截取 ===
 	const char *mp        = p->mount_point;
 	size_t      mp_len    = (mp != NULL) ? strlen(mp) : 0;
 	size_t      strip_len = 0;
@@ -845,27 +844,22 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			}
 		}
 
-		// === 2. 匹配剥离前缀后的有效主题 ===
 		if (false == topic_filtern(sub_topic, eff_topic, eff_tlen)) {
 			continue;
 		}
 
-		// === 3. 规范化重构固定报头，彻底消除协议状态机漏洞 ===
 		uint8_t pos = 1, var_extra[2], fixheader, tmp[4] = { 0 };
 		qos       = info->qos;
 		fixheader = *header;
 
-		// 规范修正 1: QoS 0 报文的 DUP 标志位强制清零
 		if (qos_pac == 0) {
 			fixheader &= ~(1 << 3);
 		}
 
-		// 规范修正 2: 普通实时下发或 RAP == 0 时，RETAIN 标志位强制清零
 		if (info->rap == 0 && !nni_mqtt_msg_get_sub_retain_bool(msg)) {
 			fixheader &= 0xFE;
 		}
 
-		// 协商最终下发 QoS
 		qos = qos_pac > qos ? qos : qos_pac;
 
 		// DUP belongs to this delivery, not the incoming PUBLISH.
@@ -885,13 +879,11 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			}
 		}
 
-		// === 4. Remaining Length 扣减 strip_len ===
 		rlen = put_var_integer(tmp,
 		    get_var_integer(header, &pos) + len_offset - plength - strip_len);
 		*(p->qos_buf + qlength) = fixheader;
 		memcpy(p->qos_buf + qlength + 1, tmp, rlen);
 
-		// === 5. Fixed Header 与 2 字节 Topic Length 紧凑组装 ===
 		if (strip_len > 0) {
 			uint16_t new_tlen = (uint16_t) eff_tlen;
 			NNI_PUT16(p->qos_buf + qlength + 1 + rlen, new_tlen);
@@ -902,7 +894,6 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			niov++;
 			qlength += 1 + rlen + 2;
 
-			// IOV 1: [有效主题字符串切片] (直接指向原消息内存)
 			iov[niov].iov_buf = eff_topic;
 			iov[niov].iov_len = eff_tlen;
 			niov++;
@@ -949,14 +940,12 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			len_offset += 2;
 		}
 
-		// IOV 3: Payload 切片
 		if (mlen > 2 + tlen + len_offset + plength) {
 			iov[niov].iov_buf = body + 2 + tlen + len_offset + plength;
 			iov[niov].iov_len = mlen - 2 - len_offset - tlen - plength;
 			niov++;
 		}
 
-		// === 6. 线性追加至 smsg，重置 IOV 计数与 qlength ===
 		for (int i = 0; i < niov; i++) {
 			nni_msg_append(smsg, iov[i].iov_buf, iov[i].iov_len);
 		}
@@ -967,7 +956,6 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	nni_msg_free(msg);
 	msg = smsg;
 
-	// 若未匹配任何订阅，释放空报文并结束 AIO
 	if (nni_msg_len(msg) == 0) {
 		nni_msg_free(msg);
 		nni_aio_set_msg(aio, NULL);
