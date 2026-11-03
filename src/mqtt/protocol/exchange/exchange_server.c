@@ -767,6 +767,10 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 	if (ret != 0) {
 		log_error("[***]exchange_handle_msg failed!\n");
 		log_debug("[%s]exchange_handle_msg failed!\n", ex_node->ex->topic);
+
+		/* Roll back the index inserted before enqueue, otherwise
+		 * it would dangle on the freed message. */
+		nni_id_remove(&ex_node->sock->rbmsgmap, key);
 		/* free msg here! */
 		nni_msg_free(msg);
 		return -1;
