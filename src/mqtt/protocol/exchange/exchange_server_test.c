@@ -132,6 +132,46 @@ client_publish(nng_socket sock, const char *topic, uint64_t key, uint8_t *payloa
 	nng_aio_free(aio);
 }
 
+/* Like client_publish, but returns the send result so tests can assert
+ * on rejections. */
+static int
+client_publish_checked(nng_socket sock, const char *topic, uint64_t key)
+{
+	nng_msg *pubmsg;
+	nng_mqtt_msg_alloc(&pubmsg, 0);
+
+	uint8_t *header = nng_msg_header(pubmsg);
+	*header = *header | CMD_PUBLISH;
+	nng_mqtt_msg_set_packet_type(pubmsg, NNG_MQTT_PUBLISH);
+	nng_mqtt_msg_set_publish_dup(pubmsg, 0);
+	nng_mqtt_msg_set_publish_qos(pubmsg, 0);
+	nng_mqtt_msg_set_publish_retain(pubmsg, 0);
+	nng_mqtt_msg_set_publish_topic(pubmsg, topic);
+	nng_mqtt_msg_set_publish_topic_len(pubmsg, strlen(topic));
+	nng_mqtt_msg_set_publish_payload(pubmsg, NULL, 0);
+	nng_msg_set_timestamp(pubmsg, key);
+	nng_mqtt_msg_encode(pubmsg);
+
+	nni_aio *aio = NULL;
+	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
+	nni_aio_set_msg(aio, pubmsg);
+	nng_send_aio(sock, aio);
+	nng_aio_wait(aio);
+	int rv = nng_aio_result(aio);
+
+	/* Drain lists never appear in this test (RB_FULL_NONE), but stay
+	 * consistent with client_publish just in case. */
+	nng_msg **msgList = (nng_msg **) nng_aio_get_prov_data(aio);
+	nng_msg *msg = nng_aio_get_msg(aio);
+	if (msgList != NULL && msg != NULL) {
+		uint32_t *lenp = nng_msg_get_proto_data(msg);
+		free_msg_list(msgList, msg, lenp, 1);
+	}
+
+	nng_aio_free(aio);
+	return rv;
+}
+
 void
 test_exchange_client(void)
 {
@@ -242,7 +282,84 @@ test_exchange_client(void)
 	return;
 }
 
+void
+test_exchange_client_enqueue_rollback(void)
+{
+	nng_socket sock;
+	nng_socket pair0_sock;
+	nni_sock *nsock = NULL;
+	nni_msg *msg = NULL;
+	void *proto_data = NULL;
+	nng_msg **msgList = NULL;
+	uint32_t len = 0;
+	uint32_t *lenp = NULL;
+
+	nng_rep0_open(&pair0_sock);
+	sock.data = &pair0_sock;
+
+	NUTS_TRUE(nng_exchange_client_open(&sock) == 0);
+
+	conf_exchange_node *conf = NULL;
+	conf = nng_alloc(sizeof(conf_exchange_node));
+	NUTS_TRUE(conf != NULL);
+	conf->name = "exchange1";
+	conf->topic = "topic1";
+
+	ringBuffer_node *rb_node = NNI_ALLOC_STRUCT(rb_node);
+	NUTS_TRUE(rb_node != NULL);
+	rb_node->name = "ringBuffer1";
+	rb_node->cap = 10;
+	rb_node->fullOp = RB_FULL_NONE;
+
+	conf->rbufs = NULL;
+
+	cvector_push_back(conf->rbufs, rb_node);
+	conf->rbufs_sz = cvector_size(conf->rbufs);
+
+	nng_socket_set_ptr(sock, NNG_OPT_EXCHANGE_BIND, conf);
+
+	/* Ordered keys are accepted. */
+	NUTS_TRUE(client_publish_checked(sock, "topic1", 10) == 0);
+	NUTS_TRUE(client_publish_checked(sock, "topic1", 20) == 0);
+
+	/* The out-of-order key is rejected by the ringbuffer. */
+	NUTS_TRUE(client_publish_checked(sock, "topic1", 15) == NNG_EINVAL);
+
+	NUTS_TRUE(nni_sock_find(&nsock, sock.id) == 0 && nsock != NULL);
+	nni_sock_rele(nsock);
+	proto_data = nni_sock_proto_data(nsock);
+
+	/* The accepted messages are still in the index. */
+	msg = NULL;
+	NUTS_TRUE(exchange_client_get_msg_by_key(proto_data, 10, &msg) == 0 && msg != NULL);
+	msg = NULL;
+	NUTS_TRUE(exchange_client_get_msg_by_key(proto_data, 20, &msg) == 0 && msg != NULL);
+
+	/* The rejected key was rolled back from the index and does not
+	 * dangle on the freed message. */
+	msg = NULL;
+	NUTS_TRUE(exchange_client_get_msg_by_key(proto_data, 15, &msg) == -1);
+
+	/* The ringbuffer is unaffected by the rejected send. */
+	len = 0;
+	msgList = NULL;
+	NUTS_TRUE(exchange_client_get_msgs_fuzz(proto_data, 10, 20, &len, &msgList) == 0);
+	NUTS_TRUE(len == 2 && msgList != NULL);
+	lenp = nng_alloc(sizeof(uint32_t));
+	*lenp = len;
+	free_msg_list(msgList, NULL, lenp, 0);
+
+	nni_sock_close(nsock);
+
+	cvector_free(conf->rbufs);
+	nng_free(conf, sizeof(conf_exchange_node));
+	nng_free(rb_node, sizeof(ringBuffer_node));
+
+	return;
+}
+
 NUTS_TESTS = {
 	{ "Exchange client test", test_exchange_client },
+	{ "Exchange client enqueue rollback test", test_exchange_client_enqueue_rollback },
 	{ NULL, NULL },
 };
