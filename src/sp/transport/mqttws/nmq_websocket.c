@@ -868,6 +868,13 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 		// 协商最终下发 QoS
 		qos = qos_pac > qos ? qos : qos_pac;
 
+		// DUP belongs to this delivery, not the incoming PUBLISH.
+		// A nonzero provider packet ID marks a broker retransmission.
+		fixheader &= ~0x08;
+		if (qos > 0 && nni_aio_get_prov_data(aio) != NULL) {
+			fixheader |= 0x08;
+		}
+
 		if (qos_pac > qos) {
 			if (qos == 1) {
 				fixheader = fixheader & 0xF9;
@@ -1102,6 +1109,13 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			}
 
 			qos = qos_pac > qos ? qos : qos_pac;
+
+			// DUP belongs to this delivery, not the incoming PUBLISH.
+			// A nonzero provider packet ID marks a broker retransmission.
+			fixheader &= ~0x08;
+			if (qos > 0 && nni_aio_get_prov_data(aio) != NULL) {
+				fixheader |= 0x08;
+			}
 
 			if (qos_pac > qos) {
 				if (qos == 1) {
