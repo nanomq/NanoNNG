@@ -342,13 +342,20 @@ parquet_object *
 parquet_object_alloc(parquet_data *data, parquet_type type, nng_aio *aio,
     void *aio_arg, char *topic)
 {
-	parquet_object *elem = new parquet_object;
+	parquet_object *elem = new (std::nothrow) parquet_object;
+	if (elem == nullptr) {
+		return nullptr;
+	}
 	elem->data           = data;
 	elem->type           = type;
 	elem->aio            = aio;
 	elem->aio_arg        = aio_arg;
 	elem->topic          = topic;
-	elem->ranges        = new parquet_file_ranges;
+	elem->ranges        = new (std::nothrow) parquet_file_ranges;
+	if (elem->ranges == nullptr) {
+		delete elem; // The caller still owns data and the AIO context.
+		return nullptr;
+	}
 	elem->ranges->range = NULL;
 	elem->ranges->start = 0;
 	elem->ranges->size  = 0;
@@ -847,6 +854,7 @@ parquet_write_tmp(parquet_object *elem)
 	if (conf == NULL || conf->enable == false) {
 		log_debug("Parquet %s is not ready or not launch!", elem->topic);
 		log_error("Parquet *** is not ready or not launch!");
+		parquet_object_complete(elem, NNG_ESTATE);
 		return -1;
 	}
 
@@ -903,6 +911,7 @@ parquet_write(parquet_object *elem)
 	if (conf == NULL || conf->enable == false) {
 		log_debug("Parquet %s is not ready or not launch!", elem->topic);
 		log_error("Parquet *** is not ready or not launch!");
+		parquet_object_complete(elem, NNG_ESTATE);
 		return -1;
 	}
 
@@ -2152,7 +2161,16 @@ parquet_read_span_by_column(conf_parquet *conf, const char *filename, uint64_t k
 		int num_row_groups =
 		    file_metadata
 		        ->num_row_groups(); // Get the number of RowGroups
-		assert(num_row_groups == 1);
+		/* Our writer emits one row group with a required INT64 key.
+		 * Reject incompatible files instead of asserting or casting a reader
+		 * of another physical type. */
+		if (num_row_groups != 1 || file_metadata->num_columns() < 1 ||
+		    file_metadata->schema()->Column(0)->physical_type() != Type::INT64 ||
+		    file_metadata->schema()->Column(0)->max_definition_level() != 0 ||
+		    file_metadata->schema()->Column(0)->max_repetition_level() != 0) {
+			log_error("Unsupported Parquet row groups or timestamp column");
+			return nullptr;
+		}
 
 		for (int r = 0; r < num_row_groups; ++r) {
 

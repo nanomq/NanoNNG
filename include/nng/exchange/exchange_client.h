@@ -43,6 +43,8 @@ NNG_DECL int nng_exchange_client_open(nng_socket *sock);
 typedef int (*nng_exchange_mqtt_publish_fn)(const char *topic, const void *payload,
     uint32_t len, uint8_t qos, bool retain);
 
+/* A callback must return promptly and must not call this setter recursively.
+ * Clearing it waits for the current call and interrupts replay pacing. */
 NNG_DECL void nng_exchange_set_mqtt_publish_fn(nng_exchange_mqtt_publish_fn fn);
 
 /* Parsed form of: replay-<start_key>-<end_key>-<interval_ms>-<pub_topic> */

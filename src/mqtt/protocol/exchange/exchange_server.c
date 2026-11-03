@@ -38,6 +38,9 @@ typedef struct exchange_pipe_s         exchange_pipe_t;
 static nng_aio *query_reset_aio = NULL;
 static nng_atomic_int *query_limit = NULL;
 static nng_exchange_mqtt_publish_fn g_mqtt_publish_fn = NULL;
+/* Replay/control only: no MQTT publish or stream encode path takes this lock.
+ * Clearing the callback also waits for an in-flight publish to finish. */
+static nni_mtx replay_publish_lock = NNI_MTX_INITIALIZER;
 
 #define REPLAY_CMD_PREFIX     "replay-"
 #define REPLAY_CMD_PREFIX_LEN 7
@@ -140,7 +143,9 @@ static void query_send_eof(nng_socket *sock, nng_aio *aio, int pcode, int rcode)
 void
 nng_exchange_set_mqtt_publish_fn(nng_exchange_mqtt_publish_fn fn)
 {
+	nni_mtx_lock(&replay_publish_lock);
 	g_mqtt_publish_fn = fn;
+	nni_mtx_unlock(&replay_publish_lock);
 }
 
 void
@@ -230,15 +235,34 @@ query_send_replay_summary(nng_socket *sock, uint32_t sent, uint32_t failed,
 		return;
 	}
 	n = snprintf(buf, sizeof(buf), "replay_ok,%u,%u,%u", sent, failed, total);
-	if (n > 0) {
-		nng_msg_append(msg, buf, (size_t) n);
-	}
-	nng_sendmsg(*sock, msg, 0);
+	if (n <= 0 || nng_msg_append(msg, buf, (size_t) n) != 0 ||
+	    nng_sendmsg(*sock, msg, 0) != 0) nng_msg_free(msg);
 }
 
 #if defined(SUPP_PARQUET)
 static inline void parquet_datas_ret_free(
     parquet_data_ret **parquet_datas, uint32_t size);
+
+static bool
+replay_ready(exchange_sock_t *s)
+{
+	nni_mtx_lock(&replay_publish_lock);
+	bool ready = g_mqtt_publish_fn != NULL;
+	nni_mtx_unlock(&replay_publish_lock);
+	return ready && !nni_atomic_get_bool(&s->closed);
+}
+
+static bool
+replay_wait(exchange_sock_t *s, uint64_t delay)
+{
+	while (replay_ready(s)) {
+		if (delay == 0) return true;
+		nng_duration step = delay > 50 ? 50 : (nng_duration) delay;
+		nng_msleep(step);
+		delay -= step;
+	}
+	return false;
+}
 
 static void
 query_replay(exchange_sock_t *s, const nng_exchange_replay_cmd *cmd, int rc[2])
@@ -257,7 +281,7 @@ query_replay(exchange_sock_t *s, const nng_exchange_replay_cmd *cmd, int rc[2])
 	rc[0] = EXCHANGE_ERR_OK;
 	rc[1] = EXCHANGE_ERR_OK;
 
-	if (g_mqtt_publish_fn == NULL) {
+	if (!replay_ready(s)) {
 		log_error("replay: mqtt publish callback not registered");
 		rc[0] = EXCHANGE_ERR_NOT_READY;
 		query_send_replay_summary(s->pair0_sock, 0, 0, 0);
@@ -304,26 +328,25 @@ query_replay(exchange_sock_t *s, const nng_exchange_replay_cmd *cmd, int rc[2])
 			}
 
 			ts = ret->ts[row];
+			uint64_t delay = 0;
 			if (have_prev) {
-				if (cmd->interval_ms > 0) {
-					nng_msleep((nng_duration) cmd->interval_ms);
-				} else if (ts >= prev_ts) {
-					uint64_t delta = ts - prev_ts;
-					if (delta > 0) {
-						if (delta > (uint64_t) INT32_MAX) {
-							delta = (uint64_t) INT32_MAX;
-						}
-						nng_msleep((nng_duration) delta);
-					}
-				} else {
-					log_warn("replay: non-monotonic ts "
-					         "prev=%" PRIu64 " cur=%" PRIu64,
-					    prev_ts, ts);
-				}
+				if (cmd->interval_ms > 0) delay = cmd->interval_ms;
+				else if (ts >= prev_ts) delay = ts - prev_ts;
+				else log_warn("replay: non-monotonic timestamps");
 			}
-
+			if (!replay_wait(s, delay)) {
+				rc[0] = EXCHANGE_ERR_NOT_READY;
+				goto done;
+			}
+			nni_mtx_lock(&replay_publish_lock);
+			if (g_mqtt_publish_fn == NULL || nni_atomic_get_bool(&s->closed)) {
+				nni_mtx_unlock(&replay_publish_lock);
+				rc[0] = EXCHANGE_ERR_NOT_READY;
+				goto done;
+			}
 			prv = g_mqtt_publish_fn(cmd->pub_topic, pkt->data,
 			    pkt->size, 0, false);
+			nni_mtx_unlock(&replay_publish_lock);
 			total++;
 			if (prv == 0) {
 				sent++;
@@ -337,6 +360,7 @@ query_replay(exchange_sock_t *s, const nng_exchange_replay_cmd *cmd, int rc[2])
 		}
 	}
 
+done:
 	parquet_datas_ret_free(parquet_datas, file_count);
 	query_send_replay_summary(s->pair0_sock, sent, failed, total);
 	log_info("replay done sent=%u failed=%u total=%u", sent, failed, total);
