@@ -10,6 +10,9 @@
 #ifndef NNG_ARROW_VERSION_MAJOR
 #define NNG_ARROW_VERSION_MAJOR 14
 #endif
+#if NNG_ARROW_VERSION_MAJOR >= 22
+#include <arrow/util/secure_string.h>
+#endif
 
 #include "nng/supplemental/nanolib/log.h"
 #include "nng/supplemental/nanolib/md5.h"
@@ -86,6 +89,29 @@ atomic_bool is_available = false;
 
 #define UINT64_MAX_DIGITS 20
 
+#if NNG_ARROW_VERSION_MAJOR >= 22
+static arrow::util::SecureString
+parquet_make_secure_string(const char *key)
+{
+	std::string key_str(key);
+	return arrow::util::SecureString(std::move(key_str));
+}
+
+class UniformKeyRetriever : public parquet::DecryptionKeyRetriever {
+	arrow::util::SecureString key_;
+
+public:
+	explicit UniformKeyRetriever(const char *key)
+	    : key_(parquet_make_secure_string(key))
+	{
+	}
+	arrow::util::SecureString
+	GetKey(const std::string &) override
+	{
+		return key_;
+	}
+};
+#else
 class UniformKeyRetriever : public parquet::DecryptionKeyRetriever {
 	std::string key_;
 
@@ -97,6 +123,7 @@ public:
 		return key_;
 	}
 };
+#endif
 
 parquet_file_manager file_manager;
 CircularQueue        parquet_queue;
@@ -451,13 +478,23 @@ parquet_set_encryption(char **schema_arr, uint32_t schema_len, conf_parquet *con
 		const char *col_name = schema_arr[i];
 		parquet::ColumnEncryptionProperties::Builder col_builder(
 		    col_name);
+#if NNG_ARROW_VERSION_MAJOR >= 22
+		col_builder.key(parquet_make_secure_string(conf->encryption.key))
+		    ->key_metadata("col_key_metadata");
+#else
 		col_builder.key(conf->encryption.key)
 		    ->key_metadata("col_key_metadata");
+#endif
 		column_encryption_map[col_name] = col_builder.build();
 	}
 
+#if NNG_ARROW_VERSION_MAJOR >= 22
+	parquet::FileEncryptionProperties::Builder file_encryption_builder(
+	    parquet_make_secure_string(conf->encryption.key));
+#else
 	parquet::FileEncryptionProperties::Builder file_encryption_builder(
 	    conf->encryption.key);
+#endif
 	auto *enc_builder =
 	    file_encryption_builder
 	        .footer_key_metadata(conf->encryption.key_id)
@@ -1123,6 +1160,16 @@ parquet_read_set_property(
 {
 	if (key != NULL && strlen(key) > 0) {
 		parquet::FileDecryptionProperties::Builder builder;
+#if NNG_ARROW_VERSION_MAJOR >= 22
+		shared_ptr<parquet::FileDecryptionProperties>
+		    decryption_configuration =
+		        builder.footer_key(parquet_make_secure_string(key))
+		            ->key_retriever(
+		                std::make_shared<UniformKeyRetriever>(key))
+		            ->build();
+		reader_properties.file_decryption_properties(
+		    decryption_configuration);
+#else
 		shared_ptr<parquet::FileDecryptionProperties>
 		    decryption_configuration =
 		        builder.footer_key(key)
@@ -1132,6 +1179,7 @@ parquet_read_set_property(
 		// Arrow <22 requires a deep clone before attaching to reader props.
 		reader_properties.file_decryption_properties(
 		    decryption_configuration->DeepClone());
+#endif
 		return true;
 	}
 	return false;

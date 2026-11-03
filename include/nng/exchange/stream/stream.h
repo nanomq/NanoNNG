@@ -51,6 +51,10 @@ struct parquet_data {
 	uint64_t              *ts;
 	char                 **schema;
 	parquet_data_packet ***payload_arr;
+	bool payload_borrowed;
+	bool ts_borrowed;
+	bool schema_borrowed;
+	bool packets_contiguous;
 };
 
 NNG_DECL parquet_data *parquet_data_alloc(char **schema,
@@ -60,6 +64,10 @@ NNG_DECL parquet_data *parquet_data_alloc(char **schema,
 								  uint32_t row_len);
 
 NNG_DECL void parquet_data_free(parquet_data *data);
+NNG_DECL void parquet_data_payloads_borrowed(parquet_data *data);
+NNG_DECL void parquet_data_ts_borrowed(parquet_data *data);
+NNG_DECL void parquet_data_schema_borrowed(parquet_data *data);
+NNG_DECL void parquet_data_packets_contiguous(parquet_data *data);
 #endif
 
 struct stream_data_out {

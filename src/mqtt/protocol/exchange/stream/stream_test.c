@@ -687,7 +687,36 @@ void test_stream_multiple_elements(void)
 // Test List
 // ============================================================================
 
+/* The same ownership contract must hold with and without Arrow/Parquet. */
+static void test_raw_borrowed_legacy_views(void)
+{
+	uint64_t keys[] = { 11, 22 };
+	uint8_t first[] = { 1, 2, 3 };
+	uint8_t second[] = { 4, 5 };
+	void *payloads[] = { first, second };
+	uint32_t lens[] = { sizeof(first), sizeof(second) };
+	struct stream_data_in input = { 0 };
+	input.datas = payloads;
+	input.lens = lens;
+	input.keys = keys;
+	input.len = 2;
+
+	for (int pass = 0; pass < 2; pass++) {
+		struct stream_data_out *out = raw_encode(&input);
+		NUTS_TRUE(out != NULL);
+		NUTS_TRUE(out->ts == keys);
+		NUTS_TRUE(out->payload_arr[0][0]->data == first);
+		NUTS_TRUE(out->payload_arr[0][1]->data == second);
+		NUTS_TRUE(out->payload_arr[0][1] == out->payload_arr[0][0] + 1);
+		NUTS_TRUE(strcmp(out->schema[0], "ts") == 0);
+		NUTS_TRUE(strcmp(out->schema[1], "data") == 0);
+		parquet_data_free((parquet_data *) out);
+		NUTS_TRUE(keys[0] == 11 && first[0] == 1 && second[0] == 4);
+	}
+}
+
 NUTS_TESTS = {
+	{ "raw borrowed legacy views", test_raw_borrowed_legacy_views },
 	{ "stream sys basic test", test_stream_sys_basic },
 	{ "stream sys double init", test_stream_sys_double_init },
 	{ "stream sys double fini", test_stream_sys_double_fini },

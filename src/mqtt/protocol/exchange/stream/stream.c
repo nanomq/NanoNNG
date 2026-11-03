@@ -307,62 +307,61 @@ void stream_sys_fini(void)
 parquet_data *parquet_data_alloc(char **schema, parquet_data_packet ***payload_arr,
     uint64_t *ts, uint32_t col_len, uint32_t row_len)
 {
-	if (payload_arr == NULL || schema == NULL || col_len == 0 ||
-	    row_len == 0) {
-		log_error("payload || schema should not be NULL, col || row "
-		          "len should't == 0");
-	}
-	parquet_data *data = nng_alloc(sizeof(parquet_data));
-	if (data == NULL) {
-		return NULL; // Memory allocation failed
-	}
-	data->ts          = ts;
-	data->col_len     = col_len + 1;
-	data->row_len     = row_len;
-	data->schema      = schema;
+	parquet_data *data = nng_zalloc(sizeof(*data));
+	if (data == NULL) return NULL;
+	data->ts = ts;
+	data->col_len = col_len + 1;
+	data->row_len = row_len;
+	data->schema = schema;
 	data->payload_arr = payload_arr;
 	return data;
 }
 
+void parquet_data_payloads_borrowed(parquet_data *data)
+{
+	if (data) data->payload_borrowed = true;
+}
+void parquet_data_ts_borrowed(parquet_data *data)
+{
+	if (data) data->ts_borrowed = true;
+}
+void parquet_data_schema_borrowed(parquet_data *data)
+{
+	if (data) data->schema_borrowed = true;
+}
+void parquet_data_packets_contiguous(parquet_data *data)
+{
+	if (data) data->packets_contiguous = true;
+}
+
 void parquet_data_free(parquet_data *data)
 {
-	if (data) {
-		for (uint32_t c = 0; c < data->col_len - 1; c++) {
-			if (data->schema[c] != NULL) {
-				nng_free(data->schema[c], strlen(data->schema[c]));
-			}
+	if (data == NULL) return;
+	for (uint32_t c = 0; c < data->col_len - 1; c++) {
+		parquet_data_packet **column = data->payload_arr[c];
+		if (column == NULL) continue;
+		if (data->packets_contiguous) {
+			nng_free(column[0], data->row_len * sizeof(parquet_data_packet));
+		} else {
 			for (uint32_t r = 0; r < data->row_len; r++) {
-				parquet_data_packet *payload =
-				    data->payload_arr[c][r];
-				if (payload != NULL) {
-					if (payload->data != NULL && payload->size > 0) {
-						nng_free(payload->data, payload->size);
-					}
-					nng_free(payload, sizeof(parquet_data_packet));
+				parquet_data_packet *packet = column[r];
+				if (packet == NULL) continue;
+				if (!data->payload_borrowed && packet->data && packet->size) {
+					nng_free(packet->data, packet->size);
 				}
-			}
-			if (data->payload_arr[c] != NULL) {
-				nng_free(data->payload_arr[c],
-				    data->row_len * sizeof(parquet_data_packet *));
+				nng_free(packet, sizeof(*packet));
 			}
 		}
-
-		if (data->schema[data->col_len - 1] != NULL) {
-			nng_free(data->schema[data->col_len - 1],
-			    strlen(data->schema[data->col_len - 1]));
-		}
-		if (data->schema != NULL) {
-			nng_free(data->schema, data->col_len * sizeof(char *));
-		}
-		if (data->ts != NULL) {
-			nng_free(data->ts, data->row_len * sizeof(uint64_t));
-		}
-		if (data->payload_arr != NULL) {
-			nng_free(data->payload_arr,
-			    data->col_len * sizeof(parquet_data_packet **));
-		}
-		nng_free(data, sizeof(parquet_data));
+		nng_free(column, data->row_len * sizeof(*column));
 	}
-	return;
+	if (!data->schema_borrowed) {
+		for (uint32_t c = 0; c < data->col_len; c++) {
+			if (data->schema[c]) nng_free(data->schema[c], strlen(data->schema[c]) + 1);
+		}
+		nng_free(data->schema, data->col_len * sizeof(char *));
+	}
+	if (!data->ts_borrowed) nng_free(data->ts, data->row_len * sizeof(uint64_t));
+	nng_free(data->payload_arr, (data->col_len - 1) * sizeof(*data->payload_arr));
+	nng_free(data, sizeof(*data));
 }
 #endif
