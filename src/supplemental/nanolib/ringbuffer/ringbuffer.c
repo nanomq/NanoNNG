@@ -915,6 +915,13 @@ int ringBuffer_set_fullOp(ringBuffer_t *rb, enum fullOption fullOp)
 	return 0;
 }
 
+/* Logical slot i lives at (head + i) % cap, including after the ring wraps. */
+static unsigned int
+ring_logical_index(const ringBuffer_t *rb, unsigned int logical)
+{
+	return (rb->head + logical) % rb->cap;
+}
+
 int ringBuffer_enqueue(ringBuffer_t *rb,
 					   uint64_t key,
 					   void *data,
@@ -961,6 +968,20 @@ int ringBuffer_enqueue(ringBuffer_t *rb,
 				return -1;
 			}
 		}
+	}
+
+	/* Key-range searches rely on keys being non-decreasing along the
+	 * logical sequence. Reject a key that would break that order, equal
+	 * keys are allowed. Checked after full handling on purpose: the
+	 * RB_FULL_RETURN/RB_FULL_FILE paths drain the ring first, which
+	 * legitimately restarts the key sequence. */
+	if (rb->size > 0 &&
+	    key < rb->msgs[ring_logical_index(rb, rb->size - 1)].key) {
+		log_error("Ring buffer key %llu is smaller than the last key %llu, enqueue rejected\n",
+		    (unsigned long long) key,
+		    (unsigned long long) rb->msgs[ring_logical_index(rb, rb->size - 1)].key);
+		nng_mtx_unlock(rb->ring_lock);
+		return -1;
 	}
 
 	ringBufferMsg_t *msg = &rb->msgs[rb->tail];
@@ -1162,16 +1183,10 @@ int ringBuffer_search_msg_by_key(ringBuffer_t *rb, uint64_t key, nng_msg **msg)
 	return -1;
 }
 
-/* Logical slot i lives at (head + i) % cap, including after the ring wraps. */
-static unsigned int
-ring_logical_index(const ringBuffer_t *rb, unsigned int logical)
-{
-	return (rb->head + logical) % rb->cap;
-}
-
 /*
- * Binary search over the live range. Keys are ordered along the logical
- * sequence, so a wrapped ring (head != 0) is searched the same way.
+ * Binary search over the live range. Keys are non-decreasing along the
+ * logical sequence (enforced by ringBuffer_enqueue), so a wrapped ring
+ * (head != 0) is searched the same way.
  */
 int ringBuffer_search_msgs_fuzz(ringBuffer_t *rb,
 								uint64_t start,
@@ -1197,6 +1212,8 @@ int ringBuffer_search_msgs_fuzz(ringBuffer_t *rb,
 		return -1;
 	}
 
+	/* Keys are non-decreasing along the live range, so the endpoints
+	 * are the min/max keys: only fully disjoint ranges are rejected. */
 	first_key = rb->msgs[rb->head].key;
 	last_key  = rb->msgs[ring_logical_index(rb, rb->size - 1)].key;
 	if (start > end || start > last_key || end < first_key) {
