@@ -110,6 +110,9 @@ int ringBuffer_init(ringBuffer_t **rb,
 					unsigned int cap,
 					enum fullOption fullOp,
 					unsigned long long expiredAt);
+/* Keys must be enqueued in non-decreasing order; the key-range searches
+ * (e.g. ringBuffer_search_msgs_fuzz) rely on it. Enqueuing a key smaller
+ * than the last live key fails with -1. */
 int ringBuffer_enqueue(ringBuffer_t *rb,
 					   uint64_t key,
 					   void *data,
