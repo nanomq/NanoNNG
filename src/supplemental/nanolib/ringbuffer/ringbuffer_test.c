@@ -1,6 +1,8 @@
 #include "nng/supplemental/nanolib/ringbuffer.h"
+#include "nng/exchange/stream/raw_stream.h"
 #include "nng/exchange/stream/stream.h"
 #include "nng/mqtt/mqtt_client.h"
+#include "core/nng_impl.h"
 #include <nuts.h>
 #include <string.h>
 
@@ -672,6 +674,117 @@ void test_ringBuffer_hook_style_msg_payload(void)
 	NUTS_TRUE(ringBuffer_release(rb) == 0);
 }
 
+/* The query's RAW output aliases message payloads. Exercise a completed
+ * flush both before encode and between encode/decode; neither the ring
+ * nor the writer owns these messages when the query finally reads them. */
+void test_ringBuffer_retained_query_survives_flush(void)
+{
+	for (int flush_before_encode = 0; flush_before_encode < 2;
+	    flush_before_encode++) {
+		ringBuffer_t *rb = NULL;
+		nng_msg **query = NULL;
+		nng_msg **flush = NULL;
+		uint32_t count = 0;
+		unsigned int flushed = 0;
+		uint8_t payload[4096];
+		void *payloads[2];
+		uint32_t lens[2];
+		uint64_t keys[2] = { 10, 20 };
+		struct stream_data_in input = { 0 };
+		struct stream_data_out *encoded = NULL;
+		struct parquet_data_ret projection = { 0 };
+		struct stream_decoded_data *decoded = NULL;
+
+		memset(payload, 0x5a, sizeof(payload));
+		NUTS_TRUE(ringBuffer_init(&rb, 4, RB_FULL_NONE, -1) == 0);
+		for (uint32_t i = 0; i < 2; i++) {
+			nng_msg *msg = alloc_hook_style_msg("a/b", payload,
+			    sizeof(payload), keys[i]);
+			NUTS_TRUE(msg != NULL);
+			NUTS_TRUE(ringBuffer_enqueue(rb, keys[i], msg, -1, NULL) == 0);
+		}
+		NUTS_TRUE(ringBuffer_search_msgs_fuzz_retain(rb, 10, 20,
+		    &count, &query) == 0);
+		NUTS_TRUE(count == 2 && query != NULL);
+		for (uint32_t i = 0; i < count; i++) {
+			NUTS_TRUE(nni_msg_shared(query[i]));
+			payloads[i] = stream_msg_payload(query[i], &lens[i]);
+		}
+		input.msgs = (void **) query;
+		input.datas = payloads;
+		input.lens = lens;
+		input.keys = keys;
+		input.len = count;
+		if (!flush_before_encode) {
+			encoded = raw_encode(&input);
+			NUTS_TRUE(encoded != NULL);
+		}
+
+		NUTS_TRUE(ringBuffer_get_and_clean_msgs(rb, &flushed, &flush) == 0);
+		NUTS_TRUE(flushed == count);
+		for (uint32_t i = 0; i < flushed; i++) {
+			nng_msg_free(flush[i]);
+		}
+		nng_free(flush, sizeof(nng_msg *) * flushed);
+		NUTS_TRUE(ringBuffer_release(rb) == 0);
+		if (flush_before_encode) {
+			encoded = raw_encode(&input);
+			NUTS_TRUE(encoded != NULL);
+		}
+
+		projection.col_len = encoded->col_len - 1;
+		projection.row_len = encoded->row_len;
+		projection.ts = encoded->ts;
+		projection.schema = encoded->schema + 1;
+		projection.payload_arr = encoded->payload_arr;
+		decoded = raw_decode(&projection);
+		NUTS_TRUE(decoded != NULL);
+		NUTS_TRUE(decoded->len == 2 * sizeof(payload));
+		for (uint32_t i = 0; i < count; i++) {
+			NUTS_TRUE(memcmp((uint8_t *) decoded->data + i * sizeof(payload),
+			    payload, sizeof(payload)) == 0);
+		}
+		stream_decoded_data_free(decoded);
+		parquet_data_free((parquet_data *) encoded);
+		for (uint32_t i = 0; i < count; i++) {
+			nng_msg_free(query[i]);
+		}
+		nng_free(query, sizeof(nng_msg *) * count);
+	}
+}
+
+void test_ringBuffer_retained_query_releases_refs(void)
+{
+	ringBuffer_t *rb = NULL;
+	nng_msg *first = alloc_pub_msg("a/b");
+	nng_msg *second = alloc_pub_msg("a/b");
+	nng_msg **query = NULL;
+	uint32_t count = 0;
+
+	NUTS_TRUE(first != NULL && second != NULL);
+	NUTS_TRUE(ringBuffer_init(&rb, 4, RB_FULL_NONE, -1) == 0);
+	NUTS_TRUE(ringBuffer_enqueue(rb, 10, first, -1, NULL) == 0);
+	NUTS_TRUE(ringBuffer_enqueue(rb, 20, second, -1, NULL) == 0);
+	NUTS_TRUE(ringBuffer_search_msgs_fuzz_retain(rb, 10, 20,
+	    &count, &query) == 0);
+	NUTS_TRUE(count == 2 && query != NULL);
+	for (uint32_t i = 0; i < count; i++) {
+		nng_msg_free(query[i]);
+	}
+	nng_free(query, sizeof(nng_msg *) * count);
+	NUTS_TRUE(!nni_msg_shared(first) && !nni_msg_shared(second));
+
+	/* A malformed later slot must roll back references already acquired. */
+	rb->msgs[1].data = NULL;
+	query = NULL;
+	NUTS_TRUE(ringBuffer_search_msgs_fuzz_retain(rb, 10, 20,
+	    &count, &query) != 0);
+	NUTS_TRUE(count == 0 && query == NULL);
+	NUTS_TRUE(!nni_msg_shared(first));
+	rb->msgs[1].data = second;
+	NUTS_TRUE(ringBuffer_release(rb) == 0);
+}
+
 /* CodeRabbit scenario: after the ring wraps, a range that matches keys
  * enqueued later must still be found. Out-of-order keys are now rejected
  * at enqueue, so the ordered keys stay searchable. */
@@ -742,6 +855,8 @@ NUTS_TESTS = {
 	{ "Ring buffer search msgs fuzz", test_ringBuffer_search_msgs_fuzz },
 	{ "Ring buffer fuzz keeps mqtt payload", test_ringBuffer_fuzz_keeps_mqtt_payload },
 	{ "Ring buffer hook style msg payload", test_ringBuffer_hook_style_msg_payload },
+	{ "Ring buffer retained query survives flush", test_ringBuffer_retained_query_survives_flush },
+	{ "Ring buffer retained query releases refs", test_ringBuffer_retained_query_releases_refs },
 	{ "Ring buffer enqueue rejects out of order key", test_ringBuffer_enqueue_rejects_out_of_order_key },
 	{ "Ring buffer get and clean up test", test_ringBuffer_get_and_clean_up},
 	{ NULL, NULL },

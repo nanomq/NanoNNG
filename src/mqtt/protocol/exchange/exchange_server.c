@@ -264,6 +264,19 @@ static struct stream_data_in *ringbus_stream_data_in_init(uint32_t count, nng_ms
 	return stream_data;
 }
 
+/* A query projection owns only these arrays; their packet and schema
+ * entries are views into stream_data_out. */
+static void ringbus_parquet_data_ret_free(struct parquet_data_ret *data)
+{
+	if (data == NULL) {
+		return;
+	}
+	nng_free(data->schema, sizeof(char *) * data->col_len);
+	nng_free(data->payload_arr, sizeof(parquet_data_packet **) * data->col_len);
+	nng_free(data->ts, sizeof(uint64_t) * data->row_len);
+	nng_free(data, sizeof(*data));
+}
+
 static struct parquet_data_ret *ringbus_parquet_data_ret_init(struct stream_data_out *stream_data_out, struct cmd_data *cmd_data)
 {
 	uint32_t new_index = 0;
@@ -297,9 +310,14 @@ static struct parquet_data_ret *ringbus_parquet_data_ret_init(struct stream_data
 
 	parquet_data_ret->col_len = new_col_len;
 	parquet_data_ret->row_len = stream_data_out->row_len;
-	parquet_data_ret->payload_arr = nng_alloc(sizeof(parquet_data_packet *) * new_col_len);
+	parquet_data_ret->payload_arr = nng_alloc(sizeof(parquet_data_packet **) * new_col_len);
 	parquet_data_ret->schema = nng_alloc(sizeof(char *) * new_col_len);
 	parquet_data_ret->ts = nng_alloc(sizeof(uint64_t) * stream_data_out->row_len);
+	if (parquet_data_ret->payload_arr == NULL ||
+	    parquet_data_ret->schema == NULL || parquet_data_ret->ts == NULL) {
+		ringbus_parquet_data_ret_free(parquet_data_ret);
+		return NULL;
+	}
 	memcpy(parquet_data_ret->ts, stream_data_out->ts, sizeof(uint64_t) * stream_data_out->row_len);
 
 	/* Don't copy ts column */
@@ -354,21 +372,21 @@ static struct stream_decoded_data *fuzz_search_result_cat(nng_msg **msgList,
 	decoded_data = stream_decode(stream_type, parquet_data_ele);
 	if (decoded_data == NULL) {
 		log_error("stream_decode failed!");
-		parquet_data_ret_free(parquet_data_ele);
-		parquet_data_free((parquet_data *)stream_data_out);
-		ringbus_stream_data_in_free(stream_data);
-		return NULL;
 	}
 
-	ringbus_stream_data_in_free(stream_data);
+	ringbus_parquet_data_ret_free(parquet_data_ele);
 	parquet_data_free((parquet_data *)stream_data_out);
-
-	nng_free(parquet_data_ele->schema, sizeof(char *) * parquet_data_ele->col_len);
-	nng_free(parquet_data_ele->payload_arr, sizeof(parquet_data_packet *) * parquet_data_ele->col_len);
-	nng_free(parquet_data_ele->ts, sizeof(uint64_t) * parquet_data_ele->row_len);
-	nng_free(parquet_data_ele, sizeof(struct parquet_data_ret));
+	ringbus_stream_data_in_free(stream_data);
 
 	return decoded_data;
+}
+
+static void ringbus_query_msgs_free(nng_msg **msgs, uint32_t count)
+{
+	for (uint32_t i = 0; i < count; i++) {
+		nng_msg_free(msgs[i]);
+	}
+	nng_free(msgs, sizeof(nng_msg *) * count);
 }
 
 static void query_send_sync(exchange_sock_t *s, struct cmd_data *cmd_data, int rc[2])
@@ -378,14 +396,15 @@ static void query_send_sync(exchange_sock_t *s, struct cmd_data *cmd_data, int r
 	nng_msg **msgList = NULL;
 	struct stream_decoded_data *ringbus_decoded_data = NULL;
 
-	ret = exchange_client_get_msgs_fuzz(s, cmd_data->start_key, cmd_data->end_key, &count, &msgList);
+	ret = ringBuffer_search_msgs_fuzz_retain(s->ex_node->ex->rbs[0],
+	    cmd_data->start_key, cmd_data->end_key, &count, &msgList);
 	if (ret == 0 && count != 0 && msgList != NULL) {
 		ringbus_decoded_data = fuzz_search_result_cat(msgList, count, s->ex_node->ex->streamType, cmd_data);
 		if (ringbus_decoded_data == NULL) {
 			rc[1] = EXCHANGE_ERR_RB_DECODE;
 			log_error("get decoded data from ringbus failed!");
 		}
-		nng_free(msgList, sizeof(nng_msg *) * count);
+		ringbus_query_msgs_free(msgList, count);
 	} else {
 		rc[1] = EXCHANGE_ERR_NONE;
 		log_warn("exchange_client_get_msgs_fuzz failed! count: %d", count);
@@ -530,14 +549,15 @@ static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data, int 
 	}
 #endif
 
-	ret = exchange_client_get_msgs_fuzz(s, cmd_data->start_key, cmd_data->end_key, &count, &msgList);
+	ret = ringBuffer_search_msgs_fuzz_retain(s->ex_node->ex->rbs[0],
+	    cmd_data->start_key, cmd_data->end_key, &count, &msgList);
 	if (ret == 0 && count != 0 && msgList != NULL) {
 		ringbus_decoded_data = fuzz_search_result_cat(msgList, count, s->ex_node->ex->streamType, cmd_data);
 		if (ringbus_decoded_data == NULL) {
 			rc[1] = EXCHANGE_ERR_RB_DECODE;
 			log_error("fuzz_search_result_cat failed!");
 		}
-		nng_free(msgList, sizeof(nng_msg *) * count);
+		ringbus_query_msgs_free(msgList, count);
 	} else {
 		rc[1] = EXCHANGE_ERR_NONE;
 		log_warn("ringbus failed! count: %d", count);
