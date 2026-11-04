@@ -412,7 +412,9 @@ struct conf_parquet {
 	uint64_t                data_page_size;
 	uint64_t                dictionary_page_size;
 	uint32_t                write_batch_size;
-	/* 0: encode the whole drain at once. >0: max MQTT msgs per parquet file. */
+	/* Exchange runtime splits drains before encoding: 0 keeps the whole
+	 * drain, >0 limits MQTT messages per batch. The NNG writer writes that
+	 * encoded batch; its row count may exceed this limit (e.g. CANP). */
 	uint32_t                flush_chunk_msgs;
 	bool                    enable_statistics;
 	bool                    enable_page_checksum;

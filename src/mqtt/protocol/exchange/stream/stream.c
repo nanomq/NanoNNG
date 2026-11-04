@@ -205,32 +205,9 @@ void stream_decoded_data_free(struct stream_decoded_data *data)
 
 void stream_data_out_free(struct stream_data_out *data)
 {
-
-	if (data != NULL) {
-		if (data->ts != NULL) {
-			nng_free(data->ts, data->col_len * sizeof(uint64_t));
-		}
-		if (data->schema != NULL) {
-			for (uint32_t i = 0; i < data->col_len; i++) {
-				nng_free(data->schema[i], strlen(data->schema[i]) + 1);
-			}
-			nng_free(data->schema, data->col_len * sizeof(char *));
-		}
-		if (data->payload_arr != NULL) {
-			for (uint32_t i = 0; i < data->col_len - 1; i++) {
-				if (data->payload_arr[i] != NULL) {
-					for (uint32_t j = 0; j < data->row_len; j++) {
-						nng_free(data->payload_arr[i][j], sizeof(parquet_data_packet));
-					}
-					nng_free(data->payload_arr[i], data->row_len * sizeof(char *));
-				}
-			}
-			nng_free(data->payload_arr, data->col_len * sizeof(char **));
-		}
-		nng_free(data, sizeof(*data));
-	}
-
-	return;
+	/* Codecs return parquet_data_alloc() objects. Use the matching
+	 * allocator and the same ownership rules with Parquet ON and OFF. */
+	parquet_data_free((parquet_data *) data);
 }
 
 void stream_data_in_free(struct stream_data_in *sdata)
@@ -337,31 +314,35 @@ void parquet_data_packets_contiguous(parquet_data *data)
 void parquet_data_free(parquet_data *data)
 {
 	if (data == NULL) return;
-	for (uint32_t c = 0; c < data->col_len - 1; c++) {
+	for (uint32_t c = 0; data->payload_arr && c + 1 < data->col_len; c++) {
 		parquet_data_packet **column = data->payload_arr[c];
 		if (column == NULL) continue;
-		if (data->packets_contiguous) {
-			nng_free(column[0], data->row_len * sizeof(parquet_data_packet));
-		} else {
-			for (uint32_t r = 0; r < data->row_len; r++) {
-				parquet_data_packet *packet = column[r];
-				if (packet == NULL) continue;
-				if (!data->payload_borrowed && packet->data && packet->size) {
-					nng_free(packet->data, packet->size);
-				}
+		for (uint32_t r = 0; r < data->row_len; r++) {
+			parquet_data_packet *packet = column[r];
+			if (packet == NULL) continue;
+			if (!data->payload_borrowed && packet->data != NULL) {
+				nng_free(packet->data, packet->size);
+			}
+			if (!data->packets_contiguous) {
 				nng_free(packet, sizeof(*packet));
 			}
 		}
+		if (data->packets_contiguous && data->row_len != 0) {
+			nng_free(column[0], data->row_len * sizeof(parquet_data_packet));
+		}
 		nng_free(column, data->row_len * sizeof(*column));
 	}
-	if (!data->schema_borrowed) {
+	if (!data->schema_borrowed && data->schema != NULL) {
 		for (uint32_t c = 0; c < data->col_len; c++) {
 			if (data->schema[c]) nng_free(data->schema[c], strlen(data->schema[c]) + 1);
 		}
 		nng_free(data->schema, data->col_len * sizeof(char *));
 	}
 	if (!data->ts_borrowed) nng_free(data->ts, data->row_len * sizeof(uint64_t));
-	nng_free(data->payload_arr, (data->col_len - 1) * sizeof(*data->payload_arr));
+	if (data->payload_arr != NULL) {
+		nng_free(data->payload_arr,
+		    (data->col_len - 1) * sizeof(*data->payload_arr));
+	}
 	nng_free(data, sizeof(*data));
 }
 #endif

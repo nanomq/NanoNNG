@@ -71,11 +71,18 @@ NNG_DECL void parquet_data_packets_contiguous(parquet_data *data);
 #endif
 
 struct stream_data_out {
+	/* Encoded outputs share the parquet_data representation, including
+	 * ownership. Release them with stream_data_out_free() or
+	 * parquet_data_free(), rather than freeing these fields separately. */
 	uint32_t col_len;
 	uint32_t row_len;
 	uint64_t *ts;
 	char **schema;
 	parquet_data_packet ***payload_arr;
+	bool payload_borrowed;
+	bool ts_borrowed;
+	bool schema_borrowed;
+	bool packets_contiguous;
 };
 
 struct stream_data_in {
