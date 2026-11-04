@@ -128,6 +128,14 @@ int ringBuffer_search_msgs_fuzz(ringBuffer_t *rb,
 								uint64_t end,
 								uint32_t *count,
 								nng_msg ***list);
+/* Retain every matched message while holding the ring lock. The caller
+ * must nng_msg_free() each entry and nng_free() the returned array after
+ * finishing all reads, including reads through borrowed encoded payloads. */
+int ringBuffer_search_msgs_fuzz_retain(ringBuffer_t *rb,
+								uint64_t start,
+								uint64_t end,
+								uint32_t *count,
+								nng_msg ***list);
 int ringBuffer_get_and_clean_msgs(ringBuffer_t *rb,
 								  unsigned int *count, nng_msg ***list);
 

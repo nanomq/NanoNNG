@@ -1188,11 +1188,12 @@ int ringBuffer_search_msg_by_key(ringBuffer_t *rb, uint64_t key, nng_msg **msg)
  * logical sequence (enforced by ringBuffer_enqueue), so a wrapped ring
  * (head != 0) is searched the same way.
  */
-int ringBuffer_search_msgs_fuzz(ringBuffer_t *rb,
+static int ringBuffer_search_msgs_fuzz_impl(ringBuffer_t *rb,
 								uint64_t start,
 								uint64_t end,
 								uint32_t *count,
-								nng_msg ***list)
+								nng_msg ***list,
+								bool retain)
 {
 	uint32_t low = 0;
 	uint32_t high = 0;
@@ -1205,6 +1206,8 @@ int ringBuffer_search_msgs_fuzz(ringBuffer_t *rb,
 	if (rb == NULL || count == NULL || list == NULL) {
 		return -1;
 	}
+	*count = 0;
+	*list = NULL;
 
 	nng_mtx_lock(rb->ring_lock);
 	if (rb->size == 0 || rb->cap == 0 || rb->msgs == NULL) {
@@ -1263,6 +1266,7 @@ int ringBuffer_search_msgs_fuzz(ringBuffer_t *rb,
 	*count = end_index - start_index + 1;
 	nng_msg **newList = nng_alloc((*count) * sizeof(nng_msg *));
 	if (newList == NULL) {
+		*count = 0;
 		nng_mtx_unlock(rb->ring_lock);
 		return -1;
 	}
@@ -1271,10 +1275,19 @@ int ringBuffer_search_msgs_fuzz(ringBuffer_t *rb,
 		unsigned int slot = ring_logical_index(rb, i);
 		nng_msg *msg = rb->msgs[slot].data;
 		if (msg == NULL) {
+			if (retain) {
+				for (uint32_t j = start_index; j < i; j++) {
+					nng_msg_free(newList[j - start_index]);
+				}
+			}
 			nng_free(newList, (*count) * sizeof(nng_msg *));
+			*count = 0;
 			nng_mtx_unlock(rb->ring_lock);
 			log_error("msg is NULL and some error occured\n");
 			return -1;
+		}
+		if (retain) {
+			nng_msg_clone(msg);
 		}
 		newList[i - start_index] = msg;
 	}
@@ -1282,6 +1295,18 @@ int ringBuffer_search_msgs_fuzz(ringBuffer_t *rb,
 	*list = newList;
 	nng_mtx_unlock(rb->ring_lock);
 	return 0;
+}
+
+int ringBuffer_search_msgs_fuzz(ringBuffer_t *rb, uint64_t start,
+    uint64_t end, uint32_t *count, nng_msg ***list)
+{
+	return ringBuffer_search_msgs_fuzz_impl(rb, start, end, count, list, false);
+}
+
+int ringBuffer_search_msgs_fuzz_retain(ringBuffer_t *rb, uint64_t start,
+    uint64_t end, uint32_t *count, nng_msg ***list)
+{
+	return ringBuffer_search_msgs_fuzz_impl(rb, start, end, count, list, true);
 }
 
 int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint64_t key, uint32_t count, nng_msg ***list)
