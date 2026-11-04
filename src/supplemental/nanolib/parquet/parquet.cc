@@ -18,6 +18,7 @@
 #include "nng/supplemental/nanolib/md5.h"
 #include "nng/supplemental/nanolib/parquet.h"
 #include "nng/supplemental/nanolib/queue.h"
+#include "nng/exchange/stream/stream.h"
 #include "parquet_file_manager.h"
 #include <assert.h>
 #include <atomic>
@@ -28,7 +29,9 @@
 #endif
 #include <inttypes.h>
 #include <cstdint>
+#include <cstddef>
 #include <iostream>
+#include <new>
 #include <string>
 #include <errno.h>
 #include <sys/stat.h>
@@ -72,6 +75,25 @@ struct parquet_data {
 	/* When true, packet structs are one contiguous block per column. */
 	bool packets_contiguous;
 };
+
+/* stream_encode() exposes this object through stream_data_out. Keep
+ * ownership flags in that public view as well as the column metadata. */
+#define CHECK_STREAM_OUTPUT_FIELD(field)                                      \
+	static_assert(offsetof(parquet_data, field) ==                          \
+	        offsetof(struct stream_data_out, field),                       \
+	    "stream_data_out/parquet_data layout mismatch: " #field)
+static_assert(sizeof(parquet_data) == sizeof(struct stream_data_out),
+    "stream_data_out/parquet_data size mismatch");
+CHECK_STREAM_OUTPUT_FIELD(col_len);
+CHECK_STREAM_OUTPUT_FIELD(row_len);
+CHECK_STREAM_OUTPUT_FIELD(ts);
+CHECK_STREAM_OUTPUT_FIELD(schema);
+CHECK_STREAM_OUTPUT_FIELD(payload_arr);
+CHECK_STREAM_OUTPUT_FIELD(payload_borrowed);
+CHECK_STREAM_OUTPUT_FIELD(ts_borrowed);
+CHECK_STREAM_OUTPUT_FIELD(schema_borrowed);
+CHECK_STREAM_OUTPUT_FIELD(packets_contiguous);
+#undef CHECK_STREAM_OUTPUT_FIELD
 
 
 #define DO_IT_IF_NOT_NULL(func, arg1, arg2) \
@@ -280,7 +302,7 @@ parquet_data_alloc(char **schema, parquet_data_packet ***payload_arr,
 		log_error("payload || schema should not be NULL, col || row "
 		          "len should't == 0");
 	}
-	parquet_data *data = new parquet_data;
+	parquet_data *data = new (std::nothrow) parquet_data;
 	if (data == NULL) {
 		return NULL; // Memory allocation failed
 	}
@@ -331,59 +353,65 @@ parquet_data_packets_contiguous(parquet_data *data)
 void
 parquet_data_free(parquet_data *data)
 {
-	if (data) {
-		for (uint32_t c = 0; c < data->col_len - 1; c++) {
-			if (!data->schema_borrowed) {
-				FREE_IF_NOT_NULL(
-				    data->schema[c], strlen(data->schema[c]));
+	if (data == NULL) return;
+	for (uint32_t c = 0; data->payload_arr && c + 1 < data->col_len; c++) {
+		parquet_data_packet **column = data->payload_arr[c];
+		if (column == NULL) continue;
+		/* Packet layout and payload ownership are independent. */
+		for (uint32_t r = 0; r < data->row_len; r++) {
+			parquet_data_packet *packet = column[r];
+			if (packet == NULL) continue;
+			if (!data->payload_borrowed && packet->data != NULL) {
+				nng_free(packet->data, packet->size);
 			}
-			if (data->packets_contiguous) {
-				/* One block per column; free it once. */
-				if (data->payload_arr[c] != NULL &&
-				    data->payload_arr[c][0] != NULL) {
-					nng_free(data->payload_arr[c][0],
-					    data->row_len *
-					        sizeof(parquet_data_packet));
-				}
-			} else {
-				for (uint32_t r = 0; r < data->row_len; r++) {
-					parquet_data_packet *payload =
-					    data->payload_arr[c][r];
-					if (!data->payload_borrowed && payload &&
-					    payload->data && payload->size > 0) {
-						nng_free(payload->data, payload->size);
-					}
-					FREE_IF_NOT_NULL(payload, sizeof(*payload));
-				}
+			if (!data->packets_contiguous) {
+				nng_free(packet, sizeof(*packet));
 			}
-			FREE_IF_NOT_NULL(data->payload_arr[c], data->row_len);
 		}
-
-		if (!data->schema_borrowed) {
-			FREE_IF_NOT_NULL(data->schema[data->col_len - 1],
-			    strlen(data->schema[data->col_len - 1]));
-			FREE_IF_NOT_NULL(data->schema, data->col_len);
+		if (data->packets_contiguous && data->row_len != 0) {
+			nng_free(column[0], data->row_len * sizeof(parquet_data_packet));
 		}
-		if (!data->ts_borrowed) {
-			FREE_IF_NOT_NULL(data->ts, data->row_len);
-		}
-		FREE_IF_NOT_NULL(data->payload_arr, data->col_len);
-		delete data;
+		nng_free(column, data->row_len * sizeof(*column));
 	}
+	if (!data->schema_borrowed && data->schema != NULL) {
+		for (uint32_t c = 0; c < data->col_len; c++) {
+			if (data->schema[c] != NULL) {
+				nng_free(data->schema[c], strlen(data->schema[c]) + 1);
+			}
+		}
+		nng_free(data->schema, data->col_len * sizeof(*data->schema));
+	}
+	if (!data->ts_borrowed) {
+		nng_free(data->ts, data->row_len * sizeof(*data->ts));
+	}
+	if (data->payload_arr != NULL) {
+		nng_free(data->payload_arr,
+		    (data->col_len - 1) * sizeof(*data->payload_arr));
+	}
+	delete data;
 }
 
 parquet_object *
 parquet_object_alloc(parquet_data *data, parquet_type type, nng_aio *aio,
     void *aio_arg, char *topic)
 {
-	parquet_object *elem = new parquet_object;
+	parquet_object *elem = new (std::nothrow) parquet_object;
+	if (elem == NULL) {
+		return NULL;
+	}
+	parquet_file_ranges *ranges = new (std::nothrow) parquet_file_ranges;
+	if (ranges == NULL) {
+		/* Allocation failure does not transfer ownership of data. */
+		delete elem;
+		return NULL;
+	}
 	elem->data           = data;
 	elem->type           = type;
 	elem->aio            = aio;
 	elem->aio_arg        = aio_arg;
 	elem->topic          = topic;
 	elem->rv             = 0;
-	elem->ranges        = new parquet_file_ranges;
+	elem->ranges        = ranges;
 	elem->ranges->range = NULL;
 	elem->ranges->start = 0;
 	elem->ranges->size  = 0;

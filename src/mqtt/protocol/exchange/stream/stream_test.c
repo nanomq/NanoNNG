@@ -715,7 +715,70 @@ static void test_raw_borrowed_legacy_views(void)
 	}
 }
 
+static void test_raw_output_public_free(void)
+{
+	uint64_t keys[] = { 11, 22 };
+	uint8_t first[] = { 1, 2, 3 };
+	uint8_t second[] = { 4, 5 };
+	void *payloads[] = { first, second };
+	uint32_t lens[] = { sizeof(first), sizeof(second) };
+	struct stream_data_in input = { 0 };
+	input.datas = payloads;
+	input.lens = lens;
+	input.keys = keys;
+	input.len = 2;
+
+	/* Repeat to ensure the first free leaves the static schema intact. */
+	for (int pass = 0; pass < 2; pass++) {
+		struct stream_data_out *out = raw_encode(&input);
+		NUTS_TRUE(out != NULL);
+		NUTS_TRUE(out->payload_borrowed);
+		NUTS_TRUE(out->ts_borrowed);
+		NUTS_TRUE(out->schema_borrowed);
+		NUTS_TRUE(out->packets_contiguous);
+		NUTS_TRUE(strcmp(out->schema[1], "data") == 0);
+		stream_data_out_free(out);
+		NUTS_TRUE(keys[0] == 11 && first[0] == 1 && second[0] == 4);
+	}
+}
+
+static void test_contiguous_owned_payload_free(void)
+{
+	/* LeakSanitizer also checks that both owned payloads are released.
+	 * Exercise the two public destructors with the same representation. */
+	for (int public_stream_free = 0; public_stream_free < 2; public_stream_free++) {
+		char **schema = nng_alloc(2 * sizeof(*schema));
+		uint64_t *ts = nng_alloc(2 * sizeof(*ts));
+		parquet_data_packet ***columns = nng_alloc(sizeof(*columns));
+		parquet_data_packet *packets = nng_zalloc(2 * sizeof(*packets));
+		NUTS_TRUE(schema != NULL && ts != NULL && columns != NULL && packets != NULL);
+		schema[0] = nng_strdup("ts");
+		schema[1] = nng_strdup("data");
+		ts[0] = 1;
+		ts[1] = 2;
+		columns[0] = nng_alloc(2 * sizeof(*columns[0]));
+		NUTS_TRUE(columns[0] != NULL);
+		for (uint32_t r = 0; r < 2; r++) {
+			packets[r].size = r + 3;
+			packets[r].data = nng_alloc(packets[r].size);
+			NUTS_TRUE(packets[r].data != NULL);
+			memset(packets[r].data, (int) r, packets[r].size);
+			columns[0][r] = &packets[r];
+		}
+		parquet_data *out = parquet_data_alloc(schema, columns, ts, 1, 2);
+		NUTS_TRUE(out != NULL);
+		parquet_data_packets_contiguous(out);
+		if (public_stream_free) {
+			stream_data_out_free((struct stream_data_out *) out);
+		} else {
+			parquet_data_free(out);
+		}
+	}
+}
+
 NUTS_TESTS = {
+	{ "raw output public free", test_raw_output_public_free },
+	{ "contiguous owned payload free", test_contiguous_owned_payload_free },
 	{ "raw borrowed legacy views", test_raw_borrowed_legacy_views },
 	{ "stream sys basic test", test_stream_sys_basic },
 	{ "stream sys double init", test_stream_sys_double_init },
