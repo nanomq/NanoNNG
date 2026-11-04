@@ -685,9 +685,14 @@ tls_cancel(nni_aio *aio, void *arg, int rv)
 {
 	tls_conn *conn = arg;
 	nni_mtx_lock(&conn->lock);
-	if (aio == nni_list_first(&conn->recv_queue)) {
+	if ((aio == nni_list_first(&conn->recv_queue)) ||
+	    (aio == nni_list_first(&conn->send_queue))) {
+		// The engine may hold partial TLS state for the head
+		// operation, so the connection cannot continue without it.
+		// A stalled handshake can be waiting on the opposite TCP
+		// direction, so abort both; the failing one then fails the
+		// connection and every queued operation with it.
 		nni_aio_abort(&conn->tcp_recv, rv);
-	} else if (aio == nni_list_first(&conn->send_queue)) {
 		nni_aio_abort(&conn->tcp_send, rv);
 	} else if (nni_aio_list_active(aio)) {
 		nni_aio_list_remove(aio);

@@ -260,6 +260,70 @@ test_tls_concurrent_sends(void)
 	nng_aio_free(aio2);
 }
 
+/** Times out a send on a server stream whose peer never starts the TLS
+ * handshake. Only the TCP receive side is active while the handshake waits
+ * for the ClientHello, so the timeout must abort across directions instead
+ * of hanging. */
+void
+test_tls_send_timeout_stalled_handshake(void)
+{
+	nng_stream_listener *l;
+	nng_stream_dialer *  d;
+	nng_aio *            accept_aio, *dial_aio, *send_aio;
+	nng_stream *         server;
+	nng_stream *         client;
+	nng_tls_config *     c1;
+	char                 addr[32];
+	char                 message[] = "never sent";
+	nng_iov              iov;
+	int                  port;
+
+	NUTS_PASS(nng_aio_alloc(&accept_aio, NULL, NULL));
+	NUTS_PASS(nng_aio_alloc(&dial_aio, NULL, NULL));
+	NUTS_PASS(nng_aio_alloc(&send_aio, NULL, NULL));
+	nng_aio_set_timeout(accept_aio, 5000);
+	nng_aio_set_timeout(dial_aio, 5000);
+	nng_aio_set_timeout(send_aio, 200);
+
+	NUTS_PASS(nng_stream_listener_alloc(&l, "tls+tcp://127.0.0.1:0"));
+	NUTS_PASS(nng_tls_config_alloc(&c1, NNG_TLS_MODE_SERVER));
+	NUTS_PASS(nng_tls_config_own_cert(
+	    c1, nuts_server_crt, nuts_server_key, NULL));
+	NUTS_PASS(nng_stream_listener_set_ptr(l, NNG_OPT_TLS_CONFIG, c1));
+	NUTS_PASS(nng_stream_listener_listen(l));
+	NUTS_PASS(
+	    nng_stream_listener_get_int(l, NNG_OPT_TCP_BOUND_PORT, &port));
+
+	// A plain TCP client never sends a ClientHello.
+	snprintf(addr, sizeof (addr), "tcp://127.0.0.1:%d", port);
+	NUTS_PASS(nng_stream_dialer_alloc(&d, addr));
+
+	nng_stream_listener_accept(l, accept_aio);
+	nng_stream_dialer_dial(d, dial_aio);
+	nng_aio_wait(accept_aio);
+	nng_aio_wait(dial_aio);
+	NUTS_PASS(nng_aio_result(accept_aio));
+	NUTS_PASS(nng_aio_result(dial_aio));
+	NUTS_TRUE((server = nng_aio_get_output(accept_aio, 0)) != NULL);
+	NUTS_TRUE((client = nng_aio_get_output(dial_aio, 0)) != NULL);
+
+	iov.iov_buf = message;
+	iov.iov_len = sizeof(message);
+	NUTS_PASS(nng_aio_set_iov(send_aio, 1, &iov));
+	nng_stream_send(server, send_aio);
+	nng_aio_wait(send_aio);
+	NUTS_FAIL(nng_aio_result(send_aio), NNG_ETIMEDOUT);
+
+	nng_stream_free(server);
+	nng_stream_free(client);
+	nng_stream_dialer_free(d);
+	nng_stream_listener_free(l);
+	nng_tls_config_free(c1);
+	nng_aio_free(accept_aio);
+	nng_aio_free(dial_aio);
+	nng_aio_free(send_aio);
+}
+
 /** Completes a handshake whose server flight exceeds the transport send
  * buffer, so handshake output hits TCP backpressure. The OpenSSL engine
  * pads the flight with a long certificate chain. */
@@ -859,6 +923,8 @@ TEST_LIST = {
 	{ "tls conn refused", test_tls_conn_refused },
 	{ "tls large message", test_tls_large_message },
 	{ "tls concurrent sends", test_tls_concurrent_sends },
+	{ "tls send timeout stalled handshake",
+	    test_tls_send_timeout_stalled_handshake },
 	{ "tls large handshake", test_tls_large_handshake },
 	{ "tls mutual auth", test_tls_mutual_auth },
 	{ "tls mutual auth missing cert", test_tls_mutual_auth_missing_cert },
