@@ -363,13 +363,8 @@ wstran_pipe_recv_cb(void *arg)
 		// parse fixed header (safe because pkt_len bytes are present)
 		ws_msg_adaptor(baseptr + index, new);
 		nni_msg_set_conn_param(new, p->ws_param);
-		// Queue only after processing, so filtered ACKs never enter recvlmq.
-		if (cvector_size(msg_vec) <= nni_lmq_cap(&p->recvlmq)) {
-			cvector_push_back(msg_vec, new);
-		} else {
-			log_warn(" WebSocket msg drop due to full lmq");
-			nni_msg_free(new);
-		}
+		// Apply receive queue capacity after filtering ACKs below.
+		cvector_push_back(msg_vec, new);
 		index += pkt_len;
 	}
 
@@ -1144,7 +1139,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			// Match TCP: charge each QoS transmission, including retries.
 			if (qos > 0) {
 				if (p->qsend_quota == 0) {
-					break;
+					continue;
 				}
 				p->qsend_quota--;
 			}
