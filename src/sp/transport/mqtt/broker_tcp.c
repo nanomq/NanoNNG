@@ -728,9 +728,7 @@ tcptran_pipe_recv_cb(void *arg)
 		}
 	}
 
-	// We read a message completely.  Let the user know the good news. use
-	// as application message callback of users
-	nni_aio_list_remove(aio);
+	// Keep the receive request queued until the packet is accepted.
 	msg      = p->rxmsg;
 	type     = p->rxlen[0] & 0xf0;
 	p->rxmsg = NULL;
@@ -837,6 +835,11 @@ tcptran_pipe_recv_cb(void *arg)
 		} else {
 			// false warning if there are multiple topic matches of 1 msg
 			log_info("ACK failed! qos msg %d not found!", ackid);
+			// skip ACK msg to avoid of msg duplicate at batch resend mode
+			nni_msg_free(msg);
+			tcptran_pipe_recv_start(p);
+			nni_mtx_unlock(&p->mtx);
+			return;
 		}
 
 	} else if (type == CMD_UNSUBSCRIBE) {
@@ -877,11 +880,11 @@ tcptran_pipe_recv_cb(void *arg)
 		ack = false;
 	}
 
+	nni_aio_list_remove(aio);
 	// keep connection & Schedule next receive
 	if (!nni_list_empty(&p->recvq)) {
 		tcptran_pipe_recv_start(p);
 	}
-
 	nni_mtx_unlock(&p->mtx);
 
 	nni_aio_set_msg(aio, msg);
