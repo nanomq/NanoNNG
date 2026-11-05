@@ -86,6 +86,18 @@ if (NNG_TLS_ENGINE STREQUAL "open")
     nng_defines(NNG_SUPP_TLS)
     nng_defines(NNG_TLS_ENGINE_OPENSSL)
 
+    nng_test(tls_peer_identity_test)
+    # The test includes OpenSSL headers, but nng_testing links OpenSSL
+    # privately, so give the test the include paths itself.
+    if (TARGET tls_peer_identity_test)
+        if (TARGET openssl)
+            target_link_libraries(tls_peer_identity_test openssl)
+        else ()
+            target_link_libraries(tls_peer_identity_test
+                OpenSSL::SSL OpenSSL::Crypto)
+        endif ()
+    endif ()
+
     if (NNG_TEST_PKCS11_PROVIDER)
         nng_test(pkcs11_test)
     endif ()
