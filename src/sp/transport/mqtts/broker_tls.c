@@ -39,6 +39,7 @@ struct tlstran_pipe {
 	size_t          gotrxhead;
 	size_t          wantrxhead;
 	bool            busy; // indicator for qos ack & aio
+	bool            saved; // QoS source cached for the current send AIO
 	uint8_t         txlen[NANO_MIN_PACKET_LEN];
 	uint8_t         rxlen[NNI_NANO_MAX_HEADER_SIZE];
 	uint8_t         pro_ver;
@@ -196,6 +197,7 @@ tlstran_pipe_init(void *arg, nni_pipe *npipe)
 	}
 	p->conn_buf = NULL;
 	p->busy     = false;
+	p->saved    = false;
 
 	nni_atomic_init_bool(&p->closed);
 	p->qos_buf = nng_zalloc(16 + NNI_NANO_MAX_PACKET_SIZE);
@@ -730,9 +732,7 @@ tlstran_pipe_recv_cb(void *arg)
 		}
 	}
 
-	// We read a message completely.  Let the user know the good news. use
-	// as application message callback of users
-	nni_aio_list_remove(aio);
+	// Keep the receive request queued until the packet is accepted.
 	msg      = p->rxmsg;
 	type     = p->rxlen[0] & 0xf0;
 	p->rxmsg = NULL;
@@ -839,6 +839,10 @@ tlstran_pipe_recv_cb(void *arg)
 			    p->conf->sqlite.enable, p->npipe->nano_qos_db, p->npipe->p_id, ackid);
 		} else {
 			log_warn("ACK failed! qos msg %d not found!", ackid);
+			nni_msg_free(msg);
+			tlstran_pipe_recv_start(p);
+			nni_mtx_unlock(&p->mtx);
+			return;
 		}
 	} else if (type == CMD_UNSUBSCRIBE) {
 		// extract sub id
@@ -878,6 +882,7 @@ tlstran_pipe_recv_cb(void *arg)
 		ack = false;
 	}
 
+	nni_aio_list_remove(aio);
 	// keep connection & Schedule next receive
 	if (!nni_list_empty(&p->recvq)) {
 		tlstran_pipe_recv_start(p);
@@ -1109,22 +1114,25 @@ tlstran_pipe_send_start_v4(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			pid = (uint16_t) (size_t) nni_aio_get_prov_data(aio);
 			if (pid == 0) {
 				pid = nni_pipe_inc_packetid(pipe);
-				nni_msg_clone(msg);
-				if ((old = nni_qos_db_get(is_sqlite,
-				         pipe->nano_qos_db, pipe->p_id,
-				         pid)) != NULL) {
-					log_error("packet id duplicates in "
-					          "nano_qos_db");
+				if (!p->saved) {
+					nni_msg_clone(msg);
+					if ((old = nni_qos_db_get(is_sqlite,
+					         pipe->nano_qos_db, pipe->p_id,
+					         pid)) != NULL) {
+						log_error("packet id duplicates in "
+						          "nano_qos_db");
 
-					nni_qos_db_remove_msg(is_sqlite,
-					    pipe->nano_qos_db, old);
+						nni_qos_db_remove_msg(is_sqlite,
+						    pipe->nano_qos_db, old);
+					}
+					old = msg;
+					nni_qos_db_set(is_sqlite, pipe->nano_qos_db,
+					    pipe->p_id, pid, old);
+					nni_qos_db_remove_oldest(is_sqlite,
+					    pipe->nano_qos_db,
+					    p->conf->sqlite.disk_cache_size);
+					p->saved = true;
 				}
-				old = msg;
-				nni_qos_db_set(is_sqlite, pipe->nano_qos_db,
-				    pipe->p_id, pid, old);
-				nni_qos_db_remove_oldest(is_sqlite,
-				    pipe->nano_qos_db,
-				    p->conf->sqlite.disk_cache_size);
 			}
 			NNI_PUT16(var_extra, pid);
 
@@ -1349,6 +1357,13 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 				}
 			}
 
+			// Match TCP: charge each QoS transmission, including retries.
+			if (qos > 0) {
+				if (p->qsend_quota == 0) {
+					break;
+				}
+				p->qsend_quota--;
+			}
 			// === 3. Remaining Length - strip_len ===
 			pos  = 1;
 			rlen = put_var_integer(
@@ -1391,20 +1406,23 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 				pid = (uint16_t) (size_t) nni_aio_get_prov_data(aio);
 				if (pid == 0) {
 					pid = nni_pipe_inc_packetid(pipe);
-					nni_msg_clone(msg);
-					if ((old = nni_qos_db_get(is_sqlite,
-					        pipe->nano_qos_db, pipe->p_id,
-					        pid)) != NULL) {
-						log_error("packet id duplicates in nano_qos_db");
-						nni_qos_db_remove_msg(
-						    is_sqlite, pipe->nano_qos_db, old);
+					if (!p->saved) {
+						nni_msg_clone(msg);
+						if ((old = nni_qos_db_get(is_sqlite,
+						        pipe->nano_qos_db, pipe->p_id,
+						        pid)) != NULL) {
+							log_error("packet id duplicates in nano_qos_db");
+							nni_qos_db_remove_msg(
+							    is_sqlite, pipe->nano_qos_db, old);
+						}
+						old = msg;
+						nni_qos_db_set(is_sqlite,
+						    pipe->nano_qos_db, pipe->p_id, pid, old);
+						nni_qos_db_remove_oldest(is_sqlite,
+						    pipe->nano_qos_db,
+						    p->conf->sqlite.disk_cache_size);
+						p->saved = true;
 					}
-					old = msg;
-					nni_qos_db_set(is_sqlite,
-					    pipe->nano_qos_db, pipe->p_id, pid, old);
-					nni_qos_db_remove_oldest(is_sqlite,
-					    pipe->nano_qos_db,
-					    p->conf->sqlite.disk_cache_size);
 				}
 				NNI_PUT16(var_extra, pid);
 				memcpy(p->qos_buf + qlength, var_extra, 2);
@@ -1448,17 +1466,6 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 				iov[niov].iov_len = payload_len;
 				niov++;
 			}
-		}
-	}
-
-	if (qos > 0) {
-		if (p->qsend_quota > 0) {
-			p->qsend_quota--;
-		} else {
-			nni_aio_begin(txaio);
-			nni_aio_set_iov(txaio, 0, NULL);
-			nni_aio_finish(txaio, 0, 0);
-			return;
 		}
 	}
 
@@ -1541,6 +1548,7 @@ tlstran_pipe_send_start(tlstran_pipe *p)
 		return;
 	}
 
+	p->saved = false;
 	if (p->pro_ver == MQTT_PROTOCOL_VERSION_v311 ||
 	    p->pro_ver == MQTT_PROTOCOL_VERSION_v31) {
 		tlstran_pipe_send_start_v4(p, msg, aio);

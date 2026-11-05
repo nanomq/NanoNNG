@@ -363,17 +363,12 @@ wstran_pipe_recv_cb(void *arg)
 		// parse fixed header (safe because pkt_len bytes are present)
 		ws_msg_adaptor(baseptr + index, new);
 		nni_msg_set_conn_param(new, p->ws_param);
-		if (smsg == NULL) {
-			smsg = new;
-		} else {
-			if (nni_lmq_put(&p->recvlmq, new) != 0) {
-				log_warn(" WebSocket msg drop due to full lmq");
-				nni_msg_free(new);
-				new = NULL;
-			}
-		}
-		if (new != NULL) {
+		// Queue only after processing, so filtered ACKs never enter recvlmq.
+		if (cvector_size(msg_vec) <= nni_lmq_cap(&p->recvlmq)) {
 			cvector_push_back(msg_vec, new);
+		} else {
+			log_warn(" WebSocket msg drop due to full lmq");
+			nni_msg_free(new);
 		}
 		index += pkt_len;
 	}
@@ -562,6 +557,9 @@ done:
 				    p->npipe->nano_qos_db, p->npipe->p_id, ackid);
 			} else {
 				log_warn("ACK failed! qos msg %d not found!", ackid);
+				nni_msg_free(vmsg);
+				msg_vec[i] = NULL;
+				continue;
 			}
 		} else if (cmd == CMD_UNSUBSCRIBE) {
 			// extract sub id
@@ -633,11 +631,24 @@ done:
 				}
 			}
 			ack = false;
-			
 		}
+		if (smsg == NULL) {
+			smsg = vmsg;
+		} else if (nni_lmq_put(&p->recvlmq, vmsg) != 0) {
+			log_warn(" WebSocket msg drop due to full lmq");
+			nni_msg_free(vmsg);
+		}
+		msg_vec[i] = NULL;
 	}
 
-	// Return the first msg this time
+	if (smsg == NULL) {
+		// Retain user_rxaio and its cancellation handler while filtering.
+		cvector_free(msg_vec);
+		nng_stream_recv(p->ws, raio);
+		nni_mtx_unlock(&p->mtx);
+		return;
+	}
+	// Return the first accepted msg this time.
 	nni_aio_set_msg(uaio, smsg);
 skip:
 	// Release ownership of the user recv aio before finishing it, so a
@@ -654,8 +665,13 @@ skip:
 		nni_lmq_flush(&p->recvlmq);
 		nni_msg_free(smsg);
 	}
-	if (msg_vec)
+	if (msg_vec) {
+		for (size_t i = 0; i < cvector_size(msg_vec); i++) {
+			if (msg_vec[i] != NULL)
+				nni_msg_free(msg_vec[i]);
+		}
 		cvector_free(msg_vec);
+	}
 	return;
 reset:
 	p->gotrxhead  = 0;
@@ -691,8 +707,13 @@ reset:
 		nni_msg_free(p->tmp_msg);
 		p->tmp_msg = NULL;
 	}
-	if (msg_vec)
+	if (msg_vec) {
+		for (size_t i = 0; i < cvector_size(msg_vec); i++) {
+			if (msg_vec[i] != NULL)
+				nni_msg_free(msg_vec[i]);
+		}
 		cvector_free(msg_vec);
+	}
 	if (msg != NULL)
 		nni_msg_free(msg);
 	// Last: the reaper may free p as soon as this is queued.
@@ -790,6 +811,7 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	uint32_t      property_len = 0;
 	size_t        tlen, rlen, mlen, qlength, plength;
 	bool          is_sqlite = p->conf->sqlite.enable;
+	bool          saved = false;
 
 	body    = nni_msg_body(msg);
 	header  = nni_msg_header(msg);
@@ -915,18 +937,21 @@ wstran_pipe_send_start_v4(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 			pid = (uint16_t) (size_t) nni_aio_get_prov_data(aio);
 			if (pid == 0) {
 				pid = nni_pipe_inc_packetid(pipe);
-				nni_msg_clone(msg);
-				if ((old = nni_qos_db_get(is_sqlite,
-				         pipe->nano_qos_db, pipe->p_id, pid)) != NULL) {
-					log_warn("packet id duplicates in nano_qos_db");
-					nni_qos_db_remove_msg(is_sqlite, pipe->nano_qos_db, old);
+				if (!saved) {
+					nni_msg_clone(msg);
+					if ((old = nni_qos_db_get(is_sqlite,
+					         pipe->nano_qos_db, pipe->p_id, pid)) != NULL) {
+						log_warn("packet id duplicates in nano_qos_db");
+						nni_qos_db_remove_msg(is_sqlite, pipe->nano_qos_db, old);
+					}
+					old = msg;
+					nni_qos_db_set(is_sqlite, pipe->nano_qos_db,
+					    pipe->p_id, pid, old);
+					nni_qos_db_remove_oldest(is_sqlite,
+					    pipe->nano_qos_db,
+					    p->conf->sqlite.disk_cache_size);
+					saved = true;
 				}
-				old = msg;
-				nni_qos_db_set(is_sqlite, pipe->nano_qos_db,
-				    pipe->p_id, pid, old);
-				nni_qos_db_remove_oldest(is_sqlite,
-				    pipe->nano_qos_db,
-				    p->conf->sqlite.disk_cache_size);
 			}
 			NNI_PUT16(var_extra, pid);
 			memcpy(p->qos_buf + qlength, var_extra, 2);
@@ -997,6 +1022,7 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 	uint32_t      id_bytes = 0, property_len = 0;
 	size_t        tlen, rlen, mlen, hlen, qlength, plength;
 	bool          is_sqlite = p->conf->sqlite.enable;
+	bool          saved = false;
 
 	body    = nni_msg_body(msg);
 	header  = nni_msg_header(msg);
@@ -1115,6 +1141,13 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 				}
 			}
 
+			// Match TCP: charge each QoS transmission, including retries.
+			if (qos > 0) {
+				if (p->qsend_quota == 0) {
+					break;
+				}
+				p->qsend_quota--;
+			}
 			// === 3. Remaining Length - strip_len ===
 			pos  = 1;
 			rlen = put_var_integer(
@@ -1157,18 +1190,21 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 				pid = (uint16_t) (size_t) nni_aio_get_prov_data(aio);
 				if (pid == 0) {
 					pid = nni_pipe_inc_packetid(pipe);
-					nni_msg_clone(msg);
-					if ((old = nni_qos_db_get(is_sqlite,
-					         pipe->nano_qos_db, pipe->p_id, pid)) != NULL) {
-						log_warn("ERROR: packet id duplicates in nano_qos_db");
-						nni_qos_db_remove_msg(is_sqlite, pipe->nano_qos_db, old);
+					if (!saved) {
+						nni_msg_clone(msg);
+						if ((old = nni_qos_db_get(is_sqlite,
+						         pipe->nano_qos_db, pipe->p_id, pid)) != NULL) {
+							log_warn("ERROR: packet id duplicates in nano_qos_db");
+							nni_qos_db_remove_msg(is_sqlite, pipe->nano_qos_db, old);
+						}
+						old = msg;
+						nni_qos_db_set(is_sqlite, pipe->nano_qos_db,
+						    pipe->p_id, pid, old);
+						nni_qos_db_remove_oldest(is_sqlite,
+						    pipe->nano_qos_db,
+						    p->conf->sqlite.disk_cache_size);
+						saved = true;
 					}
-					old = msg;
-					nni_qos_db_set(is_sqlite, pipe->nano_qos_db,
-					    pipe->p_id, pid, old);
-					nni_qos_db_remove_oldest(is_sqlite,
-					    pipe->nano_qos_db,
-					    p->conf->sqlite.disk_cache_size);
 				}
 				NNI_PUT16(var_extra, pid);
 				memcpy(p->qos_buf + qlength, var_extra, 2);
@@ -1229,19 +1265,6 @@ wstran_pipe_send_start_v5(ws_pipe *p, nni_msg *msg, nni_aio *aio)
 		p->user_txaio = NULL;
 		nni_aio_finish(aio, 0, 0);
 		return;
-	}
-
-	// MQTT V5 flow control
-	if (qos > 0) {
-		if (p->qsend_quota > 0) {
-			p->qsend_quota--;
-		} else {
-			nni_msg_free(msg);
-			nni_aio_set_msg(aio, NULL);
-			p->user_txaio = NULL;
-			nni_aio_finish(aio, 0, 0);
-			return;
-		}
 	}
 
 send:
