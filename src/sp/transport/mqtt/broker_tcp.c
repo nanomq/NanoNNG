@@ -37,7 +37,8 @@ struct tcptran_pipe {
 	size_t          rcvmax; // duplicate with conf->max_packet_size
 	size_t          gotrxhead;
 	size_t          wantrxhead;
-	bool            busy; // protect the completeness of each msg
+	bool            busy;  // protect the completeness of each msg
+	bool            saved; // Indicator of QoS cached, don't duplicate msg
 	uint8_t         txlen[NANO_MIN_PACKET_LEN];
 	uint8_t         rxlen[NNI_NANO_MAX_HEADER_SIZE];
 	uint8_t         pro_ver;
@@ -187,6 +188,7 @@ tcptran_pipe_init(void *arg, nni_pipe *npipe)
 	p->npipe    = npipe;
 	p->conn_buf = NULL;
 	p->busy     = false;
+	p->saved    = false;
 
 	p->qos_buf = nng_zalloc(16 + NNI_NANO_MAX_PACKET_SIZE);
 	p->npipe->subinfol = nni_zalloc(sizeof(nni_list));
@@ -597,7 +599,6 @@ nmq_tcptran_pipe_send_cb(void *arg)
 		(cmd == CMD_PUBCOMP || cmd == CMD_PUBACK) ? p->qrecv_quota++
 		                                            : p->qrecv_quota;
 	}
-	// nni_pipe_bump_tx(p->npipe, n);
 	nni_mtx_unlock(&p->mtx);
 
 	nni_aio_set_msg(aio, NULL);
@@ -973,10 +974,10 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 	subinfo  *tinfo = NULL, *info = NULL;
 	nni_list *subinfol = p->npipe->subinfol;
 
+	char       *eff_topic = topic;
 	const char *mp        = p->mount_point;
 	size_t      mp_len    = (mp != NULL) ? strlen(mp) : 0;
 	size_t      strip_len = 0;
-	char       *eff_topic = topic;
 	size_t      eff_tlen  = (size_t) topic_len;
 
 	if (mp_len > 0 && (size_t) topic_len > mp_len && topic[mp_len] == '/' &&
@@ -1136,21 +1137,25 @@ nmq_pipe_send_start_v4(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			pid = (uint16_t) (size_t) nni_aio_get_prov_data(aio);
 			if (pid == 0) {
 				pid = nni_pipe_inc_packetid(pipe);
-				nni_msg_clone(msg);
-				if ((old = nni_qos_db_get(is_sqlite,
-				         pipe->nano_qos_db, pipe->p_id, pid)) != NULL) {
-					log_error("packet id duplicates in "
-					          "nano_qos_db");
+				if (!p->saved) {
+					nni_msg_clone(msg);
+					if ((old = nni_qos_db_get(is_sqlite,
+							pipe->nano_qos_db, pipe->p_id, pid)) != NULL) {
+						log_error("packet id duplicates in "
+								"nano_qos_db");
 
-					nni_qos_db_remove_msg(
-					    is_sqlite, pipe->nano_qos_db, old);
+						nni_qos_db_remove_msg(
+							is_sqlite, pipe->nano_qos_db, old);
+					}
+					old = msg;
+					nni_qos_db_set(is_sqlite, pipe->nano_qos_db,
+						pipe->p_id, pid, old);
+					nni_qos_db_remove_oldest(is_sqlite,
+						pipe->nano_qos_db,
+						p->conf->sqlite.disk_cache_size);
+					// only cache QoS msg by once not matched topics
+					p->saved = true;
 				}
-				old = msg;
-				nni_qos_db_set(is_sqlite, pipe->nano_qos_db,
-				    pipe->p_id, pid, old);
-				nni_qos_db_remove_oldest(is_sqlite,
-				    pipe->nano_qos_db,
-				    p->conf->sqlite.disk_cache_size);
 			}
 			NNI_PUT16(var_extra, pid);
 
@@ -1362,7 +1367,13 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 					len_offset = len_offset - 2;
 				}
 			}
-
+			// Skip this round if exceed the quota
+			if (qos > 0) {
+				if (p->qsend_quota == 0) {
+					break;
+				}
+				p->qsend_quota--;
+			}
 			// === 3. Remaining Length - strip_len ===
 			pos  = 1;
 			rlen = put_var_integer(
@@ -1467,16 +1478,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 		}
 	}
 
-	if (qos > 0) {
-		if (p->qsend_quota > 0) {
-			p->qsend_quota--;
-		} else {
-			nni_aio_begin(txaio);
-			nni_aio_set_iov(txaio, 0, NULL);
-			nni_aio_finish(txaio, 0, 0);
-			return;
-		}
-	}
+
 
 send:
 	if (niov == 0) {
@@ -1528,6 +1530,8 @@ tcptran_pipe_send_start(tcptran_pipe *p)
 		return;
 	}
 
+	// clear cached flag for each new sending action
+	p->saved = false;
 	if (p->pro_ver == MQTT_PROTOCOL_VERSION_v311 ||
 	    p->pro_ver == MQTT_PROTOCOL_VERSION_v31) {
 		nmq_pipe_send_start_v4(p, msg, aio);
@@ -1628,7 +1632,6 @@ tcptran_pipe_send(void *arg, nni_aio *aio)
 			log_info("Drop msg due to qos == 0");
 			nni_msg_free(msg);
 		}
-		// nni_msg_free(msg);
 		nni_mtx_unlock(&p->mtx);
 		nni_aio_set_msg(aio, NULL);
 		nni_aio_finish(aio, 0, 0);
