@@ -1373,7 +1373,7 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 			// Skip this round if exceed the quota
 			if (qos > 0) {
 				if (p->qsend_quota == 0) {
-					break;
+					continue;
 				}
 				p->qsend_quota--;
 			}
