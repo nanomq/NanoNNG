@@ -1422,19 +1422,22 @@ nmq_pipe_send_start_v5(tcptran_pipe *p, nni_msg *msg, nni_aio *aio)
 				pid = (uint16_t) (size_t) nni_aio_get_prov_data(aio);
 				if (pid == 0) {
 					pid = nni_pipe_inc_packetid(pipe);
-					nni_msg_clone(msg);
-					if ((old = nni_qos_db_get(is_sqlite, pipe->nano_qos_db,
-					        pipe->p_id, pid)) != NULL) {
-						log_error("packet id duplicates in nano_qos_db");
-						nni_qos_db_remove_msg(
-						    is_sqlite, pipe->nano_qos_db, old);
+					if (!p->saved) {
+						nni_msg_clone(msg);
+						if ((old = nni_qos_db_get(is_sqlite, pipe->nano_qos_db,
+						        pipe->p_id, pid)) != NULL) {
+							log_error("packet id duplicates in nano_qos_db");
+							nni_qos_db_remove_msg(
+							    is_sqlite, pipe->nano_qos_db, old);
+						}
+						old = msg;
+						nni_qos_db_set(is_sqlite,
+						    pipe->nano_qos_db, pipe->p_id, pid, old);
+						nni_qos_db_remove_oldest(is_sqlite,
+						    pipe->nano_qos_db,
+						    p->conf->sqlite.disk_cache_size);
+						p->saved = true;
 					}
-					old = msg;
-					nni_qos_db_set(is_sqlite,
-					    pipe->nano_qos_db, pipe->p_id, pid, old);
-					nni_qos_db_remove_oldest(is_sqlite,
-					    pipe->nano_qos_db,
-					    p->conf->sqlite.disk_cache_size);
 				}
 				NNI_PUT16(var_extra, pid);
 				memcpy(p->qos_buf + qlength, var_extra, 2);
@@ -2429,3 +2432,24 @@ nni_nmq_broker_tcp_register(void)
 	nni_sp_tran_register(&tcp4__tran_mqtt);
 	nni_sp_tran_register(&tcp6__tran_mqtt);
 }
+
+/*
+ * Design limitations and trade-offs:
+ * Cache ownership is per source message and client, rather than per matching
+ * subscription. Initial deliveries may use different packet IDs, but only the
+ * cached delivery is tracked for retransmission; ACKs for other copies do not
+ * retire that cache entry. Retries reuse the cached packet ID and re-evaluate
+ * the current subscriptions, potentially producing multiple copies. Changes
+ * to subscriptions can therefore change the effective QoS, RETAIN and
+ * Subscription Identifiers, or eliminate a previously matching delivery.
+ * Independent QoS completion for every subscription copy is not guaranteed.
+ *
+ * Send quota counts transmission attempts, including retries, and is restored
+ * on PUBACK/PUBCOMP. Quota exhaustion may drop new messages and remaining
+ * copies; retries can also stall until acknowledgements arrive or reconnection
+ * resets the quota. ACKs without a matching cache entry are consumed by the
+ * transport and do not advance batch resend.
+ *
+ * SQLite shared-blob cleanup remains a separate known issue: acknowledging
+ * one cache entry may remove data still referenced by another entry.
+ */
