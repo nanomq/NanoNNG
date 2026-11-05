@@ -1360,7 +1360,7 @@ tlstran_pipe_send_start_v5(tlstran_pipe *p, nni_msg *msg, nni_aio *aio)
 			// Match TCP: charge each QoS transmission, including retries.
 			if (qos > 0) {
 				if (p->qsend_quota == 0) {
-					break;
+					continue;
 				}
 				p->qsend_quota--;
 			}
