@@ -241,32 +241,33 @@ wstran_pipe_recv_cb(void *arg)
 	if (p->user_rxaio != NULL) {
 		uaio = p->user_rxaio;
 	}
-	// process scatterd msgs
+	// A local continuation has no new stream message.
+	msg = nni_aio_get_msg(raio);
+	nni_aio_set_msg(raio, NULL);
 	if ((rv = nni_aio_result(raio)) != 0) {
 		log_warn(" recv aio error %s", nng_strerror(rv));
 		p->err_code = UNSPECIFIED_ERROR;
 		goto reset;
 	}
-	msg = nni_aio_get_msg(raio);
-	if (nni_msg_header_len(msg) == 0 && nni_msg_len(msg) == 0) {
-		log_trace("empty msg received! continue next receive");
-		goto recv;
+	if (nni_atomic_get_bool(&p->closed)) {
+		rv = NNG_ECLOSED;
+		goto reset;
 	}
-	ptr = nni_msg_body(msg);
-	p->gotrxhead += nni_msg_len(msg);
-	log_debug("#### wstran_pipe_recv_cb got %ld msg: %p %x %ld",
-	    p->gotrxhead, ptr, *ptr, nni_msg_len(msg));
-	// first we collect complete Fixheader
-	if (p->tmp_msg == NULL && p->gotrxhead > 0) {
-		if ((rv = nni_msg_alloc(&p->tmp_msg, 0)) != 0) {
-			log_error("mem error %ld\n", (size_t) len);
+	if (msg != NULL) {
+		if (p->tmp_msg == NULL) {
+			p->tmp_msg = msg;
+			msg = NULL;
+		} else if ((rv = nni_msg_append(p->tmp_msg,
+		                nni_msg_body(msg), nni_msg_len(msg))) != 0) {
 			p->err_code = SERVER_UNAVAILABLE;
 			goto reset;
 		}
 	}
-
-	nni_msg_append(p->tmp_msg, ptr, nni_msg_len(msg));
-	ptr = nni_msg_body(p->tmp_msg); // packet might be sticky?
+	p->gotrxhead = p->tmp_msg == NULL ? 0 : nni_msg_len(p->tmp_msg);
+	if (p->gotrxhead == 0) {
+		goto recv;
+	}
+	ptr = nni_msg_body(p->tmp_msg);
 
 	if (p->wantrxhead == 0) {
 		if (p->gotrxhead == 1) {
@@ -314,8 +315,19 @@ wstran_pipe_recv_cb(void *arg)
 	if ((*ptr & 0xF0) == CMD_CONNECT) {
 		conn_msg = p->tmp_msg;
 		p->tmp_msg = NULL;
+		p->gotrxhead = 0;
+		p->wantrxhead = 0;
 		goto done;
 	}
+
+	// Reject non-CONNECT traffic before allocating a packet batch.
+	if (p->ws_param == NULL || p->npipe == NULL) {
+		p->err_code = MALFORMED_PACKET;
+		goto reset;
+	}
+	// Reserve one direct delivery plus the available receive queue slots.
+	const size_t recv_slots = 1 + nni_lmq_cap(&p->recvlmq) -
+	    nni_lmq_len(&p->recvlmq);
 
 	uint8_t *baseptr = ptr;
 	// At least one msg is ready when we got here.
@@ -354,41 +366,71 @@ wstran_pipe_recv_cb(void *arg)
 			break;
 		}
 
+		if (cvector_size(msg_vec) >= recv_slots) {
+			// Leave this packet buffered until the receive queue drains.
+			break;
+		}
+
 		nni_msg *new;
-		if (nni_msg_alloc(&new, 0) != 0) {
+		if ((rv = nni_msg_alloc(&new, 0)) != 0) {
 			p->err_code = SERVER_UNAVAILABLE;
-			goto skip;
+			goto reset;
 		}
 		p->count++;
 		// parse fixed header (safe because pkt_len bytes are present)
 		ws_msg_adaptor(baseptr + index, new);
 		nni_msg_set_conn_param(new, p->ws_param);
-		// Apply receive queue capacity after filtering ACKs below.
+		// Filter terminal ACKs before they consume a reserved delivery slot.
+		uint8_t cmd = nni_msg_cmd_type(new);
+		if (cmd == CMD_PUBACK || cmd == CMD_PUBCOMP) {
+			uint16_t packet_id;
+			uint8_t reason_code;
+			property *prop = NULL;
+			if ((rv = nni_mqtt_pubres_decode(new, &packet_id,
+			         &reason_code, &prop, p->ws_param->pro_ver)) !=
+			    0) {
+				log_warn(
+				    "decode PUBACK or PUBCOMP variable header "
+				    "failed!");
+				p->err_code = PROTOCOL_ERROR;
+				nni_msg_free(new);
+				goto reset;
+			}
+			// MQTT V5 flow control
+			if (p->ws_param->pro_ver == 5) {
+				property_free(prop);
+				p->qsend_quota++;
+			}
+			uint8_t *ptr = nni_msg_body(new);
+			uint16_t ackid;
+			NNI_GET16(ptr, ackid);
+			nni_msg *qos_msg;
+			if ((qos_msg = nni_qos_db_get(p->conf->sqlite.enable,
+			         p->npipe->nano_qos_db, p->npipe->p_id, ackid)) != NULL) {
+				nni_qos_db_remove_msg(p->conf->sqlite.enable,
+				    p->npipe->nano_qos_db, qos_msg);
+				nni_qos_db_remove(p->conf->sqlite.enable,
+				    p->npipe->nano_qos_db, p->npipe->p_id, ackid);
+			} else {
+				log_warn("ACK failed! qos msg %d not found!", ackid);
+				nni_msg_free(new);
+				index += pkt_len;
+				continue;
+			}
+		}
 		cvector_push_back(msg_vec, new);
 		index += pkt_len;
 	}
 
-	if (p->gotrxhead > index && index != 0) {
-		nni_msg *left = NULL;
-		if ((rv = nni_msg_alloc(&left, 0)) != 0) {
-			p->err_code = SERVER_UNAVAILABLE;
-			goto reset;
-		}
-		(void) nni_msg_append(left, baseptr + index, p->gotrxhead - index);
-		nni_msg_free(p->tmp_msg);
-		p->tmp_msg   = left;
-		p->gotrxhead = p->gotrxhead - index;
-		p->wantrxhead = 0;
-		goto done;
-	} else if (index == p->gotrxhead) {
-		// Fully consumed current buffer; done() will free tmp_msg later.
+	// Retain the original buffer; trimming only advances its body pointer.
+	(void) nni_msg_trim(p->tmp_msg, index);
+	p->gotrxhead = nni_msg_len(p->tmp_msg);
+	p->wantrxhead = 0;
+	if (p->gotrxhead == 0) {
 		nni_msg_free(p->tmp_msg);
 		p->tmp_msg = NULL;
-		goto done;
-	} else {
-		// drop msg & try to recover
-		log_error("Decoding error!");
 	}
+	goto done;
 recv:
 	nni_msg_free(msg);
 	msg = NULL;
@@ -407,16 +449,6 @@ done:
 		p->err_code = SERVER_UNAVAILABLE;
 		goto reset;
 	}
-	if (p->gotrxhead+p->wantrxhead > p->conf->max_packet_size) {
-		log_trace("size error 0x95\n");
-		rv = NNG_ECLOSED;
-		p->err_code = PACKET_TOO_LARGE;
-		goto skip;
-	}
-	// If we preserved leftover bytes for next recv, do not reset/clear tmp_msg.
-	if (p->gotrxhead == index)
-		p->gotrxhead = 0;
-	p->wantrxhead = 0;
 	if (conn_msg != NULL && nni_msg_cmd_type(conn_msg) == CMD_CONNECT) {
 		// end of nego
 		if (p->ws_param == NULL) {
@@ -463,6 +495,15 @@ done:
 	for (size_t i = 0; i < cvector_size(msg_vec); i++) {
 		bool     ack  = false;
 		nni_msg  *vmsg = msg_vec[i];
+		// Secure delivery before generating this packet's QoS response.
+		if (smsg == NULL) {
+			smsg = vmsg;
+		} else if ((rv = nni_lmq_put(&p->recvlmq, vmsg)) != 0) {
+			// The vector still owns vmsg; reset releases it on failure.
+			p->err_code = SERVER_UNAVAILABLE;
+			goto reset;
+		}
+		msg_vec[i] = NULL;
 		uint8_t   qos_pac;
 		property *prop        = NULL;
 		uint8_t   reason_code = 0;
@@ -525,37 +566,6 @@ done:
 			}
 			ack_cmd = CMD_PUBCOMP;
 			ack     = true;
-		} else if (cmd == CMD_PUBACK || cmd == CMD_PUBCOMP) {
-			if ((rv = nni_mqtt_pubres_decode(vmsg, &packet_id,
-			         &reason_code, &prop, p->ws_param->pro_ver)) !=
-			    0) {
-				log_warn(
-				    "decode PUBACK or PUBCOMP variable header "
-				    "failed!");
-				p->err_code = PROTOCOL_ERROR;
-				goto skip;
-			}
-			// MQTT V5 flow control
-			if (p->ws_param->pro_ver == 5) {
-				property_free(prop);
-				p->qsend_quota++;
-			}
-			uint8_t *ptr = nni_msg_body(vmsg);
-			uint16_t ackid;
-			NNI_GET16(ptr, ackid);
-			nni_msg *qos_msg;
-			if ((qos_msg = nni_qos_db_get(p->conf->sqlite.enable,
-			         p->npipe->nano_qos_db, p->npipe->p_id, ackid)) != NULL) {
-				nni_qos_db_remove_msg(p->conf->sqlite.enable,
-				    p->npipe->nano_qos_db, qos_msg);
-				nni_qos_db_remove(p->conf->sqlite.enable,
-				    p->npipe->nano_qos_db, p->npipe->p_id, ackid);
-			} else {
-				log_warn("ACK failed! qos msg %d not found!", ackid);
-				nni_msg_free(vmsg);
-				msg_vec[i] = NULL;
-				continue;
-			}
 		} else if (cmd == CMD_UNSUBSCRIBE) {
 			// extract sub id
 			// Remove Subid RAP Topic stored
@@ -604,8 +614,8 @@ done:
 				if (nni_lmq_full(&p->rslmq)) {
 					// Make space for the new message.
 					if (nni_lmq_cap(&p->rslmq) <= NANO_MAX_QOS_PACKET) {
-						if ((rv = nni_lmq_resize(&p->rslmq,
-						         nni_lmq_cap(&p->rslmq) * 2)) == 0) {
+						if (nni_lmq_resize(&p->rslmq,
+						        nni_lmq_cap(&p->rslmq) * 2) == 0) {
 							if (nni_lmq_put(&p->rslmq, qmsg) != 0)
 								nni_msg_free(qmsg);
 						} else {
@@ -627,13 +637,6 @@ done:
 			}
 			ack = false;
 		}
-		if (smsg == NULL) {
-			smsg = vmsg;
-		} else if (nni_lmq_put(&p->recvlmq, vmsg) != 0) {
-			log_warn(" WebSocket msg drop due to full lmq");
-			nni_msg_free(vmsg);
-		}
-		msg_vec[i] = NULL;
 	}
 
 	if (smsg == NULL) {
@@ -646,6 +649,10 @@ done:
 	// Return the first accepted msg this time.
 	nni_aio_set_msg(uaio, smsg);
 skip:
+	if (rv != NNG_MQTT_SUCCESS || p->err_code != MQTT_SUCCESS) {
+		// Clean up under p->mtx before completing the user receive AIO.
+		goto reset;
+	}
 	// Release ownership of the user recv aio before finishing it, so a
 	// concurrent wstran_pipe_recv_cancel sees user_rxaio != aio and does
 	// not finish it a second time (mirrors wstran_pipe_send_cb).
@@ -655,11 +662,6 @@ skip:
 	nni_aio_set_output(uaio, 0, p);
 	nni_aio_finish(uaio, p->err_code, 0);
 	nni_mtx_unlock(&p->mtx);
-	if (rv != NNG_MQTT_SUCCESS && msg_vec != NULL) {
-		// Cannot trust the rest msgs
-		nni_lmq_flush(&p->recvlmq);
-		nni_msg_free(smsg);
-	}
 	if (msg_vec) {
 		for (size_t i = 0; i < cvector_size(msg_vec); i++) {
 			if (msg_vec[i] != NULL)
@@ -695,13 +697,11 @@ reset:
 		// Let protocol layer do the close first.
 		nng_stream_close(p->ws);
 	}
+	nni_msg_free(p->tmp_msg);
+	p->tmp_msg = NULL;
 	nni_mtx_unlock(&p->mtx);
 	if (smsg != NULL)
 		nni_msg_free(smsg);
-	if (p->tmp_msg != NULL) {
-		nni_msg_free(p->tmp_msg);
-		p->tmp_msg = NULL;
-	}
 	if (msg_vec) {
 		for (size_t i = 0; i < cvector_size(msg_vec); i++) {
 			if (msg_vec[i] != NULL)
@@ -711,6 +711,7 @@ reset:
 	}
 	if (msg != NULL)
 		nni_msg_free(msg);
+	nni_msg_free(conn_msg);
 	// Last: the reaper may free p as soon as this is queued.
 	if (orphan) {
 		nni_reap(&ws_pipe_reap_list, p);
@@ -767,7 +768,17 @@ wstran_pipe_recv(void *arg, nni_aio *aio)
 		return;
 	}
 	p->user_rxaio = aio;
-	nng_stream_recv(p->ws, p->rxaio);
+	if (p->tmp_msg != NULL) {
+		// Parse buffered packets before requesting more network data.
+		if ((rv = nni_aio_begin(p->rxaio)) != 0) {
+			p->user_rxaio = NULL;
+			nni_aio_finish_error(aio, rv);
+		} else {
+			nni_aio_finish(p->rxaio, 0, 0);
+		}
+	} else {
+		nng_stream_recv(p->ws, p->rxaio);
+	}
 	nni_mtx_unlock(&p->mtx);
 }
 static void
