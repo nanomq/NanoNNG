@@ -591,6 +591,8 @@ done:
 			// sake of compatibility with nng.
 			nni_msg *qmsg;
 			if ((rv = nni_msg_alloc(&qmsg, 0)) != 0) {
+				property_free(prop);
+				prop = NULL;
 				ack = false;
 				log_error("ERROR: OOM in WebSocket");
 				p->err_code = SERVER_UNAVAILABLE;
@@ -600,6 +602,9 @@ done:
 			nni_msg_set_cmd_type(qmsg, ack_cmd);
 			nni_mqtt_msgack_encode(qmsg, packet_id, reason_code,
 			    prop, p->ws_param->pro_ver);
+			// Encoding copies the properties; it does not take ownership.
+			property_free(prop);
+			prop = NULL;
 			nni_mqtt_pubres_header_encode(qmsg, ack_cmd);
 			if (!nni_aio_busy(p->qsaio)) {
 				iov[0].iov_len = nni_msg_header_len(qmsg);
