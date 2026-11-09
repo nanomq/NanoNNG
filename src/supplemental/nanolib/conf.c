@@ -1,6 +1,7 @@
 //
 // Copyright 2021 NanoMQ Team, Inc. <jaylin@emqx.io> //
 // Copyright 2026 Liebherr-Digital Development Center (LDC) <peter.bestler@liebherr.de>
+// Copyright 2026 Wolfgang Petroschka <wp@seadex.de>
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
 // file was obtained (LICENSE.txt).  A copy of the license may also be
@@ -4880,14 +4881,19 @@ conf_auth_http_req_parse(
 		log_error("File %s open failed", path);
 		return;
 	}
-	char * line = NULL;
-	size_t sz   = 0;
+	char * line   = NULL;
+	size_t sz     = 0;
+	int    enable = -1;
 
 	char *value;
 	while (nano_getline(&line, &sz, fp) != -1) {
 		if ((value = get_conf_value_with_prefix(
 		         line, sz, key_prefix, ".url")) != NULL) {
 			req->url = value;
+		} else if ((value = get_conf_value_with_prefix(
+		                line, sz, key_prefix, ".enable")) != NULL) {
+			enable = nni_strcasecmp(value, "true") == 0;
+			free(value);
 		} else if ((value = get_conf_value_with_prefix(
 		                line, sz, key_prefix, ".method")) != NULL) {
 			if (nni_strcasecmp(value, "POST") == 0 ||
@@ -4911,6 +4917,12 @@ conf_auth_http_req_parse(
 		free(line);
 	}
 	fclose(fp);
+
+	if (req->method == NULL) {
+		req->method = nng_strdup("POST");
+	}
+	// a request with a url is active unless explicitly disabled
+	req->enable = enable == -1 ? req->url != NULL : enable == 1;
 
 	req->headers =
 	    conf_parse_http_headers(path, key_prefix, &req->header_count);

@@ -1,5 +1,6 @@
 // Copyright 2026 Liebherr-Digital Development Center (LDC) <peter.bestler@liebherr.de>
 // Copyright 2026 NanoMQ Team, Inc.
+// Copyright 2026 Wolfgang Petroschka <wp@seadex.de>
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -141,6 +142,13 @@ test_conf_parse(void)
 		NUTS_TRUE(strncmp(conf->url, "nmq-tcp://0.0.0.0:1883", 22) == 0);
 		print_conf(conf);
 	}
+	// requests with a url are enabled, requests without one are not
+	NUTS_TRUE(conf->auth_http.auth_req.enable);
+	NUTS_TRUE(!conf->auth_http.super_req.enable);
+	// acl_req has a url but no method, so it falls back to POST
+	NUTS_TRUE(conf->auth_http.acl_req.enable);
+	NUTS_TRUE(conf->auth_http.acl_req.method != NULL &&
+	    strcmp(conf->auth_http.acl_req.method, "POST") == 0);
 
 	conf_fini(conf);
 #endif
@@ -160,6 +168,10 @@ test_conf_parse_ver2(void)
 		NUTS_TRUE(strncmp(conf->url, "nmq-tcp://0.0.0.0:1883", 22) == 0);
 		print_conf(conf);
 	}
+	// super_req has a url but sets enable = false
+	NUTS_TRUE(conf->auth_http.auth_req.enable);
+	NUTS_TRUE(conf->auth_http.super_req.url != NULL);
+	NUTS_TRUE(!conf->auth_http.super_req.enable);
 
 	conf_fini(conf);
 }

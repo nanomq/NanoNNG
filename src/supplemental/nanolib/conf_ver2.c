@@ -1,5 +1,6 @@
 // Copyright 2026 Liebherr-Digital Development Center (LDC) <peter.bestler@liebherr.de>
 // Copyright 2026 NanoMQ Team, Inc.
+// Copyright 2026 Wolfgang Petroschka <wp@seadex.de>
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -959,6 +960,9 @@ conf_auth_http_req_parse_ver2(conf_auth_http_req *config, cJSON *jso)
 	if (jso == NULL)
 		return;
 	hocon_read_str(config, url, jso);
+	// a request with a url is active unless explicitly disabled
+	config->enable = config->url != NULL;
+	hocon_read_bool(config, enable, jso);
 	hocon_read_str(config, method, jso);
 	nng_mtx_alloc(&config->mtx);
 	if (nni_strcasecmp(config->method, "POST") != 0 &&
