@@ -1,5 +1,6 @@
 // Copyright 2026 Liebherr-Digital Development Center (LDC) <peter.bestler@liebherr.de>
 // Copyright 2026 NanoMQ Team, Inc.
+// Copyright 2026 Wolfgang Petroschka <wp@seadex.de>
 //
 // This software is supplied under the terms of the MIT License, a
 // copy of which should be located in the distribution where this
@@ -170,7 +171,7 @@ typedef struct conf_http_param conf_http_param;
 
 struct conf_auth_http_req {
 	nng_mtx           *mtx;
-	bool               enable; // unused right now
+	bool               enable; // set when url is configured, unless disabled
 	char              *url;
 	char              *method;
 	size_t             header_count;
