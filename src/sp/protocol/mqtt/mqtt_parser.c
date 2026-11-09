@@ -1647,6 +1647,107 @@ nmq_subinfol_rm_or(nni_list *l, struct subinfo *n)
 	}
 	return NULL;
 }
+
+// Check the span before adding its offset and length or deriving a pointer.
+static bool
+nmq_span_valid(size_t length, size_t offset, size_t count)
+{
+	return offset <= length && count <= length - offset;
+}
+
+// Read a canonical MQTT variable byte integer within the supplied span.
+// On failure, neither the cursor nor the output value is changed.
+static int
+nmq_read_varint(const uint8_t *buf, size_t length, size_t *offset,
+    uint32_t *value)
+{
+	size_t   pos = *offset;
+	uint32_t result = 0;
+
+	for (unsigned i = 0; i < 4; i++) {
+		if (!nmq_span_valid(length, pos, 1)) {
+			return -1;
+		}
+		uint8_t byte = buf[pos++];
+		result |= (uint32_t) (byte & 0x7f) << (7 * i);
+		if ((byte & 0x80) == 0) {
+			if (i != 0 && (byte & 0x7f) == 0) {
+				return -1;
+			}
+			*offset = pos;
+			*value = result;
+			return 0;
+		}
+	}
+	return -1;
+}
+
+// Validate the entire property span before inspecting it or publishing the
+// payload offset. Subscription identifiers keep the existing last-value wins
+// behavior, and are not allowed in UNSUBSCRIBE properties.
+static int
+nmq_parse_sub_properties(nng_msg *msg, uint8_t ver, bool allow_subid,
+    size_t *payload_offset, uint32_t *subid)
+{
+	size_t   pos = 2;
+	uint32_t parsed_subid = 0;
+
+	if (msg == NULL || nni_msg_len(msg) < pos) {
+		return -1;
+	}
+
+	if (ver == MQTT_PROTOCOL_VERSION_v5) {
+		const uint8_t *body = nni_msg_body(msg);
+		size_t         body_len = nni_msg_len(msg);
+		uint32_t       prop_len;
+
+		if (nmq_read_varint(body, body_len, &pos, &prop_len) != 0 ||
+		    !nmq_span_valid(body_len, pos, prop_len)) {
+			return -1;
+		}
+		size_t end = pos + prop_len;
+		while (pos < end) {
+			switch (body[pos++]) {
+			case USER_PROPERTY:
+				for (int j = 0; j < 2; j++) {
+					uint16_t str_len;
+					if (!nmq_span_valid(end, pos, 2)) {
+						return -3;
+					}
+					NNI_GET16(body + pos, str_len);
+					pos += 2;
+					if (!nmq_span_valid(end, pos, str_len)) {
+						return -3;
+					}
+					pos += str_len;
+				}
+				break;
+			case SUBSCRIPTION_IDENTIFIER:
+				if (!allow_subid) {
+					return -2;
+				}
+				if (nmq_read_varint(body, end, &pos,
+				        &parsed_subid) != 0) {
+					return -3;
+				}
+				if (parsed_subid == 0) {
+					return -1;
+				}
+				break;
+			default:
+				log_error("Invalid property id");
+				return -2;
+			}
+		}
+	}
+
+	*payload_offset = pos;
+	if (subid != NULL) {
+		*subid = parsed_subid;
+	}
+	return 0;
+}
+
 /**
  * @brief decode sub for subid, topics and RAP to subinfol
  * warning only use with sub msg & V5 client
@@ -1658,113 +1759,68 @@ nmq_subinfol_rm_or(nni_list *l, struct subinfo *n)
 int
 nmq_subtopic_decode(nng_msg *msg, uint8_t ver, topic_queue **ptq)
 {
-	char           *topic;
-	uint8_t         *payload_ptr, len_of_varint = 0, *var_ptr;
-	uint32_t        num = 0, len, len_of_str = 0, subid = 0;
+	uint8_t        *payload_ptr;
+	uint32_t        num = 0;
 	uint16_t        len_of_topic = 0;
 	size_t          bpos = 0, remain = 0;
-	topic_queue     *tq = NULL;
-	topic_queue     *curtq = NULL;
+	size_t          payload_offset;
+	topic_queue    *tq = NULL;
+	topic_queue    *curtq = NULL;
+	int             rv;
 
-	if (!msg || nni_msg_len(msg) < 2)
-		return (-1);
-
-	var_ptr = nni_msg_body(msg);
-	len = 0;
-	len_of_varint = 0;
-	// get variable length of properties
-	if (ver == MQTT_PROTOCOL_VERSION_v5) {
-		if (nni_msg_len(msg) < 3)
-			return (-1);
-		len = get_var_integer(
-		    (uint8_t *) nni_msg_body(msg) + 2, &len_of_varint);
-		if (len > nni_msg_len(msg))
-			return -1;
+	if (ptq == NULL) {
+		return -1;
 	}
-	log_trace("prop len %d varint %d remain %d", len, len_of_varint, nni_msg_len(msg));
-	payload_ptr = (uint8_t *) nni_msg_body(msg) + 2 + len + len_of_varint;
-
-	size_t pos = 2 + len_of_varint;
-	size_t target_pos = 2 + len_of_varint + len;
-	while (pos < target_pos) {
-		switch (*(var_ptr + pos)) {
-		case USER_PROPERTY:
-			pos++;
-			for (int j = 0; j < 2; j++) {
-				len_of_str = 0;
-				if (pos + 2 > target_pos)
-					return (-3);
-				NNI_GET16(var_ptr + pos, len_of_str);
-				pos += (2 + len_of_str);
-				if (pos > target_pos)
-					return (-3);
-			}
-			break;
-		case SUBSCRIPTION_IDENTIFIER:
-			pos++;
-			if (pos >= target_pos)
-				return (-3);
-			uint8_t prop_varint_len = 0;
-			subid = get_var_integer(var_ptr + pos, &prop_varint_len);
-			if (subid == 0)
-				return (-1);
-			pos += prop_varint_len;
-			break;
-		default:
-			log_error("Invalid property id");
-			return (-2);
-		}
+	if ((rv = nmq_parse_sub_properties(
+	         msg, ver, true, &payload_offset, NULL)) != 0) {
+		return rv;
 	}
 
-	if (pos > target_pos || nni_msg_len(msg) < target_pos)
-		return (-2);
-
-	remain = nni_msg_len(msg) - target_pos;
+	payload_ptr = (uint8_t *) nni_msg_body(msg) + payload_offset;
+	remain = nni_msg_len(msg) - payload_offset;
 	while (bpos < remain) {
 		// Check the index of topic len
-		if (bpos + 2 > remain)
-			return (-3);
+		if (!nmq_span_valid(remain, bpos, 2)) {
+			rv = -3;
+			goto fail;
+		}
 		NNI_GET16(payload_ptr + bpos, len_of_topic);
-		if (len_of_str > remain)
-			return -1;
 		bpos += 2;
-
-		if (len_of_topic == 0)
-			continue;
-		// Check the index of topic body
-		if (bpos + len_of_topic > remain)
-			return (-3);
-
-		if ((topic = nng_alloc(len_of_topic + 1)) == NULL)
-			return (-2);
-
-		strncpy(topic, (char *) payload_ptr + bpos, len_of_topic);
-		topic[len_of_topic] = 0x00;
-
-		if (tq == NULL) {
-			tq = nng_alloc(sizeof(topic_queue));
-			curtq = tq;
-			curtq->topic = topic;
-			curtq->next = NULL;
-		} else {
-			curtq->next = nng_alloc(sizeof(topic_queue));
-			curtq->next->topic = topic;
-			curtq = curtq->next;
-			curtq->next = NULL;
+		// Validate the topic and subscription option before allocating.
+		if (!nmq_span_valid(
+		        remain, bpos, (size_t) len_of_topic + 1)) {
+			rv = -3;
+			goto fail;
 		}
 
-		bpos += len_of_topic;
+		if (len_of_topic == 0) {
+			bpos += 1;
+			continue;
+		}
 
-		//Ensure at least 1 byte is left for subscription options
-		if (bpos >= remain)
-			return (-3);
+		topic_queue *node = topic_queue_init(
+		    (char *) payload_ptr + bpos, len_of_topic);
+		if (node == NULL) {
+			rv = -2;
+			goto fail;
+		}
+		if (tq == NULL) {
+			tq = node;
+		} else {
+			curtq->next = node;
+		}
+		curtq = node;
 
-		bpos += 1;
+		bpos += len_of_topic + 1;
 		num++;
 	}
 	*ptq = tq;
 
 	return num;
+
+fail:
+	topic_queue_release(tq);
+	return rv;
 }
 
 /**
@@ -1779,26 +1835,19 @@ int
 nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 {
 	char           *topic;
-	uint8_t        *payload_ptr, len_of_varint = 0, *var_ptr;
-	uint32_t        num = 0, len = 0, len_of_str = 0, subid = 0;
+	uint8_t        *payload_ptr, *var_ptr;
+	uint32_t        num = 0, subid = 0;
 	uint16_t        len_of_topic = 0;
 	size_t          bpos = 0, remain = 0;
+	size_t          payload_offset;
 	struct subinfo *sn = NULL;
 	nni_list       *ll = l;
+	int             rv;
 
 	if (!l || !msg || nni_msg_len(msg) < 2)
 		return (-1);
 
 	var_ptr = nni_msg_body(msg);
-
-	// get variable length of properties
-	if (ver == MQTT_PROTOCOL_VERSION_v5) {
-		if (nni_msg_len(msg) < 3)
-			return (-1);
-		len = get_var_integer((uint8_t *) var_ptr + 2, &len_of_varint);
-		if (len > nni_msg_len(msg))
-			return -1;
-	}
 
 	uint32_t pid = 0;
 	NNI_GET16(var_ptr, pid);
@@ -1807,47 +1856,13 @@ nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 		return -2;
 	}
 
-	log_trace("prop len %d varint %d remain %d", len, len_of_varint,
-	    nni_msg_len(msg));
-	payload_ptr = (uint8_t *) var_ptr + 2 + len + len_of_varint;
-
-	size_t pos        = 2 + len_of_varint;
-	size_t target_pos = 2 + len_of_varint + len;
-
-	while (pos < target_pos) {
-		switch (*(var_ptr + pos)) {
-		case USER_PROPERTY:
-			pos++;
-			for (int j = 0; j < 2; j++) {
-				len_of_str = 0;
-				if (pos + 2 > target_pos)
-					return (-3);
-				NNI_GET16(var_ptr + pos, len_of_str);
-				pos += (2 + len_of_str);
-				if (pos > target_pos)
-					return (-3);
-			}
-			break;
-		case SUBSCRIPTION_IDENTIFIER:
-			pos++;
-			if (pos >= target_pos)
-				return (-3);
-			uint8_t prop_varint_len = 0;
-			subid = get_var_integer(var_ptr + pos, &prop_varint_len);
-			if (subid == 0)
-				return (-1);
-			pos += prop_varint_len;
-			break;
-		default:
-			log_error("Invalid property id");
-			return (-2);
-		}
+	if ((rv = nmq_parse_sub_properties(
+	         msg, ver, true, &payload_offset, &subid)) != 0) {
+		return rv;
 	}
 
-	if (pos > target_pos || nni_msg_len(msg) < target_pos)
-		return (-2);
-
-	remain = nni_msg_len(msg) - target_pos;
+	payload_ptr = var_ptr + payload_offset;
+	remain = nni_msg_len(msg) - payload_offset;
 
 	while (bpos < remain) {
 		// Check the index of topic len
@@ -1914,60 +1929,34 @@ int
 nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 {
 	char    *topic;
-	uint8_t  len_of_topic = 0, len_of_varint = 0, *payload_ptr, *var_ptr;
-	uint32_t num = 0, len = 0, len_of_str = 0;
+	uint8_t *payload_ptr, *var_ptr;
+	uint16_t len_of_topic = 0;
+	uint32_t num = 0;
 	size_t   bpos = 0, remain = 0;
+	size_t   payload_offset;
 	struct subinfo *sn = NULL, *sn2, snode;
 	nni_list       *ll = l;
+	int             rv;
 
 	if (!l || !msg)
 		return (-1);
 	// Check the index of property length
 	if (nni_msg_len(msg) < 3)
 		return (-3);
-	if (ver == MQTT_PROTOCOL_VERSION_v5) {
-		// get Property variable Length
-		len = get_var_integer(
-		    (uint8_t *) nni_msg_body(msg) + 2, &len_of_varint);
-		if (len > nni_msg_len(msg))
-			return -1;
-	}
-
-	var_ptr     = (uint8_t *) nni_msg_body(msg);
-	payload_ptr = (uint8_t *) nni_msg_body(msg) + 2 + len + len_of_varint;
-	size_t pos = 2 + len_of_varint, target_pos = 2 + len_of_varint + len;
+	var_ptr = nni_msg_body(msg);
 	uint32_t pid = 0;
 	NNI_GET16(var_ptr, pid);
 	if (pid == 0) {
 		log_warn(" 0 Packetid in unsubscribe request");
 		return -2;
 	}
-	while (pos < target_pos) {
-		switch (*(var_ptr + pos)) {
-		case USER_PROPERTY:
-			// ID Length
-			pos++;
-			for (int j = 0; j < 2; j++) {
-				len_of_str = 0;
-				if (pos + 2 > target_pos)
-					return (-3);
-				// key/Value length
-				NNI_GET16(var_ptr + pos, len_of_str);
-				pos += (2 + len_of_str);
-				// Check the index of properties
-				if (pos > target_pos)
-					return (-3);
-			}
-			break;
-		default:
-			log_error("Invalid property id");
-			return (-2);
-		}
+	if ((rv = nmq_parse_sub_properties(
+	         msg, ver, false, &payload_offset, NULL)) != 0) {
+		return rv;
 	}
-	if (pos > target_pos || nni_msg_len(msg) < target_pos)
-		return (-2);
 
-	remain = nni_msg_len(msg) - target_pos;
+	payload_ptr = var_ptr + payload_offset;
+	remain = nni_msg_len(msg) - payload_offset;
 
 	while (bpos < remain) {
 		// Check the index of topic len
@@ -1982,8 +1971,8 @@ nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver)
 		if (bpos + len_of_topic > remain)
 			return (-3);
 
-		log_trace(
-		    "The current process topic is %s", payload_ptr + bpos);
+		log_trace("The current process topic is %.*s",
+		    (int) len_of_topic, (char *) payload_ptr + bpos);
 		if ((topic = nng_alloc(len_of_topic + 1)) == NULL)
 			return (-2);
 

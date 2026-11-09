@@ -146,6 +146,10 @@ NNG_DECL property *property_set_value_strpair(uint8_t prop_id, const char *key,
     uint32_t key_len, const char *value, uint32_t value_len, bool copy_value);
 NNG_DECL void      property_append(property *prop_list, property *last);
 
+// Decode subscription state from the message body. Return a topic count on
+// success or a negative value on failure. MQTT v5 properties are validated
+// within their declared span before processing the topic payload.
+// nmq_subtopic_decode publishes an owned queue through ptq only on success.
 NNG_DECL int  nmq_subtopic_decode(nng_msg *msg, uint8_t ver, topic_queue **ptq);
 NNG_DECL int  nmq_subinfo_decode(nng_msg *msg, void *l, uint8_t ver);
 NNG_DECL int  nmq_unsubinfo_decode(nng_msg *msg, void *l, uint8_t ver);
