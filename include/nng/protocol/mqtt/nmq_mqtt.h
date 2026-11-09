@@ -25,8 +25,18 @@ NNG_DECL int nng_nmq_tcp0_open(nng_socket *);
 #define NNG_NMQ_TCP_SELF_NAME "nmq_broker"
 #define NNG_NMQ_TCP_PEER_NAME "nmq_client"
 
+// Deprecated: retrieving the live pipe map now returns NNG_ENOTSUP.
 #define NMQ_OPT_MQTT_PIPES "mqtt-clients-pipes"
+#define NMQ_OPT_MQTT_PIPE_SNAPSHOT "mqtt-clients-pipe-snapshot"
 #define NMQ_OPT_MQTT_QOS_DB "mqtt-clients-qos-db"
+
+typedef struct nng_mqtt_pipe_snapshot {
+	uint32_t *ids;
+	size_t    count;
+} nng_mqtt_pipe_snapshot;
+
+// Free the snapshot array and reset both fields. A NULL argument is permitted.
+NNG_DECL void nng_mqtt_pipe_snapshot_free(nng_mqtt_pipe_snapshot *);
 
 #ifdef __cplusplus
 }
