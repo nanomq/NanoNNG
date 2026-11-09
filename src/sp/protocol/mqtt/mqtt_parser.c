@@ -1655,33 +1655,6 @@ nmq_span_valid(size_t length, size_t offset, size_t count)
 	return offset <= length && count <= length - offset;
 }
 
-// Read a canonical MQTT variable byte integer within the supplied span.
-// On failure, neither the cursor nor the output value is changed.
-static int
-nmq_read_varint(const uint8_t *buf, size_t length, size_t *offset,
-    uint32_t *value)
-{
-	size_t   pos = *offset;
-	uint32_t result = 0;
-
-	for (unsigned i = 0; i < 4; i++) {
-		if (!nmq_span_valid(length, pos, 1)) {
-			return -1;
-		}
-		uint8_t byte = buf[pos++];
-		result |= (uint32_t) (byte & 0x7f) << (7 * i);
-		if ((byte & 0x80) == 0) {
-			if (i != 0 && (byte & 0x7f) == 0) {
-				return -1;
-			}
-			*offset = pos;
-			*value = result;
-			return 0;
-		}
-	}
-	return -1;
-}
-
 // Validate the entire property span before inspecting it or publishing the
 // payload offset. Subscription identifiers keep the existing last-value wins
 // behavior, and are not allowed in UNSUBSCRIBE properties.
@@ -1697,37 +1670,40 @@ nmq_parse_sub_properties(nng_msg *msg, uint8_t ver, bool allow_subid,
 	}
 
 	if (ver == MQTT_PROTOCOL_VERSION_v5) {
-		const uint8_t *body = nni_msg_body(msg);
-		size_t         body_len = nni_msg_len(msg);
-		uint32_t       prop_len;
+		uint8_t *body = nni_msg_body(msg);
+		size_t   body_len = nni_msg_len(msg);
+		uint32_t prop_len;
+		// A variable byte integer occupies at most four bytes.
+		struct pos_buf buf = {
+			.curpos = body + pos,
+			.endpos = body + pos +
+			    (body_len - pos < 4 ? body_len - pos : 4),
+		};
 
-		if (nmq_read_varint(body, body_len, &pos, &prop_len) != 0 ||
-		    !nmq_span_valid(body_len, pos, prop_len)) {
+		if (read_variable_integer(&buf, &prop_len) != MQTT_SUCCESS) {
 			return -1;
 		}
-		size_t end = pos + prop_len;
-		while (pos < end) {
-			switch (body[pos++]) {
+		pos = (size_t) (buf.curpos - body);
+		if (!nmq_span_valid(body_len, pos, prop_len)) {
+			return -1;
+		}
+		buf.endpos = buf.curpos + prop_len;
+		while (buf.curpos < buf.endpos) {
+			switch (*buf.curpos++) {
 			case USER_PROPERTY:
 				for (int j = 0; j < 2; j++) {
-					uint16_t str_len;
-					if (!nmq_span_valid(end, pos, 2)) {
+					mqtt_buf str;
+					if (read_str_data(&buf, &str) != MQTT_SUCCESS) {
 						return -3;
 					}
-					NNI_GET16(body + pos, str_len);
-					pos += 2;
-					if (!nmq_span_valid(end, pos, str_len)) {
-						return -3;
-					}
-					pos += str_len;
 				}
 				break;
 			case SUBSCRIPTION_IDENTIFIER:
 				if (!allow_subid) {
 					return -2;
 				}
-				if (nmq_read_varint(body, end, &pos,
-				        &parsed_subid) != 0) {
+				if (read_variable_integer(&buf, &parsed_subid) !=
+				    MQTT_SUCCESS) {
 					return -3;
 				}
 				if (parsed_subid == 0) {
@@ -1739,6 +1715,7 @@ nmq_parse_sub_properties(nng_msg *msg, uint8_t ver, bool allow_subid,
 				return -2;
 			}
 		}
+		pos = (size_t) (buf.curpos - body);
 	}
 
 	*payload_offset = pos;
