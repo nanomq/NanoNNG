@@ -1386,11 +1386,58 @@ nano_sock_get_max_ttl(void *arg, void *buf, size_t *szp, nni_opt_type t)
 }
 
 static int
-nano_sock_get_idmap(void *arg, void *buf, size_t *szp, nni_opt_type t)
+nano_sock_get_pipe_snapshot(void *arg, void *buf, size_t *szp, nni_opt_type t)
 {
-	nano_sock *s = arg;
+	nano_sock              *s = arg;
+	nng_mqtt_pipe_snapshot  snapshot = { 0 };
+	uint32_t               cursor = 0;
+	uint64_t               id;
+	size_t                 index = 0;
 
-	return (nni_copyout_ptr(&s->pipes, buf, szp, t));
+	// Validate before allocating: a partial copy must never transfer an
+	// allocated pointer without its count or leak the snapshot array.
+	if (t != NNI_TYPE_OPAQUE) {
+		return (NNG_EBADTYPE);
+	}
+	if (szp == NULL) {
+		return (NNG_EINVAL);
+	}
+	if (*szp < sizeof(snapshot) || buf == NULL) {
+		*szp = sizeof(snapshot);
+		return (NNG_EINVAL);
+	}
+
+	// All map writers use s->lk. Keep the count, allocation, and traversal
+	// within the same critical section so map resizing cannot invalidate any
+	// part of the traversal. Only scalar IDs escape the protocol component.
+	nni_mtx_lock(&s->lk);
+	snapshot.count = nni_id_count(&s->pipes);
+	if (snapshot.count != 0) {
+		if (snapshot.count > SIZE_MAX / sizeof(*snapshot.ids) ||
+		    (snapshot.ids = nni_alloc(
+		         snapshot.count * sizeof(*snapshot.ids))) == NULL) {
+			nni_mtx_unlock(&s->lk);
+			return (NNG_ENOMEM);
+		}
+		while (nni_id_visit(&s->pipes, &id, NULL, &cursor)) {
+			NNI_ASSERT(index < snapshot.count);
+			snapshot.ids[index++] = (uint32_t) id;
+		}
+		NNI_ASSERT(index == snapshot.count);
+	}
+	nni_mtx_unlock(&s->lk);
+
+	return (nni_copyout(&snapshot, sizeof(snapshot), buf, szp));
+}
+
+void
+nng_mqtt_pipe_snapshot_free(nng_mqtt_pipe_snapshot *snapshot)
+{
+	if (snapshot != NULL) {
+		nni_free(snapshot->ids, snapshot->count * sizeof(*snapshot->ids));
+		snapshot->ids   = NULL;
+		snapshot->count = 0;
+	}
 }
 
 #if defined(NNG_SUPP_SQLITE)
@@ -1574,8 +1621,8 @@ static nni_option nano_sock_options[] = {
 	    .o_get  = nano_sock_get_sendfd,
 	},
 	{
-	    .o_name = NMQ_OPT_MQTT_PIPES,
-	    .o_get  = nano_sock_get_idmap,
+	    .o_name = NMQ_OPT_MQTT_PIPE_SNAPSHOT,
+	    .o_get  = nano_sock_get_pipe_snapshot,
 	},
 #if defined(NNG_SUPP_SQLITE)
 	{
