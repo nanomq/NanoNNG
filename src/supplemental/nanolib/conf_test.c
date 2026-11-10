@@ -266,6 +266,37 @@ test_conf_http_server_users_from_file(void)
 }
 
 void
+test_conf_auth_http_req_enable(void)
+{
+	conf *conf = get_test_conf(CONF_PATH);
+	NUTS_TRUE(conf != NULL);
+	if (conf == NULL) {
+		return;
+	}
+	conf_parse_ver2(conf, false);
+	// A configured request is on unless it sets `enable = false`.
+	NUTS_TRUE(conf->auth_http.auth_req.enable);
+	NUTS_TRUE(!conf->auth_http.super_req.enable);
+#ifdef ACL_SUPP
+	NUTS_TRUE(conf->auth_http.acl_req.enable);
+#endif
+	conf_fini(conf);
+
+#ifndef NNG_PLATFORM_WINDOWS
+	conf = get_test_conf(OLD_CONF_PATH);
+	NUTS_TRUE(conf != NULL);
+	if (conf == NULL) {
+		return;
+	}
+	conf_parse(conf);
+	// The old format has no enable key: a request with a url is on.
+	NUTS_TRUE(conf->auth_http.auth_req.enable);
+	NUTS_TRUE(!conf->auth_http.super_req.enable);
+	conf_fini(conf);
+#endif
+}
+
+void
 test_get_size_edge_cases(void)
 {
 	uint64_t size = 0;
@@ -723,6 +754,7 @@ NUTS_TESTS = {
    {"conf http server users in file", test_conf_http_server_users_from_file},
    {"conf parse v2 pkcs11", test_conf_parse_ver2_tls_pkcs11},
    {"conf parse", test_conf_parse},
+   {"conf auth_http request enable", test_conf_auth_http_req_enable},
    {"get size edge cases", test_get_size_edge_cases},
    {"get size null params", test_get_size_null_params},
    {"get size invalid formats", test_get_size_invalid_formats},

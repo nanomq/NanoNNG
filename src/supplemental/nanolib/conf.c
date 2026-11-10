@@ -4922,6 +4922,9 @@ conf_auth_http_req_parse(
 	req->headers =
 	    conf_parse_http_headers(path, key_prefix, &req->header_count);
 	nng_mtx_alloc(&req->mtx);
+	// auth_http skips a request whose enable flag is unset, and this
+	// format has no enable key: a request with a url is on.
+	req->enable = req->url != NULL;
 }
 
 static void

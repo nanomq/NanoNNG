@@ -955,6 +955,10 @@ conf_auth_http_req_parse_ver2(conf_auth_http_req *config, cJSON *jso)
 {
 	if (jso == NULL)
 		return;
+	// auth_http skips a request whose enable flag is unset: a
+	// configured block is on unless it says `enable = false`.
+	config->enable = true;
+	hocon_read_bool(config, enable, jso);
 	hocon_read_str(config, url, jso);
 	hocon_read_str(config, method, jso);
 	nng_mtx_alloc(&config->mtx);
