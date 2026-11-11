@@ -102,6 +102,9 @@ struct pq_array {
 	int64_t              *i64;
 	uint8_t              *u8; /* PQ_UINT8 only */
 	parquet_data_packet **bin;
+	/* Optional owned slab for bin packet descriptors and payload bytes. */
+	void                 *bin_storage;
+	size_t                bin_storage_size;
 };
 
 /* OPTIONAL validity is one bit per row (LSB within each byte). */
@@ -217,6 +220,13 @@ int       pq_array_set_i32(pq_array *a, uint32_t i, int32_t v);
 int       pq_array_set_i64(pq_array *a, uint32_t i, int64_t v);
 int       pq_array_set_u8(pq_array *a, uint32_t i, uint8_t v);
 int       pq_array_set_bin(pq_array *a, uint32_t i, parquet_data_packet *pkt);
+/* Allocate a single owned slab for an empty, non-borrowed BINARY column.
+ * Each bin[i] points to a zeroed descriptor. The returned payload_size-byte
+ * region is for the caller to fill and partition via bin[i]->data/size.
+ * Keep bin[i] pointers intact; set validity separately for NULL rows.
+ * Slab-backed columns cannot be resized or updated with set_bin. Freeing
+ * the column releases the slab. NULL means invalid input or allocation error. */
+uint8_t  *pq_array_alloc_binary(pq_array *a, uint64_t payload_size);
 int       pq_array_set_null(pq_array *a, uint32_t i);
 pq_array *pq_struct_field(pq_array *st, const char *name);
 int       pq_struct_set_null(pq_array *st, uint32_t row);

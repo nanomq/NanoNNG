@@ -457,6 +457,110 @@ test_enc_choose_u8_and_compact_schema(void)
 	parquet_data_free(batch);
 }
 
+static void
+test_binary_storage_guards(void)
+{
+	pq_type *type = pq_type_primitive(
+	    "payload", PQ_BYTE_ARRAY, PQ_OPTIONAL, PQ_ENC_RLE_DICT);
+	NUTS_ASSERT(type != NULL);
+	pq_array *a = pq_array_from_type(type, 2);
+	NUTS_ASSERT(a != NULL);
+	NUTS_TRUE(pq_array_alloc_binary(NULL, 0) == NULL);
+	NUTS_TRUE(pq_array_alloc_binary(a, UINT64_MAX) == NULL);
+	NUTS_TRUE(a->bin_storage == NULL && a->bin[0] == NULL);
+	a->borrowed = 1;
+	NUTS_TRUE(pq_array_alloc_binary(a, 0) == NULL);
+	a->borrowed = 0;
+	NUTS_ASSERT(pq_array_set_bin(a, 0,
+	    pq_packet_copy((const uint8_t *) "kept", 4)) == 0);
+	NUTS_TRUE(pq_array_alloc_binary(a, 4) == NULL);
+	NUTS_TRUE(a->bin[0]->size == 4);
+	NUTS_TRUE(memcmp(a->bin[0]->data, "kept", 4) == 0);
+	pq_array_free(a);
+
+	a = pq_array_from_type(type, 2);
+	NUTS_ASSERT(a != NULL);
+	/* Zero bytes still owns descriptors for valid empty values. */
+	NUTS_ASSERT(pq_array_alloc_binary(a, 0) != NULL);
+	NUTS_TRUE(a->bin[0] != NULL && a->bin[0]->size == 0);
+	NUTS_TRUE(a->bin[1] != NULL && a->bin[1]->data == NULL);
+	NUTS_TRUE(pq_array_alloc_binary(a, 0) == NULL);
+	NUTS_TRUE(pq_array_resize(a, 3) == -1);
+	NUTS_TRUE(a->length == 2);
+	NUTS_TRUE(pq_array_resize(a, 2) == 0);
+	NUTS_TRUE(pq_array_set_bin(a, 0, NULL) == -1);
+	NUTS_TRUE(pq_array_set_null(a, 0) == 0);
+	pq_array_free(a);
+	a = pq_array_from_type(type, 0);
+	NUTS_ASSERT(a != NULL);
+	NUTS_TRUE(pq_array_alloc_binary(a, 0) == NULL);
+	pq_array_free(a);
+	pq_type_free(type);
+
+	type = pq_type_primitive("int", PQ_INT32, PQ_REQUIRED, PQ_ENC_PLAIN);
+	NUTS_ASSERT(type != NULL);
+	a = pq_array_from_type(type, 2);
+	NUTS_ASSERT(a != NULL);
+	NUTS_TRUE(pq_array_alloc_binary(a, 2) == NULL);
+	pq_array_free(a);
+	pq_type_free(type);
+}
+
+static void
+test_binary_storage_roundtrip(void)
+{
+	pq_type *fields[] = {
+		pq_type_primitive("ts", PQ_INT64, PQ_REQUIRED, PQ_ENC_DELTA),
+		pq_type_primitive("id", PQ_INT32, PQ_REQUIRED, PQ_ENC_RLE_DICT),
+		pq_type_primitive("payload", PQ_BYTE_ARRAY, PQ_OPTIONAL, PQ_ENC_RLE_DICT)
+	};
+	for (uint32_t i = 0; i < 3; i++) {
+		NUTS_ASSERT(fields[i] != NULL);
+	}
+	pq_type *schema = pq_type_struct("schema", PQ_REQUIRED, fields, 3);
+	NUTS_ASSERT(schema != NULL);
+	parquet_data *batch = pq_batch_from_type(schema, 4), *got = NULL;
+	NUTS_ASSERT(batch != NULL);
+	pq_array *a = pq_batch_field(batch, "payload");
+	uint8_t *storage = pq_array_alloc_binary(a, 6);
+	NUTS_ASSERT(storage != NULL);
+	memcpy(storage, "abcdef", 6);
+	a->bin[0]->data = storage;
+	a->bin[0]->size = 3;
+	NUTS_TRUE(pq_array_set_null(a, 1) == 0);
+	/* Row 2 is present but empty; row 1 is NULL. */
+	a->bin[3]->data = storage + 3;
+	a->bin[3]->size = 3;
+	for (uint32_t i = 0; i < 4; i++) {
+		NUTS_TRUE(pq_array_set_i64(pq_batch_field(batch, "ts"), i, 100 + i) == 0);
+		NUTS_TRUE(pq_array_set_i32(pq_batch_field(batch, "id"), i, 7) == 0);
+	}
+	char path[128];
+	snprintf(path, sizeof(path), "/tmp/pq_batch_binary_%d.parquet", (int) getpid());
+	conf_parquet conf = test_conf();
+	conf.comp_type = ZSTD;
+	char bad_path[160];
+	snprintf(bad_path, sizeof(bad_path), "%s/missing.parquet", path);
+	NUTS_TRUE(parquet_write_file(&conf, bad_path, batch, "t", WRITE_RAW) == -1);
+	NUTS_TRUE(a->bin[0]->size == 3 && memcmp(a->bin[0]->data, "abc", 3) == 0);
+	NUTS_ASSERT(parquet_write_file(&conf, path, batch, "t", WRITE_RAW) == 0);
+	NUTS_TRUE(batch->root->fields[2] == NULL);
+	parquet_data_free(batch); /* The writer already released the slab. */
+	NUTS_ASSERT(parquet_read_file(&conf, path, &got) == 0);
+	NUTS_ASSERT(got != NULL);
+	a = pq_batch_field(got, "payload");
+	NUTS_ASSERT(a != NULL);
+	NUTS_TRUE(pq_valid_present(a->valid, 0));
+	NUTS_TRUE(a->bin[0]->size == 3 && memcmp(a->bin[0]->data, "abc", 3) == 0);
+	NUTS_TRUE(!pq_valid_present(a->valid, 1));
+	NUTS_TRUE(pq_valid_present(a->valid, 2));
+	NUTS_ASSERT(a->bin[2] != NULL);
+	NUTS_TRUE(a->bin[2]->size == 0);
+	NUTS_TRUE(a->bin[3]->size == 3 && memcmp(a->bin[3]->data, "def", 3) == 0);
+	parquet_data_free(got);
+	unlink(path);
+}
+
 NUTS_TESTS = {
 	{ "pq_batch flat alloc tree", test_flat_alloc_tree },
 	{ "pq_batch flat write/read", test_flat_write_read },
@@ -465,5 +569,7 @@ NUTS_TESTS = {
 	{ "pq_enc choose i32", test_enc_choose_i32 },
 	{ "pq_enc choose u8 compact", test_enc_choose_u8_and_compact_schema },
 	{ "pq_batch can frames enc", test_can_frames_enc_and_row_groups },
+	{ "pq_batch binary storage guards", test_binary_storage_guards },
+	{ "pq_batch binary storage roundtrip", test_binary_storage_roundtrip },
 	{ NULL, NULL },
 };

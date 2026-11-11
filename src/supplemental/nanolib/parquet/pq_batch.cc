@@ -313,12 +313,17 @@ pq_array_free(pq_array *a)
 			nng_free(a->u8, sizeof(uint8_t) * a->length);
 		}
 		if (a->bin != NULL) {
-			for (i = 0; i < a->length; i++) {
-				pq_packet_free(a->bin[i]);
+			if (a->bin_storage == NULL) {
+				for (i = 0; i < a->length; i++) {
+					pq_packet_free(a->bin[i]);
+				}
 			}
 			nng_free(
 			    a->bin, sizeof(parquet_data_packet *) * a->length);
 		}
+	}
+	if (a->bin_storage != NULL) {
+		nng_free(a->bin_storage, a->bin_storage_size);
 	}
 	a->i32 = NULL;
 	a->i64 = NULL;
@@ -350,6 +355,9 @@ pq_array_resize(pq_array *a, uint32_t length)
 	old = a->length;
 	if (length == old) {
 		return 0;
+	}
+	if (a->bin_storage != NULL) {
+		return -1;
 	}
 	if (a->type->repetition == PQ_OPTIONAL || a->valid != NULL) {
 		size_t   old_n = pq_valid_nbytes(old);
@@ -485,7 +493,8 @@ pq_array_set_u8(pq_array *a, uint32_t i, uint8_t v)
 int
 pq_array_set_bin(pq_array *a, uint32_t i, parquet_data_packet *pkt)
 {
-	if (pq_check_prim(a, i, PQ_BYTE_ARRAY) != 0) {
+	if (pq_check_prim(a, i, PQ_BYTE_ARRAY) != 0 ||
+	    a->bin_storage != NULL) {
 		return -1;
 	}
 	if (!a->borrowed && a->bin[i] != NULL && a->bin[i] != pkt) {
@@ -494,6 +503,41 @@ pq_array_set_bin(pq_array *a, uint32_t i, parquet_data_packet *pkt)
 	a->bin[i] = pkt;
 	pq_valid_set(a->valid, i, pkt != NULL);
 	return 0;
+}
+
+uint8_t *
+pq_array_alloc_binary(pq_array *a, uint64_t payload_size)
+{
+	uint64_t descriptors;
+	uint64_t total;
+	parquet_data_packet *packets;
+
+	if (a == NULL || a->type == NULL || a->type->kind != PQ_PRIMITIVE ||
+	    a->type->phys != PQ_BYTE_ARRAY || a->borrowed || a->length == 0 ||
+	    a->bin == NULL || a->bin_storage != NULL) {
+		return NULL;
+	}
+	descriptors = (uint64_t) a->length * sizeof(*packets);
+	if (descriptors > SIZE_MAX || payload_size > SIZE_MAX - descriptors) {
+		return NULL;
+	}
+	for (uint32_t i = 0; i < a->length; i++) {
+		if (a->bin[i] != NULL) {
+			return NULL;
+		}
+	}
+	total = descriptors + payload_size;
+	packets = (parquet_data_packet *) nng_alloc((size_t) total);
+	if (packets == NULL) {
+		return NULL;
+	}
+	memset(packets, 0, (size_t) descriptors);
+	a->bin_storage = packets;
+	a->bin_storage_size = (size_t) total;
+	for (uint32_t i = 0; i < a->length; i++) {
+		a->bin[i] = &packets[i];
+	}
+	return (uint8_t *) packets + (size_t) descriptors;
 }
 
 int
