@@ -1141,7 +1141,11 @@ parquet_write_nested(conf_parquet *conf, const char *filename,
 			}
 			pq_array_free(col);
 			data->root->fields[i] = NULL;
-			if (pool != NULL) {
+			/* Wrapped integer columns allocate no Arrow value buffer.
+			 * Reuse the writer's pool pages until the batch completes;
+			 * keep early reclamation for widened/nested/binary columns. */
+			if (pool != NULL && (ct->kind != PQ_PRIMITIVE ||
+			    (ct->phys != PQ_INT32 && ct->phys != PQ_INT64))) {
 				pool->ReleaseUnused();
 			}
 		}
