@@ -89,6 +89,7 @@ struct nano_pipe {
 	bool          busy;
 	bool          event; // indicates if exposure disconnect event is valid
 	bool          connacked; // indicates if broker has replied CONNACK
+	bool          admitted; // session installed under the broker lock
 	void         *tree;  // root node of db tree
 	void         *nano_qos_db; // 'sqlite' or 'nni_id_hash_map'
 	nni_aio       aio_send;
@@ -619,10 +620,11 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	nni_aio_init(&p->aio_timer, nano_pipe_timer_cb, p);
 	nni_aio_init(&p->aio_recv, nano_pipe_recv_cb, p);
 
+	p->id = nni_pipe_id(pipe);
 	p->conn_param  = nni_pipe_get_conn_param(pipe);
-	// Must keep one free here for safety decoupled transport & protocol 
+	// CONNECT already holds transport and protocol/app references.
+	// Balance the temporary reference acquired by the getter.
 	conn_param_free(p->conn_param);
-	p->id          = nni_pipe_id(pipe);
 	p->rid         = 1;
 	p->pipe        = pipe;
 	nni_atomic_init(&p->reason_code);
@@ -630,6 +632,7 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	p->ka_refresh  = 0;
 	p->event       = true;
 	p->connacked   = false;
+	p->admitted    = false;
 	p->tree        = sock->db;
 	if (p->conn_param != NULL)
 		p->keepalive   = p->conn_param->keepalive_mqtt;
@@ -643,13 +646,14 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 static int
 nano_pipe_start(void *arg)
 {
+	bool       cert_auth; // credentials replaced by the client certificate
 	char      *clientid;
 	nano_pipe *p = arg;
 	nano_pipe *old = NULL;
 	nano_sock *s = p->broker;
 	nni_msg   *msg;
 	uint8_t    rv; // reason code of CONNACK
-	bool       cert_auth; // credentials replaced by the client certificate
+	uint32_t   clientid_key;
 	nni_pipe  *npipe = p->pipe;
 
 	bool is_sqlite = s->conf->sqlite.enable;
@@ -723,7 +727,6 @@ auth_verify:
 	if (rv == NNG_MQTT_SUCCESS && !cert_auth) {
 		rv = verify_connect(p->conn_param, s->conf);
 	}
-	// TODO Avoid holding s->lk across HTTP authentication.
 	if (rv == NNG_MQTT_SUCCESS) {
 		if (s->conf->auth_http.enable) {
 			log_debug("HTTP Authentication start!");
@@ -731,16 +734,35 @@ auth_verify:
 			    p->conn_param, &s->conf->auth_http);
 		}
 	}
+	// Clientid should not be NULL since broker will assign one
+	clientid = (char *) conn_param_get_clientid(p->conn_param);
+	if (!clientid) {
+		log_warn("NULL clientid found when try to restore session.");
+		conn_param_free(p->conn_param);
+		nni_msg_free(msg);
+		return NNG_ECONNSHUT;
+	}
+	if (rv == 0) {
+		// Must set pid after ACL/Auth & before s->lock!
+		clientid_key = nanomq_siphash_32(
+			clientid, conn_param_get_clientid_len(p->conn_param), NULL);
+		int err = nni_pipe_set_pid(npipe, clientid_key);
+		if (err != 0) {
+			conn_param_free(p->conn_param);
+			nni_msg_free(msg);
+			return err;
+		}
+	}
+
 	nmq_connack_encode(msg, s->conf, p->conn_param, rv);
 	nni_mtx_lock(&s->lk);
-
+	p->id = nni_pipe_id(npipe);
+	// Dont register pipe during the racing window in case of zombie pipe
 	if (nni_pipe_is_closed(npipe) || nni_atomic_get_bool(&npipe->cache)) {
 		if (nni_atomic_get_bool(&npipe->cache)) {
 			if (rv != NNG_MQTT_SUCCESS) {
-				if (nni_id_get(&s->cached_sessions,
-				        npipe->p_id) == p) {
-					nni_id_remove(
-					    &s->cached_sessions, npipe->p_id);
+				if (nni_id_get(&s->cached_sessions, npipe->p_id) == p) {
+					nni_id_remove(&s->cached_sessions, npipe->p_id);
 				}
 				nni_atomic_set_bool(&npipe->cache, false);
 			} else {
@@ -757,64 +779,56 @@ auth_verify:
 		// send connack with reason code 0x05
 		log_warn("Invalid auth info or authentication denied");
 		p->conn_param->will_flag = 0;
+		p->conn_param->clean_start = 1;
 		goto end;
 	}
-	// Clientid should not be NULL since broker will assign one
-	// TODO use p_id
-	clientid = (char *) conn_param_get_clientid(p->conn_param);
-	if (!clientid) {
-		log_warn("NULL clientid found when try to restore session.");
-		nni_mtx_unlock(&s->lk);
-		conn_param_free(p->conn_param);
-		nni_msg_free(msg);
-		return NNG_ECONNSHUT;
-	}
-	if (p->conn_param->clean_start == 0) {
-		old = nni_id_get(&s->cached_sessions, p->pipe->p_id);
-		if (old != NULL) {
-			// there should be no msg in this map
-			if (!is_sqlite && p->pipe->nano_qos_db!= NULL) {
-				nni_qos_db_fini_id_hash(p->pipe->nano_qos_db);
-				p->pipe->nano_qos_db = NULL;
-			}
-			// move session swap work to old pipe' transport for security
-			old->pipe->tpipe = npipe;
-			if (nni_pipe_peer(old->pipe) != 0) {
-				log_error("Session restore failed!");
-			} else {
-				log_info("resuming session %u with %u",
-				    npipe->p_id, old->pipe->p_id);
-			}
-			p->id = nni_pipe_id(npipe);
-			// set event to false so that no notification will be sent
-			p->event = false;
-			// set event of old pipe to false and discard it.
-			old->event = false;
-			nni_id_remove(&s->cached_sessions, p->pipe->p_id);
+
+	log_debug("change p_id by hashing %d rv %d", clientid_key, rv);
+	bool swap = false;
+	old = nni_id_get(&s->cached_sessions, p->pipe->p_id);
+	if (old != NULL)
+		swap = nmq_session_compare(old->conn_param, p->conn_param);
+	if (p->conn_param->clean_start == 0 && swap == true) {
+		// there should be no msg in this map
+		if (!is_sqlite && p->pipe->nano_qos_db!= NULL) {
+			nni_qos_db_fini_id_hash(p->pipe->nano_qos_db);
+			p->pipe->nano_qos_db = NULL;
 		}
-	} else {
+		// move session swap work to old pipe' transport for security
+		old->pipe->tpipe = npipe;
+		if (nni_pipe_peer(old->pipe) != 0) {
+			log_error("Session restore failed!");
+		} else {
+			log_info("resuming session %u with %u",
+				npipe->p_id, old->pipe->p_id);
+		}
+		p->id = nni_pipe_id(npipe);
+		// set event to false so that no notification will be sent
+		p->event = false;
+		// set event of old pipe to false and discard it.
+		old->event = false;
+		nni_id_remove(&s->cached_sessions, p->pipe->p_id);
+	} else if (old != NULL) {
 		// clean previous session
-		old = nni_id_get(&s->cached_sessions, p->pipe->p_id);
-		if (old != NULL) {
-			old->event = true;
-			nni_atomic_swap_bool(&old->pipe->cache, false);
+		old->event = true;
+		nni_atomic_swap_bool(&old->pipe->cache, false);
 #ifdef NNG_SUPP_SQLITE
-			nni_qos_db_remove_by_pipe(
-			    is_sqlite, old->nano_qos_db, old->pipe->p_id);
-			nni_qos_db_remove_pipe(
-			    is_sqlite, old->nano_qos_db, old->pipe->p_id);
-			nni_qos_db_remove_unused_msg(
-			    is_sqlite, old->nano_qos_db);
+		nni_qos_db_remove_by_pipe(
+			is_sqlite, old->nano_qos_db, old->pipe->p_id);
+		nni_qos_db_remove_pipe(
+			is_sqlite, old->nano_qos_db, old->pipe->p_id);
+		nni_qos_db_remove_unused_msg(
+			is_sqlite, old->nano_qos_db);
 #endif
-			nni_id_remove(&s->cached_sessions, p->pipe->p_id);
-			log_info("cleaning session %u from cache", p->pipe->p_id);
-		}
+		nni_id_remove(&s->cached_sessions, p->pipe->p_id);
+		log_info("cleaning session %u from cache", p->pipe->p_id);
 	}
 #ifdef NNG_SUPP_SQLITE
 	nni_qos_db_set_pipe(is_sqlite, p->pipe->nano_qos_db, p->id, clientid);
 #endif
 	// pipe_id is just random value of id_dyn_val with self-increment.
 	nni_id_set(&s->pipes, p->id, p);
+	p->admitted = true;
 	nng_atomic_set(s->conf->lc, nni_id_count(&s->pipes));
 	p->conn_param->nano_qos_db = p->pipe->nano_qos_db;
 	p->nano_qos_db             = p->pipe->nano_qos_db;
@@ -918,7 +932,10 @@ nano_pipe_close(void *arg)
 	nni_mtx_lock(&p->lk);
 	// we freed the conn_param when restoring pipe
 	// so check status of conn_param. just let it close silently
-	if (p->conn_param->clean_start == 0) {
+	if (!p->admitted) {
+		// A pending connection owns no session to cache or retire.
+		p->event = false;
+	} else if (p->conn_param->clean_start == 0) {
 		// cache this pipe
 		clientid = (char *) conn_param_get_clientid(p->conn_param);
 	}
@@ -1585,6 +1602,37 @@ nano_pipe_peer_cert_as_username(nano_pipe *p, nng_pipe np, bool *cert_auth)
 	cp->con_flag      = (cp->con_flag | 0x80) & ~0x40;
 	*cert_auth        = true;
 	return (NNG_MQTT_SUCCESS);
+}
+
+bool
+nmq_session_compare(conn_param *old_cp, conn_param *new_cp)
+{
+	if (old_cp == NULL || new_cp == NULL) {
+		return false;
+	}
+
+	const uint8_t *u1   = conn_param_get_username(old_cp);
+	const uint8_t *u2   = conn_param_get_username(new_cp);
+	uint32_t       len1 = (u1 != NULL) ? old_cp->username.len : 0;
+	uint32_t       len2 = (u2 != NULL) ? new_cp->username.len : 0;
+
+	if (u1 != NULL || u2 != NULL) {
+		if (u1 == NULL || u2 == NULL || len1 != len2) {
+			return false;
+		}
+		return memcmp(u1, u2, len1) == 0;
+	}
+
+	const char *cn1 = old_cp->tls_peer_cn;
+	const char *cn2 = new_cp->tls_peer_cn;
+	if (cn1 != NULL || cn2 != NULL) {
+		if (cn1 == NULL || cn2 == NULL) {
+			return false;
+		}
+		return strcmp(cn1, cn2) == 0;
+	}
+
+	return true;
 }
 
 // This is the global protocol structure -- our linkage to the core.
