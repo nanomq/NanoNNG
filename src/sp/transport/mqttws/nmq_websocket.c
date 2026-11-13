@@ -1441,9 +1441,6 @@ wstran_pipe_stop(void *arg)
 static int
 wstran_pipe_init(void *arg, nni_pipe *pipe)
 {
-	int      rv, id;
-	NNI_ARG_UNUSED(rv);
-	NNI_ARG_UNUSED(id);
 	ws_pipe *p            = arg;
 	// sth wrong with negotiation, close it
 	log_trace(" ************ wstran_pipe_init [%p] ************ ", arg);
@@ -1455,15 +1452,6 @@ wstran_pipe_init(void *arg, nni_pipe *pipe)
 	p->ep_aio     = NULL;
 
 	nni_atomic_init_bool(&p->closed);
-	char    *cid;
-	uint32_t clientid_key = 0;
-	cid = (char *) conn_param_get_clientid(p->ws_param);
-	clientid_key = nanomq_siphash_32(cid, conn_param_get_clientid_len(p->ws_param), NULL);
-	id = nni_pipe_id(pipe);
-	rv = nni_pipe_set_pid(pipe, clientid_key);
-	log_debug("change p_id by hashing from %d to %d rv %d",
-			   id, clientid_key, rv);
-
 	p->qos_buf = nng_zalloc(16 + NNI_NANO_MAX_PACKET_SIZE);
 	p->npipe->subinfol = nni_zalloc(sizeof(nni_list));
 	if (p->npipe->subinfol == NULL) {
