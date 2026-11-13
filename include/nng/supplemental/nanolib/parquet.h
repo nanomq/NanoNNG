@@ -82,6 +82,10 @@ struct pq_type {
 	pq_enc   enc;  /* PRIMITIVE leaf only */
 	pq_type *children;
 	uint32_t n_children;
+	/* Owned codec metadata; only the root schema is persisted. */
+	char    *metadata;
+	/* PRIMITIVE leaf opt-out; false follows conf_parquet.enable_statistics. */
+	bool     disable_statistics;
 };
 
 struct pq_array {
@@ -211,6 +215,8 @@ pq_type *pq_type_primitive(
 pq_type *pq_type_struct(
     const char *name, pq_rep rep, pq_type **fields, uint32_t n);
 pq_type *pq_type_list(const char *name, pq_rep rep, pq_type *elem);
+/* Copy metadata, or clear it with NULL. Failure leaves the old value intact. */
+int      pq_type_set_metadata(pq_type *t, const char *metadata);
 void     pq_type_free(pq_type *t);
 
 pq_array *pq_array_from_type(const pq_type *t, uint32_t length);

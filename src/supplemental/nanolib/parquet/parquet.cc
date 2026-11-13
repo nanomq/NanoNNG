@@ -7,6 +7,7 @@
 #include <arrow/status.h>
 #include <arrow/util/key_value_metadata.h>
 #include <parquet/arrow/reader.h>
+#include <parquet/arrow/schema.h>
 #include <parquet/arrow/writer.h>
 #include <parquet/stream_reader.h>
 #include <parquet/stream_writer.h>
@@ -635,7 +636,8 @@ parquet_cipher_to_str(conf_parquet *conf)
 
 static shared_ptr<arrow::KeyValueMetadata>
 parquet_build_nmq_metadata(
-    conf_parquet *conf, const char *topic, parquet_type write_type)
+    conf_parquet *conf, const char *topic, parquet_type write_type,
+    const pq_type *schema)
 {
 	shared_ptr<arrow::KeyValueMetadata> kv =
 	    make_shared<arrow::KeyValueMetadata>();
@@ -662,6 +664,9 @@ parquet_build_nmq_metadata(
 
 	kv->Append("nmq.created_by", "NanoMQ");
 	kv->Append("nmq.created_at", std::to_string((long long) time(NULL)));
+	if (schema != NULL && schema->metadata != NULL) {
+		kv->Append("nmq.codec.metadata", schema->metadata);
+	}
 
 	// Backward compatibility: keep legacy self-increment key for raw stream parquet.
 	if (write_type == WRITE_RAW || write_type == WRITE_TEMP_RAW) {
@@ -807,6 +812,9 @@ pq_apply_leaf_encoding(parquet::WriterProperties::Builder &builder,
     const pq_type *t, const std::string &path)
 {
 	if (t->kind == PQ_PRIMITIVE) {
+		if (t->disable_statistics) {
+			builder.disable_statistics(path);
+		}
 		pq_enc enc = t->enc;
 		if (enc == PQ_ENC_ADAPTIVE) {
 			/* Unresolved: INT32 dict, INT64 delta, else plain. */
@@ -955,21 +963,102 @@ pq_primitive_as_arrow(const pq_array *col, std::vector<uint8_t> *bitmap_store)
 	    nulls, null_count);
 }
 
-/*
- * Build one leaf column as an Arrow Array. INT32/INT64 wrap C buffers
- * (zero-copy); PQ_UINT8 / nested / BINARY go through builders and widen
- * UINT8→INT32. Caller may free the C column after WriteColumnChunk.
- */
+/* A slab owns its descriptors and payload bytes. Validate every active row
+ * before deciding whether its bytes can be borrowed by Arrow. Noncontiguous
+ * but valid payloads fall back to the builder; malformed slabs must not fall
+ * back to a path that could read beyond their allocation. Returns -1 on error,
+ * 0 for fallback and 1 when *out wraps the payload without copying it. */
+static int
+pq_binary_slab_as_arrow(const pq_array *col, std::shared_ptr<arrow::Array> *out)
+{
+	if (col->type->kind != PQ_PRIMITIVE || col->type->phys != PQ_BYTE_ARRAY ||
+	    col->borrowed || col->bin_storage == NULL) {
+		return 0;
+	}
+	uint64_t descriptor_bytes = (uint64_t) col->length * sizeof(parquet_data_packet);
+	uintptr_t base = reinterpret_cast<uintptr_t>(col->bin_storage);
+	if (col->bin == NULL || descriptor_bytes > col->bin_storage_size ||
+	    col->bin_storage_size > UINTPTR_MAX - base ||
+	    (uint64_t) col->length + 1 > SIZE_MAX / sizeof(int32_t)) {
+		log_error("invalid binary slab allocation");
+		return -1;
+	}
+	uintptr_t payload = base + (size_t) descriptor_bytes;
+	uintptr_t end = base + col->bin_storage_size;
+	uint64_t bytes = 0;
+	int64_t null_count = 0;
+	bool contiguous = true;
+	std::vector<int32_t> offsets((size_t) col->length + 1);
+	std::vector<uint8_t> validity;
+	for (uint32_t i = 0; i < col->length; i++) {
+		const parquet_data_packet *pkt = col->bin[i];
+		if (!pq_valid_present(col->valid, i) || pkt == NULL) {
+			if (validity.empty()) {
+				validity.assign((size_t) (((uint64_t) col->length + 7) / 8), 0xff);
+			}
+			validity[i >> 3] &= (uint8_t) ~(1u << (i & 7u));
+			null_count++;
+		} else {
+			uintptr_t descriptor = reinterpret_cast<uintptr_t>(pkt);
+			if (descriptor < base || descriptor >= payload ||
+			    (descriptor - base) % sizeof(*pkt) != 0) {
+				log_error("invalid binary slab descriptor");
+				return -1;
+			}
+			if (pkt->size != 0) {
+				uintptr_t data = reinterpret_cast<uintptr_t>(pkt->data);
+				if (pkt->data == NULL || data < payload || data > end ||
+				    pkt->size > end - data) {
+					log_error("binary slab payload exceeds allocation");
+					return -1;
+				}
+				/* Compare offsets rather than adding to a pointer: a valid
+				 * reordered/duplicated slice may have exhausted the slab. */
+				if (data - payload != bytes) {
+					contiguous = false;
+				}
+				bytes += pkt->size;
+				if (bytes > INT32_MAX) {
+					log_error("binary column exceeds INT32 offset limit");
+					return -1;
+				}
+			}
+		}
+		offsets[(size_t) i + 1] = (int32_t) bytes;
+	}
+	if (!contiguous) {
+		return 0;
+	}
+	std::shared_ptr<arrow::Buffer> nulls;
+	if (null_count != 0) {
+		nulls = arrow::Buffer::FromVector(std::move(validity));
+	}
+	/* Arrow owns offsets/validity. Only the C payload is borrowed, until
+	 * WriteColumnChunk completes and the caller drops the Arrow array. */
+	*out = std::make_shared<arrow::BinaryArray>((int64_t) col->length,
+	    arrow::Buffer::FromVector(std::move(offsets)),
+	    arrow::Buffer::Wrap(reinterpret_cast<const uint8_t *>(payload), (int64_t) bytes),
+	    nulls, null_count);
+	return 1;
+}
+
+/* Build one column as an Arrow Array. Integer and contiguous binary slab
+ * buffers are borrowed; other columns use builders (UINT8 widens to INT32).
+ * Caller may free the C column only after WriteColumnChunk and arr.reset(). */
 static int
 pq_column_to_arrow_array(const pq_type *ct, pq_array *col, uint32_t row_len,
     std::vector<uint8_t> *bitmap, std::shared_ptr<arrow::Array> *out)
 {
 	std::shared_ptr<arrow::Array> arr;
 
-	if (ct == NULL || col == NULL || out == NULL) {
+	if (ct == NULL || col == NULL || col->type == NULL || out == NULL ||
+	    col->length != row_len) {
 		return -1;
 	}
 	arr = pq_primitive_as_arrow(col, bitmap);
+	if (arr == nullptr && pq_binary_slab_as_arrow(col, &arr) < 0) {
+		return -1;
+	}
 	if (arr == nullptr) {
 		auto builder = pq_make_builder(ct);
 		for (uint32_t r = 0; r < row_len; r++) {
@@ -1024,7 +1113,8 @@ parquet_write_nested(conf_parquet *conf, const char *filename,
 		}
 
 		shared_ptr<arrow::KeyValueMetadata> kv =
-		    parquet_build_nmq_metadata(conf, topic, write_type);
+		    parquet_build_nmq_metadata(
+		        conf, topic, write_type, data->schema_tree);
 		auto    arrow_schema = arrow::schema(fields, kv);
 		int64_t nrows        = (int64_t) data->row_len;
 
@@ -1091,18 +1181,30 @@ parquet_write_nested(conf_parquet *conf, const char *filename,
 		shared_ptr<FileClass> out_file;
 		PARQUET_ASSIGN_OR_THROW(out_file, FileClass::Open(filename));
 
-		arrow::MemoryPool *pool = arrow::default_memory_pool();
-		auto maybe_writer       = parquet::arrow::FileWriter::Open(
-		          *arrow_schema, pool, out_file, props);
-		if (!maybe_writer.ok()) {
-			log_error("nested FileWriter::Open failed: %s",
-			    maybe_writer.status().ToString().c_str());
+		/* Store footer metadata without serializing a second Arrow schema. */
+		auto arrow_props = parquet::default_arrow_writer_properties();
+		shared_ptr<parquet::SchemaDescriptor> descriptor;
+		auto st = parquet::arrow::ToParquetSchema(
+		    arrow_schema.get(), *props, *arrow_props, &descriptor);
+		if (!st.ok()) {
+			log_error("nested ToParquetSchema failed: %s",
+			    st.ToString().c_str());
 			return -1;
 		}
-		std::unique_ptr<parquet::arrow::FileWriter> writer =
-		    std::move(*maybe_writer);
+		auto file_writer = parquet::ParquetFileWriter::Open(out_file,
+		    std::static_pointer_cast<GroupNode>(descriptor->schema_root()),
+		    props, kv);
+		arrow::MemoryPool *pool = arrow::default_memory_pool();
+		std::unique_ptr<parquet::arrow::FileWriter> writer;
+		st = parquet::arrow::FileWriter::Make(pool,
+		    std::move(file_writer), arrow_schema, arrow_props, &writer);
+		if (!st.ok()) {
+			log_error("nested FileWriter::Make failed: %s",
+			    st.ToString().c_str());
+			return -1;
+		}
 
-		auto st = writer->NewRowGroup(nrows);
+		st = writer->NewRowGroup(nrows);
 		if (!st.ok()) {
 			log_error("nested NewRowGroup failed: %s",
 			    st.ToString().c_str());
@@ -1560,7 +1662,8 @@ parquet_write_core(conf_parquet *conf, char *filename,
 		    parquet::ParquetFileWriter::Open(out_file, schema, props);
 
 		shared_ptr<arrow::KeyValueMetadata> key_value_metadata =
-		    parquet_build_nmq_metadata(conf, topic, write_type);
+		    parquet_build_nmq_metadata(
+		        conf, topic, write_type, data->schema_tree);
 		file_writer->AddKeyValueMetadata(key_value_metadata);
 
 		// Append a RowGroup with a specific number of rows.
@@ -1689,6 +1792,24 @@ parquet_read_file(
 			    st.ToString().c_str());
 			return -1;
 		}
+		bool codec_metadata_present = false;
+		std::string codec_metadata;
+		auto kv = reader->parquet_reader()->metadata()->key_value_metadata();
+		if (kv != nullptr) {
+			for (int64_t i = 0; i < kv->size(); i++) {
+				if (kv->key(i) != "nmq.codec.metadata") {
+					continue;
+				}
+				/* Never choose between conflicting manifests or truncate one. */
+				if (codec_metadata_present ||
+				    kv->value(i).find('\0') != std::string::npos) {
+					log_error("invalid parquet codec metadata");
+					return -1;
+				}
+				codec_metadata = kv->value(i);
+				codec_metadata_present = true;
+			}
+		}
 		std::shared_ptr<arrow::Table> table;
 		st = reader->ReadTable(&table);
 		if (!st.ok()) {
@@ -1711,6 +1832,11 @@ parquet_read_file(
 		pq_type *root_t =
 		    pq_type_struct("schema", PQ_REQUIRED, fields.data(), n);
 		if (root_t == NULL) {
+			return -1;
+		}
+		if (codec_metadata_present &&
+		    pq_type_set_metadata(root_t, codec_metadata.c_str()) != 0) {
+			pq_type_free(root_t);
 			return -1;
 		}
 		parquet_data *data = pq_batch_from_type(

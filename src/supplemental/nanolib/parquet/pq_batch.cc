@@ -65,6 +65,10 @@ pq_type_free_contents(pq_type *t)
 		nng_free(t->name, strlen(t->name) + 1);
 		t->name = NULL;
 	}
+	if (t->metadata != NULL) {
+		nng_strfree(t->metadata);
+		t->metadata = NULL;
+	}
 	for (i = 0; i < t->n_children; i++) {
 		pq_type_free_contents(&t->children[i]);
 	}
@@ -152,6 +156,23 @@ pq_type_list(const char *name, pq_rep rep, pq_type *elem)
 	}
 	pq_type_move_into(&t->children[0], elem);
 	return t;
+}
+
+int
+pq_type_set_metadata(pq_type *t, const char *metadata)
+{
+	if (t == NULL) {
+		return -1;
+	}
+	char *copy = metadata != NULL ? nng_strdup(metadata) : NULL;
+	if (metadata != NULL && copy == NULL) {
+		return -1;
+	}
+	if (t->metadata != NULL) {
+		nng_strfree(t->metadata);
+	}
+	t->metadata = copy;
+	return 0;
 }
 
 void
