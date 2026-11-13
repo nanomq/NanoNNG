@@ -37,7 +37,7 @@ typedef struct nng_mqtt_pipe_snapshot {
 
 // Free the snapshot array and reset both fields. A NULL argument is permitted.
 NNG_DECL void nng_mqtt_pipe_snapshot_free(nng_mqtt_pipe_snapshot *);
-
+NNG_DECL bool nmq_session_compare(conn_param *old_cp, conn_param *new_cp);
 #ifdef __cplusplus
 }
 #endif

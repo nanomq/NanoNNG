@@ -469,6 +469,11 @@ nni_pipe_set_pid(nni_pipe *new_pipe, uint32_t id)
 	nni_pipe *p;
 	// remove the id set by NNG
 	nni_mtx_lock(&pipes_lk);
+	// Authentication may have outlived the incoming connection.
+	if (nni_pipe_is_closed(new_pipe)) {
+		nni_mtx_unlock(&pipes_lk);
+		return NNG_ECLOSED;
+	}
 	nni_id_remove(&pipes, new_pipe->p_id);
 	new_pipe->p_id = id;
 	#ifdef NNG_ENABLE_STATS
