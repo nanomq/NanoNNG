@@ -148,6 +148,7 @@ test_exchange_client(void)
 	conf_exchange_node *conf = NULL;
 	conf = nng_alloc(sizeof(conf_exchange_node));
 	NUTS_TRUE(conf != NULL);
+	memset(conf, 0, sizeof(*conf));
 	conf->name = "exchange1";
 	conf->topic = "topic1";
 
@@ -299,6 +300,7 @@ test_exchange_client_key_collision(void)
 	conf_exchange_node *conf = NULL;
 	conf = nng_alloc(sizeof(conf_exchange_node));
 	NUTS_TRUE(conf != NULL);
+	memset(conf, 0, sizeof(*conf));
 	conf->name = "exchange1";
 	conf->topic = "topic1";
 
@@ -342,7 +344,77 @@ test_exchange_client_key_collision(void)
 	return;
 }
 
+/* Enqueue order must stay monotonic across returned/full batches, including
+ * late keys that no longer collide with anything in the current ring. */
+static void
+test_exchange_key_watermark_across_flush(void)
+{
+	for (uint32_t ordered = 0; ordered < 2; ordered++) {
+		nng_socket sock, pair0_sock;
+		NUTS_PASS(nng_rep0_open(&pair0_sock));
+		sock.data = &pair0_sock;
+		NUTS_PASS(nng_exchange_client_open(&sock));
+		conf_exchange_node *conf = nng_alloc(sizeof(*conf));
+		NUTS_ASSERT(conf != NULL);
+		memset(conf, 0, sizeof(*conf));
+		conf->name = "watermark";
+		conf->topic = "topic1";
+		conf_parquet parquet = { 0 };
+		parquet.enable = true;
+		conf->parquet = ordered ? &parquet : NULL;
+		ringBuffer_node *rb = NNI_ALLOC_STRUCT(rb);
+		NUTS_ASSERT(rb != NULL);
+		rb->name = "watermark-ring";
+		rb->cap = 2;
+		rb->fullOp = RB_FULL_RETURN;
+		cvector_push_back(conf->rbufs, rb);
+		conf->rbufs_sz = cvector_size(conf->rbufs);
+		NUTS_PASS(nng_socket_set_ptr(sock, NNG_OPT_EXCHANGE_BIND, conf));
+
+		client_publish(sock, "topic1", 1000, NULL, 0, 0, false);
+		client_publish(sock, "topic1", 9, NULL, 0, 0, false);
+		uint32_t count = 0;
+		nng_msg **messages = NULL;
+		if (!ordered) {
+			/* BLF/non-Parquet business keys keep their original values. */
+			client_get_and_clean_msgs(sock, &count, &messages);
+			NUTS_ASSERT(count == 2 && messages != NULL);
+			NUTS_TRUE(nng_msg_get_timestamp(messages[0]) == 1000);
+			NUTS_TRUE(nng_msg_get_timestamp(messages[1]) == 9);
+			nng_msg_free(messages[0]);
+			nng_msg_free(messages[1]);
+			nng_free(messages, 2 * sizeof(*messages));
+		} else {
+			/* Return/free the first full batch through the normal aio. */
+			client_publish(sock, "topic1", 1, NULL, 0, 0, false);
+			client_get_and_clean_msgs(sock, &count, &messages);
+			NUTS_ASSERT(count == 1 && messages != NULL);
+			NUTS_TRUE(nng_msg_get_timestamp(messages[0]) == 1002);
+			nng_msg_free(messages[0]);
+			nng_free(messages, sizeof(*messages));
+
+			/* Emptying the ring must not reset the key watermark. */
+			client_publish(sock, "topic1", 2, NULL, 0, 0, false);
+			client_get_and_clean_msgs(sock, &count, &messages);
+			NUTS_ASSERT(count == 1 && messages != NULL);
+			NUTS_TRUE(nng_msg_get_timestamp(messages[0]) == 1003);
+			nng_msg_free(messages[0]);
+			nng_free(messages, sizeof(*messages));
+		}
+
+		nni_sock *nsock = NULL;
+		NUTS_PASS(nni_sock_find(&nsock, sock.id));
+		nni_sock_rele(nsock);
+		nni_sock_close(nsock);
+		nng_close(pair0_sock);
+		cvector_free(conf->rbufs);
+		nng_free(conf, sizeof(*conf));
+		nng_free(rb, sizeof(*rb));
+	}
+}
+
 NUTS_TESTS = {
+	{ "Exchange key watermark across flush", test_exchange_key_watermark_across_flush },
 	{ "Exchange client test", test_exchange_client },
 	{ "Exchange replay cmd parse", test_exchange_replay_cmd_parse },
 	{ "Exchange client rbmsgmap key collision test",

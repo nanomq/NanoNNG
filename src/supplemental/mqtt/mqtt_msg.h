@@ -324,6 +324,7 @@ NNG_DECL int mqtt_msg_dump(mqtt_msg *, mqtt_buf *, mqtt_buf *, bool);
 
 // nni_msg proto_data alloc/free
 NNG_DECL int  nni_mqtt_msg_proto_data_alloc(nni_msg *);
+NNG_DECL bool nni_mqtt_msg_has_proto_data(const nni_msg *);
 NNG_DECL void nni_mqtt_msg_proto_data_free(nni_msg *);
 NNG_DECL int  nni_mqtt_msg_free(void *);
 NNG_DECL int  nni_mqtt_msg_dup(void **, const void *);

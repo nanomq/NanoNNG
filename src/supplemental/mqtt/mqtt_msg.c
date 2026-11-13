@@ -10,6 +10,12 @@ static nni_proto_msg_ops proto_msg_ops = {
 	.msg_dup = nni_mqtt_msg_dup
 };
 
+bool
+nni_mqtt_msg_has_proto_data(const nni_msg *msg)
+{
+	return msg != NULL && nni_msg_get_proto_ops(msg) == &proto_msg_ops;
+}
+
 // set default conn param in case User ignores it.
 void
 nni_proto_data_init(nni_mqtt_proto_data *proto_data)
@@ -279,9 +285,36 @@ nni_mqtt_msg_set_publish_payload(nni_msg *msg, uint8_t *payload, uint32_t len)
 uint8_t *
 nni_mqtt_msg_get_publish_payload(nni_msg *msg, uint32_t *outlen)
 {
-	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
-	*outlen = proto_data->payload.publish.payload.length;
-	return proto_data->payload.publish.payload.buf;
+	if (outlen != NULL) {
+		*outlen = 0;
+	}
+	if (msg == NULL) {
+		return NULL;
+	}
+	if (nni_mqtt_msg_has_proto_data(msg)) {
+		nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
+		if (proto_data == NULL) {
+			return NULL;
+		}
+		if (outlen != NULL) {
+			*outlen = proto_data->payload.publish.payload.length;
+		}
+		return proto_data->payload.publish.payload.buf;
+	}
+	/* NanoMQ broker messages retain a body and payload pointer instead of
+	 * MQTT client proto_data. Exchange may use proto_data for an integer key. */
+	uintptr_t start = (uintptr_t) nni_msg_body(msg);
+	uintptr_t payload = (uintptr_t) nni_msg_payload_ptr(msg);
+	size_t size = nni_msg_len(msg);
+	if (start == 0 || payload == 0 || size > UINTPTR_MAX - start ||
+	    payload < start || payload > start + size ||
+	    start + size - payload > UINT32_MAX) {
+		return NULL;
+	}
+	if (outlen != NULL) {
+		*outlen = (uint32_t) (start + size - payload);
+	}
+	return (uint8_t *) payload;
 }
 
 void

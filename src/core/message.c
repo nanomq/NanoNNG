@@ -754,6 +754,12 @@ nni_msg_get_proto_data(nng_msg *m)
 	return (m->m_proto_data);
 }
 
+const nni_proto_msg_ops *
+nni_msg_get_proto_ops(const nng_msg *m)
+{
+	return (m->m_proto_ops);
+}
+
 /**
  * @brief get MQTT packet Type from msg header
  * 

@@ -9,8 +9,29 @@
 #include "nng/nng.h"
 #include "nng/exchange/stream/stream.h"
 #include "nng/exchange/stream/raw_stream.h"
+#include "supplemental/mqtt/mqtt_msg.h"
 
 nng_id_map *stream_node_map = NULL;
+
+uint8_t *
+stream_msg_payload(void *msg, uint32_t *out_len)
+{
+	static uint8_t empty_payload;
+	nng_msg *m = msg;
+	uint32_t len = 0;
+	uint8_t *payload = nng_mqtt_msg_get_publish_payload(m, &len);
+	if (payload == NULL && len == 0 && nni_mqtt_msg_has_proto_data(m)) {
+		/* Distinguish a valid empty typed payload from an invalid message. */
+		payload = &empty_payload;
+	}
+	if (payload == NULL) {
+		len = 0;
+	}
+	if (out_len != NULL) {
+		*out_len = len;
+	}
+	return payload;
+}
 
 int stream_register(char *name,
 					uint8_t id,
@@ -39,6 +60,7 @@ int stream_register(char *name,
 	snode->decode = decode;
 	snode->encode = encode;
 	snode->cmd_parser = cmd_parser;
+	snode->decode_range = NULL;
 
 	nng_id_set(stream_node_map, id, snode);
 
@@ -70,6 +92,29 @@ void *stream_decode(uint8_t id, void *buf)
 	}
 
 	return (snode->decode(buf));
+}
+
+int
+stream_set_decode_range(uint8_t id,
+    void *(*decode_range)(void *, uint64_t, uint64_t))
+{
+	stream_node *node = nng_id_get(stream_node_map, id);
+	if (node == NULL) {
+		return NNG_ENOENT;
+	}
+	node->decode_range = decode_range;
+	return 0;
+}
+
+void *
+stream_decode_range(uint8_t id, void *buf, uint64_t start_key, uint64_t end_key)
+{
+	stream_node *node = nng_id_get(stream_node_map, id);
+	if (node == NULL || start_key > end_key) {
+		return NULL;
+	}
+	return node->decode_range != NULL ?
+	    node->decode_range(buf, start_key, end_key) : node->decode(buf);
 }
 
 void *stream_encode(uint8_t id, void *buf)

@@ -42,6 +42,8 @@ static uint32_t rotate = 0, rotate2 = 0;
 struct nano_ctx {
 	nano_sock *sock;
 	uint32_t   pipe_id;
+	/* A PUBLISH held until this context completes its archive/hook work. */
+	uint32_t   ordered_pipe_id;
 	// when resending
 	nano_pipe    *spipe, *qos_pipe; // send pipe
 	nni_aio      *saio;             // send aio
@@ -91,6 +93,8 @@ struct nano_pipe {
 	bool          busy;
 	bool          event; // indicates if exposure disconnect event is valid
 	bool          connacked; // indicates if broker has replied CONNACK
+	/* Protected by broker->lk; at most one archived PUBLISH per connection. */
+	nano_ctx     *recv_owner;
 	void         *tree;  // root node of db tree
 	void         *nano_qos_db; // 'sqlite' or 'nni_id_hash_map'
 	nni_aio       aio_send;
@@ -287,6 +291,40 @@ nano_pipe_timer_cb(void *arg)
 	return;
 }
 
+/* Caller holds the broker lock. Looking up the id avoids retaining a pipe
+ * pointer while the application handles a message or a connection closes. */
+static void
+nano_ctx_resume_ordered_recv(nano_ctx *ctx)
+{
+	uint32_t id = ctx->ordered_pipe_id;
+	ctx->ordered_pipe_id = 0;
+	if (id == 0) {
+		return;
+	}
+	nano_pipe *p = nni_id_get(&ctx->sock->pipes, id);
+	if (p != NULL && p->recv_owner == ctx) {
+		p->recv_owner = NULL;
+		if (!nni_atomic_get_bool(&p->closed) && !nni_pipe_is_closed(p->pipe)) {
+			nni_pipe_recv(p->pipe, &p->aio_recv);
+		}
+	}
+}
+
+/* Archive hooks execute in application workers. Starting another receive
+ * before that worker returns can reorder one connection's PUBLISH payloads. */
+static bool
+nano_ctx_ordered_publish(nano_ctx *ctx, nano_pipe *p, nni_msg *msg)
+{
+	conf *config = ctx->sock->conf;
+	if (config == NULL || nni_msg_cmd_type(msg) != CMD_PUBLISH || !config->parquet.enable ||
+	    config->exchange.count == 0) {
+		return false;
+	}
+	p->recv_owner = ctx;
+	ctx->ordered_pipe_id = p->id;
+	return true;
+}
+
 static void
 nano_ctx_close(void *arg)
 {
@@ -308,6 +346,7 @@ nano_ctx_close(void *arg)
 		ctx->raio = NULL;
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
+	nano_ctx_resume_ordered_recv(ctx);
 	nni_mtx_unlock(&s->lk);
 }
 
@@ -332,6 +371,7 @@ nano_ctx_init(void *carg, void *sarg)
 
 	ctx->sock    = s;
 	ctx->pipe_id = 0;
+	ctx->ordered_pipe_id = 0;
 }
 
 static void
@@ -635,6 +675,7 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	p->ka_refresh  = 0;
 	p->event       = true;
 	p->connacked   = false;
+	p->recv_owner  = NULL;
 	p->tree        = sock->db;
 	if (p->conn_param != NULL)
 		p->keepalive   = p->conn_param->keepalive_mqtt;
@@ -935,6 +976,8 @@ nano_pipe_close(void *arg)
 	}
 	nni_mtx_lock(&s->lk);
 	nni_mtx_lock(&p->lk);
+	/* Never retain a context pointer through disconnect/session handoff. */
+	p->recv_owner = NULL;
 	// we freed the conn_param when restoring pipe
 	// so check status of conn_param. just let it close silently
 	if (p->conn_param->clean_start == 0) {
@@ -1109,6 +1152,8 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 
 	log_trace("nano_ctx_recv start %p", ctx);
 	nni_mtx_lock(&s->lk);
+	/* Re-entering recv means the prior PUBLISH completed its broker hooks. */
+	nano_ctx_resume_ordered_recv(ctx);
 
 	if (nni_lmq_get(&s->waitlmq, &msg) == 0) {
 		nni_aio_set_msg(aio, msg);
@@ -1142,7 +1187,9 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 	msg = nni_aio_get_msg(&p->aio_recv);
 	nni_aio_set_msg(&p->aio_recv, NULL);
 	nni_list_remove(&s->recvpipes, p);
-	nni_pipe_recv(p->pipe, &p->aio_recv);
+	if (!nano_ctx_ordered_publish(ctx, p, msg)) {
+		nni_pipe_recv(p->pipe, &p->aio_recv);
+	}
 
 	ctx->pipe_id = nni_pipe_id(p->pipe);
 	log_trace("nano_ctx_recv ends %p pipe: %p pipe_id: %d", ctx, p,
@@ -1356,10 +1403,11 @@ nano_pipe_recv_cb(void *arg)
 
 	ctx->pipe_id = p->id;
 	log_trace("currently processing pipe_id: %d", p->id);
+	bool ordered = nano_ctx_ordered_publish(ctx, p, msg);
 	nni_mtx_unlock(&s->lk);
 	if (type == CMD_DISCONNECT) {
 		nni_pipe_close(p->pipe);
-	} else {
+	} else if (!ordered) {
 		// schedule another receive
 		nni_pipe_recv(p->pipe, &p->aio_recv);
 	}

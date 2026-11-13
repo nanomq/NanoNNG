@@ -37,128 +37,112 @@ static char **raw_schema_init()
 	return schema;
 }
 
-static void output_stream_free(struct stream_data_out *output_stream)
+static void
+output_stream_free(struct stream_data_out *out)
 {
-	if (output_stream == NULL) {
+	if (out == NULL) {
 		return;
 	}
-
-	if (output_stream->schema != NULL) {
-		for (uint32_t i = 0; i < output_stream->col_len; i++) {
-			if (output_stream->schema[i] != NULL) {
-				nng_free(output_stream->schema[i], strlen(output_stream->schema[i]) + 1);
+	if (out->payload_arr != NULL) {
+		for (uint32_t c = 0; c < out->col_len; c++) {
+			if (out->payload_arr[c] == NULL) {
+				continue;
 			}
-		}
-		nng_free(output_stream->schema, output_stream->col_len * sizeof(char *));
-	}
-
-	if (output_stream->payload_arr != NULL) {
-		for (uint32_t i = 0; i < output_stream->row_len; i++) {
-			if (output_stream->payload_arr[i] != NULL) {
-				for (uint32_t j = 0; j < output_stream->col_len; j++) {
-					if (output_stream->payload_arr[i][j] != NULL) {
-						if (output_stream->payload_arr[i][j]->data != NULL && output_stream->payload_arr[i][j]->size > 0) {
-							nng_free(output_stream->payload_arr[i][j]->data, output_stream->payload_arr[i][j]->size);
-						}
-						nng_free(output_stream->payload_arr[i][j], sizeof(parquet_data_packet));
+			for (uint32_t r = 0; r < out->row_len; r++) {
+				parquet_data_packet *pkt = out->payload_arr[c][r];
+				if (pkt != NULL) {
+					if (pkt->data != NULL) {
+						nng_free(pkt->data, pkt->size);
 					}
+					nng_free(pkt, sizeof(*pkt));
 				}
-				nng_free(output_stream->payload_arr[i], sizeof(parquet_data_packet *) * output_stream->col_len);
+			}
+			nng_free(out->payload_arr[c],
+			    out->row_len * sizeof(parquet_data_packet *));
+		}
+		nng_free(out->payload_arr,
+		    out->col_len * sizeof(parquet_data_packet **));
+	}
+	if (out->schema != NULL) {
+		/* schema includes the timestamp column; payload_arr does not. */
+		for (uint32_t c = 0; c <= out->col_len; c++) {
+			if (out->schema[c] != NULL) {
+				nng_strfree(out->schema[c]);
 			}
 		}
-		nng_free(output_stream->payload_arr, sizeof(parquet_data_packet **) * output_stream->row_len);
+		nng_free(out->schema, (out->col_len + 1) * sizeof(char *));
 	}
-
-	nng_free(output_stream, sizeof(struct stream_data_out));
-
-	return;
+	if (out->ts != NULL) {
+		nng_free(out->ts, out->row_len * sizeof(uint64_t));
+	}
+	nng_free(out, sizeof(*out));
 }
 
-static struct stream_data_out *output_stream_init(void *data)
+static void *
+output_stream_init(void *data)
 {
-	struct stream_data_out *output_stream = NULL;
-	struct stream_data_in *input_stream = NULL;
-
-	input_stream = (struct stream_data_in *)data;
-	if (input_stream == NULL || input_stream->len == 0 ||
-	    input_stream->msgs == NULL) {
+	struct stream_data_in *input = data;
+	if (input == NULL || input->len == 0 || input->msgs == NULL ||
+	    input->keys == NULL ||
+	    (uint64_t) input->len * sizeof(uint64_t) > SIZE_MAX ||
+	    (uint64_t) input->len * sizeof(parquet_data_packet *) > SIZE_MAX) {
 		return NULL;
 	}
-
-	output_stream = nng_alloc(sizeof(struct stream_data_out));
-	if (output_stream == NULL) {
+	struct stream_data_out *out = nng_alloc(sizeof(*out));
+	if (out == NULL) {
 		return NULL;
 	}
-	output_stream->schema = NULL;
-	output_stream->payload_arr = NULL;
-
-	output_stream->col_len = 1;
-	output_stream->row_len = input_stream->len;
-	output_stream->schema = raw_schema_init();
-	if (output_stream->schema == NULL) {
-		output_stream_free(output_stream);
-		return NULL;
+	memset(out, 0, sizeof(*out));
+	out->col_len = 1;
+	out->row_len = input->len;
+	out->schema = raw_schema_init();
+	out->payload_arr = nng_alloc(sizeof(parquet_data_packet **));
+	if (out->payload_arr != NULL) {
+		out->payload_arr[0] = NULL;
 	}
-	output_stream->payload_arr = nng_alloc(sizeof(parquet_data_packet **) * output_stream->row_len);
-	if (output_stream->payload_arr == NULL) {
-		output_stream_free(output_stream);
-		return NULL;
+	out->ts = nng_alloc(sizeof(uint64_t) * out->row_len);
+	if (out->schema == NULL || out->payload_arr == NULL || out->ts == NULL) {
+		goto fail;
 	}
-
-	output_stream->ts = nng_alloc(sizeof(uint64_t) * output_stream->row_len);
-	if (output_stream->ts == NULL) {
-		output_stream_free(output_stream);
-		return NULL;
+	out->payload_arr[0] = nng_alloc(sizeof(parquet_data_packet *) * out->row_len);
+	if (out->payload_arr[0] == NULL) {
+		goto fail;
 	}
-	for (uint32_t i = 0; i < output_stream->row_len; i++) {
-		output_stream->ts[i] = input_stream->keys[i];
-	}
-
-	output_stream->payload_arr[0] = nng_alloc(sizeof(parquet_data_packet *) * output_stream->row_len);
-	if (output_stream->payload_arr[0] == NULL) {
-		output_stream_free(output_stream);
-		return NULL;
-	}
-
-	for (uint32_t i = 0; i < output_stream->row_len; i++) {
-		uint32_t  plen    = 0;
-		uint8_t  *payload = NULL;
-
-		output_stream->payload_arr[0][i] = NULL;
-		output_stream->payload_arr[0][i] = nng_alloc(sizeof(parquet_data_packet));
-		if (output_stream->payload_arr[0][i] == NULL) {
-			output_stream_free(output_stream);
-			return NULL;
+	memset(out->payload_arr[0], 0,
+	    sizeof(parquet_data_packet *) * out->row_len);
+	for (uint32_t r = 0; r < out->row_len; r++) {
+		uint32_t size = 0;
+		uint8_t *payload = stream_msg_payload(input->msgs[r], &size);
+		if (payload == NULL) {
+			goto fail;
 		}
-
-		if (input_stream->msgs != NULL) {
-			payload = nng_mqtt_msg_get_publish_payload(input_stream->msgs[i], &plen);
+		parquet_data_packet *pkt = nng_alloc(sizeof(*pkt));
+		if (pkt == NULL) {
+			goto fail;
 		}
-		output_stream->payload_arr[0][i]->size = plen;
-		if (plen > 0 && payload != NULL) {
-			output_stream->payload_arr[0][i]->data = nng_alloc(plen);
-			if (output_stream->payload_arr[0][i]->data == NULL) {
-				output_stream_free(output_stream);
-				return NULL;
+		pkt->data = NULL;
+		pkt->size = size;
+		out->payload_arr[0][r] = pkt;
+		if (size != 0) {
+			pkt->data = nng_alloc(size);
+			if (pkt->data == NULL) {
+				goto fail;
 			}
-			memcpy(output_stream->payload_arr[0][i]->data, payload, plen);
-		} else {
-			output_stream->payload_arr[0][i]->data = NULL;
+			memcpy(pkt->data, payload, size);
 		}
+		out->ts[r] = input->keys[r];
 	}
-
-	void *encoded_stream_data = parquet_data_alloc(output_stream->schema,
-												   output_stream->payload_arr,
-												   output_stream->ts,
-												   output_stream->col_len,
-												   output_stream->row_len);
-	if (encoded_stream_data == NULL) {
-		log_error("parquet_data_alloc failed\n");
+	parquet_data *batch = parquet_data_alloc(out->schema, out->payload_arr,
+	    out->ts, out->col_len, out->row_len);
+	if (batch == NULL) {
+		goto fail;
 	}
-
-	nng_free(output_stream, sizeof(struct stream_data_out));
-
-	return encoded_stream_data;
+	/* The batch now owns schema, payloads and timestamps. */
+	nng_free(out, sizeof(*out));
+	return batch;
+fail:
+	output_stream_free(out);
+	return NULL;
 }
 
 static struct stream_decoded_data *raw_stream_decode(struct parquet_data_ret *parquet_data)
@@ -241,7 +225,7 @@ void *raw_decode(void *data)
 
 void *raw_encode(void *data)
 {
-	struct stream_data_out *output_stream = NULL;
+	void *output_stream = NULL;
 	if (data == NULL) {
 		return NULL;
 	}

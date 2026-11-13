@@ -19,6 +19,8 @@ typedef struct stream_node {
 	void *(*decode)(void *);
 	void *(*encode)(void *);
 	void *(*cmd_parser)(void *);
+	/* Optional: verify a complete typed batch, then select a key range. */
+	void *(*decode_range)(void *, uint64_t, uint64_t);
 } stream_node;
 
 #ifndef SUPP_PARQUET
@@ -86,9 +88,9 @@ struct stream_data_in {
 	uint32_t  len;
 };
 
-/* Extract MQTT payload pointer and length from an nng_msg.
- * Returns NULL when msg is NULL; *out_len is set to 0 in that case.
- * out_len may be NULL when caller only needs the pointer. */
+/* Borrow a payload span from a broker body/payload_ptr or MQTT client message.
+ * Invalid messages return NULL and length zero; a valid empty span is non-NULL.
+ * out_len may be NULL. The caller must keep the message alive. */
 NNG_DECL uint8_t *stream_msg_payload(void *msg, uint32_t *out_len);
 
 struct stream_decoded_data {
@@ -110,6 +112,10 @@ NNG_DECL int stream_register(char *name, uint8_t id,
 						 void *(*cmd_parser)(void *));
 NNG_DECL int stream_unregister(uint8_t id);
 NNG_DECL void *stream_decode(uint8_t id, void *buf);
+NNG_DECL int stream_set_decode_range(uint8_t id,
+    void *(*decode_range)(void *, uint64_t, uint64_t));
+NNG_DECL void *stream_decode_range(uint8_t id, void *buf,
+    uint64_t start_key, uint64_t end_key);
 NNG_DECL void *stream_encode(uint8_t id, void *buf);
 NNG_DECL void *stream_cmd_parser(uint8_t id, void *buf);
 NNG_DECL int stream_sys_init(void);

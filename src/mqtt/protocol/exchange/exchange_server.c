@@ -77,6 +77,10 @@ enum exchange_reason_codes {
 struct exchange_node_s {
 	exchange_t      *ex;
 	exchange_sock_t *sock;
+	/* Successful enqueue watermark, retained when the ring buffer flushes. */
+	uint64_t         last_key;
+	bool             has_key;
+	bool             ordered_keys;
 };
 
 struct exchange_sock_s {
@@ -98,7 +102,7 @@ static void exchange_sock_send(void *arg, nni_aio *aio);
 static void exchange_sock_recv(void *arg, nni_aio *aio);
 
 static int
-exchange_add_ex(exchange_sock_t *s, exchange_t *ex)
+exchange_add_ex(exchange_sock_t *s, exchange_t *ex, bool ordered_keys)
 {
 	nni_mtx_lock(&s->mtx);
 
@@ -118,6 +122,9 @@ exchange_add_ex(exchange_sock_t *s, exchange_t *ex)
 
 	node->ex = ex;
 	node->sock = s;
+	node->last_key = 0;
+	node->has_key = false;
+	node->ordered_keys = ordered_keys;
 
 	s->ex_node = node;
 	nni_mtx_unlock(&s->mtx);
@@ -595,7 +602,8 @@ static struct stream_decoded_data *fuzz_search_result_cat(nng_msg **msgList,
 			return NULL;
 		}
 
-		part = stream_decode(stream_type, parquet_data_ele);
+		part = stream_decode_range(stream_type, parquet_data_ele,
+		    cmd_data->start_key, cmd_data->end_key);
 		if (parquet_data_ele->schema != NULL) {
 			nng_free(parquet_data_ele->schema,
 			    sizeof(char *) * parquet_data_ele->col_len);
@@ -685,7 +693,9 @@ static void query_send_sync(exchange_sock_t *s, struct cmd_data *cmd_data, int r
 		parquet_decoded_data = nng_alloc(sizeof(struct stream_decoded_data *) * parquet_decoded_data_len);
 		for (uint32_t i = 0; i < parquet_decoded_data_len; i++) {
 			if (parquet_datas[i] != NULL) {
-				parquet_decoded_data[i] = stream_decode(s->ex_node->ex->streamType, parquet_datas[i]);
+				parquet_decoded_data[i] = stream_decode_range(
+				    s->ex_node->ex->streamType, parquet_datas[i],
+				    cmd_data->start_key, cmd_data->end_key);
 			} else {
 				parquet_decoded_data[i] = NULL;
 			}
@@ -777,7 +787,9 @@ static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data, int 
 					if (parquet_datas[i] != NULL) {
 						struct stream_decoded_data *parquet_decoded_data = NULL;
 
-						parquet_decoded_data = stream_decode(s->ex_node->ex->streamType, parquet_datas[i]);
+						parquet_decoded_data = stream_decode_range(
+						    s->ex_node->ex->streamType, parquet_datas[i],
+						    cmd_data->start_key, cmd_data->end_key);
 						if (parquet_decoded_data != NULL && parquet_decoded_data->len > 0) {
 							log_info("parquet_decoded_data[%d] size: %d", i, parquet_decoded_data->len);
 							nng_msg *newmsg = NULL;
@@ -1053,6 +1065,14 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 	nni_msg *tmsg = NULL;
 
 	key  = nni_msg_get_timestamp(msg);
+	if (ex_node->ordered_keys && ex_node->has_key && key <= ex_node->last_key) {
+		if (ex_node->last_key == UINT64_MAX) {
+			log_error("exchange message key exhausted");
+			nni_msg_free(msg);
+			return -1;
+		}
+		key = ex_node->last_key + 1;
+	}
 	nni_aio_set_prov_data(aio, NULL);
 
 	/*
@@ -1068,7 +1088,7 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 	 * exact same rbmsgmap entry we insert here.
 	 */
 	while ((tmsg = nni_id_get(&ex_node->sock->rbmsgmap, key)) != NULL) {
-		if (++probes >= NANO_EX_RBMSGMAP_PROBE_MAX) {
+		if (++probes >= NANO_EX_RBMSGMAP_PROBE_MAX || key == UINT64_MAX) {
 			log_error("[***]msg already in rbmsgmap, overwirte is not allowed");
 			log_debug("[%s]msg already in rbmsgmap, overwirte is not allowed",
 			    ex_node->ex->topic);
@@ -1078,7 +1098,7 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 		}
 		key++;
 	}
-	if (probes > 0) {
+	if (key != nni_msg_get_timestamp(msg)) {
 		nni_msg_set_timestamp(msg, key);
 	}
 
@@ -1099,9 +1119,14 @@ exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 	if (ret != 0) {
 		log_error("[***]exchange_handle_msg failed!\n");
 		log_debug("[%s]exchange_handle_msg failed!\n", ex_node->ex->topic);
+		nni_id_remove(&ex_node->sock->rbmsgmap, key);
 		/* free msg here! */
 		nni_msg_free(msg);
 		return -1;
+	}
+	if (ex_node->ordered_keys) {
+		ex_node->last_key = key;
+		ex_node->has_key = true;
 	}
 	nng_msg **msgs = nng_aio_get_prov_data(aio);
 	if (msgs != NULL) {
@@ -1318,7 +1343,7 @@ exchange_sock_bind_exchange(void *arg, const void *v, size_t sz, nni_opt_type t)
 		return rv;
 	}
 
-	rv = exchange_add_ex(s, ex);
+	rv = exchange_add_ex(s, ex, node->parquet != NULL && node->parquet->enable);
 
 	return (rv);
 }

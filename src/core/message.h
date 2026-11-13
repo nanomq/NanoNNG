@@ -177,6 +177,8 @@ typedef struct nni_proto_msg_ops {
 extern void nni_msg_set_proto_data(nng_msg *, nni_proto_msg_ops *, void *);
 
 extern void *nni_msg_get_proto_data(nng_msg *m);
+/* Identity of the callbacks owning protocol data; inspect before casting it. */
+extern const nni_proto_msg_ops *nni_msg_get_proto_ops(const nng_msg *m);
 
 // nni_msg_get_proto_data returns the data previously set on the message.
 // Note that the protocol is responsible for ensuring that the data on
