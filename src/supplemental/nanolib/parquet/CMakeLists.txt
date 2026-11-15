@@ -1,5 +1,5 @@
 if(NNG_ENABLE_PARQUET)
-    nng_sources(parquet.cc parquet_file_queue.cc)
+    nng_sources(parquet.cc parquet_file_queue.cc someip_parquet.cc)
     find_package(Arrow CONFIG REQUIRED)
     find_package(Parquet CONFIG REQUIRED)
     if(ENABLE_PARQUET_SHARED)

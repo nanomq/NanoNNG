@@ -19,6 +19,8 @@
 #include "nng/protocol/reqrep0/rep.h"
 #if defined(SUPP_PARQUET)
 #include "nng/supplemental/nanolib/parquet.h"
+#include "nng/exchange/stream/someip_stream.h"
+#include "stream/someip_batch.h"
 #endif
 #include "nng/supplemental/nanolib/blf.h"
 
@@ -140,6 +142,13 @@ static inline void parquet_data_ret_free(struct parquet_data_ret *parquet_data)
 	if (parquet_data == NULL) {
 		return;
 	}
+#if defined(SUPP_PARQUET)
+	if (parquet_data->someip_data != NULL) {
+		someip_batch_free(parquet_data->someip_data);
+		nng_free(parquet_data, sizeof(*parquet_data));
+		return;
+	}
+#endif
 	if (parquet_data->payload_arr != NULL) {
 		for (uint32_t j = 0; j < parquet_data->col_len; j++) {
 			if (parquet_data->payload_arr[j] != NULL) {
@@ -288,7 +297,7 @@ static struct parquet_data_ret *ringbus_parquet_data_ret_init(struct stream_data
 		return NULL;
 	}
 
-	parquet_data_ret = nng_alloc(sizeof(struct parquet_data_ret));
+	parquet_data_ret = nng_zalloc(sizeof(struct parquet_data_ret));
 	if (parquet_data_ret == NULL) {
 		log_error("Failed to allocate memory for parquet_data_ret\n");
 		return NULL;
@@ -360,6 +369,22 @@ static struct stream_decoded_data *fuzz_search_result_cat(nng_msg **msgList,
 		ringbus_stream_data_in_free(stream_data);
 		return NULL;
 	}
+
+#if defined(SUPP_PARQUET)
+	if (stream_data_out->someip_data != NULL) {
+		/* SOME/IP needs every column and the complete protected batch.
+		 * Select windows only after the codec validates all input rows. */
+		if (cmd_data != NULL && cmd_data->schema_len == 0) {
+			decoded_data = someip_decode_range((parquet_data *) stream_data_out,
+			    cmd_data->start_key, cmd_data->end_key);
+		} else {
+			log_error("SOME/IP queries require the complete schema");
+		}
+		parquet_data_free((parquet_data *) stream_data_out);
+		ringbus_stream_data_in_free(stream_data);
+		return decoded_data;
+	}
+#endif
 
 	parquet_data_ret *parquet_data_ele = ringbus_parquet_data_ret_init(stream_data_out, cmd_data);
 	if (parquet_data_ele == NULL) {

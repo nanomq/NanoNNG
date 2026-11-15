@@ -45,6 +45,8 @@ struct parquet_data_ret {
 	uint64_t              *ts;
 	char                 **schema;
 	parquet_data_packet ***payload_arr;
+	/* Dedicated SOME/IP columns; NULL for the existing raw/SPI/CANP layout. */
+	void                 *someip_data;
 };
 
 
@@ -76,6 +78,14 @@ void          parquet_data_ts_borrowed(parquet_data *data);
 void          parquet_data_schema_borrowed(parquet_data *data);
 /* packet structs are one contiguous block per column; freed as a whole. */
 void          parquet_data_packets_contiguous(parquet_data *data);
+
+/* Dedicated five-column SOME/IP file helpers. Writing does not consume data. */
+NNG_DECL int someip_parquet_write_file(conf_parquet *conf, const char *filename,
+    parquet_data *data, const char *topic);
+NNG_DECL parquet_data_ret *someip_parquet_read_file(conf_parquet *conf,
+    const char *filename, uint64_t start_key, uint64_t end_key);
+/* Release only a result returned by someip_parquet_read_file(). */
+NNG_DECL void someip_parquet_ret_free(parquet_data_ret *data);
 
 parquet_object *parquet_object_alloc(parquet_data *data, parquet_type type,
     nng_aio *aio, void *aio_arg, char *topic);
