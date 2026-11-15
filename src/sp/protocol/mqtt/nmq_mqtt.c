@@ -48,6 +48,10 @@ struct nano_ctx {
 	nano_pipe    *spipe, *qos_pipe; // send pipe
 	nni_aio      *saio;             // send aio
 	nni_aio      *raio;             // recv aio
+	// rearm_pipe is the pipe of the PUBLISH this context took from
+	// recvpipes: its next receive waits until the context asks for its
+	// next message, after it has forwarded this one (see nano_ctx_recv).
+	uint32_t      rearm_pipe;
 	nni_list_node sqnode;
 	nni_list_node rqnode;
 };
@@ -89,6 +93,7 @@ struct nano_pipe {
 	bool          busy;
 	bool          event; // indicates if exposure disconnect event is valid
 	bool          connacked; // indicates if broker has replied CONNACK
+	bool          recv_deferred; // a context re-arms aio_recv, rearm_pipe
 	void         *tree;  // root node of db tree
 	void         *nano_qos_db; // 'sqlite' or 'nni_id_hash_map'
 	nni_aio       aio_send;
@@ -285,6 +290,29 @@ nano_pipe_timer_cb(void *arg)
 	return;
 }
 
+// nano_ctx_rearm_pipe starts the next receive of the pipe whose PUBLISH
+// ctx took from recvpipes, if it is still open. s->lk must be held.
+static void
+nano_ctx_rearm_pipe(nano_ctx *ctx)
+{
+	nano_sock *s = ctx->sock;
+	nano_pipe *p;
+
+	if (ctx->rearm_pipe == 0) {
+		return;
+	}
+	p               = nni_id_get(&s->pipes, ctx->rearm_pipe);
+	ctx->rearm_pipe = 0;
+	// recv_deferred tells this pipe from a later one with the same ID.
+	if (p == NULL || !p->recv_deferred) {
+		return;
+	}
+	p->recv_deferred = false;
+	if (!nni_atomic_get_bool(&p->closed)) {
+		nni_pipe_recv(p->pipe, &p->aio_recv);
+	}
+}
+
 static void
 nano_ctx_close(void *arg)
 {
@@ -294,6 +322,7 @@ nano_ctx_close(void *arg)
 
 	log_trace("nano_ctx_close");
 	nni_mtx_lock(&s->lk);
+	nano_ctx_rearm_pipe(ctx);
 	if ((aio = ctx->saio) != NULL) {
 		// nano_pipe *pipe = ctx->spipe;
 		ctx->saio     = NULL;
@@ -328,8 +357,9 @@ nano_ctx_init(void *carg, void *sarg)
 	NNI_LIST_NODE_INIT(&ctx->sqnode);
 	NNI_LIST_NODE_INIT(&ctx->rqnode);
 
-	ctx->sock    = s;
-	ctx->pipe_id = 0;
+	ctx->sock       = s;
+	ctx->pipe_id    = 0;
+	ctx->rearm_pipe = 0;
 }
 
 static void
@@ -630,6 +660,7 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	p->ka_refresh  = 0;
 	p->event       = true;
 	p->connacked   = false;
+	p->recv_deferred = false;
 	p->tree        = sock->db;
 	if (p->conn_param != NULL)
 		p->keepalive   = p->conn_param->keepalive_mqtt;
@@ -1088,6 +1119,8 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 
 	log_trace("nano_ctx_recv start %p", ctx);
 	nni_mtx_lock(&s->lk);
+	// This context is done with the message it took before.
+	nano_ctx_rearm_pipe(ctx);
 
 	if (nni_lmq_get(&s->waitlmq, &msg) == 0) {
 		nni_aio_set_msg(aio, msg);
@@ -1121,7 +1154,16 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 	msg = nni_aio_get_msg(&p->aio_recv);
 	nni_aio_set_msg(&p->aio_recv, NULL);
 	nni_list_remove(&s->recvpipes, p);
-	nni_pipe_recv(p->pipe, &p->aio_recv);
+	if (nng_msg_cmd_type(msg) == CMD_PUBLISH) {
+		// The context's callback runs later, on a task queue thread.
+		// The next packet of this pipe is read when this context asks
+		// for its next message, so a PUBLISH is forwarded before the one
+		// the client sends after it (MQTT 3.1.1 and 5.0, section 4.6).
+		p->recv_deferred = true;
+		ctx->rearm_pipe  = nni_pipe_id(p->pipe);
+	} else {
+		nni_pipe_recv(p->pipe, &p->aio_recv);
+	}
 
 	ctx->pipe_id = nni_pipe_id(p->pipe);
 	log_trace("nano_ctx_recv ends %p pipe: %p pipe_id: %d", ctx, p,
@@ -1347,12 +1389,17 @@ nano_pipe_recv_cb(void *arg)
 	nni_mtx_unlock(&s->lk);
 	if (type == CMD_DISCONNECT) {
 		nni_pipe_close(p->pipe);
-	} else {
-		// schedule another receive
-		nni_pipe_recv(p->pipe, &p->aio_recv);
+		nni_aio_set_msg(aio, msg);
+		nni_aio_finish_sync(aio, 0, nni_msg_len(msg));
+		return;
 	}
+	// The context's callback runs here, before the next packet of this
+	// pipe is read: a PUBLISH is handled, and forwarded, before the one
+	// the client sends after it (MQTT 3.1.1 and 5.0, section 4.6).
 	nni_aio_set_msg(aio, msg);
 	nni_aio_finish_sync(aio, 0, nni_msg_len(msg));
+	// schedule another receive
+	nni_pipe_recv(p->pipe, &p->aio_recv);
 	log_trace("end of nano_pipe_recv_cb %p", ctx);
 	return;
 
