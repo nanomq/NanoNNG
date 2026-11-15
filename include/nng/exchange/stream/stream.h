@@ -38,6 +38,7 @@ struct parquet_data_ret {
 	uint64_t              *ts;
 	char                 **schema;
 	parquet_data_packet ***payload_arr;
+	void                 *someip_data;
 };
 
 struct parquet_data {
@@ -55,6 +56,7 @@ struct parquet_data {
 	bool ts_borrowed;
 	bool schema_borrowed;
 	bool packets_contiguous;
+	void *someip_data;
 };
 
 NNG_DECL parquet_data *parquet_data_alloc(char **schema,
@@ -83,6 +85,8 @@ struct stream_data_out {
 	bool ts_borrowed;
 	bool schema_borrowed;
 	bool packets_contiguous;
+	/* Owned dedicated SOME/IP batch, or NULL for legacy codecs. */
+	void *someip_data;
 };
 
 struct stream_data_in {

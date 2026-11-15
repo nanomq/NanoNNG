@@ -20,6 +20,7 @@
 #include "nng/supplemental/nanolib/queue.h"
 #include "nng/exchange/stream/stream.h"
 #include "parquet_file_manager.h"
+#include "someip_parquet.h"
 #include <assert.h>
 #include <atomic>
 #include <dirent.h>
@@ -74,6 +75,8 @@ struct parquet_data {
 	bool schema_borrowed;
 	/* When true, packet structs are one contiguous block per column. */
 	bool packets_contiguous;
+	/* Owned five-column SOME/IP storage; NULL for legacy data. */
+	void *someip_data;
 };
 
 /* stream_encode() exposes this object through stream_data_out. Keep
@@ -93,6 +96,7 @@ CHECK_STREAM_OUTPUT_FIELD(payload_borrowed);
 CHECK_STREAM_OUTPUT_FIELD(ts_borrowed);
 CHECK_STREAM_OUTPUT_FIELD(schema_borrowed);
 CHECK_STREAM_OUTPUT_FIELD(packets_contiguous);
+CHECK_STREAM_OUTPUT_FIELD(someip_data);
 #undef CHECK_STREAM_OUTPUT_FIELD
 
 
@@ -315,6 +319,23 @@ parquet_data_alloc(char **schema, parquet_data_packet ***payload_arr,
 	data->ts_borrowed      = false;
 	data->schema_borrowed  = false;
 	data->packets_contiguous = false;
+	data->someip_data = NULL;
+	return data;
+}
+
+parquet_data *
+parquet_data_alloc_someip(someip_batch *batch)
+{
+	if (batch == NULL) return NULL;
+	parquet_data *data = new (std::nothrow) parquet_data();
+	if (data == NULL) return NULL;
+	data->col_len = 5;
+	data->row_len = batch->rows;
+	data->ts = batch->batch_index;
+	data->schema = someip_batch_schema(batch);
+	data->ts_borrowed = true;
+	data->schema_borrowed = true;
+	data->someip_data = batch;
 	return data;
 }
 
@@ -354,6 +375,11 @@ void
 parquet_data_free(parquet_data *data)
 {
 	if (data == NULL) return;
+	if (data->someip_data != NULL) {
+		someip_batch_free(data->someip_data);
+		delete data;
+		return;
+	}
 	for (uint32_t c = 0; data->payload_arr && c + 1 < data->col_len; c++) {
 		parquet_data_packet **column = data->payload_arr[c];
 		if (column == NULL) continue;
@@ -804,20 +830,44 @@ parquet_write_core(conf_parquet *conf, char *filename,
 			builder.encryption(encryption_configurations);
 		}
 
+		if (data->someip_data != NULL) {
+			auto batch = static_cast<someip_batch *>(data->someip_data);
+			if (someip_batch_validate(batch) != 0) return -1;
+			someip_parquet_encoding(builder, batch);
+		}
+
 		shared_ptr<parquet::WriterProperties> props = builder.build();
 		using FileClass = arrow::io::FileOutputStream;
 		shared_ptr<FileClass> out_file;
 		PARQUET_ASSIGN_OR_THROW(out_file, FileClass::Open(filename));
-		shared_ptr<parquet::ParquetFileWriter> file_writer =
-		    parquet::ParquetFileWriter::Open(out_file, schema, props);
-
 		shared_ptr<arrow::KeyValueMetadata> key_value_metadata =
 		    parquet_build_nmq_metadata(conf, topic, write_type);
-		file_writer->AddKeyValueMetadata(key_value_metadata);
+		if (data->someip_data != NULL) {
+			auto batch = static_cast<someip_batch *>(data->someip_data);
+			if (batch->version != 0) {
+				key_value_metadata->Append("nmq.codec.metadata", batch->manifest);
+			}
+		}
+		shared_ptr<parquet::ParquetFileWriter> file_writer;
+		if (data->someip_data != NULL) {
+			file_writer = parquet::ParquetFileWriter::Open(
+			    out_file, schema, props, key_value_metadata);
+		} else {
+			file_writer = parquet::ParquetFileWriter::Open(out_file, schema, props);
+			file_writer->AddKeyValueMetadata(key_value_metadata);
+		}
 
 		// Append a RowGroup with a specific number of rows.
 		parquet::RowGroupWriter *rg_writer =
 		    file_writer->AppendRowGroup();
+
+		if (data->someip_data != NULL) {
+			someip_parquet_write_columns(rg_writer,
+			    static_cast<someip_batch *>(data->someip_data));
+			rg_writer->Close();
+			file_writer->Close();
+			return 0;
+		}
 
 		// Write the Int64 column
 		log_debug("start doing int64 write");
@@ -874,6 +924,25 @@ parquet_write_core(conf_parquet *conf, char *filename,
 }
 
 int
+someip_parquet_write_file(conf_parquet *conf, const char *filename,
+    parquet_data *data, const char *topic)
+{
+	if (conf == nullptr || filename == nullptr || data == nullptr ||
+	    data->someip_data == nullptr || topic == nullptr) return -1;
+	try {
+		auto schema = someip_parquet_schema(
+		    static_cast<someip_batch *>(data->someip_data));
+		int rv = parquet_write_core(conf, const_cast<char *>(filename),
+		    schema, data, topic, WRITE_RAW);
+		if (rv != 0) remove(filename);
+		return rv;
+	} catch (const std::exception &) {
+		remove(filename);
+		return -1;
+	}
+}
+
+int
 parquet_write_tmp(parquet_object *elem)
 {
 
@@ -889,7 +958,9 @@ parquet_write_tmp(parquet_object *elem)
 	uint32_t  row_len    = elem->data->row_len;
 	uint64_t *ts_arr     = elem->data->ts;
 
-	shared_ptr<GroupNode> schema = setup_schema(schema_arr, col_len);
+	shared_ptr<GroupNode> schema = elem->data->someip_data != NULL ?
+	    someip_parquet_schema(static_cast<someip_batch *>(elem->data->someip_data)) :
+	    setup_schema(schema_arr, col_len);
 
 	if (NULL == schema) {
 		log_error("Schema set error.");
@@ -949,7 +1020,9 @@ parquet_write(parquet_object *elem)
 	uint32_t  row_len    = elem->data->row_len;
 	uint64_t *ts_arr     = elem->data->ts;
 
-	shared_ptr<GroupNode> schema = setup_schema(schema_arr, col_len);
+	shared_ptr<GroupNode> schema = elem->data->someip_data != NULL ?
+	    someip_parquet_schema(static_cast<someip_batch *>(elem->data->someip_data)) :
+	    setup_schema(schema_arr, col_len);
 
 	if (NULL == schema) {
 		log_error("Schema set error.");
@@ -1302,6 +1375,13 @@ parquet_read(conf_parquet *conf, char *filename, uint64_t key, uint32_t *len)
 		// Get the File MetaData
 		shared_ptr<parquet::FileMetaData> file_metadata =
 		    parquet_reader->metadata();
+		if (file_metadata->num_columns() < 2 ||
+		    file_metadata->schema()->Column(0)->physical_type() != Type::INT64 ||
+		    file_metadata->schema()->Column(1)->physical_type() != Type::BYTE_ARRAY) {
+			log_error("Raw packet reader cannot decode this column layout");
+			return NULL;
+		}
+
 
 		int num_row_groups =
 		    file_metadata
@@ -1517,6 +1597,13 @@ parquet_read(conf_parquet *conf, char *filename, vector<uint64_t> keys)
 		// Get the File MetaData
 		shared_ptr<parquet::FileMetaData> file_metadata =
 		    parquet_reader->metadata();
+		if (file_metadata->num_columns() < 2 ||
+		    file_metadata->schema()->Column(0)->physical_type() != Type::INT64 ||
+		    file_metadata->schema()->Column(1)->physical_type() != Type::BYTE_ARRAY) {
+			log_error("Raw packet reader cannot decode this column layout");
+			return ret_vec;
+		}
+
 
 		int num_row_groups =
 		    file_metadata
@@ -2113,7 +2200,7 @@ static parquet_data_ret *parquet_read_payload(shared_ptr<parquet::RowGroupReader
     }
 
     if (!schema_vec.empty()) {
-        ret = (parquet_data_ret *)malloc(sizeof(parquet_data_ret));
+        ret = (parquet_data_ret *)calloc(1, sizeof(parquet_data_ret));
         if (!ret) {
             log_error("malloc failed");
             return ret;
@@ -2133,7 +2220,7 @@ static parquet_data_ret *parquet_read_payload(shared_ptr<parquet::RowGroupReader
 
 static parquet_data_ret *
 parquet_read_span_by_column(conf_parquet *conf, const char *filename, uint64_t keys[2],
-    const char **schema, uint16_t schema_len)
+    const char **schema, uint16_t schema_len, bool someip_only = false)
 {
 	parquet_data_ret         *ret  = NULL;
 	parquet::ReaderProperties reader_properties =
@@ -2142,18 +2229,23 @@ parquet_read_span_by_column(conf_parquet *conf, const char *filename, uint64_t k
 	string exception_msg = "";
 	bool is_compat_mode = false;
 	bool is_encrypted = false;
+	bool decryption_ready = false;
 
 	if (0 != parquet_check_is_compat_and_decrypt(
 				(char *)filename, is_compat_mode, is_encrypted)) {
-		log_warn("failed to check mode and encryption for parquet ***, skip");
-		log_debug("failed to check mode and encryption for parquet %s, skip", filename);
-		return NULL;
+		/* An encrypted footer cannot expose the mode before decryption.
+		 * Resolve the configured footer key and let OpenFile validate it. */
+		if (!parquet_resolve_and_set_decryption_properties(
+		        reader_properties, conf, filename)) return NULL;
+		is_compat_mode = false;
+		is_encrypted = true;
+		decryption_ready = true;
 	}
 
 	if (is_compat_mode == false && is_encrypted == true) {
 		log_info("parquet mode [v1] [encrypted]: ***");
 		log_debug("parquet mode [v1] [encrypted]: %s", filename);
-		if (false == parquet_resolve_and_set_decryption_properties(
+		if (!decryption_ready && false == parquet_resolve_and_set_decryption_properties(
 						reader_properties, conf, filename)) {
 			log_error("Can't read encrypted parquet due to no encryption config");
 			return NULL;
@@ -2176,6 +2268,28 @@ parquet_read_span_by_column(conf_parquet *conf, const char *filename, uint64_t k
 		// Get the File MetaData
 		shared_ptr<parquet::FileMetaData> file_metadata =
 		    parquet_reader->metadata();
+		if (someip_parquet_is_file(*file_metadata)) {
+			/* A plaintext footer can describe encrypted columns without a
+			 * wrapped key. Use Parquet's encryption flag for this layout. */
+			if (file_metadata->is_encryption_algorithm_set() &&
+			    reader_properties.file_decryption_properties() == nullptr) {
+				if (!parquet_resolve_and_set_decryption_properties(
+				        reader_properties, conf, filename)) return nullptr;
+				parquet_reader = parquet::ParquetFileReader::OpenFile(
+				    filename, false, reader_properties);
+			}
+			std::unique_ptr<someip_batch, decltype(&someip_batch_free)> batch(
+			    someip_parquet_read_batch(*parquet_reader, keys[0], keys[1],
+			        schema, schema_len), someip_batch_free);
+			ret = static_cast<parquet_data_ret *>(nng_zalloc(sizeof(*ret)));
+			if (ret == nullptr) return nullptr;
+			ret->col_len = 5;
+			ret->row_len = batch->rows;
+			ret->someip_data = batch.release();
+			return ret;
+		}
+		if (someip_only) return nullptr;
+
 
 		int num_row_groups =
 		    file_metadata
@@ -2368,6 +2482,26 @@ parquet_free_key_span(uint64_t *key_span, uint64_t *sums, uint32_t sz)
 	}
 	if (sums) {
 		nng_free(sums, sz * sizeof(uint64_t));
+	}
+}
+
+parquet_data_ret *
+someip_parquet_read_file(conf_parquet *conf, const char *filename,
+    uint64_t start_key, uint64_t end_key)
+{
+	if (conf == nullptr || filename == nullptr || start_key > end_key) return nullptr;
+	uint64_t keys[] = { start_key, end_key };
+	parquet_data_ret *ret = parquet_read_span_by_column(
+	    conf, filename, keys, nullptr, 0, true);
+	return ret;
+}
+
+void
+someip_parquet_ret_free(parquet_data_ret *data)
+{
+	if (data != nullptr) {
+		someip_batch_free(data->someip_data);
+		nng_free(data, sizeof(*data));
 	}
 }
 

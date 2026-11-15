@@ -10,6 +10,9 @@
 #include "nng/nng.h"
 #include "nng/exchange/stream/stream.h"
 #include "nng/exchange/stream/raw_stream.h"
+#ifdef SUPP_PARQUET
+#include "nng/exchange/stream/someip_stream.h"
+#endif
 #include "nng/mqtt/mqtt_client.h"
 
 nng_id_map *stream_node_map = NULL;
@@ -259,6 +262,13 @@ int stream_sys_init(void)
 	}
 
 	raw_stream_register();
+#ifdef SUPP_PARQUET
+	ret = someip_stream_register();
+	if (ret != 0) {
+		stream_sys_fini();
+		return ret;
+	}
+#endif
 
 	return 0;
 }
