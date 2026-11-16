@@ -75,7 +75,7 @@ __wrap_parquet_get_data_packets_in_range_by_column(parquet_filename_range *range
 }
 
 static void
-test_query_results(void)
+test_query_results_impl(bool close_pair_first)
 {
 	NUTS_PASS(stream_sys_init());
 	nng_socket exchange, server, client;
@@ -122,13 +122,56 @@ test_query_results(void)
 			pthread_mutex_unlock(&result_mtx);
 		}
 	}
+	/* A wire command need not contain a trailing NUL. Keep its parser and
+	 * debug logging within the received message, and reject embedded NULs. */
+	pthread_mutex_lock(&result_mtx);
+	corrupt_batch = false;
+	pthread_mutex_unlock(&result_mtx);
+	const char command[] = "sync-10-20";
+	NUTS_PASS(nng_send(client, (void *) command, sizeof(command) - 1, 0));
+	nng_msg *reply;
+	NUTS_PASS(nng_recvmsg(client, &reply, 0));
+	NUTS_TRUE(nng_msg_len(reply) > 0);
+	nng_msg_free(reply);
+	NUTS_PASS(nng_recvmsg(client, &reply, 0));
+	const uint8_t ok[] = { 0x0b, 0xad, '0', ',', '1' };
+	NUTS_TRUE(nng_msg_len(reply) == sizeof(ok));
+	NUTS_TRUE(memcmp(nng_msg_body(reply), ok, sizeof(ok)) == 0);
+	nng_msg_free(reply);
+
+	const char embedded[] = "sync-10-20\0ignored";
+	const uint8_t bad_key[] = { 0x0b, 0xad, '4', ',', '4' };
+	for (unsigned empty = 0; empty < 2; ++empty) {
+		NUTS_PASS(nng_send(client, (void *) embedded,
+		    empty ? 0 : sizeof(embedded), 0));
+		NUTS_PASS(nng_recvmsg(client, &reply, 0));
+		NUTS_TRUE(nng_msg_len(reply) == sizeof(bad_key));
+		NUTS_TRUE(memcmp(nng_msg_body(reply), bad_key, sizeof(bad_key)) == 0);
+		nng_msg_free(reply);
+	}
+	/* A parser failure must also release the command and rearm receive. */
+	const char invalid[] = "sync-";
+	const uint8_t bad_cmd[] = { 0x0b, 0xad, '5', ',', '5' };
+	NUTS_PASS(nng_send(client, (void *) invalid, sizeof(invalid) - 1, 0));
+	NUTS_PASS(nng_recvmsg(client, &reply, 0));
+	NUTS_TRUE(nng_msg_len(reply) == sizeof(bad_cmd));
+	NUTS_TRUE(memcmp(nng_msg_body(reply), bad_cmd, sizeof(bad_cmd)) == 0);
+	nng_msg_free(reply);
+
+	/* With a receive pending, both cancellation of the Exchange and failure
+	 * from closing its pair socket must finish without revisiting old data. */
+	if (close_pair_first) NUTS_PASS(nng_close(server));
 	NUTS_PASS(nng_close(exchange));
-	NUTS_PASS(nng_close(server));
+	if (!close_pair_first) NUTS_PASS(nng_close(server));
 	NUTS_PASS(nng_close(client));
 	stream_sys_fini();
 }
 
+static void test_query_results(void) { test_query_results_impl(false); }
+static void test_query_transport_close(void) { test_query_results_impl(true); }
+
 NUTS_TESTS = {
 	{ "SOME/IP empty, populated and corrupt sync/async queries", test_query_results },
+	{ "SOME/IP query transport closes with receive pending", test_query_transport_close },
 	{ NULL, NULL },
 };
