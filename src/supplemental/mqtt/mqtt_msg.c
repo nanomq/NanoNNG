@@ -211,17 +211,48 @@ nni_mqtt_msg_get_publish_dup(nni_msg *msg)
 	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
 	return proto_data->fixed_header.publish.dup;
 }
+/* Decoded PUBLISH fields borrow the wire buffer. A setter owns its copy even
+ * before encode, so copy the other field too before marking both as owned.
+ * Allocate first: replacement failure must leave the old message intact. */
+static int
+mqtt_publish_set_buffer(nni_mqtt_proto_data *mqtt, bool topic,
+    const uint8_t *bytes, uint32_t size)
+{
+	if (mqtt == NULL || (size != 0 && bytes == NULL)) return NNG_EINVAL;
+	mqtt_buf replacement = { 0 }, retained = { 0 };
+	mqtt_buf *field = topic ? &mqtt->var_header.publish.topic_name :
+	    &mqtt->payload.publish.payload;
+	mqtt_buf *other = topic ? &mqtt->payload.publish.payload :
+	    &mqtt->var_header.publish.topic_name;
+	int rv;
+	if (size != 0 &&
+	    (rv = mqtt_buf_create(&replacement, bytes, size)) != 0) return rv;
+	if (!mqtt->is_copied && other->length != 0) {
+		if (other->buf == NULL) {
+			mqtt_buf_free(&replacement);
+			return NNG_EINVAL;
+		}
+		if ((rv = mqtt_buf_dup(&retained, other)) != 0) {
+			mqtt_buf_free(&replacement);
+			return rv;
+		}
+	}
+	if (mqtt->is_copied) mqtt_buf_free(field);
+	else *other = retained;
+	*field = replacement;
+	mqtt->is_copied = true;
+	return 0;
+}
+
 // only for internal use
 int
 nni_mqtt_msg_set_publish_topic(nni_msg *msg, const char *topic)
 {
-	int rv;
-	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
-	if (proto_data->is_copied == true)
-		mqtt_buf_free(&proto_data->var_header.publish.topic_name);
-	rv = mqtt_buf_create(&proto_data->var_header.publish.topic_name,
-	    (uint8_t *) topic, (uint32_t) strlen(topic));
-	return rv;
+	if (topic == NULL) return NNG_EINVAL;
+	size_t size = strlen(topic);
+	if (size > UINT32_MAX) return NNG_EINVAL;
+	return mqtt_publish_set_buffer(nni_msg_get_proto_data(msg), true,
+	    (const uint8_t *) topic, (uint32_t) size);
 }
 
 // only for internal use
@@ -267,13 +298,8 @@ nni_mqtt_msg_get_publish_topic(nni_msg *msg, uint32_t *topic_len)
 int
 nni_mqtt_msg_set_publish_payload(nni_msg *msg, uint8_t *payload, uint32_t len)
 {
-	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
-	if (proto_data == NULL)
-		return -1;
-	if (proto_data->is_copied == true)
-		mqtt_buf_free(&proto_data->payload.publish.payload);
-	return mqtt_buf_create(
-	    &proto_data->payload.publish.payload, payload, (uint32_t) len);
+	return mqtt_publish_set_buffer(
+	    nni_msg_get_proto_data(msg), false, payload, len);
 }
 
 uint8_t *
