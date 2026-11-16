@@ -42,9 +42,6 @@ static uint32_t rotate = 0, rotate2 = 0;
 struct nano_ctx {
 	nano_sock *sock;
 	uint32_t   pipe_id;
-	/* A PUBLISH held until this context completes its archive/hook work. */
-	uint32_t   ordered_pipe_id;
-	bool       has_ordered_pipe;
 	// when resending
 	nano_pipe    *spipe, *qos_pipe; // send pipe
 	nni_aio      *saio;             // send aio
@@ -94,13 +91,6 @@ struct nano_pipe {
 	bool          busy;
 	bool          event; // indicates if exposure disconnect event is valid
 	bool          connacked; // indicates if broker has replied CONNACK
-	/* Protected by broker->lk; at most one archived PUBLISH per connection. */
-	nano_ctx     *recv_owner;
-	/* Once archival is used, receive continuously and defer application
-	 * dispatch instead. Both bounded queues are protected by broker->lk. */
-	bool          ordered_mode;
-	nni_lmq       deferred;
-	nni_lmq       deferred_acks;
 	void         *tree;  // root node of db tree
 	void         *nano_qos_db; // 'sqlite' or 'nni_id_hash_map'
 	nni_aio       aio_send;
@@ -297,158 +287,6 @@ nano_pipe_timer_cb(void *arg)
 	return;
 }
 
-static void nano_pipe_dispatch_deferred(nano_pipe *p);
-
-/* Caller holds broker->lk. Session handoff can reuse the ID while callbacks
- * from the retired transport are still completing. */
-static bool
-nano_pipe_can_dispatch(nano_pipe *p)
-{
-	return !nni_atomic_get_bool(&p->closed) &&
-	    !nni_atomic_get_bool(&p->pipe->cache) &&
-	    !nni_pipe_is_closed(p->pipe) &&
-	    nni_id_get(&p->broker->pipes, p->id) == p;
-}
-
-/* Caller holds the broker lock. Zero is a valid hashed MQTT pipe ID. */
-static void
-nano_ctx_resume_ordered_recv(nano_ctx *ctx)
-{
-	if (!ctx->has_ordered_pipe) return;
-	uint32_t id = ctx->ordered_pipe_id;
-	ctx->has_ordered_pipe = false;
-	nano_pipe *p = nni_id_get(&ctx->sock->pipes, id);
-	if (p != NULL && p->recv_owner == ctx) {
-		p->recv_owner = NULL;
-		nano_pipe_dispatch_deferred(p);
-	}
-}
-
-/* Archive hooks execute in application workers. Defer the next matching
- * PUBLISH's dispatch until the worker returns, while reading control packets. */
-static bool
-nano_publish_requires_order(nano_pipe *p, nni_msg *msg)
-{
-	conf *config = p->broker->conf;
-	if (config == NULL || nni_msg_cmd_type(msg) != CMD_PUBLISH || !config->parquet.enable ||
-	    config->exchange.count == 0) {
-		return false;
-	}
-	/* Match the same filters as the application's exchange hook. MQTT topic
-	 * names in the wire body are length-prefixed, not NUL-terminated. */
-	if (nni_msg_len(msg) < 2) {
-		return false;
-	}
-	int topic_len;
-	const char *topic = nni_msg_get_pub_topic(msg, &topic_len);
-	if ((size_t) topic_len > nni_msg_len(msg) - 2) {
-		return false;
-	}
-	char *topic_name = nni_alloc((size_t) topic_len + 1);
-	/* On allocation failure, retain ordering until the worker can validate
-	 * and handle the message. Never bypass archival ordering on OOM. */
-	bool matched = topic_name == NULL;
-	if (topic_name != NULL) {
-		memcpy(topic_name, topic, topic_len);
-		topic_name[topic_len] = '\0';
-		for (size_t i = 0; i < config->exchange.count; ++i) {
-			conf_exchange_node *node = config->exchange.nodes[i];
-			if (node != NULL && topic_filter(node->topic, topic_name)) {
-				matched = true;
-				break;
-			}
-		}
-		nni_free(topic_name, (size_t) topic_len + 1);
-	}
-	/* Alias resolution and updates run in the application worker. Preserve
-	 * their ordering too, including updates on otherwise unmatched topics. */
-	if (!matched && p->conn_param->pro_ver == MQTT_VERSION_V5) {
-		uint32_t pos = 2 + topic_len;
-		if ((((uint8_t *) nni_msg_header(msg))[0] & 0x06) != 0) pos += 2;
-		uint32_t len = 0;
-		property *props = decode_properties(msg, &pos, &len, false);
-		matched = topic_len == 0 || len == UINT32_MAX ||
-		    property_get_value(props, TOPIC_ALIAS) != NULL;
-		property_free(props);
-	}
-	return matched;
-}
-
-static void
-nano_ctx_ordered_publish(nano_ctx *ctx, nano_pipe *p, nni_msg *msg)
-{
-	if (nano_publish_requires_order(p, msg)) {
-		p->recv_owner = ctx;
-		ctx->ordered_pipe_id = p->id;
-		ctx->has_ordered_pipe = true;
-	}
-}
-
-/* Caller holds p->lk. NULL acknowledgments accompany QoS 0 publishes. */
-static void
-nano_pipe_ack(nano_pipe *p, nni_msg *ack)
-{
-	if (ack == NULL) return;
-	if (!p->busy) {
-		p->busy = true;
-		nni_aio_set_msg(&p->aio_send, ack);
-		nni_pipe_send(p->pipe, &p->aio_send);
-	} else if (nni_lmq_put(&p->rlmq, ack) != 0) {
-		nni_msg_free(ack);
-	}
-}
-
-/* The queue owns both references until dispatch. Delay PUBACK/PUBREC too:
- * a publish rejected by the bounded queue must not be acknowledged. */
-static nni_msg *
-nano_pipe_take_deferred(nano_pipe *p, nano_ctx *ctx)
-{
-	nni_msg *msg, *ack;
-	int rv = nni_lmq_get(&p->deferred, &msg);
-	NNI_ASSERT(rv == 0);
-	rv = nni_lmq_get(&p->deferred_acks, &ack);
-	NNI_ASSERT(rv == 0);
-	NNI_ARG_UNUSED(rv);
-	nano_ctx_ordered_publish(ctx, p, msg);
-	nni_mtx_lock(&p->lk);
-	nano_pipe_ack(p, ack);
-	nni_mtx_unlock(&p->lk);
-	ctx->pipe_id = p->id;
-	return msg;
-}
-
-/* Caller holds broker->lk. Never consume the transport AIO's message here;
- * it belongs to the independent continuous receive operation. */
-static void
-nano_pipe_dispatch_deferred(nano_pipe *p)
-{
-	nano_sock *s = p->broker;
-	if (nni_list_active(&s->recvpipes, p)) nni_list_remove(&s->recvpipes, p);
-	if (!nano_pipe_can_dispatch(p)) return;
-	while (p->recv_owner == NULL && !nni_lmq_empty(&p->deferred)) {
-		nano_ctx *ctx = nni_list_first(&s->recvq);
-		if (ctx == NULL) {
-			nni_list_append(&s->recvpipes, p);
-			return;
-		}
-		nni_list_remove(&s->recvq, ctx);
-		nni_aio *aio = ctx->raio;
-		ctx->raio = NULL;
-		nni_msg *msg = nano_pipe_take_deferred(p, ctx);
-		nni_aio_set_msg(aio, msg);
-		nni_aio_finish(aio, 0, nni_msg_len(msg));
-	}
-}
-
-/* Caller holds broker->lk; all queued application messages have a cloned
- * connection reference, but their optional acknowledgments do not. */
-static void
-nano_pipe_flush_deferred(nano_pipe *p)
-{
-	nano_nni_lmq_flush(&p->deferred, true);
-	nni_lmq_flush(&p->deferred_acks);
-}
-
 static void
 nano_ctx_close(void *arg)
 {
@@ -470,7 +308,6 @@ nano_ctx_close(void *arg)
 		ctx->raio = NULL;
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
-	nano_ctx_resume_ordered_recv(ctx);
 	nni_mtx_unlock(&s->lk);
 }
 
@@ -495,8 +332,6 @@ nano_ctx_init(void *carg, void *sarg)
 
 	ctx->sock    = s;
 	ctx->pipe_id = 0;
-	ctx->ordered_pipe_id = 0;
-	ctx->has_ordered_pipe = false;
 }
 
 static void
@@ -773,8 +608,6 @@ nano_pipe_fini(void *arg)
 	nni_aio_fini(&p->aio_recv);
 	nni_aio_fini(&p->aio_timer);
 	nano_nni_lmq_fini(&p->rlmq);
-	nni_lmq_fini(&p->deferred);
-	nni_lmq_fini(&p->deferred_acks);
 }
 
 static int
@@ -787,10 +620,6 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 
 	nni_mtx_init(&p->lk);
 	nni_lmq_init(&p->rlmq, sock->conf->msq_len);
-	/* At least one slot permits dispatch when no worker was waiting. */
-	size_t cap = sock->conf->msq_len > 0 ? sock->conf->msq_len : 1;
-	nni_lmq_init(&p->deferred, cap);
-	nni_lmq_init(&p->deferred_acks, cap);
 	nni_aio_init(&p->aio_send, nano_pipe_send_cb, p);
 	nni_aio_init(&p->aio_timer, nano_pipe_timer_cb, p);
 	nni_aio_init(&p->aio_recv, nano_pipe_recv_cb, p);
@@ -806,8 +635,6 @@ nano_pipe_init(void *arg, nni_pipe *pipe, void *s)
 	p->ka_refresh  = 0;
 	p->event       = true;
 	p->connacked   = false;
-	p->recv_owner  = NULL;
-	p->ordered_mode = false;
 	p->tree        = sock->db;
 	if (p->conn_param != NULL)
 		p->keepalive   = p->conn_param->keepalive_mqtt;
@@ -1068,7 +895,7 @@ close_pipe(nano_pipe *p)
 
 	nni_atomic_set_bool(&p->closed, true);
 	if (nni_list_active(&s->recvpipes, p)) {
-		nni_msg *msg = p->ordered_mode ? NULL : nni_aio_get_msg(&p->aio_recv);
+		nni_msg *msg  = nni_aio_get_msg(&p->aio_recv);
 		if (msg) {
 			uint8_t  type = nng_msg_cmd_type(msg);
 			if (type == CMD_SUBSCRIBE || type == CMD_UNSUBSCRIBE ||
@@ -1087,7 +914,6 @@ close_pipe(nano_pipe *p)
 		nng_atomic_set(s->conf->lc, nni_id_count(&s->pipes));
 	}
 	nano_nni_lmq_flush(&p->rlmq, false);
-	nano_pipe_flush_deferred(p);
 }
 
 static int
@@ -1109,13 +935,6 @@ nano_pipe_close(void *arg)
 	}
 	nni_mtx_lock(&s->lk);
 	nni_mtx_lock(&p->lk);
-	/* Detach both sides before disconnect/session handoff. Cached sessions
-	 * retain state, but their transport is closed by nni_pipe_close. */
-	if (p->recv_owner != NULL) {
-		p->recv_owner->has_ordered_pipe = false;
-		p->recv_owner = NULL;
-	}
-
 	// we freed the conn_param when restoring pipe
 	// so check status of conn_param. just let it close silently
 	if (p->conn_param->clean_start == 0) {
@@ -1139,15 +958,14 @@ nano_pipe_close(void *arg)
 			nni_id_set(&s->cached_sessions, npipe->p_id, p);
 			// set event to false avoid of sending the disconnecting msg
 			p->event     = false;
-			/* The session survives, but this protocol pipe's transport is
-			 * retired. Keep it closed after peer() clears the cache flag. */
+			/* This transport is retired even if a session handoff clears cache. */
 			nni_atomic_set_bool(&p->closed, true);
 			nni_atomic_set_bool(&npipe->cache, true);
 			// set clean start to 1, prevent caching session twice
 			p->conn_param->clean_start = 1;
 			nni_atomic_swap_bool(&npipe->p_closed, false);
 			if (nni_list_active(&s->recvpipes, p)) {
-				nni_msg *tmsg = p->ordered_mode ? NULL : nni_aio_get_msg(&p->aio_recv);
+				nni_msg *tmsg = nni_aio_get_msg(&p->aio_recv);
 				if (tmsg) {
 					uint8_t type = nng_msg_cmd_type(tmsg);
 					if (type == CMD_SUBSCRIBE ||
@@ -1161,7 +979,6 @@ nano_pipe_close(void *arg)
 				nni_list_remove(&s->recvpipes, p);
 			}
 			nano_nni_lmq_flush(&p->rlmq, false);
-			nano_pipe_flush_deferred(p);
 			nni_mtx_unlock(&p->lk);
 			nni_mtx_unlock(&s->lk);
 			return -1;
@@ -1294,8 +1111,6 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 
 	log_trace("nano_ctx_recv start %p", ctx);
 	nni_mtx_lock(&s->lk);
-	/* Re-entering recv means the prior PUBLISH completed its broker hooks. */
-	nano_ctx_resume_ordered_recv(ctx);
 
 	if (nni_lmq_get(&s->waitlmq, &msg) == 0) {
 		nni_aio_set_msg(aio, msg);
@@ -1326,15 +1141,10 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 		return;
 	}
 
+	msg = nni_aio_get_msg(&p->aio_recv);
+	nni_aio_set_msg(&p->aio_recv, NULL);
 	nni_list_remove(&s->recvpipes, p);
-	if (p->ordered_mode) {
-		msg = nano_pipe_take_deferred(p, ctx);
-		nano_pipe_dispatch_deferred(p);
-	} else {
-		msg = nni_aio_get_msg(&p->aio_recv);
-		nni_aio_set_msg(&p->aio_recv, NULL);
-		nni_pipe_recv(p->pipe, &p->aio_recv);
-	}
+	nni_pipe_recv(p->pipe, &p->aio_recv);
 
 	ctx->pipe_id = nni_pipe_id(p->pipe);
 	log_trace("nano_ctx_recv ends %p pipe: %p pipe_id: %d", ctx, p,
@@ -1368,13 +1178,6 @@ nano_pipe_recv_cb(void *arg)
 		return;
 	}
 	log_trace(" ######### nano_pipe_recv_cb ######### ");
-	msg = nni_aio_get_msg(&p->aio_recv);
-	nni_mtx_lock(&s->lk);
-	if (msg != NULL && nano_publish_requires_order(p, msg)) p->ordered_mode = true;
-	bool deferred = p->ordered_mode && msg != NULL &&
-	    (nni_msg_cmd_type(msg) == CMD_PUBLISH || nni_msg_cmd_type(msg) == CMD_SUBSCRIBE ||
-	     nni_msg_cmd_type(msg) == CMD_UNSUBSCRIBE || nni_msg_cmd_type(msg) == CMD_CONNACK);
-	nni_mtx_unlock(&s->lk);
 	nni_mtx_lock(&p->lk);
 	p->ka_refresh = 0;
 	msg           = nni_aio_get_msg(&p->aio_recv);
@@ -1396,9 +1199,17 @@ nano_pipe_recv_cb(void *arg)
 		nni_mtx_unlock(&p->lk);
 		return;
 	}
-	if (!deferred) {
-		nano_pipe_ack(p, ack_msg);
-		ack_msg = NULL;
+	if (ack_msg  != NULL) {
+		if (!p->busy) {
+			p->busy = true;
+			nni_aio_set_msg(&p->aio_send, ack_msg);
+			nni_pipe_send(p->pipe, &p->aio_send);
+		} else {
+			if (0 != nni_lmq_put(&p->rlmq, ack_msg)) {
+				log_warn("Warning! ack msg lost due to busy socket");
+				nni_msg_free(ack_msg);
+			}
+		}
 	}
 	if (msg == NULL) {
 		nni_mtx_unlock(&p->lk);
@@ -1515,41 +1326,7 @@ nano_pipe_recv_cb(void *arg)
 		goto drop;
 	}
 	nni_mtx_unlock(&p->lk);
-	if (type == CMD_DISCONNECT && p->ordered_mode) {
-		/* The application only frees this packet; close promptly even while
-		 * an archive worker owns a prior PUBLISH. */
-		nni_aio_set_msg(&p->aio_recv, NULL);
-		nni_msg_free(msg);
-		nni_pipe_close(p->pipe);
-		return;
-	}
 	nni_mtx_lock(&s->lk);
-	if (deferred) {
-		nni_aio_set_msg(&p->aio_recv, NULL);
-		if (!nano_pipe_can_dispatch(p)) {
-			conn_param_free(cparam);
-			nni_msg_free(msg);
-			nni_msg_free(ack_msg);
-			nni_mtx_unlock(&s->lk);
-			return;
-		}
-		if (nni_lmq_full(&p->deferred) || nni_lmq_full(&p->deferred_acks)) {
-			conn_param_free(cparam);
-			nni_msg_free(msg);
-			nni_msg_free(ack_msg);
-			nni_mtx_unlock(&s->lk);
-			log_warn("ordered receive queue full; disconnecting pipe %u", p->id);
-			nni_atomic_set(&p->reason_code, QUOTA_EXCEEDED);
-			nni_pipe_close(p->pipe);
-			return;
-		}
-		(void) nni_lmq_put(&p->deferred, msg);
-		(void) nni_lmq_put(&p->deferred_acks, ack_msg);
-		nano_pipe_dispatch_deferred(p);
-		nni_mtx_unlock(&s->lk);
-		nni_pipe_recv(p->pipe, &p->aio_recv);
-		return;
-	}
 
 	if ((ctx = nni_list_first(&s->recvq)) == NULL) {
 		// No one waiting to receive yet, holding pattern.
@@ -1581,7 +1358,6 @@ nano_pipe_recv_cb(void *arg)
 
 	ctx->pipe_id = p->id;
 	log_trace("currently processing pipe_id: %d", p->id);
-
 	nni_mtx_unlock(&s->lk);
 	if (type == CMD_DISCONNECT) {
 		nni_pipe_close(p->pipe);
@@ -1852,28 +1628,3 @@ nng_nmq_tcp0_open(nng_socket *sidp)
 	log_debug("open up nmq tcp0 protocol.");
 	return (nni_proto_mqtt_open(sidp, &nano_tcp_proto, nano_sock_setdb));
 }
-
-#ifdef NNG_TEST_LIB
-/* Exercise the hash output 0 without searching for a SipHash preimage. The
- * transport normally performs this reassignment before protocol pipe_start. */
-int
-nni_nmq_test_set_pipe_id(uint32_t old_id, uint32_t new_id)
-{
-	nni_pipe *pipe;
-	int rv = nni_pipe_find(&pipe, old_id);
-	if (rv != 0) return rv;
-	nano_pipe *p = pipe->p_proto_data;
-	nano_sock *s = p->broker;
-	nni_mtx_lock(&s->lk);
-	if (p->recv_owner != NULL) {
-		rv = NNG_EBUSY;
-	} else if ((rv = nni_pipe_set_pid(pipe, new_id)) == 0) {
-		nni_id_remove(&s->pipes, old_id);
-		p->id = new_id;
-		rv = nni_id_set(&s->pipes, new_id, p);
-	}
-	nni_mtx_unlock(&s->lk);
-	nni_pipe_rele(pipe);
-	return rv;
-}
-#endif
