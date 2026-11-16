@@ -170,6 +170,12 @@ static struct stream_decoded_data *raw_stream_decode(struct parquet_data_ret *pa
 
 				continue;
 			}
+			if (parquet_data->payload_arr[i][j]->data == NULL ||
+			    parquet_data->payload_arr[i][j]->size > UINT32_MAX - decoded_data->len) {
+				log_warn("invalid raw payload or decoded length overflow");
+				nng_free(decoded_data, sizeof(*decoded_data));
+				return NULL;
+			}
 			decoded_data->len += parquet_data->payload_arr[i][j]->size;
 		}
 	}
@@ -183,11 +189,15 @@ static struct stream_decoded_data *raw_stream_decode(struct parquet_data_ret *pa
 	decoded_data->data = nng_alloc(decoded_data->len);
 	if (decoded_data->data == NULL) {
 		log_warn("decoded_data data is null");
+		nng_free(decoded_data, sizeof(*decoded_data));
 		return NULL;
 	}
 
 	uint32_t decoded_data_index = 0;
 	for (uint32_t i = 0; i < parquet_data->col_len; i++) {
+		if (parquet_data->payload_arr[i] == NULL) {
+			continue;
+		}
 		for (uint32_t j = 0; j < parquet_data->row_len; j++) {
 			if (parquet_data->payload_arr[i][j] == NULL) {
 				log_warn("parquet_data->payload_arr[%d][%d] is NULL", i, j);
@@ -208,8 +218,11 @@ static struct stream_decoded_data *raw_stream_decode(struct parquet_data_ret *pa
 void *raw_decode(void *data)
 {
 	struct parquet_data_ret *parquet_data = (struct parquet_data_ret *)data;
-	if (parquet_data == NULL) {
-		log_warn("parquet_data is NULL");
+	/* Persisted files can belong to a different codec after a topic's
+	 * stream type changes. Dedicated columns are not raw byte arrays. */
+	if (parquet_data == NULL || parquet_data->someip_data != NULL ||
+	    parquet_data->payload_arr == NULL) {
+		log_warn("parquet_data has no raw payload columns");
 		return NULL;
 	}
 

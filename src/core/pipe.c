@@ -44,7 +44,9 @@ pipe_destroy(void *arg)
 	nni_mtx_lock(&pipes_lk);
 	// This is a change for NanoMQ only
 	// NNG always remove the pipe with a matching p_id
-	if (p->p_id != 0 && nni_id_get(&pipes, p->p_id) == p) {
+	// MQTT hashes may register ID zero. Pointer identity also distinguishes
+	// an unregistered pipe whose initialization has not assigned an ID yet.
+	if (nni_id_get(&pipes, p->p_id) == p) {
 		nni_id_remove(&pipes, p->p_id);
 	}
 	// This wait guarantees that all callers are done with us.

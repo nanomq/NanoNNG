@@ -25,6 +25,24 @@ uint8_t version_for_name(const std::string &name)
 	if (name == "message_template_v3") return 3;
 	throw std::runtime_error("unsupported SOME/IP template column");
 }
+
+template <typename Reader, typename Value>
+void read_required_values(const std::shared_ptr<Reader> &column, Value *values,
+    uint32_t expected)
+{
+	uint32_t used = 0;
+	while (used < expected) {
+		int64_t read = 0;
+		int64_t actual = column->ReadBatch(expected - used, nullptr, nullptr,
+		    values + used, &read);
+		/* ReadBatch may stop at a data page boundary. A short positive read
+		 * is progress; zero, nulls or an overrun are malformed input. */
+		require(actual > 0 && actual <= expected - used && read == actual,
+		    "truncated/null SOME/IP integer column");
+		used += static_cast<uint32_t>(actual);
+	}
+	require(!column->HasNext(), "extra SOME/IP integer rows");
+}
 }
 
 std::shared_ptr<parquet::schema::GroupNode>
@@ -98,17 +116,22 @@ someip_parquet_write_columns(parquet::RowGroupWriter *group,
 bool
 someip_parquet_is_file(const parquet::FileMetaData &metadata)
 {
-	for (int c = 0; c < metadata.num_columns(); ++c) {
-		if (metadata.schema()->Column(c)->name().rfind("message_template", 0) == 0) {
-			return true;
-		}
-		/* The existing format has only BYTE_ARRAY columns after ts. Route
-		 * typed/malformed candidates through validation, never a BA cast. */
-		if (c != 0 && metadata.schema()->Column(c)->physical_type() !=
-		        parquet::Type::BYTE_ARRAY) return true;
+	auto schema = metadata.schema();
+	if (metadata.num_columns() != 5 || schema->group_node()->field_count() != 5) {
+		return false;
 	}
-	auto kv = metadata.key_value_metadata();
-	return kv != nullptr && kv->FindKey("nmq.codec.metadata") >= 0;
+	const char *numeric[] = { "ts", "batch_index", "frame_index", "session_id" };
+	for (int c = 0; c < 5; ++c) {
+		auto column = schema->Column(c);
+		auto expected = c < 3 ? parquet::Type::INT64 :
+		    c == 3 ? parquet::Type::INT32 : parquet::Type::BYTE_ARRAY;
+		if (column->physical_type() != expected ||
+		    column->path()->ToDotString() != column->name() ||
+		    (c < 4 && column->name() != numeric[c])) return false;
+	}
+	const auto &name = schema->Column(4)->name();
+	return name == "message_template" || name == "message_template_v2" ||
+	    name == "message_template_v3";
 }
 
 someip_batch *
@@ -179,15 +202,18 @@ someip_parquet_read_batch(parquet::ParquetFileReader &reader,
 		for (int64_t used = 0; used < expected;) {
 			int64_t n = std::min<int64_t>(1024, expected - used), read = 0;
 			int64_t actual = column->ReadBatch(n, nullptr, nullptr, values.data(), &read);
-			require(actual == n && read == n, "truncated/null SOME/IP template column");
-			for (int64_t i = 0; i < n; ++i) {
+			require(actual > 0 && actual <= n && read == actual,
+			    "truncated/null SOME/IP template column");
+			/* ByteArray values borrow the current page's decoder storage.
+			 * Copy this read before advancing to another page. */
+			for (int64_t i = 0; i < actual; ++i) {
 				const auto &value = values[i];
 				require(value.ptr != nullptr && value.len >= 16 &&
 				    value.len <= INT32_MAX - bytes.size(), "invalid SOME/IP template size");
 				offsets[row++] = (uint32_t) bytes.size();
 				bytes.insert(bytes.end(), value.ptr, value.ptr + value.len);
 			}
-			used += n;
+			used += actual;
 		}
 		require(!column->HasNext(), "extra SOME/IP template rows");
 	}
@@ -208,18 +234,14 @@ someip_parquet_read_batch(parquet::ParquetFileReader &reader,
 		uint32_t n = (uint32_t) metadata->RowGroup(g)->num_rows();
 		uint64_t *integers[] = { batch->ts, batch->batch_index, batch->frame_index };
 		for (int c = 0; c < 4; ++c) {
-			int64_t read = 0, actual;
 			if (c < 3) {
 				auto column = std::static_pointer_cast<parquet::Int64Reader>(group->Column(c));
-				actual = column->ReadBatch(n, nullptr, nullptr,
-				    reinterpret_cast<int64_t *>(integers[c] + row), &read);
-				require(!column->HasNext(), "extra SOME/IP integer rows");
+				read_required_values(column,
+				    reinterpret_cast<int64_t *>(integers[c] + row), n);
 			} else {
 				auto column = std::static_pointer_cast<parquet::Int32Reader>(group->Column(c));
-				actual = column->ReadBatch(n, nullptr, nullptr, batch->session_id + row, &read);
-				require(!column->HasNext(), "extra SOME/IP session rows");
+				read_required_values(column, batch->session_id + row, n);
 			}
-			require(actual == n && read == n, "truncated/null SOME/IP integer column");
 		}
 		row += n;
 	}

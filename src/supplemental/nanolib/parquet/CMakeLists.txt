@@ -60,6 +60,18 @@ if(NNG_ENABLE_PARQUET)
     endif()
 
     if(NNG_TESTS AND NOT BUILD_SHARED_LIBS)
+        add_executable(someip_parquet_test someip_parquet_test.cc)
+        target_link_libraries(someip_parquet_test nng_testing nng_parquet_deps)
+        target_include_directories(someip_parquet_test PRIVATE
+            ${PROJECT_SOURCE_DIR}/tests
+            ${PROJECT_SOURCE_DIR}/src
+            ${PROJECT_SOURCE_DIR}/include)
+        set_property(TARGET someip_parquet_test PROPERTY CXX_STANDARD ${_nng_parquet_cxx})
+        add_test(NAME ${NNG_TEST_PREFIX}.someip_parquet_test
+            COMMAND someip_parquet_test -t -v)
+        set_tests_properties(${NNG_TEST_PREFIX}.someip_parquet_test
+            PROPERTIES TIMEOUT 180)
+
         # The executable replaces nothrow new to exercise the allocator's
         # real NULL returns, rather than replacing parquet_*_alloc itself.
         add_executable(parquet_alloc_test parquet_alloc_test.cc)

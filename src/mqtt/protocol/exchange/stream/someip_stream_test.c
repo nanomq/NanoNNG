@@ -224,6 +224,15 @@ test_input_rejection(void)
 		records[TEST_ROWS - 1].batch_index = UINT64_MAX;
 		NUTS_TRUE(someip_encode_records(records, TEST_ROWS, checked) == NULL);
 		records[TEST_ROWS - 1] = saved;
+		/* An interior outlier and a descending final key can both hide rows
+		 * outside the filename's first/last-key bounds. */
+		uint64_t saved_key = records[2].batch_index;
+		records[2].batch_index = saved.batch_index + 1;
+		NUTS_TRUE(someip_encode_records(records, TEST_ROWS, checked) == NULL);
+		records[2].batch_index = saved_key;
+		records[TEST_ROWS - 1].batch_index = records[0].batch_index - 1;
+		NUTS_TRUE(someip_encode_records(records, TEST_ROWS, checked) == NULL);
+		records[TEST_ROWS - 1] = saved;
 		put_be(frames[TEST_ROWS - 1] + 4, 4, UINT32_MAX);
 		NUTS_TRUE(someip_encode_records(records, TEST_ROWS, checked) == NULL);
 		put_be(frames[TEST_ROWS - 1] + 4, 4, saved.size - 8);
@@ -361,10 +370,13 @@ test_file_roundtrip(void)
 	conf_parquet_init(&conf);
 	conf.comp_type = ZSTD;
 	conf.encryption.enable = false;
-	for (unsigned mode = 0; mode < 3; mode++) {
-		make_records(records, frames, mode == 2, 1);
-		parquet_data *encoded = someip_encode_records(records, TEST_ROWS, mode != 0);
+	for (unsigned mode = 0; mode < 6; mode++) {
+		/* Both PLAIN sessions and DELTA_BINARY_PACKED sessions wrapping
+		 * from 65535 to zero must survive every template version. */
+		make_records(records, frames, mode % 3 == 2, mode / 3);
+		parquet_data *encoded = someip_encode_records(records, TEST_ROWS, mode % 3 != 0);
 		NUTS_TRUE(encoded != NULL);
+		NUTS_TRUE(batch_of(encoded)->session_delta == (mode / 3 == 0));
 		NUTS_TRUE(someip_parquet_write_file(&conf, path, encoded, "someip/test") == 0);
 		check_text(someip_decode_range(encoded, 0, INT64_MAX), records, TEST_ROWS);
 		parquet_data_ret *read = someip_parquet_read_file(&conf, path, 0, INT64_MAX);

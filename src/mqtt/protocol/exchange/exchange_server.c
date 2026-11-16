@@ -470,9 +470,11 @@ static void query_send_sync(exchange_sock_t *s, struct cmd_data *cmd_data, int r
 #if defined(SUPP_PARQUET)
 	if (parquet_decoded_data != NULL && parquet_decoded_data_len > 0) {
 		for (uint32_t i = 0; i < parquet_decoded_data_len; i++) {
-			if (parquet_decoded_data[i] != NULL && parquet_decoded_data[i]->len > 0) {
-				log_info("parquet_decoded_data[%d] size: %d", i, parquet_decoded_data[i]->len);
-				nng_msg_append(msg, parquet_decoded_data[i]->data, parquet_decoded_data[i]->len);
+			if (parquet_decoded_data[i] != NULL) {
+				if (parquet_decoded_data[i]->len > 0) {
+					log_info("parquet_decoded_data[%d] size: %d", i, parquet_decoded_data[i]->len);
+					nng_msg_append(msg, parquet_decoded_data[i]->data, parquet_decoded_data[i]->len);
+				}
 				stream_decoded_data_free(parquet_decoded_data[i]);
 			} else {
 				log_info("parquet_decoded_data[%d] is NULL", i);
@@ -486,8 +488,8 @@ static void query_send_sync(exchange_sock_t *s, struct cmd_data *cmd_data, int r
 	if (ringbus_decoded_data != NULL && ringbus_decoded_data->len > 0) {
 		log_info("ringbus_decoded_data size: %d", ringbus_decoded_data->len);
 		nng_msg_append(msg, ringbus_decoded_data->data, ringbus_decoded_data->len);
-		stream_decoded_data_free(ringbus_decoded_data);
 	}
+	stream_decoded_data_free(ringbus_decoded_data);
 
 	nng_sendmsg(*(s->pair0_sock), msg, 0);
 
@@ -543,15 +545,11 @@ static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data, int 
 								log_error("pair0_sock is null!!!!!!!!!");
 							/* NOTE: sleep 1000ms */
 							nng_msleep(1000);
-							stream_decoded_data_free(parquet_decoded_data);
-						} else {
+						} else if (parquet_decoded_data == NULL) {
 							rc[0] = EXCHANGE_ERR_PAR_DATA_DECODE;
-							if (parquet_decoded_data == NULL) {
-								log_warn("parquet_decoded_data is null");
-							} else {
-								log_warn("parquet_decoded_data len : %d", parquet_decoded_data->len);
-							}
+							log_warn("parquet_decoded_data is null");
 						}
+						stream_decoded_data_free(parquet_decoded_data);
 					} else {
 						rc[0] = EXCHANGE_ERR_PAR_DECODE;
 						log_error("parquet_datas[%d] is NULL", i);
@@ -596,8 +594,8 @@ static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data, int 
 		nng_sendmsg(*(s->pair0_sock), newmsg, 0);
 		/* NOTE: sleep 1000ms */
 		nng_msleep(1000);
-		stream_decoded_data_free(ringbus_decoded_data);
 	}
+	stream_decoded_data_free(ringbus_decoded_data);
 
 	return;
 }
