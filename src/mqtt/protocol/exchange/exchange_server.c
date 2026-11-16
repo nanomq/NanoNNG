@@ -117,6 +117,16 @@ exchange_add_ex(exchange_sock_t *s, exchange_t *ex)
 	return 0;
 }
 
+/* nng_sendmsg transfers ownership only on success. A query peer may
+ * disappear while a response is being assembled or the socket is closing. */
+static void
+query_send_msg(nng_socket *sock, nng_msg *msg)
+{
+	if (sock == NULL || nng_sendmsg(*sock, msg, 0) != 0) {
+		nng_msg_free(msg);
+	}
+}
+
 static void query_send_eof(nng_socket *sock, nng_aio *aio, int pcode, int rcode)
 {
 	NNI_ARG_UNUSED(aio);
@@ -132,7 +142,7 @@ static void query_send_eof(nng_socket *sock, nng_aio *aio, int pcode, int rcode)
 
 	nng_msg_append(msg, eof, 2);
 	nng_msg_append(msg, rc, strlen(rc));
-	nng_sendmsg(*sock, msg, 0);
+	query_send_msg(sock, msg);
 
 	return;
 }
@@ -491,7 +501,7 @@ static void query_send_sync(exchange_sock_t *s, struct cmd_data *cmd_data, int r
 	}
 	stream_decoded_data_free(ringbus_decoded_data);
 
-	nng_sendmsg(*(s->pair0_sock), msg, 0);
+	query_send_msg(s->pair0_sock, msg);
 
 	return;
 }
@@ -539,10 +549,7 @@ static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data, int 
 							nng_msg *newmsg = NULL;
 							nng_msg_alloc(&newmsg, 0);
 							nni_msg_append(newmsg, parquet_decoded_data->data, parquet_decoded_data->len);
-							if (s->pair0_sock)
-								nng_sendmsg(*(s->pair0_sock), newmsg, 0);
-							else
-								log_error("pair0_sock is null!!!!!!!!!");
+							query_send_msg(s->pair0_sock, newmsg);
 							/* NOTE: sleep 1000ms */
 							nng_msleep(1000);
 						} else if (parquet_decoded_data == NULL) {
@@ -591,7 +598,7 @@ static void query_send_async(exchange_sock_t *s, struct cmd_data *cmd_data, int 
 		nng_msg *newmsg = NULL;
 		nng_msg_alloc(&newmsg, 0);
 		nni_msg_append(newmsg, ringbus_decoded_data->data, ringbus_decoded_data->len);
-		nng_sendmsg(*(s->pair0_sock), newmsg, 0);
+		query_send_msg(s->pair0_sock, newmsg);
 		/* NOTE: sleep 1000ms */
 		nng_msleep(1000);
 	}
@@ -620,57 +627,64 @@ static void cmd_data_free(struct cmd_data *cmd_data)
 static void
 query_cb(void *arg)
 {
-	int rv = 0;
 	exchange_sock_t *s = arg;
-
 	nni_aio *aio = &s->query_aio;
 	nng_msg *msg = nng_aio_get_msg(aio);
+	struct cmd_data *cmd_data = NULL;
+	char *command = NULL;
+	size_t command_size = 0;
+
+	/* A failed/cancelled receive does not replace the AIO's message. Take
+	 * ownership before any close or next receive can invoke this callback. */
+	nng_aio_set_msg(aio, NULL);
+	if (nng_aio_result(aio) != 0 || nni_atomic_get_bool(&s->closed)) {
+		nng_msg_free(msg);
+		return;
+	}
 	if (msg == NULL) {
-		nng_recv_aio(*(s->pair0_sock), aio);
-		log_error("NUll Commanding msg!");
-		return;
+		log_error("Null commanding message");
+		goto done;
 	}
 
-	if (query_limit != NULL) {
-		rv = nng_atomic_dec_nv(query_limit);
-		if (rv < 0) {
-			log_warn("Hook searching too frequently");
-			query_send_eof(s->pair0_sock, &s->query_aio,
-					EXCHANGE_ERR_TOO_FREQ, EXCHANGE_ERR_TOO_FREQ);
-			nng_recv_aio(*(s->pair0_sock), aio);
-			nng_msg_free(msg);
-			return;
-		}
+	if (query_limit != NULL && nng_atomic_dec_nv(query_limit) < 0) {
+		log_warn("Hook searching too frequently");
+		query_send_eof(s->pair0_sock, aio,
+		    EXCHANGE_ERR_TOO_FREQ, EXCHANGE_ERR_TOO_FREQ);
+		goto done;
 	}
 
-	if (s->ex_node == NULL || s->ex_node->ex == NULL || s->ex_node->ex->topic[0] == 0) {
-		query_send_eof(s->pair0_sock, &s->query_aio,
-				EXCHANGE_ERR_NOT_READY, EXCHANGE_ERR_NOT_READY);
-		nng_recv_aio(*(s->pair0_sock), aio);
-		log_error("exchange_sock_t is not ready!");
-		nng_msg_free(msg);
-		return;
+	if (s->ex_node == NULL || s->ex_node->ex == NULL ||
+	    s->ex_node->ex->topic[0] == 0) {
+		query_send_eof(s->pair0_sock, aio,
+		    EXCHANGE_ERR_NOT_READY, EXCHANGE_ERR_NOT_READY);
+		log_error("exchange_sock_t is not ready");
+		goto done;
 	}
-	char *topic = s->ex_node->ex->topic;
 
-	char *keystr = (char *)nng_msg_body(msg);
-	if (keystr == NULL) {
-		query_send_eof(s->pair0_sock, &s->query_aio, EXCHANGE_ERR_KEY, EXCHANGE_ERR_KEY);
-		nng_recv_aio(*(s->pair0_sock), aio);
-		log_error("error in parsing keystr");
-		nng_msg_free(msg);
-		return;
+	/* Commands are wire bytes, not necessarily NUL-terminated strings.
+	 * Give the parser and debug logging a bounded private string, rejecting
+	 * embedded NULs that could otherwise hide a trailing command suffix. */
+	const char *body = nng_msg_body(msg);
+	size_t length = nng_msg_len(msg);
+	if (length != 0 && body[length - 1] == '\0') length--;
+	if (length == 0 || length == SIZE_MAX || memchr(body, '\0', length) != NULL) {
+		query_send_eof(s->pair0_sock, aio, EXCHANGE_ERR_KEY, EXCHANGE_ERR_KEY);
+		goto done;
 	}
+	command_size = length + 1;
+	if ((command = nng_alloc(command_size)) == NULL) {
+		query_send_eof(s->pair0_sock, aio, EXCHANGE_ERR_KEY, EXCHANGE_ERR_KEY);
+		goto done;
+	}
+	memcpy(command, body, length);
+	command[length] = '\0';
 
 	log_info("Recv command: *** topic: ***");
-	log_debug("Recv command: %s topic: %s", keystr, topic);
-	struct cmd_data *cmd_data = stream_cmd_parser(s->ex_node->ex->streamType, keystr);
-	if (cmd_data == NULL) {
-		log_error("stream_cmd_parser failed!");
-		query_send_eof(s->pair0_sock, &s->query_aio, EXCHANGE_ERR_CMD, EXCHANGE_ERR_CMD);
-		nng_recv_aio(*(s->pair0_sock), aio);
-		nng_msg_free(msg);
-		return;
+	log_debug("Recv command: %s topic: %s", command, s->ex_node->ex->topic);
+	if ((cmd_data = stream_cmd_parser(s->ex_node->ex->streamType, command)) == NULL) {
+		log_error("stream_cmd_parser failed");
+		query_send_eof(s->pair0_sock, aio, EXCHANGE_ERR_CMD, EXCHANGE_ERR_CMD);
+		goto done;
 	}
 
 	int codes[2] = { EXCHANGE_ERR_OK };
@@ -679,13 +693,17 @@ query_cb(void *arg)
 	} else {
 		query_send_async(s, cmd_data, codes);
 	}
+	query_send_eof(s->pair0_sock, aio, codes[0], codes[1]);
 
-	query_send_eof(s->pair0_sock, &s->query_aio, codes[0], codes[1]);
-	nng_recv_aio(*(s->pair0_sock), aio);
+done:
 	cmd_data_free(cmd_data);
+	nng_free(command, command_size);
 	nng_msg_free(msg);
-
-	return;
+	/* Clean up before rearming: an inproc receive may complete inline. A
+	 * close racing this check is handled by the AIO's stopped state above. */
+	if (!nni_atomic_get_bool(&s->closed)) {
+		nng_recv_aio(*(s->pair0_sock), aio);
+	}
 }
 
 #define QUERY_RESET_DURATION 5
