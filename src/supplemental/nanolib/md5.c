@@ -86,10 +86,10 @@ void MD5Decode(unsigned int *output, unsigned char *input, unsigned int len)
 
 	while(j < len)
 	{
-		output[i] = (input[j]) |
-			(input[j+1] << 8) |
-			(input[j+2] << 16) |
-			(input[j+3] << 24);
+		output[i] = (unsigned int) input[j] |
+			((unsigned int) input[j+1] << 8) |
+			((unsigned int) input[j+2] << 16) |
+			((unsigned int) input[j+3] << 24);
 		i++;
 		j += 4; 
 	}
