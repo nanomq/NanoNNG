@@ -79,7 +79,7 @@ static void destory_unsubscribe(nni_mqtt_proto_data *);
 static void destory_unsuback(nni_mqtt_proto_data *);
 
 static void dup_connect(nni_mqtt_proto_data *, nni_mqtt_proto_data *);
-static void dup_publish(nni_mqtt_proto_data *, nni_mqtt_proto_data *);
+static int  dup_publish(nni_mqtt_proto_data *, nni_mqtt_proto_data *);
 static void dup_subscribe(nni_mqtt_proto_data *, nni_mqtt_proto_data *);
 static void dup_suback(nni_mqtt_proto_data *, nni_mqtt_proto_data *);
 static void dup_unsuback(nni_mqtt_proto_data *, nni_mqtt_proto_data *);
@@ -219,12 +219,9 @@ nni_mqtt_msg_decode(nni_msg *msg)
 	     i < sizeof(codec_handler) / sizeof(mqtt_msg_codec_handler); i++) {
 		if (codec_handler[i].packet_type ==
 		    mqtt->fixed_header.common.packet_type) {
-			mqtt_msg_content_free(mqtt);
-			if (!mqtt->initialized) {
-				mqtt->initialized = true;
-				mqtt->is_copied   = false;
-			}
 			if (!mqtt->is_decoded) {
+				mqtt_msg_content_free(mqtt);
+				mqtt->initialized = true;
 				mqtt->is_decoded = true;
 				return codec_handler[i].decode(msg);
 			} else {
@@ -250,12 +247,9 @@ nni_mqttv5_msg_decode(nni_msg *msg)
 	     i < sizeof(codec_v5_handler) / sizeof(mqtt_msg_codec_handler); i++) {
 		if (codec_v5_handler[i].packet_type ==
 		    mqtt->fixed_header.common.packet_type) {
-			if (!mqtt->initialized) {
-				mqtt->initialized = true;
-				mqtt->is_copied   = false;
-			}
 			if (!mqtt->is_decoded) {
 				mqtt_msg_content_free(mqtt);
+				mqtt->initialized = true;
 				mqtt->is_decoded = true;
 				return codec_v5_handler[i].decode(msg);
 			} else {
@@ -356,6 +350,7 @@ mqtt_msg_content_free(nni_mqtt_proto_data *mqtt)
 		}
 		if (mqtt->var_header.publish.properties) {
 			property_free(mqtt->var_header.publish.properties);
+			mqtt->var_header.publish.properties = NULL;
 		}
 		break;
 	case NNG_MQTT_PUBACK:
@@ -463,6 +458,7 @@ nni_mqtt_msg_dup(void **dest, const void *src)
 	nni_mqtt_proto_data *s    = (nni_mqtt_proto_data *) src;
 
 	mqtt = NNI_ALLOC_STRUCT(mqtt);
+	if (mqtt == NULL) return NNG_ENOMEM;
 	memcpy(mqtt, (nni_mqtt_proto_data *) src, sizeof(nni_mqtt_proto_data));
 	mqtt->initialized = false;
 
@@ -487,12 +483,19 @@ nni_mqtt_msg_dup(void **dest, const void *src)
 		}
 		break;
 	case NNG_MQTT_PUBLISH:
-		if (mqtt->is_copied) {
-			dup_publish(mqtt, s);
+		/* A duplicate must survive its source even when the source fields
+		 * borrow decoded bytes or have not been encoded yet. */
+		if ((rv = dup_publish(mqtt, s)) != 0) {
+			NNI_FREE_STRUCT(mqtt);
+			return rv;
 		}
+		mqtt->var_header.publish.properties = NULL;
 		if (s->var_header.publish.properties) {
-			rv += property_dup(&mqtt->var_header.publish.properties,
-			    s->var_header.publish.properties);
+			if ((rv = property_dup(&mqtt->var_header.publish.properties,
+			         s->var_header.publish.properties)) != 0) {
+				nni_mqtt_msg_free(mqtt);
+				return rv;
+			}
 		}
 		break;
 	case NNG_MQTT_PUBACK:
@@ -612,13 +615,21 @@ dup_connect(nni_mqtt_proto_data *dest, nni_mqtt_proto_data *src)
 	    &dest->payload.connect.will_msg, &src->payload.connect.will_msg);
 }
 
-static void
+static int
 dup_publish(nni_mqtt_proto_data *dest, nni_mqtt_proto_data *src)
 {
-	mqtt_buf_dup(&dest->var_header.publish.topic_name,
-	    &src->var_header.publish.topic_name);
-	mqtt_buf_dup(
-	    &dest->payload.publish.payload, &src->payload.publish.payload);
+	mqtt_buf topic = { 0 }, payload = { 0 };
+	int rv;
+	if ((rv = mqtt_buf_dup(&topic, &src->var_header.publish.topic_name)) != 0)
+		return rv;
+	if ((rv = mqtt_buf_dup(&payload, &src->payload.publish.payload)) != 0) {
+		mqtt_buf_free(&topic);
+		return rv;
+	}
+	dest->var_header.publish.topic_name = topic;
+	dest->payload.publish.payload = payload;
+	dest->is_copied = true;
+	return 0;
 }
 
 static void
@@ -648,9 +659,11 @@ dup_suback(nni_mqtt_proto_data *dest, nni_mqtt_proto_data *src)
 	    nni_alloc(src->payload.suback.ret_code_count);
 	dest->payload.suback.ret_code_count =
 	    src->payload.suback.ret_code_count;
-	memcpy(dest->payload.suback.ret_code_arr,
-	    src->payload.suback.ret_code_arr,
-	    src->payload.suback.ret_code_count);
+	if (src->payload.suback.ret_code_count != 0) {
+		memcpy(dest->payload.suback.ret_code_arr,
+		    src->payload.suback.ret_code_arr,
+		    src->payload.suback.ret_code_count);
+	}
 }
 
 static void
