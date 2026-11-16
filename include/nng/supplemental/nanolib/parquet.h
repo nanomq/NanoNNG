@@ -84,7 +84,8 @@ NNG_DECL int someip_parquet_write_file(conf_parquet *conf, const char *filename,
     parquet_data *data, const char *topic);
 NNG_DECL parquet_data_ret *someip_parquet_read_file(conf_parquet *conf,
     const char *filename, uint64_t start_key, uint64_t end_key);
-/* Release only a result returned by someip_parquet_read_file(). */
+/* Release a SOME/IP result (someip_data != NULL), including results from
+ * parquet_get_data_packets_in_range_by_column(). */
 NNG_DECL void someip_parquet_ret_free(parquet_data_ret *data);
 
 parquet_object *parquet_object_alloc(parquet_data *data, parquet_type type,

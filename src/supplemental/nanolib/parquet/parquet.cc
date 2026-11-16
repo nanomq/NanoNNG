@@ -2289,7 +2289,18 @@ parquet_read_span_by_column(conf_parquet *conf, const char *filename, uint64_t k
 			return ret;
 		}
 		if (someip_only) return nullptr;
-
+		/* The legacy reader casts ts to Int64Reader and every payload to
+		 * ByteArrayReader. Unrecognized typed schemas must not reach those
+		 * casts merely because they are not a SOME/IP file. */
+		if (file_metadata->num_columns() < 2 ||
+		    file_metadata->schema()->Column(0)->physical_type() != Type::INT64) {
+			return nullptr;
+		}
+		for (int c = 1; c < file_metadata->num_columns(); ++c) {
+			if (file_metadata->schema()->Column(c)->physical_type() != Type::BYTE_ARRAY) {
+				return nullptr;
+			}
+		}
 
 		int num_row_groups =
 		    file_metadata

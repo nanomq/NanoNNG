@@ -260,7 +260,11 @@ someip_encode_records(const someip_record *records, uint32_t count, bool checked
 	if (records == NULL || count == 0) return NULL;
 	for (uint32_t r = 0; r < count; r++) {
 		const someip_record *p = &records[r];
-		if (p->ts > INT64_MAX || observe(&s, p->frame, p->size, p->batch_index) != 0) return NULL;
+		/* Equal keys represent frames in one window. Descending keys would
+		 * make the first/last-key filename range hide records from queries. */
+		if (p->ts > INT64_MAX ||
+		    (r && p->batch_index < records[r - 1].batch_index) ||
+		    observe(&s, p->frame, p->size, p->batch_index) != 0) return NULL;
 	}
 	someip_hash *hash = NULL;
 	someip_batch *b = begin_batch(&s, checked, &hash);

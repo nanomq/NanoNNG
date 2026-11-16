@@ -23,10 +23,14 @@ typedef struct someip_record {
 } someip_record;
 
 /* Available with Parquet enabled. Each frame contains a complete SOME/IP PDU.
+ * Records must have nondecreasing batch_index; equal keys are frames from one
+ * window. Timestamps and keys must fit in INT64_MAX.
  * The returned batch owns a copy; release it with parquet_data_free(). */
 NNG_DECL parquet_data *someip_encode_records(const someip_record *, uint32_t, bool checked);
 /* MQTT payload: BE32 count, followed by count records of BE32 relative_us,
  * BE16 PDU size and the complete SOME/IP PDU (including its 16-byte header).
+ * The PDU size is at most 65535 bytes, including the header; relative_us is
+ * an unsigned 32-bit microsecond offset (0 through UINT32_MAX).
  * Empty/malformed windows reject the whole batch; input keys must increase.
  * Output: ts, batch_index, frame_index, session_id, message_template[_v2/_v3].
  * Session bytes are zeroed in the template and restored from session_id. */
