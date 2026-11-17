@@ -42,6 +42,9 @@ static uint32_t rotate = 0, rotate2 = 0;
 struct nano_ctx {
 	nano_sock *sock;
 	uint32_t   pipe_id;
+	// Protected by sock->lk. A reentrant receive is held in raio, off recvq.
+	bool       recv_active;
+	bool       closed;
 	// when resending
 	nano_pipe    *spipe, *qos_pipe; // send pipe
 	nni_aio      *saio;             // send aio
@@ -96,7 +99,9 @@ struct nano_pipe {
 	nni_aio       aio_send;
 	nni_aio       aio_recv;
 	nni_aio       aio_timer;
-	nni_list_node rnode; // receivable list linkage
+	// Under broker->lk: queued on recvpipes, or on a receiver's stack-local
+	// resume list during synchronous backlog delivery. Close/fini unlinks it.
+	nni_list_node rnode;
 	nni_atomic_bool closed;
 };
 
@@ -296,6 +301,7 @@ nano_ctx_close(void *arg)
 
 	log_trace("nano_ctx_close");
 	nni_mtx_lock(&s->lk);
+	ctx->closed = true;
 	if ((aio = ctx->saio) != NULL) {
 		// nano_pipe *pipe = ctx->spipe;
 		ctx->saio     = NULL;
@@ -304,7 +310,7 @@ nano_ctx_close(void *arg)
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
 	if ((aio = ctx->raio) != NULL) {
-		nni_list_remove(&s->recvq, ctx);
+		nni_list_node_remove(&ctx->rqnode);
 		ctx->raio = NULL;
 		nni_aio_finish_error(aio, NNG_ECLOSED);
 	}
@@ -332,6 +338,8 @@ nano_ctx_init(void *carg, void *sarg)
 
 	ctx->sock    = s;
 	ctx->pipe_id = 0;
+	ctx->recv_active = false;
+	ctx->closed = false;
 }
 
 static void
@@ -578,10 +586,9 @@ nano_pipe_fini(void *arg)
 	}
 	nni_mtx_lock(&s->lk);
 	nni_mtx_lock(&p->lk);
-	if (nni_list_active(&s->recvpipes, p)) {
-		// Session handoff can bypass the normal close path.
-		nni_list_remove(&s->recvpipes, p);
-	}
+	// Session handoff can bypass close. Also invalidate a stack-local
+	// receiver's resume registration before this pipe can be reclaimed.
+	nni_list_node_remove(&p->rnode);
 	if ((msg = nni_aio_get_msg(&p->aio_recv)) != NULL) {
 		nni_aio_set_msg(&p->aio_recv, NULL);
 	}
@@ -894,7 +901,7 @@ close_pipe(nano_pipe *p)
 	nano_sock *s = p->broker;
 
 	nni_atomic_set_bool(&p->closed, true);
-	if (nni_list_active(&s->recvpipes, p)) {
+	if (nni_list_node_active(&p->rnode)) {
 		nni_msg *msg  = nni_aio_get_msg(&p->aio_recv);
 		if (msg) {
 			uint8_t  type = nng_msg_cmd_type(msg);
@@ -905,7 +912,8 @@ close_pipe(nano_pipe *p)
 			nni_aio_set_msg(&p->aio_recv, NULL);
 		}
 
-		nni_list_remove(&s->recvpipes, p);
+		// This may be recvpipes or a receiver's local resume list.
+		nni_list_node_remove(&p->rnode);
 	}
 	// only remove matched pipe, could have been overwritten
 	t = nni_id_get(&s->pipes, nni_pipe_id(p->pipe));
@@ -962,7 +970,7 @@ nano_pipe_close(void *arg)
 			// set clean start to 1, prevent caching session twice
 			p->conn_param->clean_start = 1;
 			nni_atomic_swap_bool(&npipe->p_closed, false);
-			if (nni_list_active(&s->recvpipes, p)) {
+			if (nni_list_node_active(&p->rnode)) {
 				nni_msg *tmsg = nni_aio_get_msg(&p->aio_recv);
 				if (tmsg) {
 					uint8_t type = nng_msg_cmd_type(tmsg);
@@ -974,7 +982,8 @@ nano_pipe_close(void *arg)
 					nni_msg_free(tmsg);
 					nni_aio_set_msg(&p->aio_recv, NULL);
 				}
-				nni_list_remove(&s->recvpipes, p);
+				// A cached source must not resume an in-progress delivery.
+				nni_list_node_remove(&p->rnode);
 			}
 			nano_nni_lmq_flush(&p->rlmq, false);
 			nni_mtx_unlock(&p->lk);
@@ -1086,7 +1095,7 @@ nano_cancel_recv(nni_aio *aio, void *arg, int rv)
 	log_trace("*********** nano_cancel_recv ***********");
 	nni_mtx_lock(&s->lk);
 	if (ctx->raio == aio) {
-		nni_list_remove(&s->recvq, ctx);
+		nni_list_node_remove(&ctx->rqnode);
 		ctx->raio = NULL;
 		nni_aio_finish_error(aio, rv);
 	}
@@ -1099,38 +1108,53 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 	nano_ctx  *ctx = arg;
 	nano_sock *s   = ctx->sock;
 	nano_pipe *p;
-	// size_t     len;
-	nni_msg *msg = NULL;
+	nni_msg   *msg;
+	nni_list   resume;
+	bool       scheduled = false;
+	int        rv;
 
 	if (nni_aio_begin(aio) != 0) {
-		log_warn("recv aio begin failed!");
 		return;
 	}
-
-	log_trace("nano_ctx_recv start %p", ctx);
 	nni_mtx_lock(&s->lk);
-
-	if (nni_lmq_get(&s->waitlmq, &msg) == 0) {
-		nni_aio_set_msg(aio, msg);
+	if (ctx->closed || ctx->raio != NULL) {
+		// Terminal context state or a second outstanding request; neither is
+		// an instruction for the application to retry this receive.
+		rv = ctx->closed ? NNG_ECLOSED : NNG_ESTATE;
 		nni_mtx_unlock(&s->lk);
-		nni_aio_finish(aio, 0, nni_msg_len(msg));
+		nni_aio_finish_error(aio, rv);
 		return;
 	}
-
-	if ((p = nni_list_first(&s->recvpipes)) == NULL) {
-		int rv;
+	if (ctx->recv_active) {
+		// The synchronous callback requested its next message. Leave that
+		// request cancellable, but invisible to pipe callbacks until the
+		// outer delivery returns. It will be driven below without recursion.
 		if ((rv = nni_aio_schedule(aio, nano_cancel_recv, ctx)) != 0) {
 			nni_mtx_unlock(&s->lk);
 			nni_aio_finish_error(aio, rv);
 			return;
 		}
-		if (ctx->raio != NULL) {
-			// Cannot have a second receive operation pending.
-			// This could be ESTATE, or we could cancel the first
-			// with ECANCELED.  We elect the former.
-			log_error("former aio not finish yet");
+		ctx->raio = aio;
+		nni_mtx_unlock(&s->lk);
+		return;
+	}
+
+again:
+	if (nni_lmq_get(&s->waitlmq, &msg) == 0) {
+		// waitlmq contains broker disconnect events, not client PUBLISH.
+		ctx->recv_active = false;
+		nni_mtx_unlock(&s->lk);
+		nni_aio_set_msg(aio, msg);
+		// The preceding delivery detached its local resume registration.
+		nni_aio_finish(aio, 0, nni_msg_len(msg));
+		return;
+	}
+	if ((p = nni_list_first(&s->recvpipes)) == NULL) {
+		ctx->recv_active = false;
+		if (!scheduled &&
+		    (rv = nni_aio_schedule(aio, nano_cancel_recv, ctx)) != 0) {
 			nni_mtx_unlock(&s->lk);
-			nni_aio_finish_error(aio, NNG_ESTATE);
+			nni_aio_finish_error(aio, rv);
 			return;
 		}
 		ctx->raio = aio;
@@ -1142,15 +1166,52 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 	msg = nni_aio_get_msg(&p->aio_recv);
 	nni_aio_set_msg(&p->aio_recv, NULL);
 	nni_list_remove(&s->recvpipes, p);
-	nni_pipe_recv(p->pipe, &p->aio_recv);
-
 	ctx->pipe_id = nni_pipe_id(p->pipe);
-	log_trace("nano_ctx_recv ends %p pipe: %p pipe_id: %d", ctx, p,
-	    ctx->pipe_id);
-	nni_mtx_unlock(&s->lk);
+	if (nni_msg_get_type(msg) != CMD_PUBLISH) {
+		// Control packets retain their asynchronous completion semantics.
+		nni_pipe_recv(p->pipe, &p->aio_recv);
+		ctx->recv_active = false;
+		nni_mtx_unlock(&s->lk);
+		nni_aio_set_msg(aio, msg);
+		nni_aio_finish(aio, 0, nni_msg_len(msg));
+		return;
+	}
 
+	// Register the exact source without taking a global pipe reference.
+	// Close, session caching and fini remove rnode under s->lk, so they
+	// can retire this pipe while the application callback runs. The local
+	// list then becomes empty; never use the old p after unlocking.
+	NNI_LIST_INIT(&resume, nano_pipe, rnode);
+	nni_list_append(&resume, p);
+	ctx->recv_active = true;
+	nni_mtx_unlock(&s->lk);
 	nni_aio_set_msg(aio, msg);
-	nni_aio_finish(aio, 0, nni_msg_len(msg));
+	nni_aio_finish_sync(aio, 0, nni_msg_len(msg));
+	nni_mtx_lock(&s->lk);
+	if ((p = nni_list_first(&resume)) != NULL) {
+		nni_list_node_remove(&p->rnode);
+		// Hand lifetime protection from the socket lock to the source lock.
+		// Close/fini take these locks in the same order. Submit receive
+		// without s->lk so a busy transport cannot stall other publishers.
+		nni_mtx_lock(&p->lk);
+		nni_mtx_unlock(&s->lk);
+		if (!nni_pipe_is_closed(p->pipe) &&
+		    !nni_atomic_get_bool(&p->closed) &&
+		    !nni_atomic_get_bool(&p->pipe->cache)) {
+			nni_pipe_recv(p->pipe, &p->aio_recv);
+		}
+		nni_mtx_unlock(&p->lk);
+		nni_mtx_lock(&s->lk);
+	}
+	if ((aio = ctx->raio) != NULL) {
+		ctx->raio = NULL;
+		// This request was already begun and scheduled by the nested call.
+		// Claim it under the same lock used by cancellation and close.
+		scheduled = true;
+		goto again;
+	}
+	ctx->recv_active = false;
+	nni_mtx_unlock(&s->lk);
 }
 
 static void
