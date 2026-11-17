@@ -62,20 +62,15 @@ nni_strncat(char *dst, const char *src, size_t dst_len, size_t src_len)
 char *
 nni_strndup(const char *src, size_t n)
 {
-	if (src == NULL && n != 0) {
+	size_t len = strnlen(src, n);
+	char *dst = NULL;
+	dst = malloc(len + 1);
+
+	if (!dst)
 		return NULL;
-	}
-	/* Empty MQTT fields may use NULL with length zero. Avoid passing that
-	 * pointer to libc, including for zero-length operations. */
-	size_t len = n == 0 ? 0 : nni_strnlen(src, n);
-	char *dst = nni_alloc(len + 1);
-	if (dst == NULL) {
-		return NULL;
-	}
-	if (len != 0) {
-		memcpy(dst, src, len);
-	}
+	memcpy(dst, src, len);
 	dst[len] = '\0';
+
 	return (dst);
 }
 
