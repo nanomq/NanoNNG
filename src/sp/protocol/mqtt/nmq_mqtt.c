@@ -742,6 +742,9 @@ auth_verify:
 		nni_msg_free(msg);
 		return NNG_ECONNSHUT;
 	}
+	// nni_listener_add_pipe emits NNG_PIPE_EV_ADD_PRE before
+	// pipe_start and NNG_PIPE_EV_ADD_POST afterward.
+	// pipe id cannot be used in connected_cb
 	if (rv == 0) {
 		// Must set pid after ACL/Auth & before s->lock!
 		clientid_key = nanomq_siphash_32(
@@ -807,6 +810,12 @@ auth_verify:
 		p->event = false;
 		// set event of old pipe to false and discard it.
 		old->event = false;
+		// a resumed session keeps its pending Will only until the delay elapses
+		if (conn_param_get_will_delay_timestamp(old->conn_param) >
+		    nng_clock()) {
+			// it is not your time yet, do not send will msg
+			old->conn_param->will_flag = 0;
+		}
 		nni_id_remove(&s->cached_sessions, p->pipe->p_id);
 	} else if (old != NULL) {
 		// clean previous session
@@ -851,12 +860,6 @@ auth_verify:
 	// close old one (bool to prevent disconnect_ev)
 	// check if pointer is different later
 	if (old) {
-		// check will msg delay interval
-		if (conn_param_get_will_delay_timestamp(old->conn_param) >
-		    nng_clock()) {
-			// it is not your time yet, do not send will msg
-			old->conn_param->will_flag = 0;
-		}
 		// Try aio abort to close old pipe due to data racing in reaper.
 		nni_aio_abort(&old->aio_timer, NNG_ECONNABORTED);
 	}
@@ -1138,6 +1141,8 @@ nano_ctx_recv(void *arg, nni_aio *aio)
 	msg = nni_aio_get_msg(&p->aio_recv);
 	nni_aio_set_msg(&p->aio_recv, NULL);
 	nni_list_remove(&s->recvpipes, p);
+	// Keep backlog delivery asynchronous and rearm immediately. Unlike the
+	// inline receive path, this permits a later PUBLISH to overtake this one.
 	nni_pipe_recv(p->pipe, &p->aio_recv);
 
 	ctx->pipe_id = nni_pipe_id(p->pipe);
@@ -1364,12 +1369,22 @@ nano_pipe_recv_cb(void *arg)
 	nni_mtx_unlock(&s->lk);
 	if (type == CMD_DISCONNECT) {
 		nni_pipe_close(p->pipe);
-	} else {
+	} else if (type != CMD_PUBLISH) {
 		// schedule another receive
 		nni_pipe_recv(p->pipe, &p->aio_recv);
 	}
+	// The broker must fan out PUBLISH synchronously before this returns.
+	// Starting the next receive before completion would let another worker
+	// overtake it, even though this completion itself is synchronous.
+	// This orders inline deliveries only; nano_ctx_recv's backlog path can
+	// still hand an earlier message to an asynchronously scheduled worker.
 	nni_aio_set_msg(aio, msg);
 	nni_aio_finish_sync(aio, 0, nni_msg_len(msg));
+	if (type == CMD_PUBLISH) {
+		// The active receive callback protects p until we return. Rearm
+		// outside the socket lock, so independent publishers stay parallel.
+		nni_pipe_recv(p->pipe, &p->aio_recv);
+	}
 	log_trace("end of nano_pipe_recv_cb %p", ctx);
 	return;
 
