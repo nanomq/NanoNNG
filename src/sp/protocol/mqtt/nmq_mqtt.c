@@ -958,8 +958,6 @@ nano_pipe_close(void *arg)
 			nni_id_set(&s->cached_sessions, npipe->p_id, p);
 			// set event to false avoid of sending the disconnecting msg
 			p->event     = false;
-			/* This transport is retired even if a session handoff clears cache. */
-			nni_atomic_set_bool(&p->closed, true);
 			nni_atomic_set_bool(&npipe->cache, true);
 			// set clean start to 1, prevent caching session twice
 			p->conn_param->clean_start = 1;
@@ -1185,7 +1183,7 @@ nano_pipe_recv_cb(void *arg)
 	nni_aio_set_prov_data(&p->aio_recv, NULL);
 	// Do not set aio_recv msg NULL here, breaks CI.
 	// nng_ctx_recv could get msg from aio_recv directly
-	if (nni_atomic_get_bool(&p->closed) || nni_atomic_get_bool(&p->pipe->cache)) {
+	if (nni_atomic_get_bool(&p->closed)) {
 		// If we are closed, then we can't return data.
 		// This drops DISCONNECT packet.
 		if (msg) {
