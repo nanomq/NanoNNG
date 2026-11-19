@@ -29,38 +29,38 @@ remove_escape(char *str)
 static cJSON *
 path_expression_parse_core(cJSON *parent, cJSON *jso)
 {
-	jso       = cJSON_DetachItemFromObject(parent, jso->string);
 	char *str = strdup(jso->string);
-	char *p   = str;
-	char *p_a = str + strlen(str);
+	char *p;
 
-	char t[128] = { 0 };
+	if (str == NULL) {
+		return NULL;
+	}
+	jso = cJSON_DetachItemViaPointer(parent, jso);
+
+	// Split the copied key in place; cJSON copies each complete segment.
 	while (NULL != (p = strrchr(str, '.'))) {
 		cJSON *jso_new = cJSON_CreateObject();
-		// cJSON *jso_new = NULL;
 
-		// a.b.c: {object}
-		// c ==> create json object jso(c, jso)
-		*p = '_';
-		strncpy(t, p + 1, p_a - p);
-		// cJSON_AddItemToObject(jso_new, t, jso);
-		cJSON_AddItemToObject(
-		    jso_new, t, jso); // cJSON_Duplicate(jso, cJSON_True));
-		memset(t, 0, 128);
-		// jso_new = json(c, jso)
-		// cJSON_Delete(jso);
-		jso     = jso_new;
-		jso_new = NULL;
-		p_a     = --p;
+		*p = '\0';
+		if (jso_new == NULL ||
+		    !cJSON_AddItemToObject(jso_new, p + 1, jso)) {
+			cJSON_Delete(jso_new);
+			goto fail;
+		}
+		jso = jso_new;
 	}
 
-	strncpy(t, str, p_a - str + 1);
-	cJSON_AddItemToObject(parent, t, jso);
-	// memset(t, 0, 128);
-	// cJSON_DeleteItemFromObject(parent, str);
+	if (!cJSON_AddItemToObject(parent, str, jso)) {
+		goto fail;
+	}
 
 	free(str);
 	return parent;
+
+fail:
+	cJSON_Delete(jso);
+	free(str);
+	return NULL;
 }
 
 // {"bridge.sqlite":{"enable":false,"disk_cache_size":102400,"mounted_file_path":"/tmp/","flush_mem_threshold":100,"resend_interval":5000}}
@@ -82,8 +82,8 @@ path_expression_parse(cJSON *jso)
 
 	int index = 0;
 	while (child) {
-		if (child->child) {
-			path_expression_parse(child);
+		if (child->child && path_expression_parse(child) == NULL) {
+			return NULL;
 		}
 
 		if (NULL != child->string) {
@@ -96,7 +96,9 @@ path_expression_parse(cJSON *jso)
 
 		if (NULL != child->string &&
 		    NULL != strchr(child->string, '.')) {
-			path_expression_parse_core(parent, child);
+			if (path_expression_parse_core(parent, child) == NULL) {
+				return NULL;
+			}
 			child = parent->child;
 			for (int i = 0; i < index; i++) {
 				child = child->next;
@@ -212,7 +214,10 @@ hocon_parse_file(const char *file)
     }
 
     if (cJSON_False != cJSON_IsInvalid(jso)) {
-        jso = path_expression_parse(jso);
+        if (path_expression_parse(jso) == NULL) {
+            cJSON_Delete(jso);
+            return NULL;
+        }
         return deduplication_and_merging(jso);
     }
     return NULL;
@@ -235,7 +240,10 @@ hocon_parse_str(char *str, size_t len)
 	yy_delete_buffer(buffer);
 	hocon_scanner_cleanup();
 	if (cJSON_False != cJSON_IsInvalid(jso)) {
-		jso = path_expression_parse(jso);
+		if (path_expression_parse(jso) == NULL) {
+			cJSON_Delete(jso);
+			return NULL;
+		}
 		return deduplication_and_merging(jso);
 	}
 	return NULL;
