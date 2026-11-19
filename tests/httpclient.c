@@ -210,7 +210,7 @@ chunk_check_rejected(const char *wire)
 // request of this test is a GET of the root that names the server as its
 // host; anything else is a protocol error.
 static int
-raw_read_req(nng_stream *s, nng_aio *aio)
+raw_read_req(nng_stream *s, nng_aio *aio, const char *host)
 {
 	char   buf[1024];
 	size_t got = 0;
@@ -233,7 +233,7 @@ raw_read_req(nng_stream *s, nng_aio *aio)
 		buf[got] = '\0';
 		if (strstr(buf, "\r\n\r\n") != NULL) {
 			if ((strncmp(buf, "GET / HTTP/1.1\r\n", 16) != 0) ||
-			    (strstr(buf, "\r\nHost: 127.0.0.1:") == NULL)) {
+			    (strstr(buf, host) == NULL)) {
 				return (NNG_EPROTO);
 			}
 			return (0);
@@ -282,6 +282,7 @@ struct scripted_server {
 	nng_thread          *thr;
 	const char        ***script;
 	char                 url[64];
+	char                 host[64]; // the Host header line of a request
 };
 
 /** Serves the script of a scripted server on its own thread. */
@@ -308,7 +309,7 @@ scripted_server_main(void *arg)
 	for (int i = 0; (rv == 0) && (srv->script[i] != NULL); i++) {
 		const char **reply = srv->script[i];
 
-		rv = raw_read_req(s, aio);
+		rv = raw_read_req(s, aio, srv->host);
 		for (int j = 0; (rv == 0) && (reply[j] != NULL); j++) {
 			if (j > 0) {
 				nng_msleep(5);
@@ -317,7 +318,7 @@ scripted_server_main(void *arg)
 		}
 	}
 	while (rv == 0) {
-		rv = raw_read_req(s, aio);
+		rv = raw_read_req(s, aio, srv->host);
 	}
 
 	nng_stream_close(s);
@@ -361,6 +362,8 @@ scripted_server_start(struct scripted_server *srv, const char ***script)
 		return (rv);
 	}
 	snprintf(srv->url, sizeof(srv->url), "http://127.0.0.1:%d/", port);
+	snprintf(srv->host, sizeof(srv->host), "\r\nHost: 127.0.0.1:%d\r\n",
+	    port);
 	rv = nng_thread_create(&srv->thr, scripted_server_main, srv);
 	if (rv != 0) {
 		scripted_server_stop(srv);
@@ -553,17 +556,26 @@ TestMain("HTTP Client", {
 		So(nng_http_req_alloc(&req, url) == 0);
 		So(nng_http_res_alloc(&res) == 0);
 
+		nng_aio_set_timeout(aio, 10000); // 10 sec timeout
+		nng_http_client_connect(cli, aio);
+		nng_aio_wait(aio);
+		So(nng_aio_result(aio) == 0);
+		http = nng_aio_get_output(aio, 0);
+
 		Reset({
 			nng_http_client_free(cli);
+			nng_http_conn_close(http);
 			nng_url_free(url);
 			nng_aio_free(aio);
 			nng_http_req_free(req);
 			nng_http_res_free(res);
 			scripted_server_stop(&srv);
 		});
+		// The connection is up, so the short deadline only covers
+		// the exchange that the server never answers.
 		nng_aio_set_timeout(aio, 100); // 100 msec timeout
 
-		nng_http_client_transact(cli, req, res, aio);
+		nng_http_conn_transact(http, req, res, aio);
 		nng_aio_wait(aio);
 		So(nng_aio_result(aio) == NNG_ETIMEDOUT);
 	});
