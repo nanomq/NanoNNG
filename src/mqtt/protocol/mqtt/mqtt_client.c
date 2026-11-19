@@ -1063,10 +1063,6 @@ mqtt_recv_cb(void *arg)
 	// schedule another receive
 	nni_pipe_recv(p->pipe, &p->recv_aio);
 
-	// reset ping state
-	p->pingcnt = 0;
-	s->timeleft = s->keepalive;
-
 	// state transitions
 	switch (packet_type) {
 	case NNG_MQTT_CONNACK:
@@ -1211,6 +1207,11 @@ mqtt_recv_cb(void *arg)
 	case NNG_MQTT_PUBLISH:
 		// we have received a PUBLISH
 		qos = nni_mqtt_msg_get_publish_qos(msg);
+		if (qos > 0) {
+			// reset ping state
+			p->pingcnt = 0;
+			s->timeleft = s->keepalive;
+		}
 #ifdef NNG_HAVE_MQTT_BROKER
 		// clone for bridging, bind to lmq.
 		conn_param_clone(p->cparam);
@@ -1251,7 +1252,6 @@ mqtt_recv_cb(void *arg)
 #ifdef NNG_ENABLE_STATS
 				nni_stat_inc(&s->msg_recv_drop, 1);
 #endif
-				// nni_id_remove(&pipe->nano_qos_db, pid);
 			}
 			nni_id_set(&p->recv_unack, packet_id, msg);
 		}
