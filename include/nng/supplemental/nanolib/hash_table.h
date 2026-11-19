@@ -86,6 +86,11 @@ NNG_DECL struct topic_queue *dbhash_copy_topic_queue(uint32_t id);
 
 NNG_DECL void dbhash_del_topic(uint32_t id, char *topic);
 
+// Remove matching subscriptions in place under the pipe-table write lock.
+// The predicate must not call back into the pipe-table API.
+NNG_DECL void dbhash_del_topic_if(
+    bool (*predicate)(uint32_t, char *, void *), void *arg);
+
 NNG_DECL void *dbhash_del_topic_queue(
      uint32_t id, void *(*cb)(void *, char *), void *args);
 

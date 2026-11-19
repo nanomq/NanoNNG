@@ -536,6 +536,34 @@ delete_topic_queue(struct topic_queue *tq)
 	return;
 }
 
+void
+dbhash_del_topic_if(bool (*predicate)(uint32_t, char *, void *), void *arg)
+{
+	if (ph == NULL || predicate == NULL) {
+		return;
+	}
+	nni_rwlock_wrlock(&pipe_lock);
+	for (khint_t k = kh_begin(ph); k != kh_end(ph); ++k) {
+		if (!kh_exist(ph, k)) {
+			continue;
+		}
+		topic_queue **link = &kh_val(ph, k);
+		while (*link != NULL) {
+			topic_queue *topic = *link;
+			if (predicate(kh_key(ph, k), topic->topic, arg)) {
+				*link = topic->next;
+				delete_topic_queue(topic);
+			} else {
+				link = &topic->next;
+			}
+		}
+		if (kh_val(ph, k) == NULL) {
+			kh_del(pipe_table, ph, k);
+		}
+	}
+	nni_rwlock_unlock(&pipe_lock);
+}
+
 /*
  * @obj. _topic_hash.
  * @key. pipe_id.
