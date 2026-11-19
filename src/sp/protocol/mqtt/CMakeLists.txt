@@ -11,6 +11,7 @@ if (NNG_PROTO_MQTT_BROKER)
 endif ()
 
 nng_test(mqtt_parser_test)
+nng_test_if(NNG_PROTO_MQTT_BROKER mqtt_unsubinfo_bounds_test)
 nng_test(auth_http_test)
 if (TARGET auth_http_test)
   target_compile_definitions(auth_http_test PRIVATE
