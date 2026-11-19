@@ -1140,6 +1140,8 @@ mqtt_recv_cb(void *arg)
 		// we have received a SUBACK, successful subscription
 		// FALLTHROUGH
 	case NNG_MQTT_UNSUBACK:
+		p->pingcnt = 0;
+		s->timeleft = s->keepalive;
 		// we have received a UNSUBACK, successful unsubscription
 		packet_id  = nni_mqtt_msg_get_packet_id(msg);
 		p->rid ++;
