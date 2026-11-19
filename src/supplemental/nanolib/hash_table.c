@@ -389,6 +389,10 @@ topic_queue_init(char *topic, int topic_len)
 {
 	topic_queue *tq = NULL;
 
+	if (topic == NULL || topic_len < 0) {
+		return NULL;
+	}
+
 	tq = nni_zalloc(sizeof(*tq));
 	if (tq == NULL) {
 		return NULL;
