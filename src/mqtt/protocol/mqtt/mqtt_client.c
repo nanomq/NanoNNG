@@ -1165,6 +1165,8 @@ mqtt_recv_cb(void *arg)
 	case NNG_MQTT_PINGRESP:
 		// free msg
 		nni_msg_free(msg);
+		p->pingcnt = 0;
+		s->timeleft = s->keepalive;
 		nni_mtx_unlock(&s->mtx);
 		return;
 
