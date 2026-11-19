@@ -571,11 +571,15 @@ TestMain("HTTP Client", {
 			nng_http_res_free(res);
 			scripted_server_stop(&srv);
 		});
-		// The connection is up, so the short deadline only covers
-		// the exchange that the server never answers.
+		nng_http_conn_write_req(http, req, aio);
+		nng_aio_wait(aio);
+		So(nng_aio_result(aio) == 0);
+
+		// The request is out, so the short deadline only covers
+		// the response that the server never sends.
 		nng_aio_set_timeout(aio, 100); // 100 msec timeout
 
-		nng_http_conn_transact(http, req, res, aio);
+		nng_http_conn_read_res(http, res, aio);
 		nng_aio_wait(aio);
 		So(nng_aio_result(aio) == NNG_ETIMEDOUT);
 	});
