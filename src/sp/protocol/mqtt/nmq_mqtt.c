@@ -1691,22 +1691,24 @@ nmq_session_compare(conn_param *old_cp, conn_param *new_cp)
 	uint32_t       len2 = (u2 != NULL) ? new_cp->username.len : 0;
 
 	if (u1 != NULL || u2 != NULL) {
-		if (u1 == NULL || u2 == NULL || len1 != len2) {
+		if (u1 == NULL || u2 == NULL || len1 != len2 ||
+		    memcmp(u1, u2, len1) != 0) {
 			return false;
 		}
-		return memcmp(u1, u2, len1) == 0;
 	}
 
 	const char *cn1 = old_cp->tls_peer_cn;
 	const char *cn2 = new_cp->tls_peer_cn;
 	if (cn1 != NULL || cn2 != NULL) {
-		if (cn1 == NULL || cn2 == NULL) {
+		if (cn1 == NULL || cn2 == NULL || strcmp(cn1, cn2) != 0) {
 			return false;
 		}
-		return strcmp(cn1, cn2) == 0;
 	}
 
-	return true;
+	const char *subject1 = old_cp->tls_subject;
+	const char *subject2 = new_cp->tls_subject;
+	return (subject1 == NULL || subject2 == NULL)
+	    ? subject1 == subject2 : strcmp(subject1, subject2) == 0;
 }
 
 // This is the global protocol structure -- our linkage to the core.

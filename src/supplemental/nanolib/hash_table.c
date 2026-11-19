@@ -389,6 +389,10 @@ topic_queue_init(char *topic, int topic_len)
 {
 	topic_queue *tq = NULL;
 
+	if (topic == NULL || topic_len < 0) {
+		return NULL;
+	}
+
 	tq = nni_zalloc(sizeof(*tq));
 	if (tq == NULL) {
 		return NULL;
@@ -534,6 +538,34 @@ delete_topic_queue(struct topic_queue *tq)
 		tq = NULL;
 	}
 	return;
+}
+
+void
+dbhash_del_topic_if(bool (*predicate)(uint32_t, char *, void *), void *arg)
+{
+	if (ph == NULL || predicate == NULL) {
+		return;
+	}
+	nni_rwlock_wrlock(&pipe_lock);
+	for (khint_t k = kh_begin(ph); k != kh_end(ph); ++k) {
+		if (!kh_exist(ph, k)) {
+			continue;
+		}
+		topic_queue **link = &kh_val(ph, k);
+		while (*link != NULL) {
+			topic_queue *topic = *link;
+			if (predicate(kh_key(ph, k), topic->topic, arg)) {
+				*link = topic->next;
+				delete_topic_queue(topic);
+			} else {
+				link = &topic->next;
+			}
+		}
+		if (kh_val(ph, k) == NULL) {
+			kh_del(pipe_table, ph, k);
+		}
+	}
+	nni_rwlock_unlock(&pipe_lock);
 }
 
 /*
