@@ -325,10 +325,6 @@ tcptran_pipe_nego_cb(void *arg)
 
 	if ((rv = nni_aio_result(aio)) != 0) {
 		log_warn("nego aio error: %s", nng_strerror(rv));
-		if (p->conn_buf != NULL) {
-			nng_free(p->conn_buf, p->wantrxhead);
-			p->conn_buf = NULL;
-		}
 		code = NORMAL_DISCONNECTION;
 		goto error;
 	}
@@ -370,13 +366,24 @@ tcptran_pipe_nego_cb(void *arg)
 			code = MALFORMED_PACKET;
 			goto error;
 		}
+		// p->conf is assigned only after CONNECT negotiation succeeds.
+		if (ep->conf != NULL &&
+		    p->wantrxhead > ep->conf->max_packet_size) {
+			rv   = NNG_EMSGSIZE;
+			code = PACKET_TOO_LARGE;
+			goto error;
+		}
 	}
 
 	// we have finished the fixed header
 	if (p->gotrxhead < p->wantrxhead) {
 		iov.iov_len = p->wantrxhead - p->gotrxhead;
 		if (p->conn_buf == NULL) {
-			p->conn_buf = nng_alloc(p->wantrxhead);
+			if ((p->conn_buf = nng_alloc(p->wantrxhead)) == NULL) {
+				rv   = NNG_ENOMEM;
+				code = SERVER_UNAVAILABLE;
+				goto error;
+			}
 			// copy fixed header to conn_buf
 			memcpy(p->conn_buf, p->rxlen, p->gotrxhead);
 		}
@@ -419,7 +426,6 @@ tcptran_pipe_nego_cb(void *arg)
 			return;
 		} else {
 			log_info("Disconnect Client due to %d parse CONNECT failed", rv);
-			nng_free(p->conn_buf, p->wantrxhead);
 			rv   = NNG_EPROTO;
 			code = MALFORMED_PACKET;
 			if (p->tcp_cparam->pro_ver == 5) {
@@ -451,6 +457,11 @@ close:
 	nni_aio_set_iov(p->rpaio, 1, &iov);
 	nng_stream_send(p->conn, p->rpaio);
 error:
+	// Also release the packet if allocating conn_param failed.
+	if (p->conn_buf != NULL) {
+		nng_free(p->conn_buf, p->wantrxhead);
+		p->conn_buf = NULL;
+	}
 	// If the connection is closed, we need to pass back a different
 	// error code.  This is necessary to avoid a problem where the
 	// closed status is confused with the accept file descriptor being closed.
@@ -689,9 +700,9 @@ tcptran_pipe_recv_cb(void *arg)
 		log_trace("pipe %p header got: %x %x %x %x %x, %ld!!\n", p,
 		    p->rxlen[0], p->rxlen[1], p->rxlen[2], p->rxlen[3],
 		    p->rxlen[4], p->wantrxhead);
-		// Make sure the message payload is not too big.  If it is
-		// the caller will shut down the pipe.
-		if (len > p->conf->max_packet_size) {
+		// Limit the complete MQTT packet, including its fixed header.
+		// The caller will shut down the pipe if it is too big.
+		if (p->wantrxhead > p->conf->max_packet_size) {
 			log_error("Size of packet exceeds limitation: 0x95\n");
 			rv = NMQ_PACKET_TOO_LARGE;
 			goto recv_error;

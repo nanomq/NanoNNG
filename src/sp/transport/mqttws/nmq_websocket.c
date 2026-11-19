@@ -254,6 +254,18 @@ wstran_pipe_recv_cb(void *arg)
 		goto reset;
 	}
 	if (msg != NULL) {
+		// CONNECT is received alone. Bound its accumulated bytes before
+		// growing tmp_msg, including when the fixed header is fragmented.
+		if (p->ws_param == NULL) {
+			size_t buffered = p->tmp_msg == NULL ? 0 :
+			    nni_msg_len(p->tmp_msg);
+			uint64_t max = p->conf->max_packet_size;
+			if (buffered > max || nni_msg_len(msg) > max - buffered) {
+				rv = NNG_EMSGSIZE;
+				p->err_code = PACKET_TOO_LARGE;
+				goto reset;
+			}
+		}
 		if (p->tmp_msg == NULL) {
 			p->tmp_msg = msg;
 			msg = NULL;
@@ -292,17 +304,17 @@ wstran_pipe_recv_cb(void *arg)
 			goto recv;
 		}
 		// Fixed header finished; sanity check size and overflow before storing.
-		if (len > (uint64_t) p->conf->max_packet_size) {
-			rv = NNG_EMSGSIZE;
-			p->err_code = PACKET_TOO_LARGE;
-			goto reset;
-		}
 		if (len > (uint64_t) SIZE_MAX - (size_t) pos) {
 			rv = NNG_EMSGSIZE;
 			p->err_code = PROTOCOL_ERROR;
 			goto reset;
 		}
 		p->wantrxhead = (size_t) len + (size_t) pos;
+		if (p->wantrxhead > p->conf->max_packet_size) {
+			rv = NNG_EMSGSIZE;
+			p->err_code = PACKET_TOO_LARGE;
+			goto reset;
+		}
 		nni_msg_set_cmd_type(p->tmp_msg, *ptr & 0xf0);
 	}
 	if (p->wantrxhead > p->gotrxhead)
@@ -350,17 +362,17 @@ wstran_pipe_recv_cb(void *arg)
 			// Wait for more bytes of Remaining Length.
 			break;
 		}
-		if (len > (uint64_t) p->conf->max_packet_size) {
-			rv = NNG_EMSGSIZE;
-			p->err_code = PACKET_TOO_LARGE;
-			goto reset;
-		}
 		if (len > (uint64_t) SIZE_MAX - (size_t) pos) {
 			rv = NNG_EMSGSIZE;
 			p->err_code = PROTOCOL_ERROR;
 			goto reset;
 		}
 		size_t pkt_len = (size_t) len + (size_t) pos;
+		if (pkt_len > p->conf->max_packet_size) {
+			rv = NNG_EMSGSIZE;
+			p->err_code = PACKET_TOO_LARGE;
+			goto reset;
+		}
 		if (pkt_len > avail) {
 			// Packet not fully received yet.
 			break;
@@ -452,7 +464,10 @@ done:
 	if (conn_msg != NULL && nni_msg_cmd_type(conn_msg) == CMD_CONNECT) {
 		// end of nego
 		if (p->ws_param == NULL) {
-			conn_param_alloc(&p->ws_param);
+			if ((rv = conn_param_alloc(&p->ws_param)) != 0) {
+				p->err_code = SERVER_UNAVAILABLE;
+				goto reset;
+			}
 		}
 		// CONNECT shall be sent & decode alone, or is a bug from Client
 		if (conn_handler(nni_msg_body(conn_msg), p->ws_param,
