@@ -3,11 +3,10 @@
 // file was obtained (LICENSE.txt). A copy of the license may also be
 // found online at https://opensource.org/licenses/MIT.
 
-#include <nuts.h>
-
 #include "core/nng_impl.h"
 #include "core/sockimpl.h"
 #include "nng/protocol/mqtt/mqtt_parser.h"
+#include <nuts.h>
 
 static struct subinfo *
 seed_list(nni_list *list)
