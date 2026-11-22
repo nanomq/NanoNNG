@@ -1947,9 +1947,20 @@ nni_mqttv5_msg_decode_disconnect(nni_msg *msg)
 	buf.curpos = &body[0];
 	buf.endpos = &body[length];
 
+	/* MQTT 5.0 3.14.2.1: Remaining Length 0 means Reason Code 0x00
+	 * (Normal disconnection); 3.14.2.2.1: below 2, no Properties. */
+	mqtt->var_header.disconnect.reason_code = 0;
+	mqtt->var_header.disconnect.properties  = NULL;
+	if (length == 0) {
+		return MQTT_SUCCESS;
+	}
+
 	ret = read_byte(&buf, &mqtt->var_header.disconnect.reason_code);
 	if (ret != MQTT_SUCCESS) {
 		return MQTT_ERR_PROTOCOL;
+	}
+	if (length == 1) {
+		return MQTT_SUCCESS;
 	}
 
 	/* Properties */

@@ -1194,6 +1194,26 @@ test_decode_disconnect_v5(void)
 	nng_msg_free(msg);
 }
 
+void
+test_decode_disconnect_v5_short(void)
+{
+	// MQTT 5.0 3.14.2.1: Remaining Length 0 and 1 are valid DISCONNECTs
+	uint8_t pkts[][3] = { { 0xe0, 0x00, 0x00 }, { 0xe0, 0x01, 0x04 } };
+	uint8_t codes[]   = { 0x00, 0x04 };
+
+	for (size_t i = 0; i < 2; i++) {
+		nng_msg *msg;
+		NUTS_PASS(nng_mqtt_msg_alloc(&msg, 0));
+		nng_msg_header_append(msg, pkts[i], 2);
+		nng_msg_append(msg, pkts[i] + 2, pkts[i][1]);
+		NUTS_PASS(nng_mqttv5_msg_decode(msg));
+		nni_mqtt_proto_data *mqtt = nng_msg_get_proto_data(msg);
+		NUTS_TRUE(mqtt->var_header.disconnect.reason_code == codes[i]);
+		NUTS_NULL(mqtt->var_header.disconnect.properties);
+		nng_msg_free(msg);
+	}
+}
+
 static nni_msg *
 create_msg(uint8_t *packet, size_t sz, size_t header_sz)
 {
@@ -1665,6 +1685,7 @@ TEST_LIST = {
 	{ "decode unsubscribe v5", test_decode_unsubscribe_v5 },
 	{ "decode disconnect", test_decode_disconnect },
 	{ "decode disconnect v5", test_decode_disconnect_v5 },
+	{ "decode disconnect v5 short form", test_decode_disconnect_v5_short },
 	{ "validate packet", test_packet_validate },
 	{ "byte_number_for_var_len", test_byte_number_for_var_len },
 	{ "test mqtt msg dump", test_mqtt_msg_dump },
