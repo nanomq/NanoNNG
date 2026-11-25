@@ -81,6 +81,13 @@ print_hex(char *str, const uint8_t *data, size_t len)
 #include <nng/supplemental/tls/tee.h>
 #endif
 
+#ifdef TLS_EXTERN_JT_SSLCTX
+#include "jiterrno.h"
+#include "jitinterface.h"
+#include "jitsealapi.h"
+#include "jit_seal_demo.h"
+#endif
+
 static bool g_print_handshake = false;
 
 #ifdef TLS_EXTERN_PRIVATE_KEY
@@ -907,7 +914,12 @@ static void
 open_config_fini(nng_tls_engine_config *cfg)
 {
 	trace("start cfg %p ctx %p", cfg, cfg->ctx);
+#ifdef TLS_EXTERN_JT_SSLCTX
+	if (cfg->ctx != NULL)
+		jitiot_sslctx_free(cfg->ctx);
+#else
 	SSL_CTX_free(cfg->ctx);
+#endif
 	if (cfg->server_name != NULL) {
 		nng_strfree(cfg->server_name);
 	}
@@ -918,6 +930,32 @@ open_config_fini(nng_tls_engine_config *cfg)
 		nng_free(cfg->alpns, 0);
 	trace("end");
 }
+
+#ifdef TLS_EXTERN_JT_SSLCTX
+static int
+open_jit_seal_connect(void)
+{
+	static bool connected = false;
+	jit_seal_default_opt seal_opt = {
+		.conn_func      = jit_seal_SE_conn,
+		.disc_func      = jit_seal_SE_disc,
+		.genkey_func    = jit_seal_gen_asymm_keypair,
+		.getpubkey_func = jit_seal_get_pubkey,
+		.dec_func       = jit_seal_decrypt,
+		.sign_func      = jit_seal_sign,
+	};
+
+	if (connected)
+		return (0);
+	if (jit_seal_assign_default(&seal_opt) != SER_OK ||
+	    jitiot_seal_connect() != IOT_OK) {
+		log_error("NNG-TLS-CFG-INIT" "SEAL connect failed");
+		return (NNG_ECRYPTO);
+	}
+	connected = true;
+	return (0);
+}
+#endif
 
 static int
 open_config_init(nng_tls_engine_config *cfg, enum nng_tls_mode mode)
@@ -939,11 +977,21 @@ open_config_init(nng_tls_engine_config *cfg, enum nng_tls_mode mode)
 		nng_auth  = NNG_TLS_AUTH_MODE_REQUIRED;
 	}
 
+#ifdef TLS_EXTERN_JT_SSLCTX
+	NNI_ARG_UNUSED(method);
+	if (open_jit_seal_connect() != 0)
+		return (NNG_ECRYPTO);
+	if (jitiot_get_sslctx((void **) &cfg->ctx, NULL) != IOT_OK) {
+		log_error("NNG-TLS-CFG-INIT" "error in get sslctx by jit");
+		return (NNG_ECRYPTO);
+	}
+#else
 	cfg->ctx = SSL_CTX_new(method);
 	if (cfg->ctx == NULL) {
 		log_error("NNG-TLS-CFG-INIT" "error in new ctx");
 		return (NNG_ENOMEM);
 	}
+#endif
 	// Set max/min version TODO
 
 	SSL_CTX_set_verify(cfg->ctx, auth_mode, NULL);
@@ -1015,6 +1063,13 @@ open_config_ca_chain(
 {
 	size_t len;
 	trace("start");
+
+#ifdef TLS_EXTERN_JT_SSLCTX
+	// CA chain is already loaded into ctx by jitiot_get_sslctx
+	NNI_ARG_UNUSED(certs);
+	NNI_ARG_UNUSED(crl);
+	return (0);
+#endif
 
 #ifndef NANOMQ_TLS_VENDOR
 #define NANOMQ_TLS_VENDOR "VENDOR"
@@ -1124,6 +1179,14 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	BIO *biocert = NULL;
 	X509 *xcert = NULL;
 	EVP_PKEY *pkey = NULL;
+
+#ifdef TLS_EXTERN_JT_SSLCTX
+	// Own cert and private key are already loaded into ctx by jitiot_get_sslctx
+	NNI_ARG_UNUSED(cert);
+	NNI_ARG_UNUSED(key);
+	NNI_ARG_UNUSED(pass);
+	return (0);
+#endif
 
 #if NNG_OPENSSL_HAVE_PASSWORD
 	char *dup = NULL;
