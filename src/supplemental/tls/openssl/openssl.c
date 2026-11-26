@@ -915,8 +915,10 @@ open_config_fini(nng_tls_engine_config *cfg)
 {
 	trace("start cfg %p ctx %p", cfg, cfg->ctx);
 #ifdef TLS_EXTERN_JT_SSLCTX
-	if (cfg->ctx != NULL)
+	if (cfg->ctx != NULL) {
+		log_info("free jt sslctx");
 		jitiot_sslctx_free(cfg->ctx);
+	}
 #else
 	SSL_CTX_free(cfg->ctx);
 #endif
@@ -947,6 +949,7 @@ open_jit_seal_connect(void)
 
 	if (connected)
 		return (0);
+	log_info("NNG-TLS-CFG-INIT" "SEAL ready to connect");
 	if (jit_seal_assign_default(&seal_opt) != SER_OK ||
 	    jitiot_seal_connect() != IOT_OK) {
 		log_error("NNG-TLS-CFG-INIT" "SEAL connect failed");
@@ -981,10 +984,12 @@ open_config_init(nng_tls_engine_config *cfg, enum nng_tls_mode mode)
 	NNI_ARG_UNUSED(method);
 	if (open_jit_seal_connect() != 0)
 		return (NNG_ECRYPTO);
+	log_info("NNG-TLS-CFG-INIT" "SEAL connect done and get sslctx");
 	if (jitiot_get_sslctx((void **) &cfg->ctx, NULL) != IOT_OK) {
 		log_error("NNG-TLS-CFG-INIT" "error in get sslctx by jit");
 		return (NNG_ECRYPTO);
 	}
+	log_info("NNG-TLS-CFG-INIT" "SEAL get sslctx done");
 #else
 	cfg->ctx = SSL_CTX_new(method);
 	if (cfg->ctx == NULL) {
@@ -1068,6 +1073,7 @@ open_config_ca_chain(
 	// CA chain is already loaded into ctx by jitiot_get_sslctx
 	NNI_ARG_UNUSED(certs);
 	NNI_ARG_UNUSED(crl);
+	log_info("NNG-TLS-CFG-CHAIN" "config but skip");
 	return (0);
 #endif
 
@@ -1185,6 +1191,7 @@ open_config_own_cert(nng_tls_engine_config *cfg, const char *cert,
 	NNI_ARG_UNUSED(cert);
 	NNI_ARG_UNUSED(key);
 	NNI_ARG_UNUSED(pass);
+	log_info("NNG-TLS-CFG-OWN-CERT" "config but skip");
 	return (0);
 #endif
 
