@@ -748,6 +748,21 @@ nni_msg_set_proto_data(nng_msg *m, nni_proto_msg_ops *ops, void *data)
 	m->m_proto_data = data;
 }
 
+// Preserve protocol-owned data and avoid rewriting a tag visible to readers.
+void
+nni_msg_set_untyped_data(nng_msg *m, void *data)
+{
+	if (m->m_proto_ops == NULL && m->m_proto_data != data) {
+		m->m_proto_data = data;
+	}
+}
+
+const nni_proto_msg_ops *
+nni_msg_get_proto_ops(const nng_msg *m)
+{
+	return (m->m_proto_ops);
+}
+
 void *
 nni_msg_get_proto_data(nng_msg *m)
 {

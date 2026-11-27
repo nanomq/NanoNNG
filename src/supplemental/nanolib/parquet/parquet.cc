@@ -325,17 +325,18 @@ parquet_object_alloc(parquet_data *data, parquet_type type, nng_aio *aio,
 	return elem;
 }
 
-void
-parquet_object_free(parquet_object *elem)
+static void
+parquet_object_finish(parquet_object *elem, int result)
 {
 	if (elem) {
 		if (elem->data) {
 			parquet_data_free(elem->data);
 		}
-		nng_aio_set_prov_data(elem->aio, elem->aio_arg);
-		nng_aio_set_output(elem->aio, 1, elem->ranges);
-		log_debug("finish write aio");
-		DO_IT_IF_NOT_NULL(nng_aio_finish_sync, elem->aio, 0);
+		if (elem->aio != NULL) {
+			nng_aio_set_prov_data(elem->aio, elem->aio_arg);
+			nng_aio_set_output(elem->aio, 1, elem->ranges);
+			nng_aio_finish_sync(elem->aio, result);
+		}
 
 		for (int i = 0; i < elem->ranges->size; i++) {
 			parquet_file_range_free(elem->ranges->range[i]);
@@ -346,11 +347,17 @@ parquet_object_free(parquet_object *elem)
 	}
 }
 
+void
+parquet_object_free(parquet_object *elem)
+{
+	parquet_object_finish(elem, 0);
+}
+
 int
 parquet_write_batch_async(parquet_object *elem)
 {
 	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
-	if (conf->enable == false) {
+	if (conf == NULL || !conf->enable) {
 		log_debug("Parquet %s is not ready or not launch!", elem->topic);
 		log_error("Parquet *** is not ready or not launch!");
 		return -1;
@@ -376,7 +383,7 @@ int
 parquet_write_batch_tmp_async(parquet_object *elem)
 {
 	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
-	if (conf->enable == false) {
+	if (conf == NULL || !conf->enable) {
 		log_debug("Parquet %s is not ready or not launch!", elem->topic);
 		log_error("Parquet *** is not ready or not launch!");
 		return -1;
@@ -639,6 +646,7 @@ parquet_write_core(conf_parquet *conf, char *filename,
 	uint64_t              *ts_arr      = data->ts;
 	parquet_data_packet ***payload_arr = data->payload_arr;
 
+	bool opened = false;
 	string exception_msg = "";
 	try {
 
@@ -713,6 +721,7 @@ parquet_write_core(conf_parquet *conf, char *filename,
 		using FileClass = arrow::io::FileOutputStream;
 		shared_ptr<FileClass> out_file;
 		PARQUET_ASSIGN_OR_THROW(out_file, FileClass::Open(filename));
+		opened = true;
 		shared_ptr<parquet::ParquetFileWriter> file_writer =
 		    parquet::ParquetFileWriter::Open(out_file, schema, props);
 
@@ -764,12 +773,17 @@ parquet_write_core(conf_parquet *conf, char *filename,
 		rg_writer->Close();
 		// Close the ParquetFileWriter
 		file_writer->Close();
+		PARQUET_THROW_NOT_OK(out_file->Close());
 		log_debug("stop doing ByteArray write");
 
 	} catch (const exception &e) {
 		exception_msg = e.what();
 		log_error("exception_msg=[***]");
 		log_debug("exception_msg=[%s]", exception_msg.c_str());
+		if (opened) {
+			remove(filename);
+		}
+		return NNG_EINTERNAL;
 	}
 
 	return 0;
@@ -780,10 +794,10 @@ parquet_write_tmp(parquet_object *elem)
 {
 
 	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
-	if (conf->enable == false) {
+	if (conf == NULL || !conf->enable) {
 		log_debug("Parquet %s is not ready or not launch!", elem->topic);
 		log_error("Parquet *** is not ready or not launch!");
-		return -1;
+		return NNG_EINVAL;
 	}
 
 	char    **schema_arr = elem->data->schema;
@@ -795,7 +809,7 @@ parquet_write_tmp(parquet_object *elem)
 
 	if (NULL == schema) {
 		log_error("Schema set error.");
-		return -1;
+		return NNG_EINVAL;
 	}
 
 	log_debug("parquet_write");
@@ -806,12 +820,15 @@ parquet_write_tmp(parquet_object *elem)
 	    conf, prefix.data(), ts_arr[0], ts_arr[row_len - 1]);
 	if (filename == NULL) {
 		log_error("Failed to get file name");
-		parquet_object_free(elem);
-		return -1;
+		return NNG_EINVAL;
 	}
 
-	parquet_write_core(
+	int rv = parquet_write_core(
 	    conf, filename, schema, elem->data, elem->topic, elem->type);
+	if (rv != 0) {
+		free(filename);
+		return rv;
+	}
 	parquet_file_range *range =
 	    parquet_file_range_alloc(0, row_len - 1, filename);
 	free(filename);
@@ -820,7 +837,6 @@ parquet_write_tmp(parquet_object *elem)
 	// Create a ParquetFileWriter instance
 	parquet::WriterProperties::Builder builder;
 
-	parquet_object_free(elem);
 	return 0;
 }
 
@@ -829,10 +845,10 @@ parquet_write(parquet_object *elem)
 {
 
 	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
-	if (conf->enable == false) {
+	if (conf == NULL || !conf->enable) {
 		log_debug("Parquet %s is not ready or not launch!", elem->topic);
 		log_error("Parquet *** is not ready or not launch!");
-		return -1;
+		return NNG_EINVAL;
 	}
 
 	char    **schema_arr = elem->data->schema;
@@ -844,25 +860,27 @@ parquet_write(parquet_object *elem)
 
 	if (NULL == schema) {
 		log_error("Schema set error.");
-		return -1;
+		return NNG_EINVAL;
 	}
 
 	log_debug("parquet_write");
 	char *filename = get_file_name(conf, ts_arr[0], ts_arr[row_len - 1]);
 	if (filename == NULL) {
-		parquet_object_free(elem);
 		log_error("Failed to get file name");
-		return -1;
+		return NNG_EINVAL;
 	}
 
-	parquet_write_core(
+	int rv = parquet_write_core(
 	    conf, filename, schema, elem->data, elem->topic, elem->type);
+	if (rv != 0) {
+		free(filename);
+		return rv;
+	}
 	char *md5_file_name =
 	    compute_and_rename_file_withMD5(filename, conf, elem->topic);
 	if (md5_file_name == nullptr) {
-		parquet_object_free(elem);
 		log_error("fail to get md5 from parquet file");
-		return -1;
+		return NNG_EINTERNAL;
 	}
 
 	char md5_buffer[MD5_LEN + 1];
@@ -882,7 +900,6 @@ parquet_write(parquet_object *elem)
 	pthread_mutex_unlock(&parquet_queue_mutex);
 
 	log_info("flush finished!");
-	parquet_object_free(elem);
 	return 0;
 }
 
@@ -906,17 +923,19 @@ parquet_write_loop_v2(void *arg)
 
 		pthread_mutex_unlock(&parquet_queue_mutex);
 
+		int rv = NNG_EINVAL;
 		switch (ele->type) {
 		case WRITE_RAW:
 		case WRITE_CAN:
-			parquet_write(ele);
+			rv = parquet_write(ele);
 			break;
 		case WRITE_TEMP_RAW:
-			parquet_write_tmp(ele);
+			rv = parquet_write_tmp(ele);
 			break;
 		default:
 			break;
 		}
+		parquet_object_finish(ele, rv);
 	}
 	return NULL;
 }
@@ -956,7 +975,7 @@ get_range(const char *name, uint64_t range[2])
 
 	char md5[33] = { 0 };
 
-	if (sscanf(ts_start, "%lu~%lu_%32[^.]", &range[0], &range[1], md5) !=
+	if (sscanf(ts_start, "%" SCNu64 "~%" SCNu64 "_%32[^.]", &range[0], &range[1], md5) !=
 	    3) {
 		range[0] = range[1] = 0;
 	}
@@ -1041,20 +1060,31 @@ parquet_find_span(
 	}
 	if (queue->size != 0) {
 		array = (const char **) nng_alloc(sizeof(char *) * queue->size);
-
+		if (array == NULL) {
+			goto done;
+		}
 		ret = array;
 		FOREACH_QUEUE(*queue, elem)
 		{
 			if (elem) {
 				if (compare_callback_span(elem, low, high)) {
-					++local_size;
 					value    = nng_strdup((char *) elem);
+					if (value == NULL) {
+						while (local_size > 0) {
+							nng_strfree((char *) ret[--local_size]);
+						}
+						nng_free(ret, sizeof(char *) * queue->size);
+						ret = NULL;
+						goto done;
+					}
 					*array++ = value;
+					++local_size;
 				}
 			}
 		}
 	}
 
+done:
 	pthread_mutex_unlock(&parquet_queue_mutex);
 	(*size) = local_size;
 	return ret;

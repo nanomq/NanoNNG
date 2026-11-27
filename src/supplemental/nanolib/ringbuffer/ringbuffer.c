@@ -30,7 +30,7 @@ static inline int ringBuffer_get_msgs(ringBuffer_t *rb, unsigned int *count, nng
 	for (i = rb->head; i < rb->size; i++) {
 		i = i % rb->cap;
 		nng_msg *msg = rb->msgs[i].data;
-		nng_msg_set_proto_data(msg, NULL, (void *)(uintptr_t)rb->msgs[i].key);
+		nni_msg_set_untyped_data(msg, (void *) (uintptr_t) rb->msgs[i].key);
 
 		newList[j] = msg;
 
@@ -1247,7 +1247,7 @@ int ringBuffer_search_msgs_fuzz(ringBuffer_t *rb,
 			log_error("msg is NULL and some error occured\n");
 			return -1;
 		}
-		nng_msg_set_proto_data(msg, NULL, (void *)(uintptr_t)rb->msgs[i].key);
+		nni_msg_set_untyped_data(msg, (void *) (uintptr_t) rb->msgs[i].key);
 		newList[i - start_index] = msg;
 	}
 
@@ -1281,13 +1281,10 @@ int ringBuffer_search_msgs_by_key(ringBuffer_t *rb, uint64_t key, uint32_t count
 		i = i % rb->cap;
 		if (rb->msgs[i].key == key) {
 			for (j = 0; j < count; j++) {
-				nng_msg *msg = rb->msgs[i].data;
-
-				if (msg != NULL) {
-					nng_msg_set_proto_data(msg, NULL, (void *)(uintptr_t)rb->msgs[i].key);
+				newList[j] = rb->msgs[i].data;
+				if (newList[j] != NULL) {
+					nni_msg_set_untyped_data(newList[j], (void *) (uintptr_t) rb->msgs[i].key);
 				}
-
-				newList[j] = msg;
 
 				i = (i + 1) % rb->cap;
 			}

@@ -530,7 +530,35 @@ void test_ringBuffer_get_and_clean_up()
 
 }
 
+static void
+test_ringBuffer_key_and_mqtt_metadata(void)
+{
+	ringBuffer_t *rb;
+	nng_msg *wire, *mqtt = alloc_pub_msg("topic");
+	nng_msg **msgs;
+	uint32_t count = 0;
+	void *mqtt_data = nng_msg_get_proto_data(mqtt);
+	NUTS_PASS(nng_msg_alloc(&wire, 0));
+	NUTS_PASS(ringBuffer_init(&rb, 2, RB_FULL_RETURN, -1));
+	NUTS_PASS(ringBuffer_enqueue(rb, 4, wire, -1, NULL));
+	NUTS_PASS(ringBuffer_enqueue(rb, 5, mqtt, -1, NULL));
+	NUTS_PASS(ringBuffer_search_msgs_fuzz(rb, 4, 5, &count, &msgs));
+	NUTS_TRUE(count == 2);
+	NUTS_TRUE((uintptr_t) nng_msg_get_proto_data(msgs[0]) == 4);
+	NUTS_TRUE(nng_msg_get_proto_data(msgs[1]) == mqtt_data);
+	nng_free(msgs, count * sizeof(*msgs));
+	NUTS_PASS(ringBuffer_get_and_clean_msgs(rb, &count, &msgs));
+	NUTS_TRUE(count == 2);
+	NUTS_TRUE((uintptr_t) nng_msg_get_proto_data(msgs[0]) == 4);
+	NUTS_TRUE(nng_msg_get_proto_data(msgs[1]) == mqtt_data);
+	nng_msg_free(msgs[0]);
+	nng_msg_free(msgs[1]);
+	nng_free(msgs, count * sizeof(*msgs));
+	NUTS_PASS(ringBuffer_release(rb));
+}
+
 NUTS_TESTS = {
+	{ "Ring key and MQTT metadata", test_ringBuffer_key_and_mqtt_metadata },
 	{ "Ring buffer init test", test_ringBuffer_init },
 	{ "Ring buffer release test", test_ringBuffer_release },
 	{ "Ring buffer enqueue test", test_ringBuffer_enqueue },
