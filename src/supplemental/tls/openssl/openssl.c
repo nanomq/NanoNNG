@@ -85,7 +85,7 @@ print_hex(char *str, const uint8_t *data, size_t len)
 #include "jiterrno.h"
 #include "jitinterface.h"
 #include "jitsealapi.h"
-#include "jit_seal_demo.h"
+#include "ca_api.h"
 #endif
 
 static bool g_print_handshake = false;
@@ -939,12 +939,17 @@ open_jit_seal_connect(void)
 {
 	static bool connected = false;
 	jit_seal_default_opt seal_opt = {
-		.conn_func      = jit_seal_SE_conn,
-		.disc_func      = jit_seal_SE_disc,
-		.genkey_func    = jit_seal_gen_asymm_keypair,
-		.getpubkey_func = jit_seal_get_pubkey,
-		.dec_func       = jit_seal_decrypt,
-		.sign_func      = jit_seal_sign,
+		.conn_func       = NULL,
+		.disc_func       = NULL,
+		.genkey_func     = ca_api_gen_asymm_keypair,
+		.getpubkey_func  = ca_api_get_pubkey,
+		.sign_func       = ca_api_sign,
+		.dec_func        = ca_api_decrypt,
+		.write_cert_func = ca_api_write_cert,
+		.read_cert_func  = ca_api_read_cert,
+		.delete_cert_func = ca_api_delete_cert,
+		.write_data_func = ca_api_write_data,
+		.read_data_func  = ca_api_read_data,
 	};
 
 	if (connected)
