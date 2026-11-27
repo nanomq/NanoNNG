@@ -8,6 +8,7 @@
 //
 
 #include "core/nng_impl.h"
+#include "core/sockimpl.h"
 #include "sqlite_handler.h"
 #include "nng/protocol/mqtt/mqtt.h"
 #include "nng/supplemental/sqlite/sqlite3.h"
@@ -95,6 +96,8 @@ struct mqtt_sock_s {
 	bool            connected;	 	// a stupid tmp status of network
 	bool            retry_qos_0;	// define if flush QoS 0 msg to disk
 	nni_mtx         mtx;    		// more fine grained mutual exclusion
+	nni_cv          send_ready;
+	unsigned        qos0_waiters;
 	uint8_t         mqtt_ver;       // mqtt version.
 	nni_atomic_bool closed;
 	nni_atomic_int  next_packet_id; // next packet id to use
@@ -164,6 +167,7 @@ mqtt_sock_init(void *arg, nni_sock *sock)
 	s->nsock           = sock;
 
 	nni_mtx_init(&s->mtx);
+	nni_cv_init(&s->send_ready, &s->mtx);
 	mqtt_ctx_init(&s->master, s);
 
 	s->mqtt_ver  = MQTT_PROTOCOL_VERSION_v311;
@@ -241,6 +245,7 @@ mqtt_sock_fini(void *arg)
 	nng_mqtt_free_sqlite_opt(s->sqlite_opt);
 #endif
 	mqtt_ctx_fini(&s->master);
+	nni_cv_fini(&s->send_ready);
 	nni_mtx_fini(&s->mtx);
 }
 
@@ -436,10 +441,11 @@ mqtt_sock_close(void *arg)
 	nni_aio *    aio;
 	nni_msg *    msg;
 
+	nni_mtx_lock(&s->mtx);
 	nni_atomic_set_bool(&s->closed, true);
+	nni_cv_wake(&s->send_ready);
 	if (s->mqtt_pipe != NULL)
 		nni_atomic_set_bool(&s->mqtt_pipe->closed, true);
-	nni_mtx_lock(&s->mtx);
 	// clean ctx queue when pipe was closed.
 	while ((ctx = nni_list_first(&s->send_queue)) != NULL) {
 		// Pipe was closed.  just push an error back to the
@@ -594,6 +600,15 @@ mqtt_pipe_recv_msgq_putq(mqtt_pipe_t *p, nni_msg *msg)
 	return rv;
 }
 
+/* Called with the socket mutex held and an idle transport. */
+static void
+mqtt_pipe_send_msg(mqtt_pipe_t *p, nni_msg *msg)
+{
+	p->busy = true;
+	nni_aio_set_msg(&p->send_aio, msg);
+	nni_pipe_send(p->pipe, &p->send_aio);
+}
+
 // Should be called with mutex lock hold. and it will unlock mtx.
 // flag indicates if need to skip msg in sqlite 1: check sqlite 0: only aio
 static inline void
@@ -712,11 +727,9 @@ mqtt_send_msg(nni_aio *aio, mqtt_ctx_t *arg, mqtt_sock_t *s)
 		return;
 	}
 	if (!p->busy) {
-		p->busy = true;
-		nni_aio_set_msg(&p->send_aio, msg);
 		nni_aio_bump_count(
 		    aio, nni_msg_header_len(msg) + nni_msg_len(msg));
-		nni_pipe_send(p->pipe, &p->send_aio);
+		mqtt_pipe_send_msg(p, msg);
 		nni_mtx_unlock(&s->mtx);
 		if (0 == qos && ptype != NNG_MQTT_SUBSCRIBE &&
 		    ptype != NNG_MQTT_UNSUBSCRIBE) {
@@ -770,7 +783,10 @@ mqtt_pipe_start(void *arg)
 	s->disconnect_code = SUCCESS;
 	s->dis_prop        = NULL;
 	s->connected       = true;
-	p->busy			   = false;
+	p->busy             = false;
+	if (s->qos0_waiters != 0) {
+		nni_cv_wake1(&s->send_ready);
+	}
 
 	if ((c = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, c);
@@ -1025,7 +1041,10 @@ mqtt_send_cb(void *arg)
 		return;
 	}
 	nni_mtx_lock(&s->mtx);
-	p->busy     = false;
+	p->busy = false;
+	if (s->qos0_waiters != 0) {
+		nni_cv_wake1(&s->send_ready);
+	}
 
 	// Check cached ctx in nni_list first
 	// these ctxs are triggered before the pipe is established
@@ -1050,7 +1069,6 @@ mqtt_send_cb(void *arg)
 		return;
 	}
 
-	p->busy = false;
 	nni_mtx_unlock(&s->mtx);
 	return;
 }
@@ -1886,4 +1904,49 @@ int
 nng_mqttv5_client_open(nng_socket *sock)
 {
 	return (nni_proto_open(sock, &mqttv5_proto));
+}
+
+int
+nng_mqtt_client_send_qos0(nng_socket socket, nng_msg *msg)
+{
+	nni_sock *sock;
+	int rv;
+	if (msg == NULL || nni_msg_get_proto_data(msg) == NULL ||
+	    nni_mqtt_msg_get_packet_type(msg) != NNG_MQTT_PUBLISH ||
+	    nni_mqtt_msg_get_publish_qos(msg) != 0) {
+		return NNG_EINVAL;
+	}
+	if ((rv = nni_sock_find(&sock, socket.id)) != 0) {
+		return rv;
+	}
+	if (nni_sock_proto_ops(sock)->sock_send != mqtt_sock_send) {
+		nni_sock_rele(sock);
+		return NNG_ENOTSUP;
+	}
+	mqtt_sock_t *s = nni_sock_proto_data(sock);
+	rv = s->mqtt_ver == MQTT_PROTOCOL_VERSION_v311 ?
+	    nni_mqtt_msg_encode(msg) : nni_mqttv5_msg_encode(msg);
+	if (rv != MQTT_SUCCESS) {
+		nni_sock_rele(sock);
+		return NNG_EPROTO;
+	}
+
+	nni_mtx_lock(&s->mtx);
+	s->qos0_waiters++;
+	while (!nni_atomic_get_bool(&s->closed) &&
+	    (s->mqtt_pipe == NULL || nni_atomic_get_bool(&s->mqtt_pipe->closed) ||
+	        nni_pipe_is_closed(s->mqtt_pipe->pipe) || s->mqtt_pipe->busy)) {
+		nni_cv_wait(&s->send_ready);
+	}
+	s->qos0_waiters--;
+	if (nni_atomic_get_bool(&s->closed)) {
+		rv = NNG_ECLOSED;
+	} else {
+		nni_msg_set_timestamp(msg, nni_clock());
+		mqtt_pipe_send_msg(s->mqtt_pipe, msg);
+		rv = 0;
+	}
+	nni_mtx_unlock(&s->mtx);
+	nni_sock_rele(sock);
+	return rv;
 }
