@@ -1112,6 +1112,14 @@ nng_mqtt_sqlite_db_init(nng_mqtt_sqlite_option *opt, const char *db_name)
 }
 
 void
+nng_mqtt_sqlite_db_init_legacy(nng_mqtt_sqlite_option *opt,
+    const char *db_name, const char *legacy_dir, const char *legacy_name)
+{
+	nni_mqtt_sqlite_db_init_legacy(
+	    opt, db_name, legacy_dir, legacy_name);
+}
+
+void
 nng_mqtt_sqlite_db_fini(nng_mqtt_sqlite_option *opt)
 {
 	nni_mqtt_sqlite_db_fini(opt);

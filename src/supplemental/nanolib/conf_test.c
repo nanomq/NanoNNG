@@ -2,12 +2,25 @@
 
 #include "nuts.h"
 
-#if defined(ENABLE_NANOMQ_TESTS)
+#if defined(NANOMQ_TEST_CONF_DIR)
+#define OLD_CONF_PATH \
+	NANOMQ_TEST_CONF_DIR "/nmq_old_test.conf"
+#define CONF_PATH NANOMQ_TEST_CONF_DIR "/nmq_test.conf"
+#define BRIDGE_CACHE_CONF_PATH \
+	NANOMQ_TEST_CONF_DIR "/nmq_bridge_cache_test.conf"
+#define PKCS11_OLD_CONF_PATH \
+	NANOMQ_TEST_CONF_DIR "/nmq_tls_pkcs11_old_test.conf"
+#define PKCS11_CONF_PATH \
+	NANOMQ_TEST_CONF_DIR "/nmq_tls_pkcs11_test.conf"
+#elif defined(ENABLE_NANOMQ_TESTS)
 #define OLD_CONF_PATH                                            \
 	"../../../../../nng/src/supplemental/nanolib/test_conf/" \
 	"nmq_old_test.conf"
 #define CONF_PATH \
 	"../../../../../nng/src/supplemental/nanolib/test_conf/nmq_test.conf"
+#define BRIDGE_CACHE_CONF_PATH                                          \
+	"../../../../../nng/src/supplemental/nanolib/test_conf/"       \
+	"nmq_bridge_cache_test.conf"
 #define EXCHANGE_CONF_PATH                                         \
 	"../../../../../nng/src/supplemental/nanolib/test_conf/" \
 	"nmq_exchange_test.conf"
@@ -16,6 +29,9 @@
 	"../../../../src/supplemental/nanolib/test_conf/nmq_old_test.conf"
 #define CONF_PATH \
 	"../../../../src/supplemental/nanolib/test_conf/nmq_test.conf"
+#define BRIDGE_CACHE_CONF_PATH \
+	"../../../../src/supplemental/nanolib/test_conf/" \
+	"nmq_bridge_cache_test.conf"
 #define EXCHANGE_CONF_PATH                                         \
 	"../../../../src/supplemental/nanolib/test_conf/" \
 	"nmq_exchange_test.conf"
@@ -340,6 +356,134 @@ test_stream_codec_id_from_number(void)
 	NUTS_FAIL(conf_stream_codec_id_from_number(17, NULL), -1);
 }
 
+static conf_bridge_node *
+find_bridge_node(conf *conf, const char *name)
+{
+	for (size_t i = 0; i < conf->bridge.count; i++) {
+		conf_bridge_node *node = conf->bridge.nodes[i];
+		if (node->name != NULL && strcmp(node->name, name) == 0) {
+			return node;
+		}
+	}
+	return NULL;
+}
+
+/** Per-Bridge-Node Bridge Cache resolution (design doc §3, ADR 0001/0002). */
+void
+test_conf_bridge_cache_per_node(void)
+{
+	conf *conf = get_test_conf(BRIDGE_CACHE_CONF_PATH);
+	NUTS_TRUE(conf != NULL);
+	if (conf == NULL) {
+		return;
+	}
+	conf_parse_ver2(conf, false);
+
+	// The defaults block is stored on the conf_bridge itself.
+	NUTS_TRUE(conf->bridge.sqlite.enable == true);
+	NUTS_TRUE(conf->bridge.sqlite.disk_cache_size == 4096);
+	NUTS_TRUE(conf->bridge.sqlite.flush_mem_threshold == 7);
+	NUTS_TRUE(conf->bridge.sqlite.mounted_file_path != NULL);
+	NUTS_TRUE(strcmp(conf->bridge.sqlite.mounted_file_path,
+	             "/tmp/nmq_bridge_cache_defaults/") == 0);
+
+	// A node without a cache block inherits the defaults verbatim.
+	conf_bridge_node *inherits = find_bridge_node(conf, "inherits");
+	NUTS_TRUE(inherits != NULL);
+	NUTS_TRUE(inherits->sqlite.enable == true);
+	NUTS_TRUE(inherits->sqlite.disk_cache_size == 4096);
+	NUTS_TRUE(inherits->sqlite.flush_mem_threshold == 7);
+	NUTS_TRUE(inherits->sqlite.mounted_file_path != NULL);
+	NUTS_TRUE(strcmp(inherits->sqlite.mounted_file_path,
+	             "/tmp/nmq_bridge_cache_defaults/") == 0);
+
+	// A node-level block replaces the defaults wholesale: the fields it does
+	// not set fall back to the type defaults, not to the block above.
+	conf_bridge_node *overrides = find_bridge_node(conf, "overrides");
+	NUTS_TRUE(overrides != NULL);
+	NUTS_TRUE(overrides->sqlite.enable == true);
+	NUTS_TRUE(overrides->sqlite.disk_cache_size == 32);
+	NUTS_TRUE(overrides->sqlite.flush_mem_threshold == 100);
+	NUTS_TRUE(overrides->sqlite.mounted_file_path != NULL);
+	NUTS_TRUE(strcmp(overrides->sqlite.mounted_file_path,
+	             "/tmp/nmq_bridge_cache_overrides/") == 0);
+
+	// The two nodes must not share storage any more.
+	NUTS_TRUE(inherits->sqlite.mounted_file_path !=
+	    overrides->sqlite.mounted_file_path);
+
+	// Presence implies enable, but an explicit false wins.
+	conf_bridge_node *disabled = find_bridge_node(conf, "disabled");
+	NUTS_TRUE(disabled != NULL);
+	NUTS_TRUE(disabled->sqlite.enable == false);
+
+	// A node-level `sqlite { }` is not an alias: the node inherits the defaults.
+	conf_bridge_node *noalias = find_bridge_node(conf, "noalias");
+	NUTS_TRUE(noalias != NULL);
+	NUTS_TRUE(noalias->sqlite.enable == true);
+	NUTS_TRUE(noalias->sqlite.disk_cache_size == 4096);
+
+	conf_fini(conf);
+}
+
+/** Per-Bridge-Node Bridge Cache file naming and collision rejection (§4, §12). */
+void
+test_bridge_cache_file_name(void)
+{
+	char buf[128];
+	char long_name[200];
+
+	NUTS_TRUE(bridge_cache_db_name("mqtt_client", "hub", buf, sizeof(buf)) > 0);
+	NUTS_TRUE(strcmp(buf, "mqtt_client_hub.db") == 0);
+
+	NUTS_TRUE(
+	    bridge_cache_db_name("mqtt_quic_client", "hub", buf, sizeof(buf)) > 0);
+	NUTS_TRUE(strcmp(buf, "mqtt_quic_client_hub.db") == 0);
+
+	// Path-hostile and spacing characters are replaced with '_'.
+	NUTS_TRUE(bridge_cache_db_name("mqtt_client", "a/b", buf, sizeof(buf)) > 0);
+	NUTS_TRUE(strcmp(buf, "mqtt_client_a_b.db") == 0);
+	NUTS_TRUE(
+	    bridge_cache_db_name("mqtt_client", "../x y", buf, sizeof(buf)) > 0);
+	NUTS_TRUE(strcmp(buf, "mqtt_client_.._x_y.db") == 0);
+
+	// Nothing usable, or no room for the result.
+	NUTS_FAIL(bridge_cache_db_name("mqtt_client", "///", buf, sizeof(buf)), -1);
+	NUTS_FAIL(bridge_cache_db_name(NULL, "hub", buf, sizeof(buf)), -1);
+	NUTS_FAIL(bridge_cache_db_name("mqtt_client", "hub", buf, 4), -1);
+
+	// Long names are truncated to BRIDGE_CACHE_NAME_MAX characters.
+	memset(long_name, 'a', sizeof(long_name) - 1);
+	long_name[sizeof(long_name) - 1] = '\0';
+	NUTS_TRUE(
+	    bridge_cache_db_name("mqtt_client", long_name, buf, sizeof(buf)) > 0);
+	NUTS_TRUE(strlen(buf) == strlen("mqtt_client_") +
+	        BRIDGE_CACHE_NAME_MAX + strlen(".db"));
+
+	// Two names that sanitise to the same token must be rejected.
+	conf_bridge_node  n1 = { 0 }, n2 = { 0 };
+	conf_bridge_node *nodes[2] = { &n1, &n2 };
+	conf_bridge      b         = { 0 };
+	b.nodes                    = nodes;
+	b.count                    = 2;
+
+	n1.name = "a/b";
+	n2.name = "a_b";
+	NUTS_FAIL(conf_bridge_cache_validate(&b), -1);
+
+	n1.name = "hub";
+	n2.name = "cloud";
+	NUTS_PASS(conf_bridge_cache_validate(&b));
+
+	n1.name = "///";
+	NUTS_FAIL(conf_bridge_cache_validate(&b), -1);
+
+	// Case-insensitive filesystems must not put two bridges on one file.
+	n1.name = "Hub";
+	n2.name = "hub";
+	NUTS_FAIL(conf_bridge_cache_validate(&b), -1);
+}
+
 NUTS_TESTS = {
    {"get size", test_get_size},
    {"get time", test_get_time},
@@ -362,5 +506,7 @@ NUTS_TESTS = {
    {"get size bytes unit", test_get_size_bytes_unit},
    {"get time days", test_get_time_days},
    {"stream codec id range", test_stream_codec_id_from_number},
+   {"bridge cache per node", test_conf_bridge_cache_per_node},
+   {"bridge cache file name", test_bridge_cache_file_name},
    {NULL, NULL}
 };

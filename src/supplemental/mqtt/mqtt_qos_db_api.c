@@ -187,19 +187,19 @@ nni_qos_db_remove_pipe(bool is_sqlite, void *db, uint32_t pipe_id)
 
 int
 nni_qos_db_set_client_msg(bool is_sqlite, void *db, uint32_t pipe_id,
-    uint16_t packet_id, nng_msg *msg, const char *config_name,
+    uint16_t packet_id, nng_msg *msg, int info_id,
     uint8_t proto_ver)
 {
 	int rv = 0;
 	if (is_sqlite) {
 #ifdef NNG_SUPP_SQLITE
 		rv = nni_mqtt_qos_db_set_client_msg((sqlite3 *) db, pipe_id,
-		    packet_id, msg, config_name, proto_ver);
+		    packet_id, msg, info_id, proto_ver);
 #endif
 	} else if (db != NULL) {
 		rv = nni_id_set((nni_id_map *) db, packet_id, msg);
 		NNI_ARG_UNUSED(pipe_id);
-		NNI_ARG_UNUSED(config_name);
+		NNI_ARG_UNUSED(info_id);
 	}
 	NNI_ARG_UNUSED(proto_ver);
 	return rv;
@@ -241,17 +241,17 @@ nni_qos_db_remove_client_msg(
 
 void
 nni_qos_db_remove_oldest_client_msg(
-    bool is_sqlite, void *db, uint64_t limit, const char *config_name)
+    bool is_sqlite, void *db, uint64_t limit, int info_id)
 {
 	if (is_sqlite) {
 #ifdef NNG_SUPP_SQLITE
 		nni_mqtt_qos_db_remove_oldest_client_msg(
-		    (sqlite3 *) (db), limit, config_name);
+		    (sqlite3 *) (db), limit, info_id);
 #endif
 	} else {
 		NNI_ARG_UNUSED(db);
 		NNI_ARG_UNUSED(limit);
-		NNI_ARG_UNUSED(config_name);
+		NNI_ARG_UNUSED(info_id);
 	}
 }
 

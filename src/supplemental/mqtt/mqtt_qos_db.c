@@ -36,14 +36,13 @@ static void    set_db_pragma(sqlite3 *db);
 static void    remove_oldest_msg(
        sqlite3 *db, const char *table_name, const char *col_name, uint64_t limit) NNG_DEPRECATED;
 static void    remove_oldest_client_msg(sqlite3 *db, const char *table_name,
-       const char *col_name, uint64_t limit, const char *config_name);
+       uint64_t limit, int info_id);
 static int64_t get_id_by_msg(sqlite3 *db, nni_msg *msg);
 static int64_t insert_msg(sqlite3 *db, nni_msg *msg);
 static int64_t get_id_by_pipe(sqlite3 *db, uint32_t pipe_id);
 static int64_t get_id_by_client_id(sqlite3 *db, const char *client_id);
 static int     get_id_by_p_id(sqlite3 *db, int64_t p_id, uint16_t packet_id,
         uint8_t *out_qos, int64_t *out_m_id);
-static int     get_client_info_id(sqlite3 *db, const char *config_name);
 static int     insert_main(
         sqlite3 *db, int64_t p_id, uint16_t packet_id, uint8_t qos, int64_t m_id);
 static int update_main(
@@ -61,7 +60,9 @@ create_client_msg_table(sqlite3 *db)
 	             "  data BLOB, "
 	             "  info_id INTEGER NOT NULL,"
 				 "  proto_ver TINYINT DEFAULT 4,"
-	             "  ts DATETIME DEFAULT CURRENT_TIMESTAMP )";
+	             "  ts DATETIME DEFAULT CURRENT_TIMESTAMP );"
+	             "CREATE INDEX IF NOT EXISTS idx_client_msg_lookup ON " table_client_msg " (info_id, pipe_id, packet_id);"
+	             "CREATE INDEX IF NOT EXISTS idx_client_msg_evict ON " table_client_msg " (info_id, id DESC);";
 
 	return sqlite3_exec(db, sql, 0, 0, 0);
 }
@@ -74,7 +75,8 @@ create_client_offline_msg_table(sqlite3 *db)
 	             "  data BLOB, "
 	             "  info_id INTEGER NOT NULL, "
 				 "  proto_ver TINYINT DEFAULT 4, "
-	             "  ts DATETIME DEFAULT CURRENT_TIMESTAMP )";
+	             "  ts DATETIME DEFAULT CURRENT_TIMESTAMP );"
+	             "CREATE INDEX IF NOT EXISTS idx_offline_msg_evict ON " table_client_offline_msg " (info_id, id DESC);";
 
 	return sqlite3_exec(db, sql, 0, 0, 0);
 }
@@ -921,13 +923,12 @@ nni_mqtt_qos_db_remove_retain(sqlite3 *db, const char *topic)
 
 int
 nni_mqtt_qos_db_set_client_msg(sqlite3 *db, uint32_t pipe_id,
-    uint16_t packet_id, nni_msg *msg, const char *config_name, uint8_t proto_ver)
+    uint16_t packet_id, nni_msg *msg, int info_id, uint8_t proto_ver)
 {
 	char sql[] =
 	    "INSERT INTO " table_client_msg
 	    " ( pipe_id, packet_id, data, proto_ver, info_id ) "
-	    " VALUES (?, ?, ?, ?, (SELECT id FROM " table_client_info
-	    " WHERE config_name = ? LIMIT 1 ))";
+	    " VALUES (?, ?, ?, ?, ?)";
 	size_t   len  = 0;
 	uint8_t *blob = nni_mqtt_msg_serialize(msg, &len, proto_ver);
 	if (!blob) {
@@ -938,13 +939,13 @@ nni_mqtt_qos_db_set_client_msg(sqlite3 *db, uint32_t pipe_id,
 	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
 	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
 	sqlite3_reset(stmt);
-	// 64-bit like the readers: pipe ids exceed INT32_MAX
+
 	sqlite3_bind_int64(stmt, 1, pipe_id);
 	sqlite3_bind_int64(stmt, 2, packet_id);
 	sqlite3_bind_blob64(stmt, 3, blob, len, SQLITE_TRANSIENT);
 	sqlite3_bind_int(stmt, 4, proto_ver);
-	sqlite3_bind_text(
-	    stmt, 5, config_name, strlen(config_name), SQLITE_TRANSIENT);
+	sqlite3_bind_int(stmt, 5, info_id);
+
 	sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
 	nng_free(blob, len);
@@ -1049,26 +1050,31 @@ nni_mqtt_qos_db_reset_client_msg_pipe_id(sqlite3 *db, const char *config_name)
 }
 
 static void
-remove_oldest_client_msg(sqlite3 *db, const char *table_name,
-    const char *col_name, uint64_t limit, const char *config_name)
+remove_oldest_client_msg(
+    sqlite3 *db, const char *table_name, uint64_t limit, int info_id)
 {
 	sqlite3_stmt *stmt;
-	char          sql[256] = { 0 };
+	char          sql[512] = { 0 };
 
-	snprintf(sql, 256,
-	    "DELETE FROM %s WHERE %s NOT IN ( SELECT %s FROM %s WHERE info_id "
-	    "= (SELECT id "
-	    "FROM " table_client_info
-	    " WHERE config_name = ? LIMIT 1) ORDER BY"
-	    " %s DESC LIMIT ?)",
-	    table_name, col_name, col_name, table_name, col_name);
+	// 0 means "no cap": the shipped configs document it as
+	// "( 0 means ineffective )". Without this, LIMIT 0 makes the subquery
+	// empty and NOT IN () deletes the whole table.
+	if (limit == 0) {
+		return;
+	}
+
+	snprintf(sql, sizeof(sql),
+	    "DELETE FROM %s WHERE info_id = ?1 AND id NOT IN (SELECT id FROM %s"
+	    " WHERE info_id = ?1 ORDER BY id DESC LIMIT ?2)",
+	    table_name, table_name);
 
 	sqlite3_exec(db, "BEGIN;", 0, 0, 0);
 	sqlite3_prepare_v2(db, sql, strlen(sql), &stmt, 0);
 	sqlite3_reset(stmt);
-	sqlite3_bind_text(
-	    stmt, 1, config_name, strlen(config_name), SQLITE_TRANSIENT);
+
+	sqlite3_bind_int(stmt, 1, info_id);
 	sqlite3_bind_int64(stmt, 2, limit);
+
 	sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
 
@@ -1077,10 +1083,10 @@ remove_oldest_client_msg(sqlite3 *db, const char *table_name,
 
 void
 nni_mqtt_qos_db_remove_oldest_client_msg(
-    sqlite3 *db, uint64_t limit, const char *config_name)
+    sqlite3 *db, uint64_t limit, int info_id)
 {
 	remove_oldest_client_msg(
-	    db, table_client_msg, "ts", limit, config_name);
+	    db, table_client_msg, limit, info_id);
 }
 
 nni_msg *
@@ -1159,7 +1165,7 @@ int
 nni_mqtt_qos_db_set_client_offline_msg_batch(
     sqlite3 *db, nni_lmq *lmq, const char *config_name, uint8_t proto_ver)
 {
-	int info_id = get_client_info_id(db, config_name);
+	int info_id = nni_mqtt_qos_db_get_client_info_id(db, config_name);
 	if(info_id < 0) {
 		return -1;
 	}
@@ -1258,10 +1264,10 @@ nni_mqtt_qos_db_get_client_offline_msg(
 
 void
 nni_mqtt_qos_db_remove_oldest_client_offline_msg(
-    sqlite3 *db, uint64_t limit, const char *config_name)
+    sqlite3 *db, uint64_t limit, int info_id)
 {
 	remove_oldest_client_msg(
-	    db, table_client_offline_msg, "ts", limit, config_name);
+	    db, table_client_offline_msg, limit, info_id);
 }
 
 int
@@ -1298,8 +1304,8 @@ nni_mqtt_qos_db_remove_all_client_offline_msg(sqlite3 *db, const char *config_na
 	return sqlite3_exec(db, "COMMIT;", 0, 0, 0);
 }
 
-static int
-get_client_info_id(sqlite3 *db, const char *config_name)
+int
+nni_mqtt_qos_db_get_client_info_id(sqlite3 *db, const char *config_name)
 {
 	int           id = -1;
 	sqlite3_stmt *stmt;
@@ -1561,6 +1567,8 @@ nni_mqtt_sqlite_db_init(nng_mqtt_sqlite_option *opt, const char *db_name)
 		    opt->sqlite_conf->mounted_file_path, db_name, false);
 		nni_mqtt_qos_db_set_client_info(opt->db, opt->bridge_name,
 		    NULL, "MQTT", opt->proto_ver);
+		opt->info_id = nni_mqtt_qos_db_get_client_info_id(
+			opt->db, opt->bridge_name);
 	}
 }
 
@@ -1573,5 +1581,203 @@ nni_mqtt_sqlite_db_fini(nni_mqtt_sqlite_option *sqlite_opt)
 		nni_strfree(sqlite_opt->db_name);
 		nni_mqtt_qos_db_close(sqlite_opt->db);
 	}
+}
+
+// Format version of a per-node Bridge Cache database, kept in the fixed
+// SQLite pragma `user_version` (it has no renameable form). 0 means the one
+// time move out of the pre-per-node shared database has not finished yet.
+#define BRIDGE_CACHE_DB_VERSION_MIGRATED 1
+
+// Copy this Bridge Node's rows out of the pre-per-node shared database
+// (mounted_file_path/mqtt_client.db, where every bridge used to write) into its
+// own file, then drop them from the legacy file. Rows of other bridges stay
+// behind. Best effort: a failure must not stop the broker.
+void
+nni_mqtt_qos_db_migrate_legacy(sqlite3 *db, const char *legacy_dir,
+    const char *legacy_name, const char *config_name)
+{
+	char          legacy_path[1024] = { 0 };
+	sqlite3_stmt *stmt              = NULL;
+	int           ftype             = 0;
+	int           rc;
+	int           moved = 0;
+	int64_t       info_id;
+
+	// A NULL directory means the working directory, the same way
+	// nni_mqtt_sqlite_db_init() reads it, so a deployment that never set
+	// mounted_file_path still finds its legacy file.
+	if (db == NULL || config_name == NULL || legacy_name == NULL) {
+		return;
+	}
+	if (get_db_path(legacy_path, legacy_dir, legacy_name) == NULL ||
+	    nni_file_type(legacy_path, &ftype) != 0) {
+		log_debug("Bridge Cache: no legacy database at %s, skipping "
+		          "migration",
+		    legacy_path);
+		return;
+	}
+
+	info_id = nni_mqtt_qos_db_get_client_info_id(db, config_name);
+	if (info_id <= 0) {
+		log_error("Bridge Cache: cannot migrate '%s', its client_info "
+		          "row is missing",
+		    config_name);
+		return;
+	}
+
+	// ATTACH cannot run inside a transaction.
+	if (sqlite3_prepare_v2(
+	        db, "ATTACH DATABASE ? AS legacy", -1, &stmt, NULL) != SQLITE_OK) {
+		log_error("Bridge Cache: cannot prepare ATTACH: %s",
+		    sqlite3_errmsg(db));
+		return;
+	}
+	sqlite3_bind_text(stmt, 1, legacy_path, -1, SQLITE_TRANSIENT);
+	rc = sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
+	if (rc != SQLITE_DONE) {
+		log_error("Bridge Cache: cannot attach %s: %s", legacy_path,
+		    sqlite3_errmsg(db));
+		return;
+	}
+
+	// The legacy file is the only database shared between bridges on this
+	// path, so wait for its lock rather than failing at once.
+	sqlite3_busy_timeout(db, 5000);
+
+	// Step 1: copy the rows and record completion, both in the node database.
+	// That transaction writes one database, so its commit is atomic on its
+	// own. Copying and deleting in a single transaction would not be: SQLite
+	// keeps WAL databases out of the super-journal, so a crash during such a
+	// commit could drop the legacy rows without keeping the copy.
+	if (sqlite3_exec(db, "BEGIN IMMEDIATE;", 0, 0, 0) != SQLITE_OK) {
+		log_error("Bridge Cache: cannot begin the migration for '%s': %s",
+		    config_name, sqlite3_errmsg(db));
+		sqlite3_exec(db, "DETACH DATABASE legacy;", 0, 0, 0);
+		return;
+	}
+	rc = sqlite3_prepare_v2(db,
+	    "INSERT INTO " table_client_offline_msg
+	    " (data, info_id, proto_ver, ts) SELECT m.data, ?1, m.proto_ver, "
+	    "m.ts FROM legacy." table_client_offline_msg
+	    " m WHERE m.info_id = (SELECT id FROM legacy." table_client_info
+	    " WHERE config_name = ?2 LIMIT 1)",
+	    -1, &stmt, NULL);
+	if (rc == SQLITE_OK) {
+		sqlite3_bind_int64(stmt, 1, info_id);
+		sqlite3_bind_text(stmt, 2, config_name, -1, SQLITE_TRANSIENT);
+		rc = sqlite3_step(stmt);
+		sqlite3_finalize(stmt);
+	}
+	if (rc != SQLITE_DONE) {
+		sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
+		log_error("Bridge Cache: copying the cached messages of '%s' out "
+		          "of %s failed: %s",
+		    config_name, legacy_path, sqlite3_errmsg(db));
+		sqlite3_exec(db, "DETACH DATABASE legacy;", 0, 0, 0);
+		return;
+	}
+	moved = sqlite3_changes(db);
+
+	char pragma[64];
+	// Committed with the copy, so "the rows moved" and "this file is marked
+	// as migrated" cannot be observed apart. A marker that cannot be written
+	// aborts the step instead of leaving an unmarked copy behind, which the
+	// next start would copy a second time.
+	snprintf(pragma, sizeof(pragma), "PRAGMA user_version = %d;",
+	    BRIDGE_CACHE_DB_VERSION_MIGRATED);
+	if (sqlite3_exec(db, pragma, 0, 0, 0) != SQLITE_OK) {
+		sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
+		log_error("Bridge Cache: cannot record the migration of '%s': %s",
+		    config_name, sqlite3_errmsg(db));
+		sqlite3_exec(db, "DETACH DATABASE legacy;", 0, 0, 0);
+		return;
+	}
+	if (sqlite3_exec(db, "COMMIT;", 0, 0, 0) != SQLITE_OK) {
+		sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
+		log_error("Bridge Cache: committing the copy for '%s' failed: %s",
+		    config_name, sqlite3_errmsg(db));
+		sqlite3_exec(db, "DETACH DATABASE legacy;", 0, 0, 0);
+		return;
+	}
+	if (moved > 0) {
+		log_info("Bridge Cache: migrated %d cached message(s) for '%s' "
+		         "from %s",
+		    moved, config_name, legacy_path);
+	} else {
+		log_debug("Bridge Cache: nothing to migrate for '%s'", config_name);
+	}
+
+	// Step 2: drop the copied rows from the legacy file. The node database
+	// already holds them and says the migration is done, so a failure here
+	// leaves an extra copy behind rather than losing anything. It also means
+	// the cleanup is not attempted again: the marker skips this whole path
+	// on the next start.
+	if (sqlite3_exec(db, "BEGIN IMMEDIATE;", 0, 0, 0) == SQLITE_OK) {
+		rc = sqlite3_prepare_v2(db,
+		    "DELETE FROM legacy." table_client_offline_msg
+		    " WHERE info_id = (SELECT id FROM legacy." table_client_info
+		    " WHERE config_name = ?1 LIMIT 1)",
+		    -1, &stmt, NULL);
+		if (rc == SQLITE_OK) {
+			sqlite3_bind_text(
+			    stmt, 1, config_name, -1, SQLITE_TRANSIENT);
+			rc = sqlite3_step(stmt);
+			sqlite3_finalize(stmt);
+		}
+		if (rc == SQLITE_DONE &&
+		    sqlite3_exec(db, "COMMIT;", 0, 0, 0) == SQLITE_OK) {
+			// done
+		} else {
+			sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
+			log_error("Bridge Cache: could not remove the copied "
+			          "messages of '%s' from %s, they stay there as a "
+			          "duplicate: %s",
+			    config_name, legacy_path, sqlite3_errmsg(db));
+		}
+	} else {
+		log_error("Bridge Cache: cannot clean up %s after copying '%s': %s",
+		    legacy_path, config_name, sqlite3_errmsg(db));
+	}
+	sqlite3_exec(db, "DETACH DATABASE legacy;", 0, 0, 0);
+}
+
+static bool
+bridge_cache_migration_done(sqlite3 *db)
+{
+	sqlite3_stmt *stmt = NULL;
+	bool          done = false;
+
+	if (sqlite3_prepare_v2(db, "PRAGMA user_version", -1, &stmt, NULL) !=
+	    SQLITE_OK) {
+		return false;
+	}
+	if (sqlite3_step(stmt) == SQLITE_ROW) {
+		done = (sqlite3_column_int(stmt, 0) >=
+		    BRIDGE_CACHE_DB_VERSION_MIGRATED);
+	}
+	sqlite3_finalize(stmt);
+	return done;
+}
+
+void
+nni_mqtt_sqlite_db_init_legacy(nng_mqtt_sqlite_option *opt,
+    const char *db_name, const char *legacy_dir, const char *legacy_name)
+{
+	nni_mqtt_sqlite_db_init(opt, db_name);
+
+	if (opt == NULL || opt->db == NULL) {
+		return;
+	}
+	// The per-node file is created by the init above, so "is the file new"
+	// cannot tell a first start from a start that died before the move
+	// finished. The node database records completion instead: a failed or
+	// interrupted move leaves the marker unset and is retried on the next
+	// start, while a finished one is skipped.
+	if (bridge_cache_migration_done(opt->db)) {
+		return;
+	}
+	nni_mqtt_qos_db_migrate_legacy(
+	    opt->db, legacy_dir, legacy_name, opt->bridge_name);
 }
 #endif

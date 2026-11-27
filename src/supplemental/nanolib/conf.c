@@ -985,6 +985,135 @@ conf_sqlite_init(conf_sqlite *sqlite)
 	sqlite->disk_cache_size     = 102400;
 	sqlite->mounted_file_path   = NULL;
 	sqlite->flush_mem_threshold = 100;
+	sqlite->resend_interval     = 5000;
+}
+
+// Deep-copy a Bridge Cache config. dst must already be initialised: its
+// mounted_file_path is released before the new one is assigned.
+void
+conf_sqlite_copy(conf_sqlite *dst, const conf_sqlite *src)
+{
+	if (dst == src) {
+		return;
+	}
+	if (dst->mounted_file_path) {
+		free(dst->mounted_file_path);
+	}
+	dst->enable              = src->enable;
+	dst->disk_cache_size     = src->disk_cache_size;
+	dst->flush_mem_threshold = src->flush_mem_threshold;
+	dst->resend_interval     = src->resend_interval;
+	dst->mounted_file_path   = src->mounted_file_path
+	    ? strdup(src->mounted_file_path)
+	    : NULL;
+}
+
+// Drop the current values and go back to the conf_sqlite_init() defaults.
+void
+conf_sqlite_reset(conf_sqlite *sqlite)
+{
+	if (sqlite->mounted_file_path) {
+		free(sqlite->mounted_file_path);
+		sqlite->mounted_file_path = NULL;
+	}
+	conf_sqlite_init(sqlite);
+}
+
+// Sanitise a Bridge Node name into a file-name-safe token: keep
+// [A-Za-z0-9._-] and replace everything else with '_', capped at
+// BRIDGE_CACHE_NAME_MAX characters. `out` must hold BRIDGE_CACHE_NAME_MAX + 1.
+static void
+bridge_cache_sanitize(const char *name, char *out)
+{
+	size_t j = 0;
+
+	for (const char *p = name; *p != '\0' && j < BRIDGE_CACHE_NAME_MAX; p++) {
+		unsigned char c = (unsigned char) *p;
+		if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+		    (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-') {
+			out[j++] = (char) c;
+		} else {
+			out[j++] = '_';
+		}
+	}
+	out[j] = '\0';
+}
+
+// A token made only of separators ("___") is not a usable file name fragment:
+// such a node name is almost certainly a mistake.
+static bool
+bridge_cache_name_usable(const char *safe)
+{
+	for (const char *p = safe; *p != '\0'; p++) {
+		if ((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') ||
+		    (*p >= '0' && *p <= '9')) {
+			return true;
+		}
+	}
+	return false;
+}
+
+int
+bridge_cache_db_name(const char *prefix, const char *node_name, char *buf,
+    size_t buflen)
+{
+	char safe[BRIDGE_CACHE_NAME_MAX + 1] = { 0 };
+	int  n;
+
+	if (prefix == NULL || node_name == NULL || buf == NULL || buflen == 0) {
+		return -1;
+	}
+	bridge_cache_sanitize(node_name, safe);
+	if (!bridge_cache_name_usable(safe)) {
+		return -1;
+	}
+	n = snprintf(buf, buflen, "%s_%s.db", prefix, safe);
+	if (n < 0 || (size_t) n >= buflen) {
+		return -1;
+	}
+	return n;
+}
+
+int
+conf_bridge_cache_validate(const conf_bridge *bridge)
+{
+	if (bridge == NULL) {
+		return 0;
+	}
+	for (size_t i = 0; i < bridge->count; i++) {
+		const char *name_i = bridge->nodes[i]->name;
+		char        safe_i[BRIDGE_CACHE_NAME_MAX + 1] = { 0 };
+
+		if (name_i == NULL) {
+			continue;
+		}
+		bridge_cache_sanitize(name_i, safe_i);
+		if (!bridge_cache_name_usable(safe_i)) {
+			log_error("Bridge '%s': the name has no alphanumeric "
+			          "characters usable in a cache file name",
+			    name_i);
+			return -1;
+		}
+		for (size_t j = i + 1; j < bridge->count; j++) {
+			const char *name_j   = bridge->nodes[j]->name;
+			char        safe_j[BRIDGE_CACHE_NAME_MAX + 1] = { 0 };
+
+			if (name_j == NULL) {
+				continue;
+			}
+			bridge_cache_sanitize(name_j, safe_j);
+			// Case-insensitive on purpose: Windows and usually macOS
+			// treat Hub and hub as one file, so accepting both would
+			// hand two bridges the same database.
+			if (nng_strcasecmp(safe_i, safe_j) == 0) {
+				log_error("Bridges '%s' and '%s' share the cache "
+				          "file name '%s'; rename one of them",
+				    name_i, name_j, safe_i);
+				return -1;
+			}
+		}
+	}
+	return 0;
 }
 
 #if defined(SUPP_RULE_ENGINE)
@@ -3515,7 +3644,7 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->bridge_aio   = NULL;
 	node->bridge_arg   = NULL;
 
-	node->sqlite       = NULL;
+	conf_sqlite_init(&node->sqlite);
 
 	node->hybrid             = false;
 	node->hybrid_servers     = NULL;
@@ -3544,6 +3673,8 @@ conf_bridge_node_init(conf_bridge_node *node)
 	node->sub_properties  = NULL;
 	// TODO compatible with bridge reload
 	node->ctx_msgs = NULL;
+	// bridge connect status flag
+	nng_atomic_alloc_bool(&node->connected);
 }
 
 static void
@@ -3844,7 +3975,7 @@ conf_bridge_content_parse(conf *nanomq_conf, conf_bridge *bridge,
 		conf_bridge_node *node = conf_bridge_node_parse_with_name(
 		    path, key_prefix, group_names[i]);
 		node->name    = nng_strdup(group_names[i]);
-		node->sqlite  = &bridge->sqlite;
+		conf_sqlite_copy(&node->sqlite, &bridge->sqlite);
 		cvector_push_back(node_array, node);
 	}
 	bridge->nodes = node_array;
@@ -4037,6 +4168,8 @@ conf_bridge_node_destroy(conf_bridge_node *node)
 		node->hybrid_servers = NULL;
 	}
 	conf_tls_destroy(&node->tls);
+	conf_sqlite_destroy(&node->sqlite);
+	nng_atomic_free_bool(node->connected);
 }
 
 void
@@ -4246,6 +4379,14 @@ print_bridge_conf(conf_bridge *bridge, const char *prefix)
 			    node->sub_list[k]->retain_as_published);
 			log_info("\t[%ld] rh:           %d", k + 1,
 			    node->sub_list[k]->retain_handling);
+		}
+		if (node->sqlite.enable) {
+			log_info("%sbridge.mqtt.%s.sqlite.disk_cache_size: %ld", prefix,
+			    node->name, node->sqlite.disk_cache_size);
+			log_info("%sbridge.mqtt.%s.sqlite.mounted_file_path: %s", prefix,
+			    node->name, node->sqlite.mounted_file_path);
+			log_info("%sbridge.mqtt.%s.sqlite.flush_mem_threshold: %ld", prefix,
+			    node->name, node->sqlite.flush_mem_threshold);
 		}
 	}
 
@@ -5005,6 +5146,7 @@ conf_sqlite_destroy(conf_sqlite *sqlite)
 {
 	if (sqlite->mounted_file_path) {
 		free(sqlite->mounted_file_path);
+		sqlite->mounted_file_path = NULL;
 	}
 }
 
