@@ -2,6 +2,7 @@
 #define PARQUET_H
 #include "nng/nng.h"
 #include "nng/supplemental/nanolib/conf.h"
+#include "nng/supplemental/nanolib/parquet_data.h"
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -9,8 +10,6 @@ extern "C" {
 #endif
 
 typedef struct parquet_object   parquet_object;
-typedef struct parquet_data     parquet_data;
-typedef struct parquet_data_ret parquet_data_ret;
 typedef struct parquet_payload  parquet_payload;
 typedef void (*parquet_cb)(parquet_object *arg);
 
@@ -32,22 +31,6 @@ typedef struct {
 	int                  start; // file range start index
 } parquet_file_ranges;
 
-typedef struct {
-	uint8_t *data;
-	uint32_t size;
-} parquet_data_packet;
-
-
-struct parquet_data_ret {
-	// Payload_arr should col first.
-	uint32_t               col_len;
-	uint32_t               row_len;
-	uint64_t              *ts;
-	char                 **schema;
-	parquet_data_packet ***payload_arr;
-};
-
-
 struct parquet_object {
 	parquet_data        *data;
 	parquet_type         type;
@@ -61,11 +44,6 @@ typedef struct {
 	const char *filename;
 	uint64_t    keys[2];
 } parquet_filename_range;
-
-parquet_data *parquet_data_alloc(char **schema,
-    parquet_data_packet ***payload_arr, uint64_t *ts, uint32_t col_len,
-    uint32_t row_len);
-void          parquet_data_free(parquet_data *data);
 
 parquet_object *parquet_object_alloc(parquet_data *data, parquet_type type,
     nng_aio *aio, void *aio_arg, char *topic);
