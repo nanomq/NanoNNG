@@ -451,12 +451,11 @@ parquet_object_free(parquet_object *elem)
 		if (elem->data) {
 			parquet_data_free(elem->data);
 		}
-		nng_aio_set_prov_data(elem->aio, elem->aio_arg);
-		nng_aio_set_output(elem->aio, 1, elem->ranges);
-		log_debug("finish write aio");
-		/* rv carries the write result (aio_arg was handed over via
-		 * prov_data above; it is NOT the result code). */
-		DO_IT_IF_NOT_NULL(nng_aio_finish_sync, elem->aio, elem->rv);
+		if (elem->aio != NULL) {
+			nng_aio_set_prov_data(elem->aio, elem->aio_arg);
+			nng_aio_set_output(elem->aio, 1, elem->ranges);
+			nng_aio_finish_sync(elem->aio, elem->rv);
+		}
 
 		for (int i = 0; i < elem->ranges->size; i++) {
 			parquet_file_range_free(elem->ranges->range[i]);
@@ -471,7 +470,7 @@ int
 parquet_write_batch_async(parquet_object *elem)
 {
 	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
-	if (conf->enable == false) {
+	if (conf == NULL || !conf->enable) {
 		log_debug("Parquet %s is not ready or not launch!", elem->topic);
 		log_error("Parquet *** is not ready or not launch!");
 		return -1;
@@ -497,7 +496,7 @@ int
 parquet_write_batch_tmp_async(parquet_object *elem)
 {
 	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
-	if (conf->enable == false) {
+	if (conf == NULL || !conf->enable) {
 		log_debug("Parquet %s is not ready or not launch!", elem->topic);
 		log_error("Parquet *** is not ready or not launch!");
 		return -1;
@@ -947,7 +946,7 @@ parquet_write_tmp(parquet_object *elem)
 {
 
 	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
-	if (conf->enable == false) {
+	if (conf == NULL || !conf->enable) {
 		log_debug("Parquet %s is not ready or not launch!", elem->topic);
 		log_error("Parquet *** is not ready or not launch!");
 		return -1;
@@ -1009,7 +1008,7 @@ parquet_write(parquet_object *elem)
 {
 
 	conf_parquet *conf = file_manager.fetch_conf(elem->topic);
-	if (conf->enable == false) {
+	if (conf == NULL || !conf->enable) {
 		log_debug("Parquet %s is not ready or not launch!", elem->topic);
 		log_error("Parquet *** is not ready or not launch!");
 		return -1;
@@ -1236,20 +1235,31 @@ parquet_find_span(
 	}
 	if (queue->size != 0) {
 		array = (const char **) nng_alloc(sizeof(char *) * queue->size);
-
+		if (array == NULL) {
+			goto done;
+		}
 		ret = array;
 		FOREACH_QUEUE(*queue, elem)
 		{
 			if (elem) {
 				if (compare_callback_span(elem, low, high)) {
-					++local_size;
 					value    = nng_strdup((char *) elem);
+					if (value == NULL) {
+						while (local_size > 0) {
+							nng_strfree((char *) ret[--local_size]);
+						}
+						nng_free(ret, sizeof(char *) * queue->size);
+						ret = NULL;
+						goto done;
+					}
 					*array++ = value;
+					++local_size;
 				}
 			}
 		}
 	}
 
+done:
 	pthread_mutex_unlock(&parquet_queue_mutex);
 	(*size) = local_size;
 	return ret;
@@ -1904,7 +1914,7 @@ parquet_find_data_packet(
 	if (topic.empty() && conf->name != NULL) {
 		topic = conf->name;
 	}
-	if (conf->enable == false) {
+	if (conf == NULL || !conf->enable) {
 		log_debug("Parquet %s is not ready or not launch!", topic.c_str());
 		log_error("Parquet *** is not ready or not launch!");
 		return ret_vec;
@@ -1962,7 +1972,7 @@ parquet_find_data_packet(conf_parquet *conf, char *filename, uint64_t key)
 	if (topic.empty() && conf->name != NULL) {
 		topic = conf->name;
 	}
-	if (conf->enable == false) {
+	if (conf == NULL || !conf->enable) {
 		log_debug("Parquet %s is not ready or not launch!", topic.c_str());
 		log_error("Parquet *** is not ready or not launch!");
 		return NULL;
@@ -2381,7 +2391,7 @@ parquet_get_file_ranges(uint64_t start_key, uint64_t end_key, char *topic)
 	log_debug("topic: %s, start_key: %lu, end_key: %lu", topic, start_key, end_key);
 	log_info("topic: ***, start_key: %lu, end_key: %lu", start_key, end_key);
 	conf_parquet *conf = file_manager.fetch_conf(topic);
-	if (conf->enable == false) {
+	if (conf == NULL || !conf->enable) {
 		log_debug("Parquet %s is not ready or not launch!", topic);
 		log_error("Parquet *** is not ready or not launch!");
 		return NULL;
@@ -2523,7 +2533,7 @@ parquet_get_data_packets_in_range_by_column(parquet_filename_range *range,
 {
 
 	conf_parquet *conf = file_manager.fetch_conf(topic);
-	if (conf->enable == false) {
+	if (conf == NULL || !conf->enable) {
 		log_debug("Parquet %s is not ready or not launch!", topic);
 		log_error("Parquet *** is not ready or not launch!");
 		return NULL;
