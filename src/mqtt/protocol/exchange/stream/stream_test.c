@@ -8,6 +8,8 @@
 #include "nng/exchange/stream/stream.h"
 #include "nng/exchange/stream/raw_stream.h"
 #include "nng/mqtt/mqtt_client.h"
+/* Both public headers can be used together in memory-only Stream builds. */
+#include "nng/supplemental/nanolib/parquet.h"
 #include <nuts.h>
 #include <string.h>
 

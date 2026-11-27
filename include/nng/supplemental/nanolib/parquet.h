@@ -2,6 +2,7 @@
 #define PARQUET_H
 #include "nng/nng.h"
 #include "nng/supplemental/nanolib/conf.h"
+#include "nng/supplemental/nanolib/parquet_data.h"
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -9,8 +10,6 @@ extern "C" {
 #endif
 
 typedef struct parquet_object   parquet_object;
-typedef struct parquet_data     parquet_data;
-typedef struct parquet_data_ret parquet_data_ret;
 typedef struct parquet_payload  parquet_payload;
 typedef void (*parquet_cb)(parquet_object *arg);
 
@@ -32,24 +31,6 @@ typedef struct {
 	int                  start; // file range start index
 } parquet_file_ranges;
 
-typedef struct {
-	uint8_t *data;
-	uint32_t size;
-} parquet_data_packet;
-
-
-struct parquet_data_ret {
-	// Payload_arr should col first.
-	uint32_t               col_len;
-	uint32_t               row_len;
-	uint64_t              *ts;
-	char                 **schema;
-	parquet_data_packet ***payload_arr;
-	/* Dedicated SOME/IP columns; NULL for the existing raw/SPI/CANP layout. */
-	void                 *someip_data;
-};
-
-
 struct parquet_object {
 	parquet_data        *data;
 	parquet_type         type;
@@ -65,19 +46,6 @@ typedef struct {
 	const char *filename;
 	uint64_t    keys[2];
 } parquet_filename_range;
-
-parquet_data *parquet_data_alloc(char **schema,
-    parquet_data_packet ***payload_arr, uint64_t *ts, uint32_t col_len,
-    uint32_t row_len);
-void          parquet_data_free(parquet_data *data);
-/* Payload bytes are owned by the caller (live nng_msg) until after free. */
-void          parquet_data_payloads_borrowed(parquet_data *data);
-/* ts points at caller-owned memory (e.g. stream_data_in keys); not freed. */
-void          parquet_data_ts_borrowed(parquet_data *data);
-/* schema strings and array are caller-owned constants; not freed. */
-void          parquet_data_schema_borrowed(parquet_data *data);
-/* packet structs are one contiguous block per column; freed as a whole. */
-void          parquet_data_packets_contiguous(parquet_data *data);
 
 /* Dedicated five-column SOME/IP file helpers. Writing does not consume data. */
 NNG_DECL int someip_parquet_write_file(conf_parquet *conf, const char *filename,
