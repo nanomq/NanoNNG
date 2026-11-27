@@ -559,6 +559,14 @@ NNG_DECL void      mqtt_property_append(property *prop_list, property *last);
 NNG_DECL int nng_mqtt_client_open(nng_socket *);
 NNG_DECL int nng_mqttv5_client_open(nng_socket *);
 
+// Wait for the TCP MQTT client's transport to be ready for a QoS 0 PUBLISH.
+// Use a message from nng_mqtt_msg_alloc(). Success transfers ownership to
+// the transport. On error the caller owns the message. When discarding a
+// PUBLISH built with the topic/payload setters, free its copied buffers with
+// nng_mqtt_msg_free_publish_buf() before nng_msg_free(), even on early errors.
+// Closing the socket wakes waiting senders with NNG_ECLOSED.
+NNG_DECL int nng_mqtt_client_send_qos0(nng_socket, nng_msg *);
+
 // Note that there is a single implicit dialer for the client,
 // and options may be set on the socket to configure dial options.
 // Those options should be set before doing nng_dial().
