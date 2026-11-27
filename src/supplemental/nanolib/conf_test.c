@@ -1,4 +1,11 @@
 #include "nng/supplemental/nanolib/conf.h"
+#include "nng/supplemental/nanolib/nanolib.h"
+#include "nng/supplemental/nanolib/cJSON.h"
+
+#ifdef SUPP_LICENSE_STD
+#include "nng/supplemental/nanolib/nmq_base64.h"
+#include "supplemental/aes/aes.h"
+#endif
 
 #include "nuts.h"
 
@@ -129,6 +136,220 @@ test_exchange_node_validate_ver2(void)
 	}
 
 	conf_fini(conf);
+}
+#endif
+
+static bool
+http_cred_ok(conf_http_server *http, const char *userpass)
+{
+	return conf_http_server_cred_check(http, userpass, strlen(userpass));
+}
+
+void
+test_conf_http_server_users(void)
+{
+	cJSON *users = cJSON_Parse(
+	    "[{\"username\":\"admin\",\"password\":\"public\"},"
+	    "{\"username\":\"ops\",\"password\":\"s3cret\"},"
+	    "{\"username\":\"admin\",\"password\":\"other\"},"
+	    "{\"username\":\"nopass\"},"
+	    "{\"username\":\"\",\"password\":\"x\"},"
+	    "{\"username\":\"a:b\",\"password\":\"x\"}]");
+	NUTS_TRUE(cJSON_IsArray(users));
+	NUTS_TRUE(!conf_http_users_validate(users));
+
+	cJSON *valid_users = cJSON_Parse(
+	    "[{\"username\":\"admin\",\"password\":\"public\"},"
+	    "{\"username\":\"ops\",\"password\":\"s3cret\"}]");
+	NUTS_TRUE(conf_http_users_validate(valid_users));
+	cJSON *missing_password =
+	    cJSON_Parse("[{\"username\":\"admin\"}]");
+	NUTS_TRUE(!conf_http_users_validate(missing_password));
+	cJSON *duplicate_users = cJSON_Parse(
+	    "[{\"username\":\"admin\",\"password\":\"public\"},"
+	    "{\"username\":\"admin\",\"password\":\"other\"}]");
+	NUTS_TRUE(!conf_http_users_validate(duplicate_users));
+
+	conf_http_server http;
+	conf_http_server_init(&http, 8081);
+
+	size_t           count  = 0;
+	conf_http_user **parsed = conf_http_users_parse(users, &count);
+	NUTS_TRUE(parsed != NULL);
+	NUTS_TRUE(count == 2);
+	NUTS_TRUE(strcmp(parsed[0]->username, "admin") == 0);
+	NUTS_TRUE(strcmp(parsed[0]->password, "public") == 0);
+	NUTS_TRUE(strcmp(parsed[1]->username, "ops") == 0);
+
+	conf_http_server_set_users(&http, parsed, count);
+	NUTS_TRUE(http.users_present);
+	NUTS_TRUE(http.users_count == 2);
+	NUTS_TRUE(http_cred_ok(&http, "admin:public"));
+	NUTS_TRUE(http_cred_ok(&http, "ops:s3cret"));
+	NUTS_TRUE(!http_cred_ok(&http, "admin:other"));
+	NUTS_TRUE(!http_cred_ok(&http, "admin:wrong"));
+	NUTS_TRUE(!http_cred_ok(&http, "admin:public:extra"));
+
+	// The legacy pair joins the union.
+	conf_http_server_update_legacy(&http, "legacy", "pass");
+	NUTS_TRUE(http_cred_ok(&http, "legacy:pass"));
+	NUTS_TRUE(http_cred_ok(&http, "admin:public"));
+
+	// Present but empty: no valid user entry, the legacy pair still works.
+	cJSON           *bad       = cJSON_Parse("[{\"username\":\"\"},{}]");
+	size_t           bad_count = 0;
+	conf_http_user **bad_users =
+	    conf_http_users_parse(bad, &bad_count);
+	NUTS_TRUE(bad_count == 0);
+	conf_http_server_set_users(&http, bad_users, bad_count);
+	NUTS_TRUE(http.users_present);
+	NUTS_TRUE(http.users_count == 0);
+	NUTS_TRUE(!http_cred_ok(&http, "admin:public"));
+	NUTS_TRUE(http_cred_ok(&http, "legacy:pass"));
+
+	// clear_users() drops the table and the presence flag, leaving the
+	// legacy pair in charge again.
+	conf_http_server_clear_users(&http);
+	NUTS_TRUE(!http.users_present);
+	NUTS_TRUE(http.users_count == 0);
+	NUTS_TRUE(!http_cred_ok(&http, "admin:public"));
+	NUTS_TRUE(http_cred_ok(&http, "legacy:pass"));
+
+	// replace_legacy() replaces the pair as a whole; NULL clears a field.
+	conf_http_server_replace_legacy(&http, "onlyuser", NULL);
+	NUTS_TRUE(http.username != NULL);
+	NUTS_TRUE(strcmp(http.username, "onlyuser") == 0);
+	NUTS_TRUE(http.password == NULL);
+	NUTS_TRUE(!http_cred_ok(&http, "onlyuser:"));
+	conf_http_server_replace_legacy(&http, "u2", "p2");
+	NUTS_TRUE(http_cred_ok(&http, "u2:p2"));
+	NUTS_TRUE(!http_cred_ok(&http, "legacy:pass"));
+
+	// A non-array value counts as present with no valid entry.
+	cJSON           *not_array = cJSON_Parse("\"admin:public\"");
+	size_t           na_count  = 0;
+	conf_http_user **na =
+	    conf_http_users_parse(not_array, &na_count);
+	NUTS_TRUE(na == NULL);
+	NUTS_TRUE(na_count == 0);
+
+	cJSON_Delete(users);
+	cJSON_Delete(valid_users);
+	cJSON_Delete(missing_password);
+	cJSON_Delete(duplicate_users);
+	cJSON_Delete(bad);
+	cJSON_Delete(not_array);
+	conf_http_server_destroy(&http);
+}
+
+void
+test_conf_http_server_users_from_file(void)
+{
+	conf *conf = get_test_conf(CONF_PATH);
+	NUTS_TRUE(conf != NULL);
+	if (conf == NULL) {
+		return;
+	}
+	conf_parse_ver2(conf, false);
+	NUTS_TRUE(conf->http_server.users_present);
+	NUTS_TRUE(conf->http_server.users_count == 2);
+	conf_fini(conf);
+}
+
+#ifdef SUPP_LICENSE_STD
+void
+test_conf_http_server_users_cipher(void)
+{
+	const char *key     = "nanomqAESKey4Four4AuthPassCipher";
+	const char *plain   = "alice-secret";
+	char        encoded[512] = { 0 };
+	int         cipher_len   = 0;
+	uint8_t    *cipher       = nni_aes_gcm_encrypt((uint8_t *) plain,
+	    strlen(plain), (char *) key, strlen(key), &cipher_len,
+	    aes_gcm_get_method_by_key_len(strlen(key)));
+
+	NUTS_TRUE(cipher != NULL);
+	if (cipher == NULL) {
+		return;
+	}
+	size_t encoded_len = nmq_base64_encode(
+	    cipher, cipher_len, encoded, sizeof(encoded) - 1);
+	NUTS_TRUE(encoded_len != (size_t) -1);
+	if (encoded_len == (size_t) -1) {
+		nng_free(cipher, cipher_len);
+		return;
+	}
+	encoded[encoded_len] = '\0';
+
+	conf *config = nng_zalloc(sizeof(*config));
+	NUTS_TRUE(config != NULL);
+	if (config == NULL) {
+		nng_free(cipher, cipher_len);
+		return;
+	}
+	conf_init(config);
+	config->http_server.enable   = true;
+	config->http_server.username = nng_strdup("legacy");
+	config->http_server.password = nng_strdup(encoded);
+
+	conf_http_user *user = nng_zalloc(sizeof(*user));
+	NUTS_TRUE(user != NULL);
+	if (user == NULL) {
+		nng_free(cipher, cipher_len);
+		conf_fini(config);
+		return;
+	}
+	user->username = nng_strdup("alice");
+	user->password = nng_strdup(encoded);
+
+	conf_http_user **users = NULL;
+	cvector_push_back(users, user);
+	conf_http_server_set_users(&config->http_server, users, 1);
+
+	conf_parse_cipher(config, key, key, key);
+
+	NUTS_TRUE(strcmp(config->http_server.password, plain) == 0);
+	NUTS_TRUE(config->http_server.users_count == 1);
+	if (config->http_server.users_count == 1) {
+		NUTS_TRUE(config->http_server.users[0] != NULL);
+		if (config->http_server.users[0] != NULL) {
+			NUTS_TRUE(strcmp(
+			    config->http_server.users[0]->password, plain) == 0);
+		}
+	}
+	NUTS_TRUE(conf_http_server_cred_check(&config->http_server,
+	    "legacy:alice-secret", strlen("legacy:alice-secret")));
+	NUTS_TRUE(conf_http_server_cred_check(&config->http_server,
+	    "alice:alice-secret", strlen("alice:alice-secret")));
+
+	char *encrypted = conf_http_server_encrypt_password(plain, key);
+	NUTS_TRUE(encrypted != NULL);
+	if (encrypted != NULL) {
+		NUTS_TRUE(strcmp(encrypted, encoded) == 0);
+		char *decrypted = nng_strdup(encrypted);
+		conf_http_server_decrypt_password(&decrypted, key);
+		NUTS_TRUE(strcmp(decrypted, plain) == 0);
+		nng_strfree(decrypted);
+		nng_strfree(encrypted);
+	}
+
+	conf_http_user *rest_user = nng_zalloc(sizeof(*rest_user));
+	NUTS_TRUE(rest_user != NULL);
+	if (rest_user != NULL) {
+		rest_user->username = nng_strdup("rest");
+		rest_user->password = nng_strdup(encoded);
+		conf_http_user **rest_users = NULL;
+		cvector_push_back(rest_users, rest_user);
+		conf_http_server_decrypt_users(rest_users, 1, key);
+		NUTS_TRUE(strcmp(rest_users[0]->password, plain) == 0);
+		nng_strfree(rest_users[0]->username);
+		nng_strfree(rest_users[0]->password);
+		nng_free(rest_users[0], sizeof(*rest_users[0]));
+		cvector_free(rest_users);
+	}
+
+	nng_free(cipher, cipher_len);
+	conf_fini(config);
 }
 #endif
 
@@ -344,6 +565,11 @@ NUTS_TESTS = {
    {"get size", test_get_size},
    {"get time", test_get_time},
    {"conf parse v2", test_conf_parse_ver2},
+   {"conf http server users", test_conf_http_server_users},
+   {"conf http server users in file", test_conf_http_server_users_from_file},
+#if defined(SUPP_LICENSE_STD)
+   {"conf http server users cipher", test_conf_http_server_users_cipher},
+#endif
 #if defined(SUPP_PARQUET)
    {"exchange node validate v2", test_exchange_node_validate_ver2},
 #endif
