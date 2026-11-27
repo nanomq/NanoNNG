@@ -759,6 +759,7 @@ parquet_write_core(conf_parquet *conf, char *filename,
 	uint64_t              *ts_arr      = data->ts;
 	parquet_data_packet ***payload_arr = data->payload_arr;
 
+	bool opened = false;
 	string exception_msg = "";
 	try {
 
@@ -839,6 +840,7 @@ parquet_write_core(conf_parquet *conf, char *filename,
 		using FileClass = arrow::io::FileOutputStream;
 		shared_ptr<FileClass> out_file;
 		PARQUET_ASSIGN_OR_THROW(out_file, FileClass::Open(filename));
+		opened = true;
 		shared_ptr<arrow::KeyValueMetadata> key_value_metadata =
 		    parquet_build_nmq_metadata(conf, topic, write_type);
 		if (data->someip_data != NULL) {
@@ -865,6 +867,7 @@ parquet_write_core(conf_parquet *conf, char *filename,
 			    static_cast<someip_batch *>(data->someip_data));
 			rg_writer->Close();
 			file_writer->Close();
+			PARQUET_THROW_NOT_OK(out_file->Close());
 			return 0;
 		}
 
@@ -908,14 +911,14 @@ parquet_write_core(conf_parquet *conf, char *filename,
 		rg_writer->Close();
 		// Close the ParquetFileWriter
 		file_writer->Close();
+		PARQUET_THROW_NOT_OK(out_file->Close());
 		log_debug("stop doing ByteArray write");
 
 	} catch (const exception &e) {
 		exception_msg = e.what();
 		log_error("exception_msg=[***]");
 		log_debug("exception_msg=[%s]", exception_msg.c_str());
-		/* A partial/corrupt file may be on disk; report failure so the
-		 * caller can clean it up instead of persisting it. */
+		if (opened) remove(filename);
 		return -1;
 	}
 
@@ -931,12 +934,9 @@ someip_parquet_write_file(conf_parquet *conf, const char *filename,
 	try {
 		auto schema = someip_parquet_schema(
 		    static_cast<someip_batch *>(data->someip_data));
-		int rv = parquet_write_core(conf, const_cast<char *>(filename),
+		return parquet_write_core(conf, const_cast<char *>(filename),
 		    schema, data, topic, WRITE_RAW);
-		if (rv != 0) remove(filename);
-		return rv;
 	} catch (const std::exception &) {
-		remove(filename);
 		return -1;
 	}
 }
@@ -974,8 +974,6 @@ parquet_write_tmp(parquet_object *elem)
 	    conf, prefix.data(), ts_arr[0], ts_arr[row_len - 1]);
 	if (filename == NULL) {
 		log_error("Failed to get file name");
-		elem->rv = -1;
-		parquet_object_free(elem);
 		return -1;
 	}
 
@@ -984,11 +982,7 @@ parquet_write_tmp(parquet_object *elem)
 	        elem->type) != 0) {
 		log_error("parquet_write_core failed for ***");
 		log_debug("parquet_write_core failed for %s", filename);
-		/* Drop the partial temp file; propagate failure via aio. */
-		remove(filename);
 		free(filename);
-		elem->rv = -1;
-		parquet_object_free(elem);
 		return -1;
 	}
 	parquet_file_range *range =
@@ -999,7 +993,6 @@ parquet_write_tmp(parquet_object *elem)
 	// Create a ParquetFileWriter instance
 	parquet::WriterProperties::Builder builder;
 
-	parquet_object_free(elem);
 	return 0;
 }
 
@@ -1031,8 +1024,6 @@ parquet_write(parquet_object *elem)
 	log_debug("parquet_write");
 	char *filename = get_file_name(conf, ts_arr[0], ts_arr[row_len - 1]);
 	if (filename == NULL) {
-		elem->rv = -1;
-		parquet_object_free(elem);
 		log_error("Failed to get file name");
 		return -1;
 	}
@@ -1042,19 +1033,12 @@ parquet_write(parquet_object *elem)
 	        elem->type) != 0) {
 		log_error("parquet_write_core failed for ***");
 		log_debug("parquet_write_core failed for %s", filename);
-		/* Drop the partial file before it gets an md5 name or is
-		 * registered for queries; propagate failure via aio. */
-		remove(filename);
 		free(filename);
-		elem->rv = -1;
-		parquet_object_free(elem);
 		return -1;
 	}
 	char *md5_file_name =
 	    compute_and_rename_file_withMD5(filename, conf, elem->topic);
 	if (md5_file_name == nullptr) {
-		elem->rv = -1;
-		parquet_object_free(elem);
 		log_error("fail to get md5 from parquet file");
 		return -1;
 	}
@@ -1070,7 +1054,6 @@ parquet_write(parquet_object *elem)
 	pthread_mutex_unlock(&parquet_queue_mutex);
 
 	log_info("flush finished!");
-	parquet_object_free(elem);
 	return 0;
 }
 
@@ -1097,14 +1080,16 @@ parquet_write_loop_v2(void *arg)
 		switch (ele->type) {
 		case WRITE_RAW:
 		case WRITE_CAN:
-			parquet_write(ele);
+			ele->rv = parquet_write(ele);
 			break;
 		case WRITE_TEMP_RAW:
-			parquet_write_tmp(ele);
+			ele->rv = parquet_write_tmp(ele);
 			break;
 		default:
+			ele->rv = NNG_EINVAL;
 			break;
 		}
+		parquet_object_free(ele);
 
 #if defined(__linux__) && defined(__GLIBC__)
 		/* The flush freed the batch buffers; hand the idle arena
@@ -1151,7 +1136,7 @@ get_range(const char *name, uint64_t range[2])
 
 	char md5[33] = { 0 };
 
-	if (sscanf(ts_start, "%lu~%lu_%32[^.]", &range[0], &range[1], md5) !=
+	if (sscanf(ts_start, "%" SCNu64 "~%" SCNu64 "_%32[^.]", &range[0], &range[1], md5) !=
 	    3) {
 		range[0] = range[1] = 0;
 	}
