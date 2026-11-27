@@ -171,6 +171,40 @@ test_dup_publish(void)
 	nng_msg_free(msg2);
 }
 
+static void
+test_publish_payload_representations(void)
+{
+	nng_msg *msg;
+	uint32_t len;
+	uint8_t *payload;
+
+	/* A typed client message may be edited after its wire form was built. */
+	NUTS_PASS(nng_mqtt_msg_alloc(&msg, 0));
+	nng_mqtt_msg_set_packet_type(msg, NNG_MQTT_PUBLISH);
+	NUTS_PASS(nng_mqtt_msg_set_publish_topic(msg, "test"));
+	NUTS_PASS(nng_mqtt_msg_set_publish_payload(msg, (uint8_t *) "old", 3));
+	NUTS_PASS(nng_mqtt_msg_encode(msg));
+	nng_msg_set_payload_ptr(msg, (uint8_t *) nng_msg_body(msg) + nng_msg_len(msg) - 3);
+	NUTS_PASS(nng_mqtt_msg_set_publish_payload(msg, (uint8_t *) "updated", 7));
+	payload = nng_mqtt_msg_get_publish_payload(msg, &len);
+	NUTS_TRUE(len == 7 && memcmp(payload, "updated", 7) == 0);
+	nng_msg_free(msg);
+
+	/* A broker message retains the wire slice and can carry a ring key. */
+	NUTS_PASS(nng_msg_alloc(&msg, 0));
+	NUTS_PASS(nng_msg_append(msg, "\0\1tdata", 7));
+	payload = (uint8_t *) nng_msg_body(msg) + 3;
+	nng_msg_set_payload_ptr(msg, payload);
+	nng_msg_set_proto_data(msg, NULL, (void *) (uintptr_t) 123);
+	NUTS_TRUE(nng_mqtt_msg_get_publish_payload(msg, &len) == payload && len == 4);
+	NUTS_TRUE(nng_mqtt_msg_get_publish_payload(msg, NULL) == payload);
+	NUTS_PASS(nng_msg_chop(msg, 4));
+	NUTS_TRUE(nng_mqtt_msg_get_publish_payload(msg, &len) == payload && len == 0);
+	NUTS_PASS(nng_msg_chop(msg, 1));
+	NUTS_TRUE(nng_mqtt_msg_get_publish_payload(msg, &len) == NULL && len == 0);
+	nng_msg_free(msg);
+}
+
 void
 test_encode_connect(void)
 {
@@ -1596,6 +1630,7 @@ TEST_LIST = {
 	{ "dup unsub message", test_dup_unsub },
 	{ "dup suback message", test_dup_suback },
 	{ "dup publish message", test_dup_publish },
+	{ "publish payload representations", test_publish_payload_representations },
 	{ "encode connect", test_encode_connect },
 	{ "encode connect v5", test_encode_connect_v5 },
 	{ "encode conack", test_encode_connack },

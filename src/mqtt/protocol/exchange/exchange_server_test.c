@@ -55,7 +55,7 @@ static inline void client_get_and_clean_msgs(nng_socket sock, uint32_t *lenp, nn
 	nng_aio_free(aio);
 }
 
-static inline void client_get_msgs(nng_socket sock, uint64_t startKey, uint64_t endKey, uint32_t *lenp, nng_msg ***msgList)
+static inline void client_get_msgs(nng_socket sock, uint64_t startKey, uint64_t endKey, bool snapshot, uint32_t *lenp, nng_msg ***msgList)
 {
 	nni_aio *aio = NULL;
 	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
@@ -64,14 +64,14 @@ static inline void client_get_msgs(nng_socket sock, uint64_t startKey, uint64_t 
 	nng_time *tss = NULL;
 	nng_msg_alloc(&msg, 0);
 
-	if (endKey == 0) {
+	if (endKey == 0 && !snapshot) {
 		nng_msg_set_timestamp(msg, startKey);
 		nng_msg_set_proto_data(msg, NULL, NULL);
 	} else {
 		tss = nng_alloc(sizeof(nng_time) * 3);
 		tss[0] = startKey;
 		tss[1] = endKey;
-		tss[2] = (nng_time)NULL;
+		tss[2] = snapshot ? NNG_EXCHANGE_RECV_SNAPSHOT : 0;
 		nng_msg_set_proto_data(msg, NULL, (void *)tss);
 	}
 	nni_aio_set_msg(aio, msg);
@@ -91,7 +91,7 @@ static inline void client_get_msgs(nng_socket sock, uint64_t startKey, uint64_t 
 
 //
 // Publish a message to the given topic and with the given QoS.
-void
+static int
 client_publish(nng_socket sock, const char *topic, uint64_t key, uint8_t *payload,
     uint32_t payload_len, uint8_t qos, bool verbose)
 {
@@ -129,7 +129,66 @@ client_publish(nng_socket sock, const char *topic, uint64_t key, uint8_t *payloa
 		free_msg_list(msgList, msg, lenp, 1);
 	}
 
+	int rv = nng_aio_result(aio);
 	nng_aio_free(aio);
+	return rv;
+}
+
+static void
+test_rollover_index(nng_socket sock, enum fullOption mode)
+{
+	nng_aio *aio;
+	nng_msg *cmd;
+	nng_time params[3] = { 0, mode, 2 };
+	NUTS_PASS(nng_aio_alloc(&aio, NULL, NULL));
+	NUTS_PASS(nng_msg_alloc(&cmd, 0));
+	nng_msg_set_proto_data(cmd, NULL, params);
+	nng_aio_set_msg(aio, cmd);
+	nng_recv_aio(sock, aio);
+	nng_aio_wait(aio);
+	NUTS_PASS(nng_aio_result(aio));
+	nng_msg_free(cmd);
+	nng_aio_free(aio);
+
+	nni_id_map *index;
+	NUTS_PASS(nng_socket_get_ptr(sock, NNG_OPT_EXCHANGE_GET_RBMSGMAP, (void **) &index));
+	uint64_t first = UINT64_C(1) << 32;
+	for (uint64_t i = 0; i < 10; i++) {
+		NUTS_PASS(client_publish(sock, "topic1", first + i, NULL, 0, 0, false));
+	}
+	nng_msg **snapshot;
+	uint32_t count;
+	client_get_msgs(sock, first + 3, first + 5, true, &count, &snapshot);
+	NUTS_TRUE(count == 3 && snapshot != NULL);
+	NUTS_FAIL(client_publish(sock, "topic1", first + 3, NULL, 0, 0, false), NNG_EINVAL);
+	NUTS_TRUE(nni_id_count(index) == 10);
+	int rv = client_publish(sock, "topic1", first + 10, NULL, 0, 0, false);
+	if (mode == RB_FULL_FILE) {
+		NUTS_FAIL(rv, NNG_EINVAL);
+		NUTS_TRUE(nni_id_count(index) == 0);
+	} else {
+		NUTS_PASS(rv);
+		NUTS_TRUE(nni_id_count(index) == 1 && nni_id_get(index, first + 10) != NULL);
+	}
+	NUTS_TRUE(nni_id_get(index, first + 3) == NULL);
+	for (uint32_t i = 0; i < count; i++) {
+		NUTS_TRUE(nng_msg_get_timestamp(snapshot[i]) == first + 3 + i);
+		nng_msg_free(snapshot[i]);
+	}
+	nng_free(snapshot, count * sizeof(*snapshot));
+	NUTS_PASS(client_publish(sock, "topic1", first + 3, NULL, 0, 0, false));
+	/* The reused key is out of order. A point lookup still finds it. */
+	client_get_msgs(sock, first + 3, first + 3, true, &count, &snapshot);
+	NUTS_TRUE(count == 1 && nng_msg_get_timestamp(snapshot[0]) == first + 3);
+	nng_msg_free(snapshot[0]);
+	nng_free(snapshot, sizeof(*snapshot));
+	nng_msg **drained;
+	client_get_and_clean_msgs(sock, &count, &drained);
+	for (uint32_t i = 0; i < count; i++) {
+		nng_msg_free(drained[i]);
+	}
+	nng_free(drained, count * sizeof(*drained));
+	NUTS_TRUE(nni_id_count(index) == 0);
 }
 
 void
@@ -165,7 +224,7 @@ test_exchange_client(void)
 	nng_socket_set_ptr(sock, NNG_OPT_EXCHANGE_BIND, conf);
 
 	key = 0;
-	char *payload = "message";
+	uint8_t payload[] = "message";
 	client_publish(sock, "topic1", key, payload, 0, 0, 0);
 
 	nni_msg *msg = NULL;
@@ -191,8 +250,9 @@ test_exchange_client(void)
 	/* Use aio recv to get msgs by key */
 	lenp = nng_alloc(sizeof(uint32_t));
 	*lenp = 0;
-	client_get_msgs(sock, key, 0, lenp, &msgList);
+	client_get_msgs(sock, key, 0, false, lenp, &msgList);
 	NUTS_TRUE(*lenp == 1 && msgList != NULL);
+	NUTS_TRUE(!nni_msg_shared(msgList[0]));
 	free_msg_list(msgList, NULL, lenp, 0);
 
 	/* Only one element in ringbuffer */
@@ -220,12 +280,14 @@ test_exchange_client(void)
 	/* Use aio recv to get msgs by key */
 	lenp = nng_alloc(sizeof(uint32_t));
 	*lenp = 0;
-	client_get_msgs(sock, 1, 10, lenp, &msgList);
+	client_get_msgs(sock, 1, 10, false, lenp, &msgList);
 	NUTS_TRUE(*lenp == 9 && msgList != NULL);
+	NUTS_TRUE(!nni_msg_shared(msgList[0]));
 	free_msg_list(msgList, NULL, lenp, 0);
 
 	/* Ringbuffer is full and msgs returned need to free */
-	client_publish(sock, "topic1", 10, NULL, 0, 0, 0);
+	NUTS_FAIL(client_publish(sock, "topic1", 10, NULL, 0, 0, 0), NNG_EINVAL);
+	NUTS_TRUE(exchange_client_get_msg_by_key(nni_sock_proto_data(nsock), 10, &msg) != 0);
 
 	/* get and clean up msgs */
 	lenp = nng_alloc(sizeof(uint32_t));
@@ -233,6 +295,36 @@ test_exchange_client(void)
 	client_get_and_clean_msgs(sock, lenp, &msgList);
 	NUTS_TRUE(*lenp == 10 && msgList != NULL);
 	free_msg_list(msgList, NULL, lenp, 1);
+	/* A flush removes the index entries, and exact lookups use all 64 bits. */
+	msg = NULL;
+	NUTS_TRUE(exchange_client_get_msg_by_key(nni_sock_proto_data(nsock), 1, &msg) != 0);
+	key = (UINT64_C(1) << 32) + 1;
+	client_publish(sock, "topic1", key, (uint8_t *) "data", 4, 0, false);
+	lenp = nng_alloc(sizeof(*lenp));
+	client_get_msgs(sock, key, 0, false, lenp, &msgList);
+	NUTS_TRUE(*lenp == 1 && msgList != NULL);
+	NUTS_TRUE(nng_msg_get_timestamp(msgList[0]) == key);
+	free_msg_list(msgList, NULL, lenp, 0);
+
+	uint32_t snapshot_count;
+	nng_msg **snapshot;
+	client_get_msgs(sock, key, key, true, &snapshot_count, &snapshot);
+	NUTS_TRUE(snapshot_count == 1 && snapshot != NULL);
+	NUTS_TRUE(nni_msg_shared(snapshot[0]));
+	lenp = nng_alloc(sizeof(*lenp));
+	client_get_and_clean_msgs(sock, lenp, &msgList);
+	NUTS_TRUE(*lenp == 1 && msgList != NULL);
+	free_msg_list(msgList, NULL, lenp, 1);
+	uint32_t size;
+	uint8_t *data = nng_mqtt_msg_get_publish_payload(snapshot[0], &size);
+	NUTS_TRUE(size == 4 && memcmp(data, "data", 4) == 0);
+	nng_msg_free(snapshot[0]);
+	nng_free(snapshot, sizeof(*snapshot));
+	test_rollover_index(sock, RB_FULL_DROP);
+	test_rollover_index(sock, RB_FULL_RETURN);
+#if !defined(SUPP_PARQUET) && !defined(SUPP_BLF)
+	test_rollover_index(sock, RB_FULL_FILE);
+#endif
 	nni_sock_close(nsock);
 
 	cvector_free(conf->rbufs);
@@ -240,6 +332,21 @@ test_exchange_client(void)
 	nng_free(rb_node, sizeof(ringBuffer_node));
 
 	return;
+}
+
+static void
+test_drain_before_bind(void)
+{
+	nng_socket peer, sock;
+	NUTS_PASS(nng_rep0_open(&peer));
+	sock.data = &peer;
+	NUTS_PASS(nng_exchange_client_open(&sock));
+	uint32_t count;
+	nng_msg **msgs;
+	client_get_and_clean_msgs(sock, &count, &msgs);
+	NUTS_TRUE(count == 0 && msgs == NULL);
+	NUTS_PASS(nng_close(sock));
+	NUTS_PASS(nng_close(peer));
 }
 
 static void
@@ -275,6 +382,7 @@ test_exchange_replay_cmd_parse(void)
 
 NUTS_TESTS = {
 	{ "Exchange client test", test_exchange_client },
+	{ "Exchange drain before bind", test_drain_before_bind },
 	{ "Exchange replay cmd parse", test_exchange_replay_cmd_parse },
 	{ NULL, NULL },
 };

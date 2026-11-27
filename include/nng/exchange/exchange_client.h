@@ -32,6 +32,10 @@ extern "C" {
 #define NNG_OPT_EXCHANGE_GET_RBMSGMAP    "exchange-client-get-rbmsgmap"
 #define NNG_OPT_EXCHANGE_START_LIMIT_TIMER "exchange-client-start-limit-timer"
 
+/* Local exchange socket recv operation for {start, end, operation}.
+ * The caller owns one nng_msg reference per result and the result array. */
+#define NNG_EXCHANGE_RECV_SNAPSHOT 3
+
 NNG_DECL int nng_exchange_client_open(nng_socket *sock);
 
 #ifndef nng_exchange_open

@@ -279,9 +279,39 @@ nni_mqtt_msg_set_publish_payload(nni_msg *msg, uint8_t *payload, uint32_t len)
 uint8_t *
 nni_mqtt_msg_get_publish_payload(nni_msg *msg, uint32_t *outlen)
 {
-	nni_mqtt_proto_data *proto_data = nni_msg_get_proto_data(msg);
-	*outlen = proto_data->payload.publish.payload.length;
-	return proto_data->payload.publish.payload.buf;
+	uint32_t unused;
+	if (outlen == NULL) {
+		outlen = &unused;
+	}
+	*outlen = 0;
+	if (msg == NULL) {
+		return NULL;
+	}
+
+	const nni_proto_msg_ops *ops = nni_msg_get_proto_ops(msg);
+	if (ops == &proto_msg_ops) {
+		nni_mqtt_proto_data *mqtt = nni_msg_get_proto_data(msg);
+		*outlen = mqtt->payload.publish.payload.length;
+		return mqtt->payload.publish.payload.buf;
+	}
+	if (ops != NULL) {
+		return NULL;
+	}
+
+	/* The broker copies wire bytes into a plain nng_msg and preserves the
+	 * payload pointer. RingBuffer may use its private data slot for a key. */
+	uint8_t *payload = nni_msg_payload_ptr(msg);
+	uintptr_t base = (uintptr_t) nni_msg_body(msg);
+	size_t body_len = nni_msg_len(msg);
+	if (payload == NULL || (uintptr_t) payload < base) {
+		return NULL;
+	}
+	uintptr_t offset = (uintptr_t) payload - base;
+	if (offset > body_len || body_len - offset > UINT32_MAX) {
+		return NULL;
+	}
+	*outlen = (uint32_t) (body_len - offset);
+	return payload;
 }
 
 void
