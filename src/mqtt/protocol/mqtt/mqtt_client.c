@@ -97,7 +97,6 @@ struct mqtt_sock_s {
 	bool            retry_qos_0;	// define if flush QoS 0 msg to disk
 	nni_mtx         mtx;    		// more fine grained mutual exclusion
 	nni_cv          send_ready;
-	unsigned        qos0_waiters;
 	uint8_t         mqtt_ver;       // mqtt version.
 	nni_atomic_bool closed;
 	nni_atomic_int  next_packet_id; // next packet id to use
@@ -783,10 +782,8 @@ mqtt_pipe_start(void *arg)
 	s->disconnect_code = SUCCESS;
 	s->dis_prop        = NULL;
 	s->connected       = true;
-	p->busy             = false;
-	if (s->qos0_waiters != 0) {
-		nni_cv_wake1(&s->send_ready);
-	}
+	p->busy            = false;
+	nni_cv_wake1(&s->send_ready);
 
 	if ((c = nni_list_first(&s->send_queue)) != NULL) {
 		nni_list_remove(&s->send_queue, c);
@@ -1042,9 +1039,7 @@ mqtt_send_cb(void *arg)
 	}
 	nni_mtx_lock(&s->mtx);
 	p->busy = false;
-	if (s->qos0_waiters != 0) {
-		nni_cv_wake1(&s->send_ready);
-	}
+	nni_cv_wake1(&s->send_ready);
 
 	// Check cached ctx in nni_list first
 	// these ctxs are triggered before the pipe is established
@@ -1932,13 +1927,11 @@ nng_mqtt_client_send_qos0(nng_socket socket, nng_msg *msg)
 	}
 
 	nni_mtx_lock(&s->mtx);
-	s->qos0_waiters++;
 	while (!nni_atomic_get_bool(&s->closed) &&
 	    (s->mqtt_pipe == NULL || nni_atomic_get_bool(&s->mqtt_pipe->closed) ||
 	        nni_pipe_is_closed(s->mqtt_pipe->pipe) || s->mqtt_pipe->busy)) {
 		nni_cv_wait(&s->send_ready);
 	}
-	s->qos0_waiters--;
 	if (nni_atomic_get_bool(&s->closed)) {
 		rv = NNG_ECLOSED;
 	} else {
