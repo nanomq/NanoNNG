@@ -11,6 +11,8 @@
 #include "nng/supplemental/nanolib/log.h"
 #ifdef SUPP_PARQUET
 #include "nng/supplemental/nanolib/parquet.h"
+#else
+#include "nng/supplemental/nanolib/parquet_data.h"
 #endif
 
 typedef struct stream_node {
@@ -22,24 +24,6 @@ typedef struct stream_node {
 } stream_node;
 
 #ifndef SUPP_PARQUET
-typedef struct parquet_data parquet_data;
-typedef struct parquet_data_ret parquet_data_ret;
-
-typedef struct {
-	uint8_t *data;
-	uint32_t size;
-} parquet_data_packet;
-
-
-struct parquet_data_ret {
-	// Payload_arr should col first.
-	uint32_t               col_len;
-	uint32_t               row_len;
-	uint64_t              *ts;
-	char                 **schema;
-	parquet_data_packet ***payload_arr;
-};
-
 struct parquet_data {
 	// Payload_arr should col first.
 	// First column of schema should be
@@ -52,14 +36,6 @@ struct parquet_data {
 	char                 **schema;
 	parquet_data_packet ***payload_arr;
 };
-
-NNG_DECL parquet_data *parquet_data_alloc(char **schema,
-								  parquet_data_packet ***payload_arr,
-								  uint64_t *ts,
-								  uint32_t col_len,
-								  uint32_t row_len);
-
-NNG_DECL void parquet_data_free(parquet_data *data);
 #endif
 
 struct stream_data_out {

@@ -212,7 +212,7 @@ void stream_sys_fini(void)
 
 	return;
 }
-#ifndef PARQUET_H
+#ifndef SUPP_PARQUET
 parquet_data *parquet_data_alloc(char **schema, parquet_data_packet ***payload_arr,
     uint64_t *ts, uint32_t col_len, uint32_t row_len)
 {
