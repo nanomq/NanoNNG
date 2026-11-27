@@ -760,7 +760,9 @@ exchange_sock_fini(void *arg)
 
 	nni_aio_fini(&s->query_aio);
 
-	exchange_release(ex_node->ex);
+	if (ex_node != NULL) {
+		exchange_release(ex_node->ex);
+	}
 
 	nni_free(ex_node, sizeof(*ex_node));
 	ex_node = NULL;
@@ -795,62 +797,47 @@ exchange_sock_close(void *arg)
 static inline int
 exchange_client_handle_msg(exchange_node_t *ex_node, nni_msg *msg, nni_aio *aio)
 {
-	int ret = 0;
-	uint64_t key;
-	nni_msg *tmsg = NULL;
-
-	key  = nni_msg_get_timestamp(msg);
+	nni_id_map *index = &ex_node->sock->rbmsgmap;
+	uint64_t key = nni_msg_get_timestamp(msg);
 	nni_aio_set_prov_data(aio, NULL);
 
-	tmsg = nni_id_get(&ex_node->sock->rbmsgmap, key);
-	if (tmsg != NULL) {
-		log_error("[***]msg already in rbmsgmap, overwirte is not allowed");
-		log_debug("[%s]msg already in rbmsgmap, overwirte is not allowed", ex_node->ex->topic);
-		/* free msg here! */
+	if (ex_node->ex->rb_count != 1 || nni_id_get(index, key) != NULL) {
+		log_error("Exchange requires a single ring and unique message keys");
 		nni_msg_free(msg);
 		return -1;
 	}
 
-	// Currently only allow single ringbus
-	if (ex_node->ex->rb_count == 1)
-		ret = nni_id_set(&ex_node->sock->rbmsgmap, key, msg);
-	else
-		ret = NNG_EINVAL;
-	if (ret != 0) {
-		log_error("[***]rbmsgmap set failed");
-		log_debug("[%s]rbmsgmap set failed", ex_node->ex->topic);
-		/* free msg here! */
+	ringBuffer_t *rb = ex_node->ex->rbs[0];
+	nni_id_map next_batch;
+	nni_id_map *dest = index;
+	if (rb->size == rb->cap && rb->fullOp != RB_FULL_NONE) {
+		/* Every rollover removes the entire old batch. Reserve the new
+		 * index entry before enqueue takes ownership of the message. */
+		nni_id_map_init(&next_batch, 0, 0, true);
+		dest = &next_batch;
+	}
+	if (nni_id_set(dest, key, msg) != 0) {
+		log_error("Failed to index exchange message");
 		nni_msg_free(msg);
 		return -1;
 	}
 
-	ret = exchange_handle_msg(ex_node->ex, key, msg, aio);
-	if (ret != 0) {
-		log_error("[***]exchange_handle_msg failed!\n");
-		log_debug("[%s]exchange_handle_msg failed!\n", ex_node->ex->topic);
-
-		/* Roll back the index inserted before enqueue, otherwise
-		 * it would dangle on the freed message. */
-		nni_id_remove(&ex_node->sock->rbmsgmap, key);
-		/* free msg here! */
-		nni_msg_free(msg);
-		return -1;
-	}
-	nng_msg **msgs = nng_aio_get_prov_data(aio);
-	if (msgs != NULL) {
-		/* Clean up rbmsgmap */
-		nng_msg *tmsg = nng_aio_get_msg(aio);
-		int *msgs_lenp = (int *)nng_msg_get_proto_data(tmsg);
-		if (msgs_lenp != NULL) {
-			for (int i = 0; i < *msgs_lenp; i++) {
-				if (msgs[i] != NULL) {
-					uint64_t tkey = nni_msg_get_timestamp(msgs[i]);
-					nni_id_remove(&ex_node->sock->rbmsgmap, tkey);
-				}
-			}
+	int rv = exchange_handle_msg(ex_node->ex, key, msg, aio);
+	if (dest == &next_batch) {
+		if (rv == 0 || rb->size == 0) {
+			/* Some persistence failures also empty the ring. */
+			nni_id_map_fini(index);
+			*index = next_batch;
+		} else {
+			nni_id_map_fini(&next_batch);
 		}
 	}
-
+	if (rv != 0) {
+		nni_id_remove(index, key);
+		log_error("Failed to enqueue exchange message");
+		nni_msg_free(msg);
+		return -1;
+	}
 	return 0;
 }
 
@@ -957,6 +944,12 @@ exchange_sock_recv(void *arg, nni_aio *aio)
 	nni_aio_set_prov_data(aio, NULL);
 	nni_aio_set_msg(aio, NULL);
 
+	if (s->ex_node == NULL || s->ex_node->ex->rb_count == 0) {
+		nni_mtx_unlock(&s->mtx);
+		nni_aio_finish_error(aio, NNG_ESTATE);
+		return;
+	}
+
 	nng_time *tss = (nng_time *)nni_msg_get_proto_data(msg);
 	if (tss == NULL) {
 		key = nni_msg_get_timestamp(msg);
@@ -982,6 +975,14 @@ exchange_sock_recv(void *arg, nni_aio *aio)
 				nni_aio_finish_error(aio, NNG_EINVAL);
 				return;
 			}
+		} else if (tss[2] == NNG_EXCHANGE_RECV_SNAPSHOT) {
+			ret = ringBuffer_search_msgs_fuzz_retain(s->ex_node->ex->rbs[0],
+			    tss[0], tss[1], &count, &list);
+			if (ret != 0) {
+				nni_mtx_unlock(&s->mtx);
+				nni_aio_finish_error(aio, NNG_EINVAL);
+				return;
+			}
 		} else if (tss[2] == 1) {
 			/* clean up and return */
 			/* Only one exchange with one ringBuffer now */
@@ -995,6 +996,7 @@ exchange_sock_recv(void *arg, nni_aio *aio)
 				return;
 			}
 			nng_mtx_unlock(s->ex_node->ex->rbs[0]->ring_lock);
+			nni_id_map_fini(&s->rbmsgmap);
 		} else if (tss[2] == 2) {
 			/* Change MQ fullOp to tss[1] */
 			/* Only one exchange with one ringBuffer now */
@@ -1113,8 +1115,7 @@ exchange_client_get_msgs_by_key(void *arg, uint64_t key, uint32_t count, nng_msg
 	exchange_sock_t *s = arg;
 
 	nni_id_map *rbmsgmap = &s->rbmsgmap;
-	uint32_t key2 = key & 0XFFFFFFFF;
-	tmsg = nni_id_get(rbmsgmap, key2);
+	tmsg = nni_id_get(rbmsgmap, key);
 	if (tmsg == NULL || list == NULL) {
 		log_error("tmsg is NULL or list is NULL\n");
 		return -1;
